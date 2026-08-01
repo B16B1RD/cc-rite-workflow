@@ -225,6 +225,41 @@ if grep -q 'MEASURED_UNDETERMINED_ON_ANCHOR=1; count=1' <<<"$GATE_STDERR" \
   && grep -q 'MEASURED_DEMOTED_ON_ANCHOR=1; count=5' <<<"$GATE_STDERR"; then
   pass "2 marker の count が排他に分割される (1 + 5 = anchor_unparseable 6)"
 else fail "marker の分割が不正: $(grep -o 'MEASURED_[A-Z_]*ON_ANCHOR=1; count=[0-9]*' <<<"$GATE_STDERR" | tr '\n' ' ')"; fi
+# marker は機械経路、WARNING は reviewer が書式を直すための唯一の人間向け経路。marker だけを
+# pin すると WARNING の echo が消えても機械検査に載らない (TC-04 が subset A で持つ形と対称)。
+if grep -q 'WARNING: Verification: marker はあるが同一セグメント内に => が続かない' <<<"$GATE_STDERR"; then
+  pass "降格側の WARNING を emit する (marker と対)"
+else fail "降格側 WARNING 不在"; fi
+
+# ---------------------------------------------------------------------------
+# TC-04b-3: 判別子の走査長上限の両側を固定する
+#
+# 上限は二次コスト回避のためのもので意味論的な閾値ではないが、超えると帰結が未判定から降格へ
+# 変わる。上限値を動かしたときに気付けるよう、境界の内外を対で pin する。
+# ---------------------------------------------------------------------------
+echo "--- TC-04b-3: 判別子の走査長上限の両側 ---"
+arrow_bound=$(extract_re_arg re_arrow | sed -n 's/.*{0,\([0-9]*\)}.*/\1/p')
+if [ -n "$arrow_bound" ]; then
+  pass "re_arrow から走査長上限を抽出できる (bound=$arrow_bound)"
+  # 装飾 marker (`**Verification:**`) で stage 2 を外し「形式崩れ」にしたうえで LHS 長を変える。
+  # 正規形アンカーだと stage 2 が match して measured=true になり、上限の効果を測れない。
+  under=$(printf 'a%.0s' $(seq 1 $((arrow_bound - 60))))
+  over=$(printf 'a%.0s' $(seq 1 $((arrow_bound + 60))))
+  f="$TEST_DIR/tc04b3-under.json"
+  mk_json "$f" "$(mk_finding F-01 CRITICAL current-pr "**Verification:** repro bash ${under}.sh => boom")"
+  run_gate "$f" --reject-preset-verification
+  if [ "$(jq '.findings | length' "$f")" = "1" ] && grep -q 'MEASURED_UNDETERMINED_ON_ANCHOR=1; count=1' <<<"$GATE_STDERR"; then
+    pass "上限内の形式崩れアンカーは未判定 (blocking のまま)"
+  else fail "上限内が未判定にならない: $(grep -o 'MEASURED_GATE=.*' <<<"$GATE_STDERR")"; fi
+  f="$TEST_DIR/tc04b3-over.json"
+  mk_json "$f" "$(mk_finding F-01 CRITICAL current-pr "**Verification:** repro bash ${over}.sh => boom")"
+  run_gate "$f" --reject-preset-verification
+  if [ "$(jq '.non_blocking_findings | length' "$f")" = "1" ] && grep -q 'MEASURED_DEMOTED_ON_ANCHOR=1; count=1' <<<"$GATE_STDERR"; then
+    pass "上限超過は降格側へ落ちる (帰結が反転することを明示的に固定)"
+  else fail "上限超過の帰結が期待と異なる: $(grep -o 'MEASURED_GATE=.*' <<<"$GATE_STDERR")"; fi
+else
+  fail "re_arrow から走査長上限を抽出できない (literal の書式が変わった可能性)"
+fi
 
 # ---------------------------------------------------------------------------
 # TC-04b-2: 残存限界の pin
@@ -356,7 +391,7 @@ run_gate "$f"
 if [ "$(jq -r '.findings[0].verification.measured' "$f")" = "true" ] && [ "$(jq '.non_blocking_findings|length' "$f")" = "0" ]; then
   pass "既存 measured=true を保持し降格しない"
 else fail "既存値が上書きされた: $(jq -c '.findings[0].verification' "$f")"; fi
-if grep -q 'WARNING: 既存 verification.measured と description のアンカー有無が矛盾' <<<"$GATE_STDERR"; then
+if grep -q 'WARNING: 既存 verification.measured が本ゲートの算出結果と食い違う' <<<"$GATE_STDERR"; then
   pass "既存値と description の矛盾を WARNING で surface"
 else fail "矛盾 WARNING が出ていない"; fi
 
@@ -429,7 +464,7 @@ else
     run_gate "$work"
     [ "$(jq '.findings | length' "$work")" = "$before" ] || conflict_total=-999
     conflict_total=$((conflict_total + before))
-    grep -q 'WARNING: 既存 verification.measured と description のアンカー有無が矛盾' <<<"$GATE_STDERR" && conflict_warned=$((conflict_warned + 1))
+    grep -q 'WARNING: 既存 verification.measured が本ゲートの算出結果と食い違う' <<<"$GATE_STDERR" && conflict_warned=$((conflict_warned + 1))
   done
   if [ "$conflict_total" -eq 33 ]; then
     pass "cycle 2-9 の 33 件は既存 measured=true を保持し降格しない (§4.5)"
@@ -630,6 +665,7 @@ cat > "$f" <<'EOF'
    "suggestion":"s","status":"open","verification":{"measured":false}}],
  "non_blocking_findings":[]}
 EOF
+cp "$f" "$f.pristine"; cp "$f" "$f.pristine.orig"
 run_gate "$f"
 # preset 持ちは §4.5 により既存値を正として保持する = 実際に降格するので DEMOTED 側に載る。
 # (未判定へ昇格させると既存 boolean を上書きすることになり §4.5 と衝突する)
@@ -639,6 +675,17 @@ else fail "preset 持ちが anchor_unparseable から漏れる (silent 降格の
 if [ "$(jq -r '[.non_blocking_findings[].id] | join(",")' "$f")" = "F-01" ]; then
   pass "preset の measured:false は未判定に上書きされず降格する (§4.5 を保つ)"
 else fail "preset 持ちが未判定へ昇格した (§4.5 違反): $(jq -c '[.findings[].id]' "$f")"; fi
+
+# 同じ形をフラグ付きで実行すると caller 契約違反として hard fail する。ゲートが**未判定**を算出
+# する形に measured:false を先書きされると、has_measured_bool の短絡が未判定分岐を飛ばして
+# 実測済み CRITICAL を non_blocking へ移送し mergeable を確定させる — その fail-open を塞ぐ節。
+# **pristine fixture に対して実行する**: 上の非フラグ実行で F-01 は既に移送済みのため、同じ
+# ファイルを使うと findings[] が空になり rc=0 で素通りする空アサーションになる。
+run_gate "$f.pristine" --reject-preset-verification
+if [ "$GATE_RC" -eq 1 ] && grep -q 'reason=verification_preset_by_caller' <<<"$GATE_STDERR" \
+  && cmp -s "$f.pristine" "$f.pristine.orig"; then
+  pass "ゲートが未判定を算出する形への preset は hard fail し JSON を書き換えない (fail-open 遮断)"
+else fail "未判定形への preset が素通りした: rc=$GATE_RC $(grep -o 'MEASURED_GATE[A-Z_]*=[^;]*' <<<"$GATE_STDERR" | head -1)"; fi
 
 # ---------------------------------------------------------------------------
 # TC-08f: 形式崩れアンカーの可視化 (集約 hard fail は持たない)

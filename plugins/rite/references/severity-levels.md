@@ -165,7 +165,7 @@ blocking = CONFIRMED (全指摘事項に残存)
 
 **判定はいずれも helper 側に置く。** caller 側の散文 routing に置くと、本 Issue が排除対象にした「LLM が marker を読んで止める」依存が強制層の中に残るため。caller が観測するのは非ゼロ終了と `reason` だけで、そこに裁量の余地はない (routing は `pr-review/SKILL.md` ステップ 5.3.0.M step 3 の表)。
 
-**なお強制は全域には及ばない。** `--reject-preset-verification` が弾くのは「既存 `verification.measured` が description のアンカー有無と**矛盾する**」形だけで、アンカーと一致する preset は素通りし、その `repro` / `failing_test` は helper の抽出を経ず LLM が書いた文字列のまま永続 JSON に残る。preset の存在自体を弾く形にはできない — ゲート適用後の JSON は**未判定を除き** `verification` を持つため、再実行が必ず失敗し冪等性 (AC-5) が壊れる (未判定はキー自体を持たないので再実行でも preset とみなされない)。したがって「実測していないのに正規形アンカーと整合する `verification` を書けば通る」経路は残依存として残る。
+**なお強制は全域には及ばない。** `--reject-preset-verification` が弾くのは「既存 `verification.measured` が本ゲートの算出結果 (実測あり / 実測なし / 未判定) と**食い違う**」形だけで、算出結果と一致する preset は素通りし、その `repro` / `failing_test` は helper の抽出を経ず LLM が書いた文字列のまま永続 JSON に残る。preset の存在自体を弾く形にはできない — ゲート適用後の JSON は**未判定を除き** `verification` を持つため、再実行が必ず失敗し冪等性 (AC-5) が壊れる (未判定はキー自体を持たないので再実行でも preset とみなされない)。したがって「実測していないのに正規形アンカーと整合する `verification` を書けば通る」経路は残依存として残る。
 
 ## Severity × Scope Matrix
 

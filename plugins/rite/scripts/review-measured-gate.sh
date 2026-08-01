@@ -24,11 +24,11 @@
 #   PR #2070 の cycle 2-9 では、そう指示されていないにもかかわらず LLM が
 #   `verification.measured: true` を実 repro 付きで JSON へ直接書いていた (fixtures/pr-2070/ で確認可能)。
 #   その形が来ると §4.5「既存値を正とする」によりアンカー検出を経ない値がそのまま blocking 判定に
-#   入り、ゲートが無音で迂回される。本フラグは「既存 boolean が description のアンカー有無と
-#   矛盾する」= 迂回の形だけを hard fail させ、caller (pr-review step 2) から常に指定する。
+#   入り、ゲートが無音で迂回される。本フラグは「既存 boolean が本ゲートの算出結果と食い違う」=
+#   迂回の形だけを hard fail させ、caller (pr-review step 2) から常に指定する。
 #
-#   **本フラグは部分的な強制である** — hard fail するのは「既存 boolean が description のアンカー
-#   有無と矛盾する」場合だけで、アンカーと一致する preset は rc=0 で素通りし、その repro /
+#   **本フラグは部分的な強制である** — hard fail するのは「既存 boolean が本ゲートの算出結果と
+#   食い違う」場合だけで、算出結果と一致する preset は rc=0 で素通りし、その repro /
 #   failing_test は computed_verification を経ずに caller が書いた文字列のまま残る。
 #   「preset の存在自体を hard fail させる」形には**できない** — ゲート適用後の findings[] は
 #   未判定を除き verification を持つため、同じ JSON への再実行が必ず hard fail し AC-5 (冪等性) が
@@ -50,7 +50,7 @@
 # Gate semantics:
 #   1. findings[] の各要素について verification を確定する
 #      - .verification.measured が boolean で既に入っている → 既存値を正として上書きしない
-#        (description のアンカー有無と矛盾する場合は WARNING のみ。§4.5 の契約)
+#        (本ゲートの算出結果と食い違う場合は WARNING のみ。§4.5 の契約)
 #        `verification: {}` / `measured: null` は read 側型ガードが「未判定」として受理する形であり
 #        「設定済み」とはみなさない — 本 script が算出する
 #      - `--reject-preset-verification` 指定時は、上記「既存値かつ description と矛盾」を
@@ -119,8 +119,8 @@
 #                                 (review-result-schema.md cross-field invariant #2 違反)。
 #                                 ascii_downcase 正規化や current-pr への default 補完は採らない —
 #                                 不正入力を黙って受理する fallback は本 script の設計前提と衝突する
-#   verification_preset_by_caller — --reject-preset-verification 指定下で、description のアンカー有無と
-#                                  矛盾する既存 verification.measured を検出 (exit 1、書き換えはしない)
+#   verification_preset_by_caller — --reject-preset-verification 指定下で、本ゲートの算出結果と食い違う
+#                                  既存 verification.measured を検出 (exit 1、書き換えはしない)
 #   mktemp_failure              — 出力 tempfile の mktemp 失敗 (exit 1)
 #   write_failure               — tempfile への書き出し失敗 (exit 1)
 #   mv_failure                  — atomic mv 失敗 (exit 1)
@@ -377,7 +377,6 @@ def with_verification:
       runtime_obs_without_anchor: (
         [$orig[] | select(gated and (desc | test($re_runtime_obs)) and (anchored | not))] | length
       ),
-      # 既存 boolean と description のアンカー有無が食い違う件数 (既存値を正とするため WARNING のみ)。
       # 既存 boolean が「本ゲートが算出したはずの値」と食い違う件数。3 値化後は 2 値比較
       # (`!= anchored`) だけでは足りない — ゲートが**未判定**を算出する形に `measured: false` を
       # 先書きされると `false == anchored(false)` で矛盾なしと読み、`has_measured_bool` の短絡が
@@ -401,7 +400,7 @@ if ! result=$(jq \
   --arg re_stage1 '(?i)verification[*_`[:space:]]*[:：]' \
   --arg re_detect '(?m)(?:^|<br\s*/?>|[\s|>(])[-[:space:]]*Verification:[[:space:]]*(repro|failing_test)[[:space:]]+(?:(?!=>|<br)[^|])+=>[ \t]*(?!<br)[^|[:space:]]' \
   --arg re_extract '(?m)(?:^|<br\s*/?>|[\s|>(])[-[:space:]]*Verification:[[:space:]]*(?<label>repro|failing_test)[[:space:]]+(?<lhs>(?:(?!=>|<br)[^|])+)=>[ \t]*(?<rhs>(?!<br)[^|[:space:]](?:(?!<br)[^|])*)' \
-  --arg re_arrow '(?:(?!<br)[^\n。]){0,600}=>' \
+  --arg re_arrow '(?:(?!<br)[^\n。]){0,2000}=>' \
   --arg re_runtime_obs '(?i)likelihood-evidence[[:space:]]*[:：][[:space:]]*runtime_observation' \
   "$JQ_PROG" "$input" 2>"${diag_file:-/dev/null}"); then
   _fail jq_transform_failed "実測必須ゲートの変換 jq が失敗しました: $input"
@@ -466,7 +465,7 @@ if [ "$scope_unknown" -gt 0 ]; then
 fi
 
 if [ "$reject_preset" -eq 1 ] && [ "$verification_conflict" -gt 0 ]; then
-  echo "ERROR: findings[] に、description の Verification: アンカー有無と矛盾する verification.measured が ${verification_conflict} 件あらかじめ設定されています。ゲート適用前の JSON に verification を書いてはいけません (アンカー検出を経ない値が blocking 判定に入り、実測必須ゲートが無音で迂回されます)" >&2
+  echo "ERROR: findings[] に、description から本ゲートが算出する判定 (実測あり / 実測なし / 未判定) と食い違う verification.measured が ${verification_conflict} 件あらかじめ設定されています (アンカー有無の不一致に加え、形式崩れで未判定を算出すべき finding への boolean 先書きを含む)。ゲート適用前の JSON に verification を書いてはいけません (アンカー検出を経ない値が blocking 判定に入り、実測必須ゲートが無音で迂回されます)" >&2
   _fail verification_preset_by_caller "レビュー結果 JSON の生成規約違反のため、ゲートを適用せず停止しました: $input"
 fi
 
@@ -495,17 +494,17 @@ if [ "$anchor_undetermined" -gt 0 ]; then
 fi
 
 if [ "$anchor_demoted_marker" -gt 0 ]; then
-  echo "WARNING: Verification: marker はあるが同一セグメント内に => が続かないため本ゲートが未判定にしなかった finding ${anchor_demoted_marker} 件を検出しました (marker と => の間に改行タグが挟まった折り返しアンカー / 文境界を挟んだ散文中の言及 / 既存 verification.measured の保持)。実測を主張する指摘なら <LHS> => <RHS> 形のアンカーを marker と同一セグメント内に置き、パイプを含むコマンドは ¦ で代替表記してください" >&2
+  echo "WARNING: Verification: marker はあるが同一セグメント内に => が続かないため本ゲートが未判定にしなかった finding ${anchor_demoted_marker} 件を検出しました (marker と => の間に改行タグが挟まった折り返しアンカー / 文境界を挟んだ散文中の言及 / marker から => までが判別子の上限を超える / 既存 verification.measured の保持)。実測を主張する指摘なら <LHS> => <RHS> 形のアンカーを marker と同一セグメント内に置き、パイプを含むコマンドは ¦ で代替表記してください" >&2
   echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count=${anchor_demoted_marker}; cause=anchor_unparseable" >&2
 fi
 
 if [ "$runtime_obs_without_anchor" -gt 0 ]; then
-  echo "WARNING: Likelihood-Evidence: runtime_observation を持つのに Verification: の正規形アンカーを欠く finding ${runtime_obs_without_anchor} 件を検出しました (実測済み指摘は両方の添付が契約)。帰結は併記される MEASURED_UNDETERMINED_ON_ANCHOR / MEASURED_DEMOTED_ON_ANCHOR marker を参照してください (形式崩れは未判定として blocking に据え置き、アンカー欠如は measured=false へ降格)" >&2
+  echo "WARNING: Likelihood-Evidence: runtime_observation を持つのに Verification: の正規形アンカーを欠く finding ${runtime_obs_without_anchor} 件を検出しました (実測済み指摘は両方の添付が契約)。Verification: marker 自体が無い finding は measured=false へ降格します (この場合 ON_ANCHOR marker は出ません)。marker があって形式崩れの finding の帰結は、併記される MEASURED_UNDETERMINED_ON_ANCHOR / MEASURED_DEMOTED_ON_ANCHOR を参照してください" >&2
   echo "[CONTEXT] MEASURED_RUNTIME_OBS_WITHOUT_ANCHOR=1; count=${runtime_obs_without_anchor}" >&2
 fi
 
 if [ "$verification_conflict" -gt 0 ]; then
-  echo "WARNING: 既存 verification.measured と description のアンカー有無が矛盾する finding ${verification_conflict} 件を検出しました (既存値を正として保持)" >&2
+  echo "WARNING: 既存 verification.measured が本ゲートの算出結果と食い違う finding ${verification_conflict} 件を検出しました (既存値を正として保持)" >&2
 fi
 
 echo "[CONTEXT] MEASURED_GATE=applied; blocking=${blocking}; demoted=${demoted}; non_blocking_total=${non_blocking_total}; assessment=${assessment}" >&2

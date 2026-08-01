@@ -123,11 +123,13 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 
 この母集団は上記 3 分岐の帰結に従って **2 つの排他な subset** に分かれ、それぞれ対の WARNING + marker で報告される。**両 marker の count の和は常に母集団の総数に一致する** — これが「検出層に穴が無い」ことの機械的な不変条件であり、片方だけを残す変更をしてはならない:
 
-| subset | 帰結 | marker |
+| ケース | 帰結 | subset (marker) |
 |---|---|---|
 | marker と同一セグメントに `=>` あり (アンカーの書き損じ) ∧ 既存 boolean なし | **未判定** = blocking のまま | `MEASURED_UNDETERMINED_ON_ANCHOR` |
 | 同一セグメントに `=>` が続かない (折り返しアンカー / 文境界を挟んだ言及) ∧ 既存 boolean なし | `measured=false` を算出して降格 | `MEASURED_DEMOTED_ON_ANCHOR` |
 | 既存 `verification.measured` (`true` / `false` 問わず) を保持 | 本ゲートは算出しない (既存値のまま。`false` なら降格、`true` なら blocking 継続) | `MEASURED_DEMOTED_ON_ANCHOR` |
+
+ケースは 3 つだが subset は 2 つ (下 2 ケースは同じ marker に集約される)。
 
 母集団を gate 対象 scope に限るのは、`nit-noted` が `gated` 偽で**降格され得ない**ため。含めると「降格していないものを降格と申告する」ことになり、WARNING の件数が実際の帰結と食い違う。
 
@@ -141,10 +143,10 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 (1) が真かつ (2) が偽の finding が対象。その内訳を分ける第 3 の述語は、**stage 1 の marker から同一セグメント内**（終端は改行 / `<br>` / 句点）に `=>` が続くかの判定。**Anchor detection regex と同じく `--arg` で外出しし、本節を SoT literal とする**（判別子の定義をここ 1 箇所に閉じる — 散文で再記述すると記述側だけが drift し、SoT に従った「修正」が over-match を復活させる）。stage 1 の marker prefix は連結して再利用するため、下記は **suffix のみ**:
 
 ```
-(?:(?!<br)[^\n。]){0,600}=>
+(?:(?!<br)[^\n。]){0,2000}=>
 ```
 
-実際に評価されるのは `$re_stage1 + $re_arrow`。走査長を有界にするのは marker 出現数 × セグメント長の二次コストを避けるため。`test("=>")` のような description 全体への単純な存在判定にしては**ならない** — アンカーを論じる散文が恒久 blocking になる。本 literal と helper の `--arg re_arrow` の一致は `scripts/tests/review-measured-gate.test.sh` の TC-09 が機械的に固定する。
+実際に評価されるのは `$re_stage1 + $re_arrow`。**marker から `=>` までが上限（literal 中の `{0,N}`）を超える場合も述語は偽になる**（= 降格側）。上限は二次コストを避けるためのもので、意味論的な閾値として設けたのではない — 無界にすると marker 出現数 × セグメント長で増大する（実測: 8000 marker で 10.9s、上限付きは 0.4s）。保存済みレビュー結果で観測された marker→`=>` の最大距離は 472 文字で、上限はその 4 倍を確保している。`test("=>")` のような description 全体への単純な存在判定にしては**ならない** — アンカーを論じる散文が恒久 blocking になる。本 literal と helper の `--arg re_arrow` の一致は `scripts/tests/review-measured-gate.test.sh` の TC-09 が機械的に固定する。
 
 > **stage 1 は「列挙」ではなく「正規化」で書く**: `Verification:[[:space:]]*(repro|failing_test)` のようにラベル値まで一致を要求したり、`\*{0,2}` のように**特定の装飾だけを列挙**すると、列挙から漏れた形 (バッククォート `` `Verification`: ``、全角コロン `Verification：`、三重アスタリスク `***Verification***:`、underscore `_Verification_:`、種別欠落 `Verification: bash x.sh => ERROR`、ラベル取り違え `Verification: runtime_observation ...` — 隣接する `Likelihood-Evidence:` の正規ラベルとの混線で構造的に起きる) が stage 1 と stage 2 の**両方**から外れ、**WARNING ゼロで non-blocking に落ちる**。これは本節が閉じたと宣言している silent failure そのもの。装飾を 1 つ足すたびに regex を直す設計にせず、装飾文字クラスと全角コロンを吸収する形にする。トレードオフは「散文中の `verification :` 等を拾う無害な false-positive WARNING が増える」対「silent false-negative が残る」で、検出層としては前者を選ぶ。対象が 1 件以上なら `review-measured-gate.sh` が以下を emit する (helper の実装契約であり、省略は許されない):
 
@@ -154,7 +156,7 @@ echo "WARNING: Verification: アンカーはあるが検出 regex に match し�
 echo "[CONTEXT] MEASURED_UNDETERMINED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable" >&2
 
 # subset B: 同一セグメントに => が続かない (折り返し / 文境界越しの言及) / 既存 boolean 保持
-echo "WARNING: Verification: marker はあるが同一セグメント内に => が続かないため本ゲートが未判定にしなかった finding {n} 件を検出しました (marker と => の間に改行タグが挟まった折り返しアンカー / 文境界を挟んだ散文中の言及 / 既存 verification.measured の保持)。実測を主張する指摘なら <LHS> => <RHS> 形のアンカーを marker と同一セグメント内に置き、パイプを含むコマンドは ¦ で代替表記してください" >&2
+echo "WARNING: Verification: marker はあるが同一セグメント内に => が続かないため本ゲートが未判定にしなかった finding {n} 件を検出しました (marker と => の間に改行タグが挟まった折り返しアンカー / 文境界を挟んだ散文中の言及 / marker から => までが判別子の上限を超える / 既存 verification.measured の保持)。実測を主張する指摘なら <LHS> => <RHS> 形のアンカーを marker と同一セグメント内に置き、パイプを含むコマンドは ¦ で代替表記してください" >&2
 echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable" >&2
 ```
 
