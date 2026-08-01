@@ -9,7 +9,7 @@
 #
 # Usage:
 #   bash review-result-save.sh --pr <number> --content-file <path> [--results-dir <dir>]
-#                              [--pending-marker <path>]
+#                              [--pending-id <token>]
 #
 #   caller (pr-review.md ステップ 6.1.a) は以下を行う:
 #     1. review-result-schema.md に従う JSON body を生成し、`"timestamp"` フィールドに
@@ -26,21 +26,33 @@
 #   --results-dir   保存先ディレクトリ (default: $(state-path-resolve.sh)/.rite/review-results —
 #                   セッション worktree からも main checkout と同一パスに解決。解決失敗時は
 #                   cwd 相対 .rite/review-results へフォールバック)
-#   --pending-marker  本 review cycle の save-pending marker path (任意)。pr-review.md
-#                   ステップ 5.3.0.M step 2 が実測必須ゲート適用の直後に生成し、本 helper が
-#                   EXIT trap で削除する。ステップ 8.0.4 は残存 = 「6.1.a が本 cycle で走って
-#                   いない」の機械的証拠として result pattern の emit を差し戻す。
+#   --pending-id    本 review cycle の save-pending marker の id token (任意、`{pr}-{epoch}` 形式)。
+#                   marker path は本 helper が `${TMPDIR:-/tmp}/rite-p61a-pending-<id>` として
+#                   **内部導出**する (sibling の review-nonblocking-record.sh --iteration-id と同形)。
+#                   pr-review.md ステップ 5.3.0.M step 2 が実測必須ゲート適用の直後に marker を
+#                   生成し、本 helper が EXIT trap で削除する。ステップ 8.0.4 は残存 = 「6.1.a が
+#                   本 cycle で走っていない」の機械的証拠として result pattern の emit を差し戻す。
 #                   未指定時は no-op (marker 機構を持たない caller との後方互換)。
+#                   full path を受け取らないのは、caller 由来の任意文字列が削除対象と機械可読
+#                   sentinel の両方へ同時に流れる設計を避けるため — その形では traversal /
+#                   sentinel 偽造 / 制御文字を個別に塞ぐ guard が要り、guard が生成側の値域
+#                   (${TMPDIR} の文字種) と食い違うと「保存は成功したのに marker が消えず
+#                   8.0.4 が恒久的に落ちる」非収束を生む。内部導出はその失敗クラスを構造的に消す。
 #
 # 契約 (pr-review.md ステップ 6.1.a / D-04 と verbatim 一致):
-#   - 非ブロッキング: 全失敗経路で `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を stderr に emit し
-#     exit 0 (ステップ 6 全体を fail させない)。
-#   - 15 reason 語彙: pr_number_placeholder_residue / date_command_failure / mkdir_failure /
+#   - 非ブロッキング: 失敗経路では `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を stderr に emit する。
+#     reason 語彙は 15 種で、**うち 14 種は exit 0** (ステップ 6 全体を fail させない)。
+#     `signal_aborted` のみ signal trap 由来で rc=130/143/129 を返す (reason emit と marker 削除は
+#     他 14 種と同一。ステップ 6 の exit code は 6.1.c が決める)。
+#   - reason 語彙: pr_number_placeholder_residue / date_command_failure / mkdir_failure /
 #     mktemp_failure / write_failure / timestamp_injection_mv_failure / json_invalid /
 #     schema_required_fields_missing / finding_id_format_or_uniqueness_violation /
 #     scope_enum_violation / critical_high_scope_nit_noted_invariant /
 #     collision_resolution_exhausted / mktemp_failure_mv_err / mv_failure / signal_aborted
-#     (末尾の signal_aborted のみ signal trap 由来で線形の emit 順に載らない)
+#     (末尾の signal_aborted のみ signal trap 由来で線形の emit 順に載らない)。
+#     `signal_aborted` は **保存が未完了のときだけ** emit する — mv 成功後に signal が届いた場合は
+#     JSON が実在するため失敗宣言せず、WARNING のみを出す (保存済み cycle を 6.1.c ケース 2 で
+#     停止させない)。
 #   - 同秒衝突は `~$RANDOM` suffix (separator `~` は `.` より ASCII 大で sort -r 時に
 #     collision-resolved 版が先頭に来る)。再衝突は collision_resolution_exhausted で skip。
 #   - EXIT trap で `[CONTEXT] FILE_TIMESTAMP=` / `ISO_TIMESTAMP=` / `JSON_SAVED=` を必ず emit
@@ -51,16 +63,18 @@
 #     ステップ 8.0.4 経由で blocking gate に化けるため。保存の成否は `saved=` / `JSON_SAVED=` /
 #     `LOCAL_SAVE_FAILED=` が担う。marker が残るのは (i) trap 設置前の `exit 1`
 #     (`--content-file` 未指定 / unknown option — caller 契約違反、review-nonblocking-record.sh の
-#     exit-1 群と同じ扱い)、(ii) `--pending-marker` が marker path guard を通らなかった場合、
-#     (iii) `rm` 自体が失敗した場合の 3 群。(i)(ii) は caller 側を直せば 1 iteration で収束するが、
-#     (iii) は環境起因で再実行では収束せず手動削除を要する。`--pr` 欠落 / 非数値
-#     (`pr_number_placeholder_residue`) は trap 設置**後**の `exit 0` のため marker は削除される
-#     (可視化は 6.1.c ケース 2 が担う)。
+#     exit-1 群と同じ扱い) と、`--pending-id` の形状違反で path を導出できなかった場合、
+#     (ii) `rm` 自体が失敗した場合の 2 群。(i) は caller 側を直せば 1 iteration で収束するが、
+#     (ii) は環境起因で再実行では収束せず手動削除を要する。`--pr` 欠落 / 非数値
+#     (`pr_number_placeholder_residue`) は trap 設置**後**の `exit 0` かつ marker path は
+#     `--pending-id` から独立に導出されるため marker は削除される (可視化は 6.1.c ケース 2 が担う)。
 #   - [CONTEXT] / WARNING は全て stderr。stdout は使わない (observability とデータの境界保持)。
 #
 # Exit codes:
 #   0: 常に (success / 非ブロッキング失敗どちらも)。caller は LOCAL_SAVE_FAILED / JSON_SAVED で判定。
-#   1: 引数エラー (--pr / --content-file 欠落、--content-file 不在)。
+#   1: caller 契約違反 (--content-file 未指定 / unknown option — いずれも trap 設置前)。
+#      注: --pr 欠落 / 非数値 と --content-file 不在 は trap 設置後の exit 0 (非ブロッキング)。
+#   130/143/129: signal 中断 (INT / TERM / HUP)。
 set -uo pipefail
 # shellcheck source=control-char-neutralize.sh
 source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
@@ -68,7 +82,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
 # --- Argument parsing ---
 PR_NUMBER=""
 CONTENT_FILE=""
-PENDING_MARKER=""
+PENDING_ID=""
 # 保存先の既定はリポジトリ共通の state ルート (state-path-resolve.sh)。セッション worktree 内から
 # 実行しても main checkout と同一パスに解決され、書込 (本 helper) / 読取 (review-source-resolve.sh
 # Priority 2) / 削除 (cleanup ステップ 6) が一貫する。wiki-ingest-trigger.sh の STATE_ROOT anchor と
@@ -90,7 +104,7 @@ while [[ $# -gt 0 ]]; do
     --pr)           PR_NUMBER="${2:-}"; shift; shift ;;
     --content-file) CONTENT_FILE="${2:-}"; shift; shift ;;
     --results-dir)  REVIEW_RESULTS_DIR="${2:-}"; shift; shift ;;
-    --pending-marker) PENDING_MARKER="${2:-}"; shift; shift ;;
+    --pending-id)   PENDING_ID="${2:-}"; shift; shift ;;
     *) echo "ERROR: review-result-save: unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -103,47 +117,28 @@ fi
 # D-04 非ブロッキング契約 (全失敗で exit 0 + EXIT trap での FILE_TIMESTAMP/ISO_TIMESTAMP/JSON_SAVED
 # 必須 emit) を満たすため。引数自体の未指定 (上記 -z) は caller bug の fail-fast として exit 1 を維持する。
 
-# --- marker path guard (受理判定は引数確定時に 1 度だけ) ---
-# 判定材料は PENDING_MARKER だけで実行中に変わらないため、trap 内で毎回 case 分岐せずここで確定する
-# (cleanup は「消して emit する」責務に閉じる)。
+# --- save-pending marker path の内部導出 ---
+# marker path は caller から受け取らず、id token から helper 内で組み立てる (sibling の
+# review-nonblocking-record.sh と同形)。full path を受け取る設計は、caller 由来の任意文字列が
+# 削除対象・機械可読 sentinel の両方へ同時に流れるため、traversal / sentinel 偽造 / 制御文字の
+# 3 方向を個別に塞ぐ guard が必要になり、しかもその guard が生成側の値域 (${TMPDIR} の文字種) と
+# 食い違うと「保存は成功したのに marker が消えず 8.0.4 が恒久的に落ちる」非収束を生む。
+# 内部導出ならその失敗クラス自体が存在しない。
 #
-# 削除対象は 5.3.0.M step 2 が張る `rite-p61a-pending-*` に限る。本 helper は sibling の
-# review-nonblocking-record.sh (marker path を内部導出する) と違い caller から full path を
-# 受け取るため、置換漏れ / 誤配線 / 制御文字混入で無関係な値を渡されうる。受理条件は 3 つで、
-# どれを欠いても別方向に破れる:
-#   (a) 文字集合 allowlist — 改行を含む値は下の REVIEW_SAVE_DONE sentinel を 2 行に割り、任意の
-#       `marker=` / `saved=true` を載せた偽造行を作れる (8.0.4 の **Check** が読む唯一の入力)。
-#       sibling の ITERATION_ID allowlist と同型。basename anchor では塞げない — 改行後の最終
-#       `/` 以降が `rite-p61a-pending-...` に一致しうるため。
-#   (b) `..` の排除 と (c) basename anchor — `*/rite-p61a-pending-*` の部分一致 glob は
-#       `<dir>/rite-p61a-pending-x/../victim` を通し、無関係なファイルを無音で削除する。
-#       文字集合では塞げない (`.` と `/` は正当な path 文字)。
-# guard 外の値は削除せず WARNING に倒す — 消さなければ 8.0.4 が本物の marker 残存を見て差し戻し、
-# step 0 からの再実行で収束する (誤削除すると gate が無音で pass し本 Issue の退行が復活する)。
-# exit code は変えない (D-04 非ブロッキング契約)。
-#
-# _pm_display: marker 値を stderr へ出すときの唯一の整形口。制御文字を潰すだけでは足りない —
-# 改行が `?` になっても `[CONTEXT] ... REVIEW_SAVE_DONE=1; ... saved=true` という**文字列**は残り、
-# sentinel 行の `marker=` フィールドや WARNING 行の中で綴られてしまう (grep する consumer は行頭
-# anchor を持つとは限らない)。この channel で構造を作る 4 文字 `[ ] ; =` も潰す。
-_pm_display() { printf '%s' "${1:-}" | neutralize_ctrl | LC_ALL=C tr '[];=' '????'; }
-_pm_ok="false"
-_pm_reject=""
-case "${PENDING_MARKER:-}" in
-  '') ;;  # 未指定 = marker 機構 opt-out (後方互換)
-  *[!A-Za-z0-9./_-]*) _pm_reject="許可外の文字を含む (許可: A-Za-z0-9 . / _ -)" ;;
-  *..*)               _pm_reject="パス要素 '..' を含む" ;;
-  *)
-    case "${PENDING_MARKER##*/}" in
-      rite-p61a-pending-*) _pm_ok="true" ;;
-      *)                   _pm_reject="basename が想定 prefix (rite-p61a-pending-) で始まらない" ;;
-    esac
+# 未指定は marker 機構 opt-out (後方互換)。非空かつ不正な id は導出せず marker を残す —
+# 8.0.4 が loud に落ちて caller の置換漏れを差し戻す方向 (誤 pass ではない安全側)。
+PENDING_MARKER=""
+case "${PENDING_ID:-}" in
+  '') ;;
+  *'{'*|*'}'*|*[!A-Za-z0-9._-]*)
+    # 値の verbatim echo は禁止 (sibling の ITERATION_ID gate と同じ理由 — 改行入りの値をそのまま
+    # 出すと診断行の中に完全な形の sentinel を再現できる)。neutralize_ctrl で 1 行に潰す。
+    echo "WARNING: review-result-save: --pending-id が literal substitute されていないか不正な文字を含みます (値: '$(printf '%s' "$PENDING_ID" | neutralize_ctrl)')" >&2
+    echo "  期待: 英数字 / '.' / '_' / '-' のみからなる非空文字列 (例: 2078-1799999999)" >&2
+    echo "  marker path を導出できないため削除しません — ステップ 8.0.4 が残存を検出して差し戻します" >&2
     ;;
+  *) PENDING_MARKER="${TMPDIR:-/tmp}/rite-p61a-pending-${PENDING_ID}" ;;
 esac
-if [ -n "$_pm_reject" ]; then
-  echo "WARNING: --pending-marker を削除しません — $_pm_reject: $(_pm_display "$PENDING_MARKER")" >&2
-  echo "  caller (ステップ 6.1.a) の {save_pending_marker} 置換漏れ / 誤配線の可能性があります" >&2
-fi
 
 # --- trap 保護対象 + observability emit ---
 # json_tmp / mktemp_err / jq_val_err_r は trap 保護 (orphan 防止)。file_timestamp /
@@ -163,36 +158,37 @@ _rite_review_p61a_cleanup() {
     echo "[CONTEXT] ISO_TIMESTAMP=${iso_timestamp:-unknown}" >&2
     echo "[CONTEXT] JSON_SAVED=${json_saved:-false}" >&2
     # save-pending marker の consume。本 trap に到達した = 本 helper が完走した、が marker の意味。
-    # 受理判定と WARNING は引数確定時に済ませてある (上記 marker path guard)。ここは判定結果
-    # (`_pm_ok`) に従って消し、sentinel を出すだけ。
-    if [ "$_pm_ok" = "true" ] && [ -e "$PENDING_MARKER" ]; then
-      # rm の errno を退避して可視化する (同ファイル内の mkdir / mktemp / mv と同型。
-      # `2>/dev/null` で潰すと common-error-handling.md の「IO エラーは silent suppression 禁止」に反する)。
-      if ! _pm_err=$(mktemp "${TMPDIR:-/tmp}/rite-review-p61a-pm-err-XXXXXX" 2>/dev/null); then
-        _pm_err=""
-      fi
-      # `LC_ALL=C` は必須 — neutralize_ctrl は 0x80-0x9f をバイト単位で潰すため、ロケール依存の
-      # 多バイト診断 (例: 日本語の "許可がありません") は原因語ごと判読不能になる。errno を読ませる
-      # のが本 capture の目的なので、rm 側を ASCII に固定してから中和する。
-      if ! LC_ALL=C rm -f "$PENDING_MARKER" 2>"${_pm_err:-/dev/null}"; then
-        echo "WARNING: save-pending marker の削除に失敗しました ($PENDING_MARKER)。ステップ 8.0.4 は本 cycle の 6.1.a を未実行と誤判定します" >&2
-        [ -n "$_pm_err" ] && [ -s "$_pm_err" ] && { echo "  詳細 (rm stderr 先頭 5 行):" >&2; head -5 "$_pm_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2; }
-        echo "  対処: 削除失敗は決定論的なため 6.1.a を再実行しても収束しません。marker を手動で rm してから ステップ 8.0 を再評価してください" >&2
-      fi
-      [ -n "$_pm_err" ] && rm -f "$_pm_err"
+    # path は引数確定時に内部導出済 (未導出なら空 = no-op)。`rm` の stderr は抑止しない —
+    # 削除失敗は決定論的で 6.1.a の再実行では収束しないため、errno がそのまま見えている必要がある。
+    # `-e` は dangling symlink を偽と判定するため `-L` も見る (8.0.4 Pre-Check と同条件)。
+    # `rm -f` は symlink を追随しないので誤削除にはならない。
+    if [ -n "$PENDING_MARKER" ] && { [ -e "$PENDING_MARKER" ] || [ -L "$PENDING_MARKER" ]; } \
+       && ! LC_ALL=C rm -f "$PENDING_MARKER"; then
+      echo "WARNING: save-pending marker の削除に失敗しました ($PENDING_MARKER)。ステップ 8.0.4 は本 cycle の 6.1.a を未実行と誤判定します" >&2
+      echo "  対処: 削除失敗は決定論的なため 6.1.a の再実行では収束しません。marker を手動で rm してから ステップ 8.0 を再評価してください" >&2
     fi
-    echo "[CONTEXT] REVIEW_SAVE_DONE=1; pr=${PR_NUMBER:-}; marker=$(_pm_display "${PENDING_MARKER:-}"); saved=${json_saved:-false}" >&2
+    echo "[CONTEXT] REVIEW_SAVE_DONE=1; pr=${PR_NUMBER:-}; marker=${PENDING_MARKER:-}; saved=${json_saved:-false}" >&2
     file_timestamp_emitted="true"
   fi
 }
-# signal 中断は「保存が完了していない」失敗であって正常終了ではない。cleanup だけを呼ぶと
-# marker は消え `saved=false` は出るが `LOCAL_SAVE_FAILED` が 1 件も出ず、(a) ステップ 8.0.4 の
-# 「`saved=false` なら reason を転記」が入力を持たず、(b) 既定 `post_comment: false` では
-# ステップ 6.1.c が `--local-save-failed` だけを見るためケース 1 に落ち、存在しないパスを
-# 「保存済み」として提示する。sibling の review-nonblocking-record.sh が同 phase で
-# `signal_aborted` を持つのと同じ理由で、signal 経路にも reason を出す。
+# signal 中断で **保存が未完了**なら失敗として扱う。cleanup だけを呼ぶと marker は消え
+# `saved=false` は出るが `LOCAL_SAVE_FAILED` が 1 件も出ず、(a) ステップ 8.0.4 の「`saved=false` なら
+# reason を転記」が入力を持たず、(b) 既定 `post_comment: false` では ステップ 6.1.c が
+# `--local-save-failed` だけを見るためケース 1 に落ち、存在しないパスを「保存済み」として提示する。
+#
+# **`json_saved` を見ることが必須** — mv 成功後に signal が届く窓があり、そこで無条件に失敗を
+# 宣言すると JSON が実在するのに 6.1.c ケース 2 が `exit 2` してレビュー結果を「失われた」と
+# 誤報告する (保存が成功した cycle を停止させるのは MUST NOT「保存失敗で review cycle を
+# 停止しない」より強い違反)。sibling の review-nonblocking-record.sh が signal 中断について
+# 「投稿されたか否かは不明として扱う」と設計しているのと同じ、断定を避ける分類。
 _rite_review_p61a_signal() {
-  echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=signal_aborted; signal=$2" >&2
+  if [ "$json_saved" != "true" ]; then
+    echo "WARNING: review-result-save: $2 で中断されました。レビュー結果 JSON は保存されていません" >&2
+    echo "  対処: 中断原因 (Bash tool timeout / 手動 Ctrl-C) を取り除き ステップ 6.1.a を step 0 から再実行してください" >&2
+    echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=signal_aborted; signal=$2" >&2
+  else
+    echo "WARNING: review-result-save: $2 で中断されましたが JSON は保存済みです。ステップ 6 は続行して差し支えありません" >&2
+  fi
   _rite_review_p61a_cleanup
   exit "$1"
 }
@@ -369,7 +365,7 @@ fi
 # id 書式 + 一意性を `findings[]` と `non_blocking_findings[]` の **和集合** で評価する
 # (review-result-schema.md §non_blocking_findings の「id は 2 配列の和集合で一意」規則の強制層。
 #  findings[] だけを見ると、配列ごとに F-01 から独立採番した JSON が素通りして永続化される)。
-# reason 語彙は既存を流用し 14 種を増やさない (reason 表 / Eval-order enumeration の同期不要)。
+# reason 語彙は既存を流用し増やさない (reason 表 / Eval-order enumeration の同期不要)。
 #
 # 非配列は上段の type check で marker 済みなので、ここでは `$nb` に空配列として畳んで
 # 判定から外す (型崩れを id 欠陥として誤診断せず、かつ hard fail に化けさせない)。

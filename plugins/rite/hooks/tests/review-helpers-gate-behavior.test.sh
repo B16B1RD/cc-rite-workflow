@@ -516,11 +516,12 @@ assert_grep "TC-3.10 reason=critical_high_scope_nit_noted_invariant emit" "$ERR"
 # trap 設置**前**の exit 1 (caller 契約違反) だけは残す — 8.0.3 の引数 gate 群と同じ境界。
 
 # TC-3.11a 保存成功: marker を削除し REVIEW_SAVE_DONE に saved=true を載せる
-#          fixture 名は helper の prefix guard (rite-p61a-pending-*) を通る実パス形状にする —
-#          任意名にすると guard に弾かれ、テストが「削除されない」を誤って退行として報告する。
-MARKER_OK="$TMP_ROOT/rite-p61a-pending-123-1700000010"
+#          fixture の id は helper が内部導出する marker path (${TMPDIR}/rite-p61a-pending-<id>) と
+#          対応させる — 対応しないと helper は別 path を探し、テストが「削除されない」を誤って退行として報告する。
+MARKER_OK_ID="123-1700000010"
+MARKER_OK="${TMPDIR:-/tmp}/rite-p61a-pending-$MARKER_OK_ID"
 : > "$MARKER_OK"
-run_save --pr 123 --content-file "$JSON_OK" --results-dir "$TMP_ROOT/results-tc311a" --pending-marker "$MARKER_OK"
+run_save --pr 123 --content-file "$JSON_OK" --results-dir "$TMP_ROOT/results-tc311a" --pending-id "$MARKER_OK_ID"
 assert "TC-3.11a 保存成功: exit 0" "0" "$RC"
 # `marker=` は `.*` で受け流さない — この 1 フィールドが 8.0.4 の prose **Check**「本 cycle の
 # REVIEW_SAVE_PENDING_MARKER と一致するか」が読む唯一の入力であり、`.*` は空文字にもマッチするため
@@ -535,9 +536,10 @@ fi
 
 # TC-3.11b 非ブロッキング失敗 (content-file 不在) でも marker を削除する
 #          — ここが残ると 8.0.4 が exit 1 を返し続け、保存失敗が blocking 化する (AC-3 の中核)
-MARKER_FAIL="$TMP_ROOT/rite-p61a-pending-123-1700000011"
+MARKER_FAIL_ID="123-1700000011"
+MARKER_FAIL="${TMPDIR:-/tmp}/rite-p61a-pending-$MARKER_FAIL_ID"
 : > "$MARKER_FAIL"
-run_save --pr 123 --content-file "$TMP_ROOT/no-such.json" --results-dir "$TMP_ROOT/results-tc311b" --pending-marker "$MARKER_FAIL"
+run_save --pr 123 --content-file "$TMP_ROOT/no-such.json" --results-dir "$TMP_ROOT/results-tc311b" --pending-id "$MARKER_FAIL_ID"
 assert "TC-3.11b 非ブロッキング失敗: exit 0 (D-04 維持)" "0" "$RC"
 assert_grep "TC-3.11b LOCAL_SAVE_FAILED は従来どおり emit" "$ERR" 'LOCAL_SAVE_FAILED=1; reason=write_failure'
 assert_grep "TC-3.11b REVIEW_SAVE_DONE に saved=false と自 marker のパスを載せる" "$ERR" "REVIEW_SAVE_DONE=1; pr=123; marker=$MARKER_FAIL; saved=false"
@@ -548,9 +550,10 @@ else
 fi
 
 # TC-3.11c trap 設置前の exit 1 (--content-file 引数欠落 = caller 契約違反) では marker を残す
-MARKER_RETAIN="$TMP_ROOT/rite-p61a-pending-123-1700000012"
+MARKER_RETAIN_ID="123-1700000012"
+MARKER_RETAIN="${TMPDIR:-/tmp}/rite-p61a-pending-$MARKER_RETAIN_ID"
 : > "$MARKER_RETAIN"
-run_save --pr 123 --pending-marker "$MARKER_RETAIN"
+run_save --pr 123 --pending-id "$MARKER_RETAIN_ID"
 assert "TC-3.11c caller 契約違反: exit 1" "1" "$RC"
 if [ -e "$MARKER_RETAIN" ]; then
   pass "TC-3.11c caller 契約違反では save-pending marker を残す (8.0.4 が差し戻す)"
@@ -558,9 +561,9 @@ else
   fail "TC-3.11c caller 契約違反では save-pending marker を残す (削除された = 未実行が silent に通る)"
 fi
 
-# TC-3.11d --pending-marker 未指定でも従来どおり動作する (後方互換 / marker 機構は opt-in)
+# TC-3.11d --pending-id 未指定でも従来どおり動作する (後方互換 / marker 機構は opt-in)
 run_save --pr 123 --content-file "$JSON_OK" --results-dir "$TMP_ROOT/results-tc311d"
-assert "TC-3.11d --pending-marker 未指定: exit 0" "0" "$RC"
+assert "TC-3.11d --pending-id 未指定: exit 0" "0" "$RC"
 assert_grep "TC-3.11d marker 空でも REVIEW_SAVE_DONE を emit" "$ERR" 'REVIEW_SAVE_DONE=1; pr=123; marker=; saved=true'
 
 # TC-3.11e 再レビューサイクル経路 (loop_count >= 1 相当) の pin: cycle ごとに別 marker を渡すと
@@ -568,7 +571,8 @@ assert_grep "TC-3.11d marker 空でも REVIEW_SAVE_DONE を emit" "$ERR" 'REVIEW
 #          Issue #2076 の As-Is (5 cycle 実行で 2 本しか残らない) を assertion で固定する。
 RESULTS_CYCLES="$TMP_ROOT/results-tc311e"
 for _cyc in 1 2 3; do
-  _m="$TMP_ROOT/rite-p61a-pending-123-170000002$_cyc"
+  _mid="123-170000002$_cyc"
+  _m="${TMPDIR:-/tmp}/rite-p61a-pending-$_mid"
   : > "$_m"
   cat > "$TMP_ROOT/json-cycle-$_cyc.json" <<EOF
 {
@@ -580,7 +584,7 @@ for _cyc in 1 2 3; do
   "non_blocking_findings": []
 }
 EOF
-  run_save --pr 123 --content-file "$TMP_ROOT/json-cycle-$_cyc.json" --results-dir "$RESULTS_CYCLES" --pending-marker "$_m"
+  run_save --pr 123 --content-file "$TMP_ROOT/json-cycle-$_cyc.json" --results-dir "$RESULTS_CYCLES" --pending-id "$_mid"
   if [ -e "$_m" ]; then
     fail "TC-3.11e cycle $_cyc の marker が consume される"
   else
@@ -604,7 +608,8 @@ assert "TC-3.11e 各 JSON が自 cycle の commit_sha を保持する (上書き
 #   (a) 8.0.4 Routing の「saved=false なら reason を転記」が入力を持たず、
 #   (b) 既定 post_comment:false では 6.1.c が --local-save-failed だけを見てケース 1 に落ち、
 #       **存在しないパスを「保存済み」として提示する**。sibling の signal_aborted と対称。
-_sig_marker="$TMP_ROOT/rite-p61a-pending-123-1700000050"
+_sig_id="123-1700000050"
+_sig_marker="${TMPDIR:-/tmp}/rite-p61a-pending-$_sig_id"
 : > "$_sig_marker"
 _slow_dir=$(mktemp -d "$TMP_ROOT/slowjq-XXXXXX")
 printf '#!/bin/bash\nsleep 5\n' > "$_slow_dir/jq"
@@ -612,7 +617,7 @@ chmod +x "$_slow_dir/jq"
 _sig_err="$TMP_ROOT/sig-err.txt"
 PATH="$_slow_dir:$PATH" bash "$PLUGIN_ROOT/hooks/review-result-save.sh" \
   --pr 123 --content-file "$JSON_OK" --results-dir "$TMP_ROOT/results-tc311f" \
-  --pending-marker "$_sig_marker" >/dev/null 2>"$_sig_err" &
+  --pending-id "$_sig_id" >/dev/null 2>"$_sig_err" &
 _sig_pid=$!
 sleep 1
 kill -TERM "$_sig_pid" 2>/dev/null
@@ -621,12 +626,57 @@ wait "$_sig_pid" 2>/dev/null || _sig_rc=$?
 assert "TC-3.11f SIGTERM 中断: rc=143 (signal trap 経由)" "143" "$_sig_rc"
 assert "TC-3.11f SIGTERM 中断でも LOCAL_SAVE_FAILED=1; reason=signal_aborted を emit" "1" \
   "$(grep -c 'LOCAL_SAVE_FAILED=1; reason=signal_aborted' "$_sig_err" || true)"
-assert "TC-3.11f SIGTERM 中断でも terminal sentinel を saved=false で emit" "1" \
-  "$(grep -c 'REVIEW_SAVE_DONE=1; pr=123;.*saved=false' "$_sig_err" || true)"
+assert "TC-3.11f SIGTERM 中断でも terminal sentinel を自 marker + saved=false で emit" "1" \
+  "$(grep -cF "REVIEW_SAVE_DONE=1; pr=123; marker=$_sig_marker; saved=false" "$_sig_err" || true)"
 if [ -e "$_sig_marker" ]; then
   fail "TC-3.11f SIGTERM 中断でも marker を consume する (残存 = 非ブロッキング契約が blocking 化)"
 else
   pass "TC-3.11f SIGTERM 中断でも marker を consume する"
+fi
+
+# TC-3.11g pr_number 置換漏れ (非ブロッキング失敗) でも marker を consume する。
+#   marker path は --pending-id から独立に導出されるため pr gate の位置に依存しない。
+#   3 箇所の文書 (helper docstring / common-error-handling.md / measured-gate-record.md) が
+#   「--pr 欠落は marker を残さない」と明記する唯一の非対称ケースで、これを固定しないと
+#   pr gate が trap 設置前へ移る退行が無検出で通り、非ブロッキング失敗が 8.0.4 経由で
+#   収束しない blocking ループに化ける (AC-3 / T-03 の中核)。
+MARKER_PR_ID="123-1700000013"
+MARKER_PR="${TMPDIR:-/tmp}/rite-p61a-pending-$MARKER_PR_ID"
+: > "$MARKER_PR"
+run_save --pr '{pr_number}' --content-file "$JSON_OK" --results-dir "$TMP_ROOT/results-tc311g" --pending-id "$MARKER_PR_ID"
+assert "TC-3.11g pr_number 置換漏れ: exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-3.11g reason=pr_number_placeholder_residue emit" "$ERR" 'LOCAL_SAVE_FAILED=1; reason=pr_number_placeholder_residue'
+if [ -e "$MARKER_PR" ]; then
+  fail "TC-3.11g pr_number 置換漏れでも marker を consume する (残存 = 非ブロッキング失敗が blocking 化)"
+else
+  pass "TC-3.11g pr_number 置換漏れでも marker を consume する"
+fi
+
+# TC-3.11h mv 成功**後**の SIGTERM では保存失敗を宣言しない。
+#   json_saved を見ずに一律 signal_aborted を出すと、JSON が実在するのに 6.1.c ケース 2 が
+#   exit 2 して「レビュー結果は失われた」と誤報告する (保存成功 cycle の停止 = MUST NOT より強い違反)。
+_sig2_id="123-1700000051"
+_sig2_marker="${TMPDIR:-/tmp}/rite-p61a-pending-$_sig2_id"
+: > "$_sig2_marker"
+_slow2=$(mktemp -d "$TMP_ROOT/slowrm-XXXXXX")
+# mv 完了後に走る `rm -f "$mv_err"` を遅延させ、その窓で TERM を届かせる
+printf '#!/bin/bash\nfor a in "$@"; do case "$a" in *rite-review-p61a-mv-err-*) sleep 3; esac; done\nexec /bin/rm "$@"\n' > "$_slow2/rm"
+chmod +x "$_slow2/rm"
+_sig2_err="$TMP_ROOT/sig2-err.txt"
+PATH="$_slow2:$PATH" bash "$PLUGIN_ROOT/hooks/review-result-save.sh" \
+  --pr 123 --content-file "$JSON_OK" --results-dir "$TMP_ROOT/results-tc311h" \
+  --pending-id "$_sig2_id" >/dev/null 2>"$_sig2_err" &
+_sig2_pid=$!
+sleep 1
+kill -TERM "$_sig2_pid" 2>/dev/null
+wait "$_sig2_pid" 2>/dev/null || true
+if grep -q 'JSON_SAVED=true' "$_sig2_err"; then
+  assert "TC-3.11h mv 成功後の TERM では LOCAL_SAVE_FAILED を emit しない" "0" \
+    "$(grep -c 'LOCAL_SAVE_FAILED' "$_sig2_err" || true)"
+  assert_grep "TC-3.11h 保存済みである旨を WARNING で伝える" "$_sig2_err" 'JSON は保存済みです'
+else
+  # 窓に入らなかった run (保存前に TERM が届いた) は本ケースの対象外 — negative にしない
+  pass "TC-3.11h (skipped: TERM が mv 前に届いたため本 arm の前提を満たさず)"
 fi
 
 # =====================================================================
@@ -1966,6 +2016,20 @@ else
     "$(_sec_530m_step2 | grep -cE '^[[:space:]]*if \( set -C; : > "\$save_pending_marker" \)' || true)"
   assert "TC-5h 5.3.0.M step 2 区間に REVIEW_SAVE_PENDING_MARKER emit が 1 本 (行頭 anchor)" "1" \
     "$(_sec_530m_step2 | grep -cE '^[[:space:]]*echo "\[CONTEXT\] REVIEW_SAVE_PENDING_MARKER=\$save_pending_marker"' || true)"
+  assert "TC-5h 5.3.0.M step 2 区間に REVIEW_SAVE_PENDING_ID emit が 1 本 (6.1.a へ渡す値)" "1" \
+    "$(_sec_530m_step2 | grep -cE '^[[:space:]]*echo "\[CONTEXT\] REVIEW_SAVE_PENDING_ID=\$save_pending_id"' || true)"
+
+  # (h-1b) caller 配線: 6.1.a の helper 呼び出しが marker id を渡すこと。marker の生成・consume・
+  #        検査の 3 点を pin しても、**caller が helper へ id を渡す 1 行**が無検査だとこの行を
+  #        消すだけで helper は opt-out 経路 (no-op) に落ち、marker が一切消えず 8.0.4 が毎 cycle
+  #        exit 1 を返して ステップ 8.1 に永久到達できなくなる。sibling は path を内部導出するため
+  #        配線 drift が構造的に起こり得ないが、本 helper は id を受け取るのでここが単一障害点。
+  _sec_610a() { _section_of '^bash \{plugin_root\}/hooks/review-result-save\.sh' '^```$'; }
+  assert "TC-5h 6.1.a の helper 呼び出しが --pending-id を渡す (配線 drift の検出)" "1" \
+    "$(_sec_610a | grep -cE '^[[:space:]]*--pending-id "\{save_pending_id\}"$' || true)"
+  # 生成側の変数名と caller placeholder 名が一致すること (片側改名で silent に空文字が渡る)
+  assert "TC-5h 6.1.a が渡す placeholder 名が 5.3.0.M step 2 の変数名と一致する" "1" \
+    "$(_sec_530m_step2 | grep -cE '^[[:space:]]*save_pending_id="' || true)"
   # ゲート helper が非ゼロ終了した cycle では marker を張らない (step 3 の再試行経路で orphan を
   # 残さない)。この条件を落とすと、再試行で JSON を作り直した cycle に marker が 2 本生まれる。
   assert "TC-5h 5.3.0.M step 2 の marker 生成が gate 成功 (rc=0) に条件付けられている" "1" \
@@ -1996,7 +2060,7 @@ else
 
   # (h-2) consume 側: 削除文は helper の EXIT trap 関数**内**に 1 本、関数外に 0 本。
   #       関数外 (末尾 exit 0 の直前) へ移すと、trap 到達前に exit する非ブロッキング失敗経路
-  #       (LOCAL_SAVE_FAILED 全 14 種) で marker が残り、8.0.4 が毎 cycle exit 1 を返して
+  #       (LOCAL_SAVE_FAILED 全 15 種) で marker が残り、8.0.4 が毎 cycle exit 1 を返して
   #       保存失敗が blocking 化する (D-04 / AC-3 の破壊)。件数 pin では移動を検出できないため配置で固定する。
   _sec_p61a_cleanup() {
     awk '
@@ -2019,11 +2083,12 @@ else
   assert "TC-5h helper の cleanup 区間内に REVIEW_SAVE_DONE emit が 1 本" "1" \
     "$(_sec_p61a_cleanup | grep -cE 'REVIEW_SAVE_DONE=1; pr=' || true)"
 
-  # (h-3) 検査側: 8.0.4 が marker を `[ -e ]` で見て exit 1 し、marker を削除しない。
+  # (h-3) 検査側: 8.0.4 が marker の残存を見て exit 1 し、marker を削除しない。
   #       gate 側で削除すると 6.1.a を実行せず再評価だけで通せてしまい機械強制の意味が消える
-  #       (8.0.3 の同名 pin と同型)。
-  assert "TC-5h 8.0.4 区間に save-pending marker 判定式が 1 箇所" "1" \
-    "$(_sec_804 | grep -cE '^[[:space:]]*if \[ -e "\$save_pending_marker" \]; then' || true)"
+  #       (8.0.3 の同名 pin と同型)。判定式は `-e` 単独ではなく `-L` との OR — `-e` だけだと
+  #       dangling symlink を「不在」と読んで fail-open し、6.1.a 未実行でも gate が通る。
+  assert "TC-5h 8.0.4 区間に save-pending marker 判定式が 1 箇所 (-e と -L の OR)" "1" \
+    "$(_sec_804 | grep -cE '^[[:space:]]*if \[ -e "\$save_pending_marker" \] \|\| \[ -L "\$save_pending_marker" \]; then' || true)"
   assert "TC-5h 8.0.4 区間に marker 残存時の retained flag が 1 本" "1" \
     "$(_sec_804 | grep -cF 'REVIEW_SAVE_GATE_FAILED=1; reason=save_pending_marker_present' || true)"
   assert "TC-5h 8.0.4 区間に marker 残存時の exit 1 が 1 本" "1" \
@@ -2090,47 +2155,31 @@ else
   assert "TC-5h [実測] 8.0.4 arm=空文字: GATE=degraded; reason=..._unavailable" "1" \
     "$(printf '%s' "${_r#*|}" | grep -cF 'REVIEW_SAVE_GATE=degraded; reason=save_pending_marker_unavailable' || true)"
 
-  # (h-5) helper の marker path guard: 受理条件 3 つ (文字集合 allowlist / `..` 排除 / basename anchor) を
-  #       それぞれ独立に固定する。sibling は path を内部導出するが本 helper は caller から受け取るため、
-  #       置換漏れ / 誤配線 / 制御文字混入で無関係ファイルの削除や sentinel 偽造が起きうる。
-  #       1 arm (prefix 外パス) だけでは traversal も改行も検出できない。
-  _guard_foreign="$_804_probe_dir/not-a-rite-marker"
-  : > "$_guard_foreign"
-  run_save --pr 123 --content-file "$JSON_OK" --results-dir "$TMP_ROOT/results-guard" --pending-marker "$_guard_foreign"
-  assert "TC-5h marker guard: 保存自体は成功する (exit 0)" "0" "$RC"
-  if [ -e "$_guard_foreign" ]; then
-    pass "TC-5h marker guard: basename が prefix 外のパスを削除しない"
+  # (h-5) helper の --pending-id gate: marker path は helper が id から内部導出するため、
+  #       caller から任意の path を受け取る経路そのものが存在しない (sibling と同形)。
+  #       残る caller 契約違反は「id の形状が壊れている」1 種だけで、その場合は導出せず
+  #       marker を残す = 8.0.4 が loud に差し戻す方向へ倒れることを固定する。
+  _gate_id_marker="$_804_probe_dir/rite-p61a-pending-{pr_number}-1"
+  : > "$_gate_id_marker"
+  run_save --pr 123 --content-file "$JSON_OK" --results-dir "$TMP_ROOT/results-guard-id" --pending-id '{pr_number}-1'
+  assert "TC-5h pending-id gate: 不正 id でも保存自体は成功する (exit 0)" "0" "$RC"
+  if [ -e "$_gate_id_marker" ]; then
+    pass "TC-5h pending-id gate: 置換漏れ id では marker を削除しない (8.0.4 が差し戻す)"
   else
-    fail "TC-5h marker guard: basename が prefix 外のパスを削除した — 置換漏れ時に無関係ファイルを消す"
+    fail "TC-5h pending-id gate: 置換漏れ id で marker を削除した — 誤 pass 方向へ倒れている"
   fi
-  assert_grep "TC-5h marker guard: 削除しない旨を WARNING で可視化する" "$ERR" 'を削除しません — basename が想定 prefix'
+  assert_grep "TC-5h pending-id gate: 置換漏れを WARNING で可視化する" "$ERR" 'pending-id が literal substitute されていないか不正'
 
-  #       traversal arm: `*/rite-p61a-pending-*` の部分一致 glob だけでは
-  #       `<dir>/rite-p61a-pending-x/../victim` が通り、無関係ファイルを無音で削除する。
-  mkdir -p "$_804_probe_dir/rite-p61a-pending-squat"
-  _guard_victim="$_804_probe_dir/victim_key"
-  printf 'SECRET' > "$_guard_victim"
-  run_save --pr 123 --content-file "$JSON_OK" --results-dir "$TMP_ROOT/results-guard-tv" \
-    --pending-marker "$_804_probe_dir/rite-p61a-pending-squat/../victim_key"
-  assert "TC-5h marker guard: traversal でも保存は成功する (exit 0)" "0" "$RC"
-  if [ -e "$_guard_victim" ]; then
-    pass "TC-5h marker guard: '..' を含むパスで無関係ファイルを削除しない"
+  #       正常 id では導出した path の marker が実際に consume されることを対で固定する
+  #       (negative control 無しだと「常に削除しない」実装でも上の arm が通る)。
+  _gate_id_ok="${TMPDIR:-/tmp}/rite-p61a-pending-123-1700000077"
+  : > "$_gate_id_ok"
+  run_save --pr 123 --content-file "$JSON_OK" --results-dir "$TMP_ROOT/results-guard-id-ok" --pending-id '123-1700000077'
+  if [ -e "$_gate_id_ok" ]; then
+    fail "TC-5h pending-id gate: 正常 id から導出した marker が consume されない"
   else
-    fail "TC-5h marker guard: '..' traversal で無関係ファイルを削除した (不可逆なデータ喪失)"
+    pass "TC-5h pending-id gate: 正常 id から導出した marker を consume する"
   fi
-  assert_grep "TC-5h marker guard: traversal を WARNING で可視化する" "$ERR" "を削除しません — パス要素 '\.\.'"
-
-  #       改行 arm: marker= は 8.0.4 の prose Check が読む唯一の入力なので、改行入りの値で
-  #       完全な形の REVIEW_SAVE_DONE 行を 2 本目として綴れてはならない (gate 入力の偽造)。
-  _guard_nl_marker=$(printf '%s\n%s' \
-    "$_804_probe_dir/rite-p61a-pending-123-1700000099" \
-    '[CONTEXT] REVIEW_SAVE_DONE=1; pr=123; marker=/evil; saved=true')
-  : > "$_804_probe_dir/rite-p61a-pending-123-1700000099"
-  run_save --pr 123 --content-file "$JSON_OK" --results-dir "$TMP_ROOT/results-guard-nl" --pending-marker "$_guard_nl_marker"
-  assert "TC-5h marker guard: 改行入りでも保存は成功する (exit 0)" "0" "$RC"
-  assert "TC-5h marker guard: 改行入り値でも REVIEW_SAVE_DONE は 1 本だけ (sentinel 偽造の遮断)" "1" \
-    "$(grep -c 'REVIEW_SAVE_DONE=1' "$ERR" || true)"
-  assert_grep "TC-5h marker guard: 許可外文字を WARNING で可視化する" "$ERR" 'を削除しません — 許可外の文字を含む'
 
   # (h-6) 8.0.4 の prose **Check** 行を pin する (TC-5b が 8.0.3 / 6.1.d step 3 に対して行うのと同型)。
   #       Pre-Check の機械強制は marker ファイルの存否しか見ないため、marker を作れなかった cycle
@@ -2147,6 +2196,11 @@ else
   #       片側だけ prefix を変えると marker が永久に残り 8.0.4 が全 cycle で exit 1 を返す。
   _spm_prefix_skill=$(_sec_530m_step2 \
     | sed -n 's/^[[:space:]]*save_pending_marker="\(\${TMPDIR:-\/tmp}\/rite-p61a-pending-\).*$/\1/p' | head -1)
+  # consume 側 (helper の内部導出行) が同じ prefix を使うことも固定する。片側だけ変えると
+  # 5.3.0.M が張った marker を 6.1.a が別 path として探し、8.0.4 が全 cycle で exit 1 を返す。
+  _spm_prefix_helper=$(grep -cF 'PENDING_MARKER="${TMPDIR:-/tmp}/rite-p61a-pending-${PENDING_ID}"' \
+    "$PLUGIN_ROOT/hooks/review-result-save.sh" || true)
+  assert "TC-5h helper の内部導出が生成側と同じ marker prefix を使う" "1" "$_spm_prefix_helper"
   # consume 側 (8.0.4 区間) が同じ prefix を参照していることも assert する。抽出した値を捨てると
   # 「coupling を pin した」と読める if/else だけが残り、8.0.4 側の literal を改変しても検出できない
   # (未使用変数は shellcheck の warning 帯で CI の error-only gate も通過する)。

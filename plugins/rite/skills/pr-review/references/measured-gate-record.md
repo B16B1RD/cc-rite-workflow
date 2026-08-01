@@ -1,8 +1,8 @@
 # 非実測指摘の記録経路と実行保証 gate — 設計理由
 
-`skills/pr-review/SKILL.md` ステップ 6.1.d（非実測指摘の PR コメント記録）と ステップ 8.0.3（その外部 gate）の rationale。SKILL.md 本体には実行時に必要な分岐表・sentinel 表・エラー処理のみを残し、設計理由は本ファイルへ退避する（skills 行数原則）。
+`skills/pr-review/SKILL.md` ステップ 6.1.a / 6.1.d（レビュー結果の保存・記録経路）と、その外部 gate（ステップ 8.0.3 / 8.0.4）の rationale。SKILL.md 本体には実行時に必要な分岐表・sentinel 表・エラー処理のみを残し、設計理由は本ファイルへ退避する（skills 行数原則）。
 
-関連: Issue #2024（実測必須ゲート、D-01）。
+関連: 実測必須ゲート（非実測指摘を破棄せず記録する契約）。
 
 <a id="single-invocation"></a>
 ## なぜ helper を単一 invocation にしたか
@@ -91,16 +91,16 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 <a id="save-pending-marker"></a>
 ## 8.0.4 の anchor を ステップ 6 の外（5.3.0.M step 2）へ置いた理由
 
-Issue #2076 の退行は「ステップ 6 全体の skip」が全 gate をすり抜ける、上記「限界」がそのまま顕在化したものだった。先行 PR では複数のレビューサイクルを回しながら永続 JSON が一部しか残らず、6.1.d の記録コメントは初回サイクルのまま一度も PATCH されず、どの gate も発火しなかった。
+本 gate が塞ぐのは「ステップ 6 全体の skip」で、上記「限界」がそのまま顕在化した形になる。この状態では中間サイクルの永続 JSON が残らず、6.1.d の記録コメントも PATCH されないまま、どの gate も発火しない。
 
-**なぜ #2072 の配線後に顕在化したか**: 6.1.a はかつて JSON 本文を生成する（＝内容を作る）ステップだった。#2072 が生成を 5.3.0.M step 1 へ移した結果、6.1.a は「bash を 1 行打つだけ」の低顕著性ステップに変質し、E2E 出力最小化下の中間 cycle で落ちるようになった。
+**なぜ 6.1.a が落ちやすいか**: 6.1.a は JSON 本文の生成を 5.3.0.M step 1 に譲っており、現在は「bash を 1 行打つだけ」の低顕著性ステップである。E2E 出力最小化下の中間 cycle では、この種のステップが最も落ちやすい。
 
 **anchor 配置が設計の核心**: 実行保証の marker は、守る対象（ステップ 6）の**外側**で、かつ**毎 cycle 再生成される**位置に張らなければならない。候補は 2 つあったが等価ではない。
 
 - **5.3.0.M step 1**（不採用）— この block の出力は `REVIEW_TMP_DIR=${TMPDIR:-/tmp}` だけで、値はセッション不変。stale な値を再利用しても Write 先は正しく解決するため、block を skip しても下流に何の齟齬も出ない。6.1.a step 0 が skip された理由（唯一の出力の消費者が、それ自身 skip 可能なステップだけ）と構造的に同一で、anchor 自身が同じ失敗をする。
 - **5.3.0.M step 2**（採用）— `review-measured-gate.sh` の `blocking={n}` は毎 cycle 変わり、`total_findings` を経て `[review:fix-needed:{n}]` に直結する。stale 値を使えば result pattern が目に見えて壊れるため、この block だけは構造的に skip できない。
 
-**marker の意味は「実行された」であって「成功した」ではない**: `review-result-save.sh` は保存失敗（`LOCAL_SAVE_FAILED`）でも EXIT trap で marker を削除する。成功時のみ削除する設計にすると、D-04 非ブロッキング契約（保存失敗は WARNING のみ）が 8.0.4 経由で blocking gate に化ける。保存失敗の可視化は既存の `LOCAL_SAVE_FAILED` と ステップ 6.1.c ケース 2（`post_comment=false` との組み合わせで `exit 2`）が既に担っており、二重化する必要がない。trap 設置**前**の `exit 1`（引数欠落 / unknown option）だけは marker を残す — 8.0.3 の引数 gate 群と同じ「caller 契約違反は差し戻せば収束する」境界。
+**marker の意味は「実行された」であって「成功した」ではない**: `review-result-save.sh` は保存失敗（`LOCAL_SAVE_FAILED`）でも EXIT trap で marker を削除する。成功時のみ削除する設計にすると、D-04 非ブロッキング契約（保存失敗は WARNING のみ）が 8.0.4 経由で blocking gate に化ける。保存失敗の可視化は既存の `LOCAL_SAVE_FAILED` と ステップ 6.1.c ケース 2（`post_comment=false` との組み合わせで `exit 2`）が既に担っており、二重化する必要がない。marker が残るのは (i) trap 設置**前**の `exit 1`（`--content-file` 未指定 / unknown option）と `--pending-id` の形状違反で path を導出できなかった場合、(ii) `rm` 自体が失敗した場合の 2 群。(i) は 8.0.3 の引数 gate 群と同じ「caller 契約違反は差し戻せば収束する」境界だが、(ii) は環境起因で再実行では収束せず手動削除を要する。`--pr` 欠落 / 非数値は trap 設置**後**の `exit 0` かつ marker path が `--pending-id` から独立に導出されるため marker は削除される。
 
 **差し戻し先が 6.1.a step 0 であること自体が不変条件**: 8.0.4 の ACTION が step 2（保存 helper）だけを名指しすると、step 0 が emit する `REVIEW_CYCLE_ID` と `NONBLOCKING_PENDING_MARKER` が前 cycle の値のまま残り、8.0.3 が再び自己整合で誤 pass する。step 0 → step 2 の順で差し戻すことで、8.0.4 の発火が 8.0.3 の anchor 再生成を連鎖的に引き起こし、ステップ 6 全体の実行が回復する。この推移的性質があるため、`REVIEW_CYCLE_ID` の生成位置そのものを 5.3.0.M へ移す（6.1.d に同じ per-cycle anchor を直接与える）改修は本 Issue では不要と判断した。
 
