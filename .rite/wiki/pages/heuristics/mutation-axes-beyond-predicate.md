@@ -4,7 +4,7 @@ title: "mutation は述語軸だけでなく配置・routing・副作用・到�
 domain: "heuristics"
 description: "「静的 pin を追加したらその場で mutation を当てる」を守っていても、当てる軸が述語（条件式の書き換え）に偏ると、配置（順序）・routing（終端値）・副作用（rename / tempfile）・到達（分岐が生きているか）の退行が生存する。PR #2035 は 5 cycle かけて cycle ごとに「当てていない軸」が新たに発見され、軸の列挙自体をチェックリスト化する必要が判明した。"
 created: "2026-07-27T10:57:51+09:00"
-updated: "2026-07-27T10:57:51+09:00"
+updated: "2026-08-01T23:12:28+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260727T001018Z-pr-2035.md"
@@ -16,6 +16,10 @@ sources:
     ref: "raw/fixes/20260727T010154Z-pr-2035.md"
   - type: "reviews"
     ref: "raw/reviews/20260726T150008Z-pr-2030-cycle5.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260801T131235Z-pr-2081.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260801T124925Z-pr-2081.md"
 tags: []
 confidence: high
 ---
@@ -62,6 +66,14 @@ pin を追加したら、その場で以下を順に当てる:
 
 生存した軸があれば、それは fixture 形状か assert 形式の問題であり、pin を足すのではなく既存 pin の観測窓を開ける方向で直す。
 
+### 6 つ目の軸: 機械経路 / 人間向け経路の非対称（PR #2081）
+
+survivor が「機械経路は pin されているが**人間向け経路が未 pin**」という同一クラスに集中する現象が観測された。PR #2081 では 56 変異中 47 kill で、残った survivor 2 件は `gated` 修飾の無保護と RUNTIME_OBS WARNING の未 pin。別 cycle でも survivor 1 件が marker の `cause=` フィールドの pin 欠落だった（前 cycle の編集で assertion を別 TC へ移した際に literal の一部が落ちていた）。
+
+**同じ判定結果を機械可読 marker と人間向け WARNING の 2 経路で出しているとき、pin が marker 側だけに付くことが多い。** 人間向け文言は「表示だけだから」と pin の対象外に見えるが、operator が受け取る唯一の診断であることが多く、実装との乖離は無検出で進行する。**pin の非対称は変異でしか見えない。**
+
+**変異注入は「閉じたこと」も確認できる**: 前 cycle の survivor が今 cycle で kill されることを実測すれば、修正が効いたことを定量的に言える。「テストが落ちることの確認」まで含めて実行すると、pin の形骸化を数値で追跡できる。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -72,3 +84,5 @@ pin を追加したら、その場で以下を順に当てる:
 ## ソース
 
 - [PR #2035 review results (cycle 5, converged)](../../raw/reviews/20260727T014642Z-pr-2035.md)
+- [PR #2081 review results (cycle 5)](../../raw/reviews/20260801T131235Z-pr-2081.md)
+- [PR #2081 fix results](../../raw/fixes/20260801T124925Z-pr-2081.md)

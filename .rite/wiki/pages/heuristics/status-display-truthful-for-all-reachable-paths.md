@@ -4,12 +4,18 @@ title: "共有パスに置く進捗/status 表示は到達する全経路で真�
 domain: "heuristics"
 description: "複数の実行経路が合流する共有コードパスに進捗カウンタや status 表示を置くときは、成功経路だけでなく到達する全経路で真である文言にする。「進めた件数（advanced）」と「成功件数（succeeded）」を区別し、✅ /「完了」等の成功含意語を非収束・失敗経路でも一律発火する表示に使わない。"
 created: "2026-07-03T11:30:00+09:00"
-updated: "2026-07-03T11:30:00+09:00"
+updated: "2026-08-01T23:12:28+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260703T021717Z-pr-1733.md"
   - type: "fixes"
     ref: "raw/fixes/20260703T021912Z-pr-1733.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260801T103500Z-pr-2081.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260801T104510Z-pr-2081.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260801T112516Z-pr-2081.md"
 tags: []
 confidence: medium
 ---
@@ -40,11 +46,26 @@ confidence: medium
 
 **関連する path 対称性**: 「共有パスの表示は全経路で真であるべき」は、[Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の「contract-implementation path 対称性（section 内の全 path が契約を満たすか verify する）」を、コード契約ではなく **ユーザー向けメッセージの真実性** の側面に適用したもの。
 
+### 診断 WARNING は事実だけを述べ、帰結は marker に委ねる（PR #2081）
+
+同じ原則が診断メッセージにも効く。**WARNING に「〜しました」と帰結を書くと、判定の分岐が増えるたびに文面と実際の帰結がずれる**。PR #2081 では判別を 2 値から 3 値へ広げた結果、帰結を断定していた WARNING が古くなった。
+
+- **冒頭は原因を断定しない**: 判定の母集団が選言へ広がった後も WARNING 冒頭が単一原因を断定していると、fail-open 経路で operator が受け取る唯一の診断が事実と異なる原因を名指しする。冒頭は原因非断定にし、**括弧内の列挙を真因の唯一の記述にする**。
+- **原因列挙は分岐が動くたびに帰属を確認する**: 「この原因なら未判定」と書いた項目が実装では降格側に落ちる、という自己矛盾が同一 PR 内で発生した。原因列挙を持つ WARNING は、分岐を変えるたびに列挙の帰属を洗い直す。
+- **帰結は機械可読 marker へ**: 検出した事実（何を検出したか）だけを WARNING が述べ、帰結は marker が持つ形にすると、分岐追加に構造的に耐える。
+
+**pin があれば文言変更は必ずテスト失敗として現れる**: WARNING 文言をテストが literal で pin していれば、文言変更は失敗として可視化され、pin 側を機械的に追随させるだけでよい。逆に pin が無ければ文言と実装の乖離は無検出で進行する。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
+- [機械的な述語を文書化するときは意図の語彙ではなく字句の語彙で書く](./mechanical-predicate-prose-lexical-vocabulary.md)
+- [診断WARNINGの宛先（実行エージェント向けかユーザー向けか）を主語で明示する](./diagnostic-warning-message-audience-ambiguity.md)
 
 ## ソース
 
 - [PR #1733 review results (cycle 2)](../../raw/reviews/20260703T021717Z-pr-1733.md)
 - [PR #1733 fix results (cycle 2)](../../raw/fixes/20260703T021912Z-pr-1733.md)
+- [PR #2081 review results](../../raw/reviews/20260801T103500Z-pr-2081.md)
+- [PR #2081 fix results](../../raw/fixes/20260801T104510Z-pr-2081.md)
+- [PR #2081 fix results (cycle 2)](../../raw/fixes/20260801T112516Z-pr-2081.md)

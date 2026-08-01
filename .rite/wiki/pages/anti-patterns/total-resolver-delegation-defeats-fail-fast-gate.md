@@ -2,10 +2,12 @@
 title: "全域で成功する resolver への委譲が既存 fail-fast ガードを silent success 化する"
 domain: "anti-patterns"
 created: "2026-07-13T07:40:00Z"
-updated: "2026-07-13T07:40:00Z"
+updated: "2026-08-01T23:12:28+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260712T223319Z-pr-1839.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260801T112516Z-pr-2081.md"
 tags: []
 confidence: high
 ---
@@ -27,12 +29,27 @@ confidence: high
 
 修正は委譲の gate 化: `[ -z "$REPO_ROOT" ] && git rev-parse --show-toplevel >/dev/null 2>&1` を満たす場合のみ resolver を呼び、非 git cwd では値を空のまま既存 ERROR ガードへ到達させる (fail-fast の復元)。
 
+## 同型: 分岐を増やしたら、その分岐を強制している既存述語も見直す (PR #2081)
+
+委譲だけでなく **判定の値域を広げる変更** も同じ形でガードを不完全にする。PR #2081 では判定を 2 値から 3 値へ広げた結果、「ゲートが算出する値」に新しい状態が加わったのに、caller の契約違反を検出する述語が**2 値比較のまま**残った。新状態に対応する先書きが「矛盾なし」と読まれ、強制層を素通りした。
+
+**帰結自体は変更前から存在していても、それを捕まえるはずのガードが変更によって不完全になるなら、それは新しい欠陥である。** 分岐追加のレビュー観点として「**この分岐を強制 / 検証している既存述語はどれか**」を必ず引く。
+
+あわせて、**述語の一部を別の述語から literal 複製すると、片方だけの編集で両者が食い違う**。しかもその食い違いが「集合の和は保たれるが要素の振り分けだけが変わる」形だと、和の一致を検査する不変条件では検出できない。共有できる部分は文字列連結で構造的に共有し、複製を作らない。
+
 ## 检出のポイント
 
 - 委譲先 helper の「失敗時挙動」を読む: exit code だけでなく「失敗を成功として degrade する」経路 (fallback 内蔵) の有無
 - 委譲後に、旧実装で到達可能だった ERROR / exit 非 0 経路が到達可能なまま残っているかを revert test で比較する (旧版と新版を同条件で実行し rc を突合)
+- 値域を広げる変更では、その値を比較している既存述語 (契約違反検出・整合性チェック) を grep し、新しい値に対応しているか確認する
 
 ## 関連
 
 - [[path-basis-change-observation-surface-sweep]] — 同 PR の総括 heuristic
 - [[fix-activates-dormant-no-op-path-reveals-latent-bug]] — 修正が潜在経路を活性化する近縁パターン
+- [[dual-language-predicate-divergence]] — 同じ述語を複製すると受理集合が割れる
+
+## ソース
+
+- [PR #1839 review results](../../raw/reviews/20260712T223319Z-pr-1839.md)
+- [PR #2081 fix results (cycle 2)](../../raw/fixes/20260801T112516Z-pr-2081.md)

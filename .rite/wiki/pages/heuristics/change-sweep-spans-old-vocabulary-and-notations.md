@@ -4,7 +4,7 @@ title: "変更・削除の掃き出しは旧語彙・置換した条件式・別
 domain: "heuristics"
 description: "追加時は自分が書いた新語彙で grep すれば波及先が見つかるが、削除・置換時は新語彙が存在しないため同じ手が効かない。削除した識別子・置き換えた条件式・記法をまたいだ同型トークン（{ROOT} を直して $root や <UUID> を残す）の 3 系統を対象にしないと、同一ファイル内に自己矛盾が残る。PR #2044 では 4 レビュアー全員が独立検出し、同じクラスが cycle をまたいで 3 回再発した。"
 created: "2026-07-29T21:32:36+09:00"
-updated: "2026-07-29T21:32:36+09:00"
+updated: "2026-08-01T23:12:28+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260729T010436Z-pr-2044.md"
@@ -22,6 +22,10 @@ sources:
     ref: "raw/fixes/20260729T092343Z-pr-2044.md"
   - type: "fixes"
     ref: "raw/fixes/20260728T235426Z-pr-2044.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260801T103500Z-pr-2081.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260801T104510Z-pr-2081.md"
 tags: []
 confidence: high
 ---
@@ -72,14 +76,25 @@ cycle 4 のコミットメッセージ自身が「削除時は旧語彙で grep�
 
 挙動を説明する散文は直したが、同じファイル内のスキーマ表（フィールド定義）が旧規則のまま残る、という形も出た。散文とスキーマ表は読者が違う（利用者 vs 実装者）ため語彙が揃わず、散文側の語彙で grep してもスキーマ表に届かない。**フィールド名そのもの**で grep すると拾える。
 
+### (4) 帰結を反転させる変更は「旧帰結を述べる語」で掃く（PR #2081）
+
+4 つ目の系統。**挙動を反転させる変更でドキュメント同期を識別子（marker 名・関数名）の grep で行うと漏れる** — 識別子を含まず帰結だけを述べる散文が同期対象から外れるため。PR #2081 では判別の帰結を反転させたのに、同一ファイル内の 5 行違いの記述と、reviewer prompt へ機械注入される別ファイルの記述が旧セマンティクスのまま残った。
+
+**掃く語は「旧帰結を述べる語」にする**（「降格する」「non-blocking になる」等）。識別子ベースの grep は、識別子を書かずに帰結だけを語る散文には届かない。
+
+同型の失敗として、**SoT が実装より狭い / 古い記述を持つと、次の編集者が SoT に従って実装を「直し」、前 cycle で塞いだ欠陥を復活させる**。SoT を写す方向の同期を怠ると、SoT 自体が退行の指示書になる。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 - [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](./recovery-command-verified-in-human-execution-context.md)
 - [「N 箇所で同期が必要」と指摘されたら、同期する前に N を減らせないか検討する](./reduce-sync-sites-before-syncing-them.md)
+- [機械的な述語を文書化するときは意図の語彙ではなく字句の語彙で書く](./mechanical-predicate-prose-lexical-vocabulary.md)
 
 ## ソース
 
+- [PR #2081 review results](../../raw/reviews/20260801T103500Z-pr-2081.md)
+- [PR #2081 fix results](../../raw/fixes/20260801T104510Z-pr-2081.md)
 - [PR #2044 review results (cycle 4)](../../raw/reviews/20260729T010436Z-pr-2044.md)
 - [PR #2044 review results (cycle 5)](../../raw/reviews/20260729T012311Z-pr-2044.md)
 - [PR #2044 review results (cycle 2)](../../raw/reviews/20260729T091817Z-pr-2044.md)
