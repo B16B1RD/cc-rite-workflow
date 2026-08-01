@@ -71,13 +71,11 @@
 #             装飾文字と全角コロンを吸収する「正規化」形で書く (列挙形にすると列挙漏れの形が
 #             stage 1/2 の両方から外れ WARNING ゼロで降格する = 本 script が閉じた silent failure)
 #   stage 2 = 正規形アンカーの full match 判定。stage 1 が真かつ stage 2 が偽の finding は
-#             「アンカーはあるが形式崩れ」として WARNING を出す。帰結は marker から同一セグメント
-#             (終端は改行 / <br> / 句点) 内に `=>` が続くかで分かれる:
-#               続く   → 未判定 (blocking のまま)  + MEASURED_UNDETERMINED_ON_ANCHOR
-#               続かない → measured=false で降格   + MEASURED_DEMOTED_ON_ANCHOR
-#             同一セグメントで絞るのは、アンカーが `<LHS> => <RHS>` を必須とする (_reviewer-base.md
-#             §Verification) ため、marker から文の切れ目を越えた先の `=>` は別の話題だから。絞らないと
-#             stage 1 の意図的に緩い存在判定が拾う散文がそのまま恒久 blocking へ昇格し、
+#             「アンカーはあるが形式崩れ」として WARNING を出す。帰結は第 3 の述語 ($re_arrow、
+#             定義の SoT は assessment-rules.md §5.3.0.M) が真かで分かれる:
+#               真 → 未判定 (blocking のまま)  + MEASURED_UNDETERMINED_ON_ANCHOR
+#               偽 → measured=false で降格      + MEASURED_DEMOTED_ON_ANCHOR
+#             絞らないと stage 1 の意図的に緩い存在判定が拾う散文がそのまま恒久 blocking へ昇格し、
 #             /rite:fix には直す対象が無いまま max_review_cycles まで空転する
 #
 # stdout contract: なし (全 emit は stderr。caller は [CONTEXT] marker を bash 出力として観測する)
@@ -279,24 +277,22 @@ def has_measured_bool:
 def anchored: (desc | test($re_detect));
 def marker_present: (desc | test($re_stage1));
 
-# アンカーは `<LHS> => <RHS>` を必須とする (_reviewer-base.md §Verification)。したがって marker から
-# 同一セグメント内に `=>` が続かない `Verification:` は「書き損じたアンカー」ではなく散文中の言及で
-# ある。stage 1 は意図的に緩い存在判定で散文を拾うため、未判定 (= blocking のまま) へ倒す母集団は
-# 本述語で絞る。絞らないと `Verification:` に言及するだけの doc 指摘が恒久 blocking になり、
-# /rite:fix には直す対象が無いまま max_review_cycles まで空転する。
-#
-# セグメントの終端は改行 / `<br>` / 句点 (`。`) — アンカーは 1 セグメントに収まる形で書かれるため、
-# marker と `=>` の間に文の切れ目があれば別の話題であり、アンカーの書き損じではない。
+# アンカーは `<LHS> => <RHS>` を必須とする (_reviewer-base.md §Verification)。stage 1 は意図的に
+# 緩い存在判定で散文を拾うため、未判定 (= blocking のまま) へ倒す母集団は本述語で絞る。絞らないと
+# `Verification:` に言及するだけの doc 指摘が恒久 blocking になり、/rite:fix には直す対象が無いまま
+# max_review_cycles まで空転する。**判別子の定義は assessment-rules.md §5.3.0.M の literal が SoT**
+# (`--arg re_arrow` として外出し済み。TC-09 が両者の literal 一致を機械的に固定する)。
 #
 # **残存する限界 (意図的に受容)**: 同一セグメント内に `=>` が現れる散文は分離できず未判定へ倒れる。
 # rationale: skills/fix/references/assessment-rules.md §5.3.0.M「(i) は完全な分離ではない」
-# marker prefix は `$re_stage1` を連結して共有する — literal 複製すると stage 1 側だけを編集した
-# ときに marker_present が真・has_arrow が偽となり、形式崩れアンカーが未判定ではなく降格へ落ちる。
-# この誤分類では内訳の和が母集団と一致したままなので下の fail-closed ガードでは検出できない。
-# 走査長は有界にする — 無界の `*` は marker 出現数 × セグメント長で二次的に増大し、marker を
-# 多数含む description で秒オーダーの遅延になる (実測: 8000 marker で 12.3s → 有界化で 0.055s)。
-# アンカー 1 セグメントが 600 字を超える例は無いため受理集合は実質不変。
-def has_arrow: (desc | test($re_stage1 + "(?:(?!<br)[^\n。]){0,600}=>"));
+# marker prefix は `$re_stage1` を連結して共有し、suffix は `$re_arrow` として外出しする。
+# どちらも literal 複製しない — prefix を複製すると stage 1 側だけの編集で marker_present が真・
+# has_arrow が偽となり、形式崩れアンカーが未判定ではなく降格へ落ちる (内訳の和は母集団と一致した
+# ままなので下の fail-closed ガードでは検出できない)。suffix を jq 文字列リテラルに埋めると
+# `extract_re_arg` の抽出経路から外れ、SoT との literal 一致を機械的に pin できない。
+# 走査長を有界にするのは、無界の `*` が marker 出現数 × セグメント長で二次的に増大するため
+# (実測: 8000 marker で 12.3s → 有界化で 0.20s)。
+def has_arrow: (desc | test($re_stage1 + $re_arrow));
 
 # 形式崩れアンカー = 「実測の有無を判定する構造が読めない」状態。measured=false (実測が無いと
 # 確定) ではなく **未判定** として扱い、verification キー自体を生やさない。read 側の 3 値モデル
@@ -405,6 +401,7 @@ if ! result=$(jq \
   --arg re_stage1 '(?i)verification[*_`[:space:]]*[:：]' \
   --arg re_detect '(?m)(?:^|<br\s*/?>|[\s|>(])[-[:space:]]*Verification:[[:space:]]*(repro|failing_test)[[:space:]]+(?:(?!=>|<br)[^|])+=>[ \t]*(?!<br)[^|[:space:]]' \
   --arg re_extract '(?m)(?:^|<br\s*/?>|[\s|>(])[-[:space:]]*Verification:[[:space:]]*(?<label>repro|failing_test)[[:space:]]+(?<lhs>(?:(?!=>|<br)[^|])+)=>[ \t]*(?<rhs>(?!<br)[^|[:space:]](?:(?!<br)[^|])*)' \
+  --arg re_arrow '(?:(?!<br)[^\n。]){0,600}=>' \
   --arg re_runtime_obs '(?i)likelihood-evidence[[:space:]]*[:：][[:space:]]*runtime_observation' \
   "$JQ_PROG" "$input" 2>"${diag_file:-/dev/null}"); then
   _fail jq_transform_failed "実測必須ゲートの変換 jq が失敗しました: $input"

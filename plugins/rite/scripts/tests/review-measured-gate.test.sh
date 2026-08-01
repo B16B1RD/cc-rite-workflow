@@ -794,6 +794,50 @@ else
   fail "helper の re_detect が SoT に literal で見つからない (drift の可能性): $sot_doc"
 fi
 
+# 未判定 / 降格を分ける第 3 の述語 (re_arrow) も同型に pin する。散文で再記述すると記述側だけが
+# drift し、SoT に従った「修正」が over-match (アンカーを論じる散文の恒久 blocking 化) を復活させる。
+re_arrow=$(extract_re_arg re_arrow)
+if [ -n "$re_arrow" ]; then
+  pass "helper 本体から re_arrow を実行時抽出できる (--arg 外出し済み)"
+else
+  fail "helper から re_arrow を抽出できない (jq 文字列リテラルに埋め戻された可能性)"
+fi
+if [ -f "$sot_doc" ] && grep -qF "$re_arrow" "$sot_doc"; then
+  pass "helper の re_arrow が SoT (assessment-rules.md) と literal 一致"
+else
+  fail "helper の re_arrow が SoT に literal で見つからない (drift の可能性): $re_arrow"
+fi
+
+# 実際に評価されるのは `$re_stage1 + $re_arrow` の連結形。stage 1 を単独で検査するだけでは、
+# 連結によって初めて壊れる形 (prefix 側の編集が has_arrow の帰結を変える) を検出できない。
+re_stage1=$(extract_re_arg re_stage1)
+if [ -n "$re_stage1" ]; then
+  pass "helper 本体から re_stage1 を実行時抽出できる"
+else fail "helper から re_stage1 を抽出できない"; fi
+cat > "$TEST_DIR/arrow-matrix.json" <<'EOF'
+[
+  {"d": "Verification: repro bash x.sh => boom", "want": true},
+  {"d": "**Verification:** repro bash x.sh => boom", "want": true},
+  {"d": "Verification： repro bash x.sh => boom", "want": true},
+  {"d": "Verification: repro printf x | jq . => false", "want": true},
+  {"d": "Verification: 節がずれている。x が a => b", "want": false},
+  {"d": "Verification: 節がずれている<br>x が a => b", "want": false},
+  {"d": "Verification: 節の marker 名の由来を追記すべき", "want": false},
+  {"d": "no marker at all => arrow only", "want": false}
+]
+EOF
+arrow_mismatch=$(jq -r --arg s "$re_stage1" --arg a "$re_arrow" \
+  '[.[] | select((.d | test($s + $a)) != .want)] | length' "$TEST_DIR/arrow-matrix.json" 2>/dev/null)
+if [ "$arrow_mismatch" = "0" ]; then
+  pass "連結形 (re_stage1 + re_arrow) が入力 8 種で期待どおり判定する"
+else fail "連結形の判定が期待と食い違う入力が $arrow_mismatch 件ある"; fi
+# 行列の判別力を固定する: prefix を落とした変異は少なくとも 1 入力で判定が変わらなければならない
+arrow_mutant_diff=$(jq -r --arg full "$re_stage1$re_arrow" --arg bare "$re_arrow" \
+  '[.[] | select((.d | test($full)) != (.d | test($bare)))] | length' "$TEST_DIR/arrow-matrix.json" 2>/dev/null)
+if [ "${arrow_mutant_diff:-0}" -ge 1 ]; then
+  pass "入力行列が prefix 欠落を判別できる (連結の等価性テストに検出力がある)"
+else fail "行列が prefix 欠落を判別できない (re_stage1 を通さない変異を素通しさせる)"; fi
+
 cat > "$TEST_DIR/matrix.json" <<'EOF'
 [
   "Verification: repro bash x.sh => boom",
