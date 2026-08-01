@@ -2,7 +2,7 @@
 title: "累積対策 PR の review-fix loop で fix 自体が drift を導入する"
 domain: "anti-patterns"
 created: "2026-04-21T10:35:00+00:00"
-updated: "2026-05-28T08:53:59+00:00"
+updated: "2026-08-01T05:40:00Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260518T084056Z-pr-1043-cycle4-mergeable.md"
@@ -138,6 +138,14 @@ sources:
     ref: "raw/reviews/20260528T060938Z-pr-1166.md"
   - type: "fixes"
     ref: "raw/fixes/20260528T061125Z-pr-1166.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260801T012055Z-pr-2078.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260801T013839Z-pr-2078.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260801T040325Z-pr-2078.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260801T041229Z-pr-2078.md"
 tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain", "review-attention-bias-blind-spot", "anchor-specificity-retreat", "doc-precision-regression-cascade", "self-referential-prevention-violation", "section-relative-prevention-success", "successive-prevention-replication", "doc-heavy-fractal-pattern", "systemic-mass-fix", "auto-demote-low-override", "fix-over-correction", "enforcement-locus-misattribution"]
 confidence: high
 ---
@@ -720,3 +728,30 @@ cycle 5 fix では以下 4 軸の一斉対応で 7 件を 1 commit で landing:
 累積 44 回目相当の PR は tech-writer reviewer の Doc-Heavy mode (Implementation Coverage / Enumeration Completeness / UX Flow Accuracy / Order-Emphasis Consistency / Screenshot Presence) と code-quality reviewer の fenced block detection の **2 reviewer 体制** で cross-validation が機能。F-A2 (L62-70 line ref) を tech-writer (recommendation 1) と code-quality (LOW-MEDIUM finding) が独立検出した実例が、Doc-Heavy + fenced block の 2 reviewer 体制の effectiveness を実証 ([`docs-review-implementation-grep-verification.md`](../heuristics/docs-review-implementation-grep-verification.md) と相補)。
 
 cycle 8 の完全収束時には reviewer が **「真に finding がないときに何か挙げないと bias」を抑制し、0 件 = 正常終了を恐れない姿勢が loop 永久化を回避** と明言。詳細は [0 件 finding = 正常終了として受容する (false-positive 回避義務)](../heuristics/reviewer-zero-finding-as-legitimate-convergence.md) を参照。
+
+## marker ライフサイクル gate 新設 (PR #2078, 5 cycle) — 「防御を足す修正が次の指摘面になる」を 2 度の方針転換で抜けた事例
+
+### Cycle trajectory (blocking findings 数)
+
+| cycle | blocking | 主な指摘の型 | fix 側の方針 |
+|---|---|---|---|
+| 1 | 13 | caller 由来 path が検証なしで複数用途へ流れる (sentinel 偽造 / traversal / errno) | guard を 3 枚重ねる → 受理判定を 1 箇所へ集約 |
+| 2 | 14 | cycle 1 の guard 自体が CRITICAL 退行 (値域 wedge) | **方針転換 1**: guard 追加 → インタフェース差し替え |
+| 3 | 10 | 差し替え後の dangling reference (診断文 / test pin / rationale) | シンボル削除の散文 grep を完了条件化 |
+| 4 | — | 防御追加がまた指摘面に (consumer ゼロ marker / 閉じた列挙) | **方針転換 2**: 追加ではなく削除へ |
+| 5 | 3 | 判定は直したが下流を辿っていない / 防御が測られていない | 述語の consumer を全数辿る + mutation 実測 |
+
+### 本 PR に固有の型
+
+**1. 「防御を足す」対応が 3 サイクル連続で新しい退行を生んだ。** cycle 1 の guard が cycle 2 の CRITICAL に、cycle 2 の対応が cycle 3 の dangling reference に、cycle 3 の対応が cycle 4 の consumer ゼロ marker になった。指摘への反射的な「層を足す」対応が drift の主要な供給源になっている。
+
+**2. 同一箇所に複数サイクル指摘が出続けるときは、パッチではなくインタフェースを疑う。** 2 サイクルで出た 8 件はすべて「caller から full path を受け取る」という 1 つの選択に由来していた。sibling helper は同じ処理を「path を内部で導出する」形で解いており、その形に揃えた結果 guard 群ごと消えて net マイナスになった。詳細は [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](./consumer-allowlist-wedges-producer-value-range.md)。
+
+**3. cycle 4 で自覚的に「追加ではなく削除」へ振ったが、cycle 5 でも同じ型が 3 件出た。** ただし型が変わっており、cycle 5 のものは「直したの範囲を実装の 1 点に限定し、その判定を読む側・測る側まで辿っていない」に収束していた。方針転換は drift の**種類**を変えるが、辿る範囲の不足という上位の型は残る。
+
+**4. Simplification-First の実用的な読み替え。** 「追加を我慢する」ではなく「**原因の粒度で束ねる**」。同一ブロック由来の 3 指摘に個別 guard を足すと分岐が 3 本増えるが、受理判定を引数確定時の単一ゲートへ出すと分岐は 1 本で済む。
+
+### 有効だった手続き
+
+- **reviewer に mutation 実測を明示的に依頼する。** 静的 pin の抜け（assertion が届いていない防御）が定量的に出る。本 PR では `--pending-id` の allowlist と制御文字中和が、どちらを削除しても全 assertion green のままだった（既存 arm が case の brace 節で先に捕捉するため、allowlist 本体に assertion が 1 本も届いていなかった）。「N pass / 0 fail」は防御が測られている証拠にならない。
+- **削除と追加が同居する diff は lint clean を完了の証明にしない。** 説明的 Issue 番号参照を一方のファイルから削除しながら、同じ diff で別ファイルに 2 件追加していた。pre-existing hit が多いファイルでは新規追加分が埋もれる。

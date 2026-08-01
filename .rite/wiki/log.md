@@ -21,6 +21,11 @@
 * **Update**: [新設 logged ガードの上流に同一判定の silent 経路が残ると支配的入力で可視化が無効化される](pages/anti-patterns/upstream-silent-path-defeats-new-logged-guard.md) — PR #2070 の raw source 1 件を統合（ガードに到達しない 3 経路 / 除外規則の適用位置が意味を変える / 上流ガードと同一 regex の下流再判定は到達不能）
 * **Update**: [`grep -oE | wc -l` が ratchet ideal 値到達時に pipefail で silent abort](pages/anti-patterns/grep-oe-wc-pipefail-silent-abort.md) — PR #2066 の raw source 1 件を統合（終端 grep -c が「0 件」と「検出器の破損」を畳む / cd "" は rc=0 を返す / 同じ exit code を返す gate が複数あると exit code だけの assert は当の gate を pin しない）
 * **lint:warning** — contradictions=0, stale=1, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
+* **Create**: [中断されうる処理の完了判定は、完了した処理だけが持つ不可逆な副作用を述語にする](pages/patterns/completion-predicate-uses-irreversible-side-effect.md) — PR #2078 の raw source 4 件を統合（成果物の存在は「始まった」ことしか示さない / 中断された cross-device mv が残す断片に存在検査が真を返す / bash の trap は foreground 完了まで遅延するためフラグ代入位置を動かしても窓は閉じない / 3 条件 AND の各項を単独 mutation で pin する）
+* **Create**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — PR #2078 の raw source 3 件を統合（拒否の帰結「消さない」が残存判定 gate と噛み合って詰む / 解は guard 追加ではなく path→id token のインタフェース差し替え / 弾かれる側の正当な入力を fixture に 1 本入れる）
+* **Update**: [累積対策 PR の review-fix loop で fix 自体が drift を導入する](pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md) — PR #2078 の raw source 4 件を統合（防御追加が 3 cycle 連続で退行を生む / guard 追加→インタフェース差し替え→削除方向の 2 度の方針転換 / Simplification-First は「追加を我慢する」ではなく「原因の粒度で束ねる」）
+* **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — PR #2078 の raw source 3 件を統合（case 分岐が先に捕捉して allowlist 本体に assertion が届かない / 「N pass / 0 fail」は防御が測られている証拠にならない / 塞いだ範囲を実測より広く書かない）
+* **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — PR #2078 の raw source 2 件を統合（期待値の `.*` は「そのフィールドは未検証」と同義 / assert 未使用の診断変数は shellcheck warning 帯で CI を通過する / fixture は実装が実際に触る場所に置く）
 
 ## 2026-07-31
 

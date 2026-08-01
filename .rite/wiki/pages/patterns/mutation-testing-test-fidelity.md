@@ -2,7 +2,7 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-07-25T14:18:43Z"
+updated: "2026-08-01T05:40:00Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260725T032345Z-pr-2013.md"
@@ -128,6 +128,12 @@ sources:
     ref: "raw/fixes/20260722T064426Z-pr-1969.md"
   - type: "reviews"
     ref: "raw/reviews/20260722T122232Z-pr-1970-cycle3.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260801T040325Z-pr-2078.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260801T041229Z-pr-2078.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260801T032503Z-pr-2078.md"
 tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage", "symmetry-claim-bidirectional-pin", "negative-assert", "non-blocking-contract-mutation"]
 confidence: high
 ---
@@ -842,6 +848,29 @@ cycle 2 で新設した会計テストの初版は 42 assertions が緑だった
 ### 生存した変異は理由を個別に説明できて初めて完了
 
 最終サイクルの mutation matrix は 16 変異中 13 kill、生存 3 件だった。生存 = カバレッジ欠落ではないが、その判断には到達経路の実証が要る。3 件はそれぞれ (a) production の判定を変えない診断経路、(b) 既存 TC の意味を変えない cleanup、(c) Linux では空ターゲット symlink を作成できず到達不能、と個別に実測で結論づけた。**生存を一括で「問題なし」と扱わない。**
+
+### case 分岐は「先に別の節で捕まる」ため assertion が届かない節を無検査で残す (PR #2078)
+
+`--pending-id` の allowlist と制御文字中和は、**どちらを削除しても全 assertion が green のまま**通った。原因は case 文の構造で、既存 arm が brace 節で先に入力を捕捉するため、allowlist 本体に到達するテストが 1 本も無かった。
+
+```
+case "$id" in
+  <既存 arm>)  ... ;;   # ← テストの入力は全部ここで捕まる
+  <allowlist>) ... ;;   # ← assertion が 1 本も届いていない
+esac
+```
+
+**「N pass / 0 fail」は防御が測られている証拠にならない。** 分岐構造によっては、テストが到達していない節が無検査のまま残る。防御を足したら、**その項だけを外す mutant で red になることを実測するまで完了ではない**。
+
+同 PR の前 cycle では 3 条件 AND について同じ手続きを実施していたが、**同一 PR 内の別の防御には適用していなかった**。mutation 実測は「その PR で新設した全防御」を対象集合として実施する。
+
+### reviewer への明示的な mutation 依頼が静的 pin の抜けを定量化する
+
+PR #2078 では reviewer に mutation 実測を明示的に依頼した結果、静的 pin では見えなかった「assertion が届いていない防御」が 2 件（allowlist / 制御文字中和）定量的に surface した。実装側の 1 行を直す規模の指摘でも有効。
+
+### 保証を実測より広く書かない
+
+新設した squat 検査のコメントが「TOCTOU を塞ぐのは `set -C`」と書いたが、bash の noclobber が拒否するのは既存**通常ファイル**だけで FIFO には効かない。実測（300 回並走）で 18/300 が競合窓でハングした。**塞いだ範囲を実測で確定してから書く** — 先置きケースを塞いだなら「先置きケースを塞いだ」と書く。
 
 ## 関連ページ
 

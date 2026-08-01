@@ -2,7 +2,7 @@
 title: "Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する"
 domain: "anti-patterns"
 created: "2026-04-24T14:55:00+00:00"
-updated: "2026-07-22T22:54:19Z"
+updated: "2026-08-01T05:40:00Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260722T221143Z-pr-1973.md"
@@ -32,6 +32,10 @@ sources:
     ref: "raw/fixes/20260520T022118Z-pr-1066-cycle1.md"
   - type: "reviews"
     ref: "raw/reviews/20260520T061355Z-pr-1069.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260801T003521Z-pr-2078.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260801T005429Z-pr-2078.md"
 tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase, same-file-3-site-sync, subsidiary-claim-empirical-verification, cross-file-cross-site-coverage, multi-axis-mutation-verification]
 confidence: high
 ---
@@ -343,6 +347,18 @@ wth5=$(snapshot_hash "$sbx5")  # capture-first と direct-pipe で異なる hash
 | 3-axis mutation verification | anchor 強化 + cross-file coverage を併用する fix | 正方向 mutation (各 site 削除で FAIL) + 逆方向 mutation (docstring 擬似挿入で PASS 維持 = anchor strictness verify) を独立 axis で実行 |
 | **Guard-logic-not-just-routing pin gap** | 1 site 内の複数要素 (ルーティング vs ガードロジック) | ルーティングの pin とガードロジックの pin を別 assertion に分離配置し、partial revert を独立検出可能にする |
 | **Non-exercising fixture** | fixture 設計 | 実装方式の違いが observable になる非空/非デフォルト入力を fixture に最低 1 つ含める |
+
+### 期待値の `.*` ワイルドカードと、assert に使われない診断変数 (PR #2078)
+
+pin を「張ったつもり」にする 2 つの具体形。どちらも同 PR で新設 gate に対して同時に発生した。
+
+**1. 期待値に置いた `.*` は「そのフィールドは未検証」と同義。** sentinel が出ることは pin されるが、**正しい値を載せていること**は pin されない。値が後段 gate の判定入力そのものである場合、ワイルドカードは検査層の穴と等価になる。同型の弱化が過去に全 assertion green で生き延びた記録が同じテストファイルのコメントに残っていたにもかかわらず、新設 gate へは自動では引き継がれなかった。
+
+**2. assert に使われない診断変数は「pin 済み」の誤った安心を生む。** 未使用変数は shellcheck の warning 帯に出るため、error-only の CI gate を通過して機械検出されない。直後に pass/fail を伴う if/else があると、読み手には検査が成立して見える。**削除するか実効化するかの二択**で、コメントだけ残すのが最悪。
+
+### fixture の置き場所が実装の導出先と食い違うと assertion が恒真になる
+
+実装が `${TMPDIR}` から path を導出するのに、fixture を `mktemp -d` 配下に置くと、実装がどう振る舞っても fixture 側のファイルは残る。結果「削除しない」assertion が**常に pass** する。**fixture は実装が実際に触る場所に置く**（`export TMPDIR="$TMP_ROOT"` のように導出元ごと隔離すると、fixture の式を変えずに塞げて後片付けも既存 trap に載る）。
 
 ## 関連ページ
 
