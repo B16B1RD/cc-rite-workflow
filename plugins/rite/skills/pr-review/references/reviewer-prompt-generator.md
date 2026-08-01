@@ -74,7 +74,7 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 
 **`内容` 列のアンカー記入例**（`Likelihood-Evidence:` は掲載可否、`Verification:` は実測の記録を担う直交アンカー。実測できた指摘は両方を末尾に付けること）:
 
-> ⚠️ **`内容` 列の中では raw `|` (パイプ) を使わないこと**（`Likelihood-Evidence:` / `Verification:` / 叙述部のいずれも対象）。テーブルのセル境界と衝突して 5 列構造を壊し、アンカーも機械抽出できず記録が失われます。パイプは `¦` (U+00A6) で代替表記してください（下記 2 番目の例）。詳細は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照。
+> ⚠️ **`内容` 列の中では raw `|` (パイプ) を使わないこと**（`Likelihood-Evidence:` / `Verification:` / 叙述部のいずれも対象）。テーブルのセル境界と衝突して 5 列構造を壊します。セルを跨がずに `description` へ届いた場合も、アンカーは検出 regex に match せず**未判定 (blocking のまま)** として扱われ、判定不能な指摘が merge を止め続けます。パイプは `¦` (U+00A6) で代替表記してください（下記 2 番目の例）。詳細は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照。
 
 ```
 {WHAT + WHY の叙述}<br>Likelihood-Evidence: existing_call_site src/api.ts:45<br>Verification: repro node dist/cli.js --input empty.json => TypeError: Cannot read properties of undefined

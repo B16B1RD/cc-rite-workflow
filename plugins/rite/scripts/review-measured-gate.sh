@@ -71,11 +71,12 @@
 #             装飾文字と全角コロンを吸収する「正規化」形で書く (列挙形にすると列挙漏れの形が
 #             stage 1/2 の両方から外れ WARNING ゼロで降格する = 本 script が閉じた silent failure)
 #   stage 2 = 正規形アンカーの full match 判定。stage 1 が真かつ stage 2 が偽の finding は
-#             「アンカーはあるが形式崩れ」として WARNING を出す。帰結は `=>` の有無で分かれる:
-#               `=>` あり → 未判定 (blocking のまま)  + MEASURED_UNDETERMINED_ON_ANCHOR
-#               `=>` なし → measured=false で降格      + MEASURED_DEMOTED_ON_ANCHOR
-#             `=>` で絞るのは、アンカーが `<LHS> => <RHS>` を必須とする (_reviewer-base.md
-#             §Verification) ため `=>` を欠く `Verification:` は散文中の言及だから。絞らないと
+#             「アンカーはあるが形式崩れ」として WARNING を出す。帰結は marker から同一セグメント
+#             (終端は改行 / <br> / 句点) 内に `=>` が続くかで分かれる:
+#               続く   → 未判定 (blocking のまま)  + MEASURED_UNDETERMINED_ON_ANCHOR
+#               続かない → measured=false で降格   + MEASURED_DEMOTED_ON_ANCHOR
+#             同一セグメントで絞るのは、アンカーが `<LHS> => <RHS>` を必須とする (_reviewer-base.md
+#             §Verification) ため、marker から文の切れ目を越えた先の `=>` は別の話題だから。絞らないと
 #             stage 1 の意図的に緩い存在判定が拾う散文がそのまま恒久 blocking へ昇格し、
 #             /rite:fix には直す対象が無いまま max_review_cycles まで空転する
 #
@@ -287,12 +288,15 @@ def marker_present: (desc | test($re_stage1));
 # セグメントの終端は改行 / `<br>` / 句点 (`。`) — アンカーは 1 セグメントに収まる形で書かれるため、
 # marker と `=>` の間に文の切れ目があれば別の話題であり、アンカーの書き損じではない。
 #
-# **残存する限界 (意図的に受容)**: 同一セグメント内でアンカー正規形をインライン引用した散文
-# (例:「Verification: 節は <LHS> => <RHS> と定めている」) は本述語で分離できず未判定へ倒れる。
-# `=>` の位置だけでは「アンカーの書き損じ」と「アンカーを論じる散文」を字句的に区別できないため
-# (本リポジトリでは両者のテキストがほぼ同一になる)。この場合の恒久 blocking 化は iterate の
-# サーキットブレーカー (safety.max_review_cycles) が上限で止める。
-def has_arrow: (desc | test("(?i)verification[*_`[:space:]]*[:：](?:(?!<br)[^\n。])*=>"));
+# **残存する限界 (意図的に受容)**: 同一セグメント内に `=>` が現れる散文は分離できず未判定へ倒れる。
+# rationale: skills/fix/references/assessment-rules.md §5.3.0.M「(i) は完全な分離ではない」
+# marker prefix は `$re_stage1` を連結して共有する — literal 複製すると stage 1 側だけを編集した
+# ときに marker_present が真・has_arrow が偽となり、形式崩れアンカーが未判定ではなく降格へ落ちる。
+# この誤分類では内訳の和が母集団と一致したままなので下の fail-closed ガードでは検出できない。
+# 走査長は有界にする — 無界の `*` は marker 出現数 × セグメント長で二次的に増大し、marker を
+# 多数含む description で秒オーダーの遅延になる (実測: 8000 marker で 12.3s → 有界化で 0.055s)。
+# アンカー 1 セグメントが 600 字を超える例は無いため受理集合は実質不変。
+def has_arrow: (desc | test($re_stage1 + "(?:(?!<br)[^\n。]){0,600}=>"));
 
 # 形式崩れアンカー = 「実測の有無を判定する構造が読めない」状態。measured=false (実測が無いと
 # 確定) ではなく **未判定** として扱い、verification キー自体を生やさない。read 側の 3 値モデル
@@ -363,7 +367,8 @@ def with_verification:
       # anchor_unparseable の内訳。両者は排他かつ和が anchor_unparseable に一致する
       # (検出層に穴を空けないための不変条件)。
       #   undetermined = 未判定として blocking に留めたもの (verification を生やさなかった)
-      #   demoted_marker = marker はあるが降格したもの (`=>` を欠く散文 / 既存 boolean 保持)
+      #   demoted_marker = marker はあるが未判定にしなかったもの (同一セグメントに `=>` が
+      #                    続かない / 既存 boolean 保持)
       anchor_undetermined: (
         [$orig[] | select(gated and (has_measured_bool | not) and undetermined_on_anchor)] | length
       ),
@@ -377,8 +382,14 @@ def with_verification:
         [$orig[] | select(gated and (desc | test($re_runtime_obs)) and (anchored | not))] | length
       ),
       # 既存 boolean と description のアンカー有無が食い違う件数 (既存値を正とするため WARNING のみ)。
+      # 既存 boolean が「本ゲートが算出したはずの値」と食い違う件数。3 値化後は 2 値比較
+      # (`!= anchored`) だけでは足りない — ゲートが**未判定**を算出する形に `measured: false` を
+      # 先書きされると `false == anchored(false)` で矛盾なしと読み、`has_measured_bool` の短絡が
+      # 未判定分岐を飛ばして実測済み CRITICAL を non_blocking へ移送し mergeable を確定させる。
+      # フラグ指定下でのみ hard fail するため §4.5 の「既存値を正とする」は無傷。
       verification_conflict: (
-        [$orig[] | select(has_measured_bool) | select(.verification.measured != anchored)] | length
+        [$orig[] | select(has_measured_bool)
+         | select((.verification.measured != anchored) or (gated and undetermined_on_anchor))] | length
       ),
       # enum 外 scope の診断行。値は tojson で 1 行の JSON literal に畳む (raw 改行による
       # [CONTEXT] marker 偽造と ANSI/OSC の素通しを同時に塞ぐ)。
@@ -482,12 +493,12 @@ out_tmp=""
 #  正常系が区別できなくなるため)。母集団 anchor_unparseable は 2 つの排他な帰結に分かれ、
 # それぞれを対の WARNING + marker で報告する (和は常に anchor_unparseable = 検出層に穴なし)。
 if [ "$anchor_undetermined" -gt 0 ]; then
-  echo "WARNING: Verification: アンカーはあるが検出 regex に match しない finding ${anchor_undetermined} 件を **未判定** として blocking のまま残しました (raw pipe / 改行タグ / => 右辺空 / 種別ラベル誤記 (repro|failing_test 以外) / アンカー直前の境界欠落)。実測の有無を判定できないため non-blocking へ降格させません。アンカーの直前は行頭・改行タグ・空白のいずれかにし、パイプを含むコマンドは ¦ で代替表記してください" >&2
+  echo "WARNING: Verification: アンカーはあるが検出 regex に match しない finding ${anchor_undetermined} 件を **未判定** として blocking のまま残しました (raw pipe / => 右辺空 / 種別ラベル誤記 (repro|failing_test 以外) / アンカー直前の境界欠落)。実測の有無を判定できないため non-blocking へ降格させません。アンカーの直前は行頭・改行タグ・空白のいずれかにし、パイプを含むコマンドは ¦ で代替表記してください" >&2
   echo "[CONTEXT] MEASURED_UNDETERMINED_ON_ANCHOR=1; count=${anchor_undetermined}; cause=anchor_unparseable" >&2
 fi
 
 if [ "$anchor_demoted_marker" -gt 0 ]; then
-  echo "WARNING: Verification: marker はあるが同一セグメント内に => が続かない (= アンカーではなく散文中の言及) か、既存 verification.measured を保持したため本ゲートが verification を算出しなかった finding ${anchor_demoted_marker} 件を検出しました。実測を主張する指摘なら <LHS> => <RHS> 形のアンカーを添えてください" >&2
+  echo "WARNING: Verification: marker はあるが同一セグメント内に => が続かないため本ゲートが未判定にしなかった finding ${anchor_demoted_marker} 件を検出しました (marker と => の間に改行タグが挟まった折り返しアンカー / 文境界を挟んだ散文中の言及 / 既存 verification.measured の保持)。実測を主張する指摘なら <LHS> => <RHS> 形のアンカーを marker と同一セグメント内に置き、パイプを含むコマンドは ¦ で代替表記してください" >&2
   echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count=${anchor_demoted_marker}; cause=anchor_unparseable" >&2
 fi
 

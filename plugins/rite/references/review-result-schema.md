@@ -290,7 +290,7 @@ canonical jq expression (1.0/1.0.0 受信時に適用):
 
 **適用範囲**: 本節の default mapping が有効なのは **記録・表示・後方互換の非エラー化** を目的とする読取経路に限る。`measured` を **blocking 判定の入力として消費する層** には適用しない (下記「3 値モデルへの上書き」参照)。
 
-`findings[].verification` が欠落している場合 (schema 1.0 / 1.0.0 の旧形式、および verification 導入前に生成された 1.1.0 JSON)、記録・表示経路は当該 finding を **`measured=false` (実測なし)** として扱う。フィールドの物理的な補完は不要で、値を参照する側が `(.verification.measured // false)` で評価すればよい (jq の `//` が欠落・null を false に畳む)。エラーにはしない:
+`findings[].verification` が欠落している場合 (schema 1.0 / 1.0.0 の旧形式、verification 導入前に生成された 1.1.0 JSON、および実測必須ゲートが形式崩れアンカーを未判定として残した現行世代 JSON)、記録・表示経路は当該 finding を **`measured=false` (実測なし)** として扱う。フィールドの物理的な補完は不要で、値を参照する側が `(.verification.measured // false)` で評価すればよい (jq の `//` が欠落・null を false に畳む)。エラーにはしない:
 
 ```
 (.verification.measured // false) == true   # 記録・表示経路の評価式 (欠落 = false)。判定経路では使用禁止 — 下記「3 値モデルへの上書き」参照
