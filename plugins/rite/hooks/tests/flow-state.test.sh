@@ -377,7 +377,10 @@ _tc8bh_detect() {
 # detector or an empty file list would report success. Prove the detector fires on a known
 # violation through the SAME function the scan uses, otherwise a rotted pattern would sail through
 # its own control.
-_tc8bh_probe=$(mktemp "${TMPDIR:-/tmp}/rite-tc8bh-probe-XXXXXX.sh")
+# No extension on the template: BSD mktemp(1) substitutes only trailing Xs, so a `-XXXXXX.sh`
+# template would hand back that literal name and collide on a leftover file. The detector below
+# reads the probe as a plain path, so the suffix bought nothing anyway.
+_tc8bh_probe=$(mktemp "${TMPDIR:-/tmp}/rite-tc8bh-probe-XXXXXX")
 printf 'sv=2\necho "v$sv\xe2\x86\x92v3"\n' > "$_tc8bh_probe"
 if [ "$(_tc8bh_detect "$_tc8bh_probe" | wc -l | tr -d '[:space:]')" = "1" ]; then
   pass "TC-8b-h control: the detector reports a known unbraced-\$var violation"
@@ -409,6 +412,66 @@ else
 fi
 unset -f _tc8bh_detect
 unset unbraced_report unbraced_total _sh _hits _found _tc8bh_probe _tc8bh_scanned
+
+echo ""
+echo "=== TC-8b-i: every mktemp template in plugins/rite shell scripts ends in trailing Xs ==="
+#
+# BSD/macOS mktemp(1) substitutes only *trailing* Xs, so a template that carries a suffix
+# (`-XXXXXX.md`) is taken literally: the name never varies, and once one such file survives
+# a SIGKILL the next O_CREAT|O_EXCL fails with EEXIST for every later run on that machine.
+# GNU coreutils substitutes suffixed templates anyway, so the Linux leg cannot observe the
+# regression at runtime — the guard has to be static to protect the macOS leg.
+#
+# The detector pairs `mktemp` with "Xs followed by something that is not a template
+# terminator". Quote / whitespace / backtick / closing-paren after the Xs are the legitimate
+# endings; anything else (`.md`, `.sh`, `.json`) is a suffix. Comment lines are skipped
+# because prose about tempfile names ("...orphan ${TMPDIR:-/tmp}/rite-wiki-stage-XXXXXX.")
+# ends in a full stop and would otherwise read as a violation.
+#
+# Two constraints shape how the pattern is written. It matches three consecutive Xs rather
+# than an `X{3,}` interval because macOS ships BWK awk, whose older builds read `{` as a
+# literal — an interval here would silently stop matching on the very platform this guard
+# protects (no other scan in this suite relies on one). And the Xs are concatenated from a
+# -v variable at run time because spelling them out would make this line match its own scan.
+_tc8bi_detect() {
+  LC_ALL=C awk -v x=X '!/^[[:space:]]*#/ && /mktemp/ && $0 ~ (x x x "[^X[:space:]\"'"'"'`)]") { print FILENAME ":" NR ": " $0 }' "$1"
+}
+
+# Positive control, for the same reason TC-8b-h carries one: a negative assertion reports
+# success when the detector itself is broken. The probe body spells its Xs as octal escapes
+# so the line writing it does not match the very scan it feeds.
+_tc8bi_probe=$(mktemp "${TMPDIR:-/tmp}/rite-tc8bi-probe-XXXXXX")
+printf 'p=$(mktemp "probe-\130\130\130\130\130\130.md")\n' > "$_tc8bi_probe"
+if [ "$(_tc8bi_detect "$_tc8bi_probe" | wc -l | tr -d '[:space:]')" = "1" ]; then
+  pass "TC-8b-i control: the detector reports a known suffixed-template violation"
+else
+  fail "TC-8b-i control: the detector did NOT report a known violation — the scan below is vacuous"
+fi
+rm -f "$_tc8bi_probe"
+
+suffixed_report=""
+suffixed_total=0
+_tc8bi_scanned=0
+while IFS= read -r _sh; do
+  _tc8bi_scanned=$((_tc8bi_scanned + 1))
+  _found=$(_tc8bi_detect "$_sh")
+  if [ -n "$_found" ]; then
+    _hits=$(printf '%s\n' "$_found" | wc -l | tr -d '[:space:]')
+    suffixed_total=$((suffixed_total + _hits))
+    suffixed_report="$suffixed_report
+$_found"
+  fi
+done < <(find "$PLUGIN_ROOT" -name '*.sh' -type f | sort)
+# A discovery that returns nothing is a broken scan, not a clean one.
+if [ "$_tc8bi_scanned" -eq 0 ]; then
+  fail "TC-8b-i: found no *.sh under $PLUGIN_ROOT — the scan matched nothing to check (layout changed?)"
+elif [ "$suffixed_total" = "0" ]; then
+  pass "TC-8b-i: every mktemp template ends in trailing Xs ($_tc8bi_scanned files scanned)"
+else
+  fail "TC-8b-i: $suffixed_total mktemp template(s) put characters after the Xs — BSD mktemp leaves those templates unsubstituted, so the name is not unique:$suffixed_report"
+fi
+unset -f _tc8bi_detect
+unset suffixed_report suffixed_total _sh _hits _found _tc8bi_probe _tc8bi_scanned
 
 # --- TC-9: phase enum validation warns but accepts unknown phase ---
 echo ""
