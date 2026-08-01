@@ -2203,8 +2203,12 @@ if [ "$_gate_rc" -eq 0 ]; then
   # ただし noclobber が拒否するのは既存**通常ファイル**だけで、path に FIFO を先置きされると
   # `: >` の open(2) が reader を待って**無期限にブロック**する (共有 TMPDIR のマルチユーザー
   # ホスト / CI runner。path は予測可能で epoch も列挙できる)。書きに行く前に存在検査し、何か
-  # あれば作成せず degraded へ倒す。TOCTOU を塞ぐのは引き続き `set -C` で、本検査が足すのは
-  # 「ハングしないこと」だけ。epoch 付き path なので正規の運用では発火しない。
+  # あれば作成せず degraded へ倒す。**本検査が消すのは「先置き」ケースのハングだけ** —
+  # 検査から生成までの窓に FIFO を置かれた場合、`set -C` は非通常ファイルを拒否しないため
+  # 依然ブロックする (実測: squatter と 300 回並走で 18/300 が rc=124)。同じ予測可能性から、
+  # エントリを置き続けるだけで 8.0.4 の機械強制を degraded (prose 判定のみ) へ落とすこともできる。
+  # 窓ごと消すには marker 名の mktemp 化が要るが、8.0.4 の「末尾 -{epoch} が最大のもの」選択規則の
+  # 変更を伴うため本 Issue では採らない。epoch 付き path なので正規の運用では発火しない。
   if [ -e "$save_pending_marker" ] || [ -L "$save_pending_marker" ]; then
     echo "WARNING: save-pending marker path に既存エントリがあります ($save_pending_marker)。作成せず ステップ 8.0.4 を degraded に倒します" >&2
     echo "  原因候補: 同一秒の並行 review / 共有 TMPDIR での先置き (squat)" >&2
@@ -2381,7 +2385,7 @@ This phase now performs **three independent outputs**:
 
 > **Note**: ステップ 6.1.a / 6.1.b / 6.1.c の reason は委譲先 helper が emit する (`hooks/review-result-save.sh` / `hooks/review-comment-post.sh` / `hooks/review-skip-notification.sh`、SoT は各 helper の docstring)。委譲済 reason は「この SKILL.md 自身が emit する reason」と区別できるよう **markdown table 行にせず bullet 形式**で列挙し、本文 prose でも `reason=...` 構文を使わず bare backtick 名で参照する。helper の stderr `[CONTEXT]` emit は caller の bash 出力として LLM コンテキストに surface するため、下記 reason はレビュー flow 上で従来どおり観測される。
 
-**ステップ 6.1.a reasons** (`review-result-save.sh` が `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を emit、全て **WARNING only / 非ブロッキング**):
+**ステップ 6.1.a reasons** (`review-result-save.sh` が `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を emit。**15 種のうち 14 種は WARNING only / exit 0**。`signal_aborted` のみ signal trap 由来で rc=130/143/129 を返すが、`overall_assessment` は変えずステップ 6 の exit code は 6.1.c が決める — helper が非ゼロ rc で返っても停止せず `LOCAL_SAVE_FAILED` の有無に従って 6.1.b / 6.1.c へ進む):
 - `pr_number_placeholder_residue`: `--pr` が数値以外 (空文字 / placeholder 残留) のまま渡された (cleanup.md ステップ 6 の numeric gate と対称化し永久 orphan 化を防ぐ)
 - `date_command_failure`: `TZ='Asia/Tokyo' date` の実行が失敗 (空 timestamp による file 上書きを防止)
 - `mkdir_failure`: `.rite/review-results/` directory creation failed
@@ -2450,7 +2454,7 @@ This phase now performs **three independent outputs**:
 | `save_pending_marker_placeholder_residue` | `REVIEW_SAVE_GATE=degraded` | `{save_pending_marker}` が literal substitute されず `{...}` 形状のまま到達。機械強制を skip し `**Check**` の prose 判定のみで続行 |
 | `save_pending_marker_unavailable` | `REVIEW_SAVE_GATE=degraded` | ステップ 5.3.0.M step 2 が marker を作成できなかった (read-only な `${TMPDIR}` 等、同 step で WARNING 済)。同上 |
 
-**Non-blocking contract**: ステップ 6.1.a の全 15 種の reason (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `mv_failure` / `collision_resolution_exhausted` / `signal_aborted`) are all logged as WARNING and MUST NOT cause ステップ 6 to fail. Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error. Canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../references/common-error-handling.md#non-blocking-contract-canonical-定義) を参照。
+**Non-blocking contract**: ステップ 6.1.a の全 15 種の reason (`pr_number_placeholder_residue` / `date_command_failure` / `mkdir_failure` / `mktemp_failure` / `write_failure` / `timestamp_injection_mv_failure` / `json_invalid` / `schema_required_fields_missing` / `finding_id_format_or_uniqueness_violation` / `scope_enum_violation` / `critical_high_scope_nit_noted_invariant` / `mktemp_failure_mv_err` / `mv_failure` / `collision_resolution_exhausted` / `signal_aborted`) are all logged as WARNING and MUST NOT cause ステップ 6 to fail — **ただし `signal_aborted` のみ helper が rc=130/143/129 で終了する** (canonical: 下記リンク先の carve-out)。非ゼロ rc を観測しても ステップ 6 は止めず 6.1.b / 6.1.c へ進む。 Only `tmpfile_write_failure` (which affects the PR comment post path, not the local file save) causes a hard error. Canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../references/common-error-handling.md#non-blocking-contract-canonical-定義) を参照。
 
 **Retained flag mapping**:
 
@@ -2535,7 +2539,9 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
 # (normal/abnormal 両経路、ステップ 6.1.c が前提) / 同 trap での save-pending marker 削除 +
 # REVIEW_SAVE_DONE= emit (ステップ 8.0.4 が前提)。SoT は helper docstring。
 # --pending-id: ステップ 5.3.0.M step 2 の [CONTEXT] REVIEW_SAVE_PENDING_ID= 値をリテラル置換する
-# (本 cycle のもの = 末尾 -{epoch} が最大のもの。空文字で emit されていれば空文字を渡す)。
+# (本 cycle のもの = 末尾 -{epoch} が最大のもの。**ただし本 cycle の 5.3.0.M step 2 が空文字で
+# emit している場合に限り**空文字を渡す — 空文字は epoch を持たず最大値規則で順序付けできないため、
+# 過去 cycle の空 emit を採ってはならない。8.0.4 Pre-Check の選択規則と同一)。
 # marker の **path** は渡さない — helper が id から内部導出する (8.0.4 の Pre-Check だけが
 # REVIEW_SAVE_PENDING_MARKER= の path を使う)。
 bash {plugin_root}/hooks/review-result-save.sh \
@@ -3766,7 +3772,7 @@ ACTION: Return to ステップ 7.1, extract candidates, invoke AskUserQuestion (
 
 本 gate は ステップ 6.1.d (非実測指摘の PR コメント記録) の **全体 skip** に対する最終防波堤で、8.0.1 (ステップ 6.5.W) / 8.0.2 (ステップ 7) と同型の sentinel-presence based defense-in-depth。6.1.d step 3 の integrity check は 6.1.d サブステップ**内部**にあるため 6.1.d を丸ごと skip すると gate 自身も skip される — その failure mode を本 gate が result-emit boundary の**外側**で catch する (ステップ 7.7 ⇄ 8.0.2 の二層構成と同型)。既定設定 `post_comment: false` では 6.1.d のコメントが非実測指摘の唯一の共有可能な durable 記録 (`.rite/review-results/` は gitignore 対象) であり、skip = D-01「マージ後に人間が拾い直せる」の完全な喪失になる。
 
-**catch できる範囲は「ステップ 6 が本 cycle で実行された」ことを前提とする**: 鮮度判定の参照値 `REVIEW_CYCLE_ID` は 6.1.a step 0 で emit される — つまり本 gate が守る 6.1.d と同じ ステップ 6 の内側にある。ステップ 6 を丸ごと skip した cycle では、会話に残る (前 cycle の `REVIEW_CYCLE_ID`, 前 cycle の sentinel) の組が互いに整合するため本 gate は pass する。8.0.2 の anchor である `candidate_count` が ステップ 7.1 で毎 cycle 再計算されるのとはこの点で非対称であり、本 gate 単独では「6.1.d 単独の skip」しか catch できない。「ステップ 6 全体の skip」は **ステップ 8.0.4** が塞ぐ — 同 gate の anchor はステップ 6 の外側 (5.3.0.M step 2) で毎 cycle 再生成されるため自己整合が成立せず、差し戻し先が 6.1.a **step 0** であることにより本 gate の anchor と marker も再生成される (Issue #2076)。
+**catch できる範囲は「ステップ 6 が本 cycle で実行された」ことを前提とする**: 鮮度判定の参照値 `REVIEW_CYCLE_ID` は 6.1.a step 0 で emit される — つまり本 gate が守る 6.1.d と同じ ステップ 6 の内側にある。ステップ 6 を丸ごと skip した cycle では、会話に残る (前 cycle の `REVIEW_CYCLE_ID`, 前 cycle の sentinel) の組が互いに整合するため本 gate は pass する。8.0.2 の anchor である `candidate_count` が ステップ 7.1 で毎 cycle 再計算されるのとはこの点で非対称であり、本 gate 単独では「6.1.d 単独の skip」しか catch できない。「ステップ 6 全体の skip」は **ステップ 8.0.4** が塞ぐ — 同 gate の anchor はステップ 6 の外側 (5.3.0.M step 2) で毎 cycle 再生成されるため自己整合が成立せず、差し戻し先が 6.1.a **step 0** であることにより本 gate の anchor と marker も再生成される。
 
 **Condition**: Always execute (6.1.d は `{post_comment_mode}` に依存せず常に評価される) — ただし **ステップ 6 が hard fail した場合を除く** (下記 Routing の 1 行目。8.0.1 の `wiki.enabled: false` 行 / 8.0.2 の `candidate_count == 0` 行と同じ legitimate skip)。
 
@@ -3882,8 +3888,11 @@ case "$save_pending_marker" in
       echo "    (4) helper が trap 設置前に exit 1 した — 会話に「ERROR: review-result-save:」で始まる行がある場合 (--content-file 欠落 / 未知オプション = caller 契約違反)。" >&2
       echo "        引数を修正してから下記 ACTION を実行します。" >&2
       echo "    (5) helper が起動していない — helper 由来の行 (WARNING / [CONTEXT] REVIEW_SAVE_DONE) が 1 行も無い場合。下記 ACTION がそのまま対処です。" >&2
+      echo "    (6) --pending-id に空文字を渡した — helper 由来の行はあるが marker 関連の WARNING が 1 本も無く、REVIEW_SAVE_DONE の marker= が空の場合 (空 id は helper が無言で marker 機構を opt-out します)。" >&2
+      echo "        本 cycle の REVIEW_SAVE_PENDING_ID= が非空なら、その値を渡して 6.1.a を再実行します。" >&2
       echo "  ACTION: ステップ 6.1.a を **step 0 から** 実行してください。step 2 (保存 helper) だけを実行しては**なりません** — step 0 は 8.0.3 が使う REVIEW_CYCLE_ID と pending marker を生成する唯一の場所で、飛ばすと 8.0.3 が前 cycle の値を見て誤 pass します。" >&2
       echo "    step 0 (REVIEW_TMP_DIR / REVIEW_CYCLE_ID / NONBLOCKING_PENDING_MARKER の emit) → step 2 (review-result-save.sh 実行) の順で実行し、続けて {post_comment_mode} に応じて 6.1.b または 6.1.c も再実行してください。" >&2
+      echo "    再実行時は --pending-id が非空かつ本 cycle の REVIEW_SAVE_PENDING_ID= と一致することを確認してください (不一致・空のままでは本 gate は再び残存を観測します)。" >&2
       echo "    (本 gate は「ステップ 6 全体の skip」を catch するため 6.1.c も未実行でありうる。6.1.c を飛ばすと、再実行した保存が失敗したときに silent data loss を hard fail させる唯一の機構 = ケース 2 の exit 2 が発火しない)。そのうえで ステップ 8.0 を再評価してください。" >&2
       echo "  marker はここでは削除しません — 削除すると 6.1.a を実行せずに再評価だけで gate を通せてしまい、本検査の意味が失われます。" >&2
       echo "  ⚠️ 本 gate を pass せずに ステップ 8.1 の result pattern を emit してはなりません。" >&2
@@ -3922,7 +3931,7 @@ This means ステップ 6.1.a (レビュー結果 JSON のローカル保存) wa
 helper が「削除失敗は決定論的」の WARNING を出している場合は環境起因で、本 ACTION の再実行では収束しない —
 marker を手動で rm してから ステップ 8.0 を再評価すること。
 保存が落ちた cycle の指摘は `.rite/review-results/` に残らず、/rite:fix の JSON 経路も
-マージ後の監査証跡も同時に失われる (Issue #2024 D-01 の無音喪失)。
+マージ後の監査証跡も同時に失われる (実測必須ゲートが移送した非実測指摘の永続経路が断たれるため)。
 ACTION: ステップ 6.1.a を **step 0 から** 実行する (step 2 単独の実行は禁止 — step 0 が emit する
 REVIEW_CYCLE_ID / NONBLOCKING_PENDING_MARKER を欠くと 8.0.3 が前 cycle の値で誤 pass する)。
 step 0 → step 2 の順に実行し、続けて {post_comment_mode} に応じて 6.1.b または 6.1.c も再実行する

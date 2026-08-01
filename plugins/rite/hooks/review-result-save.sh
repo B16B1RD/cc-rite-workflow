@@ -214,6 +214,12 @@ _rite_review_p61a_signal() {
     echo "  対処: 中断原因 (Bash tool timeout / 手動 Ctrl-C) を取り除き ステップ 6.1.a を step 0 から再実行してください" >&2
     echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=signal_aborted; signal=$2" >&2
   else
+    # 3 条件 AND で「保存済み」と判定した以上、machine-readable 側も同じ結論に揃える。
+    # 揃えないと同じ trap が `JSON_SAVED=false` / `saved=false` を emit し、(a) 8.0.4 Routing の
+    # 「saved=false なら reason を転記」が転記対象を持たないまま発火し、(b) 6.1.b が
+    # 「ローカル保存は失敗しました」と案内して実在する JSON を素通りさせる — 本ハンドラが
+    # 塞いだはずの状態を、判定ではなく sentinel 側で再生産することになる。
+    json_saved="true"
     echo "WARNING: review-result-save: $2 で中断されましたが JSON は保存済みです。ステップ 6 は続行して差し支えありません" >&2
   fi
   _rite_review_p61a_cleanup
