@@ -27,6 +27,9 @@
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — PR #2078 の raw source 3 件を統合（case 分岐が先に捕捉して allowlist 本体に assertion が届かない / 「N pass / 0 fail」は防御が測られている証拠にならない / 塞いだ範囲を実測より広く書かない）
 * **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — PR #2078 の raw source 2 件を統合（期待値の `.*` は「そのフィールドは未検証」と同義 / assert 未使用の診断変数は shellcheck warning 帯で CI を通過する / fixture は実装が実際に触る場所に置く）
 * **lint:warning** — contradictions=0, stale=3, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
+* **Create**: [静的ガードを新設したら、走査面の限界と現存する未カバーサイトをテスト本体のコメントに書く](pages/heuristics/static-guard-declare-scan-scope-limits.md) — PR #2080 の raw source 2 件を統合（走査面の限界を書かないと緑が「撲滅済み」と読まれる / 先行テストが同じ慣行を持つと逸脱が外部レビューで検出されやすい / ガード拡張と実体修正は 1 変更に束ねる / ルールを置く場所は既存スキャナの有無で決める）
+* **Create**: [限界を説明する例は検出器に食わせ、「〜としてのみ使う」型の断定は grep で数えてから書く](pages/heuristics/verify-explanatory-examples-against-the-detector.md) — PR #2080 の raw source 2 件を統合（主張は正しいのに例が主張を否定する / 消費経路の断定は grep で数える / 散文だから頭の中で書けてしまうのが共通の落とし穴 / 受け流しの記録が残らない構成なら nit も同 cycle で直す）
+* **Update**: [CI lint チェックを blocking gate に昇格するときはツール自身の exit code を gate にする](pages/heuristics/ci-blocking-gate-tool-exit-code.md) — PR #2080 の raw source 1 件を統合（continue-on-error の leg が緑でも AC 達成にはならない / 判定は job 自体の結論で行う / この非対称は静的ガードを blocking leg 側に置く設計判断の根拠にもなる）
 
 ## 2026-07-31
 

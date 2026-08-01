@@ -4,11 +4,13 @@ title: "CI lint チェックを blocking gate に昇格するときはツール�
 domain: "heuristics"
 description: "lint/静的解析を informational から blocking CI gate へ昇格する際、集計値を jq 等でパースして件数比較する gate は、ツールが実行不能（空レポート）だと 0 件と誤認して silent pass する。ツール自身の exit code を gate にすれば invocation 失敗も非ゼロ→fail-loud にできる。加えて、非固定バージョンのツールを blocking 化すると runner イメージ更新が未変更コードを spurious にブロックしうる点も設計時に扱う。"
 created: "2026-07-24T13:47:35Z"
-updated: "2026-07-24T13:47:35Z"
+updated: "2026-08-01T08:45:00Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260724T133654Z-pr-2009.md"
-tags: [ci, blocking-gate, exit-code, fail-loud, lint, silent-pass, version-pinning, devops]
+  - type: "reviews"
+    ref: "raw/reviews/20260801T083836Z-pr-2080.md"
+tags: [ci, blocking-gate, exit-code, fail-loud, lint, silent-pass, version-pinning, devops, continue-on-error, advisory-leg]
 confidence: medium
 ---
 
@@ -30,10 +32,14 @@ lint / 静的解析ジョブを informational（常時 exit 0）から blocking 
 
 - **ジョブ名変更 = status-check context 名の変更**: 昇格に伴い `name: shellcheck (informational)` → `name: shellcheck` のように informational 表記を外すと、GitHub が報告する status-check の名前が変わる。required status check（branch protection）に旧名で登録済みだと参照が切れるため、required 登録は新名で行う。導入直後で未登録なら安全だが、ジョブ fail が **merge をブロック**するのは branch protection に required として追加された後（リポジトリ管理者の設定、当該 PR の外）である点も併せて認識する。
 
+- **`continue-on-error` の leg が緑でも AC 達成にはならない**（PR #2080）: matrix job の一部に `continue-on-error: ${{ matrix.os == 'macos-latest' }}` が付いていると、その leg が赤でも workflow conclusion は緑になる。「macOS + ubuntu 両 leg 0 FAIL」のような AC を持つ PR で、チェック一覧の緑を根拠に AC 達成と判定すると、実際には advisory leg が落ちていても気づかない。**判定は job 自体の結論**（`gh pr checks <PR>` の各行 / 当該 job のログ本文）で行う。3 レビュアーが独立にこの非対称に言及し、最終的に `gh pr checks` で macOS leg 自体の pass を確認して決着した。逆にこの非対称は設計上の武器にもなる — その platform でしか runtime 再現しない退行に対し、**静的ガードを blocking leg 側に置く**ことで advisory leg に依存せず invariant を gate できる。
+
 ## 関連ページ
 
 - [`cmd=$(...) || cmd=""` は非ゼロ終了時に stdout 済みの診断 JSON を空文字列で上書きする](../anti-patterns/command-substitution-fallback-discards-diagnostic-json.md)
+- [静的ガードを新設したら、走査面の限界と現存する未カバーサイトをテスト本体のコメントに書く](./static-guard-declare-scan-scope-limits.md)
 
 ## ソース
 
 - [PR #2009 review results](../../raw/reviews/20260724T133654Z-pr-2009.md)
+- [PR #2080 review results (cycle 3)](../../raw/reviews/20260801T083836Z-pr-2080.md)
