@@ -9,6 +9,7 @@
 * **Update**: [変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる](pages/heuristics/change-sweep-spans-old-vocabulary-and-notations.md) — raw/reviews/20260801T103500Z-pr-2081.md / raw/fixes/20260801T104510Z-pr-2081.md を統合（4 系統目 = 帰結を反転させる変更は旧帰結を述べる語で掃く / SoT が狭いままだと退行の指示書になる）
 * **Update**: [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](pages/heuristics/mutation-axes-beyond-predicate.md) — raw/reviews/20260801T131235Z-pr-2081.md / raw/fixes/20260801T124925Z-pr-2081.md を統合（6 軸目 = 機械経路 / 人間向け経路の pin 非対称 / 変異注入は「閉じたこと」も確認できる）
 * **Update**: [全域で成功する resolver への委譲が既存 fail-fast ガードを silent success 化する](pages/anti-patterns/total-resolver-delegation-defeats-fail-fast-gate.md) — raw/fixes/20260801T112516Z-pr-2081.md を統合（値域を広げる変更も同型 / 2 値比較のまま残った強制述語が新状態を素通り / 述語の literal 複製は和の一致検査では検出できない）
+* **lint:warning** — contradictions=0, stale=4, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 
 * **Create**: [開始・終了の対で囲む除外をラッチで実装すると、未閉鎖のまま EOF に達した経路が無音で全行を落とす](pages/anti-patterns/latch-exclusion-without-eof-termination-check.md) — PR #2070 の raw source 2 件を統合（silent-0 を塞ぐ機構が反対側から silent-0 を再導入 / 3 レビュアーが別々の攻撃面から同一行に到達 / 特例でなく「未閉鎖の除外開始トークン」クラスを 1 述語で閉じる）
 * **Create**: [ガードの precondition に代理値を使うと、守るべき経路でだけ無効化される](pages/anti-patterns/guard-precondition-proxy-value-silent-where-needed.md) — PR #2070 の raw source 2 件を統合（ガードが無効化される経路とガードを必要とする経路が完全一致 / 代理値は相関が切れる場所＝守るべき場所で沈黙 / 「元へ戻す変異」は修正が回帰テストで守られているかを直接測る唯一の手段）
