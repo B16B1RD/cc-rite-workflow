@@ -433,6 +433,17 @@ echo "=== TC-8b-i: every mktemp template in plugins/rite shell scripts ends in t
 # literal — an interval here would silently stop matching on the very platform this guard
 # protects (no other scan in this suite relies on one). And the Xs are concatenated from a
 # -v variable at run time because spelling them out would make this line match its own scan.
+#
+# Scope limits, stated honestly:
+#   - bash fenced in SKILL.md / references is NOT scanned, same as TC-8b-h. One such site is
+#     live today: skills/fix/SKILL.md builds a `-XXXXXX.md` reply tempfile inside a bash fence
+#     that /rite:fix executes per nit-noted finding. Widening this scan to `.md` would turn the
+#     suite red until that site is fixed, so the two belong in one follow-up change rather than
+#     here. Until then, a green TC-8b-i means "no suffixed template in *.sh", not "the class is
+#     extinct".
+#   - The detector only sees `mktemp` and its template on the SAME line. A template assembled
+#     into a variable first (`tpl="foo-XXXXXX.md"; mktemp "$tpl"`) or split across a line
+#     continuation slips through. No such call exists in the repo today.
 _tc8bi_detect() {
   LC_ALL=C awk -v x=X '!/^[[:space:]]*#/ && /mktemp/ && $0 ~ (x x x "[^X[:space:]\"'"'"'`)]") { print FILENAME ":" NR ": " $0 }' "$1"
 }
@@ -466,7 +477,7 @@ done < <(find "$PLUGIN_ROOT" -name '*.sh' -type f | sort)
 if [ "$_tc8bi_scanned" -eq 0 ]; then
   fail "TC-8b-i: found no *.sh under $PLUGIN_ROOT — the scan matched nothing to check (layout changed?)"
 elif [ "$suffixed_total" = "0" ]; then
-  pass "TC-8b-i: every mktemp template ends in trailing Xs ($_tc8bi_scanned files scanned)"
+  pass "TC-8b-i: every mktemp template in *.sh ends in trailing Xs ($_tc8bi_scanned files scanned; markdown fences not covered)"
 else
   fail "TC-8b-i: $suffixed_total mktemp template(s) put characters after the Xs — BSD mktemp leaves those templates unsubstituted, so the name is not unique:$suffixed_report"
 fi
