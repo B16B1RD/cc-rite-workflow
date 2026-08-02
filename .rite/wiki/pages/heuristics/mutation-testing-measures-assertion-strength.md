@@ -4,7 +4,7 @@ title: "アサーションの検証強度は「該当行を壊して赤くなる
 domain: "heuristics"
 description: "「アサーションが存在する」と「そのアサーションが対象コードを通る」は別の事実であり、後者は目視レビューでは判定できない。fixture の順序・配置のせいでガードを一度も通らない、rc が変更前後で同値のため効果が固定されない、といった空振りは、該当 hunk を revert してスイートが赤くなるかを実測して初めて分かる。PR #2051 の 4 サイクルで 3 件が mutation でのみ検出された。"
 created: "2026-07-30T01:20:00+09:00"
-updated: "2026-08-01T00:21:06+09:00"
+updated: "2026-08-02T09:53:11+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260729T150808Z-pr-2051-c2.md"
@@ -24,6 +24,12 @@ sources:
     ref: "raw/fixes/20260731T041200Z-pr-2070.md"
   - type: "fixes"
     ref: "raw/fixes/20260731T135712Z-pr-2074.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260801T184452Z-pr-2070.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260801T185220Z-pr-2070.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260802T000641Z-pr-2070.md"
 tags: []
 confidence: high
 ---
@@ -97,6 +103,20 @@ mutation を回したうえでの「指摘 0 件」と、回さずに出した�
 
 いずれも「assertion を書いた直後に隔離コピーへ 1 トークン変異を入れて 1 回通す」手順で捕まる。なお **sed による変異はクォート起因で silent に失敗しうる**ため、変異後の該当行を表示して適用を確認してからテストを回す（実際に 1 回目の変異適用が失敗したまま「全 pass」を得た事例がある）。
 
+### 検証は「そのアサーションが実際に使う経路」で行う — 別コマンドでの手元確認は検証ではない
+
+変異検証それ自体にも「検証したつもり」の失敗モードがある。**検証に使ったコマンドと、アサーション本体が内部で使うコマンドが違えば、観測結果は何も保証しない。**
+
+PR #2070 cycle 1 では、追加した `assert_not_grep` のパターンを素の `grep`（BRE）で手元確認し「修正前の状態でマッチする（= fail する）」と観測して commit した。しかしヘルパー本体は `grep -qE`（ERE）を使っており、BRE で選択子として働く `\|` は ERE では literal のパイプ文字になる。結果、対象ファイルに決して現れないパターンを探す **常時緑の dead assertion** が「検証済み」として着地した（[[bre-ere-metachar-inversion-dead-assertion]]）。
+
+したがって検証の合格条件は次の 3 点を満たす形にする。
+
+1. **スイート本体を走らせる**（個別コマンドの手元実行ではなく）
+2. そのアサーションが捕らえるはずの**変異を注入した状態で**走らせる
+3. 当該 assertion が **FAIL することを目視する**（`FAIL: 1` の観測 → 変異を戻す）
+
+「このパターンならマッチするはず」という**推論**も、**別コマンドでの再現**も、この 3 点を代替しない。緑のまま通ることこそが検証すべき失敗モードである。
+
 ## 関連ページ
 
 - [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](../anti-patterns/locale-dependent-error-message-grep-assertion.md)
@@ -105,6 +125,7 @@ mutation を回したうえでの「指摘 0 件」と、回さずに出した�
 - [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](../patterns/absence-pin-base-present-head-absent-single-line.md)
 - [除外契約のテストは境界の両側に対で書く](../patterns/exclusion-test-requires-both-sides-of-boundary.md)
 - [累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable](./accumulated-pr-three-cycle-convergence.md)
+- [grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる](../anti-patterns/bre-ere-metachar-inversion-dead-assertion.md)
 
 ## ソース
 
@@ -113,3 +134,6 @@ mutation を回したうえでの「指摘 0 件」と、回さずに出した�
 - [PR #2051 review results (cycle 4, mergeable)](../../raw/reviews/20260729T155350Z-pr-2051-c4.md)
 - [PR #2051 fix results (cycle 2)](../../raw/fixes/20260729T151517Z-pr-2051-c2.md)
 - [PR #2051 fix results (cycle 3)](../../raw/fixes/20260729T153947Z-pr-2051-c3.md)
+- [PR #2070 review results (cycle 2)](../../raw/reviews/20260801T184452Z-pr-2070.md)
+- [PR #2070 fix results (cycle 2)](../../raw/fixes/20260801T185220Z-pr-2070.md)
+- [PR #2070 review results (cycle 5, mergeable)](../../raw/reviews/20260802T000641Z-pr-2070.md)

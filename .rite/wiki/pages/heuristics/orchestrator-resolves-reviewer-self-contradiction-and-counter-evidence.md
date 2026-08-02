@@ -4,8 +4,14 @@ title: "Orchestrator は reviewer 間の反証と reviewer 自身の自己矛盾
 domain: "heuristics"
 description: "複数 reviewer の所見が食い違う場合は他 reviewer の反証（既存実装の grep 確認）で解決し、単一 reviewer の指摘事項テーブル記載でも reviewer 自身が「対応不要」と結論した場合は Finding Quality Guardrail (bikeshedding filter) で blocking から除外する。"
 created: "2026-07-06T04:10:00+00:00"
-updated: "2026-07-25T07:05:21Z"
+updated: "2026-08-02T09:53:11+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260801T223635Z-pr-2070.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260801T224211Z-pr-2070.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260802T000641Z-pr-2070.md"
   - type: "reviews"
     ref: "raw/reviews/20260725T032345Z-pr-2013.md"
   - type: "reviews"
@@ -70,6 +76,16 @@ application reviewer が `_timeout` の perl シムについて「GNU timeout 2s
 
 > **教訓**: reviewer の数値主張は **再現してから採否を決める**。ただし「数値が違う = 指摘ごと棄却」にしない — 数値が誤っていても中核の欠陥は実在しうる。数値の誤りは severity 調整（発火経路の有無で follow-up へ降格等）の材料であって、指摘そのものの棄却理由ではない。これは実例 1 の「orchestrator 自身が実ファイルで検証する」を **反証側だけでなく肯定側にも** 適用した形。
 
+### 実例 7: 外部事実の読みが割れたら、多数決でも先着順でもなく一次ソースで決める（cycle 4）
+
+実例 1〜6 は **自リポジトリの実装**を根拠に解決する形だった。**管理外の上流実装**についてレビュアーの読みが割れる場合も、解決手段は同じ — ただし難度が上がる。
+
+同じ上流実装のグラフ構築モデルについて、あるレビュアーは「辺は本文リンク + frontmatter の `sources` から構築」、別のレビュアーは「辺は本文リンクのみ、`sources` は node のデータ」と述べた。実装を直接読むと後者が正しかった（`_build_graph` は `c.links_to` だけを走査し、`sources` は `to_node()` のペイロードに載るだけ）。
+
+> **教訓**: 独立したレビュアーの主張が外部事実について食い違ったら、**多数決でも先着順でもなく一次ソースで決める**。両者の主張はどちらも「上流を読んだ」形で提示されるため、**読み比べないと誤りがそのまま通る**。上流が OSS なら API 1 回・数十行で決着することが多く、コストは「どちらが正しいか分からないまま進む」リスクに見合わない（[[external-dependency-claim-hedge-vs-citation]]）。
+
+**あわせて、同一の疑問が複数レビュアーから独立に上がるのは記述の曖昧さが実在する強いシグナル**。PR #2070 ではフィールドの母集団を広げたが名前を据え置いた判断について、3 名が独立に同じ確認を提起した。これは合議で潰す対象ではなく、ユーザー確認へ回して仕様として決着させるべき合図である。
+
 ## 関連ページ
 
 - [`rejected(scope-creep)` judgment は cross-validation + empirical revert test で gate する](./scope-creep-rejection-empirical-gate.md)
@@ -82,3 +98,6 @@ application reviewer が `_timeout` の perl シムについて「GNU timeout 2s
 - [PR #1756 review results](../../raw/reviews/20260706T033041Z-pr-1756.md)
 - [PR #1757 review results](../../raw/reviews/20260706T043448Z-pr-1757.md)
 - [PR #1758 review results](../../raw/reviews/20260706T050235Z-pr-1758.md)
+- [PR #2070 review results (cycle 4) — 上流実装の読みが 2 名で割れ、一次ソースで決着](../../raw/reviews/20260801T223635Z-pr-2070.md)
+- [PR #2070 fix results (cycle 4)](../../raw/fixes/20260801T224211Z-pr-2070.md)
+- [PR #2070 review results (cycle 5, mergeable)](../../raw/reviews/20260802T000641Z-pr-2070.md)

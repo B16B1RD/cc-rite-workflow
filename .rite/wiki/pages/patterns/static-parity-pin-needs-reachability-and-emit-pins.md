@@ -4,7 +4,7 @@ title: "静的 parity テストには到達性 pin と emit pin を対で足す 
 domain: "patterns"
 description: "markdown 埋め込み bash のように実行テスト不能なコードを守る静的 parity テスト（述語文字列の出現数 + 行順）は、site 間の drift は検出するが semantics は守らない。3 site を一貫改修する mutation で素通りする（実測: 112 pass のまま正準形状が fallback に落ちた）。直前行が live な分岐であることを pin する到達性 pin と、reason / >&2 の固定文字列を pin する emit pin を対で追加する。"
 created: "2026-07-27T10:57:51+09:00"
-updated: "2026-07-27T10:57:51+09:00"
+updated: "2026-08-02T09:53:11+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260726T150008Z-pr-2030-cycle5.md"
@@ -14,6 +14,10 @@ sources:
     ref: "raw/fixes/20260726T150940Z-pr-2030-cycle5.md"
   - type: "fixes"
     ref: "raw/fixes/20260726T134912Z-pr-2030.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260801T170512Z-pr-2070.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260801T171512Z-pr-2070.md"
 tags: []
 confidence: high
 ---
@@ -63,13 +67,34 @@ helper 抽出（bash を実ファイルに切り出して hermetic にテスト�
 
 静的 pin は追加時に mutation を当てないと tautology になりやすい。起点事例では「旧形状を検索する pin」を「旧形状を消した同じ commit」で追加したため、一度も失敗しえない状態だった（git 履歴で確定）。
 
+### 「2 実装で同一定義」とコメントに書いたら、その literal のバイト一致を突合するテストを対にする
+
+複数の helper が同じ regex・同じ述語を共有するとき、コメントで「〜と同一定義にする」と宣言するだけでは parity は守られない。**片側の振る舞いテスト（自分側がその regex で拾えること）は parity を保証しない。**
+
+PR #2070 の実測では、2 つの helper が共有するリンク regex について、既存テストは自分側が拾えることしか測っていなかった。この状態で kill できる変異とできない変異は次のように割れる。
+
+| 変異 | 片側の振る舞いテスト | literal 突合テスト |
+|---|:--:|:--:|
+| 自側の regex を**狭める** | KILL（拾えなくなる） | KILL |
+| 自側の regex を**広げる** | **生存**（拾えることは変わらない） | KILL |
+| **相手側**だけ drift させる | **生存**（自側は無変化） | KILL |
+
+しかも片側だけ drift すると、対象が部分的にしか減らないため `entries >= 1` のような下限ガードが保たれ、同 PR が新設した検出失敗ガード（`entries==0 && linkrows>0`）も skipped_rows も発火しない。**その PR 自身が塞ごうとしていた silent-0 と同型の穴が、ガードの内側に残る。**
+
+対処は「2 実装から regex literal を抽出してバイト比較する」テストを 1 本置くこと。既に同型の前例がリポジトリ内にあるなら、新しい型を作らずそれに揃える（レビュアーも将来の読み手も「既知のパターン」として読める）。
+
+**表記差の正規化は比較前に 1 箇所で行う。** awk プログラム内リテラルは `pages\/`、`grep -oE` は `pages/` とスラッシュのエスケープが違う、といった文脈依存の差がある。どちらかに実装を寄せるのではなく、**テスト側で `\/` → `/` に畳んでからバイト比較する**。実装の可読性（各文脈で自然なエスケープ）を保ったまま parity だけを pin できる。
+
 ## 関連ページ
 
 - [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](../anti-patterns/test-pin-protection-theater.md)
 - [mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる](../heuristics/mutation-axes-beyond-predicate.md)
 - [散文契約の静的 pin には weakened probe による positive control を課す](./prose-pin-requires-positive-control.md)
 - [検出 grep と mutation (Edit old_string) は同一の文字列 strictness で実装する](./detection-mutation-strictness-symmetry.md)
+- [新設した出力フィールドは producer と consumer の両側を pin する — consumer が表なら行単位で pin する](./new-output-field-pin-producer-and-consumer.md)
 
 ## ソース
 
 - [PR #2030 review results (cycle 5)](../../raw/reviews/20260726T150008Z-pr-2030-cycle5.md)
+- [PR #2070 review results](../../raw/reviews/20260801T170512Z-pr-2070.md)
+- [PR #2070 fix results](../../raw/fixes/20260801T171512Z-pr-2070.md)

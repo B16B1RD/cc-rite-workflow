@@ -2,8 +2,12 @@
 title: "累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable"
 domain: "heuristics"
 created: "2026-05-17T13:40:00Z"
-updated: "2026-07-30T01:25:00+09:00"
+updated: "2026-08-02T09:53:11+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260802T000641Z-pr-2070.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260801T202243Z-pr-2070.md"
   - type: "reviews"
     ref: "raw/reviews/20260723T040300Z-pr-1974-cycle4-final.md"
   - type: "reviews"
@@ -280,9 +284,35 @@ cycle 4 の reviewer は揃って「これは Finding Quality Guardrail によ�
 
 **Finding Quality Guardrail を prompt で明示すると reviewer 側の自己抑制が働く**: cycle 3-4 では複数 reviewer が「新証拠なしの再掲は finding cycling にあたる」と明記して監査ログへ降格し、「防御の上に防御を積む要求」（Guardrail Category 2）に該当する候補も自ら filter した。レビュー prompt に (a) 収束状況（何 cycle 目 / 前 cycle の件数）、(b) その reviewer の前 cycle 指摘とその処置、(c) Guardrail を厳格に適用せよという指示、の 3 点を含めることが効いている。
 
+## 補強: 収束は件数の単調減少ではなく「抽象度の階段」で起きる（5 cycle / のべ 30 レビュアー）
+
+走査範囲を広げる helper 変更の PR が、5 サイクル・のべ 30 レビュアーで 0 件へ収束した記録。**指摘件数は単調減少しなかった（3 → 6 → 5 → 3 → 0）**が、指摘の抽象度は毎サイクル一段ずつ上がっていた。
+
+| cycle | 件数 | 指摘が居た層 |
+|---|---:|---|
+| 1 | 3 | テストの厳密さ（cross-file 契約の片側 pin）+ 記述の正確さ |
+| 2 | 6 | テストの厳密さ（dead assertion / 素朴 fixture）+ ドキュメントの自己矛盾 |
+| 3 | 5 | ドキュメントの**正確さ**（誤った「要検証」注記）+ pin の片側性 |
+| 4 | 3 | ドキュメントの**出典表記**（断定に出典・確認日が無い）+ 表の行単位 pin |
+| 5 | 0 | 収束 |
+
+**実装 → テストの厳密さ → ドキュメントの正確さ → ドキュメントの出典表記 → 0** という階段になっている。件数だけを見ると cycle 2 で悪化しているが、層はすでに上がっている。「補強: 収束は『件数』ではなく『指摘が移った層』で読む」で述べた読み方が、5 サイクルの長さでも成立した。
+
+**特筆すべき点**:
+
+1. **実装本体（helper のロジック）への指摘は 5 サイクルを通じて 1 件も出ていない**。指摘はすべて「実装は正しいが、その正しさを固定する仕組み（テスト・記述・出典）が片側だけ」という形だった。実装の正しさは毎サイクル、実データでの base 比較（develop 版と per-page hits がバイト一致）・契約経路の実測発火・敵対的入力・変異スイープで独立に再確認された。
+2. **fix が新しい指摘を生む率は 4 サイクル連続で 20-33%**（1/4 → 1/5 → 1/3 → 0/0）。ただし **持ち込んだ欠陥の内訳は、1 件を除いてすべて「修正の中身」ではなく「修正の書き方」**だった — 常時緑の dead assertion（BRE と ERE の取り違え）/ 出典を伴わない断定 / 表の 1 行だけ pin。唯一「中身が誤り」だったのは cycle 2 の要検証注記（上流を読めば偽と分かる命題を未確認として提示した）。
+3. **「修正した箇所を次サイクルの第一級レビュー対象に据える」運用が毎回機能した**。cycle 2 の最重要指摘（dead assertion）は、**前サイクルで 0 件だった reviewer が最初に見つけた**。「前回 0 件だったから今回は浅くてよい」は成立しない。
+4. **最終サイクルでは掲載ゲートを厳密に適用させる**。5 名が「検討したが自問 #1（マージブロック基準）で落とした」と明記したうえで推奨事項へ降格させており、silent filter ではないことが各レポートから読み取れる。
+
 ## ソース（追記分 2）
 
 - [PR #2051 review results (cycle 4, mergeable 到達) — 0 件の質と reviewer の自己抑制](../../raw/reviews/20260729T155350Z-pr-2051-c4.md)
 - [PR #2051 review results (cycle 3) — 実測必須ゲートが記述の不整合と実行を壊す欠陥を分離した](../../raw/reviews/20260729T153523Z-pr-2051-c3.md)
 - [PR #2051 review results (cycle 2) — cycle 1 の修正自体が持っていた検証の穴](../../raw/reviews/20260729T150808Z-pr-2051-c2.md)
 - [PR #2051 fix results (cycle 3) — 修正が効いていることと効果が固定されていることは別](../../raw/fixes/20260729T153947Z-pr-2051-c3.md)
+
+## ソース（追記分 3）
+
+- [PR #2070 review results (cycle 5, mergeable) — 5 サイクル / のべ 30 レビュアーで 0 件へ収束、抽象度の階段](../../raw/reviews/20260802T000641Z-pr-2070.md)
+- [PR #2070 review results (cycle 3) — fix が新指摘を生む率が 2 サイクル連続](../../raw/reviews/20260801T202243Z-pr-2070.md)
