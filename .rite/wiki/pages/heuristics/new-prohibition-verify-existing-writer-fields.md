@@ -20,7 +20,7 @@ confidence: medium
 
 ## 詳細
 
-### 発生事例（PR #2084 cycle 2）
+### 発生事例（Issue テンプレートへの規則追加、cycle 2）
 
 Issue テンプレート Section 9 に「作業項目を載せるな」を追加した。同時に rite 自身の `/rite:pr-review` ステップ 7.4.3 が Section 9 へ 1 行 append する経路を持っており、その挙動は 2 段で規定されていた:
 

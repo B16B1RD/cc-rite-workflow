@@ -22,7 +22,7 @@ confidence: medium
 
 ## 詳細
 
-### 発生事例（PR #2084 cycle 3）
+### 発生事例（Issue テンプレートの規則文言、cycle 3）
 
 Issue テンプレート Section 9 の禁止規則 `an open work item` について:
 

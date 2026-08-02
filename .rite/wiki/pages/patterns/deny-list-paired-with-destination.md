@@ -22,7 +22,7 @@ confidence: high
 
 ## 詳細
 
-### 発生事例（PR #2084 cycle 1）
+### 発生事例（Issue テンプレートへの規則追加、cycle 1）
 
 Issue テンプレート Section 9 に「Decision Log に載せないもの」の規則を追加した際、次の 2 bullet に分けて書いた:
 

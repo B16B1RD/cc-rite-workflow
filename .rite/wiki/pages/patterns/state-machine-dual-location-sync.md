@@ -93,14 +93,14 @@ confidence: high
 
 **scope**: helper 拡張 PR / enum 拡張 PR / ring pattern 拡張 PR では observability helper (lifecycle 系 / session-end 系 / monitoring 系) の連動漏れが recurring failure mode。code-quality reviewer は必ず「enum 拡張 → downstream caller の enum 列挙 site 全件 grep」を review checklist に含める。
 
-### sub-pattern: 生成テンプレートの fence 内 / fence 外は consumer が異なる正当な二重化（PR #2084）
+### sub-pattern: 生成テンプレートの fence 内 / fence 外は consumer が異なる正当な二重化
 
 Issue テンプレート (`templates/issue/template-structure.md`) では、` ```markdown ` fence の**内側**が生成 Issue body へそのまま出力され、fence の**外側**の `**Rules**:` ブロックは生成器 (`/rite:issue-create` ステップ 4.2) しか読まない。同じ規則を両方に書くのは DRY 違反ではなく、**consumer が異なる正当な二重化**である:
 
 - fence 外だけに書くと、生成済み Issue body の Section 9 へ後から追記する主体（実装者 / `/rite:pr-review` ステップ 7.4.3）には規則が届かない
 - fence 内だけに書くと、生成器が判断基準を失う
 
-したがってどちらも削除できない。ただし本 pattern の同期義務はそのまま適用され、**規則を変更するときは両方を同時に更新する必要がある**。PR #2084 の cycle 1-2 では実際にこの同期が漏れ、禁止列挙の件数ずれ（3 種に対し行き先 2 種）と第 3 要素の呼称の割れ（`fix rationale` / `review-response notes` / `the reason behind a fix`）が同一コミット内で成立した。
+したがってどちらも削除できない。ただし本 pattern の同期義務はそのまま適用され、**規則を変更するときは両方を同時に更新する必要がある**。Issue テンプレートへの規則追加では実際にこの同期が漏れ、禁止列挙の件数ずれ（3 種に対し行き先 2 種）と第 3 要素の呼称の割れ（`fix rationale` / `review-response notes` / `the reason behind a fix`）が同一コミット内で成立した。
 
 **実務上の優先順位**: 両者がずれた場合、**規則を実際に適用する主体が読む側**（= 生成物側 = fence 内）の欠落のほうが害が大きい。fence 外の Rules が正しくても、追記時点でそれを読む者はいない。fence 内が正典と考えて同期する。
 

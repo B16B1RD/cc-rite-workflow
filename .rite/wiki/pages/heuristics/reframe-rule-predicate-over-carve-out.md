@@ -22,7 +22,7 @@ confidence: high
 
 ## 詳細
 
-### 発生事例（PR #2084 cycle 2）
+### 発生事例（Issue テンプレートへの規則追加、cycle 2）
 
 Issue テンプレート Section 9（Decision Log）に「作業項目を載せるな」という規則を追加したところ、rite 自身の `/rite:pr-review` ステップ 7.4.3 がスコープ外と判断した指摘を Section 9 へ自動 append しており、その `{decision}` 欄は SKILL.md が「候補内容の要約、1 文」と規定しているため **実体が作業項目の形** になっていた。スコープ外という含意は `{reason}` 欄にしか宿らない。しかも Section 9 へ書き込む主体が読むのは生成された Issue body 側の HTML コメントだけで、そこに判定材料がなかった。
 

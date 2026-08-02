@@ -16,6 +16,7 @@
 * **Create**: [新規禁止規則を書く前に、その場所へ書き込む既存経路が書くフィールドの実体を読む](pages/heuristics/new-prohibition-verify-existing-writer-fields.md) — raw/reviews/20260802T020939Z-pr-2084.md を新規ページ化（経路の存在確認では不十分で placeholder の定義文まで読む / 意図と実体がずれる場合は実体側で判定される / 生成テンプレートでは規則が読み手へ届く位置かも確認する）
 * **Create**: [レビュアーの結論が正面から割れたら、勝敗を決める前に語の多義性を疑う](pages/heuristics/reviewer-verdict-split-signals-term-ambiguity.md) — raw/fixes/20260802T023626Z-pr-2084.md / raw/reviews/20260802T025011Z-pr-2084.md を新規ページ化（結論が割れても推奨事項では一致していることがある / 一致点が求める修正 / 語を一意にすると両者の懸念が同時に消える）
 * **Update**: [state machine を 2 箇所で記述する場合は動作の文字列レベルで同期する](pages/patterns/state-machine-dual-location-sync.md) — raw/reviews/20260802T025011Z-pr-2084.md を統合（生成テンプレートの fence 内／fence 外は consumer が異なる正当な二重化 / どちらも削除できないが規則変更時は同時更新が必要 / ずれた場合は規則を適用する主体が読む生成物側を正典とする）
+* **lint:warning** — contradictions=0, stale=7, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 ## 2026-08-01
 * **lint:warning** — contradictions=0, stale=3, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 
