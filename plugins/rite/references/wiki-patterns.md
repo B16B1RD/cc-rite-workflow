@@ -209,7 +209,8 @@ Wiki 初期化時にテンプレートを `.rite/wiki/` に展開します。
 
 | プレースホルダー | 値 |
 |----------------|-----|
-| `{initialized_date}` | 初期化日（`YYYY-MM-DD`、date-only）。log.md の OKF 日付見出し `## YYYY-MM-DD` に展開。index.md は OKF 移行（Issue #1519）で初期化タイムスタンプ placeholder を持たない |
+| `{initialized_date}` | 初期化日（`YYYY-MM-DD`、date-only）。log.md の OKF 日付見出し `## YYYY-MM-DD` に展開。index.md には展開されない（index.md の `- 最終更新:` 行は下記 `{initialized_at}` を使う） |
+| `{initialized_at}` | 初期化タイムスタンプ（ISO 8601）。index.md `## 統計` の `- 最終更新:` 行に展開 |
 | `{okf_version}` | OKF 仕様バージョン。index.md frontmatter の `okf_version: "0.1"` に展開（OKF v0.1 準拠の宣言、Issue #1519） |
 | `{concept_type}` | concept 種別（`patterns` / `heuristics` / `anti-patterns`、`{domain}` と同値）。page-template.md frontmatter の OKF 必須フィールド `type:` に展開（Issue #1518）。詳細は `plugins/rite/skills/wiki-ingest/SKILL.md` ステップ 5.3 の `{concept_type}` 行を SoT として参照 |
 | `{title}` | ページタイトル（Ingest 時） |
@@ -234,25 +235,25 @@ Wiki 初期化時にテンプレートを `.rite/wiki/` に展開します。
 
 ## OKF v0.1 準拠
 
-rite Wiki bundle（`.rite/wiki/`）は [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog) に準拠した構造で蓄積します（**`index.md` のカタログ形式のみ未達** — 下記 producer 責務の注記を参照）。準拠により、上流の OKF 静的 visualizer で経験則を概念グラフとして閲覧できます（[Visualizer 連携](#okf-visualizer-連携)参照）。
+rite Wiki bundle（`.rite/wiki/`）は [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog) に準拠した構造で蓄積します（**`index.md` のカタログ形式のみ意図的に逸脱** — 下記 producer 責務の注記を参照）。準拠により、上流の OKF 静的 visualizer で経験則を概念グラフとして閲覧できます（[Visualizer 連携](#okf-visualizer-連携)参照）。
 
 ### 準拠規約（SoT は各テンプレート / コマンド）
 
 | 要素 | OKF 準拠内容 | 実装 SoT |
 |------|-------------|---------|
 | **page frontmatter** | concept 種別を `type:`（`patterns` / `heuristics` / `anti-patterns`）で宣言し、`description:` を持つ | `templates/wiki/page-template.md`（Issue #1518） |
-| **index.md** | frontmatter に `okf_version: "0.1"` を持ち、ページカタログを OKF 箇条書き `* [title](path) - desc` で表現 | `templates/wiki/index-template.md`（Issue #1519） |
+| **index.md** | frontmatter に `okf_version: "0.1"` を持ち、ページカタログを `## ページ一覧` の 5 列テーブル（列順: ページ / ドメイン / サマリー / 更新日 / 確信度）で表現。箇条書きテンプレートが配布されていた期間に初期化された bundle の index.md は箇条書きのまま残るため、consumer は行単位で両形式を受けることが要件（本リポジトリの wiki ブランチでは未観測。両形式対応は外部 bundle への防御的サポート）。**⚠️ `/rite:wiki-query` の Pass 1 は箇条書き行限定で未対応**（テーブル形式 index では候補 0 件。読み手のテーブル対応は Issue #2053） | `templates/wiki/index-template.md` |
 | **log.md** | 変更履歴を OKF 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、新しい順、append-only、人間向け）で記録 | `templates/wiki/log-template.md`（Issue #1520） |
 | **raw frontmatter** | ingest skip 状態を `ingest_status: skipped` + `skip_reason:` で保持（skip の Source of Truth。log.md には保持しない） | `skills/wiki-ingest/SKILL.md` ステップ 5（Issue #1520） |
 | **SCHEMA.md** | 蓄積規約（人間 + LLM 共同管理）。OKF 予約ファイルとして bundle ルートに常駐 | `templates/wiki/schema-template.md` |
 
-> **producer 責務**: 上表の frontmatter / 構造はすべて `/rite:wiki-init`（テンプレート展開）と `/rite:wiki-ingest`（ページ生成・更新）が producer として書き込む。consumer（`/rite:wiki-query` / `/rite:wiki-lint`）はこの構造を前提に読む。準拠仕様を変更する場合は各テンプレート / コマンドを SoT として同期する。**ただし `index.md` のカタログ形式は現在テーブル形式で追記されており、上表の OKF 箇条書きは未達**（`docs/SPEC.md` の OKF v0.1 Conformance 節の `index.md` 行を参照）。
+> **producer 責務**: 上表の frontmatter / 構造はすべて `/rite:wiki-init`（テンプレート展開）と `/rite:wiki-ingest`（ページ生成・更新）が producer として書き込む。consumer（`/rite:wiki-query` / `/rite:wiki-lint`）はこの構造を前提に読む。準拠仕様を変更する場合は各テンプレート / コマンドを SoT として同期する。**ただし `index.md` のカタログ形式は上表のとおり 5 列テーブルであり、OKF v0.1 の箇条書きカタログ `* [title](path) - desc` には準拠しない**（テンプレート・ingest ステップ 6・実体を 5 列テーブルで揃えた意図的な逸脱。`docs/SPEC.md` の OKF v0.1 Conformance 節の `index.md` 行を参照）。
 
 ## OKF Visualizer 連携
 
 `.rite/wiki/` bundle は、上流の OKF 静的 HTML visualizer（[`GoogleCloudPlatform/knowledge-catalog`](https://github.com/GoogleCloudPlatform/knowledge-catalog)）で概念グラフとして閲覧することを想定した構造です。**visualizer 本体は rite リポジトリに同梱しません**（vendoring せず、起動手順のみ提供）。
 
-> **カタログ形式は visualizer の描画に影響しません**: 上記「準拠規約」節のとおり `index.md` のカタログ形式は現在テーブル形式で OKF v0.1 箇条書きに未達ですが、上流 visualizer は概念グラフ構築時に `index.md` を走査対象から除外します。ノードは各 page の frontmatter から、辺は**本文の Markdown リンクのみ**から構築されます（frontmatter の `sources` はノードに添付されるデータで、辺にはなりません）。したがってカタログ形式の未達は閲覧可否に関係しません。
+> **カタログ形式は visualizer の描画に影響しません**: 上記「準拠規約」節のとおり `index.md` のカタログ形式は現在テーブル形式で OKF v0.1 箇条書きから意図的に逸脱していますが、上流 visualizer は概念グラフ構築時に `index.md` を走査対象から除外します。ノードは各 page の frontmatter から、辺は**本文の Markdown リンクのみ**から構築されます（frontmatter の `sources` はノードに添付されるデータで、辺にはなりません）。したがってカタログ形式の逸脱は閲覧可否に関係しません。
 >
 > 出典: 上流 `okf/src/reference_agent/viewer/generator.py` の `_walk_concepts`（`index.md` を skip）と `_build_graph`（`links_to` のみを辺にする）。2026-08 時点、上流 main で確認。再検証: `gh api repos/GoogleCloudPlatform/knowledge-catalog/contents/okf/src/reference_agent/viewer/generator.py --jq .content | base64 -d`
 

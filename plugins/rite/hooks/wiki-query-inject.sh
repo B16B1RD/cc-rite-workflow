@@ -39,9 +39,11 @@
 #     stdout as "no context to inject" and continue.
 #   - Reads index.md via `git show` for separate_branch strategy, via direct
 #     file read for same_branch strategy.
-#   - OKF v0.1 2-pass (Issue #1519): the index.md is an OKF reserved bullet
-#     structure (`* [title](path) - description`) carrying only title/path/
-#     description. Pass 1 parses those candidates; Pass 2 reads each candidate
+#   - OKF v0.1 2-pass: the canonical index.md is a 5-column table (page /
+#     domain / summary / updated / confidence). Pass 1 only parses the OKF
+#     bullet form (`* [title](path) - description`), so a table-form index
+#     yields no candidates (reader-side table support is tracked in Issue
+#     #2053). The table columns are a copy — Pass 2 reads each candidate
 #     page's frontmatter for domain/confidence/updated (Source of Truth). A
 #     candidate whose page frontmatter is unreadable is skipped with a WARNING
 #     (non-blocking — the index→page drift surfaces but other candidates render).
@@ -327,9 +329,11 @@ if [[ -z "$index_content" ]]; then
 fi
 
 # --- Pass 1: Parse OKF bullet index for candidates ---
-# OKF v0.1 index.md is a reserved bullet structure (Sub-2 reshape, Issue #1519):
+# Pass 1 only understands the OKF bullet form:
 #   * [{title}]({path}) - {description}
-# The index intentionally carries only title + path + description; per-page
+# The canonical index is a 5-column table (page / domain / summary / updated /
+# confidence), so this pass yields no candidates there; reader-side table
+# support is tracked in Issue #2053. The table columns are a copy — per-page
 # metadata (domain / confidence / updated) lives in each page's frontmatter
 # (Source of Truth). Pass 1 extracts the candidates; Pass 2 (in the scoring
 # loop below) reads each candidate page's frontmatter for the metadata.
@@ -339,10 +343,11 @@ fi
 # contains `pages/` are kept (the orphan-link grep contract — see
 # wiki-lint-orphans.sh — relies on the same `pages/{domain}/{slug}.md` target).
 # HTML comment blocks (`<!-- ... -->`) are skipped so that illustrative bullet
-# examples inside the index-template.md comment are NOT parsed as real
-# candidates (otherwise a pristine `wiki-init` index would yield a phantom
-# candidate whose page does not exist, emitting a misleading "index.md may be
-# stale" WARNING on every query).
+# examples inside the prologue of index.md files initialized while the template
+# emitted the OKF bullet catalog are NOT parsed as real candidates (otherwise
+# such an index would yield a
+# phantom candidate whose page does not exist, emitting a misleading "index.md
+# may be stale" WARNING on every query).
 candidates=$(printf '%s\n' "$index_content" | awk '
   /<!--/ { in_comment=1 }
   in_comment { if (index($0, "-->") > 0) in_comment=0; next }

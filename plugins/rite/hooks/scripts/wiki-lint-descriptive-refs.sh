@@ -56,9 +56,9 @@
 #             Only the per-entry summary is scanned (see `_RITE_INDEX_COUNT_ACTION`): the
 #             summary shares its source with the page frontmatter `description`. In OKF
 #             bullet form `/rite:wiki-query` Pass 1 also matches keywords against it; the
-#             current table-form index yields no Pass 1 candidates, and ingest keeps
-#             appending table rows — so that is a standing non-conformance until Pass 1
-#             accepts tables, not a state a format migration clears on its own.
+#             canonical table form yields no Pass 1 candidates, so that is a standing
+#             non-conformance on the reader side until Pass 1 accepts tables — not a state
+#             a format migration clears on its own.
 #             Either way it is the surface a reader goes to for Why.
 #
 #   NOT scanned — each is a deliberate exclusion, not an unfinished area:
@@ -335,11 +335,14 @@ _RITE_COUNT_ACTION='/(TODO|FIXME)/ { next } { gsub(/`[^`]*`/, "_"); if ($0 ~ re)
 # 確信度の各列は対象外にする (ページタイトル由来の番号は本文側の維持判断と同じ扱いのため)。
 #
 # エントリ行の判定は `](pages/...)` リンクの有無で行い、テーブル行と OKF 箇条書きの両方を **行単位**で
-# 受ける。現行の wiki ブランチは 5 列テーブルだが、`templates/wiki/index-template.md` と wiki-ingest
-# ステップ 6 が生成するのは箇条書き `* [title](pages/...) - desc` であり、
-# どちらか一方専用にすると、指示と実挙動の乖離が解消された時点、あるいはその過程で検出が無言で
-# 0 件へ倒れる。ファイル単位で形式を判定しないのは、混在が「起きうる」ではなく乖離が解消される
-# 過程で必ず通る状態だから。
+# 受ける。`templates/wiki/index-template.md` と wiki-ingest ステップ 6 はどちらもテーブル形式を生成し、
+# 現行の wiki ブランチもテーブルで維持されている。一方、箇条書きテンプレートが配布されていた期間に初期化された bundle の
+# index.md は箇条書き `* [title](pages/...) - desc` のまま残り、移行を促す producer も存在しないため、
+# 箇条書きは放っておけば消える残滓ではなくテーブルと併存し続ける。どちらか一方専用にすると、
+# そうした bundle で検出が無言で 0 件へ倒れる。ファイル単位で形式を判定しないのは、ingest が
+# テーブル行を追記しても節の外の旧箇条書き行を削除も移送もしない以上、混在が「起きうる」ではなく
+# **そうした bundle が到達する終端状態**だから。なお本リポジトリの wiki ブランチでは箇条書き形式の
+# index.md は観測されておらず、両形式対応は外部 bundle に対する防御的サポートである。
 # リンクの regex は同じ index.md を読む `wiki-lint-orphans.sh` と同一定義にする (`./pages/` /
 # `../pages/` 形式も受ける)。片方だけ狭いと、その形式の index で本 helper だけが無言で 0 件に倒れる。
 #
@@ -349,11 +352,12 @@ _RITE_COUNT_ACTION='/(TODO|FIXME)/ { next } { gsub(/`[^`]*`/, "_"); if ($0 ~ re)
 # 位置固定の列パースは列の増減で全行 skip の silent no-op に倒れるため、ヘッダー由来の位置決めと
 # **スキップ行数の stdout 露出** を対にする (`/rite:wiki-query positional-parse-row-count-guard` で参照)。
 #
-# HTML コメントブロック (`<!-- ... -->`) は行の分類より前に落とす。`templates/wiki/index-template.md`
-# の前文はコメント内に箇条書きの記法例 `* [ページタイトル](pages/{domain}/{slug}.md) - …` を含み、
-# 落とさないと **記法例が実エントリとして数えられる**。そうなると下の検出失敗ガード
-# (`entries == 0 && linkrows > 0`) は `entries` が恒久的に 1 以上へ押し上げられて発火せず、
-# `/rite:wiki-init` が生成する canonical な index.md では **リンク形式が drift しても無言で 0 件**
+# HTML コメントブロック (`<!-- ... -->`) は行の分類より前に落とす。箇条書きテンプレートが配布されていた期間の
+# `templates/wiki/index-template.md` の前文はコメント内に箇条書きの記法例
+# `* [ページタイトル](pages/{domain}/{slug}.md) - …` を含み (現行テンプレートでは記法例ごと削除済みだが、
+# それ以前に初期化された bundle の index.md には残る)、落とさないと **記法例が実エントリとして
+# 数えられる**。そうなると下の検出失敗ガード (`entries == 0 && linkrows > 0`) は `entries` が恒久的に
+# 1 以上へ押し上げられて発火せず、それらの index.md では **リンク形式が drift しても無言で 0 件**
 # に倒れる (本 helper が塞ごうとしている silent-0 そのもの)。コメント行を数えないことは
 # `entries` / `linkrows` の定義 (実カタログのエントリ数 / リンク行数) を回復するものであって、
 # ガード専用の特例ではない。同じ `index.md` を読む `hooks/wiki-query-inject.sh` の Pass 1 も
@@ -367,7 +371,8 @@ _RITE_COUNT_ACTION='/(TODO|FIXME)/ { next } { gsub(/`[^`]*`/, "_"); if ($0 ~ re)
 # anchor 無しだと該当 2 行分 hits が減る（実測時 230 → 228。index.md は ingest ごとに増えるため絶対値はスナップショット）。落としたいのは「行そのものがコメント」であって
 # 「コメントに言及している行」ではない。`wiki-query-inject.sh` の同種規則は anchor を持たないが、
 # あちらは箇条書き行しか候補にしないため table 形式の現行 index では露見していない (同型の盲点)。
-# 終了は anchor を付けない — template のコメントは 2 行目末尾の `-->` で閉じるため。
+# 終了は anchor を付けない — 箇条書きテンプレートが配布されていた期間に初期化された bundle の
+#   index.md 前文のコメントは 2 行目末尾の `-->` で閉じるため。
 # 境界: 閉じ `-->` を含む行は行全体を落とす (コメント閉じ後に実エントリが続く 1 行は拾えない)。
 # producer (ingest / template) はその形を生成しない。
 #

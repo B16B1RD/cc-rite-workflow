@@ -29,7 +29,7 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 |------|---------|--------------|
 | **矛盾** | 同じトピックで異なる結論を持つページ（タイトル衝突・方針逆転・重複情報） | Yes |
 | **陳腐化** | `updated` frontmatter が閾値（デフォルト 90 日）を超えて更新されていないページ | Yes |
-| **孤児ページ** | `pages/` 配下に存在するが `index.md` の OKF 箇条書き（`* [title](pages/...) - desc`）に登録されていないページ | Yes |
+| **孤児ページ** | `pages/` 配下に存在するが `index.md` のページカタログ（`## ページ一覧` の 5 列テーブル。箇条書きテンプレートが配布されていた期間に初期化された bundle の箇条書き `* [title](pages/...) - desc` も登録として扱う）に登録されていないページ | Yes |
 | **欠落概念 (missing_concept)** | `raw/` に `ingested: true` の Raw Source があるが、対応ページも `sources.ref` 登録も `ingest_status: skipped` 記録（raw frontmatter）も存在しない真の欠落 | Yes |
 | **壊れた相互参照** | ページ本文の Markdown リンク `](...)` が `pages/` 配下の実在ファイルを指していない | Yes |
 | **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、raw frontmatter に `ingest_status: skipped` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
@@ -376,7 +376,7 @@ fi
 
 ## ステップ 5: 孤児ページ検出
 
-検出本体は `wiki-lint-orphans.sh` に委譲する。helper は index.md を branch_strategy 別に読み出し、OKF 箇条書き（`* [title](pages/...) - desc`）の登録ページと `pages_list` の集合差分を marker block で emit する。登録ページの抽出は `](pages/...)` リンクの grep ベース（テーブルか箇条書きかに非依存）なので、Issue #1519 の index 箇条書き化後も無改修で機能する（リンク先 `pages/{domain}/{slug}.md` を維持する条件）。
+検出本体は `wiki-lint-orphans.sh` に委譲する。helper は index.md を branch_strategy 別に読み出し、カタログに登録されたページと `pages_list` の集合差分を marker block で emit する。登録ページの抽出は `](pages/...)` リンクの grep ベース（テーブルか箇条書きかに非依存）なので、箇条書き形式でもテーブル形式でも無改修で機能する（リンク先 `pages/{domain}/{slug}.md` を維持する条件）。
 
 > **Reference**: canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-orphans.sh`。helper は index.md 読出 (`git show`(separate_branch) / `cat`(same_branch))・登録ページ抽出 (`](pages/...)` リンクの `./pages/` / `../pages/` 形式対応の緩和 regex + `sort -u`、テーブル／箇条書き両形式で機能)・`.rite/wiki/` プレフィックス正規化・集合差分・読出失敗 / 抽出 0 件の skip 判定 (全ページ orphan 誤検出防止)・marker block / `orphan_check_ok` enum / `[CONTEXT]` sentinel 出力をすべて内包する (旧 index.md 事前読出 + 孤児検出 inline 実装を委譲)。placeholder residue gate も helper 内で実行される。
 
@@ -409,7 +409,7 @@ fi
 {
   "category": "orphan",
   "page": ".rite/wiki/pages/patterns/new-page.md",
-  "detail": "index.md の OKF 箇条書き（* [title](pages/...) - desc）に未登録"
+  "detail": "index.md のページカタログ（## ページ一覧 テーブル）に未登録"
 }
 ```
 
@@ -621,7 +621,7 @@ Wiki ページ本文と `index.md` のエントリサマリーに残った**説�
 
 **検出対象と除外**:
 - 対象: ステップ 2 で収集した `pages_list` の各ページ全体（frontmatter の `sources:` ブロックを除く）と、`index.md` の**エントリごとのサマリーのみ**
-- 除外: frontmatter の `sources:` ブロック（`ref:` はファイルパスで番号規則に一致しないため防御的除外。`title:` / `description:` の散文は走査対象）、`## ソース` 節（provenance リンクラベル。維持対象）、コードフェンス / インラインコードスパン（literal 引用）、TODO/FIXME（前方追跡ポインタ）。除外規則は `index.md` にも適用するが、2 点だけ異なる。(1) **E5（TODO/FIXME）の適用単位** — ページは行単位で落とし、`index.md` はエントリのサマリー単位で判定する（コードスパンのマスク後に見るため、引用された TODO は無効化され hit として残る）。(2) **`index.md` 固有の除外** — 行頭 `<!--` で始まる HTML コメントブロックを行の分類より前に落とすため、コメント内の番号は数えない（ページ本文では数える）。配布テンプレートの前文が記法例をコメントで持つためで、落とさないと記法例が実エントリとして数えられ検出失敗ガードが恒久的に発火しなくなる。rationale: [references/descriptive-refs-rationale.md#index-summary-extraction](references/descriptive-refs-rationale.md#index-summary-extraction)
+- 除外: frontmatter の `sources:` ブロック（`ref:` はファイルパスで番号規則に一致しないため防御的除外。`title:` / `description:` の散文は走査対象）、`## ソース` 節（provenance リンクラベル。維持対象）、コードフェンス / インラインコードスパン（literal 引用）、TODO/FIXME（前方追跡ポインタ）。除外規則は `index.md` にも適用するが、2 点だけ異なる。(1) **E5（TODO/FIXME）の適用単位** — ページは行単位で落とし、`index.md` はエントリのサマリー単位で判定する（コードスパンのマスク後に見るため、引用された TODO は無効化され hit として残る）。(2) **`index.md` 固有の除外** — 行頭 `<!--` で始まる HTML コメントブロックを行の分類より前に落とすため、コメント内の番号は数えない（ページ本文では数える）。箇条書きテンプレートが配布されていた期間に初期化された bundle の index.md 前文が記法例をコメントで保持しているためで（現行の配布テンプレートは記法例コメントを持たない）、落とさないと記法例が実エントリとして数えられ、それらの index.md では検出失敗ガードが恒久的に発火しなくなる。rationale: [references/descriptive-refs-rationale.md#index-summary-extraction](references/descriptive-refs-rationale.md#index-summary-extraction)
 - 走査しないファイル（意図的除外）: `log.md`（append-only の ingest / lint 台帳。番号の正しい受け皿）、`raw/**`（レビュー / fix の生ログ = provenance 資料）、`SCHEMA.md`（散文を持たない）。rationale: [references/descriptive-refs-rationale.md#scan-scope](references/descriptive-refs-rationale.md#scan-scope)
 
 **本ステップは `pages_list` が空でも実行する** — `index.md` が単独で走査対象になりうるため（helper が自力で拾う）。ステップ 2.2 の「両方空なら skip」は ステップ 3-7 (7.5 を除く) が対象で、本ステップは含まない。helper の検出失敗ガードもこの契約に合わせて `pages_list` ではなく `index.md` 自身の内容で発火する。
@@ -940,7 +940,7 @@ Wiki Lint が完了しました。
 - 未登録 raw（skip 済）は意図的な skip (`ingest_status: skipped`) なら放置で OK。skip 記録を取り消して経験則化したい場合は /rite:wiki-ingest で再処理してください
 - 説明的番号参照はページ本文由来と `index.md` 由来で直し方が異なります
   - ページ本文: 該当箇所の番号を削除し、背景を Why 散文へ書き換えてください（出所は frontmatter `sources.ref` で辿れます）
-  - `index.md`: エントリのサマリーは wiki-ingest ステップ 6 が書き込みます（各ページ frontmatter の `description` と**同源**の散文であって、`description` を入力に取るわけではありません）。ステップ 6 が上書きするのは**その実行で統合した Raw Source に対応する行だけ**で、上書き値はステップ 4.1 が Raw Source から新規生成するサマリーです（ページ本文もページ frontmatter も入力に取りません）。未処理 raw が 0 件なら `/rite:wiki-ingest` は早期 return します。したがって **`index.md` の番号は該当行を直接編集して消すのが確実な手段**で、ページ側を直しても index の行には伝播しません。該当 Raw Source を再処理する場合は、生成後にもう一度 `/rite:wiki-lint` で残存を確認してください
+  - `index.md`: エントリのサマリーは wiki-ingest ステップ 6 が書き込みます（新規ページ行はステップ 4.1 が Raw Source から生成したサマリー、既存ページ行は当該 page の frontmatter `description`、`description` が無ければ既存セルの値を保持します）。ステップ 6 が上書きするのは**その実行で統合した Raw Source に対応する行だけ**で、上書き値は、新規ページ行がステップ 4.1 のサマリー、既存ページ行が page frontmatter の `description`（無ければ既存セルの値を保持）です。未処理 raw が 0 件なら `/rite:wiki-ingest` は早期 return します。したがって手当ては次の順で行います。(1) **いま出ている指摘を消すため `index.md` の該当行を直接編集する** — ステップ 6 が行を上書きするのは当該ページを含む Raw Source を処理したサイクルだけなので、その Raw Source が今後発生しなければ frontmatter だけ直しても index 行は書き換わらず、同じ指摘が毎回出続けます。(2) 当該ページが `description` を持つ場合は**あわせて page frontmatter の `description` も直す** — 当該ページを含む次回 ingest サイクルで index 行へ伝播し、再混入を止められます（`description` を持たないページは (1) だけで完結します）。該当 Raw Source を再処理する場合は、生成後にもう一度 `/rite:wiki-lint` で残存を確認してください
 ```
 
 **`{n_pages}` / `{n_raw}` 展開ルール**: LLM は ステップ 2.2 bash block stdout から `pages_list` / `raw_list` を会話コンテキストに保持している。各配列の要素数（空行と `---` separator を除いた非空行の数）を数えて展開する。両 list が空の場合は `0`。
