@@ -2,7 +2,7 @@
 title: "累積対策 PR の review-fix loop で fix 自体が drift を導入する"
 domain: "anti-patterns"
 created: "2026-04-21T10:35:00+00:00"
-updated: "2026-08-01T05:40:00Z"
+updated: "2026-08-02T22:05:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260518T084056Z-pr-1043-cycle4-mergeable.md"
@@ -146,6 +146,14 @@ sources:
     ref: "raw/reviews/20260801T040325Z-pr-2078.md"
   - type: "fixes"
     ref: "raw/fixes/20260801T041229Z-pr-2078.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260802T062240Z-pr-2052.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260802T073519Z-pr-2052.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260802T063409Z-pr-2052.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260802T070715Z-pr-2052.md"
 tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain", "review-attention-bias-blind-spot", "anchor-specificity-retreat", "doc-precision-regression-cascade", "self-referential-prevention-violation", "section-relative-prevention-success", "successive-prevention-replication", "doc-heavy-fractal-pattern", "systemic-mass-fix", "auto-demote-low-override", "fix-over-correction", "enforcement-locus-misattribution"]
 confidence: high
 ---
@@ -755,3 +763,27 @@ cycle 8 の完全収束時には reviewer が **「真に finding がないと�
 
 - **reviewer に mutation 実測を明示的に依頼する。** 静的 pin の抜け（assertion が届いていない防御）が定量的に出る。本 PR では `--pending-id` の allowlist と制御文字中和が、どちらを削除しても全 assertion green のままだった（既存 arm が case の brace 節で先に捕捉するため、allowlist 本体に assertion が 1 本も届いていなかった）。「N pass / 0 fail」は防御が測られている証拠にならない。
 - **削除と追加が同居する diff は lint clean を完了の証明にしない。** 説明的 Issue 番号参照を一方のファイルから削除しながら、同じ diff で別ファイルに 2 件追加していた。pre-existing hit が多いファイルでは新規追加分が埋もれる。
+
+### docs 是正 PR での 5 cycle 観測 — 書き換え単位・カウンタ・marker の 3 型
+
+PR #2052（散文の形式反転）で、fix-induced drift が実装 PR とは異なる 3 つの型で反復した。いずれも「直した箇所の**隣**が旧契約のまま残る」構造を共有する。
+
+**1. 書き換える単位は「文」ではなく「その主張が閉じる範囲」。** bullet の前半だけを新契約へ移し、直後の 2 文が旧契約のまま残る誤りが 4 レビュアーから独立に指摘された。しかもそれが operator 向けの remediation 文だったため、「永続する手当て」を明示的に否定して「非永続な手当て」を勧める状態になっていた。段落・bullet 単位で読み直してから書き換える。
+
+**2. カウンタの配線は「定義・実行地点・表示・等式」の 4 点セット。** 3 点（カウンタ表・内訳・等式）に配線したサイクルの次で、**実行地点（中止時の報告手順）への加算指示が漏れていた**ことが判明した。しかもその手順は加算対象を明示列挙していたため、列挙が網羅的に読めて新カウンタは加算されない解釈になる。等式直後の説明文も未追随で、記述どおり自己検算すると新カウンタ分を「訂正」して落とす。総数 1 に対し内訳合計 0 という自己矛盾した出力が出る。
+
+**3. 成功経路に marker が無いと「成功」と「未実行」が区別できない。** 中止経路にだけ marker を出す設計は marker 不在を両義にする。同じ表の別 marker が既に 3 値設計（`ok` / `failed` / 不在 = 未確認）だったため、非対称として検出された。さらに `=ok` marker の emit 点は「計算成功」ではなく **「副作用の完了」を attest させる**位置に置く必要がある — bash ブロック末尾で emit すると、その後に LLM が行う Edit を落としても「失敗なし」と報告される。移設するときは**副作用が no-op になる経路**（値が既に一致していて Edit が空振り）も同時に規定しないと、健全なサイクルが「未確認」に落ちる。
+
+**4. 「なし」行の条件は marker 値で書き切る。** 「かつ統計中止なし」のような自然文の否定は marker **不在**のときも真になり、3 値設計が塞ごうとした「未確認を失敗なしと断定する」経路を復活させる。既定行の条件は `A=ok` / `A=skipped` **かつ** `B=ok` / `B=skipped` のように取りうる値を列挙する。
+
+**5. 過剰反応を避けた対処。** 前サイクルの fix が導入した箇所への指摘 6 件を、分岐・条項の**追加**ではなく emit 点の移設 / gate の削除 / 述語の置換 / 到達不能分岐の畳み込みで解いた。追加パッチを重ねると、その追加自体が次サイクルの新たなレビュー対象面になり指摘を再生産する（本ページ「Simplification-First の実用的な読み替え」の docs 版）。
+
+### 散文 PR に固有の伝播漏れ
+
+- **同一ファイル内でも漏れる。** 形式反転の追随を 5 ファイルで行った次のサイクルで、(a) 同じファイルの別節、(b) 同じファイルの冒頭 Design notes、(c) 同じファイルの別テストケースのコメント が取り残された。**変更箇所から離れた場所は別ファイルと同じ確率で漏れる。** 伝播スキャンは旧形式の語による横断 grep だけでは足りず、(1) 語彙を複数用意する（日本語・英語・枠組み語）、(2) 触ったファイル自体を全文再読する、の 2 段が要る。
+- **枠組み語の割れ。** 「未達（達成すべき目標に未到達）」と「意図的な逸脱（declared deviation）」は正反対の含意を持つ。参照元だけ書き換えると参照先が逆を言う。同義の枠組み語は先に 1 つ決めて全箇所へ機械適用する。
+- **「A より前」の時間限定は A が初出のときにしか成立しない。** 形式を「復元」する変更で「A 化より前に初期化されたものは B のまま」と書くと、A が過去にも存在した窓を含んで偽になる。時間限定は「対象が実在した区間」で切る。自分が導入する限定句の真偽は、その限定が指す期間の git 履歴で裏取りする。
+- **限定句はスコープと対で書く。** 冪等化のための限定を「両経路共通」の位置に書いたため、掛かるべきでない frontmatter 由来の値にも掛かり、前サイクルでは列崩れとして loud に露見していた壊れ方が silent 化した。
+- **変換を新しい入力へ広げるときは冪等性を検査する。** エスケープ規約の適用対象に「既存行から保持した値」を足したが、保持値は前サイクルで既に変換済みだった。「値に X が含まれるなら Y にする」型の規約は、Y を含む値を再入力したときの挙動を明示しないと非冪等になり、サイクルごとにエスケープ文字が 1 つずつ増える。
+- **サイクル単位のセマンティクスを per-item ループに置かない。** 全体の状態を前提にする手順を item ごとのループ本体に置くと、guard が評価不能・カウンタが N 倍・レポート行が N 行並ぶ。数え上げ不能な述語（「最後の N を処理したとき」）は既存カウンタとの照合（「処理済み件数が `n_raw_sources` に達したとき」）へ置換する。
+- **同一の literal を 2 箇所に書かない。** 完了レポート行の literal を手順側と表側の両方に書くと、片方だけ直して drift する。表を SoT にして手順側はポインタにする。

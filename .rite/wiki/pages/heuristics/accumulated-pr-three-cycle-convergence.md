@@ -2,7 +2,7 @@
 title: "累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable"
 domain: "heuristics"
 created: "2026-05-17T13:40:00Z"
-updated: "2026-08-02T09:53:11+09:00"
+updated: "2026-08-02T22:05:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260802T000641Z-pr-2070.md"
@@ -53,6 +53,8 @@ sources:
     ref: "raw/reviews/20260729T150808Z-pr-2051-c2.md"
   - type: "fixes"
     ref: "raw/fixes/20260729T153947Z-pr-2051-c3.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260802T114732Z-pr-2052.md"
 tags: []
 confidence: high
 ---
@@ -316,3 +318,25 @@ cycle 4 の reviewer は揃って「これは Finding Quality Guardrail によ�
 
 - [PR #2070 review results (cycle 5, mergeable) — 5 サイクル / のべ 30 レビュアーで 0 件へ収束、抽象度の階段](../../raw/reviews/20260802T000641Z-pr-2070.md)
 - [PR #2070 review results (cycle 3) — fix が新指摘を生む率が 2 サイクル連続](../../raw/reviews/20260801T202243Z-pr-2070.md)
+
+### 収束しない軌跡の記録 — blocking が 2 → 3 → 6 と増えた docs 是正 PR
+
+これまでの事例はいずれも収束した軌跡だが、PR #2052（散文の形式反転）は **3 サイクル回して blocking が増え、ユーザー判断でループを離脱した**。収束しない構造を残す。
+
+| cycle | blocking | 指摘の性質 |
+|---|---|---|
+| 1 | 2 | 実装欠陥（配布境界への内部参照流入 / cp fixture の pin 空洞化） |
+| 2 | 3 | 実装欠陥 1 + scope 割れ 1 + 防御コードのコメント乖離 1 |
+| 3 | 6 | **うち 4 件が「テスト / drift pin を足せ」** |
+
+離脱の判断材料になったのは件数ではなく**内訳の性質の推移**だった。
+
+1. **「pin が無い」系の指摘は、直すたびに新しい pin 対象を作る。** cycle 3 の 4 件の内訳は (a) cycle 2 で変更した bash ブロックにテストが無い、(b) cycle 1 で追加した fixture がテンプレートの末尾改行 1 バイトに依存する、(c)(d) 配布テンプレートと SKILL.md の二重定義に drift pin が無い。**(b) は cycle 1 の修正そのものが生んだ指摘**で、修正 → その修正への指摘 → さらに修正、という増殖形になっている。
+2. **docs 是正 PR にテスト基盤を後付けし続けると、PR の主題から離れた作業が主になる。** テスト基盤の不足は一連の作業として別 Issue に括る方が、PR 単位でも作業単位でも健全。
+3. **判定基準: 指摘の性質が「実装の誤り」から「検証資産の不足」へ移ったら、それは別 Issue のシグナル。** 件数の推移だけを見ていると「あと 1 サイクルで収束するかもしれない」と読めてしまう。内訳を並べると収束しないことが早期に判る。
+
+なお、この PR は 3 サイクル離脱後にさらに別系統のレビューを 2 サイクル受けており（形式反転の伝播とマージ直前の CI 赤）、通算では 5 サイクルを超えている。**離脱の判断は「もう指摘が出ない」ではなく「この PR の主題で解ける指摘が出なくなった」で行う。**
+
+## ソース（追記分 4）
+
+- [PR #2052 review results (cycle 3, loop exit) — 収束しない軌跡と離脱判断](../../raw/reviews/20260802T114732Z-pr-2052.md)
