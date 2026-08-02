@@ -1616,7 +1616,7 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
 4. If it exists, look up the corresponding entry in `scope_map`:
    - **`scope == "nit-noted"`** -> **nit (認知のみ)**; route directly to ステップ 2.4 `nit-noted-reply` (skip ステップ 2.1 selection、fix commit 対象外)
    - **measured lookup (実測必須ゲート)**: 判定は **`measured_map[file:line]` の参照に統一**する (母集団は severity_map と同一 — **scope による登録除外なし**。nit-noted は本分岐に到達する前に上の nit 分岐 (正規化後 `scope_map` 参照) が先取するため lookup 対象にならない。key 正規化・tie-break・3 値保持を含む構築共通規則はステップ 1.2.1 step 6 が単一定義。**3 値**: `false` = non-blocking / `true` = blocking / **未登録** = 未判定 (実測の有無を判定する構造が無い) → blocking)。`measured_map` の構築は経路別:
-     - **JSON 経路 (Priority 0/2/3 Raw JSON)**: finding が `verification` を object として持ち、かつ `verification.measured` が boolean のときに限り `measured_map[file:line] = .verification.measured` を登録する。**`verification` 欠落 / `verification.measured` 欠落の finding は登録しない (= 未判定 → blocking)**。`(.verification.measured // false)` で畳んではならない — `//` は欠落と `false` を同一視するため、write 側が `verification` を出力しない世代の JSON (旧形式、および本ゲート配線前に生成されたもの) を読むと**全 finding が non-blocking になり fix が 0 件で完了し、レビューループが指摘を 1 件も解消しないまま `safety.max_review_cycles` まで空転する**。`review-result-schema.md` §verification の default mapping (「欠落時は `measured=false` 扱い」) は `measured` が判定に使われない記録専用フィールドだった時点の規定であり、本ゲートで判定入力になった以降は同節の「3 値モデル」注記が優先する
+     - **JSON 経路 (Priority 0/2/3 Raw JSON)**: finding が `verification` を object として持ち、かつ `verification.measured` が boolean のときに限り `measured_map[file:line] = .verification.measured` を登録する。**`verification` 欠落 / `verification.measured` 欠落の finding は登録しない (= 未判定 → blocking)**。`(.verification.measured // false)` で畳んではならない — `//` は欠落と `false` を同一視するため、write 側が `verification` を出力しない世代の JSON (旧形式、および本ゲート配線前に生成されたもの) を読むと**全 finding が non-blocking になり fix が 0 件で完了し、レビューループが指摘を 1 件も解消しないまま `safety.max_review_cycles` まで空転する**。**欠落は現行世代の JSON でも発生する** — `scripts/review-measured-gate.sh` は形式崩れアンカー (アンカー文字列と `=>` はあるが検出 regex に match しない) の finding に対し、`measured=false` と確定させずに `verification` を設定しないことで「未判定」を表現するため。したがって本経路の「欠落 = 未判定 → blocking」は後方互換のためだけの規定ではなく、**現行フローの主経路の 1 つ**である。`review-result-schema.md` §verification の default mapping (「欠落時は `measured=false` 扱い」) は `measured` が判定に使われない記録専用フィールドだった時点の規定であり、本ゲートで判定入力になった以降は同節の「3 値モデル」注記が優先する
      - **会話コンテキスト経路 (Priority 1)**: integrated report の `### 全指摘事項` の行を `true`、`### 実測なし指摘 (non-blocking)` section の行を `false` として登録する。**Markdown 経路と同様に、`### 実測なし指摘` の行も `severity_map` / `scope_map` へ投入する** (ステップ 1.2.1 step 6 と同一規則。投入しないと `total_count` の母集団 = severity_map から非実測指摘が抜け、ステップ 4.6 の `全指摘 == 対応指摘` が成立せず reply-only cycle で不要な re-review が 1 サイクル余分に走る)
      - **Markdown パース経路 (Target Comment Fast Path の rite レビュー結果 / Priority 3 legacy Markdown fallthrough)**: ステップ 1.2.1 step 6 の構築規則に従う — `### 全指摘事項` の行は `true` (5.3.0.M 通過済み blocking 集合。5.3.0.M 導入前の旧コメントも全件 blocking 前提で描画されているため true が後方互換上も正しい)、`### 実測なし指摘 (non-blocking)` section の行は `false`
      - **外部ツール / best-effort parse 経路 (手動コメント / verified-review 等)**: `Verification:` アンカーを構造的に持てないため `measured_map` に**登録しない** (= 未判定)。実測必須ゲートの対象外 — 未判定を non-blocking と解釈せず、従来どおり External review (Action required = blocking) として扱う
@@ -1842,6 +1842,22 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
 - ユーザー向けエラー表示で、技術的詳細を隠蔽する必要がある
 
 これらに該当しない修正を採用する場合、Wiki (`/rite:wiki-query`) で project-specific な許容パターンを事前確認すること。本原則は fix.md の手順として常時適用される（config での opt-out は不可）。
+
+### Simplification-First Response Principle（追加より削除を先に検討）
+
+指摘に対する修正方針を決定する前に、以下のチェックリストを必ず通過させること（Fail-Fast Response Principle と同様、config での opt-out は不可）:
+
+- [ ] 機構の**追加**（新しい分岐・ガード・規約・注記・例外条項）ではなく、既存機構の**削除・単純化**（分岐の統合、規則の一般化、複製の一本化）で指摘を解消できないか検討したか
+- [ ] 追加しようとしている分岐 / ガード / 規約は、指摘された 1 ケース専用になっていないか（1 ケース対応の追加は、次 cycle でその追加自体が新たなレビュー対象面となり指摘を再生産する）
+- [ ] 修正 diff は指摘の解消に必要な最小か。指摘されていない「ついで」の防御・柔軟性・将来対応を含んでいないか
+
+本原則の対象は**機構の追加**（分岐・ガード・規約・注記・例外条項）である。テストケースの追加や既存複製の同期更新は対象外（それらは通常それ自体が正しい修正であり、削除で代替しない）。
+
+**Escalation trigger（パッチの重ね掛け停止）**: 対応中の finding が**同一 PR の前 cycle の fix が導入・変更した箇所**への指摘である場合（description が「cycle N で導入した」「前 cycle で追加した」等で当該 fix を名指しする場合を含む）、同じ機構への追加パッチを既定選択にしないこと。まず「当該機構ごと削除・単純化して指摘群を根から消せないか」を検討し、修正案の提示（ステップ 2.3）の前にその判断を chat へ 1 行明示する（例: `simplification-first: 分岐機構を削除し行全体再生成へ単純化` / `simplification-first: 追加パッチを選択 — 理由: {reason}`）。
+
+**追加で修正する場合**、commit message に「なぜ削除・単純化ではなく追加を選んだか」を明示すること（Fail-Fast の fallback 明示義務と同型）。
+
+rationale: references/design-rationale.md#simplification-first-rationale
 
 ### 2.1 Confirm Fix Approach
 

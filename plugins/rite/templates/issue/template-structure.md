@@ -291,9 +291,19 @@ Select ONE matching the Issue type. The type confirmed in `create.md` ステッ�
 ```markdown
 ## 9. Decision Log
 
-<!-- Record decisions made during implementation that affect the spec -->
+<!-- Record decisions only. A decision not to act (out of scope, deferred, rejected) belongs here, and so does the work item it declines; work you have taken on and not yet finished does not -->
+<!-- NOT here — each has its own medium: an open work item you have taken on (work memory's plan-deviation log), a planned test (a T-xx row in Section 6), a fix rationale, a review response included (the commit body) -->
 - YYYY-MM-DD D-01: {decision} / Reason: {reason} / Impact: {AC_or_Test_ID}
 ```
+
+**Rules**:
+- Record only decisions the code and tests cannot state: a scope boundary, a rejected alternative, a compatibility decision Section 3.3 (Refactor Issues) does not already carry, a knowingly accepted exception
+- A decision *not* to act — "out of scope for this PR", "deferred", "rejected" — is itself a scope boundary and belongs here, and so does the work item it declines. What does not belong is work you have taken on and not yet finished
+- Do not record that work here, or its count grows with the number of review cycles until the real decisions are buried. Each kind has its own medium, so route rather than drop:
+  - an open work item you have taken on → the work memory's plan-deviation log (deviation type `追加`)
+  - a planned test → a new `T-xx` row in Section 6 (its Canon TDD test list is appended to as behaviors surface)
+  - a fix rationale, a review response included → the commit body (`skills/fix/SKILL.md` ステップ 3.2 requires the chosen 対応方針 there, ステップ 3.2.1 the root cause)
+- This extends `knowledge_routing` (`skills/rite-workflow/references/coding-principles.md`) from code artifacts to this Issue section: each kind of knowledge is recorded once, in the medium where it survives
 
 ---
 

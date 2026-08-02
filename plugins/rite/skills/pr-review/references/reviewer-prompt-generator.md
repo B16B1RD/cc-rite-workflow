@@ -22,6 +22,9 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 2. **仕様自体に問題がある（矛盾、曖昧さ、技術的に不可能）と判断した場合** → 指摘として挙げず、「仕様への疑問」セクションに記載し、ユーザー確認を促す
 3. **仕様に記載がない実装判断** → 通常のレビュー基準で評価
 
+**仕様中の番号参照は裏取りしてから判定に使う**: 仕様が commit / Issue / PR 番号を引いて内容を主張している場合（「#N で X された」「#N 以降 Y で運用」等）、その断定を評価基準に使う**前に** `git log --oneline -1 {sha}` / `git show {sha}^:{path}` と `git show {sha}:{path}`（変更方向は両側必須）/ `gh issue view {N} -R <owner>/<repo> --json number,title,state,url` / `gh pr view {N} -R <owner>/<repo>` で裏取りする。**`gh` には `-R <owner>/<repo>` を必ず明示すること** — 省略すると SSH host alias 環境で別リポジトリを引く（owner/repo の解決手順は [`references/gh-cli-patterns.md` の Owner/Repo Resolution](../../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) に従う）。裏取りで仕様側の誤りが判明したら、実装を「仕様不整合」として指摘するのではなく上記ルール 2 の「仕様への疑問」に回す（誤った仕様を ground truth として扱うと仕様の誤りが CRITICAL 指摘として増幅される）。squash merge commit の subject 末尾 `(#N)` は **PR 番号**であり Issue 番号ではない。`gh issue view` は PR 番号を渡しても成功して PR を返すため、Issue として引く番号は返った `url` のパスセグメントが `/issues/` であることを先に確認する（`/pull/` なら PR。title 照合は PR title が Issue title から派生するため判別に使えず、`state` も open な PR が Issue と同じ `OPEN` を返すため単独では使えない）。裏取りできない場合（`gh` 認証切れ等）は仕様の当該断定を評価基準に使わず、「仕様への疑問」に未検証として記載する。
+<!-- 番号種別判定（url パスセグメント / title・state が使えない理由）の同旨記述: skills/issue-create/references/body-fact-check.md のクラス 1。reviewer prompt は subagent に注入されるため本文は自己完結させるが、gh の挙動が変わったときは両方を更新すること -->
+
 ## 共通レビュー原則
 <!-- `_reviewer-base.md` から抽出される全 reviewer 共通の原則。READ-ONLY Enforcement / Mindset / Cross-File Impact Check / Confidence Scoring が含まれる。reviewer 固有の identity (Role / Core Principles / Detection Process / Detailed Checklist (Expertise Areas, Review Checklist, Severity Definitions, Finding Quality Guidelines) / Output Format) は named subagent の system prompt (agents/{reviewer_type}-reviewer.md) として自動注入されるためここには含めない -->
 {shared_reviewer_principles}
@@ -63,7 +66,7 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 
 さらに、掲載可否とは独立に次を自問してください（**No でも報告可**。掲載可否は上の 4 自問だけが決めます）:
 
-5. **実測基準**: 再現コマンド + 観測される誤動作、または failing test を `Verification:` アンカーとして添付できるか？（Yes → `Verification:` アンカーを `内容` 列に添付する。No → アンカーを付けずに報告する。記録経路の現況は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照） **アンカー無しの指摘は merge を止めない** (実測必須ゲートで non-blocking に分類され fix サイクルを起動しない)。実測できるなら必ずアンカーを添えること。**アンカーに装飾を付けないこと** (`**Verification:**` / `` `Verification:` `` / 全角コロン等は後段の形式検証を通らず、実測済みでも non-blocking に降格する)。
+5. **実測基準**: 再現コマンド + 観測される誤動作、または failing test を `Verification:` アンカーとして添付できるか？（Yes → `Verification:` アンカーを `内容` 列に添付する。No → アンカーを付けずに報告する。記録経路の現況は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照） **アンカー無しの指摘は merge を止めない** (実測必須ゲートで non-blocking に分類され fix サイクルを起動しない)。実測できるなら必ずアンカーを添えること。**アンカーに装飾を付けないこと** (`**Verification:**` / `` `Verification:` `` / 全角コロン等は後段の形式検証を通らず、**未判定 (blocking のまま) として扱われる** — 実測済みでも non-blocking にはならないが、判定不能な指摘として merge を止め続ける)。**marker と `=>` の間に `<br>` を入れないこと** (`<br>` は正規形の検出自体を破るため単独で `measured=false` へ降格し、実測済みの指摘が merge を止めなくなる)。句点・改行は正規形アンカーなら無害だが、装飾等の書式崩れと重なると未判定ではなく降格へ落ちるので、LHS に入れないのが安全。
 
 | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
 |--------|----------|------------|------|----------|
@@ -71,7 +74,7 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 
 **`内容` 列のアンカー記入例**（`Likelihood-Evidence:` は掲載可否、`Verification:` は実測の記録を担う直交アンカー。実測できた指摘は両方を末尾に付けること）:
 
-> ⚠️ **`内容` 列の中では raw `|` (パイプ) を使わないこと**（`Likelihood-Evidence:` / `Verification:` / 叙述部のいずれも対象）。テーブルのセル境界と衝突して 5 列構造を壊し、アンカーも機械抽出できず記録が失われます。パイプは `¦` (U+00A6) で代替表記してください（下記 2 番目の例）。詳細は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照。
+> ⚠️ **`内容` 列の中では raw `|` (パイプ) を使わないこと**（`Likelihood-Evidence:` / `Verification:` / 叙述部のいずれも対象）。テーブルのセル境界と衝突して 5 列構造を壊します。セルを跨がずに `description` へ届いた場合、アンカーは検出 regex に match せず原則として**未判定 (blocking のまま)** になり、判定不能な指摘が merge を止め続けます。ただし marker から `=>` までの間に改行 / `<br>` / 句点があるとその手前で判定が切れ `measured=false` へ降格します (実測済みでも merge を止めません)。パイプは `¦` (U+00A6) で代替表記してください（下記 2 番目の例）。詳細は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照。
 
 ```
 {WHAT + WHY の叙述}<br>Likelihood-Evidence: existing_call_site src/api.ts:45<br>Verification: repro node dist/cli.js --input empty.json => TypeError: Cannot read properties of undefined

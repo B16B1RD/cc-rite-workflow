@@ -116,6 +116,14 @@ caller の `exit 1` 直前に emit が必要になる。
 - **`wc -l` の stderr を独立退避する理由**: `2>/dev/null` だと read permission 拒否 / inode 破損 / ファイル内容破壊などの IO エラーで silent に空文字列 → count=0 に落ちて、policy override の監査トレースが完成報告から silent drop する。
 - **exit 時に confidence_override / pr-comment tempfile を明示的に rm する理由 (defense-in-depth)**: ステップ 1.2 進入時の無条件 truncate (`: >`) に削除を委ねると、何らかの経路で truncate 呼び出しが skip された場合に前セッションの stale データが混入する silent regression が起きる。ステップ 5.1 (E2E) / ステップ 5.2 (Standalone) の終了経路で specific path による明示 rm を行い、次回実行時の混入を決定論的に防ぐ。
 
+## simplification-first-rationale
+
+ステップ 2 冒頭に本原則を置く理由: 多サイクル PR の実測分析（2026-07、PR #2052 / #2066 / #2070 の永続レビュー結果 JSON 9 cycle 分）で、cycle 2 以降の blocking 指摘の約 8 割が「前 cycle の fix が導入した機構への指摘」だった。指摘への修正が規約・分岐・ガードの**追加**で行われると、次 cycle がその追加物を同じ厳密さでレビューして新たな構造欠陥を検出し、ループが収束しない。実例: PR #2052 は +64/-16 の docs 変更に fix 6 cycle・実時間 10 時間超を要し、序盤 cycle が積み上げた分岐機構を「削除して行全体再生成へ単純化する」fix が入った時点で初めて収束へ向かった。
+
+新しいモデル世代（Opus 4.5 以降）には頼まれていない抽象・柔軟性を足す overengineering 傾向が公式に文書化されており（[Claude prompting best practices §Overeagerness](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-4-best-practices)）、追加型 fix はこの傾向と毎 cycle の全力 re-review の相互作用で発散する。
+
+Escalation trigger が「前 cycle fix への指摘」を名指しする理由: 同分析で cycle 3 以降の指摘はほぼ全てこの型であり、パッチ重ね掛けスパイラルの最も確度の高い観測シグナルであるため。Root Cause Gate（ステップ 3.2.1）とは直交する — あちらは commit body に根本原因の**記名**を求め、本原則は修正の**形**（追加 vs 削除・単純化）を問う。
+
 ## impact-scan-rationale
 
 ステップ 2.2.A Pre-Fix Impact Scan が必須である理由: 「指摘箇所だけ直す」では既存 caller / test / 他 file の同名
