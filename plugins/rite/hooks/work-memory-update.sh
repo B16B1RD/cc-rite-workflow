@@ -41,10 +41,11 @@
 #                             (default: "false")
 #
 # Observability note:
-#   本 helper が stderr へ出す WARNING (carry-forward 不能 / 数値バリデーション降格 / Detail 抽出失敗)
-#   は、skill 経由の通常更新経路が `bash hooks/local-wm-update.sh 2>/dev/null` の形で呼ぶため破棄される。
-#   実際に届くのは stderr を素通しする caller (pre-compact.sh / post-tool-wm-sync.sh) とテストのみ。
-#   call site 側を stderr 退避形へ揃えるのは本 helper の管轄外。
+#   本 helper が stderr へ出す WARNING (値の読み戻し不能 / 数値バリデーション降格 / Detail 抽出失敗)
+#   は、いずれも縮退時に rc=0 を返す経路で出る。call site が stderr を捨てるか rc ゲートで握るかに
+#   関わらず届かないのはこのためで、実際に届くのは本 helper を直接 source する caller
+#   (pre-compact.sh / post-tool-wm-sync.sh) とテストのみ。call site を stderr 退避形へ揃えるだけでは
+#   届かず、rc ゲートを外す設計判断が別途要る (本 helper の管轄外)。
 #
 # Security note:
 #   WM_* 環境変数の sanitize は caller 責務とする設計だったが、orchestrator 経由で LLM 出力 / Issue
@@ -167,10 +168,10 @@ update_local_work_memory() {
   local parse_script="${WM_PLUGIN_ROOT}/hooks/work-memory-parse.py"
 
   # 既存ファイルの値の読み戻し。sync_revision の increment に加え、pr_number / loop_count を
-  # carry-forward する — この 2 field を env で渡す caller は pre-compact のみで、implement /
-  # review / fix / ready の Ready 化前更新はいずれも値を渡さない。読み戻さないと更新のたびに
-  # 既定値へ巻き戻り、work-memory-format.md の field 定義が宣言する意味を実ファイルが満たせない。
-  # (WM_READ_FROM_FLOW_STATE を渡す lint / ready の Ready 化後更新は下段で上書きされるため対象外)
+  # carry-forward する — env override も flow-state 読み取りも伴わない更新経路では、読み戻さない
+  # 限り更新のたびに既定値へ巻き戻り、work-memory-format.md の field 定義が宣言する意味を実ファイル
+  # が満たせない。値を持つ caller は自分で env override を渡すので、下の -z ガードで区別する
+  # (caller を列挙して説明しない — call site が増えるたびに記述が偽になるため)。
   if [ -f "$local_wm" ] && [ -f "$parse_script" ]; then
     # work-memory-parse.py は corrupt 判定 (missing_keys / issue_number_mismatch) でも .data を
     # 埋めたうえで exit 2 を返す。よって exit code ではなく stdout の有無で採否を決める
@@ -195,14 +196,16 @@ update_local_work_memory() {
       IFS=$'\t' read -r existing_rev existing_pr existing_loop existing_keys <<< "$parsed"
     fi
     case "$existing_keys" in ''|*[!0-9]*) existing_keys=0 ;; esac
-    # 縮退を silent に飲むと、pr_number / loop_count / sync_revision がすべて既定値へ倒れたことが
-    # 「もともと値が無かった」と区別できない。non-blocking は維持しつつ WARNING で観測性を確保する
-    # (下段 detail_extra awk と同形)。判定は .data の要素数 1 本 — 読取失敗・ヘッダ欠落・jq 失敗は
-    # いずれも 0 になり、corrupt でも .data が埋まる系統では非 0 になるため、材料を実際に失った
-    # ときだけ発火する。parse の rc は原因切り分け用に文面へ載せるだけで条件には使わない
-    # (rc を条件にすると、carry-forward が成功する corrupt 系統でも発火して誤報になる)。
+    # 読み戻し不能を silent に飲むと、sync_revision が 1 へ巻き戻ったことが「もともと版が無かった」
+    # と区別できない。non-blocking は維持しつつ WARNING で観測性を確保する (下段 detail_extra awk と
+    # 同形)。判定は .data の要素数 1 本 — 読取失敗・ヘッダ欠落・jq 失敗はいずれも 0 になり、corrupt
+    # でも .data が埋まる系統では非 0 になるため、材料を実際に失ったときだけ発火する。parse の rc は
+    # 原因切り分け用に文面へ載せるだけで条件には使わない (rc を条件にすると、carry-forward が成功
+    # する corrupt 系統でも発火して誤報になる)。
+    # 文面が断定するのは sync_revision だけに留める — pr_number / loop_count は本ブロックより後段の
+    # env override / flow-state 読み取りが最終値を決めるため、ここでは既定値化を断定できない。
     if [ "$existing_keys" -eq 0 ]; then
-      echo "WARNING: 既存 WM から carry-forward できませんでした ($local_wm, parse rc=$_parse_rc) — pr_number / loop_count / sync_revision を既定値へ倒します" >&2
+      echo "WARNING: 既存 WM から値を読み戻せませんでした ($local_wm, parse rc=$_parse_rc) — sync_revision を 1 から採番し直します (pr_number / loop_count は env override も flow-state 読み取りも無い場合のみ既定値へ倒れます)" >&2
     else
       if [[ "$existing_rev" =~ ^[0-9]+$ ]]; then sync_rev=$((existing_rev + 1)); fi
       # carry-forward は env override が無いときだけ発火させる。未設定判定に `-z` を使うのは

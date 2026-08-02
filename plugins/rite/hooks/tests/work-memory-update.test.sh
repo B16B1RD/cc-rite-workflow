@@ -129,6 +129,11 @@ run_update() {
     'source "$WM_PLUGIN_ROOT/hooks/work-memory-update.sh" && update_local_work_memory')
 }
 
+# 読み戻し不能 WARNING の照合文字列。肯定側 (T-03.4) と否定側 (T-08.5 / T-10) の両方が参照するため
+# 1 箇所に集約する — 別々にリテラルを持つと、文言変更で肯定側だけ追随して否定側が恒久的に vacuous
+# になる (grep が何にも一致しなくなり「WARNING が出ていない」と誤って PASS する)。
+WARN_CARRY_FWD="既存 WM から値を読み戻せませんでした"
+
 # --- TC-1: per-session present + legacy absent + WM_REQUIRE_FLOW_STATE=true ---
 # cycle 12 fix の core invariant: WM_REQUIRE_FLOW_STATE check が legacy file 直接 [ -f ] check ではなく
 # flow-state.sh 経由になったので per-session のみで skip しない
@@ -330,8 +335,8 @@ assert_eq "T-03.1: return 0 (parse 失敗でも更新は続行、AC-3)" "0" "$rc
 body7=$(cat "$WM_FILE7" 2>/dev/null || echo "")
 assert_contains "T-03.2: pr_number: null (既定値、AC-3)" "pr_number: null" "$body7"
 assert_contains "T-03.3: loop_count: 0 (既定値、AC-3)" "loop_count: 0" "$body7"
-assert_contains "T-03.4: 縮退が WARNING で可視化される (silent に既定値へ倒れない)" \
-  "既存 WM から carry-forward できませんでした" "$err7"
+assert_contains "T-03.4: 読み戻し不能が WARNING で可視化される (silent に既定値へ倒れない)" \
+  "$WARN_CARRY_FWD" "$err7"
 
 # ─── T-04: env override が既存ファイル値より優先される ───────────
 # pr_number / loop_count は独立した 2 つの条件式で守られているため、両方を検証する
@@ -477,8 +482,8 @@ body12=$(cat "$SBX12/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
 assert_contains "T-08.2: sync_revision が 6 へ加算される (版が逆行しない)" "sync_revision: 6" "$body12"
 assert_contains "T-08.3: pr_number=123 が carry-forward される" "pr_number: 123" "$body12"
 assert_contains "T-08.4: loop_count=4 が carry-forward される" "loop_count: 4" "$body12"
-warn12=$(printf '%s' "$err12" | grep -c 'carry-forward できませんでした') || true
-assert_eq "T-08.5: carry-forward 成功時は縮退 WARNING を出さない (誤報しない)" "0" "$warn12"
+warn12=$(printf '%s' "$err12" | grep -c "$WARN_CARRY_FWD") || true
+assert_eq "T-08.5: carry-forward 成功時は読み戻し不能 WARNING を出さない (誤報しない)" "0" "$warn12"
 
 # ─── T-09: pr-create が WM_PR_NUMBER を seed する静的 pin ─────────
 # carry-forward は「保持する」だけで値を生成しない。seed 行が消えると pr_number は
@@ -490,6 +495,38 @@ assert_eq "T-09.0: pr-create/SKILL.md が存在する (前提確認)" "yes" \
   "$([ -f "$PR_CREATE_MD" ] && echo yes || echo no)"
 pr_create_body=$(cat "$PR_CREATE_MD" 2>/dev/null || echo "")
 assert_contains "T-09.1: WM_PR_NUMBER=\"{pr_number}\" の seed 行がある" 'WM_PR_NUMBER="{pr_number}"' "$pr_create_body"
+
+# ─── T-10: 既定値状態の WM でも読み戻し不能 WARNING を出さない ────
+# 誤報の検証は、否定が最も破られやすい入力で行う必要がある。T-08.5 の fixture は 2 field とも
+# 非既定値だが、production で最も多いのは env override 無しで書かれた pr_number: null /
+# loop_count: 0 の状態で、pr-create が seed するまでの全更新がこれを先行ファイルとして読む。
+# この状態で誤発火すると sync_revision が 1 に凍結し、work-memory-format.md が定義する
+# ordering / conflict detection が働かなくなる。あわせて WM 不在からの初回作成でも
+# WARNING が出ないことを見る (材料が無いのは正常であって縮退ではない)。
+echo "T-10: 既定値状態の WM / WM 不在からの初回作成では読み戻し不能 WARNING を出さない"
+SBX13=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX13")
+write_config "$SBX13"
+# 1 回目 = WM 不在からの新規作成 (env override なし → pr_number: null / loop_count: 0 が書かれる)
+err13a=$(run_update "$SBX13" \
+  WM_SOURCE="implement" WM_PHASE="implement" WM_PHASE_DETAIL="実装中" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="First." WM_ISSUE_NUMBER="687" 2>&1 >/dev/null) || true
+WM_FILE13="$SBX13/.rite-work-memory/issue-687.md"
+seed13=$(cat "$WM_FILE13" 2>/dev/null || echo "")
+assert_contains "T-10.0a: 新規作成で pr_number: null が書かれる (前提確認)" "pr_number: null" "$seed13"
+assert_contains "T-10.0b: 新規作成で loop_count: 0 が書かれる (前提確認)" "loop_count: 0" "$seed13"
+warn13a=$(printf '%s' "$err13a" | grep -c "$WARN_CARRY_FWD") || true
+assert_eq "T-10.1: WM 不在からの初回作成で WARNING を出さない" "0" "$warn13a"
+
+# 2 回目 = 既定値状態の WM を先行ファイルとして読む通常更新
+err13b=$(run_update "$SBX13" \
+  WM_SOURCE="lint" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Second." WM_ISSUE_NUMBER="687" 2>&1 >/dev/null) || true
+body13=$(cat "$WM_FILE13" 2>/dev/null || echo "")
+warn13b=$(printf '%s' "$err13b" | grep -c "$WARN_CARRY_FWD") || true
+assert_eq "T-10.2: 既定値状態の WM を読んでも WARNING を出さない (誤報しない)" "0" "$warn13b"
+assert_contains "T-10.3: sync_revision が 2 へ加算される (1 に凍結しない)" "sync_revision: 2" "$body13"
+assert_contains "T-10.4: pr_number: null が維持される" "pr_number: null" "$body13"
+assert_contains "T-10.5: loop_count: 0 が維持される" "loop_count: 0" "$body13"
 
 echo
 echo "─── work-memory-update.test.sh summary ──────────────────────────"
