@@ -4,6 +4,7 @@
 * **Create**: [規約の強制度が矛盾したら、緩い側を強めるより強い側の適用範囲を絞る](pages/heuristics/resolve-strength-conflict-by-narrowing-the-strong-side.md) — raw/reviews/20260802T143430Z-pr-2092.md / raw/fixes/20260802T143712Z-pr-2092.md を新規ページ化（緩和条件の削除は規則の文面を短くするが義務の総量を増やす / 矛盾が何ケースで成立しているかを先に数える / 範囲縮小でも受け皿問題自体は解けない）
 * **Create**: [恒久規範の理由付けを「今は動かない」という現時点の欠陥への断定に置くと、欠陥が直った時点で規範が静かに誤りになる](pages/anti-patterns/rationale-asserting-current-defect-rots-when-fixed.md) — raw/reviews/20260802T143430Z-pr-2092.md / raw/fixes/20260802T143712Z-pr-2092.md を新規ページ化（断定が同一ファイル内の現行 MUST と正面から矛盾していた / 実害は必須ゲートの skip による false positive / 判断は残し理由の従属節だけを削除する）
 * **Update**: [canonical 例を持つ SoT は「例が自身の enforcer を通る」ことを実測で確かめる](pages/patterns/canonical-example-must-pass-its-own-enforcer.md) — raw/reviews/20260802T145006Z-pr-2092.md / raw/fixes/20260802T145247Z-pr-2092.md を統合（新設した原則の最初の適用対象はその PR 自身の diff / 原則を書き終えた時点で自分の変更を 1 度その原則で読み直す / canonical 例 vs enforcer と同じ形の自己適用検査）
+* **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 
 ## 2026-08-02
 
