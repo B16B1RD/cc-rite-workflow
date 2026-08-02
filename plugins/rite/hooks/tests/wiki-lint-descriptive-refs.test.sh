@@ -54,7 +54,7 @@
 #   TC-47  リンク行はあるが entries 0 件の index.md は検出失敗として計上する (stdin に依存しない)
 #   TC-48  index.md 終端アクションの戻り値 arity (4 値) を pin する (フィールドを減らす変異を弾く)
 #   TC-19c separate_branch (既定) でも index.md 不在は read_errors に数えない (#2069 T-06)
-#   TC-50  index-template.md 前文を entries に数えず、検出失敗ガードを殺さない (配布テンプレート回帰)
+#   TC-50  index-template.md 前文を entries に数えず、テーブル行は列解釈まで通る (配布テンプレート回帰)
 #   TC-50b 記法例コメントを持つ index.md でコメント除去規則そのものを pin する (literal fixture)
 #   TC-51  除外ブロック (コメント / フェンス) の未閉鎖を END で検出失敗へ倒す (部分欠損形も含む)
 #   TC-49  表と箇条書きが混在する index.md でも行単位で形式を判別する (移行期の必然形状)
@@ -922,6 +922,17 @@ cp "$PLUGIN_ROOT/templates/wiki/index-template.md" "$IDXSBX/.rite/wiki/index.md"
 tmpl_only_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)
 assert "TC-50 template 前文のみ (未登録) は検出失敗に計上しない" "0" "$(printf '%s' "$tmpl_only_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
 assert "TC-50 配布テンプレート前文は hits に数えない (本文側の 1 件のみ)" "1" "$(idx_hits "$tmpl_only_out")"
+# 上の 2 fixture は配布テンプレートの**前文**しか見ておらず、`## ページ一覧` のヘッダー行に到達する
+# assertion が 1 本も無い。テーブル行のサマリー抽出はヘッダー行から導出した列位置に依存するため、
+# ヘッダーの列名が変わる / 表ブロックごと消える変異は、前文だけを見る fixture では全 assertion 緑の
+# まま通る (テンプレートは lint 実行前に新規 bundle へ配布されるので CI で捕捉する経路が要る)。
+# cp した上でテーブル行を 1 本足し、その行のサマリーが数えられることと列崩れ 0 件を pin する。
+# 実測: ヘッダー列名の改称でも表ブロック削除でも hits 2 -> 1 / skipped 0 -> 1 に落ちる。
+cp "$PLUGIN_ROOT/templates/wiki/index-template.md" "$IDXSBX/.rite/wiki/index.md"
+printf '| [A](pages/patterns/a.md) | patterns | 詳細は #1151 | 2026-01-01 | high |\n' >> "$IDXSBX/.rite/wiki/index.md"
+tmpl_row_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)
+assert "TC-50 配布テンプレートのテーブル行はサマリーが数えられる (本文 1 + index 1)" "2" "$(idx_hits "$tmpl_row_out")"
+assert "TC-50 配布テンプレートのヘッダーで 5 列が解釈できる (列崩れ 0 件)" "0" "$(printf '%s' "$tmpl_row_out" | sed -n 's/^descriptive_refs_skipped_rows=//p')"
 # TC-50b: 上の cp fixture は「配布テンプレートが将来 entries を汚す形へ変わったら気づく」回帰検知で、
 # **コメント除去規則そのものの pin ではない** — 現行テンプレートは記法例コメントを持たないため、
 # 除去規則を殺す変異 (`in_comment` 分岐の `next` 落とし) が cp fixture では生き残る。規則の pin は
