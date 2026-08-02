@@ -29,7 +29,7 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 |------|---------|--------------|
 | **矛盾** | 同じトピックで異なる結論を持つページ（タイトル衝突・方針逆転・重複情報） | Yes |
 | **陳腐化** | `updated` frontmatter が閾値（デフォルト 90 日）を超えて更新されていないページ | Yes |
-| **孤児ページ** | `pages/` 配下に存在するが `index.md` の OKF 箇条書き（`* [title](pages/...) - desc`）に登録されていないページ | Yes |
+| **孤児ページ** | `pages/` 配下に存在するが `index.md` のページカタログ（`## ページ一覧` の 5 列テーブル。#2047 以前に初期化された bundle の箇条書き `* [title](pages/...) - desc` も登録として扱う）に登録されていないページ | Yes |
 | **欠落概念 (missing_concept)** | `raw/` に `ingested: true` の Raw Source があるが、対応ページも `sources.ref` 登録も `ingest_status: skipped` 記録（raw frontmatter）も存在しない真の欠落 | Yes |
 | **壊れた相互参照** | ページ本文の Markdown リンク `](...)` が `pages/` 配下の実在ファイルを指していない | Yes |
 | **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、raw frontmatter に `ingest_status: skipped` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
@@ -376,7 +376,7 @@ fi
 
 ## ステップ 5: 孤児ページ検出
 
-検出本体は `wiki-lint-orphans.sh` に委譲する。helper は index.md を branch_strategy 別に読み出し、OKF 箇条書き（`* [title](pages/...) - desc`）の登録ページと `pages_list` の集合差分を marker block で emit する。登録ページの抽出は `](pages/...)` リンクの grep ベース（テーブルか箇条書きかに非依存）なので、Issue #1519 の index 箇条書き化後も無改修で機能する（リンク先 `pages/{domain}/{slug}.md` を維持する条件）。
+検出本体は `wiki-lint-orphans.sh` に委譲する。helper は index.md を branch_strategy 別に読み出し、カタログに登録されたページと `pages_list` の集合差分を marker block で emit する。登録ページの抽出は `](pages/...)` リンクの grep ベース（テーブルか箇条書きかに非依存）なので、Issue #1519 の箇条書き化と #2047 のテーブル形式化のどちらでも無改修で機能する（リンク先 `pages/{domain}/{slug}.md` を維持する条件）。
 
 > **Reference**: canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-orphans.sh`。helper は index.md 読出 (`git show`(separate_branch) / `cat`(same_branch))・登録ページ抽出 (`](pages/...)` リンクの `./pages/` / `../pages/` 形式対応の緩和 regex + `sort -u`、テーブル／箇条書き両形式で機能)・`.rite/wiki/` プレフィックス正規化・集合差分・読出失敗 / 抽出 0 件の skip 判定 (全ページ orphan 誤検出防止)・marker block / `orphan_check_ok` enum / `[CONTEXT]` sentinel 出力をすべて内包する (旧 index.md 事前読出 + 孤児検出 inline 実装を委譲)。placeholder residue gate も helper 内で実行される。
 
@@ -409,7 +409,7 @@ fi
 {
   "category": "orphan",
   "page": ".rite/wiki/pages/patterns/new-page.md",
-  "detail": "index.md の OKF 箇条書き（* [title](pages/...) - desc）に未登録"
+  "detail": "index.md のページカタログ（## ページ一覧 テーブル）に未登録"
 }
 ```
 
