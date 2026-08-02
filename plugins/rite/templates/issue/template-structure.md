@@ -291,15 +291,19 @@ Select ONE matching the Issue type. The type confirmed in `create.md` ステッ�
 ```markdown
 ## 9. Decision Log
 
-<!-- Record only choices the code and tests cannot state: scope boundary, rejected alternative, compatibility policy, knowingly accepted exception -->
-<!-- NOT here — each of these has its own medium: work item (work memory's plan-deviation log), planned test (a T-xx row in Section 6), fix rationale (the commit body) -->
+<!-- Record decisions only. A decision not to act (out of scope, deferred, rejected) belongs here; the undone work itself does not -->
+<!-- NOT here — each has its own medium: an open work item (work memory's plan-deviation log), a planned test (a T-xx row in Section 6), a fix rationale (the commit body) -->
 - YYYY-MM-DD D-01: {decision} / Reason: {reason} / Impact: {AC_or_Test_ID}
 ```
 
 **Rules**:
-- Record only what the code and tests cannot state: scope boundaries, rejected alternatives, compatibility policy, knowingly accepted exceptions
-- Do NOT record work items, planned tests, or fix rationale here — they are not decisions, and their count grows with the number of review cycles until the real decisions are buried. Each has its own medium, so route rather than drop: a work item found during implementation → the work memory's plan-deviation log (deviation type `追加`); a test need → a new `T-xx` row in Section 6 (its Canon TDD test list is appended to as behaviors surface); the reason behind a fix, a review response included → the commit body (`skills/fix/SKILL.md` ステップ 3.2.1 Root Cause Gate already requires it there)
-- This applies `knowledge_routing` (`skills/rite-workflow/references/coding-principles.md`) to this section: each kind of knowledge is recorded once, in the medium where it survives
+- Record only decisions the code and tests cannot state: a scope boundary, a rejected alternative, a compatibility decision Section 3.3 does not already carry, a knowingly accepted exception
+- A decision *not* to act — "out of scope for this PR", "deferred", "rejected" — is itself a scope boundary and belongs here. The undone work does not
+- Do not record the work itself, or its count grows with the number of review cycles until the real decisions are buried. Each kind has its own medium, so route rather than drop:
+  - an open work item → the work memory's plan-deviation log (deviation type `追加`)
+  - a planned test → a new `T-xx` row in Section 6 (its Canon TDD test list is appended to as behaviors surface)
+  - a fix rationale, a review response included → the commit body (`skills/fix/SKILL.md` ステップ 3.2 requires the chosen 対応方針 there, ステップ 3.2.1 the root cause)
+- This extends `knowledge_routing` (`skills/rite-workflow/references/coding-principles.md`) from code artifacts to this Issue section: each kind of knowledge is recorded once, in the medium where it survives
 
 ---
 
