@@ -39,9 +39,11 @@
 #     stdout as "no context to inject" and continue.
 #   - Reads index.md via `git show` for separate_branch strategy, via direct
 #     file read for same_branch strategy.
-#   - OKF v0.1 2-pass (Issue #1519): the index.md is an OKF reserved bullet
-#     structure (`* [title](path) - description`) carrying only title/path/
-#     description. Pass 1 parses those candidates; Pass 2 reads each candidate
+#   - OKF v0.1 2-pass: the canonical index.md is a 5-column table (page /
+#     domain / summary / updated / confidence). Pass 1 only parses the OKF
+#     bullet form (`* [title](path) - description`), so a table-form index
+#     yields no candidates (reader-side table support is tracked in Issue
+#     #2053). The table columns are a copy — Pass 2 reads each candidate
 #     page's frontmatter for domain/confidence/updated (Source of Truth). A
 #     candidate whose page frontmatter is unreadable is skipped with a WARNING
 #     (non-blocking — the index→page drift surfaces but other candidates render).

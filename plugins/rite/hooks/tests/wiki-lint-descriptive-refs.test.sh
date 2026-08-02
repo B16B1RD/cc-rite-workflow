@@ -54,7 +54,8 @@
 #   TC-47  リンク行はあるが entries 0 件の index.md は検出失敗として計上する (stdin に依存しない)
 #   TC-48  index.md 終端アクションの戻り値 arity (4 値) を pin する (フィールドを減らす変異を弾く)
 #   TC-19c separate_branch (既定) でも index.md 不在は read_errors に数えない (#2069 T-06)
-#   TC-50  index-template.md 前文を entries に数えず、検出失敗ガードを殺さない
+#   TC-50  index-template.md 前文を entries に数えず、検出失敗ガードを殺さない (配布テンプレート回帰)
+#   TC-50b 記法例コメントを持つ index.md でコメント除去規則そのものを pin する (literal fixture)
 #   TC-51  除外ブロック (コメント / フェンス) の未閉鎖を END で検出失敗へ倒す (部分欠損形も含む)
 #   TC-49  表と箇条書きが混在する index.md でも行単位で形式を判別する (移行期の必然形状)
 #   TC-52  index.md のリンク regex が orphans.sh と literal 一致 (共有定義の drift 検出)
@@ -540,8 +541,9 @@ onlylink=$(printf '# Wiki Index\n\n| ページ | ドメイン | サマリー | �
 printf '%s' "$onlylink" > "$IDXSBX/.rite/wiki/index.md"
 assert "TC-29 (T-02) リンクテキスト列のみの番号は hits に数えない" "1" "$(idx_hits "$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)")"
 
-# OKF 箇条書き形式。テーブル専用にすると、template と wiki-ingest が**指示**しているこの形式と
-# 実挙動の乖離が解消された時点で検出が無言で 0 件へ倒れる (本 helper が塞ごうとしている盲点と同型)。
+# OKF 箇条書き形式。箇条書きテンプレートが配布されていた期間に初期化された bundle の index.md は
+# 箇条書きのまま残り移行を促す producer もいないため、テーブル専用にするとそれらの bundle で
+# 検出が無言で 0 件へ倒れる (本 helper が塞ごうとしている盲点と同型)。
 #
 # fixture の「意地悪さ」をテーブル経路と揃える。テーブル側は生パイプ入りタイトル (TC-27) と
 # コードスパン入りサマリー (TC-50) でマスク相互作用を pin しているのに、箇条書き側が素朴な形しか
@@ -556,9 +558,9 @@ printf '%s\n' "$IDX_PAGE_REL" | idx_run > "$bul_out" 2>/dev/null
 assert "TC-30 OKF 箇条書き形式でもサマリーだけを検出する" "3" "$(sed -n 's/^page=\.rite\/wiki\/index\.md; hits=//p' "$bul_out")"
 assert "TC-30 箇条書きは生パイプを含む行でもテーブル扱いにならない (列崩れ 0 件)" "0" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$bul_out")"
 
-# 形式判別は **行単位** で行う (ファイル単位で先頭一致から決め打ちしない)。稼働中の wiki は
-# テーブル、template と wiki-ingest ステップ 6 が生成するのは箇条書きのため、移行期には
-# 1 ファイル内に両形式が必ず混在する。単一形式の fixture しか無いと、判別をファイル単位へ
+# 形式判別は **行単位** で行う (ファイル単位で先頭一致から決め打ちしない)。ingest はテーブル行を
+# 追記するが節の外の旧箇条書き行を削除も移送もしないため、箇条書きのまま残る bundle では
+# 1 ファイル内に両形式が混在する。単一形式の fixture しか無いと、判別をファイル単位へ
 # 寄せる変異が全 assertion 緑のまま生き残る。表 1 行 + 箇条書き 1 行を同居させ、両方の
 # サマリーが数えられること (合計 = 本文 1 + index 2) を pin する。箇条書き側はリンクテキストにも
 # 番号を置き、混在時も AC-2 (リンクテキスト列は対象外) が保たれることを同時に測る。
@@ -901,7 +903,7 @@ assert "TC-47 リンク行が 0 なら検出失敗に計上しない (登録前�
 
 # TC-50: 上の TC-47 fixture はどれも手書きの index で、`/rite:wiki-init` が配る
 # index-template.md の**前文を持たない**。現行テンプレートの前文は記法例コメントを持たないが、
-# テーブル形式化より前に初期化された bundle の index.md には箇条書きの記法例
+# 箇条書きテンプレートが配布されていた期間に初期化された bundle の index.md には箇条書きの記法例
 # `* [ページタイトル](pages/{domain}/{slug}.md) - …` がコメント内に残っており、コメントを
 # 落とさない実装ではその記法例が実エントリとして数えられ entries>=1 が恒久化して、それらの
 # index.md では検出失敗ガードが**構造的に発火しなくなる**。TC-47 の fixture では通ってしまう
@@ -920,6 +922,18 @@ cp "$PLUGIN_ROOT/templates/wiki/index-template.md" "$IDXSBX/.rite/wiki/index.md"
 tmpl_only_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)
 assert "TC-50 template 前文のみ (未登録) は検出失敗に計上しない" "0" "$(printf '%s' "$tmpl_only_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
 assert "TC-50 配布テンプレート前文は hits に数えない (本文側の 1 件のみ)" "1" "$(idx_hits "$tmpl_only_out")"
+# TC-50b: 上の cp fixture は「配布テンプレートが将来 entries を汚す形へ変わったら気づく」回帰検知で、
+# **コメント除去規則そのものの pin ではない** — 現行テンプレートは記法例コメントを持たないため、
+# 除去規則を殺す変異 (`in_comment` 分岐の `next` 落とし) が cp fixture では生き残る。規則の pin は
+# 記法例コメントを持つ形式を literal で書いて担保する (箇条書きテンプレートが配布されていた期間に
+# 初期化された bundle の index.md がこの形状で残る)。同型の pin を literal fixture で行う先例:
+# hooks/tests/wiki-query-inject.test.sh TC-5。
+printf '# Wiki Index\n\n<!-- 登録箇条書きの形式例（ingest が自動追記。このコメント行は登録ではない）:\n\n     * [ページタイトル](pages/{domain}/{slug}.md) - 詳細は #1151\n-->\n\n* [A](pages/patterns/a.md) - PR #792 の知見\n' > "$IDXSBX/.rite/wiki/index.md"
+legacy_err="$IDXSBX/legacy.err"; tmp_files+=("$legacy_err")
+legacy_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>"$legacy_err")
+# 合計は本文 1 + index の実エントリ 1 = 2。除去規則を殺すとコメント内の記法例も数えて 3 になる。
+assert "TC-50b 記法例コメント内のサマリーは hits に数えない (本文 1 + 実エントリ 1)" "2" "$(idx_hits "$legacy_out")"
+assert "TC-50b 記法例コメントを持つ index でも検出失敗に計上しない (実エントリがある)" "0" "$(printf '%s' "$legacy_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
 # 逆方向の pin: サマリー本文中に `<!-- -->` を**引用している実エントリ行**は落とさない。
 # コメント開始の行頭 anchor を外す変異 (`/<!--/`) を kill する。実測で現行 wiki の index.md に
 # 該当行が 2 件あり、anchor を外すと該当 2 行分 hits が減る（実測時 230 → 228。絶対値はスナップショット）。

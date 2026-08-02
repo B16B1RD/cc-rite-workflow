@@ -56,9 +56,9 @@
 #             Only the per-entry summary is scanned (see `_RITE_INDEX_COUNT_ACTION`): the
 #             summary shares its source with the page frontmatter `description`. In OKF
 #             bullet form `/rite:wiki-query` Pass 1 also matches keywords against it; the
-#             current table-form index yields no Pass 1 candidates, and ingest keeps
-#             appending table rows — so that is a standing non-conformance until Pass 1
-#             accepts tables, not a state a format migration clears on its own.
+#             canonical table form yields no Pass 1 candidates, so that is a standing
+#             non-conformance on the reader side until Pass 1 accepts tables — not a state
+#             a format migration clears on its own.
 #             Either way it is the surface a reader goes to for Why.
 #
 #   NOT scanned — each is a deliberate exclusion, not an unfinished area:
@@ -336,11 +336,13 @@ _RITE_COUNT_ACTION='/(TODO|FIXME)/ { next } { gsub(/`[^`]*`/, "_"); if ($0 ~ re)
 #
 # エントリ行の判定は `](pages/...)` リンクの有無で行い、テーブル行と OKF 箇条書きの両方を **行単位**で
 # 受ける。`templates/wiki/index-template.md` と wiki-ingest ステップ 6 はどちらもテーブル形式を生成し、
-# 現行の wiki ブランチもテーブルで維持されている。一方、テーブル形式化より前に初期化された bundle の
+# 現行の wiki ブランチもテーブルで維持されている。一方、箇条書きテンプレートが配布されていた期間に初期化された bundle の
 # index.md は箇条書き `* [title](pages/...) - desc` のまま残り、移行を促す producer も存在しないため、
 # 箇条書きは放っておけば消える残滓ではなくテーブルと併存し続ける。どちらか一方専用にすると、
-# そうした bundle、あるいは移行途中のファイルで検出が無言で 0 件へ倒れる。ファイル単位で形式を
-# 判定しないのは、混在が「起きうる」ではなく既存 bundle がテーブルへ移る過程で必ず通る状態だから。
+# そうした bundle で検出が無言で 0 件へ倒れる。ファイル単位で形式を判定しないのは、ingest が
+# テーブル行を追記しても節の外の旧箇条書き行を削除も移送もしない以上、混在が「起きうる」ではなく
+# **そうした bundle が到達する終端状態**だから。なお本リポジトリの wiki ブランチでは箇条書き形式の
+# index.md は観測されておらず、両形式対応は外部 bundle に対する防御的サポートである。
 # リンクの regex は同じ index.md を読む `wiki-lint-orphans.sh` と同一定義にする (`./pages/` /
 # `../pages/` 形式も受ける)。片方だけ狭いと、その形式の index で本 helper だけが無言で 0 件に倒れる。
 #
@@ -350,7 +352,7 @@ _RITE_COUNT_ACTION='/(TODO|FIXME)/ { next } { gsub(/`[^`]*`/, "_"); if ($0 ~ re)
 # 位置固定の列パースは列の増減で全行 skip の silent no-op に倒れるため、ヘッダー由来の位置決めと
 # **スキップ行数の stdout 露出** を対にする (`/rite:wiki-query positional-parse-row-count-guard` で参照)。
 #
-# HTML コメントブロック (`<!-- ... -->`) は行の分類より前に落とす。テーブル形式化より前に配布した
+# HTML コメントブロック (`<!-- ... -->`) は行の分類より前に落とす。箇条書きテンプレートが配布されていた期間の
 # `templates/wiki/index-template.md` の前文はコメント内に箇条書きの記法例
 # `* [ページタイトル](pages/{domain}/{slug}.md) - …` を含み (現行テンプレートでは記法例ごと削除済みだが、
 # それ以前に初期化された bundle の index.md には残る)、落とさないと **記法例が実エントリとして

@@ -29,7 +29,7 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 |------|---------|--------------|
 | **矛盾** | 同じトピックで異なる結論を持つページ（タイトル衝突・方針逆転・重複情報） | Yes |
 | **陳腐化** | `updated` frontmatter が閾値（デフォルト 90 日）を超えて更新されていないページ | Yes |
-| **孤児ページ** | `pages/` 配下に存在するが `index.md` のページカタログ（`## ページ一覧` の 5 列テーブル。#2047 以前に初期化された bundle の箇条書き `* [title](pages/...) - desc` も登録として扱う）に登録されていないページ | Yes |
+| **孤児ページ** | `pages/` 配下に存在するが `index.md` のページカタログ（`## ページ一覧` の 5 列テーブル。箇条書きテンプレートが配布されていた期間に初期化された bundle の箇条書き `* [title](pages/...) - desc` も登録として扱う）に登録されていないページ | Yes |
 | **欠落概念 (missing_concept)** | `raw/` に `ingested: true` の Raw Source があるが、対応ページも `sources.ref` 登録も `ingest_status: skipped` 記録（raw frontmatter）も存在しない真の欠落 | Yes |
 | **壊れた相互参照** | ページ本文の Markdown リンク `](...)` が `pages/` 配下の実在ファイルを指していない | Yes |
 | **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、raw frontmatter に `ingest_status: skipped` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
@@ -376,7 +376,7 @@ fi
 
 ## ステップ 5: 孤児ページ検出
 
-検出本体は `wiki-lint-orphans.sh` に委譲する。helper は index.md を branch_strategy 別に読み出し、カタログに登録されたページと `pages_list` の集合差分を marker block で emit する。登録ページの抽出は `](pages/...)` リンクの grep ベース（テーブルか箇条書きかに非依存）なので、Issue #1519 の箇条書き化と #2047 のテーブル形式化のどちらでも無改修で機能する（リンク先 `pages/{domain}/{slug}.md` を維持する条件）。
+検出本体は `wiki-lint-orphans.sh` に委譲する。helper は index.md を branch_strategy 別に読み出し、カタログに登録されたページと `pages_list` の集合差分を marker block で emit する。登録ページの抽出は `](pages/...)` リンクの grep ベース（テーブルか箇条書きかに非依存）なので、箇条書き形式でもテーブル形式でも無改修で機能する（リンク先 `pages/{domain}/{slug}.md` を維持する条件）。
 
 > **Reference**: canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-orphans.sh`。helper は index.md 読出 (`git show`(separate_branch) / `cat`(same_branch))・登録ページ抽出 (`](pages/...)` リンクの `./pages/` / `../pages/` 形式対応の緩和 regex + `sort -u`、テーブル／箇条書き両形式で機能)・`.rite/wiki/` プレフィックス正規化・集合差分・読出失敗 / 抽出 0 件の skip 判定 (全ページ orphan 誤検出防止)・marker block / `orphan_check_ok` enum / `[CONTEXT]` sentinel 出力をすべて内包する (旧 index.md 事前読出 + 孤児検出 inline 実装を委譲)。placeholder residue gate も helper 内で実行される。
 
@@ -621,7 +621,7 @@ Wiki ページ本文と `index.md` のエントリサマリーに残った**説�
 
 **検出対象と除外**:
 - 対象: ステップ 2 で収集した `pages_list` の各ページ全体（frontmatter の `sources:` ブロックを除く）と、`index.md` の**エントリごとのサマリーのみ**
-- 除外: frontmatter の `sources:` ブロック（`ref:` はファイルパスで番号規則に一致しないため防御的除外。`title:` / `description:` の散文は走査対象）、`## ソース` 節（provenance リンクラベル。維持対象）、コードフェンス / インラインコードスパン（literal 引用）、TODO/FIXME（前方追跡ポインタ）。除外規則は `index.md` にも適用するが、2 点だけ異なる。(1) **E5（TODO/FIXME）の適用単位** — ページは行単位で落とし、`index.md` はエントリのサマリー単位で判定する（コードスパンのマスク後に見るため、引用された TODO は無効化され hit として残る）。(2) **`index.md` 固有の除外** — 行頭 `<!--` で始まる HTML コメントブロックを行の分類より前に落とすため、コメント内の番号は数えない（ページ本文では数える）。配布テンプレートの前文が記法例をコメントで持つためで、落とさないと記法例が実エントリとして数えられ検出失敗ガードが恒久的に発火しなくなる。rationale: [references/descriptive-refs-rationale.md#index-summary-extraction](references/descriptive-refs-rationale.md#index-summary-extraction)
+- 除外: frontmatter の `sources:` ブロック（`ref:` はファイルパスで番号規則に一致しないため防御的除外。`title:` / `description:` の散文は走査対象）、`## ソース` 節（provenance リンクラベル。維持対象）、コードフェンス / インラインコードスパン（literal 引用）、TODO/FIXME（前方追跡ポインタ）。除外規則は `index.md` にも適用するが、2 点だけ異なる。(1) **E5（TODO/FIXME）の適用単位** — ページは行単位で落とし、`index.md` はエントリのサマリー単位で判定する（コードスパンのマスク後に見るため、引用された TODO は無効化され hit として残る）。(2) **`index.md` 固有の除外** — 行頭 `<!--` で始まる HTML コメントブロックを行の分類より前に落とすため、コメント内の番号は数えない（ページ本文では数える）。箇条書きテンプレートが配布されていた期間に初期化された bundle の index.md 前文が記法例をコメントで保持しているためで（現行の配布テンプレートは記法例コメントを持たない）、落とさないと記法例が実エントリとして数えられ、それらの index.md では検出失敗ガードが恒久的に発火しなくなる。rationale: [references/descriptive-refs-rationale.md#index-summary-extraction](references/descriptive-refs-rationale.md#index-summary-extraction)
 - 走査しないファイル（意図的除外）: `log.md`（append-only の ingest / lint 台帳。番号の正しい受け皿）、`raw/**`（レビュー / fix の生ログ = provenance 資料）、`SCHEMA.md`（散文を持たない）。rationale: [references/descriptive-refs-rationale.md#scan-scope](references/descriptive-refs-rationale.md#scan-scope)
 
 **本ステップは `pages_list` が空でも実行する** — `index.md` が単独で走査対象になりうるため（helper が自力で拾う）。ステップ 2.2 の「両方空なら skip」は ステップ 3-7 (7.5 を除く) が対象で、本ステップは含まない。helper の検出失敗ガードもこの契約に合わせて `pages_list` ではなく `index.md` 自身の内容で発火する。
