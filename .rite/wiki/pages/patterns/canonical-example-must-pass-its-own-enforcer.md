@@ -2,12 +2,16 @@
 type: "patterns"
 title: "canonical 例を持つ SoT は「例が自身の enforcer を通る」ことを実測で確かめる"
 domain: "patterns"
-description: "SoT が書式規則と canonical 例の両方を持ち、その規則を強制する script を名指ししている場合、例が規則に違反していても規則側・例側のどちらを読んでも気づけない。write 側は例を「真実の源」として写すため、違反した例は成果物が enforcer に reject される形で顕在化する。例を実際に validator へ流す fixture を置き、規則変更時に必ず再実行する。"
+description: "SoT が書式規則と canonical 例の両方を持ち、その規則を強制する script を名指ししている場合、例が規則に違反していても規則側・例側のどちらを読んでも気づけない。write 側は例を「真実の源」として写すため、違反した例は成果物が enforcer に reject される形で顕在化する。例を実際に validator へ流す fixture を置き、規則変更時に必ず再実行する。原則を新設する PR では、その原則を自分の diff に適用して検算する（同型の自己適用検査）。"
 created: "2026-07-27T17:54:54+09:00"
-updated: "2026-07-27T17:54:54+09:00"
+updated: "2026-08-03T00:55:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260727T084223Z-pr-2036.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260802T145006Z-pr-2092.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260802T145247Z-pr-2092.md"
 tags: []
 confidence: high
 ---
@@ -36,12 +40,17 @@ confidence: high
 
 **関連する同型の欠陥**: 同じ SoT の PR コメント例に新設キーが欠けていた（write 側が template を写すとキーが脱落する）、`findings[]` の定義文が「blocking 指摘の配列」と無条件に書かれていたため literal に取ると別の返信経路が丸ごと失われる、など。canonical 例と定義文は、**それを写す consumer の視点で読み直す**と欠陥が見える。
 
+**同型の拡張 — 新設した原則を自分の diff に適用して検算する**: 規約・原則を新設する PR では、その原則の最初の適用対象は**その PR 自身の diff** である。別の起点事例では「実需の Issue がない構造は追加しない」原則を新設した同じ PR が、consumer の存在しない記録先へ MUST を課しており、新原則そのものに自己抵触していた。3 cycle かけて撤回に至ったが、原則を書き終えた時点で自分の変更を 1 度その原則で読み直していれば 1 cycle で気づけた。canonical 例と enforcer の関係（例が規則を通るか）と、新設原則と自 diff の関係（変更が原則を通るか）は同じ形の検査であり、どちらも「規則側・対象側のどちらを読んでも気づけない」性質を持つ。
+
 ## 関連ページ
 
 - [canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する](./canonical-reference-sample-code-strict-sync.md)
 - [LLM substitute placeholder は bash residue gate で fail-fast 化する](./placeholder-residue-gate-bash-fail-fast.md)
 - [「invariant は logic 上成立」を信頼せず empirical reproduction で verify する](../heuristics/empirical-reproduction-over-invariant-reasoning.md)
+- [記録義務を規約に書く前に、その記録先を読む consumer が実在するかを grep で確かめる](./obligation-requires-existing-consumer-before-writing.md)
 
 ## ソース
 
 - [PR #2036 review results (cycle 5, mergeable)](../../raw/reviews/20260727T084223Z-pr-2036.md)
+- [PR #2092 review results (cycle 3)](../../raw/reviews/20260802T145006Z-pr-2092.md)
+- [PR #2092 fix results (cycle 3)](../../raw/fixes/20260802T145247Z-pr-2092.md)

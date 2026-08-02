@@ -1,3 +1,10 @@
+## 2026-08-03
+
+* **Create**: [記録義務を規約に書く前に、その記録先を読む consumer が実在するかを grep で確かめる](pages/patterns/obligation-requires-existing-consumer-before-writing.md) — raw/reviews/20260802T141413Z-pr-2092.md / raw/fixes/20260802T141842Z-pr-2092.md / raw/reviews/20260802T145006Z-pr-2092.md / raw/fixes/20260802T145247Z-pr-2092.md / raw/reviews/20260802T150522Z-pr-2092.md を新規ページ化（「filter するが記録は残す」は記録先に consumer がいて初めて成立する / 出力テンプレート・収集・schema の 3 点を欠く節への MUST は履行が観測不能 / 既存セクションへの迂回は出力経路まで辿って人間に届くか確認する / 受け皿を新設できないなら義務ごと撤回し未達 AC を follow-up Issue へ切り出す）
+* **Create**: [規約の強制度が矛盾したら、緩い側を強めるより強い側の適用範囲を絞る](pages/heuristics/resolve-strength-conflict-by-narrowing-the-strong-side.md) — raw/reviews/20260802T143430Z-pr-2092.md / raw/fixes/20260802T143712Z-pr-2092.md を新規ページ化（緩和条件の削除は規則の文面を短くするが義務の総量を増やす / 矛盾が何ケースで成立しているかを先に数える / 範囲縮小でも受け皿問題自体は解けない）
+* **Create**: [恒久規範の理由付けを「今は動かない」という現時点の欠陥への断定に置くと、欠陥が直った時点で規範が静かに誤りになる](pages/anti-patterns/rationale-asserting-current-defect-rots-when-fixed.md) — raw/reviews/20260802T143430Z-pr-2092.md / raw/fixes/20260802T143712Z-pr-2092.md を新規ページ化（断定が同一ファイル内の現行 MUST と正面から矛盾していた / 実害は必須ゲートの skip による false positive / 判断は残し理由の従属節だけを削除する）
+* **Update**: [canonical 例を持つ SoT は「例が自身の enforcer を通る」ことを実測で確かめる](pages/patterns/canonical-example-must-pass-its-own-enforcer.md) — raw/reviews/20260802T145006Z-pr-2092.md / raw/fixes/20260802T145247Z-pr-2092.md を統合（新設した原則の最初の適用対象はその PR 自身の diff / 原則を書き終えた時点で自分の変更を 1 度その原則で読み直す / canonical 例 vs enforcer と同じ形の自己適用検査）
+
 ## 2026-08-02
 
 * **Create**: [grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる](pages/anti-patterns/bre-ere-metachar-inversion-dead-assertion.md) — raw/reviews/20260801T184452Z-pr-2070.md / raw/fixes/20260801T185220Z-pr-2070.md / raw/reviews/20260802T000641Z-pr-2070.md を新規ページ化（選択子は BRE で `\|` / ERE で `|` と反転する / 素の grep で手元確認すると「マッチする」と観測できてしまい検証済みとして commit されうる / 検証はスイート本体を変異下で走らせ当該 assertion の FAIL を目視するまで成立しない）
