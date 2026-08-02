@@ -19,6 +19,7 @@ The `knowledge_routing` principle additionally draws on t-wada's four quadrants 
 | `inline_planning` | Present Plan Before Implementation | Phase 3 |
 | `issue_accountability` | Accountability for Discovered Issues | All Phases |
 | `no_unnecessary_fallback` | No Unnecessary Fallback | Phase 5.1, PR Review |
+| `no_speculative_structure` | No Speculative Structure | Phase 5.1, PR Review |
 | `reference_discovery` | Discover Reference Implementations | Phase 3 |
 | `question_self_check` | Self-Check Before Asking | All Phases |
 | `documentation_consistency` | Sync Documentation with Specification Changes | Phase 5.1 |
@@ -62,6 +63,18 @@ The `knowledge_routing` principle additionally draws on t-wada's four quadrants 
 | File not found (should exist) | Error | Unexpected failure — indicates a bug or misconfiguration |
 | Optional feature unavailable | Skip with notice | Expected absence — feature is optional |
 | Network error during branch detection | Error | Unexpected failure — don't guess the branch name |
+
+> **Operating-environment declaration**: Each project declares its operating environment (single-user development machine / shared host / multi-tenant, etc.) as prose in its own `CLAUDE.md` — not as a config key — because the reviewer-side [Finding Quality Guardrail](../../../agents/_reviewer-base.md#finding-quality-guardrail) Category #2 judges whether a defensive / hardening finding is reachable at all against that declaration.
+
+### no_speculative_structure (No Speculative Structure)
+
+**Summary**: Do not build for a future that has no Issue. Structure added "for later" — extension points, reserved fields, unused config keys, single-caller abstractions — is dead weight that still has to be read, reviewed, documented, and eventually removed.
+
+**Rules**:
+1. Add structure only when a real Issue requires it now. The anticipated future rarely arrives; when it does, handle it then — paying that cost later is cheaper than carrying an unused mechanism until then.
+2. Applies to specification text as much as to code: reserved sentinels, placeholder branches, unused marker fields, and "for future use" notes in skill / reference / template files.
+3. The legitimate trigger is the current Issue's Acceptance Criteria, or a consumer that lands in the same PR. "It might be needed" / "it keeps the design symmetric" is not a trigger.
+4. When a plan or a review finding proposes speculative structure, drop it rather than adding a smaller version of it — see the "Simplification-First Response Principle" section in [`skills/fix/SKILL.md`](../../../skills/fix/SKILL.md).
 
 ### reference_discovery (Discover Reference Implementations)
 
@@ -197,8 +210,8 @@ OK patterns:
 |-------|---------------------------|
 | All Phases (Common) | `issue_accountability` / `question_self_check` |
 | Phase 3 (Implementation Plan) | `assumption_surfacing` / `confusion_management` / `inline_planning` / `reference_discovery` |
-| Phase 5.1 (Implementation) | `simplicity_enforcement` / `scope_discipline` / `dead_code_hygiene` / `no_unnecessary_fallback` / `issue_accountability` / `documentation_consistency` / `knowledge_routing` |
-| PR Review | `push_back_when_warranted` / `simplicity_enforcement` / `scope_discipline` / `no_unnecessary_fallback` / `issue_accountability` / `knowledge_routing` |
+| Phase 5.1 (Implementation) | `simplicity_enforcement` / `scope_discipline` / `dead_code_hygiene` / `no_unnecessary_fallback` / `no_speculative_structure` / `issue_accountability` / `documentation_consistency` / `knowledge_routing` |
+| PR Review | `push_back_when_warranted` / `simplicity_enforcement` / `scope_discipline` / `no_unnecessary_fallback` / `no_speculative_structure` / `issue_accountability` / `knowledge_routing` |
 | Before PR Creation | `issue_accountability`（未対応の問題・レビュー指摘がないか / スコープ外の問題が別 Issue として追跡されているか） |
 
 **Reference**: The `/rite:pr-create` Phase 2.5 ([create.md](../../../skills/pr-create/SKILL.md), "2.5 Unaddressed Issues Check" section) implements the unaddressed issues check.
