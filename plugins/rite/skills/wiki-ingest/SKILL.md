@@ -677,17 +677,23 @@ fi
   # find の stderr は捨てない (読めないディレクトリがあれば errno がそのまま画面に残る)。
   # find は 1 つでも読めない経路があると非ゼロ終了するため、rc 検査が部分失敗も拾う。
   # 内訳は $pages_root を前方一致の anchor にする — 素の "/${d}/" は基点より上のディレクトリ名にも
-  # 一致し、内訳だけが膨張して総数と別の述語になる。判定を awk の index() で literal に行うのは、
+  # 一致し、内訳だけが膨張して総数と別の述語になる。判定を case の literal 前方一致で行うのは、
   # grep だと $pages_root が BRE として解釈され、チェックアウトパスが正規表現メタ文字を含むときに
   # 内訳だけが誤るため。加えて grep はエラー (rc>=2) で何も出力せず、コマンド置換が空文字になって
-  # そのまま下の同期ゲートを通過し、`- ドメイン別: patterns=` という壊れた行を書き込む。awk は
-  # 0 件でも `n+0` で 0 を出すため、この 2 経路を同時に塞げる。
+  # そのまま下の同期ゲートを通過し、`- ドメイン別: patterns=` という壊れた行を書き込む。case は
+  # クォートしたパターンを literal 扱いし、n の 0 初期化が 0 件でも 0 を出すので、この 2 経路を
+  # 同時に塞げる。awk の行全体フィールドは使わない — fenced block 内のパラメータ参照は Skill
+  # ローダーが起動引数へ展開し、プログラムがロード時に壊れる (hooks/scripts/dollar-zero-check.sh)。
   if ! pages_list=$(find "$pages_root" -type f -name '*.md') || [ -z "$pages_list" ]; then
     echo "WARNING: pages 一覧を取得できないか 0 件です (root=$pages_root)。誤った値で正しい統計を上書きしないため、本サイクルの統計同期をスキップします" >&2
   else
     total=$(printf '%s\n' "$pages_list" | wc -l | tr -d ' ')
     for d in patterns heuristics anti-patterns; do
-      printf '%s=%s\n' "$d" "$(printf '%s\n' "$pages_list" | awk -v root="${pages_root}/${d}/" 'index($0, root) == 1 { n++ } END { print n+0 }')"
+      n=0
+      while IFS= read -r p; do
+        case "$p" in "${pages_root}/${d}/"*) n=$((n + 1)) ;; esac
+      done <<< "$pages_list"
+      printf '%s=%s\n' "$d" "$n"
     done
     echo "total=$total"
   fi
