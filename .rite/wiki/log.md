@@ -24,6 +24,7 @@
 * **Create**: [同一欠陥に対し reviewer の scope が割れたらユーザー判断へエスカレートする — follow-up は current-pr と同義ではない](pages/heuristics/reviewer-scope-split-escalates-to-user.md) — raw/reviews/20260802T110823Z-pr-2052.md を新規ページ化（形式変更 PR では変更していない consumer に欠陥が出るため Issue のファイル単位スコープと所在がずれる / accept は無視ではなく処置を伴う deferred / 閉じる側の Issue に置いた制約は必要になる時点には存在しない）
 * **Update**: [累積対策 PR の review-fix loop で fix 自体が drift を導入する](pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md) — raw/reviews/20260802T062240Z-pr-2052.md / raw/reviews/20260802T073519Z-pr-2052.md / raw/fixes/20260802T063409Z-pr-2052.md / raw/fixes/20260802T070715Z-pr-2052.md を統合（docs 是正 PR での 5 cycle 観測: 書き換え単位は文ではなく主張が閉じる範囲 / カウンタは定義・実行地点・表示・等式の 4 点セット / 成功経路の marker 不在は成功と未実行を両義にする / 「A より前」の時間限定は A が初出のときのみ成立）
 * **Update**: [累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable](pages/heuristics/accumulated-pr-three-cycle-convergence.md) — raw/reviews/20260802T114732Z-pr-2052.md を統合（blocking が 2→3→6 と増えて収束しなかった軌跡 / cycle 3 の 4 件が「テスト/drift pin を足せ」で 1 件は cycle 1 の修正自体が生んだ / 指摘の性質が実装の誤りから検証資産の不足へ移ったら別 Issue のシグナル）
+* **lint:warning** — contradictions=0, stale=12, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 ## 2026-08-01
 * **lint:warning** — contradictions=0, stale=3, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 
