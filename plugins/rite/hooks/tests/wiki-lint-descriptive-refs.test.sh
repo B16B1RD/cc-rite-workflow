@@ -929,8 +929,7 @@ assert "TC-50 配布テンプレート前文は hits に数えない (本文側�
 # 初期化された bundle の index.md がこの形状で残る)。同型の pin を literal fixture で行う先例:
 # hooks/tests/wiki-query-inject.test.sh TC-5。
 printf '# Wiki Index\n\n<!-- 登録箇条書きの形式例（ingest が自動追記。このコメント行は登録ではない）:\n\n     * [ページタイトル](pages/{domain}/{slug}.md) - 詳細は #1151\n-->\n\n* [A](pages/patterns/a.md) - PR #792 の知見\n' > "$IDXSBX/.rite/wiki/index.md"
-legacy_err="$IDXSBX/legacy.err"; tmp_files+=("$legacy_err")
-legacy_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>"$legacy_err")
+legacy_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)
 # 合計は本文 1 + index の実エントリ 1 = 2。除去規則を殺すとコメント内の記法例も数えて 3 になる。
 assert "TC-50b 記法例コメント内のサマリーは hits に数えない (本文 1 + 実エントリ 1)" "2" "$(idx_hits "$legacy_out")"
 assert "TC-50b 記法例コメントを持つ index でも検出失敗に計上しない (実エントリがある)" "0" "$(printf '%s' "$legacy_out" | sed -n 's/^descriptive_refs_read_errors=//p')"

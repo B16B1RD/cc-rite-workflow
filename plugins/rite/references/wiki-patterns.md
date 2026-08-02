@@ -209,7 +209,8 @@ Wiki 初期化時にテンプレートを `.rite/wiki/` に展開します。
 
 | プレースホルダー | 値 |
 |----------------|-----|
-| `{initialized_date}` | 初期化日（`YYYY-MM-DD`、date-only）。log.md の OKF 日付見出し `## YYYY-MM-DD` に展開。index.md は OKF 移行（Issue #1519）で初期化タイムスタンプ placeholder を持たない |
+| `{initialized_date}` | 初期化日（`YYYY-MM-DD`、date-only）。log.md の OKF 日付見出し `## YYYY-MM-DD` に展開。index.md では `## 統計` の `- 最終更新:` 行に `{initialized_at}` として展開される |
+| `{initialized_at}` | 初期化タイムスタンプ（ISO 8601）。index.md `## 統計` の `- 最終更新:` 行に展開 |
 | `{okf_version}` | OKF 仕様バージョン。index.md frontmatter の `okf_version: "0.1"` に展開（OKF v0.1 準拠の宣言、Issue #1519） |
 | `{concept_type}` | concept 種別（`patterns` / `heuristics` / `anti-patterns`、`{domain}` と同値）。page-template.md frontmatter の OKF 必須フィールド `type:` に展開（Issue #1518）。詳細は `plugins/rite/skills/wiki-ingest/SKILL.md` ステップ 5.3 の `{concept_type}` 行を SoT として参照 |
 | `{title}` | ページタイトル（Ingest 時） |
@@ -241,7 +242,7 @@ rite Wiki bundle（`.rite/wiki/`）は [Open Knowledge Format (OKF) v0.1](https:
 | 要素 | OKF 準拠内容 | 実装 SoT |
 |------|-------------|---------|
 | **page frontmatter** | concept 種別を `type:`（`patterns` / `heuristics` / `anti-patterns`）で宣言し、`description:` を持つ | `templates/wiki/page-template.md`（Issue #1518） |
-| **index.md** | frontmatter に `okf_version: "0.1"` を持ち、ページカタログを `## ページ一覧` の 5 列テーブル（列順: ページ / ドメイン / サマリー / 更新日 / 確信度）で表現。箇条書きテンプレートが配布されていた期間に初期化された bundle の index.md は箇条書きのまま残るため、consumer は行単位で両形式を受ける | `templates/wiki/index-template.md` |
+| **index.md** | frontmatter に `okf_version: "0.1"` を持ち、ページカタログを `## ページ一覧` の 5 列テーブル（列順: ページ / ドメイン / サマリー / 更新日 / 確信度）で表現。箇条書きテンプレートが配布されていた期間に初期化された bundle の index.md は箇条書きのまま残るため、consumer は行単位で両形式を受けることが要件。**⚠️ `/rite:wiki-query` の Pass 1 は箇条書き行限定で未対応**（テーブル形式 index では候補 0 件。読み手のテーブル対応は Issue #2053） | `templates/wiki/index-template.md` |
 | **log.md** | 変更履歴を OKF 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、新しい順、append-only、人間向け）で記録 | `templates/wiki/log-template.md`（Issue #1520） |
 | **raw frontmatter** | ingest skip 状態を `ingest_status: skipped` + `skip_reason:` で保持（skip の Source of Truth。log.md には保持しない） | `skills/wiki-ingest/SKILL.md` ステップ 5（Issue #1520） |
 | **SCHEMA.md** | 蓄積規約（人間 + LLM 共同管理）。OKF 予約ファイルとして bundle ルートに常駐 | `templates/wiki/schema-template.md` |

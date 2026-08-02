@@ -202,6 +202,7 @@ bash "$plugin_root/hooks/scripts/wiki-ingest-lock.sh" acquire
 | `n_skipped` | 0 | ステップ 4 で「スキップ」決定ごとに +1 |
 | `n_warnings` | 0 | ステップ 8.5 で Lint の検出件数合計（`n_unregistered_raw` を除く 5 カテゴリ）を加算。加えて ステップ 8.3 の Lint 実行異常検出時 `n_warnings += 1` と `n_lint_anomaly += 1` を並行加算。さらに ステップ 6 手順 3 の統計同期が中止した場合（`[CONTEXT] WIKI_INGEST_STATS=aborted`）も `n_warnings += 1`（`n_lint_anomaly` は Lint 由来の指標なので加算しない） |
 | `n_lint_anomaly` | 0 | ステップ 8.3 step 1/3/4 (ERROR 行検出 / stdout 空 / regex mismatch) でそれぞれ +1。`n_warnings` と並行加算 |
+| `n_stats_abort` | 0 | ステップ 6 手順 3 の統計同期が中止した場合 (`[CONTEXT] WIKI_INGEST_STATS=aborted`) に +1。`n_warnings` と並行加算 (`n_lint_anomaly` は Lint 由来の指標なので加算しない) |
 | `n_contradictions` / `n_stale` / `n_orphans` / `n_missing_concept` / `n_unregistered_raw` / `n_broken_refs` | 0 | ステップ 8.3 step 2 (6 フィールド regex match) で Lint stdout から抽出 |
 
 `n_unregistered_raw` は informational 指標で `n_warnings` には加算しない（意図的に経験則化しなかった件数は警告ではない）。`auto_lint=false` 経路で ステップ 8.2-8.5 が skip された場合も、本ステップで 0 初期化されているためステップ 9 完了レポートの placeholder 残留は発生しない。
@@ -636,7 +637,7 @@ fi
 
 `.rite/wiki/index.md` の `## ページ一覧` セクションにある **5 列 GFM テーブル**（列順: ページ / ドメイン / サマリー / 更新日 / 確信度）を更新する。テーブルの**内側**に別形式の行を挿入すると挿入行以降の構造が崩れるため、テーブル節の中には本ステップが規定するテーブル行だけを置く（節の外にある旧テンプレート由来の箇条書き行は GFM 上テーブルと別ブロックとして共存するので、削除も移送もせずそのまま残す）。
 
-**セル区切り文字のエスケープ（新規追加・既存更新の両経路に適用）**: `{title}` / `{description}`、および手順 2 で既存行から保持したサマリー列の値に `|` が含まれる場合、index 登録行では `\|` にエスケープして substitute する。**インラインコード `` ` `` の内側も対象** — GFM はコードスパン内の生 `|` もセル区切りとして解釈するため、エスケープしないと列がずれて 5 列構造が壊れる。値を言い換えて `|` を避けるのは禁止（ステップ 4.3 の title 規約が frontmatter `title` との literal 一致を要求するため）。**エスケープは index 登録行にのみ適用し、page frontmatter の `title` / `description` は改変しない**。残る `{path}` / `{domain}` / `{updated}` / `{confidence}` は slug・enum・ISO 8601 タイムスタンプで `|` を含み得ないため対象外。
+**セル区切り文字のエスケープ（新規追加・既存更新の両経路に適用）**: `{title}` / `{description}` に `|` が含まれる場合、index 登録行では `\|` にエスケープして substitute する。**手順 2 で既存行から保持したサマリー列の値は既にエスケープ済みの表記なので、対象は直前が `\` でない生の `|` に限る**（既存の `\|` を再エスケープすると更新サイクルごとに `\` が 1 本ずつ増え、元の本数を復元できないまま蓄積する）。**インラインコード `` ` `` の内側も対象** — GFM はコードスパン内の生 `|` もセル区切りとして解釈するため、エスケープしないと列がずれて 5 列構造が壊れる。値を言い換えて `|` を避けるのは禁止（ステップ 4.3 の title 規約が frontmatter `title` との literal 一致を要求するため）。**エスケープは index 登録行にのみ適用し、page frontmatter の `title` / `description` は改変しない**。残る `{path}` / `{domain}` / `{updated}` / `{confidence}` は slug・enum・ISO 8601 タイムスタンプで `|` を含み得ないため対象外。
 
 **登録行の同定述語（手順 1 / 2 / 3 共通）**: 「`## ページ一覧` 見出しから**次の `##` 見出しまでの範囲**にある `|` 始まりの行（ヘッダ行・区切り行を除く）のうち、その行で**最初に現れる** `](pages/{domain}/{slug}.md)` の `{slug}` が対象ページと一致する行」とする。**ページ列は「`|` で分割した最初のセル」ではなく、行頭の `|` からその最初のリンクの閉じ括弧までの範囲**と定義する — `title` に未エスケープの生 `|` を含む行ではリンクが 2 つ目以降のセルへ落ちるため、セル分割を前提にすると実在する登録行を同定できず、手順 1 が重複行を追加したうえ手順 3 の重複削除も同じ述語なので回収できない。「最初に現れる」リンクだけを見ることで、サマリー列に置かれた他ページへの相互参照リンクは自動的に対象外になる（実 index.md にはサマリー列に他ページへのリンクを含む行が複数存在する）。**「GFM がテーブル行として解釈する行」ではなく上記の位置で定義する** — 節内に空行があると GFM は先頭ブロックだけをテーブルとして解釈し、以降の登録行は段落として描画されるため、レンダリング結果を基準にすると実在する登録行の一部が同定対象から漏れて更新サイクルごとに行が増える。**共通なのは同定規則そのものだけで、次の中止条項は手順 1 / 2 に限る**: 同定結果が 2 行以上になった場合は WARNING を出して**当該ページの index 更新を中止する**（1 件目を採る等の fallback は禁止 — 誤った行を silent に書き換える経路が残る）。**手順 3 の重複削除は本中止条項の対象外**で、2 行以上の状態を入力として受け取り後発行を削除する（中止条項を手順 3 にも適用すると、重複が一度できた時点で手順 1 / 2 が永久に中止し続け、唯一の修復経路である手順 3 も同時に塞がって index が自己修復不能になる）。
 
@@ -659,7 +660,7 @@ fi
   - `{path}` は `pages/{domain}/{slug}.md` 形式を維持する（孤児検出のリンク grep `](pages/...)` 生存条件、`wiki-lint-orphans.sh`）
   - `{description}` はステップ 4.1 のサマリー（page frontmatter の `description` と同源、1-2 文）
   - `{updated}` / `{confidence}` は page frontmatter の値と同じにする（ISO 8601 タイムスタンプ / `high`・`medium`・`low`）。**YAML の引用符は含めない**（frontmatter 側が `updated: "2026-..."` でも index 列は引用符なし）
-- **2. 既存ページ行の更新**: 対象行は上記の同定述語で特定する（節の外にある旧形式の箇条書き行を書き換えてはならない — テーブル行を箇条書きリストの中へ置くと GFM は箇条書きの継続行として literal text にレンダリングする）。同定したら**その 1 行を上記「新規ページ行の追加」と同一形式で丸ごと再生成して置換する**（列位置を数えて特定のセルだけ書き換えることはしない）。`title` / `updated` / `confidence` は更新後の page frontmatter の値（YAML の引用符は外す）を使い、エスケープ規約を適用する。**サマリー列の値は次の順で決める**: (1) frontmatter に `description` があればその値、(2) 無ければ**既存行のサマリー列の値を保持する**（新たに生成し直さないという意味であり、上記のエスケープ規約は保持値にも適用する。ステップ 4.1 のサマリー生成は新規ページ作成時にしか実行されないため、更新経路では候補にならない）。**既存行のサマリー列は位置で切り出す** — 同定述語で確定したページ列より後ろを `|` で分割し、**分割結果の先頭要素と末尾要素は行頭側・行末側の区切りに由来して必ず空（空白のみ）になるので捨てる**。残った並びの先頭をドメイン列、**末尾 2 つを更新日列・確信度列**、その間に残るすべてを `|` で再結合したものをサマリー列とする。更新日は ISO 8601、確信度は enum でどちらも `|` を含み得ないため、末尾から数える方法はサマリー列に生 `|` が残っている行でも決定的に働く。`description` は schema 上 optional で実際に持たない page が多数あるため、**空文字で上書きしてはならない**（蓄積済みのサマリーが失われる）。これにより、既に未エスケープの生 `|` で列がずれている既存行も当該 page の更新サイクルで正しい 5 列へ是正される。
+- **2. 既存ページ行の更新**: 対象行は上記の同定述語で特定する（節の外にある旧形式の箇条書き行を書き換えてはならない — テーブル行を箇条書きリストの中へ置くと GFM は箇条書きの継続行として literal text にレンダリングする）。同定したら**その 1 行を上記「新規ページ行の追加」と同一形式で丸ごと再生成して置換する**（列位置を数えて特定のセルだけ書き換えることはしない）。`title` / `updated` / `confidence` は更新後の page frontmatter の値（YAML の引用符は外す）を使い、エスケープ規約を適用する。**サマリー列の値は次の順で決める**: (1) frontmatter に `description` があればその値、(2) 無ければ**既存行のサマリー列の値を保持する**（新たに生成し直さないという意味。保持値は既にエスケープ済みの表記なので、上記エスケープ規約は**未エスケープの生 `|`（直前が `\` でないもの）にのみ**適用する。ステップ 4.1 のサマリー生成は新規ページ作成時にしか実行されないため、更新経路では候補にならない）。**既存行のサマリー列は位置で切り出す** — 同定述語で確定したページ列より後ろを `|` で分割し、**分割結果の先頭要素と末尾要素は行頭側・行末側の区切りに由来して必ず空（空白のみ）になるので捨てる**。残った並びの先頭をドメイン列、**末尾 2 つを更新日列・確信度列**、その間に残るすべてを `|` で再結合したものをサマリー列とする。更新日は ISO 8601、確信度は enum でどちらも `|` を含み得ないため、末尾から数える方法はサマリー列に生 `|` が残っている行でも決定的に働く。`description` は schema 上 optional で実際に持たない page が多数あるため、**空文字で上書きしてはならない**（蓄積済みのサマリーが失われる）。これにより、既に未エスケープの生 `|` で列がずれている既存行も当該 page の更新サイクルで正しい 5 列へ是正される。
 - **3. 統計**: `## 統計` 節が存在する場合、**総ページ数 / ドメイン別内訳 / 最終更新**の 3 行を今回の ingest 結果と同期する。総ページ数 = `pages/` 配下の **`*.md` ファイル数**（`wiki-init` が置く `.gitkeep` 等の非ページファイルを除く）、ドメイン別 = `patterns` / `heuristics` / `anti-patterns` 各配下の `*.md` 件数、最終更新 = 今回の `{updated}` タイムスタンプ。件数は目視で数えず下記で算出する（ステップ 3 の `wiki_index_path` と同じ基点解決を使う — 素の相対パスは呼び出し時の cwd がセッション worktree / main checkout のとき 0 件になり、統計を silent に 0 で上書きする）:
 
   ```bash
@@ -715,11 +716,19 @@ fi
     if [ -z "$pages_list" ]; then
       n=0
     else
-      n=$(printf '%s\n' "$pages_list" | grep -c "^${pages_root}/${d}/")
+      # grep -c は 0 件マッチで rc=1 を返す (空ドメインは正常系)。将来 strict mode 化しても
+      # 中止 marker を出さずに abort しないよう `|| true` で受ける (bash-defensive-patterns.md)
+      n=$(printf '%s\n' "$pages_list" | grep -c "^${pages_root}/${d}/" || true)
     fi
     printf '%s=%s\n' "$d" "$n"
     domain_sum=$((domain_sum + n))
   done
+  if [ "$total" -eq 0 ]; then
+    echo "WARNING: 総ページ数が 0 です (パス解決失敗の可能性)。統計同期を中止します" >&2
+    echo "  影響: 0 をそのまま書くと正しい統計を silent に破壊するため、本サイクルの統計は更新しません" >&2
+    echo "[CONTEXT] WIKI_INGEST_STATS=aborted; reason=total_zero"
+    exit 0
+  fi
   if [ "$domain_sum" -ne "$total" ]; then
     echo "WARNING: ドメイン別の合計 ($domain_sum) が総ページ数 ($total) と一致しません。統計同期を中止します" >&2
     echo "  原因候補: 3 ドメイン以外のディレクトリに *.md が置かれている / pages_root 直下に *.md がある" >&2
@@ -730,9 +739,9 @@ fi
   echo "total=$total"
   ```
 
-  **`total=0` が出たら統計同期を中止して WARNING を出し、`[CONTEXT] WIKI_INGEST_STATS=aborted; reason=total_zero` を emit する** — 手順 3 は新規・更新ページが 1 件以上ある前提で走るため総ページ数 0 は構造的にありえず、パス解決失敗を意味する（0 をそのまま書くと正しい値を silent に破壊する）。
+  `total=0` はブロック内で中止する（手順 3 は新規・更新ページが 1 件以上ある前提で走るため総ページ数 0 は構造的にありえず、パス解決失敗を意味する）。中止 5 経路はいずれもブロック内で WARNING と marker を emit するので、LLM が散文を読んで別途 emit する必要はない。
 
-  **中止時の報告（全 5 経路共通）**: `WIKI_INGEST_STATS=aborted` を観測したら `n_warnings += 1` を加算し（ステップ 8.3 の Lint 実行異常と同じ受け皿。`n_lint_anomaly` は Lint 由来の指標なので加算しない）、ステップ 9 完了レポートの `{ingest_outstanding_line}` に `- ⚠️ 統計同期: {reason} により中止。index.md の `## 統計` は前サイクルの値のままです（手順 1 / 2 の行追加は適用済みのため、データ行数と統計が一時的に食い違います）` を 1 行追加する。中止しても完了レポートが「非ブロッキングで継続した失敗はありませんでした」と報告する経路を残さないこと — 統計節を検査する lint 経路は存在しないため、これが唯一の下流検出器になる。3 行の literal 形式は既存行に合わせる（`- 総ページ数: {n}` / `- ドメイン別: patterns={n}, heuristics={n}, anti-patterns={n}` / `- 最終更新: {updated}`）。**総ページ数がテーブルのデータ行数と一致しないときに本ステップで行うのは、`データ行数 > 総ページ数` の場合に限り、上記の同定述語（ページ列 anchor 付き）で同一ページを指す行が 2 行以上あるものについて後発行を削除することだけ**（`総ページ数 > データ行数` は未登録ページ由来なので何もしない）。それ以外の原因（未登録ページ、節の外に旧形式の箇条書き行で登録されているページ）では何もせずステップ 8 の lint に委ねる（今回読んでいない page を投機的に登録・削除すると孤児検出のシグナルが消える）。`## 統計` 節が**存在しない** index.md では統計同期をスキップする（節を新設しない）。全 Raw Source が skip されたサイクル（新規・更新ページ 0 件）も統計同期をスキップする。
+  **中止時の報告（全 5 経路共通）**: `WIKI_INGEST_STATS=aborted` を観測したら `n_warnings += 1` を加算し（ステップ 8.3 の Lint 実行異常と同じ受け皿。`n_lint_anomaly` は Lint 由来の指標なので加算しない）、ステップ 9 完了レポートの `{ingest_outstanding_line}` に統計中止の行を 1 行追加する（展開形は同ステップの `{ingest_outstanding_line}` 表を SoT とする — 本節では literal を複製しない）。中止しても完了レポートが「非ブロッキングで継続した失敗はありませんでした」と報告する経路を残さないこと — 統計節を検査する lint 経路は存在しないため、これが唯一の下流検出器になる。3 行の literal 形式は既存行に合わせる（`- 総ページ数: {n}` / `- ドメイン別: patterns={n}, heuristics={n}, anti-patterns={n}` / `- 最終更新: {updated}`）。**総ページ数がテーブルのデータ行数と一致しないときに本ステップで行うのは、`データ行数 > 総ページ数` の場合に限り、上記の同定述語（ページ列 anchor 付き）で同一ページを指す行が 2 行以上あるものについて後発行を削除することだけ**（`総ページ数 > データ行数` は未登録ページ由来なので何もしない）。それ以外の原因（未登録ページ、節の外に旧形式の箇条書き行で登録されているページ）では何もせずステップ 8 の lint に委ねる（今回読んでいない page を投機的に登録・削除すると孤児検出のシグナルが消える）。`## 統計` 節が**存在しない** index.md では統計同期をスキップする（節を新設しない）。全 Raw Source が skip されたサイクル（新規・更新ページ 0 件）も統計同期をスキップする。
 
 > **読み手側の対応状況**: `wiki-lint-orphans.sh` は `](pages/...)` リンクの grep ベースで形式非依存に登録判定するため、`{path}` の形式維持だけが孤児検出の必須条件になる。一方 `/rite:wiki-query` の Pass 1 はテーブル行を parse しないため、テーブル形式 index では index 経由のキーワード照合が機能しない（ステップ 5.3 の `{description}` 注記と同じ理由。読み手のテーブル対応は Issue #2053）。
 
@@ -983,12 +992,12 @@ Wiki Ingest が完了しました。
 
 | `auto_lint` | 「Wiki 品質警告:」行の展開 |
 |-------------|-----------------------|
-| `true` (通常経路) | `Wiki 品質警告: {n_warnings} 件（内訳: 矛盾 {n_contradictions} / 陳腐化 {n_stale} / 孤児 {n_orphans} / 欠落 {n_missing_concept} / 壊れた相互参照 {n_broken_refs} / Lint 異常経路 {n_lint_anomaly}）` |
+| `true` (通常経路) | `Wiki 品質警告: {n_warnings} 件（内訳: 矛盾 {n_contradictions} / 陳腐化 {n_stale} / 孤児 {n_orphans} / 欠落 {n_missing_concept} / 壊れた相互参照 {n_broken_refs} / Lint 異常経路 {n_lint_anomaly} / 統計同期中止 {n_stats_abort}）` |
 | `false` (skip 経路) | `Wiki 品質警告: スキップ (auto_lint disabled)` (内訳は表示しない) |
 
 「未登録 raw」行は `auto_lint=false` の場合も `0` 件として展開する (ステップ 2.1 で 0 初期化済みの値)。
 
-**等式**: `n_warnings = n_contradictions + n_stale + n_orphans + n_missing_concept + n_broken_refs + n_lint_anomaly`。step 2 成功時は `n_lint_anomaly=0` のため 5 カテゴリ合計が `n_warnings` と一致。step 1/3/4 anomaly 経路では 5 カテゴリは 0 fallback だが `n_lint_anomaly >= 1` のため `n_warnings >= 1` となる。
+**等式**: `n_warnings = n_contradictions + n_stale + n_orphans + n_missing_concept + n_broken_refs + n_lint_anomaly + n_stats_abort`。step 2 成功時は `n_lint_anomaly=0` のため 5 カテゴリ合計が `n_warnings` と一致。step 1/3/4 anomaly 経路では 5 カテゴリは 0 fallback だが `n_lint_anomaly >= 1` のため `n_warnings >= 1` となる。
 
 `{wiki_push_line}` の展開ルール (ステップ 8.6 の `[CONTEXT] WIKI_INGEST_PUSH=` marker を上から評価し最初の一致を採用。#1941 AC-2: 未 push の wiki commit があれば回復コマンドを明示する):
 
@@ -999,13 +1008,13 @@ Wiki Ingest が完了しました。
 | `skipped; reason=same_branch` | `Wiki push: 対象外 (same_branch 戦略。通常の PR push に含まれる)` |
 | marker なし（ステップ 8.6 未到達などの想定外経路） | `⚠️ Wiki push: 実行結果が確認できませんでした。git -C {wiki_worktree_abs} status で確認してください` |
 
-`{ingest_outstanding_line}`（Issue #1946: 非ブロッキング失敗の集約 surface）: `WIKI_INGEST_PUSH=` と `WIKI_INGEST_STATS=` の 2 marker を評価し、該当する行を**すべて**列挙する（どちらも該当しない場合のみ「なし」を出す）。
+`{ingest_outstanding_line}`（Issue #1946: 非ブロッキング失敗の集約 surface。`WIKI_INGEST_PUSH=` と `WIKI_INGEST_STATS=` の 2 marker を再評価するだけで、**新しい記録先は持たない** — push 失敗は local commit 自体が durable な記録で次回 ingest のステップ 8.6 が自動で flush を試み、統計中止は本行が唯一の下流検出器になる）: 2 marker を評価し、該当する行を**すべて**列挙する（どちらも該当しない場合のみ「なし」を出す）。
 
 | marker | 展開 |
 |---|---|
 | `WIKI_INGEST_PUSH=failed` | `- ⚠️ Wiki push: commit は local wiki branch に landed しましたが origin への push に失敗しました。手動回復: git -C {wiki_worktree_abs} push origin {wiki_branch}（次回 /rite:wiki-ingest 実行時にも自動で flush を試みます）` |
 | `WIKI_INGEST_PUSH=` marker なし（ステップ 8.6 未到達などの想定外経路） | `- ⚠️ Wiki push: 実行結果が確認できませんでした。git -C {wiki_worktree_abs} status で確認してください`（`{wiki_push_line}` の同ケースと同じ扱い — 未確認を「失敗なし」と断定しない） |
-| `WIKI_INGEST_STATS=aborted; reason={r}` | `- ⚠️ 統計同期: {r} により中止。index.md の `## 統計` は前サイクルの値のままです（手順 1 / 2 の行追加は適用済みのため、データ行数と統計が一時的に食い違います）` |
+| `WIKI_INGEST_STATS=aborted; reason={r}` | `` - ⚠️ 統計同期: {r} により中止。index.md の `## 統計` は前サイクルの値のままです（手順 1 / 2 の行追加は適用済みのため、データ行数と統計が一時的に食い違います） `` |
 | 上記いずれも該当なし（`WIKI_INGEST_PUSH=ok` / `skipped; reason=same_branch` かつ統計中止なし） | `- なし（非ブロッキングで継続した失敗はありませんでした）` |
 
 ### 9.1 Return-to-Caller Signal

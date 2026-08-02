@@ -343,8 +343,9 @@ fi
 # contains `pages/` are kept (the orphan-link grep contract — see
 # wiki-lint-orphans.sh — relies on the same `pages/{domain}/{slug}.md` target).
 # HTML comment blocks (`<!-- ... -->`) are skipped so that illustrative bullet
-# examples inside the prologue of index.md files initialized before the table
-# form are NOT parsed as real candidates (otherwise such an index would yield a
+# examples inside the prologue of index.md files initialized while the template
+# emitted the OKF bullet catalog are NOT parsed as real candidates (otherwise
+# such an index would yield a
 # phantom candidate whose page does not exist, emitting a misleading "index.md
 # may be stale" WARNING on every query).
 candidates=$(printf '%s\n' "$index_content" | awk '
