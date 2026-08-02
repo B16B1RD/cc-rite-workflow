@@ -292,14 +292,13 @@ Select ONE matching the Issue type. The type confirmed in `create.md` ステッ�
 ## 9. Decision Log
 
 <!-- Record only choices the code and tests cannot state: scope boundary, rejected alternative, compatibility policy, knowingly accepted exception -->
-<!-- NOT here: work items, planned tests (append a T-xx row to Section 6 instead), fix rationale (commit body instead) -->
+<!-- NOT here — each of these has its own medium: work item (work memory's plan-deviation log), planned test (a T-xx row in Section 6), fix rationale (the commit body) -->
 - YYYY-MM-DD D-01: {decision} / Reason: {reason} / Impact: {AC_or_Test_ID}
 ```
 
 **Rules**:
 - Record only what the code and tests cannot state: scope boundaries, rejected alternatives, compatibility policy, knowingly accepted exceptions
-- Do NOT record work items, planned tests, or review-response notes — they are not decisions, and their count grows with the number of review cycles until the real decisions are buried
-- Route them instead of dropping them: a test need found during implementation → a new `T-xx` row in Section 6 (its Canon TDD test list is appended to as behaviors surface); the reason behind a fix → the commit body (`skills/fix/SKILL.md` ステップ 3.2.1 Root Cause Gate already requires it there)
+- Do NOT record work items, planned tests, or fix rationale here — they are not decisions, and their count grows with the number of review cycles until the real decisions are buried. Each has its own medium, so route rather than drop: a work item found during implementation → the work memory's plan-deviation log (deviation type `追加`); a test need → a new `T-xx` row in Section 6 (its Canon TDD test list is appended to as behaviors surface); the reason behind a fix, a review response included → the commit body (`skills/fix/SKILL.md` ステップ 3.2.1 Root Cause Gate already requires it there)
 - This applies `knowledge_routing` (`skills/rite-workflow/references/coding-principles.md`) to this section: each kind of knowledge is recorded once, in the medium where it survives
 
 ---
