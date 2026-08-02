@@ -323,6 +323,12 @@ run_update "$SBX7" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="123" WM_LOOP_COUNT="3" >/dev/null 2>&1 || true
 WM_FILE7="$SBX7/.rite-work-memory/issue-687.md"
+# seed を 2 回回して sync_revision: 2 の状態を作ってから壊す。1 回だけだと元ファイルが
+# sync_revision: 1 で、縮退後の「1 から採番し直す」と値が一致してしまい T-03.5 が空虚になる。
+run_update "$SBX7" \
+  WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="Second seed." WM_ISSUE_NUMBER="687" >/dev/null 2>&1 || true
+assert_contains "T-03.0: 破壊前の sync_revision が 2 になっている (前提確認)" "sync_revision: 2" "$(cat "$WM_FILE7" 2>/dev/null || echo "")"
 grep -v '^# 📜 rite 作業メモリ$' "$WM_FILE7" > "$WM_FILE7.tmp" && mv "$WM_FILE7.tmp" "$WM_FILE7"
 
 # stderr のみを捕捉する (T-06 と同じ `2>&1 >/dev/null` の順序が必須)。rc は別呼び出しで取ると
@@ -340,6 +346,11 @@ assert_contains "T-03.2: pr_number: null (既定値、AC-3)" "pr_number: null" "
 assert_contains "T-03.3: loop_count: 0 (既定値、AC-3)" "loop_count: 0" "$body7"
 assert_contains "T-03.4: 読み戻し不能が WARNING で可視化される (silent に既定値へ倒れない)" \
   "$WARN_CARRY_FWD" "$err7"
+# WARNING が断定する挙動をそのまま assert する (2 → 1 の巻き戻りなので値で判別できる)
+assert_contains "T-03.5: sync_revision が 1 から採番し直される (WARNING の文面どおり)" "sync_revision: 1" "$body7"
+# 2 つの WARNING は排他。片方の発火条件が広がって両方出るようになる回帰を検出する
+corrupt7=$(printf '%s' "$err7" | grep -c "$WARN_CORRUPT_FWD") || true
+assert_eq "T-03.6: 読み戻し不能時は corrupt WARNING を出さない (2 文面の排他性)" "0" "$corrupt7"
 
 # ─── T-04: env override が既存ファイル値より優先される ───────────
 # pr_number / loop_count は独立した 2 つの条件式で守られているため、両方を検証する
@@ -563,6 +574,48 @@ assert_eq "T-11.1: return 0" "0" "$rc14"
 body14=$(cat "$WM_FILE14" 2>/dev/null || echo "")
 assert_contains "T-11.2: 渡した側は env 値が採用される (pr_number=123)" "pr_number: 123" "$body14"
 assert_contains "T-11.3: 渡していない側は carry-forward される (loop_count=4)" "loop_count: 4" "$body14"
+
+# ─── T-12: jq 展開失敗でも既定値に倒して完走する ──────────────────
+# python3 側の errexit ガードは T-07 が固定しているが、1 行下の jq 側ガードは同じリスク構造を
+# 持ちながら無防備だった。ガードを外すと `set -e` 下の bare 呼び出しが rc=1 で中断し、WM が
+# まったく書かれない (best-effort 契約の直接違反)。shim は sync_revision を含む呼び出しだけを
+# 失敗させる — jq を全面的に壊すと flow-state.sh 依存の他 TC を巻き込む。
+echo "T-12: jq 展開失敗でも既定値へ倒して更新が完走する"
+SBX15=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX15")
+write_config "$SBX15"
+run_update "$SBX15" \
+  WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="123" WM_LOOP_COUNT="4" >/dev/null 2>&1 || true
+WM_FILE15="$SBX15/.rite-work-memory/issue-687.md"
+assert_contains "T-12.0: seed で pr_number=123 が書かれる (前提確認)" "pr_number: 123" "$(cat "$WM_FILE15" 2>/dev/null || echo "")"
+mkdir -p "$SBX15/bin"
+REAL_JQ=$(command -v jq)
+cat > "$SBX15/bin/jq" <<SHIM_EOF
+#!/bin/bash
+for a in "\$@"; do
+  case "\$a" in *sync_revision*) exit 1 ;; esac
+done
+exec "$REAL_JQ" "\$@"
+SHIM_EOF
+chmod +x "$SBX15/bin/jq"
+
+if (cd "$SBX15" && env WM_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$SBX15/bin:$PATH" \
+  WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-jq-failure." WM_ISSUE_NUMBER="687" \
+  bash -c 'set -euo pipefail; source "$WM_PLUGIN_ROOT/hooks/work-memory-update.sh"; update_local_work_memory' \
+  2>"$SBX15/err15") >/dev/null; then
+  rc15=0
+else
+  rc15=$?
+fi
+err15=$(cat "$SBX15/err15" 2>/dev/null || echo "")
+body15=$(cat "$WM_FILE15" 2>/dev/null || echo "")
+assert_eq "T-12.1: set -e 下の bare 呼び出しで return 0 (best-effort 契約)" "0" "$rc15"
+assert_contains "T-12.2: WM が実際に書き換わる (更新が完走している)" "Post-jq-failure." "$body15"
+assert_contains "T-12.3: pr_number: null (既定値へ倒れる)" "pr_number: null" "$body15"
+assert_contains "T-12.4: loop_count: 0 (既定値へ倒れる)" "loop_count: 0" "$body15"
+assert_contains "T-12.5: 読み戻し不能 WARNING が出る (silent に倒れない)" "$WARN_CARRY_FWD" "$err15"
 
 echo
 echo "─── work-memory-update.test.sh summary ──────────────────────────"

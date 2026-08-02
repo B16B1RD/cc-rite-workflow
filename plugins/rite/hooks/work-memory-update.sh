@@ -194,23 +194,26 @@ update_local_work_memory() {
     if [ -n "$parsed" ]; then
       IFS=$'\t' read -r existing_rev existing_pr existing_loop existing_keys <<< "$parsed"
     fi
-    case "$existing_keys" in ''|*[!0-9]*) existing_keys=0 ;; esac
     # 縮退を silent に飲むと、sync_revision が 1 へ巻き戻ったことが「もともと版が無かった」と
     # 区別できない。non-blocking は維持しつつ WARNING で観測性を確保する (下段 detail_extra awk と
-    # 同形)。**射程は .data 全体が空の場合に限る** — 判定が .data の要素数 1 本なので、個別 key
-    # だけの欠落 (例: sync_revision 行だけが読めない) は検出せず無警告で既定値へ倒れる。
-    # parse の rc は原因切り分け用に文面へ載せるだけで条件には使わない (rc を条件にすると、
-    # carry-forward が成功する corrupt 系統でも発火して誤報になる)。
+    # 同形)。**この読み戻し不能 WARNING の射程は .data 全体が空の場合に限る** — 判定が .data の
+    # 要素数 1 本なので、非必須 key だけの欠落 (例: pr_number 行だけが読めない) は parse が rc=0 を
+    # 返し .data も非空になるため、無警告で既定値へ倒れる。必須 key (schema_version / issue_number /
+    # sync_revision) の欠落は parse が corrupt を返すので、下の corrupt WARNING 側が拾う。
+    # **本 WARNING の条件には** parse の rc を使わない (rc を条件にすると、carry-forward が成功する
+    # corrupt 系統でも発火して誤報になる)。rc を条件に使うのは下の corrupt WARNING 側。
     # 文面が断定するのは sync_revision だけに留める — pr_number / loop_count は本ブロックより後段の
     # env override / flow-state 読み取りが最終値を決めるため、ここでは既定値化を断定できない。
     if [ "$existing_keys" -eq 0 ]; then
       echo "WARNING: 既存 WM から値を読み戻せませんでした ($local_wm, parse rc=$_parse_rc) — sync_revision を 1 から採番し直します (pr_number / loop_count は env override も flow-state 読み取りも無い場合のみ既定値へ倒れます)" >&2
     else
-      # corrupt 判定 (rc 非ゼロ) でも .data が埋まっていればここへ来る。値は carry-forward するが、
-      # verdict を握り潰すと「corrupt と判定されたファイルの値が伝播した」ことがどこにも残らない。
-      # 上の読み戻し不能 WARNING とは別文面にして、両者を混同せず切り分けられるようにする。
+      # corrupt 判定 (rc 非ゼロ) でも .data が埋まっていればここへ来る。verdict を握り潰すと
+      # 「corrupt と判定されたファイルを材料に処理を続けた」ことがどこにも残らない。上の読み戻し
+      # 不能 WARNING とは別文面にして、両者を混同せず切り分けられるようにする。
+      # 文面は発火条件が保証している事実だけに留める — 実際に carry-forward されるかは後段の
+      # env override / flow-state 読み取り次第で、この時点では断定できない。
       if [ "$_parse_rc" -ne 0 ]; then
-        echo "WARNING: 既存 WM は corrupt 判定 (parse rc=$_parse_rc) ですが .data が埋まっているため値を carry-forward しました ($local_wm)" >&2
+        echo "WARNING: 既存 WM は corrupt 判定 (parse rc=$_parse_rc) ですが .data が読めたため処理を継続しました ($local_wm) — 読み戻した値が実際に採用されるかは env override / flow-state 読み取りの有無で決まります" >&2
       fi
       if [[ "$existing_rev" =~ ^[0-9]+$ ]]; then sync_rev=$((existing_rev + 1)); fi
       # carry-forward は env override が無いときだけ発火させる。未設定判定に `-z` を使うのは
