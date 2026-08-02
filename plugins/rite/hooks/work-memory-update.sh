@@ -168,8 +168,13 @@ update_local_work_memory() {
     # work-memory-parse.py は corrupt 判定 (missing_keys / issue_number_mismatch) でも .data を
     # 埋めたうえで exit 2 を返す。よって exit code ではなく stdout の有無で採否を決める
     # (exit code で捨てると当該ファイルの sync_revision が 1 へ巻き戻り、版が逆行する)。
+    # `|| true` であって `|| parse_out=""` ではない: 代入は `||` の評価前に完了するので
+    # stdout は保持され、exit 2 だけを飲む。`|| parse_out=""` にすると corrupt 判定ファイルの
+    # .data ごと捨てて sync_revision を巻き戻す。ガード自体が要るのは、本 helper を
+    # `set -e` 下で source する caller (pre-compact / post-tool-wm-sync) が現状 if 条件文脈で
+    # 呼んで errexit が停止しているだけであり、その呼び出し形に更新継続を依存させないため。
     local parse_out=""
-    parse_out=$(python3 "$parse_script" "$local_wm" 2>/dev/null)
+    parse_out=$(python3 "$parse_script" "$local_wm" 2>/dev/null) || true
     local parsed=""
     if [ -n "$parse_out" ]; then
       # 3 field を 1 回の jq で取り出し、python3 プロセスの追加起動を避ける。

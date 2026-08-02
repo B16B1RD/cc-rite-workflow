@@ -399,6 +399,32 @@ body10=$(cat "$WM_FILE10" 2>/dev/null || echo "")
 assert_contains "T-06.1: 非数値は pr_number: null へ降格する" "pr_number: null" "$body10"
 assert_contains "T-06.2: WARNING が stderr に出る (silent 降格しない)" "non-numeric character" "$err10"
 
+# ─── T-07: set -e 下の bare 呼び出しでも更新が完走する ────────────
+# 本 helper を source する caller (pre-compact.sh / post-tool-wm-sync.sh) は `set -euo pipefail`
+# 下にあり、現状はいずれも if 条件文脈で呼ぶため bash が errexit を停止している。その呼び出し形に
+# 「carry-forward の失敗で更新全体を失敗させない」契約を依存させないことを、条件文脈を使わない
+# bare 呼び出しで検証する。run_update は bash -c 経由で errexit を持たないため、本 TC のみ
+# 明示的に set -euo pipefail を張った sandbox 実行を組む。
+echo "T-07: set -e 下の bare 呼び出しで corrupt WM を読んでも更新が完走する"
+SBX11=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX11")
+write_config "$SBX11"
+mkdir -p "$SBX11/.rite-work-memory"
+# ヘッダマーカー不在 = work-memory-parse.py が exit 2 を返す corrupt fixture
+printf '## Summary\n---\nschema_version: 1\nissue_number: 687\nsync_revision: 1\npr_number: 123\n---\nbody\n' \
+  > "$SBX11/.rite-work-memory/issue-687.md"
+
+if (cd "$SBX11" && env WM_PLUGIN_ROOT="$PLUGIN_ROOT" \
+  WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" \
+  bash -c 'set -euo pipefail; source "$WM_PLUGIN_ROOT/hooks/work-memory-update.sh"; update_local_work_memory') >/dev/null 2>&1; then
+  rc11=0
+else
+  rc11=$?
+fi
+assert_eq "T-07.1: set -e + bare 呼び出しで return 0 (errexit で中断しない)" "0" "$rc11"
+body11=$(cat "$SBX11/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
+assert_contains "T-07.2: WM が実際に書き換わる (更新が完走している)" "Post-implementation." "$body11"
+
 echo
 echo "─── work-memory-update.test.sh summary ──────────────────────────"
 echo "PASS: $PASS"
