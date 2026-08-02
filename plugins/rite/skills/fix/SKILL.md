@@ -1853,6 +1853,8 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
 
 本原則の対象は**機構の追加**（分岐・ガード・規約・注記・例外条項）である。テストケースの追加や既存複製の同期更新は対象外（それらは通常それ自体が正しい修正であり、削除で代替しない）。
 
+本原則は生成側の `no_speculative_structure`（[coding-principles.md](../../skills/rite-workflow/references/coding-principles.md)）と対をなす — 追加を選ぶ前に、その構造が現 Issue の受入基準または同 PR 内の利用箇所で今まさに要求されているかを確認すること。
+
 **Escalation trigger（パッチの重ね掛け停止）**: 対応中の finding が**同一 PR の前 cycle の fix が導入・変更した箇所**への指摘である場合（description が「cycle N で導入した」「前 cycle で追加した」等で当該 fix を名指しする場合を含む）、同じ機構への追加パッチを既定選択にしないこと。まず「当該機構ごと削除・単純化して指摘群を根から消せないか」を検討し、修正案の提示（ステップ 2.3）の前にその判断を chat へ 1 行明示する（例: `simplification-first: 分岐機構を削除し行全体再生成へ単純化` / `simplification-first: 追加パッチを選択 — 理由: {reason}`）。
 
 **追加で修正する場合**、commit message に「なぜ削除・単純化ではなく追加を選んだか」を明示すること（Fail-Fast の fallback 明示義務と同型）。
