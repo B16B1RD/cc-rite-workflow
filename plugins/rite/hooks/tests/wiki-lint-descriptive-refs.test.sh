@@ -54,7 +54,7 @@
 #   TC-47  リンク行はあるが entries 0 件の index.md は検出失敗として計上する (stdin に依存しない)
 #   TC-48  index.md 終端アクションの戻り値 arity (4 値) を pin する (フィールドを減らす変異を弾く)
 #   TC-19c separate_branch (既定) でも index.md 不在は read_errors に数えない (#2069 T-06)
-#   TC-50  index-template.md 前文 (記法例コメント) を entries に数えず、検出失敗ガードを殺さない
+#   TC-50  index-template.md 前文を entries に数えず、検出失敗ガードを殺さない
 #   TC-51  除外ブロック (コメント / フェンス) の未閉鎖を END で検出失敗へ倒す (部分欠損形も含む)
 #   TC-49  表と箇条書きが混在する index.md でも行単位で形式を判別する (移行期の必然形状)
 #   TC-52  index.md のリンク regex が orphans.sh と literal 一致 (共有定義の drift 検出)
@@ -600,7 +600,7 @@ assert_grep "TC-31 (#2069 T-07) over-column も列数つき WARNING で観測で
 # WARNING + stdout の descriptive_refs_skipped_rows で surface する
 # (`/rite:wiki-query positional-parse-row-count-guard`)。
 # 発火条件を「全行 skip」にしないのは、`parsed == 0` では「形式 drift」と「まだ登録が無い
-# カタログ」を区別できないから (記法例コメントは entries に数えないため、テンプレ前文だけの
+# カタログ」を区別できないから (前文はリンク行を持たないため、テンプレ前文だけの
 # index も parsed == 0 になる)。**一部行のみ失敗**する fixture で pin し、ガードを
 # `parsed == 0` へ弱める変異を kill できるようにする。
 printf '# Wiki Index\n\n| ページ | ドメイン | サマリー | 更新日 | 確信度 |\n|---|---|---|---|---|\n| [a](pages/patterns/a.md) | x |\n| [b](pages/patterns/b.md) | patterns | 詳細は #1151 | 2026-01-01 | high |\n' > "$IDXSBX/.rite/wiki/index.md"
@@ -900,12 +900,14 @@ nolink_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)
 assert "TC-47 リンク行が 0 なら検出失敗に計上しない (登録前のカタログは正当)" "0" "$(printf '%s' "$nolink_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
 
 # TC-50: 上の TC-47 fixture はどれも手書きの index で、`/rite:wiki-init` が配る
-# index-template.md の**前文を持たない**。前文はコメント内に箇条書きの記法例
-# `* [ページタイトル](pages/{domain}/{slug}.md) - …` を含むため、コメントを落とさない実装では
-# その記法例が実エントリとして数えられ entries>=1 が恒久化し、canonical な index.md では
-# 検出失敗ガードが**構造的に発火しなくなる**。TC-47 の fixture では通ってしまう経路なので、
-# template を実際にコピーした fixture で pin する (テンプレの記法例が変わっても追随するよう
-# literal 複製ではなく実ファイルを cp する)。
+# index-template.md の**前文を持たない**。現行テンプレートの前文は記法例コメントを持たないが、
+# テーブル形式化より前に初期化された bundle の index.md には箇条書きの記法例
+# `* [ページタイトル](pages/{domain}/{slug}.md) - …` がコメント内に残っており、コメントを
+# 落とさない実装ではその記法例が実エントリとして数えられ entries>=1 が恒久化して、それらの
+# index.md では検出失敗ガードが**構造的に発火しなくなる**。TC-47 の fixture では通ってしまう
+# 経路なので、配布テンプレートを実際にコピーした fixture で pin する (テンプレが変わっても
+# 追随するよう literal 複製ではなく実ファイルを cp する)。記法例コメントを持つ形式そのものの
+# pin は、現行テンプレートに記法例が無いため本 TC では担保できず literal fixture が別途要る。
 cp "$PLUGIN_ROOT/templates/wiki/index-template.md" "$IDXSBX/.rite/wiki/index.md"
 printf '\n* [A](../../pages/patterns/a.md) - 詳細は #1151\n' >> "$IDXSBX/.rite/wiki/index.md"
 tmpl_err="$IDXSBX/tmpl.err"; tmp_files+=("$tmpl_err")
@@ -917,7 +919,7 @@ assert_grep "TC-50 template 前文つきでも検出失敗 WARNING が出る" "$
 cp "$PLUGIN_ROOT/templates/wiki/index-template.md" "$IDXSBX/.rite/wiki/index.md"
 tmpl_only_out=$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)
 assert "TC-50 template 前文のみ (未登録) は検出失敗に計上しない" "0" "$(printf '%s' "$tmpl_only_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
-assert "TC-50 記法例コメントのサマリーは hits に数えない (本文側の 1 件のみ)" "1" "$(idx_hits "$tmpl_only_out")"
+assert "TC-50 配布テンプレート前文は hits に数えない (本文側の 1 件のみ)" "1" "$(idx_hits "$tmpl_only_out")"
 # 逆方向の pin: サマリー本文中に `<!-- -->` を**引用している実エントリ行**は落とさない。
 # コメント開始の行頭 anchor を外す変異 (`/<!--/`) を kill する。実測で現行 wiki の index.md に
 # 該当行が 2 件あり、anchor を外すと該当 2 行分 hits が減る（実測時 230 → 228。絶対値はスナップショット）。

@@ -335,11 +335,12 @@ _RITE_COUNT_ACTION='/(TODO|FIXME)/ { next } { gsub(/`[^`]*`/, "_"); if ($0 ~ re)
 # 確信度の各列は対象外にする (ページタイトル由来の番号は本文側の維持判断と同じ扱いのため)。
 #
 # エントリ行の判定は `](pages/...)` リンクの有無で行い、テーブル行と OKF 箇条書きの両方を **行単位**で
-# 受ける。現行の wiki ブランチは 5 列テーブルだが、`templates/wiki/index-template.md` と wiki-ingest
-# ステップ 6 が生成するのは箇条書き `* [title](pages/...) - desc` であり、
-# どちらか一方専用にすると、指示と実挙動の乖離が解消された時点、あるいはその過程で検出が無言で
-# 0 件へ倒れる。ファイル単位で形式を判定しないのは、混在が「起きうる」ではなく乖離が解消される
-# 過程で必ず通る状態だから。
+# 受ける。`templates/wiki/index-template.md` と wiki-ingest ステップ 6 はどちらもテーブル形式を生成し、
+# 現行の wiki ブランチもテーブルで維持されている。一方、テーブル形式化より前に初期化された bundle の
+# index.md は箇条書き `* [title](pages/...) - desc` のまま残り、移行を促す producer も存在しないため、
+# 箇条書きは放っておけば消える残滓ではなくテーブルと併存し続ける。どちらか一方専用にすると、
+# そうした bundle、あるいは移行途中のファイルで検出が無言で 0 件へ倒れる。ファイル単位で形式を
+# 判定しないのは、混在が「起きうる」ではなく既存 bundle がテーブルへ移る過程で必ず通る状態だから。
 # リンクの regex は同じ index.md を読む `wiki-lint-orphans.sh` と同一定義にする (`./pages/` /
 # `../pages/` 形式も受ける)。片方だけ狭いと、その形式の index で本 helper だけが無言で 0 件に倒れる。
 #
@@ -349,11 +350,12 @@ _RITE_COUNT_ACTION='/(TODO|FIXME)/ { next } { gsub(/`[^`]*`/, "_"); if ($0 ~ re)
 # 位置固定の列パースは列の増減で全行 skip の silent no-op に倒れるため、ヘッダー由来の位置決めと
 # **スキップ行数の stdout 露出** を対にする (`/rite:wiki-query positional-parse-row-count-guard` で参照)。
 #
-# HTML コメントブロック (`<!-- ... -->`) は行の分類より前に落とす。`templates/wiki/index-template.md`
-# の前文はコメント内に箇条書きの記法例 `* [ページタイトル](pages/{domain}/{slug}.md) - …` を含み、
-# 落とさないと **記法例が実エントリとして数えられる**。そうなると下の検出失敗ガード
-# (`entries == 0 && linkrows > 0`) は `entries` が恒久的に 1 以上へ押し上げられて発火せず、
-# `/rite:wiki-init` が生成する canonical な index.md では **リンク形式が drift しても無言で 0 件**
+# HTML コメントブロック (`<!-- ... -->`) は行の分類より前に落とす。テーブル形式化より前に配布した
+# `templates/wiki/index-template.md` の前文はコメント内に箇条書きの記法例
+# `* [ページタイトル](pages/{domain}/{slug}.md) - …` を含み (現行テンプレートでは記法例ごと削除済みだが、
+# それ以前に初期化された bundle の index.md には残る)、落とさないと **記法例が実エントリとして
+# 数えられる**。そうなると下の検出失敗ガード (`entries == 0 && linkrows > 0`) は `entries` が恒久的に
+# 1 以上へ押し上げられて発火せず、それらの index.md では **リンク形式が drift しても無言で 0 件**
 # に倒れる (本 helper が塞ごうとしている silent-0 そのもの)。コメント行を数えないことは
 # `entries` / `linkrows` の定義 (実カタログのエントリ数 / リンク行数) を回復するものであって、
 # ガード専用の特例ではない。同じ `index.md` を読む `hooks/wiki-query-inject.sh` の Pass 1 も

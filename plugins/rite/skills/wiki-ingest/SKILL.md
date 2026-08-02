@@ -638,7 +638,7 @@ fi
 
 **セル区切り文字のエスケープ（新規追加・既存更新の両経路に適用）**: `{title}` / `{description}` に `|` が含まれる場合、index 登録行では `\|` にエスケープして substitute する。**インラインコード `` ` `` の内側も対象** — GFM はコードスパン内の生 `|` もセル区切りとして解釈するため、エスケープしないと列がずれて 5 列構造が壊れる。値を言い換えて `|` を避けるのは禁止（ステップ 4.3 の title 規約が frontmatter `title` との literal 一致を要求するため）。**エスケープは index 登録行にのみ適用し、page frontmatter の `title` / `description` は改変しない**。残る `{path}` / `{domain}` / `{updated}` / `{confidence}` は slug・enum・ISO 8601 タイムスタンプで `|` を含み得ないため対象外。
 
-**登録行の同定述語（手順 1 / 2 / 3 共通）**: 「`## ページ一覧` 見出しから**次の `##` 見出しまでの範囲**にある `|` 始まりの行（ヘッダ行・区切り行を除く）のうち、**行頭の最初のセル（ページ列）**が `[{title}](pages/{domain}/{slug}.md)` 形式のリンクで、その `{slug}` が対象ページと一致する行」とする。**「GFM がテーブル行として解釈する行」ではなく上記の位置で定義する** — 節内に空行があると GFM は先頭ブロックだけをテーブルとして解釈し、以降の登録行は段落として描画されるため、レンダリング結果を基準にすると実在する登録行の一部が同定対象から漏れて更新サイクルごとに行が増える。**サマリー列などページ列以外のセルに現れる `](pages/...)` 相互参照リンクに一致させてはならない** — 実 index.md にはサマリー列に他ページへのリンクを含む行が複数存在し、列を問わず一致させると別ページの登録行を対象にしてしまう。同定結果が 2 行以上になった場合は WARNING を出して**当該ページの index 更新を中止する**（1 件目を採る等の fallback は禁止 — 誤った行を silent に書き換える経路が残る）。
+**登録行の同定述語（手順 1 / 2 / 3 共通）**: 「`## ページ一覧` 見出しから**次の `##` 見出しまでの範囲**にある `|` 始まりの行（ヘッダ行・区切り行を除く）のうち、その行で**最初に現れる** `](pages/{domain}/{slug}.md)` の `{slug}` が対象ページと一致する行」とする。**ページ列は「`|` で分割した最初のセル」ではなく、行頭の `|` からその最初のリンクの閉じ括弧までの範囲**と定義する — `title` に未エスケープの生 `|` を含む行ではリンクが 2 つ目以降のセルへ落ちるため、セル分割を前提にすると実在する登録行を同定できず、手順 1 が重複行を追加したうえ手順 3 の重複削除も同じ述語なので回収できない。「最初に現れる」リンクだけを見ることで、サマリー列に置かれた他ページへの相互参照リンクは自動的に対象外になる（実 index.md にはサマリー列に他ページへのリンクを含む行が複数存在する）。**「GFM がテーブル行として解釈する行」ではなく上記の位置で定義する** — 節内に空行があると GFM は先頭ブロックだけをテーブルとして解釈し、以降の登録行は段落として描画されるため、レンダリング結果を基準にすると実在する登録行の一部が同定対象から漏れて更新サイクルごとに行が増える。同定結果が 2 行以上になった場合は WARNING を出して**当該ページの index 更新を中止する**（1 件目を採る等の fallback は禁止 — 誤った行を silent に書き換える経路が残る）。
 
 **手順**（0 → 1 → 2 → 3 の順に実行する。手順 3 も省略可の任意項目ではない）:
 
@@ -659,7 +659,7 @@ fi
   - `{path}` は `pages/{domain}/{slug}.md` 形式を維持する（孤児検出のリンク grep `](pages/...)` 生存条件、`wiki-lint-orphans.sh`）
   - `{description}` はステップ 4.1 のサマリー（page frontmatter の `description` と同源、1-2 文）
   - `{updated}` / `{confidence}` は page frontmatter の値と同じにする（ISO 8601 タイムスタンプ / `high`・`medium`・`low`）。**YAML の引用符は含めない**（frontmatter 側が `updated: "2026-..."` でも index 列は引用符なし）
-- **2. 既存ページ行の更新**: 対象行は上記の同定述語で特定する（節の外にある旧形式の箇条書き行を書き換えてはならない — テーブル行を箇条書きリストの中へ置くと GFM は箇条書きの継続行として literal text にレンダリングする）。同定したら**その 1 行を上記「新規ページ行の追加」と同一形式で丸ごと再生成して置換する**（列位置を数えて特定のセルだけ書き換えることはしない）。`title` / `updated` / `confidence` は更新後の page frontmatter の値（YAML の引用符は外す）を使い、エスケープ規約を適用する。**サマリー列の値は次の順で決める**: (1) frontmatter に `description` があればその値、(2) 無ければ本サイクルのステップ 4.1 で生成したサマリー、(3) どちらも無ければ**既存セルの値をそのまま保持する**。`description` は schema 上 optional で実際に持たない page が多数あるため、**空文字で上書きしてはならない**（蓄積済みのサマリーが失われる）。これにより、既に未エスケープの生 `|` で列がずれている既存行も当該 page の更新サイクルで正しい 5 列へ是正される。
+- **2. 既存ページ行の更新**: 対象行は上記の同定述語で特定する（節の外にある旧形式の箇条書き行を書き換えてはならない — テーブル行を箇条書きリストの中へ置くと GFM は箇条書きの継続行として literal text にレンダリングする）。同定したら**その 1 行を上記「新規ページ行の追加」と同一形式で丸ごと再生成して置換する**（列位置を数えて特定のセルだけ書き換えることはしない）。`title` / `updated` / `confidence` は更新後の page frontmatter の値（YAML の引用符は外す）を使い、エスケープ規約を適用する。**サマリー列の値は次の順で決める**: (1) frontmatter に `description` があればその値、(2) 無ければ**既存行のサマリー列の値をそのまま保持する**（ステップ 4.1 のサマリー生成は新規ページ作成時にしか実行されないため、更新経路では候補にならない）。**既存行のサマリー列は位置で切り出す** — 同定述語で確定したページ列より後ろを `|` で分割し、先頭をドメイン列、**末尾 2 つを更新日列・確信度列**、その間に残るすべてを `|` で再結合したものをサマリー列とする。更新日は ISO 8601、確信度は enum でどちらも `|` を含み得ないため、末尾から数える方法はサマリー列に生 `|` が残っている行でも決定的に働く。`description` は schema 上 optional で実際に持たない page が多数あるため、**空文字で上書きしてはならない**（蓄積済みのサマリーが失われる）。これにより、既に未エスケープの生 `|` で列がずれている既存行も当該 page の更新サイクルで正しい 5 列へ是正される。
 - **3. 統計**: `## 統計` 節が存在する場合、**総ページ数 / ドメイン別内訳 / 最終更新**の 3 行を今回の ingest 結果と同期する。総ページ数 = `pages/` 配下の **`*.md` ファイル数**（`wiki-init` が置く `.gitkeep` 等の非ページファイルを除く）、ドメイン別 = `patterns` / `heuristics` / `anti-patterns` 各配下の `*.md` 件数、最終更新 = 今回の `{updated}` タイムスタンプ。件数は目視で数えず下記で算出する（ステップ 3 の `wiki_index_path` と同じ基点解決を使う — 素の相対パスは呼び出し時の cwd がセッション worktree / main checkout のとき 0 件になり、統計を silent に 0 で上書きする）:
 
   ```bash
@@ -670,9 +670,45 @@ fi
   else
     pages_root=".rite/wiki/pages"
   fi
-  total=$(find "$pages_root" -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+  # signal-specific trap (EXIT/INT/TERM/HUP) で find_err tempfile orphan 防止。
+  # 詳細は ../../references/bash-trap-patterns.md#signal-specific-trap-template 参照。
+  find_err=""
+  _cleanup() { [ -n "${find_err:-}" ] && rm -f "$find_err"; return 0; }
+  trap 'rc=$?; _cleanup; exit $rc' EXIT
+  trap '_cleanup; exit 130' INT
+  trap '_cleanup; exit 143' TERM
+  trap '_cleanup; exit 129' HUP
+  find_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-stat-err-XXXXXX" 2>/dev/null) || {
+    echo "WARNING: stderr 退避 tempfile (find_err) の mktemp に失敗しました。統計同期を中止します" >&2
+    exit 0
+  }
+
+  # 単一 find でページ一覧を取り、総数もドメイン別も同じ出力から数える
+  # (総数と内訳が構造的に一致するため、両者のズレを別途検査する必要がない)
+  if ! pages_list=$(find "$pages_root" -type f -name '*.md' 2>"$find_err"); then
+    echo "WARNING: find '$pages_root' が失敗しました。統計同期を中止します" >&2
+    head -3 "$find_err" | sed 's/^/  /' >&2
+    echo "  影響: 過少計上した値で正しい統計を上書きしないため、本サイクルの統計は更新しません" >&2
+    exit 0
+  fi
+  if [ -s "$find_err" ]; then
+    echo "WARNING: find '$pages_root' が stderr 出力を返しました (permission denied / IO error の可能性)。統計同期を中止します:" >&2
+    head -3 "$find_err" | sed 's/^/  /' >&2
+    echo "  影響: 一部ディレクトリを読めておらず、統計が過少計上される可能性があります" >&2
+    exit 0
+  fi
+
+  if [ -z "$pages_list" ]; then
+    total=0
+  else
+    total=$(printf '%s\n' "$pages_list" | wc -l | tr -d ' ')
+  fi
   for d in patterns heuristics anti-patterns; do
-    printf '%s=%s\n' "$d" "$(find "$pages_root/$d" -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+    if [ -z "$pages_list" ]; then
+      printf '%s=0\n' "$d"
+    else
+      printf '%s=%s\n' "$d" "$(printf '%s\n' "$pages_list" | grep -c "/${d}/")"
+    fi
   done
   echo "total=$total"
   ```
