@@ -40,6 +40,12 @@
 #                             When set, overrides WM_PR_NUMBER/WM_LOOP_COUNT and values from existing WM.
 #                             (default: "false")
 #
+# Observability note:
+#   本 helper が stderr へ出す WARNING (carry-forward 不能 / 数値バリデーション降格 / Detail 抽出失敗)
+#   は、skill 経由の通常更新経路が `bash hooks/local-wm-update.sh 2>/dev/null` の形で呼ぶため破棄される。
+#   実際に届くのは stderr を素通しする caller (pre-compact.sh / post-tool-wm-sync.sh) とテストのみ。
+#   call site 側を stderr 退避形へ揃えるのは本 helper の管轄外。
+#
 # Security note:
 #   WM_* 環境変数の sanitize は caller 責務とする設計だったが、orchestrator 経由で LLM 出力 / Issue
 #   タイトル / next_action 等の動的文字列が直接 frontmatter に流入する経路があり defense-in-depth が
@@ -161,9 +167,10 @@ update_local_work_memory() {
   local parse_script="${WM_PLUGIN_ROOT}/hooks/work-memory-parse.py"
 
   # 既存ファイルの値の読み戻し。sync_revision の increment に加え、pr_number / loop_count を
-  # carry-forward する — この 2 field は書き手が毎回知っているとは限らない (implement / lint /
-  # review 等の caller は PR 番号もループ回数も持たない) ため、読み戻さないと更新のたびに
+  # carry-forward する — この 2 field を env で渡す caller は pre-compact のみで、implement /
+  # review / fix / ready の Ready 化前更新はいずれも値を渡さない。読み戻さないと更新のたびに
   # 既定値へ巻き戻り、work-memory-format.md の field 定義が宣言する意味を実ファイルが満たせない。
+  # (WM_READ_FROM_FLOW_STATE を渡す lint / ready の Ready 化後更新は下段で上書きされるため対象外)
   if [ -f "$local_wm" ] && [ -f "$parse_script" ]; then
     # work-memory-parse.py は corrupt 判定 (missing_keys / issue_number_mismatch) でも .data を
     # 埋めたうえで exit 2 を返す。よって exit code ではなく stdout の有無で採否を決める
@@ -175,23 +182,28 @@ update_local_work_memory() {
     # 呼んで errexit が停止しているだけであり、その呼び出し形に更新継続を依存させないため。
     local parse_out="" _parse_rc=0
     parse_out=$(python3 "$parse_script" "$local_wm" 2>/dev/null) || _parse_rc=$?
-    # 非ゼロを silent に飲むと、読取失敗 (permission / IO) で pr_number / loop_count /
-    # sync_revision がすべて既定値へ倒れたことが「もともと値が無かった」と区別できない。
-    # non-blocking は維持しつつ WARNING で観測性を確保する (下段 detail_extra awk と同形)。
-    # 空文字判定では代替できない — 読取失敗時も parse.py は data:{} 入りの JSON を出して
-    # 非ゼロ終了するため parse_out は非空になり、検出には exit code が要る。
-    if [ "$_parse_rc" -ne 0 ]; then
-      echo "WARNING: work-memory-parse.py rc=$_parse_rc ($local_wm) — 既存 WM からの carry-forward が縮退しました (pr_number / loop_count / sync_revision が既定値へ倒れる可能性があります)" >&2
-    fi
     local parsed=""
     if [ -n "$parse_out" ]; then
-      # 3 field を 1 回の jq で取り出し、python3 プロセスの追加起動を避ける。
+      # 4 field を 1 回の jq で取り出し、python3 プロセスの追加起動を避ける。末尾の `.data` 要素数が
+      # 「carry-forward の材料が実際にあるか」の判定値 — 前 3 field は `//` 既定値を持つため、
+      # .data が空でも非空文字列になり判定には使えない。
       parsed=$(printf '%s' "$parse_out" \
-        | jq -r '[(.data.sync_revision // 0), (.data.pr_number // "null"), (.data.loop_count // 0)] | @tsv' 2>/dev/null) || parsed=""
+        | jq -r '[(.data.sync_revision // 0), (.data.pr_number // "null"), (.data.loop_count // 0), (.data | length)] | @tsv' 2>/dev/null) || parsed=""
     fi
+    local existing_rev=0 existing_pr="" existing_loop="" existing_keys=0
     if [ -n "$parsed" ]; then
-      local existing_rev existing_pr existing_loop
-      IFS=$'\t' read -r existing_rev existing_pr existing_loop <<< "$parsed"
+      IFS=$'\t' read -r existing_rev existing_pr existing_loop existing_keys <<< "$parsed"
+    fi
+    case "$existing_keys" in ''|*[!0-9]*) existing_keys=0 ;; esac
+    # 縮退を silent に飲むと、pr_number / loop_count / sync_revision がすべて既定値へ倒れたことが
+    # 「もともと値が無かった」と区別できない。non-blocking は維持しつつ WARNING で観測性を確保する
+    # (下段 detail_extra awk と同形)。判定は .data の要素数 1 本 — 読取失敗・ヘッダ欠落・jq 失敗は
+    # いずれも 0 になり、corrupt でも .data が埋まる系統では非 0 になるため、材料を実際に失った
+    # ときだけ発火する。parse の rc は原因切り分け用に文面へ載せるだけで条件には使わない
+    # (rc を条件にすると、carry-forward が成功する corrupt 系統でも発火して誤報になる)。
+    if [ "$existing_keys" -eq 0 ]; then
+      echo "WARNING: 既存 WM から carry-forward できませんでした ($local_wm, parse rc=$_parse_rc) — pr_number / loop_count / sync_revision を既定値へ倒します" >&2
+    else
       if [[ "$existing_rev" =~ ^[0-9]+$ ]]; then sync_rev=$((existing_rev + 1)); fi
       # carry-forward は env override が無いときだけ発火させる。未設定判定に `-z` を使うのは
       # 上の初期化が `${WM_PR_NUMBER:-null}` 形式で「空文字 = 未設定」と扱っているため

@@ -317,9 +317,11 @@ run_update "$SBX7" \
 WM_FILE7="$SBX7/.rite-work-memory/issue-687.md"
 grep -v '^# 📜 rite 作業メモリ$' "$WM_FILE7" > "$WM_FILE7.tmp" && mv "$WM_FILE7.tmp" "$WM_FILE7"
 
-if run_update "$SBX7" \
+# stderr のみを捕捉する (T-06 と同じ `2>&1 >/dev/null` の順序が必須)。rc は別呼び出しで取ると
+# sandbox 状態が変わってしまうため、stderr 捕捉側の rc をそのまま使う。
+if err7=$(run_update "$SBX7" \
   WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
-  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" >/dev/null 2>&1; then
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" 2>&1 >/dev/null); then
   rc7=0
 else
   rc7=$?
@@ -328,6 +330,8 @@ assert_eq "T-03.1: return 0 (parse 失敗でも更新は続行、AC-3)" "0" "$rc
 body7=$(cat "$WM_FILE7" 2>/dev/null || echo "")
 assert_contains "T-03.2: pr_number: null (既定値、AC-3)" "pr_number: null" "$body7"
 assert_contains "T-03.3: loop_count: 0 (既定値、AC-3)" "loop_count: 0" "$body7"
+assert_contains "T-03.4: 縮退が WARNING で可視化される (silent に既定値へ倒れない)" \
+  "既存 WM から carry-forward できませんでした" "$err7"
 
 # ─── T-04: env override が既存ファイル値より優先される ───────────
 # pr_number / loop_count は独立した 2 つの条件式で守られているため、両方を検証する
@@ -388,15 +392,22 @@ assert_contains "T-05.3: loop_count=7 (flow-state 値が最終値、AC-5)" "loop
 
 # ─── T-06: 改竄値の carry-forward は null へ降格し WARNING が出る ──
 # carry-forward が _validate_numeric_yaml_value を迂回しないこと (YAML injection 防御の維持)。
+# pr_number / loop_count は独立に carry-forward されるため両方を改竄して検証する。
 echo "T-06: 非数値を含む改竄 WM の carry-forward が null へ降格し WARNING が出る"
 SBX10=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX10")
 write_config "$SBX10"
 run_update "$SBX10" \
   WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
-  WM_PR_NUMBER="123" >/dev/null 2>&1 || true
+  WM_PR_NUMBER="123" WM_LOOP_COUNT="3" >/dev/null 2>&1 || true
 WM_FILE10="$SBX10/.rite-work-memory/issue-687.md"
-sed -i 's/^pr_number: 123$/pr_number: "12x3"/' "$WM_FILE10"
+# fixture 改竄は awk read→transform→write→mv 形式で行う (GNU 形式の `sed -i '<expr>'` は
+# BSD sed が -i の引数を必須とするため macOS で失敗し、set -e 下でスイート全体が中断する)
+awk '{
+  if ($0 == "pr_number: 123") print "pr_number: \"12x3\"";
+  else if ($0 == "loop_count: 3") print "loop_count: \"3y\"";
+  else print
+}' "$WM_FILE10" > "$WM_FILE10.tmp" && mv "$WM_FILE10.tmp" "$WM_FILE10"
 
 # stderr のみを捕捉する (run_update は subshell。`2>&1 >/dev/null` の順序が必須 —
 # 逆順だと stdout の複製先が /dev/null になり WARNING を取り逃がす)
@@ -406,6 +417,7 @@ err10=$(run_update "$SBX10" \
 body10=$(cat "$WM_FILE10" 2>/dev/null || echo "")
 assert_contains "T-06.1: 非数値は pr_number: null へ降格する" "pr_number: null" "$body10"
 assert_contains "T-06.2: WARNING が stderr に出る (silent 降格しない)" "non-numeric character" "$err10"
+assert_contains "T-06.3: 非数値は loop_count: null へ降格する" "loop_count: null" "$body10"
 
 # ─── T-07: set -e 下の bare 呼び出しでも更新が完走する ────────────
 # 本 helper を source する caller (pre-compact.sh / post-tool-wm-sync.sh) は `set -euo pipefail`
@@ -440,6 +452,8 @@ assert_contains "T-07.2: WM が実際に書き換わる (更新が完走して�
 # issue_number をファイル名と食い違わせた fixture (issue_number_mismatch) が要る — parse.py は
 # corrupt 判定を返しつつ .data を全埋めするため、stdout を捨てる書き方だと sync_revision が
 # 1 へ巻き戻り pr_number / loop_count も既定値へ落ちる。
+# あわせて、この経路で縮退 WARNING が出ないこと (parse の rc ではなく carry-forward の材料の
+# 有無で発火判定していること) も固定する — rc を条件にすると成功経路で誤報になる。
 echo "T-08: corrupt-but-parseable な WM でも carry-forward と sync_revision 加算が維持される"
 SBX12=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX12")
 write_config "$SBX12"
@@ -451,9 +465,9 @@ parse12=$(python3 "$PLUGIN_ROOT/hooks/work-memory-parse.py" "$SBX12/.rite-work-m
 assert_contains "T-08.0a: fixture が corrupt 判定される (前提確認)" '"status": "corrupt"' "$parse12"
 assert_contains "T-08.0b: corrupt でも .data に sync_revision が埋まる (前提確認)" '"sync_revision": 5' "$parse12"
 
-if run_update "$SBX12" \
+if err12=$(run_update "$SBX12" \
   WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
-  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" >/dev/null 2>&1; then
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" 2>&1 >/dev/null); then
   rc12=0
 else
   rc12=$?
@@ -463,10 +477,12 @@ body12=$(cat "$SBX12/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
 assert_contains "T-08.2: sync_revision が 6 へ加算される (版が逆行しない)" "sync_revision: 6" "$body12"
 assert_contains "T-08.3: pr_number=123 が carry-forward される" "pr_number: 123" "$body12"
 assert_contains "T-08.4: loop_count=4 が carry-forward される" "loop_count: 4" "$body12"
+warn12=$(printf '%s' "$err12" | grep -c 'carry-forward できませんでした') || true
+assert_eq "T-08.5: carry-forward 成功時は縮退 WARNING を出さない (誤報しない)" "0" "$warn12"
 
 # ─── T-09: pr-create が WM_PR_NUMBER を seed する静的 pin ─────────
 # carry-forward は「保持する」だけで値を生成しない。seed 行が消えると pr_number は
-# どの通常更新経路でも書かれないまま (Issue #2082 §3.2 の As-Is) に戻るため、
+# どの通常更新経路でも書かれないまま (seed も carry-forward の材料も無い状態) に戻るため、
 # skill markdown 側を静的に pin する (既存 parity テストと同型)。
 echo "T-09: pr-create/SKILL.md が WM_PR_NUMBER seed 行を持つ"
 PR_CREATE_MD="$PLUGIN_ROOT/skills/pr-create/SKILL.md"
