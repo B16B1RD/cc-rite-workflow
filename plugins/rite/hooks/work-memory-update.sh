@@ -27,16 +27,11 @@
 #   WM_SKIP_LOCK            - If "true", skip lock acquisition/release. Use when the caller
 #                             already holds an outer lock protecting the work memory file.
 #                             (default: "false")
-#   WM_PR_NUMBER            - PR number override. Effective only when WM_LOOP_INCREMENT != "true"
-#                             and WM_READ_FROM_FLOW_STATE != "true". Otherwise, the value is read
-#                             from existing WM (fix pattern) or .rite-flow-state (lint pattern).
-#                             (default: read from existing WM or "null")
+#   WM_PR_NUMBER            - PR number override. Effective only when WM_READ_FROM_FLOW_STATE != "true";
+#                             otherwise the value is read from flow-state (lint pattern).
+#                             (default: carried forward from the existing WM, else "null")
 #   WM_LOOP_COUNT           - Loop count override. Same effective conditions as WM_PR_NUMBER.
-#                             (default: read from existing WM or 0)
-#   WM_LOOP_INCREMENT       - If "true", increment loop_count from existing WM (fix pattern).
-#                             When set, WM_PR_NUMBER/WM_LOOP_COUNT overrides are ignored;
-#                             values are parsed from the existing work memory file instead.
-#                             (default: "false")
+#                             (default: carried forward from the existing WM, else 0)
 #   WM_REQUIRE_FLOW_STATE   - If "true", skip if flow-state phase cannot be resolved via
 #                             flow-state.sh (per-session and legacy file both absent, or phase
 #                             is null/empty). Uses flow-state.sh under the hood so schema_version=2
@@ -165,29 +160,35 @@ update_local_work_memory() {
   local pr_num="${WM_PR_NUMBER:-null}"
   local parse_script="${WM_PLUGIN_ROOT}/hooks/work-memory-parse.py"
 
-  if [ -f "$local_wm" ]; then
-    if [ "${WM_LOOP_INCREMENT:-false}" = "true" ]; then
-      # fix pattern: parse full output, increment loop_count and sync_revision
-      local parse_out=""
-      if [ -f "$parse_script" ]; then
-        parse_out=$(python3 "$parse_script" "$local_wm" 2>/dev/null) || parse_out=""
-      fi
-      if [ -n "$parse_out" ]; then
-        local parsed
-        parsed=$(echo "$parse_out" | jq -r '[(.data.sync_revision // 0) + 1, (.data.loop_count // 0) + 1, (.data.pr_number // "null")] | @tsv' 2>/dev/null) || parsed=""
-        if [ -n "$parsed" ]; then
-          read -r sync_rev loop_cnt pr_num <<< "$parsed"
-        else
-          sync_rev=1; loop_cnt=1; pr_num="null"
-        fi
-      fi
-    else
-      # implement/lint pattern: just increment sync_revision
-      local existing_rev="0"
-      if [ -f "$parse_script" ]; then
-        existing_rev=$(python3 "$parse_script" "$local_wm" 2>/dev/null | jq -r '.data.sync_revision // 0' 2>/dev/null) || existing_rev="0"
-      fi
+  # 既存ファイルの値の読み戻し。sync_revision の increment に加え、pr_number / loop_count を
+  # carry-forward する — この 2 field は書き手が毎回知っているとは限らない (implement / lint /
+  # review 等の caller は PR 番号もループ回数も持たない) ため、読み戻さないと更新のたびに
+  # 既定値へ巻き戻り、work-memory-format.md の field 定義が宣言する意味を実ファイルが満たせない。
+  if [ -f "$local_wm" ] && [ -f "$parse_script" ]; then
+    # work-memory-parse.py は corrupt 判定 (missing_keys / issue_number_mismatch) でも .data を
+    # 埋めたうえで exit 2 を返す。よって exit code ではなく stdout の有無で採否を決める
+    # (exit code で捨てると当該ファイルの sync_revision が 1 へ巻き戻り、版が逆行する)。
+    local parse_out=""
+    parse_out=$(python3 "$parse_script" "$local_wm" 2>/dev/null)
+    local parsed=""
+    if [ -n "$parse_out" ]; then
+      # 3 field を 1 回の jq で取り出し、python3 プロセスの追加起動を避ける。
+      parsed=$(printf '%s' "$parse_out" \
+        | jq -r '[(.data.sync_revision // 0), (.data.pr_number // "null"), (.data.loop_count // 0)] | @tsv' 2>/dev/null) || parsed=""
+    fi
+    if [ -n "$parsed" ]; then
+      local existing_rev existing_pr existing_loop
+      IFS=$'\t' read -r existing_rev existing_pr existing_loop <<< "$parsed"
       if [[ "$existing_rev" =~ ^[0-9]+$ ]]; then sync_rev=$((existing_rev + 1)); fi
+      # carry-forward は env override が無いときだけ発火させる。未設定判定に `-z` を使うのは
+      # 上の初期化が `${WM_PR_NUMBER:-null}` 形式で「空文字 = 未設定」と扱っているため
+      # (`${VAR+set}` では空文字セットの扱いが初期化側と食い違う)。
+      if [ -z "${WM_PR_NUMBER:-}" ] && [ -n "$existing_pr" ]; then
+        pr_num="$existing_pr"
+      fi
+      if [ -z "${WM_LOOP_COUNT:-}" ] && [ -n "$existing_loop" ]; then
+        loop_cnt="$existing_loop"
+      fi
     fi
   fi
 

@@ -824,6 +824,8 @@ After PR creation, update the local work memory (SoT) and sync to Issue comment 
 
 Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands) for details.
 
+`WM_PR_NUMBER` を渡すのは、PR 番号を知っているのがワークフロー中この時点だけだからである。以降の caller（`pr-review` / `fix` / `ready` 等）は番号を持たないため、ここで seed しないと `pr_number` はどの更新経路でも書かれないままになる（seed 後は `work-memory-update.sh` の carry-forward が値を保持する）。
+
 ```bash
 WM_SOURCE="create" \
   WM_PHASE="pr" \
@@ -831,6 +833,7 @@ WM_SOURCE="create" \
   WM_NEXT_ACTION="rite:pr-review を実行" \
   WM_BODY_TEXT="PR #{pr_number} created." \
   WM_ISSUE_NUMBER="{issue_number}" \
+  WM_PR_NUMBER="{pr_number}" \
   bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 

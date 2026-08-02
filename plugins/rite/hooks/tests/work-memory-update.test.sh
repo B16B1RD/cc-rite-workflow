@@ -273,6 +273,132 @@ else
   FAILED_NAMES+=("TC-5.2" "TC-5.3" "TC-5.4" "TC-5.5" "TC-5.6")
 fi
 
+# ─── T-01 / T-02: 通常更新経路の carry-forward ────────────────────
+# 通常更新 (env override も flow-state 読みも伴わない、全スキルが通る経路) で pr_number /
+# loop_count が既定値に巻き戻らないことを検証する。fixture は frontmatter を手書きせず 1 回目の run_update
+# (env override で seed) で writer 実体に生成させ、2 回目を bare 呼び出しにする — TC-5 と同じ
+# 2 段パターンで、writer の書式変更にテストが追随できなくなるドリフトを防ぐ。
+echo "T-01/T-02: 通常更新で pr_number / loop_count が carry-forward される"
+SBX6=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX6")
+write_config "$SBX6"
+run_update "$SBX6" \
+  WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="123" WM_LOOP_COUNT="3" >/dev/null 2>&1 || true
+WM_FILE6="$SBX6/.rite-work-memory/issue-687.md"
+seed6=$(cat "$WM_FILE6" 2>/dev/null || echo "")
+assert_contains "T-01.0: seed で pr_number=123 が書かれる (前提確認)" "pr_number: 123" "$seed6"
+assert_contains "T-02.0: seed で loop_count=3 が書かれる (前提確認)" "loop_count: 3" "$seed6"
+
+if run_update "$SBX6" \
+  WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" >/dev/null 2>&1; then
+  rc6=0
+else
+  rc6=$?
+fi
+assert_eq "T-01.1: 通常更新が return 0" "0" "$rc6"
+body6=$(cat "$WM_FILE6" 2>/dev/null || echo "")
+assert_contains "T-01.2: pr_number=123 が保持される (AC-1)" "pr_number: 123" "$body6"
+assert_contains "T-02.1: loop_count=3 が保持される (AC-2)" "loop_count: 3" "$body6"
+assert_contains "T-01.3: sync_revision は加算され続ける (carry-forward が版管理を壊さない)" "sync_revision: 2" "$body6"
+
+# ─── T-03: frontmatter 破損時は既定値に倒れる ─────────────────────
+# fixture はヘッダマーカー行を削る。work-memory-parse.py は missing_header で .data を空のまま
+# 返すため carry-forward の材料が無くなる — キー欠落だけの fixture では .data が埋まって
+# carry-forward が正当に発火し、本 TC が空虚になる。
+echo "T-03: frontmatter 破損時は exit 0 かつ既定値 (null / 0) で書き出される"
+SBX7=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX7")
+write_config "$SBX7"
+run_update "$SBX7" \
+  WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="123" WM_LOOP_COUNT="3" >/dev/null 2>&1 || true
+WM_FILE7="$SBX7/.rite-work-memory/issue-687.md"
+grep -v '^# 📜 rite 作業メモリ$' "$WM_FILE7" > "$WM_FILE7.tmp" && mv "$WM_FILE7.tmp" "$WM_FILE7"
+
+if run_update "$SBX7" \
+  WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" >/dev/null 2>&1; then
+  rc7=0
+else
+  rc7=$?
+fi
+assert_eq "T-03.1: return 0 (parse 失敗でも更新は続行、AC-3)" "0" "$rc7"
+body7=$(cat "$WM_FILE7" 2>/dev/null || echo "")
+assert_contains "T-03.2: pr_number: null (既定値、AC-3)" "pr_number: null" "$body7"
+assert_contains "T-03.3: loop_count: 0 (既定値、AC-3)" "loop_count: 0" "$body7"
+
+# ─── T-04: env override が既存ファイル値より優先される ───────────
+echo "T-04: WM_PR_NUMBER 設定時は既存ファイル値ではなく env 値が採用される"
+SBX8=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX8")
+write_config "$SBX8"
+run_update "$SBX8" \
+  WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="123" >/dev/null 2>&1 || true
+WM_FILE8="$SBX8/.rite-work-memory/issue-687.md"
+
+if run_update "$SBX8" \
+  WM_SOURCE="pre-compact" WM_PHASE="lint" WM_PHASE_DETAIL="compact 前保存" \
+  WM_NEXT_ACTION="resume" WM_BODY_TEXT="Pre-compact." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="456" >/dev/null 2>&1; then
+  rc8=0
+else
+  rc8=$?
+fi
+assert_eq "T-04.1: return 0" "0" "$rc8"
+body8=$(cat "$WM_FILE8" 2>/dev/null || echo "")
+assert_contains "T-04.2: pr_number=456 (env が既存ファイル値 123 を override、AC-4)" "pr_number: 456" "$body8"
+
+# ─── T-05: WM_READ_FROM_FLOW_STATE 経路の非回帰 ──────────────────
+# carry-forward ブロックより後段の flow-state 上書きが最終値である契約 (優先順位 1 位) を守る。
+echo "T-05: WM_READ_FROM_FLOW_STATE=true では flow-state 値が既存ファイル値より優先される"
+SBX9=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX9")
+write_config "$SBX9"
+SID9="99999999-9999-9999-9999-999999999999"
+write_session_id "$SBX9" "$SID9"
+write_per_session "$SBX9" "$SID9" '{"phase":"lint","next_action":"continue","pr_number":789,"loop_count":7,"active":true}'
+run_update "$SBX9" \
+  WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="123" >/dev/null 2>&1 || true
+WM_FILE9="$SBX9/.rite-work-memory/issue-687.md"
+
+if run_update "$SBX9" \
+  WM_SOURCE="lint" WM_PHASE="lint" WM_PHASE_DETAIL="quality check" \
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Lint body." WM_ISSUE_NUMBER="687" \
+  WM_READ_FROM_FLOW_STATE="true" >/dev/null 2>&1; then
+  rc9=0
+else
+  rc9=$?
+fi
+assert_eq "T-05.1: return 0" "0" "$rc9"
+body9=$(cat "$WM_FILE9" 2>/dev/null || echo "")
+assert_contains "T-05.2: pr_number=789 (flow-state 値が既存ファイル値 123 を override、AC-5)" "pr_number: 789" "$body9"
+assert_contains "T-05.3: loop_count=7 (flow-state 値が最終値、AC-5)" "loop_count: 7" "$body9"
+
+# ─── T-06: 改竄値の carry-forward は null へ降格し WARNING が出る ──
+# carry-forward が _validate_numeric_yaml_value を迂回しないこと (YAML injection 防御の維持)。
+echo "T-06: 非数値を含む改竄 WM の carry-forward が null へ降格し WARNING が出る"
+SBX10=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX10")
+write_config "$SBX10"
+run_update "$SBX10" \
+  WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="123" >/dev/null 2>&1 || true
+WM_FILE10="$SBX10/.rite-work-memory/issue-687.md"
+sed -i 's/^pr_number: 123$/pr_number: "12x3"/' "$WM_FILE10"
+
+# stderr のみを捕捉する (run_update は subshell。`2>&1 >/dev/null` の順序が必須 —
+# 逆順だと stdout の複製先が /dev/null になり WARNING を取り逃がす)
+err10=$(run_update "$SBX10" \
+  WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" 2>&1 >/dev/null) || true
+body10=$(cat "$WM_FILE10" 2>/dev/null || echo "")
+assert_contains "T-06.1: 非数値は pr_number: null へ降格する" "pr_number: null" "$body10"
+assert_contains "T-06.2: WARNING が stderr に出る (silent 降格しない)" "non-numeric character" "$err10"
+
 echo
 echo "─── work-memory-update.test.sh summary ──────────────────────────"
 echo "PASS: $PASS"
