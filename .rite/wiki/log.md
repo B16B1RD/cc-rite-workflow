@@ -9,6 +9,7 @@
 * **Update**: [静的 parity テストには到達性 pin と emit pin を対で足す — 出現数 + 行順だけでは semantics を守れない](pages/patterns/static-parity-pin-needs-reachability-and-emit-pins.md) — raw/reviews/20260801T170512Z-pr-2070.md / raw/fixes/20260801T171512Z-pr-2070.md を統合（「2 実装で同一定義」と書いたら literal のバイト一致を突合するテストを対にする / 片側の振る舞いテストは広げる変異と相手側 drift を 1 件も検出しない / 表記差の正規化は比較前に 1 箇所で行う）
 * **Update**: [Orchestrator は reviewer 間の反証と reviewer 自身の自己矛盾（指摘記載 vs 結論）を解決してから blocking 判定する](pages/heuristics/orchestrator-resolves-reviewer-self-contradiction-and-counter-evidence.md) — raw/reviews/20260801T223635Z-pr-2070.md / raw/fixes/20260801T224211Z-pr-2070.md / raw/reviews/20260802T000641Z-pr-2070.md を統合（外部事実の読みが割れたら多数決でも先着順でもなく一次ソースで決める / 同一の疑問が複数レビュアーから独立に上がるのは記述の曖昧さのシグナル）
 * **Update**: [累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable](pages/heuristics/accumulated-pr-three-cycle-convergence.md) — raw/reviews/20260802T000641Z-pr-2070.md / raw/reviews/20260801T202243Z-pr-2070.md を統合（5 サイクル・のべ 30 レビュアーで 0 件へ収束 / 件数は 3→6→5→3→0 と単調減少しないが抽象度が一段ずつ上がる / 実装本体への指摘は 5 サイクル通じて 0 件）
+* **lint:warning** — contradictions=0, stale=7, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 
 ## 2026-08-01
 * **lint:warning** — contradictions=0, stale=3, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
