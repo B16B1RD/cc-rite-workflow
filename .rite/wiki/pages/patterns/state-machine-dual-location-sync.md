@@ -2,12 +2,14 @@
 title: "state machine を 2 箇所で記述する場合は動作の文字列レベルで同期する"
 domain: "patterns"
 created: "2026-04-19T03:30:00+00:00"
-updated: "2026-07-31T01:26:57+09:00"
+updated: "2026-08-02T11:59:42+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260419T034237Z-pr-586-cycle5.md"
   - type: "fixes"
     ref: "raw/fixes/20260420T150304Z-pr-624-cycle2.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260802T025011Z-pr-2084.md"
 tags: [ring-pattern, helper-caller-sync, observability]
 confidence: high
 ---
@@ -91,14 +93,27 @@ confidence: high
 
 **scope**: helper 拡張 PR / enum 拡張 PR / ring pattern 拡張 PR では observability helper (lifecycle 系 / session-end 系 / monitoring 系) の連動漏れが recurring failure mode。code-quality reviewer は必ず「enum 拡張 → downstream caller の enum 列挙 site 全件 grep」を review checklist に含める。
 
+### sub-pattern: 生成テンプレートの fence 内 / fence 外は consumer が異なる正当な二重化（PR #2084）
+
+Issue テンプレート (`templates/issue/template-structure.md`) では、` ```markdown ` fence の**内側**が生成 Issue body へそのまま出力され、fence の**外側**の `**Rules**:` ブロックは生成器 (`/rite:issue-create` ステップ 4.2) しか読まない。同じ規則を両方に書くのは DRY 違反ではなく、**consumer が異なる正当な二重化**である:
+
+- fence 外だけに書くと、生成済み Issue body の Section 9 へ後から追記する主体（実装者 / `/rite:pr-review` ステップ 7.4.3）には規則が届かない
+- fence 内だけに書くと、生成器が判断基準を失う
+
+したがってどちらも削除できない。ただし本 pattern の同期義務はそのまま適用され、**規則を変更するときは両方を同時に更新する必要がある**。PR #2084 の cycle 1-2 では実際にこの同期が漏れ、禁止列挙の件数ずれ（3 種に対し行き先 2 種）と第 3 要素の呼称の割れ（`fix rationale` / `review-response notes` / `the reason behind a fix`）が同一コミット内で成立した。
+
+**実務上の優先順位**: 両者がずれた場合、**規則を実際に適用する主体が読む側**（= 生成物側 = fence 内）の欠落のほうが害が大きい。fence 外の Rules が正しくても、追記時点でそれを読む者はいない。fence 内が正典と考えて同期する。
+
 ## 関連ページ
 
 - [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](./drift-check-anchor-semantic-name.md)
 - [canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する](./canonical-reference-sample-code-strict-sync.md)
 - [散文で宣言した設計は対応する実装契約がなければ機能しない](../anti-patterns/prose-design-without-backing-implementation.md)
 - [新規 exit 1 経路 / sentinel type 追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する](../heuristics/canonical-list-count-claim-drift-anchor.md)
+- [「N 種を禁止し行き先を示す」規則は禁止列挙と行き先を 1 つの対リストに畳む](./deny-list-paired-with-destination.md)
 
 ## ソース
 
 - [PR #586 cycle 5 review (state 動作矛盾 F-03 検出)](../../raw/reviews/20260419T034237Z-pr-586-cycle5.md)
 - [PR #624 cycle 2 fix (helper case 拡張 × caller WARN_MSG 連動漏れ G3 HIGH)](../../raw/fixes/20260420T150304Z-pr-624-cycle2.md)
+- [PR #2084 review results (cycle 4, 生成テンプレートの fence 内外 sub-pattern)](../../raw/reviews/20260802T025011Z-pr-2084.md)

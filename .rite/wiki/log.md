@@ -11,6 +11,11 @@
 * **Update**: [累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable](pages/heuristics/accumulated-pr-three-cycle-convergence.md) — raw/reviews/20260802T000641Z-pr-2070.md / raw/reviews/20260801T202243Z-pr-2070.md を統合（5 サイクル・のべ 30 レビュアーで 0 件へ収束 / 件数は 3→6→5→3→0 と単調減少しないが抽象度が一段ずつ上がる / 実装本体への指摘は 5 サイクル通じて 0 件）
 * **lint:warning** — contradictions=0, stale=7, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 
+* **Create**: [「N 種を禁止し行き先を示す」規則は禁止列挙と行き先を 1 つの対リストに畳む](pages/patterns/deny-list-paired-with-destination.md) — raw/reviews/20260802T014423Z-pr-2084.md / raw/fixes/20260802T014756Z-pr-2084.md を新規ページ化（禁止列挙と行き先列挙を別 bullet に分けると独立編集で件数がずれる / 禁止 3 種に対し行き先 2 種の非対称が初回コミット時点で成立 / 対リストに畳めば片方だけ増える編集が構文的にできなくなる）
+* **Create**: [禁止規則が自分のワークフローと衝突したら、例外条項を足す前に規則の軸を言い換える](pages/heuristics/reframe-rule-predicate-over-carve-out.md) — raw/reviews/20260802T020939Z-pr-2084.md / raw/fixes/20260802T021249Z-pr-2084.md を新規ページ化（例外リストは経路が増えるたびに育つが述語は育たない / 禁止したい害と巻き添えを分ける述語が引けるなら軸を言い換える / 許可リストの語は同一ファイルの既存見出しとの衝突を grep で確認する）
+* **Create**: [新規禁止規則を書く前に、その場所へ書き込む既存経路が書くフィールドの実体を読む](pages/heuristics/new-prohibition-verify-existing-writer-fields.md) — raw/reviews/20260802T020939Z-pr-2084.md を新規ページ化（経路の存在確認では不十分で placeholder の定義文まで読む / 意図と実体がずれる場合は実体側で判定される / 生成テンプレートでは規則が読み手へ届く位置かも確認する）
+* **Create**: [レビュアーの結論が正面から割れたら、勝敗を決める前に語の多義性を疑う](pages/heuristics/reviewer-verdict-split-signals-term-ambiguity.md) — raw/fixes/20260802T023626Z-pr-2084.md / raw/reviews/20260802T025011Z-pr-2084.md を新規ページ化（結論が割れても推奨事項では一致していることがある / 一致点が求める修正 / 語を一意にすると両者の懸念が同時に消える）
+* **Update**: [state machine を 2 箇所で記述する場合は動作の文字列レベルで同期する](pages/patterns/state-machine-dual-location-sync.md) — raw/reviews/20260802T025011Z-pr-2084.md を統合（生成テンプレートの fence 内／fence 外は consumer が異なる正当な二重化 / どちらも削除できないが規則変更時は同時更新が必要 / ずれた場合は規則を適用する主体が読む生成物側を正典とする）
 ## 2026-08-01
 * **lint:warning** — contradictions=0, stale=3, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 
