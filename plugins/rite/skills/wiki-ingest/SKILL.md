@@ -445,7 +445,7 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
    > **複数 Raw Source からの作成**: page-template.md の `sources:` は単一スロット（`{source_type}`/`{source_ref}` 各 1 個）のみ。multi-cycle PR 等で複数の Raw Source を 1 ページに統合する場合は、Write 後に Edit で `- type: "{type}"` / `  ref: "raw/{type}/{filename}"` エントリを追加する。**追加・置換するすべての `ref` は Raw Source のファイルパス形式 (`raw/{type}/{filename}`)** であり、raw frontmatter の `source_ref` フィールド値（PR 識別子形式）ではない（ステップ 5.3 `{source_ref}` 行の dual-use 警告と同一契約）。
 4. **既存 Wiki ページの更新** (ステップ 4 で更新決定): 対象ページを Read で読み、Edit で `## 詳細` 追記・`updated` 更新・`sources` 配列追記。`n_pages_updated` を +1 する。**`sources` に追記する各 `ref` は必ず Raw Source のファイルパス形式 `raw/{type}/{filename}`**（PR 識別子形式 `pr-NNNN` 禁止。ステップ 4.2 / 5.3 と同一契約）
 5. **スキップ決定の処理** (ステップ 4 で skip 決定): step 2 と同じ手順で `ingested: true` 化し、**さらに当該 raw frontmatter に `ingest_status: skipped` と `skip_reason: "{理由}"` を Edit で追記する**（skip 状態の Source of Truth は raw frontmatter。lint の `wiki-lint-skipped-refs.sh` がこれを走査して `unregistered_raw` を判定する。Issue #1520）。ステップ 7 の log.md には人間向けの Skip エントリ (OKF bullet) も追記する。`n_skipped` を +1 する
-6. **index.md の更新**: ステップ 6 の指示に従い Edit する
+6. **index.md の更新**: ステップ 6 の指示に従い Edit する（手順 1 / 2 は Raw Source ごとに実行するが、**手順 3（重複行の回収と統計）は処理済み Raw Source 件数が `n_raw_sources` に達したときだけ**実行する — ループ本体を読んでいる時点で分岐が確定するようステップ 6 側と同一の条件をここにも置く）
 7. **log.md への追記**: ステップ 7 の指示に従い Edit で append-only 追加する
 
 ### 5.0.c canonical commit message 契約
@@ -661,7 +661,11 @@ fi
   - `{description}` はステップ 4.1 のサマリー（page frontmatter の `description` と同源、1-2 文）
   - `{updated}` / `{confidence}` は page frontmatter の値と同じにする（ISO 8601 タイムスタンプ / `high`・`medium`・`low`）。**YAML の引用符は含めない**（frontmatter 側が `updated: "2026-..."` でも index 列は引用符なし）
 - **2. 既存ページ行の更新**: 対象行は上記の同定述語で特定する（節の外にある旧形式の箇条書き行を書き換えてはならない — テーブル行を箇条書きリストの中へ置くと GFM は箇条書きの継続行として literal text にレンダリングする）。同定したら**その 1 行を上記「新規ページ行の追加」と同一形式で丸ごと再生成して置換する**（列位置を数えて特定のセルだけ書き換えることはしない）。`title` / `updated` / `confidence` は更新後の page frontmatter の値（YAML の引用符は外す）を使い、エスケープ規約を適用する。**サマリー列の値は次の順で決める**: (1) frontmatter に `description` があればその値、(2) 無ければ**既存行のサマリー列の値を保持する**（新たに生成し直さないという意味。保持値は既にエスケープ済みの表記なので、上記エスケープ規約は**未エスケープの生 `|`（直前が `\` でないもの）にのみ**適用する。ステップ 4.1 のサマリー生成は新規ページ作成時にしか実行されないため、更新経路では候補にならない）。**既存行のサマリー列は位置で切り出す** — 同定述語で確定したページ列より後ろを `|` で分割し、**分割結果の先頭要素と末尾要素は行頭側・行末側の区切りに由来して必ず空（空白のみ）になるので捨てる**。残った並びの先頭をドメイン列、**末尾 2 つを更新日列・確信度列**、その間に残るすべてを `|` で再結合したものをサマリー列とする。更新日は ISO 8601、確信度は enum でどちらも `|` を含み得ないため、末尾から数える方法はサマリー列に生 `|` が残っている行でも決定的に働く。`description` は schema 上 optional で実際に持たない page が多数あるため、**空文字で上書きしてはならない**（蓄積済みのサマリーが失われる）。これにより、既に未エスケープの生 `|` で列がずれている既存行も当該 page の更新サイクルで正しい 5 列へ是正される。
-- **3. 統計**（**本手順はサイクル単位で、最後の Raw Source を処理したときにのみ実行する** — ステップ 5.0 手順 6 は Raw Source ごとのループ本体なので、各 source で実行すると guard「全 Raw Source が skip されたサイクルはスキップ」が source 1 の時点では評価不能になり、中止時の `n_stats_abort` と完了レポート行が Raw Source 件数だけ重複する。全 source 処理後の 1 回へ集約する点はステップ 8.6 の push と同じ扱い）: `## 統計` 節が存在する場合、**総ページ数 / ドメイン別内訳 / 最終更新**の 3 行を今回の ingest 結果と同期する。総ページ数 = `pages/` 配下の **`*.md` ファイル数**（`wiki-init` が置く `.gitkeep` 等の非ページファイルを除く）、ドメイン別 = `patterns` / `heuristics` / `anti-patterns` 各配下の `*.md` 件数、最終更新 = 今回の `{updated}` タイムスタンプ。件数は目視で数えず下記で算出する（ステップ 3 の `wiki_index_path` と同じ基点解決を使う — 素の相対パスは呼び出し時の cwd がセッション worktree / main checkout のとき 0 件になり、統計を silent に 0 で上書きする）:
+- **3. 重複行の回収と統計**（**本手順はサイクル単位で、処理済み Raw Source 件数がステップ 2.3 で確定した `n_raw_sources` に達したときに実行する** — ステップ 5.0 手順 6 は Raw Source ごとのループ本体なので、各 source で実行すると guard「全 Raw Source が skip されたサイクルはスキップ」が source 1 の時点では評価不能になり、中止時の `n_stats_abort` と完了レポート行が Raw Source 件数だけ重複する。全 source 処理後の 1 回へ集約する点はステップ 8.6 の push と同じ扱いだが、8.6 はループ外の top-level ステップで構造的に 1 回しか走らないのに対し本手順はループ本体に置かれるため、「最後かどうか」は上記のカウンタ照合でしか決まらない）: 本手順は **(3a) 重複登録行の削除** と **(3b) `## 統計` 3 行の同期** からなり、**両者は独立**で、(3a) は (3b) の実行可否・成否に一切 gate されない。
+
+  **(3a) 重複登録行の削除（(3b) の可否と無関係に常に実行する）**: 上記の同定述語（ページ列 anchor 付き）で同一ページを指す行が 2 行以上あるものについて後発行を削除する。同定述語の中止条項が手順 1 / 2 を止めた index を再び通せる唯一の修復経路なので、`## 統計` 節の有無・統計同期の成否・総ページ数との突合結果のいずれにも gate しない（gate すると、節が無い bundle と統計中止の 5 経路では重複が永久に残り、中止条項が回避したと述べる自己修復不能状態そのものになる）。未登録ページや節の外に旧形式の箇条書き行で登録されているページについては何もせずステップ 8 の lint に委ねる（今回読んでいない page を投機的に登録・削除すると孤児検出のシグナルが消える）。
+
+  **(3b) `## 統計` 3 行の同期**: `## 統計` 節が存在する場合、**総ページ数 / ドメイン別内訳 / 最終更新**の 3 行を今回の ingest 結果と同期する。総ページ数 = `pages/` 配下の **`*.md` ファイル数**（`wiki-init` が置く `.gitkeep` 等の非ページファイルを除く）、ドメイン別 = `patterns` / `heuristics` / `anti-patterns` 各配下の `*.md` 件数、最終更新 = 今回の `{updated}` タイムスタンプ。件数は目視で数えず下記で算出する（ステップ 3 の `wiki_index_path` と同じ基点解決を使う — 素の相対パスは呼び出し時の cwd がセッション worktree / main checkout のとき 0 件になり、統計を silent に 0 で上書きする）:
 
   ```bash
   branch_strategy="{branch_strategy}"
@@ -717,16 +721,18 @@ fi
     echo "[CONTEXT] WIKI_INGEST_STATS=aborted; reason=total_zero"
     exit 0
   fi
+  # 内訳は変数へ溜め、合計一致 guard を通過してから total と一緒に出す。ループ内で printf すると
+  # 中止経路でも「ドメイン別」行へそのまま転記できる完成形 payload が stdout に残り、中止 literal
+  # 「`## 統計` は前サイクルの値のままです」と両立しない。total=0 guard をループ前へ出したのと同じ理由。
   domain_sum=0
+  domain_lines=""
   for d in patterns heuristics anti-patterns; do
-    if [ -z "$pages_list" ]; then
-      n=0
-    else
-      # grep -c は 0 件マッチで rc=1 を返す (空ドメインは正常系)。将来 strict mode 化しても
-      # 中止 marker を出さずに abort しないよう `|| true` で受ける (bash-defensive-patterns.md)
-      n=$(printf '%s\n' "$pages_list" | grep -c "^${pages_root}/${d}/" || true)
-    fi
-    printf '%s=%s\n' "$d" "$n"
+    # pages_list は上の total=0 guard を通過した時点で必ず非空 (空なら手前で exit 0 済み)。
+    # grep -c は 0 件マッチで rc=1 を返す (空ドメインは正常系)。将来 strict mode 化しても
+    # 中止 marker を出さずに abort しないよう `|| true` で受ける (bash-defensive-patterns.md)
+    n=$(printf '%s\n' "$pages_list" | grep -c "^${pages_root}/${d}/" || true)
+    domain_lines="${domain_lines}${d}=${n}
+"
     domain_sum=$((domain_sum + n))
   done
   if [ "$domain_sum" -ne "$total" ]; then
@@ -736,13 +742,13 @@ fi
     echo "[CONTEXT] WIKI_INGEST_STATS=aborted; reason=domain_sum_mismatch"
     exit 0
   fi
+  printf '%s' "$domain_lines"
   echo "total=$total"
-  echo "[CONTEXT] WIKI_INGEST_STATS=ok"
   ```
 
-  `total=0` はブロック内で中止する（手順 3 は新規・更新ページが 1 件以上ある前提で走るため総ページ数 0 は構造的にありえず、パス解決失敗を意味する）。中止 5 経路はいずれもブロック内で WARNING と marker を emit するので、LLM が散文を読んで別途 emit する必要はない。
+  `total=0` はブロック内で中止する（本手順は新規・更新ページが 1 件以上ある前提で走るため総ページ数 0 は構造的にありえず、パス解決失敗を意味する）。**中止 5 経路の `aborted` marker はいずれもブロック内で WARNING と一緒に emit されるので LLM が別途 emit する必要はないが、成功時の `[CONTEXT] WIKI_INGEST_STATS=ok` は本ブロックからは出さず、LLM が 3 行の Edit を適用したあとに emit する** — ブロックが数え終えた時点で出すと、その marker が attest するのは「計算に成功した」であって「同期した」ではなく、Edit を落としてもステップ 9 が「非ブロッキングで継続した失敗はありませんでした」と報告して唯一の下流検出器を素通りする（`WIKI_INGEST_PUSH=ok` が push helper の rc=0 を見てから出るのと対称にする）。**算出値が既存 3 行と一致していて Edit が no-op になった場合も `ok` を emit する** — marker が attest するのは「3 行が算出値と一致している状態」であって Edit 操作の有無ではない（ここで emit しないと健全なサイクルがステップ 9 で「⚠️ 未確認」として報告される）。
 
-  **中止時の報告（全 5 経路共通）**: `WIKI_INGEST_STATS=aborted` を観測したら `n_warnings += 1` と `n_stats_abort += 1` を並行加算し（ステップ 8.3 の Lint 実行異常と同じ受け皿。`n_lint_anomaly` は Lint 由来の指標なので加算しない）、ステップ 9 完了レポートの `{ingest_outstanding_line}` に統計中止の行を 1 行追加する（展開形は同ステップの `{ingest_outstanding_line}` 表を SoT とする — 本節では literal を複製しない）。中止しても完了レポートが「非ブロッキングで継続した失敗はありませんでした」と報告する経路を残さないこと — 統計節を検査する lint 経路は存在しないため、これが唯一の下流検出器になる。3 行の literal 形式は既存行に合わせる（`- 総ページ数: {n}` / `- ドメイン別: patterns={n}, heuristics={n}, anti-patterns={n}` / `- 最終更新: {updated}`）。**総ページ数がテーブルのデータ行数と一致しないときに本ステップで行うのは、`データ行数 > 総ページ数` の場合に限り、上記の同定述語（ページ列 anchor 付き）で同一ページを指す行が 2 行以上あるものについて後発行を削除することだけ**（`総ページ数 > データ行数` は未登録ページ由来なので何もしない）。それ以外の原因（未登録ページ、節の外に旧形式の箇条書き行で登録されているページ）では何もせずステップ 8 の lint に委ねる（今回読んでいない page を投機的に登録・削除すると孤児検出のシグナルが消える）。`## 統計` 節が**存在しない** index.md では統計同期をスキップし `[CONTEXT] WIKI_INGEST_STATS=skipped; reason=no_stats_section` を emit する（節を新設しない）。全 Raw Source が skip されたサイクル（新規・更新ページ 0 件）も同様にスキップし `[CONTEXT] WIKI_INGEST_STATS=skipped; reason=no_page_change` を emit する。**skip も含めて必ずいずれかの `WIKI_INGEST_STATS=` marker を出す** — marker 不在は「成功」ではなく「手順 3 に到達しなかった」を意味させ、ステップ 9 が未確認として surface できるようにするため（`WIKI_INGEST_PUSH=` と同じ 3 値設計）。
+  **中止時の報告（全 5 経路共通）**: `WIKI_INGEST_STATS=aborted` を観測したら `n_warnings += 1` と `n_stats_abort += 1` を並行加算し（ステップ 8.3 の Lint 実行異常と同じ受け皿。`n_lint_anomaly` は Lint 由来の指標なので加算しない）、ステップ 9 完了レポートの `{ingest_outstanding_line}` に統計中止の行を 1 行追加する（展開形は同ステップの `{ingest_outstanding_line}` 表を SoT とする — 本節では literal を複製しない）。中止しても完了レポートが「非ブロッキングで継続した失敗はありませんでした」と報告する経路を残さないこと — 統計節を検査する lint 経路は存在しないため、これが唯一の下流検出器になる。3 行の literal 形式は既存行に合わせる（`- 総ページ数: {n}` / `- ドメイン別: patterns={n}, heuristics={n}, anti-patterns={n}` / `- 最終更新: {updated}`）。**総ページ数がテーブルのデータ行数と一致しなくても (3b) では何もしない** — `データ行数 > 総ページ数` の原因である重複行は (3a) が既に無条件で回収済みで、`総ページ数 > データ行数` は未登録ページ由来なのでステップ 8 の lint に委ねる。`## 統計` 節が**存在しない** index.md では **(3b) の 3 行同期だけをスキップし**（(3a) の重複削除は実行する）`[CONTEXT] WIKI_INGEST_STATS=skipped; reason=no_stats_section` を emit する（節を新設しない）。全 Raw Source が skip されたサイクル（新規・更新ページ 0 件）も同様に **(3b) だけ**スキップし `[CONTEXT] WIKI_INGEST_STATS=skipped; reason=no_page_change` を emit する。**skip も含めて必ずいずれかの `WIKI_INGEST_STATS=` marker を出す** — marker 不在は「成功」ではなく「手順 3 に到達しなかった」を意味させ、ステップ 9 が未確認として surface できるようにするため（`WIKI_INGEST_PUSH=` と同じ 3 値設計）。
 
 > **読み手側の対応状況**: `wiki-lint-orphans.sh` は `](pages/...)` リンクの grep ベースで形式非依存に登録判定するため、`{path}` の形式維持だけが孤児検出の必須条件になる。一方 `/rite:wiki-query` の Pass 1 はテーブル行を parse しないため、テーブル形式 index では index 経由のキーワード照合が機能しない（ステップ 5.3 の `{description}` 注記と同じ理由。読み手のテーブル対応は Issue #2053）。
 
@@ -1009,16 +1015,16 @@ Wiki Ingest が完了しました。
 | `skipped; reason=same_branch` | `Wiki push: 対象外 (same_branch 戦略。通常の PR push に含まれる)` |
 | marker なし（ステップ 8.6 未到達などの想定外経路） | `⚠️ Wiki push: 実行結果が確認できませんでした。git -C {wiki_worktree_abs} status で確認してください` |
 
-`{ingest_outstanding_line}`（Issue #1946: 非ブロッキング失敗の集約 surface。`WIKI_INGEST_PUSH=` と `WIKI_INGEST_STATS=` の 2 marker を再評価するだけで、**新しい記録先は持たない** — push 失敗は local commit 自体が durable な記録で次回 ingest のステップ 8.6 が自動で flush を試み、統計中止は本行が唯一の下流検出器になる）: 2 marker を評価し、該当する行を**すべて**列挙する（どちらも該当しない場合のみ「なし」を出す）。
+`{ingest_outstanding_line}`（Issue #1946: 非ブロッキング失敗の集約 surface。`WIKI_INGEST_PUSH=` と `WIKI_INGEST_STATS=` の 2 marker を再評価するだけで、**新しい記録先は持たない** — push 失敗は local commit 自体が durable な記録で次回 ingest のステップ 8.6 が自動で flush を試み、統計中止は本行が唯一の下流検出器になる）: 2 marker を評価し、該当する行を**すべて**列挙する（どの marker も出力行を生まない場合のみ「なし」を出す）。
 
 | marker | 展開 |
 |---|---|
 | `WIKI_INGEST_PUSH=failed` | `- ⚠️ Wiki push: commit は local wiki branch に landed しましたが origin への push に失敗しました。手動回復: git -C {wiki_worktree_abs} push origin {wiki_branch}（次回 /rite:wiki-ingest 実行時にも自動で flush を試みます）` |
 | `WIKI_INGEST_PUSH=` marker なし（ステップ 8.6 未到達などの想定外経路） | `- ⚠️ Wiki push: 実行結果が確認できませんでした。git -C {wiki_worktree_abs} status で確認してください`（`{wiki_push_line}` の同ケースと同じ扱い — 未確認を「失敗なし」と断定しない） |
 | `WIKI_INGEST_STATS=ok` / `skipped; reason={r}` | （行を出さない — 統計同期は正常終了または正当なスキップ） |
-| `WIKI_INGEST_STATS=` marker なし（手順 3 未到達などの想定外経路） | `- ⚠️ 統計同期: 実行結果が確認できませんでした。index.md の `## 統計` を目視確認してください`（`{wiki_push_line}` の同ケースと同じ扱い — 未確認を「失敗なし」と断定しない） |
+| `WIKI_INGEST_STATS=` marker なし（手順 3 未到達などの想定外経路） | `` - ⚠️ 統計同期: 実行結果が確認できませんでした。index.md の `## 統計` を目視確認してください ``（`{wiki_push_line}` の同ケースと同じ扱い — 未確認を「失敗なし」と断定しない） |
 | `WIKI_INGEST_STATS=aborted; reason={r}` | `` - ⚠️ 統計同期: {r} により中止。index.md の `## 統計` は前サイクルの値のままです（手順 1 / 2 の行追加は適用済みのため、データ行数と統計が一時的に食い違います） `` |
-| 上記いずれも該当なし（`WIKI_INGEST_PUSH=ok` / `skipped; reason=same_branch` かつ統計中止なし） | `- なし（非ブロッキングで継続した失敗はありませんでした）` |
+| 上記いずれも該当なし（`WIKI_INGEST_PUSH=ok` / `skipped; reason=same_branch` **かつ** `WIKI_INGEST_STATS=ok` / `skipped; reason={r}` — 両 marker が値を持って出ている場合に限る。marker 不在は本行ではなく上の「marker なし」行が受けるので、「中止なし」を「失敗なし」と読み替えない） | `- なし（非ブロッキングで継続した失敗はありませんでした）` |
 
 ### 9.1 Return-to-Caller Signal
 

@@ -124,13 +124,14 @@ HTML コメントブロック除去の段落を参照。
 （`infm && insrcblk` = frontmatter の `sources:` ブロック、`insrc` = `## ソース` 節）、どちらも `index.md` では
 **ラッチを立てる producer が存在しない**。実測: `index-template.md` と live `index.md` のいずれにも `sources:` /
 `## ソース` は 0 件で、live 側はそもそも frontmatter を持たない（`infm` が立たないので `insrcblk` に到達しない）。
-ingest の index 更新もこの 2 つを書かない。この 2 ラッチはページ本文と共有しているフィルタの一部であって、
-index 側の入力形状ではない。一方 HTML コメントは、箇条書きテンプレートが配布されていた期間に初期化された bundle の index.md 前文と
+ingest の index 更新もこの 2 つを書かない。**検査を足すか否かを分ける判別子は「`index.md` 経路に producer が実在するか」の一点**である。
+HTML コメントは、箇条書きテンプレートが配布されていた期間に初期化された bundle の index.md 前文と
 手書き index という**現存する producer** を持ち、閉じ忘れが実際に到達しうる（開始側の行頭 anchor により、
-ingest がサマリー列へ書き込む引用はラッチ対象外）。コードフェンスは現時点で producer を持たないが、
-ページ本文と共有するフィルタの一部として同一の END 検査で受けている。到達しない状態に検査を足すと、
+ingest がサマリー列へ書き込む引用はラッチ対象外）。コードフェンスは index 経路の producer を持たないが、
+ページ本文と共有するフィルタの一部としてもともと同一の END 検査に同居している（判別子が決めるのは
+**これから検査を足すか**であって、既存の同居を解くことではない）。到達しない状態に検査を足すと、
 正常形（末尾がソース節の手書き index）を検出失敗として誤計上する側のリスクだけが増える。
-`index.md` にこれらを書く producer が生まれたときに検査を足す。
+`index.md` に `sources:` / `## ソース` を書く producer が生まれたときに、この 2 ラッチへ検査を足す。
 
 `comment-journal-check.sh` の `.rite/wiki` scan_root は `wiki.branch_strategy: same_branch` のときだけ実体に届く。
 `separate_branch` では Wiki ページの実体は wiki ブランチにあり、dev checkout の `.rite/wiki/` は gitignore されたローカル置き場になる。

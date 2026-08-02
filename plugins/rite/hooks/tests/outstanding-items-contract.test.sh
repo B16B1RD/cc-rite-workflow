@@ -61,13 +61,33 @@ assert_grep "Step 7 merge-mode message has an 未完了事項 rollup line" "$BAT
 
 echo "=== wiki-ingest.md ステップ 9: 未完了事項 (Issue #1946, In Scope) ==="
 assert_grep "Step 9 report template has 未完了事項 line" "$WIKI_INGEST" '\{ingest_outstanding_line\}'
-assert_grep "ingest_outstanding_line evaluates 2 markers without a new record store" "$WIKI_INGEST" '新しい記録先は持たない'
+# pin literal は「その行を削除する変異を自分の assert が kill できる」ことが要件なので、
+# ラベルが主張する契約と 1 対 1 に対応する行固有の literal を選ぶ (SKILL.md 内 1 hit を実測済)。
+# 素の n_stats_abort (5 hits) や素の WIKI_INGEST_STATS=ok (3 hits) のような広い literal は、
+# 対象行を消しても別箇所に一致し続けて変異が生存する。
+assert_grep "ingest_outstanding_line adds no new record store" "$WIKI_INGEST" '新しい記録先は持たない'
+assert_grep "ingest_outstanding_line evaluates exactly 2 markers" "$WIKI_INGEST" '2 marker を評価し'
 assert_grep "ingest_outstanding_line pins the WIKI_INGEST_STATS abort row" "$WIKI_INGEST" '統計同期: {r} により中止'
 assert_grep "ingest_outstanding_line treats a missing WIKI_INGEST_STATS marker as unconfirmed" "$WIKI_INGEST" '統計同期: 実行結果が確認できませんでした'
-assert_grep "completion report surfaces n_stats_abort" "$WIKI_INGEST" 'n_stats_abort'
+assert_grep "completion report breakdown surfaces n_stats_abort" "$WIKI_INGEST" '統計同期中止 \{n_stats_abort\}'
+assert_grep "completion report equation includes n_stats_abort" "$WIKI_INGEST" '\+ n_lint_anomaly \+ n_stats_abort'
 assert_grep "ingest_outstanding_line emits explicit none line when push ok" "$WIKI_INGEST" 'なし（非ブロッキングで継続した失敗はありませんでした）'
 # marker なし (未確認) は「なし」と混同せず {wiki_push_line} と同じ ⚠️ 未確認扱いにする
 assert_grep "ingest_outstanding_line treats marker-absent as unconfirmed, not none" "$WIKI_INGEST" '\{wiki_push_line\}` の同ケースと同じ扱い'
+
+# consumer 行 (上記) だけを pin しても、producer が消えれば正常サイクルで「marker なし → ⚠️ 未確認」が
+# 毎回誤発火するので守るものが無くなる。3 値契約は emit 側と解釈側を対で pin する。
+echo "=== wiki-ingest.md ステップ 6 手順 3: WIKI_INGEST_STATS 3 値契約の producer 側 ==="
+assert_grep "stats ok marker is emitted by the LLM after the 3-line Edit, not by the bash block" \
+  "$WIKI_INGEST" 'LLM が 3 行の Edit を適用したあとに emit する'
+assert_grep "stats ok marker literal exists on the producer side" "$WIKI_INGEST" '\[CONTEXT\] WIKI_INGEST_STATS=ok'
+assert_grep "a no-op Edit (values already in sync) still emits ok" "$WIKI_INGEST" 'Edit が no-op になった場合も'
+assert_grep "stats skip path pins the no_stats_section reason" "$WIKI_INGEST" 'reason=no_stats_section'
+assert_grep "stats skip path pins the no_page_change reason" "$WIKI_INGEST" 'reason=no_page_change'
+assert_grep "ok / skipped produce no outstanding row" "$WIKI_INGEST" '行を出さない'
+assert_grep "step 3 runs once per cycle, gated on the n_raw_sources counter" "$WIKI_INGEST" 'に達したときに実行する'
+# 重複行の削除は統計の可否から切り離す (統計節なし / 中止 5 経路でも index が自己修復できること)
+assert_grep "duplicate-row removal is not gated on the stats sync" "$WIKI_INGEST" '\(3b\) の可否と無関係に常に実行する'
 
 echo "=== recover.md: 未完了事項の検出 (Issue #1946, cleanup/completed 到達時のみ, informational) ==="
 assert_grep "recover has the outstanding-item detection subsection" "$RECOVER" '### 3\.6 未完了事項の検出'
