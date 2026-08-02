@@ -24,7 +24,7 @@ confidence: high
 
 ### なぜ scope が割れるか — 形式変更 PR の構造
 
-起点事例（PR #2052）は index.md のカタログ形式を producer 側（テンプレート + ingest 指示）で確定させる PR だった。しかし consumer 側の `/rite:wiki-query` Pass 1 は箇条書き行しか解析せず、候補 0 件時に無診断で `exit 0` する。
+起点事例は index.md のカタログ形式を producer 側（テンプレート + ingest 指示）で確定させる PR だった。しかし consumer 側の `/rite:wiki-query` Pass 1 は箇条書き行しか解析せず、候補 0 件時に無診断で `exit 0` する。
 
 **形式変更 PR では「変更した producer」ではなく「変更していない consumer」に欠陥が現れる。** 一方 Issue はファイル単位で Target / Non-Target を切るため、「Non-Target のファイルに blocking 欠陥がある」状態が生じる。
 
@@ -54,7 +54,7 @@ fingerprint を永続化して次サイクルの再報告を抑止するのは�
 
 ### 閉じる側の Issue に置いた制約は、必要になる時点には存在しない
 
-ただしこの処置には後続サイクルで欠陥が見つかった。リリース順序 gate を Issue #2047 の AC として追記したが、#2047 は `/rite:cleanup` でマージ直後に閉じる。gate が必要になるのは**その後のリリース時点**である。
+ただしこの処置には後続サイクルで欠陥が見つかった。リリース順序 gate を起票元 Issue の AC として追記したが、その Issue は `/rite:cleanup` でマージ直後に閉じる。gate が必要になるのは**その後のリリース時点**である。
 
 > 制約は「その時点でまだ open な側」か、その手順が実際に読む場所へ置く。
 
