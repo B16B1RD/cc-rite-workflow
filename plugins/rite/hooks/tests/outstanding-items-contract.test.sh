@@ -61,7 +61,10 @@ assert_grep "Step 7 merge-mode message has an 未完了事項 rollup line" "$BAT
 
 echo "=== wiki-ingest.md ステップ 9: 未完了事項 (Issue #1946, In Scope) ==="
 assert_grep "Step 9 report template has 未完了事項 line" "$WIKI_INGEST" '\{ingest_outstanding_line\}'
-assert_grep "ingest_outstanding_line reuses WIKI_INGEST_PUSH marker (no new record store)" "$WIKI_INGEST" '新しい記録先は持たない'
+assert_grep "ingest_outstanding_line evaluates 2 markers without a new record store" "$WIKI_INGEST" '新しい記録先は持たない'
+assert_grep "ingest_outstanding_line pins the WIKI_INGEST_STATS abort row" "$WIKI_INGEST" '統計同期: {r} により中止'
+assert_grep "ingest_outstanding_line treats a missing WIKI_INGEST_STATS marker as unconfirmed" "$WIKI_INGEST" '統計同期: 実行結果が確認できませんでした'
+assert_grep "completion report surfaces n_stats_abort" "$WIKI_INGEST" 'n_stats_abort'
 assert_grep "ingest_outstanding_line emits explicit none line when push ok" "$WIKI_INGEST" 'なし（非ブロッキングで継続した失敗はありませんでした）'
 # marker なし (未確認) は「なし」と混同せず {wiki_push_line} と同じ ⚠️ 未確認扱いにする
 assert_grep "ingest_outstanding_line treats marker-absent as unconfirmed, not none" "$WIKI_INGEST" '\{wiki_push_line\}` の同ケースと同じ扱い'

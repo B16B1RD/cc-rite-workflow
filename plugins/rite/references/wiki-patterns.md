@@ -209,7 +209,7 @@ Wiki 初期化時にテンプレートを `.rite/wiki/` に展開します。
 
 | プレースホルダー | 値 |
 |----------------|-----|
-| `{initialized_date}` | 初期化日（`YYYY-MM-DD`、date-only）。log.md の OKF 日付見出し `## YYYY-MM-DD` に展開。index.md では `## 統計` の `- 最終更新:` 行に `{initialized_at}` として展開される |
+| `{initialized_date}` | 初期化日（`YYYY-MM-DD`、date-only）。log.md の OKF 日付見出し `## YYYY-MM-DD` に展開。index.md には展開されない（index.md の `- 最終更新:` 行は下記 `{initialized_at}` を使う） |
 | `{initialized_at}` | 初期化タイムスタンプ（ISO 8601）。index.md `## 統計` の `- 最終更新:` 行に展開 |
 | `{okf_version}` | OKF 仕様バージョン。index.md frontmatter の `okf_version: "0.1"` に展開（OKF v0.1 準拠の宣言、Issue #1519） |
 | `{concept_type}` | concept 種別（`patterns` / `heuristics` / `anti-patterns`、`{domain}` と同値）。page-template.md frontmatter の OKF 必須フィールド `type:` に展開（Issue #1518）。詳細は `plugins/rite/skills/wiki-ingest/SKILL.md` ステップ 5.3 の `{concept_type}` 行を SoT として参照 |

@@ -940,7 +940,7 @@ Wiki Lint が完了しました。
 - 未登録 raw（skip 済）は意図的な skip (`ingest_status: skipped`) なら放置で OK。skip 記録を取り消して経験則化したい場合は /rite:wiki-ingest で再処理してください
 - 説明的番号参照はページ本文由来と `index.md` 由来で直し方が異なります
   - ページ本文: 該当箇所の番号を削除し、背景を Why 散文へ書き換えてください（出所は frontmatter `sources.ref` で辿れます）
-  - `index.md`: エントリのサマリーは wiki-ingest ステップ 6 が書き込みます（新規ページ行はステップ 4.1 が Raw Source から生成したサマリー、既存ページ行は当該 page の frontmatter `description`、`description` が無ければ既存セルの値を保持します）。ステップ 6 が上書きするのは**その実行で統合した Raw Source に対応する行だけ**で、上書き値はステップ 4.1 が Raw Source から新規生成するサマリーです（ページ本文もページ frontmatter も入力に取りません）。未処理 raw が 0 件なら `/rite:wiki-ingest` は早期 return します。したがって **`index.md` の番号は該当行を直接編集して消すのが確実な手段**で、ページ側を直しても index の行には伝播しません。該当 Raw Source を再処理する場合は、生成後にもう一度 `/rite:wiki-lint` で残存を確認してください
+  - `index.md`: エントリのサマリーは wiki-ingest ステップ 6 が書き込みます（新規ページ行はステップ 4.1 が Raw Source から生成したサマリー、既存ページ行は当該 page の frontmatter `description`、`description` が無ければ既存セルの値を保持します）。ステップ 6 が上書きするのは**その実行で統合した Raw Source に対応する行だけ**で、上書き値は、新規ページ行がステップ 4.1 のサマリー、既存ページ行が page frontmatter の `description`（無ければ既存セルの値を保持）です。未処理 raw が 0 件なら `/rite:wiki-ingest` は早期 return します。したがって当該ページが `description` を持つ場合は **page frontmatter の `description` を直すのが永続的な手当て**で（当該ページを含む次回 ingest サイクルで index 行へ伝播します）、`description` を持たないページでのみ `index.md` の該当行を直接編集してください。該当 Raw Source を再処理する場合は、生成後にもう一度 `/rite:wiki-lint` で残存を確認してください
 ```
 
 **`{n_pages}` / `{n_raw}` 展開ルール**: LLM は ステップ 2.2 bash block stdout から `pages_list` / `raw_list` を会話コンテキストに保持している。各配列の要素数（空行と `---` separator を除いた非空行の数）を数えて展開する。両 list が空の場合は `0`。
