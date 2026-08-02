@@ -376,7 +376,7 @@ If the Wiki documents a project-specific allowance for the fallback pattern in q
 
 ## Finding Quality Guardrail
 
-Reviewers MUST filter out the following categories of findings **before** writing them to the output table. The filter is applied after Observed Likelihood Gate and Fail-Fast First but before Confidence Scoring. Filtered findings are logged to the reviewer's `監査ログ` section but MUST NOT appear in `指摘事項`.
+Reviewers MUST filter out the following categories of findings **before** writing them to the output table. The filter is applied after Observed Likelihood Gate and Fail-Fast First but before Confidence Scoring. Filtered findings are logged to the reviewer's `監査ログ` section (optional) but MUST NOT appear in `指摘事項`.
 
 This guardrail implements Quality Signal 4 of the four review-fix loop quality signals (see the Quality Signal 1-4 table in `skills/pr-review/references/finding-cycling.md`).
 rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-low-signal-findings-are-filtered
@@ -386,7 +386,7 @@ rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-low-sig
 | # | Category | Examples | Filter rule |
 |---|----------|----------|-------------|
 | 1 | **Bikeshedding** | "変数名 `x` をより記述的にすべき", "マジックナンバー `7` を定数化すべき", "`let` より `const` を優先", フォーマッタで機械的に決まる事項 | Filter **unless** the reviewer can cite a project convention (Wiki entry / CLAUDE.md / linter rule) that the finding violates. Pure preference without cited convention → filter |
-| 2 | **Defensive code suggestion / speculative hardening** | "念のため null check を追加", "想定外の値に備えて default を返す", "型的に到達不可能な else に throw を追加", 単一ユーザー開発機を宣言したプロジェクトでの共有ホスト前提の squat / TOCTOU 対策 | Filter **unless both** hold: (a) the reviewer identifies a concrete call site that can reach the undefended branch, **and** (b) that call site is reachable under the project's **declared operating environment** (the prose declaration in `CLAUDE.md` — when the project declares none, (a) alone decides). A hardening demand that contradicts the declaration is filtered **even when backed by runtime measurement**; record it in `監査ログ` instead. For findings that survive, the default `推奨対応` is fail-loud — 例外の可否は [Fail-Fast First](#fail-fast-first) が決める |
+| 2 | **Defensive code suggestion / speculative hardening** | "念のため null check を追加", "想定外の値に備えて default を返す", "型的に到達不可能な else に throw を追加", 単一ユーザー開発機を宣言したプロジェクトでの共有ホスト前提の squat / TOCTOU 対策 | Filter **unless both** hold: (a) the reviewer identifies a concrete call site that can reach the undefended branch, **and** (b) that call site is reachable under the project's **declared operating environment** (the prose declaration in `CLAUDE.md` — when the project declares none, (a) alone decides). A hardening demand that contradicts the declaration is filtered **even when backed by runtime measurement**; for this case only, the reviewer MUST emit the `監査ログ` section and record the finding there (overriding its optional default stated below). For findings that survive, the default `推奨対応` is fail-loud — 例外の可否は [Fail-Fast First](#fail-fast-first) が決める |
 | 3 | **Hypothetical without entry point** | "もし悪意あるユーザーが ... できたら", "もし race condition が起きたら" | Already governed by Observed Likelihood Gate; here this guardrail adds a belt-and-suspenders filter. If the finding has no `Likelihood-Evidence:` line and the reviewer is not in an Exception Category → filter |
 | 4 | **Style-only without rule** | "コメント文体を揃える", "ファイル末尾改行", "import 並び替え" unless enforced by a configured linter | Filter |
 | 5 | **Scope self-degradation chain** | reviewer が CRITICAL/HIGH と判定した finding を severity 自己降格 (CRITICAL → MEDIUM) と同時に scope 自己降格 (current-pr → nit-noted) させる二重 degrade パターン。例: CRITICAL → MEDIUM (severity 降格) + current-pr → nit-noted (scope 降格) の連鎖。本来の severity を保ったまま `original_severity` フィールドに記録すべき (schema 1.1.0 `findings[].original_severity` 参照) | Filter **and** warn the reviewer to either: (a) keep the original severity and use `current-pr` / `follow-up` scope, or (b) downgrade only severity (LOW-MEDIUM などへ) keeping `current-pr` scope. **CRITICAL/HIGH を本 Category #5 で filter した場合、reviewer は強制的に [Reviewer self-degradation → Signal 4](#reviewer-self-degradation--signal-4) の `Status: degraded` を emit すること** (Signal 4 強制発火 — silent suppression 防止)。二重 degrade は finding を silent suppression する経路となり review-fix loop の収束を阻害するため、本 Filter は完全消去ではなく **warn + escalation** を意図する設計上の対称性を担保する |
@@ -395,7 +395,7 @@ rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-low-sig
 
 rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-low-signal-findings-are-filtered
 
-Filtered findings are **NOT discarded** — reviewers MUST list them in a separate `監査ログ` section so a human can audit what was filtered. This preserves auditability without impacting the loop.
+Filtered findings are **NOT discarded** — reviewers SHOULD list them in a separate `監査ログ` section (optional, off by default) so a human can audit what was filtered. This preserves auditability without impacting the loop.
 
 ### Reviewer self-degradation → Signal 4
 

@@ -64,7 +64,7 @@ The `knowledge_routing` principle additionally draws on t-wada's four quadrants 
 | Optional feature unavailable | Skip with notice | Expected absence — feature is optional |
 | Network error during branch detection | Error | Unexpected failure — don't guess the branch name |
 
-> **Operating-environment declaration**: Each project declares its operating environment (single-user development machine / shared host / multi-tenant, etc.) as prose in its own `CLAUDE.md` — not as a config key, and not in the Wiki, which reviewers do not read — because the reviewer-side [Finding Quality Guardrail](../../../agents/_reviewer-base.md#finding-quality-guardrail) Category #2 judges whether a defensive / hardening finding is reachable at all against that declaration.
+> **Operating-environment declaration**: Each project declares its operating environment (single-user development machine / shared host / multi-tenant, etc.) as prose in its own `CLAUDE.md` — not as a config key — because the reviewer-side [Finding Quality Guardrail](../../../agents/_reviewer-base.md#finding-quality-guardrail) Category #2 judges whether a defensive / hardening finding is reachable at all against that declaration.
 
 ### no_speculative_structure (No Speculative Structure)
 
