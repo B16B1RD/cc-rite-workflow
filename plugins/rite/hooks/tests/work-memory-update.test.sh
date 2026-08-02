@@ -133,6 +133,9 @@ run_update() {
 # 1 箇所に集約する — 別々にリテラルを持つと、文言変更で肯定側だけ追随して否定側が恒久的に vacuous
 # になる (grep が何にも一致しなくなり「WARNING が出ていない」と誤って PASS する)。
 WARN_CARRY_FWD="既存 WM から値を読み戻せませんでした"
+# corrupt 判定でも .data が埋まっている経路で出る別 WARNING。読み戻し不能側と文面を分けてあるので、
+# 照合文字列も分けて持ち、両者の取り違えを検出できるようにする。
+WARN_CORRUPT_FWD="既存 WM は corrupt 判定"
 
 # --- TC-1: per-session present + legacy absent + WM_REQUIRE_FLOW_STATE=true ---
 # cycle 12 fix の core invariant: WM_REQUIRE_FLOW_STATE check が legacy file 直接 [ -f ] check ではなく
@@ -484,6 +487,7 @@ assert_contains "T-08.3: pr_number=123 が carry-forward される" "pr_number: 
 assert_contains "T-08.4: loop_count=4 が carry-forward される" "loop_count: 4" "$body12"
 warn12=$(printf '%s' "$err12" | grep -c "$WARN_CARRY_FWD") || true
 assert_eq "T-08.5: carry-forward 成功時は読み戻し不能 WARNING を出さない (誤報しない)" "0" "$warn12"
+assert_contains "T-08.6: corrupt 判定からの carry-forward は別 WARNING で可視化される" "$WARN_CORRUPT_FWD" "$err12"
 
 # ─── T-09: pr-create が WM_PR_NUMBER を seed する静的 pin ─────────
 # carry-forward は「保持する」だけで値を生成しない。seed 行が消えると pr_number は
@@ -527,6 +531,38 @@ assert_eq "T-10.2: 既定値状態の WM を読んでも WARNING を出さない
 assert_contains "T-10.3: sync_revision が 2 へ加算される (1 に凍結しない)" "sync_revision: 2" "$body13"
 assert_contains "T-10.4: pr_number: null が維持される" "pr_number: null" "$body13"
 assert_contains "T-10.5: loop_count: 0 が維持される" "loop_count: 0" "$body13"
+corrupt13=$(printf '%s' "$err13b" | grep -c "$WARN_CORRUPT_FWD") || true
+assert_eq "T-10.6: 健全な WM では corrupt WARNING を出さない (誤報しない)" "0" "$corrupt13"
+
+# ─── T-11: env override を片側だけ渡す更新 ────────────────────────
+# pr_number / loop_count は独立した 2 つのガードで守られており、片方が他方の env 変数を参照する
+# 取り違えは「両方渡す」「両方渡さない」のどちらのケースでも表面化しない。本 PR が pr-create に
+# 追加した seed 行は WM_PR_NUMBER だけを渡す = まさにこの片側構成なので、直接 pin する。
+echo "T-11: env override を片側だけ渡すと、その field は override / 他方は carry-forward される"
+SBX14=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX14")
+write_config "$SBX14"
+run_update "$SBX14" \
+  WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="999" WM_LOOP_COUNT="4" >/dev/null 2>&1 || true
+WM_FILE14="$SBX14/.rite-work-memory/issue-687.md"
+seed14=$(cat "$WM_FILE14" 2>/dev/null || echo "")
+assert_contains "T-11.0a: seed で pr_number=999 が書かれる (前提確認)" "pr_number: 999" "$seed14"
+assert_contains "T-11.0b: seed で loop_count=4 が書かれる (前提確認)" "loop_count: 4" "$seed14"
+
+# pr-create の seed 形 = WM_PR_NUMBER だけを渡す
+if run_update "$SBX14" \
+  WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
+  WM_NEXT_ACTION="rite:pr-review を実行" WM_BODY_TEXT="PR created." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="123" >/dev/null 2>&1; then
+  rc14=0
+else
+  rc14=$?
+fi
+assert_eq "T-11.1: return 0" "0" "$rc14"
+body14=$(cat "$WM_FILE14" 2>/dev/null || echo "")
+assert_contains "T-11.2: 渡した側は env 値が採用される (pr_number=123)" "pr_number: 123" "$body14"
+assert_contains "T-11.3: 渡していない側は carry-forward される (loop_count=4)" "loop_count: 4" "$body14"
 
 echo
 echo "─── work-memory-update.test.sh summary ──────────────────────────"

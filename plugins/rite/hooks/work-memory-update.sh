@@ -41,11 +41,11 @@
 #                             (default: "false")
 #
 # Observability note:
-#   本 helper が stderr へ出す WARNING (値の読み戻し不能 / 数値バリデーション降格 / Detail 抽出失敗)
-#   は、いずれも縮退時に rc=0 を返す経路で出る。call site が stderr を捨てるか rc ゲートで握るかに
-#   関わらず届かないのはこのためで、実際に届くのは本 helper を直接 source する caller
-#   (pre-compact.sh / post-tool-wm-sync.sh) とテストのみ。call site を stderr 退避形へ揃えるだけでは
-#   届かず、rc ゲートを外す設計判断が別途要る (本 helper の管轄外)。
+#   本 helper が stderr へ出す WARNING (値の読み戻し不能 / corrupt 判定からの carry-forward /
+#   数値バリデーション降格 / Detail 抽出失敗) は、いずれも縮退時に rc=0 を返す経路で出る。
+#   したがって rc で表示を分岐する呼び出し形では捕捉できず、stderr 自体を捨てる呼び出し形にも
+#   届かない。届くのは本 helper の stderr をそのまま伝播させる起動元とテストに限られる。
+#   stderr 退避形へ揃えるだけでは解決せず、rc ゲートを外す設計判断が別途要る (本 helper の管轄外)。
 #
 # Security note:
 #   WM_* 環境変数の sanitize は caller 責務とする設計だったが、orchestrator 経由で LLM 出力 / Issue
@@ -170,17 +170,16 @@ update_local_work_memory() {
   # 既存ファイルの値の読み戻し。sync_revision の increment に加え、pr_number / loop_count を
   # carry-forward する — env override も flow-state 読み取りも伴わない更新経路では、読み戻さない
   # 限り更新のたびに既定値へ巻き戻り、work-memory-format.md の field 定義が宣言する意味を実ファイル
-  # が満たせない。値を持つ caller は自分で env override を渡すので、下の -z ガードで区別する
-  # (caller を列挙して説明しない — call site が増えるたびに記述が偽になるため)。
+  # が満たせない。下の -z ガードが見るのは env 変数の空 / 非空だけで、渡された値が実値か placeholder
+  # かは判定しない (caller を列挙して説明しない — call site が増えるたびに記述が偽になるため)。
   if [ -f "$local_wm" ] && [ -f "$parse_script" ]; then
     # work-memory-parse.py は corrupt 判定 (missing_keys / issue_number_mismatch) でも .data を
     # 埋めたうえで exit 2 を返す。よって exit code ではなく stdout の有無で採否を決める
     # (exit code で捨てると当該ファイルの sync_revision が 1 へ巻き戻り、版が逆行する)。
     # `|| _parse_rc=$?` であって `|| parse_out=""` ではない: 代入は `||` の評価前に完了するので
     # stdout は保持され、非ゼロ exit だけを飲む。`|| parse_out=""` にすると corrupt 判定ファイルの
-    # .data ごと捨てて sync_revision を巻き戻す。ガード自体が要るのは、本 helper を
-    # `set -e` 下で source する caller (pre-compact / post-tool-wm-sync) が現状 if 条件文脈で
-    # 呼んで errexit が停止しているだけであり、その呼び出し形に更新継続を依存させないため。
+    # .data ごと捨てて sync_revision を巻き戻す。ガード自体が要るのは、`set -e` 下で本 helper を
+    # source する呼び出し形に更新継続を依存させないため。
     local parse_out="" _parse_rc=0
     parse_out=$(python3 "$parse_script" "$local_wm" 2>/dev/null) || _parse_rc=$?
     local parsed=""
@@ -196,17 +195,23 @@ update_local_work_memory() {
       IFS=$'\t' read -r existing_rev existing_pr existing_loop existing_keys <<< "$parsed"
     fi
     case "$existing_keys" in ''|*[!0-9]*) existing_keys=0 ;; esac
-    # 読み戻し不能を silent に飲むと、sync_revision が 1 へ巻き戻ったことが「もともと版が無かった」
-    # と区別できない。non-blocking は維持しつつ WARNING で観測性を確保する (下段 detail_extra awk と
-    # 同形)。判定は .data の要素数 1 本 — 読取失敗・ヘッダ欠落・jq 失敗はいずれも 0 になり、corrupt
-    # でも .data が埋まる系統では非 0 になるため、材料を実際に失ったときだけ発火する。parse の rc は
-    # 原因切り分け用に文面へ載せるだけで条件には使わない (rc を条件にすると、carry-forward が成功
-    # する corrupt 系統でも発火して誤報になる)。
+    # 縮退を silent に飲むと、sync_revision が 1 へ巻き戻ったことが「もともと版が無かった」と
+    # 区別できない。non-blocking は維持しつつ WARNING で観測性を確保する (下段 detail_extra awk と
+    # 同形)。**射程は .data 全体が空の場合に限る** — 判定が .data の要素数 1 本なので、個別 key
+    # だけの欠落 (例: sync_revision 行だけが読めない) は検出せず無警告で既定値へ倒れる。
+    # parse の rc は原因切り分け用に文面へ載せるだけで条件には使わない (rc を条件にすると、
+    # carry-forward が成功する corrupt 系統でも発火して誤報になる)。
     # 文面が断定するのは sync_revision だけに留める — pr_number / loop_count は本ブロックより後段の
     # env override / flow-state 読み取りが最終値を決めるため、ここでは既定値化を断定できない。
     if [ "$existing_keys" -eq 0 ]; then
       echo "WARNING: 既存 WM から値を読み戻せませんでした ($local_wm, parse rc=$_parse_rc) — sync_revision を 1 から採番し直します (pr_number / loop_count は env override も flow-state 読み取りも無い場合のみ既定値へ倒れます)" >&2
     else
+      # corrupt 判定 (rc 非ゼロ) でも .data が埋まっていればここへ来る。値は carry-forward するが、
+      # verdict を握り潰すと「corrupt と判定されたファイルの値が伝播した」ことがどこにも残らない。
+      # 上の読み戻し不能 WARNING とは別文面にして、両者を混同せず切り分けられるようにする。
+      if [ "$_parse_rc" -ne 0 ]; then
+        echo "WARNING: 既存 WM は corrupt 判定 (parse rc=$_parse_rc) ですが .data が埋まっているため値を carry-forward しました ($local_wm)" >&2
+      fi
       if [[ "$existing_rev" =~ ^[0-9]+$ ]]; then sync_rev=$((existing_rev + 1)); fi
       # carry-forward は env override が無いときだけ発火させる。未設定判定に `-z` を使うのは
       # 上の初期化が `${WM_PR_NUMBER:-null}` 形式で「空文字 = 未設定」と扱っているため
