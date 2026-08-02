@@ -36,7 +36,11 @@ Exclusions: fenced code blocks, range form `:N-M`, backtick-quoted spans, self. 
 
 > P5/P6（説明的番号参照）の検出設計の根拠・除外の実測値は `../../wiki-lint/references/descriptive-refs-rationale.md` が SoT。本節は P5/P6 の**検出定義**（キーワード語彙・whitelist・self-exclude 判断）を扱う。
 
-Detects high-confidence narrative comment violations **and descriptive Issue/PR number references** in `plugins/rite/**/*.{sh,md}`, repo-root `docs/**/*.md`, and `.rite/wiki/**/*.md` (ドキュメント散文・Wiki ページまでスコープ拡張 — SoT [適用スコープ](../../rite-workflow/references/comment-best-practices.md#適用スコープ) の永続成果物全般). This is the fast-fail mechanical layer below the LLM reviewers — patterns that are 100%-mechanically detectable get killed here so the reviewer queue stays focused on WHY > WHAT semantic judgments.
+Detects high-confidence narrative comment violations **and descriptive Issue/PR number references** in `plugins/rite/**/*.{sh,md}`, repo-root `docs/**/*.md`, and `.rite/wiki/**/*.md` (ドキュメント散文・Wiki ページまでスコープ拡張 — SoT [適用スコープ](../../rite-workflow/references/comment-best-practices.md#適用スコープ) の永続成果物全般).
+
+> **`.rite/wiki/**` に届く条件**: Wiki ページ (`pages/` / `index.md`) の実体がワークツリーにあるのは `wiki.branch_strategy: same_branch` のときだけで、`separate_branch` では wiki ブランチにあり本チェックの走査範囲外になる（ページ分の走査は `/rite:wiki-lint` ステップ 7.5 が `git show` で担う。責務分割であり未実装ではない）。ただし `separate_branch` でも ingest 待ちの Raw Source が `.rite/wiki/raw/` に一時的に実在する窓では raw 由来の検出が出うる。7.5 は `log.md` / `raw/**` / `SCHEMA.md` を意図的に除外するため、両検出器の対象集合は一致しない（`same_branch` では本チェックが `log.md` の番号参照も報告する。7.5 が意図的除外としたものが本チェックでは warning として出る非対称で、非ブロッキングのため merge は止まらない）。
+
+This is the fast-fail mechanical layer below the LLM reviewers — patterns that are 100%-mechanically detectable get killed here so the reviewer queue stays focused on WHY > WHAT semantic judgments.
 
 Detected patterns:
 
