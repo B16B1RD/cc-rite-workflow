@@ -168,13 +168,21 @@ update_local_work_memory() {
     # work-memory-parse.py は corrupt 判定 (missing_keys / issue_number_mismatch) でも .data を
     # 埋めたうえで exit 2 を返す。よって exit code ではなく stdout の有無で採否を決める
     # (exit code で捨てると当該ファイルの sync_revision が 1 へ巻き戻り、版が逆行する)。
-    # `|| true` であって `|| parse_out=""` ではない: 代入は `||` の評価前に完了するので
-    # stdout は保持され、exit 2 だけを飲む。`|| parse_out=""` にすると corrupt 判定ファイルの
+    # `|| _parse_rc=$?` であって `|| parse_out=""` ではない: 代入は `||` の評価前に完了するので
+    # stdout は保持され、非ゼロ exit だけを飲む。`|| parse_out=""` にすると corrupt 判定ファイルの
     # .data ごと捨てて sync_revision を巻き戻す。ガード自体が要るのは、本 helper を
     # `set -e` 下で source する caller (pre-compact / post-tool-wm-sync) が現状 if 条件文脈で
     # 呼んで errexit が停止しているだけであり、その呼び出し形に更新継続を依存させないため。
-    local parse_out=""
-    parse_out=$(python3 "$parse_script" "$local_wm" 2>/dev/null) || true
+    local parse_out="" _parse_rc=0
+    parse_out=$(python3 "$parse_script" "$local_wm" 2>/dev/null) || _parse_rc=$?
+    # 非ゼロを silent に飲むと、読取失敗 (permission / IO) で pr_number / loop_count /
+    # sync_revision がすべて既定値へ倒れたことが「もともと値が無かった」と区別できない。
+    # non-blocking は維持しつつ WARNING で観測性を確保する (下段 detail_extra awk と同形)。
+    # 空文字判定では代替できない — 読取失敗時も parse.py は data:{} 入りの JSON を出して
+    # 非ゼロ終了するため parse_out は非空になり、検出には exit code が要る。
+    if [ "$_parse_rc" -ne 0 ]; then
+      echo "WARNING: work-memory-parse.py rc=$_parse_rc ($local_wm) — 既存 WM からの carry-forward が縮退しました (pr_number / loop_count / sync_revision が既定値へ倒れる可能性があります)" >&2
+    fi
     local parsed=""
     if [ -n "$parse_out" ]; then
       # 3 field を 1 回の jq で取り出し、python3 プロセスの追加起動を避ける。

@@ -330,19 +330,26 @@ assert_contains "T-03.2: pr_number: null (既定値、AC-3)" "pr_number: null" "
 assert_contains "T-03.3: loop_count: 0 (既定値、AC-3)" "loop_count: 0" "$body7"
 
 # ─── T-04: env override が既存ファイル値より優先される ───────────
-echo "T-04: WM_PR_NUMBER 設定時は既存ファイル値ではなく env 値が採用される"
+# pr_number / loop_count は独立した 2 つの条件式で守られているため、両方を検証する
+# (片方だけだと、もう一方のガード除去が無検知で通る)。
+echo "T-04: WM_PR_NUMBER / WM_LOOP_COUNT 設定時は既存ファイル値ではなく env 値が採用される"
 SBX8=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX8")
 write_config "$SBX8"
 run_update "$SBX8" \
   WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
-  WM_PR_NUMBER="123" >/dev/null 2>&1 || true
+  WM_PR_NUMBER="123" WM_LOOP_COUNT="3" >/dev/null 2>&1 || true
 WM_FILE8="$SBX8/.rite-work-memory/issue-687.md"
+seed8=$(cat "$WM_FILE8" 2>/dev/null || echo "")
+# seed 前提確認: これが無いと seed 失敗時に 2 回目の env 値がそのまま書かれて
+# 「既存ファイル値を override した」検証が空虚に PASS する
+assert_contains "T-04.0a: seed で pr_number=123 が書かれる (前提確認)" "pr_number: 123" "$seed8"
+assert_contains "T-04.0b: seed で loop_count=3 が書かれる (前提確認)" "loop_count: 3" "$seed8"
 
 if run_update "$SBX8" \
   WM_SOURCE="pre-compact" WM_PHASE="lint" WM_PHASE_DETAIL="compact 前保存" \
   WM_NEXT_ACTION="resume" WM_BODY_TEXT="Pre-compact." WM_ISSUE_NUMBER="687" \
-  WM_PR_NUMBER="456" >/dev/null 2>&1; then
+  WM_PR_NUMBER="456" WM_LOOP_COUNT="9" >/dev/null 2>&1; then
   rc8=0
 else
   rc8=$?
@@ -350,6 +357,7 @@ fi
 assert_eq "T-04.1: return 0" "0" "$rc8"
 body8=$(cat "$WM_FILE8" 2>/dev/null || echo "")
 assert_contains "T-04.2: pr_number=456 (env が既存ファイル値 123 を override、AC-4)" "pr_number: 456" "$body8"
+assert_contains "T-04.3: loop_count=9 (env が既存ファイル値 3 を override、AC-4)" "loop_count: 9" "$body8"
 
 # ─── T-05: WM_READ_FROM_FLOW_STATE 経路の非回帰 ──────────────────
 # carry-forward ブロックより後段の flow-state 上書きが最終値である契約 (優先順位 1 位) を守る。
@@ -424,6 +432,48 @@ fi
 assert_eq "T-07.1: set -e + bare 呼び出しで return 0 (errexit で中断しない)" "0" "$rc11"
 body11=$(cat "$SBX11/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
 assert_contains "T-07.2: WM が実際に書き換わる (更新が完走している)" "Post-implementation." "$body11"
+
+# ─── T-08: corrupt 判定でも .data が埋まるファイルは carry-forward される ──
+# 「`|| _parse_rc=$?` であって `|| parse_out=空文字` ではない」という設計判断を固定する。
+# T-03 / T-07 の fixture はヘッダマーカー不在型で work-memory-parse.py が .data を空で返すため、
+# この 2 つの書き方を判別できない。判別にはヘッダマーカーを保ったまま frontmatter の
+# issue_number をファイル名と食い違わせた fixture (issue_number_mismatch) が要る — parse.py は
+# corrupt 判定を返しつつ .data を全埋めするため、stdout を捨てる書き方だと sync_revision が
+# 1 へ巻き戻り pr_number / loop_count も既定値へ落ちる。
+echo "T-08: corrupt-but-parseable な WM でも carry-forward と sync_revision 加算が維持される"
+SBX12=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX12")
+write_config "$SBX12"
+mkdir -p "$SBX12/.rite-work-memory"
+printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nschema_version: 1\nissue_number: 999\nsync_revision: 5\npr_number: 123\nloop_count: 4\n---\n\nbody\n' \
+  > "$SBX12/.rite-work-memory/issue-687.md"
+# 前提確認: この fixture が「corrupt 判定 かつ .data 全埋め」であること (この性質が崩れると本 TC は空虚になる)
+parse12=$(python3 "$PLUGIN_ROOT/hooks/work-memory-parse.py" "$SBX12/.rite-work-memory/issue-687.md" 2>/dev/null || true)
+assert_contains "T-08.0a: fixture が corrupt 判定される (前提確認)" '"status": "corrupt"' "$parse12"
+assert_contains "T-08.0b: corrupt でも .data に sync_revision が埋まる (前提確認)" '"sync_revision": 5' "$parse12"
+
+if run_update "$SBX12" \
+  WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" >/dev/null 2>&1; then
+  rc12=0
+else
+  rc12=$?
+fi
+assert_eq "T-08.1: return 0 (corrupt 判定でも更新は続行)" "0" "$rc12"
+body12=$(cat "$SBX12/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
+assert_contains "T-08.2: sync_revision が 6 へ加算される (版が逆行しない)" "sync_revision: 6" "$body12"
+assert_contains "T-08.3: pr_number=123 が carry-forward される" "pr_number: 123" "$body12"
+assert_contains "T-08.4: loop_count=4 が carry-forward される" "loop_count: 4" "$body12"
+
+# ─── T-09: pr-create が WM_PR_NUMBER を seed する静的 pin ─────────
+# carry-forward は「保持する」だけで値を生成しない。seed 行が消えると pr_number は
+# どの通常更新経路でも書かれないまま (Issue #2082 §3.2 の As-Is) に戻るため、
+# skill markdown 側を静的に pin する (既存 parity テストと同型)。
+echo "T-09: pr-create/SKILL.md が WM_PR_NUMBER seed 行を持つ"
+PR_CREATE_MD="$PLUGIN_ROOT/skills/pr-create/SKILL.md"
+assert_eq "T-09.0: pr-create/SKILL.md が存在する (前提確認)" "yes" \
+  "$([ -f "$PR_CREATE_MD" ] && echo yes || echo no)"
+pr_create_body=$(cat "$PR_CREATE_MD" 2>/dev/null || echo "")
+assert_contains "T-09.1: WM_PR_NUMBER=\"{pr_number}\" の seed 行がある" 'WM_PR_NUMBER="{pr_number}"' "$pr_create_body"
 
 echo
 echo "─── work-memory-update.test.sh summary ──────────────────────────"
