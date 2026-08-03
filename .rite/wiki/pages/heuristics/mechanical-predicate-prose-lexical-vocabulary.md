@@ -4,7 +4,7 @@ title: "機械的な述語を文書化するときは意図の語彙ではなく
 domain: "heuristics"
 description: "判別子が字句的（marker から `=>` までの間に改行 / `<br>` / 句点があるか）なのに、記述側を意図の語彙（「書き損じ」「散文中の言及」「折り返しアンカー」）で言い換えると、必ず「そう意図していないのに同じ帰結になる入力」を生む。実測事例では 3 cycle かけて帰結記述を条件付きに直してもなお同型の指摘が出続け、意味論の言い換えを削除して字句条件 1 本へ寄せることで drift の再生産が止まった。"
 created: "2026-08-01T23:12:28+09:00"
-updated: "2026-08-01T23:12:28+09:00"
+updated: "2026-08-03T23:41:26+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260801T124341Z-pr-2081.md"
@@ -12,6 +12,8 @@ sources:
     ref: "raw/fixes/20260801T124925Z-pr-2081.md"
   - type: "fixes"
     ref: "raw/fixes/20260801T115711Z-pr-2081.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260803T131002Z-pr-2095.md"
 tags: []
 confidence: high
 ---
@@ -36,6 +38,8 @@ confidence: high
 
 **行き過ぎの方向にも注意する**: 字句条件へ寄せる際に述語の依存関係を落とすと、今度は強すぎる断定になる。母集団の束縛は必ず残す（[一般化した断定は、実装が特殊化されている限り必ず偽になる](./generalized-claim-false-while-implementation-specialized.md) を参照）。
 
+**規則の外延は検出層の literal を実際に読んで合わせる**: 字句の語彙で書いても、**その外延が検出 regex より狭ければ規則は必ず破れる**。PR #2095 は「marker 文字列そのものを書かない」という authoring 規則を置いたが、検出側の regex は大文字小文字を無視し、装飾文字とコロンまで吸収する実装だった。規則に従って書いた記述が検出され、規則が守れない状態になる。散文で規則を書くときは、対応する機械側の literal を開いて読み、regex のフラグ・吸収する文字クラスまで含めて外延を一致させること。「意図としてはこの範囲」で書いた規則は、実装の吸収範囲を必ず取りこぼす。
+
 ## 関連ページ
 
 - [一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える](./generalized-claim-false-while-implementation-specialized.md)
@@ -47,3 +51,4 @@ confidence: high
 - [PR #2081 review results](../../raw/reviews/20260801T124341Z-pr-2081.md)
 - [PR #2081 fix results](../../raw/fixes/20260801T124925Z-pr-2081.md)
 - [PR #2081 fix results](../../raw/fixes/20260801T115711Z-pr-2081.md)
+- [PR #2095 fix results (cycle 5: 規則の外延が検出 regex より狭かった)](../../raw/fixes/20260803T131002Z-pr-2095.md)

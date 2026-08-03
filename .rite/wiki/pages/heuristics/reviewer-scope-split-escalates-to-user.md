@@ -4,10 +4,14 @@ title: "同一欠陥に対し reviewer の scope が割れたらユーザー判�
 domain: "heuristics"
 description: "形式変更 PR では「変更していない consumer」に欠陥が現れるため、Issue のファイル単位スコープと欠陥の所在がずれる。2 名が独立に同じ欠陥へ到達しながら処置が current-pr と follow-up に割れるのはこの構造による。両者を「どちらも blocking だから本 PR で直す」と読むと reviewer が deferred と明示した signal が消える。scope enum の定義を実ファイルで確認し、割れたらユーザーへ上げる。accept は無視ではなく処置を伴う deferred。"
 created: "2026-08-02T22:05:00+09:00"
-updated: "2026-08-02T22:05:00+09:00"
+updated: "2026-08-03T23:41:26+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260802T110823Z-pr-2052.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260803T124230Z-pr-2095.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260803T114017Z-pr-2095.md"
 tags: ["review-scope", "escalation", "producer-consumer", "deferred-treatment", "issue-scope-boundary"]
 confidence: high
 ---
@@ -68,12 +72,27 @@ fingerprint を永続化して次サイクルの再報告を抑止するのは�
 
 件数だけでなく内訳の性質を並べると、ループを続けても収束しないことが早期に判る。
 
+### 割れは reviewer 間だけでなく cycle 間でも起きる
+
+同じ軸の割れは、**同一 reviewer 構成でも cycle をまたいで**発生する。PR #2095 では journal comment（番号参照）の扱いについて cycle 1 が「番号が Why そのものなら区別する」として対応不要と判定し、cycle 4 が HIGH 違反と判定した。判定が逆転している。
+
+このとき「新しい cycle の判定が正しい」と自動採用してはならない。**方針判断であって実装の誤りではない**類のものは、fix せず記録コメントに相違を明示して人間レビューへ回す。reviewer 間の scope split と同じ扱いで、統合ではなくエスカレーションが解になる。
+
+### repro が食い違ったら平均せず差分を特定する
+
+同一 fixture 名に対して reviewer と自分の実測結果が逆になったとき、「どちらかが間違い」として片方を捨てるのは誤り。PR #2095 cycle 2 の事例では、原因は句点の位置（marker 直後か LHS 内側か）で、**両方が正しかった**。
+
+食い違いを潰さずに差分を特定すると、判定規則そのものの曖昧さが露出する。逆に平均や多数決で処理すると、その曖昧さは規則に残ったまま次 cycle で別の形で返ってくる。
+
 ## 関連ページ
 
 - [re-review / verification mode でも初回レビューと同等の網羅性を確保する (Anti-Degradation Guardrail)](./reviewer-scope-antidegradation.md)
+- [レビュアーの結論が正面から割れたら、勝敗を決める前に語の多義性を疑う](./reviewer-verdict-split-signals-term-ambiguity.md)
 - [累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable](./accumulated-pr-three-cycle-convergence.md)
 - [配布テンプレートへの内部参照流入は 1 箇所直しても閉じない — 同一配布単位の sibling を base 件数と比較する](../anti-patterns/internal-reference-leaks-into-distributed-template.md)
 
 ## ソース
 
 - [PR #2052 review results (cycle 2)](../../raw/reviews/20260802T110823Z-pr-2052.md)
+- [PR #2095 fix results (cycle 4: cycle 間で判断が逆転した項目の扱い)](../../raw/fixes/20260803T124230Z-pr-2095.md)
+- [PR #2095 fix results (cycle 2: repro の食い違いから規則の曖昧さを特定)](../../raw/fixes/20260803T114017Z-pr-2095.md)

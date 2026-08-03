@@ -2,7 +2,7 @@
 title: "同 file 内 MUST NOT vs MUST 衝突: bare form 禁止規約と bare form 出力義務の自己矛盾"
 domain: "anti-patterns"
 created: "2026-04-20T13:25:00+00:00"
-updated: "2026-07-13T09:40:00Z"
+updated: "2026-08-03T23:41:26+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260420T104328Z-pr-623.md"
@@ -16,6 +16,8 @@ sources:
     ref: "raw/reviews/20260604T233350Z-pr-1272.md"
   - type: "reviews"
     ref: "raw/reviews/20260713T003651Z-pr-1841.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260803T124230Z-pr-2095.md"
 tags: [prompt-engineering, design-conflict, cross-validation, bare-sentinel, step-addition]
 confidence: high
 ---
@@ -137,6 +139,18 @@ bash tool output と response text の **layer 境界** を prose で明示す�
 - [PR #624 review results (新 Step × 既存 MUST NOT 衝突、bash tool output 境界)](../../raw/reviews/20260420T143336Z-pr-624.md)
 - [PR #624 fix results (layer 明示対策の確立)](../../raw/fixes/20260420T144134Z-pr-624.md)
 - [PR #1272 review results (remediation guidance 間 no-win 矛盾の「禁止 + escape hatch」収束)](../../raw/reviews/20260604T233350Z-pr-1272.md)
+- [PR #2095 fix results (cycle 4: 新設分類クラス × 既存の無条件 Rule 衝突)](../../raw/fixes/20260803T124230Z-pr-2095.md)
+
+## 変種: 新設した分類クラスが既存の無条件 Rule と衝突する
+
+規約どうしの正面衝突は「同じ形式を禁止 / 義務化」だけでなく、**新しい分類クラスを追加したとき**にも起きる。既存 Rule が無条件（例外を持たない全称）で書かれていると、新クラスがその適用対象から自動的に外れることはないためである。
+
+PR #2095 では「実行時観測を根拠として書ける指摘は実測アンカーも必ず併記する」という既存 Rule が無条件だった。そこへ「アンカーを付けない字面整合クラス」を新設したため、両者が正面衝突した。**両規約は同一の reviewer prompt へ同時に注入される**ので、reviewer はどちらかを破るしかない状態になる。
+
+解消は新クラス側にラベル選択の規定を 1 文足すだけで済んだ（既存 Rule は変更していない）。作業手順としては次の 2 点になる。
+
+1. **新しい分類クラスを作るときは、そのクラスが既存の無条件 Rule の適用対象から外れるかを確認する。** 外れないなら、新クラス側に「この場合はこう選ぶ」を明示する。
+2. **確認先は「同じ prompt へ同時に注入される規約すべて」。** ファイル単位ではなく注入単位で見ないと、別ファイルにある無条件 Rule との衝突を見落とす。
 
 ## 変種: 記述層の consistency 主張 vs divergence 文書化
 

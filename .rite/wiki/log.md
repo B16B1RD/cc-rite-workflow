@@ -30,6 +30,13 @@
 * **Update**: [rc 変数を 0 で初期化すると、未起動の段を「起動して成功した」と断定する](pages/patterns/rc-variable-not-started-sentinel.md) — raw/fixes/20260803T005938Z-pr-2094.md を統合（stderr を捨てた pipeline で rc を 1 つだけ載せると診断が能動的に嘘をつく / sentinel を持つ上流から引き継ぐ機構は sentinel を実値として拾う）
 * **Update**: [特定の 1 バイト・1 条件で書いた防御は、defect class 全体を覆うか修正直後に自問する](pages/heuristics/single-condition-defense-vs-defect-class.md) — raw/fixes/20260803T041505Z-pr-2094.md を統合（区切り文字を値側でエスケープしない join/split idiom / 同型サイトの中で 1 箇所だけガードを欠く非対称は漏れの証拠 / 修正が計測を変えるなら計測の記述も同 cycle で更新）
 * **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
+* **Update**: [列挙・全称主張を持つ記述は書き直しでは収束しない — 撤去だけが指摘面を消す](pages/anti-patterns/enumeration-claim-rewrite-never-converges.md) — raw/fixes/20260803T110020Z-pr-2095.md を統合（同一命題が 3 ファイルに複製されている状態で 1 箇所だけ直すと新たな未同期を生む / 既存複製の同期は simplification-first の対象外 / 断定を書く前に helper を 1 回走らせる）
+* **Update**: [列挙・全称主張を持つ記述は書き直しでは収束しない — 撤去だけが指摘面を消す](pages/anti-patterns/enumeration-claim-rewrite-never-converges.md) — raw/fixes/20260803T114017Z-pr-2095.md を統合（helper の多ケース挙動は常に成立する 1 つの authoring 規則へ畳む / simplification-first が実測で net-negative になった / 判定基準を 1 箇所に適用したら同基準が当たる箇所を全部 grep する。repro 食い違いの扱いは reviewer scope split ページへも統合）
+* **Create**: [自身の検出を避けるために崩した書式は、読者に「こう書け」と読まれる](pages/anti-patterns/self-detection-evasion-format-read-as-prescription.md) — raw/fixes/20260803T121106Z-pr-2095.md を新規ページ化（自己言及回避で崩した記入例が規定の記入形式と誤読される / 退避である旨と正しい記入形式を必ず併記する / 教材例に実在ファイルを名指ししない）
+* **Update**: [同 file 内 MUST NOT vs MUST 衝突: bare form 禁止規約と bare form 出力義務の自己矛盾](pages/anti-patterns/same-file-must-not-vs-must-conflict.md) — raw/fixes/20260803T124230Z-pr-2095.md を統合（新設した分類クラスが既存の無条件 Rule と正面衝突する変種 / 確認先はファイル単位ではなく同一 prompt へ注入される規約すべて / cycle 間で判断が割れた項目は fix せず人間へ委ねる）
+* **Create**: [検出ゲートの仕様そのものを変える PR は自己言及で発散する — サーキットブレーカー到達を異常ではなく想定内として扱う](pages/heuristics/gate-spec-self-reference-pr-expects-circuit-breaker.md) — raw/fixes/20260803T131002Z-pr-2095.md を新規ページ化（検出層の変更が Non-goal である以上「構造を疑う」処方が効かない / 5 サイクル全てで blocking が出続けたが成果物自体は blocking=0 を達成 / 規則の外延は検出層 literal を読んで合わせる — 後者は機械的述語ページへも統合）
+* **Update**: [限界を説明する例は検出器に食わせ、「〜としてのみ使う」型の断定は grep で数えてから書く](pages/heuristics/verify-explanatory-examples-against-the-detector.md) — raw/reviews/20260803T104952Z-pr-2095.md を統合（「実行して観測せよ」と指示する文書の教材例は読み手に必ず検証される / 設計根拠として過去 PR 番号を引くときは polarity を裏取りする）
+* **Update**: [検出ゲートの仕様そのものを変える PR は自己言及で発散する — サーキットブレーカー到達を異常ではなく想定内として扱う](pages/heuristics/gate-spec-self-reference-pr-expects-circuit-breaker.md) — raw/reviews/20260803T140734Z-pr-2095.md を統合（最終 cycle は 4 件すべて字面整合クラスとして non-blocking へ降格し blocking=0 / 収束しなかったことと成果物が無効であることは別）
 
 ## 2026-08-02
 
