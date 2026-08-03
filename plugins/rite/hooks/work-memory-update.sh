@@ -29,9 +29,17 @@
 #                             (default: "false")
 #   WM_PR_NUMBER            - PR number override. Effective only when WM_READ_FROM_FLOW_STATE != "true";
 #                             otherwise the value is read from flow-state (lint pattern).
-#                             (default: carried forward from the existing WM, else "null")
+#                             (default: carried forward from the existing WM — except the flow-state
+#                             "PR not created" sentinel 0, which is NOT carried forward and falls back
+#                             to "null"; else "null")
 #   WM_LOOP_COUNT           - Loop count override. Same effective conditions as WM_PR_NUMBER.
-#                             (default: carried forward from the existing WM, else 0)
+#                             (default: carried forward from the existing WM, else 0. Unlike
+#                             WM_PR_NUMBER there is no 0 exclusion — 0 is a real value here.)
+#
+#   Numeric validation (applies to both fields, whichever path supplied the value):
+#     a value that is not a bare integer is demoted to the YAML literal null before it is written,
+#     with a WARNING on stderr. This is the only outcome besides the four listed above; docs that
+#     delegate to this header as the SoT rely on it being stated here.
 #   WM_REQUIRE_FLOW_STATE   - If "true", skip if flow-state phase cannot be resolved via
 #                             flow-state.sh (per-session and legacy file both absent, or phase
 #                             is null/empty). Uses flow-state.sh under the hood so schema_version=2
@@ -188,7 +196,10 @@ update_local_work_memory() {
     local parse_out="" _parse_rc=0 _parse_err=""
     _parse_err=$(mktemp 2>/dev/null) || _parse_err=""
     parse_out=$(python3 "$parse_script" "$local_wm" 2>"${_parse_err:-/dev/null}") || _parse_rc=$?
-    local parsed="" _jq_rc=0
+    # `_jq_rc` の初期値は「未起動」を表す非数値 sentinel。`0` で初期化すると、parse_out が空で jq が
+    # 一度も起動しない経路でも WARNING が `jq rc=0` を出し、未起動の段を「起動して成功した」と断定する
+    # (下の分離コメントが避けようとしている誤誘導の鏡像)。
+    local parsed="" _jq_rc="n/a"
     if [ -n "$parse_out" ]; then
       # 4 field を 1 回の jq で取り出し、python3 プロセスの追加起動を避ける。末尾の `.data` 要素数が
       # 「carry-forward の材料が実際にあるか」の判定値 — 前 3 field は `//` 既定値を持つため、
@@ -197,7 +208,7 @@ update_local_work_memory() {
       # WARNING が `parse rc=0` を表示し「前段は成功した」と能動的に否定して triage を誤誘導する
       # (§4.5 が parse 失敗と jq 失敗を別条件として立てている以上、診断も分離する)。
       parsed=$(printf '%s' "$parse_out" \
-        | jq -r '[(.data.sync_revision // 0), (.data.pr_number // "null"), (.data.loop_count // 0), (.data | length)] | @tsv' 2>>"${_parse_err:-/dev/null}") || { _jq_rc=$?; parsed=""; }
+        | jq -r '[(.data.sync_revision // 0), (.data.pr_number // "null"), (.data.loop_count // 0), (.data | length)] | @tsv' 2>>"${_parse_err:-/dev/null}") && _jq_rc=0 || { _jq_rc=$?; parsed=""; }
     fi
     local existing_rev=0 existing_pr="" existing_loop="" existing_keys=0
     if [ -n "$parsed" ]; then
@@ -225,7 +236,18 @@ update_local_work_memory() {
       # 文面は発火条件が保証している事実だけに留める — 実際に carry-forward されるかは後段の
       # env override / flow-state 読み取り次第で、この時点では断定できない。
       if [ "$_parse_rc" -ne 0 ]; then
-        echo "WARNING: 既存 WM は corrupt 判定 (parse rc=$_parse_rc) ですが .data が読めたため処理を継続しました ($local_wm) — 読み戻した値が実際に採用されるかは env override / flow-state 読み取りの有無で決まります" >&2
+        # corrupt verdict は種別を問わず exit 2 に畳まれるため、rc だけでは missing_keys (carry-forward が
+        # 正当な系統) と issue_number_mismatch (.data が別 Issue のもので、carry-forward が他 Issue の
+        # pr_number を転写する系統) を切り分けられない。.errors は parse_out に既に入っているので
+        # 追加の python3 起動なしで出せる。**@tsv の field には足さない** — IFS=$'\t' は tab を IFS
+        # whitespace として扱うため、空 field が潰れて existing_pr / existing_loop / existing_keys が
+        # 1 つずつずれる。corrupt 経路は稀なので jq 1 プロセスの追加で受ける。
+        # .errors は corrupt ファイル由来の文字列を補間するため neutralize_ctrl を通す (生 echo は
+        # _sanitize_yaml_value が塞いでいる制御文字経路を再び開く)。
+        local _corrupt_reasons
+        _corrupt_reasons=$(printf '%s' "$parse_out" | jq -r '.errors // [] | join("; ")' 2>/dev/null) || _corrupt_reasons=""
+        [ -n "$_corrupt_reasons" ] || _corrupt_reasons="(種別不明)"
+        echo "WARNING: 既存 WM は corrupt 判定 (parse rc=$_parse_rc, errors: $(printf '%s' "$_corrupt_reasons" | neutralize_ctrl)) ですが .data が読めたため処理を継続しました ($local_wm) — 読み戻した値が実際に採用されるかは env override / flow-state 読み取りの有無で決まります" >&2
       fi
       if [[ "$existing_rev" =~ ^[0-9]+$ ]]; then sync_rev=$((existing_rev + 1)); fi
       # carry-forward は env override が無いときだけ発火させる。未設定判定に `-z` を使うのは

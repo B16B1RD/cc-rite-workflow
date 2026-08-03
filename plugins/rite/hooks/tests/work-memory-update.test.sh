@@ -400,9 +400,14 @@ run_update "$SBX9" \
   WM_PR_NUMBER="123" >/dev/null 2>&1 || true
 WM_FILE9="$SBX9/.rite-work-memory/issue-687.md"
 
+# env override を同時に渡す。渡さないと「flow-state > 既存ファイル値」しか固定できず、
+# 優先順位 1 > 2 (flow-state が env override にも勝つ) を反転させる変更 —
+# :260-263 の無条件上書きを、直上の carry-forward ガードと同じ「env 未設定時のみ」形へ
+# 揃える方向の編集 — が hooks スイート全体を素通りする。
 if run_update "$SBX9" \
   WM_SOURCE="lint" WM_PHASE="lint" WM_PHASE_DETAIL="quality check" \
   WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Lint body." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="555" WM_LOOP_COUNT="55" \
   WM_READ_FROM_FLOW_STATE="true" >/dev/null 2>&1; then
   rc9=0
 else
@@ -410,8 +415,8 @@ else
 fi
 assert_eq "T-05.1: return 0" "0" "$rc9"
 body9=$(cat "$WM_FILE9" 2>/dev/null || echo "")
-assert_contains "T-05.2: pr_number=789 (flow-state 値が既存ファイル値 123 を override、AC-5)" "pr_number: 789" "$body9"
-assert_contains "T-05.3: loop_count=7 (flow-state 値が最終値、AC-5)" "loop_count: 7" "$body9"
+assert_contains "T-05.2: pr_number=789 (flow-state 値が既存ファイル値 123 と env override 555 の双方に勝つ、AC-5)" "pr_number: 789" "$body9"
+assert_contains "T-05.3: loop_count=7 (flow-state 値が既存ファイル値と env override 55 の双方に勝つ、AC-5)" "loop_count: 7" "$body9"
 
 # ─── T-06: 改竄値の carry-forward は null へ降格し WARNING が出る ──
 # carry-forward が _validate_numeric_yaml_value を迂回しないこと (YAML injection 防御の維持)。
@@ -660,7 +665,9 @@ assert_contains "T-13.2: pr_number: null へ戻る (sentinel 0 を carry-forward
 # 本アサーションは pr_number の除外が loop_count へ波及していないことを固定する。
 assert_contains "T-13.3: loop_count は carry-forward される (0 除外を波及させない)" "loop_count: 4" "$body16"
 
-# loop_count: 0 が実値として carry-forward されることの直接確認 (T-13.3 の対偶側)
+# 実 PR 番号が非退行であることの確認。loop_count: 0 側は既定値と同値になるため carry-forward の
+# 有無を出力から判別できない (0 除外を loop_count へ波及させる変更は全入力で同じ出力になる等価変異で、
+# アサーションを強化しても殺せない)。除外の非波及を守っているのは非既定値を使う T-13.3 / T-11.3。
 SBX17=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX17")
 write_config "$SBX17"
 run_update "$SBX17" \
@@ -672,8 +679,12 @@ run_update "$SBX17" \
   WM_SOURCE="implement" WM_PHASE="implement" WM_PHASE_DETAIL="実装中" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Normal update." WM_ISSUE_NUMBER="687" >/dev/null 2>&1 || true
 body17=$(cat "$WM_FILE17" 2>/dev/null || echo "")
+# 完走確認を先に置く。T-13.4 / T-13.5 が照合する値は seed が env override で書いた値と同一のため、
+# 2 回目の更新が no-op でも abort でも両方 Green になる。body 差し替えの照合 (T-07.2 / T-12.2 と同型)
+# だけがその区別をつける。
+assert_contains "T-13.4a: 2 回目の更新が完走している (前提確認)" "Normal update." "$body17"
 assert_contains "T-13.4: 実 PR 番号は従来どおり carry-forward される (非退行)" "pr_number: 4242" "$body17"
-assert_contains "T-13.5: loop_count: 0 は実値として carry-forward される" "loop_count: 0" "$body17"
+assert_contains "T-13.5: loop_count: 0 は据え置き (既定値と同値のため carry-forward の有無は出力から判別不能)" "loop_count: 0" "$body17"
 
 echo
 echo "─── work-memory-update.test.sh summary ──────────────────────────"
