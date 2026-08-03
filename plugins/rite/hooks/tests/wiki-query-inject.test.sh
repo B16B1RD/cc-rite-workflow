@@ -11,8 +11,8 @@
 #                    candidate (no phantom "index.md may be stale" WARNING)
 #
 # Note: a zero-candidate run against an index that DOES carry registration rows
-# emits a notice on stdout as well as stderr (every caller discards stderr), so
-# TC-9 / TC-15 assert the notice rather than an empty stdout. TC-4
+# emits a notice on stdout as well as stderr (five of the six callers discard
+# stderr), so TC-9 / TC-15 assert the notice rather than an empty stdout. TC-4
 # keeps the empty-stdout contract for an index with no registration rows.
 set -uo pipefail
 
@@ -610,8 +610,9 @@ else
 fi
 
 # --- TC-18: the zero-candidate notice reaches stdout too ---
-# Every caller runs this script with `2>/dev/null`, so a stderr-only warning is
-# invisible in every path that actually runs in a workflow, and an
+# Five of the six callers run this script with `2>/dev/null` (only the manual
+# /rite:wiki-query path keeps stderr), so a stderr-only warning is invisible in
+# every path that runs inside a workflow, and an
 # empty stdout is indistinguishable from "no page matched". TC-9 pins the stderr
 # half; this pins the stdout half and the silence when there is nothing to warn
 # about (an index with no registration rows is a legitimately empty catalog).

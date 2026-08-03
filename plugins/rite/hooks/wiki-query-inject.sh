@@ -504,10 +504,11 @@ if [[ -z "$candidates" ]]; then
   if grep -q '](pages/' <<< "$stripped"; then
     echo "WARNING: .rite/wiki/index.md に登録リンク (](pages/...)) を含む行がありますが、候補を 1 件も抽出できませんでした" >&2
     echo "  カタログの形式が Pass 1 の対応形式 (5 列テーブル / OKF 箇条書き) と異なる可能性があります" >&2
-    # Also on stdout. Every caller that invokes this script does so with
-    # `2>/dev/null` (skills/wiki-query, pr-review, fix, issue-implement,
-    # issue-create, unknowns — measured), so the stderr line above reaches
-    # nobody in the paths that actually run — and an empty stdout is exactly
+    # Also on stdout. Five of the six callers invoke this script with
+    # `2>/dev/null` (pr-review, fix, issue-implement, issue-create, unknowns);
+    # only the manual `/rite:wiki-query` path keeps stderr. So in every path
+    # that runs inside a workflow the line above reaches nobody — and an empty
+    # stdout is exactly
     # what "no matching pages" looks like, which is the misattribution this
     # guard exists to break. One line, marked as a notice rather than content,
     # so a reader of the injected block can tell the wiki was not consulted.
