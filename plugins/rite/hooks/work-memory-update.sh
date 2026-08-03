@@ -38,7 +38,8 @@
 #
 #   Both fields pass through numeric validation before being written, whichever path above
 #   supplied the value: a value containing a non-digit character is demoted to the YAML literal
-#   null with a WARNING on stderr; an empty value is written as null without a WARNING.
+#   null with a WARNING on stderr; an empty value, or the literal "null" that the default path
+#   itself supplies, is written as null without a WARNING.
 #
 #   WM_REQUIRE_FLOW_STATE   - If "true", skip if flow-state phase cannot be resolved via
 #                             flow-state.sh (per-session and legacy file both absent, or phase

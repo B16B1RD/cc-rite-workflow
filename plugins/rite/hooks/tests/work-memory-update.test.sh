@@ -394,7 +394,7 @@ assert_contains "T-04.3: loop_count=9 (env が既存ファイル値 3 を overri
 # 走行 1 は flow-state 読取を carry-forward ガードと同型の「env 未設定時のみ」へ縮退させる変異で
 # Red になり、走行 2 はその変異では Green のまま素通りする (実測確認済み)。
 # TC-3 も flow-state 読取を通るが、既存 WM を持たない fixture なので carry-forward との競合が
-# 起きない。走行 2 はこのスイートで唯一「材料を持つ carry-forward と flow-state が競合する」入力。
+# 起きない。走行 2 はその競合を起こす入力を与える。
 echo "T-05: WM_READ_FROM_FLOW_STATE=true では flow-state 値が既存ファイル値・env override の双方に優先される"
 SBX9=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX9")
 write_config "$SBX9"
