@@ -44,23 +44,25 @@ if [ ! -d "$HOOKS_DIR" ]; then
   exit 1
 fi
 
-echo "=== TC-1: head -N emission site は全て neutralize_ctrl を経由 ==="
+echo "=== TC-1: head/tail -N emission site は全て neutralize_ctrl を経由 ==="
 # 除外: tests/ (fixture/assertion 内の出現)、コメント行、定義元 helper の usage コメント
-# `head -[0-9]+` / `head -n [0-9]+` (行指向 snippet、両綴り) を対象とする。
+# `head`/`tail` の `-[0-9]+` / `-n [0-9]+` (行指向 snippet、両綴り) を対象とする。
+# `tail` を含めるのは、python3 の未捕捉例外のように**根因が最終行に載る** stderr を出す site が
+# あるため — sweep 対象を head だけに絞ると、そこへ移行した瞬間に中和が無検出で外れる。
 # `head -c` (byte 指向 inline 埋め込み) は 1 行 WARNING への embed で行構造が異なる
 # 別イディオムのため本 sweep の対象外 — TC-3 が head -c 全行を fail-closed sweep する
 # (非 emission site は明示 allowlist で除外、中和を横展開済み)。
 # `>&2` が log() 等の関数内部に隠れて同一行に現れない emission 経路は静的 sweep で
 # 構造的に検出できないため、TC-5 が既知 site を個別に pin する
-violations=$(grep -rnE 'head (-[0-9]+|-n +[0-9]+) ' "$HOOKS_DIR" --include='*.sh' \
+violations=$(grep -rnE '(head|tail) (-[0-9]+|-n +[0-9]+) ' "$HOOKS_DIR" --include='*.sh' \
   | grep '>&2' \
   | grep -v "$HOOKS_DIR/tests/" \
   | grep -v 'neutralize_ctrl' \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
   || true)
-assert "TC-1: un-neutralized head -N emission sites" "" "$violations"
+assert "TC-1: un-neutralized head/tail -N emission sites" "" "$violations"
 if [ -n "$violations" ]; then
-  echo "  検出された未中和 site (head -N の直後に '| neutralize_ctrl --keep-newline' を挿入すること):"
+  echo "  検出された未中和 site (head/tail -N の直後に '| neutralize_ctrl --keep-newline' を挿入すること):"
   printf '%s\n' "$violations" | sed 's/^/    /'
 fi
 
@@ -171,7 +173,7 @@ assert_grep "TC-5: wiki-ingest-commit.sh surface_git_warnings" \
 
 if ! print_summary "$(basename "$0")" \
   "診断スニペット emission site を hook に追加するときは control-char-neutralize.sh を source し、emission site の構造に応じて中和を挿入すること: \
-TC-1 (head -N 行指向) は直後に '| neutralize_ctrl --keep-newline'; \
+TC-1 (head/tail -N 行指向) は直後に '| neutralize_ctrl --keep-newline'; \
 TC-3 (head -c byte 指向 embed) は '| tr '\\''\\n'\\'' '\\'' '\\'' | neutralize_ctrl --c0-only'; \
 TC-4 (cat full-file 直接 emission) は 'neutralize_ctrl --keep-newline < \"\$file\" >&2' へ置換; \
 TC-5 (log()/surface_git_warnings() 等の関数内 >&2) は静的 sweep で検出不能のため中和適用後に本テストへ個別 pin を追記すること"; then

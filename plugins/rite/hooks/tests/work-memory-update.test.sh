@@ -12,7 +12,7 @@
 #                 (cycle 10 stale residue regression guard)
 #   AC-7 — regression test discoverable under hooks/tests/
 #
-# 注: 上記 AC-4 / AC-7 は flow-state 移行 Issue の受入基準を指す。T-01〜T-12 のアサーションラベルが
+# 注: 上記 AC-4 / AC-7 は flow-state 移行 Issue の受入基準を指す。T- 番号を持つアサーションラベルが
 # 使う (AC-1)〜(AC-5) は Issue #2082 の受入基準で、番号体系が別。同じ AC-4 が両方に存在するため、
 # テスト出力のラベルから基準を引くときは T- 番号の有無で体系を判別すること。
 #
@@ -133,9 +133,9 @@ run_update() {
     'source "$WM_PLUGIN_ROOT/hooks/work-memory-update.sh" && update_local_work_memory')
 }
 
-# 読み戻し不能 WARNING の照合文字列。肯定側 (T-03.4) と否定側 (T-08.5 / T-10) の両方が参照するため
-# 1 箇所に集約する — 別々にリテラルを持つと、文言変更で肯定側だけ追随して否定側が恒久的に vacuous
-# になる (grep が何にも一致しなくなり「WARNING が出ていない」と誤って PASS する)。
+# 読み戻し不能 WARNING の照合文字列。肯定側 / 否定側の双方から参照されるため 1 箇所に集約する —
+# 別々にリテラルを持つと、文言変更で肯定側だけ追随して否定側が恒久的に vacuous になる
+# (grep が何にも一致しなくなり「WARNING が出ていない」と誤って PASS する)。
 WARN_CARRY_FWD="既存 WM から値を読み戻せませんでした"
 # corrupt 判定でも .data が埋まっている経路で出る別 WARNING。読み戻し不能側と文面を分けてあるので、
 # 照合文字列も分けて持ち、両者の取り違えを検出できるようにする。
@@ -432,6 +432,12 @@ run_update "$SBX9B" \
   WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="123" WM_LOOP_COUNT="4" >/dev/null 2>&1 || true
+# 走行 2 は seed が書けたことに依存する。seed が落ちると carry-forward の材料が消え、flow-state の
+# 値がそのまま書かれて T-05.5 / T-05.6 が vacuous に PASS する (走行 2 が脱出しようとした TC-3 と
+# 同じ状態への silent な縮退)。他群と同形の前提確認で pin する。
+seed9b=$(cat "$SBX9B/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
+assert_contains "T-05.0a: seed で pr_number=123 が書かれる (前提確認)" "pr_number: 123" "$seed9b"
+assert_contains "T-05.0b: seed で loop_count=4 が書かれる (前提確認)" "loop_count: 4" "$seed9b"
 if run_update "$SBX9B" \
   WM_SOURCE="lint" WM_PHASE="lint" WM_PHASE_DETAIL="quality check" \
   WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Lint body." WM_ISSUE_NUMBER="687" \
@@ -503,22 +509,25 @@ assert_contains "T-07.2: WM が実際に書き換わる (更新が完走して�
 # ─── T-08: corrupt 判定でも .data が埋まるファイルは carry-forward される ──
 # 「`|| _parse_rc=$?` であって `|| parse_out=空文字` ではない」という設計判断を固定する。
 # T-03 / T-07 の fixture はヘッダマーカー不在型で work-memory-parse.py が .data を空で返すため、
-# この 2 つの書き方を判別できない。判別にはヘッダマーカーを保ったまま frontmatter の
-# issue_number をファイル名と食い違わせた fixture (issue_number_mismatch) が要る — parse.py は
-# corrupt 判定を返しつつ .data を全埋めするため、stdout を捨てる書き方だと sync_revision が
-# 1 へ巻き戻り pr_number / loop_count も既定値へ落ちる。
+# この 2 つの書き方を判別できない。判別にはヘッダマーカーを保ったまま corrupt になる fixture が
+# 要る — parse.py は corrupt 判定を返しつつ .data を全埋めするため、stdout を捨てる書き方だと
+# sync_revision が 1 へ巻き戻り pr_number / loop_count も既定値へ落ちる。
+# **種別は missing_keys を使う** — issue_number_mismatch は .data が別 Issue のものなので
+# carry-forward してはならず (T-14 がその側を pin する)、carry-forward 肯定側の fixture には使えない。
 # あわせて、この経路で縮退 WARNING が出ないこと (parse の rc ではなく carry-forward の材料の
 # 有無で発火判定していること) も固定する — rc を条件にすると成功経路で誤報になる。
-echo "T-08: corrupt-but-parseable な WM でも carry-forward と sync_revision 加算が維持される"
+echo "T-08: corrupt-but-parseable (missing_keys) な WM でも carry-forward と sync_revision 加算が維持される"
 SBX12=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX12")
 write_config "$SBX12"
 mkdir -p "$SBX12/.rite-work-memory"
-printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nschema_version: 1\nissue_number: 999\nsync_revision: 5\npr_number: 123\nloop_count: 4\n---\n\nbody\n' \
+printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nissue_number: 687\nsync_revision: 5\npr_number: 123\nloop_count: 4\n---\n\nbody\n' \
   > "$SBX12/.rite-work-memory/issue-687.md"
-# 前提確認: この fixture が「corrupt 判定 かつ .data 全埋め」であること (この性質が崩れると本 TC は空虚になる)
+# 前提確認: この fixture が「corrupt 判定 かつ .data 全埋め かつ 種別が missing_keys」であること
+# (この性質が崩れると本 TC は空虚になる)
 parse12=$(python3 "$PLUGIN_ROOT/hooks/work-memory-parse.py" "$SBX12/.rite-work-memory/issue-687.md" 2>/dev/null || true)
 assert_contains "T-08.0a: fixture が corrupt 判定される (前提確認)" '"status": "corrupt"' "$parse12"
 assert_contains "T-08.0b: corrupt でも .data に sync_revision が埋まる (前提確認)" '"sync_revision": 5' "$parse12"
+assert_contains "T-08.0c: 種別が missing_keys である (前提確認 — mismatch だと carry-forward が止まる)" 'missing_keys' "$parse12"
 
 if err12=$(run_update "$SBX12" \
   WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
@@ -535,10 +544,93 @@ assert_contains "T-08.4: loop_count=4 が carry-forward される" "loop_count: 
 warn12=$(printf '%s' "$err12" | grep -c "$WARN_CARRY_FWD") || true
 assert_eq "T-08.5: carry-forward 成功時は読み戻し不能 WARNING を出さない (誤報しない)" "0" "$warn12"
 # 照合 literal に errors 本文を含める。WARNING の文言だけを見ると、corrupt の**種別**を落とす変異
-# (errors 添付の撤去 / jq 失敗時の "(種別不明)" への恒久縮退) が素通りする。種別が出ないと、
+# (errors 添付の撤去 / "(種別不明)" への恒久縮退) が素通りする。種別が出ないと、
 # 人間は「どの corrupt 判定から carry-forward したのか」を WARNING 単体から特定できない。
 assert_contains "T-08.6: corrupt 判定からの carry-forward は corrupt 種別つきの WARNING で可視化される" \
-  "$WARN_CORRUPT_FWD (parse rc=2, errors: issue_number_mismatch: frontmatter=999, filename=687)" "$err12"
+  "$WARN_CORRUPT_FWD (parse rc=2, errors: missing_keys: schema_version)" "$err12"
+
+# ─── T-14: issue_number_mismatch からは carry-forward しない ─────────
+# .data が別 Issue のものである以上、carry-forward は他 Issue の pr_number / loop_count を本 Issue の
+# WM へ転写する。しかも同じ書き込みが issue_number をファイル名側の値へ直すため、次回 parse は
+# valid 判定になり転写の痕跡が消えて再検出できない。sync_revision の加算 (版が逆行しないための
+# `.data` 保持) は維持したまま、値の採用だけを止めることを固定する。
+echo "T-14: issue_number_mismatch の WM からは carry-forward せず既定値へ倒す"
+SBX18=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX18")
+write_config "$SBX18"
+mkdir -p "$SBX18/.rite-work-memory"
+printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nschema_version: 1\nissue_number: 999\nsync_revision: 5\npr_number: 4242\nloop_count: 7\n---\n\nbody\n' \
+  > "$SBX18/.rite-work-memory/issue-687.md"
+parse18=$(python3 "$PLUGIN_ROOT/hooks/work-memory-parse.py" "$SBX18/.rite-work-memory/issue-687.md" 2>/dev/null || true)
+assert_contains "T-14.0a: fixture が issue_number_mismatch と判定される (前提確認)" 'issue_number_mismatch' "$parse18"
+assert_contains "T-14.0b: mismatch でも .data に pr_number が埋まる (前提確認 — 転写の材料は存在する)" '"pr_number": 4242' "$parse18"
+
+if err18=$(run_update "$SBX18" \
+  WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" 2>&1 >/dev/null); then
+  rc18=0
+else
+  rc18=$?
+fi
+assert_eq "T-14.1: return 0 (mismatch でも更新は続行)" "0" "$rc18"
+body18=$(cat "$SBX18/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
+assert_contains "T-14.2: sync_revision は 6 へ加算される (版の逆行防止は維持)" "sync_revision: 6" "$body18"
+assert_contains "T-14.3: pr_number は転写されず null へ倒れる (AC-1)" "pr_number: null" "$body18"
+assert_contains "T-14.4: loop_count も転写されず 0 へ倒れる (AC-2)" "loop_count: 0" "$body18"
+assert_contains "T-14.5: carry-forward を止めたことが WARNING に出る (silent に倒さない)" \
+  "carry-forward は行いません" "$err18"
+
+# ─── T-15: corrupt WARNING は errors がファイル内容大でも clamp される ──
+# parse.py の issue_number_mismatch は frontmatter の値をそのまま埋め込むため、errors は
+# ファイル内容と同オーダーまで伸びる。この WARNING は改行を含まない 1 行なので、clamp しないと
+# 同時に出ている他の診断行が実質的に読めなくなる。clamp は jq 側の `.[0:200]` で行っており、
+# pipeline 末尾の `head -c` ではない (後者は上流 jq を SIGPIPE で殺し、pipefail を張る caller で
+# 巨大 errors のときだけ種別が丸ごと失われる)。**pipefail 下でも clamp が効くこと**を pin する。
+echo "T-15: corrupt WARNING の errors は巨大入力でも clamp される (pipefail 下でも縮退しない)"
+SBX19=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX19")
+write_config "$SBX19"
+mkdir -p "$SBX19/.rite-work-memory"
+# 非数値にする — 数値だと parse.py の int() が Python 3.11+ の桁数上限で ValueError を投げ、
+# stdout 空 = 読み戻し不能経路へ落ちて corrupt WARNING 自体が出ない (本 TC が空虚になる)。
+# 長さは pipe buffer (64 KiB) 超に取る — clamp を pipeline 末尾の head -c へ戻す変異は、
+# この閾値を超えたときだけ SIGPIPE で種別を失うため。
+BIG19=$(python3 -c "print('a'*70000)")
+printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nschema_version: 1\nissue_number: %s\nsync_revision: 5\npr_number: 123\nloop_count: 4\n---\n\nbody\n' "$BIG19" \
+  > "$SBX19/.rite-work-memory/issue-687.md"
+# bare 呼び出し + set -o pipefail で本番 caller (pre-compact.sh / post-tool-wm-sync.sh) と同条件にする
+err19=$( (cd "$SBX19" && env WM_PLUGIN_ROOT="$PLUGIN_ROOT" \
+  WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" \
+  bash -c 'set -euo pipefail; source "$WM_PLUGIN_ROOT/hooks/work-memory-update.sh"; update_local_work_memory') 2>&1 >/dev/null ) || true
+warn19=$(printf '%s' "$err19" | grep "$WARN_CORRUPT_FWD" | head -1)
+assert_eq "T-15.1: corrupt WARNING 行が clamp されている (2000 バイト未満)" "yes" \
+  "$([ "$(printf '%s' "$warn19" | wc -c)" -lt 2000 ] && echo yes || echo no)"
+assert_eq "T-15.2: pipefail 下でも corrupt 種別が (種別不明) へ潰れない" "no" \
+  "$(printf '%s' "$warn19" | grep -q '種別不明' && echo yes || echo no)"
+assert_contains "T-15.3: 種別は issue_number_mismatch として出る" "issue_number_mismatch" "$warn19"
+
+# ─── T-16: 読み戻し不能 WARNING の stderr スニペットは根因行を含む ──────
+# python3 の未捕捉例外は traceback の**最終行**に例外メッセージを載せる。スニペットを `head -N` で
+# 出すと `Traceback (most recent call last):` とフレームだけが残り、根因が構造的に落ちる。
+# 4300 桁超の整数 frontmatter は Python 3.11+ の int↔str 桁数上限で ValueError を投げるため、
+# parse.py が multi-line traceback を吐いて stdout 空 (= 読み戻し不能経路) になる。
+if python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+  echo "T-16: 読み戻し不能 WARNING のスニペットが python3 traceback の根因行を含む"
+  SBX20=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX20")
+  write_config "$SBX20"
+  mkdir -p "$SBX20/.rite-work-memory"
+  BIG20=$(python3 -c "print('9'*5000)")
+  printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nschema_version: 1\nissue_number: %s\nsync_revision: 5\npr_number: 123\nloop_count: 4\n---\n\nbody\n' "$BIG20" \
+    > "$SBX20/.rite-work-memory/issue-687.md"
+  err20=$(run_update "$SBX20" \
+    WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
+    WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" 2>&1 >/dev/null) || true
+  assert_contains "T-16.0: 前提確認 — 読み戻し不能経路に入る (parse が stdout を出さない)" \
+    "$WARN_CARRY_FWD" "$err20"
+  assert_contains "T-16.1: スニペットに traceback の根因行 (例外メッセージ) が含まれる" \
+    "ValueError" "$err20"
+else
+  echo "T-16: skip (python3 < 3.11 — int 桁数上限による ValueError を再現できない)"
+fi
 
 # ─── T-09: pr-create が WM_PR_NUMBER を seed する静的 pin ─────────
 # carry-forward は「保持する」だけで値を生成しない。seed 行が消えると pr_number は
@@ -552,7 +644,10 @@ pr_create_body=$(cat "$PR_CREATE_MD" 2>/dev/null || echo "")
 # 照合 literal に行継続を含める。継続が落ちると Step 1 冒頭 (WM_SOURCE="create") から本行までの
 # WM_* 代入群が「コマンドを伴わない変数代入」
 # (= 非 export のシェル変数) に退化し、次行の bash local-wm-update.sh が WM_* を 1 つも受け取らずに
-# 実行される — 同行末尾の 2>/dev/null と || true が握り潰すため WM 更新全体が silent に no-op 化する。
+# 実行される — この経路は rc=0 を返し stderr にも何も出さないため、2>/dev/null / || true に
+# 関係なく無警告で通る。しかもブランチ名から issue_number が復元されるため no-op にならず、
+# source / phase / phase_detail / next_action を空文字で上書きしたまま sync_revision だけを
+# 加算する (no-op より重い破壊的上書き。実測確認済み)。
 # literal から継続を落とすと、行削除の drift は捕捉できるが 1 文字削除の drift は素通りする。
 assert_contains "T-09.1: WM_PR_NUMBER=\"{pr_number}\" の seed 行がある (行継続込み)" 'WM_PR_NUMBER="{pr_number}" \' "$pr_create_body"
 
@@ -663,8 +758,9 @@ assert_contains "T-12.4: loop_count: 0 (既定値へ倒れる)" "loop_count: 0" 
 assert_contains "T-12.5: 読み戻し不能 WARNING が出る (silent に倒れない)" "$WARN_CARRY_FWD" "$err15"
 
 # ─── T-13: flow-state の「PR 未作成」sentinel 0 は carry-forward しない ──
-# flow-state は PR 作成前の pr_number を 0 で表す (open/SKILL.md の init / branch / plan phase が
-# --pr 0 を書く)。WM_READ_FROM_FLOW_STATE 経路がその 0 を WM へ運んだあと、carry-forward が 0 を
+# flow-state は PR 作成前の pr_number を 0 で表す (書き手の全数は
+# `grep -rn -- "--pr 0" plugins/rite/skills/`)。WM_READ_FROM_FLOW_STATE 経路がその 0 を WM へ
+# 運んだあと、carry-forward が 0 を
 # 実値として拾うと work-memory-format.md の `null if not created` を表現できないまま恒久化する。
 # carry-forward 導入前は次の通常更新で null へ戻っていたので、これは新機構が持ち込む退行にあたる。
 echo "T-13: flow-state 由来の pr_number: 0 は carry-forward されず null へ戻る"
@@ -699,7 +795,7 @@ assert_contains "T-13.3: loop_count は carry-forward される (0 除外を波�
 
 # 実 PR 番号が非退行であることの確認。loop_count: 0 側は既定値と同値になるため carry-forward の
 # 有無を出力から判別できない (0 除外を loop_count へ波及させる変更は全入力で同じ出力になる等価変異で、
-# アサーションを強化しても殺せない)。除外の非波及を守っているのは非既定値を使う T-13.3 / T-11.3。
+# アサーションを強化しても殺せない — 実測でも当該変異は全 PASS のまま生存する)。
 SBX17=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX17")
 write_config "$SBX17"
 run_update "$SBX17" \
