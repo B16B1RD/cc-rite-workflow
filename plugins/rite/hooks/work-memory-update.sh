@@ -27,16 +27,27 @@
 #   WM_SKIP_LOCK            - If "true", skip lock acquisition/release. Use when the caller
 #                             already holds an outer lock protecting the work memory file.
 #                             (default: "false")
-#   WM_PR_NUMBER            - PR number override. Effective only when WM_LOOP_INCREMENT != "true"
-#                             and WM_READ_FROM_FLOW_STATE != "true". Otherwise, the value is read
-#                             from existing WM (fix pattern) or .rite-flow-state (lint pattern).
-#                             (default: read from existing WM or "null")
+#   WM_PR_NUMBER            - PR number override. Effective only when WM_READ_FROM_FLOW_STATE != "true";
+#                             otherwise the value is read from flow-state (lint pattern).
+#                             (default: carried forward from the existing WM — except the flow-state
+#                             "PR not created" sentinel 0, which is NOT carried forward and falls back
+#                             to "null"; else "null")
 #   WM_LOOP_COUNT           - Loop count override. Same effective conditions as WM_PR_NUMBER.
-#                             (default: read from existing WM or 0)
-#   WM_LOOP_INCREMENT       - If "true", increment loop_count from existing WM (fix pattern).
-#                             When set, WM_PR_NUMBER/WM_LOOP_COUNT overrides are ignored;
-#                             values are parsed from the existing work memory file instead.
-#                             (default: "false")
+#                             (default: carried forward from the existing WM, else 0. Unlike
+#                             WM_PR_NUMBER there is no 0 exclusion — 0 is a real value here.)
+#
+#   Carry-forward fires only when the variable is unset or empty. Any non-empty value suppresses
+#   it, including the literal string "null" (which some callers pass when flow-state cannot be
+#   resolved) — such a call writes null and does NOT fall back to the existing WM value.
+#   It is also suppressed when the existing WM parses as corrupt in a way that leaves the file's
+#   identity unverified (issue_number mismatched or missing), or with an unreadable error kind:
+#   carrying those forward would transcribe another Issue's values into this one.
+#
+#   Both fields pass through numeric validation before being written, whichever path above
+#   supplied the value: a value containing a non-digit character is demoted to the YAML literal
+#   null with a WARNING on stderr; an empty value or the literal "null" — whichever path supplied
+#   it — is written as null without a WARNING.
+#
 #   WM_REQUIRE_FLOW_STATE   - If "true", skip if flow-state phase cannot be resolved via
 #                             flow-state.sh (per-session and legacy file both absent, or phase
 #                             is null/empty). Uses flow-state.sh under the hood so schema_version=2
@@ -44,6 +55,13 @@
 #   WM_READ_FROM_FLOW_STATE - If "true", read pr_number/loop_count from .rite-flow-state (lint pattern).
 #                             When set, overrides WM_PR_NUMBER/WM_LOOP_COUNT and values from existing WM.
 #                             (default: "false")
+#
+# Observability note:
+#   本 helper が stderr へ出す WARNING (値の読み戻し不能 / corrupt 判定からの carry-forward /
+#   数値バリデーション降格 / Detail 抽出失敗) は、いずれも縮退時に rc=0 を返す経路で出る。
+#   したがって rc で表示を分岐する呼び出し形では捕捉できず、stderr 自体を捨てる呼び出し形にも
+#   届かない。届くのは本 helper の stderr をそのまま伝播させる起動元とテストに限られる。
+#   stderr 退避形へ揃えるだけでは解決せず、rc ゲートを外す設計判断が別途要る (本 helper の管轄外)。
 #
 # Security note:
 #   WM_* 環境変数の sanitize は caller 責務とする設計だったが、orchestrator 経由で LLM 出力 / Issue
@@ -165,30 +183,77 @@ update_local_work_memory() {
   local pr_num="${WM_PR_NUMBER:-null}"
   local parse_script="${WM_PLUGIN_ROOT}/hooks/work-memory-parse.py"
 
-  if [ -f "$local_wm" ]; then
-    if [ "${WM_LOOP_INCREMENT:-false}" = "true" ]; then
-      # fix pattern: parse full output, increment loop_count and sync_revision
-      local parse_out=""
-      if [ -f "$parse_script" ]; then
-        parse_out=$(python3 "$parse_script" "$local_wm" 2>/dev/null) || parse_out=""
-      fi
-      if [ -n "$parse_out" ]; then
-        local parsed
-        parsed=$(echo "$parse_out" | jq -r '[(.data.sync_revision // 0) + 1, (.data.loop_count // 0) + 1, (.data.pr_number // "null")] | @tsv' 2>/dev/null) || parsed=""
-        if [ -n "$parsed" ]; then
-          read -r sync_rev loop_cnt pr_num <<< "$parsed"
-        else
-          sync_rev=1; loop_cnt=1; pr_num="null"
-        fi
-      fi
+  # 既存ファイルからの読み戻し (carry-forward)。読み戻さない限り、env override も flow-state 読み取りも
+  # 伴わない更新経路では pr_number / loop_count が更新のたびに既定値へ巻き戻る。
+  if [ -f "$local_wm" ] && [ -f "$parse_script" ]; then
+    # parse は corrupt 判定でも .data を埋めて exit 2 を返すため、採否は exit code ではなく stdout の
+    # 有無で決める (exit code で捨てると sync_revision が 1 へ巻き戻り版が逆行する)。`|| _parse_rc=$?`
+    # は stdout を保持したまま `set -e` 下の中断だけを防ぐ形。stderr は tempfile へ退避して WARNING に
+    # 添える (mktemp 失敗時は /dev/null + stderr_capture=disabled タグで縮退)。
+    local parse_out="" _parse_rc=0 _parse_err=""
+    _parse_err=$(mktemp 2>/dev/null) || _parse_err=""
+    parse_out=$(python3 "$parse_script" "$local_wm" 2>"${_parse_err:-/dev/null}") || _parse_rc=$?
+    # _jq_rc の "n/a" は「jq 未起動」sentinel (0 初期化だと未起動を成功と誤表示する)。
+    local parsed="" _jq_rc="n/a"
+    if [ -n "$parse_out" ]; then
+      # 4 field + corrupt 種別を 1 回の jq で取り出す。判定値は末尾の .data 要素数 (前段の field は
+      # `//` 既定値を持つため空判定に使えない)。jq の rc は python3 側と別変数で捕捉する (失敗段の
+      # 診断を混同させない)。
+      # 区切りが 0x1f なのは、tab だと IFS が空 field を畳んで列が左へずれるため。errors の
+      # clamp (200 字) と改行潰しを jq 側で行うのは、pipeline 末尾の head -c が上流 jq を SIGPIPE で
+      # 殺す経路を避けるため。corrupt の種別は carry-forward の可否を決める入力 (下の _carry_block)。
+      # join 前に制御文字を値側から潰す。区切り (0x1f) が混ざると read の列がずれて判定値の位置に
+      # 別 field が入り、NUL は削除されて断片が連結し実在しない数値になる (T-17 / T-18 が固定)。
+      parsed=$(printf '%s' "$parse_out" \
+        | jq -r '[(.data.sync_revision // 0), (.data.pr_number // "null"), (.data.loop_count // 0), (.data | length), ((.errors // []) | join("; ") | gsub("[\n\r]"; " ") | .[0:200])] | map(tostring | gsub("[[:cntrl:]]"; "?")) | join("\u001f")' 2>>"${_parse_err:-/dev/null}") && _jq_rc=0 || { _jq_rc=$?; parsed=""; }
+    fi
+    local existing_rev=0 existing_pr="" existing_loop="" existing_keys=0 existing_errors=""
+    if [ -n "$parsed" ]; then
+      IFS=$'\x1f' read -r existing_rev existing_pr existing_loop existing_keys existing_errors <<< "$parsed"
+    fi
+    # 下の 2 つの WARNING が共有する条件節。literal を二重に持つと片側だけが文言変更に追随する
+    # drift が起きる (本 PR で実際に発生済み)。
+    local _default_note="(pr_number / loop_count は env override も flow-state 読み取りも無い場合のみ既定値へ倒れます)"
+    # .data が空 = 読み戻し不能。silent に既定値へ倒すと「もともと版が無かった」と区別できないため
+    # WARNING で可視化する (non-blocking は維持。断定するのは sync_revision の再採番だけに留める)。
+    if [ "$existing_keys" -eq 0 ]; then
+      local _rb_tag=""
+      [ -z "$_parse_err" ] && _rb_tag=" stderr_capture=disabled"
+      echo "WARNING: 既存 WM から値を読み戻せませんでした ($local_wm, parse rc=$_parse_rc, jq rc=$_jq_rc${_rb_tag}) — sync_revision を 1 から採番し直します ${_default_note}" >&2
+      # python3 の未捕捉例外はメッセージが traceback 最終行に載るため tail で出す。
+      [ -n "$_parse_err" ] && [ -s "$_parse_err" ] && tail -3 "$_parse_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     else
-      # implement/lint pattern: just increment sync_revision
-      local existing_rev="0"
-      if [ -f "$parse_script" ]; then
-        existing_rev=$(python3 "$parse_script" "$local_wm" 2>/dev/null | jq -r '.data.sync_revision // 0' 2>/dev/null) || existing_rev="0"
+      # corrupt でも .data が読めればここへ来る (verdict は WARNING で可視化する)。ただし identity を
+      # 確認できない種別 (issue_number の mismatch / 欠落) または判別不能なら carry-forward を止める
+      # (fail-closed) — 転写すると書き込みが issue_number をファイル名側へ直し、次回の
+      # parse は valid 判定になり痕跡も消える。
+      local _carry_block=0
+      if [ "$_parse_rc" -ne 0 ]; then
+        case "$existing_errors" in
+          *issue_number*|"") _carry_block=1 ;;
+        esac
+        # corrupt ファイル由来の文字列を stderr へ出すため中和する (生 echo は _sanitize_yaml_value が
+        # 塞いでいる制御文字経路を再び開く)。長さの clamp は上の jq が済ませている。
+        local _corrupt_reasons
+        _corrupt_reasons=$(printf '%s' "$existing_errors" | neutralize_ctrl --c0-only) || _corrupt_reasons=""
+        [ -n "$_corrupt_reasons" ] || _corrupt_reasons="(種別不明)"
+        local _block_tag=""
+        [ "$_carry_block" -eq 1 ] && _block_tag=" — identity を確認できない種別 (issue_number の mismatch / 欠落) または判別不能のため carry-forward は行いません ${_default_note}"
+        echo "WARNING: 既存 WM は corrupt 判定 (parse rc=$_parse_rc, errors: $_corrupt_reasons) ですが .data が読めたため処理を継続しました ($local_wm)${_block_tag}" >&2
       fi
       if [[ "$existing_rev" =~ ^[0-9]+$ ]]; then sync_rev=$((existing_rev + 1)); fi
+      # 未設定判定は `-z` (初期化の `${VAR:-null}` 形式が「空文字 = 未設定」と扱うのと揃える)。
+      # pr_number の `0` は flow-state の「PR 未作成」sentinel なので実値として拾わない (拾うと
+      # `null if not created` の状態が表現できず 0 が恒久化する)。loop_count の `0` は
+      # 「まだ 1 周もしていない」実値なので除外しない。
+      if [ "$_carry_block" -eq 0 ] && [ -z "${WM_PR_NUMBER:-}" ] && [ -n "$existing_pr" ] && [ "$existing_pr" != "0" ]; then
+        pr_num="$existing_pr"
+      fi
+      if [ "$_carry_block" -eq 0 ] && [ -z "${WM_LOOP_COUNT:-}" ] && [ -n "$existing_loop" ]; then
+        loop_cnt="$existing_loop"
+      fi
     fi
+    [ -n "$_parse_err" ] && rm -f "$_parse_err"
   fi
 
   # Read flow-state fields if requested (lint pattern).

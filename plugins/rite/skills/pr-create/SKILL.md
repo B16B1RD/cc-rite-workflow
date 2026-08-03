@@ -831,6 +831,7 @@ WM_SOURCE="create" \
   WM_NEXT_ACTION="rite:pr-review を実行" \
   WM_BODY_TEXT="PR #{pr_number} created." \
   WM_ISSUE_NUMBER="{issue_number}" \
+  WM_PR_NUMBER="{pr_number}" \
   bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
