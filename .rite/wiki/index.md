@@ -366,10 +366,11 @@
 | [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) | anti-patterns | grep -q が一致時点で終了すると上流が SIGPIPE (rc=141) を受け pipeline 全体が失敗扱いになる。200 回に 1 回の flaky skip として現れ、閾値の緩い floor guard に masking された実測例がある。 | 2026-08-03T07:46:56Z | high |
 | [mutation は適用前に一致件数を、適用後に構文を検証してから結論に使う](pages/heuristics/mutation-validate-before-and-after-application.md) | heuristics | 一致 0 回の mutation は「テストが弱い」と誤読され、構文を壊した mutation は「全 TC が Red」という無意味な結果を出す。既定値と同値を assert する pin は kill power を持たず、強化ではなく relabel が正しい対処。 | 2026-08-03T07:46:56Z | high |
 | [自身の検出を避けるために崩した書式は、読者に「こう書け」と読まれる](pages/anti-patterns/self-detection-evasion-format-read-as-prescription.md) | anti-patterns | 検出ゲートの仕様を書いた文書が、自分自身が検出されないよう記入例の書式を意図的に崩すことがある。しかし読者にはその崩れた形が規定の記入形式に見え、模倣すると実際の記入が検出されず、ゲート自身の受入基準が破れる。退避である旨と正しい記入形式を必ず併記する。PR #2095 で全角矢印による退避が記入形式と誤読される経路として実測。 | 2026-08-03T23:41:26+09:00 | medium |
+| [テストの gate 条件がプラットフォーム事実を環境 capability の代理にすると恒常 red 化する](pages/anti-patterns/test-gate-proxy-indicator-drift.md) | anti-patterns | テストの floor（skip を禁じて fail させるガード）が守りたい性質そのものではなくプラットフォーム事実を代理指標に使うと、代理の成立しない環境で恒常 red 化しスイート全体の signal を劣化させる。コメントと条件式の乖離が検出点になる。 | 2026-08-04T00:55:00+09:00 | medium |
 | [検出ゲートの仕様そのものを変える PR は自己言及で発散する — サーキットブレーカー到達を異常ではなく想定内として扱う](pages/heuristics/gate-spec-self-reference-pr-expects-circuit-breaker.md) | heuristics | 検出ゲートの規約文書を変更する PR では、指摘の叙述自体が規則の対象文字列を含むため、規則を書き換えるたびに新しい踏み抜き経路が露出する。「収束しないなら構造を疑う」の通常処方は、検出層の変更が Non-goal である以上この PR クラスには適用できない。サーキットブレーカー到達を失敗ではなく設計上の想定内として扱い、残りを人間レビューへ委ねる。PR #2095 は 5 サイクル全てで blocking が出続けた一方、導入したゲート自体は最終 cycle で blocking=0 を達成した。 | 2026-08-03T23:41:26+09:00 | medium |
 
 ## 統計
 
-- 総ページ数: 361
-- ドメイン別: patterns=94, heuristics=146, anti-patterns=121
-- 最終更新: 2026-08-03T23:41:26+09:00
+- 総ページ数: 362
+- ドメイン別: patterns=94, heuristics=146, anti-patterns=122
+- 最終更新: 2026-08-04T00:55:00+09:00

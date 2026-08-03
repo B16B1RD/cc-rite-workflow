@@ -1,3 +1,7 @@
+## 2026-08-04
+
+* **Create**: [テストの gate 条件がプラットフォーム事実を環境 capability の代理にすると恒常 red 化する](pages/anti-patterns/test-gate-proxy-indicator-drift.md) — raw/reviews/20260803T155051Z-pr-2096.md を新規ページ化（floor の判定対象が守りたい capability ではなく platform 事実の代理だった / コメントと条件式の乖離が検出点 / 同形の gate でも probe 対象がツール存在か環境 capability かで正しい条件式は変わる）
+
 ## 2026-08-03
 
 * **Create**: [記録義務を規約に書く前に、その記録先を読む consumer が実在するかを grep で確かめる](pages/patterns/obligation-requires-existing-consumer-before-writing.md) — raw/reviews/20260802T141413Z-pr-2092.md / raw/fixes/20260802T141842Z-pr-2092.md / raw/reviews/20260802T145006Z-pr-2092.md / raw/fixes/20260802T145247Z-pr-2092.md / raw/reviews/20260802T150522Z-pr-2092.md を新規ページ化（「filter するが記録は残す」は記録先に consumer がいて初めて成立する / 出力テンプレート・収集・schema の 3 点を欠く節への MUST は履行が観測不能 / 既存セクションへの迂回は出力経路まで辿って人間に届くか確認する / 受け皿を新設できないなら義務ごと撤回し未達 AC を follow-up Issue へ切り出す）
