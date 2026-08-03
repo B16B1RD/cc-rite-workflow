@@ -202,8 +202,11 @@ update_local_work_memory() {
       # 区切りが 0x1f なのは、tab だと IFS が空 field を畳んで列が左へずれるため。errors の
       # clamp (200 字) と改行潰しを jq 側で行うのは、pipeline 末尾の head -c が上流 jq を SIGPIPE で
       # 殺す経路を避けるため。corrupt の種別は carry-forward の可否を決める入力 (下の _carry_block)。
+      # join 前に区切りを値側から潰すのは、値に 0x1f が混ざると read の列がずれ、判定値である
+      # .data 要素数の位置へ別 field が入って読み戻し不能ガードを素通りするため (改竄 WM の
+      # pr_number が loop_count の位置へ回り込み、実 loop_count が WARNING なしで消える)。
       parsed=$(printf '%s' "$parse_out" \
-        | jq -r '[(.data.sync_revision // 0), (.data.pr_number // "null"), (.data.loop_count // 0), (.data | length), ((.errors // []) | join("; ") | gsub("[\n\r]"; " ") | .[0:200])] | join("\u001f")' 2>>"${_parse_err:-/dev/null}") && _jq_rc=0 || { _jq_rc=$?; parsed=""; }
+        | jq -r '[(.data.sync_revision // 0), (.data.pr_number // "null"), (.data.loop_count // 0), (.data | length), ((.errors // []) | join("; ") | gsub("[\n\r]"; " ") | .[0:200])] | map(tostring | gsub("\u001f"; "?")) | join("\u001f")' 2>>"${_parse_err:-/dev/null}") && _jq_rc=0 || { _jq_rc=$?; parsed=""; }
     fi
     local existing_rev=0 existing_pr="" existing_loop="" existing_keys=0 existing_errors=""
     if [ -n "$parsed" ]; then
@@ -233,7 +236,7 @@ update_local_work_memory() {
         _corrupt_reasons=$(printf '%s' "$existing_errors" | neutralize_ctrl --c0-only) || _corrupt_reasons=""
         [ -n "$_corrupt_reasons" ] || _corrupt_reasons="(種別不明)"
         local _block_tag=""
-        [ "$_carry_block" -eq 1 ] && _block_tag=" — 種別が issue_number_mismatch または判別不能のため carry-forward は行いません (既定値へ倒します)"
+        [ "$_carry_block" -eq 1 ] && _block_tag=" — 種別が issue_number_mismatch または判別不能のため carry-forward は行いません (pr_number / loop_count は env override もflow-state 読み取りも無い場合のみ既定値へ倒れます)"
         echo "WARNING: 既存 WM は corrupt 判定 (parse rc=$_parse_rc, errors: $_corrupt_reasons) ですが .data が読めたため処理を継続しました ($local_wm)${_block_tag}" >&2
       fi
       if [[ "$existing_rev" =~ ^[0-9]+$ ]]; then sync_rev=$((existing_rev + 1)); fi

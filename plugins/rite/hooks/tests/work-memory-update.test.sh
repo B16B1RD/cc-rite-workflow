@@ -601,7 +601,7 @@ err19=$( (cd "$SBX19" && env WM_PLUGIN_ROOT="$PLUGIN_ROOT" \
   WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
   WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" \
   bash -c 'set -euo pipefail; source "$WM_PLUGIN_ROOT/hooks/work-memory-update.sh"; update_local_work_memory') 2>&1 >/dev/null ) || true
-warn19=$(printf '%s' "$err19" | grep "$WARN_CORRUPT_FWD" | head -1)
+warn19=$(printf '%s' "$err19" | grep "$WARN_CORRUPT_FWD" | head -1) || true
 assert_eq "T-15.1: corrupt WARNING 行が clamp されている (2000 バイト未満)" "yes" \
   "$([ "$(printf '%s' "$warn19" | wc -c)" -lt 2000 ] && echo yes || echo no)"
 assert_eq "T-15.2: pipefail 下でも corrupt 種別が (種別不明) へ潰れない" "no" \
@@ -813,6 +813,38 @@ body17=$(cat "$WM_FILE17" 2>/dev/null || echo "")
 assert_contains "T-13.4a: 2 回目の更新が完走している (前提確認)" "Normal update." "$body17"
 assert_contains "T-13.4: 実 PR 番号は従来どおり carry-forward される (非退行)" "pr_number: 4242" "$body17"
 assert_contains "T-13.5: loop_count: 0 は据え置き (既定値と同値のため carry-forward の有無は出力から判別不能)" "loop_count: 0" "$body17"
+
+# ─── T-17: 区切り (0x1f) を含む改竄値でも carry-forward の列がずれない ──
+# jq の join は区切りを値側でエスケープしないため、値に 0x1f が入ると read の列が右へずれ、
+# pr_number の後半が loop_count の位置へ回り込んで実 loop_count が痕跡なく消える。判定値である
+# .data 要素数の位置にも別 field (数値) が入るため、読み戻し不能ガードも corrupt 判定も発火しない。
+# T-06 が固定する「非数値 → null 降格」は、ずれた値が数値のままなので素通りする。
+echo "T-17: 区切り文字を含む改竄 WM でも carry-forward の列がずれない"
+SBX18=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX18")
+write_config "$SBX18"
+run_update "$SBX18" \
+  WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="123" WM_LOOP_COUNT="7" >/dev/null 2>&1 || true
+WM_FILE18="$SBX18/.rite-work-memory/issue-687.md"
+seed18=$(cat "$WM_FILE18" 2>/dev/null || echo "")
+# seed 前提確認: これが無いと seed 失敗時に T-17.1 が「既定値 0 のまま」を掴んで空虚に PASS する
+assert_contains "T-17.0: seed で loop_count=7 が書かれる (前提確認)" "loop_count: 7" "$seed18"
+# fixture 改竄は T-06 と同じ awk read→transform→write→mv 形式 (BSD sed -i 非互換の回避)
+US_SEP=$(printf '\037')
+awk -v us="$US_SEP" '{
+  if ($0 == "pr_number: 123") printf "pr_number: \"12%s34\"\n", us;
+  else print
+}' "$WM_FILE18" > "$WM_FILE18.tmp" && mv "$WM_FILE18.tmp" "$WM_FILE18"
+err18=$(run_update "$SBX18" \
+  WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" 2>&1 >/dev/null) || true
+body18=$(cat "$WM_FILE18" 2>/dev/null || echo "")
+# 列がずれると loop_count には pr_number の後半 (34) が入り、実値 7 が消える
+assert_contains "T-17.1: loop_count は seed 値のまま (ずれた field を掴まない)" "loop_count: 7" "$body18"
+# ずれた前半 (12) は数値なので降格されず「正常な carry-forward」として書かれてしまう
+assert_contains "T-17.2: 区切り混入値は null へ降格する" "pr_number: null" "$body18"
+assert_contains "T-17.3: 降格が WARNING で可視化される (silent に通さない)" "non-numeric character" "$err18"
 
 echo
 echo "─── work-memory-update.test.sh summary ──────────────────────────"
