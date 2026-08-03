@@ -369,8 +369,8 @@ _RITE_COUNT_ACTION='/(TODO|FIXME)/ { next } { gsub(/`[^`]*`/, "_"); if ($0 ~ re)
 # `<!-- comment -->` を**引用している実エントリ行**まで落ちる。実測: 現行 wiki の index.md には
 # 該当行が 2 件あり (`html-comment-breaks-gfm-table-boundary` / `in-doc-tbd-placeholder-without-merge-gate`)、
 # anchor 無しだと該当 2 行分 hits が減る（実測時 230 → 228。index.md は ingest ごとに増えるため絶対値はスナップショット）。落としたいのは「行そのものがコメント」であって
-# 「コメントに言及している行」ではない。`wiki-query-inject.sh` の同種規則は anchor を持たないが、
-# あちらは箇条書き行しか候補にしないため table 形式の現行 index では露見していない (同型の盲点)。
+# 「コメントに言及している行」ではない。`wiki-query-inject.sh` の Pass 1 も table 行を候補にする
+# ようになった際に同じ 2 行を落としたため、同じ行頭 anchor を採用している。
 # 終了は anchor を付けない — 箇条書きテンプレートが配布されていた期間に初期化された bundle の
 #   index.md 前文のコメントは 2 行目末尾の `-->` で閉じるため。
 # 境界: 閉じ `-->` を含む行は行全体を落とす (コメント閉じ後に実エントリが続く 1 行は拾えない)。

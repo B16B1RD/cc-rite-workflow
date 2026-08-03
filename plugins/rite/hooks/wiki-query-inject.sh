@@ -361,27 +361,69 @@ fi
 # index would yield a phantom candidate whose page does not exist, emitting a
 # misleading "index.md may be stale" WARNING on every query).
 candidates=$(printf '%s\n' "$index_content" | awk '
+  # Pipes inside inline code spans are NOT escaped by the writer, so they would
+  # split the row at the wrong place. Swap them for the same \x01 placeholder the
+  # backslash escapes use, preserving length and content so cell offsets hold.
+  function protect_code_span_pipes(s,   out, rest, seg) {
+    out = ""; rest = s
+    while (match(rest, /`[^`]*`/)) {
+      seg = substr(rest, RSTART, RLENGTH)
+      gsub(/\|/, "\001", seg)
+      out = out substr(rest, 1, RSTART - 1) seg
+      rest = substr(rest, RSTART + RLENGTH)
+    }
+    return out rest
+  }
+  # Both halves anchor on the `](` that actually separates text from target, and
+  # both use a greedy `.*` for the text. The obvious forms break on real titles:
+  # a bare /\([^)]*\)/ takes the LEFTMOST parenthesis group, so a title carrying
+  # its own parentheses ("... (assert_not_grep) は…") yields a title fragment as
+  # the path (54 of 362 live rows), and /\[[^]]*\]/ stops at the first `]`, so a
+  # title containing brackets ("[CONTEXT] sentinel", "`[[:cntrl:]]`") loses its
+  # tail and the target with it (4 more rows).
+  function link_target(link,   t) {
+    t = ""
+    if (match(link, /\]\([^)]*\)$/)) t = substr(link, RSTART + 2, RLENGTH - 3)
+    return t
+  }
+  function link_text(link,   t) {
+    t = ""
+    if (match(link, /^\[.*\]\(/)) t = substr(link, 2, RLENGTH - 3)
+    return t
+  }
   function emit(title, path, desc) {
-    if (path == "" || index(path, "pages/") == 0) return   # non-page / malformed
-    gsub(/\001/, "|", title); gsub(/\001/, "|", desc)      # restore escaped pipes
+    if (path == "" || index(path, "pages/") == 0) {
+      # A row that carries a registration link but produced no candidate is a
+      # parse failure, not a header row — count it so the partial loss is
+      # reported instead of silently shrinking the corpus.
+      if (index($0, "](pages/") > 0) {
+        dropped++
+        if (dropped <= 3) dropped_sample[dropped] = substr($0, 1, 110)
+      }
+      return
+    }
+    gsub(/\001/, "|", title); gsub(/\001/, "|", desc)      # restore protected pipes
     gsub(/^[[:space:]]+|[[:space:]]+$/, "", title)
     gsub(/^[[:space:]]+|[[:space:]]+$/, "", desc)
     printf "%s\037%s\037%s\n", title, path, desc
   }
-  /<!--/ { in_comment=1 }
+  # Anchored at line start: an unanchored /<!--/ also fires on rows that merely
+  # quote the comment syntax inside a cell, swallowing real entries.
+  /^[[:space:]]*<!--/ { in_comment=1 }
   in_comment { if (index($0, "-->") > 0) in_comment=0; next }
   /^[[:space:]]*\|/ {
     line = $0
     if (line ~ /^[[:space:]]*\|[[:space:]]*:?-+:?[[:space:]]*\|/) next   # separator row
     gsub(/\\\|/, "\001", line)
+    line = protect_code_span_pipes(line)
     sub(/^[[:space:]]*\|/, "", line); sub(/\|[[:space:]]*$/, "", line)
     n = split(line, cells, "|")
     if (n < 3) next                                       # not the 5-column catalog shape
     title = ""; path = ""
-    if (match(cells[1], /\[[^]]*\]\([^)]*\)/)) {
+    if (match(cells[1], /\[.*\]\([^)]*\)/)) {
       link = substr(cells[1], RSTART, RLENGTH)
-      if (match(link, /\[[^]]*\]/)) title = substr(link, RSTART + 1, RLENGTH - 2)
-      if (match(link, /\([^)]*\)/)) path  = substr(link, RSTART + 1, RLENGTH - 2)
+      title = link_text(link)
+      path = link_target(link)
     }
     emit(title, path, cells[3])
     next
@@ -389,11 +431,11 @@ candidates=$(printf '%s\n' "$index_content" | awk '
   /^[[:space:]]*[*-][[:space:]]+\[/ {
     line = $0
     title = ""; path = ""; desc = ""
-    if (match(line, /\[[^]]*\]\([^)]*\)/)) {
+    if (match(line, /\[.*\]\([^)]*\)/)) {
       link = substr(line, RSTART, RLENGTH)
       rest = substr(line, RSTART + RLENGTH)   # text after the markdown link
-      if (match(link, /\[[^]]*\]/)) title = substr(link, RSTART + 1, RLENGTH - 2)
-      if (match(link, /\([^)]*\)/)) path  = substr(link, RSTART + 1, RLENGTH - 2)
+      title = link_text(link)
+      path = link_target(link)
       # description = text after the " - " separator following the link
       if (match(rest, /^[[:space:]]*-[[:space:]]+/)) {
         desc = substr(rest, RSTART + RLENGTH)
@@ -401,16 +443,40 @@ candidates=$(printf '%s\n' "$index_content" | awk '
     }
     emit(title, path, desc)
   }
+  END {
+    if (dropped > 0) {
+      printf "WARNING: index.md の %d 行が登録リンク (](pages/...)) を持ちながら候補になりませんでした\n", dropped > "/dev/stderr"
+      for (i = 1; i <= dropped && i <= 3; i++) printf "    %s\n", dropped_sample[i] > "/dev/stderr"
+      printf "  カタログ行の形状が Pass 1 の想定 (5 列テーブル / OKF 箇条書き) と異なる可能性があります\n" > "/dev/stderr"
+    }
+  }
 ')
 
 if [[ -z "$candidates" ]]; then
   # Separate "the catalog has entries this parser cannot read" from "the wiki has
   # no pages yet". Both exit 0 with no stdout, so without this the first case is
   # indistinguishable from a legitimately empty wiki and a format drift stays
-  # invisible for as long as it lasts. Comment blocks are dropped first so an
-  # illustrative example in the prologue does not raise the warning on an
-  # otherwise-empty index.
-  if printf '%s\n' "$index_content" | sed '/<!--/,/-->/d' | grep -q '](pages/'; then
+  # invisible for as long as it lasts.
+  #
+  # Comment blocks are dropped with the SAME rule Pass 1 uses (line-anchored
+  # start, closed on the first `-->`), not `sed '/<!--/,/-->/d'`: sed's range
+  # treats a self-closing `<!-- ... -->` as a range START and deletes on to the
+  # next `-->`, which removed 41 live rows from the live index. Two different
+  # comment semantics in one file make the guard inspect a different corpus than
+  # the parser it guards.
+  #
+  # Captured into a variable rather than piped into `grep -q`: grep exits at the
+  # first match, the upstream writer dies of SIGPIPE, and `set -o pipefail` turns
+  # that into rc=141 so the `if` reads false and the WARNING never prints. That
+  # only happens past the pipe buffer — measured silent above ~89 KB, and the
+  # live index is 375 KB, so the guard was dead exactly at the scale that needs
+  # it. Same failure class this PR fixes in read_page_meta below.
+  stripped=$(awk '
+    /^[[:space:]]*<!--/ { in_comment=1 }
+    in_comment { if (index($0, "-->") > 0) in_comment=0; next }
+    { print }
+  ' <<< "$index_content")
+  if grep -q '](pages/' <<< "$stripped"; then
     echo "WARNING: .rite/wiki/index.md に登録リンク (](pages/...)) を含む行がありますが、候補を 1 件も抽出できませんでした" >&2
     echo "  カタログの形式が Pass 1 の対応形式 (5 列テーブル / OKF 箇条書き) と異なる可能性があります" >&2
   fi

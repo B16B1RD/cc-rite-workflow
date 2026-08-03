@@ -366,7 +366,9 @@ else
   fail "TC-10 (rc=$QRC out=$QOUT err=$QERR)"
 fi
 
-# --- TC-11 (T-02): summary cross-link does not hijack the page target ---
+# --- TC-11: summary cross-link does not hijack the page target ---
+# (T-02 — 箇条書き形式の非退行 — は TC-1〜TC-5 が新実装下でも通ることで担保する。
+#  本 TC はテーブル固有の観点で、T-02 の担保先ではない)
 echo "=== TC-11: サマリー列の相互リンクが候補のページ指定を奪わない ==="
 INDEX_11='# Wiki Index
 
@@ -432,6 +434,105 @@ if [ "$QRC" -eq 0 ] \
   pass "TC-12 大きいページの frontmatter を読めて候補として描画される"
 else
   fail "TC-12 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
+# --- TC-13: real-index row shapes, asserted by count parity ---
+# The single-line fixtures above all carry plain ASCII titles, which is exactly
+# the shape the parser never had trouble with. The live index carries titles with
+# parentheses, with brackets, with pipes inside inline code, and summaries that
+# quote HTML comment syntax — each of which broke a different part of the parser
+# while the suite stayed green. Assert registered-row count == rendered-candidate
+# count rather than naming pages: a per-page existence assert cannot see a
+# partial loss, which is the failure mode being pinned here.
+echo "=== TC-13: 実 index の行形状 (括弧 / 角括弧 / コード内パイプ / コメント引用) を件数 parity で検証 ==="
+INDEX_13='# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [absence pin (assert_not_grep) は base 側も pin する](pages/patterns/paren.md) | patterns | doohickey の括弧タイトル | 2026-06-15T10:00:00+09:00 | high |
+| [Bash 境界の値は [CONTEXT] sentinel で emit する](pages/patterns/bracket.md) | patterns | doohickey の角括弧タイトル | 2026-06-15T10:00:00+09:00 | high |
+| [`cmd > file | true` は no-match と書込失敗を混同する](pages/anti-patterns/codepipe.md) | anti-patterns | doohickey のコード内パイプ | 2026-06-15T10:00:00+09:00 | high |
+| [HTML コメントは GFM のテーブル境界を壊す](pages/anti-patterns/htmlcomment.md) | anti-patterns | doohickey の行。`<!-- 行内コメント -->` を引用する | 2026-06-15T10:00:00+09:00 | high |
+| [Plain Title](pages/heuristics/plain.md) | heuristics | doohickey の単純行 | 2026-06-15T10:00:00+09:00 | high |
+'
+repo=$(make_query_sandbox tc13 "$INDEX_13")
+for spec in "pages/patterns/paren.md|absence pin (assert_not_grep) は base 側も pin する|patterns" \
+            "pages/patterns/bracket.md|Bash 境界の値は [CONTEXT] sentinel で emit する|patterns" \
+            "pages/anti-patterns/codepipe.md|cmd > file の罠|anti-patterns" \
+            "pages/anti-patterns/htmlcomment.md|HTML コメントは GFM のテーブル境界を壊す|anti-patterns" \
+            "pages/heuristics/plain.md|Plain Title|heuristics"; do
+  rel="${spec%%|*}"; restspec="${spec#*|}"; ttl="${restspec%%|*}"; dom="${restspec##*|}"
+  write_page "$repo" "$rel" "---
+title: \"$ttl\"
+domain: $dom
+description: \"doohickey のページ\"
+updated: \"2026-06-15\"
+confidence: high
+---"
+done
+registered=$(grep -c '](pages/' "$repo/.rite/wiki/index.md")
+run_query "$repo" --keywords "doohickey" --max-pages 20 --format compact
+rendered=$(printf '%s\n' "$QOUT" | grep -c '^#### ')
+if [ "$QRC" -eq 0 ] && [ "$registered" -eq 5 ] && [ "$rendered" -eq "$registered" ]; then
+  pass "TC-13 登録 $registered 行すべてが候補として描画される (件数 parity)"
+else
+  fail "TC-13 registered=$registered rendered=$rendered (rc=$QRC err=$QERR)"
+fi
+
+# --- TC-14: a row that carries a page link but cannot be parsed is reported ---
+# Partial loss must not be silent. The zero-candidate WARNING only fires when
+# every row fails, so a row-level counter is what covers the 1-of-N case.
+echo "=== TC-14: 解析できない登録行が 1 件でもあれば WARNING で可視化される ==="
+INDEX_14='# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Good Row](pages/patterns/good14.md) | patterns | whozit の正常行 | 2026-06-15T10:00:00+09:00 | high |
+| [Bad Row with a raw | pipe outside code](pages/patterns/bad14.md) | patterns | whozit の壊れた行 | 2026-06-15T10:00:00+09:00 | high |
+'
+repo=$(make_query_sandbox tc14 "$INDEX_14")
+write_page "$repo" pages/patterns/good14.md '---
+title: "Good Row"
+domain: patterns
+description: "whozit の正常行"
+updated: "2026-06-15"
+confidence: high
+---'
+run_query "$repo" --keywords "whozit" --format compact
+if [ "$QRC" -eq 0 ] \
+   && printf '%s' "$QOUT" | grep -q 'Good Row' \
+   && printf '%s' "$QERR" | grep -q '候補になりませんでした'; then
+  pass "TC-14 部分脱落が WARNING で可視化され、正常行は描画される"
+else
+  fail "TC-14 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
+# --- TC-15: the zero-candidate WARNING survives a large index ---
+# The guard used to be `printf | sed | grep -q`; grep exits at the first match,
+# the writer takes SIGPIPE, and pipefail turned the whole `if` false — so the
+# warning went silent exactly on the large indexes that need it. Pin the size.
+echo "=== TC-15: パイプバッファ超の index でも 0 件 WARNING が出る ==="
+{
+  printf '%s\n\n' '# Wiki Index'
+  for i in $(seq 1 4000); do
+    printf '<div>padding row %s to push the index past the pipe buffer boundary</div>\n' "$i"
+  done
+  printf '%s\n' '<ul><li><a href="pages/heuristics/html.md">HTML 形式</a> ](pages/heuristics/html.md)</li></ul>'
+} > "$TEST_DIR/big_index.md"
+repo=$(make_query_sandbox tc15 "$(cat "$TEST_DIR/big_index.md")")
+idx_size=$(wc -c < "$repo/.rite/wiki/index.md")
+run_query "$repo" --keywords "anything" --format compact
+if [ "$QRC" -eq 0 ] \
+   && [ "$idx_size" -gt 65536 ] \
+   && [ -z "$QOUT" ] \
+   && printf '%s' "$QERR" | grep -q '候補を 1 件も抽出できませんでした'; then
+  pass "TC-15 ${idx_size} バイトの index でも 0 件 WARNING が発火する"
+else
+  fail "TC-15 size=$idx_size (rc=$QRC out=$QOUT err=$QERR)"
 fi
 
 echo ""
