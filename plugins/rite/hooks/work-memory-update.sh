@@ -39,9 +39,9 @@
 #   Carry-forward fires only when the variable is unset or empty. Any non-empty value suppresses
 #   it, including the literal string "null" (which some callers pass when flow-state cannot be
 #   resolved) — such a call writes null and does NOT fall back to the existing WM value.
-#   It is also suppressed when the existing WM parses as corrupt with an issue_number_mismatch,
-#   or with an unreadable error kind: carrying those forward would transcribe another Issue's
-#   values into this one.
+#   It is also suppressed when the existing WM parses as corrupt in a way that leaves the file's
+#   identity unverified (issue_number mismatched or missing), or with an unreadable error kind:
+#   carrying those forward would transcribe another Issue's values into this one.
 #
 #   Both fields pass through numeric validation before being written, whichever path above
 #   supplied the value: a value containing a non-digit character is demoted to the YAML literal
@@ -202,11 +202,12 @@ update_local_work_memory() {
       # 区切りが 0x1f なのは、tab だと IFS が空 field を畳んで列が左へずれるため。errors の
       # clamp (200 字) と改行潰しを jq 側で行うのは、pipeline 末尾の head -c が上流 jq を SIGPIPE で
       # 殺す経路を避けるため。corrupt の種別は carry-forward の可否を決める入力 (下の _carry_block)。
-      # join 前に区切りを値側から潰すのは、値に 0x1f が混ざると read の列がずれ、判定値である
-      # .data 要素数の位置へ別 field が入って読み戻し不能ガードを素通りするため (改竄 WM の
-      # pr_number が loop_count の位置へ回り込み、実 loop_count が WARNING なしで消える)。
+      # join 前に制御文字を値側から潰す。区切り (0x1f) が混ざると read の列がずれ、判定値である
+      # .data 要素数の位置へ別 field が入って読み戻し不能ガードを素通りする。C0 全域を対象にするのは、
+      # NUL が command substitution で削除されて断片が連結し「もっともらしい別の数値」になる経路と、
+      # LF が herestring の read を切る経路も同じ迂回になるため。
       parsed=$(printf '%s' "$parse_out" \
-        | jq -r '[(.data.sync_revision // 0), (.data.pr_number // "null"), (.data.loop_count // 0), (.data | length), ((.errors // []) | join("; ") | gsub("[\n\r]"; " ") | .[0:200])] | map(tostring | gsub("\u001f"; "?")) | join("\u001f")' 2>>"${_parse_err:-/dev/null}") && _jq_rc=0 || { _jq_rc=$?; parsed=""; }
+        | jq -r '[(.data.sync_revision // 0), (.data.pr_number // "null"), (.data.loop_count // 0), (.data | length), ((.errors // []) | join("; ") | gsub("[\n\r]"; " ") | .[0:200])] | map(tostring | gsub("[[:cntrl:]]"; "?")) | join("\u001f")' 2>>"${_parse_err:-/dev/null}") && _jq_rc=0 || { _jq_rc=$?; parsed=""; }
     fi
     local existing_rev=0 existing_pr="" existing_loop="" existing_keys=0 existing_errors=""
     if [ -n "$parsed" ]; then
@@ -221,14 +222,14 @@ update_local_work_memory() {
       # python3 の未捕捉例外はメッセージが traceback 最終行に載るため tail で出す。
       [ -n "$_parse_err" ] && [ -s "$_parse_err" ] && tail -3 "$_parse_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     else
-      # corrupt でも .data が読めればここへ来る (verdict は WARNING で可視化する)。ただし種別が
-      # issue_number_mismatch (別 Issue の .data) または判別不能なら carry-forward を止める
+      # corrupt でも .data が読めればここへ来る (verdict は WARNING で可視化する)。ただし identity を
+      # 確認できない種別 (issue_number の mismatch / 欠落) または判別不能なら carry-forward を止める
       # (fail-closed) — 転写すると書き込みが issue_number をファイル名側へ直し、次回の
       # parse は valid 判定になり痕跡も消える。
       local _carry_block=0
       if [ "$_parse_rc" -ne 0 ]; then
         case "$existing_errors" in
-          *issue_number_mismatch*|"") _carry_block=1 ;;
+          *issue_number*|"") _carry_block=1 ;;
         esac
         # corrupt ファイル由来の文字列を stderr へ出すため中和する (生 echo は _sanitize_yaml_value が
         # 塞いでいる制御文字経路を再び開く)。長さの clamp は上の jq が済ませている。
@@ -236,7 +237,7 @@ update_local_work_memory() {
         _corrupt_reasons=$(printf '%s' "$existing_errors" | neutralize_ctrl --c0-only) || _corrupt_reasons=""
         [ -n "$_corrupt_reasons" ] || _corrupt_reasons="(種別不明)"
         local _block_tag=""
-        [ "$_carry_block" -eq 1 ] && _block_tag=" — 種別が issue_number_mismatch または判別不能のため carry-forward は行いません (pr_number / loop_count は env override もflow-state 読み取りも無い場合のみ既定値へ倒れます)"
+        [ "$_carry_block" -eq 1 ] && _block_tag=" — identity を確認できない種別 (issue_number の mismatch / 欠落) または判別不能のため carry-forward は行いません (pr_number / loop_count は env override も flow-state 読み取りも無い場合のみ既定値へ倒れます)"
         echo "WARNING: 既存 WM は corrupt 判定 (parse rc=$_parse_rc, errors: $_corrupt_reasons) ですが .data が読めたため処理を継続しました ($local_wm)${_block_tag}" >&2
       fi
       if [[ "$existing_rev" =~ ^[0-9]+$ ]]; then sync_rev=$((existing_rev + 1)); fi

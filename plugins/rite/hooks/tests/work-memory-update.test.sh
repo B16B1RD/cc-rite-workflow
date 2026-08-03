@@ -356,6 +356,27 @@ assert_contains "T-03.5: sync_revision が 1 から採番し直される (WARNIN
 corrupt7=$(printf '%s' "$err7" | grep -c "$WARN_CORRUPT_FWD") || true
 assert_eq "T-03.6: 読み戻し不能時は corrupt WARNING を出さない (2 文面の排他性)" "0" "$corrupt7"
 
+# :220 の WARNING は「env override も flow-state 読み取りも無い場合のみ既定値へ倒れます」と
+# 条件付きで宣言する。その条件節が守られていること (degraded path が env override を握り潰さない
+# こと) を走行で固定する。文言リテラルではなく振る舞いを pin するのは、他コンポーネントの
+# メッセージ形式への結合を増やさないため。
+SBX22=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX22")
+write_config "$SBX22"
+run_update "$SBX22" \
+  WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="123" WM_LOOP_COUNT="3" >/dev/null 2>&1 || true
+WM_FILE22="$SBX22/.rite-work-memory/issue-687.md"
+grep -v '^# 📜 rite 作業メモリ$' "$WM_FILE22" > "$WM_FILE22.tmp" && mv "$WM_FILE22.tmp" "$WM_FILE22"
+err22=$(run_update "$SBX22" \
+  WM_SOURCE="pre-compact" WM_PHASE="lint" WM_PHASE_DETAIL="compact 前保存" \
+  WM_NEXT_ACTION="resume" WM_BODY_TEXT="Post." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="456" WM_LOOP_COUNT="9" 2>&1 >/dev/null) || true
+body22=$(cat "$WM_FILE22" 2>/dev/null || echo "")
+assert_contains "T-03.7a: 読み戻し不能経路に入っている (前提確認)" "$WARN_CARRY_FWD" "$err22"
+assert_contains "T-03.7: 読み戻し不能でも env override は握り潰されない (pr_number)" "pr_number: 456" "$body22"
+assert_contains "T-03.8: 同 (loop_count — 変異は 2 field 同時に潰すため片側だけでは残る)" "loop_count: 9" "$body22"
+
 # ─── T-04: env override が既存ファイル値より優先される ───────────
 # pr_number / loop_count は独立した 2 つの条件式で守られているため、両方を検証する
 # (片方だけだと、もう一方のガード除去が無検知で通る)。
@@ -578,6 +599,44 @@ assert_contains "T-14.3: pr_number は転写されず null へ倒れる (AC-1)" 
 assert_contains "T-14.4: loop_count も転写されず 0 へ倒れる (AC-2)" "loop_count: 0" "$body18"
 assert_contains "T-14.5: carry-forward を止めたことが WARNING に出る (silent に倒さない)" \
   "carry-forward は行いません" "$err18"
+
+# :239 の _block_tag も :220 と同じ条件節を宣言する。遮断が env override まで潰していないことを
+# 走行で固定する (T-03.7 / T-03.8 と対の関係)。
+SBX23=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX23")
+write_config "$SBX23"
+mkdir -p "$SBX23/.rite-work-memory"
+printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nschema_version: 1\nissue_number: 999\nsync_revision: 5\npr_number: 4242\nloop_count: 7\n---\n\nbody\n' \
+  > "$SBX23/.rite-work-memory/issue-687.md"
+err23=$(run_update "$SBX23" \
+  WM_SOURCE="pre-compact" WM_PHASE="lint" WM_PHASE_DETAIL="compact 前保存" \
+  WM_NEXT_ACTION="resume" WM_BODY_TEXT="Post." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="456" WM_LOOP_COUNT="9" 2>&1 >/dev/null) || true
+body23=$(cat "$SBX23/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
+assert_contains "T-14.6a: carry-forward 遮断経路に入っている (前提確認)" "carry-forward は行いません" "$err23"
+assert_contains "T-14.6: 遮断時でも env override は握り潰されない (pr_number)" "pr_number: 456" "$body23"
+assert_contains "T-14.7: 同 (loop_count)" "loop_count: 9" "$body23"
+
+# ─── T-19: identity を確認できない corrupt (issue_number 欠落) も遮断する ──
+# mismatch だけを判定キーにすると、issue_number 行を「消す」だけで遮断を迂回できる。
+# 書き込み側は issue_number をファイル名側の値で再生成するため次回 parse は valid に戻り、
+# 転写の痕跡も消える (T-14 が塞いだ経路と結果は同じで、入口だけが違う)。
+echo "T-19: issue_number 欠落の corrupt からも carry-forward しない"
+SBX25=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX25")
+write_config "$SBX25"
+mkdir -p "$SBX25/.rite-work-memory"
+printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nschema_version: 1\nsync_revision: 5\npr_number: 4242\nloop_count: 7\n---\n\nbody\n' \
+  > "$SBX25/.rite-work-memory/issue-687.md"
+parse25=$(python3 "$PLUGIN_ROOT/hooks/work-memory-parse.py" "$SBX25/.rite-work-memory/issue-687.md" 2>/dev/null || true)
+assert_contains "T-19.0a: fixture が missing_keys: issue_number と判定される (前提確認)" 'missing_keys: issue_number' "$parse25"
+assert_contains "T-19.0b: .data に pr_number が埋まる (前提確認 — 転写の材料は存在する)" '"pr_number": 4242' "$parse25"
+err25=$(run_update "$SBX25" \
+  WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" 2>&1 >/dev/null) || true
+body25=$(cat "$SBX25/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
+assert_contains "T-19.1: sync_revision は 6 へ加算される (版の逆行防止は維持)" "sync_revision: 6" "$body25"
+assert_contains "T-19.2: pr_number は転写されず null へ倒れる" "pr_number: null" "$body25"
+assert_contains "T-19.3: loop_count も転写されず 0 へ倒れる" "loop_count: 0" "$body25"
+assert_contains "T-19.4: 遮断したことが WARNING に出る (silent に転写しない)" "carry-forward は行いません" "$err25"
 
 # ─── T-15: corrupt WARNING は errors がファイル内容大でも clamp される ──
 # parse.py の issue_number_mismatch は frontmatter の値をそのまま埋め込むため、errors は
@@ -820,31 +879,62 @@ assert_contains "T-13.5: loop_count: 0 は据え置き (既定値と同値のた
 # .data 要素数の位置にも別 field (数値) が入るため、読み戻し不能ガードも corrupt 判定も発火しない。
 # T-06 が固定する「非数値 → null 降格」は、ずれた値が数値のままなので素通りする。
 echo "T-17: 区切り文字を含む改竄 WM でも carry-forward の列がずれない"
-SBX18=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX18")
-write_config "$SBX18"
-run_update "$SBX18" \
+SBX21=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX21")
+write_config "$SBX21"
+run_update "$SBX21" \
   WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="123" WM_LOOP_COUNT="7" >/dev/null 2>&1 || true
-WM_FILE18="$SBX18/.rite-work-memory/issue-687.md"
-seed18=$(cat "$WM_FILE18" 2>/dev/null || echo "")
+WM_FILE21="$SBX21/.rite-work-memory/issue-687.md"
+seed21=$(cat "$WM_FILE21" 2>/dev/null || echo "")
 # seed 前提確認: これが無いと seed 失敗時に T-17.1 が「既定値 0 のまま」を掴んで空虚に PASS する
-assert_contains "T-17.0: seed で loop_count=7 が書かれる (前提確認)" "loop_count: 7" "$seed18"
+assert_contains "T-17.0: seed で loop_count=7 が書かれる (前提確認)" "loop_count: 7" "$seed21"
 # fixture 改竄は T-06 と同じ awk read→transform→write→mv 形式 (BSD sed -i 非互換の回避)
 US_SEP=$(printf '\037')
 awk -v us="$US_SEP" '{
   if ($0 == "pr_number: 123") printf "pr_number: \"12%s34\"\n", us;
   else print
-}' "$WM_FILE18" > "$WM_FILE18.tmp" && mv "$WM_FILE18.tmp" "$WM_FILE18"
-err18=$(run_update "$SBX18" \
+}' "$WM_FILE21" > "$WM_FILE21.tmp" && mv "$WM_FILE21.tmp" "$WM_FILE21"
+err21=$(run_update "$SBX21" \
   WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
   WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" 2>&1 >/dev/null) || true
-body18=$(cat "$WM_FILE18" 2>/dev/null || echo "")
+body21=$(cat "$WM_FILE21" 2>/dev/null || echo "")
 # 列がずれると loop_count には pr_number の後半 (34) が入り、実値 7 が消える
-assert_contains "T-17.1: loop_count は seed 値のまま (ずれた field を掴まない)" "loop_count: 7" "$body18"
-# ずれた前半 (12) は数値なので降格されず「正常な carry-forward」として書かれてしまう
-assert_contains "T-17.2: 区切り混入値は null へ降格する" "pr_number: null" "$body18"
-assert_contains "T-17.3: 降格が WARNING で可視化される (silent に通さない)" "non-numeric character" "$err18"
+assert_contains "T-17.1: loop_count は seed 値のまま (ずれた field を掴まない)" "loop_count: 7" "$body21"
+# 列がずれると、ずれた前半 (12) は数値なので降格されず「正常な carry-forward」として書かれる
+assert_contains "T-17.2: 区切り混入値は null へ降格する" "pr_number: null" "$body21"
+assert_contains "T-17.3: 降格が WARNING で可視化される (silent に通さない)" "non-numeric character" "$err21"
+
+# ─── T-18: 制御文字 (NUL) 混入値は連結されず null へ降格する ─────────
+# NUL は列をずらさない — command substitution が削除するため断片が連結し、12<NUL>34 が
+# 「1234」という実在しない数値になって降格も WARNING も発火しない。T-17 (0x1f = 列ずれ) と
+# 迂回の形は違うが、どちらも「区切り 1 種類だけを潰す実装」では捕捉できない同一クラス。
+echo "T-18: 制御文字 (NUL) 混入値は連結されず null へ降格する"
+SBX24=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX24")
+write_config "$SBX24"
+run_update "$SBX24" \
+  WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="123" WM_LOOP_COUNT="7" >/dev/null 2>&1 || true
+WM_FILE24="$SBX24/.rite-work-memory/issue-687.md"
+seed24=$(cat "$WM_FILE24" 2>/dev/null || echo "")
+assert_contains "T-18.0a: seed で pr_number=123 が書かれる (前提確認)" "pr_number: 123" "$seed24"
+assert_contains "T-18.0b: seed で loop_count=7 が書かれる (前提確認)" "loop_count: 7" "$seed24"
+# awk は NUL を扱えないため python3 の read→replace→write 形式で改竄する
+python3 -c "
+import pathlib, sys
+f = pathlib.Path(sys.argv[1])
+f.write_text(f.read_text().replace('pr_number: 123', 'pr_number: \"12' + chr(0) + '34\"'))
+" "$WM_FILE24"
+err24=$(run_update "$SBX24" \
+  WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" 2>&1 >/dev/null) || true
+body24=$(cat "$WM_FILE24" 2>/dev/null || echo "")
+# 連結されると pr_number: 1234 という実在しない値が降格も WARNING もなく書かれる
+assert_contains "T-18.1: 制御文字混入値は null へ降格する (1234 のような連結値を書かない)" "pr_number: null" "$body24"
+assert_contains "T-18.2: 降格が WARNING で可視化される (silent に通さない)" "non-numeric character" "$err24"
+# 降格が他 field へ波及していないことの非回帰 (NUL 単体では列はずれない)
+assert_contains "T-18.3: loop_count は非回帰 (降格が他 field へ波及しない)" "loop_count: 7" "$body24"
 
 echo
 echo "─── work-memory-update.test.sh summary ──────────────────────────"
