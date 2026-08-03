@@ -226,6 +226,384 @@ else
   fail "TC-5 (rc=$QRC out=$QOUT err=$QERR)"
 fi
 
+# --- TC-6 (T-01): table-form index yields candidates ---
+echo "=== TC-6: 5 列テーブル形式 index から候補抽出 ==="
+INDEX_6='# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Table Page](pages/heuristics/tbl.md) | heuristics | mktemp 失敗時の扱い | 2026-06-15T10:00:00+09:00 | high |
+'
+repo=$(make_query_sandbox tc6 "$INDEX_6")
+write_page "$repo" pages/heuristics/tbl.md '---
+title: "Table Page"
+domain: heuristics
+description: "mktemp 失敗時の扱い"
+updated: "2026-06-15"
+confidence: high
+---'
+run_query "$repo" --keywords "mktemp" --format compact
+if [ "$QRC" -eq 0 ] \
+   && printf '%s' "$QOUT" | grep -q 'Table Page' \
+   && printf '%s' "$QOUT" | grep -q '確信度.*: high'; then
+  pass "TC-6 テーブル行から候補抽出 + frontmatter メタデータ"
+else
+  fail "TC-6 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
+# --- TC-7 (T-03): both forms in one index ---
+echo "=== TC-7: 箇条書きとテーブルが混在する index から双方抽出 ==="
+INDEX_7='# Wiki Index
+
+* [Bullet Page](pages/patterns/bul.md) - gadget の箇条書きページ
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Table Page](pages/heuristics/tbl.md) | heuristics | gadget のテーブルページ | 2026-06-15T10:00:00+09:00 | medium |
+'
+repo=$(make_query_sandbox tc7 "$INDEX_7")
+write_page "$repo" pages/patterns/bul.md '---
+title: "Bullet Page"
+domain: patterns
+description: "gadget の箇条書きページ"
+updated: "2026-06-14"
+confidence: high
+---'
+write_page "$repo" pages/heuristics/tbl.md '---
+title: "Table Page"
+domain: heuristics
+description: "gadget のテーブルページ"
+updated: "2026-06-15"
+confidence: medium
+---'
+run_query "$repo" --keywords "gadget" --format compact
+if [ "$QRC" -eq 0 ] \
+   && printf '%s' "$QOUT" | grep -q 'Bullet Page' \
+   && printf '%s' "$QOUT" | grep -q 'Table Page'; then
+  pass "TC-7 両形式から候補抽出 (箇条書きの既存挙動を保ったままテーブルも拾う)"
+else
+  fail "TC-7 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
+# --- TC-8 (T-04): escaped pipe in cells is restored ---
+echo "=== TC-8: セル内の \\| エスケープを元の | へ復元 ==="
+INDEX_8='# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [`cmd \| grep` の罠](pages/anti-patterns/pipe.md) | anti-patterns | `set -o pipefail` なしの `a \| b` は widget を取りこぼす | 2026-06-15T10:00:00+09:00 | high |
+'
+repo=$(make_query_sandbox tc8 "$INDEX_8")
+write_page "$repo" pages/anti-patterns/pipe.md '---
+title: "`cmd | grep` の罠"
+domain: anti-patterns
+description: "`set -o pipefail` なしの `a | b` は widget を取りこぼす"
+updated: "2026-06-15"
+confidence: high
+---'
+run_query "$repo" --keywords "widget" --format compact
+if [ "$QRC" -eq 0 ] \
+   && printf '%s' "$QOUT" | grep -qF 'cmd | grep' \
+   && ! printf '%s' "$QOUT" | grep -qF 'cmd \| grep'; then
+  pass "TC-8 \\| を含むセルが生の | として復元される"
+else
+  fail "TC-8 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
+# --- TC-9 (T-05): zero candidates but page links present → WARNING ---
+echo "=== TC-9: 候補 0 件 + ](pages/...) 行あり → WARNING (silent 0 件にしない) ==="
+INDEX_9='# Wiki Index
+
+<ul>
+<li><a href="pages/heuristics/html.md">HTML 形式の登録行</a> ](pages/heuristics/html.md)</li>
+</ul>
+'
+repo=$(make_query_sandbox tc9 "$INDEX_9")
+run_query "$repo" --keywords "anything" --format compact
+if [ "$QRC" -eq 0 ] \
+   && [ -z "$QOUT" ] \
+   && printf '%s' "$QERR" | grep -q '候補を 1 件も抽出できませんでした'; then
+  pass "TC-9 形式未対応による 0 件が WARNING で可視化される"
+else
+  fail "TC-9 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
+# --- TC-10 (T-06 / MUST NOT): table example inside an HTML comment ---
+echo "=== TC-10: HTML コメント内のテーブル形式例を候補化しない ==="
+INDEX_10='# Wiki Index
+
+<!-- 登録テーブルの形式例（このコメントは登録ではない）:
+| [ページタイトル](pages/heuristics/example.md) | heuristics | 1-2 文の説明 | 2026-01-01 | medium |
+-->
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Real Table Page](pages/patterns/realtbl.md) | patterns | doodad の実ページ | 2026-06-15T10:00:00+09:00 | high |
+'
+repo=$(make_query_sandbox tc10 "$INDEX_10")
+write_page "$repo" pages/patterns/realtbl.md '---
+title: "Real Table Page"
+domain: patterns
+description: "doodad の実ページ"
+updated: "2026-06-15"
+confidence: high
+---'
+# pages/heuristics/example.md は作らない（コメント内の例なので実在しない）
+run_query "$repo" --keywords "doodad" --format compact
+if [ "$QRC" -eq 0 ] \
+   && printf '%s' "$QOUT" | grep -q 'Real Table Page' \
+   && ! printf '%s' "$QERR" | grep -q 'example.md'; then
+  pass "TC-10 コメント内テーブル例 example.md を読みに行かず phantom WARNING なし"
+else
+  fail "TC-10 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
+# --- TC-11: summary cross-link does not hijack the page target ---
+# (T-02 — 箇条書き形式の非退行 — は TC-1〜TC-5 が新実装下でも通ることで担保する。
+#  本 TC はテーブル固有の観点で、T-02 の担保先ではない)
+echo "=== TC-11: サマリー列の相互リンクが候補のページ指定を奪わない ==="
+INDEX_11='# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Owner Page](pages/patterns/owner.md) | patterns | thingamajig の話。詳細は [Other Page](pages/heuristics/other.md) を参照 | 2026-06-15T10:00:00+09:00 | high |
+'
+repo=$(make_query_sandbox tc11 "$INDEX_11")
+write_page "$repo" pages/patterns/owner.md '---
+title: "Owner Page"
+domain: patterns
+description: "thingamajig の話"
+updated: "2026-06-15"
+confidence: high
+---'
+# pages/heuristics/other.md は作らない（サマリー内の相互リンク先を候補にしていないことの検証）
+run_query "$repo" --keywords "thingamajig" --format compact
+if [ "$QRC" -eq 0 ] \
+   && printf '%s' "$QOUT" | grep -q 'Owner Page' \
+   && ! printf '%s' "$QERR" | grep -q 'other.md'; then
+  pass "TC-11 ページ列の最初のリンクのみを候補にする (サマリー内リンクを読みに行かない)"
+else
+  fail "TC-11 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
+# --- TC-12: a page larger than the pipe buffer is still readable ---
+# Pass 2 reads frontmatter with an awk that exits at the terminator. With a
+# `printf | awk` pipeline the writer dies of SIGPIPE mid-write on a large page
+# and `set -o pipefail` turns that into rc=141 — a readable page reported as
+# unreadable. 128 KB is comfortably past the 64 KB pipe buffer.
+echo "=== TC-12: パイプバッファ超のページでも候補が skip されない ==="
+INDEX_12='# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Big Page](pages/patterns/big.md) | patterns | whatsit の大きいページ | 2026-06-15T10:00:00+09:00 | high |
+'
+repo=$(make_query_sandbox tc12 "$INDEX_12")
+mkdir -p "$repo/.rite/wiki/pages/patterns"
+{
+  printf '%s\n' '---'
+  printf '%s\n' 'title: "Big Page"'
+  printf '%s\n' 'domain: patterns'
+  printf '%s\n' 'description: "whatsit の大きいページ"'
+  printf '%s\n' 'updated: "2026-06-15"'
+  printf '%s\n' 'confidence: high'
+  printf '%s\n' '---'
+  printf '# body\n'
+  # ~128 KB of body after the frontmatter terminator
+  for _ in $(seq 1 2000); do
+    printf 'padding line to push the body past the pipe buffer boundary xxxxx\n'
+  done
+} > "$repo/.rite/wiki/pages/patterns/big.md"
+run_query "$repo" --keywords "whatsit" --format compact
+if [ "$QRC" -eq 0 ] \
+   && printf '%s' "$QOUT" | grep -q 'Big Page' \
+   && printf '%s' "$QOUT" | grep -q '確信度.*: high' \
+   && ! printf '%s' "$QERR" | grep -q 'cannot read frontmatter'; then
+  pass "TC-12 大きいページの frontmatter を読めて候補として描画される"
+else
+  fail "TC-12 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
+# --- TC-13: real-index row shapes, asserted by count parity ---
+# The single-line fixtures above all carry plain ASCII titles, which is exactly
+# the shape the parser never had trouble with. The live index carries titles with
+# parentheses, with brackets, with pipes inside inline code, and summaries that
+# quote HTML comment syntax — each of which broke a different part of the parser
+# while the suite stayed green. Assert registered-row count == rendered-candidate
+# count rather than naming pages: a per-page existence assert cannot see a
+# partial loss, which is the failure mode being pinned here.
+echo "=== TC-13: 実 index の行形状 (括弧 / 角括弧 / コード内パイプ / コメント引用) を件数 parity で検証 ==="
+INDEX_13='# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [absence pin (assert_not_grep) は base 側も pin する](pages/patterns/paren.md) | patterns | doohickey の括弧タイトル | 2026-06-15T10:00:00+09:00 | high |
+| [Bash 境界の値は [CONTEXT] sentinel で emit する](pages/patterns/bracket.md) | patterns | doohickey の角括弧タイトル | 2026-06-15T10:00:00+09:00 | high |
+| [`cmd > file | true` は no-match と書込失敗を混同する](pages/anti-patterns/codepipe.md) | anti-patterns | doohickey のコード内パイプ | 2026-06-15T10:00:00+09:00 | high |
+| [HTML コメントは GFM のテーブル境界を壊す](pages/anti-patterns/htmlcomment.md) | anti-patterns | doohickey の行。`<!-- 行内コメント -->` を引用する | 2026-06-15T10:00:00+09:00 | high |
+| [Plain Title](pages/heuristics/plain.md) | heuristics | doohickey の単純行 | 2026-06-15T10:00:00+09:00 | high |
+'
+repo=$(make_query_sandbox tc13 "$INDEX_13")
+for spec in "pages/patterns/paren.md|absence pin (assert_not_grep) は base 側も pin する|patterns" \
+            "pages/patterns/bracket.md|Bash 境界の値は [CONTEXT] sentinel で emit する|patterns" \
+            "pages/anti-patterns/codepipe.md|cmd > file の罠|anti-patterns" \
+            "pages/anti-patterns/htmlcomment.md|HTML コメントは GFM のテーブル境界を壊す|anti-patterns" \
+            "pages/heuristics/plain.md|Plain Title|heuristics"; do
+  rel="${spec%%|*}"; restspec="${spec#*|}"; ttl="${restspec%%|*}"; dom="${restspec##*|}"
+  write_page "$repo" "$rel" "---
+title: \"$ttl\"
+domain: $dom
+description: \"doohickey のページ\"
+updated: \"2026-06-15\"
+confidence: high
+---"
+done
+registered=$(grep -c '](pages/' "$repo/.rite/wiki/index.md")
+run_query "$repo" --keywords "doohickey" --max-pages 20 --format compact
+rendered=$(printf '%s\n' "$QOUT" | grep -c '^#### ')
+if [ "$QRC" -eq 0 ] && [ "$registered" -eq 5 ] && [ "$rendered" -eq "$registered" ]; then
+  pass "TC-13 登録 $registered 行すべてが候補として描画される (件数 parity)"
+else
+  fail "TC-13 registered=$registered rendered=$rendered (rc=$QRC err=$QERR)"
+fi
+
+# --- TC-14: a row that carries a page link but cannot be parsed is reported ---
+# Partial loss must not be silent. The zero-candidate WARNING only fires when
+# every row fails, so a row-level counter is what covers the 1-of-N case.
+echo "=== TC-14: 解析できない登録行が 1 件でもあれば WARNING で可視化される ==="
+INDEX_14='# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Good Row](pages/patterns/good14.md) | patterns | whozit の正常行 | 2026-06-15T10:00:00+09:00 | high |
+| [Bad Row with a raw | pipe outside code](pages/patterns/bad14.md) | patterns | whozit の壊れた行 | 2026-06-15T10:00:00+09:00 | high |
+'
+repo=$(make_query_sandbox tc14 "$INDEX_14")
+write_page "$repo" pages/patterns/good14.md '---
+title: "Good Row"
+domain: patterns
+description: "whozit の正常行"
+updated: "2026-06-15"
+confidence: high
+---'
+run_query "$repo" --keywords "whozit" --format compact
+if [ "$QRC" -eq 0 ] \
+   && printf '%s' "$QOUT" | grep -q 'Good Row' \
+   && printf '%s' "$QERR" | grep -q '候補になりませんでした'; then
+  pass "TC-14 部分脱落が WARNING で可視化され、正常行は描画される"
+else
+  fail "TC-14 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
+# --- TC-15: the zero-candidate WARNING survives a large index ---
+# The guard used to be `printf | sed | grep -q`; grep exits at the first match,
+# the writer takes SIGPIPE, and pipefail turned the whole `if` false — so the
+# warning went silent exactly on the large indexes that need it. Pin the size.
+echo "=== TC-15: パイプバッファ超の index でも 0 件 WARNING が出る ==="
+{
+  printf '%s\n\n' '# Wiki Index'
+  for i in $(seq 1 4000); do
+    printf '<div>padding row %s to push the index past the pipe buffer boundary</div>\n' "$i"
+  done
+  printf '%s\n' '<ul><li><a href="pages/heuristics/html.md">HTML 形式</a> ](pages/heuristics/html.md)</li></ul>'
+} > "$TEST_DIR/big_index.md"
+repo=$(make_query_sandbox tc15 "$(cat "$TEST_DIR/big_index.md")")
+idx_size=$(wc -c < "$repo/.rite/wiki/index.md")
+run_query "$repo" --keywords "anything" --format compact
+if [ "$QRC" -eq 0 ] \
+   && [ "$idx_size" -gt 65536 ] \
+   && [ -z "$QOUT" ] \
+   && printf '%s' "$QERR" | grep -q '候補を 1 件も抽出できませんでした'; then
+  pass "TC-15 ${idx_size} バイトの index でも 0 件 WARNING が発火する"
+else
+  fail "TC-15 size=$idx_size (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
+# --- TC-16: two links in the page cell — the FIRST one wins ---
+# TC-11 puts the second link in the summary cell, which `match(cells[1], ...)`
+# never sees, so it passes even if the extraction goes greedy. This one puts
+# both links in the page cell, which is the only shape that pins the contract
+# the header comment and the wiki-ingest docs both state.
+echo "=== TC-16: ページ列に 2 リンクがある行は最初のリンクを候補にする ==="
+INDEX_16='# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [First Link](pages/patterns/first.md)（cf. [Second Link](pages/heuristics/second.md)） | patterns | flapdoodle の 2 リンク行 | 2026-06-15T10:00:00+09:00 | high |
+'
+repo=$(make_query_sandbox tc16 "$INDEX_16")
+write_page "$repo" pages/patterns/first.md '---
+title: "First Link"
+domain: patterns
+description: "flapdoodle の 2 リンク行"
+updated: "2026-06-15"
+confidence: high
+---'
+# pages/heuristics/second.md は作らない（2 つ目に解決したら stale WARNING で露見する）
+run_query "$repo" --keywords "flapdoodle" --format compact
+if [ "$QRC" -eq 0 ] \
+   && printf '%s' "$QOUT" | grep -q 'First Link' \
+   && ! printf '%s' "$QERR" | grep -q 'second.md'; then
+  pass "TC-16 ページ列の最初のリンクが候補になる (2 つ目を読みに行かない)"
+else
+  fail "TC-16 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
+# --- TC-17: cell counts on either side of 5 are reported, not dropped ---
+# TC-14's fixture splits into 6 cells and fails on the page column, so it never
+# exercises the cell-count guard itself. These two rows do: one collapses below
+# the contract, one overflows it (an unescaped pipe in the summary would
+# otherwise truncate that cell and render a page with half its text missing).
+echo "=== TC-17: セル数が 5 でない登録行は両側とも WARNING に載る ==="
+INDEX_17='# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Fine Row](pages/patterns/fine17.md) | patterns | thingummy の正常行 | 2026-06-15T10:00:00+09:00 | high |
+| [Short Row](pages/patterns/short17.md) |
+| [Long Row](pages/patterns/long17.md) | patterns | thingummy の A | B という 1 本の文字列 | 2026-06-15T10:00:00+09:00 | high |
+'
+repo=$(make_query_sandbox tc17 "$INDEX_17")
+for rel in fine17 short17 long17; do
+  write_page "$repo" "pages/patterns/$rel.md" "---
+title: \"$rel\"
+domain: patterns
+description: \"thingummy のページ\"
+updated: \"2026-06-15\"
+confidence: high
+---"
+done
+run_query "$repo" --keywords "thingummy" --max-pages 20 --format compact
+rendered17=$(printf '%s\n' "$QOUT" | grep -c '^#### ')
+if [ "$QRC" -eq 0 ] \
+   && [ "$rendered17" -eq 1 ] \
+   && printf '%s' "$QOUT" | grep -q 'Fine Row' \
+   && printf '%s' "$QERR" | grep -q '2 行が登録リンク'; then
+  pass "TC-17 3 セル未満と 5 セル超の両方が WARNING に載り、正常行だけ描画される"
+else
+  fail "TC-17 rendered=$rendered17 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

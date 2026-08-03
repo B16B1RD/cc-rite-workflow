@@ -55,10 +55,9 @@
 #   scanned   `.rite/wiki/index.md` — auto-discovered by this helper, not required on stdin.
 #             Only the per-entry summary is scanned (see `_RITE_INDEX_COUNT_ACTION`): the
 #             summary shares its source with the page frontmatter `description`. In OKF
-#             bullet form `/rite:wiki-query` Pass 1 also matches keywords against it; the
-#             canonical table form yields no Pass 1 candidates, so that is a standing
-#             non-conformance on the reader side until Pass 1 accepts tables — not a state
-#             a format migration clears on its own.
+#             either catalog form `/rite:wiki-query` Pass 1 matches keywords against it —
+#             table rows are parsed per row (page-column first link, cell escapes
+#             restored), the bullet form as before.
 #             Either way it is the surface a reader goes to for Why.
 #
 #   NOT scanned — each is a deliberate exclusion, not an unfinished area:
@@ -369,8 +368,8 @@ _RITE_COUNT_ACTION='/(TODO|FIXME)/ { next } { gsub(/`[^`]*`/, "_"); if ($0 ~ re)
 # `<!-- comment -->` を**引用している実エントリ行**まで落ちる。実測: 現行 wiki の index.md には
 # 該当行が 2 件あり (`html-comment-breaks-gfm-table-boundary` / `in-doc-tbd-placeholder-without-merge-gate`)、
 # anchor 無しだと該当 2 行分 hits が減る（実測時 230 → 228。index.md は ingest ごとに増えるため絶対値はスナップショット）。落としたいのは「行そのものがコメント」であって
-# 「コメントに言及している行」ではない。`wiki-query-inject.sh` の同種規則は anchor を持たないが、
-# あちらは箇条書き行しか候補にしないため table 形式の現行 index では露見していない (同型の盲点)。
+# 「コメントに言及している行」ではない。`wiki-query-inject.sh` の Pass 1 も table 行を候補にする
+# ようになった際に同じ 2 行を落としたため、同じ行頭 anchor を採用している。
 # 終了は anchor を付けない — 箇条書きテンプレートが配布されていた期間に初期化された bundle の
 #   index.md 前文のコメントは 2 行目末尾の `-->` で閉じるため。
 # 境界: 閉じ `-->` を含む行は行全体を落とす (コメント閉じ後に実エントリが続く 1 行は拾えない)。

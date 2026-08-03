@@ -619,7 +619,7 @@ fi
 | `{concept_type}` | OKF v0.1 必須フィールド。page-template.md の frontmatter トップレベル `type:` に substitute する concept 種別。値は `{domain}` と同じ literal（`patterns` / `heuristics` / `anti-patterns`）を入れる。OKF consumer の type ベース routing 用。**⚠️ 本 placeholder は同名衝突回避のため `{concept_type}` と命名している** — ステップ 4.2 / 5.0 の `raw/{type}/{filename}` パスや `sources[].type` 追記で使う `{type}` は Raw Source type（`reviews` / `retrospectives` / `fixes`、`{source_type}` 由来）であり別物 |
 | `{title}` | ステップ 4.1 で生成したタイトル |
 | `{domain}` | `patterns` / `heuristics` / `anti-patterns` |
-| `{description}` | ステップ 4.1 のサマリー（`{summary}` と同源の 1-2 文）。OKF 推奨の concept 説明文として page frontmatter `description` に機械可読で保持し、ステップ 6 で index.md 登録行のサマリー列にも反映する。**⚠️ 読み手側は未対応**: `/rite:wiki-query` の Pass 1（`hooks/wiki-query-inject.sh`）は候補抽出が箇条書き行限定のため、テーブル形式 index ではサマリー列を消費しない（キーワード照合に使われるのは箇条書き形式で運用されている index のみ。読み手のテーブル対応は Issue #2053） |
+| `{description}` | ステップ 4.1 のサマリー（`{summary}` と同源の 1-2 文）。OKF 推奨の concept 説明文として page frontmatter `description` に機械可読で保持し、ステップ 6 で index.md 登録行のサマリー列にも反映する。`/rite:wiki-query` の Pass 1（`hooks/wiki-query-inject.sh`）はテーブル行のサマリー列をキーワード照合に使う（箇条書き形式の index も引き続き読む） |
 | `{created}` / `{updated}` | 現在の ISO 8601 タイムスタンプ |
 | `{source_type}` | Raw Source の `type` フィールド (`reviews` / `retrospectives` / `fixes` の 3 値のみ — `wiki-ingest-trigger.sh` が受理する値と一致) |
 | `{source_ref}` | Raw Source の wiki-root 起点ファイル相対パス（例: `raw/reviews/20260413T...md`）。template 側で `../../` prefix を hardcode するため、placeholder 値自体には prefix を含めない。**⚠️ raw frontmatter の `source_ref` フィールド値（PR 識別子、例: `pr-1143`）をそのまま使ってはならない** — page の `sources[].ref` は常に Raw Source の**ファイルパス形式** `raw/{type}/{filename}` であり、PR 識別子形式ではない（同名 placeholder と raw フィールドの dual-use 混同による drift。概念は Wiki anti-pattern `placeholder-dual-use-resolution-drift`〔wiki ブランチに蓄積される経験則ページ。develop ツリーには実体なし〕）。lint はこの `ref` をファイルパス形式で raw と突合するため、PR 識別子だと raw→page 追跡が切れ false `missing_concept` を量産する |
@@ -701,7 +701,7 @@ fi
 
   ブロックが `total=` とドメイン別件数を出力した場合のみ、3 行を Edit で同期する（WARNING でスキップした場合は既存値を変更しない — 過少計上した値で正しい統計を上書きするより、前サイクルの値が残る方が安全）。3 行の literal 形式は既存行に合わせる（`- 総ページ数: {n}` / `- ドメイン別: patterns={n}, heuristics={n}, anti-patterns={n}` / `- 最終更新: {updated}`）。総ページ数がテーブルのデータ行数と一致しなくても何もしない — 重複行は (3a) が回収済みで、未登録ページはステップ 8 の lint に委ねる。
 
-> **読み手側の対応状況**: `wiki-lint-orphans.sh` は `](pages/...)` リンクの grep ベースで形式非依存に登録判定するため、`{path}` の形式維持だけが孤児検出の必須条件になる。一方 `/rite:wiki-query` の Pass 1 はテーブル行を parse しないため、テーブル形式 index では index 経由のキーワード照合が機能しない（ステップ 5.3 の `{description}` 注記と同じ理由。読み手のテーブル対応は Issue #2053）。
+> **読み手側の対応状況**: `wiki-lint-orphans.sh` は `](pages/...)` リンクの grep ベースで形式非依存に登録判定するため、`{path}` の形式維持だけが孤児検出の必須条件になる。`/rite:wiki-query` の Pass 1 はテーブル行と箇条書き行の両方を parse するため、どちらの形式の index でもキーワード照合が機能する。ページ列に置いた**最初のリンク**が候補のページ指定になる（サマリー列に相互参照リンクを含めても候補は奪われない）。
 
 書き込みはステップ 5 と同じブランチコンテキスト (separate_branch なら worktree、same_branch なら dev ツリー) で行う。
 
