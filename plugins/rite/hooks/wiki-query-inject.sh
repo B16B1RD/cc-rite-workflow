@@ -418,11 +418,15 @@ candidates=$(printf '%s\n' "$index_content" | awk '
     line = protect_code_span_pipes(line)
     sub(/^[[:space:]]*\|/, "", line); sub(/\|[[:space:]]*$/, "", line)
     n = split(line, cells, "|")
-    # Route through emit() rather than `next`: a row that carries a
-    # registration link but collapsed below 3 cells is a parse failure, and
-    # skipping it here would make it the one shape that vanishes with neither
-    # stdout nor a warning.
-    if (n < 3) { emit("", "", ""); next }
+    # The catalog contract is exactly 5 columns, so any other count means the
+    # row did not split where the writer intended. Route through emit() rather
+    # than `next` so the drop counter sees it: skipping here would make a
+    # miscounted row the one shape that vanishes with neither stdout nor a
+    # warning. `n > 5` matters as much as `n < 3` — an unescaped pipe in the
+    # summary silently truncates that cell, so the page still renders but with
+    # more than half its text gone. Re-joining the cells would paper over a
+    # writer-side escape violation instead of surfacing it.
+    if (n != 5) { emit("", "", ""); next }
     title = ""; path = ""
     if (match(cells[1], /\[([^]]|\][^(])*\]\([^)]*\)/)) {
       link = substr(cells[1], RSTART, RLENGTH)

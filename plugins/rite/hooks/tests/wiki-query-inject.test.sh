@@ -567,6 +567,43 @@ else
   fail "TC-16 (rc=$QRC out=$QOUT err=$QERR)"
 fi
 
+# --- TC-17: cell counts on either side of 5 are reported, not dropped ---
+# TC-14's fixture splits into 6 cells and fails on the page column, so it never
+# exercises the cell-count guard itself. These two rows do: one collapses below
+# the contract, one overflows it (an unescaped pipe in the summary would
+# otherwise truncate that cell and render a page with half its text missing).
+echo "=== TC-17: セル数が 5 でない登録行は両側とも WARNING に載る ==="
+INDEX_17='# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Fine Row](pages/patterns/fine17.md) | patterns | thingummy の正常行 | 2026-06-15T10:00:00+09:00 | high |
+| [Short Row](pages/patterns/short17.md) |
+| [Long Row](pages/patterns/long17.md) | patterns | thingummy の A | B という 1 本の文字列 | 2026-06-15T10:00:00+09:00 | high |
+'
+repo=$(make_query_sandbox tc17 "$INDEX_17")
+for rel in fine17 short17 long17; do
+  write_page "$repo" "pages/patterns/$rel.md" "---
+title: \"$rel\"
+domain: patterns
+description: \"thingummy のページ\"
+updated: \"2026-06-15\"
+confidence: high
+---"
+done
+run_query "$repo" --keywords "thingummy" --max-pages 20 --format compact
+rendered17=$(printf '%s\n' "$QOUT" | grep -c '^#### ')
+if [ "$QRC" -eq 0 ] \
+   && [ "$rendered17" -eq 1 ] \
+   && printf '%s' "$QOUT" | grep -q 'Fine Row' \
+   && printf '%s' "$QERR" | grep -q '2 行が登録リンク'; then
+  pass "TC-17 3 セル未満と 5 セル超の両方が WARNING に載り、正常行だけ描画される"
+else
+  fail "TC-17 rendered=$rendered17 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
