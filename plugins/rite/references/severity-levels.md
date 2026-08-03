@@ -122,7 +122,7 @@ The final severity reported in the findings table is determined by combining the
 | **挙動的帰結** | 記述された手順を実行すると成果物の破損が観測される (テーブル崩壊 / script 非ゼロ終了 / sentinel 欠落 等) | 適格 (実測を添付できる) |
 | **字面整合** | 観測できるのはレビュー対象文書自身のテキスト差分のみ (文言非対称 / pin 不在 / 限定句不足 / 二重定義の未同期) | 不適格 (アンカーを付けずに報告する) |
 
-**なぜこの軸が要るか**: 散文では「2 文の食い違いを示す grep」が technically measured になるため、実測必須ゲートだけでは重要度を弁別できない。実測ゲート配線後、コードとテストがアンカーになる PR はループが収束する一方 (PR #2070 = 5 サイクルで正常出口)、純散文の PR #2052 は 3 run・11 記録サイクルで発散した。本軸はその弁別を authoring 層で行う。
+**なぜこの軸が要るか**: 散文では「2 文の食い違いを示す grep」が technically measured になるため、実測必須ゲートだけでは重要度を弁別できない。実測ゲート配線後、コードとテストがアンカーになる PR ではアンカーが重要度を弁別できる一方、純散文の PR #2052 は 3 run・11 記録サイクルで発散した。本軸はその弁別を authoring 層で行う。
 
 **判別子と適用手順の SoT は [`_reviewer-base.md` §手順書・仕様書ドメイン Finding Gate](../agents/_reviewer-base.md#prose-domain-finding-gate)**。本ファイルは語彙定義のみを持ち、判別子表・適用例・MUST NOT 規則は複製しない (COMMENT_QUALITY 軸と同じ forward-pointer 方式)。
 

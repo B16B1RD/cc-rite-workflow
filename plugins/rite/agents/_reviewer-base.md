@@ -364,7 +364,7 @@ Hypothetical Exception Category 適用は不要 (コメント品質は security 
 
 ### アンカー適格性の帰結
 
-字面整合クラスの指摘は `Verification:` アンカーを持たないため、実測必須ゲート ([severity-levels.md §実測必須ゲート](../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)) が `measured=false` として **non-blocking** に分類し、4 経路すべてに記録する。指摘の**報告自体は抑止しない** — 変わるのは blocking 分類だけで、掲載可否は従来どおり Observed Likelihood Gate の 3 ゲートが決める。
+字面整合クラスの指摘は `Verification:` アンカーを持たないため、実測必須ゲート ([severity-levels.md §実測必須ゲート](../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)) が `measured=false` として **non-blocking** に分類し、4 経路すべてに記録する。**ただし叙述が正規形アンカー (marker と矢印が同一セグメント) を引用していると、ゲートは実測の有無を判定できず未判定 (= blocking のまま) に倒れる** — アンカー仕様そのものを論じる指摘では、例 2 と同じく矢印を全角 `⇒` にするか marker との間に句点を置くこと。指摘の**報告自体は抑止しない** — 変わるのは blocking 分類だけで、掲載可否は従来どおり Observed Likelihood Gate の 3 ゲートが決める。
 
 **severity は降格時も維持する** (`assessment-rules.md` §5.3.0.M「severity / scope は維持したまま blocking 集合から除外」)。CRITICAL の字面整合指摘が non-blocking になるのは設計どおり — severity は Impact 軸、blocking は実測軸であり、両者は直交する。この 2 軸の分離は実測必須ゲートの前提そのもの (Issue #2024) なので、severity を下げて辻褄を合わせてはならない。
 
