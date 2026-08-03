@@ -39,14 +39,16 @@
 #     stdout as "no context to inject" and continue.
 #   - Reads index.md via `git show` for separate_branch strategy, via direct
 #     file read for same_branch strategy.
-#   - OKF v0.1 2-pass: the canonical index.md is a 5-column table (page /
-#     domain / summary / updated / confidence). Pass 1 only parses the OKF
-#     bullet form (`* [title](path) - description`), so a table-form index
-#     yields no candidates (reader-side table support is tracked in Issue
-#     #2053). The table columns are a copy — Pass 2 reads each candidate
-#     page's frontmatter for domain/confidence/updated (Source of Truth). A
-#     candidate whose page frontmatter is unreadable is skipped with a WARNING
-#     (non-blocking — the index→page drift surfaces but other candidates render).
+#   - OKF v0.1 2-pass: Pass 1 parses both catalog forms — the 5-column table
+#     (page / domain / summary / updated / confidence) that wiki-ingest writes
+#     today, and the OKF bullet form (`* [title](path) - description`) still
+#     live in repos initialized under the earlier template. The table columns
+#     are a copy — Pass 2 reads each candidate page's frontmatter for
+#     domain/confidence/updated (Source of Truth). A candidate whose page
+#     frontmatter is unreadable is skipped with a WARNING (non-blocking — the
+#     index→page drift surfaces but other candidates render). Zero candidates
+#     against an index that does carry `](pages/...)` links warns too, so a
+#     future format drift is not mistaken for an empty wiki.
 #   - Scoring is case-insensitive substring match across page title + domain
 #     + description, weighted by confidence (high=1.5, medium=1.0, low=0.5).
 set -uo pipefail
@@ -328,29 +330,62 @@ if [[ -z "$index_content" ]]; then
   exit 0
 fi
 
-# --- Pass 1: Parse OKF bullet index for candidates ---
-# Pass 1 only understands the OKF bullet form:
-#   * [{title}]({path}) - {description}
-# The canonical index is a 5-column table (page / domain / summary / updated /
-# confidence), so this pass yields no candidates there; reader-side table
-# support is tracked in Issue #2053. The table columns are a copy — per-page
-# metadata (domain / confidence / updated) lives in each page's frontmatter
-# (Source of Truth). Pass 1 extracts the candidates; Pass 2 (in the scoring
-# loop below) reads each candidate page's frontmatter for the metadata.
+# --- Pass 1: Parse the index catalog for candidates ---
+# Pass 1 understands both catalog forms the wiki has been written in:
+#   table  : | [{title}]({path}) | {domain} | {summary} | {updated} | {confidence} |
+#   bullet : * [{title}]({path}) - {description}
+# The table is what wiki-ingest writes today (see skills/wiki-ingest/SKILL.md
+# ステップ 6 for the column contract); the bullet form is still live in repos
+# initialized while the template emitted the OKF bullet catalog. Reading only
+# one of them silently drops half the corpus, so both are parsed. The table
+# columns are a copy — per-page metadata (domain / confidence / updated) lives
+# in each page's frontmatter (Source of Truth). Pass 1 extracts the candidates;
+# Pass 2 (in the scoring loop below) reads each candidate page's frontmatter for
+# the metadata.
 #
 # awk extracts: title | path | description, separated by unit separator (\x1f).
-# Both `*` and `-` bullet markers are accepted; only links whose target
-# contains `pages/` are kept (the orphan-link grep contract — see
-# wiki-lint-orphans.sh — relies on the same `pages/{domain}/{slug}.md` target).
-# HTML comment blocks (`<!-- ... -->`) are skipped so that illustrative bullet
-# examples inside the prologue of index.md files initialized while the template
-# emitted the OKF bullet catalog are NOT parsed as real candidates (otherwise
-# such an index would yield a
-# phantom candidate whose page does not exist, emitting a misleading "index.md
-# may be stale" WARNING on every query).
+# Only links whose target contains `pages/` are kept (the orphan-link grep
+# contract — see wiki-lint-orphans.sh — relies on the same
+# `pages/{domain}/{slug}.md` target), which is also what makes the table header
+# row (`| ページ | ドメイン | ... |`) fall out without a dedicated rule.
+#
+# Table cells escape a literal `|` as `\|` (the cell separator would otherwise
+# split the row), so the row is split with the escapes swapped out for \x01 and
+# swapped back per field — splitting first would cut a title/summary in half and
+# shift every later column. Only the FIRST link in the page cell is taken: real
+# summaries carry cross-links to other pages, and taking the last match would
+# make a row point at whichever page it happens to cite.
+#
+# HTML comment blocks (`<!-- ... -->`) are skipped so that illustrative examples
+# inside an index prologue are NOT parsed as real candidates (otherwise such an
+# index would yield a phantom candidate whose page does not exist, emitting a
+# misleading "index.md may be stale" WARNING on every query).
 candidates=$(printf '%s\n' "$index_content" | awk '
+  function emit(title, path, desc) {
+    if (path == "" || index(path, "pages/") == 0) return   # non-page / malformed
+    gsub(/\001/, "|", title); gsub(/\001/, "|", desc)      # restore escaped pipes
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", title)
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", desc)
+    printf "%s\037%s\037%s\n", title, path, desc
+  }
   /<!--/ { in_comment=1 }
   in_comment { if (index($0, "-->") > 0) in_comment=0; next }
+  /^[[:space:]]*\|/ {
+    line = $0
+    if (line ~ /^[[:space:]]*\|[[:space:]]*:?-+:?[[:space:]]*\|/) next   # separator row
+    gsub(/\\\|/, "\001", line)
+    sub(/^[[:space:]]*\|/, "", line); sub(/\|[[:space:]]*$/, "", line)
+    n = split(line, cells, "|")
+    if (n < 3) next                                       # not the 5-column catalog shape
+    title = ""; path = ""
+    if (match(cells[1], /\[[^]]*\]\([^)]*\)/)) {
+      link = substr(cells[1], RSTART, RLENGTH)
+      if (match(link, /\[[^]]*\]/)) title = substr(link, RSTART + 1, RLENGTH - 2)
+      if (match(link, /\([^)]*\)/)) path  = substr(link, RSTART + 1, RLENGTH - 2)
+    }
+    emit(title, path, cells[3])
+    next
+  }
   /^[[:space:]]*[*-][[:space:]]+\[/ {
     line = $0
     title = ""; path = ""; desc = ""
@@ -363,14 +398,22 @@ candidates=$(printf '%s\n' "$index_content" | awk '
       if (match(rest, /^[[:space:]]*-[[:space:]]+/)) {
         desc = substr(rest, RSTART + RLENGTH)
       }
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", desc)
     }
-    if (path == "" || index(path, "pages/") == 0) next  # skip non-page / malformed
-    printf "%s\037%s\037%s\n", title, path, desc
+    emit(title, path, desc)
   }
 ')
 
 if [[ -z "$candidates" ]]; then
+  # Separate "the catalog has entries this parser cannot read" from "the wiki has
+  # no pages yet". Both exit 0 with no stdout, so without this the first case is
+  # indistinguishable from a legitimately empty wiki and a format drift stays
+  # invisible for as long as it lasts. Comment blocks are dropped first so an
+  # illustrative example in the prologue does not raise the warning on an
+  # otherwise-empty index.
+  if printf '%s\n' "$index_content" | sed '/<!--/,/-->/d' | grep -q '](pages/'; then
+    echo "WARNING: .rite/wiki/index.md に登録リンク (](pages/...)) を含む行がありますが、候補を 1 件も抽出できませんでした" >&2
+    echo "  カタログの形式が Pass 1 の対応形式 (5 列テーブル / OKF 箇条書き) と異なる可能性があります" >&2
+  fi
   exit 0
 fi
 
@@ -388,7 +431,12 @@ read_page_meta() {
     body=$(cat ".rite/wiki/${p}" 2>/dev/null) || return 1
   fi
   [[ -z "$body" ]] && return 1
-  printf '%s\n' "$body" | awk '
+  # here-string, not `printf | awk`: the awk below exits at the frontmatter
+  # terminator, so on a page whose body exceeds the pipe buffer the writer is
+  # still mid-write and dies of SIGPIPE. Under `set -o pipefail` that makes the
+  # pipeline return 141 and the caller reports a perfectly readable page as
+  # unreadable. Measured on a 61 KB page (rc=141) against a 14 KB page (rc=0).
+  awk '
     BEGIN { d=""; c=""; u=""; infm=0 }
     NR == 1 && /^---[[:space:]]*$/ { infm=1; next }
     infm && /^---[[:space:]]*$/ { exit }
@@ -396,7 +444,7 @@ read_page_meta() {
     infm && /^confidence:/ { v=$0; sub(/^confidence:[[:space:]]*/,"",v); gsub(/^["'\'']|["'\'']$/,"",v); c=v }
     infm && /^updated:/    { v=$0; sub(/^updated:[[:space:]]*/,"",v);    gsub(/^["'\'']|["'\'']$/,"",v); u=v }
     END { printf "%s\037%s\037%s", d, c, u }
-  '
+  ' <<< "$body"
 }
 
 # --- Pass 2 + Score ---

@@ -46,7 +46,7 @@ confidence: high | medium | low
 | `type` | yes | **OKF v0.1 が要求する唯一のフィールド**（本表の他の `yes` 項目は rite が運用上必須とする拡張で、OKF 仕様上の必須ではない）。concept の種別。rite では `domain` と同値（例 domain=heuristics → type=heuristics）。OKF consumer が type ベースで routing/filtering できるようにするための標準キー |
 | `title` | yes | ページタイトル（検索・インデックスに使用） |
 | `domain` | yes | 蓄積ドメイン（上記3種）。rite 拡張キーとして温存（query/lint は引き続き domain を参照） |
-| `description` | no | 1-2 文の要約（OKF 推奨。`{summary}` と同源）。page frontmatter に保持され、ingest が index.md `## ページ一覧` テーブルのサマリー列にも反映する。**⚠️ 読み手側は未対応**: `/rite:wiki-query` の Pass 1 は候補抽出が箇条書き行限定のため、テーブル形式 index ではサマリー列を消費しない（読み手のテーブル対応は追跡中） |
+| `description` | no | 1-2 文の要約（OKF 推奨。`{summary}` と同源）。page frontmatter に保持され、ingest が index.md `## ページ一覧` テーブルのサマリー列にも反映する。`/rite:wiki-query` の Pass 1 はテーブル行・箇条書き行の両形式からサマリーを読み、キーワード照合に使う |
 | `created` | yes | 作成日時（ISO 8601） |
 | `updated` | yes | 最終更新日時（ISO 8601） |
 | `sources` | yes | 元データへの参照（空配列可） |
