@@ -361,7 +361,11 @@ fi
 # inside an index prologue are NOT parsed as real candidates (otherwise such an
 # index would yield a phantom candidate whose page does not exist, emitting a
 # misleading "index.md may be stale" WARNING on every query).
-_drop_meta=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-query-drop-XXXXXX" 2>/dev/null) || _drop_meta=""
+if ! _drop_meta=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-query-drop-XXXXXX"); then
+  echo "WARNING: mktemp failed for drop-report capture; partial parse losses will not be reported" >&2
+  echo "  hint: check /tmp permission / read-only mount / inode exhaustion" >&2
+  _drop_meta=""
+fi
 candidates=$(printf '%s\n' "$index_content" | awk -v dropmeta="$_drop_meta" '
   # Pipes inside inline code spans are NOT escaped by the writer, so they would
   # split the row at the wrong place. Swap them for the same \x01 placeholder the
@@ -504,6 +508,15 @@ if [[ -z "$candidates" ]]; then
   if grep -q '](pages/' <<< "$stripped"; then
     echo "WARNING: .rite/wiki/index.md に登録リンク (](pages/...)) を含む行がありますが、候補を 1 件も抽出できませんでした" >&2
     echo "  カタログの形式が Pass 1 の対応形式 (5 列テーブル / OKF 箇条書き) と異なる可能性があります" >&2
+    # Also on stdout. Five of the six callers invoke this script with
+    # `2>/dev/null` (pr-review, fix, issue-implement, issue-create, unknowns);
+    # only the manual `/rite:wiki-query` path keeps stderr. So in every path
+    # that runs inside a workflow the line above reaches nobody — and an empty
+    # stdout is exactly
+    # what "no matching pages" looks like, which is the misattribution this
+    # guard exists to break. One line, marked as a notice rather than content,
+    # so a reader of the injected block can tell the wiki was not consulted.
+    printf '> ⚠️ Wiki index に登録行がありますが、そこから候補を抽出できませんでした（カタログ形式が Pass 1 の対応形式と異なる可能性）。今回、Wiki 経験則は注入されていません。\n'
   fi
   exit 0
 fi

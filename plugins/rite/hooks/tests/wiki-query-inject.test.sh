@@ -9,6 +9,12 @@
 #   TC-4 (T-09)      an index with no bullet candidates yields empty output, exit 0
 #   TC-5 (F-01)      a bullet example inside an HTML comment is NOT parsed as a
 #                    candidate (no phantom "index.md may be stale" WARNING)
+#
+# Note: a zero-candidate run against an index that DOES carry registration rows
+# emits a notice on stdout as well as stderr (five of the six callers discard
+# stderr), so TC-9 / TC-15 assert the notice rather than an empty stdout. TC-4
+# holds the negative side — an index with no registration rows stays silent on
+# both streams.
 set -uo pipefail
 
 # _timeout <seconds> <command...> — portable timeout(1) for this test (Issue #2008).
@@ -327,9 +333,9 @@ INDEX_9='# Wiki Index
 repo=$(make_query_sandbox tc9 "$INDEX_9")
 run_query "$repo" --keywords "anything" --format compact
 if [ "$QRC" -eq 0 ] \
-   && [ -z "$QOUT" ] \
+   && printf '%s' "$QOUT" | grep -q 'Wiki 経験則は注入されていません' \
    && printf '%s' "$QERR" | grep -q '候補を 1 件も抽出できませんでした'; then
-  pass "TC-9 形式未対応による 0 件が WARNING で可視化される"
+  pass "TC-9 形式未対応による 0 件が stderr と stdout の両方で可視化される"
 else
   fail "TC-9 (rc=$QRC out=$QOUT err=$QERR)"
 fi
@@ -528,7 +534,7 @@ idx_size=$(wc -c < "$repo/.rite/wiki/index.md")
 run_query "$repo" --keywords "anything" --format compact
 if [ "$QRC" -eq 0 ] \
    && [ "$idx_size" -gt 65536 ] \
-   && [ -z "$QOUT" ] \
+   && printf '%s' "$QOUT" | grep -q 'Wiki 経験則は注入されていません' \
    && printf '%s' "$QERR" | grep -q '候補を 1 件も抽出できませんでした'; then
   pass "TC-15 ${idx_size} バイトの index でも 0 件 WARNING が発火する"
 else
