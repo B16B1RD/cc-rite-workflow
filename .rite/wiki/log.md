@@ -29,6 +29,7 @@
 * **Update**: [cycle が進んでも findings が減らないときは点修正をやめて構造を疑う](pages/heuristics/non-converging-review-loop-suspect-structure.md) — raw/fixes/20260803T002010Z-pr-2094.md を統合（レビューサイクルが進むと PR 本文が実体から乖離する / 優先順位表は正常系の列挙であって全経路の列挙ではない）
 * **Update**: [rc 変数を 0 で初期化すると、未起動の段を「起動して成功した」と断定する](pages/patterns/rc-variable-not-started-sentinel.md) — raw/fixes/20260803T005938Z-pr-2094.md を統合（stderr を捨てた pipeline で rc を 1 つだけ載せると診断が能動的に嘘をつく / sentinel を持つ上流から引き継ぐ機構は sentinel を実値として拾う）
 * **Update**: [特定の 1 バイト・1 条件で書いた防御は、defect class 全体を覆うか修正直後に自問する](pages/heuristics/single-condition-defense-vs-defect-class.md) — raw/fixes/20260803T041505Z-pr-2094.md を統合（区切り文字を値側でエスケープしない join/split idiom / 同型サイトの中で 1 箇所だけガードを欠く非対称は漏れの証拠 / 修正が計測を変えるなら計測の記述も同 cycle で更新）
+* **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 
 ## 2026-08-02
 
