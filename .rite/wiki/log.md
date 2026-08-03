@@ -1,6 +1,7 @@
 ## 2026-08-04
 
 * **Create**: [テストの gate 条件がプラットフォーム事実を環境 capability の代理にすると恒常 red 化する](pages/anti-patterns/test-gate-proxy-indicator-drift.md) — raw/reviews/20260803T155051Z-pr-2096.md を新規ページ化（floor の判定対象が守りたい capability ではなく platform 事実の代理だった / コメントと条件式の乖離が検出点 / 同形の gate でも probe 対象がツール存在か環境 capability かで正しい条件式は変わる）
+* **lint:warning** — contradictions=0, stale=15, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 
 ## 2026-08-03
 
