@@ -2,7 +2,7 @@
 title: "Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する"
 domain: "anti-patterns"
 created: "2026-04-24T14:55:00+00:00"
-updated: "2026-08-01T05:40:00Z"
+updated: "2026-08-03T07:46:56Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260722T221143Z-pr-1973.md"
@@ -36,6 +36,10 @@ sources:
     ref: "raw/reviews/20260801T003521Z-pr-2078.md"
   - type: "fixes"
     ref: "raw/fixes/20260801T005429Z-pr-2078.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260803T004941Z-pr-2094.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260802T163111Z-pr-2094.md"
 tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase, same-file-3-site-sync, subsidiary-claim-empirical-verification, cross-file-cross-site-coverage, multi-axis-mutation-verification]
 confidence: high
 ---
@@ -383,3 +387,27 @@ pin を「張ったつもり」にする 2 つの具体形。どちらも同 PR 
 - [PR #1069 review — T-04e anchor 化 + ready.md 対称 coverage + 3-axis mutation verification (正方向 2 軸 + 逆方向 docstring 擬似挿入 1 軸) で canonical fix model を別 context に再適用 (test-reviewer + code-quality-reviewer)](../../raw/reviews/20260520T061355Z-pr-1069.md)
 - [PR #1973 cycle 4 review — test-reviewer が snapshot_hash() の全 fixture が clean tree のみで capture-first/direct-pipe の実装差分を observable にしていないと検出、実機検証で direct-pipe に戻しても既存 11 assertion が全 PASS することを実証](../../raw/reviews/20260722T222828Z-pr-1973.md)
 - [PR #1973 cycle 4 fix (T-04: dirty tree snapshot fixture を追加し capture-first の実装差分を observable にする regression test を確立)](../../raw/fixes/20260722T223211Z-pr-1973.md)
+
+## 変種: 静的 pin は「その行があるか」ではなく「その行が意図した構造で機能するか」を照合する
+
+静的 pin テストの盲点は claim と assert の件数 gap だけではない。**照合 literal が構造上必須の文字を含んでいないと、「消失」は捕捉できても「drift」は素通りする。**
+
+実例では、skill markdown の env 代入行を pin するテストが、**行末の行継続文字（`\`）を照合 literal に含めていなかった**。継続が落ちると env 代入列が非 export のシェル変数に退化し、次行のコマンドが env を 1 つも受け取らずに実行される — しかも `2>/dev/null || true` がその失敗を握り潰す。
+
+| mutation | 静的 pin の検出 |
+|---|---|
+| 行を丸ごと削除 | ✅ 捕捉する |
+| 行末の `\` 1 文字を削除 | ❌ 素通りする（literal 本体は一致したまま） |
+
+**照合 literal には構造上必須の文字（行継続・閉じ括弧・区切り）を含める。** 「その行がある」ことの確認は、その行が機能することの確認にならない。
+
+### 併発: 既定値と同値を assert する pin は kill power を持たない
+
+同じ PR で、pin の別の空虚化も出ている。`loop_count: 0` の照合は、既定値が `0` である以上、carry-forward の有無を区別できず、carry-forward を丸ごと削除しても Green のままだった。**出力から原理的に判別できない性質（全入力で同じ出力になる等価変異）は、アサーションを強化しても捕捉できない。** 正しい対処は名前とコメントを実態に合わせる relabel であって、TC の追加ではない。
+
+アサーション名に「直接確認」等の強い語を置くと、読み手は守られていると誤認する — これは本ページが扱う protection theater そのものである。
+
+## ソース（追記分）
+
+- [PR #2094 review results (cycle 2) — 静的 pin が行継続文字を照合せず 1 文字 drift を素通り](../../raw/reviews/20260803T004941Z-pr-2094.md)
+- [PR #2094 review results — load-bearing なコードコメントに対応するテストが無い](../../raw/reviews/20260802T163111Z-pr-2094.md)

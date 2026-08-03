@@ -4,7 +4,7 @@ title: "cycle が進んでも findings が減らないときは点修正をや�
 domain: "heuristics"
 description: "review⇄fix ループで cycle ごとの指摘件数が減らず、内訳が毎回「前 cycle の修正が生んだ新しい drift」になっているときは、個々の指摘に個別対応しても収束しない。指摘の内訳を分類し、同じクラスが再発しているなら述語や実装の本数といった構造に手を入れる。PR #2038 は 11 cycle・通算 65 件を要し、cycle 4 で「2 実装を並行して持つ構造」に到達して初めてクラスが閉じた。"
 created: "2026-07-28T21:30:00+09:00"
-updated: "2026-07-30T15:40:55Z"
+updated: "2026-08-03T07:46:56Z"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260728T093135Z-pr-2038.md"
@@ -90,6 +90,12 @@ sources:
     ref: "raw/reviews/20260728T064417Z-pr-2038.md"
   - type: "reviews"
     ref: "raw/reviews/20260728T081222Z-pr-2038.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260803T030207Z-pr-2094.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260803T020301Z-pr-2094.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260803T002010Z-pr-2094.md"
 tags: []
 confidence: high
 ---
@@ -213,3 +219,35 @@ cycle 5 では、指摘 14 件のうち 2 件が**リポジトリ自身の check
 - [PR #2052 fix results (cycle 3) — 停止条件の事前宣言が効いた](../../raw/fixes/20260730T014656Z-pr-2052.md)
 - [PR #2056 review results (cycle 4) — 指摘数が 4 → 7 へ反転](../../raw/reviews/20260730T061343Z-pr-2056.md)
 - [PR #2056 fix results (cycle 4) — 1 構造変更で 4 指摘が同時消滅、正味 4 行減](../../raw/fixes/20260730T061745Z-pr-2056.md)
+
+## 詳細（追記: 主題の収束と churn の区別）
+
+**指摘が減らないことと、主題が収束していないことは別物である。** PR #2094 は 5 cycle 回っても収束しなかったが、内訳を分けると評価が反転する。
+
+| 層 | cycle 3 | cycle 4 | cycle 5 |
+|---|---|---|---|
+| PR の主題（実装の振る舞い） | 0 件 | 0 件 | 0 件 |
+| fix ループ自身が持ち込んだ散文・診断・テストラベル | 6 件 | 5 件（**全件**） | 6 件 |
+
+cycle 4 では **blocking 5 件すべてが前 cycle の fix 由来**で、指摘の生成源が完全に反転していた。同じ cycle で error-handling が疑い所 6 点を全て潰し、security が injection 8+ ベクタで bypass なしを確認し、prompt-engineer は自らの昇格根拠を反証して撤回している。
+
+**修正ループが自分で指摘を作り始めたら、それは主題の収束を意味する。** 残っているのはコードの振る舞いではなく churn であり、**この区別を報告で潰さないこと**。「5 cycle 未収束」とだけ書くと、実装に問題が残っているように読める。
+
+### 収束局面での立ち回り
+
+- **推奨事項を意図的に見送る。** 残りサイクル数が少ない局面では、編集中の行に推奨事項を重ねると新たなレビュー面を作る。見送りを commit message に明記して次サイクルへ送る。
+- **件数ではなくコードの是非で選ぶ。** 「この診断追加を revert すれば 2 件消える」という選択肢が出ることがあるが、その診断が他 Issue の値転写を示す唯一の信号なら、撤去は中立ではなく悪化になる。
+- **severity 分布の下方シフトを見る。** 実装の欠陥が尽きたかどうかは件数ではなく分布に出る（HIGH が残っていてもその中身がコメントの行番号参照なら、実装は収束している）。
+- **レビュー側の取り下げも収束の兆候。** reviewer が前 cycle の推奨を「既存アサーションで解決済み」として明示的に取り下げ始めたら、両側が収束に向かっている。
+
+### 計測の記述も同 cycle で更新する
+
+修正がレビュー計測そのものを変える場合、PR 本文の実測値も同一 cycle で更新する。実例ではテストスイートの自己切断を直した結果、PR 本文が主張していた「develop baseline の Red は 9 件」が偽になった（中断が消えて全アサーションが走り 18 件に増えた）。放置すると、**その PR が別途 stale ドキュメントとして是正した当の問題を、PR 本文自身が再生産する**。
+
+Red baseline の測り方（どのファイルを revert したか）を本文に明記しておくと、次のレビュアーが別の測り方をして phantom discrepancy を報告するのも防げる。
+
+## ソース（追記分 5）
+
+- [PR #2094 review results (cycle 5, non-converged) — 主題は 3 cycle 連続ゼロ、非収束の原因は fix ループ自身の churn](../../raw/reviews/20260803T030207Z-pr-2094.md)
+- [PR #2094 review results (cycle 4) — blocking 5 件すべてが前 cycle の fix 由来](../../raw/reviews/20260803T020301Z-pr-2094.md)
+- [PR #2094 fix results — レビューサイクルが進むと PR 本文が実体から乖離する](../../raw/fixes/20260803T002010Z-pr-2094.md)

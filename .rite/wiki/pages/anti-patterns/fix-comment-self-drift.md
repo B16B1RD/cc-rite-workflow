@@ -2,7 +2,7 @@
 title: "Fix 修正コメント自身が canonical convention を破る self-drift"
 domain: "anti-patterns"
 created: "2026-04-18T12:00:00+00:00"
-updated: "2026-07-13T02:50:00+09:00"
+updated: "2026-08-03T07:46:56Z"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260712T150908Z-pr-1836.md"
@@ -26,6 +26,10 @@ sources:
     ref: "raw/reviews/20260527T083107Z-pr-1161.md"
   - type: "reviews"
     ref: "raw/reviews/20260712T174329Z-pr-1838.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260803T020301Z-pr-2094.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260803T051521Z-pr-2094.md"
 tags: ["self-drift", "canonical-convention", "grep-self-check", "review-fix-loop", "lint-rule-self-meta-drift"]
 confidence: high
 ---
@@ -188,3 +192,24 @@ cycle 7 で同種違反 3 件 → cycle 9 で 2 件 → cycle 11 で 0 件と単
 - [PR #1169 fix results (cycle 5) — TC-H6 のコメントに混入した `cycle-2 fix` review cycle 番号参照を削除し observability 目的のみの恒久記述へ。テストコードのコメントも no_journal / no_cycle_reference MUST、新規 diff 行の違反は scope 内修正](../../raw/fixes/20260528T144526Z-pr-1169.md)
 - [PR #1836 fix results (cycle 2) — 回帰テストのケースコメント 2 件の「旧実装は…だった」履歴フレームを現在形の技術的 WHY へ書き換え。同一 PR 内に正しい現在形記述と誤った履歴フレームが混在した事例](../../raw/fixes/20260712T150908Z-pr-1836.md)
 - [PR #1838 review results (4 cycles) — F-01 修正文言が F-03 帰属 category error を誘発した連鎖。決定主体を主語にした帰属への書き直しで収束](../../raw/reviews/20260712T174329Z-pr-1838.md)
+
+## 変種: 行番号アンカーは「導入コミット内で自壊する」
+
+コメントから他ファイルの行番号を参照する self-drift には、**書いた瞬間に既に誤りになっている**という極端なケースがある。参照を導入したコミット自体が参照先ファイルに行を足すと、コミット適用後には参照先がシフトしている。
+
+実例では、テストコメントが hook の行番号を裸で参照していたが、**同じコミットが header に 8 行・診断コメントに 13 行を足した**ため、コミット時点で既にずれていた。しかも検出機構がファイル名接頭辞を要求する regex だったため、同一文脈内の裸の `:NNN` 形式は機械検出を素通りしていた。
+
+### 対処
+
+- 他ファイルを指すときは行番号ではなく**一意な文字列**（シンボル名 / 定数名 / メッセージの一部）をアンカーにする
+- 同一コミットで両方のファイルを触る修正では特に危険。「行番号は commit 適用後の値である保証がない」と考える
+- semantic anchor（「〜のブロック」「〜の 2 行」）で書けば、上流に行が増えても壊れない
+
+### 併発する self-drift: 規則と反例の同時導入
+
+同じ性質の失敗として、**規則をコメントに書きながら同じ diff でその規則を破る**ケースがある。「caller を列挙して説明しない」と書きつつ、同一ファイル内の 2 箇所で caller を列挙していた実例がある。規則と反例が同時に入ると、保守者は「規則に従って直す」か「規則を無効と見なす」の二択を迫られ、どちらもコストになる。**規則を書いたらファイル全体へ適用しきってから commit する。** 適用しきれないなら規則の scope を明示する（「本コメントでは」等）。
+
+## ソース（追記分）
+
+- [PR #2094 review results (cycle 4) — 行番号コメントが同一コミット内で自己矛盾](../../raw/reviews/20260803T020301Z-pr-2094.md)
+- [PR #2094 review results (cycle 3) — 6 件中 4 件が前 cycle の fix で追加したコメント由来](../../raw/reviews/20260803T051521Z-pr-2094.md)
