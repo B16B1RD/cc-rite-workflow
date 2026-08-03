@@ -732,7 +732,8 @@ trap '_rite_issue518_cleanup; cleanup' EXIT
 # NOTE: content-file の /tmp/rite-* literal は被テスト hook の path-containment allowlist
 # ($PWD/* | /tmp/rite-* | /private/tmp/rite-*) に一致させる load-bearing fixture であり、
 # ${TMPDIR:-/tmp} 化してはならない (TMPDIR≠/tmp の環境で hook が正しく拒否し偽 FAIL する)。
-# /tmp 直下が書込不可な sandbox 環境では本 TC は検証不能のため明示 skip する。
+# /tmp 直下が書込不可な環境では本 TC は検証不能。CI (blocking gate) では floor として
+# fail し、それ以外の環境では明示 skip する。
 echo "TC-036a: Content-file in /tmp/rite-* prefix → exit 0 (regression)"
 if _probe36a=$(mktemp /tmp/rite-probe-XXXXXX 2>/dev/null); then
   rm -f "$_probe36a"
@@ -758,15 +759,21 @@ EOF
   else
     fail "Expected rc=0 for /tmp/rite-* prefix, got rc=$rc, stderr=$(cat "$dir36a/err.log")"
   fi
-elif [ -d /proc ]; then
-  # Floor: writability of /tmp is a capability probe, not a platform fact. On the
-  # blocking gate a non-writable /tmp means the environment was constrained, not
-  # that the platform cannot do this — skipping there would drop the only coverage
-  # of the hook's /tmp/rite-* allowlist arm while the run stays green.
-  # `[ -d /proc ]` rather than `uname -s`, which resolves through the same PATH.
-  fail "TC-036a floor: /tmp is not writable on Linux (constrained sandbox?) — the /tmp/rite-* prefix acceptance must never be skipped on the blocking gate"
+elif [ -n "${CI:-}" ] && [ -d /proc ]; then
+  # Floor: writability of /tmp is a capability probe, not a platform fact, so the
+  # gate has to name the environment where that capability is actually guaranteed
+  # — the Linux CI leg, which ci.yml designates the blocking gate (macOS runs
+  # informational). "Any Linux" is too wide a stand-in: a developer machine whose
+  # sandbox mounts /tmp read-only is Linux too, and a permanent red there is noise
+  # that masks real regressions rather than signal. On the blocking gate a
+  # non-writable /tmp does mean the environment was constrained, not that the
+  # platform cannot do this — skipping there would drop the only coverage of the
+  # hook's /tmp/rite-* allowlist arm while the run stays green. `$CI` is what
+  # GitHub Actions sets; `[ -d /proc ]` rather than `uname -s`, which resolves
+  # through the same PATH.
+  fail "TC-036a floor: /tmp is not writable on the Linux blocking gate (CI) — the /tmp/rite-* prefix acceptance must never be skipped there"
 else
-  skip "TC-036a — /tmp 直下が書込不可 (sandbox 環境) のため /tmp/rite-* prefix 受容を検証できません"
+  skip "TC-036a — /tmp 直下が書込不可 (sandbox 環境等) のため /tmp/rite-* prefix 受容を検証できません (CI では floor として fail する)"
 fi
 echo ""
 
