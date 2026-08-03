@@ -12,6 +12,10 @@
 #                 (cycle 10 stale residue regression guard)
 #   AC-7 — regression test discoverable under hooks/tests/
 #
+# 注: 上記 AC-4 / AC-7 は flow-state 移行 Issue の受入基準を指す。T-01〜T-12 のアサーションラベルが
+# 使う (AC-1)〜(AC-5) は Issue #2082 の受入基準で、番号体系が別。同じ AC-4 が両方に存在するため、
+# テスト出力のラベルから基準を引くときは T- 番号の有無で体系を判別すること。
+#
 # Removed (PR 2a refactor, v3 SoT):
 #   (TC-4) schema_version=1 + legacy `.rite-flow-state` file present — the
 #          legacy single-file path was retired in Phase E (commit bf5a2415);
@@ -509,7 +513,11 @@ PR_CREATE_MD="$PLUGIN_ROOT/skills/pr-create/SKILL.md"
 assert_eq "T-09.0: pr-create/SKILL.md が存在する (前提確認)" "yes" \
   "$([ -f "$PR_CREATE_MD" ] && echo yes || echo no)"
 pr_create_body=$(cat "$PR_CREATE_MD" 2>/dev/null || echo "")
-assert_contains "T-09.1: WM_PR_NUMBER=\"{pr_number}\" の seed 行がある" 'WM_PR_NUMBER="{pr_number}"' "$pr_create_body"
+# 照合 literal に行継続を含める。継続が落ちると 828-834 行が「コマンドを伴わない変数代入」
+# (= 非 export のシェル変数) に退化し、次行の bash local-wm-update.sh が WM_* を 1 つも受け取らずに
+# 実行される — 同行末尾の 2>/dev/null と || true が握り潰すため WM 更新全体が silent に no-op 化する。
+# literal から継続を落とすと、行削除の drift は捕捉できるが 1 文字削除の drift は素通りする。
+assert_contains "T-09.1: WM_PR_NUMBER=\"{pr_number}\" の seed 行がある (行継続込み)" 'WM_PR_NUMBER="{pr_number}" \' "$pr_create_body"
 
 # ─── T-10: 既定値状態の WM でも読み戻し不能 WARNING を出さない ────
 # 誤報の検証は、否定が最も破られやすい入力で行う必要がある。T-08.5 の fixture は 2 field とも
@@ -616,6 +624,56 @@ assert_contains "T-12.2: WM が実際に書き換わる (更新が完走して�
 assert_contains "T-12.3: pr_number: null (既定値へ倒れる)" "pr_number: null" "$body15"
 assert_contains "T-12.4: loop_count: 0 (既定値へ倒れる)" "loop_count: 0" "$body15"
 assert_contains "T-12.5: 読み戻し不能 WARNING が出る (silent に倒れない)" "$WARN_CARRY_FWD" "$err15"
+
+# ─── T-13: flow-state の「PR 未作成」sentinel 0 は carry-forward しない ──
+# flow-state は PR 作成前の pr_number を 0 で表す (open/SKILL.md の init / branch / plan phase が
+# --pr 0 を書く)。WM_READ_FROM_FLOW_STATE 経路がその 0 を WM へ運んだあと、carry-forward が 0 を
+# 実値として拾うと work-memory-format.md の `null if not created` を表現できないまま恒久化する。
+# carry-forward 導入前は次の通常更新で null へ戻っていたので、これは新機構が持ち込む退行にあたる。
+echo "T-13: flow-state 由来の pr_number: 0 は carry-forward されず null へ戻る"
+SBX16=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX16")
+write_config "$SBX16"
+# WM_READ_FROM_FLOW_STATE 経路を使わず、同経路が書き込む結果 (pr_number: 0) を env で直接再現する。
+# flow-state fixture を組むと本 TC が flow-state 解決の健全性にも依存してしまい、検証したい
+# 「0 を carry-forward するか」から焦点がぶれるため。
+run_update "$SBX16" \
+  WM_SOURCE="lint" WM_PHASE="lint" WM_PHASE_DETAIL="lint 実行中" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="0" WM_LOOP_COUNT="4" >/dev/null 2>&1 || true
+WM_FILE16="$SBX16/.rite-work-memory/issue-687.md"
+seed16=$(cat "$WM_FILE16" 2>/dev/null || echo "")
+assert_contains "T-13.0a: seed で pr_number: 0 が書かれる (前提確認)" "pr_number: 0" "$seed16"
+assert_contains "T-13.0b: seed で loop_count: 4 が書かれる (前提確認)" "loop_count: 4" "$seed16"
+
+# env を渡さない通常更新 = carry-forward が発火する経路
+if run_update "$SBX16" \
+  WM_SOURCE="implement" WM_PHASE="implement" WM_PHASE_DETAIL="実装中" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="Normal update." WM_ISSUE_NUMBER="687" >/dev/null 2>&1; then
+  rc16=0
+else
+  rc16=$?
+fi
+body16=$(cat "$WM_FILE16" 2>/dev/null || echo "")
+assert_eq "T-13.1: return 0" "0" "$rc16"
+assert_contains "T-13.2: pr_number: null へ戻る (sentinel 0 を carry-forward しない)" "pr_number: null" "$body16"
+# loop_count 側の 0 は「まだ 1 周もしていない」という実値なので、同じ除外を適用してはならない。
+# 本アサーションは pr_number の除外が loop_count へ波及していないことを固定する。
+assert_contains "T-13.3: loop_count は carry-forward される (0 除外を波及させない)" "loop_count: 4" "$body16"
+
+# loop_count: 0 が実値として carry-forward されることの直接確認 (T-13.3 の対偶側)
+SBX17=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX17")
+write_config "$SBX17"
+run_update "$SBX17" \
+  WM_SOURCE="lint" WM_PHASE="lint" WM_PHASE_DETAIL="lint 実行中" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="4242" WM_LOOP_COUNT="0" >/dev/null 2>&1 || true
+WM_FILE17="$SBX17/.rite-work-memory/issue-687.md"
+run_update "$SBX17" \
+  WM_SOURCE="implement" WM_PHASE="implement" WM_PHASE_DETAIL="実装中" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="Normal update." WM_ISSUE_NUMBER="687" >/dev/null 2>&1 || true
+body17=$(cat "$WM_FILE17" 2>/dev/null || echo "")
+assert_contains "T-13.4: 実 PR 番号は従来どおり carry-forward される (非退行)" "pr_number: 4242" "$body17"
+assert_contains "T-13.5: loop_count: 0 は実値として carry-forward される" "loop_count: 0" "$body17"
 
 echo
 echo "─── work-memory-update.test.sh summary ──────────────────────────"
