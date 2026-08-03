@@ -13,7 +13,8 @@
 # Note: a zero-candidate run against an index that DOES carry registration rows
 # emits a notice on stdout as well as stderr (five of the six callers discard
 # stderr), so TC-9 / TC-15 assert the notice rather than an empty stdout. TC-4
-# keeps the empty-stdout contract for an index with no registration rows.
+# holds the negative side — an index with no registration rows stays silent on
+# both streams.
 set -uo pipefail
 
 # _timeout <seconds> <command...> — portable timeout(1) for this test (Issue #2008).
@@ -607,39 +608,6 @@ if [ "$QRC" -eq 0 ] \
   pass "TC-17 3 セル未満と 5 セル超の両方が WARNING に載り、正常行だけ描画される"
 else
   fail "TC-17 rendered=$rendered17 (rc=$QRC out=$QOUT err=$QERR)"
-fi
-
-# --- TC-18: the zero-candidate notice reaches stdout too ---
-# Five of the six callers run this script with `2>/dev/null` (only the manual
-# /rite:wiki-query path keeps stderr), so a stderr-only warning is invisible in
-# every path that runs inside a workflow, and an
-# empty stdout is indistinguishable from "no page matched". TC-9 pins the stderr
-# half; this pins the stdout half and the silence when there is nothing to warn
-# about (an index with no registration rows is a legitimately empty catalog).
-echo "=== TC-18: 候補 0 件 + 登録行ありのとき stdout にも通知が出る（登録行なしでは出ない） ==="
-INDEX_18='# Wiki Index
-
-<ul>
-<li><a href="pages/heuristics/html.md">HTML 形式の登録行</a> ](pages/heuristics/html.md)</li>
-</ul>
-'
-repo=$(make_query_sandbox tc18a "$INDEX_18")
-run_query "$repo" --keywords "anything" --format compact
-notice_out="$QOUT"; notice_rc="$QRC"; notice_err="$QERR"
-
-INDEX_18B='# Wiki Index
-
-（まだページがありません）
-'
-repo=$(make_query_sandbox tc18b "$INDEX_18B")
-run_query "$repo" --keywords "anything" --format compact
-if [ "$notice_rc" -eq 0 ] \
-   && printf '%s' "$notice_out" | grep -q 'Wiki 経験則は注入されていません' \
-   && printf '%s' "$notice_err" | grep -q '候補を 1 件も抽出できませんでした' \
-   && [ "$QRC" -eq 0 ] && [ -z "$QOUT" ]; then
-  pass "TC-18 登録行ありは stdout+stderr に通知、登録行なしは両方とも無出力"
-else
-  fail "TC-18 (a: rc=$notice_rc out=$notice_out) (b: rc=$QRC out=$QOUT)"
 fi
 
 echo ""
