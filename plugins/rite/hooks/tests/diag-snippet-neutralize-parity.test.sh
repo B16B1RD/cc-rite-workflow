@@ -54,7 +54,10 @@ echo "=== TC-1: head/tail -N emission site は全て neutralize_ctrl を経由 =
 # (非 emission site は明示 allowlist で除外、中和を横展開済み)。
 # `>&2` が log() 等の関数内部に隠れて同一行に現れない emission 経路は静的 sweep で
 # 構造的に検出できないため、TC-5 が既知 site を個別に pin する
-violations=$(grep -rnE '(head|tail) (-[0-9]+|-n +[0-9]+) ' "$HOOKS_DIR" --include='*.sh' \
+# sweep 正規表現は floor guard と共有する。literal を二重に持つと、片方だけ腕を落とす変異を
+# もう片方が検出できない (初版の floor guard が実際にそうだった)。
+SWEEP_RE='(head|tail) (-[0-9]+|-n +[0-9]+) '
+violations=$(grep -rnE "$SWEEP_RE" "$HOOKS_DIR" --include='*.sh' \
   | grep '>&2' \
   | grep -v "$HOOKS_DIR/tests/" \
   | grep -v 'neutralize_ctrl' \
@@ -64,6 +67,21 @@ assert "TC-1: un-neutralized head/tail -N emission sites" "" "$violations"
 if [ -n "$violations" ]; then
   echo "  検出された未中和 site (head/tail -N の直後に '| neutralize_ctrl --keep-newline' を挿入すること):"
   printf '%s\n' "$violations" | sed 's/^/    /'
+fi
+
+# sweep 正規表現が tail site を実際に拾えていることを pin (TC-2 の floor guard と同型)。
+# TC-1 は violations が空であることだけを assert する fail-closed sweep なので、式から tail が
+# 落ちても Green のまま通る。$SWEEP_RE を共有して数えることで腕の消失が本 guard の失敗になる。
+tail_pop=$(grep -rnE "$SWEEP_RE" "$HOOKS_DIR" --include='*.sh' \
+  | grep '>&2' \
+  | grep -v "$HOOKS_DIR/tests/" \
+  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
+  | grep -c 'tail ') || tail_pop=0
+case "$tail_pop" in ''|*[!0-9]*) tail_pop=0 ;; esac
+if [ "$tail_pop" -ge 1 ]; then
+  pass "TC-1 floor: tail 腕が実 site を $tail_pop 件カバーしている"
+else
+  fail "TC-1 floor: tail 腕のカバー site が 0 件 — 正規表現から tail が落ちても violations は空のままで回帰が不可視になる"
 fi
 
 echo ""

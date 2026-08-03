@@ -202,10 +202,8 @@ update_local_work_memory() {
       # 区切りが 0x1f なのは、tab だと IFS が空 field を畳んで列が左へずれるため。errors の
       # clamp (200 字) と改行潰しを jq 側で行うのは、pipeline 末尾の head -c が上流 jq を SIGPIPE で
       # 殺す経路を避けるため。corrupt の種別は carry-forward の可否を決める入力 (下の _carry_block)。
-      # join 前に制御文字を値側から潰す。区切り (0x1f) が混ざると read の列がずれ、判定値である
-      # .data 要素数の位置へ別 field が入って読み戻し不能ガードを素通りする。C0 全域を対象にするのは、
-      # NUL が command substitution で削除されて断片が連結し「もっともらしい別の数値」になる経路と、
-      # LF が herestring の read を切る経路も同じ迂回になるため。
+      # join 前に制御文字を値側から潰す。区切り (0x1f) が混ざると read の列がずれて判定値の位置に
+      # 別 field が入り、NUL は削除されて断片が連結し実在しない数値になる (T-17 / T-18 が固定)。
       parsed=$(printf '%s' "$parse_out" \
         | jq -r '[(.data.sync_revision // 0), (.data.pr_number // "null"), (.data.loop_count // 0), (.data | length), ((.errors // []) | join("; ") | gsub("[\n\r]"; " ") | .[0:200])] | map(tostring | gsub("[[:cntrl:]]"; "?")) | join("\u001f")' 2>>"${_parse_err:-/dev/null}") && _jq_rc=0 || { _jq_rc=$?; parsed=""; }
     fi
@@ -213,12 +211,15 @@ update_local_work_memory() {
     if [ -n "$parsed" ]; then
       IFS=$'\x1f' read -r existing_rev existing_pr existing_loop existing_keys existing_errors <<< "$parsed"
     fi
+    # 下の 2 つの WARNING が共有する条件節。literal を二重に持つと片側だけが文言変更に追随する
+    # drift が起きる (本 PR で実際に発生済み)。
+    local _default_note="(pr_number / loop_count は env override も flow-state 読み取りも無い場合のみ既定値へ倒れます)"
     # .data が空 = 読み戻し不能。silent に既定値へ倒すと「もともと版が無かった」と区別できないため
     # WARNING で可視化する (non-blocking は維持。断定するのは sync_revision の再採番だけに留める)。
     if [ "$existing_keys" -eq 0 ]; then
       local _rb_tag=""
       [ -z "$_parse_err" ] && _rb_tag=" stderr_capture=disabled"
-      echo "WARNING: 既存 WM から値を読み戻せませんでした ($local_wm, parse rc=$_parse_rc, jq rc=$_jq_rc${_rb_tag}) — sync_revision を 1 から採番し直します (pr_number / loop_count は env override も flow-state 読み取りも無い場合のみ既定値へ倒れます)" >&2
+      echo "WARNING: 既存 WM から値を読み戻せませんでした ($local_wm, parse rc=$_parse_rc, jq rc=$_jq_rc${_rb_tag}) — sync_revision を 1 から採番し直します ${_default_note}" >&2
       # python3 の未捕捉例外はメッセージが traceback 最終行に載るため tail で出す。
       [ -n "$_parse_err" ] && [ -s "$_parse_err" ] && tail -3 "$_parse_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     else
@@ -237,7 +238,7 @@ update_local_work_memory() {
         _corrupt_reasons=$(printf '%s' "$existing_errors" | neutralize_ctrl --c0-only) || _corrupt_reasons=""
         [ -n "$_corrupt_reasons" ] || _corrupt_reasons="(種別不明)"
         local _block_tag=""
-        [ "$_carry_block" -eq 1 ] && _block_tag=" — identity を確認できない種別 (issue_number の mismatch / 欠落) または判別不能のため carry-forward は行いません (pr_number / loop_count は env override も flow-state 読み取りも無い場合のみ既定値へ倒れます)"
+        [ "$_carry_block" -eq 1 ] && _block_tag=" — identity を確認できない種別 (issue_number の mismatch / 欠落) または判別不能のため carry-forward は行いません ${_default_note}"
         echo "WARNING: 既存 WM は corrupt 判定 (parse rc=$_parse_rc, errors: $_corrupt_reasons) ですが .data が読めたため処理を継続しました ($local_wm)${_block_tag}" >&2
       fi
       if [[ "$existing_rev" =~ ^[0-9]+$ ]]; then sync_rev=$((existing_rev + 1)); fi

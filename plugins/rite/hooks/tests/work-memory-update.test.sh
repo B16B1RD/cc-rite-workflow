@@ -356,7 +356,8 @@ assert_contains "T-03.5: sync_revision が 1 から採番し直される (WARNIN
 corrupt7=$(printf '%s' "$err7" | grep -c "$WARN_CORRUPT_FWD") || true
 assert_eq "T-03.6: 読み戻し不能時は corrupt WARNING を出さない (2 文面の排他性)" "0" "$corrupt7"
 
-# :220 の WARNING は「env override も flow-state 読み取りも無い場合のみ既定値へ倒れます」と
+# 読み戻し不能 WARNING (WARN_CARRY_FWD) は「env override も flow-state 読み取りも無い場合のみ
+# 既定値へ倒れます」と
 # 条件付きで宣言する。その条件節が守られていること (degraded path が env override を握り潰さない
 # こと) を走行で固定する。文言リテラルではなく振る舞いを pin するのは、他コンポーネントの
 # メッセージ形式への結合を増やさないため。
@@ -376,6 +377,27 @@ body22=$(cat "$WM_FILE22" 2>/dev/null || echo "")
 assert_contains "T-03.7a: 読み戻し不能経路に入っている (前提確認)" "$WARN_CARRY_FWD" "$err22"
 assert_contains "T-03.7: 読み戻し不能でも env override は握り潰されない (pr_number)" "pr_number: 456" "$body22"
 assert_contains "T-03.8: 同 (loop_count — 変異は 2 field 同時に潰すため片側だけでは残る)" "loop_count: 9" "$body22"
+
+# 同じ条件節の flow-state 読み取り側も pin する (上の env override 側と対称)。
+SBX26=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX26")
+write_config "$SBX26"
+SID26="99999999-9999-9999-9999-999999999926"
+write_session_id "$SBX26" "$SID26"
+write_per_session "$SBX26" "$SID26" '{"phase":"lint","next_action":"continue","pr_number":789,"loop_count":7,"active":true}'
+run_update "$SBX26" \
+  WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="123" WM_LOOP_COUNT="3" >/dev/null 2>&1 || true
+WM_FILE26="$SBX26/.rite-work-memory/issue-687.md"
+grep -v '^# 📜 rite 作業メモリ$' "$WM_FILE26" > "$WM_FILE26.tmp" && mv "$WM_FILE26.tmp" "$WM_FILE26"
+err26=$(run_update "$SBX26" \
+  WM_SOURCE="lint" WM_PHASE="lint" WM_PHASE_DETAIL="quality check" \
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Lint body." WM_ISSUE_NUMBER="687" \
+  WM_READ_FROM_FLOW_STATE="true" 2>&1 >/dev/null) || true
+body26=$(cat "$WM_FILE26" 2>/dev/null || echo "")
+assert_contains "T-03.9a: 読み戻し不能経路に入っている (前提確認)" "$WARN_CARRY_FWD" "$err26"
+assert_contains "T-03.9: 読み戻し不能でも flow-state 読み取りは握り潰されない (pr_number)" "pr_number: 789" "$body26"
+assert_contains "T-03.10: 同 (loop_count)" "loop_count: 7" "$body26"
 
 # ─── T-04: env override が既存ファイル値より優先される ───────────
 # pr_number / loop_count は独立した 2 つの条件式で守られているため、両方を検証する
@@ -600,7 +622,7 @@ assert_contains "T-14.4: loop_count も転写されず 0 へ倒れる (AC-2)" "l
 assert_contains "T-14.5: carry-forward を止めたことが WARNING に出る (silent に倒さない)" \
   "carry-forward は行いません" "$err18"
 
-# :239 の _block_tag も :220 と同じ条件節を宣言する。遮断が env override まで潰していないことを
+# corrupt WARNING の _block_tag も読み戻し不能 WARNING と同じ条件節を宣言する。遮断が env override まで潰していないことを
 # 走行で固定する (T-03.7 / T-03.8 と対の関係)。
 SBX23=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX23")
 write_config "$SBX23"
@@ -615,6 +637,24 @@ body23=$(cat "$SBX23/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
 assert_contains "T-14.6a: carry-forward 遮断経路に入っている (前提確認)" "carry-forward は行いません" "$err23"
 assert_contains "T-14.6: 遮断時でも env override は握り潰されない (pr_number)" "pr_number: 456" "$body23"
 assert_contains "T-14.7: 同 (loop_count)" "loop_count: 9" "$body23"
+
+# 遮断経路でも flow-state 読み取りが握り潰されないことを pin する (T-03.9 / T-03.10 と対称)。
+SBX27=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX27")
+write_config "$SBX27"
+SID27="99999999-9999-9999-9999-999999999927"
+write_session_id "$SBX27" "$SID27"
+write_per_session "$SBX27" "$SID27" '{"phase":"lint","next_action":"continue","pr_number":789,"loop_count":7,"active":true}'
+mkdir -p "$SBX27/.rite-work-memory"
+printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nschema_version: 1\nissue_number: 999\nsync_revision: 5\npr_number: 4242\nloop_count: 7\n---\n\nbody\n' \
+  > "$SBX27/.rite-work-memory/issue-687.md"
+err27=$(run_update "$SBX27" \
+  WM_SOURCE="lint" WM_PHASE="lint" WM_PHASE_DETAIL="quality check" \
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Lint body." WM_ISSUE_NUMBER="687" \
+  WM_READ_FROM_FLOW_STATE="true" 2>&1 >/dev/null) || true
+body27=$(cat "$SBX27/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
+assert_contains "T-14.8a: carry-forward 遮断経路に入っている (前提確認)" "carry-forward は行いません" "$err27"
+assert_contains "T-14.8: 遮断時でも flow-state 読み取りは握り潰されない (pr_number)" "pr_number: 789" "$body27"
+assert_contains "T-14.9: 同 (loop_count)" "loop_count: 7" "$body27"
 
 # ─── T-19: identity を確認できない corrupt (issue_number 欠落) も遮断する ──
 # mismatch だけを判定キーにすると、issue_number 行を「消す」だけで遮断を迂回できる。
