@@ -37,6 +37,7 @@
 * **Create**: [検出ゲートの仕様そのものを変える PR は自己言及で発散する — サーキットブレーカー到達を異常ではなく想定内として扱う](pages/heuristics/gate-spec-self-reference-pr-expects-circuit-breaker.md) — raw/fixes/20260803T131002Z-pr-2095.md を新規ページ化（検出層の変更が Non-goal である以上「構造を疑う」処方が効かない / 5 サイクル全てで blocking が出続けたが成果物自体は blocking=0 を達成 / 規則の外延は検出層 literal を読んで合わせる — 後者は機械的述語ページへも統合）
 * **Update**: [限界を説明する例は検出器に食わせ、「〜としてのみ使う」型の断定は grep で数えてから書く](pages/heuristics/verify-explanatory-examples-against-the-detector.md) — raw/reviews/20260803T104952Z-pr-2095.md を統合（「実行して観測せよ」と指示する文書の教材例は読み手に必ず検証される / 設計根拠として過去 PR 番号を引くときは polarity を裏取りする）
 * **Update**: [検出ゲートの仕様そのものを変える PR は自己言及で発散する — サーキットブレーカー到達を異常ではなく想定内として扱う](pages/heuristics/gate-spec-self-reference-pr-expects-circuit-breaker.md) — raw/reviews/20260803T140734Z-pr-2095.md を統合（最終 cycle は 4 件すべて字面整合クラスとして non-blocking へ降格し blocking=0 / 収束しなかったことと成果物が無効であることは別）
+* **lint:warning** — contradictions=0, stale=15, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 
 ## 2026-08-02
 
