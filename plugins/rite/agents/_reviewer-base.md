@@ -332,6 +332,62 @@ Hypothetical Exception Category 適用は不要 (コメント品質は security 
 >
 > 順序 1 と順序 2 はどちらも「許容」へ進む判定であり、入れ替えても最終的な finding 採否は変わらないが、上記 (1) (2) の意味的・運用的理由から **順序逆転は禁止** とする。
 
+## 手順書・仕様書ドメイン Finding Gate
+
+<a id="prose-domain-finding-gate"></a>
+
+> **Reference**: 語彙定義は [`severity-levels.md` §帰結クラス軸](../references/severity-levels.md#帰結クラス軸-consequence-class)、blocking 判定側の適用手順は [`assessment-rules.md` §5.3.0.M](../skills/fix/references/assessment-rules.md#530m-実測必須ゲート-measured-confirmed-gate) を参照。本セクションは reviewer 側の **authoring Gate** (帰結クラスの判別子・`Verification:` アンカー適格性・severity 保持規則) を一元化する。Comment Quality Finding Gate と同型・同居の散文ドメイン Gate であり、新しい機構ではない。
+
+### Scope: 散文ファイルへの指摘
+
+本 Gate は **手順書・仕様書・reference の散文** (`skills/**/*.md` の手順本文、`references/**/*.md`、`agents/**/*.md`、`docs/`) への指摘に適用する。判定軸は **ファイル種別ではなく指摘の帰結種別** — 同じ `*.md` でも、記述に字義どおり従う実行者が観測可能な誤動作に至る指摘は挙動的帰結クラスであり、blocking のまま扱う。
+
+### 帰結クラスの判別子
+
+指摘に添えた repro が **何を観測しているか** で 2 クラスに分ける。判別子は 1 つだけで、reviewer の主観に開かない:
+
+| 帰結クラス | 判別子 (repro の観測対象) | `Verification:` アンカー |
+|---|---|---|
+| **挙動的帰結** | 記述された手順を**実行**し、成果物の破損を観測する (テーブルが崩れる / script が非ゼロ終了する / sentinel が emit されない / helper が期待と異なる値を返す) | **適格** — アンカーを添付する |
+| **字面整合** | レビュー対象文書**自身のテキスト差分**のみを観測する (2 つの記述の食い違いを grep / diff で表示するだけで、実行者が至る誤動作を示していない) | **不適格** — アンカーを付けずに報告する |
+
+字面整合クラスに属する典型パターン (すべてアンカー不適格):
+
+| パターン | 内容 |
+|---|---|
+| 文言非対称 | 同一事項を述べる 2 箇所の表現が揃っていない |
+| pin 不在 | 値・literal・regex が 1 箇所にしか書かれておらず、テストで固定されていない |
+| 限定句不足 | 記述に「〜の場合に限る」等の限定が欠けている (誤読の余地がある) |
+| 二重定義の未同期 | 同一定義が 2 箇所にあり、片方が更新されていない |
+
+判別に迷う場合は **repro を実行して何が観測できるかを見る**。「2 つの文字列が違う」以外に何も観測できないなら字面整合クラスである。
+
+### アンカー適格性の帰結
+
+字面整合クラスの指摘は `Verification:` アンカーを持たないため、実測必須ゲート ([severity-levels.md §実測必須ゲート](../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)) が `measured=false` として **non-blocking** に分類し、4 経路すべてに記録する。**そのためには指摘の `内容` 列で verification の語の直後にコロンを置かないこと** — 検出層の literal は大文字小文字を区別せず、装飾文字・バッククォート・空白を吸収してからコロンに達するため、JSON フィールド名としての小文字の言及も母集団に入る。「アンカー」「verification フィールド」等の語で言い換える。検出層は marker の有無だけで母集団を決めるため、書けば以後の帰結は [§Verification: runtime 実測の添付](#verification-runtime-measurement) の Rules が決める（本節では再掲しない）。**`Likelihood-Evidence:` には `runtime_observation` を使わないこと** — grep / diff の実行は runtime_observation ではなく、同 Rules がこのラベルに対して実測アンカーの併記を無条件に要求するため、字面整合クラスと衝突する。`existing_call_site` / `new_call_site` を使う。指摘の**報告自体は抑止しない** — 変わるのは blocking 分類だけで、掲載可否は従来どおり Observed Likelihood Gate の 3 ゲートが決める。
+
+**severity は降格時も維持する** (`assessment-rules.md` §5.3.0.M「severity / scope は維持したまま blocking 集合から除外」)。CRITICAL の字面整合指摘が non-blocking になるのは設計どおり — severity は Impact 軸、blocking は実測軸であり、両者は直交する。この 2 軸の分離は実測必須ゲートの前提そのもの (Issue #2024) なので、severity を下げて辻褄を合わせてはならない。
+
+**MUST NOT — `scope=nit-noted` への転用**: 字面整合クラスを non-blocking にする手段として `scope=nit-noted` を使ってはならない。nit-noted は実測必須ゲートの **対象外** (`gated` 偽) であり `non_blocking_findings[]` に載らないため、4 経路記録が失われる。scope は [Scope Assignment Flowchart](#scope-assignment-flowchart) の判定順序でのみ決める。
+
+**helper の 3 値判定には介入しない**: 帰結クラス判定は「アンカーを添付するか否か」の **authoring 判断**であり、`scripts/review-measured-gate.sh` の 3 値判定 (`true` / `false` / 未判定) のロジックには一切触れない。形式崩れアンカーが未判定 (= blocking のまま) として扱われる挙動は本 Gate の前後で不変である。
+
+### Comment Quality Finding Gate と異なる点 (意図的な非対称)
+
+同型の Gate だが、以下 3 点は Comment Quality Gate が持つ機構を **意図的に持たない**。同居する 2 Gate の差分を読み手が drift と誤認しないよう明示する:
+
+- **severity プリセット表を置かない**: severity は Impact 軸から従来どおり継承し、帰結クラスは blocking 軸のみを決める。字面整合クラスは severity に依らず non-blocking になるため、プリセットを置いても消費者がいない (置けば no_speculative_structure に反する)。
+- **`+` 行限定の diff scope 制約を課さない**: Comment Quality Gate がスコープを新規 diff の追加行に限るのは、既存違反まで対象にすると finding が爆発するため。本 Gate は finding を**生む**のではなく blocking 集合から**降格させる**だけなので、pre-existing 散文への指摘を含めても爆発は起きない。掲載可否は従来どおり Observed Likelihood Gate の 3 ゲート (revert test を含む) が決める。
+- **Hypothetical Exception Categories の例外を持たない**: 4 例外 reviewer (`security` / `application` / `devops` / `dependencies`) は **Likelihood 軸**の例外であって本 Gate の例外ではない。例外カテゴリの reviewer が出した字面整合クラスの指摘も non-blocking になる ([実測必須ゲート](../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) が例外カテゴリを対象外にしないのと同じ扱い)。
+
+### 適用例
+
+**例 1 — 字面整合 (アンカー不適格)**: 「同一事項を述べる 2 つの節で、一方は記録先を『4 経路すべて』と書き、他方は内訳を 3 つしか列挙していない」。repro は両節の grep 出力の突合のみで、この記述に従った実行者が至る誤動作を示していない。→ アンカーを付けずに報告し、non-blocking として記録される。
+
+**例 2 — 挙動的帰結 (アンカー適格)**: 「ステップ 6 の指示どおりに `index.md` を更新すると 5 列テーブルが 3 列で上書きされ表が崩壊する」(Issue #2047 型)。repro は記述された手順を実行し、成果物 (テーブル) の破損を観測している。→ `Verification: repro` アンカーに「手順の実行 ⇒ 崩れたテーブル出力」を記入して添付し、blocking のまま fix へ渡る (**実際の指摘に書くアンカーでは矢印を半角にすること** — 全角では正規形として検出されず降格する。本行が全角 `⇒` なのは、この Gate 文書を引用した指摘が恒久 blocking 化するのを避けるための文書側の退避であり、記入形式の指定ではない)。
+
+**例 3 — 境界ケース**: 「helper が emit する marker 名が仕様書と実装で食い違う」。**実装側を実行して仕様書どおりの marker が出ないことを観測できる**なら挙動的帰結 (アンカー適格)。**2 つの文書の marker 名を grep で並べただけ**なら字面整合 (不適格)。同じ指摘でも repro の観測対象で決まる。
+
 ## Fail-Fast First
 
 Before recommending a fallback (`||` default, `try/catch` swallowing, null guard, default value substitution, retry-and-give-up), reviewers MUST first consider whether the correct fix is to **fail fast** — `throw` / `raise` / re-throw to the caller and let the existing error boundary handle it.
