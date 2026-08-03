@@ -545,7 +545,8 @@ read_page_meta() {
 IFS=',' read -r -a kw_array <<< "$KEYWORDS"
 
 # Normalize the keywords once, not once per candidate. Pass 1 now yields the
-# whole catalog (361 candidates on the live wiki, up from 0 before table support),
+# whole catalog (360 candidates on the live wiki when measured, up from 0 before
+# table support),
 # so anything inside the loop is multiplied by the corpus size: the per-candidate
 # `sed`+`tr` alone cost 7,220 subprocesses for 10 keywords, and the query went
 # from 0.04 s to 13.2 s.
@@ -566,7 +567,7 @@ while IFS=$'\x1f' read -r title path description; do
   # the remaining candidates still render (AC-8).
   if ! meta=$(read_page_meta "$path"); then
     # `path` comes from index.md too, so it goes through the same neutralizer as
-    # the drop samples above (this site became reachable for 361 candidates once
+    # the drop samples above (this site became reachable for 360 candidates once
     # table rows started producing candidates).
     printf 'WARNING: cannot read frontmatter of %s — skipping candidate (index.md may be stale)\n' "$path" \
       | neutralize_ctrl --keep-newline >&2

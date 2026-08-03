@@ -55,10 +55,9 @@
 #   scanned   `.rite/wiki/index.md` — auto-discovered by this helper, not required on stdin.
 #             Only the per-entry summary is scanned (see `_RITE_INDEX_COUNT_ACTION`): the
 #             summary shares its source with the page frontmatter `description`. In OKF
-#             bullet form `/rite:wiki-query` Pass 1 also matches keywords against it; the
-#             canonical table form yields no Pass 1 candidates, so that is a standing
-#             non-conformance on the reader side until Pass 1 accepts tables — not a state
-#             a format migration clears on its own.
+#             either catalog form `/rite:wiki-query` Pass 1 matches keywords against it —
+#             table rows are parsed per row (page-column first link, cell escapes
+#             restored), the bullet form as before.
 #             Either way it is the surface a reader goes to for Why.
 #
 #   NOT scanned — each is a deliberate exclusion, not an unfinished area:
