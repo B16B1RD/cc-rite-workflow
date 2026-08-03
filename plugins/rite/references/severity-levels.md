@@ -111,6 +111,27 @@ The final severity reported in the findings table is determined by combining the
 - **`git blame` 実証**: `git blame {file}` で当該コメント行が対応する code change より明確に古い (= merge 済み) ことを示し、かつコメント中の reference (`cycle N` / `PR #N` / 関数名) が現コードベースで grep ヒット 0 であることを実証 → 該当 reference の宛先が更新されていない Comment Rot として **HIGH** 以上で finding 発行可
 - **新規 diff 由来**: `git diff {base_branch}...HEAD` の `+` 行に対象コメントが追加されている場合、`Likelihood-Evidence: new_call_site {file}:{line} (本 PR diff の `+` 行で追加)` を提示できるため Demonstrable 確定 (これは [`_reviewer-base.md` Comment Quality Finding Gate `Hypothetical → Demonstrable 昇格 signal`](../agents/_reviewer-base.md#hypothetical--demonstrable-昇格-signal) と同じ判定基準)
 
+## 帰結クラス軸 (Consequence Class)
+
+<a id="帰結クラス軸-consequence-class"></a>
+
+散文 (手順書・仕様書・reference) への指摘を「**この記述に字義どおり従う実行者が、観測可能な誤動作に至るか**」で 2 分する軸 (Issue #2087)。Impact 軸 / Observed Likelihood 軸 / scope 軸と直交する第 4 の軸であり、判定は **ファイル種別ではなく指摘の帰結種別** で行う。
+
+| 帰結クラス | 定義 | `Verification:` アンカー |
+|---|---|---|
+| **挙動的帰結** | 記述された手順を実行すると成果物の破損が観測される (テーブル崩壊 / script 非ゼロ終了 / sentinel 欠落 等) | 適格 (実測を添付できる) |
+| **字面整合** | 観測できるのはレビュー対象文書自身のテキスト差分のみ (文言非対称 / pin 不在 / 限定句不足 / 二重定義の未同期) | 不適格 (アンカーを付けずに報告する) |
+
+**なぜこの軸が要るか**: 散文では「2 文の食い違いを示す grep」が technically measured になるため、実測必須ゲートだけでは重要度を弁別できない。実測ゲート配線後、コードとテストがアンカーになる PR はループが収束する一方 (PR #2070 = 5 サイクルで正常出口)、純散文の PR #2052 は 3 run・11 記録サイクルで発散した。本軸はその弁別を authoring 層で行う。
+
+**判別子と適用手順の SoT は [`_reviewer-base.md` §手順書・仕様書ドメイン Finding Gate](../agents/_reviewer-base.md#prose-domain-finding-gate)**。本ファイルは語彙定義のみを持ち、判別子表・適用例・MUST NOT 規則は複製しない (COMMENT_QUALITY 軸と同じ forward-pointer 方式)。
+
+**他軸との関係**:
+
+- **Impact 軸**: 帰結クラスは severity を変えない。字面整合の CRITICAL 指摘は severity CRITICAL のまま non-blocking になる (severity = Impact、blocking = 実測軸で直交)
+- **実測必須ゲート**: 帰結クラスは authoring 層 (アンカーを添付するか否か) で作用し、[§実測必須ゲート](#実測必須ゲート-measured-confirmed-gate) の 3 値判定 (`true` / `false` / 未判定) のロジックには介入しない。形式崩れアンカーが未判定 = blocking のまま扱われる挙動は本軸の導入前後で不変
+- **scope 軸**: 字面整合クラスを `scope=nit-noted` にしてはならない。nit-noted は本ゲートの対象外 (`gated` 偽) で `non_blocking_findings[]` に載らず、4 経路記録が失われる
+
 ## Hypothetical Exception Categories
 
 Four reviewer categories MAY retain **CRITICAL / HIGH / MEDIUM / LOW-MEDIUM** severity for Hypothetical findings (matching the Matrix rows that specify "降格 → 推奨事項 (例外カテゴリを除く)"), because in their domain a single occurrence of the bug is catastrophic and "wait until we observe it in production" is not an acceptable risk model:
