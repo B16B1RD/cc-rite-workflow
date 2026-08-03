@@ -74,8 +74,9 @@ _index_err=""
 _git_show_err=""
 _git_show_err_failed=0
 _awk_err=""
+_drop_meta=""
 _rite_wiki_query_cleanup() {
-  rm -f "${_yaml_err:-}" "${_index_err:-}" "${_git_show_err:-}" "${_awk_err:-}"
+  rm -f "${_yaml_err:-}" "${_index_err:-}" "${_git_show_err:-}" "${_awk_err:-}" "${_drop_meta:-}"
 }
 trap 'rc=$?; _rite_wiki_query_cleanup; exit $rc' EXIT
 trap '_rite_wiki_query_cleanup; exit 130' INT
@@ -360,7 +361,8 @@ fi
 # inside an index prologue are NOT parsed as real candidates (otherwise such an
 # index would yield a phantom candidate whose page does not exist, emitting a
 # misleading "index.md may be stale" WARNING on every query).
-candidates=$(printf '%s\n' "$index_content" | awk '
+_drop_meta=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-query-drop-XXXXXX" 2>/dev/null) || _drop_meta=""
+candidates=$(printf '%s\n' "$index_content" | awk -v dropmeta="$_drop_meta" '
   # Pipes inside inline code spans are NOT escaped by the writer, so they would
   # split the row at the wrong place. Swap them for the same \x01 placeholder the
   # backslash escapes use, preserving length and content so cell offsets hold.
@@ -452,13 +454,28 @@ candidates=$(printf '%s\n' "$index_content" | awk '
     emit(title, path, desc)
   }
   END {
-    if (dropped > 0) {
-      printf "WARNING: index.md の %d 行が登録リンク (](pages/...)) を持ちながら候補になりませんでした\n", dropped > "/dev/stderr"
-      for (i = 1; i <= dropped && i <= 3; i++) printf "    %s\n", dropped_sample[i] > "/dev/stderr"
-      printf "  カタログ行の形状が Pass 1 の想定 (5 列テーブル / OKF 箇条書き) と異なる可能性があります\n" > "/dev/stderr"
+    # Written to a file, not straight to stderr: the samples are raw index bytes
+    # and every other diagnostic in this script routes them through
+    # neutralize_ctrl first. Emitting here would put ESC/OSC sequences on the
+    # developer terminal, and the parity test that pins that rule anchors on the
+    # `head ... | neutralize_ctrl` shape, so an awk-internal write slips past it.
+    if (dropped > 0 && dropmeta != "") {
+      printf "%d\n", dropped > dropmeta
+      for (i = 1; i <= dropped && i <= 3; i++) printf "%s\n", dropped_sample[i] > dropmeta
     }
   }
 ')
+
+# Render the partial-drop report: fixed Japanese text straight to stderr, raw
+# index samples only after neutralize_ctrl (same idiom as the other diagnostics
+# in this file). Samples degrade to `?` for multibyte content — the documented
+# trade-off in control-char-neutralize.sh.
+if [[ -n "$_drop_meta" && -s "$_drop_meta" ]]; then
+  _drop_n=$(head -1 "$_drop_meta")
+  echo "WARNING: index.md の ${_drop_n} 行が登録リンク (](pages/...)) を持ちながら候補になりませんでした" >&2
+  tail -n +2 "$_drop_meta" | neutralize_ctrl --keep-newline | sed 's/^/    /' >&2
+  echo "  カタログ行の形状が Pass 1 の想定 (5 列テーブル / OKF 箇条書き) と異なる可能性があります" >&2
+fi
 
 if [[ -z "$candidates" ]]; then
   # Separate "the catalog has entries this parser cannot read" from "the wiki has
@@ -548,7 +565,11 @@ while IFS=$'\x1f' read -r title path description; do
   # page is unreadable (stale index → page drift) is skipped with a WARNING and
   # the remaining candidates still render (AC-8).
   if ! meta=$(read_page_meta "$path"); then
-    echo "WARNING: cannot read frontmatter of ${path} — skipping candidate (index.md may be stale)" >&2
+    # `path` comes from index.md too, so it goes through the same neutralizer as
+    # the drop samples above (this site became reachable for 361 candidates once
+    # table rows started producing candidates).
+    printf 'WARNING: cannot read frontmatter of %s — skipping candidate (index.md may be stale)\n' "$path" \
+      | neutralize_ctrl --keep-newline >&2
     continue
   fi
   IFS=$'\x1f' read -r domain confidence updated <<< "$meta"
