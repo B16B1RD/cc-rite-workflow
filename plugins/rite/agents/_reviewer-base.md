@@ -372,11 +372,19 @@ Hypothetical Exception Category 適用は不要 (コメント品質は security 
 
 **helper の 3 値判定には介入しない**: 帰結クラス判定は「アンカーを添付するか否か」の **authoring 判断**であり、`scripts/review-measured-gate.sh` の 3 値判定 (`true` / `false` / 未判定) のロジックには一切触れない。形式崩れアンカーが未判定 (= blocking のまま) として扱われる挙動は本 Gate の前後で不変である。
 
+### Comment Quality Finding Gate と異なる点 (意図的な非対称)
+
+同型の Gate だが、以下 3 点は Comment Quality Gate が持つ機構を **意図的に持たない**。同居する 2 Gate の差分を読み手が drift と誤認しないよう明示する:
+
+- **severity プリセット表を置かない**: severity は Impact 軸から従来どおり継承し、帰結クラスは blocking 軸のみを決める。字面整合クラスは severity に依らず non-blocking になるため、プリセットを置いても消費者がいない (置けば no_speculative_structure に反する)。
+- **`+` 行限定の diff scope 制約を課さない**: Comment Quality Gate がスコープを新規 diff の追加行に限るのは、既存違反まで対象にすると finding が爆発するため。本 Gate は finding を**生む**のではなく blocking 集合から**降格させる**だけなので、pre-existing 散文への指摘を含めても爆発は起きない。掲載可否は従来どおり Observed Likelihood Gate の 3 ゲート (revert test を含む) が決める。
+- **Hypothetical Exception Categories の例外を持たない**: 4 例外 reviewer (`security` / `application` / `devops` / `dependencies`) は **Likelihood 軸**の例外であって本 Gate の例外ではない。例外カテゴリの reviewer が出した字面整合クラスの指摘も non-blocking になる ([実測必須ゲート](../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) が例外カテゴリを対象外にしないのと同じ扱い)。
+
 ### 適用例
 
 **例 1 — 字面整合 (アンカー不適格)**: 「`severity-levels.md` は『4 経路すべてに記録する』と書いているが `assessment-rules.md` は『4 経路』の内訳を 3 つしか列挙していない」。repro は両ファイルの grep 出力の突合のみで、この記述に従った実行者が至る誤動作を示していない。→ アンカーを付けずに報告し、non-blocking として記録される。
 
-**例 2 — 挙動的帰結 (アンカー適格)**: 「ステップ 6 の指示どおりに `index.md` を更新すると 5 列テーブルが 3 列で上書きされ表が崩壊する」(Issue #2047 型)。repro は記述された手順を実行し、成果物 (テーブル) の破損を観測している。→ `Verification: repro <手順の実行> => <崩れたテーブル出力>` を添付し、blocking のまま fix へ渡る。
+**例 2 — 挙動的帰結 (アンカー適格)**: 「ステップ 6 の指示どおりに `index.md` を更新すると 5 列テーブルが 3 列で上書きされ表が崩壊する」(Issue #2047 型)。repro は記述された手順を実行し、成果物 (テーブル) の破損を観測している。→ `Verification: repro` アンカーに「手順の実行 ⇒ 崩れたテーブル出力」を記入して添付し、blocking のまま fix へ渡る (本行は矢印を全角 `⇒` にして正規形の full match を避けている — 素の `=>` で書くと本文自体が検出対象になり、引用した指摘が恒久 blocking 化する)。
 
 **例 3 — 境界ケース**: 「helper が emit する marker 名が仕様書と実装で食い違う」。**実装側を実行して仕様書どおりの marker が出ないことを観測できる**なら挙動的帰結 (アンカー適格)。**2 つの文書の marker 名を grep で並べただけ**なら字面整合 (不適格)。同じ指摘でも repro の観測対象で決まる。
 
