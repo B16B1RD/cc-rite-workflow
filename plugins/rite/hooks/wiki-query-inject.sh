@@ -361,7 +361,11 @@ fi
 # inside an index prologue are NOT parsed as real candidates (otherwise such an
 # index would yield a phantom candidate whose page does not exist, emitting a
 # misleading "index.md may be stale" WARNING on every query).
-_drop_meta=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-query-drop-XXXXXX" 2>/dev/null) || _drop_meta=""
+if ! _drop_meta=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-query-drop-XXXXXX"); then
+  echo "WARNING: mktemp failed for drop-report capture; partial parse losses will not be reported" >&2
+  echo "  hint: check /tmp permission / read-only mount / inode exhaustion" >&2
+  _drop_meta=""
+fi
 candidates=$(printf '%s\n' "$index_content" | awk -v dropmeta="$_drop_meta" '
   # Pipes inside inline code spans are NOT escaped by the writer, so they would
   # split the row at the wrong place. Swap them for the same \x01 placeholder the
