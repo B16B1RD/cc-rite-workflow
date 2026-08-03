@@ -183,46 +183,25 @@ update_local_work_memory() {
   local pr_num="${WM_PR_NUMBER:-null}"
   local parse_script="${WM_PLUGIN_ROOT}/hooks/work-memory-parse.py"
 
-  # 既存ファイルの値の読み戻し。sync_revision の increment に加え、pr_number / loop_count を
-  # carry-forward する — env override も flow-state 読み取りも伴わない更新経路では、読み戻さない
-  # 限り更新のたびに既定値へ巻き戻り、work-memory-format.md の field 定義が宣言する意味を実ファイル
-  # が満たせない。下の -z ガードが見るのは env 変数の空 / 非空だけで、渡された値が実値か placeholder
-  # かは判定しない (caller を列挙して説明しない — call site が増えるたびに記述が偽になるため)。
+  # 既存ファイルからの読み戻し (carry-forward)。読み戻さない限り、env override も flow-state 読み取りも
+  # 伴わない更新経路では pr_number / loop_count が更新のたびに既定値へ巻き戻る。
   if [ -f "$local_wm" ] && [ -f "$parse_script" ]; then
-    # work-memory-parse.py は corrupt 判定 (missing_keys / issue_number_mismatch) でも .data を
-    # 埋めたうえで exit 2 を返す。よって exit code ではなく stdout の有無で採否を決める
-    # (exit code で捨てると当該ファイルの sync_revision が 1 へ巻き戻り、版が逆行する)。
-    # `|| _parse_rc=$?` であって `|| parse_out=""` ではない: 代入は `||` の評価前に完了するので
-    # stdout は保持され、非ゼロ exit だけを飲む。`|| parse_out=""` にすると corrupt 判定ファイルの
-    # .data ごと捨てて sync_revision を巻き戻す。ガード自体が要るのは、`set -e` 下で本 helper を
-    # source する呼び出し形に更新継続を依存させないため。
-    # python3 と jq の stderr は共通の tempfile へ退避する。両方を捨てると下の読み戻し不能 WARNING が
-    # 根因へ辿る唯一の経路になるため (post-tool-wm-sync.sh の同型 pipeline が
-    # "masquerading as a successful-but-empty parse" を防ぐ目的で同じ退避を行っている)。
-    # mktemp 失敗時は /dev/null へ倒し、WARNING に stderr_capture=disabled を付けて
-    # 「stderr が無かった」と「stderr を失った」を区別できるようにする。
+    # parse は corrupt 判定でも .data を埋めて exit 2 を返すため、採否は exit code ではなく stdout の
+    # 有無で決める (exit code で捨てると sync_revision が 1 へ巻き戻り版が逆行する)。`|| _parse_rc=$?`
+    # は stdout を保持したまま `set -e` 下の中断だけを防ぐ形。stderr は tempfile へ退避して WARNING に
+    # 添える (mktemp 失敗時は /dev/null + stderr_capture=disabled タグで縮退)。
     local parse_out="" _parse_rc=0 _parse_err=""
     _parse_err=$(mktemp 2>/dev/null) || _parse_err=""
     parse_out=$(python3 "$parse_script" "$local_wm" 2>"${_parse_err:-/dev/null}") || _parse_rc=$?
-    # `_jq_rc` の初期値は「未起動」を表す非数値 sentinel。`0` で初期化すると、parse_out が空で jq が
-    # 一度も起動しない経路でも WARNING が `jq rc=0` を出し、未起動の段を「起動して成功した」と断定する
-    # (下の分離コメントが避けようとしている誤誘導の鏡像)。
+    # _jq_rc の "n/a" は「jq 未起動」sentinel (0 初期化だと未起動を成功と誤表示する)。
     local parsed="" _jq_rc="n/a"
     if [ -n "$parse_out" ]; then
-      # 4 field を 1 回の jq で取り出し、python3 プロセスの追加起動を避ける。末尾の `.data` 要素数が
-      # 「carry-forward の材料が実際にあるか」の判定値 — 前 3 field は `//` 既定値を持つため、
-      # .data が空でも非空文字列になり判定には使えない。
-      # jq の rc は python3 の rc と別変数で捕捉する。同一変数に畳むと、jq が失敗した経路で
-      # WARNING が `parse rc=0` を表示し「前段は成功した」と能動的に否定して triage を誤誘導する
-      # (parse 失敗と jq 失敗は別条件なので診断も分離する)。
-      # 区切りは `@tsv` ではなく `join("\u001f")` — tab は IFS whitespace として畳まれるため、
-      # 空 field が出た瞬間に後続の列が左へずれる (peer hook 3 本が同じ理由で 0x1f を使う。
-      # post-compact.sh は「空 next_action が PR field をブランチ名で汚染した」実害を記録している)。
-      # `.errors` を同じ read に載せるのは、corrupt の**種別**が carry-forward の可否を決める入力
-      # だから (下の `_carry_block`)。clamp も jq 側の `.[0:200]` で行う — pipeline 末尾の
-      # `head -c` は上流 jq を SIGPIPE で殺し、pipefail を張る caller (pre-compact.sh /
-      # post-tool-wm-sync.sh) では巨大 errors のときだけ種別が丸ごと失われる。改行は read が
-      # 1 行しか読まないため jq 側で潰す。
+      # 4 field + corrupt 種別を 1 回の jq で取り出す。判定値は末尾の .data 要素数 (前段の field は
+      # `//` 既定値を持つため空判定に使えない)。jq の rc は python3 側と別変数で捕捉する (失敗段の
+      # 診断を混同させない)。
+      # 区切りが 0x1f なのは、tab だと IFS が空 field を畳んで列が左へずれるため。errors の
+      # clamp (200 字) と改行潰しを jq 側で行うのは、pipeline 末尾の head -c が上流 jq を SIGPIPE で
+      # 殺す経路を避けるため。corrupt の種別は carry-forward の可否を決める入力 (下の _carry_block)。
       parsed=$(printf '%s' "$parse_out" \
         | jq -r '[(.data.sync_revision // 0), (.data.pr_number // "null"), (.data.loop_count // 0), (.data | length), ((.errors // []) | join("; ") | gsub("[\n\r]"; " ") | .[0:200])] | join("\u001f")' 2>>"${_parse_err:-/dev/null}") && _jq_rc=0 || { _jq_rc=$?; parsed=""; }
     fi
@@ -230,35 +209,18 @@ update_local_work_memory() {
     if [ -n "$parsed" ]; then
       IFS=$'\x1f' read -r existing_rev existing_pr existing_loop existing_keys existing_errors <<< "$parsed"
     fi
-    # 縮退を silent に飲むと、sync_revision が 1 へ巻き戻ったことが「もともと版が無かった」と
-    # 区別できない。non-blocking は維持しつつ WARNING で観測性を確保する (下段 detail_extra awk と
-    # 同形)。**この読み戻し不能 WARNING の射程は .data 全体が空の場合に限る** — 判定が .data の
-    # 要素数 1 本なので、非必須 key だけの欠落 (例: pr_number 行だけが読めない) は parse が rc=0 を
-    # 返し .data も非空になるため、無警告で既定値へ倒れる。必須 key (schema_version / issue_number /
-    # sync_revision) の欠落は parse が corrupt を返すので、下の corrupt WARNING 側が拾う。
-    # **本 WARNING の条件には** parse の rc を使わない (rc を条件にすると、carry-forward が成功する
-    # corrupt 系統でも発火して誤報になる)。rc を条件に使うのは下の corrupt WARNING 側。
-    # 文面が断定するのは sync_revision だけに留める — pr_number / loop_count は本ブロックより後段の
-    # env override / flow-state 読み取りが最終値を決めるため、ここでは既定値化を断定できない。
+    # .data が空 = 読み戻し不能。silent に既定値へ倒すと「もともと版が無かった」と区別できないため
+    # WARNING で可視化する (non-blocking は維持。断定するのは sync_revision の再採番だけに留める)。
     if [ "$existing_keys" -eq 0 ]; then
       local _rb_tag=""
       [ -z "$_parse_err" ] && _rb_tag=" stderr_capture=disabled"
       echo "WARNING: 既存 WM から値を読み戻せませんでした ($local_wm, parse rc=$_parse_rc, jq rc=$_jq_rc${_rb_tag}) — sync_revision を 1 から採番し直します (pr_number / loop_count は env override も flow-state 読み取りも無い場合のみ既定値へ倒れます)" >&2
-      # 先頭ではなく末尾を出す。python3 の未捕捉例外は traceback の**最終行**に例外メッセージを
-      # 載せるため、`head -3` だと根因が構造的に落ちて `Traceback (most recent call last):` と
-      # フレームだけが残る。1 行 stderr の site では tail でも同じ 1 行が出る。
+      # python3 の未捕捉例外はメッセージが traceback 最終行に載るため tail で出す。
       [ -n "$_parse_err" ] && [ -s "$_parse_err" ] && tail -3 "$_parse_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     else
-      # corrupt 判定 (rc 非ゼロ) でも .data が埋まっていればここへ来る。verdict を握り潰すと
-      # 「corrupt と判定されたファイルを材料に処理を続けた」ことがどこにも残らない。上の読み戻し
-      # 不能 WARNING とは別文面にして、両者を混同せず切り分けられるようにする。
-      # 文面は発火条件が保証している事実だけに留める — 実際に carry-forward されるかは後段の
-      # env override / flow-state 読み取り次第で、この時点では断定できない。
-      # corrupt verdict は種別を問わず exit 2 に畳まれるため、rc だけでは missing_keys (carry-forward が
-      # 正当な系統) と issue_number_mismatch (.data が別 Issue のもので、carry-forward が他 Issue の
-      # pr_number を転写する系統) を切り分けられない。種別で carry-forward の可否を分ける。
-      # 種別が読めないときも止める (fail-closed) — 判別できない材料を採ると、転写が起きたかどうかを
-      # 後から知る手段が無い。同じ書き込みが issue_number をファイル名側の値へ直すため、次回の
+      # corrupt でも .data が読めればここへ来る (verdict は WARNING で可視化する)。ただし種別が
+      # issue_number_mismatch (別 Issue の .data) または判別不能なら carry-forward を止める
+      # (fail-closed) — 転写すると書き込みが issue_number をファイル名側へ直し、次回の
       # parse は valid 判定になり痕跡も消える。
       local _carry_block=0
       if [ "$_parse_rc" -ne 0 ]; then
@@ -275,16 +237,10 @@ update_local_work_memory() {
         echo "WARNING: 既存 WM は corrupt 判定 (parse rc=$_parse_rc, errors: $_corrupt_reasons) ですが .data が読めたため処理を継続しました ($local_wm)${_block_tag}" >&2
       fi
       if [[ "$existing_rev" =~ ^[0-9]+$ ]]; then sync_rev=$((existing_rev + 1)); fi
-      # carry-forward は env override が無いときだけ発火させる。未設定判定に `-z` を使うのは
-      # 上の初期化が `${WM_PR_NUMBER:-null}` 形式で「空文字 = 未設定」と扱っているため
-      # (`${VAR+set}` では空文字セットの扱いが初期化側と食い違う)。
-      # `0` は flow-state が「PR 未作成」を表すのに使う sentinel で、skill 側が `--pr 0` を書き
-      # (全数は `grep -rn -- "--pr 0" plugins/rite/skills/`)、`WM_READ_FROM_FLOW_STATE` 経路が
-      # それを WM へ運ぶ。carry-forward がこれを実値として拾うと、work-memory-format.md が
-      # `null if not created` と定義する状態を表現できないまま `pr_number: 0` が恒久化する
-      # (carry-forward 導入前は次の通常更新で `null` へ戻っていた)。実 PR 番号が 0 になることは
-      # ないので AC-1 の保持対象は失わない。
-      # loop_count 側に同じ除外を置かないのは、そちらの `0` が「まだ 1 周もしていない」という実値だから。
+      # 未設定判定は `-z` (初期化の `${VAR:-null}` 形式が「空文字 = 未設定」と扱うのと揃える)。
+      # pr_number の `0` は flow-state の「PR 未作成」sentinel なので実値として拾わない (拾うと
+      # `null if not created` の状態が表現できず 0 が恒久化する)。loop_count の `0` は
+      # 「まだ 1 周もしていない」実値なので除外しない。
       if [ "$_carry_block" -eq 0 ] && [ -z "${WM_PR_NUMBER:-}" ] && [ -n "$existing_pr" ] && [ "$existing_pr" != "0" ]; then
         pr_num="$existing_pr"
       fi
