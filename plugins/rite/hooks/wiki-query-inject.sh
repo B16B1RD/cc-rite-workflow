@@ -374,8 +374,8 @@ candidates=$(printf '%s\n' "$index_content" | awk '
     }
     return out rest
   }
-  # Both halves anchor on the `](` that actually separates text from target, and
-  # both use a greedy `.*` for the text. The obvious forms break on real titles:
+  # Both halves anchor on the `](` that actually separates text from target. The
+  # obvious forms break on real titles:
   # a bare /\([^)]*\)/ takes the LEFTMOST parenthesis group, so a title carrying
   # its own parentheses ("... (assert_not_grep) は…") yields a title fragment as
   # the path (54 of 362 live rows), and /\[[^]]*\]/ stops at the first `]`, so a
@@ -418,9 +418,13 @@ candidates=$(printf '%s\n' "$index_content" | awk '
     line = protect_code_span_pipes(line)
     sub(/^[[:space:]]*\|/, "", line); sub(/\|[[:space:]]*$/, "", line)
     n = split(line, cells, "|")
-    if (n < 3) next                                       # not the 5-column catalog shape
+    # Route through emit() rather than `next`: a row that carries a
+    # registration link but collapsed below 3 cells is a parse failure, and
+    # skipping it here would make it the one shape that vanishes with neither
+    # stdout nor a warning.
+    if (n < 3) { emit("", "", ""); next }
     title = ""; path = ""
-    if (match(cells[1], /\[.*\]\([^)]*\)/)) {
+    if (match(cells[1], /\[([^]]|\][^(])*\]\([^)]*\)/)) {
       link = substr(cells[1], RSTART, RLENGTH)
       title = link_text(link)
       path = link_target(link)
@@ -431,7 +435,7 @@ candidates=$(printf '%s\n' "$index_content" | awk '
   /^[[:space:]]*[*-][[:space:]]+\[/ {
     line = $0
     title = ""; path = ""; desc = ""
-    if (match(line, /\[.*\]\([^)]*\)/)) {
+    if (match(line, /\[([^]]|\][^(])*\]\([^)]*\)/)) {
       link = substr(line, RSTART, RLENGTH)
       rest = substr(line, RSTART + RLENGTH)   # text after the markdown link
       title = link_text(link)
@@ -519,6 +523,17 @@ read_page_meta() {
 # title + domain + description for each keyword. Weight by confidence.
 IFS=',' read -r -a kw_array <<< "$KEYWORDS"
 
+# Normalize the keywords once, not once per candidate. Pass 1 now yields the
+# whole catalog (361 candidates on the live wiki, up from 0 before table support),
+# so anything inside the loop is multiplied by the corpus size: the per-candidate
+# `sed`+`tr` alone cost 7,220 subprocesses for 10 keywords, and the query went
+# from 0.04 s to 13.2 s.
+kw_norm=()
+for kw in "${kw_array[@]}"; do
+  kw_trim=$(printf '%s' "$kw" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
+  [[ -n "$kw_trim" ]] && kw_norm+=("$kw_trim")
+done
+
 # Build scored list: "score<US>title<US>path<US>domain<US>summary<US>updated<US>confidence"
 # (`summary` slot carries the OKF index description, keeping the render section
 # below unchanged.)
@@ -536,22 +551,14 @@ while IFS=$'\x1f' read -r title path description; do
   [[ -z "$confidence" ]] && confidence="medium"  # default mirrors page-template.md
   haystack=$(printf '%s %s %s' "$title" "$domain" "$description" | tr '[:upper:]' '[:lower:]')
   raw_score=0
-  for kw in "${kw_array[@]}"; do
-    kw_trim=$(printf '%s' "$kw" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
-    [[ -z "$kw_trim" ]] && continue
-    # Count occurrences (portable: awk)
-    count=$(printf '%s' "$haystack" | awk -v k="$kw_trim" '
-      BEGIN { n = 0 }
-      {
-        s = $0
-        while ((i = index(s, k)) > 0) { n++; s = substr(s, i + length(k)) }
-      }
-      END { print n }
-    ')
-    # Defensive default: an awk failure returns empty under `set -u` without
-    # `-e`, and the following arithmetic would break. Normalize empty to 0.
-    count=${count:-0}
-    raw_score=$((raw_score + count))
+  for kw_trim in "${kw_norm[@]}"; do
+    # Counted in-shell rather than by spawning awk per keyword per candidate:
+    # same substring semantics, no subprocess in the hot loop.
+    rest="$haystack"
+    while [[ "$rest" == *"$kw_trim"* ]]; do
+      raw_score=$((raw_score + 1))
+      rest="${rest#*"$kw_trim"}"
+    done
   done
 
   # Confidence weight (integer math ×10 to avoid floats)

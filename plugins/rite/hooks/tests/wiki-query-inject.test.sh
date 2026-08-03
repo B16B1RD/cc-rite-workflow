@@ -535,6 +535,38 @@ else
   fail "TC-15 size=$idx_size (rc=$QRC out=$QOUT err=$QERR)"
 fi
 
+# --- TC-16: two links in the page cell — the FIRST one wins ---
+# TC-11 puts the second link in the summary cell, which `match(cells[1], ...)`
+# never sees, so it passes even if the extraction goes greedy. This one puts
+# both links in the page cell, which is the only shape that pins the contract
+# the header comment and the wiki-ingest docs both state.
+echo "=== TC-16: ページ列に 2 リンクがある行は最初のリンクを候補にする ==="
+INDEX_16='# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [First Link](pages/patterns/first.md)（cf. [Second Link](pages/heuristics/second.md)） | patterns | flapdoodle の 2 リンク行 | 2026-06-15T10:00:00+09:00 | high |
+'
+repo=$(make_query_sandbox tc16 "$INDEX_16")
+write_page "$repo" pages/patterns/first.md '---
+title: "First Link"
+domain: patterns
+description: "flapdoodle の 2 リンク行"
+updated: "2026-06-15"
+confidence: high
+---'
+# pages/heuristics/second.md は作らない（2 つ目に解決したら stale WARNING で露見する）
+run_query "$repo" --keywords "flapdoodle" --format compact
+if [ "$QRC" -eq 0 ] \
+   && printf '%s' "$QOUT" | grep -q 'First Link' \
+   && ! printf '%s' "$QERR" | grep -q 'second.md'; then
+  pass "TC-16 ページ列の最初のリンクが候補になる (2 つ目を読みに行かない)"
+else
+  fail "TC-16 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
