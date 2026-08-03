@@ -36,10 +36,10 @@
 #                             (default: carried forward from the existing WM, else 0. Unlike
 #                             WM_PR_NUMBER there is no 0 exclusion — 0 is a real value here.)
 #
-#   Numeric validation (applies to both fields, whichever path supplied the value):
-#     a value that is not a bare integer is demoted to the YAML literal null before it is written,
-#     with a WARNING on stderr. This is the only outcome besides the four listed above; docs that
-#     delegate to this header as the SoT rely on it being stated here.
+#   Both fields pass through numeric validation before being written, whichever path above
+#   supplied the value: a value containing a non-digit character is demoted to the YAML literal
+#   null with a WARNING on stderr; an empty value is written as null without a WARNING.
+#
 #   WM_REQUIRE_FLOW_STATE   - If "true", skip if flow-state phase cannot be resolved via
 #                             flow-state.sh (per-session and legacy file both absent, or phase
 #                             is null/empty). Uses flow-state.sh under the hood so schema_version=2
@@ -242,12 +242,16 @@ update_local_work_memory() {
         # 追加の python3 起動なしで出せる。**@tsv の field には足さない** — IFS=$'\t' は tab を IFS
         # whitespace として扱うため、空 field が潰れて existing_pr / existing_loop / existing_keys が
         # 1 つずつずれる。corrupt 経路は稀なので jq 1 プロセスの追加で受ける。
-        # .errors は corrupt ファイル由来の文字列を補間するため neutralize_ctrl を通す (生 echo は
-        # _sanitize_yaml_value が塞いでいる制御文字経路を再び開く)。
+        # .errors は corrupt ファイル由来。clamp + 中和は hooks の byte 指向 canonical idiom で通す
+        # (静的 parity: tests/diag-snippet-neutralize-parity.test.sh TC-3)。clamp が要るのは
+        # parse.py の issue_number_mismatch が frontmatter の値をそのまま埋め込むため — issue_number に
+        # 200,000 字を置いた fixture で、改行を含まないこの WARNING 1 行が 200,326 バイトになる (実測)。
+        # jq は `-r` にしない: 末尾改行を idiom 中の tr が空白へ変え `filename=687 )` が残る。
         local _corrupt_reasons
-        _corrupt_reasons=$(printf '%s' "$parse_out" | jq -r '.errors // [] | join("; ")' 2>/dev/null) || _corrupt_reasons=""
+        _corrupt_reasons=$(printf '%s' "$parse_out" | jq -j '.errors // [] | join("; ")' 2>/dev/null \
+          | head -c 200 | tr '\n' ' ' | neutralize_ctrl --c0-only) || _corrupt_reasons=""
         [ -n "$_corrupt_reasons" ] || _corrupt_reasons="(種別不明)"
-        echo "WARNING: 既存 WM は corrupt 判定 (parse rc=$_parse_rc, errors: $(printf '%s' "$_corrupt_reasons" | neutralize_ctrl)) ですが .data が読めたため処理を継続しました ($local_wm) — 読み戻した値が実際に採用されるかは env override / flow-state 読み取りの有無で決まります" >&2
+        echo "WARNING: 既存 WM は corrupt 判定 (parse rc=$_parse_rc, errors: $_corrupt_reasons) ですが .data が読めたため処理を継続しました ($local_wm) — 読み戻した値が実際に採用されるかは env override / flow-state 読み取りの有無で決まります" >&2
       fi
       if [[ "$existing_rev" =~ ^[0-9]+$ ]]; then sync_rev=$((existing_rev + 1)); fi
       # carry-forward は env override が無いときだけ発火させる。未設定判定に `-z` を使うのは

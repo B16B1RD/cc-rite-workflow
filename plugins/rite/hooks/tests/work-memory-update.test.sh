@@ -388,7 +388,14 @@ assert_contains "T-04.3: loop_count=9 (env が既存ファイル値 3 を overri
 
 # ─── T-05: WM_READ_FROM_FLOW_STATE 経路の非回帰 ──────────────────
 # carry-forward ブロックより後段の flow-state 上書きが最終値である契約 (優先順位 1 位) を守る。
-echo "T-05: WM_READ_FROM_FLOW_STATE=true では flow-state 値が既存ファイル値より優先される"
+# 優先順位 1 位は敗者を 2 つ持つ (env override / 既存ファイル値) が、1 本の走行では両方を同時に
+# 立てられない。carry-forward のガードが `-z "${WM_PR_NUMBER:-}"` なので、env override を渡した
+# 走行では carry-forward がそもそも発火せず、既存ファイル値は候補にすらならない。よって 2 本走らせる。
+# 走行 1 は flow-state 読取を carry-forward ガードと同型の「env 未設定時のみ」へ縮退させる変異で
+# Red になり、走行 2 はその変異では Green のまま素通りする (実測確認済み)。
+# TC-3 も flow-state 読取を通るが、既存 WM を持たない fixture なので carry-forward との競合が
+# 起きない。走行 2 はこのスイートで唯一「材料を持つ carry-forward と flow-state が競合する」入力。
+echo "T-05: WM_READ_FROM_FLOW_STATE=true では flow-state 値が既存ファイル値・env override の双方に優先される"
 SBX9=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX9")
 write_config "$SBX9"
 SID9="99999999-9999-9999-9999-999999999999"
@@ -397,13 +404,10 @@ write_per_session "$SBX9" "$SID9" '{"phase":"lint","next_action":"continue","pr_
 run_update "$SBX9" \
   WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
-  WM_PR_NUMBER="123" >/dev/null 2>&1 || true
+  WM_PR_NUMBER="123" WM_LOOP_COUNT="4" >/dev/null 2>&1 || true
 WM_FILE9="$SBX9/.rite-work-memory/issue-687.md"
 
-# env override を同時に渡す。渡さないと「flow-state > 既存ファイル値」しか固定できず、
-# 優先順位 1 > 2 (flow-state が env override にも勝つ) を反転させる変更 —
-# :260-263 の無条件上書きを、直上の carry-forward ガードと同じ「env 未設定時のみ」形へ
-# 揃える方向の編集 — が hooks スイート全体を素通りする。
+# 走行 1: env override 有り
 if run_update "$SBX9" \
   WM_SOURCE="lint" WM_PHASE="lint" WM_PHASE_DETAIL="quality check" \
   WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Lint body." WM_ISSUE_NUMBER="687" \
@@ -413,10 +417,33 @@ if run_update "$SBX9" \
 else
   rc9=$?
 fi
-assert_eq "T-05.1: return 0" "0" "$rc9"
+assert_eq "T-05.1: return 0 (env override 有り)" "0" "$rc9"
 body9=$(cat "$WM_FILE9" 2>/dev/null || echo "")
-assert_contains "T-05.2: pr_number=789 (flow-state 値が既存ファイル値 123 と env override 555 の双方に勝つ、AC-5)" "pr_number: 789" "$body9"
-assert_contains "T-05.3: loop_count=7 (flow-state 値が既存ファイル値と env override 55 の双方に勝つ、AC-5)" "loop_count: 7" "$body9"
+assert_contains "T-05.2: pr_number=789 (flow-state 値が env override 555 に勝つ、AC-5)" "pr_number: 789" "$body9"
+assert_contains "T-05.3: loop_count=7 (flow-state 値が env override 55 に勝つ、AC-5)" "loop_count: 7" "$body9"
+
+# 走行 2: env override 無し (carry-forward が材料を持つ状態で flow-state が勝つことを固定する)
+SBX9B=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX9B")
+write_config "$SBX9B"
+SID9B="99999999-9999-9999-9999-99999999999b"
+write_session_id "$SBX9B" "$SID9B"
+write_per_session "$SBX9B" "$SID9B" '{"phase":"lint","next_action":"continue","pr_number":789,"loop_count":7,"active":true}'
+run_update "$SBX9B" \
+  WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="123" WM_LOOP_COUNT="4" >/dev/null 2>&1 || true
+if run_update "$SBX9B" \
+  WM_SOURCE="lint" WM_PHASE="lint" WM_PHASE_DETAIL="quality check" \
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Lint body." WM_ISSUE_NUMBER="687" \
+  WM_READ_FROM_FLOW_STATE="true" >/dev/null 2>&1; then
+  rc9b=0
+else
+  rc9b=$?
+fi
+assert_eq "T-05.4: return 0 (env override 無し)" "0" "$rc9b"
+body9b=$(cat "$SBX9B/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
+assert_contains "T-05.5: pr_number=789 (flow-state 値が既存ファイル値 123 に勝つ、AC-5)" "pr_number: 789" "$body9b"
+assert_contains "T-05.6: loop_count=7 (flow-state 値が既存ファイル値 4 に勝つ、AC-5)" "loop_count: 7" "$body9b"
 
 # ─── T-06: 改竄値の carry-forward は null へ降格し WARNING が出る ──
 # carry-forward が _validate_numeric_yaml_value を迂回しないこと (YAML injection 防御の維持)。
@@ -507,7 +534,11 @@ assert_contains "T-08.3: pr_number=123 が carry-forward される" "pr_number: 
 assert_contains "T-08.4: loop_count=4 が carry-forward される" "loop_count: 4" "$body12"
 warn12=$(printf '%s' "$err12" | grep -c "$WARN_CARRY_FWD") || true
 assert_eq "T-08.5: carry-forward 成功時は読み戻し不能 WARNING を出さない (誤報しない)" "0" "$warn12"
-assert_contains "T-08.6: corrupt 判定からの carry-forward は別 WARNING で可視化される" "$WARN_CORRUPT_FWD" "$err12"
+# 照合 literal に errors 本文を含める。WARNING の文言だけを見ると、corrupt の**種別**を落とす変異
+# (errors 添付の撤去 / jq 失敗時の "(種別不明)" への恒久縮退) が素通りする。種別が出ないと、
+# 人間は「どの corrupt 判定から carry-forward したのか」を WARNING 単体から特定できない。
+assert_contains "T-08.6: corrupt 判定からの carry-forward は corrupt 種別つきの WARNING で可視化される" \
+  "$WARN_CORRUPT_FWD (parse rc=2, errors: issue_number_mismatch: frontmatter=999, filename=687)" "$err12"
 
 # ─── T-09: pr-create が WM_PR_NUMBER を seed する静的 pin ─────────
 # carry-forward は「保持する」だけで値を生成しない。seed 行が消えると pr_number は
@@ -518,7 +549,8 @@ PR_CREATE_MD="$PLUGIN_ROOT/skills/pr-create/SKILL.md"
 assert_eq "T-09.0: pr-create/SKILL.md が存在する (前提確認)" "yes" \
   "$([ -f "$PR_CREATE_MD" ] && echo yes || echo no)"
 pr_create_body=$(cat "$PR_CREATE_MD" 2>/dev/null || echo "")
-# 照合 literal に行継続を含める。継続が落ちると 828-834 行が「コマンドを伴わない変数代入」
+# 照合 literal に行継続を含める。継続が落ちると Step 1 冒頭 (WM_SOURCE="create") から本行までの
+# WM_* 代入群が「コマンドを伴わない変数代入」
 # (= 非 export のシェル変数) に退化し、次行の bash local-wm-update.sh が WM_* を 1 つも受け取らずに
 # 実行される — 同行末尾の 2>/dev/null と || true が握り潰すため WM 更新全体が silent に no-op 化する。
 # literal から継続を落とすと、行削除の drift は捕捉できるが 1 文字削除の drift は素通りする。
