@@ -283,8 +283,22 @@ bad_dir="$SANDBOX/bad"; mkdir -p "$bad_dir"
 make_result "$bad_dir" 605 01 2
 make_result "$bad_dir" 605 02 3
 printf 'not json at all' > "$bad_dir/605-20260101000003.json"
-bash "$SCRIPT" --pr 605 --cycle-count 3 --results-dir "$bad_dir" > "$OUT" 2>/dev/null
+bash "$SCRIPT" --pr 605 --cycle-count 3 --results-dir "$bad_dir" > "$OUT" 2>"$SANDBOX/bad-err.txt"
 assert_grep "T-06f: 破損 JSON は json_parse_failure で不発火" "$OUT" "reason=json_parse_failure"
+# `jq empty` 側の redirect も pin する。集計 filter 側 (T-06p) だけを pin すると、こちらの
+# `2>"${_diag:-/dev/null}"` を `2>/dev/null` へ戻す改変が緑のまま通る (同形 site の片側だけ pin する穴)。
+assert_grep "T-06f: 破損 JSON の jq 診断本文が stderr へ届く" "$SANDBOX/bad-err.txt" "jq: (parse )?error"
+
+# top-level が object でない JSON。`jq empty` は通過し、フィールド抽出の jq だけが rc 非 0 で落ちる。
+# 抽出側の rc を検査せず空値からの推測だけで分類すると、jq が出した唯一の原因文 (Cannot index
+# array …) が消えたまま「未知の schema_version=''」という実態とずれた理由が残る。
+arr_dir="$SANDBOX/toplevel-array"; mkdir -p "$arr_dir"
+make_result "$arr_dir" 617 01 2
+make_result "$arr_dir" 617 02 1
+printf '[1,2]' > "$arr_dir/617-20260101000003.json"
+bash "$SCRIPT" --pr 617 --cycle-count 3 --results-dir "$arr_dir" > "$OUT" 2>"$SANDBOX/arr-err.txt"
+assert_grep "T-06r: フィールド抽出 jq の失敗は json_parse_failure で不発火" "$OUT" "reason=json_parse_failure"
+assert_grep "T-06r: 抽出 jq の診断本文が stderr へ届く (空値からの推測で握り潰さない)" "$SANDBOX/arr-err.txt" "jq: error"
 
 ver_dir="$SANDBOX/ver"; mkdir -p "$ver_dir"
 make_result "$ver_dir" 606 01 2
@@ -336,6 +350,27 @@ bash "$SCRIPT" --pr 611 --cycle-count 3 --results-dir "$legacy_dir" > "$OUT" 2>/
 assert_grep "T-06l: schema_version 1.0 (MAJOR.MINOR) を accept する" "$OUT" "trend=6,3,1"
 assert_not_grep "T-06l: 1.0 を未知 schema として弾かない" "$OUT" "reason=schema_version_unknown"
 
+# 上の T-06l fixture は make_result 由来で scope を必ず持つため、`has("scope")` が真になり
+# 「1.0 系だけが severity ベース default mapping へ落ちる」分岐を 1 度も評価しない。SoT
+# (review-result-schema.md) は 1.0 / 1.0.0 を scope 欠落と定義しているので、その実形状を別に置く。
+# これが無いと default mapping の適用範囲を 1.1.0 側へ広げる改変が緑のまま通り、legacy run に
+# 対する発散検出が丸ごと無効化される (1.0.0 側は T-06k が同じ形で pin 済み)。
+legacy_noscope_dir="$SANDBOX/schema-legacy-minor-noscope"; mkdir -p "$legacy_noscope_dir"
+for legacy_seq in 01 02 03; do
+  jq -n --arg seq "$legacy_seq" '{
+    schema_version: "1.0", pr_number: 612,
+    timestamp: "2026-01-01T00:00:00+09:00", commit_sha: "deadbeef",
+    overall_assessment: "fix-needed",
+    findings: [ { id: "F-01", reviewer: "code-quality-reviewer", category: "code_quality",
+                  severity: "HIGH", file: "a.ts", line: 1,
+                  description: "d", suggestion: "s", status: "open" } ],
+    non_blocking_findings: []
+  }' > "$legacy_noscope_dir/612-202601010000${legacy_seq}.json"
+done
+bash "$SCRIPT" --pr 612 --cycle-count 3 --results-dir "$legacy_noscope_dir" > "$OUT" 2>/dev/null
+assert_grep "T-06q: scope 欠落の 1.0 は severity ベース default mapping で数える" "$OUT" "trend=1,1,1;"
+assert_not_grep "T-06q: scope 欠落の 1.0 を enum 違反として弾かない" "$OUT" "reason=scope_enum_violation"
+
 # 診断へ埋め込む JSON 由来値の制御文字中和 (_nz)。中和が無いと schema_version に仕込んだ改行が
 # WARNING を 2 行に割り、2 行目が独立した診断行に偽装できる (呼び出し側 iterate は helper の
 # stderr を capture せず素通しさせる設計のため端末まで届く)。中和を外しても緑のままだと
@@ -365,15 +400,15 @@ assert_grep "T-06h: pr_number 不一致は pr_number_mismatch で不発火" "$OU
 # しても緑のままになる穴を塞ぐ) と、診断が対応する WARNING の**後**に出ること (継続行規約 —
 # 前に出すと直前の別 WARNING の継続行位置へ着地して原因が誤帰属する) を pin する。
 bcf_dir="$SANDBOX/blocking-count-failed"; mkdir -p "$bcf_dir"
-make_result "$bcf_dir" 608 01 2
-make_result "$bcf_dir" 608 02 1
-jq '.findings = [1, 2]' "$bcf_dir/608-20260101000002.json" > "$bcf_dir/608-20260101000003.json"
-bash "$SCRIPT" --pr 608 --cycle-count 3 --results-dir "$bcf_dir" > "$OUT" 2>"$SANDBOX/bcf-err.txt"
-assert_grep "T-06b: 集計 filter の失敗は blocking_count_failed で不発火" "$OUT" "reason=blocking_count_failed"
-assert_grep "T-06b: jq の診断本文が stderr へ届く (抑止を外した意図の pin)" "$SANDBOX/bcf-err.txt" "jq: error"
+make_result "$bcf_dir" 615 01 2
+make_result "$bcf_dir" 615 02 1
+jq '.findings = [1, 2]' "$bcf_dir/615-20260101000002.json" > "$bcf_dir/615-20260101000003.json"
+bash "$SCRIPT" --pr 615 --cycle-count 3 --results-dir "$bcf_dir" > "$OUT" 2>"$SANDBOX/bcf-err.txt"
+assert_grep "T-06p: 集計 filter の失敗は blocking_count_failed で不発火" "$OUT" "reason=blocking_count_failed"
+assert_grep "T-06p: jq の診断本文が stderr へ届く (抑止を外した意図の pin)" "$SANDBOX/bcf-err.txt" "jq: error"
 bcf_warn_line=$(grep -n '^WARNING: blocking 件数を算出できません' "$SANDBOX/bcf-err.txt" | head -1 | cut -d: -f1)
 bcf_diag_line=$(grep -n 'jq: error' "$SANDBOX/bcf-err.txt" | head -1 | cut -d: -f1)
-assert "T-06b: 診断は対応する WARNING の後に出る (継続行規約)" "yes" \
+assert "T-06p: 診断は対応する WARNING の後に出る (継続行規約)" "yes" \
   "$([ -n "$bcf_warn_line" ] && [ -n "$bcf_diag_line" ] && [ "$bcf_diag_line" -gt "$bcf_warn_line" ] && echo yes || echo no)"
 
 # ---------------------------------------------------------------------------
@@ -591,6 +626,47 @@ assert "非数値 --cycle-count は exit 2" "2" "$rc"
 
 bash "$SCRIPT" --pr 1 --cycle-count 3 --results-dir "$SANDBOX/nope" >/dev/null 2>&1; rc=$?
 assert "データ条件 (dir 不在) は exit 0 で判定不能を返す" "0" "$rc"
+
+# signal 中断の契約 (signal 別 trap)。1 行形 `trap '...' EXIT INT TERM HUP` は INT/TERM/HUP の
+# action に `exit` を持たないため bash が signal を consume し、script が**継続実行して exit 0 で
+# 終わる** — 途中まで読んだ切り詰め列の verdict や、殺された jq に由来する偽 reason を rc=0 で
+# 返す。呼び出し側は rc だけで縮退を決めるので、この退行は「Ctrl-C 中断が正常な判定として通る」
+# 形で顕在化する。rc と「marker を出さないこと」の両方を pin しないと片側だけの改変が通る。
+# 到達は時間ではなく jq shim で決定論的に作る。shim が n 回目の呼び出しで親 (script 本体) へ
+# signal を送ってから実 jq を exec するので、script は集計ループの最中に必ず signal を受ける
+# (background job にすると非対話シェルが SIGINT を SIG_IGN で継承させ trap で上書きできない —
+# foreground で走らせるのが要点)。
+sig_dir="$SANDBOX/signal"; mkdir -p "$sig_dir"
+for sig_seq in 01 02 03 04 05; do make_result "$sig_dir" 616 "$sig_seq" 1; done
+sig_bin="$SANDBOX/sigbin"; mkdir -p "$sig_bin"
+sig_real_jq=$(command -v jq)
+# 送り先は PPID ではなく pidfile 経由の実 PID。`$(jq ...)` はコマンド置換の子で走るため、
+# PPID だと呼び出し位置ごとに別プロセスを指してしまう (別プロセスを殺すと signal が漏れて
+# テストハーネス側が落ちる)。集計ループ最初の `jq empty` は trap 設置後なので AT=1 で足りる。
+cat > "$sig_bin/jq" <<'JQ_SHIM_EOF'
+#!/usr/bin/env bash
+_n=$(cat "$RITE_SIG_COUNT" 2>/dev/null || echo 0)
+_n=$((_n + 1)); printf '%s\n' "$_n" > "$RITE_SIG_COUNT"
+if [ "$_n" -eq "$RITE_SIG_AT" ]; then
+  _target=$(cat "$RITE_SIG_PIDFILE" 2>/dev/null)
+  case "$_target" in ''|*[!0-9]*) : ;; *) kill -"$RITE_SIG_NAME" "$_target" 2>/dev/null ;; esac
+fi
+exec "$RITE_SIG_REAL_JQ" "$@"
+JQ_SHIM_EOF
+chmod +x "$sig_bin/jq"
+for sig_spec in "INT:130" "TERM:143" "HUP:129"; do
+  sig_name="${sig_spec%%:*}"; sig_want="${sig_spec##*:}"
+  : > "$SANDBOX/sig-count.txt"; : > "$SANDBOX/sig-pid.txt"
+  RITE_SIG_COUNT="$SANDBOX/sig-count.txt" RITE_SIG_AT=1 RITE_SIG_NAME="$sig_name" \
+    RITE_SIG_PIDFILE="$SANDBOX/sig-pid.txt" RITE_SIG_REAL_JQ="$sig_real_jq" PATH="$sig_bin:$PATH" \
+    bash -c 'printf "%s\n" "$$" > "$1"; shift; exec bash "$@"' _ "$SANDBOX/sig-pid.txt" \
+      "$SCRIPT" --pr 616 --cycle-count 5 --results-dir "$sig_dir" \
+    > "$SANDBOX/sig-out.txt" 2>/dev/null
+  sig_rc=$?
+  assert "signal 中断: SIG$sig_name は exit $sig_want で終わる (1 行 trap 形では 0 になる)" "$sig_want" "$sig_rc"
+  assert "signal 中断: SIG$sig_name では verdict marker を出さない" "0" \
+    "$(grep -c 'TREND_DIVERGENCE=' "$SANDBOX/sig-out.txt" | tr -d '[:space:]')"
+done
 
 # ---------------------------------------------------------------------------
 # 実 fixture (scripts/tests/fixtures/pr-2070) に対する回帰

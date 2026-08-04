@@ -24,7 +24,7 @@
 #   なり、発散しているループも上限まで燃やしてしまう (どちらも実測されている — 下記 backtest の
 #   トラジェクトリがその記録)。「品質を予算で縛らない・無駄は排除する」(CLAUDE.md プロジェクト
 #   原則) に従い、切るべきは発散 (無駄) であって収束に向かう実サイクルではない。
-#   max_review_cycles は遠い backstop として存置する。
+#   max_review_cycles は backstop として存置する (既定 5 では収束中の run にも届く。既定値は未決)。
 #
 # 判定式 (定数。窓幅も閾値も config キーにしない — 調整の実需が観測されてから設定化する
 # = no_speculative_structure):
@@ -358,7 +358,12 @@ for _f in "${_run_files[@]+"${_run_files[@]}"}"; do
     _undecidable json_parse_failure "レビュー結果 JSON が parse できません: $(_nz "$_f")"
   fi
 
-  _sv=$(jq -r '.schema_version // ""' "$_f" 2>/dev/null)
+  # rc も stderr も捨てない (同一ループの `jq empty` / 集計 filter と同形)。空値からの推測だけで
+  # schema_version_unknown へ落とすと、jq が出した唯一の原因文が消える — header が「jq の診断本文を
+  # 捨てない」と宣言している当の原則に反する。
+  if ! _sv=$(jq -r '.schema_version // ""' "$_f" 2>"${_diag:-/dev/null}"); then
+    _undecidable json_parse_failure "schema_version を読み出せません: $(_nz "$_f")"
+  fi
   case "$_sv" in
     "1.0.0"|"1.0"|"1.1.0") : ;;
     *) _undecidable schema_version_unknown "未知の schema_version='$(_nz "$_sv")': $(_nz "$_f")" ;;
@@ -366,7 +371,9 @@ for _f in "${_run_files[@]+"${_run_files[@]}"}"; do
 
   # ファイル名 prefix と JSON の pr_number の一致 (cross-field invariant #1。
   # SoT: references/review-result-schema.md §Cross-field invariants)。手動 rename でのみ発火しうる。
-  _json_pr=$(jq -r '.pr_number // ""' "$_f" 2>/dev/null)
+  if ! _json_pr=$(jq -r '.pr_number // ""' "$_f" 2>"${_diag:-/dev/null}"); then
+    _undecidable json_parse_failure "pr_number を読み出せません: $(_nz "$_f")"
+  fi
   if [ "$_json_pr" != "$pr_number" ]; then
     _undecidable pr_number_mismatch "ファイル名の PR 番号と JSON の pr_number が不一致 (file=$pr_number json=$(_nz "$_json_pr")): $(_nz "$_f")"
   fi
@@ -396,11 +403,10 @@ for _f in "${_run_files[@]+"${_run_files[@]}"}"; do
 
   _n=${_resolved%% *}
   _unresolved=${_resolved##* }
+  # `_n` と `_unresolved` は同一 jq 出力からの split なので、jq が落ちれば両方空になる。
+  # 片方だけ検査すれば足りる (`_unresolved` 側にも同じ case を置くと到達不能な分岐になる)。
   case "$_n" in
     ''|*[!0-9]*) _undecidable blocking_count_failed "blocking 件数を算出できません: $(_nz "$_f")" ;;
-  esac
-  case "$_unresolved" in
-    ''|*[!0-9]*) _undecidable blocking_count_failed "scope 解決結果を算出できません: $(_nz "$_f")" ;;
   esac
   if [ "$_unresolved" -gt 0 ]; then
     _undecidable scope_enum_violation \
