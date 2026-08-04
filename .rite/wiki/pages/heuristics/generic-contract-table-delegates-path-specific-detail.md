@@ -4,11 +4,13 @@ title: "汎用契約の表に経路固有の詳細を書かず下位節へ委譲
 domain: "heuristics"
 description: "複数の呼び出し元が参照する汎用契約の定義表へ、特定経路の reason 集合・exit code・ステップ番号を書き込むと、同じファイルの数行下にある詳細節が明示的に否定する主張を同時に複数導入する。行を sibling と同じ抽象度に戻し詳細を下位節へ委譲すると 1 編集で解ける。ただし『下記◯◯を参照』と書いた瞬間、委譲先の網羅性の欠落が初めて load-bearing になるため、委譲を書いたら委譲先も同時に点検する。"
 created: "2026-08-04T19:55:00+09:00"
-updated: "2026-08-04T19:55:00+09:00"
+updated: "2026-08-04T20:40:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260804T104340Z-pr-2104.md"
-tags: ["abstraction-level", "delegation", "canonical-contract", "sibling-parity", "defined-term", "spec-implementation-drift"]
+  - type: "reviews"
+    ref: "raw/reviews/20260804T113022Z-pr-2106.md"
+tags: ["abstraction-level", "delegation", "canonical-contract", "sibling-parity", "defined-term", "spec-implementation-drift", "relative-reference", "causal-attribution"]
 confidence: medium
 ---
 
@@ -52,6 +54,14 @@ confidence: medium
 
 仕様（Issue body）と repo 記述の両方を直す作業では、片方だけ直して伝播漏れが残った。cycle 1 の指摘を repo 側で直し、同一文言が Issue body 2 件に逐語で残っていたことに cycle 2 で気付いた。**同一文言の grep を両面で行う。**
 
+### 同じ形は「修飾語を N 箇所へ展開する」作業でも出る
+
+同一の修飾を複数箇所へ展開する docs 作業でも、機構の詳細をどこに置くかで同型の失敗が出た。2 サイクル連続で「修飾を足すたびに別種の不正確さが入る」形になり、収束したのは短い箇所では**上位概念**で述べ、機構の内訳を **SoT ポインタを持つ 1 箇所にだけ**書いた版だった。結果として文字数も減った。
+
+- **同名概念が近傍に複数あるとき、「see below」型の相対参照は最も近い誤答へ誘導する。** 修飾の目的が「2 種類の同名概念を取り違えさせない」ことだったのに、追記した相対参照の直下に現れるのは**別機構**の同名概念で、参照が目的と逆方向に働いた。既存の解決可能なアンカー idiom が同一ファイルにあるなら必ずそれに揃える（この事例では同じテーブルの 2 行下が既に `see [X § Y](#anchor)` を使っていた）
+- **「〜されたもの」という原因帰属は、経路が 1 つであることを暗黙に主張する。** 残留する非 blocking 指摘を「ゲートが降格したもの」と書いたが、実体は 2 経路（ゲートが降格して別配列へ移送する分と、ゲート対象外でそのまま残る分）で、正常終了時に実際に残るのは後者だった。存在主張としては偽ではないが、読者が誤った機構に帰属させる。経路が複数あるなら上位概念で述べるほうが短く、実装変更にも強い
+- **N 箇所へ展開する作業では、機構の詳細を全箇所に書くと N 個の drift site ができる。** 詳細は SoT ポインタを持つ 1 箇所へ集約し、他は上位概念で済ませる
+
 ## 関連ページ
 
 - [SoT-reviewer 表現 drift: pos/neg 方向の差で派生記述が silent drift する](../anti-patterns/sot-reviewer-expression-drift.md)
@@ -61,3 +71,4 @@ confidence: medium
 ## ソース
 
 - [PR #2104 review results](../../raw/reviews/20260804T104340Z-pr-2104.md)
+- [PR #2106 review results](../../raw/reviews/20260804T113022Z-pr-2106.md)
