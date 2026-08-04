@@ -91,8 +91,10 @@
 #   cycle_count は run 境界の**決定**には使わないが、**過剰取り込みの検出**には使う。正しい境界の
 #   下では `実在ファイル数 == cycle_count` が構造的に成立するため、実在数が cycle_count を超える
 #   のは他 run が混ざっている証拠 → `run_boundary_unresolved` で判定を降ろす。**ただし pin が
-#   無いときに限る** — pin があれば「pin より新しいファイル」は run 開始後の生成分だけなので
-#   混入は構造的に起きず、超過は counter 側の skew (INC 失敗 / Stop hook 再注入による counter
+#   無いとき、または `cycle_count == 0` のときに限る** — pin が**現 run の開始時に更新されていれば**
+#   「pin より新しいファイル」は run 開始後の生成分だけなので混入は起きない (pin 更新はステップ 0.6 の
+#   `cur_cc == 0` 経路だけで、それを保証するステップ 5.0.1 は非ブロッキングのため構造的保証ではない —
+#   だから `cycle_count == 0` で stale pin を捕まえる)。この条件下では超過は counter 側の skew (INC 失敗 / Stop hook 再注入による counter
 #   迂回) を意味するにすぎない。そこで判定を降ろすと skew が解消しないまま run 終了まで発散検出が
 #   無効化され、不足側で降ろしていた旧実装と同型の失敗を向きだけ変えて再導入することになる。
 #   よって **判定を降ろすのは「境界そのものが未知」= pin 不在のときだけ**で、pin 有りの過不足は
@@ -192,7 +194,10 @@ _undecidable() {
 # hooks/review-result-save.sh と同一の解決順 (state-path-resolve.sh → cwd 相対)。
 # セッション worktree 内から呼ばれても main checkout と同一パスへ解決される。
 if [ -z "$results_dir" ]; then
-  _state_root=$(bash "$SCRIPT_DIR/../state-path-resolve.sh" 2>/dev/null) || _state_root=""
+  # `2>/dev/null` は付けない — resolver は git 内外どちらでも rc=0 / 非空を返す設計なので、
+  # ここに落ちるのは helper 自体を実行できない場合 (プラグイン破損 / 版 skew) だけであり、
+  # その唯一の原因を示す診断を抑止してはならない (iterate ステップ 0.6 / 1 と同じ論拠)。
+  _state_root=$(bash "$SCRIPT_DIR/../state-path-resolve.sh") || _state_root=""
   if [ -n "$_state_root" ]; then
     results_dir="$_state_root/.rite/review-results"
   else
@@ -278,9 +283,15 @@ fi
 # (files と counter は以後同量ずつ増えるので skew は run 終了まで解消しない)。これは不足側で
 # 判定を降ろしていた旧実装 (`fewer_files_than_cycles`) と同型の失敗で、向きを変えただけの
 # 再導入になる。pin 有りの超過は不足側と同じく診断だけ残して実在列で判定を続行する。
-if [ -z "$since" ] && [ "$_run_total" -gt "$cycle_count" ] 2>/dev/null; then
+# `cycle_count == 0` も pin 不在と同じく境界未知として扱う。counter skew (INC 失敗 / Stop hook
+# 再注入) は **少なくとも 1 回 review が完了して初めて成立する**ため、`cycle_count == 0` かつ
+# 実在数 > 0 かつ pin 非空という組は skew と重ならず、**stale pin（前 run の pin が残った状態）
+# だけ**を指す。この状態で判定を続行すると、新 run の cycle 1 の頭で前 run の列を読んで発火する。
+# pin 更新はステップ 0.6 の `cur_cc == 0` 経路だけで、それを保証するステップ 5.0.1 は非ブロッキング
+# なので「pin があれば現 run のもの」は構造的保証にならない — その穴をここで塞ぐ。
+if { [ -z "$since" ] || [ "$cycle_count" -eq 0 ]; } && [ "$_run_total" -gt "$cycle_count" ] 2>/dev/null; then
   _undecidable run_boundary_unresolved \
-    "run 開始点 pin が無いため全件を 1 本の列として読んでおり、現 run の境界を確定できません (files=$_run_total > cycles=$cycle_count)。誤発火を避けるためトレンド判定を行わず max_review_cycles の判定に委ねます"
+    "現 run の境界を確定できません (files=$_run_total > cycles=$cycle_count)。run 開始点 pin が無いか、現 run でまだ 1 度もレビューが完了していないのに結果が存在します (前 run の pin が残っている可能性)。誤発火を避けるためトレンド判定を行わず max_review_cycles の判定に委ねます"
 fi
 
 # 不足側は判定を降ろさず、失われた件数を診断として残す。件数は stdout の marker にも載せる —

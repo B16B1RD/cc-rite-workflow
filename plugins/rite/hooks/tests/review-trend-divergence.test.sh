@@ -400,7 +400,7 @@ bash "$SCRIPT" --pr 700 --cycle-count 3 --results-dir "$multi_dir" > "$OUT" 2>"$
 assert_grep "run 境界: pin 不在で実在数が cycle_count を超えたら判定を降ろす" "$OUT" "reason=run_boundary_unresolved"
 assert_not_grep "run 境界: 過剰取り込みでは発火しない (健全な run を殺さない)" "$OUT" "TREND_DIVERGENCE=fire"
 assert_grep "run 境界: 過剰取り込みの理由を WARNING で surface する" "$SANDBOX/over-err.txt" "files=7 > cycles=3"
-assert_grep "run 境界: pin 不在であることを WARNING が明示する" "$SANDBOX/over-err.txt" "run 開始点 pin が無いため"
+assert_grep "run 境界: 境界を確定できない理由を WARNING が示す" "$SANDBOX/over-err.txt" "run 開始点 pin が無いか、現 run でまだ 1 度もレビューが完了していない"
 
 bash "$SCRIPT" --pr 700 --cycle-count 0 --results-dir "$multi_dir" > "$OUT" 2>/dev/null
 assert_grep "run 境界: cycle_count=0 で前 run だけが読める状態は判定を降ろす" "$OUT" "reason=run_boundary_unresolved"
@@ -413,6 +413,23 @@ bash "$SCRIPT" --pr 700 --cycle-count 1 --since "700-20260101000004.json" --resu
 assert_grep "run 境界: pin 有りの超過は判定を降ろさず実在列で続行する" "$OUT" "trend=5,3,1"
 assert_not_grep "run 境界: pin 有りの超過を run_boundary_unresolved にしない" "$OUT" "reason=run_boundary_unresolved"
 assert_grep "run 境界: 超過の理由 (counter skew) を WARNING で surface する" "$SANDBOX/over-pin-err.txt" "files=3 > cycles=1"
+assert_grep "run 境界: 判定を続行することを WARNING が明示する" "$SANDBOX/over-pin-err.txt" "run 境界は pin が保証しているため"
+
+# 続行の**向き**を両方 pin する。収束列だけだと、AC-1 が最優先で禁じる向き (健全な run を殺す)
+# へ挙動が動いても検出できない。発散列は pin 有り超過でも fire するのが正。
+over_div_dir="$SANDBOX/over-div"; mkdir -p "$over_div_dir"
+make_result "$over_div_dir" 705 01 9
+make_result "$over_div_dir" 705 02 1
+make_result "$over_div_dir" 705 03 5
+make_result "$over_div_dir" 705 04 6
+bash "$SCRIPT" --pr 705 --cycle-count 2 --since "705-20260101000001.json" --results-dir "$over_div_dir" > "$OUT" 2>/dev/null
+assert_grep "run 境界: pin 有りの超過で発散列は発火する (続行の向きを pin)" "$OUT" "trend=1,5,6;"
+assert_grep "run 境界: pin 有りの超過での発火点を固定する" "$OUT" "fire_at=3"
+
+# cycle_count=0 は pin が非空でも境界未知として扱う (stale pin の捕捉)。
+bash "$SCRIPT" --pr 705 --cycle-count 0 --since "705-20260101000001.json" --results-dir "$over_div_dir" > "$OUT" 2>/dev/null
+assert_grep "run 境界: cycle_count=0 は pin 非空でも判定を降ろす (stale pin の捕捉)" "$OUT" "reason=run_boundary_unresolved"
+assert_not_grep "run 境界: stale pin で前 run の列を読んで発火しない" "$OUT" "TREND_DIVERGENCE=fire"
 
 # 不足側は降ろさない (方向で扱いを分ける)。過剰と同じ扱いにすると中断 1 回で恒久無効化する。
 bash "$SCRIPT" --pr 700 --cycle-count 5 --since "700-20260101000004.json" --results-dir "$multi_dir" > "$OUT" 2>/dev/null

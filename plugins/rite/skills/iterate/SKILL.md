@@ -56,7 +56,7 @@ argument-hint: "<pr_number>"
 | `{fire_reason_line}` | ステップ 6.1 / 6.2 の「理由」行。ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=` から ステップ 6.2「発火理由の文面」表で決める |
 | `{trend}` | ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `TREND=`（カンマ区切りの per-cycle blocking 件数）。停止通知では `→` 区切りへ整形して表示する。空のときの扱いは ステップ 6.2「発火理由の文面」を参照 |
 | `{trend_reason}` | ステップ 1 の `[CONTEXT] ITERATE_CB=` marker の `TREND_REASON=`（helper が返した判定不能の理由。ステップ 6.2「発火理由の文面」の `max-cycles` 分岐と推移行の差し替えで使う） |
-| `{cycle_count}` | flow-state `cycle_count` field（review⇄fix cycle の消化数。ステップ 1 で increment、fresh entry で 0 リセット。発火時はステップ 6 の共有前段が 0 にリセットする） |
+| `{cycle_count}` | flow-state `cycle_count` field（review⇄fix cycle の消化数。ステップ 1 で increment、fresh entry で 0 リセット。発火時はステップ 6 の共有前段が、正常終了時はステップ 5.0.1 が 0 にリセットする） |
 | `{state_root}` | ステップ 6 共有前段の `[CONTEXT] STATE_ROOT=` marker の値（`hooks/state-path-resolve.sh` の解決結果。未解決時は sentinel `unresolved`）。ステップ 6.2 注意行 (b) の手動リセットコマンドでのみ使い、値が得られないときは同節の pre-fill 表に従って解決手順へ置き換える |
 | `{session_id}` | ステップ 6 共有前段の `[CONTEXT] SESSION_ID=` marker の値（`flow-state.sh path` の basename）。用途と未解決時の扱いは `{state_root}` と同じ |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
@@ -246,13 +246,13 @@ echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CY
 
 `REFIRE` は**この起動でステップ 1 が review を回さずに fire するか**の述語で、ステップ 6.2 の注意行 (a) の条件そのもの:
 
-`RUN_SINCE` は run 開始点 pin の記録結果。**pin が無い / 古いと発散判定は run 境界を確定できず判定を降ろす**（helper の `run_boundary_unresolved`）。つまり本値が `ok` 以外なら、その run では発散検出が働かず `max_review_cycles` の backstop だけが安全網として残る:
+`RUN_SINCE` は run 開始点 pin の記録結果。**pin が無い / 古いと発散判定は run 境界を確定できず判定を降ろす**（helper の `run_boundary_unresolved`）。発散検出が全面的に働かなくなるのは `unresolved-root` / `write-failed` の 2 値。`none` は既存 pin をそのまま使う正常系、`ok-empty` は pin 不在と同じ扱いになるため実在数が counter を超えた時点で判定が降りる:
 
 | `RUN_SINCE` | 意味 |
 |---|---|
 | `none` | 記録を試行していない（`cycle_count > 0` = run 継続中。既存 pin をそのまま使う） |
 | `ok` | pin を記録した。以降の cycle は現 run のファイルだけを読む |
-| `ok-empty` | 結果ファイルが 1 件も無い状態で pin を記録した（新規 PR）。pin 値は空で、helper は全件を 1 本の列として読む。前 run が存在しないため実害は無い |
+| `ok-empty` | 結果ファイルが 1 件も無い状態で pin を記録した（新規 PR）。pin 値は空で helper は pin 不在と同一に扱う。前 run が存在しないので誤った列は読まないが、**counter skew が 1 度起きるとその run の残り cycle で判定が降りる** |
 | `unresolved-root` | state root を解決できず pin を記録できなかった。WARNING 済み |
 | `write-failed` | pin ファイルを書けなかった（permission / disk）。WARNING 済み |
 
@@ -261,7 +261,7 @@ echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CY
 | `RUN_SINCE_USED` | 意味 |
 |---|---|
 | `pin` | pin ファイルを読んで `--since` に渡した（正常） |
-| `absent` | pin ファイルが無く空文字を渡した。pin 導入前から継続中の run、または 0.6 の書き込み失敗。WARNING 済み |
+| `absent` | pin ファイルが無い、**または中身が空**（0.6 が `ok-empty` を記録した新規 PR）で空文字を渡した。前 2 者は WARNING 済み、空 pin 経路は WARNING を出さない |
 | `unresolved-root` | state root を解決できず空文字を渡した。WARNING 済み |
 
 `LOST`（両分岐に載る）は helper が返した `lost=` の値で、**cycle_count に対して失われた結果の件数**（保存失敗 / review 中断）。`0` 以外なら判定に使われた列に穴があり、ステップ 6.2 の推移行はその旨を併記する。
@@ -503,29 +503,62 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 
 ### ステップ 5.0.1: run を閉じる (cycle counter のリセット)
 
-完了通知を出力する**前に**、`cycle_count` を 0 にして run を明示的に閉じる。これをしないと正常終了
-3 経路（`[review:mergeable]` / `[fix:replied-only]` / `[fix:cancelled-by-user]`）はいずれも counter を
-残したまま `phase=review|fix` で終わるため、**同じ PR に対する次の `/rite:iterate` が resume と判定され、
-ステップ 0.6 の run 開始点 pin 更新（`cur_cc == 0` 条件）に入らない**。その結果、新しい run が前 run の
-pin を使い続け、helper は「pin より新しいファイル」= 前 run の結果を現 run の列として読む。前 run の
-ファイル数と残存 counter が一致するため過剰取り込みの guard も素通りし、**新 run の cycle 1 の頭で
-review を 1 度も回さずにブレーカーが発火する**（健全な run を殺す = AC-1 の否定）。
+完了通知を出力する**前に**、`cycle_count` を 0 にして run を明示的に閉じる。これをしないと終了 3 経路
+（`[review:mergeable]` / `[fix:replied-only]` / `[fix:cancelled-by-user]`）はいずれも counter を残したまま
+終わるため、**同じ PR に対する次の `/rite:iterate` が resume と判定され、ステップ 0.6 の run 開始点 pin 更新
+（`cur_cc == 0` 条件）に入らない**。その結果、新しい run が前 run の pin を使い続け、helper は「pin より
+新しいファイル」= 前 run の結果を現 run の列として読む。前 run の最良水準（`[review:mergeable]` 出口なら 0）
+が現 run の `prefix_min` に持ち込まれるため、**新 run の 3 cycle 目で健全な列が発散と判定される**
+（cycle 1 の頭ではない — 前 run が正常終了していれば最終値は下降列なのでその時点の verdict は `ok`）。
 
 `cycle_count` は「現 run で消化した cycle 数」なので、run が終わった時点で 0 に戻すのが定義どおりである。
-発火時のリセット（ステップ 6 共有前段）と対をなし、これで counter が 0 に戻る経路は「発火」と「正常終了」
-の 2 つに揃う。非ブロッキング — 失敗しても完了通知は出す（次 run が stale pin を引く可能性が残るだけで、
-ループ自体は止まらない）:
+リセットの経路は fresh entry（ステップ 0.6、run を**開く**側）と、発火時（ステップ 6 共有前段）と、
+本ステップ（run を**閉じる**側）の 3 つになる。非ブロッキング — 失敗しても完了通知は出す。
+
+**`--handoff` は既存値を読んで載せ直す**（省略すると `flow-state.sh set` が handoff キーを削除する）。
+ステップ 5 冒頭の構造的保証は sub-skill がセットした `FINALIZE:...` handoff を Stop hook が消費して
+完了通知なしの停止を差し戻すことで成り立っており、本ステップは通知の**前**に走るため、ここで消すと
+その保証が必要な区間の入口で失われる（ステップ 1 の fire 分岐が「sentinel を emit する前に counter を
+0 にすると発火が無記録になる」として reset を遅らせているのと同型の窓）。既存値を読み直す形なら、
+E2E（FINALIZE あり）でも standalone（handoff なし）でも実態がそのまま維持される。
+
+**`--phase` も現在値を維持する**。ハードコードすると `[fix:cancelled-by-user]` / `[fix:replied-only]` 経路で
+`fix` → `review` に書き換わり、直後に出力する中断通知の「phase=fix のため fix invoke から再開」が偽になる。
 
 ```bash
-if ! bash {plugin_root}/hooks/flow-state.sh set \
-  --phase review --issue {issue_number} --branch {branch_name} --pr {pr_number} \
-  --next "run 終了 (cycle counter reset)" --cycle-count 0 2>&1; then
-  echo "WARNING: 完了時の cycle counter リセットに失敗しました。次回 /rite:iterate が resume と判定され、run 開始点 pin が更新されないまま前 run の結果を読む恐れがあります" >&2
+# 診断スニペット用 helper（ステップ 0.6 (0) / ステップ 1 と同型。Bash tool 呼び出し間でシェル状態は
+# 引き継がれないため独立に読み込む）。
+source {plugin_root}/hooks/control-char-neutralize.sh
+if ! command -v neutralize_ctrl >/dev/null 2>&1; then
+  echo "WARNING: control-char-neutralize.sh を読み込めませんでした。診断スニペットの制御文字が素通しします" >&2
+  neutralize_ctrl() { cat; }
 fi
+
+close_phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default review) || close_phase=review
+close_handoff=$(bash {plugin_root}/hooks/flow-state.sh get --field handoff --default "") || close_handoff=""
+if [ -n "$close_handoff" ]; then
+  close_out=$(LC_ALL=C bash {plugin_root}/hooks/flow-state.sh set \
+    --phase "$close_phase" --issue {issue_number} --branch "{branch_name}" --pr {pr_number} \
+    --next "run 終了 (cycle counter reset)" --cycle-count 0 --handoff "$close_handoff" 2>&1); close_rc=$?
+else
+  close_out=$(LC_ALL=C bash {plugin_root}/hooks/flow-state.sh set \
+    --phase "$close_phase" --issue {issue_number} --branch "{branch_name}" --pr {pr_number} \
+    --next "run 終了 (cycle counter reset)" --cycle-count 0 2>&1); close_rc=$?
+fi
+if [ "$close_rc" -eq 0 ]; then
+  run_close=ok
+else
+  run_close=failed
+  echo "WARNING: 完了時の cycle counter リセットに失敗しました。次回 /rite:iterate が resume と判定され、run 開始点 pin が更新されないまま前 run の結果を読みます。残存 counter が上限以上なら次回起動は review を 1 度も回さずに発火します" >&2
+fi
+[ -n "$close_out" ] && printf '%s\n' "$close_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+echo "[CONTEXT] ITERATE_RUN_CLOSE=$run_close; phase=$close_phase"
 ```
 
-> `--handoff` を伴わないため、sub-skill がセットした FINALIZE handoff はここでクリアされる。完了通知は
-> 本ステップの後に出力するため、Stop hook による差し戻しは不要になった時点で解除される。
+| `ITERATE_RUN_CLOSE` | 意味 |
+|---|---|
+| `ok` | counter を 0 にして run を閉じた。次回起動は fresh entry となり pin が更新される |
+| `failed` | リセットに失敗。次回起動は resume 判定となり前 run の pin を引き継ぐ（WARNING 済み）。`/rite:recover` で再開する前に手動で `--cycle-count 0` を打つとよい |
 
 ### 正常終了 (`[review:mergeable]` or `[fix:replied-only]`)
 
@@ -795,5 +828,5 @@ rationale: [stop-loop-continuation-contract.md#mechanism](../../references/stop-
 - **ブレーカーの発火条件は「発散」であって「予算切れ」ではない** — 主経路は収束トレンドの発散検出（`hooks/scripts/review-trend-divergence.sh`）で、`safety.max_review_cycles`（既定 5）はそれをすり抜ける遅い非収束を受け止める遠い backstop に格下げした。cycle 数上限だけでは努力と無駄を区別できない（健全に収束中でも上限で殺し、発散していても上限まで燃やす）ため、「品質を予算で縛らない・無駄は排除する」（CLAUDE.md プロジェクト原則）に反していた。判定は helper に閉じ LLM の裁量を介在させない。判定式は実運用で観測されたトラジェクトリで backtest して確定した定数であり、**窓幅や閾値を config キーにしない** — 調整の実需が観測されてから Issue を切って設定化する（`no_speculative_structure`）。判定式の較正根拠と意図した境界（最良水準での平坦は発火させない = false positive 回避）は helper の header が SoT
 - **発火理由は停止構造を変えない** — sentinel（`[iterate:max-cycles-reached]` / `[iterate:max-cycles-stopped]`）・handoff クリア・counter reset はいずれも発火理由に依らず不変で、変わるのは停止通知の「理由」行と blocking 推移の表示だけである。sentinel を理由別に分けない理由は、`/rite:batch-run` が前者の literal を grep して failed 記録・cursor 前進を行う契約を壊さないため。名称が「max-cycles」のまま発散発火にも使われるのは軽微な misnomer だが、契約の安定を優先する
 - **発火＝失敗の機械的記録（batch / 対話で同一）**: 発火時は両モードとも人間に問わず停止する（#2026）。導入時（#1701）は対話モードの UX として AskUserQuestion（継続 / 中止 / draft のまま停止）を残していたが、人間の裁量で counter をリセットして続行できる経路は「品質ゲートを機械的に履行する」方針に対する例外であり、人間エスカレーションは責任転嫁で終端にならない。継続は人間が明示的に `/rite:iterate {pr}` を再実行する経路のみに絞り、そのとき counter はステップ 6 の共有前段が既にリセットしている。`/rite:batch-run` バッチ実行は従来どおり failed 扱いで次 Issue へ自動遷移する（バッチ全体のストール防止）
-- **cycle counter は flow-state に保持**: 専用 state file (`.rite/state/*.count` 等) は持たず、`cycle_count` を flow-state の merge-preserve フィールドとして永続化する（`worktree` と同じ additive パターン）。resume を跨いで継続し（AC-3）、fresh entry（phase が review/fix 以外）で 0 リセットして run バッチの Issue 間リークを防ぐ。加えて**発火が sentinel として記録される直前**（ステップ 6 の共有前段）で 0 にリセットする — リセットしないと再実行が即再発火してループを再開する術が無くなるが、発火後は継続 handoff が（ステップ 1 fire 分岐の set で）default-clear されて自動再入場の経路が消えるため、リセットしても自動継続は生じない。リセットを fire 分岐ではなく共有前段に置くのは、「発火は無記録・counter は 0」という最悪の組み合わせが成立する窓を狭めるため（共有前段より手前で turn が終わればこの窓では counter が上限のまま残り、次回ループ頭で再発火する）。**共有前段の実行後・sentinel 出力前の窓は残存する** — 完全な閉塞には sentinel 出力を Stop hook に強制させる handoff が要るが、その reason 文面の是正は Non-Target の `hooks/stop-loop-continuation.sh` 改修を伴うため別 Issue とする。「発火済み」を別マーカー（例: `cycle_count = max + 1`）として次回起動まで持ち越す設計は採らない。持ち越すと「発火したか」を `max_review_cycles` との相対比較で符号化することになり、同値が invocation 間で変わりうる（毎回 config から読み直す）ため符号化が両方向に破綻する（上限を下げれば未発火が発火済みと誤認され、上げれば発火済みが認識されない、#2026）。Stop hook の handoff とは独立（handoff は one-shot consume される継続マーカー、cycle_count は accumulate されるカウンタ）
+- **cycle counter は flow-state に保持**: 専用 state file (`.rite/state/*.count` 等) は持たず、`cycle_count` を flow-state の merge-preserve フィールドとして永続化する（`worktree` と同じ additive パターン）。resume を跨いで継続し（AC-3）、fresh entry（phase が review/fix 以外）で 0 リセットして run バッチの Issue 間リークを防ぐ。加えて**発火が sentinel として記録される直前**（ステップ 6 の共有前段）と**正常終了時**（ステップ 5.0.1）で 0 にリセットする — 後者は run を明示的に閉じるためで、閉じないと次回起動が resume 判定になりステップ 0.6 の pin 更新条件（`cur_cc == 0`）に入らず、新 run が前 run の pin を引き継ぐ — リセットしないと再実行が即再発火してループを再開する術が無くなるが、発火後は継続 handoff が（ステップ 1 fire 分岐の set で）default-clear されて自動再入場の経路が消えるため、リセットしても自動継続は生じない。リセットを fire 分岐ではなく共有前段に置くのは、「発火は無記録・counter は 0」という最悪の組み合わせが成立する窓を狭めるため（共有前段より手前で turn が終わればこの窓では counter が上限のまま残り、次回ループ頭で再発火する）。**共有前段の実行後・sentinel 出力前の窓は残存する** — 完全な閉塞には sentinel 出力を Stop hook に強制させる handoff が要るが、その reason 文面の是正は Non-Target の `hooks/stop-loop-continuation.sh` 改修を伴うため別 Issue とする。「発火済み」を別マーカー（例: `cycle_count = max + 1`）として次回起動まで持ち越す設計は採らない。持ち越すと「発火したか」を `max_review_cycles` との相対比較で符号化することになり、同値が invocation 間で変わりうる（毎回 config から読み直す）ため符号化が両方向に破綻する（上限を下げれば未発火が発火済みと誤認され、上げれば発火済みが認識されない、#2026）。Stop hook の handoff とは独立（handoff は one-shot consume される継続マーカー、cycle_count は accumulate されるカウンタ）
 - 別 Issue 化経路は廃止済み (commit 1a で fix.md Phase 4.3 削除) — 「別 Issue にスキップして loop 終了」の抜け穴は塞がれている
