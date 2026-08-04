@@ -22,6 +22,7 @@
 * **Skip**: [20260804T035743Z-pr-2099.md](raw/reviews/20260804T035743Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
 * **Skip**: [20260804T044610Z-pr-2099.md](raw/reviews/20260804T044610Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
 * **Skip**: [20260804T052138Z-pr-2099.md](raw/reviews/20260804T052138Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
+* **lint:warning** — contradictions=0, stale=15, orphans=0, missing_concept=0, unregistered_raw=298, broken_refs=0
 
 ## 2026-08-03
 
