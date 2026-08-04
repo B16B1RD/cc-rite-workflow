@@ -50,6 +50,17 @@
 #       exempt — GFM treats a raw `|` inside a code span as a cell delimiter.
 #       Rewording the value to avoid `|` is prohibited (the title contract
 #       requires literal identity with frontmatter `title`).
+#   (a') the title ADDITIONALLY neutralizes `]` to the HTML entity `&#93;`.
+#       The title is emitted inside the link text of the page column — the same
+#       region the identification predicate scans — so a raw `]` lets a title
+#       containing `](pages/{d}/{s}.md)` forge the FIRST-link key and hijack
+#       another page's registration row with rc=0 and success markers.
+#       Backslash-escaping (`\]`) does not help: the predicate regex matches
+#       `](pages/` regardless of a preceding backslash. `&#93;` renders as `]`
+#       in GFM, so the literal-title contract holds in the rendered view.
+#       Title only: the summary column sits AFTER the genuine page link, so a
+#       `]` there can never become the FIRST link, and neutralizing preserved
+#       summaries would corrupt accumulated values.
 #   (b) summary values preserved from an existing row: already-escaped text —
 #       do NOT re-escape (re-escaping `\|` would grow one `\` per update cycle,
 #       unrecoverably). Only a raw `|` whose preceding character is not `\` is
@@ -113,7 +124,13 @@
 #   signal).
 #
 # Procedure 3b (`## 統計` 3-line sync):
-#   Only when the `## 統計` section exists (never create it). total = count of
+#   Only when EXACTLY ONE `## 統計` section exists (never create it). A
+#   duplicated stats heading (2+) is ambiguous the same way a duplicated
+#   `## ページ一覧` heading is, but exiting 1 would also wedge row operations
+#   (including the only duplicate-repair path, 3a) on a stats-side ambiguity —
+#   so the sync is skipped whole with a WARNING and the marker reports
+#   skipped_unreadable (no first-match sync; every stats section keeps its
+#   previous values). total = count of
 #   `*.md` files under --pages-root (non-page files like .gitkeep excluded by
 #   the `*.md` filter); breakdown = per-domain `*.md` counts; 最終更新 = this
 #   invocation's --updated. When the pages listing fails or is empty, emit a
@@ -328,6 +345,22 @@ LC_ALL=C awk '
     }
     return out
   }
+  # escape rule a-prime: title = rule (a) plus `]` -> `&#93;`. The title lands
+  # in the link text of the page column, which is the identification predicate
+  # scan target: a raw `]` lets a title containing `](pages/{d}/{s}.md)` forge
+  # the FIRST-link key (backslash-escaping would not help — the predicate
+  # matches `](pages/` regardless of a preceding `\`). See docstring rule (a-prime).
+  function esc_title(s,   out, i, c) {
+    out = ""
+    for (i = 1; i <= length(s); i++) {
+      c = substr(s, i, 1)
+      if (c == "\\")      out = out "\\\\"
+      else if (c == "|")  out = out "\\|"
+      else if (c == "]")  out = out "&#93;"
+      else                out = out c
+    }
+    return out
+  }
   # escape rule (b): preserved summary — only a raw `|` not preceded by `\`
   function esc_preserved(s,   out, i, c, prev) {
     out = ""; prev = ""
@@ -364,7 +397,7 @@ LC_ALL=C awk '
     return parts[2] "/" parts[nparts]
   }
   function build_row(summary) {
-    return "| [" esc_frontmatter(TITLE) "](pages/" DOMAIN "/" SLUG ".md) | " DOMAIN " | " summary " | " UPDATED " | " CONFIDENCE " |"
+    return "| [" esc_title(TITLE) "](pages/" DOMAIN "/" SLUG ".md) | " DOMAIN " | " summary " | " UPDATED " | " CONFIDENCE " |"
   }
   # summary of an existing row by positional extraction (see header spec)
   function extract_summary(s,   rest, n, parts, m, mid, i) {
@@ -549,7 +582,16 @@ fi
 
 # ── Procedure 3b: `## 統計` 3-line sync (on the buffered content) ───────────
 stats_sync="skipped_no_section"
-if LC_ALL=C grep -q '^##[[:blank:]]*統計[[:blank:]]*$' "$tmp_rows"; then
+stats_head_count=$(LC_ALL=C grep -c '^##[[:blank:]]*統計[[:blank:]]*$' "$tmp_rows")
+if [ "$stats_head_count" -gt 1 ]; then
+  # Duplicated stats headings: the sync target is ambiguous. The row-side
+  # duplicate heading exits 1 (nothing can proceed safely there), but wedging
+  # row operations — including the only duplicate-repair path, 3a — on a
+  # stats-side ambiguity would be excessive, so skip the sync whole instead
+  # (no first-match sync; docstring Procedure 3b).
+  echo "WARNING: wiki-index-update: index.md has $stats_head_count '## 統計' headings — ambiguous sync target, skipping stats sync (all stats sections keep their previous values; fix the index structure)" >&2
+  stats_sync="skipped_unreadable"
+elif [ "$stats_head_count" -eq 1 ]; then
   pages_list=""
   if [ -z "$pages_root" ]; then
     echo "WARNING: wiki-index-update: index.md has a '## 統計' section but --pages-root was not given。誤った値で正しい統計を上書きしないため、本サイクルの統計同期をスキップします" >&2

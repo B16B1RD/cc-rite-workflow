@@ -671,6 +671,7 @@ bash "{plugin_root}/hooks/scripts/wiki-index-update.sh" \
 | exit 0 + `stats_sync=skipped_unreadable` | 統計同期をスキップ（原因は stderr の WARNING に出ているのでそれを表示する。`## 統計` 節は前サイクルの内容のまま）。続行 |
 | exit 2（ERROR 出力） | 引数不正 = 呼び出し側の substitute 漏れ・値の混入。**部分適用は無い**（書き込みは全処理成功時の atomic 1 回のみ）。ERROR が指す引数を substitute し直して**同じ bash を再実行**する（再実行しても exit 2 なら ERROR を表示して当該 Raw Source の index 更新をスキップし、ステップ 7 へ続行） |
 | exit 1（ERROR 出力） | 環境・構造要因（index.md 不在・想定外構造）で再実行では解消しない。**部分適用は無い**（同上）。ERROR をそのまま表示して当該 Raw Source の index 更新をスキップし、ステップ 7 へ続行する。新規ページの未登録はステップ 8 の Lint が orphans として検出するが、**既存ページの更新失敗は登録行が旧値のまま残り Lint のどの観点にも載らない** — 表示した ERROR が唯一のシグナルなので必ず完了レポートに含める |
+| 上記以外の非ゼロ exit（helper パスを解決できない 127、signal 中断の 130 / 143 / 129 等。marker は 1 行も出力されない） | helper の出力（あれば）と exit code をそのまま表示し、当該 Raw Source の index 更新をスキップしてステップ 7 へ続行する。**部分適用は無い**（同上）。exit 1 と同様、表示した内容を必ず完了レポートに含める |
 
 書き込みはステップ 5 と同じブランチコンテキスト (separate_branch なら worktree、same_branch なら dev ツリー) で行われる — 上記 bash が `{wiki_worktree_abs}` 基点で index.md / pages/ のパスを解決するため、呼び出し時の cwd（セッション worktree / main checkout）に依存しない。
 
@@ -969,6 +970,7 @@ sentinel は grep 可能 (`grep -F '[ingest:returned-to-caller]'`) で rendered 
 | `wiki-worktree-commit.sh --commit-only` exit 3 (git add/commit 失敗、ステップ 5.1) | exit 1 で fail-fast。`git -C .rite/wiki-worktree status` で worktree の状態を確認 |
 | `wiki-worktree-commit.sh --push-only` exit 4 (push 失敗、ステップ 8.6) | 非 fatal で継続。commit は local wiki branch に保持される。`git -C .rite/wiki-worktree push origin {wiki_branch}` で手動回復、または次回 ingest の ステップ 8.6 が自動で flush を試みる |
 | `wiki-worktree-commit.sh` 未知の exit code | exit 1 で fail-fast |
+| `wiki-index-update.sh` 非ゼロ exit（exit 1 / exit 2 / 127 / signal 130・143・129 等、ステップ 6） | 当該 Raw Source の index 更新をスキップして続行（非 fatal）。分岐と対処はステップ 6 の結果 marker 表が SoT |
 | `branch_strategy` が未知の値 | ステップ 5.1 の if/elif/else 末尾 else 分岐で fail-fast (ステップ 5.2 の bash block は same_branch 単独分岐のため未知値はステップ 5.1 の else が catch する。`rite-config.yml` の `wiki.branch_strategy` を確認) |
 | LLM が経験則を抽出できない | 該当 Raw Source の raw frontmatter に `ingest_status: skipped` + `skip_reason` を追記（skip 状態の SoT）、`ingested: true` に変更、log.md に人間向け Skip bullet を追記、`n_skipped` を +1（ステップ 5 step 5 参照） |
 

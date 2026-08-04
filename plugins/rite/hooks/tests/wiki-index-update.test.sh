@@ -23,17 +23,21 @@
 #   TC-11 (T-03) `## 統計` 節不在 → stats_sync=skipped_no_section (節を新設しない)
 #   TC-12 (T-03) `## ページ一覧` 節不在 → `## 統計` の直前に template 形で新設
 #   TC-13 (T-04) index.md 不在 → exit 1 (fail-loud)
+#   TC-13b (T-04) index.md 読み取り不能 → exit 1 + 'not readable' 診断 (root では skip)
 #   TC-14 (T-04) `## ページ一覧` 見出し重複 (想定外構造) → exit 1 + 無変更
+#   TC-14b (T-04) `## 統計` 見出し重複 → stats_sync=skipped_unreadable
+#         (first-match で 1 節目だけ同期して synced を返さない・両節無変更・行操作は適用)
 #   TC-15b (T-04) UTF-8 日本語 title/description の制御文字誤検出なし (rc=0、C1 除外の意図を pin)
 #   TC-15c (T-04) brace 含み正当 title は residue gate に棄却されない (exact 突合の意図を pin)
 #   TC-16g (T-04) 統計 3 行が全欠落 → stats_sync=skipped_unreadable (0 行同期を synced にしない)
 #   TC-22 (T-04) 行末区切り欠落の登録行から summary 保持抽出 → exit 1 + 無変更
 #         (positional 抽出の前提崩れを silent 空文字化させない)
-#   TC-22b (T-04) セル数不足 (4 セル / 3 セル) の登録行から summary 保持抽出 → exit 1 + 無変更
-#         (欠けたセルを特定できないため保持値を確定できない — TC-22 と同じ fail-loud 経路)
+#   TC-22b (T-04) セル数不足 (4/3 セル) + 余剰フラグメント行から summary 保持抽出 → exit 1 + 無変更
+#         (欠損はセル数ガード、余剰は境界フラグメント検査が捕捉 — 各ガード単独の識別力を pin)
 #   TC-22c (T-01) 空サマリーセルの正当な 5 列行は保持経路で rc=0 のまま (境界 pin)
 #   TC-23 (T-03) サマリー欄の相互参照リンクは同定に使われない (FIRST link 述語、golden)
 #   TC-24 (T-03) 新規追加と同時に別ページの重複行を回収 (added × dedup_removed=1)
+#   TC-25 (T-02) リンク構文入り title の同定キー詐称防止 (`]` → &#93; 中和、golden)
 #   TC-12b (T-03) 統計節も不在なら EOF に節新設 (golden)
 #   TC-16b (T-04) pages 一覧 0 件 (*.md ゼロ、find rc=0) → skip + 統計保持
 #   TC-16c (T-04) --pages-root 省略 (統計節あり) → skipped_unreadable + 統計保持
@@ -498,6 +502,31 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────────────
+# TC-13b (T-04): index.md 読み取り不能 → exit 1 + 'not readable' 診断
+# rc=1 だけではガードの識別力がない (-r ガードを退行させても後段の awk 失敗が
+# 原因を取り違えた ERROR で rc=1 を返す) ため、-r ガード固有の診断文言を stderr
+# に対して assert し、無変更も前後比較で確認する
+# ──────────────────────────────────────────────────────────────────────
+if [ "$(id -u)" -eq 0 ]; then
+  skip "TC-13b (root では chmod 000 が read を阻めないため測定不能)"
+else
+  dir=$(make_sandbox tc13b)
+  before=$(cat "$dir/index.md")
+  chmod 000 "$dir/index.md"
+  run_helper --index "$dir/index.md" --title t --domain patterns \
+    --slug s --updated "2026-08-05T07:30:00+09:00" --confidence high
+  chmod 644 "$dir/index.md"
+  after=$(cat "$dir/index.md")
+  if [ "$HELPER_RC" -eq 1 ] \
+     && printf '%s\n' "$HELPER_STDERR" | grep -q 'not readable' \
+     && [ "$before" = "$after" ]; then
+    pass "TC-13b index.md 読み取り不能で exit 1 + 'not readable' 診断 (fail-loud)"
+  else
+    fail "TC-13b (rc=$HELPER_RC stderr=$HELPER_STDERR)"
+  fi
+fi
+
+# ──────────────────────────────────────────────────────────────────────
 # TC-14 (T-04): `## ページ一覧` 見出し重複 (想定外構造) → exit 1 + 無変更
 # ──────────────────────────────────────────────────────────────────────
 dir=$(make_sandbox tc14)
@@ -524,6 +553,48 @@ if [ "$HELPER_RC" -eq 1 ] \
   pass "TC-14 見出し重複 (想定外構造) で exit 1・部分適用なし"
 else
   fail "TC-14 (rc=$HELPER_RC)"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-14b (T-04): `## 統計` 見出し重複 → 統計同期のみ skip (skipped_unreadable)
+# ページ一覧側の見出し重複 (TC-14) と同じ破損クラスだが、行操作 (唯一の重複修復
+# 経路 3a を含む) まで塞ぐのは過剰なため exit 1 ではなく WARNING + 同期 skip。
+# first-match で 1 節目だけ同期して synced を返す縮退 (silent first-match) を殺す
+# ──────────────────────────────────────────────────────────────────────
+dir=$(make_sandbox tc14b)
+cat > "$dir/index.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Foo Pattern](pages/patterns/foo.md) | patterns | 既存サマリー | 2026-01-01T00:00:00+09:00 | high |
+
+## 統計
+
+- 総ページ数: 99
+- ドメイン別: patterns=99, heuristics=0, anti-patterns=0
+- 最終更新: 2020-01-01T00:00:00+09:00
+
+## 統計
+
+- 総ページ数: 77
+- ドメイン別: patterns=77, heuristics=0, anti-patterns=0
+- 最終更新: 2021-01-01T00:00:00+09:00
+EOF
+run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
+  --slug foo --description "更新後" --updated "2026-08-05T13:30:00+09:00" \
+  --confidence high --pages-root "$dir/pages"
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qF '[CONTEXT] WIKI_INDEX_UPDATE=row_action=updated; dedup_removed=0; stats_sync=skipped_unreadable' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -q 'ambiguous sync target' \
+   && grep -q '総ページ数: 99' "$dir/index.md" \
+   && grep -q '総ページ数: 77' "$dir/index.md" \
+   && grep -qxF '| [Foo Pattern](pages/patterns/foo.md) | patterns | 更新後 | 2026-08-05T13:30:00+09:00 | high |' "$dir/index.md"; then
+  pass "TC-14b 統計見出し重複は同期 skip (skipped_unreadable)・両節無変更・行操作は適用"
+else
+  fail "TC-14b (rc=$HELPER_RC stdout=$HELPER_STDOUT stderr=$HELPER_STDERR)"
 fi
 
 # ──────────────────────────────────────────────────────────────────────
@@ -970,9 +1041,10 @@ fi
 
 # ──────────────────────────────────────────────────────────────────────
 # TC-22 (T-04): 行末区切り欠落の登録行 + description 省略 (summary 保持経路)
-# → exit 1 + 無変更。positional 抽出は先頭・末尾フラグメントが空白のみで
-# あることを検査する — 検査なしだと同定は通るのに抽出が空になり、蓄積
-# サマリーを rc=0 のまま空文字で上書きする (docstring の禁止事項)
+# → exit 1 + 無変更。この fixture (断片 5 個) は境界フラグメント検査とセル数
+# ガードの両方に該当するため fail-loud 契約全体を pin するが、単独ガードの識別
+# 力は持たない (片方を無効化しても他方が捕捉して緑のまま) — 境界検査だけが
+# 検出できる形状 (余剰フラグメント) は TC-22b の第 3 shape が担う
 # ──────────────────────────────────────────────────────────────────────
 dir=$(make_sandbox tc22)
 cat > "$dir/index.md" <<'EOF'
@@ -999,15 +1071,19 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────────────
-# TC-22b (T-04): セル数不足の登録行 + description 省略 → exit 1 + 無変更
-# 4 セル行は境界フラグメントが両方空白で TC-22 の検査を通過し、3 セル行は
-# 早期脱出する — どちらも欠けたセルを特定できず保持値を確定できないため、
-# silent 空文字化ではなく TC-22 と同じ fail-loud 経路に載せる
+# TC-22b (T-04): セル数不足/過剰の登録行 + description 省略 → exit 1 + 無変更
+# 4 セル行は境界フラグメントが両方空白で境界検査を通過しセル数ガードが捕捉、
+# 3 セル行は早期脱出 — どちらも欠けたセルを特定できず保持値を確定できない。
+# 第 3 shape (末尾に余剰フラグメント 2 つ、行末区切りなし) はセル数ガード
+# (n-2>=4) を通過し境界フラグメント検査だけが捕捉する: 境界検査を単独で
+# 無効化する変異は summary 列が更新日列以降を飲み込む silent corruption に
+# なるため、この shape が当該ガード単独の識別力を担う
 # ──────────────────────────────────────────────────────────────────────
 tc22b_ok=1
 for shape in \
   '| [Foo Pattern](pages/patterns/foo.md) | patterns | 蓄積サマリー | 2026-01-01T00:00:00+09:00 |' \
-  '| [Foo Pattern](pages/patterns/foo.md) | 蓄積サマリー |'; do
+  '| [Foo Pattern](pages/patterns/foo.md) | 蓄積サマリー |' \
+  '| [Foo Pattern](pages/patterns/foo.md) | patterns | 蓄積サマリー | 2026-01-01T00:00:00+09:00 | high | junk1 | junk2'; do
   dir=$(make_sandbox "tc22b-$(printf '%s' "$shape" | wc -c)")
   cat > "$dir/index.md" <<EOF
 # Wiki Index
@@ -1029,7 +1105,7 @@ EOF
   fi
 done
 if [ "$tc22b_ok" -eq 1 ]; then
-  pass "TC-22b セル数不足 (4 セル / 3 セル) の summary 保持抽出は exit 1・無変更"
+  pass "TC-22b セル数不足 (4/3 セル) + 余剰フラグメント行の summary 保持抽出は exit 1・無変更"
 else
   fail "TC-22b"
 fi
@@ -1140,6 +1216,53 @@ if [ "$HELPER_RC" -eq 0 ] \
   pass "TC-24 新規追加と同時に別ページの重複後発行を回収 (added; dedup_removed=1)"
 else
   fail "TC-24 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-25 (T-02): リンク構文を含む title は同定キーを詐称できない (`]` → &#93; 中和)
+# 中和なしだと生成行の FIRST link が title 内の `](pages/patterns/foo.md)` になり、
+# (a) 追加直後に 3a が既存 foo 行との「重複」として新規行を回収する (added なのに
+#     行が残らず dedup_removed=1)、(b) 以後の foo 更新が詐称行を foo の行として
+# 丸ごと書き換える — いずれも WARNING なし・rc=0・成功 marker のまま。
+# 2 サイクル (詐称 title の追加 → 正規 foo の更新) を回して golden で固定する
+# ──────────────────────────────────────────────────────────────────────
+dir=$(make_sandbox tc25)
+touch "$dir/pages/heuristics/beta.md"
+run_helper --index "$dir/index.md" --title 'x ](pages/patterns/foo.md) y' --domain heuristics \
+  --slug beta --description "beta 説明" --updated "2026-08-05T14:00:00+09:00" \
+  --confidence medium --pages-root "$dir/pages"
+tc25_rc1=$HELPER_RC
+tc25_out1=$HELPER_STDOUT
+run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
+  --slug foo --description "foo 更新" --updated "2026-08-05T14:10:00+09:00" \
+  --confidence high --pages-root "$dir/pages"
+cat > "$TEST_DIR/tc25-expected.md" <<'EOF'
+# Wiki Index
+
+カタログ本文。
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Foo Pattern](pages/patterns/foo.md) | patterns | foo 更新 | 2026-08-05T14:10:00+09:00 | high |
+| [x &#93;(pages/patterns/foo.md) y](pages/heuristics/beta.md) | heuristics | beta 説明 | 2026-08-05T14:00:00+09:00 | medium |
+
+## 統計
+
+- 総ページ数: 3
+- ドメイン別: patterns=1, heuristics=2, anti-patterns=0
+- 最終更新: 2026-08-05T14:10:00+09:00
+EOF
+if [ "$tc25_rc1" -eq 0 ] \
+   && printf '%s\n' "$tc25_out1" | grep -qF '[CONTEXT] WIKI_INDEX_UPDATE=row_action=added; dedup_removed=0; stats_sync=synced' \
+   && [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
+   && diff -u "$TEST_DIR/tc25-expected.md" "$dir/index.md" > "$TEST_DIR/tc25-diff.txt" 2>&1; then
+  pass "TC-25 リンク構文入り title の同定キー詐称を &#93; 中和で防止 (added 行が回収されず foo 更新も非破壊・golden)"
+else
+  fail "TC-25 (rc1=$tc25_rc1 out1=$tc25_out1 rc2=$HELPER_RC stdout=$HELPER_STDOUT)"
+  cat "$TEST_DIR/tc25-diff.txt" 2>/dev/null
 fi
 
 # ──────────────────────────────────────────────────────────────────────
