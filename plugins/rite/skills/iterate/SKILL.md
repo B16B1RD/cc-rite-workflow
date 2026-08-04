@@ -338,7 +338,8 @@ trend_series=$(printf '%s\n' "$trend_out" | sed -n 's/.*[;[:space:]]trend=\([^;]
 # 最頻値）があり、`[a-z_]` だけだと `need_` に切り詰められて enum のどの値とも一致しなくなる。
 trend_reason=$(printf '%s\n' "$trend_out" | sed -n 's/.*reason=\([a-z0-9_]*\).*/\1/p' | tail -1)
 # 失われた結果の件数。列に穴があることを停止通知まで運ぶ（欠落は verdict を反転させうるため、
-# 合成された推移を実測として描画させない）。判定を降ろす経路では helper が出さないので 0 とする。
+# 合成された推移を実測として描画させない）。`lost=` を出さないのは `_undecidable` 経路だけで、
+# `need_3_cycles` は部分列とともに出す（差し替えと併記が同時成立する — ステップ 6.2 参照）。
 trend_lost=$(printf '%s\n' "$trend_out" | sed -n 's/.*[;[:space:]]lost=\([0-9]*\).*/\1/p' | tail -1)
 case "$trend_lost" in ''|*[!0-9]*) trend_lost=0 ;; esac
 if [ "$trend_rc" -ne 0 ] || [ -z "$trend_verdict" ]; then
@@ -751,7 +752,7 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 
 **行ごと省略してはならない** — 推移が無いことと推移を出し忘れたことが読み手から区別できなくなる。`TREND_VERDICT` が `ok` / `fire` のときは `TREND=` の値を `→` 区切りで整形して表示する。
 
-**`LOST` が `0` 以外のときは推移行に欠落を併記する**（例: `- blocking 推移: 5 → 9 → 9（1 cycle 分の結果が欠落）`）。判定に使われた列には穴があり、欠落は verdict を反転させうるため、合成された推移を実測として提示してはならない。
+**`LOST` が `0` 以外のときは推移行に欠落を併記する**（例: `- blocking 推移: 5 → 9 → 9（1 cycle 分の結果が欠落）`）。**差し替えと併記は同時に成立しうる**（`need_3_cycles` は `insufficient` でありながら部分列と `lost=` の両方を返すため）。その場合は**差し替えを先に行い、差し替えた行に併記する**: `- blocking 推移: 判定未実施（need_3_cycles・1 cycle 分の結果が欠落）`。判定に使われた列には穴があり、欠落は verdict を反転させうるため、合成された推移を実測として提示してはならない。
 
 #### 注意行（ステップ 6.2 のみ）
 

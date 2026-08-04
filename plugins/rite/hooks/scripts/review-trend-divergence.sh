@@ -97,8 +97,9 @@
 #   だから `cycle_count == 0` で stale pin を捕まえる)。この条件下では超過は counter 側の skew (INC 失敗 / Stop hook 再注入による counter
 #   迂回) を意味するにすぎない。そこで判定を降ろすと skew が解消しないまま run 終了まで発散検出が
 #   無効化され、不足側で降ろしていた旧実装と同型の失敗を向きだけ変えて再導入することになる。
-#   よって **判定を降ろすのは「境界そのものが未知」= pin 不在のときだけ**で、pin 有りの過不足は
-#   どちらも診断 (WARNING / marker の `lost=`) に留めて実在する列で判定する。
+#   よって **判定を降ろすのは「境界が未知」= pin 不在、または `cycle_count == 0`（現 run でまだ 1 度も
+#   レビューが完了していないのに結果がある = stale pin）のときだけ**で、それ以外の過不足はどちらも
+#   診断 (WARNING / marker の `lost=`) に留めて実在する列で判定する。
 #
 # Why 判定不能を「発火しない」に倒すか:
 #   fallback ではなく設計。判定できない入力で発火させると健全な run を殺す (AC-1 の否定) が、
@@ -123,7 +124,7 @@ Usage: review-trend-divergence.sh --pr N --cycle-count N [--since BASENAME] [--r
 Options:
   --pr N            対象 PR 番号 (必須)
   --cycle-count N   現 run で完了したレビュー cycle 数 (必須)。run 境界の**決定**には使わないが、
-                    実在数がこれを**超える**場合は他 run の混入として判定を降ろす (誤発火防止)。
+                    pin 不在または本値が 0 のとき、実在数がこれを**超える**なら境界未知として判定を降ろす。
                     不足側は失われた件数を WARNING と marker の lost= に載せて判定を続行する
   --since BASENAME  run 開始点の pin。この basename より新しい結果ファイルだけを現 run とみなす。
                     空文字 / 省略時は全件を 1 本の列として読む (pin 導入前の run への後方互換)
@@ -179,6 +180,23 @@ fi
 # 診断へ埋め込む 1 行用の中和。`--keep-newline` を付けない default モードは改行も `?` 化するため、
 # 埋め込んだ値が WARNING を複数行へ割って別の診断行に見せかけることを防ぐ。
 _nz() { printf '%s' "${1:-}" | neutralize_ctrl; }
+
+# jq の診断本文を捨てない。`jq empty` を通過した妥当な JSON でも filter がエラーを返す入力
+# (findings[] に object でない要素が混ざる等) があり、そのとき reason だけではファイル名しか
+# 分からず原因の特定に filter の再構成が要る。sibling の scripts/review-measured-gate.sh と
+# hooks/flow-state.sh は同目的で診断退避を持つ (本 script の header が手本として名指ししている)。
+_diag=""
+if ! _diag=$(mktemp "${TMPDIR:-/tmp}/rite-trend-diag-XXXXXX" 2>/dev/null); then
+  _diag=""
+  echo "WARNING: 診断用 tempfile を作成できませんでした。判定不能時の jq stderr は表示されません" >&2
+fi
+trap 'rm -f "${_diag:-}"' EXIT INT TERM HUP
+
+# 判定不能の直前に jq の stderr を吐き出す。抑止の除去であって fallback ではない。
+_emit_diag() {
+  [ -n "${_diag:-}" ] && [ -s "$_diag" ] || return 0
+  head -5 "$_diag" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+}
 
 # 判定不能で終了する共通経路。reason を必ず載せる (silent skip を作らない)。
 _undecidable() {
@@ -276,7 +294,7 @@ fi
 # 複数 run が同居していればここで必ず捕まる (cycle_count=0 で `0 < _run_total` も同式が拾う)。
 # 不足側 (`<`) は run 内の欠落にすぎず判定を降ろさない — 降ろすと中断 1 回でその run の発散検出が
 # 恒久的に無効化される (旧 fewer_files_than_cycles の失敗)。**方向で扱いを分けるのが要点**。
-# **pin 不在のときだけ**判定を降ろす。pin があれば「pin より新しいファイル」は run 開始後に
+# **境界が未知のときだけ**判定を降ろす（pin 不在、または `cycle_count == 0` = stale pin）。pin があれば「pin より新しいファイル」は run 開始後に
 # 生成された分だけなので、他 run の混入は構造的に起きない — 超過は counter が実在数に
 # 追いつかない skew (INC 失敗 / Stop hook 再注入による counter 迂回) を意味するにすぎず、
 # そこで判定を降ろすと **その run の残り全 cycle で発散検出が恒久的に無効化される**
@@ -320,7 +338,8 @@ fi
 # fix.md に 3 つとも在るわけではない (Priority 0 / 2 の case 文は helper へ移設済み)。
 _counts=()
 for _f in "${_run_files[@]+"${_run_files[@]}"}"; do
-  if ! jq empty "$_f" >/dev/null 2>&1; then
+  if ! jq empty "$_f" >/dev/null 2>"${_diag:-/dev/null}"; then
+    _emit_diag
     _undecidable json_parse_failure "レビュー結果 JSON が parse できません: $(_nz "$_f")"
   fi
 
@@ -358,15 +377,15 @@ for _f in "${_run_files[@]+"${_run_files[@]}"}"; do
     ]
     | { blocking: (map(select(.gated)) | length), unresolved: (map(select(.unresolved)) | length) }
     | "\(.blocking) \(.unresolved)"
-  ' "$_f" 2>/dev/null)
+  ' "$_f" 2>"${_diag:-/dev/null}")
 
   _n=${_resolved%% *}
   _unresolved=${_resolved##* }
   case "$_n" in
-    ''|*[!0-9]*) _undecidable blocking_count_failed "blocking 件数を算出できません: $(_nz "$_f")" ;;
+    ''|*[!0-9]*) _emit_diag; _undecidable blocking_count_failed "blocking 件数を算出できません: $(_nz "$_f")" ;;
   esac
   case "$_unresolved" in
-    ''|*[!0-9]*) _undecidable blocking_count_failed "scope 解決結果を算出できません: $(_nz "$_f")" ;;
+    ''|*[!0-9]*) _emit_diag; _undecidable blocking_count_failed "scope 解決結果を算出できません: $(_nz "$_f")" ;;
   esac
   if [ "$_unresolved" -gt 0 ]; then
     _undecidable scope_enum_violation \

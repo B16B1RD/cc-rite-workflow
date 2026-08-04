@@ -403,7 +403,7 @@ assert_grep "run 境界: 過剰取り込みの理由を WARNING で surface す�
 assert_grep "run 境界: 境界を確定できない理由を WARNING が示す" "$SANDBOX/over-err.txt" "run 開始点 pin が無いか、現 run でまだ 1 度もレビューが完了していない"
 
 bash "$SCRIPT" --pr 700 --cycle-count 0 --results-dir "$multi_dir" > "$OUT" 2>/dev/null
-assert_grep "run 境界: cycle_count=0 で前 run だけが読める状態は判定を降ろす" "$OUT" "reason=run_boundary_unresolved"
+assert_grep "run 境界: pin 不在かつ cycle_count=0 でも判定を降ろす" "$OUT" "reason=run_boundary_unresolved"
 assert_not_grep "run 境界: cycle_count=0 では発火しない (旧実装の構造的保護を維持)" "$OUT" "TREND_DIVERGENCE=fire"
 
 # **pin 有りの超過は判定を降ろさない**。pin があれば列は現 run のものと保証されており、超過は
@@ -461,6 +461,37 @@ if locale -a 2>/dev/null | grep -qiE '^en_US\.utf-?8$'; then
 else
   skip "collision 順序契約: en_US.UTF-8 が無く LC_ALL=C 除去を検出できない"
 fi
+
+# **guard の限界を意図した仕様として pin する**。`cycle_count == 0` が捕まえるのは stale pin の
+# 部分集合だけで、stale pin と counter が同量繰り上がった形 (実在数 == cycle_count) では
+# guard 条件が偽になり、前 run の列を診断なしで読んで判定する。これは「塞いだ」のではなく
+# 「ここまで塞いだ」であり、残余はステップ 5.0.1 (正常終了時に run を閉じる) が担う。
+# 限界を assert として書くことで、次に guard を触る担当者が残余を誤解しない。
+stale_dir="$SANDBOX/stale-equal"; mkdir -p "$stale_dir"
+make_result "$stale_dir" 707 01 9
+make_result "$stale_dir" 707 02 3
+make_result "$stale_dir" 707 03 2
+make_result "$stale_dir" 707 04 0
+make_result "$stale_dir" 707 05 4
+make_result "$stale_dir" 707 06 4
+bash "$SCRIPT" --pr 707 --cycle-count 5 --since "707-20260101000001.json" --results-dir "$stale_dir" > "$OUT" 2>"$SANDBOX/stale-err.txt"
+assert_grep "guard の限界: stale pin + 実在数 == cycle_count は素通りする (意図した限界)" "$OUT" "trend=3,2,0,4,4;"
+assert_not_grep "guard の限界: 素通り時は run_boundary_unresolved にならない" "$OUT" "reason=run_boundary_unresolved"
+assert_not_grep "guard の限界: 素通り時は WARNING も出ない (残余はステップ 5.0.1 が担う)" "$SANDBOX/stale-err.txt" "WARNING:"
+
+# fresh run の初回 (pin == 最新ファイル、cycle_count=0) は guard に到達せず無音で判定不能を返す。
+# `no_file_after_pin` が先に return するため。これが崩れると毎 run の初回にノイズが乗る。
+bash "$SCRIPT" --pr 707 --cycle-count 0 --since "707-20260101000006.json" --results-dir "$stale_dir" > "$OUT" 2>"$SANDBOX/fresh0-err.txt"
+assert_grep "正常系: fresh run 初回は no_file_after_pin (guard に到達しない)" "$OUT" "reason=no_file_after_pin"
+assert_not_grep "正常系: fresh run 初回は WARNING を出さない" "$SANDBOX/fresh0-err.txt" "WARNING:"
+
+# F-06: 既定 results_dir 解決ブロック (本番の 100% がここを通る) のカバレッジ。
+# resolver を実行できない隔離コピーで、cycle 4 が `2>/dev/null` を外した意図を pin する。
+iso_dir="$SANDBOX/iso"; mkdir -p "$iso_dir"
+cp "$SCRIPT" "$iso_dir/h.sh"
+( cd "$iso_dir" && bash ./h.sh --pr 707 --cycle-count 1 ) > "$OUT" 2>"$SANDBOX/iso-err.txt"
+assert_grep "既定 results_dir: resolver 不在時は cwd 相対へフォールバックし理由を残す" "$SANDBOX/iso-err.txt" "state-path-resolve.sh の解決に失敗"
+assert_grep "既定 results_dir: 抑止を外したので原因行 (ENOENT) が届く" "$SANDBOX/iso-err.txt" "state-path-resolve.sh"
 
 # 同一 PR 番号を prefix に持つ別 PR (700 等) を巻き込まないこと
 prefix_dir="$SANDBOX/prefix"; mkdir -p "$prefix_dir"
