@@ -37,7 +37,8 @@
 #   TC-22c (T-01) 空サマリーセルの正当な 5 列行は保持経路で rc=0 のまま (境界 pin)
 #   TC-23 (T-03) サマリー欄の相互参照リンクは同定に使われない (FIRST link 述語、golden)
 #   TC-24 (T-03) 新規追加と同時に別ページの重複行を回収 (added × dedup_removed=1)
-#   TC-25 (T-02) リンク構文入り title の同定キー詐称防止 (`]` → &#93; 中和、golden)
+#   TC-25 (T-02) リンク構文入り title の同定キー詐称防止 (`](` の `]` → &#93; 中和、golden)
+#   TC-25b (T-02) `](` を含まない `]` は無改変 (中和の過剰適用で描画を壊さない、golden)
 #   TC-12b (T-03) 統計節も不在なら EOF に節新設 (golden)
 #   TC-16b (T-04) pages 一覧 0 件 (*.md ゼロ、find rc=0) → skip + 統計保持
 #   TC-16c (T-04) --pages-root 省略 (統計節あり) → skipped_unreadable + 統計保持
@@ -495,8 +496,11 @@ fi
 # ──────────────────────────────────────────────────────────────────────
 run_helper --index "$TEST_DIR/nonexistent/index.md" --title t --domain patterns \
   --slug s --updated "2026-08-05T07:00:00+09:00" --confidence high
-if [ "$HELPER_RC" -eq 1 ] && printf '%s\n' "$HELPER_STDERR" | grep -q 'ERROR'; then
-  pass "TC-13 index.md 不在で exit 1 (fail-loud)"
+# rc=1 だけでは識別力がない (`-f` ガードを外しても兄弟の `-r` ガードが同じ rc=1 +
+# ERROR を返し、運用者には "not readable" の誤診断が届く) ため、TC-13b と対で
+# ガード固有の診断文言を assert する
+if [ "$HELPER_RC" -eq 1 ] && printf '%s\n' "$HELPER_STDERR" | grep -q 'not found'; then
+  pass "TC-13 index.md 不在で exit 1 + 'not found' 診断 (fail-loud)"
 else
   fail "TC-13 (rc=$HELPER_RC stderr=$HELPER_STDERR)"
 fi
@@ -734,11 +738,11 @@ run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
   --slug foo --updated "2026-08-05T10:20:00+09:00" --confidence high
 if [ "$HELPER_RC" -eq 0 ] \
    && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stats_sync=skipped_unreadable' \
-   && printf '%s\n' "$HELPER_STDERR" | grep -q 'WARNING' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -qF -- '--pages-root was not given' \
    && grep -qx -- '- 総ページ数: 1' "$dir/index.md" \
    && grep -qx -- '- 最終更新: 2026-01-01T00:00:00+09:00' "$dir/index.md" \
    && grep -q '2026-08-05T10:20:00+09:00' "$dir/index.md"; then
-  pass "TC-16c --pages-root 省略は WARNING + skipped_unreadable + 統計保持"
+  pass "TC-16c --pages-root 省略は分岐固有 WARNING + skipped_unreadable + 統計保持"
 else
   fail "TC-16c (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
 fi
@@ -1266,6 +1270,47 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────────────
+# TC-25b (T-02): `]` を含むが `](` を含まない title は無改変 (中和の過剰適用防止)
+# 詐称は `](pages/…)` の literal 連なりでしか成立しないため、対の `[` を持つ
+# `[CONTEXT]` / `.errors[]` / コードスパン内 `[[:cntrl:]]` まで中和すると
+# リンクテキストの角括弧が不均衡になり GFM がリンク範囲を誤って切る
+# (コードスパン内では実体参照が復元されず literal `&#93;` として描画される)。
+# 実 Wiki に該当 title が複数実在するため golden で無改変を固定する
+# ──────────────────────────────────────────────────────────────────────
+dir=$(make_sandbox tc25b)
+touch "$dir/pages/patterns/ctx.md"
+run_helper --index "$dir/index.md" --title 'Bash 境界を跨ぐ値は [CONTEXT] で emit する (`[[:cntrl:]]` / .errors[] も同様)' \
+  --domain patterns --slug ctx --description "角括弧を含む説明 [a] と .errors[]" \
+  --updated "2026-08-05T15:00:00+09:00" --confidence high --pages-root "$dir/pages"
+cat > "$TEST_DIR/tc25b-expected.md" <<'EOF'
+# Wiki Index
+
+カタログ本文。
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Foo Pattern](pages/patterns/foo.md) | patterns | 既存サマリー | 2026-01-01T00:00:00+09:00 | high |
+| [Bash 境界を跨ぐ値は [CONTEXT] で emit する (`[[:cntrl:]]` / .errors[] も同様)](pages/patterns/ctx.md) | patterns | 角括弧を含む説明 [a] と .errors[] | 2026-08-05T15:00:00+09:00 | high |
+
+## 統計
+
+- 総ページ数: 3
+- ドメイン別: patterns=2, heuristics=1, anti-patterns=0
+- 最終更新: 2026-08-05T15:00:00+09:00
+EOF
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=added' \
+   && ! grep -q '&#93;' "$dir/index.md" \
+   && diff -u "$TEST_DIR/tc25b-expected.md" "$dir/index.md" > "$TEST_DIR/tc25b-diff.txt" 2>&1; then
+  pass 'TC-25b `](` を含まない `]` は無改変 (中和の過剰適用なし・golden)'
+else
+  fail "TC-25b (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+  cat "$TEST_DIR/tc25b-diff.txt" 2>/dev/null
+fi
+
+# ──────────────────────────────────────────────────────────────────────
 # TC-17 (T-06): SKILL.md ステップ 6 の縮退 (grep 検査)
 # ──────────────────────────────────────────────────────────────────────
 if [ ! -f "$INGEST_MD" ]; then
@@ -1305,17 +1350,33 @@ if [ "$helper_flags" != "$skill_flags" ]; then
   echo "  helper: $(printf '%s' "$helper_flags" | tr '\n' ' ')"
   echo "  skill:  $(printf '%s' "$skill_flags" | tr '\n' ' ')"
 fi
-printf '%s\n' "$step6_block" | grep -qF -- '--domain "{domain}"' || { tc17b_ok=0; echo "  (--domain の placeholder 対応が崩れている)"; }
-printf '%s\n' "$step6_block" | grep -qF -- '--slug "{slug}"' || { tc17b_ok=0; echo "  (--slug の placeholder 対応が崩れている)"; }
-printf '%s\n' "$step6_block" | grep -qF -- '--updated "{updated}"' || { tc17b_ok=0; echo "  (--updated の placeholder 対応が崩れている)"; }
-printf '%s\n' "$step6_block" | grep -qF -- '--confidence "{confidence}"' || { tc17b_ok=0; echo "  (--confidence の placeholder 対応が崩れている)"; }
-printf '%s\n' "$step6_block" | grep -qF -- '--title "$wiu_title"' || { tc17b_ok=0; echo "  (--title の heredoc 変数対応が崩れている)"; }
-printf '%s\n' "$step6_block" | grep -qF -- '--description "$wiu_description"' || { tc17b_ok=0; echo "  (--description の heredoc 変数対応が崩れている)"; }
+# frontmatter 由来 6 値はすべて heredoc 変数経由で渡す (placeholder をシェル語へ直接
+# 置換する形が再混入していないことを、変数対応と placeholder 直渡しの不在の両側で pin)
+for v in title description domain slug updated confidence; do
+  printf '%s\n' "$step6_block" | grep -qF -- "--$v \"\$wiu_$v\"" \
+    || { tc17b_ok=0; echo "  (--$v の heredoc 変数対応が崩れている)"; }
+  printf '%s\n' "$step6_block" | grep -qF -- "--$v \"{$v}\"" \
+    && { tc17b_ok=0; echo "  (--$v が placeholder 直渡しへ退行している — command injection 経路)"; }
+done
+# heredoc 本体では placeholder がそのまま現れる (シェル解釈なしで helper へ届く形)
+for v in title description domain slug updated confidence; do
+  printf '%s\n' "$step6_block" | grep -qxF -- "{$v}" \
+    || { tc17b_ok=0; echo "  ($v の heredoc 本体に {$v} が無い)"; }
+done
 # 呼び出し行の実体 (コマンド語・値の形) も literal で pin する — フラグ名集合の突合だけでは
 # 呼び出し行の削除・helper パス改名・パス値の相対化・quoted heredoc 解除が生存する
 printf '%s\n' "$step6_block" | grep -qF -- 'bash "{plugin_root}/hooks/scripts/wiki-index-update.sh"' || { tc17b_ok=0; echo "  (helper 呼び出しコマンド行が無い/形が崩れている)"; }
 printf '%s\n' "$step6_block" | grep -qF -- '--index "$wiki_root/index.md"' || { tc17b_ok=0; echo '  (--index の値が $wiki_root/index.md でない)'; }
 printf '%s\n' "$step6_block" | grep -qF -- '--pages-root "$wiki_root/pages"' || { tc17b_ok=0; echo '  (--pages-root の値が $wiki_root/pages でない)'; }
+# 書き込み先を決める $wiki_root の導出 4 行も pin する。値 pin だけでは routing drift
+# (branch_strategy の literal 改変・分岐条件の破壊・worktree 側代入の消失) が素通りし、
+# helper は exit 1 で loud に落ちるが marker 表がそれを「スキップして続行」に落とすため
+# ingest は完走し続け登録行だけが恒久的に欠落する
+printf '%s\n' "$step6_block" | grep -qF -- 'branch_strategy="{branch_strategy}"' || { tc17b_ok=0; echo "  (branch_strategy の placeholder 代入が無い/崩れている)"; }
+printf '%s\n' "$step6_block" | grep -qF -- 'wiki_wt_abs="{wiki_worktree_abs}"' || { tc17b_ok=0; echo "  (wiki_worktree_abs の placeholder 代入が無い/崩れている)"; }
+printf '%s\n' "$step6_block" | grep -qF -- 'if [ "$branch_strategy" = "separate_branch" ]; then' || { tc17b_ok=0; echo "  (branch_strategy の分岐条件が崩れている)"; }
+printf '%s\n' "$step6_block" | grep -qF -- 'wiki_root="${wiki_wt_abs:-.rite/wiki-worktree}/.rite/wiki"' || { tc17b_ok=0; echo "  (separate_branch 側の wiki_root 代入が崩れている)"; }
+printf '%s\n' "$step6_block" | grep -qF -- 'wiki_root=".rite/wiki"' || { tc17b_ok=0; echo "  (same_branch 側の wiki_root 代入が崩れている)"; }
 # 継続行を 1 論理コマンドへ join して 8 フラグが同一コマンド内に並ぶことを assert する。
 # 行単位断片の grep だけでは継続 backslash の脱落 (行が分断され後続フラグが別コマンド化し
 # 実行時 rc=127 になる Edit 崩れ) が生存する
@@ -1333,14 +1394,21 @@ else
   done
   [ -z "$tc17b_split_flags" ] || echo "  (継続 backslash 脱落等でフラグが呼び出しコマンドの外にある:$tc17b_split_flags)"
 fi
-printf '%s\n' "$step6_block" | grep -qF -- "wiu_title=\$(cat <<'WIU_EOF'" || { tc17b_ok=0; echo "  (title の quoted heredoc が解除されている)"; }
-printf '%s\n' "$step6_block" | grep -qF -- "wiu_description=\$(cat <<'WIU_EOF'" || { tc17b_ok=0; echo "  (description の quoted heredoc が解除されている)"; }
+# frontmatter 由来 6 値はすべて quoted heredoc で受ける (double-quote されたシェル語への
+# 直接置換は値の `"` でクォートが閉じ command injection になる)
+for v in title description domain slug updated confidence; do
+  printf '%s\n' "$step6_block" | grep -qF -- "wiu_${v}=\$(cat <<'WIU_EOF'" \
+    || { tc17b_ok=0; echo "  ($v の quoted heredoc が解除されている)"; }
+done
 if [ "$tc17b_ok" -eq 1 ]; then
-  pass "TC-17b ステップ 6 呼び出し契約 (8 フラグ + placeholder 対応 + 呼び出し行 literal) が helper と一致"
+  pass "TC-17b ステップ 6 呼び出し契約 (8 フラグ + placeholder 対応 + 呼び出し行 literal + wiki_root 導出 + 6 値 heredoc) が helper と一致"
 else
   fail "TC-17b"
 fi
 
 echo ""
-echo "Results: $PASS passed, $FAIL failed"
+# skipped 節は必須 — TC-13b が root 実行で helper 由来の skip() を呼び SKIP を +1 して
+# ⏭️ を出すため、節が無いと run-tests.sh の skip 会計 cross-check (visible_skips vs
+# summary から parse した file_skips) が不一致を検出し run 全体を exit 1 にする
+echo "Results: $PASS passed, $FAIL failed$( [ "$SKIP" -gt 0 ] && printf ", %s skipped" "$SKIP" )"
 [ "$FAIL" -eq 0 ] || exit 1

@@ -50,14 +50,20 @@
 #       exempt — GFM treats a raw `|` inside a code span as a cell delimiter.
 #       Rewording the value to avoid `|` is prohibited (the title contract
 #       requires literal identity with frontmatter `title`).
-#   (a') the title ADDITIONALLY neutralizes `]` to the HTML entity `&#93;`.
-#       The title is emitted inside the link text of the page column — the same
-#       region the identification predicate scans — so a raw `]` lets a title
-#       containing `](pages/{d}/{s}.md)` forge the FIRST-link key and hijack
-#       another page's registration row with rc=0 and success markers.
-#       Backslash-escaping (`\]`) does not help: the predicate regex matches
-#       `](pages/` regardless of a preceding backslash. `&#93;` renders as `]`
-#       in GFM, so the literal-title contract holds in the rendered view.
+#   (a-prime) the title ADDITIONALLY neutralizes `]` to the HTML entity `&#93;`
+#       — but ONLY when the next character is `(`. The title is emitted inside
+#       the link text of the page column (the region the identification
+#       predicate scans), so a title containing `](pages/{d}/{s}.md)` would
+#       forge the FIRST-link key and hijack another page's registration row
+#       with rc=0 and success markers. Backslash-escaping (`\]`) does not help:
+#       the predicate regex matches `](pages/` regardless of a preceding
+#       backslash. Forgery needs the literal `](` sequence, so narrowing to
+#       `](` keeps titles like `[CONTEXT]` / `.errors[]` / `` `[[:cntrl:]]` ``
+#       byte-identical — neutralizing every `]` unbalances the link text's
+#       brackets (GFM then starts the link at an inner `[` and drops the title
+#       prefix out of the link) and inside a code span `&#93;` is not decoded
+#       at all, so it would render literally. `&#93;` renders as `]` outside
+#       code spans, so the literal-title contract holds in the rendered view.
 #       Title only: the summary column sits AFTER the genuine page link, so a
 #       `]` there can never become the FIRST link, and neutralizing preserved
 #       summaries would corrupt accumulated values.
@@ -182,21 +188,14 @@
 source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"
 
 # C0+DEL detection that lets UTF-8 multibyte content pass. The shared
-# contains_ctrl() also rejects C1 bytes (0x80-0x9f) byte-wise, which
-# false-positives on UTF-8 continuation bytes — its in-repo callers pass
-# ASCII-fixed values, but title/description here are Japanese frontmatter
-# text. A raw C1 byte is invalid UTF-8 to begin with; the row-integrity
-# concern is C0 (newline breaks the single-row model) + DEL.
+# contains_ctrl() default range also rejects C1 bytes (0x80-0x9f) byte-wise,
+# which false-positives on UTF-8 continuation bytes — its other in-repo callers
+# pass ASCII-fixed values, but title/description here are Japanese frontmatter
+# text. A raw C1 byte is invalid UTF-8 to begin with; the row-integrity concern
+# is C0 (newline breaks the single-row model) + DEL, which is exactly the
+# shared `--c0-only` range (byte range stays defined in one place).
 _has_c0_del() {
-  local _in_bytes _stripped_bytes
-  _in_bytes=$(printf '%s' "$1" | LC_ALL=C wc -c) || return 0
-  _stripped_bytes=$(printf '%s' "$1" | LC_ALL=C tr -d '\000-\037\177' | LC_ALL=C wc -c) || return 0
-  _in_bytes=${_in_bytes//[[:space:]]/}
-  _stripped_bytes=${_stripped_bytes//[[:space:]]/}
-  case "${_in_bytes}:${_stripped_bytes}" in
-    *[!0-9:]*|:*|*:) return 0 ;;
-  esac
-  [ "$_in_bytes" -ne "$_stripped_bytes" ]
+  contains_ctrl "$1" --c0-only
 }
 
 index_path=""
@@ -345,18 +344,21 @@ LC_ALL=C awk '
     }
     return out
   }
-  # escape rule a-prime: title = rule (a) plus `]` -> `&#93;`. The title lands
-  # in the link text of the page column, which is the identification predicate
-  # scan target: a raw `]` lets a title containing `](pages/{d}/{s}.md)` forge
-  # the FIRST-link key (backslash-escaping would not help — the predicate
-  # matches `](pages/` regardless of a preceding `\`). See docstring rule (a-prime).
+  # escape rule a-prime: title = rule (a) plus `]` -> `&#93;` ONLY when the next
+  # character is `(`. The title lands in the link text of the page column, which
+  # is the identification predicate scan target: `](pages/{d}/{s}.md)` in a title
+  # would forge the FIRST-link key (backslash-escaping would not help — the
+  # predicate matches `](pages/` regardless of a preceding `\`). Forgery needs
+  # the literal `](`, so a bare `]` is left alone: neutralizing it would unbalance
+  # the link text (`[CONTEXT]`, `.errors[]`) and render literally inside a code
+  # span. See docstring rule (a-prime).
   function esc_title(s,   out, i, c) {
     out = ""
     for (i = 1; i <= length(s); i++) {
       c = substr(s, i, 1)
       if (c == "\\")      out = out "\\\\"
       else if (c == "|")  out = out "\\|"
-      else if (c == "]")  out = out "&#93;"
+      else if (c == "]" && substr(s, i + 1, 1) == "(") out = out "&#93;"
       else                out = out c
     }
     return out
@@ -498,12 +500,11 @@ LC_ALL=C awk '
         prev_pipe = 0; next_pipe = 0
         for (j = i - 1; j > H; j--) if (lines[j] !~ /^[ \t]*$/) { prev_pipe = is_pipe_row(lines[j]); break }
         for (j = i + 1; j < E; j++) if (lines[j] !~ /^[ \t]*$/) { next_pipe = is_pipe_row(lines[j]); break }
-        if (prev_pipe && next_pipe) { drop[i] = 1; continue }
+        if (prev_pipe && next_pipe) continue
       }
       keep[++out_n] = i
     }
     n2 = 0
-    delete map
     for (k = 1; k <= out_n; k++) {
       i = keep[k]
       n2++; buf[n2] = lines[i]
@@ -524,7 +525,9 @@ LC_ALL=C awk '
       rs = first_link_key(s)
       if (rs != "" && rs == DOMAIN "/" SLUG) { match_count++; match_idx[match_count] = i }
     }
-    if (last_pipe == 0) last_pipe = H + 1                # fresh section: after separator
+    # procedure 0 guarantees header + separator rows inside the section on every
+    # path, and the blank-line pass never drops `|` rows, so last_pipe is always
+    # set by the loop above (no fallback needed).
 
     # ── procedures 1 / 2 (abort clause applies here only) ──
     if (match_count >= 2) {
@@ -649,10 +652,8 @@ elif [ "$stats_head_count" -eq 1 ]; then
     fi
     mv "$tmp_stats" "$tmp_rows" || { echo "ERROR: wiki-index-update: stats buffer swap failed — index.md left unmodified" >&2; exit 1; }
     stats_missing=$(sed -n 's/^stats_missing=//p' "$result_file" | tail -1)
-    if [ -n "$stats_missing" ] && [ "$stats_missing" != "" ]; then
-      stats_missing_trimmed=$(printf '%s' "$stats_missing" | sed 's/^ *//')
-      [ -n "$stats_missing_trimmed" ] && echo "WARNING: wiki-index-update: '## 統計' 節に既存行が見つからない統計行があります (${stats_missing_trimmed})。行を新設せずスキップします" >&2
-    fi
+    stats_missing_trimmed=$(printf '%s' "$stats_missing" | sed 's/^ *//')
+    [ -n "$stats_missing_trimmed" ] && echo "WARNING: wiki-index-update: '## 統計' 節に既存行が見つからない統計行があります (${stats_missing_trimmed})。行を新設せずスキップします" >&2
     # The marker is the caller's only machine-readable channel: when none of
     # the 3 stats lines could be rewritten, "synced" would contradict the
     # WARNING above. Zero rewritten lines means the section kept its previous
