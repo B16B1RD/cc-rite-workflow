@@ -24,6 +24,10 @@
 #   TC-12 (T-03) `## ページ一覧` 節不在 → `## 統計` の直前に template 形で新設
 #   TC-13 (T-04) index.md 不在 → exit 1 (fail-loud)
 #   TC-14 (T-04) `## ページ一覧` 見出し重複 (想定外構造) → exit 1 + 無変更
+#   TC-15b (T-04) UTF-8 日本語 title/description の制御文字誤検出なし (rc=0、C1 除外の意図を pin)
+#   TC-18 (T-01/T-03) 別ドメイン同一 slug は別ページ (同定キー = {domain}/{slug}、golden)
+#   TC-19〜21 (T-03) ヘッダ行・区切り行の欠落補填 (両方欠落 / 区切りのみ / ヘッダのみ、golden)
+#   (T-05 は既存 wiki-lint 系スイートの継続 green で担保 — 本ファイル対象外)
 #   TC-15 (T-04) invocation error: domain/confidence enum 違反・`|` 入り updated・
 #         必須引数欠落 → exit 2 + 無変更
 #   TC-16 (T-04) pages 一覧 0 件 → stats_sync=skipped_unreadable + 統計値は既存保持
@@ -93,22 +97,33 @@ run_helper --index "$dir/index.md" --title "Bar Heuristic" --domain heuristics \
   --slug bar --description "bar の説明" --updated "2026-08-04T22:00:00+09:00" \
   --confidence medium --pages-root "$dir/pages"
 expected_row='| [Bar Heuristic](pages/heuristics/bar.md) | heuristics | bar の説明 | 2026-08-04T22:00:00+09:00 | medium |'
+# golden 全文比較: grep 断片照合ではなく期待ファイル全文との diff で固定する
+# (ヘッダ二重化・本文欠落・空行過剰削除・節末端誤検出を 1 assert で同時捕捉)
+cat > "$TEST_DIR/tc1-expected.md" <<'EOF'
+# Wiki Index
+
+カタログ本文。
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Foo Pattern](pages/patterns/foo.md) | patterns | 既存サマリー | 2026-01-01T00:00:00+09:00 | high |
+| [Bar Heuristic](pages/heuristics/bar.md) | heuristics | bar の説明 | 2026-08-04T22:00:00+09:00 | medium |
+
+## 統計
+
+- 総ページ数: 2
+- ドメイン別: patterns=1, heuristics=1, anti-patterns=0
+- 最終更新: 2026-08-04T22:00:00+09:00
+EOF
 if [ "$HELPER_RC" -eq 0 ] \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=added' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stats_sync=synced' \
    && printf '%s\n' "$HELPER_STDOUT" | grep -q '^\[CONTEXT\] WIKI_INDEX_UPDATE=row_action=added; dedup_removed=0; stats_sync=synced$' \
-   && grep -qxF "$expected_row" "$dir/index.md" \
-   && grep -qx -- '- 総ページ数: 2' "$dir/index.md" \
-   && grep -qx -- '- ドメイン別: patterns=1, heuristics=1, anti-patterns=0' "$dir/index.md" \
-   && grep -qx -- '- 最終更新: 2026-08-04T22:00:00+09:00' "$dir/index.md"; then
-  # 追加位置 = テーブル末尾 (既存 Foo 行の後)
-  if awk '/foo\.md/{f=NR} /bar\.md/{b=NR} END{exit !(f && b && b>f)}' "$dir/index.md"; then
-    pass "TC-1 新規行追加 (行形式・末尾追加・統計同期)"
-  else
-    fail "TC-1 追加位置がテーブル末尾でない"
-  fi
+   && diff -u "$TEST_DIR/tc1-expected.md" "$dir/index.md" > "$TEST_DIR/tc1-diff.txt" 2>&1; then
+  pass "TC-1 新規行追加 (golden 全文比較: 末尾追加・本文/構造保存・統計同期)"
 else
   fail "TC-1 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+  cat "$TEST_DIR/tc1-diff.txt" 2>/dev/null
 fi
 
 # ──────────────────────────────────────────────────────────────────────
@@ -241,19 +256,31 @@ EOF
 run_helper --index "$dir/index.md" --title "Late Row" --domain heuristics \
   --slug late --updated "2026-08-05T01:00:00+09:00" --confidence medium \
   --pages-root "$dir/pages"
-blank_between=$(awk '/^\|/{p=1} p && /^[ \t]*$/{c++} /^## 統計/{exit} END{print c+0}' "$dir/index.md")
+# golden 全文比較: パイプ行間の空行だけが消え、見出し直後・統計節直前の空行は保持される
+# ことを diff で固定する (過剰削除の変異を捕捉。総ページ数は fixture の実 pages/ = 3)
+cat > "$TEST_DIR/tc7-expected.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Foo Pattern](pages/patterns/foo.md) | patterns | 既存 | 2026-01-01T00:00:00+09:00 | high |
+| [Late Row](pages/heuristics/late.md) | heuristics | 空行の後の行 | 2026-08-05T01:00:00+09:00 | medium |
+
+## 統計
+
+- 総ページ数: 3
+- ドメイン別: patterns=1, heuristics=2, anti-patterns=0
+- 最終更新: 2026-08-05T01:00:00+09:00
+EOF
 if [ "$HELPER_RC" -eq 0 ] \
    && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
-   && [ "$blank_between" -le 1 ] \
-   && grep -q 'Late Row' "$dir/index.md"; then
-  # 空行除去後は Late 行が同定・更新されている (空行があると GFM 上は段落落ちしていた行)
-  if grep -qxF '| [Late Row](pages/heuristics/late.md) | heuristics | 空行の後の行 | 2026-08-05T01:00:00+09:00 | medium |' "$dir/index.md"; then
-    pass "TC-7 節内空行を除去し空行後の登録行も同定対象になる"
-  else
-    fail "TC-7 空行後の行が更新されていない"
-  fi
+   && diff -u "$TEST_DIR/tc7-expected.md" "$dir/index.md" > "$TEST_DIR/tc7-diff.txt" 2>&1; then
+  pass "TC-7 節内空行の除去 (golden 全文比較: 空行後の行の同定・境界空行の保持)"
 else
-  fail "TC-7 (rc=$HELPER_RC blank_between=$blank_between)"
+  fail "TC-7 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+  cat "$TEST_DIR/tc7-diff.txt" 2>/dev/null
 fi
 
 # ──────────────────────────────────────────────────────────────────────
@@ -460,11 +487,38 @@ run_helper --index "$dir/index.md" --title t --domain patterns --slug 'bad/slug'
 run_helper --index "$dir/index.md" --domain patterns --slug s \
   --updated "2026-08-05T09:00:00+09:00" --confidence high
 [ "$HELPER_RC" -eq 2 ] || { tc15_ok=0; echo "  (--title 欠落が rc=$HELPER_RC)"; }
+# 制御文字 reject 経路 (_has_c0_del): 改行入り title / 改行入り description /
+# 制御文字 (TAB) 入り updated はいずれも exit 2 (1 行のテーブル行として表現不能)
+run_helper --index "$dir/index.md" --title $'a\nb' --domain patterns --slug s \
+  --updated "2026-08-05T09:00:00+09:00" --confidence high
+[ "$HELPER_RC" -eq 2 ] || { tc15_ok=0; echo "  (改行入り title が rc=$HELPER_RC)"; }
+run_helper --index "$dir/index.md" --title t --domain patterns --slug s \
+  --description $'x\ny' --updated "2026-08-05T09:00:00+09:00" --confidence high
+[ "$HELPER_RC" -eq 2 ] || { tc15_ok=0; echo "  (改行入り description が rc=$HELPER_RC)"; }
+run_helper --index "$dir/index.md" --title t --domain patterns --slug s \
+  --updated $'2026\t08' --confidence high
+[ "$HELPER_RC" -eq 2 ] || { tc15_ok=0; echo "  (制御文字入り updated が rc=$HELPER_RC)"; }
 after=$(cat "$dir/index.md")
 if [ "$tc15_ok" -eq 1 ] && [ "$before" = "$after" ]; then
-  pass "TC-15 invocation error 群で exit 2・index.md 無変更"
+  pass "TC-15 invocation error 群 (enum/slug/updated/欠落/制御文字) で exit 2・index.md 無変更"
 else
   fail "TC-15"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-15b (T-04): UTF-8 日本語 title/description は制御文字誤検出しない (rc=0)
+# _has_c0_del が C1 バイト (UTF-8 継続バイトと重複) を検査対象から除外した意図を pin
+# ──────────────────────────────────────────────────────────────────────
+dir=$(make_sandbox tc15b)
+run_helper --index "$dir/index.md" --title "日本語タイトルのページ" --domain patterns \
+  --slug foo --description "日本語の説明文です" --updated "2026-08-05T09:30:00+09:00" \
+  --confidence high --pages-root "$dir/pages"
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
+   && grep -qxF '| [日本語タイトルのページ](pages/patterns/foo.md) | patterns | 日本語の説明文です | 2026-08-05T09:30:00+09:00 | high |' "$dir/index.md"; then
+  pass "TC-15b UTF-8 日本語 title/description が制御文字誤検出されない (rc=0)"
+else
+  fail "TC-15b (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
 fi
 
 # ──────────────────────────────────────────────────────────────────────
@@ -484,6 +538,140 @@ if [ "$HELPER_RC" -eq 0 ] \
   pass "TC-16 pages 取得不能は WARNING + 統計値保持 (行操作は適用)"
 else
   fail "TC-16 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-18 (T-01/T-03): 別ドメイン同一 slug は別ページ — 誤同定・誤削除しない
+# 同定キーはページ path ({domain}/{slug})。slug 単独キーだと heuristics/c の行が
+# patterns/c の「重複」と誤判定され silent 削除される (golden 全文比較で両行保持を固定)
+# ──────────────────────────────────────────────────────────────────────
+dir=$(make_sandbox tc18)
+touch "$dir/pages/patterns/c.md" "$dir/pages/heuristics/c.md"
+cat > "$dir/index.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [C patterns 側](pages/patterns/c.md) | patterns | sA | 2026-01-01T00:00:00+09:00 | high |
+| [C heuristics 側](pages/heuristics/c.md) | heuristics | sB | 2026-01-02T00:00:00+09:00 | medium |
+EOF
+run_helper --index "$dir/index.md" --title "C patterns 側 v2" --domain patterns \
+  --slug c --updated "2026-08-05T14:00:00+09:00" --confidence low \
+  --pages-root "$dir/pages"
+cat > "$TEST_DIR/tc18-expected.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [C patterns 側 v2](pages/patterns/c.md) | patterns | sA | 2026-08-05T14:00:00+09:00 | low |
+| [C heuristics 側](pages/heuristics/c.md) | heuristics | sB | 2026-01-02T00:00:00+09:00 | medium |
+EOF
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -q '^\[CONTEXT\] WIKI_INDEX_UPDATE=row_action=updated; dedup_removed=0; stats_sync=skipped_no_section$' \
+   && diff -u "$TEST_DIR/tc18-expected.md" "$dir/index.md" > "$TEST_DIR/tc18-diff.txt" 2>&1; then
+  pass "TC-18 別ドメイン同一 slug は両行保持 (対象ドメインの行のみ更新・dedup 0)"
+else
+  fail "TC-18 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+  cat "$TEST_DIR/tc18-diff.txt" 2>/dev/null
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-19/20/21 (T-03): ヘッダ行・区切り行の欠落補填 (手順 0) — golden 全文比較
+# 節はあるがヘッダ/区切りが欠けた index を、見出し直後 (既存登録行より前) に補って
+# 正規の 5 列テーブル形へ是正する分岐の実行可能仕様
+# ──────────────────────────────────────────────────────────────────────
+# TC-19: ヘッダ・区切り両方欠落 → 見出し直後に 2 行を挿入
+dir=$(make_sandbox tc19)
+cat > "$dir/index.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+| [Foo Pattern](pages/patterns/foo.md) | patterns | 既存 | 2026-01-01T00:00:00+09:00 | high |
+EOF
+run_helper --index "$dir/index.md" --title "Foo Pattern v19" --domain patterns \
+  --slug foo --updated "2026-08-05T11:00:00+09:00" --confidence high \
+  --pages-root "$dir/pages"
+cat > "$TEST_DIR/tc19-expected.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Foo Pattern v19](pages/patterns/foo.md) | patterns | 既存 | 2026-08-05T11:00:00+09:00 | high |
+EOF
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
+   && diff -u "$TEST_DIR/tc19-expected.md" "$dir/index.md" > "$TEST_DIR/tc19-diff.txt" 2>&1; then
+  pass "TC-19 ヘッダ・区切り両方欠落を見出し直後に補填 (golden)"
+else
+  fail "TC-19 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+  cat "$TEST_DIR/tc19-diff.txt" 2>/dev/null
+fi
+
+# TC-20: 区切り行のみ欠落 → ヘッダ行の直後に挿入 (見出し直後ではない)
+dir=$(make_sandbox tc20)
+cat > "$dir/index.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+| [Foo Pattern](pages/patterns/foo.md) | patterns | 既存 | 2026-01-01T00:00:00+09:00 | high |
+EOF
+run_helper --index "$dir/index.md" --title "Foo Pattern v20" --domain patterns \
+  --slug foo --updated "2026-08-05T12:00:00+09:00" --confidence high \
+  --pages-root "$dir/pages"
+cat > "$TEST_DIR/tc20-expected.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Foo Pattern v20](pages/patterns/foo.md) | patterns | 既存 | 2026-08-05T12:00:00+09:00 | high |
+EOF
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
+   && diff -u "$TEST_DIR/tc20-expected.md" "$dir/index.md" > "$TEST_DIR/tc20-diff.txt" 2>&1; then
+  pass "TC-20 区切り行のみ欠落をヘッダ行直後に補填 (golden)"
+else
+  fail "TC-20 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+  cat "$TEST_DIR/tc20-diff.txt" 2>/dev/null
+fi
+
+# TC-21: ヘッダ行のみ欠落 → 見出し直後に挿入 (区切り行の前)
+dir=$(make_sandbox tc21)
+cat > "$dir/index.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+|--------|---------|---------|--------|--------|
+| [Foo Pattern](pages/patterns/foo.md) | patterns | 既存 | 2026-01-01T00:00:00+09:00 | high |
+EOF
+run_helper --index "$dir/index.md" --title "Foo Pattern v21" --domain patterns \
+  --slug foo --updated "2026-08-05T13:00:00+09:00" --confidence high \
+  --pages-root "$dir/pages"
+cat > "$TEST_DIR/tc21-expected.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Foo Pattern v21](pages/patterns/foo.md) | patterns | 既存 | 2026-08-05T13:00:00+09:00 | high |
+EOF
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
+   && diff -u "$TEST_DIR/tc21-expected.md" "$dir/index.md" > "$TEST_DIR/tc21-diff.txt" 2>&1; then
+  pass "TC-21 ヘッダ行のみ欠落を見出し直後 (区切り行の前) に補填 (golden)"
+else
+  fail "TC-21 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+  cat "$TEST_DIR/tc21-diff.txt" 2>/dev/null
 fi
 
 # ──────────────────────────────────────────────────────────────────────

@@ -20,8 +20,11 @@
 # Registration-row identification predicate (procedures 1 / 2 / 3 shared):
 #   Within the range from the `## ページ一覧` heading to the next `##` heading,
 #   a row is any line starting with `|` (header row and separator row excluded).
-#   The row "registers" the page whose slug appears in the FIRST occurrence of
-#   `](pages/{domain}/{slug}.md)` in that line. The page column is defined as
+#   The row "registers" the page identified by the `{domain}/{slug}` pair of
+#   the FIRST occurrence of `](pages/{domain}/{slug}.md)` in that line — page
+#   identity is the page path, so two pages sharing a slug across domains are
+#   distinct pages (a slug-only key would delete one of them as a "duplicate"
+#   in procedure 3a). The page column is defined as
 #   "from the leading `|` to the closing paren of that first link" — NOT "the
 #   first `|`-split cell" — because a title containing an unescaped raw `|`
 #   pushes the link into later cells and cell-splitting would fail to identify
@@ -184,16 +187,21 @@ reclamation, stats sync) deterministically. See the header comment for the spec.
 EOF
 }
 
+# `shift; shift` (not `shift 2`): a valueless flag at the end of argv leaves
+# $#=1, where `shift 2` returns rc=1 WITHOUT consuming — with no `set -e` the
+# while loop then spins forever. Two single shifts always consume (the second
+# is a no-op at $#=0), so the empty value falls through to the required-value
+# guards below and exits 2 as documented (suite: tests/shift2-loop-hardening.test.sh).
 while [ $# -gt 0 ]; do
   case "$1" in
-    --index)       index_path="${2-}"; shift 2 ;;
-    --title)       title="${2-}"; shift 2 ;;
-    --domain)      domain="${2-}"; shift 2 ;;
-    --slug)        slug="${2-}"; shift 2 ;;
-    --description) description="${2-}"; shift 2 ;;
-    --updated)     updated="${2-}"; shift 2 ;;
-    --confidence)  confidence="${2-}"; shift 2 ;;
-    --pages-root)  pages_root="${2-}"; shift 2 ;;
+    --index)       index_path="${2-}"; shift; shift ;;
+    --title)       title="${2-}"; shift; shift ;;
+    --domain)      domain="${2-}"; shift; shift ;;
+    --slug)        slug="${2-}"; shift; shift ;;
+    --description) description="${2-}"; shift; shift ;;
+    --updated)     updated="${2-}"; shift; shift ;;
+    --confidence)  confidence="${2-}"; shift; shift ;;
+    --pages-root)  pages_root="${2-}"; shift; shift ;;
     -h|--help)     usage; exit 0 ;;
     *) echo "ERROR: wiki-index-update: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -292,22 +300,26 @@ LC_ALL=C awk '
   function is_pipe_row(s)  { return s ~ /^\|/ }
   function is_header_row(s){ return s ~ /^\|[ \t]*ページ[ \t]*\|/ }
   function is_sep_row(s)   { return s ~ /^\|[ \t:|-]+$/ }
-  # slug of the FIRST `](pages/{domain}/{slug}.md)` link; "" when none.
+  # page key (`{domain}/{slug}`) of the FIRST `](pages/{domain}/{slug}.md)`
+  # link; "" when none. Page identity is the path (pages/{domain}/{slug}.md),
+  # so the key includes the domain — a slug-only key would misidentify two
+  # pages sharing a slug across domains and silently delete one as a
+  # "duplicate" in procedure 3a.
   # Also records the byte offset just past the closing paren in _link_end.
-  function first_link_slug(s,   m, path, nparts, parts) {
+  function first_link_key(s,   path, nparts, parts) {
     if (match(s, /\]\(pages\/[^\/)]+\/[^\/)]+\.md\)/) == 0) { _link_end = 0; return "" }
     _link_end = RSTART + RLENGTH
     path = substr(s, RSTART + 2, RLENGTH - 3)          # pages/{domain}/{slug}.md
     nparts = split(path, parts, "/")
     sub(/\.md$/, "", parts[nparts])
-    return parts[nparts]
+    return parts[2] "/" parts[nparts]
   }
   function build_row(summary) {
     return "| [" esc_frontmatter(TITLE) "](pages/" DOMAIN "/" SLUG ".md) | " DOMAIN " | " summary " | " UPDATED " | " CONFIDENCE " |"
   }
   # summary of an existing row by positional extraction (see header spec)
   function extract_summary(s,   rest, n, parts, m, mid, i) {
-    first_link_slug(s)                                  # sets _link_end
+    first_link_key(s)                                   # sets _link_end
     rest = substr(s, _link_end)
     n = split(rest, parts, "|")
     m = n - 2                                           # drop first and last fragment
@@ -408,8 +420,8 @@ LC_ALL=C awk '
       if (!is_pipe_row(s)) continue
       last_pipe = i
       if (is_header_row(s) || is_sep_row(s)) continue
-      rs = first_link_slug(s)
-      if (rs != "" && rs == SLUG) { match_count++; match_idx[match_count] = i }
+      rs = first_link_key(s)
+      if (rs != "" && rs == DOMAIN "/" SLUG) { match_count++; match_idx[match_count] = i }
     }
     if (last_pipe == 0) last_pipe = H + 1                # fresh section: after separator
 
@@ -439,7 +451,7 @@ LC_ALL=C awk '
       if (i > H && i < E) {
         s = lines[i]
         if (is_pipe_row(s) && !is_header_row(s) && !is_sep_row(s)) {
-          rs = first_link_slug(s)
+          rs = first_link_key(s)
           if (rs != "") {
             if (rs in seen) { dedup_removed++; continue }
             seen[rs] = 1
