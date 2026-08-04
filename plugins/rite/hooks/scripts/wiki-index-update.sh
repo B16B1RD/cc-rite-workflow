@@ -210,6 +210,21 @@ done
 # ── Invocation validation (exit 2) ──────────────────────────────────────────
 [ -n "$index_path" ] || { echo "ERROR: wiki-index-update: --index is required" >&2; exit 2; }
 [ -n "$title" ] || { echo "ERROR: wiki-index-update: --title is required (must equal page frontmatter title)" >&2; exit 2; }
+# Placeholder residue gate: the caller (wiki-ingest SKILL.md ステップ 6) literal-
+# substitutes {title}/{description}/{updated}; an unsubstituted brace token would
+# be written into the registration row and the 統計 最終更新 line, overwriting
+# the accumulated summary the docstring declares unrecoverable. The other flags
+# need no gate — domain/confidence enum and slug charset validation below
+# already reject residue with exit 2 (same canonical gate as SKILL.md 5.0.c).
+case "$title" in
+  "{"*"}") echo "ERROR: wiki-index-update: --title looks like an unsubstituted placeholder: '$title'" >&2; exit 2 ;;
+esac
+case "$description" in
+  "{"*"}") echo "ERROR: wiki-index-update: --description looks like an unsubstituted placeholder: '$description'" >&2; exit 2 ;;
+esac
+case "$updated" in
+  "{"*"}") echo "ERROR: wiki-index-update: --updated looks like an unsubstituted placeholder: '$updated'" >&2; exit 2 ;;
+esac
 [ -n "$slug" ] || { echo "ERROR: wiki-index-update: --slug is required" >&2; exit 2; }
 [ -n "$updated" ] || { echo "ERROR: wiki-index-update: --updated is required" >&2; exit 2; }
 case "$domain" in

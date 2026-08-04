@@ -368,13 +368,13 @@ run_helper --index "$dir/index.md" --title "Dup NEW" --domain patterns \
 if [ "$HELPER_RC" -eq 0 ] \
    && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=aborted_duplicate' \
    && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'dedup_removed=1' \
-   && printf '%s\n' "$HELPER_STDERR" | grep -q 'WARNING' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -qF "2 rows register page 'patterns/dup'" \
    && grep -q 'Dup 先発' "$dir/index.md" \
    && ! grep -q 'Dup NEW' "$dir/index.md" \
    && ! grep -q 'Dup 後発' "$dir/index.md"; then
-  pass "TC-10 対象ページ重複で中止 (fallback なし・WARNING) + 3a が後発回収"
+  pass "TC-10 対象ページ重複で中止 (page '{domain}/{slug}' 表記 WARNING) + 3a が後発回収"
 else
-  fail "TC-10 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+  fail "TC-10 (rc=$HELPER_RC stdout=$HELPER_STDOUT stderr=$HELPER_STDERR)"
 fi
 
 # ──────────────────────────────────────────────────────────────────────
@@ -549,6 +549,22 @@ run_helper --index "$dir/index.md" --title t --domain patterns --slug s \
 run_helper --index "$dir/index.md" --title t --domain patterns --slug s \
   --updated $'2026\t08' --confidence high
 [ "$HELPER_RC" -eq 2 ] || { tc15_ok=0; echo "  (制御文字入り updated が rc=$HELPER_RC)"; }
+# placeholder residue gate: 未置換の {title}/{description}/{updated} は exit 2
+run_helper --index "$dir/index.md" --title '{title}' --domain patterns --slug s \
+  --updated "2026-08-05T09:00:00+09:00" --confidence high
+[ "$HELPER_RC" -eq 2 ] || { tc15_ok=0; echo "  (未置換 {title} が rc=$HELPER_RC)"; }
+run_helper --index "$dir/index.md" --title t --domain patterns --slug s \
+  --description '{description}' --updated "2026-08-05T09:00:00+09:00" --confidence high
+[ "$HELPER_RC" -eq 2 ] || { tc15_ok=0; echo "  (未置換 {description} が rc=$HELPER_RC)"; }
+run_helper --index "$dir/index.md" --title t --domain patterns --slug s \
+  --updated '{updated}' --confidence high
+[ "$HELPER_RC" -eq 2 ] || { tc15_ok=0; echo "  (未置換 {updated} が rc=$HELPER_RC)"; }
+# unknown argument arm: フラグ誤記への唯一の fail-loud (silent no-op 退化の検出)
+run_helper --index "$dir/index.md" --title t --domain patterns --slug s \
+  --updated "2026-08-05T09:00:00+09:00" --confidence high --bogus x
+if [ "$HELPER_RC" -ne 2 ] || ! printf '%s\n' "$HELPER_STDERR" | grep -qF 'unknown argument: --bogus'; then
+  tc15_ok=0; echo "  (unknown argument --bogus が rc=$HELPER_RC / ERROR 文言不一致)"
+fi
 after=$(cat "$dir/index.md")
 if [ "$tc15_ok" -eq 1 ] && [ "$before" = "$after" ]; then
   pass "TC-15 invocation error 群 (enum/slug/updated/欠落/制御文字) で exit 2・index.md 無変更"
@@ -939,8 +955,15 @@ printf '%s\n' "$step6_block" | grep -qF -- '--updated "{updated}"' || { tc17b_ok
 printf '%s\n' "$step6_block" | grep -qF -- '--confidence "{confidence}"' || { tc17b_ok=0; echo "  (--confidence の placeholder 対応が崩れている)"; }
 printf '%s\n' "$step6_block" | grep -qF -- '--title "$wiu_title"' || { tc17b_ok=0; echo "  (--title の heredoc 変数対応が崩れている)"; }
 printf '%s\n' "$step6_block" | grep -qF -- '--description "$wiu_description"' || { tc17b_ok=0; echo "  (--description の heredoc 変数対応が崩れている)"; }
+# 呼び出し行の実体 (コマンド語・値の形) も literal で pin する — フラグ名集合の突合だけでは
+# 呼び出し行の削除・helper パス改名・パス値の相対化・quoted heredoc 解除が生存する
+printf '%s\n' "$step6_block" | grep -qF -- 'bash "{plugin_root}/hooks/scripts/wiki-index-update.sh"' || { tc17b_ok=0; echo "  (helper 呼び出しコマンド行が無い/形が崩れている)"; }
+printf '%s\n' "$step6_block" | grep -qF -- '--index "$wiki_root/index.md"' || { tc17b_ok=0; echo '  (--index の値が $wiki_root/index.md でない)'; }
+printf '%s\n' "$step6_block" | grep -qF -- '--pages-root "$wiki_root/pages"' || { tc17b_ok=0; echo '  (--pages-root の値が $wiki_root/pages でない)'; }
+printf '%s\n' "$step6_block" | grep -qF -- "wiu_title=\$(cat <<'WIU_EOF'" || { tc17b_ok=0; echo "  (title の quoted heredoc が解除されている)"; }
+printf '%s\n' "$step6_block" | grep -qF -- "wiu_description=\$(cat <<'WIU_EOF'" || { tc17b_ok=0; echo "  (description の quoted heredoc が解除されている)"; }
 if [ "$tc17b_ok" -eq 1 ]; then
-  pass "TC-17b ステップ 6 呼び出し契約 (8 フラグ + placeholder 対応) が helper の case arm と一致"
+  pass "TC-17b ステップ 6 呼び出し契約 (8 フラグ + placeholder 対応 + 呼び出し行 literal) が helper と一致"
 else
   fail "TC-17b"
 fi
