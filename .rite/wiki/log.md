@@ -1,5 +1,6 @@
 ## 2026-08-04
 
+* **Update**: [累積対策 PR の review-fix loop で fix 自体が drift を導入する](pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md) — raw/reviews/20260804T092934Z-pr-2102.md を統合（機構の配線状況を散文で説明すると訂正のたびに誤りが別方向へ移る / 3 サイクル連続で「母集団に入らない」→「write 側が禁止」→「機械的阻止は新 schema 限定」がいずれも偽 / 収束したのは配線に関する主張自体を削除し判定に必要な事実だけを残したとき）
 * **Create**: [テストの gate 条件がプラットフォーム事実を環境 capability の代理にすると恒常 red 化する](pages/anti-patterns/test-gate-proxy-indicator-drift.md) — raw/reviews/20260803T155051Z-pr-2096.md を新規ページ化（floor の判定対象が守りたい capability ではなく platform 事実の代理だった / コメントと条件式の乖離が検出点 / 同形の gate でも probe 対象がツール存在か環境 capability かで正しい条件式は変わる）
 * **lint:warning** — contradictions=0, stale=15, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
 * **Create**: [同じ機構への N 回目のパッチは、その機構が依拠する述語が proxy である信号](pages/heuristics/nth-patch-signals-proxy-predicate.md) — raw/reviews/20260804T060209Z-pr-2099.md を新規ページ化（pin 更新ゲートの `cur_cc == 0` が「新しい run か」の proxy で reset 失敗時に相関が切れる / 述語を `fresh || cur_cc == 0` の選言へ替えると同型経路がパッチ追加ゼロで消えた / 「相関が切れる条件の列挙 ≡ 既存パッチの一覧」が proxy 判定の識別子）

@@ -2,7 +2,7 @@
 title: "累積対策 PR の review-fix loop で fix 自体が drift を導入する"
 domain: "anti-patterns"
 created: "2026-04-21T10:35:00+00:00"
-updated: "2026-08-04T15:54:17+09:00"
+updated: "2026-08-04T18:45:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260804T060209Z-pr-2099.md"
@@ -158,6 +158,8 @@ sources:
     ref: "raw/fixes/20260802T063409Z-pr-2052.md"
   - type: "fixes"
     ref: "raw/fixes/20260802T070715Z-pr-2052.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260804T092934Z-pr-2102.md"
 tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain", "review-attention-bias-blind-spot", "anchor-specificity-retreat", "doc-precision-regression-cascade", "self-referential-prevention-violation", "section-relative-prevention-success", "successive-prevention-replication", "doc-heavy-fractal-pattern", "systemic-mass-fix", "auto-demote-low-override", "fix-over-correction", "enforcement-locus-misattribution"]
 confidence: high
 ---
@@ -806,3 +808,21 @@ cycle 4 は「pin 書込失敗時に stale pin を残さない」ために `rm -
 - **変換を新しい入力へ広げるときは冪等性を検査する。** エスケープ規約の適用対象に「既存行から保持した値」を足したが、保持値は前サイクルで既に変換済みだった。「値に X が含まれるなら Y にする」型の規約は、Y を含む値を再入力したときの挙動を明示しないと非冪等になり、サイクルごとにエスケープ文字が 1 つずつ増える。
 - **サイクル単位のセマンティクスを per-item ループに置かない。** 全体の状態を前提にする手順を item ごとのループ本体に置くと、guard が評価不能・カウンタが N 倍・レポート行が N 行並ぶ。数え上げ不能な述語（「最後の N を処理したとき」）は既存カウンタとの照合（「処理済み件数が `n_raw_sources` に達したとき」）へ置換する。
 - **同一の literal を 2 箇所に書かない。** 完了レポート行の literal を手順側と表側の両方に書くと、片方だけ直して drift する。表を SoT にして手順側はポインタにする。
+
+### 機構の「配線状況」を散文で説明すると、説明を足すたびに誤りが入れ替わる（4 cycle 観測）
+
+同一 invariant の実装が複数ファイルに散り、そのうち一部だけが条件付き gate を持つ構造では、「どこで誰が強制するか」を散文コメントに書こうとするたびに別の誤りが入る。実測は 3 サイクル連続:
+
+- cycle 1: 「本述語の母集団に非実測 finding は入らない」→ 偽。gate 対象外の scope を持つ finding は降格されず配列に残る
+- cycle 2: 「invariant #4 が write 側で禁止する」→ 偽。write 側の検査は schema 版 gate 配下にあり、実際に書かれる版では発火しない
+- cycle 3: 「機械的阻止は新 schema 限定」→ 偽。read 側の 3 実装は schema 非依存で発火する（うち 1 つは当のコメントの 8 行下）
+
+各サイクルの指摘はいずれも正しく、実測アンカー付きで再現も取れていた。誤りは「前回の訂正が触れなかった側」へ移動しただけで、精度は上がっていない。
+
+**収束したのは、配線に関する主張自体を削除したとき。** 判定の可否に必要な事実（残る対象は 1 種類だけ / その組合せは invariant が禁じている / ゆえに本述語の判定対象に現れない）だけを残し、強制主体・強制箇所・違反時の捕捉経路をすべて落とした。
+
+- **判定の可否に無関係な配線情報は書かない。** どこで誰が強制するかは、そのコードブロックの分岐に影響しない。書けば実装の版差・gate 条件・評価順序に依存する主張になり、それらが動くたびに陳腐化する
+- **「後段の X が守る」型の根拠は評価順序に依存する。** 本件では参照先の elif が当該述語より後段にあり、違反入力は先に当該述語が捕らえていた。順序を根拠にすると、分岐を 1 つ挿入しただけで偽になる
+- **訂正が 3 回続いたら、訂正の方向ではなく主張の粒度を疑う。** 「もっと正確に書く」ではなく「その主張は必要か」を先に問う。cycle 1-3 はすべて前者を試みて失敗した
+- **副次: 逐語引用は書き換えで宙吊りになる。** 別ファイルが当該文言を逐語引用していたため、書き換えで存在しない文言への参照が残った。文言を引用する側は「同じ前提で書かれている」と述べる形にすると、引用元の表現変更で壊れない
+- **副次: Issue 番号を追跡先として名指しした記述は、その Issue のスコープが名指し内容を含まないまま close されると宙吊りになる。** close 前に `#<番号>` の in-repo 参照を grep し、スコープ外の追跡先は別 Issue へ付け替える
