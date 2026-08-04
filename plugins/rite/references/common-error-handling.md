@@ -75,7 +75,7 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 | **retained flag emit** | `[CONTEXT] {SCOPE}_FAILED=1; reason={reason}` を stderr に必ず emit する。reason 値は各 phase の reason 表で列挙される |
 | **IO エラーの可視化** | ファイル不在は silent no-op で OK だが、`rm` / `mkdir` / `mv` 等の **真の IO 失敗** (permission denied / disk full / readonly filesystem) は WARNING + stderr 5 行以上で必ず可視化する。`2>/dev/null` 等の silent suppression は禁止 |
 | **ステップ全体の exit code** | 本 sub-phase 単独の失敗では ステップ全体の exit code を変更しない。downstream の ステップ は retained flag を見て分岐する |
-| **判定値と emit 可否の分離 (carve-out)** | 本契約が保証するのは **判定値 (`overall_assessment` 等) を変えない**ことであって、**その判定値を result pattern として emit してよいか**までは保証しない。記録・保存の失敗のうち caller が入力を作り直せば収束するものは、判定値を変えないまま pending marker を残し、後段の gate が emit を差し戻すことがある。差し戻しは 1 iteration で収束するため retry 上限を持たない。どの reason が marker を残すか・その exit code・sub-phase 間の非対称は下記「適用箇所」を参照 (6.1.a と 6.1.d で異なる) |
+| **判定値と emit 可否の分離 (carve-out)** | 本契約が保証するのは **判定値 (`overall_assessment` 等) を変えない**ことであって、**その判定値を result pattern として emit してよいか**までは保証しない。記録・保存の失敗のうち caller が入力を作り直せば収束するものは、判定値を変えないまま pending marker を残し、後段の gate が emit を差し戻すことがある。**caller 起因の**差し戻しは 1 iteration で収束するため retry 上限を持たない。どの reason が marker を残すか・その exit code・sub-phase 間の非対称は下記「適用箇所」を参照 (6.1.a と 6.1.d で異なる) |
 | **observability emit の必須化** | 異常終了経路 (signal trap 経由含む) でも `[CONTEXT]` flag が emit されるよう、trap handler 内で flag emit を行う (skip notification phase が flag を読む前提で動作する) |
 
 **適用箇所**:
