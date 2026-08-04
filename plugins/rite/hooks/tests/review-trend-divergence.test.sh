@@ -359,6 +359,23 @@ jq '.pr_number = 999' "$mism_dir/607-20260101000002.json" > "$mism_dir/607-20260
 bash "$SCRIPT" --pr 607 --cycle-count 3 --results-dir "$mism_dir" > "$OUT" 2>/dev/null
 assert_grep "T-06h: pr_number 不一致は pr_number_mismatch で不発火" "$OUT" "reason=pr_number_mismatch"
 
+# 集計 filter そのものが落ちる経路 (findings[] に object でない要素が混ざる)。`jq empty` は
+# 通過するため schema / pr_number gate では捕まらず、blocking 件数の算出だけが失敗する。
+# 本 fixture は reason の pin に加え、jq の診断本文が stderr へ届くこと (診断転記を no-op に
+# しても緑のままになる穴を塞ぐ) と、診断が対応する WARNING の**後**に出ること (継続行規約 —
+# 前に出すと直前の別 WARNING の継続行位置へ着地して原因が誤帰属する) を pin する。
+bcf_dir="$SANDBOX/blocking-count-failed"; mkdir -p "$bcf_dir"
+make_result "$bcf_dir" 608 01 2
+make_result "$bcf_dir" 608 02 1
+jq '.findings = [1, 2]' "$bcf_dir/608-20260101000002.json" > "$bcf_dir/608-20260101000003.json"
+bash "$SCRIPT" --pr 608 --cycle-count 3 --results-dir "$bcf_dir" > "$OUT" 2>"$SANDBOX/bcf-err.txt"
+assert_grep "T-06b: 集計 filter の失敗は blocking_count_failed で不発火" "$OUT" "reason=blocking_count_failed"
+assert_grep "T-06b: jq の診断本文が stderr へ届く (抑止を外した意図の pin)" "$SANDBOX/bcf-err.txt" "jq: error"
+bcf_warn_line=$(grep -n '^WARNING: blocking 件数を算出できません' "$SANDBOX/bcf-err.txt" | head -1 | cut -d: -f1)
+bcf_diag_line=$(grep -n 'jq: error' "$SANDBOX/bcf-err.txt" | head -1 | cut -d: -f1)
+assert "T-06b: 診断は対応する WARNING の後に出る (継続行規約)" "yes" \
+  "$([ -n "$bcf_warn_line" ] && [ -n "$bcf_diag_line" ] && [ "$bcf_diag_line" -gt "$bcf_warn_line" ] && echo yes || echo no)"
+
 # ---------------------------------------------------------------------------
 # run 境界
 #
@@ -491,7 +508,11 @@ iso_dir="$SANDBOX/iso"; mkdir -p "$iso_dir"
 cp "$SCRIPT" "$iso_dir/h.sh"
 ( cd "$iso_dir" && bash ./h.sh --pr 707 --cycle-count 1 ) > "$OUT" 2>"$SANDBOX/iso-err.txt"
 assert_grep "既定 results_dir: resolver 不在時は cwd 相対へフォールバックし理由を残す" "$SANDBOX/iso-err.txt" "state-path-resolve.sh の解決に失敗"
-assert_grep "既定 results_dir: 抑止を外したので原因行 (ENOENT) が届く" "$SANDBOX/iso-err.txt" "state-path-resolve.sh"
+# 直前の assertion が pin する WARNING は script 自身の echo で、resolver の stderr ではない。
+# 部分文字列で照合すると `2>/dev/null` を再付与しても両方緑のままになる (identification power 0)。
+# resolver の stderr にしか現れない `bash: <path>:` prefix を needle にする (ENOENT 本文はロケール
+# 依存だが prefix は不変)。
+assert_grep "既定 results_dir: 抑止を外したので resolver 自身の原因行が届く" "$SANDBOX/iso-err.txt" "^bash: .*/\.\./state-path-resolve\.sh"
 
 # 同一 PR 番号を prefix に持つ別 PR (700 等) を巻き込まないこと
 prefix_dir="$SANDBOX/prefix"; mkdir -p "$prefix_dir"

@@ -190,9 +190,20 @@ if ! _diag=$(mktemp "${TMPDIR:-/tmp}/rite-trend-diag-XXXXXX" 2>/dev/null); then
   _diag=""
   echo "WARNING: 診断用 tempfile を作成できませんでした。判定不能時の jq stderr は表示されません" >&2
 fi
-trap 'rm -f "${_diag:-}"' EXIT INT TERM HUP
+# signal 別 trap。1 行形 (`trap '...' EXIT INT TERM HUP`) は INT/TERM/HUP の action に `exit` を
+# 持たないため bash が signal を consume し、スクリプトが**継続実行して exit 0 で終わる**。
+# Ctrl-C は foreground プロセスグループ全体へ届くので in-flight の jq が殺され、valid な入力に
+# 対して pr_number_mismatch / blocking_count_failed という**偽の reason** を出しながら rc=0 で
+# 返る (呼び出し側の `trend_rc -ne 0` guard も素通りする)。非ゼロ終了なら iterate ステップ 1 の
+# 既存分岐が helper_unavailable として backstop へ縮退させる。
+# canonical: references/bash-trap-patterns.md#signal-specific-trap-template
+_cleanup() { rm -f "${_diag:-}"; }
+trap 'rc=$?; _cleanup; exit $rc' EXIT
+trap '_cleanup; exit 130' INT
+trap '_cleanup; exit 143' TERM
+trap '_cleanup; exit 129' HUP
 
-# 判定不能の直前に jq の stderr を吐き出す。抑止の除去であって fallback ではない。
+# jq の stderr を吐き出す。抑止の除去であって fallback ではない。
 _emit_diag() {
   [ -n "${_diag:-}" ] && [ -s "$_diag" ] || return 0
   head -5 "$_diag" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
@@ -203,6 +214,11 @@ _undecidable() {
   # $1 = reason, $2 = 人間向け WARNING (空なら WARNING を出さない = 正常系の不足)
   if [ -n "${2:-}" ]; then
     echo "WARNING: $2" >&2
+    # 診断は WARNING の**直後**に出す。本プロジェクトは「WARNING 行 + 後続インデント行」を
+    # 1 単位として読む継続行規約を採るため、先に出すと直前の別 WARNING (例: `_lost > 0`) の
+    # 継続行位置に着地して原因が誤帰属する。sibling の scripts/review-measured-gate.sh の
+    # `_fail` と hooks/review-result-save.sh も同順。
+    _emit_diag
   fi
   echo "[CONTEXT] TREND_DIVERGENCE=insufficient; trend=; cycles=0; reason=$1"
   exit 0
@@ -339,7 +355,6 @@ fi
 _counts=()
 for _f in "${_run_files[@]+"${_run_files[@]}"}"; do
   if ! jq empty "$_f" >/dev/null 2>"${_diag:-/dev/null}"; then
-    _emit_diag
     _undecidable json_parse_failure "レビュー結果 JSON が parse できません: $(_nz "$_f")"
   fi
 
@@ -382,10 +397,10 @@ for _f in "${_run_files[@]+"${_run_files[@]}"}"; do
   _n=${_resolved%% *}
   _unresolved=${_resolved##* }
   case "$_n" in
-    ''|*[!0-9]*) _emit_diag; _undecidable blocking_count_failed "blocking 件数を算出できません: $(_nz "$_f")" ;;
+    ''|*[!0-9]*) _undecidable blocking_count_failed "blocking 件数を算出できません: $(_nz "$_f")" ;;
   esac
   case "$_unresolved" in
-    ''|*[!0-9]*) _emit_diag; _undecidable blocking_count_failed "scope 解決結果を算出できません: $(_nz "$_f")" ;;
+    ''|*[!0-9]*) _undecidable blocking_count_failed "scope 解決結果を算出できません: $(_nz "$_f")" ;;
   esac
   if [ "$_unresolved" -gt 0 ]; then
     _undecidable scope_enum_violation \

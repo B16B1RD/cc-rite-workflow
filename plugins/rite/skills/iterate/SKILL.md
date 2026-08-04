@@ -24,7 +24,7 @@ argument-hint: "<pr_number>"
 **サーキットブレーカーの発火条件は 2 つ**:
 
 - **収束トレンドの発散**（主経路）: 永続レビュー JSON の per-cycle blocking 件数から `hooks/scripts/review-trend-divergence.sh` が発散を機械判定する。「直近 2 値がともに過去の最良水準を超え、かつ下降中でもない」を発散とし、健全に収束中のループは cycle 数に縛られず走り切れる。判定式の較正根拠（直近 5 PR の実トラジェクトリによる backtest）は helper の header が SoT
-- **`safety.max_review_cycles`（既定 5）到達**（保険）: 発散判定をすり抜ける遅い非収束（漸減が続くが 0 に達しない、最良水準での平坦等）を受け止める遠い backstop。**滅多に発火しない純粋な保険**であり、収束中のループを予算で殺すための上限ではない
+- **`safety.max_review_cycles`（既定 5）到達**（保険）: 発散判定をすり抜ける非収束（漸減が続くが 0 に達しない、最良水準での平坦等）を受け止める backstop。ステップ 1 は `cc >= max_cycles` を trend 判定より**先に**評価するため、**既定 5 のままでは 6 cycle 以上を要する収束中の run も本経路で停止する**（backtest 7 本のうち `12,5,3,2,2` と `10,9,8,7,6` の 2 本が該当）。既定値をいくつに置くかは未決で、本節は現在値の挙動のみを記述する
 
 > **Why**: cycle 数上限は努力と無駄を区別できない — 健全に収束中のループも残り数件のところで予算切れになり、発散しているループも上限まで燃やしてしまう（どちらも実運用で観測済み）。「品質を予算で縛らない・無駄は排除する」（CLAUDE.md プロジェクト原則）に従い、切るのは発散であって収束に向かう実サイクルではない。
 
@@ -645,8 +645,8 @@ fi
 # max_review_cycles が invocation 間で変わると符号化が両方向に破綻する）。
 # `--handoff` を伴わないため、ステップ 1 fire 分岐が消した handoff はクリアされたまま維持される。
 # 成否は FIRE_RESET marker に載せる。失敗すると counter が上限のまま残り再実行が即再発火する
-# （= 停止通知が約束する「再実行すればもう N cycle 回る」が偽になる）ため、ステップ 6.2 が
-# これを読んで注意行 (b) を出し分ける。
+# （= 停止通知が約束する「再実行すれば新しい run として cycle 1 から回る」が偽になる）ため、
+# ステップ 6.2 がこれを読んで注意行 (b) を出し分ける。
 if cb_reset_out=$(LC_ALL=C bash {plugin_root}/hooks/flow-state.sh set \
   --phase review --issue {issue_number} --branch {branch_name} --pr {pr_number} \
   --next "サーキットブレーカー発火 (counter reset 済。理由はステップ 1 の CB_REASON)" --cycle-count 0 2>&1); then
@@ -722,8 +722,9 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 - 措置: 当該 PR を非収束として失敗記録し、draft/open PR をレビュー待ちで残します（マージには進みません）
 
 再開方法:
-- ループを再開する: /rite:iterate {pr_number} を明示的に再実行する（cycle counter がリセットされ、
-  もう {max_review_cycles} cycle 回る）。/rite:recover 経由の再開も同じ経路
+- ループを再開する: /rite:iterate {pr_number} を明示的に再実行する（cycle counter と run 開始点が
+  リセットされ、新しい run として cycle 1 から回る。再び発散すればブレーカーは上限を待たずに
+  再発火する）。/rite:recover 経由の再開も同じ経路
 - Ready 化して人間のレビューに委ねる: /rite:ready {pr_number}
 
 <!-- [iterate:max-cycles-stopped] -->
@@ -797,7 +798,7 @@ handoff 迂回のリスクは (b) には含めない。**counter reset の失敗
 
 `HANDOFF_CLEAR=failed` のみ（`FIRE_RESET=ok`）では**追加しない** — 共有前段の set が 2 度目の default-clear として働き handoff は消えているため、迂回は起きない。
 
-**(b) は注意行の追加だけでは足りない。** 上記テンプレートの「再開方法」1 行目が約束する「cycle counter がリセットされ、もう {max_review_cycles} cycle 回る」は手動リセットを行うまで偽であり、注意行と同一通知内に並べると矛盾する 2 つの再開手順を人間に提示することになる（注意行は「理由」行の直後に入るため両者は数行しか離れていない）。よって **(b) を観測したときは、テンプレートの当該 1 行を次の 1 行へ差し替えて出力する**（追加ではなく置換）:
+**(b) は注意行の追加だけでは足りない。** 上記テンプレートの「再開方法」1 行目が約束する「cycle counter と run 開始点がリセットされ、新しい run として cycle 1 から回る」は手動リセットを行うまで偽であり、注意行と同一通知内に並べると矛盾する 2 つの再開手順を人間に提示することになる（注意行は「理由」行の直後に入るため両者は数行しか離れていない）。よって **(b) を観測したときは、テンプレートの当該 1 行を次の 1 行へ差し替えて出力する**（追加ではなく置換）:
 
 ```
 - ループを再開する: 上記の手動リセットを実行してから /rite:iterate {pr_number} を再実行する
