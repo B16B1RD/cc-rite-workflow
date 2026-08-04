@@ -172,7 +172,7 @@ tdd:
 # Advanced (commented) block — only the position moved.
 safety:
   max_implementation_rounds: 20   # implementation round hard limit per Issue (default: 20)
-  max_review_cycles: 5            # /rite:iterate review-fix loop circuit breaker per PR (default: 5)
+  max_review_cycles: 5            # /rite:iterate circuit breaker backstop (default: 5). Primary fire condition is convergence-trend divergence
   time_budget_minutes: 120        # advisory time budget per Issue (not enforced by timer)
   auto_stop_on_repeated_failure: true   # stop after repeated same-class failures
   repeated_failure_threshold: 3   # consecutive same-class failures that trigger auto-stop

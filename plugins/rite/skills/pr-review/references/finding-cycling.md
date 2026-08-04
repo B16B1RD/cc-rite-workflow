@@ -4,7 +4,7 @@
 
 ## 概要 — Quality Signal 1-4 の位置付け
 
-review-fix loop には、cycle 数に応じてレビュー品質を段階的に緩める **cycle-count-based degradation は存在しない** 設計 (旧 cycle-count monitor は完全に削除済み)。品質判定の escalation は以下 **4 つの quality signal** で行う。（これとは別レイヤで、非収束ループの最終安全網として `safety.max_review_cycles` の cycle 上限サーキットブレーカー = #1701 が存在するが、これは品質を緩めず cycle 上限で機械的に停止する（対話は停止通知、`/rite:batch-run` バッチは failed 遷移）だけで、下記 signal 群とは独立に両立する。詳細は `skills/iterate/SKILL.md` 設計判断を参照。）
+review-fix loop には、cycle 数に応じてレビュー品質を段階的に緩める **cycle-count-based degradation は存在しない** 設計 (旧 cycle-count monitor は完全に削除済み)。品質判定の escalation は以下 **4 つの quality signal** で行う。（これとは別レイヤで、非収束ループの最終安全網としてサーキットブレーカーが存在するが、これは品質を緩めず機械的に停止する（対話は停止通知、`/rite:batch-run` バッチは failed 遷移）だけで、下記 signal 群とは独立に両立する。発火の主経路は収束トレンドの発散検出で、`safety.max_review_cycles` はそれをすり抜けた run を止める backstop。詳細は `skills/iterate/SKILL.md` 設計判断を参照。）
 
 | Signal | 検出 phase | 内容 |
 |--------|-----------|------|
@@ -15,7 +15,7 @@ review-fix loop には、cycle 数に応じてレビュー品質を段階的に�
 
 Signal 1 は Phase 5.4.1.0 (本 reference §1)、Signal 3 と Signal 4 は Phase 5.4.3 Step 3.1 (本 reference §2) で検出する。4 signal すべてに対して **同じ 4-option AskUserQuestion** (本 reference §3) で escalation する。
 
-設計判断: **品質 escalation の機構**は 4 quality signal のみとし、cycle 数に応じてレビュー品質を段階的に緩める iteration counter（progressive relaxation / degradation）は導入しない。過去に明示的に削除した cycle-count-based degradation の再発を防ぐため。ただしこれは「品質緩和の禁止」であり、非収束ループの最終安全網としての cycle 上限サーキットブレーカー（`safety.max_review_cycles`、#1701）とは別レイヤで両立する — 後者は品質を一切緩めず、上限到達で機械的に停止（対話は停止通知、`/rite:batch-run` バッチは failed 遷移）するだけで、本 signal 群の quality escalation を代替も抑制もしない。
+設計判断: **品質 escalation の機構**は 4 quality signal のみとし、cycle 数に応じてレビュー品質を段階的に緩める iteration counter（progressive relaxation / degradation）は導入しない。過去に明示的に削除した cycle-count-based degradation の再発を防ぐため。ただしこれは「品質緩和の禁止」であり、非収束ループの最終安全網としてのサーキットブレーカー（収束トレンドの発散検出が主経路、`safety.max_review_cycles` は backstop）とは別レイヤで両立する — 後者は品質を一切緩めず、発火条件の成立で機械的に停止（対話は停止通知、`/rite:batch-run` バッチは failed 遷移）するだけで、本 signal 群の quality escalation を代替も抑制もしない。
 
 ## §1 — Phase 5.4.1.0 Finding Cycling Detection
 

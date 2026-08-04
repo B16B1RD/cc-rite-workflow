@@ -607,8 +607,8 @@ if [ -z "$review_source" ]; then
         case "$schema_version" in
           "1.0.0"|"1.0"|"1.1.0")
             # schema 1.1.0 を accept list に追加 (Priority 2 case 文)。
-            # Priority 0/2/3 の 3 sites を symmetric に保つ (review-result-schema.md
-            # Schema Version SoT セクションの「読取側 (3 値受理義務、3 箇所で完全同期)」契約)。
+            # Priority 0/2/3 + hooks/scripts/review-trend-divergence.sh の 4 sites を symmetric に保つ (review-result-schema.md
+            # Schema Version SoT セクションの「読取側 (3 値受理義務、4 箇所で完全同期)」契約)。
             #
             # commit_sha stale detection (verified-review silent-failure C-1)
             # Priority 2 は lexicographic 最新ファイルを機械的に選ぶため、古い commit に対する

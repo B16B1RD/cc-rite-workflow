@@ -25,23 +25,26 @@
 
 **受理される値** (読取側): `"1.0.0"` (canonical 1.0) / legacy エイリアス `"1.0"` (semver `MAJOR.MINOR` のみ、1.0.0 と semantic 等価、v2.0 まで受理) / `"1.1.0"` (canonical 1.1) の **3 値**。`"1.0.0"` / `"1.0"` で受信した JSON は `findings[].scope` / `findings[].pre_existing` フィールドが欠落しているため、read 側で severity ベースの default mapping を適用する (詳細は [後方互換性 (schema 1.0 ↔ 1.1.0)](#後方互換性-schema-10--110) 参照)。詳細経緯は CHANGELOG を参照。
 
-**`verification` は 1.1.0 内で additive 追加された optional field** — したがって **`"1.1.0"` で受信した JSON でも `findings[].verification` は欠落しうる**。読取側 accept list 3 箇所の同期変更を避けるため schema_version は bump しない。「`schema_version == "1.1.0"` ならば `verification` が存在する」と読んではならない。欠落時は `measured=false` の default mapping を適用する (同じく [後方互換性](#後方互換性-schema-10--110) 参照)。ただし **blocking 判定 consumer は欠落を「未判定」= blocking と解釈する** — 同節の「3 値モデルへの上書き」を参照。
+**`verification` は 1.1.0 内で additive 追加された optional field** — したがって **`"1.1.0"` で受信した JSON でも `findings[].verification` は欠落しうる**。読取側 accept list 4 箇所の同期変更を避けるため schema_version は bump しない。「`schema_version == "1.1.0"` ならば `verification` が存在する」と読んではならない。欠落時は `measured=false` の default mapping を適用する (同じく [後方互換性](#後方互換性-schema-10--110) 参照)。ただし **blocking 判定 consumer は欠落を「未判定」= blocking と解釈する** — 同節の「3 値モデルへの上書き」を参照。
 
 **検証箇所の同期義務** (verified-review cycle 8 L-4 対応で本セクションを SoT 化、cycle 10 I-E 対応で read/write 非対称を明示、1.1.0 を accept list に追加):
 
-**読取側 (3 値受理義務、3 箇所で完全同期)**:
+**読取側 (3 値受理義務、4 箇所で完全同期)**:
 
-- `fix.md` ステップ 1.2.0 Priority 0 (`--review-file` case 文)
-- `fix.md` ステップ 1.2.0 Priority 2 (local file case 文)
+- `scripts/review-source-resolve.sh` Priority 0 (`--review-file` case 文。`fix.md` ステップ 1.2.0 が呼ぶ helper 側に在る)
+- `scripts/review-source-resolve.sh` Priority 2 (local file case 文。同上)
 - `fix.md` ステップ 1.2.0 Priority 3 (PR comment Raw JSON case 文)
+- `hooks/scripts/review-trend-divergence.sh` (収束トレンド判定の入力として `findings[]` を読む case 文)
 
-上記 3 箇所の `case "$schema_version" in "1.0.0"|"1.0"|"1.1.0")` は常に同じ accept list を持つ。将来 `"1.2.0"` 追加 / legacy `"1.0"` 廃止時は 3 箇所を同時更新すること。
+上記 4 箇所の `case "$schema_version" in "1.0.0"|"1.0"|"1.1.0")` は常に同じ accept list を持つ。将来 `"1.2.0"` 追加 / legacy `"1.0"` 廃止時は 4 箇所を同時更新すること。
+
+> 4 番目の読取側 (`review-trend-divergence.sh`) は accept list 外の値に遭遇したとき、fix.md の 3 箇所のような Priority fallthrough を持たず **判定不能 (`reason=schema_version_unknown`) として発火せずに返す**。これは silent skip ではなく、理由付きで `[CONTEXT] TREND_DIVERGENCE=insufficient` を emit した上で `safety.max_review_cycles` の backstop に判定を委ねる設計 (未知スキーマで発散と判定して健全な run を殺すより安全側)。
 
 **書込側 (canonical 値のみ出力、同期義務なし)**:
 
 - `pr-review.md` ステップ 6.1.a — 現時点では canonical `"1.0.0"` のみを出力する。`"1.1.0"` への canonical write bump は **`_reviewer-base` への Scope Assignment 責務追加** のスコープ。reviewer が scope / pre_existing を出力できるようになった時点で本ドキュメントの書込側 canonical を `"1.1.0"` に bump する。case 文は存在せず、post-condition jq validation は `schema_version | type == "string" and length > 0` の型チェックのみで値の同期対象外 (読取側 accept list と独立に進化してよい)
 
-本セクションが Single Source of Truth であり、読取側 3 箇所の accept list を本ドキュメントと同一に保つ義務がある。この 3 箇所間の drift を自動検出する仕組みはないため、本ドキュメントを変更した際は手動で 3 箇所を同期させること（`plugins/rite/hooks/scripts/review-schema-version-check.sh` は `.rite/review-results/*.json` の schema_version 値を検査するものであり、読取側 3 箇所の accept list リテラル自体の同期は対象外）。
+本セクションが Single Source of Truth であり、読取側 4 箇所の accept list を本ドキュメントと同一に保つ義務がある。この 4 箇所間の drift を自動検出する仕組みはないため、本ドキュメントを変更した際は手動で 4 箇所を同期させること（`plugins/rite/hooks/scripts/review-schema-version-check.sh` は `.rite/review-results/*.json` の schema_version 値を検査するものであり、読取側 4 箇所の accept list リテラル自体の同期は対象外）。
 
 **失敗時の遷移** (Priority 別):
 
@@ -184,7 +187,7 @@
 
 **設計判断 — なぜ `findings[]` に混ぜないか**: `findings[]` は「merge を止める集合」という単一の意味を持ち、`overall_assessment` / `total_findings` / cross-field invariant #2 のいずれもその前提で書かれている。非実測指摘を同配列に混ぜると invariant #2 (mergeable × open CRITICAL/HIGH 禁止) を read 側 3 経路 + 本 SoT で同時に緩める必要が生じる。独立配列にすれば `findings[]` の契約を一切変えずに記録だけを永続化できる。
 
-**なぜ optional で schema_version を bump しないか**: `verification` と同じ additive 追加の方針。読取側 accept list 3 箇所の同期変更を避ける。read 側は未知キーを無視するため旧 reader でも壊れない。
+**なぜ optional で schema_version を bump しないか**: `verification` と同じ additive 追加の方針。読取側 accept list 4 箇所の同期変更を避ける。read 側は未知キーを無視するため旧 reader でも壊れない。
 
 **0 件のときも空配列 `[]` を出力する** (キー省略との区別): キー自体が無い JSON は「本ゲート適用前の世代」を意味し、空配列は「本ゲートを適用したが降格ゼロ」を意味する。両者を区別できないと、降格が起きたのに記録されなかった事故を後から検出できない。
 
