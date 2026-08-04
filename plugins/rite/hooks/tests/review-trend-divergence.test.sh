@@ -20,6 +20,8 @@
 #                                         塞いだ修正より前で、保存済み 9 件が連続 9 cycle である
 #                                         保証がない。どちらも他方を反証できないため両方を pin する
 #   - `10,11,11,13`                     : ループ打ち切り時に記録された 3 run 目の実測 (#2052)
+#   - `10,9,8,7,6`                      : 漸減非収束の合成列。AC-3 の escape 節 (下降中なら見逃す) を
+#                                         非空虚に保つために作成したもので、実 run 由来ではない
 #
 # Convention (shared with the sibling suite): mktemp sandbox, no network, no gh,
 # GNU/BSD portable (jq only). --results-dir を明示するため git repo は不要。
@@ -288,6 +290,10 @@ assert_grep "T-06f: 破損 JSON は json_parse_failure で不発火" "$OUT" "rea
 # `jq empty` 側の redirect も pin する。集計 filter 側 (T-06p) だけを pin すると、こちらの
 # `2>"${_diag:-/dev/null}"` を `2>/dev/null` へ戻す改変が緑のまま通る (同形 site の片側だけ pin する穴)。
 assert_grep "T-06f: 破損 JSON の jq 診断本文が stderr へ届く" "$SANDBOX/bad-err.txt" "jq: (parse )?error"
+# どの gate が帰属させたかも pin する。reason と診断だけでは `jq empty` gate を丸ごと消しても
+# 後段の抽出 jq が同じ reason と診断を出すため緑のまま通り、破損 JSON に対して
+# 「schema_version が読めない」という実態とずれた原因が報告される。T-06r 側と対で固定する。
+assert_grep "T-06f: parse gate が帰属を名乗る" "$SANDBOX/bad-err.txt" "レビュー結果 JSON が parse できません"
 
 # top-level が object でない JSON。`jq empty` は通過し、フィールド抽出の jq だけが rc 非 0 で落ちる。
 # 抽出側の rc を検査せず空値からの推測だけで分類すると、jq が出した唯一の原因文 (Cannot index
@@ -299,6 +305,7 @@ printf '[1,2]' > "$arr_dir/617-20260101000003.json"
 bash "$SCRIPT" --pr 617 --cycle-count 3 --results-dir "$arr_dir" > "$OUT" 2>"$SANDBOX/arr-err.txt"
 assert_grep "T-06r: フィールド抽出 jq の失敗は json_parse_failure で不発火" "$OUT" "reason=json_parse_failure"
 assert_grep "T-06r: 抽出 jq の診断本文が stderr へ届く (空値からの推測で握り潰さない)" "$SANDBOX/arr-err.txt" "jq: error"
+assert_grep "T-06r: 抽出 gate が帰属を名乗る (T-06f と対)" "$SANDBOX/arr-err.txt" "schema_version を読み出せません"
 
 ver_dir="$SANDBOX/ver"; mkdir -p "$ver_dir"
 make_result "$ver_dir" 606 01 2
@@ -353,8 +360,9 @@ assert_not_grep "T-06l: 1.0 を未知 schema として弾かない" "$OUT" "reas
 # 上の T-06l fixture は make_result 由来で scope を必ず持つため、`has("scope")` が真になり
 # 「1.0 系だけが severity ベース default mapping へ落ちる」分岐を 1 度も評価しない。SoT
 # (review-result-schema.md) は 1.0 / 1.0.0 を scope 欠落と定義しているので、その実形状を別に置く。
-# これが無いと default mapping の適用範囲を 1.1.0 側へ広げる改変が緑のまま通り、legacy run に
-# 対する発散検出が丸ごと無効化される (1.0.0 側は T-06k が同じ形で pin 済み)。
+# 本 TC が一意に捕まえるのは **null 分岐を 1.0 まで広げる**改変 (= 1.0 が scope_enum_violation へ
+# 落ちて legacy run の発散検出が丸ごと死ぬ)。逆向き (1.1.0 側へ default mapping を広げる) は
+# T-06i が担当するので、本 TC を「T-06i と冗長」と読んで削らないこと。
 legacy_noscope_dir="$SANDBOX/schema-legacy-minor-noscope"; mkdir -p "$legacy_noscope_dir"
 for legacy_seq in 01 02 03; do
   jq -n --arg seq "$legacy_seq" '{
@@ -548,6 +556,9 @@ assert_grep "既定 results_dir: resolver 不在時は cwd 相対へフォール
 # resolver の stderr にしか現れない `bash: <path>:` prefix を needle にする (ENOENT 本文はロケール
 # 依存だが prefix は不変)。
 assert_grep "既定 results_dir: 抑止を外したので resolver 自身の原因行が届く" "$SANDBOX/iso-err.txt" "^bash: .*/\.\./state-path-resolve\.sh"
+# 隔離コピーは control-char-neutralize.sh も解決できないため縮退告知の唯一の観測点になる。
+# 無言で縮退させると「中和している」という前提だけが残って実効を失うので、告知自体を pin する。
+assert_grep "縮退告知: neutralize helper 不在を WARNING で告知する" "$SANDBOX/iso-err.txt" "control-char-neutralize.sh を読み込めませんでした"
 
 # 同一 PR 番号を prefix に持つ別 PR (700 等) を巻き込まないこと
 prefix_dir="$SANDBOX/prefix"; mkdir -p "$prefix_dir"
@@ -667,6 +678,74 @@ for sig_spec in "INT:130" "TERM:143" "HUP:129"; do
   assert "signal 中断: SIG$sig_name では verdict marker を出さない" "0" \
     "$(grep -c 'TREND_DIVERGENCE=' "$SANDBOX/sig-out.txt" | tr -d '[:space:]')"
 done
+
+# 集計ループの各フィールド抽出 jq が rc を検査していることの pin。rc を見ずに空値からの推測だけで
+# 分類すると、jq が死んだだけの健全な PR に対して「pr_number が不一致」という**存在しないデータ
+# 破損を捏造した診断**を rc=0 で返す。shim の対象は呼び出し回数ではなく引数で選ぶ — 序数だと
+# 「1 ファイルあたり jq n 回」という実装詳細に依存し、jq 呼び出しが 1 つ増えた瞬間に別 site を
+# 静かに叩きながら緑を維持する。
+kill_bin="$SANDBOX/killbin"; mkdir -p "$kill_bin"
+cat > "$kill_bin/jq" <<'JQ_KILL_EOF'
+#!/usr/bin/env bash
+for _a in "$@"; do
+  case "$_a" in
+    *"$RITE_KILL_FILTER"*) kill -KILL "$$" 2>/dev/null ;;
+  esac
+done
+exec "$RITE_KILL_REAL_JQ" "$@"
+JQ_KILL_EOF
+chmod +x "$kill_bin/jq"
+kill_dir="$SANDBOX/jqkill"; mkdir -p "$kill_dir"
+for kill_seq in 01 02 03; do make_result "$kill_dir" 618 "$kill_seq" 1; done
+for kill_spec in ".pr_number:pr_number を読み出せません" ".schema_version:schema_version を読み出せません"; do
+  kill_filter="${kill_spec%%:*}"; kill_msg="${kill_spec##*:}"
+  RITE_KILL_FILTER="$kill_filter" RITE_KILL_REAL_JQ="$sig_real_jq" PATH="$kill_bin:$PATH" \
+    bash "$SCRIPT" --pr 618 --cycle-count 3 --results-dir "$kill_dir" \
+    > "$SANDBOX/kill-out.txt" 2>"$SANDBOX/kill-err.txt"
+  assert_grep "抽出 jq の rc 検査: $kill_filter が死ぬと json_parse_failure へ倒す" "$SANDBOX/kill-out.txt" "reason=json_parse_failure"
+  assert_grep "抽出 jq の rc 検査: $kill_filter の失敗を名指しする" "$SANDBOX/kill-err.txt" "$kill_msg"
+  assert_not_grep "抽出 jq の rc 検査: 存在しないデータ破損を捏造しない" "$SANDBOX/kill-out.txt" "reason=pr_number_mismatch"
+done
+
+# 診断用 tempfile を作れない環境での縮退告知。無言で縮退すると「判定不能時に jq stderr を出す」
+# という契約だけが残って実効を失うため、告知自体を pin する (helper 不在側は iso ブロックが担当)。
+nodiag_tmp="$SANDBOX/nodiag"; mkdir -p "$nodiag_tmp"; chmod 500 "$nodiag_tmp"
+TMPDIR="$nodiag_tmp" bash "$SCRIPT" --pr 618 --cycle-count 3 --results-dir "$kill_dir" \
+  > "$SANDBOX/nodiag-out.txt" 2>"$SANDBOX/nodiag-err.txt"
+chmod 700 "$nodiag_tmp"
+assert_grep "縮退告知: 診断用 tempfile を作れないことを WARNING で告知する" "$SANDBOX/nodiag-err.txt" "診断用 tempfile を作成できませんでした"
+assert_grep "縮退告知: tempfile 不在でも判定自体は続行する" "$SANDBOX/nodiag-out.txt" "TREND_DIVERGENCE="
+
+# trap の**設置順序**の pin。canonical (references/bash-trap-patterns.md) は「trap 設置は mktemp /
+# 主処理の前」を必須項目に挙げる。順序が逆だと mktemp 成功〜trap 武装の窓で signal を受けたとき
+# trap 未武装のまま既定 disposition で終了し、診断 tempfile が orphan として残る。窓は数マイクロ秒
+# なので時間では突けない — mktemp shim が診断ファイルを作った直後に signal を送ることで、
+# 窓の内側を決定論的に再現する。rc は順序に依らず 143 になるため、残骸の有無だけが判別子。
+trap_bin="$SANDBOX/trapbin"; mkdir -p "$trap_bin"
+trap_real_mktemp=$(command -v mktemp)
+cat > "$trap_bin/mktemp" <<'MK_SHIM_EOF'
+#!/usr/bin/env bash
+_out=$("$RITE_TRAP_REAL_MKTEMP" "$@") || exit $?
+printf '%s\n' "$_out"
+case "$_out" in
+  *rite-trend-diag-*)
+    _t=$(cat "$RITE_TRAP_PIDFILE" 2>/dev/null)
+    case "$_t" in ''|*[!0-9]*) : ;; *) kill -TERM "$_t" 2>/dev/null ;; esac
+    ;;
+esac
+MK_SHIM_EOF
+chmod +x "$trap_bin/mktemp"
+trap_tmp="$SANDBOX/traptmp"; mkdir -p "$trap_tmp"
+: > "$SANDBOX/trap-pid.txt"
+TMPDIR="$trap_tmp" RITE_TRAP_REAL_MKTEMP="$trap_real_mktemp" \
+  RITE_TRAP_PIDFILE="$SANDBOX/trap-pid.txt" PATH="$trap_bin:$PATH" \
+  bash -c 'printf "%s\n" "$$" > "$1"; shift; exec bash "$@"' _ "$SANDBOX/trap-pid.txt" \
+    "$SCRIPT" --pr 618 --cycle-count 3 --results-dir "$kill_dir" \
+  > /dev/null 2>&1
+trap_rc=$?
+assert "trap 順序: mktemp 直後の SIGTERM でも signal 別 trap が武装済み" "143" "$trap_rc"
+assert "trap 順序: 診断 tempfile が orphan として残らない (trap を mktemp の後に置くと残る)" "0" \
+  "$(find "$trap_tmp" -maxdepth 1 -name 'rite-trend-diag-*' 2>/dev/null | wc -l | tr -d '[:space:]')"
 
 # ---------------------------------------------------------------------------
 # 実 fixture (scripts/tests/fixtures/pr-2070) に対する回帰

@@ -185,11 +185,9 @@ _nz() { printf '%s' "${1:-}" | neutralize_ctrl; }
 # (findings[] に object でない要素が混ざる等) があり、そのとき reason だけではファイル名しか
 # 分からず原因の特定に filter の再構成が要る。sibling の scripts/review-measured-gate.sh と
 # hooks/flow-state.sh は同目的で診断退避を持つ (本 script の header が手本として名指ししている)。
+# 先行宣言 (cleanup が参照する)。実体の割当は trap 武装後の mktemp が行う。
 _diag=""
-if ! _diag=$(mktemp "${TMPDIR:-/tmp}/rite-trend-diag-XXXXXX" 2>/dev/null); then
-  _diag=""
-  echo "WARNING: 診断用 tempfile を作成できませんでした。判定不能時の jq stderr は表示されません" >&2
-fi
+
 # signal 別 trap。1 行形 (`trap '...' EXIT INT TERM HUP`) は INT/TERM/HUP の action に `exit` を
 # 持たないため bash が signal を consume し、スクリプトが**継続実行して exit 0 で終わる**。
 # Ctrl-C は foreground プロセスグループ全体へ届くので in-flight の jq が殺され、valid な入力に
@@ -202,6 +200,11 @@ trap 'rc=$?; _cleanup; exit $rc' EXIT
 trap '_cleanup; exit 130' INT
 trap '_cleanup; exit 143' TERM
 trap '_cleanup; exit 129' HUP
+
+if ! _diag=$(mktemp "${TMPDIR:-/tmp}/rite-trend-diag-XXXXXX" 2>/dev/null); then
+  _diag=""
+  echo "WARNING: 診断用 tempfile を作成できませんでした。判定不能時の jq stderr は表示されません" >&2
+fi
 
 # jq の stderr を吐き出す。抑止の除去であって fallback ではない。
 _emit_diag() {
