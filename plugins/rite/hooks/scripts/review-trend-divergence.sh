@@ -13,8 +13,9 @@
 #   bash review-trend-divergence.sh --pr N --cycle-count N [--since BASENAME] [--results-dir PATH]
 #
 # 出力 (stdout, 1 行):
-#   [CONTEXT] TREND_DIVERGENCE=fire|ok|insufficient; trend=<c1,c2,...>; cycles=N; reason=<...>
-#   fire のときのみ `fire_at=<cycle>` が付く。
+#   [CONTEXT] TREND_DIVERGENCE=fire|ok|insufficient; trend=<c1,c2,...>; cycles=N; lost=N; reason=<...>
+#   fire のときのみ `fire_at=<cycle>` が付く。`lost=` は cycle_count に対して失われた結果の件数
+#   (保存失敗 / review 中断)。判定を降ろす経路 (_undecidable) は trend/cycles/lost を持たない。
 # WARNING / 診断は stderr。
 #
 # Why 件数上限ではなくトレンドか:
@@ -86,8 +87,14 @@
 #   最新の結果ファイル basename が入る (iterate ステップ 0.6 が cycle_count == 0 のときに書く)。
 #   本 script はそれより新しいファイルだけを現 run とみなす。pin ファイルが無ければ全件を
 #   1 本の列として読む (pin 導入前の run / 手動実行に対する後方互換)。
-#   cycle_count は run 境界の決定には**使わない** — ファイル数との差は「結果が 1 件失われた」
-#   ことの診断値として WARNING に載せるだけで、判定は実在するファイル列に対して行う。
+#   cycle_count は run 境界の**決定**には使わないが、**過剰取り込みの検出**には使う。正しい境界の
+#   下では `実在ファイル数 == cycle_count` が構造的に成立するため、実在数が cycle_count を超える
+#   のは他 run が混ざっている証拠 → `run_boundary_unresolved` で判定を降ろす (pin が書けなかった
+#   環境と pin 導入前の run はここで捕まる)。不足側は run 内の欠落にすぎないので降ろさず、
+#   失われた件数を WARNING と marker の `lost=` に載せて実在する列で判定する。
+#   **方向で扱いを分ける**のが要点 — 過剰は「別 run の値を読む」誤りで誤発火に直結し、不足は
+#   「列に穴が空く」だけ。旧実装は不足側で判定を降ろしており、中断 1 回でその run の発散検出が
+#   恒久的に無効化されていた。
 #
 # Why 判定不能を「発火しない」に倒すか:
 #   fallback ではなく設計。判定できない入力で発火させると健全な run を殺す (AC-1 の否定) が、
@@ -111,8 +118,9 @@ Usage: review-trend-divergence.sh --pr N --cycle-count N [--since BASENAME] [--r
 
 Options:
   --pr N            対象 PR 番号 (必須)
-  --cycle-count N   現 run で完了したレビュー cycle 数 (必須)。**run 境界の決定には使わない** —
-                    実在ファイル数との差を「結果が失われた」診断 WARNING に載せるだけ
+  --cycle-count N   現 run で完了したレビュー cycle 数 (必須)。run 境界の**決定**には使わないが、
+                    実在数がこれを**超える**場合は他 run の混入として判定を降ろす (誤発火防止)。
+                    不足側は失われた件数を WARNING と marker の lost= に載せて判定を続行する
   --since BASENAME  run 開始点の pin。この basename より新しい結果ファイルだけを現 run とみなす。
                     空文字 / 省略時は全件を 1 本の列として読む (pin 導入前の run への後方互換)
   --results-dir P   レビュー結果 JSON のディレクトリ (既定: state-path-resolve.sh 経由で解決)
@@ -203,7 +211,7 @@ _data_missing_warn() {
 
 if [ ! -d "$results_dir" ]; then
   _undecidable results_dir_missing \
-    "$(_data_missing_warn "レビュー結果ディレクトリが存在しません ($(_nz "$results_dir"))。cycle_count=$cycle_count のレビューが完了しているはずですが結果を 1 件も読めないため、トレンド判定を行わず max_review_cycles の判定に委ねます")"
+    "$(_data_missing_warn "レビュー結果ディレクトリが存在しません ($(_nz "$results_dir"))。cycle_count=$cycle_count まで進んでいますが結果を 1 件も読めません (results dir の path skew / 保存の全面失敗 / review 中断のいずれか)。トレンド判定を行わず max_review_cycles の判定に委ねます")"
 fi
 
 # ---- 現 run の JSON 群を切り出す ----------------------------------------------
@@ -219,7 +227,7 @@ done < <(find "$results_dir" -maxdepth 1 -type f -name "${pr_number}-*.json" 2>/
 _total=${#_all_files[@]}
 if [ "$_total" -eq 0 ]; then
   _undecidable no_results_file \
-    "$(_data_missing_warn "レビュー結果 JSON が 1 件もありません ($(_nz "$results_dir")/${pr_number}-*.json)。cycle_count=$cycle_count のレビューが完了しているはずですが結果を読めないため、トレンド判定を行わず max_review_cycles の判定に委ねます")"
+    "$(_data_missing_warn "レビュー結果 JSON が 1 件もありません ($(_nz "$results_dir")/${pr_number}-*.json)。cycle_count=$cycle_count まで進んでいますが結果を読めません (results dir の path skew / 保存の全面失敗 / review 中断のいずれか)。トレンド判定を行わず max_review_cycles の判定に委ねます")"
 fi
 
 # ---- run 開始点 pin で現 run のファイルを選ぶ ----------------------------------
@@ -244,17 +252,39 @@ else
 fi
 
 _run_total=${#_run_files[@]}
+# pin フィルタ後 0 件は「dir に該当 JSON が無い」(上の no_results_file) とは別条件。同じ reason に
+# 畳むと、再実行直後の 1 cycle 目 (pin = 直近ファイル、現 run はまだ 0 件) という**全再実行が必ず
+# 通る正常系**が「結果を読めない = 発散検出の全面不作動」と読まれる。
 if [ "$_run_total" -eq 0 ]; then
-  _undecidable no_results_file \
+  _undecidable no_file_after_pin \
     "$(_data_missing_warn "run 開始点 pin ($(_nz "$since")) より新しいレビュー結果 JSON が 1 件もありません (dir 内の全 ${_total} 件はすべて前 run 以前)。トレンド判定を行わず max_review_cycles の判定に委ねます")"
 fi
 
-# cycle_count との差は **診断のみ** に使う。かつては差があると判定を降ろしていたが、その設計は
-# 「保存失敗 / review 中断で counter だけが進む」経路 (header 参照) で run 全体の発散検出を
-# 恒久的に無効化していた。pin で run 境界が確定した今、実在する列で判定するのが正しい —
-# 欠落は列に穴が空くだけで、前 run の混入という別 run の値を読む誤りとは種類が違う。
+# **過剰取り込みの invariant**: 正しい run 境界の下では `_run_total == cycle_count` が構造的に
+# 成立する (iterate ステップ 1 は increment 前の counter を渡すため、cycle N の入場時点で
+# counter = 現 run の完了レビュー数 = 保存済みファイル数)。実在数が cycle_count を**超える**のは
+# 現 run の列に他 run のファイルが混ざっている証拠であり、その混入は前 run 末尾の低い件数を
+# prefix_min に持ち込んで健全な run を発散判定で殺す — 本判定が最も避けたい false positive
+# (AC-1 の否定) そのもの。pin が書けなかった / pin 導入前の run では since が空で全件を読むため、
+# 複数 run が同居していればここで必ず捕まる (cycle_count=0 で `0 < _run_total` も同式が拾う)。
+# 不足側 (`<`) は run 内の欠落にすぎず判定を降ろさない — 降ろすと中断 1 回でその run の発散検出が
+# 恒久的に無効化される (旧 fewer_files_than_cycles の失敗)。**方向で扱いを分けるのが要点**。
+if [ "$_run_total" -gt "$cycle_count" ] 2>/dev/null; then
+  # `_nz` はバイト単位で 0x80-0x9f を潰すため、**外来値だけ**を通す。自作の日本語リテラルを
+  # 通すと多バイト文字が `?` 列に化けて診断そのものが読めなくなる (helper header の trade-off)。
+  _since_disp="(未設定)"
+  [ -n "$since" ] && _since_disp="$(_nz "$since")"
+  _undecidable run_boundary_unresolved \
+    "現 run の境界を確定できません (files=$_run_total > cycles=$cycle_count)。run 開始点 pin ${_since_disp} が無いか古いため、他 run の結果が現 run の列に混ざっています。誤発火を避けるためトレンド判定を行わず max_review_cycles の判定に委ねます"
+fi
+
+# 不足側は判定を降ろさず、失われた件数を診断として残す。件数は stdout の marker にも載せる —
+# stderr の WARNING だけだと、呼び出し側 (iterate) も停止通知を読む人間も「この列には穴がある」
+# ことを知らないまま、合成された推移を実測として受け取る (欠落は verdict を反転させうる)。
+_lost=0
 if [ "$_run_total" -lt "$cycle_count" ] 2>/dev/null; then
-  echo "WARNING: 現 run のレビュー結果 JSON が cycle_count に不足しています (files=$_run_total < cycles=$cycle_count)。結果の保存失敗か review の中断で ${cycle_count} 件中 $((cycle_count - _run_total)) 件の結果が失われています。実在する ${_run_total} 件の列でトレンド判定を続行します" >&2
+  _lost=$((cycle_count - _run_total))
+  echo "WARNING: 現 run のレビュー結果 JSON が cycle_count に不足しています (files=$_run_total < cycles=$cycle_count)。結果の保存失敗か review の中断で ${cycle_count} 件中 ${_lost} 件の結果が失われています。実在する ${_run_total} 件の列でトレンド判定を続行します" >&2
 fi
 
 # ---- 各 cycle の blocking 件数を数える ----------------------------------------
@@ -332,7 +362,7 @@ _n_cycles=${#_counts[@]}
 # n >= 3 が必要。1〜2 cycle 目は「過去の最良水準」を定義できないため判定対象外
 # (T-06 の安全側判定。データ不足であって発散ではない)。
 if [ "$_n_cycles" -lt 3 ]; then
-  echo "[CONTEXT] TREND_DIVERGENCE=insufficient; trend=$_trend; cycles=$_n_cycles; reason=need_3_cycles"
+  echo "[CONTEXT] TREND_DIVERGENCE=insufficient; trend=$_trend; cycles=$_n_cycles; lost=$_lost; reason=need_3_cycles"
   exit 0
 fi
 
@@ -355,8 +385,8 @@ for ((_i = 3; _i <= _n_cycles; _i++)); do
 done
 
 if [ "$_fire_at" -gt 0 ]; then
-  echo "[CONTEXT] TREND_DIVERGENCE=fire; trend=$_trend; cycles=$_n_cycles; fire_at=$_fire_at; reason=no_new_minimum_and_not_descending"
+  echo "[CONTEXT] TREND_DIVERGENCE=fire; trend=$_trend; cycles=$_n_cycles; lost=$_lost; fire_at=$_fire_at; reason=no_new_minimum_and_not_descending"
 else
-  echo "[CONTEXT] TREND_DIVERGENCE=ok; trend=$_trend; cycles=$_n_cycles; reason=converging_or_descending"
+  echo "[CONTEXT] TREND_DIVERGENCE=ok; trend=$_trend; cycles=$_n_cycles; lost=$_lost; reason=converging_or_descending"
 fi
 exit 0

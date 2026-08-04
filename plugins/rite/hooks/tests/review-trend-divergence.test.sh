@@ -64,8 +64,11 @@ OUT="$SANDBOX/out.txt"
 # 最小形)。timestamp は連番で与え、ファイル名の lexicographic 順 = 時系列順を保つ。
 # ---------------------------------------------------------------------------
 make_result() {
-  # $1 = dir, $2 = pr, $3 = seq (2 桁), $4 = blocking count, $5 = schema_version (省略時 1.1.0)
-  local dir="$1" pr="$2" seq="$3" n="$4" sv="${5:-1.1.0}"
+  # $1 = dir, $2 = pr, $3 = seq (2 桁), $4 = blocking count, $5 = schema_version (省略時 1.1.0),
+  # $6 = basename suffix (省略時なし)。`~<hex>` を渡すと review-result-save.sh の
+  # collision-resolved 命名 (`{ts}~{hex}.json`) を再現する — `.` < `~` の LC_ALL=C 昇順で
+  # 同 ts の後ろへ並ぶことが実装 2 経路 (要素順 / 境界選別) の前提になっている。
+  local dir="$1" pr="$2" seq="$3" n="$4" sv="${5:-1.1.0}" sfx="${6:-}"
   jq -n --arg sv "$sv" --argjson pr "$pr" --argjson n "$n" '
     {
       schema_version: $sv,
@@ -85,7 +88,7 @@ make_result() {
         description: "d", suggestion: "s", status: "open"
       } ],
       non_blocking_findings: []
-    }' > "$dir/${pr}-202601010000${seq}.json"
+    }' > "$dir/${pr}-202601010000${seq}${sfx}.json"
 }
 
 # トラジェクトリを 1 ディレクトリに展開し、判定結果を $OUT へ書く。
@@ -198,7 +201,7 @@ det_first=$(bash "$SCRIPT" --pr 500 --cycle-count 4 --results-dir "$det_dir" 2>/
 # 「5 回同じ」だけでは helper が無出力になっても通る (両辺が空文字で一致する)。
 # 決定論の対象が期待どおりの verdict であることを先に固定してから一致を見る。
 printf '%s' "$det_first" > "$OUT"
-assert_grep "T-05: 決定論の対象が期待 verdict であること" "$OUT" "TREND_DIVERGENCE=fire; trend=3,7,7,4; cycles=4; fire_at=3"
+assert_grep "T-05: 決定論の対象が期待 verdict であること" "$OUT" "TREND_DIVERGENCE=fire; trend=3,7,7,4; cycles=4; lost=0; fire_at=3"
 det_same=yes
 for _ in 1 2 3 4; do
   det_again=$(bash "$SCRIPT" --pr 500 --cycle-count 4 --results-dir "$det_dir" 2>/dev/null)
@@ -224,11 +227,13 @@ assert_grep "T-06b: 2 cycle 目も判定対象外" "$OUT" "reason=need_3_cycles"
 empty_dir="$SANDBOX/empty"; mkdir -p "$empty_dir"
 bash "$SCRIPT" --pr 602 --cycle-count 3 --results-dir "$empty_dir" > "$OUT" 2>"$SANDBOX/empty-err.txt"
 assert_grep "T-06c: JSON が 1 件も無いとき no_results_file で不発火" "$OUT" "reason=no_results_file"
-assert_grep "T-06c: cycle_count>=1 の 0 件は異常として WARNING を出す" "$SANDBOX/empty-err.txt" "WARNING:"
+assert_grep "T-06c: cycle_count>=1 の 0 件は異常として WARNING を出す" "$SANDBOX/empty-err.txt" "レビュー結果 JSON が 1 件もありません"
+assert_grep "T-06c: WARNING に cycle_count を含める (全面不作動の識別材料)" "$SANDBOX/empty-err.txt" "cycle_count=3"
 
 bash "$SCRIPT" --pr 603 --cycle-count 3 --results-dir "$SANDBOX/does-not-exist" > "$OUT" 2>"$SANDBOX/nodir-err.txt"
 assert_grep "T-06d: ディレクトリ不在で results_dir_missing" "$OUT" "reason=results_dir_missing"
-assert_grep "T-06d: cycle_count>=1 の dir 不在は異常として WARNING を出す" "$SANDBOX/nodir-err.txt" "WARNING:"
+assert_grep "T-06d: cycle_count>=1 の dir 不在は異常として WARNING を出す" "$SANDBOX/nodir-err.txt" "レビュー結果ディレクトリが存在しません"
+assert_grep "T-06d: WARNING に cycle_count を含める (全面不作動の識別材料)" "$SANDBOX/nodir-err.txt" "cycle_count=3"
 
 # cycle_count=0 は呼び出し側の live path (fresh run の初回 cycle で必ず渡る)。
 # このときの不足は正常系なので WARNING を出さない — 出すと毎 run の初回に必ずノイズが乗り、
@@ -323,6 +328,21 @@ bash "$SCRIPT" --pr 611 --cycle-count 3 --results-dir "$legacy_dir" > "$OUT" 2>/
 assert_grep "T-06l: schema_version 1.0 (MAJOR.MINOR) を accept する" "$OUT" "trend=6,3,1"
 assert_not_grep "T-06l: 1.0 を未知 schema として弾かない" "$OUT" "reason=schema_version_unknown"
 
+# 診断へ埋め込む JSON 由来値の制御文字中和 (_nz)。中和が無いと schema_version に仕込んだ改行が
+# WARNING を 2 行に割り、2 行目が独立した診断行に偽装できる (呼び出し側 iterate は helper の
+# stderr を capture せず素通しさせる設計のため端末まで届く)。中和を外しても緑のままだと
+# この防御は dead surface になるため、破壊入力を fixture 化して pin する。
+ctl_dir="$SANDBOX/ctrlchars"; mkdir -p "$ctl_dir"
+make_result "$ctl_dir" 613 01 2
+_ctl_esc=$(printf '\033')
+jq --arg sv "9.9.9${_ctl_esc}[31mRED
+WARNING: FORGED DIAGNOSTIC" '.schema_version = $sv' "$ctl_dir/613-20260101000001.json" > "$ctl_dir/613-20260101000002.json"
+bash "$SCRIPT" --pr 613 --cycle-count 2 --results-dir "$ctl_dir" > "$OUT" 2>"$SANDBOX/ctl-err.txt"
+assert_grep "T-06n: ESC を含む値は ? へ中和して埋め込む" "$SANDBOX/ctl-err.txt" "schema_version='9\.9\.9[?]"
+assert_grep "T-06n: 埋め込んだ改行も ? へ中和する (偽の診断行を作らせない)" "$SANDBOX/ctl-err.txt" "RED[?]WARNING: FORGED DIAGNOSTIC'"
+assert "T-06n: 中和により WARNING は 1 行に収まる (偽の診断行を作らせない)" "1" "$(wc -l < "$SANDBOX/ctl-err.txt" | tr -d '[:space:]')"
+assert "T-06n: 生 ESC バイトが stderr へ素通ししない" "0" "$(od -c < "$SANDBOX/ctl-err.txt" | grep -c '033')"
+
 mism_dir="$SANDBOX/mismatch"; mkdir -p "$mism_dir"
 make_result "$mism_dir" 607 01 2
 make_result "$mism_dir" 607 02 3
@@ -360,8 +380,46 @@ assert_grep "run 境界: pin 自身は現 run に含まれない (厳密に新�
 
 # pin より新しいファイルが 1 件も無い = 現 run の結果がすべて失われている
 bash "$SCRIPT" --pr 700 --cycle-count 2 --since "700-20260101000007.json" --results-dir "$multi_dir" > "$OUT" 2>"$SANDBOX/pin-err.txt"
-assert_grep "run 境界: pin より新しい結果が 0 件なら判定不能 (前 run を読まない)" "$OUT" "reason=no_results_file"
+assert_grep "run 境界: pin より新しい結果が 0 件なら判定不能 (前 run を読まない)" "$OUT" "reason=no_file_after_pin"
+assert_not_grep "run 境界: pin 後 0 件は dir 不在系の reason と混同しない" "$OUT" "reason=no_results_file"
 assert_grep "run 境界: 0 件の理由を WARNING で surface する" "$SANDBOX/pin-err.txt" "run 開始点 pin"
+
+# **過剰取り込みの invariant**: 実在数が cycle_count を超えたら他 run の混入として判定を降ろす。
+# pin が書けなかった環境 / pin 導入前の run では since が空で全件を読むため、複数 run が同居して
+# いればここで捕まる。この guard が無いと前 run 末尾の低い件数が prefix_min を汚染し、健全な run を
+# 発散判定で殺す (AC-1 の否定)。cycle_count=0 (現 run でまだ 1 度もレビューしていない) も同式が拾う。
+bash "$SCRIPT" --pr 700 --cycle-count 3 --results-dir "$multi_dir" > "$OUT" 2>"$SANDBOX/over-err.txt"
+assert_grep "run 境界: pin 不在で実在数が cycle_count を超えたら判定を降ろす" "$OUT" "reason=run_boundary_unresolved"
+assert_not_grep "run 境界: 過剰取り込みでは発火しない (健全な run を殺さない)" "$OUT" "TREND_DIVERGENCE=fire"
+assert_grep "run 境界: 過剰取り込みの理由を WARNING で surface する" "$SANDBOX/over-err.txt" "files=7 > cycles=3"
+
+bash "$SCRIPT" --pr 700 --cycle-count 0 --results-dir "$multi_dir" > "$OUT" 2>/dev/null
+assert_grep "run 境界: cycle_count=0 で前 run だけが読める状態は判定を降ろす" "$OUT" "reason=run_boundary_unresolved"
+assert_not_grep "run 境界: cycle_count=0 では発火しない (旧実装の構造的保護を維持)" "$OUT" "TREND_DIVERGENCE=fire"
+
+# 不足側は降ろさない (方向で扱いを分ける)。過剰と同じ扱いにすると中断 1 回で恒久無効化する。
+bash "$SCRIPT" --pr 700 --cycle-count 5 --since "700-20260101000004.json" --results-dir "$multi_dir" > "$OUT" 2>/dev/null
+assert_grep "run 境界: 不足側は判定を降ろさず実在列で続行する" "$OUT" "trend=5,3,1"
+assert_grep "run 境界: 失われた件数を marker の lost= に載せる" "$OUT" "lost=2"
+
+# collision-resolved 名 (`{ts}~{hex}.json`) は review-result-save.sh が同秒衝突時に実際に作る形。
+# `.` (0x2e) < `~` (0x7e) の LC_ALL=C 昇順により同 ts の後ろへ並ぶ。この順序前提は独立した 2 経路が
+# 依存する — find のソートは trend の**要素順**、pin 比較のソートは **run 境界の選別**。
+# 非 C locale では `~` の照合位置が変わりうるため、両方を別々に pin する。
+# **検出面の制約**: 本 assert が `LC_ALL=C` の除去を捕まえるのは、実行時の ambient locale が
+# C 以外のときだけ (C locale 下では除去しても順序が変わらないため全 PASS のまま通る)。
+# 順序契約を pin する以上これは原理的な限界で、テストの穴ではない。
+coll_dir="$SANDBOX/collision"; mkdir -p "$coll_dir"
+make_result "$coll_dir" 901 01 5 "" ""
+make_result "$coll_dir" 901 02 4 "" ""
+make_result "$coll_dir" 901 03 1 "" ""
+make_result "$coll_dir" 901 03 3 "" "~ab12"
+make_result "$coll_dir" 901 04 7 "" ""
+bash "$SCRIPT" --pr 901 --cycle-count 5 --results-dir "$coll_dir" > "$OUT" 2>/dev/null
+assert_grep "collision 名: 同 ts の ~ 版が直後に並ぶ (要素順の pin)" "$OUT" "trend=5,4,1,3,7"
+
+bash "$SCRIPT" --pr 901 --cycle-count 3 --since "901-20260101000003.json" --results-dir "$coll_dir" > "$OUT" 2>/dev/null
+assert_grep "collision 名: ~ 版は pin より新しい側に入る (境界選別の pin)" "$OUT" "trend=3,7"
 
 # 同一 PR 番号を prefix に持つ別 PR (700 等) を巻き込まないこと
 prefix_dir="$SANDBOX/prefix"; mkdir -p "$prefix_dir"
