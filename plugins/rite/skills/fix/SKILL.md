@@ -567,9 +567,11 @@ elif ! printf '%s' "$raw_json" | jq -e '
   # P3 だけ緩めると同一 JSON が経路により受理/拒否に割れる。write 側が `verification` を出力する
   # 前提は #2072 で満たされたが、3 経路 + SoT の同時更新は依然として不要 — gated な
   # `measured == false` は `non_blocking_findings[]` へ移送されるため `findings[]` に残る非実測
-  # finding は `scope == "nit-noted"` のみで、CRITICAL/HIGH × nit-noted は invariant #4 が write 側で
-  # 禁止する。よって CRITICAL/HIGH を見る本述語が非実測 finding に当たることはない。保証は write 側
-  # 契約であって評価順序ではない — #4 の elif は本述語より後段にあり、先に本述語が捕らえる。
+  # finding は `scope == "nit-noted"` のみで、CRITICAL/HIGH × nit-noted は reviewer 契約
+  # (`agents/_reviewer-base.md` §Scope Assignment) が禁止する。よって規約に従う JSON では
+  # CRITICAL/HIGH を見る本述語の判定対象に非実測 finding は現れない。invariant #4 の jq による
+  # 機械的阻止は schema 1.1.0 限定で、write 側が pin する "1.0.0" では発火しない (#2103) —
+  # 規約違反 JSON は本述語が先に捕らえて legacy parser へ落とすため安全側に倒れる。
   echo "WARNING: PR コメント内の Raw JSON が cross-field invariant に違反しています (mergeable だが open な CRITICAL/HIGH finding あり)。legacy parser に fallthrough します。" >&2
   echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=pr_comment_cross_field_invariant_violated" >&2
 elif ! printf '%s' "$raw_json" | jq -e '
@@ -1587,7 +1589,7 @@ The rite review result comment (output format of `/rite:pr-review`) has the foll
    - (c) **同一 key の衝突は `true` (blocking) 優先** — false で上書きしない (blocking-biased fail-safe: 複数 reviewer が同一 file:line を指摘し一方のみ実測付きの場合、実測済み blocking 指摘の silent skip を防ぐ)。
    - (d) **3 値を潰さない** — 登録するのは「実測の有無を判定できた finding」のみ。判定する構造が無い finding (外部ツール / 人間レビュー由来、および JSON に `verification` が無い finding) は**未登録のまま残す** (= 未判定)。未判定を `false` に畳んではならない (実測必須ゲートの対象外 = 従来どおり blocking。SoT は [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) の「適用範囲 (measured は 3 値)」)。
 
-   件数 `non_blocking_count` は **`measured_map` の `false` のうち `scope_map[key] != "nit-noted"` の件数** (正規化後 scope による nit 除外 — `acknowledged_nit_count` との二重計上を参照時に遮断) として導出し、ステップ 1.4 表示・ステップ 4.6 集計に使う (ステップ 1.3 の non-blocking 分類条件と同一フィルタ。ただし step 4 の**出自確認で External review へ振り替えた key は分類数から外れる**ため、その分だけ「分類数 < カウント」になる — **振り替えた key のみ**を導出時に減算する (対応する GitHub thread が存在しない key は減算対象ではない — rite は per-line thread を作らないため既定構成では大半がこれに該当する))。セクション不在時は当該登録なし (`non_blocking_count = 0`)。**経路間で値は一致しない**: `/rite:pr-review` ステップ 6.1.a が `findings[]` から `non_blocking_findings` を除外する契約のため、JSON 経路 (Priority 0/2/3) の `measured_map` に入る `false` は `scope == "nit-noted"` の非実測 finding 由来のみで、上記の nit 除外フィルタに掛かるため `non_blocking_count` は 0 になる。N 件が入るのは `### 実測なし指摘 (non-blocking)` section を読める Markdown / 会話経路のみ。write 側が `verification` を出力する前提は #2072 で満たされたが、6.1.a の除外契約は現行のままのため、全経路一致は未成立。
+   件数 `non_blocking_count` は **`measured_map` の `false` のうち `scope_map[key] != "nit-noted"` の件数** (正規化後 scope による nit 除外 — `acknowledged_nit_count` との二重計上を参照時に遮断) として導出し、ステップ 1.4 表示・ステップ 4.6 集計に使う (ステップ 1.3 の non-blocking 分類条件と同一フィルタ。ただし step 4 の**出自確認で External review へ振り替えた key は分類数から外れる**ため、その分だけ「分類数 < カウント」になる — **振り替えた key のみ**を導出時に減算する (対応する GitHub thread が存在しない key は減算対象ではない — rite は per-line thread を作らないため既定構成では大半がこれに該当する))。セクション不在時は当該登録なし (`non_blocking_count = 0`)。**経路間で値は一致しない**: `/rite:pr-review` ステップ 5.3.0.M の `review-measured-gate.sh` が gated な非実測 finding を `findings[]` から `non_blocking_findings[]` へ移送する契約のため、JSON 経路 (Priority 0/2/3) の `measured_map` に入る `false` は `scope == "nit-noted"` の非実測 finding 由来のみで、上記の nit 除外フィルタに掛かるため `non_blocking_count` は 0 になる。N 件が入るのは `### 実測なし指摘 (non-blocking)` section を読める Markdown / 会話経路のみ。write 側が `verification` を出力する前提は #2072 で満たされたが、5.3.0.M の移送契約は現行のままのため、全経路一致は未成立。
 
 **Note**: When multiple reviewers have flagged the same file:line, adopt the highest severity (CRITICAL > HIGH > MEDIUM > LOW-MEDIUM > LOW). The `scope` column is consumed downstream by `/rite:fix` ステップ 2 (nit-noted 受け流し経路) to determine acknowledge vs. fix-required handling.
 
