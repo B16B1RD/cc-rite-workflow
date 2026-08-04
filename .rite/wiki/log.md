@@ -1,5 +1,6 @@
 ## 2026-08-04
 
+* **lint:warning** — contradictions=0, stale=15, orphans=0, missing_concept=0, unregistered_raw=298, broken_refs=0
 * **Update**: [汎用契約の表に経路固有の詳細を書かず下位節へ委譲する。ただし委譲は委譲先の網羅性を load-bearing にする](pages/heuristics/generic-contract-table-delegates-path-specific-detail.md) — raw/reviews/20260804T113022Z-pr-2106.md を統合（同型が「修飾語を N 箇所へ展開する」docs 作業でも再現 / 同名概念が近傍に複数あるとき see below 型の相対参照は最も近い誤答へ誘導する / 「〜されたもの」型の原因帰属は経路が 1 つであることを暗黙に主張する）
 * **lint:warning** — contradictions=0, stale=15, orphans=0, missing_concept=0, unregistered_raw=298, broken_refs=0
 * **Create**: [汎用契約の表に経路固有の詳細を書かず下位節へ委譲する。ただし委譲は委譲先の網羅性を load-bearing にする](pages/heuristics/generic-contract-table-delegates-path-specific-detail.md) — raw/reviews/20260804T104340Z-pr-2104.md を新規ページ化（汎用契約の表への具体詳細の書き込みが同一ファイル 4-5 行下の記述と 3 点同時に矛盾 / 3 件は別々の誤りではなく抽象度を 1 段下げたことの帰結で 1 編集で解けた / 委譲を書いた瞬間に委譲先の網羅性の欠落が load-bearing 化する）
