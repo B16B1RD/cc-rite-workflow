@@ -2,8 +2,12 @@
 title: "累積対策 PR の review-fix loop で fix 自体が drift を導入する"
 domain: "anti-patterns"
 created: "2026-04-21T10:35:00+00:00"
-updated: "2026-08-02T22:05:00+09:00"
+updated: "2026-08-04T15:54:17+09:00"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260804T060209Z-pr-2099.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260804T060834Z-pr-2099.md"
   - type: "reviews"
     ref: "raw/reviews/20260518T084056Z-pr-1043-cycle4-mergeable.md"
   - type: "reviews"
@@ -777,6 +781,21 @@ PR #2052（散文の形式反転）で、fix-induced drift が実装 PR とは�
 **4. 「なし」行の条件は marker 値で書き切る。** 「かつ統計中止なし」のような自然文の否定は marker **不在**のときも真になり、3 値設計が塞ごうとした「未確認を失敗なしと断定する」経路を復活させる。既定行の条件は `A=ok` / `A=skipped` **かつ** `B=ok` / `B=skipped` のように取りうる値を列挙する。
 
 **5. 過剰反応を避けた対処。** 前サイクルの fix が導入した箇所への指摘 6 件を、分岐・条項の**追加**ではなく emit 点の移設 / gate の削除 / 述語の置換 / 到達不能分岐の畳み込みで解いた。追加パッチを重ねると、その追加自体が次サイクルの新たなレビュー対象面になり指摘を再生産する（本ページ「Simplification-First の実用的な読み替え」の docs 版）。
+
+
+### N 回目のパッチは述語が proxy である信号（PR #2099 / Issue #2088）
+
+5 サイクル回して blocking が `6 → 8 → 7 → 5 → 5` と横ばいのまま `max_review_cycles` の backstop で停止した PR。cycle 5 の blocking 5 件のうち 2 件は **cycle 4 の fix が直接生んだもの**、1 件は **cycle 4 が半分だけ塞いだ穴**だった。
+
+cycle 4 は「pin 書込失敗時に stale pin を残さない」ために `rm -f` + WARNING + marker を追加した。cycle 5 はそこへ (a) `rm -f` 自体の失敗サブ経路で WARNING が矛盾する、(b) 構造的に同型の「counter reset 失敗 → pin 更新ゲートを通らない」経路が未処理、を返した。
+
+ここで reset 失敗分岐に `rm -f` を複製するのが自然な反応だが、実際に効いたのは **ゲートの述語そのものの是正**だった。`cur_cc == 0` は「新しい run か」の proxy にすぎず、reset 失敗時に相関が切れる。`fresh || cur_cc == 0` の選言へ替えると経路 (b) はパッチ 1 行も足さずに消えた。詳細と判定手順は [同じ機構への N 回目のパッチは、その機構が依拠する述語が proxy である信号](../heuristics/nth-patch-signals-proxy-predicate.md) を参照。
+
+**あわせて観測された「収束しているのに閉じない」構造**:
+
+- 5 サイクルの blocking のうち、fix が直接生んだ指摘と伝播漏れ（語彙 4 種目）が毎サイクル一定数を占め、実質的な残件は減っているのに総数が横ばいに見えた
+- 収束トレンド判定は最後まで `converging_or_descending`（発散していない）を返した。**止めたのは cycle 数の backstop であり、判定式ではない**
+- 強いテストスイート（124 assertion / 実 fixture 回帰つき）でも、判定式の「窓の範囲」項・環境要因 guard・判定成立側の reason 2 値が未 pin だった。いずれも **mutation で実装を壊しても緑のまま**であることを実測して初めて発覚。assertion 数もカバー範囲の見た目も識別力の代理指標にならない
 
 ### 散文 PR に固有の伝播漏れ
 

@@ -2,6 +2,26 @@
 
 * **Create**: [テストの gate 条件がプラットフォーム事実を環境 capability の代理にすると恒常 red 化する](pages/anti-patterns/test-gate-proxy-indicator-drift.md) — raw/reviews/20260803T155051Z-pr-2096.md を新規ページ化（floor の判定対象が守りたい capability ではなく platform 事実の代理だった / コメントと条件式の乖離が検出点 / 同形の gate でも probe 対象がツール存在か環境 capability かで正しい条件式は変わる）
 * **lint:warning** — contradictions=0, stale=15, orphans=0, missing_concept=0, unregistered_raw=281, broken_refs=0
+* **Create**: [同じ機構への N 回目のパッチは、その機構が依拠する述語が proxy である信号](pages/heuristics/nth-patch-signals-proxy-predicate.md) — raw/reviews/20260804T060209Z-pr-2099.md を新規ページ化（pin 更新ゲートの `cur_cc == 0` が「新しい run か」の proxy で reset 失敗時に相関が切れる / 述語を `fresh || cur_cc == 0` の選言へ替えると同型経路がパッチ追加ゼロで消えた / 「相関が切れる条件の列挙 ≡ 既存パッチの一覧」が proxy 判定の識別子）
+* **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/reviews/20260804T060209Z-pr-2099.md を統合（語彙列挙型の伝播 grep は原理的に閉じない: 4 サイクル連続で `遅い非収束` → `slow non-convergent` → `cycle 上限/上限到達` → `cycle counter サーキットブレーカー` と新語彙が出た / 概念の再定義では参照グラフでファイル集合を列挙する）
+* **Update**: [累積対策 PR の review-fix loop で fix 自体が drift を導入する](pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md) — raw/fixes/20260804T060834Z-pr-2099.md を統合（blocking 推移 6→8→7→5→5 で backstop 停止 / cycle 5 の 5 件中 2 件は cycle 4 の fix が直接生成 / 収束トレンド判定は最後まで ok を返し止めたのは cycle 数上限 / 124 assertion のスイートでも判定式の窓・環境 guard・reason 2 値が mutation で初めて未 pin と判明）
+* **Skip**: [20260804T002835Z-pr-2099.md](raw/fixes/20260804T002835Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
+* **Skip**: [20260804T010337Z-pr-2099.md](raw/fixes/20260804T010337Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
+* **Skip**: [20260804T012849Z-pr-2099.md](raw/fixes/20260804T012849Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
+* **Skip**: [20260804T015239Z-pr-2099.md](raw/fixes/20260804T015239Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
+* **Skip**: [20260804T021422Z-pr-2099.md](raw/fixes/20260804T021422Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
+* **Skip**: [20260804T033005Z-pr-2099.md](raw/fixes/20260804T033005Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
+* **Skip**: [20260804T041159Z-pr-2099.md](raw/fixes/20260804T041159Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
+* **Skip**: [20260804T045439Z-pr-2099.md](raw/fixes/20260804T045439Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
+* **Skip**: [20260804T001228Z-pr-2099.md](raw/reviews/20260804T001228Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
+* **Skip**: [20260804T005418Z-pr-2099.md](raw/reviews/20260804T005418Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
+* **Skip**: [20260804T012331Z-pr-2099.md](raw/reviews/20260804T012331Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
+* **Skip**: [20260804T014822Z-pr-2099.md](raw/reviews/20260804T014822Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
+* **Skip**: [20260804T021108Z-pr-2099.md](raw/reviews/20260804T021108Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
+* **Skip**: [20260804T031459Z-pr-2099.md](raw/reviews/20260804T031459Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
+* **Skip**: [20260804T035743Z-pr-2099.md](raw/reviews/20260804T035743Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
+* **Skip**: [20260804T044610Z-pr-2099.md](raw/reviews/20260804T044610Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
+* **Skip**: [20260804T052138Z-pr-2099.md](raw/reviews/20260804T052138Z-pr-2099.md) — PR #2099 の cycle 1-4 のサイクル別スナップショット。同一 PR の cycle 5 raw が同じ経験則をより完全な形で含み、既存 2 ページへの追記で網羅済みのため個別ページ化しない
 
 ## 2026-08-03
 
