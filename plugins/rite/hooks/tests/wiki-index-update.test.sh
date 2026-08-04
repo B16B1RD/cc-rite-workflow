@@ -29,6 +29,11 @@
 #   TC-16g (T-04) 統計 3 行が全欠落 → stats_sync=skipped_unreadable (0 行同期を synced にしない)
 #   TC-22 (T-04) 行末区切り欠落の登録行から summary 保持抽出 → exit 1 + 無変更
 #         (positional 抽出の前提崩れを silent 空文字化させない)
+#   TC-22b (T-04) セル数不足 (4 セル / 3 セル) の登録行から summary 保持抽出 → exit 1 + 無変更
+#         (欠けたセルを特定できないため保持値を確定できない — TC-22 と同じ fail-loud 経路)
+#   TC-22c (T-01) 空サマリーセルの正当な 5 列行は保持経路で rc=0 のまま (境界 pin)
+#   TC-23 (T-03) サマリー欄の相互参照リンクは同定に使われない (FIRST link 述語、golden)
+#   TC-24 (T-03) 新規追加と同時に別ページの重複行を回収 (added × dedup_removed=1)
 #   TC-12b (T-03) 統計節も不在なら EOF に節新設 (golden)
 #   TC-16b (T-04) pages 一覧 0 件 (*.md ゼロ、find rc=0) → skip + 統計保持
 #   TC-16c (T-04) --pages-root 省略 (統計節あり) → skipped_unreadable + 統計保持
@@ -991,6 +996,150 @@ if [ "$HELPER_RC" -eq 1 ] \
   pass "TC-22 行末区切り欠落行の summary 保持抽出は exit 1・無変更 (silent 空文字化しない)"
 else
   fail "TC-22 (rc=$HELPER_RC stdout=$HELPER_STDOUT stderr=$HELPER_STDERR)"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-22b (T-04): セル数不足の登録行 + description 省略 → exit 1 + 無変更
+# 4 セル行は境界フラグメントが両方空白で TC-22 の検査を通過し、3 セル行は
+# 早期脱出する — どちらも欠けたセルを特定できず保持値を確定できないため、
+# silent 空文字化ではなく TC-22 と同じ fail-loud 経路に載せる
+# ──────────────────────────────────────────────────────────────────────
+tc22b_ok=1
+for shape in \
+  '| [Foo Pattern](pages/patterns/foo.md) | patterns | 蓄積サマリー | 2026-01-01T00:00:00+09:00 |' \
+  '| [Foo Pattern](pages/patterns/foo.md) | 蓄積サマリー |'; do
+  dir=$(make_sandbox "tc22b-$(printf '%s' "$shape" | wc -c)")
+  cat > "$dir/index.md" <<EOF
+# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+$shape
+EOF
+  before=$(cat "$dir/index.md")
+  run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
+    --slug foo --updated "2026-08-05T12:00:00+09:00" --confidence high \
+    --pages-root "$dir/pages"
+  after=$(cat "$dir/index.md")
+  if [ "$HELPER_RC" -ne 1 ] || ! printf '%s\n' "$HELPER_STDERR" | grep -q 'ERROR' \
+     || [ "$before" != "$after" ] || [ "$(grep -c '蓄積サマリー' "$dir/index.md")" -ne 1 ]; then
+    tc22b_ok=0; echo "  (セル数 $(printf '%s' "$shape" | awk -F'|' '{print NF-2}') の行が rc=$HELPER_RC / 蓄積サマリー残存 $(grep -c '蓄積サマリー' "$dir/index.md"))"
+  fi
+done
+if [ "$tc22b_ok" -eq 1 ]; then
+  pass "TC-22b セル数不足 (4 セル / 3 セル) の summary 保持抽出は exit 1・無変更"
+else
+  fail "TC-22b"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-22c (T-01): 空サマリーセルの正当な 5 列行は保持経路で rc=0 (境界 pin)
+# セル数ガードの下限 (5 列ちょうど) を fail-loud 側へ倒しすぎない境界固定
+# ──────────────────────────────────────────────────────────────────────
+dir=$(make_sandbox tc22c)
+cat > "$dir/index.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Foo Pattern](pages/patterns/foo.md) | patterns |  | 2026-01-01T00:00:00+09:00 | high |
+EOF
+run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
+  --slug foo --updated "2026-08-05T12:10:00+09:00" --confidence high \
+  --pages-root "$dir/pages"
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
+   && grep -qxF '| [Foo Pattern](pages/patterns/foo.md) | patterns |  | 2026-08-05T12:10:00+09:00 | high |' "$dir/index.md"; then
+  pass "TC-22c 空サマリーセルの正当 5 列行は保持経路で rc=0 (ガードの過剰発火なし)"
+else
+  fail "TC-22c (rc=$HELPER_RC stdout=$HELPER_STDOUT stderr=$HELPER_STDERR)"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-23 (T-03): サマリー欄の相互参照リンクは同定に使われない (FIRST link 述語)
+# 述語を「行内の最後のリンク」へ変える drift は Page B の登録行を silent 削除
+# する — 両行保持 + dedup 0 を golden 全文比較で固定
+# ──────────────────────────────────────────────────────────────────────
+dir=$(make_sandbox tc23)
+mkdir -p "$dir/pages/patterns"
+touch "$dir/pages/patterns/a.md" "$dir/pages/patterns/b.md"
+cat > "$dir/index.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Page A](pages/patterns/a.md) | patterns | 詳細は [Page B](pages/patterns/b.md) を参照 | 2026-01-01T00:00:00+09:00 | high |
+| [Page B](pages/patterns/b.md) | patterns | B の説明 | 2026-01-01T00:00:00+09:00 | high |
+
+## 統計
+
+- 総ページ数: 2
+- ドメイン別: patterns=2, heuristics=0, anti-patterns=0
+- 最終更新: 2026-01-01T00:00:00+09:00
+EOF
+run_helper --index "$dir/index.md" --title "Page A" --domain patterns \
+  --slug a --updated "2026-08-05T12:20:00+09:00" --confidence high \
+  --pages-root "$dir/pages"
+cat > "$TEST_DIR/tc23-expected.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Page A](pages/patterns/a.md) | patterns | 詳細は [Page B](pages/patterns/b.md) を参照 | 2026-08-05T12:20:00+09:00 | high |
+| [Page B](pages/patterns/b.md) | patterns | B の説明 | 2026-01-01T00:00:00+09:00 | high |
+
+## 統計
+
+- 総ページ数: 4
+- ドメイン別: patterns=3, heuristics=1, anti-patterns=0
+- 最終更新: 2026-08-05T12:20:00+09:00
+EOF
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -q '^\[CONTEXT\] WIKI_INDEX_UPDATE=row_action=updated; dedup_removed=0; stats_sync=synced$' \
+   && diff -u "$TEST_DIR/tc23-expected.md" "$dir/index.md" > "$TEST_DIR/tc23-diff.txt" 2>&1; then
+  pass "TC-23 サマリー欄の相互参照リンクは非同定 (FIRST link 述語・両行保持・golden)"
+else
+  fail "TC-23 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+  cat "$TEST_DIR/tc23-diff.txt" 2>/dev/null
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-24 (T-03): 新規追加と同時に別ページの重複行を回収 (3a は毎回走る)
+# 追加経路だけ回収を止める drift の変異を殺す — added × dedup_removed=1
+# ──────────────────────────────────────────────────────────────────────
+dir=$(make_sandbox tc24)
+mkdir -p "$dir/pages/heuristics"
+touch "$dir/pages/heuristics/new.md"
+cat > "$dir/index.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Dup](pages/patterns/dup.md) | patterns | 先発 | 2026-01-01T00:00:00+09:00 | high |
+| [Dup 重複](pages/patterns/dup.md) | patterns | 後発 | 2026-01-02T00:00:00+09:00 | low |
+EOF
+run_helper --index "$dir/index.md" --title "New Page" --domain heuristics \
+  --slug new --description "追加" --updated "2026-08-05T12:30:00+09:00" \
+  --confidence medium --pages-root "$dir/pages"
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qF '[CONTEXT] WIKI_INDEX_UPDATE=row_action=added; dedup_removed=1; stats_sync=skipped_no_section' \
+   && [ "$(grep -c 'pages/patterns/dup\.md' "$dir/index.md")" -eq 1 ] \
+   && grep -q '先発' "$dir/index.md" \
+   && ! grep -q '後発' "$dir/index.md" \
+   && grep -qxF '| [New Page](pages/heuristics/new.md) | heuristics | 追加 | 2026-08-05T12:30:00+09:00 | medium |' "$dir/index.md"; then
+  pass "TC-24 新規追加と同時に別ページの重複後発行を回収 (added; dedup_removed=1)"
+else
+  fail "TC-24 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
 fi
 
 # ──────────────────────────────────────────────────────────────────────

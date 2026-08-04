@@ -99,6 +99,11 @@
 #   assumptions do not hold, and extracting from such a row would return an
 #   empty summary — violating the never-overwrite rule above. That is an
 #   unexpected-structure error: ERROR to stderr + exit 1, index.md unmodified.
+#   The same loud exit covers rows with FEWER CELLS than the 5-column layout
+#   (after dropping the boundary fragments, fewer than domain + summary +
+#   updated + confidence remain): which cell is missing cannot be determined,
+#   so no summary can be preserved. An empty summary CELL in a full 5-column
+#   row is legitimate and extracts as "" without error.
 #
 # Procedure 3a (duplicate-row reclamation, runs every invocation):
 #   For any page whose predicate matches 2+ rows, delete the later rows. Not
@@ -116,8 +121,11 @@
 #   than overwriting correct stats with an undercount). Line shapes follow the
 #   existing lines (`- 総ページ数: {n}` / `- ドメイン別: patterns={n},
 #   heuristics={n}, anti-patterns={n}` / `- 最終更新: {updated}`); a missing
-#   line is warned about and skipped, never invented. A total that differs from
-#   the table's row count triggers nothing here — duplicates were reclaimed by
+#   line is warned about and skipped, never invented. When NONE of the 3 lines
+#   could be rewritten, the marker reports skipped_unreadable, not synced — the
+#   section kept its previous values, which is exactly what skipped_unreadable
+#   means on the listing-failure path too. A total that differs from the
+#   table's row count triggers nothing here — duplicates were reclaimed by
 #   3a and unregistered pages are wiki-lint's job.
 #
 # ── Interface ────────────────────────────────────────────────────────────────
@@ -134,7 +142,7 @@
 #   --confidence VALUE  high|medium|low (required)
 #   --pages-root DIR    pages/ directory for procedure 3b counting (optional;
 #                       when omitted and `## 統計` exists, 3b is skipped with a
-#                       WARNING)
+#                       WARNING and the marker reports skipped_unreadable)
 #
 # stdout contract (the LLM transcribes these markers; no other write channel):
 #   row_action={added|updated|aborted_duplicate}
@@ -145,8 +153,9 @@
 # Exit codes:
 #   0  normal (aborted_duplicate included — 3a ran as the repair path)
 #   1  fail-loud (index.md missing/unreadable, duplicated `## ページ一覧`
-#      heading, write failure — nothing is partially applied: the file is
-#      rewritten once via tmp + mv only on full success)
+#      heading, malformed registration row on the summary-preserve path,
+#      write failure — nothing is partially applied: the file is rewritten
+#      once via tmp + mv only on full success)
 #   2  invocation error (missing/invalid arguments)
 #
 # NOTE on shell flags: sibling helpers と同じく per-command rc 管理のため
@@ -279,9 +288,25 @@ if [ "$heading_count" -gt 1 ]; then
 fi
 
 tmp_dir=$(dirname "$index_path")
+# canonical 4-line trap (references/bash-trap-patterns.md): declare-before-
+# mktemp + explicit signal exit codes. A lone EXIT trap armed after mktemp
+# lets an INT land as exit 0 with no markers written — the SKILL.md marker
+# table reads exit 0 as success, turning an interrupt into a silent no-op.
+tmp_rows=""
+result_file=""
+tmp_stats=""
+_rite_wiki_index_update_cleanup() {
+  [ -n "${tmp_rows:-}" ] && rm -f "$tmp_rows"
+  [ -n "${result_file:-}" ] && rm -f "$result_file"
+  [ -n "${tmp_stats:-}" ] && rm -f "$tmp_stats"
+  return 0
+}
+trap 'rc=$?; _rite_wiki_index_update_cleanup; exit $rc' EXIT
+trap '_rite_wiki_index_update_cleanup; exit 130' INT
+trap '_rite_wiki_index_update_cleanup; exit 143' TERM
+trap '_rite_wiki_index_update_cleanup; exit 129' HUP
 tmp_rows=$(mktemp "$tmp_dir/.wiki-index-update.rows.XXXXXX") || { echo "ERROR: wiki-index-update: mktemp failed in $tmp_dir" >&2; exit 1; }
-result_file=$(mktemp) || { rm -f "$tmp_rows"; echo "ERROR: wiki-index-update: mktemp failed" >&2; exit 1; }
-trap 'rm -f "$tmp_rows" "$result_file"' EXIT
+result_file=$(mktemp) || { echo "ERROR: wiki-index-update: mktemp failed" >&2; exit 1; }
 
 # ── Procedures 0 / 1 / 2 / 3a (single awk pass, buffered) ───────────────────
 # Values are passed via ENVIRON (awk -v applies C-escape processing and would
@@ -356,8 +381,17 @@ LC_ALL=C awk '
       printf "ERROR: wiki-index-update: malformed registration row (content outside the cell delimiters — likely a missing row-end delimiter): %s\n", s > "/dev/stderr"
       exit 1
     }
-    m = n - 2                                           # drop first and last fragment
-    if (m < 3) return ""                                # no summary cell survives
+    # After dropping the two boundary fragments a well-formed row keeps at
+    # least 4: domain, summary (possibly empty, possibly split by raw pipes),
+    # updated, confidence. Fewer means a cell is missing and the positional
+    # walk cannot tell WHICH one — extracting would return an empty summary
+    # with the same silent loss as above, so it takes the same loud exit.
+    # (An empty summary CELL in a full 5-column row keeps n - 2 == 4 and
+    # legitimately returns "".)
+    if (n - 2 < 4) {
+      printf "ERROR: wiki-index-update: malformed registration row (fewer cells than the 5-column layout — cannot locate the summary cell): %s\n", s > "/dev/stderr"
+      exit 1
+    }
     mid = ""
     for (i = 3; i <= n - 3; i++) mid = mid (mid == "" ? "" : "|") parts[i]
     return trim(mid)
@@ -543,7 +577,6 @@ if LC_ALL=C grep -q '^##[[:blank:]]*統計[[:blank:]]*$' "$tmp_rows"; then
     breakdown_heuristics="${2#heuristics=}"
     breakdown_anti="${3#anti-patterns=}"
     tmp_stats=$(mktemp "$tmp_dir/.wiki-index-update.stats.XXXXXX") || { echo "ERROR: wiki-index-update: mktemp failed in $tmp_dir" >&2; exit 1; }
-    trap 'rm -f "$tmp_rows" "$result_file" "$tmp_stats"' EXIT
     WIU_TOTAL="$total" WIU_P="$breakdown_patterns" WIU_H="$breakdown_heuristics" \
     WIU_A="$breakdown_anti" WIU_UPDATED="$updated" WIU_RESULT_FILE="$result_file" \
     LC_ALL=C awk '
