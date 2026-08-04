@@ -55,6 +55,7 @@ argument-hint: "<pr_number>"
 | `{max_review_cycles}` | `safety.max_review_cycles` in `rite-config.yml`（既定 5、無効値は既定へフォールバック）。**発散判定をすり抜けた非収束を受け止める backstop** であり、収束中のループを止める上限ではない |
 | `{fire_reason_line}` | ステップ 6.1 / 6.2 の「理由」行。ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=` から ステップ 6.2「発火理由の文面」表で決める |
 | `{trend}` | ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `TREND=`（カンマ区切りの per-cycle blocking 件数）。停止通知では `→` 区切りへ整形して表示する。空のときの扱いは ステップ 6.2「発火理由の文面」を参照 |
+| `{trend_reason}` | ステップ 1 の `[CONTEXT] ITERATE_CB=` marker の `TREND_REASON=`（helper が返した判定不能の理由。ステップ 6.2「発火理由の文面」の `max-cycles` 分岐と推移行の差し替えで使う） |
 | `{cycle_count}` | flow-state `cycle_count` field（review⇄fix cycle の消化数。ステップ 1 で increment、fresh entry で 0 リセット。発火時はステップ 6 の共有前段が 0 にリセットする） |
 | `{state_root}` | ステップ 6 共有前段の `[CONTEXT] STATE_ROOT=` marker の値（`hooks/state-path-resolve.sh` の解決結果。未解決時は sentinel `unresolved`）。ステップ 6.2 注意行 (b) の手動リセットコマンドでのみ使い、値が得られないときは同節の pre-fill 表に従って解決手順へ置き換える |
 | `{session_id}` | ステップ 6 共有前段の `[CONTEXT] SESSION_ID=` marker の値（`flow-state.sh path` の basename）。用途と未解決時の扱いは `{state_root}` と同じ |
@@ -188,7 +189,41 @@ if [ "$cb_mode_init" = fresh ] && [ "$cur_cc" -gt 0 ] 2>/dev/null; then
   # control-char-neutralize.sh header）。素の pipe だと helper stderr の制御文字が端末に素通しする。
   [ -n "$reset_out" ] && printf '%s\n' "$reset_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
 fi
-echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CYCLE_MODE=$cb_mode_init; RESET=$reset_status; REFIRE=$cb_will_refire"
+
+# (3) run 開始点 pin の記録。`cur_cc == 0` = この起動から新しい run が始まる（fresh entry /
+#     発火後の再実行 / batch の次 Issue）。その時点で存在する最新の結果ファイル basename を
+#     `.rite/state/review-run-since-{pr}.txt` に記録し、以降の cycle では helper がそれより
+#     新しいファイルだけを現 run とみなす。同一 PR の過去 run の JSON は cleanup（マージ後）
+#     まで残るため、pin が無いと前 run の件数を現 run の列の先頭として読む。
+#     **cycle_count を run 境界に使わない理由**は helper header の「Why run 境界に run-start pin を
+#     使うか」を SoT とする（保存失敗と review 中断で「現 run のファイル数 == cycle_count」の
+#     前提が破れる）。pin は counter と独立なのでその 2 経路で破れない。
+#     `cur_cc > 0`（resume）では既存 pin をそのまま使う — 上書きすると resume のたびに run が
+#     切り直され、それまでの列が消える。
+#     非ブロッキング: pin を書けなくても helper は pin 無し（全件を 1 本の列として読む）へ
+#     縮退するだけで、ループは止まらない。ただし縮退は WARNING で告知する。
+run_since_status=none
+if [ "$cur_cc" -eq 0 ] 2>/dev/null; then
+  pin_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || pin_root=""
+  if [ -z "$pin_root" ]; then
+    echo "WARNING: state root を解決できず run 開始点 pin を記録できません。発散判定は前 run の JSON を含んだ列を読む恐れがあります" >&2
+    run_since_status=unresolved-root
+  else
+    pin_file="$pin_root/.rite/state/review-run-since-{pr_number}.txt"
+    # 現時点で最新の結果ファイル basename（1 件も無ければ空 = pin 無し = 全件が現 run）。
+    # ソート順は helper 側の選別と揃える（LC_ALL=C 昇順 = 時系列昇順）。
+    pin_value=$(find "$pin_root/.rite/review-results" -maxdepth 1 -type f -name "{pr_number}-*.json" 2>/dev/null \
+      | LC_ALL=C sort | tail -1)
+    [ -n "$pin_value" ] && pin_value=$(basename "$pin_value")
+    if mkdir -p "$pin_root/.rite/state" 2>/dev/null && printf '%s\n' "$pin_value" > "$pin_file" 2>/dev/null; then
+      run_since_status=ok
+    else
+      echo "WARNING: run 開始点 pin を書き込めませんでした ($pin_file)。発散判定は前 run の JSON を含んだ列を読む恐れがあります" >&2
+      run_since_status=write-failed
+    fi
+  fi
+fi
+echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CYCLE_MODE=$cb_mode_init; RESET=$reset_status; REFIRE=$cb_will_refire; RUN_SINCE=$run_since_status"
 ```
 
 `ITERATE_CYCLE_MAX` / `ITERATE_CYCLE` を retain してステップ 1 の上限チェックに渡す。
@@ -239,18 +274,29 @@ case "$raw_max" in ''|0|*[!0-9]*) max_cycles=5 ;; *) max_cycles=$raw_max ;; esac
 # 収束トレンド判定。永続レビュー JSON から現 run の per-cycle blocking 列を復元し、
 # 発散していれば cycle 上限未到達でも発火させる。判定は helper に閉じており、LLM は verdict を
 # 読むだけで数え上げを行わない（AC-5）。
-# stderr は捨てずに素通しする（helper の WARNING は「なぜ判定できなかったか」の唯一の記録で、
-# 捨てると判定不能が silent skip と区別できなくなる）。
+# `--since` にはステップ 0.6 が記録した run 開始点 pin を渡す（run 境界の決定はこれが担う。
+# cycle_count は helper 側で「結果が失われた」診断にしか使われない）。pin ファイルが無ければ
+# 空文字を渡す = 全件を 1 本の列として読む（pin 導入前の run への後方互換）。
+# stderr は捨てずに素通しする（helper の WARNING はデータ異常の原因を示す唯一の記録）。
+pin_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || pin_root=""
+run_since=""
+if [ -n "$pin_root" ] && [ -f "$pin_root/.rite/state/review-run-since-{pr_number}.txt" ]; then
+  run_since=$(head -1 "$pin_root/.rite/state/review-run-since-{pr_number}.txt" 2>/dev/null | tr -d '[:space:]')
+fi
 trend_out=$(bash {plugin_root}/hooks/scripts/review-trend-divergence.sh \
-  --pr {pr_number} --cycle-count "$cc"); trend_rc=$?
+  --pr {pr_number} --cycle-count "$cc" --since "$run_since"); trend_rc=$?
 trend_verdict=$(printf '%s\n' "$trend_out" | sed -n 's/.*TREND_DIVERGENCE=\([a-z_]*\).*/\1/p' | tail -1)
 trend_series=$(printf '%s\n' "$trend_out" | sed -n 's/.*[;[:space:]]trend=\([^;]*\).*/\1/p' | tail -1)
+# helper が判定不能の理由を載せる `reason=` は stdout にしか出ない。抽出して marker に載せないと、
+# 「発散検出が全面不作動」と「まだ 3 cycle 目に達していない正常系」が呼び出し側から区別できない。
+trend_reason=$(printf '%s\n' "$trend_out" | sed -n 's/.*reason=\([a-z_]*\).*/\1/p' | tail -1)
 if [ "$trend_rc" -ne 0 ] || [ -z "$trend_verdict" ]; then
   # rc=2（引数不正 / jq 不在）や helper 不在（marketplace 版とローカル版の skew 等）。
   # 判定できないまま黙って通すと「発散検出が働いていない」ことが観測不能になるため loud にする。
   # 帰結は max_review_cycles による従来判定への縮退で、ループが止まらなくなるわけではない。
   echo "WARNING: 収束トレンド判定を実行できませんでした（rc=$trend_rc）。cycle 上限のみで判定します" >&2
   trend_verdict=unavailable
+  trend_reason=helper_unavailable
 fi
 
 # 発火理由を決める。**cycle 上限を先に評価する** — 両方成立しているとき、上限到達は
@@ -295,7 +341,7 @@ if [ -n "$cb_reason" ]; then
   [ -n "$fire_out" ] && printf '%s\n' "$fire_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   # CB_REASON / TREND はステップ 6.2 の停止通知が「理由」行とトレンド推移の表示に使う（AC-4）。
   # ステップ 6 は別の Bash 呼び出しでシェル変数を引き継げないため marker で渡す。
-  echo "[CONTEXT] ITERATE_CB=fire; cycle=$cc; max=$max_cycles; CB_REASON=$cb_reason; TREND=$trend_series; HANDOFF_CLEAR=$handoff_clear"
+  echo "[CONTEXT] ITERATE_CB=fire; cycle=$cc; max=$max_cycles; CB_REASON=$cb_reason; TREND=$trend_series; TREND_VERDICT=$trend_verdict; TREND_REASON=$trend_reason; HANDOFF_CLEAR=$handoff_clear"
 else
   new_cc=$((cc + 1))
   # counter increment（ブレーカーを前進させる主経路）の set も fail-observable にする。silent に
@@ -317,7 +363,7 @@ else
   # 表示は fire 分岐と同一形（毎 cycle 通る最頻経路なので、ここだけ中和を欠くと corrupt state
   # 診断の制御文字が最も高い頻度で端末へ素通しする）。
   [ -n "$inc_out" ] && printf '%s\n' "$inc_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  echo "[CONTEXT] ITERATE_CB=ok; cycle=$new_cc; max=$max_cycles; TREND=$trend_series; TREND_VERDICT=$trend_verdict; INC=$inc_status"
+  echo "[CONTEXT] ITERATE_CB=ok; cycle=$new_cc; max=$max_cycles; TREND=$trend_series; TREND_VERDICT=$trend_verdict; TREND_REASON=$trend_reason; INC=$inc_status"
 fi
 ```
 
@@ -333,7 +379,9 @@ fi
 | `divergence` | 収束トレンドが発散と判定された（`cycle_count < max_review_cycles` でも発火する）。無駄な cycle を早期に切る主経路 |
 | `max-cycles` | `cycle_count >= max_review_cycles`。発散判定をすり抜けた遅い非収束を受け止める保険（両方成立する場合もこちらを理由として報告する） |
 
-`TREND_VERDICT`（`ok` 分岐にのみ載る）はトレンド判定が下せたかの診断値。`ok`（収束中・下降中）/ `insufficient`（データ不足・データ異常で判定不能。理由は helper の stderr WARNING）/ `unavailable`（helper 自体を実行できなかった）を取る。`insufficient` / `unavailable` は発火しない側へ倒れ、`max_review_cycles` が従来どおり backstop として働く。
+`TREND_VERDICT` は**両分岐に載る**トレンド判定の診断値。`ok`（収束中・下降中）/ `fire`（発散）/ `insufficient`（データ不足・データ異常で判定不能）/ `unavailable`（helper 自体を実行できなかった）を取る。`insufficient` / `unavailable` は発火しない側へ倒れ、`max_review_cycles` が従来どおり backstop として働く。**`fire` 分岐にも載せる**のは、`CB_REASON=max-cycles` で停止したときに発散判定が下りていたのか未実施だったのかをステップ 6.2 が読み分ける必要があるため（下記 `TREND_REASON` と組で使う）。
+
+`TREND_REASON` は helper が返した `reason=` の値で、**判定が下りなかったときにその理由を運ぶ唯一の経路**。helper は理由を stdout の `reason=` に載せるため、ここで抽出して marker に載せないと呼び出し側からは消える。主な値: `need_3_cycles`（1〜2 cycle 目。全 run が必ず通る正常系）/ `no_results_file`・`results_dir_missing`（結果を読めない = 発散検出の全面不作動。cycle_count>=1 なら helper が stderr にも WARNING を出す）/ `json_parse_failure`・`schema_version_unknown`・`scope_enum_violation`・`pr_number_mismatch`・`blocking_count_failed`（データ異常。いずれも helper の stderr WARNING に詳細）/ `helper_unavailable`（helper 自体を実行できなかった。上記 WARNING が対）/ 判定が下りた場合は `converging_or_descending`・`no_new_minimum_and_not_descending`。
 
 `ITERATE_CB=ok` のとき `/rite:pr-review` を invoke:
 
@@ -573,12 +621,29 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 
 `{fire_reason_line}` はステップ 1 の `ITERATE_CB=fire` marker の `CB_REASON=` で決める。`{trend}` は同 marker の `TREND=` の値（カンマ区切りの per-cycle blocking 件数）をそのまま使い、`→` 区切りへ整形して表示する（例: `TREND=3,7,7,4` → `3 → 7 → 7 → 4`）。**この推移行は省略しない** — 発火が「予算切れ」ではなく「構造的な発散の検出」であることを人間が読んで検証できる唯一の材料であり、AC-4 が通知への包含を要求している:
 
-| `CB_REASON` | `{fire_reason_line}` |
-|---|---|
-| `divergence` | `review⇄fix ループの収束トレンドが発散（直近サイクルで過去の最良水準へ戻れず、下降もしていない）` |
-| `max-cycles` | `review⇄fix cycle が上限 {max_review_cycles} に到達（発散判定をすり抜けた非収束）` |
+`max-cycles` の文面は **`TREND_VERDICT` で分岐する**。上限到達と発散判定は独立に成立しうるため、上限到達だけを見て「発散判定をすり抜けた」と書くと事実に反する場合がある（両方成立時は発散判定も fire している。判定が 3 cycle 未満で未実施のときは「すり抜けた」の前提自体が無い）:
 
-`TREND=` が**空**のとき（トレンド判定が `insufficient` / `unavailable` に落ちた場合。`CB_REASON` は必ず `max-cycles` になる — `divergence` は判定が下りていなければ成立しないため）は、`- blocking 推移:` 行を「`- blocking 推移: 取得できませんでした（ステップ 1 の WARNING を参照）`」に差し替える。**行ごと省略してはならない** — 推移が無いことと推移を出し忘れたことが読み手から区別できなくなる。
+| `CB_REASON` | `TREND_VERDICT` | `{fire_reason_line}` |
+|---|---|---|
+| `divergence` | （必ず `fire`） | `review⇄fix ループの収束トレンドが発散（直近サイクルで過去の最良水準へ戻れず、下降もしていない）` |
+| `max-cycles` | `ok` | `review⇄fix cycle が上限 {max_review_cycles} に到達（発散判定をすり抜けた非収束）` |
+| `max-cycles` | `fire` | `review⇄fix cycle が上限 {max_review_cycles} に到達（収束トレンドの発散も同時に検出）` |
+| `max-cycles` | `insufficient` / `unavailable` | `review⇄fix cycle が上限 {max_review_cycles} に到達（発散判定は未実施 — {trend_reason}）` |
+
+`{trend_reason}` はステップ 1 の `TREND_REASON=` marker の値をそのままリテラル置換する（`need_3_cycles` / `no_results_file` / `helper_unavailable` 等。値の一覧はステップ 1 の `TREND_REASON` 説明を参照）。
+
+**`- blocking 推移:` 行の差し替え条件は `TREND_VERDICT` であって `TREND=` の空判定ではない。** `insufficient` のうち `need_3_cycles` だけは**部分トレンドを非空で返す**ため（例: `TREND=4,9; TREND_VERDICT=insufficient`）、空判定では差し替えが効かず、判定にかけていない推移を判定済みデータとして描画してしまう。`TREND_VERDICT` が `ok` / `fire` 以外のときは、推移行を次へ差し替える:
+
+```
+- blocking 推移: 判定未実施（{trend_reason}）
+```
+
+**行ごと省略してはならない** — 推移が無いことと推移を出し忘れたことが読み手から区別できなくなる。`TREND_VERDICT` が `ok` / `fire` のときは `TREND=` の値を `→` 区切りで整形して表示する。
+
+#### 注意行（ステップ 6.2 のみ）
+
+以下の (a) / (b) / (c) と「再開方法」第 1 bullet の差し替えは **ステップ 6.2（対話）専用**で、ステップ 6.1（batch）には適用しない（batch 側の非対称は本節冒頭の「2. `REFIRE=1` / `FIRE_RESET=failed` 注意行の有無」に記したとおり Issue #2026 §4.2 の Non-Target に由来する。batch テンプレートには「再開方法」節自体が無いため差し替え指示も解決先を持たない）。上記「発火理由の文面」の置換表までが 6.1 / 6.2 共通である。
+
 ステップ 0.6 / ステップ 1 / **ステップ 6 共有前段**の `[CONTEXT]` marker を context で観測している場合、下記の条件で上記「理由」行の直後に注意行を追加する（§4.5 の error handling。同じ文面の停止通知が真の非収束と区別できなくなるのを防ぐ）。3 ステップすべてを観測対象に含めること — (b) が読む `FIRE_RESET` はステップ 6 共有前段が、(c) が読む `HANDOFF_CLEAR` はステップ 1 が emit する。値の照合は `;` 区切りの `KEY=VALUE` 単位で完全一致とする（値側は `failed` の部分一致が `failed-refire` / `failed-stale` の両方に当たり、キー側は `RESET` が `FIRE_RESET` の部分文字列になるため、どちらも部分一致で照合してはならない）。注意行および下記の差し替え行に含まれる `{plugin_root}` / `{pr_number}` / `{max_review_cycles}` / `{session_id}` / `{state_root}` はリテラル置換する（`{session_id}` / `{state_root}` はステップ 6 共有前段の `SESSION_ID=` / `STATE_ROOT=` marker の値。**どちらも値が得られないことがあり、その場合は (b) の pre-fill 表に従ってコマンドの当該部分だけを解決手順へ置き換える** — 空値や sentinel をそのまま埋めたコマンドは rc=0 のまま別の state を対象にして空振りするため）。**置換の対象は注意行の散文だけでなく、(b) が人間へ渡すすべての実行可能テキスト** — リセットコマンド本体・その手前の実在確認・pre-fill 表の案内文 — **に及ぶ**。人間の端末で live なシェル変数を前提にした記法（`$root` 等）は、その変数を同じ案内文の中で代入している箇所以外では使わない（未定義変数は空展開して確認や探索が黙って空振りする）。
 
 **(a) `REFIRE=1`**（この起動では review を 1 回も回さずに発火した。前回の最終 cycle 途中で中断した場合の正常な発火と、counter リセット失敗による再発火の**両方**を含む — marker だけでは区別できない）:

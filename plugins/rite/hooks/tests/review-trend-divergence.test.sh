@@ -99,6 +99,7 @@ run_trend() {
     i=$((i + 1))
     make_result "$dir" "$pr" "$(printf '%02d' "$i")" "$n"
   done
+  # pin を渡さない = 単一 run のディレクトリ (全件を 1 本の列として読む)
   bash "$SCRIPT" --pr "$pr" --cycle-count "$#" --results-dir "$dir" > "$OUT" 2>/dev/null
 }
 
@@ -171,6 +172,17 @@ assert_grep "T-03c: 最良水準で平坦な 4,4,4,4 は発火せず上限保険
 run_trend 303 3 7 7 7
 assert_grep "T-03d: 最良水準を超えた位置での平坦 3,7,7,7 は発火する" "$OUT" "TREND_DIVERGENCE=fire"
 
+# 条件 (1) の `>` 境界は a 側・b 側の 2 辺を持つ。4,4,4,4 は両辺が同時に min と同値のため
+# 「両辺を同時に緩めた」変異しか検出できない。a 側だけを `>=` に緩める 1 文字改変を捕まえるには
+# 「a == min かつ b > min」の列が要る — これは「最良水準まで下げた後に 1 件戻った」形で、
+# AC-1 が最優先で禁じる false positive 側の向きそのもの。
+run_trend 304 4 4 5
+assert_grep "T-03e: 最良水準と同値からの再上昇 4,4,5 は発火しない (a 側境界の pin)" "$OUT" "TREND_DIVERGENCE=ok"
+
+# header の rationale が名指しする実データ形状も同じ向きで pin する
+run_trend 305 12 5 3 2 2 3
+assert_grep "T-03f: 残り僅かで足踏み後に 1 件戻った 12,5,3,2,2,3 は発火しない" "$OUT" "TREND_DIVERGENCE=ok"
+
 # ---------------------------------------------------------------------------
 # T-05: 決定論性 (AC-5)
 # ---------------------------------------------------------------------------
@@ -183,6 +195,10 @@ for det_n in 3 7 7 4; do
   make_result "$det_dir" 500 "$(printf '%02d' "$det_i")" "$det_n"
 done
 det_first=$(bash "$SCRIPT" --pr 500 --cycle-count 4 --results-dir "$det_dir" 2>/dev/null)
+# 「5 回同じ」だけでは helper が無出力になっても通る (両辺が空文字で一致する)。
+# 決定論の対象が期待どおりの verdict であることを先に固定してから一致を見る。
+printf '%s' "$det_first" > "$OUT"
+assert_grep "T-05: 決定論の対象が期待 verdict であること" "$OUT" "TREND_DIVERGENCE=fire; trend=3,7,7,4; cycles=4; fire_at=3"
 det_same=yes
 for _ in 1 2 3 4; do
   det_again=$(bash "$SCRIPT" --pr 500 --cycle-count 4 --results-dir "$det_dir" 2>/dev/null)
@@ -202,22 +218,52 @@ assert_not_grep "T-06a: 1 cycle 目に発火しない" "$OUT" "TREND_DIVERGENCE=
 run_trend 601 5 9
 assert_grep "T-06b: 2 cycle 目も判定対象外" "$OUT" "reason=need_3_cycles"
 
+# データ不足の 2 経路は cycle_count で正常系と異常系に分かれる。cycle_count>=1 は
+# 「N 回レビュー済みなのに結果が読めない」= 発散検出の全面不作動なので WARNING を出す。
+# 無音のままだと呼び出し側の marker が正常系 (need_3_cycles) と完全一致して観測不能になる。
 empty_dir="$SANDBOX/empty"; mkdir -p "$empty_dir"
-bash "$SCRIPT" --pr 602 --cycle-count 3 --results-dir "$empty_dir" > "$OUT" 2>/dev/null
+bash "$SCRIPT" --pr 602 --cycle-count 3 --results-dir "$empty_dir" > "$OUT" 2>"$SANDBOX/empty-err.txt"
 assert_grep "T-06c: JSON が 1 件も無いとき no_results_file で不発火" "$OUT" "reason=no_results_file"
+assert_grep "T-06c: cycle_count>=1 の 0 件は異常として WARNING を出す" "$SANDBOX/empty-err.txt" "WARNING:"
 
-bash "$SCRIPT" --pr 603 --cycle-count 3 --results-dir "$SANDBOX/does-not-exist" > "$OUT" 2>/dev/null
+bash "$SCRIPT" --pr 603 --cycle-count 3 --results-dir "$SANDBOX/does-not-exist" > "$OUT" 2>"$SANDBOX/nodir-err.txt"
 assert_grep "T-06d: ディレクトリ不在で results_dir_missing" "$OUT" "reason=results_dir_missing"
+assert_grep "T-06d: cycle_count>=1 の dir 不在は異常として WARNING を出す" "$SANDBOX/nodir-err.txt" "WARNING:"
 
-# ファイル数 < cycle_count: 中間サイクルの JSON が無音欠落していた頃の残骸。
-# 欠けた列で判定すると存在しない上昇・下降を読むため判定しない。
+# cycle_count=0 は呼び出し側の live path (fresh run の初回 cycle で必ず渡る)。
+# このときの不足は正常系なので WARNING を出さない — 出すと毎 run の初回に必ずノイズが乗り、
+# 本当に surface したい異常が埋もれる。
+bash "$SCRIPT" --pr 612 --cycle-count 0 --results-dir "$SANDBOX/does-not-exist" > "$OUT" 2>"$SANDBOX/fresh-err.txt"
+assert_grep "T-06m: cycle_count=0 (fresh run 初回) でも判定不能を返す" "$OUT" "reason=results_dir_missing"
+assert_not_grep "T-06m: cycle_count=0 の不足は正常系なので WARNING を出さない" "$SANDBOX/fresh-err.txt" "WARNING:"
+assert_not_grep "T-06m: cycle_count=0 で発火しない" "$OUT" "TREND_DIVERGENCE=fire"
+
+# ファイル数 < cycle_count: 保存失敗 / review 中断で結果が失われた状態。
+# run 境界は pin が決めるため、欠落は「列に穴が空く」だけで前 run の混入とは別種。
+# 判定を降ろすと、その run の残り全 cycle で発散検出が恒久的に無効化される (中断からの
+# resume は counter を戻さないため差が縮まらない) ため、実在する列で判定を続行し
+# 失われた件数を WARNING で surface する。
 short_dir="$SANDBOX/short"; mkdir -p "$short_dir"
 make_result "$short_dir" 604 01 2
 make_result "$short_dir" 604 02 3
 make_result "$short_dir" 604 03 6
-bash "$SCRIPT" --pr 604 --cycle-count 5 --results-dir "$short_dir" > "$OUT" 2>/dev/null
-assert_grep "T-06e: ファイル数不足で fewer_files_than_cycles" "$OUT" "reason=fewer_files_than_cycles"
-assert_not_grep "T-06e: 欠落列では発散列でも発火しない" "$OUT" "TREND_DIVERGENCE=fire"
+bash "$SCRIPT" --pr 604 --cycle-count 5 --results-dir "$short_dir" > "$OUT" 2>"$SANDBOX/short-err.txt"
+assert_grep "T-06e: ファイル数不足でも実在する列で判定を続行する" "$OUT" "trend=2,3,6"
+assert_grep "T-06e: 発散列は欠落があっても発火する (恒久無効化しない)" "$OUT" "TREND_DIVERGENCE=fire"
+assert_grep "T-06e: 失われた件数を WARNING で surface する" "$SANDBOX/short-err.txt" "files=3 < cycles=5"
+
+# 欠落が生じても run 境界は pin が守る: 前 run のファイルが同居していても混入しない。
+# (旧 cycle_count 切り出しでは _total >= cycle_count を満たしてしまい前 run を取り込んだ)
+short_multi_dir="$SANDBOX/short-multirun"; mkdir -p "$short_multi_dir"
+make_result "$short_multi_dir" 610 01 8
+make_result "$short_multi_dir" 610 02 5
+make_result "$short_multi_dir" 610 03 3
+make_result "$short_multi_dir" 610 04 1
+make_result "$short_multi_dir" 610 05 3
+make_result "$short_multi_dir" 610 06 3
+bash "$SCRIPT" --pr 610 --cycle-count 3 --since "610-20260101000004.json" --results-dir "$short_multi_dir" > "$OUT" 2>/dev/null
+assert_grep "run 境界 (pin): 現 run が cycle_count に 1 件不足でも前 run を取り込まない" "$OUT" "trend=3,3"
+assert_not_grep "run 境界 (pin): 前 run の低い件数で健全な run を発散判定しない" "$OUT" "TREND_DIVERGENCE=fire"
 
 # 破損 JSON / 未知 schema / pr_number 不一致はいずれも「判定不能」であって発散ではない。
 bad_dir="$SANDBOX/bad"; mkdir -p "$bad_dir"
@@ -267,6 +313,16 @@ EOF
 bash "$SCRIPT" --pr 609 --cycle-count 3 --results-dir "$mixed_dir" > "$OUT" 2>/dev/null
 assert_grep "T-06k: schema 1.0.0 の scope 欠落は default mapping で解決し違反にしない" "$OUT" "trend=2,2,1"
 
+# accept list の 3 値すべてを read 側で pin する。1.1.0 は上の全 fixture が、1.0.0 は T-06k が
+# 踏むが、legacy の MAJOR.MINOR 形式 (1.0) だけが未固定で、case から 1 値落とす改変が通っていた。
+legacy_dir="$SANDBOX/schema-legacy-minor"; mkdir -p "$legacy_dir"
+make_result "$legacy_dir" 611 01 6 "1.0"
+make_result "$legacy_dir" 611 02 3 "1.0"
+make_result "$legacy_dir" 611 03 1 "1.0"
+bash "$SCRIPT" --pr 611 --cycle-count 3 --results-dir "$legacy_dir" > "$OUT" 2>/dev/null
+assert_grep "T-06l: schema_version 1.0 (MAJOR.MINOR) を accept する" "$OUT" "trend=6,3,1"
+assert_not_grep "T-06l: 1.0 を未知 schema として弾かない" "$OUT" "reason=schema_version_unknown"
+
 mism_dir="$SANDBOX/mismatch"; mkdir -p "$mism_dir"
 make_result "$mism_dir" 607 01 2
 make_result "$mism_dir" 607 02 3
@@ -279,7 +335,7 @@ assert_grep "T-06h: pr_number 不一致は pr_number_mismatch で不発火" "$OU
 # run 境界
 #
 # review-results は /rite:cleanup まで削除されないため同一 PR の複数 run が同居する。
-# cycle_count で新しい側から切り出さないと、再実行直後に前 run の件数を読んで即発火する。
+# run 開始点 pin (--since) で切り出さないと、再実行直後に前 run の件数を読んで即発火する。
 # ---------------------------------------------------------------------------
 echo "--- run 境界の切り出し (D-05) ---"
 
@@ -290,12 +346,22 @@ for multi_n in 3 7 7 4 5 3 1; do
   multi_i=$((multi_i + 1))
   make_result "$multi_dir" 700 "$(printf '%02d' "$multi_i")" "$multi_n"
 done
-bash "$SCRIPT" --pr 700 --cycle-count 3 --results-dir "$multi_dir" > "$OUT" 2>/dev/null
-assert_grep "run 境界: cycle_count=3 は現 run の 3 件だけを読む" "$OUT" "trend=5,3,1"
+# pin = 前 run の最終ファイル (4 件目)。それより新しい 3 件だけが現 run。
+bash "$SCRIPT" --pr 700 --cycle-count 3 --since "700-20260101000004.json" --results-dir "$multi_dir" > "$OUT" 2>/dev/null
+assert_grep "run 境界: pin より新しい 3 件だけを読む" "$OUT" "trend=5,3,1"
 assert_grep "run 境界: 前 run の発散を現 run に持ち越さない" "$OUT" "TREND_DIVERGENCE=ok"
 
 bash "$SCRIPT" --pr 700 --cycle-count 7 --results-dir "$multi_dir" > "$OUT" 2>/dev/null
-assert_grep "run 境界: cycle_count=7 なら全件を 1 本の列として読む" "$OUT" "trend=3,7,7,4,5,3,1"
+assert_grep "run 境界: pin なしなら全件を 1 本の列として読む (後方互換)" "$OUT" "trend=3,7,7,4,5,3,1"
+
+# pin は「厳密に新しい」— pin 自身 (前 run の最終ファイル) を現 run に含めない
+bash "$SCRIPT" --pr 700 --cycle-count 4 --since "700-20260101000003.json" --results-dir "$multi_dir" > "$OUT" 2>/dev/null
+assert_grep "run 境界: pin 自身は現 run に含まれない (厳密に新しいもののみ)" "$OUT" "trend=4,5,3,1"
+
+# pin より新しいファイルが 1 件も無い = 現 run の結果がすべて失われている
+bash "$SCRIPT" --pr 700 --cycle-count 2 --since "700-20260101000007.json" --results-dir "$multi_dir" > "$OUT" 2>"$SANDBOX/pin-err.txt"
+assert_grep "run 境界: pin より新しい結果が 0 件なら判定不能 (前 run を読まない)" "$OUT" "reason=no_results_file"
+assert_grep "run 境界: 0 件の理由を WARNING で surface する" "$SANDBOX/pin-err.txt" "run 開始点 pin"
 
 # 同一 PR 番号を prefix に持つ別 PR (700 等) を巻き込まないこと
 prefix_dir="$SANDBOX/prefix"; mkdir -p "$prefix_dir"
@@ -382,11 +448,23 @@ echo "--- 実 fixture 回帰 (pr-2070) ---"
 
 REAL_FIXTURE="$SCRIPT_DIR/../../scripts/tests/fixtures/pr-2070"
 if [ -d "$REAL_FIXTURE" ]; then
-  bash "$SCRIPT" --pr 2070 --cycle-count 5 --results-dir "$REAL_FIXTURE" > "$OUT" 2>/dev/null
-  assert_grep "実 fixture: 直近 5 件の blocking 列を実 JSON から復元できる" "$OUT" "trend=2,4,6,7,4"
+  # pin = 4 件目。それより新しい 5 件が「現 run」に相当する。
+  bash "$SCRIPT" --pr 2070 --cycle-count 5 --since "2070-20260731150058.json" --results-dir "$REAL_FIXTURE" > "$OUT" 2>/dev/null
+  assert_grep "実 fixture: pin より新しい 5 件の blocking 列を実 JSON から復元できる" "$OUT" "trend=2,4,6,7,4"
+  # 抽出層だけでなく判定層も実データで固定する (判定式が変われば落ちる)
+  assert_grep "実 fixture: 直近 5 件の列に対する判定結果を固定する" "$OUT" "fire_at=3"
   bash "$SCRIPT" --pr 2070 --cycle-count 9 --results-dir "$REAL_FIXTURE" > "$OUT" 2>/dev/null
   assert_grep "実 fixture: 全 9 件の blocking 列を実 JSON から復元できる" "$OUT" "trend=12,5,3,2,2,4,6,7,4"
+  assert_grep "実 fixture: 全 9 件の列に対する判定結果を固定する" "$OUT" "fire_at=7"
 else
+  # fixture は同一リポジトリの tracked ファイル (#2074 で commit 済) のため、不在 = 削除された
+  # ことを意味する。skip すると唯一の実データ回帰 2 件が消えてもスイートは緑のまま通るため、
+  # 上部の jq floor と同じ形で Linux では hard fail させる。
+  if [ -d /proc ]; then
+    echo "  ❌ FAIL: 実 fixture pr-2070 が存在しない ($REAL_FIXTURE) — tracked fixture の欠落は実データ回帰の消失を意味するため skip しない"
+    echo "Results: 0 passed, 1 failed"
+    exit 1
+  fi
   skip "実 fixture pr-2070 が存在しない"
 fi
 

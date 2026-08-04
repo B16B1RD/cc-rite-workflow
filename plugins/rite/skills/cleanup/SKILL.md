@@ -816,7 +816,10 @@ rite_rm fix_retry_state "$_state_root/.rite/state/fix-fallback-retry-${pr_number
 rite_rm fix_cycle_state "$_state_root/.rite/fix-cycle-state/${pr_number}.json"
 rite_rm legacy_fix_cycle_state "$_state_root/.rite/fix-cycle-state.json"
 rite_rm accepted_fingerprints "$_state_root/.rite/state/accepted-fingerprints-${pr_number}.txt"
+rite_rm review_run_since "$_state_root/.rite/state/review-run-since-${pr_number}.txt"
 ```
+
+`review-run-since-{pr}.txt` は `/rite:iterate` の収束トレンド判定が現 run の境界に使う pin (ステップ 0.6 が書き、ステップ 1 が `--since` で helper へ渡す)。直上で削除する `review-results/` と同じライフサイクルのため同列挙で掃除する。残しても次 run の開始時に上書きされるので害はないが、参照先が消えた孤児を PR ごとに積み上げない。
 
 `.rite/wiki-worktree/` は永続 worktree のため削除しない (再作成コストが高く各 PR cycle を跨いで保持する)。手動削除が必要なら `git worktree remove .rite/wiki-worktree && git worktree prune`。
 

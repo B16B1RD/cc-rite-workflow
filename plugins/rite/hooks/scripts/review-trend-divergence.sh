@@ -10,7 +10,7 @@
 #     上限未到達でも本 helper が fire を返せばブレーカーへ分岐する。
 #
 # Usage:
-#   bash review-trend-divergence.sh --pr N --cycle-count N [--results-dir PATH]
+#   bash review-trend-divergence.sh --pr N --cycle-count N [--since BASENAME] [--results-dir PATH]
 #
 # 出力 (stdout, 1 行):
 #   [CONTEXT] TREND_DIVERGENCE=fire|ok|insufficient; trend=<c1,c2,...>; cycles=N; reason=<...>
@@ -64,13 +64,30 @@
 #   一方、最良水準を **超えた** 位置での平坦 (`3,7,7`) は (1)(2) をともに満たし発火する —
 #   escape 節は「下降中」だけを見逃す規定であって、平坦を見逃す規定ではない。
 #
-# Why run 境界に cycle_count を使うか:
+# Why run 境界に run-start pin を使うか (cycle_count では復元できない):
 #   `.rite/review-results/{pr}-*.json` は /rite:cleanup (マージ後) まで削除されないため、
 #   **同一 PR の複数 run が同一ディレクトリに同居する** (打ち切り後に人間が再実行した PR では
 #   実際に 3 run 分が同居していた)。glob + timestamp ソートだけで読むと 3 run を 1 本の列として誤読し、人間が
-#   `/rite:iterate` を再実行した直後 (cycle_count は 0 にリセット済) でも前 run の件数を見て
-#   cycle 2 で即発火する。呼び出し側が渡す cycle_count (= 現 run で完了したレビュー数) で
-#   新しい側から切り出すことで run 境界を復元する。
+#   `/rite:iterate` を再実行した直後でも前 run の件数を見て cycle 2 で即発火する。
+#
+#   当初は cycle_count (= 現 run で完了したレビュー数) で新しい側から切り出していたが、これは
+#   「現 run のファイル数 == cycle_count」を暗黙の前提にしており、その前提は 2 経路で破れる:
+#     (a) 保存失敗 — review-result-save.sh は D-04 非ブロッキング契約により保存できなくても
+#         exit 0 で返る。ループは cycle_count を進めたまま継続するため 1 件欠ける。
+#     (b) review 途中での中断 — iterate ステップ 1 は review を invoke する **前** に cycle_count を
+#         +1 する。中断すると JSON は書かれず counter だけ進み、resume は phase=review を
+#         そのまま routing するため skew がその run の間ずっと解消しない。
+#   どちらの場合も「末尾 cycle_count 件」は前 run のファイルを現 run の先頭として取り込む。
+#   前 run の末尾は収束途中の低い件数であることが多く、それが prefix_min に入ると健全な run が
+#   発散判定で殺される — 本判定が最も避けたい false positive (AC-1 の否定) がまさに起きる。
+#
+#   そこで run 境界は cycle_count ではなく **run 開始時点の pin** で復元する。
+#   `.rite/state/review-run-since-{pr}.txt` には、その run の 1 cycle 目に入る直前に存在していた
+#   最新の結果ファイル basename が入る (iterate ステップ 0.6 が cycle_count == 0 のときに書く)。
+#   本 script はそれより新しいファイルだけを現 run とみなす。pin ファイルが無ければ全件を
+#   1 本の列として読む (pin 導入前の run / 手動実行に対する後方互換)。
+#   cycle_count は run 境界の決定には**使わない** — ファイル数との差は「結果が 1 件失われた」
+#   ことの診断値として WARNING に載せるだけで、判定は実在するファイル列に対して行う。
 #
 # Why 判定不能を「発火しない」に倒すか:
 #   fallback ではなく設計。判定できない入力で発火させると健全な run を殺す (AC-1 の否定) が、
@@ -86,14 +103,18 @@ set -u
 pr_number=""
 cycle_count=""
 results_dir=""
+since=""
 
 usage() {
   cat <<'EOF'
-Usage: review-trend-divergence.sh --pr N --cycle-count N [--results-dir PATH]
+Usage: review-trend-divergence.sh --pr N --cycle-count N [--since BASENAME] [--results-dir PATH]
 
 Options:
   --pr N            対象 PR 番号 (必須)
-  --cycle-count N   現 run で完了したレビュー cycle 数 (必須)。run 境界の復元に使う
+  --cycle-count N   現 run で完了したレビュー cycle 数 (必須)。**run 境界の決定には使わない** —
+                    実在ファイル数との差を「結果が失われた」診断 WARNING に載せるだけ
+  --since BASENAME  run 開始点の pin。この basename より新しい結果ファイルだけを現 run とみなす。
+                    空文字 / 省略時は全件を 1 本の列として読む (pin 導入前の run への後方互換)
   --results-dir P   レビュー結果 JSON のディレクトリ (既定: state-path-resolve.sh 経由で解決)
   -h, --help        Show this help
 
@@ -107,6 +128,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --pr) pr_number="${2:-}"; shift; shift ;;
     --cycle-count) cycle_count="${2:-}"; shift; shift ;;
+    --since) since="${2:-}"; shift; shift ;;
     --results-dir) results_dir="${2:-}"; shift; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "ERROR: unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -128,6 +150,23 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# 診断へ埋め込む JSON 由来の値 (schema_version / pr_number / ファイルパス) を中和する。
+# hooks/ の全診断 emission site に中和を課す control-char-neutralize.sh の SoT に従う
+# (sibling の review-nonblocking-record.sh / review-result-save.sh と同型)。呼び出し側
+# (iterate ステップ 1) は本 script の stderr を capture せず素通しさせるため、ここで中和しないと
+# 制御文字がそのまま端末へ届く。helper 不在時は素通しへ縮退するが、縮退自体を WARNING で告知する
+# (無言の縮退は「中和している」という前提だけを残して実効を失うため)。
+# shellcheck source=../control-char-neutralize.sh
+source "$SCRIPT_DIR/../control-char-neutralize.sh" 2>/dev/null || true
+if ! command -v neutralize_ctrl >/dev/null 2>&1; then
+  echo "WARNING: control-char-neutralize.sh を読み込めませんでした。診断に埋め込む JSON 由来の値の制御文字が素通しします" >&2
+  neutralize_ctrl() { cat; }
+fi
+
+# 診断へ埋め込む 1 行用の中和。`--keep-newline` を付けない default モードは改行も `?` 化するため、
+# 埋め込んだ値が WARNING を複数行へ割って別の診断行に見せかけることを防ぐ。
+_nz() { printf '%s' "${1:-}" | neutralize_ctrl; }
 
 # 判定不能で終了する共通経路。reason を必ず載せる (silent skip を作らない)。
 _undecidable() {
@@ -152,8 +191,19 @@ if [ -z "$results_dir" ]; then
   fi
 fi
 
+# データ不足の 2 経路 (results dir 不在 / 結果ファイル 0 件) は、cycle_count == 0 のときだけ
+# 正常系 (まだ 1 度もレビューしていない) なので無音でよい。cycle_count >= 1 で成立するなら
+# 「N 回レビュー済みなのに結果が 1 件も無い」= results dir の path skew か保存の全面失敗であり、
+# 発散検出が丸ごと死んでいることを意味する。無音だと本 script が正常系の need_3_cycles を返した
+# ときと呼び出し側の marker が完全に一致し、機構の全面不作動が観測不能になる。
+_data_missing_warn() {
+  # $1 = 人間向け WARNING 本文。cycle_count == 0 のときは空を返して無音に倒す。
+  if [ "$cycle_count" -ge 1 ] 2>/dev/null; then printf '%s' "$1"; fi
+}
+
 if [ ! -d "$results_dir" ]; then
-  _undecidable results_dir_missing ""
+  _undecidable results_dir_missing \
+    "$(_data_missing_warn "レビュー結果ディレクトリが存在しません ($(_nz "$results_dir"))。cycle_count=$cycle_count のレビューが完了しているはずですが結果を 1 件も読めないため、トレンド判定を行わず max_review_cycles の判定に委ねます")"
 fi
 
 # ---- 現 run の JSON 群を切り出す ----------------------------------------------
@@ -168,21 +218,44 @@ done < <(find "$results_dir" -maxdepth 1 -type f -name "${pr_number}-*.json" 2>/
 
 _total=${#_all_files[@]}
 if [ "$_total" -eq 0 ]; then
-  _undecidable no_results_file ""
+  _undecidable no_results_file \
+    "$(_data_missing_warn "レビュー結果 JSON が 1 件もありません ($(_nz "$results_dir")/${pr_number}-*.json)。cycle_count=$cycle_count のレビューが完了しているはずですが結果を読めないため、トレンド判定を行わず max_review_cycles の判定に委ねます")"
 fi
 
-# cycle_count が示す現 run 分を新しい側から採る。ファイル数が cycle_count に満たない場合は
-# トレンドが欠けている (中間サイクルの JSON が無音欠落していた頃に書かれた残骸、または cleanup 後の再開)。
-# 欠けた列で判定すると存在しない上昇・下降を読むため、判定せず backstop へ委ねる。
-if [ "$_total" -lt "$cycle_count" ]; then
-  _undecidable fewer_files_than_cycles \
-    "レビュー結果 JSON が cycle_count に不足しています (files=$_total < cycles=$cycle_count)。トレンド判定を行わず max_review_cycles の判定に委ねます"
-fi
-
+# ---- run 開始点 pin で現 run のファイルを選ぶ ----------------------------------
+# pin より **厳密に新しい** basename だけを現 run とみなす (pin 自身は前 run の最終ファイル)。
+# 比較は basename の LC_ALL=C 昇順 = 時系列昇順 (ファイル名 `{pr}-{timestamp}[~{hex}].json`)。
+# pin が空 = 未 pin (導入前の run / 手動実行) → 全件を 1 本の列として読む (後方互換)。
 # `${arr[@]+"${arr[@]}"}` は空配列を set -u 下で展開するための既存慣習 (bash 4.0-4.3 では
 # 素の `"${arr[@]}"` が unbound variable で落ちる。floor は references/bash-compat-guard.md が
-# 定める bash 4.0+)。cycle_count=0 (現 run の初回 cycle) で必ず空になる経路のため必須。
-_run_files=("${_all_files[@]:$((_total - cycle_count)):$cycle_count}")
+# 定める bash 4.0+)。現 run の初回 cycle では必ず空になる経路のため必須。
+_run_files=()
+if [ -z "$since" ]; then
+  _run_files=("${_all_files[@]+"${_all_files[@]}"}")
+else
+  for _f in "${_all_files[@]+"${_all_files[@]}"}"; do
+    _bn=$(basename "$_f")
+    # `[[ > ]]` はロケール依存の照合順を使うため、LC_ALL=C 昇順 sort と一致させるには使えない。
+    # sort に 2 行渡して pin が先に来る (= _bn の方が新しい) ことを確認する。
+    if [ "$(printf '%s\n%s\n' "$_bn" "$since" | LC_ALL=C sort | head -1)" = "$since" ] && [ "$_bn" != "$since" ]; then
+      _run_files+=("$_f")
+    fi
+  done
+fi
+
+_run_total=${#_run_files[@]}
+if [ "$_run_total" -eq 0 ]; then
+  _undecidable no_results_file \
+    "$(_data_missing_warn "run 開始点 pin ($(_nz "$since")) より新しいレビュー結果 JSON が 1 件もありません (dir 内の全 ${_total} 件はすべて前 run 以前)。トレンド判定を行わず max_review_cycles の判定に委ねます")"
+fi
+
+# cycle_count との差は **診断のみ** に使う。かつては差があると判定を降ろしていたが、その設計は
+# 「保存失敗 / review 中断で counter だけが進む」経路 (header 参照) で run 全体の発散検出を
+# 恒久的に無効化していた。pin で run 境界が確定した今、実在する列で判定するのが正しい —
+# 欠落は列に穴が空くだけで、前 run の混入という別 run の値を読む誤りとは種類が違う。
+if [ "$_run_total" -lt "$cycle_count" ] 2>/dev/null; then
+  echo "WARNING: 現 run のレビュー結果 JSON が cycle_count に不足しています (files=$_run_total < cycles=$cycle_count)。結果の保存失敗か review の中断で ${cycle_count} 件中 $((cycle_count - _run_total)) 件の結果が失われています。実在する ${_run_total} 件の列でトレンド判定を続行します" >&2
+fi
 
 # ---- 各 cycle の blocking 件数を数える ----------------------------------------
 # blocking の定義 (consumer 式) の SoT は references/severity-levels.md §実測必須ゲート:
@@ -191,26 +264,27 @@ _run_files=("${_all_files[@]:$((_total - cycle_count)):$cycle_count}")
 # schema 1.0 / 1.0.0 は scope 欠落のため severity ベース default mapping を適用する
 # (SoT: references/review-result-schema.md §scope の default mapping)。
 #
-# schema_version accept list は読取側 3 箇所 (fix.md ステップ 1.2.0 の Priority 0 / 2 / 3) と
-# 同期する義務がある — 本 script は 4 番目の読取側として同 SoT に登録済み
-# (references/review-result-schema.md §Schema Version)。
+# schema_version accept list は他の読取側と同期する義務がある — 本 script は 4 番目の読取側として
+# 同 SoT に登録済み (references/review-result-schema.md §Schema Version)。既存 3 サイトの実所在は
+# scripts/review-source-resolve.sh (Priority 0 / 2) と skills/fix/SKILL.md (Priority 3) で、
+# fix.md に 3 つとも在るわけではない (Priority 0 / 2 の case 文は helper へ移設済み)。
 _counts=()
 for _f in "${_run_files[@]+"${_run_files[@]}"}"; do
   if ! jq empty "$_f" >/dev/null 2>&1; then
-    _undecidable json_parse_failure "レビュー結果 JSON が parse できません: $_f"
+    _undecidable json_parse_failure "レビュー結果 JSON が parse できません: $(_nz "$_f")"
   fi
 
   _sv=$(jq -r '.schema_version // ""' "$_f" 2>/dev/null)
   case "$_sv" in
     "1.0.0"|"1.0"|"1.1.0") : ;;
-    *) _undecidable schema_version_unknown "未知の schema_version='$_sv': $_f" ;;
+    *) _undecidable schema_version_unknown "未知の schema_version='$(_nz "$_sv")': $(_nz "$_f")" ;;
   esac
 
   # ファイル名 prefix と JSON の pr_number の一致 (cross-field invariant #1。
   # SoT: references/review-result-schema.md §Cross-field invariants)。手動 rename でのみ発火しうる。
   _json_pr=$(jq -r '.pr_number // ""' "$_f" 2>/dev/null)
   if [ "$_json_pr" != "$pr_number" ]; then
-    _undecidable pr_number_mismatch "ファイル名の PR 番号と JSON の pr_number が不一致 (file=$pr_number json=$_json_pr): $_f"
+    _undecidable pr_number_mismatch "ファイル名の PR 番号と JSON の pr_number が不一致 (file=$pr_number json=$(_nz "$_json_pr")): $(_nz "$_f")"
   fi
 
   # scope を 3 値 enum へ解決する。schema 1.0 / 1.0.0 のみ severity ベースの default mapping を
@@ -239,14 +313,14 @@ for _f in "${_run_files[@]+"${_run_files[@]}"}"; do
   _n=${_resolved%% *}
   _unresolved=${_resolved##* }
   case "$_n" in
-    ''|*[!0-9]*) _undecidable blocking_count_failed "blocking 件数を算出できません: $_f" ;;
+    ''|*[!0-9]*) _undecidable blocking_count_failed "blocking 件数を算出できません: $(_nz "$_f")" ;;
   esac
   case "$_unresolved" in
-    ''|*[!0-9]*) _undecidable blocking_count_failed "scope 解決結果を算出できません: $_f" ;;
+    ''|*[!0-9]*) _undecidable blocking_count_failed "scope 解決結果を算出できません: $(_nz "$_f")" ;;
   esac
   if [ "$_unresolved" -gt 0 ]; then
     _undecidable scope_enum_violation \
-      "scope が 3 値 enum (current-pr / follow-up / nit-noted) に解決できない finding が ${_unresolved} 件あります (blocking 件数を過少に数えるため判定しません): $_f"
+      "scope が 3 値 enum (current-pr / follow-up / nit-noted) に解決できない finding が ${_unresolved} 件あります (blocking 件数を過少に数えるため判定しません): $(_nz "$_f")"
   fi
   _counts+=("$_n")
 done
