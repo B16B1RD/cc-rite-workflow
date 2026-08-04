@@ -567,11 +567,8 @@ elif ! printf '%s' "$raw_json" | jq -e '
   # P3 だけ緩めると同一 JSON が経路により受理/拒否に割れる。write 側が `verification` を出力する
   # 前提は #2072 で満たされたが、3 経路 + SoT の同時更新は依然として不要 — gated な
   # `measured == false` は `non_blocking_findings[]` へ移送されるため `findings[]` に残る非実測
-  # finding は `scope == "nit-noted"` のみで、CRITICAL/HIGH × nit-noted は reviewer 契約
-  # (`agents/_reviewer-base.md` §Scope Assignment) が禁止する。よって規約に従う JSON では
-  # CRITICAL/HIGH を見る本述語の判定対象に非実測 finding は現れない。invariant #4 の jq による
-  # 機械的阻止は schema 1.1.0 限定で、write 側が pin する "1.0.0" では発火しない (#2103) —
-  # 規約違反 JSON は本述語が先に捕らえて legacy parser へ落とすため安全側に倒れる。
+  # finding は `scope == "nit-noted"` のみ。CRITICAL/HIGH × nit-noted は invariant #4 が禁じる
+  # 組合せなので、CRITICAL/HIGH を見る本述語の判定対象に非実測 finding は現れない。
   echo "WARNING: PR コメント内の Raw JSON が cross-field invariant に違反しています (mergeable だが open な CRITICAL/HIGH finding あり)。legacy parser に fallthrough します。" >&2
   echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=pr_comment_cross_field_invariant_violated" >&2
 elif ! printf '%s' "$raw_json" | jq -e '
