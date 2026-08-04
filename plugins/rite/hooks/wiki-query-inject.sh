@@ -582,7 +582,7 @@ while IFS=$'\x1f' read -r title path description; do
     # `path` comes from index.md too, so it goes through the same neutralizer as
     # the drop samples above (this site became reachable for 360 candidates once
     # table rows started producing candidates).
-    printf 'WARNING: cannot read frontmatter of %s — skipping candidate (index.md may be stale)\n' "$path" \
+    printf 'WARNING: cannot read frontmatter of %s - skipping candidate (index.md may be stale)\n' "$path" \
       | neutralize_ctrl --keep-newline >&2
     continue
   fi
