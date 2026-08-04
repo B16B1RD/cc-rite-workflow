@@ -25,6 +25,13 @@
 #   TC-13 (T-04) index.md 不在 → exit 1 (fail-loud)
 #   TC-14 (T-04) `## ページ一覧` 見出し重複 (想定外構造) → exit 1 + 無変更
 #   TC-15b (T-04) UTF-8 日本語 title/description の制御文字誤検出なし (rc=0、C1 除外の意図を pin)
+#   TC-12b (T-03) 統計節も不在なら EOF に節新設 (golden)
+#   TC-16b (T-04) pages 一覧 0 件 (*.md ゼロ、find rc=0) → skip + 統計保持
+#   TC-16c (T-04) --pages-root 省略 (統計節あり) → skipped_unreadable + 統計保持
+#   TC-16d (T-04) 統計行の一部欠落 → WARNING + 残存行のみ同期・新設しない (golden)
+#   TC-16e (T-04) 祖先ディレクトリ名がドメイン名と衝突しても内訳が膨張しない
+#   TC-16f (T-03) 節末端より後ろの別節の pages リンク行は不変 (golden)
+#   TC-17b (T-06) SKILL.md ステップ 6 呼び出し契約の invocation-symmetry (フラグ集合突合)
 #   TC-18 (T-01/T-03) 別ドメイン同一 slug は別ページ (同定キー = {domain}/{slug}、golden)
 #   TC-19〜21 (T-03) ヘッダ行・区切り行の欠落補填 (両方欠落 / 区切りのみ / ヘッダのみ、golden)
 #   (T-05 は既存 wiki-lint 系スイートの継続 green で担保 — 本ファイル対象外)
@@ -93,10 +100,10 @@ run_helper() {
 # TC-1 (T-01): 新規行追加 parity
 # ──────────────────────────────────────────────────────────────────────
 dir=$(make_sandbox tc1)
+# description は生パイプ入り (新規追加経路のエスケープ規約 (a) を golden で固定する)
 run_helper --index "$dir/index.md" --title "Bar Heuristic" --domain heuristics \
-  --slug bar --description "bar の説明" --updated "2026-08-04T22:00:00+09:00" \
+  --slug bar --description "bar の説明 | 補足" --updated "2026-08-04T22:00:00+09:00" \
   --confidence medium --pages-root "$dir/pages"
-expected_row='| [Bar Heuristic](pages/heuristics/bar.md) | heuristics | bar の説明 | 2026-08-04T22:00:00+09:00 | medium |'
 # golden 全文比較: grep 断片照合ではなく期待ファイル全文との diff で固定する
 # (ヘッダ二重化・本文欠落・空行過剰削除・節末端誤検出を 1 assert で同時捕捉)
 cat > "$TEST_DIR/tc1-expected.md" <<'EOF'
@@ -109,7 +116,7 @@ cat > "$TEST_DIR/tc1-expected.md" <<'EOF'
 | ページ | ドメイン | サマリー | 更新日 | 確信度 |
 |--------|---------|---------|--------|--------|
 | [Foo Pattern](pages/patterns/foo.md) | patterns | 既存サマリー | 2026-01-01T00:00:00+09:00 | high |
-| [Bar Heuristic](pages/heuristics/bar.md) | heuristics | bar の説明 | 2026-08-04T22:00:00+09:00 | medium |
+| [Bar Heuristic](pages/heuristics/bar.md) | heuristics | bar の説明 \| 補足 | 2026-08-04T22:00:00+09:00 | medium |
 
 ## 統計
 
@@ -413,17 +420,61 @@ EOF
 run_helper --index "$dir/index.md" --title "First Page" --domain patterns \
   --slug foo --description "最初の登録" --updated "2026-08-05T06:00:00+09:00" \
   --confidence high --pages-root "$dir/pages"
-list_line=$(grep -n '^## ページ一覧' "$dir/index.md" | cut -d: -f1)
-stats_line=$(grep -n '^## 統計' "$dir/index.md" | cut -d: -f1)
+# golden 全文比較: 新設節の形状・位置・見出し literal を固定する
+# (見出し汚染変異は is_list_head が二度と一致せず次サイクルで節が二重化するため)
+cat > "$TEST_DIR/tc12-expected.md" <<'EOF'
+# Wiki Index
+
+本文と HTML コメント。
+<!-- comment -->
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [First Page](pages/patterns/foo.md) | patterns | 最初の登録 | 2026-08-05T06:00:00+09:00 | high |
+
+## 統計
+
+- 総ページ数: 2
+- ドメイン別: patterns=1, heuristics=1, anti-patterns=0
+- 最終更新: 2026-08-05T06:00:00+09:00
+EOF
 if [ "$HELPER_RC" -eq 0 ] \
    && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=added' \
-   && [ -n "$list_line" ] && [ -n "$stats_line" ] && [ "$list_line" -lt "$stats_line" ] \
-   && grep -qxF '| ページ | ドメイン | サマリー | 更新日 | 確信度 |' "$dir/index.md" \
-   && grep -qxF '| [First Page](pages/patterns/foo.md) | patterns | 最初の登録 | 2026-08-05T06:00:00+09:00 | high |' "$dir/index.md" \
-   && grep -qx -- '- 総ページ数: 2' "$dir/index.md"; then
-  pass "TC-12 節不在時は統計の直前にヘッダ付きで新設"
+   && diff -u "$TEST_DIR/tc12-expected.md" "$dir/index.md" > "$TEST_DIR/tc12-diff.txt" 2>&1; then
+  pass "TC-12 節不在時は統計の直前にヘッダ付きで新設 (golden)"
 else
-  fail "TC-12 (rc=$HELPER_RC list_line=$list_line stats_line=$stats_line)"
+  fail "TC-12 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+  cat "$TEST_DIR/tc12-diff.txt" 2>/dev/null
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-12b (T-03): 節・統計とも不在 → EOF に新設 (golden)
+# ──────────────────────────────────────────────────────────────────────
+dir=$(make_sandbox tc12b)
+printf '# Wiki Index\n\n本文。\n' > "$dir/index.md"
+run_helper --index "$dir/index.md" --title "EOF Page" --domain patterns \
+  --slug foo --description "EOF 挿入" --updated "2026-08-05T06:30:00+09:00" \
+  --confidence high --pages-root "$dir/pages"
+cat > "$TEST_DIR/tc12b-expected.md" <<'EOF'
+# Wiki Index
+
+本文。
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [EOF Page](pages/patterns/foo.md) | patterns | EOF 挿入 | 2026-08-05T06:30:00+09:00 | high |
+EOF
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -q '^\[CONTEXT\] WIKI_INDEX_UPDATE=row_action=added; dedup_removed=0; stats_sync=skipped_no_section$' \
+   && diff -u "$TEST_DIR/tc12b-expected.md" "$dir/index.md" > "$TEST_DIR/tc12b-diff.txt" 2>&1; then
+  pass "TC-12b 統計節も不在なら EOF に新設 (golden)"
+else
+  fail "TC-12b (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+  cat "$TEST_DIR/tc12b-diff.txt" 2>/dev/null
 fi
 
 # ──────────────────────────────────────────────────────────────────────
@@ -522,7 +573,7 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────────────
-# TC-16 (T-04): pages 一覧 0 件 → stats skip + 既存統計値保持
+# TC-16 (T-04): pages ディレクトリ不在 (find 非ゼロ終了) → stats skip + 既存統計値保持
 # ──────────────────────────────────────────────────────────────────────
 dir=$(make_sandbox tc16)
 rm -rf "$dir/pages"
@@ -535,9 +586,177 @@ if [ "$HELPER_RC" -eq 0 ] \
    && grep -qx -- '- 総ページ数: 1' "$dir/index.md" \
    && grep -qx -- '- 最終更新: 2026-01-01T00:00:00+09:00' "$dir/index.md" \
    && grep -q '2026-08-05T10:00:00+09:00' "$dir/index.md"; then
-  pass "TC-16 pages 取得不能は WARNING + 統計値保持 (行操作は適用)"
+  pass "TC-16 pages ディレクトリ不在 (find rc 非ゼロ) は WARNING + 統計値保持 (行操作は適用)"
 else
   fail "TC-16 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-16b (T-04): pages 一覧 0 件 (ディレクトリは在るが *.md ゼロ) → 同じく skip
+# find は rc=0 で空出力を返すため [ -z "$pages_list" ] guard の実行可能仕様
+# ──────────────────────────────────────────────────────────────────────
+dir=$(make_sandbox tc16b)
+rm -rf "$dir/pages"
+mkdir -p "$dir/pages/patterns"
+touch "$dir/pages/patterns/.gitkeep"
+run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
+  --slug foo --updated "2026-08-05T10:10:00+09:00" --confidence high \
+  --pages-root "$dir/pages"
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stats_sync=skipped_unreadable' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -q 'WARNING' \
+   && grep -qx -- '- 総ページ数: 1' "$dir/index.md" \
+   && grep -qx -- '- ドメイン別: patterns=1, heuristics=0, anti-patterns=0' "$dir/index.md" \
+   && grep -qx -- '- 最終更新: 2026-01-01T00:00:00+09:00' "$dir/index.md"; then
+  pass "TC-16b pages 一覧 0 件 (*.md ゼロ) も統計値保持 (誤った 0 で上書きしない)"
+else
+  fail "TC-16b (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-16c (T-04): 統計節ありで --pages-root 省略 → skipped_unreadable + 統計保持
+# ──────────────────────────────────────────────────────────────────────
+dir=$(make_sandbox tc16c)
+run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
+  --slug foo --updated "2026-08-05T10:20:00+09:00" --confidence high
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stats_sync=skipped_unreadable' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -q 'WARNING' \
+   && grep -qx -- '- 総ページ数: 1' "$dir/index.md" \
+   && grep -qx -- '- 最終更新: 2026-01-01T00:00:00+09:00' "$dir/index.md" \
+   && grep -q '2026-08-05T10:20:00+09:00' "$dir/index.md"; then
+  pass "TC-16c --pages-root 省略は WARNING + skipped_unreadable + 統計保持"
+else
+  fail "TC-16c (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-16d (T-04): 統計 3 行の一部欠落 → 欠落行を新設せず残存行のみ同期 + WARNING
+# docstring の never invented 不変条件の実行可能仕様 (golden)
+# ──────────────────────────────────────────────────────────────────────
+dir=$(make_sandbox tc16d)
+cat > "$dir/index.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Foo Pattern](pages/patterns/foo.md) | patterns | 既存 | 2026-01-01T00:00:00+09:00 | high |
+
+## 統計
+
+- 総ページ数: 1
+- 最終更新: 2026-01-01T00:00:00+09:00
+EOF
+run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
+  --slug foo --updated "2026-08-05T10:30:00+09:00" --confidence high \
+  --pages-root "$dir/pages"
+cat > "$TEST_DIR/tc16d-expected.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Foo Pattern](pages/patterns/foo.md) | patterns | 既存 | 2026-08-05T10:30:00+09:00 | high |
+
+## 統計
+
+- 総ページ数: 2
+- 最終更新: 2026-08-05T10:30:00+09:00
+EOF
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stats_sync=synced' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -q 'ドメイン別' \
+   && diff -u "$TEST_DIR/tc16d-expected.md" "$dir/index.md" > "$TEST_DIR/tc16d-diff.txt" 2>&1; then
+  pass "TC-16d 統計行の一部欠落は WARNING (行名明示) + 残存行のみ同期・欠落行は新設しない (golden)"
+else
+  fail "TC-16d (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+  cat "$TEST_DIR/tc16d-diff.txt" 2>/dev/null
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-16e (T-04): 祖先ディレクトリ名がドメイン名と衝突しても内訳が膨張しない
+# 前方一致 anchor (実装の case literal 前方一致) の実行可能仕様
+# ──────────────────────────────────────────────────────────────────────
+dir="$TEST_DIR/patterns/tc16e"
+mkdir -p "$dir/pages/patterns" "$dir/pages/heuristics" "$dir/pages/anti-patterns"
+touch "$dir/pages/patterns/p1.md" "$dir/pages/patterns/p2.md" \
+      "$dir/pages/heuristics/h1.md" \
+      "$dir/pages/anti-patterns/a1.md" "$dir/pages/anti-patterns/a2.md" "$dir/pages/anti-patterns/a3.md"
+cat > "$dir/index.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [P1](pages/patterns/p1.md) | patterns | 既存 | 2026-01-01T00:00:00+09:00 | high |
+
+## 統計
+
+- 総ページ数: 0
+- ドメイン別: patterns=0, heuristics=0, anti-patterns=0
+- 最終更新: 2026-01-01T00:00:00+09:00
+EOF
+run_helper --index "$dir/index.md" --title "P1" --domain patterns \
+  --slug p1 --updated "2026-08-05T10:40:00+09:00" --confidence high \
+  --pages-root "$dir/pages"
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stats_sync=synced' \
+   && grep -qx -- '- 総ページ数: 6' "$dir/index.md" \
+   && grep -qx -- '- ドメイン別: patterns=2, heuristics=1, anti-patterns=3' "$dir/index.md"; then
+  pass "TC-16e 祖先 patterns/ ディレクトリ下でも内訳が膨張しない (前方一致 anchor)"
+else
+  fail "TC-16e (rc=$HELPER_RC stdout=$HELPER_STDOUT actual=$(grep 'ドメイン別' "$dir/index.md"))"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-16f (T-03): 節末端 — ページ一覧節の後ろの別節にある pages リンク行は不変
+# 「次の ## 見出しまで」述語の実行可能仕様 (golden)
+# ──────────────────────────────────────────────────────────────────────
+dir=$(make_sandbox tc16f)
+cat > "$dir/index.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Foo Pattern](pages/patterns/foo.md) | patterns | 既存 | 2026-01-01T00:00:00+09:00 | high |
+
+## 参考
+
+| リンク | 説明 |
+|--------|------|
+| [Foo Pattern](pages/patterns/foo.md) | 参考リンク |
+EOF
+run_helper --index "$dir/index.md" --title "Foo Pattern v2" --domain patterns \
+  --slug foo --updated "2026-08-05T10:50:00+09:00" --confidence high \
+  --pages-root "$dir/pages"
+cat > "$TEST_DIR/tc16f-expected.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Foo Pattern v2](pages/patterns/foo.md) | patterns | 既存 | 2026-08-05T10:50:00+09:00 | high |
+
+## 参考
+
+| リンク | 説明 |
+|--------|------|
+| [Foo Pattern](pages/patterns/foo.md) | 参考リンク |
+EOF
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -q '^\[CONTEXT\] WIKI_INDEX_UPDATE=row_action=updated; dedup_removed=0; stats_sync=skipped_no_section$' \
+   && diff -u "$TEST_DIR/tc16f-expected.md" "$dir/index.md" > "$TEST_DIR/tc16f-diff.txt" 2>&1; then
+  pass "TC-16f 節末端より後ろの別節にある pages リンク行は同定・回収の対象外 (golden)"
+else
+  fail "TC-16f (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
+  cat "$TEST_DIR/tc16f-diff.txt" 2>/dev/null
 fi
 
 # ──────────────────────────────────────────────────────────────────────
@@ -696,6 +915,34 @@ if [ "$tc17_ok" -eq 1 ]; then
   pass "TC-17 ステップ 6 は helper 呼び出しへ縮退し操作散文が残っていない"
 else
   fail "TC-17"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-17b (T-06): SKILL.md ステップ 6 呼び出し契約の invocation-symmetry
+# 委譲リファクタの唯一の統合シーム。フラグ集合は helper の case arm から動的抽出して
+# 突合する (create-md-invocation-symmetry.test.sh と同型の契約テスト)
+# ──────────────────────────────────────────────────────────────────────
+step6_block=$(printf '%s\n' "$step6" | awk '/^```bash$/{f=1;next} /^```$/{f=0} f{print}')
+tc17b_ok=1
+[ -n "$step6_block" ] || { tc17b_ok=0; echo "  (ステップ 6 に fenced bash ブロックが無い)"; }
+helper_flags=$(grep -oE '^[[:space:]]+--[a-z-]+\)' "$SCRIPT" | tr -d ' )' | LC_ALL=C sort)
+skill_flags=$(printf '%s\n' "$step6_block" | grep -oE -- '--[a-z-]+' | LC_ALL=C sort -u)
+if [ "$helper_flags" != "$skill_flags" ]; then
+  tc17b_ok=0
+  echo "  (フラグ集合が helper の case arm と不一致)"
+  echo "  helper: $(printf '%s' "$helper_flags" | tr '\n' ' ')"
+  echo "  skill:  $(printf '%s' "$skill_flags" | tr '\n' ' ')"
+fi
+printf '%s\n' "$step6_block" | grep -qF -- '--domain "{domain}"' || { tc17b_ok=0; echo "  (--domain の placeholder 対応が崩れている)"; }
+printf '%s\n' "$step6_block" | grep -qF -- '--slug "{slug}"' || { tc17b_ok=0; echo "  (--slug の placeholder 対応が崩れている)"; }
+printf '%s\n' "$step6_block" | grep -qF -- '--updated "{updated}"' || { tc17b_ok=0; echo "  (--updated の placeholder 対応が崩れている)"; }
+printf '%s\n' "$step6_block" | grep -qF -- '--confidence "{confidence}"' || { tc17b_ok=0; echo "  (--confidence の placeholder 対応が崩れている)"; }
+printf '%s\n' "$step6_block" | grep -qF -- '--title "$wiu_title"' || { tc17b_ok=0; echo "  (--title の heredoc 変数対応が崩れている)"; }
+printf '%s\n' "$step6_block" | grep -qF -- '--description "$wiu_description"' || { tc17b_ok=0; echo "  (--description の heredoc 変数対応が崩れている)"; }
+if [ "$tc17b_ok" -eq 1 ]; then
+  pass "TC-17b ステップ 6 呼び出し契約 (8 フラグ + placeholder 対応) が helper の case arm と一致"
+else
+  fail "TC-17b"
 fi
 
 echo ""

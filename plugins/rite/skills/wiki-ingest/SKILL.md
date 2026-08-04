@@ -654,7 +654,7 @@ wiu_description=$(cat <<'WIU_EOF'
 {description}
 WIU_EOF
 )
-bash {plugin_root}/hooks/scripts/wiki-index-update.sh \
+bash "{plugin_root}/hooks/scripts/wiki-index-update.sh" \
   --index "$wiki_root/index.md" --pages-root "$wiki_root/pages" \
   --title "$wiu_title" --description "$wiu_description" \
   --domain "{domain}" --slug "{slug}" \

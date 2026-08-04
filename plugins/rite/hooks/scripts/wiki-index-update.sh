@@ -427,7 +427,7 @@ LC_ALL=C awk '
 
     # ── procedures 1 / 2 (abort clause applies here only) ──
     if (match_count >= 2) {
-      printf "WARNING: wiki-index-update: %d rows register slug \x27%s\x27 — aborting this page\x27s add/update (no first-match fallback); procedure 3a reclaims the later rows\n", match_count, SLUG > "/dev/stderr"
+      printf "WARNING: wiki-index-update: %d rows register page \x27%s/%s\x27 — aborting this page\x27s add/update (no first-match fallback); procedure 3a reclaims the later rows\n", match_count, DOMAIN, SLUG > "/dev/stderr"
       row_action = "aborted_duplicate"
     } else if (match_count == 1) {
       i = match_idx[1]
