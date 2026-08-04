@@ -33,7 +33,7 @@ Issue #2034 の受入基準は `{pr_number}` / `{non_blocking_count}` / `{existi
 | （新規）`{owner_repo}` | `--owner-repo` の `owner/repo` 形状 gate（`owner_repo_placeholder_residue`） | helper 化で API パスが引数になったため新設 |
 | （新規）`{review_cycle_id}` | `--iteration-id` のブレース残留 gate（`iteration_id_placeholder_residue`） | 鮮度判定の参照値が未置換だと gate の cycle 一致判定が恒久的に成立しなくなる |
 
-**caller 契約違反 7 種**（placeholder residue 5 種 + `content_file_missing` + `unknown_option`）は **exit 1（loud）**、本文不備 / gh / IO 失敗は **exit 0（非ブロッキング、AC-3）** と扱いを分ける。前者は skill 定義のバグであり、記録の失敗ではないため。`content_file` の**不在**は step 1 の Write 呼び出し漏れ＝契約違反であって IO 失敗ではないので、非空検査に潰さず独立の gate にする（潰すと記録ゼロのまま gate が pass する）。
+**caller 契約違反 7 種**（placeholder residue 5 種 + `content_file_missing` + `unknown_option`）は **exit 1（loud）**、本文不備 / gh / IO 失敗は **exit 0（非ブロッキング、AC-3）** と扱いを分ける。caller 契約違反 7 種を exit 1 にするのは、skill 定義のバグであり記録の失敗ではないため。**exit code と pending marker の保持は別軸**である点に注意 — 本文不備 4 種は `exit 0` でありながら marker を残し emit を差し戻す（下記「消す / 残すの境界は『原因』で引く」を参照）。`content_file` の**不在**は step 1 の Write 呼び出し漏れ＝契約違反であって IO 失敗ではないので、非空検査に潰さず独立の gate にする（潰すと記録ゼロのまま gate が pass する）。
 
 なお placeholder gate は terminal sentinel の trap 設置より**前**に置く。ここで落ちた場合は記録経路が一度も走っていないため、`outcome=failed` を名乗らせず非ゼロ rc で caller に返す（gate 側は sentinel 不在として ERROR を出し、6.1.d へ戻す）。
 
@@ -78,7 +78,7 @@ sentinel の grep は **LLM が会話を読む**ことを前提にしている�
    - **残す**: 引数 gate 群（placeholder residue 5 種 / `content_file_missing`、trap 設置**前**の `exit 1`）と本文検査 4 段（`body_file_empty` / `body_marker_missing` / `body_sentinel_missing` / `count_body_mismatch`、trap 設置**後**の `retain_pending_marker=1`）。いずれも caller (LLM) が本文 / `--count` を作り直せば 1 iteration で収束する。
    - **消す**: `patch_failed` / `create_failed` / lookup degraded / `body_check_unavailable`（本文述語の評価自体が失敗した環境起因。発生位置は本文検査と同じだが、本文を作り直しても解消しないため「残す」側ではない）、signal 中断（`signal_aborted`）、および正常終了（`created` / `updated` / `skipped`）。8.0.3 へ伝えるのは「完走した」ことだけで、成否は terminal sentinel の `outcome=` が担う。これにより非ブロッキング契約（AC-3）を gate 側へ持ち込まない。
 
-   境界を **exit code**（trap 設置の前後）で引いてはならない。本文検査 4 段は trap 設置**後**に検出されるため、exit code で線を引くと「caller 起因で決定論的に再現する」と定義した契約違反が gh outage と同じ扱いになり、機械強制から外れる。marker 保持は `overall_assessment` を変えず「result pattern を emit してよいか」だけを止めるため、引数 gate 群が既に行っている挙動と構造的に同一で AC-3 と両立する。
+   境界を **exit code**（trap 設置の前後）で引いてはならない。本文検査 4 段は trap 設置**後**に検出されるため、exit code で線を引くと「caller 起因で決定論的に再現する」と定義した契約違反が gh outage と同じ扱いになり、機械強制から外れる。marker 保持は `overall_assessment` を変えず「result pattern を emit してよいか」だけを止めるため、引数 gate 群が既に行っている挙動と構造的に同一である。この分離は AC-3 の改訂で仕様側に明文化されており、AC-3 が保証するのは判定値の不変であって emit 可否ではない — 本 marker 保持は AC-3 の carve-out に該当する経路そのものであり、例外的な逸脱ではない。carve-out の canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../../references/common-error-handling.md#non-blocking-contract-canonical-定義) の「判定値と emit 可否の分離」行。
 2. **gate 側で marker を削除しない** — 削除すると 6.1.d を実行せず再評価だけで gate を通せてしまい、機械強制の意味が消える。静的 pin はこの不在（`rm -f "$pending_marker"` が 8.0.3 区間に 0 本）も固定する。
 3. **削除文は helper の EXIT trap 内にあること自体が不変条件** — 関数外（末尾 `exit 0` の直前）へ移すと、early `exit 0` で抜ける経路（AC-4 の正常系である「0 件 ∧ 既存なし」の skip）で marker が残り、8.0.3 が毎 cycle `exit 1` を返して `[review:mergeable]` を永久に emit できないデッドロックになる。静的 pin は「件数 1 本」ではなく **`_rite_p61d_cleanup` 区間内に 1 本 / 区間外に 0 本** の配置で固定する（件数 pin は移動を検出できない）。
 
