@@ -33,7 +33,7 @@ Issue #2034 の受入基準は `{pr_number}` / `{non_blocking_count}` / `{existi
 | （新規）`{owner_repo}` | `--owner-repo` の `owner/repo` 形状 gate（`owner_repo_placeholder_residue`） | helper 化で API パスが引数になったため新設 |
 | （新規）`{review_cycle_id}` | `--iteration-id` のブレース残留 gate（`iteration_id_placeholder_residue`） | 鮮度判定の参照値が未置換だと gate の cycle 一致判定が恒久的に成立しなくなる |
 
-**caller 契約違反 7 種**（placeholder residue 5 種 + `content_file_missing` + `unknown_option`）は **exit 1（loud）**、本文不備 / gh / IO 失敗は **exit 0（非ブロッキング、AC-3）** と扱いを分ける（**exit code と pending marker の保持は別軸**。本文不備 4 種は `exit 0` でありながら marker を残し emit を差し戻す — 下記「消す / 残すの境界は『原因』で引く」を参照）。前者は skill 定義のバグであり、記録の失敗ではないため。`content_file` の**不在**は step 1 の Write 呼び出し漏れ＝契約違反であって IO 失敗ではないので、非空検査に潰さず独立の gate にする（潰すと記録ゼロのまま gate が pass する）。
+**caller 契約違反 7 種**（placeholder residue 5 種 + `content_file_missing` + `unknown_option`）は **exit 1（loud）**、本文不備 / gh / IO 失敗は **exit 0（非ブロッキング、AC-3）** と扱いを分ける。caller 契約違反 7 種を exit 1 にするのは、skill 定義のバグであり記録の失敗ではないため。**exit code と pending marker の保持は別軸**である点に注意 — 本文不備 4 種は `exit 0` でありながら marker を残し emit を差し戻す（下記「消す / 残すの境界は『原因』で引く」を参照）。`content_file` の**不在**は step 1 の Write 呼び出し漏れ＝契約違反であって IO 失敗ではないので、非空検査に潰さず独立の gate にする（潰すと記録ゼロのまま gate が pass する）。
 
 なお placeholder gate は terminal sentinel の trap 設置より**前**に置く。ここで落ちた場合は記録経路が一度も走っていないため、`outcome=failed` を名乗らせず非ゼロ rc で caller に返す（gate 側は sentinel 不在として ERROR を出し、6.1.d へ戻す）。
 
