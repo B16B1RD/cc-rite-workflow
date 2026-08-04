@@ -1,5 +1,6 @@
 ## 2026-08-04
 
+* **lint:warning** — contradictions=0, stale=15, orphans=0, missing_concept=0, unregistered_raw=298, broken_refs=0
 * **Update**: [「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる](pages/heuristics/exhaustiveness-claims-require-mechanical-inventory.md) — raw/reviews/20260804T120832Z-pr-2108.md を統合（Issue が具体的な 1 件だけを挙げていても同形式の全サイト走査要求として読む / 走査範囲を広げるのと修正範囲を広げるのは別判断で pre-existing な同クラス乖離は follow-up Issue へ切り出す / 実装者の「触らない」根拠が実体と食い違っても結論自体は独立に検証する）
 * **lint:warning** — contradictions=0, stale=15, orphans=0, missing_concept=0, unregistered_raw=298, broken_refs=0
 * **Update**: [汎用契約の表に経路固有の詳細を書かず下位節へ委譲する。ただし委譲は委譲先の網羅性を load-bearing にする](pages/heuristics/generic-contract-table-delegates-path-specific-detail.md) — raw/reviews/20260804T113022Z-pr-2106.md を統合（同型が「修飾語を N 箇所へ展開する」docs 作業でも再現 / 同名概念が近傍に複数あるとき see below 型の相対参照は最も近い誤答へ誘導する / 「〜されたもの」型の原因帰属は経路が 1 つであることを暗黙に主張する）
