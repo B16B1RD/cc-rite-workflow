@@ -227,8 +227,8 @@ if [ "$cur_cc" -eq 0 ] 2>/dev/null; then
     else
       # 書けなかった pin をそのまま残さない。ステップ 1 は「ファイルが存在するか」しか見ないため、
       # 前 run の pin が残っていると現 run の 2 cycle 目以降でそれを `--since` に渡してしまう。残る pin は
-      # **前々 run の開始点**（前 run の 0.6 が書いた値）なので、「pin より新しいファイル」は前 run と
-      # 現 run の結果を連結した列になる。helper の stale pin guard は `[ -z "$since" ] || cycle_count == 0`
+      # **前 run の開始点**（前 run の 0.6 が書いた値。指しているのは前々 run の最終ファイル）なので、
+      # 「pin より新しいファイル」は前 run と現 run の結果を連結した列になる。helper の stale pin guard は `[ -z "$since" ] || cycle_count == 0`
       # を前提条件に持つため、pin が非空かつ 2 cycle 目以降ではこの列がそのまま判定にかかり、前 run の
       # 最良水準が `prefix_min` に居座る（実測: `5,3,1,0,8,8` は cycle 6 で fire）— 健全な run を殺す方向
       # (AC-1 の否定) の縮退になる。pin を消せば ステップ 1 の `absent` 経路 → `--since ""` となり、
