@@ -342,9 +342,10 @@ if [ "$_run_total" -lt "$cycle_count" ] 2>/dev/null; then
   _lost=$((cycle_count - _run_total))
   echo "WARNING: 現 run のレビュー結果 JSON が cycle_count に不足しています (files=$_run_total < cycles=$cycle_count)。結果の保存失敗か review の中断で ${cycle_count} 件中 ${_lost} 件の結果が失われています。実在する ${_run_total} 件の列でトレンド判定を続行します" >&2
 elif [ "$_run_total" -gt "$cycle_count" ] 2>/dev/null; then
-  # pin 有りでの超過。counter 側が遅れている (INC 失敗 / Stop hook 再注入で counter を迂回) が、
-  # pin が run 境界を保証しているので列そのものは現 run のもの。判定は続行し差だけ残す。
-  echo "WARNING: 現 run のレビュー結果 JSON が cycle_count を超えています (files=$_run_total > cycles=$cycle_count)。cycle counter の increment 失敗、または Stop hook の再注入で counter を経由せずレビューが進んだ可能性があります。run 境界は pin が保証しているため実在する ${_run_total} 件の列でトレンド判定を続行します" >&2
+  # pin 有りでの超過。counter 側が遅れている (INC 失敗 / Stop hook 再注入で counter を迂回) のが
+  # 通常の原因で、その場合 pin は現 run のものなので列も現 run のもの。ただし pin 自体が stale な
+  # 経路 (iterate ステップ 0.6 の `write-failed-pin-retained`) もここに来るため、保証は断定しない。
+  echo "WARNING: 現 run のレビュー結果 JSON が cycle_count を超えています (files=$_run_total > cycles=$cycle_count)。cycle counter の increment 失敗、または Stop hook の再注入で counter を経由せずレビューが進んだ可能性があります。pin が現 run のものであれば run 境界は保たれているため実在する ${_run_total} 件の列でトレンド判定を続行します (pin が stale な場合は前 run の結果が混ざります — iterate の RUN_SINCE marker で切り分けてください)" >&2
 fi
 
 # ---- 各 cycle の blocking 件数を数える ----------------------------------------

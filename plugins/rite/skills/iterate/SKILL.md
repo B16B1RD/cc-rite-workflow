@@ -198,12 +198,22 @@ fi
 #     **cycle_count を run 境界に使わない理由**は helper header の「Why run 境界に run-start pin を
 #     使うか」を SoT とする（保存失敗と review 中断で「現 run のファイル数 == cycle_count」の
 #     前提が破れる）。pin は counter と独立なのでその 2 経路で破れない。
-#     `cur_cc > 0`（resume）では既存 pin をそのまま使う — 上書きすると resume のたびに run が
-#     切り直され、それまでの列が消える。
+#     resume（`cb_mode_init=resume` かつ counter が残っている）では既存 pin をそのまま使う —
+#     上書きすると resume のたびに run が切り直され、それまでの列が消える。
+#     **判定は `cur_cc == 0` 単独ではなく `fresh || cur_cc == 0` の選言**。`cur_cc == 0` だけだと
+#     「新しい run か」の proxy にしかならず、fresh entry で counter reset が失敗した経路
+#     （上の `failed-stale` / `failed-refire`。marker 整合のため意図的に `cur_cc` を 0 に落とさない）
+#     で proxy が壊れる。そこで pin を据え置くと、ステップ 1 は stale pin を `--since` に、残存
+#     counter を `--cycle-count` に渡すため helper の stale pin guard の前提条件（`since` が空
+#     または `cycle_count == 0`）が揃わず素通りし、**前 run の列を含む混合列で発火する**
+#     （AC-1 の否定方向）。選言にすれば fresh 側で必ず pin を張り直すので、その経路自体が消える
+#     （reset 失敗分岐に pin 削除を複製する必要はない）。`cur_cc == 0` 側の項は resume 経路の
+#     ステップ 5.0.1 / ステップ 6 共有前段が counter を 0 にして run を閉じた直後の起動
+#     （phase 維持のため resume 判定になる）を拾うために残す。
 #     非ブロッキング: pin を書けなくても helper は pin 無し（全件を 1 本の列として読む）へ
 #     縮退するだけで、ループは止まらない。ただし縮退は WARNING で告知する。
 run_since_status=none
-if [ "$cur_cc" -eq 0 ] 2>/dev/null; then
+if [ "$cb_mode_init" = fresh ] || [ "$cur_cc" -eq 0 ] 2>/dev/null; then
   # `2>/dev/null` は付けない — resolver は git 内外どちらでも rc=0 / 非空を返す設計なので、
   # ここに落ちるのは **helper 自体を実行できない場合（プラグイン破損 / 版 skew、rc=127）だけ**。
   # その唯一の原因を示すのは bash の `No such file or directory` であり、抑止すると原因が消える
@@ -235,9 +245,16 @@ if [ "$cur_cc" -eq 0 ] 2>/dev/null; then
       # 前 run の結果が同居している限り `実在数 > cycle_count` が必ず成立して guard の連言が揃い、
       # 既存の fail-loud 経路 `run_boundary_unresolved` へ倒れる（同居が無ければ全件 = 現 run なので
       # そのまま読んで正しい）。新しい fallback ではなく、用意済みの loud 経路へ到達させる措置。
-      rm -f "$pin_file" 2>/dev/null || echo "WARNING: 書込に失敗した run 開始点 pin を削除できませんでした ($pin_file)。手動で削除してください — 残ると前 run の列で誤発火します" >&2
-      echo "WARNING: run 開始点 pin を書き込めませんでした ($pin_file)。stale pin を削除したため、発散判定は run 境界を確定できず判定を降ろします (max_review_cycles の backstop に委ねられます)" >&2
-      run_since_status=write-failed
+      # `2>/dev/null` は付けない (cycle 4 で helper の find から外したのと同じ論拠 — rm が
+      # EROFS / EACCES / immutable のどれで失敗したかが消える)。**削除の成否で縮退の向きが
+      # 逆になる**ため、marker と WARNING を rm の rc で分ける。
+      if rm -f "$pin_file"; then
+        echo "WARNING: run 開始点 pin を書き込めませんでした ($pin_file)。stale pin を削除したため、発散判定は run 境界を確定できず判定を降ろします (max_review_cycles の backstop に委ねられます)" >&2
+        run_since_status=write-failed
+      else
+        echo "WARNING: run 開始点 pin を書き込めず、stale pin の削除にも失敗しました ($pin_file)。残った pin は前 run の開始点なので、発散判定は前 run と現 run を連結した列を読み誤発火しえます。手動で削除してください" >&2
+        run_since_status=write-failed-pin-retained
+      fi
     fi
   fi
 fi
@@ -257,15 +274,16 @@ echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CY
 
 `REFIRE` は**この起動でステップ 1 が review を回さずに fire するか**の述語で、ステップ 6.2 の注意行 (a) の条件そのもの:
 
-`RUN_SINCE` は run 開始点 pin の記録結果。**pin が無い / 古いと発散判定は run 境界を確定できず判定を降ろす**（helper の `run_boundary_unresolved`）。発散検出が全面的に働かなくなるのは `unresolved-root` / `write-failed` の 2 値。どちらも helper に前 run の pin が渡らない（`unresolved-root` は同じ理由でステップ 1 も pin を読めず、`write-failed` は pin を削除する）ため、縮退は「前 run の列で誤発火」ではなく「判定を降ろす」= 停止側に倒れる。`none` は既存 pin をそのまま使う正常系、`ok-empty` は pin 不在と同じ扱いになるため実在数が counter を超えた時点で判定が降りる:
+`RUN_SINCE` は run 開始点 pin の記録結果。**pin が無い / 古いと発散判定は run 境界を確定できず判定を降ろす**（helper の `run_boundary_unresolved`）。縮退の向きは値で分かれる。`unresolved-root` / `write-failed` は helper に前 run の pin が渡らない（前者は同じ理由でステップ 1 も pin を読めず、後者は pin を削除する）ため、発散検出は全面的に働かなくなるが**停止側に倒れる**（「判定を降ろす」であって誤発火ではない）。`write-failed-pin-retained` だけが**誤発火側**で、stale pin が残るため前 run と現 run を連結した列で発火しうる（WARNING が手動削除を案内する）。counter reset の失敗（`RESET=failed-stale` / `failed-refire`）は本記録側の縮退を生まない — ゲートが `fresh || cur_cc == 0` の選言なので fresh 側で pin を張り直す。`none` は既存 pin をそのまま使う正常系、`ok-empty` は pin 不在と同じ扱いになるため実在数が counter を超えた時点で判定が降りる:
 
 | `RUN_SINCE` | 意味 |
 |---|---|
-| `none` | 記録を試行していない（`cycle_count > 0` = run 継続中。既存 pin をそのまま使う） |
+| `none` | 記録を試行していない（resume かつ `cycle_count > 0` = run 継続中。既存 pin をそのまま使う） |
 | `ok` | pin を記録した。以降の cycle は現 run のファイルだけを読む |
 | `ok-empty` | 結果ファイルが 1 件も無い状態で pin を記録した（新規 PR）。pin 値は空で helper は pin 不在と同一に扱う。前 run が存在しないので誤った列は読まないが、**counter skew が 1 度起きるとその run の残り cycle で判定が降りる** |
 | `unresolved-root` | state root を解決できず pin を記録できなかった。WARNING 済み |
-| `write-failed` | pin ファイルを書けなかった（permission / disk）。WARNING 済み |
+| `write-failed` | pin ファイルを書けず、stale pin の**削除には成功した**。ステップ 1 は `absent` 経路へ倒れ、前 run の結果が同居していれば `run_boundary_unresolved` で判定を降ろす。WARNING 済み |
+| `write-failed-pin-retained` | pin ファイルを書けず、stale pin の**削除にも失敗した**（read-only FS / immutable）。前 run の pin が残るため誤発火しうる唯一の値。WARNING が手動削除を案内する |
 
 `RUN_SINCE_USED`（ステップ 1、両分岐に載る）は**実際に helper へ渡した pin の由来**。ステップ 0.6 の `RUN_SINCE` が記録側の結果なのに対し、こちらは消費側の結果で、両者は独立に失敗しうる（0.6 で `ok` でも、resume した別プロセスが state root を解決できなければ `unresolved-root` になる）:
 

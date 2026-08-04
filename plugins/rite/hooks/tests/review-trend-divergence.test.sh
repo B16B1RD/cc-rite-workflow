@@ -116,6 +116,9 @@ echo "--- T-01: 収束 run の保護 (AC-1) ---"
 run_trend 100 3 6 5 3 0
 assert_grep "T-01a: AC-1 契約列 3,6,5,3,0 は発火しない" "$OUT" "TREND_DIVERGENCE=ok"
 assert_grep "T-01a: トレンドが通知用に出力される" "$OUT" "trend=3,6,5,3,0"
+# 判定が下りた側の reason も iterate SKILL.md の消費側 enum に載る契約なので固定する
+# (判定不能側 10 値は T-06 群が pin 済み。ここを空けると 12 値中 2 値だけが無防備になる)
+assert_grep "T-01a: 判定が下りた ok の reason を固定する" "$OUT" "reason=converging_or_descending"
 
 run_trend 101 10 8 8
 assert_grep "T-01b: #2081 実測の 10,8,8 は発火しない" "$OUT" "TREND_DIVERGENCE=ok"
@@ -188,6 +191,15 @@ assert_grep "T-03e: 最良水準と同値からの再上昇 4,4,5 は発火し�
 run_trend 305 12 5 3 2 2 3
 assert_grep "T-03f: 残り僅かで足踏み後に 1 件戻った 12,5,3,2,2,3 は発火しない" "$OUT" "TREND_DIVERGENCE=ok"
 
+# 条件 (1) は `>` の 2 辺だけでなく **prefix_min 窓の範囲** (`_j < _i - 2` = 直近 2 値より前の
+# 全 cycle) も項として持つ。上の発火列 (3,7,7,4 / 2,3,6 / 10,11,11,13 / 3,6,5,7 / 1,5,6 / 実
+# fixture) はいずれも prefix_min が index 0 にあるか、窓を縮めても同じ値の位置にあるため、
+# 窓の終端を動かす改変を 1 つも捕まえられない。9,1,5,5 は**唯一の最小値が index 1** で、窓を
+# 1 要素でも縮めると min が 9 へ跳ねて両条件が同時に偽になる — running-min accumulator への
+# 書き換え等の off-by-one を一意に判別する。
+run_trend 306 9 1 5 5
+assert_grep "T-03g: 最良水準到達後に上で平坦化した 9,1,5,5 は cycle 4 で発火する (prefix_min 窓の上端の pin)" "$OUT" "fire_at=4"
+
 # ---------------------------------------------------------------------------
 # T-05: 決定論性 (AC-5)
 # ---------------------------------------------------------------------------
@@ -203,7 +215,7 @@ det_first=$(bash "$SCRIPT" --pr 500 --cycle-count 4 --results-dir "$det_dir" 2>/
 # 「5 回同じ」だけでは helper が無出力になっても通る (両辺が空文字で一致する)。
 # 決定論の対象が期待どおりの verdict であることを先に固定してから一致を見る。
 printf '%s' "$det_first" > "$OUT"
-assert_grep "T-05: 決定論の対象が期待 verdict であること" "$OUT" "TREND_DIVERGENCE=fire; trend=3,7,7,4; cycles=4; lost=0; fire_at=3"
+assert_grep "T-05: 決定論の対象が期待 verdict であること" "$OUT" "TREND_DIVERGENCE=fire; trend=3,7,7,4; cycles=4; lost=0; fire_at=3; reason=no_new_minimum_and_not_descending"
 det_same=yes
 for _ in 1 2 3 4; do
   det_again=$(bash "$SCRIPT" --pr 500 --cycle-count 4 --results-dir "$det_dir" 2>/dev/null)
@@ -473,7 +485,7 @@ bash "$SCRIPT" --pr 700 --cycle-count 1 --since "700-20260101000004.json" --resu
 assert_grep "run 境界: pin 有りの超過は判定を降ろさず実在列で続行する" "$OUT" "trend=5,3,1"
 assert_not_grep "run 境界: pin 有りの超過を run_boundary_unresolved にしない" "$OUT" "reason=run_boundary_unresolved"
 assert_grep "run 境界: 超過の理由 (counter skew) を WARNING で surface する" "$SANDBOX/over-pin-err.txt" "files=3 > cycles=1"
-assert_grep "run 境界: 判定を続行することを WARNING が明示する" "$SANDBOX/over-pin-err.txt" "run 境界は pin が保証しているため"
+assert_grep "run 境界: 判定を続行することを WARNING が明示する" "$SANDBOX/over-pin-err.txt" "pin が現 run のものであれば run 境界は保たれているため"
 
 # 続行の**向き**を両方 pin する。収束列だけだと、AC-1 が最優先で禁じる向き (健全な run を殺す)
 # へ挙動が動いても検出できない。発散列は pin 有り超過でも fire するのが正。
@@ -637,6 +649,33 @@ assert "非数値 --cycle-count は exit 2" "2" "$rc"
 
 bash "$SCRIPT" --pr 1 --cycle-count 3 --results-dir "$SANDBOX/nope" >/dev/null 2>&1; rc=$?
 assert "データ条件 (dir 不在) は exit 0 で判定不能を返す" "0" "$rc"
+
+# jq 不在は**環境要因**であってデータ異常ではない。helper header が明記するとおり、guard を
+# 外すと後段の `jq empty` が失敗して `reason=json_parse_failure` を返し、iterate SKILL.md の
+# reason 表が「データ異常」と読ませる — 運用者はレビュー結果を疑って空振りする。rc だけを見ると
+# 「exit 2 を exit 0 に変える」改変しか捕まらないので、**偽 reason が出ないこと**も併せて pin する。
+nojq_dir="$SANDBOX/nojq"; mkdir -p "$nojq_dir"
+for nojq_seq in 01 02 03; do make_result "$nojq_dir" 619 "$nojq_seq" 1; done
+nojq_bin="$SANDBOX/nojqbin"; mkdir -p "$nojq_bin"
+nojq_real_jq=$(command -v jq)
+for _p in /usr/bin /bin /usr/local/bin; do
+  [ -d "$_p" ] || continue
+  for _e in "$_p"/*; do
+    [ -e "$_e" ] || continue
+    _b=$(basename "$_e")
+    [ "$_b" = jq ] && continue
+    [ -e "$nojq_bin/$_b" ] || ln -s "$_e" "$nojq_bin/$_b" 2>/dev/null
+  done
+done
+# 前提確認: shim PATH で jq が本当に消えていること (消えていないと以下 2 本が空虚に通る)
+PATH="$nojq_bin" command -v jq >/dev/null 2>&1 && nojq_gone=no || nojq_gone=yes
+assert "jq 不在: shim PATH から jq が消えていること (前提確認)" "yes" "$nojq_gone"
+PATH="$nojq_bin" bash "$SCRIPT" --pr 619 --cycle-count 3 --results-dir "$nojq_dir" \
+  > "$SANDBOX/nojq-out.txt" 2>"$SANDBOX/nojq-err.txt"
+nojq_rc=$?
+assert "jq 不在: 呼び出しエラーとして exit 2 で止まる" "2" "$nojq_rc"
+assert_grep "jq 不在: 環境要因であることを名指しする" "$SANDBOX/nojq-err.txt" "jq が見つかりません"
+assert_not_grep "jq 不在: データ異常 (json_parse_failure) と誤ラベルしない" "$SANDBOX/nojq-out.txt" "reason=json_parse_failure"
 
 # signal 中断の契約 (signal 別 trap)。1 行形 `trap '...' EXIT INT TERM HUP` は INT/TERM/HUP の
 # action に `exit` を持たないため bash が signal を consume し、script が**継続実行して exit 0 で
