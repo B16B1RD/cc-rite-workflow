@@ -2,8 +2,11 @@
 title: "「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる"
 domain: "heuristics"
 created: "2026-06-10T12:50:00+09:00"
-updated: "2026-07-25T07:05:21Z"
+updated: "2026-08-04T21:15:00+09:00"
+description: "網羅性を主張する列挙は grep 全数棚卸し + scope note で 1 cycle 収束させる。棚卸しの検索語は「構文」でなく規約が定義する「概念」で選ぶ。派生: Issue が具体的な 1 件だけを挙げていても、同じ形式を採る全サイトの走査要求として読む — ただし走査範囲を広げるのと修正範囲を広げるのは別判断で、走査で見つかった pre-existing な同クラス乖離は follow-up Issue へ切り出す。実装者が示した「触らない」根拠が実体と食い違っても、結論自体は独立に検証する。"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260804T120832Z-pr-2108.md"
   - type: "reviews"
     ref: "raw/reviews/20260725T041328Z-pr-2013.md"
   - type: "fixes"
@@ -78,10 +81,21 @@ cycle 3 で「capability probe には blocking gate の floor を付けよ」と
 awk '!/^#/ && /pattern/ { print FILENAME ":" NR ": " $0 }' file...
 ```
 
+## 変種: 「1 件の記載漏れ」の報告は、その形式を採る全サイトの走査要求として読む
+
+Issue が具体的な 1 件だけを挙げていても、それは「この 1 行を直せ」ではなく「同じ形式を採る全サイトを走査せよ」という要求として読む。ドキュメントの列挙 1 行の漏れを報告した Issue で、実装時に同形式の行を全数確認したところ**別の行にも同種の漏れ**が見つかり、修正対象が 1 件から 2 件になった。報告された 1 件だけを直すと、同じ Issue が形を変えて繰り返し起票される。
+
+**走査範囲を広げるのと、修正範囲を広げるのは別の判断**。同じ cycle でレビュアーが走査面を隣接ディレクトリへ広げた結果、同クラス（仕様書と実体の乖離）の pre-existing な問題が 4 件見つかったが、これらは本 diff が導入したものではない（revert test fail）ため指摘事項ではなく follow-up Issue に切り出した。走査は広く、修正は本 diff スコープに閉じる — 引き込むと 2 行の diff が 6 箇所へ膨らみ、レビューの焦点も失われる。
+
+### 根拠の検証と結論の検証は別軸で行う
+
+実装者が「触らない」判断の理由として挙げた根拠が実体と食い違っていても、判断そのものは正しいことがある。上記の cycle では実装者が「列挙を持たない 4 スキルは対象が多いため意図的に集約形式にしている」と説明したが、実体を照合すると 1 つは列挙形式のスキルと同数で、**件数による使い分けという説明は成立しなかった**。それでも「本 PR で触らない」という結論自体は正しい（それらの行はそもそも列挙形式を採っておらず、Issue が言う「列挙の記載漏れ」に該当しない）。根拠が崩れたことを結論の否定に直結させず、結論は独立に検証する。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 - [形状検証 gate の allowlist 化は複数行 bypass・上流 degraded 値・コメント同期をセットで棚卸しする](./allowlist-gate-hardening-checklist.md)
+- [reviewer の regression 主張は revert test (git show / git diff) で PR 由来か pre-existing かを独立検証する](./reviewer-regression-claim-revert-test-attribution.md)
 
 ## ソース
 
@@ -94,3 +108,4 @@ awk '!/^#/ && /pattern/ { print FILENAME ":" NR ": " $0 }' file...
 - [PR #2013 review cycle 4 — 規約の適用漏れは「構文」でなく「概念」で grep する](../../raw/reviews/20260725T041328Z-pr-2013.md)
 - [PR #2013 fix results (cycle 3) — 原則は立てた箇所でなく当てはまる全箇所に適用する](../../raw/fixes/20260724T193804Z-pr-2013.md)
 - [PR #2013 fix results (cycle 4) — フィルタ済みストリームへの grep -n が行番号を壊す](../../raw/fixes/20260724T202517Z-pr-2013.md)
+- [PR #2108 review results — 「1 件の記載漏れ」の報告を全サイト走査要求として読む / 走査範囲と修正範囲の分離](../../raw/reviews/20260804T120832Z-pr-2108.md)
