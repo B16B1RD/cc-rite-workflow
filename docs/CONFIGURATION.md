@@ -442,7 +442,7 @@ The review-fix loop exits via the following paths:
 
 | Exit | Trigger |
 |------|---------|
-| Normal | 0 **blocking** findings remaining → `[review:mergeable]` (findings demoted to non-blocking may still remain — see below) |
+| Normal | 0 **blocking** findings remaining → `[review:mergeable]` (findings the Measured CONFIRMED Gate demoted to non-blocking may still remain — see [`safety` § the review⇄fix circuit breaker](#safety)) |
 | Manual abort | User aborts via `Ctrl+C` → `/rite:recover` (or selects "中止" in `fix.md` AskUserQuestion → `[fix:cancelled-by-user]`) |
 | Circuit breaker | Convergence-trend divergence detected, **or** cycle count reaches `safety.max_review_cycles` (backstop) → `[iterate:max-cycles-stopped]` (interactive) / `[iterate:max-cycles-reached]` (batch). The sentinels are the same for both fire reasons; only the stop notice's reason line and its per-cycle blocking trend differ. Both modes stop mechanically without prompting and record a non-convergent **failure** that never reaches a merge — see [`safety` § the review⇄fix circuit breaker](#safety) |
 
