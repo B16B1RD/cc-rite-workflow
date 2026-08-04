@@ -31,8 +31,8 @@
 
 **読取側 (3 値受理義務、4 箇所で完全同期)**:
 
-- `fix.md` ステップ 1.2.0 Priority 0 (`--review-file` case 文)
-- `fix.md` ステップ 1.2.0 Priority 2 (local file case 文)
+- `scripts/review-source-resolve.sh` Priority 0 (`--review-file` case 文。`fix.md` ステップ 1.2.0 が呼ぶ helper 側に在る)
+- `scripts/review-source-resolve.sh` Priority 2 (local file case 文。同上)
 - `fix.md` ステップ 1.2.0 Priority 3 (PR comment Raw JSON case 文)
 - `hooks/scripts/review-trend-divergence.sh` (収束トレンド判定の入力として `findings[]` を読む case 文)
 

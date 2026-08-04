@@ -225,7 +225,18 @@ if [ "$cur_cc" -eq 0 ] 2>/dev/null; then
       # `ok` と同じ値にすると「正常」と読めてしまう。別値にして観測側で切り分ける。
       if [ -n "$pin_value" ]; then run_since_status=ok; else run_since_status=ok-empty; fi
     else
-      echo "WARNING: run 開始点 pin を書き込めませんでした ($pin_file)。発散判定は前 run の JSON を含んだ列を読む恐れがあります" >&2
+      # 書けなかった pin をそのまま残さない。ステップ 1 は「ファイルが存在するか」しか見ないため、
+      # 前 run の pin が残っていると現 run の 2 cycle 目以降でそれを `--since` に渡してしまう。残る pin は
+      # **前々 run の開始点**（前 run の 0.6 が書いた値）なので、「pin より新しいファイル」は前 run と
+      # 現 run の結果を連結した列になる。helper の stale pin guard は `[ -z "$since" ] || cycle_count == 0`
+      # を前提条件に持つため、pin が非空かつ 2 cycle 目以降ではこの列がそのまま判定にかかり、前 run の
+      # 最良水準が `prefix_min` に居座る（実測: `5,3,1,0,8,8` は cycle 6 で fire）— 健全な run を殺す方向
+      # (AC-1 の否定) の縮退になる。pin を消せば ステップ 1 の `absent` 経路 → `--since ""` となり、
+      # 前 run の結果が同居している限り `実在数 > cycle_count` が必ず成立して guard の連言が揃い、
+      # 既存の fail-loud 経路 `run_boundary_unresolved` へ倒れる（同居が無ければ全件 = 現 run なので
+      # そのまま読んで正しい）。新しい fallback ではなく、用意済みの loud 経路へ到達させる措置。
+      rm -f "$pin_file" 2>/dev/null || echo "WARNING: 書込に失敗した run 開始点 pin を削除できませんでした ($pin_file)。手動で削除してください — 残ると前 run の列で誤発火します" >&2
+      echo "WARNING: run 開始点 pin を書き込めませんでした ($pin_file)。stale pin を削除したため、発散判定は run 境界を確定できず判定を降ろします (max_review_cycles の backstop に委ねられます)" >&2
       run_since_status=write-failed
     fi
   fi
@@ -246,7 +257,7 @@ echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CY
 
 `REFIRE` は**この起動でステップ 1 が review を回さずに fire するか**の述語で、ステップ 6.2 の注意行 (a) の条件そのもの:
 
-`RUN_SINCE` は run 開始点 pin の記録結果。**pin が無い / 古いと発散判定は run 境界を確定できず判定を降ろす**（helper の `run_boundary_unresolved`）。発散検出が全面的に働かなくなるのは `unresolved-root` / `write-failed` の 2 値。`none` は既存 pin をそのまま使う正常系、`ok-empty` は pin 不在と同じ扱いになるため実在数が counter を超えた時点で判定が降りる:
+`RUN_SINCE` は run 開始点 pin の記録結果。**pin が無い / 古いと発散判定は run 境界を確定できず判定を降ろす**（helper の `run_boundary_unresolved`）。発散検出が全面的に働かなくなるのは `unresolved-root` / `write-failed` の 2 値。どちらも helper に前 run の pin が渡らない（`unresolved-root` は同じ理由でステップ 1 も pin を読めず、`write-failed` は pin を削除する）ため、縮退は「前 run の列で誤発火」ではなく「判定を降ろす」= 停止側に倒れる。`none` は既存 pin をそのまま使う正常系、`ok-empty` は pin 不在と同じ扱いになるため実在数が counter を超えた時点で判定が降りる:
 
 | `RUN_SINCE` | 意味 |
 |---|---|
@@ -509,8 +520,11 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 終わるため、**同じ PR に対する次の `/rite:iterate` が resume と判定され、ステップ 0.6 の run 開始点 pin 更新
 （`cur_cc == 0` 条件）に入らない**。その結果、新しい run が前 run の pin を使い続け、helper は「pin より
 新しいファイル」= 前 run の結果を現 run の列として読む。前 run の最良水準（`[review:mergeable]` 出口なら 0）
-が現 run の `prefix_min` に持ち込まれるため、**新 run の 3 cycle 目で健全な列が発散と判定される**
-（cycle 1 の頭ではない — 前 run が正常終了していれば最終値は下降列なのでその時点の verdict は `ok`）。
+が現 run の `prefix_min` に持ち込まれる。**害は「必ず殺される」ではなく「前 run の最良水準が
+`prefix_min` に居座り、以後の平坦・反転が過剰に発散と判定される」**である — escape 節 (2)（直近 2 値が
+下降中なら見逃す）が効くため、単調下降を続ける健全な run は stale pin があっても本判定では切られない
+（実測: `5,3,1,0,8,4,2` は最後まで `ok`）。発火するのは新 run の 2 値目が下降しない場合で、その最小例は
+`5,3,1,0,8,8`（`fire_at=6`）。
 
 `cycle_count` は「現 run で消化した cycle 数」なので、run が終わった時点で 0 に戻すのが定義どおりである。
 リセットの経路は fresh entry（ステップ 0.6、run を**開く**側）と、発火時（ステップ 6 共有前段）と、

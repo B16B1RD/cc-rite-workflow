@@ -747,6 +747,22 @@ assert "trap 順序: mktemp 直後の SIGTERM でも signal 別 trap が武装�
 assert "trap 順序: 診断 tempfile が orphan として残らない (trap を mktemp の後に置くと残る)" "0" \
   "$(find "$trap_tmp" -maxdepth 1 -name 'rite-trend-diag-*' 2>/dev/null | wc -l | tr -d '[:space:]')"
 
+# **正常終了経路**の後始末の pin。直上の TC は signal 経路 (INT/TERM/HUP trap) だけを突くため、
+# EXIT trap を丸ごと削除しても緑のまま通る — signal trap が独立に `_cleanup` を呼ぶからである。
+# helper は起動ごとに必ず 1 個 tempfile を作るので、EXIT 側の後始末が落ちると judge が回るたび
+# TMPDIR に 1 個ずつ溜まり続ける (iterate は cycle ごとに本 helper を呼ぶ)。判定が下りた経路
+# (decidable) と診断を実際に消費した経路 (undecidable) の両方を同一 TMPDIR で回して 0 を要求する。
+exit_tmp="$SANDBOX/exittmp"; mkdir -p "$exit_tmp"
+TMPDIR="$exit_tmp" bash "$SCRIPT" --pr 618 --cycle-count 3 --results-dir "$kill_dir" \
+  > "$SANDBOX/exit-ok-out.txt" 2>/dev/null
+assert_grep "正常終了: 判定が下りた経路であること (前提確認)" "$SANDBOX/exit-ok-out.txt" "TREND_DIVERGENCE="
+RITE_KILL_FILTER=".pr_number" RITE_KILL_REAL_JQ="$sig_real_jq" PATH="$kill_bin:$PATH" \
+  TMPDIR="$exit_tmp" bash "$SCRIPT" --pr 618 --cycle-count 3 --results-dir "$kill_dir" \
+  > "$SANDBOX/exit-undec-out.txt" 2>/dev/null
+assert_grep "正常終了: 診断を消費する判定不能経路であること (前提確認)" "$SANDBOX/exit-undec-out.txt" "reason=json_parse_failure"
+assert "正常終了: EXIT trap が診断 tempfile を回収する (EXIT trap を落とすと 2 個残る)" "0" \
+  "$(find "$exit_tmp" -maxdepth 1 -name 'rite-trend-diag-*' | wc -l | tr -d '[:space:]')"
+
 # ---------------------------------------------------------------------------
 # 実 fixture (scripts/tests/fixtures/pr-2070) に対する回帰
 # ---------------------------------------------------------------------------

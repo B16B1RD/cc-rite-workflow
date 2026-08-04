@@ -6,7 +6,7 @@
 # ブレーカーは cycle 数上限だけでなく本判定でも発火する。
 #
 # Called from:
-#   - skills/iterate/SKILL.md ステップ 1 (cycle 上限チェックの直後)。
+#   - skills/iterate/SKILL.md ステップ 1 (発火条件チェック内、backstop 判定の直後)。
 #     上限未到達でも本 helper が fire を返せばブレーカーへ分岐する。
 #
 # Usage:
@@ -266,7 +266,10 @@ fi
 _all_files=()
 while IFS= read -r _f; do
   [ -n "$_f" ] && _all_files+=("$_f")
-done < <(find "$results_dir" -maxdepth 1 -type f -name "${pr_number}-*.json" 2>/dev/null | LC_ALL=C sort)
+# `2>/dev/null` は付けない。dir を読めない (permission 等) とき find は 0 件を返し、後続の
+# `no_results_file` WARNING は原因を「path skew / 保存の全面失敗 / review 中断」の 3 つに限定して
+# 名指しする — 実際の原因はそのどれでもないため運用者が空振りする。正常系の find は stderr 0 バイト。
+done < <(find "$results_dir" -maxdepth 1 -type f -name "${pr_number}-*.json" | LC_ALL=C sort)
 
 _total=${#_all_files[@]}
 if [ "$_total" -eq 0 ]; then
@@ -352,9 +355,8 @@ fi
 # (SoT: references/review-result-schema.md §scope の default mapping)。
 #
 # schema_version accept list は他の読取側と同期する義務がある — 本 script は 4 番目の読取側として
-# 同 SoT に登録済み (references/review-result-schema.md §Schema Version)。既存 3 サイトの実所在は
-# scripts/review-source-resolve.sh (Priority 0 / 2) と skills/fix/SKILL.md (Priority 3) で、
-# fix.md に 3 つとも在るわけではない (Priority 0 / 2 の case 文は helper へ移設済み)。
+# 同 SoT に登録済み (references/review-result-schema.md §Schema Version)。既存 3 サイトは
+# scripts/review-source-resolve.sh (Priority 0 / 2) と skills/fix/SKILL.md (Priority 3)。
 _counts=()
 for _f in "${_run_files[@]+"${_run_files[@]}"}"; do
   if ! jq empty "$_f" >/dev/null 2>"${_diag:-/dev/null}"; then
