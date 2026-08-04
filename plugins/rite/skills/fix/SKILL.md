@@ -566,8 +566,10 @@ elif ! printf '%s' "$raw_json" | jq -e '
   # (`scripts/review-source-resolve.sh`) と SoT (review-result-schema.md invariant #2) にも実装があり、
   # P3 だけ緩めると同一 JSON が経路により受理/拒否に割れる。write 側が `verification` を出力する
   # 前提は #2072 で満たされたが、3 経路 + SoT の同時更新は依然として不要 — gated な
-  # `measured == false` は `non_blocking_findings[]` へ移送され `findings[]` に残らないため、
-  # 本述語の母集団 (.findings[]) に非実測 finding は入らない。
+  # `measured == false` は `non_blocking_findings[]` へ移送されるため `findings[]` に残る非実測
+  # finding は `scope == "nit-noted"` のみで、CRITICAL/HIGH × nit-noted は invariant #4 が write 側で
+  # 禁止する。よって CRITICAL/HIGH を見る本述語が非実測 finding に当たることはない。保証は write 側
+  # 契約であって評価順序ではない — #4 の elif は本述語より後段にあり、先に本述語が捕らえる。
   echo "WARNING: PR コメント内の Raw JSON が cross-field invariant に違反しています (mergeable だが open な CRITICAL/HIGH finding あり)。legacy parser に fallthrough します。" >&2
   echo "[CONTEXT] REVIEW_SOURCE_CROSS_FIELD_INVARIANT_VIOLATED=1; reason=pr_comment_cross_field_invariant_violated" >&2
 elif ! printf '%s' "$raw_json" | jq -e '
