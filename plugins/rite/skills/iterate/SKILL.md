@@ -204,9 +204,13 @@ fi
 #     縮退するだけで、ループは止まらない。ただし縮退は WARNING で告知する。
 run_since_status=none
 if [ "$cur_cc" -eq 0 ] 2>/dev/null; then
-  pin_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || pin_root=""
+  # `2>/dev/null` は付けない — resolver は git 内外どちらでも rc=0 / 非空を返す設計なので、
+  # ここに落ちるのは **helper 自体を実行できない場合（プラグイン破損 / 版 skew、rc=127）だけ**。
+  # その唯一の原因を示すのは bash の `No such file or directory` であり、抑止すると原因が消える
+  # （ステップ 1 側と同じ論拠）。正常系の stderr は実測 0 バイトなのでノイズは増えない。
+  pin_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || pin_root=""
   if [ -z "$pin_root" ]; then
-    echo "WARNING: state root を解決できず run 開始点 pin を記録できません。発散判定は前 run の JSON を含んだ列を読む恐れがあります" >&2
+    echo "WARNING: state-path-resolve.sh を実行できませんでした（プラグインの破損 / 版 skew）。run 開始点 pin を記録できないため、発散判定は前 run の JSON を含んだ列を読んで判定を降ろします" >&2
     run_since_status=unresolved-root
   else
     pin_file="$pin_root/.rite/state/review-run-since-{pr_number}.txt"
@@ -216,7 +220,10 @@ if [ "$cur_cc" -eq 0 ] 2>/dev/null; then
       | LC_ALL=C sort | tail -1)
     [ -n "$pin_value" ] && pin_value=$(basename "$pin_value")
     if mkdir -p "$pin_root/.rite/state" 2>/dev/null && printf '%s\n' "$pin_value" > "$pin_file" 2>/dev/null; then
-      run_since_status=ok
+      # 空 pin（結果ファイルが 1 件も無い = 新規 PR）は「境界を張った」とは意味が違う。
+      # ステップ 1 は空 pin を読むと `--since ""` を渡し helper は全件読みへ倒れるため、
+      # `ok` と同じ値にすると「正常」と読めてしまう。別値にして観測側で切り分ける。
+      if [ -n "$pin_value" ]; then run_since_status=ok; else run_since_status=ok-empty; fi
     else
       echo "WARNING: run 開始点 pin を書き込めませんでした ($pin_file)。発散判定は前 run の JSON を含んだ列を読む恐れがあります" >&2
       run_since_status=write-failed
@@ -245,6 +252,7 @@ echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CY
 |---|---|
 | `none` | 記録を試行していない（`cycle_count > 0` = run 継続中。既存 pin をそのまま使う） |
 | `ok` | pin を記録した。以降の cycle は現 run のファイルだけを読む |
+| `ok-empty` | 結果ファイルが 1 件も無い状態で pin を記録した（新規 PR）。pin 値は空で、helper は全件を 1 本の列として読む。前 run が存在しないため実害は無い |
 | `unresolved-root` | state root を解決できず pin を記録できなかった。WARNING 済み |
 | `write-failed` | pin ファイルを書けなかった（permission / disk）。WARNING 済み |
 
@@ -307,12 +315,18 @@ run_since=""
 run_since_used=pin
 if [ -z "$pin_root" ]; then
   run_since_used=unresolved-root
-  echo "WARNING: state root を解決できず run 開始点 pin を読めません。発散判定は run 境界を確定できず判定を降ろします（max_review_cycles の backstop のみが働きます）" >&2
+  echo "WARNING: state-path-resolve.sh を実行できませんでした（プラグインの破損 / 版 skew）。run 開始点 pin を読めないため、発散判定は run 境界を確定できず判定を降ろします（max_review_cycles の backstop のみが働きます）" >&2
 elif [ ! -f "$pin_root/.rite/state/review-run-since-{pr_number}.txt" ]; then
   run_since_used=absent
   echo "WARNING: run 開始点 pin が未記録です（ステップ 0.6 の書き込み失敗、または pin 導入前から継続中の run）。前 run の結果が同居していれば発散判定は判定を降ろします" >&2
 else
   run_since=$(head -1 "$pin_root/.rite/state/review-run-since-{pr_number}.txt" | tr -d '[:space:]')
+  if [ -z "$run_since" ]; then
+    # pin ファイルはあるが中身が空（結果 0 件の新規 PR で記録された pin）。helper へ渡る値は
+    # 不在時と同一（全件読み）なので、marker も `absent` と同義にして「pin を使えている」と
+    # 名乗らせない。新規 PR では前 run が存在しないため実害は無いが、観測値は実態に合わせる。
+    run_since_used=absent
+  fi
 fi
 trend_out=$(bash {plugin_root}/hooks/scripts/review-trend-divergence.sh \
   --pr {pr_number} --cycle-count "$cc" --since "$run_since"); trend_rc=$?
@@ -486,6 +500,32 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 これは正常終了・ユーザー中断の**両経路**で実行する (どちらの出口でも残骸の累積を防ぐ)。出力 status 行 (`[pr-cycle-cleanup] status=...`) はそのまま表示し、何を回収したかを可視化する。
 
 > **24h age guard との関係**: `rite-review-mutation-*` / `rite-revert-test-*` detached worktree は cross-session in-flight 保護のため mtime 24h 未満は保護される (`pr-cycle-cleanup.sh` Step 4)。よって本ループが直前に作った若い worktree はこの発火では消えず、次回 cleanup (24h 経過後) で確実に回収される。即時 0 残骸ではなく **確実な最終回収** を担保する設計 (Issue #1526 D-04)。即時回収には reviewer 側の session-scoped 記録が必要だが reviewer (`agents/_reviewer-base.md`) は本 Issue の Non-Target。
+
+### ステップ 5.0.1: run を閉じる (cycle counter のリセット)
+
+完了通知を出力する**前に**、`cycle_count` を 0 にして run を明示的に閉じる。これをしないと正常終了
+3 経路（`[review:mergeable]` / `[fix:replied-only]` / `[fix:cancelled-by-user]`）はいずれも counter を
+残したまま `phase=review|fix` で終わるため、**同じ PR に対する次の `/rite:iterate` が resume と判定され、
+ステップ 0.6 の run 開始点 pin 更新（`cur_cc == 0` 条件）に入らない**。その結果、新しい run が前 run の
+pin を使い続け、helper は「pin より新しいファイル」= 前 run の結果を現 run の列として読む。前 run の
+ファイル数と残存 counter が一致するため過剰取り込みの guard も素通りし、**新 run の cycle 1 の頭で
+review を 1 度も回さずにブレーカーが発火する**（健全な run を殺す = AC-1 の否定）。
+
+`cycle_count` は「現 run で消化した cycle 数」なので、run が終わった時点で 0 に戻すのが定義どおりである。
+発火時のリセット（ステップ 6 共有前段）と対をなし、これで counter が 0 に戻る経路は「発火」と「正常終了」
+の 2 つに揃う。非ブロッキング — 失敗しても完了通知は出す（次 run が stale pin を引く可能性が残るだけで、
+ループ自体は止まらない）:
+
+```bash
+if ! bash {plugin_root}/hooks/flow-state.sh set \
+  --phase review --issue {issue_number} --branch {branch_name} --pr {pr_number} \
+  --next "run 終了 (cycle counter reset)" --cycle-count 0 2>&1; then
+  echo "WARNING: 完了時の cycle counter リセットに失敗しました。次回 /rite:iterate が resume と判定され、run 開始点 pin が更新されないまま前 run の結果を読む恐れがあります" >&2
+fi
+```
+
+> `--handoff` を伴わないため、sub-skill がセットした FINALIZE handoff はここでクリアされる。完了通知は
+> 本ステップの後に出力するため、Stop hook による差し戻しは不要になった時点で解除される。
 
 ### 正常終了 (`[review:mergeable]` or `[fix:replied-only]`)
 

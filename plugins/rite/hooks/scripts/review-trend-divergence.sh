@@ -15,7 +15,8 @@
 # 出力 (stdout, 1 行):
 #   [CONTEXT] TREND_DIVERGENCE=fire|ok|insufficient; trend=<c1,c2,...>; cycles=N; lost=N; reason=<...>
 #   fire のときのみ `fire_at=<cycle>` が付く。`lost=` は cycle_count に対して失われた結果の件数
-#   (保存失敗 / review 中断)。判定を降ろす経路 (_undecidable) は trend/cycles/lost を持たない。
+#   (保存失敗 / review 中断)。判定を降ろす経路 (_undecidable) は `trend=` と `cycles=0` を出すが
+#   `lost=` は持たない。
 # WARNING / 診断は stderr。
 #
 # Why 件数上限ではなくトレンドか:
@@ -89,12 +90,13 @@
 #   1 本の列として読む (pin 導入前の run / 手動実行に対する後方互換)。
 #   cycle_count は run 境界の**決定**には使わないが、**過剰取り込みの検出**には使う。正しい境界の
 #   下では `実在ファイル数 == cycle_count` が構造的に成立するため、実在数が cycle_count を超える
-#   のは他 run が混ざっている証拠 → `run_boundary_unresolved` で判定を降ろす (pin が書けなかった
-#   環境と pin 導入前の run はここで捕まる)。不足側は run 内の欠落にすぎないので降ろさず、
-#   失われた件数を WARNING と marker の `lost=` に載せて実在する列で判定する。
-#   **方向で扱いを分ける**のが要点 — 過剰は「別 run の値を読む」誤りで誤発火に直結し、不足は
-#   「列に穴が空く」だけ。旧実装は不足側で判定を降ろしており、中断 1 回でその run の発散検出が
-#   恒久的に無効化されていた。
+#   のは他 run が混ざっている証拠 → `run_boundary_unresolved` で判定を降ろす。**ただし pin が
+#   無いときに限る** — pin があれば「pin より新しいファイル」は run 開始後の生成分だけなので
+#   混入は構造的に起きず、超過は counter 側の skew (INC 失敗 / Stop hook 再注入による counter
+#   迂回) を意味するにすぎない。そこで判定を降ろすと skew が解消しないまま run 終了まで発散検出が
+#   無効化され、不足側で降ろしていた旧実装と同型の失敗を向きだけ変えて再導入することになる。
+#   よって **判定を降ろすのは「境界そのものが未知」= pin 不在のときだけ**で、pin 有りの過不足は
+#   どちらも診断 (WARNING / marker の `lost=`) に留めて実在する列で判定する。
 #
 # Why 判定不能を「発火しない」に倒すか:
 #   fallback ではなく設計。判定できない入力で発火させると健全な run を殺す (AC-1 の否定) が、
@@ -269,13 +271,16 @@ fi
 # 複数 run が同居していればここで必ず捕まる (cycle_count=0 で `0 < _run_total` も同式が拾う)。
 # 不足側 (`<`) は run 内の欠落にすぎず判定を降ろさない — 降ろすと中断 1 回でその run の発散検出が
 # 恒久的に無効化される (旧 fewer_files_than_cycles の失敗)。**方向で扱いを分けるのが要点**。
-if [ "$_run_total" -gt "$cycle_count" ] 2>/dev/null; then
-  # `_nz` はバイト単位で 0x80-0x9f を潰すため、**外来値だけ**を通す。自作の日本語リテラルを
-  # 通すと多バイト文字が `?` 列に化けて診断そのものが読めなくなる (helper header の trade-off)。
-  _since_disp="(未設定)"
-  [ -n "$since" ] && _since_disp="$(_nz "$since")"
+# **pin 不在のときだけ**判定を降ろす。pin があれば「pin より新しいファイル」は run 開始後に
+# 生成された分だけなので、他 run の混入は構造的に起きない — 超過は counter が実在数に
+# 追いつかない skew (INC 失敗 / Stop hook 再注入による counter 迂回) を意味するにすぎず、
+# そこで判定を降ろすと **その run の残り全 cycle で発散検出が恒久的に無効化される**
+# (files と counter は以後同量ずつ増えるので skew は run 終了まで解消しない)。これは不足側で
+# 判定を降ろしていた旧実装 (`fewer_files_than_cycles`) と同型の失敗で、向きを変えただけの
+# 再導入になる。pin 有りの超過は不足側と同じく診断だけ残して実在列で判定を続行する。
+if [ -z "$since" ] && [ "$_run_total" -gt "$cycle_count" ] 2>/dev/null; then
   _undecidable run_boundary_unresolved \
-    "現 run の境界を確定できません (files=$_run_total > cycles=$cycle_count)。run 開始点 pin ${_since_disp} が無いか古いため、他 run の結果が現 run の列に混ざっています。誤発火を避けるためトレンド判定を行わず max_review_cycles の判定に委ねます"
+    "run 開始点 pin が無いため全件を 1 本の列として読んでおり、現 run の境界を確定できません (files=$_run_total > cycles=$cycle_count)。誤発火を避けるためトレンド判定を行わず max_review_cycles の判定に委ねます"
 fi
 
 # 不足側は判定を降ろさず、失われた件数を診断として残す。件数は stdout の marker にも載せる —
@@ -285,6 +290,10 @@ _lost=0
 if [ "$_run_total" -lt "$cycle_count" ] 2>/dev/null; then
   _lost=$((cycle_count - _run_total))
   echo "WARNING: 現 run のレビュー結果 JSON が cycle_count に不足しています (files=$_run_total < cycles=$cycle_count)。結果の保存失敗か review の中断で ${cycle_count} 件中 ${_lost} 件の結果が失われています。実在する ${_run_total} 件の列でトレンド判定を続行します" >&2
+elif [ "$_run_total" -gt "$cycle_count" ] 2>/dev/null; then
+  # pin 有りでの超過。counter 側が遅れている (INC 失敗 / Stop hook 再注入で counter を迂回) が、
+  # pin が run 境界を保証しているので列そのものは現 run のもの。判定は続行し差だけ残す。
+  echo "WARNING: 現 run のレビュー結果 JSON が cycle_count を超えています (files=$_run_total > cycles=$cycle_count)。cycle counter の increment 失敗、または Stop hook の再注入で counter を経由せずレビューが進んだ可能性があります。run 境界は pin が保証しているため実在する ${_run_total} 件の列でトレンド判定を続行します" >&2
 fi
 
 # ---- 各 cycle の blocking 件数を数える ----------------------------------------

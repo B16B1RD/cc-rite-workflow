@@ -595,7 +595,7 @@ else
   fi
   case "$schema_version" in
     "1.0.0"|"1.0"|"1.1.0")
-      # accept list 3 値は Priority 0/2/3 の 3 sites で完全同期 (review-result-schema.md Schema Version SoT 契約)
+      # accept list 3 値は Priority 0/2/3 + hooks/scripts/review-trend-divergence.sh の 4 sites で完全同期 (review-result-schema.md Schema Version SoT 契約)
       # commit_sha stale detection: mismatch は WARNING のみで continue
       # rationale: references/design-rationale.md#schema-normalization-mirror
       json_commit_sha_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-p3-commit-sha-err-XXXXXX" 2>/dev/null) || json_commit_sha_err=""

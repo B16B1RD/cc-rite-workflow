@@ -270,6 +270,14 @@ bash "$SCRIPT" --pr 610 --cycle-count 3 --since "610-20260101000004.json" --resu
 assert_grep "run 境界 (pin): 現 run が cycle_count に 1 件不足でも前 run を取り込まない" "$OUT" "trend=3,3"
 assert_not_grep "run 境界 (pin): 前 run の低い件数で健全な run を発散判定しない" "$OUT" "TREND_DIVERGENCE=fire"
 
+# insufficient (need_3_cycles) 経路の lost= も pin する。消費側は lost= 欠落を無音で 0 に倒すため、
+# 未 pin だと退行しても「列に穴がある」signal が消え、停止通知が合成推移を実測として描画する。
+short2_dir="$SANDBOX/short2"; mkdir -p "$short2_dir"
+make_result "$short2_dir" 614 01 4
+make_result "$short2_dir" 614 02 5
+bash "$SCRIPT" --pr 614 --cycle-count 3 --results-dir "$short2_dir" > "$OUT" 2>/dev/null
+assert_grep "T-06o: 3 cycle 未満でも lost= を marker に載せる" "$OUT" "cycles=2; lost=1; reason=need_3_cycles"
+
 # 破損 JSON / 未知 schema / pr_number 不一致はいずれも「判定不能」であって発散ではない。
 bad_dir="$SANDBOX/bad"; mkdir -p "$bad_dir"
 make_result "$bad_dir" 605 01 2
@@ -341,7 +349,7 @@ bash "$SCRIPT" --pr 613 --cycle-count 2 --results-dir "$ctl_dir" > "$OUT" 2>"$SA
 assert_grep "T-06n: ESC を含む値は ? へ中和して埋め込む" "$SANDBOX/ctl-err.txt" "schema_version='9\.9\.9[?]"
 assert_grep "T-06n: 埋め込んだ改行も ? へ中和する (偽の診断行を作らせない)" "$SANDBOX/ctl-err.txt" "RED[?]WARNING: FORGED DIAGNOSTIC'"
 assert "T-06n: 中和により WARNING は 1 行に収まる (偽の診断行を作らせない)" "1" "$(wc -l < "$SANDBOX/ctl-err.txt" | tr -d '[:space:]')"
-assert "T-06n: 生 ESC バイトが stderr へ素通ししない" "0" "$(od -c < "$SANDBOX/ctl-err.txt" | grep -c '033')"
+assert "T-06n: 生 ESC バイトが stderr へ素通ししない" "0" "$(od -An -c < "$SANDBOX/ctl-err.txt" | grep -c '033')"
 
 mism_dir="$SANDBOX/mismatch"; mkdir -p "$mism_dir"
 make_result "$mism_dir" 607 01 2
@@ -392,10 +400,19 @@ bash "$SCRIPT" --pr 700 --cycle-count 3 --results-dir "$multi_dir" > "$OUT" 2>"$
 assert_grep "run 境界: pin 不在で実在数が cycle_count を超えたら判定を降ろす" "$OUT" "reason=run_boundary_unresolved"
 assert_not_grep "run 境界: 過剰取り込みでは発火しない (健全な run を殺さない)" "$OUT" "TREND_DIVERGENCE=fire"
 assert_grep "run 境界: 過剰取り込みの理由を WARNING で surface する" "$SANDBOX/over-err.txt" "files=7 > cycles=3"
+assert_grep "run 境界: pin 不在であることを WARNING が明示する" "$SANDBOX/over-err.txt" "run 開始点 pin が無いため"
 
 bash "$SCRIPT" --pr 700 --cycle-count 0 --results-dir "$multi_dir" > "$OUT" 2>/dev/null
 assert_grep "run 境界: cycle_count=0 で前 run だけが読める状態は判定を降ろす" "$OUT" "reason=run_boundary_unresolved"
 assert_not_grep "run 境界: cycle_count=0 では発火しない (旧実装の構造的保護を維持)" "$OUT" "TREND_DIVERGENCE=fire"
+
+# **pin 有りの超過は判定を降ろさない**。pin があれば列は現 run のものと保証されており、超過は
+# counter 側の skew (INC 失敗 / Stop hook 再注入) にすぎない。ここで降ろすと skew が run 終了まで
+# 解消しないため発散検出が恒久的に無効化される — 不足側で降ろしていた旧実装と同型の失敗になる。
+bash "$SCRIPT" --pr 700 --cycle-count 1 --since "700-20260101000004.json" --results-dir "$multi_dir" > "$OUT" 2>"$SANDBOX/over-pin-err.txt"
+assert_grep "run 境界: pin 有りの超過は判定を降ろさず実在列で続行する" "$OUT" "trend=5,3,1"
+assert_not_grep "run 境界: pin 有りの超過を run_boundary_unresolved にしない" "$OUT" "reason=run_boundary_unresolved"
+assert_grep "run 境界: 超過の理由 (counter skew) を WARNING で surface する" "$SANDBOX/over-pin-err.txt" "files=3 > cycles=1"
 
 # 不足側は降ろさない (方向で扱いを分ける)。過剰と同じ扱いにすると中断 1 回で恒久無効化する。
 bash "$SCRIPT" --pr 700 --cycle-count 5 --since "700-20260101000004.json" --results-dir "$multi_dir" > "$OUT" 2>/dev/null
@@ -406,20 +423,27 @@ assert_grep "run 境界: 失われた件数を marker の lost= に載せる" "$
 # `.` (0x2e) < `~` (0x7e) の LC_ALL=C 昇順により同 ts の後ろへ並ぶ。この順序前提は独立した 2 経路が
 # 依存する — find のソートは trend の**要素順**、pin 比較のソートは **run 境界の選別**。
 # 非 C locale では `~` の照合位置が変わりうるため、両方を別々に pin する。
-# **検出面の制約**: 本 assert が `LC_ALL=C` の除去を捕まえるのは、実行時の ambient locale が
-# C 以外のときだけ (C locale 下では除去しても順序が変わらないため全 PASS のまま通る)。
-# 順序契約を pin する以上これは原理的な限界で、テストの穴ではない。
+# **非 C locale の明示が必要**: ambient locale では検出できない。glibc の ja_JP / C.UTF-8 は
+# どちらもドットとチルダを C と同順に照合するため、`LC_ALL=C` を外しても順序が変わらず
+# 全 PASS のまま通る (実測)。`en_US.UTF-8` を明示すると mutant と pristine が分離できるので、
+# これは原理的限界ではなく塞げる穴。**無条件に付けてはならない** — locale 未生成の環境では
+# C 照合へ黙って縮退し、無シグナルで「契約未 pin」の状態へ戻るため、存在を確認して
+# 無ければ skip する (SKIP は集計されるので gate 落ちが可視化される)。
 coll_dir="$SANDBOX/collision"; mkdir -p "$coll_dir"
 make_result "$coll_dir" 901 01 5 "" ""
 make_result "$coll_dir" 901 02 4 "" ""
 make_result "$coll_dir" 901 03 1 "" ""
 make_result "$coll_dir" 901 03 3 "" "~ab12"
 make_result "$coll_dir" 901 04 7 "" ""
-bash "$SCRIPT" --pr 901 --cycle-count 5 --results-dir "$coll_dir" > "$OUT" 2>/dev/null
-assert_grep "collision 名: 同 ts の ~ 版が直後に並ぶ (要素順の pin)" "$OUT" "trend=5,4,1,3,7"
+if locale -a 2>/dev/null | grep -qiE '^en_US\.utf-?8$'; then
+  LC_ALL=en_US.UTF-8 bash "$SCRIPT" --pr 901 --cycle-count 5 --results-dir "$coll_dir" > "$OUT" 2>/dev/null
+  assert_grep "collision 名: 同 ts の ~ 版が直後に並ぶ (要素順の pin)" "$OUT" "trend=5,4,1,3,7;"
 
-bash "$SCRIPT" --pr 901 --cycle-count 3 --since "901-20260101000003.json" --results-dir "$coll_dir" > "$OUT" 2>/dev/null
-assert_grep "collision 名: ~ 版は pin より新しい側に入る (境界選別の pin)" "$OUT" "trend=3,7"
+  LC_ALL=en_US.UTF-8 bash "$SCRIPT" --pr 901 --cycle-count 3 --since "901-20260101000003.json" --results-dir "$coll_dir" > "$OUT" 2>/dev/null
+  assert_grep "collision 名: ~ 版は pin より新しい側に入る (境界選別の pin)" "$OUT" "trend=3,7;"
+else
+  skip "collision 順序契約: en_US.UTF-8 が無く LC_ALL=C 除去を検出できない"
+fi
 
 # 同一 PR 番号を prefix に持つ別 PR (700 等) を巻き込まないこと
 prefix_dir="$SANDBOX/prefix"; mkdir -p "$prefix_dir"
