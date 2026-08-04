@@ -25,6 +25,10 @@
 #   TC-13 (T-04) index.md 不在 → exit 1 (fail-loud)
 #   TC-14 (T-04) `## ページ一覧` 見出し重複 (想定外構造) → exit 1 + 無変更
 #   TC-15b (T-04) UTF-8 日本語 title/description の制御文字誤検出なし (rc=0、C1 除外の意図を pin)
+#   TC-15c (T-04) brace 含み正当 title は residue gate に棄却されない (exact 突合の意図を pin)
+#   TC-16g (T-04) 統計 3 行が全欠落 → stats_sync=skipped_unreadable (0 行同期を synced にしない)
+#   TC-22 (T-04) 行末区切り欠落の登録行から summary 保持抽出 → exit 1 + 無変更
+#         (positional 抽出の前提崩れを silent 空文字化させない)
 #   TC-12b (T-03) 統計節も不在なら EOF に節新設 (golden)
 #   TC-16b (T-04) pages 一覧 0 件 (*.md ゼロ、find rc=0) → skip + 統計保持
 #   TC-16c (T-04) --pages-root 省略 (統計節あり) → skipped_unreadable + 統計保持
@@ -589,6 +593,23 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────────────
+# TC-15c (T-04): brace 含み正当 title は residue gate に棄却されない
+# gate は literal `{title}`/`{description}`/`{updated}` の exact 突合のみ
+# (形状ヒューリスティックだと free text の正当値を棄却し当該ページが孤児化する)
+# ──────────────────────────────────────────────────────────────────────
+dir=$(make_sandbox tc15c)
+run_helper --index "$dir/index.md" --title '{CONTEXT} マーカーの設計 {emit}' --domain patterns \
+  --slug foo --description '{description 風だが正当} な値' \
+  --updated "2026-08-05T09:40:00+09:00" --confidence high --pages-root "$dir/pages"
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=updated' \
+   && grep -qxF '| [{CONTEXT} マーカーの設計 {emit}](pages/patterns/foo.md) | patterns | {description 風だが正当} な値 | 2026-08-05T09:40:00+09:00 | high |' "$dir/index.md"; then
+  pass "TC-15c brace 含み正当 title/description が residue gate に棄却されない (rc=0)"
+else
+  fail "TC-15c (rc=$HELPER_RC stdout=$HELPER_STDOUT stderr=$HELPER_STDERR)"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
 # TC-16 (T-04): pages ディレクトリ不在 (find 非ゼロ終了) → stats skip + 既存統計値保持
 # ──────────────────────────────────────────────────────────────────────
 dir=$(make_sandbox tc16)
@@ -690,6 +711,39 @@ if [ "$HELPER_RC" -eq 0 ] \
 else
   fail "TC-16d (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
   cat "$TEST_DIR/tc16d-diff.txt" 2>/dev/null
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-16g (T-04): 統計 3 行が全欠落 → stats_sync=skipped_unreadable + WARNING
+# 1 行も同期できていないのに synced を返すと marker 契約 (LLM への唯一の
+# 機械可読チャネル) が WARNING と矛盾する — 0 行同期は「前サイクル値のまま」
+# なので skipped_unreadable と同義に降ろす
+# ──────────────────────────────────────────────────────────────────────
+dir=$(make_sandbox tc16g)
+cat > "$dir/index.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Foo Pattern](pages/patterns/foo.md) | patterns | 既存 | 2026-01-01T00:00:00+09:00 | high |
+
+## 統計
+
+（統計行は手動整理で失われた）
+EOF
+run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
+  --slug foo --updated "2026-08-05T10:35:00+09:00" --confidence high \
+  --pages-root "$dir/pages"
+if [ "$HELPER_RC" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'stats_sync=skipped_unreadable' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -q 'WARNING' \
+   && grep -qxF '（統計行は手動整理で失われた）' "$dir/index.md" \
+   && grep -q '2026-08-05T10:35:00+09:00' "$dir/index.md"; then
+  pass "TC-16g 統計 3 行全欠落は skipped_unreadable (0 行同期を synced と偽装しない・行は新設しない)"
+else
+  fail "TC-16g (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
 fi
 
 # ──────────────────────────────────────────────────────────────────────
@@ -910,6 +964,36 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────────────
+# TC-22 (T-04): 行末区切り欠落の登録行 + description 省略 (summary 保持経路)
+# → exit 1 + 無変更。positional 抽出は先頭・末尾フラグメントが空白のみで
+# あることを検査する — 検査なしだと同定は通るのに抽出が空になり、蓄積
+# サマリーを rc=0 のまま空文字で上書きする (docstring の禁止事項)
+# ──────────────────────────────────────────────────────────────────────
+dir=$(make_sandbox tc22)
+cat > "$dir/index.md" <<'EOF'
+# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [Foo Pattern](pages/patterns/foo.md) | patterns | 蓄積サマリー | 2026-01-01T00:00:00+09:00 | high
+EOF
+before=$(cat "$dir/index.md")
+run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
+  --slug foo --updated "2026-08-05T11:00:00+09:00" --confidence high \
+  --pages-root "$dir/pages"
+after=$(cat "$dir/index.md")
+if [ "$HELPER_RC" -eq 1 ] \
+   && printf '%s\n' "$HELPER_STDERR" | grep -q 'ERROR' \
+   && [ "$before" = "$after" ] \
+   && [ "$(grep -c '蓄積サマリー' "$dir/index.md")" -eq 1 ]; then
+  pass "TC-22 行末区切り欠落行の summary 保持抽出は exit 1・無変更 (silent 空文字化しない)"
+else
+  fail "TC-22 (rc=$HELPER_RC stdout=$HELPER_STDOUT stderr=$HELPER_STDERR)"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
 # TC-17 (T-06): SKILL.md ステップ 6 の縮退 (grep 検査)
 # ──────────────────────────────────────────────────────────────────────
 if [ ! -f "$INGEST_MD" ]; then
@@ -960,6 +1044,23 @@ printf '%s\n' "$step6_block" | grep -qF -- '--description "$wiu_description"' ||
 printf '%s\n' "$step6_block" | grep -qF -- 'bash "{plugin_root}/hooks/scripts/wiki-index-update.sh"' || { tc17b_ok=0; echo "  (helper 呼び出しコマンド行が無い/形が崩れている)"; }
 printf '%s\n' "$step6_block" | grep -qF -- '--index "$wiki_root/index.md"' || { tc17b_ok=0; echo '  (--index の値が $wiki_root/index.md でない)'; }
 printf '%s\n' "$step6_block" | grep -qF -- '--pages-root "$wiki_root/pages"' || { tc17b_ok=0; echo '  (--pages-root の値が $wiki_root/pages でない)'; }
+# 継続行を 1 論理コマンドへ join して 8 フラグが同一コマンド内に並ぶことを assert する。
+# 行単位断片の grep だけでは継続 backslash の脱落 (行が分断され後続フラグが別コマンド化し
+# 実行時 rc=127 になる Edit 崩れ) が生存する
+step6_joined=$(printf '%s\n' "$step6_block" | awk '{ if (sub(/[[:space:]]*\\$/, " ")) printf "%s", $0; else print }')
+helper_call_line=$(printf '%s\n' "$step6_joined" | grep -F -- 'bash "{plugin_root}/hooks/scripts/wiki-index-update.sh"') || helper_call_line=""
+if [ -z "$helper_call_line" ]; then
+  tc17b_ok=0; echo "  (join 後に helper 呼び出しが 1 論理コマンドに正規化できない)"
+else
+  tc17b_split_flags=""
+  for f in $helper_flags; do
+    case "$helper_call_line" in
+      *"$f "*) ;;
+      *) tc17b_ok=0; tc17b_split_flags="$tc17b_split_flags $f" ;;
+    esac
+  done
+  [ -z "$tc17b_split_flags" ] || echo "  (継続 backslash 脱落等でフラグが呼び出しコマンドの外にある:$tc17b_split_flags)"
+fi
 printf '%s\n' "$step6_block" | grep -qF -- "wiu_title=\$(cat <<'WIU_EOF'" || { tc17b_ok=0; echo "  (title の quoted heredoc が解除されている)"; }
 printf '%s\n' "$step6_block" | grep -qF -- "wiu_description=\$(cat <<'WIU_EOF'" || { tc17b_ok=0; echo "  (description の quoted heredoc が解除されている)"; }
 if [ "$tc17b_ok" -eq 1 ]; then

@@ -94,6 +94,11 @@
 #   end is deterministic even when a raw `|` remains in the summary, because
 #   updated (ISO 8601) and confidence (enum) cannot contain `|`. This also
 #   heals rows previously misaligned by a raw `|` back to a proper 5 columns.
+#   The two dropped fragments are VERIFIED blank before dropping: a non-blank
+#   fragment (e.g. a row missing its row-end delimiter) means the positional
+#   assumptions do not hold, and extracting from such a row would return an
+#   empty summary — violating the never-overwrite rule above. That is an
+#   unexpected-structure error: ERROR to stderr + exit 1, index.md unmodified.
 #
 # Procedure 3a (duplicate-row reclamation, runs every invocation):
 #   For any page whose predicate matches 2+ rows, delete the later rows. Not
@@ -213,17 +218,21 @@ done
 # Placeholder residue gate: the caller (wiki-ingest SKILL.md ステップ 6) literal-
 # substitutes {title}/{description}/{updated}; an unsubstituted brace token would
 # be written into the registration row and the 統計 最終更新 line, overwriting
-# the accumulated summary the docstring declares unrecoverable. The other flags
-# need no gate — domain/confidence enum and slug charset validation below
-# already reject residue with exit 2 (same canonical gate as SKILL.md 5.0.c).
+# the accumulated summary the docstring declares unrecoverable. The match is
+# exact — the caller passes these literals verbatim when substitution is missed,
+# and title/description are free text where a shape heuristic (leading/trailing
+# brace) would reject legitimate values. Shape-based residue gates in sibling
+# helpers guard closed value domains (enums, branch names), not free text. The
+# other flags need no gate — domain/confidence enum and slug charset validation
+# below already reject residue with exit 2.
 case "$title" in
-  "{"*"}") echo "ERROR: wiki-index-update: --title looks like an unsubstituted placeholder: '$title'" >&2; exit 2 ;;
+  "{title}") echo "ERROR: wiki-index-update: --title looks like an unsubstituted placeholder: '$title'" >&2; exit 2 ;;
 esac
 case "$description" in
-  "{"*"}") echo "ERROR: wiki-index-update: --description looks like an unsubstituted placeholder: '$description'" >&2; exit 2 ;;
+  "{description}") echo "ERROR: wiki-index-update: --description looks like an unsubstituted placeholder: '$description'" >&2; exit 2 ;;
 esac
 case "$updated" in
-  "{"*"}") echo "ERROR: wiki-index-update: --updated looks like an unsubstituted placeholder: '$updated'" >&2; exit 2 ;;
+  "{updated}") echo "ERROR: wiki-index-update: --updated looks like an unsubstituted placeholder: '$updated'" >&2; exit 2 ;;
 esac
 [ -n "$slug" ] || { echo "ERROR: wiki-index-update: --slug is required" >&2; exit 2; }
 [ -n "$updated" ] || { echo "ERROR: wiki-index-update: --updated is required" >&2; exit 2; }
@@ -337,6 +346,16 @@ LC_ALL=C awk '
     first_link_key(s)                                   # sets _link_end
     rest = substr(s, _link_end)
     n = split(rest, parts, "|")
+    # The positional walk silently discards the fragment before the first
+    # delimiter and the one after the last. Both must be blank in a well-formed
+    # row; non-blank means the row structure the extraction assumes is absent
+    # (e.g. a missing row-end delimiter), and continuing would return an empty
+    # summary that later overwrites the accumulated value — the exact loss the
+    # header spec forbids. Fail loud instead (rides the row-rewrite-failed path).
+    if (trim(parts[1]) != "" || trim(parts[n]) != "") {
+      printf "ERROR: wiki-index-update: malformed registration row (content outside the cell delimiters — likely a missing row-end delimiter): %s\n", s > "/dev/stderr"
+      exit 1
+    }
     m = n - 2                                           # drop first and last fragment
     if (m < 3) return ""                                # no summary cell survives
     mid = ""
@@ -545,6 +564,7 @@ if LC_ALL=C grep -q '^##[[:blank:]]*統計[[:blank:]]*$' "$tmp_rows"; then
         }
         for (i = 1; i <= N; i++) print lines[i]
         printf "stats_missing=%s%s%s\n", (f_total ? "" : " 総ページ数"), (f_breakdown ? "" : " ドメイン別"), (f_updated ? "" : " 最終更新") > RESULT
+        printf "stats_synced_lines=%d\n", f_total + f_breakdown + f_updated > RESULT
       }
     ' "$tmp_rows" > "$tmp_stats"
     awk_rc=$?
@@ -558,7 +578,16 @@ if LC_ALL=C grep -q '^##[[:blank:]]*統計[[:blank:]]*$' "$tmp_rows"; then
       stats_missing_trimmed=$(printf '%s' "$stats_missing" | sed 's/^ *//')
       [ -n "$stats_missing_trimmed" ] && echo "WARNING: wiki-index-update: '## 統計' 節に既存行が見つからない統計行があります (${stats_missing_trimmed})。行を新設せずスキップします" >&2
     fi
-    stats_sync="synced"
+    # The marker is the caller's only machine-readable channel: when none of
+    # the 3 stats lines could be rewritten, "synced" would contradict the
+    # WARNING above. Zero rewritten lines means the section kept its previous
+    # values — the same meaning skipped_unreadable already carries.
+    stats_synced_lines=$(sed -n 's/^stats_synced_lines=//p' "$result_file" | tail -1)
+    if [ "$stats_synced_lines" = "0" ]; then
+      stats_sync="skipped_unreadable"
+    else
+      stats_sync="synced"
+    fi
   fi
 fi
 

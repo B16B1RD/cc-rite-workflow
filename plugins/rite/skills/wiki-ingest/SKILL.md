@@ -669,7 +669,8 @@ bash "{plugin_root}/hooks/scripts/wiki-index-update.sh" \
 | exit 0 + `row_action=aborted_duplicate` | 対象ページの登録行が 2 行以上あり追加/更新を中止（WARNING 出力済み。first-match fallback はしない）。重複の後発行は同呼び出しの回収処理が削除済みのため、次サイクルの ingest で更新が通る。続行 |
 | exit 0 + `stats_sync=skipped_no_section` | `## 統計` 節が無い（節は新設しない仕様。総ページ数は `/rite:wiki-lint` のレポートで確認できる）。続行 |
 | exit 0 + `stats_sync=skipped_unreadable` | pages 一覧を取得できず統計同期をスキップ（WARNING 出力済み。統計 3 行は前サイクル値のまま）。続行 |
-| exit 1 / exit 2（ERROR 出力） | fail-loud（index.md 不在・想定外構造・引数不正）。**部分適用は無い**（書き込みは全処理成功時の atomic 1 回のみ）。ERROR をそのまま表示して当該 Raw Source の index 更新をスキップし、ステップ 7 へ続行する |
+| exit 2（ERROR 出力） | 引数不正 = 呼び出し側の substitute 漏れ・値の混入。**部分適用は無い**（書き込みは全処理成功時の atomic 1 回のみ）。ERROR が指す引数を substitute し直して**同じ bash を再実行**する（再実行しても exit 2 なら ERROR を表示して当該 Raw Source の index 更新をスキップし、ステップ 7 へ続行） |
+| exit 1（ERROR 出力） | 環境・構造要因（index.md 不在・想定外構造）で再実行では解消しない。**部分適用は無い**（同上）。ERROR をそのまま表示して当該 Raw Source の index 更新をスキップし、ステップ 7 へ続行する（未登録ページはステップ 8 の Lint が orphans として検出する） |
 
 書き込みはステップ 5 と同じブランチコンテキスト (separate_branch なら worktree、same_branch なら dev ツリー) で行われる — 上記 bash が `{wiki_worktree_abs}` 基点で index.md / pages/ のパスを解決するため、呼び出し時の cwd（セッション worktree / main checkout）に依存しない。
 
