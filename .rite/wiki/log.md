@@ -1,5 +1,6 @@
 ## 2026-08-04
 
+* **Create**: [汎用契約の表に経路固有の詳細を書かず下位節へ委譲する。ただし委譲は委譲先の網羅性を load-bearing にする](pages/heuristics/generic-contract-table-delegates-path-specific-detail.md) — raw/reviews/20260804T104340Z-pr-2104.md を新規ページ化（汎用契約の表への具体詳細の書き込みが同一ファイル 4-5 行下の記述と 3 点同時に矛盾 / 3 件は別々の誤りではなく抽象度を 1 段下げたことの帰結で 1 編集で解けた / 委譲を書いた瞬間に委譲先の網羅性の欠落が load-bearing 化する）
 * **lint:warning** — contradictions=0, stale=15, orphans=0, missing_concept=0, unregistered_raw=298, broken_refs=0
 * **Update**: [累積対策 PR の review-fix loop で fix 自体が drift を導入する](pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md) — raw/reviews/20260804T092934Z-pr-2102.md を統合（機構の配線状況を散文で説明すると訂正のたびに誤りが別方向へ移る / 3 サイクル連続で「母集団に入らない」→「write 側が禁止」→「機械的阻止は新 schema 限定」がいずれも偽 / 収束したのは配線に関する主張自体を削除し判定に必要な事実だけを残したとき）
 * **Create**: [テストの gate 条件がプラットフォーム事実を環境 capability の代理にすると恒常 red 化する](pages/anti-patterns/test-gate-proxy-indicator-drift.md) — raw/reviews/20260803T155051Z-pr-2096.md を新規ページ化（floor の判定対象が守りたい capability ではなく platform 事実の代理だった / コメントと条件式の乖離が検出点 / 同形の gate でも probe 対象がツール存在か環境 capability かで正しい条件式は変わる）
