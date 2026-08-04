@@ -93,7 +93,8 @@ review:
     verification_mode: false    # Enable verification mode as supplement to full review (default: false)
     allow_new_findings_in_unchanged_code: false  # Block new findings in unchanged code (default: false)
     # Review-fix loop termination
-    # The loop terminates on (a) 0 findings remaining → [review:mergeable] (normal exit),
+    # The loop terminates on (a) 0 blocking findings remaining → [review:mergeable] (normal exit;
+    #     findings demoted to non-blocking by the Measured CONFIRMED Gate may still remain),
     # (b) manual abort via Ctrl+C → /rite:recover (or fix.md AskUserQuestion "中止" → [fix:cancelled-by-user]), or
     # (c) the circuit breaker → [iterate:max-cycles-stopped] / [iterate:max-cycles-reached]
     #     (fires on convergence-trend divergence, or on safety.max_review_cycles as a backstop;
@@ -418,7 +419,7 @@ issue:
 | `criteria` | array | `[file_types, content_analysis]` | Review criteria |
 | `loop.verification_mode` | boolean | `false` | Enable verification mode as supplement to full review. When enabled, reviews after the first cycle perform both full review and verification of previous fixes with incremental diff regression checks |
 | `loop.allow_new_findings_in_unchanged_code` | boolean | `false` | Whether new findings in unchanged code should be blocking. When `false`, new MEDIUM/LOW findings in unchanged code are reported as "stability concerns" (non-blocking) |
-| `loop.convergence_monitoring` | boolean | `true` | **Scaffolding only** — setting this key has no runtime effect. Convergence *is* monitored at runtime, but by the circuit breaker's trend check (`hooks/scripts/review-trend-divergence.sh`), which this key does not configure. The review-fix loop exits on 0 findings (normal), the circuit breaker (trend divergence, or `safety.max_review_cycles` as a backstop), or manual abort (Ctrl+C → `/rite:recover`) — see `skills/iterate/SKILL.md` for the live spec |
+| `loop.convergence_monitoring` | boolean | `true` | **Scaffolding only** — setting this key has no runtime effect. Convergence *is* monitored at runtime, but by the circuit breaker's trend check (`hooks/scripts/review-trend-divergence.sh`), which this key does not configure. The review-fix loop exits on 0 blocking findings (normal), the circuit breaker (trend divergence, or `safety.max_review_cycles` as a backstop), or manual abort (Ctrl+C → `/rite:recover`) — see `skills/iterate/SKILL.md` for the live spec |
 | `loop.auto_propagation_scan` | boolean | `true` | After a fix is applied, automatically scan for similar patterns elsewhere in the codebase to catch propagation gaps |
 | `loop.pre_commit_drift_check` | boolean | `true` | Run `review-schema-version-check` before committing fix changes to catch review-result schema_version drift |
 | `doc_heavy.enabled` | boolean | `true` | Enable Doc-Heavy PR detection. When a PR's diff is dominated by documentation changes, the `tech-writer` reviewer is boosted and verifies five doc-implementation consistency categories via Grep/Read/Glob |
@@ -441,7 +442,7 @@ The review-fix loop exits via the following paths:
 
 | Exit | Trigger |
 |------|---------|
-| Normal | 0 findings remaining → `[review:mergeable]` |
+| Normal | 0 **blocking** findings remaining → `[review:mergeable]` (findings demoted to non-blocking may still remain — see below) |
 | Manual abort | User aborts via `Ctrl+C` → `/rite:recover` (or selects "中止" in `fix.md` AskUserQuestion → `[fix:cancelled-by-user]`) |
 | Circuit breaker | Convergence-trend divergence detected, **or** cycle count reaches `safety.max_review_cycles` (backstop) → `[iterate:max-cycles-stopped]` (interactive) / `[iterate:max-cycles-reached]` (batch). The sentinels are the same for both fire reasons; only the stop notice's reason line and its per-cycle blocking trend differ. Both modes stop mechanically without prompting and record a non-convergent **failure** that never reaches a merge — see [`safety` § the review⇄fix circuit breaker](#safety) |
 
@@ -640,7 +641,7 @@ When a limit is exceeded, the workflow presents options (**except the review⇄f
 
 **The review⇄fix circuit breaker (two fire conditions):**
 
-The `/rite:iterate` review⇄fix loop normally exits only on `[review:mergeable]` (0 findings). A circuit breaker keeps a non-convergent PR from looping forever. It fires on **either** of two conditions, evaluated at each loop head:
+The `/rite:iterate` review⇄fix loop normally exits only on `[review:mergeable]` (0 blocking findings; findings the Measured CONFIRMED Gate demoted to non-blocking are recorded and may still remain — see `plugins/rite/references/severity-levels.md` §実測必須ゲート for what counts as blocking). A circuit breaker keeps a non-convergent PR from looping forever. It fires on **either** of two conditions, evaluated at each loop head:
 
 1. **Convergence-trend divergence (primary).** `plugins/rite/hooks/scripts/review-trend-divergence.sh` reconstructs the current run's per-cycle blocking counts from the persisted review-result JSON and reports divergence when the two most recent counts both exceed the run's earlier best *and* are not still descending. The two conditions are independent, so a diverging loop is cut early instead of burning the whole budget — but the rule needs at least three results in the run before "the run's earlier best" is defined, and a loop head carries the count of *completed* reviews, so cycles 1, 2, and 3 always fall through to the backstop; the check is first armed at the head of cycle 4. With the default budget of 5 that leaves exactly two loop heads — the heads of cycles 4 and 5 — at which the trend can fire, before the backstop takes over at the head of cycle 6.
 2. **`max_review_cycles` reached (backstop).** Catches the runs the trend check deliberately passes over — a count that keeps shrinking but never reaches 0 (an intentional escape so that a run still descending is never cut), or one that plateaus at the run's best (an intentional boundary, because firing there would kill a loop that is a couple of findings from done). The backstop is an independent condition that never consults the trend verdict, so at the default of 5 it is what stops a *converging* run that needs 6 or more cycles. What the value should be is undecided; this section describes the behaviour of the current one.
