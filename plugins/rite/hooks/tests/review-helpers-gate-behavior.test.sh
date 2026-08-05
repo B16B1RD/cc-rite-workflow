@@ -2161,22 +2161,25 @@ assert_not_grep "TC-4.16l 段 1 を通らないので UNRESOLVED marker も出�
 # =====================================================================
 echo "--- TC-4.17/4.18: pointer-only 本文 (Issue #2039) ---"
 
-# TC-4.17 [T-04] `file:line` を取得できなかった finding は **行を落とさず** `-` を入れる規約
-# (SKILL.md 6.1.d)。行を落とすと `📎 non_blocking_count:` の申告値と表の行数が食い違い、記録が
-# 申告より少ないことに誰も気付けなくなる。helper は表の行数を検査しないので、`-` 入りの行が
-# 本文検査 4 段を素通りすること (= 規約どおり書いた本文が弾かれないこと) をここで固定する。
-# 3 行 (うち 1 行が `-`) / 申告 3 の整合ペアで、count 検査が通り投稿されることまで見る。
+# TC-4.17 [Issue #2039] `-` 入りの `file:line` セルを含む本文が helper の本文検査 4 段を素通り
+# すること (= 規約どおり書いた本文が弾かれないこと) を固定する。**規約そのもの (行を落とさず `-`
+# を入れる) を pin するのは TC-5i 側**で、helper は表の行数も列も検査しないため本 TC では弁別
+# できない — 下の negative control がその事実を実測で示す。3 行 (うち 1 行が `-`) / 申告 3 の
+# 整合ペアで、count 検査が通り投稿されることまで見る。
 NBR_BODY_DASH="$TMP_ROOT/nbr-body-dash.md"
 printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| レビュアー | 重要度 | ファイル:行 |\n|-----------|--------|------------|\n| security-reviewer | CRITICAL | src/db/users.ts:42 |\n| code-quality-reviewer | MEDIUM | - |\n| test-reviewer | LOW | t/a.test.sh:7 |\n\n> 各指摘の詳細は `.rite/review-results/9-*.json` の `non_blocking_findings[]` にあります。\n\n📎 non_blocking_count: 3\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_DASH"
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 3 --iteration-id 9-501 --content-file "$NBR_BODY_DASH"
 assert "TC-4.17 file:line がハイフン (-) の行を含む本文: exit 0" "0" "$RC"
 assert_grep "TC-4.17 outcome=created (本文検査 4 段を通過し投稿される)" "$ERR" 'outcome=created; count=3; iteration_id=9-501;'
 assert_not_grep "TC-4.17 count_body_mismatch にならない (申告 3 と --count 3 が一致)" "$ERR" 'reason=count_body_mismatch'
-# [negative control] 行を落として 2 行にすると申告 3 と食い違う。helper は行数を見ないため
-# ここは通ってしまう — つまり `-` 規約を守らせる責務が caller 側にあることの実測。この
-# assertion が無いと TC-4.17 の positive だけでは「helper が行数を検査している」と誤読しうる。
+# [negative control] positive との差分を **1 変数 (行を 1 本落としただけ)** に保つ。所在行など
+# 他の要素は positive と同一にすること — 2 変数差分にすると「どちらの差が結果を変えなかったか」
+# が言えなくなる。行を落として 2 行にすると申告 3 と食い違うが、helper は行数を見ないためここは
+# 通る。これは helper の現行挙動 (行数検査なし = caller 責務) の意図的な lock-in であり、将来
+# helper 側へ行数検査を移す場合は本 assert を意図的に更新すること。この assertion が無いと
+# TC-4.17 の positive だけでは「helper が行数を検査している」と誤読しうる。
 NBR_BODY_DROPPED="$TMP_ROOT/nbr-body-dropped.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| レビュアー | 重要度 | ファイル:行 |\n|-----------|--------|------------|\n| security-reviewer | CRITICAL | src/db/users.ts:42 |\n| test-reviewer | LOW | t/a.test.sh:7 |\n\n📎 non_blocking_count: 3\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_DROPPED"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| レビュアー | 重要度 | ファイル:行 |\n|-----------|--------|------------|\n| security-reviewer | CRITICAL | src/db/users.ts:42 |\n| test-reviewer | LOW | t/a.test.sh:7 |\n\n> 各指摘の詳細は `.rite/review-results/9-*.json` の `non_blocking_findings[]` にあります。\n\n📎 non_blocking_count: 3\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_DROPPED"
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 3 --iteration-id 9-502 --content-file "$NBR_BODY_DROPPED"
 assert_grep "TC-4.17 [negative control] 行を落としても helper は検出しない (行数は caller 責務)" "$ERR" 'outcome=created; count=3; iteration_id=9-502;'
 
@@ -2833,11 +2836,31 @@ else
         "$(printf '%s\n' "$_va_fence" | grep -cE '\| *(内容|推奨対応) *\|' || true)"
       assert "TC-5i variant A fence に description / suggestion placeholder が無い" "0" \
         "$(printf '%s\n' "$_va_fence" | grep -cE '\{(description|suggestion)\}' || true)"
-      # AC-3: 全文の所在 (ローカル JSON のパスと配列名) が fence 内に明記されている
-      assert "TC-5i variant A fence に全文の所在 (review-results パス) が 1 行ある" "1" \
-        "$(printf '%s\n' "$_va_fence" | grep -c '\.rite/review-results/' || true)"
-      assert "TC-5i variant A fence の所在行が non_blocking_findings 配列を名指しする" "1" \
-        "$(printf '%s\n' "$_va_fence" | grep -c 'non_blocking_findings' || true)"
+      # AC-3: 全文の所在 (ローカル JSON のパスと配列名) が **同一行に** 明記されている。
+      #     2 本の独立 grep にすると、パスと配列名を別行へ割った mutation を通す
+      #     (ラベルが「所在行」と表明している以上、同一行であることまで要求する)。
+      assert "TC-5i variant A fence の所在行がパスと non_blocking_findings を同一行で示す" "1" \
+        "$(printf '%s\n' "$_va_fence" | grep -cE '\.rite/review-results/.*non_blocking_findings' || true)"
+      # 列形状の pin だけでは「表を 3 列に保ったまま fence 内の別の場所へ全文を再掲載する」
+      #     退行 (箇条書き / 脚注 / 追加 fence) を 1 assert も捕捉できない (実測: 表の下に
+      #     `- **{file}:{line}** — {finding_detail_text}` を足しても全 assert green)。
+      #     fence が持ってよい placeholder を allowlist で固定し、全文を運ぶ新しい placeholder の
+      #     追加を落とす。値の追加・改名はどちらもここで loud fail し、期待値更新という形で
+      #     人手のレビューを強制する。
+      _va_ph=$(printf '%s\n' "$_va_fence" | grep -oE '\{[a-z_]+\}' | sort -u | tr '\n' ' ')
+      assert "TC-5i variant A fence の placeholder 集合が allowlist と一致 (全文再掲載の検出)" \
+        "{current_commit_sha} {file} {line} {non_blocking_count} {pr_number} {reviewer_type} {severity} " \
+        "$_va_ph"
+      # 全文掲載の禁止は「列」ではなく「本文への掲載そのもの」であることを 6.1.d 区間の散文で
+      #     pin する。placeholder allowlist は新しい placeholder を捕まえるが、literal な散文で
+      #     全文を書く経路は捕まえられない — 禁止の射程を宣言した文自体が消える退行を落とす。
+      assert "TC-5i 6.1.d 区間に「表の外への全文再掲載も禁止」の宣言が 1 箇所" "1" \
+        "$(_sec_610d | grep -c '表の外に別形式で全文を再掲載することも禁止' || true)"
+      # [T-04 / AC-2] `file:line` 未取得時に行を落とさず `-` を入れる規約。helper は表の行数を
+      #     検査しない (TC-4.17 の negative control が実測で固定) ため、この規約を守らせる層は
+      #     6.1.d の散文しかない。規約文の消失を落とす (TC-5h の字下げ禁止 pin と同型)。
+      assert "TC-5i 6.1.d 区間に -（行を落とさない）規約が 1 箇所" "1" \
+        "$(_sec_610d | grep -c '行ごと落とさず' || true)"
 
       # (h) 「本文は列 0 から書き出す」指示が variant テンプレートより **前** に 1 本だけ存在する。
       #     variant A/B は番号付きリスト項目の内側にあるため表示上 3 スペース字下げされる一方、

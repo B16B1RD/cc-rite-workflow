@@ -178,14 +178,17 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 
 ユーザー向け文書が「update-in-place の 1 件」と書くのはこれら縮退を除いた通常時の挙動。
 
-<a id="static-pin"></a>
 <a id="pointer-only"></a>
 ## 記録コメントをポインタのみにした理由
 6.1.d の記録コメントは `pr_review.post_comment` に依存せず投稿される（D-01 の担保として意図的にそう設計されている）。全文を載せると、既定構成 `post_comment: false` — ユーザーが「レビュー内容を GitHub に出さない」と読む設定 — のままで、security reviewer の非実測 CRITICAL の詳細（脆弱性の再現手順等）が修正前に public PR へ自動公開される。
 
-D-01 が要求するのは「非実測指摘を破棄せず、マージ後に人間が拾い直せる」ことであって「詳細を公開 PR に載せる」ことではない。ポインタ（reviewer / severity / `file:line`）だけでも「どの reviewer がどのファイルの何行目に何 severity の指摘を残したか」は伝わり、全文は経路 (1) の永続 JSON から辿れるため D-01 は満たせる。よって記録コメントは**ポインタのみ**とし、全文の唯一の保存先を経路 (1) に一本化する（Issue #2039）。
+D-01 が要求するのは「非実測指摘を破棄せず、マージ後に人間が拾い直せる」ことであって「詳細を公開 PR に載せる」ことではない。ポインタ（reviewer / severity / `file:line`）だけでも「どの reviewer がどのファイルの何行目に何 severity の指摘を残したか」は伝わり、全文は経路 (1) の永続 JSON から辿れる。よって記録コメントは**ポインタのみ**とし、既定構成 `post_comment: false` における全文の保存先を経路 (1) に一本化する（Issue #2039）。
 
-派生する 2 つの判断:
+**「唯一」は既定構成に限った性質である。** `post_comment: true` では経路 (3)（ステップ 5.4 統合レポートの `### 実測なし指摘 (non-blocking)` section）が 6 列のまま全文を保持し、ステップ 6.1.b がそれを PR コメントとして投稿する。したがって本節の開示縮小が効くのは既定構成に限られる。`post_comment: true` 経路にも同方針を広げるかは、経路 (3) のテンプレート（`references/integrated-report-templates.md`）の改訂を伴うため本 Issue の対象外。
+
+**一本化には cleanup 側の保全が対になっている。** `/rite:cleanup` ステップ 6 は PR-specific state を merge 直後に削除するが、`non_blocking_findings[]` が非空の結果 JSON だけは削除せず `.rite/review-results/archive/` へ退避する。この退避が無いと、記録コメントが全文を持たなくなった結果「cleanup 完了時点で詳細がどこにも残らない」= D-01 が本変更**前より後退する**。判定に jq を要するため、jq 不在 / parse 失敗 / 判定不能はすべて退避側（安全側）に倒す — 消えたことに気付けない失敗を作らないため。
+
+派生する判断:
 
 - **opt-in 設定（`pr_review.record_comment_detail: pointer|full` 等）は設けない** — 分岐が増えれば 6.1.d の本文生成と placeholder residue gate も増える。実需の Issue が出るまで拡張点を作らない（CLAUDE.md「no speculative structure」/「シンプルさを死守する」）
 - **PR の public / private は判定しない** — helper 側で分岐を増やすと public/private の変更に追随できないため、private repo でも同じ形式にする
@@ -193,8 +196,9 @@ D-01 が要求するのは「非実測指摘を破棄せず、マージ後に人
 
 `file:line` を持たない finding で**行を落とさず** `-` を入れるのは、行を落とすと `📎 non_blocking_count:` の申告値と表の行数が食い違い、記録が申告より少ないことに気付けなくなるため。helper は表の行数を検査しない（見るのは 1 行目 marker / 最終非空行 sentinel / 件数行の 3 つだけ）ので、この整合は caller 側の責務になる。
 
-同じ理由で、この開示方針を強制する層は SKILL.md のテンプレートしかない — helper は本文の列構成を知らないため、列を戻す編集は helper 側テストを全 green のまま通す。テンプレート側の静的 pin（TC-5i）が唯一の防御層である。
+同じ理由で、この開示方針を強制する層は SKILL.md のテンプレートしかない — helper は本文の列構成を知らないため、列を戻す編集は helper 側テストを全 green のまま通す。テンプレート側の静的 pin（TC-5i）がその防御層になる。**ただし TC-5i が守るのはテンプレートの形（3 列ヘッダ / 3 列データ行 / fence 内 placeholder 集合 / 全文所在行の存在）までで、「テンプレートは正しいまま実行時に LLM が全文を書いた cycle」は捕捉できない** — 静的 pin は構造的にそこへ届かない。実行時の強制が要るなら helper の本文検査に第 5 段を足す形になるが、実需が観測されるまで追加しない。
 
+<a id="static-pin"></a>
 ## 静的 pin に mutation 実測を要求する理由
 静的 pin は、追加時点から一度も失敗しえない tautology になりやすい（典型は「旧形状を検索する pin を、旧形状を消した同じ commit で追加する」形）。加えて次の失敗形がある:
 
