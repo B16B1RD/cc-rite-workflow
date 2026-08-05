@@ -3,7 +3,7 @@ title: "mkdir 成功のみの判定漏れと brace group 未使用によるリ�
 domain: "anti-patterns"
 description: "フォールバック判定を先頭コマンド (mkdir) の終了コードだけに頼ると後続の書き込み失敗を見逃す。是正の write probe (`{ : > FILE; } 2>/dev/null`) 自体も brace group を欠くと `>` が先に評価され open 失敗の診断メッセージが stderr に漏れる。PR #1969 (Issue #1968) で cycle 1 (非対称フォールバック) → cycle 3 (probe への brace group 適用) → cycle 5 (同一ファイル内の隣接行と不統一な新規追加行が回帰) の 3 段階で顕在化した。"
 created: "2026-07-22T08:20:00+00:00"
-updated: "2026-07-22T08:20:00+00:00"
+updated: "2026-08-06T00:40:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260722T050800Z-pr-1969.md"
@@ -15,6 +15,8 @@ sources:
     ref: "raw/reviews/20260722T070904Z-pr-1969-cycle5.md"
   - type: "fixes"
     ref: "raw/fixes/20260722T070928Z-pr-1969-cycle5.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260805T124633Z-pr-2114.md"
 tags: []
 confidence: high
 ---
@@ -40,10 +42,25 @@ confidence: high
 - 同一ファイル内に既存の brace group パターンがある場合、新規追加コードは必ずそれに揃える。パターン不統一は最も検出しにくい回帰源になる（隣接行が正しいので目視レビューで見逃されやすい）。
 - 実機検証 (stderr へのバイト数実測) で severity 判定の確度を上げる。「漏れているはず」という推論だけでなく、実際に漏れたバイト数を確認することで fix 前後の差分を主張できる。
 
+### 追記 (PR #2114 cycle 4): 捨てられるのは「原因が最も要る側」
+
+このスコープ差は「診断が漏れる/漏れない」だけの問題ではない。**どちらの失敗が捨てられるか**を見ると、単純コマンド形の害はより大きい:
+
+| 形 | redirect 自身の失敗 (EACCES / パス衝突) | コマンドの書き込み失敗 (ENOSPC) |
+|---|---|---|
+| `printf ... > F 2>/dev/null` (単純コマンド) | **stderr へ漏れる** — bash は `2>/dev/null` 適用**前**に報告する | **捨てられる** |
+| `{ printf ... > F; } 2>&1` (グループ) | 捕捉できる | 捕捉できる |
+
+つまり単純コマンド形は「原因が最も要る側 (ENOSPC) だけを捨て、要らない側 (EACCES) を漏らす」という最悪の分配になる。**「先例と同型」を名乗る前に、先例の redirect スコープまで読む** — PR #2114 では先例として引いた形がグループスコープで、挙動が逆だった。
+
+この差は「エラーメッセージが出るか」ではなく「**どこに出るか**」でしか観測できないため、静的 pin は文言ではなく**列位置**に取る (`^  .*/\.gitignore: ` が 1 本、列 0 の同型行が 0 本)。あわせて診断 pin を locale に依存させないこと — `Permission denied` に結合させると ja_JP 環境で 1 件も拾えない。構造 (`<path>: `) に anchor し、診断が制御文字 neutralize を通る経路では 0x80-0x9f がバイト単位で潰れて行が invalid UTF-8 になるため、`LC_ALL=C` を付けないと ASCII の anchor すら空振りする (実測)。
+
 ## 関連ページ
 
 - [`cmd 2>/dev/null` は no-match と write failure を混同する](./cmd-redirect-or-true-conflates-nomatch-and-write-failure.md)
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](./fix-induced-drift-in-cumulative-defense.md)
+- [ガードの述語は「守りたい状態」そのものを測る](../heuristics/guard-predicate-measures-the-protected-state.md)
+- [診断退避用の tempfile は診断が最も要る場面でだけ消える](../heuristics/diagnostic-tempfile-fails-when-diagnosis-needed-most.md)
 
 ## ソース
 
@@ -52,3 +69,4 @@ confidence: high
 - [PR #1969 cycle 3 fix (chmod probe への brace group 適用)](../../raw/fixes/20260722T060230Z-pr-1969-cycle3.md)
 - [PR #1969 cycle 5 review (brace group 未使用のリダイレクト評価順序回帰)](../../raw/reviews/20260722T070904Z-pr-1969-cycle5.md)
 - [PR #1969 cycle 5 fix (brace group への統一)](../../raw/fixes/20260722T070928Z-pr-1969-cycle5.md)
+- [PR #2114 fix results (cycle 4) — 捨てられる側の非対称と列位置 pin](../../raw/fixes/20260805T124633Z-pr-2114.md)

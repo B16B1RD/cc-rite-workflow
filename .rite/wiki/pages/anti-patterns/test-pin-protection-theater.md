@@ -2,7 +2,7 @@
 title: "Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する"
 domain: "anti-patterns"
 created: "2026-04-24T14:55:00+00:00"
-updated: "2026-08-03T07:46:56Z"
+updated: "2026-08-06T00:40:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260722T221143Z-pr-1973.md"
@@ -10,6 +10,8 @@ sources:
     ref: "raw/reviews/20260722T222828Z-pr-1973.md"
   - type: "fixes"
     ref: "raw/fixes/20260722T223211Z-pr-1973.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260805T095118Z-pr-2114.md"
   - type: "reviews"
     ref: "raw/reviews/20260424T095915Z-pr-655-cycle6.md"
   - type: "reviews"
@@ -40,7 +42,7 @@ sources:
     ref: "raw/reviews/20260803T004941Z-pr-2094.md"
   - type: "reviews"
     ref: "raw/reviews/20260802T163111Z-pr-2094.md"
-tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase, same-file-3-site-sync, subsidiary-claim-empirical-verification, cross-file-cross-site-coverage, multi-axis-mutation-verification]
+tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase, same-file-3-site-sync, subsidiary-claim-empirical-verification, cross-file-cross-site-coverage, multi-axis-mutation-verification, channel-collision, negative-control]
 confidence: high
 ---
 
@@ -407,7 +409,38 @@ pin を「張ったつもり」にする 2 つの具体形。どちらも同 PR 
 
 アサーション名に「直接確認」等の強い語を置くと、読み手は守られていると誤認する — これは本ページが扱う protection theater そのものである。
 
+## 変種: assert の pattern が「同じチャネルに出る別の行」に当たっている
+
+PR #2114 cycle 1 では、pin が守る対象を検査していない形が 3 件独立に検出された。いずれも「pin はある・mutation matrix も通っている」のに実質の検出力がゼロだった。
+
+**(1) 部分文字列 match による vacuous assertion（チャネル衝突）**
+
+`assert_grep ... "$ERR" 'mkdir'` は、検査したい「helper の stderr 転送行」ではなく、**同じ stderr に出る reason marker 行**（`reason=..._archive_mkdir_failure`）にも match していた。検査対象を削除しても green。
+
+有効な修正は、転送経路に固有の形へ anchor すること — `sed 's/^/  /'` 由来の先頭 2 スペース + program-name prefix（`^  mkdir`）。
+
+> assert の pattern を書いたら、**同じチャネル（同じファイル / 同じ stderr）に出る別の行に当たらないか**を必ず確認する。substring が別の marker 名の部分文字列になっているケースが最頻。
+
+marker 名の包含関係も同型の罠である（`REMOTE_BRANCH_DELETE_FAILED` は `BRANCH_DELETE_FAILED` を部分文字列として含む）。`[CONTEXT] ` prefix 込みで行頭から一致させると構造的に衝突しない。
+
+**(2) 文字クラスが対象集合を狭めすぎる静的 pin**
+
+placeholder allowlist の抽出正規表現 `\{[^}[:space:]]+\}` は、**空白を含む placeholder**（`{finding full description}`）を 1 件も拾わなかった。pin が守る対象（全文の再掲載禁止）の反例が、pin の抽出 regex の**外側**に落ちていた。
+
+**mutation matrix が「pin が拾える形の mutation」だけで構成されると、この抜けは mutation 実測でも露見しない**。負の対照（旧 regex + 同一 mutation で全 green）を取って初めて blind であることが示せる。
+
+さらに、pin を広げた直後には逆向きの穴が空く — 文字クラスを `[^}]` へ広げたところ、今度は「allowlist 済みの placeholder だけで組んだ表外の再掲載」が捕捉できないことが判明した。**pin を広げたら、広げた後の allowlist 内要素だけで同じ違反を組めないかを必ず試す。**
+
+**(3) 未到達分岐 + 件数申告の不一致**
+
+helper の reason 語彙 4 種のうち 2 種に assertion が 0 本だった。うち 1 つは GNU coreutils の `mv -n` が衝突時に rc=1 を返すため Linux では**構造的に到達不能**で、BSD/macOS 専用の分岐が Linux CI では壊れたまま配布されうる。**platform 限定の assert は shim で置き換える（chmod では置き換えない）** — 実コマンドを chmod で失敗させる形は root leg で無効化され、避けようとした穴を別の軸で再生産する。
+
+**(4) replaced pin にも負の対照が要る**
+
+新規 pin だけでなく、**置換した pin** も「旧 pin ではこの mutation が見えなかった」ことを実測する。PR #2114 cycle 4 では、旧 `grep -cF` の caller pin が呼び出しのコメントアウトを素通しすること、旧 `^  mv` pin が BSD 相当の `mv`（rc=0 / 無 stderr）では mutation の有無に関わらず落ちることを、それぞれ shim で実測した。
+
 ## ソース（追記分）
 
 - [PR #2094 review results (cycle 2) — 静的 pin が行継続文字を照合せず 1 文字 drift を素通り](../../raw/reviews/20260803T004941Z-pr-2094.md)
 - [PR #2094 review results — load-bearing なコードコメントに対応するテストが無い](../../raw/reviews/20260802T163111Z-pr-2094.md)
+- [PR #2114 review results — チャネル衝突による vacuous assertion と抽出 regex の外に落ちる反例](../../raw/reviews/20260805T095118Z-pr-2114.md)

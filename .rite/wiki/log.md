@@ -1,3 +1,14 @@
+## 2026-08-06
+
+* **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — raw/reviews/20260805T095118Z-pr-2114.md を統合（assert の pattern が同じ stderr に出る reason marker 行へ巻き込みマッチして vacuous 化 / 抽出 regex の文字クラスが反例を対象外へ落とす / platform 限定 assert は shim で置き換える）
+* **Create**: [診断退避用の tempfile は診断が最も要る場面でだけ消える — command substitution へ畳む](pages/heuristics/diagnostic-tempfile-fails-when-diagnosis-needed-most.md) — raw/fixes/20260805T101044Z-pr-2114.md を新規ページ化（mktemp の失敗条件が退避対象の失敗条件と相関するため異常系でだけ無音になる / 有効な修正は機構の追加ではなく削除）
+* **Update**: [新設した出力フィールドは producer と consumer の両側を pin する — consumer が表なら行単位で pin する](pages/patterns/new-output-field-pin-producer-and-consumer.md) — raw/reviews/20260805T104742Z-pr-2114.md を統合（reason 非依存の consumer に reason を増やすこと自体が意味論の衝突を生む / reason は consumer が何を分岐すべきかの粒度で切る）
+* **Update**: [fail-loud ガードは同じ帰結を持つ全出口に張る（症状側から出口を網羅する）](pages/heuristics/fail-loud-guard-covers-all-sibling-exits.md) — raw/fixes/20260805T110153Z-pr-2114.md を統合（同じ規律が静的 pin にも及ぶ / 「この pin が守る対象はこのファイルに何本あるか」/ helper 本体を厚く pin しても呼び出し元は別の面）
+* **Create**: [保護は「設定ファイルの内容」ではなく「保護対象と同じ場所」に置く](pages/heuristics/protection-colocated-with-target-not-config-state.md) — raw/reviews/20260805T112936Z-pr-2114.md を新規ページ化（設定ファイル依存の保護はセットアップ履歴・アップグレード経路・設定 drift の 3 つに同時に依存する）
+* **Update**: [保護は「設定ファイルの内容」ではなく「保護対象と同じ場所」に置く](pages/heuristics/protection-colocated-with-target-not-config-state.md) — raw/fixes/20260805T114122Z-pr-2114.md を統合（判定基準は仮定する状態の成立経路を全部列挙できるか / pin は現在の整形ではなく守りたい不変量に結合させる）
+* **Create**: [ガードの述語は「守りたい状態」そのものを測る — 存在ではなく内容を測る](pages/heuristics/guard-predicate-measures-the-protected-state.md) — raw/reviews/20260805T122139Z-pr-2114.md を新規ページ化（ENOSPC で 0 バイトが残り存在ガードが恒久無音 skip 化 / 述語を正しくすれば post-write の追加検査は要らない）
+* **Update**: [mkdir 成功のみの判定漏れと brace group 未使用によるリダイレクト診断メッセージ漏洩](pages/anti-patterns/mkdir-success-only-check-and-redirect-diagnostic-leak.md) — raw/fixes/20260805T124633Z-pr-2114.md を統合（単純コマンド形は原因が最も要る側 ENOSPC だけを捨て要らない側 EACCES を漏らす / pin は文言でなく列位置に取り LC_ALL=C を付ける）
+
 ## 2026-08-05
 
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260804T135121Z-pr-2111.md を統合（散文→helper 委譲リファクタで 23 変異中 8 生存を実測、散文から移した仕様の「実行可能仕様」が fixture に揃っているかの機械検証として有効）
