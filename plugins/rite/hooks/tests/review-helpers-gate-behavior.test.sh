@@ -232,11 +232,22 @@ if [ "${1:-}" = "api" ]; then
         [ -n "${GH_COMMENT_GET_STDOUT_ON_ERROR:-}" ] && printf '%s' "$GH_COMMENT_GET_STDOUT_ON_ERROR"
         exit "${GH_COMMENT_GET_RC}"
       fi
-      # helper は `--jq '[.user.login, .issue_url] | @tsv'` で author と所属 PR を同時に取る。
-      # issue_url は `/issues/{N}` 末尾一致で「当該 PR のコメントか」を検証する入力なので、
-      # 既定値は PR #9 に属する形にし、GH_COMMENT_GET_ISSUE_URL で別 PR を指せるようにする。
-      printf '%s\t%s' "${GH_COMMENT_GET_LOGIN-rite-bot}" \
-        "${GH_COMMENT_GET_ISSUE_URL-https://api.github.com/repos/o/r/issues/9}"
+      # helper は `gh api ... | jq --arg ...` で author / 所属 PR / 記録コメント述語の 3 つを
+      # 同時に取る (`--jq` では `--arg` を渡せないため実 jq へ繋いでいる)。したがって stub は
+      # **生 JSON** を返す — TSV を返すと述語の評価が stub 側に漏れ、jq filter を壊す編集を
+      # テストが検出できなくなる。issue_url は `/issues/{N}` 末尾一致で「当該 PR のコメントか」を、
+      # body は「記録コメントか」(1 行目 marker ∧ 最終非空行 sentinel) を検証する入力なので、
+      # 既定値はどちらも「PR #9 の正規の記録コメント」にし、環境変数で個別に外せるようにする。
+      jq -n \
+        --arg login "${GH_COMMENT_GET_LOGIN-rite-bot}" \
+        --arg issue_url "${GH_COMMENT_GET_ISSUE_URL-https://api.github.com/repos/o/r/issues/9}" \
+        --arg body "${GH_COMMENT_GET_BODY-## 📜 rite 非実測指摘の記録 (non-blocking)
+
+x
+
+<!-- rite:nbr:v1 -->
+}" \
+        '{user: {login: $login}, issue_url: $issue_url, body: $body}'
       exit 0 ;;
   esac
 fi
@@ -305,6 +316,12 @@ run_nbr() {
     GH_PR_EDIT_BODY="$GH_PR_EDIT" GH_PR_EDIT_RC="${GH_PR_EDIT_RC:-0}" \
     GH_COMMENT_GET_RC="${GH_COMMENT_GET_RC:-0}" GH_COMMENT_GET_LOGIN="${GH_COMMENT_GET_LOGIN-rite-bot}" \
     GH_COMMENT_GET_ISSUE_URL="${GH_COMMENT_GET_ISSUE_URL-https://api.github.com/repos/o/r/issues/9}" \
+    GH_COMMENT_GET_BODY="${GH_COMMENT_GET_BODY-## 📜 rite 非実測指摘の記録 (non-blocking)
+
+x
+
+<!-- rite:nbr:v1 -->
+}" \
     GH_COMMENT_GET_STDOUT_ON_ERROR="${GH_COMMENT_GET_STDOUT_ON_ERROR:-}" \
     GH_COMMENT_GET_STDERR="${GH_COMMENT_GET_STDERR:-}" GH_POST_URL="${GH_POST_URL-https://github.com/o/r/pull/9#issuecomment-4242}" \
     _timeout 10 bash "$PLUGIN_ROOT/hooks/review-nonblocking-record.sh" "$@" >"$OUT" 2>"$ERR" || RC=$?
@@ -1054,6 +1071,30 @@ NBR_PRBODY_INLINE_FIRST="$TMP_ROOT/nbr-prbody-inline-first.md"
 printf '## 概要\n\nid は `<!-- rite:nbr:comment-id:11 -->` のような行で PR body に置く\n\n<!-- rite:nbr:comment-id:11 -->\n' > "$NBR_PRBODY_INLINE_FIRST"
 NBR_PRBODY_INLINE_LAST="$TMP_ROOT/nbr-prbody-inline-last.md"
 printf '## 概要\n\n<!-- rite:nbr:comment-id:11 -->\n\nid は `<!-- rite:nbr:comment-id:BROKEN -->` のような行で PR body に置く\n' > "$NBR_PRBODY_INLINE_LAST"
+# 上の 2 fixture は decoy の**両側**に非空白を置くため、`^` と `$` の**論理積**しか固定できない
+# (片方だけを外した mutant は残る方のアンカーに阻まれて生存する)。各アンカーを独立に殺すには
+# decoy の片側だけを非空白にする必要がある。どちらも正規の marker 行を**先**に置き、decoy を
+# 後ろに置く (抽出は `tail -1` を採るため、decoy が後ろでないと抽出側の欠陥が観測できない)。
+# DECOY_TAIL: 行頭は marker、後ろに散文 → `$` を外すと抽出が偽 id を拾い、除去がこの行を消す。
+NBR_PRBODY_DECOY_TAIL="$TMP_ROOT/nbr-prbody-decoy-tail.md"
+printf '## 概要\n\n<!-- rite:nbr:comment-id:11 -->\n\n<!-- rite:nbr:comment-id:BROKEN --> (注記: この行は marker ではない)\n' > "$NBR_PRBODY_DECOY_TAIL"
+# DECOY_HEAD: 前に散文、行末が marker → `^` を外すと同じ 2 つが起きる。
+NBR_PRBODY_DECOY_HEAD="$TMP_ROOT/nbr-prbody-decoy-head.md"
+printf '## 概要\n\n<!-- rite:nbr:comment-id:11 -->\n\n例: <!-- rite:nbr:comment-id:BROKEN -->\n' > "$NBR_PRBODY_DECOY_HEAD"
+# marker 行が完全一致から外れる 3 形。GitHub の web UI で PR 説明を編集すると本文は CRLF で返り、
+# 人間が字下げや末尾空白を混ぜることもある。両式が行頭・行末の空白を許容しないと、これらは
+# 「抽出も除去も外れる」= marker 不在と区別できない無音の破損になる (helper の形状定義コメントが
+# 自ら避けると宣言している状態)。3 形とも durable id 経路が成立することを固定する。
+NBR_PRBODY_CRLF_ID11="$TMP_ROOT/nbr-prbody-crlf-id11.md"
+printf '## 概要\r\n\r\nPR の説明本文\r\n\r\n<!-- rite:nbr:comment-id:11 -->\r\n' > "$NBR_PRBODY_CRLF_ID11"
+NBR_PRBODY_INDENT_ID11="$TMP_ROOT/nbr-prbody-indent-id11.md"
+printf '## 概要\n\nPR の説明本文\n\n  <!-- rite:nbr:comment-id:11 -->\n' > "$NBR_PRBODY_INDENT_ID11"
+NBR_PRBODY_TRAILING_ID11="$TMP_ROOT/nbr-prbody-trailing-id11.md"
+printf '## 概要\n\nPR の説明本文\n\n<!-- rite:nbr:comment-id:11 --> \n' > "$NBR_PRBODY_TRAILING_ID11"
+# marker 行は実在するが値を取り出せない PR body (手動編集で値だけ消えた形)。「marker 不在」に
+# 畳むと PR body 側の破損が無音になるため、probe で切り分けて id_malformed へ倒すことを固定する。
+NBR_PRBODY_BROKEN_SHAPE="$TMP_ROOT/nbr-prbody-broken-shape.md"
+printf '## 概要\n\nPR の説明本文\n\n<!-- rite:nbr:comment-id: -->\n' > "$NBR_PRBODY_BROKEN_SHAPE"
 # create 経路が永続化する id (stub の GH_POST_URL 既定値) を canonical に持つコメント一覧。
 NBR_COMMENTS_4242="$TMP_ROOT/nbr-comments-4242.json"
 cat > "$NBR_COMMENTS_4242" <<'EOF'
@@ -1905,6 +1946,114 @@ GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_INLINE_LAST" \
 assert "TC-4.16m'' 散文が marker 行より後ろ: exit 0" "0" "$RC"
 assert_not_grep "TC-4.16m'' 散文行から偽の id を拾わない" "$ERR" 'reason=id_malformed'
 assert_grep "TC-4.16m'' 独立行の marker (id=11) で解決する" "$ERR" 'outcome=updated; count=2; iteration_id=9-419; comment_id=11; degraded=0'
+
+# TC-4.16n [cycle 2 F-18 対応] 片側アンカーを独立に固定する。decoy の片側だけが非空白なので、
+# `^` / `$` のどちらか一方を外しただけの mutant もここで落ちる (両アンカー同時除去でしか落ちない
+# TC-4.16m 系との差がそのまま identification power の差になる)。
+GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_DECOY_TAIL" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-420 --content-file "$NBR_BODY_C2"
+assert "TC-4.16n 行頭 marker + 後続散文: exit 0" "0" "$RC"
+assert_not_grep "TC-4.16n 後続散文つきの行から偽の id を拾わない" "$ERR" 'reason=id_malformed'
+assert_grep "TC-4.16n 独立行の marker (id=11) で解決する" "$ERR" 'outcome=updated; count=2; iteration_id=9-420; comment_id=11; degraded=0'
+GH_COMMENT_GET_LOGIN='other-user' GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_DECOY_TAIL" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-421 --content-file "$NBR_BODY_C2"
+assert "TC-4.16n' fallback 経由で永続化: exit 0" "0" "$RC"
+assert_grep "TC-4.16n' 後続散文つきの行を消さない" "$GH_PR_EDIT" '(注記: この行は marker ではない)'
+
+GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_DECOY_HEAD" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-422 --content-file "$NBR_BODY_C2"
+assert "TC-4.16n'' 先行散文 + 行末 marker: exit 0" "0" "$RC"
+assert_not_grep "TC-4.16n'' 先行散文つきの行から偽の id を拾わない" "$ERR" 'reason=id_malformed'
+assert_grep "TC-4.16n'' 独立行の marker (id=11) で解決する" "$ERR" 'outcome=updated; count=2; iteration_id=9-422; comment_id=11; degraded=0'
+GH_COMMENT_GET_LOGIN='other-user' GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_DECOY_HEAD" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-423 --content-file "$NBR_BODY_C2"
+assert "TC-4.16n''' fallback 経由で永続化: exit 0" "0" "$RC"
+assert_grep "TC-4.16n''' 先行散文つきの行を消さない" "$GH_PR_EDIT" '例: <!-- rite:nbr:comment-id:BROKEN -->'
+
+# TC-4.16o [cycle 2 F-16 対応] marker 行が CRLF / 字下げ / 末尾空白を伴っても durable id 経路が
+# 成立する。両式の行頭・行末が空白を許容しないと 3 形とも「marker 不在」に畳まれ、本 Issue の
+# 中核保証 (AC-1) が WARNING 1 行も出さずに失われる。
+for _fx in "CRLF:$NBR_PRBODY_CRLF_ID11:9-424" "INDENT:$NBR_PRBODY_INDENT_ID11:9-425" "TRAILING:$NBR_PRBODY_TRAILING_ID11:9-426"; do
+  _fx_label="${_fx%%:*}"; _fx_rest="${_fx#*:}"; _fx_path="${_fx_rest%%:*}"; _fx_iter="${_fx_rest##*:}"
+  GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$_fx_path" \
+    run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id "$_fx_iter" --content-file "$NBR_BODY_C2"
+  assert "TC-4.16o [$_fx_label] exit 0" "0" "$RC"
+  assert_grep "TC-4.16o [$_fx_label] id 経路で解決する (comment_id=11)" "$ERR" "outcome=updated; count=2; iteration_id=$_fx_iter; comment_id=11; degraded=0"
+  assert_not_grep "TC-4.16o [$_fx_label] UNRESOLVED marker を出さない" "$ERR" 'NONBLOCKING_ID_UNRESOLVED'
+  assert_not_grep "TC-4.16o [$_fx_label] id 経路なので PR body を書き直さない" "$GH_LOG" '^pr edit'
+done
+# 上のループは **抽出側**しか通らない (id 経路は永続化を skip するため)。除去側は fallback 経由でしか
+# 観測できないので、同じ 3 形を author 不一致で fallback へ倒して張り直させ、**marker 行が 1 本のまま**
+# であることを固定する。除去式だけを行末空白に不寛容へ戻す mutation はここでしか落ちない
+# (抽出側が通っていても、除去が外れれば marker 行は cycle ごとに積む)。
+for _fx in "CRLF:$NBR_PRBODY_CRLF_ID11:9-424b" "INDENT:$NBR_PRBODY_INDENT_ID11:9-425b" "TRAILING:$NBR_PRBODY_TRAILING_ID11:9-426b"; do
+  _fx_label="${_fx%%:*}"; _fx_rest="${_fx#*:}"; _fx_path="${_fx_rest%%:*}"; _fx_iter="${_fx_rest##*:}"
+  GH_COMMENT_GET_LOGIN='other-user' GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$_fx_path" \
+    run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id "$_fx_iter" --content-file "$NBR_BODY_C2"
+  assert "TC-4.16o'''' [$_fx_label] fallback 経由で永続化: exit 0" "0" "$RC"
+  _o_marker_count=$(grep -c 'rite:nbr:comment-id:' "$GH_PR_EDIT" || true)
+  assert "TC-4.16o'''' [$_fx_label] 旧 marker を除去して 1 本に保つ" "1" "$_o_marker_count"
+done
+
+# TC-4.16o' [cycle 2 F-16 対応] marker 行は実在するが値を取り出せない形は、「marker 不在」ではなく
+# id_malformed として loud に落とす。畳むと PR body 側の破損が無音になり、helper 自身の形状定義
+# コメントが避けると宣言している状態が成立する。
+GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_BROKEN_SHAPE" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-427 --content-file "$NBR_BODY_C2"
+assert "TC-4.16o' 値が空の marker 行: exit 0" "0" "$RC"
+assert_grep "TC-4.16o' reason=id_malformed; action=fallback (無音にしない)" "$ERR" 'NONBLOCKING_ID_UNRESOLVED=1; pr=9; reason=id_malformed; action=fallback'
+assert_grep "TC-4.16o' 本文照合の fallback で記録は継続する" "$ERR" 'outcome=updated; count=2; iteration_id=9-427; comment_id=13; degraded=0'
+# marker を持たない PR body は従来どおり無音 (正常系)。probe が緩すぎると初回 cycle で毎回
+# id_malformed が出る誤検出になるため、negative control を対で置く。
+GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_PLAIN" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-428 --content-file "$NBR_BODY_C2"
+assert_not_grep "TC-4.16o'' marker 不在は正常系 (marker を出さない)" "$ERR" 'NONBLOCKING_ID_UNRESOLVED'
+# 散文中に marker 同形の文字列があるだけの PR body も破損ではない (本 PR #2112 の説明文がこの形)。
+GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_DECOY_HEAD" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-429 --content-file "$NBR_BODY_C2"
+assert_not_grep "TC-4.16o''' 散文中の同形文字列を破損と誤検出しない" "$ERR" 'reason=id_malformed'
+
+# TC-4.16p [cycle 2 F-17 対応] durable id が **同一 PR の記録コメント以外** を指すとき PATCH しない。
+# PR body は書き込み権限を持たない PR 作成者でも編集でき、marker を 1 行足すだけで PATCH 先を
+# 指し替えられる。author 一致 + 所属 PR 一致だけでは同 PR のレビュー結果コメント等が素通りし、
+# その本文が記録コメント本文で丸ごと破壊される (fallback 側が 3 述語を持つのはこれを防ぐため)。
+GH_COMMENT_GET_BODY='## 📜 rite レビュー結果
+
+blocking 指摘 3 件
+
+<!-- rite:review-result:v1 -->
+' GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_ID11" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-430 --content-file "$NBR_BODY_C2"
+assert "TC-4.16p 記録コメント以外を指す id: exit 0" "0" "$RC"
+assert_grep "TC-4.16p reason=id_target_not_record; action=fallback" "$ERR" 'NONBLOCKING_ID_UNRESOLVED=1; pr=9; reason=id_target_not_record; action=fallback'
+assert_not_grep "TC-4.16p 記録コメントでない id=11 を PATCH しない" "$GH_LOG" 'issues/comments/11 -X PATCH'
+assert_grep "TC-4.16p 本文照合の fallback へ倒れて記録は継続する" "$ERR" 'outcome=updated; count=2; iteration_id=9-430; comment_id=13; degraded=0'
+# marker 見出しは持つが sentinel を欠く形 (sentinel 導入前の記録コメント / marker を写した人間の
+# コメント) も同様に弾く。述語の連言のうち sentinel 側だけを外す mutation をここで落とす。
+GH_COMMENT_GET_BODY='## 📜 rite 非実測指摘の記録 (non-blocking)
+
+sentinel を持たない
+' GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_ID11" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-431 --content-file "$NBR_BODY_C2"
+assert_grep "TC-4.16p' marker はあるが sentinel を欠く id も弾く" "$ERR" 'NONBLOCKING_ID_UNRESOLVED=1; pr=9; reason=id_target_not_record; action=fallback'
+assert_not_grep "TC-4.16p' sentinel を欠く id=11 を PATCH しない" "$GH_LOG" 'issues/comments/11 -X PATCH'
+
+# TC-4.16q [cycle 2 F-21 / F-19 対応] 静的 pin: `_persist_comment_id` が使う tempfile 3 本
+# (作業用 / 自分の stderr / 呼び出し元 stderr の退避枠) はグローバルに持ち、EXIT / signal trap の
+# 回収対象に載せる。関数ローカルに閉じると gh 実行中の INT/TERM/HUP で TMPDIR に残る
+# (TC-4.11k' と同じく signal-timing テストは racy なため、宣言位置の静的 pin で代替する)。
+_q_nbr_sh="$PLUGIN_ROOT/hooks/review-nonblocking-record.sh"
+_q_cleanup_line=$(grep -n 'rm -f "\${gh_err:-}"' "$_q_nbr_sh" | head -1)
+for _q_var in id_persist_tmp id_persist_err id_persist_prev_err; do
+  case "$_q_cleanup_line" in
+    *"\${$_q_var:-}"*) _q_in_cleanup="yes" ;;
+    *)                 _q_in_cleanup="no" ;;
+  esac
+  assert "TC-4.16q $_q_var が cleanup の rm -f 対象" "yes" "$_q_in_cleanup"
+  # local 宣言に戻す mutation を落とす (cleanup 側の grep だけでは検出できない)。
+  if grep -qE "^[[:space:]]*local .*\b$_q_var\b" "$_q_nbr_sh"; then _q_is_local="yes"; else _q_is_local="no"; fi
+  assert "TC-4.16q $_q_var を local 宣言に戻していない" "no" "$_q_is_local"
+done
 
 # TC-4.16l [degraded 非回帰の positive control] 自 login が取れないときは id 経路も評価できないため
 # 従来どおり degraded=1。段 1 を「自 login 不要」に緩める mutation をここで落とす。
