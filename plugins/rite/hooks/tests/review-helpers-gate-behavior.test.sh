@@ -2847,20 +2847,22 @@ else
       #     fence が持ってよい placeholder を allowlist で固定し、全文を運ぶ新しい placeholder の
       #     追加を落とす。値の追加・改名はどちらもここで loud fail し、期待値更新という形で
       #     人手のレビューを強制する。
-      _va_ph=$(printf '%s\n' "$_va_fence" | grep -oE '\{[a-z_]+\}' | sort -u | tr '\n' ' ')
-      assert "TC-5i variant A fence の placeholder 集合が allowlist と一致 (全文再掲載の検出)" \
+      #     **ラベルは「新規 placeholder の検出」までしか名乗らない** — allowlist 内の 7 種と
+      #     literal な散文だけで全文を再掲載する形はここでは落ちない (下の row-scoped pin が担う)。
+      #     文字クラスは `[^}[:space:]]` — `[a-z_]` だと数字・大文字・ハイフンを含む placeholder
+      #     (`{finding_detail_1}` 等) を 1 件も拾わず allowlist を素通りする (実測)。
+      #     `LC_ALL=C` は prefix を共有する placeholder が将来現れたときの並び順を環境非依存にする。
+      _va_ph=$(printf '%s\n' "$_va_fence" | grep -oE '\{[^}[:space:]]+\}' | LC_ALL=C sort -u | tr '\n' ' ')
+      assert "TC-5i variant A fence の placeholder 集合が allowlist と一致 (全文を運ぶ新規 placeholder の検出)" \
         "{current_commit_sha} {file} {line} {non_blocking_count} {pr_number} {reviewer_type} {severity} " \
         "$_va_ph"
-      # 全文掲載の禁止は「列」ではなく「本文への掲載そのもの」であることを 6.1.d 区間の散文で
-      #     pin する。placeholder allowlist は新しい placeholder を捕まえるが、literal な散文で
-      #     全文を書く経路は捕まえられない — 禁止の射程を宣言した文自体が消える退行を落とす。
-      assert "TC-5i 6.1.d 区間に「表の外への全文再掲載も禁止」の宣言が 1 箇所" "1" \
-        "$(_sec_610d | grep -c '表の外に別形式で全文を再掲載することも禁止' || true)"
-      # [T-04 / AC-2] `file:line` 未取得時に行を落とさず `-` を入れる規約。helper は表の行数を
-      #     検査しない (TC-4.17 の negative control が実測で固定) ため、この規約を守らせる層は
-      #     6.1.d の散文しかない。規約文の消失を落とす (TC-5h の字下げ禁止 pin と同型)。
-      assert "TC-5i 6.1.d 区間に -（行を落とさない）規約が 1 箇所" "1" \
-        "$(_sec_610d | grep -c '行ごと落とさず' || true)"
+      # allowlist 内の placeholder だけで全文を再掲載する形 (表の下に
+      #     `- **{file}:{line}** — 指摘の全文` を足す等) を落とす。`{file}` / `{line}` は
+      #     **表のデータ行にしか現れない** ことを固定する — 表の外でこの 2 つを再出現させる形が
+      #     全文再掲載の実現手段そのものであるため。データ行 1 本 = 各 1 回が期待値。
+      _va_file_out=$(printf '%s\n' "$_va_fence" | grep -v '^[[:space:]]*|' | grep -cE '\{file\}|\{line\}' || true)
+      assert "TC-5i variant A fence の表以外の行に {file}/{line} が出現しない (全文再掲載の検出)" "0" \
+        "$_va_file_out"
 
       # (h) 「本文は列 0 から書き出す」指示が variant テンプレートより **前** に 1 本だけ存在する。
       #     variant A/B は番号付きリスト項目の内側にあるため表示上 3 スペース字下げされる一方、
@@ -2887,6 +2889,24 @@ else
       fail "TC-5g'' variant A/B の見出し位置を特定できない (va=$_va_line vb=$_vb_line next=$_next_line)"
     fi
   fi
+
+  # (i') [Issue #2039] 開示方針を守る **散文側** の pin。述語は `_sec_610d` 区間だけに依存し
+  #     variant 見出しの位置を要らないので、`_va_line`/`_vb_line` の解決 gate の **外** に置く。
+  #     内側に入れると variant 見出しの改名だけでこの 2 本を含む 18 assert が無音で実行されなく
+  #     なる (同ファイル冒頭の「到達性 assertion を件数 pin の内側に入れない」規約と同じ理由。
+  #     実測: 見出しを改名しつつ両規約文を削除すると FAIL は見出し検出の 1 件だけで、
+  #     削除した 2 規約は 1 件も検出されない)。
+  #
+  #     全文掲載の禁止は「列」ではなく「本文への掲載そのもの」であることを宣言した文が消える
+  #     退行を落とす。placeholder allowlist / row-scoped pin は形を見るが、この宣言は射程を
+  #     決めており、消えると後続の編集者が「3 列なら何を足してもよい」と読む。
+  assert "TC-5i' 6.1.d 区間に「表の外への全文再掲載も禁止」の宣言が 1 箇所" "1" \
+    "$(_sec_610d | grep -c '表の外に別形式で全文を再掲載することも禁止' || true)"
+  #     [T-04 / AC-2] `file:line` 未取得時に行を落とさず `-` を入れる規約。helper は表の行数を
+  #     検査しない (TC-4.17 の negative control が実測で固定) ため、この規約を守らせる層は
+  #     6.1.d の散文しかない (TC-5h の字下げ禁止 pin と同型)。
+  assert "TC-5i' 6.1.d 区間に -（行を落とさない）規約が 1 箇所" "1" \
+    "$(_sec_610d | grep -c '行ごと落とさず' || true)"
 
   # (h) 8.0.4 (ステップ 6.1.a JSON 保存の実行保証) の三者 coupling を固定する。
   #     ステップ 6 を丸ごと skip した cycle は 8.0.3 の anchor (REVIEW_CYCLE_ID /

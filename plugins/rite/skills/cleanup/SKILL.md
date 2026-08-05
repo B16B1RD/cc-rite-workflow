@@ -809,45 +809,15 @@ rite_rm() {
   done
 }
 
-# 非実測指摘 (non_blocking_findings[]) を持つ結果 JSON は削除せず退避する。**ここが唯一の全文保存先**
-# — ステップ 6.1.d の PR 記録コメントはポインタ (reviewer / severity / file:line) しか載せないため
-# (Issue #2039)、無条件削除すると非実測 CRITICAL の詳細が merge 直後にどこにも残らなくなり、
-# Issue #2024 D-01「マージ後に人間が拾い直せる」が偽になる。退避先は同 state root 配下の
-# archive/ で、gitignore 対象のまま (共有はされない) だが cleanup を跨いで残る。
-# jq 不在 / parse 失敗 / 非空判定不能はすべて **退避側 (安全側)** に倒す — 判定できないものを
-# 消すと、消えたことにも気付けない。
-rite_archive_or_rm_review_results() {
-  local f archive_dir keep
-  archive_dir="$_state_root/.rite/review-results/archive"
-  for f in "$@"; do
-    { [ -e "$f" ] || [ -L "$f" ]; } || continue
-    keep=no
-    if command -v jq >/dev/null 2>&1; then
-      # `// empty` は使わない — キー欠落 (旧形式) と空配列を区別せず両方 rm 側へ倒すため。
-      # parse 失敗時は jq が非ゼロで返るので `|| keep=yes` が拾う (安全側)。
-      if jq -e '(.non_blocking_findings // []) | length > 0' "$f" >/dev/null 2>&1; then
-        keep=yes
-      elif ! jq -e . "$f" >/dev/null 2>&1; then
-        keep=yes   # parse 不能 = 中身を判定できない → 消さない
-      fi
-    else
-      keep=yes     # jq 不在 = 判定不能 → 消さない
-    fi
-    if [ "$keep" = yes ]; then
-      if mkdir -p "$archive_dir" 2>/dev/null && mv "$f" "$archive_dir/" 2>/dev/null; then
-        echo "✅ review_results を退避 (非実測指摘あり / 判定不能): $f -> $archive_dir/" >&2
-      else
-        echo "WARNING: review_results の退避に失敗 (PR #${pr_number}): $f — 削除もせずそのまま残します" >&2
-        echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=review_results_archive_failure; pr=${pr_number}" >&2
-      fi
-    else
-      rite_rm review_results "$f"
-    fi
-  done
-}
-
-rite_archive_or_rm_review_results \
-  "$_state_root"/.rite/review-results/${pr_number}-*.json
+# レビュー結果 JSON は一律削除しない。**非実測指摘 (non_blocking_findings[]) を持つものは
+# 削除せず archive/ へ退避する** — ステップ 6.1.d の PR 記録コメントはポインタ (reviewer /
+# severity / file:line) しか載せないため (Issue #2039)、無条件削除すると非実測 CRITICAL の詳細が
+# merge 直後にどこにも残らなくなり、Issue #2024 D-01「マージ後に人間が拾い直せる」が偽になる。
+# 判定 (jq rc の値域分岐 / 判定不能は退避側へ倒す) と退避 (mkdir・mv の分離、同名衝突の検出) は
+# helper へ委譲済み。契約と reason 語彙の SoT は helper docstring、挙動は
+# hooks/tests/review-results-archive-or-rm.test.sh が behavioral に固定する。
+bash {plugin_root}/hooks/scripts/review-results-archive-or-rm.sh \
+  --state-root "$_state_root" --pr "$pr_number" --label review_results
 rite_rm review_results_corrupt \
   "$_state_root"/.rite/review-results/${pr_number}-*.json.corrupt-*
 rite_rm fix_retry_state "$_state_root/.rite/state/fix-fallback-retry-${pr_number}.count"
