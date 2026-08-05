@@ -45,8 +45,11 @@
 #              , review_results_archive_mkdir_failure    退避先ディレクトリを作れない
 #              , review_results_archive_mv_failure       mv 自体が失敗
 #              , review_results_archive_name_collision   退避先に同名既存 (上書きせず元の場所に残す)
-#              , review_results_undecidable              中身を判定できず退避側へ倒した (失敗ではない)
+#              , review_results_undecidable              中身を判定できず退避側へ倒した
 #              }
+#   `review_results_undecidable` だけは `cause=` を伴う。`cause=jq_rc_<n>` はファイル単体の
+#   壊れ (routine、人手の対応は不要) で、`cause=jq_missing` は jq 不在 (要対処の環境不備 —
+#   全ファイルが無判定で退避され続ける)。consumer 側の判定表はこの `cause=` で列を分ける。
 #   本 helper を起動できなかったとき (rc=127 等) の `review_results_helper_failed` は caller
 #   (cleanup/SKILL.md ステップ 6) が emit する。helper 自身は emit しないが、marker family が
 #   同一なので reason を追う人がここで行き止まらないよう併記しておく。
@@ -121,16 +124,20 @@ for f in "$results_dir/${PR_NUMBER}"-*.json*; do
       *)
         keep=yes
         keep_reason="判定不能 (jq rc=${jq_rc})"
-        echo "WARNING: ${LABEL} の内容を判定できません (退避側へ倒します): $f (jq rc=${jq_rc})" >&2
+        echo "WARNING: ${LABEL} の内容を判定できません (退避側へ倒します) (PR #${PR_NUMBER}): $f (jq rc=${jq_rc})" >&2
         [ -n "$jq_err" ] && printf '%s\n' "$jq_err" | sed 's/^/  /' >&2
-        echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=${LABEL}_undecidable; pr=${PR_NUMBER}" >&2
+        # `cause=` で原因を分ける。ファイル単体の壊れ (routine、人手の対応は不要) と
+        # jq 不在 (要対処の環境不備。全ファイルが無判定で退避され archive/ が肥大する) は
+        # 帰結が違うのに reason 文字列が同じだと、consumer の判定表が両者を同じ列へ倒す。
+        echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=${LABEL}_undecidable; cause=jq_rc_${jq_rc}; pr=${PR_NUMBER}" >&2
         ;;
     esac
   else
     keep=yes
     keep_reason="判定不能 (jq 不在)"
-    echo "WARNING: jq が見つからないため ${LABEL} の内容を判定できません (退避側へ倒します): $f" >&2
-    echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=${LABEL}_undecidable; pr=${PR_NUMBER}" >&2
+    echo "WARNING: jq が見つからないため ${LABEL} の内容を判定できません (退避側へ倒します) (PR #${PR_NUMBER}): $f" >&2
+    echo "  対処: jq を導入してください。未導入の間は全ファイルが無判定で退避され続けます" >&2
+    echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=${LABEL}_undecidable; cause=jq_missing; pr=${PR_NUMBER}" >&2
   fi
 
   if [ "$keep" != yes ]; then

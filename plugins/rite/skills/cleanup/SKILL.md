@@ -1089,14 +1089,15 @@ Status: {projects_status_result}
   - ステップ 2 で関連 Issue が識別できなかった（`{issue_number}` 空）とき: `{projects_status_result}` = `（関連 Issue 未識別のためスキップ）`、`{projects_check}` = `x`
   - 上記 2 条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=true` が見つかったとき: `{projects_status_result}` = `Done`、`{projects_check}` = `x`
   - 上記 2 条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=false` または sentinel 自体が見つからない（= ステップ8 が実行されるべきだったのに失敗/skip された）とき: `{projects_status_result}` = `⚠️ 更新失敗（手動確認が必要）`、`{projects_check}` = ` ` + 「GitHub Projects 画面で Issue #{issue_number} の Status を Done に変更」を付記
-- `{review_cleanup_check}`: `REVIEW_CLEANUP_PARTIAL_FAILURE=1` の `reason=` を上から評価し最初の一致を採用する（`{wiki_ingest_check}` と同型。marker が 1 本も無ければ `x`）:
+- `{review_cleanup_check}`: `REVIEW_CLEANUP_PARTIAL_FAILURE=1` の marker を**上から評価し最初の一致**を採用する（`{wiki_ingest_check}` と同じく各行は presence 検査。marker が 1 本も無ければ `x`）。**照合は `pr={pr_number}` まで含める** — `/rite:batch-run --merge` は同一セッションで Issue ごとに `/rite:cleanup` を invoke するため、先行 Issue の marker が文脈に残る（`{local_branch_check}` が `branch=` でスコープするのと同じ理由。`invalid_pr_number` だけは `pr=` を持たないので marker 名のみで照合する）:
 
-  | reason | check | 表示 |
+  | 検出 | check | 表示 |
   |---|---|---|
-  | `review_results_undecidable` **のみ**が出ている | `x` | `ℹ️ レビュー結果 JSON の中身を判定できなかったため削除せず archive/ へ退避しました (人手の対応は不要)` |
-  | 上記以外の reason が 1 つでも出ている | ` ` | 警告付記 |
+  | `reason=invalid_pr_number`、または `reason=` が `_rm_failure` / `_archive_mkdir_failure` / `_archive_mv_failure` / `_archive_name_collision` / `_helper_failed` のいずれかで終わる marker がある | ` ` | 警告付記 |
+  | `reason=review_results_undecidable; cause=jq_missing` がある | ` ` | `⚠️ jq が見つからず全レビュー結果 JSON を無判定で archive/ へ退避しました。jq を導入してください` |
+  | `reason=review_results_undecidable` がある（`cause=jq_rc_<n>`） | `x` | `ℹ️ 一部のレビュー結果 JSON は中身を判定できず削除せず archive/ へ退避しました (本 cycle での対応は不要)` |
 
-  `_undecidable` を `x` に倒すのは、helper がこれを「退避自体は成功しうるので `failed` には数えない」と定義し summary も `failed=0` を返すため。同じ marker family に載せているのは fail-loud を後退させないためで、失敗と同一視するためではない。`.corrupt-*` を「判定不能 → 退避」経路へ載せた以上、corrupt が 1 件でもある PR は毎回この reason を出す — 失敗扱いのままだと存在しない手動対応をユーザーに促し続ける。他 reason（`invalid_pr_number` / `*_rm_failure` / `*_archive_*` / `*_helper_failed`）は実失敗なので従来どおり空欄。
+  行を presence 検査にしてあるので「上から評価し最初の一致」が実際に効く（実失敗と判定不能が同一 run で共起しても 1 行目が先に一致する）。`cause=jq_rc_<n>` を `x` に倒すのは、helper がこれを「退避自体は成功しうるので `failed` には数えない」と定義し summary も `failed=0` を返すため。`.corrupt-*` を「判定不能 → 退避」経路へ載せた以上 corrupt を持つ PR は毎回この reason を出すので、失敗扱いのままだと存在しない手動対応を促し続ける。一方 `cause=jq_missing` は環境不備で、放置すると本来削除されるべき JSON まで無判定で退避され続けるため実失敗側に置く。
 - `{wiki_ingest_check}`: 以下の sentinel を上から評価し最初の一致を採用 (`WIKI_INGEST_DONE` + `WIKI_INGEST_PUSH_FAILED` が併存しうるため順序重要):
 
   | Sentinel | check | 表示 |

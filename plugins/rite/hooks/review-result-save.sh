@@ -49,6 +49,10 @@
 #     schema_required_fields_missing / finding_id_format_or_uniqueness_violation /
 #     scope_enum_violation / critical_high_scope_nit_noted_invariant /
 #     collision_resolution_exhausted / mktemp_failure_mv_err / mv_failure / signal_aborted
+#   - 上記とは別 namespace の観測 marker として `[CONTEXT] LOCAL_SAVE_GITIGNORE_FAILED=1; dir=...`
+#     を持つ (保存先へ同梱する `*` だけの .gitignore を書けなかったとき)。保存は続行するので
+#     LOCAL_SAVE_FAILED reason ではないが、除外の欠落は非実測指摘の全文が公開面へ出る経路
+#     そのものなので黙って続行しない。
 #     (末尾の signal_aborted のみ signal trap 由来で線形の emit 順に載らない)。
 #     `signal_aborted` は **保存が未完了のときだけ** emit する — mv 成功後に signal が届いた場合は
 #     JSON が実在するため失敗宣言せず、WARNING のみを出す (保存済み cycle を 6.1.c ケース 2 で
@@ -285,6 +289,22 @@ if ! mkdir -p "$REVIEW_RESULTS_DIR" 2>"${mkdir_err:-/dev/null}"; then
   exit 0
 fi
 [ -n "$mkdir_err" ] && rm -f "$mkdir_err"
+
+# 保存先ディレクトリに `*` だけの .gitignore を同梱する (`.rite/logs/` に対する
+# hooks/session-start.sh の先例と同型)。本ディレクトリの JSON は非実測指摘の description /
+# suggestion 全文を持ち、`/rite:cleanup` は非空のものを削除せず archive/ へ残すため、
+# 除外されていないと `git add -A` で公開リポジトリへ入る。root の .gitignore に頼ると
+# セットアップ履歴・`--upgrade` 経路・設定の drift の 3 つに同時に依存するが、同梱方式は
+# そのすべてから独立する (consuming repo の `/rite:setup` 生成 .gitignore は
+# `.rite/sessions/` と `.rite/worktrees/` しかカバーせず、`--upgrade` は追記 Phase を通らない)。
+# 非ブロッキング: 書けなくても保存は続行する。ただし黙って続行はしない — 除外の欠落は
+# 全文が公開面へ出る経路そのものなので WARNING と marker で loud にする。
+if [ ! -f "$REVIEW_RESULTS_DIR/.gitignore" ]; then
+  if ! printf '*\n' > "$REVIEW_RESULTS_DIR/.gitignore" 2>/dev/null; then
+    echo "WARNING: $REVIEW_RESULTS_DIR/.gitignore を作成できませんでした。本ディレクトリが git の追跡対象から除外されているか手動で確認してください (非実測指摘の全文が含まれます)" >&2
+    echo "[CONTEXT] LOCAL_SAVE_GITIGNORE_FAILED=1; dir=$REVIEW_RESULTS_DIR" >&2
+  fi
+fi
 
 # mktemp stderr 退避 (失敗原因 disk full / permission / readonly を可視化)。
 # 退避 tempfile を作る mktemp 自体の失敗も silent 化しない。

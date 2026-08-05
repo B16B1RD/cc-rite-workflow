@@ -2862,15 +2862,17 @@ else
         "{current_commit_sha} {file} {line} {non_blocking_count} {pr_number} {reviewer_type} {severity} " \
         "$_va_ph"
       # allowlist 内の placeholder だけで全文を再掲載する形 (表の下に
-      #     `- **{file}:{line}** — 指摘の全文` を足す等) を落とす。**finding 単位の 4 placeholder
-      #     すべて** (`{reviewer_type}` / `{severity}` / `{file}` / `{line}`) が **表のデータ行に
-      #     しか現れない** ことを固定する — 表の外で finding を 1 件ずつ列挙する形が全文再掲載の
-      #     実現手段そのものであり、`{file}`/`{line}` の 2 つだけを見ると
-      #     `- {reviewer_type} ({severity}): 指摘の全文` の形を 1 assert も捕捉できない (実測)。
-      #     データ行 1 本 = 各 1 回が期待値なので、表の外での出現は 0 が期待値。
-      _va_file_out=$(printf '%s\n' "$_va_fence" | grep -v '^[[:space:]]*|' | grep -cE '\{(reviewer_type|severity|file|line)\}' || true)
-      assert "TC-5i variant A fence の表以外の行に finding 単位 placeholder が出現しない (全文再掲載の検出)" "0" \
-        "$_va_file_out"
+      #     `- **{file}:{line}** — 指摘の全文` を足す / **2 つ目の表を足す** 等) を落とす。
+      #     **行の形ではなく fence 全体での出現回数**を pin する — finding 単位の 4 placeholder
+      #     (`{reviewer_type}` / `{severity}` / `{file}` / `{line}`) はデータ行 1 本に各 1 回だけ
+      #     現れるので、2 回目の出現は「finding をもう一度列挙している」ことと同値になる。
+      #     行形状フィルタ (`grep -v '^ *|'` で表行を除外する形) にすると、**2 つ目の表**による
+      #     再掲載を 1 assert も捕捉できない (実測: 第 2 表を足しても 670/0 で通る)。出現回数なら
+      #     箇条書き・脚注・追加 fence・追加表のすべてが同じ 1 本で落ちる。
+      for _ph in reviewer_type severity file line; do
+        _va_ph_n=$(printf '%s\n' "$_va_fence" | grep -oF "{$_ph}" | wc -l | tr -d ' ')
+        assert "TC-5i variant A fence の {$_ph} 出現回数が 1 (finding 再列挙 = 全文再掲載の検出)" "1" "$_va_ph_n"
+      done
 
       # (h) 「本文は列 0 から書き出す」指示が variant テンプレートより **前** に 1 本だけ存在する。
       #     variant A/B は番号付きリスト項目の内側にあるため表示上 3 スペース字下げされる一方、

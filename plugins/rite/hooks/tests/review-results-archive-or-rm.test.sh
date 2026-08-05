@@ -82,6 +82,10 @@ assert "TC-1 null -> 削除" "DELETED" "$(where "$r" 9-null.json)"
 assert "TC-1 .corrupt-* も同 glob が拾い、非空なら退避" "ARCHIVED" "$(where "$r" 9-corrupt.json.corrupt-1700000000)"
 assert "TC-1 .corrupt-* でも中身が空なら削除" "DELETED" "$(where "$r" 9-corrupt-empty.json.corrupt-1700000001)"
 assert_grep "TC-1 summary が件数を報告" "$OUT" 'archived=2; removed=4; failed=0; pr=9'
+# 退避理由の弁別は TC-2 の判定不能側だけでなく**正常側にも** pin する。片側だけだと
+# jq_rc=0 分岐の keep_reason を判定不能側の文言へ潰しても全 green になり、archive/ の中身から
+# 全文が読めるファイルと読めないファイルを区別できない状態が無音で通る (TC-2 の invariant の対)。
+assert_grep "TC-1 退避理由が「非実測指摘あり」と明示される" "$ERR" 'を退避 \(非実測指摘あり'
 
 echo "--- TC-2: 判定不能はすべて退避側 (安全側) ---"
 r=$(new_root tc2)
@@ -98,8 +102,10 @@ assert "TC-2 空ファイル -> 退避" "ARCHIVED" "$(where "$r" 9-emptyfile.jso
 assert "TC-2 削除は 0 件" "0" "$(sed -n 's/.*removed=\([0-9]*\);.*/\1/p' "$OUT")"
 # 「退避側へ倒した」だけでは判定不能が起きた事実がどこにも残らない (壊れた JSON と正常な JSON が
 # 同一文言・同一カウントで退避され、保存パイプラインの壊れが永久に無警告になる)。3 件分の marker を固定する。
-assert "TC-2 判定不能 3 件それぞれに undecidable marker が出る" "3" \
-  "$(grep -cE 'reason=review_results_undecidable; pr=9' "$ERR" || true)"
+# `cause=` まで pin する。原因 (ファイル単体の壊れ / jq 不在) で consumer の判定表が列を分けるため、
+# reason だけを見ていると cause の消失や取り違えを検出できない (TC-3 の jq 不在側と対)。
+assert "TC-2 判定不能 3 件それぞれに undecidable marker が出る (cause=jq_rc_*)" "3" \
+  "$(grep -cE 'reason=review_results_undecidable; cause=jq_rc_[0-9]+; pr=9' "$ERR" || true)"
 # jq の診断 (parse error の位置等) を捨てない。捨てると「なぜ判定できなかったか」が消える。
 assert_grep "TC-2 jq の stderr を捨てない (診断が残る)" "$ERR" '^  '
 # 退避メッセージが「非実測指摘あり」と「判定不能」を弁別する (同一文言だと archive/ の中身から
@@ -124,7 +130,9 @@ assert "TC-3 [前提] shim PATH では jq が解決できない" "1" \
 PATH="$shim" "$abs_bash" "$TARGET" --state-root "$r" --pr 9 >"$OUT" 2>"$ERR"; RC=$?
 assert "TC-3 exit 0" "0" "$RC"
 assert "TC-3 jq 不在なら空配列でも退避 (判定不能)" "ARCHIVED" "$(where "$r" 9-empty.json)"
-assert_grep "TC-3 jq 不在も undecidable marker で観測できる" "$ERR" 'reason=review_results_undecidable; pr=9'
+# jq 不在は `cause=jq_missing` として弁別されること。judge 表はこれを実失敗側 (空欄 + ⚠️) へ、
+# `cause=jq_rc_*` を informational (x + ℹ️) へ倒すので、両者が同一文字列だと弁別が成立しない。
+assert_grep "TC-3 jq 不在は cause=jq_missing として弁別される" "$ERR" 'reason=review_results_undecidable; cause=jq_missing; pr=9'
 
 echo "--- TC-4: 失敗は削除せず WARNING + reason marker ---"
 # (0) rm 失敗: 削除対象が入っているディレクトリを read-only にして unlink を失敗させる。
@@ -261,8 +269,11 @@ CLEANUP_MD="$SCRIPT_DIR/../../skills/cleanup/SKILL.md"
 if [ ! -f "$CLEANUP_MD" ]; then
   fail "TC-8 cleanup/SKILL.md が見つからない: $CLEANUP_MD"
 else
+  # pattern に行継続バックスラッシュを含めない。含めると呼び出しを 1 行へ畳む無害な整形で
+  # 「呼び出しが実在するのに FAIL」する偽陽性になり、診断文が事実と逆を主張する。
+  # 末尾なしでも pristine のヒットは 1 件 (テスト側への言及は hooks/tests/ で hooks/scripts/ を含まない)。
   assert "TC-8 helper 呼び出しが 1 本存在する" "1" \
-    "$(grep -cF 'hooks/scripts/review-results-archive-or-rm.sh \' "$CLEANUP_MD" || true)"
+    "$(grep -cF 'hooks/scripts/review-results-archive-or-rm.sh' "$CLEANUP_MD" || true)"
   # 旧形 (無条件削除) への差し戻しを落とす。`rite_rm` の第 1 引数が `review_results` の行が
   # 復活したら退避機構が bypass されている。
   assert "TC-8 旧 rite_rm review_results 形が復活していない" "0" \
