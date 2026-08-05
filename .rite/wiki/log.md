@@ -23,6 +23,7 @@
 * **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/fixes/20260805T040711Z-pr-2112.md を統合（連言 `A ∧ B` は項の数だけ fixture が要る / read 側だけの pin では write 側の mutation が生存する）
 * **Create**: [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) — raw/reviews/20260805T043752Z-pr-2112.md を新規ページ化（`local` の不在を pin しても `declare` / `typeset` で素通りする）
 * **Update**: [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — raw/fixes/20260805T050456Z-pr-2112.md を統合（入力が stdio バッファ境界を超えた地点で挙動が反転するため、小入力のテストでは構造的に見つからない）
+* **lint:warning** — contradictions=0, stale=16, orphans=0, missing_concept=0, unregistered_raw=298, broken_refs=0
 
 ## 2026-08-04
 
