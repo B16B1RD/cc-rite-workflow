@@ -1,3 +1,22 @@
+## 2026-08-05
+
+* **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260804T135121Z-pr-2111.md を統合（散文→helper 委譲リファクタで 23 変異中 8 生存を実測、散文から移した仕様の「実行可能仕様」が fixture に揃っているかの機械検証として有効）
+* **Create**: [テスト検出力の回復は個別 assert の増築より golden 全文比較への置換を先に検討する](pages/patterns/golden-full-comparison-over-assert-accretion.md) — raw/fixes/20260804T135955Z-pr-2111.md を新規ページ化（diff -u 化で 4 変異クラスを一括捕捉 / 置換後に代表変異で fail 化を実測）
+* **Create**: [委譲リファクタの呼び出しシームは invocation-symmetry test で機械固定する](pages/patterns/invocation-symmetry-test-for-delegation-seam.md) — raw/reviews/20260804T142514Z-pr-2111.md を新規ページ化（helper 単体より呼び出し契約が残存リスク / フラグ集合を case arm から動的抽出して突合）
+* **Update**: [委譲リファクタの呼び出しシームは invocation-symmetry test で機械固定する](pages/patterns/invocation-symmetry-test-for-delegation-seam.md) — raw/fixes/20260804T143100Z-pr-2111.md を統合（既存先例の流用 / false-coverage はラベル改名 + 分岐別 TC 分割で解消）
+* **Update**: [LLM substitute placeholder は bash residue gate で fail-fast 化する](pages/patterns/placeholder-residue-gate-bash-fail-fast.md) — raw/reviews/20260804T145133Z-pr-2111.md を統合（新設 helper にも gate を置く / sibling helper の canonical gate との対称性が判断基準）
+* **Update**: [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — raw/fixes/20260804T145425Z-pr-2111.md を統合（fix が追加した TC 自身にも代表変異を当てる / fix 前 mutation は修正が testable かの検証でもある）
+* **Create**: [防御は攻撃面と同じ粒度で張る — 過剰防御は「安全側」ではなく別の実害](pages/heuristics/defense-granularity-matches-attack-surface.md) — raw/reviews/20260804T151916Z-pr-2111-cycle4.md を新規ページ化（形状ヒューリスティックの free text 転用が正当 brace 含みタイトルを棄却）
+* **Update**: [防御は攻撃面と同じ粒度で張る — 過剰防御は「安全側」ではなく別の実害](pages/heuristics/defense-granularity-matches-attack-surface.md) — raw/fixes/20260804T152800Z-pr-2111-cycle4.md を統合（residue 検出は literal exact 突合で必要十分 / 形状判定は閉じた値域限定）
+* **Create**: [fail-loud ガードは同じ帰結を持つ全出口に張る（症状側から出口を網羅する）](pages/heuristics/fail-loud-guard-covers-all-sibling-exits.md) — raw/reviews/20260804T155148Z-pr-2111-cycle5.md を新規ページ化（1 出口だけ塞ぐと兄弟出口 2 本が残り 4 レビュアーが独立収束 / 安全網の主張は不成立経路を先に探す）
+* **Update**: [fail-loud ガードは同じ帰結を持つ全出口に張る（症状側から出口を網羅する）](pages/heuristics/fail-loud-guard-covers-all-sibling-exits.md) — raw/fixes/20260804T155921Z-pr-2111-cycle5.md を統合（兄弟出口を 1 本のセル数ガードに畳み境界 TC で下限を pin / trap canonical 4 行形 + mktemp 前武装で SIGINT 12/12 明示中断を実測）
+* **Create**: [ガードの識別力は「そのガード単独で発火する形状」の fixture とガード固有文言 assert で担保する](pages/heuristics/guard-discriminating-power-requires-solo-firing-fixture.md) — raw/reviews/20260804T173728Z-pr-2111.md を新規ページ化（複数ガードが論理和で捕捉する fixture のコメント宣言は過剰主張 / rc + 総称 ERROR assert は識別力なし）
+* **Update**: [ガードの識別力は「そのガード単独で発火する形状」の fixture とガード固有文言 assert で担保する](pages/heuristics/guard-discriminating-power-requires-solo-firing-fixture.md) — raw/fixes/20260804T175004Z-pr-2111.md を統合（境界検査だけが捕捉する形状を追加しコメントを実際の発火順に是正 / ガード固有の診断文言 assert）
+* **Update**: [防御は攻撃面と同じ粒度で張る — 過剰防御は「安全側」ではなく別の実害](pages/heuristics/defense-granularity-matches-attack-surface.md) — raw/reviews/20260804T182250Z-pr-2111.md を統合（全 `]` 中和が実 Wiki 3 ページの GFM リンク範囲を破壊、gh api /markdown で実測 / 詐称は `](` の literal 連なりでしか成立しない）
+* **Update**: [防御は攻撃面と同じ粒度で張る — 過剰防御は「安全側」ではなく別の実害](pages/heuristics/defense-granularity-matches-attack-surface.md) — raw/fixes/20260804T183250Z-pr-2111.md を統合（中和条件を `](` 限定に絞り攻撃は閉じたまま回帰が消えた / mutation が適用されたことを置換件数で確認しないと偽の生存判定になる）
+* **Create**: [シェル層で閉じられない注入防御は値を substitute する側（LLM）の実行前ゲートとして書く](pages/heuristics/shell-unclosable-defense-goes-to-substituting-side.md) — raw/reviews/20260804T235430Z-pr-2111.md を新規ページ化（quoted heredoc の終端子行脱出は rc=0 + marker 揃いの silent success になり marker 契約でも捕捉できない）
+* **Update**: [シェル層で閉じられない注入防御は値を substitute する側（LLM）の実行前ゲートとして書く](pages/heuristics/shell-unclosable-defense-goes-to-substituting-side.md) — raw/fixes/20260805T000150Z-pr-2111.md を統合（受け皿を作る修正は producer・発火条件・引用元の同時追加を要求 / 同一チャネルに複数発行元があるなら判定条件は literal で閉じる）
+
 ## 2026-08-04
 
 * **lint:warning** — contradictions=0, stale=15, orphans=0, missing_concept=0, unregistered_raw=298, broken_refs=0
