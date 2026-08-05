@@ -1427,6 +1427,136 @@ fi
 got=$(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$envsid" bash "$HOOK" get --field issue_number --default "X")
 assert "T-04: get resolves via env sid (404, smoke)" "404" "$got"
 
-if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del (Issue #1524) + non-UUID acceptance (Layer 1 format-agnostic contract pin)"; then
+# --- TC-2115-01 (AC-1): each performed `set` appends one JSONL transition record ---
+echo ""
+echo "=== TC-2115-01 (AC-1): phase transitions are appended to .rite/logs/phase-transitions.log ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase implement --issue 2115 --branch "feat/x" --pr 0 --next "n1")
+(cd "$d" && bash "$HOOK" set --phase review --issue 2115 --pr 42 --next "n2")
+tlog="$d/.rite/logs/phase-transitions.log"
+assert_file_exists_or_fail "TC-2115-01: transition log created" "$tlog" || true
+assert "TC-2115-01: one line per transition (2 sets → 2 lines)" "2" "$(wc -l < "$tlog" | tr -d ' ')"
+# The `from` of the first record is empty: no state file existed yet. This is the
+# most common case (every fresh session starts here) and is deliberately recorded
+# as "" rather than a synthesized prior phase.
+assert "TC-2115-01: first record from='' (fresh session, no prior state)" "" "$(head -1 "$tlog" | jq -r .from)"
+assert "TC-2115-01: first record to=implement" "implement" "$(head -1 "$tlog" | jq -r .to)"
+assert "TC-2115-01: second record from=implement (pre-write phase)" "implement" "$(sed -n 2p "$tlog" | jq -r .from)"
+assert "TC-2115-01: second record to=review" "review" "$(sed -n 2p "$tlog" | jq -r .to)"
+assert "TC-2115-01: session_id recorded" "$sid" "$(sed -n 2p "$tlog" | jq -r .session_id)"
+assert "TC-2115-01: issue_number recorded" "2115" "$(sed -n 2p "$tlog" | jq -r .issue_number)"
+assert "TC-2115-01: pr_number recorded" "42" "$(sed -n 2p "$tlog" | jq -r .pr_number)"
+# ts is the same timestamp the state file's updated_at carries, so a record can be
+# cross-referenced with the state it describes (shared `$now`, not a second date call).
+assert "TC-2115-01: ts equals the state file's updated_at" \
+  "$(jq -r .updated_at "$d/.rite/sessions/${sid}.flow-state")" "$(sed -n 2p "$tlog" | jq -r .ts)"
+# Self-contained .gitignore so the log never leaks into downstream consuming repos.
+assert "TC-2115-01: log dir carries a self-contained .gitignore" "*" "$(cat "$d/.rite/logs/.gitignore" 2>/dev/null)"
+
+# --- TC-2115-02 (AC-1 MUST): a same-phase set is recorded too (from == to) ---
+echo ""
+echo "=== TC-2115-02 (AC-1): same-phase set is recorded (update frequency inside a stage is observable) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase fix --issue 7 --branch "feat/y" --pr 0 --next "n1")
+(cd "$d" && bash "$HOOK" set --phase fix --issue 7 --pr 0 --next "n2")
+tlog="$d/.rite/logs/phase-transitions.log"
+assert_file_exists_or_fail "TC-2115-02: transition log created" "$tlog" || true
+assert "TC-2115-02: same-phase set still appends (2 lines)" "2" "$(wc -l < "$tlog" | tr -d ' ')"
+assert "TC-2115-02: same-phase record has from == to" "fix|fix" \
+  "$(sed -n 2p "$tlog" | jq -r '.from + "|" + .to')"
+
+# --- TC-2115-03 (AC-1 MUST): `--if-exists` skips are NOT recorded (no write happened) ---
+echo ""
+echo "=== TC-2115-03: --if-exists skip writes no state and therefore no transition record ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase plan --issue 5 --pr 0 --next "n" --if-exists 2>/dev/null)
+if [ -e "$d/.rite/logs/phase-transitions.log" ]; then
+  fail "TC-2115-03: skipped set must not append a record (log file exists: $(cat "$d/.rite/logs/phase-transitions.log"))"
+else
+  pass "TC-2115-03: skipped set appended no record"
+fi
+
+# --- TC-2115-04 (MUST): one line per transition even when the phase carries a newline ---
+echo ""
+echo "=== TC-2115-04: a newline-bearing --phase cannot split one transition into two lines ==="
+# `_phase_is_valid` only WARNs about an unknown phase and never rejects it, so the
+# "1 transition = 1 line" invariant must come from the record encoder (jq -c escapes
+# the newline), not from input validation.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase "$(printf 'weird\nINJECTED')" --issue 1 --pr 0 --next "n" 2>/dev/null)
+tlog="$d/.rite/logs/phase-transitions.log"
+assert_file_exists_or_fail "TC-2115-04: transition log created" "$tlog" || true
+assert "TC-2115-04: still exactly 1 line" "1" "$(wc -l < "$tlog" | tr -d ' ')"
+assert "TC-2115-04: newline preserved inside the JSON string" "$(printf 'weird\nINJECTED')" \
+  "$(head -1 "$tlog" | jq -r .to)"
+
+# --- TC-2115-05 (MUST): the log resolves to the main checkout from a linked worktree ---
+echo ""
+echo "=== TC-2115-05: a set run inside a linked worktree logs to the main checkout's .rite/logs ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+wt="$d/wt-2115"
+if (cd "$d" && git worktree add -q -b wt-branch-2115 "$wt" HEAD) >/dev/null 2>&1; then
+  echo "$sid" > "$wt/.rite-session-id"
+  (cd "$wt" && bash "$HOOK" set --phase lint --issue 88 --pr 0 --next "n")
+  # state-path-resolve.sh's linked-worktree unification makes $STATE_ROOT the main
+  # checkout, so one session's records stay in one file regardless of which tree a
+  # phase ran in. A per-worktree log would fragment exactly the timeline this
+  # feature exists to reconstruct.
+  assert_file_exists_or_fail "TC-2115-05: record landed in the MAIN checkout log" \
+    "$d/.rite/logs/phase-transitions.log" || true
+  if [ -e "$wt/.rite/logs/phase-transitions.log" ]; then
+    fail "TC-2115-05: a second log must not be created inside the worktree"
+  else
+    pass "TC-2115-05: no split log inside the worktree"
+  fi
+  assert "TC-2115-05: worktree-run transition recorded once in the main log" "lint" \
+    "$(tail -1 "$d/.rite/logs/phase-transitions.log" | jq -r .to)"
+  (cd "$d" && git worktree remove --force "$wt") >/dev/null 2>&1 || true
+else
+  skip "TC-2115-05: git worktree add unavailable in this sandbox"
+fi
+
+# --- TC-2115-06 (AC-2): a non-writable log destination is fully non-blocking ---
+echo ""
+echo "=== TC-2115-06 (AC-2): log write failure leaves exit code and state JSON unchanged ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/logs"
+chmod 555 "$d/.rite/logs"
+# Verify chmod actually enforces read-only for this user/filesystem first: root
+# bypasses DAC bits, and some filesystems (WSL2 DrvFs, overlay mounts) ignore the
+# owner write bit — either way the probe would succeed and the assertion below
+# would be vacuous rather than a real check. Braced so the open-failure message
+# itself is captured by the redirect (same pattern as session-start.test.sh).
+if { : > "$d/.rite/logs/.write-probe"; } 2>/dev/null; then
+  rm -f "$d/.rite/logs/.write-probe"
+  skip "TC-2115-06: filesystem/user does not enforce chmod 555 here — not a real read-only dir on this host"
+else
+  stderr_2115="$(mktemp)"
+  set +e
+  (cd "$d" && bash "$HOOK" set --phase plan --issue 9 --branch "feat/z" --pr 0 --next "n") 2>"$stderr_2115"
+  rc_2115=$?
+  set -e
+  assert "TC-2115-06: set still exits 0 (non-blocking)" "0" "$rc_2115"
+  sfile="$d/.rite/sessions/${sid}.flow-state"
+  assert_file_exists_or_fail "TC-2115-06: state file still written" "$sfile" || true
+  # AC-2 requires the state JSON to be unchanged, not merely that the command
+  # succeeded — a logging failure must not perturb any persisted field.
+  assert "TC-2115-06: state phase unaffected" "plan" "$(jq -r .phase "$sfile")"
+  assert "TC-2115-06: state issue_number unaffected" "9" "$(jq -r .issue_number "$sfile")"
+  assert "TC-2115-06: state branch unaffected" "feat/z" "$(jq -r .branch "$sfile")"
+  assert "TC-2115-06: no stray field added to the state JSON" \
+    "active branch error_count issue_number next_action parent_issue_number phase pr_number schema_version session_id updated_at" \
+    "$(jq -r 'keys | join(" ")' "$sfile")"
+  assert_grep "TC-2115-06: failure is announced, not silent" "$stderr_2115" 'WARNING: .*phase-transition log not writable'
+  # The WARNING must be the whole story: a bare `printf >> f 2>/dev/null` would
+  # additionally leak bash's own redirect-setup error, which `2>/dev/null` cannot
+  # suppress because `>>` is opened before `2>` takes effect.
+  assert_not_grep "TC-2115-06: no bash redirect error leaks alongside the WARNING" \
+    "$stderr_2115" 'flow-state\.sh: (line|行) [0-9]+:'
+  rm -f "$stderr_2115"
+fi
+chmod 755 "$d/.rite/logs" 2>/dev/null || true
+
+if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del (Issue #1524) + non-UUID acceptance (Layer 1 format-agnostic contract pin) + phase-transition append log (Issue #2115)"; then
   exit 1
 fi
