@@ -35,7 +35,7 @@ stderr を退避して WARNING に載せるために tempfile を確保する定
 
 ### 有効な修正は機構の追加ではなく削除
 
-mktemp 失敗時に WARNING を出す（[mktemp 失敗を WARNING として surface する](./mktemp-failure-surface-warning.md)）のは degradation を可視化する対処だが、退避が「診断のためだけ」なら、そもそも tempfile が要らない:
+mktemp 失敗時に WARNING を出す（[mktemp 失敗を WARNING として surface する](../patterns/mktemp-failure-surface-warning.md)）のは degradation を可視化する対処だが、退避が「診断のためだけ」なら、そもそも tempfile が要らない:
 
 ```bash
 # ❌ 診断機構が診断対象と同じ条件で壊れる
@@ -68,9 +68,9 @@ command substitution は stdout も飲み込むため、無条件には置き換
 
 ## 関連ページ
 
-- [mktemp 失敗を WARNING として surface する](./mktemp-failure-surface-warning.md)
+- [mktemp 失敗を WARNING として surface する](../patterns/mktemp-failure-surface-warning.md)
 - [mkdir の成功のみを検査するガードと redirect による診断漏れ](../anti-patterns/mkdir-success-only-check-and-redirect-diagnostic-leak.md)
-- [trap は mktemp より先に登録する](./trap-register-before-mktemp.md)
+- [trap は mktemp より先に登録する](../patterns/trap-register-before-mktemp.md)
 
 ## ソース
 
