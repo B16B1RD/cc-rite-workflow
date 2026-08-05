@@ -375,18 +375,25 @@ cat > "$dir/index.md" <<'EOF'
 |--------|---------|---------|--------|--------|
 | [Dup 先発](pages/patterns/dup.md) | patterns | 1本目 | 2026-01-01T00:00:00+09:00 | high |
 | [Dup 後発](pages/patterns/dup.md) | patterns | 2本目 | 2026-01-02T00:00:00+09:00 | low |
+| [Dup 3本目](pages/patterns/dup.md) | patterns | 3本目 | 2026-01-03T00:00:00+09:00 | low |
 EOF
+# 3 行重複にするのは dedup_removed が 0/1 の退化値でしか観測されない状態を避けるため
+# (docstring は「後発行群を削除」と複数形で規定しており、最初の 1 本だけ回収する退行や
+#  カウンタを定数 1 にする退行は 2 行 fixture では検出できない。3 行残ると中止条項が
+#  翌サイクルも発火し、当該ページの更新がもう 1 サイクル失われる)
 run_helper --index "$dir/index.md" --title "Dup NEW" --domain patterns \
   --slug dup --description "中止されるべき更新" --updated "2026-08-05T04:00:00+09:00" \
   --confidence medium --pages-root "$dir/pages"
 if [ "$HELPER_RC" -eq 0 ] \
    && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'row_action=aborted_duplicate' \
-   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'dedup_removed=1' \
-   && printf '%s\n' "$HELPER_STDERR" | grep -qF "2 rows register page 'patterns/dup'" \
+   && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'dedup_removed=2' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -qF "3 rows register page 'patterns/dup'" \
+   && [ "$(grep -c 'pages/patterns/dup\.md' "$dir/index.md")" -eq 1 ] \
    && grep -q 'Dup 先発' "$dir/index.md" \
    && ! grep -q 'Dup NEW' "$dir/index.md" \
-   && ! grep -q 'Dup 後発' "$dir/index.md"; then
-  pass "TC-10 対象ページ重複で中止 (page '{domain}/{slug}' 表記 WARNING) + 3a が後発回収"
+   && ! grep -q 'Dup 後発' "$dir/index.md" \
+   && ! grep -q 'Dup 3本目' "$dir/index.md"; then
+  pass "TC-10 対象ページ 3 行重複で中止 + 3a が後発 2 行を回収 (dedup_removed=2・残存 1 行)"
 else
   fail "TC-10 (rc=$HELPER_RC stdout=$HELPER_STDOUT stderr=$HELPER_STDERR)"
 fi
@@ -552,9 +559,9 @@ run_helper --index "$dir/index.md" --title t --domain patterns --slug s \
   --updated "2026-08-05T08:00:00+09:00" --confidence high --pages-root "$dir/pages"
 after=$(cat "$dir/index.md")
 if [ "$HELPER_RC" -eq 1 ] \
-   && printf '%s\n' "$HELPER_STDERR" | grep -q 'ERROR' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -qF -- "2 '## ページ一覧' headings — ambiguous target, refusing to guess" \
    && [ "$before" = "$after" ]; then
-  pass "TC-14 見出し重複 (想定外構造) で exit 1・部分適用なし"
+  pass "TC-14 見出し重複 (想定外構造) で exit 1・部分適用なし (ガード固有文言 + 件数を識別)"
 else
   fail "TC-14 (rc=$HELPER_RC)"
 fi
@@ -619,9 +626,30 @@ run_helper --index "$dir/index.md" --title t --domain patterns --slug s \
 run_helper --index "$dir/index.md" --title t --domain patterns --slug 'bad/slug' \
   --updated "2026-08-05T09:00:00+09:00" --confidence high
 [ "$HELPER_RC" -eq 2 ] || { tc15_ok=0; echo "  (不正 slug が rc=$HELPER_RC)"; }
+# 必須引数ガード 4 本すべてを流す。rc だけでは兄弟ガード同士が masking し合う
+# (--index 欠落は rc=1 の not found 経路と紛らわしい) ため、各ガード固有の文言も見る
 run_helper --index "$dir/index.md" --domain patterns --slug s \
   --updated "2026-08-05T09:00:00+09:00" --confidence high
 [ "$HELPER_RC" -eq 2 ] || { tc15_ok=0; echo "  (--title 欠落が rc=$HELPER_RC)"; }
+printf '%s\n' "$HELPER_STDERR" | grep -qF -- '--title is required' \
+  || { tc15_ok=0; echo "  (--title 欠落の診断文言が固有でない)"; }
+run_helper --title t --domain patterns --slug s \
+  --updated "2026-08-05T09:00:00+09:00" --confidence high
+[ "$HELPER_RC" -eq 2 ] || { tc15_ok=0; echo "  (--index 欠落が rc=$HELPER_RC)"; }
+printf '%s\n' "$HELPER_STDERR" | grep -qF -- '--index is required' \
+  || { tc15_ok=0; echo "  (--index 欠落の診断文言が固有でない)"; }
+run_helper --index "$dir/index.md" --title t --domain patterns \
+  --updated "2026-08-05T09:00:00+09:00" --confidence high
+[ "$HELPER_RC" -eq 2 ] || { tc15_ok=0; echo "  (--slug 欠落が rc=$HELPER_RC)"; }
+printf '%s\n' "$HELPER_STDERR" | grep -qF -- '--slug is required' \
+  || { tc15_ok=0; echo "  (--slug 欠落の診断文言が固有でない)"; }
+# --updated 欠落: ガードを失うと更新日セルと `- 最終更新:` 行が空のまま
+# rc=0 + stats_sync=synced で書かれる silent corruption になる
+run_helper --index "$dir/index.md" --title t --domain patterns --slug s \
+  --confidence high
+[ "$HELPER_RC" -eq 2 ] || { tc15_ok=0; echo "  (--updated 欠落が rc=$HELPER_RC)"; }
+printf '%s\n' "$HELPER_STDERR" | grep -qF -- '--updated is required' \
+  || { tc15_ok=0; echo "  (--updated 欠落の診断文言が固有でない)"; }
 # 制御文字 reject 経路 (_has_c0_del): 改行入り title / 改行入り description /
 # 制御文字 (TAB) 入り updated はいずれも exit 2 (1 行のテーブル行として表現不能)
 run_helper --index "$dir/index.md" --title $'a\nb' --domain patterns --slug s \
@@ -1065,13 +1093,19 @@ run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
   --slug foo --updated "2026-08-05T11:00:00+09:00" --confidence high \
   --pages-root "$dir/pages"
 after=$(cat "$dir/index.md")
+# 総称 ERROR ではなくガード固有文言で見る (この fixture は行末区切りが欠けており
+# 末尾フラグメントが非空になるため境界フラグメント検査が先に発火する — どちらが
+# 発火したかを test が識別できないと 2 つの ERROR 文言を相互置換する退行が素通りする)。
+# 併せて fail-loud 経路で一時ファイルが index.md と同じディレクトリに残らないことも固定する
+# (残置すると後続の commit が `git add .rite/wiki/` でディレクトリごと stage して wiki ブランチへ混入する)
 if [ "$HELPER_RC" -eq 1 ] \
-   && printf '%s\n' "$HELPER_STDERR" | grep -q 'ERROR' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -qF -- 'content outside the cell delimiters' \
    && [ "$before" = "$after" ] \
-   && [ "$(grep -c '蓄積サマリー' "$dir/index.md")" -eq 1 ]; then
-  pass "TC-22 行末区切り欠落行の summary 保持抽出は exit 1・無変更 (silent 空文字化しない)"
+   && [ "$(grep -c '蓄積サマリー' "$dir/index.md")" -eq 1 ] \
+   && [ "$(ls -A "$dir" | grep -c '^\.wiki-index-update\.')" -eq 0 ]; then
+  pass "TC-22 行末区切り欠落行は exit 1・無変更・一時ファイル残置なし (ガード固有文言で識別)"
 else
-  fail "TC-22 (rc=$HELPER_RC stdout=$HELPER_STDOUT stderr=$HELPER_STDERR)"
+  fail "TC-22 (rc=$HELPER_RC stdout=$HELPER_STDOUT stderr=$HELPER_STDERR tmp=$(ls -A "$dir" | grep '^\.wiki-index-update\.' | paste -sd, -))"
 fi
 
 # ──────────────────────────────────────────────────────────────────────
@@ -1083,11 +1117,17 @@ fi
 # 無効化する変異は summary 列が更新日列以降を飲み込む silent corruption に
 # なるため、この shape が当該ガード単独の識別力を担う
 # ──────────────────────────────────────────────────────────────────────
+# shape と期待文言を対にする。総称 ERROR だと「どちらのガードが発火したか」を
+# 識別できず、2 つの ERROR 文言を相互置換する退行 (shape と診断の対応が入れ替わる)
+# が素通りする — SKILL.md は exit 1 の ERROR を「唯一のシグナル」と規定しており、
+# 誤った診断は運用者の修復先を取り違えさせる
 tc22b_ok=1
-for shape in \
-  '| [Foo Pattern](pages/patterns/foo.md) | patterns | 蓄積サマリー | 2026-01-01T00:00:00+09:00 |' \
-  '| [Foo Pattern](pages/patterns/foo.md) | 蓄積サマリー |' \
-  '| [Foo Pattern](pages/patterns/foo.md) | patterns | 蓄積サマリー | 2026-01-01T00:00:00+09:00 | high | junk1 | junk2'; do
+for entry in \
+  '| [Foo Pattern](pages/patterns/foo.md) | patterns | 蓄積サマリー | 2026-01-01T00:00:00+09:00 |@@fewer cells than the 5-column layout' \
+  '| [Foo Pattern](pages/patterns/foo.md) | 蓄積サマリー |@@fewer cells than the 5-column layout' \
+  '| [Foo Pattern](pages/patterns/foo.md) | patterns | 蓄積サマリー | 2026-01-01T00:00:00+09:00 | high | junk1 | junk2@@content outside the cell delimiters'; do
+  shape="${entry%%@@*}"
+  expected_msg="${entry##*@@}"
   dir=$(make_sandbox "tc22b-$(printf '%s' "$shape" | wc -c)")
   cat > "$dir/index.md" <<EOF
 # Wiki Index
@@ -1103,15 +1143,44 @@ EOF
     --slug foo --updated "2026-08-05T12:00:00+09:00" --confidence high \
     --pages-root "$dir/pages"
   after=$(cat "$dir/index.md")
-  if [ "$HELPER_RC" -ne 1 ] || ! printf '%s\n' "$HELPER_STDERR" | grep -q 'ERROR' \
+  if [ "$HELPER_RC" -ne 1 ] || ! printf '%s\n' "$HELPER_STDERR" | grep -qF -- "$expected_msg" \
      || [ "$before" != "$after" ] || [ "$(grep -c '蓄積サマリー' "$dir/index.md")" -ne 1 ]; then
-    tc22b_ok=0; echo "  (セル数 $(printf '%s' "$shape" | awk -F'|' '{print NF-2}') の行が rc=$HELPER_RC / 蓄積サマリー残存 $(grep -c '蓄積サマリー' "$dir/index.md"))"
+    tc22b_ok=0; echo "  (セル数 $(printf '%s' "$shape" | awk -F'|' '{print NF-2}') の行が rc=$HELPER_RC / 期待文言 '$expected_msg' 不一致 / 蓄積サマリー残存 $(grep -c '蓄積サマリー' "$dir/index.md"))"
   fi
 done
 if [ "$tc22b_ok" -eq 1 ]; then
-  pass "TC-22b セル数不足 (4/3 セル) + 余剰フラグメント行の summary 保持抽出は exit 1・無変更"
+  pass "TC-22b セル数不足 (4/3 セル) + 余剰フラグメント行は exit 1・無変更 (shape ごとにガード固有文言を識別)"
 else
   fail "TC-22b"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
+# TC-22d (T-04): malformed 行の診断が index.md の制御バイトを中和して出す
+# SKILL.md ステップ 6 の exit 1 行は「ERROR をそのまま表示」を指示するため、
+# 破損 index の生 ESC / CSI が端末・transcript へ素通しする。同 helper の exit 2 系
+# 診断 (neutralize_ctrl 適用済み) との非対称を殺す
+# ──────────────────────────────────────────────────────────────────────
+dir=$(make_sandbox tc22d)
+{
+  printf '# Wiki Index\n\n## ページ一覧\n\n'
+  printf '| ページ | ドメイン | サマリー | 更新日 | 確信度 |\n'
+  printf '|--------|---------|---------|--------|--------|\n'
+  printf '| [Foo Pattern](pages/patterns/foo.md) | patterns | \033[31m蓄積\177サマリー | 2026-01-01T00:00:00+09:00 | high\n'
+} > "$dir/index.md"
+run_helper --index "$dir/index.md" --title "Foo Pattern" --domain patterns \
+  --slug foo --updated "2026-08-05T12:40:00+09:00" --confidence high \
+  --pages-root "$dir/pages"
+# ESC (033) と DEL (177) が stderr に残らないこと。バイト単位で検査する
+# (grep の文字クラスはロケール依存で raw 8-bit を取りこぼしうるため od で数える)
+tc22d_esc=$(printf '%s' "$HELPER_STDERR" | od -An -tx1 | tr -d ' \n' | grep -o '1b' | wc -l | tr -d ' ')
+tc22d_del=$(printf '%s' "$HELPER_STDERR" | od -An -tx1 | tr -d ' \n' | grep -o '7f' | wc -l | tr -d ' ')
+if [ "$HELPER_RC" -eq 1 ] \
+   && printf '%s\n' "$HELPER_STDERR" | grep -qF -- 'content outside the cell delimiters' \
+   && [ "$tc22d_esc" -eq 0 ] && [ "$tc22d_del" -eq 0 ] \
+   && printf '%s\n' "$HELPER_STDERR" | grep -qF -- '蓄積' ; then
+  pass "TC-22d malformed 行の診断は制御バイトを中和 (ESC/DEL 0 バイト・日本語は保持)"
+else
+  fail "TC-22d (rc=$HELPER_RC esc=$tc22d_esc del=$tc22d_del)"
 fi
 
 # ──────────────────────────────────────────────────────────────────────
@@ -1400,8 +1469,17 @@ for v in title description domain slug updated confidence; do
   printf '%s\n' "$step6_block" | grep -qF -- "wiu_${v}=\$(cat <<'WIU_EOF'" \
     || { tc17b_ok=0; echo "  ($v の quoted heredoc が解除されている)"; }
 done
+# heredoc 終端子衝突の実行前ゲート。quoted heredoc に残る唯一の脱出口 (値の行が
+# `WIU_EOF` と一致すると heredoc が早期終了し残りがコマンド実行される) は block 内の
+# シェルでは parse 前に検査できないため、substitute する LLM 側の責務としてゲート文言が
+# 必要。後続 cycle での脱落を殺すため散文を literal で pin する
+step6_prose=$(printf '%s\n' "$step6" | grep -vF -- '```')
+printf '%s\n' "$step6_prose" | grep -qF -- '終端子 `WIU_EOF` と完全一致' \
+  || { tc17b_ok=0; echo "  (heredoc 終端子衝突の実行前ゲート文言が無い)"; }
+printf '%s\n' "$step6_prose" | grep -qF -- 'この bash を実行してはならない' \
+  || { tc17b_ok=0; echo "  (実行前ゲートの禁止指示が無い)"; }
 if [ "$tc17b_ok" -eq 1 ]; then
-  pass "TC-17b ステップ 6 呼び出し契約 (8 フラグ + placeholder 対応 + 呼び出し行 literal + wiki_root 導出 + 6 値 heredoc) が helper と一致"
+  pass "TC-17b ステップ 6 呼び出し契約 (8 フラグ + placeholder 対応 + 呼び出し行 literal + wiki_root 導出 + 6 値 heredoc + 終端子ゲート) が helper と一致"
 else
   fail "TC-17b"
 fi

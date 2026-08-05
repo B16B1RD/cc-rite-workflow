@@ -378,6 +378,21 @@ LC_ALL=C awk '
     sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s)
     return s
   }
+  # C0 + DEL を `?` へ潰す診断用サニタイズ。破損 index の行内容をそのまま stderr へ
+  # 出すと生の制御バイト (ESC / CSI) が端末・transcript へ素通しする — SKILL.md
+  # ステップ 6 の exit 1 行は「ERROR をそのまま表示」を指示するため、corrupt-input
+  # 診断こそ中和対象。範囲は contains_ctrl --c0-only (control-char-neutralize.sh) と
+  # 同一で、awk から shell helper を呼べないための範囲ミラー。C1 まで潰す default
+  # 範囲を使わないのは、行内の日本語サマリーが `?` 列に潰れて診断価値を失うため。
+  function sanitize_diag(s,   out, i, c) {
+    out = ""
+    for (i = 1; i <= length(s); i++) {
+      c = substr(s, i, 1)
+      if (c < " " || c == "\177") out = out "?"
+      else                        out = out c
+    }
+    return out
+  }
   function is_heading(s)   { return s ~ /^##[^#]/ || s ~ /^##$/ }
   function is_list_head(s) { return s ~ /^##[ \t]*ページ一覧[ \t]*$/ }
   function is_stats_head(s){ return s ~ /^##[ \t]*統計[ \t]*$/ }
@@ -413,7 +428,7 @@ LC_ALL=C awk '
     # summary that later overwrites the accumulated value — the exact loss the
     # header spec forbids. Fail loud instead (rides the row-rewrite-failed path).
     if (trim(parts[1]) != "" || trim(parts[n]) != "") {
-      printf "ERROR: wiki-index-update: malformed registration row (content outside the cell delimiters — likely a missing row-end delimiter): %s\n", s > "/dev/stderr"
+      printf "ERROR: wiki-index-update: malformed registration row (content outside the cell delimiters — likely a missing row-end delimiter): %s\n", sanitize_diag(s) > "/dev/stderr"
       exit 1
     }
     # After dropping the two boundary fragments a well-formed row keeps at
@@ -424,7 +439,7 @@ LC_ALL=C awk '
     # (An empty summary CELL in a full 5-column row keeps n - 2 == 4 and
     # legitimately returns "".)
     if (n - 2 < 4) {
-      printf "ERROR: wiki-index-update: malformed registration row (fewer cells than the 5-column layout — cannot locate the summary cell): %s\n", s > "/dev/stderr"
+      printf "ERROR: wiki-index-update: malformed registration row (fewer cells than the 5-column layout — cannot locate the summary cell): %s\n", sanitize_diag(s) > "/dev/stderr"
       exit 1
     }
     mid = ""
@@ -543,13 +558,12 @@ LC_ALL=C awk '
       new_row = build_row(esc_frontmatter(DESCRIPTION))
       for (i = N; i > last_pipe; i--) lines[i + 1] = lines[i]
       lines[last_pipe + 1] = new_row
-      N++; if (E > last_pipe) E++
+      N++; E++                                           # last_pipe は必ず節内 (H < last_pipe < E)
       row_action = "added"
     }
 
     # ── procedure 3a: reclaim duplicate rows (all pages, keep first) ──
     dedup_removed = 0
-    delete seen
     n2 = 0
     for (i = 1; i <= N; i++) {
       if (i > H && i < E) {
