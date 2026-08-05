@@ -2,12 +2,14 @@
 title: "LLM substitute placeholder は bash residue gate で fail-fast 化する"
 domain: "patterns"
 created: "2026-04-18T12:50:00+00:00"
-updated: "2026-07-31T01:26:57+09:00"
+updated: "2026-08-05T09:26:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T122454Z-pr-579.md"
   - type: "fixes"
     ref: "raw/fixes/20260418T122707Z-pr-579.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260804T145133Z-pr-2111.md"
 tags: []
 confidence: high
 ---
@@ -46,6 +48,12 @@ esac
 
 起点事例の時点で同型の residue gate が `rite` plugin 内の 6 site で運用されている (Phase 1.1 / 1.3 / 6.2 F-01 / 8.3 F-14 / F-04 + 新規 1 site)。canonical reference として新規 bash block を登録する際は既存同種 site と一字一句同型に揃えること。drift は silent regression の温床となる。
 
+### 新設 helper にも gate を置く — sibling との対称性が判断基準（PR #2111 cycle 3）
+
+LLM substitute シームを持つ helper を新設するとき、SKILL.md 側（呼び出し bash block）の residue gate だけでは防げない — helper 側にも引数検証としての gate を置く。判断基準は **sibling helper との対称性**: 同種の LLM substitute シームを持つ sibling（`wiki-lint-stale.sh`）と SKILL.md 5.0.c に canonical gate があるのに新設 helper だけ無い状態は Canonical helper bypass の変種であり、片肺のまま残すと substitute 漏れが helper 内で silent 誤動作に変換される。
+
+なお、gate の検出条件を「brace 囲み」の形状ヒューリスティックとして free text（title/description）へ転用すると正当値を棄却する（同 PR cycle 4 で実測）。residue 検出は呼び出し側が渡す literal（`{title}` 等）との exact 突合で行う — 詳細は関連ページの「防御は攻撃面と同じ粒度で張る」を参照。
+
 ### LLM 内部状態 vs shell 変数の境界
 
 bash tool 呼び出し境界を跨いで shell 変数は保持されない。Phase A で `count=5` を定義しても Phase B からは参照不能で、LLM は自身の内部状態 (会話コンテキスト) から literal 値を substitute する責務を負う。この契約は bash コメントで明示することで、将来の読者が「なぜ placeholder が多いのか」を理解できる。
@@ -54,8 +62,10 @@ bash tool 呼び出し境界を跨いで shell 変数は保持されない。Pha
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 - [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](./drift-check-anchor-semantic-name.md)
+- [防御は攻撃面と同じ粒度で張る — 過剰防御は「安全側」ではなく別の実害](../heuristics/defense-granularity-matches-attack-surface.md)
 
 ## ソース
 
 - [PR #579 review results (cycle 1)](../../raw/reviews/20260418T122454Z-pr-579.md)
 - [PR #579 fix results (cycle 1)](../../raw/fixes/20260418T122707Z-pr-579.md)
+- [PR #2111 review results (cycle 3)](../../raw/reviews/20260804T145133Z-pr-2111.md)

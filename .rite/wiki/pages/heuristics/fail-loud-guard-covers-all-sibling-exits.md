@@ -1,0 +1,49 @@
+---
+type: "heuristics"
+title: "fail-loud ガードは同じ帰結を持つ全出口に張る（症状側から出口を網羅する）"
+domain: "heuristics"
+description: "silent な異常値（空文字等）を fail-loud 化するとき、検出した 1 出口だけ塞ぐと同じ帰結に至る兄弟出口（セル数不足の早期 return・ループ 0 回転）が残り、次サイクルで同型指摘が返ってくる。「この関数が異常値を返す経路は他に何本あるか」を症状側から列挙して 1 本のガードに畳み、ガードの下限は正当な境界 TC で pin して過剰発火側への倒れも同時に固定する。"
+created: "2026-08-05T09:26:00+09:00"
+updated: "2026-08-05T09:26:00+09:00"
+sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260804T155148Z-pr-2111-cycle5.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260804T155921Z-pr-2111-cycle5.md"
+tags: ["fail-loud", "guard", "exit-exhaustive", "sibling-exit", "trap", "boundary-tc"]
+confidence: medium
+---
+
+# fail-loud ガードは同じ帰結を持つ全出口に張る（症状側から出口を網羅する）
+
+## 概要
+
+silent データ損失（空文字が返る等）に fail-loud ガードを追加するとき、**指摘された 1 出口だけを塞ぐと、同じ帰結に至る兄弟出口が残って次サイクルで同型指摘として返ってくる**。ガードを追加する前に「この関数が異常値を返す経路は他に何本あるか」を症状側から遡って出口を列挙し、まとめて塞ぐ。
+
+## 詳細
+
+### 失敗の構造
+
+wiki-index-update helper（PR #2111）の cycle 4 で「行末区切り欠落 = 捨てフラグメント非空」の 1 出口に exit 1 ガードを入れたが、cycle 5 のレビューで**同じ帰結（空文字が返る）に至る兄弟出口が 2 本**（セル数不足での早期 return とループ 0 回転）残っていることを 4 レビュアーが独立に指摘した。新ガード追加のたびに「同じ帰結の兄弟経路」が指摘される形で blocking 件数が下げ止まっていた。
+
+### Canonical fix
+
+1. **症状（異常値が返る）側から関数の全 return 経路を列挙する** — 原因側（この入力が壊れている）からではなく、帰結側から遡ると出口が漏れなく列挙できる
+2. 兄弟出口を**1 本のガード**（セル数ガード）に畳む — 出口ごとに個別ガードを増やすより保守面が小さい
+3. **ガードの下限を境界 TC で pin する** — 正当な空セル 5 列行が rc=0 で通ることを固定し、過剰発火側（正当値の棄却）への倒れも同時に防ぐ
+
+### 付随した教訓（同 cycle で確定した同種の「全経路」規律）
+
+- **安全網の主張は不成立経路を先に探す**: 「失敗しても後段の lint が拾う」という記述は新規追加経路でしか成立せず、更新経路では登録行が旧値のまま残ってもどの lint 観点にも載らないことが実測で判明した。安全網を文書に書くときは、その安全網が発火しない経路を先に探し、不成立側では「表示した ERROR が唯一のシグナル」と明記する
+- **trap は canonical 4 行形 + mktemp 前武装**: exit code を契約にする helper で EXIT 単独 trap を mktemp 後に武装すると、SIGINT のタイミング次第で exit 0（成功 marker なし・仕事もしていない）の silent no-op になる（実測 12 回中 6 回）。宣言 → cleanup 関数 → 4 行 trap → mktemp の順序を守る
+- **docstring の不変条件 1 つに TC 1 本**: 文書化した性質（FIRST link 同定・回収は毎回走る）は、その性質を壊す変異が現行スイート green のままなら未 pin。狙い撃ち TC を足してから変異で殺せることを確認する
+
+## 関連ページ
+
+- [trap 登録 → mktemp の順序で tempfile lifecycle を守る](../patterns/trap-register-before-mktemp.md)
+- [修正が既存の no-op 経路を有効化すると、その経路に潜んでいたバグが初めて顕在化する](../anti-patterns/fix-activates-dormant-no-op-path-reveals-latent-bug.md)
+
+## ソース
+
+- [Review cycle 5: sibling-exit coverage for fail-loud guards and safety-net verification](../../raw/reviews/20260804T155148Z-pr-2111-cycle5.md)
+- [Fix cycle 5: exit-exhaustive fail-loud guards, canonical trap, honest safety-net docs](../../raw/fixes/20260804T155921Z-pr-2111-cycle5.md)

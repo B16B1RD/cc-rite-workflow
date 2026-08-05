@@ -4,7 +4,7 @@ title: "pin literal は「その行に固有」を grep -c で確かめ、変異
 domain: "patterns"
 description: "静的 assert の pin literal がラベルの主張より広い文字列だと、対象行を消す変異が全緑で生存する。pin を足したら (a) 全編集を適用した後に grep -c で hit 数 1 を確認し、(b) 対象行を消す変異を注入して自分の assert がちょうど 1 件 FAIL することを実測する。計測は編集前ではなく編集後に行う — 同一コミットの別修正が literal 自体を増減させるため。marker 契約は producer と consumer を対で pin する。"
 created: "2026-08-02T22:05:00+09:00"
-updated: "2026-08-02T22:05:00+09:00"
+updated: "2026-08-05T09:26:00+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260802T074021Z-pr-2052.md"
@@ -12,6 +12,8 @@ sources:
     ref: "raw/reviews/20260802T080828Z-pr-2052.md"
   - type: "fixes"
     ref: "raw/fixes/20260802T082508Z-pr-2052.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260804T145425Z-pr-2111.md"
 tags: ["pin", "mutation-testing", "static-assert", "producer-consumer-symmetry", "drift-detection"]
 confidence: high
 ---
@@ -79,6 +81,10 @@ pin 語句を壊して CI を赤にした反省から文言を復元した一方
 
 **pin されている表に行を足すときは、その行の pin も同時に足す。**
 
+### fix が追加した TC 自身にも代表変異を当てる（PR #2111 cycle 3 fix）
+
+「検出力系 fix は変異の fail 化を実測してから commit する」規律を守っていても、**fix 自身が追加した TC の検出力**は検証対象から漏れやすい。起点事例では cycle 2 で追加した invocation-symmetry TC がフラグ「名」の集合突合のみで「呼び出し行の実体」を pin していない穴が cycle 3 で指摘された。以後は fix が追加した TC にも代表変異（対象行の削除・literal の置換）を当てて kill を実測してから commit する。この検証は cycle 3 fix で TC の診断行に潜んでいた set -u バグ（失敗経路でのみ発火する未エスケープ変数）まで検出した — **fix 前 mutation は修正の妥当性検証であると同時に、その修正が testable かの検証でもある**。
+
 ### 散文を書き換える前に pin 依存を全走査する
 
 手順書の散文は実行契約であると同時にテストの検査対象でもある。段落単位で書き直すと、その段落中の文字列を pin していたテストを巻き込んで壊す。
@@ -113,3 +119,4 @@ grep -rn '<特徴的な文字列>' plugins/rite/hooks/tests/
 - [PR #2052 fix results (cycle 4)](../../raw/fixes/20260802T074021Z-pr-2052.md)
 - [PR 2052 review cycle 5: pin uniqueness, marker producer/consumer symmetry, guard-induced dead code](../../raw/reviews/20260802T080828Z-pr-2052.md)
 - [PR 2052 fix cycle 5: pin selection after edits, producer/consumer marker pins, emit-point relocation](../../raw/fixes/20260802T082508Z-pr-2052.md)
+- [PR #2111 fix results (cycle 3)](../../raw/fixes/20260804T145425Z-pr-2111.md)

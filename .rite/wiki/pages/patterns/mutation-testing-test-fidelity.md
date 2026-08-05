@@ -2,7 +2,7 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-08-01T05:40:00Z"
+updated: "2026-08-05T09:26:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260725T032345Z-pr-2013.md"
@@ -134,6 +134,8 @@ sources:
     ref: "raw/fixes/20260801T041229Z-pr-2078.md"
   - type: "fixes"
     ref: "raw/fixes/20260801T032503Z-pr-2078.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260804T135121Z-pr-2111.md"
 tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage", "symmetry-claim-bidirectional-pin", "negative-assert", "non-blocking-contract-mutation"]
 confidence: high
 ---
@@ -946,3 +948,4 @@ reviewer に mutation 実測を明示的に依頼した結果、静的 pin で�
 - [PR #2013 review cycle 3 — 守ると宣言した軸そのものが未 pin だった CRITICAL (適用 32)](../../raw/reviews/20260725T032345Z-pr-2013.md)
 - [PR #2013 fix results (cycle 2) — 42 assertions 緑でも mutation を検出できない初版](../../raw/fixes/20260725T025323Z-pr-2013.md)
 - [PR #2013 fix results (cycle 3) — 9 種 mutation を全て KILLED まで持っていった記録](../../raw/fixes/20260725T033607Z-pr-2013.md)
+- [PR #2111 review results — 散文→helper 委譲リファクタで 23 変異中 8 生存を実測 (grep 断片照合のみで golden 全文比較なし / ヘッダ補填分岐の fixture ゼロ / 制御文字経路未被覆)。散文から移した仕様の「実行可能仕様」が fixture に揃っているかの機械検証として有効](../../raw/reviews/20260804T135121Z-pr-2111.md)
