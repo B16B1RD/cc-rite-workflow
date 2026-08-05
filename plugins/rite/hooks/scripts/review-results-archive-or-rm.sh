@@ -113,28 +113,25 @@ archive_dir="$results_dir/archive"
 archived=0
 removed=0
 failed=0
-gitignore_ensured=0
+
+# 保存先の `.gitignore` を保証する (docstring「保存先 .gitignore の同梱」参照)。
+# ループ**前**に置き `[ -d "$results_dir" ]` を前提条件にする: (a) results_dir 不在の
+# 新規 PR では 1 度も試行せず marker も出ない、(b) results_dir が実在するが当該 PR の
+# 結果 JSON が 0 件の cleanup (archive/ に前回までの退避物だけが残る状態) でも除外が
+# 張られる。ループ内に置くと (b) で保護が一度も発火しないまま `git add -A` が全文を
+# 拾う経路が残る。guard が存在 (`-f`) ではなく中身 (`-s`) なのと、`{ ...; } 2>&1` の
+# グループスコープで捕捉する理由は保存経路 (hooks/review-result-save.sh) と同一。
+if [ -d "$results_dir" ] && [ ! -s "$results_dir/.gitignore" ]; then
+  if ! gi_err=$( { printf '*\n' > "$results_dir/.gitignore"; } 2>&1 ); then
+    echo "WARNING: ${LABEL} の保存先に .gitignore を作成できません (PR #${PR_NUMBER}): $results_dir/.gitignore — 退避した非実測指摘の全文が git の追跡対象に入る恐れがあります" >&2
+    [ -n "$gi_err" ] && printf '%s\n' "$gi_err" | sed 's/^/  /' >&2
+    echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=${LABEL}_gitignore_failure; pr=${PR_NUMBER}" >&2
+  fi
+fi
 
 for f in "$results_dir/${PR_NUMBER}"-*.json*; do
   # glob がマッチしないと pattern 文字列そのものが入るので実在検査で弾く
   { [ -e "$f" ] || [ -L "$f" ]; } || continue
-
-  # 保存先の `.gitignore` を保証する (docstring「保存先 .gitignore の同梱」参照)。
-  # 置き場所はループ**内**の 1 回だけ: ループ前だと結果ファイルが 0 件の PR
-  # (results_dir 不在) でも必ず書き込みを試みて毎回無意味な marker が出るし、
-  # 無条件にループ内へ置くと 1 つの状態に対して N 本の marker が出る。
-  # guard が存在 (`-f`) ではなく中身 (`-s`) なのと、`{ ...; } 2>&1` のグループスコープで
-  # 捕捉する理由は保存経路 (hooks/review-result-save.sh) と同一。
-  if [ "$gitignore_ensured" = 0 ]; then
-    gitignore_ensured=1
-    if [ ! -s "$results_dir/.gitignore" ]; then
-      if ! gi_err=$( { printf '*\n' > "$results_dir/.gitignore"; } 2>&1 ); then
-        echo "WARNING: ${LABEL} の保存先に .gitignore を作成できません (PR #${PR_NUMBER}): $results_dir/.gitignore — 退避した非実測指摘の全文が git の追跡対象に入る恐れがあります" >&2
-        [ -n "$gi_err" ] && printf '%s\n' "$gi_err" | sed 's/^/  /' >&2
-        echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=${LABEL}_gitignore_failure; pr=${PR_NUMBER}" >&2
-      fi
-    fi
-  fi
 
   keep=no
   keep_reason=""

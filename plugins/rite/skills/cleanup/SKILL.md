@@ -830,7 +830,7 @@ bash {plugin_root}/hooks/scripts/review-results-archive-or-rm.sh \
 if [ "$_rrar_rc" -ne 0 ]; then
   echo "WARNING: review-results の退避/削除 helper が rc=${_rrar_rc} で失敗しました。レビュー結果 JSON は未処理のまま残っています" >&2
   echo "  原因候補: {plugin_root} の未解決置換 / helper 欠落・非可読 (rc=127) / 引数不正 (rc=1)" >&2
-  echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=review_results_helper_failed; rc=${_rrar_rc}; pr=${pr_number}" >&2
+  echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=review_results_helper_failed; pr=${pr_number}; rc=${_rrar_rc}" >&2
 fi
 rite_rm fix_retry_state "$_state_root/.rite/state/fix-fallback-retry-${pr_number}.count"
 rite_rm fix_cycle_state "$_state_root/.rite/fix-cycle-state/${pr_number}.json"
