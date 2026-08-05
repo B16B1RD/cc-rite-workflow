@@ -144,6 +144,78 @@ else
 fi
 echo ""
 
+# ─── TC-6: 保存先に `*` だけの .gitignore が同梱される ───
+# 保存される JSON は非実測指摘の description / suggestion 全文を持ち、`/rite:cleanup` は
+# 非空のものを削除せず archive/ に残す。除外が無いと `git add -A` で公開リポジトリへ入る。
+echo "TC-6: co-located .gitignore excludes the results dir"
+content6="$TEST_DIR/body6.json"
+json_body > "$content6"
+rm -f "$REPO/.rite/review-results/.gitignore"
+( cd "$REPO" && bash "$REPO/hooks/review-result-save.sh" --pr 99 --content-file "$content6" ) 2>/dev/null
+gi6=$(cat "$REPO/.rite/review-results/.gitignore" 2>/dev/null || true)
+# 実効を git 自身に確認させる (ファイルの中身だけを見ると `*` 以外へ書き換える退行を通す)
+tracked6=$(git -C "$REPO" status --porcelain -- .rite/review-results | wc -l | tr -d ' ')
+if [ "$gi6" = "*" ] && [ "$tracked6" -eq 0 ]; then
+  pass "TC-6: .gitignore written and git reports the dir as excluded"
+else
+  fail "TC-6: expected '*' + 0 porcelain entries, got gitignore='$gi6' entries=$tracked6"
+fi
+echo ""
+
+# ─── TC-7: 0 バイトの .gitignore 残骸 (ENOSPC で redirect が truncate だけした形) を治す ───
+# 存在 guard (`[ ! -f ]`) へ退行すると空ファイルを「作成済み」と読んで以降の全 cycle が
+# 無音で skip し、除外は効いていないのに marker も二度と出ない。
+echo "TC-7: a 0-byte .gitignore residue is rewritten on the next save"
+content7="$TEST_DIR/body7.json"
+json_body > "$content7"
+: > "$REPO/.rite/review-results/.gitignore"
+( cd "$REPO" && bash "$REPO/hooks/review-result-save.sh" --pr 99 --content-file "$content7" ) 2>/dev/null
+gi7=$(cat "$REPO/.rite/review-results/.gitignore" 2>/dev/null || true)
+tracked7=$(git -C "$REPO" status --porcelain -- .rite/review-results | wc -l | tr -d ' ')
+if [ "$gi7" = "*" ] && [ "$tracked7" -eq 0 ]; then
+  pass "TC-7: 0-byte residue healed"
+else
+  fail "TC-7: expected '*' + 0 porcelain entries, got gitignore='$gi7' entries=$tracked7"
+fi
+echo ""
+
+# ─── TC-8: .gitignore を書けないとき、原因が捨てられず列 0 にも素通ししない ───
+# 単純コマンドの `printf ... > f 2>&1` は bash が redirect 自身の失敗 (EACCES) を 2>&1 適用**前**に
+# 報告するため、原因が最も要る側だけが捕捉から漏れて列 0 へ出る。`{ ...; } 2>&1` のグループ
+# スコープへの退行を落とす。root は chmod a-w で書き込みを止められないため skip (TC-4-rm と同型)。
+echo "TC-8: gitignore write failure keeps its cause (captured + indented)"
+if [ "$(id -u)" -eq 0 ]; then
+  pass "TC-8: skipped (root cannot be blocked by chmod a-w)"
+else
+  content8="$TEST_DIR/body8.json"
+  json_body > "$content8"
+  ro_dir="$TEST_DIR/ro-results"
+  mkdir -p "$ro_dir"
+  chmod a-w "$ro_dir"
+  out8=$( cd "$REPO" && bash "$REPO/hooks/review-result-save.sh" --pr 99 \
+    --content-file "$content8" --results-dir "$ro_dir" 2>&1 ) || true
+  chmod u+w "$ro_dir"
+  marker8=$(printf '%s\n' "$out8" | grep -c 'LOCAL_SAVE_GITIGNORE_FAILED=1' || true)
+  # 捕捉された診断は helper の `sed 's/^/  /'` 由来の先頭 2 スペースを持つ。
+  # 列 0 の裸の診断行 (= 捕捉漏れ) が 1 本でもあれば退行。
+  # anchor は bash の診断本文 (`<path>/.gitignore: <理由>`) の**構造**に取る — 理由の文言は
+  # locale 依存 (ja_JP では「許可がありません」) で、`Permission denied` に依存すると
+  # 日本語環境では列 0 への漏れを 1 件も捕捉できない。WARNING 行は `/.gitignore を…` で
+  # コロンを持たないため、`: ` まで含めれば誤 match しない。
+  # `LC_ALL=C` は必須: helper は診断を neutralize_ctrl に通すため 0x80-0x9f がバイト単位で
+  # `?` に潰れ、多バイト文字の途中が壊れて行全体が invalid UTF-8 になる。UTF-8 locale の
+  # grep はその行への match を諦めるので、C locale (バイト指向) にしないと ASCII の
+  # anchor まで 1 件も拾えない (実測: ja_JP.UTF-8 で indented=0 bare=0 となり pin が空振りする)。
+  indented8=$(printf '%s\n' "$out8" | LC_ALL=C grep -cE '^  .*/\.gitignore: ' || true)
+  bare8=$(printf '%s\n' "$out8" | LC_ALL=C grep -cE '^[^ ].*/\.gitignore: ' || true)
+  if [ "$marker8" -ge 1 ] && [ "$indented8" -ge 1 ] && [ "$bare8" -eq 0 ]; then
+    pass "TC-8: marker emitted and cause captured with indent (no column-0 leak)"
+  else
+    fail "TC-8: expected marker>=1 indented>=1 bare=0, got marker=$marker8 indented=$indented8 bare=$bare8"
+  fi
+fi
+echo ""
+
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then
   exit 1

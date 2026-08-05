@@ -45,6 +45,7 @@
 #              , review_results_archive_mkdir_failure    退避先ディレクトリを作れない
 #              , review_results_archive_mv_failure       mv 自体が失敗
 #              , review_results_archive_name_collision   退避先に同名既存 (上書きせず元の場所に残す)
+#              , review_results_gitignore_failure        保存先の .gitignore を作れない (下記)
 #              , review_results_undecidable              中身を判定できず退避側へ倒した
 #              }
 #   `review_results_undecidable` だけは `cause=` を伴う。`cause=jq_rc_<n>` はファイル単体の
@@ -56,6 +57,15 @@
 #   `_undecidable` 以外の失敗では **ファイルは削除しない** (退避できないなら元の場所に残す)。
 #   `_undecidable` は退避自体は成功しうるので `failed` には数えない (観測用の marker)。
 #   consumer 側 (cleanup ステップ 12 の判定表) も `_undecidable` だけは残作業に数えない。
+#   `_gitignore_failure` も同じ理由で `failed` には数えない (ファイル自体は処理済み) が、
+#   `_undecidable` と違い consumer 側では**実失敗側**へ倒す — 除外の欠落は退避した全文が
+#   `git add -A` で公開リポジトリへ入る経路そのもので、人手の確認を要する。
+#
+# 保存先 `.gitignore` の同梱 (`_gitignore_failure`):
+#   本 helper は `<results_dir>/archive/` に非実測指摘の全文を積む。除外は保存経路
+#   (hooks/review-result-save.sh) が同じ `*` だけの .gitignore を書いて担保するが、機構の導入
+#   前に作られた results_dir や保存時の書き込み失敗ではそれが無いまま cleanup を迎える。
+#   保存を挟まずに cleanup が走るインストールでは保護が一度も効かないため、退避側でも保証する。
 #
 # Emitted summary (stdout, 1 行):
 #   [review-results-archive-or-rm] archived=<n>; removed=<n>; failed=<n>; pr=<n>
@@ -103,10 +113,28 @@ archive_dir="$results_dir/archive"
 archived=0
 removed=0
 failed=0
+gitignore_ensured=0
 
 for f in "$results_dir/${PR_NUMBER}"-*.json*; do
   # glob がマッチしないと pattern 文字列そのものが入るので実在検査で弾く
   { [ -e "$f" ] || [ -L "$f" ]; } || continue
+
+  # 保存先の `.gitignore` を保証する (docstring「保存先 .gitignore の同梱」参照)。
+  # 置き場所はループ**内**の 1 回だけ: ループ前だと結果ファイルが 0 件の PR
+  # (results_dir 不在) でも必ず書き込みを試みて毎回無意味な marker が出るし、
+  # 無条件にループ内へ置くと 1 つの状態に対して N 本の marker が出る。
+  # guard が存在 (`-f`) ではなく中身 (`-s`) なのと、`{ ...; } 2>&1` のグループスコープで
+  # 捕捉する理由は保存経路 (hooks/review-result-save.sh) と同一。
+  if [ "$gitignore_ensured" = 0 ]; then
+    gitignore_ensured=1
+    if [ ! -s "$results_dir/.gitignore" ]; then
+      if ! gi_err=$( { printf '*\n' > "$results_dir/.gitignore"; } 2>&1 ); then
+        echo "WARNING: ${LABEL} の保存先に .gitignore を作成できません (PR #${PR_NUMBER}): $results_dir/.gitignore — 退避した非実測指摘の全文が git の追跡対象に入る恐れがあります" >&2
+        [ -n "$gi_err" ] && printf '%s\n' "$gi_err" | sed 's/^/  /' >&2
+        echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=${LABEL}_gitignore_failure; pr=${PR_NUMBER}" >&2
+      fi
+    fi
+  fi
 
   keep=no
   keep_reason=""

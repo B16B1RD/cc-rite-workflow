@@ -299,9 +299,17 @@ fi
 # `.rite/sessions/` と `.rite/worktrees/` しかカバーせず、`--upgrade` は追記 Phase を通らない)。
 # 非ブロッキング: 書けなくても保存は続行する。ただし黙って続行はしない — 除外の欠落は
 # 全文が公開面へ出る経路そのものなので WARNING と marker で loud にする。
-if [ ! -f "$REVIEW_RESULTS_DIR/.gitignore" ]; then
-  if ! printf '*\n' > "$REVIEW_RESULTS_DIR/.gitignore" 2>/dev/null; then
+# 守りたいのは「除外が効いている」ことなので、guard は存在 (`-f`) ではなく中身 (`-s`) を見る。
+# `> file` は redirect が先に truncate するため、ENOSPC で 0 バイトの .gitignore が残る。
+# 存在 guard だとその空ファイルを「作成済み」と読んで以降の全 cycle が無音で skip し、
+# 除外は効いていないのに marker も二度と出ない。`-s` なら次回の保存で必ず書き直しを試みる。
+# stderr は捨てずに捕捉する。`{ ...; } 2>&1` の**グループ**スコープにするのは、単純コマンドの
+# `printf ... > f 2>&1` だと bash が redirect 自身の失敗 (EACCES) を 2>&1 適用**前**に報告し、
+# 原因が最も要る側だけが捕捉から漏れて列 0 へ素通しするため (session-start.sh の先例と同型)。
+if [ ! -s "$REVIEW_RESULTS_DIR/.gitignore" ]; then
+  if ! gitignore_err=$( { printf '*\n' > "$REVIEW_RESULTS_DIR/.gitignore"; } 2>&1 ); then
     echo "WARNING: $REVIEW_RESULTS_DIR/.gitignore を作成できませんでした。本ディレクトリが git の追跡対象から除外されているか手動で確認してください (非実測指摘の全文が含まれます)" >&2
+    [ -n "$gitignore_err" ] && printf '%s\n' "$gitignore_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     echo "[CONTEXT] LOCAL_SAVE_GITIGNORE_FAILED=1; dir=$REVIEW_RESULTS_DIR" >&2
   fi
 fi

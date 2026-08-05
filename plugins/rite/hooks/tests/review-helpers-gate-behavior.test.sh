@@ -2847,9 +2847,12 @@ else
       #     fence が持ってよい placeholder を allowlist で固定し、全文を運ぶ新しい placeholder の
       #     追加を落とす。値の追加・改名はどちらもここで loud fail し、期待値更新という形で
       #     人手のレビューを強制する。
-      #     **ラベルは「新規 placeholder の検出」までしか名乗らない** — allowlist 内の 7 種と
-      #     literal な散文だけで全文を再掲載する形はここでは落ちない (下の row-scoped pin が
-      #     finding 単位の 4 placeholder すべてについて担う)。
+      #     **ラベルは「新規 placeholder の検出」までしか名乗らない** — allowlist 内の 7 種を
+      #     使って全文を再掲載する形はここでは落ちず、下の出現回数 pin が担う。
+      #     placeholder を 1 つも含まない literal な散文はどちらの pin も見ないが、それは射程の
+      #     穴ではない: 本 fence はレンダリング前のテンプレートで、finding ごとの全文は
+      #     placeholder 経由でしか入らない。散文はどの finding についても何も開示しえない
+      #     (「下の pin が担う」と委譲すると、出現回数しか数えない相手に測れない量を渡すことになる)。
       #     文字クラスは `[^}]` — `[a-z_]` だと数字・大文字・ハイフンを含む placeholder
       #     (`{finding_detail_1}` 等) を 1 件も拾わず allowlist を素通りする (実測)。
       #     **空白も除外してはならない** — `[^}[:space:]]` にすると `{finding full description}` の

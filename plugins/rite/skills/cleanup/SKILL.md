@@ -1093,11 +1093,11 @@ Status: {projects_status_result}
 
   | 検出 | check | 表示 |
   |---|---|---|
-  | `reason=invalid_pr_number`、または `reason=` が `_rm_failure` / `_archive_mkdir_failure` / `_archive_mv_failure` / `_archive_name_collision` / `_helper_failed` のいずれかで終わる marker がある | ` ` | 警告付記 |
+  | `reason=invalid_pr_number`、または `reason=` が `_rm_failure` / `_archive_mkdir_failure` / `_archive_mv_failure` / `_archive_name_collision` / `_gitignore_failure` / `_helper_failed` のいずれかで終わる marker がある | ` ` | 警告付記 |
   | `reason=review_results_undecidable; cause=jq_missing` がある | ` ` | `⚠️ jq が見つからず全レビュー結果 JSON を無判定で archive/ へ退避しました。jq を導入してください` |
   | `reason=review_results_undecidable` がある（`cause=jq_rc_<n>`） | `x` | `ℹ️ 一部のレビュー結果 JSON は中身を判定できず削除せず archive/ へ退避しました (本 cycle での対応は不要)` |
 
-  行を presence 検査にしてあるので「上から評価し最初の一致」が実際に効く（実失敗と判定不能が同一 run で共起しても 1 行目が先に一致する）。`cause=jq_rc_<n>` を `x` に倒すのは、helper がこれを「退避自体は成功しうるので `failed` には数えない」と定義し summary も `failed=0` を返すため。`.corrupt-*` を「判定不能 → 退避」経路へ載せた以上 corrupt を持つ PR は毎回この reason を出すので、失敗扱いのままだと存在しない手動対応を促し続ける。一方 `cause=jq_missing` は環境不備で、放置すると本来削除されるべき JSON まで無判定で退避され続けるため実失敗側に置く。
+  行を presence 検査にしてあるので「上から評価し最初の一致」が実際に効く（実失敗と判定不能が同一 run で共起しても 1 行目が先に一致する）。`_gitignore_failure` は `cause=jq_rc_<n>` と同じく summary の `failed` には数えられない（ファイル自体は処理済み）が、1 行目の実失敗側に置く — 除外の欠落は退避した全文が `git add -A` で公開リポジトリへ入る経路そのもので、放置してよい informational ではない。`cause=jq_rc_<n>` を `x` に倒すのは、helper がこれを「退避自体は成功しうるので `failed` には数えない」と定義し summary も `failed=0` を返すため。`.corrupt-*` を「判定不能 → 退避」経路へ載せた以上 corrupt を持つ PR は毎回この reason を出すので、失敗扱いのままだと存在しない手動対応を促し続ける。一方 `cause=jq_missing` は環境不備で、放置すると本来削除されるべき JSON まで無判定で退避され続けるため実失敗側に置く。
 - `{wiki_ingest_check}`: 以下の sentinel を上から評価し最初の一致を採用 (`WIKI_INGEST_DONE` + `WIKI_INGEST_PUSH_FAILED` が併存しうるため順序重要):
 
   | Sentinel | check | 表示 |

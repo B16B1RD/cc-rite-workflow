@@ -184,15 +184,14 @@ assert "TC-4b 退避先の既存を上書きしない" "PRE-EXISTING" "$(cat "$r
 assert "TC-4b 衝突を示す reason marker が 1 本出る" "1" \
   "$(grep -cE 'reason=review_results_archive_(mv_failure|name_collision); pr=9' "$ERR" || true)"
 assert "TC-4b failed=1" "1" "$(sed -n 's/.*failed=\([0-9]*\);.*/\1/p' "$OUT")"
-# mv の stderr 転送も pin する。jq (TC-2) / mkdir (TC-4a) には pin があるのに mv だけ無検査だと、
-# helper docstring が「守れなかったときに原因 (既存衝突 / 権限 / ENOSPC / EXDEV) が残らないのは
-# silent failure」と宣言している 3 経路のうち 1 本だけ強制層を欠く。anchor は TC-4a と同型
-# (`sed 's/^/  /'` 由来の先頭 2 スペース + locale 非依存の program-name prefix)。
-assert_grep "TC-4b mv の stderr を捨てない (診断が残る)" "$ERR" '^  mv'
 # 「GNU では必ず mv_failure 側に落ちる」ことは **assert しない** — ラベル自身が platform 限定を
 # 表明する assert を無条件評価すると、BSD (`mv -n` が衝突時 rc=0) の CI leg に恒久 red を作り、
 # TC-4b の本質 (削除しない + marker が出る = 上の 2 assert) が platform 非依存に守られている事実を
 # 覆い隠す。BSD 側の name_collision 分岐は TC-4c が mv stub で決定論的にカバーする。
+# **mv の stderr 転送を本 TC で pin してはならない**: 衝突経路の stderr は GNU では出るが BSD の
+# `mv -n` は rc=0 のまま何も書かないため、同じ platform 限定を別の形で持ち込むことになる
+# (規約を書いた直後に同型の assert を足していた)。転送の pin は mv 自体を決定論的に失敗させる
+# TC-4d が持つ。
 
 # (c) BSD 相当の `mv -n` (同名既存で rc=0 のまま何もしない) を PATH shim で再現する。
 # helper が rc に依らず source 残存で衝突を検出できることの behavioral pin。
@@ -214,6 +213,67 @@ assert_grep "TC-4c reason=..._archive_name_collision" "$ERR" 'reason=review_resu
 assert "TC-4c failed=1" "1" "$(sed -n 's/.*failed=\([0-9]*\);.*/\1/p' "$OUT")"
 assert "TC-4c 成功と誤報告しない (archived=0)" "0" \
   "$(sed -n 's/.*archived=\([0-9]*\);.*/\1/p' "$OUT")"
+
+# (d) mv 自体が失敗する経路 (権限 / ENOSPC / EXDEV) を PATH shim で再現し、stderr 転送を pin する。
+# 実 mv を失敗させる手段 (退避先を chmod a-w 等) は root leg で無効化されるため使わない
+# — TC-4-rm が root skip になっているのと同じ穴を、この invariant にも作ることになる。
+# shim なら platform にも uid にも依存せず決定論的に失敗する。
+r=$(new_root tc4d)
+put_json "$r" "9-z.json" '{"non_blocking_findings":[{"id":"F-01"}]}'
+mvfail="$TMP_ROOT/mv-fail-bin"; mkdir -p "$mvfail"
+printf '#!/bin/bash\necho "mv: rite-test simulated failure" >&2\nexit 1\n' > "$mvfail/mv"
+chmod +x "$mvfail/mv"
+# 前提の自己検査: shim が実体の mv より先に解決されること (されなければ本 TC は vacuous)
+assert "TC-4d [前提] shim の mv が PATH 先頭で解決される" "$mvfail/mv" \
+  "$(PATH="$mvfail:$PATH" command -v mv)"
+PATH="$mvfail:$PATH" bash "$TARGET" --state-root "$r" --pr 9 >"$OUT" 2>"$ERR"; RC=$?
+assert "TC-4d exit 0 (非ブロッキング)" "0" "$RC"
+assert "TC-4d mv 失敗では削除しない" "kept-in-place" "$(where "$r" 9-z.json)"
+assert_grep "TC-4d reason=..._archive_mv_failure" "$ERR" 'reason=review_results_archive_mv_failure; pr=9'
+# 転送行に固有の形へ anchor する (TC-4a / TC-4-rm と同型): 先頭 2 スペースは helper の
+# `sed 's/^/  /'` 由来、`mv:` の program-name prefix は locale 非依存。
+assert_grep "TC-4d mv の stderr を捨てない (診断が残る)" "$ERR" '^  mv'
+assert "TC-4d failed=1" "1" "$(sed -n 's/.*failed=\([0-9]*\);.*/\1/p' "$OUT")"
+assert "TC-4d 成功と誤報告しない (archived=0)" "0" \
+  "$(sed -n 's/.*archived=\([0-9]*\);.*/\1/p' "$OUT")"
+
+echo "--- TC-4e: 保存先 .gitignore の同梱 (退避経路) ---"
+# 保存経路を通っていない results_dir (機構導入前のインストール / 保存時の書き込み失敗) でも
+# 退避側で除外を保証する。無いと archive/ に積んだ全文が `git add -A` で公開リポジトリへ入る。
+r=$(new_root tc4e)
+put_json "$r" "9-g.json" '{"non_blocking_findings":[{"id":"F-01"}]}'
+rm -f "$r/.rite/review-results/.gitignore"
+run_target "$r" --pr 9
+assert "TC-4e 退避後に .gitignore が同梱される" "*" \
+  "$(cat "$r/.rite/review-results/.gitignore" 2>/dev/null)"
+assert "TC-4e 正常系では gitignore marker を出さない" "0" \
+  "$(grep -cF 'reason=review_results_gitignore_failure' "$ERR" || true)"
+# 0 バイト残骸 (ENOSPC で redirect が truncate だけした形) を治すこと。存在 guard (`-f`) へ
+# 退行すると空ファイルを「作成済み」と読んで以降の cleanup が無音で除外を欠いたまま回る。
+r=$(new_root tc4e2)
+put_json "$r" "9-h.json" '{"non_blocking_findings":[{"id":"F-01"}]}'
+: > "$r/.rite/review-results/.gitignore"
+run_target "$r" --pr 9
+assert "TC-4e 0 バイトの .gitignore を書き直す" "*" \
+  "$(cat "$r/.rite/review-results/.gitignore" 2>/dev/null)"
+# 3 件処理しても marker は高々 1 本 (ループ内 1 回だけ実行される) — N 本出す形への退行を落とす。
+r=$(new_root tc4e3)
+for n in a b c; do put_json "$r" "9-$n.json" '{"non_blocking_findings":[{"id":"F-01"}]}'; done
+rm -f "$r/.rite/review-results/.gitignore"
+chmod a-w "$r/.rite/review-results"
+run_target "$r" --pr 9
+chmod u+w "$r/.rite/review-results"
+if [ "$(id -u)" -eq 0 ]; then
+  skip "TC-4e-once root 実行では chmod a-w が書き込みを止められないため skip"
+else
+  assert "TC-4e gitignore marker はファイル数によらず高々 1 本" "1" \
+    "$(grep -cF 'reason=review_results_gitignore_failure; pr=9' "$ERR" || true)"
+  # anchor は診断本文の構造 (`<path>/.gitignore: <理由>`) に取る。理由の文言は locale 依存で、
+  # `Permission denied` に依存すると ja_JP 環境で 1 件も拾えない。WARNING 行は
+  # `/.gitignore — …` でコロンを持たないため誤 match しない。
+  assert "TC-4e gitignore 失敗の stderr を捨てない (診断が残る)" "1" \
+    "$(LC_ALL=C grep -cE '^  .*/\.gitignore: ' "$ERR" || true)"
+fi
 
 echo "--- TC-5: 引数 gate (caller 契約違反は exit 1) ---"
 r=$(new_root tc5)
@@ -271,9 +331,13 @@ if [ ! -f "$CLEANUP_MD" ]; then
 else
   # pattern に行継続バックスラッシュを含めない。含めると呼び出しを 1 行へ畳む無害な整形で
   # 「呼び出しが実在するのに FAIL」する偽陽性になり、診断文が事実と逆を主張する。
-  # 末尾なしでも pristine のヒットは 1 件 (テスト側への言及は hooks/tests/ で hooks/scripts/ を含まない)。
-  assert "TC-8 helper 呼び出しが 1 本存在する" "1" \
-    "$(grep -cF 'hooks/scripts/review-results-archive-or-rm.sh' "$CLEANUP_MD" || true)"
+  # 一方でパス文字列の literal 一致だけにすると、**呼び出し行をコメントアウトしても 1 のまま通る**
+  # (実測)。整形依存を外すことと実行位置へ anchor することは別要件で、前者だけ直すと後者が空く。
+  # `^[[:space:]]*bash ` で「行頭から見て最初のトークンが bash」= 実際に起動される位置に固定し、
+  # プラグインルート部分は `[^[:space:]]*` で受ける ({plugin_root} の literal を pattern に
+  # 持ち込むと ERE の `{}` が区間量指定子と衝突する)。
+  assert "TC-8 helper 呼び出しが実行される位置に 1 本存在する" "1" \
+    "$(grep -cE '^[[:space:]]*bash [^[:space:]]*hooks/scripts/review-results-archive-or-rm\.sh' "$CLEANUP_MD" || true)"
   # 旧形 (無条件削除) への差し戻しを落とす。`rite_rm` の第 1 引数が `review_results` の行が
   # 復活したら退避機構が bypass されている。
   assert "TC-8 旧 rite_rm review_results 形が復活していない" "0" \
