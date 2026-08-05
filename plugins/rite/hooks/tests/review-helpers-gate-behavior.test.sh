@@ -2137,16 +2137,11 @@ for _q_var in id_persist_tmp id_persist_err id_persist_prev_err; do
     _q_is_local="no"
   fi
   assert "TC-4.16q $_q_var を関数スコープ宣言に戻していない" "no" "$_q_is_local"
-  # 上の allowlist 自体が drift しないよう、初期化がトップレベル (最初の関数定義より前) にあることも
-  # 固定する。宣言キーワードを使わずに関数内で代入する形へ変えても、この順序 pin が落とす。
-  _q_init_line=$(grep -n "^$_q_var=\"\"" "$_q_nbr_sh" | head -1 | cut -d: -f1)
-  _q_first_fn_line=$(grep -nE '^[A-Za-z_][A-Za-z0-9_]*\(\) \{' "$_q_nbr_sh" | head -1 | cut -d: -f1)
-  if [ -n "$_q_init_line" ] && [ -n "$_q_first_fn_line" ] && [ "$_q_init_line" -lt "$_q_first_fn_line" ] 2>/dev/null; then
-    _q_top_level="yes"
-  else
-    _q_top_level="no"
-  fi
-  assert "TC-4.16q $_q_var がトップレベルで初期化されている" "yes" "$_q_top_level"
+  # 「初期化がトップレベルにあること」を最初の関数定義との行番号比較で固定する形は**採らない** —
+  # 無関係な helper 関数を上に足しただけで、コードが正しいまま pin だけが落ちる (`local` の
+  # denylist を allowlist へ反転したのと同じ false precision)。かつ、それが捕捉するとされる
+  # 「宣言キーワード無しで関数内代入する」形は bash ではグローバルへの代入であって欠陥ではない。
+  # 上の allowlist だけで `local` / `declare` / `typeset` いずれの差し戻しも落ちる (mutation 実測済み)。
 done
 
 # TC-4.16l [degraded 非回帰の positive control] 自 login が取れないときは id 経路も評価できないため
