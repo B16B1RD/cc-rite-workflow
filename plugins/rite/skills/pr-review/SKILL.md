@@ -2652,9 +2652,11 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
    **non-blocking** に分類されました (mergeable 判定を block しません)。マージ後に人間が
    拾い直せるようここに記録します。
 
-   | レビュアー | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
-   |-----------|--------|----------|------------|------|---------|
-   | {reviewer_type} | {severity} | {scope} | {file}:{line} | {description} | {suggestion} |
+   | レビュアー | 重要度 | ファイル:行 |
+   |-----------|--------|------------|
+   | {reviewer_type} | {severity} | {file}:{line} |
+
+   > 各指摘の詳細 (description / suggestion) は `.rite/review-results/{pr_number}-*.json` の `non_blocking_findings[]` にあります。この PR のブランチを checkout して参照してください。
 
    📎 non_blocking_count: {non_blocking_count}
    📎 reviewed_commit: {current_commit_sha}
@@ -2662,7 +2664,9 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
    <!-- rite:nbr:v1 -->
    ```
 
-   `non_blocking_findings` の全件を表の行として列挙する (severity は明示 — 非実測 CRITICAL/HIGH も本表で人間に可視化される)。**情報源は ステップ 5.3.0.M でゲート適用済の `{review_tmp_dir}/rite-review-result-{pr_number}.json` の `non_blocking_findings[]`** であり、会話コンテキストの記憶ではない (Issue #2072)。`{non_blocking_count}` は同配列の要素数 = 5.3.0.M の `[CONTEXT] MEASURED_GATE=...; non_blocking_total=` の値。**`📎 non_blocking_count: {non_blocking_count}` 行は必須** — helper (ステップ 6.1.d step 2) が本文が申告する件数 (`📎 non_blocking_count:` 行の値) と caller が渡す `--count` の整合を検査する唯一の手掛かりであり、欠落すると `count_body_mismatch` として `outcome=failed` になる (下記参照)。**表の行数そのものは検査対象外** — 申告値と表の行数が食い違う (例: 5 件と申告しながら 3 行しか列挙しない) ケースは caller 側の責務であり、helper は検出しない。**本行は本文中に 1 本だけ置く** — helper は複数一致時に末尾の 1 本 (`tail -1`) を採るため、複数置くと意図しない行が照合対象になる。
+   `non_blocking_findings` の全件を表の行として列挙する (severity は明示 — 非実測 CRITICAL/HIGH も本表で人間に可視化される)。**情報源は ステップ 5.3.0.M でゲート適用済の `{review_tmp_dir}/rite-review-result-{pr_number}.json` の `non_blocking_findings[]`** であり、会話コンテキストの記憶ではない (Issue #2072)。
+
+   **本文に載せるのはポインタ (reviewer / severity / `file:line`) のみで、finding の `description` / `suggestion` を一切含めてはならない** (Issue #2039)。全文の唯一の保存先は経路 (1) の永続 JSON (`.rite/review-results/{pr_number}-{timestamp}.json` の `non_blocking_findings[]`。同秒衝突時は `~xxxx` suffix が付くため本文では glob 形で示す) であり、表直下の 1 行でその所在を必ず明記する。`file:line` を持たない finding は**行ごと落とさず** `file:line` セルを `-` にする。rationale: [references/measured-gate-record.md#pointer-only](references/measured-gate-record.md#pointer-only)`{non_blocking_count}` は同配列の要素数 = 5.3.0.M の `[CONTEXT] MEASURED_GATE=...; non_blocking_total=` の値。**`📎 non_blocking_count: {non_blocking_count}` 行は必須** — helper (ステップ 6.1.d step 2) が本文が申告する件数 (`📎 non_blocking_count:` 行の値) と caller が渡す `--count` の整合を検査する唯一の手掛かりであり、欠落すると `count_body_mismatch` として `outcome=failed` になる (下記参照)。**表の行数そのものは検査対象外** — 申告値と表の行数が食い違う (例: 5 件と申告しながら 3 行しか列挙しない) ケースは caller 側の責務であり、helper は検出しない。**本行は本文中に 1 本だけ置く** — helper は複数一致時に末尾の 1 本 (`tail -1`) を採るため、複数置くと意図しない行が照合対象になる。
 
    **variant B (`non_blocking_count == 0`)**:
 

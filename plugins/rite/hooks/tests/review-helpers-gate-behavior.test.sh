@@ -987,22 +987,22 @@ echo "=== TC-4: review-nonblocking-record.sh (6.1.d) ==="
 # =====================================================================
 
 NBR_BODY="$TMP_ROOT/nbr-body.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 1\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | a.ts:1 |\n\n📎 non_blocking_count: 1\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY"
 # count/body variant 整合検査 (F-01, cycle 2 review) の対象となるテストは、それぞれの --count と
 # 一致する `📎 non_blocking_count:` 行を持つ専用 body fixture を使う (NBR_BODY は count=1 用)。
 NBR_BODY_C0="$TMP_ROOT/nbr-body-c0.md"
 printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n本 cycle の非実測指摘: 0 件\n\n📎 non_blocking_count: 0\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_C0"
 NBR_BODY_C2="$TMP_ROOT/nbr-body-c2.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 2\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_C2"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | a.ts:1 |\n\n📎 non_blocking_count: 2\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_C2"
 NBR_BODY_C3="$TMP_ROOT/nbr-body-c3.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 3\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_C3"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | a.ts:1 |\n\n📎 non_blocking_count: 3\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_C3"
 # [test-reviewer F-03 指摘, cycle 3]: count fixture が 0/1/2/3 の 1 桁のみだと、helper の
 # `grep -oE '[0-9]+'` を `[0-9]` へ退行させても全 assertion が緑のままになる (先頭 1 桁しか
 # 拾わなくても 1 桁値なら一致するため)。production では非実測指摘が 10 件以上出た cycle に
 # 限って毎回 count_body_mismatch → outcome=failed となり、最も記録が必要な局面で D-01 の
 # 永続チャネルが落ちる。2 桁 fixture で桁境界を固定する。
 NBR_BODY_C12="$TMP_ROOT/nbr-body-c12.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 12\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_C12"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | a.ts:1 |\n\n📎 non_blocking_count: 12\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_C12"
 NBR_EMPTY_BODY="$TMP_ROOT/nbr-empty.md"
 : > "$NBR_EMPTY_BODY"
 
@@ -1544,7 +1544,7 @@ assert_not_grep "TC-4.11d 不一致時は投稿しない (create)" "$GH_LOG" '^p
 # no-match になり、記録が丸ごと投稿されなくなってはならない。値そのもの (数字) は厳格に保ちつつ
 # 周囲の空白だけ許容することを固定する。
 NBR_BODY_WS="$TMP_ROOT/nbr-body-ws.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count:2 \n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_WS"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | a.ts:1 |\n\n📎 non_blocking_count:2 \n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_WS"
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-216 --content-file "$NBR_BODY_WS"
 assert "TC-4.11e コロン直後の空白なし・行末 trailing space: exit 0" "0" "$RC"
 assert_not_grep "TC-4.11e 整形のブレを count_body_mismatch と誤判定しない" "$ERR" 'reason=count_body_mismatch'
@@ -1556,7 +1556,7 @@ assert_grep "TC-4.11e 投稿呼び出しが実在する" "$GH_LOG" '^pr comment'
 # canonical な行を採る契約 (SKILL.md の variant A/B・診断文と一致)。先頭一致 (旧 `-m1`) の
 # ままだと非 canonical な先行行を誤って読み、事実と異なる count_body_mismatch を発火させる。
 NBR_BODY_DECOY="$TMP_ROOT/nbr-body-decoy.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n📎 non_blocking_count: 9\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 2\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_DECOY"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n📎 non_blocking_count: 9\n\n| r | HIGH | a.ts:1 |\n\n📎 non_blocking_count: 2\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_DECOY"
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-217 --content-file "$NBR_BODY_DECOY"
 assert "TC-4.11f 本文中の先行デコイ行: exit 0" "0" "$RC"
 assert_not_grep "TC-4.11f 末尾の canonical な行を読み、デコイと誤判定しない" "$ERR" 'reason=count_body_mismatch'
@@ -1566,7 +1566,7 @@ assert_grep "TC-4.11f outcome=created (記録は投稿される)" "$ERR" 'outcom
 # sentinel は lookup 述語の第 3 条件であり、欠いた本文を投稿すると次 cycle の lookup が自分の
 # 投稿を検出できず記録コメントが cycle ごとに増殖する (1 行目 marker 欠落と同じ結末)。
 NBR_BODY_NOSENT="$TMP_ROOT/nbr-body-nosentinel.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 2\n📎 reviewed_commit: abc\n' > "$NBR_BODY_NOSENT"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | a.ts:1 |\n\n📎 non_blocking_count: 2\n📎 reviewed_commit: abc\n' > "$NBR_BODY_NOSENT"
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-218 --content-file "$NBR_BODY_NOSENT"
 assert "TC-4.11g sentinel 欠落 (create 経路): exit 0 (非ブロッキング)" "0" "$RC"
 assert_grep "TC-4.11g reason=body_sentinel_missing emit" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=body_sentinel_missing'
@@ -1589,7 +1589,7 @@ assert_not_grep "TC-4.11g' sentinel 欠落本文で PATCH しない" "$GH_LOG" '
 # read 側 lookup が最終非空行の等値なのに write 側が位置非依存だと、sentinel を途中にだけ持つ本文が
 # 投稿され、次 cycle の lookup がその投稿を miss して記録が増殖する (片側だけ強めた場合の増殖経路)。
 NBR_BODY_MIDSENT="$TMP_ROOT/nbr-body-midsentinel.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n<!-- rite:nbr:v1 -->\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 2\n📎 reviewed_commit: abc\n' > "$NBR_BODY_MIDSENT"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n<!-- rite:nbr:v1 -->\n\n| r | HIGH | a.ts:1 |\n\n📎 non_blocking_count: 2\n📎 reviewed_commit: abc\n' > "$NBR_BODY_MIDSENT"
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-220 --content-file "$NBR_BODY_MIDSENT"
 assert "TC-4.11h sentinel が途中のみ: exit 0 (非ブロッキング)" "0" "$RC"
 assert_grep "TC-4.11h reason=body_sentinel_missing emit (末尾でないため)" "$ERR" 'NONBLOCKING_RECORD_FAILED=1; pr=9; reason=body_sentinel_missing'
@@ -1615,7 +1615,7 @@ assert_grep "TC-4.14 canonical な id=13 が PATCH 先のまま (孤児に奪わ
 # write 側の「空白のみの行を除く」処理を落とす (単純な tail -n 1 に退行させる) と、この形状が
 # body_sentinel_missing で毎 cycle 弾かれ記録が一度も投稿されなくなる。
 NBR_BODY_TRAILBLANK="$TMP_ROOT/nbr-body-trailblank.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | current-pr | a.ts:1 | d | s |\n\n📎 non_blocking_count: 2\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n\n\n' > "$NBR_BODY_TRAILBLANK"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| r | HIGH | a.ts:1 |\n\n📎 non_blocking_count: 2\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n\n\n' > "$NBR_BODY_TRAILBLANK"
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-225 --content-file "$NBR_BODY_TRAILBLANK"
 assert "TC-4.11i sentinel 後の空行を許容: exit 0" "0" "$RC"
 assert_not_grep "TC-4.11i 末尾空行を sentinel 欠落と誤判定しない" "$ERR" 'reason=body_sentinel_missing'
@@ -1678,7 +1678,7 @@ rm -f "$_nbr_marker_k"; rm -rf "$_jq_stub_dir"
 # 毎 cycle 弾かれ、retain_pending_marker=1 → 8.0.3 が exit 1 で差し戻す固定ループになる
 # (記録が一度も投稿されず [review:mergeable] も出ない)。
 NBR_BODY_CRLF="$TMP_ROOT/nbr-body-crlf.md"
-printf '## 📜 rite 非実測指摘の記録 (non-blocking)\r\n\r\n| r | HIGH | current-pr | a.ts:1 | d | s |\r\n\r\n📎 non_blocking_count: 2\r\n📎 reviewed_commit: abc\r\n\r\n<!-- rite:nbr:v1 -->\r\n' > "$NBR_BODY_CRLF"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\r\n\r\n| r | HIGH | a.ts:1 |\r\n\r\n📎 non_blocking_count: 2\r\n📎 reviewed_commit: abc\r\n\r\n<!-- rite:nbr:v1 -->\r\n' > "$NBR_BODY_CRLF"
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-229 --content-file "$NBR_BODY_CRLF"
 assert "TC-4.11j CRLF 本文: exit 0" "0" "$RC"
 assert_not_grep "TC-4.11j CRLF を sentinel 欠落と誤判定しない" "$ERR" 'reason=body_sentinel_missing'
@@ -2155,6 +2155,46 @@ assert_not_grep "TC-4.16l author 未検証の id=11 を PATCH しない" "$GH_LO
 # 走らない。`pr view` では弁別できない — create 経路の id 永続化が同じ API を呼ぶため。
 assert_not_grep "TC-4.16l 自 login 不明なら id の解決自体を試みない (個別 GET を叩かない)" "$GH_LOG" '^api repos/o/r/issues/comments/11'
 assert_not_grep "TC-4.16l 段 1 を通らないので UNRESOLVED marker も出ない" "$ERR" 'NONBLOCKING_ID_UNRESOLVED'
+
+# =====================================================================
+# TC-4.17 / TC-4.18 [Issue #2039]: ポインタのみ本文の受理と旧 6 列記録との互換
+# =====================================================================
+echo "--- TC-4.17/4.18: pointer-only 本文 (Issue #2039) ---"
+
+# TC-4.17 [T-04] `file:line` を取得できなかった finding は **行を落とさず** `-` を入れる規約
+# (SKILL.md 6.1.d)。行を落とすと `📎 non_blocking_count:` の申告値と表の行数が食い違い、記録が
+# 申告より少ないことに誰も気付けなくなる。helper は表の行数を検査しないので、`-` 入りの行が
+# 本文検査 4 段を素通りすること (= 規約どおり書いた本文が弾かれないこと) をここで固定する。
+# 3 行 (うち 1 行が `-`) / 申告 3 の整合ペアで、count 検査が通り投稿されることまで見る。
+NBR_BODY_DASH="$TMP_ROOT/nbr-body-dash.md"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| レビュアー | 重要度 | ファイル:行 |\n|-----------|--------|------------|\n| security-reviewer | CRITICAL | src/db/users.ts:42 |\n| code-quality-reviewer | MEDIUM | - |\n| test-reviewer | LOW | t/a.test.sh:7 |\n\n> 各指摘の詳細は `.rite/review-results/9-*.json` の `non_blocking_findings[]` にあります。\n\n📎 non_blocking_count: 3\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_DASH"
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 3 --iteration-id 9-501 --content-file "$NBR_BODY_DASH"
+assert "TC-4.17 file:line がハイフン (-) の行を含む本文: exit 0" "0" "$RC"
+assert_grep "TC-4.17 outcome=created (本文検査 4 段を通過し投稿される)" "$ERR" 'outcome=created; count=3; iteration_id=9-501;'
+assert_not_grep "TC-4.17 count_body_mismatch にならない (申告 3 と --count 3 が一致)" "$ERR" 'reason=count_body_mismatch'
+# [negative control] 行を落として 2 行にすると申告 3 と食い違う。helper は行数を見ないため
+# ここは通ってしまう — つまり `-` 規約を守らせる責務が caller 側にあることの実測。この
+# assertion が無いと TC-4.17 の positive だけでは「helper が行数を検査している」と誤読しうる。
+NBR_BODY_DROPPED="$TMP_ROOT/nbr-body-dropped.md"
+printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| レビュアー | 重要度 | ファイル:行 |\n|-----------|--------|------------|\n| security-reviewer | CRITICAL | src/db/users.ts:42 |\n| test-reviewer | LOW | t/a.test.sh:7 |\n\n📎 non_blocking_count: 3\n📎 reviewed_commit: abc\n\n<!-- rite:nbr:v1 -->\n' > "$NBR_BODY_DROPPED"
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 3 --iteration-id 9-502 --content-file "$NBR_BODY_DROPPED"
+assert_grep "TC-4.17 [negative control] 行を落としても helper は検出しない (行数は caller 責務)" "$ERR" 'outcome=created; count=3; iteration_id=9-502;'
+
+# TC-4.18 [T-05 / AC-5] 旧 6 列形式の記録コメントが PR 上に既存としてあるとき、新形式 (3 列) で
+# update-in-place される。lookup 述語が見るのは 1 行目 marker への前方一致と最終非空行 sentinel の
+# 2 つだけで**列構成に非依存**なので、列を変えても孤児化・重複作成は起きない — この非依存性が
+# AC-5 の根拠であり、述語に本文形状 (列見出し等) を足す退行をここで落とす。
+NBR_LEGACY6="$TMP_ROOT/nbr-legacy-6col.json"
+cat > "$NBR_LEGACY6" <<'EOF'
+[[{"id":71,"user":{"login":"rite-bot"},"body":"## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| レビュアー | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |\n|-----------|--------|----------|------------|------|---------|\n| security-reviewer | CRITICAL | current-pr | src/db/users.ts:42 | 旧形式の全文 | 旧形式の推奨対応 |\n\n📎 non_blocking_count: 1\n📎 reviewed_commit: old\n\n<!-- rite:nbr:v1 -->\n"}]]
+EOF
+GH_LOOKUP_JSON="$NBR_LEGACY6" run_nbr --pr 9 --owner-repo o/r --count 3 --iteration-id 9-503 --content-file "$NBR_BODY_DASH"
+assert "TC-4.18 旧 6 列の既存コメント: exit 0" "0" "$RC"
+assert_grep "TC-4.18 outcome=updated (新形式で update-in-place)" "$ERR" 'outcome=updated; count=3; iteration_id=9-503; comment_id=71;'
+assert_not_grep "TC-4.18 LEGACY_ORPHAN を emit しない (sentinel を持つため孤児ではない)" "$ERR" 'NONBLOCKING_LEGACY_ORPHAN'
+assert_not_grep "TC-4.18 DUPLICATE_RECORD を emit しない (1 件しかない)" "$ERR" 'NONBLOCKING_DUPLICATE_RECORD'
+assert_not_grep "TC-4.18 新規作成へ縮退しない" "$ERR" 'degraded=1'
+assert_grep "TC-4.18 PATCH 先が既存 id=71 (新規 create ではない)" "$GH_LOG" 'issues/comments/71 -X PATCH'
 
 # =====================================================================
 # TC-4.12 [F-03 指摘, cycle 6]: pending marker lifecycle の per-reason 振る舞い
@@ -2765,6 +2805,39 @@ else
         assert "TC-5g'''' variant A テンプレート fence の最終非空行が sentinel" "$nbr_sentinel" "$(_fence_last_line "$_va_line" "$_vb_line")"
         assert "TC-5g'''' variant B テンプレート fence の最終非空行が sentinel" "$nbr_sentinel" "$(_fence_last_line "$_vb_line" "$_next_line")"
       fi
+
+      # (i) [Issue #2039 T-07] variant A の表が **ポインタ 3 列のみ** であることを構造 pin する。
+      #     6.1.d の記録コメントは pr_review.post_comment に依存せず public PR へ投稿されるため、
+      #     description / suggestion 列を戻すと既定構成のまま非実測 CRITICAL の詳細 (脆弱性の
+      #     再現手順等) が修正前に先行開示される。この開示方針は SKILL.md のテンプレート以外に
+      #     強制点を持たない — helper は本文の列構成を検査しない (見るのは 1 行目 marker /
+      #     最終非空行 sentinel / count 行の 3 つだけ) ため、列を戻す編集は helper 側テストを
+      #     全 green のまま通す。テンプレート側の pin が唯一の防御層になる。
+      #     negative assert (列が無い) 単体は fence が空になる mutation で trivially pass する
+      #     ため、positive (ヘッダ / データ行の 3 列一致) と対で置く。
+      _fence_body() {  # $1=start_line $2=end_line — fence 内の生行を出す
+        sed -n "${1},$(( $2 - 1 ))p" "$REVIEW_MD" | awk '
+          !infence && /^[[:space:]]*```markdown[[:space:]]*$/ { infence = 1; next }
+          infence && /^[[:space:]]*```[[:space:]]*$/ { exit }
+          infence { print }
+        '
+      }
+      _va_fence=$(_fence_body "$_va_line" "$_vb_line")
+      # positive: ヘッダ行とデータ行が期待どおり 3 列 (列の増減・改名を検出)
+      assert "TC-5i variant A の表ヘッダが 3 列 (レビュアー / 重要度 / ファイル:行)" "1" \
+        "$(printf '%s\n' "$_va_fence" | grep -cE '^[[:space:]]*\| レビュアー \| 重要度 \| ファイル:行 \|[[:space:]]*$' || true)"
+      assert "TC-5i variant A のデータ行が 3 列 placeholder" "1" \
+        "$(printf '%s\n' "$_va_fence" | grep -cE '^[[:space:]]*\| \{reviewer_type\} \| \{severity\} \| \{file\}:\{line\} \|[[:space:]]*$' || true)"
+      # negative: 全文を載せる列 / placeholder が fence 内に 1 つも無い (列を戻す mutation を検出)
+      assert "TC-5i variant A fence に 内容 / 推奨対応 の列見出しが無い" "0" \
+        "$(printf '%s\n' "$_va_fence" | grep -cE '\| *(内容|推奨対応) *\|' || true)"
+      assert "TC-5i variant A fence に description / suggestion placeholder が無い" "0" \
+        "$(printf '%s\n' "$_va_fence" | grep -cE '\{(description|suggestion)\}' || true)"
+      # AC-3: 全文の所在 (ローカル JSON のパスと配列名) が fence 内に明記されている
+      assert "TC-5i variant A fence に全文の所在 (review-results パス) が 1 行ある" "1" \
+        "$(printf '%s\n' "$_va_fence" | grep -c '\.rite/review-results/' || true)"
+      assert "TC-5i variant A fence の所在行が non_blocking_findings 配列を名指しする" "1" \
+        "$(printf '%s\n' "$_va_fence" | grep -c 'non_blocking_findings' || true)"
 
       # (h) 「本文は列 0 から書き出す」指示が variant テンプレートより **前** に 1 本だけ存在する。
       #     variant A/B は番号付きリスト項目の内側にあるため表示上 3 スペース字下げされる一方、
