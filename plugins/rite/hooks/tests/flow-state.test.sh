@@ -1446,8 +1446,14 @@ assert "TC-2115-01: second record to=review" "review" "$(sed -n 2p "$tlog" | jq 
 assert "TC-2115-01: session_id recorded" "$sid" "$(sed -n 2p "$tlog" | jq -r .session_id)"
 assert "TC-2115-01: issue_number recorded" "2115" "$(sed -n 2p "$tlog" | jq -r .issue_number)"
 assert "TC-2115-01: pr_number recorded" "42" "$(sed -n 2p "$tlog" | jq -r .pr_number)"
-# ts is the same timestamp the state file's updated_at carries, so a record can be
-# cross-referenced with the state it describes (shared `$now`, not a second date call).
+# The two numeric fields must stay JSON numbers. `jq -r` above collapses 2115 and
+# "2115" to the same string, so the value assertions alone would still pass if the
+# writer switched `--argjson` to `--arg`; the aggregation consumer this log exists
+# for would then break on arithmetic/grouping.
+assert "TC-2115-01: issue_number is a JSON number" "number" "$(sed -n 2p "$tlog" | jq -r '.issue_number|type')"
+assert "TC-2115-01: pr_number is a JSON number" "number" "$(sed -n 2p "$tlog" | jq -r '.pr_number|type')"
+# ts equals the state file's updated_at at second granularity, so a record can be
+# cross-referenced with the state it describes.
 assert "TC-2115-01: ts equals the state file's updated_at" \
   "$(jq -r .updated_at "$d/.rite/sessions/${sid}.flow-state")" "$(sed -n 2p "$tlog" | jq -r .ts)"
 # Self-contained .gitignore so the log never leaks into downstream consuming repos.
@@ -1548,14 +1554,87 @@ else
     "active branch error_count issue_number next_action parent_issue_number phase pr_number schema_version session_id updated_at" \
     "$(jq -r 'keys | join(" ")' "$sfile")"
   assert_grep "TC-2115-06: failure is announced, not silent" "$stderr_2115" 'WARNING: .*phase-transition log not writable'
-  # The WARNING must be the whole story: a bare `printf >> f 2>/dev/null` would
-  # additionally leak bash's own redirect-setup error, which `2>/dev/null` cannot
-  # suppress because `>>` is opened before `2>` takes effect.
-  assert_not_grep "TC-2115-06: no bash redirect error leaks alongside the WARNING" \
-    "$stderr_2115" 'flow-state\.sh: (line|行) [0-9]+:'
+  # The same read-only dir also blocks the self-contained .gitignore, and that
+  # failure must be announced too — a missing exclusion is the path by which the
+  # log reaches a public repo, so swallowing it is the one outcome we cannot have.
+  assert_grep "TC-2115-06: .gitignore failure is announced too" \
+    "$stderr_2115" 'WARNING: .*cannot create .*\.gitignore'
+  # Its cause is captured and re-emitted indented (the `{ ...; } 2>&1` group scope),
+  # not dropped: without the group, bash reports the redirect's own EACCES before
+  # `2>&1` takes effect and the one line that names the cause escapes capture.
+  # Nothing may reach column 0: the append path's `2>/dev/null` must swallow bash's
+  # redirect-setup error entirely, and the .gitignore path's group capture must keep
+  # it behind that indent. Anchoring both ways is what separates "captured" from
+  # "leaked" — a bare pattern would read the indented cause as a leak.
+  #
+  # `LC_ALL=C` is load-bearing, not decoration. `neutralize_ctrl` blanks bytes
+  # 0x80-0x9f one byte at a time, which turns a localized diagnostic ("許可があり
+  # ません") into an invalid UTF-8 sequence; GNU grep under a UTF-8 locale then
+  # matches nothing on that line, so the two checks below would pass vacuously —
+  # the leak assertion in particular would stop catching real leaks. Hence the raw
+  # counts here instead of assert_grep / assert_not_grep, which have no locale
+  # override (same construction as review-result-state-root.test.sh TC-8).
+  gi_indented=$(LC_ALL=C grep -cE '^  .*\.gitignore: ' "$stderr_2115" || true)
+  gi_bare=$(LC_ALL=C grep -cE '^[^[:space:]].*flow-state\.sh: (line|行) [0-9]+:' "$stderr_2115" || true)
+  if [ "$gi_indented" -ge 1 ]; then
+    pass "TC-2115-06: .gitignore failure keeps its cause, indented"
+  else
+    fail "TC-2115-06: .gitignore failure lost its cause (indented lines: $gi_indented)"
+  fi
+  if [ "$gi_bare" -eq 0 ]; then
+    pass "TC-2115-06: no bash redirect error leaks to column 0"
+  else
+    fail "TC-2115-06: bash redirect error leaked to column 0 ($gi_bare line(s))"
+  fi
   rm -f "$stderr_2115"
 fi
 chmod 755 "$d/.rite/logs" 2>/dev/null || true
+
+# --- TC-2115-07: only a state write that actually landed is recorded ---
+echo ""
+echo "=== TC-2115-07: a set whose state write never persisted appends no transition ==="
+# SPEC pins "**実際に書き込みが成立した** `set` ごとに 1 行", and the helper call sits
+# immediately after `_atomic_write ... || return 1`. Nothing pinned that order, so
+# moving the call one line up — the exact "small edit" the surrounding comment warns
+# about — would silently start logging phases that were never persisted, poisoning
+# the duration data this log exists to produce. The log dir stays writable here, so
+# the only thing standing between a reversed order and a record is the ordering.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/sessions" "$d/.rite/logs"
+chmod 555 "$d/.rite/sessions"
+# Same probe as TC-2115-06 (root / DrvFs / overlay ignore the owner write bit).
+if { : > "$d/.rite/sessions/.write-probe"; } 2>/dev/null; then
+  rm -f "$d/.rite/sessions/.write-probe"
+  skip "TC-2115-07: filesystem/user does not enforce chmod 555 here — not a real read-only dir on this host"
+else
+  set +e
+  (cd "$d" && bash "$HOOK" set --phase plan --issue 11 --branch "feat/w" --pr 0 --next "n") 2>/dev/null
+  rc_2115_07=$?
+  set -e
+  assert "TC-2115-07: set reports the failed state write" "1" "$rc_2115_07"
+  if [ -e "$d/.rite/logs/phase-transitions.log" ]; then
+    fail "TC-2115-07: a transition that never persisted must not be recorded (log: $(cat "$d/.rite/logs/phase-transitions.log"))"
+  else
+    pass "TC-2115-07: no record for a state write that never landed"
+  fi
+fi
+chmod 755 "$d/.rite/sessions" 2>/dev/null || true
+
+# --- TC-2115-08: a 0-byte .gitignore residue is repaired on the next set ---
+echo ""
+echo "=== TC-2115-08: the .gitignore guard reads content, not mere existence ==="
+# `> file` truncates before writing, so a failed write (ENOSPC, interrupted run)
+# leaves a 0-byte .gitignore behind. An existence guard accepts that empty file as
+# "already created" and skips the rewrite forever, leaving .rite/logs/ un-ignored in
+# the consuming repo with no further signal. A content guard repairs it. No permission
+# tricks needed, so unlike TC-2115-06/07 this runs on every host including root.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/logs"
+: > "$d/.rite/logs/.gitignore"
+(cd "$d" && bash "$HOOK" set --phase plan --issue 12 --branch "feat/v" --pr 0 --next "n")
+assert "TC-2115-08: empty .gitignore is rewritten with the exclusion" "*" \
+  "$(cat "$d/.rite/logs/.gitignore" 2>/dev/null)"
+assert_file_exists_or_fail "TC-2115-08: the append still ran" "$d/.rite/logs/phase-transitions.log" || true
 
 if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del (Issue #1524) + non-UUID acceptance (Layer 1 format-agnostic contract pin) + phase-transition append log (#2115)"; then
   exit 1

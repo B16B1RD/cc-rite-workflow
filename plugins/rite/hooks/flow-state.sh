@@ -203,15 +203,25 @@ _append_phase_transition() {
   local from="$1" to="$2" sid="$3" issue="$4" pr="$5" ts="$6"
   local log_dir="$STATE_ROOT/.rite/logs"
   local log_file="$log_dir/phase-transitions.log"
+  local _gi_err
   if ! mkdir -p "$log_dir" 2>/dev/null; then
     echo "WARNING: flow-state.sh: phase-transition log dir not creatable ($log_dir); transition ${from:-<none>} -> $to not recorded" >&2
     return 0
   fi
-  # Self-contained `.gitignore` (`*`) on first creation, so the log never leaks
-  # into downstream consuming repos whose /rite:setup-generated .gitignore covers
-  # only `.rite/sessions/` and `.rite/worktrees/` (same reasoning as
-  # session-start.sh). Best-effort: a failure here must not skip the append.
-  [ -f "$log_dir/.gitignore" ] || { printf '*\n' > "$log_dir/.gitignore"; } 2>/dev/null || true
+  # Self-contained `.gitignore` (`*`), because /rite:setup's generated .gitignore
+  # does not cover `.rite/logs/`. The guard reads the file's **content** (`-s`),
+  # not its existence: `> file` truncates before the write, so an ENOSPC leaves a
+  # 0-byte `.gitignore` that an existence guard would accept as "already created",
+  # making every later `set` skip the rewrite while the directory stays un-ignored.
+  # A failure is announced rather than swallowed — a missing exclusion is the exact
+  # path by which the log reaches a public repo. Same form as review-result-save.sh
+  # and review-results-archive-or-rm.sh. Still non-blocking: the append runs either way.
+  if [ ! -s "$log_dir/.gitignore" ]; then
+    if ! _gi_err=$( { printf '*\n' > "$log_dir/.gitignore"; } 2>&1 ); then
+      echo "WARNING: flow-state.sh: cannot create $log_dir/.gitignore; verify by hand that this directory is excluded from git" >&2
+      [ -n "$_gi_err" ] && printf '%s\n' "$_gi_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    fi
+  fi
   # `--argjson` for the numeric fields rather than a string + `tonumber? // 0`
   # fallback: both values already survived the identical `--argjson` in the state
   # write above, so a non-numeric one here is a real invariant break and should
