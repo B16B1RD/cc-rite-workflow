@@ -106,12 +106,45 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 
 **差し戻し先が 6.1.a step 0 であること自体が不変条件**: 8.0.4 の ACTION が step 2（保存 helper）だけを名指しすると、step 0 が emit する `REVIEW_CYCLE_ID` と `NONBLOCKING_PENDING_MARKER` が前 cycle の値のまま残り、8.0.3 が再び自己整合で誤 pass する。step 0 → step 2 の順で差し戻すことで、8.0.4 の発火が 8.0.3 の anchor 再生成を連鎖的に引き起こし、ステップ 6 全体の実行が回復する。この推移的性質があるため、`REVIEW_CYCLE_ID` の生成位置そのものを 5.3.0.M へ移す（6.1.d に同じ per-cycle anchor を直接与える）改修は本 Issue では不要と判断した。
 
+<a id="durable-id"></a>
+## PATCH 先の同定を本文照合から durable な comment id へ移した理由
+
+`hooks/review-nonblocking-record.sh` の lookup 述語は、PR #2038 の cycle 1〜5 で 4 度強化された（author 条件 → sentinel の位置非依存 `contains` → 本文全体の `endswith` → 最終非空行の等値）。そのたびに新しい抜け道が見つかり、最後まで消えなかったのが **「記録コメントの raw markdown を copy-paste して作られた、同一 author の人間コメント」** である。機械専用 sentinel は rendered view に現れない HTML コメントだが、Edit view / `gh api` / `gh pr view --comments` から raw ごと複製できるため、「人間が書き写す経路が存在しない」とは言えない。この場合 `-X PATCH` が人間の本文を丸ごと上書きする。
+
+**本文の文字列で「自分が投稿したもの」を同定する限り、この残余は原理的に消えない。** 述語をさらに厳しくする方向（5 回目の強化）は採らず、同定手段そのものを本文の外へ移した。
+
+**なぜ PR body か**（Issue #2041 Open Question の (a)）:
+
+- **記録コメント本文には置けない** — 本文に置いた id は raw の copy-paste で marker ごと複製され、本文照合と同じ誤認経路が再生する。同定子は「複製経路から構造的に隔離された場所」にある必要がある。
+- **`.rite/` 配下には置けない** — gitignore かつ machine-local のため、別マシン / CI から回した cycle では読めず、毎回 fallback に縮退する。
+- **PR label も採らない** — repo 全体に label が増える副作用があり、id ごとに新しい label を作る設計は repo を汚す。
+- PR body は PR に紐づく永続領域で、rite 内で書き換える経路は `pr-create` の作成時だけ（`gh pr edit --body` を持つ skill は他に無い）。人間が消せば fallback へ倒れるだけで、現状より悪くならない。
+
+**2 段解決の順序と帰結**:
+
+| 段 | 条件 | 帰結 |
+|---|---|---|
+| 1 | PR body の id が指すコメントが実在し author が自分 | それを canonical とする（本文を一切読まない） |
+| 1 | id が指すコメントが **404** | 削除済みとみなし**新規作成**へ倒す（fallback へ倒さない） |
+| 1 | id が非数値 / PR body 読取失敗 / 404 以外の取得失敗 / author 不一致 | **fallback** へ倒す |
+| 2 | 上記で確定しなかった場合 | 現行 3 条件（author ∧ 1 行目 marker 前方一致 ∧ 最終非空行 sentinel）で探す |
+
+**404 と一時障害を分けるのは帰結が逆だから**。削除済みなら新規作成が正しい（かつて canonical だった記録が消えた以上、本文照合で別のコメントを掴むより新しい 1 件を作る方が意図に近い）。一方 network / rate-limit の一時障害で新規作成へ倒すと、**実在する canonical の隣に重複を作る**。判別は `gh` が 404 時に stderr へ出す `HTTP 404` / `Not Found` で行う。
+
+**`degraded=1` の意味を「PATCH 先を特定できなかった」に狭めた**。本文照合の lookup が失敗しても durable id で PATCH 先が確定していれば update-in-place は成立するため、そこを degraded に含めると「既存コメントを特定できない」という事実と異なる案内が出るうえ、本 Issue が消そうとしている「degraded 縮退 → 重複記録コメント」を自分で再導入することになる。自 login の取得失敗だけは id 経路の author 検証も不能にするため従来どおり `degraded=1`。
+
+**本文照合の走査は id 解決の成否に依らず常に実行する**。id で PATCH 先が確定した cycle でも、孤児 / 重複（`NONBLOCKING_LEGACY_ORPHAN` / `NONBLOCKING_DUPLICATE_RECORD`）の観測を落とすと PR 上の残骸が silent になる。id 経路が節約するのは「本文で同定すること」であって「PR の状態を見ること」ではない。
+
+**永続化のタイミングと失敗時の扱い**: 新規作成した cycle は `gh pr comment` が返す URL（`...#issuecomment-{id}`）から id を取り、PR body へ書く。fallback で canonical を見つけた cycle も書く（durable id を持たない既存 PR の migration 経路）。id 経路で解決できた cycle は PR body に同じ値が既にあるため書き直さない。永続化に失敗しても記録は成功扱いのままで、**pending marker も残さない** — 環境 / IO 起因であり caller が本文を作り直しても解消しないため、`body_check_unavailable` と同じ削除バケットに属する（retain 側へ落とすと 8.0.3 が毎 cycle 差し戻し、result pattern を永久に emit できなくなる）。
+
+**id 不在では marker を出さない**。永続化前（初回 cycle / 既存 PR）は fallback が正しい経路であり、毎 cycle WARNING を出すと本当の異常（`id_author_mismatch` 等）が埋もれる。fallback で同定できた時点で id が書かれるため、この状態は 1 cycle で解消する。
+
 <a id="startswith"></a>
-## lookup と本文検査の設計理由（PATCH 先の同定）
+## lookup と本文検査の設計理由（PATCH 先の同定、fallback 側）
 
 `hooks/review-nonblocking-record.sh` は本節を rationale の実体として参照する（helper 側は契約の宣言のみを持つ）。
 
-**lookup は「自分が投稿した」∧「1 行目 marker への前方一致（`startswith`）」∧「**最終非空行が**機械専用 sentinel `<!-- rite:nbr:v1 -->` **と等しい**」の連言**で行う。write 側の本文検査も同じ「最終非空行の等値」で、read/write は同一述語（CR を落とし、空白のみの行を除いた最終行）。
+**fallback の lookup は「自分が投稿した」∧「1 行目 marker への前方一致（`startswith`）」∧「**最終非空行が**機械専用 sentinel `<!-- rite:nbr:v1 -->` **と等しい**」の連言**で行う（第一候補は durable な comment id。[#durable-id](#durable-id) 参照）。write 側の本文検査も同じ「最終非空行の等値」で、read/write は同一述語（CR を落とし、空白のみの行を除いた最終行）。**この述語は id が使えない環境（PR body から読めない / 別 identity の過去投稿 / 永続化前）で唯一の同定手段として残るため、弱めてはならない。**
 
 - **author 条件が必須な理由**: 前方一致だけでは、marker で始まるコメントを第三者が 1 件投稿するだけで `last` がそれを掴み、PATCH 先が奪われる。書込権限があれば他人のコメントを丸ごと上書き破壊し、権限不足なら 403 で `patch_failed` に落ちて以後の cycle も同じ id を掴み続け、記録が恒久的に失われる。
 - **`contains($MARKER)` を使わない理由**: 人間可視の marker 文字列を本文全体で探すと、marker を引用しただけの別コメント（6.1.b が投稿するレビュー結果コメントの finding 本文、人間の Quote reply）が `last` で選ばれる。
