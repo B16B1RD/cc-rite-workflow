@@ -809,9 +809,29 @@ rite_rm() {
   done
 }
 
-rite_rm review_results \
-  "$_state_root"/.rite/review-results/${pr_number}-*.json \
-  "$_state_root"/.rite/review-results/${pr_number}-*.json.corrupt-*
+# レビュー結果 JSON は一律削除しない。**非実測指摘 (non_blocking_findings[]) を持つものは
+# 削除せず archive/ へ退避する** — ステップ 6.1.d の PR 記録コメントはポインタ (reviewer /
+# severity / file:line) しか載せないため (Issue #2039)、無条件削除すると非実測 CRITICAL の詳細が
+# merge 直後にどこにも残らなくなり、Issue #2024 D-01「マージ後に人間が拾い直せる」が偽になる。
+# 判定 (jq rc の値域分岐 / 判定不能は退避側へ倒す) と退避 (mkdir・mv の分離、同名衝突の検出) は
+# helper へ委譲済み。契約と reason 語彙の SoT は helper docstring、挙動は
+# hooks/tests/review-results-archive-or-rm.test.sh が behavioral に固定する。
+# `.json.corrupt-*` も同 helper の glob (`{pr}-*.json*`) が拾う。corrupt は「中身を判定できない」
+# 状態そのものなので、別経路で無条件削除すると同一ブロック内に「判定不能は保全」と「判定不能は
+# 削除」の 2 ポリシーが並ぶ (corrupt rename の 3 経路のうち 2 つは構造的に valid な JSON で、
+# non_blocking_findings[] の全文を保持しうる)。
+#
+# helper の rc は捨てない。**marker 不在を「削除成功」と読んではならない**という本ステップの規約
+# (下記 ステップ 12 の判定表) は、helper が起動すらしなかった場合 ({plugin_root} の未解決置換 /
+# helper 欠落で rc=127) に marker が 1 本も出ないことで破れる。rc を見て失敗を marker に変換する。
+_rrar_rc=0
+bash {plugin_root}/hooks/scripts/review-results-archive-or-rm.sh \
+  --state-root "$_state_root" --pr "$pr_number" || _rrar_rc=$?
+if [ "$_rrar_rc" -ne 0 ]; then
+  echo "WARNING: review-results の退避/削除 helper が rc=${_rrar_rc} で失敗しました。レビュー結果 JSON は未処理のまま残っています" >&2
+  echo "  原因候補: {plugin_root} の未解決置換 / helper 欠落・非可読 (rc=127) / 引数不正 (rc=1)" >&2
+  echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=review_results_helper_failed; pr=${pr_number}; rc=${_rrar_rc}" >&2
+fi
 rite_rm fix_retry_state "$_state_root/.rite/state/fix-fallback-retry-${pr_number}.count"
 rite_rm fix_cycle_state "$_state_root/.rite/fix-cycle-state/${pr_number}.json"
 rite_rm legacy_fix_cycle_state "$_state_root/.rite/fix-cycle-state.json"
@@ -1069,7 +1089,15 @@ Status: {projects_status_result}
   - ステップ 2 で関連 Issue が識別できなかった（`{issue_number}` 空）とき: `{projects_status_result}` = `（関連 Issue 未識別のためスキップ）`、`{projects_check}` = `x`
   - 上記 2 条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=true` が見つかったとき: `{projects_status_result}` = `Done`、`{projects_check}` = `x`
   - 上記 2 条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=false` または sentinel 自体が見つからない（= ステップ8 が実行されるべきだったのに失敗/skip された）とき: `{projects_status_result}` = `⚠️ 更新失敗（手動確認が必要）`、`{projects_check}` = ` ` + 「GitHub Projects 画面で Issue #{issue_number} の Status を Done に変更」を付記
-- `{review_cleanup_check}`: `REVIEW_CLEANUP_PARTIAL_FAILURE=1` なら ` ` + 警告付記、なければ `x`
+- `{review_cleanup_check}`: `REVIEW_CLEANUP_PARTIAL_FAILURE=1` の marker を**上から評価し最初の一致**を採用する（`{wiki_ingest_check}` と同じく各行は presence 検査。marker が 1 本も無ければ `x`）。**照合は `pr={pr_number}` まで含める** — `/rite:batch-run --merge` は同一セッションで Issue ごとに `/rite:cleanup` を invoke するため、先行 Issue の marker が文脈に残る（`{local_branch_check}` が `branch=` でスコープするのと同じ理由。`invalid_pr_number` だけは `pr=` を持たないので marker 名のみで照合する）:
+
+  | 検出 | check | 表示 |
+  |---|---|---|
+  | `reason=invalid_pr_number`、または `reason=` が `_rm_failure` / `_archive_mkdir_failure` / `_archive_mv_failure` / `_archive_name_collision` / `_gitignore_failure` / `_helper_failed` のいずれかで終わる marker がある | ` ` | 警告付記 |
+  | `reason=review_results_undecidable; cause=jq_missing` がある | ` ` | `⚠️ jq が見つからず全レビュー結果 JSON を無判定で archive/ へ退避しました。jq を導入してください` |
+  | `reason=review_results_undecidable` がある（`cause=jq_rc_<n>`） | `x` | `ℹ️ 一部のレビュー結果 JSON は中身を判定できず削除せず archive/ へ退避しました (本 cycle での対応は不要)` |
+
+  行を presence 検査にしてあるので「上から評価し最初の一致」が実際に効く（実失敗と判定不能が同一 run で共起しても 1 行目が先に一致する）。`_gitignore_failure` は `cause=jq_rc_<n>` と同じく summary の `failed` には数えられない（ファイル自体は処理済み）が、1 行目の実失敗側に置く — 除外の欠落は退避した全文が `git add -A` で公開リポジトリへ入る経路そのもので、放置してよい informational ではない。`cause=jq_rc_<n>` を `x` に倒すのは、helper がこれを「退避自体は成功しうるので `failed` には数えない」と定義し summary も `failed=0` を返すため。`.corrupt-*` を「判定不能 → 退避」経路へ載せた以上 corrupt を持つ PR は毎回この reason を出すので、失敗扱いのままだと存在しない手動対応を促し続ける。一方 `cause=jq_missing` は環境不備で、放置すると本来削除されるべき JSON まで無判定で退避され続けるため実失敗側に置く。
 - `{wiki_ingest_check}`: 以下の sentinel を上から評価し最初の一致を採用 (`WIKI_INGEST_DONE` + `WIKI_INGEST_PUSH_FAILED` が併存しうるため順序重要):
 
   | Sentinel | check | 表示 |

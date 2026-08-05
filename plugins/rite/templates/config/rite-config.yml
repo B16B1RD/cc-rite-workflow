@@ -195,6 +195,13 @@ safety:
 # ただし投稿自体は best-effort — gh 失敗（create_failed / patch_failed）や本文不備では投稿されず
 # outcome=failed になる。**無条件の記録先はローカル JSON**（.rite/review-results/*.json の
 # non_blocking_findings[]）であってコメントではない。記録コメントが見当たらないときはそちらを見る。
+# 記録コメントに載るのは **ポインタのみ**（reviewer / severity / file:line と全文の所在 1 行）で、
+# 各指摘の description / suggestion は載らない。本設定に依らず public PR へ投稿される経路のため、
+# 非実測 CRITICAL の詳細（脆弱性の再現手順等）が修正前に先行開示されるのを避ける。既定の
+# post_comment: false では全文の保存先は上記ローカル JSON だけで、そこはレビューを実行した環境に
+# しか存在せず gitignore 対象（PR のブランチを checkout しても取得できない）。マージ後も残すため
+# /rite:cleanup は non_blocking_findings[] が非空の JSON を削除せず archive/ へ退避する。
+# post_comment: true では統合レポート側が全文を PR へ載せる（Issue #2039）。
 pr_review:
   post_comment: false   # true で PR コメント記録を有効化（--post-comment 同等、デフォルト: false。非実測指摘の記録コメントは本設定と独立）
 
