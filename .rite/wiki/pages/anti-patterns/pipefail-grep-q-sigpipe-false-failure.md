@@ -2,12 +2,16 @@
 type: "anti-patterns"
 title: "`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる"
 domain: "anti-patterns"
-description: "grep -q は一致した時点で終了するため、上流が SIGPIPE (rc=141) を受けて pipeline 全体が失敗扱いになる。低頻度で発火するため flaky な skip として現れ、閾値の緩い floor guard に masking される。"
+description: "grep -q は一致した時点で終了するため、上流が SIGPIPE (rc=141) を受けて pipeline 全体が失敗扱いになる。低頻度で発火するため flaky な skip として現れ、閾値の緩い floor guard に masking される。入力が stdio バッファ境界を超えた地点で挙動が反転するため、小さな入力のテストでは絶対に見つからない。"
 created: "2026-08-03T07:46:56Z"
-updated: "2026-08-03T07:46:56Z"
+updated: "2026-08-05T05:30:00+00:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260803T052647Z-pr-2094.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260805T043752Z-pr-2112.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260805T050456Z-pr-2112.md"
 tags: []
 confidence: high
 ---
@@ -57,6 +61,30 @@ found=$(grep -v '^#' "$f" | grep -c "$pattern" || true)
 
 floor guard は「明らかな崩壊」ではなく「1 件の欠落」を捕まえられる閾値にする。実数が 29〜35 で揺れているなら、その揺れ自体が異常なので、揺れを許容する閾値ではなく **揺れを検出する厳密値**（`-eq 35` 等）へ寄せるか、揺れの原因を先に潰す。
 
+### 挙動は「入力サイズ」で反転する — 小入力のテストでは絶対に見つからない
+
+PR #2112 で同型の事故が `... | sed -n '<probe>' | grep -q .` の形で再発した。ここで得られた決定的な観測は、**発火が入力サイズに依存する**こと。
+
+上流が stdio バッファに収まる量しか書かないうちに書き終われば、下流が消えても SIGPIPE は発生しない。**バッファ境界を超えた地点で初めて挙動が反転する**。つまり小さな fixture で書いたテストは、この欠陥に対して構造的に識別力を持たない — 何回流しても緑のままで、本番の入力サイズで初めて偽が返る。
+
+「200 回中 1 回」という flakiness も、実体は乱数ではなくサイズと書き込みタイミングの関数である。**再現しないから無い**とは判断できない。
+
+### 真偽判定にパイプ終端の早期 exit consumer を置かない
+
+対処を一般化すると次になる。
+
+- **真偽判定に使うなら、出力を最後まで読む形にする** — コマンド置換の結果が非空かを見れば SIGPIPE 経路自体が消える
+- `grep -q` / `head` / `tail -1` をパイプ終端に置くのは、**rc を見ない用途に限る**
+
+```bash
+# ✗ pipefail 下で rc を見る（サイズ依存で反転する）
+if printf '%s' "$body" | sed -n "$PROBE" | grep -q .; then ...
+
+# ✓ 出力を最後まで読み、結果の非空で判定する
+hit=$(printf '%s' "$body" | sed -n "$PROBE")
+if [ -n "$hit" ]; then ...
+```
+
 ### 併せて起きる同型の事故
 
 同じ `set -euo pipefail` 環境で、コマンド置換内の grep 非マッチ（rc=1）が errexit でテストスイートをプロセスごと中断させる事故も観測されている。アサーション FAIL ではなく中断なので **PASS/FAIL サマリごと消え、以降のアサーションが「実行されていない」ことすら観測できない**。同ファイル内の同型 7 site のうち 1 site だけが `|| true` guard を欠いており、その非対称が漏れの証拠になった。
@@ -72,3 +100,5 @@ floor guard は「明らかな崩壊」ではなく「1 件の欠落」を捕ま
 ## ソース
 
 - [PR #2094 fix results (cycle 3)](../../raw/fixes/20260803T052647Z-pr-2094.md)
+- [PR #2112 review results (cycle 3)（`sed -n | grep -q` でバッファ境界を超えた地点の挙動反転を検出）](../../raw/reviews/20260805T043752Z-pr-2112.md)
+- [PR #2112 fix results (cycle 3)（真偽判定をコマンド置換の非空判定へ置換）](../../raw/fixes/20260805T050456Z-pr-2112.md)

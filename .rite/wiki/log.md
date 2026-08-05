@@ -17,6 +17,12 @@
 * **Create**: [シェル層で閉じられない注入防御は値を substitute する側（LLM）の実行前ゲートとして書く](pages/heuristics/shell-unclosable-defense-goes-to-substituting-side.md) — raw/reviews/20260804T235430Z-pr-2111.md を新規ページ化（quoted heredoc の終端子行脱出は rc=0 + marker 揃いの silent success になり marker 契約でも捕捉できない）
 * **Update**: [シェル層で閉じられない注入防御は値を substitute する側（LLM）の実行前ゲートとして書く](pages/heuristics/shell-unclosable-defense-goes-to-substituting-side.md) — raw/fixes/20260805T000150Z-pr-2111.md を統合（受け皿を作る修正は producer・発火条件・引用元の同時追加を要求 / 同一チャネルに複数発行元があるなら判定条件は literal で閉じる）
 * **lint:warning** — contradictions=0, stale=15, orphans=0, missing_concept=0, unregistered_raw=298, broken_refs=0
+* **Create**: [同定手段の取得経路を差し替えるときは、旧経路が構造的に保証していた述語を先に全部列挙する](pages/heuristics/identity-path-swap-enumerate-old-invariants.md) — raw/reviews/20260805T022816Z-pr-2112.md を新規ページ化（旧経路が URL パスの形で保証していた PR スコープが直接 GET で落ち、application と security が独立検出）
+* **Update**: [エラーを 1 つの reason へ畳むときは「原因の類型」が同じかを確かめる — 復旧手順が違うなら分ける](pages/heuristics/error-classification-by-cause-not-detection-site.md) — raw/fixes/20260805T025341Z-pr-2112.md を統合（帰結を理由ごとに分けると周辺状態との交差ごとにガードが要る / 分けるのは診断であって帰結ではない）
+* **Create**: [抽出述語の厳格化は「壊れた入力」と「入力なし」を同一経路へ畳み、fail-loud を構造的に壊す](pages/anti-patterns/strict-predicate-collapses-broken-into-absent.md) — raw/reviews/20260805T033632Z-pr-2112.md を新規ページ化（行アンカー追加で CRLF の正規 marker が全不一致になり、中核保証が WARNING なしで消えた）
+* **Update**: [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](pages/heuristics/fixture-mutation-isolates-invariants.md) — raw/fixes/20260805T040711Z-pr-2112.md を統合（連言 `A ∧ B` は項の数だけ fixture が要る / read 側だけの pin では write 側の mutation が生存する）
+* **Create**: [静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く](pages/heuristics/static-pin-semantic-allowlist-not-notation-denylist.md) — raw/reviews/20260805T043752Z-pr-2112.md を新規ページ化（`local` の不在を pin しても `declare` / `typeset` で素通りする）
+* **Update**: [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — raw/fixes/20260805T050456Z-pr-2112.md を統合（入力が stdio バッファ境界を超えた地点で挙動が反転するため、小入力のテストでは構造的に見つからない）
 
 ## 2026-08-04
 
