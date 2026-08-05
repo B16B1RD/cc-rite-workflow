@@ -816,10 +816,22 @@ rite_rm() {
 # 判定 (jq rc の値域分岐 / 判定不能は退避側へ倒す) と退避 (mkdir・mv の分離、同名衝突の検出) は
 # helper へ委譲済み。契約と reason 語彙の SoT は helper docstring、挙動は
 # hooks/tests/review-results-archive-or-rm.test.sh が behavioral に固定する。
+# `.json.corrupt-*` も同 helper の glob (`{pr}-*.json*`) が拾う。corrupt は「中身を判定できない」
+# 状態そのものなので、別経路で無条件削除すると同一ブロック内に「判定不能は保全」と「判定不能は
+# 削除」の 2 ポリシーが並ぶ (corrupt rename の 3 経路のうち 2 つは構造的に valid な JSON で、
+# non_blocking_findings[] の全文を保持しうる)。
+#
+# helper の rc は捨てない。**marker 不在を「削除成功」と読んではならない**という本ステップの規約
+# (下記 ステップ 12 の判定表) は、helper が起動すらしなかった場合 ({plugin_root} の未解決置換 /
+# helper 欠落で rc=127) に marker が 1 本も出ないことで破れる。rc を見て失敗を marker に変換する。
+_rrar_rc=0
 bash {plugin_root}/hooks/scripts/review-results-archive-or-rm.sh \
-  --state-root "$_state_root" --pr "$pr_number" --label review_results
-rite_rm review_results_corrupt \
-  "$_state_root"/.rite/review-results/${pr_number}-*.json.corrupt-*
+  --state-root "$_state_root" --pr "$pr_number" --label review_results || _rrar_rc=$?
+if [ "$_rrar_rc" -ne 0 ]; then
+  echo "WARNING: review-results の退避/削除 helper が rc=${_rrar_rc} で失敗しました。レビュー結果 JSON は未処理のまま残っています" >&2
+  echo "  原因候補: {plugin_root} の未解決置換 / helper 欠落・非可読 (rc=127) / 引数不正 (rc=1)" >&2
+  echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=review_results_helper_failed; rc=${_rrar_rc}; pr=${pr_number}" >&2
+fi
 rite_rm fix_retry_state "$_state_root/.rite/state/fix-fallback-retry-${pr_number}.count"
 rite_rm fix_cycle_state "$_state_root/.rite/fix-cycle-state/${pr_number}.json"
 rite_rm legacy_fix_cycle_state "$_state_root/.rite/fix-cycle-state.json"

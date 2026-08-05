@@ -2849,10 +2849,14 @@ else
       #     人手のレビューを強制する。
       #     **ラベルは「新規 placeholder の検出」までしか名乗らない** — allowlist 内の 7 種と
       #     literal な散文だけで全文を再掲載する形はここでは落ちない (下の row-scoped pin が担う)。
-      #     文字クラスは `[^}[:space:]]` — `[a-z_]` だと数字・大文字・ハイフンを含む placeholder
+      #     文字クラスは `[^}]` — `[a-z_]` だと数字・大文字・ハイフンを含む placeholder
       #     (`{finding_detail_1}` 等) を 1 件も拾わず allowlist を素通りする (実測)。
+      #     **空白も除外してはならない** — `[^}[:space:]]` にすると `{finding full description}` の
+      #     ような空白入り placeholder を 1 件も拾わず、AC-1 が禁じる「表の外への全文再掲載」を
+      #     そのまま通す (実測: fence に空白入り placeholder の箇条書きを足しても全 assert green)。
+      #     `}` の除外だけで `{a} と {b}` の跨ぎ match は防げるため、空白の除外は識別力を落とす。
       #     `LC_ALL=C` は prefix を共有する placeholder が将来現れたときの並び順を環境非依存にする。
-      _va_ph=$(printf '%s\n' "$_va_fence" | grep -oE '\{[^}[:space:]]+\}' | LC_ALL=C sort -u | tr '\n' ' ')
+      _va_ph=$(printf '%s\n' "$_va_fence" | grep -oE '\{[^}]+\}' | LC_ALL=C sort -u | tr '\n' ' ')
       assert "TC-5i variant A fence の placeholder 集合が allowlist と一致 (全文を運ぶ新規 placeholder の検出)" \
         "{current_commit_sha} {file} {line} {non_blocking_count} {pr_number} {reviewer_type} {severity} " \
         "$_va_ph"

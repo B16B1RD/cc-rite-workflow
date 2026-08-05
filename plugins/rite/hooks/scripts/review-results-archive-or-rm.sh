@@ -4,27 +4,36 @@
 # マージ済み PR のレビュー結果 JSON を、**非実測指摘 (non_blocking_findings[]) を持つものだけ
 # 退避し、それ以外を削除する**。
 #
-# なぜ一律削除ではないか (Issue #2039):
+# なぜ一律削除ではないか:
 #   ステップ 6.1.d の PR 記録コメントは reviewer / severity / file:line のポインタしか載せない。
 #   したがって `description` / `suggestion` の全文を持つのは本 JSON だけで、無条件削除すると
-#   非実測 CRITICAL の詳細が merge 直後にどこにも残らなくなり、Issue #2024 D-01
-#   「マージ後に人間が拾い直せる」が偽になる (ポインタ化する前より後退する)。
+#   非実測 CRITICAL の詳細が merge 直後にどこにも残らなくなり、「マージ後に人間が拾い直せる」
+#   という担保が偽になる (ポインタ化する前より後退する)。
 #
-# 判定不能はすべて退避側 (安全側) へ倒す:
+# 判定不能はすべて退避側 (安全側) へ倒し、かつ loud に報告する:
 #   jq 不在 / parse 失敗 / query error / 空ファイル のいずれも「中身を判定できない」状態であり、
 #   消してしまうと消えたことにも気付けない。jq の rc は捨てず値域で分岐する
 #   (`if jq -e ...; then` 形は rc=0 以外を全部「非空でない」へ丸め、top-level が object でない
-#   JSON = query rc=5 を無警告で削除側へ落とす)。
+#   JSON = query rc=5 を無警告で削除側へ落とす)。ただし「退避した」だけでは判定不能が起きた
+#   事実が残らないため、rc が 0/1 以外のときは jq の診断ごと WARNING + reason marker を出す
+#   (退避 IO の失敗を loud にしておきながら、ファイルの運命を決める判定そのものを無音にすると
+#   保存パイプラインの壊れが永久に観測されない)。
+#
+# 対象 glob が `.json` ではなく `.json*` なのも同じ理由:
+#   `.json.corrupt-<epoch>` は `scripts/review-source-resolve.sh` が parse 不能 / 必須フィールド
+#   欠落 / 型不正を検出して rename したファイルで、`non_blocking_findings[]` の全文をそのまま
+#   保持しうる。これを別経路で無条件削除すると「判定不能は退避」の宣言と正面から矛盾する。
+#   同じ glob に載せれば corrupt は jq 判定で自然に「判定不能 → 退避」へ落ちる (経路を増やさない)。
 #
 # Usage:
 #   review-results-archive-or-rm.sh --state-root <dir> --pr <number> [--label <label>]
 #
 # Options:
 #   --state-root  state root (state-path-resolve.sh の解決結果)。必須
-#   --pr          PR 番号 (数値)。必須。glob `{pr}-*.json` の prefix になる
+#   --pr          PR 番号 (数値)。必須。glob `{pr}-*.json*` の prefix になる
 #   --label       WARNING / marker に使うラベル (既定: review_results)
 #
-# 対象 glob: <state-root>/.rite/review-results/<pr>-*.json
+# 対象 glob: <state-root>/.rite/review-results/<pr>-*.json*  (`.json` と `.json.corrupt-*` の両方)
 # 退避先:    <state-root>/.rite/review-results/archive/
 #
 # Exit codes:
@@ -37,8 +46,10 @@
 #              , <label>_archive_mkdir_failure    退避先ディレクトリを作れない
 #              , <label>_archive_mv_failure       mv 自体が失敗
 #              , <label>_archive_name_collision   退避先に同名既存 (上書きせず元の場所に残す)
+#              , <label>_undecidable              中身を判定できず退避側へ倒した (失敗ではない)
 #              }
-#   いずれの失敗でも **ファイルは削除しない** (退避できないなら元の場所に残す)。
+#   `_undecidable` 以外の失敗では **ファイルは削除しない** (退避できないなら元の場所に残す)。
+#   `_undecidable` は退避自体は成功しうるので `failed` には数えない (観測用の marker)。
 #
 # Emitted summary (stdout, 1 行):
 #   [review-results-archive-or-rm] archived=<n>; removed=<n>; failed=<n>; pr=<n>
@@ -48,11 +59,22 @@ STATE_ROOT=""
 PR_NUMBER=""
 LABEL="review_results"
 
+# 各 arm で値の存在を検査してから shift 2 する。検査を省くと値なし末尾オプション
+# (`--pr` で終わる等) で `shift` が失敗して `$#` が減らず、while が無限ループする
+# (出力ゼロで永久にハングし、下記 Exit codes が宣言する exit 1 に到達しない)。
+_require_value() {
+  # $1=残り引数の個数, $2=オプション名
+  if [ "$1" -lt 2 ]; then
+    echo "ERROR: review-results-archive-or-rm: $2 requires a value" >&2
+    exit 1
+  fi
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
-    --state-root) STATE_ROOT="${2:-}"; shift 2 ;;
-    --pr)         PR_NUMBER="${2:-}"; shift 2 ;;
-    --label)      LABEL="${2:-}"; shift 2 ;;
+    --state-root) _require_value "$#" "$1"; STATE_ROOT="$2"; shift 2 ;;
+    --pr)         _require_value "$#" "$1"; PR_NUMBER="$2"; shift 2 ;;
+    --label)      _require_value "$#" "$1"; LABEL="$2"; shift 2 ;;
     *)
       echo "ERROR: review-results-archive-or-rm: unknown option: $1" >&2
       exit 1 ;;
@@ -80,24 +102,36 @@ archived=0
 removed=0
 failed=0
 
-for f in "$results_dir/${PR_NUMBER}"-*.json; do
+for f in "$results_dir/${PR_NUMBER}"-*.json*; do
   # glob がマッチしないと pattern 文字列そのものが入るので実在検査で弾く
   { [ -e "$f" ] || [ -L "$f" ]; } || continue
 
   keep=no
+  keep_reason=""
   if command -v jq >/dev/null 2>&1; then
-    # rc=0 非空 → 退避 / rc=1 空・キー欠落・null → 削除 / それ以外 (2=parse 失敗, 4, 5=query
-    # error 等) → 判定不能として退避。`// []` を使うのは書式の読みやすさのためで、キー欠落と
+    # rc=0 非空 → 退避 / rc=1 空・キー欠落・null → 削除 / それ以外 (4=出力なし, 5=parse 失敗 /
+    # query error 等) → 判定不能として退避。`// []` を使うのは書式の読みやすさのためで、キー欠落と
     # 空配列はどちらも rc=1 に落ちて帰結が同じ (`// empty` でも rc が変わるだけで結論は同じ)。
-    jq -e '(.non_blocking_findings // []) | length > 0' "$f" >/dev/null 2>&1
+    # stderr は捨てずに捕捉する — 判定不能の原因 (parse error の位置 / query の型不一致) は
+    # ここでしか観測できない。
+    jq_err=$(jq -e '(.non_blocking_findings // []) | length > 0' "$f" 2>&1 >/dev/null)
     jq_rc=$?
     case "$jq_rc" in
-      0) keep=yes ;;
+      0) keep=yes; keep_reason="非実測指摘あり" ;;
       1) ;;
-      *) keep=yes ;;
+      *)
+        keep=yes
+        keep_reason="判定不能 (jq rc=${jq_rc})"
+        echo "WARNING: ${LABEL} の内容を判定できません (退避側へ倒します): $f (jq rc=${jq_rc})" >&2
+        [ -n "$jq_err" ] && printf '%s\n' "$jq_err" | sed 's/^/  /' >&2
+        echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=${LABEL}_undecidable; pr=${PR_NUMBER}" >&2
+        ;;
     esac
   else
-    keep=yes   # jq 不在 = 判定不能 → 消さない
+    keep=yes
+    keep_reason="判定不能 (jq 不在)"
+    echo "WARNING: jq が見つからないため ${LABEL} の内容を判定できません (退避側へ倒します): $f" >&2
+    echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=${LABEL}_undecidable; pr=${PR_NUMBER}" >&2
   fi
 
   if [ "$keep" != yes ]; then
@@ -115,16 +149,19 @@ for f in "$results_dir/${PR_NUMBER}"-*.json; do
   # 退避経路。mkdir と mv を分離し、それぞれの stderr を捨てない — 守っている対象が「全文の
   # 唯一の保存先」である以上、守れなかったときに原因 (既存衝突 / 権限 / ENOSPC / EXDEV) が
   # 残らないのは silent failure。reason も分けて切り分け可能にする。
-  arch_err=$(mktemp "${TMPDIR:-/tmp}/rite-cleanup-archive-err-XXXXXX" 2>/dev/null) || arch_err=""
-  if ! mkdir -p "$archive_dir" 2>"${arch_err:-/dev/null}"; then
+  # stderr の捕捉に tempfile を使わないのは、mktemp 自身が失敗する条件 (ENOSPC / read-only
+  # TMPDIR) が mkdir の失敗条件と相関するため — 診断が最も要る場面でだけ診断が消える。
+  # command substitution なら失敗する余地が無く、trap も要らない (orphan tempfile も生じない)。
+  # mkdir / mv はいずれも成功時 stdout を持たないので、2>&1 の捕捉で情報は落ちない。
+  if ! arch_err=$(mkdir -p "$archive_dir" 2>&1); then
     echo "WARNING: ${LABEL} の退避先ディレクトリを作成できません (PR #${PR_NUMBER}): $archive_dir — $f は削除もせずそのまま残します" >&2
-    [ -n "$arch_err" ] && [ -s "$arch_err" ] && sed 's/^/  /' "$arch_err" >&2
+    [ -n "$arch_err" ] && printf '%s\n' "$arch_err" | sed 's/^/  /' >&2
     echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=${LABEL}_archive_mkdir_failure; pr=${PR_NUMBER}" >&2
     failed=$((failed + 1))
-  elif ! mv -n "$f" "$archive_dir/" 2>"${arch_err:-/dev/null}"; then
+  elif ! arch_err=$(mv -n "$f" "$archive_dir/" 2>&1); then
     # `mv -n` で同名既存の無警告上書きを防ぐ (上書きすると前 cycle の全文が消える)
     echo "WARNING: ${LABEL} の退避に失敗 (PR #${PR_NUMBER}): $f -> $archive_dir/ — 削除もせずそのまま残します" >&2
-    [ -n "$arch_err" ] && [ -s "$arch_err" ] && sed 's/^/  /' "$arch_err" >&2
+    [ -n "$arch_err" ] && printf '%s\n' "$arch_err" | sed 's/^/  /' >&2
     echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=${LABEL}_archive_mv_failure; pr=${PR_NUMBER}" >&2
     failed=$((failed + 1))
   elif [ -e "$f" ]; then
@@ -135,10 +172,9 @@ for f in "$results_dir/${PR_NUMBER}"-*.json; do
     echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=${LABEL}_archive_name_collision; pr=${PR_NUMBER}" >&2
     failed=$((failed + 1))
   else
-    echo "✅ ${LABEL} を退避 (非実測指摘あり / 判定不能): $f -> $archive_dir/" >&2
+    echo "✅ ${LABEL} を退避 (${keep_reason}): $f -> $archive_dir/" >&2
     archived=$((archived + 1))
   fi
-  [ -n "$arch_err" ] && rm -f "$arch_err"
 done
 
 echo "[review-results-archive-or-rm] archived=${archived}; removed=${removed}; failed=${failed}; pr=${PR_NUMBER}"
