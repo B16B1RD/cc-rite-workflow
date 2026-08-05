@@ -16,6 +16,7 @@
 * **Update**: [防御は攻撃面と同じ粒度で張る — 過剰防御は「安全側」ではなく別の実害](pages/heuristics/defense-granularity-matches-attack-surface.md) — raw/fixes/20260804T183250Z-pr-2111.md を統合（中和条件を `](` 限定に絞り攻撃は閉じたまま回帰が消えた / mutation が適用されたことを置換件数で確認しないと偽の生存判定になる）
 * **Create**: [シェル層で閉じられない注入防御は値を substitute する側（LLM）の実行前ゲートとして書く](pages/heuristics/shell-unclosable-defense-goes-to-substituting-side.md) — raw/reviews/20260804T235430Z-pr-2111.md を新規ページ化（quoted heredoc の終端子行脱出は rc=0 + marker 揃いの silent success になり marker 契約でも捕捉できない）
 * **Update**: [シェル層で閉じられない注入防御は値を substitute する側（LLM）の実行前ゲートとして書く](pages/heuristics/shell-unclosable-defense-goes-to-substituting-side.md) — raw/fixes/20260805T000150Z-pr-2111.md を統合（受け皿を作る修正は producer・発火条件・引用元の同時追加を要求 / 同一チャネルに複数発行元があるなら判定条件は literal で閉じる）
+* **lint:warning** — contradictions=0, stale=15, orphans=0, missing_concept=0, unregistered_raw=298, broken_refs=0
 
 ## 2026-08-04
 
