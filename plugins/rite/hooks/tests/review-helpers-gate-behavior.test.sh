@@ -223,11 +223,20 @@ if [ "${1:-}" = "api" ]; then
     *"/issues/comments/"*)
       if [ "${GH_COMMENT_GET_RC:-0}" != "0" ]; then
         # 実 gh は 404 を `gh: Not Found (HTTP 404)` の形で stderr に出す。helper はこの文字列で
-        # 「削除済み (recreate)」と「一時障害 (fallback)」を分けるため、形を実物に合わせる。
+        # 「削除済み」と「一時障害」を reason 上で分けるため (帰結はどちらも fallback)、形を実物に合わせる。
         echo "${GH_COMMENT_GET_STDERR:-gh: Not Found (HTTP 404)}" >&2
+        # 実 gh は HTTP エラー時に --jq を適用せずレスポンス body を stdout へ出す (rc!=0 と
+        # 非空 stdout が同時に成立する)。`gh api user` stub が GH_ME_STDOUT_ON_ERROR で
+        # モデル化しているのと同じ軸 — 再現しないと「rc ではなく stdout 非空を成功条件にする」
+        # 実装バグ (404 が id_author_mismatch に化けて AC-4 が反転する) を検出できない。
+        [ -n "${GH_COMMENT_GET_STDOUT_ON_ERROR:-}" ] && printf '%s' "$GH_COMMENT_GET_STDOUT_ON_ERROR"
         exit "${GH_COMMENT_GET_RC}"
       fi
-      printf '%s' "${GH_COMMENT_GET_LOGIN-rite-bot}"
+      # helper は `--jq '[.user.login, .issue_url] | @tsv'` で author と所属 PR を同時に取る。
+      # issue_url は `/issues/{N}` 末尾一致で「当該 PR のコメントか」を検証する入力なので、
+      # 既定値は PR #9 に属する形にし、GH_COMMENT_GET_ISSUE_URL で別 PR を指せるようにする。
+      printf '%s\t%s' "${GH_COMMENT_GET_LOGIN-rite-bot}" \
+        "${GH_COMMENT_GET_ISSUE_URL-https://api.github.com/repos/o/r/issues/9}"
       exit 0 ;;
   esac
 fi
@@ -295,6 +304,8 @@ run_nbr() {
     GH_PR_BODY="${GH_PR_BODY:-}" GH_PR_VIEW_RC="${GH_PR_VIEW_RC:-0}" \
     GH_PR_EDIT_BODY="$GH_PR_EDIT" GH_PR_EDIT_RC="${GH_PR_EDIT_RC:-0}" \
     GH_COMMENT_GET_RC="${GH_COMMENT_GET_RC:-0}" GH_COMMENT_GET_LOGIN="${GH_COMMENT_GET_LOGIN-rite-bot}" \
+    GH_COMMENT_GET_ISSUE_URL="${GH_COMMENT_GET_ISSUE_URL-https://api.github.com/repos/o/r/issues/9}" \
+    GH_COMMENT_GET_STDOUT_ON_ERROR="${GH_COMMENT_GET_STDOUT_ON_ERROR:-}" \
     GH_COMMENT_GET_STDERR="${GH_COMMENT_GET_STDERR:-}" GH_POST_URL="${GH_POST_URL-https://github.com/o/r/pull/9#issuecomment-4242}" \
     _timeout 10 bash "$PLUGIN_ROOT/hooks/review-nonblocking-record.sh" "$@" >"$OUT" 2>"$ERR" || RC=$?
 }
@@ -1034,6 +1045,15 @@ printf '## 概要\n\nPR の説明本文\n\n<!-- rite:nbr:comment-id:abc -->\n' >
 # かつ投稿後に id が書き足されること (migration) を固定する。
 NBR_PRBODY_PLAIN="$TMP_ROOT/nbr-prbody-plain.md"
 printf '## 概要\n\nPR の説明本文\n' > "$NBR_PRBODY_PLAIN"
+# **散文中に marker と同形の文字列を持つ** PR body。read/write の両式が行アンカー (`^`/`$`) を
+# 要求しないと、(a) 抽出が散文行から偽の id を拾い、(b) 除去がその一節を PR 説明から無音で消す。
+# 本 PR (#2112) の説明文自身がこの形をしているため、helper を自分自身に対して走らせると発火する。
+# 2 つの fixture で marker 行と散文行の**順序を入れ替える** — 抽出は `tail -1` で最後のマッチを採る
+# ため、散文が後ろにある方 (INLINE_LAST) でしか抽出側の欠陥は観測できない。
+NBR_PRBODY_INLINE_FIRST="$TMP_ROOT/nbr-prbody-inline-first.md"
+printf '## 概要\n\nid は `<!-- rite:nbr:comment-id:11 -->` のような行で PR body に置く\n\n<!-- rite:nbr:comment-id:11 -->\n' > "$NBR_PRBODY_INLINE_FIRST"
+NBR_PRBODY_INLINE_LAST="$TMP_ROOT/nbr-prbody-inline-last.md"
+printf '## 概要\n\n<!-- rite:nbr:comment-id:11 -->\n\nid は `<!-- rite:nbr:comment-id:BROKEN -->` のような行で PR body に置く\n' > "$NBR_PRBODY_INLINE_LAST"
 # create 経路が永続化する id (stub の GH_POST_URL 既定値) を canonical に持つコメント一覧。
 NBR_COMMENTS_4242="$TMP_ROOT/nbr-comments-4242.json"
 cat > "$NBR_COMMENTS_4242" <<'EOF'
@@ -1696,9 +1716,16 @@ GH_LOOKUP_JSON="$NBR_COMMENTS_4242" GH_PR_BODY="$NBR_PRBODY_ROUND2" \
 assert "TC-4.16b-2 2 回目: exit 0" "0" "$RC"
 assert_grep "TC-4.16b-2 永続化された id で update-in-place する" "$ERR" 'outcome=updated; count=2; iteration_id=9-403; comment_id=4242; degraded=0'
 assert_not_grep "TC-4.16b-2 2 通目を作らない" "$GH_LOG" '^pr comment'
-# marker が cycle ごとに増殖しないこと (strip → 付け直しの冪等性)。
+# **id 経路と fallback 経路を弁別する assertion**。fixture の canonical が 1 件しかないため
+# `comment_id=4242` は両経路で成立してしまい、上の 3 本だけでは id 解決を無効化しても落ちない
+# (T-02 が名目のみになる)。id 経路は永続化を skip し fallback 経路は `pr edit` を出すので、
+# 「PR body を書き直さない」ことが id 経路を通った唯一の観測可能な証拠になる。
+assert_not_grep "TC-4.16b-2 id 経路で解決した cycle は PR body を書き直さない" "$GH_LOG" '^pr edit'
+# 初回書き込みで marker が 1 本だけ入ること (marker 0 本の PR body からの生成)。
+# **既存 marker がある PR body での strip 冪等性は TC-4.16e が固定する** (本 assert は run 1 の
+# 出力を見ているだけで、strip 経路を通っていない)。
 _id_marker_count=$(grep -c 'rite:nbr:comment-id:' "$NBR_PRBODY_ROUND2" || true)
-assert "TC-4.16b-2 PR body の id marker は 1 本だけ (重複追記しない)" "1" "$_id_marker_count"
+assert "TC-4.16b-2 初回書き込みで PR body の id marker は 1 本" "1" "$_id_marker_count"
 
 # TC-4.16c [T-04, AC-3] id 永続化の失敗は投稿を成功扱いのまま通し、pending marker も残さない。
 GH_PR_EDIT_RC=1 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" GH_PR_BODY="$NBR_PRBODY_PLAIN" \
@@ -1710,20 +1737,42 @@ assert_grep "TC-4.16c 投稿は実行されている" "$GH_LOG" '^pr comment'
 # MUST NOT「永続化失敗を pending marker の retain 側へ落とさない」の pin は、marker lifecycle を
 # per-reason で固定している TC-4.12h' に置く (helper `_nbr_marker_after` の定義がそこにあるため)。
 
-# TC-4.16d [T-05, AC-4] id が指すコメントが 404 なら新規作成へ倒す。**fallback には倒さない** —
-# $NBR_COMMENTS には本文照合で拾える canonical (id=13) が実在するため、created になることが
-# 「404 は fallback ではなく recreate」の弁別になる。
+# TC-4.16d [T-05, AC-4] id が指すコメントが 404 でも **エラーにせず fallback へ倒す**。
+# 当初は recreate (既存なし = 新規作成) へ倒していたが、$NBR_COMMENTS には本文照合で拾える
+# canonical (id=13) が実在するため、それを無視して 2 通目を作る挙動になっていた。fallback は
+# 「author ∧ 1 行目 marker ∧ 最終非空行 sentinel」を満たすコメントしか掴まないので、削除済み id の
+# 代わりに採っても安全。**fallback が空なら既存の「既存なし」経路がそのまま新規作成へ倒す**ため
+# AC-4 の帰結 (エラーにしない) は保たれる — その経路は TC-4.16d'' が固定する。
 GH_COMMENT_GET_RC=1 GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_ID11" \
   run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-406 --content-file "$NBR_BODY_C2"
 assert "TC-4.16d 404: exit 0" "0" "$RC"
-assert_grep "TC-4.16d reason=id_comment_deleted; action=recreate" "$ERR" 'NONBLOCKING_ID_UNRESOLVED=1; pr=9; reason=id_comment_deleted; action=recreate'
-assert_grep "TC-4.16d 新規作成へ倒れる" "$ERR" 'outcome=created; count=2; iteration_id=9-406;'
-assert_not_grep "TC-4.16d 本文照合の候補 (id=13) へ倒さない" "$GH_LOG" '^api repos/.* -X PATCH'
+assert_grep "TC-4.16d reason=id_comment_deleted; action=fallback" "$ERR" 'NONBLOCKING_ID_UNRESOLVED=1; pr=9; reason=id_comment_deleted; action=fallback'
+assert_grep "TC-4.16d 実在する canonical (id=13) を掴み重複を作らない" "$ERR" 'outcome=updated; count=2; iteration_id=9-406; comment_id=13;'
+assert_not_grep "TC-4.16d 2 通目を新規作成しない" "$GH_LOG" '^pr comment'
 # 404 を「エラー」にしない (AC-4): 記録失敗の reason は emit されない。
 assert_not_grep "TC-4.16d 404 を記録失敗として扱わない" "$ERR" 'NONBLOCKING_RECORD_FAILED'
 
-# TC-4.16d' [AC-4 の境界] 404 以外の取得失敗は **fallback** へ倒す。recreate に倒すと、一時障害の
-# たびに実在する canonical の隣へ重複を作ってしまう (帰結が逆なので同じ扱いにできない)。
+# TC-4.16d'' [AC-4 の帰結] 404 かつ fallback も空なら新規作成へ倒る (「エラーにしない」の担保)。
+GH_COMMENT_GET_RC=1 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" GH_PR_BODY="$NBR_PRBODY_ID11" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-406b --content-file "$NBR_BODY_C2"
+assert "TC-4.16d'' 404 ∧ fallback 空: exit 0" "0" "$RC"
+assert_grep "TC-4.16d'' 新規作成へ倒れる" "$ERR" 'outcome=created; count=2; iteration_id=9-406b;'
+assert_grep "TC-4.16d'' 投稿は実行される" "$GH_LOG" '^pr comment'
+
+# TC-4.16d''' [T-05 の識別力、F-10 対応] 実 gh は HTTP エラー時に --jq を適用せずレスポンス body を
+# stdout へ出す。この軸を stub が再現しないと「rc ではなく stdout 非空を成功条件にする」実装バグを
+# 検出できず、404 が id_author_mismatch に化けて AC-4 が反転する (`gh api user` の
+# GH_ME_STDOUT_ON_ERROR と同型の軸)。
+GH_COMMENT_GET_RC=1 GH_COMMENT_GET_STDOUT_ON_ERROR='{"message":"Not Found"}' \
+  GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_ID11" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-406c --content-file "$NBR_BODY_C2"
+assert "TC-4.16d''' 404 + 非空 stdout: exit 0" "0" "$RC"
+assert_grep "TC-4.16d''' rc を見るため 404 判定が維持される" "$ERR" 'NONBLOCKING_ID_UNRESOLVED=1; pr=9; reason=id_comment_deleted; action=fallback'
+assert_not_grep "TC-4.16d''' エラー body を author と誤読しない" "$ERR" 'reason=id_author_mismatch'
+
+# TC-4.16d' [reason の分離] 404 以外の取得失敗は別 reason (`id_fetch_failed`) で報告する。
+# 帰結は 404 と同じ fallback だが、復旧手順が違う (削除済み = 放置可 / 一時障害 = network 確認) ため
+# reason は分ける。
 GH_COMMENT_GET_RC=1 GH_COMMENT_GET_STDERR='gh: connection reset by peer' \
   GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_ID11" \
   run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-407 --content-file "$NBR_BODY_C2"
@@ -1732,6 +1781,26 @@ assert_grep "TC-4.16d' reason=id_fetch_failed; action=fallback" "$ERR" 'NONBLOCK
 assert_grep "TC-4.16d' 本文照合の canonical (id=13) へ倒す" "$ERR" 'outcome=updated; count=2; iteration_id=9-407; comment_id=13;'
 assert_not_grep "TC-4.16d' 重複を作らない" "$GH_LOG" '^pr comment'
 
+# TC-4.16d4 [AC-5 の拡張] id が **別 PR / 別 Issue** のコメントを指していたら PATCH せず fallback。
+# `issues/comments/{id}` は repo スコープで issue 非依存のため author 一致だけでは防げない。
+# PR body は書き込み権限を持たない PR 作成者でも編集できるので、これは author 検証の穴になる。
+GH_COMMENT_GET_ISSUE_URL='https://api.github.com/repos/o/r/issues/777' \
+  GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_ID11" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-407b --content-file "$NBR_BODY_C2"
+assert "TC-4.16d4 別 PR のコメント: exit 0" "0" "$RC"
+assert_grep "TC-4.16d4 reason=id_pr_mismatch; action=fallback" "$ERR" 'NONBLOCKING_ID_UNRESOLVED=1; pr=9; reason=id_pr_mismatch; action=fallback'
+assert_not_grep "TC-4.16d4 別 PR のコメント (id=11) を PATCH しない" "$GH_LOG" 'issues/comments/11 -X PATCH'
+assert_grep "TC-4.16d4 本文照合の canonical (id=13) へ倒す" "$ERR" 'outcome=updated; count=2; iteration_id=9-407b; comment_id=13;'
+
+# TC-4.16d5 [AC-5 の境界] `/issues/{PR}` の **prefix 一致では通さない** (末尾一致であること)。
+# `/issues/99` は `/issues/9` を prefix に持つため、suffix 判定を緩めると別 PR が通る。
+GH_COMMENT_GET_ISSUE_URL='https://api.github.com/repos/o/r/issues/99' \
+  GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_ID11" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-407c --content-file "$NBR_BODY_C2"
+assert "TC-4.16d5 prefix 衝突 (/issues/99 vs PR 9): exit 0" "0" "$RC"
+assert_grep "TC-4.16d5 prefix 一致では通さない" "$ERR" 'NONBLOCKING_ID_UNRESOLVED=1; pr=9; reason=id_pr_mismatch; action=fallback'
+assert_not_grep "TC-4.16d5 id=11 を PATCH しない" "$GH_LOG" 'issues/comments/11 -X PATCH'
+
 # TC-4.16e [T-06, AC-5] id が指すコメントの author が自分でなければ PATCH せず fallback へ倒す。
 GH_COMMENT_GET_LOGIN='other-user' GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_ID11" \
   run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-408 --content-file "$NBR_BODY_C2"
@@ -1739,6 +1808,12 @@ assert "TC-4.16e author 不一致: exit 0" "0" "$RC"
 assert_grep "TC-4.16e reason=id_author_mismatch; action=fallback" "$ERR" 'NONBLOCKING_ID_UNRESOLVED=1; pr=9; reason=id_author_mismatch; action=fallback'
 assert_not_grep "TC-4.16e 他人のコメント (id=11) を PATCH しない" "$GH_LOG" 'issues/comments/11 -X PATCH'
 assert_grep "TC-4.16e 本文照合の canonical (id=13) へ倒す" "$ERR" 'outcome=updated; count=2; iteration_id=9-408; comment_id=13;'
+# **既存 marker を持つ PR body での strip 冪等性の pin**。本 run は marker 1 本を持つ
+# $NBR_PRBODY_ID11 を入力に fallback 経由で永続化するため、strip → 付け直しの経路を実際に通る。
+# strip を no-op に mutate すると marker が 2 本になり、行アンカーを外すと 24 行目相当の散文が消える。
+_e_marker_count=$(grep -c 'rite:nbr:comment-id:' "$GH_PR_EDIT" || true)
+assert "TC-4.16e 既存 marker を持つ PR body でも marker は 1 本 (strip の冪等性)" "1" "$_e_marker_count"
+assert_grep "TC-4.16e strip は PR 説明本文を壊さない" "$GH_PR_EDIT" 'PR の説明本文'
 
 # TC-4.16e' [AC-5 の境界] rc=0 だが author が空 (レスポンス形状の drift) も PATCH 先にしない。
 # author を確認できない値で PATCH すると、他人のコメントを破壊しうる。
@@ -1773,6 +1848,11 @@ GH_PR_VIEW_RC=1 GH_LOOKUP_JSON="$NBR_COMMENTS" \
 assert "TC-4.16h PR body 読取失敗: exit 0" "0" "$RC"
 assert_grep "TC-4.16h reason=id_read_failed; action=fallback" "$ERR" 'NONBLOCKING_ID_UNRESOLVED=1; pr=9; reason=id_read_failed; action=fallback'
 assert_grep "TC-4.16h 本文照合で PATCH 先が確定するため degraded=0" "$ERR" 'outcome=updated; count=2; iteration_id=9-412; comment_id=13; degraded=0'
+# 同一 run で write 側 (`_persist_comment_id`) も `gh pr view` に失敗する。**読めなかった body を
+# 空とみなして PR body を上書きしない**ことが最重要 — この guard を外すと PR 説明が marker だけに
+# なって消える (記録の失敗ではなく PR 本文の破壊)。
+assert_grep "TC-4.16h reason=body_read_failed emit" "$ERR" 'NONBLOCKING_ID_PERSIST_FAILED=1; pr=9; reason=body_read_failed'
+assert_not_grep "TC-4.16h 読めない body を空とみなして PR 説明を上書きしない" "$GH_LOG" '^pr edit'
 
 # TC-4.16i 【本 Issue の中核】本文照合の lookup が失敗しても、durable id で PATCH 先が確定すれば
 # update-in-place は成立する。ここが従来「degraded → 新規作成へ縮退 → 重複記録コメント」となって
@@ -1786,13 +1866,15 @@ assert_grep "TC-4.16i 孤児 / 重複を走査できていない事実は明示�
 # degraded 用の案内 (update-in-place を諦める) は出さない — id で特定できているため事実と異なる。
 assert_not_grep "TC-4.16i 事実と異なる degraded 案内を出さない" "$ERR" 'update-in-place を諦めます'
 
-# TC-4.16j [degraded の境界] 同じ lookup 失敗でも id が **削除済み** を指していれば新規作成が
-# 正しい帰結なので degraded にしない (recreate は「特定できなかった」ではなく「意図した新規作成」)。
+# TC-4.16j [degraded の境界] id も本文照合も使えない (id 削除済み ∧ lookup 失敗) なら、PATCH 先を
+# 特定できていないので **degraded=1**。recreate 分岐を持っていた頃はここが degraded=0 になり、
+# 「既存を走査できないまま新規作成した」事実が転記条件のどれにも載らず completion report から
+# 消えていた。degraded を立てることで既存の転記経路 (`_record_degraded_create_hint`) に復帰する。
 GH_LOOKUP_RC=1 GH_COMMENT_GET_RC=1 GH_PR_BODY="$NBR_PRBODY_ID11" \
   run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-414 --content-file "$NBR_BODY_C2"
 assert "TC-4.16j lookup 失敗 ∧ id 削除済み: exit 0" "0" "$RC"
-assert_grep "TC-4.16j recreate は degraded ではない" "$ERR" 'outcome=created; count=2; iteration_id=9-414; comment_id=; degraded=0'
-assert_not_grep "TC-4.16j degraded 由来の重複警告を出さない" "$ERR" '既存の記録コメントを特定できないまま新規作成したため'
+assert_grep "TC-4.16j PATCH 先を特定できないので degraded=1" "$ERR" 'outcome=created; count=2; iteration_id=9-414; comment_id=; degraded=1'
+assert_grep "TC-4.16j degraded 由来の重複警告を出す (転記条件へ載る)" "$ERR" '既存の記録コメントを特定できないまま新規作成したため'
 
 # TC-4.16k [観測] 投稿 URL から id を取れないときは永続化を諦めるが、記録自体は成功扱いのまま。
 GH_POST_URL='' GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" GH_PR_BODY="$NBR_PRBODY_PLAIN" \
@@ -1801,6 +1883,28 @@ assert "TC-4.16k id 抽出不能: exit 0" "0" "$RC"
 assert_grep "TC-4.16k outcome=created (記録は成功)" "$ERR" 'outcome=created; count=2; iteration_id=9-415;'
 assert_grep "TC-4.16k reason=comment_id_unresolved emit" "$ERR" 'NONBLOCKING_ID_PERSIST_FAILED=1; pr=9; reason=comment_id_unresolved'
 assert_not_grep "TC-4.16k 空 id で PR body を書き換えない" "$GH_LOG" '^pr edit'
+
+# TC-4.16m [F-08 対応] 散文中に marker と同形の文字列がある PR body で、**除去は独立行の marker
+# だけを消す**。行アンカーを外すと散文中の marker 文字列まで無音で削除され PR 説明が壊れる。
+GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_INLINE_FIRST" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-417 --content-file "$NBR_BODY_C2"
+assert "TC-4.16m 散文中の marker 同形文字列: exit 0" "0" "$RC"
+assert_grep "TC-4.16m id 経路で解決する (散文行は marker として拾わない)" "$ERR" 'outcome=updated; count=2; iteration_id=9-417; comment_id=11; degraded=0'
+# id 経路で解決した cycle は PR body を書き直さないため、除去の観測には fallback 経由が要る。
+GH_COMMENT_GET_LOGIN='other-user' GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_INLINE_FIRST" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-418 --content-file "$NBR_BODY_C2"
+assert "TC-4.16m' fallback 経由で永続化: exit 0" "0" "$RC"
+assert_grep "TC-4.16m' 散文中の marker 同形文字列を消さない" "$GH_PR_EDIT" 'id は .<!-- rite:nbr:comment-id:11 -->. のような行で'
+_m_marker_lines=$(grep -c '^<!-- rite:nbr:comment-id:' "$GH_PR_EDIT" || true)
+assert "TC-4.16m' 独立行の marker は 1 本だけ" "1" "$_m_marker_lines"
+
+# TC-4.16m'' [F-08 対応、抽出側] 散文中の marker 同形文字列が **marker 行より後ろ** にあるとき、
+# 抽出が行アンカーを欠くと `tail -1` が散文行の値 (BROKEN) を拾い id_malformed になる。
+GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_INLINE_LAST" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-419 --content-file "$NBR_BODY_C2"
+assert "TC-4.16m'' 散文が marker 行より後ろ: exit 0" "0" "$RC"
+assert_not_grep "TC-4.16m'' 散文行から偽の id を拾わない" "$ERR" 'reason=id_malformed'
+assert_grep "TC-4.16m'' 独立行の marker (id=11) で解決する" "$ERR" 'outcome=updated; count=2; iteration_id=9-419; comment_id=11; degraded=0'
 
 # TC-4.16l [degraded 非回帰の positive control] 自 login が取れないときは id 経路も評価できないため
 # 従来どおり degraded=1。段 1 を「自 login 不要」に緩める mutation をここで落とす。

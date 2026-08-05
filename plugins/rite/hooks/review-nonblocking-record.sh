@@ -57,14 +57,18 @@
 #   - **既存コメントの特定は 2 段解決**: (1) PR body に永続化した comment id (durable、第一候補)、
 #     (2) 本文照合による fallback。本文照合だけを同定手段にすると「記録コメントの raw markdown を
 #     複製した同一 author の人間コメント」を構造的に除外できない (述語を 4 度強化してもこの残余は
-#     消えなかった) ため、第一候補を本文に依存しない id へ移した。id は `<!-- rite:nbr:comment-id:{id} -->`
-#     の形で **PR body** に置く — 記録コメント本文に置くと copy-paste で複製され、本文照合と同じ
-#     誤認経路が再生する。id で解決できないときの観測 marker は
-#       [CONTEXT] NONBLOCKING_ID_UNRESOLVED=1; pr=N; reason=<...>; action=<fallback|recreate>
+#     消えなかった) ため、第一候補を本文に依存しない id へ移した。id は marker 行の形で **PR body**
+#     に置く (形状の SoT は下の ID_MARKER_* 定数。marker は **行全体** を占める) — 記録コメント本文に
+#     置くと copy-paste で複製され、本文照合と同じ誤認経路が再生する。id で解決できないときの観測 marker は
+#       [CONTEXT] NONBLOCKING_ID_UNRESOLVED=1; pr=N; reason=<...>; action=fallback
 #     reason 語彙: id_read_failed / id_malformed / id_fetch_failed / id_fetch_unparseable /
-#       id_author_mismatch / id_comment_deleted。id が PR body に無い初回 cycle は正常系のため
-#     marker を出さない (fallback がそのまま canonical を見つけ、投稿後に永続化されて次 cycle から
-#     id 経路に乗る)。投稿後の永続化に失敗したときは
+#       id_author_mismatch / id_pr_mismatch / id_comment_deleted。**帰結は理由に依らず fallback の
+#     1 種**で、`action=` は常に `fallback` (理由ごとに帰結を分けると周辺状態との交差ごとにガードが
+#     要り、そのガード自体が次の欠陥面になる)。id で解決するには author 一致に加え **所属 PR の
+#     一致** も要る — `issues/comments/{id}` は repo スコープで issue 非依存のため、author だけでは
+#     別 PR / 別 Issue の自コメントを PATCH 先にできてしまう。id が PR body に無い初回 cycle は
+#     正常系のため marker を出さない (fallback がそのまま canonical を見つけ、投稿後に永続化されて
+#     次 cycle から id 経路に乗る)。投稿後の永続化に失敗したときは
 #       [CONTEXT] NONBLOCKING_ID_PERSIST_FAILED=1; pr=N; reason=<...>
 #     reason 語彙: comment_id_unresolved / body_read_failed / body_write_failed / body_edit_failed。
 #     **どちらも純粋な observability marker**で gate の入力ではなく、記録の成否 (outcome) も
@@ -133,12 +137,16 @@ RECORD_SENTINEL='<!-- rite:nbr:v1 -->'
 # (`.rite/` は gitignore かつ machine-local のため別マシンからは読めない)。
 ID_MARKER_PREFIX='<!-- rite:nbr:comment-id:'
 ID_MARKER_SUFFIX=' -->'
-# PR body から marker の値部分を取り出す sed 式と、marker を除去する sed 式。read/write で
+# PR body から marker の値部分を取り出す sed 式と、marker 行を除去する sed 式。read/write で
 # **同一の形状定義**を使う (片方だけ形が違うと、書いた marker を次 cycle が読めない / 除去できずに
 # 重複する)。値は緩く取って shell 側の numeric guard に委ねる — 厳格な regex で抽出すると
 # 「壊れた marker」が「marker 不在」と区別できず、PR body 側の破損が無音になる。
-ID_MARKER_EXTRACT_SED='s/.*<!-- rite:nbr:comment-id:\([^ ]*\) -->.*/\1/p'
-ID_MARKER_STRIP_SED='s/<!-- rite:nbr:comment-id:[^ ]* -->//g'
+# **行全体を占めることを両式で要求する** (`^` / `$` アンカー)。helper は常に marker を独立行として
+# 書くためこれで取り逃さず、散文中に同形の文字列が現れても (本 PR の説明文がまさにそう)
+# 抽出で偽の id を拾わず、除去でその一節を無音で消さない。strip は `s///` ではなく行の `d` にして、
+# marker 行の跡に空行が積もるのも同時に断つ。
+ID_MARKER_EXTRACT_SED='s/^<!-- rite:nbr:comment-id:\([^ ]*\) -->$/\1/p'
+ID_MARKER_STRIP_SED='/^<!-- rite:nbr:comment-id:[^ ]* -->$/d'
 
 # read (lookup) と write (本文検査) が共有する述語定義。**2 言語で並行実装してはならない** —
 # shell の `grep -E '[^[:space:]]'` は glibc の空白クラス (locale 依存、grep 実装依存) を使い、
@@ -270,6 +278,12 @@ id_action=""
 # 本文照合 lookup (gh/jq) が失敗したか。degraded の判定は `existing_id` が確定したかを見てから
 # 行うため (durable id で確定していれば degraded ではない)、失敗の事実だけを先に持つ。
 list_failed=0
+# `_persist_comment_id` が使う tempfile。**グローバルに持って EXIT trap の回収対象に載せる** —
+# 関数ローカルに閉じると、gh 実行中に INT/TERM/HUP を受けたとき 2 本とも TMPDIR に残る
+# (同ファイルが `_body_jq_err` について「代入が jq 実行の後だと本ファイルだけが残る」として
+# 代入位置を前倒ししているのと同じ規律)。
+id_persist_tmp=""
+id_persist_err=""
 # ステップ 8.0.3 の機械強制 marker。パスは SKILL.md ステップ 6.1.a step 0 が作る側と同じ規則
 # (`${TMPDIR:-/tmp}/rite-nbr-pending-<iteration_id>`) で導出する。引数として受け取らないのは、
 # placeholder を 1 つ増やすと residue gate も 1 本増えるため — 導出が外れた場合は marker が
@@ -289,7 +303,7 @@ _terminal_emitted="false"
 # 違いだけで機械強制の対象から外れる。
 retain_pending_marker=0
 _rite_p61d_cleanup() {
-  rm -f "${gh_err:-}"
+  rm -f "${gh_err:-}" "${id_persist_tmp:-}" "${id_persist_err:-}"
   # 既定は「記録の成否 (created / updated / skipped / failed / aborted) に関わらず削除」。8.0.3 へ
   # 伝えるのは「6.1.d が完走した」ことだけで、成否は terminal sentinel の outcome= が担う
   # (非ブロッキング契約 AC-3 を gate 側へ持ち込まない)。例外は retain_pending_marker=1 の
@@ -331,8 +345,10 @@ _record_id_unresolved_hint() {  # $1=reason
       echo "  対処: gh auth status / network 接続を確認してください。本 cycle は本文照合の fallback で同定します" >&2 ;;
     id_author_mismatch)
       echo "  対処: 永続化 id が別 identity のコメントを指しています。本文照合の fallback へ倒すため、そのコメントには一切触れません" >&2 ;;
+    id_pr_mismatch)
+      echo "  対処: 永続化 id が **別の PR / Issue** のコメントを指しています。PR body の marker 行を手動で削除してください (次 cycle で正しい id を張り直します)。そのコメントには一切触れません" >&2 ;;
     id_comment_deleted)
-      echo "  対処: 追加操作は不要です。id が指すコメントは削除済みのため、新しい id を PR body へ張り直します" >&2 ;;
+      echo "  対処: 追加操作は不要です。id が指すコメントは削除済みのため、本文照合の fallback で同定し直します" >&2 ;;
   esac
   echo "  mergeable 判定には影響しません (非ブロッキング)" >&2
 }
@@ -355,7 +371,7 @@ _record_id_persist_failure_hint() {  # $1=reason
 # 特定するため、同一 author が記録コメントの raw markdown を複製したコメントが PR 上にあっても
 # PATCH 先を奪われない (AC-1)。結果は persisted_id / id_resolved / id_reason / id_action に置く。
 _resolve_persisted_id() {
-  local _pr_body="" _raw="" _author=""
+  local _pr_body="" _raw="" _id_probe="" _author="" _issue_url=""
   if _pr_body=$(gh pr view "$PR_NUMBER" -R "$OWNER_REPO" --json body --jq '.body' 2>"${gh_err:-/dev/null}"); then
     _raw=$(printf '%s\n' "$_pr_body" | sed -n "$ID_MARKER_EXTRACT_SED" | tail -1)
     # この値は最終的に `issues/comments/$existing_id` の PATCH へ補間される。本文照合側が持つ
@@ -371,23 +387,38 @@ _resolve_persisted_id() {
   fi
 
   if [ -n "$persisted_id" ]; then
-    if _author=$(gh api "repos/$OWNER_REPO/issues/comments/$persisted_id" --jq '.user.login' 2>"${gh_err:-/dev/null}"); then
-      if [ -z "$_author" ]; then
-        # rc=0 だが空 = レスポンス形状の drift。author を確認できない値を PATCH 先にしてはならない
+    # author と **所属 PR** を 1 回の GET で同時に取る。`issues/comments/{id}` は repo スコープで
+    # issue 非依存のため、author 一致だけでは「同一 author の**別 PR / 別 Issue** のコメント」を
+    # PATCH 先にできてしまう (置き換えた本文照合は `issues/{PR}/comments` を列挙するため、この
+    # 不変条件を構造的に持っていた — read 経路の差し替えでそこだけ落とさない)。
+    if _id_probe=$(gh api "repos/$OWNER_REPO/issues/comments/$persisted_id" --jq '[.user.login, .issue_url] | @tsv' 2>"${gh_err:-/dev/null}"); then
+      _author="${_id_probe%%$'\t'*}"
+      _issue_url="${_id_probe#*$'\t'}"
+      if [ -z "$_author" ] || [ "$_id_probe" = "$_author" ]; then
+        # rc=0 だが author が空、またはタブ区切りが無い (= 2 フィールド揃っていない) =
+        # レスポンス形状の drift。検証できない値を PATCH 先にしてはならない
         # (`gh api user` の rc=0 + 空文字を degraded に倒すのと同じ規律)。
         id_reason="id_fetch_unparseable"; id_action="fallback"
-      elif [ "$_author" = "$gh_login" ]; then
-        id_resolved="$persisted_id"
-      else
+      elif [ "$_author" != "$gh_login" ]; then
         # AC-5: 他人のコメントは PATCH しない。identity 変更 / PR body の手動編集が疑われる。
         id_reason="id_author_mismatch"; id_action="fallback"
+      elif [ "${_issue_url%/issues/$PR_NUMBER}" = "$_issue_url" ]; then
+        # issue_url が `/issues/{PR_NUMBER}` で終わらない = 当該 PR に属さないコメント。
+        # PR body は PR 作成者なら書き込み権限なしでも編集できるため、author 検証だけでは
+        # repo 内の任意の自コメントを PATCH 先にされうる (AC-5 の author 検証は「誰の」しか縛らない)。
+        id_reason="id_pr_mismatch"; id_action="fallback"
+      else
+        id_resolved="$persisted_id"
       fi
     elif [ -n "${gh_err:-}" ] && [ -s "$gh_err" ] && grep -qE 'HTTP 404|Not Found' "$gh_err"; then
-      # AC-4: 削除済みは fallback へ倒さず新規作成へ倒す。id は「かつて canonical だった」記録なので、
-      # それが消えた以上、本文照合で別のコメントを掴むより新しい 1 件を作る方が意図に近い。
-      # 404 以外の取得失敗 (network / rate-limit) と分けるのは帰結が逆だから — 一時障害で
-      # 新規作成へ倒すと、実在する canonical の隣に重複を作ってしまう。
-      id_reason="id_comment_deleted"; id_action="recreate"
+      # AC-4: 削除済みをエラーにしない。**fallback へ倒す** — 「id が使えない」他の reason と同じ扱い。
+      # 当初は「かつて canonical だった記録が消えた以上、新規作成が意図に近い」として recreate 分岐を
+      # 持っていたが、それは (a) 本文照合が実在の canonical を見つけていても無視して 2 通目を作り、
+      # (b) 0 件 cycle では収束クリア (AC-2) が成立せず、(c) list 失敗と重なると degraded 判定が
+      # 非対称になる、という 3 つの実害を生んだ。fallback は「author ∧ 1 行目 marker ∧ 最終非空行
+      # sentinel」を満たすコメントしか掴まないので、削除済み id の代わりに採っても安全であり、
+      # 見つからなければ既存の「既存なし」経路がそのまま新規作成へ倒す (AC-4 の帰結は保たれる)。
+      id_reason="id_comment_deleted"; id_action="fallback"
     else
       id_reason="id_fetch_failed"; id_action="fallback"
     fi
@@ -399,13 +430,13 @@ _resolve_persisted_id() {
   _record_id_unresolved_hint "$id_reason"
   echo "[CONTEXT] NONBLOCKING_ID_UNRESOLVED=1; pr=$PR_NUMBER; reason=$id_reason; action=$id_action" >&2
 }
-# 段 3: PATCH 先を決める。durable id > 本文照合 fallback の優先順で、id が「削除済み」を指した
-# ときだけ既存なし (= 新規作成) へ倒す。
+# 段 3: PATCH 先を決める。durable id > 本文照合 fallback の 2 段だけで、id が使えない理由
+# (不在 / 非数値 / 取得失敗 / author 不一致 / PR 不一致 / 削除済み) は帰結を分けない — どれも
+# 「fallback へ倒す」に畳む。理由ごとに帰結を分けると、周辺状態 (list_failed / canonical 実在 /
+# NB_COUNT) との交差ごとにガードが要り、そのガード自体が次の欠陥面になる。
 _decide_existing_id() {
   if [ -n "$id_resolved" ]; then
     existing_id="$id_resolved"
-  elif [ "$id_action" = "recreate" ]; then
-    existing_id=""
   else
     existing_id="$fallback_id"
   fi
@@ -413,7 +444,7 @@ _decide_existing_id() {
   # 本文照合が失敗しても durable id で PATCH 先が確定していれば update-in-place は成立する。
   # ここで degraded を立てると「既存コメントを特定できない」という事実と異なる案内が出るうえ、
   # 本 helper が消そうとしている「degraded 縮退による重複作成」を自分で再導入することになる。
-  if [ -n "$existing_id" ] || [ "$id_action" = "recreate" ]; then
+  if [ -n "$existing_id" ]; then
     echo "  注意: 記録コメント id で PATCH 先を確定したため update-in-place は継続します (本 cycle は孤児 / 重複の走査を行えていません)" >&2
     return 0
   fi
@@ -729,34 +760,31 @@ _persist_comment_id() {  # $1=comment_id
   # 呼び出し時点の gh_err (投稿失敗診断用) を退避する。本関数は _gh_err_detail に自分の stderr を
   # 見せるため gh_err を一時的に差し替えるので、復元しないと呼び出し元の tempfile が EXIT trap の
   # 回収対象から外れて leak する。
-  local _cid="${1:-}" _cur="" _stripped="" _new="" _err="" _reason="" _prev_gh_err="${gh_err:-}"
+  local _cid="${1:-}" _cur="" _stripped="" _reason="" _prev_gh_err="${gh_err:-}"
   case "$_cid" in ''|*[!0-9]*) _reason="comment_id_unresolved" ;; esac
 
   if [ -z "$_reason" ]; then
-    _err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
-      review-nonblocking-record p61d-idpersist-err "id 永続化の失敗詳細が表示されません") || _err=""
-    # 生成直後に trap 保護下へ置く (EXIT trap は ${gh_err:-} を回収する)
-    gh_err="$_err"
-    if ! _cur=$(gh pr view "$PR_NUMBER" -R "$OWNER_REPO" --json body --jq '.body' 2>"${_err:-/dev/null}"); then
+    id_persist_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
+      review-nonblocking-record p61d-idpersist-err "id 永続化の失敗詳細が表示されません") || id_persist_err=""
+    # 生成直後に trap 保護下へ置く (EXIT trap は ${gh_err:-} と ${id_persist_err:-} を回収する)
+    gh_err="$id_persist_err"
+    if ! _cur=$(gh pr view "$PR_NUMBER" -R "$OWNER_REPO" --json body --jq '.body' 2>"${id_persist_err:-/dev/null}"); then
       _reason="body_read_failed"
     fi
   fi
 
   if [ -z "$_reason" ]; then
-    # 既存 marker は **marker 文字列だけ** を除去する — 行ごと消すと、人間が本文行の末尾に
-    # 貼り込んでいた場合にその行を丸ごと失う。コマンド置換が末尾改行を落とすため、marker を
-    # 付け直しても空行は cycle ごとに累積しない。
+    # 既存 marker は **行ごと** 除去する (`$ID_MARKER_STRIP_SED` は `d` コマンド)。marker は必ず
+    # 独立行として書かれるため取り逃さず、散文中の同形文字列は行アンカーで対象外になる。
+    # コマンド置換が末尾改行を落とすため、marker を付け直しても空行は cycle ごとに累積しない。
     _stripped=$(printf '%s\n' "$_cur" | sed "$ID_MARKER_STRIP_SED")
-    _new=$(mktemp "${TMPDIR:-/tmp}/rite-nbr-prbody-XXXXXX") || _new=""
-    if [ -z "$_new" ] || ! printf '%s\n\n%s%s%s\n' "$_stripped" "$ID_MARKER_PREFIX" "$_cid" "$ID_MARKER_SUFFIX" > "$_new"; then
+    id_persist_tmp=$(mktemp "${TMPDIR:-/tmp}/rite-nbr-prbody-XXXXXX") || id_persist_tmp=""
+    if [ -z "$id_persist_tmp" ] || ! printf '%s\n\n%s%s%s\n' "$_stripped" "$ID_MARKER_PREFIX" "$_cid" "$ID_MARKER_SUFFIX" > "$id_persist_tmp"; then
       _reason="body_write_failed"
-    elif [ ! -s "$_new" ]; then
-      # 空 body で PR body を上書きすると PR 説明を丸ごと失う (gh-cli-patterns.md の非空検査)。
-      _reason="body_write_failed"
-    elif ! gh pr edit "$PR_NUMBER" -R "$OWNER_REPO" --body-file "$_new" >/dev/null 2>"${_err:-/dev/null}"; then
+    elif ! gh pr edit "$PR_NUMBER" -R "$OWNER_REPO" --body-file "$id_persist_tmp" >/dev/null 2>"${id_persist_err:-/dev/null}"; then
       _reason="body_edit_failed"
     fi
-    [ -n "$_new" ] && rm -f "$_new"
+    [ -n "$id_persist_tmp" ] && { rm -f "$id_persist_tmp"; id_persist_tmp=""; }
   fi
 
   if [ -n "$_reason" ]; then
@@ -765,7 +793,7 @@ _persist_comment_id() {  # $1=comment_id
     _record_id_persist_failure_hint "$_reason"
     echo "[CONTEXT] NONBLOCKING_ID_PERSIST_FAILED=1; pr=$PR_NUMBER; reason=$_reason" >&2
   fi
-  [ -n "$_err" ] && rm -f "$_err"
+  [ -n "$id_persist_err" ] && { rm -f "$id_persist_err"; id_persist_err=""; }
   gh_err="$_prev_gh_err"
   return 0
 }
