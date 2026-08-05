@@ -157,13 +157,20 @@ ID_MARKER_SUFFIX=' -->'
 # `LAST_CONTENT_LINE_JQ` の `sub("\r$"; "")` で正規化しているのと同じ規律を、PR body 側にも適用する。
 # `[[:space:]]` は CR を含み、散文中の同形文字列は marker 前に非空白があるため引き続き除外される。
 ID_MARKER_EXTRACT_SED='s/^[[:space:]]*<!-- rite:nbr:comment-id:\([^ ]*\) -->[[:space:]]*$/\1/p'
-ID_MARKER_STRIP_SED='/^[[:space:]]*<!-- rite:nbr:comment-id:[^ ]* -->[[:space:]]*$/d'
-# 「marker 行らしき行が実在するか」だけを見る緩い probe。抽出が空を返したとき、「marker 行が無い」と
-# 「marker 行はあるが述語を満たさない (値が空 / 区切りが壊れている等)」を切り分けるために使う。
-# 行アンカー付きにするのは、素の固定文字列検索だと散文中の同形文字列を破損と誤検出するため。
-ID_MARKER_LINE_PROBE_SED='/^[[:space:]]*<!-- rite:nbr:comment-id:/p'
+# 「行全体が marker 行の形をしている」の定義。**除去 (strip) と破損検出 (probe) はこの 1 本から
+# 導出する** — 別々の literal として並べると、片方だけ触った編集で受理集合の関係が崩れ、
+# 「破損と判定したのに除去できない (= 壊れた行が PR body に恒久残留し、hint の『張り直します』が
+# 偽になる)」状態が生まれる。値部を `.*` にして抽出式 (`[^ ]*` + 区切りの空白を要求) より緩くするのは
+# 意図的で、受理集合の包含関係を **抽出 ⊆ 除去 = 破損検出** に固定する: 読めた marker は必ず消せ、
+# 読めないが marker 行の形をしているものは「破損」として loud に落としたうえで同時に消える。
+# 行頭・行末の `[[:space:]]*` は**必須**で、抽出式と対称に置く (上のコメント参照)。行全体を要求する
+# ことで、散文の途中や行末に同形の文字列が現れても破損と誤検出せず、その一節を無音で消しもしない。
+ID_MARKER_LINE_RE='^[[:space:]]*<!-- rite:nbr:comment-id:.*-->[[:space:]]*$'
+ID_MARKER_STRIP_SED="/$ID_MARKER_LINE_RE/d"
+ID_MARKER_LINE_PROBE_SED="/$ID_MARKER_LINE_RE/p"
 
-# read (lookup) と write (本文検査) が共有する述語定義。**2 言語で並行実装してはならない** —
+# read (durable id の対象検証 / 本文照合 lookup) と write (投稿前の本文検査) が共有する述語定義。
+# **消費者は 3 箇所**で、どれか 1 つのために弱めると他の 2 つも同時に緩む。**2 言語で並行実装してはならない** —
 # shell の `grep -E '[^[:space:]]'` は glibc の空白クラス (locale 依存、grep 実装依存) を使い、
 # jq は Oniguruma (locale 非依存) を使うため受理集合が環境で割れる。`tr -d '\r'` と
 # `sub("\r$"; "")` も CR の除去範囲が違う (全 CR ⇄ 行末 1 個)。片側だけ緩いと人間のコメントを
@@ -361,7 +368,10 @@ _record_id_unresolved_hint() {  # $1=reason
     id_malformed)
       echo "  対処: 追加操作は不要です。PR #${PR_NUMBER} の body にある '${ID_MARKER_PREFIX}' 行が壊れています (値が数値でない / 形が崩れている) が、本文照合の fallback で同定し直し、次に記録コメントを投稿する cycle で marker 行ごと張り直します" >&2 ;;
     id_fetch_failed|id_fetch_unparseable)
-      echo "  対処: gh auth status / network 接続を確認してください。本 cycle は本文照合の fallback で同定します" >&2 ;;
+      # 本分岐は gh 側の失敗だけでなく **jq 側の失敗** (jq 不在 / filter 非互換) からも到達する
+      # (GET は `gh api ... | jq` のパイプで、jq 単独失敗は pipefail で非ゼロ rc になり 404 判定を
+      # 素通りする)。原因を片側に断定すると operator を真因から遠ざけるため両方を挙げる。
+      echo "  対処: gh auth status / network 接続、または jq の実行環境 (jq --version) を確認してください。直前の詳細行 (gh/jq stderr) で切り分けられます。本 cycle は本文照合の fallback で同定します" >&2 ;;
     id_author_mismatch)
       echo "  対処: 永続化 id が別 identity のコメントを指しています。本文照合の fallback へ倒すため、そのコメントには一切触れません" >&2 ;;
     id_pr_mismatch)
@@ -388,9 +398,10 @@ _record_id_persist_failure_hint() {  # $1=reason
   esac
   echo "  mergeable 判定には影響しません (非ブロッキング)" >&2
 }
-# 段 1: PR body に永続化された comment id を第一候補として解決する。本文を一切読まずに canonical を
-# 特定するため、同一 author が記録コメントの raw markdown を複製したコメントが PR 上にあっても
-# PATCH 先を奪われない (AC-1)。結果は persisted_id / id_resolved / id_reason / id_action に置く。
+# 段 1: PR body に永続化された comment id を第一候補として解決する。**同定は id で 1 件に絞り込む**
+# ため、同一 author が記録コメントの raw markdown を複製したコメントが PR 上にあっても PATCH 先を
+# 奪われない (AC-1)。本文述語 (下の GET) は絞り込んだ**後**の必要条件であって同定手段ではない。
+# 結果は persisted_id / id_resolved / id_reason / id_action に置く。
 _resolve_persisted_id() {
   local _pr_body="" _raw="" _id_probe="" _author="" _rest="" _issue_url="" _is_record=""
   if _pr_body=$(gh pr view "$PR_NUMBER" -R "$OWNER_REPO" --json body --jq '.body' 2>"${gh_err:-/dev/null}"); then
@@ -404,7 +415,13 @@ _resolve_persisted_id() {
         # 抽出述語を満たさない」(PR body 側の破損)。後者を前者に畳むと上の形状定義コメントが
         # 避けると宣言している無音の破損がそのまま成立する。probe で切り分け、破損側は既存の
         # `id_malformed` で loud に落とす (帰結は「値が使えない」で同じなので新 reason は要らない)。
-        if printf '%s\n' "$_pr_body" | sed -n "$ID_MARKER_LINE_PROBE_SED" | grep -q .; then
+        # 判定は「probe の出力が非空か」で行い、`grep -q` のような**早期 exit する consumer を
+        # パイプ終端に置かない** — grep が最初の一致で exit すると上流の sed が SIGPIPE を受け、
+        # グローバルの `set -o pipefail` がパイプライン rc を 141 にする。すると「一致があった」のに
+        # else 側へ落ちて無音の破損が復活する (入力が小さいと sed が先に書き終わるため発火せず、
+        # 出力が stdio バッファ境界を超えた地点で挙動が反転する)。出力を最後まで読む形なら
+        # SIGPIPE 経路自体が存在しない。
+        if [ -n "$(printf '%s\n' "$_pr_body" | sed -n "$ID_MARKER_LINE_PROBE_SED")" ]; then
           id_reason="id_malformed"; id_action="fallback"
         else
           return 0   # marker 不在 = 初回 cycle / 永続化前の正常系。marker は出さず fallback に委ねる

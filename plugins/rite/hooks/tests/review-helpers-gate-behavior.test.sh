@@ -1095,6 +1095,22 @@ printf '## 概要\n\nPR の説明本文\n\n<!-- rite:nbr:comment-id:11 --> \n' >
 # 畳むと PR body 側の破損が無音になるため、probe で切り分けて id_malformed へ倒すことを固定する。
 NBR_PRBODY_BROKEN_SHAPE="$TMP_ROOT/nbr-prbody-broken-shape.md"
 printf '## 概要\n\nPR の説明本文\n\n<!-- rite:nbr:comment-id: -->\n' > "$NBR_PRBODY_BROKEN_SHAPE"
+# 同じ破損を**字下げ付き**で持つ形。probe の行頭 `[[:space:]]*` を外す mutation は、字下げなしの
+# 上の fixture では落ちない (素通りして無音の破損が復活する)。字下げ marker が実在形であることは
+# $NBR_PRBODY_INDENT_ID11 が示している。
+NBR_PRBODY_BROKEN_INDENT="$TMP_ROOT/nbr-prbody-broken-indent.md"
+printf '## 概要\n\nPR の説明本文\n\n  <!-- rite:nbr:comment-id: -->\n' > "$NBR_PRBODY_BROKEN_INDENT"
+# **抽出可能な marker を持たず**、行末が marker 形の散文行だけを持つ PR body (この機構を説明する
+# PR 説明が取りうる形)。probe の `^` を外す mutation はここでしか落ちない — 正規の marker を
+# 併記した fixture では抽出が成功して probe 分岐に到達せず、assert が空振りする。
+NBR_PRBODY_PROSE_TAIL="$TMP_ROOT/nbr-prbody-prose-tail.md"
+printf '## 概要\n\n形式は 例: <!-- rite:nbr:comment-id:11 -->\n' > "$NBR_PRBODY_PROSE_TAIL"
+# **行頭が marker 接頭辞で、後ろに散文が続く**行だけを持つ PR body。probe と除去式は同一の正規表現
+# から導出され「行全体が marker 形」を要求するので、この行は破損でも marker でもない散文として
+# 扱われる (除去もされない — TC-4.16n' が同じ形で非削除を pin している)。probe だけを接頭辞一致へ
+# 戻す mutation は、正規 marker を併記しないこの fixture でしか落ちない (cycle 3 F-34)。
+NBR_PRBODY_PROSE_HEAD="$TMP_ROOT/nbr-prbody-prose-head.md"
+printf '## 概要\n\n<!-- rite:nbr:comment-id:BROKEN --> (注記: この行は marker ではない)\n' > "$NBR_PRBODY_PROSE_HEAD"
 # create 経路が永続化する id (stub の GH_POST_URL 既定値) を canonical に持つコメント一覧。
 NBR_COMMENTS_4242="$TMP_ROOT/nbr-comments-4242.json"
 cat > "$NBR_COMMENTS_4242" <<'EOF'
@@ -2008,10 +2024,35 @@ assert_grep "TC-4.16o' 本文照合の fallback で記録は継続する" "$ERR"
 GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_PLAIN" \
   run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-428 --content-file "$NBR_BODY_C2"
 assert_not_grep "TC-4.16o'' marker 不在は正常系 (marker を出さない)" "$ERR" 'NONBLOCKING_ID_UNRESOLVED'
-# 散文中に marker 同形の文字列があるだけの PR body も破損ではない (本 PR #2112 の説明文がこの形)。
-GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_DECOY_HEAD" \
+# 散文中に marker 同形の文字列があるだけの PR body も破損ではない (この機構を説明する PR 説明が
+# この形になる)。**この fixture は正規の marker 行を持たない** — 併記すると抽出が成功して probe 分岐に
+# 到達せず assert が空振りし、probe の `^` を外す mutation を落とせない (cycle 3 F-30)。
+GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_PROSE_TAIL" \
   run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-429 --content-file "$NBR_BODY_C2"
+assert "TC-4.16o''' 行末が marker 形の散文のみ: exit 0" "0" "$RC"
 assert_not_grep "TC-4.16o''' 散文中の同形文字列を破損と誤検出しない" "$ERR" 'reason=id_malformed'
+assert_grep "TC-4.16o''' marker 不在として fallback で記録は継続する" "$ERR" 'outcome=updated; count=2; iteration_id=9-429; comment_id=13; degraded=0'
+# 字下げ付きの破損 marker も loud に落とす。probe の行頭 [[:space:]]* を外す mutation はここでしか
+# 落ちない (字下げなしの $NBR_PRBODY_BROKEN_SHAPE では素通りする)。
+GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_BROKEN_INDENT" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-429b --content-file "$NBR_BODY_C2"
+assert "TC-4.16o-5 字下げされた破損 marker: exit 0" "0" "$RC"
+assert_grep "TC-4.16o-5 reason=id_malformed; action=fallback (字下げでも無音にしない)" "$ERR" 'NONBLOCKING_ID_UNRESOLVED=1; pr=9; reason=id_malformed; action=fallback'
+# 破損と判定した行は **除去もできる** ことを固定する (probe と除去式が同一の正規表現から導出される
+# ことの帰結)。受理集合が食い違うと「破損と言いながら消せない」= hint の「張り直します」が偽になる。
+_o_broken_lines=$(grep -c 'rite:nbr:comment-id:' "$GH_PR_EDIT" || true)
+assert "TC-4.16o-5 破損 marker 行を除去して 1 本に保つ" "1" "$_o_broken_lines"
+
+# TC-4.16o-6 [cycle 3 F-34 対応] probe と除去式の受理集合が一致していることを固定する。
+# 行頭が marker 接頭辞で後ろに散文が続く行は、除去式が「行全体が marker 形」を要求して残すのだから、
+# probe も破損と判定してはならない (判定だけして消せない = hint の「張り直します」が偽になる)。
+# probe を接頭辞一致へ戻す mutation はここでしか落ちない。
+GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_PROSE_HEAD" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-429c --content-file "$NBR_BODY_C2"
+assert "TC-4.16o-6 行頭 marker + 後続散文のみ: exit 0" "0" "$RC"
+assert_not_grep "TC-4.16o-6 除去できない行を破損と判定しない" "$ERR" 'reason=id_malformed'
+assert_grep "TC-4.16o-6 marker 不在として fallback で記録は継続する" "$ERR" 'outcome=updated; count=2; iteration_id=9-429c; comment_id=13; degraded=0'
+assert_grep "TC-4.16o-6 後続散文つきの行を消さない" "$GH_PR_EDIT" '(注記: この行は marker ではない)'
 
 # TC-4.16p [cycle 2 F-17 対応] durable id が **同一 PR の記録コメント以外** を指すとき PATCH しない。
 # PR body は書き込み権限を持たない PR 作成者でも編集でき、marker を 1 行足すだけで PATCH 先を
@@ -2029,7 +2070,9 @@ assert_grep "TC-4.16p reason=id_target_not_record; action=fallback" "$ERR" 'NONB
 assert_not_grep "TC-4.16p 記録コメントでない id=11 を PATCH しない" "$GH_LOG" 'issues/comments/11 -X PATCH'
 assert_grep "TC-4.16p 本文照合の fallback へ倒れて記録は継続する" "$ERR" 'outcome=updated; count=2; iteration_id=9-430; comment_id=13; degraded=0'
 # marker 見出しは持つが sentinel を欠く形 (sentinel 導入前の記録コメント / marker を写した人間の
-# コメント) も同様に弾く。述語の連言のうち sentinel 側だけを外す mutation をここで落とす。
+# コメント) も同様に弾く。述語の連言のうち **sentinel 側を丸ごと削除する** mutation をここで落とす。
+# ただし上の TC-4.16p と本 TC はどちらも 2 つの conjunct を**同時に** false にするため、
+# 「片側だけを弱める」mutation は落とせない — それは下の TC-4.16p'' / p''' が担う (cycle 3 F-29)。
 GH_COMMENT_GET_BODY='## 📜 rite 非実測指摘の記録 (non-blocking)
 
 sentinel を持たない
@@ -2037,6 +2080,39 @@ sentinel を持たない
   run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-431 --content-file "$NBR_BODY_C2"
 assert_grep "TC-4.16p' marker はあるが sentinel を欠く id も弾く" "$ERR" 'NONBLOCKING_ID_UNRESOLVED=1; pr=9; reason=id_target_not_record; action=fallback'
 assert_not_grep "TC-4.16p' sentinel を欠く id=11 を PATCH しない" "$GH_LOG" 'issues/comments/11 -X PATCH'
+
+# TC-4.16p'' [cycle 3 F-29 対応] **marker 側 conjunct だけ**が false の body。1 行目は散文で、
+# marker 見出しを本文中に引用し、最終非空行は sentinel と等しい — 記録コメントの raw を写した
+# 人間のメモが取る形そのもの。`startswith($marker)` を `contains` へ弱める mutation と、marker 側
+# conjunct を丸ごと削除する mutation は、**ここでしか落ちない** (上の 2 TC はどちらも 2 conjunct を
+# 同時に false にするため、片側の弱化では判定が変わらない)。
+GH_COMMENT_GET_BODY='以下は記録コメントの写しです
+
+## 📜 rite 非実測指摘の記録 (non-blocking)
+
+x
+
+<!-- rite:nbr:v1 -->
+' GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_ID11" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-432 --content-file "$NBR_BODY_C2"
+assert "TC-4.16p'' marker 側のみ false: exit 0" "0" "$RC"
+assert_grep "TC-4.16p'' 1 行目が marker でない id を弾く (前方一致は位置固定)" "$ERR" 'NONBLOCKING_ID_UNRESOLVED=1; pr=9; reason=id_target_not_record; action=fallback'
+assert_not_grep "TC-4.16p'' 引用された人間コメント (id=11) を PATCH しない" "$GH_LOG" 'issues/comments/11 -X PATCH'
+
+# TC-4.16p''' [cycle 3 F-29 対応] **sentinel 側 conjunct だけ**が false の body。1 行目は marker
+# 見出しで、sentinel は本文**途中**にあり、最終非空行は別の行。最終非空行の等値を `contains` へ
+# 弱める mutation は、ここでしか落ちない (TC-4.16p' の body は sentinel をどこにも持たないため、
+# 位置固定を外しても判定が変わらない)。
+GH_COMMENT_GET_BODY='## 📜 rite 非実測指摘の記録 (non-blocking)
+
+<!-- rite:nbr:v1 -->
+
+この行が最終非空行なので記録コメントではない
+' GH_LOOKUP_JSON="$NBR_COMMENTS" GH_PR_BODY="$NBR_PRBODY_ID11" \
+  run_nbr --pr 9 --owner-repo o/r --count 2 --iteration-id 9-433 --content-file "$NBR_BODY_C2"
+assert "TC-4.16p''' sentinel 側のみ false: exit 0" "0" "$RC"
+assert_grep "TC-4.16p''' sentinel が最終非空行でない id を弾く (等値は位置固定)" "$ERR" 'NONBLOCKING_ID_UNRESOLVED=1; pr=9; reason=id_target_not_record; action=fallback'
+assert_not_grep "TC-4.16p''' sentinel を途中に持つコメント (id=11) を PATCH しない" "$GH_LOG" 'issues/comments/11 -X PATCH'
 
 # TC-4.16q [cycle 2 F-21 / F-19 対応] 静的 pin: `_persist_comment_id` が使う tempfile 3 本
 # (作業用 / 自分の stderr / 呼び出し元 stderr の退避枠) はグローバルに持ち、EXIT / signal trap の
@@ -2050,9 +2126,27 @@ for _q_var in id_persist_tmp id_persist_err id_persist_prev_err; do
     *)                 _q_in_cleanup="no" ;;
   esac
   assert "TC-4.16q $_q_var が cleanup の rm -f 対象" "yes" "$_q_in_cleanup"
-  # local 宣言に戻す mutation を落とす (cleanup 側の grep だけでは検出できない)。
-  if grep -qE "^[[:space:]]*local .*\b$_q_var\b" "$_q_nbr_sh"; then _q_is_local="yes"; else _q_is_local="no"; fi
-  assert "TC-4.16q $_q_var を local 宣言に戻していない" "no" "$_q_is_local"
+  # 関数ローカルへ戻す mutation を落とす (cleanup 側の grep だけでは検出できない)。
+  # **禁止したい表記を列挙する denylist にしない** — bash では `local` / `declare` / `typeset` が
+  # いずれも関数内で同じスコープを作るため、`local` だけを見る形は表記を替えるだけで素通りする
+  # (measured-gate-record.md#static-pin 規則 3「現行表記への係留を避ける」)。関数スコープを作りうる
+  # キーワード全体を allowlist として並べ、そのどれも当該変数を宣言していないことを固定する。
+  if grep -qE "^[[:space:]]*(local|declare|typeset)[[:space:]].*\b$_q_var\b" "$_q_nbr_sh"; then
+    _q_is_local="yes"
+  else
+    _q_is_local="no"
+  fi
+  assert "TC-4.16q $_q_var を関数スコープ宣言に戻していない" "no" "$_q_is_local"
+  # 上の allowlist 自体が drift しないよう、初期化がトップレベル (最初の関数定義より前) にあることも
+  # 固定する。宣言キーワードを使わずに関数内で代入する形へ変えても、この順序 pin が落とす。
+  _q_init_line=$(grep -n "^$_q_var=\"\"" "$_q_nbr_sh" | head -1 | cut -d: -f1)
+  _q_first_fn_line=$(grep -nE '^[A-Za-z_][A-Za-z0-9_]*\(\) \{' "$_q_nbr_sh" | head -1 | cut -d: -f1)
+  if [ -n "$_q_init_line" ] && [ -n "$_q_first_fn_line" ] && [ "$_q_init_line" -lt "$_q_first_fn_line" ] 2>/dev/null; then
+    _q_top_level="yes"
+  else
+    _q_top_level="no"
+  fi
+  assert "TC-4.16q $_q_var がトップレベルで初期化されている" "yes" "$_q_top_level"
 done
 
 # TC-4.16l [degraded 非回帰の positive control] 自 login が取れないときは id 経路も評価できないため
