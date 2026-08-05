@@ -14,12 +14,13 @@
 #   TC-2 判定不能 (parse 失敗 / top-level 非 object = jq query error / 空ファイル) -> 退避 + marker
 #   TC-3 jq 不在 -> 退避 + marker (PATH shim)
 #   TC-4 失敗 4 種 (rm 失敗 / mkdir 失敗 / mv 失敗 or 同名衝突 / mv rc=0 の同名衝突) は
-#        **削除せず** WARNING + reason marker。うち name_collision 分岐は BSD mv (rc=0) 専用の
-#        経路で、GNU coreutils では手前の mv_failure が先に拾うため mv stub で到達させる
-#   TC-5 引数 gate (--pr 非数値 / --state-root 欠落 / 未知オプション / --label 不正 /
-#        値なし末尾オプション) は exit 1
+#        **削除せず** WARNING + reason marker。外部コマンドの stderr 3 本 (jq / mkdir / mv) が
+#        捨てられないことも pin する。name_collision 分岐は BSD mv (rc=0) 専用の経路で、
+#        GNU coreutils では手前の mv_failure が先に拾うため mv stub で到達させる
+#   TC-5 引数 gate (--pr 非数値 / --state-root 欠落 / 未知オプション / 値なし末尾オプション) は exit 1
 #   TC-6 summary 行と 0 件時の no-op
-#   TC-7 他 PR のファイルに触れない (prefix 固定)
+#   TC-7 他 PR のファイルに触れない (prefix 固定。`10-` / `90-` の両方向)
+#   TC-8 唯一の呼び出し元 (cleanup ステップ 6) が helper を呼び rc を捨てていない (caller coupling)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -140,6 +141,9 @@ else
   assert "TC-4-rm exit 0 (非ブロッキング)" "0" "$RC"
   assert "TC-4-rm 削除失敗でもファイルは残る" "kept-in-place" "$(where "$r" 9-del.json)"
   assert_grep "TC-4-rm reason=..._rm_failure" "$ERR" 'reason=review_results_rm_failure; pr=9'
+  # rm の stderr 転送も mkdir / mv と同型に pin する (4 失敗経路すべてに診断 pin を揃える)。
+  # 素通しさせると列 0 に着地し、cleanup 側の「列 0 の行だけを marker 候補とする」照合と衝突する。
+  assert_grep "TC-4-rm rm の stderr を捨てない (診断が残る)" "$ERR" '^  rm'
   assert "TC-4-rm failed=1" "1" "$(sed -n 's/.*failed=\([0-9]*\);.*/\1/p' "$OUT")"
 fi
 
@@ -172,11 +176,15 @@ assert "TC-4b 退避先の既存を上書きしない" "PRE-EXISTING" "$(cat "$r
 assert "TC-4b 衝突を示す reason marker が 1 本出る" "1" \
   "$(grep -cE 'reason=review_results_archive_(mv_failure|name_collision); pr=9' "$ERR" || true)"
 assert "TC-4b failed=1" "1" "$(sed -n 's/.*failed=\([0-9]*\);.*/\1/p' "$OUT")"
-# GNU coreutils では `mv -n` が衝突時に rc=1 を返すため TC-4b は必ず手前の mv_failure 分岐に落ちる。
-# `elif [ -e "$f" ]` の name_collision 分岐は rc=0 のまま何もしない実装 (BSD / macOS) 専用の保全
-# 経路で、Linux CI では到達しない = 壊れたまま配布されうる。mv stub で明示的に到達させる。
-assert_grep "TC-4b GNU 環境では mv_failure 側に落ちる (name_collision は BSD 専用経路)" "$ERR" \
-  'reason=review_results_archive_mv_failure; pr=9'
+# mv の stderr 転送も pin する。jq (TC-2) / mkdir (TC-4a) には pin があるのに mv だけ無検査だと、
+# helper docstring が「守れなかったときに原因 (既存衝突 / 権限 / ENOSPC / EXDEV) が残らないのは
+# silent failure」と宣言している 3 経路のうち 1 本だけ強制層を欠く。anchor は TC-4a と同型
+# (`sed 's/^/  /'` 由来の先頭 2 スペース + locale 非依存の program-name prefix)。
+assert_grep "TC-4b mv の stderr を捨てない (診断が残る)" "$ERR" '^  mv'
+# 「GNU では必ず mv_failure 側に落ちる」ことは **assert しない** — ラベル自身が platform 限定を
+# 表明する assert を無条件評価すると、BSD (`mv -n` が衝突時 rc=0) の CI leg に恒久 red を作り、
+# TC-4b の本質 (削除しない + marker が出る = 上の 2 assert) が platform 非依存に守られている事実を
+# 覆い隠す。BSD 側の name_collision 分岐は TC-4c が mv stub で決定論的にカバーする。
 
 # (c) BSD 相当の `mv -n` (同名既存で rc=0 のまま何もしない) を PATH shim で再現する。
 # helper が rc に依らず source 残存で衝突を検出できることの behavioral pin。
@@ -209,14 +217,14 @@ assert "TC-5 --state-root 欠落は exit 1" "1" "$RC"
 run_target "$r" --pr 9 --bogus x
 assert "TC-5 未知オプションは exit 1" "1" "$RC"
 assert_grep "TC-5 未知オプションの診断" "$ERR" 'unknown option'
-run_target "$r" --pr 9 --label 'Bad-Label'
-assert "TC-5 --label 不正は exit 1" "1" "$RC"
-# 値なし末尾オプション: `shift 2` を無条件に呼ぶと `$#` が減らず while が無限ループし、
-# 出力ゼロで永久にハングして宣言している exit 1 に到達しない。3 オプションすべてで固定する。
-# `timeout` で囲むのは、退行時にランナー全体が止まるのを防ぐため (run-tests.sh は
-# per-file timeout を持たない)。rc=124 (timeout kill) は退行の signature。
-for opt in --pr --state-root --label; do
-  timeout 5 bash "$TARGET" --state-root "$r" "$opt" >"$OUT" 2>"$ERR"; RC=$?
+# 値なし末尾オプション: 素の `"$2"` + `set -u` でも nounset が落とすが、その診断は
+# `$2: unbound variable` でどのオプションが悪いか分からない。オプション名を名指しする
+# 明示診断が出ることを固定する。`_timeout` (portable wrapper) で囲むのは、`shift 2` を
+# 無条件に呼ぶ形へ退行させたときのハングでランナー全体が止まるのを防ぐため
+# (run-tests.sh は per-file timeout を持たない)。bare `timeout` は macOS leg に coreutils が
+# 無く rc=127 になるため使わない。
+for opt in --pr --state-root; do
+  _timeout 5 bash "$TARGET" --state-root "$r" "$opt" >"$OUT" 2>"$ERR"; RC=$?
   assert "TC-5 値なし末尾 $opt は exit 1 (ハングしない)" "1" "$RC"
   # pattern の先頭を `--` にしない (grep がオプションとして解釈する)。診断行の prefix を含める
   assert_grep "TC-5 値なし末尾 $opt の診断" "$ERR" "review-results-archive-or-rm: $opt requires a value"
@@ -236,8 +244,32 @@ echo "--- TC-7: 他 PR のファイルに触れない ---"
 r=$(new_root tc7)
 put_json "$r" "9-mine.json"  '{"non_blocking_findings":[]}'
 put_json "$r" "10-other.json" '{"non_blocking_findings":[]}'
+# prefix 拡張の弁別: glob を `${PR}*` へ緩める退行を落とす (`9-` の `-` が境界を作っている)
+put_json "$r" "90-other.json" '{"non_blocking_findings":[]}'
 run_target "$r" --pr 9
 assert "TC-7 自 PR は削除" "DELETED" "$(where "$r" 9-mine.json)"
 assert "TC-7 他 PR は無傷" "kept-in-place" "$(where "$r" 10-other.json)"
+assert "TC-7 prefix 拡張 (90-) も無傷" "kept-in-place" "$(where "$r" 90-other.json)"
+
+# helper の唯一の呼び出し元を固定する。helper 本体をいくら厚く pin しても、cleanup ステップ 6 の
+# 呼び出しを旧 `rite_rm review_results` 形へ戻せば退避機構は丸ごと消え、それを検出する層が
+# どこにも無い (記録コメントが全文を持たなくなった後にこれが起きると、merge 直後に非実測
+# CRITICAL の詳細がどこにも残らない)。SKILL.md ⇄ helper の coupling を静的に pin する
+# 既存の規律 (review-helpers-gate-behavior.test.sh の TC-5c / TC-5g 等) と同型。
+echo "--- TC-8: cleanup ステップ 6 が helper を呼んでいる (caller coupling) ---"
+CLEANUP_MD="$SCRIPT_DIR/../../skills/cleanup/SKILL.md"
+if [ ! -f "$CLEANUP_MD" ]; then
+  fail "TC-8 cleanup/SKILL.md が見つからない: $CLEANUP_MD"
+else
+  assert "TC-8 helper 呼び出しが 1 本存在する" "1" \
+    "$(grep -cF 'hooks/scripts/review-results-archive-or-rm.sh \' "$CLEANUP_MD" || true)"
+  # 旧形 (無条件削除) への差し戻しを落とす。`rite_rm` の第 1 引数が `review_results` の行が
+  # 復活したら退避機構が bypass されている。
+  assert "TC-8 旧 rite_rm review_results 形が復活していない" "0" \
+    "$(grep -cE '^rite_rm[[:space:]]+review_results([[:space:]]|$)' "$CLEANUP_MD" || true)"
+  # rc を捨てていないこと (helper が起動できなかった cycle が「完了」と報告されるのを防ぐ)
+  assert "TC-8 helper の rc を捕捉している" "1" \
+    "$(grep -cF '|| _rrar_rc=$?' "$CLEANUP_MD" || true)"
+fi
 
 print_summary "review-results-archive-or-rm.test.sh"

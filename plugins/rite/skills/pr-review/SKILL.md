@@ -2656,7 +2656,7 @@ bash {plugin_root}/hooks/review-skip-notification.sh \
    |-----------|--------|------------|
    | {reviewer_type} | {severity} | {file}:{line} |
 
-   > 各指摘の詳細 (description / suggestion) は、**このレビューを実行した環境**の `<main checkout の repo root>/.rite/review-results/{pr_number}-*.json` の `non_blocking_findings[]` にあります (session worktree で実行した場合も worktree 側ではなく main checkout 側。`state-path-resolve.sh` の解決先)。gitignore 対象のため PR には含まれず、checkout では取得できません。マージ後は `/rite:cleanup` が同 JSON を `.rite/review-results/archive/` へ退避します。
+   > 各指摘の詳細 (description / suggestion) は、**このレビューを実行した環境**の `<main checkout の repo root>/.rite/review-results/{pr_number}-*.json` の `non_blocking_findings[]` にあります (session worktree で実行した場合も worktree 側ではなく main checkout 側。`state-path-resolve.sh` の解決先)。PR には含まれず、checkout でも取得できません。マージ後は `/rite:cleanup` が同 JSON を `.rite/review-results/archive/` へ退避するため、**`.gitignore` が `.rite/review-results/` を除外していることを確認してください** (`/rite:setup` が追加します。未除外だと退避した全文が `git add -A` で公開リポジトリへ入ります)。
 
    📎 non_blocking_count: {non_blocking_count}
    📎 reviewed_commit: {current_commit_sha}

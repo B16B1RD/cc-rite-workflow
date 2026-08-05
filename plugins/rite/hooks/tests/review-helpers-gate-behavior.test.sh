@@ -2848,7 +2848,8 @@ else
       #     追加を落とす。値の追加・改名はどちらもここで loud fail し、期待値更新という形で
       #     人手のレビューを強制する。
       #     **ラベルは「新規 placeholder の検出」までしか名乗らない** — allowlist 内の 7 種と
-      #     literal な散文だけで全文を再掲載する形はここでは落ちない (下の row-scoped pin が担う)。
+      #     literal な散文だけで全文を再掲載する形はここでは落ちない (下の row-scoped pin が
+      #     finding 単位の 4 placeholder すべてについて担う)。
       #     文字クラスは `[^}]` — `[a-z_]` だと数字・大文字・ハイフンを含む placeholder
       #     (`{finding_detail_1}` 等) を 1 件も拾わず allowlist を素通りする (実測)。
       #     **空白も除外してはならない** — `[^}[:space:]]` にすると `{finding full description}` の
@@ -2861,11 +2862,14 @@ else
         "{current_commit_sha} {file} {line} {non_blocking_count} {pr_number} {reviewer_type} {severity} " \
         "$_va_ph"
       # allowlist 内の placeholder だけで全文を再掲載する形 (表の下に
-      #     `- **{file}:{line}** — 指摘の全文` を足す等) を落とす。`{file}` / `{line}` は
-      #     **表のデータ行にしか現れない** ことを固定する — 表の外でこの 2 つを再出現させる形が
-      #     全文再掲載の実現手段そのものであるため。データ行 1 本 = 各 1 回が期待値。
-      _va_file_out=$(printf '%s\n' "$_va_fence" | grep -v '^[[:space:]]*|' | grep -cE '\{file\}|\{line\}' || true)
-      assert "TC-5i variant A fence の表以外の行に {file}/{line} が出現しない (全文再掲載の検出)" "0" \
+      #     `- **{file}:{line}** — 指摘の全文` を足す等) を落とす。**finding 単位の 4 placeholder
+      #     すべて** (`{reviewer_type}` / `{severity}` / `{file}` / `{line}`) が **表のデータ行に
+      #     しか現れない** ことを固定する — 表の外で finding を 1 件ずつ列挙する形が全文再掲載の
+      #     実現手段そのものであり、`{file}`/`{line}` の 2 つだけを見ると
+      #     `- {reviewer_type} ({severity}): 指摘の全文` の形を 1 assert も捕捉できない (実測)。
+      #     データ行 1 本 = 各 1 回が期待値なので、表の外での出現は 0 が期待値。
+      _va_file_out=$(printf '%s\n' "$_va_fence" | grep -v '^[[:space:]]*|' | grep -cE '\{(reviewer_type|severity|file|line)\}' || true)
+      assert "TC-5i variant A fence の表以外の行に finding 単位 placeholder が出現しない (全文再掲載の検出)" "0" \
         "$_va_file_out"
 
       # (h) 「本文は列 0 から書き出す」指示が variant テンプレートより **前** に 1 本だけ存在する。

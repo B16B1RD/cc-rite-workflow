@@ -26,12 +26,11 @@
 #   同じ glob に載せれば corrupt は jq 判定で自然に「判定不能 → 退避」へ落ちる (経路を増やさない)。
 #
 # Usage:
-#   review-results-archive-or-rm.sh --state-root <dir> --pr <number> [--label <label>]
+#   review-results-archive-or-rm.sh --state-root <dir> --pr <number>
 #
 # Options:
 #   --state-root  state root (state-path-resolve.sh の解決結果)。必須
 #   --pr          PR 番号 (数値)。必須。glob `{pr}-*.json*` の prefix になる
-#   --label       WARNING / marker に使うラベル (既定: review_results)
 #
 # 対象 glob: <state-root>/.rite/review-results/<pr>-*.json*  (`.json` と `.json.corrupt-*` の両方)
 # 退避先:    <state-root>/.rite/review-results/archive/
@@ -42,14 +41,18 @@
 #
 # Emitted markers (stderr):
 #   [CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=<r>; pr=<n>
-#     reason ∈ { <label>_rm_failure
-#              , <label>_archive_mkdir_failure    退避先ディレクトリを作れない
-#              , <label>_archive_mv_failure       mv 自体が失敗
-#              , <label>_archive_name_collision   退避先に同名既存 (上書きせず元の場所に残す)
-#              , <label>_undecidable              中身を判定できず退避側へ倒した (失敗ではない)
+#     reason ∈ { review_results_rm_failure
+#              , review_results_archive_mkdir_failure    退避先ディレクトリを作れない
+#              , review_results_archive_mv_failure       mv 自体が失敗
+#              , review_results_archive_name_collision   退避先に同名既存 (上書きせず元の場所に残す)
+#              , review_results_undecidable              中身を判定できず退避側へ倒した (失敗ではない)
 #              }
+#   本 helper を起動できなかったとき (rc=127 等) の `review_results_helper_failed` は caller
+#   (cleanup/SKILL.md ステップ 6) が emit する。helper 自身は emit しないが、marker family が
+#   同一なので reason を追う人がここで行き止まらないよう併記しておく。
 #   `_undecidable` 以外の失敗では **ファイルは削除しない** (退避できないなら元の場所に残す)。
 #   `_undecidable` は退避自体は成功しうるので `failed` には数えない (観測用の marker)。
+#   consumer 側 (cleanup ステップ 12 の判定表) も `_undecidable` だけは残作業に数えない。
 #
 # Emitted summary (stdout, 1 行):
 #   [review-results-archive-or-rm] archived=<n>; removed=<n>; failed=<n>; pr=<n>
@@ -57,24 +60,25 @@ set -uo pipefail
 
 STATE_ROOT=""
 PR_NUMBER=""
+# reason / メッセージの prefix。唯一の caller が単一の artifact 種別しか渡さないため定数。
+# 実行時パラメータにすると reason 集合が静的に確定しなくなる (SoT を docstring に置けない)。
 LABEL="review_results"
 
-# 各 arm で値の存在を検査してから shift 2 する。検査を省くと値なし末尾オプション
-# (`--pr` で終わる等) で `shift` が失敗して `$#` が減らず、while が無限ループする
-# (出力ゼロで永久にハングし、下記 Exit codes が宣言する exit 1 に到達しない)。
-_require_value() {
-  # $1=残り引数の個数, $2=オプション名
-  if [ "$1" -lt 2 ]; then
-    echo "ERROR: review-results-archive-or-rm: $2 requires a value" >&2
+# 値の存在を検査してから shift 2 する。`hooks/wiki-query-inject.sh` の `_require_option_value` と
+# 同じ契約・同じ引数順 (オプション名, 値) にしてある。素の `"$2"` + `set -u` でも nounset が
+# 先に落とすので無限ループにはならないが、その診断は `$2: unbound variable` でどのオプションが
+# 悪いのか分からない。ここで落とすのはメッセージを名指しにするため。
+_require_option_value() {
+  if [ -z "${2:-}" ]; then
+    echo "ERROR: review-results-archive-or-rm: $1 requires a value" >&2
     exit 1
   fi
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --state-root) _require_value "$#" "$1"; STATE_ROOT="$2"; shift 2 ;;
-    --pr)         _require_value "$#" "$1"; PR_NUMBER="$2"; shift 2 ;;
-    --label)      _require_value "$#" "$1"; LABEL="$2"; shift 2 ;;
+    --state-root) _require_option_value "$1" "${2:-}"; STATE_ROOT="$2"; shift 2 ;;
+    --pr)         _require_option_value "$1" "${2:-}"; PR_NUMBER="$2"; shift 2 ;;
     *)
       echo "ERROR: review-results-archive-or-rm: unknown option: $1" >&2
       exit 1 ;;
@@ -90,11 +94,6 @@ if [ -z "$STATE_ROOT" ]; then
   echo "ERROR: review-results-archive-or-rm: --state-root is required" >&2
   exit 1
 fi
-case "$LABEL" in
-  ''|*[!a-z_]*)
-    echo "ERROR: review-results-archive-or-rm: --label must match [a-z_]+ (got: '${LABEL}')" >&2
-    exit 1 ;;
-esac
 
 results_dir="$STATE_ROOT/.rite/review-results"
 archive_dir="$results_dir/archive"
@@ -135,11 +134,15 @@ for f in "$results_dir/${PR_NUMBER}"-*.json*; do
   fi
 
   if [ "$keep" != yes ]; then
-    if rm -f "$f"; then
+    # rm の stderr も捨てない。下の mkdir / mv と同形にしておかないと、同じ関数の 4 失敗経路で
+    # 診断の形が 1 つだけ違う状態になり、後続の編集者がどちらを規範と読むか決められない。
+    # 列 0 へ素通しさせない点も重要 — cleanup 側の照合は列 0 の行だけを marker 候補とする。
+    if rm_err=$(rm -f "$f" 2>&1); then
       echo "✅ ${LABEL} を削除: $f" >&2
       removed=$((removed + 1))
     else
       echo "WARNING: ${LABEL} 削除失敗 (PR #${PR_NUMBER}): $f" >&2
+      [ -n "$rm_err" ] && printf '%s\n' "$rm_err" | sed 's/^/  /' >&2
       echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=${LABEL}_rm_failure; pr=${PR_NUMBER}" >&2
       failed=$((failed + 1))
     fi
