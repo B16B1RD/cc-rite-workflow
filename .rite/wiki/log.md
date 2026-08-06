@@ -6,6 +6,7 @@
 * **Create**: [検査と使用は同一の式に畳む — 分けると述語ずれ・到達不能 fail-safe・診断ゼロ行の 3 欠陥が同時に生える](pages/patterns/fold-validation-and-use-into-one-expression.md) — raw/fixes/20260806T165050Z-pr-2126-c3.md を新規ページ化（3 件の個別パッチを 1 本化で一括解消し行数も分岐も減った / $err に原因を求めてよいのは外部コマンドが異常終了した経路だけ）
 * **Update**: [累積対策 PR の review-fix loop で fix 自体が drift を導入する](pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md) — raw/fixes/20260806T173922Z-pr-2126-c4.md を統合（実測アンカーの無い散文指摘は修正の複製率が 1 を超える / cycle 3 の散文修正 11 件が cycle 4 の HIGH 4 件を直接生んだ / レーン別の blocking 生成率を測ってから労力を配る）
 * **Create**: [jq / Oniguruma の $ は末尾改行の直前にも match する — 文字列全体一致は \A / \z を使う](pages/patterns/regex-absolute-anchors-for-whole-string-match.md) — raw/fixes/20260806T181047Z-pr-2126-c5.md を新規ページ化（形の allowlist が末尾改行を通し、防ぎたかった marker 行分断が起きた / 型・非空・形は別の検査）
+* **lint:warning** — contradictions=0, stale=19, orphans=0, missing_concept=0, unregistered_raw=299, broken_refs=0
 
 ## 2026-08-06
 
