@@ -217,7 +217,13 @@ _append_phase_transition() {
   # path by which the log reaches a public repo. Same form as review-result-save.sh
   # and review-results-archive-or-rm.sh. Still non-blocking: the append runs either way.
   if [ ! -s "$log_dir/.gitignore" ]; then
-    if ! _gi_err=$( { printf '*\n' > "$log_dir/.gitignore"; } 2>&1 ); then
+    # `LC_ALL=C` sits on the failing command, not on the neutralizer. bash localizes
+    # its own redirect-setup diagnostic, and `neutralize_ctrl` blanks 0x80-0x9f one
+    # byte at a time, so under ja_JP the errno arrives as `?` runs and the cause —
+    # the only thing the indented line adds over the WARNING above — is lost. Forcing
+    # the upstream message to ASCII leaves the neutralizer fully intact (it merely
+    # becomes a no-op here); `--c0-only` would instead blank 0x0a and break the indent.
+    if ! _gi_err=$( { LC_ALL=C printf '*\n' > "$log_dir/.gitignore"; } 2>&1 ); then
       echo "WARNING: flow-state.sh: cannot create $log_dir/.gitignore; verify by hand that this directory is excluded from git" >&2
       [ -n "$_gi_err" ] && printf '%s\n' "$_gi_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi

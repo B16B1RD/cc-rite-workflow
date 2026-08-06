@@ -1586,6 +1586,20 @@ else
   else
     fail "TC-2115-06: bash redirect error leaked to column 0 ($gi_bare line(s))"
   fi
+  # The captured cause must still be readable after neutralization. `LC_ALL=C` on
+  # the failing command is what makes that hold: bash localizes its own errno, and
+  # neutralize_ctrl blanks 0x80-0x9f byte-wise, so under a localized environment the
+  # errno degrades to `?` runs — dropping the one thing this line adds over the
+  # WARNING above. Matching a trailing ASCII errno pins it. On a C-locale host the
+  # message is ASCII regardless and this passes vacuously; on a localized host (this
+  # project declares ja_JP) it is the pin. `.gitignore: ` itself is ASCII and
+  # survives mangling, so the earlier gi_indented check cannot stand in for this.
+  gi_ascii_errno=$(LC_ALL=C grep -cE '^  .*\.gitignore: [A-Za-z][A-Za-z ]+$' "$stderr_2115" || true)
+  if [ "$gi_ascii_errno" -ge 1 ]; then
+    pass "TC-2115-06: the captured cause survives neutralization (ASCII errno)"
+  else
+    fail "TC-2115-06: the captured cause was mangled (no ASCII errno line found)"
+  fi
   rm -f "$stderr_2115"
 fi
 chmod 755 "$d/.rite/logs" 2>/dev/null || true
@@ -1635,6 +1649,45 @@ mkdir -p "$d/.rite/logs"
 assert "TC-2115-08: empty .gitignore is rewritten with the exclusion" "*" \
   "$(cat "$d/.rite/logs/.gitignore" 2>/dev/null)"
 assert_file_exists_or_fail "TC-2115-08: the append still ran" "$d/.rite/logs/phase-transitions.log" || true
+
+# --- TC-2115-09 (AC-2): the log-dir branch is loud too, on every host ---
+echo ""
+echo "=== TC-2115-09 (AC-2): a non-creatable log dir warns and leaves the state write intact ==="
+# The helper has three failure branches; the other two are pinned by TC-2115-06.
+# Without this one, deleting its WARNING — turning it into a complete silent
+# swallow — leaves the whole suite green, so AC-2's "書込不可で WARNING" holds no
+# regression detection power there. Occupying the log-dir path with a regular file
+# makes `mkdir -p` fail on ENOTDIR without any permission trick, so unlike
+# TC-2115-06/07 this assertion runs on every host — including root, WSL2 DrvFs and
+# overlay mounts where the chmod probe skips those two TCs and AC-2 loses all
+# coverage. That portability is why the branch is worth a TC of its own rather than
+# a fourth assertion inside TC-2115-06.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite"
+: > "$d/.rite/logs"
+stderr_2115_09="$(mktemp)"
+set +e
+(cd "$d" && bash "$HOOK" set --phase plan --issue 13 --branch "feat/u" --pr 0 --next "n") 2>"$stderr_2115_09"
+rc_2115_09=$?
+set -e
+assert "TC-2115-09: set still exits 0 (non-blocking)" "0" "$rc_2115_09"
+sfile_09="$d/.rite/sessions/${sid}.flow-state"
+assert_file_exists_or_fail "TC-2115-09: state file still written" "$sfile_09" || true
+assert "TC-2115-09: state phase unaffected" "plan" "$(jq -r .phase "$sfile_09")"
+# Same key-set invariant TC-2115-06 pins, but reachable without chmod — on a host
+# where the probe skips TC-2115-06 this is the only assertion left guarding it.
+assert "TC-2115-09: no stray field added to the state JSON" \
+  "active branch error_count issue_number next_action parent_issue_number phase pr_number schema_version session_id updated_at" \
+  "$(jq -r 'keys | join(" ")' "$sfile_09")"
+assert_grep "TC-2115-09: the log dir failure is announced" "$stderr_2115_09" 'WARNING: .*log dir not creatable'
+# The occupying file must still be a regular file: if `mkdir -p` had somehow
+# succeeded, the branch never ran and every assertion above would hold vacuously.
+if [ -f "$d/.rite/logs" ] && [ ! -d "$d/.rite/logs" ]; then
+  pass "TC-2115-09: the branch really ran (log dir path is still a regular file)"
+else
+  fail "TC-2115-09: mkdir -p did not fail as intended — the assertions above are vacuous"
+fi
+rm -f "$stderr_2115_09"
 
 if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del (Issue #1524) + non-UUID acceptance (Layer 1 format-agnostic contract pin) + phase-transition append log (#2115)"; then
   exit 1

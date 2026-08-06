@@ -1396,7 +1396,7 @@ flow-state は上書き式 (atomic write) のため工程履歴が残らず、�
 
 形式は **1 遷移 = 1 行の JSON Lines**: `{"ts","session_id","issue_number","pr_number","from","to"}`。`ts` は同じ `set` が state file の `updated_at` に書く値と同一 (相互参照可能)。`from` は書き換え **前** の `phase` で、state file 不在 (新規セッション) や既存 state の読み取り失敗時は空文字列 — 前 phase を捏造しない。phase が変わらない `set` (`from == to`) も記録する (工程内の更新頻度も観測対象)。`--if-exists` で skip された `set` は書き込み自体が起きないため記録されない。1 行性は入力検証ではなく `jq -c` のエスケープが構造的に保証する (`_phase_is_valid` は未知 phase を WARNING するだけで拒否しないため、改行を含む `--phase` でも行は割れない)。
 
-記録は完全に non-blocking (ディレクトリ作成不可 / `.gitignore` 生成不可 / 書込不可 / レコード構築失敗はいずれも WARNING を stderr に出して `return 0`、呼び出しも `|| true`) であり、`set` の exit code と state JSON はログ失敗時も不変。lock・ローテーションは持たない (単一ユーザー開発機前提、1 行 O_APPEND write の範囲で足りる)。**書くだけの経路** であり、これを読む runtime subcommand は存在しない (consumer は将来の集計 Issue。テストからの読み取りは対象外)。
+記録は完全に non-blocking (ディレクトリ作成不可 / 書込不可 / レコード構築失敗はいずれも WARNING を stderr に出して `return 0`、呼び出しも `|| true`) であり、`set` の exit code と state JSON はログ失敗時も不変。**`.gitignore` 生成失敗だけは記録を止めず、WARNING を出したうえで append を続行する** — 除外が張られていない状態は、記録が消えることより人間の手動確認を要する事象だからである。lock・ローテーションは持たない (単一ユーザー開発機前提、1 行 O_APPEND write の範囲で足りる)。**書くだけの経路** であり、これを読む runtime subcommand は存在しない (consumer は将来の集計 Issue。テストからの読み取りは対象外)。
 
 **Migration from legacy single-file format:**
 
