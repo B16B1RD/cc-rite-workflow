@@ -33,6 +33,9 @@
 * **Update**: [Markdown table 内に HTML コメントを挿入すると GFM table boundary が破壊される](pages/anti-patterns/html-comment-breaks-gfm-table-boundary.md) — raw/fixes/20260806T111135Z-pr-2124.md を統合（code span で囲んでもセル内 raw pipe は境界を割る / GitHub の /markdown API に POST して td 数で実測する）
 * **Create**: [bash の signal 挙動は「誰が送るか」「何をしている最中か」で反転する — 条件を揃えない実測は正しい記述を誤りと判定する](pages/heuristics/bash-signal-verification-requires-matched-conditions.md) — raw/reviews/20260806T120815Z-pr-2124.md / raw/fixes/20260806T121439Z-pr-2124.md を新規ページ化（EXIT trap が signal handler の不在を隠す / reviewer が前 cycle の自分の指摘を実測で撤回した経緯と再現手順）
 * **Update**: [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — raw/reviews/20260806T053845Z-pr-2124.md / raw/fixes/20260806T055534Z-pr-2124.md を統合（免除をコマンド名という proxy で判定していた / 真の判定軸は consumer の直前段 / payload 70000B で rc=141 を実測）
+
+* **lint:warning** — contradictions=0, stale=16, orphans=0, missing_concept=0, unregistered_raw=299, broken_refs=0
+
 ## 2026-08-05
 
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260804T135121Z-pr-2111.md を統合（散文→helper 委譲リファクタで 23 変異中 8 生存を実測、散文から移した仕様の「実行可能仕様」が fixture に揃っているかの機械検証として有効）
