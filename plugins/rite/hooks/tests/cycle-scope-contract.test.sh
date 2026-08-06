@@ -41,7 +41,21 @@ assert_grep "1.2.4 enumerates every fail-safe reason and pins that they all fall
 assert_grep "helper docstring is the reason SoT" "$HELPER" \
   'Fallback reason 語彙 \(SoT'
 assert_grep "cycle-scope.md forbids narrowing on missing information" "$CYCLE_SCOPE" \
-  '狭いスコープへ妥協する経路|安全側は常に\*\*広い方\*\*'
+  '狭いスコープで妥協する」経路は持たない'
+assert_grep "cycle-scope.md states the safe side is always the wider scope" "$CYCLE_SCOPE" \
+  '安全側は常に\*\*広い方\*\*'
+# reason 語彙は helper docstring が SoT だが、SKILL.md と cycle-scope.md にコピーがある。
+# 3 コピーのどれかが欠けると「その経路は fail-safe しない」と読める記述が残る。
+# jq_missing は cycle-scope.md の表から実際に欠落していた (SKILL.md と helper には存在)。
+for _f in "$HELPER" "$PR_REVIEW" "$CYCLE_SCOPE"; do
+  for _r in no_prev_json prev_json_unreadable commit_sha_missing commit_sha_unreachable diff_failed jq_missing; do
+    assert_grep "$(basename "$_f") documents reason '$_r'" "$_f" "$_r"
+  done
+done
+# helper が marker を出せない経路 (usage error) の consumer 側既定。helper の reason 語彙では
+# 表現できないため SKILL.md 側に置く必要がある。
+assert_grep "1.2.4 defines the consumer-side default when the helper emits no marker" "$PR_REVIEW" \
+  'marker を観測できない場合も `full` として扱い'
 
 echo "=== ステップ 2.2: 選抜は cap 後の filter でなくマッチ入力の差し替え (AC-2 / AC-4 / T-02 / T-04) ==="
 assert_grep "2.2 substitutes the matching input with the fix diff" "$PR_REVIEW" \
@@ -82,8 +96,18 @@ assert_grep "4.5 scopes diff_content to the fix diff under incremental" "$PR_REV
   '\{diff_content\}.*REVIEW_CYCLE_SCOPE == incremental.*\{cycle_base_sha\}\.\.HEAD'
 
 echo "=== mandate 4 項目: 解消検証 / fix diff フル / Cross-File 維持 / 未変更部の再監査禁止 ==="
-assert_grep "mandate 1: previous blocking resolution verification" "$CYCLE_SCOPE" \
-  '前回 blocking の解消検証'
+# mandate 1 の語は SoT 宣言・合成理由・注入本文の 3 箇所に出るため、単語 pin だと
+# **注入本文から mandate 1 を削除しても残り 2 箇所で満たされ green のまま**になる
+# (mandate 2/3/4 の pin は 1 箇所固有で問題ない — 本項だけが header の
+# 「単語 1 個の pin は素通りする」教訓に違反していた)。注入本文の行形でアンカーする。
+assert_grep "mandate 1: previous blocking resolution verification (注入本文の行形で pin)" "$CYCLE_SCOPE" \
+  '^1\. \*\*前回 blocking の解消検証\*\*'
+# 同 block の placeholder も未 pin だった。mandate 1 は前回指摘の一覧を、mandate 2 は差分の起点を
+# それぞれ埋め込む必要があり、どちらが落ちても reviewer は解消検証 / 差分スコープを実行できない。
+assert_grep "mandate block injects the previous blocking findings placeholder" "$CYCLE_SCOPE" \
+  '^\{previous_blocking_findings\}$'
+assert_grep "mandate block injects the diff base placeholder" "$CYCLE_SCOPE" \
+  '\{cycle_base_sha\}\.\.HEAD'
 assert_grep "mandate 2: fix diff reviewed at unchanged depth (scope narrows, criteria do not)" "$CYCLE_SCOPE" \
   'レビュー対象の\*\*範囲\*\*を絞るものであって、範囲内の\*\*基準\*\*を緩めるものではない'
 assert_grep "mandate 3: Cross-File Impact Check is NOT reduced" "$CYCLE_SCOPE" \

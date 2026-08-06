@@ -414,14 +414,14 @@ Decide whether this review runs at **full scope** (cycle 1) or **incremental sco
 bash {plugin_root}/scripts/review-cycle-scope.sh --pr {pr_number}
 ```
 
-> **Reference**: 設計根拠（永続 JSON を入力にする理由 / 終了意味論 / cycle-count degradation 禁止規範との関係 / 情報欠落時に必ず `full` へ倒す理由）は [cycle-scope.md](references/cycle-scope.md) が SoT。`REVIEW_CYCLE_SCOPE_FALLBACK=1; reason=` の reason 語彙（`no_prev_json` / `prev_json_unreadable` / `commit_sha_missing` / `commit_sha_unreachable` / `diff_failed` / `jq_missing`）は helper docstring が SoT。**reason は分岐を変えない** — 全 reason が下表の `full` に落ち、`no_prev_json`（cycle 1 の正常経路）以外は WARNING を伴う。
+> **Reference**: 設計根拠（永続 JSON を入力にする理由 / 終了意味論 / cycle-count degradation 禁止規範との関係 / 情報欠落時に必ず `full` へ倒す理由）は [cycle-scope.md](references/cycle-scope.md) が SoT。`REVIEW_CYCLE_SCOPE_FALLBACK=1; reason=` の reason 語彙（`no_prev_json` / `prev_json_unreadable` / `commit_sha_missing` / `commit_sha_unreachable` / `diff_failed` / `jq_missing`）は helper docstring が SoT。**reason は分岐を変えない** — 全 reason が下表の `full` に落ち、`no_prev_json`（cycle 1 の正常経路）以外は WARNING を伴う。**helper が非ゼロ終了した / `REVIEW_CYCLE_SCOPE=` marker を観測できない場合も `full` として扱い**、`⚠️ 差分スコープのフォールバック: reason=helper_failed。フルレビューで実行します。` を出力する（usage error では marker が出ないため helper 側の reason 語彙では表現できない consumer 側の既定。ステップ 5.3.0.M step 3 の「marker が一切出ずに helper が非ゼロ終了した」行と同型）。
 
 | `REVIEW_CYCLE_SCOPE` | レビュー対象 | 適用される cycle |
 |---|---|---|
 | `full` | PR 全体（従来どおり） | cycle 1、および fail-safe 発火時 |
 | `incremental` | `{cycle_base_sha}..HEAD` の diff + 前回 blocking の解消検証 | cycle 2+ |
 
-`incremental` のとき marker から retain する: `{cycle_base_sha}` = `base_sha=`（差分の起点。ステップ 2.2 / 4.5 が使う）、`{prev_finders}` = `prev_finders=`（前サイクルで blocking を出した `reviewer_type` の CSV。ステップ 2.2 で `mandatory` 合流）、`{previous_blocking_findings}` = `prev_json=` が指すファイルの `findings[]`（ステップ 4.5 の解消検証 mandate に埋める）。`{prev_finders}` に統合済みの旧 type が現れたら `skills/reviewers/SKILL.md` の Legacy Reviewer Type Aliases に従い WARNING 付きで読み替える（silent skip 禁止）。
+`incremental` のとき marker から retain する: `{cycle_base_sha}` = `base_sha=`（差分の起点。ステップ 2.2 / 4.5 が使う）、`{prev_finders}` = `prev_finders=`（前サイクルで blocking を出した `reviewer_type` の CSV。helper が gated scope で絞り済み。ステップ 2.2 で `mandatory` 合流）、`{previous_blocking_findings}` = `prev_json=` が指すファイルの `findings[]` のうち **`scope ∈ {current-pr, follow-up}` のもの**（`findings[]` 全体は blocking 集合ではない — 5.3.0.M は `nit-noted` をゲート対象外として非実測でも残すため、絞らないと受け流し済みの nit が解消検証 mandate に注入され毎サイクル再掲される）。`{prev_finders}` に統合済みの旧 type が現れたら `skills/reviewers/SKILL.md` の Legacy Reviewer Type Aliases に従い WARNING 付きで読み替える（silent skip 禁止）。
 
 #### 1.2.4.1 Review Mode Determination (`verification_mode`)
 

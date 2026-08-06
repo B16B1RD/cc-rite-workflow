@@ -31,9 +31,12 @@
 #   [CONTEXT] REVIEW_CYCLE_SCOPE_FALLBACK=1; reason=<reason>   ← no_prev_json 以外で追加 emit
 #   ⚠️ 差分スコープのフォールバック: ...                        ← 同上 (人間向け)
 #
-#   prev_finders は前サイクルの findings[] (= 5.3.0.M 通過後の blocking 集合) の reviewer を
-#   agent 名から reviewer_type へ正規化 (`-reviewer` サフィックス除去) し unique + カンマ区切りに
-#   したもの。空になりうる (前サイクルの blocking が 0 件だった場合)。統合済み旧 type
+#   prev_finders は前サイクルの findings[] のうち **gated scope (current-pr / follow-up)** の
+#   finding だけを対象に reviewer を agent 名から reviewer_type へ正規化 (`-reviewer` サフィックス
+#   除去) し unique + カンマ区切りにしたもの。**findings[] 全体は blocking 集合ではない** —
+#   review-measured-gate.sh は scope == "nit-noted" をゲート対象外として非実測でも findings[] に
+#   残すため、実体は blocking 集合と全 nit-noted 集合の和である。空になりうる (前サイクルの
+#   blocking が 0 件だった場合)。統合済み旧 type
 #   (api/frontend/performance/database/type-design) の読み替えは caller 側の責務
 #   (skills/reviewers/SKILL.md の Legacy Reviewer Type Aliases 表が SoT)。
 #
@@ -66,10 +69,15 @@ source "$_rcs_dir/../hooks/scripts/lib/tempfile.sh"
 PR_NUMBER=""
 RESULTS_DIR=""
 
+# `shift 2` は使わない。値なしフラグが argv 末尾に来ると n > $# で shift が $# を変えずに rc=1 を
+# 返し、set -e 非設定 + ${2:-} で nounset も発火しない本 script では while を抜けられず hang する
+# (無人ループの /rite:iterate / /rite:batch-run では診断ゼロの無期限停止になる)。1 回目の shift で
+# $# を確実に 0 にし 2 回目を no-op にする house convention に従う
+# (sibling: scripts/review-source-resolve.sh、機械検査: hooks/tests/shift2-loop-hardening.test.sh)。
 while [ $# -gt 0 ]; do
   case "$1" in
-    --pr)          PR_NUMBER="${2:-}"; shift 2 ;;
-    --results-dir) RESULTS_DIR="${2:-}"; shift 2 ;;
+    --pr)          PR_NUMBER="${2:-}"; shift; shift ;;
+    --results-dir) RESULTS_DIR="${2:-}"; shift; shift ;;
     *) echo "ERROR: review-cycle-scope: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
@@ -124,22 +132,61 @@ fi
 prev_json="${cs_files[0]:-}"
 [ -n "$prev_json" ] || emit_full no_prev_json
 
-jq empty "$prev_json" 2>/dev/null || emit_full prev_json_unreadable
+# 失敗経路の診断は捨てない。`.rite/review-results/` は同一 PR の JSON を timestamp 付きで複数世代
+# 持つため、reason だけでは「どのファイルが壊れていたか」を運用者が特定できない
+# (canonical: 探索段の find/sort と同じ selective surface。1 ファイル内で診断を出す経路と
+# 捨てる経路が同居する非対称を作らない)。
+rite_tempfile_new probe_err "rcs-probe-err" || emit_full prev_json_unreadable
 
-base_sha=$(jq -r '.commit_sha // empty' "$prev_json" 2>/dev/null)
+if ! jq empty "$prev_json" 2>"$probe_err"; then
+  echo "WARNING: review-cycle-scope: 前回レビュー JSON を parse できません: $prev_json" >&2
+  head -3 "$probe_err" | sed 's/^/  /' >&2
+  emit_full prev_json_unreadable
+fi
+
+base_sha=$(jq -r '.commit_sha // empty' "$prev_json" 2>"$probe_err")
 [ -n "$base_sha" ] || emit_full commit_sha_missing
 
 # `^{commit}` を付けて「commit として解決できる」ことまで確認する (blob/tree の SHA を誤って
-# 起点に据えない)。force-push / rebase で起点が履歴から消えた場合はここで落ちる。
-git cat-file -e "${base_sha}^{commit}" 2>/dev/null || emit_full commit_sha_unreachable
+# 起点に据えない)。起点 object が object DB に無ければここで落ちる。
+# **到達性 (HEAD の祖先か) までは見ない** — ローカル rebase / reset 直後の旧 commit は gc されるまで
+# object DB に残り本検査を通過する。その場合 `base_sha..HEAD` は tree 間差分として rebase 分を
+# 巻き込むが、失敗方向は「差分が広くなる」= 安全側のため許容する。
+if ! git cat-file -e "${base_sha}^{commit}" 2>"$probe_err"; then
+  echo "WARNING: review-cycle-scope: 起点 commit を解決できません (base_sha=$base_sha)" >&2
+  head -3 "$probe_err" | sed 's/^/  /' >&2
+  emit_full commit_sha_unreachable
+fi
 
-git diff --name-only "${base_sha}..HEAD" >/dev/null 2>&1 || emit_full diff_failed
+if ! git diff --name-only "${base_sha}..HEAD" >/dev/null 2>"$probe_err"; then
+  echo "WARNING: review-cycle-scope: 差分を取得できません (${base_sha}..HEAD)" >&2
+  head -3 "$probe_err" | sed 's/^/  /' >&2
+  emit_full diff_failed
+fi
 
-# findings[] は 5.3.0.M 通過後の blocking 集合。reviewer は agent 名 (`code-quality-reviewer`) で
-# 入るため reviewer_type (`code-quality`) へ正規化する。jq 失敗時も空文字で incremental を維持する
-# — 起点 sha と diff は取れており差分スコープ自体は成立する。finder が空なら caller の選抜は
-# fix diff の領域担当のみになり、既存の sole-reviewer guard / min_reviewers フロアが下限を守る。
-prev_finders=$(jq -r '[.findings[]?.reviewer | select(type == "string") | sub("-reviewer$";"")] | unique | join(",")' "$prev_json" 2>/dev/null) || prev_finders=""
+# 前サイクルで **blocking** を出した reviewer を抽出する。
+# **`findings[]` 全体は blocking 集合ではない** — scripts/review-measured-gate.sh は
+# `scope == "nit-noted"` をゲート対象外として非実測でも findings[] に残すため、実体は
+# blocking 集合と全 nit-noted 集合の和である。gated scope (current-pr / follow-up) で絞らないと、
+# (a) nit しか出していない reviewer が caller 側で mandatory 合流して cap 免除枠を占有し
+# fix diff の実担当を押し出す、(b) 受け流し済みの nit が解消検証 mandate に注入され
+# 定義上恒久的に NOT_FIXED として毎サイクル再掲される、の 2 系統の欠陥が出る。
+# reviewer は agent 名 (`code-quality-reviewer`) で入るため reviewer_type へ正規化する。
+# jq 失敗は握り潰さない — 空の `prev_finders=` は「前サイクルの blocking が 0 件」と
+# バイト単位で同一で区別不能なため、fallback すると「前サイクル finder の無条件再起動」が
+# 無音で破れたまま差分スコープへ入る。既存の loud な fail-safe へ合流させる。
+prev_finders=$(jq -r '
+  [.findings[]?
+   | select((.scope // "") == "current-pr" or (.scope // "") == "follow-up")
+   | .reviewer
+   | select(type == "string")
+   | sub("-reviewer$";"")]
+  | unique | join(",")
+' "$prev_json" 2>"$probe_err") || {
+  echo "WARNING: review-cycle-scope: 前回 blocking finder の抽出に失敗しました: $prev_json" >&2
+  head -3 "$probe_err" | sed 's/^/  /' >&2
+  emit_full prev_json_unreadable
+}
 
 echo "[CONTEXT] REVIEW_CYCLE_SCOPE=incremental; base_sha=$base_sha; prev_json=$prev_json; prev_finders=$prev_finders" >&2
 exit 0

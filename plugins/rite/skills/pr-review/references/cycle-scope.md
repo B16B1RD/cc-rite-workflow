@@ -52,8 +52,13 @@ cycle 数が増えても挙動は一切変わらない（cycle 3 と cycle 5 に
 | `commit_sha_missing` | `commit_sha` が空 / null / キー欠落（旧形式） | 差分の起点が無い |
 | `commit_sha_unreachable` | `git cat-file -e {sha}` が失敗（force-push / rebase で消失） | 起点 commit が履歴に無く diff を取れない |
 | `diff_failed` | `git diff {sha}..HEAD` が失敗 | 差分自体を取得できない |
+| `jq_missing` | `jq` が PATH 上に無い | JSON を読む手段が無い。環境欠陥だが、状態を書き換えない本 helper には安全な既定（full）が常に存在するため、レビュー自体は止めずスコープだけ広い方へ倒す |
 
-fail-safe 発火時は WARNING を可視化する（silent fallback 禁止）。「なぜ今回フルに戻ったか」が見えないと、差分スコープが効いていないことに気付けない。
+fail-safe 発火時は WARNING を可視化する（silent fallback 禁止）。「なぜ今回フルに戻ったか」が見えないと、差分スコープが効いていないことに気付けない。WARNING には**対象**（読めなかった JSON のパス、解決できなかった `base_sha`）と**原因**（`jq` / `git` の stderr 先頭数行）を含める — reason だけでは、同一 PR の JSON を複数世代持つ `.rite/review-results/` のどれが壊れていたかを運用者が特定できない。
+
+`no_prev_json` だけは WARNING を出さない。これは cycle 1 の正常経路であり、毎回警告を出すと本当の異常が埋もれるため。`state-path-resolve.sh` の解決に失敗して cwd 相対へ倒れた場合は別途 WARNING が出るので、「黙って cycle 1 扱いになる」経路は塞がれている。
+
+helper が **marker を 1 つも出さずに非ゼロ終了した場合**（引数欠落 / 未知フラグの usage error）も consumer 側で `full` として扱う。この既定は helper 内の 6 reason では表現できない（marker を出せない状況そのもの）ため、[SKILL.md](../SKILL.md) ステップ 1.2.4 の consumer 側に置く。
 
 この fail-safe の向き（欠落 → 安全側 = 広い方 / 確認を出す方）は、ステップ 3.3 の E2E 判定や ステップ 3.4 の batch 判定が helper 失敗時に interactive へ倒すのと同型である。新しいシグナルを発明せず既存の判定形に揃えている。
 
@@ -89,7 +94,14 @@ cap 後のフィルタにすると、これらのフロアと `mandatory` 保護
 
 昇格は既存の昇格 priority（`detected < recommended < mandatory`）に従い、より高い側へのみ動かす。既に `mandatory` の reviewer に対しては no-op。
 
-前サイクル finder は永続 JSON の `findings[].reviewer` から取る。値は agent 名（`code-quality-reviewer` 等）のため `-reviewer` サフィックスを除いて `reviewer_type` に正規化し、統合済みの旧 type（`api` / `frontend` / `performance` / `database` / `type-design`）は [reviewers/SKILL.md](../../reviewers/SKILL.md) の Legacy Reviewer Type Aliases 表に従って `application` へ読み替える（silent skip しない）。
+前サイクル finder は永続 JSON の `findings[]` から取るが、**`findings[]` 全体を blocking 集合として扱ってはならない**。実測必須ゲート（`review-measured-gate.sh`）は `scope == "nit-noted"` をゲート対象外として非実測でも `findings[]` に残すため、実体は blocking 集合と全 nit-noted 集合の**和**である。gated scope（`current-pr` / `follow-up`）で絞らないと 2 系統の欠陥が出る:
+
+- nit しか出していない reviewer が `mandatory` で合流し、Phase 5 が `mandatory` を絶対に落とさない性質から `max_reviewers` の枠を占有して fix diff の実担当を押し出す
+- 受け流し済みの nit が解消検証 mandate に注入され、nit-noted は定義上恒久的に NOT_FIXED であるため毎サイクル再掲される（[finding-cycling.md](./finding-cycling.md) の収束設計と逆行する）
+
+絞り込み後の `reviewer` は agent 名（`code-quality-reviewer` 等）のため `-reviewer` サフィックスを除いて `reviewer_type` に正規化し、統合済みの旧 type（`api` / `frontend` / `performance` / `database` / `type-design`）は [reviewers/SKILL.md](../../reviewers/SKILL.md) の Legacy Reviewer Type Aliases 表に従って `application` へ読み替える（silent skip しない）。
+
+抽出用 jq が失敗したときに空文字へ fallback してはならない。空の `prev_finders=` は「前サイクルの blocking が 0 件だった」正常系と**バイト単位で同一**で区別する手段が無く、fallback すると本節が根拠づけた無条件再起動の保証が無音で破れたまま差分スコープへ入る。既存の `prev_json_unreadable`（「前回 blocking の集合が不明」）へ合流させる。
 
 ## 選抜表を新設しない理由
 

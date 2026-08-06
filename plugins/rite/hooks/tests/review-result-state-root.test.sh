@@ -40,6 +40,12 @@ cp "$HOOKS_DIR/review-result-save.sh" "$REPO/hooks/"
 cp "$HOOKS_DIR/state-path-resolve.sh" "$REPO/hooks/"
 cp "$HOOKS_DIR/control-char-neutralize.sh" "$REPO/hooks/"
 cp "$HOOKS_DIR/../scripts/review-source-resolve.sh" "$REPO/scripts/"
+# review-cycle-scope.sh は同じ state-root 契約の 3 番目の参加者 (書込 = review-result-save.sh /
+# 読取 = review-source-resolve.sh Priority 2 / 読取 = 本 helper の既定 results dir)。
+# tempfile lib を source するためレイアウトごと複製する。
+cp "$HOOKS_DIR/../scripts/review-cycle-scope.sh" "$REPO/scripts/"
+mkdir -p "$REPO/hooks/scripts/lib"
+cp "$HOOKS_DIR/scripts/lib/tempfile.sh" "$REPO/hooks/scripts/lib/"
 git -C "$REPO" add -A
 git -C "$REPO" commit -qm "init"
 git -C "$REPO" worktree add -q "$REPO/.rite/worktrees/issue-99" -b test-branch main
@@ -93,6 +99,37 @@ if printf '%s' "$out2" | grep -q 'REVIEW_SOURCE=local_file' && \
   pass "TC-2: Priority 2 resolved to main-root local file"
 else
   fail "TC-2: expected local_file at main root. out: $(printf '%s' "$out2" | grep REVIEW_SOURCE | head -2)"
+fi
+echo ""
+
+# ─── TC-2b: review-cycle-scope の既定 results dir が worktree cwd から main root を指す ───
+# production の呼び出しは `--pr {n}` のみで --results-dir を渡さない。この既定解決が壊れると
+# session worktree 内の reviewer が main checkout 側の保存先を見失い、WARNING を出さない唯一の
+# reason である no_prev_json に落ちて差分スコープが恒久的に無音で不発になる (AC-1 が一度も成立しない)。
+echo "TC-2b: review-cycle-scope default results dir resolves to main root from worktree cwd"
+out2b=$(cd "$REPO/.rite/worktrees/issue-99" && \
+  bash "$REPO/scripts/review-cycle-scope.sh" --pr 99 2>&1) || true
+if printf '%s' "$out2b" | grep -q 'REVIEW_CYCLE_SCOPE=incremental' && \
+   printf '%s' "$out2b" | grep -q "prev_json=$MAIN_ROOT/.rite/review-results/99-"; then
+  pass "TC-2b: default results dir resolved to main root"
+else
+  fail "TC-2b: expected incremental with main-root prev_json. out: $(printf '%s' "$out2b" | grep REVIEW_CYCLE_SCOPE | head -2)"
+fi
+echo ""
+
+# ─── TC-2c: state-path-resolve 解決失敗時は cwd 相対へフォールバックし WARNING を出す ───
+# TC-5 (review-result-save 側) と同型。silent に別ディレクトリを見に行かせない。
+echo "TC-2c: review-cycle-scope falls back to cwd-relative when state-path-resolve is unavailable"
+FALLBACK_DIR="$TEST_DIR/rcs-fallback"
+mkdir -p "$FALLBACK_DIR/scripts" "$FALLBACK_DIR/hooks/scripts/lib"
+cp "$HOOKS_DIR/../scripts/review-cycle-scope.sh" "$FALLBACK_DIR/scripts/"
+cp "$HOOKS_DIR/scripts/lib/tempfile.sh" "$FALLBACK_DIR/hooks/scripts/lib/"
+# state-path-resolve.sh を意図的に置かない (解決失敗経路)
+out2c=$(cd "$FALLBACK_DIR" && bash "$FALLBACK_DIR/scripts/review-cycle-scope.sh" --pr 99 2>&1) || true
+if printf '%s' "$out2c" | grep -q 'state-path-resolve.sh の解決に失敗'; then
+  pass "TC-2c: fallback emitted a loud WARNING"
+else
+  fail "TC-2c: expected fallback WARNING. out: $(printf '%s' "$out2c" | head -3)"
 fi
 echo ""
 

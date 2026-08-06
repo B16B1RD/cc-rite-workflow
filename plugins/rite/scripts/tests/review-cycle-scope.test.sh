@@ -57,6 +57,30 @@ assert_rc() {
   if [ "$expected" = "$actual" ]; then pass "$label"; else fail "$label (expected rc=$expected, got rc=$actual)"; fi
 }
 
+# marker の `key=value` を **値として切り出して等値比較**する。
+# `assert_contains "... prev_finders="` のような部分文字列 needle は marker 行に常に出現するため
+# 「空であること」「特定の値であること」のどちらも検証できない (末尾に何が付いても PASS する)。
+# 値を取り出して等値で見る形にしないと、既定値代入や余剰値の混入を素通りさせる。
+# 値の終端は marker の区切り `; ` または行末。
+marker_value_of() {
+  local haystack="$1" key="$2" tail
+  tail="${haystack##*${key}=}"
+  tail="${tail%%; *}"
+  printf '%s' "${tail%%$'\n'*}"
+}
+
+assert_marker_eq() {
+  local label="$1" haystack="$2" key="$3" expected="$4" actual
+  actual=$(marker_value_of "$haystack" "$key")
+  if [ "$actual" = "$expected" ]; then
+    pass "$label"
+  else
+    fail "$label"
+    echo "     期待値 ($key): '$expected'"
+    echo "     実際:          '$actual'"
+  fi
+}
+
 # review-result JSON を書く: path commit_sha reviewer...
 mk_result_json() {
   local path="$1" sha="$2"; shift 2
@@ -92,14 +116,14 @@ cd "$REPO" || exit 1
 run_scope --pr 42 --results-dir "$RESULTS"
 assert_rc "TC-1.1: rc=0" 0 "$SCOPE_RC"
 assert_contains "TC-1.2: REVIEW_CYCLE_SCOPE=incremental" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
-assert_contains "TC-1.3: base_sha は前回 JSON の commit_sha" "$SCOPE_STDERR" "base_sha=$FIRST_SHA"
+assert_marker_eq "TC-1.3: base_sha は前回 JSON の commit_sha" "$SCOPE_STDERR" "base_sha" "$FIRST_SHA"
 assert_not_contains "TC-1.4: fallback marker を出さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE_FALLBACK"
 
 echo "=== TC-2: prev_finders は agent 名を reviewer_type へ正規化し unique 化する (AC-2) ==="
-assert_contains "TC-2.1: -reviewer サフィックスを除去して CSV 化" "$SCOPE_STDERR" "prev_finders=code-quality,security"
+assert_marker_eq "TC-2.1: -reviewer サフィックスを除去して CSV 化" "$SCOPE_STDERR" "prev_finders" "code-quality,security"
 mk_result_json "$RESULTS/42-20260806-000001.json" "$FIRST_SHA" "test-reviewer" "test-reviewer"
 run_scope --pr 42 --results-dir "$RESULTS"
-assert_contains "TC-2.2: 同一 reviewer の重複は 1 件に畳まれる" "$SCOPE_STDERR" "prev_finders=test"
+assert_marker_eq "TC-2.2: 同一 reviewer の重複は 1 件に畳まれる" "$SCOPE_STDERR" "prev_finders" "test"
 
 echo "=== TC-3: 複数 JSON があれば最新 (ファイル名降順の先頭) を採る ==="
 assert_contains "TC-3.1: 最新ファイルが prev_json に入る" "$SCOPE_STDERR" "42-20260806-000001.json"
@@ -110,7 +134,7 @@ mkdir -p "$EMPTY_RESULTS"
 mk_result_json "$EMPTY_RESULTS/42-20260806-000000.json" "$FIRST_SHA"
 run_scope --pr 42 --results-dir "$EMPTY_RESULTS"
 assert_contains "TC-4.1: findings[] が空でも incremental" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
-assert_contains "TC-4.2: prev_finders は空" "$SCOPE_STDERR" "prev_finders="
+assert_marker_eq "TC-4.2: prev_finders は空" "$SCOPE_STDERR" "prev_finders" ""
 
 echo "=== TC-5: results dir 不在は cycle 1 の正常経路 — WARNING を出さない (AC-3 / T-03) ==="
 run_scope --pr 42 --results-dir "$TEST_DIR/does-not-exist"
@@ -174,6 +198,79 @@ run_scope --pr abc --results-dir "$RESULTS"
 assert_rc "TC-12.2: 非数値 --pr は rc=2" 2 "$SCOPE_RC"
 run_scope --pr 42 --bogus x
 assert_rc "TC-12.3: 未知引数は rc=2" 2 "$SCOPE_RC"
+
+echo "=== TC-14: gated scope の finding だけを prev_finders に採る (findings[] は blocking 集合ではない) ==="
+# review-measured-gate.sh は scope=nit-noted をゲート対象外として非実測でも findings[] に残す。
+# 絞らないと nit しか出していない reviewer が caller 側で mandatory 合流し cap 免除枠を占有する。
+MIXED="$TEST_DIR/results-mixed"
+mkdir -p "$MIXED"
+jq -n --arg sha "$FIRST_SHA" '{
+  schema_version:"1.0.0", pr_number:42, timestamp:"t", commit_sha:$sha,
+  overall_assessment:"fix-needed",
+  findings:[
+    {id:"F-01", reviewer:"application-reviewer", category:"c", severity:"HIGH",
+     file:"a.sh", line:1, description:"d", suggestion:"s", status:"open", scope:"current-pr"},
+    {id:"F-02", reviewer:"tech-writer-reviewer", category:"c", severity:"LOW",
+     file:"b.md", line:2, description:"d", suggestion:"s", status:"open", scope:"nit-noted"},
+    {id:"F-03", reviewer:"devops-reviewer", category:"c", severity:"MEDIUM",
+     file:"c.yml", line:3, description:"d", suggestion:"s", status:"open", scope:"follow-up"}
+  ],
+  non_blocking_findings:[]
+}' > "$MIXED/42-20260806-000000.json"
+run_scope --pr 42 --results-dir "$MIXED"
+assert_marker_eq "TC-14.1: nit-noted のみの reviewer は prev_finders に載らない" \
+  "$SCOPE_STDERR" "prev_finders" "application,devops"
+
+echo "=== TC-15: prev_finders の jq 失敗は silent に incremental を維持しない (loud fail-safe) ==="
+# findings が iterable だが要素が object でない → .reviewer 参照で jq rc=5。
+# 空の prev_finders= は「blocking 0 件」の正常系とバイト単位で同一のため、fallback すると
+# 「前サイクル finder の無条件再起動」が無音で破れたまま差分スコープへ入る。
+BADF="$TEST_DIR/results-badfindings"
+mkdir -p "$BADF"
+jq -n --arg sha "$FIRST_SHA" '{
+  schema_version:"1.0.0", pr_number:42, commit_sha:$sha,
+  overall_assessment:"fix-needed",
+  findings:["code-quality-reviewer"],
+  non_blocking_findings:[]
+}' > "$BADF/42-20260806-000000.json"
+run_scope --pr 42 --results-dir "$BADF"
+assert_rc "TC-15.1: rc=0 (レビュー自体は止めない)" 0 "$SCOPE_RC"
+assert_contains "TC-15.2: incremental を維持せず full へ倒れる" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=full"
+assert_contains "TC-15.3: reason=prev_json_unreadable" "$SCOPE_STDERR" "reason=prev_json_unreadable"
+assert_contains "TC-15.4: fallback marker を出す" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE_FALLBACK=1"
+
+echo "=== TC-16: fail-safe 時に対象と原因を surface する (診断を捨てない) ==="
+run_scope --pr 42 --results-dir "$BROKEN"
+assert_contains "TC-16.1: 壊れた JSON のパスを出す" "$SCOPE_STDERR" "$BROKEN/42-20260806-000000.json"
+assert_contains "TC-16.2: jq の parse error 本文を出す" "$SCOPE_STDERR" "parse error"
+run_scope --pr 42 --results-dir "$GONE"
+assert_contains "TC-16.3: 到達不能 sha の値を出す" "$SCOPE_STDERR" "base_sha=0000000000000000000000000000000000000000"
+
+echo "=== TC-17: jq 不在は full へ fail-safe する (AC-3、環境欠陥でレビューを止めない) ==="
+NOJQ_BIN="$TEST_DIR/nojq-bin"
+mkdir -p "$NOJQ_BIN"
+for _b in bash find sort git head sed basename dirname mktemp rm cat printf; do
+  _p=$(command -v "$_b" 2>/dev/null) && ln -sf "$_p" "$NOJQ_BIN/$_b"
+done
+NOJQ_STDERR="$TEST_DIR/.nojq-stderr"
+PATH="$NOJQ_BIN" bash "$TARGET" --pr 42 --results-dir "$RESULTS" 2>"$NOJQ_STDERR"
+NOJQ_RC=$?
+NOJQ_OUT=$(cat "$NOJQ_STDERR")
+assert_rc "TC-17.1: rc=0 (jq 不在でもレビューは止めない)" 0 "$NOJQ_RC"
+assert_contains "TC-17.2: reason=jq_missing で full" "$NOJQ_OUT" "reason=jq_missing"
+
+echo "=== TC-18: 値なしフラグが argv 末尾でも hang しない (shift 2 無限ループ回帰 pin) ==="
+# `shift 2` は n > $# のとき $# を変えず rc=1 を返すため while を抜けられない。
+# 無人ループ (/rite:iterate / /rite:batch-run) では診断ゼロの無期限停止になる。
+for _flag in --pr --results-dir; do
+  timeout 5 bash "$TARGET" "$_flag" >/dev/null 2>&1
+  _rc=$?
+  if [ "$_rc" -eq 124 ]; then
+    fail "TC-18: '$_flag' が argv 末尾で hang した (rc=124)"
+  else
+    pass "TC-18: '$_flag' が argv 末尾でも終了する (rc=$_rc)"
+  fi
+done
 
 echo "=== TC-13: 全経路で stdout を汚さない (marker は stderr 契約) ==="
 run_scope --pr 42 --results-dir "$RESULTS"
