@@ -168,11 +168,11 @@ assert_grep "T-03e the finding anchors to the first physical line" "$OUT" \
   'continued\.sh:3: mktemp-derived-path'
 
 # One logical line can create more than one handle. `a=$(mktemp) && b=$(mktemp)`
-# is in-tree (lib/git-status-filtered.sh:45), and the lib form reaches the
-# scanner as one line whenever a `&& \` continuation joins two calls. Registering
-# only the first leaves the rest untracked, and a derivation from an untracked
-# handle reads as clean — so each spelling needs its own second-handle
-# assertion, not just a count.
+# is in-tree (the tmp_out / tmp_err pair in lib/git-status-filtered.sh), and the
+# lib form reaches the scanner as one line whenever a `&& \` continuation joins
+# two calls. Registering only the first leaves the rest untracked, and a
+# derivation from an untracked handle reads as clean — so each spelling needs
+# its own second-handle assertion, not just a count.
 cat > "$FIXTURES/multi-handle.sh" <<'FIX'
 #!/bin/bash
 tmp_out=$(mktemp) && tmp_err=$(mktemp)
