@@ -208,14 +208,18 @@ BEGIN { nvars = 0 }
 { L[NR] = $0 }
 
 # Every tempfile handle this line creates, space-separated, or "" when it
-# creates none. Both spellings count: the raw `x=$(mktemp` / `x="$(mktemp`
-# assignment, and the lib's out-variable form `rite_tempfile_new x` /
-# `rite_tempdir_new x`. One logical line can create several — `a=$(mktemp) &&
-# b=$(mktemp)` is in-tree (lib/git-status-filtered.sh) and the joined `&& \`
-# continuation reaches here as one line — so every match is collected. Stopping
-# at the first one leaves the rest untracked, and a derivation from an untracked
-# handle is silently clean: the same "did not look" folded into "found nothing"
-# that this checker exists to catch.
+# creates none. Three spellings count: the raw `x=$(mktemp` / `x="$(mktemp`
+# assignment, the lib's out-variable form `rite_tempfile_new x` /
+# `rite_tempdir_new x`, and `x=$(bash .../_mktemp-stderr-guard.sh ...)` — that
+# guard runs mktemp internally, so its output is a real tempfile handle and a
+# path derived from it loses the same guarantee. Tracking only the first two
+# leaves the guard's 11 in-tree call sites' derivations silently clean.
+# One logical line can create several — `a=$(mktemp) && b=$(mktemp)` is in-tree
+# (the tmp_out / tmp_err pair in lib/git-status-filtered.sh) and the joined
+# `&& \` continuation reaches here as one line — so every match is collected.
+# Stopping at the first one leaves the rest untracked, and a derivation from an
+# untracked handle is silently clean: the same "did not look" folded into "found
+# nothing" that this checker exists to catch.
 function handle_targets(s,   t, p, out, rest) {
   out = ""
   rest = s
@@ -231,6 +235,18 @@ function handle_targets(s,   t, p, out, rest) {
     sub(/^rite_temp(file|dir)_new[[:space:]]+/, "", t)
     out = out " " t
     rest = substr(rest, RSTART + RLENGTH)
+  }
+  # The assignment and the guard name can sit far apart on a joined logical line
+  # (`x=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \` …),
+  # so the name is required on the line but not adjacent to the `=`.
+  if (index(s, "_mktemp-stderr-guard.sh") > 0) {
+    rest = s
+    while (match(rest, /[A-Za-z_][A-Za-z0-9_]*="?\$\([[:space:]]*bash/)) {
+      t = substr(rest, RSTART, RLENGTH)
+      p = index(t, "=")
+      out = out " " substr(t, 1, p - 1)
+      rest = substr(rest, RSTART + RLENGTH)
+    }
   }
   return out
 }

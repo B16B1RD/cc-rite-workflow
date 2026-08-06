@@ -194,6 +194,31 @@ assert_grep "T-03g the lib form's first handle is tracked" "$OUT" \
 assert_grep "T-03g the lib form's second handle is tracked" "$OUT" \
   'multi-handle\.sh:8: mktemp-derived-path .*\$err'
 
+# The third spelling: _mktemp-stderr-guard.sh runs mktemp internally, so its
+# output is a real handle. Eleven hooks take one this way, and the assignment is
+# routinely split from the guard name by a backslash continuation — tracking
+# only the two obvious spellings leaves every derivation from those clean.
+cat > "$FIXTURES/guard-handle.sh" <<'FIX'
+#!/bin/bash
+gh_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
+  "rite-gh-err") || gh_err=""
+cp src "$gh_err.part"
+FIX
+rc=$(run_on guard-handle.sh)
+assert "T-03h a stderr-guard handle is tracked" "1" "$rc"
+assert_grep "T-03h the finding names the guard handle" "$OUT" \
+  'guard-handle\.sh:4: mktemp-derived-path .*\$gh_err'
+
+# A `x=$(bash ...)` that is *not* the guard must stay untracked, or every
+# subprocess capture in the tree becomes a handle.
+cat > "$FIXTURES/plain-bash-capture.sh" <<'FIX'
+#!/bin/bash
+out=$(bash ./other-helper.sh)
+cp src "$out.part"
+FIX
+rc=$(run_on plain-bash-capture.sh)
+assert "T-04h a non-guard bash capture is not a handle" "0" "$rc"
+
 # --- T-04: the shapes that must stay quiet ----------------------------------
 # Two handles, neither derived. The fixture must make the checker actually track
 # something — a file with no handle at all would pass under any implementation.
