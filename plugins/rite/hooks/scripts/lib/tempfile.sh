@@ -9,8 +9,9 @@
 # is written from scratch in every new helper and each writing is an
 # independent chance to get it wrong. mktemp failures were silenced into an
 # empty path (`x=$(mktemp 2>/dev/null) || x=""`) with no diagnostic; cleanup was
-# registered only for EXIT so Ctrl-C left the file behind; and the registration
-# was written *after* the mktemp, leaving a window in which a signal orphans the
+# registered only for EXIT, which does fire on INT/TERM/HUP but cannot set the
+# exit code, so an interrupted run reported success; and the registration was
+# written *after* the mktemp, leaving a window in which a signal orphans the
 # file. Prose conventions did not stop the recurrence — the convention is not
 # in front of the author at the moment they type `mktemp`. A function is.
 #
@@ -114,13 +115,20 @@ rite_tempfile_init() {
   # plain length test refuses to initialise in those contexts and blames a
   # handler the caller never wrote. Such a signal also cannot kill the process,
   # so there is nothing to clean up: skip it and install the rest.
+  #
+  # EXIT is excluded from that exemption. It is not a signal, so it is never
+  # inherited as ignored — `trap -- '' EXIT` only ever appears because the caller
+  # wrote it, and unlike an ignored signal it still fires. Exempting it would
+  # return success with no cleanup arranged at all, which is the silent leak this
+  # lib exists to remove. Keeping EXIT strict also means install_sigs is never
+  # empty: EXIT is either installed or the function has already returned 1.
   local sig existing
   local -a install_sigs=()
   for sig in EXIT INT TERM HUP; do
     existing=$(trap -p "$sig")
-    case "$existing" in
-      "") install_sigs+=("$sig") ;;
-      "trap -- '' "*) : ;;   # inherited SIG_IGN — cannot fire, nothing to clean up
+    case "$sig:$existing" in
+      *:"") install_sigs+=("$sig") ;;
+      INT:"trap -- '' "*|TERM:"trap -- '' "*|HUP:"trap -- '' "*) : ;;
       *)
         echo "ERROR: rite_tempfile_init: a $sig handler is already installed; installing over it would silently drop it" >&2
         echo "  Fix: call 'rite_tempfile_init --caller-traps' and invoke rite_tempfile_cleanup from your own handler" >&2

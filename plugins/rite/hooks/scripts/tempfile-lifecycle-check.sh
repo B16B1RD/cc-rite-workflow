@@ -27,9 +27,10 @@
 #
 #   Unbraced `$tmp_suffix` is NOT a derivation: bash reads the whole run of
 #   [A-Za-z0-9_] as one name, so that is the variable `tmp_suffix`. Treating it
-#   as one flags every sibling variable sharing a prefix. The dirname and
-#   basename idioms (`${tmp%/*}`, `${tmp##*/}`) are excluded for the same
-#   reason — they extract a component, they do not derive a sibling path.
+#   as one flags every sibling variable sharing a prefix. That is the only
+#   spelling carved out — the dirname and basename idioms are reported like any
+#   other strip expansion, because an exclusion for them suppressed no measured
+#   false positive in this tree while hiding `"${tmp##*/}.log"`.
 #
 # Deliberately NOT detected: `x=$(mktemp 2>/dev/null) || x=""`. It reads like the
 #   silencing defect, but it is the house idiom for a non-blocking stderr-capture
@@ -42,9 +43,9 @@
 #   excluding tests/ (fixtures embed the pattern on purpose).
 #
 # Exclusion: a `drift-check-ignore` marker on the finding line or on the line
-#   directly above it. The same marker name is used by sh-cross-ref-check.sh
-#   (same line only) and bash-heaviness-check.sh (anywhere in the block); the
-#   line-above form is specific to this checker.
+#   directly above it. The same marker name is used by sh-cross-ref-check.sh and
+#   number-reference-check.sh (same line only) and bash-heaviness-check.sh
+#   (anywhere in the block); the line-above form is specific to this checker.
 #
 # Usage:
 #   tempfile-lifecycle-check.sh [--all] [--target FILE]... [--repo-root DIR]
@@ -230,24 +231,31 @@ function derived_use(s, needle,   pos, rest, c) {
   return 0
 }
 
-# True when the line derives a path from handle `v` in any of the spellings that
-# occur in practice: a dot / dash / word suffix on `$v`, `${v}` or `"$v"`, or a
-# prefix/suffix-strip expansion.
+# True when the line derives a path from handle `v`. The spellings are the ones
+# that occur in practice: a dot / dash / word suffix on `$v`, `${v}`, `"$v"` or
+# `"${v}"`, or a prefix/suffix-strip expansion.
+#
+# Unbraced `$v_suffix` is deliberately absent: bash reads the whole run of
+# [A-Za-z0-9_] as one name, so `$tmp_bak` is the variable `tmp_bak`, not a
+# derivation of `$tmp`. Treating it as one flags every sibling variable that
+# shares a prefix (`$pr_view_err` vs `$pr_view_err_oneline`).
 function derived_any(s, v) {
   if (derived_use(s, "$" v ".")) return 1
   if (derived_use(s, "$" v "-")) return 1
   if (derived_use(s, "${" v "}")) return 1
-  if (index(s, "${" v "}.") > 0) return 1
-  if (index(s, "${" v "}-") > 0) return 1
+  if (derived_use(s, "${" v "}.")) return 1
+  if (derived_use(s, "${" v "}-")) return 1
   if (derived_use(s, "\"$" v "\"")) return 1
   if (index(s, "\"$" v "\".") > 0) return 1
   if (index(s, "\"$" v "\"-") > 0) return 1
-  # Strip expansions derive a sibling path — except the dirname and basename
-  # idioms, which extract a component of the same path and are house style here.
-  if (index(s, "${" v "%/*}") > 0) return 0
-  if (index(s, "${" v "%%/*}") > 0) return 0
-  if (index(s, "${" v "#*/}") > 0) return 0
-  if (index(s, "${" v "##*/}") > 0) return 0
+  if (derived_use(s, "\"${" v "}\"")) return 1
+  if (index(s, "\"${" v "}\".") > 0) return 1
+  if (index(s, "\"${" v "}\"-") > 0) return 1
+  # Prefix/suffix-strip expansions need no suffix test: rewriting a tempfile path
+  # with an expansion is only ever done to derive another path. The dirname and
+  # basename idioms are not carved out: an exclusion for them suppressed no
+  # measured false positive in this tree, and it cost the suffixed forms
+  # (`"${tmp##*/}.log"`) that are derivations by any reading.
   if (index(s, "${" v "%") > 0) return 1
   if (index(s, "${" v "#") > 0) return 1
   return 0
@@ -300,7 +308,7 @@ for t in "${TARGETS[@]}"; do
     SKIPPED=$((SKIPPED + 1))
     continue
   fi
-  awk -v fname="$t" -f "$AWK_PROG" -- "$t" >> "$FINDINGS_FILE"
+  awk -v fname="$t" -f "$AWK_PROG" "$t" >> "$FINDINGS_FILE"
   awk_rc=$?
   if [ "$awk_rc" -ne 0 ]; then
     echo "WARNING: awk failed on $t (rc=$awk_rc) — file not scanned" >&2

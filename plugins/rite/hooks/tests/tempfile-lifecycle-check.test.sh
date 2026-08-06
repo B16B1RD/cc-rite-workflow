@@ -107,6 +107,10 @@ cp src "$tmp-1"
 cp src "${tmp}_bak"
 cp src "$tmp".part
 cp src "$tmp"_bak
+cp src "${tmp}".part
+cp src "${tmp}"-1
+echo "${tmp##*/}.log"
+cp src "${tmp%/*}/planted"
 FIX
 rc=$(run_on suffix-forms.sh)
 assert "T-03d dash / braced / quoted derived forms are all flagged" "1" "$rc"
@@ -114,6 +118,14 @@ assert_grep "T-03d \$tmp-1 is a finding" "$OUT" 'suffix-forms\.sh:3: mktemp-deri
 assert_grep "T-03d \${tmp}_bak is a finding" "$OUT" 'suffix-forms\.sh:4: mktemp-derived-path'
 assert_grep "T-03d \"\$tmp\".part is a finding" "$OUT" 'suffix-forms\.sh:5: mktemp-derived-path'
 assert_grep "T-03d \"\$tmp\"_bak is a finding" "$OUT" 'suffix-forms\.sh:6: mktemp-derived-path'
+# Quoting the braces must not change the verdict. Treating `"${tmp}".part`
+# differently from `"$tmp".part` is the asymmetry this row exists to hold shut.
+assert_grep "T-03d \"\${tmp}\".part is a finding" "$OUT" 'suffix-forms\.sh:7: mktemp-derived-path'
+assert_grep "T-03d \"\${tmp}\"-1 is a finding" "$OUT" 'suffix-forms\.sh:8: mktemp-derived-path'
+# A component extraction with a suffix bolted on is a sibling path by any
+# reading, so the dirname / basename spellings get no carve-out.
+assert_grep "T-03d \"\${tmp##*/}.log\" is a finding" "$OUT" 'suffix-forms\.sh:9: mktemp-derived-path'
+assert_grep "T-03d \"\${tmp%/*}/planted\" is a finding" "$OUT" 'suffix-forms\.sh:10: mktemp-derived-path'
 
 # Backslash continuation must not hide a derived path from the scan.
 cat > "$FIXTURES/continued.sh" <<'FIX'
@@ -151,19 +163,10 @@ tmp=$(mktemp)
 tmp_err=$(mktemp)
 some_cmd 2>"$tmp_err" > "$tmp"
 echo "wrote to $tmp."
+printf "wrote %s" "${tmp}."
 FIX
 rc=$(run_on prefix-sibling.sh)
 assert "T-04b a prefix-sharing variable and a trailing-dot sentence are not flagged" "0" "$rc"
-
-# dirname / basename extract a component of the same path — house style here.
-cat > "$FIXTURES/path-components.sh" <<'FIX'
-#!/bin/bash
-tmp=$(mktemp)
-echo "wrote ${tmp##*/}"
-mkdir -p "${tmp%/*}"
-FIX
-rc=$(run_on path-components.sh)
-assert "T-04c dirname / basename expansions are not flagged" "0" "$rc"
 
 cat > "$FIXTURES/marker.sh" <<'FIX'
 #!/bin/bash
@@ -211,10 +214,22 @@ assert_grep "real repo run emits the count line" "$SANDBOX/real.txt" \
   '==> Total tempfile-lifecycle findings: 0'
 assert_grep "real repo run actually scanned files (not a zero-target no-op)" "$SANDBOX/real_err.txt" \
   'Scanning [0-9][0-9]+ file\(s\)'
-# Both scan dirs must be walked. A run narrowed to one of them still reports a
-# non-zero file count and zero findings, so the count alone cannot see it.
-real_targets=$(bash "$SCRIPT" --repo-root "$REPO_ROOT" --all --target plugins/rite/scripts/review-source-resolve.sh >/dev/null 2>&1; echo $?)
-assert "a file under plugins/rite/scripts/ is scannable in the real repo" "0" "$real_targets"
+# Both scan dirs must be walked. Asserting a file under the second dir is
+# *scannable* proves nothing — `--all --target x` is satisfied by the explicit
+# target alone, so narrowing SCAN_DIRS to the first dir leaves it green. Plant a
+# real defect under the second dir inside the sandbox and require the walk to
+# surface it: that fails the moment the dir drops out of the list.
+mkdir -p "$SANDBOX/plugins/rite/scripts"
+cat > "$SANDBOX/plugins/rite/scripts/zz-planted.sh" <<'FIX'
+#!/bin/bash
+tmp=$(mktemp)
+cp src "$tmp.part"
+FIX
+walk_rc=$(bash "$SCRIPT" --repo-root "$SANDBOX" --all >"$SANDBOX/walk.txt" 2>/dev/null; echo $?)
+assert "--all walks the second scan dir too (exit 1 from the planted defect)" "1" "$walk_rc"
+assert_grep "the finding under plugins/rite/scripts/ is reported" "$SANDBOX/walk.txt" \
+  'plugins/rite/scripts/zz-planted\.sh:3: mktemp-derived-path'
+rm -f "$SANDBOX/plugins/rite/scripts/zz-planted.sh"
 
 # --- CLI contract ------------------------------------------------------------
 assert "--all without a scan dir exits 2 by default" "2" \
@@ -244,19 +259,30 @@ assert "findings win over unscannable (exit 1, not 2)" "1" \
 # An unreadable directory under --all must reach the exit code, not just stderr.
 # The lint check table calls this script with --all and nothing else, so a walk
 # that silently lost files is the whole "clean bill" failure mode.
-UNREADABLE="$SANDBOX/plugins/rite/hooks/scripts/locked"
+#
+# The sandbox is a fresh one, not $SANDBOX: with findings present, exit 1 wins
+# regardless of what the walk lost, so the assertion could not fail. Nothing
+# clean here but the unreadable dir, which makes exit 2 the only way through.
+CLEAN_SANDBOX="$(make_plain_sandbox)"
+mkdir -p "$CLEAN_SANDBOX/plugins/rite/hooks/scripts"
+printf '%s\n' '#!/bin/bash' 'echo fine' > "$CLEAN_SANDBOX/plugins/rite/hooks/scripts/ok.sh"
+UNREADABLE="$CLEAN_SANDBOX/plugins/rite/hooks/scripts/locked"
 mkdir -p "$UNREADABLE"
 cp "$FIXTURES/bad.sh" "$UNREADABLE/inner.sh"
 if chmod 000 "$UNREADABLE" 2>/dev/null && [ ! -r "$UNREADABLE" ]; then
-  all_rc=$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet --all >/dev/null 2>"$SANDBOX/all_err.txt"; echo $?)
-  # findings from the readable fixtures still win the exit code
-  assert "--all with an unreadable directory does not return a clean 0" "1" "$all_rc"
-  assert_grep "--all reports the incomplete enumeration" "$SANDBOX/all_err.txt" \
-    '(enumeration failed|not a clean bill)'
+  all_rc=$(bash "$SCRIPT" --repo-root "$CLEAN_SANDBOX" --quiet --all >/dev/null 2>"$CLEAN_SANDBOX/all_err.txt"; echo $?)
+  assert "--all with an unreadable directory exits 2, not a clean 0" "2" "$all_rc"
+  # Split, not alternated: the WARNING alone is satisfied by a walk that reports
+  # the failure and still counts nothing, which is the bug this row guards.
+  assert_grep "--all names the failed enumeration" "$CLEAN_SANDBOX/all_err.txt" \
+    'enumeration failed'
+  assert_grep "--all counts it as unscannable rather than a clean bill" "$CLEAN_SANDBOX/all_err.txt" \
+    'not a clean bill'
   chmod 755 "$UNREADABLE" 2>/dev/null
 else
   skip "--all unreadable-directory case (chmod 000 not effective, likely running as root)"
   chmod 755 "$UNREADABLE" 2>/dev/null
 fi
+rm -rf "$CLEAN_SANDBOX"
 
 print_summary "$(basename "$0")"

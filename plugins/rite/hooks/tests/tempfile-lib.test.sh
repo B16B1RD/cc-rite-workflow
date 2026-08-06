@@ -186,8 +186,8 @@ done
 
 # The handlers are also asserted by name, so a future refactor that leaves them
 # installed but pointing elsewhere is visible.
-# No pipe into grep -q here: the checker this PR ships flags exactly that shape,
-# and the tests must not need the tests/ exclusion to stay compliant.
+# A `case` rather than a pipe into grep -q: under pipefail the consumer's early
+# exit can hand the producer a SIGPIPE and turn the pipeline into a false 141.
 rc=$(run_child '
 rite_tempfile_init || exit 90
 for s in INT TERM HUP; do
@@ -242,6 +242,21 @@ assert_grep "T-02d the refusal points at --caller-traps" "$SANDBOX/err" \
 assert_grep "T-02d the caller's own EXIT handler still ran" "$SANDBOX/out" \
   'caller-exit-handler-ran'
 
+# `trap '' EXIT` must be refused too. EXIT is not a signal, so it is never
+# inherited as ignored — the ignore form only appears because the caller wrote
+# it, and unlike an ignored signal it still fires. Exempting it the way the
+# INT/TERM/HUP inherited-SIG_IGN case is exempted returns success with no
+# cleanup arranged, which is the leak this lib exists to remove.
+rc=$(run_child '
+trap "" EXIT
+init_rc=0; rite_tempfile_init || init_rc=$?
+[ "$init_rc" -eq 1 ] || exit 80
+exit 0
+' TMPDIR="$SANDBOX")
+assert "T-02d init refuses an EXIT handler set to ignore" "0" "$rc"
+assert_grep "T-02d the ignore-form refusal names EXIT" "$SANDBOX/err" \
+  'a EXIT handler is already installed'
+
 # The same refusal must cover the signal handlers — checking EXIT alone leaves
 # the caller's INT/TERM/HUP handlers to be clobbered without a word.
 for existing_sig in INT TERM HUP; do
@@ -288,6 +303,47 @@ exit "$tag_rc"
 assert "T-02f invalid out-variable / tag are both refused" "1" "$rc"
 assert_grep "T-02f the tag charset refusal is explicit" "$SANDBOX/err" \
   "tag '\.\./escape' contains characters outside"
+
+# A bracket name is the case the identifier check actually exists for. Unlike
+# `bad name`, which bash rejects on its own, `printf -v 'a[0]'` succeeds — it is
+# an array write. Without this pin, deleting the check leaves the suite green
+# while `rite_tempfile_new 'PATH[0]'` corrupts PATH and returns 0.
+rc=$(run_child '
+rite_tempfile_init || exit 90
+br_rc=0; rite_tempfile_new "a[0]" "x" || br_rc=$?
+[ "$br_rc" -eq 1 ] || exit 79
+exit 0
+' TMPDIR="$SANDBOX")
+assert "T-02f an out-variable naming an array element is refused" "0" "$rc"
+assert_grep "T-02f the bracket-name refusal is explicit" "$SANDBOX/err" \
+  "is not a valid variable name"
+
+# A failed assignment must not return success. The path is already registered by
+# then, so the file is still reclaimed — but the caller's variable holds its old
+# value, and returning 0 would send the caller off to write to it.
+rc=$(run_child '
+rite_tempfile_init || exit 90
+readonly f=preset
+ro_rc=0; rite_tempfile_new f "ro" || ro_rc=$?
+[ "$ro_rc" -eq 1 ] || exit 79
+[ "$f" = "preset" ] || exit 78
+[ "${#_RITE_TMP_PATHS[@]}" -eq 1 ] || exit 77
+exit 0
+' TMPDIR="$SANDBOX")
+assert "T-02f a readonly out-variable fails loudly and still registers the path" "0" "$rc"
+assert_grep "T-02f the assignment failure is reported" "$SANDBOX/err" \
+  'could not assign the path'
+
+# An unknown flag must not be swallowed into the installed-traps default: a
+# caller that typo'd --caller-trap would silently get the opposite mode.
+rc=$(run_child '
+init_rc=0; rite_tempfile_init --nope || init_rc=$?
+[ "$init_rc" -eq 1 ] || exit 80
+exit 0
+' TMPDIR="$SANDBOX")
+assert "T-02f an unknown init argument is refused" "0" "$rc"
+assert_grep "T-02f the unknown-argument refusal names the flag" "$SANDBOX/err" \
+  "unknown argument '--nope'"
 
 # The lib's own namespace is reserved. `printf -v _RITE_TMP_PATHS` would write
 # element 0 of the live registry while returning success.

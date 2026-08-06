@@ -208,7 +208,7 @@ OK patterns:
 
 ### tempfile は lib 経由で作る
 
-**Rule**: 新規 helper で tempfile / tempdir が要るときは `mktemp` を直接書かず、`hooks/scripts/lib/tempfile.sh` を source して `rite_tempfile_init` → `rite_tempfile_new <outvar> [tag]`（ディレクトリは `rite_tempdir_new`）を使う。自前の handler を既に持つ helper は `rite_tempfile_init --caller-traps` + 自 handler からの `rite_tempfile_cleanup` で合成する（既定の `rite_tempfile_init` は EXIT/INT/TERM/HUP のいずれかに既存 handler があると上書きせず rc=1 で拒否する。無視状態で継承した signal は handler ではないので拒否対象にならず、その signal だけ設置を skip する）。**本節が SoT**で、`CONTRIBUTING.md` の Hook Conventions には要点のみを置く。
+**Rule**: 新規 helper で tempfile / tempdir が要るときは `mktemp` を直接書かず、`hooks/scripts/lib/tempfile.sh` を source して `rite_tempfile_init` → `rite_tempfile_new <outvar> [tag]`（ディレクトリは `rite_tempdir_new`）を使う。自前の handler を既に持つ helper は `rite_tempfile_init --caller-traps` + 自 handler からの `rite_tempfile_cleanup` で合成する（既定の `rite_tempfile_init` は EXIT/INT/TERM/HUP のいずれかに既存 handler があると上書きせず rc=1 で拒否する。無視状態で継承した signal は handler ではないので拒否対象にならず、その signal だけ設置を skip する。EXIT は signal ではなく継承もされないので、`trap '' EXIT` は caller が書いた handler として拒否する）。**本節が SoT**で、`CONTRIBUTING.md` の Hook Conventions には要点のみを置く。
 
 **Why**: 生成・cleanup 登録・signal 処理を毎回手書きしていたことが、mktemp 失敗の無音化・EXIT のみで INT/TERM/HUP を落とす cleanup・登録前に signal を受ける窓、という同型バグの反復再発源だった。EXIT のみの trap も INT/TERM/HUP で発火はするが exit code を決められないため、中断された run が成功として報告されうる。lib は canonical 順序（handler 設置 → mktemp → 即登録）を構造的に強制し、130/143/129 を決定論的に返し、`rite_tempfile_new` は fail-loud なので「空パスに落ちて黙って壊れる」書き方自体が無くなる。
 
