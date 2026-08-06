@@ -228,8 +228,9 @@ rite-workflow/
 │ │ ├── number-reference-check.sh # lint Phase 3.5 Issue/PR 番号参照 (#NNN) 検出 (CHANGELOG + lint.md)
 │ │ ├── tmp-hardcode-check.sh # lint Phase 3.5 sandbox 非互換パターン (mktemp+/tmp テンプレート・/tmp 直書き・push の upstream -u) 検出
 │ │ ├── dollar-zero-check.sh # lint Phase 3.5 skill 本文の fenced block 内 位置パラメータ 0 参照 検出 (Skill loader が起動引数へ展開する)
+│ │ ├── tempfile-lifecycle-check.sh # lint Phase 3.5 mktemp 派生パス・pipefail 下の grep -q consumer 検出 (lib/tempfile.sh で消せない残余)
 │ │ ├── pr-review-post-comment-read.sh / review-raw-json-extract.sh / fix-reason-coverage-check.sh # skill 本文から退避した awk プログラム (loader 展開の回避)
-│ │ ├── lib/ # 共有ライブラリ (git-remote.sh / git-status-filtered.sh / wiki-config.sh / worktree-git.sh)
+│ │ ├── lib/ # 共有ライブラリ (git-remote.sh / git-status-filtered.sh / tempfile.sh / wiki-config.sh / worktree-git.sh)
 │ │ └── tests/ # hooks/scripts レベルのテストスイート
 │ └── tests/ # Hook-level test suite (shell-based)
 ├── templates/
@@ -1314,6 +1315,8 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `number-reference-check.sh` | `/rite:lint` Phase 3.5 — detect Issue/PR number references (`#NNN` / `Issue #NNN` / `PR #NNN`) that crept back into the number-free documentation surface (`CHANGELOG.md` / `CHANGELOG.ja.md` / `lint.md`) | — |
 | `tmp-hardcode-check.sh` | `/rite:lint` Phase 3.5 — detect sandbox-incompatible patterns (`mktemp` + `/tmp` template, fixed `/tmp` path hardcode, `git push` upstream `-u`) in `plugins/rite/**/*.{md,sh}` + `docs/**/*.md` (test harnesses / error-catalog / self excluded) | — |
 | `dollar-zero-check.sh` | `/rite:lint` Phase 3.5 — detect positional-parameter-zero references inside fenced code blocks in `skills/**/*.md`. The Skill loader expands them to the invocation argument string, silently corrupting the embedded awk/shell program; real `hooks/**/*.sh` are immune and excluded | — |
+| `tempfile-lifecycle-check.sh` | `/rite:lint` Phase 3.5 — detect the two tempfile/pipeline defects that `lib/tempfile.sh` cannot remove: a write target derived from a `mktemp` result (loses `O_CREAT|O_EXCL`), and `grep -q` consuming a pipeline under `pipefail` (producer takes SIGPIPE). `printf`/`echo`-headed pipelines and the sanctioned `mktemp 2>/dev/null` stderr-slot idiom are out of contract | — |
+| `lib/tempfile.sh` | Sourced lib owning the tempfile lifecycle — `rite_tempfile_init` installs the EXIT/INT/TERM/HUP handlers, `rite_tempfile_new` / `rite_tempdir_new` create-and-register in one step (out-variable form, so a subshell cannot lose the registration), `rite_tempfile_release` / `rite_tempfile_cleanup` remove. Required for new `hooks/` / `scripts/` helpers (coding-principles.md "Shell Helper Conventions") | — |
 | `pr-review-post-comment-read.sh` | `/rite:pr-review` 引数解決 — read `pr_review.post_comment` from `rite-config.yml` with a single SIGPIPE-safe awk (moved out of the skill body so the loader cannot corrupt it) | — |
 | `review-raw-json-extract.sh` | `/rite:fix` レビュー結果取得 — extract the JSON payload of the last Raw JSON section from a `/rite:pr-review` PR comment body (same reason for living in a real file) | — |
 | `fix-reason-coverage-check.sh` | `/rite:fix` DoD 検証 (手動実行) — verify every emitted `WM_UPDATE_FAILED` reason appears as a row in fix.md's reason table; rc=1 lists the undocumented ones | — |

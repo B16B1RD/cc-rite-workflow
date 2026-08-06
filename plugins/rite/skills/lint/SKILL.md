@@ -465,6 +465,7 @@ Run every rite-workflow internal quality check listed in the check table below t
 | 15 | Sentinel contract check | `hooks/scripts/sentinel-contract-check.sh --all` | `sentinel_contract` | `Total sentinel-contract findings: (\d+)` |
 | 16 | Tmp hardcode check | `hooks/scripts/tmp-hardcode-check.sh --all --skip-if-no-target` | `tmp_hardcode` | `Total tmp-hardcode findings: (\d+)` |
 | 17 | Dollar-zero check | `hooks/scripts/dollar-zero-check.sh --all --skip-if-no-target` | `dollar_zero` | `Total dollar-zero findings: (\d+)` |
+| 18 | Tempfile lifecycle check | `hooks/scripts/tempfile-lifecycle-check.sh --all --skip-if-no-target` | `tempfile_lifecycle` | `Total tempfile-lifecycle findings: (\d+)` |
 
 **Execution loop** — for each table row, run (`{script}` = Invocation column path, `{args}` = Invocation column args, `{prefix}` = Vars prefix column):
 
