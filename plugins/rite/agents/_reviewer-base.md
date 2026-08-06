@@ -388,6 +388,82 @@ Hypothetical Exception Category 適用は不要 (コメント品質は security 
 
 **例 3 — 境界ケース**: 「helper が emit する marker 名が仕様書と実装で食い違う」。**実装側を実行して仕様書どおりの marker が出ないことを観測できる**なら挙動的帰結 (アンカー適格)。**2 つの文書の marker 名を grep で並べただけ**なら字面整合 (不適格)。同じ指摘でも repro の観測対象で決まる。
 
+## テスト網羅性 Finding Gate
+
+<a id="test-coverage-finding-gate"></a>
+
+> **Reference**: 語彙定義は [`severity-levels.md` §帰結クラス軸](../references/severity-levels.md#帰結クラス軸-consequence-class)、blocking 判定側の適用手順は [`assessment-rules.md` §5.3.0.M](../skills/fix/references/assessment-rules.md#530m-実測必須ゲート-measured-confirmed-gate) を参照。本セクションは reviewer 側の **authoring Gate** (契約対応の判定手順・アンカー適格性・severity 保持規則) を一元化する。直上の §手順書・仕様書ドメイン Finding Gate と同型・同居の Gate であり、新しい機構ではない。
+
+### Scope: テスト網羅性への指摘
+
+本 Gate は **「テストが挙動を固定していない」型の指摘** — mutation 生存 (ある行を変異させてもスイートが green)、assert の検証力不足、pin 欠落 — に適用する。**本 Gate は finding を生む側ではない**: `test-reviewer.md` の Detection Process と Review Checklist (「Missing Critical Tests」等) は従来どおり finding を生み、本 Gate はその**後**に働いて severity を変えずに blocking 集合への帰属だけを決める。調査深度・報告義務・cycle 1 の徹底性はいずれも不変。
+
+### 契約対応の判定手順
+
+blocking か否かは「**その mutation が無効化するのは Issue 契約が規定する挙動か、実装内部の細部か**」で決まる。判定材料は Issue body に固定し、reviewer の主観に開かない:
+
+1. PR body の `refs #N` / `Closes #N` から対象 Issue を解決する
+2. その Issue の **`## 4. Implementation Details` §4.4 Behavioral Requirements の MUST 箇条書き**と、**`## 5. Acceptance Criteria` 各 AC の `Then` 節**を読む
+3. mutation が無効化する挙動が上記のいずれかに**文として現れていれば契約対応**、現れていなければ実装内部
+
+**契約リンクを解決できない場合 (PR body に Issue 参照が無い / Issue 取得に失敗) は blocking へ倒す** — 契約対応とみなして扱う。non-blocking を既定にすると実指摘を無音で握り潰すため、fail-loud 側に倒す。
+
+### 判別子
+
+| クラス | 判別子 | `Verification:` アンカー |
+|---|---|---|
+| **契約対応の未 pin** | 契約 (§4.4 MUST / §5 AC の `Then`) が規定する挙動**そのもの**を無効化する変異を加えてもスイートが green。または当該挙動に対応するテストが存在しない | **適格** — アンカーを添付し blocking のまま fix へ渡る |
+| **網羅的 pin 強化** | 契約挙動を丸ごと壊す変異は既存 pin が検出する。生存するのは**より細粒度の**変異 (連言の片側弱化・境界の一方のみ・実装が内部に持つ分岐や helper) だけ | **不適格** — アンカーを付けずに報告し non-blocking として記録する |
+| **テストの誤り (正しさ)** | テストが**名乗った挙動に対してどんな実装でも落ちない** (トートロジーな assert / fixture が対象経路に到達せず空振り / 仕様と逆を固定) | **適格** — 網羅性ではなく正しさの欠陥のため本 Gate の対象外。blocking のまま |
+
+**3 行目は脚注ではなく独立クラス**である。「変異が生存する」と「テストが常時 pass する」は別物で、前者はテストに検証力があるが特定の細粒度変異を捕まえないこと、後者はテストがそもそも落ちようがないことを指す。判別は **「そのテストは、名乗った挙動に対して落ちうるか」** の一問で行う — 落ちようがないなら正しさの欠陥 (blocking)、落ちうるが変異 M を捕まえないなら網羅性 (契約対応で分岐)。
+
+### アンカー適格性の帰結
+
+網羅的 pin 強化クラスは `Verification:` アンカーを持たないため、実測必須ゲート ([severity-levels.md §実測必須ゲート](../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)) が `measured=false` として **non-blocking** に分類し、4 経路すべてに記録する。
+
+**mutation を実行したのにアンカーを付けないのは矛盾ではない**。[§Verification: runtime 実測の添付](#verification-runtime-measurement) が実測と呼ぶのは「実際に走らせて観測した**誤動作**、または落ちるテスト」である。生存する mutant が示すのは HEAD の誤動作ではなく、**reviewer が持ち込んだ架空の欠陥に対する番人の不在**であり、スイートは green のままで何も落ちていない。契約対応クラスだけがアンカー適格なのは、そこで観測されるのが「契約が要求する挙動を除去しても成果物が気付かない」という、契約それ自体に照らした誤動作だからである。
+
+**mutation の実行結果そのものは `内容` 列の叙述に書く** (何を変異させ何件生存したか)。抑止されるのはアンカーの添付だけで、報告は従来どおり行う。ただし **`内容` 列で verification の語の直後にコロンを置かないこと** — 検出層の literal は大文字小文字を区別せず装飾文字・バッククォート・空白を吸収してからコロンに達するため、言及も母集団に入る。「アンカー」「verification フィールド」等の語で言い換える。**`Likelihood-Evidence:` には `runtime_observation` を使わないこと** — 同 Rules がこのラベルに対して実測アンカーの併記を無条件に要求するため、アンカー不適格クラスと衝突する。`existing_call_site` / `new_call_site` を使う。
+
+**severity は降格時も維持する** (`assessment-rules.md` §5.3.0.M「severity / scope は維持したまま blocking 集合から除外」)。CRITICAL の pin 強化要求が non-blocking になるのは設計どおり — severity は Impact 軸、blocking は実測軸であり両者は直交する。severity を下げて辻褄を合わせてはならない。
+
+**MUST NOT — `scope=nit-noted` への転用**: 網羅的 pin 強化クラスを non-blocking にする手段として `scope=nit-noted` を使ってはならない。nit-noted は実測必須ゲートの **対象外** (`gated` 偽) であり `non_blocking_findings[]` に載らないため、4 経路記録が失われる。scope は [Scope Assignment Flowchart](#scope-assignment-flowchart) の判定順序でのみ決める。
+
+**helper の 3 値判定には介入しない**: 本 Gate は「アンカーを添付するか否か」の **authoring 判断**であり、`scripts/review-measured-gate.sh` の 3 値判定 (`true` / `false` / 未判定) のロジックには一切触れない。
+
+### 手順書・仕様書ドメイン Gate と異なる点 (意図的な非対称)
+
+同型の Gate だが、判別子の構造が 1 点だけ異なる。同居する 2 Gate の差分を読み手が drift と誤認しないよう明示する:
+
+- **判別子が Issue body を参照する**: 散文 Gate の判別子は指摘内部で閉じる (repro が何を観測しているか) が、本 Gate は **Issue の §4.4 / §5 という外部文書**を参照しないと契約対応を決められない。これは「契約に対応するか」という問い自体が PR 外部の仕様を必要とするためで、参照先と読む節を上記「契約対応の判定手順」で固定することで主観に開かないようにしている。**解決不能時に blocking へ倒す既定**を持つのもこの非対称に由来する (散文 Gate は外部参照を持たないため同種の既定を必要としない)。
+- **severity プリセット表を置かない / `+` 行限定の diff scope 制約を課さない / Hypothetical Exception Categories の例外を持たない**: いずれも散文 Gate と同じ理由で持たない (それぞれ「消費者がいない」「finding を生むのではなく降格させるだけ」「例外は Likelihood 軸のもの」)。詳細は [§手順書・仕様書ドメイン Finding Gate](#prose-domain-finding-gate) の同名項を参照する (複製しない)。
+
+### 適用例
+
+**例 1 — 網羅的 pin 強化 (アンカー不適格)**: 「fix が cycle 1 で追加した抽出式の行アンカー `^` と `$` について、fixture が両者の論理積しか pin しておらず、片側だけを弱める mutant 4 本が生存する」(PR #2112 F-18 型)。契約 (#2041 の MUST) が規定するのは「記録コメントを durable な comment id で同定する」であり、行アンカーの片側弱化はその挙動を無効化しない (丸ごと壊す変異は既存 fixture が検出する)。→ アンカーを付けずに報告し、non-blocking として記録される。
+
+**例 2 — 契約対応の未 pin (アンカー適格)**: 「AC が規定する『id が指すコメントが記録コメントでなければ書き込まない』挙動について、検証述語を無効化してもスイートが green」。契約の `Then` 節が名指しする挙動そのものが除去可能なまま通る。→ `Verification: failing_test` アンカーに「述語を除去した worktree でスイート実行 ⇒ 全件 green (検出されず)」を記入して添付し、blocking のまま fix へ渡る (**実際の指摘に書くアンカーでは矢印を半角にすること** — 全角では正規形として検出されず降格する。本行が全角 `⇒` なのは、この Gate 文書を引用した指摘が恒久 blocking 化するのを避けるための文書側の退避であり、記入形式の指定ではない)。
+
+**例 3 — テストの誤り (対象外・blocking 維持)**: 「TC-4.16o''' は fixture が正規 marker を併せ持つため probe に到達せず空振りしている」(PR #2112 F-30 型)。このテストは probe がどう実装されていても落ちない = 名乗った挙動に対する検証力がゼロであり、網羅性ではなく正しさの欠陥。→ 本 Gate の対象外として従来どおり blocking。同じ指摘に併記された「probe の `^` と `[[:space:]]*` がどちらも未 pin」の側は網羅性クラスとして例 1 と同じ扱いになる — **1 つの指摘が両クラスにまたがる場合はクラスごとに分けて起票する**。
+
+**例 4 — 過去データでの再分類 (Issue #2116 AC-4)**: 凍結クローズに至った PR の churn テールを本規則で再分類すると、主燃料は non-blocking 側へ落ちる。
+
+| PR | finding | 契約対応 | 本規則での分類 |
+|---|---|---|---|
+| #2114 | F-04 rc→marker 変換の pin 不足 | 実装内部の変換 | 網羅的 pin 強化 → non-blocking |
+| #2114 | F-05 consumer 判定表のテスト不在 | 実装内部の判定表 | 網羅的 pin 強化 → non-blocking |
+| #2114 | F-06 gitignore ブロック配置の pin 不足 | 実装内部の配置 | 網羅的 pin 強化 → non-blocking |
+| #2112 | F-18 行アンカー片側 mutant 4 本生存 | 契約挙動は既存 pin が保護 | 網羅的 pin 強化 → non-blocking |
+| #2112 | F-21 tempfile グローバル化の未 pin | fix が導入した内部変更 | 網羅的 pin 強化 → non-blocking |
+| #2112 | F-29 `_is_record` 連言の片側弱化 3 mutant 生存 | 契約挙動は既存 negative control が保護 | 網羅的 pin 強化 → non-blocking |
+| #2112 | F-30 probe 2 要素の未 pin (空振り側を除く) | 実装内部の probe | 網羅的 pin 強化 → non-blocking |
+| #2112 | F-31 静的 pin の denylist が `declare` を素通り | fix 自身の pin の強化要求 | 網羅的 pin 強化 → non-blocking |
+| #2114 | F-01 marker field 順の非対称で helper 失敗が成功と報告される | — | 挙動の欠陥 (テスト網羅性指摘ではない) → blocking 維持 |
+| #2112 | F-30 TC-4.16o''' の空振り | — | テストの誤り → blocking 維持 |
+
+後半サイクルの pin 要求 8 件がすべて non-blocking へ落ち、実バグ (#2114 F-01 型) とテストの誤り (#2112 F-30 空振り側) は blocking に残る。
+
 ## Fail-Fast First
 
 Before recommending a fallback (`||` default, `try/catch` swallowing, null guard, default value substitution, retry-and-give-up), reviewers MUST first consider whether the correct fix is to **fail fast** — `throw` / `raise` / re-throw to the caller and let the existing error boundary handle it.
