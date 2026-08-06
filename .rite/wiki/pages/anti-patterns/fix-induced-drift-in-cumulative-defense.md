@@ -2,8 +2,10 @@
 title: "累積対策 PR の review-fix loop で fix 自体が drift を導入する"
 domain: "anti-patterns"
 created: "2026-04-21T10:35:00+00:00"
-updated: "2026-08-04T18:45:00+09:00"
+updated: "2026-08-06T02:49:27Z"
 sources:
+  - type: "fixes"
+    ref: "raw/fixes/20260806T002741Z-pr-2120.md"
   - type: "reviews"
     ref: "raw/reviews/20260804T060209Z-pr-2099.md"
   - type: "fixes"
@@ -433,9 +435,41 @@ cycle 4 で初検出された 2 件 (1 HIGH F-01: `flow-state-update-trap-isolat
 
 4 reviewer (code-quality / test / error-handling / security) 全員が独立に「評価: 可」(mandatory findings 0) + healthy self-assessment を出した時点で「累積対策 fractal pattern が収束した」と判定。本 PR では code-quality reviewer の判定文に `Cycle trajectory: 12 → 15 → 3 → 2 → **0** で完全収束を確認` と明記され、empirical reproduction による convergence 確認が成立した (cf. [`empirical-reproduction-over-invariant-reasoning.md`](../heuristics/empirical-reproduction-over-invariant-reasoning.md))。
 
+### PR #2120 — fix 由来の drift が genuine な穴を件数で上回った（5 cycle 定量）
+
+本ページの中心主張に **定量的な裏付け**が取れた事例。5 cycle 収束の指摘を由来別に分類すると次のようになった。
+
+| 由来 | 件数 | 内容 |
+|---|---|---|
+| cycle 0 の実装・テストの genuine な穴 | 6 | `.gitignore` guard の silent 化 / 順序契約の未 pin / JSON 型の未 pin / ISO 8601 の未 pin / mkdir 分岐の未 pin / AC-2 の移植性ギャップ |
+| **前 cycle の fix が導入した drift** | **7** | うち 6 件はコメント・assert の記述誤り、1 件は「防御を足したが pin を忘れた」 |
+| pre-existing（follow-up へ） | 5+ | `.gitignore` idiom の 4 コピー分岐ほか |
+
+blocking 件数の推移は **4 → 3 → 4 → 1 → 0**。cycle 3 で増えたのは、cycle 2 の修正が新たな指摘面（コメント）を作ったことと、cycle 3 で初めて mutation が到達した領域が surface したためである。
+
+**「直す量」より「直し方が生む新しい面」が支配的になりうる**という本ページの主張が、件数で確認された最初の事例である。
+
+#### cycle 1 fix が導入した 2 件の drift — いずれも「機構を直して記述を直さなかった」型
+
+1. **列挙への項目追加時に述語の適合を確認しなかった**: 仕様書の「A / B / C はいずれも WARNING を出して `return 0`」という列挙へ、fix が新しい経路 D を差し込んだ。ところが D だけは `return` せず処理を続行する。しかも**同一コミットが追加したコード内コメント自身が** "the append runs either way" と逆のことを書いており、doc とコードが 1 コミット内で自己矛盾した。
+
+   **列挙は「関連する項目の集合」ではなく「同じ述語を共有する集合」である。** 項目を足すときは共有述語が新項目にも成立するかを個別に検証し、成立しないなら列挙から外して別文にする。この検査は grep では出ず、列挙の述語を読んで新項目の実装と突き合わせる以外にない。レビュー側からは「列挙 + 新規追加行」という diff 形状で検出できる。
+
+2. **fail-loud 化の増分価値が、その出力を通す既存フィルタで消えていた**: 無音だった失敗経路を「WARNING + 原因の併記」へ格上げしたが、原因を通す中和フィルタがバイト単位で 0x80-0x9f を潰すため、ロケール依存の errno（日本語）が判読不能になった。primary WARNING は純 ASCII だったため無傷で、**静的レビューでは「原因を出している」ようにしか見えなかった**。
+
+   **fail-loud 化の価値は「何が起きたか」の情報量にあるので、その情報が出力経路の全段（中和・整形・字下げ・端末）を通過できるかを実測する。** 同じ経路に ASCII と非 ASCII が混在すると、ASCII 側だけを見て「動いている」と誤認する。
+
+#### 修正の方向 — 上流を制約する方が下流を緩めるより安全
+
+上記 2 の修正では、中和フィルタを弱める（`--c0-only` 等）選択肢もあったが、それは中和の目的そのものを削る。採ったのは失敗するコマンドに `LC_ALL=C` を前置して**上流メッセージを ASCII 化する**方法で、中和フィルタは何も変わらず、その行に対して no-op になるだけである。
+
+**「安全機構が邪魔をする」と感じたときは、安全機構を緩める前に、その機構に渡る入力を安全機構が問題視しない形へ変えられないかを探す。**
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](./asymmetric-fix-transcription.md)
+- [コメントの「正確化」は主張を強めがち — 実態へ合わせるより強度を下げる方が安全](../heuristics/comment-correction-prefers-weakening-over-restatement.md)
+- [同一箇所への指摘が N cycle 連続したら、その箇所が何番目のコピーかを数える](../heuristics/idiom-copy-count-decides-patch-vs-extract.md)
 - [HINT-specific 文言 pin で case arm 削除 regression を検知する](../patterns/hint-specific-assertion-pin.md)
 - [Test が early exit 経路で silent pass する false-positive](./test-false-positive-early-exit.md)
 - [新規 exit 1 経路 / sentinel type 追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する](../heuristics/canonical-list-count-claim-drift-anchor.md)

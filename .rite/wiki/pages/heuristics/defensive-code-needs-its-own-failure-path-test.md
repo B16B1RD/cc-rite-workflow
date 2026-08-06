@@ -4,8 +4,10 @@ title: "無音失敗を可視化する防御コードには、その防御コー
 domain: "heuristics"
 description: "silent failure（`|| true` 等）を WARNING 出力に是正した fix は、その WARNING 自体が将来の編集で無音化に退行しても検出できない。同一 cycle 内で複数 reviewer が独立にこのギャップを指摘するのは、防御コードの追加とそのテストカバレッジが別問題として見落とされやすいことの兆候。mutation testing（意図的に防御コードを退行させてテストが red になるか確認）で検証すると実効性を主張できる。"
 created: "2026-07-22T21:35:00+00:00"
-updated: "2026-07-22T21:35:00+00:00"
+updated: "2026-08-06T02:49:27Z"
 sources:
+  - type: "fixes"
+    ref: "raw/fixes/20260806T013904Z-pr-2120.md"
   - type: "reviews"
     ref: "raw/reviews/20260722T102818Z-pr-1970.md"
   - type: "fixes"
@@ -41,6 +43,16 @@ confidence: high
 - **失敗パステストの決定論性は「対象環境で確実に失敗する条件」を選ぶことで担保する。** 本ケースでは「mkdir -p の対象パスに既存の非ディレクトリファイルを置く」という POSIX 準拠の確実な失敗条件を使い、chmod・symlink 等の環境依存性が高い手法を避けた。
 - **新設したテストの実効性は mutation testing（意図的な退行 + red 確認）で実証できる。** 「アサーションが通っている」だけでは、そのアサーションが実際に対象コードの振る舞いに依存しているか（トートロジーでないか）は分からない。隔離環境（scratchpad 等、実リポジトリを汚さない場所）で対象コードを意図的に壊し、新設テストが red になることを確認するのが最も直接的な裏付けになる。
 
+### security 起因の防御はとくに pin を忘れやすい（PR #2120 cycle 4 実測）
+
+同じギャップが security 起因の修正で再現し、**なぜ忘れるのかが一般化できる形で観測された**。cycle 3 で security 指摘に応えて 4 つの WARNING に制御文字の中和を追加したが、その中和に回帰テストを付け忘れた。補間 9 箇所を素の変数展開へ戻しても hook 全 114 suite が green のまま通る状態で、test と security の 2 reviewer が独立に同じ mutation で実測した。
+
+**security 起因の修正は「脅威が塞がったか」の確認に意識が向き、「塞いだ状態が将来も維持されるか」の pin まで届かない。** 前者は 1 回の観測で完了する（実測して raw バイトが `?` になることを確認すれば済む）が、後者は assert として残さないと次の編集で消える。
+
+**対策は security fix のチェックリストに「この防御を外す mutation を当てて FAIL するか」を入れること。** cycle 1〜3 で繰り返し学んだはずのことが、cycle 3 の中和追加でだけ抜けていた。
+
+なお、部分的に中和した経路の regression test は素朴な形では書けない（隣接する未中和行が混ざる）。詳細は [制御文字中和を通した出力への grep assert はロケールで検出能力を失う](../anti-patterns/locale-dependent-error-message-grep-assertion.md) の「中和の pin は『隣の未中和行』に邪魔される」節を参照。
+
 ### 副次的な教訓: worktree 環境でのデバッグ時は plugin_root の参照先を要確認
 
 テスト失敗の原因調査中、手動デバッグで `plugin_root` をセッション worktree 内の修正済みコピーではなく main checkout の古いコピー（`/path/to/repo/plugins/rite/...`、md5sum が異なる）に向けてしまい、「fix したはずのコードが動いていない」ように見える偽の失敗を一時的に作り出した。worktree ベースの開発では、デバッグ用の一時スクリプトが参照する `plugin_root` 等のパスが、作業中のブランチが実際にチェックアウトされているディレクトリ（多くの場合セッション worktree）を指しているか、意識的に確認する必要がある。`md5sum` 等でファイル実体を比較するのが最も確実な切り分け方法。
@@ -58,3 +70,4 @@ confidence: high
 - [PR #1970 review cycle 2](../../raw/reviews/20260722T112806Z-pr-1970-cycle2.md)
 - [PR #1970 fix cycle 2](../../raw/fixes/20260722T113522Z-pr-1970-cycle2.md)
 - [PR #1970 review cycle 3 (mergeable, mutation test 実証)](../../raw/reviews/20260722T122232Z-pr-1970-cycle3.md)
+- [PR #2120 fix results (cycle 4) — security 起因の防御に pin が抜けた実例](../../raw/fixes/20260806T013904Z-pr-2120.md)

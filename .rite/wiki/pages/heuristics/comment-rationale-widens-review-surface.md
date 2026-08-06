@@ -4,8 +4,10 @@ title: "修正に添えるコメントは機構を語るほど次サイクルの
 domain: "heuristics"
 description: "「なぜこの防御が必要か」を機構レベルで説明すると、反証可能な断定が増えた分だけ次 cycle の指摘も増える。根拠はコメントではなくテストに置き、コメントには観測事実だけを残す。"
 created: "2026-08-03T07:46:56Z"
-updated: "2026-08-03T07:46:56Z"
+updated: "2026-08-06T02:49:27Z"
 sources:
+  - type: "reviews"
+    ref: "raw/reviews/20260806T005558Z-pr-2120.md"
   - type: "reviews"
     ref: "raw/reviews/20260803T051521Z-pr-2094.md"
   - type: "fixes"
@@ -63,6 +65,22 @@ confidence: high
 
 「2 箇所の文言を揃える」という指摘に対し literal を揃えただけでは、複製構造そのものが残るため同じ drift が再発する。**揃えるのではなく、複製を生む構造を消すところまで行く**（local 変数へ 1 度だけ束縛する等）。ただし共有変数への抽出が、2 文の構造（自動詞/他動詞）の違いで片方の文を作り替える必要を生むなら、それは「重複排除に見せた機構追加」になる — 文言を揃えるだけの最小編集で足りるなら、そちらを選ぶ。
 
+### 削減の効果は測れる（PR #2120 5 cycle 実測）
+
+PR #2120 で同じ現象が再現し、**削減の効果が cycle をまたいで定量観測された**。cycle 3 の指摘 7 件中 4 件が、cycle 2 で追加した約 20 行のコメント塊と 1 つの恒真 assert から出ていた。
+
+```
+cycle 2 → 3: コメント由来 4 件（分岐数の数え方 / errno 名 / 環境宣言の事実誤り + 恒真 assert）
+cycle 3 で約 20 行 → 約 8 行へ削減、恒真 assert を削除
+cycle 4: 2 件 → cycle 5: 1 件
+```
+
+5 cycle を通じた指摘の分類では、**前 cycle の fix が導入した drift が 7 件で、cycle 0 由来の genuine な穴 6 件を上回った**。うち 6 件がコメント・assert の記述誤りである。累積対策 PR では「直す量」より「直し方が生む新しい面」が支配的になりうる。
+
+**指摘の供給源が「コードの欠陥」から「自分が書いた説明」へ移ったことが、削減へ切り替える判断基準になる。** 個別訂正を続けると同じ面が残る。
+
+なお、訂正するにしても方向が 2 つある — 主張を実態へ合わせるか、主張の強度を下げるか。後者の方が安全である（[コメントの「正確化」は主張を強めがち](./comment-correction-prefers-weakening-over-restatement.md)）。
+
 ### 行番号アンカーは導入コミット内で自壊する
 
 他ファイルを指すときは行番号ではなく**一意な文字列**（シンボル名 / 定数名 / メッセージの一部）をアンカーにする。同一コミットで両方のファイルを触る修正では特に危険で、参照を導入したコミット自体が参照先に行を足すと、コミット時点で既にずれている。検出機構がファイル名接頭辞を要求する regex だと、同一文脈内の裸の `:NNN` 形式は機械検出を素通りする。
@@ -72,7 +90,9 @@ confidence: high
 - [Fix 修正コメント自身が canonical convention を破る self-drift](../anti-patterns/fix-comment-self-drift.md)
 - [列挙・全称主張を持つ記述は書き直しでは収束しない — 撤去だけが指摘面を消す](../anti-patterns/enumeration-claim-rewrite-never-converges.md)
 - [アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](./mutation-testing-measures-assertion-strength.md)
+- [コメントの「正確化」は主張を強めがち — 実態へ合わせるより強度を下げる方が安全](./comment-correction-prefers-weakening-over-restatement.md)
 
 ## ソース
 
 - [PR #2094 review results (cycle 3)](../../raw/reviews/20260803T051521Z-pr-2094.md)
+- [PR #2120 review results (cycle 3) — 削減の効果を 5 cycle で定量観測](../../raw/reviews/20260806T005558Z-pr-2120.md)

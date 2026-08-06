@@ -4,7 +4,7 @@ title: "エラーメッセージ文字列の grep assert は locale 依存で de
 domain: "anti-patterns"
 description: "bash 等のローカライズ済みエラーメッセージ（例: 「コマンドが見つかりません」）を英語文字列で grep する assert は、非英語 locale のホスト/CI で常に空振りし、実装破壊 mutation に対して green のまま通過する dead assertion になる。LC_ALL=C で locale を固定するか、rc 直接 assert・状態遷移 assert 等の locale 非依存 discriminator に置換する。"
 created: "2026-07-24T16:55:00+09:00"
-updated: "2026-07-29T21:32:36+09:00"
+updated: "2026-08-06T02:49:27Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260724T070805Z-pr-2003.md"
@@ -14,6 +14,8 @@ sources:
     ref: "raw/reviews/20260729T061547Z-pr-2044.md"
   - type: "fixes"
     ref: "raw/fixes/20260729T062345Z-pr-2044.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260805T234810Z-pr-2120.md"
 tags: ["bash", "test-quality", "locale", "dead-assertion", "identification-power", "degrade-path", "LC_ALL"]
 confidence: high
 ---
@@ -67,7 +69,33 @@ flock 不在環境の degrade 分岐（`command -v flock` ガード）を検証�
 
 関連して、**`2>&1` capture を「rc≠0 のときだけ表示」と組むと成功時の診断を握り潰す**。helper が rc=0 のまま WARNING を出す経路があると、リダイレクトが無かった頃には届いていた診断が消える。**capture の導入は観測性の向上とは限らない** — 表示条件を rc に紐付けた瞬間、rc=0 の診断は捨てられる。診断の emit は if/else の外に置き、rc とは独立に surface する（成功時の capture は通常空なので `-n` guard でノイズは出ない）。
 
+## 変種: 中和済み出力への assert は不正 UTF-8 で検出能力を失う
+
+3 つ目の面がある。上 2 節は「英語文字列を非英語ロケールで grep する」「診断の表示が中和で潰れる」だったが、**中和を通した出力に対する assert 自体が vacuous pass する**経路が PR #2120 cycle 1 で実測された。
+
+`neutralize_ctrl` は 0x80-0x9f を**バイト単位**で潰すため、ロケール依存の診断（日本語の「許可がありません」等）が**不正な UTF-8 列**になる。GNU grep は UTF-8 ロケール下でその行に対して一切マッチしない。したがって「列 0 に制御文字が漏出していないこと」を見る `assert_not_grep` は、**「漏出が無い」ではなく「grep が読めない」で pass していた**。
+
+実際に漏出を起こす mutation（グループスコープ `{ ...; } 2>&1` を単純コマンドへ落とす）を当てても検出されず、`LC_ALL=C` を付けた raw grep へ変えた途端に検出されるようになった。
+
+```
+✗ assert_not_grep '^WARNING:' "$out"
+   → 中和が作った不正 UTF-8 に UTF-8 ロケールの grep が一切マッチせず常に pass
+✓ LC_ALL=C grep -cE '^WARNING:' "$out"
+   → バイト列として読むので漏出を検出する
+```
+
+**中和・バイト置換・エンコード変換を通した出力に対する assert は、`LC_ALL=C` を付けない限り検出能力を持たない可能性がある。**
+
+この非対称は既に先例側に現れていた。同種の先例（`review-result-state-root.test.sh` TC-8）は最初から `LC_ALL=C grep -cE` で書かれており、共有ヘルパー（`assert_grep` / `assert_not_grep`）にはロケール上書きが無い。ヘルパーを使う側からはその差が見えない。**中和済み出力を検査するときは共有 assert ヘルパーを使わず raw grep + `LC_ALL=C` で書く。**
+
+### 中和の pin は「隣の未中和行」に邪魔される
+
+中和そのものの regression test を書くとき、素朴な「列 0 に偽 `WARNING:` 行がない」という形は **現状でも FAIL する**。同一実行の数行前に pre-existing の未中和 WARNING があり、同じ入力から列 0 の行を作るためである。
+
+assert は**自分が中和した行に限定**する必要がある（メッセージ末尾のリテラルで grep を絞る）。部分的に中和した経路への assert を全体で見る形にすると、未中和の隣接行が常に混ざって最初から赤いか、逆に緩めすぎて何も検出しなくなる。
+
 ## ソース（追記分）
 
 - [PR #2044 review results — フィルタ経路の locale 依存](../../raw/reviews/20260729T061547Z-pr-2044.md)
 - [PR #2044 fix results — LC_ALL=C による stream 固定](../../raw/fixes/20260729T062345Z-pr-2044.md)
+- [PR #2120 fix results — 中和済み出力への assert が不正 UTF-8 で vacuous pass](../../raw/fixes/20260805T234810Z-pr-2120.md)
