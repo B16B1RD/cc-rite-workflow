@@ -8,6 +8,10 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 ## 変更概要
 {change_intelligence_summary}
 
+## レビュースコープ（cycle 2+ 差分スコープ — 適用時のみ非空）
+<!-- REVIEW_CYCLE_SCOPE == incremental のときのみ内容が入る（cycle-scope.md の Reviewer mandate 節を抽出）。full のときは空文字列で、このセクションごと省略する。 -->
+{cycle_scope_mandate}
+
 ## レビュー対象ファイル
 {relevant_files}
 
