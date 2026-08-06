@@ -1,5 +1,6 @@
 ## 2026-08-06
 
+* **lint:warning** — contradictions=0, stale=17, orphans=0, missing_concept=0, unregistered_raw=298, broken_refs=0
 * **Update**: [テンプレート流用の新規スクリプトは最新兄弟の防御を継承する](pages/heuristics/new-script-inherits-latest-sibling-defenses.md) — raw/reviews/20260805T233057Z-pr-2120.md を統合（参照先が「数コミット前の自分自身の系譜」の場合 / 実装の形とその根拠として引用した事実が同時に stale になる / git grep で全サイト列挙 → git log -S で最終更新確認）
 * **Update**: [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](pages/anti-patterns/locale-dependent-error-message-grep-assertion.md) — raw/fixes/20260805T234810Z-pr-2120.md を統合（中和が作る不正 UTF-8 に UTF-8 ロケールの grep が一切マッチせず assert_not_grep が vacuous pass / 中和済み出力は共有ヘルパーでなく LC_ALL=C の raw grep で検査する）
 * **Create**: [「既存ドキュメントが accepted trade-off と書いている」は指摘却下の十分条件ではない](pages/heuristics/accepted-tradeoff-not-sufficient-rejection-ground.md) — raw/reviews/20260806T001717Z-pr-2120.md を新規ページ化（正当化の射程が当該サイトを含むか / 提案された修正がその trade-off を実際に取り崩すか の 2 点確認）
