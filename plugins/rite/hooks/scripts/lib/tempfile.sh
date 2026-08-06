@@ -164,7 +164,11 @@ _rite_tempfile_create() {
   # never collide with one of them. Without that, `rite_tempfile_new path x`
   # writes this function's local and returns success with the caller's variable
   # untouched — the silent empty-path outcome this lib exists to remove.
-  local _rite_ov="$1" _rite_tag="${2:-tmp}" _rite_kind="$3"
+  # `${2-tmp}` without the colon: an *unset* tag defaults, but an explicit empty
+  # string reaches the charset check below and is refused. Using `${2:-tmp}` here
+  # made that check unreachable, so `rite_tempfile_new f ""` fell through to the
+  # default instead of failing loudly.
+  local _rite_ov="$1" _rite_tag="${2-tmp}" _rite_kind="$3"
   local _rite_path
 
   if [ "$_RITE_TMP_READY" -ne 1 ]; then
@@ -242,12 +246,12 @@ _rite_tempfile_create() {
 # path to <outvar> in the caller's scope. Returns 1 with an ERROR line on
 # failure; there is no silent empty-path outcome.
 rite_tempfile_new() {
-  _rite_tempfile_create "${1:-}" "${2:-tmp}" file
+  _rite_tempfile_create "${1:-}" "${2-tmp}" file
 }
 
 # rite_tempdir_new <outvar> [tag] — same contract, for a directory.
 rite_tempdir_new() {
-  _rite_tempfile_create "${1:-}" "${2:-tmp}" dir
+  _rite_tempfile_create "${1:-}" "${2-tmp}" dir
 }
 
 # Early release is deliberately absent. Nothing in the repo needs it, and the

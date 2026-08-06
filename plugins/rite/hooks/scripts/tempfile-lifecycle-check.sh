@@ -28,9 +28,8 @@
 #   Unbraced `$tmp_suffix` is NOT a derivation: bash reads the whole run of
 #   [A-Za-z0-9_] as one name, so that is the variable `tmp_suffix`. Treating it
 #   as one flags every sibling variable sharing a prefix. That is the only
-#   spelling carved out — the dirname and basename idioms are reported like any
-#   other strip expansion, because an exclusion for them suppressed no measured
-#   false positive in this tree while hiding `"${tmp##*/}.log"`.
+#   spelling carved out; dirname and basename idioms are reported like any other
+#   strip expansion.
 #
 # Deliberately NOT detected: `x=$(mktemp 2>/dev/null) || x=""`. It reads like the
 #   silencing defect, but it is the house idiom for a non-blocking stderr-capture
@@ -52,7 +51,8 @@
 #                               [--quiet] [--skip-if-no-target]
 #
 # Exit codes: 0 = clean (or not-applicable skip), 1 = pattern detected,
-#             2 = invocation error, or one or more files could not be scanned.
+#             2 = invocation error, or a file could not be scanned / a directory
+#             enumeration failed.
 #
 # A file that could not be scanned is an error, not a clean bill. Folding "did
 # not look" into "found nothing" inside a checker reproduces, within the guard,
@@ -114,9 +114,9 @@ the line directly above).
 Exit codes:
   0  Clean (or not-applicable skip)
   1  Pattern detected
-  2  Invocation error, or one or more files could not be scanned (the result is
-     not a clean bill). When findings are also present the exit code is 1 and
-     the unscannable count is still printed.
+  2  Invocation error, or a file could not be scanned / a directory enumeration
+     failed (the result is not a clean bill). When findings are also present the
+     exit code is 1 and the unscanned counts are still printed.
 EOF
 }
 
@@ -248,7 +248,15 @@ function derived_use(s, needle,   pos, rest, c) {
 # [A-Za-z0-9_] as one name, so `$tmp_bak` is the variable `tmp_bak`, not a
 # derivation of `$tmp`. Treating it as one flags every sibling variable that
 # shares a prefix (`$pr_view_err` vs `$pr_view_err_oneline`).
-function derived_any(s, v) {
+function derived_any(s, v,   pos) {
+  # `${v:-}` is the canonical cleanup spelling in this repo (`rm -f "${tmp:-}"`),
+  # so a derivation off it (`"${tmp:-}.part"`) has to read the same as `${tmp}`.
+  # Rewriting the occurrences is one line; duplicating all 13 branches is not.
+  pos = index(s, "${" v ":-}")
+  while (pos > 0) {
+    s = substr(s, 1, pos - 1) "${" v "}" substr(s, pos + length(v) + 5)
+    pos = index(s, "${" v ":-}")
+  }
   if (derived_use(s, "$" v ".")) return 1
   if (derived_use(s, "$" v "-")) return 1
   if (derived_use(s, "${" v "}")) return 1
@@ -270,27 +278,45 @@ function derived_any(s, v) {
   return 0
 }
 
+# Fold a backslash-continued logical line starting at physical line `i`, and
+# report where it ended through the global `join_end`.
+function join_logical(i,   line) {
+  line = L[i]
+  while (line ~ /\\[[:space:]]*$/ && i < NR) {
+    sub(/\\[[:space:]]*$/, "", line)
+    i++
+    line = line L[i]
+  }
+  join_end = i
+  return line
+}
+
 END {
+  # Two passes, because a derivation is routinely written *above* the mktemp
+  # that produces the handle. The canonical trap template in
+  # references/bash-trap-patterns.md — declare, define cleanup, install trap,
+  # then mktemp — puts the cleanup function, the likeliest place to spell a
+  # derived path, before the assignment. A single pass registers handles as it
+  # goes and would call that file clean.
   for (i = 1; i <= NR; i++) {
-    start = i
-    line = L[i]
-    while (line ~ /\\[[:space:]]*$/ && i < NR) {
-      sub(/\\[[:space:]]*$/, "", line)
-      i++
-      line = line L[i]
-    }
-
-    # Comments are skipped before anything else, registration included. A line
-    # that is not scanned must not seed state either — a usage example in a
-    # docstring would otherwise register a handle and make every unrelated
-    # `$x.log` in the file a finding.
+    line = join_logical(i)
+    i = join_end
+    # Comments seed no state: a usage example in a docstring would otherwise
+    # register a handle and make every unrelated `$x.log` in the file a finding.
     if (line ~ /^[[:space:]]*#/) continue
-
     v = handle_target(line)
     if (v != "") { known = 0
       for (k = 1; k <= nvars; k++) if (vars[k] == v) known = 1
       if (!known) { nvars++; vars[nvars] = v }
     }
+  }
+
+  for (i = 1; i <= NR; i++) {
+    start = i
+    line = join_logical(i)
+    i = join_end
+
+    if (line ~ /^[[:space:]]*#/) continue
 
     prev = (start > 1) ? L[start - 1] : ""
     if (line ~ /drift-check-ignore/ || prev ~ /drift-check-ignore/) continue

@@ -304,6 +304,24 @@ assert "T-02f invalid out-variable / tag are both refused" "1" "$rc"
 assert_grep "T-02f the tag charset refusal is explicit" "$SANDBOX/err" \
   "tag '\.\./escape' contains characters outside"
 
+# An explicitly empty tag must reach the charset check rather than be replaced by
+# the default. Spelling the wrappers `${2:-tmp}` made that check unreachable, so
+# `rite_tempfile_new f ""` silently produced a `rite-tmp-` file instead.
+rc=$(run_child '
+rite_tempfile_init || exit 90
+empty_rc=0; rite_tempfile_new f "" || empty_rc=$?
+[ "$empty_rc" -eq 1 ] || exit 79
+exit 0
+' TMPDIR="$SANDBOX")
+assert "T-02f an explicitly empty tag is refused, not defaulted" "0" "$rc"
+# An omitted tag still defaults.
+rc=$(run_child '
+rite_tempfile_init || exit 90
+rite_tempfile_new f || exit 91
+case "$f" in *//rite-tmp-*|*/rite-tmp-*) exit 0 ;; *) exit 92 ;; esac
+' TMPDIR="$SANDBOX")
+assert "T-02f an omitted tag still falls back to the default" "0" "$rc"
+
 # A bracket name is the case the identifier check actually exists for. Unlike
 # `bad name`, which bash rejects on its own, `printf -v 'a[0]'` succeeds — it is
 # an array write. Without this pin, deleting the check leaves the suite green

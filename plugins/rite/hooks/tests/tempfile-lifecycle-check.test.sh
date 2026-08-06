@@ -8,8 +8,7 @@
 #   - a variable that merely shares a prefix is not (bash reads `$tmp_err` as one
 #     name, so flagging it fires on ordinary code),
 #   - dirname / basename expansions ARE findings (a component extraction with a
-#     suffix bolted on is a sibling path; the carve-out they once had suppressed
-#     no measured false positive and was withdrawn),
+#     suffix bolted on is a sibling path),
 #   - a drift-check-ignore marker suppresses either way,
 #   - and a file that could not be scanned is an error, not a clean bill.
 # Plus the real-repository corpus: the tree must be clean AND actually scanned,
@@ -127,6 +126,34 @@ assert_grep "T-03d \"\${tmp}\"-1 is a finding" "$OUT" 'suffix-forms\.sh:8: mktem
 # reading, so the dirname / basename spellings get no carve-out.
 assert_grep "T-03d \"\${tmp##*/}.log\" is a finding" "$OUT" 'suffix-forms\.sh:9: mktemp-derived-path'
 assert_grep "T-03d \"\${tmp%/*}/planted\" is a finding" "$OUT" 'suffix-forms\.sh:10: mktemp-derived-path'
+
+# The canonical trap template in references/bash-trap-patterns.md declares the
+# path, defines cleanup, installs the trap, and only then runs mktemp — so the
+# cleanup function, the likeliest place to spell a derived path, sits *above* the
+# assignment. A single-pass scanner registers handles as it goes and calls this
+# file clean. It also uses the `${v:-}` spelling throughout.
+cat > "$FIXTURES/canonical-trap.sh" <<'FIX'
+#!/bin/bash
+tmpfile=""
+cleanup() {
+  rm -f "${tmpfile:-}" "${tmpfile:-}.part"
+}
+trap 'rc=$?; cleanup; exit $rc' EXIT
+tmpfile=$(mktemp)
+FIX
+rc=$(run_on canonical-trap.sh)
+assert "T-03f a derivation above the mktemp that produces the handle is flagged" "1" "$rc"
+assert_grep "T-03f the finding names the cleanup line, not the assignment" "$OUT" \
+  'canonical-trap\.sh:4: mktemp-derived-path'
+
+# `"${tmp:-}"` on its own is the plain read, not a derivation.
+cat > "$FIXTURES/default-expansion.sh" <<'FIX'
+#!/bin/bash
+tmp=$(mktemp)
+rm -f "${tmp:-}"
+FIX
+rc=$(run_on default-expansion.sh)
+assert "T-04g a bare \${tmp:-} read is not a derivation" "0" "$rc"
 
 # Backslash continuation must not hide a derived path from the scan.
 cat > "$FIXTURES/continued.sh" <<'FIX'
