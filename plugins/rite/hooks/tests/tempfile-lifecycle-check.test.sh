@@ -167,6 +167,33 @@ assert "T-03e a continued line is joined before scanning" "1" "$rc"
 assert_grep "T-03e the finding anchors to the first physical line" "$OUT" \
   'continued\.sh:3: mktemp-derived-path'
 
+# One logical line can create more than one handle. `a=$(mktemp) && b=$(mktemp)`
+# is in-tree (lib/git-status-filtered.sh:45), and the lib form reaches the
+# scanner as one line whenever a `&& \` continuation joins two calls. Registering
+# only the first leaves the rest untracked, and a derivation from an untracked
+# handle reads as clean — so each spelling needs its own second-handle
+# assertion, not just a count.
+cat > "$FIXTURES/multi-handle.sh" <<'FIX'
+#!/bin/bash
+tmp_out=$(mktemp) && tmp_err=$(mktemp)
+cp src "$tmp_out.part"
+cp src "$tmp_err.part"
+rite_tempfile_new out "o" && \
+  rite_tempfile_new err "e"
+cp src "$out.part"
+cp src "$err.part"
+FIX
+rc=$(run_on multi-handle.sh)
+assert "T-03g a line creating two handles is flagged" "1" "$rc"
+assert_grep "T-03g the raw form's first handle is tracked" "$OUT" \
+  'multi-handle\.sh:3: mktemp-derived-path .*\$tmp_out'
+assert_grep "T-03g the raw form's second handle is tracked" "$OUT" \
+  'multi-handle\.sh:4: mktemp-derived-path .*\$tmp_err'
+assert_grep "T-03g the lib form's first handle is tracked" "$OUT" \
+  'multi-handle\.sh:7: mktemp-derived-path .*\$out'
+assert_grep "T-03g the lib form's second handle is tracked" "$OUT" \
+  'multi-handle\.sh:8: mktemp-derived-path .*\$err'
+
 # --- T-04: the shapes that must stay quiet ----------------------------------
 # Two handles, neither derived. The fixture must make the checker actually track
 # something — a file with no handle at all would pass under any implementation.

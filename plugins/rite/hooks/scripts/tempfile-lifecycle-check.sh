@@ -207,21 +207,32 @@ cat > "$AWK_PROG" <<'AWK'
 BEGIN { nvars = 0 }
 { L[NR] = $0 }
 
-# The tempfile handle this line creates, or "" when it creates none. Both
-# spellings count: the raw `x=$(mktemp` / `x="$(mktemp` assignment, and the lib's
-# out-variable form `rite_tempfile_new x` / `rite_tempdir_new x`.
-function handle_target(s,   t, p) {
-  if (match(s, /[A-Za-z_][A-Za-z0-9_]*="?\$\([[:space:]]*mktemp/)) {
-    t = substr(s, RSTART, RLENGTH)
+# Every tempfile handle this line creates, space-separated, or "" when it
+# creates none. Both spellings count: the raw `x=$(mktemp` / `x="$(mktemp`
+# assignment, and the lib's out-variable form `rite_tempfile_new x` /
+# `rite_tempdir_new x`. One logical line can create several — `a=$(mktemp) &&
+# b=$(mktemp)` is in-tree (lib/git-status-filtered.sh) and the joined `&& \`
+# continuation reaches here as one line — so every match is collected. Stopping
+# at the first one leaves the rest untracked, and a derivation from an untracked
+# handle is silently clean: the same "did not look" folded into "found nothing"
+# that this checker exists to catch.
+function handle_targets(s,   t, p, out, rest) {
+  out = ""
+  rest = s
+  while (match(rest, /[A-Za-z_][A-Za-z0-9_]*="?\$\([[:space:]]*mktemp/)) {
+    t = substr(rest, RSTART, RLENGTH)
     p = index(t, "=")
-    return substr(t, 1, p - 1)
+    out = out " " substr(t, 1, p - 1)
+    rest = substr(rest, RSTART + RLENGTH)
   }
-  if (match(s, /rite_temp(file|dir)_new[[:space:]]+[A-Za-z_][A-Za-z0-9_]*/)) {
-    t = substr(s, RSTART, RLENGTH)
+  rest = s
+  while (match(rest, /rite_temp(file|dir)_new[[:space:]]+[A-Za-z_][A-Za-z0-9_]*/)) {
+    t = substr(rest, RSTART, RLENGTH)
     sub(/^rite_temp(file|dir)_new[[:space:]]+/, "", t)
-    return t
+    out = out " " t
+    rest = substr(rest, RSTART + RLENGTH)
   }
-  return ""
+  return out
 }
 
 # True when `needle` occurs in `s` followed by a word character — so
@@ -304,8 +315,13 @@ END {
     # Comments seed no state: a usage example in a docstring would otherwise
     # register a handle and make every unrelated `$x.log` in the file a finding.
     if (line ~ /^[[:space:]]*#/) continue
-    v = handle_target(line)
-    if (v != "") { known = 0
+    # `" "` as the separator is awk's special form: leading and trailing blanks
+    # are stripped, so the leading space handle_targets() builds with costs
+    # nothing here.
+    nfound = split(handle_targets(line), found, " ")
+    for (f = 1; f <= nfound; f++) {
+      v = found[f]
+      known = 0
       for (k = 1; k <= nvars; k++) if (vars[k] == v) known = 1
       if (!known) { nvars++; vars[nvars] = v }
     }
