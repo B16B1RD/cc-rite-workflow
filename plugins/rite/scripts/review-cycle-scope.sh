@@ -177,23 +177,8 @@ if ! git diff --name-only "${base_sha}..HEAD" >/dev/null 2>"$probe_err"; then
   emit_full diff_failed
 fi
 
-# 抽出の前に findings の健全性を確認する。下の `select` 群は条件に合わない要素を**無音で捨てる**
-# ため、scope が enum 外 / 欠落、あるいは reviewer が欠落・非文字列の finding があると、
-# 結果の空・部分的な `prev_finders=` が「前サイクルの blocking が 0 件」の正常系と
-# バイト単位で同一になる。区別できない以上、既存の loud な fail-safe へ倒す
-# (欠落時の安全側は広い方 = full。AC-3 が明示的に許した経路)。
-# 健全な current-pr / 全件 nit-noted / findings 空 / findings キー欠落では PASS する。
-if ! jq -e '
-  all((.findings[]?, .non_blocking_findings[]?);
-      ((.scope == "current-pr") or (.scope == "follow-up") or (.scope == "nit-noted"))
-      and ((.reviewer? // null) != null))
-' "$prev_json" >/dev/null 2>"$probe_err"; then
-  echo "WARNING: review-cycle-scope: findings[].scope が enum 外 / 欠落、または .reviewer 欠落の finding があります: $prev_json" >&2
-  head -3 "$probe_err" | sed 's/^/  /' >&2
-  emit_full prev_json_unreadable
-fi
-
-# 前サイクルで gated scope (current-pr / follow-up) の指摘を出した reviewer を抽出する。
+# 前サイクルで gated scope (current-pr / follow-up) の指摘を出した reviewer を、健全性検査と
+# 同一の jq で抽出する。
 #
 # **母集団は `findings[]` と `non_blocking_findings[]` の和**。実測必須ゲートは非実測の gated
 # 指摘を `findings[]` から `non_blocking_findings[]` へ *移送* する (`.findings = $kept`) ため、
@@ -206,21 +191,51 @@ fi
 # cap 免除枠を占有する。非実測の current-pr / follow-up は「merge は止めないが未解消」であり、
 # 再検証と再記録の価値がある。この区別が母集団を分ける根拠。
 #
-# reviewer は agent 名 (`code-quality-reviewer`) で入るため reviewer_type へ正規化する。
-# jq 失敗は握り潰さない — 空の `prev_finders=` は正常系と区別できないため既存の loud な
-# fail-safe へ合流させる。
-prev_finders=$(jq -r '
-  [(.findings[]?, .non_blocking_findings[]?)
-   | select((.scope // "") == "current-pr" or (.scope // "") == "follow-up")
-   | .reviewer
-   | select(type == "string")
-   | sub("-reviewer$";"")]
-  | unique | join(",")
+# **健全性検査と抽出を 1 本の jq に畳む理由**: 別々に書くと (a) 検査述語と抽出条件がずれても
+# 気付けない (検査を「非 null」、抽出を `select(type == "string")` と書いた版では、非文字列
+# reviewer が検査を通って抽出で無音 drop された)、(b) 検査が真を返した後の抽出は構造的に
+# 失敗しえず 2 本目の fail-safe が到達不能コードになる、(c) 検査が「不正あり」で正常終了する
+# 主経路では jq が stderr に何も書かないため、`$probe_err` 経由の原因行が常にゼロ行になる。
+# 1 本に畳むと、抽出条件そのものが検査述語になり (a) が構造的に消え、fail-safe は 1 本になり
+# (b) が消え、違反 finding の id を同じ jq 内で列挙できるので (c) も消える。
+#
+# 出力は `OK\t{csv}` か `BAD\t{違反 id 列}` のタブ区切り 1 行。reviewer は agent 名
+# (`code-quality-reviewer`) で入るため reviewer_type へ正規化する。jq 自体の失敗 (トップレベルが
+# object でない等) は握り潰さない — 空の `prev_finders=` は「gated 指摘 0 件」の正常系と
+# バイト単位で同一で区別できないため、既存の loud な fail-safe へ合流させる。
+scope_probe=$(jq -r '
+  def valid:
+    (((.scope // "") | . == "current-pr" or . == "follow-up" or . == "nit-noted"))
+    and (((.reviewer? // null) | type) == "string")
+    and ((.reviewer // "") != "");
+  [(.findings[]?, .non_blocking_findings[]?)] as $all
+  | ($all | map(select(valid | not))) as $bad
+  | if ($bad | length) > 0 then
+      "BAD\t" + ($bad | map(.id // "(id 欠落)") | join(", "))
+    else
+      "OK\t" + ([$all[]
+                  | select((.scope // "") == "current-pr" or (.scope // "") == "follow-up")
+                  | .reviewer | sub("-reviewer$";"")] | unique | join(","))
+    end
 ' "$prev_json" 2>"$probe_err") || {
-  echo "WARNING: review-cycle-scope: 前回 finder の抽出に失敗しました: $prev_json" >&2
+  echo "WARNING: review-cycle-scope: 前回 finder を抽出できません: $prev_json" >&2
   head -3 "$probe_err" | sed 's/^/  /' >&2
   emit_full prev_json_unreadable
 }
+
+case "$scope_probe" in
+  BAD*)
+    echo "WARNING: review-cycle-scope: findings[] / non_blocking_findings[] に scope が enum 外 / 欠落、または reviewer が欠落・非文字列・空文字の finding があります: $prev_json" >&2
+    echo "  該当 finding: ${scope_probe#BAD	}" >&2
+    emit_full prev_json_unreadable
+    ;;
+  OK*) prev_finders="${scope_probe#OK	}" ;;
+  *)
+    echo "WARNING: review-cycle-scope: 抽出 jq が想定外の出力を返しました: $prev_json" >&2
+    printf '%s\n' "$scope_probe" | head -3 | sed 's/^/  /' >&2
+    emit_full prev_json_unreadable
+    ;;
+esac
 
 echo "[CONTEXT] REVIEW_CYCLE_SCOPE=incremental; base_sha=$base_sha; prev_json=$prev_json; prev_finders=$prev_finders" >&2
 exit 0

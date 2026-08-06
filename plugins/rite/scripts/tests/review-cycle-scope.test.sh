@@ -270,6 +270,41 @@ jq -n --arg sha "$FIRST_SHA" '{
 run_scope --pr 42 --results-dir "$NOREV"
 assert_contains "TC-19.4: reviewer 欠落も full へ倒れる" "$SCOPE_STDERR" "reason=prev_json_unreadable"
 
+# reviewer の型・空文字。検査述語を「非 null」で書くと非文字列が通り抽出で無音 drop される
+# (実測済みの欠陥)。空文字は `prev_finders=,test` という空要素入り CSV になり、caller の
+# mandatory 合流が phantom reviewer に cap 免除枠を与える。
+for bad_rev in '123' '["security-reviewer"]' '""'; do
+  BADREV="$TEST_DIR/results-badrev"
+  rm -rf "$BADREV"; mkdir -p "$BADREV"
+  jq -n --arg sha "$FIRST_SHA" --argjson rev "$bad_rev" '{
+    schema_version:"1.0.0", pr_number:42, commit_sha:$sha, overall_assessment:"fix-needed",
+    findings:[
+      {id:"F-01", reviewer:$rev, severity:"HIGH", file:"a.sh", line:1, scope:"current-pr"},
+      {id:"F-02", reviewer:"test-reviewer", severity:"HIGH", file:"b.sh", line:2, scope:"current-pr"}
+    ],
+    non_blocking_findings:[]
+  }' > "$BADREV/42-20260806-000000.json"
+  run_scope --pr 42 --results-dir "$BADREV"
+  assert_contains "TC-19.5: reviewer=$bad_rev は full へ倒れる" "$SCOPE_STDERR" "reason=prev_json_unreadable"
+  assert_not_contains "TC-19.6: reviewer=$bad_rev で incremental を出さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+done
+
+# non_blocking_findings[] 側の malformed。母集団の片腕だけを検査から外す変異はこれが無いと素通りする。
+NBBAD="$TEST_DIR/results-nbbad"
+mkdir -p "$NBBAD"
+jq -n --arg sha "$FIRST_SHA" '{
+  schema_version:"1.0.0", pr_number:42, commit_sha:$sha, overall_assessment:"fix-needed",
+  findings:[{id:"F-01", reviewer:"test-reviewer", severity:"HIGH", file:"a.sh", line:1, scope:"current-pr"}],
+  non_blocking_findings:[{id:"F-99", reviewer:"security-reviewer", severity:"CRITICAL", file:"b.sh", line:2}]
+}' > "$NBBAD/42-20260806-000000.json"
+run_scope --pr 42 --results-dir "$NBBAD"
+assert_contains "TC-19.7: non_blocking 側の scope 欠落も full へ倒れる" "$SCOPE_STDERR" "reason=prev_json_unreadable"
+assert_not_contains "TC-19.8: 同上で incremental を出さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+# 不正 finding が JSON 内に固定される以上、以後毎 cycle 恒久的に full へ倒れ続ける。
+# どの finding が原因かを WARNING が名指さないと、運用者は世代蓄積した数十件から手で探すことになる。
+assert_contains "TC-19.9: 違反 finding の id を surface する" "$SCOPE_STDERR" "F-99"
+assert_contains "TC-19.10: 対象パスも surface する" "$SCOPE_STDERR" "$NBBAD/42-20260806-000000.json"
+
 echo "=== TC-20: commit_sha の抽出失敗とキー欠落を別 reason に分ける ==="
 # 抽出失敗 (トップレベルが object でない) を commit_sha_missing = 良性の旧形式 として
 # 報告すると、破損が旧形式互換の顔をして無視される。
@@ -304,6 +339,9 @@ assert_contains "TC-15.4: fallback marker を出す" "$SCOPE_STDERR" "REVIEW_CYC
 # AC-3 が守るのは「full へ倒れること」ではなく「full **だけ**になること」。
 # emit_full の exit を局所的に落とす変異は、この負の assertion が無いと素通りする。
 assert_not_contains "TC-15.5: fail-safe 後に incremental を出さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+# どの handler が発火したかを固定する。結果 (full / reason / fallback marker) だけを見る
+# assertion は、fail-safe を無音 fallback へ書き換えても別経路が同じ結果を出せば素通りする。
+assert_contains "TC-15.6: 抽出 fail-safe が発火したことを文言で固定" "$SCOPE_STDERR" "前回 finder を抽出できません"
 
 echo "=== TC-16: fail-safe 時に対象と原因を surface する (診断を捨てない) ==="
 run_scope --pr 42 --results-dir "$BROKEN"

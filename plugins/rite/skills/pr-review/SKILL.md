@@ -401,6 +401,8 @@ Medium/Large scale: `gh pr view {pr_number} -R {owner_repo} --json files --jq '.
 
 **Per-file diff extraction:** `gh pr diff {pr_number} -R {owner_repo} | awk '/^diff --git/ { found=0 } /^diff --git.*{target_pattern}/ { found=1 } found { print }'`
 
+**Incremental scope**: `REVIEW_CYCLE_SCOPE == incremental` のときは上記 2 形式を `git diff {cycle_base_sha}..HEAD`（一括）/ `git diff {cycle_base_sha}..HEAD -- {target_path}`（per-file）へ差し替える。`gh pr diff` は起点を指定できないため git 側を使う。
+
 
 #### 1.2.3 Retrieve Changed File List
 
@@ -421,15 +423,13 @@ bash {plugin_root}/scripts/review-cycle-scope.sh --pr {pr_number}
 | `full` | PR 全体（従来どおり） | cycle 1、および fail-safe 発火時 |
 | `incremental` | `{cycle_base_sha}..HEAD` の diff + 前回 blocking の解消検証 | cycle 2+ |
 
-`incremental` のとき marker から retain する: `{cycle_base_sha}` = `base_sha=`（差分の起点。ステップ 2.2 / 4.5 が使う）、`{prev_finders}` = `prev_finders=`（前サイクルで blocking を出した `reviewer_type` の CSV。helper が gated scope で絞り済み。ステップ 2.2 で `mandatory` 合流）、`{previous_blocking_findings}` = `prev_json=` が指すファイルの `findings[]` のうち **`scope ∈ {current-pr, follow-up}` のもの**（`findings[]` 全体は blocking 集合ではない — 5.3.0.M は `nit-noted` をゲート対象外として非実測でも残すため、絞らないと受け流し済みの nit が解消検証 mandate に注入され毎サイクル再掲される）。`{prev_finders}` に統合済みの旧 type が現れたら `skills/reviewers/SKILL.md` の Legacy Reviewer Type Aliases に従い WARNING 付きで読み替える（silent skip 禁止）。
+`incremental` のとき marker から retain する: `{cycle_base_sha}` = `base_sha=`（差分の起点。ステップ 2.2 / 4.5 が使う）、`{prev_finders}` = `prev_finders=`（前サイクルで gated scope の指摘を出した `reviewer_type` の CSV。実測なしで non-blocking に降格した指摘の出し手も含む。helper が絞り済み。ステップ 2.2 で `mandatory` 合流）、`{previous_blocking_findings}` = `prev_json=` が指すファイルの **`findings[]` と `non_blocking_findings[]` の和**のうち **`scope ∈ {current-pr, follow-up}` のもの**（helper の `prev_finders` と同一母集団。5.3.0.M は `nit-noted` をゲート対象外として非実測でも `findings[]` に残す一方、非実測の gated 指摘は `non_blocking_findings[]` へ *移送* するため、片方だけ読むと nit が混じり移送分が欠ける。両方読んで gated scope で絞ると、mandatory 合流した reviewer に必ず自分の検証対象が渡る）。`{prev_finders}` に統合済みの旧 type が現れたら `skills/reviewers/SKILL.md` の Legacy Reviewer Type Aliases に従い WARNING 付きで読み替える（silent skip 禁止）。
 
 #### 1.2.4.1 Review Mode Determination (`verification_mode`)
 
 Determine the review mode based on whether a previous review result comment exists.
 
-**Composition with ステップ 1.2.4** (SoT: [cycle-scope.md](references/cycle-scope.md#既存-reviewloopverification_mode-との合成)): when `REVIEW_CYCLE_SCOPE == incremental`, force `review_mode = "full"` and **skip this entire sub-step** — the 4.5.1 verification template's Part 1 / Part 2 are already subsumed by the差分スコープ mandate, and injecting both hands the reviewer three conflicting scope statements. Evaluate this sub-step only when `REVIEW_CYCLE_SCOPE == full`.
-
-**Loading configuration:** retrieve `review.loop.verification_mode` from `rite-config.yml` (default: `false`).
+**Composition with ステップ 1.2.4**: `REVIEW_CYCLE_SCOPE == incremental` のときは `review_mode = "full"` を強制し**本サブステップ全体を skip** する。評価するのは `full` のときのみ（rationale: [cycle-scope.md](references/cycle-scope.md#既存-reviewloopverification_mode-との合成)）。**Loading configuration:** retrieve `review.loop.verification_mode` from `rite-config.yml` (default: `false`).
 
 **Determination logic:** `verification_mode == true` かつ前回レビューコメントが存在するときのみ `review_mode = "verification"`（前回指摘の修正検証 + incremental diff のリグレッションチェック。フルレビューも併せて実施される）。それ以外は `full`。
 
@@ -649,7 +649,7 @@ Match changed files against the Available Reviewers table in `skills/reviewers/S
 | `full` | ステップ 1.2.3 の PR 全体の変更ファイル（従来どおり） |
 | `incremental` | `git diff --name-only {cycle_base_sha}..HEAD` の結果（= fix diff）に差し替える |
 
-`incremental` のとき: (1) パターンマッチ結果に `{prev_finders}` を **`selection_type: mandatory`** で合流させる（`recommended` は不可 — Phase 5 の cap が落とさないと保証するのは `mandatory` のみで、`recommended` は `max_reviewers` 超過時に落ちて「前サイクル finder は無条件に再起動」が破れる。昇格は `detected < recommended < mandatory` の高い側へのみ）。(2) ステップ 2.3 の sole-reviewer guard / ステップ 3.2 の Security Expert 条件 / ステップ 3.2.1 の cap とフロアは**すべて従来どおり適用する**。(3) 今サイクル対象外となった reviewer 名と理由を ステップ 3.3 の「省略された reviewer 表示」と ステップ 5.4 の「レビュー範囲」section の両方に記録する（silent な絞り込みは禁止）。
+`incremental` のとき: (1) パターンマッチ結果に `{prev_finders}` を **`selection_type: mandatory`** で合流させる（`recommended` は不可 — Phase 5 の cap が落とさないと保証するのは `mandatory` のみで、`recommended` は `max_reviewers` 超過時に落ちて「前サイクル finder は無条件に再起動」が破れる。昇格は `detected < recommended < mandatory` の高い側へのみ）。(2) ステップ 2.3 の sole-reviewer guard / ステップ 3.2 の Security Expert 条件 / ステップ 3.2.1 の cap とフロアは**すべて従来どおり適用する**。(3) 今サイクル対象外となった reviewer 名と理由を ステップ 5.4 の「レビュー範囲」section に記録する（silent な絞り込みは禁止）。**母集合は cycle 1 で選定された reviewer 集合**とし、そこから今サイクル起動しない名前を理由付きで列挙する（全 9 名を母集合にすると PR に一度も関係しない reviewer が毎サイクル並び、今サイクルの起動集合を母集合にすると差分スコープが何名減らしたかが読めない）。ステップ 3.3 の「省略された reviewer 表示」には記録しない — 同 section は出力条件が `{dropped_count} > 0`、見出しが cap 超過を理由として固定されており、パターンマッチの候補にすら上がらない差分スコープ由来の除外を表現できない。
 
 **Pattern priority rules:**
 1. `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` -> Prompt Engineer (highest priority)
@@ -1394,8 +1394,8 @@ Generate instructions for each reviewer.
 
 | Placeholder | Source | Extraction Method |
 |---------------|--------|----------|
-| `{relevant_files}` | Changed file list from ステップ 1.2 | Extract only files matching the reviewer's Activation pattern。`REVIEW_CYCLE_SCOPE == incremental` のときは ステップ 2.2 と同じく `git diff --name-only {cycle_base_sha}..HEAD` の一覧から抽出する |
-| `{diff_content}` | Diff from ステップ 1.2 | **Varies by scale** (see below)。`REVIEW_CYCLE_SCOPE == incremental` のときは PR 全体の diff ではなく `{cycle_base_sha}..HEAD` の diff を使う |
+| `{relevant_files}` | Changed file list from ステップ 1.2 | Extract only files matching the reviewer's Activation pattern。`REVIEW_CYCLE_SCOPE == incremental` のときは ステップ 2.2 と同じく `git diff --name-only {cycle_base_sha}..HEAD` の一覧から抽出する。**例外**: `incremental` かつ当該 reviewer が `{prev_finders}` 由来の `mandatory` 合流で、パターン一致が 0 件のときは `{cycle_base_sha}..HEAD` の**全ファイル**を渡す（空で渡すと `{diff_content}` も空になり、mandate 4 が差分外の読み直しを禁じるため mandate 1 の解消検証すら実行できない prompt になる — 解消検証は自分の指摘箇所と fix の影響範囲の両方が読めて初めて成立する） |
+| `{diff_content}` | Diff from ステップ 1.2 | **Varies by scale** (see below)。`REVIEW_CYCLE_SCOPE == incremental` のときは PR 全体の diff ではなく `{cycle_base_sha}..HEAD` の diff を使う（取得コマンドは ステップ 1.2 の incremental 系。`{relevant_files}` が上記例外で全ファイルになった場合は同区間の全 diff を渡す） |
 | `{cycle_scope_mandate}` | [cycle-scope.md](references/cycle-scope.md#reviewer-mandate差分スコープ適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `REVIEW_CYCLE_SCOPE == incremental` のときのみ、同節の fenced block 本文を抽出し `{previous_blocking_findings}` / `{cycle_base_sha}` を埋めて注入する。`full` のときは空文字列（セクションごと省略） |
 | `{issue_spec}` | Issue specification obtained in ステップ 1.3.1 | Content of the "仕様詳細" section (if empty, write "仕様情報なし") |
 | `{change_intelligence_summary}` | Change Intelligence Summary from ステップ 1.2.6 | One-paragraph summary of change type, file classification, and focus area |
@@ -1554,9 +1554,9 @@ When `review_mode == "verification"`, classify: NOT_FIXED/PARTIAL/REGRESSION/MIS
 
 ##### 5.1.1.1 Post-Condition Check: Verification Result Table Presence
 
-**Execution condition**: `review_mode == "verification"` (always enforced when verification mode is active).
+**Execution condition**: `review_mode == "verification"` **または** `REVIEW_CYCLE_SCOPE == incremental`（後者は 1.2.4.1 が `review_mode = "full"` を強制するため、`review_mode` だけを見ると解消検証が要求される cycle 2+ でこの post-condition が必ず skip されてしまう。差分スコープ mandate 1 も同じ `### 修正検証結果` テーブルを出力契約として課すので、検査対象は同一）。
 
-**Skip condition**: `review_mode == "full"` — skip this post-condition entirely.
+**Skip condition**: `review_mode == "full"` かつ `REVIEW_CYCLE_SCOPE == full` — skip this post-condition entirely.
 
 **Purpose**: verification mode では、各 reviewer が ステップ 4.5.1 の verification テンプレートに従って `### 修正検証結果` テーブルを出力することが契約である。このテーブルが欠落している場合、reviewer は「前回指摘の修正検証」を **silent に skip している可能性が高く**、結果として `finding_count == 0` と誤判定されて silent pass する経路が成立する（本 ステップ 5.1.1.1 post-condition 設置の根本目的）。ステップ 5.1.3 の Doc-Heavy PR Mode post-condition と同じ構造で、silent non-compliance を検出する。
 

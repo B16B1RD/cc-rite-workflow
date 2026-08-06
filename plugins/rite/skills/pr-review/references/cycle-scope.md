@@ -132,9 +132,9 @@ cycle 2+ で変わるのは表そのものではなく、表に**何を照合さ
 `REVIEW_CYCLE_SCOPE == incremental` のとき、[reviewer-prompt-generator.md](./reviewer-prompt-generator.md) の `{cycle_scope_mandate}` へ本節の以下の本文を抽出して注入する（`{doc_heavy_mode_instructions}` と同じ conditional 抽出方式）。`full` のときは空文字列とし、セクションごと省略する。
 
 ```
-このレビューは **cycle 2 以降の差分スコープ**で実行します。cycle 1 で PR 全体のフルレビューは既に完了しています。以下の 4 点を mandate として守ってください。
+このレビューは **cycle 2 以降の差分スコープ**で実行します。cycle 1 で PR 全体のフルレビューは既に完了しています。以下の 5 点を mandate として守ってください。
 
-1. **前回 blocking の解消検証**: 下記の前回指摘が実際に解消されたかを検証する。各指摘について FIXED / NOT_FIXED / PARTIAL を判定し、NOT_FIXED / PARTIAL は指摘事項として再掲する（「前回も言った」ことを理由に手心を加えない）。
+1. **前回 blocking の解消検証**: 下記の前回指摘が実際に解消されたかを検証する。各指摘について FIXED / NOT_FIXED / PARTIAL を判定し、NOT_FIXED / PARTIAL は指摘事項として再掲する（「前回も言った」ことを理由に手心を加えない）。判定結果は **`### 修正検証結果` 見出しと `| # | 重要度 | ファイル:行 | 内容 | 判定 | 備考 |` テーブル**で出力すること（この出力契約が無いと、解消検証を silent に skip した出力と「検証した結果 0 件」の出力が区別できず、ステップ 5.1.1.1 の post-condition が機械検出できない）。
 
 {previous_blocking_findings}
 
@@ -143,6 +143,8 @@ cycle 2+ で変わるのは表そのものではなく、表に**何を照合さ
 3. **Cross-File Impact Check は縮小しない**: fix が触った symbol（関数・変数・設定キー・sentinel・marker 名）の波及は、差分の**外**にあるファイルも含めて grep で確認する。呼び出し側の未更新・契約の非対称・二重定義の片側だけ更新、はこの検査でしか捕まらない。
 
 4. **未変更部の再監査はしない**: `{cycle_base_sha}..HEAD` に現れないコードを新たに読み直して指摘を作らない。それは cycle 1 で審査済みであり、再監査は重複調査にあたる。ただし上記 3 の波及確認で**実際に問題が観測された**場合はこの限りではない（波及先は差分外でも指摘してよい）。
+
+5. **diff baseline の読み替え**: 共通レビュー原則（Comment Quality Finding Gate の Verification 手順、および Necessary conditions の revert test）が指定する `{base_branch}...HEAD` は、本レビューでは `{cycle_base_sha}..HEAD` に**読み替える**。両者が同じ prompt に届くため明示する — cycle 1 で追加された行は `{base_branch}` 基準では追加行、`{cycle_base_sha}` 基準では context 行であり、読み替えないと cycle 1 で既に審査済みの行に指摘が再起票され、差分スコープが削ろうとしている重複調査がそのまま再現する。revert test の目的（本 PR 由来か pre-existing か）は cycle 1 で判定済みなので、cycle 2+ では「fix diff 由来か」を判定する。
 
 fix が前回レビュー範囲外のファイルへ触れている場合、そのファイルは「新しい面」なのでフルスコープで審査してください（レビュー対象ファイル一覧に含まれています）。
 ```

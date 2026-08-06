@@ -64,6 +64,10 @@ assert_grep "helper_failed literal is documented in the SoT" "$CYCLE_SCOPE" 'hel
 # 本 pin が無いと両スイートを素通りする（受け流し済み nit が解消検証 mandate へ毎サイクル注入される）。
 assert_grep "1.2.4 gates {previous_blocking_findings} to blocking scopes" "$PR_REVIEW" \
   '\{previous_blocking_findings\}.*scope ∈ \{current-pr, follow-up\}'
+# 母集団は helper の prev_finders と同一（2 配列の和）。片方だけに戻す変異は helper 側 TC-14b が
+# 守るが、consumer 側の散文は本 pin が唯一の防御。
+assert_grep "1.2.4 reads both findings[] and non_blocking_findings[]" "$PR_REVIEW" \
+  '\{previous_blocking_findings\}.*`findings\[\]` と `non_blocking_findings\[\]` の和'
 
 echo "=== ステップ 2.2: 選抜は cap 後の filter でなくマッチ入力の差し替え (AC-2 / AC-4 / T-02 / T-04) ==="
 assert_grep "2.2 substitutes the matching input with the fix diff" "$PR_REVIEW" \
@@ -77,7 +81,7 @@ assert_grep "2.2 merges previous-cycle finders as mandatory (not recommended)" "
 assert_grep "2.2 preserves the existing guards/floors unchanged" "$PR_REVIEW" \
   'sole-reviewer guard.*Security Expert 条件.*cap とフロアは\*\*すべて従来どおり適用する\*\*'
 assert_grep "2.2 forbids silent narrowing and names both record channels" "$PR_REVIEW" \
-  'ステップ 3\.3 の「省略された reviewer 表示」と ステップ 5\.4 の「レビュー範囲」section の両方に記録.*silent な絞り込みは禁止'
+  'ステップ 5\.4 の「レビュー範囲」section に記録.*silent な絞り込みは禁止'
 
 echo "=== reviewers/SKILL.md: 選抜表は複製せず入力定義だけを追記 (AC-2 / D-06) ==="
 assert_grep "Phase 1 redefines 'changed file' per REVIEW_CYCLE_SCOPE" "$REVIEWERS" \
@@ -119,8 +123,11 @@ assert_grep "mandate block injects the diff base placeholder" "$CYCLE_SCOPE" \
 assert_grep "mandate 2: fix diff reviewed at unchanged depth (scope narrows, criteria do not)" "$CYCLE_SCOPE" \
   'レビュー対象の\*\*範囲\*\*を絞るものであって、範囲内の\*\*基準\*\*を緩めるものではない'
 # 契約 (§4.4 MUST NOT / AC-4 の Then) に文として現れる 2 本は、肯定句の存在だけを見ると
-# 同一行に撤回節を追記する変異（「… という規則は cycle 2+ では適用しません:」）を素通りする。
-# 行頭アンカーでも同型変異は防げないため、**文の続き**まで pin を伸ばす。
+# 削除・言い換えの変異を素通りするため、**文の続き**まで pin を伸ばす。
+# **撤回節の追記（「… という規則は cycle 2+ では適用しません」を後ろに足す変異）はこれでも
+# 検出できない** — 実測で確認済みで、pin の書き方の問題ではなく肯定リテラルの grep では
+# 加法的否定を検出できないという手法の限界。**同じ理由で必ず失敗するのでパターンを足さないこと**
+# （1 cycle を空転させる）。当該クラスの検出は散文の意味レビュー側の責務。
 assert_grep "mandate 3: Cross-File Impact Check is NOT reduced (文の続きまで pin)" "$CYCLE_SCOPE" \
   'Cross-File Impact Check は縮小しない\*\*: fix が触った symbol'
 assert_grep "mandate 4: no re-audit of unchanged code" "$CYCLE_SCOPE" \
@@ -130,7 +137,7 @@ assert_grep "mandate: out-of-previous-scope files get full scope (AC-4、文の�
 
 echo "=== verification_mode との合成: incremental では 4.5.1 を注入しない (AC-5 / D-05) ==="
 assert_grep "1.2.4.1 is skipped entirely when scope is incremental" "$PR_REVIEW" \
-  'REVIEW_CYCLE_SCOPE == incremental.*skip this entire sub-step'
+  'REVIEW_CYCLE_SCOPE == incremental. のときは .review_mode = .full.. を強制し\*\*本サブステップ全体を skip\*\* する'
 # テンプレート選択表に incremental 行があり、そこで 4.5.1 を注入しないと書かれていること
 assert_grep "4.5.1 template-selection table pins the incremental row as 4.5-only" "$PR_REVIEW" \
   '^\| `incremental` \|.*Normal template from ステップ 4\.5 のみ.*本節 4\.5\.1 のテンプレートは注入しない'
