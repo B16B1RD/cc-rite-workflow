@@ -26,7 +26,7 @@ PR の変更内容を解析し、専門家スキルを動的にロードして�
 
 本コマンドはレビュー専用 (READ-ONLY): `Edit`/`Write` でソース修正禁止。`Bash` は workflow 操作と read-only な git コマンドのみ許可 (完全な許可・禁止一覧は [`_reviewer-base.md#read-only-enforcement`](../../agents/_reviewer-base.md#read-only-enforcement) を SoT として参照)。問題検出時は `[review:fix-needed:{n}]` を emit し修正は `/rite:fix` に委譲する。
 
-呼び出し回数・context 残量・前回レビュー結果の有無に **一切関係なく** 常にフルレビューを実行する。スコープ縮退、レビュアー数削減、Verification mode への暗黙フォールバック、品質と context 効率のトレードオフは禁止 (Identity: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md))。再レビュー (fix 後) も初回と完全同等の品質で全レビュアー並列起動 + PR 全体差分を対象にフルレビューする。
+**cycle 1 は** 呼び出し回数・context 残量に **一切関係なく** PR 全体をフルレビューする。cycle 2+ のレビュー範囲は ステップ 1.2.4 が永続 JSON から機械的に決める (差分スコープ) が、これは調査**範囲**の限定であって指摘の採否**基準**の緩和ではない — 基準 (4 必須自問 / Confidence / Observed Likelihood / 実測アンカー) は cycle を通じて不変で、レビュアー数の恣意的削減・Verification mode への暗黙フォールバック・品質と context 効率のトレードオフは引き続き禁止 (Identity: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md))。再レビュー (fix 後) も初回と完全同等の深さと厳しさで、ステップ 1.2.4 が決めた範囲を全レビュアー並列起動で審査する。
 
 Hooks registration (`.claude/settings.local.json`) はチェックしない (`/rite:setup` の専管)。本コマンドは hooks 関連の WARNING を出さない。
 
@@ -51,7 +51,7 @@ bash 4.0+ 必須 (`mapfile` builtin の存在を bash 4+ 判定に使用。ス�
 |-------|-----------|----------|
 | ステップ 3.3 (Confirm Reviewers) | `AskUserQuestion` で構成確認 | **`AskUserQuestion`（オプション選択）を skip**（pre-flight 確認のみ。flow-state ベース判定はステップ 3.3 参照）。`起動 reviewer {count} 名` サマリ行・省略された reviewer 表示は両経路で必須維持 |
 | ステップ 4 (Sub-Agent Execution) | Full execution | **Full execution** — sub-agents MUST run in parallel for every review cycle (including verification mode). No shortcut allowed. |
-| ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 AskUserQuestion と同じ identity 制約 — 既定 `post_comment: false` ではこの出力が非実測指摘を人間が見る唯一の同期経路であり、省略は Issue #2024 D-01「破棄しない」の喪失に直結する) |
+| ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外 1: ステップ 5.4 の `### レビュー範囲（cycle 2+ 差分スコープ）` section は `REVIEW_CYCLE_SCOPE == incremental` のとき E2E でも省略禁止** (cycle 2+ は E2E からしか発生しないため、ここを minimize すると「スキップした reviewer を記録する」要求が空文になる — SoT: [cycle-scope.md](references/cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 2: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 AskUserQuestion と同じ identity 制約 — 既定 `post_comment: false` ではこの出力が非実測指摘を人間が見る唯一の同期経路であり、省略は Issue #2024 D-01「破棄しない」の喪失に直結する) |
 | ステップ 6 (PR Comment) | Full comment + display | Post comment silently, output pattern only |
 | ステップ 7 (Triage) | Full report + guidance | **Recommendations only** — detect scope-irrelevant recommendations (findings/recommendations containing 別 Issue / スコープ外 keywords). **Always** prompt `AskUserQuestion` for each candidate (no E2E skip). Only when `[review:mergeable]`. |
 
@@ -401,65 +401,54 @@ Medium/Large scale: `gh pr view {pr_number} -R {owner_repo} --json files --jq '.
 
 **Per-file diff extraction:** `gh pr diff {pr_number} -R {owner_repo} | awk '/^diff --git/ { found=0 } /^diff --git.*{target_pattern}/ { found=1 } found { print }'`
 
+**Incremental scope**: `REVIEW_CYCLE_SCOPE == incremental` のときは上記 2 形式を `git diff {cycle_base_sha}..HEAD`（一括）/ `git diff {cycle_base_sha}..HEAD -- {target_path}`（per-file）へ差し替える。`gh pr diff` は起点を指定できないため git 側を使う。
+
 
 #### 1.2.3 Retrieve Changed File List
 
 Use the `files` array retrieved in ステップ 1.1 to extract file paths.
 
-#### 1.2.4 Review Mode Determination
+#### 1.2.4 Review Scope Determination (cycle 1 / cycle 2+)
+
+Decide whether this review runs at **full scope** (cycle 1) or **incremental scope** (cycle 2+, 差分スコープ). 判定入力は ステップ 6.1.a が書く永続レビュー JSON のみ（会話コンテキストの数え上げにも PR コメントにも依存しない）。判定は helper へ委譲する:
+
+```bash
+bash {plugin_root}/scripts/review-cycle-scope.sh --pr {pr_number}
+```
+
+> **Reference**: 設計根拠（永続 JSON を入力にする理由 / 終了意味論 / cycle-count degradation 禁止規範との関係 / 情報欠落時に必ず `full` へ倒す理由）は [cycle-scope.md](references/cycle-scope.md) が SoT。`REVIEW_CYCLE_SCOPE_FALLBACK=1; reason=` の reason 語彙（`no_prev_json` / `prev_json_unreadable` / `commit_sha_missing` / `commit_sha_unreachable` / `diff_failed` / `empty_diff` / `run_pin_unresolved` / `run_pin_unreadable` / `jq_missing`）は helper docstring が SoT。**reason は分岐を変えない** — 全 reason が下表の `full` に落ち、`no_prev_json`（cycle 1 の正常経路）以外は WARNING を伴う。**helper が非ゼロ終了した / `REVIEW_CYCLE_SCOPE=` marker を観測できない場合も `full` として扱い**、`⚠️ 差分スコープのフォールバック: reason=helper_failed。フルレビューで実行します。` を出力する（usage error では marker が出ないため helper 側の reason 語彙では表現できない consumer 側の既定。ステップ 5.3.0.M step 3 の「marker が一切出ずに helper が非ゼロ終了した」行と同型）。
+
+| `REVIEW_CYCLE_SCOPE` | レビュー対象 | 適用される cycle |
+|---|---|---|
+| `full` | PR 全体（従来どおり） | cycle 1、および fail-safe 発火時 |
+| `incremental` | `{cycle_base_sha}..HEAD` の diff + 前回 blocking の解消検証 | cycle 2+ |
+
+`incremental` のとき marker から retain する: `{cycle_base_sha}` = `base_sha=`（差分の起点。ステップ 2.2 / 4.5 が使う）、`{prev_finders}` = `prev_finders=`（前サイクルで gated scope の指摘を出した `reviewer_type` の CSV。実測なしで non-blocking に降格した指摘の出し手も含む。helper が絞り済み。ステップ 2.2 で `mandatory` 合流）、`{previous_blocking_findings}` = `prev_json=` が指すファイルの **`findings[]` と `non_blocking_findings[]` の和**のうち **`scope ∈ {current-pr, follow-up}` のもの**（helper の `prev_finders` と同一母集団。5.3.0.M は `nit-noted` をゲート対象外として非実測でも `findings[]` に残す一方、非実測の gated 指摘は `non_blocking_findings[]` へ *移送* するため、片方だけ読むと nit が混じり移送分が欠ける。両方読んで gated scope で絞ると、mandatory 合流した reviewer に必ず自分の検証対象が渡る）。`{prev_finders}` に統合済みの旧 type が現れたら `skills/reviewers/SKILL.md` の Legacy Reviewer Type Aliases に従い WARNING 付きで読み替える（silent skip 禁止）。
+
+#### 1.2.4.1 Review Mode Determination (`verification_mode`)
 
 Determine the review mode based on whether a previous review result comment exists.
 
-**Loading configuration:**
+**Composition with ステップ 1.2.4**: `REVIEW_CYCLE_SCOPE == incremental` のときは `review_mode = "full"` を強制し**本サブステップ全体を skip** する。評価するのは `full` のときのみ（rationale: [cycle-scope.md](references/cycle-scope.md#既存-reviewloopverification_mode-との合成)）。**Loading configuration:** retrieve `review.loop.verification_mode` from `rite-config.yml` (default: `false`).
 
-Retrieve `review.loop.verification_mode` from `rite-config.yml` (default: `false`).
+**Determination logic:** `verification_mode == true` かつ前回レビューコメントが存在するときのみ `review_mode = "verification"`（前回指摘の修正検証 + incremental diff のリグレッションチェック。フルレビューも併せて実施される）。それ以外は `full`。
 
-
-**Determination logic:**
-
-| Condition | review_mode | Description |
-|------|-------------|------|
-| `verification_mode == false` or no previous review comment | `full` | Full review as usual |
-| `verification_mode == true` and previous review comment exists | `verification` | Verification mode (verify fixes from previous findings + regression check of incremental diff). Note: Full review is also conducted alongside verification results |
-
-**How to determine previous review existence:**
-
-Check for the existence of a previous review result comment in PR comments:
+**How to determine previous review existence:** 下記が非空を返せば前回レビューあり（`verification_mode == true` のとき `verification`）、空なら `full`。
 
 ```bash
 gh api repos/{owner}/{repo}/issues/{pr_number}/comments \
  --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | last | .body'
 ```
 
-If this returns a non-empty result, a previous review exists → use `verification` mode (when `verification_mode == true`).
-If empty → use `full` mode.
-
 **Additional information retrieval for verification mode:**
 
-When `review_mode == "verification"`, retrieve the following:
+When `review_mode == "verification"`, extract the following from the comment retrieved above:
 
-1. **Retrieve the previous review result comment** from PR comments:
- ```bash
- gh api repos/{owner}/{repo}/issues/{pr_number}/comments \
- --jq '[.[] | select(.body | contains("📜 rite レビュー結果"))] | last | .body'
- ```
+1. `📎 reviewed_commit: {sha}` -> `{last_reviewed_commit}`
+2. Finding tables within the "全指摘事項" section -> `{previous_findings}`
+3. Incremental diff via `git diff {last_reviewed_commit}..HEAD`
 
-2. Extract the following from the retrieved comment:
- - `📎 reviewed_commit: {sha}` -> `{last_reviewed_commit}`
- - Finding tables within the "全指摘事項" section -> `{previous_findings}`
-
-3. **Retrieve the incremental diff**:
- ```bash
- git diff {last_reviewed_commit}..HEAD
- ```
-
-**Fallback:**
-
-| Failure Case | Action |
-|-----------|------|
-| Previous review comment not found | Fallback to `review_mode = "full"` |
-| `📎 reviewed_commit` not found | Fallback to `review_mode = "full"` |
-| `git diff {sha}..HEAD` fails (force-push/rebase, etc.) | Fallback to `review_mode = "full"` |
+**Fallback:** 前回レビューコメント不在 / `📎 reviewed_commit` 不在 / `git diff {sha}..HEAD` 失敗（force-push・rebase 等）のいずれも `review_mode = "full"` へ倒す。
 
 On fallback, output the following:
 ```
@@ -652,6 +641,15 @@ If the skill file (`skills/reviewers/SKILL.md`) is not found, fall back to the b
 Match changed files against the pattern table in SKILL.md.
 
 Match changed files against the Available Reviewers table in `skills/reviewers/SKILL.md` (source of truth for file patterns). The table's `Activation` column defines the detailed patterns.
+
+**Matching input by `REVIEW_CYCLE_SCOPE`** (ステップ 1.2.4)。パターン表は cycle で変わらない — 変わるのは表に照合させる**入力ファイル一覧**だけ（AC-4 が特別扱いの分岐なしに成立する理由・以降のフロアが不変な理由は [cycle-scope.md](references/cycle-scope.md#reviewer-選抜をパターンマッチの入力で行う理由)）:
+
+| `REVIEW_CYCLE_SCOPE` | 照合する入力ファイル一覧 |
+|---|---|
+| `full` | ステップ 1.2.3 の PR 全体の変更ファイル（従来どおり） |
+| `incremental` | `git diff --name-only {cycle_base_sha}..HEAD` の結果（= fix diff）に差し替える |
+
+`incremental` のとき: (1) パターンマッチ結果に `{prev_finders}` を **`selection_type: mandatory`** で合流させる（`recommended` は不可 — Phase 5 の cap が落とさないと保証するのは `mandatory` のみで、`recommended` は `max_reviewers` 超過時に落ちて「前サイクル finder は無条件に再起動」が破れる。昇格は `detected < recommended < mandatory` の高い側へのみ）。(2) ステップ 2.3 の sole-reviewer guard / ステップ 3.2 の Security Expert 条件 / ステップ 3.2.1 の cap とフロアは**すべて従来どおり適用する**。(3) 今サイクル対象外となった reviewer 名と理由を ステップ 5.4 の「レビュー範囲」section に記録する（silent な絞り込みは禁止）。**母集合は cycle 1 で選定された reviewer 集合**とし、そこから今サイクル起動しない名前を理由付きで列挙する（全 9 名を母集合にすると PR に一度も関係しない reviewer が毎サイクル並び、今サイクルの起動集合を母集合にすると差分スコープが何名減らしたかが読めない）。ステップ 3.3 の「省略された reviewer 表示」には記録しない — 同 section は出力条件が `{dropped_count} > 0`、見出しが cap 超過を理由として固定されており、パターンマッチの候補にすら上がらない差分スコープ由来の除外を表現できない。
 
 **Pattern priority rules:**
 1. `commands/**/*.md`, `skills/**/*.md`, `agents/**/*.md` -> Prompt Engineer (highest priority)
@@ -1316,7 +1314,7 @@ If the following issues occur with the sub-agent approach:
 - `run_in_background`: `false` — foreground 起動を強制する。省略すると harness default で background 起動となり結果回収が不完全になる (下記 CRITICAL 注記参照)
 - `prompt`:
  - `review_mode == "full"`: ステップ 4.5 format (diff, spec, shared reviewer principles)
- - `review_mode == "verification"`: ステップ 4.5.1 verification template + ステップ 4.5 full template, concatenated in a single prompt. Include previous findings table and incremental diff (from ステップ 1.2.4) in addition to the standard inputs.
+ - `review_mode == "verification"`: ステップ 4.5.1 verification template + ステップ 4.5 full template, concatenated in a single prompt. Include previous findings table and incremental diff (from ステップ 1.2.4.1) in addition to the standard inputs.
 
 **`reviewer_type` → `subagent_type` mapping:**
 
@@ -1396,8 +1394,9 @@ Generate instructions for each reviewer.
 
 | Placeholder | Source | Extraction Method |
 |---------------|--------|----------|
-| `{relevant_files}` | Changed file list from ステップ 1.2 | Extract only files matching the reviewer's Activation pattern |
-| `{diff_content}` | Diff from ステップ 1.2 | **Varies by scale** (see below) |
+| `{relevant_files}` | Changed file list from ステップ 1.2 | Extract only files matching the reviewer's Activation pattern。`REVIEW_CYCLE_SCOPE == incremental` のときは ステップ 2.2 と同じく `git diff --name-only {cycle_base_sha}..HEAD` の一覧から抽出する。**例外**: `incremental` かつ当該 reviewer が `{prev_finders}` 由来の `mandatory` 合流で、パターン一致が 0 件のときは `{cycle_base_sha}..HEAD` の**全ファイル**を渡す（空で渡すと `{diff_content}` も空になり、mandate 4 が差分外の読み直しを禁じるため mandate 1 の解消検証すら実行できない prompt になる — 解消検証は自分の指摘箇所と fix の影響範囲の両方が読めて初めて成立する） |
+| `{diff_content}` | Diff from ステップ 1.2 | **Varies by scale** (see below)。`REVIEW_CYCLE_SCOPE == incremental` のときは PR 全体の diff ではなく `{cycle_base_sha}..HEAD` の diff を使う（取得コマンドは ステップ 1.2 の incremental 系。`{relevant_files}` が上記例外で全ファイルになった場合は同区間の全 diff を渡す） |
+| `{cycle_scope_mandate}` | [cycle-scope.md](references/cycle-scope.md#reviewer-mandate差分スコープ適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `REVIEW_CYCLE_SCOPE == incremental` のときのみ、同節の fenced block 本文を抽出し `{previous_blocking_findings}` / `{cycle_base_sha}` を埋めて注入する。`full` のときは空文字列（セクションごと省略） |
 | `{issue_spec}` | Issue specification obtained in ステップ 1.3.1 | Content of the "仕様詳細" section (if empty, write "仕様情報なし") |
 | `{change_intelligence_summary}` | Change Intelligence Summary from ステップ 1.2.6 | One-paragraph summary of change type, file classification, and focus area |
 | `{shared_reviewer_principles}` | `_reviewer-base.md` (shared) | Extract all sections from the document start to the `## Input` heading (exclusive). This covers `## READ-ONLY Enforcement`, `## Reviewer Mindset`, `## Cross-File Impact Check`, and `## Confidence Scoring` as a contiguous block. Agent-specific identity is NOT included here — it is delivered via the named subagent's system prompt (Phase B). See ステップ 4.3 step 3 for the full extraction procedure |
@@ -1420,14 +1419,17 @@ Generate instructions for each reviewer.
 
 ### 4.5.1 Verification Mode Review Instruction Template
 
-When `review_mode == "verification"` (determined in ステップ 1.2.4), use the following template **in addition to** the normal template from ステップ 4.5. Both verification results and full review results are consolidated in the final assessment.
+When `review_mode == "verification"` (determined in ステップ 1.2.4.1), use the following template **in addition to** the normal template from ステップ 4.5. Both verification results and full review results are consolidated in the final assessment.
 
 **Template selection logic:**
 
-| review_mode | Template Used |
-|-------------|-------------------|
-| **`full`** | Normal template from ステップ 4.5 only |
-| **`verification`** | Both: this section's (4.5.1) verification template AND the normal template from ステップ 4.5 |
+| `REVIEW_CYCLE_SCOPE` (1.2.4) | review_mode (1.2.4.1) | Template Used |
+|---|-------------|-------------------|
+| `incremental` | (評価しない = `full` 固定) | Normal template from ステップ 4.5 のみ（`{cycle_scope_mandate}` を注入）。**本節 4.5.1 のテンプレートは注入しない** |
+| `full` | **`full`** | Normal template from ステップ 4.5 only |
+| `full` | **`verification`** | Both: this section's (4.5.1) verification template AND the normal template from ステップ 4.5 |
+
+`incremental` で 4.5.1 を注入しない理由（4.5.1 の Part 1 / Part 2 が `{cycle_scope_mandate}` に包含され、両方注入すると相反する 3 つのスコープ指示が届く）: [cycle-scope.md](references/cycle-scope.md#既存-reviewloopverification_mode-との合成)。
 
 **Verification mode review instruction template:**
 
@@ -1437,8 +1439,8 @@ Verification モードのレビュー指示テンプレート本文は [referenc
 
 | Placeholder | Source | Extraction Method |
 |---------------|--------|----------|
-| `{previous_findings_table}` | Previous review finding table obtained in ステップ 1.2.4 | Integrate finding tables from each reviewer in the "全指摘事項" section from the previous `📜 rite レビュー結果` comment |
-| `{incremental_diff}` | `git diff {last_reviewed_commit}..HEAD` obtained in ステップ 1.2.4 | Full incremental diff (however, for large scale, only files relevant to the reviewer) |
+| `{previous_findings_table}` | Previous review finding table obtained in ステップ 1.2.4.1 | Integrate finding tables from each reviewer in the "全指摘事項" section from the previous `📜 rite レビュー結果` comment |
+| `{incremental_diff}` | `git diff {last_reviewed_commit}..HEAD` obtained in ステップ 1.2.4.1 | Full incremental diff (however, for large scale, only files relevant to the reviewer) |
 | `{change_intelligence_summary}` | Change Intelligence Summary from ステップ 1.2.6 | One-paragraph summary of change type, file classification, and focus area |
 
 ---
@@ -1552,9 +1554,9 @@ When `review_mode == "verification"`, classify: NOT_FIXED/PARTIAL/REGRESSION/MIS
 
 ##### 5.1.1.1 Post-Condition Check: Verification Result Table Presence
 
-**Execution condition**: `review_mode == "verification"` (always enforced when verification mode is active).
+**Execution condition**: `review_mode == "verification"` **または** `REVIEW_CYCLE_SCOPE == incremental`（後者は 1.2.4.1 が `review_mode = "full"` を強制するため、`review_mode` だけを見ると解消検証が要求される cycle 2+ でこの post-condition が必ず skip されてしまう。差分スコープ mandate 1 も同じ `### 修正検証結果` テーブルを出力契約として課すので、検査対象は同一）。
 
-**Skip condition**: `review_mode == "full"` — skip this post-condition entirely.
+**Skip condition**: `review_mode == "full"` かつ `REVIEW_CYCLE_SCOPE == full` — skip this post-condition entirely.
 
 **Purpose**: verification mode では、各 reviewer が ステップ 4.5.1 の verification テンプレートに従って `### 修正検証結果` テーブルを出力することが契約である。このテーブルが欠落している場合、reviewer は「前回指摘の修正検証」を **silent に skip している可能性が高く**、結果として `finding_count == 0` と誤判定されて silent pass する経路が成立する（本 ステップ 5.1.1.1 post-condition 設置の根本目的）。ステップ 5.1.3 の Doc-Heavy PR Mode post-condition と同じ構造で、silent non-compliance を検出する。
 
@@ -1584,7 +1586,7 @@ When `review_mode == "verification"`, classify: NOT_FIXED/PARTIAL/REGRESSION/MIS
 - `prompt` 内容: ステップ 4.5.1 verification テンプレート + ステップ 4.5 full テンプレート（元レビューと同じ 2 テンプレート concat）に、以下の strict 要件を追加:
  - 「`### 修正検証結果` heading と判定テーブル (`| # | 重要度 | ファイル:行 | 内容 | 判定 | 備考 |`) を **必ず**出力すること」
  - 「ステップ 4.5.1 verification テンプレートの Part 1 (前回指摘の修正検証) を skip せずに実行すること」
-- 入力データ (`{previous_findings_table}` / `{incremental_diff}` / `{change_intelligence_summary}`): ステップ 1.2.4 で取得済みのものを再供給
+- 入力データ (`{previous_findings_table}` / `{incremental_diff}` / `{change_intelligence_summary}`): ステップ 1.2.4.1 で取得済みのものを再供給
 - **結果 merge 戦略**: retry 結果は元 reviewer の output を **置き換える** (append ではない)。元 output は破棄し、retry output のみを ステップ 5.1 結果集合に使用する
  - **Note**: retry prompt は full + verification 両 template を concat して再送している (上記 `prompt` 内容参照) ため、retry output は元 output の全指摘 (verification mode 由来 + full mode 由来) を**包含する**。元 output 内の非 verification finding が retry 置き換えで消失することはない。
 - retry 実行後、`verification_post_condition_retry_count[{reviewer_type}]` を +1 し、もう一度判定条件を評価する。retry 後も欠落していれば `error` に昇格する
@@ -2363,7 +2365,9 @@ fi
 | **`full`** | Full review mode template |
 | **`verification`** | 統合テンプレート（検証サマリー + フルレビューセクション含む） |
 
-**Note**: `📎 reviewed_commit: {current_commit_sha}` must be output in both templates. This is used for incremental diff retrieval in the verification mode of the next cycle (ステップ 1.2.4).
+**Note**: `📎 reviewed_commit: {current_commit_sha}` must be output in both templates. This is used for incremental diff retrieval in the verification mode of the next cycle (ステップ 1.2.4.1). 次 cycle の差分スコープ（ステップ 1.2.4）が使う起点は本コメントではなく ステップ 6.1.a の永続 JSON の `commit_sha` である。
+
+**`### レビュー範囲（cycle 2+ 差分スコープ）` section**: `REVIEW_CYCLE_SCOPE == incremental` のときのみ描画する（`full` のときはセクションごと省略）。起動した reviewer とその選出理由（前サイクル finder の `mandatory` 合流 / fix diff の領域担当）、および**今サイクルで起動しなかった reviewer 名と理由**を列挙する。silent な絞り込みは禁止で、本 section は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 1）。
 
 **`### 実測なし指摘 (non-blocking)` section の情報源**: ステップ 5.3.0.M でゲート適用済の `{review_tmp_dir}/rite-review-result-{pr_number}.json` の `non_blocking_findings[]` を Read tool で読んで描画する (Issue #2072)。会話コンテキストから記憶で再構成しない — 記憶と JSON がずれると、永続 JSON・PR 記録コメント・本 section の 3 経路が別々の集合を主張する。件数 `{non_blocking_count}` は 5.3.0.M の `[CONTEXT] MEASURED_GATE=...; non_blocking_total=` の値と一致する。
 

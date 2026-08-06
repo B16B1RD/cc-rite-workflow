@@ -18,6 +18,19 @@
 - **レビュアー数**: {count}人
 - **変更規模**: {additions}+ / {deletions}- ({changedFiles} files)
 
+### レビュー範囲（cycle 2+ 差分スコープ）（該当がある場合のみ）
+<!-- REVIEW_CYCLE_SCOPE == incremental のときのみ表示。full のときは本セクションごと省略する。
+     E2E フローでも省略禁止 — cycle 2+ は E2E からしか発生しないため、ここを minimize すると
+     観測性の要求が空文になる（SoT: cycle-scope.md §選抜結果の記録を E2E で省略しない理由）。 -->
+
+- **スコープ**: 差分（`{cycle_base_sha}`..HEAD） — 未変更部は cycle 1 のフルレビューで審査済み
+- **起動した reviewer**: {selected_reviewers_with_reason}
+- **今サイクルはスキップした reviewer**: {skipped_reviewers_with_reason}
+
+| reviewer | 今サイクル | 理由 |
+|----------|-----------|------|
+| {type} | 起動 / スキップ | 前サイクル finder（mandatory 合流）/ fix diff の領域担当（{matched_file_count} ファイル）/ fix diff に該当ファイルなし |
+
 ### レビュアー合意状況
 
 | レビュアー | 評価 | CRITICAL | HIGH | MEDIUM | LOW-MEDIUM | LOW |

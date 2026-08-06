@@ -100,6 +100,15 @@ For each changed file:
   3. Track file count per reviewer
 ```
 
+**"changed file" の定義は review cycle で変わる**（`skills/pr-review/SKILL.md` ステップ 1.2.4 の `REVIEW_CYCLE_SCOPE` marker が決める。パターン表そのものは変わらない — 変わるのは表に照合させる入力だけ）:
+
+| `REVIEW_CYCLE_SCOPE` | Phase 1 の "changed file" |
+|---|---|
+| `full`（cycle 1 / fail-safe） | PR 全体の変更ファイル |
+| `incremental`（cycle 2+） | 前回レビュー起点からの fix diff (`git diff --name-only {cycle_base_sha}..HEAD`) |
+
+`incremental` では、Phase 1 の結果に**前サイクルで blocking を出した reviewer を `selection_type: mandatory` として合流**させる（Phase 5 が落とさないことを保証しているのは `mandatory` のみのため）。設計根拠は [`skills/pr-review/references/cycle-scope.md`](../pr-review/references/cycle-scope.md)。
+
 ### Phase 2: Content Analysis (Optional)
 
 ```text
