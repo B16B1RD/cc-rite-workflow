@@ -9,11 +9,15 @@
 # is written from scratch in every new helper and each writing is an
 # independent chance to get it wrong. mktemp failures were silenced into an
 # empty path (`x=$(mktemp 2>/dev/null) || x=""`) with no diagnostic; cleanup was
-# registered only for EXIT, which does fire on INT/TERM/HUP but cannot set the
-# exit code, so an interrupted run reported success; and the registration was
-# written *after* the mktemp, leaving a window in which a signal orphans the
-# file. Prose conventions did not stop the recurrence — the convention is not
-# in front of the author at the moment they type `mktemp`. A function is.
+# registered only for EXIT, which fires on a signal too but cannot carry that
+# signal's exit code — measured on bash 5.2/Linux: with EXIT alone TERM and HUP
+# still end at 143/129, but a SIGINT arriving while a foreground child blocks
+# leaves the script at rc=0 and running the next statement, because a
+# non-interactive shell does not exit on SIGINT unless the foreground child died
+# from it; and the registration was written *after* the mktemp, leaving a window
+# in which a signal orphans the file. Prose conventions did not stop the
+# recurrence — the convention is not in front of the author at the moment they
+# type `mktemp`. A function is.
 #
 # The canonical order the Wiki records (empty declaration → signal-specific
 # handler → mktemp, with POSIX exit codes 130/143/129) is not something the
