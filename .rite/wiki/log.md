@@ -20,6 +20,7 @@
 * **Create**: [ガードの述語は「守りたい状態」そのものを測る — 存在ではなく内容を測る](pages/heuristics/guard-predicate-measures-the-protected-state.md) — raw/reviews/20260805T122139Z-pr-2114.md を新規ページ化（ENOSPC で 0 バイトが残り存在ガードが恒久無音 skip 化 / 述語を正しくすれば post-write の追加検査は要らない）
 * **Update**: [mkdir 成功のみの判定漏れと brace group 未使用によるリダイレクト診断メッセージ漏洩](pages/anti-patterns/mkdir-success-only-check-and-redirect-diagnostic-leak.md) — raw/fixes/20260805T124633Z-pr-2114.md を統合（単純コマンド形は原因が最も要る側 ENOSPC だけを捨て要らない側 EACCES を漏らす / pin は文言でなく列位置に取り LC_ALL=C を付ける）
 * **lint:warning** — contradictions=0, stale=17, orphans=0, missing_concept=0, unregistered_raw=298, broken_refs=0
+* **Create**: [散文で分類規則を追加するときは『規則の完全性』と『判断点への到達』を別々に点検する](pages/heuristics/prose-classification-rule-completeness-and-reach.md) — raw/reviews/20260806T040205Z-pr-2122.md を新規ページ化（既定が入力欠損の 2 層を覆うか / row の前提を判定手順へ対応付けるか / 述語の評価レベル固定 / 節再編で共通規定が旧クラス名を名指ししたまま残らないか / SoT 記述と判断点への注入を対で行う）
 
 ## 2026-08-05
 

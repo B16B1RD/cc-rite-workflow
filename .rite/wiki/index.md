@@ -387,9 +387,10 @@
 | [同一箇所への指摘が N cycle 連続したら、その箇所が何番目のコピーかを数える](pages/heuristics/idiom-copy-count-decides-patch-vs-extract.md) | heuristics | 指摘の連続は「その箇所の品質」ではなく「その箇所が N 番目のコピーであること」に原因がある場合がある。前者なら追加パッチ、後者なら共有 helper への抽出が答えで、判別は同じ idiom のコピー数を数えることでつく。 | 2026-08-06T02:49:27Z | high |
 | [コメントの「正確化」は主張を強めがち — 実態へ合わせるより強度を下げる方が安全](pages/heuristics/comment-correction-prefers-weakening-over-restatement.md) | heuristics | コメントをより正確にしようと書き換えると、往々にしてより強い＝より外れやすい断定になる。正確化には (a) 主張を実態へ合わせる と (b) 主張の強度を下げる の 2 方向があり、(b) の方が次サイクルの指摘面を作らない。 | 2026-08-06T02:49:27Z | high |
 | [1 つの skip ガードの背後に AC の全カバレッジを置かない — permission 非依存の失敗誘発で床を残す](pages/heuristics/skip-guarded-coverage-needs-permission-free-floor.md) | heuristics | chmod プローブの else 側に AC の TC を全部置くと、root / WSL2 DrvFs / overlay ホストでカバレッジが皆無になる。しかも skip は FAIL ではないので結果表示から判別できない。パスを regular file やディレクトリで塞ぐ permission 非依存の失敗誘発なら、プローブが skip するホストでも床が残る。 | 2026-08-06T02:49:27Z | high |
+| [散文で分類規則を追加するときは『規則の完全性』と『判断点への到達』を別々に点検する](pages/heuristics/prose-classification-rule-completeness-and-reach.md) | heuristics | reviewer の分類規則を散文で追加する PR では、規則本体の穴（既定が入力欠損の全クラスを覆うか / 各 row の前提に検証手順があるか / 判定の評価レベルが固定されているか / 節再編で共通規定が旧クラス名を名指ししたまま残っていないか）と、規則が reviewer の判断点（prompt の注入行）へ届いているかを、独立した 2 軸として点検する。SoT へ書いただけでは規則は不活性になり、既存の注入行が肯定的にドメイン限定されている場合は新ドメインに逆の signal が残る。 | 2026-08-06T04:11:14+00:00 | medium |
 
 ## 統計
 
-- 総ページ数: 381
-- ドメイン別: patterns=97, heuristics=161, anti-patterns=123
-- 最終更新: 2026-08-06T02:49:27Z
+- 総ページ数: 382
+- ドメイン別: patterns=97, heuristics=162, anti-patterns=123
+- 最終更新: 2026-08-06T04:11:14+00:00
