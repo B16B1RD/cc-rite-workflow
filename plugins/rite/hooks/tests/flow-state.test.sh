@@ -1455,8 +1455,7 @@ assert "TC-2115-01: pr_number is a JSON number" "number" "$(sed -n 2p "$tlog" | 
 # ts equals the state file's updated_at at second granularity, so a record can be
 # cross-referenced with the state it describes. That equality alone does not pin the
 # format — both sides read the same `$now`, so switching it to epoch seconds keeps
-# them equal — and the only consumer of this log parses timestamps, so assert the
-# ISO 8601 shape separately.
+# them equal — so assert the ISO 8601 shape separately.
 assert "TC-2115-01: ts equals the state file's updated_at" \
   "$(jq -r .updated_at "$d/.rite/sessions/${sid}.flow-state")" "$(sed -n 2p "$tlog" | jq -r .ts)"
 assert "TC-2115-01: ts is ISO 8601 UTC" "ok" \
@@ -1709,6 +1708,18 @@ assert_grep "TC-2115-10: the append failure is announced" "$stderr_2115_10" 'WAR
 # The .gitignore path is independent of the append path and must still have run.
 assert "TC-2115-10: the exclusion was still written" "*" "$(cat "$d/.rite/logs/.gitignore" 2>/dev/null)"
 rm -f "$stderr_2115_10"
+# The WARNING sites run their runtime values through `neutralize_ctrl`; drop that and
+# a newline inside `--phase` splits this WARNING, forging a second one at column 0.
+# The same sandbox works — the log path is still a directory, so the append still
+# fails and `$to` still reaches the message. Count only the append line: the
+# `unknown phase` WARNING interpolates the same value raw and would mask the check.
+stderr_2115_10b="$(mktemp)"
+set +e
+(cd "$d" && bash "$HOOK" set --phase "$(printf 'plan\nWARNING: forged')" --issue 15 --pr 0 --next "n") 2>"$stderr_2115_10b"
+set -e
+assert "TC-2115-10: a newline in --phase cannot split the append WARNING" "1" \
+  "$(LC_ALL=C grep -cE 'phase-transition log not writable.*not recorded$' "$stderr_2115_10b" || true)"
+rm -f "$stderr_2115_10b"
 
 if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del (Issue #1524) + non-UUID acceptance (Layer 1 format-agnostic contract pin) + phase-transition append log (#2115)"; then
   exit 1

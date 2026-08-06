@@ -233,12 +233,11 @@ _append_phase_transition() {
     fi
   fi
   # `--argjson` keeps the two numeric fields as JSON numbers; both values already
-  # survived the identical `--argjson` in the state write above, so a non-numeric one
-  # cannot reach here — the state write would have failed and returned before the
-  # append. What the guard below is for is jq failing to *run* at all (fork/exec/OOM):
-  # `line` would be empty and the append would put a blank line into the JSONL, which
-  # no consumer can parse. That is why the branch stays despite being unreachable via
-  # bad input, and why `$issue` / `$pr` are not neutralized in its message.
+  # survived the identical `--argjson` in the state write above, so anything it would
+  # reject cannot reach here — the state write would have failed and returned before
+  # the append. What the guard below is for is jq failing to *run* at all
+  # (fork/exec/OOM): `line` would be empty and the append would put a blank line into
+  # the JSONL. That is why the branch stays despite being unreachable via bad input.
   local line
   if ! line=$(jq -cn --arg ts "$ts" --arg session "$sid" \
       --argjson issue "$issue" --argjson pr "$pr" \
@@ -425,10 +424,10 @@ cmd_set() {
     return 1
   fi
   [ -n "$_new_jq_err" ] && rm -f "$_new_jq_err"
-  # `_atomic_write` の header コメント ("Callers MUST check rc") を遵守。現状は cmd_set の
-  # 最終 statement のため set -e で rc が暗黙伝播するが、将来 `_atomic_write` の後に log 行を
-  # 1 つ足す等の小修正で silent failure path が即復活する fragile pattern を避けるため、明示的
-  # に `|| return 1` で rc を伝播させる (`_migrate_file` の `_atomic_write` 呼び出し直前と対称化)。
+  # `_atomic_write` の header コメント ("Callers MUST check rc") を遵守。本 helper の追加で
+  # `_atomic_write` は cmd_set の最終 statement ではなくなったため、`|| return 1` は「将来の
+  # 小修正に備えた冗長」ではなく rc 伝播の唯一の経路である (`_migrate_file` の `_atomic_write`
+  # 呼び出し直前と対称化)。
   _atomic_write "$path" "$new" || return 1
   # Record only after the write physically landed, so the log never claims a
   # transition that failed to persist. Reuses `$now` (the same timestamp the
