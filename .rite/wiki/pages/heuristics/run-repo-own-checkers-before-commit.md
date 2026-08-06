@@ -4,12 +4,14 @@ title: "commit 前にリポジトリ自身の checker を全変更ファイル�
 domain: "heuristics"
 description: "リポジトリが規約 checker を持っているなら、commit 前に変更ファイル全件へ回す。自動検出できる違反を reviewer が指摘すると 1 cycle 遅れ、その cycle の指摘枠を消費する。PR #2038 cycle 5 では 14 件の指摘のうち 2 件（ハードコード行番号 / ジャーナルコメント）が repo 自身の checker が rc=1 で検出できるものだった。pre-existing の hit と本 PR 由来を分けるには develop 側との照合が要る。"
 created: "2026-07-28T21:30:00+09:00"
-updated: "2026-07-28T21:30:00+09:00"
+updated: "2026-08-06T22:40:00+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260728T100957Z-pr-2038.md"
   - type: "fixes"
     ref: "raw/fixes/20260728T122258Z-pr-2038.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260806T110520Z-pr-2124.md"
 tags: []
 confidence: high
 ---
@@ -78,6 +80,12 @@ fi
 
 なお、この種の書き換えを機械的な文字列置換で行うと**意味が反転する**ことがある。「旧版は X で、Y を検出できなかった」の接頭辞だけを「本 pin が満たすべき条件: X」に差し替えると、**棄却された手法 X を要件として宣言する**文になる。ジャーナルコメントを不変条件記述へ直すときは文全体を書き直す。
 
+### 自 PR が新設した規約を、自 PR の fix が破る（PR #2124 cycle 3）
+
+lint check #18 を新設する PR が、その fix で追加したテストコメントによって**同じ lint テーブルに並ぶ既存 check #8**（`comment-line-ref-check.sh`、ハードコード行番号参照の検出）に引っかかった。code-quality と test の 2 reviewer が独立に HIGH で検出している。
+
+**fix で追加した行も、次 cycle のレビュー対象面である。** fix を書くときは修正箇所の正しさだけを見て、その修正が新たに追加した行が既存規約を満たすかを見ない。この盲点は「**fix 後に、変更したファイルへ既存の lint 検出器を全部かけ直す**」で機械的に塞げる — 本ページの主題を、初回 commit だけでなく各 fix cycle にも適用する。
+
 ## 関連ページ
 
 - [cycle が進んでも findings が減らないときは点修正をやめて構造を疑う](./non-converging-review-loop-suspect-structure.md)
@@ -88,3 +96,4 @@ fi
 
 - [PR #2038 fix results (cycle 5)](../../raw/fixes/20260728T100957Z-pr-2038.md)
 - [PR #2038 fix results (cycle 6, final)](../../raw/fixes/20260728T122258Z-pr-2038.md)
+- [PR #2124 review results (cycle 3)](../../raw/reviews/20260806T110520Z-pr-2124.md)

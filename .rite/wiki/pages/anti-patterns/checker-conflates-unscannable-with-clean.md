@@ -4,12 +4,14 @@ title: "検出器が「走査できなかった」を「問題なし」に畳む
 domain: "anti-patterns"
 description: "静的チェックスクリプトが fence 不整合 / awk fatal / target 不在をすべて「findings 0 件 + rc=0」に畳むと、rc=0 を success として扱いスクリプト出力を表示しない呼び出し元の下でガードが無言で無効化される。stderr に WARNING を出していても、呼び出し元が WARNING を表示する経路を持たなければ silent と同義。走査できなかった件数を数えて別 exit code に分けて初めて observable になる。"
 created: "2026-07-30T01:20:00+09:00"
-updated: "2026-07-30T01:20:00+09:00"
+updated: "2026-08-06T22:40:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260729T142410Z-pr-2051.md"
   - type: "fixes"
     ref: "raw/fixes/20260729T144345Z-pr-2051.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260806T103116Z-pr-2124.md"
 tags: []
 confidence: high
 ---
@@ -71,6 +73,16 @@ exit 0                                    # 全ファイル走査済み・findin
 
 対象が 1 件も無いのは、consumer リポジトリ（rite をマーケットプレイス経由でのみ使い `plugins/rite/` を self-host していない）では正常系である。この場合は `--skip-if-no-target` のような明示フラグで「not applicable」を宣言させ、呼び出し元が 1 行の informational note を出す形にする。**「対象が無い」と「対象を開けなかった」を同じ rc に畳まない**。
 
+### guard 自身が、guard の戒めている欠陥を持っていた（PR #2124 cycle 2）
+
+本ページの教訓を header に明記した検出器で、同じ欠陥が**実装側**に残っていた。ハンドル登録が最初の 1 個で `return` しており、1 論理行が複数の tempfile を作る形（`a=$(mktemp) && b=$(mktemp)`）では 2 個目以降が未登録 = その派生パスが恒久的に silent clean になっていた。しかも走査対象ツリーに該当行が実在した（`lib/git-status-filtered.sh:45`）。
+
+**宣言した契約を自分自身の実装で破っていないかは、宣言文の grep ではなく実データでの反証で確かめる。** このケースでは security reviewer が走査対象ツリーから同形の行を探して existing_call_site として提示し、fixture で再現した。header に「走査しなかったものを見つからなかったへ畳まない」と書いてあることは、実装がそうなっている証拠にならない。
+
+### どの先例を写すかで欠陥が決まる
+
+同じ機能の実装がリポジトリに複数あるとき、**どれを写すかで欠陥が決まる**。PR #2124 の新規検出器は、より古い `bash-heaviness-check.sh` の形（`2>/dev/null || true` で失敗を飲む）を写したため、本ページの教訓を持つ `dollar-zero-check.sh` の `SKIPPED` カウンタが伝播しなかった。**レビューを経た最新の実装を写す**。
+
 ## 関連ページ
 
 - [CI lint チェックを blocking gate に昇格するときはツール自身の exit code を gate にする](../heuristics/ci-blocking-gate-tool-exit-code.md)
@@ -81,3 +93,4 @@ exit 0                                    # 全ファイル走査済み・findin
 
 - [PR #2051 review results](../../raw/reviews/20260729T142410Z-pr-2051.md)
 - [PR #2051 fix results](../../raw/fixes/20260729T144345Z-pr-2051.md)
+- [PR #2124 review results (cycle 2)](../../raw/reviews/20260806T103116Z-pr-2124.md)

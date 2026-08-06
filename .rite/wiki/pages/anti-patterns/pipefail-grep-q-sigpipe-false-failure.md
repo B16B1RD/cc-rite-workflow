@@ -4,7 +4,7 @@ title: "`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で
 domain: "anti-patterns"
 description: "grep -q は一致した時点で終了するため、上流が SIGPIPE (rc=141) を受けて pipeline 全体が失敗扱いになる。低頻度で発火するため flaky な skip として現れ、閾値の緩い floor guard に masking される。入力が stdio バッファ境界を超えた地点で挙動が反転するため、小さな入力のテストでは絶対に見つからない。"
 created: "2026-08-03T07:46:56Z"
-updated: "2026-08-05T05:30:00+00:00"
+updated: "2026-08-06T22:40:00+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260803T052647Z-pr-2094.md"
@@ -12,6 +12,10 @@ sources:
     ref: "raw/reviews/20260805T043752Z-pr-2112.md"
   - type: "fixes"
     ref: "raw/fixes/20260805T050456Z-pr-2112.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260806T053845Z-pr-2124.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260806T055534Z-pr-2124.md"
 tags: []
 confidence: high
 ---
@@ -91,6 +95,19 @@ if [ -n "$hit" ]; then ...
 
 **`$(... grep ...)` を書いたら、ファイル内の同型 site と guard の有無を突き合わせる。** 実害の確認には「WARNING 文言を変えた mutant で完走するか」を見るのが速い（実例では 94 → 60 アサーションで中断していた）。
 
+### 検出器で免除するときは「真の判定軸」と「実装が何で判定しているか」を突き合わせる（PR #2124）
+
+本パターンを検出する lint を書くと、`printf` / `echo` 起点のパイプラインを免除したくなる。根拠は「**短い in-memory 文字列はパイプバッファに収まるので producer が書き終わり、SIGPIPE が成立しない**」だが、実装も文書も**コマンド名**で免除していた。この proxy には 2 つの穴がある。
+
+| 穴 | 実測 |
+|---|---|
+| payload がリポジトリ規模に比例する `printf` は根拠が成立しない | payload 70000B で rc=141、10000B では rc=0 |
+| 免除判定が「パイプライン全体の先頭」を見て「`grep -q` の直前段」を見ていない | `printf ¦ jq ¦ grep -q` が丸ごと免除される |
+
+**真の判定軸は「どのプロセスが実際に死ぬか」= consumer の直前段**であって、パイプライン先頭のコマンド名ではない。コマンド名は proxy にすぎない。
+
+**proxy で判定するなら、proxy が成立する条件を文書に書く。** 書かないと、次の書き手が proxy を真の軸だと信じ、根拠が成立しない入力まで無警告で通す。
+
 ## 関連ページ
 
 - [function 内 `local v=$(...)` と top-level `v=$(...)` の `set -e` 伝播差で writer/reader 非対称が偶然 mask される](./bash-local-vs-toplevel-pipefail-asymmetry.md)
@@ -102,3 +119,5 @@ if [ -n "$hit" ]; then ...
 - [PR #2094 fix results (cycle 3)](../../raw/fixes/20260803T052647Z-pr-2094.md)
 - [PR #2112 review results (cycle 3)（`sed -n | grep -q` でバッファ境界を超えた地点の挙動反転を検出）](../../raw/reviews/20260805T043752Z-pr-2112.md)
 - [PR #2112 fix results (cycle 3)（真偽判定をコマンド置換の非空判定へ置換）](../../raw/fixes/20260805T050456Z-pr-2112.md)
+- [PR #2124 review results（免除規則の根拠と実際の判定軸のずれ）](../../raw/reviews/20260806T053845Z-pr-2124.md)
+- [PR #2124 fix results（payload 70000B で rc=141 を実測、判定軸を consumer の直前段へ）](../../raw/fixes/20260806T055534Z-pr-2124.md)

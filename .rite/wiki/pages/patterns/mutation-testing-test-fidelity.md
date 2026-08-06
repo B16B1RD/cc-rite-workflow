@@ -2,7 +2,7 @@
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-08-05T09:26:00+09:00"
+updated: "2026-08-06T22:40:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260725T032345Z-pr-2013.md"
@@ -136,6 +136,10 @@ sources:
     ref: "raw/fixes/20260801T032503Z-pr-2078.md"
   - type: "reviews"
     ref: "raw/reviews/20260804T135121Z-pr-2111.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260806T094541Z-pr-2124.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260806T120815Z-pr-2124.md"
 tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage", "symmetry-claim-bidirectional-pin", "negative-assert", "non-blocking-contract-mutation"]
 confidence: high
 ---
@@ -874,6 +878,16 @@ reviewer に mutation 実測を明示的に依頼した結果、静的 pin で�
 
 新設した squat 検査のコメントが「TOCTOU を塞ぐのは `set -C`」と書いたが、bash の noclobber が拒否するのは既存**通常ファイル**だけで FIFO には効かない。実測（300 回並走）で 18/300 が競合窓でハングした。**塞いだ範囲を実測で確定してから書く** — 先置きケースを塞いだなら「先置きケースを塞いだ」と書く。
 
+### equivalent mutant を「生存したから穴」と数えない（PR #2124 cycle 4-5）
+
+mutation の生存数をそのまま pin 欠落として報告すると、**契約外の実装内部を変えただけの mutant**が穴として計上され、指摘の精度が落ちる。PR #2124 では 77 mutant 中 57 kill / 20 生存のうち **6 本を equivalent と確定させたうえで**残り 14 本を pin 欠落として報告した。cycle 1 の 24 変異（kill 15 / survive 9）でも、生存 9 件はすべて契約外の実装内部だった。
+
+**「テストが green である」ことと「テストが守っている」ことを分離して測る**のが mutation の目的なので、生存 mutant は 1 本ずつ「契約挙動を壊しているか」を判定してから数える。equivalent の判定を省くと、次 cycle で「実在しない gap」を修正しようとして時間を使う（cycle 5 では test reviewer が cycle 4 の自分の指摘 7 件のうち 2 件をこの理由で実測撤回している）。
+
+### signal handler は mutation でしか穴が見えない
+
+bash は untrapped な INT/TERM/HUP で死ぬときも EXIT trap を実行するため、lib から signal trap 3 行を削除した mutant に対してテストが**全件 green のまま**通った。rc と副作用だけを見る assertion では handler の存在を判別できない。詳細は [bash の signal 挙動は「誰が送るか」「何をしている最中か」で反転する — 条件を揃えない実測は正しい記述を誤りと判定する](../heuristics/bash-signal-verification-requires-matched-conditions.md) を参照。
+
 ## 関連ページ
 
 - [否定形の assert は前提条件が崩れると fail-silent になる](../anti-patterns/negative-assertion-vacuous-without-precondition-floor.md)
@@ -949,3 +963,5 @@ reviewer に mutation 実測を明示的に依頼した結果、静的 pin で�
 - [PR #2013 fix results (cycle 2) — 42 assertions 緑でも mutation を検出できない初版](../../raw/fixes/20260725T025323Z-pr-2013.md)
 - [PR #2013 fix results (cycle 3) — 9 種 mutation を全て KILLED まで持っていった記録](../../raw/fixes/20260725T033607Z-pr-2013.md)
 - [PR #2111 review results — 散文→helper 委譲リファクタで 23 変異中 8 生存を実測 (grep 断片照合のみで golden 全文比較なし / ヘッダ補填分岐の fixture ゼロ / 制御文字経路未被覆)。散文から移した仕様の「実行可能仕様」が fixture に揃っているかの機械検証として有効](../../raw/reviews/20260804T135121Z-pr-2111.md)
+- [PR #2124 review results — 隔離 worktree での 24 変異 (kill 15 / survive 9)、生存はすべて契約外の実装内部](../../raw/reviews/20260806T094541Z-pr-2124.md)
+- [PR #2124 review results (cycle 4) — 77 変異中 6 本を equivalent と確定させてから 14 本を pin 欠落として報告](../../raw/reviews/20260806T120815Z-pr-2124.md)

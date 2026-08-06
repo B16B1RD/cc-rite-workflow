@@ -2,10 +2,12 @@
 title: "Markdown table 内に HTML コメントを挿入すると GFM table boundary が破壊される"
 domain: "anti-patterns"
 created: "2026-05-03T12:53:26Z"
-updated: "2026-05-03T12:53:26Z"
+updated: "2026-08-06T22:40:00+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260503T110855Z-pr-792-fix-cycle3.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260806T111135Z-pr-2124.md"
 tags: []
 confidence: high
 ---
@@ -51,6 +53,14 @@ GFM の table 解析は「`|` を含む連続行ブロック」を table とみ�
 
 起点事例の cycle 2 で SPEC-IMPL-FILES table 内の特定行を一時的にコメントアウトする目的で `<!-- removed: ... -->` を挿入したところ、cycle 3 review で「table の最終行が `<p>` 段落として脱落」が tech-writer によって検出された。npx marked で render verification すると確かに最終行が table 外で render されており、修正は HTML コメントを **table 終了直後 (空行を挟んで) の独立段落** に移動することで解消した。
 
+### code span で囲んでもパイプはセル境界を割る（PR #2124 cycle 3）
+
+HTML コメントだけでなく、**テーブルセル内の code span に含まれる raw pipe** も同じ形でセル境界を破壊する。バッククォートで囲んでも GFM はパイプのエスケープ（\|）を要求する。PR #2124 では SPEC.md の 1 セルが割れ、Purpose 列が文中で切断され Notes 値が破棄されていた。
+
+### 「テーブルが壊れる」は目視ではなく API 実測で示す
+
+ローカルの markdown プレビューでは GFM 固有のセル境界解釈を再現できない。tech-writer reviewer は **GitHub の `/markdown` API に実際に POST してレンダリング結果を観測**し、`<td>` の数を数えて修正前後を実測した（4 セル → 3 セル、Notes 値の復帰）。文書の修正は文書を読むのではなく、**レンダラに実際に食わせて確かめる**。
+
 ## 関連ページ
 
 - [Markdown code fence の balance は commit 前に awk で機械検証する](../patterns/markdown-fence-balance-precommit-check.md)
@@ -60,3 +70,4 @@ GFM の table 解析は「`|` を含む連続行ブロック」を table とみ�
 ## ソース
 
 - [PR #792 cycle 3 fix results (GFM table 構造破壊 + Asymmetric Fix Transcription 再発)](../../raw/fixes/20260503T110855Z-pr-792-fix-cycle3.md)
+- [PR #2124 fix results (cycle 3)（code span 内 raw pipe のセル境界破壊を /markdown API の td 数で実測）](../../raw/fixes/20260806T111135Z-pr-2124.md)

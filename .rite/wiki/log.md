@@ -23,6 +23,16 @@
 * **Create**: [散文で分類規則を追加するときは『規則の完全性』と『判断点への到達』を別々に点検する](pages/heuristics/prose-classification-rule-completeness-and-reach.md) — raw/reviews/20260806T040205Z-pr-2122.md を新規ページ化（既定が入力欠損の 2 層を覆うか / row の前提を判定手順へ対応付けるか / 述語の評価レベル固定 / 節再編で共通規定が旧クラス名を名指ししたまま残らないか / SoT 記述と判断点への注入を対で行う）
 * **lint:warning** — contradictions=0, stale=17, orphans=0, missing_concept=0, unregistered_raw=298, broken_refs=0
 
+* **Create**: [「規約」と「その規約を検査する検出器」を同一 PR で入れると、規約に従った書き方が検出器の盲点に入る](pages/heuristics/convention-and-detector-introduced-together-blind-each-other.md) — raw/reviews/20260806T053845Z-pr-2124.md を新規ページ化（検出器の正規表現は PR 以前の書き方に対して書かれる / cycle 1・2・5 で「綴りの網羅」が 3 回別形で漏れた実測）
+* **Create**: [bash は `$` の後の `[A-Za-z0-9_]` 連続を 1 つの変数名として読む — 無括弧の `$v_suffix` は派生ではなく別変数](pages/patterns/bash-variable-name-lexing-defeats-prefix-derivation-regex.md) — raw/fixes/20260806T055534Z-pr-2124.md を新規ページ化（$pr_view_err に対する $pr_view_err_oneline の誤検知 / 派生は ${v}_suffix と $v-suffix だけ）
+* **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260806T094541Z-pr-2124.md を統合（生存 mutant は equivalent 判定を経てから穴として数える / 77 変異中 6 本を equivalent と確定）
+* **Skip**: [20260806T095141Z-pr-2124.md](raw/fixes/20260806T095141Z-pr-2124.md) — 「修正前に同一 invariant の全複製箇所を grep 列挙」「blocking の修正範囲に non-blocking の構造改変を混ぜない」は既存 3 ページが既にカバー
+* **Update**: [検出器が「走査できなかった」を「問題なし」に畳むと、ガードが黙って無検査になる](pages/anti-patterns/checker-conflates-unscannable-with-clean.md) — raw/reviews/20260806T103116Z-pr-2124.md を統合（本ページの教訓を header に書いた検出器の実装側に同じ欠陥が残っていた / 宣言文の grep ではなく実データでの反証で確かめる）
+* **Create**: [検出範囲を広げる修正は「広がった」と「広がりすぎていない」を対で pin する](pages/patterns/detector-widening-pins-both-bounds.md) — raw/fixes/20260806T103316Z-pr-2124.md を新規ページ化（T-03h/T-04h の対で拡張の下限と上限を pin / 件数でなく個々のハンドルを assert / 全域走査で誤検知が増えていないことを確認）
+* **Update**: [commit 前にリポジトリ自身の checker を全変更ファイルへ回す — 機械検出できる違反を reviewer に探させない](pages/heuristics/run-repo-own-checkers-before-commit.md) — raw/reviews/20260806T110520Z-pr-2124.md を統合（lint check #18 を新設する PR の fix が既存 check #8 を破った / fix が追加した行も次 cycle のレビュー対象面）
+* **Update**: [Markdown table 内に HTML コメントを挿入すると GFM table boundary が破壊される](pages/anti-patterns/html-comment-breaks-gfm-table-boundary.md) — raw/fixes/20260806T111135Z-pr-2124.md を統合（code span で囲んでもセル内 raw pipe は境界を割る / GitHub の /markdown API に POST して td 数で実測する）
+* **Create**: [bash の signal 挙動は「誰が送るか」「何をしている最中か」で反転する — 条件を揃えない実測は正しい記述を誤りと判定する](pages/heuristics/bash-signal-verification-requires-matched-conditions.md) — raw/reviews/20260806T120815Z-pr-2124.md / raw/fixes/20260806T121439Z-pr-2124.md を新規ページ化（EXIT trap が signal handler の不在を隠す / reviewer が前 cycle の自分の指摘を実測で撤回した経緯と再現手順）
+* **Update**: [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — raw/reviews/20260806T053845Z-pr-2124.md / raw/fixes/20260806T055534Z-pr-2124.md を統合（免除をコマンド名という proxy で判定していた / 真の判定軸は consumer の直前段 / payload 70000B で rc=141 を実測）
 ## 2026-08-05
 
 * **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260804T135121Z-pr-2111.md を統合（散文→helper 委譲リファクタで 23 変異中 8 生存を実測、散文から移した仕様の「実行可能仕様」が fixture に揃っているかの機械検証として有効）
