@@ -204,8 +204,14 @@ _append_phase_transition() {
   local log_dir="$STATE_ROOT/.rite/logs"
   local log_file="$log_dir/phase-transitions.log"
   local _gi_err
+  # Every runtime-derived value below goes through `neutralize_ctrl` before landing in
+  # a WARNING: `$log_dir` / `$log_file` carry `$STATE_ROOT`, `$from` comes from the state
+  # file and `$to` straight from `--phase`, and a raw 0x9b in any of them is read as a CSI
+  # introducer by some terminals — enough to forge a second `WARNING:` line. Same inline
+  # form as session-start.sh; the parity sweep does not reach `echo "…$var…" >&2`, so this
+  # is by hand rather than by check.
   if ! mkdir -p "$log_dir" 2>/dev/null; then
-    echo "WARNING: flow-state.sh: phase-transition log dir not creatable ($log_dir); transition ${from:-<none>} -> $to not recorded" >&2
+    echo "WARNING: flow-state.sh: phase-transition log dir not creatable ($(printf '%s' "$log_dir" | neutralize_ctrl)); transition $(printf '%s' "${from:-<none>}" | neutralize_ctrl) -> $(printf '%s' "$to" | neutralize_ctrl) not recorded" >&2
     return 0
   fi
   # Self-contained `.gitignore` (`*`), because /rite:setup's generated .gitignore
@@ -224,7 +230,7 @@ _append_phase_transition() {
     # the upstream message to ASCII leaves the neutralizer fully intact (it merely
     # becomes a no-op here); `--c0-only` would instead blank 0x0a and break the indent.
     if ! _gi_err=$( { LC_ALL=C printf '*\n' > "$log_dir/.gitignore"; } 2>&1 ); then
-      echo "WARNING: flow-state.sh: cannot create $log_dir/.gitignore; verify by hand that this directory is excluded from git" >&2
+      echo "WARNING: flow-state.sh: cannot create $(printf '%s' "$log_dir" | neutralize_ctrl)/.gitignore; verify by hand that this directory is excluded from git" >&2
       [ -n "$_gi_err" ] && printf '%s\n' "$_gi_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
   fi
@@ -237,7 +243,7 @@ _append_phase_transition() {
       --argjson issue "$issue" --argjson pr "$pr" \
       --arg from "$from" --arg to "$to" \
       '{ts:$ts, session_id:$session, issue_number:$issue, pr_number:$pr, from:$from, to:$to}' 2>/dev/null); then
-    echo "WARNING: flow-state.sh: phase-transition record could not be built (issue='$issue' pr='$pr' not numeric?); transition ${from:-<none>} -> $to not recorded" >&2
+    echo "WARNING: flow-state.sh: phase-transition record could not be built (issue='$(printf '%s' "$issue" | neutralize_ctrl)' pr='$(printf '%s' "$pr" | neutralize_ctrl)' not numeric?); transition $(printf '%s' "${from:-<none>}" | neutralize_ctrl) -> $(printf '%s' "$to" | neutralize_ctrl) not recorded" >&2
     return 0
   fi
   # O_APPEND single-line write — no lock, no rotation (single-user dev machine;
@@ -248,7 +254,7 @@ _append_phase_transition() {
   # `>>` is opened before the `2>` takes effect. Redirecting the group first puts
   # /dev/null in place ahead of the failing open, leaving only our WARNING.
   if ! { printf '%s\n' "$line" >> "$log_file"; } 2>/dev/null; then
-    echo "WARNING: flow-state.sh: phase-transition log not writable ($log_file); transition ${from:-<none>} -> $to not recorded" >&2
+    echo "WARNING: flow-state.sh: phase-transition log not writable ($(printf '%s' "$log_file" | neutralize_ctrl)); transition $(printf '%s' "${from:-<none>}" | neutralize_ctrl) -> $(printf '%s' "$to" | neutralize_ctrl) not recorded" >&2
     return 0
   fi
   return 0

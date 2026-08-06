@@ -1453,9 +1453,14 @@ assert "TC-2115-01: pr_number recorded" "42" "$(sed -n 2p "$tlog" | jq -r .pr_nu
 assert "TC-2115-01: issue_number is a JSON number" "number" "$(sed -n 2p "$tlog" | jq -r '.issue_number|type')"
 assert "TC-2115-01: pr_number is a JSON number" "number" "$(sed -n 2p "$tlog" | jq -r '.pr_number|type')"
 # ts equals the state file's updated_at at second granularity, so a record can be
-# cross-referenced with the state it describes.
+# cross-referenced with the state it describes. That equality alone does not pin the
+# format — both sides read the same `$now`, so switching it to epoch seconds keeps
+# them equal — and the only consumer of this log parses timestamps, so assert the
+# ISO 8601 shape separately.
 assert "TC-2115-01: ts equals the state file's updated_at" \
   "$(jq -r .updated_at "$d/.rite/sessions/${sid}.flow-state")" "$(sed -n 2p "$tlog" | jq -r .ts)"
+assert "TC-2115-01: ts is ISO 8601 UTC" "ok" \
+  "$(sed -n 2p "$tlog" | jq -r 'if (.ts|test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) then "ok" else "bad: "+.ts end')"
 # Self-contained .gitignore so the log never leaks into downstream consuming repos.
 assert "TC-2115-01: log dir carries a self-contained .gitignore" "*" "$(cat "$d/.rite/logs/.gitignore" 2>/dev/null)"
 
@@ -1588,11 +1593,11 @@ else
   fi
   # The captured cause must still be readable after neutralization. `LC_ALL=C` on
   # the failing command is what makes that hold: bash localizes its own errno, and
-  # neutralize_ctrl blanks 0x80-0x9f byte-wise, so under a localized environment the
-  # errno degrades to `?` runs — dropping the one thing this line adds over the
-  # WARNING above. Matching a trailing ASCII errno pins it. On a C-locale host the
-  # message is ASCII regardless and this passes vacuously; on a localized host (this
-  # project declares ja_JP) it is the pin. `.gitignore: ` itself is ASCII and
+  # neutralize_ctrl blanks 0x80-0x9f byte-wise, so under a localized LANG the errno
+  # degrades to `?` runs — dropping the one thing this line adds over the WARNING
+  # above. Matching a trailing ASCII errno pins it. Under a C locale the message is
+  # ASCII regardless and this passes without discriminating; it does the pinning on
+  # hosts whose LANG localizes the diagnostic. `.gitignore: ` itself is ASCII and
   # survives mangling, so the earlier gi_indented check cannot stand in for this.
   gi_ascii_errno=$(LC_ALL=C grep -cE '^  .*\.gitignore: [A-Za-z][A-Za-z ]+$' "$stderr_2115" || true)
   if [ "$gi_ascii_errno" -ge 1 ]; then
@@ -1653,15 +1658,10 @@ assert_file_exists_or_fail "TC-2115-08: the append still ran" "$d/.rite/logs/pha
 # --- TC-2115-09 (AC-2): the log-dir branch is loud too, on every host ---
 echo ""
 echo "=== TC-2115-09 (AC-2): a non-creatable log dir warns and leaves the state write intact ==="
-# The helper has three failure branches; the other two are pinned by TC-2115-06.
-# Without this one, deleting its WARNING — turning it into a complete silent
-# swallow — leaves the whole suite green, so AC-2's "書込不可で WARNING" holds no
-# regression detection power there. Occupying the log-dir path with a regular file
-# makes `mkdir -p` fail on ENOTDIR without any permission trick, so unlike
-# TC-2115-06/07 this assertion runs on every host — including root, WSL2 DrvFs and
-# overlay mounts where the chmod probe skips those two TCs and AC-2 loses all
-# coverage. That portability is why the branch is worth a TC of its own rather than
-# a fourth assertion inside TC-2115-06.
+# Without this, deleting the branch's WARNING — turning it into a complete silent
+# swallow — leaves the whole suite green. Occupying the log-dir path with a regular
+# file makes `mkdir -p` fail without any permission trick, so unlike TC-2115-06/07
+# this runs on every host, including the ones where the chmod probe skips those two.
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 mkdir -p "$d/.rite"
 : > "$d/.rite/logs"
@@ -1680,14 +1680,35 @@ assert "TC-2115-09: no stray field added to the state JSON" \
   "active branch error_count issue_number next_action parent_issue_number phase pr_number schema_version session_id updated_at" \
   "$(jq -r 'keys | join(" ")' "$sfile_09")"
 assert_grep "TC-2115-09: the log dir failure is announced" "$stderr_2115_09" 'WARNING: .*log dir not creatable'
-# The occupying file must still be a regular file: if `mkdir -p` had somehow
-# succeeded, the branch never ran and every assertion above would hold vacuously.
-if [ -f "$d/.rite/logs" ] && [ ! -d "$d/.rite/logs" ]; then
-  pass "TC-2115-09: the branch really ran (log dir path is still a regular file)"
-else
-  fail "TC-2115-09: mkdir -p did not fail as intended — the assertions above are vacuous"
-fi
 rm -f "$stderr_2115_09"
+
+# --- TC-2115-10 (AC-2): the append branch is loud on every host too ---
+echo ""
+echo "=== TC-2115-10 (AC-2): a non-writable log file warns and leaves the state write intact ==="
+# TC-2115-06 already pins this branch, but every one of its assertions sits behind a
+# chmod probe that skips on root, WSL2 DrvFs and overlay mounts — on those hosts AC-2
+# has no coverage at all once TC-2115-07 skips as well. Occupying the log path with a
+# directory makes the append fail on EISDIR with no permission trick, so this keeps a
+# floor everywhere. The dir is created before `set` runs, so `mkdir -p "$log_dir"`
+# still succeeds and only the append fails — the `.gitignore` write succeeds too,
+# which separates the two failure modes TC-2115-06 exercises together.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/logs/phase-transitions.log"
+stderr_2115_10="$(mktemp)"
+set +e
+(cd "$d" && bash "$HOOK" set --phase plan --issue 14 --branch "feat/t" --pr 0 --next "n") 2>"$stderr_2115_10"
+rc_2115_10=$?
+set -e
+assert "TC-2115-10: set still exits 0 (non-blocking)" "0" "$rc_2115_10"
+sfile_10="$d/.rite/sessions/${sid}.flow-state"
+assert_file_exists_or_fail "TC-2115-10: state file still written" "$sfile_10" || true
+assert "TC-2115-10: no stray field added to the state JSON" \
+  "active branch error_count issue_number next_action parent_issue_number phase pr_number schema_version session_id updated_at" \
+  "$(jq -r 'keys | join(" ")' "$sfile_10")"
+assert_grep "TC-2115-10: the append failure is announced" "$stderr_2115_10" 'WARNING: .*log not writable'
+# The .gitignore path is independent of the append path and must still have run.
+assert "TC-2115-10: the exclusion was still written" "*" "$(cat "$d/.rite/logs/.gitignore" 2>/dev/null)"
+rm -f "$stderr_2115_10"
 
 if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del (Issue #1524) + non-UUID acceptance (Layer 1 format-agnostic contract pin) + phase-transition append log (#2115)"; then
   exit 1
