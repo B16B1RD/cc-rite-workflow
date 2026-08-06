@@ -115,7 +115,11 @@ The final severity reported in the findings table is determined by combining the
 
 <a id="帰結クラス軸-consequence-class"></a>
 
-散文 (手順書・仕様書・reference) への指摘を「**この記述に字義どおり従う実行者が、観測可能な誤動作に至るか**」で 2 分する軸 (Issue #2087)。Impact 軸 / Observed Likelihood 軸 / scope 軸と直交する第 4 の軸であり、判定は **ファイル種別ではなく指摘の帰結種別** で行う。
+指摘を「**その指摘が示す帰結は、観測可能な誤動作か**」で分ける軸。Impact 軸 / Observed Likelihood 軸 / scope 軸と直交する第 4 の軸であり、判定は **ファイル種別ではなく指摘の帰結種別** で行う。適用ドメインは 2 つあり、それぞれ判別子を持つ — 散文への指摘 (Issue #2087、直下) とテスト網羅性への指摘 (Issue #2116、後述の小節)。
+
+### 散文の帰結クラス
+
+散文 (手順書・仕様書・reference) への指摘を「**この記述に字義どおり従う実行者が、観測可能な誤動作に至るか**」で 2 分する (Issue #2087)。
 
 | 帰結クラス | 定義 | `Verification:` アンカー |
 |---|---|---|
@@ -125,6 +129,18 @@ The final severity reported in the findings table is determined by combining the
 **なぜこの軸が要るか**: 散文では「2 文の食い違いを示す grep」が technically measured になるため、実測必須ゲートだけでは重要度を弁別できない。実測ゲート導入後、指摘の大半が字面整合に寄った PR #2052 は 3 run・11 記録サイクルで発散した。本軸はその弁別を authoring 層で行う。
 
 **判別子と適用手順の SoT は [`_reviewer-base.md` §手順書・仕様書ドメイン Finding Gate](../agents/_reviewer-base.md#prose-domain-finding-gate)**。本ファイルは語彙定義のみを持ち、判別子表・適用例・MUST NOT 規則は複製しない (COMMENT_QUALITY 軸と同じ forward-pointer 方式)。
+
+### テスト網羅性の帰結クラス
+
+「テストが挙動を固定していない」型の指摘 (mutation 生存 / assert の検証力不足 / pin 欠落) にも同じ軸を適用する (Issue #2116)。散文と異なり mutation 実験は実際に走らせるが、生存する mutant が示すのは HEAD の誤動作ではなく **reviewer が持ち込んだ架空の欠陥に対する番人の不在**であるため、実測必須ゲートだけでは churn 級の pin 強化要求を弁別できない。
+
+| 帰結クラス | 定義 | `Verification:` アンカー |
+|---|---|---|
+| **契約対応の未 pin** | Issue 契約 (§4.4 MUST / §5 AC の `Then`) が規定する挙動そのものを無効化しても検出されない、または当該挙動に対応するテストが存在しない | 適格 |
+| **網羅的 pin 強化** | 契約挙動を丸ごと壊す変異は既存 pin が検出し、生存するのはより細粒度の変異 (連言の片側弱化・実装内部の分岐) のみ | 不適格 (アンカーを付けずに報告する) |
+| **テストの誤り** | テストが名乗った挙動に対してどんな実装でも落ちない (トートロジー assert / 空振り fixture / 仕様と逆を固定) | 適格 — 網羅性ではなく**正しさ**の欠陥のため本軸の対象外 |
+
+**判別子・契約対応の判定手順・適用例の SoT は [`_reviewer-base.md` §テスト網羅性 Finding Gate](../agents/_reviewer-base.md#test-coverage-finding-gate)**。本ファイルは語彙定義のみを持ち、判定手順・適用例・MUST NOT 規則は複製しない (散文の帰結クラスと同じ forward-pointer 方式)。
 
 **他軸との関係**:
 
