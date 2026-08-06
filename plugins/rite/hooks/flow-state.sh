@@ -424,10 +424,8 @@ cmd_set() {
     return 1
   fi
   [ -n "$_new_jq_err" ] && rm -f "$_new_jq_err"
-  # `_atomic_write` の header コメント ("Callers MUST check rc") を遵守。本 helper の追加で
-  # `_atomic_write` は cmd_set の最終 statement ではなくなったため、`|| return 1` は「将来の
-  # 小修正に備えた冗長」ではなく rc 伝播の唯一の経路である (`_migrate_file` の `_atomic_write`
-  # 呼び出し直前と対称化)。
+  # `_atomic_write` の header 契約 ("Callers MUST check rc") を遵守 (`_migrate_file` の
+  # `_atomic_write` 呼び出し直前と対称化)。
   _atomic_write "$path" "$new" || return 1
   # Record only after the write physically landed, so the log never claims a
   # transition that failed to persist. Reuses `$now` (the same timestamp the
