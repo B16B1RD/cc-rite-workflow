@@ -42,6 +42,17 @@
 # bash 3.2 compatible: no `declare -n`, no `mapfile`. `printf -v` and plain
 # arrays only.
 
+# Sourcing twice must not reset the registry. This is the first lib in the repo
+# that carries state, so the no-op re-source that the stateless libs rely on
+# does not hold here: a second `source` would clear the array while the handlers
+# stayed installed, orphaning every already-created tempfile with no diagnostic —
+# the exact leak this lib exists to remove. Two libs already source a sibling,
+# so an indirect double-source is reachable, not hypothetical.
+if [ -n "${_RITE_TMP_LIB_LOADED:-}" ]; then
+  return 0
+fi
+_RITE_TMP_LIB_LOADED=1
+
 # Registered paths, cleaned up in reverse order of creation (a tempdir created
 # before a file inside it must be removed last).
 _RITE_TMP_PATHS=()
@@ -89,13 +100,18 @@ rite_tempfile_init() {
     return 0
   fi
 
-  local existing
-  existing=$(trap -p EXIT)
-  if [ -n "$existing" ]; then
-    echo "ERROR: rite_tempfile_init: an EXIT handler is already installed; installing over it would silently drop it" >&2
-    echo "  Fix: call 'rite_tempfile_init --caller-traps' and invoke rite_tempfile_cleanup from your own handler" >&2
-    return 1
-  fi
+  # All four, not just EXIT. Overwriting a caller's INT handler without saying so
+  # is the same silent clobber the EXIT check refuses — checking one and not the
+  # other three leaves the asymmetry that lets a caller lose its handler quietly.
+  local sig existing
+  for sig in EXIT INT TERM HUP; do
+    existing=$(trap -p "$sig")
+    if [ -n "$existing" ]; then
+      echo "ERROR: rite_tempfile_init: a $sig handler is already installed; installing over it would silently drop it" >&2
+      echo "  Fix: call 'rite_tempfile_init --caller-traps' and invoke rite_tempfile_cleanup from your own handler" >&2
+      return 1
+    fi
+  done
 
   # Signal handlers before any mktemp: a signal arriving between creation and
   # registration is exactly how tempfiles were being orphaned. Exit codes follow
@@ -156,8 +172,10 @@ _rite_tempfile_create() {
     }
   fi
 
-  # Register before returning, so there is no window in which the path exists
-  # but nothing would remove it.
+  # Register in the statement right after creation. A signal arriving between the
+  # two is still possible — bash cannot make them atomic — but the window is one
+  # statement wide, and the handlers were installed before any mktemp ran, which
+  # is the part that actually eliminates the orphans.
   _RITE_TMP_PATHS+=("$path")
   # Owner-only, to keep the path out of reach on a shared /tmp. A directory
   # needs the execute bit or nothing can be created inside it — 600 on a
@@ -184,25 +202,11 @@ rite_tempdir_new() {
   _rite_tempfile_create "${1:-}" "${2:-tmp}" dir
 }
 
-# Remove one path early and drop it from the registry, so the exit handler does
-# not try to remove it again and a reused variable never points at a stale path.
-rite_tempfile_release() {
-  local target="${1:-}" i
-  local -a kept=()
-  [ -n "$target" ] || return 0
-  rm -rf -- "$target"
-  if [ "${#_RITE_TMP_PATHS[@]}" -gt 0 ]; then
-    for (( i = 0; i < ${#_RITE_TMP_PATHS[@]}; i++ )); do
-      [ "${_RITE_TMP_PATHS[$i]}" = "$target" ] && continue
-      kept+=("${_RITE_TMP_PATHS[$i]}")
-    done
-  fi
-  _RITE_TMP_PATHS=()
-  if [ "${#kept[@]}" -gt 0 ]; then
-    _RITE_TMP_PATHS=("${kept[@]}")
-  fi
-  return 0
-}
+# Early release is deliberately absent. Nothing in the repo needs it, and the
+# version that existed took an unvalidated path straight to `rm -rf` — an
+# arbitrary-delete primitive wearing a registry-scoped name, in a lib whose
+# stated premise is that the API shape makes the mistake unwritable. Add it back
+# when a caller actually needs it, with the membership check that implies.
 
 # Running this file instead of sourcing it would install the handlers in a shell
 # that exits immediately — the caller would get nothing. Say so rather than

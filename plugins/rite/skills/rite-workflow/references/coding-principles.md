@@ -208,7 +208,7 @@ OK patterns:
 
 ### tempfile は lib 経由で作る
 
-**Rule**: 新規 helper で tempfile / tempdir が要るときは `mktemp` を直接書かず、`hooks/scripts/lib/tempfile.sh` を source して `rite_tempfile_init` → `rite_tempfile_new <outvar> <tag>`（ディレクトリは `rite_tempdir_new`）を使う。自前の EXIT handler を持つ helper は `rite_tempfile_init --caller-traps` + 自 handler からの `rite_tempfile_cleanup` で合成する。
+**Rule**: 新規 helper で tempfile / tempdir が要るときは `mktemp` を直接書かず、`hooks/scripts/lib/tempfile.sh` を source して `rite_tempfile_init` → `rite_tempfile_new <outvar> [tag]`（ディレクトリは `rite_tempdir_new`）を使う。自前の handler を既に持つ helper は `rite_tempfile_init --caller-traps` + 自 handler からの `rite_tempfile_cleanup` で合成する（既定の `rite_tempfile_init` は EXIT/INT/TERM/HUP のいずれかに既存 handler があると上書きせず rc=1 で拒否する）。同じ規約は `CONTRIBUTING.md` の Hook Conventions にも置いてあり、新規 hook を書く人がそちらだけを読んでも同じ結論に着く。
 
 **Why**: 生成・cleanup 登録・signal 処理を毎回手書きしていたことが、mktemp 失敗の無音化・EXIT のみで INT/TERM/HUP を落とす cleanup・登録前に signal を受ける窓、という同型バグの反復再発源だった（#2099 / #2111 / #2112 / #2114）。lib は canonical 順序（handler 設置 → mktemp → 即登録）を構造的に強制し、`rite_tempfile_new` は fail-loud なので「空パスに落ちて黙って壊れる」書き方自体が無くなる。
 

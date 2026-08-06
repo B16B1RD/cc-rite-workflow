@@ -13,13 +13,18 @@
 #   function. Those are what this scans for.
 #
 # Detected patterns:
-#   (1) mktemp-derived-path — a path derived from a mktemp result, e.g.
-#       `"$tmp.part"`, `"${tmp}.bak"`, `"${tmp%.tmp}.log"`. mktemp's safety comes
-#       from creating a random name with O_CREAT|O_EXCL; a name derived from it
-#       was never created that way and is predictable once the original is
-#       observed, so a planted symlink at the derived path is followed and its
-#       target truncated. Measured end to end by a security reviewer on #2051.
-#       Fix: call mktemp again (or rite_tempdir_new) for the second handle.
+#   (1) mktemp-derived-path — a path derived from a tempfile handle, e.g.
+#       `"$tmp.part"`, `"${tmp}_bak"`, `"$tmp-1"`, `"${tmp%.tmp}.log"`. mktemp's
+#       safety comes from creating a random name with O_CREAT|O_EXCL; a name
+#       derived from it was never created that way and is predictable once the
+#       original is observed, so a planted symlink at the derived path is
+#       followed and its target truncated. Measured end to end by a security
+#       reviewer on #2051. Fix: take a second handle instead of deriving one.
+#
+#       Handles are tracked from both spellings: `x=$(mktemp ...)` and the lib
+#       form `rite_tempfile_new x` / `rite_tempdir_new x`. Tracking only the raw
+#       mktemp form would put the spelling that coding-principles.md now
+#       *mandates* into this checker's blind spot.
 #
 #   (2) pipefail-grep-q-stream — under `set -o pipefail`, a pipeline whose
 #       consumer is `grep -q`. grep -q exits at the first match, so a producer
@@ -29,11 +34,19 @@
 #       floor guard was too loose to notice. Fix: drop the pipeline
 #       (`grep -q PAT file`) or count instead (`grep -c`, which reads to EOF).
 #
-#       Pipelines headed by `printf` or `echo` are NOT flagged. Those write a
-#       short in-memory string that fits the pipe buffer, so the producer
-#       finishes before the consumer can exit and no SIGPIPE is possible — 15 of
-#       the 16 call sites in this repo are that shape, and flagging them would
-#       bury the one real finding.
+#       The producer examined is the stage *immediately* feeding `grep -q`, not
+#       the head of the whole pipeline. Exempting on the pipeline head would let
+#       a three-stage `printf | jq | grep -q` through on the strength of the
+#       printf, while the stage that actually takes the SIGPIPE is jq.
+#
+#       That immediate producer is exempt when it is `printf` or `echo`: a short
+#       in-memory string fits the pipe buffer, so the producer finishes before
+#       the consumer can exit. The exemption is keyed on the command name, which
+#       is a proxy — a `printf` whose payload scales with repository content
+#       (`wiki-lint-orphans.sh`, `wiki-lint-broken-refs.sh`) can exceed the 64 KiB
+#       buffer and is knowingly not covered. Most `grep -q` pipelines in this
+#       repo are the short-string shape, and flagging them would bury the real
+#       findings.
 #
 # Deliberately NOT detected: `x=$(mktemp 2>/dev/null) || x=""`. It reads like the
 #   silencing defect, but it is the house idiom for a non-blocking stderr-capture
@@ -53,7 +66,13 @@
 #                               [--quiet] [--skip-if-no-target]
 #
 # Exit codes: 0 = clean (or not-applicable skip), 1 = pattern detected,
-#             2 = invocation error.
+#             2 = invocation error, or one or more files could not be scanned.
+#
+# A file that could not be scanned is an error, not a clean bill. Folding "did
+# not look" into "found nothing" inside a checker reproduces, within the guard,
+# the very defect class the guard exists to catch — so an unreadable target or a
+# failed awk run is counted and surfaced, and the run exits 2 (findings still win
+# the exit code when both are present). Same contract as dollar-zero-check.sh.
 
 set -uo pipefail
 
@@ -88,9 +107,9 @@ Options:
   -h, --help         Show this help
 
 Detected:
-  mktemp-derived-path     — a write target derived from a mktemp result
+  mktemp-derived-path     — a path derived from a tempfile handle (read or write)
   pipefail-grep-q-stream  — `grep -q` consuming a pipeline under pipefail
-                            (printf/echo-headed pipelines are exempt)
+                            (exempt when the immediate producer is printf/echo)
 
 Exclusions: tests/ ; lines carrying 'drift-check-ignore' (or with the marker on
 the line directly above).
@@ -98,7 +117,9 @@ the line directly above).
 Exit codes:
   0  Clean (or not-applicable skip)
   1  Pattern detected
-  2  Invocation error
+  2  Invocation error, or one or more files could not be scanned (the result is
+     not a clean bill). When findings are also present the exit code is 1 and
+     the unscannable count is still printed.
 EOF
 }
 
@@ -107,8 +128,12 @@ log() { [ "$QUIET" -eq 1 ] || printf '%s\n' "$*" >&2; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --all) USE_ALL=1; shift ;;
-    --target) TARGETS+=("${2:-}"); shift; shift ;;
-    --repo-root) REPO_ROOT="${2:-}"; shift; shift ;;
+    --target)
+      [ $# -ge 2 ] || { echo "ERROR: --target requires a value" >&2; usage >&2; exit 2; }
+      TARGETS+=("$2"); shift 2 ;;
+    --repo-root)
+      [ $# -ge 2 ] || { echo "ERROR: --repo-root requires a value" >&2; usage >&2; exit 2; }
+      REPO_ROOT="$2"; shift 2 ;;
     --quiet) QUIET=1; shift ;;
     --skip-if-no-target) SKIP_IF_NO_TARGET=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -130,10 +155,13 @@ if [ "$USE_ALL" -eq 1 ]; then
   for d in "${SCAN_DIRS[@]}"; do
     [ -d "$d" ] || continue
     found_dir=1
+    # find's stderr is not discarded: an unreadable subdirectory silently
+    # dropping files from the target list is the same "did not look" outcome the
+    # exit-2 contract above exists to surface.
     while IFS= read -r f; do
       case "$f" in */tests/*) continue ;; esac
       TARGETS+=("$f")
-    done < <(find "$d" -type f -name '*.sh' 2>/dev/null | sort)
+    done < <(find "$d" -type f -name '*.sh' | sort)
   done
   if [ "$found_dir" -eq 0 ]; then
     if [ "$SKIP_IF_NO_TARGET" -eq 1 ]; then
@@ -172,13 +200,21 @@ cat > "$AWK_PROG" <<'AWK'
 BEGIN { nvars = 0 }
 { L[NR] = $0 }
 
-# The variable on the left of `=$(mktemp` / `="$(mktemp`, or "" when the line is
-# not such an assignment.
+# The tempfile handle this line creates, or "" when it creates none. Both
+# spellings count: the raw `x=$(mktemp` / `x="$(mktemp` assignment, and the lib's
+# out-variable form `rite_tempfile_new x` / `rite_tempdir_new x`.
 function mktemp_target(s,   t, p) {
-  if (!match(s, /[A-Za-z_][A-Za-z0-9_]*=\"?\$\(mktemp/)) return ""
-  t = substr(s, RSTART, RLENGTH)
-  p = index(t, "=")
-  return substr(t, 1, p - 1)
+  if (match(s, /[A-Za-z_][A-Za-z0-9_]*="?\$\([[:space:]]*mktemp/)) {
+    t = substr(s, RSTART, RLENGTH)
+    p = index(t, "=")
+    return substr(t, 1, p - 1)
+  }
+  if (match(s, /rite_temp(file|dir)_new[[:space:]]+[A-Za-z_][A-Za-z0-9_]*/)) {
+    t = substr(s, RSTART, RLENGTH)
+    sub(/^rite_temp(file|dir)_new[[:space:]]+/, "", t)
+    return t
+  }
+  return ""
 }
 
 # True when `needle` occurs in `s` followed by a suffix character — so
@@ -195,9 +231,32 @@ function derived_use(s, needle,   pos, rest, c) {
   return 0
 }
 
-# First word of the command that heads the pipeline feeding `grep -q`.
-# `prefix` is everything left of that pipe, with `||` already masked to \001.
-function pipeline_head(prefix,   cut, i, seg, head, n, parts) {
+# True when the line derives a path from handle `v` in any of the spellings that
+# occur in practice. Checking only `$v.` would leave `${v}_bak`, `$v-1` and
+# `"$v".part` — the most natural of the set — unseen.
+function derived_any(s, v) {
+  # Unbraced `$v_suffix` is deliberately absent: bash reads the whole run of
+  # [A-Za-z0-9_] as one name, so `$tmp_bak` is the variable `tmp_bak`, not a
+  # derivation of `$tmp`. Treating it as one flags every sibling variable that
+  # shares a prefix (`$pr_view_err` vs `$pr_view_err_oneline`).
+  if (derived_use(s, "$" v ".")) return 1
+  if (derived_use(s, "$" v "-")) return 1
+  if (derived_use(s, "${" v "}.")) return 1
+  if (derived_use(s, "${" v "}_")) return 1
+  if (derived_use(s, "${" v "}-")) return 1
+  if (index(s, "\"$" v "\".") > 0) return 1
+  if (index(s, "\"${" v "}\".") > 0) return 1
+  # Prefix/suffix-strip expansions need no suffix test: rewriting a tempfile path
+  # with an expansion is only ever done to derive another path.
+  if (index(s, "${" v "%") > 0) return 1
+  if (index(s, "${" v "#") > 0) return 1
+  return 0
+}
+
+# First word of the stage immediately feeding `grep -q` — the process that would
+# actually take the SIGPIPE. `prefix` is everything left of that pipe, with `||`
+# already masked to \001.
+function pipeline_producer(prefix,   cut, i, seg, head, n, parts) {
   # Keep only the text after the last control operator: `a && b | grep -q` is a
   # pipeline headed by b, not by a.
   cut = 0
@@ -206,11 +265,21 @@ function pipeline_head(prefix,   cut, i, seg, head, n, parts) {
     if (substr(prefix, i, 2) == "&&") { cut = i + 1; break }
   }
   if (cut > 0) prefix = substr(prefix, cut + 1)
+  # The LAST segment, not the first: in `printf ... | jq ... | grep -q` the stage
+  # that dies is jq, and exempting on the printf at the head would let it pass.
   n = split(prefix, parts, "|")
-  seg = parts[1]
+  seg = parts[n]
   # Strip leading shell keywords and grouping so the first word is the command.
-  while (match(seg, /^[[:space:]]*(if|elif|while|until|then|do|!|\(|\{)[[:space:]]*/)) {
-    head = substr(seg, RSTART + RLENGTH)
+  # Word keywords need at least one space after them, or `docker ps` reports its
+  # producer as `cker` (the zero-width match eats the `do`).
+  while (1) {
+    if (match(seg, /^[[:space:]]*(if|elif|while|until|then|do|!)[[:space:]]+/)) {
+      head = substr(seg, RSTART + RLENGTH)
+    } else if (match(seg, /^[[:space:]]*[({][[:space:]]*/)) {
+      head = substr(seg, RSTART + RLENGTH)
+    } else {
+      break
+    }
     if (head == seg) break
     seg = head
   }
@@ -241,15 +310,8 @@ END {
 
     # --- (1) mktemp-derived-path ---
     for (k = 1; k <= nvars; k++) {
-      # The `.suffix` forms need the suffix character to distinguish a derived
-      # path from a sentence that happens to end in `$tmp.`. The strip forms
-      # (`${tmp%...}` / `${tmp#...}`) need no such test — rewriting a mktemp
-      # path with an expansion is only ever done to derive another path.
-      if (derived_use(line, "$" vars[k] ".") ||
-          derived_use(line, "${" vars[k] "}.") ||
-          index(line, "${" vars[k] "%") > 0 ||
-          index(line, "${" vars[k] "#") > 0) {
-        printf "[tempfile-lifecycle] %s:%d: mktemp-derived-path — a path derived from $%s loses mktemp's O_CREAT|O_EXCL guarantee; call mktemp again for the second handle\n", fname, start, vars[k]
+      if (derived_any(line, vars[k])) {
+        printf "[tempfile-lifecycle] %s:%d: mktemp-derived-path — a path derived from $%s loses mktemp's O_CREAT|O_EXCL guarantee; take a second handle instead of deriving one\n", fname, start, vars[k]
         break
       }
     }
@@ -258,27 +320,49 @@ END {
     if (pipefail != "1") continue
     masked = line
     gsub(/\|\|/, "\001", masked)
-    if (!match(masked, /\|[[:space:]]*grep[[:space:]]+-[A-Za-z]*q/)) continue
-    head = pipeline_head(substr(masked, 1, RSTART - 1))
-    if (head == "" || head == "printf" || head == "echo") continue
-    printf "[tempfile-lifecycle] %s:%d: pipefail-grep-q-stream — `grep -q` exits at the first match and `%s` then takes SIGPIPE, failing the pipeline under pipefail; use `grep -q PAT file` or count with `grep -c`\n", fname, start, head
+    if (!match(masked, /\|&?[[:space:]]*grep[[:space:]]+-[A-Za-z]*q/)) continue
+    producer = pipeline_producer(substr(masked, 1, RSTART - 1))
+    if (producer == "printf" || producer == "echo") continue
+    # An unidentifiable producer is reported, not skipped: a silent exemption
+    # that no prose describes is exactly the blind spot this checker is for.
+    if (producer == "") producer = "(producer unidentified)"
+    printf "[tempfile-lifecycle] %s:%d: pipefail-grep-q-stream — `grep -q` exits at the first match and `%s` then takes SIGPIPE, failing the pipeline under pipefail; use `grep -q PAT file` or count with `grep -c`\n", fname, start, producer
   }
 }
 AWK
 
+# Files the scanner could not read or parse. Kept separate from findings so the
+# exit code can distinguish "nothing to report" from "did not look".
+SKIPPED=0
+
 log "Scanning ${#TARGETS[@]} file(s)..."
 for t in "${TARGETS[@]}"; do
   if [ ! -f "$t" ]; then
-    echo "WARNING: target not found: $t" >&2
+    echo "WARNING: target not found: $t — file not scanned" >&2
+    SKIPPED=$((SKIPPED + 1))
     continue
   fi
   # Pattern (2) is only a defect where pipefail turns the SIGPIPE into a failure.
-  if grep -qE '^[[:space:]]*set[[:space:]]+-[a-zA-Z]*o[[:space:]]+pipefail|^[[:space:]]*set[[:space:]]+-o[[:space:]]+pipefail' "$t"; then
-    pipefail_flag=1
-  else
-    pipefail_flag=0
+  # grep's three exit codes are kept apart: 1 is "no pipefail" but 2 is "could
+  # not read", and folding the latter into the former would silently disable
+  # pattern (2) for that file.
+  grep -qE '^[[:space:]]*set[[:space:]]+-[a-zA-Z]*o[[:space:]]+pipefail|^[[:space:]]*set[[:space:]]+-o[[:space:]]+pipefail' "$t"
+  grep_rc=$?
+  case "$grep_rc" in
+    0) pipefail_flag=1 ;;
+    1) pipefail_flag=0 ;;
+    *)
+      echo "WARNING: pipefail probe failed on $t (grep rc=$grep_rc) — file not scanned" >&2
+      SKIPPED=$((SKIPPED + 1))
+      continue
+      ;;
+  esac
+  awk -v fname="$t" -v pipefail="$pipefail_flag" -f "$AWK_PROG" "$t" >> "$FINDINGS_FILE"
+  awk_rc=$?
+  if [ "$awk_rc" -ne 0 ]; then
+    echo "WARNING: awk failed on $t (rc=$awk_rc) — file not scanned" >&2
+    SKIPPED=$((SKIPPED + 1))
   fi
-  awk -v fname="$t" -v pipefail="$pipefail_flag" -f "$AWK_PROG" "$t" >> "$FINDINGS_FILE" 2>/dev/null || true
 done
 
 if [ -s "$FINDINGS_FILE" ]; then
@@ -291,7 +375,17 @@ total=$(printf '%s' "$total" | tr -d '[:space:]')
 # stdout, not the --quiet-able log: the lint check table parses this line.
 echo "==> Total tempfile-lifecycle findings: ${total}"
 
+if [ "$SKIPPED" -gt 0 ]; then
+  echo "ERROR: ${SKIPPED} file(s) could not be scanned — this run is not a clean bill" >&2
+fi
+
+# Findings win the exit code: making an unscannable file force rc=2 even when
+# real findings exist would turn every detection run into an "invocation error"
+# in the lint table.
 if [ "$total" -gt 0 ]; then
   exit 1
+fi
+if [ "$SKIPPED" -gt 0 ]; then
+  exit 2
 fi
 exit 0

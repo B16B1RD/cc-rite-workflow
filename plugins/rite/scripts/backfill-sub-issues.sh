@@ -148,6 +148,10 @@ is_already_subissue() {
     echo "   ℹ️  #$parent_num has >100 sub-issues; pre-flight check is non-authoritative (will rely on link-sub-issue.sh idempotency)" >&2
   fi
 
+  # Known latent SIGPIPE site: under pipefail, `grep -q` can exit before jq
+  # finishes and the pipeline reports 141, which reads as "child not linked" and
+  # sends a redundant link request. Not fixed in #2117 — that Issue's Non-goal
+  # forbids rewriting existing helpers. drift-check-ignore
   printf '%s' "$resp" \
     | jq -r ".data.repository.issue.subIssues.nodes[]?.number" 2>/dev/null \
     | grep -q "^${child_num}$"
