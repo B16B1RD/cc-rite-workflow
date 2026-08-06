@@ -53,6 +53,8 @@ cycle 数が増えても挙動は一切変わらない（cycle 3 と cycle 5 に
 | `commit_sha_unreachable` | `git cat-file -e {sha}` が失敗（force-push / rebase で消失） | 起点 commit が履歴に無く diff を取れない |
 | `diff_failed` | `git diff {sha}..HEAD` が失敗 | 差分自体を取得できない |
 | `empty_diff` | `git diff {sha}..HEAD` は成功したが差分ゼロ行 | 前回起点から新規 commit が無く、審査対象も解消検証の材料も空になる |
+| `run_pin_unresolved` | state root を解決できず run 開始点 pin の在否を確認できない | 前 run の JSON を現 run と誤認しうる |
+| `run_pin_unreadable` | run 開始点 pin は存在するが読めない | 同上（不在と読取失敗を区別しないと、この経路だけが狭い側へ倒れる） |
 | `jq_missing` | `jq` が PATH 上に無い | JSON を読む手段が無い。環境欠陥だが、状態を書き換えない本 helper には安全な既定（full）が常に存在するため、レビュー自体は止めずスコープだけ広い方へ倒す |
 
 fail-safe 発火時は WARNING を可視化する（silent fallback 禁止）。「なぜ今回フルに戻ったか」が見えないと、差分スコープが効いていないことに気付けない。WARNING には**対象**（読めなかった JSON のパス、解決できなかった `base_sha`）と**原因**（`jq` / `git` の stderr 先頭数行）を含める — reason だけでは、同一 PR の JSON を複数世代持つ `.rite/review-results/` のどれが壊れていたかを運用者が特定できない。

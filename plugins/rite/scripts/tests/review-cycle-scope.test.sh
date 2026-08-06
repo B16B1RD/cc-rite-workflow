@@ -273,7 +273,9 @@ assert_contains "TC-19.4: reviewer 欠落も full へ倒れる" "$SCOPE_STDERR" 
 # reviewer の型・空文字。検査述語を「非 null」で書くと非文字列が通り抽出で無音 drop される
 # (実測済みの欠陥)。空文字は `prev_finders=,test` という空要素入り CSV になり、caller の
 # mandatory 合流が phantom reviewer に cap 免除枠を与える。
-for bad_rev in '123' '["security-reviewer"]' '""'; do
+# 値の形が閉じる 6 ハザード。型と非空だけの述語へ戻す変異、および `$` アンカー（jq の `$` は
+# 末尾改行の直前にも match する）へ戻す変異は、この集合が無いと全スイートを素通りする。
+for bad_rev in '123' '["security-reviewer"]' '""' '"Security-Reviewer"' '"sec; base_sha=deadbeef"' '"-reviewer"' '"security-reviewer\n"'; do
   BADREV="$TEST_DIR/results-badrev"
   rm -rf "$BADREV"; mkdir -p "$BADREV"
   jq -n --arg sha "$FIRST_SHA" --argjson rev "$bad_rev" '{
@@ -386,6 +388,21 @@ run_scope --pr 42 --results-dir "$TEST_DIR/does-not-exist"
 if [ -z "$SCOPE_STDOUT" ]; then pass "TC-13.2: full 経路の stdout は空"; else fail "TC-13.2: stdout に出力あり: $SCOPE_STDOUT"; fi
 
 echo ""
+echo "=== TC-20b: 書込側 canonical に一致しない id は診断行で潰す ==="
+# BAD 経路は `.id` を marker channel へ射影する。`.id` は valid の検査対象外なので、射影の直前で
+# 書込側 canonical regex に一致しない値を潰さないと、診断行が任意の文字列を運ぶ。
+BADID="$TEST_DIR/results-badid"
+mkdir -p "$BADID"
+jq -n --arg sha "$FIRST_SHA" '{
+  schema_version:"1.0.0", pr_number:42, commit_sha:$sha, overall_assessment:"fix-needed",
+  findings:[{id:"F-1; base_sha=deadbeef", reviewer:"test-reviewer", severity:"HIGH", file:"a.sh", line:1}],
+  non_blocking_findings:[]
+}' > "$BADID/42-20260806-000000.json"
+run_scope --pr 42 --results-dir "$BADID"
+assert_contains "TC-20b.1: 不正 id は潰して出す" "$SCOPE_STDERR" "該当 finding: (不正 id)"
+assert_not_contains "TC-20b.2: 元の id 文字列を通さない" "$SCOPE_STDERR" "base_sha=deadbeef"
+assert_contains "TC-20b.3: full へ倒れる" "$SCOPE_STDERR" "reason=prev_json_unreadable"
+
 echo "=== TC-21: 探索段の IO エラーは no_prev_json に落とさず loud に full へ倒す ==="
 # 読めない results dir が「JSON が無い (= cycle 1)」と誤認されると、探索に失敗しただけの状態が
 # 6 reason 中で唯一 WARNING も FALLBACK marker も出さない no_prev_json へ silent に落ちる。
@@ -445,6 +462,53 @@ assert_marker_eq "TC-23.4: 現 run の JSON だけを finder 母集団にする"
 # pin 不在 (空文字) は全件を現 run とみなす = 新規 PR の正常系
 run_scope --pr 42 --results-dir "$PINDIR" --since ""
 assert_contains "TC-23.5: pin 空なら全件を現 run とみなす" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+
+echo "=== TC-24: production 経路 (--since / --results-dir とも省略) で既定 pin 読取が効く ==="
+# consumer (pr-review ステップ 1.2.4) は `--pr {n}` のみで起動する。TC-23 が固定するのは
+# `--since` 明示経路で、production が通る既定読取（state root 解決 → pin ファイル）は別経路。
+# ここを外すと、ブレーカー発火後の再実行の cycle 1 が前 run の JSON を拾って incremental になる。
+PRODROOT="$TEST_DIR/prod-repo"
+mkdir -p "$PRODROOT"
+git -C "$PRODROOT" init -q 2>/dev/null || git init -q "$PRODROOT"
+git -C "$PRODROOT" config user.email t@example.com
+git -C "$PRODROOT" config user.name t
+echo one > "$PRODROOT/a.txt"
+git -C "$PRODROOT" add -A
+git -C "$PRODROOT" commit -qm one
+prod_first=$(git -C "$PRODROOT" rev-parse HEAD)
+echo two > "$PRODROOT/b.txt"
+git -C "$PRODROOT" add -A
+git -C "$PRODROOT" commit -qm two
+mkdir -p "$PRODROOT/.rite/review-results" "$PRODROOT/.rite/state"
+jq -n --arg sha "$prod_first" '{schema_version:"1.0.0", pr_number:42, commit_sha:$sha,
+  overall_assessment:"fix-needed",
+  findings:[{id:"F-01", reviewer:"security-reviewer", severity:"HIGH", file:"a.sh", line:1, scope:"current-pr"}],
+  non_blocking_findings:[]}' > "$PRODROOT/.rite/review-results/42-20260101-000000.json"
+
+# (a) pin ファイル不在 → 全件を現 run とみなす（新規 PR の正常系）
+SCOPE_STDERR=$(cd "$PRODROOT" && bash "$TARGET" --pr 42 2>&1) || true
+assert_contains "TC-24.1: pin 不在なら全件を現 run とみなす" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+
+# (b) pin = その JSON 自身 → pin より新しいファイルが無い = 現 run の初回 = cycle 1
+printf '%s\n' "42-20260101-000000.json" > "$PRODROOT/.rite/state/review-run-since-42.txt"
+SCOPE_STDERR=$(cd "$PRODROOT" && bash "$TARGET" --pr 42 2>&1) || true
+assert_contains "TC-24.2: 既定 pin 読取が効き cycle 1 は full" "$SCOPE_STDERR" "reason=no_prev_json"
+assert_not_contains "TC-24.3: incremental を出さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+
+# (c) pin が存在するが読めない → 不在と区別して広い側へ倒す（狭い側へ倒さない）
+if [ "$(id -u)" -eq 0 ]; then
+  echo "  ⏭️  TC-24.4: root では chmod 000 が効かないため skip"
+else
+  chmod 000 "$PRODROOT/.rite/state/review-run-since-42.txt"
+  SCOPE_STDERR=$(cd "$PRODROOT" && bash "$TARGET" --pr 42 2>&1) || true
+  chmod 644 "$PRODROOT/.rite/state/review-run-since-42.txt"
+  assert_contains "TC-24.4: 読めない pin は run_pin_unreadable" "$SCOPE_STDERR" "reason=run_pin_unreadable"
+  assert_not_contains "TC-24.5: 読めない pin で incremental へ倒さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+fi
+
+# (d) --since 明示は pin より優先される
+SCOPE_STDERR=$(cd "$PRODROOT" && bash "$TARGET" --pr 42 --since "" 2>&1) || true
+assert_contains "TC-24.6: --since 明示が既定 pin を上書きする" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
 
 echo "=== 結果: PASS=$PASS FAIL=$FAIL ==="
 [ "$FAIL" -eq 0 ] || exit 1

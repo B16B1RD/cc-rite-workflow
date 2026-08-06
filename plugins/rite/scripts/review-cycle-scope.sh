@@ -58,6 +58,8 @@
 #   diff_failed           — git diff {sha}..HEAD が失敗
 #   empty_diff            — git diff {sha}..HEAD は成功したが差分ゼロ行 (前回起点から新規 commit なし。
 #                           /rite:fix の accept-only cycle で base_sha == HEAD となり必ず成立する)
+#   run_pin_unresolved    — state root を解決できず run 開始点 pin の在否を確認できない
+#   run_pin_unreadable    — run 開始点 pin は存在するが読めない
 #   jq_missing            — jq が PATH 上に無い
 #
 # Exit codes:
@@ -116,11 +118,19 @@ emit_full() {
 
 command -v jq >/dev/null 2>&1 || emit_full jq_missing
 
+# state root は results dir と run 開始点 pin の両方が使う。resolver は内部で git を複数回叩くため
+# 1 回だけ解決して共有し、失敗時の告知も単一経路にまとめる (house convention: hooks/ の 5 ファイルと同形)。
+_rcs_root=""
+if [ -z "$RESULTS_DIR" ] || [ "$RUN_SINCE_SET" -eq 0 ]; then
+  _rcs_root=$(bash "$_rcs_dir/../hooks/state-path-resolve.sh" "$PWD" 2>/dev/null) || _rcs_root=""
+  [ -n "$_rcs_root" ] || echo "WARNING: review-cycle-scope: state-path-resolve.sh の解決に失敗しました" >&2
+fi
+
 if [ -z "$RESULTS_DIR" ]; then
-  if _rcs_root=$(bash "$_rcs_dir/../hooks/state-path-resolve.sh" "$PWD" 2>/dev/null) && [ -n "$_rcs_root" ]; then
+  if [ -n "$_rcs_root" ]; then
     RESULTS_DIR="$_rcs_root/.rite/review-results"
   else
-    echo "WARNING: review-cycle-scope: state-path-resolve.sh の解決に失敗。cwd 相対の .rite/review-results へフォールバックします" >&2
+    echo "  cwd 相対の .rite/review-results へフォールバックします" >&2
     RESULTS_DIR=".rite/review-results"
   fi
 fi
@@ -137,10 +147,24 @@ fi
 # `skills/iterate/SKILL.md` ステップ 0.6 で、fresh run ごとに「その時点の最新 basename」を記録する。
 # pin 不在 / 空 = 新規 PR または pin を書けなかった run で、そのときは全件を現 run とみなす
 # (書き手側が同じ縮退を WARNING で告知済み)。
+# pin **不在**は「新規 PR / pin を書けなかった run」で、そのときは全件を現 run とみなす (書き手側が
+# 同じ縮退を WARNING で告知済み)。pin が**存在するのに読めない**のは別物として扱う — 区別しないと
+# 全 fail-safe のうちこの経路だけが狭い側 (incremental) へ倒れる。cycle-scope.md が「欠落時の安全側は
+# 常に広い方」と定める以上、読めない pin も、pin の在否を確かめられない状態も広い側へ倒す。
 if [ "$RUN_SINCE_SET" -eq 0 ]; then
-  if _rcs_pin_root=$(bash "$_rcs_dir/../hooks/state-path-resolve.sh" "$PWD" 2>/dev/null) && [ -n "$_rcs_pin_root" ]; then
-    _rcs_pin="$_rcs_pin_root/.rite/state/review-run-since-${PR_NUMBER}.txt"
-    [ -f "$_rcs_pin" ] && RUN_SINCE=$(head -1 "$_rcs_pin" 2>/dev/null)
+  if [ -z "$_rcs_root" ]; then
+    echo "  run 開始点 pin の在否を確認できないため、前 run の JSON を現 run と誤認しないよう full へ倒します" >&2
+    emit_full run_pin_unresolved
+  fi
+  _rcs_pin="$_rcs_root/.rite/state/review-run-since-${PR_NUMBER}.txt"
+  if [ -f "$_rcs_pin" ]; then
+    rite_tempfile_init
+    rite_tempfile_new pin_err "rcs-pin-err" || emit_full run_pin_unreadable
+    if ! RUN_SINCE=$(head -1 "$_rcs_pin" 2>"$pin_err"); then
+      echo "WARNING: review-cycle-scope: run 開始点 pin を読めません: $_rcs_pin" >&2
+      head -3 "$pin_err" | sed 's/^/  /' >&2
+      emit_full run_pin_unreadable
+    fi
   fi
 fi
 
@@ -241,19 +265,21 @@ fi
 # cap 免除枠を占有する。非実測の current-pr / follow-up は「merge は止めないが未解消」であり、
 # 再検証と再記録の価値がある。この区別が母集団を分ける根拠。
 #
-# **健全性検査と抽出を 1 本の jq に畳む理由**: 別々に書くと (a) 検査述語と抽出条件がずれても
-# 気付けない (検査を「非 null」、抽出を `select(type == "string")` と書いた版では、非文字列
-# reviewer が検査を通って抽出で無音 drop された)、(b) 検査が真を返した後の抽出は構造的に
-# 失敗しえず 2 本目の fail-safe が到達不能コードになる、(c) 検査が「不正あり」で正常終了する
-# 主経路では jq が stderr に何も書かないため、`$probe_err` 経由の原因行が常にゼロ行になる。
-# 1 本に畳むと、抽出条件そのものが検査述語になり (a) が構造的に消え、fail-safe は 1 本になり
-# (b) が消え、違反 finding の id を同じ jq 内で列挙できるので (c) も消える。
+# **健全性検査と抽出は 1 本の jq に畳む**。別々に書くと (a) 検査述語と抽出条件がずれても気付けず、
+# ずれた分の要素が検査を通って抽出側で無音 drop される、(b) 検査が真を返した後の抽出は構造的に
+# 失敗しえないため 2 本目の fail-safe が到達不能コードになる、(c) 検査が「不正あり」で正常終了する
+# 主経路では jq が stderr に何も書かないため `$probe_err` 経由の原因行が常にゼロ行になる。
+# 1 本に畳めば抽出条件そのものが検査述語になり (a) が構造的に消え、fail-safe は 1 本になり (b) が
+# 消え、違反 finding の id を同じ jq 内で列挙できるので (c) も消える。
 #
 # **reviewer と id は「値の形」まで検査する**。型と非空だけでは足りない — 下流の marker 行
 # (`[CONTEXT] ... ; prev_finders=...`) と診断行 (`該当 finding: ...`) はどちらも `; ` 区切りの
 # 単一行を前提とする消費者で、値に改行が入れば 2 本目の整形式 marker が column 0 に出て
 # `base_sha` が偽値に解決され、`; ` が入れば同一行に重複フィールドが付く (本 repo の
 # `marker_value_of` は最後の出現を採る)。`-reviewer` 単体は `sub` 後に空になり phantom 要素を生む。
+# アンカーは `^` / `$` ではなく `\A` / `\z` を使う。jq (Oniguruma) の `$` は文字列末尾に加えて
+# **末尾改行の直前**にも match するため、`$` では末尾改行 1 個を持つ値が allowlist を通り、
+# まさに閉じたかった marker 行の分断が起きる。
 # reviewer は `skills/reviewers/SKILL.md` の reviewer_type がすべて小文字ケバブ、id は書込側
 # `hooks/review-result-save.sh` の canonical regex `^F-[0-9]{2,}$` が SoT なので、その形へ寄せる。
 # 改行だけを潰す対症では `; ` 注入と phantom 要素が残るため、形の allowlist で一括して閉じる。
@@ -266,11 +292,11 @@ scope_probe=$(jq -r '
   def valid:
     (((.scope // "") | . == "current-pr" or . == "follow-up" or . == "nit-noted"))
     and (((.reviewer? // null) | type) == "string")
-    and ((.reviewer // "") | test("^[a-z][a-z0-9-]*[a-z0-9]$"));
+    and ((.reviewer // "") | test("\\A[a-z][a-z0-9-]*[a-z0-9]\\z"));
   [(.findings[]?, .non_blocking_findings[]?)] as $all
   | ($all | map(select(valid | not))) as $bad
   | if ($bad | length) > 0 then
-      "BAD\t" + ($bad | map(.id | if (type == "string" and test("^F-[0-9]{2,}$")) then . else "(不正 id)" end) | join(", "))
+      "BAD\t" + ($bad | map(.id | if (type == "string" and test("\\AF-[0-9]{2,}\\z")) then . else "(不正 id)" end) | join(", "))
     else
       "OK\t" + ([$all[]
                   | select((.scope // "") == "current-pr" or (.scope // "") == "follow-up")
@@ -288,12 +314,9 @@ case "$scope_probe" in
     echo "  該当 finding: ${scope_probe#BAD	}" >&2
     emit_full prev_json_unreadable
     ;;
+  # 上の jq は rc=0 のとき必ず `BAD` / `OK` prefix で始まる 1 行を返す (if/else が網羅) ため、
+  # 第 3 の arm は到達しない。到達不能な fail-safe を置かない方針は上の 1 本化の根拠 (b) と同じ。
   OK*) prev_finders="${scope_probe#OK	}" ;;
-  *)
-    echo "WARNING: review-cycle-scope: 抽出 jq が想定外の出力を返しました: $prev_json" >&2
-    printf '%s\n' "$scope_probe" | head -3 | sed 's/^/  /' >&2
-    emit_full prev_json_unreadable
-    ;;
 esac
 
 echo "[CONTEXT] REVIEW_CYCLE_SCOPE=incremental; base_sha=$base_sha; prev_json=$prev_json; prev_finders=$prev_finders" >&2

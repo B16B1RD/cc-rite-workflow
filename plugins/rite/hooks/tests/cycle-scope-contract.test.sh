@@ -37,7 +37,7 @@ echo "=== ステップ 1.2.4: fail-safe は必ず full へ倒れる (AC-3 / T-03
 # reason 語彙の列挙と「reason は分岐を変えない (全て full)」が 1 行に同居していることを pin する。
 # 語彙だけの pin だと「full へ倒す」規則が消えても green のままになる。
 assert_grep "1.2.4 enumerates every fail-safe reason and pins that they all fall back to full" "$PR_REVIEW" \
-  'no_prev_json.*prev_json_unreadable.*commit_sha_missing.*commit_sha_unreachable.*diff_failed.*jq_missing.*reason は分岐を変えない.*`full`'
+  'no_prev_json.*prev_json_unreadable.*commit_sha_missing.*commit_sha_unreachable.*diff_failed.*empty_diff.*run_pin_unresolved.*run_pin_unreadable.*jq_missing.*reason は分岐を変えない.*`full`'
 assert_grep "helper docstring is the reason SoT" "$HELPER" \
   'Fallback reason 語彙 \(SoT'
 assert_grep "cycle-scope.md forbids narrowing on missing information" "$CYCLE_SCOPE" \
@@ -48,7 +48,7 @@ assert_grep "cycle-scope.md states the safe side is always the wider scope" "$CY
 # 3 コピーのどれかが欠けると「その経路は fail-safe しない」と読める記述が残る。
 # jq_missing は cycle-scope.md の表から実際に欠落していた (SKILL.md と helper には存在)。
 for _f in "$HELPER" "$PR_REVIEW" "$CYCLE_SCOPE"; do
-  for _r in no_prev_json prev_json_unreadable commit_sha_missing commit_sha_unreachable diff_failed jq_missing; do
+  for _r in no_prev_json prev_json_unreadable commit_sha_missing commit_sha_unreachable diff_failed empty_diff run_pin_unresolved run_pin_unreadable jq_missing; do
     assert_grep "$(basename "$_f") documents reason '$_r'" "$_f" "$_r"
   done
 done
