@@ -15,13 +15,20 @@
 #   - skills/pr-review/SKILL.md ステップ 1.2.4 (Review Scope Determination)
 #
 # Usage:
-#   bash review-cycle-scope.sh --pr <n> [--results-dir <dir>]
+#   bash review-cycle-scope.sh --pr <n> [--results-dir <dir>] [--since <basename>]
 #
 #   --pr           PR 番号 (数値必須)。JSON ファイル名 `{pr}-{timestamp}.json` の照合に使う。
 #   --results-dir  review-results ディレクトリ。省略時は hooks/state-path-resolve.sh で解決した
 #                  state root 配下 `.rite/review-results` (書込側 hooks/review-result-save.sh と
 #                  同一解決。セッション worktree / main checkout のどちらから実行しても同じ物理
 #                  パスを読む)。解決失敗時は cwd 相対へフォールバックする。
+#   --since        現 run の開始点となる JSON basename。これより LC_ALL=C 昇順で後ろのファイルだけを
+#                  現 run のものとみなす。省略時は state root 配下
+#                  `.rite/state/review-run-since-{pr}.txt` を読む (書き手は skills/iterate/SKILL.md
+#                  ステップ 0.6。sibling hooks/scripts/review-trend-divergence.sh と同一 pin)。
+#                  同ディレクトリは /rite:cleanup まで同一 PR の複数 run を同居させるため、pin を
+#                  見ないとブレーカー発火後の再実行で cycle 1 が前 run の JSON を拾って
+#                  incremental になる。pin 不在 / 空のときは全件を現 run とみなす (新規 PR の正常系)。
 #
 # git 操作は cwd のリポジトリに対して行う (caller はセッション worktree 内で実行する)。
 #
@@ -49,6 +56,8 @@
 #   commit_sha_missing    — .commit_sha が空 / null / キー欠落 (旧形式)
 #   commit_sha_unreachable— 起点 commit が履歴から消失 (force-push / rebase)
 #   diff_failed           — git diff {sha}..HEAD が失敗
+#   empty_diff            — git diff {sha}..HEAD は成功したが差分ゼロ行 (前回起点から新規 commit なし。
+#                           /rite:fix の accept-only cycle で base_sha == HEAD となり必ず成立する)
 #   jq_missing            — jq が PATH 上に無い
 #
 # Exit codes:
@@ -71,6 +80,8 @@ source "$_rcs_dir/../hooks/scripts/lib/tempfile.sh"
 
 PR_NUMBER=""
 RESULTS_DIR=""
+RUN_SINCE=""
+RUN_SINCE_SET=0
 
 # `shift 2` は使わない。値なしフラグが argv 末尾に来ると n > $# で shift が $# を変えずに rc=1 を
 # 返し、set -e 非設定 + ${2:-} で nounset も発火しない本 script では while を抜けられず hang する
@@ -81,6 +92,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --pr)          PR_NUMBER="${2:-}"; shift; shift ;;
     --results-dir) RESULTS_DIR="${2:-}"; shift; shift ;;
+    --since)       RUN_SINCE="${2:-}"; RUN_SINCE_SET=1; shift; shift ;;
     *) echo "ERROR: review-cycle-scope: unknown argument '$1'" >&2; exit 2 ;;
   esac
 done
@@ -116,6 +128,22 @@ fi
 # dir 不在は初回レビュー (cycle 1) の正常経路
 [ -d "$RESULTS_DIR" ] || emit_full no_prev_json
 
+# run 開始点 pin。`.rite/review-results/` は `/rite:cleanup` (マージ後) まで同一 PR の**複数 run**
+# を同居させるため、pin を見ないと「サーキットブレーカー発火後に人間が再実行した run の cycle 1」が
+# 前 run の最終 JSON を拾って incremental になる。§4.4 MUST NOT「cycle 1 の挙動を変えない」に
+# 反し、失敗方向が禁じられている狭い側。同一ディレクトリの同じ問題を sibling
+# `hooks/scripts/review-trend-divergence.sh` が `--since BASENAME` + pin ファイルで解決済みなので、
+# 同じ pin を同じ読み方 (LC_ALL=C 昇順比較) で共有する。pin の書き手は
+# `skills/iterate/SKILL.md` ステップ 0.6 で、fresh run ごとに「その時点の最新 basename」を記録する。
+# pin 不在 / 空 = 新規 PR または pin を書けなかった run で、そのときは全件を現 run とみなす
+# (書き手側が同じ縮退を WARNING で告知済み)。
+if [ "$RUN_SINCE_SET" -eq 0 ]; then
+  if _rcs_pin_root=$(bash "$_rcs_dir/../hooks/state-path-resolve.sh" "$PWD" 2>/dev/null) && [ -n "$_rcs_pin_root" ]; then
+    _rcs_pin="$_rcs_pin_root/.rite/state/review-run-since-${PR_NUMBER}.txt"
+    [ -f "$_rcs_pin" ] && RUN_SINCE=$(head -1 "$_rcs_pin" 2>/dev/null)
+  fi
+fi
+
 rite_tempfile_init
 rite_tempfile_new find_err "rcs-find-err" || emit_full prev_json_unreadable
 
@@ -130,6 +158,18 @@ if [ -s "$find_err" ]; then
   echo "WARNING: review-cycle-scope: $RESULTS_DIR/ の探索でエラーが発生しました:" >&2
   head -3 "$find_err" | sed 's/^/  /' >&2
   emit_full prev_json_unreadable
+fi
+
+# pin より新しい (LC_ALL=C 昇順で pin を超える) basename だけが現 run のもの。ソート順は
+# 書き手側 (iterate ステップ 0.6) の `LC_ALL=C sort` と揃える。
+if [ -n "$RUN_SINCE" ]; then
+  _rcs_kept=()
+  for _rcs_f in ${cs_files[@]+"${cs_files[@]}"}; do
+    if [ "$(printf '%s\n%s\n' "$RUN_SINCE" "$(basename "$_rcs_f")" | LC_ALL=C sort | tail -1)" != "$RUN_SINCE" ]; then
+      _rcs_kept+=("$_rcs_f")
+    fi
+  done
+  cs_files=(${_rcs_kept[@]+"${_rcs_kept[@]}"})
 fi
 
 prev_json="${cs_files[0]:-}"
@@ -171,10 +211,20 @@ if ! git cat-file -e "${base_sha}^{commit}" 2>"$probe_err"; then
   emit_full commit_sha_unreachable
 fi
 
-if ! git diff --name-only "${base_sha}..HEAD" >/dev/null 2>"$probe_err"; then
+diff_names=$(git diff --name-only "${base_sha}..HEAD" 2>"$probe_err") || {
   echo "WARNING: review-cycle-scope: 差分を取得できません (${base_sha}..HEAD)" >&2
   head -3 "$probe_err" | sed 's/^/  /' >&2
   emit_full diff_failed
+}
+
+# rc=0 かつ出力ゼロ行 = 前回レビュー起点から新規 commit が無い。`/rite:fix` の accept-only cycle
+# (commit も push もせず fingerprint 永続化のみ) で `base_sha == HEAD` となり必ず成立する。
+# このまま incremental を宣言すると caller の照合入力も reviewer prompt の diff も空になり、
+# 「前回 blocking の解消検証すら実行できない prompt」で全 reviewer が起動して無音で mergeable へ
+# 抜ける。rc だけを見ると成功に見えるので、出力の有無を独立した判定材料にする。
+if [ -z "$diff_names" ]; then
+  echo "WARNING: review-cycle-scope: 前回レビュー起点から新規 commit がありません (base_sha=$base_sha)" >&2
+  emit_full empty_diff
 fi
 
 # 前サイクルで gated scope (current-pr / follow-up) の指摘を出した reviewer を、健全性検査と
@@ -199,6 +249,15 @@ fi
 # 1 本に畳むと、抽出条件そのものが検査述語になり (a) が構造的に消え、fail-safe は 1 本になり
 # (b) が消え、違反 finding の id を同じ jq 内で列挙できるので (c) も消える。
 #
+# **reviewer と id は「値の形」まで検査する**。型と非空だけでは足りない — 下流の marker 行
+# (`[CONTEXT] ... ; prev_finders=...`) と診断行 (`該当 finding: ...`) はどちらも `; ` 区切りの
+# 単一行を前提とする消費者で、値に改行が入れば 2 本目の整形式 marker が column 0 に出て
+# `base_sha` が偽値に解決され、`; ` が入れば同一行に重複フィールドが付く (本 repo の
+# `marker_value_of` は最後の出現を採る)。`-reviewer` 単体は `sub` 後に空になり phantom 要素を生む。
+# reviewer は `skills/reviewers/SKILL.md` の reviewer_type がすべて小文字ケバブ、id は書込側
+# `hooks/review-result-save.sh` の canonical regex `^F-[0-9]{2,}$` が SoT なので、その形へ寄せる。
+# 改行だけを潰す対症では `; ` 注入と phantom 要素が残るため、形の allowlist で一括して閉じる。
+#
 # 出力は `OK\t{csv}` か `BAD\t{違反 id 列}` のタブ区切り 1 行。reviewer は agent 名
 # (`code-quality-reviewer`) で入るため reviewer_type へ正規化する。jq 自体の失敗 (トップレベルが
 # object でない等) は握り潰さない — 空の `prev_finders=` は「gated 指摘 0 件」の正常系と
@@ -207,11 +266,11 @@ scope_probe=$(jq -r '
   def valid:
     (((.scope // "") | . == "current-pr" or . == "follow-up" or . == "nit-noted"))
     and (((.reviewer? // null) | type) == "string")
-    and ((.reviewer // "") != "");
+    and ((.reviewer // "") | test("^[a-z][a-z0-9-]*[a-z0-9]$"));
   [(.findings[]?, .non_blocking_findings[]?)] as $all
   | ($all | map(select(valid | not))) as $bad
   | if ($bad | length) > 0 then
-      "BAD\t" + ($bad | map(.id // "(id 欠落)") | join(", "))
+      "BAD\t" + ($bad | map(.id | if (type == "string" and test("^F-[0-9]{2,}$")) then . else "(不正 id)" end) | join(", "))
     else
       "OK\t" + ([$all[]
                   | select((.scope // "") == "current-pr" or (.scope // "") == "follow-up")

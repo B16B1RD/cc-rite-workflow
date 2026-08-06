@@ -59,6 +59,18 @@ assert_grep "1.2.4 defines the consumer-side default when the helper emits no ma
 # helper が marker を出せない経路の reason リテラル。他 6 reason は 3 コピー同期 pin に載っているが
 # 本 reason だけは consumer 側にしか存在せず、drift 検査から外れていた。
 assert_grep "helper_failed literal is documented in the SoT" "$CYCLE_SCOPE" 'helper_failed'
+
+# --- fix/SKILL.md: 範囲決定を 1.2.4 に委ねる D-09 の書き換え (置換型の回帰を止める) ---
+# 3 箇所の `flow-state.sh set --next` は**実行時文字列**で、cycle 2 のレビューが始まる handoff の
+# 瞬間に orchestrator の context へ入る。旧文言へ戻ると AC-1 の Then が実行時に成立しなくなるが、
+# 本 pin が入るまでどのテストもこのファイルを見ておらず 4 箇所を戻しても全スイート green だった。
+FIX_SKILL="$SCRIPT_DIR/../../skills/fix/SKILL.md"
+assert_grep "fix delegates the re-review scope to 1.2.4" "$FIX_SKILL" \
+  '範囲は 1\.2\.4 が cycle に応じて決定'
+assert "fix/SKILL.md no longer forces full re-review (スコープ縮退)" "0" \
+  "$(grep -c 'スコープ縮退' "$FIX_SKILL" || true)"
+assert "fix/SKILL.md no longer forces full re-review (FULL re-review)" "0" \
+  "$(grep -c 'FULL re-review' "$FIX_SKILL" || true)"
 # consumer 側の {previous_blocking_findings} にも helper と同じ gated scope 規則が要る。
 # helper 側は TC-14 が挙動で守るが、この規則を削って findings[] 全体を注入する変異は
 # 本 pin が無いと両スイートを素通りする（受け流し済み nit が解消検証 mandate へ毎サイクル注入される）。

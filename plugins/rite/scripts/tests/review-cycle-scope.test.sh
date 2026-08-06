@@ -287,6 +287,9 @@ for bad_rev in '123' '["security-reviewer"]' '""'; do
   run_scope --pr 42 --results-dir "$BADREV"
   assert_contains "TC-19.5: reviewer=$bad_rev は full へ倒れる" "$SCOPE_STDERR" "reason=prev_json_unreadable"
   assert_not_contains "TC-19.6: reviewer=$bad_rev で incremental を出さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+  # BAD 経路を通ったこと (= 形の検査が発火したこと) を診断で固定する。reason だけを見ると、
+  # 検査を外しても抽出側の sub が落ちて同じ reason に合流するため変異を識別できない。
+  assert_contains "TC-19.11: reviewer=$bad_rev でも違反 id を名指す" "$SCOPE_STDERR" "該当 finding: F-01"
 done
 
 # non_blocking_findings[] 側の malformed。母集団の片腕だけを検査から外す変異はこれが無いと素通りする。
@@ -383,5 +386,65 @@ run_scope --pr 42 --results-dir "$TEST_DIR/does-not-exist"
 if [ -z "$SCOPE_STDOUT" ]; then pass "TC-13.2: full 経路の stdout は空"; else fail "TC-13.2: stdout に出力あり: $SCOPE_STDOUT"; fi
 
 echo ""
+echo "=== TC-21: 探索段の IO エラーは no_prev_json に落とさず loud に full へ倒す ==="
+# 読めない results dir が「JSON が無い (= cycle 1)」と誤認されると、探索に失敗しただけの状態が
+# 6 reason 中で唯一 WARNING も FALLBACK marker も出さない no_prev_json へ silent に落ちる。
+if [ "$(id -u)" -eq 0 ]; then
+  echo "  ⏭️  TC-21: root では chmod 000 が効かず find がエラーを出さないため skip"
+else
+  IOERR="$TEST_DIR/results-ioerr"
+  mkdir -p "$IOERR"
+  jq -n --arg sha "$FIRST_SHA" '{schema_version:"1.0.0", pr_number:42, commit_sha:$sha,
+    overall_assessment:"mergeable", findings:[], non_blocking_findings:[]}' > "$IOERR/42-20260806-000000.json"
+  chmod 000 "$IOERR"
+  run_scope --pr 42 --results-dir "$IOERR"
+  chmod 755 "$IOERR"
+  assert_contains "TC-21.1: 探索エラーは prev_json_unreadable" "$SCOPE_STDERR" "reason=prev_json_unreadable"
+  assert_contains "TC-21.2: 人間向け WARNING を出す" "$SCOPE_STDERR" "⚠️ 差分スコープのフォールバック"
+  assert_not_contains "TC-21.3: no_prev_json へ落とさない" "$SCOPE_STDERR" "reason=no_prev_json"
+fi
+
+echo "=== TC-22: 差分ゼロ行 (前回起点から新規 commit なし) は empty_diff で full へ倒す ==="
+# /rite:fix の accept-only cycle では base_sha == HEAD となり必ず成立する。rc だけを見ると成功に
+# 見えるため、そのまま incremental を宣言すると審査対象も解消検証の材料も空の prompt になる。
+EMPTYD="$TEST_DIR/results-emptydiff"
+mkdir -p "$EMPTYD"
+head_sha=$(git -C "$REPO" rev-parse HEAD)
+jq -n --arg sha "$head_sha" '{schema_version:"1.0.0", pr_number:42, commit_sha:$sha,
+  overall_assessment:"fix-needed",
+  findings:[{id:"F-01", reviewer:"test-reviewer", severity:"HIGH", file:"a.sh", line:1, scope:"current-pr"}],
+  non_blocking_findings:[]}' > "$EMPTYD/42-20260806-000000.json"
+run_scope --pr 42 --results-dir "$EMPTYD"
+assert_contains "TC-22.1: reason=empty_diff" "$SCOPE_STDERR" "reason=empty_diff"
+assert_contains "TC-22.2: full へ倒れる" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=full"
+assert_not_contains "TC-22.3: incremental を出さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+assert_contains "TC-22.4: 起点 sha を surface する" "$SCOPE_STDERR" "$head_sha"
+
+echo "=== TC-23: run 開始点 pin より古い JSON は現 run のものとみなさない ==="
+# .rite/review-results/ は /rite:cleanup まで同一 PR の複数 run を同居させる。pin を見ないと
+# ブレーカー発火後に人間が再実行した run の cycle 1 が前 run の最終 JSON を拾って incremental に
+# なり、MUST NOT「cycle 1 の挙動を変えない」が破れる（失敗方向が禁じられた狭い側）。
+PINDIR="$TEST_DIR/results-pin"
+mkdir -p "$PINDIR"
+jq -n --arg sha "$FIRST_SHA" '{schema_version:"1.0.0", pr_number:42, commit_sha:$sha,
+  overall_assessment:"fix-needed",
+  findings:[{id:"F-01", reviewer:"application-reviewer", severity:"HIGH", file:"a.sh", line:1, scope:"current-pr"}],
+  non_blocking_findings:[]}' > "$PINDIR/42-20260101-000000.json"
+# pin = その JSON 自身 → pin より新しいファイルは 1 件も無い = 現 run の初回
+run_scope --pr 42 --results-dir "$PINDIR" --since "42-20260101-000000.json"
+assert_contains "TC-23.1: pin 以前しか無ければ no_prev_json" "$SCOPE_STDERR" "reason=no_prev_json"
+assert_not_contains "TC-23.2: incremental を出さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+# pin より新しい JSON があれば従来どおり incremental
+jq -n --arg sha "$FIRST_SHA" '{schema_version:"1.0.0", pr_number:42, commit_sha:$sha,
+  overall_assessment:"fix-needed",
+  findings:[{id:"F-02", reviewer:"security-reviewer", severity:"HIGH", file:"b.sh", line:2, scope:"current-pr"}],
+  non_blocking_findings:[]}' > "$PINDIR/42-20260202-000000.json"
+run_scope --pr 42 --results-dir "$PINDIR" --since "42-20260101-000000.json"
+assert_contains "TC-23.3: pin より新しい JSON があれば incremental" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+assert_marker_eq "TC-23.4: 現 run の JSON だけを finder 母集団にする" "$SCOPE_STDERR" "prev_finders" "security"
+# pin 不在 (空文字) は全件を現 run とみなす = 新規 PR の正常系
+run_scope --pr 42 --results-dir "$PINDIR" --since ""
+assert_contains "TC-23.5: pin 空なら全件を現 run とみなす" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+
 echo "=== 結果: PASS=$PASS FAIL=$FAIL ==="
 [ "$FAIL" -eq 0 ] || exit 1

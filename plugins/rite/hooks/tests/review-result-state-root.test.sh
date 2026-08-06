@@ -102,6 +102,16 @@ else
 fi
 echo ""
 
+# TC-2b 以降のための追い commit。cycle scope helper は `commit_sha..HEAD` が差分ゼロ行のとき
+# `empty_diff` で full へ倒す（accept-only cycle 相当）。TC-2b が検証したいのは results dir の
+# **既定解決**であって empty_diff 分岐ではないため、起点 commit の後ろに実 commit を 1 本置き
+# incremental が成立する前提を作る。TC-2 は既に上で完了しているので影響しない。
+# TC-2b は worktree の cwd で helper を実行するため、追い commit も **worktree 側**へ置く
+# (helper の `git diff base_sha..HEAD` は cwd のリポジトリ = worktree の HEAD を見る)。
+echo "advance" > "$REPO/.rite/worktrees/issue-99/advance.txt"
+git -C "$REPO/.rite/worktrees/issue-99" add -A
+git -C "$REPO/.rite/worktrees/issue-99" commit -qm "advance"
+
 # ─── TC-2b: review-cycle-scope の既定 results dir が worktree cwd から main root を指す ───
 # production の呼び出しは `--pr {n}` のみで --results-dir を渡さない。この既定解決が壊れると
 # session worktree 内の reviewer が main checkout 側の保存先を見失い、WARNING を出さない唯一の
