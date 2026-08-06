@@ -1,3 +1,12 @@
+## 2026-08-07
+
+* **Create**: [既存の永続データを新規 consumer が読むときは、集合の意味を書込側の定義から引く](pages/heuristics/persisted-collection-semantics-from-writer-not-name.md) — raw/reviews/20260806T151643Z-pr-2126.md を新規ページ化（配列名からの推測は 1 箇所の誤りでなく N 箇所へ複製された誤りを作る / 4 reviewer が独立検出）
+* **Create**: [オプションを常に明示するテストは、既定値解決という最も壊れやすい経路を丸ごと素通りさせる](pages/anti-patterns/explicit-option-tests-bypass-default-resolution.md) — raw/fixes/20260806T153014Z-pr-2126.md を新規ページ化（cycle 1 と cycle 5 で別オプションについて 2 回再現 / 既定経路のコード削除でも全スイート green）
+* **Create**: [配列間で要素を移送するゲートの consumer は、入ってくる余分と出ていく不足の両方向を見る](pages/anti-patterns/transporting-gate-consumer-must-check-both-directions.md) — raw/fixes/20260806T160550Z-pr-2126.md を新規ページ化（余分側だけ直すと不足側が残る / 「選ぶ側」と「渡す側」の 2 consumer を同時に直す）
+* **Create**: [検査と使用は同一の式に畳む — 分けると述語ずれ・到達不能 fail-safe・診断ゼロ行の 3 欠陥が同時に生える](pages/patterns/fold-validation-and-use-into-one-expression.md) — raw/fixes/20260806T165050Z-pr-2126-c3.md を新規ページ化（3 件の個別パッチを 1 本化で一括解消し行数も分岐も減った / $err に原因を求めてよいのは外部コマンドが異常終了した経路だけ）
+* **Update**: [累積対策 PR の review-fix loop で fix 自体が drift を導入する](pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md) — raw/fixes/20260806T173922Z-pr-2126-c4.md を統合（実測アンカーの無い散文指摘は修正の複製率が 1 を超える / cycle 3 の散文修正 11 件が cycle 4 の HIGH 4 件を直接生んだ / レーン別の blocking 生成率を測ってから労力を配る）
+* **Create**: [jq / Oniguruma の $ は末尾改行の直前にも match する — 文字列全体一致は \A / \z を使う](pages/patterns/regex-absolute-anchors-for-whole-string-match.md) — raw/fixes/20260806T181047Z-pr-2126-c5.md を新規ページ化（形の allowlist が末尾改行を通し、防ぎたかった marker 行分断が起きた / 型・非空・形は別の検査）
+
 ## 2026-08-06
 
 * **lint:warning** — contradictions=0, stale=17, orphans=0, missing_concept=0, unregistered_raw=298, broken_refs=0
