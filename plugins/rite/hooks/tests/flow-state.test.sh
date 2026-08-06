@@ -1686,12 +1686,12 @@ rm -f "$stderr_2115_09"
 echo ""
 echo "=== TC-2115-10 (AC-2): a non-writable log file warns and leaves the state write intact ==="
 # TC-2115-06 already pins this branch, but every one of its assertions sits behind a
-# chmod probe that skips on root, WSL2 DrvFs and overlay mounts — on those hosts AC-2
-# has no coverage at all once TC-2115-07 skips as well. Occupying the log path with a
-# directory makes the append fail on EISDIR with no permission trick, so this keeps a
-# floor everywhere. The dir is created before `set` runs, so `mkdir -p "$log_dir"`
-# still succeeds and only the append fails — the `.gitignore` write succeeds too,
-# which separates the two failure modes TC-2115-06 exercises together.
+# chmod probe that skips on some hosts — and TC-2115-07 skips with it, leaving AC-2
+# with no coverage there. Occupying the log path with a directory makes the append
+# fail with no permission trick, so this keeps a floor everywhere. The dir exists
+# before `set` runs, so `mkdir -p "$log_dir"` still succeeds and only the append
+# fails — the `.gitignore` write succeeds too, which separates the two failure modes
+# TC-2115-06 exercises together.
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 mkdir -p "$d/.rite/logs/phase-transitions.log"
 stderr_2115_10="$(mktemp)"

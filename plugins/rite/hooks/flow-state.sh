@@ -207,9 +207,7 @@ _append_phase_transition() {
   # Every runtime-derived value below goes through `neutralize_ctrl` before landing in
   # a WARNING: `$log_dir` / `$log_file` carry `$STATE_ROOT`, `$from` comes from the state
   # file and `$to` straight from `--phase`, and a raw 0x9b in any of them is read as a CSI
-  # introducer by some terminals — enough to forge a second `WARNING:` line. Same inline
-  # form as session-start.sh; the parity sweep does not reach `echo "…$var…" >&2`, so this
-  # is by hand rather than by check.
+  # introducer by some terminals — enough to forge a second `WARNING:` line.
   if ! mkdir -p "$log_dir" 2>/dev/null; then
     echo "WARNING: flow-state.sh: phase-transition log dir not creatable ($(printf '%s' "$log_dir" | neutralize_ctrl)); transition $(printf '%s' "${from:-<none>}" | neutralize_ctrl) -> $(printf '%s' "$to" | neutralize_ctrl) not recorded" >&2
     return 0
@@ -234,16 +232,19 @@ _append_phase_transition() {
       [ -n "$_gi_err" ] && printf '%s\n' "$_gi_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
   fi
-  # `--argjson` for the numeric fields rather than a string + `tonumber? // 0`
-  # fallback: both values already survived the identical `--argjson` in the state
-  # write above, so a non-numeric one here is a real invariant break and should
-  # surface as a WARNING instead of being silently logged as 0.
+  # `--argjson` keeps the two numeric fields as JSON numbers; both values already
+  # survived the identical `--argjson` in the state write above, so a non-numeric one
+  # cannot reach here — the state write would have failed and returned before the
+  # append. What the guard below is for is jq failing to *run* at all (fork/exec/OOM):
+  # `line` would be empty and the append would put a blank line into the JSONL, which
+  # no consumer can parse. That is why the branch stays despite being unreachable via
+  # bad input, and why `$issue` / `$pr` are not neutralized in its message.
   local line
   if ! line=$(jq -cn --arg ts "$ts" --arg session "$sid" \
       --argjson issue "$issue" --argjson pr "$pr" \
       --arg from "$from" --arg to "$to" \
       '{ts:$ts, session_id:$session, issue_number:$issue, pr_number:$pr, from:$from, to:$to}' 2>/dev/null); then
-    echo "WARNING: flow-state.sh: phase-transition record could not be built (issue='$(printf '%s' "$issue" | neutralize_ctrl)' pr='$(printf '%s' "$pr" | neutralize_ctrl)' not numeric?); transition $(printf '%s' "${from:-<none>}" | neutralize_ctrl) -> $(printf '%s' "$to" | neutralize_ctrl) not recorded" >&2
+    echo "WARNING: flow-state.sh: phase-transition record could not be built (jq did not run); transition $(printf '%s' "${from:-<none>}" | neutralize_ctrl) -> $(printf '%s' "$to" | neutralize_ctrl) not recorded" >&2
     return 0
   fi
   # O_APPEND single-line write — no lock, no rotation (single-user dev machine;
