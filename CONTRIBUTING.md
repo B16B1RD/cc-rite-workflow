@@ -187,7 +187,7 @@ fi
 - Use `state-path-resolve.sh` to resolve the state root directory
 - For guard hooks (e.g., `pre-tool-bash-guard.sh`): exit code `0` means "allow", non-zero means "block"
 - For non-guard hooks (e.g., `session-start.sh`, `session-end.sh`): exit code `0` indicates successful execution
-- Use `mktemp` for temporary files with `trap 'rm -f "$tmpfile"' EXIT` for cleanup
+- For a new hook that needs temporary files, source `hooks/scripts/lib/tempfile.sh` rather than writing `mktemp` + `trap` by hand: call `rite_tempfile_init`, then `rite_tempfile_new <outvar> [tag]` (or `rite_tempdir_new`). A hook that already owns any of the EXIT / INT / TERM / HUP handlers passes `--caller-traps` to `rite_tempfile_init` and calls `rite_tempfile_cleanup` from its own handler. The rule, the refusal conditions, and why the lib beats a hand-written `trap 'rm -f "$tmpfile"' EXIT` are specified in `plugins/rite/skills/rite-workflow/references/coding-principles.md` "Shell Helper Conventions" — the SoT
 - Keep hooks fast — they run on every matching event
 
 ## Shell Script Testing

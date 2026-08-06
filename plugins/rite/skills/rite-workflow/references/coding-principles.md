@@ -202,6 +202,20 @@ OK patterns:
 
 ---
 
+## Shell Helper Conventions
+
+`hooks/` / `scripts/` の bash helper を**新規に書く**ときの規約。既存 helper の retrofit は求めない（実需の Issue が立ったときに個別に判断する）。
+
+### tempfile は lib 経由で作る
+
+**Rule**: 新規 helper で tempfile / tempdir が要るときは `mktemp` を直接書かず、`hooks/scripts/lib/tempfile.sh` を source して `rite_tempfile_init` → `rite_tempfile_new <outvar> [tag]`（ディレクトリは `rite_tempdir_new`）を使う。自前の handler を既に持つ helper は `rite_tempfile_init --caller-traps` + 自 handler からの `rite_tempfile_cleanup` で合成する（既定の `rite_tempfile_init` は EXIT/INT/TERM/HUP のいずれかに既存 handler があると上書きせず rc=1 で拒否する。無視状態で継承した signal は handler ではないので拒否対象にならず、その signal だけ設置を skip する。EXIT は signal ではなく継承もされないので、`trap '' EXIT` は caller が書いた handler として拒否する）。**`--caller-traps` では lib は handler を 1 つも設置しない** — INT/TERM/HUP の handler と 130/143/129 の exit は caller 側の責務になる。EXIT だけを張った caller がこの経路に落ちると、下記 Why が挙げる SIGINT の穴がそのまま残る。**本節が SoT**で、`CONTRIBUTING.md` の Hook Conventions には要点のみを置く。
+
+**Why**: 生成・cleanup 登録・signal 処理を毎回手書きしていたことが、mktemp 失敗の無音化・EXIT のみで INT/TERM/HUP を落とす cleanup・登録前に signal を受ける窓、という同型バグの反復再発源だった。EXIT のみの trap は signal 経路でも発火するが、その signal の exit code を持てない — 実測（bash 5.2 / Linux）では TERM / HUP は EXIT のみでも 143 / 129 で停止する一方、**foreground child のブロック中に届いた SIGINT は rc=0 のまま後続の命令まで実行される**（非対話 shell は foreground child が当該 signal で死んだ場合を除き SIGINT で終了しないため）。lib は canonical 順序（handler 設置 → mktemp → 即登録）を構造的に強制し、**既定経路では** 130/143/129 を決定論的に返し（`--caller-traps` では上記のとおり caller の責務）、`rite_tempfile_new` は fail-loud なので「空パスに落ちて黙って壊れる」書き方自体が無くなる。
+
+**Mechanical enforcement**: lib で消せない残余 — `mktemp` ハンドルまたは lib ハンドル**から派生させたパス** — は `/rite:lint` Phase 3.5 の `hooks/scripts/tempfile-lifecycle-check.sh` が `mktemp-derived-path` として非ブロッキング warning で surface する（`[lint:success]` は不変）。**手書きの `mktemp` 自体は検出対象外**で、そちらは lib 側の fail-loud が受け皿。意図的に派生させたパスは行内または直上行の `drift-check-ignore` marker で除外する（marker は派生行そのものに置く — mktemp 行に置くと直上行免除でその直下行の検出まで落ちる）。背景は [plugin-checks-rationale.md](../../lint/references/plugin-checks-rationale.md) を参照。
+
+---
+
 ## Phase Checklists
 
 各 phase の完了前に、該当する原則を自己チェックする（詳細節を持たない原則は標準規律としてチェックする）:
@@ -224,6 +238,7 @@ OK patterns:
 - [Phase Mapping](./phase-mapping.md) - Phase details
 - [PR Create Command](../../../skills/pr-create/SKILL.md) - Unaddressed issues check before PR creation (Phase 2.5)
 - [Markdown Authoring Conventions](#markdown-authoring-conventions) - Skill loader に load される Markdown ファイルの記述規約 (bash negation operator inline code convention / operational bash block heaviness convention)
+- [Shell Helper Conventions](#shell-helper-conventions) - `hooks/` / `scripts/` の bash helper を新規に書くときの規約 (tempfile は lib 経由で作る)
 - [gh-cli-patterns.md](../../../references/gh-cli-patterns.md) - Related bang character (U+0021) handling in bash command contexts (Shell Escaping Notes)
 - [graphql-helpers.md](../../../references/graphql-helpers.md) - Related bang character handling in GraphQL query / jq contexts (History Expansion and Special Character Prevention)
 - [gh-cli-error-catalog.md](../../../references/gh-cli-error-catalog.md) - Related bang character handling error catalog (Category 6)
