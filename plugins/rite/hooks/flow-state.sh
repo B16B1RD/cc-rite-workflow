@@ -178,6 +178,88 @@ _emit_jq_err_snippet() {
   fi
 }
 
+# Append one JSON Lines record per **performed** `set` write so per-phase
+# durations can be derived offline (#2115). flow-state itself is overwritten in
+# place, so without this the workflow left no phase history and the only way to
+# get a stage breakdown was reading file mtimes by hand.
+#
+# Write-only by contract: no subcommand reads this file. The consumer is a future
+# aggregation Issue; adding a reader here would be speculative structure.
+#
+# Placement follows the `.rite/logs/` convention that session-start.sh
+# established for `pr-cycle-cleanup.log`. `$STATE_ROOT` (resolved once at script
+# top) is reused rather than re-derived: it already honors the `RITE_STATE_ROOT`
+# override and carries state-path-resolve.sh's linked-worktree unification, so a
+# phase that ran inside a session worktree lands in the same main-checkout log as
+# the rest of that session.
+#
+# Fully non-blocking (AC-2): every failure path emits a WARNING and returns 0, so
+# a read-only / full / permission-denied log destination changes neither cmd_set's
+# exit code nor the state JSON. `jq -c` supplies the "1 transition = 1 line"
+# invariant structurally — `_phase_is_valid` only WARNs about an unknown `--phase`
+# and never rejects it, so a value carrying a newline gets escaped into the record
+# instead of splitting it in two.
+_append_phase_transition() {
+  local from="$1" to="$2" sid="$3" issue="$4" pr="$5" ts="$6"
+  local log_dir="$STATE_ROOT/.rite/logs"
+  local log_file="$log_dir/phase-transitions.log"
+  local _gi_err
+  # Every runtime-derived value below goes through `neutralize_ctrl` before landing in
+  # a WARNING: `$log_dir` / `$log_file` carry `$STATE_ROOT`, `$from` comes from the state
+  # file and `$to` straight from `--phase`, and a raw 0x9b in any of them is read as a CSI
+  # introducer by some terminals — enough to forge a second `WARNING:` line.
+  if ! mkdir -p "$log_dir" 2>/dev/null; then
+    echo "WARNING: flow-state.sh: phase-transition log dir not creatable ($(printf '%s' "$log_dir" | neutralize_ctrl)); transition $(printf '%s' "${from:-<none>}" | neutralize_ctrl) -> $(printf '%s' "$to" | neutralize_ctrl) not recorded" >&2
+    return 0
+  fi
+  # Self-contained `.gitignore` (`*`), because /rite:setup's generated .gitignore
+  # does not cover `.rite/logs/`. The guard reads the file's **content** (`-s`),
+  # not its existence: `> file` truncates before the write, so an ENOSPC leaves a
+  # 0-byte `.gitignore` that an existence guard would accept as "already created",
+  # making every later `set` skip the rewrite while the directory stays un-ignored.
+  # A failure is announced rather than swallowed — a missing exclusion is the exact
+  # path by which the log reaches a public repo. Same form as review-result-save.sh
+  # and review-results-archive-or-rm.sh. Still non-blocking: the append runs either way.
+  if [ ! -s "$log_dir/.gitignore" ]; then
+    # `LC_ALL=C` sits on the failing command, not on the neutralizer. bash localizes
+    # its own redirect-setup diagnostic, and `neutralize_ctrl` blanks 0x80-0x9f one
+    # byte at a time, so under ja_JP the errno arrives as `?` runs and the cause —
+    # the only thing the indented line adds over the WARNING above — is lost. Forcing
+    # the upstream message to ASCII leaves the neutralizer fully intact (it merely
+    # becomes a no-op here); `--c0-only` would instead blank 0x0a and break the indent.
+    if ! _gi_err=$( { LC_ALL=C printf '*\n' > "$log_dir/.gitignore"; } 2>&1 ); then
+      echo "WARNING: flow-state.sh: cannot create $(printf '%s' "$log_dir" | neutralize_ctrl)/.gitignore; verify by hand that this directory is excluded from git" >&2
+      [ -n "$_gi_err" ] && printf '%s\n' "$_gi_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    fi
+  fi
+  # `--argjson` keeps the two numeric fields as JSON numbers; both values already
+  # survived the identical `--argjson` in the state write above, so anything it would
+  # reject cannot reach here — the state write would have failed and returned before
+  # the append. What the guard below is for is jq failing to *run* at all
+  # (fork/exec/OOM): `line` would be empty and the append would put a blank line into
+  # the JSONL. That is why the branch stays despite being unreachable via bad input.
+  local line
+  if ! line=$(jq -cn --arg ts "$ts" --arg session "$sid" \
+      --argjson issue "$issue" --argjson pr "$pr" \
+      --arg from "$from" --arg to "$to" \
+      '{ts:$ts, session_id:$session, issue_number:$issue, pr_number:$pr, from:$from, to:$to}' 2>/dev/null); then
+    echo "WARNING: flow-state.sh: phase-transition record could not be built (jq did not run); transition $(printf '%s' "${from:-<none>}" | neutralize_ctrl) -> $(printf '%s' "$to" | neutralize_ctrl) not recorded" >&2
+    return 0
+  fi
+  # O_APPEND single-line write — no lock, no rotation (single-user dev machine;
+  # a lone `printf` of one short line is atomic enough at this size).
+  # The `{ ...; } 2>/dev/null` grouping is load-bearing (same form as
+  # session-start.sh's log probe): a plain `printf >> "$f" 2>/dev/null` still
+  # leaks the shell's own "Permission denied" redirect-setup error, because the
+  # `>>` is opened before the `2>` takes effect. Redirecting the group first puts
+  # /dev/null in place ahead of the failing open, leaving only our WARNING.
+  if ! { printf '%s\n' "$line" >> "$log_file"; } 2>/dev/null; then
+    echo "WARNING: flow-state.sh: phase-transition log not writable ($(printf '%s' "$log_file" | neutralize_ctrl)); transition $(printf '%s' "${from:-<none>}" | neutralize_ctrl) -> $(printf '%s' "$to" | neutralize_ctrl) not recorded" >&2
+    return 0
+  fi
+  return 0
+}
+
 cmd_set() {
   # Merge semantics: unspecified scalar fields preserve existing values (旧 patch 互換).
   # Required: --phase, --next. Optional fields fall back to existing JSON or defaults.
@@ -233,7 +315,12 @@ cmd_set() {
   # される。1 回の composite jq + stderr capture に集約し、jq 失敗時に WARNING を stderr emit
   # して operator が corrupt overwrite を検出できるようにする。Unit separator () で field
   # を分割し、IFS で安全に split (whitespace collapse 防止)。
-  local cur_issue=0 cur_branch="" cur_pr=0 cur_parent=0 cur_active=true cur_err=0 cur_last_synced="" cur_worktree="" cur_cycle=0 cur_wm_comment_id=""
+  # `cur_phase` (#2115) rides along on this composite read purely to supply the
+  # phase-transition log's `from` value — it is NOT merged into the write (the
+  # new phase is always the caller's `--phase`). It stays "" when no state file
+  # exists yet (fresh session) or when the read below failed (corrupt JSON), and
+  # the log records that as an empty `from` rather than inventing a prior phase.
+  local cur_issue=0 cur_branch="" cur_pr=0 cur_parent=0 cur_active=true cur_err=0 cur_last_synced="" cur_worktree="" cur_cycle=0 cur_wm_comment_id="" cur_phase=""
   if [ -f "$path" ]; then
     local _cur_jq_err="" _cur_data _cur_rc=0
     _cur_jq_err=$(mktemp 2>/dev/null) || _cur_jq_err=""
@@ -248,13 +335,14 @@ cmd_set() {
                        (.last_synced_phase // ""),
                        (.worktree // ""),
                        (.cycle_count // 0 | tostring),
-                       (.wm_comment_id // "" | tostring)] | join("")' "$path" 2>"${_cur_jq_err:-/dev/null}") || _cur_rc=$?
+                       (.wm_comment_id // "" | tostring),
+                       (.phase // "")] | join("")' "$path" 2>"${_cur_jq_err:-/dev/null}") || _cur_rc=$?
     if [ "$_cur_rc" -ne 0 ]; then
       # basename only — multi-tenant 環境での絶対 path leakage を最小化 (cmd_get / cmd_set --if-exists と対称化)
       echo "WARNING: flow-state.sh cmd_set: existing state read failed for $(basename "$path") (may be corrupt; merged write will use defaults)" >&2
       _emit_jq_err_snippet "$_cur_jq_err"
     else
-      IFS=$'\x1f' read -r cur_issue cur_branch cur_pr cur_parent cur_active cur_err cur_last_synced cur_worktree cur_cycle cur_wm_comment_id <<< "$_cur_data"
+      IFS=$'\x1f' read -r cur_issue cur_branch cur_pr cur_parent cur_active cur_err cur_last_synced cur_worktree cur_cycle cur_wm_comment_id cur_phase <<< "$_cur_data"
     fi
   fi
   [ -z "$issue" ] && issue=$cur_issue
@@ -336,11 +424,19 @@ cmd_set() {
     return 1
   fi
   [ -n "$_new_jq_err" ] && rm -f "$_new_jq_err"
-  # `_atomic_write` の header コメント ("Callers MUST check rc") を遵守。現状は cmd_set の
-  # 最終 statement のため set -e で rc が暗黙伝播するが、将来 `_atomic_write` の後に log 行を
-  # 1 つ足す等の小修正で silent failure path が即復活する fragile pattern を避けるため、明示的
-  # に `|| return 1` で rc を伝播させる (`_migrate_file` の `_atomic_write` 呼び出し直前と対称化)。
+  # `_atomic_write` の header 契約 ("Callers MUST check rc") を遵守 (`_migrate_file` の
+  # `_atomic_write` 呼び出し直前と対称化)。
   _atomic_write "$path" "$new" || return 1
+  # Record only after the write physically landed, so the log never claims a
+  # transition that failed to persist. Reuses `$now` (the same timestamp the
+  # state file's `updated_at` carries) so a record can be cross-referenced with
+  # the state file it describes. `|| true` keeps this trailing statement from
+  # becoming cmd_set's exit code under `set -e` (AC-2: exit code unchanged) —
+  # belt-and-braces with the helper's own unconditional `return 0`.
+  # Sets skipped by `--if-exists` return earlier and are correctly not recorded:
+  # no write happened. A same-phase set (from == to) IS recorded — update
+  # frequency inside a stage is part of what this log is for.
+  _append_phase_transition "$cur_phase" "$phase" "$sid" "$issue" "$pr" "$now" || true
 }
 
 # clear-worktree: surgically remove the `worktree` field from a session's

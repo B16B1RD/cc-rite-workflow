@@ -1427,6 +1427,300 @@ fi
 got=$(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$envsid" bash "$HOOK" get --field issue_number --default "X")
 assert "T-04: get resolves via env sid (404, smoke)" "404" "$got"
 
-if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del (Issue #1524) + non-UUID acceptance (Layer 1 format-agnostic contract pin)"; then
+# --- TC-2115-01 (AC-1): each performed `set` appends one JSONL transition record ---
+echo ""
+echo "=== TC-2115-01 (AC-1): phase transitions are appended to .rite/logs/phase-transitions.log ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase implement --issue 2115 --branch "feat/x" --pr 0 --next "n1")
+(cd "$d" && bash "$HOOK" set --phase review --issue 2115 --pr 42 --next "n2")
+tlog="$d/.rite/logs/phase-transitions.log"
+assert_file_exists_or_fail "TC-2115-01: transition log created" "$tlog" || true
+assert "TC-2115-01: one line per transition (2 sets → 2 lines)" "2" "$(wc -l < "$tlog" | tr -d ' ')"
+# The `from` of the first record is empty: no state file existed yet. This is the
+# most common case (every fresh session starts here) and is deliberately recorded
+# as "" rather than a synthesized prior phase.
+assert "TC-2115-01: first record from='' (fresh session, no prior state)" "" "$(head -1 "$tlog" | jq -r .from)"
+assert "TC-2115-01: first record to=implement" "implement" "$(head -1 "$tlog" | jq -r .to)"
+assert "TC-2115-01: second record from=implement (pre-write phase)" "implement" "$(sed -n 2p "$tlog" | jq -r .from)"
+assert "TC-2115-01: second record to=review" "review" "$(sed -n 2p "$tlog" | jq -r .to)"
+assert "TC-2115-01: session_id recorded" "$sid" "$(sed -n 2p "$tlog" | jq -r .session_id)"
+assert "TC-2115-01: issue_number recorded" "2115" "$(sed -n 2p "$tlog" | jq -r .issue_number)"
+assert "TC-2115-01: pr_number recorded" "42" "$(sed -n 2p "$tlog" | jq -r .pr_number)"
+# The two numeric fields must stay JSON numbers. `jq -r` above collapses 2115 and
+# "2115" to the same string, so the value assertions alone would still pass if the
+# writer switched `--argjson` to `--arg`; the aggregation consumer this log exists
+# for would then break on arithmetic/grouping.
+assert "TC-2115-01: issue_number is a JSON number" "number" "$(sed -n 2p "$tlog" | jq -r '.issue_number|type')"
+assert "TC-2115-01: pr_number is a JSON number" "number" "$(sed -n 2p "$tlog" | jq -r '.pr_number|type')"
+# ts equals the state file's updated_at at second granularity, so a record can be
+# cross-referenced with the state it describes. That equality alone does not pin the
+# format — both sides read the same `$now`, so switching it to epoch seconds keeps
+# them equal — so assert the ISO 8601 shape separately.
+assert "TC-2115-01: ts equals the state file's updated_at" \
+  "$(jq -r .updated_at "$d/.rite/sessions/${sid}.flow-state")" "$(sed -n 2p "$tlog" | jq -r .ts)"
+assert "TC-2115-01: ts is ISO 8601 UTC" "ok" \
+  "$(sed -n 2p "$tlog" | jq -r 'if (.ts|test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) then "ok" else "bad: "+.ts end')"
+# Self-contained .gitignore so the log never leaks into downstream consuming repos.
+assert "TC-2115-01: log dir carries a self-contained .gitignore" "*" "$(cat "$d/.rite/logs/.gitignore" 2>/dev/null)"
+
+# --- TC-2115-02 (AC-1 MUST): a same-phase set is recorded too (from == to) ---
+echo ""
+echo "=== TC-2115-02 (AC-1): same-phase set is recorded (update frequency inside a stage is observable) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase fix --issue 7 --branch "feat/y" --pr 0 --next "n1")
+(cd "$d" && bash "$HOOK" set --phase fix --issue 7 --pr 0 --next "n2")
+tlog="$d/.rite/logs/phase-transitions.log"
+assert_file_exists_or_fail "TC-2115-02: transition log created" "$tlog" || true
+assert "TC-2115-02: same-phase set still appends (2 lines)" "2" "$(wc -l < "$tlog" | tr -d ' ')"
+assert "TC-2115-02: same-phase record has from == to" "fix|fix" \
+  "$(sed -n 2p "$tlog" | jq -r '.from + "|" + .to')"
+
+# --- TC-2115-03 (AC-1 MUST): `--if-exists` skips are NOT recorded (no write happened) ---
+echo ""
+echo "=== TC-2115-03: --if-exists skip writes no state and therefore no transition record ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase plan --issue 5 --pr 0 --next "n" --if-exists 2>/dev/null)
+if [ -e "$d/.rite/logs/phase-transitions.log" ]; then
+  fail "TC-2115-03: skipped set must not append a record (log file exists: $(cat "$d/.rite/logs/phase-transitions.log"))"
+else
+  pass "TC-2115-03: skipped set appended no record"
+fi
+
+# --- TC-2115-04 (MUST): one line per transition even when the phase carries a newline ---
+echo ""
+echo "=== TC-2115-04: a newline-bearing --phase cannot split one transition into two lines ==="
+# `_phase_is_valid` only WARNs about an unknown phase and never rejects it, so the
+# "1 transition = 1 line" invariant must come from the record encoder (jq -c escapes
+# the newline), not from input validation.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase "$(printf 'weird\nINJECTED')" --issue 1 --pr 0 --next "n" 2>/dev/null)
+tlog="$d/.rite/logs/phase-transitions.log"
+assert_file_exists_or_fail "TC-2115-04: transition log created" "$tlog" || true
+assert "TC-2115-04: still exactly 1 line" "1" "$(wc -l < "$tlog" | tr -d ' ')"
+assert "TC-2115-04: newline preserved inside the JSON string" "$(printf 'weird\nINJECTED')" \
+  "$(head -1 "$tlog" | jq -r .to)"
+
+# --- TC-2115-05 (MUST): the log resolves to the main checkout from a linked worktree ---
+echo ""
+echo "=== TC-2115-05: a set run inside a linked worktree logs to the main checkout's .rite/logs ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+wt="$d/wt-2115"
+if (cd "$d" && git worktree add -q -b wt-branch-2115 "$wt" HEAD) >/dev/null 2>&1; then
+  echo "$sid" > "$wt/.rite-session-id"
+  (cd "$wt" && bash "$HOOK" set --phase lint --issue 88 --pr 0 --next "n")
+  # state-path-resolve.sh's linked-worktree unification makes $STATE_ROOT the main
+  # checkout, so one session's records stay in one file regardless of which tree a
+  # phase ran in. A per-worktree log would fragment exactly the timeline this
+  # feature exists to reconstruct.
+  assert_file_exists_or_fail "TC-2115-05: record landed in the MAIN checkout log" \
+    "$d/.rite/logs/phase-transitions.log" || true
+  if [ -e "$wt/.rite/logs/phase-transitions.log" ]; then
+    fail "TC-2115-05: a second log must not be created inside the worktree"
+  else
+    pass "TC-2115-05: no split log inside the worktree"
+  fi
+  assert "TC-2115-05: worktree-run transition recorded once in the main log" "lint" \
+    "$(tail -1 "$d/.rite/logs/phase-transitions.log" | jq -r .to)"
+  (cd "$d" && git worktree remove --force "$wt") >/dev/null 2>&1 || true
+else
+  skip "TC-2115-05: git worktree add unavailable in this sandbox"
+fi
+
+# --- TC-2115-06 (AC-2): a non-writable log destination is fully non-blocking ---
+echo ""
+echo "=== TC-2115-06 (AC-2): log write failure leaves exit code and state JSON unchanged ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/logs"
+chmod 555 "$d/.rite/logs"
+# Verify chmod actually enforces read-only for this user/filesystem first: root
+# bypasses DAC bits, and some filesystems (WSL2 DrvFs, overlay mounts) ignore the
+# owner write bit — either way the probe would succeed and the assertion below
+# would be vacuous rather than a real check. Braced so the open-failure message
+# itself is captured by the redirect (same pattern as session-start.test.sh).
+if { : > "$d/.rite/logs/.write-probe"; } 2>/dev/null; then
+  rm -f "$d/.rite/logs/.write-probe"
+  skip "TC-2115-06: filesystem/user does not enforce chmod 555 here — not a real read-only dir on this host"
+else
+  stderr_2115="$(mktemp)"
+  set +e
+  (cd "$d" && bash "$HOOK" set --phase plan --issue 9 --branch "feat/z" --pr 0 --next "n") 2>"$stderr_2115"
+  rc_2115=$?
+  set -e
+  assert "TC-2115-06: set still exits 0 (non-blocking)" "0" "$rc_2115"
+  sfile="$d/.rite/sessions/${sid}.flow-state"
+  assert_file_exists_or_fail "TC-2115-06: state file still written" "$sfile" || true
+  # AC-2 requires the state JSON to be unchanged, not merely that the command
+  # succeeded — a logging failure must not perturb any persisted field.
+  assert "TC-2115-06: state phase unaffected" "plan" "$(jq -r .phase "$sfile")"
+  assert "TC-2115-06: state issue_number unaffected" "9" "$(jq -r .issue_number "$sfile")"
+  assert "TC-2115-06: state branch unaffected" "feat/z" "$(jq -r .branch "$sfile")"
+  assert "TC-2115-06: no stray field added to the state JSON" \
+    "active branch error_count issue_number next_action parent_issue_number phase pr_number schema_version session_id updated_at" \
+    "$(jq -r 'keys | join(" ")' "$sfile")"
+  assert_grep "TC-2115-06: failure is announced, not silent" "$stderr_2115" 'WARNING: .*phase-transition log not writable'
+  # The same read-only dir also blocks the self-contained .gitignore, and that
+  # failure must be announced too — a missing exclusion is the path by which the
+  # log reaches a public repo, so swallowing it is the one outcome we cannot have.
+  assert_grep "TC-2115-06: .gitignore failure is announced too" \
+    "$stderr_2115" 'WARNING: .*cannot create .*\.gitignore'
+  # Its cause is captured and re-emitted indented (the `{ ...; } 2>&1` group scope),
+  # not dropped: without the group, bash reports the redirect's own EACCES before
+  # `2>&1` takes effect and the one line that names the cause escapes capture.
+  # Nothing may reach column 0: the append path's `2>/dev/null` must swallow bash's
+  # redirect-setup error entirely, and the .gitignore path's group capture must keep
+  # it behind that indent. Anchoring both ways is what separates "captured" from
+  # "leaked" — a bare pattern would read the indented cause as a leak.
+  #
+  # `LC_ALL=C` is load-bearing, not decoration. `neutralize_ctrl` blanks bytes
+  # 0x80-0x9f one byte at a time, which turns a localized diagnostic ("許可があり
+  # ません") into an invalid UTF-8 sequence; GNU grep under a UTF-8 locale then
+  # matches nothing on that line, so the two checks below would pass vacuously —
+  # the leak assertion in particular would stop catching real leaks. Hence the raw
+  # counts here instead of assert_grep / assert_not_grep, which have no locale
+  # override (same construction as review-result-state-root.test.sh TC-8).
+  gi_indented=$(LC_ALL=C grep -cE '^  .*\.gitignore: ' "$stderr_2115" || true)
+  gi_bare=$(LC_ALL=C grep -cE '^[^[:space:]].*flow-state\.sh: (line|行) [0-9]+:' "$stderr_2115" || true)
+  if [ "$gi_indented" -ge 1 ]; then
+    pass "TC-2115-06: .gitignore failure keeps its cause, indented"
+  else
+    fail "TC-2115-06: .gitignore failure lost its cause (indented lines: $gi_indented)"
+  fi
+  if [ "$gi_bare" -eq 0 ]; then
+    pass "TC-2115-06: no bash redirect error leaks to column 0"
+  else
+    fail "TC-2115-06: bash redirect error leaked to column 0 ($gi_bare line(s))"
+  fi
+  # The captured cause must still be readable after neutralization. `LC_ALL=C` on
+  # the failing command is what makes that hold: bash localizes its own errno, and
+  # neutralize_ctrl blanks 0x80-0x9f byte-wise, so under a localized LANG the errno
+  # degrades to `?` runs — dropping the one thing this line adds over the WARNING
+  # above. Matching a trailing ASCII errno pins it. Under a C locale the message is
+  # ASCII regardless and this passes without discriminating; it does the pinning on
+  # hosts whose LANG localizes the diagnostic. `.gitignore: ` itself is ASCII and
+  # survives mangling, so the earlier gi_indented check cannot stand in for this.
+  gi_ascii_errno=$(LC_ALL=C grep -cE '^  .*\.gitignore: [A-Za-z][A-Za-z ]+$' "$stderr_2115" || true)
+  if [ "$gi_ascii_errno" -ge 1 ]; then
+    pass "TC-2115-06: the captured cause survives neutralization (ASCII errno)"
+  else
+    fail "TC-2115-06: the captured cause was mangled (no ASCII errno line found)"
+  fi
+  rm -f "$stderr_2115"
+fi
+chmod 755 "$d/.rite/logs" 2>/dev/null || true
+
+# --- TC-2115-07: only a state write that actually landed is recorded ---
+echo ""
+echo "=== TC-2115-07: a set whose state write never persisted appends no transition ==="
+# SPEC pins "**実際に書き込みが成立した** `set` ごとに 1 行", and the helper call sits
+# immediately after `_atomic_write ... || return 1`. Nothing pinned that order, so
+# moving the call one line up — the exact "small edit" the surrounding comment warns
+# about — would silently start logging phases that were never persisted, poisoning
+# the duration data this log exists to produce. The log dir stays writable here, so
+# the only thing standing between a reversed order and a record is the ordering.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/sessions" "$d/.rite/logs"
+chmod 555 "$d/.rite/sessions"
+# Same probe as TC-2115-06 (root / DrvFs / overlay ignore the owner write bit).
+if { : > "$d/.rite/sessions/.write-probe"; } 2>/dev/null; then
+  rm -f "$d/.rite/sessions/.write-probe"
+  skip "TC-2115-07: filesystem/user does not enforce chmod 555 here — not a real read-only dir on this host"
+else
+  set +e
+  (cd "$d" && bash "$HOOK" set --phase plan --issue 11 --branch "feat/w" --pr 0 --next "n") 2>/dev/null
+  rc_2115_07=$?
+  set -e
+  assert "TC-2115-07: set reports the failed state write" "1" "$rc_2115_07"
+  if [ -e "$d/.rite/logs/phase-transitions.log" ]; then
+    fail "TC-2115-07: a transition that never persisted must not be recorded (log: $(cat "$d/.rite/logs/phase-transitions.log"))"
+  else
+    pass "TC-2115-07: no record for a state write that never landed"
+  fi
+fi
+chmod 755 "$d/.rite/sessions" 2>/dev/null || true
+
+# --- TC-2115-08: a 0-byte .gitignore residue is repaired on the next set ---
+echo ""
+echo "=== TC-2115-08: the .gitignore guard reads content, not mere existence ==="
+# `> file` truncates before writing, so a failed write (ENOSPC, interrupted run)
+# leaves a 0-byte .gitignore behind. An existence guard accepts that empty file as
+# "already created" and skips the rewrite forever, leaving .rite/logs/ un-ignored in
+# the consuming repo with no further signal. A content guard repairs it. No permission
+# tricks needed, so unlike TC-2115-06/07 this runs on every host including root.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/logs"
+: > "$d/.rite/logs/.gitignore"
+(cd "$d" && bash "$HOOK" set --phase plan --issue 12 --branch "feat/v" --pr 0 --next "n")
+assert "TC-2115-08: empty .gitignore is rewritten with the exclusion" "*" \
+  "$(cat "$d/.rite/logs/.gitignore" 2>/dev/null)"
+assert_file_exists_or_fail "TC-2115-08: the append still ran" "$d/.rite/logs/phase-transitions.log" || true
+
+# --- TC-2115-09 (AC-2): the log-dir branch is loud too, on every host ---
+echo ""
+echo "=== TC-2115-09 (AC-2): a non-creatable log dir warns and leaves the state write intact ==="
+# Without this, deleting the branch's WARNING — turning it into a complete silent
+# swallow — leaves the whole suite green. Occupying the log-dir path with a regular
+# file makes `mkdir -p` fail without any permission trick, so unlike TC-2115-06/07
+# this runs on every host, including the ones where the chmod probe skips those two.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite"
+: > "$d/.rite/logs"
+stderr_2115_09="$(mktemp)"
+set +e
+(cd "$d" && bash "$HOOK" set --phase plan --issue 13 --branch "feat/u" --pr 0 --next "n") 2>"$stderr_2115_09"
+rc_2115_09=$?
+set -e
+assert "TC-2115-09: set still exits 0 (non-blocking)" "0" "$rc_2115_09"
+sfile_09="$d/.rite/sessions/${sid}.flow-state"
+assert_file_exists_or_fail "TC-2115-09: state file still written" "$sfile_09" || true
+assert "TC-2115-09: state phase unaffected" "plan" "$(jq -r .phase "$sfile_09")"
+# Same key-set invariant TC-2115-06 pins, but reachable without chmod — on a host
+# where the probe skips TC-2115-06 this is the only assertion left guarding it.
+assert "TC-2115-09: no stray field added to the state JSON" \
+  "active branch error_count issue_number next_action parent_issue_number phase pr_number schema_version session_id updated_at" \
+  "$(jq -r 'keys | join(" ")' "$sfile_09")"
+assert_grep "TC-2115-09: the log dir failure is announced" "$stderr_2115_09" 'WARNING: .*log dir not creatable'
+rm -f "$stderr_2115_09"
+
+# --- TC-2115-10 (AC-2): the append branch is loud on every host too ---
+echo ""
+echo "=== TC-2115-10 (AC-2): a non-writable log file warns and leaves the state write intact ==="
+# TC-2115-06 already pins this branch, but every one of its assertions sits behind a
+# chmod probe that skips on some hosts — and TC-2115-07 skips with it, leaving AC-2
+# with no coverage there. Occupying the log path with a directory makes the append
+# fail with no permission trick, so this keeps a floor everywhere. The dir exists
+# before `set` runs, so `mkdir -p "$log_dir"` still succeeds and only the append
+# fails — the `.gitignore` write succeeds too, which separates the two failure modes
+# TC-2115-06 exercises together.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/logs/phase-transitions.log"
+stderr_2115_10="$(mktemp)"
+set +e
+(cd "$d" && bash "$HOOK" set --phase plan --issue 14 --branch "feat/t" --pr 0 --next "n") 2>"$stderr_2115_10"
+rc_2115_10=$?
+set -e
+assert "TC-2115-10: set still exits 0 (non-blocking)" "0" "$rc_2115_10"
+sfile_10="$d/.rite/sessions/${sid}.flow-state"
+assert_file_exists_or_fail "TC-2115-10: state file still written" "$sfile_10" || true
+assert "TC-2115-10: no stray field added to the state JSON" \
+  "active branch error_count issue_number next_action parent_issue_number phase pr_number schema_version session_id updated_at" \
+  "$(jq -r 'keys | join(" ")' "$sfile_10")"
+assert_grep "TC-2115-10: the append failure is announced" "$stderr_2115_10" 'WARNING: .*log not writable'
+# The .gitignore path is independent of the append path and must still have run.
+assert "TC-2115-10: the exclusion was still written" "*" "$(cat "$d/.rite/logs/.gitignore" 2>/dev/null)"
+rm -f "$stderr_2115_10"
+# The WARNING sites run their runtime values through `neutralize_ctrl`; drop that and
+# a newline inside `--phase` splits this WARNING, forging a second one at column 0.
+# The same sandbox works — the log path is still a directory, so the append still
+# fails and `$to` still reaches the message. Count only the append line: the
+# `unknown phase` WARNING interpolates the same value raw and would mask the check.
+stderr_2115_10b="$(mktemp)"
+set +e
+(cd "$d" && bash "$HOOK" set --phase "$(printf 'plan\nWARNING: forged')" --issue 15 --pr 0 --next "n") 2>"$stderr_2115_10b"
+set -e
+assert "TC-2115-10: a newline in --phase cannot split the append WARNING" "1" \
+  "$(LC_ALL=C grep -cE 'phase-transition log not writable.*not recorded$' "$stderr_2115_10b" || true)"
+rm -f "$stderr_2115_10b"
+
+if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del (Issue #1524) + non-UUID acceptance (Layer 1 format-agnostic contract pin) + phase-transition append log (#2115)"; then
   exit 1
 fi
