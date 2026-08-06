@@ -75,7 +75,12 @@ SKIP_IF_NO_TARGET=0
 
 # Files the scanner could not read or parse. Declared before the enumeration so
 # a failed --all walk can count itself.
-SKIPPED=0
+# Two counters, not one: an enumeration failure hides an unknown number of
+# files (find could not descend, so there is nothing to count), while the other
+# two paths lose exactly one file each. Reporting both as "files" understated
+# the unscanned surface by the size of the hidden subtree.
+SKIPPED_FILES=0
+SKIPPED_ENUM=0
 
 # Directories walked by --all. The same list is restated in this file's header,
 # in the usage text below, in docs/SPEC.md, and in
@@ -146,9 +151,11 @@ if [ "$USE_ALL" -eq 1 ]; then
   found_dir=0
   for d in "${SCAN_DIRS[@]}"; do
     if [ ! -d "$d" ]; then
-      # A missing scan dir is only benign when every one of them is missing —
-      # that is the consumer-repo case --skip-if-no-target exists for. Half a
-      # tree walked and reported as clean is the "did not look" outcome.
+      # A missing scan dir is not counted as unscanned: a directory that does
+      # not exist holds no files to miss. The case this matters for is the
+      # consumer repo, where all of them are absent and --skip-if-no-target
+      # turns the empty walk into a clean skip. A SCAN_DIRS typo is caught by
+      # the test that plants a defect under the second dir, not here.
       continue
     fi
     found_dir=1
@@ -160,7 +167,7 @@ if [ "$USE_ALL" -eq 1 ]; then
     find_rc=$?
     if [ "$find_rc" -ne 0 ]; then
       echo "WARNING: enumeration failed under $d (rc=$find_rc) — the target list is incomplete" >&2
-      SKIPPED=$((SKIPPED + 1))
+      SKIPPED_ENUM=$((SKIPPED_ENUM + 1))
     fi
     while IFS= read -r f; do
       [ -n "$f" ] || continue
@@ -232,8 +239,10 @@ function derived_use(s, needle,   pos, rest, c) {
 }
 
 # True when the line derives a path from handle `v`. The spellings are the ones
-# that occur in practice: a dot / dash / word suffix on `$v`, `${v}`, `"$v"` or
-# `"${v}"`, or a prefix/suffix-strip expansion.
+# that occur in practice: a dot or dash suffix on `$v`; a dot, dash or word
+# suffix on `${v}`, `"$v"` or `"${v}"` (the braces or the closing quote end the
+# name, so a word character after them is a suffix rather than part of it); or a
+# prefix/suffix-strip expansion.
 #
 # Unbraced `$v_suffix` is deliberately absent: bash reads the whole run of
 # [A-Za-z0-9_] as one name, so `$tmp_bak` is the variable `tmp_bak`, not a
@@ -305,14 +314,14 @@ log "Scanning ${#TARGETS[@]} file(s)..."
 for t in "${TARGETS[@]}"; do
   if [ ! -f "$t" ]; then
     echo "WARNING: target not found: $t — file not scanned" >&2
-    SKIPPED=$((SKIPPED + 1))
+    SKIPPED_FILES=$((SKIPPED_FILES + 1))
     continue
   fi
   awk -v fname="$t" -f "$AWK_PROG" "$t" >> "$FINDINGS_FILE"
   awk_rc=$?
   if [ "$awk_rc" -ne 0 ]; then
     echo "WARNING: awk failed on $t (rc=$awk_rc) — file not scanned" >&2
-    SKIPPED=$((SKIPPED + 1))
+    SKIPPED_FILES=$((SKIPPED_FILES + 1))
   fi
 done
 
@@ -326,8 +335,8 @@ total=$(printf '%s' "$total" | tr -d '[:space:]')
 # stdout, not the --quiet-able log: the lint check table parses this line.
 echo "==> Total tempfile-lifecycle findings: ${total}"
 
-if [ "$SKIPPED" -gt 0 ]; then
-  echo "ERROR: ${SKIPPED} file(s) could not be scanned — this run is not a clean bill" >&2
+if [ "$SKIPPED_FILES" -gt 0 ] || [ "$SKIPPED_ENUM" -gt 0 ]; then
+  echo "ERROR: ${SKIPPED_FILES} file(s) and ${SKIPPED_ENUM} directory enumeration(s) could not be scanned — this run is not a clean bill" >&2
 fi
 
 # Findings win the exit code: making an unscannable file force rc=2 even when
@@ -336,7 +345,7 @@ fi
 if [ "$total" -gt 0 ]; then
   exit 1
 fi
-if [ "$SKIPPED" -gt 0 ]; then
+if [ "$SKIPPED_FILES" -gt 0 ] || [ "$SKIPPED_ENUM" -gt 0 ]; then
   exit 2
 fi
 exit 0

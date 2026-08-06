@@ -23,7 +23,9 @@
 # Usage (source it — this cannot be a subprocess helper, because the cleanup
 # handler has to live in the caller's own shell):
 #
-#   source "$(dirname "${BASH_SOURCE[0]}")/lib/tempfile.sh"
+#   # from hooks/scripts/:  source "$(dirname "${BASH_SOURCE[0]}")/lib/tempfile.sh"
+#   # from hooks/:          source "$(dirname "${BASH_SOURCE[0]}")/scripts/lib/tempfile.sh"
+#   # from scripts/:        source "$(dirname "${BASH_SOURCE[0]}")/../hooks/scripts/lib/tempfile.sh"
 #   rite_tempfile_init
 #   rite_tempfile_new err_file "gh-err" || exit 1
 #   gh api ... 2>"$err_file"
@@ -37,8 +39,8 @@
 # Composing with a caller that already owns its traps (a script whose EXIT
 # handler also emits a terminal sentinel, say): pass --caller-traps to
 # `rite_tempfile_init` and call `rite_tempfile_cleanup` from your own handler.
-# Installing over an existing EXIT handler would silently drop it, so
-# `rite_tempfile_init` refuses to do that rather than guess.
+# Installing over an existing EXIT / INT / TERM / HUP handler would silently drop
+# it, so `rite_tempfile_init` refuses to do that rather than guess.
 #
 # The four handlers below implement the canonical template in
 # references/bash-trap-patterns.md; that file is the definition, this is the one
@@ -81,8 +83,9 @@ rite_tempfile_cleanup() {
 }
 
 # Arm the registry and, unless --caller-traps is given, install the four
-# handlers. Idempotent. Returns 1 (loudly) when an EXIT handler that is not ours
-# already exists — clobbering it would drop whatever the caller does at exit.
+# handlers. Idempotent. Returns 1 (loudly) when a non-ignored EXIT / INT / TERM /
+# HUP handler that is not ours already exists — clobbering any of them would drop
+# whatever the caller does on that path.
 rite_tempfile_init() {
   local caller_traps=0
   while [ $# -gt 0 ]; do
@@ -258,6 +261,7 @@ rite_tempdir_new() {
 # succeed silently.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
   echo "ERROR: tempfile.sh must be sourced, not executed (the cleanup handler has to live in the caller's shell)" >&2
-  echo "  Usage: source \"\$(dirname \"\${BASH_SOURCE[0]}\")/lib/tempfile.sh\"" >&2
+  echo "  Usage: source it with the path from your own location — hooks/scripts/ callers use" >&2
+  echo "    \"\$(dirname \"\${BASH_SOURCE[0]}\")/lib/tempfile.sh\", hooks/ callers prepend scripts/" >&2
   exit 2
 fi

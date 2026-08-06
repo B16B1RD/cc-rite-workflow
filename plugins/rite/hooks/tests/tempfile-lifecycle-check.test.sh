@@ -7,8 +7,9 @@
 #     mktemp directly or from the lib,
 #   - a variable that merely shares a prefix is not (bash reads `$tmp_err` as one
 #     name, so flagging it fires on ordinary code),
-#   - dirname / basename expansions are not (they extract a component, they do
-#     not derive a sibling),
+#   - dirname / basename expansions ARE findings (a component extraction with a
+#     suffix bolted on is a sibling path; the carve-out they once had suppressed
+#     no measured false positive and was withdrawn),
 #   - a drift-check-ignore marker suppresses either way,
 #   - and a file that could not be scanned is an error, not a clean bill.
 # Plus the real-repository corpus: the tree must be clean AND actually scanned,
