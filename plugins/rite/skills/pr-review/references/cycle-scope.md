@@ -58,7 +58,7 @@ fail-safe 発火時は WARNING を可視化する（silent fallback 禁止）。
 
 `no_prev_json` だけは WARNING を出さない。これは cycle 1 の正常経路であり、毎回警告を出すと本当の異常が埋もれるため。`state-path-resolve.sh` の解決に失敗して cwd 相対へ倒れた場合は別途 WARNING が出るので、「黙って cycle 1 扱いになる」経路は塞がれている。
 
-helper が **marker を 1 つも出さずに非ゼロ終了した場合**（引数欠落 / 未知フラグの usage error）も consumer 側で `full` として扱う。この既定は helper 内の 6 reason では表現できない（marker を出せない状況そのもの）ため、[SKILL.md](../SKILL.md) ステップ 1.2.4 の consumer 側に置く。
+helper が **marker を 1 つも出さずに非ゼロ終了した場合**（引数欠落 / 未知フラグの usage error）も consumer 側で `full` として扱い、reason は `helper_failed` とする。この 7 番目の reason は helper 内の 6 reason では表現できない（marker を出せない状況そのもの）ため、[SKILL.md](../SKILL.md) ステップ 1.2.4 の consumer 側に置く。
 
 この fail-safe の向き（欠落 → 安全側 = 広い方 / 確認を出す方）は、ステップ 3.3 の E2E 判定や ステップ 3.4 の batch 判定が helper 失敗時に interactive へ倒すのと同型である。新しいシグナルを発明せず既存の判定形に揃えている。
 
@@ -94,7 +94,14 @@ cap 後のフィルタにすると、これらのフロアと `mandatory` 保護
 
 昇格は既存の昇格 priority（`detected < recommended < mandatory`）に従い、より高い側へのみ動かす。既に `mandatory` の reviewer に対しては no-op。
 
-前サイクル finder は永続 JSON の `findings[]` から取るが、**`findings[]` 全体を blocking 集合として扱ってはならない**。実測必須ゲート（`review-measured-gate.sh`）は `scope == "nit-noted"` をゲート対象外として非実測でも `findings[]` に残すため、実体は blocking 集合と全 nit-noted 集合の**和**である。gated scope（`current-pr` / `follow-up`）で絞らないと 2 系統の欠陥が出る:
+前サイクル finder は永続 JSON の **`findings[]` と `non_blocking_findings[]` の和**から、gated scope（`current-pr` / `follow-up`）の finding だけを取る。2 つの配列を跨ぐのは、実測必須ゲートが両方向に要素を動かすためである:
+
+- `findings[]` には `scope == "nit-noted"` がゲート対象外として非実測でも残る → **絞らないと余分が入る**
+- 非実測の gated 指摘は `non_blocking_findings[]` へ**移送**され `findings[]` から消える → **`findings[]` だけ見ると足りない**
+
+`nit-noted` を和に含めないのは、nit が「修正不要」と決着済みで再検証の価値が無く、含めれば cap 免除枠を占有するだけだから。対して非実測の `current-pr` / `follow-up` は「merge は止めないが未解消」であり、再検証と再記録の価値がある。この違いが母集団を分ける根拠になる（記録コメントは update-in-place で毎 cycle 本文を置換するため、再導出されない指摘は PR 上の記録からも消える）。
+
+`findings[]` 全体を blocking 集合として扱うと、以下 2 系統の欠陥が出る:
 
 - nit しか出していない reviewer が `mandatory` で合流し、Phase 5 が `mandatory` を絶対に落とさない性質から `max_reviewers` の枠を占有して fix diff の実担当を押し出す
 - 受け流し済みの nit が解消検証 mandate に注入され、nit-noted は定義上恒久的に NOT_FIXED であるため毎サイクル再掲される（[finding-cycling.md](./finding-cycling.md) の収束設計と逆行する）

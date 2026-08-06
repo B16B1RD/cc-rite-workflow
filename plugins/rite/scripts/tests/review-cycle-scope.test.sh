@@ -221,6 +221,69 @@ run_scope --pr 42 --results-dir "$MIXED"
 assert_marker_eq "TC-14.1: nit-noted のみの reviewer は prev_finders に載らない" \
   "$SCOPE_STDERR" "prev_finders" "application,devops"
 
+echo "=== TC-14b: non_blocking_findings[] へ移送された gated 指摘の reviewer も拾う ==="
+# 実測必須ゲートは非実測の gated 指摘を findings[] から non_blocking_findings[] へ移送する。
+# findings[] だけ見ると、その cycle の gated 指摘が全件非実測だった reviewer が mandatory 合流から
+# 外れ、記録コメント (update-in-place) からも消える。
+MOVED="$TEST_DIR/results-moved"
+mkdir -p "$MOVED"
+jq -n --arg sha "$FIRST_SHA" '{
+  schema_version:"1.0.0", pr_number:42, commit_sha:$sha, overall_assessment:"mergeable",
+  findings:[
+    {id:"F-01", reviewer:"tech-writer-reviewer", category:"c", severity:"LOW",
+     file:"a.md", line:1, description:"d", suggestion:"s", status:"open", scope:"nit-noted"}
+  ],
+  non_blocking_findings:[
+    {id:"F-02", reviewer:"security-reviewer", category:"c", severity:"CRITICAL",
+     file:"b.sh", line:2, description:"d", suggestion:"s", status:"open", scope:"current-pr"}
+  ]
+}' > "$MOVED/42-20260806-000000.json"
+run_scope --pr 42 --results-dir "$MOVED"
+assert_marker_eq "TC-14b.1: 移送された gated 指摘の reviewer を拾い、nit のみの reviewer は除く" \
+  "$SCOPE_STDERR" "prev_finders" "security"
+
+echo "=== TC-19: scope / reviewer の欠落は無音で捨てず full へ倒す ==="
+# select は条件に合わない要素を無音で捨てるため、部分欠落だと結果が正常系と見分けがつかない。
+# 最も危険なのは「2 件中 1 件だけ欠落」— 出力が非空なので異常に見えない。
+PARTIAL="$TEST_DIR/results-partial-scope"
+mkdir -p "$PARTIAL"
+jq -n --arg sha "$FIRST_SHA" '{
+  schema_version:"1.0.0", pr_number:42, commit_sha:$sha, overall_assessment:"fix-needed",
+  findings:[
+    {id:"F-01", reviewer:"security-reviewer", severity:"CRITICAL", file:"a.sh", line:1},
+    {id:"F-02", reviewer:"test-reviewer", severity:"HIGH", file:"b.sh", line:2, scope:"current-pr"}
+  ],
+  non_blocking_findings:[]
+}' > "$PARTIAL/42-20260806-000000.json"
+run_scope --pr 42 --results-dir "$PARTIAL"
+assert_contains "TC-19.1: scope 欠落は full へ倒れる" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=full"
+assert_contains "TC-19.2: reason=prev_json_unreadable" "$SCOPE_STDERR" "reason=prev_json_unreadable"
+assert_not_contains "TC-19.3: incremental を出さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
+
+NOREV="$TEST_DIR/results-noreviewer"
+mkdir -p "$NOREV"
+jq -n --arg sha "$FIRST_SHA" '{
+  schema_version:"1.0.0", pr_number:42, commit_sha:$sha, overall_assessment:"fix-needed",
+  findings:[{id:"F-01", severity:"HIGH", file:"a.sh", line:1, scope:"current-pr"}],
+  non_blocking_findings:[]
+}' > "$NOREV/42-20260806-000000.json"
+run_scope --pr 42 --results-dir "$NOREV"
+assert_contains "TC-19.4: reviewer 欠落も full へ倒れる" "$SCOPE_STDERR" "reason=prev_json_unreadable"
+
+echo "=== TC-20: commit_sha の抽出失敗とキー欠落を別 reason に分ける ==="
+# 抽出失敗 (トップレベルが object でない) を commit_sha_missing = 良性の旧形式 として
+# 報告すると、破損が旧形式互換の顔をして無視される。
+NOTOBJ="$TEST_DIR/results-notobject"
+mkdir -p "$NOTOBJ"
+printf '[]' > "$NOTOBJ/42-20260806-000000.json"
+run_scope --pr 42 --results-dir "$NOTOBJ"
+assert_contains "TC-20.1: 非 object は prev_json_unreadable" "$SCOPE_STDERR" "reason=prev_json_unreadable"
+assert_contains "TC-20.2: jq のエラー本文を出す" "$SCOPE_STDERR" "Cannot index array"
+assert_contains "TC-20.3: 対象パスを出す" "$SCOPE_STDERR" "$NOTOBJ/42-20260806-000000.json"
+run_scope --pr 42 --results-dir "$NOSHA"
+assert_contains "TC-20.4: キー欠落は commit_sha_missing のまま" "$SCOPE_STDERR" "reason=commit_sha_missing"
+assert_contains "TC-20.5: キー欠落の WARNING も対象パスを出す" "$SCOPE_STDERR" "$NOSHA/42-20260806-000000.json"
+
 echo "=== TC-15: prev_finders の jq 失敗は silent に incremental を維持しない (loud fail-safe) ==="
 # findings が iterable だが要素が object でない → .reviewer 参照で jq rc=5。
 # 空の prev_finders= は「blocking 0 件」の正常系とバイト単位で同一のため、fallback すると
@@ -238,6 +301,9 @@ assert_rc "TC-15.1: rc=0 (レビュー自体は止めない)" 0 "$SCOPE_RC"
 assert_contains "TC-15.2: incremental を維持せず full へ倒れる" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=full"
 assert_contains "TC-15.3: reason=prev_json_unreadable" "$SCOPE_STDERR" "reason=prev_json_unreadable"
 assert_contains "TC-15.4: fallback marker を出す" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE_FALLBACK=1"
+# AC-3 が守るのは「full へ倒れること」ではなく「full **だけ**になること」。
+# emit_full の exit を局所的に落とす変異は、この負の assertion が無いと素通りする。
+assert_not_contains "TC-15.5: fail-safe 後に incremental を出さない" "$SCOPE_STDERR" "REVIEW_CYCLE_SCOPE=incremental"
 
 echo "=== TC-16: fail-safe 時に対象と原因を surface する (診断を捨てない) ==="
 run_scope --pr 42 --results-dir "$BROKEN"

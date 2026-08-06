@@ -26,7 +26,7 @@ PR の変更内容を解析し、専門家スキルを動的にロードして�
 
 本コマンドはレビュー専用 (READ-ONLY): `Edit`/`Write` でソース修正禁止。`Bash` は workflow 操作と read-only な git コマンドのみ許可 (完全な許可・禁止一覧は [`_reviewer-base.md#read-only-enforcement`](../../agents/_reviewer-base.md#read-only-enforcement) を SoT として参照)。問題検出時は `[review:fix-needed:{n}]` を emit し修正は `/rite:fix` に委譲する。
 
-呼び出し回数・context 残量・前回レビュー結果の有無に **一切関係なく** 常にフルレビューを実行する。スコープ縮退、レビュアー数削減、Verification mode への暗黙フォールバック、品質と context 効率のトレードオフは禁止 (Identity: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md))。再レビュー (fix 後) も初回と完全同等の品質で全レビュアー並列起動 + PR 全体差分を対象にフルレビューする。
+**cycle 1 は** 呼び出し回数・context 残量に **一切関係なく** PR 全体をフルレビューする。cycle 2+ のレビュー範囲は ステップ 1.2.4 が永続 JSON から機械的に決める (差分スコープ) が、これは調査**範囲**の限定であって指摘の採否**基準**の緩和ではない — 基準 (4 必須自問 / Confidence / Observed Likelihood / 実測アンカー) は cycle を通じて不変で、レビュアー数の恣意的削減・Verification mode への暗黙フォールバック・品質と context 効率のトレードオフは引き続き禁止 (Identity: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md))。再レビュー (fix 後) も初回と完全同等の深さと厳しさで、ステップ 1.2.4 が決めた範囲を全レビュアー並列起動で審査する。
 
 Hooks registration (`.claude/settings.local.json`) はチェックしない (`/rite:setup` の専管)。本コマンドは hooks 関連の WARNING を出さない。
 

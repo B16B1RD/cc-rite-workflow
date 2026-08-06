@@ -31,12 +31,15 @@
 #   [CONTEXT] REVIEW_CYCLE_SCOPE_FALLBACK=1; reason=<reason>   ← no_prev_json 以外で追加 emit
 #   ⚠️ 差分スコープのフォールバック: ...                        ← 同上 (人間向け)
 #
-#   prev_finders は前サイクルの findings[] のうち **gated scope (current-pr / follow-up)** の
-#   finding だけを対象に reviewer を agent 名から reviewer_type へ正規化 (`-reviewer` サフィックス
-#   除去) し unique + カンマ区切りにしたもの。**findings[] 全体は blocking 集合ではない** —
-#   review-measured-gate.sh は scope == "nit-noted" をゲート対象外として非実測でも findings[] に
-#   残すため、実体は blocking 集合と全 nit-noted 集合の和である。空になりうる (前サイクルの
-#   blocking が 0 件だった場合)。統合済み旧 type
+#   prev_finders は前サイクルの findings[] と non_blocking_findings[] の**和**のうち
+#   **gated scope (current-pr / follow-up)** の finding だけを対象に reviewer を agent 名から
+#   reviewer_type へ正規化 (`-reviewer` サフィックス除去) し unique + カンマ区切りにしたもの。
+#   **findings[] 全体は blocking 集合ではない** — review-measured-gate.sh は scope == "nit-noted"
+#   をゲート対象外として非実測でも findings[] に残すため、実体は blocking 集合と全 nit-noted 集合の
+#   和である。逆に非実測の gated 指摘は non_blocking_findings[] へ *移送* されるため findings[] には
+#   残らない。両方を読み gated scope で絞ることで、nit だけの reviewer を除きつつ未解消の
+#   非実測指摘を出した reviewer は取りこぼさない。空になりうる (前サイクルの gated 指摘が
+#   0 件だった場合)。統合済み旧 type
 #   (api/frontend/performance/database/type-design) の読み替えは caller 側の責務
 #   (skills/reviewers/SKILL.md の Legacy Reviewer Type Aliases 表が SoT)。
 #
@@ -144,8 +147,18 @@ if ! jq empty "$prev_json" 2>"$probe_err"; then
   emit_full prev_json_unreadable
 fi
 
-base_sha=$(jq -r '.commit_sha // empty' "$prev_json" 2>"$probe_err")
-[ -n "$base_sha" ] || emit_full commit_sha_missing
+# 抽出失敗 (トップレベルが object でない等の rc!=0) と、キー欠落 (rc=0 で空) を分ける。
+# 融合すると前者が commit_sha_missing = docstring 上「旧形式」= 良性 として報告され、
+# 破損が旧形式互換の顔をして運用者に無視される。診断も他 4 経路と同じ形で surface する。
+if ! base_sha=$(jq -r '.commit_sha // empty' "$prev_json" 2>"$probe_err"); then
+  echo "WARNING: review-cycle-scope: commit_sha を抽出できません: $prev_json" >&2
+  head -3 "$probe_err" | sed 's/^/  /' >&2
+  emit_full prev_json_unreadable
+fi
+if [ -z "$base_sha" ]; then
+  echo "WARNING: review-cycle-scope: commit_sha が空 / 欠落しています: $prev_json" >&2
+  emit_full commit_sha_missing
+fi
 
 # `^{commit}` を付けて「commit として解決できる」ことまで確認する (blob/tree の SHA を誤って
 # 起点に据えない)。起点 object が object DB に無ければここで落ちる。
@@ -164,26 +177,47 @@ if ! git diff --name-only "${base_sha}..HEAD" >/dev/null 2>"$probe_err"; then
   emit_full diff_failed
 fi
 
-# 前サイクルで **blocking** を出した reviewer を抽出する。
-# **`findings[]` 全体は blocking 集合ではない** — scripts/review-measured-gate.sh は
-# `scope == "nit-noted"` をゲート対象外として非実測でも findings[] に残すため、実体は
-# blocking 集合と全 nit-noted 集合の和である。gated scope (current-pr / follow-up) で絞らないと、
-# (a) nit しか出していない reviewer が caller 側で mandatory 合流して cap 免除枠を占有し
-# fix diff の実担当を押し出す、(b) 受け流し済みの nit が解消検証 mandate に注入され
-# 定義上恒久的に NOT_FIXED として毎サイクル再掲される、の 2 系統の欠陥が出る。
+# 抽出の前に findings の健全性を確認する。下の `select` 群は条件に合わない要素を**無音で捨てる**
+# ため、scope が enum 外 / 欠落、あるいは reviewer が欠落・非文字列の finding があると、
+# 結果の空・部分的な `prev_finders=` が「前サイクルの blocking が 0 件」の正常系と
+# バイト単位で同一になる。区別できない以上、既存の loud な fail-safe へ倒す
+# (欠落時の安全側は広い方 = full。AC-3 が明示的に許した経路)。
+# 健全な current-pr / 全件 nit-noted / findings 空 / findings キー欠落では PASS する。
+if ! jq -e '
+  all((.findings[]?, .non_blocking_findings[]?);
+      ((.scope == "current-pr") or (.scope == "follow-up") or (.scope == "nit-noted"))
+      and ((.reviewer? // null) != null))
+' "$prev_json" >/dev/null 2>"$probe_err"; then
+  echo "WARNING: review-cycle-scope: findings[].scope が enum 外 / 欠落、または .reviewer 欠落の finding があります: $prev_json" >&2
+  head -3 "$probe_err" | sed 's/^/  /' >&2
+  emit_full prev_json_unreadable
+fi
+
+# 前サイクルで gated scope (current-pr / follow-up) の指摘を出した reviewer を抽出する。
+#
+# **母集団は `findings[]` と `non_blocking_findings[]` の和**。実測必須ゲートは非実測の gated
+# 指摘を `findings[]` から `non_blocking_findings[]` へ *移送* する (`.findings = $kept`) ため、
+# 当該 cycle の gated 指摘が全件非実測だった reviewer は `findings[]` に 1 件も残らない。
+# `findings[]` だけを見ると、その reviewer は次 cycle の mandatory 合流から外れ、fix diff が
+# パターンに一致しなければ一度も起動しない。非実測指摘の記録コメントは update-in-place で
+# 毎 cycle 本文を置換するため、再導出されないと PR 上の記録からも消える
+# (差分スコープ導入前は cycle 2+ も全 reviewer × フル diff だったので毎 cycle 再導出されていた)。
+# **nit-noted は和に含めない** — nit は「修正不要」と決着済みで再検証の価値が無く、含めると
+# cap 免除枠を占有する。非実測の current-pr / follow-up は「merge は止めないが未解消」であり、
+# 再検証と再記録の価値がある。この区別が母集団を分ける根拠。
+#
 # reviewer は agent 名 (`code-quality-reviewer`) で入るため reviewer_type へ正規化する。
-# jq 失敗は握り潰さない — 空の `prev_finders=` は「前サイクルの blocking が 0 件」と
-# バイト単位で同一で区別不能なため、fallback すると「前サイクル finder の無条件再起動」が
-# 無音で破れたまま差分スコープへ入る。既存の loud な fail-safe へ合流させる。
+# jq 失敗は握り潰さない — 空の `prev_finders=` は正常系と区別できないため既存の loud な
+# fail-safe へ合流させる。
 prev_finders=$(jq -r '
-  [.findings[]?
+  [(.findings[]?, .non_blocking_findings[]?)
    | select((.scope // "") == "current-pr" or (.scope // "") == "follow-up")
    | .reviewer
    | select(type == "string")
    | sub("-reviewer$";"")]
   | unique | join(",")
 ' "$prev_json" 2>"$probe_err") || {
-  echo "WARNING: review-cycle-scope: 前回 blocking finder の抽出に失敗しました: $prev_json" >&2
+  echo "WARNING: review-cycle-scope: 前回 finder の抽出に失敗しました: $prev_json" >&2
   head -3 "$probe_err" | sed 's/^/  /' >&2
   emit_full prev_json_unreadable
 }

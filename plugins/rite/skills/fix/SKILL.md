@@ -3296,8 +3296,8 @@ case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac
 | `レビューソース: {review_source} (...)` | Provenance of the review findings consumed by this fix run | ステップ 1.2.0 Priority chain で決定された `review_source` 値 (schema.md Priority 1 emit 義務の provenance 契約を ステップ 4.6 で履行)。展開ルールは ステップ 4.5.3 の `{review_source}` / `{review_source_path_display}` 表を参照 |
 
 **Note**: The review-fix loop of `/rite:iterate` checks the content of this completion report to determine the next action:
-- `プッシュ: 完了` -> Execute full re-review (`/rite:pr-review` と同等のフルレビュー — スコープ縮退禁止)
-- 本 cycle 内で accept 決定が発生 -> Execute full re-review (`/rite:pr-review` と同等のフルレビュー — スコープ縮退禁止。accept は fingerprint 永続化のみを行い、実際の suppression 適用は次回 `/rite:pr-review` ステップ 5.1.2.A [Non-Target] が担うため、re-review せずに終端すると suppression の成否が未確認のまま loop が終わる — Issue #1811)
+- `プッシュ: 完了` -> Execute re-review (`/rite:pr-review` を起動。範囲は同 skill の ステップ 1.2.4 が cycle に応じて決める — fix 側で範囲を宣言しない)
+- 本 cycle 内で accept 決定が発生 -> Execute re-review (同上。accept は fingerprint 永続化のみを行い、実際の suppression 適用は次回 `/rite:pr-review` ステップ 5.1.2.A [Non-Target] が担うため、re-review せずに終端すると suppression の成否が未確認のまま loop が終わる — Issue #1811)
 - `プッシュ: 未実行` and 本 cycle 内で accept 決定なし and `全指摘 == 対応指摘` -> Proceed to completion report (all addressed via replies)
 
 「本 cycle 内で accept 決定が発生」の**唯一の真実の源**（判定に使う具体的な context マーカー）は ステップ 5.1 Output Pattern テーブル row 4/5 (下記) を参照すること。本 Note では条件を重複記述しない（Issue #1811 cycle 2 で「別Issue作成: N件」という commit `0dee5b22` で削除済みの旧 Phase 4.3 の残骸フィールドを条件として複製していたことが判明したため、以後は複製ではなく参照に統一する）。
@@ -3591,7 +3591,7 @@ The `fix` flow-state write below records the v3 phase so a `/rite:recover` start
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \
-  --next "rite:fix completed. Check recent result pattern in context: [fix:pushed]->caller の review-fix loop (FULL re-review — スコープ縮退禁止、/rite:pr-review と同等のフルレビューを実行). [fix:pushed-wm-stale]->caller の review-fix loop (FULL re-review after AskUserQuestion — スコープ縮退禁止) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:replied-only]->caller の Ready & 完結 step. Do NOT stop." \
+  --next "rite:fix completed. Check recent result pattern in context: [fix:pushed]->caller の review-fix loop (/rite:pr-review を起動。範囲は 1.2.4 が cycle に応じて決定し、指摘の採否基準の緩和は禁止). [fix:pushed-wm-stale]->caller の review-fix loop (同上 after AskUserQuestion) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:replied-only]->caller の Ready & 完結 step. Do NOT stop." \
   --handoff "/rite:pr-review {pr_number}" \
   --if-exists
 
@@ -3599,7 +3599,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \
-  --next "rite:fix completed. Check recent result pattern in context: [fix:pushed]->caller の review-fix loop (FULL re-review — スコープ縮退禁止、/rite:pr-review と同等のフルレビューを実行). [fix:pushed-wm-stale]->caller の review-fix loop (FULL re-review after AskUserQuestion — スコープ縮退禁止) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:replied-only]->caller の Ready & 完結 step. Do NOT stop." \
+  --next "rite:fix completed. Check recent result pattern in context: [fix:pushed]->caller の review-fix loop (/rite:pr-review を起動。範囲は 1.2.4 が cycle に応じて決定し、指摘の採否基準の緩和は禁止). [fix:pushed-wm-stale]->caller の review-fix loop (同上 after AskUserQuestion) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:replied-only]->caller の Ready & 完結 step. Do NOT stop." \
   --handoff "FINALIZE:fix:replied-only:{pr_number}" \
   --if-exists
 
@@ -3607,7 +3607,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \
-  --next "rite:fix completed. Check recent result pattern in context: [fix:pushed]->caller の review-fix loop (FULL re-review — スコープ縮退禁止、/rite:pr-review と同等のフルレビューを実行). [fix:pushed-wm-stale]->caller の review-fix loop (FULL re-review after AskUserQuestion — スコープ縮退禁止) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:replied-only]->caller の Ready & 完結 step. Do NOT stop." \
+  --next "rite:fix completed. Check recent result pattern in context: [fix:pushed]->caller の review-fix loop (/rite:pr-review を起動。範囲は 1.2.4 が cycle に応じて決定し、指摘の採否基準の緩和は禁止). [fix:pushed-wm-stale]->caller の review-fix loop (同上 after AskUserQuestion) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:replied-only]->caller の Ready & 完結 step. Do NOT stop." \
   --if-exists
 ```
 
@@ -3750,7 +3750,7 @@ bash {plugin_root}/hooks/scripts/fix-reason-coverage-check.sh
 - Do **NOT** invoke `rite:pr-review` via the Skill tool
 - Return control to the caller (`/rite:iterate` 等)
 - The caller determines the next action based on this output pattern
-- **re-review は必ずフルレビューで実行すること**: caller が `[fix:pushed]` / `[fix:pushed-wm-stale]` を受けて re-review を実行する際、スコープ縮退（「前回指摘の修正確認のみ」「context 効率のため範囲限定」等）は一切禁止。`/rite:pr-review` と完全に同等のフルレビューを実行し、全レビュアーをサブエージェントで並列起動すること
+- **re-review は必ず `/rite:pr-review` を通すこと**: caller が `[fix:pushed]` / `[fix:pushed-wm-stale]` を受けて re-review を実行する際、レビュー範囲の決定は同 skill の ステップ 1.2.4 に委ね、**fix 側で範囲を宣言しない**（「前回指摘の修正確認のみ」「context 効率のため範囲限定」等を fix 側から指示するのは一切禁止）。ステップ 1.2.4 が決めた範囲を全レビュアーのサブエージェント並列起動で審査し、指摘の採否基準は初回と完全に同等に保つこと
 
 **Confidence override tempfile cleanup** (silent orphan 防止):
 

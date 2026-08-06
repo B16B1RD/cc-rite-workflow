@@ -56,6 +56,14 @@ done
 # 表現できないため SKILL.md 側に置く必要がある。
 assert_grep "1.2.4 defines the consumer-side default when the helper emits no marker" "$PR_REVIEW" \
   'marker を観測できない場合も `full` として扱い'
+# helper が marker を出せない経路の reason リテラル。他 6 reason は 3 コピー同期 pin に載っているが
+# 本 reason だけは consumer 側にしか存在せず、drift 検査から外れていた。
+assert_grep "helper_failed literal is documented in the SoT" "$CYCLE_SCOPE" 'helper_failed'
+# consumer 側の {previous_blocking_findings} にも helper と同じ gated scope 規則が要る。
+# helper 側は TC-14 が挙動で守るが、この規則を削って findings[] 全体を注入する変異は
+# 本 pin が無いと両スイートを素通りする（受け流し済み nit が解消検証 mandate へ毎サイクル注入される）。
+assert_grep "1.2.4 gates {previous_blocking_findings} to blocking scopes" "$PR_REVIEW" \
+  '\{previous_blocking_findings\}.*scope ∈ \{current-pr, follow-up\}'
 
 echo "=== ステップ 2.2: 選抜は cap 後の filter でなくマッチ入力の差し替え (AC-2 / AC-4 / T-02 / T-04) ==="
 assert_grep "2.2 substitutes the matching input with the fix diff" "$PR_REVIEW" \
@@ -110,12 +118,15 @@ assert_grep "mandate block injects the diff base placeholder" "$CYCLE_SCOPE" \
   '\{cycle_base_sha\}\.\.HEAD'
 assert_grep "mandate 2: fix diff reviewed at unchanged depth (scope narrows, criteria do not)" "$CYCLE_SCOPE" \
   'レビュー対象の\*\*範囲\*\*を絞るものであって、範囲内の\*\*基準\*\*を緩めるものではない'
-assert_grep "mandate 3: Cross-File Impact Check is NOT reduced" "$CYCLE_SCOPE" \
-  'Cross-File Impact Check は縮小しない'
+# 契約 (§4.4 MUST NOT / AC-4 の Then) に文として現れる 2 本は、肯定句の存在だけを見ると
+# 同一行に撤回節を追記する変異（「… という規則は cycle 2+ では適用しません:」）を素通りする。
+# 行頭アンカーでも同型変異は防げないため、**文の続き**まで pin を伸ばす。
+assert_grep "mandate 3: Cross-File Impact Check is NOT reduced (文の続きまで pin)" "$CYCLE_SCOPE" \
+  'Cross-File Impact Check は縮小しない\*\*: fix が触った symbol'
 assert_grep "mandate 4: no re-audit of unchanged code" "$CYCLE_SCOPE" \
   '未変更部の再監査はしない'
-assert_grep "mandate: out-of-previous-scope files get full scope (AC-4)" "$CYCLE_SCOPE" \
-  '前回レビュー範囲外のファイルへ触れている場合.*フルスコープで審査'
+assert_grep "mandate: out-of-previous-scope files get full scope (AC-4、文の続きまで pin)" "$CYCLE_SCOPE" \
+  '^fix が前回レビュー範囲外のファイルへ触れている場合、そのファイルは.*フルスコープで審査'
 
 echo "=== verification_mode との合成: incremental では 4.5.1 を注入しない (AC-5 / D-05) ==="
 assert_grep "1.2.4.1 is skipped entirely when scope is incremental" "$PR_REVIEW" \
