@@ -1,65 +1,50 @@
 #!/usr/bin/env bash
 # tempfile-lifecycle-check.sh
 #
-# Flag two shell defects that keep coming back in hooks/ and scripts/ and that a
-# grep can actually see. Non-blocking warnings, like the sibling checkers: this
-# never changes [lint:success].
+# Flag paths derived from a tempfile handle. Non-blocking warnings, like the
+# sibling checkers: this never changes [lint:success].
 #
 # Why a checker and not just the lib:
 #   hooks/scripts/lib/tempfile.sh removes the tempfile-lifecycle defects for code
-#   that uses it — the sequence is no longer written by hand, so it cannot be
-#   written wrong. Two residues are outside what a lib can reach, because they
-#   are ways of writing a path or a pipeline rather than ways of calling a
-#   function. Those are what this scans for.
+#   that uses it — the create/register/remove sequence is no longer written by
+#   hand, so it cannot be written wrong. One residue is outside what a lib can
+#   reach, because it is a way of writing a *path* rather than a way of calling a
+#   function. That is what this scans for.
 #
-# Detected patterns:
-#   (1) mktemp-derived-path — a path derived from a tempfile handle, e.g.
-#       `"$tmp.part"`, `"${tmp}_bak"`, `"$tmp-1"`, `"${tmp%.tmp}.log"`. mktemp's
-#       safety comes from creating a random name with O_CREAT|O_EXCL; a name
-#       derived from it was never created that way and is predictable once the
-#       original is observed, so a planted symlink at the derived path is
-#       followed and its target truncated. Measured end to end by a security
-#       reviewer on #2051. Fix: take a second handle instead of deriving one.
+# Detected pattern — mktemp-derived-path:
+#   A path derived from a tempfile handle, e.g. `"$tmp.part"`, `"${tmp}_bak"`,
+#   `"$tmp"-1`, `"${tmp%.tmp}.log"`. mktemp's safety comes from creating a random
+#   name with O_CREAT|O_EXCL; a name derived from it was never created that way
+#   and is predictable once the original is observed, so a planted symlink at the
+#   derived path is followed and its target truncated. Measured end to end by a
+#   security reviewer on dollar-zero-check.sh. Fix: take a second handle instead
+#   of deriving one.
 #
-#       Handles are tracked from both spellings: `x=$(mktemp ...)` and the lib
-#       form `rite_tempfile_new x` / `rite_tempdir_new x`. Tracking only the raw
-#       mktemp form would put the spelling that coding-principles.md now
-#       *mandates* into this checker's blind spot.
+#   Handles are tracked from both spellings: `x=$(mktemp ...)` and the lib form
+#   `rite_tempfile_new x` / `rite_tempdir_new x`. Tracking only the raw mktemp
+#   form would put the spelling that coding-principles.md mandates into this
+#   checker's blind spot.
 #
-#   (2) pipefail-grep-q-stream — under `set -o pipefail`, a pipeline whose
-#       consumer is `grep -q`. grep -q exits at the first match, so a producer
-#       still writing takes SIGPIPE and the whole pipeline reports 141. It fires
-#       only when the match happens to come early, which is why it surfaces as a
-#       flaky skip: on #2094 it silently dropped one file per ~200 runs and the
-#       floor guard was too loose to notice. Fix: drop the pipeline
-#       (`grep -q PAT file`) or count instead (`grep -c`, which reads to EOF).
-#
-#       The producer examined is the stage *immediately* feeding `grep -q`, not
-#       the head of the whole pipeline. Exempting on the pipeline head would let
-#       a three-stage `printf | jq | grep -q` through on the strength of the
-#       printf, while the stage that actually takes the SIGPIPE is jq.
-#
-#       That immediate producer is exempt when it is `printf` or `echo`: a short
-#       in-memory string fits the pipe buffer, so the producer finishes before
-#       the consumer can exit. The exemption is keyed on the command name, which
-#       is a proxy — a `printf` whose payload scales with repository content
-#       (`wiki-lint-orphans.sh`, `wiki-lint-broken-refs.sh`) can exceed the 64 KiB
-#       buffer and is knowingly not covered. Most `grep -q` pipelines in this
-#       repo are the short-string shape, and flagging them would bury the real
-#       findings.
+#   Unbraced `$tmp_suffix` is NOT a derivation: bash reads the whole run of
+#   [A-Za-z0-9_] as one name, so that is the variable `tmp_suffix`. Treating it
+#   as one flags every sibling variable sharing a prefix. The dirname and
+#   basename idioms (`${tmp%/*}`, `${tmp##*/}`) are excluded for the same
+#   reason — they extract a component, they do not derive a sibling path.
 #
 # Deliberately NOT detected: `x=$(mktemp 2>/dev/null) || x=""`. It reads like the
 #   silencing defect, but it is the house idiom for a non-blocking stderr-capture
-#   slot and appears at 88 sites. A warning there would be pure noise. The real
-#   defect in that family — a failure that produces no diagnostic at all — is
-#   removed at the source instead: rite_tempfile_new is loud and returns
+#   slot and appears at scale (100+ sites). A warning there would be pure noise.
+#   The real defect in that family — a failure that produces no diagnostic at all
+#   — is removed at the source instead: rite_tempfile_new is loud and returns
 #   non-zero, so the silent-empty-path outcome has no spelling.
 #
 # Scanned surface: plugins/rite/hooks/**/*.sh and plugins/rite/scripts/**/*.sh,
-#   excluding tests/ (fixtures embed the patterns on purpose).
+#   excluding tests/ (fixtures embed the pattern on purpose).
 #
 # Exclusion: a `drift-check-ignore` marker on the finding line or on the line
-#   directly above it, mirroring sh-cross-ref-check.sh / bash-heaviness-check.sh.
+#   directly above it. The same marker name is used by sh-cross-ref-check.sh
+#   (same line only) and bash-heaviness-check.sh (anywhere in the block); the
+#   line-above form is specific to this checker.
 #
 # Usage:
 #   tempfile-lifecycle-check.sh [--all] [--target FILE]... [--repo-root DIR]
@@ -70,9 +55,10 @@
 #
 # A file that could not be scanned is an error, not a clean bill. Folding "did
 # not look" into "found nothing" inside a checker reproduces, within the guard,
-# the very defect class the guard exists to catch — so an unreadable target or a
-# failed awk run is counted and surfaced, and the run exits 2 (findings still win
-# the exit code when both are present). Same contract as dollar-zero-check.sh.
+# the very defect class the guard exists to catch — so an unreadable target, a
+# failed enumeration, or a failed awk run is counted and surfaced, and the run
+# exits 2 (findings still win the exit code when both are present). Same
+# contract as dollar-zero-check.sh.
 
 set -uo pipefail
 
@@ -86,7 +72,14 @@ declare -a TARGETS=()
 USE_ALL=0
 SKIP_IF_NO_TARGET=0
 
-# Directories walked by --all. Kept here so widening the surface is one edit.
+# Files the scanner could not read or parse. Declared before the enumeration so
+# a failed --all walk can count itself.
+SKIPPED=0
+
+# Directories walked by --all. The same list is restated in this file's header,
+# in the usage text below, in docs/SPEC.md, and in
+# skills/lint/references/plugin-checks-rationale.md — widening the surface means
+# editing all five.
 declare -a SCAN_DIRS=("plugins/rite/hooks" "plugins/rite/scripts")
 
 usage() {
@@ -107,9 +100,7 @@ Options:
   -h, --help         Show this help
 
 Detected:
-  mktemp-derived-path     — a path derived from a tempfile handle (read or write)
-  pipefail-grep-q-stream  — `grep -q` consuming a pipeline under pipefail
-                            (exempt when the immediate producer is printf/echo)
+  mktemp-derived-path — a path derived from a tempfile handle (read or write)
 
 Exclusions: tests/ ; lines carrying 'drift-check-ignore' (or with the marker on
 the line directly above).
@@ -153,15 +144,28 @@ cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 2; }
 if [ "$USE_ALL" -eq 1 ]; then
   found_dir=0
   for d in "${SCAN_DIRS[@]}"; do
-    [ -d "$d" ] || continue
+    if [ ! -d "$d" ]; then
+      # A missing scan dir is only benign when every one of them is missing —
+      # that is the consumer-repo case --skip-if-no-target exists for. Half a
+      # tree walked and reported as clean is the "did not look" outcome.
+      continue
+    fi
     found_dir=1
-    # find's stderr is not discarded: an unreadable subdirectory silently
-    # dropping files from the target list is the same "did not look" outcome the
-    # exit-2 contract above exists to surface.
+    # find's rc is captured, not just its stderr: an unreadable subdirectory
+    # drops files from the target list, and a list that silently lost entries is
+    # indistinguishable from a clean scan unless the failure reaches the exit
+    # code.
+    listing=$(find "$d" -type f -name '*.sh' | sort)
+    find_rc=$?
+    if [ "$find_rc" -ne 0 ]; then
+      echo "WARNING: enumeration failed under $d (rc=$find_rc) — the target list is incomplete" >&2
+      SKIPPED=$((SKIPPED + 1))
+    fi
     while IFS= read -r f; do
+      [ -n "$f" ] || continue
       case "$f" in */tests/*) continue ;; esac
       TARGETS+=("$f")
-    done < <(find "$d" -type f -name '*.sh' | sort)
+    done <<< "$listing"
   done
   if [ "$found_dir" -eq 0 ]; then
     if [ "$SKIP_IF_NO_TARGET" -eq 1 ]; then
@@ -188,14 +192,9 @@ AWK_PROG="$WORKDIR/scan.awk"
 FINDINGS_FILE="$WORKDIR/findings"
 : > "$FINDINGS_FILE"
 
-# The scanner. Two passes' worth of work in one END block: physical lines are
-# buffered first so backslash continuations can be joined into logical lines
-# (the canonical multi-line pipeline form would otherwise hide the consumer from
-# the producer). POSIX awk only — no 3-argument match(), no gensub() — because
-# macOS ships the BSD one.
-#
-# `pipefail` is passed in from the shell: pattern (2) only means anything in a
-# file that actually enables it.
+# The scanner. Physical lines are buffered first so backslash continuations can
+# be joined into logical lines. POSIX awk only — no 3-argument match(), no
+# gensub() — because macOS ships the BSD one.
 cat > "$AWK_PROG" <<'AWK'
 BEGIN { nvars = 0 }
 { L[NR] = $0 }
@@ -203,7 +202,7 @@ BEGIN { nvars = 0 }
 # The tempfile handle this line creates, or "" when it creates none. Both
 # spellings count: the raw `x=$(mktemp` / `x="$(mktemp` assignment, and the lib's
 # out-variable form `rite_tempfile_new x` / `rite_tempdir_new x`.
-function mktemp_target(s,   t, p) {
+function handle_target(s,   t, p) {
   if (match(s, /[A-Za-z_][A-Za-z0-9_]*="?\$\([[:space:]]*mktemp/)) {
     t = substr(s, RSTART, RLENGTH)
     p = index(t, "=")
@@ -217,7 +216,7 @@ function mktemp_target(s,   t, p) {
   return ""
 }
 
-# True when `needle` occurs in `s` followed by a suffix character — so
+# True when `needle` occurs in `s` followed by a word character — so
 # `"$tmp.part"` counts and a sentence ending in `$tmp.` does not.
 function derived_use(s, needle,   pos, rest, c) {
   pos = index(s, needle)
@@ -232,60 +231,26 @@ function derived_use(s, needle,   pos, rest, c) {
 }
 
 # True when the line derives a path from handle `v` in any of the spellings that
-# occur in practice. Checking only `$v.` would leave `${v}_bak`, `$v-1` and
-# `"$v".part` — the most natural of the set — unseen.
+# occur in practice: a dot / dash / word suffix on `$v`, `${v}` or `"$v"`, or a
+# prefix/suffix-strip expansion.
 function derived_any(s, v) {
-  # Unbraced `$v_suffix` is deliberately absent: bash reads the whole run of
-  # [A-Za-z0-9_] as one name, so `$tmp_bak` is the variable `tmp_bak`, not a
-  # derivation of `$tmp`. Treating it as one flags every sibling variable that
-  # shares a prefix (`$pr_view_err` vs `$pr_view_err_oneline`).
   if (derived_use(s, "$" v ".")) return 1
   if (derived_use(s, "$" v "-")) return 1
-  if (derived_use(s, "${" v "}.")) return 1
-  if (derived_use(s, "${" v "}_")) return 1
-  if (derived_use(s, "${" v "}-")) return 1
+  if (derived_use(s, "${" v "}")) return 1
+  if (index(s, "${" v "}.") > 0) return 1
+  if (index(s, "${" v "}-") > 0) return 1
+  if (derived_use(s, "\"$" v "\"")) return 1
   if (index(s, "\"$" v "\".") > 0) return 1
-  if (index(s, "\"${" v "}\".") > 0) return 1
-  # Prefix/suffix-strip expansions need no suffix test: rewriting a tempfile path
-  # with an expansion is only ever done to derive another path.
+  if (index(s, "\"$" v "\"-") > 0) return 1
+  # Strip expansions derive a sibling path — except the dirname and basename
+  # idioms, which extract a component of the same path and are house style here.
+  if (index(s, "${" v "%/*}") > 0) return 0
+  if (index(s, "${" v "%%/*}") > 0) return 0
+  if (index(s, "${" v "#*/}") > 0) return 0
+  if (index(s, "${" v "##*/}") > 0) return 0
   if (index(s, "${" v "%") > 0) return 1
   if (index(s, "${" v "#") > 0) return 1
   return 0
-}
-
-# First word of the stage immediately feeding `grep -q` — the process that would
-# actually take the SIGPIPE. `prefix` is everything left of that pipe, with `||`
-# already masked to \001.
-function pipeline_producer(prefix,   cut, i, seg, head, n, parts) {
-  # Keep only the text after the last control operator: `a && b | grep -q` is a
-  # pipeline headed by b, not by a.
-  cut = 0
-  for (i = length(prefix); i > 0; i--) {
-    if (substr(prefix, i, 1) == "\001" || substr(prefix, i, 1) == ";") { cut = i; break }
-    if (substr(prefix, i, 2) == "&&") { cut = i + 1; break }
-  }
-  if (cut > 0) prefix = substr(prefix, cut + 1)
-  # The LAST segment, not the first: in `printf ... | jq ... | grep -q` the stage
-  # that dies is jq, and exempting on the printf at the head would let it pass.
-  n = split(prefix, parts, "|")
-  seg = parts[n]
-  # Strip leading shell keywords and grouping so the first word is the command.
-  # Word keywords need at least one space after them, or `docker ps` reports its
-  # producer as `cker` (the zero-width match eats the `do`).
-  while (1) {
-    if (match(seg, /^[[:space:]]*(if|elif|while|until|then|do|!)[[:space:]]+/)) {
-      head = substr(seg, RSTART + RLENGTH)
-    } else if (match(seg, /^[[:space:]]*[({][[:space:]]*/)) {
-      head = substr(seg, RSTART + RLENGTH)
-    } else {
-      break
-    }
-    if (head == seg) break
-    seg = head
-  }
-  sub(/^[[:space:]]+/, "", seg)
-  if (!match(seg, /^[A-Za-z0-9_.\/-]+/)) return ""
-  return substr(seg, RSTART, RLENGTH)
 }
 
 END {
@@ -298,42 +263,35 @@ END {
       line = line L[i]
     }
 
-    v = mktemp_target(line)
+    # Comments are skipped before anything else, registration included. A line
+    # that is not scanned must not seed state either — a usage example in a
+    # docstring would otherwise register a handle and make every unrelated
+    # `$x.log` in the file a finding.
+    if (line ~ /^[[:space:]]*#/) continue
+
+    v = handle_target(line)
     if (v != "") { known = 0
       for (k = 1; k <= nvars; k++) if (vars[k] == v) known = 1
       if (!known) { nvars++; vars[nvars] = v }
     }
 
-    if (line ~ /^[[:space:]]*#/) continue
     prev = (start > 1) ? L[start - 1] : ""
     if (line ~ /drift-check-ignore/ || prev ~ /drift-check-ignore/) continue
 
-    # --- (1) mktemp-derived-path ---
     for (k = 1; k <= nvars; k++) {
       if (derived_any(line, vars[k])) {
         printf "[tempfile-lifecycle] %s:%d: mktemp-derived-path — a path derived from $%s loses mktemp's O_CREAT|O_EXCL guarantee; take a second handle instead of deriving one\n", fname, start, vars[k]
         break
       }
     }
-
-    # --- (2) pipefail-grep-q-stream ---
-    if (pipefail != "1") continue
-    masked = line
-    gsub(/\|\|/, "\001", masked)
-    if (!match(masked, /\|&?[[:space:]]*grep[[:space:]]+-[A-Za-z]*q/)) continue
-    producer = pipeline_producer(substr(masked, 1, RSTART - 1))
-    if (producer == "printf" || producer == "echo") continue
-    # An unidentifiable producer is reported, not skipped: a silent exemption
-    # that no prose describes is exactly the blind spot this checker is for.
-    if (producer == "") producer = "(producer unidentified)"
-    printf "[tempfile-lifecycle] %s:%d: pipefail-grep-q-stream — `grep -q` exits at the first match and `%s` then takes SIGPIPE, failing the pipeline under pipefail; use `grep -q PAT file` or count with `grep -c`\n", fname, start, producer
   }
 }
 AWK
 
-# Files the scanner could not read or parse. Kept separate from findings so the
-# exit code can distinguish "nothing to report" from "did not look".
-SKIPPED=0
+if [ ! -s "$AWK_PROG" ]; then
+  echo "ERROR: failed to write the scanner program to $AWK_PROG" >&2
+  exit 2
+fi
 
 log "Scanning ${#TARGETS[@]} file(s)..."
 for t in "${TARGETS[@]}"; do
@@ -342,22 +300,7 @@ for t in "${TARGETS[@]}"; do
     SKIPPED=$((SKIPPED + 1))
     continue
   fi
-  # Pattern (2) is only a defect where pipefail turns the SIGPIPE into a failure.
-  # grep's three exit codes are kept apart: 1 is "no pipefail" but 2 is "could
-  # not read", and folding the latter into the former would silently disable
-  # pattern (2) for that file.
-  grep -qE '^[[:space:]]*set[[:space:]]+-[a-zA-Z]*o[[:space:]]+pipefail|^[[:space:]]*set[[:space:]]+-o[[:space:]]+pipefail' "$t"
-  grep_rc=$?
-  case "$grep_rc" in
-    0) pipefail_flag=1 ;;
-    1) pipefail_flag=0 ;;
-    *)
-      echo "WARNING: pipefail probe failed on $t (grep rc=$grep_rc) — file not scanned" >&2
-      SKIPPED=$((SKIPPED + 1))
-      continue
-      ;;
-  esac
-  awk -v fname="$t" -v pipefail="$pipefail_flag" -f "$AWK_PROG" "$t" >> "$FINDINGS_FILE"
+  awk -v fname="$t" -f "$AWK_PROG" -- "$t" >> "$FINDINGS_FILE"
   awk_rc=$?
   if [ "$awk_rc" -ne 0 ]; then
     echo "WARNING: awk failed on $t (rc=$awk_rc) — file not scanned" >&2

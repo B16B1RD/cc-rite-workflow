@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for hooks/scripts/lib/tempfile.sh (Issue #2117)
+# Tests for hooks/scripts/lib/tempfile.sh
 #
 # The lib exists to make three recurring defects unwritable, so the tests pin
 # the three corresponding boundaries rather than the happy path alone:
@@ -133,6 +133,19 @@ assert "T-02 rite_tempfile_new returns non-zero when mktemp fails" "1" "$rc"
 assert_grep "T-02 the failure is reported on stderr, not swallowed" "$SANDBOX/err" \
   'ERROR: rite_tempfile: mktemp failed'
 
+# The dir branch is duplicated code with its own diagnostic and its own return,
+# and it is the only one with a production caller — its failure path needs its
+# own assertions, not the file branch's.
+rc=$(run_child '
+rite_tempfile_init || exit 90
+new_rc=0; rite_tempdir_new d "failcase" || new_rc=$?
+[ -z "${d:-}" ] || exit 81
+exit "$new_rc"
+' TMPDIR="$SANDBOX/definitely/not/here")
+assert "T-02a rite_tempdir_new returns non-zero when mktemp -d fails" "1" "$rc"
+assert_grep "T-02a the dir branch has its own diagnostic" "$SANDBOX/err" \
+  'ERROR: rite_tempfile: mktemp -d failed'
+
 # --- T-02b: the signal handlers themselves do the cleanup -------------------
 # The child drops its EXIT handler before signalling. Without that, bash runs the
 # EXIT trap on the way out of a fatal signal too, so both the exit code and the
@@ -142,6 +155,17 @@ assert_grep "T-02 the failure is reported on stderr, not swallowed" "$SANDBOX/er
 for sig_case in "INT 130" "TERM 143" "HUP 129"; do
   set -- $sig_case
   signame="$1"; expected_rc="$2"
+  # Only an *ignored* disposition is inherited by the child — a handler this
+  # script installed for itself is reset to default there, so it is irrelevant.
+  # An ignored signal cannot be trapped or delivered, so the lib skips it on
+  # purpose and these assertions have nothing to observe (nohup ignores HUP,
+  # async children inherit an ignored INT).
+  case "$(trap -p "$signame")" in
+    "trap -- '' "*)
+      skip "T-02b $signame (inherited as ignored in this environment — cannot be trapped)"
+      continue
+      ;;
+  esac
   rc=$(run_child '
 rite_tempfile_init || exit 90
 rite_tempfile_new f "sig-'"$(printf '%s' "$signame" | tr 'A-Z' 'a-z')"'" || exit 91
@@ -162,13 +186,38 @@ done
 
 # The handlers are also asserted by name, so a future refactor that leaves them
 # installed but pointing elsewhere is visible.
+# No pipe into grep -q here: the checker this PR ships flags exactly that shape,
+# and the tests must not need the tests/ exclusion to stay compliant.
 rc=$(run_child '
 rite_tempfile_init || exit 90
 for s in INT TERM HUP; do
-  trap -p "$s" | grep -q rite_tempfile_cleanup || exit 92
+  # Skip a signal the process inherited as ignored: the lib leaves those alone
+  # on purpose and bash could not install a handler for them anyway.
+  case "$(trap -p "$s")" in "trap -- '"''"' "*) continue ;; esac
+  case "$(trap -p "$s")" in *rite_tempfile_cleanup*) ;; *) exit 92 ;; esac
 done
 ' TMPDIR="$SANDBOX")
-assert "T-02b all three signal handlers call rite_tempfile_cleanup" "0" "$rc"
+assert "T-02b every signal handler the lib installed calls rite_tempfile_cleanup" "0" "$rc"
+
+# A signal inherited as ignored is not a caller handler. `trap -p` reports it as
+# a non-empty `trap -- '' SIG`, so a plain length test refuses to initialise
+# under nohup or in an async child and blames a handler nobody wrote.
+rc=$(run_child '
+trap "" INT
+init_rc=0; rite_tempfile_init || init_rc=$?
+[ "$init_rc" -eq 0 ] || exit 90
+rite_tempfile_new f "sigign" || exit 91
+case "$(trap -p TERM)" in *rite_tempfile_cleanup*) ;; *) exit 92 ;; esac
+' TMPDIR="$SANDBOX")
+assert "T-02b an inherited SIG_IGN is skipped, not treated as a caller handler" "0" "$rc"
+
+# Calling init twice must stay a no-op — otherwise the second call finds its own
+# EXIT handler and refuses.
+rc=$(run_child '
+rite_tempfile_init || exit 90
+rite_tempfile_init || exit 91
+' TMPDIR="$SANDBOX")
+assert "T-02b rite_tempfile_init is idempotent" "0" "$rc"
 
 # --- T-02c: creating before init is refused ---------------------------------
 rc=$(run_child '
@@ -196,6 +245,14 @@ assert_grep "T-02d the caller's own EXIT handler still ran" "$SANDBOX/out" \
 # The same refusal must cover the signal handlers — checking EXIT alone leaves
 # the caller's INT/TERM/HUP handlers to be clobbered without a word.
 for existing_sig in INT TERM HUP; do
+  # An inherited SIG_IGN cannot be replaced by a real handler, so the child
+  # cannot set up the precondition this case needs.
+  case "$(trap -p "$existing_sig")" in
+    "trap -- '' "*)
+      skip "T-02d $existing_sig (inherited as ignored in this environment — cannot install a handler to collide with)"
+      continue
+      ;;
+  esac
   rc=$(run_child '
 trap "exit 7" '"$existing_sig"'
 init_rc=0; rite_tempfile_init || init_rc=$?
@@ -231,6 +288,30 @@ exit "$tag_rc"
 assert "T-02f invalid out-variable / tag are both refused" "1" "$rc"
 assert_grep "T-02f the tag charset refusal is explicit" "$SANDBOX/err" \
   "tag '\.\./escape' contains characters outside"
+
+# The lib's own namespace is reserved. `printf -v _RITE_TMP_PATHS` would write
+# element 0 of the live registry while returning success.
+rc=$(run_child '
+rite_tempfile_init || exit 90
+rite_tempfile_new keep "reg-keep" || exit 91
+ns_rc=0; rite_tempfile_new _RITE_TMP_PATHS "clobber" || ns_rc=$?
+[ "$ns_rc" -eq 1 ] || exit 80
+[ "${#_RITE_TMP_PATHS[@]}" -eq 1 ] || exit 81
+[ "${_RITE_TMP_PATHS[0]}" = "$keep" ] || exit 82
+' TMPDIR="$SANDBOX")
+assert "T-02f a reserved lib name is refused and the registry is intact" "0" "$rc"
+assert_grep "T-02f the refusal names the reserved namespace" "$SANDBOX/err" \
+  "is reserved for the lib's own namespace"
+
+# A caller variable that happens to match one of the function's locals must
+# still receive the path.
+rc=$(run_child '
+rite_tempfile_init || exit 90
+rite_tempfile_new path "localname" || exit 91
+[ -n "${path:-}" ] || exit 92
+[ -f "$path" ] || exit 93
+' TMPDIR="$SANDBOX")
+assert "T-02f an out-variable named like a lib local is still assigned" "0" "$rc"
 
 # --- T-02g: executing instead of sourcing is refused ------------------------
 exec_rc=$(bash "$LIB" >/dev/null 2>"$SANDBOX/err_exec"; echo $?)

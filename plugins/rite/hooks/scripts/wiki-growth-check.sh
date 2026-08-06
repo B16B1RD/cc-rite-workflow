@@ -419,10 +419,6 @@ _count_pending_from_list() {
       [ -z "$file_path" ] && continue
       file_content=$(git show "${git_log_target}:${file_path}" 2>/dev/null) || continue
       # Check YAML frontmatter for ingested: false
-      # Known latent SIGPIPE site: under pipefail, `head -20` can die before
-      # printf finishes and the pipeline reports 141, which here undercounts
-      # pending_count silently rather than raising. Not fixed in #2117 — that
-      # Issue's Non-goal forbids rewriting existing helpers. drift-check-ignore
       if printf '%s\n' "$file_content" | head -20 | grep -qE '^ingested:[[:space:]]*(false|no)'; then
         pending_count=$((pending_count + 1))
       fi

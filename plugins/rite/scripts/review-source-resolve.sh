@@ -63,11 +63,6 @@ set -uo pipefail
 # defense-in-depth として再掲する。bash 3.2 (macOS default) では mapfile が無く
 # Priority 2 が silent に Priority 3 へ fallthrough する regression を起こす。
 # Source: GNU Bash 4.0 NEWS (https://tiswww.case.edu/php/chet/bash/NEWS)
-# `enable -p` prints the enabled-builtin list in one short burst that fits the
-# pipe buffer, so it is done writing before `grep -q` can exit — the SIGPIPE
-# that tempfile-lifecycle-check warns about cannot arise here. The `&&` clause
-# re-tests via `type`, so even a spurious 141 would fall through to the second
-# probe rather than misreport the bash version. drift-check-ignore
 if ! enable -p 2>/dev/null | grep -q mapfile && ! type mapfile >/dev/null 2>&1; then
   echo "ERROR: review-source-resolve.sh は bash 4.0+ を要求します (mapfile builtin)。現バージョン: ${BASH_VERSION:-unknown}" >&2
   echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=bash_version_incompatible" >&2

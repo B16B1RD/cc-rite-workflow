@@ -17,6 +17,8 @@
 
 <a id="signal-specific-trap-template"></a>
 
+> **新規の `hooks/` / `scripts/` helper が tempfile / tempdir を必要とする場合、本テンプレートを手書きせず `hooks/scripts/lib/tempfile.sh` を source する**（`rite_tempfile_init` → `rite_tempfile_new <outvar> [tag]`）。lib は下記の 4 行 trap をそのまま実装したうえで、生成と cleanup 登録を不可分にする。規約の SoT は [coding-principles.md](../skills/rite-workflow/references/coding-principles.md#shell-helper-conventions)「Shell Helper Conventions」。本テンプレートは lib を使えない site（tempfile 以外の cleanup、lib 自身）と既存 site 向けの canonical 定義として残る。
+
 canonical パターン:
 
 ```bash

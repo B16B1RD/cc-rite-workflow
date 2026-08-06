@@ -1,16 +1,18 @@
 #!/bin/bash
-# Tests for hooks/scripts/tempfile-lifecycle-check.sh (Issue #2117)
+# Tests for hooks/scripts/tempfile-lifecycle-check.sh
 #
 # The checker is only worth having if it stays quiet on the shapes this repo
 # writes on purpose, so the boundaries matter more than the detections:
-#   - a derived mktemp path and a stream-headed `grep -q` are findings,
-#   - a printf/echo-headed `grep -q` is not (15 of 16 call sites are that shape;
-#     flagging them would bury the one real finding),
-#   - the same pipeline in a file without pipefail is not,
-#   - code that goes through the tempfile lib is not,
-#   - and a drift-check-ignore marker suppresses either pattern.
-# Plus the real-repository corpus: the tree must be clean, or the check ships
-# already-noisy and gets ignored.
+#   - a path derived from a handle is a finding, whether the handle came from
+#     mktemp directly or from the lib,
+#   - a variable that merely shares a prefix is not (bash reads `$tmp_err` as one
+#     name, so flagging it fires on ordinary code),
+#   - dirname / basename expansions are not (they extract a component, they do
+#     not derive a sibling),
+#   - a drift-check-ignore marker suppresses either way,
+#   - and a file that could not be scanned is an error, not a clean bill.
+# Plus the real-repository corpus: the tree must be clean AND actually scanned,
+# or the check ships already-noisy or silently looking at nothing.
 #
 # Convention: mktemp sandbox, no network, no gh, GNU/BSD portable. The checker
 # resolves targets under --repo-root, so no git repo is needed.
@@ -36,6 +38,7 @@ SANDBOX="$(make_plain_sandbox)"
 # no plugins/rite tree of its own.
 CONSUMER_SANDBOX="$(make_plain_sandbox)"
 cleanup() {
+  [ -n "${SANDBOX:-}" ] && chmod -R u+rwX "$SANDBOX" 2>/dev/null
   [ -n "${SANDBOX:-}" ] && rm -rf "$SANDBOX"
   [ -n "${CONSUMER_SANDBOX:-}" ] && rm -rf "$CONSUMER_SANDBOX"
 }
@@ -54,25 +57,19 @@ run_on() {
   echo $?
 }
 
-# --- T-03: both patterns are detected ---------------------------------------
+# --- T-03: the pattern is detected ------------------------------------------
 cat > "$FIXTURES/bad.sh" <<'FIX'
 #!/bin/bash
-set -uo pipefail
 FINDINGS_FILE="$(mktemp)"
 PART_FILE="$FINDINGS_FILE.part"
 awk '{print}' input > "$PART_FILE"
-if git log --oneline | grep -q "marker"; then
-  echo hit
-fi
 FIX
 rc=$(run_on bad.sh)
-assert "T-03 a fixture with both patterns exits 1" "1" "$rc"
-assert_grep "T-03 mktemp-derived-path is reported with its line" "$OUT" \
-  'bad\.sh:4: mktemp-derived-path'
-assert_grep "T-03 pipefail-grep-q-stream names the producer" "$OUT" \
-  'bad\.sh:6: pipefail-grep-q-stream .*`git`'
+assert "T-03 a derived path is a finding (exit 1)" "1" "$rc"
+assert_grep "T-03 the finding carries file and line" "$OUT" \
+  'bad\.sh:3: mktemp-derived-path'
 assert_grep "T-03 the total line is machine-readable" "$OUT" \
-  '==> Total tempfile-lifecycle findings: 2'
+  '==> Total tempfile-lifecycle findings: 1'
 
 # The derived forms the Wiki page enumerates, each on its own line.
 cat > "$FIXTURES/derived-forms.sh" <<'FIX'
@@ -86,72 +83,53 @@ assert "T-03b brace and prefix-strip derived forms are both detected" "1" "$rc"
 assert_grep "T-03b \${tmp}.orig is a finding" "$OUT" 'derived-forms\.sh:3: mktemp-derived-path'
 assert_grep "T-03b \${tmp%...} is a finding" "$OUT" 'derived-forms\.sh:4: mktemp-derived-path'
 
-# A backslash-continued pipeline must not hide its consumer from the scan.
+# A handle taken from the lib must be tracked too — that is the spelling
+# coding-principles.md mandates, so leaving it untracked would put the
+# recommended form in the blind spot.
+cat > "$FIXTURES/lib-derived.sh" <<'FIX'
+#!/bin/bash
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/lib/tempfile.sh"
+rite_tempfile_init
+rite_tempfile_new tmp "check-tmp" || exit 2
+awk '{print}' input > "$tmp.part"
+FIX
+rc=$(run_on lib-derived.sh)
+assert "T-03c a path derived from a lib handle is flagged" "1" "$rc"
+assert_grep "T-03c the finding names the lib handle" "$OUT" \
+  'lib-derived\.sh:6: mktemp-derived-path .*\$tmp'
+
+# The spellings that a narrower regex would miss, including the quoted forms.
+cat > "$FIXTURES/suffix-forms.sh" <<'FIX'
+#!/bin/bash
+tmp=$(mktemp)
+cp src "$tmp-1"
+cp src "${tmp}_bak"
+cp src "$tmp".part
+cp src "$tmp"_bak
+FIX
+rc=$(run_on suffix-forms.sh)
+assert "T-03d dash / braced / quoted derived forms are all flagged" "1" "$rc"
+assert_grep "T-03d \$tmp-1 is a finding" "$OUT" 'suffix-forms\.sh:3: mktemp-derived-path'
+assert_grep "T-03d \${tmp}_bak is a finding" "$OUT" 'suffix-forms\.sh:4: mktemp-derived-path'
+assert_grep "T-03d \"\$tmp\".part is a finding" "$OUT" 'suffix-forms\.sh:5: mktemp-derived-path'
+assert_grep "T-03d \"\$tmp\"_bak is a finding" "$OUT" 'suffix-forms\.sh:6: mktemp-derived-path'
+
+# Backslash continuation must not hide a derived path from the scan.
 cat > "$FIXTURES/continued.sh" <<'FIX'
 #!/bin/bash
-set -euo pipefail
-gh api "repos/o/r/issues" \
-  | jq -r '.[].number' \
-  | grep -q "^42$"
+tmp=$(mktemp)
+cp src \
+  "$tmp.part"
 FIX
 rc=$(run_on continued.sh)
-assert "T-03c a continued pipeline is joined before scanning" "1" "$rc"
-assert_grep "T-03c the finding anchors to the first physical line" "$OUT" \
-  'continued\.sh:3: pipefail-grep-q-stream'
+assert "T-03e a continued line is joined before scanning" "1" "$rc"
+assert_grep "T-03e the finding anchors to the first physical line" "$OUT" \
+  'continued\.sh:3: mktemp-derived-path'
 
 # --- T-04: the shapes that must stay quiet ----------------------------------
-cat > "$FIXTURES/printf-head.sh" <<'FIX'
-#!/bin/bash
-set -euo pipefail
-if printf '%s\n' "$haystack" | grep -qxF -- "$needle"; then
-  echo found
-fi
-if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -qE ':[0-9]+:'; then
-  echo found
-fi
-echo "$line" | grep -q marker || true
-FIX
-rc=$(run_on printf-head.sh)
-assert "T-04 printf/echo feeding grep -q directly is not flagged" "0" "$rc"
-
-# The exemption is about the stage that actually dies, so an intermediate stage
-# between printf and grep -q must NOT inherit printf's pass.
-cat > "$FIXTURES/multi-stage.sh" <<'FIX'
-#!/bin/bash
-set -euo pipefail
-printf '%s\n' "$body" | head -20 | grep -qE '^ingested:' || true
-FIX
-rc=$(run_on multi-stage.sh)
-assert "T-03d a stage between printf and grep -q is flagged" "1" "$rc"
-assert_grep "T-03d the finding names the immediate producer, not the pipeline head" "$OUT" \
-  'multi-stage\.sh:3: pipefail-grep-q-stream .*`head`'
-
-cat > "$FIXTURES/no-pipefail.sh" <<'FIX'
-#!/bin/bash
-set -u
-if git log --oneline | grep -q "marker"; then
-  echo hit
-fi
-FIX
-rc=$(run_on no-pipefail.sh)
-assert "T-04b the same pipeline without pipefail is not flagged" "0" "$rc"
-
-cat > "$FIXTURES/marker.sh" <<'FIX'
-#!/bin/bash
-set -euo pipefail
-tmp=$(mktemp)
-cp src "$tmp.orig"   # drift-check-ignore
-# drift-check-ignore
-if git log --oneline | grep -q "marker"; then
-  echo hit
-fi
-FIX
-rc=$(run_on marker.sh)
-assert "T-04c drift-check-ignore suppresses both on-line and line-above" "0" "$rc"
-
-# Two handles from the lib, neither derived. The fixture has to make the checker
-# actually track something — a file with no tracked handle at all would pass
-# under any implementation, including one that flags every derived path.
+# Two handles, neither derived. The fixture must make the checker actually track
+# something — a file with no handle at all would pass under any implementation.
 cat > "$FIXTURES/lib-user.sh" <<'FIX'
 #!/bin/bash
 set -euo pipefail
@@ -163,65 +141,64 @@ awk '{print}' input > "$part"
 cat "$part" >> "$findings"
 FIX
 rc=$(run_on lib-user.sh)
-assert "T-04d two lib handles used without derivation are not flagged" "0" "$rc"
+assert "T-04 two lib handles used without derivation are not flagged" "0" "$rc"
 
-# Negative control for the above: the same lib handle, derived. If the checker
-# stopped tracking lib handles, T-04d would still pass but this would not.
-cat > "$FIXTURES/lib-derived.sh" <<'FIX'
-#!/bin/bash
-set -euo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/lib/tempfile.sh"
-rite_tempfile_init
-rite_tempfile_new tmp "check-tmp" || exit 2
-awk '{print}' input > "$tmp.part"
-FIX
-rc=$(run_on lib-derived.sh)
-assert "T-03e a path derived from a lib handle is flagged" "1" "$rc"
-assert_grep "T-03e the finding names the lib handle" "$OUT" \
-  'lib-derived\.sh:6: mktemp-derived-path .*\$tmp'
-
-# The spellings that a raw-mktemp-only regex would miss.
-cat > "$FIXTURES/suffix-forms.sh" <<'FIX'
-#!/bin/bash
-tmp=$(mktemp)
-cp src "$tmp-1"
-cp src "${tmp}_bak"
-cp src "$tmp".part
-FIX
-rc=$(run_on suffix-forms.sh)
-assert "T-03f dash / braced-underscore / quote-then-dot forms are all flagged" "1" "$rc"
-assert_grep "T-03f \$tmp-1 is a finding" "$OUT" 'suffix-forms\.sh:3: mktemp-derived-path'
-assert_grep "T-03f \${tmp}_bak is a finding" "$OUT" 'suffix-forms\.sh:4: mktemp-derived-path'
-assert_grep "T-03f \"\$tmp\".part is a finding" "$OUT" 'suffix-forms\.sh:5: mktemp-derived-path'
-
-# A sibling variable that merely shares a prefix is not a derivation: bash reads
-# `$tmp_err` as one name, so flagging it would fire on ordinary code.
+# bash reads `$tmp_err` as one name, so a sibling sharing a prefix is a separate
+# variable, not a derivation.
 cat > "$FIXTURES/prefix-sibling.sh" <<'FIX'
 #!/bin/bash
 tmp=$(mktemp)
 tmp_err=$(mktemp)
 some_cmd 2>"$tmp_err" > "$tmp"
+echo "wrote to $tmp."
 FIX
 rc=$(run_on prefix-sibling.sh)
-assert "T-04f a variable sharing a prefix is not treated as a derivation" "0" "$rc"
+assert "T-04b a prefix-sharing variable and a trailing-dot sentence are not flagged" "0" "$rc"
 
-# `x=$(mktemp 2>/dev/null) || x=""` is the sanctioned stderr-slot idiom at 88
-# sites in this repo; a warning there would be noise, so it is out of contract.
+# dirname / basename extract a component of the same path — house style here.
+cat > "$FIXTURES/path-components.sh" <<'FIX'
+#!/bin/bash
+tmp=$(mktemp)
+echo "wrote ${tmp##*/}"
+mkdir -p "${tmp%/*}"
+FIX
+rc=$(run_on path-components.sh)
+assert "T-04c dirname / basename expansions are not flagged" "0" "$rc"
+
+cat > "$FIXTURES/marker.sh" <<'FIX'
+#!/bin/bash
+tmp=$(mktemp)
+cp src "$tmp.orig"   # drift-check-ignore
+# drift-check-ignore
+cp src "$tmp.bak"
+FIX
+rc=$(run_on marker.sh)
+assert "T-04d drift-check-ignore suppresses both on-line and line-above" "0" "$rc"
+
+# A handle named only in a comment must not seed state — otherwise a usage
+# example in a docstring makes every unrelated `$x.log` in the file a finding.
+cat > "$FIXTURES/comment-only.sh" <<'FIX'
+#!/bin/bash
+# Usage example: out=$(mktemp) then write to "$out.part"
+out="$1"
+cp src "$out.bak"
+FIX
+rc=$(run_on comment-only.sh)
+assert "T-04e a handle mentioned only in a comment does not seed the registry" "0" "$rc"
+
+# `x=$(mktemp 2>/dev/null) || x=""` is the sanctioned stderr-slot idiom; a
+# warning there would be noise at a volume that gets the whole check ignored.
 cat > "$FIXTURES/silenced-idiom.sh" <<'FIX'
 #!/bin/bash
-set -uo pipefail
 jq_err=$(mktemp 2>/dev/null) || jq_err=""
 jq . input 2>"${jq_err:-/dev/null}"
 FIX
 rc=$(run_on silenced-idiom.sh)
-assert "T-04e the silenced stderr-slot idiom is deliberately out of contract" "0" "$rc"
+assert "T-04f the silenced stderr-slot idiom is deliberately out of contract" "0" "$rc"
 
-# --- Real repository corpus: the check must ship clean ----------------------
+# --- Real repository corpus: clean AND actually scanned ---------------------
 # Neither --quiet nor --skip-if-no-target here. Both would let "scanned nothing"
-# satisfy the same two assertions as "scanned everything and found nothing": the
-# flag turns a missing scan dir into exit 0 with a zero count, and --quiet hides
-# the line that says how many files were read. The scan dirs always exist in this
-# repo, so their absence should fail loudly.
+# satisfy the same assertions as "scanned everything and found nothing".
 real_rc=$(bash "$SCRIPT" --repo-root "$REPO_ROOT" --all >"$SANDBOX/real.txt" 2>"$SANDBOX/real_err.txt"; echo $?)
 if [ "$real_rc" -ne 0 ]; then
   fail "real repo tree has findings or unscannable files — the check would ship already-noisy:"
@@ -233,7 +210,11 @@ fi
 assert_grep "real repo run emits the count line" "$SANDBOX/real.txt" \
   '==> Total tempfile-lifecycle findings: 0'
 assert_grep "real repo run actually scanned files (not a zero-target no-op)" "$SANDBOX/real_err.txt" \
-  'Scanning [1-9][0-9]* file\(s\)'
+  'Scanning [0-9][0-9]+ file\(s\)'
+# Both scan dirs must be walked. A run narrowed to one of them still reports a
+# non-zero file count and zero findings, so the count alone cannot see it.
+real_targets=$(bash "$SCRIPT" --repo-root "$REPO_ROOT" --all --target plugins/rite/scripts/review-source-resolve.sh >/dev/null 2>&1; echo $?)
+assert "a file under plugins/rite/scripts/ is scannable in the real repo" "0" "$real_targets"
 
 # --- CLI contract ------------------------------------------------------------
 assert "--all without a scan dir exits 2 by default" "2" \
@@ -252,13 +233,30 @@ assert "--repo-root with no value exits 2 instead of falling back to cwd" "2" \
 # --- Unscannable files are an error, not a clean bill -----------------------
 assert "a missing --target exits 2 (did not look != found nothing)" "2" \
   "$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet --target no/such/file.sh >/dev/null 2>&1; echo $?)"
-unscannable_err="$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet --target no/such/file.sh 2>&1 >/dev/null || true)"
-printf '%s' "$unscannable_err" > "$SANDBOX/unscannable.txt"
+bash "$SCRIPT" --repo-root "$SANDBOX" --quiet --target no/such/file.sh >/dev/null 2>"$SANDBOX/unscannable.txt" || true
 assert_grep "the unscannable run says so explicitly" "$SANDBOX/unscannable.txt" \
   'not a clean bill'
-# Findings still win the exit code, so a normal detection run is not reported to
-# lint as an invocation error.
+# Findings win the exit code, so a normal detection run is not reported to lint
+# as an invocation error.
 assert "findings win over unscannable (exit 1, not 2)" "1" \
   "$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet --target plugins/rite/hooks/scripts/bad.sh --target no/such/file.sh >/dev/null 2>&1; echo $?)"
+
+# An unreadable directory under --all must reach the exit code, not just stderr.
+# The lint check table calls this script with --all and nothing else, so a walk
+# that silently lost files is the whole "clean bill" failure mode.
+UNREADABLE="$SANDBOX/plugins/rite/hooks/scripts/locked"
+mkdir -p "$UNREADABLE"
+cp "$FIXTURES/bad.sh" "$UNREADABLE/inner.sh"
+if chmod 000 "$UNREADABLE" 2>/dev/null && [ ! -r "$UNREADABLE" ]; then
+  all_rc=$(bash "$SCRIPT" --repo-root "$SANDBOX" --quiet --all >/dev/null 2>"$SANDBOX/all_err.txt"; echo $?)
+  # findings from the readable fixtures still win the exit code
+  assert "--all with an unreadable directory does not return a clean 0" "1" "$all_rc"
+  assert_grep "--all reports the incomplete enumeration" "$SANDBOX/all_err.txt" \
+    '(enumeration failed|not a clean bill)'
+  chmod 755 "$UNREADABLE" 2>/dev/null
+else
+  skip "--all unreadable-directory case (chmod 000 not effective, likely running as root)"
+  chmod 755 "$UNREADABLE" 2>/dev/null
+fi
 
 print_summary "$(basename "$0")"

@@ -39,6 +39,10 @@
 # Installing over an existing EXIT handler would silently drop it, so
 # `rite_tempfile_init` refuses to do that rather than guess.
 #
+# The four handlers below implement the canonical template in
+# references/bash-trap-patterns.md; that file is the definition, this is the one
+# place callers should reach it through for tempfiles.
+#
 # bash 3.2 compatible: no `declare -n`, no `mapfile`. `printf -v` and plain
 # arrays only.
 
@@ -103,23 +107,39 @@ rite_tempfile_init() {
   # All four, not just EXIT. Overwriting a caller's INT handler without saying so
   # is the same silent clobber the EXIT check refuses — checking one and not the
   # other three leaves the asymmetry that lets a caller lose its handler quietly.
+  #
+  # A signal the process inherited as ignored is not a caller handler, though.
+  # `trap -p` reports it as `trap -- '' SIGINT`, which is non-empty, and bash
+  # gives async children an ignored SIGINT and nohup an ignored SIGHUP — so a
+  # plain length test refuses to initialise in those contexts and blames a
+  # handler the caller never wrote. Such a signal also cannot kill the process,
+  # so there is nothing to clean up: skip it and install the rest.
   local sig existing
+  local -a install_sigs=()
   for sig in EXIT INT TERM HUP; do
     existing=$(trap -p "$sig")
-    if [ -n "$existing" ]; then
-      echo "ERROR: rite_tempfile_init: a $sig handler is already installed; installing over it would silently drop it" >&2
-      echo "  Fix: call 'rite_tempfile_init --caller-traps' and invoke rite_tempfile_cleanup from your own handler" >&2
-      return 1
-    fi
+    case "$existing" in
+      "") install_sigs+=("$sig") ;;
+      "trap -- '' "*) : ;;   # inherited SIG_IGN — cannot fire, nothing to clean up
+      *)
+        echo "ERROR: rite_tempfile_init: a $sig handler is already installed; installing over it would silently drop it" >&2
+        echo "  Fix: call 'rite_tempfile_init --caller-traps' and invoke rite_tempfile_cleanup from your own handler" >&2
+        return 1
+        ;;
+    esac
   done
 
   # Signal handlers before any mktemp: a signal arriving between creation and
   # registration is exactly how tempfiles were being orphaned. Exit codes follow
   # POSIX 128+signum so callers and CI see the real cause of death.
-  trap 'rc=$?; rite_tempfile_cleanup; exit $rc' EXIT
-  trap 'rite_tempfile_cleanup; exit 130' INT
-  trap 'rite_tempfile_cleanup; exit 143' TERM
-  trap 'rite_tempfile_cleanup; exit 129' HUP
+  for sig in "${install_sigs[@]}"; do
+    case "$sig" in
+      EXIT) trap 'rc=$?; rite_tempfile_cleanup; exit $rc' EXIT ;;
+      INT)  trap 'rite_tempfile_cleanup; exit 130' INT ;;
+      TERM) trap 'rite_tempfile_cleanup; exit 143' TERM ;;
+      HUP)  trap 'rite_tempfile_cleanup; exit 129' HUP ;;
+    esac
+  done
 
   _RITE_TMP_TRAPS_INSTALLED=1
   _RITE_TMP_READY=1
@@ -129,8 +149,12 @@ rite_tempfile_init() {
 # Shared by rite_tempfile_new / rite_tempdir_new.
 # $1 out-variable name, $2 tag, $3 "file" | "dir".
 _rite_tempfile_create() {
-  local outvar="$1" tag="${2:-tmp}" kind="$3"
-  local path
+  # Locals carry the _rite_ prefix so a caller passing its own variable name can
+  # never collide with one of them. Without that, `rite_tempfile_new path x`
+  # writes this function's local and returns success with the caller's variable
+  # untouched — the silent empty-path outcome this lib exists to remove.
+  local _rite_ov="$1" _rite_tag="${2:-tmp}" _rite_kind="$3"
+  local _rite_path
 
   if [ "$_RITE_TMP_READY" -ne 1 ]; then
     echo "ERROR: rite_tempfile: call rite_tempfile_init before creating a tempfile (cleanup would not be arranged)" >&2
@@ -140,34 +164,44 @@ _rite_tempfile_create() {
   # printf -v with an attacker-chosen name is an arbitrary-assignment primitive,
   # and a name with a '[' would make it an array write. Callers pass literals,
   # so anything outside the identifier alphabet is a bug worth stopping on.
-  case "$outvar" in
+  case "$_rite_ov" in
     ''|*[!A-Za-z0-9_]*|[0-9]*)
-      echo "ERROR: rite_tempfile: '$outvar' is not a valid variable name" >&2
+      echo "ERROR: rite_tempfile: '$_rite_ov' is not a valid variable name" >&2
+      return 1
+      ;;
+  esac
+  # The lib's own namespace is reserved. `printf -v _RITE_TMP_PATHS` writes
+  # element 0 of the live registry and `printf -v _RITE_TMP_READY` turns the init
+  # guard into a path string, both while returning success. Rejecting the prefix
+  # keeps that unwritable as the lib grows more internals.
+  case "$_rite_ov" in
+    _rite_*|_RITE_*)
+      echo "ERROR: rite_tempfile: '$_rite_ov' is reserved for the lib's own namespace" >&2
       return 1
       ;;
   esac
   # The tag lands in a filesystem path; keep it to characters that cannot turn
   # the template into a different directory or a glob.
-  case "$tag" in
+  case "$_rite_tag" in
     ''|*[!A-Za-z0-9._-]*)
-      echo "ERROR: rite_tempfile: tag '$tag' contains characters outside [A-Za-z0-9._-]" >&2
+      echo "ERROR: rite_tempfile: tag '$_rite_tag' contains characters outside [A-Za-z0-9._-]" >&2
       return 1
       ;;
   esac
 
   # Trailing X's only: BSD/macOS mktemp replaces the trailing run, so X's placed
-  # mid-template yield a fixed name and collide (#2080).
-  local template="${TMPDIR:-/tmp}/rite-${tag}-XXXXXX"
+  # mid-template yield a fixed name and collide.
+  local _rite_template="${TMPDIR:-/tmp}/rite-${_rite_tag}-XXXXXX"
   # mktemp's own stderr is deliberately NOT redirected. Swallowing it is how the
   # failure became invisible in the first place.
-  if [ "$kind" = "dir" ]; then
-    path=$(mktemp -d "$template") || {
-      echo "ERROR: rite_tempfile: mktemp -d failed for '$template' (disk full / inode exhaustion / read-only /tmp / permission denied)" >&2
+  if [ "$_rite_kind" = "dir" ]; then
+    _rite_path=$(mktemp -d "$_rite_template") || {
+      echo "ERROR: rite_tempfile: mktemp -d failed for '$_rite_template' (disk full / inode exhaustion / read-only /tmp / permission denied)" >&2
       return 1
     }
   else
-    path=$(mktemp "$template") || {
-      echo "ERROR: rite_tempfile: mktemp failed for '$template' (disk full / inode exhaustion / read-only /tmp / permission denied)" >&2
+    _rite_path=$(mktemp "$_rite_template") || {
+      echo "ERROR: rite_tempfile: mktemp failed for '$_rite_template' (disk full / inode exhaustion / read-only /tmp / permission denied)" >&2
       return 1
     }
   fi
@@ -176,17 +210,20 @@ _rite_tempfile_create() {
   # two is still possible — bash cannot make them atomic — but the window is one
   # statement wide, and the handlers were installed before any mktemp ran, which
   # is the part that actually eliminates the orphans.
-  _RITE_TMP_PATHS+=("$path")
-  # Owner-only, to keep the path out of reach on a shared /tmp. A directory
-  # needs the execute bit or nothing can be created inside it — 600 on a
-  # tempdir makes it unusable.
-  # Best-effort: a filesystem without POSIX permissions must not fail creation.
-  if [ "$kind" = "dir" ]; then
-    chmod 700 "$path" 2>/dev/null || true
+  _RITE_TMP_PATHS+=("$_rite_path")
+  # Defence in depth over mktemp's own 0600 / 0700: a filesystem without POSIX
+  # permissions must not fail creation, so the failure is ignored.
+  if [ "$_rite_kind" = "dir" ]; then
+    chmod 700 "$_rite_path" 2>/dev/null || true
   else
-    chmod 600 "$path" 2>/dev/null || true
+    chmod 600 "$_rite_path" 2>/dev/null || true
   fi
-  printf -v "$outvar" '%s' "$path"
+  # A failed assignment (readonly target, say) must not return success with the
+  # caller's variable unset — that is the empty-path outcome again.
+  printf -v "$_rite_ov" '%s' "$_rite_path" || {
+    echo "ERROR: rite_tempfile: could not assign the path to '$_rite_ov'" >&2
+    return 1
+  }
   return 0
 }
 
