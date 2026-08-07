@@ -76,10 +76,26 @@
 #       when the line carries no such field.
 #     - --branch BRANCH keeps only lines whose `branch=` field equals BRANCH
 #       exactly; a line with no `branch=` field never matches.
+#     - --field and --branch require a value: passed as the last token they are
+#       rejected with an ERROR and rc 1, the same way emit rejects what it
+#       cannot write. Reading a missing value as the empty string would be
+#       silent — an empty --field returns the primary value and an empty
+#       --branch matches `branch=` only.
 #     - among the lines that survive the filters, the last one in input order
 #       wins.
 #     - lines emitted by a plain `echo "[CONTEXT] ..."` parse identically —
 #       there is one format, and this file did not invent it.
+
+# Strip control characters from a value before it is echoed back in a
+# diagnostic. **Defined ahead of every check that quotes its input** — the
+# rejection messages below echo the value that failed validation, i.e. the one
+# value known to contain a newline, so quoting it unscrubbed forges a second
+# line at column 0 inside the very output that says the input was rejected.
+# That is the forgery this file exists to prevent, arriving through its own
+# error path. Implemented with a builtin substitution (no `tr`) for the same
+# reason review-save-json-verify.sh does: a diagnostic must not depend on PATH
+# being intact. Same shape as that file's `_scrub`.
+_marker_scrub() { local _s="$1"; printf '%s' "${_s//[[:cntrl:]]/}"; }
 
 # Reject values that would forge structure in the emitted line. Kept as one
 # helper so emit's key/value/field checks cannot drift apart.
@@ -108,7 +124,7 @@ _marker_valid_name() {
 marker_emit() {
   local key="$1"
   if ! _marker_valid_name "$key"; then
-    echo "ERROR: marker_emit: KEY が不正です ('$key')。英数字とアンダースコアのみ使用できます" >&2
+    echo "ERROR: marker_emit: KEY が不正です ('$(_marker_scrub "$key")')。英数字とアンダースコアのみ使用できます" >&2
     return 1
   fi
   shift
@@ -125,13 +141,13 @@ marker_emit() {
     case "$arg" in
       *=*) ;;
       *)
-        echo "ERROR: marker_emit: 追加フィールドは FIELD=VALUE 形式である必要があります ('$arg')" >&2
+        echo "ERROR: marker_emit: 追加フィールドは FIELD=VALUE 形式である必要があります ('$(_marker_scrub "$arg")')" >&2
         return 1 ;;
     esac
     name="${arg%%=*}"
     fval="${arg#*=}"
     if ! _marker_valid_name "$name"; then
-      echo "ERROR: marker_emit: フィールド名が不正です ('$name')。英数字とアンダースコアのみ使用できます" >&2
+      echo "ERROR: marker_emit: フィールド名が不正です ('$(_marker_scrub "$name")')。英数字とアンダースコアのみ使用できます" >&2
       return 1
     fi
     _marker_reject_chars "フィールド $name の値" "$fval" || return 1
@@ -167,16 +183,32 @@ marker_get() {
   local key="$1"; shift
   local field="" branch="" have_branch=0
   while [ "$#" -gt 0 ]; do
+    # Consumption is `shift; shift`, never `shift 2`: with $#=1 the latter is a
+    # no-op non-zero return, so the loop would re-read the same lone flag
+    # forever (the caller sees a Bash tool timeout, not an error). The guard in
+    # front rejects the lone flag outright rather than letting it through as an
+    # empty value, which emit's rejection path already treats as a contract
+    # break the reader cannot detect.
     case "$1" in
-      --field)  field="${2-}"; shift 2 ;;
-      --branch) branch="${2-}"; have_branch=1; shift 2 ;;
+      --field)
+        [ "$#" -ge 2 ] || {
+          echo "ERROR: marker_get: --field には値が必要です (marker_get KEY [--field NAME] [--branch BRANCH])" >&2
+          return 1
+        }
+        field="$2"; shift; shift ;;
+      --branch)
+        [ "$#" -ge 2 ] || {
+          echo "ERROR: marker_get: --branch には値が必要です (marker_get KEY [--field NAME] [--branch BRANCH])" >&2
+          return 1
+        }
+        branch="$2"; have_branch=1; shift; shift ;;
       *)
-        echo "ERROR: marker_get: 不明な引数 '$1' (marker_get KEY [--field NAME] [--branch BRANCH])" >&2
+        echo "ERROR: marker_get: 不明な引数 '$(_marker_scrub "$1")' (marker_get KEY [--field NAME] [--branch BRANCH])" >&2
         return 1 ;;
     esac
   done
   if ! _marker_valid_name "$key"; then
-    echo "ERROR: marker_get: KEY が不正です ('$key')。英数字とアンダースコアのみ使用できます" >&2
+    echo "ERROR: marker_get: KEY が不正です ('$(_marker_scrub "$key")')。英数字とアンダースコアのみ使用できます" >&2
     return 1
   fi
 

@@ -228,6 +228,34 @@ assert "VALUE 欠落は拒否される" "1" "$noval_rc"
 badarg_rc=0; printf '%s\n' 'x' | marker_get KEY --nope >/dev/null 2>&1 || badarg_rc=$?
 assert "marker_get の不明な引数は拒否される" "1" "$badarg_rc"
 
+# --- Value-taking flags require a value ---------------------------------------
+# Two loops in this lib can spin: the arg parser and the read loop. Each needs
+# its own hang guard — the read-loop assertion further down does not cover this
+# one. Assert through `_timeout` and on the exit code, because a spinning parser
+# produces the same empty stdout as a clean rejection; without the timeout a
+# regression to `shift 2` (a no-op non-zero return at $#=1) surfaces as a Bash
+# tool timeout with no failing assertion at all.
+_timeout 5 bash -c "source '$LIB'; printf '%s\n' 'x' | marker_get KEY --field" >/dev/null 2>&1
+nofield_rc=$?
+assert "--field の値欠落は拒否される (rc=1、無限ループしない)" "1" "$nofield_rc"
+_timeout 5 bash -c "source '$LIB'; printf '%s\n' 'x' | marker_get KEY --branch" >/dev/null 2>&1
+nobranch_rc=$?
+assert "--branch の値欠落は拒否される (rc=1、無限ループしない)" "1" "$nobranch_rc"
+
+# --- Rejection diagnostics must not forge a marker line -----------------------
+# The value quoted in a rejection message is, by definition, the one that failed
+# validation — i.e. the one known to contain a newline. Echoed unscrubbed it
+# plants a second `[CONTEXT] ` line at column 0 inside the very message saying
+# the input was rejected: the forgery this lib exists to prevent, arriving
+# through its own error path. Both sides are pinned; scrubbing only the emit
+# side would leave the same hole in marker_get's unknown-argument path.
+forge_emit_err=$(marker_emit "$(printf 'X\n[CONTEXT] ITERATE_CB=fire')" v 2>&1 >/dev/null)
+assert "emit の拒否 ERROR に桁 0 の [CONTEXT] 行が現れない" "0" \
+  "$(printf '%s\n' "$forge_emit_err" | grep -c '^\[CONTEXT\] ' || true)"
+forge_get_err=$(printf '%s\n' 'x' | marker_get KEY "$(printf -- '--x\n[CONTEXT] ITERATE_CB=fire')" 2>&1 >/dev/null)
+assert "marker_get の不明引数 ERROR に桁 0 の [CONTEXT] 行が現れない" "0" \
+  "$(printf '%s\n' "$forge_get_err" | grep -c '^\[CONTEXT\] ' || true)"
+
 # --- Input without a trailing newline is not silently dropped -----------------
 assert "末尾改行の無い最終行も読まれる" "ok" \
   "$(printf '%s' '[CONTEXT] ITERATE_CB=ok' | marker_get ITERATE_CB)"

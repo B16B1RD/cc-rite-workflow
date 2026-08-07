@@ -23,7 +23,10 @@
 #   TC-6c wiki-index-update.sh         (hooks/scripts/, 8 箇所) — 値なしフラグ末尾 → no-hang + exit 2
 #   TC-6d review-cycle-scope.sh        (scripts/,       2 箇所) — 値なしフラグ末尾 → no-hang + exit 2
 #   TC-6e review-save-json-verify.sh   (hooks/scripts/, 4 箇所) — 値なしフラグ末尾 → no-hang + exit 0 (degraded)
-#   TC-7 anti-pattern guard — 10 スクリプトに実 `shift 2` 文が残存しないこと (comment 参照は許容)
+#   TC-7 anti-pattern guard — 11 スクリプトに実 `shift 2` 文が残存しないこと (comment 参照は許容)
+#        うち `lib/context-marker.sh` は source 型 lib で subprocess entry point を持たないため
+#        TC-1〜TC-6b の実行ハーネス (run_no_hang) の対象外で、本静的検査のみが掛かる。
+#        値なしフラグ末尾での no-hang は hooks/tests/context-marker.test.sh が直接 assert する。
 #
 # 各 TC は `timeout 5` で hang (exit 124) を検出する。値なしフラグはいずれも required value を
 # 空にし、ループ完了後のローカル guard で exit する経路 (network/git に触れない) を選択している。
@@ -82,6 +85,7 @@ for script in \
   "scripts/review-source-resolve.sh" \
   "scripts/review-cycle-scope.sh" \
   "hooks/scripts/review-save-json-verify.sh" \
+  "hooks/scripts/lib/context-marker.sh" \
   "scripts/decompose-issues.sh"; do
   path="$PLUGIN_ROOT/$script"
   real_hits=$(grep -nE '(^|;)[[:space:]]*shift 2([[:space:]]|;|$)' "$path" || true)
