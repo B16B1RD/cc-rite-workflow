@@ -8,7 +8,7 @@
 #
 # Called from:
 #   - skills/pr-review/SKILL.md ステップ 8.0.4 Pre-Check の `esac` の**後**。marker 層の 3 arm
-#     すべてを通る (marker 残存 arm だけは同 arm 内の `exit 1` で本 helper に到達しない)。
+#     すべてを通る (marker 残存を検出した枝だけは `*)` arm 内の `exit 1` で本 helper に到達しない)。
 #     本 helper は marker の在否を前提にせず、ステップ 1.2.5 の commit SHA とディスク上の
 #     永続 JSON だけで判定する。出力の意味論は下記「出力」節が SoT。
 #
@@ -265,7 +265,7 @@ echo "  run 開始点 pin: ${since:-<不在 = 全件を現 run とみなした>}
 echo "  現 run に実在する JSON ($seen_count 件):" >&2
 if [ "$seen_count" -gt 0 ]; then printf '%s' "$seen" >&2; else echo "    (なし)" >&2; fi
 echo "  切り分け: 一覧が空なら ステップ 5.3.0.M〜6.1.a を**区間ごと**実行していないか、6.1.a の保存自体が失敗しています (会話の LOCAL_SAVE_FAILED を確認)。非空で commit_sha がすべて古いなら、区間は走ったが本 cycle 分の保存だけが落ちています。" >&2
-echo "    ただし 5.3.0.M step 2 の marker 作成失敗 WARNING (read-only な \${TMPDIR} 等) が会話にある場合は、レビュー結果 JSON の書込先も同じ root のため 6.1.a の再実行では収束しません — 書込先を復旧してから再評価してください。" >&2
+echo "    ただし会話の LOCAL_SAVE_FAILED の reason が mktemp_failure / mkdir_failure / write_failure のいずれかなら書込環境が原因です。6.1.a は結果 JSON を \${TMPDIR} 上の一時ファイル経由で書くため、上記「探索先」(保存先ディレクトリ) が健全でも保存は落ち続け、再実行では収束しません — 復旧するのは探索先ではなく \${TMPDIR} です。" >&2
 echo "  ACTION: ステップ 6.1.a を **step 0 から** 実行してください。step 2 (保存 helper) だけを実行しては**なりません** — step 0 が emit する REVIEW_CYCLE_ID / NONBLOCKING_PENDING_MARKER を欠くと 8.0.3 が前 cycle の値を見て誤 pass します。" >&2
 echo "    会話に本 cycle の REVIEW_SAVE_PENDING_MARKER / REVIEW_SAVE_PENDING_ID が 1 つも無い場合は、marker と id の生成元である ステップ 5.3.0.M step 2 から実行してください。" >&2
 echo "    続けて {post_comment_mode} に応じて 6.1.b または 6.1.c も再実行してから ステップ 8.0 を再評価してください。" >&2

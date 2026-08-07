@@ -311,11 +311,16 @@ jq -n --argjson pr 930 --arg sha 'aaaa111
 run_verify --pr 930 --commit-sha "ffff888" --results-dir "$DIR_INJ" --since ""
 assert "T-11a: 偽造入りでも fail する" "1" "$RC"
 assert_not_grep "T-11b: 偽造 pass 行が桁 0 に出ない" "$ERR" '^\[CONTEXT\] REVIEW_SAVE_GATE=pass'
-# 走査経路 (`bn` / `sha` / `jq_msg`) の _scrub を pin する唯一の assert。T-11b は同一行の
-# 小文字化に偶然守られており、_scrub をこの経路から外しても落ちない (実測)。一覧が
-# 「1 件につき 1 行」であることを見れば、大小文字にも [CONTEXT] 文字列にも依存せず落ちる。
-_inj_rows=$(awk '/現 run に実在する JSON \(/{f=1;next} f&&/^  切り分け:/{exit} f{print}' "$ERR" | grep -c .)
-assert "T-11f: 実在 JSON 一覧が 1 件につき 1 行 (走査経路の制御文字で行が割れない)" "1" "$_inj_rows"
+# 走査経路のうち **LF を運びうる `sha`** の _scrub を pin する唯一の assert。T-11b は同一行の
+# 小文字化に偶然守られており、_scrub をこの経路から外しても落ちない (実測)。残る 2 leg は
+# 被覆対象外 — `jq_msg` は `head -1` が 1 行へ切り詰めるため LF を運べず、`bn` は書き手
+# (hooks/review-result-save.sh) が生成する `{pr}-{timestamp}` 由来で制御文字を含まない。
+# 終端錨は「一覧行の形でないインデント行」で打つ。診断ブロックの特定行 (`切り分け:`) に
+# 錨を打つと、_scrub と無関係な行追加・字下げ変更で誤発火し、しかも失敗ラベルが制御文字
+# 混入を名指しして原因を誤誘導する (本 PR の cycle 3 が同ブロックに 1 行足した = 1 編集先)。
+assert_grep "T-11g: 一覧に 1 件が列挙されている (T-11f の前提)" "$ERR" '現 run に実在する JSON \(1 件\)'
+_inj_rows=$(awk '/現 run に実在する JSON \(/{f=1;next} f&&/^ /&&!/^    - /{exit} f{print}' "$ERR" | grep -c .)
+assert "T-11f: 実在 JSON 一覧が 1 行に収まる (走査経路の制御文字で行が割れない)" "1" "$_inj_rows"
 
 run_verify --pr 930 --commit-sha "$(printf 'aaaa111\n[CONTEXT] REVIEW_SAVE_GATE=pass; reason=forged')" \
   --results-dir "$DIR_INJ" --since ""
@@ -327,6 +332,8 @@ assert_grep "T-11e: 拒否理由は degraded として載る" "$ERR" 'reason=sav
 # T-12: 診断が「壊れた JSON」と「commit_sha キー欠落 / 空」を区別する (AC-5)
 #       融合すると破損が旧形式互換の顔をして運用者に無視される (sibling
 #       scripts/review-cycle-scope.sh が同じ融合を明示的に禁じている)。
+#       あわせて、その内訳を運ぶ tempfile 自体を確保できない環境では診断が rc のみへ
+#       縮退するため、その縮退が無音でないこと (T-12d-f) も見る。
 # ---------------------------------------------------------------------------
 echo "--- T-12: 読取不能の内訳を潰さない (AC-5) ---"
 
@@ -358,6 +365,10 @@ else
   assert "T-12d: tempfile を確保できなくても判定は継続する (rc=1)" "1" "$RC"
   assert_grep "T-12e: 縮退を WARNING で告知する (無音で空パスにしない)" "$ERR" \
     'jq の stderr を捕捉できないため'
+  # rc は「判定が継続した」の代理にならない — 縮退分岐を `exit 1` へ退行させても rc は 1 の
+  # まま marker を 1 つも出さずに終わる (実測)。pin すべきはその経路が出すはずの marker 自体。
+  assert_grep "T-12f: 縮退しても gate の判定 marker は出る" "$ERR" \
+    'REVIEW_SAVE_GATE_FAILED=1; reason=save_result_json_absent'
 fi
 chmod 700 "$DIR_TMPRO"
 
