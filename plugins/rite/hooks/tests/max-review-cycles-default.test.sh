@@ -160,7 +160,10 @@ for f in "$ITERATE" "$TEMPLATE_CFG" "$CONFIG_DOC" "$SPEC_DOC" "$EXEC_METRICS"; d
   assert_file_exists_or_fail "T-04: $base が存在する" "$f" || continue
   # `既定(値)?` とグループ化する。`既定値?` は ERE の `?` が多バイト文字 `値` の最終バイトに
   # 掛かるため、LC_ALL=C では「既定 5」(値 なし形) を検出できない。
-  assert_not_grep "T-04: $base に「既定 5」が残っていない" "$f" '既定(値)? 5([^0-9]|$)'
+  # スペースを `[[:space:]]*` にするのは、`（既定5）` のようにスペース無しで書かれた残留を
+  # 素通しさせないため。閉じ括弧を伴わない `（既定 15、` 形が 4 サイトあり、そこが 5 へ
+  # 差し戻されても T-04o (完全 literal の count) は数を保つので検出できない。
+  assert_not_grep "T-04: $base に「既定 5」が残っていない" "$f" '既定(値)?[[:space:]]*5([^0-9]|$)'
   assert_not_grep "T-04: $base に「default: 5」が残っていない" "$f" 'max_review_cycles.*default: 5([^0-9]|$)'
   assert_not_grep "T-04: $base に YAML 値 5 が残っていない" "$f" 'max_review_cycles: 5([^0-9]|$)'
 done
@@ -193,8 +196,13 @@ assert_grep "T-04m: CONFIGURATION.md が既定値の複製箇所を drift 源と
 # 散文が既定値を述べる箇所は negative 検査 (「既定 5」/「default: 5」形) の網から外れる。
 # 英文の `at the default of N` と日本語の `（既定 N）` は、5 へ差し戻しても negative パターンに
 # 掛からず全件 green で通るため、既存 T-04a/e/g/h と同じ positive count pin で押さえる。
-assert "T-04n: CONFIGURATION.md の英文既定値 2 箇所が $DEFAULT_CYCLES" \
-  "2" "$(grep -c "at the default of $DEFAULT_CYCLES" "$CONFIG_DOC")"
+# 本 pin だけ `grep -o | wc -l` で**出現数**を数える。CONFIGURATION.md の safety 表と backstop 節は
+# 1 段落 = 1 行の markdown で、同一行に `the default of 15` が 2 つ同居するため、行数を数える
+# `grep -c` では 4 出現を 2 と数えてしまう。`at` を含めず `the default of N` で数えるのは、
+# 下限制約の記述 (`the default of 15 satisfies that lower bound`) と引き上げ根拠の記述
+# (`Whether the default of 15 is right`) も既定値を述べる箇所として同じ網に入れるため。
+assert "T-04n: CONFIGURATION.md の英文既定値 4 箇所が $DEFAULT_CYCLES" \
+  "4" "$(grep -o "the default of $DEFAULT_CYCLES" "$CONFIG_DOC" | wc -l | tr -d '[:space:]')"
 # `${DEFAULT_CYCLES}` をブレースで囲む。直後が多バイト文字 `）` のため、素の `$DEFAULT_CYCLES` だと
 # 非 UTF-8 ロケールで後続バイトが変数名に畳み込まれ set -u を踏む (flow-state.test.sh TC-8b-h)。
 assert "T-04o: iterate/SKILL.md の散文既定値 3 箇所が $DEFAULT_CYCLES" \
