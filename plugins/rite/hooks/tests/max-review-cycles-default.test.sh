@@ -11,6 +11,10 @@
 #   2. 記述の一致 (T-04) / 契約の不変 (T-05) — 既定値は 8 ファイルに複製されており、
 #      1 箇所でも取り残されると読者が「その経路は別の値」と誤読する。cycle-scope-contract.test.sh
 #      と同じ static-contract 方式で grep-pin する。
+#      内訳: pin 済み 5 (iterate/SKILL.md, templates/config/rite-config.yml, docs/CONFIGURATION.md,
+#      docs/SPEC.md, references/execution-metrics.md) / 未 pin 3 (下記「検査対象外」の 2 ファイル +
+#      本 suite の sibling である review-trend-divergence.test.sh — 現在値は正しいが T-04 の
+#      ループ外なので silent に drift しうる)。所在は docs/CONFIGURATION.md の safety 節が記録している。
 #
 # **抽出対象は 2 サイトある**: ステップ 0.6 (検証 + WARNING つき) と ステップ 1
 # (silent 再読込)。後者がブレーカーの発火可否を実際に決めるサイトなので、
@@ -46,9 +50,12 @@ STEP06="$TEST_DIR/step06.sh"
 awk '/^# \(1\) max_review_cycles を rite-config\.yml から読取・検証/{f=1} f{print} f&&/^esac$/{exit}' \
   "$ITERATE" > "$STEP06"
 printf 'echo "max_cycles=$max_cycles"\n' >> "$STEP06"
-if ! grep -qE '^case "\$raw_max" in' "$STEP06" || ! grep -qx 'esac' "$STEP06"; then
+# 行数上限は over-extraction (終端アンカーを取り逃して後続ブロックを巻き込む) の検出を担う。
+# アンカー literal の存在検査だけでは、途中に別の `esac` が挿入されて範囲が伸びても通過してしまう。
+if ! grep -qE '^case "\$raw_max" in' "$STEP06" || ! grep -qx 'esac' "$STEP06" \
+   || [ "$(wc -l < "$STEP06")" -gt 12 ]; then
   echo "FATAL: ステップ 0.6 の fallback ブロック抽出に失敗しました (アンカーが変更された可能性)" >&2
-  echo "  抽出結果: $(wc -l < "$STEP06") 行" >&2
+  echo "  抽出結果: $(wc -l < "$STEP06") 行 (期待: 12 行以下)" >&2
   exit 1
 fi
 
@@ -60,9 +67,13 @@ awk '/^raw_max=\$\(awk/ { buf=$0; c=1; next }
      c { buf = buf "\n" $0; if (/silent fallback/) { print buf; exit } }' \
   "$ITERATE" > "$STEP1"
 printf 'echo "max_cycles=$max_cycles"\n' >> "$STEP1"
-if ! grep -q 'silent fallback' "$STEP1" || ! grep -q '^raw_max=' "$STEP1"; then
+# ステップ 0.6 側と同じ理由で行数上限を課す。こちらは開始アンカーが「最後の raw_max=」という
+# 相対位置なので、SKILL.md 側の些細な整形 (`$(awk` の前後に空白が入る等) で開始点がステップ 0.6 側へ
+# 巻き戻ると 200 行超の markdown スラブを実行してしまう。存在検査 2 本はどちらもそれを通過させる。
+if ! grep -q 'silent fallback' "$STEP1" || ! grep -q '^raw_max=' "$STEP1" \
+   || [ "$(wc -l < "$STEP1")" -gt 6 ]; then
   echo "FATAL: ステップ 1 の silent fallback 抽出に失敗しました (アンカーが変更された可能性)" >&2
-  echo "  抽出結果: $(wc -l < "$STEP1") 行" >&2
+  echo "  抽出結果: $(wc -l < "$STEP1") 行 (期待: 6 行以下)" >&2
   exit 1
 fi
 
@@ -147,7 +158,9 @@ assert_grep "T-04c: 無効値 WARNING の文言も $DEFAULT_CYCLES" "$ITERATE" \
 for f in "$ITERATE" "$TEMPLATE_CFG" "$CONFIG_DOC" "$SPEC_DOC" "$EXEC_METRICS"; do
   base="$(basename "$f")"
   assert_file_exists_or_fail "T-04: $base が存在する" "$f" || continue
-  assert_not_grep "T-04: $base に「既定 5」が残っていない" "$f" '既定値? 5([^0-9]|$)'
+  # `既定(値)?` とグループ化する。`既定値?` は ERE の `?` が多バイト文字 `値` の最終バイトに
+  # 掛かるため、LC_ALL=C では「既定 5」(値 なし形) を検出できない。
+  assert_not_grep "T-04: $base に「既定 5」が残っていない" "$f" '既定(値)? 5([^0-9]|$)'
   assert_not_grep "T-04: $base に「default: 5」が残っていない" "$f" 'max_review_cycles.*default: 5([^0-9]|$)'
   assert_not_grep "T-04: $base に YAML 値 5 が残っていない" "$f" 'max_review_cycles: 5([^0-9]|$)'
 done
@@ -177,6 +190,17 @@ assert_grep "T-04l: CONFIGURATION.md が下限 4 制約と既定値の関係を�
 # 既定値の複製が多いこと自体を drift 源として記録する (§4.4 SHOULD)
 assert_grep "T-04m: CONFIGURATION.md が既定値の複製箇所を drift 源として記録" "$CONFIG_DOC" \
   'default for `max_review_cycles` is duplicated across the repository'
+# 散文が既定値を述べる箇所は negative 検査 (「既定 5」/「default: 5」形) の網から外れる。
+# 英文の `at the default of N` と日本語の `（既定 N）` は、5 へ差し戻しても negative パターンに
+# 掛からず全件 green で通るため、既存 T-04a/e/g/h と同じ positive count pin で押さえる。
+assert "T-04n: CONFIGURATION.md の英文既定値 2 箇所が $DEFAULT_CYCLES" \
+  "2" "$(grep -c "at the default of $DEFAULT_CYCLES" "$CONFIG_DOC")"
+# `${DEFAULT_CYCLES}` をブレースで囲む。直後が多バイト文字 `）` のため、素の `$DEFAULT_CYCLES` だと
+# 非 UTF-8 ロケールで後続バイトが変数名に畳み込まれ set -u を踏む (flow-state.test.sh TC-8b-h)。
+assert "T-04o: iterate/SKILL.md の散文既定値 3 箇所が $DEFAULT_CYCLES" \
+  "3" "$(grep -c "（既定 ${DEFAULT_CYCLES}）" "$ITERATE")"
+assert "T-04p: SPEC.md の英文既定値 1 箇所が $DEFAULT_CYCLES" \
+  "1" "$(grep -c "at the default of $DEFAULT_CYCLES" "$SPEC_DOC")"
 
 echo "=== T-05: backstop の発火条件と sentinel が不変 (AC-5) ==="
 # 既定値の引き上げは backstop を撤廃しない (Issue #2129 D-01 / MUST NOT)。
