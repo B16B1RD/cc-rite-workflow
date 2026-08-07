@@ -377,8 +377,8 @@ trend_out=$(bash {plugin_root}/hooks/scripts/review-trend-divergence.sh \
 # （helper の WARNING が marker 文字列を引用しても拾わない）・複数行 stderr 混入への耐性・
 # 同一 KEY の recency・field 名のトークン完全一致は関数側の契約で、その SoT は
 # hooks/tests/context-marker.test.sh。`reason` の値域や `trend` の区切りをここで文字クラスとして
-# 書き直さないこと（旧実装はそれを sed の正規表現に散らしていたため、値域が増えるたびに
-# 切り詰め — 例: `need_3_cycles` が `need_` になる — が再発した）。
+# 書き直さないこと — 呼び出し側が値域を写すと helper が値を増やすたびに切り詰めが起きる
+# （例: `[a-z_]` は `need_3_cycles` を `need_` にする）。値域を知るのは helper だけでよい。
 trend_verdict=$(printf '%s\n' "$trend_out" | marker_get TREND_DIVERGENCE)
 trend_series=$(printf '%s\n' "$trend_out" | marker_get TREND_DIVERGENCE --field trend)
 # helper が判定不能の理由を載せる `reason=` は stdout にしか出ない。抽出して marker に載せないと、

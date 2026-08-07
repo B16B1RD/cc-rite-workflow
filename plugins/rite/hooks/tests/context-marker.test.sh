@@ -17,8 +17,8 @@
 # Both token pairs are live in skills/iterate/SKILL.md; substring matching would
 # make the marker say the opposite of what was emitted.
 #
-# The byte-exact emit assertions exist because Issue #2025 §3.3 freezes the wire
-# format: existing consumers grep it, so a separator or spacing change is a
+# The byte-exact emit assertions exist because the wire format is frozen:
+# consumers outside this lib grep it, so a separator or spacing change is a
 # contract break that no behavioural assertion would catch.
 #
 # Convention: source the lib (it has no subprocess entry point), no network, no
