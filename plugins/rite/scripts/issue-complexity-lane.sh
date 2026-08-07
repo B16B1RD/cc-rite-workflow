@@ -42,7 +42,11 @@
 # skills/pr-review/references/complexity-lane.md の reason 表と同期):
 #   gh_missing            — gh が PATH 上に無い
 #   repo_unresolved       — owner/repo を解決できず -R を付けて gh を呼べない
-#   issue_fetch_failed    — gh issue view が失敗した (認証切れ / rate limit / Issue 不在)
+#   issue_fetch_failed    — gh issue view が失敗した (認証切れ / rate limit / Issue 不在)、
+#                           **および** その stderr 捕捉用 tempfile を確保できなかった
+#                           (取得に必要な資源が揃わない点で同じ帰結。sibling の
+#                            review-cycle-scope.sh が mktemp 失敗を run_pin_unreadable へ
+#                            帰属させるのと同型)
 #   complexity_absent     — body に上記 2 記法のいずれも「値を取り出せる形で」現れない
 #                           (rite 外で作られた Issue、**および `**Complexity**: {complexity}` のような
 #                            未展開 placeholder — 抽出式が英字しか受理しないため「無い」側に合流する)

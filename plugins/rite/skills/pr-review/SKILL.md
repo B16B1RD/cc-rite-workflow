@@ -609,7 +609,7 @@ If the "仕様詳細" section does not exist in the Issue body:
 
 Extract subsections (技術的決定事項, スコープ外, etc.) under the "仕様詳細" section of the Issue body as `{issue_spec}`.
 
-#### 1.3.2 Complexity Lane Determination (XS/S 軽量レーン)
+### 1.3.2 Complexity Lane Determination (XS/S 軽量レーン)
 
 Decide whether this review runs at **light lane** (Issue Complexity XS / S) or **full lane** (M / L / XL、および fail-safe)。判定入力は Issue の**宣言 Complexity** のみ（自動判定はしない — Issue #2136 D-02）。判定は helper へ委譲する（ステップ 1.3 で Issue 番号を特定できなかった場合は helper を呼ばず `full` として扱い、`⚠️ Complexity レーン判定のフォールバック: reason=issue_number_missing。フル装備 (M+ 相当) で実行します。` を出力する):
 
