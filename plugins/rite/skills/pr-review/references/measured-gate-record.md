@@ -95,6 +95,12 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 
 **なぜ 6.1.a が落ちやすいか**: 6.1.a は JSON 本文の生成を 5.3.0.M step 1 に譲っており、現在は「bash を 1 行打つだけ」の低顕著性ステップである。E2E 出力最小化下の中間 cycle では、この種のステップが最も落ちやすい。
 
+**negative 検査だけでは「区間ごとの skip」を守れない**: marker の残存検査は negative 検査（「あってはならないものが無いこと」）であり、**機構が起動したこと**を暗黙の前提にしている。ところが marker は 5.3.0.M step 2 で設置され 6.1.a の EXIT trap で削除される — **arming と解除の両方が、飛ばされる区間の内側にある**。したがって 5.3.0.M〜6.1.a を区間ごと飛ばした cycle の観測値は「6.1.a が正常完了して marker を消した」場合とバイト単位で同一になり、`save_pending_marker_absent` として pass する。これは本リポジトリが繰り返し踏んだ「**不在と成功が区別できない**」欠陥と同型である（`prev_finders=` の空が「0 件」と「抽出失敗」の両方を意味した件、`git diff` の rc=0 と出力ゼロ行の件）。実測: PR #2126 の run では cycle 2 で当該区間を経由せずレビューを完了させたところ 8.0.4 は pass し、以降 5 サイクル通して収束トレンド判定が 4 点しか見られず（`files=4 < cycles=5`, `lost=1`）、WARNING は毎回出ていたがループは一度も止まらず backstop（`max_review_cycles`）だけが停止条件として機能した（Issue #2127 D-04）。
+
+**塞ぎ方は positive 検査を足すこと（marker の撤廃ではない）**: `hooks/scripts/review-save-json-verify.sh` が、区間の**外側**で確定する 2 つの独立した事実 — ステップ 1.2.5 で記録した commit SHA と、ディスク上の永続 JSON — を突き合わせ、「本 cycle の commit を `commit_sha` に持つ結果 JSON が現 run に実在するか」を positive に確認する。marker 機構は撤廃しない。両者は検出対象が異なるためである: marker の**残存**は「6.1.a が走ったが完走しなかった」ことの唯一の証拠であり、positive 検査だけに寄せると同じ状況が `save_result_json_absent` に丸められて「途中で落ちた」という原因情報が失われる。判定軸を「ファイルの有無」ではなく commit SHA の一致に置くのは、results dir が `/rite:cleanup` まで同一 PR の複数 cycle・複数 run の JSON を同居させるためで、有無で判定すると前 cycle の JSON で素通りする。run 境界は sibling の `review-trend-divergence.sh` / `review-cycle-scope.sh` と同じ run 開始点 pin（`.rite/state/review-run-since-{pr}.txt`）を同じ LC_ALL=C 昇順比較で共有し、新しい state ファイルは作らない。**既知の残余**: 本 cycle と前 cycle の HEAD が同一のとき（`/rite:fix` の accept-only cycle など新規 commit を伴わない cycle）は前 cycle の JSON が SHA 一致で pass しうる。判定軸を commit SHA と定めた契約（Issue #2127 §4.4）の上での既知の限界であり、silent ではない — pass 行の `result_json=` にどのファイルで通ったかが出る。
+
+**`-e` 単独ではなく `-L` との OR で判定する理由**: `-e` は dangling symlink を偽と返すため、単独で使うと「不在」と読んで fail-open し、6.1.a 未実行でも gate が通る。marker は存在そのものが判定値なので symlink 自体の存在も残存として扱う。ステップ 8.0.3 の同判定は `-e` のみで、dangling symlink の marker を fail-open する（意図的な非対称）。
+
 **anchor 配置が設計の核心**: 実行保証の marker は、守る対象（ステップ 6）の**外側**で、かつ**毎 cycle 再生成される**位置に張らなければならない。候補は 2 つあったが等価ではない。
 
 - **5.3.0.M step 1**（不採用）— この block の出力は `REVIEW_TMP_DIR=${TMPDIR:-/tmp}` だけで、値はセッション不変。stale な値を再利用しても Write 先は正しく解決するため、block を skip しても下流に何の齟齬も出ない。6.1.a step 0 が skip された理由（唯一の出力の消費者が、それ自身 skip 可能なステップだけ）と構造的に同一で、anchor 自身が同じ失敗をする。

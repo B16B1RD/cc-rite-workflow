@@ -3094,14 +3094,29 @@ else
   #        case arm を検出できない。本 gate は AC-1 / AC-2 が依存する load-bearing 層なので、
   #        生成側 (h-1 の probe) と同じ強度で実行して固定する。
   _sec_804_precheck() { _sec_804 | awk '/^save_pending_marker="/{f=1} f{print} f&&/^esac$/{exit}'; }
-  _run_804_arm() {  # $1=marker 値 → "rc|stderr" を返す
-    local _m="$1" _rc=0 _err
+  # marker 不在の arm は positive 検査 (review-save-json-verify.sh) まで到達する。同 helper は
+  # state-path-resolve.sh で results dir を解決するため、arm は **cwd 配下に .rite/review-results を
+  # 持つ一時ディレクトリ**で走らせる。`--results-dir` を後付けせず本番と同じ既定解決を通すことで、
+  # SKILL.md の呼び出し行が引数を落とした / 解決経路が変わった退行もここで落ちる。
+  _804_pr=804001
+  _804_sha=feedface1234
+  _run_804_arm() {  # $1=marker 値, $2=cwd (省略: 本 cycle の JSON を持つ dir) → "rc|stderr" を返す
+    local _m="$1" _cwd="${2:-$_804_json_ok}" _rc=0 _err
     _err=$(printf '%s\n' "$(_sec_804_precheck)" \
       | sed "1s#^save_pending_marker=.*#save_pending_marker='$_m'#" \
-      | bash 2>&1 >/dev/null) || _rc=$?
+      | sed "s#{plugin_root}#$PLUGIN_ROOT#g; s#{pr_number}#$_804_pr#g; s#{current_commit_sha}#$_804_sha#g" \
+      | (cd "$_cwd" && bash) 2>&1 >/dev/null) || _rc=$?
     printf '%s|%s' "$_rc" "$_err"
   }
   _804_probe_dir=$(mktemp -d "$TMP_ROOT/gate804-XXXXXX")
+  # 本 cycle の commit SHA を持つ JSON が実在する state root (正常系の arm 用)
+  _804_json_ok=$(mktemp -d "$TMP_ROOT/gate804ok-XXXXXX")
+  mkdir -p "$_804_json_ok/.rite/review-results"
+  printf '%s\n' "{\"schema_version\":\"1.1.0\",\"pr_number\":$_804_pr,\"timestamp\":\"2026-01-01T00:00:00+09:00\",\"commit_sha\":\"$_804_sha\",\"overall_assessment\":\"mergeable\",\"findings\":[],\"non_blocking_findings\":[]}" \
+    > "$_804_json_ok/.rite/review-results/$_804_pr-20260101000001.json"
+  # 区間ごと skip の再現: results dir はあるが本 cycle の JSON が無い state root
+  _804_json_missing=$(mktemp -d "$TMP_ROOT/gate804miss-XXXXXX")
+  mkdir -p "$_804_json_missing/.rite/review-results"
   _804_precheck_lines=$(_sec_804_precheck | grep -c . || true)
   if [ "$_804_precheck_lines" -ge 10 ] 2>/dev/null; then
     pass "TC-5h 区間解決: 8.0.4 Pre-Check の bash を抽出できる ($_804_precheck_lines 行)"
@@ -3123,11 +3138,21 @@ else
     fail "TC-5h [実測] 8.0.4 は marker を削除しない — 削除された = 機械強制が再評価で迂回可能になる"
   fi
 
-  # arm 2: marker 不在 → rc=0 + pass
+  # arm 2: marker 不在 **かつ本 cycle の結果 JSON が実在** → rc=0 + pass
   _r=$(_run_804_arm "$_804_probe_dir/rite-p61a-pending-123-1700000001")
-  assert "TC-5h [実測] 8.0.4 arm=marker 不在: rc=0" "0" "${_r%%|*}"
-  assert "TC-5h [実測] 8.0.4 arm=marker 不在: GATE=pass; reason=..._absent" "1" \
+  assert "TC-5h [実測] 8.0.4 arm=marker 不在 + JSON 実在: rc=0" "0" "${_r%%|*}"
+  assert "TC-5h [実測] 8.0.4 arm=marker 不在 + JSON 実在: GATE=pass; reason=..._absent" "1" \
     "$(printf '%s' "${_r#*|}" | grep -cF 'REVIEW_SAVE_GATE=pass; reason=save_pending_marker_absent' || true)"
+
+  # arm 2': marker 不在 **かつ本 cycle の結果 JSON が不在** → rc=1 (5.3.0.M〜6.1.a を区間ごと
+  #         skip した cycle。marker は一度も張られないため negative 検査だけでは観測値が arm 2 と
+  #         同一になる。ここが緑のままだと本 gate は「区間ごとの skip」に対して無音の no-op に戻る)
+  _r=$(_run_804_arm "$_804_probe_dir/rite-p61a-pending-123-1700000002" "$_804_json_missing")
+  assert "TC-5h [実測] 8.0.4 arm=marker 不在 + JSON 不在: rc=1 (差し戻し)" "1" "${_r%%|*}"
+  assert "TC-5h [実測] 8.0.4 arm=marker 不在 + JSON 不在: GATE_FAILED; reason=save_result_json_absent" "1" \
+    "$(printf '%s' "${_r#*|}" | grep -cF 'REVIEW_SAVE_GATE_FAILED=1; reason=save_result_json_absent' || true)"
+  assert "TC-5h [実測] 8.0.4 arm=marker 不在 + JSON 不在: pass を emit しない" "0" \
+    "$(printf '%s' "${_r#*|}" | grep -cF 'REVIEW_SAVE_GATE=pass' || true)"
 
   # arm 3: placeholder 残留 → rc=0 + degraded (機械強制を skip し prose 判定へ縮退)
   _r=$(_run_804_arm '{save_pending_marker}')
