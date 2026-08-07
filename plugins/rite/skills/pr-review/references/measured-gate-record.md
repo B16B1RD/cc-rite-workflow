@@ -89,7 +89,7 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 **限界**: 本機構が保証するのは「6.1.d が完走した」ことまで。ステップ 6 を丸ごと skip した cycle では本 cycle の marker がそもそも作られず、会話に残る前 cycle の**実パス**（前 cycle の helper が削除済）を採ると `pending_marker_absent` として **pass** する（`degraded` にはならない — `degraded` に倒れるのは置換値が空文字か `{...}` 形状のときだけ）。この限界は ステップ 8.0.4 が塞ぐ（下記 [#save-pending-marker](#save-pending-marker)）。
 
 <a id="save-pending-marker"></a>
-## save-pending marker（8.0.4）の設計理由 — anchor 配置 / id 受け渡し / marker の意味 / 差し戻し先
+## save-pending marker（8.0.4）の設計理由 — anchor 配置 / id 受け渡し / marker の意味 / 差し戻し先 / positive 検査（2 層）
 
 本 gate が塞ぐのは「ステップ 6 全体の skip」で、上記「限界」がそのまま顕在化した形になる。この状態では中間サイクルの永続 JSON が残らず、6.1.d の記録コメントも PATCH されないまま、どの gate も発火しない。
 

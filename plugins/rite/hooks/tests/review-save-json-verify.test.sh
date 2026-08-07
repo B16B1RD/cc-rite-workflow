@@ -129,7 +129,7 @@ assert "T-04a: 前 cycle の JSON だけでは rc=1" "1" "$RC"
 assert_grep "T-04b: reason は save_result_json_absent" "$ERR" 'reason=save_result_json_absent'
 
 # 別 PR の JSON は同一 dir にあっても現 run の候補に入らない (ファイル名 prefix で絞る契約)。
-make_result "$DIR_STALE" 903 03 "new999"
+make_result "$DIR_STALE" 903 03 "aaa9999"   # 期待値と**同一** SHA。異なる値だと PR prefix 絞りを外す変異を T-04c が捕まえない
 run_verify --pr 902 --commit-sha "aaa9999" --results-dir "$DIR_STALE" --since ""
 assert "T-04c: 別 PR の JSON が同 SHA を持っても pass しない" "1" "$RC"
 
@@ -168,11 +168,15 @@ run_verify --pr 904 --commit-sha "5a4e777" --results-dir "$DIR_PIN" --since "904
 assert "T-04'a: pin より新しい JSON があれば pass" "0" "$RC"
 assert_grep "T-04'b: 通過したのは pin より後ろのファイル" "$ERR" 'result_json=904-20260101000002.json'
 
+# pin を **最古ではなく 2 番目**に置く。pin を最古に置くと「pin より古いファイル」が 1 件も
+# 存在せず、run 境界の 2 段目 (LC_ALL=C 昇順比較による古いファイルの除外) が一度も走らない
+# — no-op 化しても全 assert が緑になる (実測)。境界を測る fixture は境界の両側にデータを置く。
 DIR_PIN2="$SANDBOX/pin2"; mkdir -p "$DIR_PIN2"
-make_result "$DIR_PIN2" 905 01 "5a4e777"
-run_verify --pr 905 --commit-sha "5a4e777" --results-dir "$DIR_PIN2" --since "905-20260101000001.json"
-assert "T-04'c: pin 自身 (前 run の最終ファイル) では pass しない" "1" "$RC"
-assert_grep "T-04'd: pin を診断に出す" "$ERR" 'run 開始点 pin: 905-20260101000001.json'
+make_result "$DIR_PIN2" 905 01 "5a4e777"   # pin より **古い** 前 run のファイル
+make_result "$DIR_PIN2" 905 02 "5a4e777"   # pin 自身 (前 run の最終ファイル)
+run_verify --pr 905 --commit-sha "5a4e777" --results-dir "$DIR_PIN2" --since "905-20260101000002.json"
+assert "T-04'c: pin 自身と pin より古いファイルでは pass しない" "1" "$RC"
+assert_grep "T-04'd: pin を診断に出す" "$ERR" 'run 開始点 pin: 905-20260101000002.json'
 
 # ---------------------------------------------------------------------------
 # T-05: 診断が「区間ごと未実行」と「本 cycle 分だけ未保存」を切り分けられる (AC-5)
@@ -254,6 +258,26 @@ bash "$ISO/hooks/scripts/review-save-json-verify.sh" --pr 900 --commit-sha "bbbb
   >/dev/null 2>"$ERR" || RC=$?
 assert "T-06o: state root を解決できない環境でも rc=0 (degraded)" "0" "$RC"
 assert_grep "T-06p: state root 解決失敗を degraded として告知する" "$ERR" 'reason=save_result_json_undecidable'
+
+# run 開始点 pin が **存在するのに読めない** (AC-6 が degraded に置く 5 群目)。pin 不在とは別物 —
+# 現 run を絞れないまま全件を現 run とみなすと前 run の JSON で pass を名乗る。**rc は degraded と
+# pass で同値 (どちらも 0)** なので rc だけでは変異を捕まえられず、JSON_OK の**不在**を pin する。
+PINRO="$SANDBOX/pinro"
+mkdir -p "$PINRO/.rite/review-results" "$PINRO/.rite/state"
+make_result "$PINRO/.rite/review-results" 921 01 "eeee555"
+PINRO_FILE="$PINRO/.rite/state/review-run-since-921.txt"
+printf '%s\n' "921-20260101000001.json" > "$PINRO_FILE"
+chmod 000 "$PINRO_FILE"
+RC=0
+( cd "$PINRO" && bash "$SCRIPT" --pr 921 --commit-sha "eeee555" ) >/dev/null 2>"$ERR" || RC=$?
+chmod 644 "$PINRO_FILE"
+if [ "$(id -u)" = "0" ]; then
+  skip "T-06q-s: run 開始点 pin 読取不能の degraded (root では permission が効かない)"
+else
+  assert "T-06q: pin を読めなくても rc=0 (degraded)" "0" "$RC"
+  assert_grep "T-06r: WARNING で原因を名指しする" "$ERR" 'run 開始点 pin を読めません'
+  assert_not_grep "T-06s: 前 run の JSON で pass を名乗らない" "$ERR" 'REVIEW_SAVE_JSON_OK'
+fi
 
 # ---------------------------------------------------------------------------
 # T-08': caller 契約違反 (未知オプション) は loud に落とす

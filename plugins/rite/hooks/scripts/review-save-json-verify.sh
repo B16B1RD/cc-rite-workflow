@@ -90,7 +90,8 @@ Options:
   --commit-sha SHA  ステップ 1.2.5 で記録した本 cycle の commit SHA (必須)
   --results-dir P   レビュー結果 JSON のディレクトリ (既定: state-path-resolve.sh 経由で解決)
   --since BASENAME  run 開始点の pin。この basename より新しい結果ファイルだけを現 run とみなす。
-                    省略時は state root 配下 .rite/state/review-run-since-{pr}.txt を読む
+                    省略時は state root 配下 .rite/state/review-run-since-{pr}.txt を読む。
+                    空文字を明示すると pin を読まず全件を現 run とみなす (sibling と同じ意味論)
   -h, --help        Show this help
 
 Exit codes:
