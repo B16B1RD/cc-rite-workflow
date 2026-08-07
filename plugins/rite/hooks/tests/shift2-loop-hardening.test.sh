@@ -22,7 +22,7 @@
 #   TC-6b review-nonblocking-record.sh (hooks/,        5 箇所) — 値なしフラグ末尾 → no-hang + exit 1
 #   TC-6c wiki-index-update.sh         (hooks/scripts/, 8 箇所) — 値なしフラグ末尾 → no-hang + exit 2
 #   TC-6d review-cycle-scope.sh        (scripts/,       2 箇所) — 値なしフラグ末尾 → no-hang + exit 2
-#   TC-6e review-save-json-verify.sh   (hooks/scripts/, 4 箇所) — 値なしフラグ末尾 → no-hang + exit 2
+#   TC-6e review-save-json-verify.sh   (hooks/scripts/, 4 箇所) — 値なしフラグ末尾 → no-hang + exit 0 (degraded)
 #   TC-7 anti-pattern guard — 10 スクリプトに実 `shift 2` 文が残存しないこと (comment 参照は許容)
 #
 # 各 TC は `timeout 5` で hang (exit 124) を検出する。値なしフラグはいずれも required value を
@@ -66,7 +66,7 @@ run_no_hang "TC-6 review-skip-notification" "hooks/review-skip-notification.sh" 
 run_no_hang "TC-6b review-nonblocking-record" "hooks/review-nonblocking-record.sh"       "--pr"              "1"
 run_no_hang "TC-6c wiki-index-update"         "hooks/scripts/wiki-index-update.sh"       "--title"           "2"
 run_no_hang "TC-6d review-cycle-scope"        "scripts/review-cycle-scope.sh"            "--pr"              "2"
-run_no_hang "TC-6e review-save-json-verify"   "hooks/scripts/review-save-json-verify.sh" "--bogus"           "2"
+run_no_hang "TC-6e review-save-json-verify"   "hooks/scripts/review-save-json-verify.sh" "--pr"              "0"
 
 # === TC-7: anti-pattern guard — 実 `shift 2` 文が再混入していないこと ===
 # comment 内の `shift 2` 参照 (backtick 囲み) は許容し、実際の statement だけを検出する。

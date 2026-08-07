@@ -3934,7 +3934,7 @@ bash {plugin_root}/hooks/scripts/review-save-json-verify.sh --pr "{pr_number}" -
 | Condition | Action |
 |-----------|--------|
 | ステップ 6 が 6.1.b hard error / 6.1.c ケース 2 (`exit 2`) で fail している | Gate は legitimately skipped — ステップ 6 の失敗として扱う (6.1.c ケース 2 は保存失敗そのものを既に loud に報告しており、本 gate で二重に差し戻さない) |
-| sentinel found AND `marker` == 本 cycle の `REVIEW_SAVE_PENDING_MARKER` | Gate passes — `saved=false` で本行に到達するのは **HEAD 不変の cycle だけ** (新規 commit を伴う cycle は Pre-Check の positive 層が先に `exit 1` する)。その場合は **LLM が `LOCAL_SAVE_FAILED` の reason を completion report に転記してから** the next gate in the 8.0 evaluation order へ進む (非ブロッキング契約により判定は不変) |
+| sentinel found AND `marker` == 本 cycle の `REVIEW_SAVE_PENDING_MARKER` | Gate passes — `saved=false` で本行に到達するのは **HEAD 不変の cycle か、positive 層が degraded に降りた cycle** (新規 commit を伴う cycle は positive 層が degraded でない限り Pre-Check が先に `exit 1` する)。その場合は **LLM が `LOCAL_SAVE_FAILED` の reason を completion report に転記してから** the next gate in the 8.0 evaluation order へ進む (非ブロッキング契約により判定は不変) |
 | sentinel NOT found (ステップ 6 は正常完了している) | **ERROR**: ステップ 6.1.a was skipped in current cycle. Execute ACTION below |
 | sentinel found but `marker` != 本 cycle の `REVIEW_SAVE_PENDING_MARKER` (cycle N-1 のもの) | **ERROR**: ステップ 6.1.a was skipped in current cycle. Execute ACTION below |
 

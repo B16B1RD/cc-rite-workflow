@@ -147,9 +147,10 @@ commit_sha=$(printf '%s' "$commit_sha" | tr '[:upper:]' '[:lower:]')
 command -v jq >/dev/null 2>&1 || _degraded "jq が PATH 上にありません。JSON の commit_sha を読めません"
 
 # ---- results dir と run 開始点 pin の解決 -----------------------------------------
-# 解決順は書込側 hooks/review-result-save.sh・sibling hooks/scripts/review-trend-divergence.sh と
-# 同一 (state-path-resolve.sh → cwd 相対)。セッション worktree 内から呼ばれても main checkout と
-# 同一パスへ解決される。
+# 解決**先**は書込側 hooks/review-result-save.sh・sibling hooks/scripts/review-trend-divergence.sh と
+# 同一 (state-path-resolve.sh、セッション worktree 内から呼ばれても main checkout と同一パスへ解決)。
+# ただし解決に**失敗した**ときの縮退は sibling と異なり cwd 相対へ倒さず _degraded にする —
+# 誤った基準で「JSON 不在 = fail」を宣告する gate になるより、未判定として降りる方が安全側 (AC-6)。
 state_root=""
 if [ -z "$results_dir" ] || [ "$since_set" -eq 0 ]; then
   # `2>/dev/null` は付けない — resolver は git 内外どちらでも rc=0 / 非空を返す設計なので、
