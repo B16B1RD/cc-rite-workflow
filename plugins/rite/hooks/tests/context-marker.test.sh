@@ -231,35 +231,32 @@ assert "marker_get の不明な引数は拒否される" "1" "$badarg_rc"
 # --- Input without a trailing newline is not silently dropped -----------------
 assert "末尾改行の無い最終行も読まれる" "ok" \
   "$(printf '%s' '[CONTEXT] ITERATE_CB=ok' | marker_get ITERATE_CB)"
-assert "末尾改行の無い非 marker 行で無限ループしない" "" \
-  "$(_timeout 5 bash -c "source '$LIB'; printf '%s' 'not a marker' | marker_get ITERATE_CB")"
+# Assert the exit code, not the output: a hang produces empty stdout too, so an
+# output-only assertion passes whether or not the loop terminates.
+_timeout 5 bash -c "source '$LIB'; printf '%s' 'not a marker' | marker_get ITERATE_CB" >/dev/null 2>&1
+loop_rc=$?
+assert "末尾改行の無い非 marker 行で無限ループしない (rc≠124)" "0" "$loop_rc"
 
 # --- T-08 (AC-6): no direct [CONTEXT] echo left in skills/iterate/SKILL.md ----
 # Anchored on the emit idiom, not on the string `[CONTEXT]`: the branch tables,
 # the placeholder legend and the routing prose all name markers and must survive.
-# Too broad and this assertion is permanently red for the wrong reason; too
-# narrow and it is vacuous — so the same pattern is run against the pre-change
-# file below, where it MUST still fire.
+# A count of 0 only means something if the pattern can reach 1, so the pattern is
+# pinned in both directions against inline fixtures below — not against git
+# history, which would resolve to the post-change file once this lands and turn
+# the "it can still fire" check permanently red.
 ITERATE_SKILL="$REPO_ROOT/plugins/rite/skills/iterate/SKILL.md"
 EMIT_IDIOM='(echo|printf)[[:space:]]+([^|;&]*[[:space:]])?["'"'"']?\[CONTEXT\]'
+assert "T-08 grep が直接 echo emit を検出する (positive)" "1" \
+  "$(printf '%s\n' 'echo "[CONTEXT] ITERATE_CB=ok; cycle=1"' | grep -cE "$EMIT_IDIOM" || true)"
+assert "T-08 grep が printf 経由の emit も検出する (positive)" "1" \
+  "$(printf '%s\n' "printf '%s\\\\n' \"[CONTEXT] ITERATE_CB=ok\"" | grep -cE "$EMIT_IDIOM" || true)"
+assert "T-08 grep は marker を語る散文・分岐表を拾わない (negative)" "0" \
+  "$(printf '%s\n' '| `[CONTEXT] ITERATE_CB=fire` | 発火 (ステップ 6 へ) |' | grep -cE "$EMIT_IDIOM" || true)"
+assert "T-08 grep は共有関数の呼び出しを拾わない (negative)" "0" \
+  "$(printf '%s\n' 'marker_emit ITERATE_CB fire "cycle=1"' | grep -cE "$EMIT_IDIOM" || true)"
 if assert_file_exists_or_fail "T-08 iterate/SKILL.md が存在する" "$ITERATE_SKILL"; then
   direct_emits=$(grep -cE "$EMIT_IDIOM" "$ITERATE_SKILL" || true)
   assert "T-08 iterate/SKILL.md に共有関数を経由しない emit が無い (AC-6)" "0" "$direct_emits"
-
-  # Identification power: the same pattern must be non-zero on the pre-change
-  # file, or the assertion above proves nothing about the grep. Resolved from
-  # git history so the check does not depend on a fixture copy drifting.
-  if baseline=$(git -C "$REPO_ROOT" show "origin/develop:plugins/rite/skills/iterate/SKILL.md" 2>/dev/null) \
-     && [ -n "$baseline" ]; then
-    baseline_emits=$(printf '%s\n' "$baseline" | grep -cE "$EMIT_IDIOM" || true)
-    if [ "$baseline_emits" -gt 0 ]; then
-      pass "T-08 grep は変更前ファイルでは発火する (assertion が vacuous でない)"
-    else
-      fail "T-08 grep は変更前ファイルでも 0 件 — assertion が vacuous (パターンを見直すこと)"
-    fi
-  else
-    skip "T-08 変更前ファイルを origin/develop から取得できない (identification power 検証を skip)"
-  fi
 
   # The shared-function call sites must actually exist — "0 direct emits"
   # would also be satisfied by deleting every marker from the file.

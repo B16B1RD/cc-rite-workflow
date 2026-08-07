@@ -180,13 +180,12 @@ marker_get() {
     return 1
   fi
 
-  local prefix="[CONTEXT] $key=" pending="" line body found="" line_branch
-  # `|| [ -n "$pending" ]` keeps the final line when the input has no trailing
-  # newline (a truncated log). `pending` is cleared at the top of the body — on
-  # every path, including the `continue`s — so EOF cannot re-serve the same
-  # line forever.
-  while IFS= read -r pending || [ -n "$pending" ]; do
-    line="$pending"; pending=""
+  local prefix="[CONTEXT] $key=" line="" body found="" line_branch
+  # `|| [ -n "$line" ]` keeps the final line when the input has no trailing
+  # newline (a truncated log). The next `read` hits EOF with nothing to read and
+  # assigns the empty string, so the guard is false on the following pass and the
+  # loop ends — no manual reset is needed to stop EOF re-serving the same line.
+  while IFS= read -r line || [ -n "$line" ]; do
     # Line anchor + whole-token key: the pattern ends at `=`, so `ITERATE_CB`
     # cannot match an `ITERATE_CB_MODE=` line.
     case "$line" in
