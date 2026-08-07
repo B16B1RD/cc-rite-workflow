@@ -89,11 +89,21 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 **限界**: 本機構が保証するのは「6.1.d が完走した」ことまで。ステップ 6 を丸ごと skip した cycle では本 cycle の marker がそもそも作られず、会話に残る前 cycle の**実パス**（前 cycle の helper が削除済）を採ると `pending_marker_absent` として **pass** する（`degraded` にはならない — `degraded` に倒れるのは置換値が空文字か `{...}` 形状のときだけ）。この限界は ステップ 8.0.4 が塞ぐ（下記 [#save-pending-marker](#save-pending-marker)）。
 
 <a id="save-pending-marker"></a>
-## save-pending marker（8.0.4）の設計理由 — anchor 配置 / id 受け渡し / marker の意味 / 差し戻し先
+## save-pending marker（8.0.4）の設計理由 — anchor 配置 / id 受け渡し / marker の意味 / 差し戻し先 / positive 検査（2 層）
 
 本 gate が塞ぐのは「ステップ 6 全体の skip」で、上記「限界」がそのまま顕在化した形になる。この状態では中間サイクルの永続 JSON が残らず、6.1.d の記録コメントも PATCH されないまま、どの gate も発火しない。
 
 **なぜ 6.1.a が落ちやすいか**: 6.1.a は JSON 本文の生成を 5.3.0.M step 1 に譲っており、現在は「bash を 1 行打つだけ」の低顕著性ステップである。E2E 出力最小化下の中間 cycle では、この種のステップが最も落ちやすい。
+
+**negative 検査だけでは「区間ごとの skip」を守れない**: marker の残存検査は negative 検査（「あってはならないものが無いこと」）であり、**機構が起動したこと**を暗黙の前提にしている。ところが marker は 5.3.0.M step 2 で設置され 6.1.a の EXIT trap で削除される — **arming と解除の両方が、飛ばされる区間の内側にある**。したがって 5.3.0.M〜6.1.a を区間ごと飛ばした cycle の観測値は「6.1.a が正常完了して marker を消した」場合とバイト単位で同一になり、`save_pending_marker_absent` として pass する。これは本リポジトリが繰り返し踏んだ「**不在と成功が区別できない**」欠陥と同型である（`prev_finders=` の空が「0 件」と「抽出失敗」の両方を意味した件、`git diff` の rc=0 と出力ゼロ行の件）。実測: PR #2126 の run では cycle 2 で当該区間を経由せずレビューを完了させたところ 8.0.4 は pass し、以降 5 サイクル通して収束トレンド判定が 4 点しか見られず（`files=4 < cycles=5`, `lost=1`）、WARNING は毎回出ていたがループは一度も止まらず backstop（`max_review_cycles`）だけが停止条件として機能した（Issue #2127 D-04）。
+
+**塞ぎ方は positive 検査を足すこと（marker の撤廃ではない）**: `hooks/scripts/review-save-json-verify.sh` が、区間の**外側**で確定する 2 つの独立した事実 — ステップ 1.2.5 で記録した commit SHA と、ディスク上の永続 JSON — を突き合わせ、「本 cycle の commit を `commit_sha` に持つ結果 JSON が現 run に実在するか」を positive に確認する。marker 機構は撤廃しない。両者は検出対象が異なるためである: marker の**残存**は「6.1.a が走ったが完走しなかった」ことの唯一の証拠であり、positive 検査だけに寄せると同じ状況が `save_result_json_absent` に丸められて「途中で落ちた」という原因情報が失われる。判定軸を「ファイルの有無」ではなく commit SHA の一致に置くのは、results dir が `/rite:cleanup` まで同一 PR の複数 cycle・複数 run の JSON を同居させるためで、有無で判定すると前 cycle の JSON で素通りする。run 境界は sibling の `review-trend-divergence.sh` / `review-cycle-scope.sh` と同じ run 開始点 pin（`.rite/state/review-run-since-{pr}.txt`）を同じ LC_ALL=C 昇順比較で共有し、新しい state ファイルは作らない。**既知の残余**: 本 cycle と前 cycle の HEAD が同一のとき（`/rite:fix` の accept-only cycle など新規 commit を伴わない cycle）は前 cycle の JSON が SHA 一致で pass しうる。判定軸を commit SHA と定めた契約（Issue #2127 §4.4）の上での既知の限界であり、silent ではない — 成功 marker `REVIEW_SAVE_JSON_OK=1` の `result_json=` にどのファイルで通ったかが出る。
+
+**2 層は独立に評価する（層の従属化は「守るべき Given でだけ機械強制が降りる」を作る）**: positive 検査は marker 層の `case` の**外側**に置き、3 arm すべてから呼ぶ（marker 残存を検出した枝だけは `*)` arm 内の `exit 1` で helper に到達しない）。内側（marker 不在の `*)` arm）に置くと、marker 値が空文字 / 未置換になる cycle — 5.3.0.M step 2 ごと飛ばした cycle 1、context 圧縮後の resume、read-only な `${TMPDIR}` で marker を作れない環境 — で marker 層が degraded に降り、positive 検査が一度も走らない。それはまさに本節が塞ごうとしている Given そのものである。positive 層の入力（1.2.5 の commit SHA とディスク上の JSON）は marker に一切依存しないので、判定できるのに降ろす理由がない。**層ごとに独立した marker を出す**のもこのためで、helper の成功は `REVIEW_SAVE_GATE=pass` を名乗らず `REVIEW_SAVE_JSON_OK=1` を出す — degraded に降りた marker 層の直後に pass を重ねると、caller の「`degraded` を `pass` と読み替えてはならない」規則と観測値が食い違う。gate 全体の可否は `REVIEW_SAVE_GATE_FAILED=1` の不在で決まる。
+
+**fail と degraded の境界は「存在しない」と「読めない」で引く**: degraded に倒すのは判定に必要な入力・環境が揃わない場合だけ（入力の置換漏れ / 形状不正、jq 不在、state root 未解決、run pin を読めない、results dir を**読めない**）。results dir が**存在しない**のは degraded ではなく fail へ合流させる — dir 不在は「区間ごと skip して JSON も無い」の最も強い証拠であり、degraded に倒すと守るべき Given でだけ機械強制が降りる。逆に permission 起因の読取不能を fail にすると、差し戻し先の 6.1.a を何度実行しても解消せず非収束ループになる（置換漏れを degraded に倒す論拠と同型）。**判定軸の SHA は prefix 一致で比較する** — `references/review-result-schema.md` の正典例が 7 桁短縮（`"commit_sha": "abc1234"`）で書き手側に形状検査が無いため、厳密一致にすると同一 commit の短縮 SHA が「不在」と判定され、やはり差し戻しても直らない。誤一致は `_sha_matches` が**両オペランド**に 7 桁下限を課すことで防ぐ — 比較が双方向である以上、`--commit-sha` 側の入力検査だけでは JSON 側の短すぎる値を止められない（書き手 `hooks/review-result-save.sh` は `commit_sha` を検査しない）。
+
+**`-e` 単独ではなく `-L` との OR で判定する理由**: `-e` は dangling symlink を偽と返すため、単独で使うと「不在」と読んで fail-open し、6.1.a 未実行でも gate が通る。marker は存在そのものが判定値なので symlink 自体の存在も残存として扱う。ステップ 8.0.3 の同判定は `-e` のみで、dangling symlink の marker を fail-open する（意図的な非対称）。
 
 **anchor 配置が設計の核心**: 実行保証の marker は、守る対象（ステップ 6）の**外側**で、かつ**毎 cycle 再生成される**位置に張らなければならない。候補は 2 つあったが等価ではない。
 
