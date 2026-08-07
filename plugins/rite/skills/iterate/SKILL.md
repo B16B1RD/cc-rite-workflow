@@ -68,9 +68,16 @@ argument-hint: "<pr_number>"
 `{issue_number}` / `{branch_name}` は standalone 起動でも flow-state set 呼び出しで必須のため、本コマンド冒頭で flow-state から復元する。skills/open/SKILL.md Step 0 の canonical pattern (一行 + `|| var=""` fallback) と対称化する。
 
 ```bash
+# marker の emit / 照合は共有関数 marker_emit / marker_get が所有する。書式・行頭アンカー・
+# 複数行耐性・branch スコープ・recency の契約は hooks/tests/context-marker.test.sh が SoT
+# （本ファイルに散文で書き戻さないこと）。読み込めないときは縮退させない — marker が出なければ
+# LLM の routing が成立せず、無言で進むと develop 上で誤ったループを回しうる。
+# Bash tool 呼び出し間でシェル状態は引き継がれないため、marker を扱う各ブロックで独立に読み込む。
+source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit できないため中止します" >&2; exit 1; }
+
 iterate_issue=$(bash {plugin_root}/hooks/flow-state.sh get --field issue_number --default "") || iterate_issue=""
 iterate_branch=$(bash {plugin_root}/hooks/flow-state.sh get --field branch --default "") || iterate_branch=""
-echo "[CONTEXT] ITERATE_ISSUE=$iterate_issue; ITERATE_BRANCH=$iterate_branch"
+marker_emit ITERATE_ISSUE "$iterate_issue" "ITERATE_BRANCH=$iterate_branch"
 ```
 
 LLM は `[CONTEXT] ITERATE_ISSUE` / `ITERATE_BRANCH` から値を読み、後続の flow-state.sh set 呼び出しで `--issue` / `--branch` に literal substitute する。値が空の場合は AskUserQuestion で「Issue 番号 / ブランチ名を入力 / 中止」を提示。
@@ -121,6 +128,10 @@ if ! command -v neutralize_ctrl >/dev/null 2>&1; then
   echo "WARNING: control-char-neutralize.sh を読み込めませんでした。診断スニペットの制御文字が素通しします" >&2
   neutralize_ctrl() { cat; }
 fi
+# marker の emit / 照合は共有関数が所有する（ステップ 0 と同型。契約の SoT は
+# hooks/tests/context-marker.test.sh）。neutralize_ctrl と違い縮退させない — 診断の読みやすさが
+# 落ちるのと marker が消えるのとでは帰結が異なり、後者は LLM の routing 自体を壊す。
+source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit できないため中止します" >&2; exit 1; }
 
 # (1) max_review_cycles を rite-config.yml から読取・検証（AC-4）。無効値（0 以下 / 非数値）は WARNING + 既定値 15
 raw_max=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' rite-config.yml 2>/dev/null \
@@ -258,7 +269,8 @@ if [ "$cb_mode_init" = fresh ] || [ "$cur_cc" -eq 0 ] 2>/dev/null; then
     fi
   fi
 fi
-echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CYCLE_MODE=$cb_mode_init; RESET=$reset_status; REFIRE=$cb_will_refire; RUN_SINCE=$run_since_status"
+marker_emit ITERATE_CYCLE_MAX "$max_cycles" "ITERATE_CYCLE=$cur_cc" "ITERATE_CYCLE_MODE=$cb_mode_init" \
+  "RESET=$reset_status" "REFIRE=$cb_will_refire" "RUN_SINCE=$run_since_status"
 ```
 
 `ITERATE_CYCLE_MAX` / `ITERATE_CYCLE` を retain してステップ 1 の上限チェックに渡す。
@@ -320,6 +332,8 @@ if ! command -v neutralize_ctrl >/dev/null 2>&1; then
   echo "WARNING: control-char-neutralize.sh を読み込めませんでした。診断スニペットの制御文字が素通しします" >&2
   neutralize_ctrl() { cat; }
 fi
+# marker の emit / 照合の共有関数（ステップ 0 / 0.6 と同型。本ブロックは emit と照合の両方で使う）。
+source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit・照合できないため中止します" >&2; exit 1; }
 
 cc=$(bash {plugin_root}/hooks/flow-state.sh get --field cycle_count --default 0) || cc=0
 case "$cc" in ''|*[!0-9]*) cc=0 ;; esac
@@ -359,17 +373,21 @@ else
 fi
 trend_out=$(bash {plugin_root}/hooks/scripts/review-trend-divergence.sh \
   --pr {pr_number} --cycle-count "$cc" --since "$run_since"); trend_rc=$?
-trend_verdict=$(printf '%s\n' "$trend_out" | sed -n 's/.*TREND_DIVERGENCE=\([a-z_]*\).*/\1/p' | tail -1)
-trend_series=$(printf '%s\n' "$trend_out" | sed -n 's/.*[;[:space:]]trend=\([^;]*\).*/\1/p' | tail -1)
+# helper の出力から marker を読む。値の切り出しは marker_get が所有する — 行頭アンカー
+# （helper の WARNING が marker 文字列を引用しても拾わない）・複数行 stderr 混入への耐性・
+# 同一 KEY の recency・field 名のトークン完全一致は関数側の契約で、その SoT は
+# hooks/tests/context-marker.test.sh。`reason` の値域や `trend` の区切りをここで文字クラスとして
+# 書き直さないこと — 呼び出し側が値域を写すと helper が値を増やすたびに切り詰めが起きる
+# （例: `[a-z_]` は `need_3_cycles` を `need_` にする）。値域を知るのは helper だけでよい。
+trend_verdict=$(printf '%s\n' "$trend_out" | marker_get TREND_DIVERGENCE)
+trend_series=$(printf '%s\n' "$trend_out" | marker_get TREND_DIVERGENCE --field trend)
 # helper が判定不能の理由を載せる `reason=` は stdout にしか出ない。抽出して marker に載せないと、
 # 「発散検出が全面不作動」と「まだ 3 cycle 目に達していない正常系」が呼び出し側から区別できない。
-# 文字クラスに数字を含める。helper の reason には `need_3_cycles`（全 run が cycle 2-3 で必ず通る
-# 最頻値）があり、`[a-z_]` だけだと `need_` に切り詰められて enum のどの値とも一致しなくなる。
-trend_reason=$(printf '%s\n' "$trend_out" | sed -n 's/.*reason=\([a-z0-9_]*\).*/\1/p' | tail -1)
+trend_reason=$(printf '%s\n' "$trend_out" | marker_get TREND_DIVERGENCE --field reason)
 # 失われた結果の件数。列に穴があることを停止通知まで運ぶ（欠落は verdict を反転させうるため、
 # 合成された推移を実測として描画させない）。`lost=` を出さないのは `_undecidable` 経路だけで、
 # `need_3_cycles` は部分列とともに出す（差し替えと併記が同時成立する — ステップ 6.2 参照）。
-trend_lost=$(printf '%s\n' "$trend_out" | sed -n 's/.*[;[:space:]]lost=\([0-9]*\).*/\1/p' | tail -1)
+trend_lost=$(printf '%s\n' "$trend_out" | marker_get TREND_DIVERGENCE --field lost)
 case "$trend_lost" in ''|*[!0-9]*) trend_lost=0 ;; esac
 if [ "$trend_rc" -ne 0 ] || [ -z "$trend_verdict" ]; then
   # rc=2（引数不正 / jq 不在）や helper 不在（marketplace 版とローカル版の skew 等）。
@@ -423,7 +441,9 @@ if [ -n "$cb_reason" ]; then
   [ -n "$fire_out" ] && printf '%s\n' "$fire_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   # CB_REASON / TREND はステップ 6.2 の停止通知が「理由」行とトレンド推移の表示に使う（AC-4）。
   # ステップ 6 は別の Bash 呼び出しでシェル変数を引き継げないため marker で渡す。
-  echo "[CONTEXT] ITERATE_CB=fire; cycle=$cc; max=$max_cycles; CB_REASON=$cb_reason; TREND=$trend_series; TREND_VERDICT=$trend_verdict; TREND_REASON=$trend_reason; LOST=$trend_lost; RUN_SINCE_USED=$run_since_used; HANDOFF_CLEAR=$handoff_clear"
+  marker_emit ITERATE_CB fire "cycle=$cc" "max=$max_cycles" "CB_REASON=$cb_reason" \
+    "TREND=$trend_series" "TREND_VERDICT=$trend_verdict" "TREND_REASON=$trend_reason" \
+    "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "HANDOFF_CLEAR=$handoff_clear"
 else
   new_cc=$((cc + 1))
   # counter increment（ブレーカーを前進させる主経路）の set も fail-observable にする。silent に
@@ -445,7 +465,9 @@ else
   # 表示は fire 分岐と同一形（毎 cycle 通る最頻経路なので、ここだけ中和を欠くと corrupt state
   # 診断の制御文字が最も高い頻度で端末へ素通しする）。
   [ -n "$inc_out" ] && printf '%s\n' "$inc_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  echo "[CONTEXT] ITERATE_CB=ok; cycle=$new_cc; max=$max_cycles; TREND=$trend_series; TREND_VERDICT=$trend_verdict; TREND_REASON=$trend_reason; LOST=$trend_lost; RUN_SINCE_USED=$run_since_used; INC=$inc_status"
+  marker_emit ITERATE_CB ok "cycle=$new_cc" "max=$max_cycles" \
+    "TREND=$trend_series" "TREND_VERDICT=$trend_verdict" "TREND_REASON=$trend_reason" \
+    "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=$inc_status"
 fi
 ```
 
@@ -566,6 +588,8 @@ if ! command -v neutralize_ctrl >/dev/null 2>&1; then
   echo "WARNING: control-char-neutralize.sh を読み込めませんでした。診断スニペットの制御文字が素通しします" >&2
   neutralize_ctrl() { cat; }
 fi
+# marker の emit / 照合の共有関数（ステップ 0 / 0.6 / 1 と同型）。
+source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit できないため中止します" >&2; exit 1; }
 
 close_phase=$(bash {plugin_root}/hooks/flow-state.sh get --field phase --default review) || close_phase=review
 close_handoff=$(bash {plugin_root}/hooks/flow-state.sh get --field handoff --default "") || close_handoff=""
@@ -585,7 +609,7 @@ else
   echo "WARNING: 完了時の cycle counter リセットに失敗しました。次回 /rite:iterate が resume と判定され、run 開始点 pin が更新されないまま前 run の結果を読みます。残存 counter が上限以上なら次回起動は review を 1 度も回さずに発火します" >&2
 fi
 [ -n "$close_out" ] && printf '%s\n' "$close_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-echo "[CONTEXT] ITERATE_RUN_CLOSE=$run_close; phase=$close_phase"
+marker_emit ITERATE_RUN_CLOSE "$run_close" "phase=$close_phase"
 ```
 
 | `ITERATE_RUN_CLOSE` | 意味 |
@@ -642,6 +666,8 @@ if ! command -v neutralize_ctrl >/dev/null 2>&1; then
   echo "WARNING: control-char-neutralize.sh を読み込めませんでした。診断スニペットの制御文字が素通しします" >&2
   neutralize_ctrl() { cat; }
 fi
+# marker の emit / 照合の共有関数（ステップ 0 / 0.6 / 1 / 5.0.1 と同型）。
+source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit できないため中止します" >&2; exit 1; }
 
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
 # 空値を sentinel に置き換える。rc 検査では救えない（resolver は cwd 削除時にも rc=0 で空文字を返す）。
@@ -701,7 +727,8 @@ fi
 # コマンド文字列にプロジェクト参照が無く、新規端末の既定 cwd は $HOME = 非 git）で実行すると
 # rc=0 のまま $cwd/.rite/sessions/ に別ファイルを作り、当の counter はやはり手つかずで残る。
 # 2 軸のうち片方だけを塞いでも空振りは塞げない。
-echo "[CONTEXT] ITERATE_CB_MODE=$cb_mode; issue={issue_number}; pr={pr_number}; FIRE_RESET=$fire_reset; SESSION_ID=$session_id; STATE_ROOT=$state_root"
+marker_emit ITERATE_CB_MODE "$cb_mode" "issue={issue_number}" "pr={pr_number}" \
+  "FIRE_RESET=$fire_reset" "SESSION_ID=$session_id" "STATE_ROOT=$state_root"
 ```
 
 | `ITERATE_CB_MODE` | アクション |
@@ -791,7 +818,7 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 
 以下の (a) / (b) / (c) と「再開方法」第 1 bullet の差し替えは **ステップ 6.2（対話）専用**で、ステップ 6.1（batch）には適用しない（batch 側の非対称は本節冒頭の「2. `REFIRE=1` / `FIRE_RESET=failed` 注意行の有無」に記したとおり Issue #2026 §4.2 の Non-Target に由来する。batch テンプレートには「再開方法」節自体が無いため差し替え指示も解決先を持たない）。上記「発火理由の文面」の置換表までが 6.1 / 6.2 共通である。
 
-ステップ 0.6 / ステップ 1 / **ステップ 6 共有前段**の `[CONTEXT]` marker を context で観測している場合、下記の条件で上記「理由」行の直後に注意行を追加する（§4.5 の error handling。同じ文面の停止通知が真の非収束と区別できなくなるのを防ぐ）。3 ステップすべてを観測対象に含めること — (b) が読む `FIRE_RESET` はステップ 6 共有前段が、(c) が読む `HANDOFF_CLEAR` はステップ 1 が emit する。値の照合は `;` 区切りの `KEY=VALUE` 単位で完全一致とする（値側は `failed` の部分一致が `failed-refire` / `failed-stale` の両方に当たり、キー側は `RESET` が `FIRE_RESET` の部分文字列になるため、どちらも部分一致で照合してはならない）。注意行および下記の差し替え行に含まれる `{plugin_root}` / `{pr_number}` / `{max_review_cycles}` / `{session_id}` / `{state_root}` はリテラル置換する（`{session_id}` / `{state_root}` はステップ 6 共有前段の `SESSION_ID=` / `STATE_ROOT=` marker の値。**どちらも値が得られないことがあり、その場合は (b) の pre-fill 表に従ってコマンドの当該部分だけを解決手順へ置き換える** — 空値や sentinel をそのまま埋めたコマンドは rc=0 のまま別の state を対象にして空振りするため）。**置換の対象は注意行の散文だけでなく、(b) が人間へ渡すすべての実行可能テキスト** — リセットコマンド本体・その手前の実在確認・pre-fill 表の案内文 — **に及ぶ**。人間の端末で live なシェル変数を前提にした記法（`$root` 等）は、その変数を同じ案内文の中で代入している箇所以外では使わない（未定義変数は空展開して確認や探索が黙って空振りする）。
+ステップ 0.6 / ステップ 1 / **ステップ 6 共有前段**の `[CONTEXT]` marker を context で観測している場合、下記の条件で上記「理由」行の直後に注意行を追加する（§4.5 の error handling。同じ文面の停止通知が真の非収束と区別できなくなるのを防ぐ）。3 ステップすべてを観測対象に含めること — (b) が読む `FIRE_RESET` はステップ 6 共有前段が、(c) が読む `HANDOFF_CLEAR` はステップ 1 が emit する。値の読み取りは共有関数 `marker_get`（[`lib/context-marker.sh`](../../hooks/scripts/lib/context-marker.sh)）の契約に従う — 行頭アンカー・複数行 stderr 混入への耐性・`branch` スコープ・同一 KEY の recency・キーと field 名のトークン完全一致は関数側が所有し、契約の SoT は `hooks/tests/context-marker.test.sh`。注意行および下記の差し替え行に含まれる `{plugin_root}` / `{pr_number}` / `{max_review_cycles}` / `{session_id}` / `{state_root}` はリテラル置換する（`{session_id}` / `{state_root}` はステップ 6 共有前段の `SESSION_ID=` / `STATE_ROOT=` marker の値。**どちらも値が得られないことがあり、その場合は (b) の pre-fill 表に従ってコマンドの当該部分だけを解決手順へ置き換える** — 空値や sentinel をそのまま埋めたコマンドは rc=0 のまま別の state を対象にして空振りするため）。**置換の対象は注意行の散文だけでなく、(b) が人間へ渡すすべての実行可能テキスト** — リセットコマンド本体・その手前の実在確認・pre-fill 表の案内文 — **に及ぶ**。人間の端末で live なシェル変数を前提にした記法（`$root` 等）は、その変数を同じ案内文の中で代入している箇所以外では使わない（未定義変数は空展開して確認や探索が黙って空振りする）。
 
 **(a) `REFIRE=1`**（この起動では review を 1 回も回さずに発火した。前回の最終 cycle 途中で中断した場合の正常な発火と、counter リセット失敗による再発火の**両方**を含む — marker だけでは区別できない）:
 
