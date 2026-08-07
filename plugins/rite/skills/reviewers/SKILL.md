@@ -184,7 +184,7 @@ effective_max resolution (config validation):
   - max_reviewers < min_reviewers  -> WARNING, min_reviewers takes priority (effective_max = min_reviewers)
   - otherwise                      -> effective_max = max_reviewers
   - complexity lane bound          -> when COMPLEXITY_LANE == light (Issue Complexity XS / S, resolved by
-        `skills/pr-review/SKILL.md` ステップ 1.2.8), take the tighter of the two:
+        `skills/pr-review/SKILL.md` ステップ 1.3.2), take the tighter of the two:
         effective_max = min(effective_max, complexity_max) where complexity_max = 3.
         Applied BEFORE the final clamp, so the floors below still win. When COMPLEXITY_LANE is
         `full` (M / L / XL) or the lane could not be resolved, this line is a no-op and the

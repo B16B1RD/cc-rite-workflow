@@ -1,6 +1,6 @@
 # Complexity Lane — XS/S 軽量レーンの SoT
 
-> **Source of Truth**: 本ファイルは Issue の宣言 Complexity に応じて儀式コスト（reviewer の幅と検証の深さ、implement の生産量）を比例させる **XS/S 軽量レーン**の設計根拠・fail-safe 規約・合成規則を定義する。実行時に必要な分岐表・reason 表・marker 名は `SKILL.md` ステップ 1.2.8 / ステップ 3.2.1 / ステップ 4.5 本体と `skills/issue-implement/SKILL.md` 5.1 に置き、本ファイルは rationale を持つ。
+> **Source of Truth**: 本ファイルは Issue の宣言 Complexity に応じて儀式コスト（reviewer の幅と検証の深さ、implement の生産量）を比例させる **XS/S 軽量レーン**の設計根拠・fail-safe 規約・合成規則を定義する。実行時に必要な分岐表・reason 表・marker 名は `SKILL.md` ステップ 1.3.2 / ステップ 3.2.1 / ステップ 4.5 本体と `skills/issue-implement/SKILL.md` 5.1 に置き、本ファイルは rationale を持つ。
 
 ## なぜレーンを設けるのか
 
@@ -18,7 +18,7 @@
 
 レーン自体は `{XS, S}` と `{M, L, XL}` の二値で、cycle 数のような段階判定を持たない（[cycle-scope.md](./cycle-scope.md#cycle-count-degradation-禁止規範との関係) の二値性と同じ理由 — 段階を作ると [finding-cycling.md](./finding-cycling.md) が禁じる progressive degradation と区別がつかなくなる）。
 
-**説明的派生散文の禁止だけが XS 限定**なのは、Issue #2136 がそう規定しているためである（Scope の「XS では」、AC-3 の Given が XS）。S へ広げると要求されていない制約になる。逆に新規テストファイル抑制が XS/S 両方に効くのは、同 Issue が「新規テストファイルは M+ の装備」と書いており、その補集合が `{XS, S}` だからである。**細分化はデータが要求してから行う** — 現時点で XS と S に別々の reviewer 上限や別々の mandate を与える実測上の根拠は無い。
+**説明的派生散文の禁止だけが XS 限定**なのは、本機能を要求した仕様がそう規定しているためである（適用範囲の記述が「XS では」で始まり、対応する受入基準の Given も XS になっている）。S へ広げると要求されていない制約になる。逆に新規テストファイル抑制が XS/S 両方に効くのは、同じ仕様が「新規テストファイルは M+ の装備」と書いており、その補集合が `{XS, S}` だからである。**細分化はデータが要求してから行う** — 現時点で XS と S に別々の reviewer 上限や別々の mandate を与える実測上の根拠は無い。
 
 ## reviewer 上限を Phase 5 に置く理由
 
@@ -34,7 +34,7 @@ cap 適用**後**に落とすフィルタとして実装すると、これらの
 
 ## 固定名簿ではなく cap にした理由
 
-「XS/S の cycle 1 は固定 2〜3 名で回すか、diff の領域から導出するか」は Issue #2136 の Open Question だった。**領域から導出 + cap = 3** を採る。
+「XS/S の cycle 1 は固定 2〜3 名で回すか、diff の領域から導出するか」は設計時の Open Question だった。**領域から導出 + cap = 3** を採る。
 
 固定名簿は、変更が触れた領域と無関係な reviewer を毎回起動し、逆に領域担当を取りこぼす。ステップ 2.2 のパターンマッチは既に「変更ファイル → 領域担当」を解いており、relevance ordering（マッチしたファイル数の多い順）の上位 3 名は定義上その領域の担当そのものである。
 
@@ -58,7 +58,7 @@ cap 適用**後**に落とすフィルタとして実装すると、これらの
 
 - 4 必須自問・Confidence・Observed Likelihood — 指摘の**採否基準**
 - 実測必須ゲートと帰結クラス分類
-- **Cross-File Impact Check** — Issue #2136 が Non-goal として明示的に維持を要求している。これは影響範囲の見落としを防ぐだけでなく、**Complexity 過小宣言を吸収する安全網**でもある。XS と宣言された変更が共有 helper に触れていれば、この検査が波及を検出し、reviewer が宣言の誤りそのものを指摘できる
+- **Cross-File Impact Check** — 本機能の Non-goal として明示的に維持を要求されている。これは影響範囲の見落としを防ぐだけでなく、**Complexity 過小宣言を吸収する安全網**でもある。XS と宣言された変更が共有 helper に触れていれば、この検査が波及を検出し、reviewer が宣言の誤りそのものを指摘できる
 
 「軽量レーンだから報告しない」は禁止である。touched テストの範囲で実測できない指摘は、従来どおりアンカー無しで報告し、実測必須ゲートが non-blocking に分類する。
 
@@ -76,7 +76,7 @@ cap 適用**後**に落とすフィルタとして実装すると、これらの
 | `issue_number_missing` | 関連 Issue を特定できず helper を呼べない（consumer 側） | 対象 Issue が分からなければ宣言値も存在しない |
 | `helper_failed` | helper が marker を出さずに非ゼロ終了した（consumer 側） | 判定結果が得られていない |
 
-helper 側 5 reason の語彙は [issue-complexity-lane.sh](../../../scripts/issue-complexity-lane.sh) の docstring が SoT。consumer 側 2 reason は helper が marker を出せない / 起動されない状況そのものを指すため helper 内では表現できず、[SKILL.md](../SKILL.md) ステップ 1.2.8 に置く（[cycle-scope.md](./cycle-scope.md#fail-safe-は必ずフルレビューへ倒す) の `helper_failed` と同型）。
+helper 側 5 reason の語彙は [issue-complexity-lane.sh](../../../scripts/issue-complexity-lane.sh) の docstring が SoT。consumer 側 2 reason は helper が marker を出せない / 起動されない状況そのものを指すため helper 内では表現できず、[SKILL.md](../SKILL.md) ステップ 1.3.2 に置く（[cycle-scope.md](./cycle-scope.md#fail-safe-は必ずフルレビューへ倒す) の `helper_failed` と同型）。
 
 fail-safe 発火時は **全 reason で WARNING を可視化する**（silent fallback 禁止）。sibling の `review-cycle-scope.sh` は cycle 1 の正常経路である `no_prev_json` だけを無警告にするが、本レーンには「情報が無いのが正常」な reason が存在しない — Complexity は rite が作る全 Issue の Section 0 Meta に必ずあるため、欠落は常に調査に値する。
 
@@ -86,7 +86,7 @@ flow-state は complexity フィールドを持たず、Projects の Complexity 
 
 リポジトリ内に 2 つの記法が併存する（`**Complexity**: X` = [template-structure.md](../../../templates/issue/template-structure.md) Section 0 Meta / `## 複雑度` セクション = [common-principles.md](../../rite-workflow/references/common-principles.md)）ため helper は**両方を受理する**。片方だけ読むと、もう片方で書かれた Issue が全て `complexity_absent` で full へ倒れ、レーンが一度も発動しない。記法 1 を優先し、どちらで読んだかは marker の `source=` で区別できる。
 
-**Complexity の自動判定はしない**（Issue #2136 D-02）。宣言値をそのまま使い、誤宣言の是正は既存の issue-create 見積もり手順と、上記 Cross-File Impact Check の安全網に委ねる。判定器の新設は speculative である。
+**Complexity の自動判定はしない**。宣言値をそのまま使い、誤宣言の是正は既存の issue-create 見積もり手順と、上記 Cross-File Impact Check の安全網に委ねる。判定器の新設は speculative である。
 
 ## Reviewer mandate（軽量レーン適用時に注入する本文）
 
@@ -110,4 +110,4 @@ touched テストの範囲で実測できない指摘は、従来どおりアン
 
 軽量レーンで起動しなかった reviewer 名と、軽量化した mandate は統合レポート（ステップ 5.4）に記録する。この section は **E2E フローでも省略禁止**とする。
 
-理由は [cycle-scope.md](./cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由) の「cycle 2+ は E2E からしか発生しない」とは**異なる** — 軽量レーンの cycle 1 は standalone `/rite:pr-review` からも到達する。省略を禁じる根拠は、本機能が動機づけられた経路そのものにある: Issue #2136 Scenario 1（XS が 1 サイクル収束して**自律マージ**される）は `/rite:iterate` の E2E ループでしか起きない。そこで記録を落とすと、「何名スキップし何を軽量化したか」が人間に届く唯一の同期経路が、本機能の主対象シナリオでだけ消える。観測性の MUST が実質的に空文になる点で `### 実測なし指摘 (non-blocking)` の E2E 例外と同型である。
+理由は [cycle-scope.md](./cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由) の「cycle 2+ は E2E からしか発生しない」とは**異なる** — 軽量レーンの cycle 1 は standalone `/rite:pr-review` からも到達する。省略を禁じる根拠は、本機能が動機づけられた経路そのものにある: 想定シナリオの中心である「XS が 1 サイクル収束して**自律マージ**される」経路は `/rite:iterate` の E2E ループでしか起きない。そこで記録を落とすと、「何名スキップし何を軽量化したか」が人間に届く唯一の同期経路が、本機能の主対象シナリオでだけ消える。観測性の MUST が実質的に空文になる点で `### 実測なし指摘 (non-blocking)` の E2E 例外と同型である。

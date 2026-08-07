@@ -3,7 +3,7 @@
 #
 # Responsibility: 対象 Issue の**宣言 Complexity** だけを入力に、後続工程を軽量レーン (light)
 # で回すかフル装備 (full) で回すかを決める。判定器は作らない — 宣言値をそのまま読む
-# (Issue #2136 D-02)。
+# (判定器は speculative であり、宣言 + Cross-File Impact Check の安全網で足りるため)。
 #
 # 設計根拠の SoT: skills/pr-review/references/complexity-lane.md
 #   - なぜレーン境界を {XS, S} / {M, L, XL} の二値にするか
@@ -12,7 +12,7 @@
 #   - なぜ情報欠落時に必ず full へ倒すか
 #
 # Called from:
-#   - skills/pr-review/SKILL.md ステップ 1.2.8 (Complexity Lane Determination)
+#   - skills/pr-review/SKILL.md ステップ 1.3.2 (Complexity Lane Determination)
 #   - skills/issue-implement/SKILL.md 5.1.0.1 (Complexity 判定 / XS 生産量制約)
 #
 # Usage:
@@ -37,7 +37,7 @@
 #   [CONTEXT] COMPLEXITY_LANE_FALLBACK=1; reason=<reason>           ← fail-safe 経路で追加 emit
 #   ⚠️ Complexity レーン判定のフォールバック: ...                    ← 同上 (人間向け)
 #
-# Fallback reason 語彙 (SoT。skills/pr-review/SKILL.md ステップ 1.2.8 /
+# Fallback reason 語彙 (SoT。skills/pr-review/SKILL.md ステップ 1.3.2 /
 # skills/pr-review/references/complexity-lane.md の reason 表と同期):
 #   gh_missing            — gh が PATH 上に無い
 #   repo_unresolved       — owner/repo を解決できず -R を付けて gh を呼べない

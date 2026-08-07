@@ -174,7 +174,7 @@ assert_grep "E2E Output Minimization registers the lane section as 例外 3" "$P
   '例外 3: ステップ 5\.4 の `### レビューレーン（XS/S 軽量レーン）` section'
 # 例外の根拠は #2118 の複製ではなく Scenario 1 (自律マージ) に基づくこと。
 assert_grep "the E2E exemption is justified by the autonomous-merge scenario" "$LANE" \
-  'Scenario 1（XS が 1 サイクル収束して\*\*自律マージ\*\*される）'
+  '「XS が 1 サイクル収束して\*\*自律マージ\*\*される」経路は'
 
 echo "=== レーン境界と no_speculative_structure ==="
 assert_grep "complexity-lane.md pins the lane boundary table" "$LANE" \
@@ -190,6 +190,6 @@ assert_grep "complexity-lane.md documents accepting both body notations" "$LANE"
   'helper は\*\*両方を受理する\*\*'
 
 if ! print_summary "$(basename "$0")" \
-  "XS/S 軽量レーンの散文契約 (Issue #2136)。挙動側は plugins/rite/scripts/tests/issue-complexity-lane.test.sh を参照。"; then
+  "XS/S 軽量レーンの散文契約。挙動側は plugins/rite/scripts/tests/issue-complexity-lane.test.sh を参照。"; then
   exit 1
 fi
