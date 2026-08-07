@@ -24,7 +24,7 @@ argument-hint: "<pr_number>"
 **サーキットブレーカーの発火条件は 2 つ**:
 
 - **収束トレンドの発散**（主経路）: 永続レビュー JSON の per-cycle blocking 件数から `hooks/scripts/review-trend-divergence.sh` が発散を機械判定する。「直近 2 値がともに過去の最良水準を超え、かつ下降中でもない」を発散とし、**収束中のループは本判定では殺されない**（cycle 数上限は別条件として下記 2. のとおり働く）。判定式の較正根拠（7 本のトラジェクトリによる backtest — 受入基準の契約値 3 本 / 実 run から復元した 3 本 / escape 節を守る合成列 1 本）は helper の header が SoT で、各列の出所は helper のテストが持つ
-- **`safety.max_review_cycles`（既定 5）到達**（保険）: 発散判定をすり抜ける非収束（漸減が続くが 0 に達しない、最良水準での平坦等）を受け止める backstop。`cc >= max_cycles` は trend 判定と**独立した発火条件**であり（ステップ 1 が先に評価するのは両立時にどちらを `CB_REASON` として報告するかを決めるためだけ）、**既定 5 のままでは 6 cycle 以上を要する収束中の run も本経路で停止する** — backtest の `12,5,3,2,2` がその形。なお `10,9,8,7,6` は「漸減が続くが 0 に達しない」escape 節の対象で、本経路へ委ねること自体が設計どおりの帰着（AC-3）であり過剰発火例ではない。既定値をいくつに置くかは未決で、本節は現在値の挙動のみを記述する
+- **`safety.max_review_cycles`（既定 15）到達**（保険）: 発散判定をすり抜ける非収束（漸減が続くが 0 に達しない、最良水準での平坦等）を受け止める backstop。`cc >= max_cycles` は trend 判定と**独立した発火条件**であり（ステップ 1 が先に評価するのは両立時にどちらを `CB_REASON` として報告するかを決めるためだけ）、**16 cycle 以上を要する収束中の run は既定値のままでも本経路で停止する**（backstop を残す以上この性質自体は消えない。引き上げ前の 5 では 6 cycle 以上を要する収束中の run を殺していた — backtest の `12,5,3,2,2` がその形で、cycle 5 時点でも blocking が 2 件残っている）。既定値を 15 へ引き上げた実測起点は PR #2126 の run `8,5,4,6,3` で、収束トレンド判定が**判定の下りた head では一度も発散と判定しなかった**にもかかわらず、cycle 5 完了時点（`cycle_count == 5`、cycle 6 のループ頭）で backstop が発火した（#2129 D-02 / D-04。判定は現 run の結果が 3 件揃うまで降りる — どの reason で降りるかは results dir と run 開始点 pin の状態で分かれるため、内訳はステップ 1 の `TREND_REASON` 説明を参照）。なお `10,9,8,7,6` は「漸減が続くが 0 に達しない」escape 節の対象で、本経路へ委ねること自体が設計どおりの帰着（AC-3）であり過剰発火例ではない。既定 15 は「引き上げ前の 5 が実測で不足したことへの暫定対応」で、最適値は運用データで再評価する
 
 > **Why**: cycle 数上限は努力と無駄を区別できない — 健全に収束中のループも残り数件のところで予算切れになり、発散しているループも上限まで燃やしてしまう（どちらも実運用で観測済み）。「品質を予算で縛らない・無駄は排除する」（CLAUDE.md プロジェクト原則）に従い、切るのは発散であって収束に向かう実サイクルではない。
 
@@ -52,7 +52,7 @@ argument-hint: "<pr_number>"
 | `{pr_number}` | 引数 |
 | `{issue_number}` | flow-state `issue_number` field |
 | `{branch_name}` | flow-state `branch` field |
-| `{max_review_cycles}` | `safety.max_review_cycles` in `rite-config.yml`（既定 5、無効値は既定へフォールバック）。**発散判定をすり抜けた非収束を受け止める backstop**（既定 5 では 6 cycle 以上を要する収束中の run にも上限として働く） |
+| `{max_review_cycles}` | `safety.max_review_cycles` in `rite-config.yml`（既定 15、無効値は既定へフォールバック）。**発散判定をすり抜けた非収束を受け止める backstop**（既定 15 では 16 cycle 以上を要する収束中の run にも上限として働く） |
 | `{fire_reason_line}` | ステップ 6.1 / 6.2 の「理由」行。ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=` から ステップ 6.2「発火理由の文面」表で決める |
 | `{trend}` | ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `TREND=`（カンマ区切りの per-cycle blocking 件数）。停止通知では `→` 区切りへ整形して表示する。空のときの扱いは ステップ 6.2「発火理由の文面」を参照 |
 | `{trend_reason}` | ステップ 1 の `[CONTEXT] ITERATE_CB=` marker の `TREND_REASON=`（helper が返した判定不能の理由。ステップ 6.2「発火理由の文面」の `max-cycles` 分岐と推移行の差し替えで使う） |
@@ -122,12 +122,12 @@ if ! command -v neutralize_ctrl >/dev/null 2>&1; then
   neutralize_ctrl() { cat; }
 fi
 
-# (1) max_review_cycles を rite-config.yml から読取・検証（AC-4）。無効値（0 以下 / 非数値）は WARNING + 既定値 5
+# (1) max_review_cycles を rite-config.yml から読取・検証（AC-4）。無効値（0 以下 / 非数値）は WARNING + 既定値 15
 raw_max=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' rite-config.yml 2>/dev/null \
   | sed 's/[[:space:]]#.*//' | sed 's/.*max_review_cycles:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
 case "$raw_max" in
-  '')            max_cycles=5 ;;                                   # キー欠落 = 既定（正常系、WARNING なし）
-  0|*[!0-9]*)    max_cycles=5; echo "WARNING: safety.max_review_cycles='$raw_max' は無効（0 以下 / 非数値）。既定値 5 を使用します" >&2 ;;
+  '')            max_cycles=15 ;;                                  # キー欠落 = 既定（正常系、WARNING なし）
+  0|*[!0-9]*)    max_cycles=15; echo "WARNING: safety.max_review_cycles='$raw_max' は無効（0 以下 / 非数値）。既定値 15 を使用します" >&2 ;;
   *)             max_cycles=$raw_max ;;
 esac
 
@@ -307,7 +307,7 @@ echo "[CONTEXT] ITERATE_CYCLE_MAX=$max_cycles; ITERATE_CYCLE=$cur_cc; ITERATE_CY
 ループ頭でサーキットブレーカーの **2 つの発火条件** を評価する。**どちらも不成立なら** counter を +1 して `phase=review` に更新後 `/rite:pr-review` を invoke、**いずれかが成立したら** サーキットブレーカー（ステップ 6）へ分岐する:
 
 1. **収束トレンドの発散**（主経路）— `hooks/scripts/review-trend-divergence.sh` が永続レビュー JSON から現 run の per-cycle blocking 列を復元し発散と判定した場合。`cycle_count` が上限未満でも発火する
-2. **`max_review_cycles` 到達**（保険）— 発散判定をすり抜けた非収束を受け止める backstop（既定 5 では収束中の run にも届きうる）
+2. **`max_review_cycles` 到達**（保険）— 発散判定をすり抜けた非収束を受け止める backstop（既定 15 では 16 cycle 以上を要する収束中の run にも届きうる）
 
 `max_review_cycles` は marker 依存を避けるため config から silent 再読込する（検証・WARNING はステップ 0.6 で実施済）:
 
@@ -325,7 +325,7 @@ cc=$(bash {plugin_root}/hooks/flow-state.sh get --field cycle_count --default 0)
 case "$cc" in ''|*[!0-9]*) cc=0 ;; esac
 raw_max=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' rite-config.yml 2>/dev/null \
   | sed 's/[[:space:]]#.*//' | sed 's/.*max_review_cycles:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
-case "$raw_max" in ''|0|*[!0-9]*) max_cycles=5 ;; *) max_cycles=$raw_max ;; esac  # 検証済。ここは silent fallback
+case "$raw_max" in ''|0|*[!0-9]*) max_cycles=15 ;; *) max_cycles=$raw_max ;; esac  # 検証済。ここは silent fallback
 
 # 収束トレンド判定。永続レビュー JSON から現 run の per-cycle blocking 列を復元し、
 # 発散していれば cycle 上限未到達でも発火させる。判定は helper に閉じており、LLM は verdict を
@@ -459,7 +459,7 @@ fi
 | `CB_REASON` | 意味 |
 |---|---|
 | `divergence` | 収束トレンドが発散と判定された（`cycle_count < max_review_cycles` でも発火する）。無駄な cycle を早期に切る主経路 |
-| `max-cycles` | `cycle_count >= max_review_cycles`。発散判定をすり抜けた非収束を受け止める保険（既定 5 では収束中の run にも届く。両方成立する場合もこちらを理由として報告する） |
+| `max-cycles` | `cycle_count >= max_review_cycles`。発散判定をすり抜けた非収束を受け止める保険（既定 15 では 16 cycle 以上を要する収束中の run にも届く。両方成立する場合もこちらを理由として報告する） |
 
 `TREND_VERDICT` は**両分岐に載る**トレンド判定の診断値。`ok`（収束中・下降中）/ `fire`（発散）/ `insufficient`（データ不足・データ異常で判定不能）/ `unavailable`（helper 自体を実行できなかった）を取る。`insufficient` / `unavailable` は発火しない側へ倒れ、`max_review_cycles` が従来どおり backstop として働く。**`fire` 分岐にも載せる**のは、`CB_REASON=max-cycles` で停止したときに発散判定が下りていたのか未実施だったのかをステップ 6.2 が読み分ける必要があるため（下記 `TREND_REASON` と組で使う）。
 
@@ -847,7 +847,7 @@ handoff 迂回のリスクは (b) には含めない。**counter reset の失敗
 
 - ユーザーが Ctrl+C で中断した場合: flow-state に現 phase (review or fix) が残るので `/rite:recover` で本コマンドが再起動する (詳細な phase → command routing は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.3 を参照)
 - `[fix:error]` 時: 自動継続せず必ず AskUserQuestion で確認 (silent regression 防止)
-- reviewer が non-deterministic に振動 (毎 cycle で別の指摘) する場合: 収束トレンドの発散判定が先に発火し、それをすり抜けた場合も `safety.max_review_cycles`（既定 5）到達でサーキットブレーカーが発火する（ステップ 6）。batch / 対話とも人間に問わず機械的に停止し（発火＝失敗の記録）、`/rite:batch-run` バッチ実行は `[iterate:max-cycles-reached]` を emit して当該 Issue を failed 扱いにし次 Issue へ進み、対話実行は `[iterate:max-cycles-stopped]` の停止通知で終了する。再開は人間による `/rite:iterate {pr}` の明示的な再実行のみ。Ctrl+C による手動中断も従来どおり可能
+- reviewer が non-deterministic に振動 (毎 cycle で別の指摘) する場合: 収束トレンドの発散判定が先に発火し、それをすり抜けた場合も `safety.max_review_cycles`（既定 15）到達でサーキットブレーカーが発火する（ステップ 6）。batch / 対話とも人間に問わず機械的に停止し（発火＝失敗の記録）、`/rite:batch-run` バッチ実行は `[iterate:max-cycles-reached]` を emit して当該 Issue を failed 扱いにし次 Issue へ進み、対話実行は `[iterate:max-cycles-stopped]` の停止通知で終了する。再開は人間による `/rite:iterate {pr}` の明示的な再実行のみ。Ctrl+C による手動中断も従来どおり可能
 
 ---
 
@@ -859,7 +859,7 @@ rationale: [stop-loop-continuation-contract.md#mechanism](../../references/stop-
 ## 設計判断
 
 - **blocking 指摘ゼロ（mergeable）到達が正常出口** — blocking の定義式は本ファイルに複製せず [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) を SoT とする（同 § は reviewer finding に閉じた canonical 式と fix loop 全体を対象とする consumer 式の差を「適用範囲」で意図的なスコープ差として定義している。本スキルはループ側なので後者に従い、実測の有無を判定できない指摘は blocking のまま扱う）。実測を伴わない指摘は non-blocking として `/rite:pr-review` ステップ 6.1.d の PR 記録コメント・ステップ 5.4 統合レポート・永続 JSON に記録されたまま残存するため、**非実測指摘が N 件残った状態でも `[review:mergeable]` に到達してループが正常終了しうる**（#2024）— 残存分は draft PR の人間レビューに委ねる設計。加えてサーキットブレーカーを唯一の自動安全網として持ち、reviewer の非決定的振動や非収束 PR による無限ループを構造的に防ぐ。同一 finding 検出 / quality signal escalation といった細粒度の安全網は依然として持たない（CLAUDE.md「シンプルさを死守」）
-- **ブレーカーの発火条件は「発散」であって「予算切れ」ではない** — 主経路は収束トレンドの発散検出（`hooks/scripts/review-trend-divergence.sh`）で、`safety.max_review_cycles`（既定 5）はそれをすり抜ける非収束を受け止める backstop へ格下げした（ただし既定 5 では収束中の run にも届く。既定値は未決）。cycle 数上限だけでは努力と無駄を区別できない（健全に収束中でも上限で殺し、発散していても上限まで燃やす）ため、「品質を予算で縛らない・無駄は排除する」（CLAUDE.md プロジェクト原則）に反していた。判定は helper に閉じ LLM の裁量を介在させない。判定式は実運用で観測されたトラジェクトリで backtest して確定した定数であり、**窓幅や閾値を config キーにしない** — 調整の実需が観測されてから Issue を切って設定化する（`no_speculative_structure`）。判定式の較正根拠と意図した境界（最良水準での平坦は発火させない = false positive 回避）は helper の header が SoT
+- **ブレーカーの発火条件は「発散」であって「予算切れ」ではない** — 主経路は収束トレンドの発散検出（`hooks/scripts/review-trend-divergence.sh`）で、`safety.max_review_cycles`（既定 15）はそれをすり抜ける非収束を受け止める backstop へ格下げした（backstop を残す以上 16 cycle 以上を要する収束中の run には届くが、引き上げ前の 5 の頃のように 6 cycle 以上を要する収束中の run を殺すことは無くなった。既定 15 の根拠は #2129 D-02 で、最適値は運用データで再評価する）。cycle 数上限だけでは努力と無駄を区別できない（健全に収束中でも上限で殺し、発散していても上限まで燃やす）ため、「品質を予算で縛らない・無駄は排除する」（CLAUDE.md プロジェクト原則）に反していた。判定は helper に閉じ LLM の裁量を介在させない。判定式は実運用で観測されたトラジェクトリで backtest して確定した定数であり、**窓幅や閾値を config キーにしない** — 調整の実需が観測されてから Issue を切って設定化する（`no_speculative_structure`）。判定式の較正根拠と意図した境界（最良水準での平坦は発火させない = false positive 回避）は helper の header が SoT
 - **発火理由は停止構造を変えない** — sentinel（`[iterate:max-cycles-reached]` / `[iterate:max-cycles-stopped]`）・handoff クリア・counter reset はいずれも発火理由に依らず不変で、変わるのは停止通知の「理由」行と blocking 推移の表示だけである。sentinel を理由別に分けない理由は、`/rite:batch-run` が前者の literal を grep して failed 記録・cursor 前進を行う契約を壊さないため。名称が「max-cycles」のまま発散発火にも使われるのは軽微な misnomer だが、契約の安定を優先する
 - **発火＝失敗の機械的記録（batch / 対話で同一）**: 発火時は両モードとも人間に問わず停止する（#2026）。導入時（#1701）は対話モードの UX として AskUserQuestion（継続 / 中止 / draft のまま停止）を残していたが、人間の裁量で counter をリセットして続行できる経路は「品質ゲートを機械的に履行する」方針に対する例外であり、人間エスカレーションは責任転嫁で終端にならない。継続は人間が明示的に `/rite:iterate {pr}` を再実行する経路のみに絞り、そのとき counter はステップ 6 の共有前段が既にリセットしている。`/rite:batch-run` バッチ実行は従来どおり failed 扱いで次 Issue へ自動遷移する（バッチ全体のストール防止）
 - **cycle counter は flow-state に保持**: 専用 state file (`.rite/state/*.count` 等) は持たず、`cycle_count` を flow-state の merge-preserve フィールドとして永続化する（`worktree` と同じ additive パターン）。resume を跨いで継続し（AC-3）、fresh entry（phase が review/fix 以外）で 0 リセットして run バッチの Issue 間リークを防ぐ。加えて**発火が sentinel として記録される直前**（ステップ 6 の共有前段）と**正常終了時**（ステップ 5.0.1）で 0 にリセットする — 後者は run を明示的に閉じるためで、閉じないと次回起動が resume 判定になりステップ 0.6 の pin 更新条件（`cur_cc == 0`）に入らず、新 run が前 run の pin を引き継ぐ — リセットしないと再実行が即再発火してループを再開する術が無くなるが、発火後は継続 handoff が（ステップ 1 fire 分岐の set で）default-clear されて自動再入場の経路が消えるため、リセットしても自動継続は生じない。リセットを fire 分岐ではなく共有前段に置くのは、「発火は無記録・counter は 0」という最悪の組み合わせが成立する窓を狭めるため（共有前段より手前で turn が終わればこの窓では counter が上限のまま残り、次回ループ頭で再発火する）。**共有前段の実行後・sentinel 出力前の窓は残存する** — 完全な閉塞には sentinel 出力を Stop hook に強制させる handoff が要るが、その reason 文面の是正は Non-Target の `hooks/stop-loop-continuation.sh` 改修を伴うため別 Issue とする。「発火済み」を別マーカー（例: `cycle_count = max + 1`）として次回起動まで持ち越す設計は採らない。持ち越すと「発火したか」を `max_review_cycles` との相対比較で符号化することになり、同値が invocation 間で変わりうる（毎回 config から読み直す）ため符号化が両方向に破綻する（上限を下げれば未発火が発火済みと誤認され、上げれば発火済みが認識されない、#2026）。Stop hook の handoff とは独立（handoff は one-shot consume される継続マーカー、cycle_count は accumulate されるカウンタ）

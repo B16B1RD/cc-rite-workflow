@@ -133,13 +133,13 @@ run_trend 104 3 6 5 3
 assert_grep "T-01e: 先頭 4 cycle 時点でも発火しない" "$OUT" "TREND_DIVERGENCE=ok"
 
 # ---------------------------------------------------------------------------
-# T-02: 発散トラジェクトリで cycle 上限 (既定 5) より早く発火 (AC-2)
+# T-02: 発散トラジェクトリで cycle 上限 (既定 15) より早く発火 (AC-2)
 # ---------------------------------------------------------------------------
 echo "--- T-02: 発散 run の早期検出 (AC-2) ---"
 
 run_trend 200 3 7 7 4
 assert_grep "T-02a: #2052 run1 の 3,7,7,4 は発火する" "$OUT" "TREND_DIVERGENCE=fire"
-assert_grep "T-02a: 既定上限 5 より早い cycle 3 で発火する" "$OUT" "fire_at=3"
+assert_grep "T-02a: 既定上限 15 より早い cycle 3 で発火する" "$OUT" "fire_at=3"
 
 run_trend 201 2 3 6
 assert_grep "T-02b: #2052 run3 の 2,3,6 は発火する" "$OUT" "TREND_DIVERGENCE=fire"
