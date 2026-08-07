@@ -1,0 +1,194 @@
+#!/bin/bash
+# max-review-cycles-default.test.sh
+#
+# `safety.max_review_cycles` の既定値 15 を pin する (Issue #2129)。
+#
+# 2 系統の検査を持つ:
+#   1. 挙動 (T-01〜T-03) — iterate/SKILL.md から fallback ブロックを literal 抽出し、
+#      sandbox の rite-config.yml に対して実行して解決値を確かめる。テストへコピーすると
+#      SKILL.md 側の変更が反映されず drift するため、base-update-classify.test.sh と同じ
+#      抽出実行方式を取る。抽出アンカーが壊れたらテスト自体が FATAL で落ちる。
+#   2. 記述の一致 (T-04) / 契約の不変 (T-05) — 既定値は 8 ファイルに複製されており、
+#      1 箇所でも取り残されると読者が「その経路は別の値」と誤読する。cycle-scope-contract.test.sh
+#      と同じ static-contract 方式で grep-pin する。
+#
+# **抽出対象は 2 サイトある**: ステップ 0.6 (検証 + WARNING つき) と ステップ 1
+# (silent 再読込)。後者がブレーカーの発火可否を実際に決めるサイトなので、
+# 片方だけ pin すると drift が素通りする。
+#
+# 検査対象外 (Issue #2129 §4.2 が MUST NOT modify に指定):
+#   plugins/rite/skills/fix/references/fix-relaxation-rules.md
+#   plugins/rite/hooks/scripts/review-trend-divergence.sh
+# 両者の散文には引き上げ前の値が残る。所在は docs/CONFIGURATION.md の safety 節が記録している。
+
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_test-helpers.sh"
+
+PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
+REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
+
+ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
+TEMPLATE_CFG="$PLUGIN_ROOT/templates/config/rite-config.yml"
+EXEC_METRICS="$PLUGIN_ROOT/references/execution-metrics.md"
+CONFIG_DOC="$REPO_ROOT/docs/CONFIGURATION.md"
+SPEC_DOC="$REPO_ROOT/docs/SPEC.md"
+
+DEFAULT_CYCLES=15
+
+TEST_DIR="$(mktemp -d)"
+trap 'rm -rf "$TEST_DIR"' EXIT
+
+# --- SKILL.md から 2 つの fallback サイトを抽出 ---------------------------------
+
+STEP06="$TEST_DIR/step06.sh"
+awk '/^# \(1\) max_review_cycles を rite-config\.yml から読取・検証/{f=1} f{print} f&&/^esac$/{exit}' \
+  "$ITERATE" > "$STEP06"
+printf 'echo "max_cycles=$max_cycles"\n' >> "$STEP06"
+if ! grep -qE '^case "\$raw_max" in' "$STEP06" || ! grep -qx 'esac' "$STEP06"; then
+  echo "FATAL: ステップ 0.6 の fallback ブロック抽出に失敗しました (アンカーが変更された可能性)" >&2
+  echo "  抽出結果: $(wc -l < "$STEP06") 行" >&2
+  exit 1
+fi
+
+# ステップ 1 の silent 再読込は 1 行の case。直前の raw_max= 代入 (2 行) と組で意味を持つため、
+# 「最後に現れた raw_max= から silent fallback 行まで」を取る。ステップ 0.6 側の raw_max= で
+# 一度バッファが立つが、ステップ 1 の raw_max= で捨てて取り直すので混線しない。
+STEP1="$TEST_DIR/step1.sh"
+awk '/^raw_max=\$\(awk/ { buf=$0; c=1; next }
+     c { buf = buf "\n" $0; if (/silent fallback/) { print buf; exit } }' \
+  "$ITERATE" > "$STEP1"
+printf 'echo "max_cycles=$max_cycles"\n' >> "$STEP1"
+if ! grep -q 'silent fallback' "$STEP1" || ! grep -q '^raw_max=' "$STEP1"; then
+  echo "FATAL: ステップ 1 の silent fallback 抽出に失敗しました (アンカーが変更された可能性)" >&2
+  echo "  抽出結果: $(wc -l < "$STEP1") 行" >&2
+  exit 1
+fi
+
+STDERR_LOG="$TEST_DIR/stderr.log"
+
+# run_snippet <snippet> <config-body> — sandbox に rite-config.yml を置いて解決値を返す
+run_snippet() {
+  local snippet="$1" cfg="$2"
+  local sandbox="$TEST_DIR/sandbox"
+  rm -rf "$sandbox"; mkdir -p "$sandbox"
+  printf '%s\n' "$cfg" > "$sandbox/rite-config.yml"
+  ( cd "$sandbox" && bash "$snippet" 2>"$STDERR_LOG" ) | sed -n 's/^max_cycles=//p'
+}
+
+CFG_KEY_ABSENT='safety:
+  max_implementation_rounds: 20
+  time_budget_minutes: 120'
+CFG_NO_SAFETY='commands:
+  test: null'
+CFG_ZERO='safety:
+  max_review_cycles: 0'
+CFG_NON_NUMERIC='safety:
+  max_review_cycles: abc'
+CFG_EXPLICIT='safety:
+  max_review_cycles: 7'
+CFG_EXPLICIT_COMMENTED='safety:
+  max_review_cycles: 7   # explicit override'
+
+echo "=== T-01: キー未設定時の既定は $DEFAULT_CYCLES (AC-1) ==="
+assert "T-01a: ステップ 0.6 — safety はあるがキー欠落" \
+  "$DEFAULT_CYCLES" "$(run_snippet "$STEP06" "$CFG_KEY_ABSENT")"
+assert "T-01b: ステップ 0.6 — safety セクションごと不在" \
+  "$DEFAULT_CYCLES" "$(run_snippet "$STEP06" "$CFG_NO_SAFETY")"
+assert "T-01c: ステップ 1 — safety はあるがキー欠落" \
+  "$DEFAULT_CYCLES" "$(run_snippet "$STEP1" "$CFG_KEY_ABSENT")"
+assert "T-01d: ステップ 1 — safety セクションごと不在" \
+  "$DEFAULT_CYCLES" "$(run_snippet "$STEP1" "$CFG_NO_SAFETY")"
+# キー欠落は正常系。WARNING を出さないことまで pin する (出すと通常運用が毎回ノイズを吐く)
+run_snippet "$STEP06" "$CFG_KEY_ABSENT" >/dev/null
+assert "T-01e: キー欠落は WARNING を出さない (正常系)" "" "$(cat "$STDERR_LOG")"
+
+echo "=== T-02: 無効値のフォールバック先も $DEFAULT_CYCLES + WARNING (AC-2) ==="
+assert "T-02a: ステップ 0.6 — 0 は既定へフォールバック" \
+  "$DEFAULT_CYCLES" "$(run_snippet "$STEP06" "$CFG_ZERO")"
+assert_grep "T-02b: 0 のとき WARNING の値も $DEFAULT_CYCLES" "$STDERR_LOG" \
+  "既定値 $DEFAULT_CYCLES を使用します"
+assert "T-02c: ステップ 0.6 — 非数値は既定へフォールバック" \
+  "$DEFAULT_CYCLES" "$(run_snippet "$STEP06" "$CFG_NON_NUMERIC")"
+assert_grep "T-02d: 非数値のとき WARNING の値も $DEFAULT_CYCLES" "$STDERR_LOG" \
+  "既定値 $DEFAULT_CYCLES を使用します"
+assert "T-02e: ステップ 1 — 0 は既定へフォールバック" \
+  "$DEFAULT_CYCLES" "$(run_snippet "$STEP1" "$CFG_ZERO")"
+assert "T-02f: ステップ 1 — 非数値は既定へフォールバック" \
+  "$DEFAULT_CYCLES" "$(run_snippet "$STEP1" "$CFG_NON_NUMERIC")"
+# ステップ 1 は検証済み前提の silent 再読込。ここで WARNING を出すと cycle ごとに重複告知になる
+run_snippet "$STEP1" "$CFG_ZERO" >/dev/null
+assert "T-02g: ステップ 1 の無効値フォールバックは silent" "" "$(cat "$STDERR_LOG")"
+
+echo "=== T-03: 明示設定は既定値に上書きされない (AC-3) ==="
+assert "T-03a: ステップ 0.6 — 明示値 7 をそのまま使う" \
+  "7" "$(run_snippet "$STEP06" "$CFG_EXPLICIT")"
+assert "T-03b: ステップ 1 — 明示値 7 をそのまま使う" \
+  "7" "$(run_snippet "$STEP1" "$CFG_EXPLICIT")"
+assert "T-03c: ステップ 0.6 — 行末コメント付きの明示値も 7" \
+  "7" "$(run_snippet "$STEP06" "$CFG_EXPLICIT_COMMENTED")"
+assert "T-03d: ステップ 1 — 行末コメント付きの明示値も 7" \
+  "7" "$(run_snippet "$STEP1" "$CFG_EXPLICIT_COMMENTED")"
+
+echo "=== T-04: 既定値の記述が全複製箇所で揃っている (AC-4) ==="
+# 実装 fallback は 3 サイト (ステップ 0.6 のキー欠落 / 無効値、ステップ 1 の silent)。
+# 数まで pin するのは、1 サイトだけ書き換えて残りが取り残される drift が本 Issue の主因のため。
+assert "T-04a: iterate/SKILL.md の fallback 3 サイトすべてが $DEFAULT_CYCLES" \
+  "3" "$(grep -c "max_cycles=$DEFAULT_CYCLES" "$ITERATE")"
+assert_not_grep "T-04b: iterate/SKILL.md に旧 fallback (max_cycles=5) が残っていない" "$ITERATE" \
+  'max_cycles=5([^0-9]|$)'
+assert_grep "T-04c: 無効値 WARNING の文言も $DEFAULT_CYCLES" "$ITERATE" \
+  "既定値 $DEFAULT_CYCLES を使用します"
+
+# AC-4 が名指しする 3 ファイル + 既定値を書いている他 2 ファイル。
+# 「既定 N」「default: N」形式の断定的な記述だけを見る (「引き上げ前の 5」のような
+# 履歴の言及は誤検出しない)。
+for f in "$ITERATE" "$TEMPLATE_CFG" "$CONFIG_DOC" "$SPEC_DOC" "$EXEC_METRICS"; do
+  base="$(basename "$f")"
+  assert_file_exists_or_fail "T-04: $base が存在する" "$f" || continue
+  assert_not_grep "T-04: $base に「既定 5」が残っていない" "$f" '既定値? 5([^0-9]|$)'
+  assert_not_grep "T-04: $base に「default: 5」が残っていない" "$f" 'max_review_cycles.*default: 5([^0-9]|$)'
+  assert_not_grep "T-04: $base に YAML 値 5 が残っていない" "$f" 'max_review_cycles: 5([^0-9]|$)'
+done
+
+# positive 側。値を消しただけ / 別の値に書き換わった drift は negative 検査を素通りする。
+assert_grep "T-04d: templates/config が $DEFAULT_CYCLES" "$TEMPLATE_CFG" \
+  "max_review_cycles: $DEFAULT_CYCLES .*default: $DEFAULT_CYCLES"
+assert "T-04e: execution-metrics の config サンプル 2 箇所が $DEFAULT_CYCLES" \
+  "2" "$(grep -c "max_review_cycles: $DEFAULT_CYCLES # .*default: $DEFAULT_CYCLES" "$EXEC_METRICS")"
+assert_grep "T-04f: CONFIGURATION.md の safety 表の Default 列が $DEFAULT_CYCLES" "$CONFIG_DOC" \
+  "\`max_review_cycles\` \| integer \| \`$DEFAULT_CYCLES\`"
+assert "T-04g: CONFIGURATION.md の YAML 例 2 箇所が $DEFAULT_CYCLES" \
+  "2" "$(grep -c "max_review_cycles: $DEFAULT_CYCLES" "$CONFIG_DOC")"
+assert "T-04h: SPEC.md の既定値言及 2 箇所が $DEFAULT_CYCLES" \
+  "2" "$(grep -c "default $DEFAULT_CYCLES" "$SPEC_DOC")"
+# 既定値から導出される事実 (trend が武装する cycle 4 から backstop 到達までの loop head 数、
+# backstop が止める収束 run の長さ)。数値だけ置換して散文を放置する drift を止める。
+assert_grep "T-04i: CONFIGURATION.md の loop head 数が $DEFAULT_CYCLES から導出された値" "$CONFIG_DOC" \
+  "default budget of $DEFAULT_CYCLES that leaves twelve loop heads"
+assert_grep "T-04j: CONFIGURATION.md の backstop 到達 cycle が 16" "$CONFIG_DOC" \
+  'backstop takes over at the head of cycle 16'
+assert_grep "T-04k: iterate/SKILL.md が「16 cycle 以上」で記述されている" "$ITERATE" \
+  '16 cycle 以上'
+# トレンド判定が発火しうる下限 (4 以上) を満たす値であることの明記 (§4.4 MUST)
+assert_grep "T-04l: CONFIGURATION.md が下限 4 制約と既定値の関係を明記" "$CONFIG_DOC" \
+  "is 4 or more.*default of $DEFAULT_CYCLES satisfies that lower bound"
+# 既定値の複製が多いこと自体を drift 源として記録する (§4.4 SHOULD)
+assert_grep "T-04m: CONFIGURATION.md が既定値の複製箇所を drift 源として記録" "$CONFIG_DOC" \
+  'default for `max_review_cycles` is duplicated across the repository'
+
+echo "=== T-05: backstop の発火条件と sentinel が不変 (AC-5) ==="
+# 既定値の引き上げは backstop を撤廃しない (Issue #2129 D-01 / MUST NOT)。
+assert_grep "T-05a: ステップ 1 の backstop 判定 (cc >= max_cycles) が残っている" "$ITERATE" \
+  '^if \[ "\$cc" -ge "\$max_cycles" \] 2>/dev/null; then'
+assert_grep "T-05b: ステップ 0.6 の再発火述語 (cur_cc >= max_cycles) が残っている" "$ITERATE" \
+  '^if \[ "\$cur_cc" -ge "\$max_cycles" \] 2>/dev/null; then'
+assert_grep "T-05c: batch 側 sentinel が変わっていない" "$ITERATE" \
+  '<!-- \[iterate:max-cycles-reached\] -->'
+assert_grep "T-05d: 対話側 sentinel が変わっていない" "$ITERATE" \
+  '<!-- \[iterate:max-cycles-stopped\] -->'
+assert_grep "T-05e: batch-run 側のブレーカー受けが同じ sentinel を見ている" \
+  "$PLUGIN_ROOT/skills/batch-run/SKILL.md" '\[iterate:max-cycles-reached\]'
+
+print_summary "max-review-cycles-default"
