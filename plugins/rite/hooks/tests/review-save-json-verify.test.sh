@@ -318,7 +318,7 @@ assert_not_grep "T-11b: 偽造 pass 行が桁 0 に出ない" "$ERR" '^\[CONTEXT
 # 終端錨は「一覧行の形でないインデント行」で打つ。診断ブロックの特定行 (`切り分け:`) に
 # 錨を打つと、_scrub と無関係な行追加・字下げ変更で誤発火し、しかも失敗ラベルが制御文字
 # 混入を名指しして原因を誤誘導する (本 PR の cycle 3 が同ブロックに 1 行足した = 1 編集先)。
-assert_grep "T-11g: 一覧に 1 件が列挙されている (T-11f の前提)" "$ERR" '現 run に実在する JSON \(1 件\)'
+assert_grep "T-11g: seen_count の 1 件表示 (T-11f の actual=2 を「2 件」と「1 件が 2 行」で切り分ける)" "$ERR" '現 run に実在する JSON \(1 件\)'
 _inj_rows=$(awk '/現 run に実在する JSON \(/{f=1;next} f&&/^ /&&!/^    - /{exit} f{print}' "$ERR" | grep -c .)
 assert "T-11f: 実在 JSON 一覧が 1 行に収まる (走査経路の制御文字で行が割れない)" "1" "$_inj_rows"
 
@@ -357,7 +357,7 @@ assert_grep "T-12c: キー欠落は別表示になる" "$ERR" 'commit_sha=<キ�
 DIR_TMPRO="$SANDBOX/tmpro"; mkdir -p "$DIR_TMPRO"
 chmod 500 "$DIR_TMPRO"
 if [ -w "$DIR_TMPRO" ]; then
-  skip "T-12d-e: 書込不可 TMPDIR を作れない (root 実行では permission が効かない)"
+  skip "T-12d-f: 書込不可 TMPDIR を作れない (root 実行では permission が効かない)"
 else
   RC=0
   TMPDIR="$DIR_TMPRO" bash "$SCRIPT" --pr 940 --commit-sha "99999aa" \
