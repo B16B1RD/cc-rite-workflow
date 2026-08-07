@@ -24,6 +24,7 @@
 * **Update**: [ratchet test では occurrence 単位 (`grep -oE | wc -l`) を原則とし line 単位は混在させない](pages/patterns/test-counting-occurrence-vs-line-unit.md) — raw/fixes/20260807T082131Z-pr-2135.md を統合（1 行 1000 字超の段落で `grep -c` が期待値 3 に対し 2 を返した / 単位の誤りが pin 対象集合の理解そのものを誤らせた）
 * **Update**: [列挙・全称主張を持つ記述は書き直しでは収束しない — 撤去だけが指摘面を消す](pages/anti-patterns/enumeration-claim-rewrite-never-converges.md) — raw/fixes/20260807T085227Z-pr-2135.md を統合（3 cycle 費やして到達した形は最初より抽象的 / helper の内部分岐は分岐条件まで正しく書けないなら名指ししない）
 * **Update**: [ERE の ? を多バイト文字に直接掛けると LC_ALL=C でバイト単位評価になり検出が失効する](pages/anti-patterns/ere-optional-quantifier-on-multibyte-char.md) — raw/fixes/20260807T074604Z-pr-2135.md を統合（シェル変数の直後に多バイト文字が来る箇所はブレースで囲む / 半角スペース必須の検出パターンは表記揺れの分だけ穴が残る）
+* **lint:warning** — contradictions=0, stale=20, orphans=0, missing_concept=0, unregistered_raw=303, broken_refs=0
 
 ## 2026-08-06
 
