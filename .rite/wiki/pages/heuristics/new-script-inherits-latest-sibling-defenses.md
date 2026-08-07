@@ -2,9 +2,9 @@
 type: "heuristics"
 title: "テンプレート流用の新規スクリプトは最新兄弟の防御を継承する"
 domain: "heuristics"
-description: "既存スクリプトをテンプレートに新規スクリプトを作ると、兄弟スクリプト群が後から獲得した防御（wc -l 空白正規化、usage 契約と実装の一致）を継承し漏らす。流用元は最も古い兄弟でなく最も新しい兄弟を選ぶ。転記元は git grep で全サイトを列挙し git log -S で最終更新を確認してから決める。実装だけでなくその根拠として引用した事実も同時に stale になる。"
+description: "既存スクリプトをテンプレートに新規スクリプトを作ると、兄弟スクリプト群が後から獲得した防御（wc -l 空白正規化、usage 契約と実装の一致）を継承し漏らす。流用元は最も古い兄弟でなく最も新しい兄弟を選ぶ。転記元は git grep で全サイトを列挙し git log -S で最終更新を確認してから決める。実装だけでなくその根拠として引用した事実も同時に stale になる。防御を強制する静的検査がファイル名の明示列挙型なら、新規ファイルは構造的にその死角へ入る — 新規追加時はリストへの登録要否を必ず確認し、列挙を sweep 型にできないか検討する。"
 created: "2026-07-19T15:00:00+09:00"
-updated: "2026-08-06T02:49:27Z"
+updated: "2026-08-07T23:45:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260719T022247Z-pr-1909.md"
@@ -12,8 +12,10 @@ sources:
     ref: "raw/fixes/20260719T022630Z-pr-1909.md"
   - type: "reviews"
     ref: "raw/reviews/20260805T233057Z-pr-2120.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260807T134638Z-pr-2137.md"
 tags: []
-confidence: medium
+confidence: high
 ---
 
 # テンプレート流用の新規スクリプトは最新兄弟の防御を継承する
@@ -50,9 +52,25 @@ PR #2120 は `.rite/logs/.gitignore` を生成する 3 番目の書き手を追�
 
 なお、同じ idiom のコピーが 4 つに分岐している状態そのものが別の問題である（[同一箇所への指摘が N cycle 連続したら、その箇所が何番目のコピーかを数える](./idiom-copy-count-decides-patch-vs-extract.md)）。
 
+### 防御を強制する静的検査が「ファイル名の明示列挙」型なら、新規ファイルはその死角に入る（PR #2137 実測）
+
+継承漏れは「先例を参照しなかった」だけが原因ではない。**先例を強制するはずの静的検査そのものが、新規ファイルを構造的に見ない形をしている**ことがある。
+
+`hooks/scripts/lib/context-marker.sh` を新設した際、引数パーサが `shift 2` を使い、値なしフラグが末尾に来ると無限ループした（実測 rc=124）。同ディレクトリの `worktree-git.sh` は同じ失敗を名指しするコメント付きで `shift 2 || shift` を、`review-save-json-verify.sh` 等 10 本は `shift; shift` を既に採用しており、さらに専用テスト `hooks/tests/shift2-loop-hardening.test.sh` の TC-7 が後者を**静的に強制**していた。にもかかわらず新規ファイルだけが後退した理由は単純で、**TC-7 の検査対象がファイル名の明示列挙で、`lib/` 配下を 1 本も含んでいなかった**。新規ファイルは「守られている」と見える family に属しながら、実際にはどのガードにも触れていない。
+
+この形は、[スイープの検証 grep にスイープ対象と同一パターンを再利用する](../anti-patterns/sweep-verification-grep-shares-blind-spot.md) と同じ「検証側が持つ死角」の一種だが、死角の作り方が違う — あちらはパターンの表現形式、こちらは**対象集合の列挙方式**である。
+
+**手順に足す**:
+
+5. 新規ファイルを既存ディレクトリへ足したら、そのディレクトリを対象にする hardening test / lint を `grep -rl "$(basename <sibling>)" hooks/tests/` 等で洗い、**列挙型ならリストへの登録要否を判断する**
+6. 列挙型を見つけたら、`lib/*.sh` のような sweep 型へ置換できないかを同時に検討する（登録漏れは列挙型である限り再発する。列挙そのものを置かない方針は [列挙・全称主張を持つ記述は書き直しでは収束しない — 撤去だけが指摘面を消す](../anti-patterns/enumeration-claim-rewrite-never-converges.md) と同旨）
+
+**修正の検出力は変異で実測する**: 同 PR では引数ガード無効化 + `shift 2` 復元の変異で新規 assertion が rc=124 で落ちることを確認した。「テストを足した」だけでは、それが何を守るのか分からない（[アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](./mutation-testing-measures-assertion-strength.md)）。
+
 ## 関連ページ
 
 - [再発防止 guard スクリプトは docstring の宣言意図と実装 regex を実測で校正する](./guard-script-contract-calibration.md)
+- [スイープの検証 grep にスイープ対象と同一パターンを再利用する](../anti-patterns/sweep-verification-grep-shares-blind-spot.md)
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 - [同一箇所への指摘が N cycle 連続したら、その箇所が何番目のコピーかを数える](./idiom-copy-count-decides-patch-vs-extract.md)
 
@@ -61,3 +79,4 @@ PR #2120 は `.rite/logs/.gitignore` を生成する 3 番目の書き手を追�
 - [PR #1909 review results (cycle 1)](../../raw/reviews/20260719T022247Z-pr-1909.md)
 - [PR #1909 fix results (cycle 1)](../../raw/fixes/20260719T022630Z-pr-1909.md)
 - [PR #2120 review results (cycle 1)](../../raw/reviews/20260805T233057Z-pr-2120.md)
+- [PR #2137 fix results — ファイル名列挙型の hardening test が新規 lib を死角に入れる](../../raw/fixes/20260807T134638Z-pr-2137.md)

@@ -2,7 +2,8 @@
 title: "Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する"
 domain: "anti-patterns"
 created: "2026-04-24T14:55:00+00:00"
-updated: "2026-08-06T00:40:00+09:00"
+description: "「N site pin した」という claim と実 assert の gap は regression 検出インフラへの信頼を破壊する。実装を N 箇所すべて直しても pin が M<N 箇所しか無ければ、残り N-M 箇所は修正を外しても suite が green のまま生存する — 「適用箇所数」と「pin 箇所数」は別の数字であり、fix の完了条件に両者の一致を含める。0 件を assert する counting assertion は、同じ commit 内で pattern が 1 に到達しうることを示さない限り、それ自身が空振り経路を持つ。gap の検出は mutation（canonical phrase の 1 文字 drift / 修正 hunk の revert）で実測する。"
+updated: "2026-08-07T23:45:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260722T221143Z-pr-1973.md"
@@ -42,6 +43,8 @@ sources:
     ref: "raw/reviews/20260803T004941Z-pr-2094.md"
   - type: "reviews"
     ref: "raw/reviews/20260802T163111Z-pr-2094.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260807T141527Z-pr-2137.md"
 tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase, same-file-3-site-sync, subsidiary-claim-empirical-verification, cross-file-cross-site-coverage, multi-axis-mutation-verification, channel-collision, negative-control]
 confidence: high
 ---
@@ -439,8 +442,35 @@ helper の reason 語彙 4 種のうち 2 種に assertion が 0 本だった。
 
 新規 pin だけでなく、**置換した pin** も「旧 pin ではこの mutation が見えなかった」ことを実測する。PR #2114 cycle 4 では、旧 `grep -cF` の caller pin が呼び出しのコメントアウトを素通しすること、旧 `^  mv` pin が BSD 相当の `mv`（rc=0 / 無 stderr）では mutation の有無に関わらず落ちることを、それぞれ shim で実測した。
 
+## 変種: 実装の「適用箇所数」と test の「pin 箇所数」は別の数字
+
+PR #2137 cycle 2 では、この gap を 3 reviewer（security / error-handling / application）が独立に最大の指摘として検出した。cycle 1 の指摘は「拒否経路の ERROR 文が生値をエコーする」で、fix は**実数 5 箇所すべてに `_marker_scrub` を適用して実装側は 5/5 で網羅的**だった。ところが追加した test が pin したのは 2 箇所だけで、**残り 3 箇所は scrub を外しても 61/61 green のまま生存した**。
+
+生存が実害に届いた 1 箇所は `marker_get` の KEY 拒否経路である。interpolation の直後が `')。英数字と…` という日本語文字列だったため、`X<改行>[CONTEXT] ITERATE_CB=fire; x=` を渡すと列 0 に完全な偽 marker 行が立ち、`marker_get ITERATE_CB` が主値を `fire` として読み戻せた。「実装は全部直した」と「守られている」の距離が、そのまま偽 marker の成立余地になっていた。
+
+> **fix の完了条件に「適用箇所数 == pin 箇所数」を含める。** 実装側の網羅を数えたら、同じ数え方で pin 側も数える。片側だけの網羅は [Asymmetric Fix Transcription](./asymmetric-fix-transcription.md) の test 軸での現れ方である。
+
+### 併発: 新規 assertion 自身が空振り経路を持つ（counting assertion の 0 件）
+
+同 cycle の fix が追加した偽造検出 assertion 2 本は `$(... 2>&1 >/dev/null)` で **stderr のみ**を捕捉し、`grep -c '^\[CONTEXT\] '` が 0 であることを assert していた。この形は「ERROR が出ない」も「ERROR が stdout へ移る」も合格として読む。実測では `>&2` を外すだけで green のままで、しかも `>&2` 除去と scrub 素通しを併せると偽 marker が **stdout**（marker 消費者が grep する側）へ実際に出るのに、その経路を名乗る当の assertion が pass した。
+
+直前の commit が別のテストに対して「A count of 0 only means something if the pattern can reach 1」として positive/negative pin を入れたばかりで、その規約が新規 assertion へ伝播していなかった — 規約の伝播漏れもまた同 PR 内で起きる。
+
+> **`grep -c ... == 0` を書くときは、同じ commit 内で pattern が 1 に到達しうることを in-suite で示す。** 到達性を示さない 0 件 assertion は、対象が存在しないのかチャネルが違うのかを区別できない（[absence pin は「base に存在・head に不在」の両側を単一行トークンで検証する](../patterns/absence-pin-base-present-head-absent-single-line.md) と同じ非 vacuous 性の要求）。
+
+### 派生: 「fix したか」と「fix を守る test があるか」を分けて判定すると cycle が焼き直しにならない
+
+同 cycle の 5 reviewer は全員が前 cycle の指摘 9 件すべてに FIXED / NOT_FIXED / PARTIAL を明示し、うち複数が **「実装は FIXED、pin は PARTIAL」**という分解を行った。この分解があると次 cycle の fix 対象が「もう一度同じ実装を直す」ではなく「テストを足す」に確定し、同一指摘の循環を避けられる。
+
+### 併発: 新設コメントが同一ファイル内の契約を誤って引用する
+
+同じ fix が新設したコメントは「emit の拒否経路は空値を契約違反として扱う」と書いたが、実測では `marker_emit KEY ""` は rc 0 で成功する（同ファイルの Contract 節が「値は空でよい」と明記し、テスト 3 本が固定している）。emit が拒否するのは空の **field 名**であって空の**値**ではない。新しいガードを入れる根拠として書かれた文だったため、**存在しない対称性を根拠にしている**状態になった。
+
+> 「既存の X に合わせた」と書くときは X の実挙動を実測してから書く（[散文が引用する実装は文字一致・帰属・behavioral test の 3 点で裏取りする](../heuristics/prose-cited-implementation-behavioral-verification.md)）。
+
 ## ソース（追記分）
 
 - [PR #2094 review results (cycle 2) — 静的 pin が行継続文字を照合せず 1 文字 drift を素通り](../../raw/reviews/20260803T004941Z-pr-2094.md)
 - [PR #2094 review results — load-bearing なコードコメントに対応するテストが無い](../../raw/reviews/20260802T163111Z-pr-2094.md)
 - [PR #2114 review results — チャネル衝突による vacuous assertion と抽出 regex の外に落ちる反例](../../raw/reviews/20260805T095118Z-pr-2114.md)
+- [PR #2137 review results (cycle 2) — 実装 5/5 適用に対し pin は 2/5、counting assertion 自身の空振り経路](../../raw/reviews/20260807T141527Z-pr-2137.md)

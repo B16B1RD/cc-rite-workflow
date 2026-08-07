@@ -25,6 +25,9 @@
 * **Update**: [列挙・全称主張を持つ記述は書き直しでは収束しない — 撤去だけが指摘面を消す](pages/anti-patterns/enumeration-claim-rewrite-never-converges.md) — raw/fixes/20260807T085227Z-pr-2135.md を統合（3 cycle 費やして到達した形は最初より抽象的 / helper の内部分岐は分岐条件まで正しく書けないなら名指ししない）
 * **Update**: [ERE の ? を多バイト文字に直接掛けると LC_ALL=C でバイト単位評価になり検出が失効する](pages/anti-patterns/ere-optional-quantifier-on-multibyte-char.md) — raw/fixes/20260807T074604Z-pr-2135.md を統合（シェル変数の直後に多バイト文字が来る箇所はブレースで囲む / 半角スペース必須の検出パターンは表記揺れの分だけ穴が残る）
 * **lint:warning** — contradictions=0, stale=20, orphans=0, missing_concept=0, unregistered_raw=303, broken_refs=0
+* **Update**: [新規診断出力の追加は同一ファイル内の既存 control-char 中和規約を踏襲する](pages/anti-patterns/new-diagnostic-path-skips-existing-neutralize-convention.md) — raw/reviews/20260807T133323Z-pr-2137.md を統合（拒否経路の ERROR 文が未検証値を無加工でエコーし、拒否した出力の中に列 0 の偽 marker が立った / 中和関数の定義位置は検査ブロックより前でなければ拒否経路を覆えない）
+* **Update**: [テンプレート流用の新規スクリプトは最新兄弟の防御を継承する](pages/heuristics/new-script-inherits-latest-sibling-defenses.md) — raw/fixes/20260807T134638Z-pr-2137.md を統合（防御を強制する静的検査がファイル名の明示列挙型だと新規ファイルは構造的に死角へ入る / 列挙を sweep 型にできないか検討する）
+* **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — raw/reviews/20260807T141527Z-pr-2137.md を統合（実装 5/5 適用に対し pin は 2/5 で残り 3 箇所が green のまま生存 / 0 件を assert する counting assertion は pattern が 1 に到達しうることを同 commit で示す）
 
 ## 2026-08-06
 

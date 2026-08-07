@@ -2,14 +2,16 @@
 type: "anti-patterns"
 title: "新規診断出力の追加は同一ファイル内の既存 control-char 中和規約を踏襲する"
 domain: "anti-patterns"
-description: "既存の診断出力（stderr）が制御文字中和ヘルパー経由で emit される規約を持つファイルに、新規のエラー出力経路を追加すると、その規約を見落として生の制御バイトを stderr へ漏らしうる。"
+description: "既存の診断出力（stderr）が制御文字中和ヘルパー経由で emit される規約を持つファイルに、新規のエラー出力経路を追加すると、その規約を見落として生の制御バイトを stderr へ漏らしうる。入力検証を持つ helper では拒否経路の診断出力が最も漏れやすい — 検証を通らなかった値こそが壊れた値であり、それを無加工で引用すると拒否経路そのものが当の構造を成立させる。中和ヘルパーの定義位置は検査ブロックより前でなければ拒否経路を覆えない。"
 created: "2026-07-09T19:44:33+09:00"
-updated: "2026-07-09T19:44:33+09:00"
+updated: "2026-08-07T23:45:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260709T102352Z-pr-1812.md"
   - type: "fixes"
     ref: "raw/fixes/20260709T103432Z-pr-1812.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260807T133323Z-pr-2137.md"
 tags: ["control-char", "neutralize", "stderr", "security", "jq"]
 confidence: high
 ---
@@ -63,9 +65,22 @@ fi
 
 回帰テストは corrupt な値に ESC バイトを混入させ、実際の stderr 出力に生の `0x1b` が残らないことを `od -c` や `LC_ALL=C grep` で検証する（`cat -v` のみでは中和済みかどうか判別しづらい場合があるため、バイト単位の検証を推奨）。
 
+### 変種: 拒否経路の診断が、拒否した当の入力によって成立する（PR #2137 cycle 1 実測）
+
+最も漏れやすい診断出力は「入力検証を通らなかった値」を引用するものである。**検証を通らなかった値こそが壊れた値**であり、それを無加工で引用する診断は、検証と同じ強度で守らないと拒否経路そのものが攻撃面になる。
+
+`hooks/scripts/lib/context-marker.sh` の `marker_emit` は、改行を含む KEY を契約違反として rc 1 で拒否する。しかし ERROR 文がその KEY を無加工でエコーしたため、**拒否した出力の中に列 0 の `[CONTEXT]` 行が現れた**。marker の消費者は列 0 の `[CONTEXT] ` 行だけを marker 候補として読む規約なので（[LLM が読む出力ストリームで marker を契約にするには prefix・行頭・デリミタ・識別子スコープの 4 条件すべてが要る](../patterns/llm-read-marker-contract-four-conditions.md)）、拒否経路が当の偽 marker を成立させたことになる。
+
+同リポジトリの `review-save-json-verify.sh` は同一の失敗を明記したうえで `_scrub()` を持っており、**その定義位置は検査ブロックより前**である。定義が検査ブロックより後だと拒否経路を覆えないため、位置そのものが load-bearing になる。新規 lib はこの先例から漏れていた（[テンプレート流用の新規スクリプトは最新兄弟の防御を継承する](../heuristics/new-script-inherits-latest-sibling-defenses.md) と同時発生）。
+
+**確認手順**: 入力検証を持つ helper を書いたら、拒否経路の ERROR 文が引用する値を列挙し、それぞれが中和/サニタイズ関数を通っているかを見る。通っていない場合、その値で「検証が拒否したはずの構造」を出力側に組み立てられないかを実測する（改行 + プロトコル prefix の注入が最頻）。
+
+なお PR #2137 では実装 5 箇所すべてに `_marker_scrub` を適用したにもかかわらず、テストが pin したのは 2 箇所だけで、残り 3 箇所は scrub を外しても suite が green のまま生存した — 修正の網羅と pin の網羅は別の数字である（[Test pin protection theater](./test-pin-protection-theater.md)）。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](./asymmetric-fix-transcription.md)
+- [LLM が読む出力ストリームで marker を契約にするには prefix・行頭・デリミタ・識別子スコープの 4 条件すべてが要る](../patterns/llm-read-marker-contract-four-conditions.md)
 - [jq -n create mode: 既存値を読み取ってから再構築する](../patterns/jq-create-mode-preserve-existing.md)
 - [stderr ノイズ削減: truncate ではなく selective surface で解く](../heuristics/stderr-selective-surface-over-truncate.md)
 
@@ -73,3 +88,4 @@ fi
 
 - [PR #1812 review cycle 2 (MEDIUM: 未中和 error() 検出)](../../raw/reviews/20260709T102352Z-pr-1812.md)
 - [PR #1812 fix cycle 2 (中和経路への統一)](../../raw/fixes/20260709T103432Z-pr-1812.md)
+- [PR #2137 review results (cycle 1) — 拒否経路の ERROR 文が未検証値を無加工でエコーし列 0 の偽 marker を成立させる](../../raw/reviews/20260807T133323Z-pr-2137.md)
