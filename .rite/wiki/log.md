@@ -28,6 +28,7 @@
 * **Update**: [新規診断出力の追加は同一ファイル内の既存 control-char 中和規約を踏襲する](pages/anti-patterns/new-diagnostic-path-skips-existing-neutralize-convention.md) — raw/reviews/20260807T133323Z-pr-2137.md を統合（拒否経路の ERROR 文が未検証値を無加工でエコーし、拒否した出力の中に列 0 の偽 marker が立った / 中和関数の定義位置は検査ブロックより前でなければ拒否経路を覆えない）
 * **Update**: [テンプレート流用の新規スクリプトは最新兄弟の防御を継承する](pages/heuristics/new-script-inherits-latest-sibling-defenses.md) — raw/fixes/20260807T134638Z-pr-2137.md を統合（防御を強制する静的検査がファイル名の明示列挙型だと新規ファイルは構造的に死角へ入る / 列挙を sweep 型にできないか検討する）
 * **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — raw/reviews/20260807T141527Z-pr-2137.md を統合（実装 5/5 適用に対し pin は 2/5 で残り 3 箇所が green のまま生存 / 0 件を assert する counting assertion は pattern が 1 に到達しうることを同 commit で示す）
+* **lint:warning** — contradictions=0, stale=20, orphans=0, missing_concept=0, unregistered_raw=303, broken_refs=0
 
 ## 2026-08-06
 
