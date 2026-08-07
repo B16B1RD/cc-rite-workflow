@@ -551,7 +551,7 @@ Settings for parallel implementation using Task tool.
 
 Parallel implementation is automatically activated when ALL of the following conditions are met:
 1. `parallel.enabled` is `true`
-2. Issue complexity is M or higher
+2. Issue complexity resolves to the full lane **with a declared value** — `M` or higher. A lane fail-safe (Complexity absent / unreadable) does **not** satisfy this condition: on this gate the full lane would mean "allow parallel sub-agents", so a missing declaration falls back to sequential implementation
 3. Multiple independent files/components are identified in the implementation plan
 
 **How it works:**

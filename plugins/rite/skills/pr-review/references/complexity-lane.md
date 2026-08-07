@@ -1,6 +1,6 @@
 # Complexity Lane — XS/S 軽量レーンの SoT
 
-> **Source of Truth**: 本ファイルは Issue の宣言 Complexity に応じて儀式コスト（reviewer の幅と検証の深さ、implement の生産量）を比例させる **XS/S 軽量レーン**の設計根拠・fail-safe 規約・合成規則を定義する。実行時に必要な分岐表・reason 表・marker 名は `SKILL.md` ステップ 1.3.2 / ステップ 3.2.1 / ステップ 4.5 本体と `skills/issue-implement/SKILL.md` 5.1 に置き、本ファイルは rationale を持つ。
+> **Source of Truth**: 本ファイルは Issue の宣言 Complexity に応じて儀式コスト（reviewer の幅と検証の深さ、implement の生産量）を比例させる **XS/S 軽量レーン**の設計根拠・fail-safe 規約・合成規則を定義する。実行時に必要な分岐表・reason 表・marker 名は `SKILL.md` ステップ 1.3.2 / ステップ 3.2.1 / ステップ 4.5 本体と `skills/issue-implement/SKILL.md` 5.0.C / 5.1.0.8 に置き、本ファイルは rationale を持つ。
 
 ## なぜレーンを設けるのか
 
@@ -78,7 +78,9 @@ cap 適用**後**に落とすフィルタとして実装すると、これらの
 
 helper 側 5 reason の語彙は [issue-complexity-lane.sh](../../../scripts/issue-complexity-lane.sh) の docstring が SoT。consumer 側 2 reason は helper が marker を出せない / 起動されない状況そのものを指すため helper 内では表現できず、[SKILL.md](../SKILL.md) ステップ 1.3.2 に置く（[cycle-scope.md](./cycle-scope.md#fail-safe-は必ずフルレビューへ倒す) の `helper_failed` と同型）。
 
-fail-safe 発火時は **全 reason で WARNING を可視化する**（silent fallback 禁止）。sibling の `review-cycle-scope.sh` は cycle 1 の正常経路である `no_prev_json` だけを無警告にするが、本レーンには「情報が無いのが正常」な reason が存在しない — Complexity は rite が作る全 Issue の Section 0 Meta に必ずあるため、欠落は常に調査に値する。
+**`full` が保守的な側であるとは限らない consumer が存在する**: レビュー側は `full` = reviewer を減らさない = 安全側だが、`issue-implement` 5.1.0.1 の並列実装ゲートでは `full` = 並列 sub-agent を許可する = 攻撃的な側になる。そのため同ゲートは `COMPLEXITY_LANE=full` 単独ではなく **`complexity=` の存在（= `COMPLEXITY_LANE_FALLBACK` の不在）** を判定キーにし、fail-safe 経路を順次実装へ倒している。**新規 consumer は `full` を「重い側」と仮定せず、必ず `COMPLEXITY_LANE_FALLBACK` を見ること。**
+
+fail-safe 発火時は **全 reason で WARNING を可視化する**（silent fallback 禁止）。consumer 側 2 reason（`issue_number_missing` / `helper_failed`）も同形の `⚠️ Complexity レーン判定のフォールバック: reason=<reason>。フル装備 (M+ 相当) で実行します。` を出力する。sibling の `review-cycle-scope.sh` は cycle 1 の正常経路である `no_prev_json` だけを無警告にするが、本レーンには「情報が無いのが正常」な reason が存在しない — Complexity は rite が作る全 Issue の Section 0 Meta に必ずあるため、欠落は常に調査に値する。
 
 ## Complexity の抽出元を Issue body に限る理由
 

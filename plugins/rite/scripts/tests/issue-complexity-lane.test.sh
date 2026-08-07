@@ -55,13 +55,34 @@ run_lane_with_body() {
 # issue view --json body --jq '.body' だけを模倣する。それ以外の呼び出しは失敗させ、
 # helper が想定外の gh サブコマンドに依存し始めたらテストが落ちるようにする。
 case "$1 $2" in
-  "issue view") cat "$RITE_TEST_BODY_FILE"; exit 0 ;;
+  "issue view")
+    # helper は SSH host alias 環境で別リポジトリを引かないよう -R を必ず明示する契約。
+    # shim 側で検査しないと -R を落とす回帰が素通りする。
+    case "$*" in *" -R "*) ;; *) echo "gh shim: -R が指定されていません: $*" >&2; exit 1 ;; esac
+    cat "$RITE_TEST_BODY_FILE"; exit 0 ;;
   *) echo "unexpected gh invocation: $*" >&2; exit 1 ;;
 esac
 GH_SHIM
   chmod +x "$bindir/gh"
   LANE_STDERR=$(RITE_TEST_BODY_FILE="$TEST_DIR/body.txt" PATH="$bindir:$PATH" \
     bash "$TARGET" --issue 42 --repo owner/repo "$@" 2>&1)
+  LANE_RC=$?
+}
+
+# --repo を渡さない経路 (production の pr-review 1.3.2 / issue-implement 5.0.C は渡さない)。
+# 非 git ディレクトリで実行し gh repo view も失敗させることで owner/repo 解決を全滅させる。
+run_lane_without_repo() {
+  local bindir="$TEST_DIR/bin-norepo" cwd="$TEST_DIR/nongit"
+  mkdir -p "$bindir" "$cwd"
+  cat > "$bindir/gh" <<'GH_SHIM'
+#!/bin/bash
+case "$1 $2" in
+  "repo view") echo "gh: not a repository" >&2; exit 1 ;;
+  *) echo "unexpected gh invocation: $*" >&2; exit 1 ;;
+esac
+GH_SHIM
+  chmod +x "$bindir/gh"
+  LANE_STDERR=$(cd "$cwd" && PATH="$bindir:$PATH" bash "$TARGET" --issue 42 2>&1)
   LANE_RC=$?
 }
 
@@ -150,6 +171,27 @@ run_lane_with_body '## 複雑度
 '
 assert_contains "TC-3.2: 箇条書き形式でも読む" "$LANE_STDERR" "COMPLEXITY_LANE=full; complexity=XL; source=body_section"
 
+run_lane_with_body '## 複雑度
+
+XS
+'
+assert_contains "TC-3.2b: 記法 2 の XS も light になる" "$LANE_STDERR" "COMPLEXITY_LANE=light; complexity=XS; source=body_section"
+
+# 抽出は**行頭側から最初のトークン**を採る。greedy な `.*` に戻すと行内最後を拾い、
+# 宣言 M が S へ解決されて M+ が silent に light へ落ちる (AC-4 / MUST NOT 違反)。
+run_lane_with_body '## 複雑度
+
+M（S ではない）
+'
+assert_contains "TC-3.2c: 宣言値の後ろに根拠を書いた行でも宣言値を採る" "$LANE_STDERR" "COMPLEXITY_LANE=full; complexity=M"
+assert_not_contains "TC-3.2d: 行内後方のトークンを拾って light へ倒さない" "$LANE_STDERR" "COMPLEXITY_LANE=light"
+
+# 値は語として切り出す。`[A-Za-z]{1,2}` を境界なしで使うと `XSmall` が `XS` に切り詰められ、
+# 宣言していない light レーンへ落ちる。
+run_lane_with_body '**Complexity**: XSmall'
+assert_not_contains "TC-2.11: XSmall を XS に切り詰めて light へ倒さない" "$LANE_STDERR" "COMPLEXITY_LANE=light"
+assert_contains "TC-2.12: XSmall は fail-safe で full へ倒れる" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_"
+
 # 記法 1 が存在するときは記法 1 を優先する (source= で区別できること自体が観測性の要求)。
 run_lane_with_body '**Complexity**: M
 
@@ -178,9 +220,22 @@ assert_contains "TC-4.6: 未知の値は complexity_invalid" "$LANE_STDERR" "COM
 assert_not_contains "TC-4.7: complexity_invalid で light へ倒さない" "$LANE_STDERR" "COMPLEXITY_LANE=light"
 
 # 未展開の placeholder は「テンプレートのまま起票された」ことを示す。値として通してはならない。
+# needle は reason まで書き切る。`reason=complexity_` で打ち切ると absent と invalid を
+# 区別できず、docstring の宣言と実挙動が食い違っても green のまま通る。
 run_lane_with_body '**Complexity**: {complexity}'
-assert_contains "TC-4.8: 未展開 placeholder は full へ倒れる" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_"
-assert_not_contains "TC-4.9: 未展開 placeholder で light へ倒さない" "$LANE_STDERR" "COMPLEXITY_LANE=light"
+assert_contains "TC-4.8: 未展開 placeholder は complexity_absent (英字以外は抽出式が受理しない)" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
+assert_not_contains "TC-4.8b: 未展開 placeholder で light へ倒さない" "$LANE_STDERR" "COMPLEXITY_LANE=light"
+
+# repo_unresolved は **production の実経路**（pr-review 1.3.2 / issue-implement 5.0.C は
+# --repo を渡さない）にある唯一の reason で、他 4 reason と違い --repo 明示では到達しない。
+# ここを runtime で pin しないと、guard を light 固定にする mutant が素通りする。
+run_lane_without_repo
+assert_contains "TC-4.9a: owner/repo 解決不能は repo_unresolved" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=repo_unresolved"
+assert_contains "TC-4.9b: repo_unresolved は FALLBACK marker を伴う" "$LANE_STDERR" "COMPLEXITY_LANE_FALLBACK=1; reason=repo_unresolved"
+assert_contains "TC-4.9c: repo_unresolved は人間向け WARNING を伴う" "$LANE_STDERR" "⚠️ Complexity レーン判定のフォールバック"
+assert_not_contains "TC-4.9d: repo_unresolved で light へ倒さない" "$LANE_STDERR" "COMPLEXITY_LANE=light"
+[ "$LANE_RC" -eq 0 ] && pass "TC-4.9e: repo_unresolved でも exit code は 0" \
+  || fail "TC-4.9e: repo_unresolved でも exit code は 0 (実際: $LANE_RC)"
 
 run_lane_with_failing_gh
 assert_contains "TC-4.10: gh 失敗は issue_fetch_failed" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=issue_fetch_failed"

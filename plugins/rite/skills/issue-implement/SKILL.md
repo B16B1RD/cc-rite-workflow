@@ -30,13 +30,14 @@ Perform actual implementation work following the implementation plan approved in
 bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
 ```
 
-> **Reference**: 設計根拠（レーン境界 / 何を制約し何を制約しないか / 情報欠落時に必ず `full` へ倒す理由）は [complexity-lane.md](../pr-review/references/complexity-lane.md) が SoT。reason 語彙は helper docstring が SoT。**reason は分岐を変えない** — 全 reason が `full` に落ち WARNING を伴う。**helper が非ゼロ終了した / `COMPLEXITY_LANE=` marker を観測できない場合も `full` として扱う**（reason=`helper_failed`。consumer 側の既定）。
+> **Reference**: 設計根拠（レーン境界 / 何を制約し何を制約しないか / 情報欠落時に必ず `full` へ倒す理由）は [complexity-lane.md](../pr-review/references/complexity-lane.md) が SoT。reason 語彙は helper docstring が SoT。**reason は分岐を変えない** — 全 reason が `full` に落ち WARNING を伴う。**helper が非ゼロ終了した / `COMPLEXITY_LANE=` marker を観測できない場合も `full` として扱い**、`⚠️ Complexity レーン判定のフォールバック: reason=helper_failed。フル装備 (M+ 相当) で実行します。` を出力する（consumer 側の既定。silent fallback 禁止）。
 
 | `COMPLEXITY_LANE` + `complexity=` | 5.1.0.1 並列実装ゲート | 5.1.0.8 生産量制約 |
 |---|---|---|
 | `light` + `complexity=XS` | 順次実装（並列しない） | 適用（新規テストファイル抑制 **+ 説明的派生散文の新設禁止**） |
 | `light` + `complexity=S` | 順次実装（並列しない） | 適用（新規テストファイル抑制） |
-| `full`（M / L / XL、および fail-safe 全 reason） | 従来どおり独立タスク数で判定 | 適用しない（現行どおり） |
+| `full` + `complexity=M` / `L` / `XL`（宣言値あり） | 従来どおり独立タスク数で判定 | 適用しない（現行どおり） |
+| `full` + `COMPLEXITY_LANE_FALLBACK=1`（fail-safe 全 reason） | **順次実装（並列しない）** — 本ゲートでは `full` が攻撃的な側のため、欠落時は減らす方へ倒す | 適用しない（現行どおり） |
 
 ### 5.0.W Wiki Query Injection (Conditional)
 
@@ -191,7 +192,9 @@ Execute parallel implementation when **all** of the following conditions are met
 | Condition | Determination Method |
 |-----------|---------------------|
 | `parallel.enabled: true` | From `rite-config.yml` (default: `true`) |
-| Complexity M or above | 5.0.C の `COMPLEXITY_LANE` marker が `full`（= M / L / XL、および fail-safe）。**helper が両記法（`**Complexity**: X` / `## 複雑度`）を受理するため、ここで body を再解析しない** — 2 箇所で別々に読むと片方だけが片方の記法に対応する drift が生まれる |
+| Complexity M or above | 5.0.C の marker が `COMPLEXITY_LANE=full` **かつ `complexity=` を伴う**（= 宣言値が M / L / XL）。**`COMPLEXITY_LANE_FALLBACK=1` を伴う fail-safe 経路は満たさない**（下記）。**helper が両記法（`**Complexity**: X` / `## 複雑度`）を受理するため、ここで body を再解析しない** — 2 箇所で別々に読むと片方だけが片方の記法に対応する drift が生まれる |
+
+> **fail-safe の向きは consumer ごとに違う**: レビュー側は `full` が「reviewer を減らさない」= 安全側だが、**本ゲートでは `full` が「並列 sub-agent を許可する」= 攻撃的な側**になる。したがって Complexity を読めなかった Issue（`COMPLEXITY_LANE_FALLBACK=1`）は `full` に含めず**順次実装へ倒す**。判定キーは `COMPLEXITY_LANE=full` 単独ではなく `complexity=` の存在（＝ `COMPLEXITY_LANE_FALLBACK` の不在）である。
 | 2 or more independent tasks | Determined from implementation plan (see below) |
 
 **Independent task determination:**
@@ -484,7 +487,7 @@ This step is the implementer's responsibility and complements (does not replace)
 
 ##### Skip Conditions
 
-Skip this entire section (proceed directly to 5.1.1) when **any** of the following holds:
+Skip this entire section (proceed to 5.1.0.8, then 5.1.1) when **any** of the following holds:
 
 | Skip condition | Determination |
 |---------------|---------------|

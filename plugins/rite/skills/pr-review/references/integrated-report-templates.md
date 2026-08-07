@@ -38,14 +38,14 @@
      何を軽量化したか」が人間に届く唯一の同期経路が消える
      （SoT: complexity-lane.md §選抜結果の記録を E2E で省略しない理由）。 -->
 
-- **レーン**: 軽量（Issue #{issue_number} の宣言 Complexity: {complexity}） — reviewer 上限 3
+- **レーン**: 軽量（Issue #{issue_number} の宣言 Complexity: {complexity}） — reviewer 上限 {effective_max}
 - **軽量化した検証 mandate**: 全スイートの sandbox 複製実行と mutation 実験を実施せず、touched テストの実行までとした
 - **不変**: 指摘の採否基準（4 必須自問 / Confidence / Observed Likelihood / 実測アンカー）、Cross-File Impact Check、実測必須ゲート、帰結クラス分類
 - **レーンによりスキップした reviewer**: {lane_skipped_reviewers_with_reason}
 
 | reviewer | 今サイクル | 理由 |
 |----------|-----------|------|
-| {type} | 起動 / スキップ | 領域担当（{matched_file_count} ファイル）/ 軽量レーンの上限 3 により除外（relevance 下位） |
+| {type} | 起動 / スキップ | 領域担当（{matched_file_count} ファイル）/ 軽量レーンの上限 {effective_max} により除外（relevance 下位） |
 
 ### レビュアー合意状況
 
@@ -228,6 +228,15 @@
 | NOT_FIXED（未修正） | {not_fixed_count} |
 | PARTIAL（部分修正） | {partial_count} |
 | リグレッション（新規） | {regression_count} |
+
+### レビューレーン（XS/S 軽量レーン）（該当がある場合のみ）
+<!-- full mode template と同一。COMPLEXITY_LANE == light のときのみ表示し full では省略する。
+     描画条件は review_mode に依存しないため、verification mode でも同じ section を持つ。 -->
+
+- **レーン**: 軽量（Issue #{issue_number} の宣言 Complexity: {complexity}） — reviewer 上限 {effective_max}
+- **軽量化した検証 mandate**: 全スイートの sandbox 複製実行と mutation 実験を実施せず、touched テストの実行までとした
+- **不変**: 指摘の採否基準（4 必須自問 / Confidence / Observed Likelihood / 実測アンカー）、Cross-File Impact Check、実測必須ゲート、帰結クラス分類
+- **レーンによりスキップした reviewer**: {lane_skipped_reviewers_with_reason}
 
 ### レビュアー合意状況
 

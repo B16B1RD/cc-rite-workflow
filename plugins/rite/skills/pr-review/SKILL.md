@@ -611,13 +611,13 @@ Extract subsections (技術的決定事項, スコープ外, etc.) under the "�
 
 #### 1.3.2 Complexity Lane Determination (XS/S 軽量レーン)
 
-Decide whether this review runs at **light lane** (Issue Complexity XS / S) or **full lane** (M / L / XL、および fail-safe)。判定入力は Issue の**宣言 Complexity** のみ（自動判定はしない — Issue #2136 D-02）。判定は helper へ委譲する（ステップ 1.3 で Issue 番号を特定できなかった場合は helper を呼ばず `full` として扱い、reason は `issue_number_missing`):
+Decide whether this review runs at **light lane** (Issue Complexity XS / S) or **full lane** (M / L / XL、および fail-safe)。判定入力は Issue の**宣言 Complexity** のみ（自動判定はしない — Issue #2136 D-02）。判定は helper へ委譲する（ステップ 1.3 で Issue 番号を特定できなかった場合は helper を呼ばず `full` として扱い、`⚠️ Complexity レーン判定のフォールバック: reason=issue_number_missing。フル装備 (M+ 相当) で実行します。` を出力する):
 
 ```bash
 bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
 ```
 
-> **Reference**: 設計根拠（レーン境界を二値にする理由 / cap を reviewers Phase 5 に置く理由 / 何を軽量化し何を軽量化しないか / 情報欠落時に必ず `full` へ倒す理由）は [complexity-lane.md](references/complexity-lane.md) が SoT。`COMPLEXITY_LANE_FALLBACK=1; reason=` の helper 側 reason 語彙（`gh_missing` / `repo_unresolved` / `issue_fetch_failed` / `complexity_absent` / `complexity_invalid`）は helper docstring が SoT。**reason は分岐を変えない** — 全 reason が下表の `full` に落ち、全 reason が WARNING を伴う（本レーンには「情報が無いのが正常」な reason が無い）。**helper が非ゼロ終了した / `COMPLEXITY_LANE=` marker を観測できない場合も `full` として扱い**、`⚠️ Complexity レーン判定のフォールバック: reason=helper_failed。フル装備 (M+ 相当) で実行します。` を出力する（usage error では marker が出ないため helper 側の reason 語彙では表現できない consumer 側の既定。`issue_number_missing` も同じく consumer 側）。
+> **Reference**: 設計根拠（レーン境界を二値にする理由 / cap を reviewers Phase 5 に置く理由 / 何を軽量化し何を軽量化しないか / 情報欠落時に必ず `full` へ倒す理由）は [complexity-lane.md](references/complexity-lane.md) が SoT。`COMPLEXITY_LANE_FALLBACK=1; reason=` の helper 側 reason 語彙（`gh_missing` / `repo_unresolved` / `issue_fetch_failed` / `complexity_absent` / `complexity_invalid`）は helper docstring が SoT。**reason は分岐を変えない** — 全 reason が下表の `full` に落ち、全 reason が WARNING を伴う（本レーンには「情報が無いのが正常」な reason が無い）。**helper が非ゼロ終了した / `COMPLEXITY_LANE=` marker を観測できない場合も `full` として扱い**、`⚠️ Complexity レーン判定のフォールバック: reason=helper_failed。フル装備 (M+ 相当) で実行します。` を出力する（usage error では marker が出ないため helper 側の reason 語彙では表現できない consumer 側の既定。`issue_number_missing` も同じく consumer 側で、同形の WARNING を出す）。
 
 | `COMPLEXITY_LANE` | reviewer 上限 | 検証 mandate | 適用される Complexity |
 |---|---|---|---|
@@ -980,7 +980,7 @@ After the Security Expert conditional and any co-reviewer / sole-reviewer-guard 
 |---------|---------|---------|
 | `max_reviewers` | `6` | Maximum reviewers to spawn (cost cap) |
 
-**Complexity lane bound** (ステップ 1.3.2): `COMPLEXITY_LANE == light` のときは `complexity_max = 3` を Phase 5 の `effective_max` 解決へ渡す（新 config キーは作らない — レーン判定は Issue の既存 Complexity のみ）。`full` のときは渡さず、解決は従来と完全に同一。narrowing が発生した reviewer は cap 超過ではなくレーン由来のため、**ステップ 3.3 の省略表示ではなく ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section に記録する**（同 section の出力条件・見出しは cap 超過を理由として固定されており、レーン由来の除外を表現できない。差分スコープが同じ壁に当たったのと同型）。
+**Complexity lane bound** (ステップ 1.3.2): `COMPLEXITY_LANE == light` のときは `complexity_max = 3` を Phase 5 の `effective_max` 解決へ渡す（新 config キーは作らない — レーン判定は Issue の既存 Complexity のみ）。`full` のときは渡さず、解決は従来と完全に同一。narrowing が発生した reviewer は **ステップ 3.3 の省略表示（`{dropped_count} > 0` で必ず出す。レーン適用時は `{effective_max}` が 3 になるためそのまま正しく描画される）に加えて**、ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section にも記録する（5.4 側は「その除外がレーン由来である」という帰属情報を担う）。**3.3 側を抑止してはならない** — 同 section の「Silent capping is prohibited (MUST NOT)」は spawn 前の唯一の可視化であり、レーン由来かどうかで免除されない。
 
 **User-facing messages** (rendered here; the `effective_max` value for each case is resolved by Phase 5, not recomputed here):
 

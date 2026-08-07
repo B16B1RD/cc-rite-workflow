@@ -13,7 +13,8 @@
 #
 # Called from:
 #   - skills/pr-review/SKILL.md ステップ 1.3.2 (Complexity Lane Determination)
-#   - skills/issue-implement/SKILL.md 5.1.0.1 (Complexity 判定 / XS 生産量制約)
+#   - skills/issue-implement/SKILL.md 5.0.C (Complexity Lane Determination。emit した marker を
+#     5.1.0.1 の並列実装ゲートと 5.1.0.8 の生産量制約の両方へ供給する)
 #
 # Usage:
 #   bash issue-complexity-lane.sh --issue <n> [--repo <owner/repo>]
@@ -42,8 +43,10 @@
 #   gh_missing            — gh が PATH 上に無い
 #   repo_unresolved       — owner/repo を解決できず -R を付けて gh を呼べない
 #   issue_fetch_failed    — gh issue view が失敗した (認証切れ / rate limit / Issue 不在)
-#   complexity_absent     — body に上記 2 記法のいずれも無い (rite 外で作られた Issue 等)
-#   complexity_invalid    — 値が XS/S/M/L/XL のいずれでもない (誤記 / 未展開の placeholder)
+#   complexity_absent     — body に上記 2 記法のいずれも「値を取り出せる形で」現れない
+#                           (rite 外で作られた Issue、**および `**Complexity**: {complexity}` のような
+#                            未展開 placeholder — 抽出式が英字しか受理しないため「無い」側に合流する)
+#   complexity_invalid    — 値は取り出せたが XS/S/M/L/XL のいずれでもない (綴り誤り等)
 #
 # 上記に加え、**本 script では表現できない** consumer 側の reason が 2 つある。いずれも本 script を
 # 呼べない / 呼んだが marker が得られない状況そのものを指すため、caller 側 (SKILL.md) に置く:
@@ -66,6 +69,12 @@
 set -uo pipefail
 
 _icl_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# tempfile は lib 経由で確保する (coding-principles.md の Rule)。手書き mktemp は
+# (a) 失敗が空パスへ落ちて gh の stderr 診断が無音で消える、(b) signal 中断で残留する、の
+# 2 defect を再生産する。lib は fail-loud + EXIT/INT/TERM/HUP 回収を持つ
+# (sibling: scripts/review-cycle-scope.sh と同形)。
+# shellcheck source=../hooks/scripts/lib/tempfile.sh
+source "$_icl_dir/../hooks/scripts/lib/tempfile.sh"
 
 ISSUE_NUMBER=""
 OWNER_REPO=""
@@ -117,28 +126,32 @@ fi
 
 # 取得失敗と「body が空の Issue」を区別する。gh の rc を捨てて本文の空判定だけで倒すと、
 # 認証切れ (fetch 失敗) が complexity_absent として報告され、原因の切り分けができなくなる。
-_icl_err=$(mktemp "${TMPDIR:-/tmp}/rite-complexity-lane-err-XXXXXX") || _icl_err=""
-if ! _body=$(gh issue view "$ISSUE_NUMBER" -R "$OWNER_REPO" --json body --jq '.body' 2>"${_icl_err:-/dev/null}"); then
-  if [ -n "$_icl_err" ] && [ -s "$_icl_err" ]; then
+rite_tempfile_init
+rite_tempfile_new _icl_err "complexity-lane-err" || emit_full_fallback issue_fetch_failed
+if ! _body=$(gh issue view "$ISSUE_NUMBER" -R "$OWNER_REPO" --json body --jq '.body' 2>"$_icl_err"); then
+  if [ -s "$_icl_err" ]; then
     echo "WARNING: issue-complexity-lane: gh issue view が失敗しました (issue=#${ISSUE_NUMBER}, repo=${OWNER_REPO}):" >&2
     head -3 "$_icl_err" | sed 's/^/  /' >&2
   fi
-  rm -f "${_icl_err:-}"
   emit_full_fallback issue_fetch_failed
 fi
-rm -f "${_icl_err:-}"
 
 # 記法 1: `**Complexity**: X` (Section 0 Meta)。装飾の揺れ (太字なし / 全角コロン) は受理しない —
 # テンプレート由来の 1 形式だけを pin し、崩れた記法は complexity_absent として可視化する。
-_raw=$(printf '%s\n' "$_body" | sed -n 's/^[[:space:]]*\*\*Complexity\*\*:[[:space:]]*\([A-Za-z]\{1,2\}\).*$/\1/p' | head -1)
+# 値は語として切り出す (`\b` で境界を要求)。`[A-Za-z]\{1,2\}` だけだと `XSmall` が `XS` に
+# 切り詰められ、宣言していない light レーンへ落ちる。
+_raw=$(printf '%s\n' "$_body" | sed -n 's/^[[:space:]]*\*\*Complexity\*\*:[[:space:]]*\([A-Za-z]\{1,2\}\)\b.*$/\1/p' | head -1)
 _source="body_meta"
 
 # 記法 2: `## 複雑度` セクション。見出しの次に現れる最初の非空行から値を取る
 # (`M` 単独行 / `- M` / `**M**` のいずれも許容する。common-principles.md は書式を固定していない)。
+# **行頭側から最初のトークンだけを採る** — 記法 1 と同じ anchor 規律。greedy な `.*` を先頭に置くと
+# 行内の**最後**のレーントークンを拾い、`M（S ではない）` のように宣言値の後ろへ根拠を書いた行で
+# 宣言 M が S へ解決される (M+ が silent に light へ落ちる = AC-4 / MUST NOT 違反)。
 if [ -z "$_raw" ]; then
   _raw=$(printf '%s\n' "$_body" \
     | awk '/^##[[:space:]]+複雑度[[:space:]]*$/{f=1; next} f && NF {print; exit}' \
-    | sed -n 's/.*\b\([Xx][Ss]\|[SsMmLl]\|[Xx][Ll]\)\b.*/\1/p' | head -1)
+    | sed -n 's/^[^A-Za-z]*\([Xx][Ss]\|[Xx][Ll]\|[SsMmLl]\)\b.*/\1/p' | head -1)
   _source="body_section"
 fi
 

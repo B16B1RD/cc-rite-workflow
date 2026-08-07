@@ -60,12 +60,14 @@ for _f in "$HELPER" "$PR_REVIEW" "$LANE"; do
 done
 # helper を呼べない / marker を出せない経路の consumer 側既定。helper の reason 語彙では
 # 表現できないため SKILL.md 側に置く必要がある。
+# needle はレーン固有語まで書き切る — `marker を観測できない場合も \`full\` として扱い` だけだと
+# sibling (cycle-scope) の 1.2.4 Reference 行にも一致し、レーン側の記述を削除しても green になる。
 assert_grep "1.3.2 defines the consumer-side default when the helper emits no marker" "$PR_REVIEW" \
-  'marker を観測できない場合も `full` として扱い'
+  '`COMPLEXITY_LANE=` marker を観測できない場合も `full` として扱い'
 assert_grep "1.3.2 defines the consumer-side reason for a missing Issue number" "$PR_REVIEW" \
   'issue_number_missing'
 assert_grep "1.3.2 names helper_failed as the consumer-side reason literal" "$PR_REVIEW" \
-  'reason=helper_failed'
+  '⚠️ Complexity レーン判定のフォールバック: reason=helper_failed'
 
 echo "=== cap の SoT は reviewers Phase 5 (二重管理の防止) ==="
 # cap を Phase 5 の effective_max 解決へ入れることと、値 3 が 1 行に同居していること。
@@ -84,10 +86,12 @@ assert_grep "3.2.1 wires the bound without restating the algorithm" "$PR_REVIEW"
   'Complexity lane bound.*`complexity_max = 3` を Phase 5 の `effective_max` 解決へ渡す'
 assert_grep "3.2.1 forbids a new config key for the lane" "$PR_REVIEW" \
   '新 config キーは作らない'
-# 除外 reviewer の記録先を 3.3 (cap 超過表示) ではなく 5.4 のレーン section に固定する。
-# 片方だけ書くと「cap 超過として表示され、レーンの効果が見えない」形に戻る。
-assert_grep "3.2.1 routes lane-derived exclusions to the 5.4 lane section, not the 3.3 cap display" "$PR_REVIEW" \
-  'ステップ 3.3 の省略表示ではなく ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section に記録する'
+# 除外 reviewer は 3.3 の省略表示に**加えて** 5.4 のレーン section にも記録する（加算であって排他ではない）。
+# 排他に書き戻すと、spawn 前の唯一の可視化である 3.3 の表示が消え「Silent capping is prohibited」に反する。
+assert_grep "3.2.1 records lane-derived exclusions in BOTH the 3.3 display and the 5.4 lane section" "$PR_REVIEW" \
+  'ステップ 3.3 の省略表示（.*）に加えて\*\*、ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section にも記録する'
+assert_grep "3.2.1 forbids suppressing the 3.3 omission display for lane-derived drops" "$PR_REVIEW" \
+  '\*\*3\.3 側を抑止してはならない\*\*'
 assert_grep "complexity-lane.md explains why the bound lives in Phase 5" "$LANE" \
   '^## reviewer 上限を Phase 5 に置く理由$'
 # 「light は常に 3 名以下」ではないこと (mandatory 保護と floor が優先される)。
@@ -97,8 +101,9 @@ assert_grep "1.3.2 states that light does not mean at most 3" "$PR_REVIEW" \
 echo "=== reviewer mandate の合成 (AC-1 / AC-4) ==="
 assert_grep "prompt generator declares the lane mandate section" "$PROMPT_GEN" \
   '\{complexity_lane_mandate\}'
+# 同ファイルには sibling の `{cycle_scope_mandate}` にも同文言があるため、レーン固有語で限定する。
 assert_grep "prompt generator omits the whole section on the full lane" "$PROMPT_GEN" \
-  'full のときは空文字列で、このセクションごと省略する'
+  'COMPLEXITY_LANE == light のときのみ.*full のときは空文字列で、このセクションごと省略する'
 assert_grep "4.5 placeholder table maps the mandate to complexity-lane.md" "$PR_REVIEW" \
   '\| `\{complexity_lane_mandate\}` \| \[complexity-lane\.md\]'
 # full で空文字列にすることを AC-4 の根拠つきで pin する (空見出しの残留は M+ の prompt を変える)。
@@ -130,8 +135,17 @@ assert_grep "implement resolves the lane through the shared helper" "$IMPLEMENT"
   'scripts/issue-complexity-lane\.sh --issue \{issue_number\}'
 assert_grep "implement declares the production-constraint step" "$IMPLEMENT" \
   '^#### 5\.1\.0\.8 XS/S Production Constraint \(Conditional\)$'
-assert_grep "5.1.0.8 runs only on the light lane" "$IMPLEMENT" \
-  '5\.0\.C の `COMPLEXITY_LANE == light`'
+# needle は帰結節まで含める — 条件節で止めると「full にも制約を適用する」への反転 mutant が
+# 素通りし、AC-4 / MUST NOT「M+ の経路に変更を入れない」の番人が消える。
+assert_grep "5.1.0.8 runs only on the light lane, and is a no-op on full" "$IMPLEMENT" \
+  '5\.0\.C の `COMPLEXITY_LANE == light`。`full`.*本サブセクション全体を skip し、挙動は本機能導入前と完全に同一'
+# 5.0.C の routing 表 3 行。表が消えると 5.1.0.1 / 5.1.0.8 の写像がどこにも残らない。
+assert_grep "5.0.C routing table maps XS to both constraints" "$IMPLEMENT" \
+  '^\| `light` \+ `complexity=XS` \|.*説明的派生散文の新設禁止'
+assert_grep "5.0.C routing table maps S to the test-file constraint only" "$IMPLEMENT" \
+  '^\| `light` \+ `complexity=S` \|.*新規テストファイル抑制'
+assert_grep "5.0.C routing table keeps the full lane unchanged" "$IMPLEMENT" \
+  '^\| `full`.*適用しない（現行どおり）'
 # XS/S と XS-only の非対称が消えると、要求されていない制約が S に及ぶ (または XS で緩む)。
 # 適用列と制約名が同じ行にあることを pin して、行を分ける形の崩れを落とす。
 assert_grep "new test files are suppressed for XS and S" "$IMPLEMENT" \
@@ -167,6 +181,10 @@ assert_grep "report template records what stayed unchanged" "$REPORT_TPL" \
   '\*\*不変\*\*.*Cross-File Impact Check'
 assert_grep "5.4 declares the lane section rendering condition" "$PR_REVIEW" \
   '`### レビューレーン（XS/S 軽量レーン）` section.*`COMPLEXITY_LANE == light`'
+# 描画条件だけを pin すると section 見出しは残るが中身が空になる mutant が通る。
+# MUST「スキップした reviewer と軽量化した mandate を統合レポートへ記録」の実体は列挙義務側にある。
+assert_grep "5.4 requires enumerating the lane-skipped reviewers with reasons" "$PR_REVIEW" \
+  'レーンの上限により起動しなかった reviewer 名と理由\*\*を列挙する'
 assert_grep "5.4 forbids silent narrowing" "$PR_REVIEW" \
   'silent な絞り込みは禁止で、本 section は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 3）'
 # E2E 例外は 3 番目として E2E Output Minimization 表に登録されていること。
