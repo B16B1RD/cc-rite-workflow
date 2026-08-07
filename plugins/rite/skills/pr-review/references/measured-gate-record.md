@@ -65,6 +65,10 @@ gate を足すとき、先行 gate の pass 行が「proceed to ステップ 8.1
 - **6.1.d step 3（サブステップ内部の integrity check）**: 6.1.d に入ったが helper を呼ばずに 6.2 へ抜けた、を捕捉する。
 - **8.0.3（result-emit boundary の外側）**: 6.1.d サブステップを**丸ごと** skip した、を捕捉する。内部 check は gate 自身も一緒に skip されるため、この failure mode には届かない。
 
+**8.0.3 が守る範囲は「ステップ 6 が本 cycle で実行された」ことを前提とする**: 鮮度判定の参照値 `REVIEW_CYCLE_ID` は 6.1.a step 0 で emit される — つまり 8.0.3 が守る 6.1.d と同じ ステップ 6 の内側にある。ステップ 6 を丸ごと skip した cycle では、会話に残る（前 cycle の `REVIEW_CYCLE_ID`, 前 cycle の sentinel）の組が互いに整合するため 8.0.3 は pass する。8.0.2 の anchor である `candidate_count` が ステップ 7.1 で毎 cycle 再計算されるのとはこの点で非対称であり、8.0.3 単独では「6.1.d 単独の skip」しか catch できない。「ステップ 6 全体の skip」は **ステップ 8.0.4** が塞ぐ — 同 gate の anchor はステップ 6 の外側（5.3.0.M step 2）で毎 cycle 再生成されるため自己整合が成立せず、差し戻し先が 6.1.a **step 0** であることにより 8.0.3 の anchor と marker も再生成される。
+
+**8.0.3 の設置根拠**: 6.1.d step 3 の integrity check は 6.1.d サブステップ**内部**にあるため、6.1.d を丸ごと skip すると gate 自身も skip される。その failure mode を 8.0.3 が result-emit boundary の**外側**で catch する（ステップ 7.7 ⇄ 8.0.2 の二層構成と同型）。既定設定 `post_comment: false` では 6.1.d のコメントが非実測指摘の唯一の共有可能な durable 記録（`.rite/review-results/` は gitignore 対象）であり、skip = D-01「マージ後に人間が拾い直せる」の完全な喪失になる。
+
 ステップ 7.7（procedure 内部）⇄ ステップ 8.0.2（全体 skip）と同じ dual placement。**両者は同一の述語**（terminal sentinel の存在 ∧ `iteration_id` が本 cycle と一致）を異なる位置で評価する。片側だけ弱い述語にすると、その位置で「動作前 marker を見る」欠陥が再発する。述語には比較対象の**選択規則**（複数ある `REVIEW_CYCLE_ID` のうち epoch 最大を採る）まで含める — 選択規則が片側にしか無ければ「同一の述語」は成立しない。
 
 <a id="pending-marker"></a>
@@ -96,6 +100,8 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 **なぜ 6.1.a が落ちやすいか**: 6.1.a は JSON 本文の生成を 5.3.0.M step 1 に譲っており、現在は「bash を 1 行打つだけ」の低顕著性ステップである。E2E 出力最小化下の中間 cycle では、この種のステップが最も落ちやすい。
 
 **negative 検査だけでは「区間ごとの skip」を守れない**: marker の残存検査は negative 検査（「あってはならないものが無いこと」）であり、**機構が起動したこと**を暗黙の前提にしている。ところが marker は 5.3.0.M step 2 で設置され 6.1.a の EXIT trap で削除される — **arming と解除の両方が、飛ばされる区間の内側にある**。したがって 5.3.0.M〜6.1.a を区間ごと飛ばした cycle の観測値は「6.1.a が正常完了して marker を消した」場合とバイト単位で同一になり、`save_pending_marker_absent` として pass する。これは本リポジトリが繰り返し踏んだ「**不在と成功が区別できない**」欠陥と同型である（`prev_finders=` の空が「0 件」と「抽出失敗」の両方を意味した件、`git diff` の rc=0 と出力ゼロ行の件）。実測: PR #2126 の run では cycle 2 で当該区間を経由せずレビューを完了させたところ 8.0.4 は pass し、以降 5 サイクル通して収束トレンド判定が 4 点しか見られず（`files=4 < cycles=5`, `lost=1`）、WARNING は毎回出ていたがループは一度も止まらず backstop（`max_review_cycles`）だけが停止条件として機能した（Issue #2127 D-04）。
+
+**marker 生成時の存在検査が消すのは「先置き」ケースだけ**: `set -C`（noclobber）が拒否するのは既存**通常ファイル**だけで、path に FIFO を先置きされると `: >` の open(2) が reader を待って無期限にブロックする（共有 TMPDIR のマルチユーザーホスト / CI runner。path は予測可能で epoch も列挙できる）。そのため書きに行く前に存在検査し、何かあれば作成せず degraded へ倒す。ただし検査から生成までの窓に FIFO を置かれた場合は `set -C` が非通常ファイルを拒否しないため依然ブロックする（実測: squatter と 300 回並走で 18/300 が rc=124）。同じ予測可能性から、エントリを置き続けるだけで 8.0.4 の機械強制を degraded（prose 判定のみ）へ落とすこともできる。窓ごと消すには marker 名の mktemp 化が要るが、8.0.4 の「末尾 `-{epoch}` が最大のもの」選択規則の変更を伴うため採らない。epoch 付き path なので正規の運用では発火せず、本リポジトリの運用前提（単一ユーザーの開発機）では残余リスクを受容する。
 
 **塞ぎ方は positive 検査を足すこと（marker の撤廃ではない）**: `hooks/scripts/review-save-json-verify.sh` が、区間の**外側**で確定する 2 つの独立した事実 — ステップ 1.2.5 で記録した commit SHA と、ディスク上の永続 JSON — を突き合わせ、「本 cycle の commit を `commit_sha` に持つ結果 JSON が現 run に実在するか」を positive に確認する。marker 機構は撤廃しない。両者は検出対象が異なるためである: marker の**残存**は「6.1.a が走ったが完走しなかった」ことの唯一の証拠であり、positive 検査だけに寄せると同じ状況が `save_result_json_absent` に丸められて「途中で落ちた」という原因情報が失われる。判定軸を「ファイルの有無」ではなく commit SHA の一致に置くのは、results dir が `/rite:cleanup` まで同一 PR の複数 cycle・複数 run の JSON を同居させるためで、有無で判定すると前 cycle の JSON で素通りする。run 境界は sibling の `review-trend-divergence.sh` / `review-cycle-scope.sh` と同じ run 開始点 pin（`.rite/state/review-run-since-{pr}.txt`）を同じ LC_ALL=C 昇順比較で共有し、新しい state ファイルは作らない。**既知の残余**: 本 cycle と前 cycle の HEAD が同一のとき（`/rite:fix` の accept-only cycle など新規 commit を伴わない cycle）は前 cycle の JSON が SHA 一致で pass しうる。判定軸を commit SHA と定めた契約（Issue #2127 §4.4）の上での既知の限界であり、silent ではない — 成功 marker `REVIEW_SAVE_JSON_OK=1` の `result_json=` にどのファイルで通ったかが出る。
 

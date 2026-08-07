@@ -31,6 +31,22 @@
 |----------|-----------|------|
 | {type} | 起動 / スキップ | 前サイクル finder（mandatory 合流）/ fix diff の領域担当（{matched_file_count} ファイル）/ fix diff に該当ファイルなし |
 
+### レビューレーン（XS/S 軽量レーン）（該当がある場合のみ）
+<!-- COMPLEXITY_LANE == light のときのみ表示。full のときは本セクションごと省略する。
+     E2E フローでも省略禁止 — 本機能の主対象である Scenario 1（XS が 1 サイクル収束して
+     自律マージされる）は E2E ループでしか起きず、そこを minimize すると「何名スキップし
+     何を軽量化したか」が人間に届く唯一の同期経路が消える
+     （SoT: complexity-lane.md §選抜結果の記録を E2E で省略しない理由）。 -->
+
+- **レーン**: 軽量（Issue #{issue_number} の宣言 Complexity: {complexity}） — reviewer 上限 3
+- **軽量化した検証 mandate**: 全スイートの sandbox 複製実行と mutation 実験を実施せず、touched テストの実行までとした
+- **不変**: 指摘の採否基準（4 必須自問 / Confidence / Observed Likelihood / 実測アンカー）、Cross-File Impact Check、実測必須ゲート、帰結クラス分類
+- **レーンによりスキップした reviewer**: {lane_skipped_reviewers_with_reason}
+
+| reviewer | 今サイクル | 理由 |
+|----------|-----------|------|
+| {type} | 起動 / スキップ | 領域担当（{matched_file_count} ファイル）/ 軽量レーンの上限 3 により除外（relevance 下位） |
+
 ### レビュアー合意状況
 
 | レビュアー | 評価 | CRITICAL | HIGH | MEDIUM | LOW-MEDIUM | LOW |

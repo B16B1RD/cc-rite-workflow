@@ -183,12 +183,26 @@ effective_max resolution (config validation):
   - max_reviewers non-numeric      -> WARNING, fall back to default 6
   - max_reviewers < min_reviewers  -> WARNING, min_reviewers takes priority (effective_max = min_reviewers)
   - otherwise                      -> effective_max = max_reviewers
+  - complexity lane bound          -> when COMPLEXITY_LANE == light (Issue Complexity XS / S, resolved by
+        `skills/pr-review/SKILL.md` ステップ 1.2.8), take the tighter of the two:
+        effective_max = min(effective_max, complexity_max) where complexity_max = 3.
+        Applied BEFORE the final clamp, so the floors below still win. When COMPLEXITY_LANE is
+        `full` (M / L / XL) or the lane could not be resolved, this line is a no-op and the
+        resolution is byte-identical to the pre-lane behavior.
   - final clamp (all paths)        -> effective_max = max(effective_max, min_reviewers)
         (guarantees effective_max >= min_reviewers even for the unset/non-numeric paths when min_reviewers > 6)
 
 When matched count <= effective_max (e.g. the default 6 with fewer matches), the selection is
 identical to the pre-cap behavior (backward compatible).
 ```
+
+**Complexity lane bound rationale**: The `light` lane narrows the *upper* bound only — it never
+overrides the `mandatory` guarantee or the effective floor, both of which are evaluated after it.
+A `light` review can therefore still spawn more than 3 reviewers (4 mandatory reviewers stay 4).
+Placing the bound here rather than in a post-cap filter keeps `effective_max` resolution in one
+place; a second narrowing step would have to re-implement the floors and the mandatory protection.
+Why the bound is 3, why the lane boundary is `{XS, S}`, and why no new floor is introduced:
+[complexity-lane.md](../pr-review/references/complexity-lane.md#reviewer-上限を-phase-5-に置く理由).
 
 The dropped-reviewer list and the pre-spawn summary are rendered by `skills/pr-review/SKILL.md` ステップ 3.2.1 (cap application) / ステップ 3.3 (Confirm Reviewers).
 

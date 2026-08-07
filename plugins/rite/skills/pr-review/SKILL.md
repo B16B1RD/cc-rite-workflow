@@ -51,7 +51,7 @@ bash 4.0+ 必須 (`mapfile` builtin の存在を bash 4+ 判定に使用。ス�
 |-------|-----------|----------|
 | ステップ 3.3 (Confirm Reviewers) | `AskUserQuestion` で構成確認 | **`AskUserQuestion`（オプション選択）を skip**（pre-flight 確認のみ。flow-state ベース判定はステップ 3.3 参照）。`起動 reviewer {count} 名` サマリ行・省略された reviewer 表示は両経路で必須維持 |
 | ステップ 4 (Sub-Agent Execution) | Full execution | **Full execution** — sub-agents MUST run in parallel for every review cycle (including verification mode). No shortcut allowed. |
-| ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外 1: ステップ 5.4 の `### レビュー範囲（cycle 2+ 差分スコープ）` section は `REVIEW_CYCLE_SCOPE == incremental` のとき E2E でも省略禁止** (cycle 2+ は E2E からしか発生しないため、ここを minimize すると「スキップした reviewer を記録する」要求が空文になる — SoT: [cycle-scope.md](references/cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 2: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 AskUserQuestion と同じ identity 制約 — 既定 `post_comment: false` ではこの出力が非実測指摘を人間が見る唯一の同期経路であり、省略は Issue #2024 D-01「破棄しない」の喪失に直結する) |
+| ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外 1: ステップ 5.4 の `### レビュー範囲（cycle 2+ 差分スコープ）` section は `REVIEW_CYCLE_SCOPE == incremental` のとき E2E でも省略禁止** (cycle 2+ は E2E からしか発生しないため、ここを minimize すると「スキップした reviewer を記録する」要求が空文になる — SoT: [cycle-scope.md](references/cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 2: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 AskUserQuestion と同じ identity 制約 — 既定 `post_comment: false` ではこの出力が非実測指摘を人間が見る唯一の同期経路であり、省略は Issue #2024 D-01「破棄しない」の喪失に直結する)。**例外 3: ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section は `COMPLEXITY_LANE == light` のとき E2E でも省略禁止** (軽量レーンが動機づけられた Scenario 1「XS が 1 サイクル収束して自律マージされる」は E2E ループでしか起きず、そこを minimize すると観測性の MUST が主対象シナリオでだけ空文になる — SoT: [complexity-lane.md](references/complexity-lane.md#選抜結果の記録を-e2e-で省略しない理由)) |
 | ステップ 6 (PR Comment) | Full comment + display | Post comment silently, output pattern only |
 | ステップ 7 (Triage) | Full report + guidance | **Recommendations only** — detect scope-irrelevant recommendations (findings/recommendations containing 別 Issue / スコープ外 keywords). **Always** prompt `AskUserQuestion` for each candidate (no E2E skip). Only when `[review:mergeable]`. |
 
@@ -140,12 +140,8 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 # ============================================================================
 # ステップ 1.0: Argument parsing + conflict check + config read (unified block)
 # ============================================================================
-# 本 block は以下の 5 ステップを単一 Bash tool invocation で実行する:
-# Step 0: bash 4+ compat guard (inlined from ../../references/bash-compat-guard.md)
-# Step 1: flag 抽出 + remaining_args 生成
-# Step 2: AC-8 conflict check (--post-comment と --no-post-comment 同時指定)
-# Step 3: rite-config.yml の pr_review.post_comment 読取 (SIGPIPE-safe 単一 awk)
-# Step 4: {post_comment_mode} の最終決定 + [CONTEXT] emit
+# 本 block は Step 0 (bash 4+ compat guard) 〜 Step 4 ({post_comment_mode} 決定 + [CONTEXT] emit) を
+# 単一 Bash tool invocation で実行する。各 Step の責務は下記の `# --- Step N: ... ---` 見出しを参照。
 
 # --- Step 0: bash 4+ compat guard (C-3: inlined from ../../references/bash-compat-guard.md) ---
 # rationale: references/design-rationale.md#argument-parsing-notes
@@ -613,6 +609,23 @@ If the "仕様詳細" section does not exist in the Issue body:
 
 Extract subsections (技術的決定事項, スコープ外, etc.) under the "仕様詳細" section of the Issue body as `{issue_spec}`.
 
+#### 1.3.2 Complexity Lane Determination (XS/S 軽量レーン)
+
+Decide whether this review runs at **light lane** (Issue Complexity XS / S) or **full lane** (M / L / XL、および fail-safe)。判定入力は Issue の**宣言 Complexity** のみ（自動判定はしない — Issue #2136 D-02）。判定は helper へ委譲する（ステップ 1.3 で Issue 番号を特定できなかった場合は helper を呼ばず `full` として扱い、reason は `issue_number_missing`):
+
+```bash
+bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
+```
+
+> **Reference**: 設計根拠（レーン境界を二値にする理由 / cap を reviewers Phase 5 に置く理由 / 何を軽量化し何を軽量化しないか / 情報欠落時に必ず `full` へ倒す理由）は [complexity-lane.md](references/complexity-lane.md) が SoT。`COMPLEXITY_LANE_FALLBACK=1; reason=` の helper 側 reason 語彙（`gh_missing` / `repo_unresolved` / `issue_fetch_failed` / `complexity_absent` / `complexity_invalid`）は helper docstring が SoT。**reason は分岐を変えない** — 全 reason が下表の `full` に落ち、全 reason が WARNING を伴う（本レーンには「情報が無いのが正常」な reason が無い）。**helper が非ゼロ終了した / `COMPLEXITY_LANE=` marker を観測できない場合も `full` として扱い**、`⚠️ Complexity レーン判定のフォールバック: reason=helper_failed。フル装備 (M+ 相当) で実行します。` を出力する（usage error では marker が出ないため helper 側の reason 語彙では表現できない consumer 側の既定。`issue_number_missing` も同じく consumer 側）。
+
+| `COMPLEXITY_LANE` | reviewer 上限 | 検証 mandate | 適用される Complexity |
+|---|---|---|---|
+| `light` | `complexity_max = 3` を `effective_max` 解決へ渡す（ステップ 3.2.1） | `{complexity_lane_mandate}` を注入（ステップ 4.5） | XS / S |
+| `full` | 既存 `max_reviewers`（既定 6）のまま | 注入しない（空文字列、セクションごと省略） | M / L / XL、および fail-safe 全 reason |
+
+`light` のとき marker から retain する: `{complexity}` = `complexity=`（mandate 本文へ埋め込む宣言値）。**`light` は「常に 3 名以下」を意味しない** — cap は `effective_max` 解決に参加するだけで、`mandatory` 保護と effective floor は従来どおり優先される（[reviewers/SKILL.md](../reviewers/SKILL.md) Phase 5 が SoT）。
+
 ### 1.4 Quality Checks (Optional)
 
 Retrieve lint/build commands from `rite-config.yml`.
@@ -967,6 +980,8 @@ After the Security Expert conditional and any co-reviewer / sole-reviewer-guard 
 |---------|---------|---------|
 | `max_reviewers` | `6` | Maximum reviewers to spawn (cost cap) |
 
+**Complexity lane bound** (ステップ 1.3.2): `COMPLEXITY_LANE == light` のときは `complexity_max = 3` を Phase 5 の `effective_max` 解決へ渡す（新 config キーは作らない — レーン判定は Issue の既存 Complexity のみ）。`full` のときは渡さず、解決は従来と完全に同一。narrowing が発生した reviewer は cap 超過ではなくレーン由来のため、**ステップ 3.3 の省略表示ではなく ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section に記録する**（同 section の出力条件・見出しは cap 超過を理由として固定されており、レーン由来の除外を表現できない。差分スコープが同じ壁に当たったのと同型）。
+
 **User-facing messages** (rendered here; the `effective_max` value for each case is resolved by Phase 5, not recomputed here):
 
 | Phase 5 validation case | User-facing message |
@@ -1128,19 +1143,9 @@ Reviewer subagent が READ-ONLY 契約を破って parent session の working tr
 # detached HEAD は `DETACHED:<short-hash>` sentinel に置換 (verifier 側で branch drift check を skip)。
 # ORIG_WTH は working tree / index の drift (Edit/Write in-place mutation や state-changing git) を
 # 捕捉する 4 軸目 (Issue #1860)。branch/stash/branch_list では見えない porcelain 差分を検出する。
-# 生の `git status --porcelain` ではなく git-status-filtered.sh 経由で計算する (Issue #1944):
-# このスナップショットとステップ 5.0.A の verify は異なる sandbox 実行コンテキストで走りうるため、
-# bwrap sandbox が overlay する ghost-mount `??` エントリ (#1936) が両側で食い違い、実変更が
-# 無くても hash 不一致 (false-positive drift) が起きる。フィルタを両側に適用することでその
-# ghost-mount 差分を打ち消し、実際の working-tree 変更のみが hash に反映されるようにする。
-# 生の `git status --porcelain` と異なりフィルタは `mktemp` に依存する (sandbox の TMPDIR 制限下では
-# plain `git status` は成功してもフィルタは失敗しうる) ため、exit code を明示チェックする。
-# この bash block は Bash tool の 1 回の呼び出しとして新規シェルで実行され pipefail は既定 off
-# (呼び出し間でシェル状態は引き継がれない) なので、`filter | hash | awk` の `$?` は pipefail に
-# 依存させず、filter 自身の出力を先に非パイプで capture してから exit code を判定する
-# (capture-first)。post-review-state-verify.sh 側は単一スクリプト全体に `set -uo pipefail` が
-# かかるため pipefail 経由の `$?` チェックで足りるが、この SKILL.md block はそれとは独立した
-# 実行コンテキストのため同じ前提を流用できない。
+# 生の `git status --porcelain` ではなく git-status-filtered.sh 経由で計算し (Issue #1944)、
+# フィルタ自身の出力を先に非パイプで capture してから exit code を明示チェックする (capture-first。
+# pipefail 経由の `$?` に依存しない)。
 # rationale: references/design-rationale.md#state-snapshot-notes
 ORIG_BR=$(git branch --show-current 2>/dev/null || echo "")
 if [ -z "$ORIG_BR" ]; then
@@ -1397,6 +1402,7 @@ Generate instructions for each reviewer.
 | `{relevant_files}` | Changed file list from ステップ 1.2 | Extract only files matching the reviewer's Activation pattern。`REVIEW_CYCLE_SCOPE == incremental` のときは ステップ 2.2 と同じく `git diff --name-only {cycle_base_sha}..HEAD` の一覧から抽出する。**例外**: `incremental` かつ当該 reviewer が `{prev_finders}` 由来の `mandatory` 合流で、パターン一致が 0 件のときは `{cycle_base_sha}..HEAD` の**全ファイル**を渡す（空で渡すと `{diff_content}` も空になり、mandate 4 が差分外の読み直しを禁じるため mandate 1 の解消検証すら実行できない prompt になる — 解消検証は自分の指摘箇所と fix の影響範囲の両方が読めて初めて成立する） |
 | `{diff_content}` | Diff from ステップ 1.2 | **Varies by scale** (see below)。`REVIEW_CYCLE_SCOPE == incremental` のときは PR 全体の diff ではなく `{cycle_base_sha}..HEAD` の diff を使う（取得コマンドは ステップ 1.2 の incremental 系。`{relevant_files}` が上記例外で全ファイルになった場合は同区間の全 diff を渡す） |
 | `{cycle_scope_mandate}` | [cycle-scope.md](references/cycle-scope.md#reviewer-mandate差分スコープ適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `REVIEW_CYCLE_SCOPE == incremental` のときのみ、同節の fenced block 本文を抽出し `{previous_blocking_findings}` / `{cycle_base_sha}` を埋めて注入する。`full` のときは空文字列（セクションごと省略） |
+| `{complexity_lane_mandate}` | [complexity-lane.md](references/complexity-lane.md#reviewer-mandate軽量レーン適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `COMPLEXITY_LANE == light`（ステップ 1.3.2）のときのみ、同節の fenced block 本文を抽出し `{complexity}` を埋めて注入する。`full` のときは空文字列（セクションごと省略 — 空見出しが残ると M+ の prompt が変化し AC-4 に違反する）。`{cycle_scope_mandate}` とは直交し、両方が非空になりうる（cycle 2+ の XS Issue）。両者が同時に届いても矛盾しない: 差分スコープは審査**範囲**を、軽量レーンは検証の**実行コスト**を絞るもので、いずれも採否基準を変えない |
 | `{issue_spec}` | Issue specification obtained in ステップ 1.3.1 | Content of the "仕様詳細" section (if empty, write "仕様情報なし") |
 | `{change_intelligence_summary}` | Change Intelligence Summary from ステップ 1.2.6 | One-paragraph summary of change type, file classification, and focus area |
 | `{shared_reviewer_principles}` | `_reviewer-base.md` (shared) | Extract all sections from the document start to the `## Input` heading (exclusive). This covers `## READ-ONLY Enforcement`, `## Reviewer Mindset`, `## Cross-File Impact Check`, and `## Confidence Scoring` as a contiguous block. Agent-specific identity is NOT included here — it is delivered via the named subagent's system prompt (Phase B). See ステップ 4.3 step 3 for the full extraction procedure |
@@ -2201,16 +2207,10 @@ if [ "$_gate_rc" -eq 0 ]; then
   save_pending_id="{pr_number}-$(date +%s)"
   save_pending_marker="${TMPDIR:-/tmp}/rite-p61a-pending-${save_pending_id}"
   # `set -C` (noclobber) で O_CREAT|O_EXCL 相当にする (6.1.a step 0 の pending marker と同じ理由:
-  # パスが予測可能で、ファイルの存在/不在そのものが gate の判定値であるため)。
-  # ただし noclobber が拒否するのは既存**通常ファイル**だけで、path に FIFO を先置きされると
-  # `: >` の open(2) が reader を待って**無期限にブロック**する (共有 TMPDIR のマルチユーザー
-  # ホスト / CI runner。path は予測可能で epoch も列挙できる)。書きに行く前に存在検査し、何か
-  # あれば作成せず degraded へ倒す。**本検査が消すのは「先置き」ケースのハングだけ** —
-  # 検査から生成までの窓に FIFO を置かれた場合、`set -C` は非通常ファイルを拒否しないため
-  # 依然ブロックする (実測: squatter と 300 回並走で 18/300 が rc=124)。同じ予測可能性から、
-  # エントリを置き続けるだけで 8.0.4 の機械強制を degraded (prose 判定のみ) へ落とすこともできる。
-  # 窓ごと消すには marker 名の mktemp 化が要るが、8.0.4 の「末尾 -{epoch} が最大のもの」選択規則の
-  # 変更を伴うため本 Issue では採らない。epoch 付き path なので正規の運用では発火しない。
+  # パスが予測可能で、ファイルの存在/不在そのものが gate の判定値であるため)。書きに行く前に
+  # 存在検査し、何かあれば作成せず degraded へ倒す (FIFO 先置きによる open(2) の無期限ブロックを
+  # 避ける。残る窓と mktemp 化を採らない理由:
+  # references/measured-gate-record.md#save-pending-marker)。
   if [ -e "$save_pending_marker" ] || [ -L "$save_pending_marker" ]; then
     echo "WARNING: save-pending marker path に既存エントリがあります ($save_pending_marker)。作成せず ステップ 8.0.4 を degraded に倒します" >&2
     echo "  原因候補: 同一秒の並行 review / 共有 TMPDIR での先置き (squat)" >&2
@@ -2368,6 +2368,8 @@ fi
 **Note**: `📎 reviewed_commit: {current_commit_sha}` must be output in both templates. This is used for incremental diff retrieval in the verification mode of the next cycle (ステップ 1.2.4.1). 次 cycle の差分スコープ（ステップ 1.2.4）が使う起点は本コメントではなく ステップ 6.1.a の永続 JSON の `commit_sha` である。
 
 **`### レビュー範囲（cycle 2+ 差分スコープ）` section**: `REVIEW_CYCLE_SCOPE == incremental` のときのみ描画する（`full` のときはセクションごと省略）。起動した reviewer とその選出理由（前サイクル finder の `mandatory` 合流 / fix diff の領域担当）、および**今サイクルで起動しなかった reviewer 名と理由**を列挙する。silent な絞り込みは禁止で、本 section は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 1）。
+
+**`### レビューレーン（XS/S 軽量レーン）` section**: `COMPLEXITY_LANE == light`（ステップ 1.3.2）のときのみ描画する（`full` のときはセクションごと省略）。宣言 Complexity、軽量化した検証 mandate、**軽量化していない項目**、および**レーンの上限により起動しなかった reviewer 名と理由**を列挙する。silent な絞り込みは禁止で、本 section は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 3）。
 
 **`### 実測なし指摘 (non-blocking)` section の情報源**: ステップ 5.3.0.M でゲート適用済の `{review_tmp_dir}/rite-review-result-{pr_number}.json` の `non_blocking_findings[]` を Read tool で読んで描画する (Issue #2072)。会話コンテキストから記憶で再構成しない — 記憶と JSON がずれると、永続 JSON・PR 記録コメント・本 section の 3 経路が別々の集合を主張する。件数 `{non_blocking_count}` は 5.3.0.M の `[CONTEXT] MEASURED_GATE=...; non_blocking_total=` の値と一致する。
 
@@ -3789,9 +3791,7 @@ ACTION: Return to ステップ 7.1, extract candidates, invoke AskUserQuestion (
 
 ### 8.0.3 ステップ 6.1.d Post-condition Gate Reference
 
-本 gate は ステップ 6.1.d (非実測指摘の PR コメント記録) の **全体 skip** に対する最終防波堤で、8.0.1 (ステップ 6.5.W) / 8.0.2 (ステップ 7) と同型の sentinel-presence based defense-in-depth。6.1.d step 3 の integrity check は 6.1.d サブステップ**内部**にあるため 6.1.d を丸ごと skip すると gate 自身も skip される — その failure mode を本 gate が result-emit boundary の**外側**で catch する (ステップ 7.7 ⇄ 8.0.2 の二層構成と同型)。既定設定 `post_comment: false` では 6.1.d のコメントが非実測指摘の唯一の共有可能な durable 記録 (`.rite/review-results/` は gitignore 対象) であり、skip = D-01「マージ後に人間が拾い直せる」の完全な喪失になる。
-
-**catch できる範囲は「ステップ 6 が本 cycle で実行された」ことを前提とする**: 鮮度判定の参照値 `REVIEW_CYCLE_ID` は 6.1.a step 0 で emit される — つまり本 gate が守る 6.1.d と同じ ステップ 6 の内側にある。ステップ 6 を丸ごと skip した cycle では、会話に残る (前 cycle の `REVIEW_CYCLE_ID`, 前 cycle の sentinel) の組が互いに整合するため本 gate は pass する。8.0.2 の anchor である `candidate_count` が ステップ 7.1 で毎 cycle 再計算されるのとはこの点で非対称であり、本 gate 単独では「6.1.d 単独の skip」しか catch できない。「ステップ 6 全体の skip」は **ステップ 8.0.4** が塞ぐ — 同 gate の anchor はステップ 6 の外側 (5.3.0.M step 2) で毎 cycle 再生成されるため自己整合が成立せず、差し戻し先が 6.1.a **step 0** であることにより本 gate の anchor と marker も再生成される。
+本 gate は ステップ 6.1.d (非実測指摘の PR コメント記録) の **全体 skip** に対する最終防波堤で、8.0.1 (ステップ 6.5.W) / 8.0.2 (ステップ 7) と同型の sentinel-presence based defense-in-depth。**本 gate 単独で catch できるのは「6.1.d 単独の skip」まで**で、「ステップ 6 全体の skip」は ステップ 8.0.4 が塞ぐ。rationale: [references/measured-gate-record.md#dual-gate](references/measured-gate-record.md#dual-gate)
 
 **Condition**: Always execute (6.1.d は `{post_comment_mode}` に依存せず常に評価される) — ただし **ステップ 6 が hard fail した場合を除く** (下記 Routing の 1 行目。8.0.1 の `wiki.enabled: false` 行 / 8.0.2 の `candidate_count == 0` 行と同じ legitimate skip)。
 
