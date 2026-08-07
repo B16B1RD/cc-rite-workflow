@@ -16,9 +16,14 @@
 #   bash review-save-json-verify.sh --pr N --commit-sha SHA [--results-dir PATH] [--since BASENAME]
 #
 # 出力 (stderr。stdout は使わない — caller は marker と exit code だけを読む):
-#   [CONTEXT] REVIEW_SAVE_GATE=pass; reason=save_pending_marker_absent; result_json=<basename>
-#   [CONTEXT] REVIEW_SAVE_GATE=degraded; reason=save_result_json_undecidable
-#   [CONTEXT] REVIEW_SAVE_GATE_FAILED=1; reason=save_result_json_absent; expected_sha=<sha>
+#   [CONTEXT] REVIEW_SAVE_JSON_OK=1; pr=<n>; result_json=<basename>            (exit 0)
+#   [CONTEXT] REVIEW_SAVE_GATE=degraded; reason=save_result_json_undecidable   (exit 0)
+#   [CONTEXT] REVIEW_SAVE_GATE_FAILED=1; reason=save_result_json_absent; expected_sha=<sha> (exit 1)
+#
+#   成功時に `REVIEW_SAVE_GATE=pass` を名乗らないのは、本 helper が marker 層の 3 arm すべてから
+#   呼ばれるため — degraded に降りた marker 層の直後に pass を重ねると、caller の「degraded を
+#   pass と読み替えてはならない」規則と観測値が食い違う。本 helper が主張するのは「本 cycle の
+#   結果 JSON が実在する」ことだけで、gate 全体の可否は `REVIEW_SAVE_GATE_FAILED` の不在で決まる。
 #
 # Why negative 検査だけでは足りないか:
 #   save-pending marker は 5.3.0.M step 2 で設置され 6.1.a の EXIT trap で削除される。arming と
@@ -32,6 +37,18 @@
 #   results dir は /rite:cleanup まで同一 PR の複数 cycle・複数 run の JSON を同居させる。
 #   「1 件でもあれば pass」にすると前 cycle の JSON で素通りし、本 helper が塞ぐはずの
 #   「本 cycle 分だけ保存されていない」状態をそのまま通す。
+#   比較は **一方が他方の prefix なら一致** とする。references/review-result-schema.md の正典例が
+#   7 桁短縮 (`"commit_sha": "abc1234"`) で、書き手側 (hooks/review-result-save.sh) に形状検査が
+#   無いためである。厳密一致にすると同一 commit の短縮 SHA が「不在」と判定され、差し戻し先の
+#   6.1.a を何度実行しても同じ値が再生成されるため非収束ループになる。`--commit-sha` 側は
+#   16 進 7 桁以上を入力検査で保証しており、短すぎる値での誤一致は構造的に起きない。
+#
+# fail と degraded の境界 (Issue #2127 §4.5 / AC-6):
+#   degraded に倒すのは「判定に必要な入力・環境が揃わない」場合だけ — 入力の置換漏れ / 形状不正、
+#   jq 不在、state root 未解決、run 開始点 pin を読めない、results dir を **読めない** (permission
+#   等で find が失敗する) の 5 群。results dir が **存在しない** のは degraded ではなく fail に
+#   合流させる (AC-2 の Given「区間ごと skip して JSON も無い」の最も強い証拠であり、degraded に
+#   倒すと機械強制がその Given でだけ降りる)。
 #
 # 既知の検出限界:
 #   本 cycle と前 cycle の HEAD が同一のとき (/rite:fix の accept-only cycle 等、新規 commit を
@@ -101,13 +118,18 @@ _degraded() {
   exit 0
 }
 
-# ---- 入力検査 (置換漏れ / 空は degraded。理由は冒頭 docstring) --------------------
+# ---- 入力検査 (置換漏れ / 形状不正は degraded。理由は冒頭 docstring) --------------
 case "$pr_number" in
   ''|*[!0-9]*) _degraded "--pr が数値ではありません (received: '$pr_number')。caller の {pr_number} 置換漏れの可能性があります" ;;
 esac
 case "$commit_sha" in
   ''|*'{'*|*'}'*) _degraded "--commit-sha が空または placeholder 形状です (received: '$commit_sha')。ステップ 1.2.5 の {current_commit_sha} 置換漏れの可能性があります" ;;
+  *[!0-9a-fA-F]*) _degraded "--commit-sha が 16 進数以外の文字を含みます (received: '$commit_sha')。git rev-parse HEAD の出力をそのまま渡してください" ;;
 esac
+# 7 桁未満は git の短縮 SHA としても短すぎ、prefix 比較が別 commit を誤って一致させる。
+[ "${#commit_sha}" -ge 7 ] || _degraded "--commit-sha が 7 桁未満です (received: '$commit_sha')。prefix 比較が別 commit を誤一致させるため判定を降ろします"
+# 比較は小文字で行う (git rev-parse は小文字、JSON 側は大文字でも受理する)。
+commit_sha=$(printf '%s' "$commit_sha" | tr '[:upper:]' '[:lower:]')
 
 command -v jq >/dev/null 2>&1 || _degraded "jq が PATH 上にありません。JSON の commit_sha を読めません"
 
@@ -128,7 +150,10 @@ if [ -z "$results_dir" ]; then
   results_dir="$state_root/.rite/review-results"
 fi
 
-[ -d "$results_dir" ] || _degraded "レビュー結果ディレクトリが存在しません ($results_dir)"
+# results dir の **不在** は degraded にしない — Issue #2127 §4.5 が degraded に置くのは
+# 「解決できない / 読めない」であって「存在しない」ではなく、dir 不在は AC-2 の Given
+# (区間ごと skip して JSON も無い) の最も強い証拠だからである。下の走査を skip して fail 側へ
+# 合流させる (診断は seen_count=0 のとき「(なし)」を出すので追加実装は要らない)。
 
 # run 境界は既存の run 開始点 pin を再利用する (新しい state ファイルは作らない)。書き手は
 # skills/iterate/SKILL.md ステップ 0.6 で、sibling の review-trend-divergence.sh / review-cycle-scope.sh
@@ -152,28 +177,63 @@ fi
 found=""
 seen=""
 seen_count=0
-while IFS= read -r f; do
-  [ -n "$f" ] || continue
-  bn=$(basename "$f")
-  if [ -n "$since" ]; then
-    # pin より **厳密に新しい** basename だけが現 run のもの (pin 自身は前 run の最終ファイル)。
-    [ "$bn" = "$since" ] && continue
-    [ "$(printf '%s\n%s\n' "$bn" "$since" | LC_ALL=C sort | head -1)" = "$since" ] || continue
-  fi
-  sha=$(jq -r '.commit_sha // ""' "$f" 2>/dev/null) || sha=""
-  seen="${seen}    - ${bn} (commit_sha=${sha:-<読取不可>})
+
+# 診断・marker 行へ埋める外部由来の値から制御文字を落とす。改行が残ると走査対象 JSON の
+# commit_sha 経由で `[CONTEXT] REVIEW_SAVE_GATE=pass` 行を桁 0 に偽造でき、本 helper のテストが
+# pin している「fail / degraded 経路で pass を emit しない」不変条件が破れる。
+_scrub() { printf '%s' "$1" | tr -d '[:cntrl:]'; }
+
+# git の短縮 SHA を許容する。schema の正典例は 7 桁短縮のため厳密一致にすると同一 commit が
+# 「不在」と判定され、差し戻し先の 6.1.a を何度実行しても直らない非収束ループになる。
+_sha_matches() {
+  case "$2" in "$1"*) return 0 ;; esac
+  case "$1" in "$2"*) return 0 ;; esac
+  return 1
+}
+
+if [ -d "$results_dir" ]; then
+  # find の rc を検査する。dir が存在しても読めない (permission 等) と find は 0 件を返すため、
+  # rc を見ないと「読めない」が「実在しない」に化けて fail へ落ち、差し戻し先の 6.1.a を何度
+  # 実行しても解消しない非収束ループになる (§4.5 / AC-6 は読取不能を degraded 側に置く)。
+  # `2>/dev/null` は付けない — find の "Permission denied" が原因の唯一の手がかり。
+  find_raw=$(find "$results_dir" -maxdepth 1 -type f -name "${pr_number}-*.json") \
+    || _degraded "レビュー結果ディレクトリを読めません ($results_dir)。直前の find の診断を参照してください"
+  # ファイル名 `{pr}-{timestamp}[~{hex}].json` の LC_ALL=C 昇順 = 時系列昇順
+  # (SoT: references/review-result-schema.md §保存場所)。`*.json.corrupt-*` は glob に入らない。
+  jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-p804-jq-err-XXXXXX") || jq_err=""
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    bn=$(_scrub "$(basename "$f")")
+    if [ -n "$since" ]; then
+      # pin より **厳密に新しい** basename だけが現 run のもの (pin 自身は前 run の最終ファイル)。
+      [ "$bn" = "$since" ] && continue
+      [ "$(printf '%s\n%s\n' "$bn" "$since" | LC_ALL=C sort | head -1)" = "$since" ] || continue
+    fi
+    # 「JSON が壊れて読めない」「commit_sha キーが無い / 空」の 2 状態を融合しない。融合すると
+    # 破損が旧形式互換の顔をして運用者に無視され、SHOULD (保存失敗と区間 skip の切り分け) が
+    # 成立しない (sibling scripts/review-cycle-scope.sh が同じ融合を明示的に禁じている)。
+    if sha=$(jq -r '.commit_sha // ""' "$f" 2>"${jq_err:-/dev/null}"); then
+      sha=$(_scrub "$sha" | tr '[:upper:]' '[:lower:]')
+      if [ -n "$sha" ]; then sha_display="commit_sha=$sha"; else sha_display="commit_sha=<キー欠落または空>"; fi
+    else
+      jq_rc=$?
+      sha=""
+      jq_msg=""
+      [ -n "$jq_err" ] && [ -s "$jq_err" ] && jq_msg=$(_scrub "$(head -1 "$jq_err")")
+      sha_display="commit_sha=<jq 読取失敗 rc=$jq_rc${jq_msg:+: $jq_msg}>"
+    fi
+    seen="${seen}    - ${bn} (${sha_display})
 "
-  seen_count=$((seen_count + 1))
-  if [ -n "$sha" ] && [ "$sha" = "$commit_sha" ]; then
-    found="$bn"
-  fi
-# `2>/dev/null` は付けない。dir を読めない (permission 等) とき find は 0 件を返し、後続の診断が
-# 原因を「区間 skip / 本 cycle 分だけ未保存」の 2 つに限定して名指しする — 実際の原因はそのどちら
-# でもないため運用者が空振りする。正常系の find は stderr 0 バイト。
-done < <(find "$results_dir" -maxdepth 1 -type f -name "${pr_number}-*.json" | LC_ALL=C sort)
+    seen_count=$((seen_count + 1))
+    if [ -n "$sha" ] && _sha_matches "$sha" "$commit_sha"; then
+      found="$bn"
+    fi
+  done <<< "$(printf '%s\n' "$find_raw" | LC_ALL=C sort)"
+  [ -n "$jq_err" ] && rm -f "$jq_err"
+fi
 
 if [ -n "$found" ]; then
-  echo "[CONTEXT] REVIEW_SAVE_GATE=pass; reason=save_pending_marker_absent; result_json=$found" >&2
+  echo "[CONTEXT] REVIEW_SAVE_JSON_OK=1; pr=$pr_number; result_json=$found" >&2
   exit 0
 fi
 
@@ -183,7 +243,7 @@ echo "  探索先: $results_dir/${pr_number}-*.json" >&2
 echo "  run 開始点 pin: ${since:-<不在 = 全件を現 run とみなした>}" >&2
 echo "  現 run に実在する JSON ($seen_count 件):" >&2
 if [ "$seen_count" -gt 0 ]; then printf '%s' "$seen" >&2; else echo "    (なし)" >&2; fi
-echo "  切り分け: 一覧が空なら ステップ 5.3.0.M〜6.1.a を**区間ごと**実行していません。非空で commit_sha がすべて古いなら、区間は走ったが本 cycle 分の保存だけが落ちています。" >&2
+echo "  切り分け: 一覧が空なら ステップ 5.3.0.M〜6.1.a を**区間ごと**実行していないか、6.1.a の保存自体が失敗しています (会話の LOCAL_SAVE_FAILED を確認)。非空で commit_sha がすべて古いなら、区間は走ったが本 cycle 分の保存だけが落ちています。" >&2
 echo "  ACTION: ステップ 6.1.a を **step 0 から** 実行してください。step 2 (保存 helper) だけを実行しては**なりません** — step 0 が emit する REVIEW_CYCLE_ID / NONBLOCKING_PENDING_MARKER を欠くと 8.0.3 が前 cycle の値を見て誤 pass します。" >&2
 echo "    会話に本 cycle の REVIEW_SAVE_PENDING_MARKER / REVIEW_SAVE_PENDING_ID が 1 つも無い場合は、marker と id の生成元である ステップ 5.3.0.M step 2 から実行してください。" >&2
 echo "    続けて {post_comment_mode} に応じて 6.1.b または 6.1.c も再実行してから ステップ 8.0 を再評価してください。" >&2

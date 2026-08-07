@@ -3093,7 +3093,10 @@ else
   #        「判定式が存在する」ことしか言えず、pass / degraded の emit 入れ替えや、到達しない
   #        case arm を検出できない。本 gate は AC-1 / AC-2 が依存する load-bearing 層なので、
   #        生成側 (h-1 の probe) と同じ強度で実行して固定する。
-  _sec_804_precheck() { _sec_804 | awk '/^save_pending_marker="/{f=1} f{print} f&&/^esac$/{exit}'; }
+  # 抽出は `esac` で止めない — positive 検査 (review-save-json-verify.sh) は case の**外**に
+  # 置かれており、`esac` で切ると本 PR が塞いだ「marker degraded 時に positive 検査が走らない」
+  # 経路を arm テストが一切踏めなくなる。閉じ fence まで取る。
+  _sec_804_precheck() { _sec_804 | awk '/^save_pending_marker="/{f=1} f&&/^```$/{exit} f{print}'; }
   # marker 不在の arm は positive 検査 (review-save-json-verify.sh) まで到達する。同 helper は
   # state-path-resolve.sh で results dir を解決するため、arm は **cwd 配下に .rite/review-results を
   # 持つ一時ディレクトリ**で走らせる。`--results-dir` を後付けせず本番と同じ既定解決を通すことで、
@@ -3151,8 +3154,13 @@ else
   assert "TC-5h [実測] 8.0.4 arm=marker 不在 + JSON 不在: rc=1 (差し戻し)" "1" "${_r%%|*}"
   assert "TC-5h [実測] 8.0.4 arm=marker 不在 + JSON 不在: GATE_FAILED; reason=save_result_json_absent" "1" \
     "$(printf '%s' "${_r#*|}" | grep -cF 'REVIEW_SAVE_GATE_FAILED=1; reason=save_result_json_absent' || true)"
-  assert "TC-5h [実測] 8.0.4 arm=marker 不在 + JSON 不在: pass を emit しない" "0" \
-    "$(printf '%s' "${_r#*|}" | grep -cF 'REVIEW_SAVE_GATE=pass' || true)"
+  # 2 層設計では marker 層の pass と positive 層の fail が同一 run に共起する (層ごとに独立した
+  # marker を出す契約)。gate の可否を決めるのは **GATE_FAILED の有無と rc** であって pass 行の
+  # 不在ではない — pass 行の不在を pin すると、marker 層の inline emit を消す変異が緑になる。
+  assert "TC-5h [実測] 8.0.4 arm=marker 不在 + JSON 不在: marker 層の pass は出てよい (可否は rc と GATE_FAILED で決まる)" "1" \
+    "$(printf '%s' "${_r#*|}" | grep -cF 'REVIEW_SAVE_GATE=pass; reason=save_pending_marker_absent' || true)"
+  assert "TC-5h [実測] 8.0.4 arm=marker 不在 + JSON 不在: positive 層の成功 marker は出ない" "0" \
+    "$(printf '%s' "${_r#*|}" | grep -cF 'REVIEW_SAVE_JSON_OK=1' || true)"
 
   # arm 3: placeholder 残留 → rc=0 + degraded (機械強制を skip し prose 判定へ縮退)
   _r=$(_run_804_arm '{save_pending_marker}')
@@ -3165,6 +3173,21 @@ else
   assert "TC-5h [実測] 8.0.4 arm=空文字: rc=0 (非致命)" "0" "${_r%%|*}"
   assert "TC-5h [実測] 8.0.4 arm=空文字: GATE=degraded; reason=..._unavailable" "1" \
     "$(printf '%s' "${_r#*|}" | grep -cF 'REVIEW_SAVE_GATE=degraded; reason=save_pending_marker_unavailable' || true)"
+
+  # arm 3' / 4': marker 層が degraded **かつ** 本 cycle の JSON が不在 → rc=1。
+  # AC-2 の Given (marker が一度も設置されていない) はまさにこの marker 値になるため、positive
+  # 検査を `*)` arm の内側に置くと守るべき経路でだけ機械強制が降りる。両 arm を pin する。
+  _r=$(_run_804_arm '' "$_804_json_missing")
+  assert "TC-5h [実測] 8.0.4 arm=空文字 + JSON 不在: rc=1 (marker degraded でも positive 層は落とす)" "1" "${_r%%|*}"
+  assert "TC-5h [実測] 8.0.4 arm=空文字 + JSON 不在: reason=save_result_json_absent" "1" \
+    "$(printf '%s' "${_r#*|}" | grep -cF 'REVIEW_SAVE_GATE_FAILED=1; reason=save_result_json_absent' || true)"
+  _r=$(_run_804_arm '{save_pending_marker}' "$_804_json_missing")
+  assert "TC-5h [実測] 8.0.4 arm=placeholder + JSON 不在: rc=1" "1" "${_r%%|*}"
+
+  # 正常系の degraded arm では positive 層が通過し観測 marker を出す (誤 blocking を作らない)。
+  _r=$(_run_804_arm '')
+  assert "TC-5h [実測] 8.0.4 arm=空文字 + JSON 実在: positive 層は REVIEW_SAVE_JSON_OK を出す" "1" \
+    "$(printf '%s' "${_r#*|}" | grep -cF 'REVIEW_SAVE_JSON_OK=1' || true)"
 
   # (h-5) helper の --pending-id gate: marker path は helper が id から内部導出するため、
   #       caller から任意の path を受け取る経路そのものが存在しない (sibling と同形)。
