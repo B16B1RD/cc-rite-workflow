@@ -162,6 +162,8 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 ```
 
 > **本ブロックは WT_ENSURE 分岐表の SoT**（review / iterate / fix の入場ゲートが参照する。#1676）。EnterWorktree は LLM ツールのため helper からは呼べず、`reenter` / `reconstructed` の入場のみ下記表に従い LLM が実行する。
+>
+> **marker の読み取り規約は本ファイルが持たない**（#2025）。どの行が marker か（行頭アンカー）・stderr が複数行混入しても読めること・`branch=` スコープで他ブランチの値を拾わないこと・同一 KEY が複数回出たときは最新が勝つこと・キーと field 名がトークン完全一致であることは、共有関数 `marker_get`（[`lib/context-marker.sh`](../../hooks/scripts/lib/context-marker.sh)）の契約であり、SoT は `hooks/tests/context-marker.test.sh`。下表は **case 値ごとのアクション**のみを規定する。バッチ実行では同一 transcript に複数ブランチの `WT_ENSURE` が並ぶため、対象を取り違えないこと（規約の実体は上記関数、その `--branch` が対応する）。
 
 `WT_ENSURE` で分岐する:
 
