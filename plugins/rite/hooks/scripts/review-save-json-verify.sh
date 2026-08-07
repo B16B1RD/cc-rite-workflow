@@ -7,10 +7,10 @@
 # を塞ぐための独立した観測点。
 #
 # Called from:
-#   - skills/pr-review/SKILL.md ステップ 8.0.4 Pre-Check の `*)` arm。
-#     **caller 契約**: marker の不在を確認済みの経路からのみ呼ばれる。したがって本 helper の
-#     pass は「marker 不在 ∧ 本 cycle の JSON 実在」を意味し、reason は marker 層の語彙
-#     (`save_pending_marker_absent`) をそのまま使う (下流 consumer の語彙を drift させない)。
+#   - skills/pr-review/SKILL.md ステップ 8.0.4 Pre-Check の `esac` の**後**。marker 層の 3 arm
+#     すべてを通る (marker 残存 arm だけは同 arm 内の `exit 1` で本 helper に到達しない)。
+#     本 helper は marker の在否を前提にせず、ステップ 1.2.5 の commit SHA とディスク上の
+#     永続 JSON だけで判定する。出力の意味論は下記「出力」節が SoT。
 #
 # Usage:
 #   bash review-save-json-verify.sh --pr N --commit-sha SHA [--results-dir PATH] [--since BASENAME]
@@ -40,8 +40,9 @@
 #   比較は **一方が他方の prefix なら一致** とする。references/review-result-schema.md の正典例が
 #   7 桁短縮 (`"commit_sha": "abc1234"`) で、書き手側 (hooks/review-result-save.sh) に形状検査が
 #   無いためである。厳密一致にすると同一 commit の短縮 SHA が「不在」と判定され、差し戻し先の
-#   6.1.a を何度実行しても同じ値が再生成されるため非収束ループになる。`--commit-sha` 側は
-#   16 進 7 桁以上を入力検査で保証しており、短すぎる値での誤一致は構造的に起きない。
+#   6.1.a を何度実行しても同じ値が再生成されるため非収束ループになる。誤一致は `_sha_matches` が
+#   **両オペランド**に 7 桁下限を課すことで防ぐ — 比較が双方向である以上、`--commit-sha` 側の
+#   入力検査だけでは JSON 側の短すぎる値を止められない (書き手は commit_sha を検査しない)。
 #
 # fail と degraded の境界 (Issue #2127 §4.5 / AC-6):
 #   degraded に倒すのは「判定に必要な入力・環境が揃わない」場合だけ — 入力の置換漏れ / 形状不正、
@@ -71,6 +72,8 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/tempfile.sh
+source "$SCRIPT_DIR/lib/tempfile.sh"
 
 pr_number=""
 commit_sha=""
@@ -110,9 +113,18 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# 診断・marker 行へ埋める外部由来の値から制御文字を落とす。**入力検査より前に定義する** —
+# `_degraded` は拒否した値そのものを WARNING にエコーするため、走査ブロックの直前に置くと
+# 拒否経路を覆えず、「入力を拒否した」degraded 出力の中で桁 0 に `[CONTEXT]` 行を偽造できる。
+# 実装は builtin だけで閉じる (`tr` を通さない) — jq 不在の degraded は PATH が壊れた環境でも
+# 起きうる経路で、そこで外部コマンドに依存すると WARNING 本文が空になり、fail-loud のはずの
+# 出力が原因を名指しできなくなる (機械検査: tests/review-save-json-verify.test.sh T-06n)。
+_scrub() { local _s="$1"; printf '%s' "${_s//[[:cntrl:]]/}"; }
+
 _degraded() {
-  # $1 = 人間向け WARNING 本文 (原因を名指しする。silent fallback にしないための必須要素)
-  echo "WARNING: ステップ 8.0.4 positive 検査: $1" >&2
+  # $1 = 人間向け WARNING 本文 (原因を名指しする。silent fallback にしないための必須要素)。
+  # 本文には拒否した入力値が埋まるため必ず scrub する (marker 行の偽造遮断)。
+  echo "WARNING: ステップ 8.0.4 positive 検査: $(_scrub "$1")" >&2
   echo "  本 cycle のレビュー結果 JSON が実在するかを確認できないため、機械強制を降ろします (黙って pass にはしません)。" >&2
   echo "[CONTEXT] REVIEW_SAVE_GATE=degraded; reason=save_result_json_undecidable" >&2
   exit 0
@@ -172,20 +184,17 @@ if [ "$since_set" -eq 0 ]; then
 fi
 
 # ---- 現 run の JSON を走査し、本 cycle の commit SHA を持つものを探す ---------------
-# ファイル名 `{pr}-{timestamp}[~{hex}].json` の LC_ALL=C 昇順 = 時系列昇順
-# (SoT: references/review-result-schema.md §保存場所)。`*.json.corrupt-*` は glob に入らない。
 found=""
 seen=""
 seen_count=0
 
-# 診断・marker 行へ埋める外部由来の値から制御文字を落とす。改行が残ると走査対象 JSON の
-# commit_sha 経由で `[CONTEXT] REVIEW_SAVE_GATE=pass` 行を桁 0 に偽造でき、本 helper のテストが
-# pin している「fail / degraded 経路で pass を emit しない」不変条件が破れる。
-_scrub() { printf '%s' "$1" | tr -d '[:cntrl:]'; }
-
 # git の短縮 SHA を許容する。schema の正典例は 7 桁短縮のため厳密一致にすると同一 commit が
 # 「不在」と判定され、差し戻し先の 6.1.a を何度実行しても直らない非収束ループになる。
+# **下限は関数の内側で両オペランドに掛ける** — 比較が双方向である以上、期待値側にだけ入力検査を
+# 置いても保証にならず、JSON 側の 1 文字の値が 40 桁 SHA の prefix として誤一致する。書き手
+# (hooks/review-result-save.sh) は commit_sha を検査しないため、その値は実際に生成されうる。
 _sha_matches() {
+  [ "${#1}" -ge 7 ] && [ "${#2}" -ge 7 ] || return 1
   case "$2" in "$1"*) return 0 ;; esac
   case "$1" in "$2"*) return 0 ;; esac
   return 1
@@ -200,7 +209,13 @@ if [ -d "$results_dir" ]; then
     || _degraded "レビュー結果ディレクトリを読めません ($results_dir)。直前の find の診断を参照してください"
   # ファイル名 `{pr}-{timestamp}[~{hex}].json` の LC_ALL=C 昇順 = 時系列昇順
   # (SoT: references/review-result-schema.md §保存場所)。`*.json.corrupt-*` は glob に入らない。
-  jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-p804-jq-err-XXXXXX") || jq_err=""
+  # tempfile は house convention (coding-principles.md §Shell Helper Conventions) に従い lib 経由。
+  # 生 mktemp + 手書き rm は EXIT のみの cleanup と「登録前に signal を受ける窓」を再導入する。
+  rite_tempfile_init
+  rite_tempfile_new jq_err "p804-jq-err" || {
+    echo "WARNING: jq の stderr を捕捉できないため、読取失敗の診断が rc のみに縮退します" >&2
+    jq_err=""
+  }
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     bn=$(_scrub "$(basename "$f")")
@@ -214,7 +229,14 @@ if [ -d "$results_dir" ]; then
     # 成立しない (sibling scripts/review-cycle-scope.sh が同じ融合を明示的に禁じている)。
     if sha=$(jq -r '.commit_sha // ""' "$f" 2>"${jq_err:-/dev/null}"); then
       sha=$(_scrub "$sha" | tr '[:upper:]' '[:lower:]')
-      if [ -n "$sha" ]; then sha_display="commit_sha=$sha"; else sha_display="commit_sha=<キー欠落または空>"; fi
+      if [ -z "$sha" ]; then
+        sha_display="commit_sha=<キー欠落または空>"
+      elif [ "${#sha}" -lt 7 ]; then
+        # 判定に使えない値は「一致しなかった」ではなく「短すぎる」と名指しする (3 状態を融合しない)。
+        sha_display="commit_sha=$sha <7 桁未満のため判定に使えません>"
+      else
+        sha_display="commit_sha=$sha"
+      fi
     else
       jq_rc=$?
       sha=""
@@ -229,7 +251,6 @@ if [ -d "$results_dir" ]; then
       found="$bn"
     fi
   done <<< "$(printf '%s\n' "$find_raw" | LC_ALL=C sort)"
-  [ -n "$jq_err" ] && rm -f "$jq_err"
 fi
 
 if [ -n "$found" ]; then
