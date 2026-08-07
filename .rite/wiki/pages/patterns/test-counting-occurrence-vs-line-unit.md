@@ -2,12 +2,14 @@
 title: "ratchet test では occurrence 単位 (`grep -oE | wc -l`) を原則とし line 単位は混在させない"
 domain: "patterns"
 created: "2026-05-08T17:15:33+00:00"
-updated: "2026-05-08T17:20:17+00:00"
+updated: "2026-08-07T18:40:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260508T171533Z-pr-906.md"
   - type: "fixes"
     ref: "raw/fixes/20260508T172017Z-pr-906.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260807T082131Z-pr-2135.md"
 tags: ["bash", "test-design", "ratchet-test", "grep", "measurement-unit"]
 confidence: high
 ---
@@ -66,6 +68,14 @@ bell_count=$({ grep -oE '🚨' "$start_md" || true; } | wc -l | tr -d ' ')
 | 1 行 N 出現の集約 PR を予定 | occurrence 一択 | line 単位だと進捗 invisible |
 | metavariable whitelisting あり | occurrence + filter | `Issue #N` (リテラル N) を除外する awk filter と組み合わせ |
 
+### 長い 1 行段落では `grep -c` が黙って過小評価する
+
+上表の「informational summary は line 単位でよい」は、**1 行が短い**ことを暗黙の前提にしている。長い段落を 1 行で書く markdown ではこの前提が崩れる。
+
+PR #2135 で `docs/CONFIGURATION.md` の safety 表・backstop 節（いずれも 1 行 1000 字超）に count pin を掛けたところ、期待値 3 に対し `grep -c` の実測が 2 を返した。同一行に対象文字列が 2 つ同居していたためである。`grep -o ... | wc -l` に変えると 4 が返り、そこで初めて「下限制約の記述も同じ網に入る」ことが判明した — **単位の誤りが件数を狂わせただけでなく、pin の対象集合の理解そのものを誤らせていた**。
+
+したがって ratchet 用途でなくとも、**行長が制御できない散文ファイルに count pin を掛けるときは occurrence 単位を使う**。line 単位が許容できるのは「1 行 1 出現」が構造的に保証される場合（コード行・表の 1 行 1 レコード等）に限る。
+
 ### Mutation test での検証
 
 起点事例の cycle 1 fix では、unit 統一が ratchet test の sensitivity を上げたことを mutation test で検証:
@@ -81,8 +91,10 @@ bell_count=$({ grep -oE '🚨' "$start_md" || true; } | wc -l | tr -d ' ')
 - [`grep -oE | wc -l` が ratchet ideal 値到達時に pipefail で silent abort](../anti-patterns/grep-oe-wc-pipefail-silent-abort.md)
 - [Mutation Testing Test Fidelity](./mutation-testing-test-fidelity.md)
 - [Detection Mutation Strictness Symmetry](./detection-mutation-strictness-symmetry.md)
+- [pin の説明文に pin 対象の literal を書くと、注記自身が出現数に数えられて count pin が落ちる](../anti-patterns/pin-note-containing-pinned-literal.md)
 
 ## ソース
 
 - [PR #906 review results](../../raw/reviews/20260508T171533Z-pr-906.md)
 - [PR #906 fix results (cycle 1)](../../raw/fixes/20260508T172017Z-pr-906.md)
+- [PR #2135 fix results (cycle 2: 長い 1 行段落での grep -c 過小評価)](../../raw/fixes/20260807T082131Z-pr-2135.md)

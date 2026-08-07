@@ -7,6 +7,23 @@
 * **Update**: [累積対策 PR の review-fix loop で fix 自体が drift を導入する](pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md) — raw/fixes/20260806T173922Z-pr-2126-c4.md を統合（実測アンカーの無い散文指摘は修正の複製率が 1 を超える / cycle 3 の散文修正 11 件が cycle 4 の HIGH 4 件を直接生んだ / レーン別の blocking 生成率を測ってから労力を配る）
 * **Create**: [jq / Oniguruma の $ は末尾改行の直前にも match する — 文字列全体一致は \A / \z を使う](pages/patterns/regex-absolute-anchors-for-whole-string-match.md) — raw/fixes/20260806T181047Z-pr-2126-c5.md を新規ページ化（形の allowlist が末尾改行を通し、防ぎたかった marker 行分断が起きた / 型・非空・形は別の検査）
 * **lint:warning** — contradictions=0, stale=19, orphans=0, missing_concept=0, unregistered_raw=299, broken_refs=0
+* **Create**: [独立した判定層は既存層の分岐の内側に置かない — 層ごとに別 marker を持たせ可否は failure marker の不在で決める](pages/patterns/independent-gate-layer-outside-existing-branch.md) — raw/reviews/20260807T011214Z-pr-2130.md を新規ページ化（新層の入力が既存層に依存していなくても配置だけで従属する / 守るべき failure mode でこそ既存層が degraded に降りて新層が走らない）
+* **Update**: [オプションを常に明示するテストは、既定値解決という最も壊れやすい経路を丸ごと素通りさせる](pages/anti-patterns/explicit-option-tests-bypass-default-resolution.md) — raw/reviews/20260807T011214Z-pr-2130.md を統合（同一 helper で 3 PR 連続の再発 / 「本番が実際に使う唯一の引数形」を通す arm を必ず 1 本置く）
+* **Create**: [degraded と fail の境界は「差し戻して直るか」で引く](pages/heuristics/degraded-vs-fail-boundary-by-redispatch-fixability.md) — raw/fixes/20260807T013056Z-pr-2130.md を新規ページ化（状態の種類で振り分けると両方向に害が出る / permission を fail にすると非収束ループ、置換漏れを fail にしても直らない）
+* **Skip**: [20260807T015746Z-pr-2130.md](raw/reviews/20260807T015746Z-pr-2130.md) — cycle 2 の 5 件はいずれも既存ページで被覆済みで、新規の経験則を追加できない
+* **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/reviews/20260807T023931Z-pr-2130.md を統合（推奨対応が更新先を列挙すると列挙漏れがそのまま drift になる / 名指しされなかった 1 箇所が旧根拠の唯一の生存コピーになった）
+* **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/reviews/20260807T032230Z-pr-2130.md を統合（同じ drift が 1 clause ずれて再発 / 同一主張の全サイトは grep で数えてから修正する）
+* **Skip**: [20260807T035917Z-pr-2130.md](raw/reviews/20260807T035917Z-pr-2130.md) — 推奨対応の列挙誤りは asymmetric-fix-transcription の追記で、散文の実測裏取りは既存ページで被覆済み
+* **Create**: [機械強制の anchor を強制される側が選べる値にすると、2 層の gate が同一の誤りで同時に無効化される](pages/anti-patterns/enforcement-anchor-chosen-by-enforced-party.md) — raw/reviews/20260807T043149Z-pr-2130.md を新規ページ化（marker 層には選択規則が 4 文あったのに新規 anchor には無かった / 形状検査は実体との突き合わせにならない）
+* **Create**: [差分スコープのレビューは diff の外を基準以前に見られない — cycle 上限到達後にフルレビューを 1 回挟む](pages/heuristics/differential-scope-review-blind-outside-diff.md) — raw/reviews/20260807T043149Z-pr-2130.md を新規ページ化（5 cycle で 7→5→4→5→1 に落とした直後のフルレビューで blocking 5 件・HIGH 3 件 / 収束の主張は見ている範囲の広さとセットでしか意味を持たない）
+* **Skip**: [20260807T052700Z-pr-2130.md](raw/reviews/20260807T052700Z-pr-2130.md) — commit body と diff の乖離・assert が契約に到達しない・carve-out 伝播漏れは、いずれも既存ページの範囲内
+* **Create**: [ERE の ? を多バイト文字に直接掛けると LC_ALL=C でバイト単位評価になり検出が失効する](pages/anti-patterns/ere-optional-quantifier-on-multibyte-char.md) — raw/reviews/20260807T073304Z-pr-2135.md を新規ページ化（`?` が多バイト文字の最終バイトにだけ掛かる / UTF-8 ロケールでは発現せず mutation testing でのみ検出できた）
+* **Skip**: [20260807T081143Z-pr-2135.md](raw/reviews/20260807T081143Z-pr-2135.md) — cycle 2 の指摘は root cause 迂回・pin 対象の自己参照・根拠の実測範囲で、本サイクルで作成/更新した各ページに統合済み
+* **Update**: [列挙・全称主張を持つ記述は書き直しでは収束しない — 撤去だけが指摘面を消す](pages/anti-patterns/enumeration-claim-rewrite-never-converges.md) — raw/reviews/20260807T084736Z-pr-2135.md を統合（具体化する方向に進めると不正確さが増える 3 cycle 実測 / reviewer の実測が割れたら争点そのものを記述から外す）
+* **Create**: [pin の説明文に pin 対象の literal を書くと、注記自身が出現数に数えられて count pin が落ちる](pages/anti-patterns/pin-note-containing-pinned-literal.md) — raw/fixes/20260807T082131Z-pr-2135.md を新規ページ化（cycle 2 で言い換え、cycle 3 で書き戻して再発 / 恒久対処は注記自身に自己参照の事実を埋め込むこと）
+* **Update**: [ratchet test では occurrence 単位 (`grep -oE | wc -l`) を原則とし line 単位は混在させない](pages/patterns/test-counting-occurrence-vs-line-unit.md) — raw/fixes/20260807T082131Z-pr-2135.md を統合（1 行 1000 字超の段落で `grep -c` が期待値 3 に対し 2 を返した / 単位の誤りが pin 対象集合の理解そのものを誤らせた）
+* **Update**: [列挙・全称主張を持つ記述は書き直しでは収束しない — 撤去だけが指摘面を消す](pages/anti-patterns/enumeration-claim-rewrite-never-converges.md) — raw/fixes/20260807T085227Z-pr-2135.md を統合（3 cycle 費やして到達した形は最初より抽象的 / helper の内部分岐は分岐条件まで正しく書けないなら名指ししない）
+* **Update**: [ERE の ? を多バイト文字に直接掛けると LC_ALL=C でバイト単位評価になり検出が失効する](pages/anti-patterns/ere-optional-quantifier-on-multibyte-char.md) — raw/fixes/20260807T074604Z-pr-2135.md を統合（シェル変数の直後に多バイト文字が来る箇所はブレースで囲む / 半角スペース必須の検出パターンは表記揺れの分だけ穴が残る）
 
 ## 2026-08-06
 

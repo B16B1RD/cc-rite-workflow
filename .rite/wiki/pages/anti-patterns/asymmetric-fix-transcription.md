@@ -2,10 +2,14 @@
 title: "Asymmetric Fix Transcription (対称位置への伝播漏れ)"
 domain: "anti-patterns"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-08-04T15:54:17+09:00"
+updated: "2026-08-07T18:40:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260804T060209Z-pr-2099.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260807T023931Z-pr-2130.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260807T032230Z-pr-2130.md"
   - type: "reviews"
     ref: "raw/reviews/20260725T003541Z-pr-2013.md"
   - type: "fixes"
@@ -1978,3 +1982,23 @@ inline 実装を helper へ委譲し、元のシンボル名（`extract_yaml_key
 - [PR #2051 fix results — 削除したシンボル名で全文 grep する](../../raw/fixes/20260729T144345Z-pr-2051.md)
 - [PR #2051 fix results (cycle 2) — exit code を 1 つ増やす変更は読む全レイヤに波及する](../../raw/fixes/20260729T151517Z-pr-2051-c2.md)
 - [PR #2099 review results (cycle 5) — 役割再定義の伝播漏れが 4 語彙目で発覚](../../raw/reviews/20260804T060209Z-pr-2099.md)
+
+## 変種: 修正指示が更新先を列挙すると、列挙漏れがそのまま drift になる（PR #2130、2 cycle 連続で 1 clause ずつずれて再発）
+
+本 anti-pattern は通常「修正する側が対称位置を見落とす」形で現れるが、PR #2130 では**レビュー側の推奨対応が更新先を列挙し、fix がその列挙に忠実に従った結果として**再発した。列挙の外が残るので、fix には落ち度がない。
+
+| cycle | 何が起きたか |
+|---|---|
+| 3 | helper の「誤一致防止」の根拠が docstring / `references/measured-gate-record.md` / `docs/SPEC.md` の 3 箇所に写されていた。fix の推奨対応が前 2 者だけを名指ししたため、名指しされなかった `docs/SPEC.md` だけが「fix が反証した旧根拠」の**唯一の生存コピー**になった（test / code-quality が独立検出） |
+| 4 | 同じ 3 重化 drift が **1 clause ずれて再発**。今度は「3 arm すべて」の除外条項が SPEC.md にだけ入らなかった。前 cycle の指摘が propagate 先を 4 箇所と名指しし、fix はその 4 箇所を正確に処理した結果、**名指しされなかった 5 箇所目**が残った |
+
+**教訓**: **同一主張の全サイトは grep で数えてから修正する**。推奨対応が更新先を列挙している場合、その列挙は「最低限ここは直せ」であって「ここだけ直せば足りる」ではない。列挙を信頼して数えないと、列挙の不完全さがそのまま実装の不完全さになる。
+
+同 PR ではこの構造が別レイヤーでも観測された — 前 cycle で差し戻し先の carve-out を Pre-Check 層に入れたが、同一節の prose 層 `On ERROR` には入らなかった。**同一 failure mode に対する指示が節内に複数あるときも、grep で全数を数えてから直す。**
+
+**逆方向の観測（誤りの側に働く Asymmetric Fix Transcription）**: PR #2135 では、定数の既定値を 5 から 15 へ変更する際、数値から導出されていた散文の再計算で混入した off-by-one が**設計判断セクションにも複製されていた**。対称位置への伝播が正しく働いた結果、**誤りが 2 箇所に対称配置された**。対称化の機構は正誤を区別しないので、伝播させる前に元の 1 箇所を実測で検証する必要がある。
+
+## ソース（追記分 3）
+
+- [PR #2130 review results (cycle 3) — 設計主張の 3 重化と、推奨が名指ししなかった 1 箇所の生存](../../raw/reviews/20260807T023931Z-pr-2130.md)
+- [PR #2130 review results (cycle 4) — 同じ drift が 1 clause ずれて再発](../../raw/reviews/20260807T032230Z-pr-2130.md)

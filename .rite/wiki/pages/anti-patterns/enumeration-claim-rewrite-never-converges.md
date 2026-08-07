@@ -4,7 +4,7 @@ title: "列挙・全称主張を持つ記述は書き直しでは収束しない
 domain: "anti-patterns"
 description: "散文やコメントが call site を列挙したり「〜だけが X を持つ」と断定すると、対象が 1 つ増えるたびに偽になり同じ指摘が場所を変えて再生産される。列挙は完成させるのではなく置かない。"
 created: "2026-08-03T07:46:56Z"
-updated: "2026-08-03T23:41:26+09:00"
+updated: "2026-08-07T18:40:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260803T030207Z-pr-2094.md"
@@ -30,6 +30,10 @@ sources:
     ref: "raw/fixes/20260803T110020Z-pr-2095.md"
   - type: "fixes"
     ref: "raw/fixes/20260803T114017Z-pr-2095.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260807T084736Z-pr-2135.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260807T085227Z-pr-2135.md"
 tags: []
 confidence: high
 ---
@@ -95,6 +99,22 @@ PR #2095 の cycle 1 は「アンカー仕様を引用した指摘がどう分�
 
 **判定基準を 1 箇所に適用したら、同じ基準が当たる箇所を全部 grep する**: 同 cycle 1 では対比の一方を「実例として不適格」と判定して除去したが、もう一方に同じ基準を適用しなかった。cycle 2 で 2 reviewer が独立に検出した。「A を直したが同型の B を直していない」は次 cycle で必ず出る。
 
+### 「実装の挙動を散文で説明する」修正は、具体化する方向に進めると不正確さが増える
+
+PR #2135 は同じ様式を helper の内部分岐の説明で 3 cycle 連続再生産した。
+
+| cycle | 書いた内容 | 指摘 |
+|---|---|---|
+| 1 | 「全 head で converging_or_descending を返していた」 | helper は結果 3 件未満の間 `need_3_cycles` を返すため、実際に該当するのは head 4 以降だけ |
+| 2 | 「武装する cycle 4 以降の head では」「cycle 1〜3 の head は `need_3_cycles`」 | head 1 の reason は `no_results_file` であって `need_3_cycles` ではない / armed head の閉じた列挙が head 6 を落とす |
+| 3 | 列挙をやめ「判定の下りた head では一度も発散と判定しなかった」「判定は結果が 3 件揃うまで降りる」 | 収束 |
+
+3 cycle 費やして到達した形は、最初より**抽象的**である。具体化するほど分岐条件の記述精度が要求され、そこで外す。**helper の内部分岐を散文で名指しするとき、分岐条件まで正しく書けないなら名指ししない**方が構造的に安全。
+
+対象の helper は 0 件系だけで `no_results_file` / `results_dir_missing` / `no_file_after_pin` / `run_boundary_unresolved` の 4 分岐を持ち、dir と pin の状態で決まる。**reason enum を散文で列挙すると、その分岐条件まで正しく書かない限り必ず不正確になる**。
+
+**reviewer の実測が割れたときも、争点を記述から外せることが多い**: cycle 3 では armed head の範囲について tech-writer と他 4 名の実測が対立した。差は「その run で結果が何件保存されたか」という docs からは検証できない事実に帰着する。head 番号を名指ししない記述にすれば**どちらが正しくても成立する** — tech-writer と error-handling の両者が独立に同じ回避策を推奨していた。討論で決着しない対立は、争点そのものを記述から外して解く。
+
 ### 関連する観測
 
 - **設計文書の「優先順位表」は正常系の列挙であって全経路の列挙ではない。** 表を散文化すると、表が扱わない失敗経路（parse 不能 → 既定値へ倒れる等）が落ちる。散文化する際は実装の失敗経路を別途 grep して補う。
@@ -111,3 +131,5 @@ PR #2095 の cycle 1 は「アンカー仕様を引用した指摘がどう分�
 - [PR #2094 review results (cycle 5, non-converged)](../../raw/reviews/20260803T030207Z-pr-2094.md)
 - [PR #2095 fix results (cycle 1: 同一命題の 3 ファイル複製)](../../raw/fixes/20260803T110020Z-pr-2095.md)
 - [PR #2095 fix results (cycle 2: 多ケース記述を 1 規則へ畳む / net-negative な simplification)](../../raw/fixes/20260803T114017Z-pr-2095.md)
+- [PR #2135 review results (cycle 3: 具体化が不正確さを増やす / 実測が割れたときの回避)](../../raw/reviews/20260807T084736Z-pr-2135.md)
+- [PR #2135 fix results (cycle 3: 列挙をやめて抽象へ戻す)](../../raw/fixes/20260807T085227Z-pr-2135.md)
