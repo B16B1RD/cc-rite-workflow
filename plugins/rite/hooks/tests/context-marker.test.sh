@@ -6,7 +6,7 @@
 # indefinitely and answered only by argument; the point of the file under test
 # is that such a question now has to arrive as a failing assertion here.
 #
-# The five rules each get a fixture that fails if the rule is dropped, plus the
+# Rules 1–4 each get a fixture that fails if the rule is dropped, plus the
 # three cases where two rules interact and a naive implementation satisfies each
 # rule alone while breaking their conjunction:
 #   - branch filter BEFORE recency (AC-3 x AC-4): the newest line belongs to
@@ -16,10 +16,11 @@
 #   - whole-token field: `--field RESET` must not read a `FIRE_RESET=` field.
 # Both token pairs are live in skills/iterate/SKILL.md; substring matching would
 # make the marker say the opposite of what was emitted.
-#   - value-side exact match (rule 5, consumer contract): `failed` must not
-#     equal `failed-refire`/`failed-stale`, and `write-failed` must not equal
-#     `write-failed-pin-retained`. `marker_get` only returns values; these
-#     fixtures pin the comparison discipline consumers (bash or LLM) must use.
+#
+# Rule 5 (value-side exact match) is a *consumer* contract — `marker_get` does
+# not compare values — so there is no lib branch that "dropping the rule" turns
+# red. The Rule 5 fixtures pin the live collision pairs as full-value round-trips
+# and document why partial match is unsafe; they do not police LLM/bash consumers.
 #
 # The byte-exact emit assertions exist because the wire format is frozen:
 # consumers outside this lib grep it, so a separator or spacing change is a
@@ -206,43 +207,25 @@ rt=$(marker_emit ITERATE_CYCLE_MAX 15 "ITERATE_CYCLE=3" "RESET=failed-stale" "RE
 assert "往復: 主値" "15" "$(printf '%s\n' "$rt" | marker_get ITERATE_CYCLE_MAX)"
 assert "往復: field (ハイフン入りの値)" "failed-stale" \
   "$(printf '%s\n' "$rt" | marker_get ITERATE_CYCLE_MAX --field RESET)"
-assert "往復: 値の部分一致で拾わない (failed は failed-stale と別)" "failed-stale" \
-  "$(printf '%s\n' "$rt" | marker_get ITERATE_CYCLE_MAX --field RESET)"
 
 # --- Rule 5: value-side exact match (consumer contract, #2138) ----------------
-# `marker_get` returns values; it does not compare them. The consumer (bash
-# `[ "$v" = "..." ]`, or an LLM reading context with no bash in between) must
-# treat each value as an opaque whole. The two collision pairs below are live
-# in skills/iterate/SKILL.md; a prefix / substring match flips meaning.
-#
-# These fixtures pin the *comparison* discipline, not a new flag on marker_get:
-# there is no bash call site that would consume `--value-equals`, so inventing
-# one would be speculative. What we pin is "exact equality distinguishes the
-# pair" + "a simulated partial match does not".
-_value_eq() { [ "$1" = "$2" ] && printf 'eq' || printf 'ne'; }
-_value_prefix() { case "$1" in "$2"*) printf 'hit' ;; *) printf 'miss' ;; esac; }
-
+# `marker_get` returns values; it does not compare them. These fixtures pin the
+# two live collision pairs as *full-value round-trips* so a future rename that
+# collapses a pair (or truncates a value on the way out) turns red. They do not
+# police bash/LLM consumers: there is no lib path to drop for "partial match".
+# Partial-match danger (prefix `failed` / `write-failed`) is the motivation
+# recorded in context-marker.sh header rule 5, not a machine-enforced gate here.
 reset_refire=$(printf '%s\n' \
   '[CONTEXT] ITERATE_CYCLE_MAX=15; RESET=failed-refire; REFIRE=1' \
   | marker_get ITERATE_CYCLE_MAX --field RESET)
 reset_stale=$(printf '%s\n' \
   '[CONTEXT] ITERATE_CYCLE_MAX=15; RESET=failed-stale; REFIRE=0' \
   | marker_get ITERATE_CYCLE_MAX --field RESET)
-assert "Rule5 RESET: failed-refire は exact で自分自身に一致" "eq" \
-  "$(_value_eq "$reset_refire" "failed-refire")"
-assert "Rule5 RESET: failed-stale は exact で自分自身に一致" "eq" \
-  "$(_value_eq "$reset_stale" "failed-stale")"
-assert "Rule5 RESET: failed-refire ≠ failed-stale (exact)" "ne" \
-  "$(_value_eq "$reset_refire" "failed-stale")"
-assert "Rule5 RESET: 部分一致 'failed' は両値に当たる (だから禁止)" "hit" \
-  "$(_value_prefix "$reset_refire" "failed")"
-assert "Rule5 RESET: 部分一致 'failed' は failed-stale にも当たる" "hit" \
-  "$(_value_prefix "$reset_stale" "failed")"
-# The partial-match hits above are the bug class. Consumers must use exact:
-assert "Rule5 RESET: 部分一致で得た 'failed' はどちらの正規値でもない" "ne" \
-  "$(_value_eq "failed" "$reset_refire")"
-assert "Rule5 RESET: 部分一致 'failed' ≠ failed-stale" "ne" \
-  "$(_value_eq "failed" "$reset_stale")"
+assert "Rule5 RESET: failed-refire が完全値で往復する" "failed-refire" "$reset_refire"
+assert "Rule5 RESET: failed-stale が完全値で往復する" "failed-stale" "$reset_stale"
+# Distinct opaque tokens: collapsing either rename into the other is the bug class.
+assert "Rule5 RESET: 衝突組は互いに等しくない" "1" \
+  "$( [ "$reset_refire" != "$reset_stale" ] && echo 1 || echo 0 )"
 
 run_since_failed=$(printf '%s\n' \
   '[CONTEXT] ITERATE_CYCLE_MAX=15; RUN_SINCE=write-failed' \
@@ -250,19 +233,11 @@ run_since_failed=$(printf '%s\n' \
 run_since_retained=$(printf '%s\n' \
   '[CONTEXT] ITERATE_CYCLE_MAX=15; RUN_SINCE=write-failed-pin-retained' \
   | marker_get ITERATE_CYCLE_MAX --field RUN_SINCE)
-assert "Rule5 RUN_SINCE: write-failed は exact で自分自身に一致" "eq" \
-  "$(_value_eq "$run_since_failed" "write-failed")"
-assert "Rule5 RUN_SINCE: write-failed-pin-retained は exact で自分自身に一致" "eq" \
-  "$(_value_eq "$run_since_retained" "write-failed-pin-retained")"
-assert "Rule5 RUN_SINCE: write-failed ≠ write-failed-pin-retained (exact)" "ne" \
-  "$(_value_eq "$run_since_failed" "write-failed-pin-retained")"
-# Direction of degradation is opposite: prefix-matching the retained form as
-# write-failed would route to the "safe drop verdict" path instead of the
-# "unsafe mixed-run fire" path (or the reverse). Pin that the prefix hits.
-assert "Rule5 RUN_SINCE: 部分一致 'write-failed' は retained 形にも当たる (だから禁止)" "hit" \
-  "$(_value_prefix "$run_since_retained" "write-failed")"
-assert "Rule5 RUN_SINCE: retained 形は exact では write-failed にならない" "ne" \
-  "$(_value_eq "$run_since_retained" "write-failed")"
+assert "Rule5 RUN_SINCE: write-failed が完全値で往復する" "write-failed" "$run_since_failed"
+assert "Rule5 RUN_SINCE: write-failed-pin-retained が完全値で往復する" \
+  "write-failed-pin-retained" "$run_since_retained"
+assert "Rule5 RUN_SINCE: 衝突組は互いに等しくない (縮退の向きが逆)" "1" \
+  "$( [ "$run_since_failed" != "$run_since_retained" ] && echo 1 || echo 0 )"
 
 # --- emit rejects what the reader could not parse back ------------------------
 # Rejection is loud (ERROR + rc 1) and writes nothing to stdout: a half-written
@@ -371,6 +346,6 @@ if assert_file_exists_or_fail "T-08 iterate/SKILL.md が存在する" "$ITERATE_
 fi
 
 if ! print_summary "$(basename "${BASH_SOURCE[0]}")" \
-  "marker 契約 (行頭アンカー / 複数行耐性 / branch スコープ / recency / 後方互換 / 書式) は本ファイルが SoT。SKILL.md 散文へ規約を書き戻さないこと。"; then
+  "marker 契約 (行頭アンカー / 複数行耐性 / branch スコープ / recency / 後方互換 / 書式 / 値側完全一致の消費者契約 pin) は本ファイルが SoT。SKILL.md 散文へ規約を書き戻さないこと。"; then
   exit 1
 fi
