@@ -757,6 +757,9 @@ fi
 # Log block event (stderr + deny-only persistent audit trail)
 CMD_SUMMARY="${COMMAND:0:80}"
 CMD_SUMMARY="${CMD_SUMMARY//\"/\\\"}"
+# Keep one deny event on one physical line. Without this normalization a
+# multiline command could forge a second audit record.
+CMD_SUMMARY=$(printf '%s' "$CMD_SUMMARY" | neutralize_ctrl --c0-only)
 BLOCK_EVENT="[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] bash-guard: BLOCKED pattern=$BLOCKED_PATTERN cmd=\"$CMD_SUMMARY\""
 echo "$BLOCK_EVENT" >&2
 
