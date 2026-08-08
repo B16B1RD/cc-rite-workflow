@@ -105,6 +105,10 @@ jobs:
         shell: bash
         run: bash plugins/rite/scripts/tests/run-all.sh 2>&1 | tee scripts-tests.log
 
+      - name: Run rite-dev launcher test suite
+        shell: bash
+        run: bash tests/rite-dev.test.sh 2>&1 | tee rite-dev-tests.log
+
       # SHOULD (Issue #2002 AC-5): surface which tests failed and on which OS in
       # the job summary. Runs only when a preceding step failed.
       - name: Summarize test failures
@@ -113,7 +117,7 @@ jobs:
           set +e
           {
             echo "### ❌ Test failures — ${{ matrix.os }}"
-            for log in hooks-tests.log scripts-tests.log; do
+            for log in hooks-tests.log scripts-tests.log rite-dev-tests.log; do
               [ -f "$log" ] || continue
               echo "<details><summary>$log</summary>"
               echo ""

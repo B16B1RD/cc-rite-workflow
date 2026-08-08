@@ -38,9 +38,11 @@ fi
 host=$1
 shift
 
-script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 repo_root=$(git -C "$script_dir" rev-parse --show-toplevel 2>/dev/null) || \
   die "scripts/rite-dev must be run from a git checkout"
+repo_root=$(cd -- "$repo_root" && pwd -P) || \
+  die "scripts/rite-dev could not resolve the physical repository path"
 plugin_root="$repo_root/plugins/rite"
 
 [[ -d "$plugin_root/skills" ]] || \
