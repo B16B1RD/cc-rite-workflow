@@ -351,6 +351,80 @@ else
 fi
 echo ""
 
+# ─── TC-011: update merge-checklist section absent → status=section_absent ──
+# AC-1 の公開面: Python exit 10 を shell が status=skipped; reason=section_absent に写像し、
+# PATCH しない。Python 単体テスト (merge-checklist.test.sh TC-004) だけではこのマッピングが
+# 壊れても green のまま残るため、gh shim で update 経路を end-to-end pin する (Issue #2139)。
+echo "TC-011: update merge-checklist section absent → status=skipped; reason=section_absent, no PATCH"
+dir011="$TEST_DIR/tc011"
+mkdir -p "$dir011/bin"
+# body は header を持つが ### 進捗サマリー を持たない（section_absent を起こす）
+# list / body / PATCH を URL 形状で分岐。--jq は shim が丸ごと gh を置換するため適用されない。
+PATCH_MARKER011="$dir011/patch.marker"
+cat > "$dir011/bin/gh" <<'GH_SHIM'
+#!/bin/bash
+# Detect PATCH first (any position of -X PATCH)
+for a in "$@"; do
+  if [ "$a" = "PATCH" ] || [ "$a" = "-X" ]; then
+    # second pass: only mark when -X PATCH pair is present
+    :
+  fi
+done
+case " $* " in
+  *" -X PATCH "*|*" --method PATCH "*)
+    touch "${PATCH_MARKER:?PATCH_MARKER unset}"
+    exit 0
+    ;;
+esac
+case "$1 $2" in
+  "repo view") echo "testowner/testrepo"; exit 0 ;;
+  "api repos/testowner/testrepo/issues/42/comments")
+    # get_comment_id list path — return a bare comment id (shim replaces --jq)
+    echo "555"
+    exit 0
+    ;;
+  "api repos/testowner/testrepo/issues/comments/555")
+    # body fetch (and any cache verify that lands here). Return body only.
+    printf '%s\n' \
+      '## 📜 rite 作業メモリ' \
+      '' \
+      '### 完了情報' \
+      '- **PR**: #1'
+    exit 0
+    ;;
+esac
+exit 0
+GH_SHIM
+chmod +x "$dir011/bin/gh"
+items011="$dir011/items.txt"
+printf '%s\n' "- [x] レビュー完了" "- [x] マージ完了" "- [x] クリーンアップ完了" > "$items011"
+out011=$(cd "$dir011" && PATH="$dir011/bin:$PATH" PATCH_MARKER="$PATCH_MARKER011" \
+  bash "$HOOK" update --issue 42 \
+    --transform merge-checklist --section 進捗サマリー --content-file "$items011" 2>/dev/null) || true
+if printf '%s' "$out011" | grep -qF "status=skipped; reason=section_absent"; then
+  pass "TC-011a: section absent → status=skipped; reason=section_absent"
+else
+  fail "TC-011a: expected section_absent status. out: $out011"
+fi
+if [ ! -f "$PATCH_MARKER011" ]; then
+  pass "TC-011b: PATCH not invoked when section absent"
+else
+  fail "TC-011b: PATCH was invoked despite section_absent"
+fi
+# process must exit 0 (non-blocking skip for cleanup callers)
+set +e
+cd "$dir011" && PATH="$dir011/bin:$PATH" PATCH_MARKER="$PATCH_MARKER011.2" \
+  bash "$HOOK" update --issue 42 \
+    --transform merge-checklist --section 進捗サマリー --content-file "$items011" >/dev/null 2>&1
+rc011=$?
+set -e
+if [ "$rc011" -eq 0 ]; then
+  pass "TC-011c: process exit 0 on section_absent (non-blocking)"
+else
+  fail "TC-011c: expected exit 0, got $rc011"
+fi
+echo ""
+
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then
   exit 1
