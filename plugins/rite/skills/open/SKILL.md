@@ -19,6 +19,10 @@ Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → 
 
 **途中で止まったら**: `/rite:recover` が flow-state ファイル (`.rite/sessions/{session_id}.flow-state`) の phase から復帰する。本コマンドの Step 0 が Resume Dispatch を担う。
 
+## E2E Output Minimization
+
+**環境起因の迂回・リトライの出力姿勢**: [common-error-handling.md#environment-workaround-output-posture](../../references/common-error-handling.md#environment-workaround-output-posture) — 成功時は無言、失敗時は行動可能な 1 行のみ（規則本文はそちら。本スキルは複製しない）。
+
 ## Arguments
 
 | Argument | Description |

@@ -63,6 +63,28 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 {operation} をスキップします
 ```
 
+## Environment Workaround Output Posture (canonical)
+
+<a id="environment-workaround-output-posture"></a>
+
+環境起因の制約への対処（sandbox 迂回・`dangerouslyDisableSandbox` 再実行・egress プロキシ断のリトライ・検証の代替経路など）の **人間向け出力姿勢** を定義する。本文は本セクションのみを SoT とする。各スキルは本規則を複製せず、1 行参照に留める（drift 防止）。
+
+**規則**:
+
+| 条件 | 人間向け出力 |
+|------|-------------|
+| **(a) 成功** — 迂回・リトライ・代替経路の結果、処理が完了した | **無言**。完了報告・進捗表示に迂回の前置き・背景解説・仕組みの説明を含めない（「サンドボックスの制約を先に共有します」等の定型前置きを含む） |
+| **(b) 失敗** — 対処しても失敗が残り、人間の行動が必要 | **行動可能な 1 行のみ**（何をすればよいか）。プロキシの仕組み・診断過程・環境の背景説明は書かない |
+| **(c) 機械可読経路** | `[CONTEXT]` marker は従来どおり emit する（監査・後段 routing 用。本規則は人間向け散文のみを対象とする） |
+
+**不変条件**:
+
+- **fail-loud は不変** — 沈黙化するのは「成功した迂回の説明」であって、失敗の隠蔽ではない
+- **権限ゲート自体は対象外** — `dangerouslyDisableSandbox` の確認 UI 等は Claude Code の管轄。本規則は narration（説明文）のみ
+- **対処の機構は別 Issue** — リトライ回数・代替経路の実装は各スキル / helper が持つ（例: cleanup の ls-remote 1 リトライは Issue #2140）。本規則は「成功後にそれをどう語るか」だけを規定する
+
+**適用対象（優先）**: ネットワーク git / sandbox 迂回を行うスキル（`cleanup` / `merge` / `ready` / `iterate` / `open` / `batch-run` 等）。新規スキルで同様の迂回を行う場合も本セクションを 1 行参照すること。
+
 ## Non-blocking Contract (canonical 定義)
 
 「Non-blocking Contract」とは、特定の sub-phase の失敗が **upstream phase 全体を失敗扱いにしない** ことを保証する設計上の契約。`/rite:pr-review` ステップ 6.1.a (ローカル JSON 保存) や `/rite:cleanup` ステップ 6 (review 結果ファイル削除、旧 Phase 2.5) など複数 phase で参照される。両方とも本セクションの定義を SoT とすること。

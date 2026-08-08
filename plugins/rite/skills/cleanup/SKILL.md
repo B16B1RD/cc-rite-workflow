@@ -30,6 +30,10 @@ PR マージ後のクリーンアップを実行する。やることは以下�
 
 `{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md) で解決する。
 
+## E2E Output Minimization
+
+**環境起因の迂回・リトライの出力姿勢**: [common-error-handling.md#environment-workaround-output-posture](../../references/common-error-handling.md#environment-workaround-output-posture) — 成功時は無言、失敗時は行動可能な 1 行のみ（規則本文はそちら。本スキルは複製しない）。
+
 ## Arguments
 
 | Argument | Description |
