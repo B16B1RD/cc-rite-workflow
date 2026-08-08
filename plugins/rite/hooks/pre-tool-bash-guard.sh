@@ -601,8 +601,14 @@ if [ -z "$BLOCKED_PATTERN" ]; then
 
   if [ "$_mrg_is_merge" = "1" ]; then
     _mrg_pr=""
+    # Set when `gh pr merge` tail has a non-flag token that is neither a bare
+    # integer nor a /pull/{n} URL. Variable forms ("$PR", $PR) and flag values
+    # that look like free tokens land here. flow-state fallback must NOT run
+    # in that case — a different session's pr_number must not become the gate
+    # target for an unresolved merge argv (Issue #2173).
+    _mrg_nonflag_unresolved=0
 
-    # --- PR number resolution (arg first, then flow-state) ---
+    # --- PR number resolution (arg first, then flow-state only if flag-only) ---
     # 1) REST path /pulls/{n}/merge
     if [[ "$CMD_CHECK" =~ /pulls/([0-9]+)/merge ]]; then
       _mrg_pr="${BASH_REMATCH[1]}"
@@ -617,16 +623,24 @@ if [ -z "$BLOCKED_PATTERN" ]; then
         esac
         if [[ "$_mrg_tok" =~ ^[0-9]+$ ]]; then
           _mrg_pr="$_mrg_tok"
+          _mrg_nonflag_unresolved=0
           break
         fi
         if [[ "$_mrg_tok" =~ /pull/([0-9]+)(/|$) ]]; then
           _mrg_pr="${BASH_REMATCH[1]}"
+          _mrg_nonflag_unresolved=0
           break
         fi
+        # Non-flag token that did not resolve to a PR number (variable form,
+        # flag value, etc.). Keep scanning in case a later numeric token exists
+        # (e.g. --body msg 2172); if none does, block flow-state fallback.
+        _mrg_nonflag_unresolved=1
       done
     fi
-    # 3) flow-state pr_number (merge skill often omits the number when cwd is the PR branch)
-    if [ -z "$_mrg_pr" ]; then
+    # 3) flow-state pr_number — only when the merge argv has no unresolved
+    # non-flag token. Number-less `gh pr merge --squash` (merge skill on the PR
+    # branch) still falls back; `"$PR"` / `$PR` must deny fail-loud (#2173).
+    if [ -z "$_mrg_pr" ] && [ "$_mrg_nonflag_unresolved" != "1" ]; then
       _mrg_pr=$(bash "$SCRIPT_DIR/flow-state.sh" get --field pr_number --default "" 2>/dev/null) || _mrg_pr=""
       # treat unset / 0 / non-numeric as unresolved
       case "$_mrg_pr" in
@@ -636,8 +650,13 @@ if [ -z "$BLOCKED_PATTERN" ]; then
 
     if [ -z "$_mrg_pr" ]; then
       BLOCKED_PATTERN="merge-review-pr-unresolved"
-      BLOCKED_REASON="Cannot resolve PR number for merge (no numeric arg / URL / REST path, and flow-state pr_number is unset). Merge is denied fail-loud rather than allowed without a review-result check."
-      BLOCKED_ALTERNATIVE="Pass the PR number explicitly (gh pr merge {N}) or run inside a rite session with flow-state pr_number set. After /rite:pr-review, re-run merge."
+      if [ "$_mrg_nonflag_unresolved" = "1" ]; then
+        BLOCKED_REASON="Cannot resolve PR number for merge: a non-flag token is present in the merge argv but is not a numeric PR number or /pull/{n} URL (e.g. variable form \"\$PR\"). flow-state is not used as a fallback for unresolved tokens — a different session PR must not gate this merge."
+        BLOCKED_ALTERNATIVE="Pass the PR number explicitly as a bare integer (gh pr merge {N}) and re-run. Variable or quoted-variable forms are denied fail-loud."
+      else
+        BLOCKED_REASON="Cannot resolve PR number for merge (no numeric arg / URL / REST path, and flow-state pr_number is unset). Merge is denied fail-loud rather than allowed without a review-result check."
+        BLOCKED_ALTERNATIVE="Pass the PR number explicitly (gh pr merge {N}) or run inside a rite session with flow-state pr_number set. After /rite:pr-review, re-run merge."
+      fi
     else
       # --- review-results positive check ---
       _mrg_root=""
