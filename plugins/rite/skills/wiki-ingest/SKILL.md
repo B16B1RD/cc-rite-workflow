@@ -355,13 +355,16 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 
 1. **読解**: Raw Source 本文から抽出可能な経験則を特定
 2. **ドメイン判定**: `patterns` / `heuristics` / `anti-patterns` に分類
-2.5. **昇格分類**: 本経験則が rite workflow 自体の挙動・スキル記述法に関するものなら frontmatter に `promote: rite-plugin` を付ける（マーケットプレイス配布先で Wiki 留置のままでは不活性になる知見の仕分け。CLAUDE.md「知見のルーティング」）
+2.5. **昇格分類**: 本経験則が rite workflow 自体の挙動・スキル記述法に関するものなら frontmatter に `promote: rite-plugin` を付ける（マーケットプレイス配布先で Wiki 留置のままでは不活性になる知見の仕分け。CLAUDE.md「知見のルーティング」）。**機械検出可能（2.6）と両方に該当する場合は 2.6 が優先**し、ページを作らない（`promote` はページ作成時のみ）
+2.6. **検出器化候補の分類**: この経験則は grep / lint / lib 関数で機械的に強制できるか、を判定してフラグ付けするのみ（アクション決定は行わない）。できるなら `detector_candidate=true`、できないなら `false`。判断の正例: trap 順序の静的検査・mktemp 無音化の lint 化 → `true`。負例: ブランチ戦略の運用判断・ドメイン固有の文脈知識 → `false`（従来どおりページ化）
 3. **既存ページ照合**: `index.md` に同テーマの既存ページが存在するかを意味的に判定 (厳密一致ではなく、一行サマリーとタイトルから判断)
-4. **アクション決定**: 下表に従い 新規 / 更新 / スキップ を決定
+4. **アクション決定**: 下表に**上から first-match**で 新規 / 更新 / スキップ を決定（2.6 のフラグとステップ 3 の照合結果を入力とする）
 5. **関連ページ特定**: ステップ 5.3 の `{related_page_title}` / `{related_page_path}` の値を決定 (詳細はステップ 4.3)
 
-| 判定 | アクション |
+| 判定（上から first-match） | アクション |
 |------|----------|
+| `detector_candidate=true` かつ同テーマの既存ページあり | 新規ページを作らず既存ページを更新。ステップ 9 の検出器化候補に 1 行列挙する（人間が Issue 化を判断する材料。`promote: rite-plugin` タグと同様の役割） |
+| `detector_candidate=true` かつ同テーマの既存ページなし | ページ化せずスキップ（`skip_reason: "detector-candidate: {one-line-summary}"`）。ステップ 9 の検出器化候補に 1 行列挙する |
 | 同テーマの既存ページなし | 新規ページ作成 |
 | 同テーマの既存ページあり | 既存ページ更新（追記 or 統合） |
 | 経験則が抽出できない（一時的な情報のみ） | スキップ（理由を log に記録） |
@@ -446,7 +449,7 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 
    > **複数 Raw Source からの作成**: page-template.md の `sources:` は単一スロット（`{source_type}`/`{source_ref}` 各 1 個）のみ。multi-cycle PR 等で複数の Raw Source を 1 ページに統合する場合は、Write 後に Edit で `- type: "{type}"` / `  ref: "raw/{type}/{filename}"` エントリを追加する。**追加・置換するすべての `ref` は Raw Source のファイルパス形式 (`raw/{type}/{filename}`)** であり、raw frontmatter の `source_ref` フィールド値（PR 識別子形式）ではない（ステップ 5.3 `{source_ref}` 行の dual-use 警告と同一契約）。
 4. **既存 Wiki ページの更新** (ステップ 4 で更新決定): 対象ページを Read で読み、Edit で `## 詳細` 追記・`updated` 更新・`sources` 配列追記。`n_pages_updated` を +1 する。**`sources` に追記する各 `ref` は必ず Raw Source のファイルパス形式 `raw/{type}/{filename}`**（PR 識別子形式 `pr-NNNN` 禁止。ステップ 4.2 / 5.3 と同一契約）
-5. **スキップ決定の処理** (ステップ 4 で skip 決定): step 2 と同じ手順で `ingested: true` 化し、**さらに当該 raw frontmatter に `ingest_status: skipped` と `skip_reason: "{理由}"` を Edit で追記する**（skip 状態の Source of Truth は raw frontmatter。lint の `wiki-lint-skipped-refs.sh` がこれを走査して `unregistered_raw` を判定する。Issue #1520）。ステップ 7 の log.md には人間向けの Skip エントリ (OKF bullet) も追記する。`n_skipped` を +1 する
+5. **スキップ決定の処理** (ステップ 4 で skip 決定): step 2 と同じ手順で `ingested: true` 化し、**さらに当該 raw frontmatter に `ingest_status: skipped` と `skip_reason: "{理由}"` を Edit で追記する**（skip 状態の Source of Truth は raw frontmatter。lint の `wiki-lint-skipped-refs.sh` がこれを走査して `unregistered_raw` を判定する。Issue #1520）。**検出器化候補**（ステップ 4 表の `detector_candidate=true` かつ既存ページなし）の場合は `skip_reason: "detector-candidate: {one-line-summary}"` を使い、同じ要約をステップ 9 の `{detector_candidate_lines}` に列挙する。ステップ 7 の log.md には人間向けの Skip エントリ (OKF bullet) も追記する。`n_skipped` を +1 する
 6. **index.md の更新**: **手順 3 / 4 を実施した Raw Source についてのみ**、ステップ 6 の指示に従い `wiki-index-update.sh` helper を bash で呼び出す（LLM は Edit しない）。**skip 決定（手順 5）の Raw Source では実行しない** — helper が必須とする page metadata（title / domain / slug / updated / confidence）が存在せず、raw 由来の値で代用すると実在しないパスを指す登録行が新規追加されて孤児検出のシグナルを汚すため
 7. **log.md への追記**: ステップ 7 の指示に従い Edit で append-only 追加する
 
@@ -935,6 +938,9 @@ Wiki Ingest が完了しました。
 - 未登録 raw（skip 済、warnings 不加算）: {n_unregistered_raw} 件
 - {wiki_push_line}
 
+検出器化候補:
+{detector_candidate_lines}
+
 未完了事項:
 {ingest_outstanding_line}
 
@@ -946,6 +952,13 @@ Wiki Ingest が完了しました。
 - /rite:wiki-query で経験則を参照
 - 詳細な品質チェックは /rite:wiki-lint で確認してください（ステップ 8 で自動実行済み）
 ```
+
+`{detector_candidate_lines}` の展開規則（ステップ 4 の検出器化候補 routing。人間が Issue 化を判断する材料）:
+
+| 条件 | 展開 |
+|------|------|
+| 1 件以上 | 各候補を `- [検出器化候補] {one-line-summary}（raw/{type}/{filename}）` の 1 行で列挙（1 経験則 1 行。`skip_reason: "detector-candidate: ..."` の要約と同一文にする） |
+| 0 件 | `- なし` |
 
 `{wiki_warnings_line}` の展開ルール (lint.md ステップ 9.1 と設計対称):
 
@@ -1007,6 +1020,7 @@ sentinel は grep 可能 (`grep -F '[ingest:returned-to-caller]'`) で rendered 
 | `wiki-index-update.sh` 非ゼロ exit（exit 1 / exit 2 / 127 / signal 130・143・129 等、ステップ 6） | 当該 Raw Source の index 更新をスキップして続行（非 fatal）。分岐と対処はステップ 6 の結果 marker 表が SoT |
 | `branch_strategy` が未知の値 | ステップ 5.1 の if/elif/else 末尾 else 分岐で fail-fast (ステップ 5.2 の bash block は same_branch 単独分岐のため未知値はステップ 5.1 の else が catch する。`rite-config.yml` の `wiki.branch_strategy` を確認) |
 | LLM が経験則を抽出できない | 該当 Raw Source の raw frontmatter に `ingest_status: skipped` + `skip_reason` を追記（skip 状態の SoT）、`ingested: true` に変更、log.md に人間向け Skip bullet を追記、`n_skipped` を +1（ステップ 5 step 5 参照） |
+| 機械検出可能でページ化しない（検出器化候補） | 既存ページなし: `skip_reason: "detector-candidate: {one-line-summary}"` で skip + ステップ 9 検出器化候補に 1 行列挙。既存ページあり: 既存ページを更新しつつステップ 9 に 1 行列挙（ステップ 4 表 / ステップ 5 step 5 参照） |
 
 ---
 
