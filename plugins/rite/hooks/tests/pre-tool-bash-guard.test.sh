@@ -1948,6 +1948,84 @@ rm -rf "$_mrg_tmp"
 echo ""
 
 # --------------------------------------------------------------------------
+# Issue #2173: variable-form PR token must not fall back to flow-state
+# --------------------------------------------------------------------------
+
+echo "TC-138 / T-01 (#2173): variable-form \"\$PR\" denies even when flow-state has qualifying other PR"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_set_flow_pr "$_mrg_tmp" 77
+_mrg_write_json "$_mrg_tmp" "77-good.json" "$(_mrg_qualifying_json)"
+rc=0
+# Quoted variable form as it appears in tool_input.command after shell expansion
+# has NOT happened (hook sees the literal command string from the tool call).
+output=$(_mrg_run "$_mrg_tmp" 'gh pr merge "$PR" --squash') || rc=$?
+decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-pr-unresolved"* ]] && [[ "$reason" == *"gh pr merge"* || "$reason" == *"bare integer"* || "$reason" == *"explicitly"* ]]; then
+  pass "TC-138 variable-form \"\$PR\" denies with merge-review-pr-unresolved (no flow-state 77 pass-through)"
+else
+  fail "TC-138 expected pr-unresolved deny (not allow via flow-state 77), got decision=$decision reason=$reason rc=$rc"
+fi
+# Unquoted $PR form
+rc=0
+output=$(_mrg_run "$_mrg_tmp" 'gh pr merge $PR --squash') || rc=$?
+decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-pr-unresolved"* ]]; then
+  pass "TC-138 unquoted \$PR also denies with merge-review-pr-unresolved"
+else
+  fail "TC-138 expected pr-unresolved for unquoted \$PR, got decision=$decision reason=$reason"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-139 / T-02 (#2173): literal numeric form still allowed (non-regression of TC-128 path)"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_write_json "$_mrg_tmp" "99-good.json" "$(_mrg_qualifying_json)"
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 99 --squash") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-139 literal gh pr merge 99 still allows with qualifying JSON"
+else
+  fail "TC-139 expected allow for literal 99, got rc=$rc output=$output"
+fi
+# Number after flags
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge --squash 99") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-139 literal after flags (gh pr merge --squash 99) still allows"
+else
+  fail "TC-139 expected allow for --squash 99, got rc=$rc output=$output"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-140 / T-03 (#2173): flag-only tail still uses flow-state fallback (pin limited retention)"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_set_flow_pr "$_mrg_tmp" 77
+_mrg_write_json "$_mrg_tmp" "77-good.json" "$(_mrg_qualifying_json)"
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge --squash") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-140 flag-only gh pr merge --squash still resolves via flow-state"
+else
+  fail "TC-140 expected allow via flow-state for flag-only tail, got rc=$rc output=$output"
+fi
+# Multiple flags only
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge --squash --delete-branch") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-140 multi-flag-only tail still uses flow-state"
+else
+  fail "TC-140 expected allow for --squash --delete-branch via flow-state, got rc=$rc output=$output"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="
