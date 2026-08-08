@@ -4,7 +4,7 @@ title: "散文契約の静的 pin には weakened probe による positive contr
 domain: "patterns"
 description: "散文を契約として grep で pin すると、命題ではなく見出しラベルや語彙にマッチして意味を反転させても緑のまま通る。pin 自身に positive control（意味を弱めた probe に一致しないこと）を課すと、この欠陥クラスが自動検出される。あわせて pin の scope・単位・対象文字列の選び方に規律が要る。"
 created: "2026-07-26T10:05:51Z"
-updated: "2026-07-26T10:05:51Z"
+updated: "2026-08-08T17:40:00+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260726T062935Z-pr-2022.md"
@@ -22,6 +22,10 @@ sources:
     ref: "raw/reviews/20260726T003406Z-pr-2022.md"
   - type: "reviews"
     ref: "raw/reviews/20260726T010703Z-pr-2022.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260808T063447Z-pr-2150.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260808T064117Z-pr-2150.md"
 tags: []
 confidence: high
 ---
@@ -85,6 +89,22 @@ assert_prose_pin <text> <pattern> <weakened-probe> <label>
 - **テンポラリファイルは既存の trap 対象ディレクトリに寄せる。** 新しい `mktemp` を rc 未検査で使うと、失敗時に空パスが検出器へ渡り「検出器が既知の違反を報告しません」という真因と異なる帰属で落ちる。
 - **sandbox fixture は同ディレクトリの兄弟テストの setup を読んで揃える。** `commit.gpgsign false` の欠落は署名強制環境でのみ発現し、前段 TC が偶然 PASS するため真因が見えにくい。
 
+### marker 名の存在ではなく指示語を pin する
+
+散文が実装本体である skill では、pin 対象は **marker 名ではなく指示語そのもの**である。`assert_grep` で `CLEANUP_DELEGATED=1` の存在だけを見るテストは、ガードの削除は検出するが「**実行しない**」→「通常どおり実行する」という**指示の反転**を検出しない（PR #2150 の mutation 実測: 4 サイトの指示を反転させても全 assert green）。
+
+pin は指示の効力を担う語まで伸ばす:
+
+```bash
+# 弱い: marker 名の存在しか見ていない（指示反転が素通し）
+assert_grep "$SKILL" 'CLEANUP_DELEGATED=1'
+
+# 強い: 指示語まで含める（反転すると fail する）
+assert_grep "$SKILL" 'CLEANUP_DELEGATED=1` を emit している場合、本ステップの bash を\*\*実行しない\*\*'
+```
+
+判定の目安は「この文字列が残ったまま、指示の意味を逆にできるか」。できるなら pin が短すぎる。
+
 ## 関連ページ
 
 - [否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す](./negative-assertion-positive-control.md)
@@ -97,3 +117,5 @@ assert_prose_pin <text> <pattern> <weakened-probe> <label>
 - [PR #2022 fix results (cycle 11)](../../raw/fixes/20260726T062935Z-pr-2022.md)
 - [PR #2022 fix results (cycle 6)](../../raw/fixes/20260726T025351Z-pr-2022.md)
 - [PR #2022 fix results (cycle 4)](../../raw/fixes/20260726T014448Z-pr-2022.md)
+- [PR #2150 review results (cycle 1: marker 名 pin では指示反転が素通し)](../../raw/reviews/20260808T063447Z-pr-2150.md)
+- [PR #2150 fix results (cycle 1: pin を指示語まで伸ばす)](../../raw/fixes/20260808T064117Z-pr-2150.md)

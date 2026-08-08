@@ -13,6 +13,16 @@
 * **Create**: [runtime 診断は「どこを見ればいいか」だけ示す — 原因の分類は SoT に持たせる](pages/heuristics/runtime-diagnostic-points-where-to-look-not-cause-taxonomy.md) — raw/fixes/20260808T032734Z-pr-2142.md を新規ページ化（退避先が増えるたび原因列挙が実態とずれ、崩れていない対象を名指して存在しない不備を探させる / 列挙に 1 項目足す道は同期義務を増やすだけ）
 * **lint:warning** — contradictions=0, stale=20, orphans=0, missing_concept=0, unregistered_raw=303, broken_refs=0
 
+* **Create**: [回復経路が「成立しない」判定は、回復側セッションでその分岐が発火するかから辿り直して下す](pages/heuristics/recovery-path-evaluated-from-recovering-session-branch.md) — raw/reviews/20260808T063447Z-pr-2150.md を新規ページ化（3 名の reviewer が独立に同じ誤診断へ到達し cycle 2 の実測が覆した / 役割横断の合意は「同じ読み方の共有」でもある / 「構造的に不可能」は拒否される形態を実測で特定してから書く）
+* **Update**: [散文契約の静的 pin には weakened probe による positive control を課す（見出しラベルで充足する pin を構造的に排除する）](pages/patterns/prose-pin-requires-positive-control.md) — raw/fixes/20260808T064117Z-pr-2150.md を統合（marker 名の存在 assert は「実行しない」→「実行する」の指示反転を検出しない / pin は指示の効力を担う語まで伸ばす）
+* **Update**: [awk -v 代入はバックスラッシュを剥がす — escape 付きパターンを渡した範囲指定 assert は常に PASS する](pages/anti-patterns/awk-v-assignment-strips-backslash-in-range-pattern.md) — raw/fixes/20260808T070139Z-pr-2150-cycle2.md を統合（同ファイルに規約コメントがあっても新規 assert には届かない / レンジが 892 行へ伸び pin 対象を削除しても green）
+* **Create**: [排他性を pin するテストは件数固定に加えて配置を両方向で固定する（在る側と無い側の 2 assert）](pages/patterns/placement-pin-requires-both-directions.md) — raw/reviews/20260808T072312Z-pr-2150-cycle3.md を新規ページ化（件数固定は「追加」を捕まえるが「移設」は総数不変で素通し / 片方向の配置 pin では arm ラベル入れ替えか範囲外移設のどちらかが生存）
+* **Update**: [agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する](pages/heuristics/recovery-command-verified-in-human-execution-context.md) — raw/fixes/20260808T072610Z-pr-2150-cycle3-fix.md を統合（remove が cwd を消し `&&` 連鎖が rc=128 で切れて branch -D に到達しない / 既存 sibling の限定句を先に読む / 案内先は surface まで辿る）
+* **Update**: [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md) — raw/fixes/20260808T074827Z-pr-2150-cycle4.md を統合（consumer の bypass 条件 `_corpse -eq 1` を読まず記録を追加し永久に参照されない不発コードになった）
+* **Update**: [列挙・全称主張を持つ記述は書き直しでは収束しない — 撤去だけが指摘面を消す](pages/anti-patterns/enumeration-claim-rewrite-never-converges.md) — raw/reviews/20260808T080812Z-pr-2150-cycle5.md を統合（条件節を cycle ごとに足して 126 → 452 文字へ 3.6 倍膨張し「診断の羅列」を再生 / 条件ではなく案内先を書けば全経路を短くカバーできる）
+* **Update**: [列挙・全称主張を持つ記述は書き直しでは収束しない — 撤去だけが指摘面を消す](pages/anti-patterns/enumeration-claim-rewrite-never-converges.md) — raw/fixes/20260808T081026Z-pr-2150-cycle5-fix.md を統合（4 cycle 連続の加筆は方向自体が誤り / 「警告が出ます」型の案内は hook のログ退避で利用者に届かなかった）
+* **Update**: [列挙・全称主張を持つ記述は書き直しでは収束しない — 撤去だけが指摘面を消す](pages/anti-patterns/enumeration-claim-rewrite-never-converges.md) — raw/reviews/20260808T082654Z-pr-2150-cycle6.md を統合（案内先が経路ごとに違うなら案内を書かず退路そのものを示す / 同じ箇所への 2 回目の指摘で加筆をやめる）
+
 ## 2026-08-07
 
 * **Create**: [既存の永続データを新規 consumer が読むときは、集合の意味を書込側の定義から引く](pages/heuristics/persisted-collection-semantics-from-writer-not-name.md) — raw/reviews/20260806T151643Z-pr-2126.md を新規ページ化（配列名からの推測は 1 箇所の誤りでなく N 箇所へ複製された誤りを作る / 4 reviewer が独立検出）

@@ -4,7 +4,7 @@ title: "共有リソースの type/名前空間を再利用する新機能は、
 domain: "anti-patterns"
 description: "既存の共有リソース（reap manifest の type エントリ等）の名前空間を新機能で再利用する際、その共有リソースの既存消費者が持つ暗黙の不変条件（コメントで明示済み）を確認しないと、健全なリソースを警告なしに破壊する CRITICAL な回帰を生む。"
 created: "2026-07-23T04:14:28Z"
-updated: "2026-07-23T04:14:28Z"
+updated: "2026-08-08T17:40:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260723T005459Z-pr-1974.md"
@@ -52,6 +52,14 @@ cycle 1 修正後、cycle 2 レビューで test / prompt-engineer reviewer が�
 3. **実機再現とドキュメント整合性チェックという異なる検出アプローチのクロスバリデーション** が、単一アプローチでは見逃されうる契約違反を高確信度で確定させる
 4. **複数ファイルに複製されたコメントは実装の段階的進化に追随せず drift しやすい** — 新契約を宣言するコメントは重複させず、SoT を明示するか、複製箇所すべてを同一 PR 内で同期する
 
+### 破壊しない場合でも「不発コード」になる
+
+consumer 契約の確認を怠った結果は、生存中リソースの破壊だけではない。**consumer が一度も受理しない記録**を書き続ける不発コードも同じ原因から生まれる。
+
+PR #2150 では reap manifest へ `session_worktree` type の記録を追加したが、consumer（`pr-cycle-cleanup.sh`）の bypass 条件は `_corpse -eq 1`（削除試行が失敗した痕跡）を要求していた。追加した経路は削除を一度も試行しないため worktree は健全で、記録は**永久に参照されない**。しかも同じ修正が、既に機能していた別経路（ステップ 5 の `branch` type 記録による age guard バイパス）を「機能しない」と案内文で否定していた。
+
+**新しい type / key を既存機構へ流し込む前に、consumer が何を条件にそれを消費するかを読む**。読む対象は type の名前ではなく、consumer 側の受理条件そのもの（if 文・case arm）である。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -62,3 +70,4 @@ cycle 1 修正後、cycle 2 レビューで test / prompt-engineer reviewer が�
 - [PR #1974 review results (cycle 1, CRITICAL 検出)](../../raw/reviews/20260723T005459Z-pr-1974.md)
 - [PR #1974 fix results (cycle 1, 専用 type 新設による修正)](../../raw/fixes/20260723T010449Z-pr-1974.md)
 - [PR #1974 review results (cycle 2, コメント drift 追加検出)](../../raw/reviews/20260723T020925Z-pr-1974-cycle2.md)
+- [PR #2150 fix results (cycle 2: consumer の corpse 条件を読まず不発記録を追加)](../../raw/fixes/20260808T070139Z-pr-2150-cycle2.md)

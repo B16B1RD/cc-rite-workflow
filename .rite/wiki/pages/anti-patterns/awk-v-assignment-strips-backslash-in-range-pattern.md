@@ -4,7 +4,7 @@ title: "awk -v 代入はバックスラッシュを剥がす — escape 付き�
 domain: "anti-patterns"
 description: "節スコープを切る assert helper が `awk -v start=... -v end=...` でパターンを渡していると、awk が -v 代入時に escape を解釈して `^> \\*\\*fail-safe` が `^> **fail-safe` へ化ける。成立しない正規表現になって範囲が EOF まで伸び（実測 677 行）、範囲外にあるはずの行が「範囲内」で見つかって assert が通る。mutation を当てて初めて発覚する類の欠陥で、回避は ENVIRON 経由で渡すか escape 不要のパターンにするか、隣接性のような単純な述語を直接書くこと。"
 created: "2026-08-08T14:00:41+09:00"
-updated: "2026-08-08T14:00:41+09:00"
+updated: "2026-08-08T17:40:00+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260808T010121Z-pr-2142.md"
@@ -49,6 +49,12 @@ confidence: high
 | escape を必要としないパターンにする | 範囲の境界に正規表現メタ文字を含まない行を選ぶ |
 | 節スコープをやめて単純な述語を直接書く | 隣接性の検査などは範囲指定を必要としない |
 
+### 同じファイルに規約コメントがあっても新規 assert には適用されない
+
+PR #2150 で同型が再現した。`assert_grep_in_section` の end パターンに `'^  \*\) '` と単一エスケープで書いた結果、`\*` が量化子 `*` へ潰れてレンジが EOF（892 行）まで伸び、pin 対象とは無関係な既存コードで assert が充足された（pin 対象の行を削除しても全 assert green）。
+
+このファイルには既に二重エスケープの規約コメントが存在していた。**規約コメントは既存 assert の隣にあるだけで、新規に書き足す assert には届かない**。`assert_grep_in_section` に新しい範囲を渡すときは、規約コメントの有無に関わらず start / end の正規表現メタ文字（`\\)` `\\*` `\\[`）を二重エスケープで書き、**pin 対象の行を実際に削除して fail することを確認する**。
+
 ## 関連ページ
 
 - [節スコープ assert は散文由来の false negative を防ぐ](../patterns/section-scoped-assertion-prevents-narrative-false-negative.md)
@@ -60,3 +66,4 @@ confidence: high
 
 - [PR #2142 fix results (cycle 2)](../../raw/fixes/20260808T010121Z-pr-2142.md)
 - [PR #2142 review results (cycle 3)](../../raw/reviews/20260808T013358Z-pr-2142.md)
+- [PR #2150 fix results (cycle 2: 単一エスケープでレンジが EOF まで伸びた再現)](../../raw/fixes/20260808T070139Z-pr-2150-cycle2.md)
