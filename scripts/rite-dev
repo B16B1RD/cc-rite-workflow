@@ -53,7 +53,8 @@ cd "$repo_root"
 case "$host" in
   claude)
     command -v claude >/dev/null 2>&1 || die "claude executable not found"
-    exec claude --plugin-dir "$plugin_root" "$@"
+    claude_settings='{"enabledPlugins":{"rite@rite-marketplace":false}}'
+    exec claude --settings "$claude_settings" --plugin-dir "$plugin_root" "$@"
     ;;
   codex)
     command -v codex >/dev/null 2>&1 || die "codex executable not found"

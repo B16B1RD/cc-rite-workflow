@@ -21,8 +21,9 @@ scripts/rite-dev grok
 
 Additional arguments are forwarded to the selected host. The launcher exports
 `RITE_HOST` and `RITE_PLUGIN_ROOT` for host-neutral workflow code. Claude Code
-loads `plugins/rite` explicitly, Grok Build uses the repository-local plugin
-link, and Codex uses an ignored `.codex-dev/` profile. Its `skills` directory
+loads `plugins/rite` explicitly and disables `rite@rite-marketplace` for that
+process only, without changing the user's settings. Grok Build uses the
+repository-local plugin link, and Codex uses an ignored `.codex-dev/` profile. Its `skills` directory
 keeps Codex-managed state locally and links each rite skill back to
 `plugins/rite/skills`; this prevents `.system` and other mutable Codex files
 from entering the distributed plugin source. The profile may require a separate
