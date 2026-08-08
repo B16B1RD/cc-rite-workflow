@@ -1,0 +1,7 @@
+# Grok dogfooding: load the in-tree rite plugin instead of the Claude
+# marketplace cache (~/.claude/plugins/marketplaces/rite-marketplace/...).
+# Scoped to this repository only; other projects keep the global MP install.
+# Claude Code dogfooding remains separate (.claude/settings.local.json).
+[plugins]
+paths = ["./plugins/rite"]
+enabled = ["rite"]
