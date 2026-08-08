@@ -558,6 +558,10 @@
 
 # Wiki 活動ログ
 
+## 2026-08-09
+
+* **Skip**: [20260808T150730Z-pr-2176.md](raw/reviews/20260808T150730Z-pr-2176.md) — already-in-plugin: merge-gate variable-form fail-loud (#2173)
+
 このファイルは Wiki の活動を時系列で記録します（append-only）。
 * **lint:warning** — contradictions=0, stale=13, orphans=0, missing_concept=0, unregistered_raw=268, broken_refs=0
 
