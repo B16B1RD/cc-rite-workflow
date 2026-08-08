@@ -96,6 +96,63 @@ All reviewers MUST adopt these principles:
 
    Use `Grep` to confirm that introduced patterns match the actual shape of data in the repository (e.g., existing identifiers, existing filenames) before flagging. Confidence 80+ requires at least one concrete repository example that the pattern would fail against. Skip this check when the diff does not introduce or modify any pattern-like or identifier-like constructs.
 
+## Defense Mechanism Integrity Gate
+
+Apply this gate whenever the diff adds or changes a guard, resolver, fallback,
+validation predicate, fast-path, hook, sibling script in an established family,
+or prose that claims an ownership, identity, ordering, or isolation guarantee is
+structurally enforced. This gate is part of the Detection Process; do not treat
+it as optional hardening.
+
+1. **Precondition-chain continuity**: Enumerate every precondition required for
+   the defense to fire, then `Grep` the producer and patch sites that establish
+   those values. A consumer-side guard is incomplete when any normal producer
+   can silently omit a required value. Statically trace at least one natural
+   entrypoint from its real initial state; a fixture that pre-sets the final
+   precondition is not sufficient evidence. Do not execute PR-controlled code
+   to establish this evidence. Runtime execution is permitted only when a
+   static trace proves the complete execution graph loads no PR-controlled
+   code, configuration, or dependencies, or when an isolation boundary
+   explicitly removes secrets, network access, and write access outside a
+   disposable tree.
+2. **Latest-sibling inheritance**: Before accepting a new sibling script, list
+   the family with `Grep` and use `git log -S` or `git log -p` to identify the
+   most recently hardened sibling. Compare parser behavior, usage/exit-code
+   contract, output normalization, cleanup, diagnostics, and the hardening tests'
+   target set. A filename allowlist that omits the new sibling is a finding;
+   prefer a family sweep when the repository shape permits it.
+3. **Defect-class coverage**: Abstract each newly handled byte, enum value, or
+   condition to its defect class and test representative adjacent members.
+   Prefer a class predicate (for example, all forbidden control characters or
+   "normal state not proven") over another one-off deny case. If broadening is
+   intentionally out of scope, require a concrete threat-boundary reason and a
+   durable follow-up destination when unresolved work remains.
+4. **Fallback observability**: First apply [Fail-Fast First](#fail-fast-first).
+   When fallback is justified, it must not erase the helper/resolver failure:
+   preserve the exit code and a bounded diagnostic. A fallback that changes the
+   operated resource, ownership scope, or state file requires an always-visible
+   warning; an outcome-equivalent diagnostic may be debug-gated. Apply the same
+   policy to every matching caller found by `Grep`.
+5. **Code-level structural enforcement**: For every claim that ownership,
+   identity, ordering, or isolation is "structurally guaranteed", identify the
+   caller assumption behind it and verify an explicit check at the trust or
+   fast-path boundary. Pin expected accept, expected reject, and documented
+   compatibility behavior in a helper-level test. Prose and path shape alone do
+   not enforce an invariant.
+
+Report a current-PR finding when a changed defense fails one of these checks and
+the normal entrypoint or changed caller makes the gap demonstrable. Record the
+exact producer/caller and the failing representative in `Likelihood-Evidence`;
+do not report speculative family-wide hardening without such evidence.
+
+### Shared Review Checklist
+
+- [ ] **Defense mechanism integrity (when triggered)**: Verify all five gate
+  checks: precondition-chain continuity, latest-sibling inheritance,
+  defect-class coverage, fallback observability, and code-level structural
+  enforcement. Confirm that evidence collection did not execute untrusted
+  PR-controlled code outside the required isolation boundary.
+
 ## Confidence Scoring
 
 Before including a finding in the issues table, assign an internal confidence score (0-100):
