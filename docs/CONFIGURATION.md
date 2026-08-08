@@ -456,6 +456,8 @@ The review-fix loop exits via the following paths:
 
 **Cycle scope** (no config key): cycle 1 reviews the whole PR, matching the reviewer set against every changed file (then bounded by `min_reviewers` / `max_reviewers` as usual); from cycle 2+ the review is diff-scoped to `commit_sha..HEAD` of the previous cycle's persisted review-result JSON, plus verification that the previous cycle's gated-scope (`current-pr` / `follow-up`) findings were resolved, with the reviewer set narrowed to those findings' reviewers (rejoined as `mandatory`) union the owners of the fix diff's file patterns. Acknowledged `nit-noted` findings are excluded from both — they stay in `findings[]` after the measured gate, so counting them would occupy cap-exempt slots and replay settled nits every cycle. Any missing input falls back to full scope; every reason except `no_prev_json` (the normal cycle-1 path) emits a warning. This is not configurable and not a progressive relaxation — cycle 3 and cycle 5 behave identically, and no finding criterion loosens. See `plugins/rite/skills/pr-review/references/cycle-scope.md`.
 
+**Complexity lane** (no config key): the Issue's declared Complexity scales the review's ceremony cost. `XS` / `S` take a light lane — the reviewer bound tightens to 3 (subject to the usual `mandatory` protection and the `min_reviewers` / sole-reviewer-guard floor, so it is not a hard "at most 3"), and verification runs are limited to the tests the PR touched, with full-suite sandbox replication and mutation experiments reserved for `M` and above. `M` / `L` / `XL` behave exactly as before. The criteria for admitting a finding — the four mandatory self-questions, Confidence, Observed Likelihood, the measured-finding gate, the consequence class — and the Cross-File Impact Check are identical on both lanes; only the cost of verification differs. Complexity is read from the Issue body (`**Complexity**: X` or a `## 複雑度` section) and never inferred; any missing or invalid value falls back to the full lane with a warning. This is not configurable, and it is not a progressive relaxation — the lane is decided once from a declared value, not from the cycle count. See `plugins/rite/skills/pr-review/references/complexity-lane.md`.
+
 **Verification mode** (`verification_mode: false` by default): When explicitly set to `true`, reviews detect the previous review from **PR comments** and perform both a full review and verification of previous fixes with incremental diff regression checks; new MEDIUM/LOW findings in unchanged code are classified as "stability concerns" (non-blocking). This mode is evaluated **only when the cycle scope resolved to full** (cycle 1, or a diff-scope fallback) — under diff scope its two parts are already covered by the scope mandate, so it is skipped.
 
 **Review execution:**
@@ -549,7 +551,7 @@ Settings for parallel implementation using Task tool.
 
 Parallel implementation is automatically activated when ALL of the following conditions are met:
 1. `parallel.enabled` is `true`
-2. Issue complexity is M or higher
+2. Issue complexity resolves to the full lane **with a declared value** — `M` or higher. A lane fail-safe (Complexity absent / unreadable) does **not** satisfy this condition: on this gate the full lane would mean "allow parallel sub-agents", so a missing declaration falls back to sequential implementation
 3. Multiple independent files/components are identified in the implementation plan
 
 **How it works:**

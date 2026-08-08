@@ -22,8 +22,9 @@
 #   TC-6b review-nonblocking-record.sh (hooks/,        5 箇所) — 値なしフラグ末尾 → no-hang + exit 1
 #   TC-6c wiki-index-update.sh         (hooks/scripts/, 8 箇所) — 値なしフラグ末尾 → no-hang + exit 2
 #   TC-6d review-cycle-scope.sh        (scripts/,       2 箇所) — 値なしフラグ末尾 → no-hang + exit 2
+#   TC-6f issue-complexity-lane.sh     (scripts/,       2 箇所) — 値なしフラグ末尾 → no-hang + exit 2
 #   TC-6e review-save-json-verify.sh   (hooks/scripts/, 4 箇所) — 値なしフラグ末尾 → no-hang + exit 0 (degraded)
-#   TC-7 anti-pattern guard — 11 スクリプトに実 `shift 2` 文が残存しないこと (comment 参照は許容)
+#   TC-7 anti-pattern guard — 12 スクリプトに実 `shift 2` 文が残存しないこと (comment 参照は許容)
 #        うち `lib/context-marker.sh` は source 型 lib で subprocess entry point を持たないため
 #        TC-1〜TC-6b の実行ハーネス (run_no_hang) の対象外で、本静的検査のみが掛かる。
 #        値なしフラグ末尾での no-hang は hooks/tests/context-marker.test.sh が直接 assert する。
@@ -70,6 +71,7 @@ run_no_hang "TC-6b review-nonblocking-record" "hooks/review-nonblocking-record.s
 run_no_hang "TC-6c wiki-index-update"         "hooks/scripts/wiki-index-update.sh"       "--title"           "2"
 run_no_hang "TC-6d review-cycle-scope"        "scripts/review-cycle-scope.sh"            "--pr"              "2"
 run_no_hang "TC-6e review-save-json-verify"   "hooks/scripts/review-save-json-verify.sh" "--pr"              "0"
+run_no_hang "TC-6f issue-complexity-lane"     "scripts/issue-complexity-lane.sh"         "--issue"           "2"
 
 # === TC-7: anti-pattern guard — 実 `shift 2` 文が再混入していないこと ===
 # comment 内の `shift 2` 参照 (backtick 囲み) は許容し、実際の statement だけを検出する。
@@ -84,6 +86,7 @@ for script in \
   "hooks/scripts/wiki-index-update.sh" \
   "scripts/review-source-resolve.sh" \
   "scripts/review-cycle-scope.sh" \
+  "scripts/issue-complexity-lane.sh" \
   "hooks/scripts/review-save-json-verify.sh" \
   "hooks/scripts/lib/context-marker.sh" \
   "scripts/decompose-issues.sh"; do

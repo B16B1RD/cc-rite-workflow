@@ -22,6 +22,23 @@ Perform actual implementation work following the implementation plan approved in
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
 
+### 5.0.C Complexity Lane Determination (XS/S 軽量レーン)
+
+実装を始める前に、対象 Issue の**宣言 Complexity** からレーンを決める。同じ helper が 5.1.0.1 の並列実装ゲートと 5.1.0.8 の生産量制約の両方に供給する（Complexity の読み取りを 1 箇所に集約する）:
+
+```bash
+bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
+```
+
+> **Reference**: 設計根拠（レーン境界 / 何を制約し何を制約しないか / 情報欠落時に必ず `full` へ倒す理由）は [complexity-lane.md](../pr-review/references/complexity-lane.md) が SoT。reason 語彙は helper docstring が SoT。**reason は分岐を変えない** — 全 reason が `full` に落ち WARNING を伴う。**helper が非ゼロ終了した / `COMPLEXITY_LANE=` marker を観測できない場合も `full` として扱い**、`⚠️ Complexity レーン判定のフォールバック: reason=helper_failed。フル装備 (M+ 相当) で実行します。` を出力する（consumer 側の既定。silent fallback 禁止）。
+
+| `COMPLEXITY_LANE` + `complexity=` | 5.1.0.1 並列実装ゲート | 5.1.0.8 生産量制約 |
+|---|---|---|
+| `light` + `complexity=XS` | 順次実装（並列しない） | 適用（新規テストファイル抑制 **+ 説明的派生散文の新設禁止**） |
+| `light` + `complexity=S` | 順次実装（並列しない） | 適用（新規テストファイル抑制） |
+| `full` + `complexity=M` / `L` / `XL`（宣言値あり） | 従来どおり独立タスク数で判定 | 適用しない（現行どおり） |
+| `full` + `COMPLEXITY_LANE_FALLBACK=1`（fail-safe 全 reason） | **順次実装（並列しない）** — 本ゲートでは `full` が攻撃的な側のため、欠落時は減らす方へ倒す | 適用しない（現行どおり） |
+
 ### 5.0.W Wiki Query Injection (Conditional)
 
 > **Reference**: [Wiki Query](../wiki-query/SKILL.md) — `wiki-query-inject.sh` API
@@ -113,7 +130,7 @@ echo "[CONTEXT] TDD_ENABLED=$tdd_enabled; TEST_CMD_SET=$([ -n "$test_cmd" ] && e
    - **Full mode**: run `commands.test`; confirm the new test **fails** (Red). If it passes immediately, the test does not exercise the target behavior — display `TDD: テストが最初から通過。対象挙動を検証できていない可能性` and revise the test before proceeding.
    - **Degraded mode**: skip the run and record that Red could not be auto-confirmed (test-list discipline still applies).
 4. **Green — minimal implementation**: implement the **smallest** change that makes the test pass; do not add unrequested behavior.
-   - **Full mode**: confirm Green by reusing 5.1.0.6's **test-execution step** (run `commands.test`, check the exit code) per behavior — do NOT re-implement test execution here. This per-behavior Green check reuses only the *execution* procedure; the **full 5.1.0.6 Test Verification Gate** (with its `max_implementation_rounds` budget and "return to Phase 5.1 on failure" semantics) still runs **once** after all behaviors are complete, as the pre-commit gate (canonical chain `5.1.0.6 → 5.1.0.6.1 → 5.1.0.7 → 5.1.1`).
+   - **Full mode**: confirm Green by reusing 5.1.0.6's **test-execution step** (run `commands.test`, check the exit code) per behavior — do NOT re-implement test execution here. This per-behavior Green check reuses only the *execution* procedure; the **full 5.1.0.6 Test Verification Gate** (with its `max_implementation_rounds` budget and "return to Phase 5.1 on failure" semantics) still runs **once** after all behaviors are complete, as the pre-commit gate (canonical chain `5.1.0.6 → 5.1.0.6.1 → 5.1.0.7 → 5.1.0.8 → 5.1.1`).
    - **Degraded mode**: skip the run.
 5. **Refactor — only after Green**: improve structure with tests passing. **Refactoring on a Red / unverified state is prohibited** — if not Green (Full mode) or Green is unconfirmed (Degraded mode), do not refactor; return to step 4 or move to the next behavior.
 6. **Repeat** from step 2 until the test list is empty (every listed behavior implemented and, in Full mode, Green).
@@ -175,8 +192,10 @@ Execute parallel implementation when **all** of the following conditions are met
 | Condition | Determination Method |
 |-----------|---------------------|
 | `parallel.enabled: true` | From `rite-config.yml` (default: `true`) |
-| Complexity M or above | Issue's Complexity field, or `## 複雑度` section in body |
+| Complexity M or above | 5.0.C の marker が `COMPLEXITY_LANE=full` **かつ `complexity=` を伴う**（= 宣言値が M / L / XL）。**`COMPLEXITY_LANE_FALLBACK=1` を伴う fail-safe 経路は満たさない**（下記）。**helper が両記法（`**Complexity**: X` / `## 複雑度`）を受理するため、ここで body を再解析しない** — 2 箇所で別々に読むと片方だけが片方の記法に対応する drift が生まれる |
 | 2 or more independent tasks | Determined from implementation plan (see below) |
+
+> **fail-safe の向きは consumer ごとに違う**: レビュー側は `full` が「reviewer を減らさない」= 安全側だが、**本ゲートでは `full` が「並列 sub-agent を許可する」= 攻撃的な側**になる。したがって Complexity を読めなかった Issue（`COMPLEXITY_LANE_FALLBACK=1`）は `full` に含めず**順次実装へ倒す**。判定キーは `COMPLEXITY_LANE=full` 単独ではなく `complexity=` の存在（＝ `COMPLEXITY_LANE_FALLBACK` の不在）である。
 
 **Independent task determination:**
 
@@ -192,7 +211,7 @@ Analyze the "files to change" from the implementation plan (`skills/open/SKILL.m
 
 ```
 parallel.enabled を確認
-├─ false → 5.1.0.1-5.1.0.4 parallel implementation はスキップ、5.1.0.5 Adaptive Re-evaluation / 5.1.0.6 Test Verification Gate / 5.1.0.6.1 Acceptance Criteria Check / 5.1.0.7 Documentation Impact Investigation を経て 5.1.1 へ
+├─ false → 5.1.0.1-5.1.0.4 parallel implementation はスキップ、5.1.0.5 Adaptive Re-evaluation / 5.1.0.6 Test Verification Gate / 5.1.0.6.1 Acceptance Criteria Check / 5.1.0.7 Documentation Impact Investigation / 5.1.0.8 XS/S Production Constraint を経て 5.1.1 へ
 └─ true → 複雑度を確認
     ├─ XS/S → 通常の順次実装
     └─ M 以上 → 独立タスクを分析
@@ -357,7 +376,7 @@ Oracle: {oracle_source} ({oracle_file_path}) ／ なし（フォールバック�
 → 次に実行: Step S{n}.1
 ```
 
-**When all steps are complete**: Proceed to 5.1.0.6 (Test Verification Gate), then 5.1.0.7 (Documentation Impact Investigation), then 5.1.1 (Commit). The chain is **5.1.0.6 → 5.1.0.6.1 → 5.1.0.7 → 5.1.1**; never bypass 5.1.0.7 on the way to commit.
+**When all steps are complete**: Proceed to 5.1.0.6 (Test Verification Gate), then 5.1.0.7 (Documentation Impact Investigation), then 5.1.0.8 (XS/S Production Constraint), then 5.1.1 (Commit). The chain is **5.1.0.6 → 5.1.0.6.1 → 5.1.0.7 → 5.1.0.8 → 5.1.1**; never bypass 5.1.0.7 or 5.1.0.8 on the way to commit.
 
 #### 5.1.0.6 Test Verification Gate (Conditional)
 
@@ -372,7 +391,7 @@ Read `rite-config.yml` and check:
 | `commands.test` is set | Non-null value in `rite-config.yml` |
 | `verification.run_tests_before_pr` is `true` | From `rite-config.yml` (default: `true`) |
 
-**Skip conditions** (any match → skip to 5.1.0.7, then 5.1.1):
+**Skip conditions** (any match → skip to 5.1.0.7, then 5.1.0.8, then 5.1.1):
 - `commands.test` is `null` or not set
 - `verification.run_tests_before_pr` is `false`
 
@@ -391,7 +410,7 @@ When skipped, display the appropriate message:
 
 | Exit Code | Action |
 |-----------|--------|
-| 0 | Tests passed → proceed to 5.1.0.6.1 (acceptance criteria check) → 5.1.0.7 (documentation impact investigation) → 5.1.1 (commit) |
+| 0 | Tests passed → proceed to 5.1.0.6.1 (acceptance criteria check) → 5.1.0.7 (documentation impact investigation) → 5.1.0.8 (XS/S production constraint) → 5.1.1 (commit) |
 | Non-zero | Tests failed → display failures, return to 5.1 implementation |
 
 **On test failure:**
@@ -425,13 +444,13 @@ Return to Phase 5.1 (implementation). Do NOT proceed to commit.
 
 The section extends from the matched heading to the next `##` heading or end of body.
 
-**Skip conditions** (any match → skip to 5.1.0.7, then 5.1.1):
+**Skip conditions** (any match → skip to 5.1.0.7, then 5.1.0.8, then 5.1.1):
 - `verification.acceptance_criteria_check` is `false`
 - Issue body does not contain an acceptance criteria section (none of the above headings found)
 
 > `{owner_repo}` は [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute する。
 
-**Issue body retrieval**: Use the Issue body already obtained at `skills/open/SKILL.md` ステップ 1.1 Issue 情報取得 (retained in conversation context). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} -R {owner_repo} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。受入条件チェックをスキップします` and skip to 5.1.0.7 (then 5.1.1).
+**Issue body retrieval**: Use the Issue body already obtained at `skills/open/SKILL.md` ステップ 1.1 Issue 情報取得 (retained in conversation context). If context was compacted and the body is unavailable, re-fetch with `gh issue view {issue_number} -R {owner_repo} --json body --jq '.body'`. If retrieval fails, display `WARNING: Issue body の取得に失敗。受入条件チェックをスキップします` and skip to 5.1.0.7 (then 5.1.0.8, then 5.1.1).
 
 **Check procedure:**
 
@@ -453,7 +472,7 @@ The section extends from the matched heading to the next `##` heading or end of 
 
 | Result | Action |
 |--------|--------|
-| All criteria satisfied | Proceed to 5.1.0.7 (documentation impact investigation) → 5.1.1 (commit) |
+| All criteria satisfied | Proceed to 5.1.0.7 (documentation impact investigation) → 5.1.0.8 (XS/S production constraint) → 5.1.1 (commit) |
 | Some need attention | Display via `AskUserQuestion`: `受入条件の一部が未確認です。続行しますか？ オプション: コミットに進む / 実装に戻る` |
 
 **Note**: This check is advisory — it helps catch missed requirements but does not block the flow when the user chooses to proceed.
@@ -468,7 +487,7 @@ This step is the implementer's responsibility and complements (does not replace)
 
 ##### Skip Conditions
 
-Skip this entire section (proceed directly to 5.1.1) when **any** of the following holds:
+Skip this entire section (proceed to 5.1.0.8, then 5.1.1) when **any** of the following holds:
 
 | Skip condition | Determination |
 |---------------|---------------|
@@ -493,9 +512,9 @@ The decision is made by the LLM based on the actual diff (`git diff --name-statu
 
 | Result | Action |
 |--------|--------|
-| 0 hits across all keywords | Proceed silently to 5.1.1 (no warning, no extra commit) |
-| Stale docs detected and auto-fixed | Stage the edited documentation files and proceed to 5.1.1 — the documentation edits are committed in the **same** commit as the implementation. (Note: 5.1.0.7 always runs **before** 5.1.1 in the normal flow, so the implementation is never already committed at this point.) |
-| Search command failed (Grep tool error, etc.) | Display warning `WARNING: ドキュメント影響調査でエラー: {error}. ステップをスキップして実装フェーズを継続します` and proceed to 5.1.1 — do NOT block the flow |
+| 0 hits across all keywords | Proceed silently to 5.1.0.8 (then 5.1.1) — no warning, no extra commit |
+| Stale docs detected and auto-fixed | Stage the edited documentation files and proceed to 5.1.0.8 (then 5.1.1) — the documentation edits are committed in the **same** commit as the implementation. (Note: 5.1.0.7 always runs **before** 5.1.1 in the normal flow, so the implementation is never already committed at this point.) |
+| Search command failed (Grep tool error, etc.) | Display warning `WARNING: ドキュメント影響調査でエラー: {error}. ステップをスキップして実装フェーズを継続します` and proceed to 5.1.0.8 (then 5.1.1) — do NOT block the flow |
 
 ##### Constraints
 
@@ -503,6 +522,23 @@ The decision is made by the LLM based on the actual diff (`git diff --name-statu
 - **MUST NOT** defer detected drift to a separate Issue (this contradicts `issue_accountability` and the MUST NOT constraints)
 - **MUST NOT** modify files outside documentation (no code changes triggered by this step)
 - **MUST NOT** modify `plugins/rite/skills/reviewers/**`, `plugins/rite/hooks/**`, or `rite-config.yml` from this step — those are out of scope for documentation impact investigation
+
+#### 5.1.0.8 XS/S Production Constraint (Conditional)
+
+**Execution condition**: 5.0.C の `COMPLEXITY_LANE == light`。`full`（M / L / XL、および fail-safe 全 reason）のときは本サブセクション全体を skip し、挙動は本機能導入前と完全に同一。
+
+コミット前に、本レーンで**生産しすぎていないか**を確認する。過剰な生産物はそれ自体が次サイクルの churn の燃料になる（実測: 1 行の設定変更に対して implement が +250 行を生産し、その説明的散文が 2 サイクル分の指摘を生んだ）。該当したものはコミット前に**削る**（follow-up Issue へ回さない）:
+
+| 制約 | 適用 | 判定 |
+|---|---|---|
+| **新規テストファイルを作らない** | XS / S | 新しい `*.test.*` / `*.spec.*` ファイルを作っていないか。検証は**既存 suite への assert 追加**で行う。新規テストファイルは M+ の装備 |
+| **説明的派生散文を新設しない** | **XS のみ** | 実装から逆導出できる解説・列挙・トラジェクトリ引用・背景説明の**新規節**を書いていないか。XS で許されるのは**既存記述の同期**（既に存在する表・手順・reference の値を実装に合わせて更新すること）のみ |
+
+**縮小しないもの**（本レーンでも M+ と同一）: 5.1.0.6 Test Verification Gate、5.1.0.6.1 Acceptance Criteria Check、5.1.0.7 Documentation Impact Investigation。5.1.0.7 が検出した stale ドキュメントの修正は「既存記述の同期」であり、XS でも**必ず実施する** — 本制約が禁じるのは新規の説明散文であって、既存記述を実装に合わせることではない。
+
+制約に抵触した生産物を削った場合は、その事実を work memory の「決定事項・メモ」に記録する（silent な削除は、後から「なぜこの説明が無いのか」を追えなくする）。
+
+> **Reference**: なぜ散文の新設禁止が XS 限定で、新規テストファイル抑制が XS/S 両方なのか: [complexity-lane.md](../pr-review/references/complexity-lane.md#レーン境界を二値にする理由)。
 
 ### 5.1.1 Commit and Push Changes
 
