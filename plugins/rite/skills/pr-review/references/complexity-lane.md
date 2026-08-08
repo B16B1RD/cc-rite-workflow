@@ -84,7 +84,7 @@ fail-safe 発火時は **全 reason で WARNING を可視化する**（silent fa
 
 ## Complexity の抽出元を Issue body に限る理由
 
-flow-state は complexity フィールドを持たず、Projects の Complexity フィールドはフィールド名のローカライズ解決を伴う別経路になる。Issue body は `gh issue view --json body` 1 回で読め、rite が生成する全 Issue が Section 0 Meta に宣言値を持つ。
+flow-state は complexity フィールドを持たず、Projects の Complexity フィールドはフィールド名のローカライズ解決を伴う別経路になる。Issue body は `gh issue view --json body` 1 回で読め、**rite の Issue テンプレート経由で作られた Issue** は Section 0 Meta に宣言値を持つ。テンプレートを経ない生成経路（`/rite:cleanup` が作る `残作業:` Issue 等）は Complexity を Projects フィールドにしか持たないため body からは読めず、`complexity_absent` で full へ倒れる — レーンが発動する母集団はこの分だけ狭い。
 
 リポジトリ内に 2 つの記法が併存する（`**Complexity**: X` = [template-structure.md](../../../templates/issue/template-structure.md) Section 0 Meta / `## 複雑度` セクション = [common-principles.md](../../rite-workflow/references/common-principles.md)）ため helper は**両方を受理する**。片方だけ読むと、もう片方で書かれた Issue が全て `complexity_absent` で full へ倒れ、レーンが一度も発動しない。記法 1 を優先し、どちらで読んだかは marker の `source=` で区別できる。
 

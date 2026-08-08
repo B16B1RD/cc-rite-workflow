@@ -194,14 +194,27 @@ run_lane_with_body '**Complexity**: XSmall'
 assert_not_contains "TC-2.11: XSmall を XS に切り詰めて light へ倒さない" "$LANE_STDERR" "COMPLEXITY_LANE=light"
 assert_contains "TC-2.12: XSmall はトークン全体で取り出され complexity_invalid になる" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_invalid"
 
-# 抽出式が POSIX BRE だけで書かれていること (GNU 拡張 `\b` / `\|` の混入を authoring 時点で
-# pin する)。BSD/macOS sed はこれらを無警告に不一致とするため、混入すると当該環境で全 Issue が
-# complexity_absent へ倒れレーンが一度も発動しない (CI の macos leg が本経路を踏む)。
-# haystack は `sed -n` の行だけに絞る — ファイル全体を渡すと、GNU 拡張を禁じている散文コメント
-# 自身が needle に一致して恒常 fail する。
-LANE_SED_LINES=$(grep -n 'sed -n' "$TARGET")
-assert_not_contains "TC-2.13: 抽出式に GNU 拡張の単語境界 (\\b) を使わない" "$LANE_SED_LINES" '\b'
-assert_not_contains "TC-2.14: 抽出式に GNU 拡張の BRE 交替 (\\|) を使わない" "$LANE_SED_LINES" '\|'
+# 抽出式が POSIX BRE だけで書かれていること (GNU 拡張の混入を authoring 時点で pin する)。
+# BSD/macOS sed はこれらを無警告に不一致とするため、混入すると当該環境で全 Issue が
+# complexity_absent へ倒れレーンが一度も発動しない。CI の macos leg は本経路を踏むが
+# `continue-on-error: true` で PR を止めないため、**本 probe が唯一の blocking な番人**である。
+#
+# haystack は「コメント以外の本文全体」で取る。`sed -n` を含む行だけに絞ると、式を継続行へ
+# 折り返しただけで走査対象から外れて GNU 拡張が素通りする (実測済み)。コメント行を除くのは、
+# GNU 拡張を禁じている散文コメント自身が needle に一致して恒常 fail するのを避けるため。
+LANE_BODY_LINES=$(grep -vn '^[[:space:]]*#' "$TARGET")
+# haystack が空だと assert_not_contains は常に PASS する (無検査の vacuous pass)。
+# 探し方が壊れた瞬間に番人だけが消えるので、非空を precondition として先に確かめる。
+if [ -n "$LANE_BODY_LINES" ]; then
+  pass "TC-2.13a: 抽出式の走査対象 (コメント以外の本文) を特定できる"
+else
+  fail "TC-2.13a: 抽出式の走査対象が空 — 以降の GNU 拡張 probe が無検査で PASS する"
+fi
+# denylist は「POSIX BRE のみ」という宣言した規範に対して網羅する。`\b` / `\|` だけを挙げると、
+# 同じ GNU BRE 拡張クラスで**最も自然な書き換え形**である `[A-Za-z]\+` が素通りする (実測済み)。
+for _gnu_ext in '\+' '\?' '\|' '\b' '\w' '\s' '\<' '\>'; do
+  assert_not_contains "TC-2.13: 本文に GNU BRE 拡張 ($_gnu_ext) を使わない" "$LANE_BODY_LINES" "$_gnu_ext"
+done
 
 # 記法 1 が存在するときは記法 1 を優先する (source= で区別できること自体が観測性の要求)。
 run_lane_with_body '**Complexity**: M
@@ -236,6 +249,39 @@ assert_not_contains "TC-4.7: complexity_invalid で light へ倒さない" "$LAN
 run_lane_with_body '**Complexity**: {complexity}'
 assert_contains "TC-4.8: 未展開 placeholder は complexity_absent (英字以外は抽出式が受理しない)" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
 assert_not_contains "TC-4.8b: 未展開 placeholder で light へ倒さない" "$LANE_STDERR" "COMPLEXITY_LANE=light"
+
+# 記法 2 でも同じ記入漏れが同じ reason になること。記法 2 の抽出は先頭の装飾を読み飛ばすため、
+# `{` / `<` を読み飛ばし対象に含めると placeholder の中身や HTML コメントの語を値として捕捉し、
+# 同一の欠陥が記法によって absent / invalid へ分裂する (reason は AC-5 の分母を数える観測値)。
+run_lane_with_body '## 複雑度
+
+{complexity}'
+assert_contains "TC-4.8c: 記法 2 の未展開 placeholder も complexity_absent" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
+run_lane_with_body '## 複雑度
+
+<!-- TODO: 未記入 -->'
+assert_contains "TC-4.8d: 記法 2 の HTML コメントも complexity_absent" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
+
+echo "=== complexity_absent の対象行名指し WARNING (崩れた記法と宣言不在の切り分け) ==="
+
+# 崩れた記法では対象行を名指しする。裸のキーワード検索に戻すと lowercase key が無音になるため、
+# 4 形すべてを個別に pin する (まとめて 1 件だけ検証すると片方向の退行を見逃す)。
+for _broken in '**complexity**: XS' '**Complexity**： XS' '- **Complexity**: XS' 'Complexity: XS'; do
+  run_lane_with_body "$_broken"
+  assert_contains "TC-4.16: 崩れた記法 ($_broken) は対象行を名指しする" "$LANE_STDERR" "宣言らしき行を解釈できませんでした"
+done
+
+# 宣言行が無い body では沈黙する。行の形を問わない検索に戻すと散文・表セルの単なる言及を
+# 「宣言らしき行」と誤って断定し、この WARNING の目的 (定常出力からの切り分け) が消える。
+for _prose in 'この変更の複雑度は低いが影響範囲は広い。' '| A | /rite:issue-create | Complexity M。 |'; do
+  run_lane_with_body "$_prose"
+  assert_not_contains "TC-4.17: 宣言行の無い散文 ($_prose) では名指ししない" "$LANE_STDERR" "宣言らしき行を解釈できませんでした"
+done
+
+# 外部入力 (第三者が書ける Issue body) を診断へ埋め込むため、制御文字を中和してから出力する。
+run_lane_with_body "$(printf '**Complexity**: \033[31mZZZ')"
+assert_not_contains "TC-4.18: 名指し WARNING は制御文字を素通ししない" "$LANE_STDERR" "$(printf '\033')"
+assert_contains "TC-4.18b: 中和後も宣言行の可読部分は残る" "$LANE_STDERR" "宣言らしき行を解釈できませんでした"
 
 # repo_unresolved は **production の実経路**（pr-review 1.3.2 / issue-implement 5.0.C は
 # --repo を渡さない）にある唯一の reason で、他 4 reason と違い --repo 明示では到達しない。

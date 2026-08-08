@@ -49,8 +49,9 @@
 #                            帰属させるのと同型)
 #   complexity_absent     — body に上記 2 記法のいずれも「値を取り出せる形で」現れない
 #                           (rite 外で作られた Issue、崩れた記法 = lowercase key / 全角コロン /
-#                            リスト項目化、**および `**Complexity**: {complexity}` のような
-#                            未展開 placeholder — 抽出式が英字しか受理しないため「無い」側に合流する)
+#                            リスト項目化、**および `{complexity}` のような未展開 placeholder と
+#                            `<!-- ... -->` — 両記法とも `{` `<` を値の開始と認めないため
+#                            「無い」側に合流する。記法で reason が分裂しない)
 #   complexity_invalid    — 英字トークンは取り出せたが XS/S/M/L/XL のいずれでもない
 #                           (`Medium` / `Small` / `XSmall` / `ZZ` 等の綴り誤り・別語彙)
 #
@@ -81,6 +82,10 @@ _icl_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # (sibling: scripts/review-cycle-scope.sh と同形)。
 # shellcheck source=../hooks/scripts/lib/tempfile.sh
 source "$_icl_dir/../hooks/scripts/lib/tempfile.sh"
+# 診断へ外部入力 (Issue body の行) を埋め込む経路があるため中和 helper を読む。
+# canonical idiom の SoT は control-char-neutralize.sh の header。
+# shellcheck source=../hooks/control-char-neutralize.sh
+source "$_icl_dir/../hooks/control-char-neutralize.sh"
 
 ISSUE_NUMBER=""
 OWNER_REPO=""
@@ -162,10 +167,14 @@ _source="body_meta"
 # 宣言 M が S へ解決される (M+ が silent に light へ落ちる = AC-4 / MUST NOT 違反)。
 # 記法 1 と同じく**英字トークン全体を切り出し、妥当性は `case` に委ねる**。BRE 交替 `\|` と
 # 単語境界 `\b` はいずれも GNU 拡張で、BSD/macOS sed では無警告に不一致となるため使わない。
+# 読み飛ばす先頭記号から `{` と `<` を除く — 含めると `{complexity}` の中身や
+# `<!-- TODO -->` の `TODO` を値として捕捉し、記法 1 では complexity_absent になる
+# 同じ記入漏れが記法 2 でだけ complexity_invalid へ分裂する (reason は AC-5 の効果計測が
+# 「レーンが働かなかった理由」の分母として数える観測値なので、分裂すると集計の意味が壊れる)。
 if [ -z "$_raw" ]; then
   _raw=$(printf '%s\n' "$_body" \
     | awk '/^##[[:space:]]+複雑度[[:space:]]*$/{f=1; next} f && NF {print; exit}' \
-    | sed -n 's/^[^A-Za-z]*\([A-Za-z][A-Za-z]*\).*/\1/p' | head -1)
+    | sed -n 's/^[^A-Za-z{<]*\([A-Za-z][A-Za-z]*\).*/\1/p' | head -1)
   _source="body_section"
 fi
 
@@ -174,7 +183,22 @@ if [ -z "$_raw" ]; then
   # review-cycle-scope.sh が全 fail-safe 経路で target を名指しする規約と揃える)。
   # 宣言が本当に無い Issue では出さない — 出すと定常出力になり、この WARNING の目的である
   # 「lowercase key / 全角コロン / リスト項目化などの崩れた記法」の可視化が noise に埋もれる。
-  _decl=$(printf '%s\n' "$_body" | grep -m1 -E 'Complexity|複雑度') || _decl=""
+  #
+  # 述語は**宣言行の形**に固定する。裸のキーワード検索にすると両方向で外れる —
+  # case-sensitive だと lowercase key を落とし (可視化対象の筆頭が無音になる)、行の形を問わないと
+  # 散文や表セルの単なる言及を「宣言らしき行」と誤って断定する (定常出力化して目的が消える)。
+  # 行頭 anchor + キー + 区切り記号 (`:` / `：`) を要求し、`-i` で大小文字を吸収する。
+  #
+  # `|| _decl=""` は付けない。`set -e` は 76 行目で意図的に無効なので rc を握る利得が無い一方、
+  # `pipefail` 下では上流 printf の SIGPIPE(141) を「不一致」と融合して**捕捉済みの行を破棄する**
+  # (早期終了する grep -m1 ではなく head -1 を使うのも同じ理由。:157 / :170 の house pattern と揃える)。
+  #
+  # ${_body} は第三者が書ける外部入力なので、診断へ埋め込む前に canonical idiom
+  # (長さ上限 → CR 除去 → 改行畳み → 制御文字中和) を通す。--c0-only は日本語本文の
+  # UTF-8 継続バイトを潰さないため (hooks/issue-body-safe-update.sh と同じ選択)。
+  _decl=$(printf '%s\n' "$_body" \
+    | grep -iE '^[[:space:]]*([-*+][[:space:]]+)?\**[[:space:]]*(complexity|複雑度)[[:space:]]*\**[[:space:]]*[:：]|^##[[:space:]]+複雑度[[:space:]]*$' \
+    | head -1 | head -c 500 | tr -d '\r' | tr '\n' ' ' | neutralize_ctrl --c0-only)
   [ -n "$_decl" ] && echo "WARNING: issue-complexity-lane: Complexity 宣言らしき行を解釈できませんでした: ${_decl}" >&2
   emit_full_fallback complexity_absent
 fi
