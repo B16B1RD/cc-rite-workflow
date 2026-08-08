@@ -363,7 +363,7 @@ esac
 > **ガードが拒否する形（実測）**: harness が拒否するのは **Bash ツール呼び出しのコマンド文字列に直接 `cd {main_root}` / `git -C {main_root}` を書く形**（および worktree 外を向くか検証不能な複合ブロック）であり、helper スクリプト内部の `cd` は拒否されない（ステップ 7 の `pr-cycle-cleanup.sh` は内部で main checkout へ `cd` して `git worktree remove` / `git branch -d` を実行できている）。本 SKILL.md のステップ 4 / 4-W / 5 / 9 はいずれも前者の形を取るため委譲対象になる。helper へ閉じ込めれば自動化できる余地は残るが、それは「worktree 内から全項目を完走させる」設計変更であり Issue #2133 の Non-goal。
 
 - `CLEANUP_WT=in_worktree_unrecorded`（EnterWorktree 非経由の path 入場 = ユーザーがセッションを worktree ディレクトリで開いた場合。`ExitWorktree` が no-op で main checkout へ戻れない）: **下記の手順 1〜4 を実行しない**（`CLEANUP_DELEGATED=1`）。main checkout 操作を要する 4 項目（base 更新 = ステップ 4 / worktree 削除 = 本 4-W / ブランチ削除 = ステップ 5 / wiki ingest = ステップ 9）は**試行せず**、ステップ 12 が未完了として列挙し委譲する。worktree 内で完結する項目（PR-specific state 削除・Projects Status 更新・Issue クローズ・作業メモリ更新・flow state リセット）は通常どおり実行する。ガードを迂回する複合コマンド（main checkout への `cd` / `git -C` リダイレクト）は**試みない** — ガードは正当に機能しており、迂回は設計違反。
-  **委譲先は main checkout での `/rite:cleanup {pr_number}` 再実行**（1 系統）。再実行セッションでは flow-state に worktree 記録が無いため 4-W は `CLEANUP_WT=none` を返し、`CLEANUP_DELEGATED` を emit せずステップ 4 / 5 / 9 が通常実行される。base 更新・wiki ingest・リモートブランチ削除はそこで直接完了し、worktree 削除とローカルブランチ削除は**ステップ 5 が `branch` エントリを reap manifest に記録する**ことで次回セッション開始時の自動回収を arm する（`{pr_merged}=true` のときのみ記録され `recovery=auto` になる。未マージ PR の強制 cleanup は `recovery=manual` に倒れ手動削除が必要 — 出し分けはステップ 12 の `{local_branch_check}` 判定に既定済み。既存配線で、本ステップから追加の記録は行わない）。
+  **委譲先は main checkout での `/rite:cleanup {pr_number}` 再実行**（1 系統）。再実行セッションでは flow-state に worktree 記録が無いため 4-W は `CLEANUP_WT=none` を返し、`CLEANUP_DELEGATED` を emit せずステップ 4 / 5 / 9 が通常実行される。base 更新・wiki ingest・リモートブランチ削除はそこで直接完了し、worktree 削除とローカルブランチ削除は**ステップ 5 が `branch` エントリを reap manifest に記録する**ことで次回セッション開始時の自動回収を arm する（`{pr_merged}=true` かつ manifest への記録を verify できたときのみ `recovery=auto` になる。未マージ PR の強制 cleanup と記録漏れはいずれも `recovery=manual` に倒れ手動削除が必要 — 出し分けはステップ 12 の `{local_branch_check}` 判定に規定済み。既存配線で、本ステップから追加の記録は行わない）。
 - `CLEANUP_WT=in_worktree`（EnterWorktree 管理下 = `/rite:batch-run` 経由の通常経路。`ExitWorktree` で退出できる）:
   1. `dirty=yes` なら **AskUserQuestion**（「`git stash push` して続行 / 中止」）。説明文は上記 `--- dirty files begin/end ---` デリミタ内に出力された生パス一覧を**引用**する（要約・創作しない）。stash は common git dir に格納されるため worktree 削除後も `git stash pop` 可能（完了報告の stash 案内は従来文面を流用）。
   2. `ExitWorktree` ツールを `action: "keep"` で呼び出し、main checkout に復帰する（path 入場した worktree は remove でも消えない仕様のため**常に keep**）。
@@ -542,7 +542,7 @@ fi
 
 > **順序**: branch 削除は **worktree 削除後にのみ成功する**（Git 制約: worktree で checkout 中の branch は削除不可）。multi_session 時は必ずステップ 4-W → 本ステップの順で実行する。
 >
-> **委譲モード（#2133）**: 4-W が `[CONTEXT] CLEANUP_DELEGATED=1` を emit している場合、本ステップの bash ブロックを**いずれも実行しない**（worktree を削除していないため checkout 中の branch は構造的に削除できない。リモート削除は本ステップ内でローカル削除と 1 ステップで扱うため同時に委譲する — `git push origin --delete` 自体はガードに抵触せず worktree 内からも実行できる）。ステップ 12 が未完了として列挙し、main checkout での `/rite:cleanup {pr_number}` 再実行へ委譲する。再実行では本ステップが通常実行され、リモート削除は直接完了し、ローカル削除は `used by worktree` で見送られた上で `branch` エントリを reap manifest に記録して次回セッション開始時の自動回収を arm する。
+> **委譲モード（#2133）**: 4-W が `[CONTEXT] CLEANUP_DELEGATED=1` を emit している場合、本ステップの bash ブロックを**いずれも実行しない**（worktree を削除していないため checkout 中の branch は構造的に削除できない。リモート削除は本ステップ内でローカル削除と 1 ステップで扱うため同時に委譲する — `git push origin --delete` 自体はガードに抵触せず worktree 内からも実行できる）。ステップ 12 が未完了として列挙し、main checkout での `/rite:cleanup {pr_number}` 再実行へ委譲する。再実行では本ステップが通常実行され、リモート削除は直接完了し、ローカル削除は `used by worktree` で見送られた上で `branch` エントリを reap manifest に記録して次回セッション開始時の自動回収を arm する（記録は `{pr_merged}=true` かつ manifest への記録を verify できたときのみ。それ以外は `recovery=manual` に倒れ手動削除になる — 出し分けは本ステップの `recovery=` 判定が持つ）。
 
 ```bash
 # worktree 削除が遅延した場合（ステップ 4-W が WORKTREE_REMOVE_SKIPPED_LIVE_CWD = 別 live
@@ -1055,7 +1055,7 @@ Status: {projects_status_result}
 - ローカル/リモートブランチの削除
 - Wiki ingest（pending raw source は wiki branch に保持されています）
 
-上記 4 項目は main checkout での操作が必要なため実行していません。main checkout でセッションを開き `/rite:cleanup {pr_number}` を再実行してください（実行済みの項目は冪等にスキップされます）。再実行では base 更新・Wiki ingest・リモートブランチ削除が直接完了し、セッション worktree とローカルブランチは、PR がマージ済みかつ作業ツリーに未コミット変更が無ければ、回収台帳への記録を経て次回セッション開始時に自動で回収されます（条件を満たさない場合は再実行時の報告が手動手順を案内します）。すぐに消したい場合（main checkout でセッションを開いたあと）: git worktree remove --force '{flow_wt}' && git branch -D {branch_name}
+上記 4 項目は main checkout での操作が必要なため実行していません。main checkout でセッションを開き `/rite:cleanup {pr_number}` を再実行してください（実行済みの項目は冪等にスキップされます）。再実行では base 更新・Wiki ingest・リモートブランチ削除が直接完了し、セッション worktree とローカルブランチは、PR がマージ済みかつ作業ツリーに未コミット変更が無ければ、回収台帳への記録を経て次回セッション開始時の自動回収の対象になります（未マージの場合は再実行時の報告がローカルブランチの手動削除手順を案内します。未コミット変更が残っている場合は自動回収が見送られ、次回セッション開始時に警告が出ます）。すぐに消したい場合（main checkout でセッションを開いたあと）: git worktree remove --force '{flow_wt}' && git branch -D {branch_name}
 ```
 
 以下は**委譲モード以外**（`CLEANUP_DELEGATED` marker が無い場合）の判定。各チェックボックスおよび placeholder の判定:

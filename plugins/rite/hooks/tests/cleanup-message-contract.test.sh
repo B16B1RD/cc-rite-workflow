@@ -150,8 +150,14 @@ assert "delegation marker is emitted exactly once" "1" \
 assert "delegation skip guard exists in exactly three steps" "3" \
   "$(grep -c '委譲モード（#2133）' "$CLEANUP")"
 # 件数固定は marker の **追加** を捕まえるが **移設** は捕まえない（総数が変わらないため）。
-# emit を in_worktree arm へ移す変異は AC-1 の Then と AC-3 の Then を 1 変異で同時に無効化する
-# ため、「どこに在るか」も独立に固定する。end パターンの `)` は上記と同じ理由で二重エスケープ。
+# 住所は positive / negative の両方向で固定する — 片方だけでは変異が生存することを実測済み:
+#   `*)` arm への移設 / case 文の前への持ち上げ → negative control（下段）を素通りし positive（上段）が捕まえる
+#   case arm ラベルの入れ替え                    → positive（上段）を素通りし negative control（下段）が捕まえる
+# 前者は再実行セッション（CLEANUP_WT=none）が `*)` に落ちるため委譲が再帰し AC-2 の Then を、
+# 後者は batch-run 経路で委譲が発火し AC-3 の Then を、それぞれ無効化する。
+# end パターンの `)` `*` は上記と同じ理由で二重エスケープ。
+assert "delegation marker is emitted only from the in_worktree_unrecorded arm" "1" \
+  "$(awk -v start='^  in_worktree_unrecorded\\)$' -v end='^  \\*\\)$' '$0 ~ start, $0 ~ end' "$CLEANUP" | grep -c 'CLEANUP_DELEGATED')"
 assert "in_worktree arm never emits the delegation marker" "0" \
   "$(awk -v start='^  in_worktree\\)$' -v end='^  in_worktree_unrecorded\\)$' '$0 ~ start, $0 ~ end' "$CLEANUP" | grep -c 'CLEANUP_DELEGATED')"
 
@@ -180,13 +186,16 @@ assert_grep "Step 12 delegation notice states the re-run is idempotent" "$CLEANU
 # 自動回収は無条件ではない（記録はステップ 5 の {pr_merged}=true gate 配下、reap は dirty guard 配下）。
 # 条件節ごと pin して、無条件の約束へ戻る退行を検出する。
 assert_grep "Step 12 delegation notice names the deferred reclamation path with its conditions" "$CLEANUP" \
-  'PR がマージ済みかつ作業ツリーに未コミット変更が無ければ、回収台帳への記録を経て次回セッション開始時に自動で回収されます'
-# 手動コマンドは main checkout で実行する前提。worktree 内で実行すると remove が cwd を消し
-# 連鎖が途中で止まるため、場所の限定句と `git worktree prune` 非連結を固定する。
-assert_grep "Step 12 manual fallback is scoped to the main checkout" "$CLEANUP" \
-  'すぐに消したい場合（main checkout でセッションを開いたあと）'
-assert_not_grep "Step 12 manual fallback does not chain worktree prune before branch -D" "$CLEANUP" \
-  "git worktree prune && git branch -D"
+  'PR がマージ済みかつ作業ツリーに未コミット変更が無ければ、回収台帳への記録を経て次回セッション開始時の自動回収の対象になります'
+# 条件を満たさない側の案内先は 2 つに分かれる（未マージ = 再実行時の報告 / dirty = 次回セッションの
+# 警告）。dirty は再実行時に一切評価されないため、片方に丸めると存在しない案内先へ読み手を送る。
+assert_grep "Step 12 delegation notice routes each unmet condition to its real surface" "$CLEANUP" \
+  '未マージの場合は再実行時の報告がローカルブランチの手動削除手順を案内します。未コミット変更が残っている場合は自動回収が見送られ、次回セッション開始時に警告が出ます'
+# 手動コマンドは main checkout で実行する前提（worktree 内では remove が cwd を消して連鎖が止まる）。
+# 失敗モードを防ぐのは限定句のみで、prune を外したのは remove --force が admin エントリを解除する
+# ため冗長だから。コマンド本体まで含めて固定し、限定句・引数のどちらが欠けても落ちるようにする。
+assert_grep "Step 12 manual fallback is scoped to the main checkout with its exact commands" "$CLEANUP" \
+  "すぐに消したい場合（main checkout でセッションを開いたあと）: git worktree remove --force '\{flow_wt\}' && git branch -D \{branch_name\}"
 # 委譲 arm は記録を行わない（記録するのは再実行時のステップ 5 の `--type branch`）。arm に
 # `--type session_worktree` の record を足しても consumer 側の bypass は `_corpse -eq 1` を要求する
 # ため発火せず、ブランチの force-delete arm も `branch` エントリしか受け付けない = 不発コードになる。
