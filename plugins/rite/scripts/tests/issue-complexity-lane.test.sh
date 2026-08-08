@@ -90,9 +90,11 @@ GH_SHIM
 run_lane_with_failing_gh() {
   local bindir="$TEST_DIR/bin-fail"
   mkdir -p "$bindir"
+  # stderr に ESC と C1 (CSI U+009B の UTF-8 表現) を混ぜる。gh の stderr も第三者由来の
+  # 外部入力なので、診断へ出す前に canonical idiom を通す必要がある。
   cat > "$bindir/gh" <<'GH_SHIM'
 #!/bin/bash
-echo "gh: authentication required" >&2
+printf 'gh: authentication required \033[31m \302\233 X\n' >&2
 exit 1
 GH_SHIM
   chmod +x "$bindir/gh"
@@ -261,6 +263,16 @@ run_lane_with_body '## 複雑度
 
 <!-- TODO: 未記入 -->'
 assert_contains "TC-4.8d: 記法 2 の HTML コメントも complexity_absent" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
+# 空の複雑度節は次の見出しへ跨がない。跨ぐと英字見出しだけが値として捕捉され、同じ記入漏れが
+# **見出し語の言語**で absent / invalid に分裂する (診断側の節境界と対称)。
+run_lane_with_body '## 複雑度
+
+## Impact'
+assert_contains "TC-4.8e: 空の複雑度節は英字の次節見出しを値として捕捉しない" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
+run_lane_with_body '## 複雑度
+
+## 影響範囲'
+assert_contains "TC-4.8f: 日本語の次節見出しでも同じ reason になる" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
 
 echo "=== complexity_absent の行番号 WARNING (崩れた記法と宣言不在の切り分け) ==="
 
@@ -276,7 +288,9 @@ done
 
 # 宣言行が無い body では沈黙する。行の形を問わない検索に戻すと散文・表セルの単なる言及を
 # 「宣言らしき記述」と誤って断定し、この WARNING の目的 (定常出力からの切り分け) が消える。
-for _prose in 'この変更の複雑度は低いが影響範囲は広い。' '| A | /rite:issue-create | Complexity M。 |'; do
+# 3 形目は**行中に「キー + コロン」を持つ**散文で、述語から行頭 anchor を外す mutant を落とす
+# (前 2 形はキーと区切り記号が連続しないため、区切り記号の腕しか検査していなかった)。
+for _prose in 'この変更の複雑度は低いが影響範囲は広い。' '| A | /rite:issue-create | Complexity M。 |' '判定キーは Complexity: の有無である。'; do
   run_lane_with_body "$_prose"
   assert_not_contains "TC-4.17: 宣言行の無い散文 ($_prose) では報告しない" "$LANE_STDERR" "値を取り出せませんでした"
 done
@@ -289,9 +303,23 @@ run_lane_with_body "冒頭の散文行
 {complexity}"
 assert_contains "TC-4.19: 記法 2 は見出しではなく値行の行番号を報告する" "$LANE_STDERR" "body の 4 行目から値を取り出せませんでした"
 
-# 診断は body の中身を一切載せない。載せるには長さ上限・CR 除去・改行畳み・制御文字中和の
-# 4 段が要り、そのうち C1 (CSI U+009B 等) を閉じる中和は共有 helper に既存モードが無い。
-# 行番号だけなら外部入力が診断チャネルへ入る経路自体を持たない。
+# 節に値行が 1 行も無い形では見出し自身へ退避する。退避しないと記入漏れの `## 複雑度` 節が
+# 宣言不在と区別できず、さらに節境界が無いと無関係な次節見出しを是正先として提示する。
+run_lane_with_body '## 複雑度
+
+## 影響範囲'
+assert_contains "TC-4.19b: 空の複雑度節は次節見出しではなく見出し自身を報告する" "$LANE_STDERR" "body の 1 行目から値を取り出せませんでした"
+run_lane_with_body '冒頭の散文行
+## 複雑度'
+assert_contains "TC-4.19c: 見出しが body 末尾でも沈黙せず見出しの行番号を報告する" "$LANE_STDERR" "body の 2 行目から値を取り出せませんでした"
+
+# CRLF の body。awk の既定 FS は `\r` を含まないため、入力側で CR を落とさないと CR だけの行が
+# 非空行と数えられ、記法 2 が値行に到達できず XS 宣言でも軽量レーンが発動しない。
+run_lane_with_body "$(printf '## 複雑度\r\n\r\nXS\r')"
+assert_contains "TC-4.20: CRLF の body でも記法 2 が値行に到達する" "$LANE_STDERR" "COMPLEXITY_LANE=light; complexity=XS; source=body_section"
+
+# 診断は body の中身を一切載せない。body は第三者が書ける外部入力で、切り分けという目的は
+# 行番号だけで果たせるため、外部入力が診断チャネルへ入る経路自体を持たない。
 run_lane_with_body "$(printf '**Complexity**: \033[31mZZZ_SENTINEL \302\233 CR\r')"
 assert_not_contains "TC-4.18: 診断に body の中身を載せない (可視文字)" "$LANE_STDERR" "ZZZ_SENTINEL"
 assert_not_contains "TC-4.18b: 診断に ESC を載せない" "$LANE_STDERR" "$(printf '\033')"
@@ -314,6 +342,10 @@ assert_contains "TC-4.10: gh 失敗は issue_fetch_failed" "$LANE_STDERR" "COMPL
 # 取得失敗と「body に記載が無い」を混同すると、認証切れが Issue 側の不備として報告される。
 assert_not_contains "TC-4.11: gh 失敗を complexity_absent と誤報告しない" "$LANE_STDERR" "reason=complexity_absent"
 assert_contains "TC-4.12: gh の stderr を診断として surface する" "$LANE_STDERR" "authentication required"
+# surface するだけでなく中和して出す。`--c0-only` へ差し替える mutant は C1 側で落ちる
+# (同モードは valid UTF-8 の C1 を素通しする)。
+assert_not_contains "TC-4.12b: gh stderr の ESC を素通ししない" "$LANE_STDERR" "$(printf '\033')"
+assert_not_contains "TC-4.12c: gh stderr の C1 (CSI U+009B) を素通ししない" "$LANE_STDERR" "$(printf '\302\233')"
 [ "$LANE_RC" -eq 0 ] && pass "TC-4.13: issue_fetch_failed でも exit code は 0" \
   || fail "TC-4.13: issue_fetch_failed でも exit code は 0 (実際: $LANE_RC)"
 

@@ -169,6 +169,15 @@ else
   printf '%s\n' "$_impl_actual" | sed 's/^/       /'
 fi
 
+# 上の 3 行照合は第 1 セルだけを残して行の残りを捨てるため、条件行の第 2 セル (判定方法) は
+# 検査対象外になる。2 行目の第 2 セルは「M or above」の判定キーを規定しており、ここから
+# fail-safe 除外が落ちると 5.1.0.1 は complexity 不明の Issue を「M or above」と読んで並列
+# sub-agent を起動する側 (攻撃側) へ倒れる。3 要素を 1 行 anchor でまとめて pin し、
+# 行を分ける崩れも同時に落とす。**`|` は `\|` でエスケープする** — assert_grep は `grep -qE`
+# (ERE) なので裸の `|` は交替演算子になり、`^` 単独腕が全行に一致して常に PASS になる。
+assert_grep "5.1.0.1 excludes the fail-safe path from 'M or above'" "$IMPLEMENT" \
+  '^\| Complexity M or above \|.*かつ `complexity=` を伴う.*`COMPLEXITY_LANE_FALLBACK=1` を伴う fail-safe 経路は満たさない'
+
 echo "=== implement の生産量制約 (AC-3 / T-03) ==="
 assert_grep "implement resolves the lane through the shared helper" "$IMPLEMENT" \
   'scripts/issue-complexity-lane\.sh --issue \{issue_number\}'

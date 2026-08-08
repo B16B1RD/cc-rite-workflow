@@ -82,7 +82,8 @@ _icl_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # (sibling: scripts/review-cycle-scope.sh と同形)。
 # shellcheck source=../hooks/scripts/lib/tempfile.sh
 source "$_icl_dir/../hooks/scripts/lib/tempfile.sh"
-# 診断へ外部入力 (Issue body の行) を埋め込む経路があるため中和 helper を読む。
+# gh の stderr スニペット (外部由来) を診断へ出す経路があるため中和 helper を読む。
+# Issue body 由来の文字列は診断へ出さない (下の complexity_absent 経路を参照)。
 # canonical idiom の SoT は control-char-neutralize.sh の header。
 # shellcheck source=../hooks/control-char-neutralize.sh
 source "$_icl_dir/../hooks/control-char-neutralize.sh"
@@ -115,7 +116,7 @@ esac
 # (本リポジトリの実測では Issue 60 件中 23 件が宣言を持たない)。full へ倒れた事実は
 # 「この PR ではレーンが働かなかった」という**観測値そのもの**であり、AC-5 の効果計測が
 # 分母を数えるために要る。定常的に出うる complexity_absent は、宣言らしき行を解釈できなかった
-# 場合に限り下の追加 WARNING で対象行を名指しし、真の異常と routine を切り分ける。
+# 場合に限り下の追加 WARNING で対象行の**行番号**を報告し、真の異常と routine を切り分ける。
 emit_full_fallback() {
   local reason="$1"
   echo "[CONTEXT] COMPLEXITY_LANE=full; reason=$reason" >&2
@@ -145,11 +146,19 @@ rite_tempfile_new _icl_err "complexity-lane-err" || emit_full_fallback issue_fet
 if ! _body=$(gh issue view "$ISSUE_NUMBER" -R "$OWNER_REPO" --json body --jq '.body' 2>"$_icl_err"); then
   if [ -s "$_icl_err" ]; then
     echo "WARNING: issue-complexity-lane: gh issue view が失敗しました (issue=#${ISSUE_NUMBER}, repo=${OWNER_REPO}):" >&2
-    # gh の stderr も外部由来なので canonical idiom を通す (hooks/ 側 30 ファイルと同形)。
+    # gh の stderr も外部由来なので canonical idiom を通す
+    # (SoT: control-char-neutralize.sh の header)。
     head -3 "$_icl_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
   emit_full_fallback issue_fetch_failed
 fi
+
+# CR を 1 度だけ落とす。awk の既定 FS は `\r` を含まないため、CRLF の body では CR だけの行が
+# NF=1 = 非空行と数えられ、記法 2 の「見出し直後の最初の非空行」が値行ではなく空行を指す
+# (GitHub Web UI 由来の body は CRLF になりうる)。抽出と診断の両方が同じ述語を持つので、
+# 述語ごとに直すのではなく入力側で 1 度落として対称に閉じる。記法 1 の sed は `.*$` が既に
+# CR を吸収するため影響を受けない。
+_body=${_body//$'\r'/}
 
 # 記法 1: `**Complexity**: X` (Section 0 Meta)。装飾の揺れ (太字なし / 全角コロン) は受理しない —
 # テンプレート由来の 1 形式だけを pin し、崩れた記法は complexity_absent として可視化する。
@@ -172,18 +181,22 @@ _source="body_meta"
 # `<!-- TODO -->` の `TODO` を値として捕捉し、記法 1 では complexity_absent になる
 # 同じ記入漏れが記法 2 でだけ complexity_invalid へ分裂する (reason は AC-5 の効果計測が
 # 「レーンが働かなかった理由」の分母として数える観測値なので、分裂すると集計の意味が壊れる)。
+# 同じ理由で**節境界で探索を止める** — 止めないと空の複雑度節が次の見出しへ跨ぎ、英字見出し
+# (`## Impact` 等) は読み飛ばしクラス `[^A-Za-z{<]*` が `## ` を食った後の英字を値として捕捉して
+# complexity_invalid へ分裂する (日本語見出しでは分裂しないため、見出し語の言語で reason が変わる)。
 if [ -z "$_raw" ]; then
   _raw=$(printf '%s\n' "$_body" \
-    | awk '/^##[[:space:]]+複雑度[[:space:]]*$/{f=1; next} f && NF {print; exit}' \
+    | awk '/^##[[:space:]]+複雑度[[:space:]]*$/{f=1; next} f && /^#/{exit} f && NF {print; exit}' \
     | sed -n 's/^[^A-Za-z{<]*\([A-Za-z][A-Za-z]*\).*/\1/p' | head -1)
   _source="body_section"
 fi
 
 if [ -z "$_raw" ]; then
-  # 宣言らしき行はあるのに値を取り出せなかった場合だけ対象行を名指しする (sibling の
-  # review-cycle-scope.sh が全 fail-safe 経路で target を名指しする規約と揃える)。
-  # 宣言が本当に無い Issue では出さない — 出すと定常出力になり、この WARNING の目的である
-  # 「lowercase key / 全角コロン / リスト項目化などの崩れた記法」の可視化が noise に埋もれる。
+  # 宣言らしき行はあるのに値を取り出せなかった場合だけ対象行の行番号を報告する
+  # (sibling の review-cycle-scope.sh は target の値そのものを名指しするが、本 helper は
+  # 外部入力を診断へ通さないため位置だけを示す)。宣言が本当に無い Issue では出さない —
+  # 出すと定常出力になり、この WARNING の目的である「lowercase key / 全角コロン /
+  # リスト項目化などの崩れた記法」の可視化が noise に埋もれる。
   #
   # 述語は**宣言行の形**に固定する。裸のキーワード検索にすると両方向で外れる —
   # case-sensitive だと lowercase key を落とし (可視化対象の筆頭が無音になる)、行の形を問わないと
@@ -191,16 +204,22 @@ if [ -z "$_raw" ]; then
   # 行頭 anchor + キー + 区切り記号 (`:` / `：`) を要求し、大小文字は文字クラスで吸収する。
   #
   # **診断に出すのは行番号だけで、body の中身は出さない。** ${_body} は第三者が書ける外部入力で、
-  # 埋め込むには長さ上限・CR 除去・改行畳み・制御文字中和の 4 段が要り、そのうち C1 (CSI U+009B 等)
-  # を閉じる中和は共有 helper に既存モードが無い。切り分け (崩れた記法 か 宣言不在 か) という
-  # 本 WARNING の目的は行番号だけで果たせるので、外部入力を診断チャネルへ通す経路自体を持たない。
+  # 切り分け (崩れた記法 か 宣言不在 か) という本 WARNING の目的は行番号だけで果たせる。
   #
-  # 記法 2 では見出しではなく**値を取り出せなかった行**を指す。見出しは解釈できているので、
-  # 名指しても是正先にならない。
+  # 記法 2 では見出しではなく**値を取り出せなかった行**を指す (見出しは解釈できているので
+  # 是正先にならない)。ただし節に値行が 1 行も無い形 — 次の見出しが続く / body 末尾 — では
+  # 見出し自身が唯一の是正先なので、そこへ退避する。退避しないと記入漏れの `## 複雑度` 節が
+  # 宣言不在と区別できなくなり、後者は無関係な次節見出しを是正先として提示する。
+  #
+  # **print する規則はすべて p を立てる。** awk の `exit` は END 規則を実行するため、
+  # 立て忘れると早期終了した経路でも END が二重に print し、下の `case` の数値検査が
+  # 改行込みの値を非数値として飲み込んで WARNING ごと消える。
   _decl_line=$(printf '%s\n' "$_body" | awk '
-    /^[[:space:]]*([-*+][[:space:]]+)?\**[[:space:]]*([Cc][Oo][Mm][Pp][Ll][Ee][Xx][Ii][Tt][Yy]|複雑度)[[:space:]]*\**[[:space:]]*[:：]/ { print NR; exit }
-    /^##[[:space:]]+複雑度[[:space:]]*$/ { f = 1; next }
-    f && NF { print NR; exit }
+    /^[[:space:]]*([-*+][[:space:]]+)?\**[[:space:]]*([Cc][Oo][Mm][Pp][Ll][Ee][Xx][Ii][Tt][Yy]|複雑度)[[:space:]]*\**[[:space:]]*[:：]/ { print NR; p = 1; exit }
+    /^##[[:space:]]+複雑度[[:space:]]*$/ { f = 1; h = NR; next }
+    f && /^#/ { print h; p = 1; exit }
+    f && NF   { print NR; p = 1; exit }
+    END { if (!p && h) print h }
   ')
   case "$_decl_line" in
     ''|*[!0-9]*) : ;;
