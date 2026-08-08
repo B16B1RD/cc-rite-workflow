@@ -1158,6 +1158,43 @@ rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
+# T-37: Step 4-P — TMPDIR がシンボリックリンクでも porcelain 物理パスを回収する
+# (macOS: /var/folders → /private/var/folders、/tmp → /private/tmp)
+# Given: logical TMPDIR is a symlink to a physical dir; detached worktree is
+#        registered under the physical path (git worktree porcelain form)
+# When: Cleanup runs with TMPDIR=logical (unresolved) form
+# Then: worktree is reaped; mutation_worktrees >= 1
+# Without pwd -P normalization, string-prefix match of logical vs physical
+# fails and Step 4-P reports mutation_worktrees=0 (macOS CI T-15/T-30/T-33+).
+# -----------------------------------------------------------------------
+echo "T-37: Step 4-P が TMPDIR シンボリックリンク先の porcelain 物理パスを回収する"
+TEST_REPO=$(make_temp_repo)
+t37_phys=$(mktemp -d "$HOST_TMPDIR/rite-pr-cleanup-t37-phys-XXXXXX")
+TEST_REPOS+=("$t37_phys")
+t37_link=$(mktemp -u "$HOST_TMPDIR/rite-pr-cleanup-t37-link-XXXXXX")
+if ! ln -s "$t37_phys" "$t37_link" 2>/dev/null; then
+  skip "T-37: シンボリックリンクを作成できない環境のためスキップ"
+else
+  TEST_REPOS+=("$t37_link")
+  # git often stores the physical path; put the worktree under the phys dir
+  # while TMPDIR points at the logical (symlink) form — the macOS mismatch.
+  ( cd "$TEST_REPO" && git worktree add --detach -q "$t37_phys/rite-review-mutation-symlink" HEAD )
+  t37_output=$( cd "$TEST_REPO" && TMPDIR="$t37_link" bash "$CLEANUP" 2>&1 )
+  t37_mut=$(echo "$t37_output" | sed -n 's/.*mutation_worktrees=\([0-9]*\).*/\1/p' | head -1)
+  if [ ! -e "$t37_phys/rite-review-mutation-symlink" ] \
+     && [ "${t37_mut:-0}" -ge 1 ] 2>/dev/null; then
+    pass "T-37: シンボリックリンク TMPDIR 越しに porcelain 物理パスを回収 (mut=$t37_mut)"
+  else
+    fail "T-37: dir=$([ -e "$t37_phys/rite-review-mutation-symlink" ] && echo present || echo gone) mut=$t37_mut. Output: $t37_output"
+  fi
+  ( cd "$TEST_REPO" && git worktree remove --force "$t37_phys/rite-review-mutation-symlink" 2>/dev/null ) || true
+  rm -rf "$t37_phys/rite-review-mutation-symlink" 2>/dev/null || true
+  rm -f "$t37_link" 2>/dev/null || true
+  rm -rf "$t37_phys" 2>/dev/null || true
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
 # Summary
 # -----------------------------------------------------------------------
 echo
