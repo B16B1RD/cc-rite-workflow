@@ -618,24 +618,25 @@ rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-15: age 未満の mutation worktree は保護 (in-flight 誤回収防止)
-# Given: a freshly-created registered `rite-review-mutation-*` worktree (mtime now)
+# T-15: fresh detached TMPDIR worktree は Step 4-P (porcelain) で即回収 (Issue #2145)
+# Given: a freshly-created registered detached worktree under TMPDIR (mtime now)
 # When: Cleanup runs
-# Then: The worktree survives (age guard) and status=noop / mutation_worktrees=0.
-# Core safety assertion: a concurrent reviewer's in-flight mutation worktree is
-# never reaped mid-experiment by another session's cleanup.
+# Then: The worktree is reaped (porcelain path has no 24h age guard) and
+#       mutation_worktrees >= 1. In-flight protection is self-exclusion via
+#       worktree-foreign-cwd (別 live セッション), not age — cleanup only runs at
+#       review entry / iterate end, never mid-parallel-review.
 # -----------------------------------------------------------------------
-echo "T-15: age 未満の mutation worktree は保護 (in-flight 誤回収防止)"
+echo "T-15: fresh detached TMPDIR worktree は Step 4-P で即回収 (Issue #2145)"
 rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
 TEST_REPO=$(make_temp_repo)
 ( cd "$TEST_REPO" && git worktree add --detach -q "$WORKDIR_SCAN_TMP/rite-review-mutation-fresh" HEAD )
 t15_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
-if [ -d "$WORKDIR_SCAN_TMP/rite-review-mutation-fresh" ] \
-   && echo "$t15_output" | grep -q 'status=noop' \
-   && echo "$t15_output" | grep -q 'mutation_worktrees=0'; then
-  pass "T-15: age 未満の mutation worktree が保護され status=noop"
+t15_mut=$(echo "$t15_output" | sed -n 's/.*mutation_worktrees=\([0-9]*\).*/\1/p' | head -1)
+if [ ! -e "$WORKDIR_SCAN_TMP/rite-review-mutation-fresh" ] \
+   && [ "${t15_mut:-0}" -ge 1 ] 2>/dev/null; then
+  pass "T-15: fresh detached TMPDIR worktree が Step 4-P で回収され mutation_worktrees=$t15_mut"
 else
-  fail "T-15: fresh=$([ -d "$WORKDIR_SCAN_TMP/rite-review-mutation-fresh" ] && echo present || echo gone). Output: $t15_output"
+  fail "T-15: fresh=$([ -e "$WORKDIR_SCAN_TMP/rite-review-mutation-fresh" ] && echo present || echo gone) mut=$t15_mut. Output: $t15_output"
 fi
 ( cd "$TEST_REPO" && git worktree remove --force "$WORKDIR_SCAN_TMP/rite-review-mutation-fresh" 2>/dev/null ) || true
 rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
@@ -993,6 +994,66 @@ if [ "$t29_recorded" = "yes" ] && [ "$t29_rel_rc" -ne 0 ]; then
   pass "T-29: session_worktree type は絶対パスで manifest に記録され、相対パスは拒否される (rc=$t29_rel_rc)"
 else
   fail "T-29: recorded=$t29_recorded, rel_rc=$t29_rel_rc"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-30: Step 4-P porcelain — 2 fresh detached under nested TMPDIR (AC-1 / Issue #2145)
+# Given: two detached worktrees at $TMPDIR/nested/probe-{1,2} (NOT the name pattern
+#        find-based Step 4 looks for; nested so maxdepth-1 find cannot see them)
+# When: Cleanup runs
+# Then: both gone, mutation_worktrees=2
+# -----------------------------------------------------------------------
+echo "T-30: Step 4-P porcelain が nested TMPDIR の fresh detached を 2 件回収 (AC-1)"
+TEST_REPO=$(make_temp_repo)
+t30_nest="$WORKDIR_SCAN_TMP/nested-claude"
+mkdir -p "$t30_nest"
+( cd "$TEST_REPO" && git worktree add --detach -q "$t30_nest/probe-1" HEAD )
+( cd "$TEST_REPO" && git worktree add --detach -q "$t30_nest/probe-2" HEAD )
+t30_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+t30_mut=$(echo "$t30_output" | sed -n 's/.*mutation_worktrees=\([0-9]*\).*/\1/p' | head -1)
+if [ ! -e "$t30_nest/probe-1" ] && [ ! -e "$t30_nest/probe-2" ] \
+   && [ "${t30_mut:-0}" -eq 2 ] 2>/dev/null; then
+  pass "T-30: nested detached 2 件が回収され mutation_worktrees=2"
+else
+  fail "T-30: p1=$([ -e "$t30_nest/probe-1" ] && echo present || echo gone) p2=$([ -e "$t30_nest/probe-2" ] && echo present || echo gone) mut=$t30_mut. Output: $t30_output"
+fi
+( cd "$TEST_REPO" && git worktree remove --force "$t30_nest/probe-1" 2>/dev/null ) || true
+( cd "$TEST_REPO" && git worktree remove --force "$t30_nest/probe-2" 2>/dev/null ) || true
+rm -rf "$t30_nest"
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-31: Step 4-P does NOT reap .rite/worktrees/* (AC-2 / Issue #2145)
+# Given: a detached worktree under $TEST_REPO/.rite/worktrees/issue-N (session path shape)
+# When: Cleanup runs
+# Then: the worktree remains (repo-root exclusion)
+# -----------------------------------------------------------------------
+echo "T-31: Step 4-P は .rite/worktrees/* を回収しない (AC-2)"
+TEST_REPO=$(make_temp_repo)
+t31_wt="$TEST_REPO/.rite/worktrees/issue-t31"
+mkdir -p "$(dirname "$t31_wt")"
+( cd "$TEST_REPO" && git worktree add --detach -q "$t31_wt" HEAD )
+t31_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+if [ -d "$t31_wt" ]; then
+  pass "T-31: .rite/worktrees/issue-t31 が残存"
+else
+  fail "T-31: session-shaped worktree が消えた. Output: $t31_output"
+fi
+( cd "$TEST_REPO" && git worktree remove --force "$t31_wt" 2>/dev/null ) || true
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-32: Step 4-P 対象 0 件 → mutation_worktrees=0 と status=noop 両立 (AC-3)
+# -----------------------------------------------------------------------
+echo "T-32: Step 4-P 対象 0 件で mutation_worktrees=0 + status=noop (AC-3)"
+TEST_REPO=$(make_temp_repo)
+t32_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+if echo "$t32_output" | grep -q 'status=noop' \
+   && echo "$t32_output" | grep -q 'mutation_worktrees=0'; then
+  pass "T-32: 対象 0 件で status=noop / mutation_worktrees=0"
+else
+  fail "T-32: Output: $t32_output"
 fi
 cleanup_temp_repo "$TEST_REPO"
 
