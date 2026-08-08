@@ -1841,7 +1841,7 @@ tech-writer の出力に以下のいずれかの META 行が含まれている�
 ### 5.2 Cross-Validation
 
 **Same file/line check**: Group by `file:line`. 2+ reviewers → mark "High Confidence" + boost severity (LOW→MEDIUM→HIGH→CRITICAL).
-**Contradiction detection**: Two or more reviewers give assessments of the same `file:line` that cannot both be followed — opposite recommendations, or severity judgments so far apart that they imply different handling (per [Trigger Conditions in cross-validation.md](../../skills/reviewers/references/cross-validation.md#trigger-conditions)) → debate phase (5.2.1) if enabled, otherwise prompt user via `AskUserQuestion`.
+**Contradiction detection**: Two or more reviewers give assessments of the same `file:line` that cannot both be followed — opposite recommendations, severity judgments so far apart that they imply different handling, **or the same root cause is assigned both `current-pr` and `follow-up` scope** (per [Trigger Conditions in cross-validation.md](../../skills/reviewers/references/cross-validation.md#trigger-conditions) and [Scope Split Gate](references/promotion-audit-2091.md#scope-split-gate)) → debate phase (5.2.1) if enabled, otherwise prompt user via `AskUserQuestion`.
 **Quality Signal 3 — Cross-validation disagreement**: When reviewers report contradictory assessments of the same `file:line`, the sub-skill treats this as Signal 3 of the four quality signals. The outcome of the deliberation (5.2.1) determines whether Signal 3 fires:
 
 - 検討の結果、合意に至った矛盾 → Signal 3 は**発火しない**（consensus reached）
@@ -1858,6 +1858,7 @@ echo "[CONTEXT] QUALITY_SIGNAL=3_cross_validation_disagreement; file=${file_line
 1. If there are multiple findings for the same `file:line`, compare the assessment content
 2. If matching the contradiction patterns above, flag as a contradiction
 3. Collect all detected contradictions for ステップ 5.2.1 (debate) or direct user resolution
+4. Scope split は severity の高い側・多数派へ機械統合しない。debate は論点整理と推奨 disposition の生成に使うが、consensus の有無にかかわらず treatment の最終決定は AskUserQuestion でユーザーへエスカレートし、選択した disposition を Decision Log に記録する。`follow-up` を選ぶ場合は durable な follow-up Issue / destination が作成または指定されるまで解決済みにしない
 
 **When contradictions are detected:**
 
