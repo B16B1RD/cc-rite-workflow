@@ -1938,6 +1938,7 @@ Claude は ステップ 1 末尾で skip_file を、`{target_author}` が必要�
 **accept 選択時の処理 (4 つを同期実行)**:
 
 1. **accept reason 分類 (必須、AskUserQuestion)**: accept の根拠を `scope-creep` / `out-of-scope` / `minor` / `user-override` の構造化 enum から必ず選択し、追加説明だけを `accept_reason_detail` の free-text として任意入力する。空値・enum 外・同義の自由記述だけで次へ進んではならない。trailer の `reason` 欄は `{accept_reason_class}: {accept_reason_detail}`（detail 空なら class のみ）とする。
+   `accept_reason_rendered` を `{accept_reason_class}: {accept_reason_detail}`（detail 空なら class のみ）として一度生成し、reply と commit trailer の両方でこの同じ値を使う。class を含まない durable output は禁止する。
 1.5. **Rejection Evidence Gate (state mutation 前)**: 4 分類すべてについて、別 reviewer の cross-validation と reject 対象 scenario の empirical counterfactual/revert test を [promotion-audit-2091.md](../pr-review/references/promotion-audit-2091.md#rejection-evidence-gate) に従って実行し、両方の artifact を Decision Log に記録する。どちらかが欠ける場合はステップ 2 の `status = acknowledged` override・reply・fingerprint block・commit trailer の**いずれにも到達せず**、finding を修正対象へ戻すか AskUserQuestion で accept を取り消す。`user-override` も evidence gate の例外ではない。
 2. **finding state の override**:
    - `status = "acknowledged"` を設定
@@ -1946,7 +1947,7 @@ Claude は ステップ 1 末尾で skip_file を、`{target_author}` が必要�
    ```
    accepted, will not be fixed in this PR. (reviewer scope: {original_scope}; user decision: accept{reason_suffix})
    ```
-   `{reason_suffix}` は `accept_reason` が非空なら `; reason: {accept_reason}`、空なら空文字列
+   `{reason_suffix}` は常に `; reason: {accept_reason_rendered}`。必須 class があるため空 suffix 経路は存在しない
 4. **accept fingerprint 永続化**: `.rite/state/accepted-fingerprints-{pr_number}.txt` に当該 finding の fingerprint を append (詳細は下記 bash block)
 
 **fingerprint 計算式 (ステップ 2.1.A 独自仕様 — accept 抑止専用。cycle 間比較は `pr-review/references/finding-cycling.md` の semantic 判断であり、本 hash はそれとは独立の機械契約)**:
@@ -2603,7 +2604,7 @@ Acknowledged-finding: F-NN (file:line) — reason
 
 - `F-NN`: review-result-schema.md の `findings[].id` (例: `F-01`、100 件以上は `F-100`)
 - `file:line`: 当該 finding の対象ファイル:行 (ステップ 2.1 で表示されたもの)。**`line == null` (anchor finding) の場合は `(file:anchor)` 表記** に正規化する (ステップ 2.1.A bash block の line_no 正規化と統一)
-- `reason`: ステップ 2.1.A Step 1 で取得した `accept_reason` (非空時)、または `user decision: accept (no reason given)` (accept_reason が空の場合) のいずれか。書式例は下記参照
+- `reason`: ステップ 2.1.A Step 1 で生成した `accept_reason_rendered`。必ず `accept_reason_class` を含み、detail が空でも class 単独を記録する。`no reason given` / 空 reason 経路は禁止
 
 **反復生成ルール**:
 
@@ -2616,8 +2617,8 @@ fix(review): レビュー指摘に対応 (acknowledged 含む)
 F-01 の入力バリデーションを追加。F-02 は reviewer の指摘範囲を本 PR scope 外と
 判断し accept として受け流した。
 
-Acknowledged-finding: F-02 (src/foo.ts:42) — reviewer scope: out-of-current-pr; user decision: accept
-Acknowledged-finding: F-05 (src/bar.ts:88) — user decision: accept (no reason given)
+Acknowledged-finding: F-02 (src/foo.ts:42) — out-of-scope: reviewer scope is outside the current PR
+Acknowledged-finding: F-05 (src/bar.ts:88) — user-override
 
 Addresses review comments from @reviewer1
 ```

@@ -30,7 +30,8 @@ assert_grep 'error-path regression mechanized' "$audit" '| `bugfix-new-error-pat
 
 assert_grep 'scope split detects both scopes' "$review" 'same root cause is assigned both `current-pr` and `follow-up` scope'
 assert_grep 'scope split forbids mechanical collapse' "$review" 'severity の高い側・多数派へ機械統合しない'
-assert_grep 'scope split uses debate first' "$review" 'debate で consensus に至らなければ treatment をユーザーへエスカレート'
+assert_grep 'scope split uses debate for analysis' "$review" 'debate は論点整理と推奨 disposition の生成に使う'
+assert_grep 'scope split always escalates' "$review" 'consensus の有無にかかわらず treatment の最終決定は AskUserQuestion'
 assert_grep 'scope split records decision' "$review" '選択した disposition を Decision Log に記録する'
 assert_grep 'follow-up semantics preserved' "$review" 'durable な follow-up Issue / destination が作成または指定されるまで解決済みにしない'
 assert_grep 'rejection evidence gate wired' "$fix" 'Rejection Evidence Gate (state mutation 前)'
@@ -41,6 +42,15 @@ assert_grep 'counterfactual evidence required' "$fix" 'empirical counterfactual/
 assert_grep 'both rejection artifacts required' "$fix" '両方の artifact を Decision Log に記録する'
 assert_grep 'invalid rejection cannot mutate' "$fix" '`status = acknowledged` override・reply・fingerprint block・commit trailer の**いずれにも到達せず**'
 assert_grep 'user override is not bypass' "$fix" '`user-override` も evidence gate の例外ではない'
+assert_grep 'rendered reason is canonical' "$fix" '`accept_reason_rendered` を `{accept_reason_class}: {accept_reason_detail}`'
+assert_grep 'reply always records class' "$fix" '`; reason: {accept_reason_rendered}`'
+assert_grep 'trailer uses rendered reason' "$fix" 'Step 1 で生成した `accept_reason_rendered`'
+if grep -Fq 'user decision: accept (no reason given)' "$fix"; then
+  printf 'FAIL: stale no-reason acceptance path remains\n' >&2
+  failures=$((failures + 1))
+else
+  printf 'PASS: no stale no-reason acceptance path\n'
+fi
 assert_grep 'test reviewer checks new error paths' "$test_reviewer" 'non-vacuity check'
 assert_grep 'test reviewer requires exact branch' "$test_reviewer" 'enters that exact new branch'
 assert_grep 'test reviewer requires observable outcome' "$test_reviewer" 'asserts the observable outcome'
@@ -50,12 +60,19 @@ assert_grep 'error reviewer reports missing proof' "$error_reviewer" 'Report mis
 
 gate_line=$(grep -n 'Rejection Evidence Gate (state mutation 前)' "$fix" | head -1 | cut -d: -f1)
 mutation_line=$(grep -n 'finding state の override' "$fix" | head -1 | cut -d: -f1)
+reply_line=$(grep -n 'reply 投稿' "$fix" | head -1 | cut -d: -f1)
 persist_line=$(grep -n 'accept fingerprint 永続化' "$fix" | head -1 | cut -d: -f1)
+trailer_line=$(grep -n 'Acknowledged-finding trailer (accept' "$fix" | head -1 | cut -d: -f1)
+section_start=$(grep -n '^### 2\.1\.A accept' "$fix" | head -1 | cut -d: -f1)
+section_end=$(awk -v start="$section_start" 'NR > start && /^### / { print NR; exit }' "$fix")
 if [ -n "$gate_line" ] && [ -n "$mutation_line" ] && [ -n "$persist_line" ] \
-  && [ "$gate_line" -lt "$mutation_line" ] && [ "$gate_line" -lt "$persist_line" ]; then
-  printf 'PASS: rejection gate precedes mutation and persistence\n'
+  && [ -n "$reply_line" ] && [ -n "$trailer_line" ] && [ -n "$section_start" ] && [ -n "$section_end" ] \
+  && [ "$section_start" -lt "$gate_line" ] && [ "$gate_line" -lt "$section_end" ] \
+  && [ "$gate_line" -lt "$mutation_line" ] && [ "$gate_line" -lt "$reply_line" ] \
+  && [ "$gate_line" -lt "$persist_line" ] && [ "$gate_line" -lt "$trailer_line" ]; then
+  printf 'PASS: rejection gate precedes all mutation and durable-output steps\n'
 else
-  printf 'FAIL: rejection gate must precede mutation and persistence\n' >&2
+  printf 'FAIL: rejection gate must remain in 2.1.A before mutation, reply, persistence, and trailer\n' >&2
   failures=$((failures + 1))
 fi
 

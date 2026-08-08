@@ -1858,7 +1858,7 @@ echo "[CONTEXT] QUALITY_SIGNAL=3_cross_validation_disagreement; file=${file_line
 1. If there are multiple findings for the same `file:line`, compare the assessment content
 2. If matching the contradiction patterns above, flag as a contradiction
 3. Collect all detected contradictions for ステップ 5.2.1 (debate) or direct user resolution
-4. Scope split は severity の高い側・多数派へ機械統合しない。debate で consensus に至らなければ treatment をユーザーへエスカレートし、選択した disposition を Decision Log に記録する。`follow-up` を選ぶ場合は durable な follow-up Issue / destination が作成または指定されるまで解決済みにしない
+4. Scope split は severity の高い側・多数派へ機械統合しない。debate は論点整理と推奨 disposition の生成に使うが、consensus の有無にかかわらず treatment の最終決定は AskUserQuestion でユーザーへエスカレートし、選択した disposition を Decision Log に記録する。`follow-up` を選ぶ場合は durable な follow-up Issue / destination が作成または指定されるまで解決済みにしない
 
 **When contradictions are detected:**
 

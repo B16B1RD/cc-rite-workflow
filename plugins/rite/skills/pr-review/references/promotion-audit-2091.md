@@ -27,7 +27,7 @@ to the user and record it. `follow-up` is deferred work, not an alias for
 ## Rejection Evidence Gate
 
 Before persisting an `acknowledged` finding whose reason is `scope-creep`,
-`out-of-scope`, or `minor`, require independent reviewer cross-validation and an
+`out-of-scope`, `minor`, or `user-override`, require independent reviewer cross-validation and an
 empirical counterfactual/revert test. If either artifact is absent, return the
 finding to fix selection or ask the user; do not persist its accepted fingerprint
 or commit trailer.
