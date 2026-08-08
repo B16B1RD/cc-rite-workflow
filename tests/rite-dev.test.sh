@@ -67,6 +67,7 @@ REPO="$TEST_ROOT/repo"
 BIN="$TEST_ROOT/bin"
 LOG="$TEST_ROOT/host.log"
 make_repo "$REPO"
+REPO_PHYS=$(cd -- "$REPO" && pwd -P)
 make_host_stub "$BIN" claude
 make_host_stub "$BIN" codex
 make_host_stub "$BIN" grok
@@ -99,17 +100,17 @@ done
 RITE_STUB_LOG="$LOG" PATH="$BIN:$PATH" "$REPO/scripts/rite-dev" claude 'two words' tail
 claude_log=$(<"$LOG")
 assert_contains 'Claude host 環境変数を設定' "$claude_log" 'RITE_HOST=claude'
-assert_contains 'Claude plugin root 環境変数を設定' "$claude_log" "RITE_PLUGIN_ROOT=$REPO/plugins/rite"
+assert_contains 'Claude plugin root 環境変数を設定' "$claude_log" "RITE_PLUGIN_ROOT=$REPO_PHYS/plugins/rite"
 assert_contains 'Claude はグローバル rite を無効化' "$claude_log" $'ARG=--settings\nARG={"enabledPlugins":{"rite@rite-marketplace":false}}'
-assert_contains 'Claude は作業ツリープラグインを指定' "$claude_log" $'ARG=--plugin-dir\nARG='"$REPO/plugins/rite"
+assert_contains 'Claude は作業ツリープラグインを指定' "$claude_log" $'ARG=--plugin-dir\nARG='"$REPO_PHYS/plugins/rite"
 assert_contains 'Claude の語境界を保持' "$claude_log" $'ARG=two words\nARG=tail'
 
 RITE_STUB_LOG="$LOG" PATH="$BIN:$PATH" "$REPO/scripts/rite-dev" codex 'two words' tail
 codex_log=$(<"$LOG")
 assert_contains 'Codex host 環境変数を設定' "$codex_log" 'RITE_HOST=codex'
-assert_contains 'Codex plugin root 環境変数を設定' "$codex_log" "RITE_PLUGIN_ROOT=$REPO/plugins/rite"
-assert_contains 'Codex は分離 CODEX_HOME を使用' "$codex_log" "CODEX_HOME=$REPO/.codex-dev"
-assert_contains 'Codex は repository cwd を指定' "$codex_log" $'ARG=--cd\nARG='"$REPO"
+assert_contains 'Codex plugin root 環境変数を設定' "$codex_log" "RITE_PLUGIN_ROOT=$REPO_PHYS/plugins/rite"
+assert_contains 'Codex は分離 CODEX_HOME を使用' "$codex_log" "CODEX_HOME=$REPO_PHYS/.codex-dev"
+assert_contains 'Codex は repository cwd を指定' "$codex_log" $'ARG=--cd\nARG='"$REPO_PHYS"
 assert_contains 'Codex の語境界を保持' "$codex_log" $'ARG=two words\nARG=tail'
 [[ -d "$REPO/.codex-dev/skills" && ! -L "$REPO/.codex-dev/skills" ]] && \
   pass 'Codex skills root は実ディレクトリ' || fail 'Codex skills root は実ディレクトリ'
@@ -122,8 +123,8 @@ repo_link="$TEST_ROOT/repo-link"
 ln -s "$REPO" "$repo_link"
 RITE_STUB_LOG="$LOG" PATH="$BIN:$PATH" "$repo_link/scripts/rite-dev" codex
 symlink_codex_log=$(<"$LOG")
-assert_contains 'symlink checkout 経由でも Codex 照合が成立' "$symlink_codex_log" "RITE_PLUGIN_ROOT=$REPO/plugins/rite"
-assert_contains 'symlink checkout 経由でも物理 repository cwd を指定' "$symlink_codex_log" $'ARG=--cd\nARG='"$REPO"
+assert_contains 'symlink checkout 経由でも Codex 照合が成立' "$symlink_codex_log" "RITE_PLUGIN_ROOT=$REPO_PHYS/plugins/rite"
+assert_contains 'symlink checkout 経由でも物理 repository cwd を指定' "$symlink_codex_log" $'ARG=--cd\nARG='"$REPO_PHYS"
 
 wrong_link_repo="$TEST_ROOT/wrong-link"
 make_repo "$wrong_link_repo"
@@ -139,8 +140,8 @@ assert_contains '異実体 Codex skill link を診断' "$wrong_link_out" "$wrong
 RITE_STUB_LOG="$LOG" PATH="$BIN:$PATH" "$REPO/scripts/rite-dev" grok 'two words' tail
 grok_log=$(<"$LOG")
 assert_contains 'Grok host 環境変数を設定' "$grok_log" 'RITE_HOST=grok'
-assert_contains 'Grok plugin root 環境変数を設定' "$grok_log" "RITE_PLUGIN_ROOT=$REPO/plugins/rite"
-assert_contains 'Grok は repository cwd を指定' "$grok_log" $'ARG=--cwd\nARG='"$REPO"
+assert_contains 'Grok plugin root 環境変数を設定' "$grok_log" "RITE_PLUGIN_ROOT=$REPO_PHYS/plugins/rite"
+assert_contains 'Grok は repository cwd を指定' "$grok_log" $'ARG=--cwd\nARG='"$REPO_PHYS"
 assert_contains 'Grok の語境界を保持' "$grok_log" $'ARG=two words\nARG=tail'
 
 conflict_repo="$TEST_ROOT/conflict"
