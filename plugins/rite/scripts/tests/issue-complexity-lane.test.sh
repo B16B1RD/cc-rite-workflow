@@ -186,11 +186,22 @@ M（S ではない）
 assert_contains "TC-3.2c: 宣言値の後ろに根拠を書いた行でも宣言値を採る" "$LANE_STDERR" "COMPLEXITY_LANE=full; complexity=M"
 assert_not_contains "TC-3.2d: 行内後方のトークンを拾って light へ倒さない" "$LANE_STDERR" "COMPLEXITY_LANE=light"
 
-# 値は語として切り出す。`[A-Za-z]{1,2}` を境界なしで使うと `XSmall` が `XS` に切り詰められ、
-# 宣言していない light レーンへ落ちる。
+# 値は英字トークン全体として切り出す。長さを 1-2 文字に制限すると `XSmall` が `XS` に
+# 切り詰められ、宣言していない light レーンへ落ちる。needle は reason まで書き切る
+# (`reason=complexity_` で打ち切ると absent と invalid を区別できず、docstring の宣言と
+#  実挙動が食い違っても green のまま通る。同じ規範を TC-4.8 側でも明記している)。
 run_lane_with_body '**Complexity**: XSmall'
 assert_not_contains "TC-2.11: XSmall を XS に切り詰めて light へ倒さない" "$LANE_STDERR" "COMPLEXITY_LANE=light"
-assert_contains "TC-2.12: XSmall は fail-safe で full へ倒れる" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_"
+assert_contains "TC-2.12: XSmall はトークン全体で取り出され complexity_invalid になる" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_invalid"
+
+# 抽出式が POSIX BRE だけで書かれていること (GNU 拡張 `\b` / `\|` の混入を authoring 時点で
+# pin する)。BSD/macOS sed はこれらを無警告に不一致とするため、混入すると当該環境で全 Issue が
+# complexity_absent へ倒れレーンが一度も発動しない (CI の macos leg が本経路を踏む)。
+# haystack は `sed -n` の行だけに絞る — ファイル全体を渡すと、GNU 拡張を禁じている散文コメント
+# 自身が needle に一致して恒常 fail する。
+LANE_SED_LINES=$(grep -n 'sed -n' "$TARGET")
+assert_not_contains "TC-2.13: 抽出式に GNU 拡張の単語境界 (\\b) を使わない" "$LANE_SED_LINES" '\b'
+assert_not_contains "TC-2.14: 抽出式に GNU 拡張の BRE 交替 (\\|) を使わない" "$LANE_SED_LINES" '\|'
 
 # 記法 1 が存在するときは記法 1 を優先する (source= で区別できること自体が観測性の要求)。
 run_lane_with_body '**Complexity**: M

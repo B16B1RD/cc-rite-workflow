@@ -48,9 +48,11 @@
 #                            review-cycle-scope.sh が mktemp 失敗を run_pin_unreadable へ
 #                            帰属させるのと同型)
 #   complexity_absent     — body に上記 2 記法のいずれも「値を取り出せる形で」現れない
-#                           (rite 外で作られた Issue、**および `**Complexity**: {complexity}` のような
+#                           (rite 外で作られた Issue、崩れた記法 = lowercase key / 全角コロン /
+#                            リスト項目化、**および `**Complexity**: {complexity}` のような
 #                            未展開 placeholder — 抽出式が英字しか受理しないため「無い」側に合流する)
-#   complexity_invalid    — 値は取り出せたが XS/S/M/L/XL のいずれでもない (綴り誤り等)
+#   complexity_invalid    — 英字トークンは取り出せたが XS/S/M/L/XL のいずれでもない
+#                           (`Medium` / `Small` / `XSmall` / `ZZ` 等の綴り誤り・別語彙)
 #
 # 上記に加え、**本 script では表現できない** consumer 側の reason が 2 つある。いずれも本 script を
 # 呼べない / 呼んだが marker が得られない状況そのものを指すため、caller 側 (SKILL.md) に置く:
@@ -102,10 +104,13 @@ case "$ISSUE_NUMBER" in
     exit 2 ;;
 esac
 
-# full へ倒して終了する共通経路。reason は分岐を変えず、全経路が WARNING を伴う
-# (sibling の review-cycle-scope.sh は cycle 1 正常経路の no_prev_json だけを無警告にするが、
-#  本 script には「情報が無いのが正常」な reason が存在しない — Complexity は rite が作る
-#  全 Issue の Section 0 Meta に必ずあるため、欠落は常に調査に値する)。
+# full へ倒して終了する共通経路。reason は分岐を変えず、全経路が WARNING を伴う。
+# sibling の review-cycle-scope.sh は cycle 1 正常経路の no_prev_json だけを無警告にするが、
+# 本 script は全 reason を loud にする — ただし根拠は「宣言が必ずある」ことではない
+# (本リポジトリの実測では Issue 60 件中 23 件が宣言を持たない)。full へ倒れた事実は
+# 「この PR ではレーンが働かなかった」という**観測値そのもの**であり、AC-5 の効果計測が
+# 分母を数えるために要る。定常的に出うる complexity_absent は、宣言らしき行を解釈できなかった
+# 場合に限り下の追加 WARNING で対象行を名指しし、真の異常と routine を切り分ける。
 emit_full_fallback() {
   local reason="$1"
   echo "[CONTEXT] COMPLEXITY_LANE=full; reason=$reason" >&2
@@ -142,9 +147,12 @@ fi
 
 # 記法 1: `**Complexity**: X` (Section 0 Meta)。装飾の揺れ (太字なし / 全角コロン) は受理しない —
 # テンプレート由来の 1 形式だけを pin し、崩れた記法は complexity_absent として可視化する。
-# 値は語として切り出す (`\b` で境界を要求)。`[A-Za-z]\{1,2\}` だけだと `XSmall` が `XS` に
-# 切り詰められ、宣言していない light レーンへ落ちる。
-_raw=$(printf '%s\n' "$_body" | sed -n 's/^[[:space:]]*\*\*Complexity\*\*:[[:space:]]*\([A-Za-z]\{1,2\}\)\b.*$/\1/p' | head -1)
+# **英字トークン全体を貪欲に切り出し、値の妥当性判定は下の `case` に委ねる**。長さを 1-2 文字に
+# 制限すると `XSmall` が `XS` へ切り詰められ、宣言していない light レーンへ落ちる。境界指定に
+# GNU 拡張の `\b` を使ってはならない — POSIX BRE は `\b` を定義せず、BSD/macOS sed は
+# リテラル `b` として扱って**無警告で不一致になる**ため、当該環境で全 Issue が
+# complexity_absent へ倒れレーンが一度も発動しない (CI の macos leg が本経路を踏む)。
+_raw=$(printf '%s\n' "$_body" | sed -n 's/^[[:space:]]*\*\*Complexity\*\*:[[:space:]]*\([A-Za-z][A-Za-z]*\).*$/\1/p' | head -1)
 _source="body_meta"
 
 # 記法 2: `## 複雑度` セクション。見出しの次に現れる最初の非空行から値を取る
@@ -152,14 +160,24 @@ _source="body_meta"
 # **行頭側から最初のトークンだけを採る** — 記法 1 と同じ anchor 規律。greedy な `.*` を先頭に置くと
 # 行内の**最後**のレーントークンを拾い、`M（S ではない）` のように宣言値の後ろへ根拠を書いた行で
 # 宣言 M が S へ解決される (M+ が silent に light へ落ちる = AC-4 / MUST NOT 違反)。
+# 記法 1 と同じく**英字トークン全体を切り出し、妥当性は `case` に委ねる**。BRE 交替 `\|` と
+# 単語境界 `\b` はいずれも GNU 拡張で、BSD/macOS sed では無警告に不一致となるため使わない。
 if [ -z "$_raw" ]; then
   _raw=$(printf '%s\n' "$_body" \
     | awk '/^##[[:space:]]+複雑度[[:space:]]*$/{f=1; next} f && NF {print; exit}' \
-    | sed -n 's/^[^A-Za-z]*\([Xx][Ss]\|[Xx][Ll]\|[SsMmLl]\)\b.*/\1/p' | head -1)
+    | sed -n 's/^[^A-Za-z]*\([A-Za-z][A-Za-z]*\).*/\1/p' | head -1)
   _source="body_section"
 fi
 
-[ -n "$_raw" ] || emit_full_fallback complexity_absent
+if [ -z "$_raw" ]; then
+  # 宣言らしき行はあるのに値を取り出せなかった場合だけ対象行を名指しする (sibling の
+  # review-cycle-scope.sh が全 fail-safe 経路で target を名指しする規約と揃える)。
+  # 宣言が本当に無い Issue では出さない — 出すと定常出力になり、この WARNING の目的である
+  # 「lowercase key / 全角コロン / リスト項目化などの崩れた記法」の可視化が noise に埋もれる。
+  _decl=$(printf '%s\n' "$_body" | grep -m1 -E 'Complexity|複雑度') || _decl=""
+  [ -n "$_decl" ] && echo "WARNING: issue-complexity-lane: Complexity 宣言らしき行を解釈できませんでした: ${_decl}" >&2
+  emit_full_fallback complexity_absent
+fi
 
 _complexity=$(printf '%s' "$_raw" | tr '[:lower:]' '[:upper:]')
 case "$_complexity" in

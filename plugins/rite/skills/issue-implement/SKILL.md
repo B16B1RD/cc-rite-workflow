@@ -193,9 +193,9 @@ Execute parallel implementation when **all** of the following conditions are met
 |-----------|---------------------|
 | `parallel.enabled: true` | From `rite-config.yml` (default: `true`) |
 | Complexity M or above | 5.0.C の marker が `COMPLEXITY_LANE=full` **かつ `complexity=` を伴う**（= 宣言値が M / L / XL）。**`COMPLEXITY_LANE_FALLBACK=1` を伴う fail-safe 経路は満たさない**（下記）。**helper が両記法（`**Complexity**: X` / `## 複雑度`）を受理するため、ここで body を再解析しない** — 2 箇所で別々に読むと片方だけが片方の記法に対応する drift が生まれる |
+| 2 or more independent tasks | Determined from implementation plan (see below) |
 
 > **fail-safe の向きは consumer ごとに違う**: レビュー側は `full` が「reviewer を減らさない」= 安全側だが、**本ゲートでは `full` が「並列 sub-agent を許可する」= 攻撃的な側**になる。したがって Complexity を読めなかった Issue（`COMPLEXITY_LANE_FALLBACK=1`）は `full` に含めず**順次実装へ倒す**。判定キーは `COMPLEXITY_LANE=full` 単独ではなく `complexity=` の存在（＝ `COMPLEXITY_LANE_FALLBACK` の不在）である。
-| 2 or more independent tasks | Determined from implementation plan (see below) |
 
 **Independent task determination:**
 

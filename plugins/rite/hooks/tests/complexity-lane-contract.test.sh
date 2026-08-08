@@ -64,8 +64,14 @@ done
 # sibling (cycle-scope) の 1.2.4 Reference 行にも一致し、レーン側の記述を削除しても green になる。
 assert_grep "1.3.2 defines the consumer-side default when the helper emits no marker" "$PR_REVIEW" \
   '`COMPLEXITY_LANE=` marker を観測できない場合も `full` として扱い'
-assert_grep "1.3.2 defines the consumer-side reason for a missing Issue number" "$PR_REVIEW" \
-  'issue_number_missing'
+# needle は 1.3.2 の**操作的な指示**まで書き切る。裸の `issue_number_missing` だけだと、
+# 同ファイルの Reference 行 (語彙の言及のみ) にも一致し、1.3.2 側の `full` を `light` へ
+# 反転しても、当該括弧節を丸ごと削除しても green になる (sibling の helper_failed は
+# 完全 literal で pin されており、片方だけ裸単語という非対称が原因だった)。
+assert_grep "1.3.2 falls back to full when the Issue number is unresolved" "$PR_REVIEW" \
+  'ステップ 1\.3 で Issue 番号を特定できなかった場合は helper を呼ばず `full` として扱い'
+assert_grep "1.3.2 names issue_number_missing as the consumer-side reason literal" "$PR_REVIEW" \
+  '⚠️ Complexity レーン判定のフォールバック: reason=issue_number_missing'
 assert_grep "1.3.2 names helper_failed as the consumer-side reason literal" "$PR_REVIEW" \
   '⚠️ Complexity レーン判定のフォールバック: reason=helper_failed'
 
@@ -119,6 +125,11 @@ assert_grep "mandate limits verification to touched tests" "$LANE" \
   '検証は touched テストまで'
 assert_grep "mandate names the M\+ only equipment" "$LANE" \
   'sandbox 複製実行と mutation 実験.*M\+ の装備であり、本レーンでは実施しません'
+# mutation の全面禁止だけを pin すると、「契約対応の未 pin」クラスがアンカーを取得できず
+# non-blocking へ落ち、下記「実測必須ゲートと帰結クラス分類は不変」が blocking 集合への
+# 帰属という観点で偽になる。例外節はその乖離を閉じる唯一の記述なので個別に pin する。
+assert_grep "mandate exempts the contract-coverage class from the mutation ban" "$LANE" \
+  '「\*\*契約対応の未 pin\*\*」クラス.*本レーンでも mutation 実験を実施してください'
 assert_grep "mandate keeps the finding admission criteria unchanged" "$LANE" \
   '指摘の採否基準は緩めない'
 assert_grep "mandate keeps Cross-File Impact Check at full depth" "$LANE" \
@@ -179,8 +190,11 @@ assert_grep "report template records what was lightened" "$REPORT_TPL" \
 # 軽量化していない項目も併記する (何が守られたかが読めないと、記録が「削った」証拠にしかならない)。
 assert_grep "report template records what stayed unchanged" "$REPORT_TPL" \
   '\*\*不変\*\*.*Cross-File Impact Check'
+# 行頭 anchor + 5.4 固有の帰結節まで書き切る。行頭を外すと E2E Output Minimization 表の
+# 例外 3 セル (同じ section 名と条件を含む) にも一致し、5.4 の描画条件を `full` へ反転しても
+# 表セル側が pin を満たして green になる (= 観測性 MUST が実行時に空文化しても検出されない)。
 assert_grep "5.4 declares the lane section rendering condition" "$PR_REVIEW" \
-  '`### レビューレーン（XS/S 軽量レーン）` section.*`COMPLEXITY_LANE == light`'
+  '^\*\*`### レビューレーン（XS/S 軽量レーン）` section\*\*: `COMPLEXITY_LANE == light`（ステップ 1\.3\.2）のときのみ描画する'
 # 描画条件だけを pin すると section 見出しは残るが中身が空になる mutant が通る。
 # MUST「スキップした reviewer と軽量化した mandate を統合レポートへ記録」の実体は列挙義務側にある。
 assert_grep "5.4 requires enumerating the lane-skipped reviewers with reasons" "$PR_REVIEW" \

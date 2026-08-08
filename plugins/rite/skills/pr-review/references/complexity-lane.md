@@ -71,8 +71,8 @@ cap 適用**後**に落とすフィルタとして実装すると、これらの
 | `gh_missing` | `gh` が PATH 上に無い | Complexity を読む手段が無い |
 | `repo_unresolved` | owner/repo を解決できず `-R` を付けて `gh` を呼べない | 別リポジトリの Issue を誤って読むより読まない方が安全 |
 | `issue_fetch_failed` | `gh issue view` が失敗（認証切れ / rate limit / Issue 不在） | 宣言値が不明 |
-| `complexity_absent` | body に `**Complexity**: X` も `## 複雑度` も無い | rite 外で作られた Issue 等。宣言が無いものを小さいと決めつけない |
-| `complexity_invalid` | 値が XS/S/M/L/XL のいずれでもない（誤記 / 未展開 placeholder） | 誤記を小さい側へ解釈しない |
+| `complexity_absent` | どちらの記法からも**英字トークンを取り出せない**（宣言行が無い / 崩れた記法 = lowercase key・全角コロン・リスト項目化 / `**Complexity**: {complexity}` のような未展開 placeholder） | rite 外で作られた Issue 等。宣言が無いものを小さいと決めつけない |
+| `complexity_invalid` | 英字トークンは取り出せたが XS/S/M/L/XL のいずれでもない（`Medium` / `Small` / `XSmall` / `ZZ` 等） | 誤記を小さい側へ解釈しない |
 | `issue_number_missing` | 関連 Issue を特定できず helper を呼べない（consumer 側） | 対象 Issue が分からなければ宣言値も存在しない |
 | `helper_failed` | helper が marker を出さずに非ゼロ終了した（consumer 側） | 判定結果が得られていない |
 
@@ -80,7 +80,7 @@ helper 側 5 reason の語彙は [issue-complexity-lane.sh](../../../scripts/iss
 
 **`full` が保守的な側であるとは限らない consumer が存在する**: レビュー側は `full` = reviewer を減らさない = 安全側だが、`issue-implement` 5.1.0.1 の並列実装ゲートでは `full` = 並列 sub-agent を許可する = 攻撃的な側になる。そのため同ゲートは `COMPLEXITY_LANE=full` 単独ではなく **`complexity=` の存在（= `COMPLEXITY_LANE_FALLBACK` の不在）** を判定キーにし、fail-safe 経路を順次実装へ倒している。**新規 consumer は `full` を「重い側」と仮定せず、必ず `COMPLEXITY_LANE_FALLBACK` を見ること。**
 
-fail-safe 発火時は **全 reason で WARNING を可視化する**（silent fallback 禁止）。consumer 側 2 reason（`issue_number_missing` / `helper_failed`）も同形の `⚠️ Complexity レーン判定のフォールバック: reason=<reason>。フル装備 (M+ 相当) で実行します。` を出力する。sibling の `review-cycle-scope.sh` は cycle 1 の正常経路である `no_prev_json` だけを無警告にするが、本レーンには「情報が無いのが正常」な reason が存在しない — Complexity は rite が作る全 Issue の Section 0 Meta に必ずあるため、欠落は常に調査に値する。
+fail-safe 発火時は **全 reason で WARNING を可視化する**（silent fallback 禁止）。consumer 側 2 reason（`issue_number_missing` / `helper_failed`）も同形の `⚠️ Complexity レーン判定のフォールバック: reason=<reason>。フル装備 (M+ 相当) で実行します。` を出力する。sibling の `review-cycle-scope.sh` は cycle 1 の正常経路である `no_prev_json` だけを無警告にするが、本レーンは全 reason を loud にする。**根拠は「宣言が必ずある」ことではない** — 実測では本リポジトリの Issue 60 件中 23 件が宣言を持たず、`complexity_absent` は定常的に出うる。loud にする根拠は、full へ倒れた事実が「この PR ではレーンが働かなかった」という観測値そのものであり、AC-5 の効果計測が分母を数えるために要ることにある。定常出力の中に埋もれさせないため、helper は**宣言らしき行はあるのに値を取り出せなかった場合に限り**対象行を名指しする追加 WARNING を出し、崩れた記法（lowercase key / 全角コロン / リスト項目化）を宣言不在と切り分ける。
 
 ## Complexity の抽出元を Issue body に限る理由
 
@@ -97,7 +97,7 @@ flow-state は complexity フィールドを持たず、Projects の Complexity 
 ```
 このレビューは **XS/S 軽量レーン**で実行します。関連 Issue の宣言 Complexity が `{complexity}` のため、儀式コストを変更規模に比例させます。以下の 4 点を mandate として守ってください。
 
-1. **検証は touched テストまで**: 実測アンカーのための実行は、この PR が触れたファイルに対応するテストスイートに限定します。**全スイートの sandbox 複製実行と mutation 実験（共通レビュー原則の § Mutation experiments に定義された worktree 手順）は M+ の装備であり、本レーンでは実施しません**。
+1. **検証は touched テストまで**: 実測アンカーのための実行は、この PR が触れたファイルに対応するテストスイートに限定します。**全スイートの sandbox 複製実行と mutation 実験（共通レビュー原則の § Mutation experiments に定義された worktree 手順）は M+ の装備であり、本レーンでは実施しません**。ただし「**契約対応の未 pin**」クラス（Issue の §4.4 MUST / §5 AC の `Then` が規定する挙動を無効化しても suite が green）の判定に限り、本レーンでも mutation 実験を実施してください — 同クラスのアンカー適格な書き方は mutation の実行結果のみで、ここを軽量化すると下記 2 の「実測必須ゲートと帰結クラス分類は不変」が blocking 集合への帰属という観点で成立しなくなります。
 
 2. **指摘の採否基準は緩めない**: 4 必須自問・Confidence・Observed Likelihood・実測アンカー・帰結クラス判定は cycle 1 の M+ と完全に同一です。軽量化するのは**検証の実行コスト**であって、指摘の**採否基準**ではありません。
 
