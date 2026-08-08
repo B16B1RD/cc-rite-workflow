@@ -116,8 +116,11 @@ assert_grep "4-W states the branch criterion is ExitWorktree availability" "$CLE
 assert_grep "4-W forbids bypassing the harness guard" "$CLEANUP" "ガードを迂回する複合コマンド"
 # T-03 (非回帰): in_worktree arm は従来どおり dirty チェックを持ち、ExitWorktree(keep) 手順も残る。
 # 委譲 arm が in_worktree まで巻き込んで batch-run 経路を止めたらこの pin ごと落ちる。
+# start/end パターンの `)` は二重エスケープで書く — `-v` 経由で C 風エスケープが 1 段階解釈され、
+# single backslash だと gawk が「不要なエスケープ」として潰し警告を出す（本ファイル 33-37 行が
+# `\[` について明文化した規約と同型。`\*` の場合は量化子へ潰れてレンジが EOF まで伸びる）。
 assert_grep_in_section "in_worktree arm keeps the dirty check" "$CLEANUP" \
-  '^  in_worktree\)$' '^  in_worktree_unrecorded\)$' 'git-status-filtered\.sh'
+  '^  in_worktree\\)$' '^  in_worktree_unrecorded\\)$' 'git-status-filtered\.sh'
 assert_grep "in_worktree arm still routes through ExitWorktree(keep)" "$CLEANUP" 'action: "keep"'
 
 echo "=== ステップ 4/5/9: 委譲モードのスキップガード (Issue #2133 T-01) ==="
@@ -161,21 +164,21 @@ assert_grep "Step 12 enumerates the base update item" "$CLEANUP" '^- base ブラ
 assert_grep "Step 12 enumerates the wiki ingest item" "$CLEANUP" '^- Wiki ingest（pending raw source は wiki branch に保持されています）$'
 assert_grep "Step 12 enumerates the session worktree removal item" "$CLEANUP" '^- セッション worktree の削除$'
 assert_grep "Step 12 enumerates the branch deletion item" "$CLEANUP" '^- ローカル/リモートブランチの削除$'
-# T-02: 委譲先は 2 系統。再実行で完了する 2 項目と、遅延回収に委ねる 2 項目を区別して案内する。
+# T-02: 委譲先は main checkout での再実行 1 系統。再実行が何をどう完了させるかまで案内に含める
+# （worktree とローカルブランチは再実行の**その場**では消えず、ステップ 5 の manifest 記録を経て
+#  次回セッション開始時に回収される — この経路を落とすと「再実行したのに残っている」の説明が消える）。
 assert_grep "Step 12 delegation notice points to a main-checkout re-run" "$CLEANUP" \
-  'main checkout でセッションを開き `/rite:cleanup \{pr_number\}` を再実行すると完了します'
+  'main checkout でセッションを開き `/rite:cleanup \{pr_number\}` を再実行してください'
 assert_grep "Step 12 delegation notice states the re-run is idempotent" "$CLEANUP" \
   "実行済みの項目は冪等にスキップされます"
-assert_grep "Step 12 delegation notice states the other two go to the lazy reap" "$CLEANUP" \
-  '後 2 項目は再実行では回収されないため、次回セッション開始時の自動回収に委ねています'
-
-echo "=== ステップ 4-W: 委譲時の reap manifest 記録 (Issue #2133 T-02) ==="
-# 委譲の担体を人間宛ての散文から機械可読な manifest へ移す配線。これが無いと worktree /
-# ブランチの回収が free-claim + mtime 24h age guard 待ちになり、案内が約束する自動回収が偽になる。
-assert_grep_in_section "delegation arm records the worktree to the reap manifest" "$CLEANUP" \
-  '^  in_worktree_unrecorded\)$' '^  \*\)$' 'record --type session_worktree'
-assert_grep_in_section "delegation arm guards the record behind {pr_merged}=true" "$CLEANUP" \
-  '^  in_worktree_unrecorded\)$' '^  \*\)$' '\{pr_merged\}" = "true"'
+assert_grep "Step 12 delegation notice names the deferred reclamation path" "$CLEANUP" \
+  'セッション worktree とローカルブランチは回収台帳への記録を経て次回セッション開始時に自動で回収されます'
+# 委譲 arm は記録を行わない（記録するのは再実行時のステップ 5 の `--type branch`）。arm に
+# `--type session_worktree` の record を足しても consumer 側の bypass は `_corpse -eq 1` を要求する
+# ため発火せず、ブランチの force-delete arm も `branch` エントリしか受け付けない = 不発コードになる。
+# 出現数を #1945 の 2 分岐（sandbox マスク検知 / busy 失敗）に固定して 3 箇所目の追加を検出する。
+assert "session_worktree record stays confined to the two #1945 branches" "2" \
+  "$(grep -c 'record --type session_worktree' "$CLEANUP")"
 
 echo "=== ガード拒否条件の正確化 (Issue #2133) ==="
 # 「構造的に拒否」の一般化は誤り — helper スクリプト内部の cd は拒否されない (実測)。
