@@ -636,7 +636,8 @@ fi
 # `mutation_worktrees=0` と報告された (PR #2142)。
 #
 # 本ステップは `git worktree list --porcelain` を権威として:
-#   - path が `${TMPDIR}/` 配下 (prefix 一致、入れ子可)
+#   - path が `${TMPDIR}/` 配下 (論理形・`pwd -P` 物理形の両方で prefix 一致、入れ子可。
+#     macOS の `/var`→`/private/var` 等で porcelain が物理パスを返すケースを含む)
 #   - detached HEAD (porcelain の `detached` 行。`branch refs/heads/...` を持つものは除外)
 #   - リポジトリ配下 (`.rite/worktrees/*` / wiki-worktree / main) は除外
 #   - 自セッション live cwd は除外 (worktree-foreign-cwd.sh --self-root $PPID)
@@ -653,16 +654,37 @@ fi
 # -----------------------------------------------------------------------
 _tmp_prefix="${TMPDIR:-/tmp}"
 _tmp_prefix="${_tmp_prefix%/}"
-# 正規化: 末尾スラッシュ無しの prefix + "/" で「配下」判定する
+# Physical (symlink-resolved) forms for macOS-safe prefix match. Git worktree
+# porcelain typically emits the physical path (`/private/var/folders/...`,
+# `/private/tmp/...`), while `$TMPDIR` / `repo_root` may still be the logical
+# form (`/var/folders/...`, `/tmp`). A string-prefix compare between those two
+# shapes never matches, so Step 4-P reports mutation_worktrees=0 and leaves
+# every detached TMPDIR worktree in place (macOS CI failure on T-15/T-30/T-33+).
+# Resolve once with `cd && pwd -P` (same idiom as the Step 4.5 containment
+# guard; GNU realpath is not assumed — macOS bash 3.2 portability floor).
+_tmp_prefix_phys=$( cd -- "$_tmp_prefix" 2>/dev/null && pwd -P ) || _tmp_prefix_phys="$_tmp_prefix"
+_repo_root_phys=$( cd -- "$repo_root" 2>/dev/null && pwd -P ) || _repo_root_phys="$repo_root"
+# 正規化: 末尾スラッシュ無しの prefix + "/" で「配下」判定する。
+# 論理形・物理形の両方を受け付ける（path が片方だけ解決されているケースを含む）。
 _is_under_tmpdir() {
-  case "$1" in
+  local p="$1" p_phys
+  case "$p" in
     "$_tmp_prefix"|"$_tmp_prefix"/*) return 0 ;;
+  esac
+  p_phys=$( cd -- "$p" 2>/dev/null && pwd -P ) || p_phys="$p"
+  case "$p_phys" in
+    "$_tmp_prefix_phys"|"$_tmp_prefix_phys"/*) return 0 ;;
     *) return 1 ;;
   esac
 }
 _is_under_repo() {
-  case "$1" in
+  local p="$1" p_phys
+  case "$p" in
     "$repo_root"|"$repo_root"/*) return 0 ;;
+  esac
+  p_phys=$( cd -- "$p" 2>/dev/null && pwd -P ) || p_phys="$p"
+  case "$p_phys" in
+    "$_repo_root_phys"|"$_repo_root_phys"/*) return 0 ;;
     *) return 1 ;;
   esac
 }
