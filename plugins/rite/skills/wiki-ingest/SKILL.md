@@ -355,6 +355,7 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 
 1. **読解**: Raw Source 本文から抽出可能な経験則を特定
 2. **ドメイン判定**: `patterns` / `heuristics` / `anti-patterns` に分類
+2.5. **昇格分類**: 本経験則が rite workflow 自体の挙動・スキル記述法に関するものなら frontmatter に `promote: rite-plugin` を付ける（マーケットプレイス配布先で Wiki 留置のままでは不活性になる知見の仕分け。CLAUDE.md「知見のルーティング」）
 3. **既存ページ照合**: `index.md` に同テーマの既存ページが存在するかを意味的に判定 (厳密一致ではなく、一行サマリーとタイトルから判断)
 4. **アクション決定**: 下表に従い 新規 / 更新 / スキップ を決定
 5. **関連ページ特定**: ステップ 5.3 の `{related_page_title}` / `{related_page_path}` の値を決定 (詳細はステップ 4.3)
@@ -376,6 +377,7 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 | `summary` | 1-2 文の要約（index.md に掲載される） |
 | `details` | 背景・具体例・根拠を含む詳細 |
 | `confidence` | `high` / `medium` / `low`（根拠の強さ） |
+| `promote` | ステップ 4 の昇格分類で rite 挙動・スキル記述法と判定した場合のみ `rite-plugin`。それ以外はフィールド自体を付けない |
 
 ファイル名は `pages/{domain}/{slug}.md`、`slug` は `title` を kebab-case 化（最大 60 文字）。
 
