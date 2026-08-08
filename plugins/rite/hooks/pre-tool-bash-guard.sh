@@ -16,6 +16,13 @@
 #            remote / update-ref / symbolic-ref) → deny (writes .git/config or
 #            .git refs with no redirect or file verb for (H) to see)
 #        (H) WRITE into a .git dir via redirect / file-mutating verb → deny
+#   5. Merge-point review-result positive gate (Issue #2159) — main-session
+#      (and any session) Bash that issues `gh pr merge` / REST pulls/{n}/merge /
+#      GraphQL mergePullRequest is denied unless `.rite/review-results/{pr}-*.json`
+#      exists with minimum form (schema_version + verdict keys, reviewers array
+#      length >= sole-reviewer guard floor 2). Fail-closed on PR-number
+#      unresolvable / missing / malformed / floor-under JSON. Purpose: block
+#      procedure-omission bypass of /rite:pr-review, not adversarial forgery.
 #
 # Reviewer working-tree mutations (git checkout / reset / commit / branch / ...)
 # are deliberately NOT machine-gated here (Issue #1879). They are visible and
@@ -562,6 +569,164 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # Restore the Patterns 1-3 fail-open trap for the shared result-emit section
   # below (it has its own fail-closed fallback for the deny-emit path).
   trap '_rite_btg_pattern13_fail_open' ERR
+fi
+
+# --- Pattern 5: Merge-point review-result positive gate (Issue #2159) ---
+# Blocks merge commands that have not been through /rite:pr-review far enough
+# to leave a qualifying review-results JSON. Applies to any session (not just
+# subagents): the bypass path observed in the wild was main-session batch-run
+# skipping pr-review. Fail direction is CLOSED (inspection failure → deny) so
+# "cannot tell" never becomes "allow merge".
+#
+# Detection surface (CMD_CHECK after heredoc strip, same as Patterns 1-3):
+#   - `gh pr merge` (CLI)
+#   - REST `.../pulls/{n}/merge` (gh api)
+#   - GraphQL `mergePullRequest`
+# Non-merge `gh` / other Bash is untouched.
+if [ -z "$BLOCKED_PATTERN" ]; then
+  _mrg_is_merge=0
+  # CLI: `gh pr merge` with flexible whitespace (flags/args may follow).
+  # Boundary is (^|non-alnum-non-underscore) so path-prefixed binaries
+  # (`/usr/bin/gh pr merge`) match — excluding `/` from the boundary class
+  # would let absolute-path invocations silent-bypass the gate (measured).
+  if [[ "$CMD_CHECK" =~ (^|[^[:alnum:]_])gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$) ]]; then
+    _mrg_is_merge=1
+  # REST merge endpoint (gh api / curl-style path fragment).
+  elif [[ "$CMD_CHECK" =~ /pulls/[0-9]+/merge ]]; then
+    _mrg_is_merge=1
+  # GraphQL merge mutation name (argument forms vary; name is stable).
+  elif [[ "$CMD_CHECK" =~ mergePullRequest ]]; then
+    _mrg_is_merge=1
+  fi
+
+  if [ "$_mrg_is_merge" = "1" ]; then
+    _mrg_pr=""
+
+    # --- PR number resolution (arg first, then flow-state) ---
+    # 1) REST path /pulls/{n}/merge
+    if [[ "$CMD_CHECK" =~ /pulls/([0-9]+)/merge ]]; then
+      _mrg_pr="${BASH_REMATCH[1]}"
+    fi
+    # 2) `gh pr merge` tail: first bare integer token, or /pull/{n} URL form
+    if [ -z "$_mrg_pr" ] && [[ "$CMD_CHECK" =~ gh[[:space:]]+pr[[:space:]]+merge[[:space:]]+(.*) ]]; then
+      _mrg_tail="${BASH_REMATCH[1]}"
+      # shellcheck disable=SC2086  # intentional word-split of merge argv tail
+      for _mrg_tok in $_mrg_tail; do
+        case "$_mrg_tok" in
+          --*) continue ;;  # flag; value may be next token (non-numeric for known flags)
+        esac
+        if [[ "$_mrg_tok" =~ ^[0-9]+$ ]]; then
+          _mrg_pr="$_mrg_tok"
+          break
+        fi
+        if [[ "$_mrg_tok" =~ /pull/([0-9]+)(/|$) ]]; then
+          _mrg_pr="${BASH_REMATCH[1]}"
+          break
+        fi
+      done
+    fi
+    # 3) flow-state pr_number (merge skill often omits the number when cwd is the PR branch)
+    if [ -z "$_mrg_pr" ]; then
+      _mrg_pr=$(bash "$SCRIPT_DIR/flow-state.sh" get --field pr_number --default "" 2>/dev/null) || _mrg_pr=""
+      # treat unset / 0 / non-numeric as unresolved
+      case "$_mrg_pr" in
+        ''|0|*[!0-9]*) _mrg_pr="" ;;
+      esac
+    fi
+
+    if [ -z "$_mrg_pr" ]; then
+      BLOCKED_PATTERN="merge-review-pr-unresolved"
+      BLOCKED_REASON="Cannot resolve PR number for merge (no numeric arg / URL / REST path, and flow-state pr_number is unset). Merge is denied fail-loud rather than allowed without a review-result check."
+      BLOCKED_ALTERNATIVE="Pass the PR number explicitly (gh pr merge {N}) or run inside a rite session with flow-state pr_number set. After /rite:pr-review, re-run merge."
+    else
+      # --- review-results positive check ---
+      _mrg_root=""
+      if [ -n "${RITE_STATE_ROOT:-}" ] && [ -d "${RITE_STATE_ROOT}" ]; then
+        _mrg_root="$RITE_STATE_ROOT"
+      else
+        _mrg_root=$(bash "$SCRIPT_DIR/state-path-resolve.sh" 2>/dev/null) || _mrg_root=""
+      fi
+      _mrg_dir="${_mrg_root:+$_mrg_root/}.rite/review-results"
+      # When state root is empty, still try cwd-relative path (best-effort); empty
+      # root would otherwise look in "/.rite/..." which is wrong.
+      if [ -z "$_mrg_root" ]; then
+        _mrg_dir=".rite/review-results"
+      fi
+
+      _mrg_ok=0
+      _mrg_any=0
+      _mrg_fail_kind="absent"  # absent | parse_error | missing_keys | sole_reviewer
+      # nullglob so a no-match pattern expands to zero words (not the literal glob).
+      _mrg_noglob_was_set=0
+      case "$-" in *f*) _mrg_noglob_was_set=1 ;; esac
+      set +f
+      shopt -s nullglob 2>/dev/null || true
+      _mrg_files=("$_mrg_dir/${_mrg_pr}-"*.json)
+      shopt -u nullglob 2>/dev/null || true
+      [ "$_mrg_noglob_was_set" = "1" ] && set -f || true
+
+      for _mrg_f in "${_mrg_files[@]+"${_mrg_files[@]}"}"; do
+        # Skip if array empty (bash 4.4+ empty-array iterate safety)
+        [ -n "$_mrg_f" ] || continue
+        [ -f "$_mrg_f" ] || continue
+        _mrg_any=1
+        # parse + minimum form in one jq; map outcomes to fail kinds
+        _mrg_check=$(jq -r '
+          if (has("schema_version")|not)
+             or (.schema_version == null)
+             or ((.schema_version | tostring | length) == 0)
+             or (has("verdict")|not)
+             or ((.reviewers | type) != "array")
+            then "missing_keys"
+          elif ((.reviewers | length) < 2)
+            then "sole_reviewer"
+          else "ok"
+          end
+        ' "$_mrg_f" 2>/dev/null) || _mrg_check="parse_error"
+        if [ "$_mrg_check" = "ok" ]; then
+          _mrg_ok=1
+          break
+        fi
+        # Keep the most specific failure seen (prefer sole_reviewer / missing_keys
+        # over a later parse_error so a mixed dir still names the real defect).
+        case "$_mrg_fail_kind:$_mrg_check" in
+          absent:*|parse_error:missing_keys|parse_error:sole_reviewer|missing_keys:sole_reviewer)
+            _mrg_fail_kind="$_mrg_check"
+            ;;
+          *)
+            [ "$_mrg_fail_kind" = "absent" ] && _mrg_fail_kind="$_mrg_check"
+            ;;
+        esac
+      done
+
+      if [ "$_mrg_ok" != "1" ]; then
+        if [ "$_mrg_any" = "0" ]; then
+          BLOCKED_PATTERN="merge-review-json-absent"
+          BLOCKED_REASON="No review-results JSON for PR #${_mrg_pr} under ${_mrg_dir}/${_mrg_pr}-*.json. Merge requires a prior /rite:pr-review result (positive existence + minimum form)."
+          BLOCKED_ALTERNATIVE="Run /rite:pr-review ${_mrg_pr} (or /rite:iterate ${_mrg_pr}) so a qualifying review-results JSON is written, then re-run merge."
+        else
+          case "$_mrg_fail_kind" in
+            sole_reviewer)
+              BLOCKED_PATTERN="merge-review-sole-reviewer"
+              BLOCKED_REASON="Review-results JSON for PR #${_mrg_pr} has reviewers array length below sole-reviewer guard floor (2). A single-reviewer (or empty) result does not satisfy the merge gate."
+              BLOCKED_ALTERNATIVE="Re-run /rite:pr-review ${_mrg_pr} so at least 2 reviewers are recorded, then re-run merge."
+              ;;
+            parse_error)
+              BLOCKED_PATTERN="merge-review-json-parse"
+              BLOCKED_REASON="Review-results JSON for PR #${_mrg_pr} could not be parsed (jq non-zero). A broken file is not treated as a qualifying review."
+              BLOCKED_ALTERNATIVE="Remove or replace the broken ${_mrg_dir}/${_mrg_pr}-*.json and run /rite:pr-review ${_mrg_pr}, then re-run merge."
+              ;;
+            *)
+              BLOCKED_PATTERN="merge-review-json-incomplete"
+              BLOCKED_REASON="Review-results JSON for PR #${_mrg_pr} is missing required keys (schema_version non-empty, verdict present, reviewers array). Minimum form is not satisfied."
+              BLOCKED_ALTERNATIVE="Run /rite:pr-review ${_mrg_pr} to write a complete review-results JSON, then re-run merge."
+              ;;
+          esac
+        fi
+      fi
+      # success: leave BLOCKED_PATTERN empty — no extra output (AC-1)
+    fi
+  fi
 fi
 
 # --- Result ---
