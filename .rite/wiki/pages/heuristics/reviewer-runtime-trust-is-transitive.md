@@ -35,7 +35,7 @@ reviewer prompt が「自然な entrypoint を実行して検証する」と要�
 
 ### 検証
 
-PR #2187 では初回 security review が natural entrypoint の無条件実行を HIGH と判定した。cycle 2 で base-branch entrypoint 例外の推移的盲点を再検出し、cycle 3 で execution graph 全体と isolation の二択へ修正して 5 reviewer すべて 0 findings に収束した。
+起点 review では初回 security review が natural entrypoint の無条件実行を HIGH と判定した。cycle 2 で base-branch entrypoint 例外の推移的盲点を再検出し、cycle 3 で execution graph 全体と isolation の二択へ修正して 5 reviewer すべて 0 findings に収束した。
 
 ## 関連ページ
 
