@@ -144,21 +144,30 @@ assert_grep "mandate forbids suppressing findings because of the lane" "$LANE" \
 # 5.1.0.1 は「all of the following」を要求する AND ゲートなので、3 条件が 1 つの表に**連続して**
 # いることまで pin する。行の存在だけを見ると、条件行が blockquote の下へ落ちて GFM 上は表から
 # 脱落した状態 (raw markdown を読む LLM には 3 条件、レンダを読む人間には 2 条件のゲートに見える)
-# でも green のまま通る。
+# でも green のまま通る。**3 行を 1 回の抽出で取り出して全ペアを検査する** — 隣接対を 1 つだけ
+# 見る形にすると、検査していない側の行が脱落しても通ってしまう。
 #
-# 隣接性は `grep -A1` で直接検査する。`assert_grep_in_section` は使わない — 同 helper は
-# `awk -v` でパターンを渡すため `\*` `\.` のバックスラッシュが剥がれ、`^> \*\*fail-safe` が
-# `^> **fail-safe` (成立しない正規表現) に化けて範囲が EOF まで伸び、**assert が常に PASS する**
-# (本 suite で実測。escape を含むパターンを渡す全 caller に同じ縮退がある)。
-_impl_row3=$(grep -A1 '^| Complexity M or above |' "$IMPLEMENT" | tail -1)
-case "$_impl_row3" in
-  '| 2 or more independent tasks |'*)
-    pass "5.1.0.1 keeps all three AND-conditions contiguous in one table" ;;
-  *)
-    fail "5.1.0.1 keeps all three AND-conditions contiguous in one table"
-    echo "     期待: 'Complexity M or above' 行の直後が '| 2 or more independent tasks |'"
-    echo "     実際: $_impl_row3" ;;
-esac
+# `assert_grep_in_section` は使わない。同 helper はセクション**範囲**の抽出器であって行の
+# **隣接**を表現できない (start と end の間に何行あっても pass する) ため、本 pin が検出したい
+# 「行が blockquote 側へ落ちる」欠陥は範囲内に残って素通りする。加えて `awk -v` は代入時に
+# バックスラッシュを剥がすので、終端に意味を変える escape (`\*` 等) を渡すと終端パターンが
+# 成立せず範囲がファイル末尾まで伸びる (start が一致しない場合は empty section として fail するので
+# 「常に PASS」ではない)。既存 caller は終端に `\*` 系を持つものが無く該当 0 件で、
+# cleanup-message-contract.test.sh は同じ挙動を把握して二重 escape で回避している。
+_impl_rows=$(grep -A3 '^|-----------|---------------------|$' "$IMPLEMENT" | tail -3)
+_impl_expected='| `parallel.enabled: true` |
+| Complexity M or above |
+| 2 or more independent tasks |'
+_impl_actual=$(printf '%s\n' "$_impl_rows" | sed 's/^\(| [^|]* |\).*/\1/')
+if [ "$_impl_actual" = "$_impl_expected" ]; then
+  pass "5.1.0.1 keeps all three AND-conditions contiguous in one table"
+else
+  fail "5.1.0.1 keeps all three AND-conditions contiguous in one table"
+  echo "     期待 (表ヘッダ直後の 3 行の第 1 セル):"
+  printf '%s\n' "$_impl_expected" | sed 's/^/       /'
+  echo "     実際:"
+  printf '%s\n' "$_impl_actual" | sed 's/^/       /'
+fi
 
 echo "=== implement の生産量制約 (AC-3 / T-03) ==="
 assert_grep "implement resolves the lane through the shared helper" "$IMPLEMENT" \

@@ -145,7 +145,8 @@ rite_tempfile_new _icl_err "complexity-lane-err" || emit_full_fallback issue_fet
 if ! _body=$(gh issue view "$ISSUE_NUMBER" -R "$OWNER_REPO" --json body --jq '.body' 2>"$_icl_err"); then
   if [ -s "$_icl_err" ]; then
     echo "WARNING: issue-complexity-lane: gh issue view が失敗しました (issue=#${ISSUE_NUMBER}, repo=${OWNER_REPO}):" >&2
-    head -3 "$_icl_err" | sed 's/^/  /' >&2
+    # gh の stderr も外部由来なので canonical idiom を通す (hooks/ 側 30 ファイルと同形)。
+    head -3 "$_icl_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
   emit_full_fallback issue_fetch_failed
 fi
@@ -187,19 +188,24 @@ if [ -z "$_raw" ]; then
   # 述語は**宣言行の形**に固定する。裸のキーワード検索にすると両方向で外れる —
   # case-sensitive だと lowercase key を落とし (可視化対象の筆頭が無音になる)、行の形を問わないと
   # 散文や表セルの単なる言及を「宣言らしき行」と誤って断定する (定常出力化して目的が消える)。
-  # 行頭 anchor + キー + 区切り記号 (`:` / `：`) を要求し、`-i` で大小文字を吸収する。
+  # 行頭 anchor + キー + 区切り記号 (`:` / `：`) を要求し、大小文字は文字クラスで吸収する。
   #
-  # `|| _decl=""` は付けない。`set -e` は 76 行目で意図的に無効なので rc を握る利得が無い一方、
-  # `pipefail` 下では上流 printf の SIGPIPE(141) を「不一致」と融合して**捕捉済みの行を破棄する**
-  # (早期終了する grep -m1 ではなく head -1 を使うのも同じ理由。:157 / :170 の house pattern と揃える)。
+  # **診断に出すのは行番号だけで、body の中身は出さない。** ${_body} は第三者が書ける外部入力で、
+  # 埋め込むには長さ上限・CR 除去・改行畳み・制御文字中和の 4 段が要り、そのうち C1 (CSI U+009B 等)
+  # を閉じる中和は共有 helper に既存モードが無い。切り分け (崩れた記法 か 宣言不在 か) という
+  # 本 WARNING の目的は行番号だけで果たせるので、外部入力を診断チャネルへ通す経路自体を持たない。
   #
-  # ${_body} は第三者が書ける外部入力なので、診断へ埋め込む前に canonical idiom
-  # (長さ上限 → CR 除去 → 改行畳み → 制御文字中和) を通す。--c0-only は日本語本文の
-  # UTF-8 継続バイトを潰さないため (hooks/issue-body-safe-update.sh と同じ選択)。
-  _decl=$(printf '%s\n' "$_body" \
-    | grep -iE '^[[:space:]]*([-*+][[:space:]]+)?\**[[:space:]]*(complexity|複雑度)[[:space:]]*\**[[:space:]]*[:：]|^##[[:space:]]+複雑度[[:space:]]*$' \
-    | head -1 | head -c 500 | tr -d '\r' | tr '\n' ' ' | neutralize_ctrl --c0-only)
-  [ -n "$_decl" ] && echo "WARNING: issue-complexity-lane: Complexity 宣言らしき行を解釈できませんでした: ${_decl}" >&2
+  # 記法 2 では見出しではなく**値を取り出せなかった行**を指す。見出しは解釈できているので、
+  # 名指しても是正先にならない。
+  _decl_line=$(printf '%s\n' "$_body" | awk '
+    /^[[:space:]]*([-*+][[:space:]]+)?\**[[:space:]]*([Cc][Oo][Mm][Pp][Ll][Ee][Xx][Ii][Tt][Yy]|複雑度)[[:space:]]*\**[[:space:]]*[:：]/ { print NR; exit }
+    /^##[[:space:]]+複雑度[[:space:]]*$/ { f = 1; next }
+    f && NF { print NR; exit }
+  ')
+  case "$_decl_line" in
+    ''|*[!0-9]*) : ;;
+    *) echo "WARNING: issue-complexity-lane: Complexity 宣言らしき記述はありますが body の ${_decl_line} 行目から値を取り出せませんでした (lowercase key / 全角コロン / リスト項目化 / 未展開 placeholder 等の崩れが疑われます)。診断に本文は載せません — 第三者が書ける外部入力のため" >&2 ;;
+  esac
   emit_full_fallback complexity_absent
 fi
 

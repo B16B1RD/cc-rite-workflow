@@ -262,26 +262,41 @@ run_lane_with_body '## 複雑度
 <!-- TODO: 未記入 -->'
 assert_contains "TC-4.8d: 記法 2 の HTML コメントも complexity_absent" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
 
-echo "=== complexity_absent の対象行名指し WARNING (崩れた記法と宣言不在の切り分け) ==="
+echo "=== complexity_absent の行番号 WARNING (崩れた記法と宣言不在の切り分け) ==="
 
-# 崩れた記法では対象行を名指しする。裸のキーワード検索に戻すと lowercase key が無音になるため、
-# 4 形すべてを個別に pin する (まとめて 1 件だけ検証すると片方向の退行を見逃す)。
+# 崩れた記法では対象行の**行番号**を報告する。裸のキーワード検索に戻すと lowercase key が
+# 無音になるため 4 形すべてを個別に pin し、needle には固定の接頭辞ではなく**行番号**まで含める
+# (接頭辞だけを needle にすると、行番号の算出をどう壊しても落ちない空振り assert になる)。
+# 各 body は宣言行を 2 行目に置き、期待値 2 が偶然一致しないようにする。
 for _broken in '**complexity**: XS' '**Complexity**： XS' '- **Complexity**: XS' 'Complexity: XS'; do
-  run_lane_with_body "$_broken"
-  assert_contains "TC-4.16: 崩れた記法 ($_broken) は対象行を名指しする" "$LANE_STDERR" "宣言らしき行を解釈できませんでした"
+  run_lane_with_body "冒頭の散文行
+$_broken"
+  assert_contains "TC-4.16: 崩れた記法 ($_broken) は行番号を報告する" "$LANE_STDERR" "body の 2 行目から値を取り出せませんでした"
 done
 
 # 宣言行が無い body では沈黙する。行の形を問わない検索に戻すと散文・表セルの単なる言及を
-# 「宣言らしき行」と誤って断定し、この WARNING の目的 (定常出力からの切り分け) が消える。
+# 「宣言らしき記述」と誤って断定し、この WARNING の目的 (定常出力からの切り分け) が消える。
 for _prose in 'この変更の複雑度は低いが影響範囲は広い。' '| A | /rite:issue-create | Complexity M。 |'; do
   run_lane_with_body "$_prose"
-  assert_not_contains "TC-4.17: 宣言行の無い散文 ($_prose) では名指ししない" "$LANE_STDERR" "宣言らしき行を解釈できませんでした"
+  assert_not_contains "TC-4.17: 宣言行の無い散文 ($_prose) では報告しない" "$LANE_STDERR" "値を取り出せませんでした"
 done
 
-# 外部入力 (第三者が書ける Issue body) を診断へ埋め込むため、制御文字を中和してから出力する。
-run_lane_with_body "$(printf '**Complexity**: \033[31mZZZ')"
-assert_not_contains "TC-4.18: 名指し WARNING は制御文字を素通ししない" "$LANE_STDERR" "$(printf '\033')"
-assert_contains "TC-4.18b: 中和後も宣言行の可読部分は残る" "$LANE_STDERR" "宣言らしき行を解釈できませんでした"
+# 記法 2 では見出しではなく**値を取り出せなかった行**を指す。見出しは解釈できているので、
+# 名指しても是正先にならない。ここでは値行が 4 行目 (見出し 2 / 空行 3 / 値 4)。
+run_lane_with_body "冒頭の散文行
+## 複雑度
+
+{complexity}"
+assert_contains "TC-4.19: 記法 2 は見出しではなく値行の行番号を報告する" "$LANE_STDERR" "body の 4 行目から値を取り出せませんでした"
+
+# 診断は body の中身を一切載せない。載せるには長さ上限・CR 除去・改行畳み・制御文字中和の
+# 4 段が要り、そのうち C1 (CSI U+009B 等) を閉じる中和は共有 helper に既存モードが無い。
+# 行番号だけなら外部入力が診断チャネルへ入る経路自体を持たない。
+run_lane_with_body "$(printf '**Complexity**: \033[31mZZZ_SENTINEL \302\233 CR\r')"
+assert_not_contains "TC-4.18: 診断に body の中身を載せない (可視文字)" "$LANE_STDERR" "ZZZ_SENTINEL"
+assert_not_contains "TC-4.18b: 診断に ESC を載せない" "$LANE_STDERR" "$(printf '\033')"
+assert_not_contains "TC-4.18c: 診断に C1 (CSI U+009B) を載せない" "$LANE_STDERR" "$(printf '\302\233')"
+assert_contains "TC-4.18d: それでも崩れた記法として行番号は報告する" "$LANE_STDERR" "body の 1 行目から値を取り出せませんでした"
 
 # repo_unresolved は **production の実経路**（pr-review 1.3.2 / issue-implement 5.0.C は
 # --repo を渡さない）にある唯一の reason で、他 4 reason と違い --repo 明示では到達しない。

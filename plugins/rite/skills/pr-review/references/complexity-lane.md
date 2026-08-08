@@ -71,7 +71,7 @@ cap 適用**後**に落とすフィルタとして実装すると、これらの
 | `gh_missing` | `gh` が PATH 上に無い | Complexity を読む手段が無い |
 | `repo_unresolved` | owner/repo を解決できず `-R` を付けて `gh` を呼べない | 別リポジトリの Issue を誤って読むより読まない方が安全 |
 | `issue_fetch_failed` | `gh issue view` が失敗（認証切れ / rate limit / Issue 不在） | 宣言値が不明 |
-| `complexity_absent` | どちらの記法からも**英字トークンを取り出せない**（宣言行が無い / 崩れた記法 = lowercase key・全角コロン・リスト項目化 / `**Complexity**: {complexity}` のような未展開 placeholder） | rite 外で作られた Issue 等。宣言が無いものを小さいと決めつけない |
+| `complexity_absent` | どちらの記法からも**英字トークンを取り出せない**（宣言行が無い / 崩れた記法 = lowercase key・全角コロン・リスト項目化 / `{complexity}` のような未展開 placeholder と `<!-- ... -->` — **両記法とも `{` `<` を値の開始と認めないため、同じ記入漏れが記法によって別 reason へ分裂しない**） | rite 外で作られた Issue 等。宣言が無いものを小さいと決めつけない |
 | `complexity_invalid` | 英字トークンは取り出せたが XS/S/M/L/XL のいずれでもない（`Medium` / `Small` / `XSmall` / `ZZ` 等） | 誤記を小さい側へ解釈しない |
 | `issue_number_missing` | 関連 Issue を特定できず helper を呼べない（consumer 側） | 対象 Issue が分からなければ宣言値も存在しない |
 | `helper_failed` | helper が marker を出さずに非ゼロ終了した（consumer 側） | 判定結果が得られていない |
