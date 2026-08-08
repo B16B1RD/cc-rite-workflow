@@ -2046,7 +2046,7 @@ fi
 RITE_STATE_ROOT="$_audit_tmp" jq -n --arg cmd $'gh pr diff 99 --stat\n[2099-01-01T00:00:00Z] bash-guard: BLOCKED pattern=forged' \
   '{tool_name:"Bash",tool_input:{command:$cmd}}' \
   | RITE_STATE_ROOT="$_audit_tmp" bash "$HOOK" >/dev/null 2>/dev/null || true
-if [ "$(wc -l < "$_audit_tmp/.rite/logs/bash-guard.log")" = "2" ] \
+if [ "$(awk 'END { print NR }' "$_audit_tmp/.rite/logs/bash-guard.log")" = "2" ] \
   && ! grep -q '^\[2099-01-01T00:00:00Z\]' "$_audit_tmp/.rite/logs/bash-guard.log"; then
   pass "TC-141 multiline commands cannot forge additional audit records"
 else
