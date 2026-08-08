@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/rite-dev <claude|codex|grok> [host arguments...]
+
+Launch an AI coding host against the rite plugin in this working tree.
+
+Examples:
+  scripts/rite-dev claude
+  scripts/rite-dev codex
+  scripts/rite-dev grok
+  scripts/rite-dev codex "inspect the current issue"
+
+The launcher keeps host-global rite installations out of the dogfooding path:
+  claude  loads plugins/rite explicitly with --plugin-dir
+  codex   uses the repository-local .codex-dev profile
+  grok    uses the repository-local .grok configuration and plugin symlink
+EOF
+}
+
+die() {
+  printf 'rite-dev: %s\n' "$*" >&2
+  exit 1
+}
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+[[ $# -gt 0 ]] || {
+  usage >&2
+  exit 2
+}
+
+host=$1
+shift
+
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+repo_root=$(git -C "$script_dir" rev-parse --show-toplevel 2>/dev/null) || \
+  die "scripts/rite-dev must be run from a git checkout"
+plugin_root="$repo_root/plugins/rite"
+
+[[ -d "$plugin_root/skills" ]] || \
+  die "rite plugin source not found: $plugin_root"
+
+export RITE_HOST="$host"
+export RITE_PLUGIN_ROOT="$plugin_root"
+cd "$repo_root"
+
+case "$host" in
+  claude)
+    command -v claude >/dev/null 2>&1 || die "claude executable not found"
+    exec claude --plugin-dir "$plugin_root" "$@"
+    ;;
+  codex)
+    command -v codex >/dev/null 2>&1 || die "codex executable not found"
+    codex_home="$repo_root/.codex-dev"
+    codex_skills="$codex_home/skills"
+    if [[ -L "$codex_skills" || ( -e "$codex_skills" && ! -d "$codex_skills" ) ]]; then
+      die "expected $codex_skills to be a directory reserved for Codex state"
+    fi
+    mkdir -p "$codex_skills"
+
+    for skill_dir in "$plugin_root"/skills/*; do
+      [[ -f "$skill_dir/SKILL.md" ]] || continue
+      skill_name=${skill_dir##*/}
+      skill_link="$codex_skills/$skill_name"
+      if [[ -e "$skill_link" || -L "$skill_link" ]]; then
+        [[ -L "$skill_link" ]] || \
+          die "expected $skill_link to be a symlink to $skill_dir"
+        linked_skill=$(cd -- "$(dirname -- "$skill_link")" && cd -- "$(readlink -- "$skill_link")" 2>/dev/null && pwd -P) || \
+          die "expected $skill_link to resolve to $skill_dir"
+        [[ "$linked_skill" == "$skill_dir" ]] || \
+          die "expected $skill_link to resolve to $skill_dir"
+      else
+        ln -s "$skill_dir" "$skill_link"
+      fi
+    done
+    export CODEX_HOME="$codex_home"
+    exec codex --cd "$repo_root" "$@"
+    ;;
+  grok)
+    command -v grok >/dev/null 2>&1 || die "grok executable not found"
+    grok_link="$repo_root/.grok/plugins/rite"
+    [[ -f "$repo_root/.grok/config.toml" ]] || \
+      die "Grok development config not found: $repo_root/.grok/config.toml"
+    [[ -L "$grok_link" ]] || die "Grok development plugin link not found: $grok_link"
+    linked_plugin=$(cd -- "$(dirname -- "$grok_link")" && cd -- "$(readlink -- "$grok_link")" 2>/dev/null && pwd -P) || \
+      die "expected $grok_link to resolve to $plugin_root"
+    [[ "$linked_plugin" == "$plugin_root" ]] || \
+      die "expected $grok_link to resolve to $plugin_root"
+    exec grok --cwd "$repo_root" "$@"
+    ;;
+  *)
+    usage >&2
+    die "unknown host '$host' (expected claude, codex, or grok)"
+    ;;
+esac

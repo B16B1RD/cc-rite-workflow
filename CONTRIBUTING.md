@@ -7,7 +7,30 @@ Thank you for your interest in contributing to Claude Code Rite Workflow!
 1. Clone the repository
 2. Install dependencies: `jq` (required by hook scripts)
 3. The plugin uses Rite Workflow itself for development (self-hosting)
-4. Set `rite@rite-marketplace: false` in `~/.claude/settings.json` to avoid plugin dual-load collision when developing locally
+4. Launch the host through `scripts/rite-dev` to avoid plugin dual-load collisions
+
+### Unified dogfooding launcher
+
+Use the same entry point from Claude Code, Codex, or Grok Build:
+
+```bash
+scripts/rite-dev claude
+scripts/rite-dev codex
+scripts/rite-dev grok
+```
+
+Additional arguments are forwarded to the selected host. The launcher exports
+`RITE_HOST` and `RITE_PLUGIN_ROOT` for host-neutral workflow code. Claude Code
+loads `plugins/rite` explicitly, Grok Build uses the repository-local plugin
+link, and Codex uses an ignored `.codex-dev/` profile. Its `skills` directory
+keeps Codex-managed state locally and links each rite skill back to
+`plugins/rite/skills`; this prevents `.system` and other mutable Codex files
+from entering the distributed plugin source. The profile may require a separate
+login on first use.
+
+The launcher never replaces an unexpected local link or directory. If an older
+development setup already has `.codex-dev/skills` as a symlink, move or remove
+that local profile explicitly before launching Codex again.
 
 ## How to Contribute
 

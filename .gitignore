@@ -16,6 +16,11 @@ Thumbs.db
 .env
 .env.local
 
+# Repository-local Codex dogfooding profile. This isolates the working-tree
+# version of rite from plugins installed under the user's normal CODEX_HOME and
+# may contain authentication/session data.
+.codex-dev/
+
 # Temporary files
 tmp/
 temp/
