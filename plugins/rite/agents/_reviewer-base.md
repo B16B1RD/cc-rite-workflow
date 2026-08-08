@@ -110,9 +110,11 @@ it as optional hardening.
    can silently omit a required value. Statically trace at least one natural
    entrypoint from its real initial state; a fixture that pre-sets the final
    precondition is not sufficient evidence. Do not execute PR-controlled code
-   to establish this evidence. Runtime execution is permitted only when the
-   entrypoint is trusted base-branch code or an isolation boundary explicitly
-   removes secrets, network access, and write access outside a disposable tree.
+   to establish this evidence. Runtime execution is permitted only when a
+   static trace proves the complete execution graph loads no PR-controlled
+   code, configuration, or dependencies, or when an isolation boundary
+   explicitly removes secrets, network access, and write access outside a
+   disposable tree.
 2. **Latest-sibling inheritance**: Before accepting a new sibling script, list
    the family with `Grep` and use `git log -S` or `git log -p` to identify the
    most recently hardened sibling. Compare parser behavior, usage/exit-code
