@@ -149,19 +149,58 @@ echo "[DEBUG] parent not detected for issue #{issue_number} — processing as st
 
 関連 Issue が識別できなければステップ 4 へ進む。
 
-`.rite-work-memory/issue-{issue_number}.md` を Read で読む。無ければ Issue コメントから work memory を取得:
+Work Memory の正本を **存在ではなく内容** で選ぶ（Issue #2141）。PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし）はファイルとして存在するが、存在検査だけだと stub を正本と見なし Issue コメント側 fallback が発火しない（#2127 の「存在と成功の混同」と同族）。進捗セクション見出し（現行 `### 進捗サマリー` / v1 `### 進捗`）が実在するときだけローカル WM を正本とし、stub 判定時はコメント側へ fallback して WARNING で可視化する:
 
 ```bash
-comment_body=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
-  --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .body // empty')
+# WM 正本の選定（内容検査 — Issue #2141）
+# 進捗セクション: 現行 `### 進捗サマリー` と v1 `### 進捗` の両方を認める
+# （incomplete 抽出が両見出しを拾う契約との整合）
+_wm_local=".rite-work-memory/issue-{issue_number}.md"
+_wm_source=""
+_wm_body=""
+if [ -f "$_wm_local" ]; then
+  _wm_body=$(cat "$_wm_local" 2>/dev/null) || _wm_body=""
+  # 行頭の AT1-3 + 進捗 / 進捗サマリー。stub は frontmatter や phase 行だけでこの見出しを持たない
+  if printf '%s\n' "$_wm_body" | grep -qE '^#{1,3}[[:space:]]*進捗(サマリー)?([[:space:]]|$)'; then
+    _wm_source=local
+    echo "[CONTEXT] WM_SOURCE=local; path=$_wm_local"
+  else
+    echo "WARNING: ローカル WM ($_wm_local) は進捗セクションを持たない stub と判定。Issue コメント側へ fallback します (#2141)" >&2
+    echo "[CONTEXT] WM_SOURCE=stub_fallback; path=$_wm_local"
+    _wm_body=""
+  fi
+fi
+if [ -z "$_wm_source" ] || [ "$_wm_source" = "stub_fallback" ]; then
+  comment_body=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
+    --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .body // empty')
+  if [ -n "$comment_body" ]; then
+    _wm_source=comment
+    _wm_body="$comment_body"
+    echo "[CONTEXT] WM_SOURCE=comment"
+  elif [ "$_wm_source" != "stub_fallback" ]; then
+    _wm_source=none
+    echo "[CONTEXT] WM_SOURCE=none"
+  else
+    # stub でコメントも無い → 検出対象なし（既存の「WM なし」縮退）
+    _wm_source=none
+    echo "[CONTEXT] WM_SOURCE=none; after=stub_fallback"
+  fi
+fi
+# 未完了タスク抽出（親子 Tasklist `- [ ] #XX` は除外）
+incomplete=""
+if [ -n "$_wm_body" ]; then
+  incomplete=$(printf '%s\n' "$_wm_body" | sed -n '/### 進捗/,/### /p' \
+    | grep -E '^\s*- \[ \]' | grep -v -E '^\s*- \[ \] #[0-9]+' | head -10) || incomplete=""
+fi
+echo "incomplete_count=$(printf '%s\n' "$incomplete" | grep -c . 2>/dev/null || echo 0)"
 ```
 
-進捗セクションと Issue 本文の未完了チェックボックス (`- [ ] #XX` の親子 Tasklist は除外) を検出:
-
-```bash
-incomplete=$(printf '%s\n' "$comment_body" | sed -n '/### 進捗/,/### /p' \
-  | grep -E '^\s*- \[ \]' | grep -v -E '^\s*- \[ \] #[0-9]+' | head -10)
-```
+| `WM_SOURCE` | 意味 |
+|---|---|
+| `local` | 進捗セクションを持つ実 WM を正本として採用（AC-2） |
+| `stub_fallback` → 後続で `comment` / `none` | stub を不採用しコメントへ fallback。切替理由は WARNING 済み（AC-1） |
+| `comment` | ローカル WM 不在 or stub 後のコメント正本 |
+| `none` | ローカルもコメントも無い。既存の「WM なし」経路（AC-3） |
 
 未完了タスクがあれば `AskUserQuestion` で「未完了タスクを Issue 化 (推奨) / 無視して続行 / キャンセル」を確認。Issue 化選択時は各タスクを `残作業` label 付きで作成する。
 
