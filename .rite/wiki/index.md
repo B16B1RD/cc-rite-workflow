@@ -414,9 +414,10 @@
 | [runtime 診断は「どこを見ればいいか」だけ示す — 原因の分類は SoT に持たせる](pages/heuristics/runtime-diagnostic-points-where-to-look-not-cause-taxonomy.md) | heuristics | 診断メッセージに原因の列挙（lowercase key / 全角コロン / 未展開 placeholder 等）を焼き込むと、退避先や分岐が増えるたびに列挙が実態とずれ、崩れていない対象を名指しながら存在しない不備を探させる診断になる。列挙に 1 項目足す道もあるが、同じ列挙を持つ散文 site との同期義務が増えるだけで次の分岐追加で同じ指摘が再発する。runtime 側の列挙は撤去し、原因分類は docstring と reason 表が持つ。 | 2026-08-08T14:00:41+09:00 | high |
 | [回復経路が「成立しない」判定は、回復側セッションでその分岐が発火するかから辿り直して下す](pages/heuristics/recovery-path-evaluated-from-recovering-session-branch.md) | heuristics | 発火条件と回復条件が同じ状態変数を見ていても、回復側セッションではその分岐に入らず別経路が働くことがある。委譲側の記述だけを読んで「回復不能」と結論すると、機能していた経路を不発の経路へ置き換え、案内文で唯一機能する経路を明示的に否定する修正を導く。PR #2150 の cycle 1 で 3 名の reviewer が独立に同じ誤診断へ到達し、cycle 2 で 2 名が実測により覆した。役割横断の合意は「同じ読み方の共有」でもあり正しさの保証ではない。同様に「構造的に不可能」という前提も、拒否される形態を実測で特定してから書く。 | 2026-08-08T17:40:00+09:00 | high |
 | [排他性を pin するテストは件数固定に加えて配置を両方向で固定する（在る側と無い側の 2 assert）](pages/patterns/placement-pin-requires-both-directions.md) | patterns | grep -c による出現数固定は marker の「追加」を捕まえるが「移設」は総数不変のため素通しする。範囲抽出による placement pin も片方向では変異が生存し、「この arm に 1 つ在る」と「別の arm に 1 つも無い」を併置して初めて『唯一の emit が意図した arm 内に在る』が確定する。冗長に見えるが統合できない。PR #2150 で mutation 実測。 | 2026-08-08T17:40:00+09:00 | high |
+| [Reviewer の runtime trust は entrypoint ではなく推移的 execution graph で判定する](pages/heuristics/reviewer-runtime-trust-is-transitive.md) | heuristics | レビュー手順が検証対象コードの実行を許す場合、base branch の entrypoint というだけでは信頼できない。PR-controlled code・設定・依存物への推移的到達を静的に除外するか、secrets・network・外部 write を遮断した隔離境界を必須にする。 | 2026-08-09T08:43:00+09:00 | high |
 
 ## 統計
 
-- 総ページ数: 408
-- ドメイン別: patterns=103, heuristics=172, anti-patterns=133
-- 最終更新: 2026-08-08T17:40:00+09:00
+- 総ページ数: 409
+- ドメイン別: patterns=103, heuristics=173, anti-patterns=133
+- 最終更新: 2026-08-09T08:43:00+09:00

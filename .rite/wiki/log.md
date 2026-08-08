@@ -1,3 +1,7 @@
+## 2026-08-09
+
+* **Create**: [Reviewer の runtime trust は entrypoint ではなく推移的 execution graph で判定する](pages/heuristics/reviewer-runtime-trust-is-transitive.md) — raw/reviews/20260808T233606Z-pr-2187.md を新規ページ化（PR-controlled code・設定・依存物への推移的到達を除外できない runtime は secrets・network・外部 write を遮断した isolation boundary 内に限定）。
+
 ## 2026-08-08
 * **Audit**: Issue #2091 昇格監査 — 全 408 ページを domain/promote に分類。 promote=229 (mechanize=26, references=38, shelve=165) / domain=179。 promote ページへ `promote: rite-plugin` frontmatter 付与。
 * **Stale-sweep** (#2060 統合): stale 20 件を判定。 有効 20 件 → `updated` 更新。
