@@ -143,6 +143,9 @@ mutation_worktrees_reaped=0
 session_worktrees_reaped=0
 session_branches_deleted=0
 manifest_reaped=0
+orphan_reviews_deleted=0
+orphan_reviews_archived=0
+orphan_review_pins_deleted=0
 errors=0
 
 # trap + cleanup パターン (canonical: references/bash-trap-patterns.md#signal-specific-trap-template)
@@ -1427,16 +1430,102 @@ if [ -d "$session_wt_root" ]; then
 fi
 
 # -----------------------------------------------------------------------
+# Step 6: Reap orphaned review results and run-start pins.
+# Active flow-state PRs are protected. If any flow-state cannot be read, skip
+# this entire step: an incomplete active set is not safe enough for deletion.
+# -----------------------------------------------------------------------
+review_dir="$repo_root/.rite/review-results"
+session_dir="$repo_root/.rite/sessions"
+active_prs=$'\n'
+review_gc_safe=1
+if [ -d "$session_dir" ]; then
+  while IFS= read -r state_file; do
+    [ -n "$state_file" ] || continue
+    if state_pair=$(jq -r '[.active // false, .pr_number // 0] | @tsv' "$state_file" 2>/dev/null); then
+      state_active=${state_pair%%$'\t'*}
+      state_pr=${state_pair#*$'\t'}
+      if [ "$state_active" = "true" ]; then
+        case "$state_pr" in
+          ''|0|*[!0-9]*) ;;
+          *) active_prs="${active_prs}${state_pr}"$'\n' ;;
+        esac
+      fi
+    else
+      echo "WARNING: flow-state '$(printf '%s' "$state_file" | neutralize_ctrl)' の読取に失敗したため orphan review 回収をスキップします" >&2
+      review_gc_safe=0
+      break
+    fi
+  done < <(find "$session_dir" -maxdepth 1 -type f -name '*.flow-state' -print 2>/dev/null)
+fi
+
+if [ "$review_gc_safe" -eq 1 ] && [ -d "$review_dir" ]; then
+  archive_dir="$review_dir/archive"
+  while IFS= read -r review_file; do
+    [ -n "$review_file" ] || continue
+    review_name=${review_file##*/}
+    review_pr=${review_name%%-*}
+    case "$review_pr" in ''|*[!0-9]*) continue ;; esac
+    case "$active_prs" in *$'\n'"$review_pr"$'\n'*) continue ;; esac
+
+    if nb_count=$(jq -er '(.non_blocking_count // .metrics.non_blocking_count // 0) as $n | if ($n|type)=="number" and ($n|floor)==$n and $n>=0 then $n else error("invalid non_blocking_count") end' "$review_file" 2>/dev/null); then
+      :
+    else
+      echo "WARNING: review JSON '$(printf '%s' "$review_file" | neutralize_ctrl)' を解析できないため保持します" >&2
+      continue
+    fi
+
+    if [ "$DRY_RUN" = "1" ]; then
+      if [ "$nb_count" -gt 0 ]; then
+        echo "[dry-run] would archive orphan review JSON: $review_name"
+      else
+        echo "[dry-run] would delete orphan review JSON: $review_name"
+      fi
+      continue
+    fi
+
+    if [ "$nb_count" -gt 0 ]; then
+      if [ -e "$archive_dir/$review_name" ] || [ -L "$archive_dir/$review_name" ]; then
+        echo "WARNING: orphan review JSON '$review_name' の archive 先が既に存在するため元ファイルを保持します" >&2
+        errors=$((errors + 1))
+        continue
+      elif mkdir -p "$archive_dir" 2>/dev/null && mv "$review_file" "$archive_dir/$review_name" 2>/dev/null; then
+        orphan_reviews_archived=$((orphan_reviews_archived + 1))
+      else
+        echo "WARNING: orphan review JSON '$review_name' の archive に失敗したため元ファイルを保持します" >&2
+        errors=$((errors + 1))
+        continue
+      fi
+    elif rm -f "$review_file" 2>/dev/null; then
+      orphan_reviews_deleted=$((orphan_reviews_deleted + 1))
+    else
+      echo "WARNING: orphan review JSON '$review_name' の削除に失敗しました" >&2
+      errors=$((errors + 1))
+      continue
+    fi
+
+    pin_file="$repo_root/.rite/state/review-run-since-${review_pr}.txt"
+    if [ -e "$pin_file" ] || [ -L "$pin_file" ]; then
+      if rm -f "$pin_file" 2>/dev/null; then
+        orphan_review_pins_deleted=$((orphan_review_pins_deleted + 1))
+      else
+        echo "WARNING: orphan review pin '$(printf '%s' "$pin_file" | neutralize_ctrl)' の削除に失敗しました" >&2
+        errors=$((errors + 1))
+      fi
+    fi
+  done < <(find "$review_dir" -maxdepth 1 -type f -name '[0-9]*-*.json' -print 2>/dev/null)
+fi
+
+# -----------------------------------------------------------------------
 # Status line
 # -----------------------------------------------------------------------
 if [ "$DRY_RUN" = "1" ]; then
   echo "[pr-cycle-cleanup] status=dry-run; pattern=$PATTERN"
 elif [ "$errors" -gt 0 ]; then
-  echo "[pr-cycle-cleanup] status=failed; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; session_worktrees=$session_worktrees_reaped; session_branches=$session_branches_deleted; manifest=$manifest_reaped; errors=$errors"
-elif [ "$worktrees_removed" -eq 0 ] && [ "$branches_deleted" -eq 0 ] && [ "$workdirs_reaped" -eq 0 ] && [ "$mutation_worktrees_reaped" -eq 0 ] && [ "$session_worktrees_reaped" -eq 0 ] && [ "$session_branches_deleted" -eq 0 ] && [ "$manifest_reaped" -eq 0 ]; then
-  echo "[pr-cycle-cleanup] status=noop; worktrees=0; branches=0; workdirs=0; mutation_worktrees=0; session_worktrees=0; session_branches=0; manifest=0"
+  echo "[pr-cycle-cleanup] status=failed; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; session_worktrees=$session_worktrees_reaped; session_branches=$session_branches_deleted; manifest=$manifest_reaped; orphan_reviews_deleted=$orphan_reviews_deleted; orphan_reviews_archived=$orphan_reviews_archived; orphan_review_pins=$orphan_review_pins_deleted; errors=$errors"
+elif [ "$worktrees_removed" -eq 0 ] && [ "$branches_deleted" -eq 0 ] && [ "$workdirs_reaped" -eq 0 ] && [ "$mutation_worktrees_reaped" -eq 0 ] && [ "$session_worktrees_reaped" -eq 0 ] && [ "$session_branches_deleted" -eq 0 ] && [ "$manifest_reaped" -eq 0 ] && [ "$orphan_reviews_deleted" -eq 0 ] && [ "$orphan_reviews_archived" -eq 0 ] && [ "$orphan_review_pins_deleted" -eq 0 ]; then
+  echo "[pr-cycle-cleanup] status=noop; worktrees=0; branches=0; workdirs=0; mutation_worktrees=0; session_worktrees=0; session_branches=0; manifest=0; orphan_reviews_deleted=0; orphan_reviews_archived=0; orphan_review_pins=0"
 else
-  echo "[pr-cycle-cleanup] status=cleaned; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; session_worktrees=$session_worktrees_reaped; session_branches=$session_branches_deleted; manifest=$manifest_reaped"
+  echo "[pr-cycle-cleanup] status=cleaned; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; session_worktrees=$session_worktrees_reaped; session_branches=$session_branches_deleted; manifest=$manifest_reaped; orphan_reviews_deleted=$orphan_reviews_deleted; orphan_reviews_archived=$orphan_reviews_archived; orphan_review_pins=$orphan_review_pins_deleted"
 fi
 
 exit 0
