@@ -11,6 +11,7 @@
 * **Update**: [同じ機構への N 回目のパッチは、その機構が依拠する述語が proxy である信号](pages/heuristics/nth-patch-signals-proxy-predicate.md) — raw/fixes/20260808T014357Z-pr-2142.md を統合（追加を選ぶなら「なぜ削除では駄目か」を commit message に書けること / 同一行に集中した複数指摘は 1 回の書き換えに統合 / 伝播可否は「同じ欠陥クラスか」でなく「同じ修正が当たるか」で決める）
 * **Create**: [awk のデフォルト FS は `\r` を含まない — CRLF 入力で「空行」判定が壊れる](pages/anti-patterns/awk-default-fs-excludes-cr-breaks-empty-line-test.md) — raw/fixes/20260808T024257Z-pr-2142.md を新規ページ化（CR だけの行が NF=1 = 非空になる / GitHub Web UI 由来の body は CRLF になりうる / 是正は述語側でなく入力捕捉時に 1 度落とす）
 * **Create**: [runtime 診断は「どこを見ればいいか」だけ示す — 原因の分類は SoT に持たせる](pages/heuristics/runtime-diagnostic-points-where-to-look-not-cause-taxonomy.md) — raw/fixes/20260808T032734Z-pr-2142.md を新規ページ化（退避先が増えるたび原因列挙が実態とずれ、崩れていない対象を名指して存在しない不備を探させる / 列挙に 1 項目足す道は同期義務を増やすだけ）
+* **lint:warning** — contradictions=0, stale=20, orphans=0, missing_concept=0, unregistered_raw=303, broken_refs=0
 
 ## 2026-08-07
 
