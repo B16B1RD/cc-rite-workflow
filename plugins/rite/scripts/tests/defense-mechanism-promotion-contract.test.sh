@@ -23,18 +23,23 @@ assert_grep 'defect class page mechanized' "$audit" '| `single-condition-defense
 assert_grep 'fallback visibility page mechanized' "$audit" '| `silent-fallback-observability-via-debug-log` | mechanized here |'
 assert_grep 'structural enforcement page mechanized' "$audit" '| `structural-guarantee-code-level-enforcement` | mechanized here |'
 
-assert_grep 'gate is mandatory detection work' "$reviewer" 'This gate is part of the Detection Process; do not treat it as optional'
+assert_grep 'gate is mandatory detection work' "$reviewer" 'This gate is part of the Detection Process'
 assert_grep 'producer sites must be enumerated' "$reviewer" 'the producer and patch sites'
-assert_grep 'natural entrypoint is required' "$reviewer" 'at least one natural entrypoint'
+assert_grep 'natural entrypoint is statically traced' "$reviewer" 'Statically trace at least one natural'
+assert_grep 'PR-controlled code execution is forbidden' "$reviewer" 'Do not execute PR-controlled code'
+assert_grep 'runtime execution requires isolation' "$reviewer" 'removes secrets, network access, and write access outside a disposable tree'
 assert_grep 'latest sibling history is inspected' "$reviewer" '`git log -S` or `git log -p`'
 assert_grep 'hardening target omission is detected' "$reviewer" 'A filename allowlist that omits the new sibling is a finding'
 assert_grep 'defect class must be abstracted' "$reviewer" 'to its defect class and test representative adjacent members'
 assert_grep 'class predicate preferred' "$reviewer" 'Prefer a class predicate'
 assert_grep 'fail fast precedes fallback' "$reviewer" 'First apply [Fail-Fast First](#fail-fast-first)'
+assert_grep 'fallback preserves bounded diagnostics' "$reviewer" 'preserve the exit code and a bounded diagnostic'
 assert_grep 'resource-changing fallback is always visible' "$reviewer" 'or state file requires an always-visible'
+assert_grep 'fallback policy covers every caller' "$reviewer" 'policy to every matching caller found by `Grep`'
 assert_grep 'structural invariant has explicit check' "$reviewer" 'explicit check at the trust or'
 assert_grep 'structural test covers three outcomes' "$reviewer" 'Pin expected accept, expected reject, and documented'
 assert_grep 'finding remains evidence gated' "$reviewer" 'do not report speculative family-wide hardening without such evidence'
+assert_grep 'shared checklist maps the detection gate' "$reviewer" '**Defense mechanism integrity (when triggered)**'
 
 if [ "$failures" -ne 0 ]; then
   printf '%s contract assertion(s) failed\n' "$failures" >&2

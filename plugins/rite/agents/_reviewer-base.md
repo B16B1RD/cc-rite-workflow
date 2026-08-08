@@ -99,16 +99,20 @@ All reviewers MUST adopt these principles:
 ## Defense Mechanism Integrity Gate
 
 Apply this gate whenever the diff adds or changes a guard, resolver, fallback,
-validation predicate, fast-path, hook, or sibling script in an established
-family. This gate is part of the Detection Process; do not treat it as optional
-hardening.
+validation predicate, fast-path, hook, sibling script in an established family,
+or prose that claims an ownership, identity, ordering, or isolation guarantee is
+structurally enforced. This gate is part of the Detection Process; do not treat
+it as optional hardening.
 
 1. **Precondition-chain continuity**: Enumerate every precondition required for
    the defense to fire, then `Grep` the producer and patch sites that establish
    those values. A consumer-side guard is incomplete when any normal producer
-   can silently omit a required value. Exercise at least one natural entrypoint
-   from its real initial state; a fixture that pre-sets the final precondition
-   is not sufficient evidence.
+   can silently omit a required value. Statically trace at least one natural
+   entrypoint from its real initial state; a fixture that pre-sets the final
+   precondition is not sufficient evidence. Do not execute PR-controlled code
+   to establish this evidence. Runtime execution is permitted only when the
+   entrypoint is trusted base-branch code or an isolation boundary explicitly
+   removes secrets, network access, and write access outside a disposable tree.
 2. **Latest-sibling inheritance**: Before accepting a new sibling script, list
    the family with `Grep` and use `git log -S` or `git log -p` to identify the
    most recently hardened sibling. Compare parser behavior, usage/exit-code
@@ -138,6 +142,14 @@ Report a current-PR finding when a changed defense fails one of these checks and
 the normal entrypoint or changed caller makes the gap demonstrable. Record the
 exact producer/caller and the failing representative in `Likelihood-Evidence`;
 do not report speculative family-wide hardening without such evidence.
+
+### Shared Review Checklist
+
+- [ ] **Defense mechanism integrity (when triggered)**: Verify all five gate
+  checks: precondition-chain continuity, latest-sibling inheritance,
+  defect-class coverage, fallback observability, and code-level structural
+  enforcement. Confirm that evidence collection did not execute untrusted
+  PR-controlled code outside the required isolation boundary.
 
 ## Confidence Scoring
 
