@@ -123,23 +123,67 @@ assert_grep "in_worktree arm still routes through ExitWorktree(keep)" "$CLEANUP"
 echo "=== ステップ 4/5/9: 委譲モードのスキップガード (Issue #2133 T-01) ==="
 # main checkout 操作を持つ 3 ステップすべてに対称にガードを置く。1 箇所でも欠けると
 # harness の worktree 隔離ガードに拒否され、Issue #2133 が消した長文の診断報告に戻る。
-assert_grep_in_section "Step 4 (base update) has the delegation skip guard" "$CLEANUP" \
-  '^### 4 base ブランチの更新' '^## ステップ 5:' 'CLEANUP_DELEGATED=1'
-assert_grep_in_section "Step 5 (branch delete) has the delegation skip guard" "$CLEANUP" \
-  '^## ステップ 5:' '^## ステップ 6:' 'CLEANUP_DELEGATED=1'
-assert_grep_in_section "Step 9 (wiki ingest) has the delegation skip guard" "$CLEANUP" \
-  '^## ステップ 9:' '^## ステップ 10:' 'CLEANUP_DELEGATED=1'
+# marker 名の在処だけでなく **「実行しない」という指示語** まで pin する — prose-driven skill では
+# 指示語そのものが実装本体で、marker だけを見る assert は指示の反転 (「実行しない」→「通常どおり
+# 実行する」) を素通しする (mutation 実測で 4 サイト反転しても全 assert green だった)。
+assert_grep_in_section "Step 4 (base update) pins the do-not-execute directive" "$CLEANUP" \
+  '^### 4 base ブランチの更新' '^## ステップ 5:' 'CLEANUP_DELEGATED=1` を emit している場合、本ステップの bash を\*\*実行しない\*\*'
+assert_grep_in_section "Step 5 (branch delete) pins the do-not-execute directive" "$CLEANUP" \
+  '^## ステップ 5:' '^## ステップ 6:' 'CLEANUP_DELEGATED=1` を emit している場合、本ステップの bash ブロックを\*\*いずれも実行しない\*\*'
+assert_grep_in_section "Step 9 (wiki ingest) pins the whole-step do-not-execute directive" "$CLEANUP" \
+  '^## ステップ 9:' '^## ステップ 10:' 'CLEANUP_DELEGATED=1` を emit している場合、\*\*本ステップ全体を実行しない\*\*'
+# 4-W routing 文の指示語も同様に pin する (ガード 3 箇所と同じ理由)。
+assert_grep "4-W routing pins the do-not-execute directive" "$CLEANUP" \
+  '\*\*下記の手順 1〜4 を実行しない\*\*'
+assert_grep "4-W routing pins the not-attempted directive" "$CLEANUP" '\*\*試行せず\*\*'
+
+echo "=== 委譲配線の排他性 (Issue #2133 T-01/T-03 negative control) ==="
+# 「在ること」だけを見る assert は、marker の漏出 (in_worktree arm からの emit) と
+# ガードの混入 (state 系ステップへの誤挿入) を検出できない。前者は AC-3 を、後者は AC-1 前半
+# 「state 系項目は成功し」を丸ごと無効化するため、件数を固定して排他性そのものを pin する。
+assert "delegation marker is emitted from exactly one arm" "1" \
+  "$(grep -c 'echo "\[CONTEXT\] CLEANUP_DELEGATED=1' "$CLEANUP")"
+assert "delegation skip guard exists in exactly three steps" "3" \
+  "$(grep -c '委譲モード（#2133）' "$CLEANUP")"
 
 echo "=== ステップ 12: 委譲モードの定型報告 (Issue #2133 T-01/T-02) ==="
-# fail-loud: 委譲 4 項目は x に丸めず未完了として列挙する。
+# fail-loud: 委譲 4 項目は x に丸めず未完了として列挙する。固定対象は委譲 4 項目に限り、
+# 委譲モードでも実行される check (ステップ 6 / 8) は個別判定を維持する。
 assert_grep "Step 12 pins the four delegated checks to unchecked" "$CLEANUP" \
-  '4 つを ` `（未完了）に固定'
-assert_grep "Step 12 fixes the outstanding count to 4" "$CLEANUP" '`\{n\}` は `4` 固定'
-# T-02: 委譲先は main checkout での再実行 1 行。冪等であることを案内に含める。
+  '\*\*委譲した 4 項目に限り\*\*下記の個別判定を行わず'
+assert_grep "Step 12 keeps per-check judgement for steps that still run" "$CLEANUP" \
+  '\*\*従来どおり個別判定する\*\*'
+assert_grep "Step 12 counts outstanding as 4 plus the unchecked runtime checks" "$CLEANUP" \
+  '`4` \+ 個別判定で空欄になった check の件数'
+# fail-loud の「未完了として明示列挙する」側 — 4 項目リスト本体を個別に pin する
+# (checkbox と件数だけの pin では、列挙が消えても「4 件未完了」とだけ告げる報告が通ってしまう)。
+assert_grep "Step 12 enumerates the base update item" "$CLEANUP" '^- base ブランチの更新（fetch \+ merge --ff-only）$'
+assert_grep "Step 12 enumerates the wiki ingest item" "$CLEANUP" '^- Wiki ingest（pending raw source は wiki branch に保持されています）$'
+assert_grep "Step 12 enumerates the session worktree removal item" "$CLEANUP" '^- セッション worktree の削除$'
+assert_grep "Step 12 enumerates the branch deletion item" "$CLEANUP" '^- ローカル/リモートブランチの削除$'
+# T-02: 委譲先は 2 系統。再実行で完了する 2 項目と、遅延回収に委ねる 2 項目を区別して案内する。
 assert_grep "Step 12 delegation notice points to a main-checkout re-run" "$CLEANUP" \
-  'main checkout でセッションを開き `/rite:cleanup \{pr_number\}` を再実行してください'
+  'main checkout でセッションを開き `/rite:cleanup \{pr_number\}` を再実行すると完了します'
 assert_grep "Step 12 delegation notice states the re-run is idempotent" "$CLEANUP" \
   "実行済みの項目は冪等にスキップされます"
+assert_grep "Step 12 delegation notice states the other two go to the lazy reap" "$CLEANUP" \
+  '後 2 項目は再実行では回収されないため、次回セッション開始時の自動回収に委ねています'
+
+echo "=== ステップ 4-W: 委譲時の reap manifest 記録 (Issue #2133 T-02) ==="
+# 委譲の担体を人間宛ての散文から機械可読な manifest へ移す配線。これが無いと worktree /
+# ブランチの回収が free-claim + mtime 24h age guard 待ちになり、案内が約束する自動回収が偽になる。
+assert_grep_in_section "delegation arm records the worktree to the reap manifest" "$CLEANUP" \
+  '^  in_worktree_unrecorded\)$' '^  \*\)$' 'record --type session_worktree'
+assert_grep_in_section "delegation arm guards the record behind {pr_merged}=true" "$CLEANUP" \
+  '^  in_worktree_unrecorded\)$' '^  \*\)$' '\{pr_merged\}" = "true"'
+
+echo "=== ガード拒否条件の正確化 (Issue #2133) ==="
+# 「構造的に拒否」の一般化は誤り — helper スクリプト内部の cd は拒否されない (実測)。
+# 拒否される形を特定して書かないと、自動化可能な項目を恒久的に人手へ委ね続ける根拠になる。
+assert_grep "4-W states which command shape the guard rejects" "$CLEANUP" \
+  'Bash ツール呼び出しのコマンド文字列に直接 `cd \{main_root\}` / `git -C \{main_root\}` を書く形'
+assert_not_grep "over-general 'structurally rejected' claim removed" "$CLEANUP" \
+  'worktree 隔離ガードに構造的に拒否されるため'
 
 if ! print_summary "$(basename "$0")" "cleanup.md ステップ 4-W/5/12 の self-exclusion 配線・branch 回収・平易メッセージ contract (Issue #1670 T-06) + in_worktree_unrecorded 委譲 routing (Issue #2133)"; then
   exit 1
