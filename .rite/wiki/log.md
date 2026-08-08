@@ -23,6 +23,8 @@
 * **Update**: [列挙・全称主張を持つ記述は書き直しでは収束しない — 撤去だけが指摘面を消す](pages/anti-patterns/enumeration-claim-rewrite-never-converges.md) — raw/fixes/20260808T081026Z-pr-2150-cycle5-fix.md を統合（4 cycle 連続の加筆は方向自体が誤り / 「警告が出ます」型の案内は hook のログ退避で利用者に届かなかった）
 * **Update**: [列挙・全称主張を持つ記述は書き直しでは収束しない — 撤去だけが指摘面を消す](pages/anti-patterns/enumeration-claim-rewrite-never-converges.md) — raw/reviews/20260808T082654Z-pr-2150-cycle6.md を統合（案内先が経路ごとに違うなら案内を書かず退路そのものを示す / 同じ箇所への 2 回目の指摘で加筆をやめる）
 
+* **lint:warning** — contradictions=0, stale=20, orphans=0, missing_concept=0, unregistered_raw=303, broken_refs=0
+
 ## 2026-08-07
 
 * **Create**: [既存の永続データを新規 consumer が読むときは、集合の意味を書込側の定義から引く](pages/heuristics/persisted-collection-semantics-from-writer-not-name.md) — raw/reviews/20260806T151643Z-pr-2126.md を新規ページ化（配列名からの推測は 1 箇所の誤りでなく N 箇所へ複製された誤りを作る / 4 reviewer が独立検出）
