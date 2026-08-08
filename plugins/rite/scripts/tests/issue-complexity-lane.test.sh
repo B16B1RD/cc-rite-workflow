@@ -90,11 +90,13 @@ GH_SHIM
 run_lane_with_failing_gh() {
   local bindir="$TEST_DIR/bin-fail"
   mkdir -p "$bindir"
-  # stderr に ESC と C1 (CSI U+009B の UTF-8 表現) を混ぜる。gh の stderr も第三者由来の
-  # 外部入力なので、診断へ出す前に canonical idiom を通す必要がある。
+  # stderr に ESC と C1 (CSI U+009B の UTF-8 表現) を混ぜ、**複数行**にする。gh の stderr も
+  # 第三者由来の外部入力なので診断へ出す前に canonical idiom を通す必要があり、その idiom が
+  # `--keep-newline` を選んでいる理由は行構造の保持にある (既定モードは改行も潰すため、
+  # 複数行の stderr が 1 行へ畳まれ、直後に emit する [CONTEXT] marker が行頭を失う)。
   cat > "$bindir/gh" <<'GH_SHIM'
 #!/bin/bash
-printf 'gh: authentication required \033[31m \302\233 X\n' >&2
+printf 'gh: authentication required \033[31m\ngh: second line \302\233 X\n' >&2
 exit 1
 GH_SHIM
   chmod +x "$bindir/gh"
@@ -160,12 +162,19 @@ assert_contains "TC-2.10: 行末の付随テキストは無視される" "$LANE_
 echo "=== 記法 2: ## 複雑度 セクション — 2 記法併存の吸収 ==="
 
 # 片方の記法しか読まないと、もう片方で書かれた Issue が全て complexity_absent へ落ちる。
-run_lane_with_body '## 複雑度
+# **body は実運用の形（複雑度節の前後を別の見出しが挟む）にする** — 先行見出しが無い body だけで
+# 固めると、節境界述語から `f &&` を落とす崩れ（最初の見出しで即 exit し複雑度節へ到達しない）が
+# 素通りし、Section 見出しを持つ Issue のほぼ全域で軽量レーンが発動しなくなる欠陥を検出できない。
+run_lane_with_body '## 1. Goal
+
+なにかを実装する
+
+## 複雑度
 
 S
 
 ## 次のセクション'
-assert_contains "TC-3.1: ## 複雑度 セクションから S を読む" "$LANE_STDERR" "COMPLEXITY_LANE=light; complexity=S; source=body_section"
+assert_contains "TC-3.1: ## 複雑度 セクションから S を読む (先行見出しあり)" "$LANE_STDERR" "COMPLEXITY_LANE=light; complexity=S; source=body_section"
 
 run_lane_with_body '## 複雑度
 
@@ -305,13 +314,19 @@ assert_contains "TC-4.19: 記法 2 は見出しではなく値行の行番号を
 
 # 節に値行が 1 行も無い形では見出し自身へ退避する。退避しないと記入漏れの `## 複雑度` 節が
 # 宣言不在と区別できず、さらに節境界が無いと無関係な次節見出しを是正先として提示する。
-run_lane_with_body '## 複雑度
+# **どちらの body も見出しを 2 行目に置く** — 見出しが 1 行目だと期待値 1 が定数化した実装とも
+# 一致してしまい、退避先の算出をどう壊しても落ちない空振り assert になる (同ファイル冒頭で
+# 崩れた記法の fixture に課しているのと同じ規律)。TC-4.19c は見出しの後ろに空白のみの行を置き、
+# 期待値 2 が「最終行の NR」(= 3) とも異なる値になるようにする。
+run_lane_with_body '冒頭の散文行
+## 複雑度
 
 ## 影響範囲'
-assert_contains "TC-4.19b: 空の複雑度節は次節見出しではなく見出し自身を報告する" "$LANE_STDERR" "body の 1 行目から値を取り出せませんでした"
+assert_contains "TC-4.19b: 空の複雑度節は次節見出しではなく見出し自身を報告する" "$LANE_STDERR" "body の 2 行目から値を取り出せませんでした"
 run_lane_with_body '冒頭の散文行
-## 複雑度'
-assert_contains "TC-4.19c: 見出しが body 末尾でも沈黙せず見出しの行番号を報告する" "$LANE_STDERR" "body の 2 行目から値を取り出せませんでした"
+## 複雑度
+   '
+assert_contains "TC-4.19c: 値行が空白のみでも沈黙せず見出しの行番号を報告する" "$LANE_STDERR" "body の 2 行目から値を取り出せませんでした"
 
 # CRLF の body。awk の既定 FS は `\r` を含まないため、入力側で CR を落とさないと CR だけの行が
 # 非空行と数えられ、記法 2 が値行に到達できず XS 宣言でも軽量レーンが発動しない。
@@ -346,6 +361,9 @@ assert_contains "TC-4.12: gh の stderr を診断として surface する" "$LAN
 # (同モードは valid UTF-8 の C1 を素通しする)。
 assert_not_contains "TC-4.12b: gh stderr の ESC を素通ししない" "$LANE_STDERR" "$(printf '\033')"
 assert_not_contains "TC-4.12c: gh stderr の C1 (CSI U+009B) を素通ししない" "$LANE_STDERR" "$(printf '\302\233')"
+# 中和は通すが行構造は保つ。`--keep-newline` を落として既定モードにすると改行も `?` へ潰れ、
+# 2 行目の行頭 2 空白 (sed が行ごとに付ける) が消えて本 assert が落ちる。
+assert_contains "TC-4.12d: gh stderr の行構造を保つ" "$LANE_STDERR" "$(printf '\n  gh: second line')"
 [ "$LANE_RC" -eq 0 ] && pass "TC-4.13: issue_fetch_failed でも exit code は 0" \
   || fail "TC-4.13: issue_fetch_failed でも exit code は 0 (実際: $LANE_RC)"
 

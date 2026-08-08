@@ -71,7 +71,7 @@ cap 適用**後**に落とすフィルタとして実装すると、これらの
 | `gh_missing` | `gh` が PATH 上に無い | Complexity を読む手段が無い |
 | `repo_unresolved` | owner/repo を解決できず `-R` を付けて `gh` を呼べない | 別リポジトリの Issue を誤って読むより読まない方が安全 |
 | `issue_fetch_failed` | `gh issue view` が失敗（認証切れ / rate limit / Issue 不在） | 宣言値が不明 |
-| `complexity_absent` | どちらの記法からも**英字トークンを取り出せない**（宣言行が無い / 崩れた記法 = lowercase key・全角コロン・リスト項目化 / `{complexity}` のような未展開 placeholder と `<!-- ... -->` — **両記法とも `{` `<` を値の開始と認めないため、同じ記入漏れが記法によって別 reason へ分裂しない**） | rite 外で作られた Issue 等。宣言が無いものを小さいと決めつけない |
+| `complexity_absent` | どちらの記法からも**英字トークンを取り出せない**（宣言行が無い / 崩れた記法 = lowercase key・全角コロン・リスト項目化 / `{complexity}` のような未展開 placeholder と `<!-- ... -->` / 値行を持たない `## 複雑度` 節 — **両記法とも `{` `<` を値の開始と認めず、かつ記法 2 は節探索を次見出しで止めるため、同じ記入漏れが記法や見出し語の言語によって別 reason へ分裂しない**） | rite 外で作られた Issue 等。宣言が無いものを小さいと決めつけない |
 | `complexity_invalid` | 英字トークンは取り出せたが XS/S/M/L/XL のいずれでもない（`Medium` / `Small` / `XSmall` / `ZZ` 等） | 誤記を小さい側へ解釈しない |
 | `issue_number_missing` | 関連 Issue を特定できず helper を呼べない（consumer 側） | 対象 Issue が分からなければ宣言値も存在しない |
 | `helper_failed` | helper が marker を出さずに非ゼロ終了した（consumer 側） | 判定結果が得られていない |
@@ -80,7 +80,7 @@ helper 側 5 reason の語彙は [issue-complexity-lane.sh](../../../scripts/iss
 
 **`full` が保守的な側であるとは限らない consumer が存在する**: レビュー側は `full` = reviewer を減らさない = 安全側だが、`issue-implement` 5.1.0.1 の並列実装ゲートでは `full` = 並列 sub-agent を許可する = 攻撃的な側になる。そのため同ゲートは `COMPLEXITY_LANE=full` 単独ではなく **`complexity=` の存在（= `COMPLEXITY_LANE_FALLBACK` の不在）** を判定キーにし、fail-safe 経路を順次実装へ倒している。**新規 consumer は `full` を「重い側」と仮定せず、必ず `COMPLEXITY_LANE_FALLBACK` を見ること。**
 
-fail-safe 発火時は **全 reason で WARNING を可視化する**（silent fallback 禁止）。consumer 側 2 reason（`issue_number_missing` / `helper_failed`）も同形の `⚠️ Complexity レーン判定のフォールバック: reason=<reason>。フル装備 (M+ 相当) で実行します。` を出力する。sibling の `review-cycle-scope.sh` は cycle 1 の正常経路である `no_prev_json` だけを無警告にするが、本レーンは全 reason を loud にする。**根拠は「宣言が必ずある」ことではない** — 実測では本リポジトリの Issue 60 件中 23 件が宣言を持たず、`complexity_absent` は定常的に出うる。loud にする根拠は、full へ倒れた事実が「この PR ではレーンが働かなかった」という観測値そのものであり、AC-5 の効果計測が分母を数えるために要ることにある。定常出力の中に埋もれさせないため、helper は**宣言らしき行はあるのに値を取り出せなかった場合に限り**対象行の**行番号**を報告する追加 WARNING を出し、崩れた記法（lowercase key / 全角コロン / リスト項目化 / 未展開 placeholder）を宣言不在と切り分ける。**行の中身は載せない** — body は第三者が書ける外部入力であり、切り分けという目的は行番号だけで果たせる。値行が 1 行も無い空の `## 複雑度` 節では見出し自身の行番号へ退避する（そこが唯一の是正先のため）。
+fail-safe 発火時は **全 reason で WARNING を可視化する**（silent fallback 禁止）。consumer 側 2 reason（`issue_number_missing` / `helper_failed`）も同形の `⚠️ Complexity レーン判定のフォールバック: reason=<reason>。フル装備 (M+ 相当) で実行します。` を出力する。sibling の `review-cycle-scope.sh` は cycle 1 の正常経路である `no_prev_json` だけを無警告にするが、本レーンは全 reason を loud にする。**根拠は「宣言が必ずある」ことではない** — 実測では本リポジトリの Issue 60 件中 23 件が宣言を持たず、`complexity_absent` は定常的に出うる。loud にする根拠は、full へ倒れた事実が「この PR ではレーンが働かなかった」という観測値そのものであり、AC-5 の効果計測が分母を数えるために要ることにある。定常出力の中に埋もれさせないため、helper は**宣言らしき行はあるのに値を取り出せなかった場合に限り**対象行の**行番号**を報告する追加 WARNING を出し、値を取り出せない記述（lowercase key / 全角コロン / リスト項目化 / 未展開 placeholder / HTML コメント / 値行を持たない `## 複雑度` 節）を宣言不在と切り分ける。**行の中身も原因の分類も載せない** — 前者は body が第三者の書ける外部入力だからで、後者は退避先が増えるたびに列挙と実態がずれ、同じ列挙を持つ site との同期義務が増えるため（原因分類は本節と helper docstring の reason 表が持つ）。値行が 1 行も無い `## 複雑度` 節では見出し自身の行番号へ退避する（そこが唯一の是正先のため）。
 
 ## Complexity の抽出元を Issue body に限る理由
 

@@ -49,9 +49,11 @@
 #                            帰属させるのと同型)
 #   complexity_absent     — body に上記 2 記法のいずれも「値を取り出せる形で」現れない
 #                           (rite 外で作られた Issue、崩れた記法 = lowercase key / 全角コロン /
-#                            リスト項目化、**および `{complexity}` のような未展開 placeholder と
-#                            `<!-- ... -->` — 両記法とも `{` `<` を値の開始と認めないため
-#                            「無い」側に合流する。記法で reason が分裂しない)
+#                            リスト項目化、`{complexity}` のような未展開 placeholder と
+#                            `<!-- ... -->`、**および値行を持たない `## 複雑度` 節**。
+#                            両記法とも `{` `<` を値の開始と認めず、かつ記法 2 は節探索を
+#                            次見出しで止めるため、これらはすべて「無い」側に合流する
+#                            — 記法や見出し語の言語で reason が分裂しない)
 #   complexity_invalid    — 英字トークンは取り出せたが XS/S/M/L/XL のいずれでもない
 #                           (`Medium` / `Small` / `XSmall` / `ZZ` 等の綴り誤り・別語彙)
 #
@@ -207,23 +209,27 @@ if [ -z "$_raw" ]; then
   # 切り分け (崩れた記法 か 宣言不在 か) という本 WARNING の目的は行番号だけで果たせる。
   #
   # 記法 2 では見出しではなく**値を取り出せなかった行**を指す (見出しは解釈できているので
-  # 是正先にならない)。ただし節に値行が 1 行も無い形 — 次の見出しが続く / body 末尾 — では
-  # 見出し自身が唯一の是正先なので、そこへ退避する。退避しないと記入漏れの `## 複雑度` 節が
-  # 宣言不在と区別できなくなり、後者は無関係な次節見出しを是正先として提示する。
+  # 是正先にならない)。ただし節に値行が 1 行も無い形では見出し自身が唯一の是正先なので、
+  # そこへ退避する。退避しないと、次の見出しが続く形では無関係な次節見出しを是正先として提示し、
+  # body 末尾の形では沈黙して記入漏れの節が宣言不在と区別できなくなる。
   #
-  # **print する規則はすべて p を立てる。** awk の `exit` は END 規則を実行するため、
-  # 立て忘れると早期終了した経路でも END が二重に print し、下の `case` の数値検査が
-  # 改行込みの値を非数値として飲み込んで WARNING ごと消える。
+  # **print 点は END の 1 箇所だけにする。** awk の `exit` は END 規則を実行するため、
+  # 本体規則でも print すると早期終了した経路で二重出力になり、下の `case` の数値検査が
+  # 改行込みの値を非数値として飲み込んで WARNING ごと消える。本体規則は行番号を `n` へ
+  # 記録するだけにすれば、その失敗モードが構造的に起こりえない。
   _decl_line=$(printf '%s\n' "$_body" | awk '
-    /^[[:space:]]*([-*+][[:space:]]+)?\**[[:space:]]*([Cc][Oo][Mm][Pp][Ll][Ee][Xx][Ii][Tt][Yy]|複雑度)[[:space:]]*\**[[:space:]]*[:：]/ { print NR; p = 1; exit }
+    /^[[:space:]]*([-*+][[:space:]]+)?\**[[:space:]]*([Cc][Oo][Mm][Pp][Ll][Ee][Xx][Ii][Tt][Yy]|複雑度)[[:space:]]*\**[[:space:]]*[:：]/ { n = NR; exit }
     /^##[[:space:]]+複雑度[[:space:]]*$/ { f = 1; h = NR; next }
-    f && /^#/ { print h; p = 1; exit }
-    f && NF   { print NR; p = 1; exit }
-    END { if (!p && h) print h }
+    f && /^#/ { n = h; exit }
+    f && NF   { n = NR; exit }
+    END { if (!n) n = h; if (n) print n }
   ')
+  # 原因の分類は列挙しない。退避先が増えるたびに列挙と実態がずれ (記入漏れの空節は
+  # 「崩れた記法」のどれにも当たらない)、同じ列挙を持つ散文 site との同期義務も増える。
+  # reason ごとの原因分類は本 script の docstring と complexity-lane.md の reason 表が持つ。
   case "$_decl_line" in
     ''|*[!0-9]*) : ;;
-    *) echo "WARNING: issue-complexity-lane: Complexity 宣言らしき記述はありますが body の ${_decl_line} 行目から値を取り出せませんでした (lowercase key / 全角コロン / リスト項目化 / 未展開 placeholder 等の崩れが疑われます)。診断に本文は載せません — 第三者が書ける外部入力のため" >&2 ;;
+    *) echo "WARNING: issue-complexity-lane: Complexity 宣言らしき記述はありますが body の ${_decl_line} 行目から値を取り出せませんでした。診断に本文は載せません — 第三者が書ける外部入力のため" >&2 ;;
   esac
   emit_full_fallback complexity_absent
 fi
