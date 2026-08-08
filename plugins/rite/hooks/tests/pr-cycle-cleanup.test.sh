@@ -1201,9 +1201,9 @@ echo "T-38..42: orphan review JSON / pin cleanup"
 TEST_REPO=$(make_temp_repo)
 mkdir -p "$TEST_REPO/.rite/review-results" "$TEST_REPO/.rite/sessions" "$TEST_REPO/.rite/state"
 printf '{"active":true,"pr_number":700}\n' > "$TEST_REPO/.rite/sessions/live.flow-state"
-printf '{"non_blocking_count":0}\n' > "$TEST_REPO/.rite/review-results/701-clean.json"
-printf '{"non_blocking_count":2}\n' > "$TEST_REPO/.rite/review-results/702-notes.json"
-printf '{"non_blocking_count":0}\n' > "$TEST_REPO/.rite/review-results/700-active.json"
+printf '{"non_blocking_findings":[]}\n' > "$TEST_REPO/.rite/review-results/701-clean.json"
+printf '{"non_blocking_findings":[{"id":"F-01"},{"id":"F-02"}]}\n' > "$TEST_REPO/.rite/review-results/702-notes.json"
+printf '{"non_blocking_findings":[]}\n' > "$TEST_REPO/.rite/review-results/700-active.json"
 printf 'broken\n' > "$TEST_REPO/.rite/review-results/703-broken.json"
 printf '701-clean.json\n' > "$TEST_REPO/.rite/state/review-run-since-701.txt"
 printf '700-active.json\n' > "$TEST_REPO/.rite/state/review-run-since-700.txt"
@@ -1219,7 +1219,7 @@ echo "T-43: unreadable flow-state skips orphan review cleanup"
 TEST_REPO=$(make_temp_repo)
 mkdir -p "$TEST_REPO/.rite/review-results" "$TEST_REPO/.rite/sessions"
 printf 'broken\n' > "$TEST_REPO/.rite/sessions/broken.flow-state"
-printf '{"non_blocking_count":0}\n' > "$TEST_REPO/.rite/review-results/704-clean.json"
+printf '{"non_blocking_findings":[]}\n' > "$TEST_REPO/.rite/review-results/704-clean.json"
 t43_output=$(cd "$TEST_REPO" && bash "$CLEANUP" 2>&1)
 if [ -e "$TEST_REPO/.rite/review-results/704-clean.json" ] && echo "$t43_output" | grep -q '回収をスキップ'; then pass "T-43 unreadable flow-state fails safe"; else fail "T-43 flow-state failure did not protect review JSON"; fi
 cleanup_temp_repo "$TEST_REPO"

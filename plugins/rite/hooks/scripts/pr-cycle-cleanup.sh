@@ -1467,7 +1467,7 @@ if [ "$review_gc_safe" -eq 1 ] && [ -d "$review_dir" ]; then
     case "$review_pr" in ''|*[!0-9]*) continue ;; esac
     case "$active_prs" in *$'\n'"$review_pr"$'\n'*) continue ;; esac
 
-    if nb_count=$(jq -er '(.non_blocking_count // .metrics.non_blocking_count // 0) as $n | if ($n|type)=="number" and ($n|floor)==$n and $n>=0 then $n else error("invalid non_blocking_count") end' "$review_file" 2>/dev/null); then
+    if nb_count=$(jq -er '(.non_blocking_findings // []) as $items | if ($items|type)=="array" then ($items|length) else error("invalid non_blocking_findings") end' "$review_file" 2>/dev/null); then
       :
     else
       echo "WARNING: review JSON '$(printf '%s' "$review_file" | neutralize_ctrl)' を解析できないため保持します" >&2
