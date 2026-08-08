@@ -605,7 +605,7 @@ Settings for per-session Git worktree isolation, letting multiple Claude Code se
 
 1. `/rite:open N` creates a session worktree at `.rite/worktrees/issue-{N}` and enters it via Claude Code's `EnterWorktree(path)` tool, so each session keeps its own working tree and current branch.
 2. rite state / locks / wiki worktree still resolve to the shared main checkout root (`state-path-resolve.sh` is worktree-aware), so cross-session exclusion stays intact.
-3. `/rite:cleanup` exits the worktree (`ExitWorktree`), removes it, and releases the Issue claim. Abnormally-orphaned worktrees are reaped lazily by `pr-cycle-cleanup.sh`.
+3. `/rite:cleanup` exits the worktree (`ExitWorktree`), removes it, and releases the Issue claim — when the worktree was `EnterWorktree`-managed. If the session entered the worktree **by path** instead, `ExitWorktree` is a no-op, so cleanup skips the four main-checkout items (base update, worktree removal, branch deletion, wiki ingest) and delegates them to a re-run of `/rite:cleanup {pr}` from the main checkout (Issue #2133). The re-run itself does not delegate — it runs Steps 4 / 5 / 9 normally, finishing base update, wiki ingest, and remote branch deletion directly, and recording a `branch` entry (only when the PR is merged) that arms the lazy reap to reclaim the worktree and its local branch at the next session start. Abnormally-orphaned worktrees are reaped lazily by `pr-cycle-cleanup.sh`.
 
 **Example:**
 
