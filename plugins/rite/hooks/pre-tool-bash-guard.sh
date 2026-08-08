@@ -754,10 +754,27 @@ if [ -z "$BLOCKED_PATTERN" ]; then
   exit 0
 fi
 
-# Log block event (stderr, for effect measurement)
+# Log block event (stderr + deny-only persistent audit trail)
 CMD_SUMMARY="${COMMAND:0:80}"
 CMD_SUMMARY="${CMD_SUMMARY//\"/\\\"}"
-echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] bash-guard: BLOCKED pattern=$BLOCKED_PATTERN cmd=\"$CMD_SUMMARY\"" >&2
+# Keep one deny event on one physical line. Use built-in substitutions here so
+# the deny path remains independent from the JSON fallback helper.
+CMD_SUMMARY="${CMD_SUMMARY//$'\n'/?}"
+CMD_SUMMARY="${CMD_SUMMARY//$'\r'/?}"
+BLOCK_EVENT="[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] bash-guard: BLOCKED pattern=$BLOCKED_PATTERN cmd=\"$CMD_SUMMARY\""
+echo "$BLOCK_EVENT" >&2
+
+# Auditing must never interfere with the guard's primary deny contract. Resolve
+# the shared state root when no explicit test/runtime override is present, then
+# make directory creation and append one best-effort operation.
+_audit_root="${RITE_STATE_ROOT:-}"
+if [ -z "$_audit_root" ]; then
+  _audit_root=$(bash "$SCRIPT_DIR/state-path-resolve.sh" 2>/dev/null) || _audit_root=""
+fi
+_audit_log="${_audit_root:+$_audit_root/}.rite/logs/bash-guard.log"
+if ! { mkdir -p "$(dirname "$_audit_log")" && printf '%s\n' "$BLOCK_EVENT" >> "$_audit_log"; } 2>/dev/null; then
+  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] bash-guard: WARNING: unable to append deny audit log: $_audit_log" >&2
+fi
 
 # Deny with reason and alternative. jq is required to emit the final permission
 # payload; an intermittent jq failure here would silently downgrade the deny to
