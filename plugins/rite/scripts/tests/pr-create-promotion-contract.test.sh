@@ -31,11 +31,12 @@ assert_grep 'producer passes body by file' "$create" '--title "$pr_title" --body
 assert_grep 'producer guards empty title' "$create" 'if [ -z "$pr_title" ]; then'
 assert_grep 'producer guards empty body' "$create" 'if [ ! -s "$pr_workdir/pr_body.md" ]; then'
 
-assert_grep 'lint signal exists' "$heaviness" 'inline-gh-create-title'
+assert_grep 'lint signal emitter exists' "$heaviness" 'printf "[bash-heaviness] %s:%d: inline-gh-create-title — literal --title in gh {pr,issue} create; delegate the title to a file (Write tool) or a variable to avoid malformed tool-call\n", fname, gh_title_line'
 assert_grep 'lint detects pr and issue create' "$heaviness" '/gh[[:space:]]+(pr|issue)[[:space:]]+create/'
 assert_grep 'lint tracks continued commands' "$heaviness" 'gh_create_active == 1 && line !~ /\\[[:space:]]*$/'
 
-assert_grep 'orphan reaper targets pr workdirs' "$cleanup" 'rite-pr-create-*'
+assert_grep 'orphan reaper targets pr workdirs' "$cleanup" 'reap_orphan_dirs "orphan workdir" "$workdir_tmp_base" '\''rite-pr-create-*'\'' \'
+assert_grep 'orphan reaper invokes workdir callback' "$cleanup" '_reap_workdir "$workdir_find_out" "$workdir_find_err"'
 assert_grep 'orphan reaper has 24-hour guard' "$cleanup" 'readonly WORKDIR_REAP_AGE_MINUTES=1440'
 
 if [ "$failures" -ne 0 ]; then
