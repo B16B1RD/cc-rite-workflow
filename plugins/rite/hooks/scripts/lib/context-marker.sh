@@ -9,7 +9,7 @@
 # whoever reads its output, but until now only the *format* was shared; the
 # rules that make a lookup correct lived in SKILL.md prose. Prose cannot be
 # executed, so every rule was re-derived (or missed) at each new call site, and
-# every re-derivation was an independent chance to get it wrong. The four rules
+# every re-derivation was an independent chance to get it wrong. The five rules
 # below are the ones that were actually being re-argued in review:
 #
 #   1. Line anchor. `sed -n 's/.*KEY=\(...\).*/\1/p'` matches `KEY=` anywhere on
@@ -26,13 +26,31 @@
 #      "newest" is evaluated *after* the branch filter, not before, or rule 3
 #      collapses into rule 4 whenever another branch emitted more recently.
 #
-# Exact-token matching (both key and field name) is not a fifth rule so much as
-# the reason the first four are implementable at all: `RESET` is a substring of
-# `FIRE_RESET`, `ITERATE_CB` of `ITERATE_CB_MODE`, and `failed` of both
-# `failed-refire` and `failed-stale`. Every one of those pairs is live in
-# skills/iterate/SKILL.md. Matching is therefore by whole token, never by
-# substring — `case "$line" in "[CONTEXT] $key="*)` gets the anchor and the
-# token boundary in one comparison.
+# Exact-token matching (key and field name) is not a fifth rule so much as the
+# reason the first four are implementable at all: `RESET` is a substring of
+# `FIRE_RESET`, `ITERATE_CB` of `ITERATE_CB_MODE`. Matching is therefore by
+# whole token, never by substring — `case "$line" in "[CONTEXT] $key="*)` gets
+# the anchor and the token boundary in one comparison.
+#
+# 5. Value-side exact match (consumer contract). `marker_get` returns a value;
+#    it does not compare values — comparison is the consumer's job (bash
+#    `[ "$v" = "..." ]`, or an LLM reading a marker out of conversation
+#    context with no bash in between). That comparison MUST be exact equality
+#    of the whole value, never a substring / prefix check on `KEY=VALUE`.
+#    Two live collision pairs in skills/iterate/SKILL.md make partial match
+#    wrong in opposite ways:
+#      - `RESET`: `failed-refire` vs `failed-stale` — both share the prefix
+#        `failed`, but only the former means "breaker refires immediately".
+#      - `RUN_SINCE`: `write-failed` vs `write-failed-pin-retained` — the
+#        former degrades safe (drop the verdict), the latter degrades unsafe
+#        (may fire on a mixed-run series). A prefix match of `write-failed`
+#        against the retained form flips the degradation direction.
+#    There is no `--value-equals` flag on `marker_get`: no bash call site
+#    currently compares returned values through this lib, and inventing an
+#    unused option would be speculative structure. The owner of the rule is
+#    therefore this header + the consumer-side fixtures in
+#    `hooks/tests/context-marker.test.sh` (not SKILL.md prose). Skill prose
+#    that routes on marker values (e.g. iterate step 6.2) points here.
 #
 # Why `case` globs and not sed/grep: the parse must behave identically on the
 # GNU and BSD toolchains the CI matrix runs, and every regex dialect difference
@@ -85,6 +103,9 @@
 #       wins.
 #     - lines emitted by a plain `echo "[CONTEXT] ..."` parse identically —
 #       there is one format, and this file did not invent it.
+#     - does NOT compare values. Consumers that branch on a returned value
+#       (or on a marker observed in conversation context) must use exact
+#       equality — rule 5 above. Partial / prefix match is a contract break.
 
 # Strip control characters from a value before it is echoed back in a
 # diagnostic. **Defined ahead of every check that quotes its input** — the

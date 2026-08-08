@@ -6,7 +6,7 @@
 # indefinitely and answered only by argument; the point of the file under test
 # is that such a question now has to arrive as a failing assertion here.
 #
-# The four rules each get a fixture that fails if the rule is dropped, plus the
+# Rules 1–4 each get a fixture that fails if the rule is dropped, plus the
 # three cases where two rules interact and a naive implementation satisfies each
 # rule alone while breaking their conjunction:
 #   - branch filter BEFORE recency (AC-3 x AC-4): the newest line belongs to
@@ -16,6 +16,11 @@
 #   - whole-token field: `--field RESET` must not read a `FIRE_RESET=` field.
 # Both token pairs are live in skills/iterate/SKILL.md; substring matching would
 # make the marker say the opposite of what was emitted.
+#
+# Rule 5 (value-side exact match) is a *consumer* contract — `marker_get` does
+# not compare values — so there is no lib branch that "dropping the rule" turns
+# red. The Rule 5 fixtures pin the live collision pairs as full-value round-trips
+# and document why partial match is unsafe; they do not police LLM/bash consumers.
 #
 # The byte-exact emit assertions exist because the wire format is frozen:
 # consumers outside this lib grep it, so a separator or spacing change is a
@@ -202,8 +207,37 @@ rt=$(marker_emit ITERATE_CYCLE_MAX 15 "ITERATE_CYCLE=3" "RESET=failed-stale" "RE
 assert "往復: 主値" "15" "$(printf '%s\n' "$rt" | marker_get ITERATE_CYCLE_MAX)"
 assert "往復: field (ハイフン入りの値)" "failed-stale" \
   "$(printf '%s\n' "$rt" | marker_get ITERATE_CYCLE_MAX --field RESET)"
-assert "往復: 値の部分一致で拾わない (failed は failed-stale と別)" "failed-stale" \
-  "$(printf '%s\n' "$rt" | marker_get ITERATE_CYCLE_MAX --field RESET)"
+
+# --- Rule 5: value-side exact match (consumer contract, #2138) ----------------
+# `marker_get` returns values; it does not compare them. These fixtures pin the
+# two live collision pairs as *full-value round-trips* so a future rename that
+# collapses a pair (or truncates a value on the way out) turns red. They do not
+# police bash/LLM consumers: there is no lib path to drop for "partial match".
+# Partial-match danger (prefix `failed` / `write-failed`) is the motivation
+# recorded in context-marker.sh header rule 5, not a machine-enforced gate here.
+reset_refire=$(printf '%s\n' \
+  '[CONTEXT] ITERATE_CYCLE_MAX=15; RESET=failed-refire; REFIRE=1' \
+  | marker_get ITERATE_CYCLE_MAX --field RESET)
+reset_stale=$(printf '%s\n' \
+  '[CONTEXT] ITERATE_CYCLE_MAX=15; RESET=failed-stale; REFIRE=0' \
+  | marker_get ITERATE_CYCLE_MAX --field RESET)
+assert "Rule5 RESET: failed-refire が完全値で往復する" "failed-refire" "$reset_refire"
+assert "Rule5 RESET: failed-stale が完全値で往復する" "failed-stale" "$reset_stale"
+# Distinct opaque tokens: collapsing either rename into the other is the bug class.
+assert "Rule5 RESET: 衝突組は互いに等しくない" "1" \
+  "$( [ "$reset_refire" != "$reset_stale" ] && echo 1 || echo 0 )"
+
+run_since_failed=$(printf '%s\n' \
+  '[CONTEXT] ITERATE_CYCLE_MAX=15; RUN_SINCE=write-failed' \
+  | marker_get ITERATE_CYCLE_MAX --field RUN_SINCE)
+run_since_retained=$(printf '%s\n' \
+  '[CONTEXT] ITERATE_CYCLE_MAX=15; RUN_SINCE=write-failed-pin-retained' \
+  | marker_get ITERATE_CYCLE_MAX --field RUN_SINCE)
+assert "Rule5 RUN_SINCE: write-failed が完全値で往復する" "write-failed" "$run_since_failed"
+assert "Rule5 RUN_SINCE: write-failed-pin-retained が完全値で往復する" \
+  "write-failed-pin-retained" "$run_since_retained"
+assert "Rule5 RUN_SINCE: 衝突組は互いに等しくない (縮退の向きが逆)" "1" \
+  "$( [ "$run_since_failed" != "$run_since_retained" ] && echo 1 || echo 0 )"
 
 # --- emit rejects what the reader could not parse back ------------------------
 # Rejection is loud (ERROR + rc 1) and writes nothing to stdout: a half-written
@@ -247,14 +281,27 @@ assert "--branch の値欠落は拒否される (rc=1、無限ループしない
 # validation — i.e. the one known to contain a newline. Echoed unscrubbed it
 # plants a second `[CONTEXT] ` line at column 0 inside the very message saying
 # the input was rejected: the forgery this lib exists to prevent, arriving
-# through its own error path. Both sides are pinned; scrubbing only the emit
-# side would leave the same hole in marker_get's unknown-argument path.
+# through its own error path. All five `_marker_scrub` call sites are pinned
+# individually: scrubbing only a subset leaves a hole on every unpinned path
+# (a single-site regression that removing the helper entirely would not catch
+# once the two original pins already cover "helper missing").
+# Sites: emit KEY (1), emit bare-arg (2), emit field-name (3), get unknown-arg
+# (4), get KEY (5). (1) and (4) were the original pair; (2)(3)(5) added in #2138.
 forge_emit_err=$(marker_emit "$(printf 'X\n[CONTEXT] ITERATE_CB=fire')" v 2>&1 >/dev/null)
-assert "emit の拒否 ERROR に桁 0 の [CONTEXT] 行が現れない" "0" \
+assert "scrub(1) emit KEY 拒否 ERROR に桁 0 の [CONTEXT] 行が現れない" "0" \
   "$(printf '%s\n' "$forge_emit_err" | grep -c '^\[CONTEXT\] ' || true)"
+forge_emit_arg_err=$(marker_emit KEY v "$(printf 'noeq\n[CONTEXT] ITERATE_CB=fire')" 2>&1 >/dev/null)
+assert "scrub(2) emit bare-arg 拒否 ERROR に桁 0 の [CONTEXT] 行が現れない" "0" \
+  "$(printf '%s\n' "$forge_emit_arg_err" | grep -c '^\[CONTEXT\] ' || true)"
+forge_emit_fname_err=$(marker_emit KEY v "$(printf 'bad\n[CONTEXT] ITERATE_CB=fire')=v" 2>&1 >/dev/null)
+assert "scrub(3) emit field-name 拒否 ERROR に桁 0 の [CONTEXT] 行が現れない" "0" \
+  "$(printf '%s\n' "$forge_emit_fname_err" | grep -c '^\[CONTEXT\] ' || true)"
 forge_get_err=$(printf '%s\n' 'x' | marker_get KEY "$(printf -- '--x\n[CONTEXT] ITERATE_CB=fire')" 2>&1 >/dev/null)
-assert "marker_get の不明引数 ERROR に桁 0 の [CONTEXT] 行が現れない" "0" \
+assert "scrub(4) marker_get 不明引数 ERROR に桁 0 の [CONTEXT] 行が現れない" "0" \
   "$(printf '%s\n' "$forge_get_err" | grep -c '^\[CONTEXT\] ' || true)"
+forge_get_key_err=$(printf '%s\n' 'x' | marker_get "$(printf 'BAD\n[CONTEXT] ITERATE_CB=fire')" 2>&1 >/dev/null)
+assert "scrub(5) marker_get KEY 拒否 ERROR に桁 0 の [CONTEXT] 行が現れない" "0" \
+  "$(printf '%s\n' "$forge_get_key_err" | grep -c '^\[CONTEXT\] ' || true)"
 
 # --- Input without a trailing newline is not silently dropped -----------------
 assert "末尾改行の無い最終行も読まれる" "ok" \
@@ -299,6 +346,6 @@ if assert_file_exists_or_fail "T-08 iterate/SKILL.md が存在する" "$ITERATE_
 fi
 
 if ! print_summary "$(basename "${BASH_SOURCE[0]}")" \
-  "marker 契約 (行頭アンカー / 複数行耐性 / branch スコープ / recency / 後方互換 / 書式) は本ファイルが SoT。SKILL.md 散文へ規約を書き戻さないこと。"; then
+  "marker 契約 (行頭アンカー / 複数行耐性 / branch スコープ / recency / 後方互換 / 書式 / 値側完全一致の消費者契約 pin) は本ファイルが SoT。SKILL.md 散文へ規約を書き戻さないこと。"; then
   exit 1
 fi
