@@ -1923,6 +1923,30 @@ fi
 rm -rf "$_mrg_tmp"
 echo ""
 
+echo "TC-137: path-prefixed /usr/bin/gh pr merge is detected (no absolute-path bypass)"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "/usr/bin/gh pr merge 99 --squash") || rc=$?
+decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-json-absent"* ]]; then
+  pass "TC-137 /usr/bin/gh pr merge denies (path-prefixed binary is not a bypass)"
+else
+  fail "TC-137 expected deny for /usr/bin/gh pr merge, got decision=$decision reason=$reason"
+fi
+# hyphen-prefixed path also (Homebrew-style multi-component)
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "/opt/homebrew/bin/gh pr merge 99") || rc=$?
+decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [ "$decision" = "deny" ]; then
+  pass "TC-137 /opt/homebrew/bin/gh pr merge denies"
+else
+  fail "TC-137 expected deny for homebrew gh path, got decision=$decision"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------

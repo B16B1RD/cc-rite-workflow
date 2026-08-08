@@ -586,7 +586,10 @@ fi
 if [ -z "$BLOCKED_PATTERN" ]; then
   _mrg_is_merge=0
   # CLI: `gh pr merge` with flexible whitespace (flags/args may follow).
-  if [[ "$CMD_CHECK" =~ (^|[^[:alnum:]_/-])gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$) ]]; then
+  # Boundary is (^|non-alnum-non-underscore) so path-prefixed binaries
+  # (`/usr/bin/gh pr merge`) match — excluding `/` from the boundary class
+  # would let absolute-path invocations silent-bypass the gate (measured).
+  if [[ "$CMD_CHECK" =~ (^|[^[:alnum:]_])gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$) ]]; then
     _mrg_is_merge=1
   # REST merge endpoint (gh api / curl-style path fragment).
   elif [[ "$CMD_CHECK" =~ /pulls/[0-9]+/merge ]]; then
