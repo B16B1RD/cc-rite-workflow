@@ -9,9 +9,9 @@ mechanization target.
 |---|---|---|
 | `aggregate-recommendation-label-evasion` | shelve — already mechanized | recommendation classification and disposition gate |
 | `fix-induced-drift-in-cumulative-defense` | shelve — already mechanized | `review-trend-divergence.sh` and the `iterate` circuit breaker |
-| `reviewer-likelihood-evidence-omission-induces-mechanical-demotion` | shelve — already mechanized | `review-measured-gate.sh` and positive save verification |
+| `reviewer-likelihood-evidence-omission-induces-mechanical-demotion` | follow-up — producer enforcement incomplete | existing measured gate records demotion but does not prevent omitted evidence; tracked by Issue #2185 |
 | `convention-escalation-has-no-terminus` | shelve — already mechanized | structured review JSON, helper gates, and fail-loud enum validation |
-| `differential-scope-review-blind-outside-diff` | shelve — already mechanized | cycle 1/fail-safe full review and a fresh full run after circuit-breaker reset |
+| `differential-scope-review-blind-outside-diff` | follow-up — post-breaker full pass not enforced | a manual fresh run is full, but the breaker does not require it; tracked by Issue #2184 |
 | `reviewer-scope-split-escalates-to-user` | mechanized here | Scope Split Gate below and `pr-review/SKILL.md` |
 | `scope-creep-rejection-empirical-gate` | mechanized here | Rejection Evidence Gate below and `fix/SKILL.md` |
 | `bugfix-new-error-path-needs-regression-test` | mechanized here | New Error-Path Regression Gate in reviewer prompts |

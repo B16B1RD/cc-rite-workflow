@@ -1937,10 +1937,8 @@ Claude は ステップ 1 末尾で skip_file を、`{target_author}` が必要�
 
 **accept 選択時の処理 (4 つを同期実行)**:
 
-1. **accept reason 入力 (任意、AskUserQuestion)**: Other 経由で自由記入を許容する option-based 構造で以下 2 択を提示する:
-   - **「理由を入力 (Other で自由記入)」**: ユーザーが Other 選択時に free-text を入力 → `accept_reason` として retain
-   - **「reason なしで accept」**: `accept_reason = ""` (空文字列、デフォルト)
-   入力値は ステップ 3.2 commit trailer の `reason` 欄に展開される (`accept_reason` が空なら `user decision: accept (no reason given)`、非空なら `{accept_reason}; user decision: accept`)
+1. **accept reason 分類 (必須、AskUserQuestion)**: accept の根拠を `scope-creep` / `out-of-scope` / `minor` / `user-override` の構造化 enum から必ず選択し、追加説明だけを `accept_reason_detail` の free-text として任意入力する。空値・enum 外・同義の自由記述だけで次へ進んではならない。trailer の `reason` 欄は `{accept_reason_class}: {accept_reason_detail}`（detail 空なら class のみ）とする。
+1.5. **Rejection Evidence Gate (state mutation 前)**: 4 分類すべてについて、別 reviewer の cross-validation と reject 対象 scenario の empirical counterfactual/revert test を [promotion-audit-2091.md](../pr-review/references/promotion-audit-2091.md#rejection-evidence-gate) に従って実行し、両方の artifact を Decision Log に記録する。どちらかが欠ける場合はステップ 2 の `status = acknowledged` override・reply・fingerprint block・commit trailer の**いずれにも到達せず**、finding を修正対象へ戻すか AskUserQuestion で accept を取り消す。`user-override` も evidence gate の例外ではない。
 2. **finding state の override**:
    - `status = "acknowledged"` を設定
    - `scope` を `nit-noted` に override (元 scope は `original_scope` として retain — reply 文言で参照)
@@ -2072,8 +2070,6 @@ fi
 **Revocability (AC-5)**: accept は **revocable**。state file (`.rite/state/accepted-fingerprints-{pr_number}.txt`) を手動削除すれば、次 review cycle で当該 finding が再出現した際に suppression が解除され、通常の ステップ 2.1 選択 UI に戻る。手動編集で特定行 (fingerprint) のみ削除しても部分的に revoke 可能。
 
 **fix 対象除外との関係**: accept で `status == "acknowledged"` となった finding は **ステップ 3 (commit) の対象から完全除外** される。これにより accept された finding は fix commit 対象にならない (本 PR で先延ばしの記録だけが残る)。
-
-**Rejection Evidence Gate**: accept 理由が `scope-creep` / `out-of-scope` / `minor` のいずれかなら、fingerprint 永続化より前に [promotion-audit-2091.md](../pr-review/references/promotion-audit-2091.md#rejection-evidence-gate) を適用する。別 reviewer の cross-validation と、reject 対象 scenario の empirical counterfactual/revert test の両方を Decision Log に記録できない限り `acknowledged` へ遷移してはならず、`ACCEPT_FINGERPRINT_PERSISTED` も commit trailer も生成しない。不足時は finding を修正対象へ戻すか AskUserQuestion でユーザー判断へ上げる。
 
 **ステップ 3.2 commit trailer**: 1 commit に複数の accept finding が含まれる場合、commit trailer に `Acknowledged-finding: F-NN (file:line) — reason` 行を **反復生成** する (詳細は ステップ 3.2 セクション参照)。
 
