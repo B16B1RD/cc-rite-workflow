@@ -140,7 +140,7 @@ rm -f "${wm_sync_err:-}"
 
 #### 3.5.2 Update Content
 
-> **委譲状況（完了）**: §3.5.1（`### 完了情報` の `append-eof` 追記）に続き、本節の **進捗チェックリスト merge**（`### 進捗` への dedup 追記）も `issue-comment-wm-sync.sh` の `merge-checklist` transform へ委譲済み。cleanup ステップ 11 が §3.5 全体を実行する経路で wired され、§3.5.1（完了情報）とは独立した fetch→transform→PATCH として走る（touch するセクションが異なるため順序非依存）。
+> **委譲状況（完了）**: §3.5.1（`### 完了情報` の `append-eof` 追記）に続き、本節の **進捗チェックリスト merge**（`### 進捗サマリー` への dedup 追記）も `issue-comment-wm-sync.sh` の `merge-checklist` transform へ委譲済み。cleanup ステップ 11 が §3.5 全体を実行する経路で wired され、§3.5.1（完了情報）とは独立した fetch→transform→PATCH として走る（touch するセクションが異なるため順序非依存）。
 
 Automatically append the following to the work memory:
 
@@ -148,16 +148,21 @@ Automatically append the following to the work memory:
 
 The progress section update in Phase 3.5.2 follows this logic（`merge-checklist` transform 内 Python が担う）:
 
-1. Retrieve the existing progress section
-2. Preserve all existing checklist items
-3. Append new items (`- [x] レビュー完了`, `- [x] マージ完了`, `- [x] クリーンアップ完了`) at the end (do not duplicate if already present anywhere in the body — full-line exact match, 冪等)
+1. Retrieve the existing progress section (`### 進捗サマリー` — 現行 WM テンプレの見出し。SoT: `work-memory-format.md` / init テンプレ)
+2. Preserve all existing content (table rows / checklist items)
+3. Append new items (`- [x] レビュー完了`, `- [x] マージ完了`, `- [x] クリーンアップ完了`) at the end of the section (do not duplicate if already present anywhere in the body — full-line exact match, 冪等)
+4. When the target section is absent **and** new items remain, helper returns `status=skipped; reason=section_absent` (items are **not** dropped silently, and the caller does **not** report success — Issue #2139)
 
 **Example:**
 
 ```markdown
-### 進捗
-- [x] 実装完了
-- [x] PR マージ済み
+### 進捗サマリー
+
+| 項目 | 状態 | 備考 |
+|------|------|------|
+| 実装 | ✅ 完了 | - |
+| テスト | ✅ 完了 | - |
+| ドキュメント | ✅ 完了 | - |
 - [x] レビュー完了           ← Phase 3.5.2 で追加
 - [x] マージ完了             ← Phase 3.5.2 で追加
 - [x] クリーンアップ完了     ← Phase 3.5.2 で追加
@@ -165,7 +170,7 @@ The progress section update in Phase 3.5.2 follows this logic（`merge-checklist
 
 **Bash implementation (helper 委譲):**
 
-進捗チェックリストの完了項目を `merge-checklist` transform で委譲追記する。全文・完全行 dedup（既出項目スキップ＝冪等）・`### 進捗` セクション末尾への挿入・backup・空body/ヘッダー/safety check・PATCH はすべて helper 内部で完結する（§3.5.1 と同じ canonical caller パターン）。
+進捗チェックリストの完了項目を `merge-checklist` transform で委譲追記する。全文・完全行 dedup（既出項目スキップ＝冪等）・`### 進捗サマリー` セクション末尾への挿入・backup・空body/ヘッダー/safety check・PATCH はすべて helper 内部で完結する（§3.5.1 と同じ canonical caller パターン）。`--section` は必須（欠けると Python が usage error → `status=error; reason=transform_failed`）。
 
 ```bash
 # 進捗セクションの完了項目を content-file に生成し merge-checklist transform で委譲追記する。
@@ -182,31 +187,36 @@ printf '%s\n' \
 
 wm_progress_status=$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
   --issue {issue_number} \
-  --transform merge-checklist --section 進捗 --content-file "$progress_tmp" 2>"${wm_sync_err:-/dev/null}") || true
+  --transform merge-checklist --section 進捗サマリー --content-file "$progress_tmp" 2>"${wm_sync_err:-/dev/null}") || true
 rm -f "$progress_tmp"
 
 # 非ブロッキング: cleanup は work memory 更新失敗で停止してはならない（§3.5 は automatic final update）。
-# no_comment（作業メモリ不在 = legitimate no-op）以外の skipped/error は WARNING 表示にとどめる。
+# no_comment / section_absent は legitimate skip（success と区別して表示）。その他の skipped/error は WARNING。
 # 失敗時は helper stderr の root-cause（先頭 5 行）も surface し、backup path / API エラー詳細を operator に残す。
 case "$wm_progress_status" in
-  status=success)      echo "作業メモリの進捗セクションを更新しました" ;;
-  *reason=no_comment*) echo "作業メモリ comment が無いため進捗更新をスキップしました" ;;
-  *)                   echo "警告: 作業メモリ進捗更新が完了しませんでした (${wm_progress_status:-no-status})。cleanup は続行します。" >&2
-                       [ -n "$wm_sync_err" ] && [ -s "$wm_sync_err" ] && { echo "  helper stderr (root-cause、先頭 5 行):" >&2; head -5 "$wm_sync_err" | sed 's/^/    /' >&2; } ;;
+  status=success)              echo "作業メモリの進捗セクションを更新しました" ;;
+  *reason=no_comment*)         echo "作業メモリ comment が無いため進捗更新をスキップしました" ;;
+  *reason=section_absent*)     echo "作業メモリに対象セクション（進捗サマリー）が無いため進捗チェックリスト統合をスキップしました" ;;
+  *)                           echo "警告: 作業メモリ進捗更新が完了しませんでした (${wm_progress_status:-no-status})。cleanup は続行します。" >&2
+                               [ -n "$wm_sync_err" ] && [ -s "$wm_sync_err" ] && { echo "  helper stderr (root-cause、先頭 5 行):" >&2; head -5 "$wm_sync_err" | sed 's/^/    /' >&2; } ;;
 esac
 rm -f "${wm_sync_err:-}"
 ```
 
-**Note for Claude**: comment 取得・body 変換（全文 dedup + `### 進捗` セクション末尾挿入）・safety check・PATCH・backup はすべて helper 内部で完結するため、本ブロックを単一 Bash 呼び出しに収める必要はない（旧 inline 実装のクロスプロセス変数 `$current_body` 参照制約は解消済み）。`{plugin_root}` はリテラル値で埋め込み、`{issue_number}` を cleanup.md コンテキストの実値で置換すること。`### 進捗` セクション不在時は項目を drop し body を変更しない（既存 §3.5 の no-op 契約。`merge-checklist` transform がこれを保証）。参照: §3.5.1 の canonical caller パターン。
+**Note for Claude**: comment 取得・body 変換（全文 dedup + `### 進捗サマリー` セクション末尾挿入）・safety check・PATCH・backup はすべて helper 内部で完結するため、本ブロックを単一 Bash 呼び出しに収める必要はない。`{plugin_root}` はリテラル値で埋め込み、`{issue_number}` を cleanup.md コンテキストの実値で置換すること。対象セクション不在時は items を破棄せず `status=skipped; reason=section_absent` を返す（`status=success` と報告しない — fail-loud、Issue #2139）。参照: §3.5.1 の canonical caller パターン。
 
-> **適用範囲の注記**: `### 進捗` は **v1 (legacy) WM フォーマット限定**のセクションで、現行 default フォーマットは `### 進捗サマリー` (table) である（SoT: `skills/rite-workflow/references/work-memory-format.md`、init テンプレ: `issue-comment-wm-sync.sh`、v1/v2 分岐: `issue-comment-wm-update.py` の `update_progress` v1 fallback `"### 進捗" in body and "### 進捗サマリー" not in body`）。したがって **v2 WM では本 merge は常に no-op** になり、`### 進捗` を持つ v1 WM が残存する Issue でのみ実効する。これは原 §3.5.2 inline 実装の target section (`### 進捗`) を verbatim 保持した結果であり、`### 進捗サマリー` table 対応への変更は本委譲のスコープ外（§3.5.1 が section-novelty を明記しているのと対称の適用範囲記述）。
+> **適用範囲の注記**: 対象見出しは現行 default WM フォーマットの `### 進捗サマリー`（table + 任意の checklist 追記）である（SoT: `skills/rite-workflow/references/work-memory-format.md`、init テンプレ: `issue-comment-wm-sync.sh`）。v1 legacy の `### 進捗` のみを持つ body では `section_absent` となり skip 表示される（旧「silent no-op success」は廃止）。v1 への互換フォールバックは持たない（実運用の init 経路は常に `進捗サマリー` を生成する）。
 
 **Standard update template:**
 
 ```markdown
-### 進捗
-- [x] 実装完了
-- [x] PR 作成済み
+### 進捗サマリー
+
+| 項目 | 状態 | 備考 |
+|------|------|------|
+| 実装 | ✅ 完了 | - |
+| テスト | ✅ 完了 | - |
+| ドキュメント | ✅ 完了 | - |
 - [x] レビュー完了
 - [x] マージ完了
 - [x] クリーンアップ完了
