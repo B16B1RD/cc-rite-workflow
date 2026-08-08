@@ -1,6 +1,7 @@
 ---
 title: "sanitization 対称性 claim は入力クラス別に runtime byte-level 検証してから書く"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-06-05T10:33:05Z"
 updated: "2026-06-05T10:33:05Z"
 sources:

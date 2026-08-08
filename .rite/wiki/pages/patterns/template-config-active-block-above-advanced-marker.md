@@ -1,6 +1,7 @@
 ---
 title: "config テンプレートの default-on 設定は Advanced マーカーより上に配置する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-06-11T00:57:13+09:00"
 updated: "2026-06-11T00:57:13+09:00"
 sources:

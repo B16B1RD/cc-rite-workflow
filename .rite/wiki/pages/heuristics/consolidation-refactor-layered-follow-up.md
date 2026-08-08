@@ -2,6 +2,7 @@
 type: "heuristics"
 title: "統合 refactor の追従は「実行テーブル → SoT/docs → references 例示 → 兄弟行」と層を降りる"
 domain: "heuristics"
+promote: rite-plugin
 description: "レジストリ統合系 refactor の取りこぼしは層構造で現れる。cycle ごとに全域 grep の除外リスト（凍結ファイル・意図的言及）を明示的に引き継ぎ、凍結コピーは successor 注記 + follow-up Issue で一括追従を明記すると、後続 cycle の誤指摘と silent 残存の両方を防げる。"
 created: "2026-07-17T12:04:54Z"
 updated: "2026-07-17T12:04:54Z"

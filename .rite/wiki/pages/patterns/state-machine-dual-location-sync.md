@@ -1,6 +1,7 @@
 ---
 title: "state machine を 2 箇所で記述する場合は動作の文字列レベルで同期する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-04-19T03:30:00+00:00"
 updated: "2026-08-02T11:59:42+09:00"
 sources:

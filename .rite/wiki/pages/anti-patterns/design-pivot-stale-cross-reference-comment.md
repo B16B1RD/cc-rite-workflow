@@ -1,6 +1,7 @@
 ---
 title: "同一 PR 内の設計 pivot 後に cross-reference コメントが旧設計の説明のまま残る"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-06-10T00:38:14Z"
 updated: "2026-06-10T01:19:36Z"
 sources:

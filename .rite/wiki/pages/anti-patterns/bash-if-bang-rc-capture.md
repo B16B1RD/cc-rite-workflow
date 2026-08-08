@@ -1,6 +1,7 @@
 ---
 title: "`if ! cmd; then rc=$?` は常に 0 を捕捉する"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 updated: "2026-07-21T18:30:00Z"
 sources:

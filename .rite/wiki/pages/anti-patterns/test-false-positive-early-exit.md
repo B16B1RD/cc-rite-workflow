@@ -1,6 +1,7 @@
 ---
 title: "Test が early exit 経路で silent pass する false-positive"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-04-20T01:10:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"
 sources:

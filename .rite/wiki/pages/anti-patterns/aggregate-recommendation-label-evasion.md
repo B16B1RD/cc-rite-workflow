@@ -1,6 +1,7 @@
 ---
 title: "aggregate label による推奨事項の責任曖昧化 (「推奨 N 件 (全て scope 外)」)"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-05-18T00:00:00+09:00"
 updated: "2026-05-18T00:00:00+09:00"
 sources:

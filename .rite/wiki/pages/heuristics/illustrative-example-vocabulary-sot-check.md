@@ -2,6 +2,7 @@
 type: "heuristics"
 title: "doc の例示語彙は定義元 (SoT) と突合してから書く"
 domain: "heuristics"
+promote: rite-plugin
 description: "docstring / SPEC の例示に使う語彙が別レイヤの定義済み用語だと、実体のない帰属を doc に固定してしまう。例示語彙は定義元文書 (SoT) の該当レイヤ定義と突合し、writer 経路の grep で実在を確認してから書く。"
 created: "2026-07-13T02:50:00+09:00"
 updated: "2026-07-13T02:50:00+09:00"

@@ -2,6 +2,7 @@
 type: "anti-patterns"
 title: "awk のデフォルト FS は `\\r` を含まない — CRLF 入力で「空行」判定が壊れる"
 domain: "anti-patterns"
+promote: rite-plugin
 description: "awk のデフォルト FS は space/tab/newline で `\\r` を含まないため、`f && NF` は CR だけの行を NF=1 = 非空と数える。GitHub Web UI 由来の Issue body は CRLF になりうるので、見出しの次の空行を値行として拾い、抽出も診断も同時に外す。是正は述語側ではなく入力捕捉時に CR を 1 度落とすこと — 述語ごとに直すと同型欠陥の非対称が残る。"
 created: "2026-08-08T14:00:41+09:00"
 updated: "2026-08-08T14:00:41+09:00"

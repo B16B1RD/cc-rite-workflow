@@ -1,6 +1,7 @@
 ---
 title: "圧縮 refactor の AC は protected 区域 + scope 制約から逆算して決める"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-05-04T09:50:00Z"
 updated: "2026-07-07T03:56:13+00:00"
 sources:

@@ -1,6 +1,7 @@
 ---
 title: "LLM 向けコマンド spec の placeholder は解決元 entity を一意化する (単一 {number} を {issue_number}/{pr_number} に分離)"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-06-02T03:50:58Z"
 updated: "2026-06-02T03:50:58Z"
 sources:

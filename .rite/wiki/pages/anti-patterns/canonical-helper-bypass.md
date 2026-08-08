@@ -1,6 +1,7 @@
 ---
 title: "Canonical helper bypass: 既存集約 helper を bypass して inline 再実装する"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-05-01T03:27:29Z"
 updated: "2026-07-29T21:32:36+09:00"
 sources:

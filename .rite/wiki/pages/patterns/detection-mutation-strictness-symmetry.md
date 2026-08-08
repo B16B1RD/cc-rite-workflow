@@ -1,6 +1,7 @@
 ---
 title: "検出 grep と mutation (Edit old_string) は同一の文字列 strictness で実装する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-04-19T03:30:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"
 sources:

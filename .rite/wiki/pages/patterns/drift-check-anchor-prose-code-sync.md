@@ -1,8 +1,9 @@
 ---
 title: "AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-04-17T00:49:00+00:00"
-updated: "2026-05-03T18:46:59Z"
+updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260417T002317Z-pr-553.md"

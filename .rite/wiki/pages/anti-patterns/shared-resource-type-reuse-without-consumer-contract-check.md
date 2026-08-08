@@ -2,6 +2,7 @@
 type: "anti-patterns"
 title: "共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる"
 domain: "anti-patterns"
+promote: rite-plugin
 description: "既存の共有リソース（reap manifest の type エントリ等）の名前空間を新機能で再利用する際、その共有リソースの既存消費者が持つ暗黙の不変条件（コメントで明示済み）を確認しないと、健全なリソースを警告なしに破壊する CRITICAL な回帰を生む。"
 created: "2026-07-23T04:14:28Z"
 updated: "2026-08-08T17:40:00+09:00"

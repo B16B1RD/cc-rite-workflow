@@ -1,6 +1,7 @@
 ---
 title: "Pattern 統一 follow-up PR では Wiki 経験則違反でも統一を優先する"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-05-15T15:05:00+09:00"
 updated: "2026-05-15T15:05:00+09:00"
 sources:

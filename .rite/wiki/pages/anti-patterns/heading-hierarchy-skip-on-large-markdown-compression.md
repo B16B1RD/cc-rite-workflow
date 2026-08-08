@@ -2,7 +2,7 @@
 title: "Markdown 大規模圧縮 refactor 時の heading hierarchy skip"
 domain: "anti-patterns"
 created: "2026-05-04T06:50:00Z"
-updated: "2026-05-04T09:50:00Z"
+updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260504T062954Z-pr-808.md"

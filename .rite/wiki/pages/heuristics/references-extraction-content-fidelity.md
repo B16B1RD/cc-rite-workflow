@@ -1,6 +1,7 @@
 ---
 title: "References 抽出時は引用先 SoT の内容を Read tool で verify する"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-05-04T05:30:00+00:00"
 updated: "2026-05-14T01:25:00+00:00"
 sources:

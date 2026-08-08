@@ -1,8 +1,9 @@
 ---
 title: "Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-04-17T08:55:00+00:00"
-updated: "2026-05-04T17:30:00+00:00"
+updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260417T082023Z-pr-562.md"

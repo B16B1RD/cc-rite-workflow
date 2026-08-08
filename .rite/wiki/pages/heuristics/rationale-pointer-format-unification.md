@@ -2,6 +2,7 @@
 type: "heuristics"
 title: "rationale ポインタ形式は bare `rationale:` 形式に統一する"
 domain: "heuristics"
+promote: rite-plugin
 description: "rationale 退避 PR で bare rationale: / markdown link / hybrid の 3 形式が混在し、複数レビュアーが両 cycle で繰り返し informational 指摘した。全形式が anchor 解決し drift-check も両形式を first-class サポートするため機能上は等価だが、grep 検索性と将来の機械 lint を考えると bare 形式 (rationale: references/<file>.md#<anchor>) への統一が retouch コストを下げる。"
 created: "2026-07-17T02:44:35Z"
 updated: "2026-07-17T02:44:35Z"

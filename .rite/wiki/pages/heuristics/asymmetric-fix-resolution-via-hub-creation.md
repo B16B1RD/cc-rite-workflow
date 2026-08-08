@@ -1,6 +1,7 @@
 ---
 title: "Asymmetric Fix Transcription の解決は両側修正 (Option A) より hub 化 + 責務分離文書化 (Option B) を選ぶ"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-05-06T04:50:00Z"
 updated: "2026-05-30T11:46:11+09:00"
 sources:

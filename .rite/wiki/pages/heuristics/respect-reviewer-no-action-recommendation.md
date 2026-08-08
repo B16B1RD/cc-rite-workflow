@@ -1,6 +1,7 @@
 ---
 title: "Reviewer 自身が「対応不要」と明記する LOW finding は replied-only として尊重し fix loop で再発火させない"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-05-04T03:30:00+00:00"
 updated: "2026-05-19T13:36:19Z"
 sources:

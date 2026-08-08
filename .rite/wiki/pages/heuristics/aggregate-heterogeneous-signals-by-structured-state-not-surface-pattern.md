@@ -2,6 +2,7 @@
 type: "heuristics"
 title: "複数の異種 signal を集約するロジックは表層パターンではなく共通の構造化された状態を判定基準にする"
 domain: "heuristics"
+promote: rite-plugin
 description: "複数の異種 signal（[CONTEXT] marker の有無・絵文字 prefix 等）を集約する新規ロジックを設計する際、一律の仮定や表層的な文字列パターンではなく、各ルールが共通して持つ構造化された状態（例: チェックボックスの x/空欄）を先に特定し判定基準にする方が堅牢。3 世代のバグを経て収束した教訓。"
 created: "2026-07-23T06:38:31Z"
 updated: "2026-07-23T06:38:31Z"

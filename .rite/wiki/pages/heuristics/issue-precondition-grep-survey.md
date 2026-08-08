@@ -1,8 +1,9 @@
 ---
 title: "Issue 起票前の grep 棚卸しで「違反あり」前提が既に解消済みか確認する"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-05-08T15:34:21+00:00"
-updated: "2026-05-08T15:34:21+00:00"
+updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "retrospectives"
     ref: "raw/retrospectives/20260508T153421Z-issue-892.md"

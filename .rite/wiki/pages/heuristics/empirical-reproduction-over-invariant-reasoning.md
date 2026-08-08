@@ -1,6 +1,7 @@
 ---
 title: "「invariant は logic 上成立」を信頼せず empirical reproduction で verify する"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-04-27T23:01:24+00:00"
 updated: "2026-07-25T14:18:43Z"
 sources:

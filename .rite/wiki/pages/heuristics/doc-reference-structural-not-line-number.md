@@ -2,6 +2,7 @@
 type: "heuristics"
 title: "参照先が「将来編集される前提の行」なら行番号でなく構造（TC 名・見出し）で指す"
 domain: "heuristics"
+promote: rite-plugin
 description: "文書の行番号参照は、参照先が「編集を促している行」ほど速く腐る。PR #2013 の `timeout-shim.test.sh:243` / `:276` は「統合したら下げろ」と読者に編集を促す行そのもので、TC が 1 つ増えるだけで両方が silent にずれる。3 レビュアーが独立に指摘した。参照は TC 名・見出し・関数名など編集で動かない構造単位で書く。"
 created: "2026-07-25T07:05:21Z"
 updated: "2026-07-25T07:05:21Z"

@@ -1,6 +1,7 @@
 ---
 title: "Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-04-27T23:01:24+00:00"
 updated: "2026-08-06T22:40:00+09:00"
 sources:

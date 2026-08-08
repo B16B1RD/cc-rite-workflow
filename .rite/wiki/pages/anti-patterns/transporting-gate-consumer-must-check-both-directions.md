@@ -2,6 +2,7 @@
 type: "anti-patterns"
 title: "配列間で要素を移送するゲートの consumer は、入ってくる余分と出ていく不足の両方向を見る"
 domain: "anti-patterns"
+promote: rite-plugin
 description: "ゲートが要素を配列 A から配列 B へ移送する設計では、A だけを読む consumer に「A に残る余分」と「B へ出ていった不足」の 2 方向の欠陥が同時に成立する。片方だけ直すと、直した側の対称位置に同型の欠陥が残る。"
 created: "2026-08-07T07:57:00+09:00"
 updated: "2026-08-07T07:57:00+09:00"

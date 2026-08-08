@@ -2,6 +2,7 @@
 type: "anti-patterns"
 title: "配布テンプレートへの内部参照流入は 1 箇所直しても閉じない — 同一配布単位の sibling を base 件数と比較する"
 domain: "anti-patterns"
+promote: rite-plugin
 description: "ユーザープロジェクトへ展開されるテンプレートに repo 相対パスや Issue 番号を書くと、展開先で解決できない参照になる。lint の走査対象外のファイルだと番号参照が永続する。指摘は 1 箇所でも、同じ配布単位の sibling を同一 grep で走査すると追加箇所が出る。base branch 側の件数を git show で確認すると「0 件」が暗黙の不変条件だったことを機械的に復元でき、伝播範囲を推測ではなく確定できる。"
 created: "2026-08-02T22:05:00+09:00"
 updated: "2026-08-02T22:05:00+09:00"

@@ -1,6 +1,7 @@
 ---
 title: "cross-platform bash コマンドは fallback chain で portable 化する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-04-17T04:30:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"
 sources:

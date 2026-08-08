@@ -1,6 +1,7 @@
 ---
 title: "consume 操作 (read+delete+return) は delete-then-return 順で fail-closed にする"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-05-28T15:05:43Z"
 updated: "2026-05-28T15:05:43Z"
 sources:

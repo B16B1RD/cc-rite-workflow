@@ -1,6 +1,7 @@
 ---
 title: "Validation chain の発火 reason は最初に入力を parse する段階で決まる（暗黙 validation が後続 check を unreachable 化）"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-06-01T06:01:05+00:00"
 updated: "2026-06-01T08:15:52+00:00"
 sources:

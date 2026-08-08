@@ -1,8 +1,9 @@
 ---
 title: "委譲表現を含む fix は次サイクルで PARTIAL fix として再指摘される"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-05-03T18:46:59Z"
-updated: "2026-05-03T18:46:59Z"
+updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260503T182831Z-pr-799-cycle3.md"

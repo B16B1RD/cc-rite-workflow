@@ -1,6 +1,7 @@
 ---
 title: "現在ブランチ取得は git branch --show-current で統一する (rev-parse --abbrev-ref HEAD は detached HEAD で挙動分岐)"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-06-02T03:50:58Z"
 updated: "2026-06-02T03:50:58Z"
 sources:

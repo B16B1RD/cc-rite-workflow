@@ -2,6 +2,7 @@
 type: "heuristics"
 title: "stale 参照一掃の『残照ゼロ』AC は意図的維持カテゴリの線引きで判定する"
 domain: "heuristics"
+promote: rite-plugin
 description: "grep 残照ゼロ型の受入基準 (AC) は機械 grep 単独では完結しない。歴史記録 (過去形 incident 記述)・機能コード (別 Issue 化して除外)・同期 invariant コメントを『意図的維持』として明示ラベリングし、現在形の仕様記述のみを実装一致の対象とする線引きで判定する。"
 created: "2026-07-02T12:35:00+09:00"
 updated: "2026-07-02T19:42:40+09:00"

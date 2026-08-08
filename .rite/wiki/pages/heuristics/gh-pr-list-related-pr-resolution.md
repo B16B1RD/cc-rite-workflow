@@ -1,6 +1,7 @@
 ---
 title: "関連 PR 探索は gh pr list --head (exact-match) ではなく --state all + client-side headRefName filter で行う"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-06-02T03:50:58Z"
 updated: "2026-06-02T03:50:58Z"
 sources:

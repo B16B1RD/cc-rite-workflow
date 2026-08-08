@@ -1,6 +1,7 @@
 ---
 title: "Enum 拡張時は few-shot example で全 enum 値の使用例を網羅する (calibration coverage gap 防止)"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-05-18T15:50:00+09:00"
 updated: "2026-05-19T08:00:33Z"
 sources:

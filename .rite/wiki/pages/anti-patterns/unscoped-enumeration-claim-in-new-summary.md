@@ -2,6 +2,7 @@
 type: "anti-patterns"
 title: "新設要約文の「N 個の~系統」的な断定は対象外の類似構造を見落としやすい"
 domain: "anti-patterns"
+promote: rite-plugin
 description: "ドキュメントに新しく書く要約文が「N independently-versioned schemas」のように件数を断定すると、リポジトリ内に存在する類似だが対象外の構造（同じ性質を持つ他のファイル/フィールド）を見落として無限定な誤読を招く。要約文を書く際はスコープを明示する修飾語を添えるか、対象外項目を明示的に注記する。"
 created: "2026-07-07T02:00:00+00:00"
 updated: "2026-07-07T02:00:00+00:00"

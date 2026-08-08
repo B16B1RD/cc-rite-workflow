@@ -1,6 +1,7 @@
 ---
 title: "separate_branch 戦略は git worktree で dev ブランチ不動を実現する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 updated: "2026-06-26T03:18:14+00:00"
 sources:

@@ -2,6 +2,7 @@
 type: "heuristics"
 title: "placeholder 伝播は実行主体の解決経路を確認してから適用する"
 domain: "heuristics"
+promote: rite-plugin
 description: "literal substitution 方式の placeholder（{owner_repo} / {plugin_root} 等）を新しいファイルへ伝播する前に、そのファイルを読んで実行する主体が placeholder を解決する経路（Legend・canonical スニペット・注入された値）を持つかを確認する。解決経路のないコンテキスト（reviewer agent 定義等）への伝播は literal 残留の回帰を生む。"
 created: "2026-07-20T01:15:00+09:00"
 updated: "2026-07-20T01:15:00+09:00"

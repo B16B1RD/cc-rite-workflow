@@ -1,6 +1,7 @@
 ---
 title: "複数 PR にまたがる incremental 追加履歴を単一 PR に誤集約する (multi-PR provenance aggregation error)"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-06-03T08:38:00Z"
 updated: "2026-06-03T08:38:00Z"
 sources:

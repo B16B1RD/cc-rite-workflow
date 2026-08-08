@@ -1,6 +1,7 @@
 ---
 title: "AC 解消 statement の数値解釈は実装で裏取りする (PR description fact-check gate)"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-05-02T00:30:00+09:00"
 updated: "2026-07-31T01:26:57+09:00"
 sources:

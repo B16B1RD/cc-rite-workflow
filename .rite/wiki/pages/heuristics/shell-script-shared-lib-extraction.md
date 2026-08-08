@@ -1,6 +1,7 @@
 ---
 title: "兄弟 shell script の重複 helper は shared lib 抽出で解く"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 updated: "2026-07-20T10:36:25+09:00"
 sources:

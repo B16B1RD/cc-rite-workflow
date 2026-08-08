@@ -1,6 +1,7 @@
 ---
 title: "function 内 `local v=$(...)` と top-level `v=$(...)` の `set -e` 伝播差で writer/reader 非対称が偶然 mask される"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-04-27T23:01:24+00:00"
 updated: "2026-06-09T07:58:52+00:00"
 sources:

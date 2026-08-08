@@ -1,6 +1,7 @@
 ---
 title: "Phase 7 user-escalated recommendation を fix loop に統合する canonical flow"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-05-28T03:00:00+00:00"
 updated: "2026-05-28T03:00:00+00:00"
 sources:

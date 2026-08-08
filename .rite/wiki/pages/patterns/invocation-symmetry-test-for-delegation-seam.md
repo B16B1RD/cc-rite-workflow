@@ -2,6 +2,7 @@
 type: "patterns"
 title: "委譲リファクタの呼び出しシームは invocation-symmetry test で機械固定する"
 domain: "patterns"
+promote: rite-plugin
 description: "散文手順を helper へ降ろすリファクタでは、helper 単体の品質より SKILL.md→helper 呼び出し契約（フラグ集合・呼び出し行の実体）が残存リスクになる。呼び出し側のフラグ集合を helper の case arm から動的抽出して突合する invocation-symmetry test で両側を pin する。フラグ「名」の集合だけでなく呼び出し行の literal な形（コマンド語・値）まで固定して初めて変異を殺せる。"
 created: "2026-08-05T09:26:00+09:00"
 updated: "2026-08-05T09:26:00+09:00"

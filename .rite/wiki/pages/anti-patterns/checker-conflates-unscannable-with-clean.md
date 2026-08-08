@@ -2,6 +2,7 @@
 type: "anti-patterns"
 title: "検出器が「走査できなかった」を「問題なし」に畳むと、ガードが黙って無検査になる"
 domain: "anti-patterns"
+promote: rite-plugin
 description: "静的チェックスクリプトが fence 不整合 / awk fatal / target 不在をすべて「findings 0 件 + rc=0」に畳むと、rc=0 を success として扱いスクリプト出力を表示しない呼び出し元の下でガードが無言で無効化される。stderr に WARNING を出していても、呼び出し元が WARNING を表示する経路を持たなければ silent と同義。走査できなかった件数を数えて別 exit code に分けて初めて observable になる。"
 created: "2026-07-30T01:20:00+09:00"
 updated: "2026-08-06T22:40:00+09:00"

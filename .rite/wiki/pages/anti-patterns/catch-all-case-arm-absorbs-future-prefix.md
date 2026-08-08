@@ -1,6 +1,7 @@
 ---
 title: "prefix 分岐 case の `*)` catch-all は未知の将来 prefix を silent に default 動作へ吸収する"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-05-28T23:42:28Z"
 updated: "2026-07-29T21:32:36+09:00"
 sources:

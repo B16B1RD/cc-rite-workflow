@@ -1,6 +1,7 @@
 ---
 title: "自 repo 固有 anchor を Edit old_string に hardcode すると consumer project で hard fail する (dogfooding bias)"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-04-19T03:30:00+00:00"
 updated: "2026-07-22T08:20:00+00:00"
 sources:

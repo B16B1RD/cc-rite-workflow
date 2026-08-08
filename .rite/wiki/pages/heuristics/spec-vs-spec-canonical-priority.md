@@ -1,6 +1,7 @@
 ---
 title: "Spec-vs-spec 矛盾は canonical SoT 表記のある側を優先する"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-05-19T17:45:00Z"
 updated: "2026-05-19T17:45:00Z"
 sources:

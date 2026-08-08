@@ -1,6 +1,7 @@
 ---
 title: "Markdown channel separation で HTML sentinel の終端性と bash tool 実行を両立させる"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-04-24T14:55:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"
 sources:

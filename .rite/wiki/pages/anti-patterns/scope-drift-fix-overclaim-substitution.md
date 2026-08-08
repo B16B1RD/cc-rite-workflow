@@ -1,6 +1,7 @@
 ---
 title: "Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む)"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-05-15T10:05:00+09:00"
 updated: "2026-07-29T21:32:36+09:00"
 sources:

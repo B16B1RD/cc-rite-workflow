@@ -1,6 +1,7 @@
 ---
 title: "入力注入経路のない静的文字列処理連鎖は関数抽出 + 境界行 extract で非 vacuous unit テスト化する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-06-05T18:33:35Z"
 updated: "2026-06-09T02:35:18Z"
 sources:

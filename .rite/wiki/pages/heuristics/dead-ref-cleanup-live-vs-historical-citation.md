@@ -1,6 +1,7 @@
 ---
 title: "dead reference 整理では live citation と historical 記述を区別する"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-05-24T18:01:50Z"
 updated: "2026-05-28T08:53:59+00:00"
 sources:

@@ -1,6 +1,7 @@
 ---
 title: "同一手順が複数 site に分散する場合は片方を canonical source と宣言する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-05-13T06:43:41Z"
 updated: "2026-05-13T08:55:00+00:00"
 sources:

@@ -1,6 +1,7 @@
 ---
 title: "極小対称化 PR は sibling site Grep 照合で短時間・高確信レビューできる"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-04-19T06:45:00Z"
 updated: "2026-06-10T00:54:18Z"
 sources:

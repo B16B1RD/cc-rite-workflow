@@ -1,8 +1,9 @@
 ---
 title: "Reviewer rule 自身を編集する PR は self-application false positive を verify する"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-04-28T19:00:00+00:00"
-updated: "2026-05-04T03:30:00+00:00"
+updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260428T185933Z-pr-706.md"

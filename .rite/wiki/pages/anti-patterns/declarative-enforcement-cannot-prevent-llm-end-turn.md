@@ -1,6 +1,7 @@
 ---
 title: "Declarative enforcement で LLM の stop_reason: end_turn は抑制できない"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-04-25T12:30:00+00:00"
 updated: "2026-05-28T08:53:59+00:00"
 sources:

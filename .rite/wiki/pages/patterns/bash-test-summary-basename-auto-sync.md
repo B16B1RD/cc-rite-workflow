@@ -2,7 +2,7 @@
 title: "bash test の summary 行は $(basename \"$0\") で自動同期する"
 domain: "patterns"
 created: "2026-05-03T05:50:00+09:00"
-updated: "2026-05-03T05:50:00+09:00"
+updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260502T171105Z-pr-784.md"

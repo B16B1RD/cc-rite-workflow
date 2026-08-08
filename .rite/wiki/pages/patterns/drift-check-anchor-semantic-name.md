@@ -1,6 +1,7 @@
 ---
 title: "DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-04-18T12:50:00+00:00"
 updated: "2026-07-17T06:45:00+00:00"
 sources:

@@ -2,6 +2,7 @@
 type: "heuristics"
 title: "同一欠陥に対し reviewer の scope が割れたらユーザー判断へエスカレートする — follow-up は current-pr と同義ではない"
 domain: "heuristics"
+promote: rite-plugin
 description: "形式変更 PR では「変更していない consumer」に欠陥が現れるため、Issue のファイル単位スコープと欠陥の所在がずれる。2 名が独立に同じ欠陥へ到達しながら処置が current-pr と follow-up に割れるのはこの構造による。両者を「どちらも blocking だから本 PR で直す」と読むと reviewer が deferred と明示した signal が消える。scope enum の定義を実ファイルで確認し、割れたらユーザーへ上げる。accept は無視ではなく処置を伴う deferred。"
 created: "2026-08-02T22:05:00+09:00"
 updated: "2026-08-03T23:41:26+09:00"

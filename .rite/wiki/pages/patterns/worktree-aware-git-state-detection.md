@@ -2,6 +2,7 @@
 type: "patterns"
 title: "worktree 運用の git 状態検出は .git 直書きせず git rev-parse --git-path で解決する"
 domain: "patterns"
+promote: rite-plugin
 description: "worktree では MERGE_HEAD / rebase-merge / rebase-apply が .git/worktrees/<name>/ 配下にあるため、.git/MERGE_HEAD 等の直書きパスは常に不在扱いになり merge/rebase 中断を取りこぼす。git rev-parse --git-path <name> で per-worktree の実パスに解決してから存在判定するのが canonical。"
 created: "2026-07-03T13:33:06+09:00"
 updated: "2026-07-03T13:33:06+09:00"

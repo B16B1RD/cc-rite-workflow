@@ -2,6 +2,7 @@
 type: "patterns"
 title: "テストヘルパーの awk flip-flop レンジは start pattern をコード行に一意なプレフィックスでアンカーする"
 domain: "patterns"
+promote: rite-plugin
 description: "assert_grep_in_section 等の awk flip-flop レンジ ($0 ~ start, $0 ~ end) は、start pattern が生の marker 名だとコード行だけでなく同じ marker 名を引用する散文行にも一致し、レンジが意図せず EOF まで伸びる。start pattern をコード行にしか出現しないプレフィックス（例: echo \"[CONTEXT] ...）でアンカーすると構造的に排除できる。"
 created: "2026-07-23T04:14:28Z"
 updated: "2026-07-23T04:14:28Z"

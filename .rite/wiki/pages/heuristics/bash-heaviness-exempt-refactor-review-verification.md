@@ -1,6 +1,7 @@
 ---
 title: "operational-bash-heaviness の exempt / pipe-refactor レビューは claim を信用せず empirical 検証で gate する"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-06-01T11:39:00+00:00"
 updated: "2026-06-01T11:39:00+00:00"
 sources:

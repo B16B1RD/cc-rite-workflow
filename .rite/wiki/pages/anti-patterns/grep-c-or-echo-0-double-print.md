@@ -2,7 +2,7 @@
 title: "grep -c || echo 0 が \"0\\n0\" を吐き出す double-print 罠"
 domain: "anti-patterns"
 created: "2026-05-03T05:50:00+09:00"
-updated: "2026-05-03T05:50:00+09:00"
+updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260502T171105Z-pr-784.md"

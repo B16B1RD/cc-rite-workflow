@@ -2,7 +2,7 @@
 title: "PR シリーズ間で stub 残置 markdown formatting を踏襲する"
 domain: "patterns"
 created: "2026-05-04T05:30:00+00:00"
-updated: "2026-05-04T05:30:00+00:00"
+updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260504T051358Z-pr-802-cycle2.md"

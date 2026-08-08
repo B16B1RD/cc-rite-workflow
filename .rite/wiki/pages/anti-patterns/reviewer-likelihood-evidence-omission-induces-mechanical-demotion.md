@@ -1,6 +1,7 @@
 ---
 title: "Reviewer の Likelihood-Evidence anchor 未提示が現実的 finding の機械的降格を誘発"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-05-18T20:30:00+09:00"
 updated: "2026-05-18T20:30:00+09:00"
 sources:

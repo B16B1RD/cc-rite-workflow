@@ -1,6 +1,7 @@
 ---
 title: "resolver / helper 失敗時の silent fallback は debug log で観測性を確保する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-04-30T08:03:08Z"
 updated: "2026-07-09T06:56:16+00:00"
 sources:

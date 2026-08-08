@@ -1,6 +1,7 @@
 ---
 title: "Fix 修正コメント自身が canonical convention を破る self-drift"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-04-18T12:00:00+00:00"
 updated: "2026-08-03T07:46:56Z"
 sources:

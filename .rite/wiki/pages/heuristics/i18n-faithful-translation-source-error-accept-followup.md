@@ -1,6 +1,7 @@
 ---
 title: "i18n 同期 PR の忠実翻訳は原本の誤りを転写する — 検出時は accept + 両側同時修正 follow-up で決着する"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-06-03T23:10:10Z"
 updated: "2026-06-04T01:45:55Z"
 sources:

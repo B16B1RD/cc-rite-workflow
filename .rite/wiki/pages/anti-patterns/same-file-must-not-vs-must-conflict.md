@@ -1,6 +1,7 @@
 ---
 title: "同 file 内 MUST NOT vs MUST 衝突: bare form 禁止規約と bare form 出力義務の自己矛盾"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-04-20T13:25:00+00:00"
 updated: "2026-08-03T23:41:26+09:00"
 sources:

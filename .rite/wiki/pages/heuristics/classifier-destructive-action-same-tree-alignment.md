@@ -1,6 +1,7 @@
 ---
 title: "破壊的操作を承認する分類器は判定・実行・承認文言が同じ対象を見ることを保証する"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-07-13T09:15:00Z"
 updated: "2026-07-13T09:15:00Z"
 sources:

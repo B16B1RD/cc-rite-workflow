@@ -2,6 +2,7 @@
 type: "heuristics"
 title: "先行 Issue の明示的 Non-Target 指定は、reviewer 推奨だけで覆さずユーザー確認する"
 domain: "heuristics"
+promote: rite-plugin
 description: "同種のクリーンアップ系列で複数レビュアーが独立に『修正すべき』と推奨した箇所でも、先行 Issue/PR が明示的に Non-Target（対象外）と宣言していた場合は、その推奨を鵜呑みにせず先行判断の経緯をユーザーに提示し、スコープ拡大を承認制にする。"
 created: "2026-07-08T03:06:55+09:00"
 updated: "2026-07-08T03:06:55+09:00"

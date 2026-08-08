@@ -2,6 +2,7 @@
 type: "heuristics"
 title: "commit 前にリポジトリ自身の checker を全変更ファイルへ回す — 機械検出できる違反を reviewer に探させない"
 domain: "heuristics"
+promote: rite-plugin
 description: "リポジトリが規約 checker を持っているなら、commit 前に変更ファイル全件へ回す。自動検出できる違反を reviewer が指摘すると 1 cycle 遅れ、その cycle の指摘枠を消費する。PR #2038 cycle 5 では 14 件の指摘のうち 2 件（ハードコード行番号 / ジャーナルコメント）が repo 自身の checker が rc=1 で検出できるものだった。pre-existing の hit と本 PR 由来を分けるには develop 側との照合が要る。"
 created: "2026-07-28T21:30:00+09:00"
 updated: "2026-08-06T22:40:00+09:00"

@@ -1,8 +1,9 @@
 ---
 title: "`mapfile -t < <(...)` で pipefail safe な iteration を書く"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-05-07T01:08:00+00:00"
-updated: "2026-05-07T01:08:00+00:00"
+updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260506T162735Z-pr-868.md"

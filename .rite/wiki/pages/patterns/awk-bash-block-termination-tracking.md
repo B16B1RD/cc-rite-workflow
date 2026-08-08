@@ -1,8 +1,9 @@
 ---
 title: "bash code block 終端は固定 +N 行 window ではなく awk state machine で動的追跡する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-05-08T17:20:17+00:00"
-updated: "2026-05-08T17:20:17+00:00"
+updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260508T172017Z-pr-906.md"

@@ -1,6 +1,7 @@
 ---
 title: "path セグメントの substring マッチが look-alike を誤マッチし対象を silent に over-remove する"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-06-01T18:27:24+00:00"
 updated: "2026-06-02T00:07:23Z"
 sources:

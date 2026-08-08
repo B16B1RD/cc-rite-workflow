@@ -1,6 +1,7 @@
 ---
 title: "累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-05-17T13:40:00Z"
 updated: "2026-08-02T22:05:00+09:00"
 sources:

@@ -2,6 +2,7 @@
 type: "anti-patterns"
 title: "機械的一括置換は同一リテラルの役割差を無視すると load-bearing fixture を壊す"
 domain: "anti-patterns"
+promote: rite-plugin
 description: "同じ文字列リテラルでも「スクラッチ置き場」「被テスト対象の allowlist に一致させる fixture」「export 後に評価される生成パス」「文字列リテラル内部」で置換の意味論が正反対になる。PR #1910 で 3 reviewer が独立に同一箇所を HIGH 指摘した実測。"
 created: "2026-07-19T15:00:00+09:00"
 updated: "2026-07-19T15:00:00+09:00"

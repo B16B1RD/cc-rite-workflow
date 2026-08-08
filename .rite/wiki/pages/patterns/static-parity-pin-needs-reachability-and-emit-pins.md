@@ -2,6 +2,7 @@
 type: "patterns"
 title: "静的 parity テストには到達性 pin と emit pin を対で足す — 出現数 + 行順だけでは semantics を守れない"
 domain: "patterns"
+promote: rite-plugin
 description: "markdown 埋め込み bash のように実行テスト不能なコードを守る静的 parity テスト（述語文字列の出現数 + 行順）は、site 間の drift は検出するが semantics は守らない。3 site を一貫改修する mutation で素通りする（実測: 112 pass のまま正準形状が fallback に落ちた）。直前行が live な分岐であることを pin する到達性 pin と、reason / >&2 の固定文字列を pin する emit pin を対で追加する。"
 created: "2026-07-27T10:57:51+09:00"
 updated: "2026-08-02T09:53:11+09:00"

@@ -1,6 +1,7 @@
 ---
 title: "責務境界外 finding は boundary 申し送り → 管轄 reviewer の follow-up 評価で確定する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-06-06T15:31:02Z"
 updated: "2026-06-06T15:31:02Z"
 sources:

@@ -1,6 +1,7 @@
 ---
 title: "Phase 番号は構造的対称性を保つ（孤立 sub-phase を生まない）"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 updated: "2026-07-31T01:26:57+09:00"
 sources:

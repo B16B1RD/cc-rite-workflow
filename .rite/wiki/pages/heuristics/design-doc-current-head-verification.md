@@ -1,6 +1,7 @@
 ---
 title: "Design doc は現 HEAD の SoT (registration / writer-reader grep) を verify してから書く"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-04-26T09:20:00+00:00"
 updated: "2026-05-27T05:00:00Z"
 sources:

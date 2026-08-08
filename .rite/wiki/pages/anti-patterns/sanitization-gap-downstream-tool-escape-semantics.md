@@ -2,6 +2,7 @@
 type: "anti-patterns"
 title: "境界での無害化は下流ツールの別エスケープ意味論までは保証しない（quoted heredoc → awk -v 伝播）"
 domain: "anti-patterns"
+promote: rite-plugin
 description: "quoted heredoc でコマンド置換・変数展開を防いだ直後、同じ値を awk -v へ渡すと今度は awk 自身のバックスラッシュエスケープ解釈（\\n→改行 / \\t→タブ / \\d→d）で複数行分割・文字破壊が起きる。1 つの脆弱性クラス（shell injection）の修正が、別の脆弱性クラス（データ破損・不変条件違反）を別ツールの境界に持ち込む典型例。"
 created: "2026-07-09T00:40:00+09:00"
 updated: "2026-07-09T00:40:00+09:00"

@@ -1,6 +1,7 @@
 ---
 title: "0 件 finding = 正常終了として受容する (false-positive 回避義務)"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-05-26T05:00:00+00:00"
 updated: "2026-07-22T08:20:00+00:00"
 sources:

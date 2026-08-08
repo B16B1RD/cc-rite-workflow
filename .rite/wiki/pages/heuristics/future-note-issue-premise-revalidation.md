@@ -1,6 +1,7 @@
 ---
 title: "future-note Issue は実装前に前提の現在性を再検証する"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-06-09T19:45:00+00:00"
 updated: "2026-06-09T19:56:00+00:00"
 sources:

@@ -1,6 +1,7 @@
 ---
 title: "Wording 層の self-referential loop は mechanical test 化で構造解消する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-05-26T00:30:00Z"
 updated: "2026-06-04T16:30:25Z"
 sources:

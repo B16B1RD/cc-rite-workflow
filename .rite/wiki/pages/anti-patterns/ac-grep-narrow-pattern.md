@@ -1,6 +1,7 @@
 ---
 title: "AC 検証 grep を狭い正規表現で定義すると bare prose / 表ヘッダ / 副詞句が捕捉できない"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-05-27T01:30:00Z"
 updated: "2026-05-28T08:53:59+00:00"
 sources:

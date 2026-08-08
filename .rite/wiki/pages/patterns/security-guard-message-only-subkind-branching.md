@@ -1,6 +1,7 @@
 ---
 title: "security guard の deny メッセージ改善は判定ロジック不変の subkind タグ分岐で行う"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-06-09T18:38:00Z"
 updated: "2026-06-09T18:38:00Z"
 sources:

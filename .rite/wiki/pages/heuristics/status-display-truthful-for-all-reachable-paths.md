@@ -2,6 +2,7 @@
 type: "heuristics"
 title: "共有パスに置く進捗/status 表示は到達する全経路で真な文言にする（成功含意を避ける）"
 domain: "heuristics"
+promote: rite-plugin
 description: "複数の実行経路が合流する共有コードパスに進捗カウンタや status 表示を置くときは、成功経路だけでなく到達する全経路で真である文言にする。「進めた件数（advanced）」と「成功件数（succeeded）」を区別し、✅ /「完了」等の成功含意語を非収束・失敗経路でも一律発火する表示に使わない。"
 created: "2026-07-03T11:30:00+09:00"
 updated: "2026-08-01T23:12:28+09:00"

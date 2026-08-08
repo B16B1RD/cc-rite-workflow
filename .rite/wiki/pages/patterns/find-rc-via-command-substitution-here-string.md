@@ -1,6 +1,7 @@
 ---
 title: "rc 観測が必要な find は process substitution でなく command substitution + here-string で呼ぶ"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-06-09T04:36:49+00:00"
 updated: "2026-06-09T04:36:49+00:00"
 sources:

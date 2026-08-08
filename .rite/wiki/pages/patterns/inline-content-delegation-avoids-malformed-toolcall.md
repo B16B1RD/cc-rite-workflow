@@ -1,6 +1,7 @@
 ---
 title: "インライン特殊文字 content (title/body) は Write tool・--body-file 委譲で malformed tool-call を構造的に除去する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-06-09T00:00:00Z"
 updated: "2026-06-09T00:00:00Z"
 sources:

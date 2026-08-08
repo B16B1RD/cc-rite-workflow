@@ -1,6 +1,7 @@
 ---
 title: "jq -n create mode: 既存値を読み取ってから再構築する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 updated: "2026-07-09T19:44:33+09:00"
 sources:

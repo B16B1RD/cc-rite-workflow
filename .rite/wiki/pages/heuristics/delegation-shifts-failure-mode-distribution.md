@@ -2,6 +2,7 @@
 type: "heuristics"
 title: "inline 実装を helper へ委譲したら、診断メッセージを新しい失敗分布へ揃える"
 domain: "heuristics"
+promote: rite-plugin
 description: "inline awk を helper 呼び出しへ置換すると、最も起こりやすい失敗が「awk の IO エラー」から「helper 解決不能 = rc=127」へ移る。診断メッセージが旧い分布のままだと運用者は起きていない原因へ誘導される。同じ委譲を複数サイトで行うと片方だけ更新して非対称が残りやすく、PR #2051 では 3 サイクルにわたって同じ非対称が指摘され続けた。"
 created: "2026-07-30T01:20:00+09:00"
 updated: "2026-07-30T01:20:00+09:00"

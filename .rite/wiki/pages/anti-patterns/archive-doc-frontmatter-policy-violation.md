@@ -1,6 +1,7 @@
 ---
 title: "Archive doc の front-matter で宣言した preservation policy を body 編集が無視して矛盾を生む"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-05-27T01:30:00Z"
 updated: "2026-05-27T01:30:00Z"
 sources:

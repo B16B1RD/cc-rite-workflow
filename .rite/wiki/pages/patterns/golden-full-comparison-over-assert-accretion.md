@@ -2,6 +2,7 @@
 type: "patterns"
 title: "テスト検出力の回復は個別 assert の増築より golden 全文比較への置換を先に検討する"
 domain: "patterns"
+promote: rite-plugin
 description: "grep 断片照合の弱い assert 群を強化するとき、assert を 1 本ずつ増築するのではなく TC 自体を golden 全文比較（diff -u）へ置換すると、複数の変異クラス（ヘッダ二重化・本文欠落・空行過剰削除・節末端誤検出）を一括で捕捉できる。置換後は代表変異で TC の fail 化を実測してから commit する。"
 created: "2026-08-05T09:26:00+09:00"
 updated: "2026-08-05T09:26:00+09:00"

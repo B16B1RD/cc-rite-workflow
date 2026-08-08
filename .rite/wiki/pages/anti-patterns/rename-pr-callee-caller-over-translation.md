@@ -1,6 +1,7 @@
 ---
 title: "Rename PR の callee → caller 片方向 over-translation で Out-of-Scope の broken cross-ref を生成する"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-05-27T01:30:00Z"
 updated: "2026-05-27T01:30:00Z"
 sources:

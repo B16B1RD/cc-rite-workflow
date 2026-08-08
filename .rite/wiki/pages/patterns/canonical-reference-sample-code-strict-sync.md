@@ -1,8 +1,9 @@
 ---
 title: "canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-04-18T17:40:00+09:00"
-updated: "2026-05-03T18:46:59Z"
+updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260418T072254Z-pr-564-rerun.md"

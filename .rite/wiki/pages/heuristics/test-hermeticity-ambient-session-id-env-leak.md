@@ -2,6 +2,7 @@
 type: "heuristics"
 title: "hook のテストスイートは ambient な session-id 環境変数 (CLAUDE_CODE_SESSION_ID 等) に依存させない (non-hermetic test)"
 domain: "heuristics"
+promote: rite-plugin
 description: "flow-state.sh の session_id 解決は env CLAUDE_CODE_SESSION_ID > env CLAUDE_SESSION_ID > .rite-session-id ファイルの優先順位を持つため、テストスイート自身を実行している Claude Code セッションの環境変数が、テスト内の bash \"$HOOK\" 呼び出しへ暗黙に継承され、ファイルベースの per-session fixture を無視して誤った flow-state を読む non-hermetic なテストになる。テスト冒頭で該当環境変数を明示的に unset する。"
 created: "2026-07-20T09:47:41Z"
 updated: "2026-07-20T14:26:26Z"

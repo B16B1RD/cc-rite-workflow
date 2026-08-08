@@ -1,8 +1,9 @@
 ---
 title: "Sub-Issue series で AC 緩和が発生したら設計 doc 側にも back-propagation する"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-05-04T11:20:00Z"
-updated: "2026-05-04T11:20:00Z"
+updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260504T105615Z-pr-813.md"

@@ -2,6 +2,7 @@
 type: "anti-patterns"
 title: "明示的 Phase 遷移で駆動する SKILL.md に新規 Phase を挿入する際、既存の終端ルーティング更新漏れで到達不能になる"
 domain: "anti-patterns"
+promote: rite-plugin
 description: "「Proceed to Phase X」のような明示的な遷移指示でフェーズ間を駆動する設計の SKILL.md では、document-order の fall-through は実行モデルではない。新規 Phase を挿入しても、それを指す既存の終端ルーティング（他 Phase の「次は Phase Y へ」という指示）を更新しなければ、文書上の配置に関わらず実行時に到達不能（dead code）になる。"
 created: "2026-07-20T07:50:27Z"
 updated: "2026-07-20T07:50:27Z"

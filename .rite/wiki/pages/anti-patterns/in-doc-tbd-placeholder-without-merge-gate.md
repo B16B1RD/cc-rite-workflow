@@ -1,6 +1,7 @@
 ---
 title: "doc 内 _TBD_ placeholder は merge 前 enforcement なしだと長期残留する"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-05-19T20:10:23Z"
 updated: "2026-05-19T20:10:23Z"
 sources:

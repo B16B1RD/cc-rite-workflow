@@ -2,6 +2,7 @@
 type: "patterns"
 title: "バグ修正PRが新設したエラーパス自身にも回帰テストを追加する"
 domain: "patterns"
+promote: rite-plugin
 description: "バグ修正の過程で新たに追加したエラーハンドリング分岐（fallback / WARNING 等）は、修正対象のバグと同じ厳格さで回帰テストを追加する。既存テストが全て成功前提を seed していると新分岐は一度も通過されないため、revert test で非空虚性を確認する。"
 created: "2026-07-09T06:56:16+00:00"
 updated: "2026-07-09T06:56:16+00:00"

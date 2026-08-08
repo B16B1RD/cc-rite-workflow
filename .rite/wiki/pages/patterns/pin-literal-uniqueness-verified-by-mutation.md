@@ -2,6 +2,7 @@
 type: "patterns"
 title: "pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する"
 domain: "patterns"
+promote: rite-plugin
 description: "静的 assert の pin literal がラベルの主張より広い文字列だと、対象行を消す変異が全緑で生存する。pin を足したら (a) 全編集を適用した後に grep -c で hit 数 1 を確認し、(b) 対象行を消す変異を注入して自分の assert がちょうど 1 件 FAIL することを実測する。計測は編集前ではなく編集後に行う — 同一コミットの別修正が literal 自体を増減させるため。marker 契約は producer と consumer を対で pin する。"
 created: "2026-08-02T22:05:00+09:00"
 updated: "2026-08-05T09:26:00+09:00"

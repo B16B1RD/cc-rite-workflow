@@ -2,7 +2,7 @@
 title: "計画変更時の前方参照契約"
 domain: "patterns"
 created: "2026-05-05T11:15:55+00:00"
-updated: "2026-05-05T11:15:55+00:00"
+updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260505T105152Z-pr-837.md"

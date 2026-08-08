@@ -1,6 +1,7 @@
 ---
 title: "set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-06-02T04:59:29Z"
 updated: "2026-06-08T13:10:25Z"
 sources:

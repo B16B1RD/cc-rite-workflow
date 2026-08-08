@@ -1,6 +1,7 @@
 ---
 title: "prompt 内 numbered list は同型構造で書く（全 step に動作詳細 bullet を対称配置）"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-04-18T17:40:00+09:00"
 updated: "2026-07-31T01:26:57+09:00"
 sources:

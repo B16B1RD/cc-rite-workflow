@@ -1,6 +1,7 @@
 ---
 title: "Cleanup refactor は reasoning prose を保持し review-history journal のみ削除する"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-05-07T04:15:00+00:00"
 updated: "2026-07-18T15:20:00+09:00"
 sources:

@@ -2,6 +2,7 @@
 type: "heuristics"
 title: "差分スコープのレビューは diff の外を基準以前に見られない — cycle 上限到達後にフルレビューを 1 回挟む"
 domain: "heuristics"
+promote: rite-plugin
 description: "cycle 2 以降を差分スコープ化すると「範囲は絞るが基準は緩めない」と規定していても、範囲の外は基準以前に観測されない。PR #2130 では 5 cycle の差分スコープを消化した直後のフルレビューで blocking 5 件 (うち HIGH 3 件) が出て、すべてが各 cycle の diff の外側にあった。cycle 上限到達後にフルレビューを 1 回挟む運用がこの構造的限界への実効的な対処になる。"
 created: "2026-08-07T18:40:00+09:00"
 updated: "2026-08-07T18:40:00+09:00"

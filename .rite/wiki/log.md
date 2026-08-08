@@ -1,4 +1,26 @@
 ## 2026-08-08
+* **Audit**: Issue #2091 昇格監査 — 全 408 ページを domain/promote に分類。 promote=229 (mechanize=26, references=38, shelve=165) / domain=179。 promote ページへ `promote: rite-plugin` frontmatter 付与。
+* **Stale-sweep** (#2060 統合): stale 20 件を判定。 有効 20 件 → `updated` 更新。
+  * 有効: [awk negative-class + greedy + literal の組み合わせは backtracking で literal を silent miss する](pages/anti-patterns/awk-regex-backtracking-trap-with-greedy-literal.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 91d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [委譲表現を含む fix は次サイクルで PARTIAL fix として再指摘される](pages/anti-patterns/delegation-phrase-induces-partial-fix.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 96d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [grep -c || echo 0 が \"0\\n0\" を吐き出す double-print 罠](pages/anti-patterns/grep-c-or-echo-0-double-print.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 97d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [Markdown 大規模圧縮 refactor 時の heading hierarchy skip](pages/anti-patterns/heading-hierarchy-skip-on-large-markdown-compression.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 96d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [並列 Section 展開時の同名 heading 重複](pages/anti-patterns/parallel-section-same-heading-duplicate.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 95d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [Sub-Issue series で AC 緩和が発生したら設計 doc 側にも back-propagation する](pages/heuristics/design-doc-ac-back-propagation.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 96d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする](pages/heuristics/identity-reference-documentation-unification.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 95d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [Issue body 内 `Scope 外指摘ハンドリングポリシー` 宣言で reviewer advisory finding を Issue 化なし recommendation に降格する](pages/heuristics/issue-body-scope-out-policy-demotes-advisory-finding.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 93d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [Issue 起票前の grep 棚卸しで「違反あり」前提が既に解消済みか確認する](pages/heuristics/issue-precondition-grep-survey.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 91d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [re-review / verification mode でも初回レビューと同等の網羅性を確保する (Anti-Degradation Guardrail)](pages/heuristics/reviewer-scope-antidegradation.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 96d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [Reviewer rule 自身を編集する PR は self-application false positive を verify する](pages/heuristics/self-applying-reviewer-rule-false-positive.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 96d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [Test の env gate 配置と CI workflow 起動コマンドの claim alignment を empirical 検証する](pages/heuristics/test-env-gate-ci-alignment.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 91d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [bash code block 終端は固定 +N 行 window ではなく awk state machine で動的追跡する](pages/patterns/awk-bash-block-termination-tracking.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 91d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [bash test の summary 行は $(basename \"$0\") で自動同期する](pages/patterns/bash-test-summary-basename-auto-sync.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 97d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する](pages/patterns/canonical-reference-sample-code-strict-sync.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 96d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する](pages/patterns/drift-check-anchor-prose-code-sync.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 96d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [`mapfile -t < <(...)` で pipefail safe な iteration を書く](pages/patterns/mapfile-process-substitution-pipefail-safe.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 93d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [計画変更時の前方参照契約](pages/patterns/plan-deviation-forward-reference-contract.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 95d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [PR シリーズ間で stub 残置 markdown formatting を踏襲する](pages/patterns/pr-series-stub-format-consistency.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 96d）。updated を 2026-08-08T13:37:28Z に更新
+  * 有効: [Race window probe の identification power: outcome classification で test の真正性を担保する](pages/patterns/race-window-probe-identification-power.md) — 内容を再確認。汎用/ rite 知見として現在も有効（stale 98d）。updated を 2026-08-08T13:37:28Z に更新
 
 * **Create**: [安全側へ倒れる fail-safe は、倒れた事実が観測されない限り機能の恒久的不作動を隠す](pages/anti-patterns/safe-side-degradation-hides-permanent-inoperability.md) — raw/reviews/20260807T235335Z-pr-2142.md を新規ページ化（安全側 + 例外にならない + reason の誤帰属の 3 条件が揃うと「機能が一度も動いていない」信号がゼロになる / CI の continue-on-error leg を緑の根拠にしない）
 * **Create**: [診断を 1 行足す修正は、外部入力・エラー経路・テスト網羅の 3 領域を同時に開く](pages/heuristics/added-diagnostic-opens-three-review-surfaces.md) — raw/reviews/20260808T004750Z-pr-2142.md を新規ページ化（cycle 1 で足した 1 行に cycle 2 で 4 件が集中し 1 件は 6 reviewer 全員が独立検出 / 4 段 idiom のコストは各段の番人とその正しさの証明まで含む）

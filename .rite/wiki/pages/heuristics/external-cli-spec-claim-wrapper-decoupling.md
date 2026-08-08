@@ -2,6 +2,7 @@
 type: "heuristics"
 title: "外部 CLI の仕様主張（冪等性等）は wrapper 構造で spec 要求から分離し、実行検証なしでは blocking にしない"
 domain: "heuristics"
+promote: rite-plugin
 description: "外部 CLI の挙動主張（例: gh project link の re-link 時 exit code）は実行検証なしでは Demonstrable ゲートを越えないため blocking finding にせず調査推奨へ分離する。同時に、spec の「冪等」MUST は `if ! cmd; then WARNING; fi` の non-blocking wrapper が外部挙動に依存せず step レベルで無条件に満たせる（Reading A/B 分離）。"
 created: "2026-07-12T22:55:00+09:00"
 updated: "2026-07-12T22:55:00+09:00"

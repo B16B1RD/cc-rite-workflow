@@ -1,6 +1,7 @@
 ---
 title: "Peer pattern の drift 判定は canonical schema 不変条件で cross-check する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-05-18T04:00:00+00:00"
 updated: "2026-05-18T04:00:00+00:00"
 sources:

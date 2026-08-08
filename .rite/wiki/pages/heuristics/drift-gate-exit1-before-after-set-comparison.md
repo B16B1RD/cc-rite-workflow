@@ -1,6 +1,7 @@
 ---
 title: "Mechanical drift gate の exit 1 は git-stash before/after 集合比較で pre-existing 判定する"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-05-29T15:59:38Z"
 updated: "2026-05-29T15:59:38Z"
 sources:

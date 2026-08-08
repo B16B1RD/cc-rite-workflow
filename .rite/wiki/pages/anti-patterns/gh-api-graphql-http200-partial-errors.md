@@ -1,6 +1,7 @@
 ---
 title: "gh api graphql は HTTP 200 + .errors[] で partial failure を返す (exit code では検知できない)"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-05-29T04:21:34+00:00"
 updated: "2026-05-29T04:21:34+00:00"
 sources:

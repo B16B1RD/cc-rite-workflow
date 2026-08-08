@@ -2,6 +2,7 @@
 type: "heuristics"
 title: "セッション worktree + sandbox 環境の 3 つの罠: cwd 相対 write-allowlist・`.rite-plugin-root` のブランチ相違・`--show-toplevel` の誤解決"
 domain: "heuristics"
+promote: rite-plugin
 description: "(1) worktree cwd から main checkout 配下（`.rite/review-results/` 等）への書き込みは sandbox の write-allowlist（cwd 相対の `.`）でブロックされる。(2) `.rite-plugin-root` をセッション worktree へコピーする際、コピー元（main checkout）のブランチが worktree のブランチと異なると古い `plugins/rite` を指す自己参照の罠がある。(3) `git rev-parse --show-toplevel` は worktree cwd から実行すると main checkout root ではなく worktree 自身の toplevel を返す。"
 created: "2026-07-18T23:38:52Z"
 updated: "2026-07-20T07:50:27Z"

@@ -1,8 +1,9 @@
 ---
 title: "awk negative-class + greedy + literal の組み合わせは backtracking で literal を silent miss する"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-05-09T03:50:00+00:00"
-updated: "2026-05-09T03:50:00+00:00"
+updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260509T031148Z-pr-911.md"

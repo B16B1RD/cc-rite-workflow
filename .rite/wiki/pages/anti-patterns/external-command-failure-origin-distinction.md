@@ -1,6 +1,7 @@
 ---
 title: "外部コマンド (gh) 失敗時に not-found と一時障害を区別せず別経路へ落とすのは silent failure"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-06-02T03:50:58Z"
 updated: "2026-07-30T15:40:55Z"
 sources:

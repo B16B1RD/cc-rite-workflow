@@ -1,6 +1,7 @@
 ---
 title: "散文で宣言した設計は対応する実装契約がなければ機能しない"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-04-17T04:30:00+00:00"
 updated: "2026-07-24T10:32:51Z"
 sources:

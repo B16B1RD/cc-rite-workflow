@@ -1,6 +1,7 @@
 ---
 title: "Markdown table 内に HTML コメントを挿入すると GFM table boundary が破壊される"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-05-03T12:53:26Z"
 updated: "2026-08-06T22:40:00+09:00"
 sources:

@@ -2,7 +2,7 @@
 title: "Race window probe の identification power: outcome classification で test の真正性を担保する"
 domain: "patterns"
 created: "2026-05-02T00:30:00+09:00"
-updated: "2026-05-02T09:25:00+09:00"
+updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260501T140844Z-pr-759.md"

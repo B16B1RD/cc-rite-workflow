@@ -1,8 +1,9 @@
 ---
 title: "re-review / verification mode でも初回レビューと同等の網羅性を確保する (Anti-Degradation Guardrail)"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-04-19T03:30:00+00:00"
-updated: "2026-05-04T03:30:00+00:00"
+updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260419T032801Z-pr-586.md"

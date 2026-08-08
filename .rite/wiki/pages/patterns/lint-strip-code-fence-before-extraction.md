@@ -1,6 +1,7 @@
 ---
 title: "Lint の見出し抽出はコードフェンス内行を除外してから行う (検証ツール自身の false-negative 防止)"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-05-28T12:42:26Z"
 updated: "2026-05-28T12:42:26Z"
 sources:

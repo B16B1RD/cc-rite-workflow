@@ -2,6 +2,7 @@
 type: "patterns"
 title: "rc 変数を 0 で初期化すると、未起動の段を「起動して成功した」と断定する"
 domain: "patterns"
+promote: rite-plugin
 description: "多段 pipeline の rc を診断へ載せるとき、0 は「実行して成功」の意味を持つ。実行されうるが実行されない段の初期値には非数値 sentinel を使い、実際に走る経路でのみ rc を代入する。"
 created: "2026-08-03T07:46:56Z"
 updated: "2026-08-03T07:46:56Z"

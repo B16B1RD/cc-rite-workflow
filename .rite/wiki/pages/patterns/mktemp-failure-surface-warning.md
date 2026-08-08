@@ -1,6 +1,7 @@
 ---
 title: "mktemp 失敗は silent 握り潰さず WARNING を可視化する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 updated: "2026-07-22T22:54:19Z"
 sources:

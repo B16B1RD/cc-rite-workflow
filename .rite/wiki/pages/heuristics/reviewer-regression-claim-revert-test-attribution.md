@@ -1,6 +1,7 @@
 ---
 title: "reviewer の regression 主張は revert test (git show / git diff) で PR 由来か pre-existing かを独立検証する"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-06-02T01:52:19Z"
 updated: "2026-07-22T13:15:00+09:00"
 sources:

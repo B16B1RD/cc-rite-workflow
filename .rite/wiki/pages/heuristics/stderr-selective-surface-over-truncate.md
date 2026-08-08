@@ -1,6 +1,7 @@
 ---
 title: "stderr ノイズ削減: truncate ではなく selective surface で解く"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 updated: "2026-07-24T17:00:00+09:00"
 sources:

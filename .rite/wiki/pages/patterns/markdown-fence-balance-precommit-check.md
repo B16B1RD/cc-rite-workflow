@@ -1,6 +1,7 @@
 ---
 title: "Markdown code fence の balance は commit 前に awk で機械検証する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-04-20T01:10:00+00:00"
 updated: "2026-07-27T10:57:51+09:00"
 sources:

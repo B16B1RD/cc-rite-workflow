@@ -2,6 +2,7 @@
 type: "heuristics"
 title: "提示順ルールを計画テンプレートに追加する際は depends_on 列の有無を確認する"
 domain: "heuristics"
+promote: rite-plugin
 description: "実装計画テンプレートの「提示順」を変える変更は、対象テンプレートが depends_on 列を持つ依存グラフ形式かプレーン番号リスト形式かによって「実行順」への副作用の有無が変わる。変更前に必ず確認する。"
 created: "2026-07-06T02:34:59Z"
 updated: "2026-07-06T02:34:59Z"

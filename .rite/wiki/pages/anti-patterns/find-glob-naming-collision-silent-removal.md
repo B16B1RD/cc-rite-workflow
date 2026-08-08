@@ -1,6 +1,7 @@
 ---
 title: "新規 file 命名と既存 find glob が collision して silent 削除を起こす"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-04-30T03:50:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"
 sources:

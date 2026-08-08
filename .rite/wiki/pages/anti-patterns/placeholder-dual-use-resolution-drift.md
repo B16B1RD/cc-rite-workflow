@@ -1,6 +1,7 @@
 ---
 title: "同一 placeholder を識別子と resolution-target で再利用すると path-resolution drift を生む"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-05-13T00:00:00+00:00"
 updated: "2026-05-13T11:55:00+00:00"
 sources:

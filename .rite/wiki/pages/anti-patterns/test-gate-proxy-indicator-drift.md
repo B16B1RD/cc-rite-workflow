@@ -2,6 +2,7 @@
 type: "anti-patterns"
 title: "テストの gate 条件がプラットフォーム事実を環境 capability の代理にすると恒常 red 化する"
 domain: "anti-patterns"
+promote: rite-plugin
 description: "テストの floor（skip を禁じて fail させるガード）が守りたい性質そのものではなくプラットフォーム事実を代理指標に使うと、代理の成立しない環境で恒常 red 化しスイート全体の signal を劣化させる。コメントと条件式の乖離が検出点になる。"
 created: "2026-08-04T00:55:00+09:00"
 updated: "2026-08-04T00:55:00+09:00"

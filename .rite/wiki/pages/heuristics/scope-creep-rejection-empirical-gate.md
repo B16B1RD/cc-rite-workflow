@@ -1,6 +1,7 @@
 ---
 title: "`rejected(scope-creep)` judgment は cross-validation + empirical revert test で gate する"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-04-27T23:01:24+00:00"
 updated: "2026-07-31T01:26:57+09:00"
 sources:

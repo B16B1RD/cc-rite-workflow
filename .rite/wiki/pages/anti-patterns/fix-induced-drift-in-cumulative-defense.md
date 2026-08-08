@@ -1,6 +1,7 @@
 ---
 title: "累積対策 PR の review-fix loop で fix 自体が drift を導入する"
 domain: "anti-patterns"
+promote: rite-plugin
 description: "累積対策 PR の review-fix loop では fix 自体が次サイクルの指摘を生む。特に実測アンカーの無い散文指摘は修正の複製率が 1 を超えることがあり、直すほど収束が遠のく。収束するのは主張の粒度を落として配線情報を削除したとき。"
 created: "2026-04-21T10:35:00+00:00"
 updated: "2026-08-07T08:00:00+09:00"

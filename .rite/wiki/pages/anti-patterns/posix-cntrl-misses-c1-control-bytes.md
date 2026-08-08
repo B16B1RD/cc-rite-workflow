@@ -1,6 +1,7 @@
 ---
 title: "POSIX `[[:cntrl:]]` は C1 8-bit 制御バイト (0x80–0x9f) を分類しない"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-06-05T05:45:26Z"
 updated: "2026-06-05T17:02:41Z"
 sources:

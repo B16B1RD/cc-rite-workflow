@@ -2,6 +2,7 @@
 type: "anti-patterns"
 title: "却下理由が採用案にも等しく当てはまる — differentiator でない根拠をコメントに残す"
 domain: "anti-patterns"
+promote: rite-plugin
 description: "「A を却下して B を採用した」とコメントに書くとき、却下理由が B にも成立するなら、それは differentiator ではない。PR #2013 では `| tee` の却下理由（背景プロセスが残るとパイプが EOF を待つ）が採用した `$(...)` にもそのまま当てはまり、実測すると変更前の direct 継承だけが唯一ハングしない形だった。誤った安心を与えるコメントは、将来の停止調査を逆方向へ誘導する。"
 created: "2026-07-25T07:05:21Z"
 updated: "2026-08-01T00:21:06+09:00"

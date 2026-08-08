@@ -1,6 +1,7 @@
 ---
 title: "Silent guard contract — pre-condition guard は pass() を呼ばずに silent return する"
 domain: "patterns"
+promote: rite-plugin
 created: "2026-05-19T11:50:00+09:00"
 updated: "2026-05-19T11:50:00+09:00"
 sources:

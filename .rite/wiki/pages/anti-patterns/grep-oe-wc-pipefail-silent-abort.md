@@ -1,6 +1,7 @@
 ---
 title: "`grep -oE | wc -l` が ratchet ideal 値到達時に pipefail で silent abort"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-05-08T17:43:55+00:00"
 updated: "2026-08-01T00:21:06+09:00"
 sources:

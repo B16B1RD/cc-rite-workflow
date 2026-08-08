@@ -2,6 +2,7 @@
 type: "heuristics"
 title: "カテゴリ列挙の圧縮はブロッキング/informational の分類を SoT で確認してから削る"
 domain: "heuristics"
+promote: rite-plugin
 description: "ドキュメントのカテゴリ列挙を要約・圧縮する際、削る対象が実装のどの分類（ブロッキング/informational）に属すかを SoT のカテゴリ表で確認せずに削ると、ブロッキングカテゴリが脱落して実装との Implementation Coverage 乖離を生む。修正はコード識別子を避けた plain language 再追加で元の受入基準を維持したまま集合の完全性を回復できる。"
 created: "2026-07-23T19:20:00+09:00"
 updated: "2026-07-23T19:20:00+09:00"

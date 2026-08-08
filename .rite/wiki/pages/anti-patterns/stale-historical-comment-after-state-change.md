@@ -1,6 +1,7 @@
 ---
 title: "状態変化後も未来形 / 旧値前提のインラインコメントが残置する (stale historical comment drift)"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-05-19T20:10:23Z"
 updated: "2026-05-29T15:59:38Z"
 sources:

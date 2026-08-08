@@ -1,6 +1,7 @@
 ---
 title: "bash control-flow integrity: continue/break/return は enclosing 構文を bash literal 内に明示する"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-05-26T13:30:00+00:00"
 updated: "2026-05-26T13:30:00+00:00"
 sources:

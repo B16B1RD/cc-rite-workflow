@@ -1,6 +1,7 @@
 ---
 title: "Self-contradicting rule declaration: 新規ルール宣言時にルール本文自身がルール違反を含む"
 domain: "anti-patterns"
+promote: rite-plugin
 created: "2026-05-26T00:30:00Z"
 updated: "2026-05-26T00:30:00Z"
 sources:

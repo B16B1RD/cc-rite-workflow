@@ -1,6 +1,7 @@
 ---
 title: "Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 updated: "2026-07-14T07:35:00+09:00"
 sources:

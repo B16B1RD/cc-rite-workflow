@@ -1,8 +1,9 @@
 ---
 title: "Test の env gate 配置と CI workflow 起動コマンドの claim alignment を empirical 検証する"
 domain: "heuristics"
+promote: rite-plugin
 created: "2026-05-09T09:10:00Z"
-updated: "2026-05-09T09:10:00Z"
+updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260509T071343Z-pr-915.md"
