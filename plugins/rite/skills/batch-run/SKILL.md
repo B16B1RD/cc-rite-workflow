@@ -35,6 +35,10 @@ argument-hint: "[--merge] <issue_number>..."
 **Output**: 全 Issue 処理完了の完了通知（ステップ 7。デフォルトは draft PR 群、`--merge` は merge/cleanup 完走）、または最初の失敗での停止報告（残り Issue 含む、ステップ 8）
 **自律度**: 完全自律（無確認）。デフォルトは draft PR まで、`--merge` 時は merge を含め確認を挟まない。失敗時のみ停止。
 
+## E2E Output Minimization
+
+**環境起因の迂回・リトライの出力姿勢**: [common-error-handling.md#environment-workaround-output-posture](../../references/common-error-handling.md#environment-workaround-output-posture) — 成功時は無言、失敗時は行動可能な 1 行のみ（規則本文はそちら。本スキルは複製しない）。
+
 ## Arguments
 
 | Argument | Description |
