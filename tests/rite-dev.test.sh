@@ -118,6 +118,24 @@ assert_contains 'Codex の語境界を保持' "$codex_log" $'ARG=two words\nARG=
 [[ -d "$REPO/.codex-dev/skills/.system" && ! -e "$REPO/plugins/rite/skills/.system" ]] && \
   pass 'Codex 管理物は配布ソースへ混入しない' || fail 'Codex 管理物は配布ソースへ混入しない'
 
+repo_link="$TEST_ROOT/repo-link"
+ln -s "$REPO" "$repo_link"
+RITE_STUB_LOG="$LOG" PATH="$BIN:$PATH" "$repo_link/scripts/rite-dev" codex
+symlink_codex_log=$(<"$LOG")
+assert_contains 'symlink checkout 経由でも Codex 照合が成立' "$symlink_codex_log" "RITE_PLUGIN_ROOT=$REPO/plugins/rite"
+assert_contains 'symlink checkout 経由でも物理 repository cwd を指定' "$symlink_codex_log" $'ARG=--cd\nARG='"$REPO"
+
+wrong_link_repo="$TEST_ROOT/wrong-link"
+make_repo "$wrong_link_repo"
+mkdir -p "$wrong_link_repo/.codex-dev/skills" "$wrong_link_repo/unrelated/open"
+ln -s "$wrong_link_repo/unrelated/open" "$wrong_link_repo/.codex-dev/skills/open"
+set +e
+wrong_link_out=$(RITE_STUB_LOG="$LOG" PATH="$BIN:$PATH" "$wrong_link_repo/scripts/rite-dev" codex 2>&1)
+wrong_link_rc=$?
+set -e
+assert_eq '異実体 Codex skill link は非ゼロ終了' 1 "$wrong_link_rc"
+assert_contains '異実体 Codex skill link を診断' "$wrong_link_out" "$wrong_link_repo/.codex-dev/skills/open"
+
 RITE_STUB_LOG="$LOG" PATH="$BIN:$PATH" "$REPO/scripts/rite-dev" grok 'two words' tail
 grok_log=$(<"$LOG")
 assert_contains 'Grok host 環境変数を設定' "$grok_log" 'RITE_HOST=grok'
