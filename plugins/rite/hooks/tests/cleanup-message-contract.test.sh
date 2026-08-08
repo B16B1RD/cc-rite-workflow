@@ -106,6 +106,41 @@ assert_not_grep "old jargon '遅延 reap が後で回収します' removed" "$CL
 # 旧 branch-deferred メッセージ「worktree で checkout 中のため残置しました」は撤去済み。
 assert_not_grep "old branch-deferred residue wording removed" "$CLEANUP" "worktree で checkout 中のため残置しました"
 
-if ! print_summary "$(basename "$0")" "cleanup.md ステップ 4-W/5/12 の self-exclusion 配線・branch 回収・平易メッセージ contract (Issue #1670 T-06)"; then
+echo "=== ステップ 4-W: in_worktree_unrecorded の委譲 routing (Issue #2133 T-01/T-03) ==="
+# T-01: ExitWorktree が no-op な path 入場を独立 arm に分離し、委譲 marker を emit する。
+# 分岐の基準は「worktree 内か」ではなく「ExitWorktree で main checkout へ退出できるか」。
+assert_grep "4-W splits in_worktree_unrecorded into its own case arm" "$CLEANUP" '^  in_worktree_unrecorded\)$'
+assert_grep "4-W emits the delegation marker" "$CLEANUP" 'CLEANUP_DELEGATED=1; reason=exit_worktree_unavailable'
+assert_grep "4-W states the branch criterion is ExitWorktree availability" "$CLEANUP" 'ExitWorktree` で main checkout へ退出できるか'
+# ガード迂回の禁止を明記する (Issue #2133 MUST NOT — 実測で拒否済みの複合コマンドを再試行させない)。
+assert_grep "4-W forbids bypassing the harness guard" "$CLEANUP" "ガードを迂回する複合コマンド"
+# T-03 (非回帰): in_worktree arm は従来どおり dirty チェックを持ち、ExitWorktree(keep) 手順も残る。
+# 委譲 arm が in_worktree まで巻き込んで batch-run 経路を止めたらこの pin ごと落ちる。
+assert_grep_in_section "in_worktree arm keeps the dirty check" "$CLEANUP" \
+  '^  in_worktree\)$' '^  in_worktree_unrecorded\)$' 'git-status-filtered\.sh'
+assert_grep "in_worktree arm still routes through ExitWorktree(keep)" "$CLEANUP" 'action: "keep"'
+
+echo "=== ステップ 4/5/9: 委譲モードのスキップガード (Issue #2133 T-01) ==="
+# main checkout 操作を持つ 3 ステップすべてに対称にガードを置く。1 箇所でも欠けると
+# harness の worktree 隔離ガードに拒否され、Issue #2133 が消した長文の診断報告に戻る。
+assert_grep_in_section "Step 4 (base update) has the delegation skip guard" "$CLEANUP" \
+  '^### 4 base ブランチの更新' '^## ステップ 5:' 'CLEANUP_DELEGATED=1'
+assert_grep_in_section "Step 5 (branch delete) has the delegation skip guard" "$CLEANUP" \
+  '^## ステップ 5:' '^## ステップ 6:' 'CLEANUP_DELEGATED=1'
+assert_grep_in_section "Step 9 (wiki ingest) has the delegation skip guard" "$CLEANUP" \
+  '^## ステップ 9:' '^## ステップ 10:' 'CLEANUP_DELEGATED=1'
+
+echo "=== ステップ 12: 委譲モードの定型報告 (Issue #2133 T-01/T-02) ==="
+# fail-loud: 委譲 4 項目は x に丸めず未完了として列挙する。
+assert_grep "Step 12 pins the four delegated checks to unchecked" "$CLEANUP" \
+  '4 つを ` `（未完了）に固定'
+assert_grep "Step 12 fixes the outstanding count to 4" "$CLEANUP" '`\{n\}` は `4` 固定'
+# T-02: 委譲先は main checkout での再実行 1 行。冪等であることを案内に含める。
+assert_grep "Step 12 delegation notice points to a main-checkout re-run" "$CLEANUP" \
+  'main checkout でセッションを開き `/rite:cleanup \{pr_number\}` を再実行してください'
+assert_grep "Step 12 delegation notice states the re-run is idempotent" "$CLEANUP" \
+  "実行済みの項目は冪等にスキップされます"
+
+if ! print_summary "$(basename "$0")" "cleanup.md ステップ 4-W/5/12 の self-exclusion 配線・branch 回収・平易メッセージ contract (Issue #1670 T-06) + in_worktree_unrecorded 委譲 routing (Issue #2133)"; then
   exit 1
 fi
