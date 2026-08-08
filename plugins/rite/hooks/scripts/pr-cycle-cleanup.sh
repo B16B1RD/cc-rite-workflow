@@ -640,9 +640,15 @@ fi
 #   - detached HEAD (porcelain の `detached` 行。`branch refs/heads/...` を持つものは除外)
 #   - リポジトリ配下 (`.rite/worktrees/*` / wiki-worktree / main) は除外
 #   - 自セッション live cwd は除外 (worktree-foreign-cwd.sh --self-root $PPID)
+#   - HEAD がどの ref からも到達不能な commit の worktree は除外 (Issue #2158)
 # を満たす worktree を age ガード無しで回収する。reviewer は READ-ONLY で remove できず、
 # cleanup は review 入口 / iterate 終端でのみ走るため、並行 reviewer の in-flight を
 # age で守る必要は無い — 別セッション在席は foreign-cwd が塞ぐ。
+#
+# dirty は見送り理由にしない (Issue #2158): mutation worktree は tracked 書き換えと
+# 実験スクリプトが本質であり、status --porcelain 非空は回収対象の性質そのもの。
+# 保護するのは「どの named ref からも到達不能な commit」のみ（使い捨て dirty と
+# 区別する）。判定コマンド失敗時は安全側で見送り + WARNING（silent skip しない）。
 # カウンタは既存 `mutation_worktrees_reaped` を共有する。
 # -----------------------------------------------------------------------
 _tmp_prefix="${TMPDIR:-/tmp}"
@@ -680,10 +686,18 @@ if _p_list=$(git worktree list --porcelain 2>"${_p_list_err:-/dev/null}"); then
       if [ "$_p_fc_rc" -eq 0 ]; then
         echo "WARNING: 別セッションが detached worktree ($_p_path) を使用中のため回収を見送りました" >&2
       else
-        # dirty 保護 (Step 4.5 AC-6 と同旨): uncommitted 変更のある worktree は force 削除しない
-        _p_dirty=$(git -C "$_p_path" status --porcelain 2>/dev/null) || _p_dirty="??"
-        if [ -n "$_p_dirty" ]; then
-          echo "WARNING: detached TMPDIR worktree ($_p_path) に未コミット変更があるため回収を見送りました" >&2
+        # 到達不能 commit 保護 (Issue #2158): mutation worktree は本質的に dirty なので
+        # 未コミット変更は見送り理由にしない。保護するのは「どの named ref からも
+        # 到達不能な commit」のみ。for-each-ref --contains は worktree HEAD
+        # (.git/worktrees/*/HEAD) を列挙しないため、detached 上でだけ作られた
+        # commit は EMPTY になる。判定失敗時は削除せず WARNING で観測可能にする。
+        _p_head=$(git -C "$_p_path" rev-parse HEAD 2>/dev/null) || _p_head=""
+        if [ -z "$_p_head" ]; then
+          echo "WARNING: detached TMPDIR worktree ($_p_path) の HEAD 判定に失敗したため回収を見送りました" >&2
+        elif ! _p_refs=$(git -C "$_p_path" for-each-ref --contains="$_p_head" --format='%(refname)' 2>/dev/null); then
+          echo "WARNING: detached TMPDIR worktree ($_p_path) の到達可能性判定に失敗したため回収を見送りました" >&2
+        elif [ -z "$_p_refs" ]; then
+          echo "WARNING: detached TMPDIR worktree ($_p_path) に到達不能 commit があるため回収を見送りました" >&2
         elif [ "$DRY_RUN" = "1" ]; then
           echo "[dry-run] would reap detached TMPDIR worktree: $(printf '%s' "$_p_path" | neutralize_ctrl)"
         else

@@ -874,26 +874,29 @@ fi
 rm -rf "$WORKDIR_SCAN_TMP"/mf-wt-* 2>/dev/null || true
 cleanup_temp_repo "$TEST_REPO"
 
-# T-24: dirty manifest worktree is skipped + kept in manifest (AC-6)
+# T-24: dirty manifest worktree is skipped + kept in manifest (AC-6 / Step 4.5)
+# Path is under TEST_REPO (not TMPDIR) so Step 4-P porcelain sweep does not
+# reap it first — Issue #2158 made dirty TMPDIR detached worktrees reaped by
+# Step 4-P, which would otherwise collapse this Step 4.5-only assertion.
 echo "T-24: dirty な manifest worktree は保護 + manifest 保持 (AC-6)"
-rm -rf "$WORKDIR_SCAN_TMP"/mf-wt-* 2>/dev/null || true
 TEST_REPO=$(make_temp_repo)
+t24_wt="$TEST_REPO/mf-wt-dirty"
 (
   cd "$TEST_REPO"
-  git worktree add --detach -q "$WORKDIR_SCAN_TMP/mf-wt-dirty" HEAD
-  echo "uncommitted" > "$WORKDIR_SCAN_TMP/mf-wt-dirty/scratch.txt"   # untracked → dirty
-  bash "$ARTIFACT_HELPER" record --type worktree --id "$WORKDIR_SCAN_TMP/mf-wt-dirty" >/dev/null 2>&1
+  git worktree add --detach -q "$t24_wt" HEAD
+  echo "uncommitted" > "$t24_wt/scratch.txt"   # untracked → dirty
+  bash "$ARTIFACT_HELPER" record --type worktree --id "$t24_wt" >/dev/null 2>&1
 )
 t24_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
 t24_kept=$( { grep -c 'mf-wt-dirty' "$TEST_REPO/.rite/tmp-artifacts.tsv" 2>/dev/null || true; } )
-if [ -e "$WORKDIR_SCAN_TMP/mf-wt-dirty" ] \
+if [ -e "$t24_wt" ] \
    && echo "$t24_output" | grep -q 'manifest=0' \
    && [ "$t24_kept" = "1" ]; then
   pass "T-24: dirty worktree は reap されず manifest=0 + manifest にエントリ保持"
 else
-  fail "T-24: dir=$([ -e "$WORKDIR_SCAN_TMP/mf-wt-dirty" ] && echo present || echo gone), kept=$t24_kept. Output: $t24_output"
+  fail "T-24: dir=$([ -e "$t24_wt" ] && echo present || echo gone), kept=$t24_kept. Output: $t24_output"
 fi
-rm -rf "$WORKDIR_SCAN_TMP"/mf-wt-* 2>/dev/null || true
+( cd "$TEST_REPO" && git worktree remove --force "$t24_wt" 2>/dev/null ) || true
 cleanup_temp_repo "$TEST_REPO"
 
 # T-25: a non-recorded weird-named branch survives (誤削除防止 — manifest reaps only recorded) (AC-3)
@@ -1055,6 +1058,103 @@ if echo "$t32_output" | grep -q 'status=noop' \
 else
   fail "T-32: Output: $t32_output"
 fi
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-33: Step 4-P — tracked modified (dirty) mutation worktree を回収 (Issue #2158 AC-1)
+# Given: detached TMPDIR worktree with uncommitted modification to a tracked file
+# When: Cleanup runs
+# Then: worktree reaped; mutation_worktrees >= 1 (dirty is NOT a skip reason)
+# -----------------------------------------------------------------------
+echo "T-33: Step 4-P が tracked modified な mutation worktree を回収 (Issue #2158 AC-1)"
+TEST_REPO=$(make_temp_repo)
+rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
+( cd "$TEST_REPO" && git worktree add --detach -q "$WORKDIR_SCAN_TMP/rite-review-mutation-dirty-mod" HEAD )
+echo "mutated" >> "$WORKDIR_SCAN_TMP/rite-review-mutation-dirty-mod/README.md"
+t33_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+t33_mut=$(echo "$t33_output" | sed -n 's/.*mutation_worktrees=\([0-9]*\).*/\1/p' | head -1)
+if [ ! -e "$WORKDIR_SCAN_TMP/rite-review-mutation-dirty-mod" ] \
+   && [ "${t33_mut:-0}" -ge 1 ] 2>/dev/null; then
+  pass "T-33: tracked modified worktree が回収され mutation_worktrees=$t33_mut"
+else
+  fail "T-33: dir=$([ -e "$WORKDIR_SCAN_TMP/rite-review-mutation-dirty-mod" ] && echo present || echo gone) mut=$t33_mut. Output: $t33_output"
+fi
+( cd "$TEST_REPO" && git worktree remove --force "$WORKDIR_SCAN_TMP/rite-review-mutation-dirty-mod" 2>/dev/null ) || true
+rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-34: Step 4-P — untracked のみの dirty worktree を回収 (Issue #2158 AC-2)
+# -----------------------------------------------------------------------
+echo "T-34: Step 4-P が untracked のみの mutation worktree を回収 (Issue #2158 AC-2)"
+TEST_REPO=$(make_temp_repo)
+rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
+( cd "$TEST_REPO" && git worktree add --detach -q "$WORKDIR_SCAN_TMP/rite-review-mutation-untracked" HEAD )
+echo "experiment" > "$WORKDIR_SCAN_TMP/rite-review-mutation-untracked/mutate.py"
+t34_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+t34_mut=$(echo "$t34_output" | sed -n 's/.*mutation_worktrees=\([0-9]*\).*/\1/p' | head -1)
+if [ ! -e "$WORKDIR_SCAN_TMP/rite-review-mutation-untracked" ] \
+   && [ "${t34_mut:-0}" -ge 1 ] 2>/dev/null; then
+  pass "T-34: untracked のみ worktree が回収され mutation_worktrees=$t34_mut"
+else
+  fail "T-34: dir=$([ -e "$WORKDIR_SCAN_TMP/rite-review-mutation-untracked" ] && echo present || echo gone) mut=$t34_mut. Output: $t34_output"
+fi
+( cd "$TEST_REPO" && git worktree remove --force "$WORKDIR_SCAN_TMP/rite-review-mutation-untracked" 2>/dev/null ) || true
+rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-35: Step 4-P — 到達不能 commit を持つ worktree は WARNING 付きで残存 (Issue #2158 AC-3)
+# Given: detached worktree with a unique commit not reachable from any named ref
+# When: Cleanup runs
+# Then: worktree remains; WARNING mentions 到達不能 commit
+# -----------------------------------------------------------------------
+echo "T-35: Step 4-P が到達不能 commit worktree を WARNING 付きで保護 (Issue #2158 AC-3)"
+TEST_REPO=$(make_temp_repo)
+rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
+( cd "$TEST_REPO" && git worktree add --detach -q "$WORKDIR_SCAN_TMP/rite-review-mutation-orphan-commit" HEAD )
+(
+  cd "$WORKDIR_SCAN_TMP/rite-review-mutation-orphan-commit"
+  echo "unique-only-here" > orphan-payload.txt
+  git add orphan-payload.txt
+  git -c user.email=test@example.com -c user.name=Test commit --quiet -m "orphan-only-on-detached"
+)
+t35_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+if [ -d "$WORKDIR_SCAN_TMP/rite-review-mutation-orphan-commit" ] \
+   && echo "$t35_output" | grep -q '到達不能 commit'; then
+  pass "T-35: 到達不能 commit worktree が WARNING 付きで残存"
+else
+  fail "T-35: dir=$([ -d "$WORKDIR_SCAN_TMP/rite-review-mutation-orphan-commit" ] && echo present || echo gone). Output: $t35_output"
+fi
+( cd "$TEST_REPO" && git worktree remove --force "$WORKDIR_SCAN_TMP/rite-review-mutation-orphan-commit" 2>/dev/null ) || true
+rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-36: Step 4-P — 到達可能性判定不能時は安全側で見送り + WARNING (Issue #2158 AC-4)
+# Given: detached worktree whose HEAD cannot be resolved (broken gitdir pointer)
+# When: Cleanup runs
+# Then: worktree remains; WARNING about HEAD 判定失敗
+# -----------------------------------------------------------------------
+echo "T-36: Step 4-P 判定不能時は残存 + WARNING (Issue #2158 AC-4)"
+TEST_REPO=$(make_temp_repo)
+rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
+t36_wt="$WORKDIR_SCAN_TMP/rite-review-mutation-broken-head"
+( cd "$TEST_REPO" && git worktree add --detach -q "$t36_wt" HEAD )
+# Break worktree gitdir so `git -C wt rev-parse HEAD` fails (判定不能 = 安全側見送り)
+printf 'gitdir: /nonexistent/rite-broken-gitdir\n' > "$t36_wt/.git"
+t36_output=$( cd "$TEST_REPO" && bash "$CLEANUP" 2>&1 )
+if [ -d "$t36_wt" ] \
+   && echo "$t36_output" | grep -qE 'HEAD 判定に失敗|到達可能性判定に失敗'; then
+  pass "T-36: 判定不能 worktree が WARNING 付きで残存"
+else
+  fail "T-36: dir=$([ -d "$t36_wt" ] && echo present || echo gone). Output: $t36_output"
+fi
+# force-remove may fail on broken gitdir; fall back to prune + rm
+( cd "$TEST_REPO" && git worktree remove --force "$t36_wt" 2>/dev/null ) || true
+rm -rf "$t36_wt"
+( cd "$TEST_REPO" && git worktree prune 2>/dev/null ) || true
+rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
