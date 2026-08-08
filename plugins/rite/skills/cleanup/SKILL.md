@@ -1055,7 +1055,7 @@ Status: {projects_status_result}
 - ローカル/リモートブランチの削除
 - Wiki ingest（pending raw source は wiki branch に保持されています）
 
-上記 4 項目は main checkout での操作が必要なため実行していません。main checkout でセッションを開き `/rite:cleanup {pr_number}` を再実行してください（実行済みの項目は冪等にスキップされます）。再実行では base 更新・Wiki ingest・リモートブランチ削除が直接完了し、セッション worktree とローカルブランチは次回セッション開始時の自動回収の対象になります。対象にならなかった場合は再実行時の報告が残作業を案内します。すぐに消したい場合（main checkout でセッションを開いたあと）: git worktree remove --force '{flow_wt}' && git branch -D {branch_name}
+上記 4 項目は main checkout での操作が必要なため実行していません。main checkout でセッションを開き `/rite:cleanup {pr_number}` を再実行してください（実行済みの項目は冪等にスキップされます）。再実行では base 更新・Wiki ingest・リモートブランチ削除が直接完了し、セッション worktree とローカルブランチは次回セッション開始時の自動回収の対象になります。すぐに消したい場合（main checkout でセッションを開いたあと）: git worktree remove --force '{flow_wt}' && git branch -D {branch_name}
 ```
 
 以下は**委譲モード以外**（`CLEANUP_DELEGATED` marker が無い場合）の判定。各チェックボックスおよび placeholder の判定:

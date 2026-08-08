@@ -186,14 +186,12 @@ assert_grep "Step 12 delegation notice points to a main-checkout re-run" "$CLEAN
 assert_grep "Step 12 delegation notice states the re-run is idempotent" "$CLEANUP" \
   "実行済みの項目は冪等にスキップされます"
 # 自動回収は無条件ではない（記録はステップ 5 の {pr_merged}=true gate 配下、reap は dirty guard 配下）。
-# 条件節ごと pin して、無条件の約束へ戻る退行を検出する。
-# 案内は条件ではなく **案内先** を書く。自動回収が外れる経路は 3 つ（未マージ / dirty / 記録漏れ）
-# あり、条件を列挙する形式は必ず取りこぼす一方、案内先は条件に依らず「再実行時の報告」に閉じる。
-# Issue #2133 In Scope の「簡潔な定型」に収めるための形でもある（条件節を足す方向へ戻さない）。
+# 外れる経路は 3 つ（未マージ / dirty / 記録漏れ）あるが、それぞれ案内先が違うため、案内先を 1 つに
+# 名指しすると必ずどれかで外れる（実測: dirty は再実行時に評価されず recovery=auto と報告される）。
+# 条件も案内先も列挙せず、退路は直後の手動コマンドが与える形に留める — Issue #2133 In Scope の
+# 「簡潔な定型」に収める形でもある。条件節や案内先の列挙を足す方向へ戻さない。
 assert_grep "Step 12 delegation notice names the deferred reclamation path" "$CLEANUP" \
   'セッション worktree とローカルブランチは次回セッション開始時の自動回収の対象になります'
-assert_grep "Step 12 delegation notice points to the surface instead of enumerating conditions" "$CLEANUP" \
-  '対象にならなかった場合は再実行時の報告が残作業を案内します'
 # 手動コマンドは main checkout で実行する前提（worktree 内では remove が cwd を消して連鎖が止まる）。
 # 失敗モードを防ぐのは限定句のみで、prune を外したのは remove --force が admin エントリを解除する
 # ため冗長だから。コマンド本体まで含めて固定し、限定句・引数のどちらが欠けても落ちるようにする。
