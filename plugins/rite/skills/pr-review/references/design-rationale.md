@@ -89,3 +89,36 @@
 ステップ 6.5.W Wiki Raw Source 生成の配置理由。
 
 - **Position rationale**: 本 block は review-fix loop 終了後に配置される (caller `/rite:iterate` は `[review:mergeable]` または standalone 実行時のみ ステップ 6.5.W に入る)。loop 途中で書かれた Raw Source は未確定な review state を反映してしまうため、この配置は意図的。
+
+
+## measured-gate-helper-notes
+
+ステップ 5.3.0.M を helper に委譲した理由（Issue #2072）。
+
+旧版は本ゲートを LLM の推論ステップとして書いていた。「自分の指摘を non-blocking 化して mergeable を宣言する」判断は reviewer 群の thoroughness 指示と正面衝突するため、裁量に置く限り構造的に実行されにくい — PR #2070 では 9 サイクルすべてで一度も降格が実行されず、契約上 merge を止めてはならない散文精度指摘でループが 8 時間超継続した。分類を bash へ移し、mergeable 判定 (5.3.1) が LLM の分類を経由しない配置にする。
+
+## non-blocking-findings-array-notes
+
+`non_blocking_findings[]` を独立配列として永続化する理由。
+
+- **なぜ独立配列に出すのか**: `findings[]` にだけ載せない設計にすると、既定 `post_comment: false` では PR コメントも投稿されないため、**永続成果物 (`.rite/review-results/*.json`) に降格の痕跡がゼロ**になり「`overall_assessment: mergeable` + `findings[]: []`」= 指摘ゼロのレビューと区別不能な記録が残る。これは `assessment-rules.md` §5.3.0.M の「破棄経路は存在しない」および Issue #2024 D-01「マージ後に人間が拾い直せる状態を保つ」を既定構成で偽にする。独立配列にすることで `findings[]` の blocking 集合としての意味を保ちながら記録を永続化する。
+- **帰結**: (a) `/rite:fix` の JSON 経路は `findings[]` のみを読むため `non_blocking_count` は JSON 経路では 0 になる（Markdown / 会話経路の N とは一致しない）。Issue #2072 以降、`measured_map` 自体は空ではない — findings[] に残る nit-noted 非実測 finding が `measured=false` を持つため。ただし `non_blocking_count` は 0 のまま。(b) 非実測 finding と同一 file:line に GitHub thread がある場合、External review (blocking) に分類される — 安全側。(c) 非実測 finding を `measured: false` 付きで `findings[]` に統合する方向は cross-field invariant 同期が前提であり本 Issue では採らない。
+
+## save-pending-id-path-notes
+
+5.3.0.M step 2 で save-pending marker の id と path を分けて持つ理由。
+
+6.1.a には **id だけ**を渡し (`--pending-id`)、path は helper が内部導出する — caller から full path を受け取る形は、任意文字列が削除対象と機械可読 sentinel の両方へ流れるため guard が要り、その guard が `${TMPDIR}` の文字種と食い違うと非収束になる。path 側は 8.0.4 の `[ -e ]` 検査にのみ使う。詳細: [measured-gate-record.md#save-pending-marker](measured-gate-record.md#save-pending-marker)。
+
+## noclobber-pending-marker-notes
+
+pending / save-pending marker 作成に `set -C` (noclobber) を使う理由。
+
+marker のパスは予測可能で、**ファイルの存在/不在そのものが gate の判定値**であるため、素の `: >` だと (a) 事前に張られた symlink を追随して任意ファイルを 0 バイトへ truncate でき、(b) 他者が作った既存ファイルを掴んでしまう。`set -C` で O_CREAT|O_EXCL 相当にし、拒否時は degraded へ縮退する。詳細: [measured-gate-record.md#pending-marker](measured-gate-record.md#pending-marker) / [#save-pending-marker](measured-gate-record.md#save-pending-marker)。
+
+## review-cycle-id-emit-notes
+
+`REVIEW_CYCLE_ID` と `NONBLOCKING_PENDING_MARKER` を 6.1.a step 0 で emit する理由。
+
+- `REVIEW_CYCLE_ID` は 6.1.d の記録経路と、その実行を保証する gate（6.1.d step 3 / 8.0.3）が「本 cycle で記録経路が走ったか」を stale marker と区別して判定するために使う。**値の生成と記録動作を別ブロックに分ける**ことで、gate 側に本 cycle の比較対象が独立に残る。詳細: [measured-gate-record.md#iteration-id](measured-gate-record.md#iteration-id)。
+- `NONBLOCKING_PENDING_MARKER` は 8.0.3 が prose 判定に加えて持つ**機械強制**の入力。sentinel の grep は LLM が会話を読む前提であり、読まずに result pattern へ進む経路を構造的には塞げない。marker は helper 側でしか消えないファイルなので、gate の bash が `[ -e ]` で見るだけで「6.1.d が完走したか」を LLM の認識に依存せず判定できる。詳細: [measured-gate-record.md#pending-marker](measured-gate-record.md#pending-marker)。
