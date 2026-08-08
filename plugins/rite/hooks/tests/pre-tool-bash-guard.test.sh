@@ -2026,6 +2026,56 @@ rm -rf "$_mrg_tmp"
 echo ""
 
 # --------------------------------------------------------------------------
+# Issue #2174: persist deny-only audit records
+# --------------------------------------------------------------------------
+
+echo "TC-141 / T-01 (#2174): deny appends the stderr event to bash-guard.log"
+_audit_tmp=$(mktemp -d)
+rc=0
+RITE_STATE_ROOT="$_audit_tmp" jq -n --arg cmd "gh pr diff 99 --stat" \
+  '{tool_name:"Bash",tool_input:{command:$cmd}}' \
+  | RITE_STATE_ROOT="$_audit_tmp" bash "$HOOK" >/dev/null 2>"$_audit_tmp/stderr" || rc=$?
+if [ "$rc" = "0" ] \
+  && [ -f "$_audit_tmp/.rite/logs/bash-guard.log" ] \
+  && grep -q 'bash-guard: BLOCKED pattern=gh-pr-diff-stat' "$_audit_tmp/.rite/logs/bash-guard.log" \
+  && cmp -s "$_audit_tmp/stderr" "$_audit_tmp/.rite/logs/bash-guard.log"; then
+  pass "TC-141 deny audit record matches the existing stderr event"
+else
+  fail "TC-141 expected matching deny audit record (rc=$rc)"
+fi
+rm -rf "$_audit_tmp"
+echo ""
+
+echo "TC-142 / T-02 (#2174): audit write failure preserves deny JSON and warns"
+_audit_tmp=$(mktemp -d)
+mkdir -p "$_audit_tmp/.rite"
+printf 'not-a-directory\n' > "$_audit_tmp/.rite/logs"
+rc=0
+output=$(jq -n --arg cmd "gh pr diff 99 --stat" \
+  '{tool_name:"Bash",tool_input:{command:$cmd}}' \
+  | RITE_STATE_ROOT="$_audit_tmp" bash "$HOOK" 2>"$_audit_tmp/stderr") || rc=$?
+decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && grep -q 'WARNING: unable to append deny audit log' "$_audit_tmp/stderr"; then
+  pass "TC-142 deny contract survives audit write failure with one WARNING"
+else
+  fail "TC-142 expected deny + audit WARNING, got decision=$decision rc=$rc stderr=$(cat -v "$_audit_tmp/stderr")"
+fi
+rm -rf "$_audit_tmp"
+echo ""
+
+echo "TC-143 / T-03 (#2174): allow does not create an audit log"
+_audit_tmp=$(mktemp -d)
+jq -n --arg cmd "printf safe" '{tool_name:"Bash",tool_input:{command:$cmd}}' \
+  | RITE_STATE_ROOT="$_audit_tmp" bash "$HOOK" >/dev/null 2>"$_audit_tmp/stderr" || true
+if [ ! -e "$_audit_tmp/.rite/logs/bash-guard.log" ]; then
+  pass "TC-143 allow path writes no audit record"
+else
+  fail "TC-143 allow path unexpectedly created bash-guard.log"
+fi
+rm -rf "$_audit_tmp"
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="
