@@ -627,6 +627,107 @@ if [ -f "$manifest_path" ]; then
 fi
 
 # -----------------------------------------------------------------------
+# Step 4-P: porcelain 走査による TMPDIR 配下 detached worktree 回収 (Issue #2145)。
+#
+# 背景: Step 4 の find は (a) maxdepth 1 で `$TMPDIR/rite-review-mutation-*` しか見ない
+# ため `$TMPDIR/claude-*/rite-review-mutation-*` のような入れ子を取りこぼし、(b) 24h age
+# ガードが同一 review サイクル内の残留 (数分〜数時間) を保護し続けて回収しない。実測で
+# `git worktree list` に `/tmp/claude-1000/rite-review-mutation-*` が 8 個残ったのに
+# `mutation_worktrees=0` と報告された (PR #2142)。
+#
+# 本ステップは `git worktree list --porcelain` を権威として:
+#   - path が `${TMPDIR}/` 配下 (prefix 一致、入れ子可)
+#   - detached HEAD (porcelain の `detached` 行。`branch refs/heads/...` を持つものは除外)
+#   - リポジトリ配下 (`.rite/worktrees/*` / wiki-worktree / main) は除外
+#   - 自セッション live cwd は除外 (worktree-foreign-cwd.sh --self-root $PPID)
+# を満たす worktree を age ガード無しで回収する。reviewer は READ-ONLY で remove できず、
+# cleanup は review 入口 / iterate 終端でのみ走るため、並行 reviewer の in-flight を
+# age で守る必要は無い — 別セッション在席は foreign-cwd が塞ぐ。
+# カウンタは既存 `mutation_worktrees_reaped` を共有する。
+# -----------------------------------------------------------------------
+_tmp_prefix="${TMPDIR:-/tmp}"
+_tmp_prefix="${_tmp_prefix%/}"
+# 正規化: 末尾スラッシュ無しの prefix + "/" で「配下」判定する
+_is_under_tmpdir() {
+  case "$1" in
+    "$_tmp_prefix"|"$_tmp_prefix"/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+_is_under_repo() {
+  case "$1" in
+    "$repo_root"|"$repo_root"/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+# Step 1 で既に取得した porcelain があれば再利用したいが、Step 1 は失敗時に空、かつ
+# その後の Step 4 find 経路で worktree が変わりうるため、ここで再取得する (失敗は non-blocking)。
+_p_list_err=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-porcelain-err-XXXXXX" 2>/dev/null) || _p_list_err=""
+if _p_list=$(git worktree list --porcelain 2>"${_p_list_err:-/dev/null}"); then
+  _p_path=""
+  _p_detached=0
+  _p_flush() {
+    # 1 entry 分を判定して必要なら回収。空 path は no-op。
+    [ -n "$_p_path" ] || return 0
+    if [ "$_p_detached" -eq 1 ] \
+       && _is_under_tmpdir "$_p_path" \
+       && ! _is_under_repo "$_p_path"; then
+      # 自セッション / 別 live セッションの cwd 保護 (self-exclusion 付き)
+      _p_fc_rc=0
+      bash "$SCRIPT_DIR/worktree-foreign-cwd.sh" "$_p_path" --self-root "$PPID" >/dev/null 2>&1 || _p_fc_rc=$?
+      # rc=0 = 別 live セッションが cwd を置く → 見送り / rc=1 = 自のみ or 不在 → 回収 /
+      # rc=2 = 判定不能 → 回収 (Step 4-W と同規約の後方互換)
+      if [ "$_p_fc_rc" -eq 0 ]; then
+        echo "WARNING: 別セッションが detached worktree ($_p_path) を使用中のため回収を見送りました" >&2
+      else
+        # dirty 保護 (Step 4.5 AC-6 と同旨): uncommitted 変更のある worktree は force 削除しない
+        _p_dirty=$(git -C "$_p_path" status --porcelain 2>/dev/null) || _p_dirty="??"
+        if [ -n "$_p_dirty" ]; then
+          echo "WARNING: detached TMPDIR worktree ($_p_path) に未コミット変更があるため回収を見送りました" >&2
+        elif [ "$DRY_RUN" = "1" ]; then
+          echo "[dry-run] would reap detached TMPDIR worktree: $(printf '%s' "$_p_path" | neutralize_ctrl)"
+        else
+          _reap_mutation_worktree "$_p_path"
+        fi
+      fi
+    fi
+    _p_path=""
+    _p_detached=0
+  }
+  while IFS= read -r _p_line; do
+    case "$_p_line" in
+      "worktree "*)
+        _p_flush
+        _p_path="${_p_line#worktree }"
+        _p_detached=0
+        ;;
+      "detached")
+        _p_detached=1
+        ;;
+      "branch "*)
+        # named branch を持つ entry は本ステップの対象外 (Step 1 の責務)
+        _p_detached=0
+        ;;
+      "")
+        _p_flush
+        ;;
+    esac
+  done <<< "$_p_list"
+  _p_flush
+  if [ "$DRY_RUN" = "0" ] && [ "$mutation_reaped_any" = "1" ]; then
+    git worktree prune 2>/dev/null || true
+  fi
+else
+  _p_rc=$?
+  echo "WARNING: Step 4-P git worktree list --porcelain が失敗しました (rc=$_p_rc)。detached TMPDIR 回収を skip します" >&2
+  if [ -n "$_p_list_err" ] && [ -s "$_p_list_err" ]; then
+    head -3 "$_p_list_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  fi
+  # non-blocking: errors は増やさない (既存 Step 1 が既に list 失敗を errors++ している場合と二重計上しない)
+fi
+[ -n "$_p_list_err" ] && rm -f "$_p_list_err"
+
+# -----------------------------------------------------------------------
 # Step 5: Lazy reap of orphaned SESSION worktrees (multi-session design §8).
 # 責務分担: 正常系の即時削除は cleanup.md (S7) の責務、本 reap は **異常終了の
 # 残骸回収のみ**。`.rite/worktrees/issue-{N}` (multi_session.worktree_base 配下)
