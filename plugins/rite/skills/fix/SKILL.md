@@ -2073,6 +2073,8 @@ fi
 
 **fix 対象除外との関係**: accept で `status == "acknowledged"` となった finding は **ステップ 3 (commit) の対象から完全除外** される。これにより accept された finding は fix commit 対象にならない (本 PR で先延ばしの記録だけが残る)。
 
+**Rejection Evidence Gate**: accept 理由が `scope-creep` / `out-of-scope` / `minor` のいずれかなら、fingerprint 永続化より前に [promotion-audit-2091.md](../pr-review/references/promotion-audit-2091.md#rejection-evidence-gate) を適用する。別 reviewer の cross-validation と、reject 対象 scenario の empirical counterfactual/revert test の両方を Decision Log に記録できない限り `acknowledged` へ遷移してはならず、`ACCEPT_FINGERPRINT_PERSISTED` も commit trailer も生成しない。不足時は finding を修正対象へ戻すか AskUserQuestion でユーザー判断へ上げる。
+
 **ステップ 3.2 commit trailer**: 1 commit に複数の accept finding が含まれる場合、commit trailer に `Acknowledged-finding: F-NN (file:line) — reason` 行を **反復生成** する (詳細は ステップ 3.2 セクション参照)。
 
 **`acknowledged` retained flag namespace** (ステップ 2.1.A 独立、ステップ 1.2.0 reason 表とは別 namespace):

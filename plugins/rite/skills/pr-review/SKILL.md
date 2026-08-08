@@ -1542,6 +1542,10 @@ Action: 手動で当該 reviewer の出力を確認し、verification テンプ�
 When verification mode AND `allow_new_findings_in_unchanged_code == false`: Check if finding is in incremental diff. Unchanged code: CRITICAL/HIGH → genuine (blocking), MEDIUM/LOW-MEDIUM/LOW → stability_concern (non-blocking, informational).
 **例外**: この stability_concern 分類は、ステップ 4.5.1 の verification テンプレート（Part 2: リグレッションチェック）由来の指摘にのみ適用される。ステップ 4.5 の通常テンプレート（フルレビュー）由来の指摘には適用しない。フルレビュー由来の指摘は 5.1.1 に従い、重要度に関わらず blocking とする。
 
+#### 5.1.2.S Scope Split Gate
+
+ステップ 5.1 で収集した独立 reviewer の指摘を、同じ affected behavior かつ file:line が重なる root cause ごとに照合する。同一 root cause に `current-pr` と `follow-up` が併存した場合、severity の高い側・多数派へ機械統合してはならない。[promotion-audit-2091.md](references/promotion-audit-2091.md#scope-split-gate) に従い AskUserQuestion で treatment をユーザーへエスカレートし、選択した disposition を Decision Log に記録する。`follow-up` を選ぶ場合は durable な follow-up Issue / destination が作成または指定されるまで解決済みにしない。
+
 #### 5.1.2.A Accepted Fingerprint Suppression
 
 **Owner**: ステップ 5.1 finding collection 完了直後。**Condition**: 常に実行 (state file 不在時は skip)。**Purpose**: 前 cycle で `/rite:fix` ステップ 2.1 で `accept (認知のみ)` を選択した finding (status: `acknowledged`) が同 PR の次 review cycle で再出現した場合、JSON output からは削除し Markdown output には audit log として残す。これにより decision-replay 系の同一 finding 再出現を断つ (M5 の核)。
