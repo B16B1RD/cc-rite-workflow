@@ -117,8 +117,9 @@ assert_grep "4-W forbids bypassing the harness guard" "$CLEANUP" "ガードを�
 # T-03 (非回帰): in_worktree arm は従来どおり dirty チェックを持ち、ExitWorktree(keep) 手順も残る。
 # 委譲 arm が in_worktree まで巻き込んで batch-run 経路を止めたらこの pin ごと落ちる。
 # start/end パターンの `)` は二重エスケープで書く — `-v` 経由で C 風エスケープが 1 段階解釈され、
-# single backslash だと gawk が「不要なエスケープ」として潰し警告を出す（本ファイル 33-37 行が
-# `\[` について明文化した規約と同型。`\*` の場合は量化子へ潰れてレンジが EOF まで伸びる）。
+# single backslash だと gawk が「不要なエスケープ」として潰し警告を出す（本ファイル冒頭の
+# `echo "\\[CONTEXT\\] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1` を start に使う assert 群に付した
+# エスケープ規約コメントと同型。`\*` の場合は量化子へ潰れてレンジが EOF まで伸びる）。
 assert_grep_in_section "in_worktree arm keeps the dirty check" "$CLEANUP" \
   '^  in_worktree\\)$' '^  in_worktree_unrecorded\\)$' 'git-status-filtered\.sh'
 assert_grep "in_worktree arm still routes through ExitWorktree(keep)" "$CLEANUP" 'action: "keep"'
@@ -144,10 +145,15 @@ echo "=== 委譲配線の排他性 (Issue #2133 T-01/T-03 negative control) ==="
 # 「在ること」だけを見る assert は、marker の漏出 (in_worktree arm からの emit) と
 # ガードの混入 (state 系ステップへの誤挿入) を検出できない。前者は AC-3 を、後者は AC-1 前半
 # 「state 系項目は成功し」を丸ごと無効化するため、件数を固定して排他性そのものを pin する。
-assert "delegation marker is emitted from exactly one arm" "1" \
+assert "delegation marker is emitted exactly once" "1" \
   "$(grep -c 'echo "\[CONTEXT\] CLEANUP_DELEGATED=1' "$CLEANUP")"
 assert "delegation skip guard exists in exactly three steps" "3" \
   "$(grep -c '委譲モード（#2133）' "$CLEANUP")"
+# 件数固定は marker の **追加** を捕まえるが **移設** は捕まえない（総数が変わらないため）。
+# emit を in_worktree arm へ移す変異は AC-1 の Then と AC-3 の Then を 1 変異で同時に無効化する
+# ため、「どこに在るか」も独立に固定する。end パターンの `)` は上記と同じ理由で二重エスケープ。
+assert "in_worktree arm never emits the delegation marker" "0" \
+  "$(awk -v start='^  in_worktree\\)$' -v end='^  in_worktree_unrecorded\\)$' '$0 ~ start, $0 ~ end' "$CLEANUP" | grep -c 'CLEANUP_DELEGATED')"
 
 echo "=== ステップ 12: 委譲モードの定型報告 (Issue #2133 T-01/T-02) ==="
 # fail-loud: 委譲 4 項目は x に丸めず未完了として列挙する。固定対象は委譲 4 項目に限り、
@@ -171,8 +177,16 @@ assert_grep "Step 12 delegation notice points to a main-checkout re-run" "$CLEAN
   'main checkout でセッションを開き `/rite:cleanup \{pr_number\}` を再実行してください'
 assert_grep "Step 12 delegation notice states the re-run is idempotent" "$CLEANUP" \
   "実行済みの項目は冪等にスキップされます"
-assert_grep "Step 12 delegation notice names the deferred reclamation path" "$CLEANUP" \
-  'セッション worktree とローカルブランチは回収台帳への記録を経て次回セッション開始時に自動で回収されます'
+# 自動回収は無条件ではない（記録はステップ 5 の {pr_merged}=true gate 配下、reap は dirty guard 配下）。
+# 条件節ごと pin して、無条件の約束へ戻る退行を検出する。
+assert_grep "Step 12 delegation notice names the deferred reclamation path with its conditions" "$CLEANUP" \
+  'PR がマージ済みかつ作業ツリーに未コミット変更が無ければ、回収台帳への記録を経て次回セッション開始時に自動で回収されます'
+# 手動コマンドは main checkout で実行する前提。worktree 内で実行すると remove が cwd を消し
+# 連鎖が途中で止まるため、場所の限定句と `git worktree prune` 非連結を固定する。
+assert_grep "Step 12 manual fallback is scoped to the main checkout" "$CLEANUP" \
+  'すぐに消したい場合（main checkout でセッションを開いたあと）'
+assert_not_grep "Step 12 manual fallback does not chain worktree prune before branch -D" "$CLEANUP" \
+  "git worktree prune && git branch -D"
 # 委譲 arm は記録を行わない（記録するのは再実行時のステップ 5 の `--type branch`）。arm に
 # `--type session_worktree` の record を足しても consumer 側の bypass は `_corpse -eq 1` を要求する
 # ため発火せず、ブランチの force-delete arm も `branch` エントリしか受け付けない = 不発コードになる。
