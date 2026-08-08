@@ -1686,6 +1686,244 @@ assert_main_allow "main-session git config write not blocked by (N)" "git config
 echo ""
 
 # --------------------------------------------------------------------------
+# Pattern 5: Merge-point review-result positive gate (Issue #2159)
+# --------------------------------------------------------------------------
+# Isolates state via RITE_STATE_ROOT so real repo review-results never leak in.
+# Sole-reviewer guard floor = 2 (same constant as pr-review sole-reviewer guard).
+
+_mrg_setup_state() {
+  # $1 = temp root; creates sessions + review-results dirs and a session id file
+  local root="$1"
+  mkdir -p "$root/.rite/sessions" "$root/.rite/review-results"
+  printf '%s\n' "mrg-gate-sess" > "$root/.rite-session-id"
+  cat > "$root/.rite/sessions/mrg-gate-sess.flow-state" <<'EOF'
+{
+  "schema_version": 1,
+  "active": true,
+  "phase": "merge",
+  "issue_number": "2159",
+  "branch": "feat/test",
+  "pr_number": 0,
+  "session_id": "mrg-gate-sess",
+  "next_action": "",
+  "error_count": 0,
+  "updated_at": "2026-08-08T00:00:00Z"
+}
+EOF
+}
+
+_mrg_set_flow_pr() {
+  local root="$1" pr="$2"
+  jq --argjson pr "$pr" '.pr_number = $pr' \
+    "$root/.rite/sessions/mrg-gate-sess.flow-state" > "$root/.rite/sessions/mrg-gate-sess.flow-state.tmp"
+  mv "$root/.rite/sessions/mrg-gate-sess.flow-state.tmp" "$root/.rite/sessions/mrg-gate-sess.flow-state"
+}
+
+_mrg_write_json() {
+  # $1=root $2=filename $3=body
+  printf '%s\n' "$3" > "$1/.rite/review-results/$2"
+}
+
+_mrg_qualifying_json() {
+  # qualifying: schema_version + verdict keys, reviewers length >= 2
+  cat <<'EOF'
+{"schema_version":"1.1.0","verdict":"mergeable","reviewers":["code-quality","security"]}
+EOF
+}
+
+_mrg_run() {
+  # run_guard under RITE_STATE_ROOT; prints stdout, returns hook rc
+  local root="$1" cmd="$2"
+  local rc=0 output
+  output=$(RITE_STATE_ROOT="$root" jq -n --arg tn "Bash" --arg cmd "$cmd" \
+    '{tool_name: $tn, tool_input: {command: $cmd}, cwd: "/tmp"}' \
+    | RITE_STATE_ROOT="$root" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  printf '%s' "$output"
+  return $rc
+}
+
+echo "TC-128 / T-01: qualifying review JSON → gh pr merge N allowed (no extra stdout noise)"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_write_json "$_mrg_tmp" "99-good.json" "$(_mrg_qualifying_json)"
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 99 --squash") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-128 qualifying JSON allows gh pr merge 99 with empty stdout"
+else
+  fail "TC-128 expected allow (rc=0 empty stdout), got rc=$rc output=$output"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-129 / T-02: number-less gh pr merge resolves PR via flow-state"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_set_flow_pr "$_mrg_tmp" 77
+_mrg_write_json "$_mrg_tmp" "77-good.json" "$(_mrg_qualifying_json)"
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge --squash") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-129 flow-state pr_number=77 allows number-less gh pr merge"
+else
+  fail "TC-129 expected allow via flow-state, got rc=$rc output=$output"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-130 / T-03: no review JSON → deny + /rite:pr-review guidance"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 55 --squash") || rc=$?
+decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-json-absent"* ]] && [[ "$reason" == *"/rite:pr-review"* ]]; then
+  pass "TC-130 absent JSON denies with merge-review-json-absent and /rite:pr-review"
+else
+  fail "TC-130 expected deny absent+/rite:pr-review, got decision=$decision reason=$reason"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-131 / T-04: sole-reviewer (reviewers length 1) JSON → deny"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_write_json "$_mrg_tmp" "56-sole.json" \
+  '{"schema_version":1,"verdict":"mergeable","reviewers":["code-quality"]}'
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 56") || rc=$?
+decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-sole-reviewer"* ]]; then
+  pass "TC-131 sole-reviewer JSON denies with merge-review-sole-reviewer"
+else
+  fail "TC-131 expected sole-reviewer deny, got decision=$decision reason=$reason"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-132 / T-05: unparseable review JSON → deny"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_write_json "$_mrg_tmp" "57-broken.json" '{not valid json'
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 57") || rc=$?
+decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-json-parse"* ]]; then
+  pass "TC-132 broken JSON denies with merge-review-json-parse"
+else
+  fail "TC-132 expected parse deny, got decision=$decision reason=$reason"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-133 / T-06: PR number unresolvable → deny (no arg, flow-state pr_number=0)"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"   # pr_number stays 0
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge --squash") || rc=$?
+decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-pr-unresolved"* ]]; then
+  pass "TC-133 unresolvable PR number denies with merge-review-pr-unresolved"
+else
+  fail "TC-133 expected pr-unresolved deny, got decision=$decision reason=$reason"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-134 / T-07: non-merge gh commands still allowed (no regression on Pattern 5)"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+# No qualifying JSON present — if Pattern 5 false-fired these would deny.
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr view 1 --json title") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-134 gh pr view allowed (Pattern 5 does not false-positive)"
+else
+  fail "TC-134 expected allow for gh pr view, got rc=$rc output=$output"
+fi
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr diff 1") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-134 gh pr diff allowed (Pattern 5 does not false-positive)"
+else
+  fail "TC-134 expected allow for gh pr diff, got rc=$rc output=$output"
+fi
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh api repos/o/r/pulls/1") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-134 gh api non-merge REST allowed"
+else
+  fail "TC-134 expected allow for non-merge gh api, got rc=$rc output=$output"
+fi
+# REST merge endpoint is detected and denied when JSON absent
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh api repos/o/r/pulls/88/merge -X PUT") || rc=$?
+decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+if [ "$decision" = "deny" ]; then
+  pass "TC-134 REST pulls/88/merge is detected and denied without JSON"
+else
+  fail "TC-134 expected deny for REST merge, got decision=$decision output=$output"
+fi
+# GraphQL mergePullRequest detected
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh api graphql -f query='mutation { mergePullRequest(input:{pullRequestId:\"X\"}) { clientMutationId } }'") || rc=$?
+decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+# GraphQL has no PR number in path → pr-unresolved (or absent if number extracted)
+if [ "$decision" = "deny" ]; then
+  pass "TC-134 GraphQL mergePullRequest is detected and denied"
+else
+  fail "TC-134 expected deny for mergePullRequest, got decision=$decision output=$output"
+fi
+# Existing Pattern 1 still denies
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr diff 1 --stat") || rc=$?
+decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"gh-pr-diff-stat"* ]]; then
+  pass "TC-134 Pattern 1 (gh pr diff --stat) still denies (non-regression)"
+else
+  fail "TC-134 expected Pattern 1 deny, got decision=$decision reason=$reason"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-135: missing required keys (no reviewers) → deny incomplete"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_write_json "$_mrg_tmp" "60-incomplete.json" \
+  '{"schema_version":"1.0.0","verdict":"mergeable"}'
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 60") || rc=$?
+decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+reason=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-json-incomplete"* ]]; then
+  pass "TC-135 incomplete keys deny with merge-review-json-incomplete"
+else
+  fail "TC-135 expected incomplete deny, got decision=$decision reason=$reason"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-136: one qualifying + one broken JSON for same PR → allow (any-pass)"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_write_json "$_mrg_tmp" "61-broken.json" '{broken'
+_mrg_write_json "$_mrg_tmp" "61-good.json" "$(_mrg_qualifying_json)"
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 61") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-136 any qualifying JSON allows merge even if a sibling file is broken"
+else
+  fail "TC-136 expected allow when one file qualifies, got rc=$rc output=$output"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="
