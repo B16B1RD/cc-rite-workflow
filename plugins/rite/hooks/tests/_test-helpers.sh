@@ -75,12 +75,12 @@
 #   skip <label>                                 # writes to stdout, counted in SKIP
 #   _timeout <seconds> <command...>              # portable timeout(1); see Preconditions
 #   assert <label> <expected> <actual>           # writes to stdout (via pass/fail)
-#   assert_grep     <label> <file> <pattern>     # ERE, exits via fail() if not found
-#   assert_not_grep <label> <file> <pattern>     # ERE, exits via fail() if found
+#   assert_grep     <label> <file> <pattern>     # ERE (grep -E); bare | is alternation — see docstring
+#   assert_not_grep <label> <file> <pattern>     # ERE (grep -E); bare | is alternation — see docstring
 #   assert_file_exists_or_fail <label> <file>    # pre-condition guard for assertion-pair loops
 #                                                # (1 fail per missing file; caller pattern: || continue)
 #   assert_grep_in_section <label> <file> <start_pattern> <end_pattern> <grep_pattern>
-#                                                # extract awk-range section + ERE grep with self-cleanup
+#                                                # extract awk-range section + ERE grep; bare | hazard same as assert_grep
 #   print_summary [test_name] [drift_hint_text]  # writes to stdout, returns 1 if FAIL > 0
 #   make_sandbox       [--branch <name>] [--soft]   # git-init+commit sandbox, echoes path
 #   make_plain_sandbox [--soft]                     # bare mktemp -d sandbox, echoes path
@@ -156,6 +156,13 @@ assert() {
 
 # Pattern presence assertion (ERE via grep -E).
 # File-existence check distinguishes "file missing" (grep exit 2) from "pattern absent" (grep exit 1).
+#
+# Hazard — pattern is interpreted as ERE. A bare `|` is alternation, not a
+# literal pipe. Escape a literal `|` as `\|`. Always-PASS example:
+#   assert_grep "label" "$FILE" '^| Complexity M or above |...'
+# is parsed as (`^`) OR (` Complexity...`), so the `^` arm matches every line
+# and the assertion always PASS. Typical footgun: pinning a Markdown table
+# row (a line that starts with `|` after `^`).
 assert_grep() {
   local label="$1"
   local file="$2"
@@ -173,6 +180,15 @@ assert_grep() {
 
 # Pattern absence assertion (ERE via grep -E).
 # File-existence check distinguishes "file missing" (grep exit 2) from "pattern absent" (grep exit 1).
+#
+# Hazard — pattern is interpreted as ERE. A bare `|` is alternation, not a
+# literal pipe. Escape a literal `|` as `\|`. Spurious-match example (same
+# shape as assert_grep's always-PASS):
+#   assert_not_grep "label" "$FILE" '^| Complexity M or above |...'
+# is parsed as (`^`) OR (` Complexity...`), so the `^` arm matches every line
+# and the absence assertion always FAIL regardless of content. Typical
+# footgun: pinning a Markdown table row (a line that starts with `|` after
+# `^`).
 assert_not_grep() {
   local label="$1"
   local file="$2"
@@ -234,6 +250,13 @@ assert_file_exists_or_fail() {
 #
 # Patterns are passed to awk via `-v` variables (not interpolated into the awk
 # program text) so caller-supplied strings cannot inject awk syntax.
+#
+# Hazard (grep_pattern only — same as assert_grep): the section match uses
+# `grep -qE`, so `grep_pattern` is ERE. A bare `|` is alternation; escape a
+# literal `|` as `\|`. Always-PASS example:
+#   assert_grep_in_section "label" "$FILE" '^## Sec$' '^##[^#]' '^| col |...'
+# is parsed as (`^`) OR (` col |...`), so the `^` arm matches every line of
+# the extracted section. Typical footgun: pinning a Markdown table row.
 #
 # Failure modes (each falls through to fail() with diagnostic context):
 #   - file not found          → "file not found: <file>"
