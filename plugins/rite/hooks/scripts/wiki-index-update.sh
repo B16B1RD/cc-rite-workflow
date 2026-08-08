@@ -151,6 +151,17 @@
 #   table's row count triggers nothing here — duplicates were reclaimed by
 #   3a and unregistered pages are wiki-lint's job.
 #
+# Observability of procedure 3b (Issue #2085 design decision):
+#   In-cycle surface is intentional and sufficient: WARNING on stderr +
+#   stats_sync={synced|skipped_no_section|skipped_unreadable} markers, with
+#   skipped_unreadable / partial-sync WARNING rolled into wiki-ingest ステップ 9
+#   outstanding. A dedicated wiki-lint stats-drift detector and prose-only
+#   marker/attest machinery were rejected — stats are display-only (not a
+#   query/lint decision input), real-world drift harm is low-frequency, and the
+#   removed #2052 visualization stack itself became the dominant source of
+#   review churn. Do not re-add cycle-level gating or LLM-edited attest markers
+#   without re-evaluating demand against that record.
+#
 # ── Interface ────────────────────────────────────────────────────────────────
 #
 # Inputs:
