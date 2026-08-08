@@ -136,6 +136,7 @@ for required in 'ls-remote --exit-code' \
                 'REMOTE_BRANCH_CHECK_FAILED=1; branch=.*rc=invalid-refname' \
                 'REMOTE_BRANCH_CHECK_FAILED=1; branch=.*rc=mktemp-failed' \
                 'if \[ -z "\$_ls_out" \]; then' \
+                'if \[ "\$_ls_rc" -eq 128 \]; then' \
                 '_check_reason="ref-match-awk-\${_match_rc}"' 'if \[ "\$_ls_rc" -eq 0 \]; then' \
                 '^  2) echo "\[CONTEXT\] REMOTE_BRANCH_ALREADY_ABSENT' \
                 'REMOTE_BRANCH_DELETED=1; branch=' 'REMOTE_BRANCH_DELETE_FAILED=1; branch=' \
@@ -466,10 +467,11 @@ fi
 _td_err=$(LC_ALL=C git push -q origin --delete "refs/heads/$BRANCH" 2>&1) \
   || echo "WARN: TC-2b teardown: $BRANCH の削除に失敗: $_td_err" >&2
 
-# ─── TC-3 (AC-1): ls-remote 自体の失敗 → CHECK_FAILED、削除は試行しない ───
-# ネットワーク断・認証失敗は rc=128 になる。これを rc=2 (不在) と取り違えて「既削除」に
-# 丸めると、delete_branch_on_merge:false のリポジトリでリモートブランチが黙って残る (§8 リスク)。
-echo "TC-3: ls-remote failure (unreachable origin) -> REMOTE_BRANCH_CHECK_FAILED, no delete attempt"
+# ─── TC-3 (AC-2 / #2140 T-02): ls-remote 自体の恒常失敗 → CHECK_FAILED、削除は試行しない ───
+# ネットワーク断・認証失敗は rc=128 になる。#2140 で rc=128 は 1 回リトライするが、
+# 2 回とも 128 なら依然 CHECK_FAILED に倒す（transient 吸収は 1 回だけ。恒常失敗を「既削除」に
+# 丸めると delete_branch_on_merge:false のリポジトリでリモートブランチが黙って残る）。
+echo "TC-3: ls-remote failure (unreachable origin, after 1 retry) -> REMOTE_BRANCH_CHECK_FAILED, no delete attempt"
 git remote set-url origin "$TEST_DIR/does-not-exist.git"
 out=$(run_guard "$GUARD_SNIPPET")
 if push_delete_called; then
@@ -490,6 +492,52 @@ else
   pass "TC-3 (判定不能を未完了として surface、原因テキストも保持、退避 stderr は列 0 に到達しない)"
 fi
 git remote set-url origin "$ORIGIN"
+
+# ─── TC-3b (AC-1 / #2140 T-01): 1 回目 rc=128 → 2 回目 rc=2 で不在判定・削除処方なし ───
+# sandbox の HTTPS プロキシ断で 1 回目だけ 128 になり、2 回目で正常応答する経路の pin。
+# git wrapper が ls-remote の 1 回目だけ fatal を返し、2 回目以降は REAL_GIT に委譲する。
+echo "TC-3b: ls-remote 128 then 2 -> REMOTE_BRANCH_ALREADY_ABSENT, no delete prescription"
+_ls_count_file="$TEST_DIR/ls-remote-count"
+: > "$_ls_count_file"
+cat > "$BIN_DIR/git" <<EOF
+#!/bin/bash
+if [ "\${1:-}" = "push" ]; then printf '%s\n' "push \$*" >> "$CALL_LOG"; fi
+if [ "\${1:-}" = "ls-remote" ] || { [ "\${1:-}" = "-C" ] && [ "\${3:-}" = "ls-remote" ]; }; then
+  # 直書きの ls-remote を数える（ガードは \`git ls-remote\` 形）
+  :
+fi
+if [ "\${1:-}" = "ls-remote" ]; then
+  n=\$(cat "$_ls_count_file" 2>/dev/null || echo 0)
+  n=\$((n + 1))
+  printf '%s' "\$n" > "$_ls_count_file"
+  if [ "\$n" -eq 1 ]; then
+    echo "fatal: unable to access 'origin': Failed to connect to localhost port 3128" >&2
+    exit 128
+  fi
+fi
+exec "$REAL_GIT" "\$@"
+EOF
+chmod +x "$BIN_DIR/git"
+out=$(run_guard "$GUARD_SNIPPET")
+_ls_n=$(cat "$_ls_count_file" 2>/dev/null || echo 0)
+# 後始末: 通常の stub に戻す（以降 TC が transient mock に引きずられないようにする）
+cat > "$BIN_DIR/git" <<EOF
+#!/bin/bash
+if [ "\${1:-}" = "push" ]; then printf '%s\n' "push \$*" >> "$CALL_LOG"; fi
+exec "$REAL_GIT" "\$@"
+EOF
+chmod +x "$BIN_DIR/git"
+if [ "$_ls_n" -lt 2 ]; then
+  fail "TC-3b: ls-remote が 2 回呼ばれていない (count=$_ls_n — 128 リトライが消失した可能性。出力: '$out')"
+elif push_delete_called; then
+  fail "TC-3b: 不在判定後に push --delete が呼ばれた ($(cat "$CALL_LOG"))"
+elif ! printf '%s' "$out" | grep -qE "^\[CONTEXT\] REMOTE_BRANCH_ALREADY_ABSENT=1; branch=$BRANCH(;|\$)"; then
+  fail "TC-3b: 128→2 の遷移で ALREADY_ABSENT になっていない (出力: '$out')"
+elif printf '%s' "$out" | grep -q 'REMOTE_BRANCH_CHECK_FAILED=1'; then
+  fail "TC-3b: リトライ成功後も CHECK_FAILED を出した (出力: '$out')"
+else
+  pass "TC-3b (128→2 の transient を吸収し不在判定・削除処方なし)"
+fi
 
 # ─── TC-7 (#2016 cycle 3): 契約を満たせないブランチ名は削除を試行しない (fail-fast) ───
 # marker 契約は `branch=<値>` の右端を「直後が `;` または行末」で照合する。`;` と `=` はどちらも
