@@ -4,12 +4,16 @@ title: "同じ機構への N 回目のパッチは、その機構が依拠する
 domain: "heuristics"
 description: "累積対策 PR で「前 cycle の fix が触った箇所」への指摘が来たとき、同じ機構にもう 1 枚パッチを足す前に、その機構の発火/適用を決めている述語が『測りたいもの』そのものか『手近な相関値（proxy）』かを疑う。proxy を実際の述語へ置き換えると、パッチが必要だった経路がまとめて消えることがある。PR #2099 では pin 更新ゲートの `cur_cc == 0` が「新しい run か」の proxy で、reset 失敗時に相関が切れて誤発火経路を生んでいた。`fresh || cur_cc == 0` の選言へ替えるだけで、cycle 4 が塞いだ経路と cycle 5 で見つかった同型経路の両方が機構追加ゼロで閉じた。"
 created: "2026-08-04T15:54:17+09:00"
-updated: "2026-08-04T15:54:17+09:00"
+updated: "2026-08-08T14:00:41+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260804T060209Z-pr-2099.md"
   - type: "fixes"
     ref: "raw/fixes/20260804T060834Z-pr-2099.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260808T014357Z-pr-2142.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260808T010121Z-pr-2142.md"
 tags: []
 confidence: medium
 ---
@@ -60,6 +64,27 @@ cur_cc == 0            →  cb_mode_init == fresh  ||  cur_cc == 0
 - 述語に使っている値が、コメントで「〜のとき 0 になる」「〜を意味する」と**別の言葉で説明されている**（説明に出てくる言葉のほうが本来の述語）
 - その値を意図的に更新しない分岐が設計上存在する（PR #2099 の「marker 整合のため `cur_cc` を 0 に落とさない」がこれ）
 
+### 単純化を選ばないなら「なぜ削除では駄目か」を commit message に書けること
+
+PR #2142 は同じ機構が指摘を再生産する経路を 3 cycle にわたって実演した — cycle 1 で診断を追加 → cycle 2 で 3 指摘 → cycle 3 で 4 指摘。3 cycle 目に**機構を単純化した**ことで 6 件が同時に解けた。
+
+Escalation trigger は「同じ機構への追加パッチを既定選択にしない」であって「追加を禁じる」ではない。ただし**追加を選ぶなら「なぜ削除・単純化では駄目か」を commit message に書けなければならない**。書けない場合はたいてい単純化が正解である。この基準は「疑ったが追加が正しかった」と「疑わずに追加した」を事後に区別できる形にする効果もある。
+
+### 同一行に集中した複数指摘は、パッチを重ねず 1 回の書き換えに統合する
+
+cycle 1 の fix が新設した 1 行に、述語の誤り・中和の欠落・rc 破棄の 3 件が付いた。個別に当てると同じ行へ 3 度手を入れることになり、**途中状態のたびに新しいレビュー面が生まれる**。前 cycle の fix が導入した箇所への指摘は escalation trigger として扱い、まず「当該機構ごと削除できないか」を検討したうえで、残すなら**統合した 1 回の書き換え**にする。
+
+### 伝播適用の可否は「同じ欠陥クラスか」ではなく「同じ修正が当たるか」で決める
+
+同じ欠陥クラスに見えても、正しい修正が同一でないなら機械的な伝播は誤った是正を生む。
+
+| 事例 | 判断 |
+|---|---|
+| 契約 pin の過剰一致が 7 site | **伝播しない** — 意図的に複製された 2 コピー（full mode / verification mode）は「一致 1」ではなく「各 section に 1 ずつ」が正しく、一律の uniqueness assert は誤った assert になる |
+| 偽の前提が 3 site に残置 | **伝播する** — どの site も同一の訂正が当たる |
+
+判定は「欠陥クラスの同一性」ではなく「**この 1 つの修正がそのまま当たるか**」で行う。当たらないなら伝播させず個別の finding として残すほうが安全。
+
 ### 適用範囲と限界
 
 - 述語の是正は**既存経路の挙動を変えうる**。proxy が拾っていた範囲を洗い出し、選言 / 条件追加で明示的に保つこと。PR #2099 では `cur_cc == 0` の項を落とすと run-close 直後の resume 起動で pin が更新されなくなる回帰が入るところだった
@@ -70,8 +95,12 @@ cur_cc == 0            →  cb_mode_init == fresh  ||  cur_cc == 0
 
 - [ガードの precondition に代理値を使うと、守るべき経路でだけ無効化される](../anti-patterns/guard-precondition-proxy-value-silent-where-needed.md)
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md)
+- [機構を削除して解くと、pin 面積だけでなく失敗モードの重さ（blast radius）も縮む](./simplification-shrinks-pin-surface-and-blast-radius.md)
+- [診断を 1 行足す修正は、外部入力・エラー経路・テスト網羅の 3 領域を同時に開く](./added-diagnostic-opens-three-review-surfaces.md)
 
 ## ソース
 
 - [PR #2099 review results (cycle 5)](../../raw/reviews/20260804T060209Z-pr-2099.md)
 - [PR #2099 fix results (cycle 5)](../../raw/fixes/20260804T060834Z-pr-2099.md)
+- [PR #2142 fix results (cycle 3) — 機構ごと単純化して 6 件を同時に解いた記録](../../raw/fixes/20260808T014357Z-pr-2142.md)
+- [PR #2142 fix results (cycle 2) — 同一行に集中した 3 指摘の統合、伝播可否の判定](../../raw/fixes/20260808T010121Z-pr-2142.md)

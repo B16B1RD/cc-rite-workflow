@@ -1,3 +1,17 @@
+## 2026-08-08
+
+* **Create**: [安全側へ倒れる fail-safe は、倒れた事実が観測されない限り機能の恒久的不作動を隠す](pages/anti-patterns/safe-side-degradation-hides-permanent-inoperability.md) — raw/reviews/20260807T235335Z-pr-2142.md を新規ページ化（安全側 + 例外にならない + reason の誤帰属の 3 条件が揃うと「機能が一度も動いていない」信号がゼロになる / CI の continue-on-error leg を緑の根拠にしない）
+* **Create**: [診断を 1 行足す修正は、外部入力・エラー経路・テスト網羅の 3 領域を同時に開く](pages/heuristics/added-diagnostic-opens-three-review-surfaces.md) — raw/reviews/20260808T004750Z-pr-2142.md を新規ページ化（cycle 1 で足した 1 行に cycle 2 で 4 件が集中し 1 件は 6 reviewer 全員が独立検出 / 4 段 idiom のコストは各段の番人とその正しさの証明まで含む）
+* **Create**: [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) — raw/reviews/20260808T013358Z-pr-2142.md を新規ページ化（`all three` と名乗って 1 対しか見ない / counterweight が固定接頭辞で payload 削除でも green / 生存したらラベルを狭めるか述語を広げるかの二択）
+* **Create**: [awk の exit は END 規則を実行する — 早期終了と END フォールバックの併用は二重出力になる](pages/anti-patterns/awk-exit-runs-end-rule-double-output.md) — raw/reviews/20260808T022209Z-pr-2142.md を新規ページ化（正常系で `3\n1` を出し呼び出し側の数値 guard が飲み込んで診断が丸ごと消える / gawk・mawk 両実装で再現 / print 点を END へ一本化すると構造的に起こりえない）
+* **Update**: [Orchestrator は reviewer 間の反証と reviewer 自身の自己矛盾（指摘記載 vs 結論）を解決してから blocking 判定する](pages/heuristics/orchestrator-resolves-reviewer-self-contradiction-and-counter-evidence.md) — raw/reviews/20260808T031704Z-pr-2142.md を統合（却下は宣言で終わらせず当の提案者へ次 cycle の検証項目として差し戻す / 対立は「どちらが正しいか」でなく「どの軸を見ていたか」として解ける / reviewer の提案パッチは指摘と同じ強度で実測する）
+* **Create**: [機構を削除して解くと、pin 面積だけでなく失敗モードの重さ（blast radius）も縮む](pages/heuristics/simplification-shrinks-pin-surface-and-blast-radius.md) — raw/reviews/20260808T035533Z-pr-2142.md を新規ページ化（同じ変異の帰結が「WARNING 消滅」から「報告行の選択が変わるだけ」へ縮んだ / 交替腕を落とすときはその腕だけが救う入力クラスを列挙 / 単純化のたびに既存ガードの到達可能性を問い直す）
+* **Create**: [移植性の指摘は「環境分岐を足す」より先に「その正規表現機能が本当に要るか」を疑う](pages/heuristics/portability-fix-questions-the-regex-feature-first.md) — raw/fixes/20260808T001157Z-pr-2142.md を新規ページ化（`\b` は値の長さ制限という別の関心を式に混ぜていた / 判定を case へ寄せると GNU 依存と値集合の重複が同時に消える / 1,135 箇所中 GNU 拡張依存は 2 行だけ）
+* **Create**: [awk -v 代入はバックスラッシュを剥がす — escape 付きパターンを渡した範囲指定 assert は常に PASS する](pages/anti-patterns/awk-v-assignment-strips-backslash-in-range-pattern.md) — raw/fixes/20260808T010121Z-pr-2142.md を新規ページ化（終端が一致せず flip-flop が EOF まで伸びて 677 行が抽出された / mutation を当てて初めて発覚 / 影響範囲の主張は grep で数えてから書く）
+* **Update**: [同じ機構への N 回目のパッチは、その機構が依拠する述語が proxy である信号](pages/heuristics/nth-patch-signals-proxy-predicate.md) — raw/fixes/20260808T014357Z-pr-2142.md を統合（追加を選ぶなら「なぜ削除では駄目か」を commit message に書けること / 同一行に集中した複数指摘は 1 回の書き換えに統合 / 伝播可否は「同じ欠陥クラスか」でなく「同じ修正が当たるか」で決める）
+* **Create**: [awk のデフォルト FS は `\r` を含まない — CRLF 入力で「空行」判定が壊れる](pages/anti-patterns/awk-default-fs-excludes-cr-breaks-empty-line-test.md) — raw/fixes/20260808T024257Z-pr-2142.md を新規ページ化（CR だけの行が NF=1 = 非空になる / GitHub Web UI 由来の body は CRLF になりうる / 是正は述語側でなく入力捕捉時に 1 度落とす）
+* **Create**: [runtime 診断は「どこを見ればいいか」だけ示す — 原因の分類は SoT に持たせる](pages/heuristics/runtime-diagnostic-points-where-to-look-not-cause-taxonomy.md) — raw/fixes/20260808T032734Z-pr-2142.md を新規ページ化（退避先が増えるたび原因列挙が実態とずれ、崩れていない対象を名指して存在しない不備を探させる / 列挙に 1 項目足す道は同期義務を増やすだけ）
+
 ## 2026-08-07
 
 * **Create**: [既存の永続データを新規 consumer が読むときは、集合の意味を書込側の定義から引く](pages/heuristics/persisted-collection-semantics-from-writer-not-name.md) — raw/reviews/20260806T151643Z-pr-2126.md を新規ページ化（配列名からの推測は 1 箇所の誤りでなく N 箇所へ複製された誤りを作る / 4 reviewer が独立検出）

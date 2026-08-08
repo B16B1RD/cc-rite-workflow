@@ -2,9 +2,9 @@
 type: "heuristics"
 title: "Orchestrator は reviewer 間の反証と reviewer 自身の自己矛盾（指摘記載 vs 結論）を解決してから blocking 判定する"
 domain: "heuristics"
-description: "複数 reviewer の所見が食い違う場合は他 reviewer の反証（既存実装の grep 確認）で解決し、単一 reviewer の指摘事項テーブル記載でも reviewer 自身が「対応不要」と結論した場合は Finding Quality Guardrail (bikeshedding filter) で blocking から除外する。"
+description: "複数 reviewer の所見が食い違う場合は他 reviewer の反証（既存実装の grep 確認）で解決し、単一 reviewer の指摘事項テーブル記載でも reviewer 自身が「対応不要」と結論した場合は Finding Quality Guardrail (bikeshedding filter) で blocking から除外する。反対意見を却下した場合は一方的な宣言で終わらせず、却下根拠を当の提案者へ次 cycle の検証項目として差し戻す — 対立が「どちらが正しいか」ではなく「どの軸を見ていたか」として解ける。"
 created: "2026-07-06T04:10:00+00:00"
-updated: "2026-08-02T09:53:11+09:00"
+updated: "2026-08-08T14:00:41+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260801T223635Z-pr-2070.md"
@@ -24,6 +24,10 @@ sources:
     ref: "raw/reviews/20260706T043448Z-pr-1757.md"
   - type: "reviews"
     ref: "raw/reviews/20260706T050235Z-pr-1758.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260808T031704Z-pr-2142.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260808T035533Z-pr-2142.md"
 tags: []
 confidence: medium
 ---
@@ -86,10 +90,22 @@ application reviewer が `_timeout` の perl シムについて「GNU timeout 2s
 
 **あわせて、同一の疑問が複数レビュアーから独立に上がるのは記述の曖昧さが実在する強いシグナル**。PR #2070 ではフィールドの母集団を広げたが名前を据え置いた判断について、3 名が独立に同じ確認を提起した。これは合議で潰す対象ではなく、ユーザー確認へ回して仕様として決着させるべき合図である。
 
+### 実例 8: 却下は宣言で終わらせず、次 cycle の検証項目として当の提案者へ差し戻す（PR #2142 cycle 5 → 7）
+
+`--keep-newline` の 1 語削除 mutant を pin すべきかで判定が割れた。security は「既定モードへの格上げは中和が**強まる**方向だから pin 不要、再提起するな」と明示的に反対し、code-quality と prompt-engineer は「行構造が壊れる」と主張した。統合側は実測（3 行の stderr が 1 行へ潰れ、直後の `[CONTEXT]` marker が snippet 末尾へ連結して**行頭を失う**）で後者を採り、security の反対を却下した。
+
+ここで却下を宣言で終えず、**cycle 7 で同 reviewer にその判定の妥当性を問うた**。security は実測のうえで自身の主張を撤回し、「統合側の判定が正しい。さらに自分の軸（攻撃面）でも net-positive — `sed` の indent と合わせて snippet 内から行頭 `[CONTEXT]` を偽造する経路が閉じる」と報告した。
+
+> **教訓**: reviewer の反対を却下したら、**却下根拠を当の提案者に次 cycle で検証させる**。どちらが正しいかの勝敗ではなく「security はバイト衛生の軸を、他 2 名は行構造の軸を見ていた」という**軸の違い**として解けるため、撤回も追加の利得発見も同じ工程で得られる。同様に、cycle 4 で却下した error-handling の提案（awk の `exit` が END を実行するため二重 print になる）も、同 reviewer 自身が gawk / mawk で再現して却下が事実と確認した。
+
+**あわせて、reviewer の提案パッチは指摘と同じ強度で検証する**。指摘の実測アンカーは「欠陥が実在すること」を示すが、**suggestion 欄の実測は誰もしていない**。PR #2142 cycle 4 では 2 つの独立した提案がどちらも欠陥を持ち（片方は誤帰属を残し、片方は正常系を壊す）、7 ケースの実測比較で初めて合成形が確定した。統合側が提案を走らせる工程を省くと、次 cycle の fix が壊れたパッチを適用して新しい blocking を生む。
+
 ## 関連ページ
 
 - [`rejected(scope-creep)` judgment は cross-validation + empirical revert test で gate する](./scope-creep-rejection-empirical-gate.md)
 - [新設した検証機構が、その機構自身の目的を局所的に打ち消す](../anti-patterns/self-defeating-guard-local-purpose-negation.md)
+- [reviewer の判定割れは用語の曖昧さのシグナル](./reviewer-verdict-split-signals-term-ambiguity.md)
+- [awk の exit は END 規則を実行する — 早期終了と END フォールバックの併用は二重出力になる](../anti-patterns/awk-exit-runs-end-rule-double-output.md)
 
 ## ソース
 
@@ -101,3 +117,5 @@ application reviewer が `_timeout` の perl シムについて「GNU timeout 2s
 - [PR #2070 review results (cycle 4) — 上流実装の読みが 2 名で割れ、一次ソースで決着](../../raw/reviews/20260801T223635Z-pr-2070.md)
 - [PR #2070 fix results (cycle 4)](../../raw/fixes/20260801T224211Z-pr-2070.md)
 - [PR #2070 review results (cycle 5, mergeable)](../../raw/reviews/20260802T000641Z-pr-2070.md)
+- [PR #2142 review results (cycle 5) — 反対意見の却下と、その却下根拠の差し戻し](../../raw/reviews/20260808T031704Z-pr-2142.md)
+- [PR #2142 review results (cycle 7, mergeable) — 提案者自身による撤回と軸の明示](../../raw/reviews/20260808T035533Z-pr-2142.md)
