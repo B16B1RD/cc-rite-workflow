@@ -78,6 +78,8 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 
 > ⚠️ **散文 (手順書・仕様書・references) への指摘では「観測される誤動作」は挙動的帰結に限る**。レビュー対象文書自身のテキスト差分を示す grep (文言非対称 / pin 不在 / 限定句不足 / 二重定義の未同期) はアンカー適格ではないため、アンカーを付けずに報告する。判別子と適用例は `_reviewer-base.md` §手順書・仕様書ドメイン Finding Gate を必ず通すこと。
 
+> ⚠️ **テスト網羅性への指摘 (mutation 生存 / assert の検証力不足 / pin 欠落) では、生存 mutant は「観測される誤動作」ではない**。アンカー適格性は変異が無効化する挙動が Issue 契約 (§4.4 MUST / §5 AC の `Then`) に現れるかで決まる。判別子と適用例は `_reviewer-base.md` §テスト網羅性 Finding Gate を必ず通すこと。
+
 | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
 |--------|----------|------------|------|----------|
 | {CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW} | {current-pr/follow-up/nit-noted} | {file:line} | {WHAT: 何が問題か} + {WHY: なぜ問題か（影響・リスク・既存パターンとの比較）} | {FIX: 修正方法} + {EXAMPLE: コード例（該当時）} |
