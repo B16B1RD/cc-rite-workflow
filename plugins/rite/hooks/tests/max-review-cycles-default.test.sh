@@ -11,19 +11,8 @@
 #   2. 記述の一致 (T-04) / 契約の不変 (T-05) — 既定値は 8 ファイルに複製されており、
 #      1 箇所でも取り残されると読者が「その経路は別の値」と誤読する。cycle-scope-contract.test.sh
 #      と同じ static-contract 方式で grep-pin する。
-#      内訳: pin 済み 5 (iterate/SKILL.md, templates/config/rite-config.yml, docs/CONFIGURATION.md,
-#      docs/SPEC.md, references/execution-metrics.md) / 未 pin 3 (下記「検査対象外」の 2 ファイル +
-#      本 suite の sibling である review-trend-divergence.test.sh — 現在値は正しいが T-04 の
-#      ループ外なので silent に drift しうる)。所在は docs/CONFIGURATION.md の safety 節が記録している。
-#
-# **抽出対象は 2 サイトある**: ステップ 0.6 (検証 + WARNING つき) と ステップ 1
-# (silent 再読込)。後者がブレーカーの発火可否を実際に決めるサイトなので、
-# 片方だけ pin すると drift が素通りする。
-#
-# 検査対象外 (Issue #2129 §4.2 が MUST NOT modify に指定):
-#   plugins/rite/skills/fix/references/fix-relaxation-rules.md
-#   plugins/rite/hooks/scripts/review-trend-divergence.sh
-# 両者の散文には引き上げ前の値が残る。所在は docs/CONFIGURATION.md の safety 節が記録している。
+#      Issue #2134 で fix-relaxation-rules.md と review-trend-divergence.sh の散文も
+#      T-04 の sweep と positive pin に追加した。
 
 set -uo pipefail
 
@@ -38,8 +27,11 @@ TEMPLATE_CFG="$PLUGIN_ROOT/templates/config/rite-config.yml"
 EXEC_METRICS="$PLUGIN_ROOT/references/execution-metrics.md"
 CONFIG_DOC="$REPO_ROOT/docs/CONFIGURATION.md"
 SPEC_DOC="$REPO_ROOT/docs/SPEC.md"
+FIX_RELAXATION="$PLUGIN_ROOT/skills/fix/references/fix-relaxation-rules.md"
+TREND_HELPER="$PLUGIN_ROOT/hooks/scripts/review-trend-divergence.sh"
 
 DEFAULT_CYCLES=15
+BACKSTOP_CYCLE=$((DEFAULT_CYCLES + 1))
 
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEST_DIR"' EXIT
@@ -155,7 +147,7 @@ assert_grep "T-04c: 無効値 WARNING の文言も $DEFAULT_CYCLES" "$ITERATE" \
 # AC-4 が名指しする 3 ファイル + 既定値を書いている他 2 ファイル。
 # 「既定 N」「default: N」形式の断定的な記述だけを見る (「引き上げ前の 5」のような
 # 履歴の言及は誤検出しない)。
-for f in "$ITERATE" "$TEMPLATE_CFG" "$CONFIG_DOC" "$SPEC_DOC" "$EXEC_METRICS"; do
+for f in "$ITERATE" "$TEMPLATE_CFG" "$CONFIG_DOC" "$SPEC_DOC" "$EXEC_METRICS" "$FIX_RELAXATION" "$TREND_HELPER"; do
   base="$(basename "$f")"
   assert_file_exists_or_fail "T-04: $base が存在する" "$f" || continue
   # `既定(値)?` とグループ化する。`既定値?` は ERE の `?` が多バイト文字 `値` の最終バイトに
@@ -209,6 +201,12 @@ assert "T-04o: iterate/SKILL.md の散文既定値 3 箇所が $DEFAULT_CYCLES" 
   "3" "$(grep -c "（既定 ${DEFAULT_CYCLES}）" "$ITERATE")"
 assert "T-04p: SPEC.md の英文既定値 1 箇所が $DEFAULT_CYCLES" \
   "1" "$(grep -c "at the default of $DEFAULT_CYCLES" "$SPEC_DOC")"
+assert "T-04q: fix relaxation rules の既定値 3 箇所が $DEFAULT_CYCLES" \
+  "3" "$(grep -o "既定 $DEFAULT_CYCLES" "$FIX_RELAXATION" | wc -l | tr -d '[:space:]')"
+assert_grep "T-04r: fix relaxation rules の既定値と導出 cycle が同期" "$FIX_RELAXATION" \
+  "既定 $DEFAULT_CYCLES では $BACKSTOP_CYCLE cycle 以上"
+assert_grep "T-04s: trend helper header の既定値と導出 cycle が同期" "$TREND_HELPER" \
+  "既定 $DEFAULT_CYCLES では $BACKSTOP_CYCLE cycle 以上"
 
 echo "=== T-05: backstop の発火条件と sentinel が不変 (AC-5) ==="
 # 既定値の引き上げは backstop を撤廃しない (Issue #2129 D-01 / MUST NOT)。
