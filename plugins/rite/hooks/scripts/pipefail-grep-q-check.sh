@@ -12,26 +12,42 @@
 #   audited escape hatch;
 # - `enable -p` is bounded by the current builtin table and is exempt.
 #
-# Usage: pipefail-grep-q-check.sh --all [--repo-root DIR] [--quiet]
+# Usage: pipefail-grep-q-check.sh --all [--repo-root DIR] [--quiet] [--skip-if-no-target]
 # Exit: 0 clean, 1 findings, 2 invocation/read error.
 set -uo pipefail
+
+if ! command -v python3 >/dev/null 2>&1; then
+  printf '%s\n' 'ERROR: python3 is required for pipefail-grep-q-check.sh' >&2
+  exit 2
+fi
 
 python3 - "$@" <<'PY'
 import os, re, shlex, sys
 
-args=sys.argv[1:]; root=""; use_all=False; quiet=False
+args=sys.argv[1:]; root=""; use_all=False; quiet=False; skip_if_no_target=False
 i=0
 while i < len(args):
     a=args[i]
     if a == "--all": use_all=True; i+=1
     elif a == "--quiet": quiet=True; i+=1
+    elif a == "--skip-if-no-target": skip_if_no_target=True; i+=1
     elif a == "--repo-root" and i+1 < len(args): root=args[i+1]; i+=2
     elif a in ("-h", "--help"):
-        print("Usage: pipefail-grep-q-check.sh --all [--repo-root DIR] [--quiet]"); sys.exit(0)
+        print("Usage: pipefail-grep-q-check.sh --all [--repo-root DIR] [--quiet] [--skip-if-no-target]"); sys.exit(0)
     else: print(f"ERROR: unknown or incomplete argument: {a}", file=sys.stderr); sys.exit(2)
 if not use_all:
     print("ERROR: --all is required", file=sys.stderr); sys.exit(2)
 root=os.path.abspath(root or os.getcwd())
+scan_roots=[os.path.join(root, p) for p in ("plugins/rite/hooks", "plugins/rite/scripts")]
+if not os.path.isdir(root):
+    print(f"ERROR: repository root is not a directory: {root}", file=sys.stderr); sys.exit(2)
+if not any(os.path.isdir(p) for p in scan_roots):
+    if skip_if_no_target:
+        print("Total pipefail-grep-q findings: 0", file=sys.stderr); sys.exit(0)
+    print(f"ERROR: no canonical scan roots under: {root}", file=sys.stderr); sys.exit(2)
+missing=[os.path.relpath(p,root) for p in scan_roots if not os.path.isdir(p)]
+if missing:
+    print(f"ERROR: missing canonical scan root: {', '.join(missing)}", file=sys.stderr); sys.exit(2)
 
 def stages(line):
     out=[]; buf=[]; quote=None; esc=False; i=0
@@ -64,6 +80,18 @@ def grep_q(stage):
     if not ws or os.path.basename(ws[0]) != "grep": return False
     return any(re.match(r'^-[^-]*q', w) for w in ws[1:])
 
+def pipefail_change(line):
+    """Return True/False for a standalone set activation, else None."""
+    ws=words(line.rstrip(";"))
+    if not ws or ws[0] != "set": return None
+    for pos, token in enumerate(ws[1:], 1):
+        if token in ("-o", "+o") and ws[pos+1:pos+2] == ["pipefail"]:
+            return token == "-o"
+        if token.startswith(("-", "+")) and not token.startswith("--") and "o" in token[1:]:
+            if ws[pos+1:pos+2] == ["pipefail"]:
+                return token[0] == "-"
+    return None
+
 def exempt(prod, pipeline_len):
     p=prod.strip()
     if p.startswith("{") and p.endswith("}"): return True
@@ -86,10 +114,14 @@ def exempt(prod, pipeline_len):
     return False
 
 findings=[]; errors=0
+def walk_error(err):
+    global errors
+    print(f"WARNING: cannot traverse {err.filename}: {err}", file=sys.stderr)
+    errors += 1
+
 for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
     start=os.path.join(root,base)
-    if not os.path.isdir(start): continue
-    for dp, dns, fns in os.walk(start):
+    for dp, dns, fns in os.walk(start, onerror=walk_error):
         dns[:] = [d for d in dns if d != "tests"]
         for fn in fns:
             if not fn.endswith(".sh") or fn == "pipefail-grep-q-check.sh": continue
@@ -109,11 +141,14 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
                     continue
                 logical.append((start_n,acc)); acc=""
             if acc: logical.append((start_n,acc))
-            prev=""
+            prev=""; pipefail=False
             for n,line in logical:
+                changed=pipefail_change(line)
+                if changed is not None:
+                    pipefail=changed
                 ignored="drift-check-ignore" in line or "drift-check-ignore" in prev
                 ss=stages(line)
-                if not ignored and len(ss)>1:
+                if pipefail and not ignored and len(ss)>1:
                     for j in range(1,len(ss)):
                         if grep_q(ss[j]) and not exempt(ss[j-1],len(ss)):
                             findings.append(f"[pipefail-grep-q] {rel}:{n}: immediate producer before grep -q: {ss[j-1]}")
