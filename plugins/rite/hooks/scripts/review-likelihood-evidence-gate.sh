@@ -9,8 +9,15 @@ reviewer_type=""
 input=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --reviewer-type) reviewer_type="${2:-}"; shift 2 ;;
-    --input) input="${2:-}"; shift 2 ;;
+    --reviewer-type|--input)
+      option="$1"
+      if [ "$#" -lt 2 ]; then
+        echo "ERROR: $option requires a value" >&2
+        exit 2
+      fi
+      value="$2"
+      [ "$option" = "--reviewer-type" ] && reviewer_type="$value" || input="$value"
+      shift 2 ;;
     *) echo "ERROR: unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -21,34 +28,56 @@ if [ -z "$reviewer_type" ] || [ -z "$input" ] || [ ! -r "$input" ]; then
 fi
 
 case "$reviewer_type" in
-  security|devops|dependencies) exception_category=1 ;;
-  *) exception_category=0 ;;
+  security) exception_category="security" ;;
+  devops) exception_category="devops infra" ;;
+  dependencies) exception_category="dependencies" ;;
+  application) exception_category="database migration" ;;
+  *) exception_category="" ;;
 esac
 
 stats=$(awk -v exception_category="$exception_category" -v reviewer_type="$reviewer_type" '
-  BEGIN { in_findings=0; findings=0; missing=0 }
-  /^###[[:space:]]*(指摘事項|Findings)[[:space:]]*$/ { in_findings=1; next }
+  BEGIN { in_findings=0; saw_heading=0; saw_header=0; findings=0; missing=0; malformed=0 }
+  function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+  /^###[[:space:]]*(指摘事項|Findings)[[:space:]]*$/ { in_findings=1; saw_heading=1; next }
   in_findings && /^###[[:space:]]/ { in_findings=0 }
   !in_findings || $0 !~ /^[[:space:]]*\|/ { next }
+  /^\|[[:space:]]*(重要度|Severity)[[:space:]]*\|/ { saw_header=1; next }
   /^\|[[:space:]]*(-+:?|-*[[:space:]]*#)[[:space:]]*\|/ { next }
-  /^\|[[:space:]]*(重要度|Severity)[[:space:]]*\|/ { next }
   /^\|[[:space:]]*(なし|None)[[:space:]]*\|/ { next }
   {
+    columns = split($0, cell, "|")
+    # Canonical reviewer finding table: leading/trailing pipe plus five cells.
+    if (columns != 7) { malformed++; next }
+    content = trim(cell[5])
     findings++
-    evidence = ($0 ~ /Likelihood-Evidence:[[:space:]]*(existing_call_site|new_call_site|entrypoint_connection|runtime_observation)[[:space:]]+[^|[:space:]]/)
-    hypothetical = ($0 ~ /Likelihood:[[:space:]]*Hypothetical[[:space:]]*\(例外カテゴリ:[[:space:]]*[^)]+\)/)
-    migration = (reviewer_type == "application" && $0 ~ /例外カテゴリ:[[:space:]]*database migration/)
-    if (!evidence && !((exception_category || migration) && hypothetical)) missing++
+    evidence = (content ~ /Likelihood-Evidence:[[:space:]]*(existing_call_site|new_call_site|entrypoint_connection|runtime_observation)[[:space:]]+[^[:space:]]/)
+    hypothetical = (exception_category != "" && index(content, "Likelihood: Hypothetical (例外カテゴリ: " exception_category ")") > 0)
+    if (!evidence && !hypothetical) missing++
   }
-  END { printf "%d\t%d\n", findings, missing }
+  END { printf "%d\t%d\t%d\t%d\t%d\n", findings, missing, malformed, saw_heading, saw_header }
 ' "$input") || {
   echo "[CONTEXT] LIKELIHOOD_EVIDENCE_GATE_FAILED=1; reason=parse_failed; reviewer=$reviewer_type" >&2
   exit 2
 }
 
-IFS=$'\t' read -r findings missing <<EOF
+IFS=$'\t' read -r findings missing malformed saw_heading saw_header <<EOF
 $stats
 EOF
+if [ "$saw_heading" -ne 1 ]; then
+  echo "ERROR: reviewer output is missing the canonical findings heading" >&2
+  echo "[CONTEXT] LIKELIHOOD_EVIDENCE_GATE_FAILED=1; reason=findings_heading_missing; reviewer=$reviewer_type" >&2
+  exit 1
+fi
+if [ "$saw_header" -ne 1 ]; then
+  echo "ERROR: reviewer output is missing the canonical five-column findings table header" >&2
+  echo "[CONTEXT] LIKELIHOOD_EVIDENCE_GATE_FAILED=1; reason=table_header_missing; reviewer=$reviewer_type" >&2
+  exit 1
+fi
+if [ "$malformed" -gt 0 ]; then
+  echo "ERROR: reviewer output contains $malformed malformed finding table row(s); expected exactly five columns" >&2
+  echo "[CONTEXT] LIKELIHOOD_EVIDENCE_GATE_FAILED=1; reason=table_malformed; reviewer=$reviewer_type; malformed=$malformed" >&2
+  exit 1
+fi
 if [ "$missing" -gt 0 ]; then
   echo "ERROR: reviewer output contains $missing finding(s) without a valid Likelihood-Evidence anchor" >&2
   echo "[CONTEXT] LIKELIHOOD_EVIDENCE_GATE_FAILED=1; reason=anchor_missing; reviewer=$reviewer_type; findings=$findings; missing=$missing" >&2
