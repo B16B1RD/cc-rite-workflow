@@ -41,6 +41,7 @@ argument-hint: ""
 | `{git_in_merge}` | Phase 3.2: `[CONTEXT] GIT_IN_MERGE` marker (`git rev-parse --git-path MERGE_HEAD` の存在判定 = merge 解決待ち) |
 | `{git_in_rebase}` | Phase 3.2: `[CONTEXT] GIT_IN_REBASE` marker (`git rev-parse --git-path rebase-merge`/`rebase-apply` の存在判定 = rebase 中断) |
 | `{state_next}` | Phase 3.1: `[CONTEXT] STATE_NEXT` marker (flow-state `next_action`) |
+| `{state_stop_reason}` | Phase 3.1: `[CONTEXT] STATE_STOP_REASON` marker (flow-state `stop_reason`; empty = ordinary interruption) |
 | `{state_parent}` | Phase 3.1: `[CONTEXT] STATE_PARENT` marker (flow-state `parent_issue_number`) |
 | `{state_parent_display}` | Phase 3.1: `[CONTEXT] STATE_PARENT_DISPLAY` marker (`0`/空 → 「なし」、それ以外 → `#NN` 整形) |
 | `{pr_number}` | Phase 3.3: `gh pr view` の `.number` (Phase 3.1 `[CONTEXT] STATE_PR` も参照可) |
@@ -128,6 +129,7 @@ state_active=$(bash {plugin_root}/hooks/flow-state.sh get --field active --defau
 state_issue=$(bash {plugin_root}/hooks/flow-state.sh get --field issue_number --default "0")
 state_pr=$(bash {plugin_root}/hooks/flow-state.sh get --field pr_number --default "0")
 state_next=$(bash {plugin_root}/hooks/flow-state.sh get --field next_action --default "")
+state_stop_reason=$(bash {plugin_root}/hooks/flow-state.sh get --field stop_reason --default "")
 state_parent=$(bash {plugin_root}/hooks/flow-state.sh get --field parent_issue_number --default "0")
 
 # parent_issue_number=0 は「親 Issue なし」を意味するため、サマリ表示で "#0" を見せないよう "なし" に整形する
@@ -147,6 +149,7 @@ echo "[CONTEXT] STATE_ACTIVE=$state_active"
 echo "[CONTEXT] STATE_ISSUE=$state_issue"
 echo "[CONTEXT] STATE_PR=$state_pr"
 echo "[CONTEXT] STATE_NEXT=$state_next"
+echo "[CONTEXT] STATE_STOP_REASON=$state_stop_reason"
 echo "[CONTEXT] STATE_PARENT=$state_parent"
 echo "[CONTEXT] STATE_PARENT_DISPLAY=$parent_issue_display"
 ```
@@ -356,6 +359,7 @@ Commits ahead of {base_branch}: {git_commit_count}
 Uncommitted changes: {git_has_uncommitted: "あり" or "なし"}
 Next action (state): {state_next}
 Next action (WM):    {wm_next}
+Stop reason:         {state_stop_reason: empty のとき「なし（通常の中断）」}
 ```
 
 ### 4.2 ユーザー確認

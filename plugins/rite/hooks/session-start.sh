@@ -489,6 +489,31 @@ if [ "$ACTIVE" != "true" ]; then
   exit 0
 fi
 
+# --- Stop-reason phrasing (#2045) ---
+# flow-state の `stop_reason` は「ワークフローが失敗として止まった」ことの durable な記録
+# (`skills/iterate/SKILL.md` ステップ 6 共有前段が書く)。キーが無い state は「単なる中断」
+# (Ctrl+C / セッション終了) を意味する。両者はキー不在のとき phase=review / active=true という
+# バイト的に同一の形で残るため、この関数の出力の有無だけが再開案内で両者を分ける手がかりになる。
+#
+# 既知トークンは**明示列挙**し、未知の値は `*)` で既定文面へ silent に吸収させない — トークン
+# 名前空間を広げたとき分岐漏れがエラーにならず誤った案内が出続けるため (Wiki: prefix 分岐 case の
+# `*)` catch-all は未知の将来 prefix を silent に default 動作へ吸収する)。未知値は raw を
+# neutralize して見せ、operator が「知らない停止理由が来た」と気付ける形にする。
+#
+# stdout に 1 行返す (空 = 停止理由なし = 通常の中断)。呼び出し側はこの戻り値を案内文へ挿す。
+_rite_stop_reason_phrase() {
+  local _sr="$1"
+  [ -z "$_sr" ] && return 0
+  case "$_sr" in
+    circuit-breaker:max-cycles)
+      echo "サーキットブレーカー発火 (review⇄fix cycle が上限に到達)" ;;
+    circuit-breaker:divergence)
+      echo "サーキットブレーカー発火 (収束トレンドの発散を検出)" ;;
+    *)
+      echo "未知の停止理由トークン '$(printf '%s' "$_sr" | neutralize_ctrl)' (rite の更新で追加された可能性)" ;;
+  esac
+}
+
 # --- Defensive reset helper ---
 # Shared by startup and clear blocks. Resets active=false on phase != completed.
 #
@@ -508,8 +533,8 @@ fi
 # Note: This function always terminates via exit 0 — it never returns to the caller.
 # When issue_number is empty (e.g., state file has no issue), exits silently without message.
 _reset_active_state() {
-  local _phase _issue _branch _ownership
-  # 3 field を single composite jq read で読む。3 read に分けると mid-write 中断などで
+  local _phase _issue _branch _stop_reason _stop_phrase _ownership
+  # 4 field を single composite jq read で読む。個別 read に分けると mid-write 中断などで
   # .phase だけ valid / .issue_number 以降が corrupt な partial-failure を WARNING の有無で
   # 区別できなくなり、reset reason の triage が不能になる経路ができる。
   # IFS=$'\t' + @tsv collapses empty fields under POSIX whitespace rules: an empty
@@ -518,14 +543,14 @@ _reset_active_state() {
   # ACTIVE-fallback read below for the same convention).
   local _reset_jq_err _composite
   _reset_jq_err=$(mktemp 2>/dev/null) || _reset_jq_err=""
-  _composite=$(jq -r '[(.phase // ""), (.issue_number // "" | tostring), (.branch // "")] | join("\u001f")' \
-    "$STATE_FILE" 2>"${_reset_jq_err:-/dev/null}") || _composite=$'\x1f\x1f'
+  _composite=$(jq -r '[(.phase // ""), (.issue_number // "" | tostring), (.branch // ""), (.stop_reason // "")] | join("\u001f")' \
+    "$STATE_FILE" 2>"${_reset_jq_err:-/dev/null}") || _composite=$'\x1f\x1f\x1f'
   if [ -n "$_reset_jq_err" ] && [ -s "$_reset_jq_err" ]; then
     echo "rite: session-start: WARNING: _reset_active_state jq read failed (STATE_FILE may be corrupt)" >&2
     head -3 "$_reset_jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
   [ -n "$_reset_jq_err" ] && rm -f "$_reset_jq_err"
-  IFS=$'\x1f' read -r _phase _issue _branch <<< "$_composite"
+  IFS=$'\x1f' read -r _phase _issue _branch _stop_reason <<< "$_composite"
 
   # Session ownership check runs on the normal execution path, not just RITE_DEBUG.
   # Fail-safe: if the helper isn't sourced or returns non-zero, treat as "unknown"
@@ -576,7 +601,12 @@ _reset_active_state() {
     exit 0
   fi
   if [ -n "$_issue" ]; then
-    echo "rite: 前回のセッション状態が残っていたためリセットしました (Issue #${_issue}, branch: ${_branch})。再開するには /rite:recover を使用してください。"
+    _stop_phrase=$(_rite_stop_reason_phrase "$_stop_reason")
+    if [ -n "$_stop_phrase" ]; then
+      echo "rite: 失敗停止した rite workflow の状態をリセットしました (Issue #${_issue}, branch: ${_branch}, 理由: ${_stop_phrase})。再開するには /rite:recover を使用してください。"
+    else
+      echo "rite: 前回のセッション状態が残っていたためリセットしました (Issue #${_issue}, branch: ${_branch})。再開するには /rite:recover を使用してください。"
+    fi
   fi
   exit 0
 }
@@ -616,7 +646,8 @@ _tsv_err=$(mktemp 2>/dev/null) || _tsv_err=""
 _tsv_rc=0
 _tsv_output=$(jq -r '[
   (.issue_number // "" | tostring),
-  (.phase // "unknown")
+  (.phase // "unknown"),
+  (.stop_reason // "")
 ] | join("\u001f")' "$STATE_FILE" 2>"${_tsv_err:-/dev/null}") || _tsv_rc=$?
 if [ "$_tsv_rc" -ne 0 ]; then
   echo "rite: Warning - state file contains invalid JSON. Use /rite:recover to recover." >&2
@@ -625,7 +656,7 @@ if [ "$_tsv_rc" -ne 0 ]; then
   exit 0
 fi
 [ -n "$_tsv_err" ] && rm -f "$_tsv_err"
-IFS=$'\x1f' read -r ISSUE PHASE <<< "$_tsv_output"
+IFS=$'\x1f' read -r ISSUE PHASE STOP_REASON <<< "$_tsv_output"
 
 # Validate that critical fields are not null/empty
 if [ -z "$ISSUE" ]; then
@@ -638,7 +669,12 @@ fi
 # loop from flow-state. The former coercive multi-line directive ("IMPORTANT: First
 # inform the user ... Use bash {plugin_root}/...") was removed in v0.7 because it
 # contaminated unrelated /goal turns whenever a session started in a rite-active cwd.
-echo "rite: 中断した rite workflow を検出しました (Issue #${ISSUE}, phase: ${PHASE})。再開するには /rite:recover を実行してください。"
+STOP_PHRASE=$(_rite_stop_reason_phrase "$STOP_REASON")
+if [ -n "$STOP_PHRASE" ]; then
+  echo "rite: 失敗停止した rite workflow を検出しました (Issue #${ISSUE}, phase: ${PHASE}, 理由: ${STOP_PHRASE})。再開前に状態を確認するには /rite:recover を実行してください。"
+else
+  echo "rite: 中断した rite workflow を検出しました (Issue #${ISSUE}, phase: ${PHASE})。再開するには /rite:recover を実行してください。"
+fi
 
 # --- Session ID notification ---
 # session_id is now auto-read from .rite-session-id by flow-state.sh.

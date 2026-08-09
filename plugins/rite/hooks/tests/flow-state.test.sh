@@ -1327,6 +1327,18 @@ sfile2="$d2/.rite/sessions/${sid2}.flow-state"
 (cd "$d2" && bash "$HOOK" set --phase branch --issue 701 --branch "feat/701" --pr 0 --next "n") >/dev/null
 assert "TC-27: backward compat → no cycle_count key without --cycle-count" "false" "$(jq -r 'has("cycle_count")' "$sfile2")"
 
+# --- TC-27b: stop_reason is default-cleared additive failure state (#2045) ---
+echo ""
+echo "=== TC-27b: --stop-reason writes and an ordinary set default-clears ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+sfile="$d/.rite/sessions/${sid}.flow-state"
+(cd "$d" && bash "$HOOK" set --phase review --issue 2045 --branch "fix/2045" --pr 99 --next "stopped" \
+  --cycle-count 0 --stop-reason "circuit-breaker:divergence") >/dev/null
+assert "TC-27b: stop_reason recorded" "circuit-breaker:divergence" "$(jq -r '.stop_reason // "ABSENT"' "$sfile")"
+assert "TC-27b: get returns stop_reason" "circuit-breaker:divergence" "$(cd "$d" && bash "$HOOK" get --field stop_reason --default "")"
+(cd "$d" && bash "$HOOK" set --phase review --issue 2045 --branch "fix/2045" --pr 99 --next "resumed") >/dev/null
+assert "TC-27b: ordinary set default-clears stop_reason" "false" "$(jq -r 'has("stop_reason")' "$sfile")"
+
 # --- TC-28: wm_comment_id is merge-preserved across cmd_set (#1810) ---
 # wm_comment_id has NO --flag — it's written directly by issue-comment-wm-sync.sh's
 # cache_comment_id() via `jq '. + {wm_comment_id: ...}'`, mirroring how post-tool-wm-sync.sh

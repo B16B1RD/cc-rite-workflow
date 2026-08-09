@@ -58,6 +58,7 @@ argument-hint: "<pr_number>"
 | `{branch_name}` | flow-state `branch` field |
 | `{max_review_cycles}` | `safety.max_review_cycles` in `rite-config.yml`（既定 15、無効値は既定へフォールバック）。**発散判定をすり抜けた非収束を受け止める backstop**（既定 15 では 16 cycle 以上を要する収束中の run にも上限として働く） |
 | `{fire_reason_line}` | ステップ 6.1 / 6.2 の「理由」行。ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=` から ステップ 6.2「発火理由の文面」表で決める |
+| `{cb_reason}` | ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=` の**生値**（`max-cycles` / `divergence`）。ステップ 6 共有前段が flow-state へ書く `--stop-reason "circuit-breaker:{cb_reason}"` でのみ使う（人間向けの文面は `{fire_reason_line}` が担う） |
 | `{trend}` | ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `TREND=`（カンマ区切りの per-cycle blocking 件数）。停止通知では `→` 区切りへ整形して表示する。空のときの扱いは ステップ 6.2「発火理由の文面」を参照 |
 | `{trend_reason}` | ステップ 1 の `[CONTEXT] ITERATE_CB=` marker の `TREND_REASON=`（helper が返した判定不能の理由。ステップ 6.2「発火理由の文面」の `max-cycles` 分岐と推移行の差し替えで使う） |
 | `{cycle_count}` | flow-state `cycle_count` field（review⇄fix cycle の消化数。ステップ 1 で increment、fresh entry で 0 リセット。発火時はステップ 6 の共有前段が、正常終了時はステップ 5.0.1 が 0 にリセットする） |
@@ -709,9 +710,20 @@ fi
 # 成否は FIRE_RESET marker に載せる。失敗すると counter が上限のまま残り再実行が即再発火する
 # （= 停止通知が約束する「再実行すれば新しい run として cycle 1 から回る」が偽になる）ため、
 # ステップ 6.2 がこれを読んで注意行 (b) を出し分ける。
+# `--stop-reason`（#2045）は「発火した」という事実の durable な記録で、次セッションの
+# `session-start.sh` がブレーカー失敗停止と Ctrl+C 中断を区別するために読む。**counter reset と同じ
+# set に載せる**のが要点で、ステップ 1 の fire 分岐に書いても本 set（`--stop-reason` なし）が
+# default-clear で消してしまう。ここに置くことで、上のコメントが言う「前段〜sentinel 間で turn が
+# 終わる窓」でも発火の記録だけは残る（従来はこの窓で counter が 0 に戻り発火が無記録だった）。
+# post-breaker full review が成功してループが継続した場合は、後続の set（ステップ 5.0.1 の
+# `--cycle-count 0` / fix の handoff set 等）が default-clear するため stale な失敗記録は残らない。
+# `{cb_reason}` はステップ 1 の `ITERATE_CB=fire` marker の `CB_REASON=`（`max-cycles` / `divergence`）を
+# リテラル置換する。**上限値そのものは埋めない** — `max_review_cycles` は invocation ごとに config から
+# 読み直されるため、state に焼くと設定変更で符号化が破綻する（counter reset を選んだのと同じ理由）。
 if cb_reset_out=$(LC_ALL=C bash {plugin_root}/hooks/flow-state.sh set \
   --phase review --issue {issue_number} --branch {branch_name} --pr {pr_number} \
-  --next "post-breaker full review を 1 回実行して通常 review routing へ戻る" --cycle-count 0 2>&1); then
+  --next "post-breaker full review を 1 回実行して通常 review routing へ戻る" --cycle-count 0 \
+  --stop-reason "circuit-breaker:{cb_reason}" 2>&1); then
   fire_reset=ok
 else
   fire_reset=failed

@@ -176,6 +176,50 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-006b: circuit-breaker stop reason is distinct from an ordinary interruption
+# --------------------------------------------------------------------------
+echo "TC-006b: stop_reason changes compact interruption notice to failure stop"
+dir006b="$TEST_DIR/tc006b"
+mkdir -p "$dir006b"
+create_state_file "$dir006b" '{
+  "active": true,
+  "issue_number": 2045,
+  "phase": "review",
+  "stop_reason": "circuit-breaker:max-cycles"
+}'
+output=$(run_hook_with_source "$dir006b" "compact")
+if echo "$output" | grep -q "失敗停止した rite workflow" && \
+   echo "$output" | grep -q "cycle が上限に到達" && \
+   ! echo "$output" | grep -q "中断した rite workflow"; then
+  pass "stop_reason produces a failure-specific compact notice"
+else
+  fail "Expected failure-specific stop notice, got: $output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-006c: startup defensive reset preserves and surfaces the stop reason
+# --------------------------------------------------------------------------
+echo "TC-006c: startup reset reports circuit-breaker failure reason"
+dir006c="$TEST_DIR/tc006c"
+mkdir -p "$dir006c"
+create_state_file "$dir006c" '{
+  "active": true,
+  "issue_number": 2045,
+  "branch": "fix/issue-2045",
+  "phase": "review",
+  "stop_reason": "circuit-breaker:divergence"
+}'
+output=$(run_hook_with_source "$dir006c" "startup")
+if echo "$output" | grep -q "失敗停止した rite workflow の状態をリセット" && \
+   echo "$output" | grep -q "収束トレンドの発散を検出"; then
+  pass "startup defensive reset surfaces the durable failure reason"
+else
+  fail "Expected failure-specific startup reset notice, got: $output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # TC-002: CWD is not a directory → exit 0
 # --------------------------------------------------------------------------
 echo "TC-002: CWD is not a directory → exit 0"
