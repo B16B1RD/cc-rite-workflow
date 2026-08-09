@@ -146,6 +146,29 @@ out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "multiline function headers preserve outer state" "1" "$rc"
 assert "both multiline declaration styles restore state" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*after_split_definitions' || true)"
 
+printf '%s\n' \
+  'enable_pf() { set -o pipefail; }' \
+  'disable_pf() { set +o pipefail; }' \
+  'set +o pipefail' \
+  'enable_pf; after_enable_call | grep -q x' \
+  'disable_pf; after_disable_call | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "function option side effects retain active finding" "1" "$rc"
+assert "enable helper changes caller state" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*after_enable_call' || true)"
+assert "disable helper changes caller state" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*after_disable_call' || true)"
+
+printf '%s\n' \
+  'callee_on() { nested_on_stream | grep -q x; }' \
+  'caller_on() { set -o pipefail; callee_on; }' \
+  'callee_off() { nested_off_stream | grep -q x; }' \
+  'caller_off() { set +o pipefail; callee_off; }' \
+  'set +o pipefail; caller_on' \
+  'set -o pipefail; caller_off' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "nested call-state propagation retains active finding" "1" "$rc"
+assert "nested caller activation reaches callee" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*nested_on_stream' || true)"
+assert "nested caller deactivation reaches callee" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*nested_off_stream' || true)"
+
 printf '%s\n' 'set -o pipefail' 'stream_many | grep -q x # drift-check-ignore: bounded fixture' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "ignore marker suppresses finding" "0" "$rc"

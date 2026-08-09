@@ -109,9 +109,17 @@ def syntax_only(line):
 
 toggle_re=re.compile(r'(?<![A-Za-z0-9_])set\s+([+-][A-Za-z]*o[A-Za-z]*|[+-]o)\s+pipefail(?=\s|;|\)|$)')
 
-def scan_line_state(syntax, state, stack, function_activity=None, pending_function=None):
+def scan_line_state(syntax, state, stack, function_activity=None, pending_function=None, function_effects=None):
     """Evaluate one line while retaining parenthesized scopes across lines."""
     function_activity=function_activity or {}
+    function_effects=function_effects or {}
+    declared=re.match(r'^\s*(?:function\s+([A-Za-z_][A-Za-z0-9_]*)|([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\))',syntax)
+    declared_name=(declared.group(1) or declared.group(2)) if declared else None
+    call_effects={}
+    for name,effect in function_effects.items():
+        if effect is None or name == declared_name: continue
+        pattern=r'(?:^|[;|&]\s*|\b(?:if|then|command)\s+|!\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)'
+        for m in re.finditer(pattern,syntax): call_effects[m.end()]=effect
     open_names={}
     for m in re.finditer(r'(?:^|[;&])\s*(?:function\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?|([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\))\s*\{', syntax):
         open_names[m.end()-1]=m.group(1) or m.group(2)
@@ -122,6 +130,7 @@ def scan_line_state(syntax, state, stack, function_activity=None, pending_functi
     if header: pending_function=header.group(1) or header.group(2)
     pipe_states=[]; segment_start_state=state; i=0
     while i < len(syntax):
+        if i in call_effects: state=call_effects[i]
         if syntax[i] == "(": stack.append(("paren",state)); i+=1; continue
         if syntax[i] == ")":
             if stack and stack[-1][0] == "paren": state=stack.pop()[1]
@@ -158,6 +167,7 @@ def infer_function_activity(logical):
         m=re.match(r'^\s*(?:function\s+([A-Za-z_][A-Za-z0-9_]*)|([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\))',syntax_only(line))
         if m: names.add(m.group(1) or m.group(2))
     activity={name:False for name in names}; edges={name:set() for name in names}
+    effects={name:None for name in names}; local_state={name:None for name in names}
     state=False; in_function=None; pending=None; depth=0
     for _,line in logical:
         syntax=syntax_only(line)
@@ -167,30 +177,39 @@ def infer_function_activity(logical):
             declared_name=(declared.group(1) or declared.group(2)) if declared else None
             if header.group(1):
                 depth=syntax.count("{")-syntax.count("}"); in_function=declared_name if depth>0 else None
+                if depth<=0 and declared_name:
+                    toggles=list(toggle_re.finditer(syntax))
+                    if toggles: effects[declared_name]=toggles[-1].group(1).startswith("-")
+                    for name in names:
+                        if name != declared_name and re.search(r'[;{]\s*'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
+                            edges[declared_name].add((name,effects[declared_name]))
             else: pending=declared_name
             continue
         if pending:
             if re.match(r'^\s*\{',syntax): in_function=pending; pending=None; depth=syntax.count("{")-syntax.count("}")
             continue
         if in_function:
+            toggles=list(toggle_re.finditer(syntax))
+            if toggles:
+                local_state[in_function]=toggles[-1].group(1).startswith("-")
             for name in names:
                 if re.search(r'(?:^|[;|&]\s*|\b(?:if|then|command)\s+|!\s*|\$\(\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
-                    edges[in_function].add(name)
+                    edges[in_function].add((name,local_state[in_function]))
             depth+=syntax.count("{")-syntax.count("}")
-            if depth<=0: in_function=None
+            if depth<=0: effects[in_function]=local_state[in_function]; in_function=None
             continue
         for name in names:
             if re.search(r'(?:^|[;|&]\s*|\b(?:if|then|command)\s+|!\s*|\$\(\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
                 activity[name]=activity[name] or state
-        _,state,_,_=scan_line_state(syntax,state,[],{},None)
+        _,state,_,_=scan_line_state(syntax,state,[],{},None,{})
     changed=True
     while changed:
         changed=False
         for caller,callees in edges.items():
-            if activity[caller]:
-                for callee in callees:
-                    if not activity[callee]: activity[callee]=True; changed=True
-    return activity
+            for callee,override in callees:
+                active=activity[caller] if override is None else override
+                if active and not activity[callee]: activity[callee]=True; changed=True
+    return activity,effects
 
 def exempt(prod, pipeline_len):
     p=prod.strip()
@@ -241,10 +260,10 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
                     continue
                 logical.append((start_n,acc)); acc=""
             if acc: logical.append((start_n,acc))
-            function_activity=infer_function_activity(logical)
+            function_activity,function_effects=infer_function_activity(logical)
             prev=""; pipefail=False; scope_stack=[]; pending_function=None
             for n,line in logical:
-                pipe_states,pipefail,scope_stack,pending_function=scan_line_state(syntax_only(line),pipefail,scope_stack,function_activity,pending_function)
+                pipe_states,pipefail,scope_stack,pending_function=scan_line_state(syntax_only(line),pipefail,scope_stack,function_activity,pending_function,function_effects)
                 ignored="drift-check-ignore" in line or "drift-check-ignore" in prev
                 edges=pipeline_edges(line)
                 if not ignored:
