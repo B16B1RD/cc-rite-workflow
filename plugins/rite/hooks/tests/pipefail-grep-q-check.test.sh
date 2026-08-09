@@ -33,6 +33,34 @@ assert "same pipeline without pipefail is clean" "0" "$rc"
 assert "pipefail-off run has no finding" "0" "$(printf '%s' "$out" | grep -c '^\[pipefail-grep-q\]' || true)"
 
 printf '%s\n' \
+  'set -o pipefail' \
+  "cat <<'EOF'" \
+  'set +o pipefail' \
+  'heredoc_data | grep -q x' \
+  'EOF' \
+  'real_after_heredoc | grep -q x' \
+  'set +o pipefail' \
+  'cat <<-TABEOF' \
+  $'\tset -o pipefail' \
+  $'\tignored_tabbed_data | grep -q x' \
+  $'\tTABEOF' \
+  'set -o pipefail' \
+  'delay=$((1 << attempt))' \
+  'real_after_shift | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "heredoc data does not alter shell state" "1" "$rc"
+assert "real pipeline after heredoc is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_heredoc' || true)"
+assert "quoted heredoc body is not scanned" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*heredoc_data' || true)"
+assert "tab-stripped heredoc body is not scanned" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*ignored_tabbed_data' || true)"
+assert "arithmetic shift is not treated as heredoc" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_shift' || true)"
+
+printf '%s\n' 'set -o pipefail' 'stderr_stream |& grep -q x' 'multiline_stderr_stream |&' '  grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "pipe-and pipeline is detected" "1" "$rc"
+assert "pipe-and reports its immediate producer" "1" "$(printf '%s\n' "$out" | grep -c 'producer before grep -q: stderr_stream$' || true)"
+assert "multiline pipe-and is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer before grep -q: multiline_stderr_stream$' || true)"
+
+printf '%s\n' \
   '( set -o pipefail; subshell_stream | grep -q x )' \
   'captured=$(set -o pipefail; substitution_stream | grep -q x)' \
   'late_stream | grep -q x; set -o pipefail' \

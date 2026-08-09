@@ -59,7 +59,8 @@ def pipeline_edges(line):
         if c == "{": brace+=1; i+=1; continue
         if c == "}": brace=max(0,brace-1); i+=1; continue
         if c == "|" and not (i+1 < len(syntax) and syntax[i+1] == "|"):
-            events.append(("pipe",i,i+1,depth)); i+=1; continue
+            end=i+2 if i+1 < len(syntax) and syntax[i+1] == "&" else i+1
+            events.append(("pipe",i,end,depth)); i=end; continue
         if c == ";": events.append(("sep",i,i+1,depth)); i+=1; continue
         if c in "&|" and i+1 < len(syntax) and syntax[i+1] == c:
             events.append(("sep",i,i+2,depth)); i+=2; continue
@@ -169,7 +170,7 @@ def scan_line_state(syntax, state, stack, function_activity=None, pending_functi
             i+=1; continue
         if syntax[i] == "|" and not (i and syntax[i-1] == "|") and not (i+1 < len(syntax) and syntax[i+1] == "|"):
             pipe_states.append(state)
-            i+=1; continue
+            i+=2 if i+1 < len(syntax) and syntax[i+1] == "&" else 1; continue
         if syntax[i] == ";":
             segment_start_state=state; i+=1; continue
         if syntax[i] in "&|" and i+1 < len(syntax) and syntax[i+1] == syntax[i]:
@@ -286,6 +287,46 @@ def walk_error(err):
     print(f"WARNING: cannot traverse {err.filename}: {err}", file=sys.stderr)
     errors += 1
 
+def heredoc_starts(line):
+    """Return (delimiter, strip_tabs) pairs for real heredoc redirects."""
+    starts=[]; i=0; quote=None; esc=False; arithmetic_depth=0
+    while i < len(line):
+        c=line[i]
+        if esc: esc=False; i+=1; continue
+        if c == "\\" and quote != "'": esc=True; i+=1; continue
+        if quote:
+            if c == quote: quote=None
+            i+=1; continue
+        if c in "'\"": quote=c; i+=1; continue
+        if c == "#" and (i == 0 or line[i-1].isspace()): break
+        if line.startswith("((",i): arithmetic_depth+=1; i+=2; continue
+        if arithmetic_depth and line.startswith("))",i): arithmetic_depth-=1; i+=2; continue
+        if arithmetic_depth: i+=1; continue
+        if line.startswith("<<<",i): i+=3; continue
+        if not line.startswith("<<",i): i+=1; continue
+        i+=2; strip_tabs=i < len(line) and line[i] == "-"
+        if strip_tabs: i+=1
+        while i < len(line) and line[i] in " \t": i+=1
+        start=i; token_quote=None; token_esc=False
+        while i < len(line):
+            c=line[i]
+            if token_esc: token_esc=False; i+=1; continue
+            if c == "\\" and token_quote != "'": token_esc=True; i+=1; continue
+            if token_quote:
+                if c == token_quote: token_quote=None
+                i+=1; continue
+            if c in "'\"": token_quote=c; i+=1; continue
+            if c.isspace() or c in ";|&<>()": break
+            i+=1
+        token=line[start:i]
+        if token:
+            try:
+                parsed=shlex.split(token,comments=False,posix=True)
+            except ValueError:
+                parsed=[]
+            if parsed: starts.append((parsed[0],strip_tabs))
+    return starts
+
 for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
     start=os.path.join(root,base)
     for dp, dns, fns in os.walk(start, onerror=walk_error):
@@ -297,16 +338,22 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
                 lines=open(path,encoding="utf-8",errors="replace").read().splitlines()
             except OSError as e:
                 print(f"WARNING: cannot read {rel}: {e}",file=sys.stderr); errors+=1; continue
-            logical=[]; acc=""; start_n=1
+            logical=[]; acc=""; start_n=1; pending_heredocs=[]
             for n,physical in enumerate(lines,1):
+                if pending_heredocs:
+                    delimiter,strip_tabs=pending_heredocs[0]
+                    candidate=physical.lstrip("\t") if strip_tabs else physical
+                    if candidate == delimiter: pending_heredocs.pop(0)
+                    continue
                 if not acc: start_n=n
                 part=physical.strip()
                 continued=part.endswith("\\")
                 if continued: part=part[:-1].rstrip()
                 acc += (" " if acc else "") + part
-                if continued or physical.rstrip().endswith("|"):
+                if continued or physical.rstrip().endswith(("|", "|&")):
                     continue
-                logical.append((start_n,acc)); acc=""
+                logical.append((start_n,acc))
+                pending_heredocs.extend(heredoc_starts(acc)); acc=""
             if acc: logical.append((start_n,acc))
             function_activity,function_effects=infer_function_activity(logical)
             prev=""; pipefail=False; scope_stack=[]; pending_function=None; condition_stack=[]
