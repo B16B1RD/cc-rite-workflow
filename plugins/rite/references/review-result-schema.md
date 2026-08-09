@@ -23,7 +23,7 @@
 
 現行スキーマバージョン: **1.1.0**
 
-**受理される値** (読取側): `"1.0.0"` (canonical 1.0) / legacy エイリアス `"1.0"` (semver `MAJOR.MINOR` のみ、1.0.0 と semantic 等価、v2.0 まで受理) / `"1.1.0"` (canonical 1.1) の **3 値**。`"1.0.0"` / `"1.0"` で受信した JSON は `findings[].scope` / `findings[].pre_existing` フィールドが欠落しているため、read 側で severity ベースの default mapping を適用する (詳細は [後方互換性 (schema 1.0 ↔ 1.1.0)](#後方互換性-schema-10--110) 参照)。詳細経緯は CHANGELOG を参照。
+**受理される値** (読取側): `"1.0.0"` (canonical 1.0) / legacy エイリアス `"1.0"` (semver `MAJOR.MINOR` のみ、1.0.0 と semantic 等価、v2.0 まで受理) / `"1.1.0"` (canonical 1.1) の **3 値**。`"1.0.0"` / `"1.0"` で受信した JSON は `findings[].scope` / `findings[].pre_existing` フィールドが欠落している。read 側が severity ベースの default mapping を適用するのは **`scope` のみ**で、`pre_existing` は欠落のまま保持し Cross-field invariant #5 を発火させない (詳細は [後方互換性 (schema 1.0 ↔ 1.1.0)](#後方互換性-schema-10--110) 参照)。詳細経緯は CHANGELOG を参照。
 
 **`verification` は 1.1.0 内で additive 追加された optional field** — したがって **`"1.1.0"` で受信した JSON でも `findings[].verification` は欠落しうる**。読取側 accept list 4 箇所の同期変更を避けるため schema_version は bump しない。「`schema_version == "1.1.0"` ならば `verification` が存在する」と読んではならない。欠落時は `measured=false` の default mapping を適用する (同じく [後方互換性](#後方互換性-schema-10--110) 参照)。ただし **blocking 判定 consumer は欠落を「未判定」= blocking と解釈する** — 同節の「3 値モデルへの上書き」を参照。
 

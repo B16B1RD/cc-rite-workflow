@@ -34,8 +34,10 @@ assert_count "schema SoT declares canonical 1.1.0 writer" 1 \
   'ステップ 6.1.a — canonical `"1.1.0"` のみを出力する' "$SCHEMA"
 assert_count "schema table marks pre_existing optional" 1 \
   '| `pre_existing` | bool | (任意、1.1.0+) |' "$SCHEMA"
-assert_count "generation rules explicitly omit pre_existing" 1 \
-  'pre_existing` は書かない' "$PR_REVIEW"
+assert_count "legacy mapping applies only to scope and preserves missing pre_existing" 1 \
+  'default mapping を適用するのは **`scope` のみ**で、`pre_existing` は欠落のまま保持し Cross-field invariant #5 を発火させない' "$SCHEMA"
+assert_count "generation rules couple canonical 1.1.0 with pre_existing omission" 1 \
+  'pre_existing` は書かない** — canonical `schema_version: "1.1.0"`' "$PR_REVIEW"
 assert_count "required-field list explicitly omits pre_existing" 1 \
   '`pre_existing`: **出力しない**' "$PR_REVIEW"
 
