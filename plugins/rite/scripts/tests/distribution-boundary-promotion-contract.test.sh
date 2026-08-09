@@ -16,9 +16,12 @@ esac
 # environment-bound examples. Keep this allowlist narrow and line-oriented.
 is_allowed() {
   local file=$1 line=$2
-  [[ "$line" == *"https://github.com/B16B1RD/cc-rite-workflow"* ]] \
-    || { [[ "$file" == "$PLUGIN_ROOT/.claude-plugin/plugin.json" ]] \
-      && [[ "$line" == *'"author": { "name": "B16B1RD" }'* ]]; }
+  if printf '%s\n' "$line" \
+    | grep -Eq 'https://github\.com/B16B1RD/cc-rite-workflow($|[/#?[:space:])])'; then
+    return 0
+  fi
+  [[ "$file" == "$PLUGIN_ROOT/.claude-plugin/plugin.json" ]] \
+    && [[ "$line" == *'"author": { "name": "B16B1RD" }'* ]]
 }
 
 report_hit() {
@@ -106,6 +109,15 @@ grep -Fq 'ALLOW:' <<<"$allow_out" || {
   printf 'FAIL: canonical attribution allowlist did not take precedence\n' >&2
   exit 1
 }
+
+printf '%s\n' 'https://github.com/B16B1RD/cc-rite-workflow-evil' > "$fixture_root/near-prefix.md"
+near_prefix_rc=0
+near_prefix_out=$(bash "$0" --scan-root "$fixture_root" 2>&1) || near_prefix_rc=$?
+if [ "$near_prefix_rc" -eq 0 ] || ! grep -Fq 'near-prefix.md:1' <<<"$near_prefix_out"; then
+  printf '%s\n' "$near_prefix_out" >&2
+  printf 'FAIL: attribution allowlist accepted a repository name with only a canonical prefix\n' >&2
+  exit 1
+fi
 
 # Pin both routing surfaces so the second promotion axis cannot silently drift.
 grep -Fq '環境非依存' "$ROOT/CLAUDE.md" || {
