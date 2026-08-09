@@ -208,6 +208,23 @@ assert "untaken direct disable is not applied" "1" "$(printf '%s\n' "$out" | gre
 assert "untaken direct enable is not applied" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*after_direct_false_enable' || true)"
 
 printf '%s\n' \
+  'set +o pipefail' \
+  'if true; then set -o pipefail; fi' \
+  'after_direct_true_enable | grep -q x' \
+  'if true; then set +o pipefail; fi' \
+  'after_direct_true_disable | grep -q x' \
+  'set -o pipefail' \
+  'if false; then' \
+  '  set +o pipefail' \
+  'fi' \
+  'after_multiline_false_disable | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "literal conditional model retains active findings" "1" "$rc"
+assert "taken direct enable is applied" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*after_direct_true_enable' || true)"
+assert "taken direct disable is applied" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*after_direct_true_disable' || true)"
+assert "multiline untaken disable is not applied" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*after_multiline_false_disable' || true)"
+
+printf '%s\n' \
   'arg_enable() { set -o pipefail; }' \
   'arg_disable() { set +o pipefail; }' \
   'set +o pipefail; arg_enable on; after_arg_enable | grep -q x' \

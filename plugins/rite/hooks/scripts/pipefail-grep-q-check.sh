@@ -109,10 +109,11 @@ def syntax_only(line):
 
 toggle_re=re.compile(r'(?<![A-Za-z0-9_])set\s+([+-][A-Za-z]*o[A-Za-z]*|[+-]o)\s+pipefail(?=\s|;|\)|$)')
 
-def scan_line_state(syntax, state, stack, function_activity=None, pending_function=None, function_effects=None):
+def scan_line_state(syntax, state, stack, function_activity=None, pending_function=None, function_effects=None, condition_stack=None):
     """Evaluate one line while retaining parenthesized scopes across lines."""
     function_activity=function_activity or {}
     function_effects=function_effects or {}
+    condition_stack=condition_stack if condition_stack is not None else []
     declared=re.match(r'^\s*(?:function\s+([A-Za-z_][A-Za-z0-9_]*)|([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\))',syntax)
     declared_name=(declared.group(1) or declared.group(2)) if declared else None
     call_effects={}
@@ -134,12 +135,24 @@ def scan_line_state(syntax, state, stack, function_activity=None, pending_functi
     pipe_states=[]; segment_start_state=state; i=0
     while i < len(syntax):
         if i in call_effects: state=call_effects[i]
+        cm=re.match(r'if\s+(true|false)\s*;?\s*then\b',syntax[i:])
+        if cm: condition_stack.append(cm.group(1)=="true"); i+=cm.end(); continue
+        cm=re.match(r'if\s+[^;|]+;\s*then\b',syntax[i:])
+        if cm: condition_stack.append(None); i+=cm.end(); continue
+        cm=re.match(r'else\b',syntax[i:])
+        if cm:
+            if condition_stack and condition_stack[-1] is not None: condition_stack[-1]=not condition_stack[-1]
+            i+=cm.end(); continue
+        cm=re.match(r'fi\b',syntax[i:])
+        if cm:
+            if condition_stack: condition_stack.pop()
+            i+=cm.end(); continue
         if syntax[i] == "(": stack.append(("paren",state)); i+=1; continue
         if syntax[i] == ")":
             if stack and stack[-1][0] == "paren": state=stack.pop()[1]
             i+=1; continue
         if syntax[i] == "{" and i in open_names:
-            stack.append(("function",state)); state=function_activity.get(open_names[i],False); i+=1; continue
+            stack.append(("function",state)); state=function_activity.get(open_names[i],False); condition_stack.clear(); i+=1; continue
         if syntax[i] == "{":
             stack.append(("brace",state)); i+=1; continue
         if syntax[i] == "}":
@@ -158,12 +171,13 @@ def scan_line_state(syntax, state, stack, function_activity=None, pending_functi
             state=segment_start_state; segment_start_state=state; i+=1; continue
         match=toggle_re.match(syntax, i)
         if match:
-            prefix=syntax[:i]
-            conditional=bool(re.search(r'\b(?:if|elif|then)\b[^;]*$',prefix))
-            if not conditional: state=match.group(1).startswith("-")
+            enabled=match.group(1).startswith("-")
+            if not any(value is False for value in condition_stack):
+                if not any(value is None for value in condition_stack) or enabled:
+                    state=enabled
             i=match.end(); continue
         i+=1
-    return pipe_states,state,stack,pending_function
+    return pipe_states,state,stack,pending_function,condition_stack
 
 def infer_function_activity(logical):
     """Collect whether each statically named function is called under pipefail."""
@@ -214,7 +228,7 @@ def infer_function_activity(logical):
         for name in names:
             if re.search(r'(?:^|[;|&]\s*|\b(?:if|then|command)\s+|!\s*|\$\(\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
                 activity[name]=activity[name] or state
-        _,state,_,_=scan_line_state(syntax,state,[],{},None,{})
+        _,state,_,_,_=scan_line_state(syntax,state,[],{},None,{},[])
     changed=True
     while changed:
         changed=False
@@ -280,9 +294,9 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
                 logical.append((start_n,acc)); acc=""
             if acc: logical.append((start_n,acc))
             function_activity,function_effects=infer_function_activity(logical)
-            prev=""; pipefail=False; scope_stack=[]; pending_function=None
+            prev=""; pipefail=False; scope_stack=[]; pending_function=None; condition_stack=[]
             for n,line in logical:
-                pipe_states,pipefail,scope_stack,pending_function=scan_line_state(syntax_only(line),pipefail,scope_stack,function_activity,pending_function,function_effects)
+                pipe_states,pipefail,scope_stack,pending_function,condition_stack=scan_line_state(syntax_only(line),pipefail,scope_stack,function_activity,pending_function,function_effects,condition_stack)
                 ignored="drift-check-ignore" in line or "drift-check-ignore" in prev
                 edges=pipeline_edges(line)
                 if not ignored:
