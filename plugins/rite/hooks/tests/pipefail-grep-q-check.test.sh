@@ -86,6 +86,11 @@ assert "on-to-off second pipeline is suppressed" "0" "$(printf '%s\n' "$out" | g
 assert "off-to-on first pipeline is suppressed" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*first_still_off' || true)"
 assert "off-to-on second pipeline is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*second_on' || true)"
 
+printf '%s\n' 'set -o pipefail; stream_one | echo done; stream_many | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "prior exempt consumer cannot hide later producer" "1" "$rc"
+assert "producer is cut at the command-list boundary" "1" "$(printf '%s\n' "$out" | grep -c 'producer before grep -q: stream_many$' || true)"
+
 printf '%s\n' 'set -o pipefail' 'stream_many | grep -q x # drift-check-ignore: bounded fixture' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "ignore marker suppresses finding" "0" "$rc"

@@ -49,25 +49,33 @@ missing=[os.path.relpath(p,root) for p in scan_roots if not os.path.isdir(p)]
 if missing:
     print(f"ERROR: missing canonical scan root: {', '.join(missing)}", file=sys.stderr); sys.exit(2)
 
-def stages(line):
-    out=[]; buf=[]; quote=None; esc=False; i=0
-    while i < len(line):
-        c=line[i]
-        if esc: buf.append(c); esc=False; i+=1; continue
-        if c == "\\" and quote != "'": buf.append(c); esc=True; i+=1; continue
-        if quote:
-            buf.append(c)
-            if c == quote: quote=None
-            i+=1; continue
-        if c in "'\"": quote=c; buf.append(c); i+=1; continue
-        if c == "#" and (not buf or str(buf[-1]).isspace()): break
-        if c == "|" and not (i+1 < len(line) and line[i+1] == "|"):
-            out.append("".join(buf).strip()); buf=[]; i+=1; continue
-        if c == "|" and i+1 < len(line) and line[i+1] == "|":
-            buf.extend(["|","|"]); i+=2; continue
-        buf.append(c); i+=1
-    out.append("".join(buf).strip())
-    return out
+def pipeline_edges(line):
+    """Return immediate producer/consumer pairs at matching shell depth."""
+    syntax=syntax_only(line); events=[]; paren=0; brace=0; i=0
+    while i < len(syntax):
+        c=syntax[i]; depth=(paren,brace)
+        if c == "(": paren+=1; i+=1; continue
+        if c == ")": paren=max(0,paren-1); i+=1; continue
+        if c == "{": brace+=1; i+=1; continue
+        if c == "}": brace=max(0,brace-1); i+=1; continue
+        if c == "|" and not (i+1 < len(syntax) and syntax[i+1] == "|"):
+            events.append(("pipe",i,i+1,depth)); i+=1; continue
+        if c == ";": events.append(("sep",i,i+1,depth)); i+=1; continue
+        if c in "&|" and i+1 < len(syntax) and syntax[i+1] == c:
+            events.append(("sep",i,i+2,depth)); i+=2; continue
+        i+=1
+    pairs=[]
+    for idx,event in enumerate(events):
+        if event[0] != "pipe": continue
+        _,pos,end,depth=event; left=0; right=len(line)
+        for prior in reversed(events[:idx]):
+            if prior[3] == depth:
+                left=prior[2]; break
+        for later in events[idx+1:]:
+            if later[3] == depth:
+                right=later[1]; break
+        pairs.append((line[left:pos].strip(),line[end:right].strip()))
+    return pairs
 
 def words(stage):
     try: return shlex.split(stage, comments=True, posix=True)
@@ -170,12 +178,12 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
             for n,line in logical:
                 pipe_states,pipefail,scope_stack=scan_line_state(syntax_only(line), pipefail, scope_stack)
                 ignored="drift-check-ignore" in line or "drift-check-ignore" in prev
-                ss=stages(line)
-                if not ignored and len(ss)>1:
-                    for j in range(1,len(ss)):
-                        active=pipe_states[j-1] if j-1 < len(pipe_states) else False
-                        if active and grep_q(ss[j]) and not exempt(ss[j-1],len(ss)):
-                            findings.append(f"[pipefail-grep-q] {rel}:{n}: immediate producer before grep -q: {ss[j-1]}")
+                edges=pipeline_edges(line)
+                if not ignored:
+                    for j,(producer,consumer) in enumerate(edges):
+                        active=pipe_states[j] if j < len(pipe_states) else False
+                        if active and grep_q(consumer) and not exempt(producer,len(edges)+1):
+                            findings.append(f"[pipefail-grep-q] {rel}:{n}: immediate producer before grep -q: {producer}")
                 prev=line
 for f in findings: print(f)
 print(f"Total pipefail-grep-q findings: {len(findings)}", file=sys.stderr)
