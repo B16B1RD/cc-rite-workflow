@@ -39,6 +39,7 @@ mkdir -p "$REPO/hooks" "$REPO/scripts"
 cp "$HOOKS_DIR/review-result-save.sh" "$REPO/hooks/"
 cp "$HOOKS_DIR/state-path-resolve.sh" "$REPO/hooks/"
 cp "$HOOKS_DIR/control-char-neutralize.sh" "$REPO/hooks/"
+cp "$HOOKS_DIR/gitignore-ensure.sh" "$REPO/hooks/"
 cp "$HOOKS_DIR/../scripts/review-source-resolve.sh" "$REPO/scripts/"
 # review-cycle-scope.sh は同じ state-root 契約の 3 番目の参加者 (書込 = review-result-save.sh /
 # 読取 = review-source-resolve.sh Priority 2 / 読取 = 本 helper の既定 results dir)。
@@ -179,6 +180,7 @@ nogit_dir="$TEST_DIR/nogit"
 mkdir -p "$nogit_dir/hooks"
 cp "$HOOKS_DIR/review-result-save.sh" "$nogit_dir/hooks/"
 cp "$HOOKS_DIR/control-char-neutralize.sh" "$nogit_dir/hooks/"
+cp "$HOOKS_DIR/gitignore-ensure.sh" "$nogit_dir/hooks/"
 # state-path-resolve.sh を意図的に置かない (解決失敗経路)
 content5="$TEST_DIR/body5.json"
 json_body > "$content5"

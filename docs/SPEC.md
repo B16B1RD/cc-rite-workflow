@@ -189,7 +189,7 @@ rite-workflow/
 │ ├── pre-compact.sh / post-compact.sh
 │ ├── pre-tool-bash-guard.sh / pre-tool-edit-guard.sh / post-tool-wm-sync.sh
 │ ├── stop-loop-continuation.sh # Stop hook: review↔fix loop continuation + terminal finalize
-│ ├── hook-preamble.sh / state-path-resolve.sh / control-char-neutralize.sh # Shared helpers
+│ ├── hook-preamble.sh / state-path-resolve.sh / control-char-neutralize.sh / gitignore-ensure.sh # Shared helpers
 │ ├── _resolve-session-id.sh / _resolve-session-id-from-file.sh # Private session-id resolution helpers
 │ ├── _resolve-cross-session-guard.sh # Private legacy-state takeover classifier
 │ ├── _validate-helpers.sh / _validate-state-root.sh / _mktemp-stderr-guard.sh # Private fail-fast validators
@@ -1278,7 +1278,7 @@ Lifecycle-incomplete detection for the legacy `create_*` / `cleanup_*` phases no
 
 Shared library sourced by the lifecycle hooks for multi-session conflict prevention. With the per-session state structure, ownership is **structurally guaranteed** by the file naming (`.rite/sessions/{session_id}.flow-state`); this library now serves as a path/entry resolution layer rather than a runtime guard.
 
-> **Canonical SoT for sourcing callers**: actual `source` directives in `plugins/rite/hooks/*.sh` (verify with `grep -rn "source.*session-ownership.sh" plugins/rite/hooks/ --include='*.sh' | grep -v tests/`). At present this resolves to: `session-start.sh` / `session-end.sh` / `pre-compact.sh` / `post-tool-wm-sync.sh`. (`flow-state.sh` is NOT a `source` caller of this library — it sources only `state-path-resolve.sh` and `control-char-neutralize.sh`. `stop-guard.sh` has been removed; `post-compact.sh` does not source this library directly. `pre-tool-bash-guard.sh` sources only `hook-preamble.sh`, does not participate in flow-state path resolution, and has never been a `source` caller of this library.)
+> **Canonical SoT for sourcing callers**: actual `source` directives in `plugins/rite/hooks/*.sh` (verify with `grep -rn "source.*session-ownership.sh" plugins/rite/hooks/ --include='*.sh' | grep -v tests/`). At present this resolves to: `session-start.sh` / `session-end.sh` / `pre-compact.sh` / `post-tool-wm-sync.sh`. (`flow-state.sh` is NOT a `source` caller of this library — it sources `state-path-resolve.sh`, `control-char-neutralize.sh`, and `gitignore-ensure.sh`. `stop-guard.sh` has been removed; `post-compact.sh` does not source this library directly. `pre-tool-bash-guard.sh` sources only `hook-preamble.sh`, does not participate in flow-state path resolution, and has never been a `source` caller of this library.)
 
 **Provided Functions:**
 

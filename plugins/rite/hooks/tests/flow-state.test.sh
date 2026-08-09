@@ -1712,13 +1712,15 @@ rm -f "$stderr_2115_10"
 # a newline inside `--phase` splits this WARNING, forging a second one at column 0.
 # The same sandbox works — the log path is still a directory, so the append still
 # fails and `$to` still reaches the message. Count only the append line: the
-# `unknown phase` WARNING interpolates the same value raw and would mask the check.
+# Both the enum WARNING and append WARNING must neutralize the same runtime value.
 stderr_2115_10b="$(mktemp)"
 set +e
 (cd "$d" && bash "$HOOK" set --phase "$(printf 'plan\nWARNING: forged')" --issue 15 --pr 0 --next "n") 2>"$stderr_2115_10b"
 set -e
 assert "TC-2115-10: a newline in --phase cannot split the append WARNING" "1" \
   "$(LC_ALL=C grep -cE 'phase-transition log not writable.*not recorded$' "$stderr_2115_10b" || true)"
+assert "TC-2121: a newline in --phase cannot forge any column-zero WARNING" "0" \
+  "$(LC_ALL=C grep -c '^WARNING: forged$' "$stderr_2115_10b" || true)"
 rm -f "$stderr_2115_10b"
 
 if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del (Issue #1524) + non-UUID acceptance (Layer 1 format-agnostic contract pin) + phase-transition append log (#2115)"; then

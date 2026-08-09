@@ -82,6 +82,8 @@
 set -uo pipefail
 # shellcheck source=control-char-neutralize.sh
 source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
+# shellcheck source=gitignore-ensure.sh
+source "$(dirname "${BASH_SOURCE[0]}")/gitignore-ensure.sh"
 
 # --- Argument parsing ---
 PR_NUMBER=""
@@ -296,7 +298,8 @@ fi
 # 除外されていないと `git add -A` で公開リポジトリへ入る。root の .gitignore に頼ると
 # セットアップ履歴・`--upgrade` 経路・設定の drift の 3 つに同時に依存するが、同梱方式は
 # そのすべてから独立する (consuming repo の `/rite:setup` 生成 .gitignore は
-# `.rite/sessions/` と `.rite/worktrees/` しかカバーせず、`--upgrade` は追記 Phase を通らない)。
+# `.rite/sessions/` / `.rite/worktrees/` / `.rite/review-results/` をカバーするが、
+# `--upgrade` は追記 Phase を通らない)。
 # 非ブロッキング: 書けなくても保存は続行する。ただし黙って続行はしない — 除外の欠落は
 # 全文が公開面へ出る経路そのものなので WARNING と marker で loud にする。
 # 守りたいのは「除外が効いている」ことなので、guard は存在 (`-f`) ではなく中身 (`-s`) を見る。
@@ -306,12 +309,10 @@ fi
 # stderr は捨てずに捕捉する。`{ ...; } 2>&1` の**グループ**スコープにするのは、単純コマンドの
 # `printf ... > f 2>&1` だと bash が redirect 自身の失敗 (EACCES) を 2>&1 適用**前**に報告し、
 # 原因が最も要る側だけが捕捉から漏れて列 0 へ素通しするため (session-start.sh の先例と同型)。
-if [ ! -s "$REVIEW_RESULTS_DIR/.gitignore" ]; then
-  if ! gitignore_err=$( { printf '*\n' > "$REVIEW_RESULTS_DIR/.gitignore"; } 2>&1 ); then
+if ! _ensure_dir_gitignore "$REVIEW_RESULTS_DIR"; then
     echo "WARNING: $REVIEW_RESULTS_DIR/.gitignore を作成できませんでした。本ディレクトリが git の追跡対象から除外されているか手動で確認してください (非実測指摘の全文が含まれます)" >&2
-    [ -n "$gitignore_err" ] && printf '%s\n' "$gitignore_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    [ -n "$_RITE_GITIGNORE_ERROR" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
     echo "[CONTEXT] LOCAL_SAVE_GITIGNORE_FAILED=1; dir=$REVIEW_RESULTS_DIR" >&2
-  fi
 fi
 
 # mktemp stderr 退避 (失敗原因 disk full / permission / readonly を可視化)。

@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/state-path-resolve.sh"
 # shellcheck source=control-char-neutralize.sh
 source "$SCRIPT_DIR/control-char-neutralize.sh"
+# shellcheck source=gitignore-ensure.sh
+source "$SCRIPT_DIR/gitignore-ensure.sh"
 
 # Callers may pre-resolve STATE_ROOT (e.g., session-start.sh resolves it from
 # the hook payload's `cwd` field, which differs from flow-state.sh's own CWD)
@@ -203,7 +205,6 @@ _append_phase_transition() {
   local from="$1" to="$2" sid="$3" issue="$4" pr="$5" ts="$6"
   local log_dir="$STATE_ROOT/.rite/logs"
   local log_file="$log_dir/phase-transitions.log"
-  local _gi_err
   # Every runtime-derived value below goes through `neutralize_ctrl` before landing in
   # a WARNING: `$log_dir` / `$log_file` carry `$STATE_ROOT`, `$from` comes from the state
   # file and `$to` straight from `--phase`, and a raw 0x9b in any of them is read as a CSI
@@ -220,17 +221,9 @@ _append_phase_transition() {
   # A failure is announced rather than swallowed — a missing exclusion is the exact
   # path by which the log reaches a public repo. Same form as review-result-save.sh
   # and review-results-archive-or-rm.sh. Still non-blocking: the append runs either way.
-  if [ ! -s "$log_dir/.gitignore" ]; then
-    # `LC_ALL=C` sits on the failing command, not on the neutralizer. bash localizes
-    # its own redirect-setup diagnostic, and `neutralize_ctrl` blanks 0x80-0x9f one
-    # byte at a time, so under ja_JP the errno arrives as `?` runs and the cause —
-    # the only thing the indented line adds over the WARNING above — is lost. Forcing
-    # the upstream message to ASCII leaves the neutralizer fully intact (it merely
-    # becomes a no-op here); `--c0-only` would instead blank 0x0a and break the indent.
-    if ! _gi_err=$( { LC_ALL=C printf '*\n' > "$log_dir/.gitignore"; } 2>&1 ); then
+  if ! _ensure_dir_gitignore "$log_dir"; then
       echo "WARNING: flow-state.sh: cannot create $(printf '%s' "$log_dir" | neutralize_ctrl)/.gitignore; verify by hand that this directory is excluded from git" >&2
-      [ -n "$_gi_err" ] && printf '%s\n' "$_gi_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-    fi
+      [ -n "$_RITE_GITIGNORE_ERROR" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
   fi
   # `--argjson` keeps the two numeric fields as JSON numbers; both values already
   # survived the identical `--argjson` in the state write above, so anything it would
@@ -284,7 +277,7 @@ cmd_set() {
   esac; done
   [ -z "$phase" ] && { echo "ERROR: --phase is required" >&2; return 1; }
   [ -z "$next" ] && { echo "ERROR: --next is required" >&2; return 1; }
-  _phase_is_valid "$phase" || echo "WARNING: unknown phase: $phase (allowed: $PHASE_ENUM_V3)" >&2
+  _phase_is_valid "$phase" || echo "WARNING: unknown phase: $(printf '%s' "$phase" | neutralize_ctrl) (allowed: $PHASE_ENUM_V3)" >&2
   local sid path; sid=$(_resolve_session_id "$session") || return 1
   path=$(_state_path "$sid")
   if [ $if_exists -eq 1 ] && [ ! -f "$path" ]; then
