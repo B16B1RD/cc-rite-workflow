@@ -186,6 +186,39 @@ documentation file.
    initialization, imports/functions, prerequisites supplied by the caller, and
    return-value consumption. If intentional abstraction prevents exact equality,
    narrow the claim instead of saying "verbatim" or "identical".
+5. **Consumer portability**: When an instruction mutates a consumer-owned file
+   by matching a literal anchor, prove that the anchor is distributed or
+   created on every supported entrypoint. Otherwise require an exact
+   precondition check and an anchor-independent, user-visible fallback. A
+   literal that exists only in the plugin's dogfooding repository is not a
+   portable mutation contract.
+6. **Aggregation and provenance truthfulness**: When prose claims that a helper
+   centralizes a concern, enumerate what moved behind the helper and what names,
+   schemas, defaults, or callers remain distributed. `Grep` every old inline
+   implementation to verify migration completeness. When a summary attributes
+   several additions to one Issue, PR, or commit, use `git log -S` for each
+   independently introduced literal, compare same-file cross-references, and
+   run a repository-wide propagation scan; do not collapse incremental history
+   into a single provenance claim.
+7. **Counterfactual and executable backing**: Trace every changed claim that an
+   ordering, guard, marker, or invariant changes behavior to its executable
+   producer and consumer. For an ordering justification, write down each
+   branch outcome and verify that swapping the stages really changes the stated
+   result; shared accept or reject outcomes do not prove deterioration. When an
+   invariant is mechanically expressible, require a test that fails when the
+   invariant is broken and treat the test's green result as the contract instead
+   of adding another cross-axis prose mapping.
+8. **Command and query semantics**: Verify changed CLI filters against their
+   actual matching and default-state semantics, not against the visual shape of
+   a sibling command. In particular, do not use wildcard-looking values with an
+   exact-match option; fetch the required state range and filter the returned
+   structured field client-side when substring matching is intended.
+9. **Success-predicate completeness**: A success check over command-substitution
+   output must preserve each producer's exit status and reject empty required
+   values before comparing them. Equality of two empty strings is not evidence
+   of success. When cwd or another prerequisite can disappear during the
+   lifecycle, verify the prerequisite independently as well as hardening the
+   final predicate.
 
 Report a current-PR finding only when the changed explanation, command, citation,
 or sample fails one of these checks and the resulting contradiction or wrong
@@ -196,7 +229,9 @@ target is demonstrable. Record the exact source and consumer in
 
 - [ ] **Documentation fidelity (when triggered)**: Verify pivot/delegation
   references, human-context recovery commands, citation content, and canonical
-  sample blocks against their actual source and execution context.
+  sample blocks against their actual source and execution context. Also verify
+  consumer portability, aggregation/provenance claims, counterfactual and
+  executable backing, command-filter semantics, and complete success predicates.
 
 ## Confidence Scoring
 
