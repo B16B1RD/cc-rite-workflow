@@ -15,6 +15,7 @@ assert_grep "base requires Category #2 audit rows" "$BASE" 'Category #2 items MU
 assert_grep "base defines empty handling" "$BASE" 'When no item is logged, emit `なし`'
 assert_grep "generated reviewer prompt contains audit section" "$GEN" '^### 監査ログ$'
 assert_grep "collector retains Category #2 rows" "$SKILL" 'Category #2.*guardrail_audit_log'
+assert_grep "collector derives the E2E display count from the array" "$SKILL" 'guardrail_audit_count = guardrail_audit_log\.length'
 assert_grep "E2E minimization exempts audit output" "$SKILL" '例外 4:.*Guardrail 監査ログ.*guardrail_audit_count > 0'
 
 full_count=$(awk '/^## full-mode-template$/{mode=1} mode && /^```markdown$/{fence=1; next} mode && fence && /^```$/{exit} mode && fence' "$TEMPLATES" | grep -c '^### Guardrail 監査ログ' || true)
