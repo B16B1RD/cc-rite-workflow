@@ -15,6 +15,6 @@ knowledge pages selected by promotion audit #2091 and tracked by Issue #2168.
 
 ## Inventory
 
-The inventory is mechanically defined by the Markdown files below this
-directory, excluding this README. The promotion contract test fixes the batch
-at 38 files and verifies required plugin frontmatter plus link portability.
+`manifest.txt` is the exact inventory approved by Issue #2168. The promotion
+contract test compares it with the Markdown files byte-for-byte by relative
+path and verifies required plugin frontmatter plus link portability.
