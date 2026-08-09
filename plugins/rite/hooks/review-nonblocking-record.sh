@@ -337,11 +337,13 @@ _rite_p61d_cleanup() {
   # だけを止める (= 引数 gate 群が既に行っている挙動と構造的に同一)。
   [ "$retain_pending_marker" = "1" ] && return 0
   if [ -n "${PENDING_MARKER:-}" ] && { [ -e "$PENDING_MARKER" ] || [ -L "$PENDING_MARKER" ]; }; then
-    if ! LC_ALL=C rm -f "$PENDING_MARKER"; then
-      echo "WARNING: non-blocking pending marker の削除に失敗しました ($PENDING_MARKER)。ステップ 8.0.3 は本 cycle の 6.1.d を未実行と誤判定します" >&2
+    if ! LC_ALL=C rm -f -- "$PENDING_MARKER"; then
+      pending_marker_display=$(printf '%s' "$PENDING_MARKER" | neutralize_ctrl)
+      printf -v pending_marker_shell_q '%q' "$PENDING_MARKER"
+      echo "WARNING: non-blocking pending marker の削除に失敗しました ($pending_marker_display)。ステップ 8.0.3 は本 cycle の 6.1.d を未実行と誤判定します" >&2
       echo "  marker が残っている間は pending_marker_present により result pattern の emit が差し戻され続けます" >&2
       echo "  対処: 削除失敗は決定論的なため 6.1.d の再実行では収束しません" >&2
-      echo "  marker を手動で rm してからステップ 8.0 を再評価してください: $PENDING_MARKER" >&2
+      echo "  marker を手動で削除してからステップ 8.0 を再評価してください: rm -f -- $pending_marker_shell_q" >&2
       echo "  6.1.d の terminal sentinel が成功を示していても、この cleanup 失敗は別途解消が必要です" >&2
     fi
   fi

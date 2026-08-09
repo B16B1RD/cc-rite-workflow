@@ -1322,6 +1322,21 @@ assert_not_grep "TC-4.4c 投稿呼び出しが 1 件も無い (PATCH)" "$GH_LOG"
 # (出すと毎 cycle の正常な 0 件 skip で不要な目視確認を促す)。TC-4.7b と対。
 assert_not_grep "TC-4.4d 非 degraded の skip では stale 警告を出さない" "$ERR" '前 cycle の記録コメントが PR 上に残っている可能性'
 
+# TC-4.4e pending marker をディレクトリにして rm -f を決定論的に失敗させる。cleanup の失敗は
+# terminal outcome / exit code を変えず、marker を残したまま 5 行の復旧案内を stderr に出す。
+_rm_fail_marker="$TMPDIR/rite-nbr-pending-9-202-rm-fail"
+mkdir "$_rm_fail_marker"
+GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 0 --iteration-id 9-202-rm-fail --content-file "$NBR_BODY_C0"
+assert "TC-4.4e marker 削除失敗でも exit 0 (非ブロッキング)" "0" "$RC"
+assert "TC-4.4e 削除できなかった marker が残る" "yes" "$([ -d "$_rm_fail_marker" ] && echo yes || echo no)"
+assert_grep "TC-4.4e terminal outcome=skipped を維持" "$ERR" 'NONBLOCKING_RECORD_DONE=1; pr=9; outcome=skipped; count=0; iteration_id=9-202-rm-fail;'
+assert_grep "TC-4.4e 8.0.3 の継続差し戻しを報告" "$ERR" 'ステップ 8.0.3 は本 cycle の 6.1.d を未実行と誤判定します'
+assert_grep "TC-4.4e 再実行では収束しない旨を報告" "$ERR" '6.1.d の再実行では収束しません'
+assert_grep "TC-4.4e option 終端付きの手動削除手順を報告" "$ERR" 'rm -f -- '
+_rm_fail_warning_lines=$(grep -cE '^(WARNING: non-blocking pending marker|  marker が残っている間|  対処:|  marker を手動で削除|  6\.1\.d の terminal sentinel)' "$ERR" || true)
+assert "TC-4.4e WARNING + stderr 5 行契約" "5" "$_rm_fail_warning_lines"
+rmdir "$_rm_fail_marker"
+
 # TC-4.5 既存あり ∧ 0 件 → 収束 cycle のクリアとして update-in-place (AC-2)
 GH_LOOKUP_JSON="$NBR_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 0 --iteration-id 9-203 --content-file "$NBR_BODY_C0"
 assert "TC-4.5a 0 件 ∧ 既存あり: exit 0" "0" "$RC"
@@ -2507,19 +2522,21 @@ else
     fail "TC-5b 区間解決: _rite_p61d_cleanup の行数が想定外 ($_nbr_cleanup_lines) — 関数名変更か閉じ括弧の消失"
   fi
   assert "TC-5b helper の cleanup **区間内** に pending marker 削除が 1 本" "1" \
-    "$(_nbr_cleanup_body | grep -cF 'rm -f "$PENDING_MARKER"' || true)"
+    "$(_nbr_cleanup_body | grep -cF 'rm -f -- "$PENDING_MARKER"' || true)"
   assert "TC-5b helper の cleanup は marker 実在時だけ削除を試みる (-e ∨ -L)" "1" \
     "$(_nbr_cleanup_body | grep -cF '[ -e "$PENDING_MARKER" ] || [ -L "$PENDING_MARKER" ]' || true)"
   assert "TC-5b helper の cleanup は pending marker 削除 rc を検査する" "1" \
-    "$(_nbr_cleanup_body | grep -cF 'if ! LC_ALL=C rm -f "$PENDING_MARKER"; then' || true)"
+    "$(_nbr_cleanup_body | grep -cF 'if ! LC_ALL=C rm -f -- "$PENDING_MARKER"; then' || true)"
+  assert "TC-5b helper の cleanup は表示前に marker path の制御文字を中和する" "1" \
+    "$(_nbr_cleanup_body | grep -cF 'pending_marker_display=$(printf' || true)"
   assert "TC-5b marker 削除失敗は 8.0.3 の継続差し戻しを loud に報告する" "1" \
     "$(_nbr_cleanup_body | grep -cF 'ステップ 8.0.3 は本 cycle の 6.1.d を未実行と誤判定します' || true)"
   assert "TC-5b marker 削除失敗は手動 rm の復旧手順を示す" "1" \
-    "$(_nbr_cleanup_body | grep -cF 'marker を手動で rm してからステップ 8.0 を再評価してください' || true)"
+    "$(_nbr_cleanup_body | grep -cF 'marker を手動で削除してからステップ 8.0 を再評価してください' || true)"
   # 区間外 0 本。ファイル全体の件数から区間内の件数を引いて求める (区間外だけを直接切り出すより
   # 「移動しても総数は変わらない」という変異の性質を素直に写す)。
-  _nbr_pm_rm_total=$(grep -cF 'rm -f "$PENDING_MARKER"' "$NBR_SH" || true)
-  _nbr_pm_rm_inside=$(_nbr_cleanup_body | grep -cF 'rm -f "$PENDING_MARKER"' || true)
+  _nbr_pm_rm_total=$(grep -cF 'rm -f -- "$PENDING_MARKER"' "$NBR_SH" || true)
+  _nbr_pm_rm_inside=$(_nbr_cleanup_body | grep -cF 'rm -f -- "$PENDING_MARKER"' || true)
   assert "TC-5b helper の cleanup **区間外** に pending marker 削除が 0 本" "0" \
     "$(( _nbr_pm_rm_total - _nbr_pm_rm_inside ))"
 
