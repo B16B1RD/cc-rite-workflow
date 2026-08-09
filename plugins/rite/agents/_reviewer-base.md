@@ -167,10 +167,14 @@ documentation file.
    Prefer ownership-only cross-references over duplicating implementation detail.
 2. **Human-context recovery verification**: Evaluate every recovery command from
    the location, environment, session identity, and lifecycle state in which the
-   human recipient will actually run it. Resolve project and state paths through
-   their canonical helpers, require the intended target to exist before mutation,
-   and verify a command chain does not delete its own cwd or another prerequisite
-   before later commands run. `rc=0` against a different target is not success.
+   human recipient will actually run it. First inspect sibling recovery guidance
+   for required location and timing qualifiers. Resolve project and state paths
+   through their canonical helpers, require the intended target to exist before
+   mutation, and verify a command chain does not delete its own cwd or another
+   prerequisite before later commands run. Trace every promised warning,
+   diagnostic, or next-step signal to the surface the human can actually observe;
+   a message redirected only to a log is not user-visible guidance. `rc=0` against
+   a different target is not success.
 3. **Citation content fidelity**: Before accepting an Issue/PR number, AC phrase,
    invariant, canonical-owner statement, or sibling-policy claim, `Read` the
    cited source and use an exact `Grep` anchor to verify that it supports the

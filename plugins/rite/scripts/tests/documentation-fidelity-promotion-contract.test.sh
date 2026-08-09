@@ -35,14 +35,20 @@ assert_grep 'pivot covers explanatory references' "$reviewer" \
   'complete changed files and their explanatory'
 assert_grep 'recovery uses recipient context' "$reviewer" \
   'human recipient will actually run it'
+assert_grep 'recovery inherits sibling qualifiers' "$reviewer" \
+  'inspect sibling recovery guidance'
 assert_grep 'recovery requires canonical helpers' "$reviewer" \
-  'their canonical helpers, require the intended target'
+  'through their canonical helpers, require the intended target'
 assert_grep 'recovery checks target existence' "$reviewer" \
-  'require the intended target to exist before mutation'
+  'mutation, and verify a command chain'
 assert_grep 'recovery checks self-deleting chains' "$reviewer" \
   'does not delete its own cwd'
+assert_grep 'recovery traces promised signals to their surface' "$reviewer" \
+  'Trace every promised warning'
+assert_grep 'logged-only messages are not human guidance' "$reviewer" \
+  'redirected only to a log is not user-visible guidance'
 assert_grep 'wrong-target rc zero is rejected' "$reviewer" \
-  '`rc=0` against a different target is not success'
+  'a different target is not success'
 assert_grep 'citation reads source' "$reviewer" \
   'cited source and use an exact `Grep` anchor'
 assert_grep 'citation needs exact anchor' "$reviewer" \
@@ -59,6 +65,8 @@ assert_grep 'findings remain evidence gated' "$reviewer" \
   'or sample fails one of these checks'
 assert_grep 'shared checklist maps the gate' "$reviewer" \
   '**Documentation fidelity (when triggered)**'
+assert_grep 'audit leaves blocking classification to measured gate' "$audit" \
+  'classification remains the responsibility of the measured-confirmed gate'
 
 if [ "$failures" -ne 0 ]; then
   printf '%s contract assertion(s) failed\n' "$failures" >&2
