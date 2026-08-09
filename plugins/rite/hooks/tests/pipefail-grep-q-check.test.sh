@@ -61,6 +61,20 @@ assert "pipe-and reports its immediate producer" "1" "$(printf '%s\n' "$out" | g
 assert "multiline pipe-and is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer before grep -q: multiline_stderr_stream$' || true)"
 
 printf '%s\n' \
+  'set -o pipefail' \
+  'echo harmless # |' \
+  'real_after_comment | grep -q x' \
+  'echo harmless # \' \
+  'real_after_comment_backslash | grep -q x' \
+  "printf '%s' '|'" \
+  'real_after_quoted_pipe | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "comment and quoted trailing pipes do not continue lines" "1" "$rc"
+assert "pipeline after comment pipe is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_comment$' || true)"
+assert "pipeline after comment backslash is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_comment_backslash' || true)"
+assert "pipeline after quoted pipe is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_quoted_pipe' || true)"
+
+printf '%s\n' \
   '( set -o pipefail; subshell_stream | grep -q x )' \
   'captured=$(set -o pipefail; substitution_stream | grep -q x)' \
   'late_stream | grep -q x; set -o pipefail' \

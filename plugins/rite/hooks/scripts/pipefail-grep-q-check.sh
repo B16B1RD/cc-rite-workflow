@@ -327,6 +327,20 @@ def heredoc_starts(line):
             if parsed: starts.append((parsed[0],strip_tabs))
     return starts
 
+def backslash_continues(line):
+    """Return whether the physical newline is escaped by shell syntax."""
+    quote=None; i=0
+    while i < len(line):
+        c=line[i]
+        if c == "#" and quote is None and (i == 0 or line[i-1].isspace()): return False
+        if c in "'\"" and (quote is None or quote == c):
+            quote=None if quote == c else c; i+=1; continue
+        if c == "\\" and quote != "'":
+            if i == len(line)-1: return True
+            i+=2; continue
+        i+=1
+    return False
+
 for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
     start=os.path.join(root,base)
     for dp, dns, fns in os.walk(start, onerror=walk_error):
@@ -347,10 +361,11 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
                     continue
                 if not acc: start_n=n
                 part=physical.strip()
-                continued=part.endswith("\\")
+                continued=backslash_continues(physical)
                 if continued: part=part[:-1].rstrip()
                 acc += (" " if acc else "") + part
-                if continued or physical.rstrip().endswith(("|", "|&")):
+                syntax_tail=syntax_only(physical).rstrip()
+                if continued or syntax_tail.endswith(("|", "|&")):
                     continue
                 logical.append((start_n,acc))
                 pending_heredocs.extend(heredoc_starts(acc)); acc=""
