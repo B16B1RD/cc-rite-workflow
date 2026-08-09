@@ -156,6 +156,22 @@ assert "continued heredoc body state does not leak" "1" "$(printf '%s\n' "$out" 
 assert "ANSI-C heredoc body is not scanned" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*fake_ansi_data' || true)"
 
 printf '%s\n' \
+  'set -o pipefail' \
+  'cat <<EO\' \
+  'F' \
+  'set +o pipefail' \
+  'EOF' \
+  'cat <\' \
+  '<JOINED' \
+  'fake_joined_data | grep -q x' \
+  'JOINED' \
+  'real_after_joined_heredocs | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "backslash-newline joins heredoc tokens without spaces" "1" "$rc"
+assert "joined delimiter body state does not leak" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_joined_heredocs' || true)"
+assert "joined operator heredoc body is not scanned" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*fake_joined_data' || true)"
+
+printf '%s\n' \
   '( set -o pipefail; subshell_stream | grep -q x )' \
   'captured=$(set -o pipefail; substitution_stream | grep -q x)' \
   'late_stream | grep -q x; set -o pipefail' \
