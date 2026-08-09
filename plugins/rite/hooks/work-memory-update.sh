@@ -35,6 +35,8 @@
 #   WM_LOOP_COUNT           - Loop count override. Same effective conditions as WM_PR_NUMBER.
 #                             (default: carried forward from the existing WM, else 0. Unlike
 #                             WM_PR_NUMBER there is no 0 exclusion — 0 is a real value here.)
+#   WM_BRANCH_OVERRIDE      - Branch value override when the subject is not the current checkout.
+#   WM_LAST_COMMIT_OVERRIDE - Commit value override paired with WM_BRANCH_OVERRIDE.
 #
 #   Carry-forward fires only when the variable is unset or empty. Any non-empty value suppresses
 #   it, including the literal string "null" (which some callers pass when flow-state cannot be
@@ -272,8 +274,12 @@ update_local_work_memory() {
   fi
 
   local last_commit tmp_wm
-  local branch="$current_branch"
-  last_commit=$(git rev-parse --short HEAD 2>/dev/null || echo "")
+  local branch="${WM_BRANCH_OVERRIDE:-$current_branch}"
+  if [ -n "${WM_LAST_COMMIT_OVERRIDE:-}" ]; then
+    last_commit="$WM_LAST_COMMIT_OVERRIDE"
+  else
+    last_commit=$(git rev-parse --short HEAD 2>/dev/null || echo "")
+  fi
   # anchor: tmp_wm_mktemp (referenced by lock-skip path comment above)
   tmp_wm=$(mktemp "${local_wm}.tmp.XXXXXX") || { echo "rite: ${WM_SOURCE}: mktemp failed" >&2; return 2; }
   # Extend RETURN trap to also clean up temp file (rm -f is safe even after successful mv)
