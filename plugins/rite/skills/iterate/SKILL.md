@@ -37,7 +37,7 @@ argument-hint: "<pr_number>"
 ## Contract
 
 **Input**: PR number (required)
-**Output**: 完了通知（`[review:mergeable]` 到達 or `[fix:replied-only]` 終了 or `[fix:cancelled-by-user]` 中断 or サーキットブレーカー発火（`[iterate:max-cycles-reached]` バッチ / `[iterate:max-cycles-stopped]` 対話。いずれも非収束による失敗で、マージには進まない）or Ctrl+C 中断）
+**Output**: 完了通知（`[review:mergeable]` 到達 or `[fix:replied-only]` 終了 or `[fix:cancelled-by-user]` 中断 or サーキットブレーカー後の full review 不成立（`[iterate:max-cycles-reached]` バッチ / `[iterate:max-cycles-stopped]` 対話。非収束による失敗で、マージには進まない）or Ctrl+C 中断）。ブレーカー後の full review が返した mergeable / fix-needed は通常 routing に合流する。
 
 ## E2E Output Minimization
 
@@ -731,30 +731,23 @@ fi
 # コマンド文字列にプロジェクト参照が無く、新規端末の既定 cwd は $HOME = 非 git）で実行すると
 # rc=0 のまま $cwd/.rite/sessions/ に別ファイルを作り、当の counter はやはり手つかずで残る。
 # 2 軸のうち片方だけを塞いでも空振りは塞げない。
-marker_emit ITERATE_CB_MODE "$cb_mode" "issue={issue_number}" "pr={pr_number}" \
-  "FIRE_RESET=$fire_reset" "SESSION_ID=$session_id" "STATE_ROOT=$state_root"
-```
-
-### ステップ 6.0: post-breaker full review
-
-`FIRE_RESET=ok` のとき、現在の最新 review JSON を run 開始点 pin に記録する。`review-cycle-scope.sh` は pin より新しい JSON が 0 件の場合に `REVIEW_CYCLE_SCOPE=full; reason=no_prev_json` を返すため、次の `/rite:pr-review` が差分スコープへ戻る経路を機械的に閉じる。
-
-```bash
-source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした" >&2; exit 1; }
 post_breaker_ready=false
 if [ "$fire_reset" = "ok" ] && [ "$state_root" != "unresolved" ]; then
-  results_dir="$state_root/.rite/review-results"
-  pin_file="$state_root/.rite/state/review-run-since-{pr_number}.txt"
-  latest_json=$(find "$results_dir" -maxdepth 1 -type f -name '{pr_number}-*.json' 2>/dev/null | LC_ALL=C sort | tail -1)
-  mkdir -p "$(dirname "$pin_file")"
-  if [ -n "$latest_json" ] && printf '%s\n' "$(basename "$latest_json")" > "$pin_file.tmp" && mv "$pin_file.tmp" "$pin_file"; then
+  if bash {plugin_root}/hooks/scripts/post-breaker-full-review-prepare.sh \
+    --pr {pr_number} --state-root "$state_root"; then
     post_breaker_ready=true
   else
     echo "WARNING: post-breaker full review の run 開始点更新に失敗しました" >&2
   fi
 fi
+marker_emit ITERATE_CB_MODE "$cb_mode" "issue={issue_number}" "pr={pr_number}" \
+  "FIRE_RESET=$fire_reset" "SESSION_ID=$session_id" "STATE_ROOT=$state_root"
 marker_emit POST_BREAKER_FULL_REVIEW "$post_breaker_ready" "pr={pr_number}"
 ```
+
+### ステップ 6.0: post-breaker full review
+
+`FIRE_RESET=ok` のとき、共有前段と**同じ Bash block 内で** `post-breaker-full-review-prepare.sh` を呼び、現在の最新 review JSON を run 開始点 pin に原子的に記録する。helper は pin と同じ directory に `mktemp` した一時ファイルを cleanup trap で管理する。`review-cycle-scope.sh` は pin より新しい JSON が 0 件の場合に `REVIEW_CYCLE_SCOPE=full; reason=no_prev_json` を返すため、次の `/rite:pr-review` が差分スコープへ戻る経路を機械的に閉じる。
 
 | `POST_BREAKER_FULL_REVIEW` | アクション |
 |---|---|
@@ -766,6 +759,8 @@ marker_emit POST_BREAKER_FULL_REVIEW "$post_breaker_ready" "pr={pr_number}"
 | `[review:mergeable]` | ステップ 5 の正常終了 routing へ。ブレーカー発火から直行するのではなく、full review が blocking 0 を返した結果として扱う |
 | `[review:fix-needed:N]` | ステップ 3 の `/rite:fix` へ。fix 後はステップ 1 の通常ループに戻る |
 | `[review:error]` / sentinel 不在 | `ITERATE_CB_MODE` に応じて 6.1 / 6.2 へ。既存 sentinel と batch / interactive 停止契約を保つ |
+
+sentinel の routing は `bash {plugin_root}/hooks/scripts/post-breaker-review-route.sh "{review_sentinel}" "{cb_mode}"` の出力（`complete` / `fix` / `stop-batch` / `stop-interactive`）で機械判定する。未知 sentinel は mode 別の停止へ fail closed する。
 
 **MUST NOT**: post-breaker review の結果を判定せず `/rite:ready` / `/rite:merge` へ進む。`[review:fix-needed:N]` を停止 sentinel に変換する。同一発火に対し full review を 2 回以上 invoke する。
 
@@ -912,7 +907,7 @@ handoff 迂回のリスクは (b) には含めない。**counter reset の失敗
 
 - ユーザーが Ctrl+C で中断した場合: flow-state に現 phase (review or fix) が残るので `/rite:recover` で本コマンドが再起動する (詳細な phase → command routing は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.3 を参照)
 - `[fix:error]` 時: 自動継続せず必ず AskUserQuestion で確認 (silent regression 防止)
-- reviewer が non-deterministic に振動 (毎 cycle で別の指摘) する場合: 収束トレンドの発散判定が先に発火し、それをすり抜けた場合も `safety.max_review_cycles`（既定 15）到達でサーキットブレーカーが発火する（ステップ 6）。batch / 対話とも人間に問わず機械的に停止し（発火＝失敗の記録）、`/rite:batch-run` バッチ実行は `[iterate:max-cycles-reached]` を emit して当該 Issue を failed 扱いにし次 Issue へ進み、対話実行は `[iterate:max-cycles-stopped]` の停止通知で終了する。再開は人間による `/rite:iterate {pr}` の明示的な再実行のみ。Ctrl+C による手動中断も従来どおり可能
+- reviewer が non-deterministic に振動 (毎 cycle で別の指摘) する場合: 収束トレンドの発散判定が先に発火し、それをすり抜けた場合も `safety.max_review_cycles`（既定 15）到達でサーキットブレーカーが発火する（ステップ 6）。発火後は人間に問わず full review を 1 回実行し、mergeable / fix-needed を通常 routing へ戻す。前処理失敗・`[review:error]`・sentinel 不在の場合のみ、batch は `[iterate:max-cycles-reached]` で当該 Issue を failed 扱いにして次へ進み、対話は `[iterate:max-cycles-stopped]` で停止する。Ctrl+C による手動中断も従来どおり可能
 
 ---
 

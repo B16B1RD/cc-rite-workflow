@@ -6,6 +6,8 @@ audit="$ROOT/plugins/rite/skills/pr-review/references/promotion-audit-2091.md"
 review="$ROOT/plugins/rite/skills/pr-review/SKILL.md"
 fix="$ROOT/plugins/rite/skills/fix/SKILL.md"
 iterate="$ROOT/plugins/rite/skills/iterate/SKILL.md"
+post_breaker_prepare="$ROOT/plugins/rite/hooks/scripts/post-breaker-full-review-prepare.sh"
+post_breaker_route="$ROOT/plugins/rite/hooks/scripts/post-breaker-review-route.sh"
 test_reviewer="$ROOT/plugins/rite/agents/test-reviewer.md"
 error_reviewer="$ROOT/plugins/rite/agents/error-handling-reviewer.md"
 failures=0
@@ -20,6 +22,19 @@ assert_grep() {
   fi
 }
 
+assert_eq() {
+  local label=$1 expected=$2 actual=$3
+  if [ "$expected" = "$actual" ]; then
+    printf 'PASS: %s\n' "$label"
+  else
+    printf 'FAIL: %s (expected=%s actual=%s)\n' "$label" "$expected" "$actual" >&2
+    failures=$((failures + 1))
+  fi
+}
+
+pass() { printf 'PASS: %s\n' "$1"; }
+fail() { printf 'FAIL: %s\n' "$1" >&2; failures=$((failures + 1)); }
+
 assert_grep 'aggregate recommendation shelved' "$audit" '| `aggregate-recommendation-label-evasion` | shelve — already mechanized | recommendation classification and disposition gate |'
 assert_grep 'fix drift shelved' "$audit" '| `fix-induced-drift-in-cumulative-defense` | shelve — already mechanized | `review-trend-divergence.sh` and the `iterate` circuit breaker |'
 assert_grep 'likelihood evidence routed to follow-up' "$audit" '| `reviewer-likelihood-evidence-omission-induces-mechanical-demotion` | follow-up — producer enforcement incomplete |'
@@ -28,10 +43,39 @@ assert_grep 'differential scope mechanized' "$audit" '| `differential-scope-revi
 assert_grep 'post-breaker full review transition exists' "$iterate" '### ステップ 6.0: post-breaker full review'
 assert_grep 'post-breaker run boundary is pinned' "$iterate" 'review-run-since-{pr_number}.txt'
 assert_grep 'post-breaker full pass is single-shot' "$iterate" '同一発火に対し full review を 2 回以上 invoke する'
+assert_grep 'post-breaker preparation runs in shared block' "$iterate" 'post-breaker-full-review-prepare.sh'
 assert_grep 'post-breaker mergeable uses normal completion' "$iterate" 'ステップ 5 の正常終了 routing へ'
 assert_grep 'post-breaker findings use normal fix routing' "$iterate" 'ステップ 3 の `/rite:fix` へ'
 assert_grep 'post-breaker failure preserves batch sentinel' "$iterate" '<!-- [iterate:max-cycles-reached] -->'
 assert_grep 'post-breaker failure preserves interactive sentinel' "$iterate" '<!-- [iterate:max-cycles-stopped] -->'
+
+state_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-post-breaker-test-XXXXXX")
+trap 'rm -rf "$state_dir"' EXIT
+mkdir -p "$state_dir/.rite/review-results"
+touch "$state_dir/.rite/review-results/2195-20260809-100000.json"
+touch "$state_dir/.rite/review-results/2195-20260809-110000.json"
+if bash "$post_breaker_prepare" --pr 2195 --state-root "$state_dir"; then
+  actual_pin=$(cat "$state_dir/.rite/state/review-run-since-2195.txt")
+  assert_eq 'post-breaker producer pins latest review' '2195-20260809-110000.json' "$actual_pin"
+else
+  fail 'post-breaker producer succeeds with review results'
+fi
+printf '%s\n' stale.json > "$state_dir/.rite/state/review-run-since-9999.txt"
+if bash "$post_breaker_prepare" --pr 9999 --state-root "$state_dir"; then
+  if [ ! -e "$state_dir/.rite/state/review-run-since-9999.txt" ]; then
+    pass 'post-breaker producer clears stale pin without review results'
+  else
+    fail 'post-breaker producer clears stale pin without review results'
+  fi
+else
+  fail 'post-breaker producer accepts no-results full-review path'
+fi
+assert_eq 'mergeable routes to completion' complete "$(bash "$post_breaker_route" '[review:mergeable]' batch)"
+assert_eq 'findings route to fix' fix "$(bash "$post_breaker_route" '[review:fix-needed:2]' batch)"
+assert_eq 'review error preserves batch stop' stop-batch "$(bash "$post_breaker_route" '[review:error]' batch)"
+assert_eq 'missing sentinel preserves interactive stop' stop-interactive "$(bash "$post_breaker_route" '' interactive)"
+invoke_count=$(awk '/### ステップ 6.0:/{inside=1} /### ステップ 6.1:/{inside=0} inside' "$iterate" | grep -Fc '`/rite:pr-review {pr_number}` を 1 回 invoke' || true)
+assert_eq 'post-breaker review invocation is specified exactly once' 1 "$invoke_count"
 assert_grep 'scope split mechanized' "$audit" '| `reviewer-scope-split-escalates-to-user` | mechanized here | Scope Split Gate below and `pr-review/SKILL.md` |'
 assert_grep 'scope rejection mechanized' "$audit" '| `scope-creep-rejection-empirical-gate` | mechanized here | Rejection Evidence Gate below and `fix/SKILL.md` |'
 assert_grep 'error-path regression mechanized' "$audit" '| `bugfix-new-error-path-needs-regression-test` | mechanized here | New Error-Path Regression Gate in reviewer prompts |'
