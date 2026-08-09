@@ -24,4 +24,18 @@ _ensure_dir_gitignore "$SBX/not-a-dir/.gitignore" >/dev/null 2>&1; rc=$?
 assert "write failure is returned" "1" "$rc"
 assert "write failure exposes a cause" "0" "$([ -n "$_RITE_GITIGNORE_ERROR" ]; echo $?)"
 
+HOOKS_DIR="$SCRIPT_DIR/.."
+callers=(
+  "$HOOKS_DIR/session-start.sh"
+  "$HOOKS_DIR/review-result-save.sh"
+  "$HOOKS_DIR/scripts/review-results-archive-or-rm.sh"
+  "$HOOKS_DIR/flow-state.sh"
+)
+for caller in "${callers[@]}"; do
+  assert "$(basename "$caller") uses the shared primitive exactly once" "1" \
+    "$(grep -c '_ensure_dir_gitignore ' "$caller" || true)"
+done
+raw_writers=$(LC_ALL=C grep -nF "printf '*\\n'" "${callers[@]}" 2>/dev/null || true)
+assert "production callers contain no private star-only writer" "" "$raw_writers"
+
 print_summary "gitignore-ensure.sh"
