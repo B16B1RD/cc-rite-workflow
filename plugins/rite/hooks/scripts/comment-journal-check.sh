@@ -111,9 +111,12 @@
 #   X2 inline code span— `` `refs #204` `` 等。X1 と同じ理由。span は削除ではなく `_` へ
 #                        置換する: 削除するとキーワードと後続番号が隣接して偽の一致を
 #                        作り出すため。
-#   X3 `## ソース` 節   — Wiki ページの provenance リンクラベル (`- [PR #N review results](...)`)
+#   X3 `## ソース` 節   — `.rite/wiki/` 配下の Wiki ページに限定。provenance リンクラベル
+#                        (`- [PR #N review results](...)`)
 #                        は出所の監査証跡として維持対象。走査すると当該節を持つ全ページが
-#                        誤検出になる。除外は**節スコープ** (見出しから次の `##` 見出しの手前まで)
+#                        誤検出になる。`docs/` / `plugins/rite/` の同名見出しは除外を開始せず、
+#                        以降の参照を検出し続ける。Wiki 内の除外は**節スコープ**
+#                        (見出しから次の `##` 見出しの手前まで)
 #                        で、ファイル末尾までではない。判定はフェンス状態の更新後に行うため、
 #                        コードフェンス内に引用された `## ソース` では発火しない。見出しは
 #                        `## ソース（追記分）` 等の接尾辞を許容する (wiki-ingest の生成形)。
@@ -269,7 +272,7 @@ check_file() {
     return 0
   fi
   awk -v F="$file" '
-    FNR == 1 { infence = 0; insources = 0 }
+    FNR == 1 { infence = 0; insources = 0; wiki_file = (F ~ /^\.rite\/wiki\//) }
     {
       line = $0
       # コードフェンスと `## ソース` 節の状態は、どの `next` よりも先に更新する。
@@ -281,8 +284,8 @@ check_file() {
       # 判定はフェンス状態の更新後に置く — フェンス内に引用された `## ソース` で誤発火しない。
       # 見出しは接尾辞を許容する (`## ソース（追記分）` 等)。厳密一致だと揺れた見出しが
       # 節の開始として認識されないまま次の見出しとしては認識され、直前の節の除外を打ち切る。
-      if (!infence && line ~ /^##[[:space:]]+ソース([[:space:]]*$|[（(])/) insources = 1
-      else if (!infence && insources && line ~ /^##[[:space:]]/) insources = 0
+      if (wiki_file && !infence && line ~ /^##[[:space:]]+ソース([[:space:]]*$|[（(])/) insources = 1
+      else if (wiki_file && !infence && insources && line ~ /^##[[:space:]]/) insources = 0
 
       # Whitelist: any line carrying an "example:" marker is skipped wholesale.
       if (line ~ /(<!--[[:space:]]*example:|#[[:space:]]+example:|\/\/[[:space:]]+example:)/) next

@@ -24,7 +24,11 @@
 #   TC-16  語彙の大小文字対称性と左語境界 (prefs / hrefs の語尾一致を弾く)
 #   TC-17  「PR #N で別途対応」が P5/P6 で二重報告されない
 #
-# NOT covered (environment-dependent): mktemp failure on a read-only /tmp.
+# Diagnostic neutralization/head emission is covered repository-wide by
+# diag-snippet-neutralize-parity.test.sh. This suite pins --quiet via TC-11;
+# duplicating injected IO failures here would test the shared diagnostic policy,
+# not this checker's detection contract. mktemp failure on read-only /tmp remains
+# environment-dependent and is not reproduced here.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -56,6 +60,12 @@ scan() {
 # count: number of findings; pat_count: findings matching a pattern
 count() { scan "$1" | grep -c . ; }
 pat_count() { scan "$1" | grep -cE "$2" || true ; }
+wiki_pat_count() {
+  mkdir -p "$SBX/.rite/wiki/pages"
+  printf '%s\n' "$1" > "$SBX/.rite/wiki/pages/source-scope.md"
+  ( cd "$SBX" && bash "$SCRIPT" --target .rite/wiki/pages/source-scope.md --repo-root "$SBX" --quiet ) 2>/dev/null \
+    | grep -cE "$2" || true
+}
 
 echo "== comment-journal-check.sh (P5/P6 拡張と除外) =="
 
@@ -74,6 +84,17 @@ assert "TC-7 Closes #N が hit"     "1" "$(count 'Closes #1148 で閉じた')"
 assert "TC-7 refs #N が hit"       "1" "$(count '(refs #1150) の括弧形')"
 assert "TC-7 詳細は #N が hit"      "1" "$(count '詳細は #1151')"
 assert "TC-7 #N で別途対応 が hit"  "1" "$(count '#1152 で別途対応')"
+assert "TC-7 lowercase see member is pinned" "1" "$(count 'see #1153 for context')"
+assert "TC-7 Fixes member is pinned"        "1" "$(count 'Fixes #1154')"
+assert "TC-7 Related to member is pinned"   "1" "$(count 'Related to #1155')"
+
+# P3/P4 regexes and each supported example-marker dialect are individually
+# pinned so deleting one alternation member cannot survive behind aggregate counts.
+assert "TC-7 P3 regex member is pinned" "1" "$(pat_count 'PR #123 cycle 4 fix' '\[P3\]')"
+assert "TC-7 P4 regex member is pinned" "1" "$(pat_count 'cycle 4 F-2 で導入' '\[P4\]')"
+assert "TC-7 HTML example marker skips line" "0" "$(count '<!-- example: PR #1200 -->')"
+assert "TC-7 hash example marker skips line" "0" "$(count '# example: PR #1201')"
+assert "TC-7 slash example marker skips line" "0" "$(count '// example: PR #1202')"
 
 # ---- TC-8 意図的な非対象 ----------------------------------------------------
 assert "TC-8 キーワードなし裸 #N は hit しない" "0" "$(count '#1234 の単独形は対象外')"
@@ -102,10 +123,15 @@ assert "TC-10 フェンス内でも P1 は従来どおり検出される" "1" "$
 
 # ---- TC-2 `## ソース` 節 ----------------------------------------------------
 src=$(printf '# t\n\nPR #1300 は本文の参照\n\n## ソース\n\n- [PR #1300 review results](../../raw/reviews/a.md)\n- [Issue #1284 fix results](../../raw/fixes/b.md)\n')
-assert "TC-2 ソース節より前の本文は hit する" "1" "$(pat_count "$src" '\[P5\]')"
+mkdir -p "$SBX/.rite/wiki/pages"
+printf '%s\n' "$src" > "$SBX/.rite/wiki/pages/source-scope.md"
+wiki_src_out=$( ( cd "$SBX" && bash "$SCRIPT" --target .rite/wiki/pages/source-scope.md --repo-root "$SBX" --quiet ) 2>/dev/null )
+assert "TC-2 wiki ソース節より前の本文は hit する" "1" "$(printf '%s' "$wiki_src_out" | grep -c '\[P5\]' || true)"
 # 行番号ではなく総 findings 数で測る (fixture が 1 行ずれると行番号 assert は vacuous になる)。
 # ソース節の除外が外れると本文 1 件 + ラベル 2 件 = 3 件になり確実に落ちる。
-assert "TC-2 ソース節配下の provenance ラベルは hit しない (総数 1 件)" "1" "$(count "$src")"
+assert "TC-2 wiki ソース節配下の provenance ラベルは hit しない" "1" "$(printf '%s' "$wiki_src_out" | grep -c . || true)"
+# X3 is a Wiki provenance convention, not a repository-wide heading escape.
+assert "TC-2 docs の ## ソース節は除外せず全参照を検出" "3" "$(count "$src")"
 
 # ---- TC-6 語境界 -------------------------------------------------------------
 b=$(scan 'PR #2047 の語境界')
@@ -148,17 +174,10 @@ assert "TC-11 target 指定なし → exit 2" "2" "$?"
 assert "TC-11 未知の引数 → exit 2" "2" "$?"
 
 # ---- TC-12 / TC-13 MUTATION --------------------------------------------------
-# mutant は `sed` で作る。パターンが一致せず no-op のまま「差が出なかった」と読むと
-# mutation test が無言で vacuous になるため、実行前に必ず元との差分を確認する。
-# sed は BRE のため `?` と `|` は literal 文字として扱われる (パターンを素の文字列で書ける)。
 make_mutant() {
   local label="$1" out="$2" expr="$3"
   sed "$expr" "$SCRIPT" > "$out"
-  if diff -q "$SCRIPT" "$out" >/dev/null 2>&1; then
-    fail "$label (mutant が元と同一 — sed パターンが一致していない。この assert は無効)"
-    return 1
-  fi
-  return 0
+  assert_mutant_changed "$label" "$SCRIPT" "$out"
 }
 
 # 拡張で語彙に足した裸の Issue / PR を取り除いた mutant では、裸形が落ちる。
@@ -250,16 +269,16 @@ assert "TC-14 --all で検出器 test の fixture が hit しない" "0" "$exclu
 # 見出し以降 EOF まで打ち切ると、後続の本文節が丸ごと盲点になる。またフェンス内に引用された
 # `## ソース` で走査が止まると、そのファイルの以降が無言で検出対象外になる。
 post_src=$(printf '# t\n\n## ソース\n\n- [PR #1400 review results](../../raw/reviews/a.md)\n\n## 補強: 節\n\nPR #1500 はソース節の後の本文\n')
-assert "TC-15 ソース節の後に続く本文は hit する (節スコープ)" "1" "$(pat_count "$post_src" '\[P5\]')"
+assert "TC-15 ソース節の後に続く本文は hit する (節スコープ)" "1" "$(wiki_pat_count "$post_src" '\[P5\]')"
 # wiki-ingest が生成する `## ソース（追記分）` / `## ソース(追記分 N)` も節として認識する。
 # 厳密一致だと節の開始として認識されないまま「次の見出し」としては認識され、直前の節の
 # 除外を打ち切って provenance ラベルを走査対象に戻す。
 appendix_src=$(printf '# t\n\n## ソース\n\n- [PR #1400 review](../../raw/a.md)\n\n## ソース（追記分）\n\n- [PR #1500 review](../../raw/b.md)\n\n## ソース(追記分 2)\n\n- [PR #1600 review](../../raw/c.md)\n')
-assert "TC-15 追記分ソース節の provenance ラベルも hit しない (全角・半角括弧)" "0" "$(pat_count "$appendix_src" '\[P5\]')"
+assert "TC-15 追記分ソース節の provenance ラベルも hit しない (全角・半角括弧)" "0" "$(wiki_pat_count "$appendix_src" '\[P5\]')"
 appendix_then=$(printf '# t\n\n## ソース（追記分）\n\n- [PR #1500 review](../../raw/b.md)\n\n## 補強: 節\n\nPR #1700 は追記分ソース節の後の本文\n')
-assert "TC-15 追記分ソース節の後の本文は hit する" "1" "$(pat_count "$appendix_then" '\[P5\]')"
+assert "TC-15 追記分ソース節の後の本文は hit する" "1" "$(wiki_pat_count "$appendix_then" '\[P5\]')"
 fenced_src=$(printf '# t\n\n```markdown\n## ソース\n```\n\nPR #1300 はフェンス後の本文\n')
-assert "TC-15 フェンス内の ## ソース では走査が止まらない" "1" "$(pat_count "$fenced_src" '\[P5\]')"
+assert "TC-15 フェンス内の ## ソース では走査が止まらない" "1" "$(wiki_pat_count "$fenced_src" '\[P5\]')"
 
 # ---- TC-16: 語彙の大小文字対称性と左語境界 ----------------------------------
 assert "TC-16 小文字 issue #N も hit する"  "1" "$(count 'issue #55 の話')"

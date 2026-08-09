@@ -170,12 +170,7 @@ assert "TC-1/2/3/4/5 hits=8 (対象のみ)" "8" "$hits"
 # ---- MUTATION の前提: mutant が実際に元と違うことを先に確かめる ---------------
 # 生成が no-op のまま「差が出なかった」と読むと mutation test が無言で vacuous になる。
 assert_mutated() {
-  local label="$1" mutant="$2"
-  if diff -q "$SCRIPT" "$mutant" >/dev/null 2>&1; then
-    fail "$label (mutant が元と同一 — 変換パターンが一致していない。この assert は無効)"
-    return 1
-  fi
-  return 0
+  assert_mutant_changed "$1" "$SCRIPT" "$2"
 }
 
 # ---- 除外の識別力を「フィルタを外した版」との差で測る (TC-16 の測定基盤) -------
