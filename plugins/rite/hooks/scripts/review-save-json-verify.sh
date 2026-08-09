@@ -202,6 +202,21 @@ _sha_matches() {
   return 1
 }
 
+# The expected SHA is supplied by the same review workflow that this helper
+# gates, so independently bind it to the checkout being reviewed.  Resolve
+# HEAD from this helper's cwd (not state_root, which points at the main
+# checkout for linked worktrees).
+actual_head=$(git rev-parse HEAD 2>/dev/null) \
+  || _degraded "helper の cwd で git rev-parse HEAD を実行できません。レビュー対象 HEAD を独立検証できません"
+actual_head=$(_scrub "$actual_head" | tr '[:upper:]' '[:lower:]')
+case "$actual_head" in
+  ''|*[!0-9a-f]*) _degraded "helper の cwd から取得した HEAD が有効な SHA ではありません (received: '$actual_head')" ;;
+esac
+[ "${#actual_head}" -ge 7 ] \
+  || _degraded "helper の cwd から取得した HEAD が 7 桁未満です (received: '$actual_head')"
+_sha_matches "$actual_head" "$commit_sha" \
+  || _degraded "--commit-sha が helper の cwd の実 HEAD と一致しません (expected: '$actual_head', received: '$commit_sha')"
+
 if [ -d "$results_dir" ]; then
   # find の rc を検査する。dir が存在しても読めない (permission 等) と find は 0 件を返すため、
   # rc を見ないと「読めない」が「実在しない」に化けて fail へ落ち、差し戻し先の 6.1.a を何度
