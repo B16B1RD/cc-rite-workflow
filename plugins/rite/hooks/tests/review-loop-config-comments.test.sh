@@ -9,10 +9,13 @@ CONFIG="$ROOT_DIR/rite-config.yml"
 LOOP_BLOCK="$(mktemp "${TMPDIR:-/tmp}/rite-review-loop-comments.XXXXXX")"
 trap 'rm -f -- "$LOOP_BLOCK"' EXIT
 
-# `review.loop` は 2-space indent、配下のキーは 4-space indent。次の同レベル
-# mapping key の直前までに限定し、同じ文言が別 section にあっても通さない。
+# top-level `review:` の内側にある 2-space indent の `loop:` だけを対象にし、
+# 次の同レベル mapping key の直前までに限定する。同じ文言や `loop:` block が
+# 別 section にあっても通さない。
 awk '
-  /^  loop:[[:space:]]*$/ { in_loop = 1 }
+  /^review:[[:space:]]*$/ { in_review = 1; print; next }
+  in_review && /^[[:alnum:]_]+:/ { exit }
+  in_review && /^  loop:[[:space:]]*$/ { in_loop = 1 }
   in_loop && seen_loop && /^  [[:alnum:]_]+:/ { exit }
   in_loop { print; seen_loop = 1 }
 ' "$CONFIG" > "$LOOP_BLOCK"
@@ -42,7 +45,8 @@ assert_not_grep() {
   fi
 }
 
-assert_grep "review.loop block was extracted" '^  loop:[[:space:]]*$'
+assert_grep "review parent was extracted" '^review:[[:space:]]*$'
+assert_grep "review.loop child was extracted" '^  loop:[[:space:]]*$'
 assert_grep "normal exit is zero blocking findings with the severity SoT" \
   '正常出口は 0 blocking findings のみ.*plugins/rite/references/severity-levels\.md.*§実測必須ゲート'
 assert_grep "circuit breaker documents trend divergence" \
