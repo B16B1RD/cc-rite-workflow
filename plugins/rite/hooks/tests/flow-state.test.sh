@@ -1339,6 +1339,33 @@ assert "TC-27b: get returns stop_reason" "circuit-breaker:divergence" "$(cd "$d"
 (cd "$d" && bash "$HOOK" set --phase review --issue 2045 --branch "fix/2045" --pr 99 --next "resumed") >/dev/null
 assert "TC-27b: ordinary set default-clears stop_reason" "false" "$(jq -r 'has("stop_reason")' "$sfile")"
 
+# --- TC-27c: iterate producer persists the breaker reason in the reset set (#2045) ---
+echo ""
+echo "=== TC-27c: iterate breaker preamble owns the stop_reason producer contract ==="
+iterate_skill="$PLUGIN_ROOT/skills/iterate/SKILL.md"
+breaker_set_block="$(awk '
+  /if cb_reset_out=.*flow-state\.sh set/ { capture=1 }
+  capture { print }
+  capture && /2>&1\); then/ { exit }
+' "$iterate_skill")"
+assert "TC-27c: breaker reset call resets cycle_count" "1" \
+  "$(printf '%s\n' "$breaker_set_block" | grep -c -- '--cycle-count 0' || true)"
+assert "TC-27c: same breaker reset call persists the reason token" "1" \
+  "$(printf '%s\n' "$breaker_set_block" | grep -cF -- '--stop-reason "circuit-breaker:{cb_reason}"' || true)"
+
+# A failure of that one atomic set loses both writes. Pin the user-visible
+# diagnostic so the recovery path cannot silently promise that the reason survived.
+breaker_failure_block="$(awk '
+  /else/ && seen_set { capture=1 }
+  /if cb_reset_out=.*flow-state\.sh set/ { seen_set=1 }
+  capture { print }
+  capture && /^fi$/ { exit }
+' "$iterate_skill")"
+assert "TC-27c: failed atomic set diagnoses counter reset" "1" \
+  "$(printf '%s\n' "$breaker_failure_block" | grep -cF -- 'cycle counter リセット' || true)"
+assert "TC-27c: failed atomic set diagnoses missing reason persistence" "1" \
+  "$(printf '%s\n' "$breaker_failure_block" | grep -cF -- 'stop_reason 永続化に失敗' || true)"
+
 # --- TC-28: wm_comment_id is merge-preserved across cmd_set (#1810) ---
 # wm_comment_id has NO --flag — it's written directly by issue-comment-wm-sync.sh's
 # cache_comment_id() via `jq '. + {wm_comment_id: ...}'`, mirroring how post-tool-wm-sync.sh
