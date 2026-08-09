@@ -172,6 +172,21 @@ assert "joined delimiter body state does not leak" "1" "$(printf '%s\n' "$out" |
 assert "joined operator heredoc body is not scanned" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*fake_joined_data' || true)"
 
 printf '%s\n' \
+  'set +o pipefail' \
+  'set -o \' \
+  'pipefail' \
+  'cat <<EOF \' \
+  '  ignored_argument' \
+  'payload' \
+  'EOF' \
+  'continued_stream \' \
+  '  --arg | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "backslash join preserves surrounding whitespace" "1" "$rc"
+assert "continued pipefail activation is retained" "1" "$(printf '%s\n' "$out" | grep -c 'producer before grep -q: continued_stream.*--arg' || true)"
+assert "continued producer retains a visible separator" "0" "$(printf '%s\n' "$out" | grep -c 'producer before grep -q: continued_stream--arg' || true)"
+
+printf '%s\n' \
   '( set -o pipefail; subshell_stream | grep -q x )' \
   'captured=$(set -o pipefail; substitution_stream | grep -q x)' \
   'late_stream | grep -q x; set -o pipefail' \

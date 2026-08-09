@@ -386,11 +386,11 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
                     if candidate == delimiter: pending_heredocs.pop(0)
                     continue
                 if not acc: start_n=n
-                part=physical.strip()
                 joins_previous=had_backslash
+                part=physical.rstrip() if joins_previous else physical.strip()
                 continued=backslash_continues(physical)
                 contextual_syntax,lexical_state=lex_shell(physical,lexical_state)
-                if continued: part=part[:-1].rstrip()
+                if continued: part=part[:-1]
                 acc += ("" if joins_previous else (" " if acc else "")) + part
                 found_heredocs=heredoc_starts(physical,contextual_syntax)
                 if continued:
