@@ -135,14 +135,17 @@ _degraded() {
 case "$pr_number" in
   ''|*[!0-9]*) _degraded "--pr が数値ではありません (received: '$pr_number')。caller の {pr_number} 置換漏れの可能性があります" ;;
 esac
+caller_sha_valid=true
 case "$commit_sha" in
-  ''|*'{'*|*'}'*) _degraded "--commit-sha が空または placeholder 形状です (received: '$commit_sha')。ステップ 1.2.5 の {current_commit_sha} 置換漏れの可能性があります" ;;
-  *[!0-9a-fA-F]*) _degraded "--commit-sha が 16 進数以外の文字を含みます (received: '$commit_sha')。git rev-parse HEAD の出力をそのまま渡してください" ;;
+  ''|*'{'*|*'}'*|*[!0-9a-fA-F]*) caller_sha_valid=false ;;
 esac
-# 7 桁未満は git の短縮 SHA としても短すぎ、prefix 比較が別 commit を誤って一致させる。
-[ "${#commit_sha}" -ge 7 ] || _degraded "--commit-sha が 7 桁未満です (received: '$commit_sha')。prefix 比較が別 commit を誤一致させるため判定を降ろします"
-# 比較は小文字で行う (git rev-parse は小文字、JSON 側は大文字でも受理する)。
-commit_sha=$(printf '%s' "$commit_sha" | tr '[:upper:]' '[:lower:]')
+# 7 桁未満は git の短縮 SHA としても短すぎる。caller 値は後段で独立取得した実 HEAD に
+# 置換できるため、ここでは gate を降ろさず妥当性だけを記録する。
+[ "${#commit_sha}" -ge 7 ] || caller_sha_valid=false
+if [ "$caller_sha_valid" = true ]; then
+  # 比較は小文字で行う (git rev-parse は小文字、JSON 側は大文字でも受理する)。
+  commit_sha=$(printf '%s' "$commit_sha" | tr '[:upper:]' '[:lower:]')
+fi
 
 command -v jq >/dev/null 2>&1 || _degraded "jq が PATH 上にありません。JSON の commit_sha を読めません"
 
@@ -214,7 +217,11 @@ case "$actual_head" in
 esac
 [ "${#actual_head}" -ge 7 ] \
   || _degraded "helper の cwd から取得した HEAD が 7 桁未満です (received: '$actual_head')"
-if ! _sha_matches "$actual_head" "$commit_sha"; then
+if [ "$caller_sha_valid" != true ]; then
+  echo "WARNING: ステップ 8.0.4 positive 検査: --commit-sha が空・placeholder・非16進・7桁未満のいずれかです (received: '$(_scrub "$commit_sha")')" >&2
+  echo "  caller の無効な anchor は破棄し、helper が独立取得した実 HEAD で結果 JSON を検査します。" >&2
+  commit_sha="$actual_head"
+elif ! _sha_matches "$actual_head" "$commit_sha"; then
   echo "WARNING: ステップ 8.0.4 positive 検査: --commit-sha が helper の cwd の実 HEAD と一致しません (expected: '$actual_head', received: '$commit_sha')" >&2
   echo "  caller の stale anchor は破棄し、helper が独立取得した実 HEAD で結果 JSON を検査します。" >&2
   commit_sha="$actual_head"

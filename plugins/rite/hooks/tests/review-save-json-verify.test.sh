@@ -123,6 +123,23 @@ RC=0
 assert "T-03d: non-git cwd is non-fatal degraded" "0" "$RC"
 assert_grep "T-03e: non-git cwd names HEAD resolution failure" "$ERR" 'git rev-parse HEAD を実行できません'
 
+# 実 Git / session worktree の正経路。caller anchor が無効でも、helper cwd の HEAD を
+# 独立取得してその JSON を選べなければ positive gate は caller に依存したままになる。
+REAL_REPO=$(git rev-parse --show-toplevel 2>/dev/null || true)
+if [ -n "$REAL_REPO" ]; then
+  REAL_HEAD=$(git -C "$REAL_REPO" rev-parse HEAD)
+  DIR_REAL="$SANDBOX/real-head"; mkdir -p "$DIR_REAL"
+  make_result "$DIR_REAL" 911 01 "$REAL_HEAD"
+  RC=0
+  ( cd "$REAL_REPO" && PATH="/usr/bin:/bin" bash "$SCRIPT" --pr 911 \
+      --commit-sha "{current_commit_sha}" --results-dir "$DIR_REAL" --since "" ) \
+      >/dev/null 2>"$ERR" || RC=$?
+  assert "T-03f: malformed caller anchor still verifies the helper cwd HEAD" "0" "$RC"
+  assert_grep "T-03g: actual-HEAD JSON is selected" "$ERR" 'REVIEW_SAVE_JSON_OK=1; pr=911'
+else
+  skip "T-03f-g: real git checkout unavailable"
+fi
+
 # ---------------------------------------------------------------------------
 # T-02: 区間ごと skip — JSON が 1 件も無ければ fail (AC-2。本 Issue が塞ぐ本命経路)
 # ---------------------------------------------------------------------------
@@ -255,7 +272,7 @@ assert_not_grep "T-06d: degraded を pass に読み替えない" "$ERR" 'REVIEW_
 # 入力の形状不正も degraded (fail にすると差し戻しでは直らず非収束になる)。
 run_verify --pr 900 --commit-sha "zzzzzzz" --results-dir "$DIR_OK" --since ""
 assert "T-06a2: --commit-sha が 16 進以外なら rc=0 (degraded)" "0" "$RC"
-assert_grep "T-06b2: 16 進以外を名指しする" "$ERR" '16 進数以外の文字'
+assert_grep "T-06b2: 無効な caller/HEAD を名指しする" "$ERR" '有効な SHA ではありません'
 run_verify --pr 900 --commit-sha "abc12" --results-dir "$DIR_OK" --since ""
 assert "T-06a3: --commit-sha が 7 桁未満なら rc=0 (degraded)" "0" "$RC"
 assert_grep "T-06b3: 7 桁未満を名指しする" "$ERR" '7 桁未満'
@@ -268,7 +285,7 @@ assert_grep "T-06g: 置換漏れも degraded に載る" "$ERR" 'reason=save_resu
 
 run_verify --pr 900 --commit-sha "{current_commit_sha}" --results-dir "$DIR_OK" --since ""
 assert "T-06h: {current_commit_sha} 置換漏れは rc=0" "0" "$RC"
-assert_grep "T-06i: ステップ 1.2.5 の置換漏れとして案内する" "$ERR" '1.2.5'
+assert_grep "T-06i: placeholder 由来の無効 HEAD を名指しする" "$ERR" '有効な SHA ではありません'
 assert_grep "T-06j: 置換漏れも degraded に載る" "$ERR" 'reason=save_result_json_undecidable'
 
 run_verify --pr 900 --commit-sha "" --results-dir "$DIR_OK" --since ""
