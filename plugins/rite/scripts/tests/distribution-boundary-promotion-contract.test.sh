@@ -6,11 +6,11 @@ PLUGIN_ROOT="$ROOT/plugins/rite"
 failures=0
 scan_root=$PLUGIN_ROOT
 scan_only=false
-if [ "${1:-}" = "--scan-root" ]; then
-  [ "$#" -eq 2 ] || { printf 'usage: %s [--scan-root DIR]\n' "$0" >&2; exit 2; }
-  scan_root=$2
-  scan_only=true
-fi
+case "$#:${1:-}" in
+  0:) ;;
+  2:--scan-root) scan_root=$2; scan_only=true ;;
+  *) printf 'usage: %s [--scan-root DIR]\n' "$0" >&2; exit 2 ;;
+esac
 
 # These repository URLs are attribution and generated-footer targets, not
 # environment-bound examples. Keep this allowlist narrow and line-oriented.
@@ -39,6 +39,9 @@ scan_file() {
     line_no=$((line_no + 1))
     case "$line" in
       *B16B1RD*) report_hit "$file" "$line_no" B16B1RD "$line" ;;
+    esac
+    case "$line" in
+      *'"cc-rite-workflow"'*) report_hit "$file" "$line_no" cc-rite-workflow "$line" ;;
     esac
     case "$line" in
       */home/akiyoshi*) report_hit "$file" "$line_no" /home/akiyoshi "$line" ;;
@@ -74,15 +77,23 @@ fi
 # actionable diagnostics independently from the repository's clean baseline.
 fixture_root=$(mktemp -d)
 trap 'rm -f "$file_list"; rm -rf "$fixture_root"' EXIT
-printf '%s\n' 'owner=B16B1RD' > "$fixture_root/leak.md"
-mutation_rc=0
-mutation_out=$(bash "$0" --scan-root "$fixture_root" 2>&1) || mutation_rc=$?
-if [ "$mutation_rc" -eq 0 ] \
-  || ! grep -Fq 'leak.md:1' <<<"$mutation_out" \
-  || ! grep -Fq 'replace examples with {owner}/{repo}' <<<"$mutation_out"; then
-  printf 'FAIL: planted owner token was not rejected with an actionable file/line diagnostic\n' >&2
-  exit 1
-fi
+while IFS='|' read -r planted expected; do
+  printf '%s\n' "$planted" > "$fixture_root/leak.md"
+  mutation_rc=0
+  mutation_out=$(bash "$0" --scan-root "$fixture_root" 2>&1) || mutation_rc=$?
+  if [ "$mutation_rc" -eq 0 ] \
+    || ! grep -Fq 'leak.md:1' <<<"$mutation_out" \
+    || ! grep -Fq "$expected" <<<"$mutation_out" \
+    || ! grep -Fq 'replace examples with {owner}/{repo}' <<<"$mutation_out"; then
+    printf 'FAIL: planted %s token was not rejected with an actionable file/line diagnostic\n' "$expected" >&2
+    exit 1
+  fi
+done <<'MUTATIONS'
+owner=B16B1RD|B16B1RD
+repo="cc-rite-workflow"|cc-rite-workflow
+home=/home/akiyoshi/project|/home/akiyoshi
+tmp=/tmp/claude-1000/worktree|/tmp/claude-1000
+MUTATIONS
 
 mkdir -p "$fixture_root/hooks/tests"
 mv "$fixture_root/leak.md" "$fixture_root/hooks/tests/environment-fixture.md"
@@ -102,6 +113,10 @@ grep -Fq '環境非依存' "$ROOT/CLAUDE.md" || {
 }
 grep -Fq '環境非依存' "$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md" || {
   printf 'FAIL: wiki-ingest routing lacks the environment-independence promotion axis\n' >&2
+  exit 1
+}
+grep -Fq 'rite 挙動・スキル記述法かつ環境非依存（または一般化済み）' "$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md" || {
+  printf 'FAIL: wiki-ingest promote field rule does not preserve the two-axis predicate\n' >&2
   exit 1
 }
 

@@ -380,7 +380,7 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 | `summary` | 1-2 文の要約（index.md に掲載される） |
 | `details` | 背景・具体例・根拠を含む詳細 |
 | `confidence` | `high` / `medium` / `low`（根拠の強さ） |
-| `promote` | ステップ 4 の昇格分類で rite 挙動・スキル記述法と判定した場合のみ `rite-plugin`。それ以外はフィールド自体を付けない |
+| `promote` | ステップ 4 の昇格分類で rite 挙動・スキル記述法かつ環境非依存（または一般化済み）と判定した場合のみ `rite-plugin`。それ以外はフィールド自体を付けない |
 
 ファイル名は `pages/{domain}/{slug}.md`、`slug` は `title` を kebab-case 化（最大 60 文字）。
 
