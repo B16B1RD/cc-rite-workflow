@@ -1463,8 +1463,8 @@ Route the result mechanically per reviewer:
 | Result | Action |
 |---|---|
 | rc=0 + `LIKELIHOOD_EVIDENCE_GATE=passed` | Accept the raw output and continue |
-| rc=1 + `reason=anchor_missing`, first occurrence | Retry that reviewer once with the original review prompt plus the missing-count diagnostic and the strict requirement to add a canonical anchor to every realistic finding; replace the original output with the retry output and rerun this helper |
-| rc=1 after the one retry | Mark the reviewer `incomplete`, set `likelihood_evidence_post_condition=error`, and stop this review with `[review:error]`; do not pass the output to aggregation or 5.3.0 |
+| rc=1 + `reason ∈ {anchor_missing, findings_heading_missing, table_header_missing, table_malformed}`, first occurrence | Retry that reviewer once with the original review prompt plus the reason-specific diagnostic and the strict requirement to emit the canonical five-column findings table with a canonical anchor in every realistic finding's `内容` cell; replace the original output with the retry output and rerun this helper |
+| rc=1 with any producer-contract reason after the one retry | Mark the reviewer `incomplete`, set `likelihood_evidence_post_condition=error`, and stop this review with `[review:error]`; do not pass the output to aggregation or 5.3.0 |
 | rc=2, or a missing success marker | Treat as producer-gate infrastructure failure and stop with `[review:error]` |
 
 Maintain `likelihood_evidence_retry_count` as a per-reviewer dict initialized to `{}`. Only a completed retry increments the corresponding value from 0 to 1. This gate deliberately runs before hypothetical demotion: omission by a realistic-finding producer is a retryable contract violation, while an explicitly marked exception remains a legitimate hypothetical finding.

@@ -3,6 +3,10 @@ set -u
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 HELPER="$ROOT/hooks/scripts/review-likelihood-evidence-gate.sh"
+SKILL="$ROOT/skills/pr-review/SKILL.md"
+SCRIPT_DIR="$ROOT/hooks/tests"
+# shellcheck source=_test-helpers.sh
+source "$SCRIPT_DIR/_test-helpers.sh"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 pass=0 fail=0
@@ -26,8 +30,11 @@ check bash -c '! "$1" --reviewer-type security --input "$2" >/dev/null 2>&1' _ "
 check bash -c '! "$1" --reviewer-type application --input "$2" >/dev/null 2>&1' _ "$HELPER" "$TMP/missing-heading.md"
 check "$HELPER" --reviewer-type application --input "$TMP/empty.md"
 check bash -c '! "$1" --reviewer-type application --input "$2" >/dev/null 2>&1' _ "$HELPER" "$TMP/malformed-empty.md"
-check bash -c 'timeout 1 "$1" --input >/dev/null 2>&1; [ "$?" -eq 2 ]' _ "$HELPER"
-check bash -c 'timeout 1 "$1" --reviewer-type >/dev/null 2>&1; [ "$?" -eq 2 ]' _ "$HELPER"
+check bash -c 'source "$1"; _timeout 1 "$2" --input >/dev/null 2>&1; [ "$?" -eq 2 ]' _ "$SCRIPT_DIR/_test-helpers.sh" "$HELPER"
+check bash -c 'source "$1"; _timeout 1 "$2" --reviewer-type >/dev/null 2>&1; [ "$?" -eq 2 ]' _ "$SCRIPT_DIR/_test-helpers.sh" "$HELPER"
+for reason in anchor_missing findings_heading_missing table_header_missing table_malformed; do
+  check grep -q "$reason" "$SKILL"
+done
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
