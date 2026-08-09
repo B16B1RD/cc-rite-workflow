@@ -65,7 +65,6 @@ fi
 CLAIMS_DIR="$STATE_ROOT/.rite/state/issue-claims"
 CLAIMS_LOCKDIR="$CLAIMS_DIR/.lock.d"
 CLAIMS_LOCK_RETRIES=50
-CLAIMS_LOCK_LEASE_SECONDS=30
 
 # Resolve the CURRENT session_id. Reuses the canonical helpers:
 #   - `_resolve-session-id.sh` UUID-validates a runtime env candidate
@@ -145,13 +144,26 @@ _build_json() {
 
 # Acquire the short-lived claims critical section with portable atomic mkdir.
 # A process killed after mkdir can leave residue; after the normal wait window,
-# a contender reclaims it only when its recorded process is no longer alive.
+# a contender reclaims it only when its recorded process is gone or its PID has
+# been reused by a process with a different start identity.
+_process_identity() {
+  local pid="$1"
+  ps -p "$pid" -o lstart= 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
+_claims_lock_record_owner() {
+  local identity
+  identity=$(_process_identity "$$")
+  [ -n "$identity" ] || return 1
+  printf '%s\n' "$$" > "$CLAIMS_LOCKDIR/pid" &&
+    printf '%s\n' "$identity" > "$CLAIMS_LOCKDIR/process_start"
+}
+
 _claims_lock_acquire() {
   local tries=0 owner="" tomb=""
   while [ "$tries" -lt "$CLAIMS_LOCK_RETRIES" ]; do
     if mkdir "$CLAIMS_LOCKDIR" 2>/dev/null; then
-      printf '%s\n' "$$" > "$CLAIMS_LOCKDIR/pid" &&
-        date +%s > "$CLAIMS_LOCKDIR/acquired_at" || {
+      _claims_lock_record_owner || {
         rm -rf "$CLAIMS_LOCKDIR" 2>/dev/null || true
         return 1
       }
@@ -161,22 +173,27 @@ _claims_lock_acquire() {
     sleep 0.1
   done
 
-  local acquired_at="" now="" age=0 reclaim=false
+  local recorded_identity="" current_identity="" reclaim=false
   owner=$(cat "$CLAIMS_LOCKDIR/pid" 2>/dev/null || printf '')
-  acquired_at=$(cat "$CLAIMS_LOCKDIR/acquired_at" 2>/dev/null || printf '')
-  now=$(date +%s)
-  case "$owner" in ''|0|*[!0-9]*) reclaim=true ;; *) kill -0 "$owner" 2>/dev/null || reclaim=true ;; esac
-  case "$acquired_at" in
-    ''|*[!0-9]*) reclaim=true ;;
-    *) age=$((now - acquired_at)); [ "$age" -gt "$CLAIMS_LOCK_LEASE_SECONDS" ] && reclaim=true ;;
+  recorded_identity=$(cat "$CLAIMS_LOCKDIR/process_start" 2>/dev/null || printf '')
+  case "$owner" in
+    ''|0|*[!0-9]*) reclaim=true ;;
+    *)
+      if ! kill -0 "$owner" 2>/dev/null; then
+        reclaim=true
+      else
+        current_identity=$(_process_identity "$owner")
+        [ -n "$recorded_identity" ] && [ -n "$current_identity" ] &&
+          [ "$recorded_identity" != "$current_identity" ] && reclaim=true
+      fi
+      ;;
   esac
   if [ "$reclaim" = true ]; then
     tomb="${CLAIMS_LOCKDIR}.reap.$$"
     if mv "$CLAIMS_LOCKDIR" "$tomb" 2>/dev/null; then
       rm -rf "$tomb" 2>/dev/null || true
       if mkdir "$CLAIMS_LOCKDIR" 2>/dev/null; then
-        printf '%s\n' "$$" > "$CLAIMS_LOCKDIR/pid" &&
-          date +%s > "$CLAIMS_LOCKDIR/acquired_at" || {
+        _claims_lock_record_owner || {
           rm -rf "$CLAIMS_LOCKDIR" 2>/dev/null || true
           return 1
         }

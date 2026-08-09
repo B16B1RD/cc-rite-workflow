@@ -164,7 +164,7 @@ echo "=== TC-16: flock-absent concurrent stale-STEAL → exactly one 'claimed' =
 # must preserve the same exactly-one contract as TC-14.
 noflock_stub=$(mktemp -d)
 cleanup_dirs+=("$noflock_stub")
-for _c in bash sh cat date dirname git grep head jq mkdir mktemp mv rm sed tr wc sleep; do
+for _c in bash sh cat date dirname git grep head jq mkdir mktemp mv ps rm sed tr wc sleep; do
   _p=$(command -v "$_c" 2>/dev/null) && ln -sf "$_p" "$noflock_stub/$_c"
 done
 run_noflock() { PATH="$noflock_stub" bash "$IC" "$@" 2>/dev/null; }
@@ -195,15 +195,15 @@ else
   assert "TC-16 the other four no-flock contenders aborted" "4" "$_nf_other"
 fi
 
-echo "=== TC-17: stale lock residue is reclaimed despite a live/reused PID ==="
+echo "=== TC-17: stale lock residue is reclaimed after PID reuse ==="
 SID_RESIDUE="abababab-1111-2222-3333-444444444444"
 mk_active "$SID_RESIDUE" 970
 assert "TC-17 owner claims first" "claimed" "$(claim "$SID_RESIDUE" 970)"
 lockdir="$ROOT/.rite/state/issue-claims/.lock.d"
 mkdir "$lockdir"
 printf '%s\n' "$$" > "$lockdir/pid"
-printf '%s\n' "$(( $(date +%s) - 60 ))" > "$lockdir/acquired_at"
-assert "TC-17 release reclaims expired residue and succeeds" "released" "$(release "$SID_RESIDUE" 970)"
+printf '%s\n' 'different process start identity' > "$lockdir/process_start"
+assert "TC-17 release reclaims reused-PID residue and succeeds" "released" "$(release "$SID_RESIDUE" 970)"
 assert "TC-17 claim is removed after residue recovery" "free" "$(check "$SID_RESIDUE" 970)"
 
 echo "=== TC-18: malformed/non-positive lock PID is reclaimable ==="
@@ -211,7 +211,7 @@ mk_active "$SID_RESIDUE" 971
 assert "TC-18 owner claims first" "claimed" "$(claim "$SID_RESIDUE" 971)"
 mkdir "$lockdir"
 printf '%s\n' '%s' > "$lockdir/pid"
-printf '%s\n' "$(date +%s)" > "$lockdir/acquired_at"
+printf '%s\n' 'malformed owner' > "$lockdir/process_start"
 assert "TC-18 malformed PID residue is reclaimed" "released" "$(release "$SID_RESIDUE" 971)"
 assert "TC-18 claim is removed after malformed residue recovery" "free" "$(check "$SID_RESIDUE" 971)"
 
