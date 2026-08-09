@@ -2,6 +2,7 @@
 title: "Bash tool 境界を跨ぐ値は [CONTEXT] sentinel として明示 emit する"
 domain: "patterns"
 promote: rite-plugin
+reference: "plugins/rite/references/wiki-promotions/patterns/bash-cross-boundary-emit-explicit-context.md"
 created: "2026-04-30T01:58:00+00:00"
 updated: "2026-05-19T12:30:00Z"
 sources:

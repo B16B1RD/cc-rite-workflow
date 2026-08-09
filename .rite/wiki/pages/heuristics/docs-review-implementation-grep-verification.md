@@ -2,6 +2,7 @@
 title: "Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする"
 domain: "heuristics"
 promote: rite-plugin
+reference: "plugins/rite/references/wiki-promotions/heuristics/docs-review-implementation-grep-verification.md"
 created: "2026-05-26T00:00:00Z"
 updated: "2026-07-13T17:35:00+09:00"
 sources:

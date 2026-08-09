@@ -2,6 +2,7 @@
 title: "LLM substitute placeholder は bash residue gate で fail-fast 化する"
 domain: "patterns"
 promote: rite-plugin
+reference: "plugins/rite/references/wiki-promotions/patterns/placeholder-residue-gate-bash-fail-fast.md"
 created: "2026-04-18T12:50:00+00:00"
 updated: "2026-08-05T09:26:00+09:00"
 sources:

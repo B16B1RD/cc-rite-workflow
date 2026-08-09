@@ -2,6 +2,7 @@
 title: "Variable Rename が Sentinel Literal Contract を汚染する"
 domain: "anti-patterns"
 promote: rite-plugin
+reference: "plugins/rite/references/wiki-promotions/anti-patterns/variable-rename-contaminates-sentinel-literal-contract.md"
 created: "2026-05-18T00:34:00Z"
 updated: "2026-05-18T00:34:00Z"
 sources:

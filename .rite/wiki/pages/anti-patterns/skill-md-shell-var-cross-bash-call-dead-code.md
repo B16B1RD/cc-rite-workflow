@@ -3,6 +3,7 @@ type: "anti-patterns"
 title: "SKILL.md 新規セクションでシェル変数を Bash 呼び出し間の値受け渡しに使うと dead code 化する"
 domain: "anti-patterns"
 promote: rite-plugin
+reference: "plugins/rite/references/wiki-promotions/anti-patterns/skill-md-shell-var-cross-bash-call-dead-code.md"
 description: "SKILL.md（プロンプト実行体）の新規セクションで、別 Bash tool 呼び出しをまたぐ値受け渡しにシェル変数（$var）を使うと、Bash ツール呼び出し間でシェル状態が保持されないため常に空文字になり、依存する検出ロジック全体が dead code 化する。同一ファイル内に既存規約が明記されていても、近傍コードを確認せず新規セクションを書くと典型的にこの非対称が発生する。"
 created: "2026-07-23T06:38:31Z"
 updated: "2026-07-23T06:38:31Z"

@@ -3,6 +3,7 @@ type: "anti-patterns"
 title: "「後続ステップで生成するものに検査を適用せよ」を生成地点より前に置くと一度も実行されない"
 domain: "anti-patterns"
 promote: rite-plugin
+reference: "plugins/rite/references/wiki-promotions/anti-patterns/instruction-placed-before-its-execution-point-never-fires.md"
 description: "線形に実行する LLM は、対象がまだ存在しない地点に置かれた指示を、対象が生成される地点で思い出さない。検査の指示は実行地点（生成コードの直前）に置くか、実行地点側にポインタを張る。移設できないならスコープから外して削除するほうが、実行されない指示を残すより良い。"
 created: "2026-07-30T15:40:55Z"
 updated: "2026-07-30T15:40:55Z"

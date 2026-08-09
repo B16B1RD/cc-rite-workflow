@@ -3,6 +3,7 @@ type: "patterns"
 title: "散文契約の静的 pin には weakened probe による positive control を課す（見出しラベルで充足する pin を構造的に排除する）"
 domain: "patterns"
 promote: rite-plugin
+reference: "plugins/rite/references/wiki-promotions/patterns/prose-pin-requires-positive-control.md"
 description: "散文を契約として grep で pin すると、命題ではなく見出しラベルや語彙にマッチして意味を反転させても緑のまま通る。pin 自身に positive control（意味を弱めた probe に一致しないこと）を課すと、この欠陥クラスが自動検出される。あわせて pin の scope・単位・対象文字列の選び方に規律が要る。"
 created: "2026-07-26T10:05:51Z"
 updated: "2026-08-08T17:40:00+09:00"

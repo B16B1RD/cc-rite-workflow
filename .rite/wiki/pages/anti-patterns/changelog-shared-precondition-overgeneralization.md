@@ -3,6 +3,7 @@ type: "anti-patterns"
 title: "複数の独立した制約を1つの共有前提条件に総称すると片方だけの前提差異が握り潰される"
 domain: "anti-patterns"
 promote: rite-plugin
+reference: "plugins/rite/references/wiki-promotions/anti-patterns/changelog-shared-precondition-overgeneralization.md"
 description: "CHANGELOG やドキュメントで、実際には異なる依存条件を持つ複数の事象を1つの前提条件（例: 特定機能の有効化）でまとめて総称すると、片方だけがその前提に依存するという粒度差が失われる。"
 created: "2026-07-21T16:45:00+09:00"
 updated: "2026-07-21T16:45:00+09:00"

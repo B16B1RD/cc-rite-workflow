@@ -2,6 +2,7 @@
 title: "Success-only Sentinel Design — sub-skill abort path sentinel 未定義"
 domain: "anti-patterns"
 promote: rite-plugin
+reference: "plugins/rite/references/wiki-promotions/anti-patterns/success-only-sentinel-design.md"
 created: "2026-05-14T05:30:00+00:00"
 updated: "2026-05-14T05:30:00+00:00"
 sources:
