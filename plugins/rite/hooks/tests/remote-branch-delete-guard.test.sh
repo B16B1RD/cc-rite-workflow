@@ -15,8 +15,8 @@
 # delete_branch_on_merge: true の環境 (merge 時にサーバサイドで head が削除済み) では
 # cleanup が完全に成功しているのに `error: unable to delete ...` を 2 行出していた。
 #
-# TC 対応 (Issue #2016 Section 7)。実行順は TC-0 → 1 → 2 → 2b → 3 → 4 → 6 → 5 で、TC-5 だけ
-# 番号順から外れる (precondition が「対象ブランチが origin に不在」で前段 TC の後始末に依存する)。
+# TC 対応 (Issue #2016 / #2027)。実行順は TC-0 → 1 → 2 → 2b → 3 → 3b → 7 → 7b → 7c →
+# 8 → 9 → 4 → 6 → 5。TC-5 は precondition が前段 TC の後始末に依存するため最後に置く。
 # - TC-0              : git ls-remote --heads が ref 不在でも rc=0 を返す前提の pin
 #                      (修正前の && ガードが常に成立していたことの根拠)
 # - TC-1 = T-01 (AC-1): ref 不在 → push --delete を呼ばず REMOTE_BRANCH_ALREADY_ABSENT を emit
@@ -35,6 +35,8 @@
 #                      (emitter だけ検証して consumer が無防備になる穴を塞ぐ)
 # - TC-7       (#2016 cycle 3): marker のデリミタ文字 (`;` `=`) や空値を含むブランチ名は
 #                      fail-fast で弾き、削除を試行せず sentinel marker で fallback へ倒す
+# - TC-7b/7c   (#2027): remote の非 canonical/非合法名、mktemp 失敗、awk 異常終了を実行時に pin
+# - TC-8/9     (#2027): local の削除未試行、非 canonical 名、存在判定不能を実行時に pin
 # - TC-5 = T-04       : 抽出した実物のガードから完全一致検証を弱めた mutant で TC-1 相当が
 #                      落ちる (完全一致検証が load-bearing であることの実証)
 #
@@ -73,8 +75,10 @@ BRANCH="fix/issue-2016-sample"
 # デリミタ検査 → 存在確認 → rc 分岐)、最初の `^esac$` で切ると内側の case までしか取れず
 # `fi ;; esac` が落ちて構文エラーになる。fence 終端なら入れ子の深さに依存しない。
 extract_guard_as() {
+  local _replacement
+  _replacement=$(printf '%s' "$1" | sed 's/[&|\\]/\\&/g')
   awk '/^# リモートブランチ削除/{f=1} f && /^```$/{exit} f{print}' "$CLEANUP_MD" \
-    | sed -e "s|{branch_name}|$1|g"
+    | sed -e "s|{branch_name}|$_replacement|g"
 }
 extract_guard() { extract_guard_as "$BRANCH"; }
 # ローカル削除ブロックの抽出。リモート側と別アンカーが要る — `# リモートブランチ削除` を開始
@@ -86,8 +90,10 @@ extract_local_guard_raw() {
   awk '/^## ステップ 5: ローカル \/ リモートブランチを削除/{s=1} s && /^```bash$/{f=1; next} f && /^# リモートブランチ削除/{exit} f{print}' "$CLEANUP_MD"
 }
 extract_local_guard_as() {
+  local _replacement
+  _replacement=$(printf '%s' "$1" | sed 's/[&|\\]/\\&/g')
   extract_local_guard_raw \
-    | sed -e "s|{branch_name}|$1|g" -e "s|{pr_merged}|true|g" -e "s|{plugin_root}|$TEST_DIR/no-plugin|g"
+    | sed -e "s|{branch_name}|$_replacement|g" -e "s|{pr_merged}|true|g" -e "s|{plugin_root}|$TEST_DIR/no-plugin|g"
 }
 GUARD_SNIPPET="$TEST_DIR/guard.sh"
 extract_guard > "$GUARD_SNIPPET"
@@ -248,7 +254,7 @@ CALL_LOG="$TEST_DIR/git-calls.log"
 mkdir -p "$BIN_DIR"
 cat > "$BIN_DIR/git" <<EOF
 #!/bin/bash
-if [ "\${1:-}" = "push" ]; then printf '%s\n' "push \$*" >> "$CALL_LOG"; fi
+if [ "\${1:-}" = "push" ] || [ "\${1:-}" = "branch" ]; then printf '%s\n' "\$*" >> "$CALL_LOG"; fi
 exec "$REAL_GIT" "\$@"
 EOF
 chmod +x "$BIN_DIR/git"
@@ -270,6 +276,7 @@ push_delete_called() {
     *) echo "FATAL: CALL_LOG の grep が IO エラー (rc=$rc): $CALL_LOG" >&2; exit 1 ;;
   esac
 }
+branch_delete_called() { grep -qE '^branch -[dD]( | -- )' "$CALL_LOG"; }
 
 # 退避 stderr のデリミタ区間が **列 0 に到達していない** ことを検査する。SKILL.md は
 # 「デリミタは可読性の補助であり、data 自身が終端行を騙る経路を塞ぐ security boundary は
@@ -280,10 +287,10 @@ push_delete_called() {
 delimited_block_indented() {
   local _text="$1" _label="$2"
   printf '%s\n' "$_text" | awk -v b="--- $_label stderr begin ---" -v e="--- $_label stderr end ---" '
-    index($0, b) { f = 1; next }
-    index($0, e) { f = 0; next }
+    index($0, b) { f = 1; begin_count++; next }
+    index($0, e) { f = 0; end_count++; next }
     f && /^[^[:space:]]/ { bad = 1 }
-    END { exit bad }
+    END { exit (bad || begin_count != 1 || end_count != 1 || f) }
   '
 }
 # Positive control。本検査は negative assertion (列 0 の行が無ければ PASS) のため、検出器が壊れると
@@ -292,6 +299,11 @@ delimited_block_indented() {
 _indent_probe=$'--- push stderr begin ---\nnot-indented\n--- push stderr end ---'
 if delimited_block_indented "$_indent_probe" "push"; then
   echo "FAIL: インデント検出器が既知の違反 (列 0 の行) を報告しません — 以降のインデント検査は vacuous です"
+  exit 1
+fi
+_missing_delimiter_probe=$'not-indented'
+if delimited_block_indented "$_missing_delimiter_probe" "push"; then
+  echo "FAIL: インデント検出器がデリミタ不在を PASS しました — 区間検査が vacuous です"
   exit 1
 fi
 
@@ -559,6 +571,42 @@ else
   pass "TC-7 (契約外のブランチ名は削除を試行せず sentinel で fallback へ倒す)"
 fi
 
+echo "TC-7b: remote invalid/non-canonical names and mktemp failure are fail-fast"
+tc7b_fail=""
+for _bad in "fix/trailing " "origin/foo"; do
+  _bad_snippet="$TEST_DIR/guard-bad-${RANDOM}.sh"
+  extract_guard_as "$_bad" > "$_bad_snippet"
+  out=$(run_guard "$_bad_snippet")
+  printf '%s' "$out" | grep -q '^\[CONTEXT\] REMOTE_BRANCH_CHECK_FAILED=1' \
+    || tc7b_fail="remote bad name が CHECK_FAILED にならない: $_bad (出力: '$out')"
+  [ -z "$tc7b_fail" ] && push_delete_called && tc7b_fail="remote bad name で push delete が呼ばれた: $_bad"
+done
+if [ -z "$tc7b_fail" ]; then
+  : > "$CALL_LOG"
+  out=$(TMPDIR="$TEST_DIR/does-not-exist" PATH="$BIN_DIR:$PATH" bash "$GUARD_SNIPPET" 2>&1)
+  printf '%s' "$out" | grep -q 'rc=mktemp-failed' || tc7b_fail="mktemp 失敗が marker で surface されない (出力: '$out')"
+  [ -z "$tc7b_fail" ] && push_delete_called && tc7b_fail="mktemp 失敗時に push delete が呼ばれた"
+fi
+if [ -n "$tc7b_fail" ]; then fail "TC-7b: $tc7b_fail"; else pass "TC-7b (remote preflight/mktemp failure は削除未試行)"; fi
+
+echo "TC-7c: exact-ref awk failure is CHECK_FAILED, not ALREADY_ABSENT"
+cat > "$BIN_DIR/awk" <<'EOF'
+#!/bin/bash
+exit 2
+EOF
+chmod +x "$BIN_DIR/awk"
+out=$(run_guard "$GUARD_SNIPPET")
+rm -f "$BIN_DIR/awk"
+if ! printf '%s' "$out" | grep -q 'reason=ref-match-awk-2'; then
+  fail "TC-7c: awk rc=2 が reason 付き CHECK_FAILED にならない (出力: '$out')"
+elif printf '%s' "$out" | grep -q 'REMOTE_BRANCH_ALREADY_ABSENT'; then
+  fail "TC-7c: awk 異常終了を既削除へ丸めた"
+elif push_delete_called; then
+  fail "TC-7c: awk 異常終了時に push delete が呼ばれた"
+else
+  pass "TC-7c (awk 異常終了を判定不能として surface)"
+fi
+
 # ─── TC-8 (#2016 cycle 4): ローカル削除ブロックの事前検証と存在確認 rc 分岐 ───
 # ローカルブロックは cycle 3 まで抽出対象外で、fail-fast と rc 3 分岐のどちらも無検証だった
 # (実測で両方を revert しても全 TC 緑)。emitter 側を実行して pin する。
@@ -576,6 +624,7 @@ printf '%s' "$out" | grep -q '^\[CONTEXT\] BRANCH_CHECK_FAILED=1; branch=<unsupp
   || tc8_fail="デリミタ含みの名前で sentinel marker が行頭に出ていない (出力: '$out')"
 [ -z "$tc8_fail" ] && { printf '%s' "$out" | grep -q 'branch=fix/issue-2016;branch=other' \
   && tc8_fail="marker 行に実ブランチ名が載っている (誤帰属経路が開いたまま)"; }
+[ -z "$tc8_fail" ] && branch_delete_called && tc8_fail="デリミタ含み入力で git branch delete が呼ばれた"
 # (b) 空名 -> sentinel。必ず失敗する処方 (`git branch -D ""`) を出さない
 if [ -z "$tc8_fail" ]; then
   out=$(run_local "")
@@ -591,8 +640,16 @@ if [ -z "$tc8_fail" ]; then
     || tc8_fail="refname 非合法な名前が invalid-refname として surface されていない (出力: '$out')"
   [ -z "$tc8_fail" ] && { printf '%s' "$out" | grep -q 'BRANCH_ALREADY_ABSENT' \
     && tc8_fail="refname 非合法な名前を「既削除 = 正常系」に丸めた (削除していないのに完了と報告する)"; }
+  [ -z "$tc8_fail" ] && branch_delete_called && tc8_fail="refname 非合法入力で git branch delete が呼ばれた"
 fi
-# (d) 本当に不在 -> 正常系
+# (d) remote/ref prefix は syntactically valid でも PR head の短い名前ではない
+if [ -z "$tc8_fail" ]; then
+  out=$(run_local "origin/foo")
+  printf '%s' "$out" | grep -q 'rc=non-canonical-branch-name' \
+    || tc8_fail="origin/ prefix が non-canonical として拒否されていない (出力: '$out')"
+  [ -z "$tc8_fail" ] && branch_delete_called && tc8_fail="non-canonical 入力で git branch delete が呼ばれた"
+fi
+# (e) 本当に不在 -> 正常系
 if [ -z "$tc8_fail" ]; then
   out=$(run_local "fix/definitely-absent")
   printf '%s' "$out" | grep -q '^\[CONTEXT\] BRANCH_ALREADY_ABSENT=1; branch=fix/definitely-absent' \

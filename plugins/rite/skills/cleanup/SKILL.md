@@ -622,6 +622,9 @@ case "{branch_name}" in
   *[\;=]*)
     echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=marker-delimiter-in-branch-name" >&2
     echo "WARNING: ブランチ名に marker のデリミタ文字 (; =) が含まれるため、ローカルブランチの削除を試行していません。手動で削除してください: git branch -D \"{branch_name}\"" >&2 ;;
+  origin/*|refs/*)
+    echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=non-canonical-branch-name" >&2
+    echo "WARNING: remote/ref prefix を含む名前はローカル head 名として扱えないため削除を試行していません。PR の headRefName を確認してください。" >&2 ;;
   *)
 # rc を捕捉して **rc=1（不在）だけ**を「既削除」に倒す。否定付き if の短絡形だと rc=128（リポジトリ外での
 # 実行等）まで「不在」に丸め、ローカルブランチが残ったまま完了と報告される（リモート側が rc=0/2
@@ -640,12 +643,21 @@ if [ "$_cf_rc" -ne 0 ]; then
   echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=invalid-refname" >&2
   echo "WARNING: ブランチ名が refname として非合法なため、ローカルブランチの存在を判定できず削除を試行していません (git check-ref-format rc=${_cf_rc})。" >&2
 elif [ "$_sr_rc" -eq 1 ]; then
+  # show-ref の rc=1 は不在だけでなく ref store 障害でも返りうる。全 local heads の走査が正常完了
+  # した場合だけ不在と確定し、走査不能は CHECK_FAILED へ倒す。
+  _fr_err=$(LC_ALL=C git for-each-ref --format='%(refname)' refs/heads 2>&1 >/dev/null); _fr_rc=$?
+  if [ "$_fr_rc" -ne 0 ]; then
+    echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=ref-store-${_fr_rc}" >&2
+    echo "WARNING: ローカル ref store を走査できないため削除を試行していません:" >&2
+    printf '%s\n' "$_fr_err" | tr -d '\r' | sed 's/^/  /' >&2
+  else
   # 既に不在（cleanup の再実行 / 別セッションで削除済み）は正常系。存在確認せず `git branch -d` に
   # 渡すと "branch not found" で失敗して下の `*)` に落ち、BRANCH_DELETE_FAILED として
   # 「削除に失敗。`git branch -D` で手動削除」という**必ず失敗する処方**を出す。これはリモート側で
   # REMOTE_BRANCH_ALREADY_ABSENT として正常系に倒した症状と同型で、ローカル側だけ残っていた
   # （#2016）。git の診断メッセージ文字列に依存しないよう show-ref で判定する。
   echo "[CONTEXT] BRANCH_ALREADY_ABSENT=1; branch={branch_name}"
+  fi
 elif [ "$_sr_rc" -ne 0 ]; then
   # 存在有無が不明。削除を試行せず未完了として surface する（安全側）。
   echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=${_sr_rc}" >&2
@@ -653,7 +665,7 @@ elif [ "$_sr_rc" -ne 0 ]; then
   echo "--- show-ref stderr begin ---" >&2
   printf '%s\n' "${_sr_err}" | tr -d '\r' | sed 's/^/  /' >&2
   echo "--- show-ref stderr end ---" >&2
-elif del_err=$(LC_ALL=C git branch -d {branch_name} 2>&1); then
+elif del_err=$(LC_ALL=C git branch -d -- "{branch_name}" 2>&1); then
   echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}"
 else
   case "$del_err" in
@@ -674,7 +686,7 @@ else
     *"not fully merged"*)
       if [ "{pr_merged}" = "true" ]; then
         # squash merge の残渣 — PR は merged 済みなので強制削除して安全。
-        LC_ALL=C git branch -D {branch_name} >/dev/null 2>&1 \
+        LC_ALL=C git branch -D -- "{branch_name}" >/dev/null 2>&1 \
           && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=squash-merged" \
           || echo "[CONTEXT] BRANCH_DELETE_FAILED=1; branch={branch_name}" >&2
       else
@@ -730,6 +742,9 @@ case "{branch_name}" in
     echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=marker-delimiter-in-branch-name" >&2
     echo "WARNING: ブランチ名に marker のデリミタ文字 (; =) が含まれるため、リモート削除の自動判定を行いません。手動で削除してください: git push origin --delete \"refs/heads/{branch_name}\"" >&2
     ;;
+  origin/*|refs/*)
+    echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=non-canonical-branch-name" >&2
+    echo "WARNING: remote/ref prefix を含む名前は PR head の短い branch 名ではないためリモート削除を試行していません。" >&2 ;;
   *)
 # refname 非合法な値は ls-remote の完全一致検証が決して一致せず「既削除 = 正常系」へ倒れるため、
 # ローカル側と対称に先に弾く（削除していないのに完了と報告するのを防ぐ）。
