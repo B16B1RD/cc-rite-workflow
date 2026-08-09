@@ -619,6 +619,19 @@ fi
 # (実測で両方を revert しても全 TC 緑)。emitter 側を実行して pin する。
 echo "TC-8: local delete block -> fail-fast on invalid names, rc=1 only means absent"
 LOCAL_RUN="$TEST_DIR/local-run.sh"
+# TC-3/3b の retry fixture が git stub を上書きするため、local 検査前に canonical call logger を復元する。
+cat > "$BIN_DIR/git" <<EOF
+#!/bin/bash
+if [ "\${1:-}" = "push" ] || [ "\${1:-}" = "branch" ]; then printf '%s\n' "\$*" >> "$CALL_LOG"; fi
+exec "$REAL_GIT" "\$@"
+EOF
+chmod +x "$BIN_DIR/git"
+: > "$CALL_LOG"
+PATH="$BIN_DIR:$PATH" git branch -D -- definitely-not-a-real-branch >/dev/null 2>&1 || true
+if ! branch_delete_called; then
+  echo "FATAL: branch delete call logger が既知の delete probe を記録しません — TC-8 の negative assertions は vacuous です"
+  exit 1
+fi
 run_local() {
   : > "$CALL_LOG"
   extract_local_guard_as "$1" > "$LOCAL_RUN"
