@@ -145,9 +145,8 @@ fi
 # guarantee that /rite:open → implement.md Edit/Write is unaffected (AC-4).
 [ "$IS_SUBAGENT" = "1" ] || exit 0
 
-# --- Absolute path resolution (join relative against cwd; do NOT collapse `..` lexically) ---
-# `..` is resolved PHYSICALLY by `git -C` / `[ -d ]` below, never by string munging. A lexical
-# collapse (or a raw substring match) would let a reviewer forge an isolation path —
+# --- Absolute path resolution (join relative against cwd, then normalize lexically) ---
+# A raw substring match would let a reviewer forge an isolation path —
 # `<repo>/rite-review-mutation-x/../plugins/rite/hooks.json` re-enters a tracked file, and
 # `<repo>/src/rite-review-mutation-hack.py` embeds the token in a filename — both empirically
 # bypassed the old substring allowlist (Issue #1860 review cycle 1).
@@ -155,6 +154,28 @@ case "$FILE_PATH" in
   /*) ABS_PATH="$FILE_PATH" ;;
   *)  ABS_PATH="${CWD%/}/$FILE_PATH" ;;
 esac
+
+# Match the lexical normalization performed by file-writing clients before
+# they open a path. Do this byte-exactly with parameter expansion: external
+# dirname/readlink-style command substitutions would strip trailing LF bytes.
+# Empty and "." components disappear; ".." pops one component without ever
+# consulting the filesystem. Physical ownership is still resolved below by
+# `[ -d ]` and `git -C`, so symlink components are not canonicalized here.
+_path_rest=${ABS_PATH#/}
+_path_norm=""
+while :; do
+  case "$_path_rest" in
+    */*) _path_component=${_path_rest%%/*}; _path_rest=${_path_rest#*/}; _path_more=1 ;;
+    *)   _path_component=$_path_rest; _path_rest=""; _path_more=0 ;;
+  esac
+  case "$_path_component" in
+    ""|.) ;;
+    ..) _path_norm=${_path_norm%/*} ;;
+    *)  _path_norm="$_path_norm/$_path_component" ;;
+  esac
+  [ "$_path_more" = "1" ] || break
+done
+ABS_PATH=${_path_norm:-/}
 
 # --- Dereference a FINAL-element symlink before isolation scoping (Issue #1864 AC-2) ---
 # The _tdir walk below resolves INTERMEDIATE dirs physically (via `[ -d ]` / `git -C`), but the
@@ -166,12 +187,11 @@ esac
 # here so such a write lands on the real parent .git (→ git-dir deny below) instead.
 #
 # The retarget is LEXICAL on purpose (`readlink` + absolutize a relative target against the
-# link's own directory); it deliberately does NOT canonicalize `..` or intermediate symlinks.
-# That is safe because the _tdir walk immediately below does the physical resolution: `[ -d ]`
-# and `git -C` both chdir, so a target carrying `..` or a directory symlink lands on the REAL
-# tree that owns it — the same property that closes the `..` re-entry forgery for non-symlink
-# targets. So a forged `..` cannot escape here either, and nothing downstream of the walk needs
-# a canonical ABS_PATH — it is only reported (the deny reason and the BLOCKED stderr log); the
+# link's own directory); it does not canonicalize intermediate symlinks. The normalized input
+# has removed `.` / `..`; a relative readlink target may introduce them again, and the _tdir
+# walk immediately below performs that physical resolution: `[ -d ]` and `git -C` both chdir,
+# so a directory symlink or readlink target with `..` lands on the REAL tree
+# that owns it. Nothing downstream needs a canonical ABS_PATH — it is only reported; the
 # decision is made on TARGET_ROOT, which `git -C` produces already-resolved.
 #
 # Why not `realpath` (Issue #2014): it is the one step that would need the target to EXIST.
@@ -246,9 +266,11 @@ fi
 # and resolve `..` physically, so a path carrying a non-existent `..` segment lands on the real
 # parent repo (→ deny), not on a forged isolation dir. Walking to the nearest existing ancestor
 # also covers a brand-new file in a not-yet-created dir (the ancestor still resolves to the repo).
-_tdir=$(dirname "$ABS_PATH")
+_tdir=${ABS_PATH%/*}
+[ -n "$_tdir" ] || _tdir="/"
 while [ -n "$_tdir" ] && [ "$_tdir" != "/" ] && [ ! -d "$_tdir" ]; do
-  _tdir=$(dirname "$_tdir")
+  _tdir=${_tdir%/*}
+  [ -n "$_tdir" ] || _tdir="/"
 done
 [ -d "$_tdir" ] || _tdir="${CWD:-.}"
 # git -C chdir's to the resolved ancestor and reports the worktree toplevel that owns it.

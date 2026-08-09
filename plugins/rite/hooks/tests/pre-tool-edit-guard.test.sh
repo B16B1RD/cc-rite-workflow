@@ -370,6 +370,36 @@ assert_deny "isolation symlink into parent working tree resolved & blocked" "$ou
 rm -f "$ISO_MUT_DIR/evil-into-tree"
 echo ""
 
+# Intermediate directory names ending in LF must survive the ancestor split
+# byte-for-byte. A command substitution around dirname strips that LF and scopes
+# the isolation worktree instead of the parent tree reached by the symlink.
+echo "TC-SYMLINK-lf-intermediate: LF directory symlink into parent tree → deny"
+lf_intermediate=$'dir-link\n'
+mkdir -p "$TEST_REPO/lf-target-dir"
+ln -s "$TEST_REPO/lf-target-dir" "$ISO_MUT_DIR/$lf_intermediate"
+ln -s "$ISO_MUT_DIR/$lf_intermediate/newfile.py" "$ISO_MUT_DIR/evil-lf-intermediate"
+out=$(run_edit_guard "Write" "$ISO_MUT_DIR/evil-lf-intermediate" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") || true
+assert_deny "LF-terminated intermediate directory is preserved and blocked" "$out"
+rm -f "$ISO_MUT_DIR/evil-lf-intermediate" "$ISO_MUT_DIR/$lf_intermediate"
+rmdir "$TEST_REPO/lf-target-dir" || fail "LF intermediate fixture cleanup failed"
+echo ""
+
+# Write-style lexical normalization removes these spellings before opening the
+# path. The hook must make the same decision before testing the final symlink,
+# or it scopes the isolation tree while the normalized write reaches .git.
+echo "TC-SYMLINK-lexical-spellings: trailing /, /. and missing/../ forms → deny"
+ln -s "$TEST_REPO/.git/hooks/pre-commit" "$ISO_MUT_DIR/evil-lexical"
+for lexical_path in \
+  "$ISO_MUT_DIR/evil-lexical/" \
+  "$ISO_MUT_DIR/evil-lexical/." \
+  "$ISO_MUT_DIR/missing/../evil-lexical"
+do
+  out=$(run_edit_guard "Write" "$lexical_path" "$ISO_MUT_DIR" "$SUBAGENT_TRANSCRIPT") || true
+  assert_deny_gitdir "lexically normalized symlink spelling blocked: $lexical_path" "$out"
+done
+rm -f "$ISO_MUT_DIR/evil-lexical"
+echo ""
+
 # A two-link chain: resolving only ONE hop would leave ABS_PATH at `$ISO_MUT_DIR/hop`,
 # landing _tdir back on the isolation root → allow. Pins the loop against a future
 # "just dereference once" simplification (Issue #2014).

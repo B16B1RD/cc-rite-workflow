@@ -2052,6 +2052,14 @@ if [ "$(awk 'END { print NR }' "$_audit_tmp/.rite/logs/bash-guard.log")" = "2" ]
 else
   fail "TC-141 multiline command broke the one-event-per-line audit contract"
 fi
+RITE_STATE_ROOT="$_audit_tmp" jq -n --arg cmd $'gh pr diff 1 --stat\t\033X' \
+  '{tool_name:"Bash",tool_input:{command:$cmd}}' \
+  | RITE_STATE_ROOT="$_audit_tmp" bash "$HOOK" >/dev/null 2>/dev/null || true
+if grep -Fq 'cmd="gh pr diff 1 --stat??X"' "$_audit_tmp/.rite/logs/bash-guard.log"; then
+  pass "TC-141 remaining C0 controls are neutralized in audit records"
+else
+  fail "TC-141 audit record retained raw TAB/ESC controls: $(tail -1 "$_audit_tmp/.rite/logs/bash-guard.log" | cat -v)"
+fi
 rm -rf "$_audit_tmp"
 echo ""
 
