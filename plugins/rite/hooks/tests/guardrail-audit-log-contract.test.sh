@@ -23,7 +23,7 @@ verification_count=$(awk '/^## verification-mode-template$/{mode=1} mode && /^``
 assert "full report template renders audit log exactly once" "1" "$full_count"
 assert "verification report template renders audit log exactly once" "1" "$verification_count"
 assert_grep "collector and schema use canonical reviewer key" "$SKILL" 'guardrail_audit_log.*`reviewer`, `filter_category`'
-assert_grep "schema has durable audit array" "$SCHEMA" '^| `guardrail_audit_log` | array |'
+assert_grep "schema has durable audit array" "$SCHEMA" '^[|] `guardrail_audit_log` [|] array [|]'
 assert_grep "cleanup preserves non-empty audit arrays" "$ARCHIVER" 'guardrail_audit_log.*length > 0'
 
 print_summary
