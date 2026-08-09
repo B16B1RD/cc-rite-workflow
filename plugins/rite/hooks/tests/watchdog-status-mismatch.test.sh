@@ -188,9 +188,11 @@ set +e
   bash "$WATCHDOG_SH" --dry-run >"$T9F_DIR/t9g-stdout" 2>"$T9F_DIR/t9g-stderr")
 t9g_rc=$?
 set -e
-t9g_hex=$(LC_ALL=C od -An -tx1 "$T9F_DIR/t9g-stderr" | tr -d ' \n')
-if [ "$t9g_rc" -eq 0 ] && [[ "$t9g_hex" != *"1b"* ]] && [[ "$t9g_hex" != *"9b"* ]] \
-  && grep -qF 'pr_entry preview: bad?esc' "$T9F_DIR/t9g-stderr"; then
+t9g_preview_hex=$(LC_ALL=C grep -aF 'pr_entry preview:' "$T9F_DIR/t9g-stderr" \
+  | od -An -tx1 | tr -d ' \n')
+if [ "$t9g_rc" -eq 0 ] && [[ "$t9g_preview_hex" != *"1b"* ]] \
+  && [[ "$t9g_preview_hex" != *"9b"* ]] \
+  && [[ "$t9g_preview_hex" == *"6261643f657363c23f757466383f726177"* ]]; then
   PASS=$((PASS + 1)); echo "  ✓ preview preserves exit contract and replaces ESC/UTF-8 C1/raw C1"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-9g: preview leaked control bytes or changed exit contract")
