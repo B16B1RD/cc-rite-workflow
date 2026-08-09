@@ -16,16 +16,26 @@ assert_grep() {
   fi
 }
 
-assert_grep 'audit records five promotions' "$audit" \
-  'Five pages add missing detection work'
-assert_grep 'audit records three shelves' "$audit" \
-  'Three pages are shelved'
+assert_not_grep() {
+  local label=$1 file=$2 pattern=$3
+  if grep -Fq -- "$pattern" "$file"; then
+    printf 'FAIL: %s\n' "$label" >&2
+    failures=$((failures + 1))
+  else
+    printf 'PASS: %s\n' "$label"
+  fi
+}
+
+assert_grep 'audit records six promotions' "$audit" \
+  'Six pages add missing detection work'
+assert_grep 'audit records two shelves' "$audit" \
+  'Two pages are shelved'
 assert_grep 'anchor portability is promoted' "$audit" \
   '| `dogfooding-anchor-hardcode` | mechanized here |'
 assert_grep 'helper aggregation is promoted' "$audit" \
   '| `dry-helper-aggregation-effect-overstate` | mechanized here |'
-assert_grep 'provenance is shelved with enforcement' "$audit" \
-  '| `multi-pr-provenance-aggregation-error` | shelved as already mechanized |'
+assert_grep 'provenance is promoted' "$audit" \
+  '| `multi-pr-provenance-aggregation-error` | mechanized here |'
 assert_grep 'prose-only design is shelved with enforcement' "$audit" \
   '| `prose-design-without-backing-implementation` | shelved as already mechanized |'
 assert_grep 'counterfactual justification is promoted' "$audit" \
@@ -50,7 +60,9 @@ assert_grep 'provenance uses pickaxe per literal' "$reviewer" \
 assert_grep 'counterfactual compares branch outcomes' "$reviewer" \
   'branch outcome and verify that swapping the stages'
 assert_grep 'mechanical test must detect breakage' "$reviewer" \
-  'require a test that fails when the'
+  'invariant is mechanically expressible, require a test that fails when the'
+assert_not_grep 'mechanical test requirement is not negated' "$reviewer" \
+  'do not require a test that fails when the invariant is broken'
 assert_grep 'query semantics rejects wildcard exact match' "$reviewer" \
   'exact-match option; fetch the required state range'
 assert_grep 'query semantics filters structured output' "$reviewer" \
