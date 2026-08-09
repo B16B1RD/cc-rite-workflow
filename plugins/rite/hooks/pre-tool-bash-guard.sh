@@ -761,6 +761,8 @@ CMD_SUMMARY="${CMD_SUMMARY//\"/\\\"}"
 # the deny path remains independent from the JSON fallback helper.
 CMD_SUMMARY="${CMD_SUMMARY//$'\n'/?}"
 CMD_SUMMARY="${CMD_SUMMARY//$'\r'/?}"
+CMD_SUMMARY=$(printf '%s' "$CMD_SUMMARY" | neutralize_ctrl --c0-only) \
+  || CMD_SUMMARY="[control-neutralization-failed]"
 BLOCK_EVENT="[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] bash-guard: BLOCKED pattern=$BLOCKED_PATTERN cmd=\"$CMD_SUMMARY\""
 echo "$BLOCK_EVENT" >&2
 
