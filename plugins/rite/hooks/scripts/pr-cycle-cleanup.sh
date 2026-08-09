@@ -635,7 +635,7 @@ fi
 # 背景: Step 4 の find は (a) maxdepth 1 で `$TMPDIR/rite-review-mutation-*` しか見ない
 # ため `$TMPDIR/claude-*/rite-review-mutation-*` のような入れ子を取りこぼし、(b) 24h age
 # ガードが同一 review サイクル内の残留 (数分〜数時間) を保護し続けて回収しない。実測で
-# `git worktree list` に `/tmp/claude-1000/rite-review-mutation-*` が 8 個残ったのに
+# `git worktree list` に `$TMPDIR/claude-<uid>/rite-review-mutation-*` が 8 個残ったのに
 # `mutation_worktrees=0` と報告された (PR #2142)。
 #
 # 本ステップは `git worktree list --porcelain` を権威として:

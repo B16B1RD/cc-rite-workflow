@@ -17,7 +17,7 @@
 #     "projects": {
 #       "enabled": true|false,
 #       "project_number": 2,
-#       "owner": "B16B1RD",
+#       "owner": "{owner}",
 #       "status": "Todo",            # default: "Todo"
 #       "priority": "High|Medium|Low",
 #       "complexity": "XS|S|M|L|XL",

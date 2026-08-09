@@ -3154,7 +3154,7 @@ Issue creation failure reasons: (`body_tmpfile_write_failure` / `empty_body_tmpf
 |-------------|--------|---------|
 | `{projects_enabled}` | `rite-config.yml` → `github.projects.enabled` | `true` |
 | `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
-| `{owner}` | `rite-config.yml` → `github.projects.owner` | `B16B1RD` |
+| `{owner}` | `rite-config.yml` → `github.projects.owner` | `{owner}` |
 | `{iteration_mode}` | `rite-config.yml` → `iteration.enabled` が `true` かつ `iteration.auto_assign` が `true` なら `"auto"`、それ以外は `"none"` | `"none"` |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) | `/home/user/.claude/plugins/rite` |
 

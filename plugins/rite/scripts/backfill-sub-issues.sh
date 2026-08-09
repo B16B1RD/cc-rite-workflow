@@ -12,10 +12,10 @@
 #
 # Examples:
 #   # Specific Issues
-#   bash backfill-sub-issues.sh B16B1RD cc-rite-workflow 503 504 505 506
+#   bash backfill-sub-issues.sh {owner} {repo} 503 504 505 506
 #
 #   # Auto-discover all open Issues with `Parent Issue: #` body meta
-#   bash backfill-sub-issues.sh B16B1RD cc-rite-workflow
+#   bash backfill-sub-issues.sh {owner} {repo}
 #
 # Output:
 #   Per-child summary lines on stdout. A final tally is printed at exit.
