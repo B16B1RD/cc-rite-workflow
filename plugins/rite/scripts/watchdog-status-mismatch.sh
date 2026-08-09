@@ -206,7 +206,7 @@ while IFS= read -r pr_entry; do
   head_ref=$(printf '%s' "$pr_entry" | jq -r '.headRefName // empty' 2>/dev/null) || head_ref=""
   if [ -z "$pr_number" ] || [ -z "$is_draft" ]; then
     if [ "$QUIET" != "true" ]; then
-      echo "[watchdog] ⚠️ jq parse failed for PR entry, skipping (pr_entry preview: $(printf '%s' "$pr_entry" | head -c 80))" >&2
+      echo "[watchdog] ⚠️ jq parse failed for PR entry, skipping (pr_entry preview: $(printf '%s' "$pr_entry" | head -c 80 | neutralize_ctrl))" >&2
     fi
     continue
   fi
@@ -256,8 +256,8 @@ query($owner: String!, $repo: String!, $number: Int!) {
     # gh / jq pipeline 失敗 — silent skip せず warnings に記録 (debug 可能性向上)
     # 4-site stderr root cause attribution: gh_stderr と jq_stderr を独立表示
     if [ "$QUIET" != "true" ]; then
-      gql_err_oneline=$(head -c 200 "${gql_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
-      jq_err_oneline=$(head -c 200 "${jq_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+      gql_err_oneline=$(head -c 200 "${gql_err:-/dev/null}" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl)
+      jq_err_oneline=$(head -c 200 "${jq_err:-/dev/null}" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl)
       echo "[watchdog] ⚠️ gh api graphql or jq failed for Issue #$issue_number (gh_stderr=$gql_err_oneline, jq_stderr=$jq_err_oneline)" >&2
     fi
     current_status=""
@@ -287,7 +287,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
       else
         RECONCILE_FAILURES=$((RECONCILE_FAILURES + 1))
         if [ -n "$reconcile_err" ] && [ -s "$reconcile_err" ]; then
-          reconcile_stderr_oneline=$(head -c 200 "$reconcile_err" | tr '\n' ' ')
+          reconcile_stderr_oneline=$(head -c 200 "$reconcile_err" | tr '\n' ' ' | neutralize_ctrl)
           if [ "$QUIET" != "true" ]; then
             echo "[watchdog] ⚠️ reconcile failed for Issue #$issue_number: $reconcile_stderr_oneline" >&2
           fi

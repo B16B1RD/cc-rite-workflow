@@ -139,8 +139,8 @@ echo "=== TC-3: head -c byte 指向 embed site は全て neutralize_ctrl を経�
 # (mutation 検証で実証)。そのため head -c 全行を sweep し、非 emission の
 # 既知 site のみ明示 allowlist で除外する fail-closed 設計とする。新規の head -c が
 # 非 emission 用途なら本 allowlist に追記すること。
-violations_c=$(grep -rnE 'head -c [0-9]+' "$HOOKS_DIR" --include='*.sh' \
-  | grep -v "$HOOKS_DIR/tests/" \
+violations_c=$(grep -rnE 'head -c [0-9]+' "${SWEEP_DIRS[@]}" --include='*.sh' \
+  | grep -v '/tests/' \
   | grep -v 'neutralize_ctrl' \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
   | grep -v 'work-memory-lock.sh:.*lock_pid=' \
@@ -190,8 +190,8 @@ echo "=== TC-4: cat full-file 直接 emission site は全て neutralize_ctrl を
 #     現状 hooks の **stderr 向け cat heredoc** は全て redirect-first のため実害はない
 #     (stdout / tmpfile 向けの body-first heredoc は主 regex の `>&2` 要件で元々マッチしない。
 #     追加で stderr 向け body-first heredoc を書く場合は本 allowlist を拡張する)。
-violations_cat=$(grep -rnE '(^[[:space:]]*|[;|&{][[:space:]]*)cat [^|;&]*(1)?>&2' "$HOOKS_DIR" --include='*.sh' \
-  | grep -v "$HOOKS_DIR/tests/" \
+violations_cat=$(grep -rnE '(^[[:space:]]*|[;|&{][[:space:]]*)cat [^|;&]*(1)?>&2' "${SWEEP_DIRS[@]}" --include='*.sh' \
+  | grep -v '/tests/' \
   | grep -v 'neutralize_ctrl' \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
   | grep -vE 'cat [^|;&]*(1)?>&2[[:space:]]*<<' \
