@@ -91,6 +91,23 @@ out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "prior exempt consumer cannot hide later producer" "1" "$rc"
 assert "producer is cut at the command-list boundary" "1" "$(printf '%s\n' "$out" | grep -c 'producer before grep -q: stream_many$' || true)"
 
+printf '%s\n' 'set -o pipefail; echo done & async_stream | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "async-list boundary cannot hide later producer" "1" "$rc"
+assert "single ampersand cuts the immediate producer" "1" "$(printf '%s\n' "$out" | grep -c 'producer before grep -q: async_stream$' || true)"
+
+printf '%s\n' \
+  'set -o pipefail' \
+  'unused() {' \
+  '  set +o pipefail' \
+  '  function_inner_disabled | grep -q x' \
+  '}' \
+  'function_outer_active | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "function body state is analyzed without leaking" "1" "$rc"
+assert "function-local deactivation suppresses inner pipeline" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*function_inner_disabled' || true)"
+assert "function definition restores outer state" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*function_outer_active' || true)"
+
 printf '%s\n' 'set -o pipefail' 'stream_many | grep -q x # drift-check-ignore: bounded fixture' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "ignore marker suppresses finding" "0" "$rc"
