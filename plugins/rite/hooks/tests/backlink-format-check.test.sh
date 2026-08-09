@@ -72,4 +72,21 @@ else
   fail "P2 finding tag missing: $p2_out"
 fi
 
+# --- Cross-tree --all self-exclusion -----------------------------------------
+# /rite:lint can execute the checker from plugin_root while scanning a separate
+# session worktree. The scanned tree contains its own same-path copy, whose awk
+# regex literal would be a P2 false positive unless exclusion is tree-relative.
+mkdir -p "$SANDBOX/plugins/rite/hooks/scripts"
+cp "$SCRIPT" "$SANDBOX/plugins/rite/hooks/scripts/backlink-format-check.sh"
+printf '%s\n' '#!/usr/bin/env bash' \
+  > "$SANDBOX/plugins/rite/hooks/scripts/clean.sh"
+assert "external checker excludes scanned-tree self copy" "0" \
+  "$(bash "$SCRIPT" --repo-root "$SANDBOX" --all --quiet >/dev/null 2>&1; echo $?)"
+
+# Excluding self must not suppress sibling findings in the scanned tree.
+printf '%s\n' '<!-- Downstream reference: lint.md Phase 8.3 -->' \
+  > "$SANDBOX/plugins/rite/hooks/scripts/violation.sh"
+assert "cross-tree --all still scans sibling scripts" "1" \
+  "$(bash "$SCRIPT" --repo-root "$SANDBOX" --all --quiet >/dev/null 2>&1; echo $?)"
+
 print_summary "backlink-format-check.sh"
