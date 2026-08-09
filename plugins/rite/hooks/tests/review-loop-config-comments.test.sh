@@ -6,13 +6,23 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 CONFIG="$ROOT_DIR/rite-config.yml"
+LOOP_BLOCK="$(mktemp "${TMPDIR:-/tmp}/rite-review-loop-comments.XXXXXX")"
+trap 'rm -f -- "$LOOP_BLOCK"' EXIT
+
+# `review.loop` は 2-space indent、配下のキーは 4-space indent。次の同レベル
+# mapping key の直前までに限定し、同じ文言が別 section にあっても通さない。
+awk '
+  /^  loop:[[:space:]]*$/ { in_loop = 1 }
+  in_loop && seen_loop && /^  [[:alnum:]_]+:/ { exit }
+  in_loop { print; seen_loop = 1 }
+' "$CONFIG" > "$LOOP_BLOCK"
 
 PASS=0
 FAIL=0
 
 assert_grep() {
   local name="$1" pattern="$2"
-  if LC_ALL=C grep -qE -- "$pattern" "$CONFIG"; then
+  if LC_ALL=C grep -qE -- "$pattern" "$LOOP_BLOCK"; then
     echo "PASS: $name"
     PASS=$((PASS + 1))
   else
@@ -23,7 +33,7 @@ assert_grep() {
 
 assert_not_grep() {
   local name="$1" pattern="$2"
-  if LC_ALL=C grep -qE -- "$pattern" "$CONFIG"; then
+  if LC_ALL=C grep -qE -- "$pattern" "$LOOP_BLOCK"; then
     echo "FAIL: $name"
     FAIL=$((FAIL + 1))
   else
@@ -32,6 +42,7 @@ assert_not_grep() {
   fi
 }
 
+assert_grep "review.loop block was extracted" '^  loop:[[:space:]]*$'
 assert_grep "normal exit is zero blocking findings with the severity SoT" \
   '正常出口は 0 blocking findings のみ.*plugins/rite/references/severity-levels\.md.*§実測必須ゲート'
 assert_grep "circuit breaker documents trend divergence" \
