@@ -109,17 +109,32 @@ def syntax_only(line):
         out.append(c)
     return "".join(out)
 
-def line_pipefail_state(line, inherited):
-    """Apply the last pipefail toggle in this command list for this line."""
-    state=inherited
-    pattern=r'(?<![A-Za-z0-9_])set\s+([+-][A-Za-z]*o[A-Za-z]*|[+-]o)\s+pipefail(?=\s|;|\)|$)'
+toggle_re=re.compile(r'(?<![A-Za-z0-9_])set\s+([+-][A-Za-z]*o[A-Za-z]*|[+-]o)\s+pipefail(?=\s|;|\)|$)')
+
+def scan_toggle_state(syntax, inherited):
+    """Evaluate toggles, restoring state when a parenthesized scope closes."""
+    state=inherited; persistent=inherited; stack=[]; i=0
+    while i < len(syntax):
+        if syntax[i] == "(": stack.append(state); i+=1; continue
+        if syntax[i] == ")":
+            if stack: state=stack.pop()
+            i+=1; continue
+        match=toggle_re.match(syntax, i)
+        if match:
+            state=match.group(1).startswith("-")
+            if not stack: persistent=state
+            i=match.end(); continue
+        i+=1
+    return state, persistent
+
+def line_pipefail_states(line, inherited):
+    """Return state at the first pipeline and top-level state after the line."""
     syntax=syntax_only(line)
-    # A toggle after the pipeline cannot affect the pipeline retroactively.
     raw_pipes=[m.start() for m in re.finditer(r'(?<!\|)\|(?!\|)', syntax)]
-    before_pipeline=syntax[:raw_pipes[0]] if raw_pipes else syntax
-    for match in re.finditer(pattern, before_pipeline):
-        state=match.group(1).startswith("-")
-    return state
+    cutoff=raw_pipes[0] if raw_pipes else len(syntax)
+    effective,_=scan_toggle_state(syntax[:cutoff], inherited)
+    _,persistent=scan_toggle_state(syntax, inherited)
+    return effective,persistent
 
 def exempt(prod, pipeline_len):
     p=prod.strip()
@@ -175,13 +190,14 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
                 changed=pipefail_change(line)
                 if changed is not None:
                     pipefail=changed
-                effective_pipefail=line_pipefail_state(line, pipefail)
+                effective_pipefail,persistent_pipefail=line_pipefail_states(line, pipefail)
                 ignored="drift-check-ignore" in line or "drift-check-ignore" in prev
                 ss=stages(line)
                 if effective_pipefail and not ignored and len(ss)>1:
                     for j in range(1,len(ss)):
                         if grep_q(ss[j]) and not exempt(ss[j-1],len(ss)):
                             findings.append(f"[pipefail-grep-q] {rel}:{n}: immediate producer before grep -q: {ss[j-1]}")
+                pipefail=persistent_pipefail
                 prev=line
 for f in findings: print(f)
 print(f"Total pipefail-grep-q findings: {len(findings)}", file=sys.stderr)

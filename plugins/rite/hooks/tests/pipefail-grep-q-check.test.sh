@@ -45,6 +45,18 @@ assert "command-substitution activation is detected" "1" "$(printf '%s\n' "$out"
 assert "activation after a pipeline is not retroactive" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*late_stream' || true)"
 assert "scoped deactivation suppresses its pipeline" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*disabled_subshell_stream' || true)"
 
+printf '%s\n' \
+  'set -o pipefail; first_active | grep -q x' \
+  'inherited_active | grep -q x' \
+  'set +o pipefail; first_disabled | grep -q x' \
+  'inherited_disabled | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "top-level same-line activation yields findings" "1" "$rc"
+assert "top-level activation applies on its line" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*first_active' || true)"
+assert "top-level activation persists to the next line" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*inherited_active' || true)"
+assert "top-level deactivation applies on its line" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*first_disabled' || true)"
+assert "top-level deactivation persists to the next line" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*inherited_disabled' || true)"
+
 printf '%s\n' 'set -o pipefail' 'stream_many | grep -q x # drift-check-ignore: bounded fixture' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "ignore marker suppresses finding" "0" "$rc"
