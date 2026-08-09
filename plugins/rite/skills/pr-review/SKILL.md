@@ -1447,6 +1447,28 @@ For **every** item in the "### 推奨事項" section (regardless of `別 Issue` 
 **Investigation suggestion collection**: Extract items from each reviewer's "### 調査推奨" section. Retain these as `investigation_suggestions` in the conversation context (reviewer_type, file, concern_description, notes). These are NOT findings and NOT Issue candidates — they do not affect the assessment, finding counts, or merge decision, and are never auto-Issue-ified by ステップ 7. They are collected solely for ステップ 5.4 "調査推奨" section rendering so the user may optionally run `/rite:investigate {file}` afterwards. A reviewer writing nothing in this section is the common case (blocking-worthy issues should go into findings, out-of-scope recommendations with Issue keywords into 推奨事項).
 **Demoted findings collection (ステップ 5.3.0 safety net)**: After collecting findings, scan each finding's `内容` column for the `Likelihood-Evidence:` anchor defined in [`_reviewer-base.md`](../../agents/_reviewer-base.md#demonstrable-proof-of-burden). Findings lacking the anchor AND whose `reviewer_type` is NOT in the Hypothetical Exception Categories (security/devops/dependencies; `application` は migration 関連 finding — `Likelihood: Hypothetical (例外カテゴリ: database migration)` 表記を伴うもの — に限り Database migration 例外カテゴリを継承する) are candidates for ステップ 5.3.0 mechanical demotion. Retain these as `demoted_findings` in the conversation context (reviewer_type, severity, file_line, description, demotion_destination) for ステップ 5.3.0 processing and ステップ 5.4 "Observed Likelihood 降格結果" section rendering. The `demotion_destination` is `推奨事項` (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM) or `（削除）` (LOW).
 
+##### 5.1.0.L Likelihood-Evidence Producer Post-Condition
+
+Before aggregation or the 5.3.0 safety-net demotion, write each raw reviewer output unchanged to a tempfile and invoke:
+
+```bash
+bash {plugin_root}/hooks/scripts/review-likelihood-evidence-gate.sh \
+  --reviewer-type "{reviewer_type}" --input "{raw_reviewer_output_file}"
+```
+
+The helper validates every row under `### 指摘事項` / `### Findings`. A normal finding must contain a canonical `Likelihood-Evidence:` label. Security, devops, and dependencies may instead use the explicit `Likelihood: Hypothetical (例外カテゴリ: ...)` form; application receives that exception only for `database migration`. An empty findings table passes.
+
+Route the result mechanically per reviewer:
+
+| Result | Action |
+|---|---|
+| rc=0 + `LIKELIHOOD_EVIDENCE_GATE=passed` | Accept the raw output and continue |
+| rc=1 + `reason=anchor_missing`, first occurrence | Retry that reviewer once with the original review prompt plus the missing-count diagnostic and the strict requirement to add a canonical anchor to every realistic finding; replace the original output with the retry output and rerun this helper |
+| rc=1 after the one retry | Mark the reviewer `incomplete`, set `likelihood_evidence_post_condition=error`, and stop this review with `[review:error]`; do not pass the output to aggregation or 5.3.0 |
+| rc=2, or a missing success marker | Treat as producer-gate infrastructure failure and stop with `[review:error]` |
+
+Maintain `likelihood_evidence_retry_count` as a per-reviewer dict initialized to `{}`. Only a completed retry increments the corresponding value from 0 to 1. This gate deliberately runs before hypothetical demotion: omission by a realistic-finding producer is a retryable contract violation, while an explicitly marked exception remains a legitimate hypothetical finding.
+
 #### 5.1.1 Verification Mode Findings Collection
 
 When `review_mode == "verification"`, classify: NOT_FIXED/PARTIAL/REGRESSION/MISSED_CRITICAL (all blocking). FIXED findings recorded in Fix Verification Summary only.
