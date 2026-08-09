@@ -36,7 +36,7 @@ case "$reviewer_type" in
 esac
 
 stats=$(awk -v exception_category="$exception_category" -v reviewer_type="$reviewer_type" '
-  BEGIN { in_findings=0; saw_heading=0; saw_header=0; findings=0; missing=0; malformed=0 }
+  BEGIN { in_findings=0; saw_heading=0; saw_header=0; saw_separator=0; findings=0; missing=0; malformed=0 }
   function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
   /^###[[:space:]]*(指摘事項|Findings)[[:space:]]*$/ { in_findings=1; saw_heading=1; next }
   in_findings && /^###[[:space:]]/ { in_findings=0 }
@@ -47,7 +47,16 @@ stats=$(awk -v exception_category="$exception_category" -v reviewer_type="$revie
     else malformed++
     next
   }
-  /^\|[[:space:]]*(-+:?|-*[[:space:]]*#)[[:space:]]*\|/ { next }
+  /^\|[[:space:]]*:?-+/ {
+    separator_columns = split($0, separator_cell, "|")
+    separator_valid = (separator_columns == 7)
+    for (i = 2; i <= 6 && separator_valid; i++) {
+      if (trim(separator_cell[i]) !~ /^:?-+:?$/) separator_valid=0
+    }
+    if (separator_valid) saw_separator=1
+    else malformed++
+    next
+  }
   /^\|[[:space:]]*(なし|None)[[:space:]]*\|/ { next }
   {
     columns = split($0, cell, "|")
@@ -59,13 +68,13 @@ stats=$(awk -v exception_category="$exception_category" -v reviewer_type="$revie
     hypothetical = (exception_category != "" && index(content, "Likelihood: Hypothetical (例外カテゴリ: " exception_category ")") > 0)
     if (!evidence && !hypothetical) missing++
   }
-  END { printf "%d\t%d\t%d\t%d\t%d\n", findings, missing, malformed, saw_heading, saw_header }
+  END { printf "%d\t%d\t%d\t%d\t%d\t%d\n", findings, missing, malformed, saw_heading, saw_header, saw_separator }
 ' "$input") || {
   echo "[CONTEXT] LIKELIHOOD_EVIDENCE_GATE_FAILED=1; reason=parse_failed; reviewer=$reviewer_type" >&2
   exit 2
 }
 
-IFS=$'\t' read -r findings missing malformed saw_heading saw_header <<EOF
+IFS=$'\t' read -r findings missing malformed saw_heading saw_header saw_separator <<EOF
 $stats
 EOF
 if [ "$saw_heading" -ne 1 ]; then
@@ -76,6 +85,11 @@ fi
 if [ "$saw_header" -ne 1 ]; then
   echo "ERROR: reviewer output is missing the canonical five-column findings table header" >&2
   echo "[CONTEXT] LIKELIHOOD_EVIDENCE_GATE_FAILED=1; reason=table_header_missing; reviewer=$reviewer_type" >&2
+  exit 1
+fi
+if [ "$saw_separator" -ne 1 ]; then
+  echo "ERROR: reviewer output is missing a canonical five-column table separator" >&2
+  echo "[CONTEXT] LIKELIHOOD_EVIDENCE_GATE_FAILED=1; reason=table_malformed; reviewer=$reviewer_type; malformed=$malformed" >&2
   exit 1
 fi
 if [ "$malformed" -gt 0 ]; then
