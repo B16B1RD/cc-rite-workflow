@@ -13,6 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 
 CLEANUP="$SCRIPT_DIR/../../skills/cleanup/SKILL.md"
+DEFERRED_HELPER="$SCRIPT_DIR/../scripts/cleanup-deferred-branch-recovery.sh"
 
 echo "=== ステップ 4-W: self-exclusion 付き live-cwd guard の配線 ==="
 assert_grep "4-W uses worktree-foreign-cwd.sh (not the bare live-cwd probe)" "$CLEANUP" "worktree-foreign-cwd\.sh"
@@ -51,14 +52,13 @@ assert_grep_in_section "4-W busy-failed branch: record is inside the {pr_merged}
 echo "=== ステップ 5: squash-merge 確認済みブランチの強制削除 + 遅延ブランチの manifest 記録 ==="
 assert_grep "Step 5 reads the {pr_merged} signal" "$CLEANUP" "pr_merged"
 assert_grep "Step 5 emits via=squash-merged on confirmed-merged force delete" "$CLEANUP" "via=squash-merged"
-assert_grep "Step 5 records the deferred branch to the reap manifest" "$CLEANUP" "rite-tmp-artifact\.sh record --type branch"
+assert_grep "Step 5 records the deferred branch to the reap manifest" "$DEFERRED_HELPER" "rite-tmp-artifact\.sh.*record --type branch"
 # Deferred branch only auto-recovers when the manifest record succeeds and the
 # target worktree passes the same filtered dirty gate as the reaper (#2048).
-assert_grep "Step 5 evaluates the deferred worktree with the shared dirty gate" "$CLEANUP" "git-status-filtered\.sh"
-assert_grep "Step 5 requires an empty filtered status for recovery=auto" "$CLEANUP" '\[ -z "\$_reap_status" \]'
+assert_grep "Step 5 delegates recovery classification to the executable helper" "$CLEANUP" "cleanup-deferred-branch-recovery\.sh"
 assert_grep "Step 5 emits recovery=auto only after its guards" "$CLEANUP" "recovery=auto"
 assert_grep "Step 5 emits recovery=manual for unsafe worktrees" "$CLEANUP" "recovery=manual"
-assert_grep "Step 5 manual recovery removes and prunes the worktree before deleting the branch" "$CLEANUP" 'git worktree remove --force \$_branch_wt_q && git worktree prune && git branch -D'
+assert_not_grep "Step 5 never prescribes force-removing a dirty worktree" "$DEFERRED_HELPER" 'git worktree remove --force'
 
 echo "=== ステップ 12: ユーザー向けメッセージの平易化・正確化 (AC-6) ==="
 # branch の遅延メッセージは「自動で削除される（手動不要）」を明記する（実装の自動回収と整合）。
@@ -95,7 +95,7 @@ assert_grep "Step 12 mask message points to a sandbox-outside manual removal" "$
 # 在席時のみ」の排他性主張と「別のセッションの作業ツリーで使用中」の原因断定 WARNING は不正確。
 # コメントは mask ルートに言及し、branch-deferral 系 WARNING は原因中立の文面を使う (Issue #1957)。
 assert_grep "Step 5 comment names the SANDBOX_MASK deferral route" "$CLEANUP" 'WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK = sandbox マスク'
-assert_grep "Step 5 deferred WARNING is cause-neutral" "$CLEANUP" "まだ削除されていない作業ツリーで使用中のため、削除を見送りました"
+assert_grep "Step 5 deferred WARNING is cause-neutral" "$DEFERRED_HELPER" "まだ削除されていない作業ツリーで使用中のため、削除を見送りました"
 assert_not_grep "old exclusive-cause claim removed from Step 5 comment" "$CLEANUP" "本経路に来るのは"
 assert_not_grep "old other-session attribution removed from deferred WARNINGs" "$CLEANUP" "はまだ別のセッションの作業ツリーで使用中のため"
 assert_not_grep "old exclusive-cause claim removed from in_main note" "$CLEANUP" "別セッション在席時のみ遅延する"
