@@ -91,6 +91,10 @@ def grep_q(stage):
     if not ws or os.path.basename(ws[0]) != "grep": return False
     return any(re.match(r'^-[^-]*q', w) for w in ws[1:])
 
+def comment_starts(line, i):
+    """Return whether # starts a shell comment at this token boundary."""
+    return i == 0 or line[i-1].isspace() or line[i-1] in ";|&()"
+
 def syntax_only(line):
     """Preserve unquoted shell syntax while blanking quoted/comment data."""
     out=[]; quote=None; esc=False
@@ -104,7 +108,7 @@ def syntax_only(line):
             if c == quote: quote=None
             continue
         if c in "'\"": quote=c; out.append(" "); continue
-        if c == "#" and (not out or out[-1].isspace()): break
+        if c == "#" and comment_starts(line,len(out)): break
         out.append(c)
     return "".join(out)
 
@@ -298,7 +302,7 @@ def heredoc_starts(line):
             if c == quote: quote=None
             i+=1; continue
         if c in "'\"": quote=c; i+=1; continue
-        if c == "#" and (i == 0 or line[i-1].isspace()): break
+        if c == "#" and comment_starts(line,i): break
         if line.startswith("((",i): arithmetic_depth+=1; i+=2; continue
         if arithmetic_depth and line.startswith("))",i): arithmetic_depth-=1; i+=2; continue
         if arithmetic_depth: i+=1; continue
@@ -332,7 +336,7 @@ def backslash_continues(line):
     quote=None; i=0
     while i < len(line):
         c=line[i]
-        if c == "#" and quote is None and (i == 0 or line[i-1].isspace()): return False
+        if c == "#" and quote is None and comment_starts(line,i): return False
         if c in "'\"" and (quote is None or quote == c):
             quote=None if quote == c else c; i+=1; continue
         if c == "\\" and quote != "'":
@@ -340,6 +344,19 @@ def backslash_continues(line):
             i+=2; continue
         i+=1
     return False
+
+def quote_after(line, quote=None):
+    """Carry ordinary single/double quote state across physical lines."""
+    esc=False
+    for i,c in enumerate(line):
+        if esc: esc=False; continue
+        if c == "\\" and quote != "'": esc=True; continue
+        if quote:
+            if c == quote: quote=None
+            continue
+        if c == "#" and comment_starts(line,i): break
+        if c in "'\"": quote=c
+    return quote
 
 for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
     start=os.path.join(root,base)
@@ -352,7 +369,7 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
                 lines=open(path,encoding="utf-8",errors="replace").read().splitlines()
             except OSError as e:
                 print(f"WARNING: cannot read {rel}: {e}",file=sys.stderr); errors+=1; continue
-            logical=[]; acc=""; start_n=1; pending_heredocs=[]
+            logical=[]; acc=""; start_n=1; pending_heredocs=[]; open_quote=None
             for n,physical in enumerate(lines,1):
                 if pending_heredocs:
                     delimiter,strip_tabs=pending_heredocs[0]
@@ -362,10 +379,11 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
                 if not acc: start_n=n
                 part=physical.strip()
                 continued=backslash_continues(physical)
+                open_quote=quote_after(physical,open_quote)
                 if continued: part=part[:-1].rstrip()
                 acc += (" " if acc else "") + part
                 syntax_tail=syntax_only(physical).rstrip()
-                if continued or syntax_tail.endswith(("|", "|&")):
+                if continued or open_quote or syntax_tail.endswith(("|", "|&")):
                     continue
                 logical.append((start_n,acc))
                 pending_heredocs.extend(heredoc_starts(acc)); acc=""

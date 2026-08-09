@@ -66,13 +66,33 @@ printf '%s\n' \
   'real_after_comment | grep -q x' \
   'echo harmless # \' \
   'real_after_comment_backslash | grep -q x' \
+  'echo harmless;# \' \
+  'real_after_metachar_comment | grep -q x' \
   "printf '%s' '|'" \
   'real_after_quoted_pipe | grep -q x' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "comment and quoted trailing pipes do not continue lines" "1" "$rc"
 assert "pipeline after comment pipe is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_comment$' || true)"
 assert "pipeline after comment backslash is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_comment_backslash' || true)"
+assert "pipeline after metachar comment is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_metachar_comment' || true)"
 assert "pipeline after quoted pipe is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_quoted_pipe' || true)"
+
+printf '%s\n' \
+  'set -o pipefail' \
+  "printf '%s' 'literal" \
+  'set +o pipefail' \
+  "fake_stream | grep -q x'" \
+  'real_after_single_quote | grep -q x' \
+  'printf "%s" "literal' \
+  'set +o pipefail' \
+  'fake_double_stream | grep -q x"' \
+  'real_after_double_quote | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "multiline quoted data does not alter shell state" "1" "$rc"
+assert "single-quoted data pipeline is not scanned" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*fake_stream' || true)"
+assert "double-quoted data pipeline is not scanned" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*fake_double_stream' || true)"
+assert "pipeline after multiline single quote is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_single_quote' || true)"
+assert "pipeline after multiline double quote is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_double_quote' || true)"
 
 printf '%s\n' \
   '( set -o pipefail; subshell_stream | grep -q x )' \
