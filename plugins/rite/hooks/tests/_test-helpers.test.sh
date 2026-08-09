@@ -626,6 +626,10 @@ fi
 mkdir -p "$diff_shim_dir"
 printf '%s\n' '#!/bin/sh' 'exit 2' > "$diff_shim_dir/diff"
 chmod +x "$diff_shim_dir/diff"
+# Keep inputs different: without the shim the real diff returns 1 and the helper
+# accepts them, so this assertion specifically discriminates the injected rc=2
+# path instead of passing through the identical-mutant rejection branch.
+printf 'changed-again\n' > "$mutant_file"
 if PATH="$diff_shim_dir:$PATH" bash -c "source '$HELPERS'; assert_mutant_changed compare-error '$tmpfile' '$mutant_file'" >/dev/null; then
   outer_fail "TC-16.3: assert_mutant_changed accepted a diff comparison error"
 else
