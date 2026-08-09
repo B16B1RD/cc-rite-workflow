@@ -16,6 +16,10 @@ check_caller() {
   ' "$file")"
 
   assert "$label: section found" "1" "$([ -n "$section" ] && echo 1 || echo 0)"
+  assert "$label: attempt ID uses portable seconds/pid/random components" "1" \
+    "$(printf '%s\n' "$section" | grep -cF -- '$(date +%s)-$$-$RANDOM' || true)"
+  assert "$label: attempt ID does not use non-portable date nanoseconds" "0" \
+    "$(printf '%s\n' "$section" | grep -cF -- 'date +%s%N' || true)"
   assert "$label: retry uses push-only helper" "1" \
     "$(( $(printf '%s\n' "$section" | grep -cF 'wiki-ingest-commit.sh --push-only' || true) >= 1 ))"
   assert "$label: retry is gated on caller exit 4" "1" \
