@@ -41,7 +41,7 @@ scan_file() {
       *B16B1RD*) report_hit "$file" "$line_no" B16B1RD "$line" ;;
     esac
     case "$line" in
-      *'"cc-rite-workflow"'*) report_hit "$file" "$line_no" cc-rite-workflow "$line" ;;
+      *cc-rite-workflow*) report_hit "$file" "$line_no" cc-rite-workflow "$line" ;;
     esac
     case "$line" in
       */home/akiyoshi*) report_hit "$file" "$line_no" /home/akiyoshi "$line" ;;
@@ -85,12 +85,13 @@ while IFS='|' read -r planted expected; do
     || ! grep -Fq 'leak.md:1' <<<"$mutation_out" \
     || ! grep -Fq "$expected" <<<"$mutation_out" \
     || ! grep -Fq 'replace examples with {owner}/{repo}' <<<"$mutation_out"; then
+    printf '%s\n' "$mutation_out" >&2
     printf 'FAIL: planted %s token was not rejected with an actionable file/line diagnostic\n' "$expected" >&2
     exit 1
   fi
 done <<'MUTATIONS'
 owner=B16B1RD|B16B1RD
-repo="cc-rite-workflow"|cc-rite-workflow
+repo=cc-rite-workflow|cc-rite-workflow
 home=/home/akiyoshi/project|/home/akiyoshi
 tmp=/tmp/claude-1000/worktree|/tmp/claude-1000
 MUTATIONS
