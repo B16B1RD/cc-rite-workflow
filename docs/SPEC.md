@@ -187,7 +187,7 @@ rite-workflow/
 │ ├── hooks.json # Hook registration manifest
 │ ├── session-start.sh / session-end.sh / session-ownership.sh
 │ ├── pre-compact.sh / post-compact.sh
-│ ├── pre-tool-bash-guard.sh / post-tool-wm-sync.sh
+│ ├── pre-tool-bash-guard.sh / pre-tool-edit-guard.sh / post-tool-wm-sync.sh
 │ ├── stop-loop-continuation.sh # Stop hook: review↔fix loop continuation + terminal finalize
 │ ├── hook-preamble.sh / state-path-resolve.sh / control-char-neutralize.sh # Shared helpers
 │ ├── _resolve-session-id.sh / _resolve-session-id-from-file.sh # Private session-id resolution helpers
@@ -227,6 +227,7 @@ rite-workflow/
 │ │ ├── gitignore-health-check.sh
 │ │ ├── projects-board-drift-check.sh # lint Phase 3.18 CLOSED+COMPLETED board≠Done 検出
 │ │ ├── number-reference-check.sh # lint Phase 3.5 Issue/PR 番号参照 (#NNN) 検出 (CHANGELOG + lint.md)
+│ │ ├── sentinel-contract-check.sh # lint Phase 3.5 sentinel SoT / emitter / consumer 同期検証
 │ │ ├── tmp-hardcode-check.sh # lint Phase 3.5 sandbox 非互換パターン (mktemp+/tmp テンプレート・/tmp 直書き・push の upstream -u) 検出
 │ │ ├── dollar-zero-check.sh # lint Phase 3.5 skill 本文の fenced block 内 位置パラメータ 0 参照 検出 (Skill loader が起動引数へ展開する)
 │ │ ├── tempfile-lifecycle-check.sh # lint Phase 3.5 mktemp ハンドル派生パス検出 (lib/tempfile.sh で消せない残余)
@@ -279,6 +280,7 @@ rite-workflow/
   ├── session-id-validation-contract.md # Session ID validation contract (SoT)
   ├── state-read-evolution.md # state-read.sh の変遷史 (rationale 保存)
   ├── stop-loop-continuation-contract.md # Stop hook handoff 機構の解説 SoT (iterate/pr-review/fix/cleanup/ready から参照)
+  ├── sentinel-contract.md # skill 間 sentinel の emitter / consumer 対応 SoT
   └── bottleneck-detection.md
   # Note: references/i18n-usage.md and plugins/rite/i18n/ directory (ja.yml,
   # en.yml, and the ja/ + en/ split files) were deleted entirely —
@@ -1320,6 +1322,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `gitignore-health-check.sh` | Verify the `.rite/wiki/` last-line-of-defense `.gitignore` rule, emit `gitignore_drift` sentinel on mismatch | — |
 | `projects-board-drift-check.sh` | `/rite:lint` Phase 3.18 — detect CLOSED+COMPLETED Issues whose Projects board Status is not `Done` (NOT_PLANNED excluded), optionally reconcile via `--reconcile` | — |
 | `number-reference-check.sh` | `/rite:lint` Phase 3.5 — detect Issue/PR number references (`#NNN` / `Issue #NNN` / `PR #NNN`) that crept back into the number-free documentation surface (`CHANGELOG.md` / `CHANGELOG.ja.md` / `lint.md`) | — |
+| `sentinel-contract-check.sh` | `/rite:lint` Phase 3.5 — verify the sentinel SoT against emitter and consumer skill files, and detect undeclared sentinel-shaped literals | Canonical contract: `references/sentinel-contract.md` |
 | `tmp-hardcode-check.sh` | `/rite:lint` Phase 3.5 — detect sandbox-incompatible patterns (`mktemp` + `/tmp` template, fixed `/tmp` path hardcode, `git push` upstream `-u`) in `plugins/rite/**/*.{md,sh}` + `docs/**/*.md` (test harnesses / error-catalog / self excluded) | — |
 | `dollar-zero-check.sh` | `/rite:lint` Phase 3.5 — detect positional-parameter-zero references inside fenced code blocks in `skills/**/*.md`. The Skill loader expands them to the invocation argument string, silently corrupting the embedded awk/shell program; real `hooks/**/*.sh` are immune and excluded | — |
 | `tempfile-lifecycle-check.sh` | `/rite:lint` Phase 3.5 — detect the one tempfile defect `lib/tempfile.sh` cannot remove: a path derived from a tempfile handle, read or write (loses `O_CREAT\|O_EXCL`). Handles are tracked from `x=$(mktemp ...)` from `rite_tempfile_new x` / `rite_tempdir_new x`, and from `x=$(bash .../_mktemp-stderr-guard.sh ...)` (that guard runs mktemp internally, so its output is a real handle), in a first pass over the whole file so that a derivation written *above* its mktemp (the canonical trap template puts the cleanup function there) is still seen. `${x:-}` reads the same as `${x}`. Scans `plugins/rite/hooks/**/*.sh` + `plugins/rite/scripts/**/*.sh` (`tests/` excluded). Not detected: unbraced `$tmp_suffix` (bash reads it as one variable name) and the sanctioned `mktemp 2>/dev/null` stderr-slot idiom. dirname / basename expansions **are** detected — a component extraction with a suffix bolted on (`"${tmp##*/}.log"`) is a sibling path. Exclusion: `drift-check-ignore` on the finding line or the line above. A file that could not be scanned exits 2 — not a clean bill (findings still win the exit code: rc=1 when both are present) | — |
