@@ -1,7 +1,7 @@
 #!/bin/bash
 # rite workflow - Control Character Neutralization (shared)
 # Provides the single source of truth for the "control chars → ?" diagnostic
-# neutralization convention shared by all hooks/ diagnostic snippet emission
+# neutralization convention shared by all hooks/ and scripts/ diagnostic snippet emission
 # sites (`head -3 "$err_file" | neutralize_ctrl --keep-newline | sed ... >&2`
 # — the parity is pinned by
 # tests/diag-snippet-neutralize-parity.test.sh), by stop-loop-continuation.sh

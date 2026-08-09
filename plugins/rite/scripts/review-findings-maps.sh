@@ -59,6 +59,10 @@
 # global `set -e` を使わない。verbatim 移植のため本 helper も同様。
 set -u
 
+_rfm_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../hooks/control-char-neutralize.sh
+source "$_rfm_dir/../hooks/control-char-neutralize.sh"
+
 review_source=""
 review_source_path=""
 REPO_ROOT=""
@@ -230,7 +234,7 @@ if duplicate_keys=$(jq -r '[.findings[] | (.file + ":" + (if .line == null or .l
 else
   jq_dup_rc=$?
   echo "WARNING: 重複 file:line 検出用 jq が失敗しました (rc=$jq_dup_rc) — silent data loss 検出を skip します" >&2
-  [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+  [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   echo "  影響: 同一 file:line の重複 severity 警告が出ないため、後段で最後勝ち畳み込みが silent に発生する可能性があります" >&2
   echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=jq_duplicate_check_failed; rc=$jq_dup_rc" >&2
   # severity_map 構築は続行する (重複警告の喪失は non-blocking 失敗として扱う)
@@ -242,7 +246,7 @@ if severity_map_json=$(jq -c '[.findings[] | {key: (.file + ":" + (if .line == n
 else
   jq_smap_rc=$?
   echo "ERROR: severity_map 構築用 jq が失敗しました (rc=$jq_smap_rc)" >&2
-  [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+  [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   echo "  対処: review-result JSON ($review_source_path) の内容と jq バイナリを確認してください" >&2
   echo "  影響: severity_map が空のまま後段に流れ、指摘 0 件と誤認される silent regression を防ぐため fail-fast します" >&2
   echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=severity_map_build_failed; rc=$jq_smap_rc" >&2
@@ -260,7 +264,7 @@ if scope_map_json=$(jq -c '[.findings[] | {key: (.file + ":" + (if .line == null
 else
   jq_scmap_rc=$?
   echo "WARNING: scope_map 構築用 jq が失敗しました (rc=$jq_scmap_rc) — scope-based routing が無効化されます (legacy blocking 扱い)" >&2
-  [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | sed 's/^/  /' >&2
+  [ -n "$jq_err" ] && [ -s "$jq_err" ] && head -3 "$jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=scope_map_build_failed; rc=$jq_scmap_rc" >&2
   scope_map_json="{}"
 fi

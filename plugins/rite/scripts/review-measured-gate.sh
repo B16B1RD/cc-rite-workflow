@@ -144,6 +144,10 @@
 # (sibling の scripts/review-findings-maps.sh と同方針)。
 set -u
 
+_rmg_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../hooks/control-char-neutralize.sh
+source "$_rmg_script_dir/../hooks/control-char-neutralize.sh"
+
 input=""
 reject_preset=0
 
@@ -191,7 +195,7 @@ _fail() {
   #  hard-stop 経路で原因が消える)。
   echo "ERROR: $2" >&2
   if [ -n "${diag_file:-}" ] && [ -s "${diag_file:-}" ]; then
-    head -5 "$diag_file" | sed 's/^/  /' >&2
+    head -5 "$diag_file" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
   echo "[CONTEXT] MEASURED_GATE_FAILED=1; reason=$1" >&2
   exit 1
@@ -458,7 +462,8 @@ if [ "$scope_unknown" -gt 0 ]; then
   # 1 行の JSON literal に畳む — id / file / scope は LLM 生成の自由記述で、raw 改行を
   # 埋めれば本 script 自身の `[CONTEXT]` marker とバイト同一の行を偽造でき、その marker は
   # caller (pr-review step 3) の routing 入力そのものになる。ANSI/OSC も同時に潰れる。
-  printf '%s\n' "$result" | jq -r '.stats.scope_unknown_list[]' 2>"${diag_file:-/dev/null}" | head -10 >&2
+  printf '%s\n' "$result" | jq -r '.stats.scope_unknown_list[]' 2>"${diag_file:-/dev/null}" \
+    | head -10 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   if [ "$scope_unknown" -gt 10 ]; then
     echo "  ... (残り $((scope_unknown - 10)) 件は省略)" >&2
   fi
