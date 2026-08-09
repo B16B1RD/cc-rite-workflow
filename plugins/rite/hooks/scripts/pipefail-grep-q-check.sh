@@ -114,7 +114,7 @@ def scan_line_state(syntax, state, stack):
     function_opens={m.end()-1 for m in re.finditer(
         r'(?:^|[;&])\s*(?:function\s+[A-Za-z_][A-Za-z0-9_]*(?:\s*\(\s*\))?|[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\))\s*\{',
         syntax)}
-    pipe_states=[]; i=0
+    pipe_states=[]; segment_start_state=state; i=0
     while i < len(syntax):
         if syntax[i] == "(": stack.append(("paren",state)); i+=1; continue
         if syntax[i] == ")":
@@ -122,12 +122,22 @@ def scan_line_state(syntax, state, stack):
             i+=1; continue
         if syntax[i] == "{" and i in function_opens:
             stack.append(("function",state)); i+=1; continue
+        if syntax[i] == "{":
+            stack.append(("brace",state)); i+=1; continue
         if syntax[i] == "}":
-            if stack and stack[-1][0] == "function": state=stack.pop()[1]
+            if stack:
+                kind,saved=stack.pop()
+                if kind == "function": state=saved
             i+=1; continue
         if syntax[i] == "|" and not (i and syntax[i-1] == "|") and not (i+1 < len(syntax) and syntax[i+1] == "|"):
             pipe_states.append(state)
             i+=1; continue
+        if syntax[i] == ";":
+            segment_start_state=state; i+=1; continue
+        if syntax[i] in "&|" and i+1 < len(syntax) and syntax[i+1] == syntax[i]:
+            segment_start_state=state; i+=2; continue
+        if syntax[i] == "&" and not (i and syntax[i-1] in "<>") and not (i+1 < len(syntax) and syntax[i+1] == ">"):
+            state=segment_start_state; segment_start_state=state; i+=1; continue
         match=toggle_re.match(syntax, i)
         if match:
             state=match.group(1).startswith("-")

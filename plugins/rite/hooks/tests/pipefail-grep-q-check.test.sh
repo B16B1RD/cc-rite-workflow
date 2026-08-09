@@ -99,6 +99,8 @@ assert "single ampersand cuts the immediate producer" "1" "$(printf '%s\n' "$out
 printf '%s\n' \
   'set -o pipefail' \
   'unused() {' \
+  '  expanded=${value:-fallback}' \
+  '  { echo nested; }' \
   '  set +o pipefail' \
   '  function_inner_disabled | grep -q x' \
   '}' \
@@ -107,6 +109,14 @@ out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "function body state is analyzed without leaking" "1" "$rc"
 assert "function-local deactivation suppresses inner pipeline" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*function_inner_disabled' || true)"
 assert "function definition restores outer state" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*function_outer_active' || true)"
+
+printf '%s\n' \
+  'set -o pipefail; set +o pipefail & background_parent_on | grep -q x' \
+  'set +o pipefail; set -o pipefail & background_parent_off | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "background toggle isolation retains active finding" "1" "$rc"
+assert "background disable does not change active parent" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*background_parent_on' || true)"
+assert "background enable does not change disabled parent" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*background_parent_off' || true)"
 
 printf '%s\n' 'set -o pipefail' 'stream_many | grep -q x # drift-check-ignore: bounded fixture' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
