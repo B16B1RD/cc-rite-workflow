@@ -57,6 +57,25 @@ assert "top-level activation persists to the next line" "1" "$(printf '%s\n' "$o
 assert "top-level deactivation applies on its line" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*first_disabled' || true)"
 assert "top-level deactivation persists to the next line" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*inherited_disabled' || true)"
 
+printf '%s\n' \
+  '(' \
+  '  set -o pipefail' \
+  '  multiline_inner_active | grep -q x' \
+  ')' \
+  'multiline_outer_disabled | grep -q x' \
+  'set -o pipefail' \
+  '(' \
+  '  set +o pipefail' \
+  '  multiline_inner_disabled | grep -q x' \
+  ')' \
+  'multiline_outer_active | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "multiline scopes preserve real findings" "1" "$rc"
+assert "multiline inner activation is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*multiline_inner_active' || true)"
+assert "multiline activation is restored after close" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*multiline_outer_disabled' || true)"
+assert "multiline inner deactivation is respected" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*multiline_inner_disabled' || true)"
+assert "multiline deactivation is restored after close" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*multiline_outer_active' || true)"
+
 printf '%s\n' 'set -o pipefail' 'stream_many | grep -q x # drift-check-ignore: bounded fixture' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "ignore marker suppresses finding" "0" "$rc"

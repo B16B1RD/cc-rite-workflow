@@ -80,18 +80,6 @@ def grep_q(stage):
     if not ws or os.path.basename(ws[0]) != "grep": return False
     return any(re.match(r'^-[^-]*q', w) for w in ws[1:])
 
-def pipefail_change(line):
-    """Return True/False for a standalone set activation, else None."""
-    ws=words(line.rstrip(";"))
-    if not ws or ws[0] != "set": return None
-    for pos, token in enumerate(ws[1:], 1):
-        if token in ("-o", "+o") and ws[pos+1:pos+2] == ["pipefail"]:
-            return token == "-o"
-        if token.startswith(("-", "+")) and not token.startswith("--") and "o" in token[1:]:
-            if ws[pos+1:pos+2] == ["pipefail"]:
-                return token[0] == "-"
-    return None
-
 def syntax_only(line):
     """Preserve unquoted shell syntax while blanking quoted/comment data."""
     out=[]; quote=None; esc=False
@@ -111,30 +99,23 @@ def syntax_only(line):
 
 toggle_re=re.compile(r'(?<![A-Za-z0-9_])set\s+([+-][A-Za-z]*o[A-Za-z]*|[+-]o)\s+pipefail(?=\s|;|\)|$)')
 
-def scan_toggle_state(syntax, inherited):
-    """Evaluate toggles, restoring state when a parenthesized scope closes."""
-    state=inherited; persistent=inherited; stack=[]; i=0
+def scan_line_state(syntax, state, stack):
+    """Evaluate one line while retaining parenthesized scopes across lines."""
+    effective=None; i=0
     while i < len(syntax):
         if syntax[i] == "(": stack.append(state); i+=1; continue
         if syntax[i] == ")":
             if stack: state=stack.pop()
             i+=1; continue
+        if syntax[i] == "|" and not (i and syntax[i-1] == "|") and not (i+1 < len(syntax) and syntax[i+1] == "|"):
+            if effective is None: effective=state
+            i+=1; continue
         match=toggle_re.match(syntax, i)
         if match:
             state=match.group(1).startswith("-")
-            if not stack: persistent=state
             i=match.end(); continue
         i+=1
-    return state, persistent
-
-def line_pipefail_states(line, inherited):
-    """Return state at the first pipeline and top-level state after the line."""
-    syntax=syntax_only(line)
-    raw_pipes=[m.start() for m in re.finditer(r'(?<!\|)\|(?!\|)', syntax)]
-    cutoff=raw_pipes[0] if raw_pipes else len(syntax)
-    effective,_=scan_toggle_state(syntax[:cutoff], inherited)
-    _,persistent=scan_toggle_state(syntax, inherited)
-    return effective,persistent
+    return (state if effective is None else effective),state,stack
 
 def exempt(prod, pipeline_len):
     p=prod.strip()
@@ -185,19 +166,15 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
                     continue
                 logical.append((start_n,acc)); acc=""
             if acc: logical.append((start_n,acc))
-            prev=""; pipefail=False
+            prev=""; pipefail=False; scope_stack=[]
             for n,line in logical:
-                changed=pipefail_change(line)
-                if changed is not None:
-                    pipefail=changed
-                effective_pipefail,persistent_pipefail=line_pipefail_states(line, pipefail)
+                effective_pipefail,pipefail,scope_stack=scan_line_state(syntax_only(line), pipefail, scope_stack)
                 ignored="drift-check-ignore" in line or "drift-check-ignore" in prev
                 ss=stages(line)
                 if effective_pipefail and not ignored and len(ss)>1:
                     for j in range(1,len(ss)):
                         if grep_q(ss[j]) and not exempt(ss[j-1],len(ss)):
                             findings.append(f"[pipefail-grep-q] {rel}:{n}: immediate producer before grep -q: {ss[j-1]}")
-                pipefail=persistent_pipefail
                 prev=line
 for f in findings: print(f)
 print(f"Total pipefail-grep-q findings: {len(findings)}", file=sys.stderr)
