@@ -21,6 +21,8 @@ printf '%s\n' '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨�
 printf '%s\n' '### 指摘事項' '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' '|---|---|---|---|---|' > "$TMP/empty.md"
 printf '%s\n' '### 指摘事項' '| 重要度 | ファイル:行 | 内容 |' '|---|---|---|' > "$TMP/malformed-empty.md"
 printf '%s\n' '### 指摘事項' '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' '|---|---|---|' > "$TMP/malformed-separator.md"
+printf '%s\n' '### 指摘事項' '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' '|-|--|-|--|-|' > "$TMP/short-separator.md"
+printf '%s\n' '### Findings' '| Severity | Scope | File:Line | Description | Recommendation |' '|:---|---:|:---:|----|-----|' > "$TMP/aligned-empty.md"
 
 check "$HELPER" --reviewer-type application --input "$TMP/valid.md"
 check bash -c '! "$1" --reviewer-type application --input "$2" >/dev/null 2>&1' _ "$HELPER" "$TMP/missing.md"
@@ -32,6 +34,8 @@ check bash -c '! "$1" --reviewer-type application --input "$2" >/dev/null 2>&1' 
 check "$HELPER" --reviewer-type application --input "$TMP/empty.md"
 check bash -c '! "$1" --reviewer-type application --input "$2" >/dev/null 2>&1' _ "$HELPER" "$TMP/malformed-empty.md"
 check bash -c '! "$1" --reviewer-type application --input "$2" >/dev/null 2>&1' _ "$HELPER" "$TMP/malformed-separator.md"
+check bash -c '! "$1" --reviewer-type application --input "$2" >/dev/null 2>&1' _ "$HELPER" "$TMP/short-separator.md"
+check "$HELPER" --reviewer-type application --input "$TMP/aligned-empty.md"
 check bash -c 'source "$1"; _timeout 1 "$2" --input >/dev/null 2>&1; [ "$?" -eq 2 ]' _ "$SCRIPT_DIR/_test-helpers.sh" "$HELPER"
 check bash -c 'source "$1"; _timeout 1 "$2" --reviewer-type >/dev/null 2>&1; [ "$?" -eq 2 ]' _ "$SCRIPT_DIR/_test-helpers.sh" "$HELPER"
 for reason in anchor_missing findings_heading_missing table_header_missing table_malformed; do

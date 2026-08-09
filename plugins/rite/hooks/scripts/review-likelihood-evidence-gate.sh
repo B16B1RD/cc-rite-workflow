@@ -51,7 +51,7 @@ stats=$(awk -v exception_category="$exception_category" -v reviewer_type="$revie
     separator_columns = split($0, separator_cell, "|")
     separator_valid = (separator_columns == 7)
     for (i = 2; i <= 6 && separator_valid; i++) {
-      if (trim(separator_cell[i]) !~ /^:?-+:?$/) separator_valid=0
+      if (trim(separator_cell[i]) !~ /^:?---+:?$/) separator_valid=0
     }
     if (separator_valid) saw_separator=1
     else malformed++
