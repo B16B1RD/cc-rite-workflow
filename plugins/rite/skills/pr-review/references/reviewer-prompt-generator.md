@@ -76,6 +76,14 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 
 5. **実測基準**: 再現コマンド + 観測される誤動作、または failing test を `Verification:` アンカーとして添付できるか？（Yes → `Verification:` アンカーを `内容` 列に添付する。No → アンカーを付けずに報告する。記録経路の現況は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照） **アンカー無しの指摘は merge を止めない** (実測必須ゲートで non-blocking に分類され fix サイクルを起動しない)。実測できるなら必ずアンカーを添えること。**アンカーに装飾を付けないこと** (`**Verification:**` / `` `Verification:` `` / 全角コロン等は後段の形式検証を通らず、**未判定 (blocking のまま) として扱われる** — 実測済みでも non-blocking にはならないが、判定不能な指摘として merge を止め続ける)。**marker と `=>` の間に `<br>` を入れないこと** (`<br>` は正規形の検出自体を破るため単独で `measured=false` へ降格し、実測済みの指摘が merge を止めなくなる)。句点・改行は正規形アンカーなら無害だが、装飾等の書式崩れと重なると未判定ではなく降格へ落ちるので、LHS に入れないのが安全。
 
+### 監査ログ
+
+Finding Quality Guardrail Category #2 で除外した候補を次の表へ必ず記録してください。実測済みでも declared operating environment に反して除外した候補を含みます。該当なしの場合は `なし` と明記してください。この section は `指摘事項` ではなく評価・件数・merge 判定に影響しません。
+
+| Filter Category | 元重要度 | ファイル:行 | 除外した内容 | 除外理由 | 実測 |
+|-----------------|----------|------------|--------------|----------|------|
+| Category #2 | {severity} | {file:line or -} | {filtered suggestion} | {failed condition} | {Verification anchor or なし} |
+
 > ⚠️ **散文 (手順書・仕様書・references) への指摘では「観測される誤動作」は挙動的帰結に限る**。レビュー対象文書自身のテキスト差分を示す grep (文言非対称 / pin 不在 / 限定句不足 / 二重定義の未同期) はアンカー適格ではないため、アンカーを付けずに報告する。判別子と適用例は `_reviewer-base.md` §手順書・仕様書ドメイン Finding Gate を必ず通すこと。
 
 > ⚠️ **テスト網羅性への指摘 (mutation 生存 / assert の検証力不足 / pin 欠落) では、生存 mutant は「観測される誤動作」ではない**。アンカー適格性は変異が無効化する挙動が Issue 契約 (§4.4 MUST / §5 AC の `Then`) に現れるかで決まる。判別子と適用例は `_reviewer-base.md` §テスト網羅性 Finding Gate を必ず通すこと。

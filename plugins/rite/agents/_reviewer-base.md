@@ -645,7 +645,7 @@ If the Wiki documents a project-specific allowance for the fallback pattern in q
 
 ## Finding Quality Guardrail
 
-Reviewers MUST filter out the following categories of findings **before** writing them to the output table. The filter is applied after Observed Likelihood Gate and Fail-Fast First but before Confidence Scoring. Filtered findings are logged to the reviewer's `監査ログ` section (optional) but MUST NOT appear in `指摘事項`.
+Reviewers MUST filter out the following categories of findings **before** writing them to the output table. The filter is applied after Observed Likelihood Gate and Fail-Fast First but before Confidence Scoring. Filtered findings MUST NOT appear in `指摘事項`. Category #2 items are written to the reviewer's `監査ログ` section so that even a runtime-measured suggestion rejected by the declared-environment rule remains auditable.
 
 This guardrail implements Quality Signal 4 of the four review-fix loop quality signals (see the Quality Signal 1-4 table in `skills/pr-review/references/finding-cycling.md`).
 rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-low-signal-findings-are-filtered
@@ -664,7 +664,7 @@ rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-low-sig
 
 rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-low-signal-findings-are-filtered
 
-Filtered findings are **NOT discarded** — reviewers SHOULD list them in a separate `監査ログ` section (optional, off by default) so a human can audit what was filtered. This preserves auditability without impacting the loop.
+Filtered findings are **NOT discarded**. Category #2 items MUST be listed in the separate `監査ログ` section; Categories #1/#3/#4/#5 MAY also be listed there. When no item is logged, emit `なし`. The log is audit-only and never affects assessment, finding counts, or the merge decision.
 
 ### Reviewer self-degradation → Signal 4
 
@@ -723,7 +723,14 @@ Output using this format with evaluation (可/条件付き/要修正), findings 
 | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
 |--------|----------|------------|------|----------|
 | {SEVERITY} | {SCOPE} | {file:line} | {issue} | {recommendation} |
+
+### 監査ログ
+| Filter Category | 元重要度 | ファイル:行 | 除外した内容 | 除外理由 | 実測 |
+|-----------------|----------|------------|--------------|----------|------|
+| Category #2 | {SEVERITY} | {file:line or -} | {filtered suggestion} | {failed condition} | {Verification anchor or なし} |
 ```
+
+`監査ログ` は常に出力する。該当なしの場合は表の代わりに `なし` と書く。Category #2 の行は省略禁止で、内容中の `Verification:` anchor は改変しない。
 
 ### Column Structure Rules
 
