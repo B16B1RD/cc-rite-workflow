@@ -34,6 +34,10 @@ assert_count "schema SoT declares canonical 1.1.0 writer" 1 \
   'ステップ 6.1.a — canonical `"1.1.0"` のみを出力する' "$SCHEMA"
 assert_count "schema SoT names the reader parity regression test" 1 \
   '`plugins/rite/hooks/tests/review-schema-write-version-parity.test.sh` が 4 箇所の accept list' "$SCHEMA"
+assert_count "invariant 6 documents helper evidence and preset residual path" 1 \
+  '`computed_verification` が `measured: true` を設定するとき、検出したアンカーから必ず `repro` または `failing_test` の片方を同時に設定する' "$SCHEMA"
+assert_count "invariant 6 removes obsolete no-verification premise" 0 \
+  'write 側が `verification` を出力しないため auto-correct' "$SCHEMA"
 assert_count "schema table marks pre_existing optional" 1 \
   '| `pre_existing` | bool | (任意、1.1.0+) |' "$SCHEMA"
 assert_count "legacy mapping applies only to scope and preserves missing pre_existing" 1 \
