@@ -95,6 +95,23 @@ assert "pipeline after multiline single quote is detected" "1" "$(printf '%s\n' 
 assert "pipeline after multiline double quote is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_double_quote' || true)"
 
 printf '%s\n' \
+  'set -o pipefail' \
+  "printf '%s' \$'it\\'s'" \
+  'real_after_ansi_quote | grep -q x' \
+  'value=`set +o pipefail' \
+  'printf ok`' \
+  'real_after_backtick | grep -q x' \
+  'value="$(printf "%s' \
+  'set +o pipefail' \
+  '" ok)"' \
+  'real_after_nested_quote | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "extended quote forms do not leak subshell state" "1" "$rc"
+assert "pipeline after ANSI-C quote is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_ansi_quote' || true)"
+assert "pipeline after backtick substitution is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_backtick' || true)"
+assert "pipeline after nested command quote is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_nested_quote' || true)"
+
+printf '%s\n' \
   '( set -o pipefail; subshell_stream | grep -q x )' \
   'captured=$(set -o pipefail; substitution_stream | grep -q x)' \
   'late_stream | grep -q x; set -o pipefail' \

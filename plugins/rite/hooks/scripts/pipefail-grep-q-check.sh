@@ -95,22 +95,43 @@ def comment_starts(line, i):
     """Return whether # starts a shell comment at this token boundary."""
     return i == 0 or line[i-1].isspace() or line[i-1] in ";|&()"
 
-def syntax_only(line):
-    """Preserve unquoted shell syntax while blanking quoted/comment data."""
-    out=[]; quote=None; esc=False
-    for c in line:
-        if esc:
-            out.append(" "); esc=False; continue
-        if c == "\\" and quote != "'":
-            out.append(" "); esc=True; continue
-        if quote:
+def lex_shell(line, prior=None):
+    """Preserve executable syntax and retain multiline lexical modes."""
+    stack=[list(item) for item in prior] if prior else [["normal",0]]
+    out=[]; i=0
+    while i < len(line):
+        mode=stack[-1][0]; c=line[i]
+        if mode in ("single","ansi"):
             out.append(" ")
-            if c == quote: quote=None
-            continue
-        if c in "'\"": quote=c; out.append(" "); continue
-        if c == "#" and comment_starts(line,len(out)): break
-        out.append(c)
-    return "".join(out)
+            if mode == "ansi" and c == "\\" and i+1 < len(line):
+                out.append(" "); i+=2; continue
+            if c == "'": stack.pop()
+            i+=1; continue
+        if mode == "double":
+            if c == "\\" and i+1 < len(line): out.extend((" "," ")); i+=2; continue
+            if c == '"': out.append(" "); stack.pop(); i+=1; continue
+            if line.startswith("$(",i): out.extend(("$","(")); stack.append(["cmd",1]); i+=2; continue
+            if c == "`": out.append("("); stack.append(["backtick",0]); i+=1; continue
+            out.append(" "); i+=1; continue
+        if mode == "backtick" and c == "`": out.append(")"); stack.pop(); i+=1; continue
+        if c == "\\" and i+1 < len(line): out.extend((" "," ")); i+=2; continue
+        if c == "#" and comment_starts(line,i): break
+        if line.startswith("$'",i): out.extend((" "," ")); stack.append(["ansi",0]); i+=2; continue
+        if line.startswith("$(",i): out.extend(("$","(")); stack.append(["cmd",1]); i+=2; continue
+        if c == "'": out.append(" "); stack.append(["single",0]); i+=1; continue
+        if c == '"': out.append(" "); stack.append(["double",0]); i+=1; continue
+        if c == "`": out.append("("); stack.append(["backtick",0]); i+=1; continue
+        if mode == "cmd" and c == "(": stack[-1][1]+=1
+        elif mode == "cmd" and c == ")":
+            stack[-1][1]-=1
+            if stack[-1][1] == 0: stack.pop()
+        out.append(c); i+=1
+    state=None if len(stack) == 1 and stack[0][0] == "normal" else stack
+    return "".join(out),state
+
+def syntax_only(line):
+    """Preserve executable syntax while blanking quoted/comment data."""
+    return lex_shell(line)[0]
 
 toggle_re=re.compile(r'(?<![A-Za-z0-9_])set\s+([+-][A-Za-z]*o[A-Za-z]*|[+-]o)\s+pipefail(?=\s|;|\)|$)')
 
@@ -345,19 +366,6 @@ def backslash_continues(line):
         i+=1
     return False
 
-def quote_after(line, quote=None):
-    """Carry ordinary single/double quote state across physical lines."""
-    esc=False
-    for i,c in enumerate(line):
-        if esc: esc=False; continue
-        if c == "\\" and quote != "'": esc=True; continue
-        if quote:
-            if c == quote: quote=None
-            continue
-        if c == "#" and comment_starts(line,i): break
-        if c in "'\"": quote=c
-    return quote
-
 for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
     start=os.path.join(root,base)
     for dp, dns, fns in os.walk(start, onerror=walk_error):
@@ -369,7 +377,7 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
                 lines=open(path,encoding="utf-8",errors="replace").read().splitlines()
             except OSError as e:
                 print(f"WARNING: cannot read {rel}: {e}",file=sys.stderr); errors+=1; continue
-            logical=[]; acc=""; start_n=1; pending_heredocs=[]; open_quote=None
+            logical=[]; acc=""; start_n=1; pending_heredocs=[]; lexical_state=None
             for n,physical in enumerate(lines,1):
                 if pending_heredocs:
                     delimiter,strip_tabs=pending_heredocs[0]
@@ -379,11 +387,11 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
                 if not acc: start_n=n
                 part=physical.strip()
                 continued=backslash_continues(physical)
-                open_quote=quote_after(physical,open_quote)
+                _,lexical_state=lex_shell(physical,lexical_state)
                 if continued: part=part[:-1].rstrip()
                 acc += (" " if acc else "") + part
                 syntax_tail=syntax_only(physical).rstrip()
-                if continued or open_quote or syntax_tail.endswith(("|", "|&")):
+                if continued or lexical_state or syntax_tail.endswith(("|", "|&")):
                     continue
                 logical.append((start_n,acc))
                 pending_heredocs.extend(heredoc_starts(acc)); acc=""
