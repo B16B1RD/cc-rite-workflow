@@ -112,6 +112,31 @@ assert "pipeline after backtick substitution is detected" "1" "$(printf '%s\n' "
 assert "pipeline after nested command quote is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_nested_quote' || true)"
 
 printf '%s\n' \
+  'set -o pipefail' \
+  'stream_source "multi' \
+  'line" |' \
+  'grep -q x' \
+  'stderr_source "multi' \
+  'line" |&' \
+  'grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "contextual quote-close pipeline tails are detected" "1" "$rc"
+assert "quote-close pipe reports producer" "1" "$(printf '%s\n' "$out" | grep -c 'producer before grep -q: stream_source' || true)"
+assert "quote-close pipe-and reports producer" "1" "$(printf '%s\n' "$out" | grep -c 'producer before grep -q: stderr_source' || true)"
+
+printf '%s\n' \
+  'set -o pipefail' \
+  'value=$(cat <<EOF' \
+  'fake_substitution_data | grep -q x' \
+  'EOF' \
+  ')' \
+  'real_after_substitution_heredoc | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "substitution heredoc data is skipped" "1" "$rc"
+assert "substitution heredoc fake pipeline is not scanned" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*fake_substitution_data' || true)"
+assert "pipeline after substitution heredoc is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_substitution_heredoc' || true)"
+
+printf '%s\n' \
   '( set -o pipefail; subshell_stream | grep -q x )' \
   'captured=$(set -o pipefail; substitution_stream | grep -q x)' \
   'late_stream | grep -q x; set -o pipefail' \

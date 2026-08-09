@@ -312,8 +312,9 @@ def walk_error(err):
     print(f"WARNING: cannot traverse {err.filename}: {err}", file=sys.stderr)
     errors += 1
 
-def heredoc_starts(line):
+def heredoc_starts(line, syntax=None):
     """Return (delimiter, strip_tabs) pairs for real heredoc redirects."""
+    syntax=syntax if syntax is not None else syntax_only(line)
     starts=[]; i=0; quote=None; esc=False; arithmetic_depth=0
     while i < len(line):
         c=line[i]
@@ -327,8 +328,8 @@ def heredoc_starts(line):
         if line.startswith("((",i): arithmetic_depth+=1; i+=2; continue
         if arithmetic_depth and line.startswith("))",i): arithmetic_depth-=1; i+=2; continue
         if arithmetic_depth: i+=1; continue
-        if line.startswith("<<<",i): i+=3; continue
-        if not line.startswith("<<",i): i+=1; continue
+        if syntax.startswith("<<<",i): i+=3; continue
+        if not syntax.startswith("<<",i): i+=1; continue
         i+=2; strip_tabs=i < len(line) and line[i] == "-"
         if strip_tabs: i+=1
         while i < len(line) and line[i] in " \t": i+=1
@@ -387,14 +388,15 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
                 if not acc: start_n=n
                 part=physical.strip()
                 continued=backslash_continues(physical)
-                _,lexical_state=lex_shell(physical,lexical_state)
+                contextual_syntax,lexical_state=lex_shell(physical,lexical_state)
                 if continued: part=part[:-1].rstrip()
                 acc += (" " if acc else "") + part
-                syntax_tail=syntax_only(physical).rstrip()
+                pending_heredocs.extend(heredoc_starts(physical,contextual_syntax))
+                syntax_tail=contextual_syntax.rstrip()
                 if continued or lexical_state or syntax_tail.endswith(("|", "|&")):
                     continue
                 logical.append((start_n,acc))
-                pending_heredocs.extend(heredoc_starts(acc)); acc=""
+                acc=""
             if acc: logical.append((start_n,acc))
             function_activity,function_effects=infer_function_activity(logical)
             prev=""; pipefail=False; scope_stack=[]; pending_function=None; condition_stack=[]
