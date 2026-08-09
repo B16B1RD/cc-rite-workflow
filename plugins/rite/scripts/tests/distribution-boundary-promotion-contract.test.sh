@@ -57,16 +57,23 @@ scan_file() {
 
 file_list=$(mktemp)
 trap 'rm -f "$file_list"' EXIT
-if ! find "$scan_root" -type f \
-    \( -name '*.md' -o -name '*.sh' -o -name '*.py' -o -name '*.json' \) \
-    ! -path '*/hooks/tests/*' \
-    ! -path '*/scripts/tests/*' \
+if ! find "$scan_root" \
+    \( -path '*/hooks/tests' -o -path '*/scripts/tests' \) -prune -o \
+    \( -type l -o \( -type f \
+      \( -name '*.md' -o -name '*.sh' -o -name '*.py' -o -name '*.json' \) \) \) \
     -print0 > "$file_list"; then
   printf 'FAIL: cannot scan distribution boundary %s\n' "$scan_root" >&2
   exit 1
 fi
 while IFS= read -r -d '' file; do
-  scan_file "$file"
+  if [ -L "$file" ]; then
+    link_target=$(readlink "$file" 2>/dev/null || printf '<unreadable>')
+    printf 'FAIL: %s: symbolic links are prohibited in the plugin distribution boundary (target: %s); replace the link with a regular tracked file\n' \
+      "${file#"$ROOT/"}" "$link_target" >&2
+    failures=$((failures + 1))
+  else
+    scan_file "$file"
+  fi
 done < "$file_list"
 
 if [ "$failures" -ne 0 ]; then
@@ -102,6 +109,33 @@ MUTATIONS
 mkdir -p "$fixture_root/hooks/tests"
 mv "$fixture_root/leak.md" "$fixture_root/hooks/tests/environment-fixture.md"
 bash "$0" --scan-root "$fixture_root" >/dev/null
+
+# The distribution is copied/packaged across machines, so symlinks are banned
+# regardless of whether today's target looks environment-specific. This keeps
+# absolute, relative, dangling, and future-retargeted links under one policy.
+ln -s /home/akiyoshi/private.md "$fixture_root/environment-link.md"
+symlink_rc=0
+symlink_out=$(bash "$0" --scan-root "$fixture_root" 2>&1) || symlink_rc=$?
+if [ "$symlink_rc" -eq 0 ] \
+  || ! grep -Fq 'environment-link.md' <<<"$symlink_out" \
+  || ! grep -Fq 'symbolic links are prohibited' <<<"$symlink_out" \
+  || ! grep -Fq '/home/akiyoshi/private.md' <<<"$symlink_out"; then
+  printf '%s\n' "$symlink_out" >&2
+  printf 'FAIL: environment-specific symlink target was not rejected with an actionable diagnostic\n' >&2
+  exit 1
+fi
+mv "$fixture_root/environment-link.md" "$fixture_root/hooks/tests/environment-link.md"
+bash "$0" --scan-root "$fixture_root" >/dev/null
+
+ln -s relative-neutral.md "$fixture_root/neutral-link.md"
+neutral_rc=0
+neutral_out=$(bash "$0" --scan-root "$fixture_root" 2>&1) || neutral_rc=$?
+if [ "$neutral_rc" -eq 0 ] || ! grep -Fq 'symbolic links are prohibited' <<<"$neutral_out"; then
+  printf '%s\n' "$neutral_out" >&2
+  printf 'FAIL: neutral symlink was accepted despite the explicit no-symlink policy\n' >&2
+  exit 1
+fi
+mv "$fixture_root/neutral-link.md" "$fixture_root/hooks/tests/neutral-link.md"
 
 printf '%s\n' 'https://github.com/B16B1RD/cc-rite-workflow' > "$fixture_root/attribution.md"
 allow_out=$(bash "$0" --scan-root "$fixture_root")
