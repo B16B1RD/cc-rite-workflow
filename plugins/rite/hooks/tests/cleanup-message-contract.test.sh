@@ -52,11 +52,13 @@ echo "=== ステップ 5: squash-merge 確認済みブランチの強制削除 +
 assert_grep "Step 5 reads the {pr_merged} signal" "$CLEANUP" "pr_merged"
 assert_grep "Step 5 emits via=squash-merged on confirmed-merged force delete" "$CLEANUP" "via=squash-merged"
 assert_grep "Step 5 records the deferred branch to the reap manifest" "$CLEANUP" "rite-tmp-artifact\.sh record --type branch"
-# Deferred branch only auto-recovers when the manifest record actually succeeds; the
-# marker carries recovery=auto/manual so Step 12 never promises auto-recovery on a
-# path that did not record (unmerged force-cleanup / record failure) — AC-6.
-assert_grep "Step 5 emits recovery=auto when manifest record succeeds" "$CLEANUP" "recovery=auto"
-assert_grep "Step 5 emits recovery=manual when not recorded" "$CLEANUP" "recovery=manual"
+# Deferred branch only auto-recovers when the manifest record succeeds and the
+# target worktree passes the same filtered dirty gate as the reaper (#2048).
+assert_grep "Step 5 evaluates the deferred worktree with the shared dirty gate" "$CLEANUP" "git-status-filtered\.sh"
+assert_grep "Step 5 requires an empty filtered status for recovery=auto" "$CLEANUP" '\[ -z "\$_reap_status" \]'
+assert_grep "Step 5 emits recovery=auto only after its guards" "$CLEANUP" "recovery=auto"
+assert_grep "Step 5 emits recovery=manual for unsafe worktrees" "$CLEANUP" "recovery=manual"
+assert_grep "Step 5 manual recovery removes and prunes the worktree before deleting the branch" "$CLEANUP" 'git worktree remove --force \$_branch_wt_q && git worktree prune && git branch -D'
 
 echo "=== ステップ 12: ユーザー向けメッセージの平易化・正確化 (AC-6) ==="
 # branch の遅延メッセージは「自動で削除される（手動不要）」を明記する（実装の自動回収と整合）。

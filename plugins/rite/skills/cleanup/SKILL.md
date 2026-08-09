@@ -406,7 +406,7 @@ esac
 > **ガードが拒否する形（実測）**: harness が拒否するのは **Bash ツール呼び出しのコマンド文字列に直接 `cd {main_root}` / `git -C {main_root}` を書く形**（および worktree 外を向くか検証不能な複合ブロック）であり、helper スクリプト内部の `cd` は拒否されない（ステップ 7 の `pr-cycle-cleanup.sh` は内部で main checkout へ `cd` して `git worktree remove` / `git branch -d` を実行できている）。本 SKILL.md のステップ 4 / 4-W / 5 / 9 はいずれも前者の形を取るため委譲対象になる。helper へ閉じ込めれば自動化できる余地は残るが、それは「worktree 内から全項目を完走させる」設計変更であり Issue #2133 の Non-goal。
 
 - `CLEANUP_WT=in_worktree_unrecorded`（EnterWorktree 非経由の path 入場 = ユーザーがセッションを worktree ディレクトリで開いた場合。`ExitWorktree` が no-op で main checkout へ戻れない）: **下記の手順 1〜4 を実行しない**（`CLEANUP_DELEGATED=1`）。main checkout 操作を要する 4 項目（base 更新 = ステップ 4 / worktree 削除 = 本 4-W / ブランチ削除 = ステップ 5 / wiki ingest = ステップ 9）は**試行せず**、ステップ 12 が未完了として列挙し委譲する。worktree 内で完結する項目（PR-specific state 削除・Projects Status 更新・Issue クローズ・作業メモリ更新・flow state リセット）は通常どおり実行する。ガードを迂回する複合コマンド（main checkout への `cd` / `git -C` リダイレクト）は**試みない** — ガードは正当に機能しており、迂回は設計違反。
-  **委譲先は main checkout での `/rite:cleanup {pr_number}` 再実行**（1 系統）。再実行セッションでは flow-state に worktree 記録が無いため 4-W は `CLEANUP_WT=none` を返し、`CLEANUP_DELEGATED` を emit せずステップ 4 / 5 / 9 が通常実行される。base 更新・wiki ingest・リモートブランチ削除はそこで直接完了し、worktree 削除とローカルブランチ削除は**ステップ 5 が `branch` エントリを reap manifest に記録する**ことで次回セッション開始時の自動回収を arm する（`{pr_merged}=true` かつ manifest への記録を verify できたときのみ `recovery=auto` になる。未マージ PR の強制 cleanup と記録漏れはいずれも `recovery=manual` に倒れ手動削除が必要 — 出し分けはステップ 12 の `{local_branch_check}` 判定に規定済み。既存配線で、本ステップから追加の記録は行わない）。
+  **委譲先は main checkout での `/rite:cleanup {pr_number}` 再実行**（1 系統）。再実行セッションでは flow-state に worktree 記録が無いため 4-W は `CLEANUP_WT=none` を返し、`CLEANUP_DELEGATED` を emit せずステップ 4 / 5 / 9 が通常実行される。base 更新・wiki ingest・リモートブランチ削除はそこで直接完了し、worktree 削除とローカルブランチ削除は**ステップ 5 が `branch` エントリを reap manifest に記録する**ことで次回セッション開始時の自動回収を arm する（`{pr_merged}=true`、manifest への記録を verify 済み、かつ対象 worktree が reaper と同じ filtered dirty gate を通過したときだけ `recovery=auto` になる。未マージ PR の強制 cleanup・記録漏れ・dirty または判定不能な worktree は `recovery=manual` に倒れ手動回復が必要 — 出し分けはステップ 12 の `{local_branch_check}` 判定に規定済み。既存配線で、本ステップから追加の記録は行わない）。
 - `CLEANUP_WT=in_worktree`（EnterWorktree 管理下 = `/rite:batch-run` 経由の通常経路。`ExitWorktree` で退出できる）:
   1. `dirty=yes` なら **AskUserQuestion**（「`git stash push` して続行 / 中止」）。説明文は上記 `--- dirty files begin/end ---` デリミタ内に出力された生パス一覧を**引用**する（要約・創作しない）。stash は common git dir に格納されるため worktree 削除後も `git stash pop` 可能（完了報告の stash 案内は従来文面を流用）。
   2. `ExitWorktree` ツールを `action: "keep"` で呼び出し、main checkout に復帰する（path 入場した worktree は remove でも消えない仕様のため**常に keep**）。
@@ -585,7 +585,7 @@ fi
 
 > **順序**: branch 削除は **worktree 削除後にのみ成功する**（Git 制約: worktree で checkout 中の branch は削除不可）。multi_session 時は必ずステップ 4-W → 本ステップの順で実行する。
 >
-> **委譲モード（#2133）**: 4-W が `[CONTEXT] CLEANUP_DELEGATED=1` を emit している場合、本ステップの bash ブロックを**いずれも実行しない**（worktree を削除していないため checkout 中の branch は構造的に削除できない。リモート削除は本ステップ内でローカル削除と 1 ステップで扱うため同時に委譲する — `git push origin --delete` 自体はガードに抵触せず worktree 内からも実行できる）。ステップ 12 が未完了として列挙し、main checkout での `/rite:cleanup {pr_number}` 再実行へ委譲する。再実行では本ステップが通常実行され、リモート削除は直接完了し、ローカル削除は `used by worktree` で見送られた上で `branch` エントリを reap manifest に記録して次回セッション開始時の自動回収を arm する（記録は `{pr_merged}=true` のときに行い、共有 manifest でエントリを verify できたときのみ `recovery=auto` になる。未マージ PR の強制 cleanup と記録漏れはいずれも `recovery=manual` に倒れ手動削除が必要 — 出し分けは本ステップの `recovery=` 判定が持つ）。
+> **委譲モード（#2133）**: 4-W が `[CONTEXT] CLEANUP_DELEGATED=1` を emit している場合、本ステップの bash ブロックを**いずれも実行しない**（worktree を削除していないため checkout 中の branch は構造的に削除できない。リモート削除は本ステップ内でローカル削除と 1 ステップで扱うため同時に委譲する — `git push origin --delete` 自体はガードに抵触せず worktree 内からも実行できる）。ステップ 12 が未完了として列挙し、main checkout での `/rite:cleanup {pr_number}` 再実行へ委譲する。再実行では本ステップが通常実行され、リモート削除は直接完了し、ローカル削除は `used by worktree` で見送られた上で `branch` エントリを reap manifest に記録して次回セッション開始時の自動回収を arm する（`{pr_merged}=true`、共有 manifest のエントリを verify 済み、かつ対象 worktree が reaper と同じ filtered dirty gate を通過したときだけ `recovery=auto` になる。未マージ PR の強制 cleanup・記録漏れ・dirty または判定不能な worktree は `recovery=manual` に倒れ手動回復が必要 — 出し分けは本ステップの `recovery=` 判定が持つ）。
 
 ```bash
 # worktree 削除が遅延した場合（ステップ 4-W が WORKTREE_REMOVE_SKIPPED_LIVE_CWD = 別 live
@@ -667,22 +667,39 @@ else
       # WARNING を出して exit 0 を返す（非 0 は usage error のみ）。したがって record の exit code では
       # 記録成否を判定できない。共有 manifest を直接 verify し、エントリが実在するときだけ
       # recovery=auto を emit する（記録できていない経路で「自動で回収されます」と偽らない）。
-      # {pr_merged}=false / 記録漏れ / shared-root 解決不能はすべて recovery=manual に倒す。
+      # {pr_merged}=false / 記録漏れ / shared-root 解決不能 / reaper dirty gate を
+      # 通過できない worktree はすべて recovery=manual に倒す。
       _recovery=manual
       if [ "{pr_merged}" = "true" ]; then
         bash {plugin_root}/hooks/scripts/rite-tmp-artifact.sh record --type branch --id "{branch_name}" 2>/dev/null || true
         _shared_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _shared_root=""
         [ -n "$_shared_root" ] || _shared_root=$(git rev-parse --show-toplevel 2>/dev/null) || _shared_root=""
-        if [ -n "$_shared_root" ] && grep -qxF "branch$(printf '\t'){branch_name}" "$_shared_root/.rite/tmp-artifacts.tsv" 2>/dev/null; then
+        _branch_wt=$(git worktree list --porcelain 2>/dev/null | awk -v wanted="refs/heads/{branch_name}" '
+          /^worktree / { wt=substr($0, 10) }
+          /^branch / && substr($0, 8) == wanted { print wt; exit }
+        ') || _branch_wt=""
+        _reap_status="?? (worktree unresolved — assume dirty for safety)"
+        _reap_status_rc=1
+        if [ -n "$_branch_wt" ] && [ -d "$_branch_wt" ]; then
+          _reap_status_rc=0
+          _reap_status=$(cd "$_branch_wt" && bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh) || _reap_status_rc=$?
+        fi
+        if [ -n "$_shared_root" ] \
+          && grep -qxF "branch$(printf '\t'){branch_name}" "$_shared_root/.rite/tmp-artifacts.tsv" 2>/dev/null \
+          && [ "$_reap_status_rc" -eq 0 ] && [ -z "$_reap_status" ]; then
           _recovery=auto
+        elif [ "$_reap_status_rc" -ne 0 ] || [ -n "$_reap_status" ]; then
+          echo "WARNING: ローカルブランチ {branch_name} の作業ツリーは reaper の dirty gate を通過できないため recovery=manual に倒します。" >&2
         fi
       fi
       if [ "$_recovery" = "auto" ]; then
         echo "[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}; reason=checked_out_in_worktree; recovery=auto" >&2
         echo "WARNING: ローカルブランチ {branch_name} は、まだ削除されていない作業ツリーで使用中のため、削除を見送りました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で回収されます。" >&2
       else
+        _branch_wt_q="<worktree>"
+        [ -z "$_branch_wt" ] || _branch_wt_q=$(printf '%q' "$_branch_wt")
         echo "[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}; reason=checked_out_in_worktree; recovery=manual" >&2
-        echo "WARNING: ローカルブランチ {branch_name} は作業ツリーで使用中のため、削除を見送りました。その作業ツリーが解放されたあと、手動で削除してください: git branch -D {branch_name}" >&2
+        echo "WARNING: ローカルブランチ {branch_name} は作業ツリーで使用中のため、削除を見送りました。手動回復: git worktree remove --force $_branch_wt_q && git worktree prune && git branch -D {branch_name}" >&2
       fi ;;
     *"not fully merged"*)
       if [ "{pr_merged}" = "true" ]; then
@@ -840,7 +857,7 @@ fi ;;
 esac
 ```
 
-`BRANCH_DELETED=1; via=squash-merged`（PR が merged 済みで `git branch -d` が squash 残渣により拒否したケース）は通常削除と同様にステップ 12 で `x` に分岐する。`BRANCH_DELETE_UNMERGED=1`（未マージ PR の強制 cleanup で `{pr_merged}=false` のとき）は「強制削除 (`-D`) / スキップ」を確認する。**強制削除を選んだ場合**は `LC_ALL=C git branch -D {branch_name} && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=force"` を実行し、削除完了を marker で示す（ステップ 12 が `x` に分岐する）。スキップ時は marker を追加しない（残置のまま）。`BRANCH_DELETE_DEFERRED=1`（作業ツリーが未削除のまま残り削除を遅延したケース — 別セッション使用中(#1670) または sandbox マスク skip(#1957)。原因は断定しない）のときは**強制削除しない**。marker の `recovery=` で次セッション回収の可否が決まる: `recovery=auto`（{pr_merged}=true かつ reap manifest への記録を verify 済み）は worktree 解放後に `pr-cycle-cleanup.sh` Step 5 が自動回収する。`recovery=manual`（未マージ PR の強制 cleanup、または記録漏れ）は自動回収されないため手動 `git branch -D` が必要。ステップ 12 はこの `recovery=` 値で残置メッセージを出し分ける。
+`BRANCH_DELETED=1; via=squash-merged`（PR が merged 済みで `git branch -d` が squash 残渣により拒否したケース）は通常削除と同様にステップ 12 で `x` に分岐する。`BRANCH_DELETE_UNMERGED=1`（未マージ PR の強制 cleanup で `{pr_merged}=false` のとき）は「強制削除 (`-D`) / スキップ」を確認する。**強制削除を選んだ場合**は `LC_ALL=C git branch -D {branch_name} && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=force"` を実行し、削除完了を marker で示す（ステップ 12 が `x` に分岐する）。スキップ時は marker を追加しない（残置のまま）。`BRANCH_DELETE_DEFERRED=1`（作業ツリーが未削除のまま残り削除を遅延したケース — 別セッション使用中(#1670) または sandbox マスク skip(#1957)。原因は断定しない）のときは**強制削除しない**。marker の `recovery=` で次セッション回収の可否が決まる: `recovery=auto`（{pr_merged}=true、reap manifest の記録を verify 済み、かつ対象 worktree が reaper と同じ filtered dirty gate を通過）は worktree 解放後に `pr-cycle-cleanup.sh` Step 5 が自動回収する。`recovery=manual`（未マージ PR の強制 cleanup、記録漏れ、dirty または判定不能な worktree）は自動回収されないため、表示された `git worktree remove --force ... && git worktree prune && git branch -D ...` による手動回復が必要。ステップ 12 はこの `recovery=` 値で残置メッセージを出し分ける。
 
 リモート削除は **ブランチ名の事前検証 → 一時ファイル確保 → `git ls-remote --exit-code`（rc=128 なら 1 回リトライ、#2140）+ ref 名の完全一致検証** の順に進み、**どの経路も必ず marker を emit する**（marker 名は 4 種、emit 箇所は 8 — うち fail-fast 4 経路（空値 / marker デリミタ / refname 非合法 / 一時ファイル確保失敗）は `ls-remote` を実行しない。#2016）: 事前検証（空値 / marker デリミタ文字 / refname 非合法）に落ちた場合、一時ファイルを確保できなかった場合、ref 名の完全一致検証が異常終了した場合はいずれも削除を試行せず `REMOTE_BRANCH_CHECK_FAILED=1`（原因は marker の `rc=` と `reason=` で区別する）。`rc=0`（存在確認済み）は削除し、成功なら `REMOTE_BRANCH_DELETED=1`、失敗（protected branch / 権限不足 / race）なら `REMOTE_BRANCH_DELETE_FAILED=1` を emit する。`rc=2` は不在なので削除せず `REMOTE_BRANCH_ALREADY_ABSENT=1`、それ以外の非 0（リトライ後も 128 を含む）は存在有無が判定できないため削除を試行せず `REMOTE_BRANCH_CHECK_FAILED=1` を emit する。成功側も marker を出すのは、ステップ 12 が marker 不在を「削除成功」と読まないようにするため — 不在を成功の符号化に使うと、本ブロックが実行されなかった経路と削除成功が同一視され、`/rite:merge` の完了報告と同種の「実際には起きていないことを完了として報告する」嘘が判定表側から復活する。リポジトリ設定 `delete_branch_on_merge: true` の環境では merge 時にサーバサイドで head ブランチが削除されるため通常は `rc=2` に落ち、`/rite:merge` の `--delete-branch=false` はこれを抑止しない（`skills/merge/SKILL.md` の設計判断を参照）。`delete_branch_on_merge: false` のリポジトリでは従来どおり `rc=0` 経路で削除される。
 
@@ -1148,13 +1165,13 @@ Status: {projects_status_result}
 
   **ローカル側**（**2 段で判定する**: まず `[CONTEXT] ` 行頭一致 + marker family + `branch={branch_name}` に該当する行を集め、**その中の最後の出現 1 行だけを対象に選ぶ**。次にその 1 行に対して以下のルールを上から評価し最初に一致したものを採用する。段の順序を入れ替えてはならない — ルールを先に評価すると、蓄積した stale marker のうち上位ルールに当たるものが最新の行より先に一致し、recency が働かない）:
   - `[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}` 行があるとき（作業ツリーが未削除のまま残っていて削除を見送った — 別セッション使用中（#1670）または sandbox マスク skip（#1957）。原因は断定しない）。**marker の `recovery=` フィールドで文面を出し分ける**（記録できていない経路で「自動回収」と偽らないため — AC-6）: ` ` + 以下を付記
-    - `recovery=auto`（PR が merged 済みで reap manifest に記録成功 → 次セッションで自動回収される）:
+    - `recovery=auto`（PR が merged 済み、reap manifest に記録成功、かつ filtered dirty gate が clean → 次セッションで自動回収される）:
       ```
       ℹ️ ローカルブランチ {branch_name} は、まだ削除されていない作業ツリーで参照されているため残しました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で削除されます（手動操作は不要）。
       ```
-    - `recovery=manual`（未マージ PR の強制 cleanup、または manifest 記録に失敗 → 自動回収されないため手動が必要）:
+    - `recovery=manual`（未マージ PR の強制 cleanup、manifest 記録失敗、または dirty / 判定不能 → 自動回収されないため手動が必要）:
       ```
-      ℹ️ ローカルブランチ {branch_name} は、作業ツリーで参照されているため残しました。その作業ツリーが解放されたあと、手動で削除してください: git branch -D {branch_name}
+      ℹ️ ローカルブランチ {branch_name} は、reaper が安全に回収できない作業ツリーで参照されているため残しました。手動回復: git worktree remove --force '<worktree>' && git worktree prune && git branch -D {branch_name}
       ```
   - `[CONTEXT] BRANCH_DELETED=1; branch={branch_name}` 行があるとき（通常削除、squash 残渣の自動強制削除 `via=squash-merged`、または `BRANCH_DELETE_UNMERGED` をユーザーが強制削除 `-D` で解決した場合に emit される。**`BRANCH_DELETE_UNMERGED=1` より先に評価する**）: `x`
   - `[CONTEXT] BRANCH_ALREADY_ABSENT=1; branch={branch_name}` 行があるとき（cleanup 再実行 / 別セッションで削除済みなどで既に不在。**正常系であり残作業ではない** — リモート側 `REMOTE_BRANCH_ALREADY_ABSENT` と対称）: `x`

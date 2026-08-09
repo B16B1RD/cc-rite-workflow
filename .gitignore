@@ -25,7 +25,14 @@ Thumbs.db
 tmp/
 temp/
 
-# Claude Code harness state (auto-generated)
+# Claude Code harness state (auto-generated). The directory is ignored as a
+# whole so untracked ambient mounts/files created in session worktrees do not
+# permanently trip the lazy reaper's dirty guard. Existing tracked files remain
+# tracked by Git.
+.claude/
+.mcp.json
+
+# Legacy explicit entries retained as documentation for the two sensitive files.
 # scheduled task lock — session 固有の lock (sessionId/pid/procStart/acquiredAt) を
 # Claude Code 本体が毎セッション上書きするため tracked だと常に dirty になり、
 # pull.rebase=true 環境で git pull を abort させる (#1654)。.claude/ 配下の他の
