@@ -669,6 +669,32 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-034b: symlink component in $PWD + regular content-file → exit 0 (#2012)
+# --------------------------------------------------------------------------
+echo "TC-034b: symlink component in \$PWD + regular content-file → exit 0"
+dir34b_real="$TEST_DIR/tc34b-real"
+dir34b_link="$TEST_DIR/tc34b-link"
+mkdir -p "$dir34b_real"
+ln -s "$dir34b_real" "$dir34b_link"
+cat > "$dir34b_real/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+echo "content below logical cwd" > "$dir34b_real/body.md"
+( cd -L "$dir34b_link" && bash "$HOOK" --type reviews --source-ref pr-2012 --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 0 ]; then
+  target_path34b=$(tr -d '[:space:]' < "$dir34b_real/out.log")
+  if [ -n "$target_path34b" ] && [ -f "$dir34b_real/$target_path34b" ]; then
+    pass "Canonical content path is accepted below symlinked \$PWD"
+  else
+    fail "Symlinked \$PWD → rc=0 but output file not found (path='$target_path34b')"
+  fi
+else
+  fail "Expected rc=0 below symlinked \$PWD, got rc=$rc, stderr=$(cat "$dir34b_real/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # TC-035: Control character in --source-ref → exit 1 (F-14)
 # --------------------------------------------------------------------------
 echo "TC-035: Control character in --source-ref → exit 1"
