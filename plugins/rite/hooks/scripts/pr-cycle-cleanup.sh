@@ -1149,7 +1149,10 @@ if [ -d "$session_wt_root" ]; then
       _corpse=1
     fi
 
-    # Gate 3: dirty worktree is NEVER auto-reaped. An indeterminate status
+    # Gate 3: dirty worktree is NEVER auto-reaped. Use the same filtered status
+    # boundary as cleanup Step 4-W so sandbox ghost mounts and ignored ambient
+    # session files cannot make the producer and consumer disagree (#2048).
+    # An indeterminate status
     # (rc != 0) is treated conservatively as "do not reap" to avoid data loss.
     # A corpse bypasses this gate (Issue #1957 D-01): "indeterminable =
     # protect" would mean "protect forever" for a tree git can no longer
@@ -1160,7 +1163,7 @@ if [ -d "$session_wt_root" ]; then
       # rc would abort the whole reap loop instead of taking the conservative
       # skip below — the exact broken-tree inputs this gate exists to protect.
       _st_rc=0
-      _st_out=$(git -C "$wt_path" status --porcelain 2>/dev/null) || _st_rc=$?
+      _st_out=$(cd "$wt_path" && bash "$SCRIPT_DIR/lib/git-status-filtered.sh") || _st_rc=$?
       if [ "$_st_rc" -ne 0 ]; then
         echo "WARNING: session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' の status を判定できません (rc=$_st_rc) — 安全側で reap をスキップします" >&2
         continue

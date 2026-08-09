@@ -106,6 +106,29 @@ run_pcc "$R" >/dev/null
 assert "TC-3 dirty worktree survives" "1" "$( [ -d "$R/.rite/worktrees/issue-52" ] && echo 1 || echo 0 )"
 assert_grep "TC-3 WARNING emitted for dirty" "$R/pcc.err" "未コミット変更があるため auto-reap をスキップ"
 
+echo "=== TC-3b (#2048 AC-3/4): ignored ambient files → reaped ==="
+R=$(make_repo 55); cleanup_dirs+=("$R")
+printf '.claude/\n.mcp.json\n' >> "$R/.gitignore"
+( cd "$R" && $GIT add .gitignore && $GIT commit -q -m 'ignore ambient session files' )
+( cd "$R/.rite/worktrees/issue-55" && $GIT merge -q --ff-only develop )
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+mkdir -p "$R/.rite/worktrees/issue-55/.claude/agents"
+printf 'ambient\n' > "$R/.rite/worktrees/issue-55/.claude/agents/session.md"
+printf '{}\n' > "$R/.rite/worktrees/issue-55/.mcp.json"
+ambient_filtered=$(cd "$R/.rite/worktrees/issue-55" && bash "$SCRIPT_DIR/../scripts/lib/git-status-filtered.sh")
+out=$(run_pcc "$R")
+assert "TC-3b filtered status agrees ambient worktree is clean" "" "$ambient_filtered"
+assert "TC-3b ambient-only worktree reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-55" ] && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=1"*) pass "TC-3b status reports session_worktrees=1" ;; *) fail "TC-3b status: $out" ;; esac
+
+echo "=== TC-3c (#2048 AC-5): tracked modification remains protected ==="
+R=$(make_repo 56); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+printf 'tracked change\n' >> "$R/.rite/worktrees/issue-56/README.md"
+run_pcc "$R" >/dev/null
+assert "TC-3c tracked-dirty worktree survives" "1" "$( [ -d "$R/.rite/worktrees/issue-56" ] && echo 1 || echo 0 )"
+assert_grep "TC-3c tracked dirty emits WARNING" "$R/pcc.err" "未コミット変更があるため auto-reap をスキップ"
+
 echo "=== TC-5 (AC-5): .rite/wiki-worktree + non-issue dirs NOT matched ==="
 R=$(make_repo 53); cleanup_dirs+=("$R")
 # A wiki-worktree-shaped registered worktree must be excluded by the strict regex.
