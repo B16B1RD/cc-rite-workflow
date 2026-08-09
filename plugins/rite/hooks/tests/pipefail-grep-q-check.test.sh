@@ -234,6 +234,28 @@ assert "argument-bearing helper effects retain active finding" "1" "$rc"
 assert "argument-bearing enable changes parent" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*after_arg_enable' || true)"
 assert "argument-bearing disable changes parent" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*after_arg_disable' || true)"
 
+printf '%s\n' \
+  'set -o pipefail' \
+  'if probe | grep -q ready; then set +o pipefail; fi' \
+  'after_unknown_piped_disable | grep -q x' \
+  'set +o pipefail' \
+  'if probe | grep -q ready; then set -o pipefail; fi' \
+  'after_unknown_piped_enable | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "unknown piped conditions preserve possible findings" "1" "$rc"
+assert "unknown piped disable cannot erase active possibility" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*after_unknown_piped_disable' || true)"
+assert "unknown piped enable retains active possibility" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*after_unknown_piped_enable' || true)"
+
+printf '%s\n' \
+  'maybe_disable() { if false; then set +o pipefail; fi; }' \
+  'maybe_enable() { if false; then set -o pipefail; fi; }' \
+  'set -o pipefail; maybe_disable; after_helper_false_disable | grep -q x' \
+  'set +o pipefail; maybe_enable; after_helper_false_enable | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "helper literal-false summaries preserve active finding" "1" "$rc"
+assert "helper untaken disable is identity" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*after_helper_false_disable' || true)"
+assert "helper untaken enable is identity" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*after_helper_false_enable' || true)"
+
 printf '%s\n' 'set -o pipefail' 'stream_many | grep -q x # drift-check-ignore: bounded fixture' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "ignore marker suppresses finding" "0" "$rc"

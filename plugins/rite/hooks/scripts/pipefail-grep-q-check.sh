@@ -139,6 +139,13 @@ def scan_line_state(syntax, state, stack, function_activity=None, pending_functi
         if cm: condition_stack.append(cm.group(1)=="true"); i+=cm.end(); continue
         cm=re.match(r'if\s+[^;|]+;\s*then\b',syntax[i:])
         if cm: condition_stack.append(None); i+=cm.end(); continue
+        cm=re.match(r'if\b',syntax[i:])
+        if cm and re.search(r';\s*then\b',syntax[i:]):
+            condition_stack.append(None); i+=cm.end(); continue
+        cm=re.match(r'elif\b',syntax[i:])
+        if cm:
+            if condition_stack: condition_stack[-1]=None
+            i+=cm.end(); continue
         cm=re.match(r'else\b',syntax[i:])
         if cm:
             if condition_stack and condition_stack[-1] is not None: condition_stack[-1]=not condition_stack[-1]
@@ -198,7 +205,11 @@ def infer_function_activity(logical):
             if header.group(1):
                 depth=syntax.count("{")-syntax.count("}"); in_function=declared_name if depth>0 else None
                 if depth<=0 and declared_name:
-                    events=[(m.start(),"toggle",m.group(1).startswith("-")) for m in toggle_re.finditer(syntax)]
+                    events=[]
+                    for m in toggle_re.finditer(syntax):
+                        prefix=syntax[:m.start()]
+                        if re.search(r'if\s+false\s*;\s*then\b[^;]*$',prefix): continue
+                        events.append((m.start(),"toggle",m.group(1).startswith("-")))
                     for name in names:
                         if name != declared_name:
                             for cm in re.finditer(r'[;{]\s*'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
@@ -214,7 +225,11 @@ def infer_function_activity(logical):
             if re.match(r'^\s*\{',syntax): in_function=pending; pending=None; depth=syntax.count("{")-syntax.count("}")
             continue
         if in_function:
-            line_events=[(m.start(),"toggle",m.group(1).startswith("-")) for m in toggle_re.finditer(syntax)]
+            line_events=[]
+            for m in toggle_re.finditer(syntax):
+                prefix=syntax[:m.start()]
+                if re.search(r'if\s+false\s*;\s*then\b[^;]*$',prefix): continue
+                line_events.append((m.start(),"toggle",m.group(1).startswith("-")))
             for name in names:
                 for cm in re.finditer(r'(?:^|[;|&]\s*|\b(?:if|then|command)\s+|!\s*|\$\(\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
                     line_events.append((cm.start(),"call",name))
