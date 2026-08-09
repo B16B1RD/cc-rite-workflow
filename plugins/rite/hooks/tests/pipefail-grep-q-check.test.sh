@@ -137,6 +137,25 @@ assert "substitution heredoc fake pipeline is not scanned" "0" "$(printf '%s\n' 
 assert "pipeline after substitution heredoc is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_substitution_heredoc' || true)"
 
 printf '%s\n' \
+  'set -o pipefail' \
+  'cat <<EOF \' \
+  '  > /dev/null' \
+  'payload' \
+  'EOF' \
+  'cat << \' \
+  "  'SPLIT'" \
+  'set +o pipefail' \
+  'SPLIT' \
+  "cat <<\$'ANSI'" \
+  'fake_ansi_data | grep -q x' \
+  'ANSI' \
+  'real_after_continued_heredocs | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "continued heredoc declarations preserve analysis" "1" "$rc"
+assert "continued heredoc body state does not leak" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*real_after_continued_heredocs' || true)"
+assert "ANSI-C heredoc body is not scanned" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*fake_ansi_data' || true)"
+
+printf '%s\n' \
   '( set -o pipefail; subshell_stream | grep -q x )' \
   'captured=$(set -o pipefail; substitution_stream | grep -q x)' \
   'late_stream | grep -q x; set -o pipefail' \

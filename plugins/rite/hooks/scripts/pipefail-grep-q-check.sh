@@ -22,7 +22,7 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 python3 - "$@" <<'PY'
-import os, re, shlex, sys
+import ast, os, re, shlex, sys
 
 args=sys.argv[1:]; root=""; use_all=False; quiet=False; skip_if_no_target=False
 i=0
@@ -347,8 +347,8 @@ def heredoc_starts(line, syntax=None):
         token=line[start:i]
         if token:
             try:
-                parsed=shlex.split(token,comments=False,posix=True)
-            except ValueError:
+                parsed=[ast.literal_eval(token[1:])] if token.startswith("$'") else shlex.split(token,comments=False,posix=True)
+            except (SyntaxError,ValueError):
                 parsed=[]
             if parsed: starts.append((parsed[0],strip_tabs))
     return starts
@@ -378,7 +378,7 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
                 lines=open(path,encoding="utf-8",errors="replace").read().splitlines()
             except OSError as e:
                 print(f"WARNING: cannot read {rel}: {e}",file=sys.stderr); errors+=1; continue
-            logical=[]; acc=""; start_n=1; pending_heredocs=[]; lexical_state=None
+            logical=[]; acc=""; start_n=1; pending_heredocs=[]; lexical_state=None; had_backslash=False
             for n,physical in enumerate(lines,1):
                 if pending_heredocs:
                     delimiter,strip_tabs=pending_heredocs[0]
@@ -391,7 +391,14 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
                 contextual_syntax,lexical_state=lex_shell(physical,lexical_state)
                 if continued: part=part[:-1].rstrip()
                 acc += (" " if acc else "") + part
-                pending_heredocs.extend(heredoc_starts(physical,contextual_syntax))
+                found_heredocs=heredoc_starts(physical,contextual_syntax)
+                if continued:
+                    had_backslash=True
+                elif had_backslash:
+                    pending_heredocs.extend(heredoc_starts(acc,syntax_only(acc)))
+                    had_backslash=False
+                else:
+                    pending_heredocs.extend(found_heredocs)
                 syntax_tail=contextual_syntax.rstrip()
                 if continued or lexical_state or syntax_tail.endswith(("|", "|&")):
                     continue
