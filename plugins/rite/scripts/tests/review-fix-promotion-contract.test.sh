@@ -5,6 +5,7 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)
 audit="$ROOT/plugins/rite/skills/pr-review/references/promotion-audit-2091.md"
 review="$ROOT/plugins/rite/skills/pr-review/SKILL.md"
 fix="$ROOT/plugins/rite/skills/fix/SKILL.md"
+iterate="$ROOT/plugins/rite/skills/iterate/SKILL.md"
 test_reviewer="$ROOT/plugins/rite/agents/test-reviewer.md"
 error_reviewer="$ROOT/plugins/rite/agents/error-handling-reviewer.md"
 failures=0
@@ -23,7 +24,14 @@ assert_grep 'aggregate recommendation shelved' "$audit" '| `aggregate-recommenda
 assert_grep 'fix drift shelved' "$audit" '| `fix-induced-drift-in-cumulative-defense` | shelve — already mechanized | `review-trend-divergence.sh` and the `iterate` circuit breaker |'
 assert_grep 'likelihood evidence routed to follow-up' "$audit" '| `reviewer-likelihood-evidence-omission-induces-mechanical-demotion` | follow-up — producer enforcement incomplete |'
 assert_grep 'convention escalation shelved' "$audit" '| `convention-escalation-has-no-terminus` | shelve — already mechanized | structured review JSON, helper gates, and fail-loud enum validation |'
-assert_grep 'differential scope routed to follow-up' "$audit" '| `differential-scope-review-blind-outside-diff` | follow-up — post-breaker full pass not enforced |'
+assert_grep 'differential scope mechanized' "$audit" '| `differential-scope-review-blind-outside-diff` | mechanized here | `iterate/SKILL.md` post-breaker full review transition and normal review routing |'
+assert_grep 'post-breaker full review transition exists' "$iterate" '### ステップ 6.0: post-breaker full review'
+assert_grep 'post-breaker run boundary is pinned' "$iterate" 'review-run-since-{pr_number}.txt'
+assert_grep 'post-breaker full pass is single-shot' "$iterate" '同一発火に対し full review を 2 回以上 invoke する'
+assert_grep 'post-breaker mergeable uses normal completion' "$iterate" 'ステップ 5 の正常終了 routing へ'
+assert_grep 'post-breaker findings use normal fix routing' "$iterate" 'ステップ 3 の `/rite:fix` へ'
+assert_grep 'post-breaker failure preserves batch sentinel' "$iterate" '<!-- [iterate:max-cycles-reached] -->'
+assert_grep 'post-breaker failure preserves interactive sentinel' "$iterate" '<!-- [iterate:max-cycles-stopped] -->'
 assert_grep 'scope split mechanized' "$audit" '| `reviewer-scope-split-escalates-to-user` | mechanized here | Scope Split Gate below and `pr-review/SKILL.md` |'
 assert_grep 'scope rejection mechanized' "$audit" '| `scope-creep-rejection-empirical-gate` | mechanized here | Rejection Evidence Gate below and `fix/SKILL.md` |'
 assert_grep 'error-path regression mechanized' "$audit" '| `bugfix-new-error-path-needs-regression-test` | mechanized here | New Error-Path Regression Gate in reviewer prompts |'

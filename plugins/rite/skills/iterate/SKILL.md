@@ -19,7 +19,7 @@ argument-hint: "<pr_number>"
 3. `/rite:fix` を invoke
 4. fix sentinel を判定（`[fix:pushed]` → ステップ 1 に戻る / `[fix:replied-only]` `[fix:cancelled-by-user]` → 終了 / `[fix:error]` → AskUserQuestion）
 5. 完了通知を出す
-6. （発火時のみ）サーキットブレーカー: batch / 対話とも人間に問わず機械的に停止する。バッチ実行（`/rite:batch-run`）は `[iterate:max-cycles-reached]` を emit して当該 Issue を failed 扱いにさせ、対話実行は `[iterate:max-cycles-stopped]` の停止通知を出して終了する
+6. （発火時のみ）サーキットブレーカー: run 境界を更新して post-breaker full review を 1 回実行し、結果を通常の review routing へ戻す。full review 自体が完了できない場合のみ、batch は `[iterate:max-cycles-reached]`、対話は `[iterate:max-cycles-stopped]` で従来どおり停止する
 
 **サーキットブレーカーの発火条件は 2 つ**:
 
@@ -28,7 +28,7 @@ argument-hint: "<pr_number>"
 
 > **Why**: cycle 数上限は努力と無駄を区別できない — 健全に収束中のループも残り数件のところで予算切れになり、発散しているループも上限まで燃やしてしまう（どちらも実運用で観測済み）。「品質を予算で縛らない・無駄は排除する」（CLAUDE.md プロジェクト原則）に従い、切るのは発散であって収束に向かう実サイクルではない。
 
-**発火＝失敗の機械的記録**であり、**発火理由に依らず** batch / 対話とも同構造（failed 記録 + draft 残し + 停止通知 + handoff クリア維持。ただし failed 記録が外部に永続するのは batch のみ — 対話側は消費者を持たない sentinel が出るだけで、reset 後の state は fresh な review と区別できない。ステップ 6 参照）で停止する — 人間に継続可否を問う経路は持たず、発火からマージへ到達する分岐も存在しない。`/rite:batch-run` バッチ実行では当該 Issue を failed 扱いにする sentinel を emit して次 Issue へ進ませる（バッチ全体のストール防止）。ループを再開する唯一の経路は人間が明示的に `/rite:iterate {pr}`（または `/rite:recover`）を再実行することである。cycle_count は flow-state に永続化され resume を跨いで継続する（AC-3）。**counter のリセットは発火が sentinel として記録される直前（ステップ 6 の共有前段）で行う** — 発火後の再実行はステップ 0.6 で何もしなくても cycle 1 から再開する（発火済みを別マーカーとして覚えない）。ステップ 1 の fire 分岐で先にリセットしない理由は、発火が無記録のまま counter だけ 0 になる窓を狭めるため（その状態から `/rite:recover` すると満額の cycle 予算でループが再開してしまう）。**窓は消えていない** — 共有前段の実行後・sentinel 出力前に turn が終わればこの組み合わせは成立する。fire 分岐に置くより窓が狭いだけで、構造的な閉塞は別 Issue（sentinel 出力を強制する handoff 機構が必要で、それは Non-Target の Stop hook 改修を伴う）。最終 cycle の実行中は `cycle_count == max_review_cycles` が通常状態として成立するが、そこでの中断からの resume は fire 分岐を通らないため counter が上限のまま残り、ステップ 1 で正しく発火する。それ以外の中断経路は 2 種類: (a) ユーザーが fix.md 内 AskUserQuestion で「中止」を選択 → `[fix:cancelled-by-user]` emit + ループ終了、(b) ユーザーが Ctrl+C で中断 → flow-state phase 残存。どちらも `/rite:recover` で再開可。
+ブレーカー発火は差分スコープのループを停める signal である。発火後は counter と run 開始点をリセットし、人間の再実行を待たず post-breaker full review を 1 回強制する。その結果は通常の `[review:mergeable]` / `[review:fix-needed:N]` / `[review:error]` routing で扱い、finding を読まず Ready / merge へ進む特別分岐は作らない。full review が error または sentinel 不在で完了できない場合のみ発火を失敗として記録し、batch / 対話の既存停止 sentinel で終了する。cycle_count は flow-state に永続化され resume を跨いで継続する。
 
 途中で止まったら flow-state に現 phase (review or fix) が残るので `/rite:recover` で再開する。
 
@@ -655,11 +655,11 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 
 ## ステップ 6: サーキットブレーカー（発火時のみ）
 
-> **発火＝失敗・マージ不可（hard invariant）**: ブレーカー発火は「review⇄fix が非収束のまま上限に達した」という**失敗の機械的記録**であり、成功・完了ではない。本ステップ以降に `/rite:merge` 相当へ到達する分岐は **batch / 対話とも存在しない**（6.1 は制御を `/rite:batch-run` に返し、run 側は `[iterate:max-cycles-reached]` を受けて ready/merge/cleanup を**スキップ**して次 Issue へ進む。6.2 は停止通知を出して終了する）。発火を成功として報告してはならない。
+> **post-breaker full review invariant**: ブレーカー発火だけで成功・完了と判定してはならない。差分スコープ外の盲点を検査する full review を 1 回実行し、その finding の有無を既存の review routing が判定する。発火そのものから Ready / merge へ直行する分岐は存在しない。full review が完了できないときは従来の失敗 sentinel で停止する。
 >
 > 停止通知に記す `/rite:ready {pr_number}` は、人間が draft PR をレビューに出すために**明示的に叩く経路外のアクション**であり、本ステップの自動フローが辿る分岐ではない（かつ `/rite:ready` は Ready 化のみでマージしない）。発火から自動的にマージへ至る経路が無いという上記 invariant はこれによって崩れない。
 >
-> 発火後にループを再開する唯一の経路は、人間が明示的に `/rite:iterate {pr}`（または `/rite:recover`）を再実行することである。counter は**ステップ 6 の共有前段**（発火が 6.1 / 6.2 の sentinel として記録される直前）でリセットするため、**その set が成功していれば**（`FIRE_RESET=ok`）再実行は即時再発火せず cycle 1 から再開する。失敗時（`FIRE_RESET=failed`）は counter が上限のまま残るため即再発火し、ステップ 6.2 が注意行と手動リセット手順を出す。共有前段に到達する前に turn が終わった場合は counter が上限のまま残るため、次回ループ頭で再発火する。ただし**共有前段の実行後・sentinel 出力前**の窓は残存し、そこで turn が終わると発火が無記録のまま予算が復活する（fire 分岐に reset を置く場合より窓は狭いが、消えてはいない）。
+> counter reset と run 開始点更新は post-breaker full review の前処理である。いずれかに失敗した場合は full scope を機械的に証明できないため review を invoke せず、6.1 / 6.2 の停止経路へ送る。
 
 ステップ 1 で `ITERATE_CB=fire`（収束トレンドの発散 or `cycle_count >= max_review_cycles`。理由は同 marker の `CB_REASON`）となったときのみ到達する。**発火理由は本ステップの停止構造を変えない** — 変わるのは 6.1 / 6.2 の「理由」行の文面と、そこに併記するトレンド推移だけである（sentinel・handoff 契約・counter reset はいずれも不変）。まず batch 実行（`/rite:batch-run` 経由）か対話実行かを **自セッションの** run-queue（`run-queue-{session_id}.json`）から判定する。`/rite:batch-run` は駆動中に `active=true` を立て、cursor が処理中 Issue を指す。iterate は batch-run から**同一セッションで invoke される**ため、driving 中なら本 iterate の ambient session_id と run-queue の session_id は一致し、自セッションのキューだけを参照する（他セッションのキューは別ファイルのため構造的に読まない、Issue #1859 AC-2）。よって **`active == true` かつ** cursor の Issue が本 iterate の対象と一致すれば batch と判定する（`active` 条件は、停止済み dormant キューが cursor 一致だけで active batch と誤判定されるのを防ぐ。read-only 参照。`{issue_number}` はステップ 0 の marker 値をリテラル置換）:
 
@@ -711,7 +711,7 @@ fi
 # ステップ 6.2 がこれを読んで注意行 (b) を出し分ける。
 if cb_reset_out=$(LC_ALL=C bash {plugin_root}/hooks/flow-state.sh set \
   --phase review --issue {issue_number} --branch {branch_name} --pr {pr_number} \
-  --next "サーキットブレーカー発火 (counter reset 済。理由はステップ 1 の CB_REASON)" --cycle-count 0 2>&1); then
+  --next "post-breaker full review を 1 回実行して通常 review routing へ戻る" --cycle-count 0 2>&1); then
   fire_reset=ok
 else
   fire_reset=failed
@@ -735,10 +735,44 @@ marker_emit ITERATE_CB_MODE "$cb_mode" "issue={issue_number}" "pr={pr_number}" \
   "FIRE_RESET=$fire_reset" "SESSION_ID=$session_id" "STATE_ROOT=$state_root"
 ```
 
+### ステップ 6.0: post-breaker full review
+
+`FIRE_RESET=ok` のとき、現在の最新 review JSON を run 開始点 pin に記録する。`review-cycle-scope.sh` は pin より新しい JSON が 0 件の場合に `REVIEW_CYCLE_SCOPE=full; reason=no_prev_json` を返すため、次の `/rite:pr-review` が差分スコープへ戻る経路を機械的に閉じる。
+
+```bash
+source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした" >&2; exit 1; }
+post_breaker_ready=false
+if [ "$fire_reset" = "ok" ] && [ "$state_root" != "unresolved" ]; then
+  results_dir="$state_root/.rite/review-results"
+  pin_file="$state_root/.rite/state/review-run-since-{pr_number}.txt"
+  latest_json=$(find "$results_dir" -maxdepth 1 -type f -name '{pr_number}-*.json' 2>/dev/null | LC_ALL=C sort | tail -1)
+  mkdir -p "$(dirname "$pin_file")"
+  if [ -n "$latest_json" ] && printf '%s\n' "$(basename "$latest_json")" > "$pin_file.tmp" && mv "$pin_file.tmp" "$pin_file"; then
+    post_breaker_ready=true
+  else
+    echo "WARNING: post-breaker full review の run 開始点更新に失敗しました" >&2
+  fi
+fi
+marker_emit POST_BREAKER_FULL_REVIEW "$post_breaker_ready" "pr={pr_number}"
+```
+
+| `POST_BREAKER_FULL_REVIEW` | アクション |
+|---|---|
+| `true` | `/rite:pr-review {pr_number}` を 1 回 invoke し、下表で通常 routing へ戻す |
+| `false` | full scope を保証できないため review を invoke せず、`ITERATE_CB_MODE` に応じて 6.1 / 6.2 へ |
+
+| post-breaker review sentinel | アクション |
+|---|---|
+| `[review:mergeable]` | ステップ 5 の正常終了 routing へ。ブレーカー発火から直行するのではなく、full review が blocking 0 を返した結果として扱う |
+| `[review:fix-needed:N]` | ステップ 3 の `/rite:fix` へ。fix 後はステップ 1 の通常ループに戻る |
+| `[review:error]` / sentinel 不在 | `ITERATE_CB_MODE` に応じて 6.1 / 6.2 へ。既存 sentinel と batch / interactive 停止契約を保つ |
+
+**MUST NOT**: post-breaker review の結果を判定せず `/rite:ready` / `/rite:merge` へ進む。`[review:fix-needed:N]` を停止 sentinel に変換する。同一発火に対し full review を 2 回以上 invoke する。
+
 | `ITERATE_CB_MODE` | アクション |
 |---|---|
-| `batch` | ステップ 6.1（failed sentinel emit）|
-| `interactive` | ステップ 6.2（機械的停止通知）|
+| `batch` | post-breaker full review が完了できない場合のみステップ 6.1（failed sentinel emit）|
+| `interactive` | post-breaker full review が完了できない場合のみステップ 6.2（機械的停止通知）|
 
 **両分岐は挙動として同構造**（failed 記録 + draft 残し + 停止通知 + handoff クリア維持 + 共有前段での cycle counter reset。人間への問い合わせは行わない）であり、差は次の 2 点だけである。なお共有前段の counter reset は batch 経路にも適用されるが、ステップ 6.1 のブロック自体は無変更であり Issue #2026 §4.2 の Non-Target に抵触しない（batch では従来も次 Issue のステップ 0.6 fresh 判定で同じ counter が除去されており、より早く掃除されるだけで安全側）:
 
@@ -749,7 +783,7 @@ marker_emit ITERATE_CB_MODE "$cb_mode" "issue={issue_number}" "pr={pr_number}" \
 
 どちらの経路もマージには到達しない（上記 invariant）。
 
-### ステップ 6.1: バッチ実行 — failed sentinel を emit
+### ステップ 6.1: バッチ実行 — full review 不成立時の failed sentinel
 
 review を回さず、当該 Issue を非収束（failed）として `/rite:batch-run` に返す。`/rite:batch-run` はこの sentinel を受けて当該 Issue を failed 記録し、次の Issue へ進む（ready/merge/cleanup はスキップ、draft/open PR はレビュー待ちで残す）。継続 handoff はステップ 1 fire 分岐の `flow-state.sh set`（`--handoff` なし）で既に default-clear 済みのため、ここでは追加の handoff 操作をしない（`[fix:error]` が set で handoff をクリアして clean terminal になるのと同じ。以降は run の flat 構造 + HTML hint で継続）:
 
@@ -770,7 +804,7 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 
 制御を `/rite:batch-run` に戻す（run 側で cursor 前進）。
 
-### ステップ 6.2: 対話実行 — 機械的停止通知を出力
+### ステップ 6.2: 対話実行 — full review 不成立時の機械的停止
 
 `AskUserQuestion` は**使わない**。当該 PR を非収束（failed）として機械的に記録し、draft/open PR をレビュー待ちで残して停止する。6.1（batch）と同構造であり、品質ゲートの履行を人間の裁量に委ねない（発火は失敗であって、人間に選ばせて counter をリセットし続行できる例外を作らない）。継続 handoff はステップ 1 fire 分岐の `flow-state.sh set`（`--handoff` なし）で既に default-clear 済みのため、ここでは追加の handoff 操作をしない。
 
@@ -891,7 +925,7 @@ rationale: [stop-loop-continuation-contract.md#mechanism](../../references/stop-
 
 - **blocking 指摘ゼロ（mergeable）到達が正常出口** — blocking の定義式は本ファイルに複製せず [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) を SoT とする（同 § は reviewer finding に閉じた canonical 式と fix loop 全体を対象とする consumer 式の差を「適用範囲」で意図的なスコープ差として定義している。本スキルはループ側なので後者に従い、実測の有無を判定できない指摘は blocking のまま扱う）。実測を伴わない指摘は non-blocking として `/rite:pr-review` ステップ 6.1.d の PR 記録コメント・ステップ 5.4 統合レポート・永続 JSON に記録されたまま残存するため、**非実測指摘が N 件残った状態でも `[review:mergeable]` に到達してループが正常終了しうる**（#2024）— 残存分は draft PR の人間レビューに委ねる設計。加えてサーキットブレーカーを唯一の自動安全網として持ち、reviewer の非決定的振動や非収束 PR による無限ループを構造的に防ぐ。同一 finding 検出 / quality signal escalation といった細粒度の安全網は依然として持たない（CLAUDE.md「シンプルさを死守」）
 - **ブレーカーの発火条件は「発散」であって「予算切れ」ではない** — 主経路は収束トレンドの発散検出（`hooks/scripts/review-trend-divergence.sh`）で、`safety.max_review_cycles`（既定 15）はそれをすり抜ける非収束を受け止める backstop へ格下げした（backstop を残す以上 16 cycle 以上を要する収束中の run には届くが、引き上げ前の 5 の頃のように 6 cycle 以上を要する収束中の run を殺すことは無くなった。既定 15 の根拠は #2129 D-02 で、最適値は運用データで再評価する）。cycle 数上限だけでは努力と無駄を区別できない（健全に収束中でも上限で殺し、発散していても上限まで燃やす）ため、「品質を予算で縛らない・無駄は排除する」（CLAUDE.md プロジェクト原則）に反していた。判定は helper に閉じ LLM の裁量を介在させない。判定式は実運用で観測されたトラジェクトリで backtest して確定した定数であり、**窓幅や閾値を config キーにしない** — 調整の実需が観測されてから Issue を切って設定化する（`no_speculative_structure`）。判定式の較正根拠と意図した境界（最良水準での平坦は発火させない = false positive 回避）は helper の header が SoT
-- **発火理由は停止構造を変えない** — sentinel（`[iterate:max-cycles-reached]` / `[iterate:max-cycles-stopped]`）・handoff クリア・counter reset はいずれも発火理由に依らず不変で、変わるのは停止通知の「理由」行と blocking 推移の表示だけである。sentinel を理由別に分けない理由は、`/rite:batch-run` が前者の literal を grep して failed 記録・cursor 前進を行う契約を壊さないため。名称が「max-cycles」のまま発散発火にも使われるのは軽微な misnomer だが、契約の安定を優先する
-- **発火＝失敗の機械的記録（batch / 対話で同一）**: 発火時は両モードとも人間に問わず停止する（#2026）。導入時（#1701）は対話モードの UX として AskUserQuestion（継続 / 中止 / draft のまま停止）を残していたが、人間の裁量で counter をリセットして続行できる経路は「品質ゲートを機械的に履行する」方針に対する例外であり、人間エスカレーションは責任転嫁で終端にならない。継続は人間が明示的に `/rite:iterate {pr}` を再実行する経路のみに絞り、そのとき counter はステップ 6 の共有前段が既にリセットしている。`/rite:batch-run` バッチ実行は従来どおり failed 扱いで次 Issue へ自動遷移する（バッチ全体のストール防止）
+- **発火理由は post-breaker routing を変えない** — divergence / max-cycles のどちらでも run 開始点を更新し、full review を 1 回実行する。full review 不成立時の sentinel（`[iterate:max-cycles-reached]` / `[iterate:max-cycles-stopped]`）は理由に依らず不変で、`/rite:batch-run` の failed 記録契約を保つ
+- **発火後は full review の finding を通常 routing**: 人間に継続可否を問わず、full review が mergeable なら正常終了、fix-needed なら fix loop へ戻る。full review を実行できない場合だけ、batch は failed 扱いで次 Issue へ遷移し、対話は機械的に停止する
 - **cycle counter は flow-state に保持**: 専用 state file (`.rite/state/*.count` 等) は持たず、`cycle_count` を flow-state の merge-preserve フィールドとして永続化する（`worktree` と同じ additive パターン）。resume を跨いで継続し（AC-3）、fresh entry（phase が review/fix 以外）で 0 リセットして run バッチの Issue 間リークを防ぐ。加えて**発火が sentinel として記録される直前**（ステップ 6 の共有前段）と**正常終了時**（ステップ 5.0.1）で 0 にリセットする — 後者は run を明示的に閉じるためで、閉じないと次回起動が resume 判定になりステップ 0.6 の pin 更新条件（`cur_cc == 0`）に入らず、新 run が前 run の pin を引き継ぐ — リセットしないと再実行が即再発火してループを再開する術が無くなるが、発火後は継続 handoff が（ステップ 1 fire 分岐の set で）default-clear されて自動再入場の経路が消えるため、リセットしても自動継続は生じない。リセットを fire 分岐ではなく共有前段に置くのは、「発火は無記録・counter は 0」という最悪の組み合わせが成立する窓を狭めるため（共有前段より手前で turn が終わればこの窓では counter が上限のまま残り、次回ループ頭で再発火する）。**共有前段の実行後・sentinel 出力前の窓は残存する** — 完全な閉塞には sentinel 出力を Stop hook に強制させる handoff が要るが、その reason 文面の是正は Non-Target の `hooks/stop-loop-continuation.sh` 改修を伴うため別 Issue とする。「発火済み」を別マーカー（例: `cycle_count = max + 1`）として次回起動まで持ち越す設計は採らない。持ち越すと「発火したか」を `max_review_cycles` との相対比較で符号化することになり、同値が invocation 間で変わりうる（毎回 config から読み直す）ため符号化が両方向に破綻する（上限を下げれば未発火が発火済みと誤認され、上げれば発火済みが認識されない、#2026）。Stop hook の handoff とは独立（handoff は one-shot consume される継続マーカー、cycle_count は accumulate されるカウンタ）
 - 別 Issue 化経路は廃止済み (commit 1a で fix.md Phase 4.3 削除) — 「別 Issue にスキップして loop 終了」の抜け穴は塞がれている
