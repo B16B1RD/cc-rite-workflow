@@ -74,9 +74,10 @@ review:
   loop:
     verification_mode: false                       # 前回レビューコメントがある場合に検証モードを有効化
     allow_new_findings_in_unchanged_code: false    # 未変更コードへの新規指摘を blocking 扱いにするか
-    # 正常出口は 0 findings のみ。以下の 4 品質シグナルのいずれかで escalate する:
-    # 同一 finding 循環 / root-cause 不明 fix / cross-validation 不一致 / finding quality gate 不通過
-    convergence_monitoring: true          # 同一 finding 循環の semantic 検知
+    # 正常出口は 0 blocking findings のみ（定義: plugins/rite/references/severity-levels.md §実測必須ゲート）。
+    # circuit breaker は次のいずれかで発火する:
+    # 収束トレンドの発散 / safety.max_review_cycles 到達（backstop）
+    convergence_monitoring: true          # Scaffolding only（収束監視は circuit breaker の trend check が担い、このキーに runtime effect はない）
     auto_propagation_scan: true           # Fix 後の類似パターン伝播スキャン
     pre_commit_drift_check: true          # コミット前に review-schema-version-check を実行
   security_reviewer:
