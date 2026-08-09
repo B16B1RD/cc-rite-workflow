@@ -1,8 +1,8 @@
 ---
+type: "patterns"
 title: "Exit code semantic preservation: caller は case で語彙を保持する"
 domain: "patterns"
 promote: rite-plugin
-promoted_from: "wiki:/pages/patterns/exit-code-semantic-preservation.md"
 promoted_from: "wiki:/pages/patterns/exit-code-semantic-preservation.md"
 created: "2026-04-16T19:37:16Z"
 updated: "2026-07-13T14:35:00+09:00"

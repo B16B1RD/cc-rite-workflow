@@ -1,8 +1,8 @@
 ---
+type: "heuristics"
 title: "形状検証 gate の allowlist 化は複数行 bypass・上流 degraded 値・コメント同期をセットで棚卸しする"
 domain: "heuristics"
 promote: rite-plugin
-promoted_from: "wiki:/pages/heuristics/allowlist-gate-hardening-checklist.md"
 promoted_from: "wiki:/pages/heuristics/allowlist-gate-hardening-checklist.md"
 created: "2026-06-10T10:10:00+09:00"
 updated: "2026-07-19T23:01:00+09:00"

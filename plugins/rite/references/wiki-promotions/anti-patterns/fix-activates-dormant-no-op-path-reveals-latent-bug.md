@@ -4,7 +4,6 @@ title: "修正が既存の no-op 経路を有効化すると、その経路に�
 domain: "anti-patterns"
 promote: rite-plugin
 promoted_from: "wiki:/pages/anti-patterns/fix-activates-dormant-no-op-path-reveals-latent-bug.md"
-promoted_from: "wiki:/pages/anti-patterns/fix-activates-dormant-no-op-path-reveals-latent-bug.md"
 description: "ある bug fix が別の書き込み経路を『実在ファイルを指す』ように変えると、以前は常に no-op で無害だったその経路の潜在的な欠陥（merge-preserve 漏れ等）が初めて発火する。"
 created: "2026-07-09T09:29:35Z"
 updated: "2026-07-09T09:29:35Z"

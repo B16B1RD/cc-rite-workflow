@@ -4,7 +4,6 @@ title: "検証ツールの保証文言は検証される不変量と非検出 ga
 domain: "heuristics"
 promote: rite-plugin
 promoted_from: "wiki:/pages/heuristics/verification-doc-guarantee-matches-invariants.md"
-promoted_from: "wiki:/pages/heuristics/verification-doc-guarantee-matches-invariants.md"
 description: "機械検証ツールを追加する PR で「漏れは次回 lint で必ず検出される」型の全称保証を手順書に書くと、意図的に検証しない gap への過信を生む。保証文は検証される不変量（例: I1/I3）と非検出 gap（例: I2 片方向）を明示的に対応させ、gap の手動確認手順を併記する。修正時は同種表現の全出現箇所へ一貫伝播する。"
 created: "2026-07-03T18:30:00+00:00"
 updated: "2026-07-03T18:30:00+00:00"

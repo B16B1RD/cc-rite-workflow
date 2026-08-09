@@ -4,7 +4,6 @@ title: "複数コマンドの引数プレースホルダ表記は既存正典ド
 domain: "patterns"
 promote: rite-plugin
 promoted_from: "wiki:/pages/patterns/command-placeholder-notation-precheck-canonical-docs.md"
-promoted_from: "wiki:/pages/patterns/command-placeholder-notation-precheck-canonical-docs.md"
 description: "新規ドキュメントで複数コマンドの引数プレースホルダ（<pr> 等）を並記する際、既存の確立された慣習表記（rite-workflow/SKILL.md・run/SKILL.md 等）を事前に Grep で確認しないと、大文字/小文字や実シグネチャとの不一致が後続レビューサイクルで指摘され続ける。"
 created: "2026-07-02T16:55:00+09:00"
 updated: "2026-07-02T16:55:00+09:00"

@@ -1,8 +1,8 @@
 ---
+type: "patterns"
 title: "Embedded markdown bash block の observability 三要素 (pipefail 宣言 + stderr stage 分離 + cd 失敗可視化)"
 domain: "patterns"
 promote: rite-plugin
-promoted_from: "wiki:/pages/patterns/embedded-bash-block-observability-trio.md"
 promoted_from: "wiki:/pages/patterns/embedded-bash-block-observability-trio.md"
 created: "2026-05-17T09:08:26Z"
 updated: "2026-07-22T22:54:19Z"

@@ -4,7 +4,6 @@ title: "禁止規則が自分のワークフローと衝突したら、例外条
 domain: "heuristics"
 promote: rite-plugin
 promoted_from: "wiki:/pages/heuristics/reframe-rule-predicate-over-carve-out.md"
-promoted_from: "wiki:/pages/heuristics/reframe-rule-predicate-over-carve-out.md"
 description: "新設した禁止規則が既存の自動書き込み経路と衝突したとき、カーブアウト条項を足すより、禁止対象の切り出し方（モノの種類 vs 性質）を変えるほうが安い。例外リストは経路が増えるたびに育つが、述語は育たない。"
 created: "2026-08-02T11:59:42+09:00"
 updated: "2026-08-02T11:59:42+09:00"

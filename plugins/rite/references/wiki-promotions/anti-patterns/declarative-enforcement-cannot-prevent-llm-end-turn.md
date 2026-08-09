@@ -1,8 +1,8 @@
 ---
+type: "anti-patterns"
 title: "Declarative enforcement で LLM の stop_reason: end_turn は抑制できない"
 domain: "anti-patterns"
 promote: rite-plugin
-promoted_from: "wiki:/pages/anti-patterns/declarative-enforcement-cannot-prevent-llm-end-turn.md"
 promoted_from: "wiki:/pages/anti-patterns/declarative-enforcement-cannot-prevent-llm-end-turn.md"
 created: "2026-04-25T12:30:00+00:00"
 updated: "2026-05-28T08:53:59+00:00"

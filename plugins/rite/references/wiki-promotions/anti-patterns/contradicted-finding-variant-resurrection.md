@@ -1,8 +1,8 @@
 ---
+type: "anti-patterns"
 title: "Fact-check で CONTRADICTED 除外された主張の variant 再提起 (reviewer の observability gap)"
 domain: "anti-patterns"
 promote: rite-plugin
-promoted_from: "wiki:/pages/anti-patterns/contradicted-finding-variant-resurrection.md"
 promoted_from: "wiki:/pages/anti-patterns/contradicted-finding-variant-resurrection.md"
 created: "2026-05-28T03:00:00+00:00"
 updated: "2026-06-05T18:33:35Z"

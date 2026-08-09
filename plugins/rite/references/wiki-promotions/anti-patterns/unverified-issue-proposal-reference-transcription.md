@@ -1,8 +1,8 @@
 ---
+type: "anti-patterns"
 title: "Issue 対応案の番号参照を未検証のまま転記すると事実誤認が伝播する"
 domain: "anti-patterns"
 promote: rite-plugin
-promoted_from: "wiki:/pages/anti-patterns/unverified-issue-proposal-reference-transcription.md"
 promoted_from: "wiki:/pages/anti-patterns/unverified-issue-proposal-reference-transcription.md"
 created: "2026-06-09T19:40:00+00:00"
 updated: "2026-06-09T19:40:00+00:00"

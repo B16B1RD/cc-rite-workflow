@@ -4,7 +4,6 @@ title: "行動指示と帰結記述を 1 文に混載しない — 帰結は SoT
 domain: "patterns"
 promote: rite-plugin
 promoted_from: "wiki:/pages/patterns/separate-directive-from-consequence-with-sot-pointer.md"
-promoted_from: "wiki:/pages/patterns/separate-directive-from-consequence-with-sot-pointer.md"
 description: "authoring 面の 1 文に行動指示（「装飾を付けるな」）と帰結記述（「その場合どうなるか」）を混載すると、帰結が変わるたびに authoring 面を書き換えることになる。実測事例では同じ 1 行を 4 cycle 連続で書き換え、2 cycle は逆方向に振れた。帰結記述を SoT の表へのポインタ 1 行に置き換えると、この往復が構造的に止まる。"
 created: "2026-08-01T23:12:28+09:00"
 updated: "2026-08-01T23:12:28+09:00"

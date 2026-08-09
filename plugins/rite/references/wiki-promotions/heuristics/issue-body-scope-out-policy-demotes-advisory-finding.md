@@ -1,8 +1,8 @@
 ---
+type: "heuristics"
 title: "Issue body 内 `Scope 外指摘ハンドリングポリシー` 宣言で reviewer advisory finding を Issue 化なし recommendation に降格する"
 domain: "heuristics"
 promote: rite-plugin
-promoted_from: "wiki:/pages/heuristics/issue-body-scope-out-policy-demotes-advisory-finding.md"
 promoted_from: "wiki:/pages/heuristics/issue-body-scope-out-policy-demotes-advisory-finding.md"
 created: "2026-05-07T19:32:00+09:00"
 updated: "2026-08-08T13:37:28Z"

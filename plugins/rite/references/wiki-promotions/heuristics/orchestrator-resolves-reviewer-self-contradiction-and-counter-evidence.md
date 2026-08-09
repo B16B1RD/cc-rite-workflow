@@ -4,7 +4,6 @@ title: "Orchestrator は reviewer 間の反証と reviewer 自身の自己矛盾
 domain: "heuristics"
 promote: rite-plugin
 promoted_from: "wiki:/pages/heuristics/orchestrator-resolves-reviewer-self-contradiction-and-counter-evidence.md"
-promoted_from: "wiki:/pages/heuristics/orchestrator-resolves-reviewer-self-contradiction-and-counter-evidence.md"
 description: "複数 reviewer の所見が食い違う場合は他 reviewer の反証（既存実装の grep 確認）で解決し、単一 reviewer の指摘事項テーブル記載でも reviewer 自身が「対応不要」と結論した場合は Finding Quality Guardrail (bikeshedding filter) で blocking から除外する。反対意見を却下した場合は一方的な宣言で終わらせず、却下根拠を当の提案者へ次 cycle の検証項目として差し戻す — 対立が「どちらが正しいか」ではなく「どの軸を見ていたか」として解ける。"
 created: "2026-07-06T04:10:00+00:00"
 updated: "2026-08-08T14:00:41+09:00"

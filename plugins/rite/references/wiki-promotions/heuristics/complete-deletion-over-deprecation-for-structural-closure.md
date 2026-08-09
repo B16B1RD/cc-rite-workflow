@@ -1,8 +1,8 @@
 ---
+type: "heuristics"
 title: "Legacy field の「deprecate + 残置」よりも「完全削除」が構造的閉塞を実現する"
 domain: "heuristics"
 promote: rite-plugin
-promoted_from: "wiki:/pages/heuristics/complete-deletion-over-deprecation-for-structural-closure.md"
 promoted_from: "wiki:/pages/heuristics/complete-deletion-over-deprecation-for-structural-closure.md"
 created: "2026-05-18T09:00:00Z"
 updated: "2026-05-18T09:00:00Z"

@@ -12,12 +12,17 @@ if [ "${#pages[@]}" -ne 38 ]; then
 fi
 
 for page in "${pages[@]}"; do
-  grep -q '^promote: rite-plugin$' "$page" || {
-    echo "missing promote marker: ${page#"$repo_root/"}" >&2
+  category=$(basename "$(dirname "$page")")
+  if [ "$(grep -c '^promote: rite-plugin$' "$page")" -ne 1 ]; then
+    echo "promote marker must occur exactly once: ${page#"$repo_root/"}" >&2
     exit 1
-  }
-  grep -q '^promoted_from: ' "$page" || {
-    echo "missing promoted_from provenance: ${page#"$repo_root/"}" >&2
+  fi
+  if [ "$(grep -c '^promoted_from: ' "$page")" -ne 1 ]; then
+    echo "promoted_from provenance must occur exactly once: ${page#"$repo_root/"}" >&2
+    exit 1
+  fi
+  grep -q "^type: \"$category\"$" "$page" || {
+    echo "type must match category '$category': ${page#"$repo_root/"}" >&2
     exit 1
   }
   if grep -Eq '\]\([^)]*\.md(#[^)]*)?\)' "$page"; then
