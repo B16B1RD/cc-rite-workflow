@@ -105,7 +105,7 @@ Even if the argument is omitted, retrieve and use the PR number from work memory
 
 > **Reference**: Pre-submission hard gate for the parser-trigger pattern (backtick + bang adjacency in inline code spans of `plugins/rite/{commands,skills,agents,references}/**/*.md`). The underlying static check is `plugins/rite/hooks/scripts/bang-backtick-check.sh`.
 >
-> **DRIFT-CHECK ANCHOR (MUST)**: This bash block is intentionally synchronized between `skills/pr-create/SKILL.md` §1.0 and `skills/ready/SKILL.md` §1.0. Any modification to either side MUST be replicated to the other. Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」の dominant failure mode を構造的に予防する。
+> **DRIFT-CHECK ANCHOR (SHARED CORE ONLY)**: scanner の起動と rc 分岐は `skills/pr-create/SKILL.md` §1.0 と同期する。一方、PR 番号を入力に持つ ready 固有の PR head 解決は構造が非対称なため同期対象外であり、pr-create へ転記しない。
 >
 > **Independent of the `/rite:lint` Phase 3.5 bang-backtick check**: lint records bang-backtick findings as warnings (`[lint:success]` is preserved). This gate, in contrast, **blocks** Ready transition when the same pattern is present — lint is the early heads-up, this is the final hard gate before Ready for review.
 
@@ -120,7 +120,55 @@ if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/bang-backtick-che
   exit 1
 fi
 
-bang_output=$(bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all --skip-if-no-target 2>&1)
+# Gate の主体と scan 対象を一致させる。PR head を解決できない場合に現在の
+# checkout へ縮退すると vacuous pass になるため、全て fail-loud とする。
+pr_head_oid=$(gh pr view {pr_number} -R {owner_repo} --json headRefOid --jq '.headRefOid') || {
+  echo "ERROR: Ready gate: PR #{pr_number} の headRefOid を解決できません" >&2
+  exit 1
+}
+if [ -z "$pr_head_oid" ]; then
+  echo "ERROR: Ready gate: PR #{pr_number} の headRefOid が空です" >&2
+  exit 1
+fi
+current_oid=$(git rev-parse HEAD) || {
+  echo "ERROR: Ready gate: 現在の HEAD を解決できません" >&2
+  exit 1
+}
+
+scan_root="."
+ready_gate_tmp=""
+cleanup_ready_gate_worktree() {
+  [ -n "$ready_gate_tmp" ] || return 0
+  cleanup_path="$ready_gate_tmp"
+  ready_gate_tmp=""
+  if ! git worktree remove --force "$cleanup_path" >/dev/null 2>&1; then
+    echo "WARNING: Ready gate の一時 worktree を削除できませんでした: $cleanup_path" >&2
+  fi
+}
+trap 'cleanup_ready_gate_worktree' EXIT
+trap 'cleanup_ready_gate_worktree; trap - HUP; kill -HUP $$' HUP
+trap 'cleanup_ready_gate_worktree; trap - INT; kill -INT $$' INT
+trap 'cleanup_ready_gate_worktree; trap - TERM; kill -TERM $$' TERM
+
+if [ "$current_oid" != "$pr_head_oid" ]; then
+  if ! git fetch origin "$pr_head_oid" >/dev/null 2>&1; then
+    echo "ERROR: Ready gate: PR head $pr_head_oid の fetch に失敗しました" >&2
+    exit 1
+  fi
+  ready_gate_tmp=$(mktemp -d "${TMPDIR:-/tmp}/rite-ready-pr-head.XXXXXX") || {
+    echo "ERROR: Ready gate: 一時ディレクトリの作成に失敗しました" >&2
+    exit 1
+  }
+  rmdir "$ready_gate_tmp"
+  if ! git worktree add --detach "$ready_gate_tmp" "$pr_head_oid" >/dev/null 2>&1; then
+    echo "ERROR: Ready gate: PR head $pr_head_oid の一時 worktree 作成に失敗しました" >&2
+    exit 1
+  fi
+  scan_root="$ready_gate_tmp"
+  echo "[CONTEXT] READY_GATE_PR_HEAD_RESOLVED=1; head_oid=$pr_head_oid" >&2
+fi
+
+bang_output=$(bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all --skip-if-no-target --repo-root "$scan_root" 2>&1)
 bang_rc=$?
 case "$bang_rc" in
   0)
@@ -145,6 +193,9 @@ case "$bang_rc" in
     exit 1
     ;;
 esac
+
+cleanup_ready_gate_worktree
+trap - EXIT HUP INT TERM
 ```
 
 > **On exit 1 from this bash block**: The bash block exits before any `skills/ready/SKILL.md` result pattern (`[ready:returned-to-caller]` / `[ready:error]`) is emitted, so the orchestrator treats this as a missing-result-pattern Skill invocation — default 経路は `WARNING` を stderr に出力し、AskUserQuestion で「再試行 / 強制続行 / 中止」を提示する — **NOT** a `[ready:error]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
@@ -349,6 +400,15 @@ End processing.
 After `gh pr ready` succeeds, update local work memory (SoT):
 
 ```bash
+# 作業ツリーではなく PR head を SoT とする。Phase 1.0 と Bash 呼び出しが分かれるため
+# marker/シェル変数へ依存せず、この場で再取得する。
+ready_pr_json=$(gh pr view {pr_number} -R {owner_repo} --json headRefName,headRefOid) || {
+  echo "WARNING: PR head 情報を取得できないため local work memory 更新をスキップします" >&2
+  ready_pr_json=""
+}
+ready_pr_branch=$(printf '%s' "$ready_pr_json" | jq -r '.headRefName // empty')
+ready_pr_oid=$(printf '%s' "$ready_pr_json" | jq -r '.headRefOid // empty')
+
 WM_SOURCE="ready" \
   WM_PHASE="ready" \
   WM_PHASE_DETAIL="Ready for review に変更完了" \
@@ -356,6 +416,20 @@ WM_SOURCE="ready" \
   WM_BODY_TEXT="PR marked as ready for review." \
   WM_ISSUE_NUMBER="{issue_number}" \
   bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
+
+# local-wm-update.sh は通常 current checkout 由来の branch / last_commit を書くため、
+# ready では取得済み PR head 値で frontmatter を atomic に補正する。
+wm_file=".rite-work-memory/issue-{issue_number}.md"
+if [ -n "$ready_pr_branch" ] && [ -n "$ready_pr_oid" ] && [ -f "$wm_file" ]; then
+  awk -v branch="$ready_pr_branch" -v oid="$ready_pr_oid" '
+    /^branch: / { print "branch: \"" branch "\""; next }
+    /^last_commit: / { print "last_commit: \"" oid "\""; next }
+    { print }
+  ' "$wm_file" > "$wm_file.tmp" && mv "$wm_file.tmp" "$wm_file" || {
+    rm -f "$wm_file.tmp"
+    echo "WARNING: local work memory の PR head 値への補正に失敗しました: $wm_file" >&2
+  }
+fi
 ```
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort.

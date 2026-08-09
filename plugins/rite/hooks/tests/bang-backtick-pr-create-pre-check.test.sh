@@ -116,18 +116,14 @@ else
 fi
 rm -f "$sentinel_stderr"
 
-# ----- TC-4: §7 MUST — create.md/ready.md DRIFT-CHECK ANCHOR ---------------
-# The Phase 1.0 bash block invocation literal MUST be byte-for-byte identical
-# between create.md and ready.md (Wiki 経験則「Asymmetric Fix Transcription」).
-# We pin three sentinels: the scanner invocation, the sentinel emit literal,
-# and the sub-section header.
-echo "TC-4: §7 MUST — DRIFT-CHECK ANCHOR between create.md and ready.md"
+# ----- TC-4: shared scanner core and ready-only PR-head resolution ----------
+echo "TC-4: shared scanner core and ready-only PR-head resolution"
 inv_create=$(grep -c 'bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all --skip-if-no-target 2>&1' "$CREATE_MD" || true)
-inv_ready=$(grep -c 'bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all --skip-if-no-target 2>&1' "$READY_MD" || true)
+inv_ready=$(grep -c 'bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all --skip-if-no-target --repo-root "$scan_root" 2>&1' "$READY_MD" || true)
 if [ "$inv_create" -ge 1 ] && [ "$inv_ready" -ge 1 ]; then
-  pass "TC-4 scanner invocation literal present in BOTH create.md and ready.md"
+  pass "TC-4 scanner core present with ready-specific --repo-root"
 else
-  fail "TC-4 scanner invocation literal mismatch (create=$inv_create, ready=$inv_ready)"
+  fail "TC-4 scanner invocation missing (create=$inv_create, ready=$inv_ready)"
 fi
 
 sentinel_create=$(grep -c 'BANG_BACKTICK_CHECK_INVOCATION_FAILED=1' "$CREATE_MD" || true)
@@ -237,6 +233,39 @@ else
   fail "TC-6 expected exit 2 without flag, got $diag_rc"
 fi
 rm -rf "$consumer_root"
+
+# ----- TC-13: Issue #2147 — ready gate is bound to the PR head -------------
+echo "TC-13: ready gate resolves and scans the PR head"
+for needle in \
+  'gh pr view {pr_number} -R {owner_repo} --json headRefOid' \
+  'git worktree add --detach "$ready_gate_tmp" "$pr_head_oid"' \
+  'READY_GATE_PR_HEAD_RESOLVED=1; head_oid=$pr_head_oid' \
+  '--repo-root "$scan_root"' \
+  "trap 'cleanup_ready_gate_worktree; trap - INT; kill -INT \$\$' INT"
+do
+  if grep -qF -- "$needle" "$READY_MD"; then
+    pass "TC-13 contract present: $needle"
+  else
+    fail "TC-13 contract missing: $needle"
+  fi
+done
+
+# ----- TC-14: Issue #2147 — no fallback and PR-head work-memory values ------
+echo "TC-14: resolution failures stop and work memory records PR head"
+for needle in \
+  'PR #{pr_number} の headRefOid を解決できません' \
+  'PR head $pr_head_oid の fetch に失敗しました' \
+  'PR head $pr_head_oid の一時 worktree 作成に失敗しました' \
+  '--json headRefName,headRefOid' \
+  'branch: \"" branch "\"' \
+  'last_commit: \"" oid "\"'
+do
+  if grep -qF -- "$needle" "$READY_MD"; then
+    pass "TC-14 contract present: $needle"
+  else
+    fail "TC-14 contract missing: $needle"
+  fi
+done
 
 # ----- Summary --------------------------------------------------------------
 echo ""
