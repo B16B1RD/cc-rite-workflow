@@ -175,6 +175,15 @@
 |---------|-------|------------|------|---------|
 | {severity} | 推奨事項 / （削除） | {file:line} | {description} | Likelihood-Evidence marker 未提示 / LOW × Hypothetical は報告禁止 |
 
+### Guardrail 監査ログ（該当がある場合のみ）
+<!-- reviewer の `### 監査ログ` から収集した Category #2 行がある場合のみ表示。0 件なら省略。
+ audit-only で評価・finding 件数・merge 判定には影響しない。既定 post_comment:false でも人間が確認できるよう、
+ guardrail_audit_count > 0 のとき E2E でも省略禁止。永続 JSON の guardrail_audit_log[] と同じ集合を描画する。 -->
+
+| レビュアー | Filter Category | 元重要度 | ファイル:行 | 除外した内容 | 除外理由 | 実測 |
+|-----------|-----------------|----------|------------|--------------|----------|------|
+| {reviewer} | Category #2 | {original_severity} | {file_line} | {description} | {filter_reason} | {verification or なし} |
+
 ### 実測なし指摘 (non-blocking)（該当がある場合のみ）
 <!-- ステップ 5.3.0.M 実測必須ゲートで non-blocking に分類された non_blocking_findings がある場合のみ表示。0件の場合はこのセクション自体を省略。
  blocking ではない (mergeable countdown 対象外)。severity は明示する (非実測 CRITICAL/HIGH の人間可視化)。
@@ -212,6 +221,15 @@
 
 ```markdown
 ## 📜 rite レビュー結果
+
+### Guardrail 監査ログ（該当がある場合のみ）
+<!-- reviewer の `### 監査ログ` から収集した Category #2 行がある場合のみ表示。0 件なら省略。
+ audit-only で評価・finding 件数・merge 判定には影響しない。既定 post_comment:false でも人間が確認できるよう、
+ guardrail_audit_count > 0 のとき E2E でも省略禁止。永続 JSON の guardrail_audit_log[] と同じ集合を描画する。 -->
+
+| レビュアー | Filter Category | 元重要度 | ファイル:行 | 除外した内容 | 除外理由 | 実測 |
+|-----------|-----------------|----------|------------|--------------|----------|------|
+| {reviewer} | Category #2 | {original_severity} | {file_line} | {description} | {filter_reason} | {verification or なし} |
 
 ### 総合評価
 - **推奨**: {マージ可 / マージ不可（指摘あり） / 修正必要}

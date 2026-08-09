@@ -65,6 +65,7 @@ echo "--- TC-1: 判定分岐 (非空 -> 退避 / 空・キー欠落・null -> �
 r=$(new_root tc1)
 put_json "$r" "9-nonempty.json" '{"non_blocking_findings":[{"id":"F-01"}]}'
 put_json "$r" "9-empty.json"    '{"non_blocking_findings":[]}'
+put_json "$r" "9-audit.json"    '{"non_blocking_findings":[],"guardrail_audit_log":[{"filter_category":"Category #2"}]}'
 put_json "$r" "9-missing.json"  '{"findings":[]}'
 put_json "$r" "9-null.json"     '{"non_blocking_findings":null}'
 # `.json.corrupt-<epoch>` も同 glob (`{pr}-*.json*`) が拾う。corrupt は「中身を判定できない」
@@ -77,15 +78,16 @@ run_target "$r" --pr 9
 assert "TC-1 exit 0" "0" "$RC"
 assert "TC-1 非空 -> 退避" "ARCHIVED" "$(where "$r" 9-nonempty.json)"
 assert "TC-1 空配列 -> 削除" "DELETED" "$(where "$r" 9-empty.json)"
+assert "TC-1 Guardrail audit -> 退避" "ARCHIVED" "$(where "$r" 9-audit.json)"
 assert "TC-1 キー欠落 (旧形式) -> 削除" "DELETED" "$(where "$r" 9-missing.json)"
 assert "TC-1 null -> 削除" "DELETED" "$(where "$r" 9-null.json)"
 assert "TC-1 .corrupt-* も同 glob が拾い、非空なら退避" "ARCHIVED" "$(where "$r" 9-corrupt.json.corrupt-1700000000)"
 assert "TC-1 .corrupt-* でも中身が空なら削除" "DELETED" "$(where "$r" 9-corrupt-empty.json.corrupt-1700000001)"
-assert_grep "TC-1 summary が件数を報告" "$OUT" 'archived=2; removed=4; failed=0; pr=9'
+assert_grep "TC-1 summary が件数を報告" "$OUT" 'archived=3; removed=4; failed=0; pr=9'
 # 退避理由の弁別は TC-2 の判定不能側だけでなく**正常側にも** pin する。片側だけだと
 # jq_rc=0 分岐の keep_reason を判定不能側の文言へ潰しても全 green になり、archive/ の中身から
 # 全文が読めるファイルと読めないファイルを区別できない状態が無音で通る (TC-2 の invariant の対)。
-assert_grep "TC-1 退避理由が「非実測指摘あり」と明示される" "$ERR" 'を退避 \(非実測指摘あり'
+assert_grep "TC-1 退避理由が監査対象ありと明示される" "$ERR" 'を退避 \(監査対象あり'
 
 echo "--- TC-2: 判定不能はすべて退避側 (安全側) ---"
 r=$(new_root tc2)

@@ -143,10 +143,10 @@ for f in "$results_dir/${PR_NUMBER}"-*.json*; do
     # 空配列はどちらも rc=1 に落ちて帰結が同じ (`// empty` でも rc が変わるだけで結論は同じ)。
     # stderr は捨てずに捕捉する — 判定不能の原因 (parse error の位置 / query の型不一致) は
     # ここでしか観測できない。
-    jq_err=$(jq -e '(.non_blocking_findings // []) | length > 0' "$f" 2>&1 >/dev/null)
+    jq_err=$(jq -e '((.non_blocking_findings // []) | length > 0) or ((.guardrail_audit_log // []) | length > 0)' "$f" 2>&1 >/dev/null)
     jq_rc=$?
     case "$jq_rc" in
-      0) keep=yes; keep_reason="非実測指摘あり" ;;
+      0) keep=yes; keep_reason="監査対象あり" ;;
       1) ;;
       *)
         keep=yes

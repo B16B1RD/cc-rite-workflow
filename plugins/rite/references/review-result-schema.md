@@ -142,6 +142,17 @@
       "suggestion": "別 PR で対応",
       "status": "deferred"
     }
+  ],
+  "guardrail_audit_log": [
+    {
+      "reviewer": "security-reviewer",
+      "filter_category": "Category #2",
+      "original_severity": "MEDIUM",
+      "file_line": "path/to/file.ts:55",
+      "description": "共有ホスト向けの追加 hardening",
+      "filter_reason": "宣言済みの単一ユーザー環境では到達しない",
+      "verification": "Verification: repro command => observed output"
+    }
   ]
 }
 ```
@@ -161,6 +172,7 @@
 | `overall_assessment` | **enum** (string) | ✅ | 総合評価。**受理値**: `"mergeable"` / `"fix-needed"` の 2 値のみ。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value` を stderr に出力し、Priority に応じた fallback/routing を実行する (P0: fallback、P2: Priority 3 routing、P3: legacy parser fallthrough。詳細は fix.md failure reasons table `overall_assessment_unknown_value` 参照) |
 | `findings` | array | ✅ | `/rite:pr-review` ステップ 5.3.0.M 通過後の `全指摘事項` (0 件でも空配列として存在)。**blocking 指摘 + `scope == "nit-noted"` 指摘**を含む — nit-noted は本ゲートの対象外 (`assessment-rules.md` §5.3.0.M) のため非実測でも本配列に残る。ゲートで降格した非実測指摘 (scope ∈ {current-pr, follow-up}) のみが下記 `non_blocking_findings` に分離される |
 | `non_blocking_findings` | array | **write 側 ✅ (0 件でも `[]`)** / read 側は欠落許容 | 実測必須ゲート ([severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)) で non-blocking に降格した非実測指摘の配列 (要素の形は `findings[]` と同一)。下記 [non_blocking_findings 配列](#non_blocking_findings-配列) 参照 |
+| `guardrail_audit_log` | array | **write 側 ✅ (0 件でも `[]`)** / read 側は欠落許容 | Finding Quality Guardrail Category #2 で `指摘事項` から除外した候補の監査記録。audit-only で判定 consumer は無視する。各要素は `reviewer`, `filter_category` (`Category #2`), `original_severity`, `file_line`, `description`, `filter_reason`, `verification` を持つ |
 
 ### `findings[]` 要素
 
