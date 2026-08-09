@@ -36,6 +36,7 @@ REPO_ROOT="$(cd "$PLUGIN_ROOT/../.." && pwd)"
 CHECK_SCRIPT="$HOOK_DIR/scripts/bang-backtick-check.sh"
 CREATE_MD="$PLUGIN_ROOT/skills/pr-create/SKILL.md"
 READY_MD="$PLUGIN_ROOT/skills/ready/SKILL.md"
+READY_GATE_HELPER="$HOOK_DIR/scripts/ready-pr-head-gate.sh"
 LINT_MD="$PLUGIN_ROOT/skills/lint/SKILL.md"
 PASS=0
 FAIL=0
@@ -43,6 +44,7 @@ FAIL=0
 [ -f "$CHECK_SCRIPT" ] || { echo "ERROR: $CHECK_SCRIPT not found" >&2; exit 1; }
 [ -f "$CREATE_MD" ] || { echo "ERROR: $CREATE_MD not found" >&2; exit 1; }
 [ -f "$READY_MD" ] || { echo "ERROR: $READY_MD not found" >&2; exit 1; }
+[ -f "$READY_GATE_HELPER" ] || { echo "ERROR: $READY_GATE_HELPER not found" >&2; exit 1; }
 [ -f "$LINT_MD" ] || { echo "ERROR: $LINT_MD not found" >&2; exit 1; }
 
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
@@ -119,7 +121,7 @@ rm -f "$sentinel_stderr"
 # ----- TC-4: shared scanner core and ready-only PR-head resolution ----------
 echo "TC-4: shared scanner core and ready-only PR-head resolution"
 inv_create=$(grep -c 'bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all --skip-if-no-target 2>&1' "$CREATE_MD" || true)
-inv_ready=$(grep -c 'bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all --skip-if-no-target --repo-root "$scan_root" 2>&1' "$READY_MD" || true)
+inv_ready=$(grep -c 'bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all --skip-if-no-target --repo-root "$scan_root" 2>&1' "$READY_GATE_HELPER" || true)
 if [ "$inv_create" -ge 1 ] && [ "$inv_ready" -ge 1 ]; then
   pass "TC-4 scanner core present with ready-specific --repo-root"
 else
@@ -127,7 +129,7 @@ else
 fi
 
 sentinel_create=$(grep -c 'BANG_BACKTICK_CHECK_INVOCATION_FAILED=1' "$CREATE_MD" || true)
-sentinel_ready=$(grep -c 'BANG_BACKTICK_CHECK_INVOCATION_FAILED=1' "$READY_MD" || true)
+sentinel_ready=$(grep -c 'BANG_BACKTICK_CHECK_INVOCATION_FAILED=1' "$READY_GATE_HELPER" || true)
 if [ "$sentinel_create" -ge 2 ] && [ "$sentinel_ready" -ge 2 ]; then
   # ≥2 because the literal appears in both the script_missing branch and
   # the rc=invocation_error branch.
@@ -161,7 +163,7 @@ fi
 # is NOT used: it also appears in unrelated review-scope prose elsewhere in
 # create.md, so it would pass even if the real skip-note line were deleted.
 skipnote_create=$(grep -cF 'self-host していないため N/A' "$CREATE_MD" || true)
-skipnote_ready=$(grep -cF 'self-host していないため N/A' "$READY_MD" || true)
+skipnote_ready=$(grep -cF 'clean skip' "$READY_GATE_HELPER" || true)
 if [ "$skipnote_create" -ge 1 ] && [ "$skipnote_ready" -ge 1 ]; then
   pass "TC-4 not-applicable skip-note present in BOTH create.md and ready.md"
 else
@@ -190,7 +192,7 @@ fi
 # CRITICAL bug が発生 (3 site 同形 transcription、Wiki 経験則「Asymmetric Fix Transcription」の
 # inverse failure)。byte 比較で single-quote 囲みであることを pin する。
 echo "TC-12: CRITICAL regression — Style B 'if ! cmd; then' literal must use single-quotes (not backticks)"
-for f in "$CREATE_MD" "$READY_MD"; do
+for f in "$CREATE_MD" "$READY_GATE_HELPER"; do
   fname=$(basename "$f")
   if grep -qF "expand 'if ! cmd; then'" "$f"; then
     pass "TC-12 $fname uses single-quoted Style B example"
@@ -234,37 +236,11 @@ else
 fi
 rm -rf "$consumer_root"
 
-# ----- TC-13: Issue #2147 — ready gate is bound to the PR head -------------
-echo "TC-13: ready gate resolves and scans the PR head"
-for needle in \
-  'gh pr view {pr_number} -R {owner_repo} --json headRefOid' \
-  'git worktree add --detach "$ready_gate_tmp" "$pr_head_oid"' \
-  'READY_GATE_PR_HEAD_RESOLVED=1; head_oid=$pr_head_oid' \
-  '--repo-root "$scan_root"' \
-  "trap 'cleanup_ready_gate_worktree; trap - INT; kill -INT \$\$' INT"
-do
-  if grep -qF -- "$needle" "$READY_MD"; then
-    pass "TC-13 contract present: $needle"
-  else
-    fail "TC-13 contract missing: $needle"
-  fi
-done
-
-# ----- TC-14: Issue #2147 — no fallback and PR-head work-memory values ------
-echo "TC-14: resolution failures stop and work memory records PR head"
-for needle in \
-  'PR #{pr_number} の headRefOid を解決できません' \
-  'PR head $pr_head_oid の fetch に失敗しました' \
-  'PR head $pr_head_oid の一時 worktree 作成に失敗しました' \
-  '--json headRefName,headRefOid' \
-  'branch: \"" branch "\"' \
-  'last_commit: \"" oid "\"'
-do
-  if grep -qF -- "$needle" "$READY_MD"; then
-    pass "TC-14 contract present: $needle"
-  else
-    fail "TC-14 contract missing: $needle"
-  fi
+# Runtime behavior is covered by ready-pr-head-gate.test.sh. Keep only the
+# command-document wiring assertions here.
+echo "TC-13: ready gate helper wiring"
+for needle in 'ready-pr-head-gate.sh' '--pr "$ready_pr_number"' 'WM_BRANCH_OVERRIDE="$ready_pr_branch"' 'WM_LAST_COMMIT_OVERRIDE="$ready_pr_oid"'; do
+  if grep -qF -- "$needle" "$READY_MD"; then pass "TC-13 wiring: $needle"; else fail "TC-13 missing: $needle"; fi
 done
 
 # ----- Summary --------------------------------------------------------------

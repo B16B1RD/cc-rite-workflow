@@ -114,88 +114,22 @@ Resolve plugin_root with the inline one-liner (per [Plugin Path Resolution](../.
 ```bash
 plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 
-if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/bang-backtick-check.sh" ]; then
-  echo "[CONTEXT] BANG_BACKTICK_CHECK_INVOCATION_FAILED=1; reason=script_missing; resolved_root=${plugin_root:-<empty>}" >&2
-  echo "ERROR: bang-backtick-check.sh not found. Cannot proceed with Ready gate." >&2
-  exit 1
-fi
-
-# Gate の主体と scan 対象を一致させる。PR head を解決できない場合に現在の
-# checkout へ縮退すると vacuous pass になるため、全て fail-loud とする。
-pr_head_oid=$(gh pr view {pr_number} -R {owner_repo} --json headRefOid --jq '.headRefOid') || {
-  echo "ERROR: Ready gate: PR #{pr_number} の headRefOid を解決できません" >&2
-  exit 1
-}
-if [ -z "$pr_head_oid" ]; then
-  echo "ERROR: Ready gate: PR #{pr_number} の headRefOid が空です" >&2
-  exit 1
-fi
-current_oid=$(git rev-parse HEAD) || {
-  echo "ERROR: Ready gate: 現在の HEAD を解決できません" >&2
-  exit 1
-}
-
-scan_root="."
-ready_gate_tmp=""
-cleanup_ready_gate_worktree() {
-  [ -n "$ready_gate_tmp" ] || return 0
-  cleanup_path="$ready_gate_tmp"
-  ready_gate_tmp=""
-  if ! git worktree remove --force "$cleanup_path" >/dev/null 2>&1; then
-    echo "WARNING: Ready gate の一時 worktree を削除できませんでした: $cleanup_path" >&2
-  fi
-}
-trap 'cleanup_ready_gate_worktree' EXIT
-trap 'cleanup_ready_gate_worktree; trap - HUP; kill -HUP $$' HUP
-trap 'cleanup_ready_gate_worktree; trap - INT; kill -INT $$' INT
-trap 'cleanup_ready_gate_worktree; trap - TERM; kill -TERM $$' TERM
-
-if [ "$current_oid" != "$pr_head_oid" ]; then
-  if ! git fetch origin "$pr_head_oid" >/dev/null 2>&1; then
-    echo "ERROR: Ready gate: PR head $pr_head_oid の fetch に失敗しました" >&2
-    exit 1
-  fi
-  ready_gate_tmp=$(mktemp -d "${TMPDIR:-/tmp}/rite-ready-pr-head.XXXXXX") || {
-    echo "ERROR: Ready gate: 一時ディレクトリの作成に失敗しました" >&2
-    exit 1
-  }
-  rmdir "$ready_gate_tmp"
-  if ! git worktree add --detach "$ready_gate_tmp" "$pr_head_oid" >/dev/null 2>&1; then
-    echo "ERROR: Ready gate: PR head $pr_head_oid の一時 worktree 作成に失敗しました" >&2
-    exit 1
-  fi
-  scan_root="$ready_gate_tmp"
-  echo "[CONTEXT] READY_GATE_PR_HEAD_RESOLVED=1; head_oid=$pr_head_oid" >&2
-fi
-
-bang_output=$(bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all --skip-if-no-target --repo-root "$scan_root" 2>&1)
-bang_rc=$?
-case "$bang_rc" in
-  0)
-    # A clean scan and a not-applicable skip both mean "proceed". The skip happens
-    # in a consumer repo (rite used as a marketplace plugin only — no plugins/rite/
-    # in this working tree, hence --skip-if-no-target above). Surface a one-line
-    # informational note for the skip case so the gate pass is not silent.
-    if printf '%s' "$bang_output" | grep -q '\[bang-backtick\] not applicable'; then
-      echo "ℹ️ Bang-backtick gate: 本リポジトリは plugins/rite/ を self-host していないため N/A（clean skip）。" >&2
-    fi
-    ;;
-  1)
-    echo "❌ Bang-backtick adjacency detected — Ready transition blocked:" >&2
-    printf '%s\n' "$bang_output" >&2
-    echo "ACTION: Apply Style A (full-width 「!」) or Style B (expand 'if ! cmd; then') — see plugins/rite/hooks/scripts/bang-backtick-check.sh header for the judgment flow." >&2
-    exit 1
-    ;;
-  *)
-    echo "[CONTEXT] BANG_BACKTICK_CHECK_INVOCATION_FAILED=1; reason=invocation_error; rc=$bang_rc" >&2
-    echo "ERROR: bang-backtick-check.sh invocation error (rc=$bang_rc):" >&2
-    printf '%s\n' "$bang_output" >&2
-    exit 1
+# Optional argument is resolved before the gate so `/rite:ready` without an
+# argument remains deterministic. The helper then owns PR-head resolution,
+# fail-loud routing, scanner rc handling, and signal-safe worktree cleanup.
+ready_pr_number="{pr_number}"
+case "$ready_pr_number" in
+  ''|*[!0-9]*)
+    ready_branch=$(git branch --show-current) || { echo "ERROR: Ready gate: current branch を解決できません" >&2; exit 1; }
+    ready_pr_number=$(gh pr view "$ready_branch" -R {owner_repo} --json number --jq '.number') || {
+      echo "ERROR: Ready gate: branch '$ready_branch' の PR を解決できません" >&2
+      exit 1
+    }
     ;;
 esac
 
-cleanup_ready_gate_worktree
-trap - EXIT HUP INT TERM
+bash "$plugin_root/hooks/scripts/ready-pr-head-gate.sh" \
+  --pr "$ready_pr_number" --repo {owner_repo} --plugin-root "$plugin_root"
 ```
 
 > **On exit 1 from this bash block**: The bash block exits before any `skills/ready/SKILL.md` result pattern (`[ready:returned-to-caller]` / `[ready:error]`) is emitted, so the orchestrator treats this as a missing-result-pattern Skill invocation — default 経路は `WARNING` を stderr に出力し、AskUserQuestion で「再試行 / 強制続行 / 中止」を提示する — **NOT** a `[ready:error]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
@@ -415,21 +349,9 @@ WM_SOURCE="ready" \
   WM_NEXT_ACTION="レビュー待ち" \
   WM_BODY_TEXT="PR marked as ready for review." \
   WM_ISSUE_NUMBER="{issue_number}" \
+  WM_BRANCH_OVERRIDE="$ready_pr_branch" \
+  WM_LAST_COMMIT_OVERRIDE="$ready_pr_oid" \
   bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
-
-# local-wm-update.sh は通常 current checkout 由来の branch / last_commit を書くため、
-# ready では取得済み PR head 値で frontmatter を atomic に補正する。
-wm_file=".rite-work-memory/issue-{issue_number}.md"
-if [ -n "$ready_pr_branch" ] && [ -n "$ready_pr_oid" ] && [ -f "$wm_file" ]; then
-  awk -v branch="$ready_pr_branch" -v oid="$ready_pr_oid" '
-    /^branch: / { print "branch: \"" branch "\""; next }
-    /^last_commit: / { print "last_commit: \"" oid "\""; next }
-    { print }
-  ' "$wm_file" > "$wm_file.tmp" && mv "$wm_file.tmp" "$wm_file" || {
-    rm -f "$wm_file.tmp"
-    echo "WARNING: local work memory の PR head 値への補正に失敗しました: $wm_file" >&2
-  }
-fi
 ```
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort.
