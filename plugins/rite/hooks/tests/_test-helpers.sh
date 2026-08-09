@@ -245,11 +245,23 @@ assert_mutant_changed() {
   local mutant="$3"
   if ! assert_file_exists_or_fail "$label source" "$original"; then return 1; fi
   if ! assert_file_exists_or_fail "$label mutant" "$mutant"; then return 1; fi
+  local diff_rc
   if diff -q "$original" "$mutant" >/dev/null 2>&1; then
-    fail "$label (mutant is identical to source; mutation selector matched nothing)"
-    return 1
+    diff_rc=0
+  else
+    diff_rc=$?
   fi
-  return 0
+  case "$diff_rc" in
+    0)
+      fail "$label (mutant is identical to source; mutation selector matched nothing)"
+      return 1
+      ;;
+    1) return 0 ;;
+    *)
+      fail "$label (diff could not compare source and mutant; rc=$diff_rc)"
+      return 1
+      ;;
+  esac
 }
 
 # Section-scoped pattern presence assertion.

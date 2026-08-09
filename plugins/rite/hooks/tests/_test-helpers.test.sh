@@ -112,7 +112,8 @@ echo "TC-4: assert_grep / assert_not_grep"
 
 tmpfile=$(mktemp)
 mutant_file="${tmpfile}.mutant"
-trap 'rm -f "$tmpfile" "$mutant_file"' EXIT
+diff_shim_dir="${tmpfile}.diff-shim"
+trap 'rm -f "$tmpfile" "$mutant_file"; rm -rf "$diff_shim_dir"' EXIT
 printf 'hello world\nfoo bar\n' > "$tmpfile"
 
 grep_state=$(bash -c "
@@ -621,6 +622,14 @@ if bash -c "source '$HELPERS'; assert_mutant_changed identical '$tmpfile' '$muta
   outer_fail "TC-16.2: assert_mutant_changed accepted an identical mutant"
 else
   outer_pass "TC-16.2: assert_mutant_changed rejects a no-op mutation"
+fi
+mkdir -p "$diff_shim_dir"
+printf '%s\n' '#!/bin/sh' 'exit 2' > "$diff_shim_dir/diff"
+chmod +x "$diff_shim_dir/diff"
+if PATH="$diff_shim_dir:$PATH" bash -c "source '$HELPERS'; assert_mutant_changed compare-error '$tmpfile' '$mutant_file'" >/dev/null; then
+  outer_fail "TC-16.3: assert_mutant_changed accepted a diff comparison error"
+else
+  outer_pass "TC-16.3: assert_mutant_changed rejects diff rc>=2"
 fi
 
 # === Summary ===
