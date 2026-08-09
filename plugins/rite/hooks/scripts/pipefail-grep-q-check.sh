@@ -118,8 +118,11 @@ def scan_line_state(syntax, state, stack, function_activity=None, pending_functi
     call_effects={}
     for name,effect in function_effects.items():
         if effect is None or name == declared_name: continue
-        pattern=r'(?:^|[;|&]\s*|\b(?:if|then|command)\s+|!\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)'
-        for m in re.finditer(pattern,syntax): call_effects[m.end()]=effect
+        # Only a plainly standalone current-shell call can propagate `set`.
+        # Conditional, pipeline, async and subshell calls are not definite
+        # parent-shell effects and are intentionally excluded here.
+        pattern=r'(?:^|;)\s*('+re.escape(name)+r')\s*(?=;|$)'
+        for m in re.finditer(pattern,syntax): call_effects[m.start(1)]=effect
     open_names={}
     for m in re.finditer(r'(?:^|[;&])\s*(?:function\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?|([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\))\s*\{', syntax):
         open_names[m.end()-1]=m.group(1) or m.group(2)
@@ -205,6 +208,10 @@ def infer_function_activity(logical):
     changed=True
     while changed:
         changed=False
+        for caller,callees in edges.items():
+            if effects[caller] is None:
+                resolved={effects[callee] for callee,_ in callees if effects[callee] is not None}
+                if len(resolved) == 1: effects[caller]=resolved.pop(); changed=True
         for caller,callees in edges.items():
             for callee,override in callees:
                 active=activity[caller] if override is None else override

@@ -169,6 +169,32 @@ assert "nested call-state propagation retains active finding" "1" "$rc"
 assert "nested caller activation reaches callee" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*nested_on_stream' || true)"
 assert "nested caller deactivation reaches callee" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*nested_off_stream' || true)"
 
+printf '%s\n' \
+  'nested_enable() { set -o pipefail; }' \
+  'enable_wrapper() { nested_enable; }' \
+  'nested_disable() { set +o pipefail; }' \
+  'disable_wrapper() { nested_disable; }' \
+  'set +o pipefail; enable_wrapper' \
+  'after_enable_wrapper | grep -q x' \
+  'disable_wrapper' \
+  'after_disable_wrapper | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "wrapper exit-effect propagation retains active finding" "1" "$rc"
+assert "nested enable effect returns through wrapper" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*after_enable_wrapper' || true)"
+assert "nested disable effect returns through wrapper" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*after_disable_wrapper' || true)"
+
+printf '%s\n' \
+  'disable_conditional() { set +o pipefail; }' \
+  'set -o pipefail' \
+  'if false; then disable_conditional; fi' \
+  'after_false_branch | grep -q x' \
+  'producer_disable() { set +o pipefail; stream_many; }' \
+  'producer_disable | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "non-current-shell effects retain active findings" "1" "$rc"
+assert "untaken conditional effect is not applied" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*after_false_branch' || true)"
+assert "pipeline function effect is not applied to parent" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*producer_disable' || true)"
+
 printf '%s\n' 'set -o pipefail' 'stream_many | grep -q x # drift-check-ignore: bounded fixture' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "ignore marker suppresses finding" "0" "$rc"
