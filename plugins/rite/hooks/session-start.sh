@@ -19,6 +19,8 @@ fi
 source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 # shellcheck source=control-char-neutralize.sh
 source "$SCRIPT_DIR/control-char-neutralize.sh"
+# shellcheck source=gitignore-ensure.sh
+source "$SCRIPT_DIR/gitignore-ensure.sh"
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
@@ -376,8 +378,9 @@ RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" migrate >/dev/nul
 # manifest-bypass WARNINGs) were previously unobservable and slowed diagnosis
 # (#1966's investigation). A self-contained `.gitignore` (`*`) is written into
 # the log dir on first creation so it never leaks into the repo even in
-# downstream consuming repos, where /rite:setup's generated .gitignore only
-# covers `.rite/sessions/` and `.rite/worktrees/` (not `.rite/logs/`) and this
+# downstream consuming repos, where /rite:setup's generated .gitignore covers
+# `.rite/sessions/`, `.rite/worktrees/`, and `.rite/review-results/` (not
+# `.rite/logs/`) and this
 # repo's own root `*.log` rule doesn't apply. If the dir can't be created,
 # fall back to discarding output — this hook must never block session start on
 # a log-write failure.
@@ -389,7 +392,10 @@ if [ "$CWD" = "$STATE_ROOT" ]; then
   # degrading to discard. The truncate below doubles as the "overwritten each
   # run" reset, so the reap output is appended after it.
   if mkdir -p "$_reap_log_dir" 2>/dev/null && { : > "$_reap_log_dir/pr-cycle-cleanup.log"; } 2>/dev/null; then
-    [ -f "$_reap_log_dir/.gitignore" ] || { printf '*\n' > "$_reap_log_dir/.gitignore"; } 2>/dev/null || true
+    if ! _ensure_dir_gitignore "$_reap_log_dir"; then
+      echo "WARNING: session-start.sh: cannot create $(printf '%s' "$_reap_log_dir" | neutralize_ctrl)/.gitignore; verify by hand that this directory is excluded from git" >&2
+      [ -n "$_RITE_GITIGNORE_ERROR" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+    fi
     ( cd "$CWD" && bash "$SCRIPT_DIR/scripts/pr-cycle-cleanup.sh" ) >>"$_reap_log_dir/pr-cycle-cleanup.log" 2>&1 || true
   else
     ( cd "$CWD" && bash "$SCRIPT_DIR/scripts/pr-cycle-cleanup.sh" ) >/dev/null 2>&1 || true

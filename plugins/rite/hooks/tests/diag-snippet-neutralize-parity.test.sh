@@ -209,6 +209,9 @@ echo "=== TC-5: 関数内 >&2 経由の既知 emission site は個別 pin ==="
 assert_grep "TC-5: wiki-ingest-commit.sh surface_git_warnings" \
   "$HOOKS_DIR/scripts/wiki-ingest-commit.sh" \
   'grep -iE .\^\(warning\|hint\|error\):. \| neutralize_ctrl --keep-newline'
+assert_grep "TC-5: flow-state unknown phase inline value is neutralized" \
+  "$HOOKS_DIR/flow-state.sh" \
+  'unknown phase: .*"\$phase" \| neutralize_ctrl\)'
 
 echo ""
 echo "=== TC-6: scripts/ 実 site は制御文字を中和し複数行 indent を維持 ==="

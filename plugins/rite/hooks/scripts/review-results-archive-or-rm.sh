@@ -71,6 +71,10 @@
 #   [review-results-archive-or-rm] archived=<n>; removed=<n>; failed=<n>; pr=<n>
 set -uo pipefail
 
+SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
+# shellcheck source=../gitignore-ensure.sh
+source "$SCRIPT_DIR/../gitignore-ensure.sh"
+
 STATE_ROOT=""
 PR_NUMBER=""
 # reason / メッセージの prefix。唯一の caller が単一の artifact 種別しか渡さないため定数。
@@ -121,12 +125,10 @@ failed=0
 # 張られる。ループ内に置くと (b) で保護が一度も発火しないまま `git add -A` が全文を
 # 拾う経路が残る。guard が存在 (`-f`) ではなく中身 (`-s`) なのと、`{ ...; } 2>&1` の
 # グループスコープで捕捉する理由は保存経路 (hooks/review-result-save.sh) と同一。
-if [ -d "$results_dir" ] && [ ! -s "$results_dir/.gitignore" ]; then
-  if ! gi_err=$( { printf '*\n' > "$results_dir/.gitignore"; } 2>&1 ); then
+if [ -d "$results_dir" ] && ! _ensure_dir_gitignore "$results_dir"; then
     echo "WARNING: ${LABEL} の保存先に .gitignore を作成できません (PR #${PR_NUMBER}): $results_dir/.gitignore — 退避した非実測指摘の全文が git の追跡対象に入る恐れがあります" >&2
-    [ -n "$gi_err" ] && printf '%s\n' "$gi_err" | sed 's/^/  /' >&2
+    [ -n "$_RITE_GITIGNORE_ERROR" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
     echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=${LABEL}_gitignore_failure; pr=${PR_NUMBER}" >&2
-  fi
 fi
 
 for f in "$results_dir/${PR_NUMBER}"-*.json*; do
