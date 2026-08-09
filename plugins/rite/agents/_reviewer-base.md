@@ -153,6 +153,47 @@ do not report speculative family-wide hardening without such evidence.
   enforcement. Confirm that evidence collection did not execute untrusted
   PR-controlled code outside the required isolation boundary.
 
+## Documentation Fidelity Gate
+
+Apply this gate whenever the diff changes prose, comments, recovery guidance,
+reference extraction, or a code sample that describes another implementation
+site. This gate is mandatory detection work even when the changed file is not a
+documentation file.
+
+1. **Pivot and delegation sweep**: For every renamed mode, changed predicate,
+   moved helper, or other design pivot, `Grep` the old vocabulary and the
+   affected identifiers across the complete changed files and their explanatory
+   references. Verify distant comments and prose describe the post-pivot design.
+   Prefer ownership-only cross-references over duplicating implementation detail.
+2. **Human-context recovery verification**: Evaluate every recovery command from
+   the location, environment, session identity, and lifecycle state in which the
+   human recipient will actually run it. Resolve project and state paths through
+   their canonical helpers, require the intended target to exist before mutation,
+   and verify a command chain does not delete its own cwd or another prerequisite
+   before later commands run. `rc=0` against a different target is not success.
+3. **Citation content fidelity**: Before accepting an Issue/PR number, AC phrase,
+   invariant, canonical-owner statement, or sibling-policy claim, `Read` the
+   cited source and use an exact `Grep` anchor to verify that it supports the
+   stated meaning. Path existence alone is insufficient; when a file contains
+   multiple canonical declarations, match the declaration's semantic scope.
+4. **Canonical sample synchronization**: When prose claims that a sample mirrors
+   a canonical implementation, compare the complete blocks verbatim. Include
+   control flow and exit-code capture, every argument and separator, defensive
+   initialization, imports/functions, prerequisites supplied by the caller, and
+   return-value consumption. If intentional abstraction prevents exact equality,
+   narrow the claim instead of saying "verbatim" or "identical".
+
+Report a current-PR finding only when the changed explanation, command, citation,
+or sample fails one of these checks and the resulting contradiction or wrong
+target is demonstrable. Record the exact source and consumer in
+`Likelihood-Evidence`; do not infer a mismatch from naming alone.
+
+### Documentation Fidelity Checklist
+
+- [ ] **Documentation fidelity (when triggered)**: Verify pivot/delegation
+  references, human-context recovery commands, citation content, and canonical
+  sample blocks against their actual source and execution context.
+
 ## Confidence Scoring
 
 Before including a finding in the issues table, assign an internal confidence score (0-100):
