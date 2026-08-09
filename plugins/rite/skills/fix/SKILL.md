@@ -3467,7 +3467,7 @@ else
   commit_err="/dev/null"
 fi
 wiki_ingest_commit_rc=0
-wiki_push_attempt="fix-{pr_number}-$(date +%s%N)"
+wiki_push_attempt="fix-{pr_number}-$(date +%s)-$$-$RANDOM"
 echo "[CONTEXT] WIKI_PUSH_ATTEMPT=$wiki_push_attempt; source=fix; pr={pr_number}"
 if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh 2>"${commit_err}"); then
   # Success — the script prints exactly one status line to stdout, e.g.

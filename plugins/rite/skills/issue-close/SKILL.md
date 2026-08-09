@@ -342,7 +342,7 @@ fi
 commit_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-commit-err-XXXXXX" 2>/dev/null) || commit_err=/dev/null
 trap 'rm -f "${commit_err:-}"' EXIT INT TERM HUP
 commit_rc=0
-wiki_push_attempt="issue-close-{issue_number}-$(date +%s%N)"
+wiki_push_attempt="issue-close-{issue_number}-$(date +%s)-$$-$RANDOM"
 echo "[CONTEXT] WIKI_PUSH_ATTEMPT=$wiki_push_attempt; source=issue-close; issue={issue_number}"
 if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh 2>"${commit_err}"); then
   echo "$commit_out"
