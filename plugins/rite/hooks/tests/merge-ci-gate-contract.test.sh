@@ -11,6 +11,11 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 MERGE="$SCRIPT_DIR/../../skills/merge/SKILL.md"
 
 echo "=== merge CI gate routing (T-01/T-02/T-05/T-06/T-07) ==="
+assert_grep "canonical PR query includes the complete CI gate input" "$MERGE" \
+  '^pr_json=\$\(gh pr view \{pr_number\} -R \{owner_repo\} --json mergeable,mergeStateStatus,isDraft,headRefName,statusCheckRollup\)'
+assert_grep "force override defaults to disabled" "$MERGE" '^force_ci=false$'
+assert_grep "force override parser is token-bounded and position-independent" "$MERGE" \
+  '^case " \{arguments\} " in \*" --force-ci "\*\) force_ci=true ;; esac$'
 assert_grep "healthy checks proceed to step 2" "$MERGE" 'checks が全件 healthy.*ステップ 2 へ'
 assert_grep "MERGEABLE plus UNSTABLE is still not ready" "$MERGE" 'mergeStateStatus == "UNSTABLE".*\[merge:not-ready\]'
 assert_grep "unhealthy default path forbids gh pr merge" "$MERGE" 'ステップ 2 の `gh pr merge` は実行しない'
