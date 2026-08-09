@@ -239,7 +239,7 @@ rm -rf "$consumer_root"
 # Runtime behavior is covered by ready-pr-head-gate.test.sh. Keep only the
 # command-document wiring assertions here.
 echo "TC-13: ready gate helper wiring"
-for needle in 'ready-pr-head-gate.sh' '--pr "$ready_pr_number"' 'WM_BRANCH_OVERRIDE="$ready_pr_branch"' 'WM_LAST_COMMIT_OVERRIDE="$ready_pr_oid"'; do
+for needle in 'ready-pr-head-gate.sh' '--pr "$ready_pr_number"' 'ready-work-memory-update.sh' '--pr {pr_number} --issue {issue_number}'; do
   if grep -qF -- "$needle" "$READY_MD"; then pass "TC-13 wiring: $needle"; else fail "TC-13 missing: $needle"; fi
 done
 

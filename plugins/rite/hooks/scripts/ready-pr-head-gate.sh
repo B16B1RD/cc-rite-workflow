@@ -4,9 +4,9 @@ set -u
 pr_number=""; owner_repo=""; plugin_root=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --pr) pr_number="${2:-}"; shift 2 ;;
-    --repo) owner_repo="${2:-}"; shift 2 ;;
-    --plugin-root) plugin_root="${2:-}"; shift 2 ;;
+    --pr) [ "$#" -ge 2 ] || { echo "ERROR: Ready gate: --pr requires a value" >&2; exit 2; }; pr_number="$2"; shift 2 ;;
+    --repo) [ "$#" -ge 2 ] || { echo "ERROR: Ready gate: --repo requires a value" >&2; exit 2; }; owner_repo="$2"; shift 2 ;;
+    --plugin-root) [ "$#" -ge 2 ] || { echo "ERROR: Ready gate: --plugin-root requires a value" >&2; exit 2; }; plugin_root="$2"; shift 2 ;;
     *) echo "ERROR: Ready gate: unknown argument: $1" >&2; exit 2 ;;
   esac
 done

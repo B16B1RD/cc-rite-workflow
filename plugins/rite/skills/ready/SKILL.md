@@ -121,6 +121,13 @@ ready_pr_number="{pr_number}"
 case "$ready_pr_number" in
   ''|*[!0-9]*)
     ready_branch=$(git branch --show-current) || { echo "ERROR: Ready gate: current branch を解決できません" >&2; exit 1; }
+    case "$ready_branch" in
+      main|master)
+        echo "エラー: 現在 $ready_branch ブランチにいます" >&2
+        echo "Ready for review にする PR を指定してください: /rite:ready <PR番号>" >&2
+        exit 1
+        ;;
+    esac
     ready_pr_number=$(gh pr view "$ready_branch" -R {owner_repo} --json number --jq '.number') || {
       echo "ERROR: Ready gate: branch '$ready_branch' の PR を解決できません" >&2
       exit 1
@@ -334,24 +341,8 @@ End processing.
 After `gh pr ready` succeeds, update local work memory (SoT):
 
 ```bash
-# 作業ツリーではなく PR head を SoT とする。Phase 1.0 と Bash 呼び出しが分かれるため
-# marker/シェル変数へ依存せず、この場で再取得する。
-ready_pr_json=$(gh pr view {pr_number} -R {owner_repo} --json headRefName,headRefOid) || {
-  echo "WARNING: PR head 情報を取得できないため local work memory 更新をスキップします" >&2
-  ready_pr_json=""
-}
-ready_pr_branch=$(printf '%s' "$ready_pr_json" | jq -r '.headRefName // empty')
-ready_pr_oid=$(printf '%s' "$ready_pr_json" | jq -r '.headRefOid // empty')
-
-WM_SOURCE="ready" \
-  WM_PHASE="ready" \
-  WM_PHASE_DETAIL="Ready for review に変更完了" \
-  WM_NEXT_ACTION="レビュー待ち" \
-  WM_BODY_TEXT="PR marked as ready for review." \
-  WM_ISSUE_NUMBER="{issue_number}" \
-  WM_BRANCH_OVERRIDE="$ready_pr_branch" \
-  WM_LAST_COMMIT_OVERRIDE="$ready_pr_oid" \
-  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
+bash {plugin_root}/hooks/scripts/ready-work-memory-update.sh \
+  --pr {pr_number} --issue {issue_number} --repo {owner_repo} --plugin-root {plugin_root}
 ```
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort.

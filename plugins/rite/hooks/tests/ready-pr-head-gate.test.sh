@@ -10,6 +10,7 @@ LOG="$SB/calls.log"
 cat > "$SB/bin/gh" <<'EOF'
 #!/bin/bash
 [ "${GH_FAIL:-0}" = 1 ] && exit 1
+case "$*" in *headRefName*) printf '%s\n' "${GH_WM_FIELDS:-}"; exit 0 ;; esac
 printf '%s\n' "${PR_HEAD:-head}"
 EOF
 cat > "$SB/bin/git" <<'EOF'
@@ -89,6 +90,24 @@ wm_repo="$SB/wm-repo"; mkdir -p "$wm_repo"; git -C "$wm_repo" init -q
 ) >/dev/null 2>"$SB/wm-err" || bad T-06-run
 wm_file="$wm_repo/.rite-work-memory/issue-42.md"
 grep -qF 'branch: "feature/\"quoted\""' "$wm_file" && grep -qF 'last_commit: "0123456789abcdef"' "$wm_file" && ok || bad T-06-values
+
+# Missing option values terminate instead of looping.
+rc=0; timeout 1 bash "$HELPER" --pr >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 2 ] && ok || bad missing_option_value
+
+# PR-head lookup failure must not invoke the work-memory writer.
+WM_HELPER="$ROOT/hooks/scripts/ready-work-memory-update.sh"
+cat > "$SB/plugin/hooks/local-wm-update.sh" <<'EOF'
+#!/bin/bash
+printf 'wm branch=%s oid=%s\n' "$WM_BRANCH_OVERRIDE" "$WM_LAST_COMMIT_OVERRIDE" >> "$CALL_LOG"
+EOF
+chmod +x "$SB/plugin/hooks/local-wm-update.sh" "$WM_HELPER"
+reset_case; export GH_FAIL=1
+bash "$WM_HELPER" --pr 42 --issue 42 --repo owner/repo --plugin-root "$SB/plugin" >/dev/null 2>"$SB/wm-skip"
+! grep -q '^wm ' "$LOG" && grep -q '更新をスキップ' "$SB/wm-skip" && ok || bad wm_failure_skip
+reset_case; export GH_WM_FIELDS=$'feature/ok\tfeedface'
+bash "$WM_HELPER" --pr 42 --issue 42 --repo owner/repo --plugin-root "$SB/plugin" >/dev/null 2>"$SB/wm-ok"
+grep -q 'wm branch=feature/ok oid=feedface' "$LOG" && ok || bad wm_success
 
 echo "$pass PASS / $fail FAIL"
 [ "$fail" -eq 0 ]
