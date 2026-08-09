@@ -76,6 +76,16 @@ assert "multiline activation is restored after close" "0" "$(printf '%s\n' "$out
 assert "multiline inner deactivation is respected" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*multiline_inner_disabled' || true)"
 assert "multiline deactivation is restored after close" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*multiline_outer_active' || true)"
 
+printf '%s\n' \
+  'set -o pipefail; first_on | grep -q x; set +o pipefail; second_off | grep -q x' \
+  'first_still_off | grep -q x; set -o pipefail; second_on | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "mixed same-line pipelines retain active findings" "1" "$rc"
+assert "on-to-off first pipeline is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*first_on' || true)"
+assert "on-to-off second pipeline is suppressed" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*second_off' || true)"
+assert "off-to-on first pipeline is suppressed" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*first_still_off' || true)"
+assert "off-to-on second pipeline is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*second_on' || true)"
+
 printf '%s\n' 'set -o pipefail' 'stream_many | grep -q x # drift-check-ignore: bounded fixture' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "ignore marker suppresses finding" "0" "$rc"

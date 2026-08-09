@@ -101,21 +101,21 @@ toggle_re=re.compile(r'(?<![A-Za-z0-9_])set\s+([+-][A-Za-z]*o[A-Za-z]*|[+-]o)\s+
 
 def scan_line_state(syntax, state, stack):
     """Evaluate one line while retaining parenthesized scopes across lines."""
-    effective=None; i=0
+    pipe_states=[]; i=0
     while i < len(syntax):
         if syntax[i] == "(": stack.append(state); i+=1; continue
         if syntax[i] == ")":
             if stack: state=stack.pop()
             i+=1; continue
         if syntax[i] == "|" and not (i and syntax[i-1] == "|") and not (i+1 < len(syntax) and syntax[i+1] == "|"):
-            if effective is None: effective=state
+            pipe_states.append(state)
             i+=1; continue
         match=toggle_re.match(syntax, i)
         if match:
             state=match.group(1).startswith("-")
             i=match.end(); continue
         i+=1
-    return (state if effective is None else effective),state,stack
+    return pipe_states,state,stack
 
 def exempt(prod, pipeline_len):
     p=prod.strip()
@@ -168,12 +168,13 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
             if acc: logical.append((start_n,acc))
             prev=""; pipefail=False; scope_stack=[]
             for n,line in logical:
-                effective_pipefail,pipefail,scope_stack=scan_line_state(syntax_only(line), pipefail, scope_stack)
+                pipe_states,pipefail,scope_stack=scan_line_state(syntax_only(line), pipefail, scope_stack)
                 ignored="drift-check-ignore" in line or "drift-check-ignore" in prev
                 ss=stages(line)
-                if effective_pipefail and not ignored and len(ss)>1:
+                if not ignored and len(ss)>1:
                     for j in range(1,len(ss)):
-                        if grep_q(ss[j]) and not exempt(ss[j-1],len(ss)):
+                        active=pipe_states[j-1] if j-1 < len(pipe_states) else False
+                        if active and grep_q(ss[j]) and not exempt(ss[j-1],len(ss)):
                             findings.append(f"[pipefail-grep-q] {rel}:{n}: immediate producer before grep -q: {ss[j-1]}")
                 prev=line
 for f in findings: print(f)
