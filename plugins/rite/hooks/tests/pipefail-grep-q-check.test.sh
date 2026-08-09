@@ -32,6 +32,19 @@ out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "same pipeline without pipefail is clean" "0" "$rc"
 assert "pipefail-off run has no finding" "0" "$(printf '%s' "$out" | grep -c '^\[pipefail-grep-q\]' || true)"
 
+printf '%s\n' \
+  '( set -o pipefail; subshell_stream | grep -q x )' \
+  'captured=$(set -o pipefail; substitution_stream | grep -q x)' \
+  'late_stream | grep -q x; set -o pipefail' \
+  'set -o pipefail' \
+  '( set +o pipefail; disabled_subshell_stream | grep -q x )' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "scoped activations produce findings" "1" "$rc"
+assert "subshell activation is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*subshell_stream' || true)"
+assert "command-substitution activation is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*substitution_stream' || true)"
+assert "activation after a pipeline is not retroactive" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*late_stream' || true)"
+assert "scoped deactivation suppresses its pipeline" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*disabled_subshell_stream' || true)"
+
 printf '%s\n' 'set -o pipefail' 'stream_many | grep -q x # drift-check-ignore: bounded fixture' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "ignore marker suppresses finding" "0" "$rc"

@@ -92,6 +92,35 @@ def pipefail_change(line):
                 return token[0] == "-"
     return None
 
+def syntax_only(line):
+    """Preserve unquoted shell syntax while blanking quoted/comment data."""
+    out=[]; quote=None; esc=False
+    for c in line:
+        if esc:
+            out.append(" "); esc=False; continue
+        if c == "\\" and quote != "'":
+            out.append(" "); esc=True; continue
+        if quote:
+            out.append(" ")
+            if c == quote: quote=None
+            continue
+        if c in "'\"": quote=c; out.append(" "); continue
+        if c == "#" and (not out or out[-1].isspace()): break
+        out.append(c)
+    return "".join(out)
+
+def line_pipefail_state(line, inherited):
+    """Apply the last pipefail toggle in this command list for this line."""
+    state=inherited
+    pattern=r'(?<![A-Za-z0-9_])set\s+([+-][A-Za-z]*o[A-Za-z]*|[+-]o)\s+pipefail(?=\s|;|\)|$)'
+    syntax=syntax_only(line)
+    # A toggle after the pipeline cannot affect the pipeline retroactively.
+    raw_pipes=[m.start() for m in re.finditer(r'(?<!\|)\|(?!\|)', syntax)]
+    before_pipeline=syntax[:raw_pipes[0]] if raw_pipes else syntax
+    for match in re.finditer(pattern, before_pipeline):
+        state=match.group(1).startswith("-")
+    return state
+
 def exempt(prod, pipeline_len):
     p=prod.strip()
     if p.startswith("{") and p.endswith("}"): return True
@@ -146,9 +175,10 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
                 changed=pipefail_change(line)
                 if changed is not None:
                     pipefail=changed
+                effective_pipefail=line_pipefail_state(line, pipefail)
                 ignored="drift-check-ignore" in line or "drift-check-ignore" in prev
                 ss=stages(line)
-                if pipefail and not ignored and len(ss)>1:
+                if effective_pipefail and not ignored and len(ss)>1:
                     for j in range(1,len(ss)):
                         if grep_q(ss[j]) and not exempt(ss[j-1],len(ss)):
                             findings.append(f"[pipefail-grep-q] {rel}:{n}: immediate producer before grep -q: {ss[j-1]}")
