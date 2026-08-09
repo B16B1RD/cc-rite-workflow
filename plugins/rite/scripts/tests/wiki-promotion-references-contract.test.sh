@@ -6,7 +6,8 @@ references_root="$repo_root/plugins/rite/references/wiki-promotions"
 
 manifest="$references_root/manifest.txt"
 mapfile -t expected < <(sort "$manifest")
-mapfile -t actual < <(find "$references_root" -mindepth 2 -type f -name '*.md' -printf '%P\n' | sort)
+mapfile -t actual < <(find "$references_root" -mindepth 2 -type f -name '*.md' \
+  | sed "s#^$references_root/##" | sort)
 
 if [ "${#expected[@]}" -ne 38 ]; then
   echo "manifest must contain exactly 38 paths, found ${#expected[@]}" >&2
