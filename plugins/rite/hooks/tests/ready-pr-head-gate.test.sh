@@ -33,7 +33,10 @@ EOF
 cat > "$SB/plugin/hooks/scripts/bang-backtick-check.sh" <<'EOF'
 #!/bin/bash
 printf 'scanner %s\n' "$*" >> "$CALL_LOG"
-[ "${SCAN_SLEEP:-0}" = 1 ] && sleep 30
+if [ "${SCAN_SIGNAL_PARENT:-0}" = 1 ]; then
+  helper_pid=$(ps -o ppid= -p "$PPID" | tr -d ' ')
+  kill -TERM "$helper_pid"
+fi
 exit "${SCAN_RC:-0}"
 EOF
 chmod +x "$SB/bin/gh" "$SB/bin/git" "$SB/plugin/hooks/scripts/bang-backtick-check.sh" "$HELPER"
@@ -43,7 +46,7 @@ pass=0; fail=0
 ok(){ pass=$((pass+1)); }
 bad(){ echo "FAIL: $*" >&2; fail=$((fail+1)); }
 run_gate(){ PATH="$SB/bin:$PATH" bash "$HELPER" --pr 42 --repo owner/repo --plugin-root "$SB/plugin"; }
-reset_case(){ : > "$LOG"; rm -f "$SB/tmp-path"; unset GH_FAIL FETCH_FAIL ADD_FAIL REMOVE_FAIL SCAN_SLEEP; export SCAN_RC=0; }
+reset_case(){ : > "$LOG"; rm -f "$SB/tmp-path"; unset GH_FAIL FETCH_FAIL ADD_FAIL REMOVE_FAIL SCAN_SIGNAL_PARENT; export SCAN_RC=0; }
 
 # T-01: matching head scans the current checkout and creates no worktree.
 reset_case; export CURRENT_HEAD=same PR_HEAD=same
@@ -73,10 +76,8 @@ reset_case; export CURRENT_HEAD=base PR_HEAD=prhead REMOVE_FAIL=1
 run_gate >/dev/null 2>"$SB/err" && grep -q 'WARNING: Ready gate の一時 worktreeを\|WARNING: Ready gate の一時 worktree' "$SB/err" && ok || bad T-07
 
 # Signal cleanup uses canonical status and invokes worktree removal.
-reset_case; export CURRENT_HEAD=base PR_HEAD=prhead SCAN_SLEEP=1
-PATH="$SB/bin:$PATH" setsid bash "$HELPER" --pr 42 --repo owner/repo --plugin-root "$SB/plugin" >/dev/null 2>"$SB/err" & pid=$!
-for _ in 1 2 3 4 5; do [ -s "$SB/tmp-path" ] && break; sleep 0.1; done
-kill -TERM -- "-$pid"; rc=0; wait "$pid" || rc=$?
+reset_case; export CURRENT_HEAD=base PR_HEAD=prhead SCAN_SIGNAL_PARENT=1
+rc=0; run_gate >/dev/null 2>"$SB/err" || rc=$?
 [ "$rc" -eq 143 ] && grep -q 'worktree remove --force' "$LOG" && ok || bad signal_cleanup
 
 # T-06: work-memory overrides are sanitized and written under the helper lock.
@@ -92,7 +93,7 @@ wm_file="$wm_repo/.rite-work-memory/issue-42.md"
 grep -qF 'branch: "feature/\"quoted\""' "$wm_file" && grep -qF 'last_commit: "0123456789abcdef"' "$wm_file" && ok || bad T-06-values
 
 # Missing option values terminate instead of looping.
-rc=0; timeout 1 bash "$HELPER" --pr >/dev/null 2>&1 || rc=$?
+rc=0; bash "$HELPER" --pr >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 2 ] && ok || bad missing_option_value
 
 # PR-head lookup failure must not invoke the work-memory writer.
