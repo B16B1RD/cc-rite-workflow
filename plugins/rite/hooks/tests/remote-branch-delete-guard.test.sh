@@ -78,7 +78,7 @@ extract_guard_as() {
   local _replacement
   _replacement=$(printf '%s' "$1" | sed 's/[&|\\]/\\&/g')
   awk '/^# リモートブランチ削除/{f=1} f && /^```$/{exit} f{print}' "$CLEANUP_MD" \
-    | sed -e "s|{branch_name}|$_replacement|g"
+    | sed -e "s|{branch_name}|$_replacement|g" -e 's|{branch_identity_verified}|true|g'
 }
 extract_guard() { extract_guard_as "$BRANCH"; }
 # ローカル削除ブロックの抽出。リモート側と別アンカーが要る — `# リモートブランチ削除` を開始
@@ -93,7 +93,7 @@ extract_local_guard_as() {
   local _replacement
   _replacement=$(printf '%s' "$1" | sed 's/[&|\\]/\\&/g')
   extract_local_guard_raw \
-    | sed -e "s|{branch_name}|$_replacement|g" -e "s|{pr_merged}|true|g" -e "s|{plugin_root}|$TEST_DIR/no-plugin|g"
+    | sed -e "s|{branch_name}|$_replacement|g" -e "s|{pr_merged}|true|g" -e 's|{branch_identity_verified}|true|g' -e "s|{plugin_root}|$TEST_DIR/no-plugin|g"
 }
 GUARD_SNIPPET="$TEST_DIR/guard.sh"
 extract_guard > "$GUARD_SNIPPET"
@@ -573,7 +573,7 @@ fi
 
 echo "TC-7b: remote invalid/non-canonical names and mktemp failure are fail-fast"
 tc7b_fail=""
-for _bad in "fix/trailing " "origin/foo"; do
+for _bad in "fix/trailing "; do
   _bad_snippet="$TEST_DIR/guard-bad-${RANDOM}.sh"
   extract_guard_as "$_bad" > "$_bad_snippet"
   out=$(run_guard "$_bad_snippet")
@@ -586,6 +586,13 @@ if [ -z "$tc7b_fail" ]; then
   out=$(TMPDIR="$TEST_DIR/does-not-exist" PATH="$BIN_DIR:$PATH" bash "$GUARD_SNIPPET" 2>&1)
   printf '%s' "$out" | grep -q 'rc=mktemp-failed' || tc7b_fail="mktemp 失敗が marker で surface されない (出力: '$out')"
   [ -z "$tc7b_fail" ] && push_delete_called && tc7b_fail="mktemp 失敗時に push delete が呼ばれた"
+fi
+if [ -z "$tc7b_fail" ]; then
+  _unverified="$TEST_DIR/guard-unverified.sh"
+  sed 's/\[ "true" != "true" \]/[ "false" != "true" ]/' "$GUARD_SNIPPET" > "$_unverified"
+  out=$(run_guard "$_unverified")
+  printf '%s' "$out" | grep -q 'rc=branch-identity-unverified' || tc7b_fail="identity 未確認が拒否されない"
+  [ -z "$tc7b_fail" ] && push_delete_called && tc7b_fail="identity 未確認で push delete が呼ばれた"
 fi
 if [ -n "$tc7b_fail" ]; then fail "TC-7b: $tc7b_fail"; else pass "TC-7b (remote preflight/mktemp failure は削除未試行)"; fi
 
@@ -632,6 +639,7 @@ if [ -z "$tc8_fail" ]; then
     || tc8_fail="空ブランチ名で sentinel marker が行頭に出ていない (出力: '$out')"
   [ -z "$tc8_fail" ] && { printf '%s' "$out" | grep -q 'git branch -D ""' \
     && tc8_fail="空ブランチ名に対して必ず失敗する処方 git branch -D \"\" を提示している"; }
+  [ -z "$tc8_fail" ] && branch_delete_called && tc8_fail="空ブランチ名で git branch delete が呼ばれた"
 fi
 # (c) refname 非合法 (末尾空白) -> 「既削除」に丸めない
 if [ -z "$tc8_fail" ]; then
@@ -642,12 +650,13 @@ if [ -z "$tc8_fail" ]; then
     && tc8_fail="refname 非合法な名前を「既削除 = 正常系」に丸めた (削除していないのに完了と報告する)"; }
   [ -z "$tc8_fail" ] && branch_delete_called && tc8_fail="refname 非合法入力で git branch delete が呼ばれた"
 fi
-# (d) remote/ref prefix は syntactically valid でも PR head の短い名前ではない
+# (d) identity 未確認は名前の形に依存せず拒否
 if [ -z "$tc8_fail" ]; then
-  out=$(run_local "origin/foo")
-  printf '%s' "$out" | grep -q 'rc=non-canonical-branch-name' \
-    || tc8_fail="origin/ prefix が non-canonical として拒否されていない (出力: '$out')"
-  [ -z "$tc8_fail" ] && branch_delete_called && tc8_fail="non-canonical 入力で git branch delete が呼ばれた"
+  extract_local_guard_as "upstream/foo" | sed 's/\[ "true" != "true" \]/[ "false" != "true" ]/' > "$LOCAL_RUN"
+  : > "$CALL_LOG"; out=$(PATH="$BIN_DIR:$PATH" bash "$LOCAL_RUN" 2>&1)
+  printf '%s' "$out" | grep -q 'rc=branch-identity-unverified' \
+    || tc8_fail="identity 未確認入力が拒否されていない (出力: '$out')"
+  [ -z "$tc8_fail" ] && branch_delete_called && tc8_fail="identity 未確認入力で git branch delete が呼ばれた"
 fi
 # (e) 本当に不在 -> 正常系
 if [ -z "$tc8_fail" ]; then
@@ -676,6 +685,21 @@ elif ! delimited_block_indented "$out" "show-ref"; then
   fail "TC-9: 退避 stderr の行が列 0 から始まっている (出力: '$out')"
 else
   pass "TC-9 (判定不能を未完了として surface、原因テキストも列 0 に到達しない)"
+fi
+
+echo "TC-9b: broken loose ref warning -> BRANCH_CHECK_FAILED, no delete"
+mkdir -p .git/refs/heads
+printf 'bad\n' > .git/refs/heads/broken
+out=$(run_local "broken")
+rm -f .git/refs/heads/broken
+if ! printf '%s' "$out" | grep -q 'rc=ref-store-0'; then
+  fail "TC-9b: for-each-ref rc=0 + warning を判定不能として surface しない (出力: '$out')"
+elif printf '%s' "$out" | grep -q 'BRANCH_ALREADY_ABSENT'; then
+  fail "TC-9b: broken ref を既削除へ丸めた"
+elif branch_delete_called; then
+  fail "TC-9b: broken ref で git branch delete が呼ばれた"
+else
+  pass "TC-9b (ref-store warning を判定不能として surface、削除未試行)"
 fi
 
 # ─── TC-4 (T-03 / AC-3): merge/SKILL.md の設計判断が保証を主張していない ───

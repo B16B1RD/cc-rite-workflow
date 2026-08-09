@@ -9,7 +9,7 @@
 各 bash block の冒頭では本ファイルへの anchor 参照を pointer コメントとして置く。
 
 > **⚠️ コード層との境界**: rationale / 説明文は本ファイル 1 箇所に集約されるが、cleanup 関数本体と
-> 4 行 trap (`EXIT`/`INT`/`TERM`/`HUP`) は対象 5 ファイル各 site にコードとして存在する。signal 動作
+> 4 行 trap (`EXIT`/`INT`/`TERM`/`HUP`) は各採用 site にコードとして存在する。signal 動作
 > そのものの変更 (HUP 追加、TERM exit code 変更等) は本ファイル更新後に全採用 site の
 > 4 行 trap を同時更新すること。
 
@@ -295,5 +295,5 @@ indent 一貫性を確認する。
 # (rationale: signal 別 exit code、race window 回避、rc=$? capture、${var:-} safety、関数契約)
 ```
 
-signal 動作そのものを変更する場合は、本ファイル更新後に対象 5 ファイル全 site の 4 行 trap を
+signal 動作そのものを変更する場合は、本ファイル更新後に全採用 site の 4 行 trap を
 Instantiation Checklist に従って同時更新すること。
