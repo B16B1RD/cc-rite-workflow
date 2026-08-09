@@ -23,9 +23,9 @@
 # refreshes `updated_at` on every phase transition, so that IS the heartbeat.
 #
 # Atomicity: a FREE issue is claimed via `noclobber` (`set -C`) file creation —
-# only one of N racing processes wins the create. The stale-steal and own-refresh
-# paths serialize through an flock on `issue-claims/.lock` (same shape as
-# `flow-state.sh` `_atomic_write`). A LIVE other-session claim is NEVER stolen
+# only one of N racing processes wins the create. The stale-steal, own-refresh,
+# and release paths serialize through an atomic mkdir lock, which is available on
+# stock macOS and other POSIX systems without util-linux. A LIVE other-session claim is NEVER stolen
 # unattended (AC-5) — `claim` returns rc=10 so the caller (open Step 1.6)
 # raises an AskUserQuestion.
 #
@@ -63,7 +63,8 @@ else
   STATE_ROOT=$(resolve_state_root)
 fi
 CLAIMS_DIR="$STATE_ROOT/.rite/state/issue-claims"
-CLAIMS_LOCK="$CLAIMS_DIR/.lock"
+CLAIMS_LOCKDIR="$CLAIMS_DIR/.lock.d"
+CLAIMS_LOCK_RETRIES=50
 
 # Resolve the CURRENT session_id. Reuses the canonical helpers:
 #   - `_resolve-session-id.sh` UUID-validates a runtime env candidate
@@ -141,21 +142,84 @@ _build_json() {
     '{schema_version:$sv, issue_number:$issue, session_id:$sid, worktree:$wt, claimed_at:$ts}'
 }
 
-# Atomic write of the claim file under the issue-claims flock (own-refresh /
-# stale-steal). Degrades to a plain atomic mv when flock is unavailable
-# (minimal containers / macOS without util-linux) — matches the wiki helpers.
+# Acquire the short-lived claims critical section with portable atomic mkdir.
+# A process killed after mkdir can leave residue; after the normal wait window,
+# a contender reclaims it only when its recorded process is gone or its PID has
+# been reused by a process with a different start identity.
+_process_identity() {
+  local pid="$1"
+  ps -p "$pid" -o lstart= 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
+_claims_lock_record_owner() {
+  local identity
+  identity=$(_process_identity "$$")
+  [ -n "$identity" ] || return 1
+  printf '%s\n' "$$" > "$CLAIMS_LOCKDIR/pid" &&
+    printf '%s\n' "$identity" > "$CLAIMS_LOCKDIR/process_start"
+}
+
+_claims_lock_acquire() {
+  local tries=0 owner="" tomb=""
+  while [ "$tries" -lt "$CLAIMS_LOCK_RETRIES" ]; do
+    if mkdir "$CLAIMS_LOCKDIR" 2>/dev/null; then
+      _claims_lock_record_owner || {
+        rm -rf "$CLAIMS_LOCKDIR" 2>/dev/null || true
+        return 1
+      }
+      return 0
+    fi
+    tries=$((tries + 1))
+    sleep 0.1
+  done
+
+  local recorded_identity="" current_identity="" reclaim=false
+  owner=$(cat "$CLAIMS_LOCKDIR/pid" 2>/dev/null || printf '')
+  recorded_identity=$(cat "$CLAIMS_LOCKDIR/process_start" 2>/dev/null || printf '')
+  case "$owner" in
+    ''|0|*[!0-9]*) reclaim=true ;;
+    *)
+      if ! kill -0 "$owner" 2>/dev/null; then
+        reclaim=true
+      else
+        current_identity=$(_process_identity "$owner")
+        [ -n "$recorded_identity" ] && [ -n "$current_identity" ] &&
+          [ "$recorded_identity" != "$current_identity" ] && reclaim=true
+      fi
+      ;;
+  esac
+  if [ "$reclaim" = true ]; then
+    tomb="${CLAIMS_LOCKDIR}.reap.$$"
+    if mv "$CLAIMS_LOCKDIR" "$tomb" 2>/dev/null; then
+      rm -rf "$tomb" 2>/dev/null || true
+      if mkdir "$CLAIMS_LOCKDIR" 2>/dev/null; then
+        _claims_lock_record_owner || {
+          rm -rf "$CLAIMS_LOCKDIR" 2>/dev/null || true
+          return 1
+        }
+        return 0
+      fi
+    fi
+  fi
+  return 1
+}
+
+_claims_lock_release() {
+  local owner
+  owner=$(cat "$CLAIMS_LOCKDIR/pid" 2>/dev/null || printf '')
+  [ "$owner" = "$$" ] || return 1
+  rm -rf "$CLAIMS_LOCKDIR"
+}
+
+# Atomic write of the claim file under the portable claims lock (own-refresh).
 _atomic_claim_write() {
   local file="$1" json="$2" tmp rc=0
   tmp=$(mktemp "${file}.XXXXXX" 2>/dev/null) || return 1
   printf '%s\n' "$json" > "$tmp" || { rm -f "$tmp"; return 1; }
-  if command -v flock >/dev/null 2>&1; then
-    if ( exec 9>"$CLAIMS_LOCK" ) 2>/dev/null; then
-      ( exec 9>"$CLAIMS_LOCK"; flock -w 5 9 || exit 1; mv -f "$tmp" "$file" ) || rc=$?
-    else
-      mv -f "$tmp" "$file" || rc=$?
-    fi
-  else
+  _claims_lock_acquire || rc=$?
+  if [ "$rc" -eq 0 ]; then
     mv -f "$tmp" "$file" || rc=$?
+    _claims_lock_release || [ "$rc" -ne 0 ] || rc=1
   fi
   [ "$rc" -eq 0 ] || rm -f "$tmp" 2>/dev/null || true
   return "$rc"
@@ -163,7 +227,7 @@ _atomic_claim_write() {
 
 # Compare-and-swap steal of a stale claim. The out-of-lock `_classify` (cmd_claim)
 # only tells us the claim WAS stale a moment ago; two sessions can both see the
-# same stale holder and both reach here. flock serializes the mv but does not make
+# same stale holder and both reach here. Serializing the mv alone does not make
 # the decision exclusive, so a plain _atomic_claim_write lets BOTH win (double
 # steal). This function re-verifies UNDER the lock before overwriting: it steals
 # only when the on-disk holder is still `expected` (the stale holder we classified)
@@ -175,21 +239,14 @@ _atomic_claim_steal() {
   local file="$1" json="$2" expected="$3" tmp rc=0 cur
   tmp=$(mktemp "${file}.XXXXXX" 2>/dev/null) || return 1
   printf '%s\n' "$json" > "$tmp" || { rm -f "$tmp"; return 1; }
-  if command -v flock >/dev/null 2>&1 && ( exec 9>"$CLAIMS_LOCK" ) 2>/dev/null; then
-    (
-      exec 9>"$CLAIMS_LOCK"; flock -w 5 9 || exit 1
-      cur=$(_claim_holder "$file")
-      [ "$cur" = "$expected" ] || exit 10   # another session swapped the claim under us
-      _holder_is_live "$cur" && exit 10      # the stale holder revived → do not steal
-      mv -f "$tmp" "$file"
-    ) || rc=$?
-  else
-    # No flock (minimal containers / macOS without util-linux): best-effort CAS.
+  _claims_lock_acquire || rc=$?
+  if [ "$rc" -eq 0 ]; then
     cur=$(_claim_holder "$file")
     if [ "$cur" != "$expected" ]; then rc=10
     elif _holder_is_live "$cur"; then rc=10
     else mv -f "$tmp" "$file" || rc=$?
     fi
+    _claims_lock_release || [ "$rc" -ne 0 ] || rc=1
   fi
   [ "$rc" -eq 0 ] || rm -f "$tmp" 2>/dev/null || true
   return "$rc"
@@ -279,11 +336,12 @@ cmd_release() {
     echo "skipped"
     return 0
   fi
-  if command -v flock >/dev/null 2>&1 && ( exec 9>"$CLAIMS_LOCK" ) 2>/dev/null; then
-    ( exec 9>"$CLAIMS_LOCK"; flock -w 5 9 || exit 1; rm -f "$file" ) || { echo "ERROR: failed to remove claim" >&2; return 1; }
-  else
-    rm -f "$file" || { echo "ERROR: failed to remove claim" >&2; return 1; }
+  _claims_lock_acquire || { echo "ERROR: failed to acquire claims lock" >&2; return 1; }
+  holder=$(_claim_holder "$file")
+  if [ -f "$file" ] && [ "$holder" = "$sid" ]; then
+    rm -f "$file" || { _claims_lock_release || true; echo "ERROR: failed to remove claim" >&2; return 1; }
   fi
+  _claims_lock_release || { echo "ERROR: failed to release claims lock" >&2; return 1; }
   echo "released"
   return 0
 }
