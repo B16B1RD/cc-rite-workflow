@@ -58,6 +58,10 @@
 # abort してはならない。`set -o pipefail` のみ block 本体で有効化する (旧 block と同一)。
 set -uo pipefail
 
+_rsr_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../hooks/control-char-neutralize.sh
+source "$_rsr_dir/../hooks/control-char-neutralize.sh"
+
 # --- bash 4+ compat guard (mapfile builtin; Priority 2 で使用) ---
 # fix.md ステップ 1.0.1 の canonical guard と対称。helper は独立プロセスのため
 # defense-in-depth として再掲する。bash 3.2 (macOS default) では mapfile が無く
@@ -179,7 +183,7 @@ _rite_rename_corrupt_file() {
     echo "  WARNING: ${label} file の rename に失敗 (rc=$mv_rc)。次回 fix で同じ WARNING が再発します" >&2
     if [ -n "$mv_err" ] && [ -s "$mv_err" ]; then
       echo "    詳細 (mv stderr):" >&2
-      head -3 "$mv_err" | sed 's/^/      /' >&2
+      head -3 "$mv_err" | neutralize_ctrl --keep-newline | sed 's/^/      /' >&2
     fi
     echo "    対処: permission denied / read-only filesystem / cross-filesystem / target exists のいずれかを確認" >&2
     echo "    手動削除: rm \"$target\"" >&2
@@ -212,7 +216,7 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
     review_source_path=""
   elif jq_val_err_p0=$(mktemp "${TMPDIR:-/tmp}/rite-jq-val-err-p0-XXXXXX" 2>/dev/null) || true; ! jq empty "$review_file_path" 2>"${jq_val_err_p0:-/dev/null}"; then
     echo "エラー: --review-file で指定されたファイルが有効な JSON ではありません: $review_file_path" >&2
-    [ -n "${jq_val_err_p0:-}" ] && [ -s "$jq_val_err_p0" ] && head -3 "$jq_val_err_p0" | sed 's/^/  /' >&2
+    [ -n "${jq_val_err_p0:-}" ] && [ -s "$jq_val_err_p0" ] && head -3 "$jq_val_err_p0" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_parse" >&2
     rm -f "${jq_val_err_p0:-}"
     review_source="fallback"
@@ -248,7 +252,7 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
       # rc>=2 は jq 自身の失敗 (ランタイムエラー / バイナリ異常 / IO)。型崩れと同じ reason に
       # 融合すると、verification を持たない JSON にも type_invalid が付いて診断が事実とずれる。
       echo "エラー: --review-file の verification 型ガード実行中に jq が失敗しました (rc=$vg_rc_p0)" >&2
-      [ -n "$vg_err_p0" ] && [ -s "$vg_err_p0" ] && head -3 "$vg_err_p0" | sed 's/^/  /' >&2
+      [ -n "$vg_err_p0" ] && [ -s "$vg_err_p0" ] && head -3 "$vg_err_p0" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       echo "  原因候補: findings 要素が object でない / jq バイナリ異常 / OOM / ファイル IO エラー" >&2
       echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=explicit_file_verification_guard_jq_failed; rc=$vg_rc_p0" >&2
     fi
@@ -324,7 +328,7 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
         else
           jq_p0_commit_sha_rc=$?
           echo "WARNING: --review-file の commit_sha 抽出で jq が失敗 (rc=$jq_p0_commit_sha_rc)" >&2
-          [ -n "$json_commit_sha_err" ] && [ -s "$json_commit_sha_err" ] && head -3 "$json_commit_sha_err" | sed 's/^/  /' >&2
+          [ -n "$json_commit_sha_err" ] && [ -s "$json_commit_sha_err" ] && head -3 "$json_commit_sha_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
           echo "[CONTEXT] REVIEW_SOURCE_STALE_CHECK_FAILED=1; reason=jq_error_on_commit_sha; priority=0" >&2
           json_commit_sha=""
         fi
@@ -471,7 +475,7 @@ if [ -z "$review_source" ]; then
 
     if [ -n "$find_err" ] && [ -s "$find_err" ]; then
       echo "WARNING: $_p2_results_dir/ 検索時にエラー発生:" >&2
-      head -3 "$find_err" | sed 's/^/  /' >&2
+      head -3 "$find_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       echo "  Priority 2 を IO エラーにより skip し、Priority 3 (PR コメント) に明示 routing します" >&2
       echo "[CONTEXT] REVIEW_SOURCE_FIND_FAILED=1; reason=local_file_find_io_error" >&2
       review_source="pr_comment"
@@ -515,7 +519,7 @@ if [ -z "$review_source" ]; then
       jq_val_err_p2=$(mktemp "${TMPDIR:-/tmp}/rite-jq-val-err-p2-XXXXXX" 2>/dev/null) || jq_val_err_p2=""
       if ! jq empty "$latest_file" 2>"${jq_val_err_p2:-/dev/null}"; then
         echo "WARNING: $latest_file は有効な JSON ではありません。Priority 3 (PR コメント) に routing します。" >&2
-        [ -n "${jq_val_err_p2:-}" ] && [ -s "$jq_val_err_p2" ] && head -3 "$jq_val_err_p2" | sed 's/^/  /' >&2
+        [ -n "${jq_val_err_p2:-}" ] && [ -s "$jq_val_err_p2" ] && head -3 "$jq_val_err_p2" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
         echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=local_file_json_parse_failure" >&2
         # verified-review M-6 (M10) 対応: corrupted file を .corrupt-{epoch} にリネームし、
         # 次回の lexicographic sort で選ばれないようにする。WARNING を出すだけで corrupted file を
@@ -551,7 +555,7 @@ if [ -z "$review_source" ]; then
           # rc>=2 は jq 自身の失敗。ファイルが壊れている証拠がないため rename しない
           # (破壊的操作を conflated signal で駆動しない)。routing だけ Priority 3 へ倒す。
           echo "WARNING: $latest_file の verification 型ガード実行中に jq が失敗しました (rc=$vg_rc_p2)。Priority 3 に routing します。" >&2
-          [ -n "$vg_err_p2" ] && [ -s "$vg_err_p2" ] && head -3 "$vg_err_p2" | sed 's/^/  /' >&2
+          [ -n "$vg_err_p2" ] && [ -s "$vg_err_p2" ] && head -3 "$vg_err_p2" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
           echo "  原因候補: findings 要素が object でない / jq バイナリ異常 / OOM / ファイル IO エラー" >&2
           echo "  注: 破損が未証明のため .corrupt-{epoch} rename は行いません" >&2
           echo "  対処: /rite:pr-review を再実行すれば新しい timestamp のファイルが生成され本ファイルは選ばれなくなります (即時解消は手動削除: rm \"$latest_file\")" >&2
@@ -622,7 +626,7 @@ if [ -z "$review_source" ]; then
             else
               jq_p2_commit_sha_rc=$?
               echo "WARNING: $latest_file の commit_sha 抽出で jq が失敗 (rc=$jq_p2_commit_sha_rc)" >&2
-              [ -n "$json_commit_sha_err" ] && [ -s "$json_commit_sha_err" ] && head -3 "$json_commit_sha_err" | sed 's/^/  /' >&2
+              [ -n "$json_commit_sha_err" ] && [ -s "$json_commit_sha_err" ] && head -3 "$json_commit_sha_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
               echo "[CONTEXT] REVIEW_SOURCE_STALE_CHECK_FAILED=1; reason=jq_error_on_commit_sha; priority=2" >&2
               json_commit_sha=""
             fi

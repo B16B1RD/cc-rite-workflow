@@ -171,6 +171,35 @@ else
 fi
 
 echo ""
+echo "[T-9g] Behavioral: head -c preview neutralizes ESC/C1 bytes"
+real_jq=$(command -v jq)
+cat > "$T9F_DIR/repo/bin/jq" <<'JQ_SHIM'
+#!/bin/bash
+if [ "${1:-}" = "-c" ] && [ "${2:-}" = ".[]" ]; then
+  printf 'bad\033esc\302\233utf8\233raw\n'
+  exit 0
+fi
+exec "__REAL_JQ__" "$@"
+JQ_SHIM
+sed -i.bak "s|__REAL_JQ__|$real_jq|" "$T9F_DIR/repo/bin/jq"
+chmod +x "$T9F_DIR/repo/bin/jq"
+set +e
+(cd "$T9F_DIR/repo" && PATH="$T9F_DIR/repo/bin:$PATH" \
+  bash "$WATCHDOG_SH" --dry-run >"$T9F_DIR/t9g-stdout" 2>"$T9F_DIR/t9g-stderr")
+t9g_rc=$?
+set -e
+t9g_preview_hex=$(LC_ALL=C grep -aF 'pr_entry preview:' "$T9F_DIR/t9g-stderr" \
+  | od -An -tx1 | tr -d ' \n')
+if [ "$t9g_rc" -eq 0 ] && [[ "$t9g_preview_hex" != *"1b"* ]] \
+  && [[ "$t9g_preview_hex" != *"9b"* ]] \
+  && [[ "$t9g_preview_hex" == *"6261643f657363c23f757466383f726177"* ]]; then
+  PASS=$((PASS + 1)); echo "  ✓ preview preserves exit contract and replaces ESC/UTF-8 C1/raw C1"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-9g: preview leaked control bytes or changed exit contract")
+  echo "  ✗ preview leaked control bytes or changed exit contract" >&2
+fi
+
+echo ""
 echo "==============================="
 echo "Results: $PASS passed, $FAIL failed"
 if [ "$FAIL" -gt 0 ]; then

@@ -32,6 +32,10 @@
 # `set -uo pipefail` と同パターン)。pipefail は維持して pipeline 失敗を捕捉する。
 set -uo pipefail
 
+_mig_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../hooks/control-char-neutralize.sh
+source "$_mig_script_dir/../hooks/control-char-neutralize.sh"
+
 # --- Signal-specific trap setup ---
 # canonical pattern: references/bash-trap-patterns.md#signal-specific-trap-template
 # SIGINT/SIGTERM/SIGHUP で中断時に per-file mktemp tempfile (`${file}.XXXXXX`) を残さない。
@@ -62,7 +66,6 @@ esac
 # どおり優先。git repo 外では resolver を呼ばず (非 git cwd でも cwd を正常出力するため)、
 # 従来どおり下の ERROR ガードで fail-fast させる。
 if [ -z "${REPO_ROOT:-}" ] && git rev-parse --show-toplevel >/dev/null 2>&1; then
-  _mig_script_dir="$(dirname "${BASH_SOURCE[0]}")"
   if _mig_state_root=$("$_mig_script_dir/../hooks/state-path-resolve.sh" 2>/dev/null) && [ -n "$_mig_state_root" ]; then
     REPO_ROOT="$_mig_state_root"
   else
@@ -176,7 +179,7 @@ migrate_file() {
   if ! jq "$MIGRATE_FILTER" "$file" > "$tmp" 2>"${_jq_err:-/dev/null}"; then
     local _jq_rc=$?
     echo "[rite] ERROR: jq migration filter failed for $file (rc=$_jq_rc)" >&2
-    [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | sed 's/^/  /' >&2
+    [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     [ -n "$_jq_err" ] && rm -f "$_jq_err"
     rm -f "$tmp"
     FAILED_COUNT=$((FAILED_COUNT + 1))
@@ -203,7 +206,7 @@ migrate_file() {
   else
     _mig_mv_rc=$?
     echo "[rite] ERROR: atomic mv failed for $file (rc=$_mig_mv_rc, tmp=$tmp left behind for inspection)" >&2
-    [ -n "$_mig_mv_err" ] && [ -s "$_mig_mv_err" ] && head -3 "$_mig_mv_err" | sed 's/^/  /' >&2
+    [ -n "$_mig_mv_err" ] && [ -s "$_mig_mv_err" ] && head -3 "$_mig_mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     [ -n "$_mig_mv_err" ] && rm -f "$_mig_mv_err"
     FAILED_COUNT=$((FAILED_COUNT + 1))
     FAILED_FILES+=("$file (tmp=$tmp)")

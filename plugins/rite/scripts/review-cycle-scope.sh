@@ -79,6 +79,8 @@ set -uo pipefail
 _rcs_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../hooks/scripts/lib/tempfile.sh
 source "$_rcs_dir/../hooks/scripts/lib/tempfile.sh"
+# shellcheck source=../hooks/control-char-neutralize.sh
+source "$_rcs_dir/../hooks/control-char-neutralize.sh"
 
 PR_NUMBER=""
 RESULTS_DIR=""
@@ -162,7 +164,7 @@ if [ "$RUN_SINCE_SET" -eq 0 ]; then
     rite_tempfile_new pin_err "rcs-pin-err" || emit_full run_pin_unreadable
     if ! RUN_SINCE=$(head -1 "$_rcs_pin" 2>"$pin_err"); then
       echo "WARNING: review-cycle-scope: run 開始点 pin を読めません: $_rcs_pin" >&2
-      head -3 "$pin_err" | sed 's/^/  /' >&2
+      head -3 "$pin_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
       emit_full run_pin_unreadable
     fi
   fi
@@ -180,7 +182,7 @@ mapfile -t cs_files < <(find "$RESULTS_DIR" -maxdepth 1 -type f -name "${PR_NUMB
 # cycle 1 扱いになる。loud な prev_json_unreadable として区別する。
 if [ -s "$find_err" ]; then
   echo "WARNING: review-cycle-scope: $RESULTS_DIR/ の探索でエラーが発生しました:" >&2
-  head -3 "$find_err" | sed 's/^/  /' >&2
+  head -3 "$find_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   emit_full prev_json_unreadable
 fi
 
@@ -207,7 +209,7 @@ rite_tempfile_new probe_err "rcs-probe-err" || emit_full prev_json_unreadable
 
 if ! jq empty "$prev_json" 2>"$probe_err"; then
   echo "WARNING: review-cycle-scope: 前回レビュー JSON を parse できません: $prev_json" >&2
-  head -3 "$probe_err" | sed 's/^/  /' >&2
+  head -3 "$probe_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   emit_full prev_json_unreadable
 fi
 
@@ -216,7 +218,7 @@ fi
 # 破損が旧形式互換の顔をして運用者に無視される。診断も他 4 経路と同じ形で surface する。
 if ! base_sha=$(jq -r '.commit_sha // empty' "$prev_json" 2>"$probe_err"); then
   echo "WARNING: review-cycle-scope: commit_sha を抽出できません: $prev_json" >&2
-  head -3 "$probe_err" | sed 's/^/  /' >&2
+  head -3 "$probe_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   emit_full prev_json_unreadable
 fi
 if [ -z "$base_sha" ]; then
@@ -231,13 +233,13 @@ fi
 # 巻き込むが、失敗方向は「差分が広くなる」= 安全側のため許容する。
 if ! git cat-file -e "${base_sha}^{commit}" 2>"$probe_err"; then
   echo "WARNING: review-cycle-scope: 起点 commit を解決できません (base_sha=$base_sha)" >&2
-  head -3 "$probe_err" | sed 's/^/  /' >&2
+  head -3 "$probe_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   emit_full commit_sha_unreachable
 fi
 
 diff_names=$(git diff --name-only "${base_sha}..HEAD" 2>"$probe_err") || {
   echo "WARNING: review-cycle-scope: 差分を取得できません (${base_sha}..HEAD)" >&2
-  head -3 "$probe_err" | sed 's/^/  /' >&2
+  head -3 "$probe_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   emit_full diff_failed
 }
 
@@ -304,7 +306,7 @@ scope_probe=$(jq -r '
     end
 ' "$prev_json" 2>"$probe_err") || {
   echo "WARNING: review-cycle-scope: 前回 finder を抽出できません: $prev_json" >&2
-  head -3 "$probe_err" | sed 's/^/  /' >&2
+  head -3 "$probe_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   emit_full prev_json_unreadable
 }
 

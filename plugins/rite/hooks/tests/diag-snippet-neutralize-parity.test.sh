@@ -4,7 +4,7 @@
 #
 # Purpose:
 #   flow-state.sh で導入された「診断スニペットは
-#   neutralize_ctrl を経由して emit する」規約を、hooks/ 配下の全
+#   neutralize_ctrl を経由して emit する」規約を、hooks/ と scripts/ 配下の全
 #   `head -3` emission site に対称適用したことを保証する
 #   (Wiki 経験則 Asymmetric Fix Transcription — 対称位置への伝播漏れ防止)。
 #   sweep は `head -3` 限定ではなく `head -N` / `head -n N` (任意行数・両綴り)
@@ -15,7 +15,7 @@
 #   場合も TC-1 が検出する。
 #
 # Test cases:
-#   TC-1: hooks/ 配下 (tests/ 除く) に neutralize_ctrl を経由しない
+#   TC-1: hooks/ と scripts/ 配下 (tests/ 除く) に neutralize_ctrl を経由しない
 #         `head -N` 行指向 emission site が存在しない (コメント行は除外)
 #   TC-2: neutralize_ctrl を call する全 hook ファイルが
 #         control-char-neutralize.sh を source している
@@ -30,6 +30,8 @@
 #         構造的死角は TC-4 ブロックのコメント参照 (fail-open 余地の閉塞)
 #   TC-5: `>&2` が log() / surface_git_warnings() 等の関数内部に隠れる emission
 #         経路は静的 sweep で構造的に検出不能のため、既知 site を個別に pin する
+#   TC-6: scripts/ の是正 site を実行し、ESC/C1 を含む複数行 stderr が
+#         制御文字を残さず、行ごとの indent を維持する
 #
 # Usage: bash plugins/rite/hooks/tests/diag-snippet-neutralize-parity.test.sh
 set -euo pipefail
@@ -38,11 +40,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 HOOKS_DIR="$PLUGIN_ROOT/hooks"
+SCRIPTS_DIR="$PLUGIN_ROOT/scripts"
+SWEEP_DIRS=("$HOOKS_DIR" "$SCRIPTS_DIR")
 
-if [ ! -d "$HOOKS_DIR" ]; then
-  echo "ERROR: $HOOKS_DIR not found" >&2
-  exit 1
-fi
+for sweep_dir in "${SWEEP_DIRS[@]}"; do
+  if [ ! -d "$sweep_dir" ]; then
+    echo "ERROR: $sweep_dir not found" >&2
+    exit 1
+  fi
+done
 
 echo "=== TC-1: head/tail -N emission site は全て neutralize_ctrl を経由 ==="
 # 除外: tests/ (fixture/assertion 内の出現)、コメント行、定義元 helper の usage コメント
@@ -57,9 +63,9 @@ echo "=== TC-1: head/tail -N emission site は全て neutralize_ctrl を経由 =
 # sweep 正規表現は floor guard と共有する。literal を二重に持つと、片方だけ腕を落とす変異を
 # もう片方が検出できない (初版の floor guard が実際にそうだった)。
 SWEEP_RE='(head|tail) (-[0-9]+|-n +[0-9]+) '
-violations=$(grep -rnE "$SWEEP_RE" "$HOOKS_DIR" --include='*.sh' \
+violations=$(grep -rnE "$SWEEP_RE" "${SWEEP_DIRS[@]}" --include='*.sh' \
   | grep '>&2' \
-  | grep -v "$HOOKS_DIR/tests/" \
+  | grep -v '/tests/' \
   | grep -v 'neutralize_ctrl' \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
   || true)
@@ -72,9 +78,9 @@ fi
 # sweep 正規表現が tail site を実際に拾えていることを pin (TC-2 の floor guard と同型)。
 # TC-1 は violations が空であることだけを assert する fail-closed sweep なので、式から tail が
 # 落ちても Green のまま通る。$SWEEP_RE を共有して数えることで腕の消失が本 guard の失敗になる。
-tail_pop=$(grep -rnE "$SWEEP_RE" "$HOOKS_DIR" --include='*.sh' \
+tail_pop=$(grep -rnE "$SWEEP_RE" "${SWEEP_DIRS[@]}" --include='*.sh' \
   | grep '>&2' \
-  | grep -v "$HOOKS_DIR/tests/" \
+  | grep -v '/tests/' \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
   | grep -c 'tail ') || tail_pop=0
 case "$tail_pop" in ''|*[!0-9]*) tail_pop=0 ;; esac
@@ -84,12 +90,27 @@ else
   fail "TC-1 floor: tail 腕のカバー site が 0 件 — 正規表現から tail が落ちても violations は空のままで回帰が不可視になる"
 fi
 
+# scripts/ を sweep 根から外す変異を、violations の偶然の空集合に依存せず検出する。
+# TC-1 と同じ正規表現・emission 条件で scripts/ の実 site 母集団を数えるため、
+# SWEEP_DIRS から "$SCRIPTS_DIR" を削ると 0 件になり loud に落ちる。
+scripts_pop=$(grep -rnE "$SWEEP_RE" "${SWEEP_DIRS[@]}" --include='*.sh' \
+  | grep '>&2' \
+  | grep -v '/tests/' \
+  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
+  | grep -cF "$SCRIPTS_DIR/") || scripts_pop=0
+case "$scripts_pop" in ''|*[!0-9]*) scripts_pop=0 ;; esac
+if [ "$scripts_pop" -ge 1 ]; then
+  pass "TC-1 floor: scripts/ sweep が実 site を $scripts_pop 件カバーしている"
+else
+  fail "TC-1 floor: scripts/ のカバー site が 0 件 — SWEEP_DIRS から scripts/ を外す回帰が不可視になる"
+fi
+
 echo ""
 echo "=== TC-2: neutralize_ctrl の caller は helper を source 済み ==="
 # `neutralize_ctrl` / `contains_ctrl` を実行コードとして含むファイル一覧 (コメント行のみの言及は除外)
 # 収集側も両関数対応にする — contains_ctrl のみを使う hook が将来追加された場合の検査漏れ防止
-caller_files=$(grep -rlE 'neutralize_ctrl|contains_ctrl' "$HOOKS_DIR" --include='*.sh' \
-  | grep -v "$HOOKS_DIR/tests/" \
+caller_files=$(grep -rlE 'neutralize_ctrl|contains_ctrl' "${SWEEP_DIRS[@]}" --include='*.sh' \
+  | grep -v '/tests/' \
   | grep -v '/control-char-neutralize.sh$' \
   || true)
 checked=0
@@ -118,8 +139,8 @@ echo "=== TC-3: head -c byte 指向 embed site は全て neutralize_ctrl を経�
 # (mutation 検証で実証)。そのため head -c 全行を sweep し、非 emission の
 # 既知 site のみ明示 allowlist で除外する fail-closed 設計とする。新規の head -c が
 # 非 emission 用途なら本 allowlist に追記すること。
-violations_c=$(grep -rnE 'head -c [0-9]+' "$HOOKS_DIR" --include='*.sh' \
-  | grep -v "$HOOKS_DIR/tests/" \
+violations_c=$(grep -rnE 'head -c [0-9]+' "${SWEEP_DIRS[@]}" --include='*.sh' \
+  | grep -v '/tests/' \
   | grep -v 'neutralize_ctrl' \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
   | grep -v 'work-memory-lock.sh:.*lock_pid=' \
@@ -127,7 +148,7 @@ violations_c=$(grep -rnE 'head -c [0-9]+' "$HOOKS_DIR" --include='*.sh' \
   || true)
 assert "TC-3: un-neutralized head -c emission sites" "" "$violations_c"
 if [ -n "$violations_c" ]; then
-  echo "  検出された未中和 site (head -c の直後に '| tr '\\''\\n'\\'' '\\'' '\\'' | neutralize_ctrl --c0-only' を挿入すること):"
+  echo "  検出された未中和 site (診断値を emission 前に default 'neutralize_ctrl' へ通すこと。新規 --c0-only は使用しない):"
   printf '%s\n' "$violations_c" | sed 's/^/    /'
 fi
 
@@ -169,8 +190,8 @@ echo "=== TC-4: cat full-file 直接 emission site は全て neutralize_ctrl を
 #     現状 hooks の **stderr 向け cat heredoc** は全て redirect-first のため実害はない
 #     (stdout / tmpfile 向けの body-first heredoc は主 regex の `>&2` 要件で元々マッチしない。
 #     追加で stderr 向け body-first heredoc を書く場合は本 allowlist を拡張する)。
-violations_cat=$(grep -rnE '(^[[:space:]]*|[;|&{][[:space:]]*)cat [^|;&]*(1)?>&2' "$HOOKS_DIR" --include='*.sh' \
-  | grep -v "$HOOKS_DIR/tests/" \
+violations_cat=$(grep -rnE '(^[[:space:]]*|[;|&{][[:space:]]*)cat [^|;&]*(1)?>&2' "${SWEEP_DIRS[@]}" --include='*.sh' \
+  | grep -v '/tests/' \
   | grep -v 'neutralize_ctrl' \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
   | grep -vE 'cat [^|;&]*(1)?>&2[[:space:]]*<<' \
@@ -189,10 +210,48 @@ assert_grep "TC-5: wiki-ingest-commit.sh surface_git_warnings" \
   "$HOOKS_DIR/scripts/wiki-ingest-commit.sh" \
   'grep -iE .\^\(warning\|hint\|error\):. \| neutralize_ctrl --keep-newline'
 
+echo ""
+echo "=== TC-6: scripts/ 実 site は制御文字を中和し複数行 indent を維持 ==="
+tc6_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-diag-parity-tc6-XXXXXX")
+tc6_cleanup() { rm -rf -- "$tc6_dir"; }
+trap tc6_cleanup EXIT
+mkdir -p "$tc6_dir/bin" "$tc6_dir/repo/.git"
+cat > "$tc6_dir/repo/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+YAML
+cat > "$tc6_dir/bin/gh" <<'SH'
+#!/bin/bash
+printf 'gh-esc\033one\ngh-c1\302\233two\ngh-raw\233three\n' >&2
+exit 1
+SH
+chmod +x "$tc6_dir/bin/gh"
+set +e
+(cd "$tc6_dir/repo" && PATH="$tc6_dir/bin:$PATH" \
+  bash "$SCRIPTS_DIR/watchdog-status-mismatch.sh" >"$tc6_dir/stdout" 2>"$tc6_dir/stderr")
+tc6_rc=$?
+set -e
+assert "TC-6: watchdog failure contract preserved" "1" "$tc6_rc"
+tc6_ctrl_hex=$(LC_ALL=C od -An -tx1 "$tc6_dir/stderr" | tr -d ' \n' \
+  | grep -oE '(1b|9b)' || true)
+assert "TC-6: ESC/C1 bytes are absent" "" "$tc6_ctrl_hex"
+assert_grep "TC-6: ESC line remains indented" "$tc6_dir/stderr" '^  gh-esc\?one$'
+tc6_stderr_hex=$(LC_ALL=C od -An -tx1 "$tc6_dir/stderr" | tr -d ' \n')
+if [[ "$tc6_stderr_hex" == *"202067682d6331c23f74776f0a"* ]]; then
+  pass "TC-6: UTF-8 C1 line remains indented"
+else
+  fail "TC-6: UTF-8 C1 line lost byte-wise replacement or indentation"
+fi
+assert_grep "TC-6: raw C1 line remains indented" "$tc6_dir/stderr" '^  gh-raw\?three$'
+tc6_cleanup
+trap - EXIT
+
 if ! print_summary "$(basename "$0")" \
-  "診断スニペット emission site を hook に追加するときは control-char-neutralize.sh を source し、emission site の構造に応じて中和を挿入すること: \
+  "診断スニペット emission site を hooks/ または scripts/ に追加するときは control-char-neutralize.sh を source し、emission site の構造に応じて中和を挿入すること: \
 TC-1 (head/tail -N 行指向) は直後に '| neutralize_ctrl --keep-newline'; \
-TC-3 (head -c byte 指向 embed) は '| tr '\\''\\n'\\'' '\\'' '\\'' | neutralize_ctrl --c0-only'; \
+TC-3 (head -c byte 指向 embed) は改行を整形後に default '| neutralize_ctrl' (新規 --c0-only は禁止); \
 TC-4 (cat full-file 直接 emission) は 'neutralize_ctrl --keep-newline < \"\$file\" >&2' へ置換; \
 TC-5 (log()/surface_git_warnings() 等の関数内 >&2) は静的 sweep で検出不能のため中和適用後に本テストへ個別 pin を追記すること"; then
   exit 1
