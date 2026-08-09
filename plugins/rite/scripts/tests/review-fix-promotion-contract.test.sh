@@ -72,6 +72,7 @@ else
 fi
 assert_eq 'mergeable routes to completion' complete "$(bash "$post_breaker_route" '[review:mergeable]' batch)"
 assert_eq 'findings route to fix' fix "$(bash "$post_breaker_route" '[review:fix-needed:2]' batch)"
+assert_eq 'malformed findings sentinel fails closed' stop-batch "$(bash "$post_breaker_route" '[review:fix-needed:2oops]' batch)"
 assert_eq 'review error preserves batch stop' stop-batch "$(bash "$post_breaker_route" '[review:error]' batch)"
 assert_eq 'missing sentinel preserves interactive stop' stop-interactive "$(bash "$post_breaker_route" '' interactive)"
 invoke_count=$(awk '/### ステップ 6.0:/{inside=1} /### ステップ 6.1:/{inside=0} inside' "$iterate" | grep -Fc '`/rite:pr-review {pr_number}` を 1 回 invoke' || true)
