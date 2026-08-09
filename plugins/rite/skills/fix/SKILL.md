@@ -3467,12 +3467,14 @@ else
   commit_err="/dev/null"
 fi
 wiki_ingest_commit_rc=0
+wiki_push_attempt="fix-{pr_number}-$(date +%s)-$$-$RANDOM"
+echo "[CONTEXT] WIKI_PUSH_ATTEMPT=$wiki_push_attempt; source=fix; pr={pr_number}"
 if commit_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh 2>"${commit_err}"); then
   # Success — the script prints exactly one status line to stdout, e.g.
   #   [wiki-ingest-commit] committed=1; branch=wiki; head=<sha>; push=ok
   #   [wiki-ingest-commit] committed=0; branch=wiki; reason=no-pending
   echo "$commit_out"
-  echo "[CONTEXT] WIKI_INGEST_DONE=1; pr={pr_number}; type=fixes"
+  echo "[CONTEXT] WIKI_INGEST_DONE=1; pr={pr_number}; type=fixes; attempt=$wiki_push_attempt"
 else
   wiki_ingest_commit_rc=$?
   if [ "$commit_err" != "/dev/null" ] && [ -s "$commit_err" ]; then
@@ -3485,7 +3487,7 @@ else
       echo "WARNING: wiki-ingest-commit.sh exited 2 (wiki branch missing / disabled) during skills/fix/SKILL.md ステップ 4.6.W.2" >&2
       ;;
     4)
-      echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; exit_code=$wiki_ingest_commit_rc"
+      echo "[CONTEXT] WIKI_INGEST_PUSH_FAILED=1; reason=commit_rc_4; exit_code=$wiki_ingest_commit_rc; pr={pr_number}; attempt=$wiki_push_attempt"
       if [ -n "${commit_out:-}" ]; then
         echo "$commit_out"
       fi
@@ -3500,6 +3502,25 @@ fi
 [ "$commit_err" != "/dev/null" ] && rm -f "$commit_err"
 commit_err=""
 trap - EXIT INT TERM HUP
+```
+
+`wiki_ingest_commit_rc=4` を観測した場合は、上の Bash block とは**別の Bash tool call**で次を 1 回だけ再試行する。`{wiki_push_attempt}` は直前の `WIKI_PUSH_ATTEMPT` marker の値へリテラル置換する。tool call には `dangerouslyDisableSandbox: true` を指定する（ユーザー確認不要。`/rite:open` ステップ 6.1 / Issue #1897 と同じ既知の SSH host-key / network sandbox 制約）。通常 sandbox のまま同じ push を繰り返してはならない。
+
+```bash
+if retry_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh --push-only 2>&1); then
+  echo "$retry_out"
+  echo "[CONTEXT] WIKI_INGEST_PUSH_RETRY=ok; source=fix; pr={pr_number}; attempt={wiki_push_attempt}"
+else
+  retry_rc=$?
+  printf '%s\n' "$retry_out" | head -5 | sed 's/^/  /' >&2
+  echo "[CONTEXT] WIKI_INGEST_PUSH_RETRY=failed; source=fix; pr={pr_number}; attempt={wiki_push_attempt}; exit_code=$retry_rc"
+fi
+```
+
+result pattern の emit 前に、**現在の `WIKI_PUSH_ATTEMPT` と同じ `attempt=`** の `WIKI_INGEST_PUSH_FAILED=1` があり、その attempt に `WIKI_INGEST_PUSH_RETRY=ok` が無い場合だけ、次の行を**必ず**完了報告へ表示する（non-blocking は維持する）。過去 attempt の marker は参照しない:
+
+```
+⚠️ Wiki push 未完了: local wiki commit は保持されています。手動回復: bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh --push-only
 ```
 
 **Non-blocking**: failures do not halt the fix workflow. `wiki-ingest-commit.sh` restores raw source files on failure via its cleanup trap, so the next invocation can retry them.
