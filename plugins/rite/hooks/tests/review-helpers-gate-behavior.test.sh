@@ -2507,11 +2507,19 @@ else
     fail "TC-5b 区間解決: _rite_p61d_cleanup の行数が想定外 ($_nbr_cleanup_lines) — 関数名変更か閉じ括弧の消失"
   fi
   assert "TC-5b helper の cleanup **区間内** に pending marker 削除が 1 本" "1" \
-    "$(_nbr_cleanup_body | grep -cF 'rm -f "${PENDING_MARKER:-}"' || true)"
+    "$(_nbr_cleanup_body | grep -cF 'rm -f "$PENDING_MARKER"' || true)"
+  assert "TC-5b helper の cleanup は marker 実在時だけ削除を試みる (-e ∨ -L)" "1" \
+    "$(_nbr_cleanup_body | grep -cF '[ -e "$PENDING_MARKER" ] || [ -L "$PENDING_MARKER" ]' || true)"
+  assert "TC-5b helper の cleanup は pending marker 削除 rc を検査する" "1" \
+    "$(_nbr_cleanup_body | grep -cF 'if ! LC_ALL=C rm -f "$PENDING_MARKER"; then' || true)"
+  assert "TC-5b marker 削除失敗は 8.0.3 の継続差し戻しを loud に報告する" "1" \
+    "$(_nbr_cleanup_body | grep -cF 'ステップ 8.0.3 は本 cycle の 6.1.d を未実行と誤判定します' || true)"
+  assert "TC-5b marker 削除失敗は手動 rm の復旧手順を示す" "1" \
+    "$(_nbr_cleanup_body | grep -cF 'marker を手動で rm してからステップ 8.0 を再評価してください' || true)"
   # 区間外 0 本。ファイル全体の件数から区間内の件数を引いて求める (区間外だけを直接切り出すより
   # 「移動しても総数は変わらない」という変異の性質を素直に写す)。
-  _nbr_pm_rm_total=$(grep -cF 'rm -f "${PENDING_MARKER:-}"' "$NBR_SH" || true)
-  _nbr_pm_rm_inside=$(_nbr_cleanup_body | grep -cF 'rm -f "${PENDING_MARKER:-}"' || true)
+  _nbr_pm_rm_total=$(grep -cF 'rm -f "$PENDING_MARKER"' "$NBR_SH" || true)
+  _nbr_pm_rm_inside=$(_nbr_cleanup_body | grep -cF 'rm -f "$PENDING_MARKER"' || true)
   assert "TC-5b helper の cleanup **区間外** に pending marker 削除が 0 本" "0" \
     "$(( _nbr_pm_rm_total - _nbr_pm_rm_inside ))"
 

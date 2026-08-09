@@ -336,7 +336,15 @@ _rite_p61d_cleanup() {
   # caller 契約違反のみで、これは overall_assessment を変えず「result pattern を emit してよいか」
   # だけを止める (= 引数 gate 群が既に行っている挙動と構造的に同一)。
   [ "$retain_pending_marker" = "1" ] && return 0
-  rm -f "${PENDING_MARKER:-}"
+  if [ -n "${PENDING_MARKER:-}" ] && { [ -e "$PENDING_MARKER" ] || [ -L "$PENDING_MARKER" ]; }; then
+    if ! LC_ALL=C rm -f "$PENDING_MARKER"; then
+      echo "WARNING: non-blocking pending marker の削除に失敗しました ($PENDING_MARKER)。ステップ 8.0.3 は本 cycle の 6.1.d を未実行と誤判定します" >&2
+      echo "  marker が残っている間は pending_marker_present により result pattern の emit が差し戻され続けます" >&2
+      echo "  対処: 削除失敗は決定論的なため 6.1.d の再実行では収束しません" >&2
+      echo "  marker を手動で rm してからステップ 8.0 を再評価してください: $PENDING_MARKER" >&2
+      echo "  6.1.d の terminal sentinel が成功を示していても、この cleanup 失敗は別途解消が必要です" >&2
+    fi
+  fi
 }
 # gh / jq の stderr 詳細を出す共通スニペット。行接頭辞に `gh:` を入れるのは、gh 側の stderr に
 # terminal sentinel と同形の行が混じったとき、字下げだけでは gate の部分一致述語をすり抜けて
