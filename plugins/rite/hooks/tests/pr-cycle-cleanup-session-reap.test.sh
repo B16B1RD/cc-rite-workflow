@@ -296,11 +296,6 @@ case "$out" in *"session_worktrees=1"*) pass "T-06 status reports session_worktr
 # gap by reading the OS's own per-process cwd, independent of flow-state.
 # ===========================================================================
 echo "=== T-07 (Issue #1544): a live process standing in a clean+stale worktree → NOT reaped (live-cwd guard) ==="
-# The OS-level live-cwd guard resolves to /proc on Linux but lsof on macOS, and
-# the lsof path has an exit-code false-negative (#2011) that reaps a live tree.
-# Guard behind /proc so the macOS leg skips this rather than failing on the known
-# lsof bug (Issue #2008 Family B). T-08 (no live cwd → reaped) stays platform-agnostic.
-if [ -d /proc ]; then
 R=$(make_repo 80); cleanup_dirs+=("$R")
 # Fully drift flow-state so neither flow-state-based guard protects issue-80:
 # `deactivate` sets SID_A's flow-state active=false, so the worktree liveness
@@ -321,9 +316,6 @@ assert "T-07 claim file survives (not reaped)" "1" "$( [ -f "$R/.rite/state/issu
 assert_grep "T-07 live-cwd guard WARNING on stderr" "$R/pcc.err" "live-cwd guard"
 case "$out" in *"session_worktrees=0"*) pass "T-07 status reports session_worktrees=0" ;; *) fail "T-07 status: $out" ;; esac
 kill "$_h80" 2>/dev/null || true; wait "$_h80" 2>/dev/null || true
-else
-  skip "T-07 skipped (no /proc: OS-level live-cwd guard uses lsof; exit-code false-negative reaps live tree, tracked in #2011)"
-fi
 
 echo "=== T-08 (Issue #1544 non-regression): same clean+stale worktree with NO live cwd → reaped ==="
 R=$(make_repo 81); cleanup_dirs+=("$R")
