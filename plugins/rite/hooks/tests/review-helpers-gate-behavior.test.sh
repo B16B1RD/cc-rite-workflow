@@ -3103,12 +3103,26 @@ else
   # SKILL.md の呼び出し行が引数を落とした / 解決経路が変わった退行もここで落ちる。
   _804_pr=804001
   _804_sha=feedface1234
+  # The positive helper independently resolves HEAD from its cwd. These state-root
+  # fixtures are intentionally non-git directories, so provide the same explicit
+  # git boundary used by review-save-json-verify.test.sh instead of accidentally
+  # exercising only the degraded HEAD-unresolved path.
+  _804_bin=$(mktemp -d "$TMP_ROOT/gate804bin-XXXXXX")
+  cat > "$_804_bin/git" <<EOF
+#!/bin/bash
+if [ "\$1 \$2" = "rev-parse HEAD" ]; then
+  printf '%s\n' '$_804_sha'
+  exit 0
+fi
+exit 2
+EOF
+  chmod +x "$_804_bin/git"
   _run_804_arm() {  # $1=marker 値, $2=cwd (省略: 本 cycle の JSON を持つ dir) → "rc|stderr" を返す
     local _m="$1" _cwd="${2:-$_804_json_ok}" _rc=0 _err
     _err=$(printf '%s\n' "$(_sec_804_precheck)" \
       | sed "1s#^save_pending_marker=.*#save_pending_marker='$_m'#" \
       | sed "s#{plugin_root}#$PLUGIN_ROOT#g; s#{pr_number}#$_804_pr#g; s#{current_commit_sha}#$_804_sha#g" \
-      | (cd "$_cwd" && bash) 2>&1 >/dev/null) || _rc=$?
+      | (cd "$_cwd" && PATH="$_804_bin:$PATH" bash) 2>&1 >/dev/null) || _rc=$?
     printf '%s|%s' "$_rc" "$_err"
   }
   _804_probe_dir=$(mktemp -d "$TMP_ROOT/gate804-XXXXXX")

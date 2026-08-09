@@ -43,6 +43,19 @@ trap 'rm -rf "$SANDBOX"' EXIT
 ERR="$SANDBOX/err.txt"
 RC=0
 
+# Existing fixtures intentionally use readable synthetic SHAs. Stub only the
+# independent HEAD lookup so each case remains focused on results-dir behavior.
+mkdir -p "$SANDBOX/bin"
+cat > "$SANDBOX/bin/git" <<'EOF'
+#!/bin/bash
+if [ "$1 $2" = "rev-parse HEAD" ]; then
+  printf '%s\n' "${REVIEW_VERIFY_HEAD_SHA:-}"
+  exit 0
+fi
+exit 2
+EOF
+chmod +x "$SANDBOX/bin/git"
+
 # ---------------------------------------------------------------------------
 # Fixture builder: commit_sha を指定した結果 JSON を 1 件生成する。
 # ファイル名 `{pr}-{timestamp}.json` の LC_ALL=C 昇順 = 時系列昇順 (run pin の比較軸)。
@@ -64,8 +77,15 @@ make_result() {
 
 # helper を実行し stderr を $ERR へ、exit code を $RC へ。
 run_verify() {
+  local previous="" arg
+  REVIEW_VERIFY_HEAD_SHA=""
+  for arg in "$@"; do
+    if [ "$previous" = "--commit-sha" ]; then REVIEW_VERIFY_HEAD_SHA="$arg"; break; fi
+    previous="$arg"
+  done
   RC=0
-  bash "$SCRIPT" "$@" >/dev/null 2>"$ERR" || RC=$?
+  PATH="$SANDBOX/bin:$PATH" REVIEW_VERIFY_HEAD_SHA="$REVIEW_VERIFY_HEAD_SHA" \
+    bash "$SCRIPT" "$@" >/dev/null 2>"$ERR" || RC=$?
 }
 
 # ---------------------------------------------------------------------------
@@ -86,6 +106,39 @@ assert_not_grep "T-01d: 正常系で GATE_FAILED を出さない" "$ERR" 'REVIEW
 # marker 層の 3 arm すべてから呼ばれるため、helper が pass を名乗ると degraded 直後に pass が
 # 重なり caller の「degraded を pass と読み替えてはならない」規則と観測値が食い違う。
 assert_not_grep "T-01e: helper は REVIEW_SAVE_GATE=pass を名乗らない (層の混同防止)" "$ERR" 'REVIEW_SAVE_GATE=pass'
+
+# The caller-provided anchor must also match the helper's own checkout HEAD.
+RC=0
+PATH="$SANDBOX/bin:$PATH" REVIEW_VERIFY_HEAD_SHA="cccc333" \
+  bash "$SCRIPT" --pr 900 --commit-sha "bbbb222" --results-dir "$DIR_OK" --since "" \
+  >/dev/null 2>"$ERR" || RC=$?
+assert "T-03a: stale caller SHA cannot bypass the positive gate" "1" "$RC"
+assert_grep "T-03b: stale caller SHA is named" "$ERR" '実 HEAD と一致しません'
+assert_not_grep "T-03c: stale caller SHA cannot pass using an old JSON" "$ERR" 'REVIEW_SAVE_JSON_OK'
+assert_grep "T-03c2: stale caller SHA is replaced by actual HEAD for lookup" "$ERR" 'expected_sha=cccc333'
+
+RC=0
+( cd "$SANDBOX" && PATH="/usr/bin:/bin" bash "$SCRIPT" --pr 900 --commit-sha "bbbb222" \
+    --results-dir "$DIR_OK" --since "" ) >/dev/null 2>"$ERR" || RC=$?
+assert "T-03d: non-git cwd is non-fatal degraded" "0" "$RC"
+assert_grep "T-03e: non-git cwd names HEAD resolution failure" "$ERR" 'git rev-parse HEAD を実行できません'
+
+# 実 Git / session worktree の正経路。caller anchor が無効でも、helper cwd の HEAD を
+# 独立取得してその JSON を選べなければ positive gate は caller に依存したままになる。
+REAL_REPO=$(git rev-parse --show-toplevel 2>/dev/null || true)
+if [ -n "$REAL_REPO" ]; then
+  REAL_HEAD=$(git -C "$REAL_REPO" rev-parse HEAD)
+  DIR_REAL="$SANDBOX/real-head"; mkdir -p "$DIR_REAL"
+  make_result "$DIR_REAL" 911 01 "$REAL_HEAD"
+  RC=0
+  ( cd "$REAL_REPO" && PATH="/usr/bin:/bin" bash "$SCRIPT" --pr 911 \
+      --commit-sha "{current_commit_sha}" --results-dir "$DIR_REAL" --since "" ) \
+      >/dev/null 2>"$ERR" || RC=$?
+  assert "T-03f: malformed caller anchor still verifies the helper cwd HEAD" "0" "$RC"
+  assert_grep "T-03g: actual-HEAD JSON is selected" "$ERR" 'REVIEW_SAVE_JSON_OK=1; pr=911'
+else
+  skip "T-03f-g: real git checkout unavailable"
+fi
 
 # ---------------------------------------------------------------------------
 # T-02: 区間ごと skip — JSON が 1 件も無ければ fail (AC-2。本 Issue が塞ぐ本命経路)
@@ -219,7 +272,7 @@ assert_not_grep "T-06d: degraded を pass に読み替えない" "$ERR" 'REVIEW_
 # 入力の形状不正も degraded (fail にすると差し戻しでは直らず非収束になる)。
 run_verify --pr 900 --commit-sha "zzzzzzz" --results-dir "$DIR_OK" --since ""
 assert "T-06a2: --commit-sha が 16 進以外なら rc=0 (degraded)" "0" "$RC"
-assert_grep "T-06b2: 16 進以外を名指しする" "$ERR" '16 進数以外の文字'
+assert_grep "T-06b2: 無効な caller/HEAD を名指しする" "$ERR" '有効な SHA ではありません'
 run_verify --pr 900 --commit-sha "abc12" --results-dir "$DIR_OK" --since ""
 assert "T-06a3: --commit-sha が 7 桁未満なら rc=0 (degraded)" "0" "$RC"
 assert_grep "T-06b3: 7 桁未満を名指しする" "$ERR" '7 桁未満'
@@ -232,7 +285,7 @@ assert_grep "T-06g: 置換漏れも degraded に載る" "$ERR" 'reason=save_resu
 
 run_verify --pr 900 --commit-sha "{current_commit_sha}" --results-dir "$DIR_OK" --since ""
 assert "T-06h: {current_commit_sha} 置換漏れは rc=0" "0" "$RC"
-assert_grep "T-06i: ステップ 1.2.5 の置換漏れとして案内する" "$ERR" '1.2.5'
+assert_grep "T-06i: placeholder 由来の無効 HEAD を名指しする" "$ERR" '有効な SHA ではありません'
 assert_grep "T-06j: 置換漏れも degraded に載る" "$ERR" 'reason=save_result_json_undecidable'
 
 run_verify --pr 900 --commit-sha "" --results-dir "$DIR_OK" --since ""
@@ -305,14 +358,16 @@ printf '%s\n' "920-20260101000001.json" > "$DEFAULT_ROOT/.rite/state/review-run-
 # pin より新しいファイルが無い = 現 run の JSON なし → fail。pin を読めていなければ全件が
 # 現 run 扱いになり pin 自身で pass してしまうため、この arm が pin 配線の負のコントロール。
 RC=0
-( cd "$DEFAULT_ROOT" && bash "$SCRIPT" --pr 920 --commit-sha "eeee555" ) >/dev/null 2>"$ERR" || RC=$?
+( cd "$DEFAULT_ROOT" && PATH="$SANDBOX/bin:$PATH" REVIEW_VERIFY_HEAD_SHA="eeee555" \
+    bash "$SCRIPT" --pr 920 --commit-sha "eeee555" ) >/dev/null 2>"$ERR" || RC=$?
 assert "T-10a: pin 自身しか無ければ既定解決でも rc=1" "1" "$RC"
 assert_grep "T-10b: 読んだ pin を診断に出す" "$ERR" 'run 開始点 pin: 920-20260101000001.json'
 
 # pin より新しいファイルを足すと pass する (pin 比較が実際に効いていることの正のコントロール)。
 make_result "$DEFAULT_ROOT/.rite/review-results" 920 02 "eeee555"
 RC=0
-( cd "$DEFAULT_ROOT" && bash "$SCRIPT" --pr 920 --commit-sha "eeee555" ) >/dev/null 2>"$ERR" || RC=$?
+( cd "$DEFAULT_ROOT" && PATH="$SANDBOX/bin:$PATH" REVIEW_VERIFY_HEAD_SHA="eeee555" \
+    bash "$SCRIPT" --pr 920 --commit-sha "eeee555" ) >/dev/null 2>"$ERR" || RC=$?
 assert "T-10c: pin より新しい JSON があれば既定解決で rc=0" "0" "$RC"
 assert_grep "T-10d: 通過ファイルは pin より後ろ" "$ERR" 'result_json=920-20260101000002.json'
 
@@ -384,7 +439,8 @@ if [ -w "$DIR_TMPRO" ]; then
   skip "T-12d-f: 書込不可 TMPDIR を作れない (root 実行では permission が効かない)"
 else
   RC=0
-  TMPDIR="$DIR_TMPRO" bash "$SCRIPT" --pr 940 --commit-sha "99999aa" \
+  TMPDIR="$DIR_TMPRO" PATH="$SANDBOX/bin:$PATH" REVIEW_VERIFY_HEAD_SHA="99999aa" \
+    bash "$SCRIPT" --pr 940 --commit-sha "99999aa" \
     --results-dir "$DIR_MIX" --since "" >/dev/null 2>"$ERR" || RC=$?
   assert "T-12d: tempfile を確保できなくても判定は継続する (rc=1)" "1" "$RC"
   assert_grep "T-12e: 縮退を WARNING で告知する (無音で空パスにしない)" "$ERR" \
@@ -430,8 +486,9 @@ sed 's/if \[ -n "\$sha" \] && _sha_matches "\$sha" "\$commit_sha"; then/if [ -n 
 if ! cmp -s "$SCRIPT" "$MUT"; then
   pass "T-07a: 変異を適用できる (commit SHA 一致判定が想定の形で存在する)"
   RC=0
-  bash "$MUT" --pr 902 --commit-sha "aaa9999" --results-dir "$DIR_STALE" --since "" >/dev/null 2>"$ERR" || RC=$?
-  if [ "$RC" -eq 0 ]; then
+  PATH="$SANDBOX/bin:$PATH" REVIEW_VERIFY_HEAD_SHA="aaa9999" \
+    bash "$MUT" --pr 902 --commit-sha "aaa9999" --results-dir "$DIR_STALE" --since "" >/dev/null 2>"$ERR" || RC=$?
+  if [ "$RC" -eq 0 ] && grep -q 'REVIEW_SAVE_JSON_OK' "$ERR"; then
     pass "T-07b: 変異版は前 cycle の JSON で誤 pass する (= T-04 が本当に SHA 一致を見ている)"
   else
     fail "T-07b: 変異版でも fail した — T-04 が SHA 一致以外の理由で落ちている疑い (恒真 assertion)"
