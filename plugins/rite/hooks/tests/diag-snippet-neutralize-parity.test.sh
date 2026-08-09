@@ -148,7 +148,7 @@ violations_c=$(grep -rnE 'head -c [0-9]+' "${SWEEP_DIRS[@]}" --include='*.sh' \
   || true)
 assert "TC-3: un-neutralized head -c emission sites" "" "$violations_c"
 if [ -n "$violations_c" ]; then
-  echo "  検出された未中和 site (head -c の直後に '| tr '\\''\\n'\\'' '\\'' '\\'' | neutralize_ctrl --c0-only' を挿入すること):"
+  echo "  検出された未中和 site (診断値を emission 前に default 'neutralize_ctrl' へ通すこと。新規 --c0-only は使用しない):"
   printf '%s\n' "$violations_c" | sed 's/^/    /'
 fi
 
@@ -251,7 +251,7 @@ trap - EXIT
 if ! print_summary "$(basename "$0")" \
   "診断スニペット emission site を hooks/ または scripts/ に追加するときは control-char-neutralize.sh を source し、emission site の構造に応じて中和を挿入すること: \
 TC-1 (head/tail -N 行指向) は直後に '| neutralize_ctrl --keep-newline'; \
-TC-3 (head -c byte 指向 embed) は '| tr '\\''\\n'\\'' '\\'' '\\'' | neutralize_ctrl --c0-only'; \
+TC-3 (head -c byte 指向 embed) は改行を整形後に default '| neutralize_ctrl' (新規 --c0-only は禁止); \
 TC-4 (cat full-file 直接 emission) は 'neutralize_ctrl --keep-newline < \"\$file\" >&2' へ置換; \
 TC-5 (log()/surface_git_warnings() 等の関数内 >&2) は静的 sweep で検出不能のため中和適用後に本テストへ個別 pin を追記すること"; then
   exit 1
