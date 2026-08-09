@@ -16,13 +16,17 @@ assert_grep() {
   fi
 }
 
-assert_not_grep() {
-  local label=$1 file=$2 pattern=$3
-  if grep -Fq -- "$pattern" "$file"; then
+assert_section_equals() {
+  local label=$1 file=$2 start=$3 end=$4 expected=$5 actual
+  actual=$(awk -v start="$start" -v end="$end" \
+    'index($0, start) == 1 { capture=1 }
+     capture && index($0, end) == 1 { exit }
+     capture' "$file")
+  if [ "$actual" = "$expected" ]; then
+    printf 'PASS: %s\n' "$label"
+  else
     printf 'FAIL: %s\n' "$label" >&2
     failures=$((failures + 1))
-  else
-    printf 'PASS: %s\n' "$label"
   fi
 }
 
@@ -59,10 +63,18 @@ assert_grep 'provenance uses pickaxe per literal' "$reviewer" \
   'use `git log -S` for each'
 assert_grep 'counterfactual compares branch outcomes' "$reviewer" \
   'branch outcome and verify that swapping the stages'
-assert_grep 'mechanical test must detect breakage' "$reviewer" \
-  'invariant is mechanically expressible, require a test that fails when the'
-assert_not_grep 'mechanical test requirement is not negated' "$reviewer" \
-  'do not require a test that fails when the invariant is broken'
+mechanical_contract=$(printf '%s\n' \
+  '7. **Counterfactual and executable backing**: Trace every changed claim that an' \
+  '   ordering, guard, marker, or invariant changes behavior to its executable' \
+  '   producer and consumer. For an ordering justification, write down each' \
+  '   branch outcome and verify that swapping the stages really changes the stated' \
+  '   result; shared accept or reject outcomes do not prove deterioration. When an' \
+  '   invariant is mechanically expressible, require a test that fails when the' \
+  "   invariant is broken and treat the test's green result as the contract instead" \
+  '   of adding another cross-axis prose mapping.')
+assert_section_equals 'counterfactual and mechanical contract is exact' "$reviewer" \
+  '7. **Counterfactual and executable backing**:' \
+  '8. **Command and query semantics**:' "$mechanical_contract"
 assert_grep 'query semantics rejects wildcard exact match' "$reviewer" \
   'exact-match option; fetch the required state range'
 assert_grep 'query semantics filters structured output' "$reviewer" \
