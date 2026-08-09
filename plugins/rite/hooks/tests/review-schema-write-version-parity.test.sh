@@ -32,6 +32,8 @@ assert_count "pr-review no longer requires write schema 1.0.0" 0 \
   'Required JSON fields: `schema_version: "1.0.0"`' "$PR_REVIEW"
 assert_count "schema SoT declares canonical 1.1.0 writer" 1 \
   'ステップ 6.1.a — canonical `"1.1.0"` のみを出力する' "$SCHEMA"
+assert_count "schema SoT names the reader parity regression test" 1 \
+  '`plugins/rite/hooks/tests/review-schema-write-version-parity.test.sh` が 4 箇所の accept list' "$SCHEMA"
 assert_count "schema table marks pre_existing optional" 1 \
   '| `pre_existing` | bool | (任意、1.1.0+) |' "$SCHEMA"
 assert_count "legacy mapping applies only to scope and preserves missing pre_existing" 1 \

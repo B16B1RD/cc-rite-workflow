@@ -46,7 +46,7 @@
 
 - `pr-review.md` ステップ 6.1.a — canonical `"1.1.0"` のみを出力する。`findings[].scope` は必須だが、`findings[].pre_existing` は上記 additive optional 契約により出力しない。case 文は存在せず、post-condition jq validation は `schema_version | type == "string" and length > 0` の型チェックのみで値の同期対象外 (読取側 accept list と独立に進化してよい)
 
-本セクションが Single Source of Truth であり、読取側 4 箇所の accept list を本ドキュメントと同一に保つ義務がある。この 4 箇所間の drift を自動検出する仕組みはないため、本ドキュメントを変更した際は手動で 4 箇所を同期させること（`plugins/rite/hooks/scripts/review-schema-version-check.sh` は `.rite/review-results/*.json` の schema_version 値を検査するものであり、読取側 4 箇所の accept list リテラル自体の同期は対象外）。
+本セクションが Single Source of Truth であり、読取側 4 箇所の accept list を本ドキュメントと同一に保つ義務がある。`plugins/rite/hooks/tests/review-schema-write-version-parity.test.sh` が 4 箇所の accept list リテラルと site 数を固定するため、本ドキュメントを変更する際は 4 箇所を同時に同期させること（`plugins/rite/hooks/scripts/review-schema-version-check.sh` は `.rite/review-results/*.json` の schema_version 値を検査する別用途の helper）。
 
 **失敗時の遷移** (Priority 別):
 
