@@ -59,13 +59,22 @@ checks_state=$(printf '%s' "$pr_json" | jq -r '
   if (.statusCheckRollup | type) != "array" then "unknown"
   elif (.statusCheckRollup | length) == 0 then "none"
   elif any(.statusCheckRollup[];
-      (.status | type) != "string" or (.conclusion | type) != "string") then "unknown"
-  elif any(.statusCheckRollup[]; .status != "COMPLETED" or .conclusion == "") then "pending"
+      (.__typename == "CheckRun" and (.status | type) == "string" and .status != "COMPLETED") or
+      (.__typename == "StatusContext" and (.state == "PENDING" or .state == "EXPECTED"))) then "pending"
   elif any(.statusCheckRollup[];
-      .conclusion as $c | (["SUCCESS", "NEUTRAL", "SKIPPED"] | index($c)) == null) then "unhealthy"
+      (.__typename == "CheckRun" and
+        ((.status | type) != "string" or .status != "COMPLETED" or (.conclusion | type) != "string")) or
+      (.__typename == "StatusContext" and
+        ((.state | type) != "string" or (.state as $s | (["SUCCESS", "ERROR", "FAILURE"] | index($s)) == null))) or
+      (.__typename != "CheckRun" and .__typename != "StatusContext")) then "unknown"
+  elif any(.statusCheckRollup[];
+      (.__typename == "CheckRun" and
+        (.conclusion as $c | (["SUCCESS", "NEUTRAL", "SKIPPED"] | index($c)) == null)) or
+      (.__typename == "StatusContext" and (.state == "ERROR" or .state == "FAILURE"))) then "unhealthy"
   elif all(.statusCheckRollup[];
-      .status == "COMPLETED" and
-      (.conclusion as $c | (["SUCCESS", "NEUTRAL", "SKIPPED"] | index($c)) != null)) then "healthy"
+      (.__typename == "CheckRun" and .status == "COMPLETED" and
+        (.conclusion as $c | (["SUCCESS", "NEUTRAL", "SKIPPED"] | index($c)) != null)) or
+      (.__typename == "StatusContext" and .state == "SUCCESS")) then "healthy"
   else "unknown"
   end
 ') || checks_state=unknown
@@ -79,7 +88,8 @@ echo "[CONTEXT] MERGE_CHECKS_STATE=$checks_state"
 | `isDraft == true` | `[merge:not-ready]` emit + 「先に `/rite:ready {pr_number}` を実行してください」案内 + 終了 |
 | `mergeable != "MERGEABLE"` | `[merge:not-ready]` emit + 原因 (`mergeStateStatus`) 表示 + AskUserQuestion で「再判定 (`mergeStateStatus` を再取得して ステップ 1 をもう一度実行、1 回のみ) / 中止」を提示 |
 | `mergeable == "MERGEABLE"` + checks 0 件 | CI 未設定リポジトリとして従来どおりステップ 2 へ |
-| `mergeable == "MERGEABLE"` + checks が pending | `[merge:not-ready]` emit + 「checks の完了を待って再実行」と表示して終了。待機・自動 retry はしない |
+| `mergeable == "MERGEABLE"` + checks が pending + `force_ci == false` | `[merge:not-ready]` emit + 「checks の完了を待って再実行」と表示して終了。待機・自動 retry はしない |
+| checks が pending + `force_ci == true` | 未完了 check の一覧を表示した後、ステップ 2 へ |
 | `mergeable == "MERGEABLE"` + `mergeStateStatus == "UNSTABLE"`（checks unhealthy）+ `force_ci == false` | 下記「CI red の分類」を実行して内訳を表示し、`[merge:not-ready]` emit + `/rite:merge --force-ci {pr_number}` を案内して終了。ステップ 2 の `gh pr merge` は実行しない |
 | checks unhealthy + `force_ci == true` | 下記分類と内訳表示を省略せず実行した後、ステップ 2 へ |
 | `mergeable == "MERGEABLE"` + checks が全件 healthy | ステップ 2 へ |
