@@ -109,5 +109,18 @@ reset_case; export GH_WM_FIELDS=$'feature/ok\tfeedface'
 bash "$WM_HELPER" --pr 42 --issue 42 --repo owner/repo --plugin-root "$SB/plugin" >/dev/null 2>"$SB/wm-ok"
 grep -q 'wm branch=feature/ok oid=feedface' "$LOG" && ok || bad wm_success
 
+rc=0; bash "$WM_HELPER" --pr 42 --issue 42 --repo '' --plugin-root "$SB/plugin" >/dev/null 2>"$SB/wm-invalid" || rc=$?
+[ "$rc" -eq 2 ] && grep -q 'owner/repo is required' "$SB/wm-invalid" && ok || bad wm_empty_repo
+rc=0; bash "$WM_HELPER" --pr 42 --issue 42 --repo owner/repo --plugin-root "$SB/missing" >/dev/null 2>"$SB/wm-invalid" || rc=$?
+[ "$rc" -eq 2 ] && grep -q 'local-wm-update.sh not found' "$SB/wm-invalid" && ok || bad wm_invalid_plugin
+cat > "$SB/plugin/hooks/local-wm-update.sh" <<'EOF'
+#!/bin/bash
+exit 7
+EOF
+chmod +x "$SB/plugin/hooks/local-wm-update.sh"
+reset_case; export GH_WM_FIELDS=$'feature/ok\tfeedface'
+bash "$WM_HELPER" --pr 42 --issue 42 --repo owner/repo --plugin-root "$SB/plugin" >/dev/null 2>"$SB/wm-writer-fail"
+grep -q 'writer failed (rc=7)' "$SB/wm-writer-fail" && ok || bad wm_writer_warning
+
 echo "$pass PASS / $fail FAIL"
 [ "$fail" -eq 0 ]

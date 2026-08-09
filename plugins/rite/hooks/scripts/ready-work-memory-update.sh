@@ -13,6 +13,8 @@ while [ "$#" -gt 0 ]; do
 done
 case "$pr_number" in ''|*[!0-9]*) echo "ERROR: ready work memory: numeric PR and Issue are required" >&2; exit 2 ;; esac
 case "$issue_number" in ''|*[!0-9]*) echo "ERROR: ready work memory: numeric PR and Issue are required" >&2; exit 2 ;; esac
+[ -n "$owner_repo" ] || { echo "ERROR: ready work memory: owner/repo is required" >&2; exit 2; }
+[ -x "$plugin_root/hooks/local-wm-update.sh" ] || { echo "ERROR: ready work memory: local-wm-update.sh not found: ${plugin_root:-<empty>}" >&2; exit 2; }
 head_fields=$(gh pr view "$pr_number" -R "$owner_repo" --json headRefName,headRefOid --jq '[.headRefName,.headRefOid] | @tsv') || head_fields=""
 IFS=$'\t' read -r ready_pr_branch ready_pr_oid <<< "$head_fields"
 if [ -z "${ready_pr_branch:-}" ] || [ -z "${ready_pr_oid:-}" ]; then
@@ -23,4 +25,7 @@ WM_SOURCE=ready WM_PHASE=ready WM_PHASE_DETAIL='Ready for review に変更完了
   WM_NEXT_ACTION='レビュー待ち' WM_BODY_TEXT='PR marked as ready for review.' \
   WM_ISSUE_NUMBER="$issue_number" WM_BRANCH_OVERRIDE="$ready_pr_branch" \
   WM_LAST_COMMIT_OVERRIDE="$ready_pr_oid" \
-  bash "$plugin_root/hooks/local-wm-update.sh" 2>/dev/null || true
+  bash "$plugin_root/hooks/local-wm-update.sh" || {
+    writer_rc=$?
+    echo "WARNING: ready work memory writer failed (rc=$writer_rc); /rite:recover で再試行できます" >&2
+  }
