@@ -17,8 +17,8 @@ assert_grep "generated reviewer prompt contains audit section" "$GEN" '^### 監�
 assert_grep "collector retains Category #2 rows" "$SKILL" 'Category #2.*guardrail_audit_log'
 assert_grep "E2E minimization exempts audit output" "$SKILL" '例外 4:.*Guardrail 監査ログ.*guardrail_audit_count > 0'
 
-full_count=$(sed -n '/^## full-mode-template$/,/^## verification-mode-template$/p' "$TEMPLATES" | grep -c '^### Guardrail 監査ログ' || true)
-verification_count=$(sed -n '/^## verification-mode-template$/,$p' "$TEMPLATES" | grep -c '^### Guardrail 監査ログ' || true)
+full_count=$(awk '/^## full-mode-template$/{mode=1} mode && /^```markdown$/{fence=1; next} mode && fence && /^```$/{exit} mode && fence' "$TEMPLATES" | grep -c '^### Guardrail 監査ログ' || true)
+verification_count=$(awk '/^## verification-mode-template$/{mode=1} mode && /^```markdown$/{fence=1; next} mode && fence && /^```$/{exit} mode && fence' "$TEMPLATES" | grep -c '^### Guardrail 監査ログ' || true)
 assert "full report template renders audit log exactly once" "1" "$full_count"
 assert "verification report template renders audit log exactly once" "1" "$verification_count"
 assert_grep "collector and schema use canonical reviewer key" "$SKILL" 'guardrail_audit_log.*`reviewer`, `filter_category`'

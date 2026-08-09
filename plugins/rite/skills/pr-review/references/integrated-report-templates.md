@@ -217,6 +217,11 @@
 
 ## verification-mode-template
 
+**Verification mode (`review_mode == "verification"`) template:**
+
+```markdown
+## 📜 rite レビュー結果
+
 ### Guardrail 監査ログ（該当がある場合のみ）
 <!-- reviewer の `### 監査ログ` から収集した Category #2 行がある場合のみ表示。0 件なら省略。
  audit-only で評価・finding 件数・merge 判定には影響しない。既定 post_comment:false でも人間が確認できるよう、
@@ -225,11 +230,6 @@
 | レビュアー | Filter Category | 元重要度 | ファイル:行 | 除外した内容 | 除外理由 | 実測 |
 |-----------|-----------------|----------|------------|--------------|----------|------|
 | {reviewer} | Category #2 | {original_severity} | {file_line} | {description} | {filter_reason} | {verification or なし} |
-
-**Verification mode (`review_mode == "verification"`) template:**
-
-```markdown
-## 📜 rite レビュー結果
 
 ### 総合評価
 - **推奨**: {マージ可 / マージ不可（指摘あり） / 修正必要}
