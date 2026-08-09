@@ -208,6 +208,11 @@ resolved_content=$(realpath -- "$CONTENT_FILE") || {
   echo "  hint: ensure the file exists and realpath is available (coreutils)" >&2
   exit 1
 }
+# Compare canonical paths on both sides. A logical $PWD can retain symlink
+# components (notably macOS /var -> /private/var), while realpath above always
+# returns the physical content path. Falling back to $PWD preserves the
+# existing fail-closed boundary when the cwd itself cannot be canonicalized.
+resolved_pwd=$(realpath -- "$PWD" 2>/dev/null) || resolved_pwd="$PWD"
 # /tmp/* → /tmp/rite-* に限定して exfiltration 経路を縮小。macOS では realpath が
 # /tmp → /private/tmp に symlink 解決するため /private/tmp/rite-* も同じ信頼境界
 # (owner-managed /tmp/rite-* namespace) として allowlist に含める。
@@ -224,7 +229,7 @@ if [[ -n "${TMPDIR:-}" ]]; then
   }
 fi
 case "$resolved_content" in
-  "$PWD"/*|/tmp/rite-*|/private/tmp/rite-*)
+  "$resolved_pwd"/*|/tmp/rite-*|/private/tmp/rite-*)
     : # allowed ($PWD 配下 / /tmp/rite-* / /private/tmp/rite-* — 後者は macOS realpath 解決後)
     ;;
   *)
