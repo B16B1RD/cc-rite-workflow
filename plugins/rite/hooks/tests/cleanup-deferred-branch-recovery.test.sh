@@ -29,17 +29,17 @@ mkdir -p "$wt/.claude"; printf '{}\n' > "$wt/.mcp.json"; printf ambient > "$wt/.
 out=$(cd "$r" && RITE_STATE_ROOT="$r" bash "$HELPER" --branch feat/test --pr-merged true 2>&1)
 assert_contains "ambient-only clean worktree emits auto" "$out" "recovery=auto"
 
-r=$(make_repo); wt="$r/.rite/worktrees/issue-1"; printf dirty >> "$wt/README.md"
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"; expected_wt=$(git -C "$wt" rev-parse --show-toplevel); printf dirty >> "$wt/README.md"
 out=$(cd "$r" && RITE_STATE_ROOT="$r" bash "$HELPER" --branch feat/test --pr-merged true 2>&1)
 assert_contains "tracked dirty worktree emits manual" "$out" "recovery=manual"
-assert_contains "manual warning carries resolved path" "$out" "git -C $wt status --short"
+assert_contains "manual warning carries Git's canonical resolved path" "$out" "git -C $expected_wt status --short"
 assert_contains "manual warning requires preservation" "$out" "commit / stash / copy"
 case "$out" in *"worktree remove --force"*) bad "dirty warning must not prescribe --force";; *) ok "dirty warning never prescribes --force";; esac
 [ -d "$wt" ] && ok "classifier preserves dirty worktree" || bad "classifier removed dirty worktree"
 
-r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"; expected_wt=$(git -C "$wt" rev-parse --show-toplevel)
 out=$(cd "$r" && RITE_STATE_ROOT="$r" bash "$HELPER" --branch feat/test --pr-merged false 2>&1)
-assert_contains "unmerged branch emits manual with actual path" "$out" "path_q=$wt"
+assert_contains "unmerged branch emits manual with canonical actual path" "$out" "path_q=$expected_wt"
 
 echo "PASS: $pass"
 echo "FAIL: $fail"
