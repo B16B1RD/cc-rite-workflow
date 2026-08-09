@@ -112,9 +112,10 @@ RC=0
 PATH="$SANDBOX/bin:$PATH" REVIEW_VERIFY_HEAD_SHA="cccc333" \
   bash "$SCRIPT" --pr 900 --commit-sha "bbbb222" --results-dir "$DIR_OK" --since "" \
   >/dev/null 2>"$ERR" || RC=$?
-assert "T-03a: stale caller SHA is non-fatal degraded" "0" "$RC"
+assert "T-03a: stale caller SHA cannot bypass the positive gate" "1" "$RC"
 assert_grep "T-03b: stale caller SHA is named" "$ERR" '実 HEAD と一致しません'
 assert_not_grep "T-03c: stale caller SHA cannot pass using an old JSON" "$ERR" 'REVIEW_SAVE_JSON_OK'
+assert_grep "T-03c2: stale caller SHA is replaced by actual HEAD for lookup" "$ERR" 'expected_sha=cccc333'
 
 RC=0
 ( cd "$SANDBOX" && PATH="/usr/bin:/bin" bash "$SCRIPT" --pr 900 --commit-sha "bbbb222" \

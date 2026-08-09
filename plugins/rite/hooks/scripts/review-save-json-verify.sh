@@ -214,8 +214,11 @@ case "$actual_head" in
 esac
 [ "${#actual_head}" -ge 7 ] \
   || _degraded "helper の cwd から取得した HEAD が 7 桁未満です (received: '$actual_head')"
-_sha_matches "$actual_head" "$commit_sha" \
-  || _degraded "--commit-sha が helper の cwd の実 HEAD と一致しません (expected: '$actual_head', received: '$commit_sha')"
+if ! _sha_matches "$actual_head" "$commit_sha"; then
+  echo "WARNING: ステップ 8.0.4 positive 検査: --commit-sha が helper の cwd の実 HEAD と一致しません (expected: '$actual_head', received: '$commit_sha')" >&2
+  echo "  caller の stale anchor は破棄し、helper が独立取得した実 HEAD で結果 JSON を検査します。" >&2
+  commit_sha="$actual_head"
+fi
 
 if [ -d "$results_dir" ]; then
   # find の rc を検査する。dir が存在しても読めない (permission 等) と find は 0 件を返すため、
