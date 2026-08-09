@@ -58,6 +58,7 @@ argument-hint: "<pr_number>"
 | `{branch_name}` | flow-state `branch` field |
 | `{max_review_cycles}` | `safety.max_review_cycles` in `rite-config.yml`（既定 15、無効値は既定へフォールバック）。**発散判定をすり抜けた非収束を受け止める backstop**（既定 15 では 16 cycle 以上を要する収束中の run にも上限として働く） |
 | `{fire_reason_line}` | ステップ 6.1 / 6.2 の「理由」行。ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=` から ステップ 6.2「発火理由の文面」表で決める |
+| `{cb_reason}` | ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `CB_REASON=` の**生値**（`max-cycles` / `divergence`）。ステップ 6 共有前段が flow-state へ書く `--stop-reason "circuit-breaker:{cb_reason}"` でのみ使う（人間向けの文面は `{fire_reason_line}` が担う） |
 | `{trend}` | ステップ 1 の `[CONTEXT] ITERATE_CB=fire` marker の `TREND=`（カンマ区切りの per-cycle blocking 件数）。停止通知では `→` 区切りへ整形して表示する。空のときの扱いは ステップ 6.2「発火理由の文面」を参照 |
 | `{trend_reason}` | ステップ 1 の `[CONTEXT] ITERATE_CB=` marker の `TREND_REASON=`（helper が返した判定不能の理由。ステップ 6.2「発火理由の文面」の `max-cycles` 分岐と推移行の差し替えで使う） |
 | `{cycle_count}` | flow-state `cycle_count` field（review⇄fix cycle の消化数。ステップ 1 で increment、fresh entry で 0 リセット。発火時はステップ 6 の共有前段が、正常終了時はステップ 5.0.1 が 0 にリセットする） |
@@ -702,20 +703,31 @@ fi
 # cycle counter のリセット。**ステップ 1 の fire 分岐ではなくここで行う** — 直後の 6.1 / 6.2 が
 # sentinel を emit するため、ここまで到達していれば発火は記録される。ここより手前で turn が
 # 終わった場合は counter が上限のまま残り、次回ループ頭で再発火する（縮退が「停止側」に倒れる）。
-# リセットしないと再実行が即再発火してループを再開する術が無くなるが、発火済みを別マーカーとして
-# 覚えさせる設計は採らない（「発火したか」を上限値との相対比較で符号化することになり、
-# max_review_cycles が invocation 間で変わると符号化が両方向に破綻する）。
+# リセットしないと再実行が即再発火してループを再開する術が無くなる。発火済みを `cycle_count` の
+# 相対値（例: max + 1）で符号化する設計は採らない — max_review_cycles が invocation 間で変わると
+# 符号化が両方向に破綻するため、上限値から独立した文字列の `stop_reason` を下の同一 set で記録する。
 # `--handoff` を伴わないため、ステップ 1 fire 分岐が消した handoff はクリアされたまま維持される。
 # 成否は FIRE_RESET marker に載せる。失敗すると counter が上限のまま残り再実行が即再発火する
 # （= 停止通知が約束する「再実行すれば新しい run として cycle 1 から回る」が偽になる）ため、
 # ステップ 6.2 がこれを読んで注意行 (b) を出し分ける。
+# `--stop-reason`（#2045）は「発火した」という事実の durable な記録で、次セッションの
+# `session-start.sh` がブレーカー失敗停止と Ctrl+C 中断を区別するために読む。**counter reset と同じ
+# set に載せる**のが要点で、ステップ 1 の fire 分岐に書いても本 set（`--stop-reason` なし）が
+# default-clear で消してしまう。ここに置くことで、上のコメントが言う「前段〜sentinel 間で turn が
+# 終わる窓」でも発火の記録だけは残る（従来はこの窓で counter が 0 に戻り発火が無記録だった）。
+# post-breaker full review が成功してループが継続した場合は、後続の set（ステップ 5.0.1 の
+# `--cycle-count 0` / fix の handoff set 等）が default-clear するため stale な失敗記録は残らない。
+# `{cb_reason}` はステップ 1 の `ITERATE_CB=fire` marker の `CB_REASON=`（`max-cycles` / `divergence`）を
+# リテラル置換する。**上限値そのものは埋めない** — `max_review_cycles` は invocation ごとに config から
+# 読み直されるため、state に焼くと設定変更で符号化が破綻する（counter reset を選んだのと同じ理由）。
 if cb_reset_out=$(LC_ALL=C bash {plugin_root}/hooks/flow-state.sh set \
   --phase review --issue {issue_number} --branch {branch_name} --pr {pr_number} \
-  --next "post-breaker full review を 1 回実行して通常 review routing へ戻る" --cycle-count 0 2>&1); then
+  --next "post-breaker full review を 1 回実行して通常 review routing へ戻る" --cycle-count 0 \
+  --stop-reason "circuit-breaker:{cb_reason}" 2>&1); then
   fire_reset=ok
 else
   fire_reset=failed
-  echo "WARNING: サーキットブレーカー発火時の cycle counter リセットに失敗（counter が上限のまま残り、再実行しても即再発火する）" >&2
+  echo "WARNING: サーキットブレーカー発火時の cycle counter リセットと stop_reason 永続化に失敗（counter が上限のまま残り、次セッションでは通常の中断と区別できない）" >&2
 fi
 # 診断の表示は rc に紐付けない（ステップ 0.6 / ステップ 1 の capture と同型）。
 [ -n "$cb_reset_out" ] && printf '%s\n' "$cb_reset_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
@@ -774,7 +786,7 @@ sentinel の routing は `bash {plugin_root}/hooks/scripts/post-breaker-review-r
 1. **sentinel の消費者**: `[iterate:max-cycles-reached]` は `/rite:batch-run` が grep して当該 Issue を `failed[]` に記録し次 Issue へ進むために消費する。`[iterate:max-cycles-stopped]` は消費者を持たない iterate 内部完結の最終状態表示。
 2. **`REFIRE=1` / `FIRE_RESET=failed` 注意行の有無**: ステップ 6.2（対話）のみが持つ。6.1（batch）は Issue #2026 §4.2 の Non-Target（MUST NOT modify）のため本スキルでは対称化しない。結果として batch では、前 Issue から漏れた stale counter の reset に失敗した場合、review を 1 cycle も回していない Issue が `failed[]` に「上限到達（非収束）」として記録されうる。対称化は別 Issue で扱う。
 
-**ただし「同構造」なのは停止時の挙動であって、失敗記録の永続性ではない** — 対話側の failed 記録は永続化されない。共有前段の reset 成功後に残る state は `phase=review` / `cycle_count` キー削除 / `handoff` キー削除で、これは cycle 1 をこれから回す fresh な review と区別できない（唯一の差である `next_action` の文面は後続のどの `flow-state.sh set` でも上書きされる）。batch が `run-queue` の `failed[]` という外部の永続記録を持つのに対し、対話側は上記 1. のとおり消費者を持たない sentinel が最終状態表示として出るだけである。これは AC-2（再実行で counter がリセットされループが再開できる）が counter の破棄を要求することの帰結で、本 Issue のスコープでは意図した設計。
+**失敗停止の理由は両モードで永続化する** — 共有前段の reset 成功後は `cycle_count` / `handoff` を削除すると同時に、`stop_reason=circuit-breaker:{cb_reason}` を同じ atomic set で残す。これにより対話側も `session-start.sh` / `/rite:recover` から fresh review や Ctrl+C 中断と区別できる。batch 側はこれに加え、キュー全体の集約結果として `run-queue` の `failed[]` を持つ。`stop_reason` は後続の通常 `flow-state.sh set` が default-clear するため、新しい run の進行後まで stale に残らない。
 
 どちらの経路もマージには到達しない（上記 invariant）。
 
@@ -861,10 +873,10 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 
 `REFIRE=0`（起動時点の counter が上限未満）では review が実際に回ってから到達しているため**追加しない**。`RESET` の値（`failed-refire` / `failed-stale` / `ok` / `none`）は本条件に使わない — 発火時の phase は `review` / `fix` なので再実行はステップ 0.6 で resume 判定となり reset ブロックに入らず、即再発火する当の経路で `RESET=none` になるため。`RESET` は reset を試行した場合の結果を記録するもので、即再発火の判定には `REFIRE` を使う。
 
-**(b) `FIRE_RESET=failed`**（ステップ 6 共有前段の set に失敗し counter がリセットされなかった）:
+**(b) `FIRE_RESET=failed`**（ステップ 6 共有前段の atomic set に失敗し、counter のリセットと `stop_reason` の永続化がどちらも行われなかった）:
 
 ```
-- 注意: 発火時の cycle counter リセットに失敗しました。**このまま再実行しても counter と run 開始点が更新されず即再発火します**（`max-cycles` 発火なら counter が上限のまま、`divergence` 発火なら counter が 0 に戻らずステップ 0.6 の pin 更新経路に入らないため helper が同じ列を読み直します）。次のコマンドで手動リセットしてから再実行してください（`--handoff` を伴わないため handoff のクリアも兼ねます）: `RITE_STATE_ROOT="{state_root}" bash "{plugin_root}"/hooks/flow-state.sh set --session {session_id} --phase review --next "cycle counter 手動リセット" --cycle-count 0`
+- 注意: 発火時の cycle counter リセットと `stop_reason` の永続化に失敗しました。**このまま再実行しても counter と run 開始点が更新されず即再発火し、次セッションの案内ではこの失敗停止を通常の中断と区別できません**（`max-cycles` 発火なら counter が上限のまま、`divergence` 発火なら counter が 0 に戻らずステップ 0.6 の pin 更新経路に入らないため helper が同じ列を読み直します）。次のコマンドで手動リセットしてから再実行してください（`--handoff` を伴わないため handoff のクリアも兼ねます）: `RITE_STATE_ROOT="{state_root}" bash "{plugin_root}"/hooks/flow-state.sh set --session {session_id} --phase review --next "cycle counter 手動リセット" --cycle-count 0`
 ```
 
 `{state_root}` / `{session_id}` は marker の値で pre-fill する。**2 つは独立軸**で、どちらも「値が得られない」ことがある（`_resolve_session_id` は `STATE_ROOT` に依存しないため、state root が未解決でも session_id は判明している側が支配的）。**得られた側は必ず埋め、得られなかった側だけを解決手順に置き換える** — 判明している値を捨てて人間に探索させない:
@@ -922,5 +934,5 @@ rationale: [stop-loop-continuation-contract.md#mechanism](../../references/stop-
 - **ブレーカーの発火条件は「発散」であって「予算切れ」ではない** — 主経路は収束トレンドの発散検出（`hooks/scripts/review-trend-divergence.sh`）で、`safety.max_review_cycles`（既定 15）はそれをすり抜ける非収束を受け止める backstop へ格下げした（backstop を残す以上 16 cycle 以上を要する収束中の run には届くが、引き上げ前の 5 の頃のように 6 cycle 以上を要する収束中の run を殺すことは無くなった。既定 15 の根拠は #2129 D-02 で、最適値は運用データで再評価する）。cycle 数上限だけでは努力と無駄を区別できない（健全に収束中でも上限で殺し、発散していても上限まで燃やす）ため、「品質を予算で縛らない・無駄は排除する」（CLAUDE.md プロジェクト原則）に反していた。判定は helper に閉じ LLM の裁量を介在させない。判定式は実運用で観測されたトラジェクトリで backtest して確定した定数であり、**窓幅や閾値を config キーにしない** — 調整の実需が観測されてから Issue を切って設定化する（`no_speculative_structure`）。判定式の較正根拠と意図した境界（最良水準での平坦は発火させない = false positive 回避）は helper の header が SoT
 - **発火理由は post-breaker routing を変えない** — divergence / max-cycles のどちらでも run 開始点を更新し、full review を 1 回実行する。full review 不成立時の sentinel（`[iterate:max-cycles-reached]` / `[iterate:max-cycles-stopped]`）は理由に依らず不変で、`/rite:batch-run` の failed 記録契約を保つ
 - **発火後は full review の finding を通常 routing**: 人間に継続可否を問わず、full review が mergeable なら正常終了、fix-needed なら fix loop へ戻る。full review を実行できない場合だけ、batch は failed 扱いで次 Issue へ遷移し、対話は機械的に停止する
-- **cycle counter は flow-state に保持**: 専用 state file (`.rite/state/*.count` 等) は持たず、`cycle_count` を flow-state の merge-preserve フィールドとして永続化する（`worktree` と同じ additive パターン）。resume を跨いで継続し（AC-3）、fresh entry（phase が review/fix 以外）で 0 リセットして run バッチの Issue 間リークを防ぐ。加えて**発火が sentinel として記録される直前**（ステップ 6 の共有前段）と**正常終了時**（ステップ 5.0.1）で 0 にリセットする — 後者は run を明示的に閉じるためで、閉じないと次回起動が resume 判定になりステップ 0.6 の pin 更新条件（`cur_cc == 0`）に入らず、新 run が前 run の pin を引き継ぐ — リセットしないと再実行が即再発火してループを再開する術が無くなるが、発火後は継続 handoff が（ステップ 1 fire 分岐の set で）default-clear されて自動再入場の経路が消えるため、リセットしても自動継続は生じない。リセットを fire 分岐ではなく共有前段に置くのは、「発火は無記録・counter は 0」という最悪の組み合わせが成立する窓を狭めるため（共有前段より手前で turn が終わればこの窓では counter が上限のまま残り、次回ループ頭で再発火する）。**共有前段の実行後・sentinel 出力前の窓は残存する** — 完全な閉塞には sentinel 出力を Stop hook に強制させる handoff が要るが、その reason 文面の是正は Non-Target の `hooks/stop-loop-continuation.sh` 改修を伴うため別 Issue とする。「発火済み」を別マーカー（例: `cycle_count = max + 1`）として次回起動まで持ち越す設計は採らない。持ち越すと「発火したか」を `max_review_cycles` との相対比較で符号化することになり、同値が invocation 間で変わりうる（毎回 config から読み直す）ため符号化が両方向に破綻する（上限を下げれば未発火が発火済みと誤認され、上げれば発火済みが認識されない、#2026）。Stop hook の handoff とは独立（handoff は one-shot consume される継続マーカー、cycle_count は accumulate されるカウンタ）
+- **cycle counter は flow-state に保持**: 専用 state file (`.rite/state/*.count` 等) は持たず、`cycle_count` を flow-state の merge-preserve フィールドとして永続化する（`worktree` と同じ additive パターン）。resume を跨いで継続し（AC-3）、fresh entry（phase が review/fix 以外）で 0 リセットして run バッチの Issue 間リークを防ぐ。加えて**発火が sentinel として記録される直前**（ステップ 6 の共有前段）と**正常終了時**（ステップ 5.0.1）で 0 にリセットする — 後者は run を明示的に閉じるためで、閉じないと次回起動が resume 判定になりステップ 0.6 の pin 更新条件（`cur_cc == 0`）に入らず、新 run が前 run の pin を引き継ぐ — リセットしないと再実行が即再発火してループを再開する術が無くなるが、発火後は継続 handoff が（ステップ 1 fire 分岐の set で）default-clear されて自動再入場の経路が消えるため、リセットしても自動継続は生じない。共有前段は counter reset と `stop_reason` の記録を同じ atomic set に載せるため、**共有前段の実行後・sentinel 出力前に turn が終わっても発火理由は durable に残る**。共有前段より手前で turn が終われば counter は上限のままなので次回ループ頭で再発火し、set 自体が失敗した場合は `FIRE_RESET=failed` の警告と復旧案内で counter 未更新・理由未記録の両方を明示する。「発火済み」を counter の別値（例: `cycle_count = max + 1`）として符号化する設計は採らない。`max_review_cycles` は invocation ごとに変わりうるため相対値の符号化が両方向に破綻するが、独立した文字列フィールドの `stop_reason` はその問題を持たない。Stop hook の handoff とも独立（handoff は one-shot consume される継続マーカー、cycle_count は accumulate されるカウンタ、`stop_reason` は次の通常 set まで残る失敗理由）
 - 別 Issue 化経路は廃止済み (commit 1a で fix.md Phase 4.3 削除) — 「別 Issue にスキップして loop 終了」の抜け穴は塞がれている
