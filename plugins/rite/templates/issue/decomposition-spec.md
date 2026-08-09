@@ -98,4 +98,4 @@ After all sub-issues are completed:
 **Parent Issue**: #{parent_issue_number}
 **Estimated Total Effort**: {total_estimated_effort}
 
-🤖 Generated with [rite workflow](https://github.com/{owner}/cc-rite-workflow)
+🤖 Generated with [rite workflow](https://github.com/B16B1RD/cc-rite-workflow)

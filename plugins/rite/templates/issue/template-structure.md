@@ -307,4 +307,4 @@ Select ONE matching the Issue type. The type confirmed in `create.md` ステッ�
 
 ---
 
-🤖 Generated with [rite workflow](https://github.com/{owner}/cc-rite-workflow)
+🤖 Generated with [rite workflow](https://github.com/B16B1RD/cc-rite-workflow)

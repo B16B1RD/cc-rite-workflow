@@ -14,8 +14,8 @@
 # Input JSON schema:
 #   {
 #     "issue_number": 496,
-#     "owner": "B16B1RD",
-#     "repo": "cc-rite-workflow",
+#     "owner": "{owner}",
+#     "repo": "{repo}",
 #     "project_number": 6,
 #     "status_name": "In Progress",           # required: Todo|In Progress|In Review|Done|...
 #     "status_field_id_hint": "PVTSSF_...",   # optional: skip field ID discovery if provided
