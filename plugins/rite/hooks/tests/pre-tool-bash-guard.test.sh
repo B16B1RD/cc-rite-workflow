@@ -86,6 +86,36 @@ fail() {
   echo "  ❌ FAIL: $1"
 }
 
+# Hook stdout が壊れていても、個別 assertion を FAIL として記録して残りの
+# suite を継続する。bare command substitution は set -e によりファイル全体を
+# abort させ、どのケースで JSON が壊れたかという一次診断まで失わせる。
+extract_permission_decision() {
+  local hook_output="$1"
+  local parsed=""
+  local jq_rc=0
+  if parsed=$(printf '%s' "$hook_output" \
+    | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null); then
+    printf '%s' "$parsed"
+    return 0
+  else
+    jq_rc=$?
+  fi
+  printf '  jq decision extraction failed (rc=%s, output_bytes=%s)\n' \
+    "$jq_rc" "$(printf '%s' "$hook_output" | wc -c | tr -d ' ')" >&2
+  return 0
+}
+
+echo "TC-000: malformed hook stdout does not abort decision extraction"
+tc000_after=false
+decision=$(extract_permission_decision 'not-json')
+tc000_after=true
+if [ -z "$decision" ] && [ "$tc000_after" = true ]; then
+  pass "TC-000 malformed JSON degrades to empty and suite continues"
+else
+  fail "TC-000 malformed JSON extraction did not preserve continuation"
+fi
+echo ""
+
 # Helper: run hook with given tool_name and command
 # Captures stderr to $STDERR_FILE for log verification
 run_guard() {
@@ -134,7 +164,7 @@ echo ""
 echo "TC-001: gh pr diff --stat → deny (with stderr log)"
 rc=0
 output=$(run_guard "Bash" "gh pr diff 123 --stat") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 stderr_log=$(cat "$STDERR_FILE")
 if [ "$decision" = "deny" ] && [[ "$reason" == *"gh-pr-diff-stat"* ]]; then
@@ -155,7 +185,7 @@ echo ""
 echo "TC-002: gh pr diff -- <path> → deny"
 rc=0
 output=$(run_guard "Bash" "gh pr diff 456 -- path/to/file.md") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 if [ "$decision" = "deny" ] && [[ "$reason" == *"gh-pr-diff-file-filter"* ]]; then
   pass "gh pr diff -- <path> blocked with correct pattern name"
@@ -170,7 +200,7 @@ echo ""
 echo "TC-003: != null in jq → deny"
 rc=0
 output=$(run_guard "Bash" "gh api repos/owner/repo/issues --jq '.[] | select(.field != null)'") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 if [ "$decision" = "deny" ] && [[ "$reason" == *"jq-not-equal-null"* ]]; then
   pass "!= null blocked with correct pattern name"
@@ -328,7 +358,7 @@ echo ""
 echo "TC-014: !=null (no space) → deny"
 rc=0
 output=$(run_guard "Bash" "gh api repos/owner/repo/issues --jq '.[] | select(.field !=null)'") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 if [ "$decision" = "deny" ] && [[ "$reason" == *"jq-not-equal-null"* ]]; then
   pass "!=null (no space) blocked with correct pattern name"
@@ -359,7 +389,7 @@ echo "TC-016: Malformed JSON input → exit 0 (fail-open via jq fallback)"
 rc=0
 output=$(run_guard_raw "not valid json at all") || rc=$?
 if [ "$rc" = "0" ]; then
-  decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+  decision=$(extract_permission_decision "$output")
   if [ -z "$decision" ]; then
     pass "Malformed JSON → exit 0, no deny output (fail-open via || TOOL_NAME=\"\" fallback)"
   else
@@ -403,7 +433,7 @@ echo ""
 echo "TC-019: gh  pr  diff  123  -- file (multi-space) → deny"
 rc=0
 output=$(run_guard "Bash" "gh  pr  diff  123  -- file.md") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 if [ "$decision" = "deny" ]; then
   pass "Multi-space Pattern 2 blocked"
 else
@@ -417,7 +447,7 @@ echo ""
 echo "TC-020: gh pr diff --stat -- file → deny with gh-pr-diff-stat (priority)"
 rc=0
 output=$(run_guard "Bash" "gh pr diff 123 --stat -- file.md") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 if [ "$decision" = "deny" ] && [[ "$reason" == *"gh-pr-diff-stat"* ]]; then
   pass "Overlapping patterns: Pattern 1 (--stat) takes priority"
@@ -433,7 +463,7 @@ echo "TC-021: Multiline command with --stat → deny"
 rc=0
 MULTILINE_CMD=$(printf 'gh pr diff 123 \\\n  --stat')
 output=$(run_guard "Bash" "$MULTILINE_CMD") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 # bash case glob * matches across newlines, so deny is the expected result
 if [ "$decision" = "deny" ]; then
   pass "Multiline: glob * matches across newlines"
@@ -607,7 +637,7 @@ assert_subagent_deny_wrapper_guidance() {
   local output
   output=$(run_guard_with_transcript "Bash" "$cmd" "$SUBAGENT_TRANSCRIPT") || rc=$?
   local decision reason
-  decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+  decision=$(extract_permission_decision "$output")
   reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
   if [ "$decision" = "deny" ] \
     && [[ "$reason" == *"reviewer-shell-wrapper"* ]] \
@@ -672,7 +702,7 @@ echo "TC-113: input JSON subagent_type field → Tier 2 deny"
 rc=0
 tc113_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp, subagent_type: "code-reviewer"}')
 output=$(run_guard_clean_env "$tc113_input") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 stderr_log=$(cat "$STDERR_FILE")
 if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-gitdir-write"* ]]; then
@@ -695,7 +725,7 @@ echo "TC-113b: agent_type field set → Tier 2 deny"
 rc=0
 tc113b_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp, agent_type: "code-reviewer"}')
 output=$(run_guard_clean_env "$tc113b_input") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 stderr_log=$(cat "$STDERR_FILE")
 if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-gitdir-write"* ]]; then
@@ -779,7 +809,7 @@ echo "TC-114: CLAUDE_SUBAGENT_TYPE env var → Tier 3 deny"
 rc=0
 tc114_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
 output=$(run_guard_clean_env "$tc114_input" "CLAUDE_SUBAGENT_TYPE=code-reviewer") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 stderr_log=$(cat "$STDERR_FILE")
 if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-gitdir-write"* ]]; then
@@ -802,7 +832,7 @@ echo "TC-114b: CLAUDE_AGENT_TYPE env var → Tier 3 deny"
 rc=0
 tc114b_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
 output=$(run_guard_clean_env "$tc114b_input" "CLAUDE_AGENT_TYPE=code-reviewer") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 stderr_log=$(cat "$STDERR_FILE")
 if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-gitdir-write"* ]]; then
@@ -1028,7 +1058,7 @@ rc=0
 tc119_input=$(jq -n --arg cmd "git status" --arg tp "$SUBAGENT_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
 output=$(echo "$tc119_input" | RITE_BTG_TEST_CRASH=pattern4 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 stderr_log=$(cat "$STDERR_FILE")
 if [ "$rc" = "2" ]; then
@@ -1147,7 +1177,7 @@ _t0=$(date +%s%N)
 output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/in.json" 2>"$STDERR_FILE") || rc=$?
 _t1=$(date +%s%N)
 _ms=$(( (_t1 - _t0) / 1000000 ))
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 if [ "$decision" = "deny" ] && [ "$rc" != "124" ]; then
   pass "TC-124 oversized (1.3MB) reviewer command is denied fail-closed"
@@ -1170,7 +1200,7 @@ jq -n --rawfile cmd "$tc124_dir/ro.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/roin.json"
 rc=0
 output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/roin.json" 2>"$STDERR_FILE") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 if [ "$decision" = "deny" ]; then
   pass "TC-124 oversized READ-ONLY reviewer command is denied (length guard, allow→deny flip)"
 else
@@ -1189,7 +1219,7 @@ jq -n --rawfile cmd "$tc124_dir/hd.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/hdin.json"
 rc=0
 output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/hdin.json" 2>"$STDERR_FILE") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 if [ "$decision" = "deny" ]; then
   pass "TC-124 heredoc-body-oversized READ-ONLY command is denied (length guard uses full command length)"
 else
@@ -1267,7 +1297,7 @@ assert_subagent_deny_gitdir() {
   local output
   output=$(run_guard_with_transcript "Bash" "$cmd" "$SUBAGENT_TRANSCRIPT") || rc=$?
   local decision reason
-  decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+  decision=$(extract_permission_decision "$output")
   reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
   if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-gitdir-write"* ]]; then
     pass "$label"
@@ -1776,7 +1806,7 @@ _mrg_tmp=$(mktemp -d)
 _mrg_setup_state "$_mrg_tmp"
 rc=0
 output=$(_mrg_run "$_mrg_tmp" "gh pr merge 55 --squash") || rc=$?
-decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-json-absent"* ]] && [[ "$reason" == *"/rite:pr-review"* ]]; then
   pass "TC-130 absent JSON denies with merge-review-json-absent and /rite:pr-review"
@@ -1793,7 +1823,7 @@ _mrg_write_json "$_mrg_tmp" "56-sole.json" \
   '{"schema_version":1,"verdict":"mergeable","reviewers":["code-quality"]}'
 rc=0
 output=$(_mrg_run "$_mrg_tmp" "gh pr merge 56") || rc=$?
-decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-sole-reviewer"* ]]; then
   pass "TC-131 sole-reviewer JSON denies with merge-review-sole-reviewer"
@@ -1809,7 +1839,7 @@ _mrg_setup_state "$_mrg_tmp"
 _mrg_write_json "$_mrg_tmp" "57-broken.json" '{not valid json'
 rc=0
 output=$(_mrg_run "$_mrg_tmp" "gh pr merge 57") || rc=$?
-decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-json-parse"* ]]; then
   pass "TC-132 broken JSON denies with merge-review-json-parse"
@@ -1824,7 +1854,7 @@ _mrg_tmp=$(mktemp -d)
 _mrg_setup_state "$_mrg_tmp"   # pr_number stays 0
 rc=0
 output=$(_mrg_run "$_mrg_tmp" "gh pr merge --squash") || rc=$?
-decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-pr-unresolved"* ]]; then
   pass "TC-133 unresolvable PR number denies with merge-review-pr-unresolved"
@@ -1862,7 +1892,7 @@ fi
 # REST merge endpoint is detected and denied when JSON absent
 rc=0
 output=$(_mrg_run "$_mrg_tmp" "gh api repos/o/r/pulls/88/merge -X PUT") || rc=$?
-decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 if [ "$decision" = "deny" ]; then
   pass "TC-134 REST pulls/88/merge is detected and denied without JSON"
 else
@@ -1871,7 +1901,7 @@ fi
 # GraphQL mergePullRequest detected
 rc=0
 output=$(_mrg_run "$_mrg_tmp" "gh api graphql -f query='mutation { mergePullRequest(input:{pullRequestId:\"X\"}) { clientMutationId } }'") || rc=$?
-decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 # GraphQL has no PR number in path → pr-unresolved (or absent if number extracted)
 if [ "$decision" = "deny" ]; then
   pass "TC-134 GraphQL mergePullRequest is detected and denied"
@@ -1881,7 +1911,7 @@ fi
 # Existing Pattern 1 still denies
 rc=0
 output=$(_mrg_run "$_mrg_tmp" "gh pr diff 1 --stat") || rc=$?
-decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 if [ "$decision" = "deny" ] && [[ "$reason" == *"gh-pr-diff-stat"* ]]; then
   pass "TC-134 Pattern 1 (gh pr diff --stat) still denies (non-regression)"
@@ -1898,7 +1928,7 @@ _mrg_write_json "$_mrg_tmp" "60-incomplete.json" \
   '{"schema_version":"1.0.0","verdict":"mergeable"}'
 rc=0
 output=$(_mrg_run "$_mrg_tmp" "gh pr merge 60") || rc=$?
-decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-json-incomplete"* ]]; then
   pass "TC-135 incomplete keys deny with merge-review-json-incomplete"
@@ -1928,7 +1958,7 @@ _mrg_tmp=$(mktemp -d)
 _mrg_setup_state "$_mrg_tmp"
 rc=0
 output=$(_mrg_run "$_mrg_tmp" "/usr/bin/gh pr merge 99 --squash") || rc=$?
-decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-json-absent"* ]]; then
   pass "TC-137 /usr/bin/gh pr merge denies (path-prefixed binary is not a bypass)"
@@ -1938,7 +1968,7 @@ fi
 # hyphen-prefixed path also (Homebrew-style multi-component)
 rc=0
 output=$(_mrg_run "$_mrg_tmp" "/opt/homebrew/bin/gh pr merge 99") || rc=$?
-decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 if [ "$decision" = "deny" ]; then
   pass "TC-137 /opt/homebrew/bin/gh pr merge denies"
 else
@@ -1960,7 +1990,7 @@ rc=0
 # Quoted variable form as it appears in tool_input.command after shell expansion
 # has NOT happened (hook sees the literal command string from the tool call).
 output=$(_mrg_run "$_mrg_tmp" 'gh pr merge "$PR" --squash') || rc=$?
-decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-pr-unresolved"* ]] && [[ "$reason" == *"gh pr merge"* || "$reason" == *"bare integer"* || "$reason" == *"explicitly"* ]]; then
   pass "TC-138 variable-form \"\$PR\" denies with merge-review-pr-unresolved (no flow-state 77 pass-through)"
@@ -1970,7 +2000,7 @@ fi
 # Unquoted $PR form
 rc=0
 output=$(_mrg_run "$_mrg_tmp" 'gh pr merge $PR --squash') || rc=$?
-decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 reason=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
 if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-pr-unresolved"* ]]; then
   pass "TC-138 unquoted \$PR also denies with merge-review-pr-unresolved"
@@ -2071,7 +2101,7 @@ rc=0
 output=$(jq -n --arg cmd "gh pr diff 99 --stat" \
   '{tool_name:"Bash",tool_input:{command:$cmd}}' \
   | RITE_STATE_ROOT="$_audit_tmp" bash "$HOOK" 2>"$_audit_tmp/stderr") || rc=$?
-decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_permission_decision "$output")
 if [ "$decision" = "deny" ] && grep -q 'WARNING: unable to append deny audit log' "$_audit_tmp/stderr"; then
   pass "TC-142 deny contract survives audit write failure with one WARNING"
 else
