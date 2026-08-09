@@ -195,5 +195,25 @@ else
   assert "TC-16 the other four no-flock contenders aborted" "4" "$_nf_other"
 fi
 
+echo "=== TC-17: stale lock residue is reclaimed despite a live/reused PID ==="
+SID_RESIDUE="abababab-1111-2222-3333-444444444444"
+mk_active "$SID_RESIDUE" 970
+assert "TC-17 owner claims first" "claimed" "$(claim "$SID_RESIDUE" 970)"
+lockdir="$ROOT/.rite/state/issue-claims/.lock.d"
+mkdir "$lockdir"
+printf '%s\n' "$$" > "$lockdir/pid"
+printf '%s\n' "$(( $(date +%s) - 60 ))" > "$lockdir/acquired_at"
+assert "TC-17 release reclaims expired residue and succeeds" "released" "$(release "$SID_RESIDUE" 970)"
+assert "TC-17 claim is removed after residue recovery" "free" "$(check "$SID_RESIDUE" 970)"
+
+echo "=== TC-18: malformed/non-positive lock PID is reclaimable ==="
+mk_active "$SID_RESIDUE" 971
+assert "TC-18 owner claims first" "claimed" "$(claim "$SID_RESIDUE" 971)"
+mkdir "$lockdir"
+printf '%s\n' '%s' > "$lockdir/pid"
+printf '%s\n' "$(date +%s)" > "$lockdir/acquired_at"
+assert "TC-18 malformed PID residue is reclaimed" "released" "$(release "$SID_RESIDUE" 971)"
+assert "TC-18 claim is removed after malformed residue recovery" "free" "$(check "$SID_RESIDUE" 971)"
+
 print_summary "$(basename "$0")" \
   "Drift hint: issue-claim.sh §7 — claim/release/check; liveness reuses session-ownership.sh 2h threshold + parse_iso8601_to_epoch; noclobber + portable mkdir-lock atomicity; stale-steal CAS via _atomic_claim_steal; _resolve_current_session_id env-first."

@@ -65,6 +65,7 @@ fi
 CLAIMS_DIR="$STATE_ROOT/.rite/state/issue-claims"
 CLAIMS_LOCKDIR="$CLAIMS_DIR/.lock.d"
 CLAIMS_LOCK_RETRIES=50
+CLAIMS_LOCK_LEASE_SECONDS=30
 
 # Resolve the CURRENT session_id. Reuses the canonical helpers:
 #   - `_resolve-session-id.sh` UUID-validates a runtime env candidate
@@ -149,7 +150,8 @@ _claims_lock_acquire() {
   local tries=0 owner="" tomb=""
   while [ "$tries" -lt "$CLAIMS_LOCK_RETRIES" ]; do
     if mkdir "$CLAIMS_LOCKDIR" 2>/dev/null; then
-      printf '%s\n' "$$" > "$CLAIMS_LOCKDIR/pid" || {
+      printf '%s\n' "$$" > "$CLAIMS_LOCKDIR/pid" &&
+        date +%s > "$CLAIMS_LOCKDIR/acquired_at" || {
         rm -rf "$CLAIMS_LOCKDIR" 2>/dev/null || true
         return 1
       }
@@ -159,13 +161,22 @@ _claims_lock_acquire() {
     sleep 0.1
   done
 
+  local acquired_at="" now="" age=0 reclaim=false
   owner=$(cat "$CLAIMS_LOCKDIR/pid" 2>/dev/null || printf '')
-  if [ -z "$owner" ] || ! kill -0 "$owner" 2>/dev/null; then
+  acquired_at=$(cat "$CLAIMS_LOCKDIR/acquired_at" 2>/dev/null || printf '')
+  now=$(date +%s)
+  case "$owner" in ''|0|*[!0-9]*) reclaim=true ;; *) kill -0 "$owner" 2>/dev/null || reclaim=true ;; esac
+  case "$acquired_at" in
+    ''|*[!0-9]*) reclaim=true ;;
+    *) age=$((now - acquired_at)); [ "$age" -gt "$CLAIMS_LOCK_LEASE_SECONDS" ] && reclaim=true ;;
+  esac
+  if [ "$reclaim" = true ]; then
     tomb="${CLAIMS_LOCKDIR}.reap.$$"
     if mv "$CLAIMS_LOCKDIR" "$tomb" 2>/dev/null; then
       rm -rf "$tomb" 2>/dev/null || true
       if mkdir "$CLAIMS_LOCKDIR" 2>/dev/null; then
-        printf '%s\n' "$$" > "$CLAIMS_LOCKDIR/pid" || {
+        printf '%s\n' "$$" > "$CLAIMS_LOCKDIR/pid" &&
+          date +%s > "$CLAIMS_LOCKDIR/acquired_at" || {
           rm -rf "$CLAIMS_LOCKDIR" 2>/dev/null || true
           return 1
         }
