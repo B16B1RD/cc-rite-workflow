@@ -58,15 +58,20 @@ pr_json=$(gh pr view {pr_number} -R {owner_repo} --json mergeable,mergeStateStat
 checks_state=$(printf '%s' "$pr_json" | jq -r '
   if (.statusCheckRollup | type) != "array" then "unknown"
   elif (.statusCheckRollup | length) == 0 then "none"
-  elif any(.statusCheckRollup[];
-      (.__typename == "CheckRun" and (.status | type) == "string" and .status != "COMPLETED") or
-      (.__typename == "StatusContext" and (.state == "PENDING" or .state == "EXPECTED"))) then "pending"
+  # 集約 precedence は unknown > pending > unhealthy > healthy。
+  # mixed pending+unknown を pending に落とすと --force-ci で unknown を迂回できるため unknown を先に判定する。
   elif any(.statusCheckRollup[];
       (.__typename == "CheckRun" and
-        ((.status | type) != "string" or .status != "COMPLETED" or (.conclusion | type) != "string")) or
+        ((.status | type) != "string" or
+         (.status as $s | (["QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED", "PENDING", "COMPLETED"] | index($s)) == null) or
+         (.status == "COMPLETED" and (.conclusion | type) != "string"))) or
       (.__typename == "StatusContext" and
-        ((.state | type) != "string" or (.state as $s | (["SUCCESS", "ERROR", "FAILURE"] | index($s)) == null))) or
+        ((.state | type) != "string" or
+         (.state as $s | (["PENDING", "EXPECTED", "SUCCESS", "ERROR", "FAILURE"] | index($s)) == null))) or
       (.__typename != "CheckRun" and .__typename != "StatusContext")) then "unknown"
+  elif any(.statusCheckRollup[];
+      (.__typename == "CheckRun" and .status != "COMPLETED") or
+      (.__typename == "StatusContext" and (.state == "PENDING" or .state == "EXPECTED"))) then "pending"
   elif any(.statusCheckRollup[];
       (.__typename == "CheckRun" and
         (.conclusion as $c | (["SUCCESS", "NEUTRAL", "SKIPPED"] | index($c)) == null)) or

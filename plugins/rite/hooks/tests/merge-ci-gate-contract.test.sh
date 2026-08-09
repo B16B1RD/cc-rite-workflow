@@ -22,6 +22,14 @@ assert_grep "unhealthy default path forbids gh pr merge" "$MERGE" 'ステップ 
 assert_grep "pending checks stop without a wait loop" "$MERGE" 'checks が pending.*待機・自動 retry はしない'
 assert_grep "pending CheckRun is classified before nullable conclusion validation" "$MERGE" '__typename == "CheckRun".*\.status != "COMPLETED"'
 assert_grep "legacy StatusContext pending states are supported" "$MERGE" '__typename == "StatusContext".*\.state == "PENDING" or \.state == "EXPECTED"'
+assert_grep "mixed pending plus unknown uses unknown precedence" "$MERGE" 'mixed pending\+unknown.*unknown を先に判定する'
+unknown_line=$(grep -n 'elif any(.statusCheckRollup\[\];' "$MERGE" | sed -n '1p' | cut -d: -f1)
+pending_line=$(grep -n 'elif any(.statusCheckRollup\[\];' "$MERGE" | sed -n '2p' | cut -d: -f1)
+if [ -n "$unknown_line" ] && [ -n "$pending_line" ] && [ "$unknown_line" -lt "$pending_line" ]; then
+  pass "unknown aggregate branch precedes pending (mixed fixture cannot be overridden)"
+else
+  fail "unknown aggregate branch must precede pending (unknown=$unknown_line pending=$pending_line)"
+fi
 assert_grep "explicit override can continue a pending PR" "$MERGE" 'checks が pending \+ `force_ci == true`'
 assert_grep "healthy conclusions are an allowlist" "$MERGE" '\["SUCCESS", "NEUTRAL", "SKIPPED"\]'
 assert_grep "malformed and unknown states fail closed" "$MERGE" 'checks_state == "unknown".*\[merge:not-ready\]'
