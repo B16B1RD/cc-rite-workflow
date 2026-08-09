@@ -74,7 +74,8 @@ review:
   loop:
     verification_mode: false                       # 前回レビューコメントがある場合に検証モードを有効化
     allow_new_findings_in_unchanged_code: false    # 未変更コードへの新規指摘を blocking 扱いにするか
-    # 正常出口は 0 blocking findings のみ。circuit breaker は次のいずれかで発火する:
+    # 正常出口は 0 blocking findings のみ（定義: plugins/rite/references/severity-levels.md §実測必須ゲート）。
+    # circuit breaker は次のいずれかで発火する:
     # 収束トレンドの発散 / safety.max_review_cycles 到達（backstop）
     convergence_monitoring: true          # Scaffolding only（収束監視は circuit breaker の trend check が担い、このキーに runtime effect はない）
     auto_propagation_scan: true           # Fix 後の類似パターン伝播スキャン
