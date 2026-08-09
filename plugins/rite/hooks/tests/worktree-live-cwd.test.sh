@@ -52,19 +52,11 @@ sleep 0.3
 assert "TC-3 held dir → rc 0" "0" "$(probe_rc "$D")"
 
 echo "=== TC-4: a process holds cwd nested under dir → rc 0 ==="
-# Without /proc the auto backend falls back to lsof, whose exit-code-based
-# detection is a false-negative for a dir that has subdirectories (a real bug
-# tracked in #2011). Guard behind /proc so the macOS leg skips this rather than
-# asserting the broken result (Issue #2008 Family B).
-if [ -d /proc ]; then
 D2=$(mktemp -d); cleanup_dirs+=("$D2")
 mkdir -p "$D2/sub/deep"
 ( cd "$D2/sub/deep" && sleep 30 ) & holders+=("$!")
 sleep 0.3
 assert "TC-4 nested-held dir → rc 0" "0" "$(probe_rc "$D2")"
-else
-  skip "TC-4 skipped (no /proc: auto backend → lsof; lsof exit-code false-negative on nested dirs tracked in #2011)"
-fi
 
 echo "=== TC-5: sibling-prefix dir must not false-match (issue-1 vs issue-12) ==="
 D3=$(mktemp -d); cleanup_dirs+=("$D3")
@@ -117,6 +109,10 @@ if command -v lsof >/dev/null 2>&1; then
   ( cd "$D7" && sleep 30 ) & holders+=("$!")
   sleep 0.3
   assert "TC-10 probe=lsof held dir → rc 0" "0" "$(RITE_WORKTREE_LIVE_CWD_PROBE=lsof bash "$PROBE" "$D7" >/dev/null 2>&1; echo $?)"
+  mkdir -p "$D7/sub/deep"
+  ( cd "$D7/sub/deep" && sleep 30 ) & holders+=("$!")
+  sleep 0.3
+  assert "TC-10 probe=lsof nested-held dir → rc 0" "0" "$(RITE_WORKTREE_LIVE_CWD_PROBE=lsof bash "$PROBE" "$D7" >/dev/null 2>&1; echo $?)"
 else
   # lsof absent → the lsof backend reports undeterminable (rc 2), not a false negative.
   assert "TC-10 probe=lsof w/o lsof → rc 2" "2" "$(RITE_WORKTREE_LIVE_CWD_PROBE=lsof bash "$PROBE" "$D7" >/dev/null 2>&1; echo $?)"
@@ -127,19 +123,12 @@ echo "=== TC-11: canonicalization matches a symlinked parent (pwd -P / readlink 
 # physical. A holder entering via a symlinked path must still match both the real
 # and the linked target — pins the canonicalization contract against a future
 # realpath swap.
-# Guard behind /proc: the auto backend uses lsof without /proc, whose exit-code
-# false-negative on dirs-with-subdirs ($Dreal/wt has /sub) makes both asserts
-# fail on macOS — the #2011 lsof bug, not a canonicalization regression (Family B).
-if [ -d /proc ]; then
 Dreal=$(mktemp -d); cleanup_dirs+=("$Dreal"); mkdir -p "$Dreal/wt/sub"
 Dlink=$(mktemp -d); cleanup_dirs+=("$Dlink"); ln -s "$Dreal/wt" "$Dlink/wtlink"
 ( cd "$Dlink/wtlink/sub" && sleep 30 ) & holders+=("$!")
 sleep 0.3
 assert "TC-11 real path → rc 0" "0" "$(probe_rc "$Dreal/wt")"
 assert "TC-11 symlinked path → rc 0" "0" "$(probe_rc "$Dlink/wtlink")"
-else
-  skip "TC-11 skipped (no /proc: auto backend → lsof; exit-code false-negative tracked in #2011)"
-fi
 
 if ! print_summary "$(basename "$0")" "worktree-live-cwd.sh の OS 接地 liveness 判定 (Issue #1544)"; then
   exit 1
