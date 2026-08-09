@@ -50,7 +50,26 @@ Ready/merge 可否の権威判定はここ (`gh pr view`) に一本化する。f
 ```bash
 force_ci=false
 case " {arguments} " in *" --force-ci "*) force_ci=true ;; esac
-gh pr view {pr_number} -R {owner_repo} --json mergeable,mergeStateStatus,isDraft,headRefName,statusCheckRollup
+pr_json=$(gh pr view {pr_number} -R {owner_repo} --json mergeable,mergeStateStatus,isDraft,headRefName,statusCheckRollup) \
+  || { echo "[merge:not-ready]"; echo "ERROR: PR/CI 状態を取得できないためマージしません" >&2; exit 1; }
+
+# statusCheckRollup を排他的に機械分類する。既知の成功 conclusion 以外を healthy にしない。
+# malformed / 未知値は unknown として fail-closed にする。
+checks_state=$(printf '%s' "$pr_json" | jq -r '
+  if (.statusCheckRollup | type) != "array" then "unknown"
+  elif (.statusCheckRollup | length) == 0 then "none"
+  elif any(.statusCheckRollup[];
+      (.status | type) != "string" or (.conclusion | type) != "string") then "unknown"
+  elif any(.statusCheckRollup[]; .status != "COMPLETED" or .conclusion == "") then "pending"
+  elif any(.statusCheckRollup[];
+      .conclusion as $c | (["SUCCESS", "NEUTRAL", "SKIPPED"] | index($c)) == null) then "unhealthy"
+  elif all(.statusCheckRollup[];
+      .status == "COMPLETED" and
+      (.conclusion as $c | (["SUCCESS", "NEUTRAL", "SKIPPED"] | index($c)) != null)) then "healthy"
+  else "unknown"
+  end
+') || checks_state=unknown
+echo "[CONTEXT] MERGE_CHECKS_STATE=$checks_state"
 ```
 
 `headRefName` の値は完了通知 (ステップ 3) の `{branch_name}` 展開に使うため retain する (flow-state 不在でもブランチ名が空にならない)。
@@ -64,6 +83,7 @@ gh pr view {pr_number} -R {owner_repo} --json mergeable,mergeStateStatus,isDraft
 | `mergeable == "MERGEABLE"` + `mergeStateStatus == "UNSTABLE"`（checks unhealthy）+ `force_ci == false` | 下記「CI red の分類」を実行して内訳を表示し、`[merge:not-ready]` emit + `/rite:merge --force-ci {pr_number}` を案内して終了。ステップ 2 の `gh pr merge` は実行しない |
 | checks unhealthy + `force_ci == true` | 下記分類と内訳表示を省略せず実行した後、ステップ 2 へ |
 | `mergeable == "MERGEABLE"` + checks が全件 healthy | ステップ 2 へ |
+| `checks_state == "unknown"`（malformed / 未知 status・conclusion / jq 失敗） | `[merge:not-ready]` emit + 生の `statusCheckRollup` を表示して終了。`--force-ci` でも unknown は override しない |
 
 > **「再判定」option の挙動**: 再判定は **1 回のみ**。再判定後も `MERGEABLE` でなければ `[merge:not-ready]` で確定終了する (ping-pong 防止)。`gh pr view` の mergeable 計算は数秒〜数十秒遅延するため、再判定前に短時間待機 (sleep / 手動 wait) するかはユーザー判断に委ねる。自動 sleep は提供しない (再判定を自動で繰り返さない最小主義と整合。iterate の review⇄fix ループとは別経路で、こちらは 1 回のみの再判定に留める)。
 
