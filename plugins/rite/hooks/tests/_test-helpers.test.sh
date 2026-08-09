@@ -111,7 +111,8 @@ echo
 echo "TC-4: assert_grep / assert_not_grep"
 
 tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
+mutant_file="${tmpfile}.mutant"
+trap 'rm -f "$tmpfile" "$mutant_file"' EXIT
 printf 'hello world\nfoo bar\n' > "$tmpfile"
 
 grep_state=$(bash -c "
@@ -605,6 +606,21 @@ if echo "$no_skip_state" | grep -q 'SKIP:'; then
   outer_fail "TC-15.2: print_summary printed a SKIP line with SKIP=0 (should be omitted): $(printf '%s' "$no_skip_state" | tr '\n' '|')"
 else
   outer_pass "TC-15.2: print_summary omits the SKIP line when nothing was skipped"
+fi
+
+# === TC-16: shared mutation precondition ===
+printf 'original\n' > "$tmpfile"
+printf 'changed\n' > "$mutant_file"
+if bash -c "source '$HELPERS'; assert_mutant_changed changed '$tmpfile' '$mutant_file'" >/dev/null; then
+  outer_pass "TC-16.1: assert_mutant_changed accepts a real mutation"
+else
+  outer_fail "TC-16.1: assert_mutant_changed rejected different files"
+fi
+printf 'original\n' > "$mutant_file"
+if bash -c "source '$HELPERS'; assert_mutant_changed identical '$tmpfile' '$mutant_file'" >/dev/null; then
+  outer_fail "TC-16.2: assert_mutant_changed accepted an identical mutant"
+else
+  outer_pass "TC-16.2: assert_mutant_changed rejects a no-op mutation"
 fi
 
 # === Summary ===

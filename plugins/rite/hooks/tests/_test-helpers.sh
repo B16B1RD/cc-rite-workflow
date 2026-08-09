@@ -234,6 +234,24 @@ assert_file_exists_or_fail() {
   return 0
 }
 
+# Mutation-test precondition: require a generated mutant to differ from its
+# source before interpreting behavioral equality/difference. This keeps sed/awk
+# selector drift from turning a mutation assertion into a vacuous green test.
+# The helper records only failure (matching the historical local helpers); the
+# caller's behavioral assertion records the PASS when the mutant is meaningful.
+assert_mutant_changed() {
+  local label="$1"
+  local original="$2"
+  local mutant="$3"
+  if ! assert_file_exists_or_fail "$label source" "$original"; then return 1; fi
+  if ! assert_file_exists_or_fail "$label mutant" "$mutant"; then return 1; fi
+  if diff -q "$original" "$mutant" >/dev/null 2>&1; then
+    fail "$label (mutant is identical to source; mutation selector matched nothing)"
+    return 1
+  fi
+  return 0
+}
+
 # Section-scoped pattern presence assertion.
 # Extracts an awk address-range section ([start_pattern, end_pattern]) from `file`
 # into a private tempfile, runs `grep -qE grep_pattern` against it, then self-cleans.
