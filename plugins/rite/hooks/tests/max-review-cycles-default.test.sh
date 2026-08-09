@@ -31,6 +31,7 @@ FIX_RELAXATION="$PLUGIN_ROOT/skills/fix/references/fix-relaxation-rules.md"
 TREND_HELPER="$PLUGIN_ROOT/hooks/scripts/review-trend-divergence.sh"
 
 DEFAULT_CYCLES=15
+BACKSTOP_CYCLE=$((DEFAULT_CYCLES + 1))
 
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEST_DIR"' EXIT
@@ -200,10 +201,12 @@ assert "T-04o: iterate/SKILL.md の散文既定値 3 箇所が $DEFAULT_CYCLES" 
   "3" "$(grep -c "（既定 ${DEFAULT_CYCLES}）" "$ITERATE")"
 assert "T-04p: SPEC.md の英文既定値 1 箇所が $DEFAULT_CYCLES" \
   "1" "$(grep -c "at the default of $DEFAULT_CYCLES" "$SPEC_DOC")"
-assert_grep "T-04q: fix relaxation rules の既定値と導出 cycle が同期" "$FIX_RELAXATION" \
-  '既定 15 では 16 cycle 以上'
-assert_grep "T-04r: trend helper header の既定値と導出 cycle が同期" "$TREND_HELPER" \
-  '既定 15 では 16 cycle 以上'
+assert "T-04q: fix relaxation rules の既定値 3 箇所が $DEFAULT_CYCLES" \
+  "3" "$(grep -o "既定 $DEFAULT_CYCLES" "$FIX_RELAXATION" | wc -l | tr -d '[:space:]')"
+assert_grep "T-04r: fix relaxation rules の既定値と導出 cycle が同期" "$FIX_RELAXATION" \
+  "既定 $DEFAULT_CYCLES では $BACKSTOP_CYCLE cycle 以上"
+assert_grep "T-04s: trend helper header の既定値と導出 cycle が同期" "$TREND_HELPER" \
+  "既定 $DEFAULT_CYCLES では $BACKSTOP_CYCLE cycle 以上"
 
 echo "=== T-05: backstop の発火条件と sentinel が不変 (AC-5) ==="
 # 既定値の引き上げは backstop を撤廃しない (Issue #2129 D-01 / MUST NOT)。
