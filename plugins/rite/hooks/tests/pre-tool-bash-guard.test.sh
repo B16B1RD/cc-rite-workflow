@@ -92,11 +92,12 @@ fail() {
 extract_hook_field() {
   local hook_output="$1"
   local field="$2"
+  local jq_bin="${3:-jq}"
   local parsed=""
   local jq_rc=0
   case "$field" in hookEventName|permissionDecision|permissionDecisionReason) ;; *) return 2 ;; esac
   if parsed=$(printf '%s' "$hook_output" \
-    | jq -r --arg field "$field" '.hookSpecificOutput[$field] // empty' 2>/dev/null); then
+    | "$jq_bin" -r --arg field "$field" '.hookSpecificOutput[$field] // empty' 2>/dev/null); then
     printf '%s' "$parsed"
     return 0
   else
@@ -903,8 +904,8 @@ if printf '%s' "$output" | "$real_jq" -e . >/dev/null 2>&1; then
 else
   fail "TC-116 fallback output is not parseable JSON: $(printf '%s' "$output" | cat -v)"
 fi
-decision=$(printf '%s' "$output" | "$real_jq" -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(printf '%s' "$output" | "$real_jq" -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+decision=$(extract_hook_field "$output" permissionDecision "$real_jq")
+reason=$(extract_hook_field "$output" permissionDecisionReason "$real_jq")
 if [ "$decision" = "deny" ] && [[ "$reason" == *"gh-pr-diff-stat"* ]]; then
   pass "TC-116 deny decision and pattern name survive the fallback"
 else
@@ -1021,8 +1022,8 @@ if printf '%s' "$output" | "$real_jq" -e . >/dev/null 2>&1; then
 else
   fail "TC-118 placeholder output is not parseable JSON: $(printf '%s' "$output" | cat -v)"
 fi
-decision=$(printf '%s' "$output" | "$real_jq" -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(printf '%s' "$output" | "$real_jq" -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+decision=$(extract_hook_field "$output" permissionDecision "$real_jq")
+reason=$(extract_hook_field "$output" permissionDecisionReason "$real_jq")
 if [ "$decision" = "deny" ]; then
   pass "TC-118 deny decision survives the placeholder degradation"
 else
