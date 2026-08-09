@@ -363,6 +363,25 @@ fi
 trap - EXIT INT TERM HUP
 ```
 
+`commit_rc=4` を観測した場合は、上の Bash block とは**別の Bash tool call**で次を 1 回だけ再試行する。tool call には `dangerouslyDisableSandbox: true` を指定する（ユーザー確認不要。`/rite:open` ステップ 6.1 / Issue #1897 と同じ既知の SSH host-key / network sandbox 制約）。通常 sandbox のまま同じ push を繰り返してはならない。
+
+```bash
+if retry_out=$(bash {plugin_root}/hooks/scripts/wiki-worktree-commit.sh --push-only 2>&1); then
+  echo "$retry_out"
+  echo "[CONTEXT] WIKI_INGEST_PUSH_RETRY=ok; source=issue-close; issue={issue_number}"
+else
+  retry_rc=$?
+  printf '%s\n' "$retry_out" | head -5 | sed 's/^/  /' >&2
+  echo "[CONTEXT] WIKI_INGEST_PUSH_RETRY=failed; source=issue-close; issue={issue_number}; exit_code=$retry_rc"
+fi
+```
+
+close の完了報告前に、`WIKI_INGEST_PUSH_FAILED=1` があり、それより後に同じ Issue の `WIKI_INGEST_PUSH_RETRY=ok` が無い場合は、次の行を**必ず**表示する（close 自体は non-blocking のまま続行する）:
+
+```
+⚠️ Wiki push 未完了: local wiki commit は保持されています。手動回復: bash {plugin_root}/hooks/scripts/wiki-worktree-commit.sh --push-only
+```
+
 **Non-blocking**: 失敗は close を止めない。`wiki-ingest-commit.sh` は失敗時に cleanup trap で raw source を復元するので次回再試行できる。→ Phase 4.5 へ。
 
 ---
