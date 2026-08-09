@@ -118,6 +118,34 @@ assert "background toggle isolation retains active finding" "1" "$rc"
 assert "background disable does not change active parent" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*background_parent_on' || true)"
 assert "background enable does not change disabled parent" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*background_parent_off' || true)"
 
+printf '%s\n' \
+  'called_active() { called_active_stream | grep -q x; }' \
+  'set -o pipefail' \
+  'called_active' \
+  'set -o pipefail' \
+  'called_disabled() { called_disabled_stream | grep -q x; }' \
+  'set +o pipefail' \
+  'called_disabled' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "function call-state analysis retains active finding" "1" "$rc"
+assert "definition-off call-on function is detected" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*called_active_stream' || true)"
+assert "definition-on call-off function is suppressed" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*called_disabled_stream' || true)"
+
+printf '%s\n' \
+  'set -o pipefail' \
+  'split_style()' \
+  '{' \
+  '  set +o pipefail' \
+  '}' \
+  'function keyword_style' \
+  '{' \
+  '  set +o pipefail' \
+  '}' \
+  'after_split_definitions | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "multiline function headers preserve outer state" "1" "$rc"
+assert "both multiline declaration styles restore state" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*after_split_definitions' || true)"
+
 printf '%s\n' 'set -o pipefail' 'stream_many | grep -q x # drift-check-ignore: bounded fixture' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "ignore marker suppresses finding" "0" "$rc"

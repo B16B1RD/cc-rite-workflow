@@ -109,19 +109,25 @@ def syntax_only(line):
 
 toggle_re=re.compile(r'(?<![A-Za-z0-9_])set\s+([+-][A-Za-z]*o[A-Za-z]*|[+-]o)\s+pipefail(?=\s|;|\)|$)')
 
-def scan_line_state(syntax, state, stack):
+def scan_line_state(syntax, state, stack, function_activity=None, pending_function=None):
     """Evaluate one line while retaining parenthesized scopes across lines."""
-    function_opens={m.end()-1 for m in re.finditer(
-        r'(?:^|[;&])\s*(?:function\s+[A-Za-z_][A-Za-z0-9_]*(?:\s*\(\s*\))?|[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\))\s*\{',
-        syntax)}
+    function_activity=function_activity or {}
+    open_names={}
+    for m in re.finditer(r'(?:^|[;&])\s*(?:function\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?|([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\))\s*\{', syntax):
+        open_names[m.end()-1]=m.group(1) or m.group(2)
+    if pending_function:
+        m=re.match(r'^\s*\{',syntax)
+        if m: open_names[m.end()-1]=pending_function; pending_function=None
+    header=re.match(r'^\s*(?:function\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?|([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\))\s*$',syntax)
+    if header: pending_function=header.group(1) or header.group(2)
     pipe_states=[]; segment_start_state=state; i=0
     while i < len(syntax):
         if syntax[i] == "(": stack.append(("paren",state)); i+=1; continue
         if syntax[i] == ")":
             if stack and stack[-1][0] == "paren": state=stack.pop()[1]
             i+=1; continue
-        if syntax[i] == "{" and i in function_opens:
-            stack.append(("function",state)); i+=1; continue
+        if syntax[i] == "{" and i in open_names:
+            stack.append(("function",state)); state=function_activity.get(open_names[i],False); i+=1; continue
         if syntax[i] == "{":
             stack.append(("brace",state)); i+=1; continue
         if syntax[i] == "}":
@@ -143,7 +149,48 @@ def scan_line_state(syntax, state, stack):
             state=match.group(1).startswith("-")
             i=match.end(); continue
         i+=1
-    return pipe_states,state,stack
+    return pipe_states,state,stack,pending_function
+
+def infer_function_activity(logical):
+    """Collect whether each statically named function is called under pipefail."""
+    names=set()
+    for _,line in logical:
+        m=re.match(r'^\s*(?:function\s+([A-Za-z_][A-Za-z0-9_]*)|([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\))',syntax_only(line))
+        if m: names.add(m.group(1) or m.group(2))
+    activity={name:False for name in names}; edges={name:set() for name in names}
+    state=False; in_function=None; pending=None; depth=0
+    for _,line in logical:
+        syntax=syntax_only(line)
+        header=re.match(r'^\s*(?:function\s+[A-Za-z_][A-Za-z0-9_]*(?:\s*\(\s*\))?|[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\))\s*(\{)?',syntax)
+        if not in_function and header:
+            declared=re.match(r'^\s*(?:function\s+([A-Za-z_][A-Za-z0-9_]*)|([A-Za-z_][A-Za-z0-9_]*)\s*\()',syntax)
+            declared_name=(declared.group(1) or declared.group(2)) if declared else None
+            if header.group(1):
+                depth=syntax.count("{")-syntax.count("}"); in_function=declared_name if depth>0 else None
+            else: pending=declared_name
+            continue
+        if pending:
+            if re.match(r'^\s*\{',syntax): in_function=pending; pending=None; depth=syntax.count("{")-syntax.count("}")
+            continue
+        if in_function:
+            for name in names:
+                if re.search(r'(?:^|[;|&]\s*|\b(?:if|then|command)\s+|!\s*|\$\(\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
+                    edges[in_function].add(name)
+            depth+=syntax.count("{")-syntax.count("}")
+            if depth<=0: in_function=None
+            continue
+        for name in names:
+            if re.search(r'(?:^|[;|&]\s*|\b(?:if|then|command)\s+|!\s*|\$\(\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
+                activity[name]=activity[name] or state
+        _,state,_,_=scan_line_state(syntax,state,[],{},None)
+    changed=True
+    while changed:
+        changed=False
+        for caller,callees in edges.items():
+            if activity[caller]:
+                for callee in callees:
+                    if not activity[callee]: activity[callee]=True; changed=True
+    return activity
 
 def exempt(prod, pipeline_len):
     p=prod.strip()
@@ -194,9 +241,10 @@ for base in ("plugins/rite/hooks", "plugins/rite/scripts"):
                     continue
                 logical.append((start_n,acc)); acc=""
             if acc: logical.append((start_n,acc))
-            prev=""; pipefail=False; scope_stack=[]
+            function_activity=infer_function_activity(logical)
+            prev=""; pipefail=False; scope_stack=[]; pending_function=None
             for n,line in logical:
-                pipe_states,pipefail,scope_stack=scan_line_state(syntax_only(line), pipefail, scope_stack)
+                pipe_states,pipefail,scope_stack,pending_function=scan_line_state(syntax_only(line),pipefail,scope_stack,function_activity,pending_function)
                 ignored="drift-check-ignore" in line or "drift-check-ignore" in prev
                 edges=pipeline_edges(line)
                 if not ignored:
