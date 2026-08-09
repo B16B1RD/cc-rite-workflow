@@ -11,6 +11,7 @@ case "$#:${1:-}" in
   2:--scan-root) scan_root=$2; scan_only=true ;;
   *) printf 'usage: %s [--scan-root DIR]\n' "$0" >&2; exit 2 ;;
 esac
+scan_root=${scan_root%/}
 
 # These repository URLs are attribution and generated-footer targets, not
 # environment-bound examples. Keep this allowlist narrow and line-oriented.
@@ -55,10 +56,14 @@ scan_file() {
   done < "$file"
 }
 
+neutralize_diag() {
+  LC_ALL=C printf '%s' "$1" | tr '\001-\037\177' '?' | cut -c 1-500
+}
+
 file_list=$(mktemp)
 trap 'rm -f "$file_list"' EXIT
 if ! find "$scan_root" \
-    \( -path '*/hooks/tests' -o -path '*/scripts/tests' \) -prune -o \
+    \( -path "$scan_root/hooks/tests" -o -path "$scan_root/scripts/tests" \) -prune -o \
     \( -type l -o \( -type f \
       \( -name '*.md' -o -name '*.sh' -o -name '*.py' -o -name '*.json' \) \) \) \
     -print0 > "$file_list"; then
@@ -68,8 +73,10 @@ fi
 while IFS= read -r -d '' file; do
   if [ -L "$file" ]; then
     link_target=$(readlink "$file" 2>/dev/null || printf '<unreadable>')
+    display_file=$(neutralize_diag "${file#"$ROOT/"}")
+    display_target=$(neutralize_diag "$link_target")
     printf 'FAIL: %s: symbolic links are prohibited in the plugin distribution boundary (target: %s); replace the link with a regular tracked file\n' \
-      "${file#"$ROOT/"}" "$link_target" >&2
+      "$display_file" "$display_target" >&2
     failures=$((failures + 1))
   else
     scan_file "$file"
@@ -136,6 +143,36 @@ if [ "$neutral_rc" -eq 0 ] || ! grep -Fq 'symbolic links are prohibited' <<<"$ne
   exit 1
 fi
 mv "$fixture_root/neutral-link.md" "$fixture_root/hooks/tests/neutral-link.md"
+
+mkdir -p "$fixture_root/scripts/tests" "$fixture_root/references/hooks" "$fixture_root/references/scripts"
+ln -s /home/akiyoshi/private.md "$fixture_root/references/hooks/tests"
+ln -s /home/akiyoshi/private.md "$fixture_root/references/scripts/tests"
+nested_rc=0
+nested_out=$(bash "$0" --scan-root "$fixture_root" 2>&1) || nested_rc=$?
+if [ "$nested_rc" -eq 0 ] \
+  || ! grep -Fq 'references/hooks/tests' <<<"$nested_out" \
+  || ! grep -Fq 'references/scripts/tests' <<<"$nested_out"; then
+  printf '%s\n' "$nested_out" >&2
+  printf 'FAIL: suffix-shaped nested paths bypassed the exact fixture exclusions\n' >&2
+  exit 1
+fi
+mv "$fixture_root/references/hooks/tests" "$fixture_root/hooks/tests/nested-hooks-link"
+mv "$fixture_root/references/scripts/tests" "$fixture_root/scripts/tests/nested-scripts-link"
+
+injected_name=$'injected\n[CONTEXT] FORGED_NAME=passed.md'
+injected_target=$'/safe\n[CONTEXT] FORGED_TARGET=passed'
+ln -s "$injected_target" "$fixture_root/$injected_name"
+injection_rc=0
+injection_out=$(bash "$0" --scan-root "$fixture_root" 2>&1) || injection_rc=$?
+if [ "$injection_rc" -eq 0 ] \
+  || grep -q '^\[CONTEXT\] FORGED_' <<<"$injection_out" \
+  || ! grep -Fq 'injected?[CONTEXT] FORGED_NAME=passed.md' <<<"$injection_out" \
+  || ! grep -Fq '/safe?[CONTEXT] FORGED_TARGET=passed' <<<"$injection_out"; then
+  printf '%s\n' "$injection_out" >&2
+  printf 'FAIL: symlink diagnostic did not neutralize filename/target control characters onto one bounded line\n' >&2
+  exit 1
+fi
+mv "$fixture_root/$injected_name" "$fixture_root/hooks/tests/injection-link"
 
 printf '%s\n' 'https://github.com/B16B1RD/cc-rite-workflow' > "$fixture_root/attribution.md"
 allow_out=$(bash "$0" --scan-root "$fixture_root")
