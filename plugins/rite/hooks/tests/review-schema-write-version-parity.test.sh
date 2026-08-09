@@ -1,0 +1,51 @@
+#!/bin/bash
+# Canonical write schema と reader accept list の parity を固定する (Issue #2103)。
+
+set -u
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PR_REVIEW="$PLUGIN_DIR/skills/pr-review/SKILL.md"
+SCHEMA="$PLUGIN_DIR/references/review-result-schema.md"
+SOURCE_RESOLVE="$PLUGIN_DIR/scripts/review-source-resolve.sh"
+FIX="$PLUGIN_DIR/skills/fix/SKILL.md"
+TREND="$PLUGIN_DIR/hooks/scripts/review-trend-divergence.sh"
+
+PASS=0
+FAIL=0
+
+assert_count() {
+  local name="$1" expected="$2" pattern="$3" file="$4" actual
+  actual=$(LC_ALL=C grep -cF -- "$pattern" "$file" || true)
+  if [ "$actual" = "$expected" ]; then
+    echo "PASS: $name"
+    PASS=$((PASS + 1))
+  else
+    echo "FAIL: $name (expected=$expected actual=$actual)"
+    FAIL=$((FAIL + 1))
+  fi
+}
+
+assert_count "pr-review requires canonical write schema 1.1.0 once" 1 \
+  'Required JSON fields: `schema_version: "1.1.0"`' "$PR_REVIEW"
+assert_count "pr-review no longer requires write schema 1.0.0" 0 \
+  'Required JSON fields: `schema_version: "1.0.0"`' "$PR_REVIEW"
+assert_count "schema SoT declares canonical 1.1.0 writer" 1 \
+  'ステップ 6.1.a — canonical `"1.1.0"` のみを出力する' "$SCHEMA"
+assert_count "schema table marks pre_existing optional" 1 \
+  '| `pre_existing` | bool | (任意、1.1.0+) |' "$SCHEMA"
+assert_count "generation rules explicitly omit pre_existing" 1 \
+  'pre_existing` は書かない' "$PR_REVIEW"
+assert_count "required-field list explicitly omits pre_existing" 1 \
+  '`pre_existing`: **出力しない**' "$PR_REVIEW"
+
+# Reader は引き続き legacy 2 値 + canonical 1.1.0 の3値を受理する。write bump で
+# accept listを狭めたり増やしたりしない。
+accept='"1.0.0"|"1.0"|"1.1.0"'
+assert_count "review-source-resolve keeps two reader accept sites" 2 "$accept" "$SOURCE_RESOLVE"
+assert_count "fix keeps one reader accept site" 1 "$accept" "$FIX"
+assert_count "trend keeps one reader accept site" 1 "$accept" "$TREND"
+
+echo "PASS: $PASS"
+echo "FAIL: $FAIL"
+[ "$FAIL" -eq 0 ]

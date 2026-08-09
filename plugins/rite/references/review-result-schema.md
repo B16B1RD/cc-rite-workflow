@@ -27,6 +27,8 @@
 
 **`verification` は 1.1.0 内で additive 追加された optional field** — したがって **`"1.1.0"` で受信した JSON でも `findings[].verification` は欠落しうる**。読取側 accept list 4 箇所の同期変更を避けるため schema_version は bump しない。「`schema_version == "1.1.0"` ならば `verification` が存在する」と読んではならない。欠落時は `measured=false` の default mapping を適用する (同じく [後方互換性](#後方互換性-schema-10--110) 参照)。ただし **blocking 判定 consumer は欠落を「未判定」= blocking と解釈する** — 同節の「3 値モデルへの上書き」を参照。
 
+**`pre_existing` も 1.1.0 内で欠落を許容する additive optional field** — canonical write 側は reviewer の revert test 結果を収集しないため、`"1.1.0"` を出力しても `findings[].pre_existing` を書かない。read 側は schema_version に依らず default mapping を適用せず、欠落時は Cross-field invariant #5 を発火させない。`scope` は同じ 1.1.0 の field でも canonical write 側で必須であり、この optional 契約を適用してはならない。
+
 **検証箇所の同期義務** (verified-review cycle 8 L-4 対応で本セクションを SoT 化、cycle 10 I-E 対応で read/write 非対称を明示、1.1.0 を accept list に追加):
 
 **読取側 (3 値受理義務、4 箇所で完全同期)**:
@@ -42,7 +44,7 @@
 
 **書込側 (canonical 値のみ出力、同期義務なし)**:
 
-- `pr-review.md` ステップ 6.1.a — 現時点では canonical `"1.0.0"` のみを出力する。`"1.1.0"` への canonical write bump は **`_reviewer-base` への Scope Assignment 責務追加** のスコープ。reviewer が scope / pre_existing を出力できるようになった時点で本ドキュメントの書込側 canonical を `"1.1.0"` に bump する。case 文は存在せず、post-condition jq validation は `schema_version | type == "string" and length > 0` の型チェックのみで値の同期対象外 (読取側 accept list と独立に進化してよい)
+- `pr-review.md` ステップ 6.1.a — canonical `"1.1.0"` のみを出力する。`findings[].scope` は必須だが、`findings[].pre_existing` は上記 additive optional 契約により出力しない。case 文は存在せず、post-condition jq validation は `schema_version | type == "string" and length > 0` の型チェックのみで値の同期対象外 (読取側 accept list と独立に進化してよい)
 
 本セクションが Single Source of Truth であり、読取側 4 箇所の accept list を本ドキュメントと同一に保つ義務がある。この 4 箇所間の drift を自動検出する仕組みはないため、本ドキュメントを変更した際は手動で 4 箇所を同期させること（`plugins/rite/hooks/scripts/review-schema-version-check.sh` は `.rite/review-results/*.json` の schema_version 値を検査するものであり、読取側 4 箇所の accept list リテラル自体の同期は対象外）。
 
@@ -169,7 +171,7 @@
 | `category` | string | ✅ | カテゴリ (例: `code_quality`, `security`, `performance`, `error_handling`) |
 | `severity` | **enum** (string) | ✅ | 重要度。**受理値**: `"CRITICAL"` / `"HIGH"` / `"MEDIUM"` / `"LOW-MEDIUM"` / `"LOW"` の 5 値のみ (LOW-MEDIUM は `severity-levels.md` Severity Levels 表で正式定義された first-class severity で、`COMMENT_QUALITY` 軸の独自ジャーゴン濫用 等の bounded blast radius 違反に使う)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=severity_unknown_value; value=<val>` を stderr 出力し、該当 finding を `MEDIUM` にフォールバック (silent skip は禁止)。外部ツール出力の別名は下記「severity 別名マッピング表」に従って read 側で正規化してから本 enum に落とす |
 | `scope` | **enum** (string) | ✅ (1.1.0+) | 指摘の scope 分類 (1.1.0 から追加)。**受理値**: `"current-pr"` (本 PR で修正必須) / `"follow-up"` (本 PR では対応せず別 Issue として deferred) / `"nit-noted"` (情報共有のみ、修正不要 — `acknowledged` で受け流し) の 3 値。1.0 / 1.0.0 JSON では本フィールドは欠落しているため、read 側で severity ベースの default mapping を適用する (詳細は [後方互換性](#後方互換性-schema-10--110))。Cross-field invariant #4 (CRITICAL/HIGH × nit-noted FAIL) / #5 (pre_existing=false × nit-noted auto-correct) を参照 |
-| `pre_existing` | bool | ✅ (1.1.0+) | 当該 finding の triggering condition が本 PR の diff 適用前から存在していたか (1.1.0 から追加)。`true` = pre-existing (本 PR で混入していない) / `false` = 本 PR で新規導入。判定は revert test (reviewer が当該 diff を mentally revert して finding が依然成立するかを確認) ベース。1.0 / 1.0.0 JSON では本フィールドは欠落しているため、Cross-field invariant #5 は read 側ではトリガしない (詳細は [後方互換性](#後方互換性-schema-10--110)) |
+| `pre_existing` | bool | (任意、1.1.0+) | 当該 finding の triggering condition が本 PR の diff 適用前から存在していたか (1.1.0 から追加)。`true` = pre-existing (本 PR で混入していない) / `false` = 本 PR で新規導入。判定は revert test (reviewer が当該 diff を mentally revert して finding が依然成立するかを確認) ベース。canonical 1.1.0 write 側を含め本フィールドは欠落しうる。欠落時は default mapping を適用せず、Cross-field invariant #5 は発火しない (詳細は [後方互換性](#後方互換性-schema-10--110)) |
 | `original_severity` | string | (任意、1.1.0+) | severity 自己降格 (reviewer が CRITICAL 判定後 PR scope 不適合と判断し scope=follow-up や nit-noted へ送る際に severity を MEDIUM 等へ降格) 時の元値を保持。**自己降格 trace 用途のみ**で、cross-field invariant 評価には使わない。omit 可 (1.0 / 1.0.0 互換、降格していない finding には不要)。値の domain は `severity` enum 5 値と同じ |
 | `nit_reason` | string | (条件付き必須、1.1.0+) | `severity == "MEDIUM"` ∧ `scope == "nit-noted"` の組み合わせ時は **必須**。それ以外は omit 可。MEDIUM 級の指摘を「nit として受け流す」判断には bounded blast radius (localized で単発修正で完了する) の根拠が必要なため、reviewer に明示的に reason を記載させて auditability を担保する |
 | `verification` | object | (任意、1.1.0+) | **`"1.1.0"` JSON でも欠落しうる** (schema_version を bump しない additive 追加のため — [Schema Version](#schema-version-sot) 参照)。runtime 実測の記録 `{measured, repro, failing_test}` (下記 [verification サブフィールド](#verification-サブフィールド) 参照)。**欠落時は記録・表示経路では `measured=false` 扱い** ([後方互換性](#後方互換性-schema-10--110) の verification default mapping)。**値は blocking / mergeable 判定の入力として消費される** (Issue #2033 の実測必須ゲート — [severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate))。判定 consumer は `measured` を **3 値** (`true` / `false` / 欠落 = **未判定**) として扱い、未判定はゲート対象外 = 従来どおり blocking とする ([3 値モデルへの上書き](#3値モデルへの上書き) 参照)。**型は判定に使われる**: read 側の型ガードが object/boolean 制約を検証し、違反時は当該 review-result file 全体の routing を変える ([verification 型ガード (read 側)](#verification-型ガード-read-側)) |
@@ -251,7 +253,7 @@
 
 <a id="後方互換性-schema-10--110"></a>
 
-1.1.0 で導入された `findings[].scope` / `findings[].pre_existing` フィールドは 1.0 / 1.0.0 JSON には欠落しているため、read 側 (`fix.md` ステップ 1.2.0) は schema_version が `"1.0.0"` または `"1.0"` の場合、下記 `scope` 節の default mapping を適用する (`pre_existing` は schema_version に依らず default mapping を**適用しない** — 下記 `pre_existing` 節参照。欠落のまま保持することが invariant #5 の後方互換の前提になっている)。
+1.1.0 で導入された `findings[].scope` / `findings[].pre_existing` フィールドは 1.0 / 1.0.0 JSON には欠落しているため、read 側 (`fix.md` ステップ 1.2.0) は schema_version が `"1.0.0"` または `"1.0"` の場合、下記 `scope` 節の default mapping を適用する。`pre_existing` は 1.1.0 JSON でも欠落しうる additive optional field であり、schema_version に依らず default mapping を**適用しない** — 下記 `pre_existing` 節参照。欠落のまま保持することが invariant #5 の後方互換の前提になっている。
 
 **`verification` の default mapping のみ schema_version に依らず適用される** — `verification` は 1.1.0 内で additive 追加されたため 1.1.0 JSON でも欠落しうる ([Schema Version](#schema-version-sot) 参照)。schema_version で gate してはならない。
 
@@ -287,7 +289,7 @@ canonical jq expression (1.0/1.0.0 受信時に適用):
 
 - `pre_existing` の判定には revert test (reviewer による mental revert) が必要で、severity 等の他フィールドから機械的に推論できない
 - 欠落のままにすることで Cross-field invariant #5 (`pre_existing == false × scope == nit-noted`) が **発火しない** (`null != false`)
-- 1.0/1.0.0 JSON で生成された finding は invariant #5 の auto-correct 対象外となり、後方互換が保たれる
+- 1.0/1.0.0 JSON と、`pre_existing` を出力しない canonical 1.1.0 write path の finding は invariant #5 の auto-correct 対象外となる
 
 ### verification の default mapping (記録・表示経路のみ、measured=false 扱い)
 
