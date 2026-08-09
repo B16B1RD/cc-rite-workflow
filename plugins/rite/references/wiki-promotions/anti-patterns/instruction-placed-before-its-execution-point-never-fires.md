@@ -59,11 +59,11 @@ confidence: high
 
 ## 関連ページ
 
-- [明示的な遷移を持つスキルへの未配線 phase 挿入](./unrouted-phase-insertion-in-explicit-transition-skill.md)
-- [裏付け実装のない散文設計](./prose-design-without-backing-implementation.md)
+- 明示的な遷移を持つスキルへの未配線 phase 挿入 (`Wiki provenance: ./unrouted-phase-insertion-in-explicit-transition-skill.md`)
+- 裏付け実装のない散文設計 (`Wiki provenance: ./prose-design-without-backing-implementation.md`)
 
 ## ソース
 
-- [PR #2056 review results — 指示の配置と実行地点の乖離](../../raw/reviews/20260730T045358Z-pr-2056.md)
-- [PR #2056 review results (cycle 2) — 実行地点側の導線](../../raw/reviews/20260730T052429Z-pr-2056.md)
-- [PR #2056 fix results (cycle 2) — フローの制御構造との突合 3 類型](../../raw/fixes/20260730T053611Z-pr-2056.md)
+- PR #2056 review results — 指示の配置と実行地点の乖離 (`Wiki provenance: ../../raw/reviews/20260730T045358Z-pr-2056.md`)
+- PR #2056 review results (cycle 2) — 実行地点側の導線 (`Wiki provenance: ../../raw/reviews/20260730T052429Z-pr-2056.md`)
+- PR #2056 fix results (cycle 2) — フローの制御構造との突合 3 類型 (`Wiki provenance: ../../raw/fixes/20260730T053611Z-pr-2056.md`)

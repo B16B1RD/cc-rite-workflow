@@ -113,13 +113,13 @@ grep -rn '<特徴的な文字列>' plugins/rite/hooks/tests/
 
 ## 関連ページ
 
-- [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く](../anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md)
-- [テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する](../heuristics/fixture-mutation-isolates-invariants.md)
-- [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md)
+- assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く (`Wiki provenance: ../anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md`)
+- テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する (`Wiki provenance: ../heuristics/fixture-mutation-isolates-invariants.md`)
+- 累積対策 PR の review-fix loop で fix 自体が drift を導入する (`Wiki provenance: ../anti-patterns/fix-induced-drift-in-cumulative-defense.md`)
 
 ## ソース
 
-- [PR #2052 fix results (cycle 4)](../../raw/fixes/20260802T074021Z-pr-2052.md)
-- [PR 2052 review cycle 5: pin uniqueness, marker producer/consumer symmetry, guard-induced dead code](../../raw/reviews/20260802T080828Z-pr-2052.md)
-- [PR 2052 fix cycle 5: pin selection after edits, producer/consumer marker pins, emit-point relocation](../../raw/fixes/20260802T082508Z-pr-2052.md)
-- [PR #2111 fix results (cycle 3)](../../raw/fixes/20260804T145425Z-pr-2111.md)
+- PR #2052 fix results (cycle 4) (`Wiki provenance: ../../raw/fixes/20260802T074021Z-pr-2052.md`)
+- PR 2052 review cycle 5: pin uniqueness, marker producer/consumer symmetry, guard-induced dead code (`Wiki provenance: ../../raw/reviews/20260802T080828Z-pr-2052.md`)
+- PR 2052 fix cycle 5: pin selection after edits, producer/consumer marker pins, emit-point relocation (`Wiki provenance: ../../raw/fixes/20260802T082508Z-pr-2052.md`)
+- PR #2111 fix results (cycle 3) (`Wiki provenance: ../../raw/fixes/20260804T145425Z-pr-2111.md`)

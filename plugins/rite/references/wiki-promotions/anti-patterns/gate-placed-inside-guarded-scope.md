@@ -62,11 +62,11 @@ review⇄fix ループのように同じ skill が同一 conversation 内で複�
 
 ## 関連ページ
 
-- [Success-only Sentinel Design — sub-skill abort path sentinel 未定義](./success-only-sentinel-design.md)
-- [無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する](../heuristics/defensive-code-needs-its-own-failure-path-test.md)
-- [新設した検証機構が、その機構自身の目的を局所的に打ち消す](./self-defeating-guard-local-purpose-negation.md)
-- [前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する](./silent-precondition-omit-disables-and-defense-chain.md)
+- Success-only Sentinel Design — sub-skill abort path sentinel 未定義 (`Wiki provenance: ./success-only-sentinel-design.md`)
+- 無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する (`Wiki provenance: ../heuristics/defensive-code-needs-its-own-failure-path-test.md`)
+- 新設した検証機構が、その機構自身の目的を局所的に打ち消す (`Wiki provenance: ./self-defeating-guard-local-purpose-negation.md`)
+- 前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する (`Wiki provenance: ./silent-precondition-omit-disables-and-defense-chain.md`)
 
 ## ソース
 
-- [PR #2030 review results](../../raw/reviews/20260726T164052Z-pr-2030.md)
+- PR #2030 review results (`Wiki provenance: ../../raw/reviews/20260726T164052Z-pr-2030.md`)

@@ -68,9 +68,9 @@ advisory finding が umbrella Issue spec **自身の語法問題**に由来す�
 
 ## 関連ページ
 
-- [Reviewer 自身が「対応不要」と明記する LOW finding は replied-only として尊重し fix loop で再発火させない](../heuristics/respect-reviewer-no-action-recommendation.md)
-- [`rejected(scope-creep)` judgment は cross-validation + empirical revert test で gate する](../heuristics/scope-creep-rejection-empirical-gate.md)
+- Reviewer 自身が「対応不要」と明記する LOW finding は replied-only として尊重し fix loop で再発火させない (`Wiki provenance: ../heuristics/respect-reviewer-no-action-recommendation.md`)
+- `rejected(scope-creep)` judgment は cross-validation + empirical revert test で gate する (`Wiki provenance: ../heuristics/scope-creep-rejection-empirical-gate.md`)
 
 ## ソース
 
-- [PR #885 review results](../../raw/reviews/20260507T103117Z-pr-885.md)
+- PR #885 review results (`Wiki provenance: ../../raw/reviews/20260507T103117Z-pr-885.md`)

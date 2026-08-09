@@ -104,13 +104,13 @@ jq -c 'select(.type=="assistant" and .message.stop_reason=="end_turn") |
 
 ## 関連ページ
 
-- [Fix-induced drift in cumulative defense](fix-induced-drift-in-cumulative-defense.md)
-- [Test pin protection theater](test-pin-protection-theater.md)
-- [Prose design without backing implementation](prose-design-without-backing-implementation.md)
-- [Silent precondition omit disables AND defense chain](silent-precondition-omit-disables-and-defense-chain.md)
+- Fix-induced drift in cumulative defense (`Wiki provenance: fix-induced-drift-in-cumulative-defense.md`)
+- Test pin protection theater (`Wiki provenance: test-pin-protection-theater.md`)
+- Prose design without backing implementation (`Wiki provenance: prose-design-without-backing-implementation.md`)
+- Silent precondition omit disables AND defense chain (`Wiki provenance: silent-precondition-omit-disables-and-defense-chain.md`)
 
 ## ソース
 
-- [meta-investigation: /rite:issue:create が累積 9 件の対策後も止まり続けた meta-retrospective](../../raw/retrospectives/20260425T122746Z-meta-issue-create-stuck-rootcause.md)
-- [PR #1166 review results (cycle 10, rename の literal/semantic 分離指摘)](../../raw/reviews/20260528T025244Z-pr-1166.md)
-- [PR #1166 review results (cycle 21, converged — vocabulary 撤廃で収束)](../../raw/reviews/20260528T084055Z-pr-1166.md)
+- meta-investigation: /rite:issue:create が累積 9 件の対策後も止まり続けた meta-retrospective (`Wiki provenance: ../../raw/retrospectives/20260425T122746Z-meta-issue-create-stuck-rootcause.md`)
+- PR #1166 review results (cycle 10, rename の literal/semantic 分離指摘) (`Wiki provenance: ../../raw/reviews/20260528T025244Z-pr-1166.md`)
+- PR #1166 review results (cycle 21, converged — vocabulary 撤廃で収束) (`Wiki provenance: ../../raw/reviews/20260528T084055Z-pr-1166.md`)

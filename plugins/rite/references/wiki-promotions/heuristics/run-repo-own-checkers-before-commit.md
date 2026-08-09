@@ -91,12 +91,12 @@ lint check #18 を新設する PR が、その fix で追加したテストコ�
 
 ## 関連ページ
 
-- [cycle が進んでも findings が減らないときは点修正をやめて構造を疑う](./non-converging-review-loop-suspect-structure.md)
-- [CI lint チェックを blocking gate に昇格するときはツール自身の exit code を gate にする](./ci-blocking-gate-tool-exit-code.md)
-- [pin を足す「前」に mutation を当てると、pin の要否と有効性を分離して判定できる](../patterns/mutation-before-pin-separates-necessity-from-efficacy.md)
+- cycle が進んでも findings が減らないときは点修正をやめて構造を疑う (`Wiki provenance: ./non-converging-review-loop-suspect-structure.md`)
+- CI lint チェックを blocking gate に昇格するときはツール自身の exit code を gate にする (`Wiki provenance: ./ci-blocking-gate-tool-exit-code.md`)
+- pin を足す「前」に mutation を当てると、pin の要否と有効性を分離して判定できる (`Wiki provenance: ../patterns/mutation-before-pin-separates-necessity-from-efficacy.md`)
 
 ## ソース
 
-- [PR #2038 fix results (cycle 5)](../../raw/fixes/20260728T100957Z-pr-2038.md)
-- [PR #2038 fix results (cycle 6, final)](../../raw/fixes/20260728T122258Z-pr-2038.md)
-- [PR #2124 review results (cycle 3)](../../raw/reviews/20260806T110520Z-pr-2124.md)
+- PR #2038 fix results (cycle 5) (`Wiki provenance: ../../raw/fixes/20260728T100957Z-pr-2038.md`)
+- PR #2038 fix results (cycle 6, final) (`Wiki provenance: ../../raw/fixes/20260728T122258Z-pr-2038.md`)
+- PR #2124 review results (cycle 3) (`Wiki provenance: ../../raw/reviews/20260806T110520Z-pr-2124.md`)

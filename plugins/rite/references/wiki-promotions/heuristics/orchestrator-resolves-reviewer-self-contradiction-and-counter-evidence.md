@@ -105,20 +105,20 @@ application reviewer が `_timeout` の perl シムについて「GNU timeout 2s
 
 ## 関連ページ
 
-- [`rejected(scope-creep)` judgment は cross-validation + empirical revert test で gate する](./scope-creep-rejection-empirical-gate.md)
-- [新設した検証機構が、その機構自身の目的を局所的に打ち消す](../anti-patterns/self-defeating-guard-local-purpose-negation.md)
-- [reviewer の判定割れは用語の曖昧さのシグナル](./reviewer-verdict-split-signals-term-ambiguity.md)
-- [awk の exit は END 規則を実行する — 早期終了と END フォールバックの併用は二重出力になる](../anti-patterns/awk-exit-runs-end-rule-double-output.md)
+- `rejected(scope-creep)` judgment は cross-validation + empirical revert test で gate する (`Wiki provenance: ./scope-creep-rejection-empirical-gate.md`)
+- 新設した検証機構が、その機構自身の目的を局所的に打ち消す (`Wiki provenance: ../anti-patterns/self-defeating-guard-local-purpose-negation.md`)
+- reviewer の判定割れは用語の曖昧さのシグナル (`Wiki provenance: ./reviewer-verdict-split-signals-term-ambiguity.md`)
+- awk の exit は END 規則を実行する — 早期終了と END フォールバックの併用は二重出力になる (`Wiki provenance: ../anti-patterns/awk-exit-runs-end-rule-double-output.md`)
 
 ## ソース
 
-- [PR #2013 review cycle 3 — reviewer の数値主張を再現し、数値の誤りと中核欠陥の実在を切り分けた記録](../../raw/reviews/20260725T032345Z-pr-2013.md)
-- [PR #2013 review cycle 4 — 「0 件は正当な結論」をプロンプトに明示して 6 名全員 0 件で収束](../../raw/reviews/20260725T041328Z-pr-2013.md)
-- [PR #1756 review results](../../raw/reviews/20260706T033041Z-pr-1756.md)
-- [PR #1757 review results](../../raw/reviews/20260706T043448Z-pr-1757.md)
-- [PR #1758 review results](../../raw/reviews/20260706T050235Z-pr-1758.md)
-- [PR #2070 review results (cycle 4) — 上流実装の読みが 2 名で割れ、一次ソースで決着](../../raw/reviews/20260801T223635Z-pr-2070.md)
-- [PR #2070 fix results (cycle 4)](../../raw/fixes/20260801T224211Z-pr-2070.md)
-- [PR #2070 review results (cycle 5, mergeable)](../../raw/reviews/20260802T000641Z-pr-2070.md)
-- [PR #2142 review results (cycle 5) — 反対意見の却下と、その却下根拠の差し戻し](../../raw/reviews/20260808T031704Z-pr-2142.md)
-- [PR #2142 review results (cycle 7, mergeable) — 提案者自身による撤回と軸の明示](../../raw/reviews/20260808T035533Z-pr-2142.md)
+- PR #2013 review cycle 3 — reviewer の数値主張を再現し、数値の誤りと中核欠陥の実在を切り分けた記録 (`Wiki provenance: ../../raw/reviews/20260725T032345Z-pr-2013.md`)
+- PR #2013 review cycle 4 — 「0 件は正当な結論」をプロンプトに明示して 6 名全員 0 件で収束 (`Wiki provenance: ../../raw/reviews/20260725T041328Z-pr-2013.md`)
+- PR #1756 review results (`Wiki provenance: ../../raw/reviews/20260706T033041Z-pr-1756.md`)
+- PR #1757 review results (`Wiki provenance: ../../raw/reviews/20260706T043448Z-pr-1757.md`)
+- PR #1758 review results (`Wiki provenance: ../../raw/reviews/20260706T050235Z-pr-1758.md`)
+- PR #2070 review results (cycle 4) — 上流実装の読みが 2 名で割れ、一次ソースで決着 (`Wiki provenance: ../../raw/reviews/20260801T223635Z-pr-2070.md`)
+- PR #2070 fix results (cycle 4) (`Wiki provenance: ../../raw/fixes/20260801T224211Z-pr-2070.md`)
+- PR #2070 review results (cycle 5, mergeable) (`Wiki provenance: ../../raw/reviews/20260802T000641Z-pr-2070.md`)
+- PR #2142 review results (cycle 5) — 反対意見の却下と、その却下根拠の差し戻し (`Wiki provenance: ../../raw/reviews/20260808T031704Z-pr-2142.md`)
+- PR #2142 review results (cycle 7, mergeable) — 提案者自身による撤回と軸の明示 (`Wiki provenance: ../../raw/reviews/20260808T035533Z-pr-2142.md`)

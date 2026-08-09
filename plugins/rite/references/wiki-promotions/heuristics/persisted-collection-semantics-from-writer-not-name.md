@@ -27,7 +27,7 @@ PR #2126 で新規 helper が既存の永続レビュー JSON の `findings[]` �
 
 **なぜ高くつくか**: 抽出式の修正は `select(.scope == "current-pr" or .scope == "follow-up")` を足す 1 行で済む。しかし同じ集合を言い換えた記述が helper docstring・SKILL.md 2 箇所・reference 1 箇所・docs 2 箇所の計 5 箇所にあり、jq だけ直すと記述が腐る。名前からの推測は「1 箇所の誤り」ではなく「N 箇所へ複製された誤り」を作る。
 
-**さらに悪い形**: 同じ PR の cycle 2 で、この修正自身が逆方向の欠陥を残していたことが判明した。実測必須ゲートは非実測の gated 指摘を `findings[]` から `non_blocking_findings[]` へ**移送**するため、`findings[]` だけを見ると「余分（nit）が入る」と「不足（移送済み）が抜ける」の両方が起きる。cycle 1 は余分側だけを直していた。詳細は [配列間で要素を移送するゲートの consumer は両方向を見る](../anti-patterns/transporting-gate-consumer-must-check-both-directions.md)。
+**さらに悪い形**: 同じ PR の cycle 2 で、この修正自身が逆方向の欠陥を残していたことが判明した。実測必須ゲートは非実測の gated 指摘を `findings[]` から `non_blocking_findings[]` へ**移送**するため、`findings[]` だけを見ると「余分（nit）が入る」と「不足（移送済み）が抜ける」の両方が起きる。cycle 1 は余分側だけを直していた。詳細は 配列間で要素を移送するゲートの consumer は両方向を見る (`Wiki provenance: ../anti-patterns/transporting-gate-consumer-must-check-both-directions.md`)。
 
 **適用手順**:
 
@@ -40,9 +40,9 @@ PR #2126 で新規 helper が既存の永続レビュー JSON の `findings[]` �
 
 ## 関連ページ
 
-- [配列間で要素を移送するゲートの consumer は入ってくる余分と出ていく不足の両方向を見る](../anti-patterns/transporting-gate-consumer-must-check-both-directions.md)
-- [対称位置への伝播漏れ (Asymmetric Fix Transcription)](../anti-patterns/asymmetric-fix-transcription.md)
+- 配列間で要素を移送するゲートの consumer は入ってくる余分と出ていく不足の両方向を見る (`Wiki provenance: ../anti-patterns/transporting-gate-consumer-must-check-both-directions.md`)
+- 対称位置への伝播漏れ (Asymmetric Fix Transcription) (`Wiki provenance: ../anti-patterns/asymmetric-fix-transcription.md`)
 
 ## ソース
 
-- [PR #2126 review results](../../raw/reviews/20260806T151643Z-pr-2126.md)
+- PR #2126 review results (`Wiki provenance: ../../raw/reviews/20260806T151643Z-pr-2126.md`)

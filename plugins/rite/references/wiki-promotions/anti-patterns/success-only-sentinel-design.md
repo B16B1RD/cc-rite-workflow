@@ -56,8 +56,8 @@ caller 側 routing dispatcher は 3 種類の sentinel を **排他的に grep**
 
 ## 関連ページ
 
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](./asymmetric-fix-transcription.md)
+- Asymmetric Fix Transcription (対称位置への伝播漏れ) (`Wiki provenance: ./asymmetric-fix-transcription.md`)
 
 ## ソース
 
-- [PR #951 fix results (10 findings, 1 cycle)](../../raw/fixes/20260514T045140Z-pr-951.md)
+- PR #951 fix results (10 findings, 1 cycle) (`Wiki provenance: ../../raw/fixes/20260514T045140Z-pr-951.md`)

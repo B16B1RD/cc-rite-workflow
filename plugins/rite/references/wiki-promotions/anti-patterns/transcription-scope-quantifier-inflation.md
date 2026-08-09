@@ -59,14 +59,14 @@ review/fix SKILL.md（各 4,040 行）の rationale を references へ退避す�
 
 ## 関連ページ
 
-- [新設要約文の「N 個の~系統」的な断定は対象外の類似構造を見落としやすい](./unscoped-enumeration-claim-in-new-summary.md)
-- [Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む)](./scope-drift-fix-overclaim-substitution.md)
-- [圧縮 refactor の AC は protected 区域 + scope 制約から逆算して決める](../heuristics/compression-refactor-ac-vs-structural-constraint.md)
+- 新設要約文の「N 個の~系統」的な断定は対象外の類似構造を見落としやすい (`Wiki provenance: ./unscoped-enumeration-claim-in-new-summary.md`)
+- Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む) (`Wiki provenance: ./scope-drift-fix-overclaim-substitution.md`)
+- 圧縮 refactor の AC は protected 区域 + scope 制約から逆算して決める (`Wiki provenance: ../heuristics/compression-refactor-ac-vs-structural-constraint.md`)
 
 ## ソース
 
-- [PR #1774 review results](../../raw/reviews/20260707T005014Z-pr-1774.md)
-- [PR #1774 fix results](../../raw/fixes/20260707T005536Z-pr-1774.md)
-- [PR #1774 review results (cycle 2)](../../raw/reviews/20260707T011246Z-pr-1774.md)
-- [PR #1774 fix results (cycle 2)](../../raw/fixes/20260707T011502Z-pr-1774.md)
-- [PR #1774 review results (cycle 3 mergeable)](../../raw/reviews/20260707T012957Z-pr-1774.md)
+- PR #1774 review results (`Wiki provenance: ../../raw/reviews/20260707T005014Z-pr-1774.md`)
+- PR #1774 fix results (`Wiki provenance: ../../raw/fixes/20260707T005536Z-pr-1774.md`)
+- PR #1774 review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260707T011246Z-pr-1774.md`)
+- PR #1774 fix results (cycle 2) (`Wiki provenance: ../../raw/fixes/20260707T011502Z-pr-1774.md`)
+- PR #1774 review results (cycle 3 mergeable) (`Wiki provenance: ../../raw/reviews/20260707T012957Z-pr-1774.md`)

@@ -20,6 +20,10 @@ for page in "${pages[@]}"; do
     echo "missing promoted_from provenance: ${page#"$repo_root/"}" >&2
     exit 1
   }
+  if grep -Eq '\]\([^)]*\.md(#[^)]*)?\)' "$page"; then
+    echo "non-portable relative Markdown link: ${page#"$repo_root/"}" >&2
+    exit 1
+  fi
 done
 
 echo "wiki promotion references contract: ok (38 pages)"

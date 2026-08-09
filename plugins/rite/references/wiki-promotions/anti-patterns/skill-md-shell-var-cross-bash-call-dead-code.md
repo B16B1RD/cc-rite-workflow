@@ -45,9 +45,9 @@ SKILL.md に新規セクションを追加する際は、同一ファイル内�
 
 ## 関連ページ
 
-- [新規 helper は既存 sibling の安全規約に整合させる（trap・tree 解決・制御文字無害化）](../heuristics/new-helper-conform-to-sibling-safety-conventions.md)
+- 新規 helper は既存 sibling の安全規約に整合させる（trap・tree 解決・制御文字無害化） (`Wiki provenance: ../heuristics/new-helper-conform-to-sibling-safety-conventions.md`)
 
 ## ソース
 
-- [PR #1975 review results](../../raw/reviews/20260723T052236Z-pr-1975.md)
-- [PR #1975 fix results](../../raw/fixes/20260723T052849Z-pr-1975.md)
+- PR #1975 review results (`Wiki provenance: ../../raw/reviews/20260723T052236Z-pr-1975.md`)
+- PR #1975 fix results (`Wiki provenance: ../../raw/fixes/20260723T052849Z-pr-1975.md`)

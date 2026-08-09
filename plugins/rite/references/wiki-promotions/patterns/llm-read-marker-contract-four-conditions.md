@@ -69,12 +69,12 @@ marker に外部由来の値（ブランチ名）を載せる設計では、値�
 
 ## 関連ページ
 
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
-- [散文で宣言した設計は対応する実装契約がなければ機能しない](../anti-patterns/prose-design-without-backing-implementation.md)
-- [Success-only Sentinel Design — sub-skill abort path sentinel 未定義](../anti-patterns/success-only-sentinel-design.md)
+- Asymmetric Fix Transcription (対称位置への伝播漏れ) (`Wiki provenance: ../anti-patterns/asymmetric-fix-transcription.md`)
+- 散文で宣言した設計は対応する実装契約がなければ機能しない (`Wiki provenance: ../anti-patterns/prose-design-without-backing-implementation.md`)
+- Success-only Sentinel Design — sub-skill abort path sentinel 未定義 (`Wiki provenance: ../anti-patterns/success-only-sentinel-design.md`)
 
 ## ソース
 
-- [PR #2022 fix results (cycle 10)](../../raw/fixes/20260726T055002Z-pr-2022.md)
-- [PR #2022 fix results (cycle 7)](../../raw/fixes/20260726T033136Z-pr-2022.md)
-- [PR #2022 review results (cycle 7)](../../raw/reviews/20260726T031335Z-pr-2022.md)
+- PR #2022 fix results (cycle 10) (`Wiki provenance: ../../raw/fixes/20260726T055002Z-pr-2022.md`)
+- PR #2022 fix results (cycle 7) (`Wiki provenance: ../../raw/fixes/20260726T033136Z-pr-2022.md`)
+- PR #2022 review results (cycle 7) (`Wiki provenance: ../../raw/reviews/20260726T031335Z-pr-2022.md`)

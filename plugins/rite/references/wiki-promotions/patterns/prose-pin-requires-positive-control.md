@@ -110,15 +110,15 @@ assert_grep "$SKILL" 'CLEANUP_DELEGATED=1` を emit している場合、本ス�
 
 ## 関連ページ
 
-- [否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す](./negative-assertion-positive-control.md)
-- [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](../anti-patterns/test-pin-protection-theater.md)
-- [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](./mutation-testing-test-fidelity.md)
-- [テストヘルパーの awk flip-flop レンジは start pattern をコード行に一意なプレフィックスでアンカーする](./awk-flip-flop-range-start-pattern-anchoring.md)
+- 否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す (`Wiki provenance: ./negative-assertion-positive-control.md`)
+- Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する (`Wiki provenance: ../anti-patterns/test-pin-protection-theater.md`)
+- Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する (`Wiki provenance: ./mutation-testing-test-fidelity.md`)
+- テストヘルパーの awk flip-flop レンジは start pattern をコード行に一意なプレフィックスでアンカーする (`Wiki provenance: ./awk-flip-flop-range-start-pattern-anchoring.md`)
 
 ## ソース
 
-- [PR #2022 fix results (cycle 11)](../../raw/fixes/20260726T062935Z-pr-2022.md)
-- [PR #2022 fix results (cycle 6)](../../raw/fixes/20260726T025351Z-pr-2022.md)
-- [PR #2022 fix results (cycle 4)](../../raw/fixes/20260726T014448Z-pr-2022.md)
-- [PR #2150 review results (cycle 1: marker 名 pin では指示反転が素通し)](../../raw/reviews/20260808T063447Z-pr-2150.md)
-- [PR #2150 fix results (cycle 1: pin を指示語まで伸ばす)](../../raw/fixes/20260808T064117Z-pr-2150.md)
+- PR #2022 fix results (cycle 11) (`Wiki provenance: ../../raw/fixes/20260726T062935Z-pr-2022.md`)
+- PR #2022 fix results (cycle 6) (`Wiki provenance: ../../raw/fixes/20260726T025351Z-pr-2022.md`)
+- PR #2022 fix results (cycle 4) (`Wiki provenance: ../../raw/fixes/20260726T014448Z-pr-2022.md`)
+- PR #2150 review results (cycle 1: marker 名 pin では指示反転が素通し) (`Wiki provenance: ../../raw/reviews/20260808T063447Z-pr-2150.md`)
+- PR #2150 fix results (cycle 1: pin を指示語まで伸ばす) (`Wiki provenance: ../../raw/fixes/20260808T064117Z-pr-2150.md`)

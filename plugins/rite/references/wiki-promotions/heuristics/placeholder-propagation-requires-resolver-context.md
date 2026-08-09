@@ -33,10 +33,10 @@ confidence: high
 
 ## 関連ページ
 
-- [スイープの検証 grep にスイープ対象と同一パターンを再利用する](../anti-patterns/sweep-verification-grep-shares-blind-spot.md)
-- [機械的スイープでは挿入先コンテキストを検証してから変更を適用する](../patterns/mechanical-sweep-insertion-context-verification.md)
+- スイープの検証 grep にスイープ対象と同一パターンを再利用する (`Wiki provenance: ../anti-patterns/sweep-verification-grep-shares-blind-spot.md`)
+- 機械的スイープでは挿入先コンテキストを検証してから変更を適用する (`Wiki provenance: ../patterns/mechanical-sweep-insertion-context-verification.md`)
 
 ## ソース
 
-- [PR #1919 review cycle 3 results](../../raw/reviews/20260719T154814Z-pr-1919-c3.md)
-- [PR #1919 fix cycle 3 results](../../raw/fixes/20260719T154952Z-pr-1919-c3.md)
+- PR #1919 review cycle 3 results (`Wiki provenance: ../../raw/reviews/20260719T154814Z-pr-1919-c3.md`)
+- PR #1919 fix cycle 3 results (`Wiki provenance: ../../raw/fixes/20260719T154952Z-pr-1919-c3.md`)

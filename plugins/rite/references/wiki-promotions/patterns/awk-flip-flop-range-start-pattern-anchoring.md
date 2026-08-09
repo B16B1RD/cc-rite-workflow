@@ -53,7 +53,7 @@ assert_grep_in_section "..." "$CLEANUP" \
 
 `assert_grep_in_section` の start/end 引数は内部で `awk -v` に渡される。gawk の `-v` オプションは値を **C 風エスケープとして 1 段階解釈してから** 正規表現エンジンに渡す仕様がある。そのため ERE のリテラル bracket (`\[` / `\]`) を正規表現エンジンまで届けるには、`-v` 側の解釈で 1 段階消費される分を見越して `\\[` / `\\]`（バックスラッシュ 2 つ）を渡す必要がある。
 
-- `\[` を渡すと: `-v` 解釈で「不要なエスケープ」として警告付きで `[` に潰され、bracket 式として解釈されて match しなくなる、あるいは過剰マッチの温床になる
+- `\` を渡すと: `-v` 解釈で「不要なエスケープ」として警告付きで `[` に潰され、bracket 式として解釈されて match しなくなる、あるいは過剰マッチの温床になる
 - `\\[` を渡すと: `-v` 解釈で 1 段階消費されて `\[` になり、正規表現エンジンにリテラル bracket として正しく届く
 
 ### テストコメントにも no_journal_comment 原則が適用される
@@ -62,9 +62,9 @@ assert_grep_in_section "..." "$CLEANUP" \
 
 ## 関連ページ
 
-- [awk negative-class + greedy + literal の組み合わせは backtracking で literal を silent miss する](../anti-patterns/awk-regex-backtracking-trap-with-greedy-literal.md)
-- [bash code block 終端は固定 +N 行 window ではなく awk state machine で動的追跡する](./awk-bash-block-termination-tracking.md)
+- [awk negative-class + greedy + literal の組み合わせは backtracking で literal を silent miss する (`Wiki provenance: ../anti-patterns/awk-regex-backtracking-trap-with-greedy-literal.md`)
+- bash code block 終端は固定 +N 行 window ではなく awk state machine で動的追跡する (`Wiki provenance: ./awk-bash-block-termination-tracking.md`)
 
 ## ソース
 
-- [PR #1974 fix results (cycle 3, awk flip-flop レンジ過検出の修正)](../../raw/fixes/20260723T031622Z-pr-1974-cycle3.md)
+- PR #1974 fix results (cycle 3, awk flip-flop レンジ過検出の修正) (`Wiki provenance: ../../raw/fixes/20260723T031622Z-pr-1974-cycle3.md`)

@@ -92,7 +92,7 @@ skip 経路では `[CONTEXT] WIKI_INGEST_SKIPPED=1; reason=...` のような sen
 
 ### `$?` 経由の 3 値コマンドとの違い
 
-本パターンは「独自定義 exit code を持つスクリプト」を対象とする。`git diff --quiet` のような標準コマンドの 3 値 exit code (0/1/>1) も case で扱うが、そちらは [`if ! cmd` anti-pattern](../anti-patterns/bash-if-bang-rc-capture.md) が別軸で混在するので区別して扱うこと。
+本パターンは「独自定義 exit code を持つスクリプト」を対象とする。`git diff --quiet` のような標準コマンドの 3 値 exit code (0/1/>1) も case で扱うが、そちらは `if ! cmd` anti-pattern (`Wiki provenance: ../anti-patterns/bash-if-bang-rc-capture.md`) が別軸で混在するので区別して扱うこと。
 
 ### script 自身の失敗経路も宣言した exit-code 契約に従う
 
@@ -117,16 +117,16 @@ caller 側の case routing だけでなく、**script 自身のすべての内�
 
 ## 関連ページ
 
-- [`if ! cmd; then rc=$?` は常に 0 を捕捉する](../anti-patterns/bash-if-bang-rc-capture.md)
-- [set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する](../anti-patterns/bare-statement-under-set-e-dead-code-rc-branch.md)
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
-- [`cmd=$(...) || cmd=""` は非ゼロ終了時に stdout 済みの診断 JSON を空文字列で上書きする](../anti-patterns/command-substitution-fallback-discards-diagnostic-json.md)
+- `if ! cmd; then rc=$?` は常に 0 を捕捉する (`Wiki provenance: ../anti-patterns/bash-if-bang-rc-capture.md`)
+- set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する (`Wiki provenance: ../anti-patterns/bare-statement-under-set-e-dead-code-rc-branch.md`)
+- Asymmetric Fix Transcription (対称位置への伝播漏れ) (`Wiki provenance: ../anti-patterns/asymmetric-fix-transcription.md`)
+- `cmd=$(...) || cmd=""` は非ゼロ終了時に stdout 済みの診断 JSON を空文字列で上書きする (`Wiki provenance: ../anti-patterns/command-substitution-fallback-discards-diagnostic-json.md`)
 
 ## ソース
 
-- [PR #529 fix cycle 1 (exit 2 semantic preservation)](../../raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md)
-- [PR #529 review (6-reviewer による exit code mismatch 検出)](../../raw/reviews/20260415T094007Z-pr-529.md)
-- [PR #1306 review cycle 1 (peer copy-paste の exit-code 契約非対称 + shift 2/set -e abort)](../../raw/reviews/20260608T112156Z-pr-1306.md)
-- [PR #1306 fix cycle 1 (`[ "$#" -lt 2 ]` gate で欠落時 exit 2 へ統一)](../../raw/fixes/20260608T112705Z-pr-1306.md)
-- [PR #1847 review cycle 2 (markdown 表示ロジックでの legitimate-skip/failure 混同を cross-validation で検出)](../../raw/reviews/20260713T045650Z-pr-1847-cycle2.md)
-- [PR #1847 fix cycle 2 (`{wiki_ingest_check}` パターンを参照した多分岐への再設計)](../../raw/fixes/20260713T045756Z-pr-1847-cycle2.md)
+- PR #529 fix cycle 1 (exit 2 semantic preservation) (`Wiki provenance: ../../raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md`)
+- PR #529 review (6-reviewer による exit code mismatch 検出) (`Wiki provenance: ../../raw/reviews/20260415T094007Z-pr-529.md`)
+- PR #1306 review cycle 1 (peer copy-paste の exit-code 契約非対称 + shift 2/set -e abort) (`Wiki provenance: ../../raw/reviews/20260608T112156Z-pr-1306.md`)
+- PR #1306 fix cycle 1 (`[ "$#" -lt 2 ]` gate で欠落時 exit 2 へ統一) (`Wiki provenance: ../../raw/fixes/20260608T112705Z-pr-1306.md`)
+- PR #1847 review cycle 2 (markdown 表示ロジックでの legitimate-skip/failure 混同を cross-validation で検出) (`Wiki provenance: ../../raw/reviews/20260713T045650Z-pr-1847-cycle2.md`)
+- PR #1847 fix cycle 2 (`{wiki_ingest_check}` パターンを参照した多分岐への再設計) (`Wiki provenance: ../../raw/fixes/20260713T045756Z-pr-1847-cycle2.md`)

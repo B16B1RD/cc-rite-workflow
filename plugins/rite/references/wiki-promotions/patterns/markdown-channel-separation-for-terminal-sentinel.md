@@ -93,14 +93,14 @@ cleanup.md と ingest.md はこの双対に対して **意図的に異なる構�
 
 ## 関連ページ
 
-- [散文で宣言した設計は対応する実装契約がなければ機能しない](../anti-patterns/prose-design-without-backing-implementation.md)
-- [同 file 内 MUST NOT vs MUST 衝突: bare form 禁止規約と bare form 出力義務の自己矛盾](../anti-patterns/same-file-must-not-vs-must-conflict.md)
-- [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](drift-check-anchor-semantic-name.md)
+- 散文で宣言した設計は対応する実装契約がなければ機能しない (`Wiki provenance: ../anti-patterns/prose-design-without-backing-implementation.md`)
+- 同 file 内 MUST NOT vs MUST 衝突: bare form 禁止規約と bare form 出力義務の自己矛盾 (`Wiki provenance: ../anti-patterns/same-file-must-not-vs-must-conflict.md`)
+- DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止） (`Wiki provenance: drift-check-anchor-semantic-name.md`)
 
 ## ソース
 
-- [PR #655 cycle 6 review — markdown channel separation E-4 経験則](../../raw/reviews/20260424T095915Z-pr-655-cycle6.md)
-- [PR #655 cycle 4 review — markdown channel separation factual model 初提示](../../raw/reviews/20260424T085837Z-pr-655.md)
-- [PR #655 cycle 3 review — #652 Root Cause 散文モデル](../../raw/reviews/20260424T080338Z-pr-655.md)
-- [PR #655 cycle 3 fix — inline HTML sentinel 適用実装](../../raw/fixes/20260424T081225Z-pr-655.md)
-- [PR #655 cycle 5 fix — factual correction と anti-pattern doc 整合](../../raw/fixes/20260424T090428Z-pr-655.md)
+- PR #655 cycle 6 review — markdown channel separation E-4 経験則 (`Wiki provenance: ../../raw/reviews/20260424T095915Z-pr-655-cycle6.md`)
+- PR #655 cycle 4 review — markdown channel separation factual model 初提示 (`Wiki provenance: ../../raw/reviews/20260424T085837Z-pr-655.md`)
+- PR #655 cycle 3 review — #652 Root Cause 散文モデル (`Wiki provenance: ../../raw/reviews/20260424T080338Z-pr-655.md`)
+- PR #655 cycle 3 fix — inline HTML sentinel 適用実装 (`Wiki provenance: ../../raw/fixes/20260424T081225Z-pr-655.md`)
+- PR #655 cycle 5 fix — factual correction と anti-pattern doc 整合 (`Wiki provenance: ../../raw/fixes/20260424T090428Z-pr-655.md`)

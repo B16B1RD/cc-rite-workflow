@@ -43,16 +43,16 @@ confidence: high
 
 **正しい枠取りは repo 内に既にあることが多い**: 同じ事例では `pr-review/SKILL.md` が「検出 regex に match しない finding のうち」と母集団を先に置き、その内側で未判定 / 降格を分けていた。散文を新規に発明せず、**既に正しい面の枠取りを流用する**ことで 4 面の記述が収束した。
 
-なお、この「強すぎる断定」は前 cycle の「弱すぎる断定」（意味論の語彙による言い換え）を修正した結果として生まれている。字句の語彙へ寄せる際に母集団の束縛を落とさないこと（[機械的な述語を文書化するときは意図の語彙ではなく字句の語彙で書く](./mechanical-predicate-prose-lexical-vocabulary.md)）。
+なお、この「強すぎる断定」は前 cycle の「弱すぎる断定」（意味論の語彙による言い換え）を修正した結果として生まれている。字句の語彙へ寄せる際に母集団の束縛を落とさないこと（機械的な述語を文書化するときは意図の語彙ではなく字句の語彙で書く (`Wiki provenance: ./mechanical-predicate-prose-lexical-vocabulary.md`)）。
 
 ## 関連ページ
 
-- [修飾は主張単位ではなく同格の主張の集合単位でかける](./qualifier-applies-to-peer-claim-set.md)
-- [散文修正の完了検査は「主張した概念」で走査する（逆引き検査）](./reverse-lookup-concept-sweep-for-prose-fixes.md)
-- [機械的な述語を文書化するときは意図の語彙ではなく字句の語彙で書く](./mechanical-predicate-prose-lexical-vocabulary.md)
+- 修飾は主張単位ではなく同格の主張の集合単位でかける (`Wiki provenance: ./qualifier-applies-to-peer-claim-set.md`)
+- 散文修正の完了検査は「主張した概念」で走査する（逆引き検査） (`Wiki provenance: ./reverse-lookup-concept-sweep-for-prose-fixes.md`)
+- 機械的な述語を文書化するときは意図の語彙ではなく字句の語彙で書く (`Wiki provenance: ./mechanical-predicate-prose-lexical-vocabulary.md`)
 
 ## ソース
 
-- [PR #2070 review results (cycle 5)](../../raw/reviews/20260731T090329Z-pr-2070.md)
-- [PR #2081 review results (cycle 5)](../../raw/reviews/20260801T131235Z-pr-2081.md)
-- [PR #2081 fix results (cycle 5)](../../raw/fixes/20260801T131540Z-pr-2081.md)
+- PR #2070 review results (cycle 5) (`Wiki provenance: ../../raw/reviews/20260731T090329Z-pr-2070.md`)
+- PR #2081 review results (cycle 5) (`Wiki provenance: ../../raw/reviews/20260801T131235Z-pr-2081.md`)
+- PR #2081 fix results (cycle 5) (`Wiki provenance: ../../raw/fixes/20260801T131540Z-pr-2081.md`)

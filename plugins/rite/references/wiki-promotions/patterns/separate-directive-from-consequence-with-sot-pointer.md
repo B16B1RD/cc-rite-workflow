@@ -35,11 +35,11 @@ authoring 面（reviewer への指示、テンプレート、規約文書）の 
 
 ## 関連ページ
 
-- [「N 箇所で同期が必要」と指摘されたら、同期する前に N を減らせないか検討する](../heuristics/reduce-sync-sites-before-syncing-them.md)
-- [References 抽出 refactor では canonical contract の SoT を 1 reference に固定し他は anchor 参照のみとする](./single-sot-on-references-extract.md)
-- [一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える](../heuristics/generalized-claim-false-while-implementation-specialized.md)
+- 「N 箇所で同期が必要」と指摘されたら、同期する前に N を減らせないか検討する (`Wiki provenance: ../heuristics/reduce-sync-sites-before-syncing-them.md`)
+- References 抽出 refactor では canonical contract の SoT を 1 reference に固定し他は anchor 参照のみとする (`Wiki provenance: ./single-sot-on-references-extract.md`)
+- 一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える (`Wiki provenance: ../heuristics/generalized-claim-false-while-implementation-specialized.md`)
 
 ## ソース
 
-- [PR #2081 review results (cycle 5)](../../raw/reviews/20260801T131235Z-pr-2081.md)
-- [PR #2081 fix results (cycle 5)](../../raw/fixes/20260801T131540Z-pr-2081.md)
+- PR #2081 review results (cycle 5) (`Wiki provenance: ../../raw/reviews/20260801T131235Z-pr-2081.md`)
+- PR #2081 fix results (cycle 5) (`Wiki provenance: ../../raw/fixes/20260801T131540Z-pr-2081.md`)

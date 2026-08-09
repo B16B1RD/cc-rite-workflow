@@ -48,10 +48,10 @@ confidence: medium
 
 ## 関連ページ
 
-- [委譲リファクタの動作保持は原実装との差分テストで機械的に立証する](../heuristics/delegation-refactor-differential-test-equivalence.md)
-- [新設した出力フィールドは producer と consumer の両側を pin する — consumer が表なら行単位で pin する](./new-output-field-pin-producer-and-consumer.md)
+- 委譲リファクタの動作保持は原実装との差分テストで機械的に立証する (`Wiki provenance: ../heuristics/delegation-refactor-differential-test-equivalence.md`)
+- 新設した出力フィールドは producer と consumer の両側を pin する — consumer が表なら行単位で pin する (`Wiki provenance: ./new-output-field-pin-producer-and-consumer.md`)
 
 ## ソース
 
-- [PR #2111 review results (cycle 2)](../../raw/reviews/20260804T142514Z-pr-2111.md)
-- [PR #2111 fix results (cycle 2)](../../raw/fixes/20260804T143100Z-pr-2111.md)
+- PR #2111 review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260804T142514Z-pr-2111.md`)
+- PR #2111 fix results (cycle 2) (`Wiki provenance: ../../raw/fixes/20260804T143100Z-pr-2111.md`)

@@ -90,7 +90,7 @@ documentation review の verification protocol が **「内的整合 (CHANGELOG 
 
 ### Successful application — prose 散文括弧書きの正確性 review
 
-0 findings / 1 cycle の PR で本 protocol の **prose 散文 ↔ helper 実装出力語彙の cross-check** 側面を successful preventive application として実測。`commands/init.md` の NO_RITE_HOOKS routing 行の括弧書き `(already clean)` → `(no rite hooks removed)` という 1 行文言修正レビューで、両 reviewer (prompt-engineer / code-quality) が (1) 説明対象 helper `settings-local-rite-hook-cleanup.sh:15` の実出力語彙 `nothing removed` を SoT として括弧書きの正確性を裏取り (mv 失敗サブケースで `already clean` が不正確になる nuance を実装側で確認)、(2) 同 doc 内の対称注記行 (`no output (...)` 形式、line 650/756) への伝播漏れを `grep "clean)"` で機械検証 (0 件 = 旧語彙残存なし) し、0 findings で確認。**散文括弧書きの正確性 review は、説明対象実装の出力語彙・コメントを implementation grep の SoT に含める**という protocol step の小規模 application であり、同時に [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の「同 doc 内対称注記行の grep verify」と pair で機能した。
+0 findings / 1 cycle の PR で本 protocol の **prose 散文 ↔ helper 実装出力語彙の cross-check** 側面を successful preventive application として実測。`commands/init.md` の NO_RITE_HOOKS routing 行の括弧書き `(already clean)` → `(no rite hooks removed)` という 1 行文言修正レビューで、両 reviewer (prompt-engineer / code-quality) が (1) 説明対象 helper `settings-local-rite-hook-cleanup.sh:15` の実出力語彙 `nothing removed` を SoT として括弧書きの正確性を裏取り (mv 失敗サブケースで `already clean` が不正確になる nuance を実装側で確認)、(2) 同 doc 内の対称注記行 (`no output (...)` 形式、line 650/756) への伝播漏れを `grep "clean)"` で機械検証 (0 件 = 旧語彙残存なし) し、0 findings で確認。**散文括弧書きの正確性 review は、説明対象実装の出力語彙・コメントを implementation grep の SoT に含める**という protocol step の小規模 application であり、同時に Asymmetric Fix Transcription (`Wiki provenance: ../anti-patterns/asymmetric-fix-transcription.md`) の「同 doc 内対称注記行の grep verify」と pair で機能した。
 
 ### Successful application — Doc-Heavy mode 5 カテゴリ検証の全主張 grep verify + pre-existing i18n drift の revert-test routing
 
@@ -100,11 +100,11 @@ documentation review の verification protocol が **「内的整合 (CHANGELOG 
 
 ### Successful application — 翻訳 PR での実装突合により原本 (EN) 由来の誤り転写を表面化
 
-前項の follow-up にあたる SPEC.ja.md per-session 全面同期 PR で、**翻訳 PR でも原本への盲目的信頼をせず実装突合を行う価値** が実証された。Doc-Heavy mode の 5 カテゴリ検証で大半の主張 (hooks.json 7 events / PHASE_ENUM_V3 13 値 / session-ownership.sh 4 関数・4 source caller / loop_count writer 0 hits 等) を実装側 grep verify した結果、EN SPEC.md に既存する 2 件の事実誤り (存在しないファイル `state-read.sh` / `_resolve-flow-state-path.sh`+`STATE_FILE_PATH` への参照) が JA 版へ忠実翻訳で転写されていたことが表面化した (revert test pass で本 PR diff 由来と判定、HIGH × 2)。JA 単独修正は i18n parity を破壊するため scope=follow-up (EN+JA 両側同時修正の別 Issue) が適切と両レビュアーが独立に収束し、本 protocol の grep verify が「原本の誤りは fact 検証で初めて表面化する」という翻訳 PR 特有の検出経路として機能した。決着パターンの詳細は [i18n 同期 PR の忠実翻訳は原本の誤りを転写する — 検出時は accept + 両側同時修正 follow-up で決着する](./i18n-faithful-translation-source-error-accept-followup.md) を参照。
+前項の follow-up にあたる SPEC.ja.md per-session 全面同期 PR で、**翻訳 PR でも原本への盲目的信頼をせず実装突合を行う価値** が実証された。Doc-Heavy mode の 5 カテゴリ検証で大半の主張 (hooks.json 7 events / PHASE_ENUM_V3 13 値 / session-ownership.sh 4 関数・4 source caller / loop_count writer 0 hits 等) を実装側 grep verify した結果、EN SPEC.md に既存する 2 件の事実誤り (存在しないファイル `state-read.sh` / `_resolve-flow-state-path.sh`+`STATE_FILE_PATH` への参照) が JA 版へ忠実翻訳で転写されていたことが表面化した (revert test pass で本 PR diff 由来と判定、HIGH × 2)。JA 単独修正は i18n parity を破壊するため scope=follow-up (EN+JA 両側同時修正の別 Issue) が適切と両レビュアーが独立に収束し、本 protocol の grep verify が「原本の誤りは fact 検証で初めて表面化する」という翻訳 PR 特有の検出経路として機能した。決着パターンの詳細は i18n 同期 PR の忠実翻訳は原本の誤りを転写する — 検出時は accept + 両側同時修正 follow-up で決着する (`Wiki provenance: ./i18n-faithful-translation-source-error-accept-followup.md`) を参照。
 
 ### Successful application — docstring contract 追記 PR の claim-実装整合全数検証
 
-コメント / docstring のみの +8/-0 docs PR（0 findings / 1 cycle）で、本 protocol が **script docstring に追記した契約 claim の層** にも適用されることを successful preventive application として実測。`review-findings-maps.sh` docstring への stdout contract 追記 (severity_map_json / scope_map_json は構築検証のみで stdout に emit しない) と TC-D 観測性制約注記 (in-process validation 変数は differential test では観測できない) について、4 reviewer (test / error-handling / performance / security) 全員が「追加コメントの主張と実装の整合」を Grep/Read/テスト実行 (review-findings-maps.test.sh 19/19 pass) で独立に全数検証し、claim-実装乖離ゼロを確認した。[Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の懸念 (claim 文言の片肺化・vacuous claim 化) も非該当と判定。推奨事項 3 件 (usage() の `--help` 時 stdout 出力と「stdout contract: なし」文言の境界注記余地 — 2 reviewer が独立言及 / 将来 stdout emit 契約変更時の test pin 整備方針の defer 妥当性) はいずれも本 PR スコープ外の任意改善として扱われた。コメント追加 only の PR でも「コメントが宣言する契約」は implementation grep verify の対象であり、本 protocol が prose / CHANGELOG / SPEC に加えて docstring contract 層でも 1 cycle 収束を支えることを示す positive evidence。
+コメント / docstring のみの +8/-0 docs PR（0 findings / 1 cycle）で、本 protocol が **script docstring に追記した契約 claim の層** にも適用されることを successful preventive application として実測。`review-findings-maps.sh` docstring への stdout contract 追記 (severity_map_json / scope_map_json は構築検証のみで stdout に emit しない) と TC-D 観測性制約注記 (in-process validation 変数は differential test では観測できない) について、4 reviewer (test / error-handling / performance / security) 全員が「追加コメントの主張と実装の整合」を Grep/Read/テスト実行 (review-findings-maps.test.sh 19/19 pass) で独立に全数検証し、claim-実装乖離ゼロを確認した。Asymmetric Fix Transcription (`Wiki provenance: ../anti-patterns/asymmetric-fix-transcription.md`) の懸念 (claim 文言の片肺化・vacuous claim 化) も非該当と判定。推奨事項 3 件 (usage() の `--help` 時 stdout 出力と「stdout contract: なし」文言の境界注記余地 — 2 reviewer が独立言及 / 将来 stdout emit 契約変更時の test pin 整備方針の defer 妥当性) はいずれも本 PR スコープ外の任意改善として扱われた。コメント追加 only の PR でも「コメントが宣言する契約」は implementation grep verify の対象であり、本 protocol が prose / CHANGELOG / SPEC に加えて docstring contract 層でも 1 cycle 収束を支えることを示す positive evidence。
 
 ### Successful application — 定量的棚卸し調査文書における全数値の grep 再実行検証
 
@@ -122,22 +122,22 @@ cycle 2 / 0 findings 収束の PR で、本 protocol の **in-source 設計コ�
 
 ## 関連ページ
 
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
+- Asymmetric Fix Transcription (対称位置への伝播漏れ) (`Wiki provenance: ../anti-patterns/asymmetric-fix-transcription.md`)
 
 ## ソース
 
-- [PR #1849 review cycle 1-2 (trap 被覆設計ヘッダコメントの機構誤認を 2 reviewer 独立検出、cross-validation boost、cycle 2 で FIXED 収束)](../../raw/reviews/20260713T082548Z-pr-1849.md)
-- [PR #1849 fix (経路ごとの書き分け修正で 1 cycle 解消、コメントのみ修正でも影響スキャン省略しない教訓)](../../raw/fixes/20260713T081301Z-pr-1849.md)
-- [PR #1773 review cycle 3 (Doc-Heavy Implementation Coverage 検証で削除対象一覧ドキュメントのファサード化を検出)](../../raw/reviews/20260706T220114Z-pr-1773-cycle3.md)
-- [PR #1773 fix cycle 3 (accept 決着: 後方互換性を理由に意図的現状維持、fingerprint 永続化)](../../raw/fixes/20260706T220317Z-pr-1773-cycle3.md)
-- [PR #1772 review (調査文書の定量的棚卸し全数値をgrep再実行で検証、tech-writer/code-quality両者独立全数一致、0 findings 1cycle mergeable)](../../raw/reviews/20260706T210924Z-pr-1772.md)
-- [PR #1139 review cycle 1 (anchor link typo / phantom sentinel / Asymmetric Fix Transcription on #1118 wave)](../../raw/reviews/20260525T070727Z-pr-1139.md)
-- [PR #1139 review cycle 2 (CHANGELOG `remain on disk` factual error / project.type CHANGELOG vs CONFIGURATION drift)](../../raw/reviews/20260525T081823Z-pr-1139.md)
-- [PR #1139 fix cycle 5 (Verification Cross-Reference Gap 確立: review.md Phase 7 live を 5 cycle 経て初検出)](../../raw/fixes/20260525T104719Z-pr-1139.md)
-- [PR #1139 fix cycle 8 (Implementation-Grep Verification Gap: fix 履歴の遡及 grep 必須化)](../../raw/fixes/20260525T124932Z-pr-1139.md)
-- [PR #1139 fix cycle 12 (SPEC Multi-Section Same-Topic Drift: SPEC 全文 1 度通読の必要性)](../../raw/fixes/20260525T141022Z-pr-1139.md)
-- [PR #1248 review (prose 散文括弧書きの正確性を helper 出力語彙と cross-check、0 findings の successful application)](../../raw/reviews/20260602T082558Z-pr-1248.md)
-- [PR #1261 review (Doc-Heavy mode 5 カテゴリ検証で全実装主張を grep verify + pre-existing SPEC.ja.md i18n drift を revert-test で follow-up #1262 化、0 findings の successful application)](../../raw/reviews/20260603T162350Z-pr-1261.md)
-- [PR #1263 review (翻訳 PR での実装突合により EN 原本由来の事実誤り 2 件の転写を表面化、両レビュアー独立で follow-up 収束)](../../raw/reviews/20260603T174323Z-pr-1263.md)
-- [PR #1296 review (docstring stdout contract / TC-D 観測性制約 claim の実装整合を 4 reviewer 独立全数検証、0 findings の successful application)](../../raw/reviews/20260607T013821Z-pr-1296.md)
-- [PR #1779 review — design-rationale.md への 1 文追記 PR で、prompt-engineer/code-quality 両レビュアーが追記内容の技術的主張を file-based/string-based 両鏡像実装の jq ロジックと突合し正確性を実地検証、0 findings の successful application)](../../raw/reviews/20260707T051719Z-pr-1779.md)
+- PR #1849 review cycle 1-2 (trap 被覆設計ヘッダコメントの機構誤認を 2 reviewer 独立検出、cross-validation boost、cycle 2 で FIXED 収束) (`Wiki provenance: ../../raw/reviews/20260713T082548Z-pr-1849.md`)
+- PR #1849 fix (経路ごとの書き分け修正で 1 cycle 解消、コメントのみ修正でも影響スキャン省略しない教訓) (`Wiki provenance: ../../raw/fixes/20260713T081301Z-pr-1849.md`)
+- PR #1773 review cycle 3 (Doc-Heavy Implementation Coverage 検証で削除対象一覧ドキュメントのファサード化を検出) (`Wiki provenance: ../../raw/reviews/20260706T220114Z-pr-1773-cycle3.md`)
+- PR #1773 fix cycle 3 (accept 決着: 後方互換性を理由に意図的現状維持、fingerprint 永続化) (`Wiki provenance: ../../raw/fixes/20260706T220317Z-pr-1773-cycle3.md`)
+- PR #1772 review (調査文書の定量的棚卸し全数値をgrep再実行で検証、tech-writer/code-quality両者独立全数一致、0 findings 1cycle mergeable) (`Wiki provenance: ../../raw/reviews/20260706T210924Z-pr-1772.md`)
+- PR #1139 review cycle 1 (anchor link typo / phantom sentinel / Asymmetric Fix Transcription on #1118 wave) (`Wiki provenance: ../../raw/reviews/20260525T070727Z-pr-1139.md`)
+- PR #1139 review cycle 2 (CHANGELOG `remain on disk` factual error / project.type CHANGELOG vs CONFIGURATION drift) (`Wiki provenance: ../../raw/reviews/20260525T081823Z-pr-1139.md`)
+- PR #1139 fix cycle 5 (Verification Cross-Reference Gap 確立: review.md Phase 7 live を 5 cycle 経て初検出) (`Wiki provenance: ../../raw/fixes/20260525T104719Z-pr-1139.md`)
+- PR #1139 fix cycle 8 (Implementation-Grep Verification Gap: fix 履歴の遡及 grep 必須化) (`Wiki provenance: ../../raw/fixes/20260525T124932Z-pr-1139.md`)
+- PR #1139 fix cycle 12 (SPEC Multi-Section Same-Topic Drift: SPEC 全文 1 度通読の必要性) (`Wiki provenance: ../../raw/fixes/20260525T141022Z-pr-1139.md`)
+- PR #1248 review (prose 散文括弧書きの正確性を helper 出力語彙と cross-check、0 findings の successful application) (`Wiki provenance: ../../raw/reviews/20260602T082558Z-pr-1248.md`)
+- PR #1261 review (Doc-Heavy mode 5 カテゴリ検証で全実装主張を grep verify + pre-existing SPEC.ja.md i18n drift を revert-test で follow-up #1262 化、0 findings の successful application) (`Wiki provenance: ../../raw/reviews/20260603T162350Z-pr-1261.md`)
+- PR #1263 review (翻訳 PR での実装突合により EN 原本由来の事実誤り 2 件の転写を表面化、両レビュアー独立で follow-up 収束) (`Wiki provenance: ../../raw/reviews/20260603T174323Z-pr-1263.md`)
+- PR #1296 review (docstring stdout contract / TC-D 観測性制約 claim の実装整合を 4 reviewer 独立全数検証、0 findings の successful application) (`Wiki provenance: ../../raw/reviews/20260607T013821Z-pr-1296.md`)
+- PR #1779 review — design-rationale.md への 1 文追記 PR で、prompt-engineer/code-quality 両レビュアーが追記内容の技術的主張を file-based/string-based 両鏡像実装の jq ロジックと突合し正確性を実地検証、0 findings の successful application) (`Wiki provenance: ../../raw/reviews/20260707T051719Z-pr-1779.md`)

@@ -63,13 +63,13 @@ reviewer agent の fact-check は以下を観測点としていた:
 
 ## 関連ページ
 
-- [Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格](../heuristics/observed-likelihood-gate-with-evidence-anchors.md)
-- [散文で宣言した設計は対応する実装契約がなければ機能しない](./prose-design-without-backing-implementation.md)
-- [Reviewer の "本 PR では対応不要" 推奨は尊重する](../heuristics/respect-reviewer-no-action-recommendation.md)
+- Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格 (`Wiki provenance: ../heuristics/observed-likelihood-gate-with-evidence-anchors.md`)
+- 散文で宣言した設計は対応する実装契約がなければ機能しない (`Wiki provenance: ./prose-design-without-backing-implementation.md`)
+- Reviewer の "本 PR では対応不要" 推奨は尊重する (`Wiki provenance: ../heuristics/respect-reviewer-no-action-recommendation.md`)
 
 ## ソース
 
-- [PR #1164 review cycle 1 (code-quality F-X1 TaskCreate 不在主張、CONTRADICTED)](../../raw/reviews/20260527T163952Z-pr-1164.md)
-- [PR #1164 review cycle 2 (prompt-engineer F-X2 TaskCreate=Team variant 再提起、CONTRADICTED)](../../raw/reviews/20260527T165719Z-pr-1164.md)
-- [PR #1164 review cycle 3 (再提起なし、orchestrator prompt 注入 effective)](../../raw/reviews/20260527T170947Z-pr-1164.md)
-- [PR #1281 review cycle 2 (討論決着論点への拡張: 「解決済み論点を新 evidence なしに蒸し返さない」prompt 明示で source ガード論点の再燃なし、reviewer は修正検証に徹する役割転換が成立)](../../raw/reviews/20260605T182035Z-pr-1281-cycle2.md)
+- PR #1164 review cycle 1 (code-quality F-X1 TaskCreate 不在主張、CONTRADICTED) (`Wiki provenance: ../../raw/reviews/20260527T163952Z-pr-1164.md`)
+- PR #1164 review cycle 2 (prompt-engineer F-X2 TaskCreate=Team variant 再提起、CONTRADICTED) (`Wiki provenance: ../../raw/reviews/20260527T165719Z-pr-1164.md`)
+- PR #1164 review cycle 3 (再提起なし、orchestrator prompt 注入 effective) (`Wiki provenance: ../../raw/reviews/20260527T170947Z-pr-1164.md`)
+- PR #1281 review cycle 2 (討論決着論点への拡張: 「解決済み論点を新 evidence なしに蒸し返さない」prompt 明示で source ガード論点の再燃なし、reviewer は修正検証に徹する役割転換が成立) (`Wiki provenance: ../../raw/reviews/20260605T182035Z-pr-1281-cycle2.md`)

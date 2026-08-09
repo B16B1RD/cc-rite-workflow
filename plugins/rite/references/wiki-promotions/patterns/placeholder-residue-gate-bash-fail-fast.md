@@ -63,12 +63,12 @@ bash tool 呼び出し境界を跨いで shell 変数は保持されない。Pha
 
 ## 関連ページ
 
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
-- [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](./drift-check-anchor-semantic-name.md)
-- [防御は攻撃面と同じ粒度で張る — 過剰防御は「安全側」ではなく別の実害](../heuristics/defense-granularity-matches-attack-surface.md)
+- Asymmetric Fix Transcription (対称位置への伝播漏れ) (`Wiki provenance: ../anti-patterns/asymmetric-fix-transcription.md`)
+- DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止） (`Wiki provenance: ./drift-check-anchor-semantic-name.md`)
+- 防御は攻撃面と同じ粒度で張る — 過剰防御は「安全側」ではなく別の実害 (`Wiki provenance: ../heuristics/defense-granularity-matches-attack-surface.md`)
 
 ## ソース
 
-- [PR #579 review results (cycle 1)](../../raw/reviews/20260418T122454Z-pr-579.md)
-- [PR #579 fix results (cycle 1)](../../raw/fixes/20260418T122707Z-pr-579.md)
-- [PR #2111 review results (cycle 3)](../../raw/reviews/20260804T145133Z-pr-2111.md)
+- PR #579 review results (cycle 1) (`Wiki provenance: ../../raw/reviews/20260418T122454Z-pr-579.md`)
+- PR #579 fix results (cycle 1) (`Wiki provenance: ../../raw/fixes/20260418T122707Z-pr-579.md`)
+- PR #2111 review results (cycle 3) (`Wiki provenance: ../../raw/reviews/20260804T145133Z-pr-2111.md`)

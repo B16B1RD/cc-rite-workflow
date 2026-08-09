@@ -144,18 +144,18 @@ fi
 
 ### 累積観測
 
-Projects Status In Review 遷移漏れを修正した PR の review-fix loop で 3 要素の同時欠落が 3 site (start.md / start-finalize.md / post-compact.sh) で同時 surface し、cycle 3 fix で全 site 揃って canonical 実装に統一。これは Wiki 経験則 [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の sibling site 対称化と組み合わせて適用すべき canonical 規範。
+Projects Status In Review 遷移漏れを修正した PR の review-fix loop で 3 要素の同時欠落が 3 site (start.md / start-finalize.md / post-compact.sh) で同時 surface し、cycle 3 fix で全 site 揃って canonical 実装に統一。これは Wiki 経験則 Asymmetric Fix Transcription (`Wiki provenance: ../anti-patterns/asymmetric-fix-transcription.md`) の sibling site 対称化と組み合わせて適用すべき canonical 規範。
 
 ## 関連ページ
 
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
-- [stderr ノイズ削減: truncate ではなく selective surface で解く](../heuristics/stderr-selective-surface-over-truncate.md)
-- [`2>&1` と `2>&1 | head -N` で sentinel/exit code が silent suppression される (self-defeating observability)](../anti-patterns/stderr-merge-silent-sentinel-suppression.md)
+- Asymmetric Fix Transcription (対称位置への伝播漏れ) (`Wiki provenance: ../anti-patterns/asymmetric-fix-transcription.md`)
+- stderr ノイズ削減: truncate ではなく selective surface で解く (`Wiki provenance: ../heuristics/stderr-selective-surface-over-truncate.md`)
+- `2>&1` と `2>&1 | head -N` で sentinel/exit code が silent suppression される (self-defeating observability) (`Wiki provenance: ../anti-patterns/stderr-merge-silent-sentinel-suppression.md`)
 
 ## ソース
 
-- [PR #1004 cycle 2 review (3 reviewer 独立検出 / F-01 syntax error + pipefail / dangling references)](../../raw/reviews/20260517T000446Z-pr-1004.md)
-- [PR #1004 cycle 3 review (Self-violation cascade / DRY 4-site / Observability gap F-08/F-09/F-10)](../../raw/reviews/20260517T004634Z-pr-1004.md)
-- [PR #1004 cycle 3 fix (stderr stage separation / sub-shell scope-internal retrieval / state_root_inaccessible emit)](../../raw/fixes/20260517T020335Z-pr-1004.md)
-- [PR #1973 cycle 3 review — 5 reviewer 独立検出: 明示的な `if [ $? -ne 0 ]` チェックが Bash tool の per-invocation pipefail-off により dead code 化)](../../raw/reviews/20260722T221143Z-pr-1973.md)
-- [PR #1973 cycle 3 fix (capture-first pattern で pipefail 非依存の exit code チェックに修正)](../../raw/fixes/20260722T221542Z-pr-1973.md)
+- PR #1004 cycle 2 review (3 reviewer 独立検出 / F-01 syntax error + pipefail / dangling references) (`Wiki provenance: ../../raw/reviews/20260517T000446Z-pr-1004.md`)
+- PR #1004 cycle 3 review (Self-violation cascade / DRY 4-site / Observability gap F-08/F-09/F-10) (`Wiki provenance: ../../raw/reviews/20260517T004634Z-pr-1004.md`)
+- PR #1004 cycle 3 fix (stderr stage separation / sub-shell scope-internal retrieval / state_root_inaccessible emit) (`Wiki provenance: ../../raw/fixes/20260517T020335Z-pr-1004.md`)
+- PR #1973 cycle 3 review — 5 reviewer 独立検出: 明示的な `if [ $? -ne 0 ]` チェックが Bash tool の per-invocation pipefail-off により dead code 化 (`Wiki provenance: ../../raw/reviews/20260722T221143Z-pr-1973.md`)
+- PR #1973 cycle 3 fix (capture-first pattern で pipefail 非依存の exit code チェックに修正) (`Wiki provenance: ../../raw/fixes/20260722T221542Z-pr-1973.md`)

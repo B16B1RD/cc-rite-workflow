@@ -52,10 +52,10 @@ frontmatter ポリシー表のような分類ルールを新設・改訂する P
 
 ## 関連ページ
 
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
+- Asymmetric Fix Transcription (対称位置への伝播漏れ) (`Wiki provenance: ../anti-patterns/asymmetric-fix-transcription.md`)
 
 ## ソース
 
-- [PR #1694 review results](../../raw/reviews/20260701T051115Z-pr-1694.md)
-- [PR #1694 fix results](../../raw/fixes/20260701T060350Z-pr-1694.md)
-- [PR #1724 review results](../../raw/reviews/20260702T091438Z-pr-1724.md)
+- PR #1694 review results (`Wiki provenance: ../../raw/reviews/20260701T051115Z-pr-1694.md`)
+- PR #1694 fix results (`Wiki provenance: ../../raw/fixes/20260701T060350Z-pr-1694.md`)
+- PR #1724 review results (`Wiki provenance: ../../raw/reviews/20260702T091438Z-pr-1724.md`)

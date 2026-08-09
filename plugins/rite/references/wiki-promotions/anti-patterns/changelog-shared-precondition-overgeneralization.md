@@ -39,8 +39,8 @@ fix cycle 1 で修正を適用し、cycle 2（フルレビュー、スコープ�
 
 ## 関連ページ
 
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
+- Asymmetric Fix Transcription (対称位置への伝播漏れ) (`Wiki provenance: ../anti-patterns/asymmetric-fix-transcription.md`)
 
 ## ソース
 
-- [PR #1948 fix results](../../raw/fixes/20260721T063551Z-pr-1948.md)
+- PR #1948 fix results (`Wiki provenance: ../../raw/fixes/20260721T063551Z-pr-1948.md`)

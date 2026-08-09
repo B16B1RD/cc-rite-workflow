@@ -39,7 +39,7 @@ confidence: high
 3. **有効化**: 修正 A の適用により、Y の操作が初めて「実害のある対象」に対して実行されるようになる
 4. **顕在化**: B が初めて実害を持つ副作用として発火する。修正 A のレビューでは A 自体は正しいため見過ごされやすい
 
-この失敗モードは Asymmetric Fix Transcription（[対称位置への伝播漏れ](asymmetric-fix-transcription.md)）とは異なる軸である点に注意: Asymmetric Fix Transcription は「同じ修正を適用すべき複数箇所の一部を見落とす」horizontal な伝播漏れだが、本パターンは「無関係に見える既存コードが、今回の修正によって初めて実行条件を満たすようになる」activation 型の欠陥である。
+この失敗モードは Asymmetric Fix Transcription（対称位置への伝播漏れ (`Wiki provenance: asymmetric-fix-transcription.md`)）とは異なる軸である点に注意: Asymmetric Fix Transcription は「同じ修正を適用すべき複数箇所の一部を見落とす」horizontal な伝播漏れだが、本パターンは「無関係に見える既存コードが、今回の修正によって初めて実行条件を満たすようになる」activation 型の欠陥である。
 
 ### 検出のための観察ポイント
 
@@ -53,9 +53,9 @@ confidence: high
 
 ## 関連ページ
 
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](./asymmetric-fix-transcription.md)
+- Asymmetric Fix Transcription (対称位置への伝播漏れ) (`Wiki provenance: ./asymmetric-fix-transcription.md`)
 
 ## ソース
 
-- [PR #1809 review results (cycle 2)](../../raw/reviews/20260709T090623Z-pr-1809-cycle2.md)
-- [PR #1809 fix results (cycle 2, accept)](../../raw/fixes/20260709T090806Z-pr-1809-cycle2.md)
+- PR #1809 review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260709T090623Z-pr-1809-cycle2.md`)
+- PR #1809 fix results (cycle 2, accept) (`Wiki provenance: ../../raw/fixes/20260709T090806Z-pr-1809-cycle2.md`)

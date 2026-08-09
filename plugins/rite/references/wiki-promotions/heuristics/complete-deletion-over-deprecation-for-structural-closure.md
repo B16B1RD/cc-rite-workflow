@@ -19,7 +19,7 @@ confidence: high
 
 ## 概要
 
-Refactor で命名衝突 / semantic 混在を解消する際に「legacy field を deprecate ラベル付きで残置」する戦略は、definition の二重化が解消されないため [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) を review-fix loop 内で再生産する。逆に「legacy field を完全削除 + disambiguation note も同時に簡素化」する構造的戦略は、対称化責務そのものを消滅させ収束を実現する。cycle 1-4 で実測 — cycle 1-3 で「deprecate + 残置」を採用したことで textual contradiction が連続 3 回再発し、cycle 4 で「完全削除」に転換した瞬間に 0 findings へ収束した。
+Refactor で命名衝突 / semantic 混在を解消する際に「legacy field を deprecate ラベル付きで残置」する戦略は、definition の二重化が解消されないため Asymmetric Fix Transcription (`Wiki provenance: ../anti-patterns/asymmetric-fix-transcription.md`) を review-fix loop 内で再生産する。逆に「legacy field を完全削除 + disambiguation note も同時に簡素化」する構造的戦略は、対称化責務そのものを消滅させ収束を実現する。cycle 1-4 で実測 — cycle 1-3 で「deprecate + 残置」を採用したことで textual contradiction が連続 3 回再発し、cycle 4 で「完全削除」に転換した瞬間に 0 findings へ収束した。
 
 ## 詳細
 
@@ -35,8 +35,8 @@ cycle 1 (7) → cycle 2 (3) → cycle 3 (2) → cycle 4 (0 = mergeable)
 
 | 戦略 | 動作 | 結果 |
 |------|------|------|
-| **A: deprecate + 残置** | Legacy field (例: `recommendation_issue_candidates`) を `deprecated, do not use` コメント付きで温存し、新 field (例: `candidate_count`) を導入する | Definition が二重化されたまま残り、reviewer が「両 field の semantic 関係が不明確」「片方の sentinel emit が legacy 経由 / 片方が新規経由」など textual contradiction を毎 cycle 再検出。fix 自身が同型の対称化漏れを生む再帰的 anti-pattern (=[Recursive Recurrence in Fix Layer](../anti-patterns/asymmetric-fix-transcription.md)) を引き起こす |
-| **B: 完全削除 + note 簡素化** | Legacy field を removed-in-this-PR として完全削除し、関連する disambiguation note (「legacy と新の混同を避けよ」等) も同時に簡素化する | 対称化対象そのものが消滅するため [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の発火条件 (= 同形 idiom の複数箇所共存) を構造的に閉塞。reviewer が検出できる drift の絶対数が物理的に減少 |
+| **A: deprecate + 残置** | Legacy field (例: `recommendation_issue_candidates`) を `deprecated, do not use` コメント付きで温存し、新 field (例: `candidate_count`) を導入する | Definition が二重化されたまま残り、reviewer が「両 field の semantic 関係が不明確」「片方の sentinel emit が legacy 経由 / 片方が新規経由」など textual contradiction を毎 cycle 再検出。fix 自身が同型の対称化漏れを生む再帰的 anti-pattern (=Recursive Recurrence in Fix Layer (`Wiki provenance: ../anti-patterns/asymmetric-fix-transcription.md`)) を引き起こす |
+| **B: 完全削除 + note 簡素化** | Legacy field を removed-in-this-PR として完全削除し、関連する disambiguation note (「legacy と新の混同を避けよ」等) も同時に簡素化する | 対称化対象そのものが消滅するため Asymmetric Fix Transcription (`Wiki provenance: ../anti-patterns/asymmetric-fix-transcription.md`) の発火条件 (= 同形 idiom の複数箇所共存) を構造的に閉塞。reviewer が検出できる drift の絶対数が物理的に減少 |
 
 ### 選択基準 — 「deprecate + 残置」を採用してよいケース
 
@@ -47,7 +47,7 @@ cycle 1 (7) → cycle 2 (3) → cycle 3 (2) → cycle 4 (0 = mergeable)
 
 ### Why — Recursive Recurrence in Fix Layer との関係
 
-[`Recursive Recurrence in Fix Layer`](../anti-patterns/asymmetric-fix-transcription.md) は「fix のために導入した anchor literal / convention 自身が次 cycle の新規 drift 源になる」failure mode。本 heuristic は、その fix-induced drift の **構造的閉塞戦略** として機能する: deprecate ラベルや disambiguation note は「人間 (LLM) に注意を要求する mitigation」だが、完全削除は「対称化対象を消滅させる structural mitigation」である。後者は LLM の attention budget に依存しないため、累積対策 PR で **fix-induced drift cascade を断ち切る canonical strategy** となる。
+`Recursive Recurrence in Fix Layer` (`Wiki provenance: ../anti-patterns/asymmetric-fix-transcription.md`) は「fix のために導入した anchor literal / convention 自身が次 cycle の新規 drift 源になる」failure mode。本 heuristic は、その fix-induced drift の **構造的閉塞戦略** として機能する: deprecate ラベルや disambiguation note は「人間 (LLM) に注意を要求する mitigation」だが、完全削除は「対称化対象を消滅させる structural mitigation」である。後者は LLM の attention budget に依存しないため、累積対策 PR で **fix-induced drift cascade を断ち切る canonical strategy** となる。
 
 ### Dogfooding evidence — Mechanical gate の必要性
 
@@ -69,11 +69,11 @@ cycle 1 (7) → cycle 2 (3) → cycle 3 (2) → cycle 4 (0 = mergeable)
 
 ## 関連ページ
 
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
-- [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md)
-- [Aggregate Recommendation Label による action 要求の silent skip](../anti-patterns/aggregate-recommendation-label-evasion.md)
+- Asymmetric Fix Transcription (対称位置への伝播漏れ) (`Wiki provenance: ../anti-patterns/asymmetric-fix-transcription.md`)
+- 累積対策 PR の review-fix loop で fix 自体が drift を導入する (`Wiki provenance: ../anti-patterns/fix-induced-drift-in-cumulative-defense.md`)
+- Aggregate Recommendation Label による action 要求の silent skip (`Wiki provenance: ../anti-patterns/aggregate-recommendation-label-evasion.md`)
 
 ## ソース
 
-- [PR #1043 cycle 4 mergeable + 4 cycle dogfooding lessons](../../raw/reviews/20260518T084056Z-pr-1043-cycle4-mergeable.md)
-- [PR #1043 cycle 1 review (self-referential failure mode 起点)](../../raw/reviews/20260518T075850Z-pr-1043.md)
+- PR #1043 cycle 4 mergeable + 4 cycle dogfooding lessons (`Wiki provenance: ../../raw/reviews/20260518T084056Z-pr-1043-cycle4-mergeable.md`)
+- PR #1043 cycle 1 review (self-referential failure mode 起点) (`Wiki provenance: ../../raw/reviews/20260518T075850Z-pr-1043.md`)

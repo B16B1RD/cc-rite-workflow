@@ -46,7 +46,7 @@ confidence: high
 
 本 PR の最終的な修正はリセットを sentinel の直前へ移すもので、中断窓を「review invoke + ステップ 6 全体」から「共有前段 → sentinel 出力」へ**狭めた**が消してはいない。完全な閉塞には Stop hook 側の改修（Issue の Non-Target）が必要だった。
 
-このとき散文を「そういう経路を持たない」と書くと嘘になる — 詳細は [Scope drift fix での overclaim substitution](../anti-patterns/scope-drift-fix-overclaim-substitution.md) を参照。**窓を狭めたら、残った窓の大きさと、完全閉塞に何が要るかを書く。**
+このとき散文を「そういう経路を持たない」と書くと嘘になる — 詳細は Scope drift fix での overclaim substitution (`Wiki provenance: ../anti-patterns/scope-drift-fix-overclaim-substitution.md`) を参照。**窓を狭めたら、残った窓の大きさと、完全閉塞に何が要るかを書く。**
 
 ### 検証は A/B 対比で示す
 
@@ -54,11 +54,11 @@ confidence: high
 
 ## 関連ページ
 
-- [終端状態は「到達した事実」で記録し、可変値との境界比較で代用しない](../heuristics/terminal-state-recorded-not-boundary-compared.md)
-- [Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む)](../anti-patterns/scope-drift-fix-overclaim-substitution.md)
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
+- 終端状態は「到達した事実」で記録し、可変値との境界比較で代用しない (`Wiki provenance: ../heuristics/terminal-state-recorded-not-boundary-compared.md`)
+- Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む) (`Wiki provenance: ../anti-patterns/scope-drift-fix-overclaim-substitution.md`)
+- Asymmetric Fix Transcription (対称位置への伝播漏れ) (`Wiki provenance: ../anti-patterns/asymmetric-fix-transcription.md`)
 
 ## ソース
 
-- [PR #2044 review results (cycle 2)](../../raw/reviews/20260729T042319Z-pr-2044.md)
-- [PR #2044 fix results (cycle 2)](../../raw/fixes/20260729T043110Z-pr-2044.md)
+- PR #2044 review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260729T042319Z-pr-2044.md`)
+- PR #2044 fix results (cycle 2) (`Wiki provenance: ../../raw/fixes/20260729T043110Z-pr-2044.md`)

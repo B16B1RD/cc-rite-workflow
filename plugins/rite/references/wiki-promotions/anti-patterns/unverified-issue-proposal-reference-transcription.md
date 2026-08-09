@@ -37,11 +37,11 @@ Issue body の対応案文字列を成果物にそのまま転記すると、対
 
 ## 関連ページ
 
-- [fix コメント / commit message で hallucinated canonical reference を生成する](./hallucinated-canonical-reference.md)
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](./asymmetric-fix-transcription.md)
+- fix コメント / commit message で hallucinated canonical reference を生成する (`Wiki provenance: ./hallucinated-canonical-reference.md`)
+- Asymmetric Fix Transcription (対称位置への伝播漏れ) (`Wiki provenance: ./asymmetric-fix-transcription.md`)
 
 ## ソース
 
-- [PR #1325 review results](../../raw/reviews/20260609T191537Z-pr-1325.md)
-- [PR #1325 fix results](../../raw/fixes/20260609T191759Z-pr-1325.md)
-- [PR #1325 review results (cycle 2)](../../raw/reviews/20260609T192157Z-pr-1325.md)
+- PR #1325 review results (`Wiki provenance: ../../raw/reviews/20260609T191537Z-pr-1325.md`)
+- PR #1325 fix results (`Wiki provenance: ../../raw/fixes/20260609T191759Z-pr-1325.md`)
+- PR #1325 review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260609T192157Z-pr-1325.md`)

@@ -35,9 +35,9 @@ rationale 退避 PR のレビューで観測された事実:
 
 ## 関連ページ
 
-- [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
+- Asymmetric Fix Transcription (対称位置への伝播漏れ) (`Wiki provenance: ../anti-patterns/asymmetric-fix-transcription.md`)
 
 ## ソース
 
-- [PR #1882 review results (cycle 2)](../../raw/reviews/20260717T021655Z-pr-1882.md)
-- [PR #1882 review results](../../raw/reviews/20260717T014643Z-pr-1882.md)
+- PR #1882 review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260717T021655Z-pr-1882.md`)
+- PR #1882 review results (`Wiki provenance: ../../raw/reviews/20260717T014643Z-pr-1882.md`)

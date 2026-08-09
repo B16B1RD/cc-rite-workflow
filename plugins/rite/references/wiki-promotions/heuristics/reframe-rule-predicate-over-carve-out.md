@@ -61,10 +61,10 @@ Issue テンプレート Section 9（Decision Log）に「作業項目を載せ�
 
 ## 関連ページ
 
-- [「N 種を禁止し行き先を示す」規則は禁止列挙と行き先を 1 つの対リストに畳む](../patterns/deny-list-paired-with-destination.md)
-- [新規禁止規則を書く前に、その場所へ書き込む既存経路が書くフィールドの実体を読む](./new-prohibition-verify-existing-writer-fields.md)
+- 「N 種を禁止し行き先を示す」規則は禁止列挙と行き先を 1 つの対リストに畳む (`Wiki provenance: ../patterns/deny-list-paired-with-destination.md`)
+- 新規禁止規則を書く前に、その場所へ書き込む既存経路が書くフィールドの実体を読む (`Wiki provenance: ./new-prohibition-verify-existing-writer-fields.md`)
 
 ## ソース
 
-- [PR #2084 review results (cycle 2)](../../raw/reviews/20260802T020939Z-pr-2084.md)
-- [PR #2084 fix results (cycle 2)](../../raw/fixes/20260802T021249Z-pr-2084.md)
+- PR #2084 review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260802T020939Z-pr-2084.md`)
+- PR #2084 fix results (cycle 2) (`Wiki provenance: ../../raw/fixes/20260802T021249Z-pr-2084.md`)
