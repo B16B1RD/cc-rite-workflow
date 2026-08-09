@@ -121,7 +121,7 @@ def scan_line_state(syntax, state, stack, function_activity=None, pending_functi
         # Only a plainly standalone current-shell call can propagate `set`.
         # Conditional, pipeline, async and subshell calls are not definite
         # parent-shell effects and are intentionally excluded here.
-        pattern=r'(?:^|;)\s*('+re.escape(name)+r')\s*(?=;|$)'
+        pattern=r'(?:^|;)\s*('+re.escape(name)+r')(?:\s+[^;|&]+)?\s*(?=;|$)'
         for m in re.finditer(pattern,syntax): call_effects[m.start(1)]=effect
     open_names={}
     for m in re.finditer(r'(?:^|[;&])\s*(?:function\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*\(\s*\))?|([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\))\s*\{', syntax):
@@ -158,7 +158,9 @@ def scan_line_state(syntax, state, stack, function_activity=None, pending_functi
             state=segment_start_state; segment_start_state=state; i+=1; continue
         match=toggle_re.match(syntax, i)
         if match:
-            state=match.group(1).startswith("-")
+            prefix=syntax[:i]
+            conditional=bool(re.search(r'\b(?:if|elif|then)\b[^;]*$',prefix))
+            if not conditional: state=match.group(1).startswith("-")
             i=match.end(); continue
         i+=1
     return pipe_states,state,stack,pending_function
@@ -169,8 +171,9 @@ def infer_function_activity(logical):
     for _,line in logical:
         m=re.match(r'^\s*(?:function\s+([A-Za-z_][A-Za-z0-9_]*)|([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\))',syntax_only(line))
         if m: names.add(m.group(1) or m.group(2))
-    activity={name:False for name in names}; edges={name:set() for name in names}
+    activity={name:False for name in names}; edges={name:[] for name in names}
     effects={name:None for name in names}; local_state={name:None for name in names}
+    effect_events={name:[] for name in names}
     state=False; in_function=None; pending=None; depth=0
     for _,line in logical:
         syntax=syntax_only(line)
@@ -181,25 +184,32 @@ def infer_function_activity(logical):
             if header.group(1):
                 depth=syntax.count("{")-syntax.count("}"); in_function=declared_name if depth>0 else None
                 if depth<=0 and declared_name:
-                    toggles=list(toggle_re.finditer(syntax))
-                    if toggles: effects[declared_name]=toggles[-1].group(1).startswith("-")
+                    events=[(m.start(),"toggle",m.group(1).startswith("-")) for m in toggle_re.finditer(syntax)]
                     for name in names:
-                        if name != declared_name and re.search(r'[;{]\s*'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
-                            edges[declared_name].add((name,effects[declared_name]))
+                        if name != declared_name:
+                            for cm in re.finditer(r'[;{]\s*'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
+                                events.append((cm.start(),"call",name))
+                    local=None
+                    for _,kind,value in sorted(events):
+                        effect_events[declared_name].append((kind,value))
+                        if kind == "toggle": local=value
+                        else: edges[declared_name].append((value,local))
             else: pending=declared_name
             continue
         if pending:
             if re.match(r'^\s*\{',syntax): in_function=pending; pending=None; depth=syntax.count("{")-syntax.count("}")
             continue
         if in_function:
-            toggles=list(toggle_re.finditer(syntax))
-            if toggles:
-                local_state[in_function]=toggles[-1].group(1).startswith("-")
+            line_events=[(m.start(),"toggle",m.group(1).startswith("-")) for m in toggle_re.finditer(syntax)]
             for name in names:
-                if re.search(r'(?:^|[;|&]\s*|\b(?:if|then|command)\s+|!\s*|\$\(\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
-                    edges[in_function].add((name,local_state[in_function]))
+                for cm in re.finditer(r'(?:^|[;|&]\s*|\b(?:if|then|command)\s+|!\s*|\$\(\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
+                    line_events.append((cm.start(),"call",name))
+            for _,kind,value in sorted(line_events):
+                if kind == "toggle": local_state[in_function]=value
+                else: edges[in_function].append((value,local_state[in_function]))
+                effect_events[in_function].append((kind,value))
             depth+=syntax.count("{")-syntax.count("}")
-            if depth<=0: effects[in_function]=local_state[in_function]; in_function=None
+            if depth<=0: in_function=None
             continue
         for name in names:
             if re.search(r'(?:^|[;|&]\s*|\b(?:if|then|command)\s+|!\s*|\$\(\s*)'+re.escape(name)+r'(?=\s|[;|&()]|$)',syntax):
@@ -208,10 +218,12 @@ def infer_function_activity(logical):
     changed=True
     while changed:
         changed=False
-        for caller,callees in edges.items():
-            if effects[caller] is None:
-                resolved={effects[callee] for callee,_ in callees if effects[callee] is not None}
-                if len(resolved) == 1: effects[caller]=resolved.pop(); changed=True
+        for caller,events in effect_events.items():
+            summary=None
+            for kind,value in events:
+                if kind == "toggle": summary=value
+                elif effects[value] is not None: summary=effects[value]
+            if effects[caller] != summary: effects[caller]=summary; changed=True
         for caller,callees in edges.items():
             for callee,override in callees:
                 active=activity[caller] if override is None else override

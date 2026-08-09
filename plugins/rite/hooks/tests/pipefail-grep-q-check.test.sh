@@ -195,6 +195,28 @@ assert "non-current-shell effects retain active findings" "1" "$rc"
 assert "untaken conditional effect is not applied" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*after_false_branch' || true)"
 assert "pipeline function effect is not applied to parent" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*producer_disable' || true)"
 
+printf '%s\n' \
+  'set -o pipefail' \
+  'if false; then set +o pipefail; fi' \
+  'after_direct_false_disable | grep -q x' \
+  'set +o pipefail' \
+  'if false; then set -o pipefail; fi' \
+  'after_direct_false_enable | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "direct conditional toggles preserve real active finding" "1" "$rc"
+assert "untaken direct disable is not applied" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*after_direct_false_disable' || true)"
+assert "untaken direct enable is not applied" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*after_direct_false_enable' || true)"
+
+printf '%s\n' \
+  'arg_enable() { set -o pipefail; }' \
+  'arg_disable() { set +o pipefail; }' \
+  'set +o pipefail; arg_enable on; after_arg_enable | grep -q x' \
+  'arg_disable off; after_arg_disable | grep -q x' > "$fixture"
+out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
+assert "argument-bearing helper effects retain active finding" "1" "$rc"
+assert "argument-bearing enable changes parent" "1" "$(printf '%s\n' "$out" | grep -c 'producer.*after_arg_enable' || true)"
+assert "argument-bearing disable changes parent" "0" "$(printf '%s\n' "$out" | grep -c 'producer.*after_arg_disable' || true)"
+
 printf '%s\n' 'set -o pipefail' 'stream_many | grep -q x # drift-check-ignore: bounded fixture' > "$fixture"
 out=$(bash "$SCRIPT" --all --repo-root "$SBX" --quiet 2>&1); rc=$?
 assert "ignore marker suppresses finding" "0" "$rc"
