@@ -41,7 +41,12 @@ stats=$(awk -v exception_category="$exception_category" -v reviewer_type="$revie
   /^###[[:space:]]*(指摘事項|Findings)[[:space:]]*$/ { in_findings=1; saw_heading=1; next }
   in_findings && /^###[[:space:]]/ { in_findings=0 }
   !in_findings || $0 !~ /^[[:space:]]*\|/ { next }
-  /^\|[[:space:]]*(重要度|Severity)[[:space:]]*\|/ { saw_header=1; next }
+  /^\|[[:space:]]*(重要度|Severity)[[:space:]]*\|/ {
+    header_columns = split($0, header_cell, "|")
+    if (header_columns == 7 && trim(header_cell[5]) ~ /^(内容|Description)$/) saw_header=1
+    else malformed++
+    next
+  }
   /^\|[[:space:]]*(-+:?|-*[[:space:]]*#)[[:space:]]*\|/ { next }
   /^\|[[:space:]]*(なし|None)[[:space:]]*\|/ { next }
   {

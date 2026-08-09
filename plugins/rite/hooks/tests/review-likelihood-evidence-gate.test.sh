@@ -15,6 +15,7 @@ printf '%s\n' '### 指摘事項' '| 重要度 | スコープ | ファイル:行 
 printf '%s\n' '### 指摘事項' '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' '|---|---|---|---|---|' '| HIGH | current-pr | a.sh:1 | risk. Likelihood: Hypothetical (例外カテゴリ: banana) | mitigate |' > "$TMP/wrong-category.md"
 printf '%s\n' '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' '|---|---|---|---|---|' '| HIGH | current-pr | a.sh:1 | defect without anchor | fix |' > "$TMP/missing-heading.md"
 printf '%s\n' '### 指摘事項' '| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |' '|---|---|---|---|---|' > "$TMP/empty.md"
+printf '%s\n' '### 指摘事項' '| 重要度 | ファイル:行 | 内容 |' '|---|---|---|' > "$TMP/malformed-empty.md"
 
 check "$HELPER" --reviewer-type application --input "$TMP/valid.md"
 check bash -c '! "$1" --reviewer-type application --input "$2" >/dev/null 2>&1' _ "$HELPER" "$TMP/missing.md"
@@ -24,6 +25,7 @@ check bash -c '! "$1" --reviewer-type application --input "$2" >/dev/null 2>&1' 
 check bash -c '! "$1" --reviewer-type security --input "$2" >/dev/null 2>&1' _ "$HELPER" "$TMP/wrong-category.md"
 check bash -c '! "$1" --reviewer-type application --input "$2" >/dev/null 2>&1' _ "$HELPER" "$TMP/missing-heading.md"
 check "$HELPER" --reviewer-type application --input "$TMP/empty.md"
+check bash -c '! "$1" --reviewer-type application --input "$2" >/dev/null 2>&1' _ "$HELPER" "$TMP/malformed-empty.md"
 check bash -c 'timeout 1 "$1" --input >/dev/null 2>&1; [ "$?" -eq 2 ]' _ "$HELPER"
 check bash -c 'timeout 1 "$1" --reviewer-type >/dev/null 2>&1; [ "$?" -eq 2 ]' _ "$HELPER"
 
