@@ -46,7 +46,7 @@ bash 4.0+ 必須 (`mapfile` builtin の存在を bash 4+ 判定に使用。ス�
 |-------|-----------|----------|
 | ステップ 3.3 (Confirm Reviewers) | `AskUserQuestion` で構成確認 | **`AskUserQuestion`（オプション選択）を skip**（pre-flight 確認のみ。flow-state ベース判定はステップ 3.3 参照）。`起動 reviewer {count} 名` サマリ行・省略された reviewer 表示は両経路で必須維持 |
 | ステップ 4 (Sub-Agent Execution) | Full execution | **Full execution** — sub-agents MUST run in parallel for every review cycle (including verification mode). No shortcut allowed. |
-| ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外 1: ステップ 5.4 の `### レビュー範囲（cycle 2+ 差分スコープ）` section は `REVIEW_CYCLE_SCOPE == incremental` のとき E2E でも省略禁止** (cycle 2+ は E2E からしか発生しないため、ここを minimize すると「スキップした reviewer を記録する」要求が空文になる — SoT: [cycle-scope.md](references/cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 2: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 AskUserQuestion と同じ identity 制約 — 既定 `post_comment: false` ではこの出力が非実測指摘を人間が見る唯一の同期経路であり、省略は「非実測指摘を破棄しない」という記録契約の喪失に直結する)。**例外 3: ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section は `COMPLEXITY_LANE == light` のとき E2E でも省略禁止** (軽量レーンが動機づけられた Scenario 1「XS が 1 サイクル収束して自律マージされる」は E2E ループでしか起きず、そこを minimize すると観測性の MUST が主対象シナリオでだけ空文になる — SoT: [complexity-lane.md](references/complexity-lane.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 4: ステップ 5.4 の `### Guardrail 監査ログ` section は `guardrail_audit_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` でも Category #2 の filter 判断を人間が確認できる同期経路を維持するため) |
+| ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外 1: ステップ 5.4 の `### レビュー範囲（cycle 2+ 差分スコープ）` section は `REVIEW_CYCLE_SCOPE == incremental` のとき E2E でも省略禁止** (cycle 2+ は E2E からしか発生しないため、ここを minimize すると「スキップした reviewer を記録する」要求が空文になる — SoT: [cycle-scope.md](references/cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 2: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 AskUserQuestion と同じ identity 制約 — 既定 `post_comment: false` ではこの出力が非実測指摘を人間が見る唯一の同期経路であり、省略は「非実測指摘を破棄しない」という記録契約の喪失に直結する)。**例外 3: ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section は `COMPLEXITY_LANE == light` のとき E2E でも省略禁止** (軽量レーンが動機づけられた Scenario 1「XS が 1 サイクル収束して自律マージされる」は E2E ループでしか起きず、そこを minimize すると観測性の MUST が主対象シナリオでだけ空文になる — SoT: [complexity-lane.md](references/complexity-lane.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 4: ステップ 5.4 の `### Guardrail 監査ログ` section は `guardrail_audit_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` でも Category #2 の filter 判断を人間が確認できる同期経路を維持するため)。**例外 5: ステップ 5.4 の `### 総合評価` にある `**起動の直列化**` の 1 行は `SPAWN_SPREAD` が `serialized` / `undetermined` / 欠落を伴う `parallel` のとき E2E でも省略禁止** (直列化が起きるのは長時間 E2E セッションであり、そこを minimize すると本行が到達する経路が消える。既定 `post_comment: false` では統合レポートは PR にも載らないため、省略すると 3 経路のうち「統合レポート 1 行」だけが主対象シナリオで空文になる — 残る helper の stderr WARNING と結果 JSON のフラグは生存する) |
 | ステップ 6 (PR Comment) | Full comment + display | Post comment silently, output pattern only |
 | ステップ 7 (Triage) | Full report + guidance | **Recommendations only** — detect scope-irrelevant recommendations (findings/recommendations containing 別 Issue / スコープ外 keywords). **Always** prompt `AskUserQuestion` for each candidate (no E2E skip). Only when `[review:mergeable]`. |
 
@@ -1361,7 +1361,7 @@ Verification モードのレビュー指示テンプレート本文は [referenc
 
 **手順**:
 
-1. Write tool で `{review_tmp_dir}/rite-reviewer-timings-{pr_number}.json` に下記の形で保存する (`{review_tmp_dir}` は下記 bash が emit する `[CONTEXT] REVIEW_TMP_DIR=` marker の値をリテラル置換する。Write tool は TMPDIR の shell 展開ができないため)。`started_at` には各 reviewer 出力の `### 起動時刻` の値を**そのまま**書く。セクション欠落 / `計測不能` は `null` を書く — 省略も捏造もしない (欠落は「計測不能」として表面化させる):
+1. Write tool で下記 bash が emit する `[CONTEXT] SPAWN_TIMINGS_FILE=` marker のパス (以降 `{spawn_timings_file}`) へ下記の形で保存する (Write tool は TMPDIR の shell 展開ができないため marker 値をリテラル置換する)。**パスは cycle ごとに一意**で、`${TMPDIR}` はセッション内不変なため、これを固定名にすると前 cycle のファイルが残り続けて 5.3.0.M の「ファイル不在」判定が二度と成立しない (6.1.d が本文パスについて明文化している house rule と同じ理由)。`started_at` には各 reviewer 出力の `### 起動時刻` の値を**そのまま**書く。セクション欠落 / `計測不能` は `null` を書く — 省略も捏造もしない (欠落は「計測不能」として表面化させる):
 
    ```json
    {"reviewer_timings": [{"reviewer": "security-reviewer", "started_at": "2026-04-11T03:00:00Z"}, {"reviewer": "test-reviewer", "started_at": null}]}
@@ -1370,14 +1370,14 @@ Verification モードのレビュー指示テンプレート本文は [referenc
    `reviewer` の値は `findings[].reviewer` と同じ形 (各 `reviewer_type` に `-reviewer` を付した形、`rite:` prefix なし)。**回収できた reviewer のみ**を並べる (`reviewers[]` と同じ「実回収」基準)。
 
    ```bash
-   echo "[CONTEXT] REVIEW_TMP_DIR=${TMPDIR:-/tmp}" >&2
+   echo "[CONTEXT] SPAWN_TIMINGS_FILE=${TMPDIR:-/tmp}/rite-reviewer-timings-{pr_number}-$(date +%s).json" >&2
    ```
 
-2. helper を実行する。閾値 (既定 120 秒)・判定・WARNING emit・判定結果の同ファイルへの書き戻しは helper が担う (SoT は helper docstring):
+2. helper を実行する (`{spawn_timings_file}` は上記 marker の値をリテラル置換する)。閾値 (既定 120 秒)・判定・WARNING emit・判定結果の同ファイルへの書き戻しは helper が担う (SoT は helper docstring):
 
 ```bash
 bash {plugin_root}/hooks/scripts/review-spawn-spread-check.sh \
-  --input {review_tmp_dir}/rite-reviewer-timings-{pr_number}.json
+  --input {spawn_timings_file}
 ```
 
 | 観測 | LLM action |
@@ -2083,6 +2083,18 @@ Claude は [review-result-schema.md](../../references/review-result-schema.md) �
 
 ```bash
 echo "[CONTEXT] REVIEW_TMP_DIR=${TMPDIR:-/tmp}" >&2
+# ステップ 4.6 が本 cycle で走ったかを機械判定する。パスは cycle ごとに一意なので、
+# 不在は「前 cycle のファイルが残っている」ではなく「本 cycle で 4.6 が走っていない」を
+# 一意に意味する。無言で 3 キーを省略すると、結果 JSON 上で「4.6 が飛んだ」「本変更以前に
+# 保存された 1.1.0 JSON」「計測不能」が区別できなくなる。
+# {spawn_timings_file} は ステップ 4.6 step 1 の [CONTEXT] SPAWN_TIMINGS_FILE= marker 値を
+# リテラル置換する (本 cycle のもの = 末尾 epoch が最大のもの)。
+if [ -e "{spawn_timings_file}" ]; then
+  echo "[CONTEXT] SPAWN_TIMINGS=present" >&2
+else
+  echo "WARNING: ステップ 4.6 の spawn spread 計測が本 cycle で実行されていません (timings ファイル不在)。reviewer_timings 等の 3 キーは省略されます" >&2
+  echo "[CONTEXT] SPAWN_TIMINGS=not_run" >&2
+fi
 ```
 
 生成規約 (**ステップ 6.1.a / 6.1.b は本ファイルを読むだけで再生成しない** — 生成箇所を 2 つ以上に分けると、ゲート適用後のローカル JSON が `mergeable` なのに PR コメントの Raw JSON は `fix-needed` という乖離が出る):
@@ -2101,7 +2113,7 @@ echo "[CONTEXT] REVIEW_TMP_DIR=${TMPDIR:-/tmp}" >&2
 - `suppressed_findings` 除外契約 (ステップ 5.1.2.A) を本 JSON 生成時に適用する — `findings[]` から除外し、Markdown 側 (ステップ 5.4 / 6.1.b) には audit log として残す
 - **`findings[].scope` を必ず明示する** (`current-pr` / `follow-up` / `nit-noted`)。scope は本ゲートの blocking 判定の入力そのもので、**値が外れてもキーが欠落しても `reason=scope_enum_violation` で hard fail し、JSON も書き換えられない**（フラグ有無に依らず発火）。未知 / 欠落 scope が blocking 集合からも移送対象からも同時に外れ、mergeable を無音で確定させるのを防ぐため
 - **`findings[].pre_existing` は書かない** — canonical `schema_version: "1.1.0"` 内の additive optional field であり、現行 write path は reviewer の revert test 結果を収集しない。欠落時も read 側は default mapping を適用せず、Cross-field invariant #5 は発火しない
-- **`reviewer_timings[]` / `reviewer_spawn_serialized` / `reviewer_spawn_spread_seconds`** = ステップ 4.6 の `{review_tmp_dir}/rite-reviewer-timings-{pr_number}.json` を **Read tool で読んで転記する**（会話コンテキストの記憶から再構成しない — 記憶と実測がずれると、直列化の記録が実際の計測と別のことを主張する）。`reviewer_timings[]` は同ファイルの値をそのまま写す。後 2 者は**同ファイルに存在するときだけ**書き、計測不能で helper が書かなかった場合は**キーごと省略する**（欠落 = 未判定。`verification` と同じ 3 値モデル）。ステップ 4.6 が未実行 / ファイル不在なら 3 者とも省略する（捏造しない）。ゲート helper は本キー群に触れず、`review-result-save.sh` も必須フィールドとして要求しないため、欠落しても保存・merge 判定は変わらない
+- **`reviewer_timings[]` / `reviewer_spawn_serialized` / `reviewer_spawn_spread_seconds`** = ステップ 4.6 の `{spawn_timings_file}` を **Read tool で読んで転記する**（会話コンテキストの記憶から再構成しない — 記憶と実測がずれると、直列化の記録が実際の計測と別のことを主張する）。`reviewer_timings[]` は同ファイルの値をそのまま写す。後 2 者は**同ファイルに存在するときだけ**書き、計測不能で helper が書かなかった場合は**キーごと省略する**（欠落 = 未判定。`verification` と同じ 3 値モデル）。上記 bash が `SPAWN_TIMINGS=not_run` を emit した場合は 3 者とも省略する（捏造しない。無言ではなく同 bash の WARNING で表面化済み）。ゲート helper は本キー群に触れず、`review-result-save.sh` も必須フィールドとして要求しないため、欠落しても保存・merge 判定は変わらない
 - 必須フィールドと各 finding のフィールド定義は ステップ 6.1.a の「Required JSON fields」節を参照する (定義の重複を避けるため本節では再掲しない)
 
 **step 2: ゲート適用**
@@ -2278,6 +2290,8 @@ fi
 **Note**: `📎 reviewed_commit: {current_commit_sha}` must be output in both templates. This is used for incremental diff retrieval in the verification mode of the next cycle (ステップ 1.2.4.1). 次 cycle の差分スコープ（ステップ 1.2.4）が使う起点は本コメントではなく ステップ 6.1.a の永続 JSON の `commit_sha` である。
 **`### レビュー範囲（cycle 2+ 差分スコープ）` section**: `REVIEW_CYCLE_SCOPE == incremental` のときのみ描画する（`full` のときはセクションごと省略）。起動した reviewer とその選出理由（前サイクル finder の `mandatory` 合流 / fix diff の領域担当）、および**今サイクルで起動しなかった reviewer 名と理由**を列挙する。silent な絞り込みは禁止で、本 section は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 1）。
 **`### レビューレーン（XS/S 軽量レーン）` section**: `COMPLEXITY_LANE == light`（ステップ 1.3.2）のときのみ描画する（`full` のときはセクションごと省略）。宣言 Complexity、軽量化した検証 mandate、**軽量化していない項目**、および**レーンの上限により起動しなかった reviewer 名と理由**を列挙する。silent な絞り込みは禁止で、本 section は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 3）。
+**`### 総合評価` の `**起動の直列化**` 行**: ステップ 4.6 の `SPAWN_SPREAD` が `serialized` / `undetermined`、または欠落を伴う `parallel` のときに描画する（全員分が揃い閾値内だった正常系は行ごと省略する）。silent な省略は禁止で、本行は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 5）。
+
 **`### 実測なし指摘 (non-blocking)` section の情報源**: ステップ 5.3.0.M でゲート適用済の `{review_tmp_dir}/rite-review-result-{pr_number}.json` の `non_blocking_findings[]` を Read tool で読んで描画する。会話コンテキストから記憶で再構成しない — 記憶と JSON がずれると、永続 JSON・PR 記録コメント・本 section の 3 経路が別々の集合を主張する。件数 `{non_blocking_count}` は 5.3.0.M の `[CONTEXT] MEASURED_GATE=...; non_blocking_total=` の値と一致する。
 
 ---

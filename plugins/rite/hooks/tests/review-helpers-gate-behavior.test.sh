@@ -3710,7 +3710,13 @@ assert "TC-6.6 未知フラグ: exit 2" "2" "$RC"
 # TC-6.7 ステップ 4.6 の呼び出しと転記規約の静的 pin。helper が正しくても、SKILL.md 側の
 # 呼び出しか 5.3.0.M への転記規約が消えれば観測結果はどこにも残らない。
 assert_grep "TC-6.7 4.6 が helper を live な bash block で呼ぶ" "$REVIEW_MD" '^bash \{plugin_root\}/hooks/scripts/review-spawn-spread-check\.sh'
-assert_grep "TC-6.7 5.3.0.M step 1 が timings ファイルの Read 転記を規定" "$REVIEW_MD" 'rite-reviewer-timings-\{pr_number\}\.json.*Read'
+assert_grep "TC-6.7 5.3.0.M step 1 が timings ファイルの Read 転記を規定" "$REVIEW_MD" '\{spawn_timings_file\}` を \*\*Read tool で読んで転記する'
+# timings パスは cycle ごとに一意でなければ「本 cycle で 4.6 が走ったか」を不在で判定できない
+# (TMPDIR がセッション内不変のため、固定名では前 cycle のファイルが残り不在にならない)。
+assert_grep "TC-6.7 4.6 が timings パスに cycle 一意の epoch を含める" "$REVIEW_MD" 'SPAWN_TIMINGS_FILE=\$\{TMPDIR:-/tmp\}/rite-reviewer-timings-\{pr_number\}-\$\(date \+%s\)\.json'
+assert_grep "TC-6.7 5.3.0.M が 4.6 未実行を無言で省略せず marker で表面化" "$REVIEW_MD" 'SPAWN_TIMINGS=not_run'
+assert_grep "TC-6.7 E2E 表が直列化 1 行を例外 5 として省略禁止に登録" "$REVIEW_MD" '例外 5: ステップ 5\.4 の `### 総合評価` にある `\*\*起動の直列化\*\*` の 1 行'
+assert_grep "TC-6.7 5.4 側にも例外 5 と対の注記がある" "$REVIEW_MD" '本行は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 5）'
 assert_grep "TC-6.7 reviewer prompt が起動時刻の記録を指示" "$PLUGIN_ROOT/skills/pr-review/references/reviewer-prompt-generator.md" 'date -u \+%Y-%m-%dT%H:%M:%SZ'
 assert_grep "TC-6.7 reviewer prompt の出力フォーマットに起動時刻セクション" "$PLUGIN_ROOT/skills/pr-review/references/reviewer-prompt-generator.md" '^### 起動時刻'
 assert_grep "TC-6.7 schema が reviewer_timings を定義" "$PLUGIN_ROOT/references/review-result-schema.md" '^\| `reviewer_timings` \| array \|'
