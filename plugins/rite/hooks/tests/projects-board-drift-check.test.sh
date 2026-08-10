@@ -370,8 +370,9 @@ else
   FAIL=$((FAIL + 1)); FAILURES+=("T-9: expected exit 1 + '1 updated, 0 failed', got rc=$t9_rc; stdout: $(printf '%s' "$t9_out" | tr '\n' ' ' | head -c 300)")
   echo "  ✗ reconcile summary wrong (exit $t9_rc)" >&2
 fi
-# findings 行は行まるごと固定する。部分一致だけだと script L270 の書式が壊れても通ってしまい、
-# 契約が「現行のまま維持する」と規定した唯一の出力を誰も守らなくなる。
+# findings 行は行まるごと固定する。部分一致だけだと script の findings 行を emit する echo
+# (`[projects-board-drift] #N ...`) の書式が壊れても通ってしまい、契約が「現行のまま維持する」と
+# 規定した唯一の出力を誰も守らなくなる。
 assert_present "$t9_out" "$(printf '[projects-board-drift] #103 "closed as duplicate" status="Todo" (expected Done) -> reconciled to Done')" \
   "T-9: findings 行形式が維持されている"
 # lint Phase 3.18 が機械読みする件数 sentinel。0 固定などの退行は exit 1 と矛盾したまま

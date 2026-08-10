@@ -270,10 +270,11 @@ if [ -n "$DRIFT_TSV" ]; then
                 echo "projects-board-drift: reconcile #$issue_number: $(printf '%s' "$w" | neutralize_ctrl --c0-only)" >&2
               done
         fi
-        # reconcile_err に中身が入るのは helper を exec できなかった場合のみ (handled failure は
-        # 上の .warnings[] が担う)。両方空なら理由不明として exec 失敗の可能性を示す。
+        # reconcile_err には helper 自身の stderr が入る (exec 不能・helper 内の set -e abort 等)。
+        # helper は handled failure では stderr へ書かないので、ここに中身があるのは helper が
+        # JSON を出す前に落ちた場合。原因は断定せず、捕捉した stderr をそのまま見せる。
         if [ "$QUIET" != "true" ] && [ -n "$reconcile_err" ] && [ -s "$reconcile_err" ]; then
-          echo "projects-board-drift: reconcile exec failed for #$issue_number: $(head -c 200 "$reconcile_err" | tr '\n' ' ' | neutralize_ctrl --c0-only)" >&2
+          echo "projects-board-drift: reconcile helper stderr for #$issue_number: $(head -c 200 "$reconcile_err" | tr '\n' ' ' | neutralize_ctrl --c0-only)" >&2
         fi
       fi
       [ -n "$reconcile_err" ] && rm -f "$reconcile_err"; reconcile_err=""
