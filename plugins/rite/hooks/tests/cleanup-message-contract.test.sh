@@ -128,7 +128,7 @@ assert_grep "in_worktree arm still routes through ExitWorktree(keep)" "$CLEANUP"
 
 echo "=== ステップ 4/5/9: 委譲モードのスキップガード (T-01) ==="
 # main checkout 操作を持つ 3 ステップすべてに対称にガードを置く。1 箇所でも欠けると
-# harness の worktree 隔離ガードに拒否され、 が消した長文の診断報告に戻る。
+# harness の worktree 隔離ガードに拒否され、この委譲ガードが消した長文の診断報告に戻る。
 # marker 名の在処だけでなく **「実行しない」という指示語** まで pin する — prose-driven skill では
 # 指示語そのものが実装本体で、marker だけを見る assert は指示の反転 (「実行しない」→「通常どおり
 # 実行する」) を素通しする (mutation 実測で 4 サイト反転しても全 assert green だった)。

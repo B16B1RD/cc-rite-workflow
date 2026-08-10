@@ -1290,7 +1290,7 @@ else
 fi
 ```
 
-**sandbox + multi_session 環境では、上記スクリプトが `added`/`already_present` を返さず初回から marker `failed` になるのが既定経路である**（例外ケースではない）。`jq ... > "$settings_file.tmp"` リダイレクトが単独で「読み込み専用ファイルシステムです」等のエラーを起こし、bash 全体としては正常終了（exit 0）したまま `else` 節に落ちて marker が直接 `failed` になる（bash ツール呼び出し自体はエラーにならない）。そのため **「コマンド自体が失敗したかどうか」を再試行の判定条件にしない** — marker が `failed` であれば理由を問わず、当該 bash ブロック全体を一度だけ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約、 と同じ扱い。ブロック全体の再実行は `grep -qF` / `unique` により冪等なので、gitignore 追記側だけ再実行するより安全）。再実行後も `failed`（JSON 破損等、sandbox 起因でない失敗）の場合のみ、下記の手動案内メッセージにフォールバックする。
+**sandbox + multi_session 環境では、上記スクリプトが `added`/`already_present` を返さず初回から marker `failed` になるのが既定経路である**（例外ケースではない）。`jq ... > "$settings_file.tmp"` リダイレクトが単独で「読み込み専用ファイルシステムです」等のエラーを起こし、bash 全体としては正常終了（exit 0）したまま `else` 節に落ちて marker が直接 `failed` になる（bash ツール呼び出し自体はエラーにならない）。そのため **「コマンド自体が失敗したかどうか」を再試行の判定条件にしない** — marker が `failed` であれば理由を問わず、当該 bash ブロック全体を一度だけ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — sandbox に拒否された main checkout 書き込みだけを再試行する既存ポリシーと同じ扱い。ブロック全体の再実行は `grep -qF` / `unique` により冪等なので、gitignore 追記側だけ再実行するより安全）。再実行後も `failed`（JSON 破損等、sandbox 起因でない失敗）の場合のみ、下記の手動案内メッセージにフォールバックする。
 
 `SANDBOX_ALLOWLIST_AUTOWRITE` marker で分岐する:
 
