@@ -16,7 +16,7 @@
 #            remote / update-ref / symbolic-ref) → deny (writes .git/config or
 #            .git refs with no redirect or file verb for (H) to see)
 #        (H) WRITE into a .git dir via redirect / file-mutating verb → deny
-#   5. Merge-point review-result positive gate (Issue #2159) — main-session
+#   5. Merge-point review-result positive gate  — main-session
 #      (and any session) Bash that issues `gh pr merge` / REST pulls/{n}/merge /
 #      GraphQL mergePullRequest is denied unless `.rite/review-results/{pr}-*.json`
 #      exists with minimum form (schema_version + verdict keys, reviewers array
@@ -25,7 +25,7 @@
 #      procedure-omission bypass of /rite:pr-review, not adversarial forgery.
 #
 # Reviewer working-tree mutations (git checkout / reset / commit / branch / ...)
-# are deliberately NOT machine-gated here (Issue #1879). They are visible and
+# are deliberately NOT machine-gated here . They are visible and
 # recoverable via `git status`; their guarantee is Layer 1 (the reviewer prompt
 # READ-ONLY contract, plugins/rite/agents/_reviewer-base.md) + Layer 3
 # (post-review-state-verify.sh drift detection after each review). Only the
@@ -250,7 +250,7 @@ fi
 
 # Pattern 4: Reviewer subagent .git-write gate.
 # Scope: only when IS_SUBAGENT=1. Main-session operations are never affected.
-# This block does NOT enumerate working-tree-mutating git verbs (Issue #1879) —
+# This block does NOT enumerate working-tree-mutating git verbs  —
 # see the header. It holds one machine guarantee (no writes into .git) via the
 # (Z) wrapper check, the (N) native-subcommand gate, and the (H) write
 # detection below, inside a fail-CLOSED trap region.
@@ -322,7 +322,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # RCE vector the header invariant names, so the write forms keep a machine
   # gate. This is a FIXED closed set whose only write target is .git itself — a
   # .git-write gate, NOT a revival of the working-tree verb enumeration
-  # (Issue #1879 removed working-tree verbs; these were never in that class:
+  # (the governing rationale removed working-tree verbs; these were never in that class:
   # .git/config writes are invisible to `git status` and Layer 3 has no
   # config/ref axis, so Layer 1 would be the sole backstop without this gate).
   #
@@ -456,14 +456,14 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
 
     if [ -n "$_gn_hit" ]; then
       BLOCKED_PATTERN="reviewer-gitdir-write"
-      BLOCKED_REASON="Reviewer subagents must not WRITE into Git internals via native git subcommands. This command uses ${_gn_hit}, which writes .git/config or .git refs directly (or injects config inline) — no redirect or file-mutating verb involved, so the redirect/file-verb write detection cannot see it. Planting 'git config core.hooksPath / core.fsmonitor / alias.*=!cmd' (or 'git -c core.hooksPath=… <cmd>') executes arbitrary code in the non-sandboxed main session on the next git operation, and .git/config is invisible to 'git status' (no Layer 3 axis covers it). This is a fixed .git-write gate (config write forms incl. inline -c / mutating remote / update-ref / symbolic-ref, global-flag-normalized), not a working-tree verb denylist (Issue #1879)."
+      BLOCKED_REASON="Reviewer subagents must not WRITE into Git internals via native git subcommands. This command uses ${_gn_hit}, which writes .git/config or .git refs directly (or injects config inline) — no redirect or file-mutating verb involved, so the redirect/file-verb write detection cannot see it. Planting 'git config core.hooksPath / core.fsmonitor / alias.*=!cmd' (or 'git -c core.hooksPath=… <cmd>') executes arbitrary code in the non-sandboxed main session on the next git operation, and .git/config is invisible to 'git status' (no Layer 3 axis covers it). This is a fixed .git-write gate (config write forms incl. inline -c / mutating remote / update-ref / symbolic-ref, global-flag-normalized), not a working-tree verb denylist ."
       BLOCKED_ALTERNATIVE="Read-only inspection stays allowed: 'git config --list', 'git config --get <key>', 'cat .git/config', 'git rev-parse --symbolic-full-name HEAD', 'git remote -v', 'git ls-remote'. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement)."
     fi
   fi
 
   # --- (H) reviewer WRITE into a .git directory (redirect / file-mutating verb) ---
   # pre-tool-edit-guard.sh blocks the Edit/Write path into a parent .git; this
-  # closes the sibling Bash-tool gap (Issue #1864). Only WRITES into a .git dir
+  # closes the sibling Bash-tool gap . Only WRITES into a .git dir
   # component are denied; READING .git (cat/ls/grep .git/config, `dd if=.git/…`)
   # stays allowed.
   #
@@ -526,7 +526,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
       # three are removed globally — a fixed surrounding strip would leave
       # obfuscated vectors (`of='.git/x'`, `> .g\it/hooks/x`) that still open the
       # real .git for the shell. Backslash removal runs BEFORE the `of=` strip so
-      # `\of=.git/x` normalizes first (Issue #1864 cycle-3/4 fix). Only the
+      # `\of=.git/x` normalizes first (the governing rationale cycle-3/4 fix). Only the
       # `.git` component match uses `_gd_p`; `_gd_prev` and `_gd_verb` use the
       # RAW `_gd_tok`. `$'…'` ANSI-C decoding is NOT done — that is a
       # `$`-expansion, already out-of-scope above.
@@ -561,7 +561,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     # Restore the prior noglob state.
     [ "$_gd_noglob_was_set" = "1" ] || set +f
     if [ "$BLOCKED_PATTERN" = "reviewer-gitdir-write" ]; then
-      BLOCKED_REASON="Reviewer subagents must not WRITE into a Git internal (.git) directory. This command writes into a .git path via a shell redirect (> / >>) or a file-mutating command (tee / cp / mv / ln / install / rsync / truncate / dd of= / sponge / patch). Planting or altering .git/hooks/* or .git/config (core.hooksPath / alias.*=!sh / core.fsmonitor) executes arbitrary code in the non-sandboxed main session on the next git operation — strictly worse than a source edit and invisible to 'git status'. The Edit/Write path is already blocked by pre-tool-edit-guard.sh; this closes the Bash-tool gap (Issue #1864)."
+      BLOCKED_REASON="Reviewer subagents must not WRITE into a Git internal (.git) directory. This command writes into a .git path via a shell redirect (> / >>) or a file-mutating command (tee / cp / mv / ln / install / rsync / truncate / dd of= / sponge / patch). Planting or altering .git/hooks/* or .git/config (core.hooksPath / alias.*=!sh / core.fsmonitor) executes arbitrary code in the non-sandboxed main session on the next git operation — strictly worse than a source edit and invisible to 'git status'. The Edit/Write path is already blocked by pre-tool-edit-guard.sh; this closes the Bash-tool gap ."
       BLOCKED_ALTERNATIVE="Reviewers are strictly read-only — never write into .git. To INSPECT it, read instead: 'cat .git/config', 'git config --list', 'git cat-file -p <obj>', 'git show <ref>:<file>', 'git rev-parse'. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement)."
     fi
   fi
@@ -571,7 +571,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   trap '_rite_btg_pattern13_fail_open' ERR
 fi
 
-# --- Pattern 5: Merge-point review-result positive gate (Issue #2159) ---
+# --- Pattern 5: Merge-point review-result positive gate  ---
 # Blocks merge commands that have not been through /rite:pr-review far enough
 # to leave a qualifying review-results JSON. Applies to any session (not just
 # subagents): the bypass path observed in the wild was main-session batch-run
@@ -605,7 +605,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     # integer nor a /pull/{n} URL. Variable forms ("$PR", $PR) and flag values
     # that look like free tokens land here. flow-state fallback must NOT run
     # in that case — a different session's pr_number must not become the gate
-    # target for an unresolved merge argv (Issue #2173).
+    # target for an unresolved merge argv .
     _mrg_nonflag_unresolved=0
 
     # --- PR number resolution (arg first, then flow-state only if flag-only) ---

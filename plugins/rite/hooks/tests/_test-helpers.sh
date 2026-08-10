@@ -473,7 +473,7 @@ make_sandbox() {
   # On macOS $TMPDIR lives under /var/folders (a symlink to /private/var/...),
   # and git rev-parse / realpath in production canonicalize to the /private
   # form. Comparing the raw mktemp path against those canonical paths would
-  # spuriously fail path-equality assertions (Issue #2008 Family D).
+  # spuriously fail path-equality assertions (the governing rationale Family D).
   #
   # Fail closed on canonicalization failure. `cd ""` returns 0 without changing
   # the directory, so letting an empty $d through would make the git init/commit

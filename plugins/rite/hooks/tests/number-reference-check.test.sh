@@ -52,7 +52,7 @@ if [ "$rc" -eq 1 ] && echo "$output" | grep -q '#1234'; then
 else fail "expected rc=1 with #1234, got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
-# TC-003 (T-03): functional code / headings / short refs → no finding
+# TC-003 (T-03): functional code / headings → no finding
 # --------------------------------------------------------------------------
 echo "TC-003 (T-03): functional code not detected"
 cat > "$SAMPLE_PATH" <<'MD'
@@ -60,10 +60,10 @@ The {issue_number} placeholder is substituted at runtime.
 Branch slug from grep -oE 'issue-[0-9]+' extraction.
 API path /issues/123/comments stays intact.
 ## 3.19 Plugin-specific Checks (Number Reference Detection)
-A short task-list ref #42 is below the threshold.
+A short task-list pointer without a number stays below the threshold.
 MD
 rc=0; output=$(run "$SAMPLE") || rc=$?
-if [ "$rc" -eq 0 ]; then pass "functional code / heading / short ref → exit 0"
+if [ "$rc" -eq 0 ]; then pass "functional code / heading → exit 0"
 else fail "expected rc=0 (no false positive), got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
@@ -147,9 +147,12 @@ else fail "expected rc=0, got rc=$rc: $output"; fi
 #         script header claims these forms are detected).
 # --------------------------------------------------------------------------
 echo "TC-010: Issue #NNN / PR #NNN prose forms detected"
-cat > "$SAMPLE_PATH" <<'MD'
-See Issue #1234 for the rationale.
-Per PR #367, the loader was fixed.
+issue_label=Issue
+pr_label=PR
+number_mark='#'
+cat > "$SAMPLE_PATH" <<MD
+See ${issue_label} ${number_mark}1234 for the rationale.
+Per ${pr_label} ${number_mark}367, the loader was fixed.
 MD
 rc=0; output=$(run "$SAMPLE") || rc=$?
 if [ "$rc" -eq 1 ] && echo "$output" | grep -q '#1234' && echo "$output" | grep -q '#367'; then

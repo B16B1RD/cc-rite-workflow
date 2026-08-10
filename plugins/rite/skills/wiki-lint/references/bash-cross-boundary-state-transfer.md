@@ -19,7 +19,7 @@ Bash block 内で分岐処理した結果 (成功 / 複数の失敗カテゴリ)
 Phase で参照する必要がある。シェル変数 (`$log_read_ok` 等) は Bash tool 呼び出し境界を越えて保持されない。
 
 典型例: skipped_refs helper の「raw frontmatter 走査成功 / legitimate absence (raw 不在) / 真の IO error /
-branch_strategy fail-fast」の 4 状態を区別したい (Issue #1520 で skip SoT が log.md から raw frontmatter
+branch_strategy fail-fast」の 4 状態を区別したい (この仕様により skip SoT が log.md から raw frontmatter
 `ingest_status: skipped` へ移行。enum 名 `log_read_ok` は stdout 契約のため据え置き)。単純な boolean
 (`ok/not-ok`) では legitimate absence と IO error を混同し、false positive を生む (skip 済み raw を欠落概念
 としてカウントする等)。下記コード例は enum パターンの illustrative な簡略形（実装実体は helper を参照）。

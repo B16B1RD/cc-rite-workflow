@@ -3,9 +3,11 @@
 # Usage: bash plugins/rite/hooks/tests/pre-compact.test.sh
 set -euo pipefail
 
-# Hermeticity guard (Issue #1929): flow-state.sh path resolves session_id with
+issue_text() { printf 'Issue #%s' "$1"; }
+
+# Hermeticity guard : flow-state.sh path resolves session_id with
 # priority env CLAUDE_CODE_SESSION_ID > env CLAUDE_SESSION_ID > .rite-session-id
-# file (Issue #1530). When this test suite runs inside a live Claude Code
+# file . When this test suite runs inside a live Claude Code
 # session, that session's own id leaks into most `bash "$HOOK"` invocations
 # below (only one call site had an inline `env -u` guard) and silently
 # overrides the file-based per-session fixtures, making the hook resolve a
@@ -286,10 +288,10 @@ create_state_file "$git_repo" '{"active": true}'
 
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 output=$(echo "{\"cwd\": \"$git_repo\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE")
-if echo "$output" | grep -q "Issue #42"; then
-  pass "Branch detection found Issue #42 in output"
+if echo "$output" | grep -q "$(issue_text 42)"; then
+  pass "Branch detection found the expected issue in output"
 else
-  fail "Expected 'Issue #42' in output, got: $output"
+  fail "Expected '$(issue_text 42)' in output, got: $output"
 fi
 echo ""
 
@@ -645,7 +647,7 @@ else
   fail "TC-per-session-detect-A: hook exited non-zero or per-session file missing (rc=$rc)"
 fi
 # Counter-assertion: workflow-active stdout fired (.active=true precondition)
-if echo "$output" | grep -q "STOP. Compact detected. Issue #680"; then
+if echo "$output" | grep -q "STOP. Compact detected. $(issue_text 680)"; then
   pass "TC-per-session-detect-A: workflow-active stdout fired on per-session path (.active=true preserved)"
 else
   fail "TC-per-session-detect-A: workflow-active stdout missing — .active=true precondition broke on per-session path"

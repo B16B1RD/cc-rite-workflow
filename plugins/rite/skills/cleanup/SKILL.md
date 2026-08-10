@@ -82,7 +82,7 @@ PR 検出時は返却された `headRefName` と `{branch_name}` の完全一致
 とする。不一致は削除対象 identity が確定しないため中断する。PR 未検出でユーザーが「ブランチを削除して続行」
 を明示選択した場合だけ承認済み入力として `true`、それ以外は `false`。prefix denylist で identity を推測しない。
 
-`mergedAt` が非 null（= PR が merge 済み）なら `{pr_merged}=true` として保持する。**それ以外のすべての経路**（未マージ PR の強制クリーンアップ、PR 未検出でブランチ削除を選んで続行した経路など）は `{pr_merged}=false` を既定とする。これによりステップ 4-W / ステップ 5 のすべての分岐で `{pr_merged}` が必ず literal substitute 可能になる（未定義値参照を防ぐ）。ステップ 4-W の worktree パス manifest 記録（Issue #1945）、およびステップ 5 のブランチ削除（squash 残渣の強制削除 / 遅延ブランチの manifest 記録）で参照する。
+`mergedAt` が非 null（= PR が merge 済み）なら `{pr_merged}=true` として保持する。**それ以外のすべての経路**（未マージ PR の強制クリーンアップ、PR 未検出でブランチ削除を選んで続行した経路など）は `{pr_merged}=false` を既定とする。これによりステップ 4-W / ステップ 5 のすべての分岐で `{pr_merged}` が必ず literal substitute 可能になる（未定義値参照を防ぐ）。ステップ 4-W の worktree パス manifest 記録、およびステップ 5 のブランチ削除（squash 残渣の強制削除 / 遅延ブランチの manifest 記録）で参照する。
 
 ### 1.4 リポジトリ情報取得
 
@@ -157,7 +157,7 @@ echo "[DEBUG] parent not detected for issue #{issue_number} — processing as st
 
 関連 Issue が識別できなければステップ 4 へ進む。
 
-Work Memory の正本を **存在ではなく内容** で選ぶ（Issue #2141）。PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし）はファイルとして存在するが、存在検査だけだと stub を正本と見なし Issue コメント側 fallback が発火しない（#2127 の「存在と成功の混同」と同族）。進捗セクション見出し（現行 `### 進捗サマリー` / v1 `### 進捗`）が実在するときだけローカル WM を正本とし、stub 判定時はコメント側へ fallback して WARNING で可視化する:
+Work Memory の正本を **存在ではなく内容** で選ぶ。PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし）はファイルとして存在するが、存在検査だけだと stub を正本と見なし Issue コメント側 fallback が発火しない（#2127 の「存在と成功の混同」と同族）。進捗セクション見出し（現行 `### 進捗サマリー` / v1 `### 進捗`）が実在するときだけローカル WM を正本とし、stub 判定時はコメント側へ fallback して WARNING で可視化する:
 
 ```bash
 # WM 正本の選定（内容検査 — Issue #2141）
@@ -407,14 +407,14 @@ esac
 
 **分岐の基準は「worktree 内か」ではなく「`ExitWorktree` で main checkout へ退出できるか」**（#2133）。`in_worktree` は EnterWorktree 管理下で退出でき、`in_worktree_unrecorded` は path 入場で `ExitWorktree` が no-op になる — 後者では main checkout 操作が harness の worktree 隔離ガードに拒否されるため、実行せず委譲する。
 
-> **ガードが拒否する形（実測）**: harness が拒否するのは **Bash ツール呼び出しのコマンド文字列に直接 `cd {main_root}` / `git -C {main_root}` を書く形**（および worktree 外を向くか検証不能な複合ブロック）であり、helper スクリプト内部の `cd` は拒否されない（ステップ 7 の `pr-cycle-cleanup.sh` は内部で main checkout へ `cd` して `git worktree remove` / `git branch -d` を実行できている）。本 SKILL.md のステップ 4 / 4-W / 5 / 9 はいずれも前者の形を取るため委譲対象になる。helper へ閉じ込めれば自動化できる余地は残るが、それは「worktree 内から全項目を完走させる」設計変更であり Issue #2133 の Non-goal。
+> **ガードが拒否する形（実測）**: harness が拒否するのは **Bash ツール呼び出しのコマンド文字列に直接 `cd {main_root}` / `git -C {main_root}` を書く形**（および worktree 外を向くか検証不能な複合ブロック）であり、helper スクリプト内部の `cd` は拒否されない（ステップ 7 の `pr-cycle-cleanup.sh` は内部で main checkout へ `cd` して `git worktree remove` / `git branch -d` を実行できている）。本 SKILL.md のステップ 4 / 4-W / 5 / 9 はいずれも前者の形を取るため委譲対象になる。helper へ閉じ込めれば自動化できる余地は残るが、それは「worktree 内から全項目を完走させる」設計変更であり the contract の Non-goal。
 
 - `CLEANUP_WT=in_worktree_unrecorded`（EnterWorktree 非経由の path 入場 = ユーザーがセッションを worktree ディレクトリで開いた場合。`ExitWorktree` が no-op で main checkout へ戻れない）: **下記の手順 1〜4 を実行しない**（`CLEANUP_DELEGATED=1`）。main checkout 操作を要する 4 項目（base 更新 = ステップ 4 / worktree 削除 = 本 4-W / ブランチ削除 = ステップ 5 / wiki ingest = ステップ 9）は**試行せず**、ステップ 12 が未完了として列挙し委譲する。worktree 内で完結する項目（PR-specific state 削除・Projects Status 更新・Issue クローズ・作業メモリ更新・flow state リセット）は通常どおり実行する。ガードを迂回する複合コマンド（main checkout への `cd` / `git -C` リダイレクト）は**試みない** — ガードは正当に機能しており、迂回は設計違反。
   **委譲先は main checkout での `/rite:cleanup {pr_number}` 再実行**（1 系統）。再実行セッションでは flow-state に worktree 記録が無いため 4-W は `CLEANUP_WT=none` を返し、`CLEANUP_DELEGATED` を emit せずステップ 4 / 5 / 9 が通常実行される。base 更新・wiki ingest・リモートブランチ削除はそこで直接完了し、worktree 削除とローカルブランチ削除は**ステップ 5 が `branch` エントリを reap manifest に記録する**ことで次回セッション開始時の自動回収を arm する（`{pr_merged}=true`、manifest への記録を verify 済み、かつ対象 worktree が reaper と同じ filtered dirty gate を通過したときだけ `recovery=auto` になる。未マージ PR の強制 cleanup・記録漏れ・dirty または判定不能な worktree は `recovery=manual` に倒れ手動回復が必要 — 出し分けはステップ 12 の `{local_branch_check}` 判定に規定済み。既存配線で、本ステップから追加の記録は行わない）。
 - `CLEANUP_WT=in_worktree`（EnterWorktree 管理下 = `/rite:batch-run` 経由の通常経路。`ExitWorktree` で退出できる）:
   1. `dirty=yes` なら **AskUserQuestion**（「`git stash push` して続行 / 中止」）。説明文は上記 `--- dirty files begin/end ---` デリミタ内に出力された生パス一覧を**引用**する（要約・創作しない）。stash は common git dir に格納されるため worktree 削除後も `git stash pop` 可能（完了報告の stash 案内は従来文面を流用）。
   2. `ExitWorktree` ツールを `action: "keep"` で呼び出し、main checkout に復帰する（path 入場した worktree は remove でも消えない仕様のため**常に keep**）。
-  3. main から worktree を削除する。**削除前に self-exclusion 付き live-cwd guard（Issue #1544 / #1670）を通す**: **別の**セッションの harness cwd がまだこの worktree に立っている場合に削除すると、そのセッションの `/clear` が `Path does not exist` で失敗するため、削除せず遅延回収へ委譲する。一方、cleanup を実行している**自セッション自身**（ハーネス = この Bash の親 `$PPID` の process subtree）は除外する — これを除外しないと、ステップ 2 の `ExitWorktree(keep)` が no-op / 失敗に終わった経路で自セッションを「live」と誤検出し、cleanup 自身を理由に削除をブロックする自己ブロッキングが起きる（#1670）。判定は self-exclusion を内蔵した `worktree-foreign-cwd.sh` に委譲する（`worktree-live-cwd.sh` 自体は変更しない — #1670 Non-Target）:
+  3. main から worktree を削除する。**削除前に self-exclusion 付き live-cwd guard（the governing rationale / #1670）を通す**: **別の**セッションの harness cwd がまだこの worktree に立っている場合に削除すると、そのセッションの `/clear` が `Path does not exist` で失敗するため、削除せず遅延回収へ委譲する。一方、cleanup を実行している**自セッション自身**（ハーネス = この Bash の親 `$PPID` の process subtree）は除外する — これを除外しないと、ステップ 2 の `ExitWorktree(keep)` が no-op / 失敗に終わった経路で自セッションを「live」と誤検出し、cleanup 自身を理由に削除をブロックする自己ブロッキングが起きる（#1670）。判定は self-exclusion を内蔵した `worktree-foreign-cwd.sh` に委譲する（`worktree-live-cwd.sh` 自体は変更しない — #1670 Non-Target）:
      ```bash
      # rc 0 = 別の live セッションが cwd を置く → 削除を遅延 / rc 1 = 自セッションだけ or 不在
      #        → 削除 / rc 2 = 判定不能（/proc 無し）→ 削除（従来 worktree-live-cwd.sh rc=2 と同じ後方互換）。
@@ -485,12 +485,12 @@ esac
      fi
      ```
      > 通常の `in_worktree` 経路ではステップ 2 の `ExitWorktree(keep)` で自セッションの harness cwd が main に退避済みのため、worktree には自他いずれの cwd も無く `worktree-foreign-cwd.sh` は rc=1（削除）を返す。`ExitWorktree(keep)` が no-op / 失敗に終わった経路でも、残る live cwd は自セッションのハーネス（`$PPID` subtree）だけなので self-exclusion により rc=1（削除）となり、自己ブロッキングしない。rc=0（遅延）になるのは別セッションのハーネスが実際にこの worktree 内に cwd を持つ場合のみ。`/proc` の無い環境では rc=2 となり従来どおり削除を実行する（後方互換）。
-  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）、live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）、または sandbox マスク skip（`WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` — Issue #1957。remove 試行自体が admin dir を半壊させるため試行せず委譲）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。busy 失敗時は上記の sandbox 干渉 WARNING も追加表示される（Issue #1923 AC-5）。`WORKTREE_REMOVE_FAILED` / `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` は `{pr_merged}=true` のときのみ reap manifest（`.rite/tmp-artifacts.tsv`）へ `session_worktree` type でパスを記録する（Issue #1945。`worktree` type ではない — Step 4.5 の ephemeral tmp artifact 専用 ungated reap と混ぜないため）。corpse 化（admin dir 半壊で git がツリーを認識できなくなる状態）した場合、checkout 中 branch が解決不能でブランチ名 bypass（#1966）が構造的に効かないため、パス自体の記録で `pr-cycle-cleanup.sh` Step 5 の corpse age guard（24h 待ち）をバイパスさせ、mount 解放後の次回セッションで即座に回収できるようにする。
+  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）、live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）、または sandbox マスク skip（`WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` — the governing rationale。remove 試行自体が admin dir を半壊させるため試行せず委譲）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。busy 失敗時は上記の sandbox 干渉 WARNING も追加表示される（the governing rationale AC-5）。`WORKTREE_REMOVE_FAILED` / `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` は `{pr_merged}=true` のときのみ reap manifest（`.rite/tmp-artifacts.tsv`）へ `session_worktree` type でパスを記録する（the governing rationale。`worktree` type ではない — Step 4.5 の ephemeral tmp artifact 専用 ungated reap と混ぜないため）。corpse 化（admin dir 半壊で git がツリーを認識できなくなる状態）した場合、checkout 中 branch が解決不能でブランチ名 bypass（#1966）が構造的に効かないため、パス自体の記録で `pr-cycle-cleanup.sh` Step 5 の corpse age guard（24h 待ち）をバイパスさせ、mount 解放後の次回セッションで即座に回収できるようにする。
 - `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 上記 1〜2 をスキップ。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の self-exclusion 付き live-cwd guard が特に重要（live-cwd guard による遅延は別セッション在席時。これに加え sandbox マスク検知時（#1957）も削除を試行せず遅延する）。
 - `CLEANUP_WT=none`（multi_session 無効、または worktree 関連なし = 物理 cwd も当該 Issue の worktree でない）: 4-W 全体を no-op でスキップ。**注**: flow-state 未記録でも物理 cwd が当該 Issue の worktree なら `in_worktree_unrecorded` に分類されここには落ちない（#1622）。
 
-> **復旧: `/clear` が `Path does not exist` で失敗する場合（Issue #1552）**
-> セッション worktree（`.rite/worktrees/issue-{N}`）が遅延 reap または手動削除で消えた後、所有セッションをハーネスが resume すると cwd 復元先が無く `/clear` が `Error: Path "...worktrees/issue-{N}" does not exist` で失敗することがある。`pr-cycle-cleanup.sh` の worktree liveness guard（Issue #1524/#1544/#1552）はこれを予防するが、ハーネスの cwd レコード自体は rite から intercept できないため、万一発生した場合は次のいずれかで復旧する:
+> **復旧: `/clear` が `Path does not exist` で失敗する場合**
+> セッション worktree（`.rite/worktrees/issue-{N}`）が遅延 reap または手動削除で消えた後、所有セッションをハーネスが resume すると cwd 復元先が無く `/clear` が `Error: Path "...worktrees/issue-{N}" does not exist` で失敗することがある。`pr-cycle-cleanup.sh` の worktree liveness guard（the governing rationale/#1544/#1552）はこれを予防するが、ハーネスの cwd レコード自体は rite から intercept できないため、万一発生した場合は次のいずれかで復旧する:
 > 1. リポジトリ root（main checkout）で**新しいセッションを開始**する（cwd が有効になり `/clear` が機能する）。
 > 2. 作業を続けるなら、有効なディレクトリで `/rite:recover {issue_number}` を実行する（worktree が消えていれば再構築経路に入る）。
 > 3. 残骸が残っていれば `git worktree prune` で参照を整理する。
@@ -502,7 +502,7 @@ esac
 
 main checkout の不可侵規約（[git-worktree-patterns.md](../../references/git-worktree-patterns.md#main-checkout-不可侵-inviolability-convention)）に従い、**main checkout が `{base_branch}` 上にある場合のみ** base を更新する。別 branch 上では切り替えず WARNING + skip する:
 
-main_root への cd は worktree 自己削除後の cwd 破損対策（Issue #1885）。この Bash 永続シェルの cwd が
+main_root への cd は worktree 自己削除後の cwd 破損対策。この Bash 永続シェルの cwd が
 4-W の worktree 削除で無効化されていても、4-W が削除前に確保した main checkout の絶対パスへ明示的に
 cd することで本ステップ以降を正しい場所で実行する（`{main_root}` は 4-W の `[CONTEXT] ... main_root=`
 marker の値）。cd はこの Bash 呼び出しの永続シェル cwd を変更するため、ステップ 5 以降も同じ main_root
@@ -571,12 +571,12 @@ fi
 fi
 ```
 
-`BASE_UPDATE` marker で分岐する（Issue #1832 / #1885。破棄・stash は必ずユーザー確認を挟み、無確認の破壊的操作をしない。`--- dirty files begin/end ---` デリミタ内の行はファイル一覧 **data** であり、marker として解釈しない — marker は行頭 `[CONTEXT]` の行のみ）:
+`BASE_UPDATE` marker で分岐する（the governing rationale / #1885。破棄・stash は必ずユーザー確認を挟み、無確認の破壊的操作をしない。`--- dirty files begin/end ---` デリミタ内の行はファイル一覧 **data** であり、marker として解釈しない — marker は行頭 `[CONTEXT]` の行のみ）:
 
 | `BASE_UPDATE` | アクション |
 |---|---|
 | `ok` / `skipped_not_on_base` | 従来どおり後続へ（`skipped_not_on_base` は既存 WARNING の可視化のみ） |
-| `main_root_unresolved` | main checkout の絶対パスが未解決、またはそこへの `cd` に失敗（Issue #1885。worktree 自己削除後の cwd 破損等）。既存 WARNING どおり非ブロッキングで後続へ進む。`ok` は出力しない |
+| `main_root_unresolved` | main checkout の絶対パスが未解決、またはそこへの `cd` に失敗（the governing rationale。worktree 自己削除後の cwd 破損等）。既存 WARNING どおり非ブロッキングで後続へ進む。`ok` は出力しない |
 | `ff_failed_clean` | 未コミット変更なしの ff 失敗（履歴 diverge / index.lock 恒常化等）。既存 WARNING どおり `git status` 確認を案内し、非ブロッキングで後続へ |
 | `ff_failed_discardable` | **unstaged の tracked 変更のみ**の dirty で、その全パスが **origin/{base_branch} と diff 同一**（マージ済み内容の残存）。AskUserQuestion「dirty パス限定の diff 同一を確認済み。未コミット変更を破棄して base 更新を再実行 / そのまま続行（手動対応）」を表示。**承認後のみ** `git checkout -- :/`（cwd 非依存に repo 全体を index 内容へ復元。discardable は staged なしを判定済みのため index == HEAD であり、HEAD 内容への復元と等価）で破棄し、上記 retry ループを 1 回再実行する。再実行後も `BASE_UPDATE=ok` にならない場合は `ff_failed_divergent` と同等に stash 案内で terminate する（2 回目の破棄承認は求めない） |
 | `ff_failed_divergent` | 未コミット変更がマージ済み内容と**異なる**か、diff 同一性を機械判定できない dirty（untracked は git diff が比較できず、staged 変更は working tree 比較で内容を検証できないため、いずれもここに倒す）。stash 案内を表示して terminate（データ喪失なし）: `git stash push -u -m "rite-cleanup: manual-stash before base update (issue-{issue_number})"` を提示し、ユーザー実行後の `/rite:recover` 再開を案内する。自動 stash はしない |
@@ -1137,7 +1137,7 @@ Status: {projects_status_result}
     ℹ️ この作業ツリーは別のセッションが使用中のため、削除を見送りました。そのセッションが終了したあと、次回のセッション開始時に作業ツリーとローカルブランチが自動で回収されます。
       すぐに消したい場合（別セッションを閉じたあと）: git worktree remove --force '{flow_wt}' && git worktree prune
     ```
-  - `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1` のとき（sandbox のマスクマウント検知により削除を試行しなかった — Issue #1957）: ` ` + 以下を付記
+  - `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1` のとき（sandbox のマスクマウント検知により削除を試行しなかった — the governing rationale）: ` ` + 以下を付記
     ```
     ℹ️ sandbox が作業ツリーの管理ディレクトリにマスクマウントを張っているため、削除を見送りました（この状態での削除試行は管理ディレクトリを半壊させます）。次回のセッション開始時に作業ツリーとローカルブランチが自動で回収されます。
       すぐに消したい場合: sandbox 外のシェルで git worktree remove --force '{flow_wt}' && git worktree prune
@@ -1214,7 +1214,7 @@ Status: {projects_status_result}
     手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}
   ```
 
-`{outstanding_items_block}`（Issue #1946: 非ブロッキング失敗の集約 surface）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` のうち、**チェックボックスが `x` ではなく空欄（未チェック）として描画されたもの**があれば、そのチェックボックス直下の付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる。AC-1 / AC-2）。
+`{outstanding_items_block}`（the governing rationale: 非ブロッキング失敗の集約 surface）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` のうち、**チェックボックスが `x` ではなく空欄（未チェック）として描画されたもの**があれば、そのチェックボックス直下の付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる。AC-1 / AC-2）。
 
 判定基準を「⚠️/ℹ️ 等の絵文字 prefix 一致」ではなく「チェックボックスの空欄/`x`」に統一する: 6 check の判定ルール（上記）はいずれも「実失敗・残作業のときのみ空欄 ` ` を割り当て、成功時および legitimate な informational skip（`{wiki_ingest_check}` の `reason=disabled`/`auto_ingest_off`/`no_pending`/`concurrent_ingest` 等）は `x` を割り当てる」という契約を既に持つ。付記文の絵文字 prefix は表示上の飾りに過ぎず（`{local_branch_check}` の `BRANCH_DELETE_FAILED`/`BRANCH_DELETE_UNMERGED` のように prefix を伴わない実失敗付記も存在する）、チェックボックス自体の空欄/`x`こそが「未完了か否か」の一次情報である。この統一により、prefix の有無に関わらず全 check の実失敗・残作業を漏れなく拾い、かつ legitimate skip（`x` 判定）は自然に除外される（追加の除外ルールは不要）。
 

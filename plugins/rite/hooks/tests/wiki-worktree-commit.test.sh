@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for hooks/scripts/wiki-worktree-commit.sh (Issue #1719)
+# Tests for hooks/scripts/wiki-worktree-commit.sh
 #
 # The script stages + commits + pushes pending changes in the .rite/wiki-worktree
 # worktree. It has a git push side effect, so the happy-path test wires `origin`

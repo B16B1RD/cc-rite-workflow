@@ -249,7 +249,7 @@ else
 fi
 
 # -------------------------------------------------------------------------
-# TC-6 (Issue #1999 / T-02 / AC-2): flock 不在 PATH でも set が成功し
+# TC-6 (the governing rationale / T-02 / AC-2): flock 不在 PATH でも set が成功し
 #       state file が書かれ、stderr に "flock timeout" が出ない
 # -------------------------------------------------------------------------
 # TC-1/2/5 はホストの flock を使う flock-present 分岐のみ通過するため、

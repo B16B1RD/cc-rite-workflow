@@ -4,7 +4,7 @@ title: "rationale 転記圧縮時の主張スコープ量化拡大（この箇�
 domain: "anti-patterns"
 promote: rite-plugin
 promoted_from: "wiki:/pages/anti-patterns/transcription-scope-quantifier-inflation.md"
-description: "rationale を references へ退避するコンテキストダイエット型 refactor で、転記圧縮時に主張の量化スコープが「この箇所の規約」→「ファイル全体/各 bash block」へ過大一般化される系統的エラー。PR #1774 で本体 (F-01) と references 側 (F-02) の 2 回発生・3 cycle 収束を実測。転記文の量化表現（各/全体/すべて）を機械的に疑い、SKILL.md 本体と references の両側を検証する。"
+description: "rationale を references へ退避するコンテキストダイエット型 refactor で、転記圧縮時に主張の量化スコープが「この箇所の規約」→「ファイル全体/各 bash block」へ過大一般化される系統的エラー。the observed review run で本体 (F-01) と references 側 (F-02) の 2 回発生・3 cycle 収束を実測。転記文の量化表現（各/全体/すべて）を機械的に疑い、SKILL.md 本体と references の両側を検証する。"
 created: "2026-07-07T03:56:13+00:00"
 updated: "2026-07-07T03:56:13+00:00"
 sources:
@@ -64,8 +64,8 @@ review/fix SKILL.md（各 4,040 行）の rationale を references へ退避す�
 
 ## ソース
 
-- PR #1774 review results (`Wiki provenance: ../../raw/reviews/20260707T005014Z-pr-1774.md`)
-- PR #1774 fix results (`Wiki provenance: ../../raw/fixes/20260707T005536Z-pr-1774.md`)
-- PR #1774 review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260707T011246Z-pr-1774.md`)
-- PR #1774 fix results (cycle 2) (`Wiki provenance: ../../raw/fixes/20260707T011502Z-pr-1774.md`)
-- PR #1774 review results (cycle 3 mergeable) (`Wiki provenance: ../../raw/reviews/20260707T012957Z-pr-1774.md`)
+- The observed review run review results (`Wiki provenance: ../../raw/reviews/20260707T005014Z-pr-1774.md`)
+- The observed review run fix results (`Wiki provenance: ../../raw/fixes/20260707T005536Z-pr-1774.md`)
+- The observed review run review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260707T011246Z-pr-1774.md`)
+- The observed review run fix results (cycle 2) (`Wiki provenance: ../../raw/fixes/20260707T011502Z-pr-1774.md`)
+- The observed review run review results (cycle 3 mergeable) (`Wiki provenance: ../../raw/reviews/20260707T012957Z-pr-1774.md`)

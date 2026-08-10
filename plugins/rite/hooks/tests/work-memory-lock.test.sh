@@ -251,7 +251,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-014 (Issue #1718): PID reuse — alive PID but mismatched start-token → stale
+# TC-014 : PID reuse — alive PID but mismatched start-token → stale
 # --------------------------------------------------------------------------
 # Simulates the classic PID-reuse race: the original holder died and its PID was
 # recycled by an unrelated (live) process. `kill -0` alone would wrongly keep the
@@ -282,7 +282,7 @@ WM_LOCK_STALE_THRESHOLD="$DEFAULT_WM_LOCK_STALE_THRESHOLD"
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-015 (Issue #1718): alive PID with MATCHING token is NOT reclaimed
+# TC-015 : alive PID with MATCHING token is NOT reclaimed
 # --------------------------------------------------------------------------
 # Guards against a false positive: a genuinely-held lock (same live process, same
 # token) must survive even past the stale mtime threshold.
@@ -309,7 +309,7 @@ WM_LOCK_STALE_THRESHOLD="$DEFAULT_WM_LOCK_STALE_THRESHOLD"
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-016 (Issue #1718): acquire writes numeric pid + pid_token; release removes both
+# TC-016 : acquire writes numeric pid + pid_token; release removes both
 # --------------------------------------------------------------------------
 echo "TC-016: acquire writes numeric pid + pid_token file; release removes both"
 lockdir="$TEST_DIR/tc016.lock"

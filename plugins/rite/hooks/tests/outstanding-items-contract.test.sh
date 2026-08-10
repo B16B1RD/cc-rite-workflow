@@ -1,6 +1,6 @@
 #!/bin/bash
 # Tests for the "未完了事項" (outstanding items) aggregation contract added by
-# Issue #1946 (T-01/T-02/T-03): non-blocking failures that a flow continued
+# the governing rationale (T-01/T-02/T-03): non-blocking failures that a flow continued
 # past (wiki push failure, branch deletion deferral, etc.) must be surfaced
 # in the flow's completion report instead of only appearing as scattered
 # per-checkbox annotations that are easy to miss.
@@ -59,14 +59,14 @@ echo "=== batch-run.md ステップ 7: 完了通知への未完了事項ロー�
 assert_grep "Step 7 bash reads outstanding from the queue" "$BATCH_RUN" 'outstanding=\$\(jq -rc'
 assert_grep "Step 7 merge-mode message has an 未完了事項 rollup line" "$BATCH_RUN" '未完了事項: （`outstanding=` が空のとき）なし'
 
-echo "=== wiki-ingest.md ステップ 9: 未完了事項 (Issue #1946, In Scope) ==="
+echo "=== wiki-ingest.md ステップ 9: 未完了事項 (the governing rationale, In Scope) ==="
 assert_grep "Step 9 report template has 未完了事項 line" "$WIKI_INGEST" '\{ingest_outstanding_line\}'
 assert_grep "ingest_outstanding_line reuses WIKI_INGEST_PUSH marker (no new record store)" "$WIKI_INGEST" '新しい記録先は持たない'
 assert_grep "ingest_outstanding_line emits explicit none line when push ok" "$WIKI_INGEST" 'なし（非ブロッキングで継続した失敗はありませんでした）'
 # marker なし (未確認) は「なし」と混同せず {wiki_push_line} と同じ ⚠️ 未確認扱いにする
 assert_grep "ingest_outstanding_line treats marker-absent as unconfirmed, not none" "$WIKI_INGEST" '\{wiki_push_line\}` の同ケースと同じ扱い'
 
-echo "=== recover.md: 未完了事項の検出 (Issue #1946, cleanup/completed 到達時のみ, informational) ==="
+echo "=== recover.md: 未完了事項の検出 (the governing rationale, cleanup/completed 到達時のみ, informational) ==="
 assert_grep "recover has the outstanding-item detection subsection" "$RECOVER" '### 3\.6 未完了事項の検出'
 # gate は {resolved_phase} LLM placeholder 形式でなければならない ($resolved_phase シェル変数形式は
 # 別 Bash tool 呼び出しで常に空文字になり検出ロジックが dead code 化する)
@@ -80,6 +80,6 @@ assert_grep "wiki-worktree path is resolved via state-path-resolve.sh, not a bar
 # origin に対応 ref が無い (一度も push が成功していない最悪ケース) も検出側に倒す (false negative 修正)
 assert_grep "detection distinguishes an unresolved origin ref from zero unpushed commits" "$RECOVER" 'reason=no_remote_ref'
 
-if ! print_summary "$(basename "$0")" "cleanup/batch-run/wiki-ingest/recover の未完了事項集約 contract (Issue #1946 T-01/T-02/T-03)"; then
+if ! print_summary "$(basename "$0")" "cleanup/batch-run/wiki-ingest/recover の未完了事項集約 contract (the governing rationale T-01/T-02/T-03)"; then
   exit 1
 fi

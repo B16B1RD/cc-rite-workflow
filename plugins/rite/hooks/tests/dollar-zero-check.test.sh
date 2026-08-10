@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for hooks/scripts/dollar-zero-check.sh (Issue #2046)
+# Tests for hooks/scripts/dollar-zero-check.sh
 #
 # The checker exists because the Skill loader expands parameter-zero references
 # in a skill body to the invocation argument string — including inside fenced

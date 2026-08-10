@@ -13,7 +13,7 @@
 #   AC-7 — regression test discoverable under hooks/tests/
 #
 # 注: 上記 AC-4 / AC-7 は flow-state 移行 Issue の受入基準を指す。T- 番号を持つアサーションラベルが
-# 使う (AC-1)〜(AC-5) は Issue #2082 の受入基準で、番号体系が別。同じ AC-4 が両方に存在するため、
+# 使う (AC-1)〜(AC-5) は the contract の受入基準で、番号体系が別。同じ AC-4 が両方に存在するため、
 # テスト出力のラベルから基準を引くときは T- 番号の有無で体系を判別すること。
 #
 # Removed (PR 2a refactor, v3 SoT):
@@ -26,9 +26,9 @@
 # Usage: bash plugins/rite/hooks/tests/work-memory-update.test.sh
 set -euo pipefail
 
-# Hermeticity guard (Issue #1929): flow-state.sh path resolves session_id with
+# Hermeticity guard : flow-state.sh path resolves session_id with
 # priority env CLAUDE_CODE_SESSION_ID > env CLAUDE_SESSION_ID > .rite-session-id
-# file (Issue #1530). When this test suite runs inside a live Claude Code
+# file . When this test suite runs inside a live Claude Code
 # session, that session's own id leaks into the `flow-state.sh get --field ...`
 # call inside work-memory-update.sh's run_update() helper (no `--session`
 # passed) and silently overrides the file-based per-session fixtures, making

@@ -10,7 +10,7 @@
 # Usage: bash plugins/rite/hooks/tests/wiki-branch-init.test.sh
 set -uo pipefail
 
-# _timeout <seconds> <command...> — portable timeout(1) for this test (Issue #2008).
+# _timeout <seconds> <command...> — portable timeout(1) for this test .
 # GNU `timeout` is absent on macOS (BSD / no coreutils); fall back to a perl
 # fork/waitpid shim reproducing timeout(1)'s exit-code contract: 124 on timeout,
 # 128+N on signal death, the child's status otherwise (a naive
@@ -242,7 +242,7 @@ dump_state() {
     echo "main_subject=$(git log -1 --format=%s main 2>/dev/null || echo '<none>')"
     echo "main_body=$( (git log -1 --format=%B main 2>/dev/null || echo '<none>') | tr '\n' '|')"
     # `wc -l` right-justifies its count with leading spaces on BSD/macOS, which
-    # would make the `^stash_count=0$` assertions fail; strip it (Issue #2008).
+    # would make the `^stash_count=0$` assertions fail; strip it .
     echo "stash_count=$(git stash list | wc -l | tr -d ' ')"
     echo "base_content=$(cat base.txt 2>/dev/null || echo '<missing>')"
   )

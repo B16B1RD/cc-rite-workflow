@@ -14,7 +14,7 @@ git branch --show-current
 
 Pattern: `{type}/issue-{number}-{slug}`
 
-Example: `feat/issue-288-checkpoint-removal` → Issue #288
+Example: `feat/issue-288-checkpoint-removal` → the governing rationale
 
 ### 3. Work Memory Retrieval
 

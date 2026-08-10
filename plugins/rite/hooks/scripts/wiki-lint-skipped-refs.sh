@@ -2,7 +2,7 @@
 # wiki-lint-skipped-refs.sh
 #
 # Build the `skipped_refs` set consumed by wiki/lint.md ステップ 6.2 (b) 分岐
-# (`unregistered_raw` 判定). Issue #1520 (Sub-3): the skip SoT moved from log.md
+# (`unregistered_raw` 判定). the governing rationale (Sub-3): the skip SoT moved from log.md
 # (a table) to each raw source's frontmatter (`ingest_status: skipped`). This
 # helper now scans `.rite/wiki/raw/**/*.md` frontmatter (via `git ls-tree` +
 # `git show` for separate_branch, `find` + `cat` for same_branch), collects each
@@ -179,7 +179,7 @@ skipped_refs=""
 # canonical 定義: references/bash-cross-boundary-state-transfer.md#pattern-1-multi-value-enum-via-key-value-stdout
 log_read_ok="unknown"
 
-# Issue #1520 (Sub-3): the `ingest:skip` SoT moved from log.md (a table this
+# the governing rationale (Sub-3): the `ingest:skip` SoT moved from log.md (a table this
 # helper used to `awk -F'|'` parse) to each raw source's frontmatter
 # (`ingest_status: skipped`). log.md is now a human-facing OKF change log and is
 # NOT parsed here. This helper now scans `.rite/wiki/raw/**/*.md` frontmatter and

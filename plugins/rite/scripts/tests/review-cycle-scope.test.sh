@@ -5,7 +5,7 @@
 # 判定を誤ると (a) cycle 1 相当のフルレビューが cycle 2+ でも走り続けて重複調査が残る、または
 # (b) 起点が壊れているのに差分スコープへ入って未変更部が誰にも見られない、のどちらかになる。
 # (b) は silent に品質を落とすため、本 suite は「情報が欠けた全経路で full へ倒れること」を
-# reason ごとに個別に pin する (Issue #2118 AC-3 / T-03)。
+# reason ごとに個別に pin する (the governing rationale AC-3 / T-03)。
 #
 # Usage: bash plugins/rite/scripts/tests/review-cycle-scope.test.sh
 set -uo pipefail

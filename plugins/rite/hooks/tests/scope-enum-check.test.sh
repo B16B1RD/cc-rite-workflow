@@ -178,7 +178,7 @@ else
   # accepted-fingerprints state file 初期化も verify (F-06 related — migration の完全性)
   T3_STATE_FILE="$T3_DIR/.rite/state/accepted-fingerprints-300.txt"
   if [ -f "$T3_STATE_FILE" ]; then
-    pass "T-3 accepted-fingerprints state file initialized for PR #300"
+    pass "T-3 accepted-fingerprints state file initialized for The observed review run"
   else
     fail "T-3 accepted-fingerprints state file NOT created: $T3_STATE_FILE"
   fi

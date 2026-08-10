@@ -93,7 +93,7 @@ assert_prose_pin <text> <pattern> <weakened-probe> <label>
 
 ### marker 名の存在ではなく指示語を pin する
 
-散文が実装本体である skill では、pin 対象は **marker 名ではなく指示語そのもの**である。`assert_grep` で `CLEANUP_DELEGATED=1` の存在だけを見るテストは、ガードの削除は検出するが「**実行しない**」→「通常どおり実行する」という**指示の反転**を検出しない（PR #2150 の mutation 実測: 4 サイトの指示を反転させても全 assert green）。
+散文が実装本体である skill では、pin 対象は **marker 名ではなく指示語そのもの**である。`assert_grep` で `CLEANUP_DELEGATED=1` の存在だけを見るテストは、ガードの削除は検出するが「**実行しない**」→「通常どおり実行する」という**指示の反転**を検出しない（the observed review run の mutation 実測: 4 サイトの指示を反転させても全 assert green）。
 
 pin は指示の効力を担う語まで伸ばす:
 
@@ -116,8 +116,8 @@ assert_grep "$SKILL" 'CLEANUP_DELEGATED=1` を emit している場合、本ス�
 
 ## ソース
 
-- PR #2022 fix results (cycle 11) (`Wiki provenance: ../../raw/fixes/20260726T062935Z-pr-2022.md`)
-- PR #2022 fix results (cycle 6) (`Wiki provenance: ../../raw/fixes/20260726T025351Z-pr-2022.md`)
-- PR #2022 fix results (cycle 4) (`Wiki provenance: ../../raw/fixes/20260726T014448Z-pr-2022.md`)
-- PR #2150 review results (cycle 1: marker 名 pin では指示反転が素通し) (`Wiki provenance: ../../raw/reviews/20260808T063447Z-pr-2150.md`)
-- PR #2150 fix results (cycle 1: pin を指示語まで伸ばす) (`Wiki provenance: ../../raw/fixes/20260808T064117Z-pr-2150.md`)
+- The observed review run fix results (cycle 11) (`Wiki provenance: ../../raw/fixes/20260726T062935Z-pr-2022.md`)
+- The observed review run fix results (cycle 6) (`Wiki provenance: ../../raw/fixes/20260726T025351Z-pr-2022.md`)
+- The observed review run fix results (cycle 4) (`Wiki provenance: ../../raw/fixes/20260726T014448Z-pr-2022.md`)
+- The observed review run review results (cycle 1: marker 名 pin では指示反転が素通し) (`Wiki provenance: ../../raw/reviews/20260808T063447Z-pr-2150.md`)
+- The observed review run fix results (cycle 1: pin を指示語まで伸ばす) (`Wiki provenance: ../../raw/fixes/20260808T064117Z-pr-2150.md`)

@@ -2,7 +2,7 @@
 # rite workflow - Session End Hook
 # Saves final state when session ends
 #
-# Best-effort deactivation contract (Issue #1923): this hook is Claude Code's
+# Best-effort deactivation contract : this hook is Claude Code's
 # SessionEnd lifecycle hook, so it only runs on exit paths the harness itself
 # fires SessionEnd for. It does NOT run on a forced/abrupt termination of the
 # session process (e.g. a killed/crashed process, or the hosting terminal

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Static parity pins for the four skill bodies that delegate their `wiki:`
-# configuration reads to hooks/scripts/lib/wiki-config.sh (Issue #2046).
+# configuration reads to hooks/scripts/lib/wiki-config.sh .
 #
 # The delegation itself is what removed the defect — a skill body cannot host a
 # YAML parser, because the Skill loader rewrites positional parameters in it and

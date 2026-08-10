@@ -21,9 +21,9 @@
 # Usage: bash plugins/rite/hooks/tests/session-ownership-regression.test.sh
 set -euo pipefail
 
-# Hermeticity guard (Issue #1929): flow-state.sh path resolves session_id with
+# Hermeticity guard : flow-state.sh path resolves session_id with
 # priority env CLAUDE_CODE_SESSION_ID > env CLAUDE_SESSION_ID > .rite-session-id
-# file (Issue #1530). When this test suite runs inside a live Claude Code
+# file . When this test suite runs inside a live Claude Code
 # session, that session's own id leaks into calls that deliberately omit
 # `--session` (notably TC-session-id-auto-read, which verifies file-based
 # resolution) and into `session-start.sh` invocations below, silently
@@ -297,7 +297,7 @@ fi
 # from 850L to 540L and removed the create_*-related branch entirely — the
 # denylist is now scoped to `gh pr diff --stat` / `gh pr diff -- <path>` /
 # `!= null` jq antipattern / the reviewer-subagent .git-write gate (since
-# Issue #1879 the working-tree git-verb denylist is gone).
+# the governing rationale the working-tree git-verb denylist is gone).
 #
 # None of the remaining denylist patterns gate on the active flag; they fire
 # unconditionally based on command-string match (and, for Pattern 4, on the

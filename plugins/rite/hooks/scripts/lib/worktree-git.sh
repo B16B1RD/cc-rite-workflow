@@ -709,7 +709,7 @@ ensure_session_worktree() {
     # fetch is best-effort (do NOT hard-fail — an offline resume must still
     # reconstruct from the existing origin/$branch ref). But all-retries-
     # exhausted is surfaced as a WARNING rather than swallowed, so a stale
-    # reconstruction is never silent (Issue #1676 error table: 取得不能を明示).
+    # reconstruction is never silent (the governing rationale error table: 取得不能を明示).
     local n=0 fetch_ok=no
     while [ "$n" -lt 3 ]; do
       if git fetch origin "$branch" >/dev/null 2>&1; then fetch_ok=yes; break; fi

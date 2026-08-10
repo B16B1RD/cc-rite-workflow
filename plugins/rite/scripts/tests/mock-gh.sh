@@ -355,7 +355,7 @@ ITEMJSON
           fi
 
           # Field names default to canonical English. Localized / custom / missing-field
-          # scenarios (Issue #1610) override them so the helper's alias + input-override
+          # scenarios  override them so the helper's alias + input-override
           # resolution is exercised. Option *values* stay English (option localization
           # is out of scope for #1610).
           STATUS_FIELD_NAME="Status"

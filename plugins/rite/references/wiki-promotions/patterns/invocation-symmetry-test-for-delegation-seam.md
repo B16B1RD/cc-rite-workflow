@@ -26,7 +26,7 @@ confidence: medium
 
 ### 失敗の構造
 
-委譲リファクタ（wiki-ingest ステップ 6 → `wiki-index-update.sh`、PR #2111）の cycle 2 レビューで、helper 単体のテストは充実している一方、SKILL.md 側の呼び出し bash が「helper が要求するフラグをすべて渡しているか」を守る機構が無いことが指摘された。委譲リファクタでは**呼び出しの正しさこそが残存リスク**であり、既存先例（`create-md-invocation-symmetry.test.sh`）があるのに未適用だった。
+委譲リファクタ（wiki-ingest ステップ 6 → `wiki-index-update.sh`、The observed review run）の cycle 2 レビューで、helper 単体のテストは充実している一方、SKILL.md 側の呼び出し bash が「helper が要求するフラグをすべて渡しているか」を守る機構が無いことが指摘された。委譲リファクタでは**呼び出しの正しさこそが残存リスク**であり、既存先例（`create-md-invocation-symmetry.test.sh`）があるのに未適用だった。
 
 ### Canonical fix
 
@@ -52,5 +52,5 @@ confidence: medium
 
 ## ソース
 
-- PR #2111 review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260804T142514Z-pr-2111.md`)
-- PR #2111 fix results (cycle 2) (`Wiki provenance: ../../raw/fixes/20260804T143100Z-pr-2111.md`)
+- The observed review run review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260804T142514Z-pr-2111.md`)
+- The observed review run fix results (cycle 2) (`Wiki provenance: ../../raw/fixes/20260804T143100Z-pr-2111.md`)

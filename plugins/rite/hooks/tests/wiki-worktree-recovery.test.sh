@@ -1,7 +1,7 @@
 #!/bin/bash
 # Functional regression test for corrupt/orphaned .rite/wiki-worktree recovery.
 #
-# Reproduces the silent raw-source accumulation stall (Issue #1662): when the
+# Reproduces the silent raw-source accumulation stall : when the
 # repository is relocated/copied, the wiki worktree's `.git` file keeps a stale
 # `gitdir:` pointer to the old path, leaving `.rite/wiki-worktree` as a directory
 # that exists on disk but is NOT a registered worktree. Before the fix:

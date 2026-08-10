@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for hooks/scripts/comment-line-ref-check.sh (Issue #1719)
+# Tests for hooks/scripts/comment-line-ref-check.sh
 #
 # The checker flags hardcoded `<file>.<ext>:<NN>` line-number references that
 # live inside shell comments (these rot when the referenced file changes).

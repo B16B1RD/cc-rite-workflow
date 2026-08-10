@@ -35,7 +35,7 @@ rite workflow のスキル間連携は、各 sub-skill が bash 出力に埋め�
 | `[merge:not-ready]` | merge | batch-run | PR が draft または mergeable でないため merge 不可 |
 | `[merge:error]` | merge | batch-run | merge 実行中にエラー発生 |
 | `[cleanup:returned-to-caller]` | cleanup | batch-run | クリーンアップ完了、caller へ制御を返す |
-| `[cleanup:outstanding:N]` | cleanup | batch-run | 完了報告の「未完了事項」件数（N 件、0 も明示）。batch-run は N>0 のとき run-queue の `outstanding[]` に記録する（Issue #1946） |
+| `[cleanup:outstanding:N]` | cleanup | batch-run | 完了報告の「未完了事項」件数（N 件、0 も明示）。batch-run は N>0 のとき run-queue の `outstanding[]` に記録する |
 | `[ingest:returned-to-caller]` | wiki-ingest | (caller の turn 継続マーカー、literal consumer なし) | Wiki ingest 完了。cleanup 側は本 sentinel を literal grep で consume せず、独自の `[CONTEXT] WIKI_INGEST_DONE/FAILED` 等で成否判定する。sentinel 自体は turn-boundary heuristic 誤発火を防ぐ active disambiguation 目的 |
 | `[create:returned-to-caller:N]` | issue-create | (terminal、consumer なし) | Issue #N 作成完了。issue-create は他 skill から呼ばれない flat workflow のため、caller への継続ルーティングは持たない terminal sentinel |
 | `[pr:created:N]` | pr-create | open, recover, batch-run | PR #N を作成完了 |

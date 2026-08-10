@@ -156,7 +156,7 @@ else
   fail "TC-4 DRIFT-CHECK ANCHOR comment missing (create=$anchor_create, ready=$anchor_ready)"
 fi
 
-# The not-applicable skip-note handling added to the 0) case (Issue #1550) MUST
+# The not-applicable skip-note handling added to the 0) case  MUST
 # also be symmetric between create.md and ready.md. Pin the skip-note's
 # user-facing echo message ("...self-host していないため N/A..."), which is
 # unique to the 0)-case skip-note block. The bare substring "not applicable"
@@ -211,7 +211,7 @@ done
 # working tree) must NOT hard-error the gate. With --skip-if-no-target — which
 # the Phase 1.0 blocks now pass — --all exits 0 (not-applicable clean skip) and
 # emits an informational note; without the flag the exit-2 diagnostic is still
-# preserved (MUST NOT drop it unconditionally). (Issue #1550)
+# preserved (MUST NOT drop it unconditionally).
 echo "TC-6: AC-1/AC-2 — consumer repo (no plugins/rite) gate skip"
 consumer_root=$(mktemp -d)
 skip_rc=0

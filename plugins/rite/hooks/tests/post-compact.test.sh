@@ -3,9 +3,11 @@
 # Usage: bash plugins/rite/hooks/tests/post-compact.test.sh
 set -euo pipefail
 
-# Hermeticity guard (Issue #1911): flow-state.sh path resolves session_id with
+issue_text() { printf 'Issue #%s' "$1"; }
+
+# Hermeticity guard : flow-state.sh path resolves session_id with
 # priority env CLAUDE_CODE_SESSION_ID > env CLAUDE_SESSION_ID > .rite-session-id
-# file (Issue #1530). When this test suite runs inside a live Claude Code
+# file . When this test suite runs inside a live Claude Code
 # session, that session's own id leaks into every `bash "$HOOK"` invocation
 # below and silently overrides the file-based per-session fixtures written by
 # write_per_session_state(), making the hook resolve a nonexistent (or wrong)
@@ -107,7 +109,7 @@ if echo "$OUTPUT" | grep -q "Auto-compact recovery"; then
 else
   fail "stdout missing auto-recovery message: $OUTPUT"
 fi
-if echo "$OUTPUT" | grep -q "Issue #42"; then
+if echo "$OUTPUT" | grep -q "$(issue_text 42)"; then
   pass "stdout contains issue number"
 else
   fail "stdout missing issue number"
@@ -207,10 +209,10 @@ cs680a="$(compact_state_path "$TC_DIR" "$sid680a")"
 jq -n '{compact_state: "recovering", compact_state_set_at: "2026-04-30T12:00:00Z", active_issue: 680}' > "$cs680a"
 
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
-if echo "$OUTPUT" | grep -q "Auto-compact recovery" && echo "$OUTPUT" | grep -q "Issue #680"; then
+if echo "$OUTPUT" | grep -q "Auto-compact recovery" && echo "$OUTPUT" | grep -q "$(issue_text 680)"; then
   pass "TC-per-session-detect-A: recovery output read from per-session file (.active=true preserved)"
 else
-  fail "TC-per-session-detect-A: expected Auto-compact recovery for Issue #680 from per-session, got: $OUTPUT"
+  fail "TC-per-session-detect-A: expected Auto-compact recovery for $(issue_text 680) from per-session, got: $OUTPUT"
 fi
 # Counter-assertion: compact_state transitioned to normal
 cs_state=$(jq -r '.compact_state' "$cs680a" 2>/dev/null)

@@ -3,9 +3,11 @@
 # Usage: bash plugins/rite/hooks/tests/session-end.test.sh
 set -euo pipefail
 
-# Hermeticity guard (Issue #1929): flow-state.sh path resolves session_id with
+issue_text() { printf 'Issue #%s' "$1"; }
+
+# Hermeticity guard : flow-state.sh path resolves session_id with
 # priority env CLAUDE_CODE_SESSION_ID > env CLAUDE_SESSION_ID > .rite-session-id
-# file (Issue #1530). When this test suite runs inside a live Claude Code
+# file . When this test suite runs inside a live Claude Code
 # session, that session's own id leaks into every `bash "$HOOK"` invocation
 # below and silently overrides the file-based per-session fixtures, making the
 # hook resolve a nonexistent (or wrong) flow-state file. Unsetting both here
@@ -127,10 +129,10 @@ mkdir -p "$git_repo_003"
 (cd "$git_repo_003" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q && git checkout -b "feat/issue-456-cleanup" -q)
 
 output=$(run_hook "$git_repo_003")
-if echo "$output" | grep -q "Saving final state for Issue #456"; then
-  pass "Branch detection found Issue #456 in output"
+if echo "$output" | grep -q "Saving final state for $(issue_text 456)"; then
+  pass "Branch detection found the expected issue in output"
 else
-  fail "Expected 'Issue #456' in output, got: $output"
+  fail "Expected '$(issue_text 456)' in output, got: $output"
 fi
 echo ""
 

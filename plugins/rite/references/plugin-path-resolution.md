@@ -127,7 +127,7 @@ Command files that need plugin path resolution should include the inline one-lin
 
 `skills/setup/SKILL.md` Phase 4.5.0 uses a similar but specialized detection for the `hooks/` subdirectory. This helper generalizes that pattern for the entire plugin root. The detection logic is intentionally consistent in approach (both look up `rite@*` entries in `installed_plugins.json`), though the two use **different jq shapes** that can diverge — see [Cross-Method Version Mismatch Check](#cross-method-version-mismatch-check-issue-1833) below for the divergence and its mitigation.
 
-## Cross-Method Version Mismatch Check (Issue #1833)
+## Cross-Method Version Mismatch Check
 
 The codebase contains **two jq lookup shapes** against `installed_plugins.json`:
 

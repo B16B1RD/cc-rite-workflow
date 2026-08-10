@@ -1,6 +1,6 @@
 # Wiki Promotion Audit #2167 — Contract and Provenance Fidelity
 
-Issue #2167 audited eight `promote: rite-plugin` pages from promotion audit
+the governing rationale audited eight `promote: rite-plugin` pages from promotion audit
 #2091. Six pages add missing detection work to the shared Documentation
 Fidelity Gate. Two pages are shelved because an existing shared gate already
 mechanizes the complete rule; duplicating them would create another drift site.

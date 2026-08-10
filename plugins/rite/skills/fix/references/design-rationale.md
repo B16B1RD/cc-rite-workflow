@@ -118,7 +118,7 @@ caller の `exit 1` 直前に emit が必要になる。
 
 ## simplification-first-rationale
 
-ステップ 2 冒頭に本原則を置く理由: 多サイクル PR の実測分析（2026-07、PR #2052 / #2066 / #2070 の永続レビュー結果 JSON 9 cycle 分）で、cycle 2 以降の blocking 指摘の約 8 割が「前 cycle の fix が導入した機構への指摘」だった。指摘への修正が規約・分岐・ガードの**追加**で行われると、次 cycle がその追加物を同じ厳密さでレビューして新たな構造欠陥を検出し、ループが収束しない。実例: PR #2052 は +64/-16 の docs 変更に fix 6 cycle・実時間 10 時間超を要し、序盤 cycle が積み上げた分岐機構を「削除して行全体再生成へ単純化する」fix が入った時点で初めて収束へ向かった。
+ステップ 2 冒頭に本原則を置く理由: 多サイクル PR の実測分析（2026-07、The observed review run / #2066 / #2070 の永続レビュー結果 JSON 9 cycle 分）で、cycle 2 以降の blocking 指摘の約 8 割が「前 cycle の fix が導入した機構への指摘」だった。指摘への修正が規約・分岐・ガードの**追加**で行われると、次 cycle がその追加物を同じ厳密さでレビューして新たな構造欠陥を検出し、ループが収束しない。実例: The observed review run は +64/-16 の docs 変更に fix 6 cycle・実時間 10 時間超を要し、序盤 cycle が積み上げた分岐機構を「削除して行全体再生成へ単純化する」fix が入った時点で初めて収束へ向かった。
 
 新しいモデル世代（Opus 4.5 以降）には頼まれていない抽象・柔軟性を足す overengineering 傾向が公式に文書化されており（[Claude prompting best practices §Overeagerness](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-4-best-practices)）、追加型 fix はこの傾向と毎 cycle の全力 re-review の相互作用で発散する。
 

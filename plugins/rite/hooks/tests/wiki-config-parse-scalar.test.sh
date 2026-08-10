@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for parse_wiki_scalar() in hooks/scripts/lib/wiki-config.sh (Issue #2046)
+# Tests for parse_wiki_scalar() in hooks/scripts/lib/wiki-config.sh
 #
 # The sibling test in this directory covers validate_wiki_branch_name(); this one
 # covers the other half of the lib, which had no direct coverage. That gap

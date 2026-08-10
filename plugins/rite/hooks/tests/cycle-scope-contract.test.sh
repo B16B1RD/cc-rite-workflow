@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for the cycle 2+ 差分スコープ / reviewer 動的選抜 contract (Issue #2118).
+# Tests for the cycle 2+ 差分スコープ / reviewer 動的選抜 contract .
 #
 # pr-review / reviewers は散文駆動スキル (LLM 実行、script ではない) のため、
 # outstanding-items-contract.test.sh と同じ static-contract 方式で literal を grep-pin する。

@@ -56,5 +56,5 @@ confidence: high
 
 ## ソース
 
-- PR #1809 review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260709T090623Z-pr-1809-cycle2.md`)
-- PR #1809 fix results (cycle 2, accept) (`Wiki provenance: ../../raw/fixes/20260709T090806Z-pr-1809-cycle2.md`)
+- The observed review run review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260709T090623Z-pr-1809-cycle2.md`)
+- The observed review run fix results (cycle 2, accept) (`Wiki provenance: ../../raw/fixes/20260709T090806Z-pr-1809-cycle2.md`)

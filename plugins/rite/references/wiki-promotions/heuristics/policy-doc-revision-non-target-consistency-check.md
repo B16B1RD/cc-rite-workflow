@@ -55,6 +55,6 @@ frontmatter ポリシー表のような分類ルールを新設・改訂する P
 
 ## ソース
 
-- PR #1694 review results (`Wiki provenance: ../../raw/reviews/20260701T051115Z-pr-1694.md`)
-- PR #1694 fix results (`Wiki provenance: ../../raw/fixes/20260701T060350Z-pr-1694.md`)
-- PR #1724 review results (`Wiki provenance: ../../raw/reviews/20260702T091438Z-pr-1724.md`)
+- The observed review run review results (`Wiki provenance: ../../raw/reviews/20260701T051115Z-pr-1694.md`)
+- The observed review run fix results (`Wiki provenance: ../../raw/fixes/20260701T060350Z-pr-1694.md`)
+- The observed review run review results (`Wiki provenance: ../../raw/reviews/20260702T091438Z-pr-1724.md`)

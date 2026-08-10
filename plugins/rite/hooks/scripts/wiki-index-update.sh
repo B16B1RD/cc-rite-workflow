@@ -151,7 +151,7 @@
 #   table's row count triggers nothing here — duplicates were reclaimed by
 #   3a and unregistered pages are wiki-lint's job.
 #
-# Observability of procedure 3b (Issue #2085 design decision):
+# Observability of procedure 3b (the governing rationale design decision):
 #   In-cycle surface is intentional and sufficient: WARNING on stderr +
 #   stats_sync={synced|skipped_no_section|skipped_unreadable} markers, with
 #   skipped_unreadable / partial-sync WARNING rolled into wiki-ingest ステップ 9

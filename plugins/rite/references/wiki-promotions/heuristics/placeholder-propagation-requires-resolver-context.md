@@ -37,5 +37,5 @@ confidence: high
 
 ## ソース
 
-- PR #1919 review cycle 3 results (`Wiki provenance: ../../raw/reviews/20260719T154814Z-pr-1919-c3.md`)
-- PR #1919 fix cycle 3 results (`Wiki provenance: ../../raw/fixes/20260719T154952Z-pr-1919-c3.md`)
+- The observed review run review cycle 3 results (`Wiki provenance: ../../raw/reviews/20260719T154814Z-pr-1919-c3.md`)
+- The observed review run fix cycle 3 results (`Wiki provenance: ../../raw/fixes/20260719T154952Z-pr-1919-c3.md`)

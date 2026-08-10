@@ -5,7 +5,7 @@
 # (cwd at it or nested under it)?" — independent of rite's own flow-state
 # bookkeeping.
 #
-# Why this exists (Issue #1544, regression of #1524):
+# Why this exists (the governing rationale, regression of #1524):
 #   When a session enters a session worktree via `EnterWorktree`, the harness
 #   records that worktree as the session's cwd and restores it on `/clear`. If the
 #   worktree is removed (cross-session lazy reap in pr-cycle-cleanup.sh Step 5, or

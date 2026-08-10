@@ -35,7 +35,7 @@ rite は実装の多くを Claude が書くため、「動くからマージす�
 
 例:
 - `/rite:learn` — 現在ブランチの Issue/PR を自動特定して理解度確認
-- `/rite:learn 123` — Issue/PR #123 を題材にする
+- `/rite:learn 123` — Issue/The observed review run を題材にする
 - `/rite:learn eli5` — 噛み砕いた説明を多めにする
 - `/rite:learn 123 intern` — #123 を「新人インターン向け」の前提で進める
 

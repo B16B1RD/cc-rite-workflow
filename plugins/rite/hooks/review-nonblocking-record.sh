@@ -3,7 +3,7 @@
 # Deterministic helper for skills/pr-review/SKILL.md ステップ 6.1.d (非実測指摘の PR コメント記録)。
 #
 # 実測必須ゲート (severity-levels.md §実測必須ゲート) が non-blocking へ降格した非実測指摘を、
-# PR 上の単一コメント (update-in-place) に記録する。Issue #2024 D-01「非実測指摘は破棄せず
+# PR 上の単一コメント (update-in-place) に記録する。the governing rationale D-01「非実測指摘は破棄せず
 # PR コメント記録」の担保であり、`pr_review.post_comment` 設定には**依存しない** (opt-out 対象外)。
 #
 # Usage:

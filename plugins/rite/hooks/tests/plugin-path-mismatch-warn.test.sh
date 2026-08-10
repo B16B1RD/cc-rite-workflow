@@ -5,7 +5,7 @@
 # plugin パス解決方式間 (direct key lookup vs 正準 one-liner) のバージョン不一致検出を pin する。
 # 抽出実行方式の理由は base-update-classify.test.sh と同じ (コピーは SKILL.md との drift を生む)。
 #
-# 背景 (Issue #1833): installed_plugins.json に複数の rite@* エントリがあると 2 方式が異なる
+# 背景 : installed_plugins.json に複数の rite@* エントリがあると 2 方式が異なる
 # バージョンのパスを返し、1 セッション内で hooks と skills が別バージョンを参照する混在が
 # silent に進行した。4.5.0 に照合 WARNING を追加し、本テストがその発火条件を pin する。
 

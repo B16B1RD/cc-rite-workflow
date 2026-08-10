@@ -2,7 +2,7 @@
 # tmp-hardcode-check.sh
 #
 # Detect sandbox-incompatible patterns in rite plugin markdown / shell sources
-# (Issue #1904 recurrence guard). Under the Claude Code bash sandbox, writes are
+# (the governing rationale recurrence guard). Under the Claude Code bash sandbox, writes are
 # restricted to $TMPDIR (e.g. /tmp/claude-<uid>/...) and /tmp itself is mounted
 # read-only, while `.git/config` writes are always denied (harness built-in
 # protection). Three pattern families regressed repeatedly across sweeps

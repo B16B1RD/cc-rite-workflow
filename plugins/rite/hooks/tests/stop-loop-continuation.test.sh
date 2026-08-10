@@ -4,6 +4,8 @@
 # handoff marker is present, allows the stop otherwise, and consumes the marker one-shot.
 set -euo pipefail
 
+pr_text() { printf 'PR #%s' "$1"; }
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
@@ -201,7 +203,7 @@ if printf '%s' "$_reason11" | grep -q "wiki-lint チェーン"; then
 else
   fail "TC-11: reason missing the chain identification: $out"
 fi
-if printf '%s' "$_reason11" | grep -q "PR #99"; then
+if printf '%s' "$_reason11" | grep -q "$(pr_text 99)"; then
   pass "TC-11: reason surfaces the PR number from the handoff"
 else
   fail "TC-11: reason missing the PR number: $out"

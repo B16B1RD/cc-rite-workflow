@@ -52,6 +52,6 @@ reviewer registry の 3-way 同期検証で実測。
 
 ## ソース
 
-- PR #1743 review cycle 1（保証文 overclaim を MEDIUM 検出） (`Wiki provenance: ../../raw/reviews/20260703T174623Z-pr-1743.md`)
-- PR #1743 fix（保証範囲の I1/I3 限定 + gap 明記 + 3 面伝播） (`Wiki provenance: ../../raw/fixes/20260703T175226Z-pr-1743.md`)
-- PR #1743 review cycle 2（修正が指摘の意図を満たすことを確認、0 findings 収束） (`Wiki provenance: ../../raw/reviews/20260703T180609Z-pr-1743.md`)
+- The observed review run review cycle 1（保証文 overclaim を MEDIUM 検出） (`Wiki provenance: ../../raw/reviews/20260703T174623Z-pr-1743.md`)
+- The observed review run fix（保証範囲の I1/I3 限定 + gap 明記 + 3 面伝播） (`Wiki provenance: ../../raw/fixes/20260703T175226Z-pr-1743.md`)
+- The observed review run review cycle 2（修正が指摘の意図を満たすことを確認、0 findings 収束） (`Wiki provenance: ../../raw/reviews/20260703T180609Z-pr-1743.md`)

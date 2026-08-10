@@ -9,7 +9,7 @@
 # Usage: bash plugins/rite/scripts/tests/projects-items-fetch.test.sh
 set -euo pipefail
 
-# _timeout <seconds> <command...> — portable timeout(1) for this test (Issue #2008).
+# _timeout <seconds> <command...> — portable timeout(1) for this test .
 # GNU `timeout` is absent on macOS (BSD / no coreutils); fall back to a perl
 # fork/waitpid shim reproducing timeout(1)'s exit-code contract: 124 on timeout,
 # 128+N on signal death, the child's status otherwise (a naive
@@ -336,7 +336,7 @@ fi
 # $TMPDIR without a template, so the files land in $ISOLATED_TMP either way and the
 # counts are identical. Asserting the basename pins the explicit template on the
 # blocking Linux leg, where the BSD behaviour the change targets is unobservable
-# (Issue #2008 review G-05).
+# (the governing rationale review G-05).
 case "$(basename "$LAST_OUTPUT")" in
   rite-projects-items-result-*)
     pass "result tempfile uses the explicit rite-projects-items-result-XXXXXX template" ;;

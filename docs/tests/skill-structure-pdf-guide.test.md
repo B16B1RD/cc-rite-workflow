@@ -110,7 +110,7 @@
 - Issue に作業メモリコメントが追加される
 
 #### 結果
-- [x] PASS: Issue #361 の作業開始で正常動作を確認
+- [x] PASS: the contract の作業開始で正常動作を確認
 
 ### TC-006: 既存コマンド回帰テスト - /rite:issue-list
 

@@ -151,7 +151,7 @@ The progress section update in Phase 3.5.2 follows this logic（`merge-checklist
 1. Retrieve the existing progress section (`### 進捗サマリー` — 現行 WM テンプレの見出し。SoT: `work-memory-format.md` / init テンプレ)
 2. Preserve all existing content (table rows / checklist items)
 3. Append new items (`- [x] レビュー完了`, `- [x] マージ完了`, `- [x] クリーンアップ完了`) at the end of the section (do not duplicate if already present anywhere in the body — full-line exact match, 冪等)
-4. When the target section is absent **and** new items remain, helper returns `status=skipped; reason=section_absent` (items are **not** dropped silently, and the caller does **not** report success — Issue #2139)
+4. When the target section is absent **and** new items remain, helper returns `status=skipped; reason=section_absent` (items are **not** dropped silently, and the caller does **not** report success — the governing rationale)
 
 **Example:**
 
@@ -203,7 +203,7 @@ esac
 rm -f "${wm_sync_err:-}"
 ```
 
-**Note for Claude**: comment 取得・body 変換（全文 dedup + `### 進捗サマリー` セクション末尾挿入）・safety check・PATCH・backup はすべて helper 内部で完結するため、本ブロックを単一 Bash 呼び出しに収める必要はない。`{plugin_root}` はリテラル値で埋め込み、`{issue_number}` を cleanup.md コンテキストの実値で置換すること。対象セクション不在時は items を破棄せず `status=skipped; reason=section_absent` を返す（`status=success` と報告しない — fail-loud、Issue #2139）。参照: §3.5.1 の canonical caller パターン。
+**Note for Claude**: comment 取得・body 変換（全文 dedup + `### 進捗サマリー` セクション末尾挿入）・safety check・PATCH・backup はすべて helper 内部で完結するため、本ブロックを単一 Bash 呼び出しに収める必要はない。`{plugin_root}` はリテラル値で埋め込み、`{issue_number}` を cleanup.md コンテキストの実値で置換すること。対象セクション不在時は items を破棄せず `status=skipped; reason=section_absent` を返す（`status=success` と報告しない — fail-loud、the governing rationale）。参照: §3.5.1 の canonical caller パターン。
 
 > **適用範囲の注記**: 対象見出しは現行 default WM フォーマットの `### 進捗サマリー`（table + 任意の checklist 追記）である（SoT: `skills/rite-workflow/references/work-memory-format.md`、init テンプレ: `issue-comment-wm-sync.sh`）。v1 legacy の `### 進捗` のみを持つ body では `section_absent` となり skip 表示される（旧「silent no-op success」は廃止）。v1 への互換フォールバックは持たない（実運用の init 経路は常に `進捗サマリー` を生成する）。
 

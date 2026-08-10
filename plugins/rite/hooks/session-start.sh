@@ -54,7 +54,7 @@ if [ -z "$CWD" ]; then
   exit 0
 fi
 if [ ! -d "$CWD" ]; then
-  # Dangling harness cwd (Issue #1552): the session's working directory no longer
+  # Dangling harness cwd : the session's working directory no longer
   # exists. When it looks like a reaped session worktree, the harness restored cwd
   # to a tree that rite's lazy reap (or a manual cleanup) removed — the exact shape
   # that makes `/clear` fail with `Path does not exist`. rite cannot repair the
@@ -81,7 +81,7 @@ if [ -d "$_plugin_root/hooks" ]; then
 fi
 
 # Save session_id to .rite-session-id ONLY as the env-absent fallback channel
-# (Issue #1530). When the runtime exposes CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID,
+# . When the runtime exposes CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID,
 # that per-session env var is authoritative for flow-state.sh session_id resolution,
 # so writing the single shared `.rite-session-id` would just let concurrent sessions
 # clobber each other's value — the original flow-state contamination / worktree
@@ -447,7 +447,7 @@ if [ -z "$STATE_FILE" ] || [ ! -f "$STATE_FILE" ]; then
   exit 0
 fi
 
-# --- Dangling session-worktree self-heal (multi-session §8 / Issue #1524) ---
+# --- Dangling session-worktree self-heal (multi-session §8 / the governing rationale) ---
 # If the recorded `worktree` path no longer exists (e.g. it was reaped by another
 # session's lazy GC while this session was paused), null the field so neither the
 # orchestrator's re-entry path (open.md Step 0.5 / recover.md) nor a later

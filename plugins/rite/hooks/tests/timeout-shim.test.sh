@@ -1,7 +1,7 @@
 #!/bin/bash
 # timeout-shim.test.sh — pins the `_timeout` perl fallback's exit-code contract.
 #
-# Why this file exists (Issue #2008 review F-03): `_timeout` falls back to a perl
+# Why this file exists (the governing rationale review F-03): `_timeout` falls back to a perl
 # fork/waitpid shim when GNU `timeout` is absent, but that branch runs on no
 # blocking CI leg — ubuntu always has `timeout`, and the macOS leg is
 # `continue-on-error` during rollout. Every caller of `_timeout` treats a non-124

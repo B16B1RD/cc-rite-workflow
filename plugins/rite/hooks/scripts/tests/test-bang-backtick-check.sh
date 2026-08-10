@@ -11,9 +11,9 @@
 #   2. Missing args exits 2
 #   3. Repo-wide --all scan is clean (AC-3: false positive zero)
 #   4. P1 fixture with `if !` triggers detection (AC-4) AND bleed-check: P2 must be 0
-#   5. P1 multi-trigger on a single line reports N findings (Issue #369 H-1 regression)
+#   5. P1 multi-trigger on a single line reports N findings (the governing rationale H-1 regression)
 #   6. P2 fixture with `!foo` triggers detection (AC-4) AND bleed-check: P1 must be 0
-#   7. P2 multi-trigger on a single line reports N findings (Issue #369 H-1 regression)
+#   7. P2 multi-trigger on a single line reports N findings (the governing rationale H-1 regression)
 #   8. Boundary: tab+! is caught by P3 (the catch-all), not P1 (P1 regex is a
 #      literal space, not `[[:space:]]`, so the tab does not satisfy P1 — but the
 #      bang+backtick adjacency is still flagged by P3)
@@ -108,7 +108,7 @@ TMPFILES+=("$FIXTURE_P1")
 cat > "$FIXTURE_P1" << 'EOF'
 # Fixture: P1 pattern
 
-This line contains `if !` which is the Issue #365 triggering pattern.
+This line contains `if !` which is the the governing rationale triggering pattern.
 Another one: check `grep !` usage.
 EOF
 
@@ -117,7 +117,7 @@ rc=$?
 assert "P1 fixture exits 1 (detected)" "1" "$rc"
 # grep -c exits 1 when zero matches; under `set -uo pipefail` (no `-e`) that never
 # aborts the script, so the previous `|| true` was pure noise. Remove it throughout
-# to keep the test body signal-to-noise high (Issue #369 code-quality cycle 2 L-NEW2).
+# to keep the test body signal-to-noise high (the governing rationale code-quality cycle 2 L-NEW2).
 p1_count=$(grep -c '^\[bang-backtick\]\[P1\]' <<< "$out")
 assert_ge "P1 fixture detects >=2 P1 findings" 2 "$p1_count"
 p2_in_p1=$(grep -c '^\[bang-backtick\]\[P2\]' <<< "$out")
@@ -138,7 +138,7 @@ assert "P1 multi-trigger fixture exits 1" "1" "$rc"
 p1_multi=$(grep -c '^\[bang-backtick\]\[P1\]' <<< "$out")
 # Strict equality (not `-ge 3`) so over-counting regressions — e.g. a scanner rewrite
 # that accidentally double-emits the same match, or widens P1 to fire on overlapping
-# substrings — are caught as well (Issue #369 test cycle 2 L-NEW3).
+# substrings — are caught as well (the governing rationale test cycle 2 L-NEW3).
 assert "P1 multi-trigger reports exactly 3 hits" "3" "$p1_multi"
 # Bleed-check: P2 must not fire on P1-only input, even on multi-trigger lines.
 # This pins the regex's class isolation against future widening (L-NEW4).
@@ -252,7 +252,7 @@ out=$("$SCRIPT" --target "$FIXTURE_CLEAN" 2>&1)
 rc=$?
 assert "innocent fixture (including fenced block) exits 0" "0" "$rc"
 
-# --- Test 11: consumer repo (no plugins/rite) — skip vs diagnostic (Issue #1550)
+# --- Test 11: consumer repo (no plugins/rite) — skip vs diagnostic
 # Two invariants are pinned here:
 #   (1) Without --skip-if-no-target, --all with no scan directory exits 2 — the
 #       marketplace-install / misconfiguration diagnostic is preserved (MUST NOT
@@ -282,7 +282,7 @@ assert_ge "consumer repo: skip emits 'not applicable' note" 1 "$skip_note"
 rc=$?
 assert "self-host repo: --skip-if-no-target is a no-op on a clean tree (exit 0)" "0" "$rc"
 
-# --- Test 13: --skip-if-no-target does NOT mask real detection (Issue #1550) -
+# --- Test 13: --skip-if-no-target does NOT mask real detection  -
 # The critical safety invariant for the flag: it must affect ONLY the
 # no-scan-directory branch. When scan dirs DO exist and contain a real
 # bang-backtick pattern, the flag must not suppress detection — exit 1 stands.

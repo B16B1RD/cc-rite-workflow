@@ -2,7 +2,7 @@
 # Tests for review-measured-gate.sh (実測必須ゲートの決定論的後処理)
 #
 # 本 helper は「非実測指摘が blocking のまま残り review-fix loop が収束しない」障害
-# (PR #2070 で 9 サイクル / 8 時間超) を機械的に閉じる層である。したがって本 suite は
+# (the observed review run で 9 サイクル / 8 時間超) を機械的に閉じる層である。したがって本 suite は
 # 合成 fixture だけでなく **当該 PR の実レビュー結果 JSON 9 本** (fixtures/pr-2070/) を
 # 回帰入力として持つ (TC-06)。合成入力だけにすると、実データが持つ description の
 # 長さ・改行・記号分布が検出 regex に与える影響を取りこぼす。
@@ -408,9 +408,9 @@ if [ "$(jq '[.non_blocking_findings[] | select(.verification.measured == false)]
 else fail "未判定形が設定済み扱いになっている: $(jq -c '[.non_blocking_findings[].verification]' "$f")"; fi
 
 # ---------------------------------------------------------------------------
-# TC-06 (AC-6): PR #2070 実 JSON の回帰
+# TC-06 (AC-6): The observed review run 実 JSON の回帰
 #
-# 実データの内訳 (fixture を jq で実測。Issue #2072 §1 の「45 件すべてが非実測」は
+# 実データの内訳 (fixture を jq で実測。the governing rationale §1 の「45 件すべてが非実測」は
 # description 列のアンカーだけを見た測定であり、JSON の verification キーまでは見ていない):
 #   - 全 9 cycle 合計 45 件。**45 件すべてが description に Verification: アンカーを持たない**
 #   - cycle 1 (2070-20260731095828.json、12 件) のみ verification キー自体が無い
@@ -422,7 +422,7 @@ else fail "未判定形が設定済み扱いになっている: $(jq -c '[.non_b
 # 発生しない**」ことにある。cycle 2-9 の 33 件は起きなかったはずのサイクルの産物なので、
 # 「45 件すべてを降格する」ではなく「cycle 1 で loop が終わる」を固定するのが正しい回帰である。
 # ---------------------------------------------------------------------------
-echo "--- TC-06: PR #2070 実データ回帰 (AC-6) ---"
+echo "--- TC-06: The observed review run 実データ回帰 (AC-6) ---"
 if [ ! -d "$FIXTURE_DIR" ]; then
   fail "fixture ディレクトリが無い: $FIXTURE_DIR"
 else
@@ -545,12 +545,12 @@ if [ "$GATE_RC" -eq 1 ] && grep -q 'MEASURED_GATE_FAILED=1; reason=verification_
 else fail "先書き verification が弾かれない: rc=$GATE_RC stderr=$GATE_STDERR"; fi
 if cmp -s "$f" "$f.orig"; then pass "契約違反時は JSON を書き換えない"; else fail "契約違反なのに JSON が書き換えられた"; fi
 
-# PR #2070 cycle 2 の実データも同経路で弾かれる (回帰の実証)
+# The observed review run cycle 2 の実データも同経路で弾かれる (回帰の実証)
 work="$TEST_DIR/tc08b-real.json"
 cp "$FIXTURE_DIR/2070-20260731125341.json" "$work"
 run_gate "$work" --reject-preset-verification
 if [ "$GATE_RC" -eq 1 ] && grep -q 'reason=verification_preset_by_caller' <<<"$GATE_STDERR"; then
-  pass "PR #2070 cycle 2 の実 JSON も caller 契約違反として弾かれる"
+  pass "The observed review run cycle 2 の実 JSON も caller 契約違反として弾かれる"
 else fail "実データの先書き verification が弾かれない: rc=$GATE_RC"; fi
 
 # 冪等性はフラグ有無に依らない: ゲート適用後の JSON は矛盾を含まないため再実行しても発火しない

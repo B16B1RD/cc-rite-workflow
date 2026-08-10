@@ -25,9 +25,9 @@
 # Usage: bash plugins/rite/hooks/tests/crash-resume.test.sh
 set -euo pipefail
 
-# Hermeticity guard (Issue #1929): flow-state.sh path resolves session_id with
+# Hermeticity guard : flow-state.sh path resolves session_id with
 # priority env CLAUDE_CODE_SESSION_ID > env CLAUDE_SESSION_ID > .rite-session-id
-# file (Issue #1530). When this test suite runs inside a live Claude Code
+# file . When this test suite runs inside a live Claude Code
 # session, that session's own id leaks into the `$STATE_READ get --field ...`
 # calls (no `--session` passed) below and silently overrides the file-based
 # per-session fixtures, making the read resolve a nonexistent (or wrong)
