@@ -1,6 +1,7 @@
 ---
 title: "Success-only Sentinel Design — sub-skill abort path sentinel 未定義"
 domain: "anti-patterns"
+description: "sub-skill 切出し時に success path 用 HTML sentinel のみを定義し、abort path / error path 用 sentinel を未定義のまま残す anti-pattern。caller orchestrator が 3 経路を grep-able に区別できず implicit stop / 誤 routing が発生する。過去のレビュー事例 (`/rite:issue:start-execute` 切出し) cycle 1 で CRITICAL 検出。canonical fix は success / abort / error 3 経路すべてに sentinel を定義し caller routing dispatcher で排他的に grep すること。"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/success-only-sentinel-design.md"
 created: "2026-05-14T05:30:00+00:00"

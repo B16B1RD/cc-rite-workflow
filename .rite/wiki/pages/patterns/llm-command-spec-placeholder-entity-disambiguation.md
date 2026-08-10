@@ -1,6 +1,7 @@
 ---
 title: "LLM 向けコマンド spec の placeholder は解決元 entity を一意化する (単一 {number} を {issue_number}/{pr_number} に分離)"
 domain: "patterns"
+description: "LLM 実行 command spec で単一 `{number}` を `gh issue view` / `gh pr view` 双方の代入先に流用すると、issue/pr 単一番号空間ゆえ代入先 entity が非一意で 404・誤参照を招く。`{issue_number}` / `{pr_number}` に分離し verify-then-fallback 解決を明記、位置引数の振り分けは決定テーブルで明示、SPEC 表の英日 Arguments 列も対称追記する。過去のレビュー事例 cycle 1 で実測。"
 promote: rite-plugin
 created: "2026-06-02T03:50:58Z"
 updated: "2026-06-02T03:50:58Z"

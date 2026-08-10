@@ -1,6 +1,7 @@
 ---
 title: "Embedded markdown bash block の observability 三要素 (pipefail 宣言 + stderr stage 分離 + cd 失敗可視化)"
 domain: "patterns"
+description: "command / skill ファイル (`.md`) に埋め込まれた bash block は (1) `set -o pipefail` 宣言、(2) pipeline 各 stage の stderr を独立 tempfile に退避、(3) `cd` / `[ -d ]` 失敗の明示可視化、の 3 要素を揃えないと、上流コマンド (gh / jq / git) の失敗が pipefail dominant exit や stderr 握り潰しで silent suppression される。過去のレビュー事例 review cycle 2/3 で同型の observability gap が 3 site で同時 surface し cycle 3 fix で canonical 実装に統一。sub-shell scope-internal context retrieval (orchestrator state dependency 排除) と組み合わせて適用。"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/embedded-bash-block-observability-trio.md"
 created: "2026-05-17T09:08:26Z"

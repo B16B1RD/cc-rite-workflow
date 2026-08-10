@@ -1,6 +1,7 @@
 ---
 title: "path セグメントの substring マッチが look-alike を誤マッチし対象を silent に over-remove する"
 domain: "anti-patterns"
+description: "path 内の固定セグメント名 (`rite` 等) を `rite.*?/hooks/` のような substring 正規表現でマッチすると `favorite/hooks/`・`prerite/hooks/`・`rite-something/hooks/` の look-alike を誤マッチし、保持すべき対象 (ユーザー定義 hook 等) を silent に over-remove する。`(?:^|/)rite/` で path segment 境界に anchor して排除する。ただし anchor 厳格化時は cache 形の中間 version segment 等、実在する全 path 形状を列挙し false-negative を作らないこと (`(?:^|/)rite/(?:[^/]+/)?hooks/`)。過去のレビューで settings.local.json cleanup の regex を 4 reviewer 0 blocking で path 境界化、security は user-controlled config の silent mutation = integrity 違反の是正 (fail-safe 側) と評価。over-capture class (glob collision / case catch-all) の path-segment regex 版。"
 promote: rite-plugin
 created: "2026-06-01T18:27:24+00:00"
 updated: "2026-06-02T00:07:23Z"

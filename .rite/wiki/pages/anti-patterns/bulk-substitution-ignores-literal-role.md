@@ -3,7 +3,7 @@ type: "anti-patterns"
 title: "機械的一括置換は同一リテラルの役割差を無視すると load-bearing fixture を壊す"
 domain: "anti-patterns"
 promote: rite-plugin
-description: "`/tmp/rite-*` → `${TMPDIR:-/tmp}/rite-*` のような一括 sed スイープは、同じ文字列でも**役割が違う出現**を巻き込むと意味論を壊す。スクラッチ置き場の mktemp は変換可だが、(1) 被テスト対象の path allowlist に一致させる load-bearing fixture、(2) `export TMPDIR` より後に評価される生成パス、(3) 文字列リテラル内部、の 3 種は変換の意味が正反対になる。起点事例で 3 reviewer が独立に同一箇所（TC-036a）を HIGH で指摘した実測。"
+description: "`/tmp/rite-*` → `${TMPDIR:-/tmp}/rite-*` のような一括 sed スイープは、同じ文字列でも**役割が違う出現**を巻き込むと意味論を壊す。スクラッチ置き場の mktemp は変換可だが、(1) 被テスト対象の path allowlist に一致させる load-bearing fixture、(2) `export TMPDIR` より後に評価される生成パス、(3) 文字列リテラル内部、の 3 種は変換の意味が正反対になる。過去のレビュー事例で 3 reviewer が独立に同一箇所（TC-036a）を HIGH で指摘した実測。"
 created: "2026-07-19T15:00:00+09:00"
 updated: "2026-07-19T15:00:00+09:00"
 sources:

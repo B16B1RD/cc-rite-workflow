@@ -1,6 +1,7 @@
 ---
 title: "Issue 起票前の grep 棚卸しで「違反あり」前提が既に解消済みか確認する"
 domain: "heuristics"
+description: "charter 違反 / refactor 残作業を扱う Issue を起票するとき、Issue body に書く「違反あり」「残作業あり」前提は既に過去の関連 PR で解消済みのケースがある。Issue 起票時に `grep` ベースで `Issue #N` / `PR #N` / `cycle N` / `Drift guard` / `NFR-N` 等を一通り棚卸しすれば、無駄な PR 起こしを回避できる。関連する課題 (Phase D) で起票時「違反あり」と仮定した内容が実際は Phase A-C で全削除済み + 合計目標も達成済みだったことが判明し、PR を作成せず DoD 見直しのみで close した実例。"
 promote: rite-plugin
 created: "2026-05-08T15:34:21+00:00"
 updated: "2026-08-08T13:37:28Z"

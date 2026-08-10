@@ -1,6 +1,7 @@
 ---
 title: "委譲表現を含む fix は次サイクルで PARTIAL fix として再指摘される"
 domain: "anti-patterns"
+description: "cycle 1 fix で「呼び出し側責務」「同様」のような委譲表現を使うと、caller 側 / sibling site 側の実装が同 PR 内で完成しないまま方針宣言だけが landed する。次サイクルで reviewer が caller 側の未完成を検出し PARTIAL fix として再指摘されるため review-fix loop が予期せず +1 cycle 増える。canonical fix flow: (A) 同 cycle で caller 側まで完成、(B) 別 Issue + minimal PR で短時間レビュー、(C) fix を出さず scope 外保留を交渉、の 3 択。過去のレビューで reference (`broken-ref-resolution.md`) を新規追加した cycle 1 fix が precondition 変数を caller (`lint.md`) で生成しないまま landed → cycle 2 で PARTIAL 認定 → cycle 3 で caller 完成という追加 cycle 発生を実測。"
 promote: rite-plugin
 created: "2026-05-03T18:46:59Z"
 updated: "2026-08-08T13:37:28Z"

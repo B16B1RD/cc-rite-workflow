@@ -1,6 +1,7 @@
 ---
 title: "状態変化後も未来形 / 旧値前提のインラインコメントが残置する (stale historical comment drift)"
 domain: "anti-patterns"
+description: "config 値の bump (例: `enabled: false → true`) や AC の完了マーク (`⏳ → ✅`) など状態を変更する commit で、同一行 / 近傍のインラインコメント (`default: false` / 「... 後に true 化予定」) が旧値や未来形のまま残置する drift。LLM / reviewer は値そのものは確認するが付随コメントの語法 (時制 / 旧値表記) は scope 外として読み飛ばすため、merge 後 reader が PR HEAD と書かれている内容の矛盾に直面する。過去のレビューで `scope_assignment.enabled: false → true` bump 時にインラインコメント残置 + AC-5 完了マーク `⏳ 実行予定` 残置を cycle 1 で Order-Emphasis Consistency 違反として 7 件検出。canonical 対策: 値変更時の同一行コメント sweep、commit SHA embed で「実行済」明示、rollout strategy comment は時制を「観察主体」に reframe (「予定」→「履歴」)。検出シグナル: config 値変更 / AC マーク変更 / バージョン bump + ±5 行内のインラインコメント / status 注釈の存在。過去のレビューで委譲 refactor の 2 doc-drift mode (comment rot=委譲先 helper 挙動を推測記述 / 用語定義表 stale=control-flow 変更の net-effect で byte-unchanged 行が stale 化、revert test pass) に拡張。"
 promote: rite-plugin
 created: "2026-05-19T20:10:23Z"
 updated: "2026-05-29T15:59:38Z"

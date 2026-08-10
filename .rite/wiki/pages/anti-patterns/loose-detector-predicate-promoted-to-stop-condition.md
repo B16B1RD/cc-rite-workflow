@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "緩い検出述語の出力を停止条件へ昇格させてはならない"
 domain: "anti-patterns"
-description: "「false-positive の WARNING が増えることを許容して silent false-negative を潰す」という設計判断で選ばれた緩い述語は、その緩さを前提にコストが無害と評価されている。その件数を hard fail の入力に使った瞬間に前提が崩れ、誤発火と見逃しを同時に持つ機構になる。起点事例では anchor_unparseable の件数を集約 hard fail の連言に組み込んだ結果、正常系で停止し、かつ通常指摘が 1 件混ざるだけで発火しなくなった。検出層と停止層は入力を共有しない。"
+description: "「false-positive の WARNING が増えることを許容して silent false-negative を潰す」という設計判断で選ばれた緩い述語は、その緩さを前提にコストが無害と評価されている。その件数を hard fail の入力に使った瞬間に前提が崩れ、誤発火と見逃しを同時に持つ機構になる。過去のレビュー事例では anchor_unparseable の件数を集約 hard fail の連言に組み込んだ結果、正常系で停止し、かつ通常指摘が 1 件混ざるだけで発火しなくなった。検出層と停止層は入力を共有しない。"
 created: "2026-08-01T00:21:06+09:00"
 updated: "2026-08-01T00:21:06+09:00"
 sources:

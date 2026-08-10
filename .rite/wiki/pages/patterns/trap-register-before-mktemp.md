@@ -1,6 +1,7 @@
 ---
 title: "trap 登録 → mktemp の順序で tempfile lifecycle を守る"
 domain: "patterns"
+description: "`mktemp → trap` 順では signal が届く窓で orphan が残る。「空文字変数宣言 → signal-specific trap → mktemp」の canonical 順序 + POSIX exit code (130/143/129) 明示渡しで signal 経路も堅牢化する。過去のレビューで deterministic gate-exit variant を追加: mktemp と trap の間に依存コマンド gate (exit 1) が挟まると該当環境で 100% orphan が残る — gate は mktemp より前へ最小 reorder し、sibling ファイル間の gate 位置非対称も確認する。"
 created: "2026-04-16T19:37:16Z"
 updated: "2026-07-28T21:30:00+09:00"
 sources:

@@ -1,6 +1,7 @@
 ---
 title: "複数 PR にまたがる incremental 追加履歴を単一 PR に誤集約する (multi-PR provenance aggregation error)"
 domain: "anti-patterns"
+description: "対称化 / 要約 PR で先行 PR のガード移植履歴を要約する際、複数 PR にまたがる incremental な追加を単一 PR に誤集約し、同一ファイル内の正しい帰属と矛盾 (intra-file contradiction) を生む。git pickaxe (`git log -S`) + 同一ファイル内 cross-reference + propagation scan (`git grep`) の 3 点で検証する。過去のレビューにおける §4↔7.4.2 対称化シリーズで LOW finding として実測 (1 cycle fix → cycle 2 で 0 finding mergeable)。"
 promote: rite-plugin
 created: "2026-06-03T08:38:00Z"
 updated: "2026-06-03T08:38:00Z"

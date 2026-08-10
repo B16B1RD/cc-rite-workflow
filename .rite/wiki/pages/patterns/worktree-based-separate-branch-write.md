@@ -1,6 +1,7 @@
 ---
 title: "separate_branch 戦略は git worktree で dev ブランチ不動を実現する"
 domain: "patterns"
+description: "wiki 別ブランチへの書き込みを `stash + checkout + stash pop` で行う Block A/B パターンは構造的に脆弱。`.rite/wiki-worktree/` worktree へ Write/Edit、`wiki-worktree-commit.sh` で単一プロセス commit/push することで dev ブランチ不動を実現する (関連する課題)。過去のレビューで corrupt/orphaned worktree (stale gitdir、リポジトリ移動由来) からの自己回復を追加 — fast-path 検証の rc-aware 化 + setup.sh 委譲 + legacy fallthrough、silent exit 1 廃止と WARNING surface、fallthrough コメントの実 rc 遷移正確化。"
 promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 updated: "2026-06-26T03:18:14+00:00"

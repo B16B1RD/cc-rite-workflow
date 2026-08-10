@@ -1,6 +1,7 @@
 ---
 title: "`rejected(scope-creep)` judgment は cross-validation + empirical revert test で gate する"
 domain: "heuristics"
+description: "review-fix loop で author が `rejected(scope-creep)` として承認した tradeoff が、後続 cycle reviewer の empirical revert test で CRITICAL silent corruption / data corruption と認定される事例が発生する。`rejected` action lines を commit message に書く際、reject した懸念事項自体を reviewer cross-validation で empirical 検証する gate を持たないと、author の主観判断で CRITICAL 級リスクを silent 通過させる経路となる。canonical 規範: (a) cross-validation で別 reviewer の独立判断を取る + (b) empirical revert test で「reject した場合の挙動」を直接観測 + (c) commit message embed の 3 段階検証。過去のレビュー事例 cycle 30 → 31 で cross-session takeover を `rejected(scope-creep)` 承認した tradeoff が CRITICAL silent corruption (data corruption) と認定された事例として実証。"
 promote: rite-plugin
 created: "2026-04-27T23:01:24+00:00"
 updated: "2026-07-31T01:26:57+09:00"

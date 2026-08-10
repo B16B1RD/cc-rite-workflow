@@ -1,6 +1,7 @@
 ---
 title: "Bash lib helper の contract は実装と同じ rigour で保証する"
 domain: "patterns"
+description: "docstring で「caller owns shell options / outer trap preserved」と宣言するなら、実装側で `set -e` 強制 / `trap -` 消去をしてはいけない。`$-` + `trap -p`/`eval` で errexit と outer trap を保存復元する。signal override / nested function leak 等 subtle な挙動も Contract 節に明示化する。"
 created: "2026-04-17T00:00:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"
 sources:

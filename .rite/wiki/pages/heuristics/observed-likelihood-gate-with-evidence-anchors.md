@@ -1,6 +1,7 @@
 ---
 title: "Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格"
 domain: "heuristics"
+description: "findings に Likelihood-Evidence anchor (tool/path/line) が無い場合は自動降格。複数 reviewer が anchor 付きで独立検出した場合は severity boost（triple cross-validation）。憶測ベース findings の false-positive を severity から分離する gate。過去のレビューで Hypothetical（将来 Phase 変更依存）を anchor 欠落と独立した orthogonal 降格軸として追加。過去のレビューで「reviewer literal output contract」の重要性を sub-pattern として追加: 内容に Likelihood-Evidence 相当の根拠があっても `Likelihood-Evidence:` literal anchor が無いと Phase 5.3.0 で mechanical 降格される。reviewer agent file の Output Format 例で literal anchor を必須フィールドとして明示することが canonical 対策。過去のレビューで 11 findings が全件降格 (cross-validation 合意でも literal anchor 欠落は補えないことを実証)。過去のレビューで「推奨文が self-declared に不要性を示す場合の Finding Quality Guardrail bikeshedding filter 適用」を第3の orthogonal 降格軸として追加。過去のレビュー事例 cycle 3 で「独立レビュアーの明示的非裏付け + worst-case が non-blocking warning に留まることの不整合」を第4の orthogonal 降格軸として追加 (単一 reviewer の HIGH に対し別 reviewer が同一箇所を精査済みで「可」と明示判定、かつ対象コードパスが non_blocking:true 止まりであることの複合条件で Critic 判断)。"
 promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 updated: "2026-07-14T07:35:00+09:00"

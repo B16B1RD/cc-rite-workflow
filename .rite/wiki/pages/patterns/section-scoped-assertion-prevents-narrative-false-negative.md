@@ -1,6 +1,7 @@
 ---
 title: "Test assertion は section-scoped で行頭 prefix を必須にし narrative mention の false negative を防ぐ"
 domain: "patterns"
+description: "構造保護 test (契約 row が table に存在 / 特定 bash literal が 1 reference に存在 等) を substring grep ベースで書くと、narrative の言及・heading-only mention・single-instance match で pass する false negative を生む。`awk '/^## §3/,/^## §4/'` 等の section-scoped 範囲抽出 + 行頭 prefix 必須 (`^| ...`) で contract row のみを検証する設計が必要。`test-pin-protection-theater` の sub-class として「assertion の string match 強度が claim の対象と乖離する」failure mode に分類できる。過去のレビューで 3 件 MEDIUM (F-03/F-04/F-05) として実測。過去のレビューで source を grep する静的 test が header comment にマッチする code 版変種 (quoted jq 述語へ anchor) + exit-code 契約は exact code を assert する sibling 教訓を追加。"
 created: "2026-05-12T15:29:45Z"
 updated: "2026-06-08T13:10:25Z"
 sources:

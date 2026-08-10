@@ -1,6 +1,7 @@
 ---
 title: "Issue body 内 `Scope 外指摘ハンドリングポリシー` 宣言で reviewer advisory finding を Issue 化なし recommendation に降格する"
 domain: "heuristics"
+description: "umbrella Issue (Phase A/B/C 段階分割で 1 PR 1 Phase を順次マージする運用) の Issue body 冒頭に明示的な「Scope 外指摘ハンドリングポリシー」セクションを宣言しておくと、その PR 作業中の reviewer による advisory finding (CRITICAL/HIGH 以外の MEDIUM/LOW で blocking しないと reviewer 自身が明記したもの) は finding ではなく recommendation 扱いとなり、follow-up Issue を起票せず本 PR でも対応しないという `[review:mergeable]` 経路を取れる。reviewer の CRITICAL/HIGH を silent skip する乱用は scope-creep-rejection-empirical-gate 違反となるため、advisory のみに限定する。過去のレビュー事例 / 関連する課題 Phase A で実測。"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/issue-body-scope-out-policy-demotes-advisory-finding.md"
 created: "2026-05-07T19:32:00+09:00"

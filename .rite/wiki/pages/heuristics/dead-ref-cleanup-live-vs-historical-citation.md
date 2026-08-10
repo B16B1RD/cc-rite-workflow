@@ -1,6 +1,7 @@
 ---
 title: "dead reference 整理では live citation と historical 記述を区別する"
 domain: "heuristics"
+description: "削除・改名されたファイル / シンボルへの参照を整理する PR では、「現行 SoT として現在形・行番号付きで参照する live citation（修正対象）」と「過去形・period-accurate な旧名を残す historical 記述（CHANGELOG / migration-guide / design-snapshot として据え置き）」を区別する。find/replace 一括 rename は dead file 参照で grep 検証不能だった主張を live file への検証可能な反証へ変えうるため実態検証が必須。schema drift は別種として別 Issue に切り出す。過去のレビュー事例（dead-ref 整理、tech-writer/prompt-engineer 2 reviewer 0 findings mergeable）で実測。"
 promote: rite-plugin
 created: "2026-05-24T18:01:50Z"
 updated: "2026-05-28T08:53:59+00:00"

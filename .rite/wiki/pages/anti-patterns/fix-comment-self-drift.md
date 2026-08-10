@@ -1,6 +1,7 @@
 ---
 title: "Fix 修正コメント自身が canonical convention を破る self-drift"
 domain: "anti-patterns"
+description: "fix サイクルで生成するコメントや説明文自体が canonical convention (行番号参照禁止等) を破る self-drift pattern。過去のレビュー事例 cycle 2 で F-ID 衝突解消 fix のコメントに literal 行番号が混入した事例を実測。過去のレビューで fix の prose / commit message 内の line 番号 literal にも scope 拡張。過去のレビューで「新規 lint rule 自身を追加する PR の prose にその rule 違反が混入する self-meta drift」(`hardcoded-line-number-check.sh` の P-B/P-C パターンが lint.md 自身の Asymmetry note の literal 行番号を self-detect) を実測追加。commit 前 grep self-check と reviewer 推奨値の evidence gate、新規 rule 追加 PR の self-violation gate で decisive 検出可能。過去のレビュー事例 cycle 3 で「cycle 内 fix の『全置換』claim 時の機械的検証必須化」(test-reviewer + code-quality 二重検出 HIGH × 2) を追加し、Comment Quality Finding Gate (no_journal_comment 原則 2) の SoT lint 自動化提案 (`grep -E '\+.*F-[0-9]+'` を CI 化) を canonical 対策に追加。過去のレビュー事例 cycle 9 で「整備 commit による積み残しの同 PR 別箇所残存」+「`旧 X は Y していた` 日本語 journal phrase の多言語 grep pattern 拡張」+「3 → 2 → 0 単調収束の signal」を追加。整備 commit の対象 scope は cycle 内 touched 行ではなく PR 全体の追加行とする canonical を確立。過去のレビュー事例 cycle 5 で TC-H6 コメントに混入した `cycle-2 fix` cycle 番号参照を HIGH 検出 — テストコードのコメントも no_journal / no_cycle_reference MUST、新規 diff 行の違反は scope 内修正。過去のレビュー事例 cycle 2 で「回帰テストのケースコメントに『旧実装は…だった』履歴フレームで WHY を書く」形態を追加 — 同一 PR 内に正しい現在形記述 (TC-9) と誤った履歴フレームが混在、意図説明は現在形の制約文で書き変更経緯は commit message に置く。過去のレビューで「修正コメントの帰属一般化が次の category error を誘発する」連鎖 (F-01 修正文言→F-03 帰属誤り) を追加 — 挙動要約コメントは決定主体を主語にし emit ポイントと突合してから書く。"
 promote: rite-plugin
 created: "2026-04-18T12:00:00+00:00"
 updated: "2026-08-03T07:46:56Z"

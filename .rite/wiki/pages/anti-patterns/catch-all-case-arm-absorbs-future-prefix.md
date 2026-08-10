@@ -1,6 +1,7 @@
 ---
 title: "prefix 分岐 case の `*)` catch-all は未知の将来 prefix を silent に default 動作へ吸収する"
 domain: "anti-patterns"
+description: "prefix で分岐する `case "$VAR" in FINALIZE:*) ;; *) ;; esac` の `*)` catch-all に「意味のある既定動作」(継続再注入等) を置くと、prefix 名前空間拡張時に未知の新 prefix が silent に default 動作へ吸収され、分岐漏れがエラーにならず誤動作が表面化しない。過去のレビューで Stop hook (stop-loop-continuation.sh) の FINALIZE handoff 分岐を code-quality / error-handling 2 reviewer が独立検出 (high-confidence consensus)。canonical 対策は既知 prefix を明示列挙し真に未知の値は WARNING/fail-loud で可視化する (catch-all に正規動作を載せない)。併発して「prefix で block を分岐」という説明コメントが直交 2 軸 (block 可否 = handoff 非空 / reason 選択 = prefix) を混同させる責務分離の乖離も実測。過去のレビュー事例 (関連する課題、0 findings) で successful application を実測: WIKICHAIN prefix 追加と同時に既知 prefix 明示列挙 + 未知 prefix の fail-loud WARNING + verbatim 再注入を実装、3 reviewer 独立検証 + TC-13 機械検証で 1 cycle mergeable — 拡張と同時に明示 arm を追加する運用が catch-all 縮退を構造的に防ぐことを実証。"
 promote: rite-plugin
 created: "2026-05-28T23:42:28Z"
 updated: "2026-07-29T21:32:36+09:00"

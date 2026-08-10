@@ -1,6 +1,7 @@
 ---
 title: "新規 test helper は同ディレクトリ sibling test の既存 helper 慣習を踏襲する (counter + summary 報告)"
 domain: "heuristics"
+description: "bash test に新規 helper (skip 等) を追加するときは echo のみの最小実装ではなく、同ディレクトリ sibling test file の確立済み helper 慣習 (counter init + increment + Summary 報告) を踏襲する。最小実装だと CI ログで skip 件数と全 PASS を判別できず observability が劣化する。表示文言の逐語コピーではなく「counter + summary 報告」という構造的慣習を踏襲し、Summary 行形式は file-local 既存形式を優先する。過去のレビューで code-quality が actionable 検出。過去のレビューで「skip を素の echo で実装しカウンタ・マーカー基準の走査からカバレッジ欠落が観測できなくなる」同型パターンを再確認、skip 自体の不要化 (前提確定) を代替対策として提示。"
 created: "2026-06-09T07:58:52+00:00"
 updated: "2026-07-20T10:36:25+09:00"
 sources:

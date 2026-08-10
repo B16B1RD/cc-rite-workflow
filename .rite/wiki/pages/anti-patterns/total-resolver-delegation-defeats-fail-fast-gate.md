@@ -1,6 +1,7 @@
 ---
 title: "全域で成功する resolver への委譲が既存 fail-fast ガードを silent success 化する"
 domain: "anti-patterns"
+description: "「必ず非空値を返す」helper に値解決を委譲すると、空チェック依存の既存 ERROR ガードが dead code 化し従来エラーが silent success に変わる。委譲は helper の全域性を確認し必要なら git repo gate 等で条件化する。過去のレビュー事例 F-12 実測。判定の値域を広げる変更も同型で、2 値比較のまま残った強制述語が新状態を素通りさせる（過去のレビュー事例）。"
 created: "2026-07-13T07:40:00Z"
 updated: "2026-08-01T23:12:28+09:00"
 sources:

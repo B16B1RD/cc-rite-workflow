@@ -1,6 +1,7 @@
 ---
 title: "canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する"
 domain: "patterns"
+description: "reference 文書 (bash-trap-patterns.md 等) のサンプルコードはコピペ origin として使われるため、canonical 実装と一字一句揃っている必要がある。過去のレビューで `else rc=$?` 欠落、過去のレビューで ID 採番時の grep 全件検証、過去のレビューで「一字一句同期」宣言の 3 観点 (rc capture / 引数 / 事前宣言) 揃え義務、過去のレビュー事例/#598 で観点別残留の別 Issue + minimal PR 解消 flow を実測。過去のレビューで「reference 単独完成度 ≠ 同期成立」を実測し、reference の sample が要求する precondition 変数 (`pages_list_normalized` / `wiki_root` 等) を caller (`lint.md`) で生成する実装契約まで含めて初めて canonical sync が成立することを 3 観点 (a)(b)(c) で明文化。"
 promote: rite-plugin
 created: "2026-04-18T17:40:00+09:00"
 updated: "2026-08-08T13:37:28Z"

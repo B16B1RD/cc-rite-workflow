@@ -1,6 +1,7 @@
 ---
 title: "HINT-specific 文言 pin で case arm 削除 regression を検知する"
 domain: "patterns"
+description: "hook script の phase 別 case arm 内でのみ emit される HINT 文言を test fixture で literal pin することで、case arm 自体が削除された場合の silent regression を検知する。fallback STOP_MSG で共通文字列が emit されるため `assert_contains "Phase:"` のみでは silent-pass する false positive を塞ぐ。sibling fixture との HINT phrase 相補関係 + sentinel emission との orthogonal 検知で封鎖強化。過去のレビュー事例 cycle 3 fix で cleanup test fixture に適用、17 assertions 達成。過去のレビュー事例 cycle 3 で twin site contract verification (HINT emit 側と grep 参照 / retained flag emit 側を同 test で両 assert) と emit/consume/test 3 点セット契約を追加 (cumulative-defense PR で dead marker 同型再発を防ぐ canonical)。過去のレビューで exit-code 経路判別軸へ拡張: 同一 exit code を返す複数経路 (wiki-lint-source-refs.sh の 4 つの exit 2) は bare な `assert <exit code>` だけでなく経路固有エラー文言を `assert_grep` で pin して経路を特定する (汎用シグナル `Phase:` false-pass の exit-code 版、mutation testing で 2 cycle 実証)。"
 created: "2026-04-20T13:20:00+00:00"
 updated: "2026-06-01T03:07:26+00:00"
 sources:

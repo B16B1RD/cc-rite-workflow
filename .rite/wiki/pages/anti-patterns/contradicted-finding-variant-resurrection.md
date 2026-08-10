@@ -1,6 +1,7 @@
 ---
 title: "Fact-check で CONTRADICTED 除外された主張の variant 再提起 (reviewer の observability gap)"
 domain: "anti-patterns"
+description: "reviewer agent が fact-check phase で CONTRADICTED 除外された主張 (「ツール不在」「概念不在」型) を後続 cycle で variant rephrase で再提起する failure mode。根本原因は reviewer の grep 観測点が codebase 単一観測点 (plugins/rite/ 内 grep) に限定され、Claude Code runtime environment の deferred-tools registry / session 内実呼出履歴 を fact-check に含めない observability gap。過去のレビュー事例 cycle 1-3 で 2 cycle 連続で TaskCreate 不在 → TaskCreate=Team 機能 の variant 再提起、cycle 3 で orchestrator prompt 注入により再提起停止。過去のレビュー事例 cycle 2 で注入対象を「fact-check CONTRADICTED 事実主張」から「討論決着した設計判断」へ一般化 (「解決済み論点を新 evidence なしに蒸し返さない」prompt 明示で source ガード論点の再燃なし、reviewer は修正検証に徹する役割転換が成立)。"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/contradicted-finding-variant-resurrection.md"
 created: "2026-05-28T03:00:00+00:00"

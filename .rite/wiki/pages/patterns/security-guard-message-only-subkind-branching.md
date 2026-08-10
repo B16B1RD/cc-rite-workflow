@@ -1,6 +1,7 @@
 ---
 title: "security guard の deny メッセージ改善は判定ロジック不変の subkind タグ分岐で行う"
 domain: "patterns"
+description: "security hook の over-broad block 体験を改善する際、deny 判定を一切緩和せず subkind タグでメッセージのみ分岐する (パターン名は既存テスト互換のため不変に pin)。代替案内が bypass 経路にならないことの実プローブ + message assertion の mutation non-vacuity 検証 + 「緩和しない」方針自体の回帰テスト pin が検証 3 点セット (過去のレビュー事例 / 関連する課題)。"
 promote: rite-plugin
 created: "2026-06-09T18:38:00Z"
 updated: "2026-06-09T18:38:00Z"

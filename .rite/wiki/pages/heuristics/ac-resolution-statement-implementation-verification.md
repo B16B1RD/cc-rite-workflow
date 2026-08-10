@@ -1,6 +1,7 @@
 ---
 title: "AC 解消 statement の数値解釈は実装で裏取りする (PR description fact-check gate)"
 domain: "heuristics"
+description: "AC 解消の核心 statement に数値解釈 (`N/N passed` の N は何か、`X 件対応` の X はどこから来たか) が含まれる場合、その数値の出典を実装 (テストランナー / カウンタ loop) で grep 裏取りせずに書くと、AC が解消したかった conflate を別形で再演する self-meta drift を生む。canonical 防御は (a) AC 解消 statement に数値の取得コマンド併記、(b) 「N 階層」明示分離、(c) cycle 2 reviewer による fact-check rerun (Anti-Degradation Guardrail との pair)。過去のレビューで `36/36 passed` の `36` を「assertion 数」と書いた事実誤認を test reviewer が `run-tests.sh:13` の loop 構造で検出した HIGH 事例として実測。通常 review-fix loop の 2 cycle 収束 (5 → 0 finding) base rate 実例も併設。"
 promote: rite-plugin
 created: "2026-05-02T00:30:00+09:00"
 updated: "2026-07-31T01:26:57+09:00"

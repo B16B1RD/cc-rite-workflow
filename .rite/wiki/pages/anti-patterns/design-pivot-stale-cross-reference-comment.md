@@ -1,6 +1,7 @@
 ---
 title: "同一 PR 内の設計 pivot 後に cross-reference コメントが旧設計の説明のまま残る"
 domain: "anti-patterns"
+description: "設計 pivot した実装を参照する離れた箇所のコメントが旧設計の説明のまま残り同一 PR 内で自己矛盾、将来の「修正」で防御が silent 弱体化する。過去のレビューで helper 委譲後の canonical 参照 drift へ拡張、reviewer の Cross-File Impact Check が同型 drift (L236↔L144) を横断検出し別 関連する課題 化した positive evidence を追加"
 promote: rite-plugin
 created: "2026-06-10T00:38:14Z"
 updated: "2026-06-10T01:19:36Z"

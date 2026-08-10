@@ -1,6 +1,7 @@
 ---
 title: "累積対策 PR の 3 cycle 収束記録: cross-validation boost + cycle 2 minor drift + cycle 3 mergeable"
 domain: "heuristics"
+description: "過去のレビュー事例 cycle 2 LOW follow-up が 3 cycle で収束した実例。cycle 1 で 2 reviewer 独立指摘が HIGH に boost、cycle 1 fix で minor drift 導入、cycle 2 で 2 階層 (主要因/補強要因) に書き直し、cycle 3 で 0 findings 収束。過去のレビューで bash semantics 版 3-cycle 連鎖収束 (drift class 横断: bash 言語仕様 → documentation pointer → numeric counter) を 2 連続再現事例として追加、shrinking cycle count 規則と「PR の規模ではなく新 SoT との対称化責務の層数が 3-cycle 連鎖の発火条件」観点を確立。過去のレビューで **1-cycle convergence の下限事例** を追加: 3 reviewer 並列 HIGH cross-validated → cycle 1 fix で structural resolution → cycle 2 で 0 finding mergeable に到達する 1-cycle 収束を実測、収束 cycle 数を決める 3 因子 (structural clarity / cycle 1 fix semantic 完全性 / reviewer cross-validation depth) と「fix-induced regression が発火しない条件 (新規 contract 確立形態 vs precedent-following 形態)」観点を確立。過去のレビューで **mass batch fix の 1-cycle convergence 上限事例** を追加: 4 reviewer 並列で 14 findings (CRITICAL × 2 / HIGH × 4 / MEDIUM × 6 / LOW × 2) → cycle 1 一括 structural fix → cycle 2 で 1-nit-noted (関連する課題 M5 受け流し経路) + 2 recommendations のみで mergeable、各 finding の structural anchor 分割可能性により 14 件大量でも 1-cycle 収束する pattern を確立。`spec-vs-spec-canonical-priority` heuristic の origin 事例と連動。過去のレビューで **5-cycle shrinking convergence** 拡張形態を追加: 13 findings を 8→3→2→1→0 で 5 cycle 収束、cycle 4 reviewer disagreement (Quality Signal 3) を実装による合意形成で解消、`recursive recurrence in fix layer` 発火上限は drift class layer 数で決まる empirical 観点を確立。"
 promote: rite-plugin
 created: "2026-05-17T13:40:00Z"
 updated: "2026-08-02T22:05:00+09:00"

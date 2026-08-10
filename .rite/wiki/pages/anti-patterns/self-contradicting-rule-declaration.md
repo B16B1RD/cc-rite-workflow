@@ -1,6 +1,7 @@
 ---
 title: "Self-contradicting rule declaration: 新規ルール宣言時にルール本文自身がルール違反を含む"
 domain: "anti-patterns"
+description: "新規ルール (Comment Quality Gate / 禁止句リスト等) を declarative gate として宣言する際、当該 gate の本文中にルール違反パターン (line 番号参照 / cycle 番号参照 / 禁止句) が混入する anti-pattern。過去のレビュー事例 cycle 1 で `/rite:pr:fix` の Phase 2.3 に追加した Comment Quality Gate が `line ~3370 周辺` という same-file line 番号参照を含み、当該 gate がまさに禁止しようとしている `no_line_or_cycle_reference` 原則違反を gate 自身が踏んでいた。canonical 対策は gate 本文を Detection Heuristics regex で self-grep + semantic anchor (Phase ID / section ID) への置換。`fix-comment-self-drift` の rule-declaration variant。"
 promote: rite-plugin
 created: "2026-05-26T00:30:00Z"
 updated: "2026-05-26T00:30:00Z"

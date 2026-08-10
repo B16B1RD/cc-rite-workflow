@@ -1,6 +1,7 @@
 ---
 title: "AC 検証 grep を狭い正規表現で定義すると bare prose / 表ヘッダ / 副詞句が捕捉できない"
 domain: "anti-patterns"
+description: "大規模 terminology rename PR で Acceptance Criteria を `grep "Phase [0-9]+(\.[0-9]+)?"` のような「キーワード + 数字」必須の正規表現で定義すると、bare キーワード単独 prose (`本 Phase`)、表ヘッダの列名、命名規約 prose 内のキーワード参照、副詞句 (`現 Phase は set -e なし`) を捕捉できない盲点が生じる。過去のレビューで AC-3 strict (`Phase [0-9]+` = 0 件) を満たしたにも関わらず 13+ 件の bare `Phase` 残留が cycle 0 review で検出された実例。対策: rename PR の AC grep pattern を word boundary (`Phase\b`) で再定義し、historical preservation / 表ヘッダ / 命名規約等の意図的残留を triage 分類する。"
 promote: rite-plugin
 created: "2026-05-27T01:30:00Z"
 updated: "2026-05-28T08:53:59+00:00"

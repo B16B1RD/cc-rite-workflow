@@ -1,6 +1,7 @@
 ---
 title: "consume 操作 (read+delete+return) は delete-then-return 順で fail-closed にする"
 domain: "patterns"
+description: "state ファイルから read した値に基づき消費者が非冪等な動作を確定する consume 操作 (read+delete+return) は、delete を先に確定してから値を return する fail-closed 順で実装する。print-then-delete は削除失敗時に「消費したつもりで未消費」状態を生み、Stop hook 等の one-shot consumer が永続 FS 障害下で無限ループする。過去のレビューで consume-handoff の print-then-delete を runtime 再現 (chmod 0555) で AC-3 break として HIGH 検出 → delete-then-return + 診断 emit + 呼び出し側 2>/dev/null の RITE_DEBUG gate 化で fail-closed 化。同一ファイルの cmd_set が fail-closed 伝播するのに consume-handoff だけ fail-open だった Asymmetric Fix Transcription。表層の診断欠落の奥に潜む behavioral bug は re-review の deeper runtime 分析で初めて Demonstrable になる。"
 promote: rite-plugin
 created: "2026-05-28T15:05:43Z"
 updated: "2026-05-28T15:05:43Z"

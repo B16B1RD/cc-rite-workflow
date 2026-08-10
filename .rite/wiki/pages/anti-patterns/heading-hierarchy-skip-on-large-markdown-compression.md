@@ -1,6 +1,7 @@
 ---
 title: "Markdown 大規模圧縮 refactor 時の heading hierarchy skip"
 domain: "anti-patterns"
+description: "Markdown 文書を大幅圧縮 (例: 734 → 334 行、-55%) する refactor では、セクション削除・統合の過程で heading level (h2 → h3 → h4) の連続性が意図せず崩れ、`## → ####` のような skip が発生しやすい。圧縮後の heading hierarchy を機械的に検証する gate を持たないと silent regression として landed する。過去のレビュー事例 cycle 1 で 2 reviewer が独立検出した 3 箇所の skip を cycle 2 fix で復元した実測 (関連: inline pack vs scannability tradeoff for MUST-execute lists / 野心目標 vs 現実着地点 gap)。過去のレビューで **本経験則の self-application を実証**: 直後の sibling refactor (create-interview.md 511→331 行) で reviewer が本ページを参照して h4→h3 格上げを 1 件実施し、経験則 wiki が次 PR cycle の予防層として機能した最初の事例 (confidence: medium → high に格上げ)。"
 created: "2026-05-04T06:50:00Z"
 updated: "2026-08-08T13:37:28Z"
 sources:

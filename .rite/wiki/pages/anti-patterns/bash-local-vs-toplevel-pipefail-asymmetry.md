@@ -1,6 +1,7 @@
 ---
 title: "function 内 `local v=$(...)` と top-level `v=$(...)` の `set -e` 伝播差で writer/reader 非対称が偶然 mask される"
 domain: "anti-patterns"
+description: "`set -euo pipefail` 配下で同型コードでも function 内 `local v=$(cmd)` (= `local` builtin の exit 0 で pipeline 失敗を mask) と top-level `v=$(cmd)` (= pipeline exit がそのまま伝播) で挙動が異なるため、writer 側 (function 内) で偶然 mask されている pipefail bug が reader 側 (top-level) で初めて silent kill として顕在化する。canonical fix は両側で `v=$(cmd) || v=""` の defensive 吸収を対称化すること。過去のレビュー事例 cycle 1 で `flow-state-update.sh:_resolve_schema_version` (writer / 偶然 mask) と `state-read.sh:78-91` (reader / silent exit) の非対称として実測 (error-handling HIGH + security MEDIUM cross-validation)。過去のレビューで guard dead-code 化 + 誤コメント (「simple assignment is exempt from set -e」) の発現形を追加 (3 cycle 収束)。"
 promote: rite-plugin
 created: "2026-04-27T23:01:24+00:00"
 updated: "2026-06-09T07:58:52+00:00"

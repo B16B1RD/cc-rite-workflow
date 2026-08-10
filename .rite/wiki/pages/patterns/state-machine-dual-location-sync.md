@@ -1,6 +1,7 @@
 ---
 title: "state machine を 2 箇所で記述する場合は動作の文字列レベルで同期する"
 domain: "patterns"
+description: "同一 state の動作を実装ロジックと LLM 分岐テーブルのように 2 箇所へ分けて記述すると、動作の文字列が drift して LLM 実行時の動作が不定になる。helper case × caller WARN_MSG の cross-file 版、および生成テンプレートの fence 内（生成 Issue body へ出力）／fence 外（生成器のみ）という consumer 別の正当な二重化も同型で、いずれも規則変更時は両方を同時更新する。"
 promote: rite-plugin
 created: "2026-04-19T03:30:00+00:00"
 updated: "2026-08-02T11:59:42+09:00"

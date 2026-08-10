@@ -1,6 +1,7 @@
 ---
 title: "Phase 番号は構造的対称性を保つ（孤立 sub-phase を生まない）"
 domain: "heuristics"
+description: "`### 8.0.1` を書くなら親 `### 8.0` を必ず存在させる。cross-file の Phase 参照は grep で追跡し、enforcement note は実装 hook 名を明示して doc-impl drift を防ぐ。"
 promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 updated: "2026-07-31T01:26:57+09:00"

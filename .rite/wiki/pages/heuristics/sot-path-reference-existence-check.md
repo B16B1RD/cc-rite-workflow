@@ -1,6 +1,7 @@
 ---
 title: "SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する"
 domain: "heuristics"
+description: "新規 SoT (Single Source of Truth) 文書を作成する際、文書内部から他リポジトリ要素への path 参照を含める場合は、参照先の存在を本 PR がマージされる時点の origin/develop で機械的に検証する。並行する未マージ PR / 撤去済み artifact / canonical でない出典への参照は SoT を最初の bad example にする (原則 6「Comment Rot is CRITICAL」の自己違反)。同一文書内で原則 ID の short form と canonical form を混在させると後続 Issue で grep anchor として使う際の drift 源になる。過去のレビューで 4 失敗形態 (broken-ref / cross-PR fragility / identifier 表記揺れ / regex incompleteness) を実測し 3 cycle で 0 findings 収束。適用フェーズ概要表と Where to Apply の双方向整合 + MVP 未定義部分の Note 明示も canonical 対応として併設。過去のレビューで inter-file anchor (`./complexity-gate.md#complexity-gate-section-inclusion`) の broken-anchor を 2 reviewer cross-validated で実測、`grep -E '^##+ ' <target>` による実在 heading slug の事前検証を pre-flight check として明示化。過去のレビューで **逆方向適用** (broken reference を修正する PR でも修正後参照先の実在を Read tool で事前 verify する) を実測し、同型 broken ref の pre-existing 残存 (sub-skill-return-protocol.md / docs/SPEC.md) を grep で確認する Asymmetric Fix Transcription の broken-reference 版対策を追加。過去のレビューで relative reference 固有の検証軸 (file 存在 + anchor slug 実在 + **depth-aware な相対 path 解決** `../../references/` depth-2 / `../../../references/` depth-3) を追加し、pre-existing 同型不整合 2 件を follow-up 関連する課題 に切り出し。"
 created: "2026-04-29T02:55:00+00:00"
 updated: "2026-06-10T01:03:44Z"
 sources:

@@ -1,6 +1,7 @@
 ---
 title: "future-note Issue は実装前に前提の現在性を再検証する"
 domain: "heuristics"
+description: "「将来 X が起きたら留意」型 Issue は起票から実装までに前提が変わりうる。実装前に前提コード状態を Read/Grep で現 HEAD と突合し、変わっていれば記録に現在の事実 (準拠例) を織り込む。過去のレビュー事例 / 関連する課題 (起票翌日の 過去のレビューで逆方向解消、変更ゼロ close) の 2 例で実測。"
 promote: rite-plugin
 created: "2026-06-09T19:45:00+00:00"
 updated: "2026-06-09T19:56:00+00:00"

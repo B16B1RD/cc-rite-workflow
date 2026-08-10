@@ -1,6 +1,7 @@
 ---
 title: "PR シリーズ間で stub 残置 markdown formatting を踏襲する"
 domain: "patterns"
+description: "PR シリーズで複数 references を順次抽出する場合、最初の PR で確立された stub 残置 markdown formatting (`> **Moved (Issue #N PR M/T)**:` 形式) を新規 reference 抽出時にも踏襲することで、保守者が `git grep` で stub 一覧を機械検索できる traceability を維持する。新規 reference で独自フォーマットを採用すると PR 番号 trace 不揃いを cosmetic 指摘で再修正することになる。critical 警告を本体に残す部分残置経路では `> **Source of Truth**:` よりも `> **Partial Moved (...)**:` の方が完全移管 (Full Moved) との semantic 区別が読者に伝わる。過去のレビュー事例 cycle 2 LOW 1 cosmetic で実測。"
 created: "2026-05-04T05:30:00+00:00"
 updated: "2026-08-08T13:37:28Z"
 sources:

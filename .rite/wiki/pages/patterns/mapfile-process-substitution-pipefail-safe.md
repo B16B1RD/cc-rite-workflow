@@ -1,6 +1,7 @@
 ---
 title: "`mapfile -t < <(...)` で pipefail safe な iteration を書く"
 domain: "patterns"
+description: "`set -euo pipefail` 配下で `grep -F ... | head -1` 系の pipeline から値を取り出すと、grep の no-match (exit 1) が pipefail で伝播し、後続の空チェックより先に script 全体を silent abort させる。`mapfile -t arr < <(grep ...)` の **process substitution + mapfile builtin** に置換すると pipeline が解消され、no-match が空配列として自然に表現できるため pipefail の伝播が原理的に発生しない。同じ目的の `cmd || true || v=""` chained absorber と相補関係 (scalar 1 件取得は absorber、0/1/N 件 iteration は process substitution が canonical)。過去のレビュー事例 cycle 1 で test reviewer (HIGH) + error-handling reviewer (INFO) の severity gap が debate で MEDIUM に統一され、同 directory の sibling test で確立済みの canonical pattern を移植する形で fix 完了。"
 promote: rite-plugin
 created: "2026-05-07T01:08:00+00:00"
 updated: "2026-08-08T13:37:28Z"

@@ -1,6 +1,7 @@
 ---
 title: "Declarative enforcement で LLM の stop_reason: end_turn は抑制できない"
 domain: "anti-patterns"
+description: "`Anti-pattern` / `DO NOT stop` / `IMMEDIATELY` / Step 0 Immediate Bash literal / HTML コメント sentinel / plain-text marker など過去 9 件の Issue (#3 → #651) で累積導入した declarative enforcement では、LLM の `stop_reason: end_turn` 選択を抑制できない。本番セッション (`f0d8791d` 2026-04-24 / `f7afee09` 2026-04-21) の `.jsonl` 一次情報で LLM が「これらすべてを emit した上で end_turn を選択」する事実を確認。declarative は確率を上げるが強制ではない。代替手段 (sub-skill inline 化 / hook 層 context injection / continue 自動化受容 / stop hook reactive block) の選択は **必ず一次情報で根本仮説検証**してから決める。"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/declarative-enforcement-cannot-prevent-llm-end-turn.md"
 created: "2026-04-25T12:30:00+00:00"

@@ -1,6 +1,7 @@
 ---
 title: "Test の env gate 配置と CI workflow 起動コマンドの claim alignment を empirical 検証する"
 domain: "heuristics"
+description: "Test 内の特定セクションを `STRICT_*=1` 等の env gate でガードしている場合、PR description が「CI で常時実行」と主張していても CI workflow の起動コマンドが env を未設定で test を呼ぶと gate された assertion は silent skip される。env gate の配置 (どの assertion を inside / outside に置くか) と CI workflow の起動コマンドの alignment が empirical に取れていないと、PR description claim が嘘になる silent regression 経路を生む。reviewer 側で「test 内 env gate が CI workflow 設定とどう alignment しているか」を 1 行 grep (`grep -E '<TEST_NAME>|STRICT_<GATE>=' .github/workflows/*.yml`) で必ず verify する canonical pattern。ac-resolution-statement-implementation-verification の sub-pattern として PR description claim の fact-check gate を構成する。過去のレビュー事例 cycle 1 review で実測。"
 promote: rite-plugin
 created: "2026-05-09T09:10:00Z"
 updated: "2026-08-08T13:37:28Z"

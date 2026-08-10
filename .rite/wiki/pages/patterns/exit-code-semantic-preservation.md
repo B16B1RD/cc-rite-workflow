@@ -1,6 +1,7 @@
 ---
 title: "Exit code semantic preservation: caller は case で語彙を保持する"
 domain: "patterns"
+description: "script header で定義した exit code 語彙 (例: `2=legitimate skip`) は caller が `case` で明示 routing しなければ一律 failure に潰れ false-positive incident を生む。双方向契約と `[CONTEXT]` sentinel の組み合わせで語彙を保持する。過去のレビューで script 自身の失敗経路 (peer copy-paste した arg-parse の `shift 2`/set -e abort) も宣言 exit-code 契約に従う必要があることを追加。過去のレビューで consume-before-validate ガード + 回帰 TC pin の事前適用を successful preventive application として追加。過去のレビュー事例 cycle 2 で bash exit-code だけでなく markdown SKILL.md の sentinel-presence 表示ロジックでも同型の legitimate-skip/failure 混同が再演することを追加 (cross-validation で MEDIUM→HIGH 昇格、既存の `wiki_ingest_check` reason 区別パターンを参照した多分岐で解消)。"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/exit-code-semantic-preservation.md"
 created: "2026-04-16T19:37:16Z"

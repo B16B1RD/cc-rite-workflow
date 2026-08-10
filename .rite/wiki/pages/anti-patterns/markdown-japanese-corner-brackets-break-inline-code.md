@@ -1,6 +1,7 @@
 ---
 title: "Markdown inline code を Japanese corner brackets 「!」 に置換すると LLM 提示時 semantic interpretation が劣化する"
 domain: "anti-patterns"
+description: "本来 backtick inline code (`` `!` ``) で囲うべき記号を Japanese corner brackets (`「!」` / `「//!」`) に置換すると、(a) Markdown renderer で monospace 表示が消失して可読性劣化、(b) LLM が prompt token 上で「コード片」semantic 境界を認識できず解釈劣化、の 2 段 failure mode を引き起こす。embedded backtick を含む inline code は double-backtick で囲うのが canonical。過去のレビュー事例 cycle 13 で 2 ファイル同時検出。"
 created: "2026-04-30T01:58:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"
 sources:

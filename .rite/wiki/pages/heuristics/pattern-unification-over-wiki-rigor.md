@@ -1,6 +1,7 @@
 ---
 title: "Pattern 統一 follow-up PR では Wiki 経験則違反でも統一を優先する"
 domain: "heuristics"
+description: "過去 PR で merge 済みのパターンとの統一を目的とする follow-up PR では、Wiki 経験則違反 (overclaim 語彙等) であってもパターン統一を優先し、改善は別 Issue で追跡する。Issue 本文の明示的目的 + SoT との byte-level 同型 + test SCOPE 自身の declaration が判定根拠。過去のレビューで実測、2 reviewer 合意で 0 findings 収束。"
 promote: rite-plugin
 created: "2026-05-15T15:05:00+09:00"
 updated: "2026-05-15T15:05:00+09:00"

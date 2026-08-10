@@ -1,6 +1,7 @@
 ---
 title: "rc 観測が必要な find は process substitution でなく command substitution + here-string で呼ぶ"
 domain: "patterns"
+description: "cleanup/GC スクリプトで `find` を process substitution `< <(find ...)` で呼ぶと find の wholesale 失敗 (TMPDIR 不在/権限/IO エラー) の rc がシェルに伝播せず `2>/dev/null` 併用で完全に silent な no-op になる。sibling ブロックが `if out=$(cmd); then ...; else rc=$?; WARNING; errors++` で rc 捕捉している文脈では、新規ブロックも command substitution `out=$(find ...)` + here-string `<<<` に揃え rc を観測可能にして sibling 対称性を保つ (空 stdout は `[ -z ]` ガードで skip、failure path は TMPDIR override で誘発)。`mapfile -t < <(...)` pipefail-safe pattern とは『非ゼロ exit を吸収すべきか観測すべきか』で使い分ける。過去のレビューで確立。"
 promote: rite-plugin
 created: "2026-06-09T04:36:49+00:00"
 updated: "2026-06-09T04:36:49+00:00"

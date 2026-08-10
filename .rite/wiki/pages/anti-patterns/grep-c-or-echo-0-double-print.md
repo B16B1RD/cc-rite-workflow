@@ -1,6 +1,7 @@
 ---
 title: "grep -c || echo 0 が \"0\\n0\" を吐き出す double-print 罠"
 domain: "anti-patterns"
+description: "bash で `count=$(grep -cE pattern file || echo 0)` パターンは grep no-match 時に count を `"0\n0"` に汚染する。`grep -c` は POSIX 仕様で 0 件でも `0` を stdout 出力 + exit 1 を返すため、`|| echo 0` fallback と組み合わせると double-print する。canonical pattern は `|| true` + `${var:-0}`。同リポジトリ既存 metatest 内に作者警告コメントが存在するにもかかわらず 過去のレビューで再導入された (新規追加時の既存慣用参照不足が原因)。"
 created: "2026-05-03T05:50:00+09:00"
 updated: "2026-08-08T13:37:28Z"
 sources:

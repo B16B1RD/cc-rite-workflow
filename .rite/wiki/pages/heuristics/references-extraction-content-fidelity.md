@@ -1,6 +1,7 @@
 ---
 title: "References 抽出時は引用先 SoT の内容を Read tool で verify する"
 domain: "heuristics"
+description: "Refactor 系 PR で `commands/issue/references/` に新規ファイルを抽出する際、引用先 references ファイルに書かれている Issue 番号や AC phrase を推測ベースで関連付けると silent factual divergence を生む。引用前に Read tool で引用先 SoT の該当箇所を verify することで、読者が末尾誘導された SoT で乖離内容を見つける UX 問題を回避する。理由付け文も対象ファイルの実 invariant に基づくべきで、引用元 (他ファイル) 由来の invariant を引用すると context-bleeding になる。過去のレビュー事例 cycle 1 で 2 reviewer (prompt-engineer + code-quality) が独立検出した HIGH 1 + MEDIUM 1 の root cause として実測。過去のレビューで test docstring の sibling cross-reference 反転 (Comment Rot) も同じ root cause として観測され scope を test ファイル間に拡張。過去のレビューで canonical-reference NOTE 生成への再帰適用 (引用先 `ingest.md` 内に複数 canonical が共存する構造的曖昧性) を 2 reviewer cross-validate で観測、scope を canonical-reference NOTE 生成全般へ拡張。過去のレビューで **SoT 抽出 = canonical 整合化の opportunity** insight を追加: 大規模 refactor で本体が長期に蓄積した inherited mismatch (本件 "Use Python" 文言 vs canonical gh-cli-patterns.md) は SoT 抽出時の cross-reference verify で発見し本 cycle で修正することで loop 効率を最大化する。"
 promote: rite-plugin
 created: "2026-05-04T05:30:00+00:00"
 updated: "2026-05-14T01:25:00+00:00"

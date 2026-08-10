@@ -1,6 +1,7 @@
 ---
 title: "Silent guard contract — pre-condition guard は pass() を呼ばずに silent return する"
 domain: "patterns"
+description: "`assert_file_exists_or_fail` のような pre-condition guard 系 helper は成功時に `pass()` を呼ばず silent return (rc=0) し、失敗時のみ `fail()` で 1 件記録 + diagnostic を出す契約を持つべき。これにより guard が保護する後続 assertion (`assert_grep` 等) の PASS カウントを膨張させず、test summary の数値整合性を保てる。silent contract を test で構造的に pin するには helper の self-test で `PASS=0 FAIL=0 RC=0` を明示チェックし、`pass()` が誤って追加された瞬間を確実に検出する。caller migration 時の history-preserving comment (`関連する課題 → 関連する課題`) と excluded-with-rationale checkmark (`[x]` + 該当しない理由を本文で明示) も併せて canonical 化。過去のレビューで 0 findings 1 cycle 収束、test-reviewer / code-quality-reviewer の 2 reviewer 承認で実測。"
 promote: rite-plugin
 created: "2026-05-19T11:50:00+09:00"
 updated: "2026-05-19T11:50:00+09:00"

@@ -1,6 +1,7 @@
 ---
 title: "mktemp 失敗は silent 握り潰さず WARNING を可視化する"
 domain: "patterns"
+description: "`mktemp ... || echo ""` は disk full / inode 枯渇を silent 握り潰す。`if ! var=$(mktemp ...); then WARNING; var=""; fi` 形式で stderr に可視化し `[CONTEXT]` sentinel で機械可読にする。過去のレビューで silent fallback 全般 (rev-parse/rm 非対称) に一般化。過去のレビュー事例 cycle 1 fix で **awk text manipulation 経路への一般化** と 5 failure mode 区別の 3 点セット canonical pattern (`if !` awk wrap + stderr tempfile 退避 + 空 section guard) を追加 — test helper layer で 3 reviewer 独立 MEDIUM 指摘から 1-cycle 収束、適用範囲を text manipulation primitive 全般 (awk / sed / cut / sort) へ拡張。過去のレビューで **Flatten refactor 経由の格下げ regression** を追加: 「コメント削除のみ許容」を謳う refactor PR が Pattern 3 規範 WARNING を silent fallback に格下げ、cycle 1 で 2/6 site のみ部分回収 → cycle 2 で残り 3 site surface (合計 6 site 対称セット)、同 PR 内同型 site の grep 網羅検査が detection の決定打。 過去のレビューで **grep の no-match (exit 1) と実エラー (exit 2+) を区別しない silent 握り潰し** への一般化を追加: 「sentinel drift を silent failure から守る」ことが目的の検証スクリプト自身が、内部の I3 (未宣言 sentinel 検出) ロジックで `grep ... 2>/dev/null || true` により no-match と IO error/正規表現エラーを同一視する HIGH finding を持つ自己言及的事例。同スクリプト内の同型ロジック I1/I2 は rc 区別ガードを持つのに I3 のみ欠落する非対称も併発 (Asymmetric Fix Transcription の一種)。修正で rc を明示 capture し `rc > 1` のみエラーとする canonical pattern に統一。"
 promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 updated: "2026-07-22T22:54:19Z"

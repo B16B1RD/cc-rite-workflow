@@ -1,6 +1,7 @@
 ---
 title: "Rename PR の callee → caller 片方向 over-translation で Out-of-Scope の broken cross-ref を生成する"
 domain: "anti-patterns"
+description: "大規模 heading rename PR (例: `Phase N` → `ステップ N`) で callee 側 prose に書かれた caller 参照を片方向に翻訳した結果、Phase 構造を維持している Out-of-Scope caller (pr:*, issue:close 等) を「ステップ X.Y」と書き換えた箇所が実在しない見出しを指す forward-reference drift を生む anti-pattern。過去のレビュー事例 cycle 1 で 3 reviewer 独立検出の HIGH 級 finding として 4 site (SKILL.md / bash-cross-boundary 2 sites / ingest.md L9) で発火、cycle 2 で wiki/query.md 9 sites + wiki/lint.md:1406 の追加 tail residue。対策: cycle N で 1 件発見したら同 PR 内の全 callee × 全 Phase-maintaining caller の cross-product grep を即実行。派生的に hooks scripts の literal regex が SoT 改名に追従しない `lint canonical regex silent coverage loss` も同 PR で実測。"
 promote: rite-plugin
 created: "2026-05-27T01:30:00Z"
 updated: "2026-05-27T01:30:00Z"

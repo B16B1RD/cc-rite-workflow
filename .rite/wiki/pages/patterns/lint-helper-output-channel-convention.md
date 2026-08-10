@@ -1,6 +1,7 @@
 ---
 title: "新規 lint helper は findings→stdout / summary→stderr(log()) の出力チャネル規約を兄弟 helper に揃える"
 domain: "patterns"
+description: "hooks/scripts/ に新規 lint / check helper を追加するとき、summary 行 (`==> Total ... findings: N`) は `echo` (stdout) ではなく `log()` (stderr, `--quiet` 尊重) で出力し、findings→stdout / progress+summary→stderr という兄弟 helper 多数派 (sh-cross-ref-check.sh 等) の出力チャネル規約に揃える。caller (lint.md) は `2>&1` 捕捉のため機能影響ゼロだが、揃えないと `--quiet` 時に新規 helper だけ summary が抑制されない非対称が残る。過去のレビューで bash-heaviness-check.sh の summary が echo(stdout) だった非対称を code-quality + error-handling 2 reviewer が独立指摘、1 行修正 (echo→log) で解消。findings 本体は stdout 維持。"
 created: "2026-06-01T10:48:51+09:00"
 updated: "2026-06-01T10:48:51+09:00"
 sources:

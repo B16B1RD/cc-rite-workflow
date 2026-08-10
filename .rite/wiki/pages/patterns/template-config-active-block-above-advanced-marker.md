@@ -1,6 +1,7 @@
 ---
 title: "config テンプレートの default-on 設定は Advanced マーカーより上に配置する"
 domain: "patterns"
+description: "テンプレで「新規プロジェクトで default ON」にしたい設定は active ブロックを `# --- Advanced ---` マーカーより上に置く。マーカー下は /rite:init 新規生成で omit され parse fallback で逆値に落ちる。過去のレビューで multi_session.enabled default-on 化時に cycle 2 code-quality が HIGH 検出。wiki #491 (active block をマーカー上へ移動) が SoT 先例。検証は実機シミュレート (sed Q 抽出 + parse 再現) で行う。"
 promote: rite-plugin
 created: "2026-06-11T00:57:13+09:00"
 updated: "2026-06-11T00:57:13+09:00"

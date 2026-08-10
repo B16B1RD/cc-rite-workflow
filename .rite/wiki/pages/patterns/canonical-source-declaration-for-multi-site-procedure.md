@@ -1,6 +1,7 @@
 ---
 title: "同一手順が複数 site に分散する場合は片方を canonical source と宣言する"
 domain: "patterns"
+description: "同一の placeholder 値生成手順 / 規約 / 設計判断が文書内の複数 site に分散する場合、片方を「canonical source」と明示宣言し他方を summary / cross-reference に位置付ける。precedence rule (矛盾発生時は canonical を優先) を本文に書くことで、cycle 2 reviewer 評価で severity 差 (PARTIAL vs FIXED) が出ても severity gap ≤ 1 で agreement に収束し silent drift にならない。過去のレビュー事例 cycle 1 → 2 で 1 cycle convergence の効力を実証。過去のレビューで 3 cycle convergence 事例として 3 つの sub-pattern を追加: (1) Multi-canonical per file (同一ファイル内に scope の異なる canonical が legitimate に共存する — Phase 4.3 = 値決定手順 canonical / Phase 5.3 = 動作契約 canonical)、(2) Citation 3 段階分離 (宣言場所 / 概念階層宣言 / 実体行を区別して citation)、(3) 3 cycle 着地パターンの収束条件 (cross-file + multi-canonical の組み合わせは収束 cycle 数が増える、cycle 2 で「症状を治す」ではなく「構造で root cause を恒久的に消す」修正を入れる)。"
 promote: rite-plugin
 created: "2026-05-13T06:43:41Z"
 updated: "2026-05-13T08:55:00+00:00"

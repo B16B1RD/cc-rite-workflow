@@ -1,6 +1,7 @@
 ---
 title: "Markdown channel separation で HTML sentinel の終端性と bash tool 実行を両立させる"
 domain: "patterns"
+description: "CommonMark HTML block (type 2) は前後に空行を要求するため、workflow 完了 sentinel を独立行で emit すると rendered view に余計な空行が可視化される。inline HTML として list item 末尾に埋め込むことで前方空行要求を回避し、bash tool stdout/stderr が markdown text channel と別チャンネルである特性により sentinel 後の terminal state patch を実行可能にする設計。前方/後方空行要求の双対 (cleanup.md 2 ブロック構造 vs ingest.md 三点セット規約) を意図的に divergent に設計した根拠。過去のレビュー事例 (関連する課題 = turn-boundary 累積対策 12 回目) で実測。"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/markdown-channel-separation-for-terminal-sentinel.md"
 created: "2026-04-24T14:55:00+00:00"

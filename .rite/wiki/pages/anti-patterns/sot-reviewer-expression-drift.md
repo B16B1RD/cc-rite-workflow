@@ -1,6 +1,7 @@
 ---
 title: "SoT-reviewer 表現 drift: pos/neg 方向の差で派生記述が silent drift する"
 domain: "anti-patterns"
+description: "SoT 側で「期待値 X 以上」(pos)、reviewer 側で「X 未満で finding」(neg) と相反方向で記述すると、severity table 等の派生記述で pos/neg 方向に silent drift する経路が発生する。SoT 参照リンク埋め込みで反論可能性を維持する canonical 対策。過去のレビュー事例 cycle 1 (HIGH F-01) で `comment-best-practices.md` D セクションと `tech-writer.md` Detection Checklist (e) の 1.5x 閾値が pos/neg 表現で drift し、severity table 派生記述で同じデータの判定が割れる経路として実測。"
 promote: rite-plugin
 created: "2026-04-28T18:55:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"

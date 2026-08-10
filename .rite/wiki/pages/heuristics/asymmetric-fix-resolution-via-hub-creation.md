@@ -1,6 +1,7 @@
 ---
 title: "Asymmetric Fix Transcription の解決は両側修正 (Option A) より hub 化 + 責務分離文書化 (Option B) を選ぶ"
 domain: "heuristics"
+description: "Asymmetric Fix Transcription の 2 つの解決オプション (Option A 両側修正 vs Option B hub 化) のうち、Option B (一方を SoT と宣言 + もう一方の責務範囲を narrow + 責務分離宣言を canonical 文書化) は (a) DRY 違反回避、(b) drift 経路の物理的閉塞、(c) minimal-diff doc PR で完結、の 3 つの構造的優位性を持つ。関連する課題 / 過去のレビューで line 307 を「両 test の hub」と明示し line 27/247 bash block コメントとの asymmetric を 1-line edit で解決 (両 reviewer 0 blocking findings)。落とし穴として hub 行の prose 構造 (parenthetical / colon 二重役割) が新たな品質ゲート対象になることを 過去のレビューで実測。選択基準: hub 化対象の概念が単一 SoT として記述可能 / 責務分離が 1-2 文で記述可能 / caller 数が小さく追跡可能。過去のレビュー事例 / 関連する課題 で **Option B → bullet list 化の 2 段階 evolution** を追加: hub 行が 3+ test 参照に成長した時点で inline 連結から bullet list 形式へ refactor し、判断基準 (3 件以上 / 約 280 字 / 責務境界の可読性) を blockquote callout で inline 文書化することで、後続 PR が「単一 paragraph に戻す refactor」を SoT 通じて構造的に retract する canonical pattern を確立 (両 reviewer 0 blocking findings 1 cycle 完了)。過去のレビュー事例 / 関連する課題 #11 で command markdown の inline bash copy (helper と cross-file 一字一句同期) を helper の新モード (`--verify-negation`) 委譲へ縮約し、同期を同一ファイル sibling 同期化する適用拡張を追加 (全 5 reviewer 0 findings)。"
 promote: rite-plugin
 created: "2026-05-06T04:50:00Z"
 updated: "2026-05-30T11:46:11+09:00"

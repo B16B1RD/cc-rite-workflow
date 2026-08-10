@@ -1,6 +1,7 @@
 ---
 title: "Step 番号参照は relative (Step N + 1) ではなく absolute (heading title 名 + Step 番号) で書く"
 domain: "patterns"
+description: "prompt / 文書内で「Step 2/3 を skip」「次の Step」のような relative step 参照を書くと、後続の reorder / step 追加で actual heading 構造とのずれが発生し silent regression を生む。Step 番号は heading title 名 + Step 番号の absolute form (例: `Phase 5.5.2 Step 1: METRICS_SKIPPED emit`) で書き、`drift-check-anchor-semantic-name` と同型の semantic 参照で構造的に防ぐ。過去のレビュー事例 cycle 49 Self-defeating defense root cause として実測。過去のレビューで **cross-file 次元への拡張** を追加: 別ドキュメントの内部 step 番号への参照（実在しない「Step 2.3」）が stale 参照として MEDIUM 検出され、canonical fix = 番号アンカー削除 + SoT 相対リンク置換（参照先実在の grep 確認 + 同ファイル既存相対パス慣例への追従 + 影響範囲スキャンで過剰修正回避の 3 点セット）を確立。"
 created: "2026-04-30T01:58:00+00:00"
 updated: "2026-07-12T22:55:00+09:00"
 sources:

@@ -1,6 +1,7 @@
 ---
 title: "現在ブランチ取得は git branch --show-current で統一する (rev-parse --abbrev-ref HEAD は detached HEAD で挙動分岐)"
 domain: "patterns"
+description: "`git rev-parse --abbrev-ref HEAD` は detached HEAD で文字列 `HEAD` を、`git branch --show-current` は空文字を出力する挙動差を持つ。downstream で空文字前提のフォールバック (AskUserQuestion 等) を組むと前者使用時に silent に機能不全になる。codebase 支配的 idiom (production 24 箇所の `git branch --show-current`) に新規ファイルを揃える。過去のレビュー事例 cycle 4 で実測。"
 promote: rite-plugin
 created: "2026-06-02T03:50:58Z"
 updated: "2026-06-02T03:50:58Z"

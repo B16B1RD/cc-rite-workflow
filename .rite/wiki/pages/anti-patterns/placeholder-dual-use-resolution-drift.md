@@ -1,6 +1,7 @@
 ---
 title: "同一 placeholder を識別子と resolution-target で再利用すると path-resolution drift を生む"
 domain: "anti-patterns"
+description: "同一 placeholder トークン (例: `{source_ref}`) を frontmatter フィールド (識別子、bare path) と Markdown link URL (resolution 対象、相対 path 計算が必要) の 2 用途で再利用すると、後者の文脈で必要な prefix (例: `../../`) が抜けて silent broken_refs を量産する。canonical fix は placeholder 値そのものではなく template リテラル側に prefix を hardcode して両用途の semantics 分離を明示すること。過去のレビュー事例 / 関連する課題 で wiki page-template.md が 218 件の broken_refs を発生させた root cause として実測。過去のレビューで canonical fix の文書化を完了 (2 行追記、0 findings 1 cycle 着地)。過去のレビュー事例 / 関連する課題 で周辺 placeholder (`{related_page_path}`) への対称化として page-dir 起点規約を逆引き調査し、`{source_ref}` (wiki-root 起点) と異なる解の起点規約も明示分離して文書化 (3 行追加 / 1 行修正、0 findings 1 cycle 着地)。"
 promote: rite-plugin
 created: "2026-05-13T00:00:00+00:00"
 updated: "2026-05-13T11:55:00+00:00"

@@ -1,6 +1,7 @@
 ---
 title: "leading-dash 引数注入 gate は git 操作前に配置し代表 1 値の非 vacuous test で検証する"
 domain: "patterns"
+description: "外部由来の値 (branch 名等) を git に flag 位置で渡す script の leading-dash 引数注入を、引数解析直後・全 git 操作前の `case -*) fail` fail-fast gate で塞ぐ。bypass 耐性は入力クラス別に確認 (空文字列は既存 -z へ fall-through / 先頭 whitespace は git の literal refspec reject)。検証は兄弟 script の同型注入経路 grep 監査 + 単一 `-*` case の代表 1 値 test (値ごと分岐なしのため境界値網羅不要) + rc/ERROR substring/end-state の 3 軸非 vacuous assertion + 既存 differential-equivalence test と gate 非発火値で非干渉。過去のレビュー事例 (関連する課題、過去のレビュー事例 security follow-up) で 5 reviewer cross-validation・指摘 0 件 cycle 1 収束。"
 created: "2026-06-07T19:38:45Z"
 updated: "2026-06-07T19:38:45Z"
 sources:

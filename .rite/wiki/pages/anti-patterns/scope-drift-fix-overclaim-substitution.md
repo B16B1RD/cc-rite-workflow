@@ -1,6 +1,7 @@
 ---
 title: "Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む)"
 domain: "anti-patterns"
+description: "scope drift / virtual claim を「scope を限定する正確な表現」に置換する fix で、置換後の言い換えに別種の overclaim 語彙 (`固有 (unique to)` / `専用 (specific to)` / `全て` / `必ず` 等の絶対化語彙) を持ち込むリスク。所有格 (`の`) / 限定形容 (`での`、`に関する`) のみを使い、絶対化を含意する語彙を意図的に回避する。並列性が明示できる場合は共有 pattern であることを括弧書きで補足する。過去のレビュー事例 cycle 1 で code-quality reviewer が Confidence 80 で検出 → cycle 2 で 0 findings 収束 (関連する課題 sister of `asymmetric-fix-transcription`)。"
 promote: rite-plugin
 created: "2026-05-15T10:05:00+09:00"
 updated: "2026-07-29T21:32:36+09:00"

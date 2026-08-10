@@ -1,6 +1,7 @@
 ---
 title: "References 抽出 refactor では canonical contract の SoT を 1 reference に固定し他は anchor 参照のみとする"
 domain: "patterns"
+description: "本体 command を slim 化するために散文 rationale + bash literal を複数 references に分割する refactor では、共通契約 (Sentinel Visibility Rule のような cross-cutting な canonical contract) を両方の reference に重複保持してはならない。両方が「SoT を主張する」状態は drift を必ず起こすため、refactor 計画段階で「どの reference が SoT か」を 1:1 で決定し、他方は anchor 参照のみとする。`assert_not_grep` ベースの drift guard を test に追加することで将来の再混入を構造的に block できる。過去のレビュー事例 cycle 1 (関連する課題 PR D) で実測。過去のレビューで sub-pattern「SoT の prose 要約参照 vs literal algorithm copy-paste」を追加 (cycle 1-3、`fingerprint-cycling.md` SoT を新規 site が prose 要約から 4→2 step に simplify した silent failure を CRITICAL × 2 で実測、2 段階契約 (document formula 一致 + bash bit-exact 一致) doctrine を確立)。過去のレビューで sub-pattern「**Inline 要約への false claim 拡散**」を追加: SoT 新設時の forward-pointer link 直後の inline 要約が、SoT 自体に factual error がある場合に false claim を 3 site に複製する。SoT 化方針なら inline 性質再宣言は「削除」が drift-free、forward-pointer link のみが canonical 経路 (3 reviewer 独立検出の cluster 形成)。"
 created: "2026-05-12T15:29:45Z"
 updated: "2026-05-27T05:00:00Z"
 sources:

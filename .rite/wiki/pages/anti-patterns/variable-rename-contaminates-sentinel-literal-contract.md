@@ -1,6 +1,7 @@
 ---
 title: "Variable Rename が Sentinel Literal Contract を汚染する"
 domain: "anti-patterns"
+description: "bash 変数 rename refactor の際、downstream parser (cross-file aggregation) が grep する sentinel emit の literal token (`reason=...` / `details=...`) を変数名の延長として書き換えてしまい、sibling sites が legacy 形式を維持している間 aggregation contract が破綻する silent regression。変数 disambiguation は `${var}` interpolation 部分のみで達成し、emit の固定 literal は contract として保持する。過去のレビュー cycle 1 で code-quality + error-handling 2 reviewer が独立に CRITICAL × 2 + HIGH × 3 (5 site 同根) を検出、cycle 2 fix で全 FIXED → cycle 2 review で 0 findings 収束。"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/variable-rename-contaminates-sentinel-literal-contract.md"
 created: "2026-05-18T00:34:00Z"

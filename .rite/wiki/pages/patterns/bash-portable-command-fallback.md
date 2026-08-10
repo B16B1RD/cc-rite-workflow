@@ -1,6 +1,7 @@
 ---
 title: "cross-platform bash コマンドは fallback chain で portable 化する"
 domain: "patterns"
+description: "Linux coreutils と macOS BSD userland でコマンド可用性が異なる bash ユーティリティ (sha1sum / readlink -f / date -Iseconds 等) は `command -v` による存在確認を連鎖させた fallback chain で portable 化する。新規 script は peer が採用済みの portable idiom (例: `readlink -f` は `cd -P "$(dirname "${BASH_SOURCE[0]}")"`) を grep で探してから書き始めるのが canonical (過去のレビューで追検証)。"
 promote: rite-plugin
 created: "2026-04-17T04:30:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"

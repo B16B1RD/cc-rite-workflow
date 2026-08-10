@@ -1,6 +1,7 @@
 ---
 title: "Markdown code fence の balance は commit 前に awk で機械検証する"
 domain: "patterns"
+description: "bash block 末尾に新規 statement を追加する際、既存閉じフェンス直前への挿入で closing fence が欠落し fence count が奇数化する silent regression が発生する。後続散文が bash として誤解釈される CRITICAL 構造バグに発展。commit 前に `awk '/^\`\`\`/{c++} END{print c}' file.md` で偶数検証する canonical。過去のレビュー事例 cycle 2 で CRITICAL × 3 として実測。"
 promote: rite-plugin
 created: "2026-04-20T01:10:00+00:00"
 updated: "2026-07-27T10:57:51+09:00"

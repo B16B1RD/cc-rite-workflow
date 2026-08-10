@@ -1,6 +1,7 @@
 ---
 title: "AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する"
 domain: "patterns"
+description: "AC anchor / reasons table / Eval-order enumeration / bash 実装の emit 順は 3 重契約であり、`distributed-fix-drift-check.sh` Pattern-2/5 で機械検証する。過去のレビューで 7 reasons + 2 fallbacks = 9 経路の drift 検出が実証され、カテゴリ非対称 (5 artifacts ↔ 4 mktemp blocks) の合流ケースも category 単位表記で対応。過去のレビューで ANCHOR comment 内 prose enumeration 同期漏れ実測 (REC-04 拡張提案)。過去のレビュー事例 cycle 4 で「実装変更時の prose / 既知の限界表 / Edge Case 表 / factual claim の 4 site 同期義務」を実測し、現状 lint pattern の scan 対象外 sync site (b)(d) を可視化。"
 promote: rite-plugin
 created: "2026-04-17T00:49:00+00:00"
 updated: "2026-08-08T13:37:28Z"

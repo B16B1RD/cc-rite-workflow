@@ -1,6 +1,7 @@
 ---
 title: "gh api graphql は HTTP 200 + .errors[] で partial failure を返す (exit code では検知できない)"
 domain: "anti-patterns"
+description: "gh api graphql は GraphQL エラーでも HTTP 200 (exit 0) を返し .data と .errors を併存させるため、items guard の前に .errors[] を検査しないと partial response を権威データとして握り潰す。opaque string 変数 (ID!/String!) への -F (typed coercion) 誤用も同 PR で同時 surface (-f raw-field を使う)。過去のレビューで error-handling reviewer が HIGH cross-validation 検出、2 cycle 収束。"
 promote: rite-plugin
 created: "2026-05-29T04:21:34+00:00"
 updated: "2026-05-29T04:21:34+00:00"

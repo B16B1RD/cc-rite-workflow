@@ -1,6 +1,7 @@
 ---
 title: "保存パス基準の変更は観測面と全 caller 引数の同時スイープが必要"
 domain: "heuristics"
+description: "保存先解決の変更は save/read/delete 本体に加え、テスト assertion・lint 読取者・表示パス・canonical doc・全 caller の明示引数・standalone 保守ツールを 5 動詞 (読む/書く/消す/表示する/検査する) で全域 grep して同時追従する。過去のレビューで cycle 1 指摘 7 件中 5 件が観測面の追従漏れだった実測に基づく。"
 created: "2026-07-13T07:40:00Z"
 updated: "2026-07-13T07:40:00Z"
 sources:

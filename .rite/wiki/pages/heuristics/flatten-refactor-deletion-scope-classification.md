@@ -1,6 +1,7 @@
 ---
 title: "Flatten refactor の削除スコープは 3 軸 (歴史注釈 / 同期保守情報 / 機能 statement) で classification する"
 domain: "heuristics"
+description: "「declarative defense layer の物理排除」を目標とする flatten refactor PR では、削除対象を (a) 歴史注釈 / (b) 現役の同期保守情報 / (c) 機能を持つ statement の 3 軸で classification してから削除する。混同すると次 cycle で reviewer が新規 finding を出して fix loop が永久化する。Reference link や 分散実装一覧 (SoT)、Pattern 規範に基づく WARNING emit は **Keep カテゴリ** で、削除すると silent regression を生む。過去のレビューで 3 reviewer 独立検出された 3 種 failure: 機能 statement の silent fallback への格下げ / 同期保守情報の喪失 / blockquote 削除と statement 削除の混同。判別基準は「git blame で追える過去の自己弁護か / 現在の reader が判断に必要か」の 2 軸。過去のレビューで「CHANGELOG cross-check」を 4 番目の検証軸として追加 — 孤児ファイル丸ごと削除では明示的に固有と分かる節だけでなく CHANGELOG に記録済みの意図的知見追加も突合対象にする。"
 created: "2026-05-27T00:30:00Z"
 updated: "2026-07-17T05:40:58Z"
 sources:

@@ -1,6 +1,7 @@
 ---
 title: "i18n 同期 PR の忠実翻訳は原本の誤りを転写する — 検出時は accept + 両側同時修正 follow-up で決着する"
 domain: "heuristics"
+description: "i18n 同期 PR では忠実翻訳が原本 (EN) に既存する事実誤りをそのまま翻訳側へ転写する。翻訳 PR でも実装突合 (grep verify) を行うことで原本由来の誤りが初めて表面化する。決着は「翻訳側での部分修正」(parity 破壊で禁止) ではなく「EN+JA 両側同時修正の別 Issue 化 + 本 PR は accept (認知のみ) + fingerprint 永続化」。過去のレビューで 関連する課題 M5 の accept 経路を初適用 (HIGH × 2、コード変更ゼロで acknowledged 化 + 次 cycle suppression)、tech-writer / code-quality が独立に同一決着へ収束。過去のレビューでフロー後半 (follow-up Issue → EN+JA 両側同時修正) が完結し、検出→accept→別 Issue→両側同時修正の一巡が cycle 1 / 0 findings 収束することを実証 (最小 diff +5/-5、修正 PR 側も Doc-Heavy 5 カテゴリ grep verify で byte-for-byte 一致確認、歴史的記録/migration-guide は伝播対象外とする境界判断が機能)。"
 promote: rite-plugin
 created: "2026-06-03T23:10:10Z"
 updated: "2026-06-04T01:45:55Z"

@@ -1,6 +1,7 @@
 ---
 title: "doc 内 _TBD_ placeholder は merge 前 enforcement なしだと長期残留する"
 domain: "anti-patterns"
+description: "検証結果 doc / 設計書に `_TBD_` / `（追記予定）` / `<!-- TODO: post-hoc 観測 -->` placeholder を埋め込み「merge 後に観測値を追記する」設計は、merge 前 enforcement (CI check / pre-commit / required reviewer) なしでは長期残留し、後続 reader が context 喪失した状態で読む drift を生む。過去のレビューで `docs/verification-results/middle-refactor-2026-05-20.md` Section 4 の live dogfooding 結果欄が `_TBD_` placeholder のまま commit され cycle 1 review で MEDIUM finding として検出。canonical 対策: Pattern 1 (recommended) doc 外で追跡する (PR description チェックリスト + follow-up Issue)、Pattern 2 placeholder を残すなら CI で強制 (`grep -F '_TBD_' docs/`)、Pattern 3 merge 後追記が永遠に確定しない経路では N/A + 代替手法明示で commit する。Wiki Ingest 運用プロジェクトでは raw source 経由で自動的に経験則化される経路が確立済みのため Pattern 1 が前提的に低コスト。"
 promote: rite-plugin
 created: "2026-05-19T20:10:23Z"
 updated: "2026-05-19T20:10:23Z"

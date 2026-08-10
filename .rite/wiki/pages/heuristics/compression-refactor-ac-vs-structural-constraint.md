@@ -1,6 +1,7 @@
 ---
 title: "圧縮 refactor の AC は protected 区域 + scope 制約から逆算して決める"
 domain: "heuristics"
+description: "大規模圧縮 refactor で行数 AC を野心目標で決め打ちすると、protected 区域 (Pre-flight bash block / Return Output / 機械検証必須項目) と SPEC-OUT-OF-SCOPE 制約 (新規 references 作成禁止 / references 側 modify 禁止) の組み合わせで構造的に達成困難になり、user 介入による緩和が cycle 中盤で必要になる。AC は protected 行数 + scope 内圧縮可能行数から逆算で決める canonical 手順 (4 step grep evidence 確認) と、兄弟 PR の達成率 (過去のレビュー事例 -55%) は protected 比率が異なれば転用できない原則を確立。過去のレビューで当初 ≤200 → ≤350 緩和、331 行着地 (-35%) として実測。過去のレビューで「AC 数値目標 (25% 削減) と原則ベース基準 (実測 4,000 行 cap) の乖離時は、rationale 退避で削れる余地の枯渇を根拠に cap 達成側を採用する」判断が承認された追加観測を記録 (bash フェンス不変義務 48% の protected 比率下で数値目標が構造的に不達)。"
 promote: rite-plugin
 created: "2026-05-04T09:50:00Z"
 updated: "2026-07-07T03:56:13+00:00"

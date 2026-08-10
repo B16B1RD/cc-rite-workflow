@@ -1,6 +1,7 @@
 ---
 title: "operational-bash-heaviness の exempt / pipe-refactor レビューは claim を信用せず empirical 検証で gate する"
 domain: "heuristics"
+description: "bash-heaviness-check が surface した heavy operational bash ブロックを pipe refactor / drift-check-ignore exempt で解消する PR のレビューは、(1) exempt marker の正当性 (format 認識 + 除去シミュレーション + 参照 fact-check)、(2) pipe refactor 先 helper の stdin 対応 (Read 確認)、(3) 先例との非対称が本 PR diff 由来か (revert test で pre-existing 判定し、由来でなければ finding にしない) の 3 点を claim を信用せず empirical に検証してから可否判定する。過去のレビュー事例 (issue/* 3 ブロックを pipe refactor 1 / exempt 2 で解消) で 2 reviewer が独立適用し 0 blocking 収束。"
 promote: rite-plugin
 created: "2026-06-01T11:39:00+00:00"
 updated: "2026-06-01T11:39:00+00:00"

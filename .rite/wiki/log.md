@@ -1950,3 +1950,11 @@
 - decision: promotion pointers in page bodies remain provenance links and were not changed; only reader-facing summaries were normalized
 - result: description hits 37 → 0; index summary hits 244 → 0; descriptions already present in page frontmatter were synchronized with their index entries
 - invariants: sources blocks, page bodies, raw sources, index links, and non-summary index columns were preserved
+
+## 2026-08-10T11:15:00+09:00 — catalog-wide description completion
+
+- action: refs:prose
+- scope: all 409 cataloged pages and their index summaries
+- decision: pages created without a frontmatter description receive the existing number-free index summary as their canonical description; mechanical `起点事例` residue is rewritten as grammatical observation prose
+- result: frontmatter description coverage 248 → 409; all 409 descriptions match the corresponding escaped index summary; descriptive number hits remain 0 on both summary surfaces
+- invariants: sources blocks, page bodies, raw sources, index links, and non-summary index columns remain unchanged

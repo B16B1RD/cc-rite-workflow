@@ -1,6 +1,7 @@
 ---
 title: "Fix の完成判定は shell script 単体動作ではなく実ワークフロー発火実績で行う"
 domain: "heuristics"
+description: "修正が動いていると主張する前に、shell script 単体のテストデータではなく、自然な workflow 経路を通った commit 履歴上の発火実績を確認する。"
 created: "2026-04-17T00:15:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"
 sources:

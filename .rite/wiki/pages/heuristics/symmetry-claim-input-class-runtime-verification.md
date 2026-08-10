@@ -1,6 +1,7 @@
 ---
 title: "sanitization 対称性 claim は入力クラス別に runtime byte-level 検証してから書く"
 domain: "heuristics"
+description: "設計判断コメントで「経路 A は経路 B と対称」という sanitization 保証 claim を書く場合、入力クラス (raw 単独バイト / valid UTF-8 エンコード済み) を列挙し各クラスごとに runtime byte-level 検証 (xxd) してから書く。過去のレビューで「C1 素通しは jq と対称」claim が raw 8-bit C1 では偽 (jq は 0x9b を U+FFFD 化 / --c0-only は素通し)、valid UTF-8 C1 でのみ真と実測。fix は挙動変更ではなく入力クラス別の claim 訂正で、同一 claim の複製 3 箇所を git grep で全列挙し 1 commit 同時訂正。author の事前検証と reviewer の反証が同一の安価な手法 (xxd) で対称に成立する。"
 promote: rite-plugin
 created: "2026-06-05T10:33:05Z"
 updated: "2026-06-05T10:33:05Z"

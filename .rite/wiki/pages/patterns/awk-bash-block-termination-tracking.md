@@ -1,6 +1,7 @@
 ---
 title: "bash code block 終端は固定 +N 行 window ではなく awk state machine で動的追跡する"
 domain: "patterns"
+description: "「次に取った行数 +7 まで読む」固定 window でツールを書くと、対象行が長文化したり multi-line 引数を取り始めた瞬間に window が `\`\`\`` を越えて散文に到達する silent regression を起こす。`awk` の state machine で `in_block` / `in_create` flag を持ち bash code block の `\`\`\`` 終端まで読む実装に切り替えれば行数依存の脆弱性を排除できる。`\0` 区切り出力 + bash の `read -d ''` で portable に受けられる。multi-create-per-block の flush timing 漏れ (mutation test で実証された design flaw) も canonical 対策付き。"
 promote: rite-plugin
 created: "2026-05-08T17:20:17+00:00"
 updated: "2026-08-08T13:37:28Z"

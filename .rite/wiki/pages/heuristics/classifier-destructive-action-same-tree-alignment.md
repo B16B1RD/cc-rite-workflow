@@ -1,6 +1,7 @@
 ---
 title: "破壊的操作を承認する分類器は判定・実行・承認文言が同じ対象を見ることを保証する"
 domain: "heuristics"
+description: "判定 (working tree)・破棄 (index 復元)・承認文言 (「確認済み」) の 3 者不一致は informed consent を壊す。一致させられない dirty (staged/untracked) は判定前に保護経路へ倒す。過去のレビュー事例 実測。"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/classifier-destructive-action-same-tree-alignment.md"
 created: "2026-07-13T09:15:00Z"

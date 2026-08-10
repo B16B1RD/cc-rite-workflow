@@ -1,6 +1,7 @@
 ---
 title: "_SCRIPT_DIR canonicalize: cd 前に BASH_SOURCE を絶対 path 化する"
 domain: "patterns"
+description: "`cd "$repo_root"` 後の `$(dirname "$0")` は相対 path invocation で壊れ、sibling lib の source が `./scripts/lib/...` として解釈される。`_SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"` を cd 前に実行して絶対 path 化するのが canonical convention。"
 promote: rite-plugin
 created: "2026-04-17T00:00:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"

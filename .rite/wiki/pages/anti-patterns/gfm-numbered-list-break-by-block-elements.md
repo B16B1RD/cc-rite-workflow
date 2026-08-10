@@ -1,6 +1,7 @@
 ---
 title: "GFM 番号付きリスト分断: 連番途中に block 要素を挟むと新規リストとして render される"
 domain: "anti-patterns"
+description: "GFM で `1. ... N.` 連番リストの items 間に table / paragraph / 強調 paragraph などの block 要素を挟むと、後続 item が新規リスト (`1.` から再採番) として render され、論理的連続性が表示上分断される。canonical fix は (a) item を 1 行形式に圧縮するか (b) 補足情報を別 h4 sub-heading に独立化する 2 通り。過去のレビュー事例 cycle 1 で prompt-engineer + code-quality reviewer が独立検出 (HIGH cross-validated)、cycle 2 で 0 blocking findings に収束。"
 created: "2026-05-13T06:43:41Z"
 updated: "2026-05-13T06:43:41Z"
 sources:
