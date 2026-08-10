@@ -2,7 +2,7 @@
 type: "patterns"
 title: "pin を足す「前」に mutation を当てると、pin の要否と有効性を分離して判定できる"
 domain: "patterns"
-description: "修正を入れた直後・pin を書く前に mutation を当てると、既存 assertion で検出できるか（pin 不要）か、素通りするか（pin 必要）が判定できる。逆順（pin を書いてから mutation）だと「元から検出できていたのか、pin が効いたのか」が区別できない。PR #2038 では診断の文字化け修正が pin 追加前に 400/0 で素通りし、この順序のおかげで無効な pin を作らずに済んだ。"
+description: "修正を入れたあと回帰 pin を書くとき、**mutation を当てる順序**で得られる情報が変わる。"
 created: "2026-07-28T21:30:00+09:00"
 updated: "2026-07-28T21:30:00+09:00"
 sources:

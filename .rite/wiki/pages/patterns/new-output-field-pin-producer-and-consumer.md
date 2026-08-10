@@ -2,7 +2,7 @@
 type: "patterns"
 title: "新設した出力フィールドは producer と consumer の両側を pin する — consumer が表なら行単位で pin する"
 domain: "patterns"
-description: "producer 側の emit だけを assert しても「値が出ること」しか保証されず、「値が使われること」は保証されない。消費側の条件が消えても全 assertion が緑を通り、フィールドが誰にも読まれなくなる変更を検出できない。消費者が分岐表なら「表が存在する」ではなく「各行が存在する」を測る — 自分が新設した行ほど、既存行のパターンに巻き込まれて検査済みに見える。PR #2070 cycle 3-4 で 2 サイクル連続で発覚。"
+description: "stdout フィールド・sentinel・marker など「出力の契約」を新設したとき、producer 側の emit だけを assert するテストは **「値が出ること」しか保証せず、「値が使われること」は保証しない**。消費者側からその値を読む条件が消えても全 assertion が緑を通るため、フィールドが誰にも読まれなくなる変更を検出できない。"
 created: "2026-08-02T09:53:11+09:00"
 updated: "2026-08-06T00:40:00+09:00"
 sources:

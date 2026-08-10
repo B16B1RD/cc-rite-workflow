@@ -3,7 +3,7 @@ type: "heuristics"
 title: "cycle が進んでも findings が減らないときは点修正をやめて構造を疑う"
 domain: "heuristics"
 promote: rite-plugin
-description: "review⇄fix ループで cycle ごとの指摘件数が減らず、内訳が毎回「前 cycle の修正が生んだ新しい drift」になっているときは、個々の指摘に個別対応しても収束しない。指摘の内訳を分類し、同じクラスが再発しているなら述語や実装の本数といった構造に手を入れる。PR #2038 は 11 cycle・通算 65 件を要し、cycle 4 で「2 実装を並行して持つ構造」に到達して初めてクラスが閉じた。"
+description: "review⇄fix ループの健全な収束は「cycle ごとに指摘が減る」形で現れる。減らないとき、多くの場合は**個々の指摘に個別対応している**ことが原因で、指摘されなかった箇所が次 cycle の指摘として戻ってくる。"
 created: "2026-07-28T21:30:00+09:00"
 updated: "2026-08-03T07:46:56Z"
 sources:

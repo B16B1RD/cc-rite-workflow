@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "暫定注記は対象成果物内の同種表記を全数列挙してから書く"
 domain: "heuristics"
-description: "陳腐化した成果物に暫定注記を書くとき、対象内の同種表記を最初に全数把握（生成元ソースの Read / grep）してから列挙しないと、部分列挙が次レビューで Enumeration Completeness の指摘になり cycle を 1 回無駄にする。収束確認も「全数 grep で件数一致」で機械的に判定できる。PR #2029 の 3 cycle 収束で実測。"
+description: "陳腐化した成果物（再生成できない動画等）への暫定注記を書くとき、注記が言及する「旧表記」の範囲は対象成果物内の同種表記を最初に全数把握してから決める。部分列挙のまま注記を出すと、次のレビュー cycle で Enumeration Completeness（列挙完全性）の指摘として再指摘され、文言拡張だけの往復で cycle を 1 回消費する。全数把握は生成元ソース（composition）の Read / 対象範囲の grep で機械的にできる。"
 created: "2026-07-26T20:51:40+09:00"
 updated: "2026-07-26T20:51:40+09:00"
 sources:

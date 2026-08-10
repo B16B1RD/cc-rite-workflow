@@ -3,7 +3,7 @@ type: "heuristics"
 title: "agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する"
 domain: "heuristics"
 promote: rite-plugin
-description: "agent の Bash tool と人間の端末では session 解決経路・cwd・env が構造的に異なるため、agent の文脈で検証したコマンドは人間が実行すると別の対象に効く。rc=0 は「正しい対象に効いた」ことを意味せず、誤った対象への書き込みが rc=0・無出力で成功して事後の読み取りも正常系と同じ値を返す場合、実行前の実在確認だけが唯一の防護になる。PR #2044 で session 軸・state root 軸・SoT helper 置換の 3 形態が別 cycle に出た。"
+description: "停止通知やエラーメッセージに埋め込む「手動復旧コマンド」は、agent が自分の Bash tool で叩いて rc=0 を確認しても検証にならない。agent と人間では実行コンテキストが構造的に違い、同じコマンドが**別の対象**に効く。しかも誤った対象への書き込みは rc=0・無出力で成功するため、実行者は空振りに気づけない。"
 created: "2026-07-29T21:32:36+09:00"
 updated: "2026-08-08T17:40:00+09:00"
 sources:

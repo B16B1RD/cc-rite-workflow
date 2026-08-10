@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる"
 domain: "anti-patterns"
-description: "選択子は BRE で `\\|`、ERE で `|`。`grep -qE` を使う assert ヘルパーに `A\\|B` を渡すと「A|B という 1 本の literal 文字列」を探すパターンになり、対象ファイルには決して現れないため常時緑になる。素の grep (BRE) で手元確認すると「マッチする」と観測できてしまうため、検証済みとして commit されうる。PR #2070 cycle 2 で mutation により発覚した。"
+description: "grep と grep -E では選択子の表記が反転する。BRE のバックスラッシュ付きパイプを ERE の assert ヘルパーへ渡すと literal のパイプ文字として解釈され、対象に存在しない単一文字列を探す dead assertion になる。素の grep による手元確認では選択子として働くため、誤った検証結果で固定されやすい。"
 created: "2026-08-02T09:53:11+09:00"
 updated: "2026-08-02T09:53:11+09:00"
 sources:

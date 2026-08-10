@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "再発防止 guard スクリプトは docstring の宣言意図と実装 regex を実測で校正する"
 domain: "heuristics"
-description: "guard 系スクリプトは「宣言した検出範囲」と「実際の regex」の対応がレビューで実測検証される。regex は現存パターンの再現でなく宣言意図（quote/flag バリアント含む）に合わせ、非検出形は Known boundary 節に隠さず列挙する。opt-in flag は実装と call site 配線を同一コミットで行う。guard 自体のテスト（regex 契約の fixture pin）は同一 PR に同梱し、再レビューは mutation 視点で収束確認する。PR #1909 cycle 3-5 + resume cycle の実測。"
+description: "lint / recurrence-guard 系スクリプトのレビューでは「docstring が宣言する検出範囲」と「実際の regex が検出する範囲」の対応が合成テストで実測検証され、乖離は指摘になる。regex は「現存パターンの正確な再現」だけで校正せず宣言意図（quote/flag バリアント含む）に合わせ、意図的な非検出形は Known boundary 節に完全列挙する。起点事例の cycle 3-5 で実測された連鎖。"
 created: "2026-07-19T15:00:00+09:00"
 updated: "2026-07-19T23:01:00+09:00"
 sources:

@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "few-shot 例に「実行していない実測」を書く — LLM はもっともらしいコマンドを書く挙動を学習する"
 domain: "anti-patterns"
-description: "LLM 向け calibration 文書の few-shot 例に、実際には走らせていない再現コマンドと観測結果を書くと、その形がそのまま模倣される。PR #2035 では -H 'Content-Type: application/json' の無い curl で「JSON として parse された」と主張する例を載せ、主張した観測が出ないコマンドを模範として提示していた。調査手順に現れないコマンド結果をアンカーに書かない。"
+description: "reviewer / agent 向けの calibration 文書（finding-examples.md 等）に「実測アンカー付きの良い例」を追加するとき、例に載せる再現コマンドと観測結果を実際には走らせずに書いてしまう anti-pattern。few-shot は**形をそのまま模倣される**ため、「もっともらしいコマンドを書けば実測アンカーを付けてよい」という挙動を学習させる。実測を要求する機構を導入する PR ほど、その機構の few-shot 例で同じ罪を犯しやすい。"
 created: "2026-07-27T10:57:51+09:00"
 updated: "2026-07-27T10:57:51+09:00"
 sources:

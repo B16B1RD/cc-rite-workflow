@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "bash の signal 挙動は「誰が送るか」「何をしている最中か」で反転する — 条件を揃えない実測は正しい記述を誤りと判定する"
 domain: "heuristics"
-description: "bash は untrapped な INT/TERM/HUP で死ぬときも EXIT trap を実行し rc も 128+signum を返すため、『signal を送って rc=130 かつ tempfile が消えている』の assertion は EXIT trap 1 本だけで満たされ、signal handler を削除した mutant を kill できない。さらに kill -INT $$（自プロセスへ直接）と foreground child でブロック中の親へ外部から送る形では bash の POSIX 準拠挙動が異なり、同じ trap 構成でも結果が反転する。PR #2124 では片方だけの計測で reviewer が正しい記述を誤りと指摘し、次 cycle で自ら撤回した。"
+description: "signal 経路の cleanup を検証・記述するとき、**条件を揃えないまま計測すると結論が反転する**。bash の EXIT trap は untrapped signal で死ぬときも走るため rc と副作用だけを見る assertion は signal handler の有無を判別できず、`kill -SIG $$` と「foreground child 待ちの親へ外部から」では同じ trap 構成でも挙動が変わる。起点事例 ではこの 2 つが順に踏まれ、テストは signal handler 削除 mutant を通し、reviewer は正しい記述を誤りと指摘して次 cycle で撤回した。"
 created: "2026-08-06T22:40:00+09:00"
 updated: "2026-08-06T22:40:00+09:00"
 sources:

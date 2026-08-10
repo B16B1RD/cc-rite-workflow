@@ -1942,3 +1942,11 @@
 - source: `raw/reviews/20260808T114135Z-pr-2160.md`
 - action: skip (0 blocking findings; no transferable heuristic beyond existing mutation-worktree dirty semantics)
 - pages: none
+
+## 2026-08-10T10:30:00+09:00 — descriptive summary prose normalization
+
+- action: refs:prose
+- scope: page frontmatter descriptions and the index summary column
+- decision: promotion pointers in page bodies remain provenance links and were not changed; only reader-facing summaries were normalized
+- result: description hits 37 → 0; index summary hits 244 → 0; descriptions already present in page frontmatter were synchronized with their index entries
+- invariants: sources blocks, page bodies, raw sources, index links, and non-summary index columns were preserved

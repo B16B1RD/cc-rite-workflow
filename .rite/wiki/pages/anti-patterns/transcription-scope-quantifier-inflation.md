@@ -4,7 +4,7 @@ title: "rationale 転記圧縮時の主張スコープ量化拡大（この箇�
 domain: "anti-patterns"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/transcription-scope-quantifier-inflation.md"
-description: "rationale を references へ退避するコンテキストダイエット型 refactor で、転記圧縮時に主張の量化スコープが「この箇所の規約」→「ファイル全体/各 bash block」へ過大一般化される系統的エラー。PR #1774 で本体 (F-01) と references 側 (F-02) の 2 回発生・3 cycle 収束を実測。転記文の量化表現（各/全体/すべて）を機械的に疑い、SKILL.md 本体と references の両側を検証する。"
+description: "rationale（設計理由・背景解説）を SKILL.md 本体から references/ へ退避するコンテキストダイエット型 refactor では、転記時の文章圧縮によって主張の量化スコープが改変される系統的エラーが発生する。「本 PR 内の特定 emit の規約」が「fix.md 全体の規約」へ、「inline 実行可能コードとして配置」が「各 bash block 冒頭に配置」へと過大一般化され、実態（stdout emit 10 箇所 / entry block 単一配置）と矛盾する記述が残る。転記忠実性の検証は「行の有無」だけでなく「主張の量化スコープ」も観点に含める必要がある。"
 created: "2026-07-07T03:56:13+00:00"
 updated: "2026-07-07T03:56:13+00:00"
 sources:
