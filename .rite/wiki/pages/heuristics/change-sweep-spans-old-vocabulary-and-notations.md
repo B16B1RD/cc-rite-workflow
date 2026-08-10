@@ -5,7 +5,7 @@ domain: "heuristics"
 promote: rite-plugin
 description: "散文が実行契約であるリポジトリでは、機構を 1 つ変更・削除するたびに、その機構を名指しする散文が各所に取り残される。"
 created: "2026-07-29T21:32:36+09:00"
-updated: "2026-08-01T23:12:28+09:00"
+updated: "2026-08-10T11:55:05Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260729T010436Z-pr-2044.md"
@@ -27,6 +27,8 @@ sources:
     ref: "raw/reviews/20260801T103500Z-pr-2081.md"
   - type: "fixes"
     ref: "raw/fixes/20260801T104510Z-pr-2081.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260810T113055Z-pr-2229.md"
 tags: []
 confidence: high
 ---
@@ -85,6 +87,25 @@ cycle 4 のコミットメッセージ自身が「削除時は旧語彙で grep�
 
 同型の失敗として、**SoT が実装より狭い / 古い記述を持つと、次の編集者が SoT に従って実装を「直し」、前 cycle で塞いだ欠陥を復活させる**。SoT を写す方向の同期を怠ると、SoT 自体が退行の指示書になる。
 
+### 掃いた後に置く pin を狭めるときは、履歴で「実際に除去した全表記形」を照合する
+
+掃き出しの結果を守るために anti-pattern pin（旧語彙の再導入検出）を置いたあと、**誤発火を防ぐつもりで pattern に文脈語を足すと、実際に除去した表記形を取りこぼす**。PR #2229 cycle 5 では禁止語と文脈語の間に markdown 強調記号が挟まる形が抜け、5 名のレビュアーが「実証済みの検出力を未観測の誤発火リスクと交換している」と指摘した。
+
+判断の手順:
+
+1. **狭めた pattern が、実際に除去した全表記形を今も捕らえるかを `git log -S` で確認する**（掃いた対象は履歴に残っているので照合できる）
+2. **誤発火の実例が 0 件なら裸の語のままにする** — 未観測のリスクのために検出力を落とすのは speculative structure。実際に誤発火が入った時点で fail-loud に顕在化させるほうが安全
+
+pin 自体も複製しない。同一 pattern を N サイトへコピーすると、**片方を締めて他を忘れる drift がそのまま再生産される**。既存 idiom（`for f in ...; do assert_not_grep ...; done`）に合わせて pattern は 1 度だけ書く。
+
+### 掃く範囲は「参照している共有 reference の登録リスト」まで含む
+
+canonical snippet / 共有 reference が「新規箇所を追加したら usage site として登録すること」と自ら指示している場合、**その指示は自分の PR にも掛かる**。PR #2229 cycle 5 では save helper へ必須キーを 2 つ足しながら canonical 節へ登録しておらず、snippet に忠実な JSON が save 段で拒否される乖離を作っていた。
+
+> **共有 reference を参照する実装を変えたら、その reference の登録リスト・限定句も同じ commit で更新する。**
+
+ただし snippet 本体を広げるのではなく「write 側だけの追加検証」として書く — read 側は書込済みデータを信頼する設計なので、本体を広げると read 側が誤って厳格化される。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -104,3 +125,4 @@ cycle 4 のコミットメッセージ自身が「削除時は旧語彙で grep�
 - [PR #2044 fix results (cycle 5)](../../raw/fixes/20260729T012520Z-pr-2044.md)
 - [PR #2044 fix results (cycle 2)](../../raw/fixes/20260729T092343Z-pr-2044.md)
 - [PR #2044 fix results](../../raw/fixes/20260728T235426Z-pr-2044.md)
+- [PR #2229 fix results (cycle 5) — 狭めた pin が除去済み表記形を取りこぼした](../../raw/fixes/20260810T113055Z-pr-2229.md)

@@ -3,7 +3,7 @@ title: "Test pin protection theater: 「N site pin」claim と実 assert の gap
 domain: "anti-patterns"
 created: "2026-04-24T14:55:00+00:00"
 description: "test ファイルのコメントが「cleanup arm 3 site (L383/L409/L412) の完全一致を pin」のように **複数 site pin** を claim していても、実際の `assert_contains` が 1 site しか pin していない (または canonical phrase が実在 site と factually 一致しない) 場合、regression 検出インフラへの信頼を破壊する false-sense-of-security。"
-updated: "2026-08-07T23:45:00+09:00"
+updated: "2026-08-10T11:55:05Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260722T221143Z-pr-1973.md"
@@ -45,7 +45,13 @@ sources:
     ref: "raw/reviews/20260802T163111Z-pr-2094.md"
   - type: "reviews"
     ref: "raw/reviews/20260807T141527Z-pr-2137.md"
-tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase, same-file-3-site-sync, subsidiary-claim-empirical-verification, cross-file-cross-site-coverage, multi-axis-mutation-verification, channel-collision, negative-control]
+  - type: "reviews"
+    ref: "raw/reviews/20260810T073435Z-pr-2229.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260810T080754Z-pr-2229.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260810T100637Z-pr-2229.md"
+tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase, same-file-3-site-sync, subsidiary-claim-empirical-verification, cross-file-cross-site-coverage, multi-axis-mutation-verification, channel-collision, negative-control, twin-site-satisfaction, anchor-uniqueness]
 confidence: high
 ---
 
@@ -468,9 +474,45 @@ PR #2137 cycle 2 では、この gap を 3 reviewer（security / error-handling 
 
 > 「既存の X に合わせた」と書くときは X の実挙動を実測してから書く（[散文が引用する実装は文字一致・帰属・behavioral test の 3 点で裏取りする](../heuristics/prose-cited-implementation-behavioral-verification.md)）。
 
+## 変種: pin の充足サイトが「守りたいサイト」と別でも緑になる（双子サイト成立）
+
+ファイル全体を対象にした `assert_grep` は「ファイルのどこかにこの文字列がある」しか見ない。同じ文言が 2 サイトに存在すると、**片方が残っていれば pin は緑**になり、守ろうとしていた側を削除しても検出できない。
+
+起点 PR ではこの形が 1 つの PR 内で 2 度、場所を変えて現れた。
+
+1. 実装が同じ述語を「強制用」と「診断用」に複製 → ファイル全体 grep の pin が診断側の複製で満たされ、**強制側を削除しても緑**のまま通った
+2. 上を修正した cycle で、同一文言を新設した doc pin にそのまま再現 — helper 側から消えた双子が doc 側へ移動しただけだった
+
+**pin を足すときは「その pin が守ろうとしているサイトに固有の文字列か」を確認する**（区間限定 grep、またはサイト固有 prefix を含めた pattern）。
+
+ただし修正の第一手は pin の書き方ではない。起点 PR は区間限定 grep へ賢くする案を試して **mutation で検出できないことを実測し棄却**、代わりに実装側の複製を消した（判定を 1 箇所にし、pass/fail も診断もそこから導く）。テストの検出力は複製が消えた結果として自然に回復した。
+
+> **pin が効かないときは、pin の書き方より先に「pin する対象が 1 箇所か」を疑う。**
+
+### 併発: 錨を「前置リテラル + 任意」で作ると同リテラルの別行が代替成立する
+
+双子サイト問題への対策としてサイト固有化を図り、`Required JSON fields.*` のように**前置リテラル + `.*`** で錨を作ると、同じ前置リテラルを含む別行が pin を満たす。起点 PR では当該リテラルがファイル内に 3 行あり、**対象行から定義が消えても参照行が pin を満たす** mutation が実測で緑になった。
+
+錨は「その行だけに一意な形」（行頭アンカー + コロン等）まで狭める。前置リテラルを足した時点で満足せず、**その pattern がファイル内で何行にマッチするかを数える**。
+
+### 併発: 否定 assert は肯定側の双子と同一リテラルにしないと黙って空振りする
+
+`assert_not_grep` による否定 assert は、対応する肯定 assert が同じリテラルを固定していないと、**実装側のリテラルを書き換えるだけで黙って空振りする**（禁止対象が存在しなくなるので常に緑）。否定 assert は必ず肯定側の双子と同一リテラルで書く。
+
+さらに、禁止語 pin に文脈語を足して「誤発火を防ぐ」方向へ狭めると、**実際に除去された表記形を取りこぼす**ことがある（起点 PR では禁止語と文脈語の間に markdown 強調記号が挟まる形が抜け、5 名のレビュアーが「実証済みの検出力を未観測の誤発火リスクと交換している」と指摘した）。狭める判断の手順は [変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる](../heuristics/change-sweep-spans-old-vocabulary-and-notations.md) を参照。
+
+### 「この drift はテストが検出する」という宣言は実測してから書く
+
+起点 PR では同一クラスの主張が 3 cycle 連続で形を変えて再発した — cycle 1 は「同期漏れ」、cycle 2 は「目視で検出する」と宣言した文がその宣言を追加した commit 自身で drift、cycle 3 は「契約テストが検出する」と格上げしたが実際に pin されていたのは **5 条件中 1 条件**だった。
+
+> **検出保証を散文で宣言するのは、その保証が機械的に成立していることを実測してからにする。** 実測しないなら主張自体を書かない方が安全（起点 PR では 4 reviewer 全員が「主張を狭める」を推奨した）。
+
 ## ソース（追記分）
 
 - [PR #2094 review results (cycle 2) — 静的 pin が行継続文字を照合せず 1 文字 drift を素通り](../../raw/reviews/20260803T004941Z-pr-2094.md)
 - [PR #2094 review results — load-bearing なコードコメントに対応するテストが無い](../../raw/reviews/20260802T163111Z-pr-2094.md)
 - [PR #2114 review results — チャネル衝突による vacuous assertion と抽出 regex の外に落ちる反例](../../raw/reviews/20260805T095118Z-pr-2114.md)
 - [PR #2137 review results (cycle 2) — 実装 5/5 適用に対し pin は 2/5、counting assertion 自身の空振り経路](../../raw/reviews/20260807T141527Z-pr-2137.md)
+- [PR #2229 review results (cycle 2) — 述語の複製で pin が代替成立、否定 assert の空振り](../../raw/reviews/20260810T073435Z-pr-2229.md)
+- [PR #2229 review results (cycle 3) — 双子サイトが doc 側へ移動、「契約テストが検出する」宣言が 5 条件中 1 条件](../../raw/reviews/20260810T080754Z-pr-2229.md)
+- [PR #2229 fix results (cycle 4) — 前置リテラル錨が同リテラルの別行で代替成立](../../raw/fixes/20260810T100637Z-pr-2229.md)

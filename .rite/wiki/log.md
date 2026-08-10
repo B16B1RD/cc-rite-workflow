@@ -6,6 +6,15 @@
 * **Update**: [診断メッセージの主語と射程は、その文が発火する条件が保証している対象に限る](pages/heuristics/diagnostic-claim-scoped-to-firing-condition.md) — raw/fixes/20260810T043320Z-pr-2227.md を統合（既存の中立ラベルを原因断定ラベルへ改名すると、断定の根拠が helper 実装に依存して壊れる型を追加）。
 * **Update**: [Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格](pages/heuristics/observed-likelihood-gate-with-evidence-anchors.md) — raw/reviews/20260810T045310Z-pr-2227.md を統合（ゲートが決めるのは merge を止めるかだけで、降格を「直さなくてよい」と読み替えないという運用の切り分けを追加）。
 * **lint:warning** — contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=304, broken_refs=0
+* **Create**: [証拠フィールドを新設したら、質の担保は消費側ではなく writer 側に置く](pages/heuristics/evidence-field-quality-enforced-at-writer-side.md) — raw/reviews/20260810T065257Z-pr-2229.md を新規ページ化（消費側が長さ・非空しか見られないフィールドは、質の担保を writer 側にしか置けない。水準は同一検証チェーンの隣接検査から逆算する）。
+* **Create**: [判定手段を差し替えるときは、旧手段が暗黙に提供していた失敗条件を列挙してから移す](pages/heuristics/replacing-a-judgment-mechanism-drops-its-implicit-failure-conditions.md) — raw/reviews/20260810T080754Z-pr-2229.md を新規ページ化（明示条件は移植されるが、旧コマンドが副作用で持っていた失敗経路は移植対象として意識されず落ちる）。
+* **Update**: [散文で分類規則を追加するときは『規則の完全性』と『判断点への到達』を別々に点検する](pages/heuristics/prose-classification-rule-completeness-and-reach.md) — raw/fixes/20260810T070440Z-pr-2229.md を統合（根拠が挙げる失敗モードが実装上到達不能という第 3 の軸を追加）。
+* **Update**: [散文で分類規則を追加するときは『規則の完全性』と『判断点への到達』を別々に点検する](pages/heuristics/prose-classification-rule-completeness-and-reach.md) — raw/reviews/20260810T095742Z-pr-2229.md を統合（列挙を「A または B」へ広げるとき B の到達性を 1 回実行して確かめる）。
+* **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — raw/reviews/20260810T073435Z-pr-2229.md を統合（述語の複製で pin が双子サイト成立、否定 assert が肯定側と同一リテラルでないと空振りする型を追加）。
+* **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — raw/fixes/20260810T100637Z-pr-2229.md を統合（錨を「前置リテラル + 任意」で作ると同リテラルの別行が代替成立する型を追加）。
+* **Update**: [機構を削除して解くと、pin 面積だけでなく失敗モードの重さ（blast radius）も縮む](pages/heuristics/simplification-shrinks-pin-surface-and-blast-radius.md) — raw/fixes/20260810T074515Z-pr-2229.md を統合（複製の同期漏れを指摘されたら同期ではなく複製の削除を先に検討する判断を追加）。
+* **Update**: [機構を削除して解くと、pin 面積だけでなく失敗モードの重さ（blast radius）も縮む](pages/heuristics/simplification-shrinks-pin-surface-and-blast-radius.md) — raw/reviews/20260810T095742Z-pr-2229.md を統合（削除で応えるべきところに説明を足すと複製面積が増え、引用元の実文言と食い違う）。
+* **Update**: [変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる](pages/heuristics/change-sweep-spans-old-vocabulary-and-notations.md) — raw/fixes/20260810T113055Z-pr-2229.md を統合（掃いた後に置く pin を狭めるときは履歴で除去済み全表記形を照合する、掃く範囲は共有 reference の登録リストまで）。
 
 ## 2026-08-09
 
