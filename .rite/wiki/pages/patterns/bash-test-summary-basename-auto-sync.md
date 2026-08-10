@@ -1,7 +1,7 @@
 ---
 title: "bash test の summary 行は $(basename \"$0\") で自動同期する"
 domain: "patterns"
-description: "bash test スクリプトの summary 行で実ファイル名を hardcode するとファイル rename 時に表示名と実体が drift する。`$(basename "$0")` で `$0` から実行ファイル名を自動取得すれば rename 後も常に整合する。同リポジトリの 13+ metatest が既にこのパターンを採用 (過去のレビューでも既存慣用参照不足で hardcode が使われ後で修正)。"
+description: "bash test スクリプトの summary 行 (`echo \"─── foo summary ───\"` 等) で実ファイル名を hardcode すると、ファイル rename / コピー作成時に表示名と実体が drift する。"
 created: "2026-05-03T05:50:00+09:00"
 updated: "2026-08-08T13:37:28Z"
 sources:

@@ -3,7 +3,7 @@ type: "heuristics"
 title: "意図的 silent-continue は「無視する理由」と「真の失敗の顕在化ポイント」のコメント明記で許容される"
 domain: "heuristics"
 promote: rite-plugin
-description: "`cmd 2>/dev/null || true` の意図的 silent-continue は、(a) なぜ無視してよいか (既存リソース / 権限不足等) と (b) 真の失敗がどこで顕在化するか (後続コマンド + エラー surface 機構) をコメントに明記し、仕様のエラー方針と対応させれば error-handling レビューの許容条件を満たし 1 cycle で収束する。"
+description: "`cmd 2>/dev/null || true` の意図的 silent-continue は、無条件では silent failure として指摘対象になるが、(a) なぜ無視してよいか (既存リソースの冪等スキップ / 権限不足は後段で顕在化する等) と (b) 真の失敗がどこで顕在化するか (後続コマンドとそのエラー surface 機構) をコメントに明記し、Issue 仕様のエラー方針と対応させれば、error-handling レビューの許容条件を満たす。"
 created: "2026-07-13T01:00:24+09:00"
 updated: "2026-07-13T01:00:24+09:00"
 sources:

@@ -1,7 +1,7 @@
 ---
 title: "並列 Section 展開時の同名 heading 重複"
 domain: "anti-patterns"
-description: "評価レポート系ドキュメントで scope (本 PR scope 内 / scope 外) や timeline (本 PR で実施 / 次 PR 候補) が異なる候補リストを並列の独立 Section として展開すると、両 Section が同名 heading (例: `残課題と次 PR 候補`) を持ち、reader が「どちらが正?」と混乱する構造的問題。1 Section 集約 + heading uniqueness 維持で解消。markdownlint MD024 で機械検出可能。過去のレビュー事例 cycle 1 で評価レポート Section 8/10 重複として実測。"
+description: "評価レポート系ドキュメントで scope (本 PR scope 内 / scope 外) や timeline (本 PR で実施 / 次 PR 候補) が異なる候補リストを並列の独立 Section として展開すると、両 Section が同名 heading (例: `残課題と次 PR 候補`) を持ち、reader が「どちらが正?」と混乱する構造的問題。"
 created: "2026-05-05T11:15:55+00:00"
 updated: "2026-08-08T13:37:28Z"
 sources:

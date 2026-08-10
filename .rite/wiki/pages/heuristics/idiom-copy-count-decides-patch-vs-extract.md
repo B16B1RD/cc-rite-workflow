@@ -3,7 +3,7 @@ type: "heuristics"
 title: "同一箇所への指摘が N cycle 連続したら、その箇所が何番目のコピーかを数える"
 domain: "heuristics"
 promote: rite-plugin
-description: "指摘の連続は「その箇所の品質」ではなく「その箇所が N 番目のコピーであること」に原因がある場合がある。前者なら追加パッチ、後者なら共有 helper への抽出が答えで、判別は同じ idiom のコピー数を数えることでつく。"
+description: "review-fix loop で同じ箇所への指摘が cycle をまたいで繰り返すとき、追加パッチを当て続けるのが自然な反応になる。"
 created: "2026-08-06T02:49:27Z"
 updated: "2026-08-06T02:49:27Z"
 sources:

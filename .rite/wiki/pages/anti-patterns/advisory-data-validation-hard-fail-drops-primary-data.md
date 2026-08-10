@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "advisory データの欠陥検証を hard fail にすると primary データごと失われる"
 domain: "anti-patterns"
-description: "advisory（補助的）なデータの欠落・破損を検出する gate を hard fail にすると、保存処理そのものが中止され、同じファイルに載っていた primary（本体）データまで失われる。救おうとした対象より大きなものを落とす fail-unsafe。あわせて型 check を id/内容 gate の後ろに置くと、非配列でも length が非 0 になる値が件数を水増しし、非ブロッキングと明記した契約が型によって hard fail に化ける。gate の順序は「型 → 内容」。"
+description: "過去のレビュー事例で 2 サイクル連続して踏んだ fail-unsafe。"
 created: "2026-07-27T17:54:54+09:00"
 updated: "2026-07-27T17:54:54+09:00"
 sources:

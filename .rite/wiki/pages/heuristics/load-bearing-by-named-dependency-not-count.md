@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "「SoT が N 個と書いている」だけでは load-bearing 性は決まらない — 依存側が名指ししている要素を読む"
 domain: "heuristics"
-description: "consumer の列挙が SoT の件数より少ないとき、欠落が本当に依存関係の欠損なのかは、その N 要素に依存すると宣言している側の文が実際にどの要素を根拠として名指ししているかで決まる。数の不一致は精度の問題であり、load-bearing 性とは別軸。レビュアー間で finding / 非 finding に割れたときの決着材料になる。"
+description: "consumer 側の文書が SoT の N 要素のうち M 個（M < N）しか列挙していないとき、「SoT は N と書いているから欠落は欠陥だ」という推論は一段飛ばしになっている。"
 created: "2026-07-29T02:10:00+09:00"
 updated: "2026-07-29T02:10:00+09:00"
 sources:

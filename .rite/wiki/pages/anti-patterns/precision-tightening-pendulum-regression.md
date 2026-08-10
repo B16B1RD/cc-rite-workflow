@@ -3,7 +3,7 @@ type: "anti-patterns"
 title: "過剰マッチ防止の精緻化修正は、実装が許容する全形状を再確認しないと過小マッチという別の欠陥を生む (振り子現象)"
 domain: "anti-patterns"
 promote: rite-plugin
-description: "reviewer 指摘に応じて記述を「より厳密」に書き換える修正 (over-match 防止) は、対象実装のロジックが許容する全ての正当な形状を再度 grep/Read で確認しないと、修正前より狭い範囲になる under-match を新規導入する。"
+description: "reviewer の false-positive 指摘 (「この記述は無関係な対象まで拾ってしまう」) を受けて記述を厳密化する修正は、対象実装 (正規表現・マッチングロジック等) が実際に許容する**全ての**正当な形状を再確認せずに行うと、修正前には正しくカバーできていた別の形状を取りこぼす under-match を新規に導入する。"
 created: "2026-07-07T22:03:17+00:00"
 updated: "2026-07-07T22:03:17+00:00"
 sources:

@@ -2,7 +2,7 @@
 type: "patterns"
 title: "canonical 例を持つ SoT は「例が自身の enforcer を通る」ことを実測で確かめる"
 domain: "patterns"
-description: "SoT が書式規則と canonical 例の両方を持ち、その規則を強制する script を名指ししている場合、例が規則に違反していても規則側・例側のどちらを読んでも気づけない。write 側は例を「真実の源」として写すため、違反した例は成果物が enforcer に reject される形で顕在化する。例を実際に validator へ流す fixture を置き、規則変更時に必ず再実行する。原則を新設する PR では、その原則を自分の diff に適用して検算する（同型の自己適用検査）。"
+description: "過去のレビュー事例の cycle 4 で **4 reviewer が独立に検出**した欠陥クラス。"
 created: "2026-07-27T17:54:54+09:00"
 updated: "2026-08-03T00:55:00+09:00"
 sources:

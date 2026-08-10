@@ -1,7 +1,7 @@
 ---
 title: "Markdown table 内に HTML コメントを挿入すると GFM table boundary が破壊される"
 domain: "anti-patterns"
-description: "GFM の table 内部に `<!-- comment -->` を挿入すると、その時点で table 構造が終了したと解釈され、後続行が `<p>` 段落として render される silent regression。Edit ツールでの「行の論理的削除コメント化」目的での HTML コメント挿入は table boundary を破壊するため禁忌。代替: table 直前/直後の独立段落へ配置、別セクションへ move、strikethrough テキスト、Status カラム追加。過去のレビュー事例 cycle 3 で SPEC-IMPL-FILES table 内に `<!-- removed: ... -->` 挿入時に最終行が `<p>` 段落として脱落する事象を npx marked render verification で実測。"
+description: "GitHub Flavored Markdown の table 内部に `<!-- comment -->` を挿入すると、その時点で table 構造が終了したと解釈され、後続行が `<p>` 段落として render される silent regression を起こす。"
 promote: rite-plugin
 created: "2026-05-03T12:53:26Z"
 updated: "2026-08-06T22:40:00+09:00"

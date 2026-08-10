@@ -1,7 +1,7 @@
 ---
 title: "POSIX `[[:cntrl:]]` は C1 8-bit 制御バイト (0x80–0x9f) を分類しない"
 domain: "anti-patterns"
-description: "glibc (C / UTF-8 両ロケール実測) の `[[:cntrl:]]` は C0 + DEL のみ分類し C1 (0x80–0x9f、CSI introducer 0x9b 含む) を素通しする。jq の JSON round-trip は生 0x9b を U+FFFD 化するが valid UTF-8 の U+009B (0xc2 0x9b) は素通しするため、`LC_ALL=C tr` バイト単位置換の共通ヘルパーで C0+DEL+C1 を同時遮断するのが canonical (UTF-8 継続バイト劣化は異常系診断出力限定で正当化)。統合テストは U+009B / 生バイトは単体層で pin する責務分離、C1 範囲ラベルの U+009B/U+009F 混同執筆ミス、検出 (reject) 用途への同盲点残存 (#1276) を含む (過去のレビュー事例)。過去のレビューで検出側 `contains_ctrl()` を同一 tr レンジで共通ヘルパー化し #1276 を解決: ugrep 等が raw 8-bit バイトにマッチしない環境依存により grep でなく tr + バイト数比較を採用、pure-bash `${var//[...]/}` は ja_JP.UTF-8 で codepoint-aware となるため実測棄却、fail-closed (非数値 wc → detected)、mutation 2 段階で C1 検出の pin を実証 (4 reviewer 0 findings / 1 cycle)。"
+description: "glibc (C / UTF-8 両ロケールでバイト単位実測確認) の `[[:cntrl:]]` POSIX 文字クラスは C0 (0x00–0x1f) + DEL (0x7f) のみを cntrl と分類し、C1 8-bit 制御バイト (0x80–0x9f、特に CSI introducer 0x9b) を素通しする。"
 promote: rite-plugin
 created: "2026-06-05T05:45:26Z"
 updated: "2026-06-05T17:02:41Z"

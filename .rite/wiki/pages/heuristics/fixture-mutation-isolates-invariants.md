@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する"
 domain: "heuristics"
-description: "fixture 変異がどの不変量を発火させるかは推測せず実行で確認する。一方向差し替えは集合系不変量も同時発火するため、行内整合チェックの分離検証には均衡入替（双方向 swap）を使う。双方向チェックの reverse 方向・行フィルタ等の guard は単独で kill する明示 TC / decoy が無いと削除 mutation が生き残る。連言述語 A ∧ B では「A のみ false」「B のみ false」の fixture を項の数だけ用意し、位置固定を持つ述語にはさらに「値は含むが位置が違う」形を足す。"
+description: "複数の不変量（集合差分 I1/I2 + 行内整合 I3 等）を持つ検証スクリプトのテストでは、fixture 変異の設計を誤ると「テストは green だが特定の不変量・guard を削除しても green のまま」という vacuous coverage が生まれる。"
 created: "2026-07-03T18:30:00+00:00"
 updated: "2026-08-05T05:30:00+00:00"
 sources:

@@ -3,7 +3,7 @@ type: "anti-patterns"
 title: "ドキュメントに未検証の具体的設定キー例を書くと存在しないキー名を捏造してしまう"
 domain: "anti-patterns"
 promote: rite-plugin
-description: "sandbox のような read/write で構造が異なる設定を説明する際、実機の構造を確認せず記憶や類推だけで具体的なキー名を書くと、read 側専用のキーを write 側の例として誤って挙げるなど存在しない設定キーを捏造しやすい。SoT が抽象的な表現に留めている場合はそれに倣うか、実機で構造を確認してから具体キーを書くべき。"
+description: "sandbox の read/write 許可リストのように、似た形だが read 側と write 側で構造が異なる設定を説明するとき、実機の構造を確認せず記憶や類推だけで具体的なキー名を書くと、read 側専用のキーを write 側の例として誤って挙げるなど、実在しない設定キーを捏造してしまうことがある。"
 created: "2026-07-20T07:50:27Z"
 updated: "2026-07-20T07:50:27Z"
 sources:

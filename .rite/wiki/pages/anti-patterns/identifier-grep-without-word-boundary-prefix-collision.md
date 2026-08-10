@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "番号・識別子の grep に語境界を付けないと短い番号が長い番号の prefix として衝突する"
 domain: "anti-patterns"
-description: "git log --grep \"refs #N\" のような部分一致は語境界を持たないため、短い番号が長い番号の prefix として「ちょうど 1 件」マッチし、0 件/複数件を UNVERIFIED へ倒す guard を素通りする。複数 commit の Issue は必ず複数件で落ちるため、prefix 衝突こそが「1 件」の主要な発生源という逆説的構造になる。"
+description: "commit を番号で解決する手順に `git log --grep \"refs #N\"` のような**語境界を持たない部分一致**を書くと、短い番号が長い番号の prefix として一致する（`関連する設計記録` が `関連する設計記録` に一致する）。"
 created: "2026-07-30T15:40:55Z"
 updated: "2026-07-30T15:40:55Z"
 sources:

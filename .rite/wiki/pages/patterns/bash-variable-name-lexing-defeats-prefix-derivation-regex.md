@@ -2,7 +2,7 @@
 type: "patterns"
 title: "bash は `$` の後の `[A-Za-z0-9_]` 連続を 1 つの変数名として読む — 無括弧の `$v_suffix` は派生ではなく別変数"
 domain: "patterns"
-description: "変数名の接頭辞一致を『派生』と読む検出器は bash の字句規則に負ける。$pr_view_err に対して $pr_view_err_oneline を派生と誤検知したのは、bash が $ の後の [A-Za-z0-9_] 連続を 1 つの変数名として読むため。派生として成立するのは波括弧で区切った ${v}_suffix と、変数名に使えない文字で区切った $v-suffix だけ。検出器を書く前に『bash がこの文字列をどう parse するか』を確認する。"
+description: "「変数 `$v` から派生したパス」を追跡する検出器で、**変数名の接頭辞一致を派生と読むと誤検知する**。"
 created: "2026-08-06T22:40:00+09:00"
 updated: "2026-08-06T22:40:00+09:00"
 sources:

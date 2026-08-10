@@ -3,7 +3,7 @@ type: "heuristics"
 title: "条件付き確認 skip は既存 in-flow 判定と同型にし fail-safe を「確認を出す」側へ倒す"
 domain: "heuristics"
 promote: rite-plugin
-description: "AskUserQuestion を条件付きで skip する機械判定を新設する際は、判定を既存の in_e2e_flow / batch 判定と同型に流用し、helper 失敗時は必ず「確認を出す（安全側）」へ fail-safe する。WARNING の有無は失敗が正常系か想定外かで出し分ける。"
+description: "自律ワークフロー（batch / iterate 等）と矛盾する AskUserQuestion を条件付きで skip する機械判定を新設するときは、(1) 判定ロジックを既存の in-flow 判定（`in_e2e_flow` / batch 判定）と同型に流用し新しいシグナルを発明しない、(2) helper / read 失敗時は必ず「確認を出す（安全側）」へ fail-safe する、(3) WARNING の有無は「失敗が正常系か想定外か」で出し分ける。"
 created: "2026-07-16T09:37:48+09:00"
 updated: "2026-07-16T09:37:48+09:00"
 sources:

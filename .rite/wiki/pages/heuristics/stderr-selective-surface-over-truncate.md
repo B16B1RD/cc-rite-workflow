@@ -1,7 +1,7 @@
 ---
 title: "stderr ノイズ削減: truncate ではなく selective surface で解く"
 domain: "heuristics"
-description: "success path の stderr ノイズを `2>/dev/null` や全 truncate で消すと legitimate warning も silent drop する。git の `-q` で informational 抑制 + grep filter で warning/hint/error 行のみ selective surface する責務分離が正解。過去のレビューで multi-step 処理の per-step tempfile 分離に拡張。過去のレビューで helper status を制御フローに使う委譲 shim は status (制御) + stderr (診断) 両 capture が必要と拡張。過去のレビューで同一 helper (`issue-comment-wm-sync.sh`) の別 caller (§3.5.1) が同 2>/dev/null 破棄を再演し canonical へ修正 (sibling-caller 再発)。過去のレビューで delegation-shim 以外の新規 git fetch フォールバック実装 (テストスクリプト内) でも同 anti-pattern が再演することを確認、canonical selective-surface パターンへ修正。過去のレビューで「fail-safe fallback (`|| fallback=...`) 追加時、分岐の安全性と `2>/dev/null` による診断可視性は独立要件」という変種を追加（4 箇所中 3 箇所だけ `2>/dev/null` が残る非対称を cycle 2 で MEDIUM 検出）。過去のレビューで「テストの captured-stderr は assert 失敗時に surface してから削除する（fail_before=$FAIL 記録 → 失敗増加時のみ head -5 表示 → rm。捕捉だけして表示経路の無い構成は 2>/dev/null と診断上等価）」というテスト版を追加。"
+description: "success path で git などのコマンドが出す stderr の「ノイズ」を抑えたい場面で、`2>/dev/null` や無条件 truncate を使うと legitimate な warning（`unable to rmdir` / remote hook advice など）まで silent drop してしまう。"
 promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 updated: "2026-07-24T17:00:00+09:00"

@@ -1,7 +1,7 @@
 ---
 title: "`2>&1` と `2>&1 | head -N` で sentinel/exit code が silent suppression される (self-defeating observability)"
 domain: "anti-patterns"
-description: "`2>&1` で stderr を stdout に merge する pattern は (a) `2>&1 | head -N` 形式では pipeline 終端 head が前段 exit code を消す silent failure、(b) helper の stderr 出力が caller 側 classification 文字列に混入し case arm が defensive `*)` 経路に落ちる silent sentinel suppression を生む。関連する課題 の core deliverable である `legacy_state_corrupt` / `cross_session_takeover_refused` workflow incident sentinel が、この `2>&1` で reader/writer 両方で silent suppress される **self-defeating** 構造として 過去のレビュー事例 cycle 35 で実測 (CRITICAL × 2)。canonical fix は stderr を tempfile に退避して exit code と sentinel を分離 capture すること。"
+description: "`2>&1` で stderr を stdout に merge する pattern は、(a) `2>&1 | head -N` 形式では pipeline 終端の `head` が前段の exit code を消す silent failure を生み、(b) helper の stderr 出力が caller 側で classification 文字列に混入し case arm が defensive `*)` 経路に落ちる silent sentinel suppression を生む。"
 promote: rite-plugin
 created: "2026-04-27T23:01:24+00:00"
 updated: "2026-07-31T01:26:57+09:00"

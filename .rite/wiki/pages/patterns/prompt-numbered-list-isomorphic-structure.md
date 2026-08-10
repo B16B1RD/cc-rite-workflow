@@ -1,7 +1,7 @@
 ---
 title: "prompt 内 numbered list は同型構造で書く（全 step に動作詳細 bullet を対称配置）"
 domain: "patterns"
-description: "LLM が prompt を実装する際、numbered list の一部 step だけ動作詳細 bullet が欠落すると、LLM がその step の動作を推測で埋める経路になり silent drift を発生させる。過去のレビューで ingest.md Phase 8.3 step 1 の bullet 欠落を実測。全 step に同粒度の bullet を対称配置するのが canonical pattern。"
+description: "LLM が prompt / skill / command 定義を実装する際、numbered list は各 step の「動作詳細 bullet の有無・粒度」を**対称配置**する必要がある。"
 promote: rite-plugin
 created: "2026-04-18T17:40:00+09:00"
 updated: "2026-07-31T01:26:57+09:00"

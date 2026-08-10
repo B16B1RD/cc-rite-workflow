@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "`set -euo pipefail` 下の `var=$(cmd | jq ... 2>/dev/null)` は不正入力でテストを無言 abort させる"
 domain: "anti-patterns"
-description: "被テスト対象の出力を jq でパースして変数に代入する形は、`set -euo pipefail` 下では jq の非ゼロ終了（不正 JSON なら rc=5）がそのまま代入コマンドの終了ステータスになり、その行でスクリプト全体が落ちる。`2>/dev/null` が診断も捨てるため出力ゼロで死ぬ。後段に置いた「想定外の出力形式」検出分岐は不正 JSON 経路で構造的に到達しない dead branch になり、どのアサーションで落ちたかも失われる。判定に JSON パースが不要なら出力の形状（空か / 特定文字列を含むか）で分岐して jq を介在させない。"
+description: "被テスト対象の stdout を jq でパースして変数に代入する形は、`set -euo pipefail` 下では **jq の非ゼロ終了がそのまま代入コマンドの終了ステータス**になる。"
 created: "2026-07-26T01:35:00+09:00"
 updated: "2026-07-26T01:35:00+09:00"
 sources:

@@ -1,7 +1,7 @@
 ---
 title: "Severity 等級拡張は read/write/parse/measure の closed-loop 6 段階を verify する"
 domain: "heuristics"
-description: "severity 等級 (CRITICAL/HIGH/MEDIUM/LOW 等) を拡張する fundamental change は SoT 表だけ更新しても運用層 (write spec / JSON schema / read parser / extract regex / measure dict) のいずれか 1 段階が旧値前提のままだと silent severity fallback で finding が消失する。同ファイル内 5+ 箇所 + cross-file 5 種類の closed-loop 6 段階を mechanical に verify する checklist と、scope expansion が 3 cycle / 5 file/cycle で別 Issue 化判断する canonical flow を確立。過去のレビューで 4 cycle (1→6→7→3 findings) かけて 21 files +132 行に拡大した実測軌跡 + regex alternative ordering (`LOW-MEDIUM` を `LOW` より先に) + HIGH 3 件を本 PR / MEDIUM・LOW 9 件を 関連する課題 に scope split する判断 evidence。"
+description: "severity 等級 (CRITICAL / HIGH / MEDIUM / LOW など) を**拡張する**ような fundamental change は、宣言した SoT 表だけ更新しても運用層 (write spec / JSON schema / read parser / extract regex / measure dict) のいずれか 1 段階が旧 4 値前提のままだと、reviewer が新等級で finding を発行した瞬間に silent fallback して severity が消失する。"
 promote: rite-plugin
 created: "2026-04-29T05:30:00+09:00"
 updated: "2026-07-31T01:26:57+09:00"

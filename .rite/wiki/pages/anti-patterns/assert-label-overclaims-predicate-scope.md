@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる"
 domain: "anti-patterns"
-description: "「all three AND-conditions contiguous」と名乗りながら 3 条件のうち 1 対しか見ない assert、「中和後も可読部分が残る」と名乗りながら固定接頭辞しか needle にしない assert は、読み手に「守られている」と誤認させる。assert のラベルは契約の宣言であり、述語がそれを満たさなければ欠陥。新しい assert を書いたらラベルが約束する全ての壊れ方に mutant を当て、1 つでも生存したらラベルを狭めるか述語を広げるかの二択で、放置は選べない。"
+description: "assert のラベル（テスト名・メッセージ）は、その assert が守る契約の宣言である。"
 created: "2026-08-08T14:00:41+09:00"
 updated: "2026-08-08T14:00:41+09:00"
 sources:

@@ -2,7 +2,7 @@
 type: "patterns"
 title: "fail-closed ガードは「異常を検出したら止める」ではなく「正常を確認できなければ止める」で書く"
 domain: "patterns"
-description: "異常検出型のガードは、検出材料そのものを削除すれば迂回できる。正常確認型で書けば、材料の欠落そのものが停止条件になる。"
+description: "cross-Issue の値転写を遮断する fail-closed ガードが、「identity が**食い違う**」ときにしか発火しない実装になっていた。"
 created: "2026-08-03T07:46:56Z"
 updated: "2026-08-03T07:46:56Z"
 sources:

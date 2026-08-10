@@ -1,7 +1,7 @@
 ---
 title: "検出 grep と mutation (Edit old_string) は同一の文字列 strictness で実装する"
 domain: "patterns"
-description: "「存在 check → exact 操作」2 段階処理で検出 grep の prefix loose vs Edit old_string の exact match の strictness 差は「検出 OK → 操作 fail」の中途半端 hard fail を生む。両者で共通 literal を使うか、Edit 失敗時に fallback (末尾追記 / skip) を用意する。過去のレビュー事例 cycle 5 F-04 で実測。"
+description: "「存在 check → exact 操作」のような 2 段階処理で、検出側 (`grep -qF prefix`) と操作側 (Edit の `old_string` exact match) で文字列の strictness が異なると、「検出 OK → 操作 fail」の中途半端な状態に陥り hard fail を生む。"
 promote: rite-plugin
 created: "2026-04-19T03:30:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"

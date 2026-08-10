@@ -1,7 +1,7 @@
 ---
 title: "fix コメント / commit message で hallucinated canonical reference を生成する"
 domain: "anti-patterns"
-description: "fix 時に「canonical 参照」として存在しないファイル / 行番号 / anchor を commit message に書くと、LLM が「それっぽい数字」を hallucinate するリスク。anchor / Phase 番号 / heading 文字列で参照し、行番号が必要なら `wc -l` + `sed -n` で実在検証する。過去のレビュー事例 cycle 3 F-03 で実測 (lint.md L1586-L1591 が非実在)。過去のレビュー事例 cycle 1 で「説明文中の named architectural concept (`SECURITY 軸 / CORRECTNESS 軸`) を実在しないのに引用する」architectural false reference に拡張 (HIGH 1件)。"
+description: "fix サイクルで「canonical 参照」をコメントや commit message に書く際、Claude が実在しないファイル / 行番号 / anchor を生成する (hallucinate) リスクがある。"
 created: "2026-04-19T03:30:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"
 sources:

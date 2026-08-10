@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "best-effort な静的 matcher hardening は allowlist を COMMON-SET（非網羅）と宣言して review の whack-a-mole を止める"
 domain: "heuristics"
-description: "静的 matcher による security hardening は列挙を完全にできない。allowlist を「COMMON-SET, deliberately NOT exhaustive」と宣言し tail を上位レイヤ（reviewer prompt = Layer 1）で担保すると、列挙外ベクタの追加を繰り返す review の whack-a-mole を構造的に止められる。ただし「列挙完全性の欠落（非 blocking）」と「検出機構そのものの構造欠陥（blocking）」は別クラスとして区別する。out-of-scope クラスの doc 追記は際限がないため mergeable を正常出口とする。"
+description: "静的 bash matcher で危険操作を捕捉する security hardening（reviewer の `.git` 書き込み遮断等）は、原理的に列挙を完全にできない（任意の write ツール・難読化形を静的に enumerate できない）。"
 created: "2026-07-16T06:07:53+09:00"
 updated: "2026-07-16T06:07:53+09:00"
 sources:

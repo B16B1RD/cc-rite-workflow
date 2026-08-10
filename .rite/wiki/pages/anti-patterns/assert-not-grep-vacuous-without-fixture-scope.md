@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く"
 domain: "anti-patterns"
-description: "「掴んではいけない対象を掴まない」型の否定 assertion は、その run の fixture に対象が存在しなければ実装が何をしても pass する。直前の run のログを読む形だと、間に別のテストを挿入した瞬間に fixture がずれて恒真化する。各 assertion 群の直前に自前 run を置き、「掴むべきものを掴む」positive control を対で置く。"
+description: "`assert_not_grep \"$LOG\" 'pattern'` 型の否定 assertion は、**その run の入力に対象が含まれていなければ、実装が何をしても pass する**。"
 created: "2026-07-28T21:30:00+09:00"
 updated: "2026-07-28T21:30:00+09:00"
 sources:

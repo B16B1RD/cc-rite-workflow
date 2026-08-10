@@ -1,7 +1,7 @@
 ---
 title: "Identity / reference document の用語統一は『単語 X』ではなく『文脈類義語群全体』を対象にする"
 domain: "heuristics"
-description: "reference document の用語統一を「単語 X 単独」スコープで行うと、同一段落内の類義語群 (効率・最適化・圧迫 等) が統一漏れとして残り cycle 2-3 ループを発生させる。過去のレビューで 3 cycle の drift 波及漏れを実測、過去のレビュー事例 / 過去のレビュー事例 / 過去のレビューにおける 3 例で canonical SoT 単一化の successful application として確認。過去のレビューで UI メッセージ多言語混在 style drift を 7 番目の sub-heuristic として追加 (i18n/multilingual style policy も同 scope の言語選択全体を canonical SoT として扱う)。過去のレビューで sub-heuristic #7 を context synonym group 全体に拡張適用した 4 例目 successful application を追加 (i18n style 統一を blockquote だけでなく bash コメント + 周辺 prose 含む同 scope の context synonym group に一括適用することで cycle 2 ループを構造的に予防)。"
+description: "reference document (SKILL.md / `references/*.md` / 関連 commands) で identity / principle を明文化する際、用語統一を「単語 X 単独」のスコープで実施すると、同一段落内の類義語群 (効率・最適化・圧迫・枯渇 等) が統一漏れとして残り、cycle 2-3 の review-fix ループに持ち越される。"
 promote: rite-plugin
 created: "2026-04-17T08:55:00+00:00"
 updated: "2026-08-08T13:37:28Z"

@@ -3,7 +3,7 @@ type: "anti-patterns"
 title: "列挙・全称主張を持つ記述は書き直しでは収束しない — 撤去だけが指摘面を消す"
 domain: "anti-patterns"
 promote: rite-plugin
-description: "散文やコメントが call site を列挙したり「〜だけが X を持つ」と断定すると、対象が 1 つ増えるたびに偽になり同じ指摘が場所を変えて再生産される。列挙は完成させるのではなく置かない。"
+description: "散文やコメントが「この 2 field を env で渡す caller は X のみ」「以降の caller は番号を持たない」のように call site を数え上げたり、「〜だけが X を持つ」「どの経路でも Y されない」と全称・唯一性を断定すると、対象が 1 つ増えるだけでその文は偽になる。"
 created: "2026-08-03T07:46:56Z"
 updated: "2026-08-08T17:40:00+09:00"
 sources:

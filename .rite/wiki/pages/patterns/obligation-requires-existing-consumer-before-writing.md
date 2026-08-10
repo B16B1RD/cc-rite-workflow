@@ -2,7 +2,7 @@
 type: "patterns"
 title: "記録義務を規約に書く前に、その記録先を読む consumer が実在するかを grep で確かめる"
 domain: "patterns"
-description: "「filter するが記録は残す」型の補償制御は、記録先に consumer がいて初めて成立する。出力テンプレート・収集ステップ・schema のいずれにも受け皿がない節へ MUST を課しても、記録は誰にも読まれず破棄され、義務違反すら検出されない。義務を書く前に `grep -rn <記録先>` を打ち、consumer の実在を確認する。"
+description: "「条件 X に当たる指摘は filter する。"
 created: "2026-08-03T00:55:00+09:00"
 updated: "2026-08-03T00:55:00+09:00"
 sources:

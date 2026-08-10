@@ -1,7 +1,7 @@
 ---
 title: "新規 file 命名と既存 find glob が collision して silent 削除を起こす"
 domain: "anti-patterns"
-description: "既存の find glob (例: `.rite-flow-state.??????*` で `??????` が 6 文字 wildcard、`*` が任意文字) と新規 file 命名 (例: `.rite-flow-state.legacy.<timestamp>`) が偶発的に一致する場合、find が新規 file をマッチして `-mmin +1` 経過後に silent 削除される。新しい命名規則導入時は既存 glob と semantic 衝突しないかを必ず verify する。`-not -name` 例外 + 命名 token の test 化 + negative counter-test で defense-in-depth。過去のレビュー事例 cycle 3 で実測 (CRITICAL)、cycle 4 で session-end.sh への propagation 漏れも実測。"
+description: "既存の find glob (例: `.rite-flow-state.??????*` で `??????` が 6 文字 wildcard、`*` が任意文字) と、新規導入する file 命名 (例: `.rite-flow-state.legacy.<timestamp>`) が**偶発的に一致**する場合、find が新規 file をマッチしてしまい、`-mmin +1` 経過後に silent 削除される。"
 promote: rite-plugin
 created: "2026-04-30T03:50:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"

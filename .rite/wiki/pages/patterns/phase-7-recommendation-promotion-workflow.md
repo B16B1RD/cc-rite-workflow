@@ -1,7 +1,7 @@
 ---
 title: "Phase 7 user-escalated recommendation を fix loop に統合する canonical flow"
 domain: "patterns"
-description: "PR review で [review:mergeable] 到達後も reviewer recommendation (actionable / boundary) が surface することがある。Phase 7 は AskUserQuestion で user judgement を取得し「本 PR で対応」を選んだ recommendation を findings に escalate して fix loop に流す経路。Phase 7 が無いと mergeable=完了 で stylistic / readability 改善が silent に失われる。過去のレビュー事例 (8 cycle convergence) で 2 回の Phase 7 (cycle 4 / cycle 6) を経て 4 件の polish 改善 (F-10/F-11/F-12 + R-02) を取り込み 8 cycle で final convergence、Phase 7 の有効性を実証。"
+description: "PR review で `[review:mergeable]` 到達後も reviewer recommendation (actionable / boundary / design_confirmation) が surface することがある。"
 promote: rite-plugin
 created: "2026-05-28T03:00:00+00:00"
 updated: "2026-05-28T03:00:00+00:00"

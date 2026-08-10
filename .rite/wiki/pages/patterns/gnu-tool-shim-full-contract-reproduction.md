@@ -2,7 +2,7 @@
 type: "patterns"
 title: "GNU ツールの代替 shim は exit code だけでなく期限・シグナル範囲まで契約を全部再現する"
 domain: "patterns"
-description: "GNU timeout 等の代替 shim を書くとき、exit code 契約の一部だけを再現すると呼び出し側の fail-open イディオム（`[ \"$rc\" != \"124\" ] && pass`）と組み合わさって、shim のあらゆる故障が「合格」に化ける。(a) 全 exit code 契約、(b) 依存コマンドの command -v ガードと不在時の明示 fail、(c) fallback 分岐を強制実行する自己テスト、の 3 点セットに加え、docstring が「full contract」を謳うなら保証軸（exit code / 期限 / stdin 継承）を個別に列挙する。"
+description: "macOS/BSD で GNU ツール（`timeout` 等）が無い環境向けに shim を書くとき、**契約の一部だけを再現すると fail-open になる**。"
 created: "2026-07-25T07:05:21Z"
 updated: "2026-07-25T07:05:21Z"
 sources:

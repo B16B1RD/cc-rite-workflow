@@ -1,7 +1,7 @@
 ---
 title: "Validation chain の発火 reason は最初に入力を parse する段階で決まる（暗黙 validation が後続 check を unreachable 化）"
 domain: "heuristics"
-description: "validation chain の error reason を doc 化する際は「どの段階が最初に入力を parse するか」が実発火 reason を決める。jq による値注入は暗黙の syntactic validation を兼ねるため、後続の明示的 jq empty check は syntactically invalid な経路では到達不能 (effectively unreachable) な defense-in-depth backstop になる。reason 文字列 / sentinel emit を不変に保てば doc 整合修正は非ブロッキングで安全。過去のレビューで 3 reviewer が制御フローを独立トレースして検証 (0 finding)。過去のレビューで runtime WARNING / inline コメント / canonical doc の observability 3 surface 整合を完成 (系譜 #1198→#1199→#1226→#1227、0 finding)。"
+description: "validation chain の error reason を doc 化する際は「どの段階が最初に入力を parse するか」が実発火 reason を決める。"
 promote: rite-plugin
 created: "2026-06-01T06:01:05+00:00"
 updated: "2026-06-01T08:15:52+00:00"

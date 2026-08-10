@@ -3,7 +3,7 @@ type: "patterns"
 title: "cwd破損下の成否検証は非空性とexit codeの両方をチェックする（文字列等値比較だけでは偽陽性を防げない）"
 domain: "patterns"
 promote: rite-plugin
-description: "空文字列同士の文字列比較は等値として成立してしまうため、cwd破損等でコマンドが失敗しても等値比較ベースの成否判定は偽の成功を報告しうる。exit code の明示チェックと非空性チェックを両方組み合わせることで、この偽陽性クラスを構造的に防げる。"
+description: "`[ \"$(cmd_a)\" = \"$(cmd_b)\" ]` のような command substitution の等値比較は、両コマンドが cwd 破損等で失敗し共に空文字列を返した場合でも `true` と評価される。"
 created: "2026-07-17T09:50:00+00:00"
 updated: "2026-07-17T09:50:00+00:00"
 sources:

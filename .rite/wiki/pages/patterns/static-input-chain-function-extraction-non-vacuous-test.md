@@ -1,7 +1,7 @@
 ---
 title: "入力注入経路のない静的文字列処理連鎖は関数抽出 + 境界行 extract で非 vacuous unit テスト化する"
 domain: "patterns"
-description: "静的入力のみに適用される文字列処理連鎖 (エスケープ等) は統合テストでは exercise できず assertion が vacuous 化する。連鎖を関数に抽出し、テスト側で awk 境界行抽出 + eval + declare -f gate で関数だけを load して実 C0 入力を直接流す方式で非 vacuous unit テスト化。commit 前 mutation 検証 (核心行削除 → assertion fail) で runtime 実証する。過去のレビューで確立。過去のレビューで **detection program (jq filter) 抽出 + GraphQL-shaped fixture** へ一般化 (静的 grep では見えない scoping 反転 semantic break を behavioral assert で捕捉、fixture 到達不能層は静的 assert で分担補完、0 findings)。"
+description: "hook 内の文字列処理連鎖 (エスケープ等) が **静的入力 (literal な reason 文字列等) のみに適用され、テストから入力を注入する経路が存在しない** 場合、hook 全体の統合テスト (fake jq 等で fallback を発火させる方式) では連鎖を exercise できず、「valid JSON」「raw 制御バイト非漏出」のような assertion が vacuous false positive 化する。"
 promote: rite-plugin
 created: "2026-06-05T18:33:35Z"
 updated: "2026-06-09T02:35:18Z"

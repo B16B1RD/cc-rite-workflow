@@ -3,7 +3,7 @@ type: "heuristics"
 title: "新規 helper は既存 sibling の安全規約に整合させる（trap・tree 解決・制御文字無害化）"
 domain: "heuristics"
 promote: rite-plugin
-description: "新規 helper を書くとき、既存 sibling helper が確立した安全規約（signal trap での tempfile 回収 / strategy 依存の tree 解決 / 制御文字無害化 / 委譲先 stderr の素通し / summary の不変条件）へ整合させる。規約非対称は個別バグではなく複数 MEDIUM 指摘として段階的に surface する。"
+description: "新規の shell helper を書くとき、同ディレクトリの既存 sibling helper が確立した安全規約（signal-specific trap での tempfile 回収 / branch-strategy 依存の tree 解決 / 制御文字無害化 / 委譲先の stderr 素通し / summary の不変条件）へ整合させる。"
 created: "2026-07-03T00:42:39+00:00"
 updated: "2026-07-03T00:42:39+00:00"
 sources:

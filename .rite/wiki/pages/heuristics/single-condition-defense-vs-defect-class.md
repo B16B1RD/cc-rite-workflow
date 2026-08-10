@@ -3,7 +3,7 @@ type: "heuristics"
 title: "特定の 1 バイト・1 条件で書いた防御は、defect class 全体を覆うか修正直後に自問する"
 domain: "heuristics"
 promote: rite-plugin
-description: "指摘された 1 件を直した直後に「この防御は defect class 全体を覆っているか」を問う。文字なら文字クラス、条件なら包含述語へ広げると、副次的に別経路も構造的に閉じることが多い。"
+description: "レビュー指摘は具体的な 1 ケースで届く。"
 created: "2026-08-03T07:46:56Z"
 updated: "2026-08-03T07:46:56Z"
 sources:

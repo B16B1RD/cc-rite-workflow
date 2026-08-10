@@ -2,7 +2,7 @@
 type: "patterns"
 title: "bilingual CHANGELOG は PR 単位で同期し、バージョン見出しは英語・新規エントリは number-free に保つ"
 domain: "patterns"
-description: "en/ja CHANGELOG の運用 3 慣習: (1) 両言語を PR 単位で同時更新する（リリース時バックフィルではない）、(2) 和訳はカテゴリ見出し（### 変更）のみで、バージョン見出し（## [Unreleased]）は英語維持（release スクリプトの置換対称性の前提）、(3) 新規 [Unreleased] エントリは Issue/PR 番号を書かない（number-reference-check、既存節は grandfathered）。"
+description: "CHANGELOG.md / CHANGELOG.ja.md のロケールペアは PR 単位で同時更新するのが確立慣習で、片側のみの更新は cross-file impact（i18n parity）違反として HIGH になる。"
 created: "2026-07-17T12:04:54Z"
 updated: "2026-07-17T12:04:54Z"
 sources:

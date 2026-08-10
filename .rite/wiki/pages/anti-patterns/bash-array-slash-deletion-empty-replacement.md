@@ -1,7 +1,7 @@
 ---
 title: "Bash 配列の slash-deletion は要素を空文字列に置換するだけで削除しない"
 domain: "anti-patterns"
-description: "`cleanup_dirs=("${arr[@]/$target}")` 形式の bash パラメータ展開は各要素内の `pattern` 一致部分を空文字列に置換するだけで配列スロットを削除しない。trap 等の cleanup ループが `[ -n "$d" ]` filter で空要素を skip する設計だと「機能的には安全」に見えるが、反復ごとに空要素が累積し配列サイズが test cycle と比例して肥大する silent failure。完全削除を保証する明示的再構築 helper (`for d in "${arr[@]:-}"; do [ -n "$d" ] && [ "$d" != "$target" ] && new+=("$d"); done` + `${#new[@]}` 分岐) で `set -u` 安全に対応。過去のレビューで 10 反復後 10 → 0 累積を実測、shellcheck カスタムルール / CI grep で `[@]/$` ban する構造的予防が推奨。"
+description: "`cleanup_dirs=(\"${cleanup_dirs[@]/$target}\")` のような bash パラメータ展開 `${arr[@]/pattern}` は、各要素内の `pattern` 一致部分を空文字列に置換するだけで配列スロット自体を削除しない。"
 created: "2026-05-16T13:30:00+09:00"
 updated: "2026-05-16T13:30:00+09:00"
 sources:

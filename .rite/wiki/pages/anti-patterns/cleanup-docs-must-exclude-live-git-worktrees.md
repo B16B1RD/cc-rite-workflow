@@ -3,7 +3,7 @@ type: "anti-patterns"
 title: "アンインストール/クリーンアップ手順の rm -rf 推奨は git worktree 等の live 状態管理対象を見落としやすい"
 domain: "anti-patterns"
 promote: rite-plugin
-description: "「gitignore 済み = 無条件で rm -rf 可能」という単純化は、対象ディレクトリ配下に git worktree のような live な状態管理対象が含まれるケースを見落とす。プロジェクト自身の cleanup 実装が慎重に扱っている対象を、ドキュメントが素朴な一括削除コマンドとして誤って推奨してしまう。"
+description: "アンインストール手順やクリーンアップ手順のドキュメントで、gitignore 済みディレクトリを「安全に削除してよい」と単純化すると、その配下に git worktree のような live な状態管理対象が含まれるケースを見落とす。"
 created: "2026-07-07T22:03:17+00:00"
 updated: "2026-07-07T22:03:17+00:00"
 sources:

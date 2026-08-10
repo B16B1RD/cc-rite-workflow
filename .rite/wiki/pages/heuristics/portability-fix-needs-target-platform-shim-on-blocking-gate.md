@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "対象プラットフォーム挙動を shim して blocking gate 側で pin する"
 domain: "heuristics"
-description: "移植性の修正を non-blocking な対象プラットフォーム leg だけに委ねると、退行が merge を止められない。対象の挙動（コマンドの出力規約・存在可否）を shim で再現する TC を blocking gate 側に置けば、Linux CI でも同じ分岐を踏める。shim が効いていることを assert する floor を必ず添える。"
+description: "移植性の修正は、対象プラットフォームで検証されて初めて意味を持つ。"
 created: "2026-07-25T14:18:43Z"
 updated: "2026-07-25T14:18:43Z"
 sources:

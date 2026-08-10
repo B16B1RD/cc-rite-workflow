@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "`cmd > file || true` は no-match (rc=1) と書き込み失敗 (rc>=2) を混同する"
 domain: "anti-patterns"
-description: "grep 等の `cmd > file || true` 型 best-effort リダイレクトは、no-match の rc=1 と disk full / permission denied 等の書き込み失敗 rc>=2 を同じ「true で握り潰す」経路に落とし込む。空ファイルを後続の `[ -s file ]` 分岐で判定すると、書き込み失敗時に誤って no-match 扱いされ、破壊的分岐 (rm 等) を誤選択しうる。"
+description: "`grep pattern > file || true` のような best-effort リダイレクトは、grep の「no-match」(rc=1) と「書き込み失敗」(rc>=2、disk full / permission denied 等) をどちらも `|| true` で握り潰し区別しない。"
 created: "2026-07-22T13:15:00+09:00"
 updated: "2026-07-22T13:15:00+09:00"
 sources:

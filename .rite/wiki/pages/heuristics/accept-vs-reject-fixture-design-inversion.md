@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "accept fixture と reject fixture は設計目的が逆 — 安全側の形状を両方に適用すると順序契約が pin できなくなる"
 domain: "heuristics"
-description: "分岐チェーンに新しいガードを挿入したとき、「そのガードが先行分岐より前にある」という順序契約は fixture の形状に依存して観測可能／不可能が決まる。accept 側の fixture を「先行 invariant が短絡する形状」に倒すのは正しい判断（そうしないと受理判定が観測できず vacuous pass になる）だが、**同じ判断を reject fixture にも適用すると、両分岐が発火しうる形状が 1 つも無くなり、順序退行の mutation が全テスト通過する**。"
+description: "分岐チェーンに新しいガードを挿入したとき、「そのガードが先行分岐より前にある」という順序契約は fixture の形状に依存して観測可能／不可能が決まる。"
 created: "2026-07-27T10:57:51+09:00"
 updated: "2026-07-27T10:57:51+09:00"
 sources:

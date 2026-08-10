@@ -1,7 +1,7 @@
 ---
 title: "mkdir 成功のみの判定漏れと brace group 未使用によるリダイレクト診断メッセージ漏洩"
 domain: "anti-patterns"
-description: "`if mkdir -p DIR 2>/dev/null; then <実際に書く> else <破棄> fi` のように、フォールバック判定を先頭コマンド (mkdir) の終了コードだけに頼ると、DIR が既存の読み取り専用ディレクトリの場合でも mkdir -p は rc=0 を返すため、後続のファイル open 失敗（権限不一致・パス衝突・ディスクフル）を判定できない。是正には `{ : > FILE; } 2>/dev/null` のような brace group 付き write probe を if 条件に含める必要があるが、この probe 自体（あるいは同種の抑止対象コード）を brace group なしで `cmd > FILE 2>/dev/null` と書くと、bash のリダイレクト評価順序（`>` が先に評価される）のため open 失敗時の診断メッセージが抑制されず stderr に漏れる。両者は同一のイディオム `{ cmd > FILE; } 2>/dev/null` で同時に解決される。"
+description: "`if mkdir -p DIR 2>/dev/null; then <実際に書く> else <破棄> fi` のように、フォールバック判定を先頭コマンド (mkdir) の終了コードだけに頼ると、DIR が既存の読み取り専用ディレクトリの場合でも mkdir -p は rc=0 を返すため、後続のファイル open 失敗（権限不一致・パス衝突・ディスクフル）を判定できない。"
 created: "2026-07-22T08:20:00+00:00"
 updated: "2026-08-06T00:40:00+09:00"
 sources:

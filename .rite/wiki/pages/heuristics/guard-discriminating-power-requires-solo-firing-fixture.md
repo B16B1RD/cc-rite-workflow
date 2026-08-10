@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "ガードの識別力は「そのガード単独で発火する形状」の fixture とガード固有文言 assert で担保する"
 domain: "heuristics"
-description: "rc と総称的な grep -q 'ERROR' だけの assert は兄弟ガードに masking され、ガードを削除しても全緑で通る。ガード固有の診断文言（not readable / not found 等）を assert し、そのガードだけが捕捉する形状の fixture を置いて初めて識別力が立つ。是正の rationale をコメントに書いた時点で、同じ assert 形を持つ同型 TC 群への転記が必要 — 転記漏れは 1 cycle 遅れて同じ指摘で返ってくる。"
+description: "エラーガードのテストが (a) rc の非ゼロ性と (b) 総称的な `grep -q 'ERROR'` しか assert していないと、**兄弟ガードが同じ rc・同じ総称文言で発火するため、対象ガードを削除してもテストは全緑で通る**。"
 created: "2026-08-05T09:26:00+09:00"
 updated: "2026-08-05T09:26:00+09:00"
 sources:

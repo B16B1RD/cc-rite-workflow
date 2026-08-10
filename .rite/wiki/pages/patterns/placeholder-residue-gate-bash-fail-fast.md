@@ -1,7 +1,7 @@
 ---
 title: "LLM substitute placeholder は bash residue gate で fail-fast 化する"
 domain: "patterns"
-description: "bash block で `[ "{placeholder}" -gt 0 ]` の形で使われる LLM substitute placeholder は substitute 漏れ時に `integer expression expected` rc=2 で silent `else` 分岐に落ちる。`case "$var" in *"{placeholder}"*) exit 1 ;; esac` 形式の residue gate を同型に配置して fail-fast 化するのが canonical pattern (過去のレビューで既存 5 site + 新規 1 site = 6 site 対称化)。"
+description: "LLM が literal substitute する bash 変数 (例: `commit_msg=\"... {n_pages_created} ...\"` や `var=\"{placeholder}\"`) は、substitute 漏れ時に bash レベルで silent 誤動作する経路を持つ。"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/placeholder-residue-gate-bash-fail-fast.md"
 created: "2026-04-18T12:50:00+00:00"

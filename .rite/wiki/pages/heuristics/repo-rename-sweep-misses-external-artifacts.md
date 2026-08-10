@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "リポジトリ owner rename の一括置換はリポジトリ外成果物に届かない"
 domain: "heuristics"
-description: "owner 名・URL の一括置換 PR は、git grep で走査できるツリー内の参照しか更新できない。GitHub user-attachment としてアップロード済みの動画のような「リポジトリ外に出た成果物」は、その生成元ソース（composition）を置換しても公開物側が旧表記を表示し続け、同一ページ内で新旧 2 つの owner を提示する状態を作る。再生成コストが高い成果物は、成果物の隣に「旧表記である旨 + 正しい導線への誘導」の暫定注記を置いて実害を解消し、本体差し替えは follow-up に分離するのが低コストな収束経路になる。"
+description: "owner 名・URL の一括置換 PR は、git grep で走査できるツリー内の参照しか更新できない。"
 created: "2026-07-26T20:51:40+09:00"
 updated: "2026-07-26T20:51:40+09:00"
 sources:

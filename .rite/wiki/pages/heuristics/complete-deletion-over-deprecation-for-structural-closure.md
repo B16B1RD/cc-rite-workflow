@@ -1,7 +1,7 @@
 ---
 title: "Legacy field の「deprecate + 残置」よりも「完全削除」が構造的閉塞を実現する"
 domain: "heuristics"
-description: "Refactor で命名衝突 / semantic 混在を解消する際に「legacy field を deprecate ラベル付きで残置」する戦略は definition の二重化が解消されないため Asymmetric Fix Transcription を review-fix loop 内で再生産する。「legacy field を完全削除 + disambiguation note も同時に簡素化」する構造的戦略は、対称化責務そのものを消滅させ収束を実現する。過去のレビューで実測 — cycle 1-3 で「deprecate + 残置」採用により Self-violation cascade が連続 3 回再発、cycle 4 で「完全削除」転換により全 findings 18→14→4→0 / CRITICAL+HIGH 7→3→2→0 の shrinking-cycle で 0 findings 到達。Mechanical gate 導入 meta-PR が解決対象 anti-pattern を fix 自身で再現する観察は、mechanical gate の必要性 (`prose enforcement only では silent skip が必ず発生する` 仮定) を逆説的に裏付ける dogfooding 証拠。"
+description: "Refactor で命名衝突 / semantic 混在を解消する際に「legacy field を deprecate ラベル付きで残置」する戦略は、definition の二重化が解消されないため [Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) を review-fix loop 内で再生産する。"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/complete-deletion-over-deprecation-for-structural-closure.md"
 created: "2026-05-18T09:00:00Z"

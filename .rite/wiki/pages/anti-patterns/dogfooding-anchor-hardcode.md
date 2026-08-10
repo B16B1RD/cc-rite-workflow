@@ -1,7 +1,7 @@
 ---
 title: "自 repo 固有 anchor を Edit old_string に hardcode すると consumer project で hard fail する (dogfooding bias)"
 domain: "anti-patterns"
-description: "command 指示書が Edit ツールの `old_string` に自プラグイン開発 repo 固有の anchor コメントを hardcode しつつ、発動条件で anchor 存在を verify しない設計は consumer project で `old_string not found` hard fail する。過去のレビューで `/rite:wiki:init` Phase 1.3 の `.gitignore` anchor 配布経路漏れとして cycle 4 初検出。"
+description: "command 指示書 (`commands/**/*.md`) が Edit ツールの `old_string` に「自プラグイン開発 repo 固有のコメント / anchor」(例: `# <<< gitignore-wiki-section-end`) を hardcode しつつ、発動条件で anchor 存在を verify しない設計は、consumer project で Edit が `old_string not found` となり hard fail する典型的な **dogfooding bias**。"
 promote: rite-plugin
 created: "2026-04-19T03:30:00+00:00"
 updated: "2026-07-22T08:20:00+00:00"

@@ -1,7 +1,7 @@
 ---
 title: "Reviewer の Likelihood-Evidence anchor 未提示が現実的 finding の機械的降格を誘発"
 domain: "anti-patterns"
-description: "Hypothetical Exception Categories (security/database/devops/dependencies) 外の reviewer が grep で示せる現実的 finding を出しながら `Likelihood-Evidence:` anchor を出力しないことで、Phase 5.3.0 Observed Likelihood Gate が CRITICAL/HIGH/MEDIUM/LOW-MEDIUM 重要度の指摘を機械的に推奨事項に降格する失敗 mode。過去のレビュー事例 review で prompt-engineer の確信度 88/85 の 2 件 HIGH finding が anchor 未提示により全 demote、結果 `[review:mergeable]` 化された実測。canonical 対策は (a) reviewer agent body の Output Format 章で anchor MUST 義務化、(b) Phase 5.3.0 降格件数の completion report 冒頭表示 + AskUserQuestion 確認、(c) anchor 自動 inject の 3 経路。"
+description: "Hypothetical Exception Categories (security/database/devops/dependencies) 外の reviewer (prompt-engineer / code-quality / tech-writer 等) が、grep で示せる現実的 finding を出しながら `Likelihood-Evidence:` anchor を出力しないことで、Phase 5.3.0 Observed Likelihood Gate (Post-Reviewer Safety Net) によって CRITICAL/HIGH/MEDIUM/LOW-MEDIUM 重要度の指摘がすべて推奨事項に機械的降格される失敗 mode。"
 promote: rite-plugin
 created: "2026-05-18T20:30:00+09:00"
 updated: "2026-05-18T20:30:00+09:00"

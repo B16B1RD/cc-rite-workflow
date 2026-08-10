@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "degraded と fail の境界は「差し戻して直るか」で引く"
 domain: "heuristics"
-description: "gate の縮退 (degraded) と失敗 (fail) の振り分けを「存在しない / 読めない」のような状態の種類で決めると、両方向に害が出る。差し戻し先で直せないもの (置換漏れ・permission・環境不備) を fail にすると非収束ループになり、直せるものを degraded にすると守るべき Given で機械強制が降りる。基準は状態の種類ではなく「差し戻して直るか」。"
+description: "gate に「縮退 (degraded、判定不能だが続行)」と「失敗 (fail、差し戻す)」の 2 出口があるとき、振り分けの基準を**状態の種類**（「存在しない」「読めない」「解決できない」）で書くと、必ずどちらかの方向に間違える。"
 created: "2026-08-07T18:40:00+09:00"
 updated: "2026-08-07T18:40:00+09:00"
 sources:

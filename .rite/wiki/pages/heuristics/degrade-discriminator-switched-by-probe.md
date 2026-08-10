@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "degrade する対象をテストするときは判別子を probe と連動させる — 片側の値で固定すると degrade 環境が恒久 RED になる"
 domain: "heuristics"
-description: "「degrade 出力と正常出力が同一なので機械可読な判別子を要求する」という vacuous green 潰しは正しいが、判別子を GNU 側の値で固定すると、degrade する環境（= 緑化しようとしていた macOS そのもの）が必ず fail する。判別すべきは「検証が走ったか」であって「GNU かどうか」ではない。probe で期待値を切り替え、degrade 側は degradation 契約を明示的に要求する形にすると両環境で fail-closed のまま緑になる。"
+description: "スクリプトが GNU ツール不在時に `n_stale=0` + rc 0 で短絡する設計だと、「0 件を期待する TC」は **degrade 経路でも PASS する**（vacuous green）。"
 created: "2026-07-25T07:05:21Z"
 updated: "2026-07-25T07:05:21Z"
 sources:

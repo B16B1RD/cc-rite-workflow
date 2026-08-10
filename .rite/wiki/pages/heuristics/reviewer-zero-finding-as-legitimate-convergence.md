@@ -1,7 +1,7 @@
 ---
 title: "0 件 finding = 正常終了として受容する (false-positive 回避義務)"
 domain: "heuristics"
-description: "累積対策 PR の review-fix loop で reviewer が「真に finding が無いときに何か挙げないと bias と見なされる」と感じる認知傾向は、fractal pattern が完全収束した cycle で false-positive を意図的に作る経路となり review-fix loop を永久化させる。`0 件 = 正常終了` を恐れない姿勢を canonical 化することで、収束相での無理な finding 捏造を抑制する。過去のレビュー事例 cycle 6 → cycle 8 (Doc-Heavy PR 8 cycle 完全収束) で「真に finding がないときに何か挙げないと bias」を抑制し 0 件 = 正常終了を恐れない姿勢が loop 永久化を回避することが reviewer により明示された実例。`明示的な収束宣言` + `healthy self-assessment の明示` + `未検証領域 sweep の追加 step` + `複数 reviewer 独立 0 件は強い convergence signal` の 4 規範を canonical 化。"
+description: "累積対策 PR の review-fix loop で reviewer が「真に finding が無いときに何か挙げないと bias と見なされる」と感じる認知傾向は、fractal pattern が完全収束した cycle で **false-positive を意図的に作る** 経路となり review-fix loop を永久化させる。"
 promote: rite-plugin
 created: "2026-05-26T05:00:00+00:00"
 updated: "2026-07-22T08:20:00+00:00"

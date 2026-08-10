@@ -2,7 +2,7 @@
 type: "patterns"
 title: "区切り文字の制約は placeholder 単位でなくセル単位で書き、禁止ではなくエスケープを正規形に固定する"
 domain: "patterns"
-description: "構造化データを LLM に生成させる指示で、区切り文字の禁止規約を 1 つの placeholder にだけ書くと、同じセルへ verbatim 埋め込みされる別 placeholder が無防備に残る。禁止（omit）は他の literal 一致規約と衝突して逃げ場が無くなるため、エスケープを正規形として固定するほうが両立する。"
+description: "構造化データ（GFM テーブル行等）を LLM に生成させる指示で、セル破壊文字の禁止規約を**1 つの placeholder だけ**に書くと、同じセルへ verbatim 埋め込みされる別の placeholder が無防備に残る。"
 created: "2026-07-30T15:40:55Z"
 updated: "2026-07-30T15:40:55Z"
 sources:

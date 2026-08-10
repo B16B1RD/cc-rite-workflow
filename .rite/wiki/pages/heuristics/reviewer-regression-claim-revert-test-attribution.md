@@ -1,7 +1,7 @@
 ---
 title: "reviewer の regression 主張は revert test (git show / git diff) で PR 由来か pre-existing かを独立検証する"
 domain: "heuristics"
-description: "reviewer が「この PR が導入した regression」「revert すれば消える」と CRITICAL を主張しても、現象 (failure mode) の実在と PR 由来/pre-existing の attribution は別問題。orchestrator は `git show <base>:<file>` で旧構造を独立確認し revert test を再現してから blocking 判定する。reviewer は旧コードを fabricate しうる (「git show main: で確認」と書いて実構造と相違)。特に CRITICAL かつ他 reviewer と矛盾する場合は必須。過去のレビューで error-handling reviewer が「&& guard 解体で導入された regression」と主張したが develop HEAD は新旧同形 = pre-existing と判明し別 関連する課題 化。Asymmetric Fix Transcription の prior が確証バイアスを生む点も実測。過去のレビューで例外ケースを追加: revert test が pre-existing と判定しても、Issue の acceptance criteria が明確にファイル間の相互無矛盾を要求している場合、討論フェーズを経て本 PR scope 内での修正が正当化されうる。"
+description: "reviewer が「この PR が導入した regression」「revert すれば消える」と CRITICAL を主張しても、orchestrator はその attribution (帰属) を鵜呑みにしてはならない。"
 promote: rite-plugin
 created: "2026-06-02T01:52:19Z"
 updated: "2026-07-22T13:15:00+09:00"

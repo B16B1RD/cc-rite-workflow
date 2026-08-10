@@ -3,7 +3,7 @@ type: "patterns"
 title: "git check-ignore の実効判定は -q と -v で rc 意味論が異なる (negation マッチ検査の要否)"
 domain: "patterns"
 promote: rite-plugin
-description: "git check-ignore は -q では negation 決着時に rc=1 (not ignored) を返すが、-v では negation マッチも「マッチあり」として rc=0 を返す。rc ベースの実効 ignore 判定で -v を使う経路は「rc==0 かつ matched pattern が negation でない」の複合条件が必須。"
+description: "`git check-ignore` の exit code は flag によって意味論が異なる: `-q` (quiet / non-verbose) は negation ルール (`!pattern`) 決着時に rc=1 (= not ignored) を返すが、`-v` (verbose) は negation マッチも「マッチあり」として数え rc=0 を返す。"
 created: "2026-07-13T00:29:27+09:00"
 updated: "2026-07-13T00:29:27+09:00"
 sources:

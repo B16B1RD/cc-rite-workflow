@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "awk の exit は END 規則を実行する — 早期終了と END フォールバックの併用は二重出力になる"
 domain: "anti-patterns"
-description: "`f && /^#/ { print h; exit }` と `END { if (f) print h }` を併用すると、exit が END を走らせるため正常系で 2 行が出る。呼び出し側の数値 guard が改行込みの値を非数値として飲み込み、修正したはずの正常系で診断が丸ごと消える（gawk / mawk 両実装で再現）。併用するなら print する全規則が「出力済み」フラグを立てる規律が要るが、本体規則を記録だけにして print 点を END の 1 箇所へ集約すれば二重出力が構造的に起こりえなくなる。"
+description: "POSIX awk の `exit` は**プログラムを即座に終えるのではなく END 規則へ飛ぶ**。"
 created: "2026-08-08T14:00:41+09:00"
 updated: "2026-08-08T14:00:41+09:00"
 sources:

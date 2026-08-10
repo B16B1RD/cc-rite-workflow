@@ -1,7 +1,7 @@
 ---
 title: "「invariant は logic 上成立」を信頼せず empirical reproduction で verify する"
 domain: "heuristics"
-description: "review-fix loop が累積 28+ cycle に達した時点でも、「invariant は logic 上成立する」という reasoning ベースの reviewer 判断は silent regression を見逃す経路となる。AC verification scenario / Helper migration / Symmetric refactor / `rejected(...)` judgment / **canonical reference の factual claim** いずれも実機 reproduction で verify する。過去のレビュー事例 cycle 29 で writer-side fallback 不在 silent regression を empirical 観測で初顕現、過去のレビュー事例 cycle 1-4 で `realpath -m` symlink 挙動 / 「実用上の影響はない」prose 断定 / `realpath --relative-to` 外側挙動 / Edge Case 表予測の 4 件の factual claim を `man` / grep / runtime invoke で反証して訂正したことを実測。過去のレビューで「reviewer 評価の割れ (exit 0 維持 vs leak) は coverage gap であり runtime observation で確証する multi-reviewer 版」を追加。過去のレビュー事例 (security 修正 PR) で 5 reviewer 全員の実測検証 (256 バイト全数 sweep / PIPESTATUS 実証 / 3 種 mutation test / µs ベンチ / python3 UTF-8 確認) が hypothetical finding ゼロの low-noise 2-cycle 収束を生む positive evidence を追加。"
+description: "review-fix loop が累積 28+ cycle に達した時点でも、「invariant は logic 上成立する」という reasoning ベースの reviewer 判断は silent regression を見逃す経路となる。"
 promote: rite-plugin
 created: "2026-04-27T23:01:24+00:00"
 updated: "2026-07-25T14:18:43Z"

@@ -1,7 +1,7 @@
 ---
 title: "外部コマンド (gh) 失敗時に not-found と一時障害を区別せず別経路へ落とすのは silent failure"
 domain: "anti-patterns"
-description: ""
+description: "`gh pr view N` のような外部コマンドが失敗したとき、失敗種別 (origin) を区別せず無条件に「別の番号空間・別経路とみなす」分岐は silent failure である。"
 promote: rite-plugin
 created: "2026-06-02T03:50:58Z"
 updated: "2026-07-30T15:40:55Z"

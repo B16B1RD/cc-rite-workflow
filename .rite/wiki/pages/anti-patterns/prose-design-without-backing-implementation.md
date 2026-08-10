@@ -1,7 +1,7 @@
 ---
 title: "散文で宣言した設計は対応する実装契約がなければ機能しない"
 domain: "anti-patterns"
-description: "設計意図を散文で記述しつつ、それを機能させる実装 / 契約 / consumer が存在しない状態を「Prose-only design」と呼ぶ。過去のレビューで 3 CRITICAL + 5 HIGH のうち 4 件が同じ根 (shell 変数未定義 / gate 書式規約忘れ / sentinel consumer 不在 / prose-only safeguard) に由来。実装レビュー時の trace 手順で検出する。過去のレビューで「prompt 側 evidence 義務化 + hook 側検出不在」も同じ根から派生する anti-pattern として追加 (follow-up Issue 化戦略を提示)。過去のレビュー事例 cycle 2 で「MVP の未定義部分は曖昧に宣言せず Note で明示する」逆方向対応 (透明性確保) を追加。過去のレビュー事例 cycle 14 で「prose ↔ code 不整合」(state-read.sh 失敗時の skip 宣言 vs 空 substitute による partial corruption silent landed 経路) を sub-pattern として追加。過去のレビュー事例 cycle 5 で「Defense-in-depth claim と race window の time-ordering 乖離」(同期 rm が trap install 前で完了しているのに trap cleanup() 内で再 rm する dead code) を新 sub-pattern として追加。time-ordering 検証 heuristic を heuristic 系譜に追加。過去のレビュー事例 cycle 1-2 で「data-contract emit の marker コメントが phantom consumer を断定する」亜種を追加 (emit は data contract として正当だが「Phase 4.5.0 が参照する」と consumer 関係を fictional に断定、実際の dedup は prose 参照で達成。grep 裏取りで検出→訂正→universal-negative 主張を再 grep 検証)。"
+description: "設計意図を散文で記述しつつ、それを機能させる実装 / 契約 / consumer が存在しない状態を「Prose-only design」と呼ぶ。"
 promote: rite-plugin
 created: "2026-04-17T04:30:00+00:00"
 updated: "2026-07-24T10:32:51Z"

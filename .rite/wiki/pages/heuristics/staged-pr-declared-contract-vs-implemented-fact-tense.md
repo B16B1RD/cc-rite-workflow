@@ -3,7 +3,7 @@ type: "heuristics"
 title: "段階分割 PR では「契約として宣言したこと」と「いま実装されていること」を時制で書き分ける"
 domain: "heuristics"
 promote: rite-plugin
-description: "データ契約だけを先に切る PR で、未配線の producer 側を現在形で書くと読者は実装済みと受け取る。責務宣言（「出力する場合は N キーを埋める」）と配線状況の明示（「配線は後続スコープ」）に分け、予防的に置いたガードの理由も prospective に書く。未配線の機能名を grep して全箇所を一括処理しないと、1 箇所直して他を放置する drift が cycle をまたいで再発する。"
+description: "Sub-Issue でデータ契約だけを先に切る PR では、SoT ドキュメントと LLM 向け指示が「write 側は常に N キーを出力する」「フィールドとして保存される」と現在形で書かれやすい。"
 created: "2026-07-27T10:57:51+09:00"
 updated: "2026-07-27T10:57:51+09:00"
 sources:

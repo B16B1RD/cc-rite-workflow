@@ -2,7 +2,7 @@
 title: "Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する"
 domain: "anti-patterns"
 created: "2026-04-24T14:55:00+00:00"
-description: "「N site pin した」という claim と実 assert の gap は regression 検出インフラへの信頼を破壊する。実装を N 箇所すべて直しても pin が M<N 箇所しか無ければ、残り N-M 箇所は修正を外しても suite が green のまま生存する — 「適用箇所数」と「pin 箇所数」は別の数字であり、fix の完了条件に両者の一致を含める。0 件を assert する counting assertion は、同じ commit 内で pattern が 1 に到達しうることを示さない限り、それ自身が空振り経路を持つ。gap の検出は mutation（canonical phrase の 1 文字 drift / 修正 hunk の revert）で実測する。"
+description: "test ファイルのコメントが「cleanup arm 3 site (L383/L409/L412) の完全一致を pin」のように **複数 site pin** を claim していても、実際の `assert_contains` が 1 site しか pin していない (または canonical phrase が実在 site と factually 一致しない) 場合、regression 検出インフラへの信頼を破壊する false-sense-of-security。"
 updated: "2026-08-07T23:45:00+09:00"
 sources:
   - type: "reviews"

@@ -3,7 +3,7 @@ type: "heuristics"
 title: "テンプレート流用の新規スクリプトは最新兄弟の防御を継承する"
 domain: "heuristics"
 promote: rite-plugin
-description: "既存スクリプトをテンプレートに新規スクリプトを作ると、兄弟スクリプト群が後から獲得した防御（wc -l 空白正規化、usage 契約と実装の一致）を継承し漏らす。流用元は最も古い兄弟でなく最も新しい兄弟を選ぶ。転記元は git grep で全サイトを列挙し git log -S で最終更新を確認してから決める。実装だけでなくその根拠として引用した事実も同時に stale になる。防御を強制する静的検査がファイル名の明示列挙型なら、新規ファイルは構造的にその死角へ入る — 新規追加時はリストへの登録要否を必ず確認し、列挙を sweep 型にできないか検討する。"
+description: "既存スクリプト（bang-backtick-check.sh）をテンプレートに新規 check スクリプトを作ったところ、兄弟スクリプト群が**後から**獲得した防御 — `wc -l` の空白正規化（BSD/macOS パディング対応、sentinel-contract-check.sh が獲得済み）、usage の exit code 契約と実装の一致（同）— を継承し漏らし、cycle 1 レビューで MEDIUM×2 の指摘になった。"
 created: "2026-07-19T15:00:00+09:00"
 updated: "2026-08-07T23:45:00+09:00"
 sources:

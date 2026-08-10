@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "「既存ドキュメントが accepted trade-off と書いている」は指摘却下の十分条件ではない"
 domain: "heuristics"
-description: "accepted 表記を根拠に finding を却下する前に、(a) その正当化の射程が当該サイトを含むか、(b) 提案された修正がその trade-off を実際に取り崩すか、の 2 点を確認する。片方でも外れていれば accepted 表記は反証にならない。"
+description: "reviewer が finding を出したとき、helper の header や設計ドキュメントに「これは意図的な trade-off であり accepted」と書かれていることを根拠に却下する経路がある。"
 created: "2026-08-06T02:49:27Z"
 updated: "2026-08-06T02:49:27Z"
 sources:

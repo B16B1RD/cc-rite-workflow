@@ -1,7 +1,7 @@
 ---
 title: "Reviewer rule 自身を編集する PR は self-application false positive を verify する"
 domain: "heuristics"
-description: "reviewer rule (`tech-writer.md` / `_reviewer-base.md` 等) を編集する PR では、reviewer (a) が rule 文書内の禁止語例 (`verified-review` 等) を rule 文書自身に self-application する false positive リスクが顕在化する。SoT Whitelist との cross-reference を Verification 手順に明示組み込みすることで根本解決。HIGH のみ scope 内修正、MEDIUM 以下は別 Issue 化することで cycle 数を 4 に抑える scope 分離 pattern も併設 (過去のレビューで実証)。過去のレビュー事例 cycle 2-4 で **「履歴解説 reference の指摘を actual code との cross-check なしに fix すると regression」** sub-pattern を追加: reviewer が prose 上の表現を実装契約 (Phase 番号 / function name / rc) と照合せずに「事実関係ズレ」と評価する false positive 経路が cycle 3 で 2 reviewer 独立検出された CRITICAL revert 事例。`textually fixed ≠ semantically correct`。"
+description: "reviewer rule (`tech-writer.md` / `_reviewer-base.md` 等) を編集する PR では、reviewer (a) が rule 文書内の例示・禁止語例 (`verified-review` / `cycle N F-Y で確立` 等) を **rule 文書自身に対して self-application** する false positive リスクが発生する。"
 promote: rite-plugin
 created: "2026-04-28T19:00:00+00:00"
 updated: "2026-08-08T13:37:28Z"

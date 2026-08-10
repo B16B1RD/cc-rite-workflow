@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "SoT を consumer 依存の条件付きにすると seam が増え、指摘数が反転する"
 domain: "anti-patterns"
-description: "個別指摘への局所修正を重ねると、共有 SoT に「consumer 別の予算表」「consumer へ委譲した規則」「consumer 固有の不変条件」という条件付き分岐が積み上がる。各 consumer 側に対応規定を書く義務が生まれ、書き漏れが次の指摘になる。SoT は単一 default を持ち、consumer 固有の事情は consumer 側の設計を変えて吸収する。"
+description: "共有 SoT（reference）と複数 consumer を持つ構成で、個別指摘へ局所修正を重ねると、SoT 側に条件付き分岐が積み上がる。"
 created: "2026-07-30T15:40:55Z"
 updated: "2026-07-30T15:40:55Z"
 sources:

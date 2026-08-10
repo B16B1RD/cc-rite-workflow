@@ -1,7 +1,7 @@
 ---
 title: "Mechanical drift gate の exit 1 は git-stash before/after 集合比較で pre-existing 判定する"
 domain: "heuristics"
-description: "機械的 drift gate (distributed-fix-drift-check 等) が exit 1 で drift 検出を返したとき、自分の変更起因か pre-existing detector noise (P5 false-positive 等) かを git-stash before/after の findings 集合比較 (sort + diff) で機械的に確定する。完全一致 (N=N) なら drift-neutral と確定し gate を push back して commit、AFTER > BEFORE なら新規 drift を fix。件数だけでなく正規化集合の同一性まで確認する (1 解消 + 1 新規導入の入れ替えを件数比較が見逃すため)。reason 完全性は DoD 埋め込み comm -23 で独立担保。過去のレビューにおける 4 cycle で 3 回適用し毎回 64=64 を実測。"
+description: "pre-commit drift gate (`distributed-fix-drift-check.sh` 等の機械的 lint) が `exit 1` で「drift 検出」を返したとき、その findings が **自分の変更が導入した drift** なのか **commit 前から存在する detector noise (pre-existing false-positive)** なのかを区別する手段が gate 自身にはない。"
 promote: rite-plugin
 created: "2026-05-29T15:59:38Z"
 updated: "2026-05-29T15:59:38Z"

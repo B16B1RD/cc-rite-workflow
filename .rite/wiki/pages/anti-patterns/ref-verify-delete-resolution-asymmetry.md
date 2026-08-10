@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "存在確認と破壊的操作で ref 解決規則が異なると、検証した ref 集合と破壊する ref 集合がずれる"
 domain: "anti-patterns"
-description: "git では `ls-remote <pattern>` が slash 境界の tail 一致、`push --delete <dst>` が全 namespace 解決で、どちらも完全一致ではない。存在確認を refs/heads/ 修飾で行いながら削除を非修飾で行うと、検証した集合と削除する集合が一致しない窓が生まれる。破壊的操作は検証と同じ ref 修飾で行い、検証側は rc だけでなく出力の ref 名まで完全一致で確かめる。"
+description: "「存在するなら削除する」型のガードは、存在確認と削除で ref 解決規則が違うと成立しない。"
 created: "2026-07-26T10:05:51Z"
 updated: "2026-07-26T10:05:51Z"
 sources:

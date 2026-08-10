@@ -1,7 +1,7 @@
 ---
 title: "関連 PR 探索は gh pr list --head (exact-match) ではなく --state all + client-side headRefName filter で行う"
 domain: "heuristics"
-description: "`gh pr list --head` は head ブランチ名の exact-match で glob/wildcard を解釈しないため `*issue-N*` は常に空配列を返す。`--state` も既定 open のため merged PR を取り逃す。canonical は `gh pr list --state all --json number,headRefName,title,body` で全 PR 取得 + client-side substring filter。過去のレビューで「既存パターンとの形状一致 ≠ 機能する」教訓 (code-quality が close.md:103 と形状一致で OK 判定し functional bug を見落とし) と併せて実測。"
+description: "ブランチ名や Issue 番号から関連 PR を解決するとき、`gh pr list --head \"*issue-N*\"` のような glob/wildcard 指定は**機能しない**。"
 promote: rite-plugin
 created: "2026-06-02T03:50:58Z"
 updated: "2026-06-02T03:50:58Z"

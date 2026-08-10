@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "1 つの skip ガードの背後に AC の全カバレッジを置かない — permission 非依存の失敗誘発で床を残す"
 domain: "heuristics"
-description: "chmod プローブの else 側に AC の TC を全部置くと、root / WSL2 DrvFs / overlay ホストでカバレッジが皆無になる。しかも skip は FAIL ではないので結果表示から判別できない。パスを regular file やディレクトリで塞ぐ permission 非依存の失敗誘発なら、プローブが skip するホストでも床が残る。"
+description: "書き込み失敗のような異常系を検証する TC は `chmod` で権限を落として作ることが多く、権限操作が効かない環境（root / WSL2 DrvFs / overlay マウント）向けに skip ガードを付ける。"
 created: "2026-08-06T02:49:27Z"
 updated: "2026-08-06T02:49:27Z"
 sources:

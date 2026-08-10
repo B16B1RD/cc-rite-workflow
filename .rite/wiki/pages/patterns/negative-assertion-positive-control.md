@@ -2,7 +2,7 @@
 type: "patterns"
 title: "否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す"
 domain: "patterns"
-description: "「出力が空であること」「canary が作られないこと」で pass する TC では、被テストコマンドの exit code が唯一残った crash signal。`|| true` を付けると abort と正常な無言が区別できなくなり、mutation を注入しても PASS する。肯定アサーション（grep で特定文字列を要求）は crash で fail するため同じ変更でも安全 — この非対称を見落としやすい。同じ fixture で「canary が作られる」ことを先に確認する positive control を置くと、fixture 破損と検証成功が区別できる。"
+description: "否定アサーション（「出力が空であること」「canary ファイルが作られないこと」で pass する TC）は、**被テストコマンドの exit code が唯一残った crash signal** である。"
 created: "2026-07-25T07:05:21Z"
 updated: "2026-07-26T01:35:00+09:00"
 sources:

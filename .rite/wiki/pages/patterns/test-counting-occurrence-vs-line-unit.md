@@ -1,7 +1,7 @@
 ---
 title: "ratchet test では occurrence 単位 (`grep -oE | wc -l`) を原則とし line 単位は混在させない"
 domain: "patterns"
-description: "charter 違反パターンの上限・下限を機械検証する ratchet test では occurrence 単位 (`grep -oE pattern | wc -l`) に統一すること。`grep -c file` (line 単位) と混在させると、1 行に複数出現する phrase の集約 slim を後続 PR で行う際 ratchet 漏れを構造的に起こす。実測で `AskUserQuestion` occurrence 35 vs line 34、`🚨` occurrence 41 vs line 35 の差が確認された。読みやすさ優先のスニペットでは line 単位を許容するが、ratchet 用途では occurrence を canonical とする。"
+description: "charter 違反パターンの上限・下限を機械検証する ratchet test では、measurement unit は **occurrence (`grep -oE pattern | wc -l`)** に統一すること。"
 created: "2026-05-08T17:15:33+00:00"
 updated: "2026-08-07T18:40:00+09:00"
 sources:

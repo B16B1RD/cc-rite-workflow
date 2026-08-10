@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "強制層の機械化は裁量を消すが依存を消さない — 依存先が移った先に検出と復旧を同時に設計する"
 domain: "heuristics"
-description: "LLM の分類判断を決定論的 helper の regex 判定へ置き換えると、分類の依存先は「LLM の裁量」から「LLM の記述忠実性（転記の正確さ）」へ移るだけで、依存そのものは消えない。過去のレビュー事例では Markdown セルの <br> を日本語句点へ潰す転記だけで実測 13 件の blocking が全件 non-blocking 化し、mergeable に反転した。機械化を入れるときは、新しい依存先に対する検出と復旧経路を同時に設計する。"
+description: "「LLM の判断に置くと構造的に実行されない」種類の契約を、決定論的な helper へ機械化するのは正しい方向である。"
 created: "2026-08-01T00:21:06+09:00"
 updated: "2026-08-01T00:21:06+09:00"
 sources:

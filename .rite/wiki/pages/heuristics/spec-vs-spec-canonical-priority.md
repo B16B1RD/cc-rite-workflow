@@ -1,7 +1,7 @@
 ---
 title: "Spec-vs-spec 矛盾は canonical SoT 表記のある側を優先する"
 domain: "heuristics"
-description: "Issue body などの specification 入力と schema doc などの canonical SoT 文書で同一フィールドの仕様が正面から矛盾する場合、`canonical SoT` 表記がある側を採用する。Issue body は要求発生時点の spec 草案、canonical doc は plugin 横断の実装契約という非対称性を尊重する。過去のレビュー事例 cycle 1 で 3 reviewer 独立検出 (CRITICAL × 2)、cycle 1 fix で schema doc canonical 優先で `pre_existing` 削除し 14 findings 全件解決した実例。"
+description: "Issue body などの specification 入力と schema doc などの canonical SoT 表記のある文書で、同一フィールドの仕様が正面から矛盾した場合、`canonical SoT` 側を採用する。"
 promote: rite-plugin
 created: "2026-05-19T17:45:00Z"
 updated: "2026-05-19T17:45:00Z"

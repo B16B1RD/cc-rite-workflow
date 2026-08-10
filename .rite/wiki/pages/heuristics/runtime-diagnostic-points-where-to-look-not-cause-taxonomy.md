@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "runtime 診断は「どこを見ればいいか」だけ示す — 原因の分類は SoT に持たせる"
 domain: "heuristics"
-description: "診断メッセージに原因の列挙（lowercase key / 全角コロン / 未展開 placeholder 等）を焼き込むと、退避先や分岐が増えるたびに列挙が実態とずれ、崩れていない対象を名指しながら存在しない不備を探させる診断になる。列挙に 1 項目足す道もあるが、同じ列挙を持つ散文 site との同期義務が増えるだけで次の分岐追加で同じ指摘が再発する。runtime 側の列挙は撤去し、原因分類は docstring と reason 表が持つ。"
+description: "診断 WARNING に「lowercase key / 全角コロン / リスト項目化 / 未展開 placeholder 等の崩れが疑われます」という**原因の列挙**を書くと、その列挙は分岐が増えるたびに実態とずれる。"
 created: "2026-08-08T14:00:41+09:00"
 updated: "2026-08-08T14:00:41+09:00"
 sources:

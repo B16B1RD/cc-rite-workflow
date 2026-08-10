@@ -2,7 +2,7 @@
 type: "patterns"
 title: "jq / Oniguruma の `$` は末尾改行の直前にも match する — 文字列全体一致は `\\A` / `\\z` を使う"
 domain: "patterns"
-description: "jq の test() が使う Oniguruma（および Perl/Ruby 系）の `$` は文字列末尾に加えて末尾改行の直前にも match する。`test(\"^foo$\")` は \"foo\\n\" に true を返すため、単一行 channel へ出す値の allowlist が末尾改行を通し、まさに防ぎたかった行分断が起きる。文字列全体一致には `\\A` / `\\z` を使う。"
+description: "jq の `test()` が使う Oniguruma（および Perl / Ruby 系の正規表現エンジン）では、`$` は「文字列末尾」ではなく「文字列末尾**または末尾改行の直前**」に match する。"
 created: "2026-08-07T07:59:00+09:00"
 updated: "2026-08-07T07:59:00+09:00"
 sources:

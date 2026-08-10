@@ -1,7 +1,7 @@
 ---
 title: "Bash tool 境界を跨ぐ値は [CONTEXT] sentinel として明示 emit する"
 domain: "patterns"
-description: "bash block 内でシェル変数として計算した値は別の Bash tool invocation の heredoc / placeholder substitution で参照する場合 `[CONTEXT] KEY=$VALUE` 形式の sentinel として stdout/stderr に明示 emit する必要がある (Claude Code の Bash tool は invocation 境界でシェル状態を継承しない)。block 内コメントが「partial corruption 防止」を主張しても、success/failure 両経路に対称な emit が無いと self-contradiction として review reviewer の主指摘対象になる。過去のレビュー事例 cycle 49 H-1 で実測。過去のレビュー事例 (関連する課題 sub-skill 抽出 G2) で sub-pattern「sub-skill 内 bash 変数 guard は常に false」を追加 (3 reviewer 独立検出の CRITICAL、sub-skill 抽出 refactor の必須 review 観点に追加)。過去のレビューで sub-pattern「per-finding loop の単一 invocation invariant に依拠した detect+emit 物理統合」を追加 (cycle 3-4、Canonical 1 (sentinel emit) と Canonical 2 (物理統合) の選択基準を確立 — boundary 自体が消去可能な場合は物理統合が default)。"
+description: "bash block 内でシェル変数として計算した値を、別の Bash tool invocation の heredoc / placeholder substitution で参照する場合、Claude Code の Bash tool は invocation 境界でシェル状態を継承しないため、値を `[CONTEXT] KEY=$VALUE` 形式の sentinel として stdout / stderr に明示 emit する必要がある。"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/bash-cross-boundary-emit-explicit-context.md"
 created: "2026-04-30T01:58:00+00:00"

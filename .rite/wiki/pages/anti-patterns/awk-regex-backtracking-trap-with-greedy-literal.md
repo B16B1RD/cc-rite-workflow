@@ -1,7 +1,7 @@
 ---
 title: "awk negative-class + greedy + literal の組み合わせは backtracking で literal を silent miss する"
 domain: "anti-patterns"
-description: "awk POSIX ERE で「行頭 `#` 以外で行内に literal X」を `^[[:space:]]*[^#].*X` 形式で書くと、X が行頭から始まる行で `[^...]` が X 先頭文字を消費し literal 再発見不能の backtracking trap を作る。canonical fix は前置 not-match `!/^[[:space:]]*#/ && /X/` で除外と検出を独立 regex に分離する確立イディオム。過去のレビュー事例 cycle 1/2 で 2 連続発生 (cycle 1 fix が新たな silent miss を作った self-induced regression)、cycle 2 で error-handling-reviewer が empirical mutation test で再現確認。lookahead 非対応の POSIX ERE 環境では前置 not-match が唯一の確立解。"
+description: "awk POSIX ERE で「行頭が `#` 以外で、行内に literal `X` を含む」を表現するつもりで `^[[:space:]]*[^#].*X` や `^[[:space:]]*[^[:space:]#].*X` と書くと、X が行頭から始まる行で `[^...]` 部分が `X` の先頭文字を消費し、続く `.*X` が literal X を再発見できず silent miss する backtracking 経路を作る。"
 promote: rite-plugin
 created: "2026-05-09T03:50:00+00:00"
 updated: "2026-08-08T13:37:28Z"

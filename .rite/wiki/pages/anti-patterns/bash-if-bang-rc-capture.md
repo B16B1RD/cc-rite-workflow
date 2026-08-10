@@ -1,7 +1,7 @@
 ---
 title: "`if ! cmd; then rc=$?` は常に 0 を捕捉する"
 domain: "anti-patterns"
-description: "bash の `!` 演算子は rc を binary 反転するため `if ! cmd; then rc=$?` の `$?` は常に 0 を捕捉する。`set +e; cmd; rc=$?; set -e; case` による明示 3 値分離が canonical。過去のレビュー事例 cycle 35 で「learned 節で言及した直後の同 commit で再演する」self-referential 4 site 同時播種 (累積 13 回目) を実測。過去のレビュー事例 cycle 1 (累積 34 回目 Asymmetric Fix Transcription の起点) で format 同期 refactor で新 SoT の bash if-else 構造を見落とし `if ! cmd; then rc=$?` 形式を再導入、CRITICAL 検出を経て **format token / bash structure / runtime semantics の三層対称化義務** doctrine を確立。過去のレビュー事例 cycle 1 で姉妹型「set -e 下の裸 `$?` 読み `var=$(cmd); rc=$?` は代入 abort で rc 行が dead code 化する」を統合 (canonical fix は共通の `rc=0; var=$(cmd) || rc=$?`)。"
+description: "bash の `!` 演算子は直前コマンドの exit status を boolean で反転するため、`if ! cmd; then ...` ブロック内での `$?` は `!` の結果 (= 0) を返す。"
 promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 updated: "2026-07-21T18:30:00Z"

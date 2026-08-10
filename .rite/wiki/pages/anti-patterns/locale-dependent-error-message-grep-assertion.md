@@ -3,7 +3,7 @@ type: "anti-patterns"
 title: "エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する"
 domain: "anti-patterns"
 promote: rite-plugin
-description: "bash 等のローカライズ済みエラーメッセージ（例: 「コマンドが見つかりません」）を英語文字列で grep する assert は、非英語 locale のホスト/CI で常に空振りし、実装破壊 mutation に対して green のまま通過する dead assertion になる。LC_ALL=C で locale を固定するか、rc 直接 assert・状態遷移 assert 等の locale 非依存 discriminator に置換する。"
+description: "bash が exit 127 で出す `command not found` のようなエラーメッセージは gettext でローカライズされるため（ja_JP.UTF-8 では `コマンドが見つかりません`）、英語文字列を `grep -q \"command not found\"` で検査する assert は非英語 locale のホストで**常に空振りして pass する**。"
 created: "2026-07-24T16:55:00+09:00"
 updated: "2026-08-06T02:49:27Z"
 sources:

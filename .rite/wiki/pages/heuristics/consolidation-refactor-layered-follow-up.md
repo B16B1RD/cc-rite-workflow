@@ -3,7 +3,7 @@ type: "heuristics"
 title: "統合 refactor の追従は「実行テーブル → SoT/docs → references 例示 → 兄弟行」と層を降りる"
 domain: "heuristics"
 promote: rite-plugin
-description: "レジストリ統合系 refactor の取りこぼしは層構造で現れる。cycle ごとに全域 grep の除外リスト（凍結ファイル・意図的言及）を明示的に引き継ぎ、凍結コピーは successor 注記 + follow-up Issue で一括追従を明記すると、後続 cycle の誤指摘と silent 残存の両方を防げる。"
+description: "reviewer registry 統合（13→9 種）の PR は 4 cycle で収束し、各 cycle の指摘は毎回異なる「層」に集中した: cycle 1 = 降格アルゴリズムの SoT・周縁 docs（CHANGELOG.ja / CLAUDE.md / SPEC.md）、cycle 2 = references/ 配下の例示・Few-shot 教材・並行コピー、cycle 3 = 同一リスト内の兄弟行の取りこぼし。"
 created: "2026-07-17T12:04:54Z"
 updated: "2026-07-17T12:04:54Z"
 sources:

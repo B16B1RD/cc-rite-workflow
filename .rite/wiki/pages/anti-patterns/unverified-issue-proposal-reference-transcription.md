@@ -1,7 +1,7 @@
 ---
 title: "Issue 対応案の番号参照を未検証のまま転記すると事実誤認が伝播する"
 domain: "anti-patterns"
-description: "Issue body の対応案文字列を verbatim 転記すると、対応案自体の事実誤認 (Issue を PR とラベルする参照種別の取り違え) が成果物へ伝播する。番号参照は転記前に gh issue/pr view で種別を実機検証し、repo 既存記法 (#1088 (実装: #1091) 形式) と整合させる。過去のレビューで実測 (2 reviewer High Confidence 検出、2 cycle 収束)。"
+description: "Issue body の対応案文字列を成果物にそのまま転記すると、対応案自体に含まれる事実誤認（Issue 番号を PR とラベルする等の参照種別の取り違え）がドキュメントへ伝播する。"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/unverified-issue-proposal-reference-transcription.md"
 created: "2026-06-09T19:40:00+00:00"

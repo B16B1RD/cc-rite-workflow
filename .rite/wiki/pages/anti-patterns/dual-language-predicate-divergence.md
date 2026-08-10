@@ -3,7 +3,7 @@ type: "anti-patterns"
 title: "同じ述語を 2 言語で並行実装すると受理集合が環境で割れる — 定義を 1 本に寄せるまで症状は再発し続ける"
 domain: "anti-patterns"
 promote: rite-plugin
-description: "「本文の最終非空行が sentinel と一致するか」のような判定条件を、read 側（lookup の jq）と write 側（投稿前検査の shell）で**別々に実装**すると、同じ意図の述語でも受理する入力の集合が一致しない。原因は 2 つの独立した軸にある。"
+description: "「本文の最終非空行が sentinel と一致するか」のような判定条件を、read 側（lookup の jq）と write 側（投稿前検査の shell）で**別々に実装**すると、同じ意図の述語でも受理する入力の集合が一致しない。"
 created: "2026-07-28T21:30:00+09:00"
 updated: "2026-07-28T21:30:00+09:00"
 sources:

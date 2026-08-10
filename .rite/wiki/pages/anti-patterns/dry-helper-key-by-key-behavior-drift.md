@@ -1,7 +1,7 @@
 ---
 title: "Config parser helper の DRY 化が key 別 subtle 差異を silent に抹消する"
 domain: "anti-patterns"
-description: "重複した YAML / config パース処理を helper 関数に DRY 化する際、key 別の subtle な差異 (lowercase 変換の有無 / quote 除去の有無 / trim の範囲) を helper 内に一律適用すると、helper 化前に key 単位で異なっていた挙動が silent に抹消される。「コメント削除のみ許容」「behavior-preserving refactor」を謳う PR でも、helper 抽出は behavior change を内包する silent regression 経路。過去のレビューで `extract_yaml_key` helper の `tr '[:upper:]' '[:lower:]'` 一律適用が `branch_name: "MyWiki"` を silent corrupt させた事例を 3 reviewer 独立 HIGH 検出。対策: key 別前処理 chain を表化、異なる chain は helper 引数 / 別 helper で受ける、boolean 正規化と identifier 解釈を別 helper に分離。"
+description: "重複した YAML / config パース処理を helper 関数に DRY 化する際、key 別の subtle な差異 (lowercase 変換の有無 / quote 除去の有無 / trim の範囲) を helper 内に一律適用すると、helper 化前に key 単位で異なっていた挙動が silent に抹消される。"
 created: "2026-05-27T00:30:00Z"
 updated: "2026-05-27T00:30:00Z"
 sources:

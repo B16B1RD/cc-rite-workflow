@@ -4,7 +4,7 @@ title: "LLM が読む出力ストリームで marker を契約にするには pr
 domain: "patterns"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/llm-read-marker-contract-four-conditions.md"
-description: "bash が emit した `[CONTEXT] X=1` marker を LLM（散文の判定ルール）が consume する設計では、prefix 込みの照合・行頭一致・外部由来テキストのデリミタ隔離・識別子スコープと recency 解決の 4 条件が揃って初めて契約になる。どれか 1 つでも欠けると偽の完了報告が成立する。"
+description: "SKILL.md の bash ブロックが `[CONTEXT] X=1` 形式の marker を stdout/stderr に出し、同ファイルの散文（完了報告の判定ルール）を LLM が読んで分岐する設計は rite の基本構造である。"
 created: "2026-07-26T10:05:51Z"
 updated: "2026-07-26T10:05:51Z"
 sources:

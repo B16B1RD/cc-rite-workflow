@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "PIPESTATUS はコマンド置換 `$(...)` のサブシェル境界を越えない"
 domain: "heuristics"
-description: "`var=$(cmd1 | cmd2); [ \"${PIPESTATUS[0]}\" -eq 0 ]` は PIPESTATUS がコマンド置換のサブシェルに閉じ込められるため機能しない。パイプを避け、コマンド置換自身の exit code を `||` で直接チェックする。"
+description: "bash の `$(...)` コマンド置換は内部でサブシェルを生成して実行される。"
 created: "2026-07-21T12:40:00+09:00"
 updated: "2026-07-21T12:40:00+09:00"
 sources:

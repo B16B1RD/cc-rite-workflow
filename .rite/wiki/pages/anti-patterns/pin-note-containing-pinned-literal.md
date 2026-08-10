@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "pin の説明文に pin 対象の literal を書くと、注記自身が出現数に数えられて count pin が落ちる"
 domain: "anti-patterns"
-description: "「この文字列がこの数だけある」という count pin を足したあと、その pin を説明する注記に対象の literal を書くと、注記自身が次の出現になり期待値が 1 ずれる。言い換えれば直るが、今度は「識別子として機能していない」と指摘され literal を書き戻して再発する。恒久対処は注記自身に「ここに literal を繰り返すと数が動く」と書き込むこと。"
+description: "「特定の文字列がファイル内にちょうど N 個ある」という count pin を導入したあと、その pin の意図を説明する注記に**対象の literal をそのまま書く**と、注記自身が N+1 個目の出現になり pin が落ちる。"
 created: "2026-08-07T18:40:00+09:00"
 updated: "2026-08-07T18:40:00+09:00"
 sources:

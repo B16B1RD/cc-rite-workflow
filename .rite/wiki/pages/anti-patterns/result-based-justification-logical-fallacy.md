@@ -1,7 +1,7 @@
 ---
 title: "結果論的弁明の論理破綻: 順序逆転で結果不変なのに『悪化する』と説明する実装ノート"
 domain: "anti-patterns"
-description: "「順序を逆転すると X が悪化する」と説明しつつ、実際に逆転しても X が悪化しない (結果不変) 場合、reviewer LLM が説明を信じて誤った重要性付けをするリスクが発生する。意味的階層 / substring 衝突 / 計算コスト等の 3 観点で順序の本質を説明することで論理整合性を担保する canonical 対策。過去のレビュー事例 cycle 1 (MEDIUM F-02) で `_reviewer-base.md` Whitelist 適用順序の「順序逆転で false positive 増加」弁明が論理破綻として実測。"
+description: "「順序を逆転すると X が悪化する」と説明する実装ノートが、実際に逆転しても X が悪化しない (結果不変) 場合、reviewer LLM が説明を信じて誤った重要性付けをするリスクが発生する。"
 promote: rite-plugin
 created: "2026-04-28T18:55:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"

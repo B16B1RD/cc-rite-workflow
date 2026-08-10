@@ -1,7 +1,7 @@
 ---
 title: "Archive doc の front-matter で宣言した preservation policy を body 編集が無視して矛盾を生む"
 domain: "anti-patterns"
-description: "`status: structurally_resolved` の archive doc で front-matter に「本文中の `Phase` 番号は historical 記述として保持」と明示宣言されているにも関わらず、rename PR の機械的置換 fix が body の Phase 参照を書き換え、front-matter declaration と body の矛盾を発生させる anti-pattern。reviewer 間で document classification (archive vs current) 認識が共有されていないと cycle N で fix された箇所が cycle N+1 で revert される往復が発生 (過去のレビュー事例 cleanup-wiki-ingest-turn-boundary.md で cycle 1 over-translation → cycle 2 部分 revert → cycle 3 tail residue revert の 3 cycle 往復実測)。対策: archive doc の front-matter で `preserve_terminology` を declare + rename PR の対象から自動除外する仕組み + intra-document consistency check。"
+description: "`status: structurally_resolved` の anti-pattern doc / design doc で front-matter に「本文中の `Phase` 番号は PR #XXXX 以前の旧構造の歴史的記述として保持」と明示宣言されているにも関わらず、rename PR の機械的置換 fix が body の Phase 参照を `ステップ` に書き換え、**front-matter declaration と body の矛盾** を発生させる anti-pattern。"
 promote: rite-plugin
 created: "2026-05-27T01:30:00Z"
 updated: "2026-05-27T01:30:00Z"

@@ -2,7 +2,7 @@
 type: "patterns"
 title: "mktemp テンプレートは `${TMPDIR:-/tmp}` を使う — `/tmp` 直下ハードコードは sandbox で書き込み拒否される"
 domain: "patterns"
-description: "sandbox 有効環境は書き込み許可を `$TMPDIR` 配下に限定するため、`mktemp /tmp/xxx-XXXXXX` のような `/tmp` 直下ハードコードテンプレートは書き込み拒否される。`mktemp \"${TMPDIR:-/tmp}/xxx-XXXXXX\"`（GNU/BSD 両対応）へ統一する。"
+description: "sandbox 有効環境では書き込み許可ディレクトリが `$TMPDIR`（例: `/tmp/claude-1000/...`）に限定される。"
 created: "2026-07-18T23:38:52Z"
 updated: "2026-07-18T23:38:52Z"
 sources:

@@ -1,7 +1,7 @@
 ---
 title: "兄弟 shell script の重複 helper は shared lib 抽出で解く"
 domain: "heuristics"
-description: "`parse_wiki_scalar()` のような helper が 3 scripts に complete-match duplicate している場合、個別対称修正では drift が止まらない。shared lib 抽出が Asymmetric Fix Transcription の根本解決策。scope 基準で本 PR 対応か別 Issue 分離かを判断する。過去のレビューで get_owner_repo 型 helper が 6 ファイルに重複している事例を確認、本 PR では sibling hook 踏襲の対称修正を選択し共通化は別 Issue へ scope 外化。"
+description: "`parse_wiki_scalar()` や worktree fast path のような同型 helper 関数を、兄弟 shell script (`wiki-ingest-commit.sh` / `wiki-worktree-commit.sh` / `wiki-worktree-setup.sh`) に個別コピーで実装すると drift リスクが増大する。"
 promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 updated: "2026-07-20T10:36:25+09:00"

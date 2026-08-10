@@ -3,7 +3,7 @@ type: "heuristics"
 title: "終端状態は「到達した事実」で記録し、可変値との境界比較で代用しない"
 domain: "heuristics"
 promote: rite-plugin
-description: "サーキットブレーカーの「発火後か」を `cycle_count >= max_review_cycles` で判定していたが、この等式は**最終 cycle を実行している間ずっと成立する通常状態**でもあった。counter を書いてから review を invoke する順序のため、最終 cycle の途中で中断して復帰すると「発火後の再実行」と誤認され、ブレーカーが一度も発火しないまま上限が無通知で 2 巡分に緩む。"
+description: "サーキットブレーカーの「発火後か」を `cycle_count >= max_review_cycles` で判定していたが、この等式は**最終 cycle を実行している間ずっと成立する通常状態**でもあった。"
 created: "2026-07-29T21:32:36+09:00"
 updated: "2026-07-29T21:32:36+09:00"
 sources:

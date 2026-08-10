@@ -3,7 +3,7 @@ type: "heuristics"
 title: "レビューが足場を対象に発散したら finding の基準を prompt で明示して止める"
 domain: "heuristics"
 promote: rite-plugin
-description: "修正は新しいレビュー対象面を作るため、指摘件数だけを見ると収束しない。受入基準が満たされた後の指摘が「レビュー対応で追加したテスト pin・コメント・診断出力」を対象にし始めたら、findings を production の欠陥と blocking gate 上の未 pin に限定する基準を reviewer prompt に明示する。"
+description: "修正 1 件は新しいレビュー対象面を 1 つ作る。"
 created: "2026-07-25T14:18:43Z"
 updated: "2026-07-25T14:18:43Z"
 sources:

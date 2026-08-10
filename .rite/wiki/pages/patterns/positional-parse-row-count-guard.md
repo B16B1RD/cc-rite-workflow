@@ -2,7 +2,7 @@
 type: "patterns"
 title: "位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）"
 domain: "patterns"
-description: "awk -F'|' + $N の位置依存列パースは表形式変更（列挿入等）で全行 skip の silent no-op になり rc=0 の false pass を生む。集合抽出の下限ガードと対称に「フィルタ通過行数 < N なら invocation error で fail fast」する検査行数ガードを行内整合チェックへ必ず対にする。"
+description: "`awk -F'|' '{ slug = $2; agent = $4 }'` のような位置依存の列パースは、表形式変更（Agent 列より前へのカラム挿入等）でトークンが期待列からずれる。"
 created: "2026-07-03T18:30:00+00:00"
 updated: "2026-07-03T18:30:00+00:00"
 sources:

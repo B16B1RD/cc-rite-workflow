@@ -1,7 +1,7 @@
 ---
 title: "計画変更時の前方参照契約"
 domain: "patterns"
-description: "評価レポート / 設計ドキュメントで「リスク緩和策」「Implementation 計画」を上方に書いた後、下方の「実施報告」で計画逸脱 (一部未実施) が開示される構造では、リスク表 / 計画表側に前方参照を必ず追加する。前方参照欠落は top-down reader を「計画通り実施された」と誤読させる内部矛盾を silent に流入させる。リスク表 / Implementation 表 / 結果セクションの 3 site すべてに前方参照を貼ることで bottom-up / top-down どちらの読み順でも整合する。過去のレビュー事例 cycle 1 で Section 7 と Section 9.3 の disclosure 順内部矛盾として LOW 検出。"
+description: "評価レポート / 設計ドキュメントで「リスク緩和策」「Implementation 計画」を上方に書いた後、下方の「実施報告」「結果セクション」で計画逸脱 (一部未実施) が開示される構造では、リスク表 / 計画表側に **前方参照** (forward reference) を必ず追加する。"
 created: "2026-05-05T11:15:55+00:00"
 updated: "2026-08-08T13:37:28Z"
 sources:

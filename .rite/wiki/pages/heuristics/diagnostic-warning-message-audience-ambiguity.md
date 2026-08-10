@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "診断WARNINGの宛先（実行エージェント向けかユーザー向けか）を主語で明示する"
 domain: "heuristics"
-description: "sandbox 干渉等を明示的に名指しする WARNING 文言は、そのメッセージを読む実行エージェント自身が持つ別のルール（例: sandbox 起因の失敗を検知したら dangerouslyDisableSandbox で自動再試行する）の発火条件を意図せず満たしてしまうことがある。復旧コマンドの宛先（ユーザーが手動実行 / エージェントは再試行禁止）を主語で明示する。"
+description: "skill やスクリプトが出す診断 WARNING（例:「sandbox の read-only bind mount により git worktree remove が構造的に失敗します」）は、そのメッセージ自体が「失敗原因は sandbox 起因である」という、実行環境（Claude Code の harness）が持つ別の自動化ルールの発火条件を満たしてしまうことがある。"
 created: "2026-07-20T05:29:02+00:00"
 updated: "2026-07-20T05:29:02+00:00"
 sources:

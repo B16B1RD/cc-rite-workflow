@@ -3,7 +3,7 @@ type: "anti-patterns"
 title: "sandbox 環境では raw な git status --porcelain が恒に非空になり clean 判定ガードが一度も発火しない"
 domain: "anti-patterns"
 promote: rite-plugin
-description: "Claude Code の sandbox は write-block bind mount を untracked (??) エントリとして必ず表出させるため、raw な git status --porcelain は working tree が clean でも非空を返す。「clean なら skip」型のガードは一度も発火せず、dead code のまま通過する。プロジェクトに専用 helper がある場合は既存の使用箇所を grep して convention を確認してから書く。"
+description: "過去のレビュー事例の cycle 2 で HIGH（repro 付き）として検出。"
 created: "2026-07-27T17:54:54+09:00"
 updated: "2026-07-27T17:54:54+09:00"
 sources:

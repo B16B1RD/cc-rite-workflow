@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "散文手順のレビューでも文書内の構造的事実は実測でき、実測不能と決めつけると指摘が滞留する"
 domain: "heuristics"
-description: "prose-only の変更は構造的に実測不能と決めつけると、同じ欠陥が cycle を跨いで non-blocking のまま滞留する。見出しの順序・分岐表の条件・特定文字列の有無・参照先の行番号は grep -n / sed -n で観測でき、それが実測アンカーの正当な根拠になる。実測アンカー付与率が上がると収束が速くなる。"
+description: "散文手順（LLM が runtime で読むワークフロー定義）のレビューでは、**実測アンカーを付けられるかどうかが reviewer 側の技量差として現れる**。"
 created: "2026-07-30T15:40:55Z"
 updated: "2026-07-30T15:40:55Z"
 sources:

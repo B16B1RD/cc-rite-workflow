@@ -1,7 +1,7 @@
 ---
 title: "節の表示条件を変えたら inbound の位置参照を grep して文言同期する"
 domain: "heuristics"
-description: "ドキュメント / command の節を on-demand / Optional 化すると、その節を「below」等の位置含意で参照する常時表示テキストが dangling reference 化する。表示条件変更時は inbound 参照を grep し参照側文言も同 cycle で同期する。過去のレビューで Phase 4.5 の on-demand 化が常時表示の Troubleshooting 項目8「See the FAQ below」(F-03) を誘発した実測。線形実行 command への条件付き Phase 追加は Optional/On-Demand マーカーで矛盾防止 (F-01)、Decision Log エントリ誤参照 (D-9 を無関係主張に引用、F-02) は隣接 anti-pattern。"
+description: "ドキュメント / command 定義の 1 節を「常時表示」から「条件付き表示 (on-demand / Optional)」へ変えると、その節を「下記 (below)」「FAQ below」のような**固定位置を含意する文言で参照していた常時表示テキスト**が dangling reference 化する。"
 created: "2026-06-10T12:41:54Z"
 updated: "2026-06-10T12:41:54Z"
 sources:

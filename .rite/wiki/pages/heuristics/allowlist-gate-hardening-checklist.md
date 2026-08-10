@@ -1,7 +1,7 @@
 ---
 title: "形状検証 gate の allowlist 化は複数行 bypass・上流 degraded 値・コメント同期をセットで棚卸しする"
 domain: "heuristics"
-description: "入力検証 gate の denylist→allowlist 強化では (1) grep 行単位マッチの複数行 bypass ([[ =~ ]] が正解形)、(2) 上流が正規に emit する degraded sentinel 値への専用診断、(3) 置換機構変更時の同一ブロック内コメント同期、を着手時に棚卸しする。過去のレビューにおける 4 cycle 収束で 3 点すべて実測。allowlist への新 arm 追加は per-arm テスト pin（正例・負例・fallback fail-closed）を同一 PR でセット追加する（過去のレビューで 2 reviewer 独立検出）。"
+description: "入力検証 gate を denylist から allowlist に強化する PR では、(1) 検証手段の行単位/文字列全体 anchor の差、(2) 上流が正規に emit する degraded sentinel 値の存在、(3) 置換機構変更に伴う同一ブロック内コメントの同期、の 3 点を着手時に棚卸しする。"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/allowlist-gate-hardening-checklist.md"
 created: "2026-06-10T10:10:00+09:00"

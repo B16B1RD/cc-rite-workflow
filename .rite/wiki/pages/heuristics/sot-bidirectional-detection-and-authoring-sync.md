@@ -3,7 +3,7 @@ type: "heuristics"
 title: "SoT 同期は detection 側と authoring 側の双方向に書く — 片側だけでは機構が silent に空振りする"
 domain: "heuristics"
 promote: rite-plugin
-description: "検出ルール（regex・判定条件）を detection 側の reference にだけ書き、そのルールに従う成果物を書く authoring 側 SoT（reviewer 指示・プロンプトテンプレート）に伝播しないと、機構は silent に空振りする。制約を書いた PR 自身がその制約に違反する形で露見しやすい。両側に相互参照を張り「この制約の反対側 SoT は X」と明記して次回の drift を検出可能にする。"
+description: "「アンカーが特定の regex にマッチしたら blocking として扱う」のような機構は、**検出する側**（assessment-rules.md / SKILL.md の判定ステップ）と**書く側**（`_reviewer-base.md` / reviewer-prompt-generator.md）の 2 つの SoT を持つ。"
 created: "2026-07-27T10:57:51+09:00"
 updated: "2026-07-27T10:57:51+09:00"
 sources:

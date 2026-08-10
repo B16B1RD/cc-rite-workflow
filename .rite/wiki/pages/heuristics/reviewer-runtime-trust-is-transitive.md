@@ -1,6 +1,6 @@
 ---
 title: "Reviewer の runtime trust は entrypoint ではなく推移的 execution graph で判定する"
-description: "レビュー手順が検証対象コードの実行を許す場合、base branch の entrypoint というだけでは信頼できない。PR-controlled code・設定・依存物への推移的到達を静的に除外するか、secrets・network・外部 write を遮断した隔離境界を必須にする。"
+description: "reviewer prompt が「自然な entrypoint を実行して検証する」と要求すると、未信頼 PR が変更したコードを reviewer 権限で実行する誘導経路になる。"
 domain: "heuristics"
 created: "2026-08-09T08:43:00+09:00"
 updated: "2026-08-09T08:43:00+09:00"

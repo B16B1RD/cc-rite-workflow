@@ -1,7 +1,7 @@
 ---
 title: "散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする"
 domain: "heuristics"
-description: "SoT 散文 / 設計ドキュメントが実装 (regex literal・helper file・挙動主張) を要約参照するとき、(1) 引用 literal の byte 単位一致 (2) regex 帰属ファイルの精度 (wrapper/委譲先の取り違え回避) (3) 挙動主張を代表 match/non-match ケースに実 regex をかける behavioral test、の 3 点を機械的に裏取りする。過去のレビューで prompt-engineer + code-quality が 2 cycle 0 blocking で実証、8 ケース behavioral test で散文の look-alike 非マッチ等を実測確認。grep verify の挙動軸への拡張・empirical reproduction の regex 版。"
+description: "SoT 散文 / 設計ドキュメントが実装 (正規表現リテラル・helper file・挙動主張) を要約参照するとき、レビューは「散文を読む」だけでは整合を保証できない。"
 created: "2026-06-02T00:07:23Z"
 updated: "2026-06-02T00:07:23Z"
 sources:

@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く"
 domain: "heuristics"
-description: "「変数が local 宣言に含まれていないこと」を pin しても、bash では declare / typeset が同じスコープを作るため、表記を替えるだけで pin を通過したまま欠陥を再導入できる。禁止したい表記を列挙するのではなく、等価な代替構文を allowlist として並べるか、より強く「定義位置が関数の外側であること」のような位置不変条件を固定する。"
+description: "静的 pin（ソースの文字列を grep して構造を固定するテスト）を「この表記が出現しないこと」として書くと、**同じ意味を持つ別表記が pin を素通りする**。"
 created: "2026-08-05T05:30:00+00:00"
 updated: "2026-08-05T05:30:00+00:00"
 sources:

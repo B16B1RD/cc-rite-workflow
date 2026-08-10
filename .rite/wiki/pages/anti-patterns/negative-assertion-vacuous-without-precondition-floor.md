@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "否定形の assert は前提条件が崩れると fail-silent になる"
 domain: "anti-patterns"
-description: "「壊れていないこと」を検証する assert は、検証対象の入力が前提条件（切り詰め窓の内側にある・偶然解決しない cwd から実行される等）を外れると、実装が壊れていても通ってしまう。前提が成立していることを別途 floor で assert するか、肯定形（中和後の値が観測できること）に書き換える。"
+description: "「X が起きていないこと」を検証する assert は、そもそも X が起こりうる条件が成立していなければ自動的に通る。"
 created: "2026-07-25T14:18:43Z"
 updated: "2026-07-25T14:18:43Z"
 sources:

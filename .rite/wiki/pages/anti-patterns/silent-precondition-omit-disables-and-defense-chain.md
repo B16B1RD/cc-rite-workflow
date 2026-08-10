@@ -1,7 +1,7 @@
 ---
 title: "前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する"
 domain: "anti-patterns"
-description: "過去 9 件の Issue で導入した 8 種類の防御層 (declarative / sentinel / Pre-check / whitelist / Pre-flight / Step 0 / 4-site 対称化 / case arm) は AND 論理で組まれ、`.rite-flow-state.active=true` という単一前提条件に依存。`commands/issue/create.md` 等の patch site が `--active true` を omit したことで、stop-guard.sh が `EXIT:0 reason=not_active` で early return → 8 種の case arm はすべて到達不能。`.rite-stop-guard-diag.log` 直近 30 件中 28 件 (93%) が `EXIT:0 reason=not_active` で防御層は本番で 9 割以上機能していなかった。検出手段は hook diag log 集計 / `stop_hook_summary.preventedContinuation` 確認 / 前提条件 audit。修正は短期 (link 修復) → 中期 (デフォルト挙動の固定) → 長期 (前提条件依存の解消)。過去のレビュー事例 (関連する課題 修正 PR) で 17 patch site / 12 ファイルに `--active true` を網羅追加し、post-fix の本番 diag log で `EXIT:2 reason=blocking` 9 件 / `EXIT:0 reason=not_active` 3 件を観測 → stop-guard が正しく blocking 動作することを実証 (累積 11 回目で短期修復の link 全回復)。本番条件再現 TC 5 件 (TC-660-A〜E) を test infrastructure に永続化し、CI で AND 論理 silent omit の再導入を機械検出可能にした。"
+description: "過去 9 件の Issue (#3 → #651) で導入した 8 種類の防御層 (declarative / sentinel / Pre-check list / whitelist / Pre-flight / Step 0 / 4-site 対称化 / hook case arm) は **AND 論理**で組まれていた。"
 promote: rite-plugin
 created: "2026-04-25T12:30:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"

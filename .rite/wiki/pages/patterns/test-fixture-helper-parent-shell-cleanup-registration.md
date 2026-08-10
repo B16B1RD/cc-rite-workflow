@@ -2,7 +2,7 @@
 type: "patterns"
 title: "path を返す test fixture ヘルパーの cleanup 登録は $() サブシェルではなく親シェルで行う"
 domain: "patterns"
-description: "path を echo で返す fixture ヘルパーを $() コマンド置換で呼ぶと、関数内の cleanup 配列 push (SANDBOXES+= 等) が subshell に閉じ込められ親に届かず、trap cleanup が効かず /tmp にリークする。ヘルパーは path を echo するだけにし、登録は各呼び出し元（親シェル）で行う。"
+description: "path を `echo`/`printf` で返す fixture ヘルパーを `X=\"$(new_repo ...)\"` の **コマンド置換 (`$()`)** 経由で呼ぶと、そのヘルパーは **subshell** で実行される。"
 created: "2026-07-03T06:00:00+09:00"
 updated: "2026-07-03T06:00:00+09:00"
 sources:

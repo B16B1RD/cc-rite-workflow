@@ -1,7 +1,7 @@
 ---
 title: "Race window probe の identification power: outcome classification で test の真正性を担保する"
 domain: "patterns"
-description: "SIGKILL を使った race window probe で sleep が短すぎると kill が write 開始前に landing し、全 iter で state file ENOENT のまま「PASS」する false positive 経路を生む。production の atomic write が partial-write を残すバグに退化しても test が PASS するため identification power がゼロになる dead code 化が起きる。canonical 防御は (a) sleep を 0.05-0.1s に拡大、(b) iteration outcome を pre/mid_or_temp/post/corrupt に classify、(c) `mid_or_temp + post >= 1` を assert することで race window が実際に当たったことを実証する設計。Mutation testing と pair pattern として併用 (過去のレビューで確立)。過去のレビューで `mid+post>=1` assert を「sleep 過大 dead code 化を防ぐ post-condition」として再定義 (`atomic-completion-observed`)、True mid-state observation は別 test scope へ分離。Test invariant pattern を `byte_equal_violations` 同型の loop 内 collected error counter (`unexpected_wait_rc_count`) に統一する sub-pattern を追加。"
+description: "SIGKILL を使った race window probe (write 中に kill して atomic invariant を verify する test) では、`sleep` が短すぎると kill が **write 開始前** に landing し、全 iter で state file が ENOENT (pre-write 状態) のまま「PASS」する false positive 経路を生む。"
 created: "2026-05-02T00:30:00+09:00"
 updated: "2026-08-08T13:37:28Z"
 sources:

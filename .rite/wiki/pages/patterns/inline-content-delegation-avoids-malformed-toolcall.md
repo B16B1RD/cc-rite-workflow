@@ -1,7 +1,7 @@
 ---
 title: "インライン特殊文字 content (title/body) は Write tool・--body-file 委譲で malformed tool-call を構造的に除去する"
 domain: "patterns"
-description: "command spec 内で gh CLI に渡す title/body をインライン展開 (特殊文字 title 素埋め込み / heredoc body) すると LLM の tool-call 生成を malform させ workflow が停止する。content を Write tool でファイルへ raw 出力し変数・`--body-file` で渡す 3 段プロトコル (workdir mktemp -d → Write tool で raw 化 → 変数/--body-file で gh) で停止経路 (Cause B) を構造的に除去、構造的除去不能な Cause A (transport ゆらぎ) は honest に scope-out。過去のレビューで確立。"
+description: "command spec (`.md`) 内で gh CLI に渡す title / body をインライン展開 (特殊文字 title の素埋め込み / heredoc body) すると、LLM が tool-call を組み立てる際に malformed tool-call を引き起こし workflow が停止する。"
 promote: rite-plugin
 created: "2026-06-09T00:00:00Z"
 updated: "2026-06-09T00:00:00Z"

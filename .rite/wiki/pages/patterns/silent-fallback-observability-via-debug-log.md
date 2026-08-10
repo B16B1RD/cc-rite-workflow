@@ -1,7 +1,7 @@
 ---
 title: "resolver / helper 失敗時の silent fallback は debug log で観測性を確保する"
 domain: "patterns"
-description: "`var=$(helper.sh ... 2>/dev/null) || var="<legacy>"` 形式の silent legacy fallback は本番の deploy regression を完全に隠す。RITE_DEBUG gated WARNING を `.rite-flow-debug.log` に出力する observability layer を caller 全件に対称配置することで、本番挙動を不変に保ったまま root cause を後追い可能にする canonical pattern。過去のレビュー事例 cycle 1 (HIGH x2 cross-validation) で実測。過去のレビューで「fallback が操作対象そのものを変える場合は RITE_DEBUG gate せず常時可視の WARNING にする」判定基準を追加 (schema_v2 per-session file → legacy 共有 file への切替を silent にすると schema 不整合が再生産される実害を実測)。"
+description: "`var=$(helper.sh ... 2>/dev/null) || var=\"<legacy_default>\"` 形式で resolver / helper 失敗時に legacy 値へ fallback する pattern は、stderr が捨てられているため deploy regression / migration drift / permission denied 等の根本原因が完全に silent になる。"
 promote: rite-plugin
 created: "2026-04-30T08:03:08Z"
 updated: "2026-07-09T06:56:16+00:00"

@@ -2,7 +2,7 @@
 type: "patterns"
 title: "absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する"
 domain: "patterns"
-description: "旧文面の除去を固定する assert_not_grep pin は、(1) 複数語を .* で橋渡しすると行指向 grep が複数行に跨る旧文面に構造的にマッチせず常に pass する空虚 pin になる、(2) ERE の literal { } は未エスケープだと strict ERE 実装 (BSD grep / ugrep) で regcomp エラーになる。pin は base に単一行で存在し post-PR に不在の識別トークンで書き、両側を grep で確認してから commit する。"
+description: "旧文面の除去を drift ガードとして固定する `assert_not_grep` pin には 2 つの構造的な罠がある。"
 created: "2026-07-21T18:30:00Z"
 updated: "2026-07-28T21:30:00+09:00"
 sources:

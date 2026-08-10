@@ -1,7 +1,7 @@
 ---
 title: "共有 /tmp の leak 検査は count delta ではなく path 集合差分 (comm -13) で行う"
 domain: "patterns"
-description: "共有 /tmp 上の tempfile leak 検査を実行前後のファイル数 count delta で行うと、並列プロセスの削除で false-fail し、leak と削除の相殺で false-PASS する。実行前後の path 集合を `comm -13` で差分化すると自テストが新規出現させた path のみを決定論的に検出でき両方向の誤判定を排除。helper の mktemp template が絶対 path 固定で TMPDIR 隔離が効かない場合の canonical 次善策。過去のレビューで leak 注入 (正方向) / 他プロセス削除 (逆方向) の双方向 mutation により count delta 方式への厳密な上位互換性を実証。並列他プロセスが同 template で追加した場合の add-direction ambiguity は残存 (根治は helper 側 TMPDIR 対応 = 別 scope)。"
+description: "共有 `/tmp` 上の tempfile leak 検査を「実行前後のファイル数 count delta」で行うと、(a) 並列実行中の他プロセスが同 glob のファイルを削除した場合に false-fail、(b) 自テストの leak と他プロセスの削除が相殺した場合に false-PASS する。"
 created: "2026-06-06T17:33:06Z"
 updated: "2026-06-06T17:33:06Z"
 sources:

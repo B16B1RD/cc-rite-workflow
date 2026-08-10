@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "mutation は適用前に一致件数を、適用後に構文を検証してから結論に使う"
 domain: "heuristics"
-description: "一致 0 回や複数一致の mutation は「テストが弱い」と誤読され、構文を壊した mutation は「全 TC が Red」という無意味な結果を出す。どちらも結論を反転させる。"
+description: "mutation テストの結論（「このアサーションは守れている / 守れていない」）は、mutation 自体が正しく適用されて初めて意味を持つ。"
 created: "2026-08-03T07:46:56Z"
 updated: "2026-08-03T07:46:56Z"
 sources:

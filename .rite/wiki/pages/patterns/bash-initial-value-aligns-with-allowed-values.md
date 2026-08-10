@@ -1,7 +1,7 @@
 ---
 title: "bash 文字列変数の初期値は allowed values 列挙に含めるか fail-loud sentinel で defensive に倒す"
 domain: "patterns"
-description: "bash の case 文で routing する文字列変数の初期値が allowed values 一覧外の sentinel (例: `skipped`) だと、case 文に対応 arm がない場合に silent fall-through する経路を生む。初期値を allowed values 内の safe-side default に設定するか、`*:initial)` のような fail-loud sentinel arm を case 文に追加するのが canonical。過去のレビュー事例 cycle 2 HIGH F-02 で `commands/issue/close.md` Phase 4.6.3 の `status_update_result="skipped"` 初期値が allowed values (success/not_registered/update_failed/projects_disabled) 外で実測、初期値を `"projects_disabled"` (success:projects_disabled = 整合性 OK 判定) に変更して fix。"
+description: "bash の case 文で routing する文字列変数 (例: `status_update_result`) の初期値が allowed values 列挙 (例: `success` / `not_registered` / `update_failed` / `projects_disabled`) 外の sentinel 値 (例: `skipped`) だと、case 文に対応 arm がない場合に silent fall-through する経路を生む。"
 created: "2026-04-25T11:40:00+00:00"
 updated: "2026-07-29T21:32:36+09:00"
 sources:

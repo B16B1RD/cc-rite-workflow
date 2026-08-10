@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "セキュリティ機械ゲートの部分撤去は撤去前 covered set の superset 維持と per-occurrence fail-closed 判定で収束させる"
 domain: "heuristics"
-description: "verb 列挙などの機械ゲートを部分撤去し一部を残すリファクタでは、維持部分を撤去前 covered set の superset にし、allow-list を flatten-substring でなく per-occurrence の deny-by-default FSM で判定し、脅威モデルをユーザーに明示することで review-fix ループを収束させる。"
+description: "denylist / 列挙型の機械ゲートを「一部だけ残して大半を撤去する」リファクタ（例: reviewer read-only 強制の verb 列挙を撤去し .git 書き込み経路のみ機械ゲートに残す）は、単純そうに見えて review-fix ループが長期化しやすい。"
 created: "2026-07-18T11:08:13+09:00"
 updated: "2026-07-18T11:08:13+09:00"
 sources:

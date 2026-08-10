@@ -1,7 +1,7 @@
 ---
 title: "pathspec 不一致の git diff --quiet は exit 0 を返し「差分なし」ガードを無効化する"
 domain: "anti-patterns"
-description: "「差分なし → 安全」型ガードは pathspec 解決失敗 (cwd 相対 / 空 / quotePath C-quote) で「比較していないのに同一」に化け、破棄承認でデータ喪失する。過去のレビューで 3 回別形で実測。pathspec の実在解決を独立に保証する。"
+description: "`git diff --quiet <rev> -- <pathspec>` は pathspec がどのファイルにも一致しないとき「比較対象なし = 差分なし = exit 0」を返す。"
 created: "2026-07-13T09:15:00Z"
 updated: "2026-07-13T09:15:00Z"
 sources:

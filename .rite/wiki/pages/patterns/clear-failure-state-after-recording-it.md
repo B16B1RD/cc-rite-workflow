@@ -4,7 +4,7 @@ title: "失敗状態のクリアは失敗の記録より後に置く"
 domain: "patterns"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/clear-failure-state-after-recording-it.md"
-description: "サーキットブレーカー発火時に cycle counter を 0 へリセットする設計（「再実行でループを再開できる」ため）を入れたが、そのリセットは発火を記録する唯一の手段である sentinel emit より**手前**にあった。両者の隙間で turn が終わると、**発火が無記録のまま counter だけ 0 になる**。同じ `flow-state.sh set` が継続 handoff も消しているため Stop hook は停止を許可し、次回の recover は満額の予算でループを再開する。"
+description: "サーキットブレーカー発火時に cycle counter を 0 へリセットする設計（「再実行でループを再開できる」ため）を入れたが、そのリセットは発火を記録する唯一の手段である sentinel emit より**手前**にあった。"
 created: "2026-07-29T21:32:36+09:00"
 updated: "2026-07-29T21:32:36+09:00"
 sources:

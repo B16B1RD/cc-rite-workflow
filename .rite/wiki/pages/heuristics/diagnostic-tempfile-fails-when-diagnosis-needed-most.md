@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "診断退避用の tempfile は診断が最も要る場面でだけ消える — command substitution へ畳む"
 domain: "heuristics"
-description: "`err=$(mktemp ... 2>/dev/null) || err=\"\"` と `2>\"${err:-/dev/null}\"` の組は、mktemp が失敗したときに後続の診断を丸ごと /dev/null へ落とす。mktemp が失敗する条件（ENOSPC / read-only TMPDIR / inode 枯渇）は mkdir・mv・rm が失敗する条件と相関するため、診断が最も必要な場面でだけ診断が消える。有効な修正は fallback の改良ではなく機構の削除 — `err=$(cmd 2>&1)` の command substitution にすれば失敗する余地が無くなり、trap も orphan tempfile 対策も同時に不要になる。"
+description: "stderr を退避して WARNING に載せるために tempfile を確保する定型（`err=$(mktemp ... 2>/dev/null) || err=\"\"` に続けて `cmd 2>\"${err:-/dev/null}\"`）は、mktemp が失敗したときに後続コマンドの診断を丸ごと `/dev/null` へ捨てる。"
 created: "2026-08-06T00:40:00+09:00"
 updated: "2026-08-06T00:40:00+09:00"
 sources:

@@ -3,7 +3,7 @@ type: "anti-patterns"
 title: "ERE の ? を多バイト文字に直接掛けると LC_ALL=C でバイト単位評価になり検出が失効する"
 domain: "anti-patterns"
 promote: rite-plugin
-description: "grep -E で日本語の 1 文字を optional にするつもりで `既定値? 5` と書くと、LC_ALL=C ではバイト単位評価となり `?` が「値」の最終バイトだけに掛かるため「既定 5」を検出できない。グループ化 `既定(値)? 5` で解決する。UTF-8 ロケールでは発現しないため、CI ロケールの変更で silent に失効する。"
+description: "ERE の `?`（直前の 1 要素を optional にする）を多バイト文字へ直接掛けると、`LC_ALL=C` ではロケールが文字境界を知らないため**バイト単位で評価**される。"
 created: "2026-08-07T18:40:00+09:00"
 updated: "2026-08-07T18:40:00+09:00"
 sources:

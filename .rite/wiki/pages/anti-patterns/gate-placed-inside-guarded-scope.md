@@ -4,7 +4,7 @@ title: "gate を守る対象の内側に置くと、守るべき唯一の failur
 domain: "anti-patterns"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/gate-placed-inside-guarded-scope.md"
-description: "手順 X の実行を保証する post-condition gate を X のサブステップとして置くと、「X を丸ごと skip」という守るべき failure mode では gate も skip され自己参照で無力化する。gate は守る対象の外・result emit 境界の直前に置く。あわせて同一 conversation でループする skill では presence check だけの gate が前 cycle の marker で false-positive pass するため、iteration_id で鮮度を判定する。"
+description: "LLM が読む手順書で「手順 X が実行されたこと」を保証する post-condition gate を新設するとき、gate を X のサブステップとして書くと自己参照で無力化する。"
 created: "2026-07-27T10:57:51+09:00"
 updated: "2026-07-27T10:57:51+09:00"
 sources:

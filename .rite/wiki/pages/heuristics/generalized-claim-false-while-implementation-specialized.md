@@ -4,7 +4,7 @@ title: "一般化した断定は、実装が特殊化されている限り必ず
 domain: "heuristics"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/generalized-claim-false-while-implementation-specialized.md"
-description: "「除外ブロックが未閉鎖なら検出失敗」のような契約を無限定に書くと、実装が 2 ラッチ限定・特定ファイル限定である以上その断定は偽になる。同一 PR 内の分岐表が正しく限定できていたなら、最も限定的な表現を正としてほかをそれに揃えるのが機械的な解。見送り判断も結論だけでなく根拠を in-repo に残さないと、根拠の誤りが次 cycle で同じ論点を再生産する。"
+description: "同じ契約が複数箇所に書かれているとき、書き手は場所ごとに違う抽象度で表現しがちである。"
 created: "2026-08-01T00:21:06+09:00"
 updated: "2026-08-01T23:12:28+09:00"
 sources:

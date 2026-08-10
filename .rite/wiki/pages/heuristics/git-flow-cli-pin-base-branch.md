@@ -1,7 +1,7 @@
 ---
 title: "branch を作る gh コマンドは git-flow で --base を明示し default branch 起点の push 衝突を防ぐ"
 domain: "heuristics"
-description: "branch.base ≠ リポジトリの default branch という git-flow 構成では、remote ブランチを作成する gh CLI（gh issue develop 等）に --base を明示しないと remote が default branch (main) 起点で作られ、local の base 派生ブランチと乖離して初回 push が non-fast-forward で失敗する。非自明なフラグ選択は WHY コメント併記で後続編集の退行を防ぐ。"
+description: "`branch.base` ≠ リポジトリの default branch という git-flow 構成では、remote ブランチを作成する gh CLI（`gh issue develop` 等）に `--base` を明示しないと、remote が default branch (main) 起点で作られ、local の base 派生ブランチと乖離して初回 push が non-fast-forward で必ず失敗する。"
 created: "2026-05-23T11:37:40Z"
 updated: "2026-05-23T11:37:40Z"
 sources:

@@ -1,7 +1,7 @@
 ---
 title: "Declarative invariant の wording 追加は self-meta-conflict trap (fractal pattern は layer を変えて再発する)"
 domain: "anti-patterns"
-description: "SoT 集約 PR で「両者を集合等価に保つ」等の declarative invariant note を追加すると、note の文言自体が新たな self-meta-conflict 経路を生み、fractal pattern が cycle ごとに異なる layer で再発する。過去のレビューで 10 cycle にわたり実測 — Layer 1 (invariant wording cycle 4-7) / Layer 2 (外周完全性 gap cycle 8) / Layer 3 (portability factual claim cycle 9-10) と新層で再発。「完全収束」declare は局所最適にすぎず、別 expertise の reviewer が別 layer で fact-check した瞬間に再発する Premature fractal convergence declaration。canonical 対策は cross-axis declarative mapping を書かず mechanical test の green を contract に置換。Sub-pattern: gate-self-misrepresentation (gate の "backstop あり" 表現が実装と乖離 → skip 根拠に逆用)。"
+description: "SoT 集約 PR で「両者を集合等価に保つ」等の declarative invariant note を追加すると、note の文言自体が新たな self-meta-conflict 経路を生む。"
 created: "2026-05-26T00:30:00Z"
 updated: "2026-05-26T00:30:00Z"
 sources:

@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin"
 domain: "heuristics"
-description: "「この経路に来るのは X のみ」「all gates pass のときのみ」型の全称主張散文は、新しい到達経路・ゲート例外の追加で未変更行のまま偽化する (comment rot)。修正は emit 文面だけでなく同じ概念を説明する散文・定義グロス・経路注記・overview 要約を旧文面 grep で全数洗いし、原因中立文面に揃え、assert_not_grep pin で再発を機械遮断する。"
+description: "「本経路に来るのは別 live セッション在席時のみ」「3 gates all pass のときのみ reap」のような**全称主張（排他性・網羅性）を含む散文**は、新しい到達経路やゲート例外が追加されると、**その行自体は未変更のまま偽になる**（comment rot: 周辺コードの変更が未変更行を偽化する）。"
 created: "2026-07-21T18:30:00Z"
 updated: "2026-07-21T18:30:00Z"
 sources:

@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する"
 domain: "heuristics"
-description: "PreToolUse 等の hook timeout は fail-open (timeout→tool 許可) なので、hook の評価コストが入力サイズで発散すると timeout→fail-open bypass が成立する。反復回数上限では不十分で、全パターン検査の前に入力バイト長の O(1) ガードを置き O(n²) 経路を短絡する。"
+description: "PreToolUse 等の hook の timeout は **fail-open**（timeout に達すると Claude Code が hook を kill して tool 実行を許可する）である。"
 created: "2026-07-03T08:30:23+00:00"
 updated: "2026-07-16T08:16:06+09:00"
 sources:

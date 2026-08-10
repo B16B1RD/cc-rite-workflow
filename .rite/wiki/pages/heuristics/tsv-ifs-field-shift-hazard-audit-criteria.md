@@ -3,7 +3,7 @@ type: "heuristics"
 title: "@tsv+IFS read の field-shift hazard 横断監査は cut-f免除と空フィールド可否の2条件で判定する"
 domain: "heuristics"
 promote: rite-plugin
-description: "jq @tsv + IFS read パターンを持つ複数箇所を横断監査する際、(1) cut -f 使用箇所は区切り文字を圧縮しないため免除、(2) 全フィールドが構造的に非空（数値+1演算・末尾のみ可変等）なら hazard 対象外、の2条件で真の修正必要箇所のみを特定できる。不要な書き換えを避けスコープを厳守する。"
+description: "`jq '[...] | @tsv'` の出力を `IFS=$'\\t' read -r a b c` で読む実装は、POSIX の IFS whitespace 規則により、tab を含む IFS では連続する区切り文字が1個に圧縮される。"
 created: "2026-07-06T23:20:00+09:00"
 updated: "2026-07-06T23:20:00+09:00"
 sources:

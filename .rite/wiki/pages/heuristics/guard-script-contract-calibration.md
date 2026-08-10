@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "再発防止 guard スクリプトは docstring の宣言意図と実装 regex を実測で校正する"
 domain: "heuristics"
-description: "lint / recurrence-guard 系スクリプトのレビューでは「docstring が宣言する検出範囲」と「実際の regex が検出する範囲」の対応が合成テストで実測検証され、乖離は指摘になる。regex は「現存パターンの正確な再現」だけで校正せず宣言意図（quote/flag バリアント含む）に合わせ、意図的な非検出形は Known boundary 節に完全列挙する。過去のレビュー事例の cycle 3-5 で実測された連鎖。"
+description: "lint / recurrence-guard 系スクリプトのレビューでは「docstring が宣言する検出範囲」と「実際の regex が検出する範囲」の対応が合成テストで実測検証され、乖離は指摘になる。"
 created: "2026-07-19T15:00:00+09:00"
 updated: "2026-07-19T23:01:00+09:00"
 sources:

@@ -1,7 +1,7 @@
 ---
 title: "Lint の見出し抽出はコードフェンス内行を除外してから行う (検証ツール自身の false-negative 防止)"
 domain: "patterns"
-description: "markdown を解析する lint が `grep -E '^#{1,6}'` で見出しを抽出するとコードフェンス内の shell コメント (`# ...`) を見出しと誤認し、dangling 参照が「実在見出し」と誤一致して検証ツール自身が verification を緩める false-negative に陥る。見出し抽出前に strip_code_fences (awk in_fence toggle) でフェンス内行を除外するのが canonical。過去のレビュー事例 cycle 1 で sh-cross-ref-check.sh が fence 内コメントを heading 誤認し dangling 検証 false-negative (MEDIUM, code-quality)、fix で strip_code_fences 導入。awk toggle は 4-backtick/3-backtick nesting で誤トグルする既知の限界 (Hypothetical 降格)。"
+description: "markdown を解析する検証ツール (lint / drift-check) が `grep -E '^#{1,6}'` のような単純パターンで見出しを抽出すると、` ```bash ` コードフェンス内の shell コメント (`# ...`) を markdown 見出しと誤認する。"
 promote: rite-plugin
 created: "2026-05-28T12:42:26Z"
 updated: "2026-05-28T12:42:26Z"

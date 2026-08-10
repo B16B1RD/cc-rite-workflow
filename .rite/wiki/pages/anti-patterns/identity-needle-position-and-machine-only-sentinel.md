@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "同定に使う needle は位置まで固定し、人間が複製できる文字列を使わない"
 domain: "anti-patterns"
-description: "「自分が投稿したもの」を本文文字列で同定するとき、contains は位置非依存で誤検出し、endswith は本文全体の suffix なので行頭の引用接頭辞を吸収する。意図が「最終行が X と等しい」なら行に分割して等値比較する必要がある。加えて needle が人間可視の文字列だと手書きコメントが一致するため、rendered view に現れない機械専用 sentinel を使う。ただし本文照合である限り verbatim 複製の残余は原理的に消えない。"
+description: "「この文書は自分が生成したものか」を本文の文字列で判定する場面（update-in-place する PR コメント、生成物の再認識など）では、**needle の一致方法**が破壊的操作の安全性を直接決める。"
 created: "2026-07-28T21:30:00+09:00"
 updated: "2026-07-28T21:30:00+09:00"
 sources:

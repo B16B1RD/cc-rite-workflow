@@ -1,7 +1,7 @@
 ---
 title: "loop 内の独立 assert は missing file で fail message が assertion 数倍に膨張する"
 domain: "anti-patterns"
-description: "per-iteration loop 内で `assert_grep` / `assert_not_grep` を同一 file に独立に複数回呼ぶと、当該 file 不在時に 1 iteration = N fail message に膨張する failure mode。過去のレビュー事例 → 過去のレビューで T-1 reviewer-loop test の refactor 後に 2 倍化を実測、loop 先頭 `if [ ! -f "$f" ]; then fail; continue; fi` の missing-file guard で原本「1 iteration = 1 fail」挙動を回復。判定基準: file cardinality (loop × file の N×M) が複数なら guard 必要、単一固定 file (`$BASE_FILE`) なら inflation 起きず guard 不要。helper 共通化 (`assert_file_exists_or_fail`) は 3+ test 再発時点で Lean に実施。過去のレビューで T-1 のみ (1 test) 段階での preventive helper 抽出を実測、reviewer 明示推奨があれば 3+ 閾値未到達でも Lean と認められる経路を確立。"
+description: "per-iteration ループ内で `assert_grep` / `assert_not_grep` のような file 引数を取る assertion helper を **同一 file に対して独立に複数回呼ぶ** パターンは、当該 file が不在の場合 1 iteration = N fail message (N = assertion 数) に膨張する。"
 created: "2026-05-19T05:50:00+09:00"
 updated: "2026-05-19T11:50:00+09:00"
 sources:

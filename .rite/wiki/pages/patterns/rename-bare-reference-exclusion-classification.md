@@ -3,7 +3,7 @@ type: "patterns"
 title: "識別子リネーム後の裸参照置換で除外すべき参照の分類"
 domain: "patterns"
 promote: rite-plugin
-description: "スキル/コマンド名のリネーム（例: /rite:resume → /rite:recover）後、裸ワード参照を横断置換する際は、enum値・変数名・スクリプトファイル名・principle ID・一般語・歴史的記述例示の6種を除外対象として判別する必要がある。"
+description: "スキル/コマンドのリネーム（例: `/rite:resume` → `/rite:recover`）後、旧名への「裸のスキル名参照」（bare-word reference、例: 「resume の AskUserQuestion」のような文中の裸表記）をリポジトリ横断で修正するとき、旧名と同じ文字列を含むが**修正してはいけない**箇所を誤って置換しないよう分類する必要がある。"
 created: "2026-07-08T02:20:00+00:00"
 updated: "2026-07-08T02:20:00+00:00"
 sources:

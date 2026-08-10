@@ -3,7 +3,7 @@ type: "heuristics"
 title: "agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する"
 domain: "heuristics"
 promote: rite-plugin
-description: "停止通知やエラーメッセージに埋め込む「手動復旧コマンド」は、agent が自分の Bash tool で叩いて rc=0 を確認しても検証にならない。agent と人間では実行コンテキストが構造的に違い、同じコマンドが**別の対象**に効く。しかも誤った対象への書き込みは rc=0・無出力で成功するため、実行者は空振りに気づけない。"
+description: "停止通知やエラーメッセージに埋め込む「手動復旧コマンド」は、agent が自分の Bash tool で叩いて rc=0 を確認しても検証にならない。"
 created: "2026-07-29T21:32:36+09:00"
 updated: "2026-08-08T17:40:00+09:00"
 sources:

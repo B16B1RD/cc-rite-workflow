@@ -1,7 +1,7 @@
 ---
 title: "Sub-Issue series で AC 緩和が発生したら設計 doc 側にも back-propagation する"
 domain: "heuristics"
-description: "Umbrella Issue 配下の Sub-Issue series で各 PR の AC (例: 行数目標) が user 承認のもと段階的に緩和された場合、Umbrella 起点の設計ドキュメント (`docs/designs/...`) の goal-setting 記述にも back-propagation する運用が必要。最初の Sub-Issue で AC 緩和が landed した瞬間に design doc 側を更新しないと、後続 Sub-Issue が「設計 doc の当初目標」と「直前 PR の実着地」のどちらを参照すべきか曖昧になり、reviewer が「目標未達」として誤検出する経路を生む。過去のレビューで累積 2 回目 (過去のレビュー事例 累積 1 回目に続く) の同パターン再発を 3 reviewer のうち 1 人が MEDIUM finding として独立検出、canonical 対策として「Sub-Issue series PR の最初の AC 緩和着地時に設計 doc / Umbrella body / 後続 Sub-Issue body の 3 箇所に back-propagation」を確立。"
+description: "Umbrella Issue 配下の Sub-Issue series で各 PR の AC (例: 行数目標) が user 承認のもと段階的に緩和された場合、Umbrella 起点の設計ドキュメント (`docs/designs/...`) の goal-setting 記述にも back-propagation する運用が必要。"
 promote: rite-plugin
 created: "2026-05-04T11:20:00Z"
 updated: "2026-08-08T13:37:28Z"

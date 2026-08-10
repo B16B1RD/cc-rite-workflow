@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "オプションを常に明示するテストは、既定値解決という最も壊れやすい経路を丸ごと素通りさせる"
 domain: "anti-patterns"
-description: "helper のテストが全件でオプションを明示すると、production が実際に通る既定値解決の経路にテストが 1 本も当たらない。既定解決を無効化しても全スイート green のまま通る。production の呼び出し形をテストに最低 1 本含める。"
+description: "helper のテストがすべての TC でオプションを明示すると、production が実際に通る「オプション省略時の既定値解決」経路にテストが 1 本も当たらない。"
 created: "2026-08-07T07:56:00+09:00"
 updated: "2026-08-07T18:40:00+09:00"
 sources:

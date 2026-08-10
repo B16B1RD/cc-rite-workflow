@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "bash 数値 env override 検証と算術評価の基数不一致（先頭ゼロの8進誤解釈）"
 domain: "anti-patterns"
-description: "env var の数値検証に `^[0-9]+$` を使い、後続で `$(( VAR * N ))` のように bash 算術に渡すと、先頭ゼロ値（例: \"010\"）が検証は通過しつつ bash 算術では8進数として解釈され、意図と異なる値に silent に変換される（\"08\"/\"09\" は基底値エラーで即死）。"
+description: "運用者が上書き可能な数値 env var（例: `RITE_SESSION_LIVENESS_TTL_HOURS`）を `[[ \"$VAR\" =~ ^[0-9]+$ ]]` のような「10進数として妥当か」で検証しても、その値を後段で `$(( VAR * 3600 ))` のような bash 算術式にそのまま渡すと、先頭ゼロを含む値（`\"010\"` 等）は bash 算術の規則で **8進数として再解釈** される。"
 created: "2026-07-20T05:14:41+00:00"
 updated: "2026-07-20T05:14:41+00:00"
 sources:

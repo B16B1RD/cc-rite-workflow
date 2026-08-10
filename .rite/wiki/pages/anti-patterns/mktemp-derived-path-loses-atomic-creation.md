@@ -3,7 +3,7 @@ type: "anti-patterns"
 title: "mktemp が作った名前から派生させたパスは O_CREAT|O_EXCL 保証を失う"
 domain: "anti-patterns"
 promote: rite-plugin
-description: "`$(mktemp).part` のような派生パスは mktemp が atomic に作ったファイルではなく、名前が予測可能なうえ存在チェックも経ていない。攻撃者がその名前で symlink を置くと書き込みが追随して任意ファイルを truncate する。一時ファイルが 2 本必要なら mktemp を 2 回呼ぶ。"
+description: "`mktemp` の安全性は「ランダムな名前を `O_CREAT|O_EXCL` で atomic に作る」ことに由来する。"
 created: "2026-07-30T01:20:00+09:00"
 updated: "2026-07-30T01:20:00+09:00"
 sources:

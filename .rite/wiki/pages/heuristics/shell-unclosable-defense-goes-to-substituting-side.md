@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "シェル層で閉じられない注入防御は値を substitute する側（LLM）の実行前ゲートとして書く"
 domain: "heuristics"
-description: "quoted heredoc の終端子行のような脱出口は、bash block 内のシェルが実行時には parse 済みのためシェル側の検査では防げない。脱出後も後続構文が正常に走ると rc=0 + marker 揃いの silent success になり、marker 契約でも捕捉できない。substitute 時点でしか検査できない値の性質（複数行・終端子行一致）は、bash を実行しない事前ゲートとして手順書の LLM 責務に置く。あわせて、受け皿（consumer）を足す修正は producer・発火条件・引用元の同時追加まで要求する。"
+description: "LLM が値を literal substitute する bash block では、**防御の層を 1 つ塞ぐたびに同じ機構の中の「次の層」が露出する**。"
 created: "2026-08-05T09:26:00+09:00"
 updated: "2026-08-05T09:26:00+09:00"
 sources:

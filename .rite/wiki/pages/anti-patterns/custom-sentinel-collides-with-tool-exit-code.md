@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "自前 sentinel exit code は呼び出す外部コマンドの予約値を避けて選ぶ"
 domain: "anti-patterns"
-description: "スクリプト内部で意味を持たせる sentinel exit code に 2 を選ぶと、gawk / mawk / grep 等の外部コマンドが fatal error で返す 2 と衝突する。結果、ツールが異常終了したケースが「意図的に捨てた」扱いへ吸収され、そのために用意した失敗分岐が到達不能になる。自前 sentinel は 3 以降から選ぶ。"
+description: "awk プログラムなどに「この状態を呼び出し側へ伝えたい」という独自の意味を持たせた exit code を割り当てるとき、値を 2 にすると gawk / mawk が fatal error で返す 2 と区別できなくなる。"
 created: "2026-07-30T01:20:00+09:00"
 updated: "2026-07-30T01:20:00+09:00"
 sources:

@@ -3,7 +3,7 @@ type: "patterns"
 title: "「N 種を禁止し行き先を示す」規則は禁止列挙と行き先を 1 つの対リストに畳む"
 domain: "patterns"
 promote: rite-plugin
-description: "禁止する種別の列挙と、それぞれの行き先を別ブロックに書くと、両者は独立に編集できるため件数がずれる。対にして 1 箇所に書けば、片方だけ増える編集が構文的にできなくなる。"
+description: "「A・B・C をここに書くな。"
 created: "2026-08-02T11:59:42+09:00"
 updated: "2026-08-02T11:59:42+09:00"
 sources:

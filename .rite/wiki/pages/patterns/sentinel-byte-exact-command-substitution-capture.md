@@ -2,7 +2,7 @@
 type: "patterns"
 title: "sentinel でコマンド置換のバイト厳密性を守る"
 domain: "patterns"
-description: "`$(cmd)` は末尾の改行を全て除去するため、末尾が改行で終わる値（LF を含むパス名など）を捕捉すると silent に切り詰められる。`$(cmd && printf 'X')` の sentinel で末尾を非改行バイトにしてから剥がすとバイト厳密に受け取れる。パス成分の分割も `$(dirname …)` ではなくパラメータ展開で行う。"
+description: "`var=$(cmd)` はコマンド出力の **末尾の改行を全て** 除去する。"
 created: "2026-07-25T14:18:43Z"
 updated: "2026-07-25T14:18:43Z"
 sources:

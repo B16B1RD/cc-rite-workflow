@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "新設 logged ガードの上流に同一判定の silent 経路が残ると支配的入力で可視化が無効化される"
 domain: "anti-patterns"
-description: "可視化 (WARNING 付き skip) ガードを新設しても、同じ判定条件を持つ既存 silent 経路が制御フロー上流にあると、実運用の支配的入力が silent 側に先に吸われて可視化 MUST が破れる。ガード新設時は同一条件の全経路 (case 全 arm) を列挙し、silent 側を新カテゴリ除外で絞る。"
+description: "「silent skip 禁止 — スキップは WARNING で可視化する」という MUST 要件に対して logged ガードを新設しても、**同じ判定条件（例: 24h age guard）を持つ既存の silent continue が制御フロー上流に残っている**と、実運用で最も起きやすい入力がそちらに先に吸われ、新設ガードは到達不能になる。"
 created: "2026-07-21T18:30:00Z"
 updated: "2026-08-01T00:21:06+09:00"
 sources:

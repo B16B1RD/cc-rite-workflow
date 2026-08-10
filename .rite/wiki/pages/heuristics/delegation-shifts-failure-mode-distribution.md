@@ -3,7 +3,7 @@ type: "heuristics"
 title: "inline 実装を helper へ委譲したら、診断メッセージを新しい失敗分布へ揃える"
 domain: "heuristics"
 promote: rite-plugin
-description: "コードを inline から helper スクリプトへ切り出すと、**何が最も起こりやすい失敗か**が変わる。inline awk なら IO エラーやパターン不一致が主だったが、helper 化した後の支配的な失敗は「helper を解決できない（rc=127）」になる。診断メッセージと reason 表が旧い分布のまま残ると、運用者は実際には起きていない原因を調べることになる。"
+description: "コードを inline から helper スクリプトへ切り出すと、**何が最も起こりやすい失敗か**が変わる。"
 created: "2026-07-30T01:20:00+09:00"
 updated: "2026-07-30T01:20:00+09:00"
 sources:

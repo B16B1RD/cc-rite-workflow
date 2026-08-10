@@ -3,7 +3,7 @@ type: "heuristics"
 title: "上限機構(cap)の追加は既存の下限・補完機構が確立した floor を全経路で尊重する"
 domain: "heuristics"
 promote: rite-plugin
-description: "選定パイプラインに上限(cap)機構を後段追加すると、既存の下限・補完機構(min_reviewers / sole-reviewer guard ≥2 / mandatory 保護)が確立した floor を silent に undo しうる。cap は全 valid 入力・全経路で既存 floor を尊重し cap/guard/mandatory/min の invariant を再調停する。"
+description: "既存の選定/補完パイプライン（例: reviewer 選定）に**上限機構 (cap, cost 上限)** を後段挿入すると、既存の**下限・補完機構**が確立した floor を silent に undo する穴が生じる。"
 created: "2026-07-02T23:12:48Z"
 updated: "2026-07-02T23:12:48Z"
 sources:

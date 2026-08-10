@@ -1,7 +1,7 @@
 ---
 title: "`grep -oE | wc -l` が ratchet ideal 値到達時に pipefail で silent abort"
 domain: "anti-patterns"
-description: "`set -euo pipefail` 配下で `count=$(grep -oE 'pattern' file | wc -l | tr -d ' ')` を ratchet test の occurrence count に使うと、grep が 0 マッチ (exit 1) を返した瞬間 pipeline 全体が abort し test が pass/fail emit せず silent terminate する。最も危険なのは ratchet ideal 値 (= 違反 0 件) 到達時で、目標達成のタイミングこそ test が動作不能になる。canonical fix は `count=$({ grep -oE 'pattern' file || true; } | wc -l | tr -d ' ')` のように grep を group + `|| true` で囲み exit 1 を吸収。過去のレビュー事例 cycle 3 で CRITICAL として実機顕在化、5 件すべて修正。"
+description: "`set -euo pipefail` 配下で `count=$(grep -oE 'pattern' file | wc -l | tr -d ' ')` を ratchet test の occurrence count 取得に使うと、grep が 0 マッチ (exit 1) を返した瞬間 pipefail が pipeline 全体を abort させ、test 全体が pass/fail のいずれも emit せず silent terminate する。"
 promote: rite-plugin
 created: "2026-05-08T17:43:55+00:00"
 updated: "2026-08-01T00:21:06+09:00"

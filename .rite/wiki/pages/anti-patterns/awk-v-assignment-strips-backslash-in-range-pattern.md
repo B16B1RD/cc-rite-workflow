@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "awk -v 代入はバックスラッシュを剥がす — escape 付きパターンを渡した範囲指定 assert は常に PASS する"
 domain: "anti-patterns"
-description: "節スコープを切る assert helper が `awk -v start=... -v end=...` でパターンを渡していると、awk が -v 代入時に escape を解釈して `^> \\*\\*fail-safe` が `^> **fail-safe` へ化ける。成立しない正規表現になって範囲が EOF まで伸び（実測 677 行）、範囲外にあるはずの行が「範囲内」で見つかって assert が通る。mutation を当てて初めて発覚する類の欠陥で、回避は ENVIRON 経由で渡すか escape 不要のパターンにするか、隣接性のような単純な述語を直接書くこと。"
+description: "`awk -v var=value` の代入では、value 内のバックスラッシュが**エスケープシーケンスとして解釈され剥がれる**。"
 created: "2026-08-08T14:00:41+09:00"
 updated: "2026-08-08T17:40:00+09:00"
 sources:

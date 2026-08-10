@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "`cmd=$(...) || cmd=\"\"` は非ゼロ終了時に stdout 済みの診断 JSON を空文字列で上書きする"
 domain: "anti-patterns"
-description: "command substitution は subprocess の exit code に関わらず stdout を正しく捕捉するため、後続で case 文による catch-all 処理をしている限り `|| var=\"\"` フォールバックは不要かつ有害（診断情報の損失）。"
+description: "`status_json=$(bash script.sh args) || status_json=\"\"` という一見安全な defensive fallback は、`script.sh` が非ゼロ終了したときに **既に stdout へ出力済みの診断 JSON（失敗理由を含む）を空文字列で上書き・破棄する**。"
 created: "2026-07-13T14:30:00+09:00"
 updated: "2026-07-13T21:55:00+09:00"
 sources:

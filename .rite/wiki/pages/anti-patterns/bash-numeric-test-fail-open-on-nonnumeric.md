@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "bash の算術比較は非数値入力で rc=2 を返し、fail-closed の意図が else 側へ倒れる"
 domain: "anti-patterns"
-description: "`[ \"$x\" -eq 0 ]` は $x が非数値のとき rc=2 を返すため if の else 分岐へ落ちる。「読み戻し不能なら既定値へ」という fail-closed のガードが、入力が壊れているときにだけ逆向きに作用する。"
+description: "`[ \"$x\" -eq 0 ]` は `$x` が非数値のとき「偽」ではなく **rc=2（エラー）** を返す。"
 created: "2026-08-03T07:46:56Z"
 updated: "2026-08-03T07:46:56Z"
 sources:

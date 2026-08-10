@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "診断メッセージの主語と射程は、その文が発火する条件が保証している対象に限る"
 domain: "heuristics"
-description: "WARNING が「A / B / C を既定値へ倒します」と書いても、実際に倒れるのが C だけなら誤報になる。診断文が断定してよいのは、書く位置で確定している値と、発火条件が覆う範囲だけ。"
+description: "縮退時の診断が誤情報になると、既に degraded な状況でのトリアージを誤らせる。"
 created: "2026-08-03T07:46:56Z"
 updated: "2026-08-03T07:46:56Z"
 sources:

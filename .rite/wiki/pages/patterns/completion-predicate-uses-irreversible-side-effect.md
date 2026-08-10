@@ -2,7 +2,7 @@
 type: "patterns"
 title: "中断されうる処理の完了判定は、完了した処理だけが持つ不可逆な副作用を述語にする"
 domain: "patterns"
-description: "成果物の存在検査は「処理が始まった」ことしか示さない。中断された cross-device mv は宛先に断片を残すため [ -e \"$dst\" ] は真になる。完了判定には rename でも copy+unlink でも成立する不可逆な副作用（source が消える = [ ! -e \"$src\" ]）を使う。bash の trap は foreground コマンド完了まで遅延するため「成功 → フラグ代入」の窓は代入位置を動かしても閉じず、フラグではなく成果物側の性質を見る必要がある。"
+description: "signal で中断されうる処理について「完了したか」を判定するとき、成果物の**存在**（`[ -e \"$dst\" ]`）を証拠に使ってはならない。"
 created: "2026-08-01T05:40:00Z"
 updated: "2026-08-01T05:40:00Z"
 sources:

@@ -1,7 +1,7 @@
 ---
 title: "極小対称化 PR は sibling site Grep 照合で短時間・高確信レビューできる"
 domain: "heuristics"
-description: "5 行程度の極小 refactor PR (特定 Phase の sibling site 対称化) では、複数の同型箇所を Grep + Read で網羅的に照合し変数名・ラベル以外の構造的差分を洗い出すことで、Confidence 80+ の「指摘事項 0 件 + merge 可」判定を短時間で出せる。過去のレビューで 4 sibling site (Phase 2.3/6.0 × separate/same) の照合として実測。副次技法にハードコード番号の `gh pr view` 実在性検証と scope 外推奨の別 Issue 候補化 (複数 reviewer 独立合意による triple cross-validation)。過去のレビューで 4-site `from=` discriminator pattern (lockdir cleanup observability 対称化、+22/-5 4 files) を累積 evidence として追加 — 3 reviewer 全員承認 + 隣接 site 非対称の scope 外別 Issue 化が複数 reviewer 独立に挙がり triple cross-validation 実証。過去のレビューで 2-site work memory lockdir 別系統対称化 (+13/-3, 2 files) を follow-up evidence として追加 — 過去のレビュー事例 cycle 1 で scope 外推奨された隣接 site が次 PR で自然に消化される運用パターンと、note 引用 consumer scope 一致の sub 技法を実証。過去のレビューで **locale pair (en↔ja) への拡張** を追加 — SPEC.md ↔ SPEC.ja.md の i18n parity fix を tree/表エントリの機械抽出 + token 集合 diff 照合 (TREE_SYNC_OK / TABLE_SYNC_OK) で検証し cycle 2 で blocking 0 mergeable。tech-writer の再利用可能 protocol (forward/reverse git ls-files 照合 + en/ja token diff + prose 主張の実装 grep) と、表 intro scope 宣言整合の検査観点 + nit-noted 受け流し経路 (関連する課題 M2) の実運用実証を併記。"
+description: "5 行程度の極小 refactor PR (特定 Phase の sibling site 対称化) では、複数の同型箇所 (例: 4 sibling site) を Grep + Read で網羅的に照合し、変数名とラベル以外の構造的差分を洗い出すことで、「指摘事項 0 件 + merge 可」の判定を短時間で Confidence 80+ として出せる。"
 promote: rite-plugin
 created: "2026-04-19T06:45:00Z"
 updated: "2026-06-10T00:54:18Z"

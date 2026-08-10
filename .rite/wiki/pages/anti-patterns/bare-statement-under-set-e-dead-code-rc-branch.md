@@ -1,7 +1,7 @@
 ---
 title: "set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する"
 domain: "anti-patterns"
-description: "`set -euo pipefail` 下で外部コマンド (python3/jq/grep 等) を単独文 (bare statement) として実行すると非ゼロ終了で set -e が script を abort し、直後の `rc=$?` 以降の rc 分岐 (rc=1 no-op / rc=2 corruption 報告) が dead code 化する。`if cmd; then rc=0; else rc=$?; fi` の set -e 免除文脈へ移すのが canonical。`if ! cmd; then rc=$?` 版 (rc 常時 0、到達するが誤値) とは root cause の異なる別の壊れ方 (到達不能)。Asymmetric Fix Transcription の inline→delegate guard 解体 sub-pattern の逆方向 (修復) 適用例。過去のレビューで 4 reviewer 0 findings、関連する課題 subtask4 で他 hook 横断調査し session-start.sh:188 が唯一の該当と確認。過去のレビューで command-substitution 代入 `out=$(...); rc=$?` も同じ set -e abort で dead code 化する変種を追加 (test harness は `set +e`/`set -e` 囲みが canonical)。"
+description: "`set -euo pipefail` 下で外部コマンド (`python3` / `jq` / `grep` 等) を **単独文 (bare statement)** として実行すると、コマンドが非ゼロ終了した瞬間に `set -e` が script 全体を abort する。"
 promote: rite-plugin
 created: "2026-06-02T04:59:29Z"
 updated: "2026-06-08T13:10:25Z"

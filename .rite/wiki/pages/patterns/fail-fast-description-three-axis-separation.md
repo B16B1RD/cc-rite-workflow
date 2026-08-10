@@ -1,7 +1,7 @@
 ---
 title: "fail-fast 構造の記述は構文・検証対象・場所の 3 軸で分離する"
 domain: "patterns"
-description: "bash fail-fast の記述は構文 (case `*)` vs else 分岐)・検証対象 (どの変数か)・場所 (どの step に分岐が実在するか) の 3 軸を分離して書く。case arm は bare `*)` と glob パターン arm を区別する。過去のレビューで旧記述の二重不正確 (構文+場所) を実測修正。"
+description: "bash の fail-fast 構造をドキュメントで記述するときは「構文（case `*)` arm か if/elif/else の else 分岐か）」「検証対象（どの変数の fail-fast か）」「場所（どの step / block に分岐が実在するか）」の 3 軸を分離して書く。"
 created: "2026-06-09T19:55:00+00:00"
 updated: "2026-06-09T19:55:00+00:00"
 sources:

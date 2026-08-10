@@ -4,7 +4,7 @@ title: "既存の永続データを新規 consumer が読むときは、集合�
 domain: "heuristics"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/persisted-collection-semantics-from-writer-not-name.md"
-description: "配列名から意味を推測して新規 consumer を書くと、書込側が定義した実際の集合とずれる。ずれは jq 1 箇所ではなく、その集合を言い換えた散文 N 箇所へ同時に伝播する。書込側のコメント・helper docstring を SoT として引用し、名前からの推測を禁じる。"
+description: "永続化された配列を新しい consumer が読むとき、配列名から意味を推測すると書込側が定義した実際の集合とずれる。"
 created: "2026-08-07T07:55:00+09:00"
 updated: "2026-08-07T07:55:00+09:00"
 sources:

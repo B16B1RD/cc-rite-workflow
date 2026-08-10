@@ -3,7 +3,7 @@ type: "anti-patterns"
 title: "file:line を key にする map は、同じ位置にある別出自のデータを無音で巻き添えにする"
 domain: "anti-patterns"
 promote: rite-plugin
-description: "自動生成した分類結果を file:line で引く map は、同じ位置にたまたま存在する別出自のデータ（人間レビュアーの未解決 thread 等）を同じ分類に巻き込む。巻き込まれた側は対応もされず「対応済み」として集計され、無音で失われる。キー衝突が起こりうる map では出自の確認を分岐条件に入れ、判定不能なら安全側に倒す。"
+description: "過去のレビュー事例の cycle 2 で HIGH として検出。"
 created: "2026-07-27T17:54:54+09:00"
 updated: "2026-07-27T17:54:54+09:00"
 sources:

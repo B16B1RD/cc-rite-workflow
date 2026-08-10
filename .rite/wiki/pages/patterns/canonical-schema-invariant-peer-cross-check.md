@@ -1,7 +1,7 @@
 ---
 title: "Peer pattern の drift 判定は canonical schema 不変条件で cross-check する"
 domain: "patterns"
-description: "reviewer が「neighbor pattern と drift」と指摘した際、neighbor 自身が drift 元の可能性があるため、canonical schema の不変条件 (例: `WORKFLOW_INCIDENT=1` family の `sep_count=3` semicolon-separated key=value invariant) で direction を機械検証してから fix する。隣接パターンの**方向**だけを真とすると逆方向に振る silent regression を招く。過去のレビュー事例 fix cycle 2 で実測 — cycle 1 fix が parenthetical `(rc=$var)` 形式に揃えたが canonical schema は semicolon-separated `; rc=$var` で `sep_count=3` invariant を持っており cycle 1 fix の方向が逆だった。sentinel family (`WORKFLOW_INCIDENT` vs `REVIEW_SOURCE_*`) は別 schema を持つため family を跨いだ cross-check は無効。"
+description: "reviewer が「neighbor pattern と drift している」と指摘した際、neighbor 自身が drift 元である可能性があるため、`canonical schema` の不変条件 (例: `WORKFLOW_INCIDENT=1` family の `sep_count=3` semicolon-separated key=value invariant) で direction を機械検証してから fix する。"
 promote: rite-plugin
 created: "2026-05-18T04:00:00+00:00"
 updated: "2026-05-18T04:00:00+00:00"

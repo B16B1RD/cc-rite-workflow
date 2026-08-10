@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい"
 domain: "heuristics"
-description: "同じ機能が構成（branch_strategy 等）ごとに別実装を持つとき、片方のカバレッジは他方を担保しない。しかも抜けるのは非既定側ではなく既定側になりやすい。過去のレビュー事例では存在プローブが git cat-file -e と [ -f ] の 2 実装で、テストは非既定の same_branch だけを pin しており、既定側のプローブを丸ごと潰しても 148 assertion が全緑だった。「構成で保証する」と決めた設計判断は、構成 pin の網羅性そのものが担保になるため、分岐数と pin の本数が一致するかを明示的に数える。"
+description: "同じ責務が設定値によって別実装に分かれているとき（`separate_branch` と `same_branch`、`git cat-file -e` と `[ -f ]` など）、片方のテストは他方を一切担保しない。"
 created: "2026-08-01T00:21:06+09:00"
 updated: "2026-08-01T00:21:06+09:00"
 sources:

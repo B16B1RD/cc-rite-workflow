@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "lint のスキャン除外スコープは既知アンチパターンの再発を検出しない盲点になる"
 domain: "anti-patterns"
-description: "機械的スイープで一括修正した anti-pattern（例: /tmp 直下ハードコード）を継続的に検出するはずの lint チェックが、コスト/ノイズ削減目的で特定ディレクトリ（例: */tests/*）をスキャン対象から除外していると、その除外スコープ内で同じ anti-pattern が新規コードに再導入されても検出されない。"
+description: "起点のスイープ PR で `/tmp` 直下ハードコード（sandbox 環境で書込拒否される anti-pattern）を本番コード 21 ファイルで機械的に `${TMPDIR:-/tmp}/xxx` へ統一し、再発防止のため `tmp-hardcode-check.sh` という lint チェックが導入された。"
 created: "2026-07-20T09:24:00Z"
 updated: "2026-07-20T09:24:00Z"
 sources:

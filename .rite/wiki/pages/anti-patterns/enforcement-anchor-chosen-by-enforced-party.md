@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "機械強制の anchor を強制される側が選べる値にすると、2 層の gate が同一の誤りで同時に無効化される"
 domain: "anti-patterns"
-description: "gate の判定 anchor を、gate される側 (LLM や呼び出し元) が会話コンテキストから選ぶ値に取ると、その選択が誤ったとき gate は誤りを検出せず追認する。同じ誤り (現 cycle 分が無いとき前 cycle の値へ手を伸ばす) が複数層の anchor に同時に効くと、独立に見えた 2 層が一斉に無効化される。anchor は強制される側が選べない値 (実 HEAD 等) から取るか、選択規則を明文化して形状ではなく実体と突き合わせる。"
+description: "gate が「何を基準に判定するか」の anchor（commit SHA、PR 番号、タイムスタンプ等）を、**gate される側が渡す値**に取ると、その値の選択を誤ったときに gate は誤りを検出せず追認する。"
 created: "2026-08-07T18:40:00+09:00"
 updated: "2026-08-07T18:40:00+09:00"
 sources:

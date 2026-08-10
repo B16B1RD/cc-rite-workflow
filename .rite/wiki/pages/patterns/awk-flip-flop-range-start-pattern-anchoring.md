@@ -4,7 +4,7 @@ title: "テストヘルパーの awk flip-flop レンジは start pattern をコ
 domain: "patterns"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/awk-flip-flop-range-start-pattern-anchoring.md"
-description: "assert_grep_in_section 等の awk flip-flop レンジ ($0 ~ start, $0 ~ end) は、start pattern が生の marker 名だとコード行だけでなく同じ marker 名を引用する散文行にも一致し、レンジが意図せず EOF まで伸びる。start pattern をコード行にしか出現しないプレフィックス（例: echo \"[CONTEXT] ...）でアンカーすると構造的に排除できる。"
+description: "`assert_grep_in_section` のようなテストヘルパーが awk flip-flop レンジ (`$0 ~ start, $0 ~ end`) で SKILL.md 内の特定セクションを抽出する場合、start pattern が生の marker 名（例: `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1`）だけだと、その marker 名を引用する散文の説明行にも一致してしまう。"
 created: "2026-07-23T04:14:28Z"
 updated: "2026-07-23T04:14:28Z"
 sources:

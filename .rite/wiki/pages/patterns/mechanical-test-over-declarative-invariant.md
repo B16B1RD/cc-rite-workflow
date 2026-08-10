@@ -1,7 +1,7 @@
 ---
 title: "Wording 層の self-referential loop は mechanical test 化で構造解消する"
 domain: "patterns"
-description: "declarative invariant note の wording を追加するほど new claim ↔ 実装 gap が増える self-referential loop は、mechanical test (実行可能な parity verification script) の green を contract に置換することで構造的に断つ。過去のレビュー事例 cycle 6-7 で `comment-best-practices-parity.test.sh` を新規作成し、SoT 22 entry 全部が Heuristics regex で match することを assert する forward subset の test 化として実装、cross-axis declarative mapping を削除し parity test の green = contract に統一。`declarative-invariant-wording-layer-escalation` anti-pattern の canonical 対策。過去のレビュー事例 (関連する課題、0 findings / 1 cycle) で初回実装時からの preventive 適用を追加: WIKICHAIN handoff gate を静的 parity test (TC-1〜5、grep anchor 5 件 byte 一致) + runtime TC-11〜13 と同梱実装し、test reviewer が isolated worktree で 6 種の mutation 検証を実施して全 TC の検出力 (false positive 不在) を実証 — remediation 経路だけでなく着手時同梱の preventive 経路でも本 pattern が成立。過去のレビュー事例 (関連する課題、0 findings / 1 cycle) で prose-only guard の follow-up 昇格を追加: prose「制約」note のみで守られていた intervening set 回帰を TC-6 へ昇格し、sandbox negative test (Case A/B) で検出力と false positive 不在を commit 前に実証 — preventive / follow-up 両経路で 0 findings / 1 cycle 収束が連続再現。"
+description: "SoT 集約 PR で declarative invariant note (両者の集合差を 0 にする 等) を追加すると、note 文言自身が次 cycle の review finding 源になる self-referential loop が発生する。"
 promote: rite-plugin
 created: "2026-05-26T00:30:00Z"
 updated: "2026-06-04T16:30:25Z"

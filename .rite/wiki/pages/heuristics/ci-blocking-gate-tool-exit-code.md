@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "CI lint チェックを blocking gate に昇格するときはツール自身の exit code を gate にする"
 domain: "heuristics"
-description: "lint/静的解析を informational から blocking CI gate へ昇格する際、集計値を jq 等でパースして件数比較する gate は、ツールが実行不能（空レポート）だと 0 件と誤認して silent pass する。ツール自身の exit code を gate にすれば invocation 失敗も非ゼロ→fail-loud にできる。加えて、非固定バージョンのツールを blocking 化すると runner イメージ更新が未変更コードを spurious にブロックしうる点も設計時に扱う。"
+description: "lint / 静的解析ジョブを informational（常時 exit 0）から blocking CI gate へ昇格するとき、gate 判定を「レポート JSON を jq でパースして error 件数を数え、`[ \"$err_count\" -gt 0 ]` で判定する」方式にすると、ツールが実行不能（binary 欠落 / IO エラー / 空レポート）だったときに `err_count=0` と誤認して **silent pass** する経路が残る。"
 created: "2026-07-24T13:47:35Z"
 updated: "2026-08-01T08:45:00Z"
 sources:

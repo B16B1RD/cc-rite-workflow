@@ -1,7 +1,7 @@
 ---
 title: "Reviewer 自身が「対応不要」と明記する LOW finding は replied-only として尊重し fix loop で再発火させない"
 domain: "heuristics"
-description: "reviewer が finding 本文に「対応不要」「informational 寄り」「次回 PR で対応可能」など明示的な non-blocking 推奨を付した LOW (まれに MEDIUM) 指摘を blocking 扱いで fix すると、(a) 同じ finding が次サイクルで informational として再指摘される無限ループ、(b) reviewer 推奨に反する修正で本来不要な regression を導入する経路、の 2 つのリスクが発生する。canonical 対策は `[fix:replied-only]` 経路に振り分け、commit message に `decision(scope)` を明記することで「reviewer 推奨を尊重した結果」であることを後続サイクルから観測可能にすること。過去のレビュー事例 cycle 1 F-03 で本経路を採用し cycle 4 で `[review:mergeable]` 4-cycle 収束を実測。過去のレビューで LOW × nit-noted「intentional duplication」(`src/utils/money.ts` 言及の抽出先 + pattern reference 二重登場、Example 2 の `task.ts:80` pattern を踏襲) を replied-only 経路で処理し、Total findings 1 / Fixed 0 / Replied 1 で 1 cycle 即時 mergeable に到達する empirical reproduction を追加 (calibration source 内の意図的重複が style 起因「重複削除」推奨に見えても reviewer が pattern 参照意図を明記している限り replied-only が正解、を示す sub-pattern)。過去のレビュー事例 cycle 2 で Epic #1015 採用方針の **M2 (scope=nit-noted 受け流し経路) が rite workflow 自身の dogfooding 経路で実運用初回発火** し、reviewer-level intentional flagging (過去のレビュー事例 / #1059 パターン) と Epic-level structural mitigation (本 PR パターン) の 2 段防御が同一 outcome (loop 再発火なし mergeable) に収束する補完関係を確認 (total_findings (blocking) = 0, acknowledged_nit_count = 1)。"
+description: "reviewer が finding 本文に「対応不要」「informational 寄り」「次回 PR で対応可能」など **明示的な non-blocking 推奨** を付した LOW (まれに MEDIUM) 指摘を blocking 扱いで fix すると、(a) 同じ finding が次サイクルで informational として再指摘される無限ループ、(b) reviewer 推奨に反する修正で本来不要な regression を導入する経路、の 2 つのリスクが発生する。"
 promote: rite-plugin
 created: "2026-05-04T03:30:00+00:00"
 updated: "2026-05-19T13:36:19Z"

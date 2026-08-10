@@ -2,7 +2,7 @@
 type: "patterns"
 title: "実測アンカーの repro に書くパイプは U+00A6 へ置換する"
 domain: "patterns"
-description: "実測必須ゲートの Verification アンカーは Markdown テーブルのセル内に書かれるため、検出側の regex が [^|] を含む。repro に raw pipe を書くと full match せず、実測済みの指摘が measured=false として non-blocking へ無音降格する。markdown のエスケープ \\| でも [^|] は通らないため、¦ (U+00A6 BROKEN BAR) へ置換する。bash/jq 中心のリポジトリでは repro にパイプが入るのが常態のため頻発しうる。"
+description: "実測必須ゲートは、レビュー指摘が blocking であるために `Verification:` アンカー付きの再現手順を要求する。"
 created: "2026-08-01T00:21:06+09:00"
 updated: "2026-08-01T00:21:06+09:00"
 sources:

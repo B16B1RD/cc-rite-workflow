@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる"
 domain: "anti-patterns"
-description: "grep -q は一致した時点で終了するため、上流が SIGPIPE (rc=141) を受けて pipeline 全体が失敗扱いになる。低頻度で発火するため flaky な skip として現れ、閾値の緩い floor guard に masking される。入力が stdio バッファ境界を超えた地点で挙動が反転するため、小さな入力のテストでは絶対に見つからない。"
+description: "`grep -q` は最初の一致で即座に終了する。"
 created: "2026-08-03T07:46:56Z"
 updated: "2026-08-06T22:40:00+09:00"
 sources:

@@ -1,7 +1,7 @@
 ---
 title: "structural ownership guarantee は code-level defense-in-depth で enforce する"
 domain: "patterns"
-description: "per-session file 構造で「ファイル名 = session_id だから ownership は構造的に保証」と信じる API は、現 caller が必ず resolver 経由で path を組み立てる前提でのみ成り立つ。将来 resolver を経由しない caller が追加されると invariant が silent に崩壊する。fast-path に「filename SID と hook SID 比較」のような明示的 defense-in-depth check を追加し、空 hook_sid を backward-compat 経路として fail-secure に倒すのが canonical。helper-level test で 1 TC が複数経路 (期待 ok / 期待 reject / backward-compat) を同時に pin することで hook integration test に踏み込まずに contract を保護できる。過去のレビュー事例 cycle 1 (HIGH cross-validation) で実測。"
+description: "「per-session file 構造でファイル名 = session_id にしたから ownership は構造的に保証される」のような structural invariant は、現 caller が必ず resolver 経由で path を組み立てる前提でのみ成り立つ。"
 promote: rite-plugin
 created: "2026-04-30T08:03:08Z"
 updated: "2026-07-31T01:26:57+09:00"

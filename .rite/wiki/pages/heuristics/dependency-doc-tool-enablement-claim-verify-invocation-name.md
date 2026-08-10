@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "依存要件ドキュメントの「ツールを入れれば有効化」主張は実コードの呼び出し名を grep で裏取りする"
 domain: "heuristics"
-description: "README 等の依存要件で「ツール X を入れれば機能 Y が有効化」と書く前に、実コードがそのツール名を literal に呼んでいるか grep で確認する。実装が別コマンド名（例: gdate ではなく date -d）を呼んでいると、そのツールを導入しても機能は有効化されず記述が不正確になる。"
+description: "README 等の依存要件で「ツール X（例: coreutils / gdate）を入れれば機能 Y が有効化される」と書く前に、実コードがそのツール名を literal に呼んでいるかを grep で裏取りする。"
 created: "2026-07-24T17:57:51+09:00"
 updated: "2026-07-24T17:57:51+09:00"
 sources:

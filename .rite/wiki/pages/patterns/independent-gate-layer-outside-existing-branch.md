@@ -3,7 +3,7 @@ type: "patterns"
 title: "独立した判定層は既存層の分岐の内側に置かない — 層ごとに別 marker を持たせ可否は failure marker の不在で決める"
 domain: "patterns"
 promote: rite-plugin
-description: "新設した検査層を既存 marker 検査の一 arm の内側に置くと、守るべき failure mode でその既存層が degraded に降りたときに新層が一度も走らない。新層の入力が既存層に依存していなくても、配置だけで従属する。層は分岐の外に出し、入力の依存関係だけで実行可否を決め、層ごとに別 marker 名を持たせて gate 全体の可否は failure marker の不在で判定する。"
+description: "既存の gate に新しい検査層を足すとき、新層を既存層の `case` の 1 arm の内側に書くと「既存層が degraded に降りる状態」で新層が一度も走らない。"
 created: "2026-08-07T18:40:00+09:00"
 updated: "2026-08-07T18:40:00+09:00"
 sources:

@@ -4,7 +4,7 @@ title: "rationale ポインタ形式は bare `rationale:` 形式に統一する"
 domain: "heuristics"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/rationale-pointer-format-unification.md"
-description: "rationale 退避 PR で bare rationale: / markdown link / hybrid の 3 形式が混在し、複数レビュアーが両 cycle で繰り返し informational 指摘した。全形式が anchor 解決し drift-check も両形式を first-class サポートするため機能上は等価だが、grep 検索性と将来の機械 lint を考えると bare 形式 (rationale: references/<file>.md#<anchor>) への統一が retouch コストを下げる。"
+description: "実行パスの設計解説(rationale)を references へ退避する際、元位置に残すポインタの形式が 3 種類(bare `rationale: <path>#<anchor>` / markdown link `[text](path#anchor)` / hybrid `rationale: [text](path#anchor)`)に分裂しやすい。"
 created: "2026-07-17T02:44:35Z"
 updated: "2026-07-17T02:44:35Z"
 sources:

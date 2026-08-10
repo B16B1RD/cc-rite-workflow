@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "`$( )` でコマンド置換したヘルパーの `exit` は呼び出し元を止めない"
 domain: "anti-patterns"
-description: "ヘルパー関数が fail-closed のつもりで書いた `exit 1` は、`VAR=\"$(helper)\"` の形で呼ばれると subshell だけを終了させ、呼び出し元には空文字が返る。`cd \"\"` は rc=0 の no-op なので `|| exit 1` ガードも発火せず、以降の書き込みや `rm -f` が呼び出し元の CWD へ落ちる。しかもテストは PASS を報告する。ヘルパー側の fail-closed 意図は呼び出し規約によって無効化されうる。"
+description: "シェル関数の中に書いた `exit 1` は、その関数が `$( )` の中で呼ばれた場合、**コマンド置換のサブシェルを終了させるだけ**で呼び出し元スクリプトは走り続ける。"
 created: "2026-07-30T01:20:00+09:00"
 updated: "2026-07-30T01:20:00+09:00"
 sources:

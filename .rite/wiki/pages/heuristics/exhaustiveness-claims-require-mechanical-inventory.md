@@ -4,7 +4,7 @@ domain: "heuristics"
 promote: rite-plugin
 created: "2026-06-10T12:50:00+09:00"
 updated: "2026-08-04T21:15:00+09:00"
-description: "網羅性を主張する列挙は grep 全数棚卸し + scope note で 1 cycle 収束させる。棚卸しの検索語は「構文」でなく規約が定義する「概念」で選ぶ。派生: Issue が具体的な 1 件だけを挙げていても、同じ形式を採る全サイトの走査要求として読む — ただし走査範囲を広げるのと修正範囲を広げるのは別判断で、走査で見つかった pre-existing な同クラス乖離は follow-up Issue へ切り出す。実装者が示した「触らない」根拠が実体と食い違っても、結論自体は独立に検証する。"
+description: "ドキュメントやテストの保守ガイダンスで「contract の全 consumer」のような網羅性を主張する列挙を書くとき、reviewer の指摘任せに 1 件ずつ追加していくと cycle ごとに新たな漏れが見つかり review-fix loop が発散する。"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260804T120832Z-pr-2108.md"

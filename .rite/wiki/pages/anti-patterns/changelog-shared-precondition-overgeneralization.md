@@ -4,7 +4,7 @@ title: "複数の独立した制約を1つの共有前提条件に総称する�
 domain: "anti-patterns"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/changelog-shared-precondition-overgeneralization.md"
-description: "CHANGELOG やドキュメントで、実際には異なる依存条件を持つ複数の事象を1つの前提条件（例: 特定機能の有効化）でまとめて総称すると、片方だけがその前提に依存するという粒度差が失われる。"
+description: "CHANGELOG 等のドキュメントで、複数の環境制約や事象を1つの共有前提条件（例: 特定のオプション機能が有効であること）でまとめて記述すると、実際にはそのうち一部だけがその前提に依存し、残りは独立して発生しうるという粒度の違いが読者に伝わらなくなる。"
 created: "2026-07-21T16:45:00+09:00"
 updated: "2026-07-21T16:45:00+09:00"
 sources:

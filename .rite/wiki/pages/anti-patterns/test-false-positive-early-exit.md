@@ -1,7 +1,7 @@
 ---
 title: "Test が early exit 経路で silent pass する false-positive"
 domain: "anti-patterns"
-description: "`active=false` / phase mismatch guard で fixture が early exit する test は、検証対象ロジックを実行せず rc=0 で silent pass する regression を見逃す。独立 counter assertion + active=true 版 TC 分離 + same-cycle 横展開契約 (同 cycle 過去 fix の self-aware コメント参照) の 3 点セットで防ぐ。過去のレビュー事例 cycle 5-8 で 4 cycle 連鎖として実測。過去のレビュー事例 cycle 5 で別系統の silent-false-pass 3 条件 (stderr suppress + exit code 未検査 + pre=post state expected 値) と portable な fault injection (PATH override で fake binary / chmod -w より root 不要)、set -e 下の subshell rc capture idiom (`rc=0; ( ... ) || rc=$?`)、line-number 参照 anti-pattern の trailer convention を追加。"
+description: "`active=false` / `phase mismatch` 等の guard 条件で fixture が early exit するテストは、検証対象のロジックを一切実行しないまま rc=0 で pass する silent false-positive を生む。"
 promote: rite-plugin
 created: "2026-04-20T01:10:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"

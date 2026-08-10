@@ -2,7 +2,7 @@
 type: "patterns"
 title: "2 つの値が一致することの assert は、その値の書式を pin しない"
 domain: "patterns"
-description: "同一変数由来の 2 箇所を「一致する」とだけ assert すると、書式を epoch 秒などへ変えても一致が保たれ検出できない。書式が契約なら書式そのものを assert する。"
+description: "「ログの `ts` と state file の `updated_at` が一致すること」だけを見る assert は、**両者が同じ変数由来である限り、書式を何に変えても通り続ける**。"
 created: "2026-08-06T02:49:27Z"
 updated: "2026-08-06T02:49:27Z"
 sources:

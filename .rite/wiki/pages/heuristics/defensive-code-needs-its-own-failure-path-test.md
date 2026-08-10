@@ -3,7 +3,7 @@ type: "heuristics"
 title: "無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する"
 domain: "heuristics"
 promote: rite-plugin
-description: "silent failure（`|| true` 等）を WARNING 出力に是正した fix は、その WARNING 自体が将来の編集で無音化に退行しても検出できない。同一 cycle 内で複数 reviewer が独立にこのギャップを指摘するのは、防御コードの追加とそのテストカバレッジが別問題として見落とされやすいことの兆候。mutation testing（意図的に防御コードを退行させてテストが red になるか確認）で検証すると実効性を主張できる。"
+description: "`2>/dev/null || true` 等で無音化されていた失敗を「WARNING を stderr へ出力する」形に是正する fix は、成功パスのテストだけでは不十分。"
 created: "2026-07-22T21:35:00+00:00"
 updated: "2026-08-06T02:49:27Z"
 sources:

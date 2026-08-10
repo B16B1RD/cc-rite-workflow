@@ -3,7 +3,7 @@ type: "patterns"
 title: "mktemp -d の canonical 化は 2 段階に分ける — `cd \"$(mktemp -d)\"` は失敗時にリポジトリ本体を掴む"
 domain: "patterns"
 promote: rite-plugin
-description: "macOS の $TMPDIR（/var/folders = /private への symlink）対策で pwd -P 正準化を入れるとき、`TEST_DIR=\"$(cd \"$(mktemp -d)\" && pwd -P)\"` とネストすると、mktemp 失敗時に bash の `cd \"\"` が rc=0 で cwd を変えないため実行時 cwd（= リポジトリ checkout）を掴む。直後の trap rm -rf や git init が repo 本体に着弾し、しかも git status --porcelain は clean のままなので post-condition invariant では検出できない。必ず 2 段階に分けて各段で exit code を検査する。"
+description: "macOS の `$TMPDIR` は `/var/folders/...`（`/private` への symlink）なので、テストが temp ディレクトリの path を比較すると symlink 解決の差で落ちる。"
 created: "2026-07-25T07:05:21Z"
 updated: "2026-07-25T07:05:21Z"
 sources:

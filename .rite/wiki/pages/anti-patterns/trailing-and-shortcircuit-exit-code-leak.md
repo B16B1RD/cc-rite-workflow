@@ -1,7 +1,7 @@
 ---
 title: "末尾の && 短絡文が非ブロッキング script の exit code を leak する (末尾 exit 0 を明示する)"
 domain: "anti-patterns"
-description: "`set -e` なしの helper で `[ -n "$var" ] && cmd` が script 最終文になると、var 空時に compound rc=1 が exit code に leak し「Exit codes: 0 always」契約に違反する。canonical fix は末尾 `exit 0` 明示 (sibling 規約)。`if ! cmd`(rc 常時 0、到達するが誤値) / bare statement under set -e(到達不能) とは別機構の第 3 族。過去のレビューで CLEANED 経路 + 内側 mktemp 失敗時に実測、mutation (末尾 exit 0 削除→S-7 FAIL) で回帰防止を立証。"
+description: "`set -e` を使わない (`set -uo pipefail` のみの) helper script で、`[ -n \"$var\" ] && cmd` のような `A && B` 短絡が **script の最終実行文**になると、`$var` が空のとき `[ -n \"\" ]` が rc=1 を返し、`&&` 短絡で compound 文全体が rc=1 を返す。"
 created: "2026-06-02T07:42:13Z"
 updated: "2026-06-02T07:42:13Z"
 sources:

@@ -2,7 +2,7 @@
 type: "heuristics"
 title: "プラットフォーム skip を増やすなら「緑の意味」を痩せさせない skip 会計をセットで入れる"
 domain: "heuristics"
-description: "クロスプラットフォーム対応で skip を増やすと、PASS/FAIL しか数えないランナーは 20+ TC を skip しても「PASS: N, FAIL: 0」と表示する。skip はカウントし、集計行・成功メッセージ・姉妹ランナーまで一貫させる。ファイル全体を exit 0 で抜ける形と pass \"... skipped\" は skip 集計に現れずむしろ PASS を水増しするため、実在するアンチパターンを grep してから禁止事項を書く。"
+description: "クロスプラットフォーム対応は skip を増やす。"
 created: "2026-07-25T07:05:21Z"
 updated: "2026-07-25T07:05:21Z"
 sources:

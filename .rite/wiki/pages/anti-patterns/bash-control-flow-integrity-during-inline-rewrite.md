@@ -1,7 +1,7 @@
 ---
 title: "bash control-flow integrity: continue/break/return は enclosing 構文を bash literal 内に明示する"
 domain: "anti-patterns"
-description: "bash literal block 内で `continue` / `break` / `return` を使用する場合、enclosing 構文 (`for` / `while` / `until` loop または function 定義) を **同じ bash literal 内**に明示的に含める必要がある。enclosing loop を prose comment「タスクごとに以下を反復実行」で表現すると、bash 仕様違反 (continue outside loop = stderr error + rc=0 で次行 fall-through) を許容する silent regression 経路となる。過去のレビュー事例 cycle 2 fix で導入された 3 `continue` site が cycle 3-5 reviewer (4 cycle) で見落とされ、cycle 6 で実機 verify (rc=0、3 error path で silent regression) により初検出され peer file convention (commands/issue/create.md if/else + fail-fast) と対称化された。Review axis 化: 5 独立 axis (documentation drift / functional regression / **bash control-flow integrity** / cross-file symmetry / self-referential consistency) を reviewer prompt に明示すると cycle 6 → 8 で 2 cycle 収束を実現 (累積 8 cycle / 50 findings)。"
+description: "bash literal block (`.md` ファイル内に埋め込まれた bash skeleton) 内で `continue` / `break` / `return` を使用する場合、enclosing 構文 (`for` / `while` / `until` loop または function 定義) を**同じ bash literal 内**に明示的に含める必要がある。"
 promote: rite-plugin
 created: "2026-05-26T13:30:00+00:00"
 updated: "2026-05-26T13:30:00+00:00"

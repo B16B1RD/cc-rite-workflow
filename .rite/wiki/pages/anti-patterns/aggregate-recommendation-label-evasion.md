@@ -1,7 +1,7 @@
 ---
 title: "aggregate label による推奨事項の責任曖昧化 (「推奨 N 件 (全て scope 外)」)"
 domain: "anti-patterns"
-description: "`/rite:pr:review` reviewer の「推奨事項」を件数のみの aggregate label (「推奨 N 件」「全て scope 外」) で完了報告し、各 item の disposition (起票 / 保留 / 観察) を明示せず silent skip する anti-pattern。Phase 7 AskUserQuestion を prose 強制のみで gate していたため発火。過去のレビューで 4 件を aggregate 報告し実際は Issue 化すべき 2 件が事後起票 (#1040/#1041) になった事例で実測。防止策は reviewer 出力の 3-classification (actionable/design_confirmation/boundary) 明示 + Phase 7 post-condition の機械 gate + 完了報告の disposition breakdown 必須化。"
+description: "`/rite:pr:review` の reviewer が出力する「推奨事項」を **件数のみの aggregate label** (「推奨 N 件」「follow-up 候補 N 件」「全て scope 外」) で完了報告し、各 item の disposition (起票済 / user 保留 / 観察のみ) を明示せずに silent skip する anti-pattern。"
 promote: rite-plugin
 created: "2026-05-18T00:00:00+09:00"
 updated: "2026-05-18T00:00:00+09:00"

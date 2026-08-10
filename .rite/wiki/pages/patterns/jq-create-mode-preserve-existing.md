@@ -1,7 +1,7 @@
 ---
 title: "jq -n create mode: 既存値を読み取ってから再構築する"
 domain: "patterns"
-description: "`.rite-flow-state` を `jq -n` で毎回全フィールド再構築すると永続化すべきフィールド (parent_issue_number / loop_count 等) を silent リセットする CRITICAL 欠陥。既存値を先読みして `--argjson` で渡す canonical pattern を適用する。過去のレビューで「型変換 (tonumber) を伴う preserve フィールド追加は既存の文字列/整数フィールドと異なる failure surface (診断メッセージ生成・出力経路) を持つ」ことを追加実証。"
+description: "`.rite-flow-state` のような state file を `jq -n` (null input) で毎回全フィールド再構築する設計は、後続の `create` 呼び出しで永続化すべきフィールド (`parent_issue_number`, `loop_count` 等) をリセットしてしまう CRITICAL 欠陥を持つ。"
 promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 updated: "2026-07-09T19:44:33+09:00"

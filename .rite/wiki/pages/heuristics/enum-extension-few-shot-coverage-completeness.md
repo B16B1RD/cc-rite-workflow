@@ -1,7 +1,7 @@
 ---
 title: "Enum 拡張時は few-shot example で全 enum 値の使用例を網羅する (calibration coverage gap 防止)"
 domain: "heuristics"
-description: "LLM agent が参照する calibration source (few-shot example / output template) に新規 enum 値を導入する際、全 enum 値の使用例を 1 件以上含めること。一部の値だけ example を作ると、agent が未掲載の値の使い方を学習できず silent drop / 誤分類する経路を生む。`severity-extension-closed-loop-verification` が扱う実装層 6 段階 (read/write/parse/measure) と直交する calibration 層の網羅性 heuristic。過去のレビューで scope 列 5 列化時、6 few-shot example すべてに `current-pr` のみ埋込まれ `follow-up` / `nit-noted` の使用例が皆無で reviewer agent の scope assignment 精度向上余地が指摘された follow-up Issue 候補。過去のレビューで本 heuristic を直接適用し follow-up / nit-noted 各 1 example を追加 (0 finding / 1 cycle 即時 mergeable で収束) — successful prevention case 累積実証 + sub-pattern「calibration source の再帰的品質要請 (self-referential quality)」「non-Hypothetical-Exception reviewer 選定の明示記載」を追加。過去のレビューで Example 4 Recommendation 列に `parseCurrency(raw: string): Money` API シグネチャと `const amount = parseCurrency(rawValue)` call-site collapse 例を追記し、Example 1/2 の concrete code snippet スタイルと整合する 1 行差分 doc PR で self-referential consistency completion を達成 (0 blocking / 1 cycle mergeable)。本 heuristic の段階的 application path (#1037/#1039 記録 → #1056 部分適用 → #1059 完全適用) の 3 PR 連鎖を successful prevention case として追加。"
+description: "LLM agent が参照する calibration source (few-shot example / output template) に新規 enum 値を導入する際、**全 enum 値の使用例を 1 件以上含める**こと。"
 promote: rite-plugin
 created: "2026-05-18T15:50:00+09:00"
 updated: "2026-05-19T08:00:33Z"

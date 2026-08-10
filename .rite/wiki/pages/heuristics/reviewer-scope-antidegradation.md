@@ -1,7 +1,7 @@
 ---
 title: "re-review / verification mode でも初回レビューと同等の網羅性を確保する (Anti-Degradation Guardrail)"
 domain: "heuristics"
-description: "re-review / verification mode では reviewer scope が「前回指摘の解消確認」に偏り、初回で verify すべきだった latent design issue (dogfooding bias / 既存 convention 違反) を見落とす経路がある。毎サイクル initial scope を rerun するのが canonical。過去のレビュー事例 cycle 4 で cycle 1-3 見落としの 2 件が初検出された実測あり。過去のレビュー事例 cycle 2 で「実ファイル grep + bash -n syntax」の 2 段 evidence gate を verification mode FIXED 判定の canonical として確立。過去のレビュー事例 cycle 4 で **Severity 厳格化 3 条件** (`Confidence ≥ 80` + `revert test pass` + `機能影響あり`) による 4-cycle 収束を実測 — informational/hypothetical/nitpick の永久 fix-loop を gate で構造的に回避。"
+description: "re-review / verification mode (前回 review comment の検証モード) では、reviewer の scope が「前回指摘の解消確認」に偏り、初回レビューで verify すべきだった latent design issue を見落とす経路がある。"
 promote: rite-plugin
 created: "2026-04-19T03:30:00+00:00"
 updated: "2026-08-08T13:37:28Z"

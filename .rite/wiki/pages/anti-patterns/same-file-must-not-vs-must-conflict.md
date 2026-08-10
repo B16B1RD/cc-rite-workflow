@@ -1,7 +1,7 @@
 ---
 title: "同 file 内 MUST NOT vs MUST 衝突: bare form 禁止規約と bare form 出力義務の自己矛盾"
 domain: "anti-patterns"
-description: "同一 prompt ファイル内で「形式 X を禁止 (MUST NOT)」する既存規約と、新しく追加する「形式 X を義務化 (MUST)」する指示が衝突する設計欠陥。single-reviewer では気づきにくく、prompt-engineer × tech-writer のような cross-validation で初めて検出される。根本対策は形式自体を区別できる別 form (HTML コメント等) を採用すること。過去のレビューで bare bracket sentinel 禁止 (既存 MUST NOT) と routing-check evidence 義務化 (新規 MUST) の衝突として実測。過去のレビューで「新 Step 追加 × 既存 MUST NOT 衝突」と bash tool output と response text の layer 境界明示不足を追加 (Claude Code 実行モデル上 bash tool output は別チャンネルのため MUST NOT の対象外であることを prose で明示する canonical 対策)。過去のレビュー事例 (関連する課題、0 findings / 1 cycle) で **remediation guidance variant** を追加: TC-6 fail メッセージの remediation 指示 (`--handoff` 再指定せよ) に従うと TC-1 (単一 SoT 強制) が fail する no-win 矛盾を、「禁止 + escape hatch」二段構成への 3 site 対称同期で同方向 guidance に収束させる第 3 の解消形態 (過去のレビュー事例 別 form 採用 / 過去のレビュー事例 layer 境界明示に続く)。mutation A/B 両方向の fail メッセージ同方向化を複数 reviewer 独立再現で実証。"
+description: "同一 prompt ファイル内で「形式 X を禁止 (MUST NOT)」する既存規約と、新しく追加する「形式 X を義務化 (MUST)」する指示が衝突する設計欠陥。"
 promote: rite-plugin
 created: "2026-04-20T13:25:00+00:00"
 updated: "2026-08-03T23:41:26+09:00"

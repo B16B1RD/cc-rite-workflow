@@ -3,7 +3,7 @@ type: "heuristics"
 title: "cycle が進んでも findings が減らないときは点修正をやめて構造を疑う"
 domain: "heuristics"
 promote: rite-plugin
-description: "review⇄fix ループの健全な収束は「cycle ごとに指摘が減る」形で現れる。減らないとき、多くの場合は**個々の指摘に個別対応している**ことが原因で、指摘されなかった箇所が次 cycle の指摘として戻ってくる。"
+description: "review⇄fix ループの健全な収束は「cycle ごとに指摘が減る」形で現れる。"
 created: "2026-07-28T21:30:00+09:00"
 updated: "2026-08-03T07:46:56Z"
 sources:

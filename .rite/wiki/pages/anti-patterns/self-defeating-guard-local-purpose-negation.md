@@ -3,7 +3,7 @@ type: "anti-patterns"
 title: "新設した検証機構が、その機構自身の目的を局所的に打ち消す"
 domain: "anti-patterns"
 promote: rite-plugin
-description: "fail-closed ガード・parser・可視化カウンタなど「緑を正直にする」ために導入した機構が、導入と同じ PR の中で自分の目的を局所的に無効化する。ガードが既存診断を先食いする / parser が同 PR の診断文を食う / カウンタを入れたのに成功メッセージが無条件のまま、の 3 形態。導入直後にその機構の周辺（診断文・コメント・規約文・出力の消費側）を監査すれば全て防げた。"
+description: "過去のレビュー事例（macOS/BSD 対応でテストスイートを green 化）の 4 cycle・累積 26 指摘のうち **最多の型が本パターン（5 件）**だった。"
 created: "2026-07-25T07:05:21Z"
 updated: "2026-07-25T07:05:21Z"
 sources:

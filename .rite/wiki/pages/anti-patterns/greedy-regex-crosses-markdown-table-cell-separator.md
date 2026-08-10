@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "markdown テーブル行に対する greedy `.*` はセル境界を跨いでマッチし、右辺の空検出を dead 化する"
 domain: "anti-patterns"
-description: "テーブルのセル内容を検査する regex に greedy `.*` を使うと、`|` を跨いで隣のセルまでマッチする。「アンカーの右辺が空なら降格」のような検出が構造的に dead になり、常に false-pass する。アンカー自身の最初の区切りに束縛する negative-lookahead 形へ直し、正例・負例の両方で実測する。あわせて raw パイプを含む値はセル内で表記代替する規約が要る。"
+description: "reviewer が出力する markdown テーブルの `内容` 列からアンカー（`Verification: repro <cmd> => <observed>`）を抽出する検出 regex に greedy `.*` を使うと、セル区切りの `|` を跨いで隣のセル（`推奨対応` 列）までマッチする。"
 created: "2026-07-27T10:57:51+09:00"
 updated: "2026-07-27T10:57:51+09:00"
 sources:

@@ -4,7 +4,7 @@ title: "ポリシー分類ドキュメント改訂では、意図的に対象外
 domain: "heuristics"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/policy-doc-revision-non-target-consistency-check.md"
-description: "frontmatter ポリシー表のような分類ルールを新設・改訂する際、変更対象のスキルだけでなく、意図的に変更しなかった既存要素（Non-Target）が新しい分類ルールの記述内容と実際に矛盾しないかを確認するチェックが有効。"
+description: "frontmatter ポリシー表のような分類ルールを新設・改訂する PR では、変更対象のファイルだけでなく、意図的に変更しなかった既存要素（Non-Target）が新しい分類ルールの記述内容と矛盾しないかを確認するチェックが有効。"
 created: "2026-07-01T15:35:00+09:00"
 updated: "2026-07-02T18:21:39+09:00"
 sources:

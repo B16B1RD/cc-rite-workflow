@@ -1,7 +1,7 @@
 ---
 title: "Canonical helper bypass: 既存集約 helper を bypass して inline 再実装する"
 domain: "anti-patterns"
-description: "過去の review-fix loop で抽出された canonical helper (`_mktemp-stderr-guard.sh` 等) がある領域に新規実装を追加する際、helper を呼び出す代わりに inline で再実装してしまう anti-pattern。helper が解決した anti-pattern (Asymmetric Fix Transcription / mktemp 失敗 silent / stderr 取りこぼし等) が再導入され、過去 cycle で確立した doctrine が 1 PR で silent に巻き戻る。filter doctrine の片側 mirror (`'^WARNING:|^  |^jq: '` vs `'^WARNING:|^ERROR:'`) で multi-line WARNING continuation と jq parse error が silent drop される sub-pattern を併発。過去のレビューで 3 reviewer 独立合意の HIGH cross-validation で実測。過去のレビューで **test helper bypass sub-pattern** に拡張 (TC-10 が `build_stop_payload` helper を bypass し inline `jq -n` で payload 再構築、TC-1〜TC-9 sibling との helper symmetry 違反として code-quality reviewer が MEDIUM 検出)。production helper bypass と同型の anti-pattern が test helper でも発火することを実測、commit 前 grep self-check の対象に test helper を追加。"
+description: "過去の review-fix loop で抽出された canonical helper (例: `_mktemp-stderr-guard.sh`) がある領域に新規実装を追加する際、helper を呼び出す代わりに inline で再実装してしまう anti-pattern。"
 promote: rite-plugin
 created: "2026-05-01T03:27:29Z"
 updated: "2026-07-29T21:32:36+09:00"

@@ -1,7 +1,7 @@
 ---
 title: "mkdir -p で作成した directory は rmdir で対称 cleanup する (probe file 単独削除は pollution 残留)"
 domain: "patterns"
-description: "健全性チェック等で `mkdir -p` した一時 directory は、probe file の `rm -f` だけでなく `rmdir 2>/dev/null || true` による対称削除を cleanup 関数にセットする。非空時 fail-safe で他ファイルは残る。過去のレビューで HIGH x2 の cross-validation 指摘として実測。"
+description: "健全性チェックや verification のために `mkdir -p` で一時 directory を作って probe file を置いた場合、cleanup 関数は probe file の `rm -f` だけでは不十分で、`rmdir` による親 directory の対称削除をセットにする必要がある。"
 promote: rite-plugin
 created: "2026-04-19T01:10:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"

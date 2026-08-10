@@ -1,7 +1,7 @@
 ---
 title: "Bullet 内の bold emphasis は命令本体に集中させ、rationale は commit/PR layer に分離する"
 domain: "patterns"
-description: "bullet 内で MUST-DO 命令と META / rationale を混在させ rationale 側にだけ bold emphasis を適用すると、bullet スキャン読みで rationale が命令本体より目立つ emphasis 逆転が発生する。canonical pattern は説明・rationale を commit message + PR description layer に分離し、bullet 本文では命令本体に bold emphasis を集中させる責任分離。過去のレビュー cycle 1-3 で blockquote → 7-bullet 化 refactor + ラベル拡張 scope 拡張により F-01 (emphasis 逆転) と F-02 (length 偏り) が同根 (bullet 内 META 混在) で同時 surface → cycle 3 fix で META 削除 + 命令本体 bold 化 で defense-in-depth により同時解消し 0 findings 収束。"
+description: "bullet (numbered list / unordered list) 内で MUST-DO 命令と META / rationale 文を混在させ、rationale 側にだけ bold emphasis を適用すると、bullet スキャン読みで rationale が命令本体より目立つ **emphasis 逆転** が発生する。"
 created: "2026-05-18T10:36:15Z"
 updated: "2026-05-18T10:36:15Z"
 sources:

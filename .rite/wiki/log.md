@@ -1958,3 +1958,11 @@
 - decision: pages created without a frontmatter description receive the existing number-free index summary as their canonical description; mechanical `起点事例` residue is rewritten as grammatical observation prose
 - result: frontmatter description coverage 248 → 409; all 409 descriptions match the corresponding escaped index summary; descriptive number hits remain 0 on both summary surfaces
 - invariants: sources blocks, page bodies, raw sources, index links, and non-summary index columns remain unchanged
+
+## 2026-08-10T11:45:00+09:00 — canonical one-sentence summary pass
+
+- action: refs:prose
+- scope: all 409 page descriptions and index summaries
+- decision: each canonical summary is derived from the first complete sentence of the page overview, keeping detailed history and provenance in the body and sources instead of the catalog
+- result: 409 non-empty descriptions; semantic description/index equality 409/409; maximum summary size 617 bytes; row separators normalized to one contiguous five-column GFM table
+- validation: YAML parsing succeeds for 408/409 pages; the one remaining failure is an unchanged pre-existing concatenated entry inside `sources` and is preserved because sources are outside this change scope
