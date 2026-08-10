@@ -22,7 +22,7 @@
 
 <a id="placeholder-gate-mapping"></a>
 ## placeholder residue gate の対応表
-Issue #2034 の受入基準は `{pr_number}` / `{non_blocking_count}` / `{existing_comment_id}` / `{review_tmp_dir}` の 4 点に gate を求めていた。単一 invocation 化で substitution point 自体が変わったため、実装した gate 集合との対応を以下に明示する（要求の黙殺を防ぐため）。
+この保存経路の受入基準は `{pr_number}` / `{non_blocking_count}` / `{existing_comment_id}` / `{review_tmp_dir}` の 4 点に gate を求めていた。単一 invocation 化で substitution point 自体が変わったため、実装した gate 集合との対応を以下に明示する（要求の黙殺を防ぐため）。
 
 | 要求された placeholder | 実装した gate | 差分の理由 |
 |---|---|---|
@@ -99,11 +99,11 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 
 **なぜ 6.1.a が落ちやすいか**: 6.1.a は JSON 本文の生成を 5.3.0.M step 1 に譲っており、現在は「bash を 1 行打つだけ」の低顕著性ステップである。E2E 出力最小化下の中間 cycle では、この種のステップが最も落ちやすい。
 
-**negative 検査だけでは「区間ごとの skip」を守れない**: marker の残存検査は negative 検査（「あってはならないものが無いこと」）であり、**機構が起動したこと**を暗黙の前提にしている。ところが marker は 5.3.0.M step 2 で設置され 6.1.a の EXIT trap で削除される — **arming と解除の両方が、飛ばされる区間の内側にある**。したがって 5.3.0.M〜6.1.a を区間ごと飛ばした cycle の観測値は「6.1.a が正常完了して marker を消した」場合とバイト単位で同一になり、`save_pending_marker_absent` として pass する。これは本リポジトリが繰り返し踏んだ「**不在と成功が区別できない**」欠陥と同型である（`prev_finders=` の空が「0 件」と「抽出失敗」の両方を意味した件、`git diff` の rc=0 と出力ゼロ行の件）。実測: PR #2126 の run では cycle 2 で当該区間を経由せずレビューを完了させたところ 8.0.4 は pass し、以降 5 サイクル通して収束トレンド判定が 4 点しか見られず（`files=4 < cycles=5`, `lost=1`）、WARNING は毎回出ていたがループは一度も止まらず backstop（`max_review_cycles`）だけが停止条件として機能した（Issue #2127 D-04）。
+**negative 検査だけでは「区間ごとの skip」を守れない**: marker の残存検査は negative 検査（「あってはならないものが無いこと」）であり、**機構が起動したこと**を暗黙の前提にしている。ところが marker は 5.3.0.M step 2 で設置され 6.1.a の EXIT trap で削除される — **arming と解除の両方が、飛ばされる区間の内側にある**。したがって 5.3.0.M〜6.1.a を区間ごと飛ばした cycle の観測値は「6.1.a が正常完了して marker を消した」場合とバイト単位で同一になり、`save_pending_marker_absent` として pass する。これは本リポジトリが繰り返し踏んだ「**不在と成功が区別できない**」欠陥と同型である（`prev_finders=` の空が「0 件」と「抽出失敗」の両方を意味した件、`git diff` の rc=0 と出力ゼロ行の件）。実測した run では cycle 2 で当該区間を経由せずレビューを完了させたところ 8.0.4 は pass し、以降 5 サイクル通して収束トレンド判定が 4 点しか見られず（`files=4 < cycles=5`, `lost=1`）、WARNING は毎回出ていたがループは一度も止まらず backstop（`max_review_cycles`）だけが停止条件として機能した（D-04）。
 
 **marker 生成時の存在検査が消すのは「先置き」ケースだけ**: `set -C`（noclobber）が拒否するのは既存**通常ファイル**だけで、path に FIFO を先置きされると `: >` の open(2) が reader を待って無期限にブロックする（共有 TMPDIR のマルチユーザーホスト / CI runner。path は予測可能で epoch も列挙できる）。そのため書きに行く前に存在検査し、何かあれば作成せず degraded へ倒す。ただし検査から生成までの窓に FIFO を置かれた場合は `set -C` が非通常ファイルを拒否しないため依然ブロックする（実測: squatter と 300 回並走で 18/300 が rc=124）。同じ予測可能性から、エントリを置き続けるだけで 8.0.4 の機械強制を degraded（prose 判定のみ）へ落とすこともできる。窓ごと消すには marker 名の mktemp 化が要るが、8.0.4 の「末尾 `-{epoch}` が最大のもの」選択規則の変更を伴うため採らない。epoch 付き path なので正規の運用では発火せず、本リポジトリの運用前提（単一ユーザーの開発機）では残余リスクを受容する。
 
-**塞ぎ方は positive 検査を足すこと（marker の撤廃ではない）**: `hooks/scripts/review-save-json-verify.sh` が、区間の**外側**で確定する 2 つの独立した事実 — ステップ 1.2.5 で記録した commit SHA と、ディスク上の永続 JSON — を突き合わせ、「本 cycle の commit を `commit_sha` に持つ結果 JSON が現 run に実在するか」を positive に確認する。marker 機構は撤廃しない。両者は検出対象が異なるためである: marker の**残存**は「6.1.a が走ったが完走しなかった」ことの唯一の証拠であり、positive 検査だけに寄せると同じ状況が `save_result_json_absent` に丸められて「途中で落ちた」という原因情報が失われる。判定軸を「ファイルの有無」ではなく commit SHA の一致に置くのは、results dir が `/rite:cleanup` まで同一 PR の複数 cycle・複数 run の JSON を同居させるためで、有無で判定すると前 cycle の JSON で素通りする。run 境界は sibling の `review-trend-divergence.sh` / `review-cycle-scope.sh` と同じ run 開始点 pin（`.rite/state/review-run-since-{pr}.txt`）を同じ LC_ALL=C 昇順比較で共有し、新しい state ファイルは作らない。**既知の残余**: 本 cycle と前 cycle の HEAD が同一のとき（`/rite:fix` の accept-only cycle など新規 commit を伴わない cycle）は前 cycle の JSON が SHA 一致で pass しうる。判定軸を commit SHA と定めた契約（Issue #2127 §4.4）の上での既知の限界であり、silent ではない — 成功 marker `REVIEW_SAVE_JSON_OK=1` の `result_json=` にどのファイルで通ったかが出る。
+**塞ぎ方は positive 検査を足すこと（marker の撤廃ではない）**: `hooks/scripts/review-save-json-verify.sh` が、区間の**外側**で確定する 2 つの独立した事実 — ステップ 1.2.5 で記録した commit SHA と、ディスク上の永続 JSON — を突き合わせ、「本 cycle の commit を `commit_sha` に持つ結果 JSON が現 run に実在するか」を positive に確認する。marker 機構は撤廃しない。両者は検出対象が異なるためである: marker の**残存**は「6.1.a が走ったが完走しなかった」ことの唯一の証拠であり、positive 検査だけに寄せると同じ状況が `save_result_json_absent` に丸められて「途中で落ちた」という原因情報が失われる。判定軸を「ファイルの有無」ではなく commit SHA の一致に置くのは、results dir が `/rite:cleanup` まで同一 PR の複数 cycle・複数 run の JSON を同居させるためで、有無で判定すると前 cycle の JSON で素通りする。run 境界は sibling の `review-trend-divergence.sh` / `review-cycle-scope.sh` と同じ run 開始点 pin（`.rite/state/review-run-since-{pr}.txt`）を同じ LC_ALL=C 昇順比較で共有し、新しい state ファイルは作らない。**既知の残余**: 本 cycle と前 cycle の HEAD が同一のとき（`/rite:fix` の accept-only cycle など新規 commit を伴わない cycle）は前 cycle の JSON が SHA 一致で pass しうる。判定軸を commit SHA と定めた契約（§4.4）の上での既知の限界であり、silent ではない — 成功 marker `REVIEW_SAVE_JSON_OK=1` の `result_json=` にどのファイルで通ったかが出る。
 
 **2 層は独立に評価する（層の従属化は「守るべき Given でだけ機械強制が降りる」を作る）**: positive 検査は marker 層の `case` の**外側**に置き、3 arm すべてから呼ぶ（marker 残存を検出した枝だけは `*)` arm 内の `exit 1` で helper に到達しない）。内側（marker 不在の `*)` arm）に置くと、marker 値が空文字 / 未置換になる cycle — 5.3.0.M step 2 ごと飛ばした cycle 1、context 圧縮後の resume、read-only な `${TMPDIR}` で marker を作れない環境 — で marker 層が degraded に降り、positive 検査が一度も走らない。それはまさに本節が塞ごうとしている Given そのものである。positive 層の入力（1.2.5 の commit SHA とディスク上の JSON）は marker に一切依存しないので、判定できるのに降ろす理由がない。**層ごとに独立した marker を出す**のもこのためで、helper の成功は `REVIEW_SAVE_GATE=pass` を名乗らず `REVIEW_SAVE_JSON_OK=1` を出す — degraded に降りた marker 層の直後に pass を重ねると、caller の「`degraded` を `pass` と読み替えてはならない」規則と観測値が食い違う。gate 全体の可否は `REVIEW_SAVE_GATE_FAILED=1` の不在で決まる。
 
@@ -125,11 +125,11 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 <a id="durable-id"></a>
 ## PATCH 先の同定を本文照合から durable な comment id へ移した理由
 
-`hooks/review-nonblocking-record.sh` の lookup 述語は、PR #2038 の cycle 1〜5 で 4 度強化された（author 条件 → sentinel の位置非依存 `contains` → 本文全体の `endswith` → 最終非空行の等値）。そのたびに新しい抜け道が見つかり、最後まで消えなかったのが **「記録コメントの raw markdown を copy-paste して作られた、同一 author の人間コメント」** である。機械専用 sentinel は rendered view に現れない HTML コメントだが、Edit view / `gh api` / `gh pr view --comments` から raw ごと複製できるため、「人間が書き写す経路が存在しない」とは言えない。この場合 `-X PATCH` が人間の本文を丸ごと上書きする。
+`hooks/review-nonblocking-record.sh` の lookup 述語は、 の cycle 1〜5 で 4 度強化された（author 条件 → sentinel の位置非依存 `contains` → 本文全体の `endswith` → 最終非空行の等値）。そのたびに新しい抜け道が見つかり、最後まで消えなかったのが **「記録コメントの raw markdown を copy-paste して作られた、同一 author の人間コメント」** である。機械専用 sentinel は rendered view に現れない HTML コメントだが、Edit view / `gh api` / `gh pr view --comments` から raw ごと複製できるため、「人間が書き写す経路が存在しない」とは言えない。この場合 `-X PATCH` が人間の本文を丸ごと上書きする。
 
 **本文の文字列で「自分が投稿したもの」を同定する限り、この残余は原理的に消えない。** 述語をさらに厳しくする方向（5 回目の強化）は採らず、同定手段そのものを本文の外へ移した。
 
-**なぜ PR body か**（Issue #2041 Open Question の (a)）:
+**なぜ PR body か**（Open Question の (a)）:
 
 - **記録コメント本文には置けない** — 本文に置いた id は raw の copy-paste で marker ごと複製され、本文照合と同じ誤認経路が再生する。同定子は「複製経路から構造的に隔離された場所」にある必要がある。
 - **marker は行全体を占める形で書き、read/write の両式が `^`/`$` アンカーを要求する** — 行内の任意位置にマッチさせると、PR 本文の散文中に同形の文字列があるとき（この機構を説明する PR 説明はまさにその形になる）抽出が偽の id を拾って毎 cycle `id_malformed` を出し、除去がその一節を PR 説明から無音で消す。除去は `s///` ではなく行の `d` にして、marker 行の跡に空行が積もるのも同時に断つ。**ただしアンカーの内側に `[[:space:]]*` を対称に置く** — GitHub の web UI で PR 説明を編集すると本文が CRLF で返り、人間が字下げや末尾空白を混ぜることもある。素の `^`/`$` だとその形で抽出も除去も同時に外れ、抽出結果の空を「marker 不在」と区別できないまま無音で fallback へ戻り、除去も外れて marker 行が cycle ごとに積む（helper がコメント本文側で行末 CR を正規化しているのと同じ規律を PR body 側にも適用する）。
@@ -198,7 +198,7 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 ## 記録コメントをポインタのみにした理由
 6.1.d の記録コメントは `pr_review.post_comment` に依存せず投稿される（D-01 の担保として意図的にそう設計されている）。全文を載せると、既定構成 `post_comment: false` — ユーザーが「レビュー内容を GitHub に出さない」と読む設定 — のままで、security reviewer の非実測 CRITICAL の詳細（脆弱性の再現手順等）が修正前に public PR へ自動公開される。
 
-D-01 が要求するのは「非実測指摘を破棄せず、マージ後に人間が拾い直せる」ことであって「詳細を公開 PR に載せる」ことではない。ポインタ（reviewer / severity / `file:line`）だけでも「どの reviewer がどのファイルの何行目に何 severity の指摘を残したか」は伝わり、全文は経路 (1) の永続 JSON から辿れる。よって記録コメントは**ポインタのみ**とし、既定構成 `post_comment: false` における全文の保存先を経路 (1) に一本化する（Issue #2039）。
+D-01 が要求するのは「非実測指摘を破棄せず、マージ後に人間が拾い直せる」ことであって「詳細を公開 PR に載せる」ことではない。ポインタ（reviewer / severity / `file:line`）だけでも「どの reviewer がどのファイルの何行目に何 severity の指摘を残したか」は伝わり、全文は経路 (1) の永続 JSON から辿れる。よって記録コメントは**ポインタのみ**とし、既定構成 `post_comment: false` における全文の保存先を経路 (1) に一本化する。
 
 **「唯一」は既定構成に限った性質である。** `post_comment: true` では経路 (3)（ステップ 5.4 統合レポートの `### 実測なし指摘 (non-blocking)` section）が 6 列のまま全文を保持し、ステップ 6.1.b がそれを PR コメントとして投稿する。したがって本節の開示縮小が効くのは既定構成に限られる。`post_comment: true` 経路にも同方針を広げるかは、経路 (3) のテンプレート（`references/integrated-report-templates.md`）の改訂を伴うため本 Issue の対象外。
 

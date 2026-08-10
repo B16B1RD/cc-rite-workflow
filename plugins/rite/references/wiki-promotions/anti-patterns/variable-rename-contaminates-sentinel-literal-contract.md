@@ -61,6 +61,6 @@ cycle 2 fix で 5 finding が全 FIXED 判定 (cycle 2 review: 全 reviewer 承�
 
 ## ソース
 
-- PR #1034 review results (cycle 1) (`Wiki provenance: ../../raw/reviews/20260518T001536Z-pr-1034.md`)
-- PR #1034 review results (cycle 2, mergeable) (`Wiki provenance: ../../raw/reviews/20260518T002525Z-pr-1034.md`)
-- PR #1034 fix results (cycle 2) (`Wiki provenance: ../../raw/fixes/20260518T001912Z-pr-1034.md`)
+- Review results (cycle 1) (`Wiki provenance: ../../raw/reviews/20260518T001536Z-pr-1034.md`)
+- Review results (cycle 2, mergeable) (`Wiki provenance: ../../raw/reviews/20260518T002525Z-pr-1034.md`)
+- Fix results (cycle 2) (`Wiki provenance: ../../raw/fixes/20260518T001912Z-pr-1034.md`)

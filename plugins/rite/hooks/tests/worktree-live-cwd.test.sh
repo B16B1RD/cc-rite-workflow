@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for worktree-live-cwd.sh — OS-ground-truth liveness probe (Issue #1544).
+# Tests for worktree-live-cwd.sh — OS-ground-truth liveness probe.
 #
 #   TC-1: missing <dir> argument                       → rc 2
 #   TC-2: directory with NO process standing in it     → rc 1
@@ -130,6 +130,6 @@ sleep 0.3
 assert "TC-11 real path → rc 0" "0" "$(probe_rc "$Dreal/wt")"
 assert "TC-11 symlinked path → rc 0" "0" "$(probe_rc "$Dlink/wtlink")"
 
-if ! print_summary "$(basename "$0")" "worktree-live-cwd.sh の OS 接地 liveness 判定 (Issue #1544)"; then
+if ! print_summary "$(basename "$0")" "worktree-live-cwd.sh の OS 接地 liveness 判定"; then
   exit 1
 fi

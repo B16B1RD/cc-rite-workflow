@@ -1,6 +1,6 @@
 #!/bin/bash
 # Tests for cleanup-worktree-detect.sh — cleanup.md ステップ 4-W の session-worktree
-# 検出を物理 cwd ベースに頑健化する純粋ロジック (Issue #1622)。
+# 検出を物理 cwd ベースに頑健化する純粋ロジック。
 #
 #   AC-1 (T-01): flow-state 未記録でも物理 cwd が当該 Issue の worktree なら
 #                in_worktree_unrecorded を返し worktree= に cur_top を導出する。

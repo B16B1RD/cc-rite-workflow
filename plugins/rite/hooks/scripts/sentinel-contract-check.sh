@@ -27,7 +27,7 @@
 #       intentionally excluded from the hooks/ scan — they hold lint-check
 #       utilities and test fixtures, not runtime sentinel emitters, and
 #       scanning them pulls in unrelated bracket-literal examples in
-#       comments/test data (Issue #1709 §2 In Scope: "SoT と skills/hooks
+#       comments/test data (§2 In Scope: "SoT と skills/hooks
 #       実体の一致を検証").
 #
 # Usage:
@@ -256,7 +256,7 @@ sed -E 's/^([^:]+:[0-9]+):/\1\t/' "$WORK_DIR/found_raw_lines.txt" > "$WORK_DIR/f
 # Normalize a trailing numeric segment to N (e.g. [pr:created:123] -> [pr:created:N])
 # so concrete example instances collapse onto their canonical SoT form, while
 # keeping the first-seen file:line per normalized token so a FAIL message can
-# report a concrete location (Issue #1709 §4.5: "FAIL + 該当ファイル:行を報告").
+# report a concrete location (§4.5: "FAIL + 該当ファイル:行を報告").
 awk -F'\t' '{ token = $2; sub(/:[0-9]+\]$/, ":N]", token); if (!(token in loc)) { loc[token] = $1; order[++n] = token } }
   END { for (i = 1; i <= n; i++) print order[i] "\t" loc[order[i]] }' \
   "$WORK_DIR/found_with_loc.txt" > "$WORK_DIR/found_normalized_with_loc.txt"

@@ -47,7 +47,7 @@ trap cleanup EXIT
 # (n_stale=0 + rc 0) is byte-identical to the degradation output — so instead of
 # guarding them they assert `stale_check_ok=true`, which the script only emits
 # when the comparison actually ran. That keeps them fail-closed on BSD rather
-# than vacuously green. (Issue #2008)
+# than vacuously green.
 if date -d "2025-01-01" +%s >/dev/null 2>&1; then HAS_GNU_DATE=1; else HAS_GNU_DATE=0; fi
 
 # TC-3 and TC-9 do run through the date path, and their headline expectations
@@ -68,7 +68,7 @@ FAIL=0
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
 # Skips are counted so a platform-gated green states how many assertions never ran
-# (Issue #2008 review G-04). Same shape as _test-helpers.sh skip().
+# (review G-04). Same shape as _test-helpers.sh skip.
 SKIP=0
 skip() { SKIP=$((SKIP + 1)); echo "  ⏭️ SKIP: $1"; }
 
@@ -181,7 +181,7 @@ fi
 echo "=== TC-3: --stale-days 境界 (巨大閾値 → 0 件) ==="
 repo=$(make_same_branch_sandbox tc3)
 run_helper "$repo" "$PAGES_2" --branch-strategy same_branch --stale-days 36500
-# Why (Issue #2008 review F-05): `n_stale=0` + rc 0 is also exactly what the
+# Why (review F-05): `n_stale=0` + rc 0 is also exactly what the
 # skipped_no_gnu_date degradation emits, so asserting only those two would let
 # TC-3 pass on BSD/macOS without ever exercising the threshold comparison — and
 # it would keep passing even if that comparison were completely broken. The
@@ -242,7 +242,7 @@ run_helper "$repo" "" --branch-strategy same_branch
 # The `stale_check_ok` discriminator is required for the same reason as TC-3: the
 # skipped_no_gnu_date degradation emits an identical n_stale=0 + marker block +
 # WIKI_LINT_STALE=0 payload, so without it this TC would pass on BSD/macOS
-# without exercising the empty-input path (Issue #2008 review F-05).
+# without exercising the empty-input path (review F-05).
 if [ "$HELPER_RC" -eq 0 ] \
    && printf '%s\n' "$HELPER_STDOUT" | grep -qx 'n_stale=0' \
    && printf '%s\n' "$HELPER_STDOUT" | grep -qx "$EXPECT_STALE_CHECK_OK" \

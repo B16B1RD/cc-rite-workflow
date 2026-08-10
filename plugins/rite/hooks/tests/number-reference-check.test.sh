@@ -5,6 +5,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 TARGET="$SCRIPT_DIR/../scripts/number-reference-check.sh"
 TEST_DIR="$(mktemp -d)"
 PASS=0
@@ -52,7 +53,7 @@ if [ "$rc" -eq 1 ] && echo "$output" | grep -q '#1234'; then
 else fail "expected rc=1 with #1234, got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
-# TC-003 (T-03): functional code / headings / short refs → no finding
+# TC-003 (T-03): functional code / headings → no finding
 # --------------------------------------------------------------------------
 echo "TC-003 (T-03): functional code not detected"
 cat > "$SAMPLE_PATH" <<'MD'
@@ -60,10 +61,10 @@ The {issue_number} placeholder is substituted at runtime.
 Branch slug from grep -oE 'issue-[0-9]+' extraction.
 API path /issues/123/comments stays intact.
 ## 3.19 Plugin-specific Checks (Number Reference Detection)
-A short task-list ref #42 is below the threshold.
+A short task-list pointer without a number stays below the threshold.
 MD
 rc=0; output=$(run "$SAMPLE") || rc=$?
-if [ "$rc" -eq 0 ]; then pass "functional code / heading / short ref → exit 0"
+if [ "$rc" -eq 0 ]; then pass "functional code / heading → exit 0"
 else fail "expected rc=0 (no false positive), got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
@@ -147,9 +148,12 @@ else fail "expected rc=0, got rc=$rc: $output"; fi
 #         script header claims these forms are detected).
 # --------------------------------------------------------------------------
 echo "TC-010: Issue #NNN / PR #NNN prose forms detected"
-cat > "$SAMPLE_PATH" <<'MD'
-See Issue #1234 for the rationale.
-Per PR #367, the loader was fixed.
+issue_label=Issue
+pr_label=PR
+number_mark='#'
+cat > "$SAMPLE_PATH" <<MD
+See ${issue_label} ${number_mark}1234 for the rationale.
+Per ${pr_label} ${number_mark}367, the loader was fixed.
 MD
 rc=0; output=$(run "$SAMPLE") || rc=$?
 if [ "$rc" -eq 1 ] && echo "$output" | grep -q '#1234' && echo "$output" | grep -q '#367'; then
@@ -182,6 +186,157 @@ rc=0; output=$(bash "$TARGET" --repo-root /nonexistent/rite-xyz --target foo.md 
 if [ "$rc" -eq 2 ] && echo "$output" | grep -q 'repo-root not a directory'; then
   pass "bad --repo-root → exit 2 (invocation error)"
 else fail "expected rc=2 with repo-root error, got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
+# TC-013: rationale rewrites must not replace numbered journals with another
+#         undefined placeholder. These tokens previously produced broken prose
+#         such as malformed possessives and unnamed review runs.
+# --------------------------------------------------------------------------
+echo "TC-013: generic rationale placeholders are absent"
+placeholder_pattern='the governing'' rationale|The observed'' review run|the contract''[.]s'
+if ! grep -ERn "$placeholder_pattern" \
+  "$REPO_ROOT/plugins/rite" "$REPO_ROOT/docs" >/dev/null; then
+  pass "generic rationale placeholders are absent"
+else
+  fail "generic rationale placeholder residue found under plugins/rite or docs"
+fi
+
+echo "TC-014: deletion-damage residue is absent"
+deletion_residue_patterns=(
+  '[(（]で '
+  '[(（]の '
+  'machine-gated since[)]'
+  'stdout emit、[)）:]'
+  'tracked by[[:space:]]*[.]'
+  'approved by[[:space:]]*[.]'
+  "of 's"
+  'pattern[.]POSIX'
+  '、）'
+  ',[)]'
+  '[[:lower:]][.][(][[:upper:]]'
+  '構築。[^|]*と対称[)][[:space:]]*[|]'
+  'emit、[[:space:]]+で'
+  '。[[:space:]]+以降'
+  '[(（]の[^[:space:]]'
+  'emit[*]*、[[:space:]]+で'
+  '[.] D-[0-9]+'
+  'frozen[.][)]'
+  'AC-[0-9]+[.][)]'
+  '[[:alpha:]][,][[:space:]]*[;]'
+  'Static contract( tests)? for[[:space:]]*:'
+  '。[[:space:]]+D-[0-9]+'
+  '。[[:space:]]+で(は|本体|log)'
+  '（で(機械|配線|skip)'
+  '[(（][。．]'
+  '、[。．]'
+  '`[^`]+` は[[:space:]]+[、）]'
+  '[[:space:]]{2,}で修正'
+  '[(（][[:space:]]*:[[:space:]]'
+  '[[:space:]]{2,}では'
+  '、[[:space:]]+がまさに'
+  '、[[:space:]]+と同じ'
+  '、[[:space:]]+が消した'
+)
+deletion_residue_samples=(
+  'context (で rationale'
+  'context (の rationale'
+  'machine-gated since)'
+  'stdout emit、):'
+  'tracked by .'
+  'approved by .'
+  "half of 's contract"
+  'pattern.POSIX'
+  '理由、）'
+  'reason,)'
+  'silently.(The next sentence)'
+  '集合を構築。helper と対称) |'
+  'helper が emit、 で LLM'
+  '完了。 以降'
+  '(の実測必須ゲート'
+  'helper が emit**、 で LLM'
+  '. D-01 requirement'
+  'intentionally frozen.)'
+  'AC-1.)'
+  'other, ; next'
+  'Static contract tests for : workflow'
+  '。 D-01 requirement'
+  '。 で本体'
+  '（で機械比率計算'
+  '(。TMPDIR'
+  '環境制約、。'
+  '`updated_at` は 、'
+  '点を  で修正'
+  '(: missing rationale'
+  'run —  では nine cycles'
+  '完了してしまい、 がまさに'
+  '環境制約、 と同じ扱い'
+  '拒否され、 が消した'
+)
+deletion_residue_pattern=$(IFS='|'; printf '%s' "${deletion_residue_patterns[*]}")
+scan_deletion_residue() {
+  local manifest="$TEST_DIR/deletion-residue-files"
+  local file grep_rc grep_bin="${DELETION_GREP_BIN:-grep}"
+  if ! find "$@" -type f ! -path '*/fixtures/*' \
+    ! -name 'number-reference-check.test.sh' -print0 > "$manifest"; then
+    return 2
+  fi
+  while IFS= read -r -d '' file; do
+    grep_rc=0
+    "$grep_bin" -En "$deletion_residue_pattern" "$file" >/dev/null || grep_rc=$?
+    case "$grep_rc" in
+      0) return 0 ;;
+      1) ;;
+      *) return 2 ;;
+    esac
+  done < "$manifest"
+  return 1
+}
+for i in "${!deletion_residue_patterns[@]}"; do
+  if printf '%s\n' "${deletion_residue_samples[$i]}" | grep -Eq "${deletion_residue_patterns[$i]}"; then
+    pass "deletion-damage matcher arm $((i + 1)) has a positive control"
+  else
+    fail "deletion-damage matcher arm $((i + 1)) missed its positive control"
+  fi
+done
+if ! printf '%s\n' 'context with durable rationale' | grep -Eq "$deletion_residue_pattern"; then
+  pass "deletion-damage matcher accepts valid prose"
+else
+  fail "deletion-damage matcher rejected valid prose"
+fi
+scan_rc=0
+scan_deletion_residue "$REPO_ROOT/plugins/rite" "$REPO_ROOT/docs" || scan_rc=$?
+case "$scan_rc" in
+  1) pass "deletion-damage residue is absent" ;;
+  0) fail "deletion-damage residue found under plugins/rite or docs" ;;
+  *) fail "deletion-damage residue scan failed operationally" ;;
+esac
+scan_rc=0
+scan_deletion_residue "$TEST_DIR/definitely-missing-root" 2>/dev/null || scan_rc=$?
+if [ "$scan_rc" -eq 2 ]; then
+  pass "deletion-damage scan fails closed when a scan root is unavailable"
+else
+  fail "deletion-damage scan did not distinguish an unavailable root (rc=$scan_rc)"
+fi
+scan_fixture="$TEST_DIR/deletion-scan-fixture"
+mkdir -p "$scan_fixture"
+printf '%s\n' "${deletion_residue_samples[0]}" > "$scan_fixture/residue.md"
+scan_rc=0
+scan_deletion_residue "$scan_fixture" || scan_rc=$?
+if [ "$scan_rc" -eq 0 ]; then
+  pass "deletion-damage scan reports residue found through the scan helper"
+else
+  fail "deletion-damage scan missed helper-level residue (rc=$scan_rc)"
+fi
+grep_fail_shim="$TEST_DIR/grep-fail"
+printf '%s\n' '#!/bin/bash' 'exit 2' > "$grep_fail_shim"
+chmod +x "$grep_fail_shim"
+scan_rc=0
+DELETION_GREP_BIN="$grep_fail_shim" scan_deletion_residue "$scan_fixture" || scan_rc=$?
+if [ "$scan_rc" -eq 2 ]; then
+  pass "deletion-damage scan fails closed on grep operational errors"
+else
+  fail "deletion-damage scan misclassified a grep operational error (rc=$scan_rc)"
+fi
 
 # --------------------------------------------------------------------------
 # Summary

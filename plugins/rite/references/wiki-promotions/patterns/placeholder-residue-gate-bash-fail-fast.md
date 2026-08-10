@@ -51,7 +51,7 @@ esac
 
 起点事例の時点で同型の residue gate が `rite` plugin 内の 6 site で運用されている (Phase 1.1 / 1.3 / 6.2 F-01 / 8.3 F-14 / F-04 + 新規 1 site)。canonical reference として新規 bash block を登録する際は既存同種 site と一字一句同型に揃えること。drift は silent regression の温床となる。
 
-### 新設 helper にも gate を置く — sibling との対称性が判断基準（PR #2111 cycle 3）
+### 新設 helper にも gate を置く — sibling との対称性が判断基準（cycle 3）
 
 LLM substitute シームを持つ helper を新設するとき、SKILL.md 側（呼び出し bash block）の residue gate だけでは防げない — helper 側にも引数検証としての gate を置く。判断基準は **sibling helper との対称性**: 同種の LLM substitute シームを持つ sibling（`wiki-lint-stale.sh`）と SKILL.md 5.0.c に canonical gate があるのに新設 helper だけ無い状態は Canonical helper bypass の変種であり、片肺のまま残すと substitute 漏れが helper 内で silent 誤動作に変換される。
 
@@ -69,6 +69,6 @@ bash tool 呼び出し境界を跨いで shell 変数は保持されない。Pha
 
 ## ソース
 
-- PR #579 review results (cycle 1) (`Wiki provenance: ../../raw/reviews/20260418T122454Z-pr-579.md`)
-- PR #579 fix results (cycle 1) (`Wiki provenance: ../../raw/fixes/20260418T122707Z-pr-579.md`)
-- PR #2111 review results (cycle 3) (`Wiki provenance: ../../raw/reviews/20260804T145133Z-pr-2111.md`)
+- Review results (cycle 1) (`Wiki provenance: ../../raw/reviews/20260418T122454Z-pr-579.md`)
+- Fix results (cycle 1) (`Wiki provenance: ../../raw/fixes/20260418T122707Z-pr-579.md`)
+- Review results (cycle 3) (`Wiki provenance: ../../raw/reviews/20260804T145133Z-pr-2111.md`)

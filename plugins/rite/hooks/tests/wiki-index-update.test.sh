@@ -2,13 +2,13 @@
 # wiki-index-update.test.sh
 #
 # Tests for wiki-index-update.sh (wiki-ingest SKILL.md ステップ 6 delegation
-# target, Issue #2089). The helper applies the #2047-fixed index.md spec
+# target). The helper applies the current index.md spec
 # (identification predicate / escaping / duplicate reclamation / stats sync)
 # deterministically; these fixtures pin the behavior the prose era established,
-# including the edge cases PR #2052's review loop surfaced (raw-pipe title,
+# including the edge cases 's review loop surfaced (raw-pipe title,
 # blank lines inside the section, old-format coexistence, duplicate rows).
 #
-# Coverage (IDs map to Issue #2089 Section 6 Test Specification):
+# Coverage (IDs map to this helper's Section 6 Test Specification):
 #   TC-1  (T-01) 新規行追加 parity: 行形式・テーブル末尾追加・統計同期
 #   TC-2  (T-01) 既存行更新 parity: description ありで行全体を再生成
 #   TC-3  (T-01) 既存行更新: description 空 → 既存サマリー保持 (空上書き禁止)

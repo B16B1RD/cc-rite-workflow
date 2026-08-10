@@ -83,7 +83,7 @@ pin 語句を壊して CI を赤にした反省から文言を復元した一方
 
 **pin されている表に行を足すときは、その行の pin も同時に足す。**
 
-### fix が追加した TC 自身にも代表変異を当てる（PR #2111 cycle 3 fix）
+### fix が追加した TC 自身にも代表変異を当てる（cycle 3 fix）
 
 「検出力系 fix は変異の fail 化を実測してから commit する」規律を守っていても、**fix 自身が追加した TC の検出力**は検証対象から漏れやすい。起点事例では cycle 2 で追加した invocation-symmetry TC がフラグ「名」の集合突合のみで「呼び出し行の実体」を pin していない穴が cycle 3 で指摘された。以後は fix が追加した TC にも代表変異（対象行の削除・literal の置換）を当てて kill を実測してから commit する。この検証は cycle 3 fix で TC の診断行に潜んでいた set -u バグ（失敗経路でのみ発火する未エスケープ変数）まで検出した — **fix 前 mutation は修正の妥当性検証であると同時に、その修正が testable かの検証でもある**。
 
@@ -118,7 +118,7 @@ grep -rn '<特徴的な文字列>' plugins/rite/hooks/tests/
 
 ## ソース
 
-- PR #2052 fix results (cycle 4) (`Wiki provenance: ../../raw/fixes/20260802T074021Z-pr-2052.md`)
+- Fix results (cycle 4) (`Wiki provenance: ../../raw/fixes/20260802T074021Z-pr-2052.md`)
 - PR 2052 review cycle 5: pin uniqueness, marker producer/consumer symmetry, guard-induced dead code (`Wiki provenance: ../../raw/reviews/20260802T080828Z-pr-2052.md`)
 - PR 2052 fix cycle 5: pin selection after edits, producer/consumer marker pins, emit-point relocation (`Wiki provenance: ../../raw/fixes/20260802T082508Z-pr-2052.md`)
-- PR #2111 fix results (cycle 3) (`Wiki provenance: ../../raw/fixes/20260804T145425Z-pr-2111.md`)
+- Fix results (cycle 3) (`Wiki provenance: ../../raw/fixes/20260804T145425Z-pr-2111.md`)

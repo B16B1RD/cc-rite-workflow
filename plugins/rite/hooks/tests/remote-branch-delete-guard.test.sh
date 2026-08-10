@@ -2,7 +2,7 @@
 # remote-branch-delete-guard.test.sh
 #
 # cleanup/SKILL.md ステップ 5 のリモートブランチ削除ガードを SKILL.md から literal 抽出して
-# sandbox で実行し、`git ls-remote --exit-code` の exit code 3 分岐を pin する (Issue #2016)。
+# sandbox で実行し、`git ls-remote --exit-code` の exit code 3 分岐を pin する。
 # あわせて merge/SKILL.md の設計判断が `--delete-branch=false` の効果を過大に主張していない
 # ことを静的検査する。
 #
@@ -15,7 +15,7 @@
 # delete_branch_on_merge: true の環境 (merge 時にサーバサイドで head が削除済み) では
 # cleanup が完全に成功しているのに `error: unable to delete ...` を 2 行出していた。
 #
-# TC 対応 (Issue #2016 / #2027)。実行順は TC-0 → 1 → 2 → 2b → 3 → 3b → 7 → 7b → 7c →
+# TC coverage。実行順は TC-0 → 1 → 2 → 2b → 3 → 3b → 7 → 7b → 7c →
 # 8 → 9 → 4 → 6 → 5。TC-5 は precondition が前段 TC の後始末に依存するため最後に置く。
 # - TC-0              : git ls-remote --heads が ref 不在でも rc=0 を返す前提の pin
 #                      (修正前の && ガードが常に成立していたことの根拠)
@@ -57,7 +57,7 @@ trap cleanup EXIT
 TEST_DIR="$(mktemp -d)" || exit 1
 # canonical 化は別変数へ受けてから代入する。`TEST_DIR="$(cd ... )" || exit 1` は cd/pwd が
 # 失敗したとき `|| exit 1` が走る前に TEST_DIR を空文字で上書きするため、EXIT trap の cleanup()
-# が no-op になり直前に作った temp dir が leak する (:48-49 の設計意図と正面から矛盾する)。
+# が no-op になり直前に作った temp dir が leak する (直前の cleanup 契約と正面から矛盾する)。
 _canon="$(cd "$TEST_DIR" && pwd -P)" || exit 1
 TEST_DIR="$_canon"
 REAL_GIT="$(command -v git)" || { echo "FATAL: git が見つかりません"; exit 1; }
@@ -214,7 +214,7 @@ fi
 
 # brace 無し変数展開が非 ASCII バイトに隣接していないことを検査する。`$var。` と書くと bash が
 # 多バイト文字の先頭バイトを変数名に取り込み、非 UTF-8 ロケール (macOS CI) で変数が未定義化して
-# 診断が消え、残った不正バイトが下流の BSD sed も落とす (Issue #2008 / TC-8b-h と同 invariant)。
+# 診断が消え、残った不正バイトが下流の BSD sed も落とす (TC-8b-h と同 invariant)。
 # TC-8b-h のスイープは *.sh のみを走査し SKILL.md の bash fence を対象外にしている
 # (同テストが scope limit として明記) ため、抽出したスニペットに対してここで検査する。
 #

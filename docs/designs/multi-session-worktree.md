@@ -133,7 +133,7 @@ multi_session:
      | worktree 登録済 + branch 一致 | 再利用（resume 相当） |
      | パスは存在するが worktree 未登録（残骸） | `git worktree prune` → 残存なら AskUserQuestion（削除して再作成 / 中止） |
      | branch 存在・worktree なし | `git worktree add {path} {branch}`（`-b` なし） |
-     | branch も worktree もなし | `git worktree add --no-track -b {branch} {path} origin/{base}`（`--no-track`: sandbox 環境での tracking 書込拒否回避、Issue #1894） |
+     | branch も worktree もなし | `git worktree add --no-track -b {branch} {path} origin/{base}`（`--no-track`: sandbox 環境での tracking 書込拒否回避） |
      | branch が**別の worktree** で checkout 中 | **中止**（他セッション作業中の可能性を表示 — git が構造的に保証する二重着手ガード） |
   3. `.rite-plugin-root` を worktree root へコピー → `EnterWorktree(path: {path})`
   4. **EnterWorktree 不在/失敗時**: **silent fallback はしない**。失敗原因を切り分ける — (A) harness の git 誤判定（`.git` 存在 + `git -C {path} rev-parse` 成功 + 起動コンテキスト git=false / 「not in a git repository」）＝推奨。リポジトリ root から Claude Code を再起動し再実行すれば worktree は `WT_CASE=reuse` で継続（worktree は保持され破壊しない）/ (B) worktree 消失等の別要因＝S8 / `/rite:recover` 再構築経路へ委譲 / (C) 従来 `git switch -c` は recommended にせず、worktree 分離を破棄する明示エスケープとしてのみ残す（併走時の危険を警告）。Bash 永続 cwd 駆動は導入しない。
@@ -146,7 +146,7 @@ multi_session:
   1. `git status --porcelain` で dirty 確認。dirty なら AskUserQuestion（stash して続行 / 中止）。stash は common git dir 格納のため worktree 削除後も `git stash pop` 可能。
   2. `ExitWorktree(action: "keep")` で main checkout に復帰（path 入場 worktree は remove でも消えない仕様のため常に keep）。
   3. main から `git worktree remove {path}` → `git worktree prune`。
-  4. 削除失敗時は `WORKTREE_REMOVE_FAILED` を表示して**続行**（non-blocking。遅延 reap §8 へ委譲）。sandbox が admin dir の `config.worktree` にマスクマウントを張っている場合（Issue #1957）は remove 試行自体が admin dir を半壊させるため、削除前に検知して remove を**一切実行せず** `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` を表示して遅延 reap へ委譲する。
+  4. 削除失敗時は `WORKTREE_REMOVE_FAILED` を表示して**続行**（non-blocking。遅延 reap §8 へ委譲）。sandbox が admin dir の `config.worktree` にマスクマウントを張っている場合は remove 試行自体が admin dir を半壊させるため、削除前に検知して remove を**一切実行せず** `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` を表示して遅延 reap へ委譲する。
   5. 冪等性: main から再実行された場合は cwd 判定で 1〜2 をスキップ。worktree 既削除なら 3 もスキップ。
 - **Step 4（base pull）の安全化**: main checkout が `{base}` 上にある場合のみ `git pull --ff-only origin {base}`（index.lock 競合 3 回リトライ）。
   別 branch 上なら **switch せず WARNING + skip**（WARNING 文面に「main checkout を {base} に戻す」復旧手順を含める）。従来モード（enabled=false）は現行動作を維持。
@@ -208,14 +208,14 @@ multi_session:
 3 ゲート全通過時のみ reap:
 
 1. `{worktree_base}` 配下かつディレクトリ名が `^issue-[0-9]+$` に**完全一致**（strict regex doctrine 踏襲）
-2. claim liveness（§7 の述語）が **live でない**（claim 不在時は mtime > 24h の既存 age guard を再利用）。例外（Issue #1966）: checkout 中 branch が **reap manifest に記録済み**（= cleanup.md が PR merged を確認して記録した deferred worktree — cleanup は claim を無条件解放するため必ず claim 不在でここに到達する）なら age guard を**バイパス**して即 reap する。ハーネスが worktree root の mtime をセッション毎に更新（`.claude/.cc-writes` churn）するため、age guard 単独では merged 済み deferred worktree が永久リークする
-3. `git -C <wt> status --porcelain` が**空**（**dirty worktree は絶対に auto-reap しない** — WARNING + 手動コマンド提示で skip）。例外（Issue #1957）: **corpse**（admin dir の `HEAD` 欠落 + git 非認識の AND — sandbox マスク下の remove が半壊させた残骸）は status 判定が構造的に不可能なため本ゲートをバイパスし、claim 非 live + 24h age guard 通過後に `rm -rf`（working tree + admin dir）+ `prune` で回収する（HEAD 存在で status rc≠0 のものは従来どおり安全側 skip）
+2. claim liveness（§7 の述語）が **live でない**（claim 不在時は mtime > 24h の既存 age guard を再利用）。例外: checkout 中 branch が **reap manifest に記録済み**（= cleanup.md が PR merged を確認して記録した deferred worktree — cleanup は claim を無条件解放するため必ず claim 不在でここに到達する）なら age guard を**バイパス**して即 reap する。ハーネスが worktree root の mtime をセッション毎に更新（`.claude/.cc-writes` churn）するため、age guard 単独では merged 済み deferred worktree が永久リークする
+3. `git -C <wt> status --porcelain` が**空**（**dirty worktree は絶対に auto-reap しない** — WARNING + 手動コマンド提示で skip）。例外: **corpse**（admin dir の `HEAD` 欠落 + git 非認識の AND — sandbox マスク下の remove が半壊させた残骸）は status 判定が構造的に不可能なため本ゲートをバイパスし、claim 非 live + 24h age guard 通過後に `rm -rf`（working tree + admin dir）+ `prune` で回収する（HEAD 存在で status rc≠0 のものは従来どおり安全側 skip）
 
 **Gate 0 — self-exclusion（後続で追加された第 4 の保護層）**: 上記 3 ゲートの**前段**に、実行中の自セッション worktree（起動時 cwd、または `RITE_WORKTREE` env が候補 worktree と一致/配下）を reap 対象から除外するガードを設ける。long-lived セッションが review 開始時（review.md Step 1.0.0）に**自分の作業中 worktree**（clean かつ claim free/stale で 3 ゲートを全通過しうる）を削除する事故を防ぐ。dirty(3)/claim(2) 保護とは独立した第 4 の保護層。
 
 処理は既存 `_reap_mutation_worktree` と同型: `git worktree remove --force` → fallback `rm -rf` → `git worktree prune` + 対応 claim ファイル削除。
 
-**branch recovery（Issue #1670 で精緻化）**: 初期設計は「branch は削除しない（作業保全）」だったが、これだと cleanup.md が別 live セッションの在席で削除を遅延した feature ブランチが回収経路を持たず永久残置（dead-letter）した。現在は worktree reap 後にその branch を**安全に回収**する: `git branch -d`（safe — 未マージは拒否するため**未マージ作業は破壊しない**）を第一手とし、`-d` が squash-merge 残渣で拒否しても **reap manifest に記録された branch**（cleanup.md が PR merged を確認して `rite-tmp-artifact.sh record --type branch` で記録）のみ `git branch -D` で強制削除する。manifest 未記録の未マージ branch は WARNING を出して保持する。これにより「branch は保全」方針は「**merge 確認済み branch のみ回収・未マージ作業は破壊しない**」へと精緻化された。manifest 記録は branch の強制削除だけでなく **worktree reap 自体の free-claim age guard バイパス**もライセンスする（Issue #1966、ゲート 2 の例外を参照）。branch 回収の成功時（`-d` / `-D` のいずれも）は manifest エントリを**同一 run 内で即時消費**する — バイパス導入後は残存エントリが不活性でなくなる（同名 branch が claim-free の新 worktree に再作成された場合にバイパスを継承しうる）ため、従来の「次 run の Step 4.5 verify-drop による自己修復」依存をやめた。消費は best-effort（mktemp / 書き戻し失敗時は WARNING を出して自己修復にフォールバック。silent には失敗しない）。
+**branch recovery（安全な遅延回収へ精緻化）**: 初期設計は「branch は削除しない（作業保全）」だったが、これだと cleanup.md が別 live セッションの在席で削除を遅延した feature ブランチが回収経路を持たず永久残置（dead-letter）した。現在は worktree reap 後にその branch を**安全に回収**する: `git branch -d`（safe — 未マージは拒否するため**未マージ作業は破壊しない**）を第一手とし、`-d` が squash-merge 残渣で拒否しても **reap manifest に記録された branch**（cleanup.md が PR merged を確認して `rite-tmp-artifact.sh record --type branch` で記録）のみ `git branch -D` で強制削除する。manifest 未記録の未マージ branch は WARNING を出して保持する。これにより「branch は保全」方針は「**merge 確認済み branch のみ回収・未マージ作業は破壊しない**」へと精緻化された。manifest 記録は branch の強制削除だけでなく **worktree reap 自体の free-claim age guard バイパス**もライセンスする（ゲート 2 の例外を参照）。branch 回収の成功時（`-d` / `-D` のいずれも）は manifest エントリを**同一 run 内で即時消費**する — バイパス導入後は残存エントリが不活性でなくなる（同名 branch が claim-free の新 worktree に再作成された場合にバイパスを継承しうる）ため、従来の「次 run の Step 4.5 verify-drop による自己修復」依存をやめた。消費は best-effort（mktemp / 書き戻し失敗時は WARNING を出して自己修復にフォールバック。silent には失敗しない）。
 
 トリガー: cleanup.md の既存 `pr-cycle-cleanup.sh` 呼び出しに内包 + `session-start.sh`（main checkout 起動時）から `|| true` の best-effort 呼び出し
 （worktree list + status check のみの軽量処理で hook timeout 30s 内に収まることをテストで担保）。
@@ -264,7 +264,7 @@ teammate の git 禁止・team lead の `git -C` 集約は無変更。
 | D-3 | Issue claim のゲート | **`multi_session.enabled` に依らず常時有効** | 同一 checkout での複数セッションは per-session flow-state により現行でもサポートされており、二重着手リスクは worktree 機能と独立に存在する。claim は衝突がない限り無音で後方互換を壊さない |
 | D-4 | EnterWorktree の name/path | **`path` 入場のみ使用** | `name` 指定は `.claude/worktrees/` + origin/<デフォルトブランチ> 固定で、rite の branch 命名規則（`{type}/issue-{number}-{slug}`）と base（`origin/develop`）を表現できない |
 | D-5 | state root resolver | **新 lib を作らず `state-path-resolve.sh` 自体を worktree-aware 化** | 既に全 hook の漏斗（分類 A/B が全て経由）であり、新 lib の並存は drift ベクタになる（シンプルさを死守） |
-| D-6 | 一過性アーティファクトの配置 | **Issue #1831 で改訂**: `review-results` / `fix-cycle-state` / `accepted-fingerprints-*` は**共有 root（state-path-resolve 基準）**、`tmp` のみセッション cwd 相対 | 当初決定（cwd 相対）は worktree 削除と同時に消える利点を採ったが、worktree 内保存 ↔ main checkout 読取/削除のパス分裂（cleanup no-op・cross-session 読取不発）が実害として顕在化したため見直した。当初懸念した衝突管理は review-result-schema.md の `~<hex>` suffix で対処済み。配置の現行 SoT は上記「状態ファイル配置」表 |
+| D-6 | 一過性アーティファクトの配置 | ** で改訂**: `review-results` / `fix-cycle-state` / `accepted-fingerprints-*` は**共有 root（state-path-resolve 基準）**、`tmp` のみセッション cwd 相対 | 当初決定（cwd 相対）は worktree 削除と同時に消える利点を採ったが、worktree 内保存 ↔ main checkout 読取/削除のパス分裂（cleanup no-op・cross-session 読取不発）が実害として顕在化したため見直した。当初懸念した衝突管理は review-result-schema.md の `~<hex>` suffix で対処済み。配置の現行 SoT は上記「状態ファイル配置」表 |
 | D-7 | claim の heartbeat | **新機構を作らず flow-state `updated_at` を再利用** | `flow-state.sh set` が全 phase 遷移で更新する既存挙動がそのまま heartbeat。session-ownership.sh の 2h 閾値と判定関数も再利用 |
 | D-8 | スコープ | コア lifecycle + Wiki 完全対応 + **sprint 系は claim スキップのみ** | 複数セッションでの sprint 分担実行（協調スケジューリング）はスコープ過大。将来 Issue に切り出す |
 | D-9 | rite-config.yml top-level `schema_version` bump（2→3） | **省略**（S2 で 2 のまま据え置き） | `multi_session` は additive で migration 不要（S2 時点では `enabled: false` default、後続でデフォルト ON 化された後も `multi_session:` ブロック欠落時の parse fallback は `false` のままで既存 config の挙動は不変）。bump すると session-start.sh の upgrade prompt が全既存ユーザーに発火するが、S2 時点では pr:open/cleanup 統合（S6/S7）が develop 未マージで機能が半完成。半統合機能を全ユーザーに告知する弊害が告知価値を上回るため bump しない。`flow-state` の `worktree` field も conditional-write で非 worktree セッションの state を byte 不変に保つため schema 系のいかなる bump も不要。後続のデフォルト ON 化はテンプレート config 経由の配布であり schema 変更を伴わないため、本判断は維持される |

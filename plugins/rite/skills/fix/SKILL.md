@@ -2752,7 +2752,7 @@ When pushing:
 git push origin HEAD
 ```
 
-> upstream 前提の bare `git push` は使わない。sandbox 有効環境では upstream tracking が未設定（open/pr-create が `-u` を使わなくなったため）で bare push が失敗する（Issue #1894）。
+> upstream 前提の bare `git push` は使わない。sandbox 有効環境では upstream tracking が未設定（open/pr-create が `-u` を使わなくなったため）で bare push が失敗する。
 
 ### 3.5 Cycle Branch Cleanup (Post-Push)
 
@@ -3296,10 +3296,10 @@ case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac
 
 **Note**: The review-fix loop of `/rite:iterate` checks the content of this completion report to determine the next action:
 - `プッシュ: 完了` -> Execute re-review (`/rite:pr-review` を起動。範囲は同 skill の ステップ 1.2.4 が cycle に応じて決める — fix 側で範囲を宣言しない)
-- 本 cycle 内で accept 決定が発生 -> Execute re-review (同上。accept は fingerprint 永続化のみを行い、実際の suppression 適用は次回 `/rite:pr-review` ステップ 5.1.2.A [Non-Target] が担うため、re-review せずに終端すると suppression の成否が未確認のまま loop が終わる — Issue #1811)
+- 本 cycle 内で accept 決定が発生 -> Execute re-review (同上。accept は fingerprint 永続化のみを行い、実際の suppression 適用は次回 `/rite:pr-review` ステップ 5.1.2.A [Non-Target] が担うため、re-review せずに終端すると suppression の成否が未確認のまま loop が終わる —)
 - `プッシュ: 未実行` and 本 cycle 内で accept 決定なし and `全指摘 == 対応指摘` -> Proceed to completion report (all addressed via replies)
 
-「本 cycle 内で accept 決定が発生」の**唯一の真実の源**（判定に使う具体的な context マーカー）は ステップ 5.1 Output Pattern テーブル row 4/5 (下記) を参照すること。本 Note では条件を重複記述しない（Issue #1811 cycle 2 で「別Issue作成: N件」という commit `0dee5b22` で削除済みの旧 Phase 4.3 の残骸フィールドを条件として複製していたことが判明したため、以後は複製ではなく参照に統一する）。
+「本 cycle 内で accept 決定が発生」の**唯一の真実の源**（判定に使う具体的な context マーカー）は ステップ 5.1 Output Pattern テーブル row 4/5 (下記) を参照すること。本 Note では条件を重複記述しない（cycle 2 で「別Issue作成: N件」という commit `0dee5b22` で削除済みの旧 Phase 4.3 の残骸フィールドを条件として複製していたことが判明したため、以後は複製ではなく参照に統一する）。
 
 
 ### 4.6.W Wiki Ingest Trigger (Conditional)
@@ -3504,7 +3504,7 @@ commit_err=""
 trap - EXIT INT TERM HUP
 ```
 
-`wiki_ingest_commit_rc=4` を観測した場合は、上の Bash block とは**別の Bash tool call**で次を 1 回だけ再試行する。`{wiki_push_attempt}` は直前の `WIKI_PUSH_ATTEMPT` marker の値へリテラル置換する。tool call には `dangerouslyDisableSandbox: true` を指定する（ユーザー確認不要。`/rite:open` ステップ 6.1 / Issue #1897 と同じ既知の SSH host-key / network sandbox 制約）。通常 sandbox のまま同じ push を繰り返してはならない。
+`wiki_ingest_commit_rc=4` を観測した場合は、上の Bash block とは**別の Bash tool call**で次を 1 回だけ再試行する。`{wiki_push_attempt}` は直前の `WIKI_PUSH_ATTEMPT` marker の値へリテラル置換する。tool call には `dangerouslyDisableSandbox: true` を指定する（ユーザー確認不要。`/rite:open` ステップ 6.1 と同じ既知の SSH host-key / network sandbox 制約）。通常 sandbox のまま同じ push を繰り返してはならない。
 
 ```bash
 if retry_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh --push-only 2>&1); then
@@ -3602,7 +3602,7 @@ The `fix` flow-state write below records the v3 phase so a `/rite:recover` start
 - **正常終了** (`[fix:replied-only]`): `--handoff "FINALIZE:fix:replied-only:{pr_number}"` で**終了通知マーカー (FINALIZE handoff)** をセットする。
 - **エラー** (`[fix:error]`): `--handoff` を**付けない** (handoff はデフォルトクリア)。`[fix:error]` は clean terminal ではなく caller (`/rite:iterate` ステップ4) で AskUserQuestion (再試行/中止) に分岐するため、完了通知を強制してはならない。
 
-判定は本ステップ時点で**既に確定している入力**で行う (sentinel 評価テーブルより前だが、push 状態・fatal フラグ・本 cycle 内の accept 発生有無は ステップ 4.6 / 4.5 / 2.4 / 2.1.A / 1.0.1 で既知): **(`プッシュ: 完了` または 本 cycle 内で accept 決定が発生) かつ fatal フラグ (`FIX_FALLBACK_FAILED` / `REPLY_POST_FAILED` / `REPORT_POST_FAILED`) が context に未 set なら継続 = `--handoff "/rite:pr-review {pr_number}"`**。push 無し かつ 本 cycle 内で accept 決定なし かつ fatal フラグ未 set なら正常終了 = `--handoff "FINALIZE:fix:replied-only:{pr_number}"`。fatal フラグ有り (`[fix:error]`) なら `--handoff` なし。`WM_UPDATE_FAILED` は `[fix:pushed-wm-stale]` (= 継続) に縮退するため継続 handoff を打ち消さない。「本 cycle 内で accept 決定が発生」の判定条件（具体的な context マーカー、および累計値を使ってはならない理由）は ステップ 5.1 Output Pattern テーブル row 4/5 の直後の注記を**唯一の真実の源**として参照すること（Issue #1811。重複記述はしない）。
+判定は本ステップ時点で**既に確定している入力**で行う (sentinel 評価テーブルより前だが、push 状態・fatal フラグ・本 cycle 内の accept 発生有無は ステップ 4.6 / 4.5 / 2.4 / 2.1.A / 1.0.1 で既知): **(`プッシュ: 完了` または 本 cycle 内で accept 決定が発生) かつ fatal フラグ (`FIX_FALLBACK_FAILED` / `REPLY_POST_FAILED` / `REPORT_POST_FAILED`) が context に未 set なら継続 = `--handoff "/rite:pr-review {pr_number}"`**。push 無し かつ 本 cycle 内で accept 決定なし かつ fatal フラグ未 set なら正常終了 = `--handoff "FINALIZE:fix:replied-only:{pr_number}"`。fatal フラグ有り (`[fix:error]`) なら `--handoff` なし。`WM_UPDATE_FAILED` は `[fix:pushed-wm-stale]` (= 継続) に縮退するため継続 handoff を打ち消さない。「本 cycle 内で accept 決定が発生」の判定条件（具体的な context マーカー、および累計値を使ってはならない理由）は ステップ 5.1 Output Pattern テーブル row 4/5 の直後の注記を**唯一の真実の源**として参照すること（重複記述はしない）。
 
 > **Note (review がセットした handoff の消去経路)**: 上記の判定が責務とするのは fix.md が**自身でセットする** handoff (継続 `/rite:pr-review` / 終了 `FINALIZE:fix:replied-only`) のみ。pr-review.md Step 8.0 が**セットした** `/rite:fix` handoff は `[fix:error]` 早期 exit (本 Step 5.1 不到達) では fix.md 側で消去されず、その default-clear は iterate.md ステップ3 の clearing set (`flow-state.sh set --phase fix` を `--handoff` なしで実行) にのみ依存する。iterate.md ステップ3 の set を変更/削除すると stale な `/rite:fix` handoff が残存し誤った再注入を招きうるため、そちらを触る際は本依存に注意すること。
 
@@ -3704,9 +3704,9 @@ Then, based on the ステップ 4.6 completion report content **and the WM_UPDAT
 
 **評価順序の重要性**: 上から順に評価し、最初にマッチした条件の output pattern を採用する。`FIX_FALLBACK_FAILED=1` / `REPLY_POST_FAILED=1` / `REPORT_POST_FAILED=1` の検出は最優先で、これらが set された場合は `[fix:error]` に昇格する。次に `WM_UPDATE_FAILED=1` を評価し、set されていれば `[fix:pushed-wm-stale]` に昇格する (silent regression 防止のため `[fix:pushed]` よりも先に判定する)。これらの retained flag をすべて評価した後に push 成功 / 返信のみ などの通常終了状態を判定する。
 
-**row 4/5 の accept 条件 — 唯一の真実の源 (Issue #1811)**: 本 output pattern テーブルは `/rite:iterate` ステップ4 が実際に分岐する **literal な sentinel 文字列** (`[fix:pushed]` / `[fix:replied-only]`) の唯一の決定箇所であり、上記の「Handoff マーカー」節 (5.1 冒頭) や ステップ 4.6 completion report の Note はここを**参照するのみ**で、条件を重複記述しない (bit-exact 手動同期に頼らない)。
+**row 4/5 の accept 条件 — 唯一の真実の源**: 本 output pattern テーブルは `/rite:iterate` ステップ4 が実際に分岐する **literal な sentinel 文字列** (`[fix:pushed]` / `[fix:replied-only]`) の唯一の決定箇所であり、上記の「Handoff マーカー」節 (5.1 冒頭) や ステップ 4.6 completion report の Note はここを**参照するのみ**で、条件を重複記述しない (bit-exact 手動同期に頼らない)。
 
-「本 cycle 内で accept 決定が発生」の判定は `ACCEPT_FINGERPRINT_PERSISTED=1`（fingerprint 永続化成功）と `ACCEPT_FINGERPRINT_PERSIST_FAILED=1`（ステップ 2.1.A の `pr_number_placeholder_residue` / `sha1_helper_missing` / `mkdir_failed` / `mktemp_failed` / `mv_failed` いずれかの理由による永続化失敗）の**両方をトリガーとする**。理由: accept 選択時、reply 投稿 (ステップ 2.1.A item 3) は fingerprint 永続化 (item 4) の成否に関わらず既に完了しており、永続化に失敗した場合は次回 review で suppression が**確実に効かない** (`pr-review.md` ステップ 5.1.2.A の suppression は当該 fingerprint の状態ファイル登録に依存する)。ここで re-review を発火させなければ、suppression が絶対に効かないことが確定しているにもかかわらず `[fix:replied-only]` で正常終了してしまい、Issue #1811 がまさに解消しようとしていた「suppression 未確認のまま loop 終了」というバグ型をこの経路だけ再現する。
+「本 cycle 内で accept 決定が発生」の判定は `ACCEPT_FINGERPRINT_PERSISTED=1`（fingerprint 永続化成功）と `ACCEPT_FINGERPRINT_PERSIST_FAILED=1`（ステップ 2.1.A の `pr_number_placeholder_residue` / `sha1_helper_missing` / `mkdir_failed` / `mktemp_failed` / `mv_failed` いずれかの理由による永続化失敗）の**両方をトリガーとする**。理由: accept 選択時、reply 投稿 (ステップ 2.1.A item 3) は fingerprint 永続化 (item 4) の成否に関わらず既に完了しており、永続化に失敗した場合は次回 review で suppression が**確実に効かない** (`pr-review.md` ステップ 5.1.2.A の suppression は当該 fingerprint の状態ファイル登録に依存する)。ここで re-review を発火させなければ、suppression が絶対に効かないことが確定しているにもかかわらず `[fix:replied-only]` で正常終了してしまい、この再レビュー条件が解消しようとしている「suppression 未確認のまま loop 終了」というバグ型をこの経路だけ再現する。
 
 判定材料は両マーカー (ステップ 2.1.A が本 cycle 内で emit 済み、同一 Bash tool 呼び出し境界を跨いでも会話コンテキストに残る) の**本 cycle 内での出現有無**であり、`{accept_count}` (Issue 完了まで累計、4.6 completion report 参照) を使ってはならない — 過去 cycle の累計が 1 件でもあれば恒久的に継続扱いになり無限 re-review を招くため。いずれのマーカーも判定できない場合 (context 圧縮等で欠落) は accept 無しとして扱い、従来ロジック (push 有無のみ) にフォールバックする。
 

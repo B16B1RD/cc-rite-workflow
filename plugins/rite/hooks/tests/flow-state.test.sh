@@ -18,7 +18,7 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-# Clean session-id env for standalone runs (Issue #1530). flow-state.sh resolves
+# Clean session-id env for standalone runs. flow-state.sh resolves
 # session_id env-first; the file-based sandboxes below must exercise the
 # `.rite-session-id` fallback, so the dogfooding session's ambient
 # CLAUDE_CODE_SESSION_ID must not leak in. TC-13/14/15 + T-01/T-02/T-04 set the
@@ -172,7 +172,7 @@ echo ""
 echo "=== TC-8b: AC-8 non-verbose migrate emits 'migrated:' to stderr; v3-only stays silent ==="
 # Why: session-start auto path silences only stdout. If `migrated:` is gated on --verbose or
 # moved to stdout, a real migration becomes silent and violates AC-8 (silent skip forbidden).
-# NOTE (Issue #2008): each `err=$( … migrate … )` capture below records the exit code into $rc
+# NOTE: each `err=$( … migrate … )` capture below records the exit code into $rc
 # instead of discarding it with `|| true`, so a migrate crash cannot masquerade as a normal run.
 # The root cause that made migrate exit non-zero on macOS — an unbraced `$sv→` in flow-state.sh
 # tripping `set -u` under a non-UTF-8 locale — is fixed at source, so migrate exits 0. Capturing
@@ -204,7 +204,7 @@ echo "$err" | grep -qE 'migrated:.*v[12]→v3.*[a-z_]+→[a-z_]+' \
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 (cd "$d" && bash "$HOOK" set --phase fix --issue 8 --branch "b" --pr 1 --next "n")
 rc=0; err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || rc=$?
-# Why (Issue #2008 review F-04): this is the only negative assertion in TC-8b — it passes when the
+# Why (review F-04): this is the only negative assertion in TC-8b — it passes when the
 # capture is empty. An aborted migrate also produces empty stderr, so the exit code is the sole
 # remaining signal distinguishing "correctly silent" from "crashed before printing anything".
 assert_migrate_rc "TC-8b-b" "$rc"
@@ -339,7 +339,7 @@ else
 fi
 
 # --- TC-8b-h: the `${sv}`/`${cp}` braces around the U+2192 arrow are load-bearing ---
-# Why (Issue #2008 review F-06): the braces were added because an unbraced variable abutting the
+# Why (review F-06): the braces were added because an unbraced variable abutting the
 # multibyte arrow folds the arrow's leading byte into the variable name under a non-UTF-8 locale,
 # tripping `set -u`. That failure mode does not reproduce on glibc — every locale available here
 # (C / POSIX / C.UTF-8 / en_US.utf8) expands the unbraced form correctly — so a behavioural TC
@@ -1241,7 +1241,7 @@ else
   fail "TC-24.4: --session override non-UUID rejected/degraded. stderr: '$err'"
 fi
 
-# --- TC-25: clear-worktree subcommand (Issue #1524) ---
+# --- TC-25: clear-worktree subcommand ---
 # Surgical del(.worktree) mirroring cmd_deactivate: removes only the worktree key,
 # preserves phase/active/branch, idempotent (no-op + no file churn when absent),
 # non-blocking on a missing state file. Used by pr-cycle-cleanup.sh reap null-ing
@@ -1275,7 +1275,7 @@ miss_rc=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID \
   bash "$HOOK" clear-worktree --session "no-such-session-1524" >/dev/null 2>&1); echo $? )
 assert "TC-25: clear-worktree on missing state file is non-blocking (rc 0)" "0" "$miss_rc"
 
-# --- TC-26: --require-worktree data-layer detection marker (Issue #1595) ---
+# --- TC-26: --require-worktree data-layer detection marker ---
 echo ""
 echo "=== TC-26: --require-worktree emits WORKTREE_INVARIANT detection marker ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
@@ -1762,6 +1762,6 @@ assert "TC-2121: a newline in --phase cannot forge any column-zero WARNING" "0" 
   "$(LC_ALL=C grep -c '^WARNING: forged$' "$stderr_2115_10b" || true)"
 rm -f "$stderr_2115_10b"
 
-if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del (Issue #1524) + non-UUID acceptance (Layer 1 format-agnostic contract pin) + phase-transition append log (#2115)"; then
+if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del + non-UUID acceptance (Layer 1 format-agnostic contract pin) + phase-transition append log with phase-transition append log"; then
   exit 1
 fi

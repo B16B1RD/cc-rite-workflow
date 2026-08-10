@@ -44,7 +44,7 @@
 #   **両オペランド**に 7 桁下限を課すことで防ぐ — 比較が双方向である以上、`--commit-sha` 側の
 #   入力検査だけでは JSON 側の短すぎる値を止められない (書き手は commit_sha を検査しない)。
 #
-# fail と degraded の境界 (Issue #2127 §4.5 / AC-6):
+# fail と degraded の境界 (§4.5 / AC-6):
 #   degraded に倒すのは「判定に必要な入力・環境が揃わない」場合だけ — 入力の置換漏れ / 形状不正、
 #   jq 不在、state root 未解決、run 開始点 pin を読めない、results dir を **読めない** (permission
 #   等で find が失敗する) の 5 群。results dir が **存在しない** のは degraded ではなく fail に
@@ -54,7 +54,7 @@
 # 既知の検出限界:
 #   本 cycle と前 cycle の HEAD が同一のとき (/rite:fix の accept-only cycle 等、新規 commit を
 #   伴わない cycle) は、前 cycle の JSON が SHA 一致で pass しうる。判定軸を commit SHA と定める
-#   Issue #2127 §4.4 の契約に従った上での既知の残余で、silent ではない (pass 行の result_json=
+#    commit-SHA matching contractに従った上での既知の残余で、silent ではない (pass 行の result_json=
 #   にどのファイルで通ったかが出る)。
 #
 # Why 入力不正を fail ではなく degraded に倒すか:
@@ -167,7 +167,7 @@ if [ -z "$results_dir" ]; then
   results_dir="$state_root/.rite/review-results"
 fi
 
-# results dir の **不在** は degraded にしない — Issue #2127 §4.5 が degraded に置くのは
+# results dir の **不在** は degraded にしない — §4.5 が degraded に置くのは
 # 「解決できない / 読めない」であって「存在しない」ではなく、dir 不在は AC-2 の Given
 # (区間ごと skip して JSON も無い) の最も強い証拠だからである。下の走査を skip して fail 側へ
 # 合流させる (診断は seen_count=0 のとき「(なし)」を出すので追加実装は要らない)。

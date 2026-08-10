@@ -449,7 +449,7 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 
    > **複数 Raw Source からの作成**: page-template.md の `sources:` は単一スロット（`{source_type}`/`{source_ref}` 各 1 個）のみ。multi-cycle PR 等で複数の Raw Source を 1 ページに統合する場合は、Write 後に Edit で `- type: "{type}"` / `  ref: "raw/{type}/{filename}"` エントリを追加する。**追加・置換するすべての `ref` は Raw Source のファイルパス形式 (`raw/{type}/{filename}`)** であり、raw frontmatter の `source_ref` フィールド値（PR 識別子形式）ではない（ステップ 5.3 `{source_ref}` 行の dual-use 警告と同一契約）。
 4. **既存 Wiki ページの更新** (ステップ 4 で更新決定): 対象ページを Read で読み、Edit で `## 詳細` 追記・`updated` 更新・`sources` 配列追記。`n_pages_updated` を +1 する。**`sources` に追記する各 `ref` は必ず Raw Source のファイルパス形式 `raw/{type}/{filename}`**（PR 識別子形式 `pr-NNNN` 禁止。ステップ 4.2 / 5.3 と同一契約）
-5. **スキップ決定の処理** (ステップ 4 で skip 決定): step 2 と同じ手順で `ingested: true` 化し、**さらに当該 raw frontmatter に `ingest_status: skipped` と `skip_reason: "{理由}"` を Edit で追記する**（skip 状態の Source of Truth は raw frontmatter。lint の `wiki-lint-skipped-refs.sh` がこれを走査して `unregistered_raw` を判定する。Issue #1520）。**検出器化候補**（ステップ 4 表の `detector_candidate=true` かつ既存ページなし）の場合は `skip_reason: "detector-candidate: {one-line-summary}"` を使い、同じ要約をステップ 9 の `{detector_candidate_lines}` に列挙する。ステップ 7 の log.md には人間向けの Skip エントリ (OKF bullet) も追記する。`n_skipped` を +1 する
+5. **スキップ決定の処理** (ステップ 4 で skip 決定): step 2 と同じ手順で `ingested: true` 化し、**さらに当該 raw frontmatter に `ingest_status: skipped` と `skip_reason: "{理由}"` を Edit で追記する**（skip 状態の Source of Truth は raw frontmatter。lint の `wiki-lint-skipped-refs.sh` がこれを走査して `unregistered_raw` を判定する。）。**検出器化候補**（ステップ 4 表の `detector_candidate=true` かつ既存ページなし）の場合は `skip_reason: "detector-candidate: {one-line-summary}"` を使い、同じ要約をステップ 9 の `{detector_candidate_lines}` に列挙する。ステップ 7 の log.md には人間向けの Skip エントリ (OKF bullet) も追記する。`n_skipped` を +1 する
 6. **index.md の更新**: **手順 3 / 4 を実施した Raw Source についてのみ**、ステップ 6 の指示に従い `wiki-index-update.sh` helper を bash で呼び出す（LLM は Edit しない）。**skip 決定（手順 5）の Raw Source では実行しない** — helper が必須とする page metadata（title / domain / slug / updated / confidence）が存在せず、raw 由来の値で代用すると実在しないパスを指す登録行が新規追加されて孤児検出のシグナルを汚すため
 7. **log.md への追記**: ステップ 7 の指示に従い Edit で append-only 追加する
 
@@ -699,7 +699,7 @@ bash "{plugin_root}/hooks/scripts/wiki-index-update.sh" \
 | exit 0 + `row_action=aborted_duplicate` | 対象ページの登録行が 2 行以上あり追加/更新を中止（first-match fallback はしない）。重複の後発行は同呼び出しの回収処理が削除済みのため、次に当該ページが ingest されるサイクルでは中止条項に掛からない（**本サイクル分の登録行更新は失われ、登録行は旧値のまま残る**）。**helper の WARNING をそのまま表示し、当該ページの登録行が旧値のまま残ることをステップ 9 の未完了事項に含める**（exit 1 行と同じく Lint のどの観点にも載らないため）。続行 |
 | exit 0 + `stats_sync=synced` | 統計同期完了。ただし **stderr に `'## 統計' 節に既存行が見つからない統計行があります` を含む WARNING がある場合**は 3 行のうち一部しか同期できていない（既存行が無い統計行は新設しない仕様）。その WARNING をそのまま表示し、未同期の統計行名をステップ 9 の未完了事項に含める。続行（**判別は本 literal で行う** — 同じ呼び出しで重複中止の WARNING も stderr に出るため、WARNING の有無だけで判定すると統計が完全に同期された呼び出しを部分未同期と誤報告する。重複中止は `row_action=aborted_duplicate` 行が受け持つ） |
 | exit 0 + `stats_sync=skipped_no_section` | `## 統計` 節が無い（節は新設しない仕様。総ページ数は `/rite:wiki-lint` のレポートで確認できる）。続行 |
-| exit 0 + `stats_sync=skipped_unreadable` | 統計同期をスキップ（原因は stderr の WARNING に出ているのでそれを表示する。`## 統計` 節は前サイクルの内容のまま）。続行。**本行と部分未同期 WARNING はステップ 9 の未完了事項へ載せる** — 統計可視化の追加機構（専用 lint / marker attest / サイクル gating）は Issue #2085 で「実装しない」と確定（根拠は helper ヘッダ「Observability of procedure 3b」） |
+| exit 0 + `stats_sync=skipped_unreadable` | 統計同期をスキップ（原因は stderr の WARNING に出ているのでそれを表示する。`## 統計` 節は前サイクルの内容のまま）。続行。**本行と部分未同期 WARNING はステップ 9 の未完了事項へ載せる** — 統計可視化の追加機構（専用 lint / marker attest / サイクル gating）は helper ヘッダで「実装しない」と明記（根拠は helper ヘッダ「Observability of procedure 3b」） |
 | exit 0 だが marker が 1 行も出ない | helper 呼び出しが構文レベルで壊れている（上記 bash の継続バックスラッシュ脱落・placeholder 置換崩れ等で、helper に到達せず別コマンドの rc が返っている）。**成功として扱わない** — 実行した bash をそのまま表示し、当該 Raw Source の index 更新をスキップしてステップ 9 の未完了事項に含め、ステップ 7 へ続行する |
 | exit 2（ERROR 出力） | 引数不正 = 呼び出し側の substitute 漏れ・値の混入。**部分適用は無い**（書き込みは全処理成功時の atomic 1 回のみ）。ERROR が指す引数を substitute し直して**同じ bash を再実行**する（再実行しても exit 2 なら ERROR を表示して当該 Raw Source の index 更新をスキップし、ステップ 7 へ続行） |
 | exit 1（ERROR 出力） | 環境・構造要因（index.md 不在・想定外構造）で再実行では解消しない。**部分適用は無い**（同上）。ERROR をそのまま表示して当該 Raw Source の index 更新をスキップし、ステップ 7 へ続行する。新規ページの未登録はステップ 8 の Lint が orphans として検出するが、**既存ページの更新失敗は登録行が旧値のまま残り Lint のどの観点にも載らない** — 表示した ERROR が唯一のシグナルなのでステップ 9 の未完了事項（`{ingest_outstanding_line}`）に必ず含める |
@@ -980,7 +980,7 @@ Wiki Ingest が完了しました。
 | `skipped; reason=same_branch` | `Wiki push: 対象外 (same_branch 戦略。通常の PR push に含まれる)` |
 | marker なし（ステップ 8.6 未到達などの想定外経路） | `⚠️ Wiki push: 実行結果が確認できませんでした。git -C {wiki_worktree_abs} status で確認してください` |
 
-`{ingest_outstanding_line}`（Issue #1946: 非ブロッキング失敗の集約 surface。Wiki push については `{wiki_push_line}` と同じ `WIKI_INGEST_PUSH=` marker を再評価するだけで新しい記録先は持たない — local commit 自体が durable な記録であり、次回 ingest のステップ 8.6 が自動で flush を試みる）。**ステップ 6 の index 更新と Wiki push の 2 系統を評価し、該当するものをすべて列挙する**（index 更新の失敗・部分適用は Lint のどの観点にも載らず、ステップ 6 で表示した ERROR / WARNING が唯一のシグナルであるため、その場の表示に加えて本欄へ集約する）:
+`{ingest_outstanding_line}`（非ブロッキング失敗の集約欄。Wiki push については `{wiki_push_line}` と同じ `WIKI_INGEST_PUSH=` marker を再評価するだけで新しい記録先は持たない — local commit 自体が durable な記録であり、次回 ingest のステップ 8.6 が自動で flush を試みる）。**ステップ 6 の index 更新と Wiki push の 2 系統を評価し、該当するものをすべて列挙する**（index 更新の失敗・部分適用は Lint のどの観点にも載らず、ステップ 6 で表示した ERROR / WARNING が唯一のシグナルであるため、その場の表示に加えて本欄へ集約する）:
 
 | 系統 | 条件 | 展開 |
 |---|---|---|

@@ -547,10 +547,10 @@ After implementation is complete, push changes to remote:
 **Commit procedure:**
 
 1. Check changed files with `git status`
-2. Stage the changed files explicitly with `git add {changed_files}` (the paths edited/created in this implementation — **not** `git add .`: sandbox 有効環境では read-deny 対象の home dotfile が character-special device としてマスクされ untracked 表示されるため、`git add .` はそれらを拾って `can only add regular files, symbolic links or git-directories` で hard fail する — Issue #1920)
+2. Stage the changed files explicitly with `git add {changed_files}` (the paths edited/created in this implementation — **not** `git add .`: sandbox 有効環境では read-deny 対象の home dotfile が character-special device としてマスクされ untracked 表示されるため、`git add .` はそれらを拾って `can only add regular files, symbolic links or git-directories` で hard fail する —)
 3. Generate commit message in Conventional Commits format
 4. Commit with `git commit`
-5. Push to remote with `git push origin {branch_name}` (no `-u`: sandbox 環境での upstream tracking 書込拒否を避けるため — Issue #1894)
+5. Push to remote with `git push origin {branch_name}` (no `-u`: sandbox 環境での upstream tracking 書込拒否を避けるため)
 
 **Commit message generation:**
 

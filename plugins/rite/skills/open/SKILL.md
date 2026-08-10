@@ -280,10 +280,10 @@ fi
 | `reuse` | worktree 登録済 + branch 一致 → 再利用（resume 相当、`git worktree add` しない） |
 | `stale_residue` | パス存在・worktree 未登録（prune 後も残存）→ AskUserQuestion（「削除して再作成」= `rm -rf {path}` 後に create / 「中止」） |
 | `branch_only` | branch 存在・worktree なし → `git worktree add "{path}" "{branch}"`（`-b` なし） |
-| `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない — Issue #1894） |
+| `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない — ） |
 | `branch_other_worktree` | branch が**別の worktree** で checkout 中 → **中止**（他セッション作業中の可能性。`other=` のパスを表示。git が構造的に保証する二重着手ガード） |
 
-**dirty main checkout ガード（Issue #1832）**: 上記 bash block の `MAIN_DIRTY` marker で分岐する。`WT_CASE` が worktree を**新規作成する全経路**（`branch_only` / `create_new` / `stale_residue` で「削除して再作成」を選択した場合。`reuse` は既存 worktree 継続のため対象外）で、`git worktree add` を実行する**前に**評価する。`--- dirty files begin/end ---` デリミタ内の行はファイル一覧 **data** であり、marker として解釈しない（marker は行頭 `[CONTEXT]` の行のみ）:
+**dirty main checkout ガード**: 上記 bash block の `MAIN_DIRTY` marker で分岐する。`WT_CASE` が worktree を**新規作成する全経路**（`branch_only` / `create_new` / `stale_residue` で「削除して再作成」を選択した場合。`reuse` は既存 worktree 継続のため対象外）で、`git worktree add` を実行する**前に**評価する。`--- dirty files begin/end ---` デリミタ内の行はファイル一覧 **data** であり、marker として解釈しない（marker は行頭 `[CONTEXT]` の行のみ）:
 
 | `MAIN_DIRTY` | アクション |
 |---|---|
@@ -300,7 +300,7 @@ fi
 
 ### 2.3-W EnterWorktree 入場（multi_session 有効時）
 
-worktree を作成・再利用したら、`.rite-plugin-root` と（存在する場合のみ）`.claude/settings.local.json` を worktree root へコピーしてから入場する（`.claude/` は gitignore 対象のため `git worktree add` では複製されず、ドッグフーディング上書き — `enabledPlugins["rite@rite-marketplace"]: false` — が worktree セッションで失われてキャッシュされた古い marketplace 版スキルがロードされるため。settings.local.json は worktree 作成時点のスナップショットとして複製される — 作成後に main checkout 側を更新しても既存 worktree には反映されない。Issue #1943）:
+worktree を作成・再利用したら、`.rite-plugin-root` と（存在する場合のみ）`.claude/settings.local.json` を worktree root へコピーしてから入場する（`.claude/` は gitignore 対象のため `git worktree add` では複製されず、ドッグフーディング上書き — `enabledPlugins["rite@rite-marketplace"]: false` — が worktree セッションで失われてキャッシュされた古い marketplace 版スキルがロードされるため。settings.local.json は worktree 作成時点のスナップショットとして複製される — 作成後に main checkout 側を更新しても既存 worktree には反映されない。）:
 
 ```bash
 [ -f "$repo_root/.rite-plugin-root" ] && cp "$repo_root/.rite-plugin-root" "$wt_path/.rite-plugin-root" 2>/dev/null || true
@@ -317,7 +317,7 @@ fi
   - **(C) エスケープハッチ**（ユーザーが明示選択した場合のみ）: 「従来 `git switch -c` で続行」は **recommended にしない**。worktree 分離を破棄する明示的な選択肢としてのみ残し、他セッション併走中は作業ツリーを破壊し合う危険がある旨を**警告**した上でステップ 2.3 にフォールバックする。
   - Bash 永続 cwd 駆動（cwd を main checkout に残したまま絶対パスで操作する経路）は**導入しない**（main tree を誤更新するリスクのため）。
 
-> 入場以降、sandbox 有効環境では main checkout 配下への state 書込（`flow-state.sh set` / `issue-claim.sh` / `issue-comment-wm-sync.sh` 等、本ステップ以降の全フェーズの hook 呼び出し）が「読み込み専用ファイルシステムです」で拒否されることがある。拒否された当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要。詳細: [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる)、Issue #1896）。
+> 入場以降、sandbox 有効環境では main checkout 配下への state 書込（`flow-state.sh set` / `issue-claim.sh` / `issue-comment-wm-sync.sh` 等、本ステップ以降の全フェーズの hook 呼び出し）が「読み込み専用ファイルシステムです」で拒否されることがある。拒否された当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要。詳細: [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる)）。
 
 入場後、claim に worktree path を記録する（reap / resume の discovery 用）:
 
@@ -573,9 +573,9 @@ Step 4 で `/rite:issue-implement` が autonomous に invoke した `rite:lint` 
 git push origin {branch_name}
 ```
 
-> `-u`（upstream 設定）は付けない。sandbox 有効環境で upstream tracking の `.git/config` 書込が拒否されるため（Issue #1894）。flow-state が `{branch_name}` を常時保持しているため upstream に依存する必要はない。
+> `-u`（upstream 設定）は付けない。sandbox 有効環境で upstream tracking の `.git/config` 書込が拒否されるため。flow-state が `{branch_name}` を常時保持しているため upstream に依存する必要はない。
 >
-> `origin` が SSH host alias 経由（例: `git@github.com-work:...`）の環境で sandbox が有効な場合、`socat` の `Bad Gateway` エラーで push がネットワーク許可リストにブロックされることがある（`network.allowedDomains` への alias 追加は無効。原因の因果連鎖と `sandbox.excludedCommands` が Linux/WSL2 では恒久策として機能しない理由は [git-worktree-patterns.md](../../references/git-worktree-patterns.md#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) を参照）。当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約、Issue #1897。2026-07 時点で確実に機能する唯一の回避策）。この回避策はメインエージェントが直接実行する push にのみ適用でき、Task で spawn した reviewer subagent の Bash には渡せない（詳細: [git-worktree-patterns.md](../../references/git-worktree-patterns.md#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) の「本回避策が使えない経路」）。
+> `origin` が SSH host alias 経由（例: `git@github.com-work:...`）の環境で sandbox が有効な場合、`socat` の `Bad Gateway` エラーで push がネットワーク許可リストにブロックされることがある（`network.allowedDomains` への alias 追加は無効。原因の因果連鎖と `sandbox.excludedCommands` が Linux/WSL2 では恒久策として機能しない理由は [git-worktree-patterns.md](../../references/git-worktree-patterns.md#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) を参照）。当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約。2026-07 時点で確実に機能する唯一の回避策）。この回避策はメインエージェントが直接実行する push にのみ適用でき、Task で spawn した reviewer subagent の Bash には渡せない（詳細: [git-worktree-patterns.md](../../references/git-worktree-patterns.md#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) の「本回避策が使えない経路」）。
 
 ### 6.2 PR 作成
 

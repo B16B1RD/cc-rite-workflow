@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for the XS/S 軽量レーン contract (Issue #2136).
+# Tests for the XS/S 軽量レーン contract.
 #
 # pr-review / reviewers / issue-implement は散文駆動スキル (LLM 実行、script ではない) のため、
 # cycle-scope-contract.test.sh と同じ static-contract 方式で literal を grep-pin する。

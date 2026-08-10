@@ -69,7 +69,7 @@ CLAIMS_LOCK_RETRIES=50
 # Resolve the CURRENT session_id. Reuses the canonical helpers:
 #   - `_resolve-session-id.sh` UUID-validates a runtime env candidate
 #   - `_resolve-session-id-from-file.sh` reads + UUID-validates `.rite-session-id`
-# Priority (Issue #1530): override → env CLAUDE_CODE_SESSION_ID → env
+# Priority: override → env CLAUDE_CODE_SESSION_ID → env
 # CLAUDE_SESSION_ID → `.rite-session-id` file (env-absent fallback). The per-session
 # env var must outrank the shared file so this helper stays coherent with
 # flow-state.sh (also env-first). Preferring the shared file let a stale value

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Static contract for Issue #2049: every raw-commit caller retries an exit-4
+# Static contract for the wiki push retry path: every raw-commit caller retries an exit-4
 # push outside the sandbox and keeps an unresolved failure visible at completion.
 set -euo pipefail
 

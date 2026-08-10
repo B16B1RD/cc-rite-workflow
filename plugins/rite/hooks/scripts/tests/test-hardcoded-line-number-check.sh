@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Smoke + validation tests for hardcoded-line-number-check.sh
 #
-# Validates against synthetic fixtures derived from PR #661 cycle 2/3 incident
-# (Issue #666). The literals exercised here are taken from commit 6760cc5 and
+# Validates against synthetic fixtures derived from the cycle 2/3 incident
+#. The literals exercised here are taken from commit 6760cc5 and
 # 03fe71f (cleanup.md:1674, create-interview.md:605) before they were
 # replaced with structural references.
 

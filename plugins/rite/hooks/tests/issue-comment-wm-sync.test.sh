@@ -208,7 +208,7 @@ echo ""
 # ─── TC-007: init pre-check gh api 失敗 → non-blocking degrade (WARNING + 投稿続行) ──
 # pre-check の gh api 失敗は「存在不明」であり、ここで止めると replica が永遠に作られない
 # 恐れがあるため rc 付き WARNING を出して投稿続行に倒す契約。TC-005/006 は正常経路のみで
-# この degrade 経路は未検証だった (Issue #1844 D-05)。
+# この degrade 経路は未検証だった (D-05)。
 echo "TC-007: init pre-check gh api failure → WARNING + posting continues"
 dir007="$TEST_DIR/tc007"
 mkdir -p "$dir007/bin"
@@ -354,7 +354,7 @@ echo ""
 # ─── TC-011: update merge-checklist section absent → status=section_absent ──
 # AC-1 の公開面: Python exit 10 を shell が status=skipped; reason=section_absent に写像し、
 # PATCH しない。Python 単体テスト (merge-checklist.test.sh TC-004) だけではこのマッピングが
-# 壊れても green のまま残るため、gh shim で update 経路を end-to-end pin する (Issue #2139)。
+# 壊れても green のまま残るため、gh shim で update 経路を end-to-end pin する。
 echo "TC-011: update merge-checklist section absent → status=skipped; reason=section_absent, no PATCH"
 dir011="$TEST_DIR/tc011"
 mkdir -p "$dir011/bin"

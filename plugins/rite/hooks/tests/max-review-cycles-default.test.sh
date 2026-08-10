@@ -1,7 +1,7 @@
 #!/bin/bash
 # max-review-cycles-default.test.sh
 #
-# `safety.max_review_cycles` の既定値 15 を pin する (Issue #2129)。
+# `safety.max_review_cycles` の既定値 15 を pin する。
 #
 # 2 系統の検査を持つ:
 #   1. 挙動 (T-01〜T-03) — iterate/SKILL.md から fallback ブロックを literal 抽出し、
@@ -11,7 +11,7 @@
 #   2. 記述の一致 (T-04) / 契約の不変 (T-05) — 既定値は 8 ファイルに複製されており、
 #      1 箇所でも取り残されると読者が「その経路は別の値」と誤読する。cycle-scope-contract.test.sh
 #      と同じ static-contract 方式で grep-pin する。
-#      Issue #2134 で fix-relaxation-rules.md と review-trend-divergence.sh の散文も
+#       で fix-relaxation-rules.md と review-trend-divergence.sh の散文も
 #      T-04 の sweep と positive pin に追加した。
 
 set -uo pipefail
@@ -209,7 +209,7 @@ assert_grep "T-04s: trend helper header の既定値と導出 cycle が同期" "
   "既定 $DEFAULT_CYCLES では $BACKSTOP_CYCLE cycle 以上"
 
 echo "=== T-05: backstop の発火条件と sentinel が不変 (AC-5) ==="
-# 既定値の引き上げは backstop を撤廃しない (Issue #2129 D-01 / MUST NOT)。
+# 既定値の引き上げは backstop を撤廃しない (D-01 / MUST NOT)。
 assert_grep "T-05a: ステップ 1 の backstop 判定 (cc >= max_cycles) が残っている" "$ITERATE" \
   '^if \[ "\$cc" -ge "\$max_cycles" \] 2>/dev/null; then'
 assert_grep "T-05b: ステップ 0.6 の再発火述語 (cur_cc >= max_cycles) が残っている" "$ITERATE" \

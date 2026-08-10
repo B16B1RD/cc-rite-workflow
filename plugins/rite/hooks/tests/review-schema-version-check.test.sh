@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for hooks/scripts/review-schema-version-check.sh (Issue #1719)
+# Tests for hooks/scripts/review-schema-version-check.sh
 #
 # The script detects schema_version drift in review-result JSON files. Its
 # accept list (1.0.0 / 1.0 / 1.1.0) is the canonical SoT from
@@ -37,7 +37,7 @@ if ! command -v jq >/dev/null 2>&1; then
   fi
   # Emit the counted form so the runner rolls this into its "N skipped" headline —
   # a whole file that exits 0 without running anything would otherwise be scored
-  # as a pass (Issue #2008 review I-03).
+  # as a pass (review I-03).
   echo "  ⏭️ SKIP: jq not available — review-schema-version-check requires jq"
   echo "SKIP: 1"
   exit 0

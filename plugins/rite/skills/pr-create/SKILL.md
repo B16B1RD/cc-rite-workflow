@@ -764,7 +764,7 @@ Push the local branch to remote:
 git push origin {branch_name}
 ```
 
-> `-u`（upstream 設定）は付けない。sandbox 有効環境で upstream tracking の `.git/config` 書込が拒否されるため（Issue #1894）。3.4 の `gh pr create` は `--head` で明示的にブランチを指定するため upstream に依存しない。
+> `-u`（upstream 設定）は付けない。sandbox 有効環境で upstream tracking の `.git/config` 書込が拒否されるため。3.4 の `gh pr create` は `--head` で明示的にブランチを指定するため upstream に依存しない。
 
 ### 3.4 Create Draft PR
 

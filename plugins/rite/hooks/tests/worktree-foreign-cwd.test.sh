@@ -1,6 +1,6 @@
 #!/bin/bash
 # Tests for worktree-foreign-cwd.sh — self-exclusion-aware live-cwd probe used by
-# cleanup.md ステップ 4-W (Issue #1670).
+# cleanup.md ステップ 4-W.
 #
 # The contract: "is a FOREIGN (non-self) live process standing in this worktree?"
 #   rc 0 = a foreign process (NOT in the --self-root pid subtree) stands in the dir
@@ -65,7 +65,7 @@ assert "TC-3b dangling --self-root → rc 2 (no hang)" "2" "$(_timeout 5 bash "$
 # worktree-foreign-cwd.sh is /proc-only by design and returns rc 2 (undeterminable)
 # without /proc — e.g. on macOS, where the caller then removes the tree (documented
 # safe degradation). Guard these behind /proc so the macOS leg skips them instead of
-# asserting Linux-only rc values (Issue #2008 Family C).
+# asserting Linux-only rc values (Family C).
 if [ -d /proc ]; then
 echo "=== TC-4: free dir, nobody inside → rc 1 ==="
 assert "TC-4 free dir → rc 1" "1" "$(probe_rc "$D" --self-root 99999)"
@@ -116,6 +116,6 @@ else
   skip "TC-4..TC-10 skipped (no /proc: worktree-foreign-cwd.sh returns rc 2 by design; caller removes — safe degradation)"
 fi
 
-if ! print_summary "$(basename "$0")" "worktree-foreign-cwd.sh の self-exclusion 付き live-cwd 判定 (Issue #1670): self の harness subtree を除外し、別 live セッションのみ削除を遅延させる"; then
+if ! print_summary "$(basename "$0")" "worktree-foreign-cwd.sh の self-exclusion 付き live-cwd 判定: self の harness subtree を除外し、別 live セッションのみ削除を遅延させる"; then
   exit 1
 fi

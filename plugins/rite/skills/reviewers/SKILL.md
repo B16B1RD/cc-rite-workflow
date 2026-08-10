@@ -77,7 +77,7 @@ Mapping of reviewer identifiers (`reviewer_type`) to display names. Update this 
 
 ## Legacy Reviewer Type Aliases
 
-api / frontend / performance / database / type-design の 5 reviewer は `application` に統合された（Issue #1877）。旧 reviewer_type が入力として現れた場合（rite-config.yml の設定値、過去のレビュー結果 JSON の `reviewer` フィールド、ユーザーの手動指定など）は、**silent skip せず** WARNING を表示して統合先 type で代替実行する:
+api / frontend / performance / database / type-design の 5 reviewer は `application` に統合された。旧 reviewer_type が入力として現れた場合（rite-config.yml の設定値、過去のレビュー結果 JSON の `reviewer` フィールド、ユーザーの手動指定など）は、**silent skip せず** WARNING を表示して統合先 type で代替実行する:
 
 | Legacy reviewer_type | 統合先 |
 |---------------------|--------|

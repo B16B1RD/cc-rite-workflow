@@ -6,7 +6,7 @@
 # non_blocking_findings[] へ移送し、残った blocking 件数から overall_assessment を確定する。
 # ゲート契約の SoT は references/severity-levels.md §実測必須ゲート、適用手順の SoT は
 # skills/fix/references/assessment-rules.md §5.3.0.M。本 script はその 2 文書の実行側であり、
-# 判定に LLM の裁量を介在させないための唯一の強制層である (Issue #2072)。
+# 判定に LLM の裁量を介在させないための唯一の強制層である。
 #
 # Called from:
 #   - skills/pr-review/SKILL.md ステップ 5.3 実行順 step 2 (旧 LLM 分類手順を置換)。
@@ -21,7 +21,7 @@
 # Why --reject-preset-verification (caller 契約の機械的強制):
 #   pr-review ステップ 5.3.0.M step 1 の生成規約は「Claude は verification を書かない」を課すが、
 #   それは散文の指示にすぎず、本 Issue が置き換えようとしている強制手段そのものである。実際
-#   PR #2070 の cycle 2-9 では、そう指示されていないにもかかわらず LLM が
+#   archived review fixture の cycle 2-9 では、そう指示されていないにもかかわらず LLM が
 #   `verification.measured: true` を実 repro 付きで JSON へ直接書いていた (fixtures/pr-2070/ で確認可能)。
 #   その形が来ると §4.5「既存値を正とする」によりアンカー検出を経ない値がそのまま blocking 判定に
 #   入り、ゲートが無音で迂回される。本フラグは「既存 boolean が本ゲートの算出結果と食い違う」=
@@ -42,7 +42,7 @@
 #   「形式崩れアンカー ∧ verification 欠落 (未判定)」しか残さないため再実行しても矛盾に該当しない
 #   (未判定は verification を持たないので verification_conflict の母集団に入らず、description が
 #   不変なら再実行でも同じく未判定に落ちる)。一方フラグなしモードは既存 boolean を保持するため
-#   「アンカーなし ∧ measured=true」という第 3 の形を残しうる (PR #2070 fixture がこの形)。
+#   「アンカーなし ∧ measured=true」という第 3 の形を残しうる (fixture がこの形)。
 #   この出力にフラグ付きで再実行すると verification_preset_by_caller で停止する = モード混在では
 #   冪等でない。配線済み call site (pr-review ステップ 5.3.0.M step 2) は常にフラグを指定するため
 #   本番経路でモード混在は発生しない。

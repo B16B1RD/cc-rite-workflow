@@ -22,7 +22,7 @@
 #                       (the lost-cwd robustness path; cleanup runs from main checkout)
 set -euo pipefail
 
-# Clean session-id env (Issue #1530). The reaper resolves its session via
+# Clean session-id env. The reaper resolves its session via
 # `issue-claim.sh check`, which is now env-first; this test makes the reaper act as
 # SID_B by writing `.rite-session-id`=SID_B, so the dogfooding session's ambient
 # CLAUDE_CODE_SESSION_ID must not leak in (it would make the reaper resolve a foreign
@@ -39,7 +39,7 @@ IC="$SCRIPT_DIR/../issue-claim.sh"
 GIT="git -c user.email=t@test.local -c user.name=test -c commit.gpgsign=false"
 
 cleanup_dirs=()
-holder_pids=()   # background processes that hold cwd inside a worktree (Issue #1544 TCs)
+holder_pids=   # background processes that hold cwd inside a worktree (TCs)
 cleanup() {
   local p d
   # `|| true`: a holder killed inline earlier is already dead here, so kill returns
@@ -208,7 +208,7 @@ assert_grep "TC-11 self-exclusion WARNING on stderr" "$R/pcc.err" "self-exclusio
 case "$out" in *"session_worktrees=0"*) pass "TC-11 status reports session_worktrees=0" ;; *) fail "TC-11 status: $out" ;; esac
 
 # ===========================================================================
-# Issue #1524 — worktree liveness guard, signal (A): flow-state.worktree scan
+# Why: worktree liveness guard, signal (A): flow-state.worktree scan
 # (4th protection layer) + reap-time flow-state worktree null-ing. The guard
 # protects a worktree that ANOTHER live session (flow-state active=true) records
 # as its `worktree`, EVEN when that session's claim has gone stale — flow-state
@@ -222,7 +222,7 @@ SID_C="cccccccc-9999-aaaa-bbbb-cccccccccccc"
 # keeping active=true + worktree recorded — the exact incident shape (live session,
 # expired claim heartbeat). Without aging, the claim stays "other" (live) and Gate 2
 # alone would protect the worktree, making the new guard's contribution vacuous.
-# "3 hours ago" is deliberate (Issue #1923): it must clear the 2h claim-staleness
+# "3 hours ago" is deliberate: it must clear the 2h claim-staleness
 # window (so Gate 2 alone would reap — non-vacuous) while staying WELL within the
 # liveness TTL default of 24h (so the guard this helper exercises still protects).
 age_flow_state() {
@@ -288,14 +288,14 @@ assert "T-06 issue-12 (orphan) reaped (no prefix bleed from issue-1)" "0" "$( [ 
 case "$out" in *"session_worktrees=1"*) pass "T-06 status reports session_worktrees=1 (only issue-12)" ;; *) fail "T-06 status: $out" ;; esac
 
 # ===========================================================================
-# Issue #1544 — OS-level live-cwd guard (regression of #1524). The cross-session
+# Why: OS-level live-cwd guard (regression guard). The cross-session
 # liveness guard only protects worktrees a session records as its `active`
 # `worktree`; it misses the dangling cases where the owning session's harness cwd
 # is still IN the tree but its flow-state has drifted (active=false, no `worktree`
 # field, stale session-id). The live-cwd guard (worktree-live-cwd.sh) closes that
 # gap by reading the OS's own per-process cwd, independent of flow-state.
 # ===========================================================================
-echo "=== T-07 (Issue #1544): a live process standing in a clean+stale worktree → NOT reaped (live-cwd guard) ==="
+echo "=== T-07: a live process standing in a clean+stale worktree → NOT reaped (live-cwd guard) ==="
 R=$(make_repo 80); cleanup_dirs+=("$R")
 # Fully drift flow-state so neither flow-state-based guard protects issue-80:
 # `deactivate` sets SID_A's flow-state active=false, so the worktree liveness
@@ -317,7 +317,7 @@ assert_grep "T-07 live-cwd guard WARNING on stderr" "$R/pcc.err" "live-cwd guard
 case "$out" in *"session_worktrees=0"*) pass "T-07 status reports session_worktrees=0" ;; *) fail "T-07 status: $out" ;; esac
 kill "$_h80" 2>/dev/null || true; wait "$_h80" 2>/dev/null || true
 
-echo "=== T-08 (Issue #1544 non-regression): same clean+stale worktree with NO live cwd → reaped ==="
+echo "=== T-08 (non-regression): same clean+stale worktree with NO live cwd → reaped ==="
 R=$(make_repo 81); cleanup_dirs+=("$R")
 # Identical drift to T-07 but with nobody standing in the tree → the live-cwd
 # guard must NOT over-protect: a genuine orphan is still reaped.
@@ -328,14 +328,14 @@ assert "T-08 claim file deleted" "0" "$( [ -f "$R/.rite/state/issue-claims/issue
 case "$out" in *"session_worktrees=1"*) pass "T-08 status reports session_worktrees=1" ;; *) fail "T-08 status: $out" ;; esac
 
 # ===========================================================================
-# Issue #1552 — claim-join (regression of #1524/#1544). The claim's liveness is
+# Why: claim-join (regression guard). The claim's liveness is
 # `active=true` AND flow-state.updated_at within 2h; an active-but-idle (>2h)
 # session has a `stale` claim that Gate 2 alone would reap — destroying a tree the
 # harness can still resume into, so `/clear` fails with `Path does not exist`. The
 # claim-join protects when the issue's claim records this tree AND its holder is
 # still active=true, regardless of the 2h heartbeat staleness.
 # ===========================================================================
-echo "=== T-09 (Issue #1552): active=true holder with a STALE claim (idle >2h) → NOT reaped (claim-join) ==="
+echo "=== T-09: active=true holder with a STALE claim (idle >2h) → NOT reaped (claim-join) ==="
 R=$(make_repo 82); cleanup_dirs+=("$R")
 # Holder stays active=true (resumable), but its claim heartbeat ages out: claim
 # liveness = active=true AND flow-state.updated_at within 2h. Backdate updated_at
@@ -344,7 +344,7 @@ R=$(make_repo 82); cleanup_dirs+=("$R")
 # match; only the (B) claim-join (claim.worktree==tree AND holder active=true) can
 # save it. Non-vacuous: revert the claim-join and issue-82 reaps (stale, no live cwd).
 # "3 hours ago" (not a fixed old date): must clear the 2h claim-staleness window
-# but stay within the liveness TTL default of 24h (Issue #1923) so claim-join
+# but stay within the liveness TTL default of 24h so claim-join
 # still protects — see age_flow_state()'s comment above for the same rationale.
 hf82="$R/.rite/sessions/$SID_A.flow-state"
 ts82=$(date -u -d '3 hours ago' +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -v-3H +"%Y-%m-%dT%H:%M:%SZ")
@@ -355,7 +355,7 @@ assert "T-09 claim file survives (not reaped)" "1" "$( [ -f "$R/.rite/state/issu
 assert_grep "T-09 worktree-liveness WARNING on stderr" "$R/pcc.err" "worktree liveness"
 case "$out" in *"session_worktrees=0"*) pass "T-09 status reports session_worktrees=0" ;; *) fail "T-09 status: $out" ;; esac
 
-echo "=== T-10 (Issue #1552 surgical): active+stale holder whose claim records a DIFFERENT worktree → candidate still reaped ==="
+echo "=== T-10 (surgical): active+stale holder whose claim records a DIFFERENT worktree → candidate still reaped ==="
 R=$(make_repo 83); cleanup_dirs+=("$R")
 # Same active+idle(stale) holder as T-09, but rewrite the claim's `worktree` to a
 # path that does NOT match issue-83's tree. The claim-join MUST require a real
@@ -370,7 +370,7 @@ assert "T-10 mismatched-claim worktree IS reaped (no blanket protection)" "0" "$
 case "$out" in *"session_worktrees=1"*) pass "T-10 status reports session_worktrees=1" ;; *) fail "T-10 status: $out" ;; esac
 
 # ===========================================================================
-# Issue #1670 — session-feature-branch recovery after reap (dead-letter fix).
+# Why: session-feature-branch recovery after reap (dead-letter fix).
 # The lazy reap used to delete the worktree but NEVER the branch, so a feature
 # branch whose cleanup deferred its worktree (live-cwd guard) leaked forever.
 # Step 5 now recovers the branch after reaping its worktree: SAFE-delete first
@@ -447,7 +447,7 @@ case "$out" in *"status=cleaned"*) pass "B-03 reports status=cleaned (no false f
 assert_not_grep "B-03 no misleading 'failed to reap manifest branch' WARNING" "$R/pcc.err" "failed to reap manifest branch"
 
 # ===========================================================================
-# Issue #1966 — Gate 2 free-arm manifest bypass. cleanup.md defers the worktree
+# Why: Gate 2 free-arm manifest bypass. cleanup.md defers the worktree
 # removal (self-cwd / live-cwd / sandbox mask), records the merge-confirmed
 # branch in the reap manifest (recovery=auto), and releases the claim
 # unconditionally — so the real-world deferred worktree arrives at Gate 2
@@ -556,7 +556,7 @@ assert "D-05 manifest entry consumed on -d arm (file removed)" "0" "$( [ -f "$R/
 case "$out" in *"session_branches=1"*) pass "D-05 status reports session_branches=1" ;; *) fail "D-05 status: $out" ;; esac
 
 # ===========================================================================
-# Issue #1957 — corpse reap. A sandbox-masked `git worktree remove --force`
+# Why: corpse reap. A sandbox-masked `git worktree remove --force`
 # half-destroys the admin dir (HEAD alone unlinked; commondir/gitdir/index and
 # the working tree survive). Such a corpse fails EVERY `git -C <wt>` operation,
 # so Gate 3's conservative skip would protect it forever, and manual
@@ -601,7 +601,7 @@ R=$(make_repo 105); cleanup_dirs+=("$R")
 # corpse is claim-FREE (not stale). Deactivate the holder (liveness guard off) and
 # delete the claim file (release). Without the corpse exclusion in Gate 2's free
 # age guard, this skips through the pre-existing silent continue — stderr empty —
-# violating the Issue #1957 MUST (skips must be logged). Non-vacuous: revert the
+# violating the requirement that skips must be logged. Non-vacuous: revert the
 # `_corpse -eq 0` condition and the WARNING assert flips.
 RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
 rm -f "$R/.rite/state/issue-claims/issue-105.json"
@@ -629,7 +629,7 @@ R=$(make_repo 106); cleanup_dirs+=("$R")
 # The open-claims-first window shape: the claim holder is live but the claim has
 # no worktree recorded yet (open Step 1.6 claims before the worktree exists), so
 # the claim-join liveness guard cannot match the tree and the corpse reaches
-# Gate 2's live-claim arm. That skip must be loud (Issue #1957 MUST) — the
+# Gate 2's live-claim arm. That skip must be loud (MUST) — the
 # protection is correct, the anomaly must still be visible.
 tmpc106=$(mktemp)
 jq 'del(.worktree)' "$R/.rite/state/issue-claims/issue-106.json" > "$tmpc106" && mv "$tmpc106" "$R/.rite/state/issue-claims/issue-106.json"
@@ -656,7 +656,7 @@ assert_not_grep "C-04 no corpse WARNING emitted" "$R/pcc.err" "corpse session wo
 case "$out" in *"session_worktrees=0"*) pass "C-04 status reports session_worktrees=0" ;; *) fail "C-04 status: $out" ;; esac
 
 # ===========================================================================
-# Issue #1945 — corpse age-guard manifest bypass, keyed on PATH not branch. A
+# Why: corpse age-guard manifest bypass, keyed on PATH not branch. A
 # corpse cannot resolve its checked-out branch (git no longer recognizes the
 # tree), so the #1966 branch-keyed bypass above structurally never matches
 # one — every corpse would wait the full 24h even when cleanup.md Step 4-W
@@ -747,4 +747,4 @@ assert "C-06 co-pending decoy directory untouched" "1" "$( [ -d "$R/.rite/worktr
 case "$out" in *"session_worktrees=1"*) pass "C-06 status reports session_worktrees=1" ;; *) fail "C-06 status: $out" ;; esac
 
 print_summary "$(basename "$0")" \
-  "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + worktree liveness guard (Issue #1524: a session's active flow-state worktree ref → never reap; reap → null owner ref / Issue #1552: claim-join — issue's claim holder still active=true, even with a stale 2h heartbeat → never reap) + OS-level live-cwd guard (Issue #1544: any live process standing in the tree → never reap, via worktree-live-cwd.sh) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); Issue #1957 corpse reap: admin-HEAD-missing AND git-unrecognized trees bypass Gate 3 and reap (rm -rf tree + admin dir) behind claim + 24h age guards — HEAD-present rc≠0 trees stay on the conservative skip; Issue #1670 branch recovery: after reap, SAFE-delete the branch (merged → recovered) and FORCE-delete only manifest-recorded (merge-confirmed) branches, preserving unmerged work; Issue #1966 free-arm manifest bypass: a claim-free worktree whose checked-out branch is manifest-recorded (merge-confirmed) bypasses the 24h age guard (harness mtime churn would otherwise leak it forever) and its manifest entry is consumed immediately after any successful branch recovery (-d and -D alike, best-effort with WARNING on failure); Issue #1945 corpse-path manifest bypass: a corpse cannot resolve its branch (git doesn't recognize the tree) so the #1966 branch bypass never fires for one — cleanup.md Step 4-W now records the worktree's own PATH (not branch) into the manifest when removal fails/is skipped for busy/sandbox-mask reasons (merge-confirmed only), and the corpse age guard checks that PATH before falling back to the 24h wait, consuming the entry on successful reap (surgical: a mismatched path entry does not bypass); wiki-worktree excluded; session-start best-effort wiring."
+  "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + worktree liveness guard (flow-state signal: a session's active flow-state worktree ref → never reap; reap → null owner ref / claim-join signal — issue's claim holder still active=true, even with a stale 2h heartbeat → never reap) + OS-level live-cwd guard (any live process standing in the tree → never reap, via worktree-live-cwd.sh) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); corpse reap: admin-HEAD-missing AND git-unrecognized trees bypass Gate 3 and reap (rm -rf tree + admin dir) behind claim + 24h age guards — HEAD-present rc≠0 trees stay on the conservative skip; branch recovery: after reap, SAFE-delete the branch (merged → recovered) and FORCE-delete only manifest-recorded (merge-confirmed) branches, preserving unmerged work; free-arm manifest bypass: a claim-free worktree whose checked-out branch is manifest-recorded (merge-confirmed) bypasses the 24h age guard (harness mtime churn would otherwise leak it forever) and its manifest entry is consumed immediately after any successful branch recovery (-d and -D alike, best-effort with WARNING on failure); corpse-path manifest bypass: a corpse cannot resolve its branch (git doesn't recognize the tree) so the branch-name bypass never fires for one — cleanup.md Step 4-W now records the worktree's own PATH (not branch) into the manifest when removal fails/is skipped for busy/sandbox-mask reasons (merge-confirmed only), and the corpse age guard checks that PATH before falling back to the 24h wait, consuming the entry on successful reap (surgical: a mismatched path entry does not bypass); wiki-worktree excluded; session-start best-effort wiring."

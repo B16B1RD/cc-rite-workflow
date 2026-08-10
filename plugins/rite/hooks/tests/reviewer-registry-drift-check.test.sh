@@ -1,6 +1,6 @@
 #!/bin/bash
 # Tests for plugins/rite/hooks/scripts/reviewer-registry-drift-check.sh
-# (reviewer registry 3-way sync detection). Covers Issue #1711 acceptance
+# (reviewer registry 3-way sync detection). Covers the registry-sync acceptance
 # criteria:
 #   - T-01 (AC-1): adding a dummy reviewer agent file WITHOUT updating the
 #     SKILL.md tables is detected as drift (single-check FAIL)
@@ -16,7 +16,7 @@
 #     with the I3-guard message asserted so it isn't confused with the extraction guard
 #   - Guard: missing registry directory/file (--repo-root outside the plugin
 #     source tree, e.g. marketplace/consumer install) → clean skip (rc=0,
-#     not applicable — Issue #1746)
+#     not applicable)
 #   - Arg contract: --all required; --repo-root requires a value (both rc=2)
 #   - Extraction: in-section (not just out-of-section) non-pipe prose lines
 #     inside Available Reviewers / Type Identifiers must not leak into the
@@ -26,7 +26,7 @@
 #     extraction regex) is asserted verbatim without --quiet
 #   - Regression guard: a digit-bearing slug (web3) is correctly counted
 #     across all 3 sync points, guarding against AGENT_RE reverting to a
-#     digit-unaware pattern (Issue #1763)
+#     digit-unaware pattern
 #
 # Portability note: fixture mutations use `awk` via the
 # read→transform→write→mv pattern instead of `sed -i`. BSD sed (macOS)
@@ -69,7 +69,7 @@ awk_inplace() {
 }
 
 # 13 種のダミー reviewer slug（checker の >= 6 抽出ガードを満たす数）。
-# web3 は数字入り slug (Issue #1763): AGENT_RE が `[a-z][a-z-]*-reviewer[.]md` に
+# web3 は数字入り slug: AGENT_RE が `[a-z][a-z-]*-reviewer[.]md` に
 # 巻き戻った場合、この 1 件だけが 3 集合 + I3 行フィルタから静かに脱落する
 # （TC-15 の回帰ガード対象）。
 FIXTURE_SLUGS=(alpha bravo charlie delta echo-x foxtrot golf hotel india juliett kilo lima web3)
@@ -284,7 +284,7 @@ fi
 # 偶然 rc=2 を返す regression を見逃す）。
 # BSD/macOS `wc` right-justifies the count with leading spaces, so the script's
 # message reads "extracted only        0 reviewers" — match with a whitespace
-# class instead of a fixed single space (Issue #2008; same BSD wc padding as TC-15).
+# class instead of a fixed single space (same BSD wc padding as TC-15).
 if printf '%s\n' "$out" | grep -qE "extracted only[[:space:]]+0 reviewers"; then
   pass "TC-7: fired via the >= 6 extraction guard (not the I3 row-count guard)"
 else
@@ -418,7 +418,7 @@ fi
 
 # --- TC-14: asymmetric absence (partial checkout) exits 2, NOT clean skip ---
 # TC-13 only proves the AND-gated clean-skip fires when NEITHER sync point
-# exists. It cannot detect an AND→OR regression in the guard (Issue #1746
+# exists. It cannot detect an AND→OR regression in the guard (
 # cycle3 review: doc-heavy has this asymmetric-absence coverage via Test 7b,
 # but reviewer-registry did not — this closes that family-wide gap). A
 # targeted-deletion attack removing only one sync point must still surface as
@@ -476,8 +476,8 @@ else
 fi
 
 # --- TC-15: numeric slug (web3) synced fixture → rc=0, correctly counted in
-# all 3 sync points (regression guard for AGENT_RE digit support, Issue #1763) ---
-# PR #1762 extended AGENT_RE from `[a-z][a-z-]*-reviewer[.]md` to
+# all 3 sync points (regression guard for AGENT_RE digit support) ---
+#  extended AGENT_RE from `[a-z][a-z-]*-reviewer[.]md` to
 # `[a-z][a-z0-9-]*-reviewer[.]md` so digit-bearing slugs (e.g. web3) are
 # extracted instead of silently dropping out of all 3 sets + the I3 row
 # filter. A plain rc=0 assertion on a fully-synced fixture would NOT catch a
@@ -503,7 +503,7 @@ fi
 # The `[[:space:]]*` after the colon tolerates BSD/macOS `wc -l` output, which
 # right-justifies its count with leading spaces (the checker interpolates that
 # count into these log lines). AGENT_RE itself is already digit-aware and
-# portable — the count still asserts web3-reviewer.md is not dropped (Issue #2008).
+# portable — the count still asserts web3-reviewer.md is not dropped.
 if printf '%s\n' "$out" | grep -qE "agents/ profiles[[:space:]]*:[[:space:]]*${expected_count} reviewers"; then
   pass "TC-15: agents/ profiles count includes web3-reviewer.md (not silently dropped by AGENT_RE)"
 else

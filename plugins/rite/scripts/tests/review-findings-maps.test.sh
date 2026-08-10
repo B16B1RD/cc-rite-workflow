@@ -9,7 +9,7 @@
 # Usage: bash plugins/rite/scripts/tests/review-findings-maps.test.sh
 set -uo pipefail
 
-# _timeout <seconds> <command...> — portable timeout(1) for this test (Issue #2008).
+# _timeout <seconds> <command...> — portable timeout(1) for this test.
 # GNU `timeout` is absent on macOS (BSD / no coreutils); fall back to a perl
 # fork/waitpid shim reproducing timeout(1)'s exit-code contract: 124 on timeout,
 # 128+N on signal death, the child's status otherwise (a naive

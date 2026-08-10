@@ -1,6 +1,6 @@
 #!/bin/bash
 # Tests for tmp-hardcode-check.sh
-# Pins the P1/P2/P3 sandbox-incompatibility patterns (Issue #1904 recurrence
+# Pins the P1/P2/P3 sandbox-incompatibility patterns (recurrence
 # guard) including the documented match / non-match boundaries (safe
 # ${TMPDIR:-/tmp} forms, `git stash push -u`, combined short flags, refspec-
 # after flag form) so silent regex drift is caught mechanically.
@@ -112,7 +112,7 @@ else fail "expected rc=1 with 3 [P3] findings, got rc=$rc count=$p3_count: $outp
 
 # --------------------------------------------------------------------------
 # TC-007: P3 — `git stash push -u` (include-untracked stash) is NOT matched
-#         (Issue #1904 explicitly excludes it from the sweep)
+#         (explicitly excludes it from the sweep)
 # --------------------------------------------------------------------------
 echo "TC-007: git stash push -u not matched"
 cat > "$SAMPLE_PATH" <<'MD'

@@ -65,11 +65,11 @@ PAST=$(date -u -d '3 hours ago' +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -v-
 tmp=$(mktemp); jq --arg t "$PAST" '.updated_at=$t' "$ROOT/.rite/sessions/$SID_A.flow-state" > "$tmp" && mv "$tmp" "$ROOT/.rite/sessions/$SID_A.flow-state"
 assert "TC-7 stale (2h aged)" "stale" "$(bash "$WIL" check --session "$SID_B")"
 
-echo "=== TC-8 (Issue #1530): env-first resolution — env outranks a differing .rite-session-id ==="
+echo "=== TC-8: env-first resolution — env outranks a differing .rite-session-id ==="
 # Regression guard for the env-first precedence flip in _resolve_sid (no --session override path).
 # Write a STALE .rite-session-id (SID_B) but make the live session SID_A via env. The no-override
 # resolver MUST key the lock to env (SID_A), not the stale shared file (SID_B) — this is the
-# cross-component coherence the half-migration finding (Issue #1530 review) flagged.
+# cross-component coherence the half-migration finding (review) flagged.
 bash "$WIL" release --session "$SID_A" >/dev/null 2>&1 || true
 rm -rf "$LOCKDIR" 2>/dev/null || true
 printf '%s' "$SID_B" > "$ROOT/.rite-session-id"   # shared file says SID_B (stale)
@@ -90,7 +90,7 @@ env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$WIL" acquire >/dev/nul
 assert "TC-8 env-absent acquire holder resolved via file sid (SID_B)" "$SID_B" "$(cat "$LOCKDIR/session_id")"
 assert "TC-8 env-absent check own (resolver returned file sid SID_B == holder)" "own" "$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$WIL" check)"
 
-echo "=== TC-9 (Issue #1999 / T-03 / AC-3): flock 不在 PATH でロック経路が続行する ==="
+echo "=== TC-9 (/ T-03 / AC-3): flock 不在 PATH でロック経路が続行する ==="
 # wiki-ingest-lock.sh 自体は mkdir ロックで flock を呼ばないが、liveness 判定が
 # flow-state.sh get/set を経由するため、flock 不在環境で set→acquire→check→release の
 # 全経路がエラー終了せず続行することを PATH スタブで固定する（issue-claim.test.sh
@@ -146,4 +146,4 @@ else
 fi
 
 print_summary "$(basename "$0")" \
-  "Drift hint: wiki-ingest-lock.sh §9 — mkdir lock with session-flow-state liveness (2h), reclaim stale, concurrent_ingest rc 11; _resolve_sid env-first (Issue #1530); no-flock PATH degrade continuation (Issue #1999)."
+  "Drift hint: wiki-ingest-lock.sh §9 — mkdir lock with session-flow-state liveness (2h), reclaim stale, concurrent_ingest rc 11; _resolve_sid env-first; no-flock PATH degrade continuation."

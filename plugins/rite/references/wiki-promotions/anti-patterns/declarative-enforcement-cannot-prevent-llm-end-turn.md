@@ -112,5 +112,5 @@ jq -c 'select(.type=="assistant" and .message.stop_reason=="end_turn") |
 ## ソース
 
 - meta-investigation: /rite:issue:create が累積 9 件の対策後も止まり続けた meta-retrospective (`Wiki provenance: ../../raw/retrospectives/20260425T122746Z-meta-issue-create-stuck-rootcause.md`)
-- PR #1166 review results (cycle 10, rename の literal/semantic 分離指摘) (`Wiki provenance: ../../raw/reviews/20260528T025244Z-pr-1166.md`)
-- PR #1166 review results (cycle 21, converged — vocabulary 撤廃で収束) (`Wiki provenance: ../../raw/reviews/20260528T084055Z-pr-1166.md`)
+- Review results (cycle 10, rename の literal/semantic 分離指摘) (`Wiki provenance: ../../raw/reviews/20260528T025244Z-pr-1166.md`)
+- Review results (cycle 21, converged — vocabulary 撤廃で収束) (`Wiki provenance: ../../raw/reviews/20260528T084055Z-pr-1166.md`)

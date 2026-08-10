@@ -42,7 +42,7 @@
 #   status=skipped; reason=body_fetch_failed gh api での body 取得失敗 (auth/rate/network/404)
 #   status=skipped; reason=safety_check_failed body 空 / header 欠落 / <50% で PATCH 拒否
 #   status=skipped; reason=section_absent   merge-checklist: 対象 ### section 不在で新規 items を置けず
-#                                           (Python exit 10。items は破棄せず PATCH もしない — Issue #2139)
+#                                           (Python exit 10。items は破棄せず PATCH もしない —)
 #   status=error; reason=transform_failed   Python transform が非ゼロ exit (exit 10 以外)
 #   status=error; reason=patch_failed       jq | gh api PATCH が失敗
 #   skills/fix/SKILL.md ステップ 4.5.2 はこの行を read し、no_comment 以外の skipped/error を
@@ -524,7 +524,7 @@ if ! py_err_tmp=$(mktemp 2>/dev/null); then
   exit 0
 fi
 # Backup は失敗時の post-mortem 用。蓄積した場合は `rm -f "${TMPDIR:-/tmp}"/rite-wm-backup-*` で手動清掃。
-# /tmp 直書きは sandbox 環境で読み込み専用のため set -euo pipefail 下で即死する (Issue #1904)。
+# /tmp 直書きは sandbox 環境で読み込み専用のため set -euo pipefail 下で即死する。
 backup_file="${TMPDIR:-/tmp}/rite-wm-backup-${ISSUE}-$(date +%s).md"
 
 # Capture gh stderr so that auth expiry / rate limit / 404 / network failure are
@@ -561,7 +561,7 @@ transform_status=0
 
 # merge-checklist: exit 10 = target section absent with new items remaining.
 # Distinguish from transform_failed so caller can show "セクション不在のためスキップ"
-# instead of reporting a successful no-op merge (Issue #2139 AC-1).
+# instead of reporting a successful no-op merge (AC-1).
 if [ "$transform_status" -eq 10 ]; then
   py_err=$(cat "$py_err_tmp" 2>/dev/null)
   echo "WARNING: merge-checklist: target section absent; items not merged. Skipping PATCH. Backup: $backup_file" >&2

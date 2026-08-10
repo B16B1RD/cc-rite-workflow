@@ -44,7 +44,7 @@
 #        「存在するか」に弱めても REVIEW_CYCLE_ID の定義節に語が残るだけで素通りする。mutation 実測
 #        済み: 比較動詞のみ削除で 249/249 のまま検出漏れだったため「一致」を必須トークンに追加した)。
 #        さらに該当 Check 行が区間内に 1 本だけであることも固定する (区間内マッチ数のみの assertion
-#        は同一トークン列を含む別行を足すだけで素通りするため) /
+#       A literal-presence-only assertion is insufficient because itを含む別行を足すだけで素通りするため) /
 #        (c) helper の MARKER 値と SKILL.md の variant 見出しの前方一致 coupling / (d) 8.0 の
 #        gate 評価順序規定 / (e) 8.0.x の表の行が終端 (`8.1`、「ステップ」接頭辞の有無を問わない) を
 #        名指しせず、全データ行が
@@ -237,7 +237,7 @@ if [ "${1:-}" = "api" ]; then
       # **生 JSON** を返す — TSV を返すと述語の評価が stub 側に漏れ、jq filter を壊す編集を
       # テストが検出できなくなる。issue_url は `/issues/{N}` 末尾一致で「当該 PR のコメントか」を、
       # body は「記録コメントか」(1 行目 marker ∧ 最終非空行 sentinel) を検証する入力なので、
-      # 既定値はどちらも「PR #9 の正規の記録コメント」にし、環境変数で個別に外せるようにする。
+      # 既定値はどちらも「 の正規の記録コメント」にし、環境変数で個別に外せるようにする。
       jq -n \
         --arg login "${GH_COMMENT_GET_LOGIN-rite-bot}" \
         --arg issue_url "${GH_COMMENT_GET_ISSUE_URL-https://api.github.com/repos/o/r/issues/9}" \
@@ -642,7 +642,7 @@ else
 fi
 
 # TC-3.11b 非ブロッキング失敗 (content-file 不在) でも marker を削除する
-#          — ここが残ると 8.0.4 が exit 1 を返し続け、保存失敗が blocking 化する (AC-3 の中核)
+# Why: ここが残ると 8.0.4 が exit 1 を返し続け、保存失敗が blocking 化する (AC-3 の中核)
 MARKER_FAIL_ID="123-1700000011"
 MARKER_FAIL="${TMPDIR:-/tmp}/rite-p61a-pending-$MARKER_FAIL_ID"
 : > "$MARKER_FAIL"
@@ -857,7 +857,7 @@ if [ -e "$_sig3_ready" ]; then
   # 揃っていないと 8.0.4 Routing の「saved=false なら reason を転記」が転記対象を持たないまま
   # 発火し、6.1.b は実在する JSON を「保存失敗」と案内する。
   assert_grep "TC-3.11i 保存済み判定と JSON_SAVED= が一致する" "$_sig3_err" 'JSON_SAVED=true'
-  assert_grep "TC-3.11i 保存済み判定と terminal sentinel の saved= が一致する" "$_sig3_err" 'REVIEW_SAVE_DONE=1;.*saved=true' 
+  assert_grep "TC-3.11i 保存済み判定と terminal sentinel の saved= が一致する" "$_sig3_err" 'REVIEW_SAVE_DONE=1;.*saved=true'
 else
   fail "TC-3.11i 前提未成立: mv shim が results-dir 宛の mv に到達しなかった (窓を作れていない)"
   _dump_precondition_stderr "$_sig3_err"
@@ -1747,7 +1747,7 @@ GH_LOOKUP_JSON="$NBR_PAGED_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 2 -
 assert_not_grep "TC-4.14 [negative control] near-miss 0 件なら marker を出さない" "$ERR" 'NONBLOCKING_LEGACY_ORPHAN=1'
 
 # =====================================================================
-# TC-4.16 [Issue #2041]: PATCH 先の同定を本文照合から durable な comment id へ移す
+# TC-4.16 []: PATCH 先の同定を本文照合から durable な comment id へ移す
 # =====================================================================
 # 本文照合は「同一 author が記録コメントの raw markdown を複製した人間コメント」を構造的に
 # 除外できない (述語を 4 度強化してもこの残余は残った)。第一候補を PR body に永続化した
@@ -2172,11 +2172,11 @@ assert_not_grep "TC-4.16l 自 login 不明なら id の解決自体を試みな�
 assert_not_grep "TC-4.16l 段 1 を通らないので UNRESOLVED marker も出ない" "$ERR" 'NONBLOCKING_ID_UNRESOLVED'
 
 # =====================================================================
-# TC-4.17 / TC-4.18 [Issue #2039]: ポインタのみ本文の受理と旧 6 列記録との互換
+# TC-4.17 / TC-4.18 []: ポインタのみ本文の受理と旧 6 列記録との互換
 # =====================================================================
-echo "--- TC-4.17/4.18: pointer-only 本文 (Issue #2039) ---"
+echo "--- TC-4.17/4.18: pointer-only 本文 ---"
 
-# TC-4.17 [Issue #2039] `-` 入りの `file:line` セルを含む本文が helper の本文検査 4 段を素通り
+# TC-4.17 [] `-` 入りの `file:line` セルを含む本文が helper の本文検査 4 段を素通り
 # すること (= 規約どおり書いた本文が弾かれないこと) を固定する。**規約そのもの (行を落とさず `-`
 # を入れる) を pin するのは TC-5i 側**で、helper は表の行数も列も検査しないため本 TC では弁別
 # できない — 下の negative control がその事実を実測で示す。3 行 (うち 1 行が `-`) / 申告 3 の
@@ -2270,7 +2270,7 @@ GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS"
 assert "TC-4.12h lookup degraded は marker を消す (gh 起因)" "no" \
   "$(_nbr_marker_after 9-308 --pr 9 --owner-repo o/r --count 2 --iteration-id 9-308 --content-file "$NBR_BODY_C2")"
 GH_ME_RC=0
-# [Issue #2041 の MUST NOT] durable id の永続化失敗も環境/IO 起因であり、caller が本文を作り直しても
+# [ の MUST NOT] durable id の永続化失敗も環境/IO 起因であり、caller が本文を作り直しても
 # 解消しない。retain 側へ落とすと 8.0.3 が毎 cycle 差し戻し、result pattern を永久に emit できなくなる。
 GH_PR_EDIT_RC=1
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS"
@@ -2647,7 +2647,7 @@ else
   # 2 層で塞ごうとしたが、cycle 3 で両層とも実効性を持たないことが実測された:
   #   - denylist は 4 表現の列挙で、`一致することは要求しない` / `一致するかは問わない` のような
   #     同義形をすり抜ける。そもそも本 PR が SoT として新設した measured-gate-record.md#static-pin
-  #     の規則 3「denylist ではなく allowlist で書く (現行表記への係留を避ける)」に反していた。
+  #     The allowlist rule「denylist ではなく allowlist で書く (現行表記への係留を避ける)」に反していた。
   #   - 「不一致 → ERROR」の grep は同一行内のトークン**出現順**しか見ておらず、Action セルを
   #     「ERROR にはしない — Gate passes」へ反転しても本数が変わらない (極性が未固定)。
   #   - どちらの層も、実際に判定を担う **pass 行の Condition 列**を拘束していなかった。
@@ -2834,7 +2834,7 @@ else
         assert "TC-5g'''' variant B テンプレート fence の最終非空行が sentinel" "$nbr_sentinel" "$(_fence_last_line "$_vb_line" "$_next_line")"
       fi
 
-      # (i) [Issue #2039 T-07] variant A の表が **ポインタ 3 列のみ** であることを構造 pin する。
+      # (i) [ T-07] variant A の表が **ポインタ 3 列のみ** であることを構造 pin する。
       #     6.1.d の記録コメントは pr_review.post_comment に依存せず public PR へ投稿されるため、
       #     description / suggestion 列を戻すと既定構成のまま非実測 CRITICAL の詳細 (脆弱性の
       #     再現手順等) が修正前に先行開示される。この開示方針は SKILL.md のテンプレート以外に
@@ -2928,7 +2928,7 @@ else
     fi
   fi
 
-  # (i') [Issue #2039] 開示方針を守る **散文側** の pin。述語は `_sec_610d` 区間だけに依存し
+  # (i') [] 開示方針を守る **散文側** の pin。述語は `_sec_610d` 区間だけに依存し
   #     variant 見出しの位置を要らないので、`_va_line`/`_vb_line` の解決 gate の **外** に置く。
   #     内側に入れると variant 見出しの改名だけでこの 2 本を含む 18 assert が無音で実行されなく
   #     なる (同ファイル冒頭の「到達性 assertion を件数 pin の内側に入れない」規約と同じ理由。
@@ -3323,7 +3323,7 @@ EOF
 
   # (e) 8.0.x の gate 表が終端 (ステップ 8.1) を名指ししない。名指しすると、後から 8.0.4 を足した
   #     ときに既存 pass 行が 8.1 へ直行し続け、新設 gate が到達不能になる。検査は表の行に限定する
-  #     — 区間全体で素の `ステップ 8.1` を数えると、ERROR text の否定文
+  # Why: 区間全体で素の `ステップ 8.1` を数えると、ERROR text の否定文
   #     (`Do NOT proceed to ステップ 8.1 without ...`) や節の cross-reference といった正当な散文でも落ちる。
   s801=$(grep -n '^### 8\.0\.1 ' "$REVIEW_MD" | head -1 | cut -d: -f1)
   s81=$(grep -n '^### 8\.1 ' "$REVIEW_MD" | head -1 | cut -d: -f1)

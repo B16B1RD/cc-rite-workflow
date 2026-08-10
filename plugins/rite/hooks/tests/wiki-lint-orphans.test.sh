@@ -181,7 +181,7 @@ else
 fi
 
 echo "=== TC-9: OKF 箇条書き index (Sub-2 reshape) でも orphan 検出 (登録 2 / 実在 3 → orphan 1) ==="
-# Issue #1519: index.md がテーブル → OKF 箇条書き (`* [title](pages/...) - desc`) に
+# Why: index.md がテーブル → OKF 箇条書き (`* [title](pages/...) - desc`) に
 # reshape されてもリンク grep `](pages/...)` が生存し orphan 検出が機能することを検証する。
 INDEX_FIXTURE_BULLET='# Wiki Index
 

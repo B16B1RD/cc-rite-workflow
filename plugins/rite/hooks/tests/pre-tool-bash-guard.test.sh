@@ -3,7 +3,7 @@
 # Usage: bash plugins/rite/hooks/tests/pre-tool-bash-guard.test.sh
 set -euo pipefail
 
-# _timeout <seconds> <command...> — portable timeout(1) for this test (Issue #2008).
+# _timeout <seconds> <command...> — portable timeout(1) for this test.
 # GNU `timeout` is absent on macOS (BSD / no coreutils); fall back to a perl
 # fork/waitpid shim reproducing timeout(1)'s exit-code contract: 124 on timeout,
 # 128+N on signal death, the child's status otherwise (a naive
@@ -483,7 +483,7 @@ echo ""
 # Scope: Only when transcript_path contains "/subagents/" (Tier 1) or the
 # Tier 2/3 signals fire. Main session operations must continue to work.
 #
-# Issue #1879: the working-tree verb denylist (git checkout / reset / commit /
+# Why: the working-tree verb denylist (git checkout / reset / commit /
 # branch / stash / fetch flags / worktree sub-actions / ...) was REMOVED from
 # this hook. Those mutations are Layer 1 (reviewer prompt) + Layer 3
 # (post-review-state-verify.sh) territory now. The machine gate keeps only:
@@ -525,7 +525,7 @@ assert_main_allow() {
 
 # --------------------------------------------------------------------------
 # TC-201: verb-denylist removal — mutating git verbs are NOT machine-gated
-# (Issue #1879 AC-1/AC-4). These commands were denied by the removed sub-blocks
+# (AC-1/AC-4). These commands were denied by the removed sub-blocks
 # (A)-(G); after the removal they must pass the hook untouched. The READ-ONLY
 # guarantee for them is the reviewer prompt (Layer 1) + post-review-state-verify
 # (Layer 3), NOT this hook — this loop pins the hook's non-involvement so a
@@ -553,7 +553,7 @@ for verb_cmd in \
 done
 # NOTE: git update-ref / symbolic-ref / config-write / mutating-remote are NOT in
 # this allow set — they write .git directly and are denied by sub-block (N),
-# pinned in TC-127 below. They were never working-tree verbs (Issue #1879 removed
+# pinned in TC-127 below. They were never working-tree verbs (removed
 # working-tree verbs; .git-write is the retained gate).
 echo ""
 
@@ -575,7 +575,7 @@ done
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-203: past false-positive commands → allow (Issue #1879 AC-4)
+# TC-203: past false-positive commands → allow (AC-4)
 # Commands that historically required bypass/false-positive patches against the
 # removed verb denylist (quote-boundary echoes, grep pattern args, branch names
 # embedding flag substrings, worktree-add arg-loop noglob #1866). With the verb
@@ -596,7 +596,7 @@ for fp_cmd in \
   ; do
   assert_subagent_allow "subagent '$fp_cmd' allowed (no false positive)" "$fp_cmd"
 done
-# worktree-add arg with a bare glob from a CWD holding a `-b` file (Issue #1866
+# worktree-add arg with a bare glob from a CWD holding a `-b` file (
 # scenario): the arg-parsing loop is gone, so no CWD pathname expansion can
 # mis-latch a flag — pin from the crafted CWD to keep the regression meaningful.
 tc203_noglob_dir=$(mktemp -d)
@@ -631,7 +631,7 @@ echo ""
 # TC-057ad〜af: shell-wrapper (Z) — deny with read-only probe guidance
 # wrapper は中身が read-only でも一律 deny (緩和しない)。deny message には
 # 代替ガイダンス (subshell / 直接実行 / bash <script>) が入る。pattern 名は
-# verb 列挙撤去に伴い reviewer-shell-wrapper へ改名 (Issue #1879)。
+# verb 列挙撤去に伴い reviewer-shell-wrapper へ改名。
 # --------------------------------------------------------------------------
 
 # Helper: subagent deny かつ reason に wrapper guidance が含まれることを確認
@@ -677,7 +677,7 @@ echo ""
 # --------------------------------------------------------------------------
 # Tier 2/3 subagent detection (TC-113〜115)
 # 検出そのものは (L)/(Z)/(H) のスコープ判定として存続する。deny 対象は verb
-# 列挙撤去に伴い .git write (H) に変更 (Issue #1879)。
+# 列挙撤去に伴い .git write (H) に変更。
 # --------------------------------------------------------------------------
 
 # alias of MAIN_TRANSCRIPT (above) — Tier 2/3 セクションを self-contained に保つため局所定義
@@ -1046,7 +1046,7 @@ echo ""
 
 # --------------------------------------------------------------------------
 # TC-119〜122: Pattern 4 (security boundary) fail-closed vs Pattern 1-3 fail-open
-#   Issue #1717: Pattern 4 shared the fail-OPEN ERR trap with the convenience
+# Why: Pattern 4 shared the fail-OPEN ERR trap with the convenience
 #   patterns, so a parse crash inside Pattern 4 converged to exit 0 (allow) and
 #   silently bypassed the security boundary. The fix installs a fail-CLOSED ERR
 #   trap over the Pattern 4 block (deny + exit 2 + WARNING) and restores
@@ -1089,7 +1089,7 @@ echo "TC-120: Patterns 1-3 fail-open invariant is structurally preserved"
 # fail-CLOSED trap is installed ONLY inside the reviewer-only Pattern 4 block and
 # restored to fail-open at that block's exit. We deliberately do NOT ship a
 # fail-open fault-injection env var to drive this behaviorally — such a var would
-# be an allow-all backdoor to the security boundary (Issue #1717 review F-02). So
+# be an allow-all backdoor to the security boundary (review F-02). So
 # we pin the invariants that guarantee it by inspecting the hook source.
 tc120_src=$(cat "$HOOK")
 # (a) the default (pre-Pattern-4) ERR trap is the fail-OPEN handler
@@ -1109,7 +1109,7 @@ fi
 # as the default install (before Pattern 4) and once as the restore (block exit). This
 # is the only guard for the block-exit fail-open restoration (behavioral injection
 # was removed as an allow-all backdoor, F-02), so it must catch deletion of the
-# actual restore statement — not just its comment (Issue #1717 review F-04).
+# actual restore statement — not just its comment (review F-04).
 tc120_restore_count=$(printf '%s\n' "$tc120_src" | grep -c "trap '_rite_btg_pattern13_fail_open' ERR")
 if [ "${tc120_restore_count:-0}" -ge 2 ]; then
   pass "TC-120 fail-open trap statement appears >=2x (default install + block-exit restore)"
@@ -1153,7 +1153,7 @@ if [ -n "$tc122_timeout" ] && [[ "$tc122_timeout" =~ ^[0-9]+$ ]]; then
 else
   fail "TC-122 expected a numeric timeout on the PreToolUse:Bash hook, got '$tc122_timeout'"
 fi
-# Pin the exact value (Issue #1717 review F-03): the .sh header comment documents
+# Pin the exact value (review F-03): the .sh header comment documents
 # "10s" and nothing else ties that prose to the config. Pin 10 here so that
 # changing hooks.json without updating the header comment fails this test (drift
 # detection). Update BOTH this literal and the .sh header if the value ever changes.
@@ -1213,7 +1213,7 @@ else
 fi
 # (c) oversized because of a huge heredoc BODY, with a READ-ONLY prefix → deny.
 # The length guard checks ${#COMMAND} over the WHOLE command (heredoc body included),
-# so it fires here. Non-vacuous (Issue #1717 review F-06): the prefix `git status` is
+# so it fires here. Non-vacuous (review F-06): the prefix `git status` is
 # read-only, so WITHOUT the length guard the heredoc strip yields `git status` and the
 # command is ALLOWED — WITH it the command is denied. (Note: the `<<` sits near the
 # front, so `${COMMAND%%<<*}` is itself fast here regardless — this case pins the
@@ -1290,7 +1290,7 @@ rm -rf "$tc124_dir"
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-125: reviewer WRITE into a .git directory (Issue #1864 AC-1, sub-block (H))
+# TC-125: reviewer WRITE into a .git directory (AC-1, sub-block (H))
 # The Bash-tool sibling of pre-tool-edit-guard's .git protection: a reviewer must not
 # `echo pwned > .git/hooks/pre-commit` (RCE via next git op). Reading .git stays allowed.
 # --------------------------------------------------------------------------
@@ -1344,9 +1344,9 @@ assert_subagent_deny_gitdir "ln -s into .git blocked" "ln -s /tmp/evil .git/hook
 echo "TC-125k: subagent mv into .git → deny"
 assert_subagent_deny_gitdir "mv into .git blocked" "mv /tmp/evil .git/hooks/pre-commit"
 
-# --- CRITICAL regression: repo under a `/git`-containing ancestor (Issue #1864 fix) ---
+# --- CRITICAL regression: repo under a `/git`-containing ancestor (fix) ---
 # A removed `/git`→` git` invocation-normalization used to split these paths so `>` detached
-# from the `.git` token → silent allow (RCE). The normalization is gone (Issue #1879), but these
+# from the `.git` token → silent allow (RCE). The normalization is gone, but these
 # pin that /git-ancestor paths keep tokenizing intact.
 echo "TC-125l: subagent redirect into .git under a /srv/git ancestor → deny (path not corrupted)"
 assert_subagent_deny_gitdir "redirect into /srv/git/.../.git blocked" "echo evil > /srv/git/proj/.git/config"
@@ -1354,25 +1354,25 @@ assert_subagent_deny_gitdir "redirect into /srv/git/.../.git blocked" "echo evil
 echo "TC-125m: subagent append into .git under a ~/github ancestor → deny (path not corrupted)"
 assert_subagent_deny_gitdir "append into /home/u/github/.../.git blocked" "echo x >> /home/u/github/proj/.git/hooks/pre-commit"
 
-# --- fileverb absolute-path / backslash invocation (Issue #1864 fix) ---
+# --- fileverb absolute-path / backslash invocation (fix) ---
 echo "TC-125n: subagent absolute-path tee into .git → deny"
 assert_subagent_deny_gitdir "/usr/bin/tee into .git blocked" "/usr/bin/tee .git/hooks/pre-commit"
 
 echo "TC-125o: subagent backslash-escaped cp into .git → deny"
 assert_subagent_deny_gitdir "\\cp into .git blocked" "\\cp /tmp/evil .git/hooks/pre-commit"
 
-# --- dd of=<gitpath> write vector (Issue #1864 fix) ---
+# --- dd of=<gitpath> write vector (fix) ---
 echo "TC-125p: subagent dd of=.git/hooks → deny"
 assert_subagent_deny_gitdir "dd of=.git blocked" "dd if=/tmp/evil of=.git/hooks/pre-commit"
 
-# --- value-quoted dd of= (Issue #1864 cycle-2 fix: quote-strip-after-of= ordering) ---
+# --- value-quoted dd of= (cycle-2 fix: quote-strip-after-of= ordering) ---
 echo "TC-125q: subagent dd of='.git/…' (single-quoted value) → deny"
 assert_subagent_deny_gitdir "dd of='.git' (single-quoted) blocked" "dd if=/tmp/evil of='.git/hooks/pre-commit'"
 
 echo "TC-125r: subagent dd of=\".git/…\" (double-quoted value) → deny"
 assert_subagent_deny_gitdir "dd of=\".git\" (double-quoted) blocked" "dd if=/tmp/evil of=\".git/hooks/pre-commit\""
 
-# --- interior / nested quotes (Issue #1864 cycle-3 fix: global quote removal) ---
+# --- interior / nested quotes (cycle-3 fix: global quote removal) ---
 # A quote placed BETWEEN path components survives a fixed surrounding-strip but is removed by the
 # shell before opening the path — global `${tok//[\"\']/}` closes the whole class.
 echo "TC-125s: subagent dd of= with INTERIOR quote → deny"
@@ -1387,7 +1387,7 @@ assert_subagent_deny_gitdir "cp into .g'i't/… (interior quote) blocked" "cp /t
 echo "TC-125v: subagent dd of= with NESTED quotes → deny"
 assert_subagent_deny_gitdir "dd of=''.git/…'' (nested quotes) blocked" "dd if=/tmp/evil of=''.git/hooks/pre-commit''"
 
-# --- backslash-escaped .git path components (Issue #1864 cycle-4 fix: backslash removal) ---
+# --- backslash-escaped .git path components (cycle-4 fix: backslash removal) ---
 # POSIX quote-removal strips `\` too; the shell resolves `.g\it`→`.git`, so the gitpath check must
 # strip backslashes as well as quotes to see the real target.
 echo "TC-125w1: subagent redirect into backslash-in-component .git → deny"
@@ -1405,7 +1405,7 @@ assert_subagent_deny_gitdir "tee .g\\it/… blocked" "echo x | tee .g\\it/hooks/
 echo "TC-125w5: subagent dd with backslash-escaped of= prefix → deny"
 assert_subagent_deny_gitdir "dd \\of=.git/… blocked" "dd if=/tmp/evil \\of=.git/hooks/pre-commit"
 
-# --- obfuscated file-verb NAME (Issue #1864 cycle-5 fix: dequote the verb token too) ---
+# --- obfuscated file-verb NAME (cycle-5 fix: dequote the verb token too) ---
 # The verb token is dequoted (quotes + backslashes) then basename'd, so a quoted/escaped verb name
 # still latches the file-verb vector — the shell runs `'tee'` / `t\ee` as `tee`.
 echo "TC-125x1: subagent backslash-in-verb tee into .git → deny"
@@ -1423,7 +1423,7 @@ assert_subagent_deny_gitdir "c\\p into .git blocked" "c\\p /tmp/evil .git/hooks/
 echo "TC-125x5: subagent quoted verb 'dd' of=.git → deny"
 assert_subagent_deny_gitdir "'dd' of=.git blocked" "'dd' if=/tmp/evil of=.git/hooks/pre-commit"
 
-# --- additional positional file-writers (Issue #1864 cycle-5: sponge/patch, tee twins) ---
+# --- additional positional file-writers (cycle-5: sponge/patch, tee twins) ---
 echo "TC-125y1: subagent sponge into .git/hooks → deny"
 assert_subagent_deny_gitdir "sponge .git/hooks blocked" "echo pwned | sponge .git/hooks/pre-commit"
 
@@ -1435,7 +1435,7 @@ assert_subagent_deny_gitdir "'sponge' .git blocked" "echo x | 'sponge' .git/hook
 
 # --- file-verb blocklist completeness: install / rsync / truncate are IN the case list
 # (tee|cp|mv|ln|install|rsync|truncate|dd|sponge|patch) but lacked dedicated deny tests; pin them so
-# a future edit that drops one literal from the case is caught (Issue #1864 follow-up). ---
+# a future edit that drops one literal from the case is caught (follow-up). ---
 echo "TC-125z1: subagent install into .git/hooks → deny"
 assert_subagent_deny_gitdir "install into .git blocked" "install -m755 /tmp/evil .git/hooks/pre-commit"
 
@@ -1485,7 +1485,7 @@ assert_main_allow "main-session .git write not blocked by (H)" "echo x > .git/ho
 echo ""
 
 # --- noglob regression: the (H) tokenizer runs under `set -f`, so a reviewer command's bare glob
-# (`*`/`?`/`[`) is NOT pathname-expanded against the hook CWD (Issue #1864 follow-up). Without noglob
+# (`*`/`?`/`[`) is NOT pathname-expanded against the hook CWD (follow-up). Without noglob
 # a `*` sitting BEFORE a `.git` READ path expands to CWD entries; a file named like a write-verb
 # (cp/tee/…) then latches the file-verb vector and the legit `.git` READ is wrongly DENIED
 # (false-positive; unbounded expansion could also time the hook out → fail-open). This pins the fix:
@@ -1721,7 +1721,7 @@ assert_main_allow "main-session git config write not blocked by (N)" "git config
 echo ""
 
 # --------------------------------------------------------------------------
-# Pattern 5: Merge-point review-result positive gate (Issue #2159)
+# Pattern 5: Merge-point review-result positive gate
 # --------------------------------------------------------------------------
 # Isolates state via RITE_STATE_ROOT so real repo review-results never leak in.
 # Sole-reviewer guard floor = 2 (same constant as pr-review sole-reviewer guard).
@@ -1983,7 +1983,7 @@ rm -rf "$_mrg_tmp"
 echo ""
 
 # --------------------------------------------------------------------------
-# Issue #2173: variable-form PR token must not fall back to flow-state
+# Why: variable-form PR token must not fall back to flow-state
 # --------------------------------------------------------------------------
 
 echo "TC-138 / T-01 (#2173): variable-form \"\$PR\" denies even when flow-state has qualifying other PR"
@@ -2061,7 +2061,7 @@ rm -rf "$_mrg_tmp"
 echo ""
 
 # --------------------------------------------------------------------------
-# Issue #2174: persist deny-only audit records
+# Why: persist deny-only audit records
 # --------------------------------------------------------------------------
 
 echo "TC-141 / T-01 (#2174): deny appends the stderr event to bash-guard.log"

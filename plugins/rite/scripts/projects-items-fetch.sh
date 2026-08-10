@@ -50,7 +50,7 @@ command -v jq >/dev/null 2>&1 || fetch_failed "jq not found"
 # pages / err は中間ファイルのため全経路で削除する。
 # 明示的な `${TMPDIR:-/tmp}/rite-…-XXXXXX` テンプレートを使う (リポジトリ共通慣習)。bare `mktemp`
 # は BSD/macOS で $TMPDIR を GNU と同じには尊重せず既定 location に着地するため、caller が
-# $TMPDIR で隔離を張っても外れる (Issue #2008)。
+# $TMPDIR で隔離を張っても外れる。
 tmpfile=$(mktemp "${TMPDIR:-/tmp}/rite-projects-items-result-XXXXXX") || fetch_failed "mktemp failed for result tempfile"
 pages=$(mktemp "${TMPDIR:-/tmp}/rite-projects-items-pages-XXXXXX") || { rm -f "$tmpfile"; fetch_failed "mktemp failed for pages tempfile"; }
 err=$(mktemp "${TMPDIR:-/tmp}/rite-projects-items-err-XXXXXX") || { rm -f "$tmpfile" "$pages"; fetch_failed "mktemp failed for stderr tempfile"; }

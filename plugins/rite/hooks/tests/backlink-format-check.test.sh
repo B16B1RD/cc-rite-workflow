@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for hooks/scripts/backlink-format-check.sh (Issue #1719)
+# Tests for hooks/scripts/backlink-format-check.sh
 #
 # The checker flags two legacy `Downstream reference:` dialects that the
 # canonical colon form replaced:

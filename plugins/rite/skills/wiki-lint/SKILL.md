@@ -426,7 +426,7 @@ fi
 
 ### 6.0 skip 済み raw source の集合構築
 
-ステップ 6.2 で参照する `skipped_refs` 集合の構築 (ステップ 6.2 の `all_source_refs` と対称な marker block + `log_read_ok` 4 値 enum) は `wiki-lint-skipped-refs.sh` に委譲する。Issue #1520 (Sub-3) で skip SoT が log.md から raw frontmatter (`ingest_status: skipped`) へ移行したため、helper は log.md ではなく **raw frontmatter を走査**する。
+ステップ 6.2 で参照する `skipped_refs` 集合の構築 (ステップ 6.2 の `all_source_refs` と対称な marker block + `log_read_ok` 4 値 enum) は `wiki-lint-skipped-refs.sh` に委譲する。 (Sub-3) で skip SoT が log.md から raw frontmatter (`ingest_status: skipped`) へ移行したため、helper は log.md ではなく **raw frontmatter を走査**する。
 
 > **Reference**: 集合構築の canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-skipped-refs.sh`。helper は `branch_strategy` 別の raw 走査 (`git ls-tree` + `git show`(separate_branch) / `find` + `cat`(same_branch)) で `.rite/wiki/raw/**/*.md` の frontmatter を読み、`ingest_status: skipped` を持つ raw を `raw/{type}/{filename}` 形式で抽出する・**legitimate absence** (raw ディレクトリ不在) と**真の IO error** (permission / 破損 / wiki_branch race) の `LC_ALL=C` 固定 stderr pattern 判別・`sort -u` 重複排除・列挙失敗時の io_error 降格・marker block / `log_read_ok` 4 値 enum 出力 (enum 名は stdout 契約のため据え置き、値は raw 走査状態を表す)・signal-specific trap cleanup をすべて内包する。`ingest_status` 欠落 raw は skipped でないものとして permissive に扱う (AC-6 後方互換)。placeholder residue gate も helper 内で実行される。state machine 契約 (marker block + 4 値 enum) は `references/bash-cross-boundary-state-transfer.md` の Pattern 1/2 を参照。
 
@@ -455,7 +455,7 @@ else
 fi
 ```
 
-**`log_read_ok` 4 値 enum による状態伝達**: bash 変数は Bash tool 呼び出し境界を超えて失われるため、`log_read_ok` を stdout に `log_read_ok={value}` 形式で出力する。Issue #1520 (Sub-3) で skip SoT が log.md から raw frontmatter (`ingest_status: skipped`) へ移行したため、本 enum は **raw frontmatter 走査の状態**を表す (enum 名は lint.md の stdout 契約のため据え置き):
+**`log_read_ok` 4 値 enum による状態伝達**: bash 変数は Bash tool 呼び出し境界を超えて失われるため、`log_read_ok` を stdout に `log_read_ok={value}` 形式で出力する。 (Sub-3) で skip SoT が log.md から raw frontmatter (`ingest_status: skipped`) へ移行したため、本 enum は **raw frontmatter 走査の状態**を表す (enum 名は lint.md の stdout 契約のため据え置き):
 
 | 値 | 意味 | ステップ 9.1 完了レポートでの扱い |
 |----|------|---------------------------------|
@@ -681,7 +681,7 @@ marker block（`page=...; hits=...`）と `descriptive_refs_pages` は sibling h
 
 ### 8.1 検出結果の log.md 記録
 
-Lint 完了後、`.rite/wiki/log.md` に OKF v0.1 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新）で **append-only** にエントリを追記する。今日の日付見出し `## YYYY-MM-DD` が `# Directory Update Log` 直後（ログ先頭）に無ければ新規追加し、その見出し配下の **bullet 群末尾** に以下の 1 bullet を追加する（同日内の追記位置を ingest.md ステップ 7 と揃え、bullet 順序を実行者非依存にする。Issue #1520 で log.md はテーブルから OKF 形式へ移行）:
+Lint 完了後、`.rite/wiki/log.md` に OKF v0.1 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新）で **append-only** にエントリを追記する。今日の日付見出し `## YYYY-MM-DD` が `# Directory Update Log` 直後（ログ先頭）に無ければ新規追加し、その見出し配下の **bullet 群末尾** に以下の 1 bullet を追加する（同日内の追記位置を ingest.md ステップ 7 と揃え、bullet 順序を実行者非依存にする。log.md は表形式より追記順を保ちやすい OKF 形式へ移行）:
 
 ```
 * **{lint_action}** — contradictions={n}, stale={n}, orphans={n}, missing_concept={n}, unregistered_raw={n}, broken_refs={n}
@@ -694,7 +694,7 @@ Lint 完了後、`.rite/wiki/log.md` に OKF v0.1 予約構造（`## YYYY-MM-DD`
 - `lint:clean`: ブロッキングカテゴリ 5 種 (`n_contradictions`, `n_stale`, `n_orphans`, `n_missing_concept`, `n_broken_refs`) **すべてが 0** の場合。`n_unregistered_raw` の値に依存しない (`n_unregistered_raw > 0` でも他 5 カテゴリが全 0 なら `lint:clean`)
 - `lint:warning`: 上記 5 カテゴリのいずれか 1 つ以上が `> 0` の場合。`n_unregistered_raw` は判定から除外する
 
-**`lint_action` 自動判定** (Pattern 1: `[CONTEXT] key=value` stdout emit、Issue #573): 上記 prose 判定基準を LLM 解釈から切り離し、bash block で機械的に決定して stdout に emit する。ステップ 8.3 の `{log_entry}` 組み立てはこの emit 値を **single source of truth** として参照する:
+**`lint_action` 自動判定** (Pattern 1: `[CONTEXT] key=value` stdout emit): 上記 prose 判定基準を LLM 解釈から切り離し、bash block で機械的に決定して stdout に emit する。ステップ 8.3 の `{log_entry}` 組み立てはこの emit 値を **single source of truth** として参照する:
 
 ```bash
 # ステップ 8.1 canonical lint_action decision logic (ステップ 8.3 sibling sync 契約相手)
