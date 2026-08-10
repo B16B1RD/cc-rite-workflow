@@ -45,8 +45,10 @@
 #        「存在するか」に弱めても REVIEW_CYCLE_ID の定義節に語が残るだけで素通りする。mutation 実測
 #        済み: 比較動詞のみ削除で 249/249 のまま検出漏れだったため「一致」を必須トークンに追加した)。
 #   TC-6 review-spawn-spread-check.sh — spread 判定の 3 帰結 (閾値内は stdout/stderr とも完全に
-#        無言 / 閾値超過は WARNING 1 行 + serialized marker + JSON フラグ / 計測不能は reason 別の
-#        undetermined marker とフラグ非書き込み) と、閾値の境界 (ちょうどは検出しない) /
+#        無言 / 閾値超過は WARNING + serialized marker + JSON フラグ / 計測不能は reason 別の
+#        undetermined marker とフラグ非書き込み)。**直列化と計測不能は独立判定なので WARNING は
+#        同時に 2 行出る** (TC-6.2a が pin。単独条件の TC-6.4 が 1 行を pin するのと矛盾しない)。
+#        あわせて閾値の境界 (ちょうどは検出しない) /
 #        `--threshold` 上書き / 単独 reviewer の非誤検出 / 引数・入力 gate の rc=2。加えて
 #        観測結果が永続化まで届くための静的 pin (4.6 の helper 呼び出しが live な bash block に
 #        ある / 5.3.0.M step 1 が timings ファイルの Read 転記を規定する / reviewer prompt が
@@ -3596,6 +3598,10 @@ assert_grep "TC-6.2a 直列化 WARNING が出る" "$ERR" '並列起動が直列�
 assert_grep "TC-6.2a 計測不能 WARNING も併記される" "$ERR" '計測不能: tech-writer-reviewer'
 assert_grep "TC-6.2a marker は serialized で measured<reviewers を示す" "$ERR" 'SPAWN_SPREAD=serialized; spread=1200s; threshold=120s; reviewers=3; measured=2'
 assert "TC-6.2a 直列化 + 欠落: parallel marker は出さない" "0" "$(grep -c 'SPAWN_SPREAD=parallel' "$ERR" || true)"
+assert "TC-6.2a marker は 1 本だけ" "1" "$(grep -c 'SPAWN_SPREAD=' "$ERR" || true)"
+# marker は必ず WARNING の後ろ。全経路で同一順序であることを最終行の位置で pin する。
+assert "TC-6.2a marker は最終行 (WARNING より後)" "1" \
+  "$(tail -1 "$ERR" | grep -c 'SPAWN_SPREAD=serialized' || true)"
 
 # TC-6.2b 閾値ちょうどは検出しない (境界)。`>=` へ緩める変異はここだけが捕まえる — 並列時の
 # 正常な spawn ずれを誤検出しない MUST NOT の境界そのもの。
@@ -3639,6 +3645,12 @@ assert "TC-6.4 計測不能ではフラグを書かない (欠落 = 未判定)" 
   "$(jq -r 'has("reviewer_spawn_serialized")' "$SPREAD_FIXTURE")"
 assert "TC-6.4 計測不能では spread も書かない" "false" \
   "$(jq -r 'has("reviewer_spawn_spread_seconds")' "$SPREAD_FIXTURE")"
+
+# TC-6.5-empty 空配列で実在しない reviewer を計上しない。awk への供給に here-string を使うと
+# 空文字列にも改行 1 個が付き total=1 になる — marker の reviewers は計測の忠実性そのもの。
+_spread_fixture empty_array
+run_spread --input "$SPREAD_FIXTURE"
+assert_grep "TC-6.5-empty 空配列: reviewers=0 (実在しない 1 名を計上しない)" "$ERR" 'SPAWN_SPREAD=undetermined; reason=no_parseable_timing; reviewers=0; measured=0'
 
 # TC-6.5 全員欠落を無言で通さない (AC-4 MUST NOT の silent skip)。
 _spread_fixture all_missing \

@@ -35,14 +35,15 @@ set -u
 #
 # 出力姿勢 (E2E Output Minimization):
 #   全員分の起動時刻が揃い spread が閾値内なら **stdout / stderr とも完全に無言**で返る。
-#   直列化検出・計測不能のときだけ stderr に行動可能な WARNING 1 行 + `[CONTEXT]` marker を出す。
+#   それ以外は stderr に行動可能な WARNING を出し、その**後ろ**に `[CONTEXT]` marker を 1 本置く。
+#   WARNING は条件ごとに 1 行で、直列化と計測不能は独立に判定されるため**同時に 2 行**出うる
+#   (直列化かつ一部欠落の cycle で、何名を測り落としたかと spread が実測分だけの値であることが
+#   消えないようにするため。排他にしてはならない)。
 #
-# `[CONTEXT] SPAWN_SPREAD=` marker (stderr):
-#   serialized    spread > threshold。WARNING と対
+# `[CONTEXT] SPAWN_SPREAD=` marker (stderr、1 run につき最大 1 本):
+#   serialized    spread > threshold
 #   parallel      spread <= threshold。**一部の起動時刻が欠落していたときのみ** emit する
 #                 (全員分揃った正常系は無言のため marker も出ない)
-#   計測不能の併記は上の 2 値と**独立**に出す (直列化かつ一部欠落の cycle で、何名を測り落と
-#   したかと spread が実測分だけの値であることが消えないようにするため)。
 #   undetermined  判定不能。reason= に理由が入る:
 #                   timestamp_unparseable         正規形でない started_at がある
 #                   no_parseable_timing           parse できた起動時刻が 0 件
@@ -101,11 +102,12 @@ _cleanup() {
 }
 trap 'rc=$?; _cleanup; exit $rc' EXIT
 
-# jq と awk はパイプで繋がない。繋ぐと jq の element 単位 parse 失敗 (配列に非 object が
-# 混じる等) が rc ごと捨てられ、awk は切り詰められた stream をそのまま数えて `total` まで
-# 一緒に縮むため、件数ガードも素通りして「直列化なし」を無音で書き込む。TSV を変数へ受けて
-# rc を直接検査すれば、その経路が構造的に存在しなくなる (pipefail と件数の再取得を足すより
-# 単純で、`total` は常に配列の要素数と一致する)。
+# jq の出力は awk へ直接パイプせず、いったん変数へ受けて rc を検査する。直接繋ぐと jq の
+# element 単位 parse 失敗 (配列に非 object が混じる等) が rc ごと捨てられ、awk は切り詰め
+# られた stream をそのまま数えて `total` まで一緒に縮むため、件数ガードも素通りして
+# 「直列化なし」を無音で書き込む。rc を検査してから awk へ渡せば、その経路が構造的に存在
+# しなくなる (pipefail と件数の再取得を足すより単純)。awk への供給に here-string を使わない
+# のは、空文字列にも改行 1 個を付けてしまい空配列で `total=1` になるため。
 if ! timings_tsv=$(jq -r '.reviewer_timings[] | [(.reviewer // ""), (.started_at // "")] | @tsv' "$input" 2>/dev/null); then
   echo "ERROR: .reviewer_timings の要素を読み出せません (要素が object でない / 値が配列やオブジェクト): $input" >&2
   exit 2
@@ -114,7 +116,7 @@ fi
 # 起動時刻の parse は `date -d` に頼らない。GNU/BSD で構文が割れるうえ、緩い parser は
 # 非正規形 (ローカル時刻・オフセット付き) を黙って受理して spread を歪める。正規形だけを
 # 通す strict な自前 parse にすることで、形式崩れは「計測不能」として必ず表面化する。
-stats=$(awk -F'\t' '
+stats=$(printf '%s' "$timings_tsv" | awk -F'\t' '
   function days_from_civil(y, m, d,   era, yoe, doy, doe) {
     if (m <= 2) y--
     era = int((y >= 0 ? y : y - 399) / 400)
@@ -143,7 +145,7 @@ stats=$(awk -F'\t' '
     parsed++
   }
   END { printf "%d\t%d\t%d\t%d\t%d\t%s\n", total, missing, unparseable, parsed, (parsed > 0 ? max - min : 0), missing_names }
-' <<< "$timings_tsv")
+')
 if [ -z "$stats" ]; then
   echo "ERROR: spawn spread の集計に失敗しました: $input" >&2
   exit 2
@@ -183,15 +185,20 @@ if ! mv "$out_tmp" "$input" 2>/dev/null; then
 fi
 out_tmp=""
 
+# 直列化と欠落は独立に判定する (排他にすると「直列化かつ一部欠落」の cycle で何名を測り
+# 落としたかが消え、spread が実測できた分だけの値であることも読めなくなる)。marker は
+# 判定を変数へ畳んで最後に 1 本だけ出す — WARNING より先に出る経路が構造的に無くなり、
+# ほぼ同一の emit 行を 2 つ持たずに済む。
+verdict=""
 if [ "$serialized" = "true" ]; then
   echo "WARNING: reviewer の並列起動が直列化しています (spawn spread ${spread}s > 閾値 ${threshold}s)。全 reviewer の Task 呼び出しを 1 メッセージ内にまとめて発行してください (1 件ずつ別メッセージで発行すると逐次実行になります)" >&2
-  echo "[CONTEXT] SPAWN_SPREAD=serialized; spread=${spread}s; threshold=${threshold}s; reviewers=$total; measured=$parsed" >&2
+  verdict=serialized
 elif [ "$missing" -gt 0 ]; then
-  echo "[CONTEXT] SPAWN_SPREAD=parallel; spread=${spread}s; threshold=${threshold}s; reviewers=$total; measured=$parsed" >&2
+  verdict=parallel
 fi
-
-# 欠落の併記は直列化検出と**独立**に出す。排他にすると「直列化かつ一部欠落」の cycle で
-# 何名を測り落としたかが消え、spread が実測できた分だけの値であることも読めなくなる。
 if [ "$missing" -gt 0 ]; then
   echo "WARNING: ${missing} 名の reviewer の起動時刻を取得できず、spawn spread は残り ${parsed} 名のみで判定しました (計測不能: ${missing_names})" >&2
+fi
+if [ -n "$verdict" ]; then
+  echo "[CONTEXT] SPAWN_SPREAD=${verdict}; spread=${spread}s; threshold=${threshold}s; reviewers=$total; measured=$parsed" >&2
 fi
