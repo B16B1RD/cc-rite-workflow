@@ -17,6 +17,8 @@
 #        closure reason that used to be excluded (offline, gh shim records the item-edit)
 #  T-10: behavioral — a failing GraphQL scan exits 2 with a diagnostic, so lint never
 #        misreads an invocation/API error as "drift detected" (exit 1)
+#  T-11: behavioral — a failed reconcile surfaces the Status-update helper's warnings on
+#        stderr (the helper puts them only in its stdout JSON), exercising the non-quiet path
 #
 # Usage: bash plugins/rite/hooks/tests/projects-board-drift-check.test.sh
 set -euo pipefail
@@ -368,7 +370,14 @@ else
   FAIL=$((FAIL + 1)); FAILURES+=("T-9: expected exit 1 + '1 updated, 0 failed', got rc=$t9_rc; stdout: $(printf '%s' "$t9_out" | tr '\n' ' ' | head -c 300)")
   echo "  ✗ reconcile summary wrong (exit $t9_rc)" >&2
 fi
-assert_present "$t9_out" "-> reconciled to Done" "T-9: finding row carries the reconciled marker"
+# findings 行は行まるごと固定する。部分一致だけだと script L270 の書式が壊れても通ってしまい、
+# 契約が「現行のまま維持する」と規定した唯一の出力を誰も守らなくなる。
+assert_present "$t9_out" "$(printf '[projects-board-drift] #103 "closed as duplicate" status="Todo" (expected Done) -> reconciled to Done')" \
+  "T-9: findings 行形式が維持されている"
+# lint Phase 3.18 が機械読みする件数 sentinel。0 固定などの退行は exit 1 と矛盾したまま
+# 「drift なし」と読ませるため、実件数まで含めて固定する。
+assert_present "$t9_out" '==> Total projects-board-drift findings: 1' \
+  "T-9: 件数 sentinel が実件数を報告する"
 if [ -f "$T9_DIR/item-edit.args" ] && grep -q -- '--single-select-option-id OPT_DONE' "$T9_DIR/item-edit.args"; then
   PASS=$((PASS + 1)); echo "  ✓ item-edit called with the Done option id"
 else
@@ -415,6 +424,67 @@ if grep -q 'ERROR: gh api graphql or jq pipeline failed' "$T10_DIR/stderr.txt" &
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-10: missing ERROR line or gh diagnostic: $(head -c 300 "$T10_DIR/stderr.txt" | tr '\n' ' ')")
   echo "  ✗ stderr missing the ERROR line or the gh diagnostic" >&2
+fi
+
+echo ""
+echo "[T-11] Behavioral: a failed reconcile surfaces the helper's warnings on stderr"
+# projects-status-update.sh は non_blocking の handled failure で自身の stderr へ何も書かず、
+# 診断を stdout JSON の .warnings[] にのみ載せる。呼び出し側が .result しか読まないと失敗理由が
+# 全出力から消えるため、その転記経路を pin する。--quiet を付けずに走らせるのは、非 quiet の
+# stderr 経路がどのテストからも踏まれていなかったため。
+T11_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rite-board-drift-t11-XXXXXX")
+trap 'rm -rf "${tmpd:-}" "$T8_DIR" "$T9_DIR" "$T10_DIR" "$T11_DIR"' EXIT
+mkdir -p "$T11_DIR/repo/bin"
+( cd "$T11_DIR/repo" && git init -q && git remote add origin "git@github.com:o/r.git" ) >/dev/null 2>&1
+cat > "$T11_DIR/repo/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+YAML
+cat > "$T11_DIR/repo/bin/gh" <<'GH_SHIM'
+#!/bin/bash
+case "$1 $2" in
+  "api graphql")
+    if printf '%s\n' "$*" | grep -q 'states: CLOSED'; then
+      cat <<'SCAN'
+{"data":{"repository":{"issues":{"nodes":[
+  {"number":103,"title":"closed as duplicate",
+   "projectItems":{"nodes":[{"project":{"number":1},
+     "fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}
+]}}}}
+SCAN
+    else
+      cat <<'ITEM'
+{"data":{"repository":{"issue":{"url":"https://github.com/o/r/issues/103",
+  "projectItems":{"nodes":[{"id":"ITEM_103","project":{"id":"PROJ_1","number":1}}]}}}}}
+ITEM
+    fi ;;
+  "project field-list")
+    echo '{"fields":[{"id":"FIELD_STATUS","name":"Status","options":[{"id":"OPT_TODO","name":"Todo"},{"id":"OPT_DONE","name":"Done"}]}]}' ;;
+  "project item-edit")
+    echo "HTTP 403: Resource not accessible by integration" >&2
+    exit 1 ;;
+  *) exit 0 ;;
+esac
+GH_SHIM
+chmod +x "$T11_DIR/repo/bin/gh"
+set +e
+t11_out=$(cd "$T11_DIR/repo" && PATH="$T11_DIR/repo/bin:$PATH" bash "$DRIFT_SH" --reconcile 2>"$T11_DIR/stderr.txt")
+t11_rc=$?
+set -e
+if [ "$t11_rc" -eq 1 ] && printf '%s' "$t11_out" | grep -q 'reconcile summary: 0 updated, 1 failed'; then
+  PASS=$((PASS + 1)); echo "  ✓ failed reconcile is counted (0 updated, 1 failed) and still exits 1"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-11: expected exit 1 + '0 updated, 1 failed', got rc=$t11_rc; stdout: $(printf '%s' "$t11_out" | tr '\n' ' ' | head -c 300)")
+  echo "  ✗ reconcile failure summary wrong (exit $t11_rc)" >&2
+fi
+if grep -q 'projects-board-drift: reconcile #103:' "$T11_DIR/stderr.txt" && \
+   grep -q 'HTTP 403' "$T11_DIR/stderr.txt"; then
+  PASS=$((PASS + 1)); echo "  ✓ helper warnings (with the underlying gh error) reach stderr"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-11: helper warnings missing from stderr: $(head -c 300 "$T11_DIR/stderr.txt" | tr '\n' ' ')")
+  echo "  ✗ helper warnings did not reach stderr" >&2
 fi
 
 echo ""

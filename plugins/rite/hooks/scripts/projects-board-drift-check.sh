@@ -260,8 +260,20 @@ if [ -n "$DRIFT_TSV" ]; then
       else
         RECONCILE_FAILURES=$((RECONCILE_FAILURES + 1))
         reconcile_suffix=" -> reconcile FAILED ($reconcile_result)"
+        # projects-status-update.sh は non_blocking=true の handled failure では自身の stderr へ
+        # 何も書かず、診断を stdout JSON の .warnings[] にのみ載せる。.result だけを読むと失敗理由が
+        # どこにも出ないため、ここで .warnings[] を stderr へ転記する (skills/ready と同じ契約)。
+        if [ "$QUIET" != "true" ] && [ -n "$reconcile_json" ]; then
+          printf '%s' "$reconcile_json" | jq -r '.warnings[]? // empty' 2>/dev/null \
+            | while IFS= read -r w; do
+                [ -n "$w" ] || continue
+                echo "projects-board-drift: reconcile #$issue_number: $(printf '%s' "$w" | neutralize_ctrl --c0-only)" >&2
+              done
+        fi
+        # reconcile_err に中身が入るのは helper を exec できなかった場合のみ (handled failure は
+        # 上の .warnings[] が担う)。両方空なら理由不明として exec 失敗の可能性を示す。
         if [ "$QUIET" != "true" ] && [ -n "$reconcile_err" ] && [ -s "$reconcile_err" ]; then
-          echo "projects-board-drift: reconcile failed for #$issue_number: $(head -c 200 "$reconcile_err" | tr '\n' ' ' | neutralize_ctrl --c0-only)" >&2
+          echo "projects-board-drift: reconcile exec failed for #$issue_number: $(head -c 200 "$reconcile_err" | tr '\n' ' ' | neutralize_ctrl --c0-only)" >&2
         fi
       fi
       [ -n "$reconcile_err" ] && rm -f "$reconcile_err"; reconcile_err=""
