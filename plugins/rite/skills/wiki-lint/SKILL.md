@@ -681,7 +681,7 @@ marker block（`page=...; hits=...`）と `descriptive_refs_pages` は sibling h
 
 ### 8.1 検出結果の log.md 記録
 
-Lint 完了後、`.rite/wiki/log.md` に OKF v0.1 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新）で **append-only** にエントリを追記する。今日の日付見出し `## YYYY-MM-DD` が `# Directory Update Log` 直後（ログ先頭）に無ければ新規追加し、その見出し配下の **bullet 群末尾** に以下の 1 bullet を追加する（同日内の追記位置を ingest.md ステップ 7 と揃え、bullet 順序を実行者非依存にする。 で log.md はテーブルから OKF 形式へ移行）:
+Lint 完了後、`.rite/wiki/log.md` に OKF v0.1 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新）で **append-only** にエントリを追記する。今日の日付見出し `## YYYY-MM-DD` が `# Directory Update Log` 直後（ログ先頭）に無ければ新規追加し、その見出し配下の **bullet 群末尾** に以下の 1 bullet を追加する（同日内の追記位置を ingest.md ステップ 7 と揃え、bullet 順序を実行者非依存にする。log.md は表形式より追記順を保ちやすい OKF 形式へ移行）:
 
 ```
 * **{lint_action}** — contradictions={n}, stale={n}, orphans={n}, missing_concept={n}, unregistered_raw={n}, broken_refs={n}

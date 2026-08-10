@@ -224,6 +224,9 @@ deletion_residue_patterns=(
   'AC-[0-9]+[.][)]'
   '[[:alpha:]][,][[:space:]]*[;]'
   'Static contract( tests)? for[[:space:]]*:'
+  '。[[:space:]]+D-[0-9]+'
+  '。[[:space:]]+で(は|本体|log)'
+  '（で(機械|配線|skip)'
 )
 deletion_residue_samples=(
   'context (で rationale'
@@ -247,6 +250,9 @@ deletion_residue_samples=(
   'AC-1.)'
   'other, ; next'
   'Static contract tests for : workflow'
+  '。 D-01 requirement'
+  '。 で本体'
+  '（で機械比率計算'
 )
 deletion_residue_pattern=$(IFS='|'; printf '%s' "${deletion_residue_patterns[*]}")
 for i in "${!deletion_residue_patterns[@]}"; do
