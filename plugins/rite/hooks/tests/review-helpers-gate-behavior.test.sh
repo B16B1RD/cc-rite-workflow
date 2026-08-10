@@ -3707,6 +3707,47 @@ assert "TC-6.6 非数値 threshold: exit 2" "2" "$RC"
 run_spread --input "$SPREAD_FIXTURE" --unknown-flag x
 assert "TC-6.6 未知フラグ: exit 2" "2" "$RC"
 
+# TC-6.6a 共通 tempfile lib の signal 契約を helper の実挙動で固定する。lib 内の trap 文字列だけを
+# grep すると、caller が init 後に trap を上書きしても green のままになる。最終 jq（tempfile 作成後）
+# の shim から helper 本体へ signal を送り、exit code と orphan 不在を同時に観測する。
+_spread_sig_bin="$TMP_ROOT/spread-signal-bin"
+_spread_sig_tmp="$TMP_ROOT/spread-signal-tmp"
+mkdir -p "$_spread_sig_bin" "$_spread_sig_tmp"
+_spread_real_jq=$(command -v jq)
+cat > "$_spread_sig_bin/jq" <<'SPREAD_SIG_JQ'
+#!/usr/bin/env bash
+for _arg in "$@"; do
+  case "$_arg" in
+    *reviewer_spawn_serialized*)
+      _target=$(cat "$RITE_SPREAD_SIG_PIDFILE" 2>/dev/null)
+      case "$_target" in ''|*[!0-9]*) : ;; *) kill -"$RITE_SPREAD_SIG_NAME" "$_target" 2>/dev/null ;; esac
+      ;;
+  esac
+done
+exec "$RITE_SPREAD_REAL_JQ" "$@"
+SPREAD_SIG_JQ
+chmod +x "$_spread_sig_bin/jq"
+for _spread_sig_spec in "INT:130" "TERM:143" "HUP:129"; do
+  _spread_sig_name=${_spread_sig_spec%%:*}
+  _spread_sig_want=${_spread_sig_spec##*:}
+  _spread_sig_case="$_spread_sig_tmp/${_spread_sig_name}"
+  mkdir -p "$_spread_sig_case"
+  _spread_sig_input="$_spread_sig_case/input.json"
+  _spread_sig_pidfile="$_spread_sig_case/pid"
+  printf '%s\n' '{"reviewer_timings":[{"reviewer":"a-reviewer","started_at":"2026-08-10T12:00:00Z"}]}' > "$_spread_sig_input"
+  : > "$_spread_sig_pidfile"
+  TMPDIR="$_spread_sig_case" RITE_SPREAD_SIG_NAME="$_spread_sig_name" \
+    RITE_SPREAD_SIG_PIDFILE="$_spread_sig_pidfile" RITE_SPREAD_REAL_JQ="$_spread_real_jq" \
+    PATH="$_spread_sig_bin:$PATH" \
+    bash -c 'printf "%s\n" "$$" > "$1"; shift; exec bash "$@"' _ "$_spread_sig_pidfile" \
+      "$SPREAD_SH" --input "$_spread_sig_input" >/dev/null 2>/dev/null
+  _spread_sig_rc=$?
+  assert "TC-6.6a SIG$_spread_sig_name: helper は exit $_spread_sig_want" \
+    "$_spread_sig_want" "$_spread_sig_rc"
+  assert "TC-6.6a SIG$_spread_sig_name: 作成済み tempfile を orphan にしない" "0" \
+    "$(find "$_spread_sig_case" -maxdepth 1 -name 'rite-review-spawn-spread-*' 2>/dev/null | wc -l | tr -d '[:space:]')"
+done
+
 # TC-6.7 ステップ 4.6 の呼び出しと転記規約の静的 pin。helper が正しくても、SKILL.md 側の
 # 呼び出しか 5.3.0.M への転記規約が消えれば観測結果はどこにも残らない。
 assert_grep "TC-6.7 4.6 が helper を live な bash block で呼ぶ" "$REVIEW_MD" '^bash \{plugin_root\}/hooks/scripts/review-spawn-spread-check\.sh'
@@ -3718,8 +3759,20 @@ assert_grep "TC-6.7 5.3.0.M step 1 が timings ファイルの Read 転記を規
 # (検出したい状態でだけ判定が成立しない)。1.2.5 の commit SHA は 4.6 と 5.3.0.M の双方が独立に持つ。
 # パス規則は**区間ごとに 1 本ずつ**取る。全体の件数一致だと両方を 4.6 に置く変異が素通りし、
 # 5.3.0.M が独立にパスを構成できるという本修正の核が pin されない。
-_sec_46()      { _section_of '^### 4\.6 ' '^## '; }
-_sec_530m_s1() { _section_of '^\*\*step 1: レビュー結果 JSON の生成' '^\*\*step 2: '; }
+_sec_46()      { _section_of '^### 4\.6 ' '^### '; }
+_sec_530m_s1() { _section_of '^\*\*step 1: レビュー結果 JSON の生成' '^\*\*step [^:]+: '; }
+_sec_46_lines=$(_sec_46 | grep -c . || true)
+_sec_530m_s1_lines=$(_sec_530m_s1 | grep -c . || true)
+if [ "$_sec_46_lines" -ge 20 ] && [ "$_sec_46_lines" -le 120 ] 2>/dev/null; then
+  pass "TC-6.7 区間解決: 4.6 が妥当な行数で閉じる ($_sec_46_lines 行)"
+else
+  fail "TC-6.7 区間解決: 4.6 の行数が想定外 ($_sec_46_lines) — 開始 anchor 消失か終端の閉じ損ね"
+fi
+if [ "$_sec_530m_s1_lines" -ge 20 ] && [ "$_sec_530m_s1_lines" -le 120 ] 2>/dev/null; then
+  pass "TC-6.7 区間解決: 5.3.0.M step 1 が妥当な行数で閉じる ($_sec_530m_s1_lines 行)"
+else
+  fail "TC-6.7 区間解決: 5.3.0.M step 1 の行数が想定外 ($_sec_530m_s1_lines) — 開始 anchor 消失か終端の閉じ損ね"
+fi
 assert "TC-6.7 4.6 区間に timings パス規則が 1 本" "1" \
   "$(_sec_46 | grep -c 'rite-reviewer-timings-{pr_number}-{current_commit_sha}\.json' || true)"
 assert "TC-6.7 5.3.0.M step 1 区間にも同じパス規則が 1 本 (独立に構成できる)" "1" \
@@ -3731,7 +3784,7 @@ assert "TC-6.7 4.6 区間が cycle 識別子を鋳造しない" "0" \
 # 4.6 の Write 先解決 (REVIEW_TMP_DIR の live emit) が消えると 5.3.0.M の不在判定と食い違い
 # 3 キーが省略されて AC-1 が満たせなくなる。live 行そのものを区間内で pin する。
 assert "TC-6.7 4.6 区間に REVIEW_TMP_DIR の live emit がある" "1" \
-  "$(_sec_46 | grep -c '^   echo "\[CONTEXT\] REVIEW_TMP_DIR=' || true)"
+  "$(_sec_46 | grep -c '^[[:space:]]*echo "\[CONTEXT\] REVIEW_TMP_DIR=' || true)"
 assert_grep "TC-6.7 5.3.0.M が 4.6 未実行を無言で省略せず marker で表面化" "$REVIEW_MD" 'SPAWN_TIMINGS=not_run'
 assert_grep "TC-6.7 E2E 表が直列化 1 行を例外 5 として省略禁止に登録" "$REVIEW_MD" '例外 5: ステップ 5\.4 の `### 総合評価` にある `\*\*起動の直列化\*\*` の 1 行'
 assert_grep "TC-6.7 5.4 側にも例外 5 と対の注記がある" "$REVIEW_MD" '本行は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 5）'
@@ -3740,7 +3793,11 @@ assert_grep "TC-6.7 5.4 側にも例外 5 と対の注記がある" "$REVIEW_MD"
 # 素通りする (指示が消えると全 reviewer が null を返し AC-1 が構造的に成立しなくなる)。
 _prompt_gen="$PLUGIN_ROOT/skills/pr-review/references/reviewer-prompt-generator.md"
 _sec_started_at_instr() {
-  awk '/^## 起動時刻の記録/ { inside = 1 } inside && /^## 変更概要/ { exit } inside { print }' "$_prompt_gen"
+  start_re='^## 起動時刻の記録' head_re='^## ' awk '
+    !inside && $0 ~ ENVIRON["start_re"] { inside = 1; print; next }
+    inside && $0 ~ ENVIRON["head_re"] { exit }
+    inside { print }
+  ' "$_prompt_gen"
 }
 assert "TC-6.7 reviewer prompt の指示節が着手前実行を命じる" "1" \
   "$(_sec_started_at_instr | grep -c 'date -u +%Y-%m-%dT%H:%M:%SZ' || true)"
@@ -3748,6 +3805,17 @@ assert "TC-6.7 指示節が「着手する前に」を明示" "1" \
   "$(_sec_started_at_instr | grep -c '着手する\*\*前に\*\*' || true)"
 assert_grep "TC-6.7 reviewer prompt の出力フォーマットに起動時刻セクション" "$_prompt_gen" '^### 起動時刻'
 assert_grep "TC-6.7 schema が reviewer_timings を定義" "$PLUGIN_ROOT/references/review-result-schema.md" '^\| `reviewer_timings` \| array \|'
+# helper 自身が tempfile lifecycle を手書きへ戻すと signal ごとの終了コードと cleanup が再び
+# caller ごとに分岐する。共通 lib への委譲と、lib 側の 3 signal handler を同じ静的層で pin する。
+_tmp_lib="$PLUGIN_ROOT/hooks/scripts/lib/tempfile.sh"
+assert_grep "TC-6.7 spawn spread helper が tempfile lib を source" "$SPREAD_SH" '^source .*scripts/lib/tempfile\.sh|^source .*lib/tempfile\.sh'
+assert_grep "TC-6.7 spawn spread helper が tempfile lifecycle を初期化" "$SPREAD_SH" '^rite_tempfile_init \|\| exit 2$'
+assert_grep "TC-6.7 spawn spread helper が rite_tempfile_new で出力 tempfile を確保" "$SPREAD_SH" '^if ! rite_tempfile_new out_tmp "review-spawn-spread"; then$'
+assert "TC-6.7 spawn spread helper に mktemp 直書きが無い" "0" \
+  "$(grep -cE '(^|[^A-Za-z_])mktemp([[:space:]]|$)' "$SPREAD_SH" || true)"
+assert_grep "TC-6.7 tempfile lib の SIGINT handler は rc=130" "$_tmp_lib" "trap 'rite_tempfile_cleanup; exit 130' INT"
+assert_grep "TC-6.7 tempfile lib の SIGTERM handler は rc=143" "$_tmp_lib" "trap 'rite_tempfile_cleanup; exit 143' TERM"
+assert_grep "TC-6.7 tempfile lib の SIGHUP handler は rc=129" "$_tmp_lib" "trap 'rite_tempfile_cleanup; exit 129' HUP"
 # 統合レポートは**テンプレごとに**取る。全体の件数一致だと、verification テンプレから消して
 # full テンプレへ複製する変異が素通りし、verification cycle で AC-2 の Then が失効する。
 _tmpl="$PLUGIN_ROOT/skills/pr-review/references/integrated-report-templates.md"
