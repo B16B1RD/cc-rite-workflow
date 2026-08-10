@@ -3707,6 +3707,47 @@ assert "TC-6.6 非数値 threshold: exit 2" "2" "$RC"
 run_spread --input "$SPREAD_FIXTURE" --unknown-flag x
 assert "TC-6.6 未知フラグ: exit 2" "2" "$RC"
 
+# TC-6.6a 共通 tempfile lib の signal 契約を helper の実挙動で固定する。lib 内の trap 文字列だけを
+# grep すると、caller が init 後に trap を上書きしても green のままになる。最終 jq（tempfile 作成後）
+# の shim から helper 本体へ signal を送り、exit code と orphan 不在を同時に観測する。
+_spread_sig_bin="$TMP_ROOT/spread-signal-bin"
+_spread_sig_tmp="$TMP_ROOT/spread-signal-tmp"
+mkdir -p "$_spread_sig_bin" "$_spread_sig_tmp"
+_spread_real_jq=$(command -v jq)
+cat > "$_spread_sig_bin/jq" <<'SPREAD_SIG_JQ'
+#!/usr/bin/env bash
+for _arg in "$@"; do
+  case "$_arg" in
+    *reviewer_spawn_serialized*)
+      _target=$(cat "$RITE_SPREAD_SIG_PIDFILE" 2>/dev/null)
+      case "$_target" in ''|*[!0-9]*) : ;; *) kill -"$RITE_SPREAD_SIG_NAME" "$_target" 2>/dev/null ;; esac
+      ;;
+  esac
+done
+exec "$RITE_SPREAD_REAL_JQ" "$@"
+SPREAD_SIG_JQ
+chmod +x "$_spread_sig_bin/jq"
+for _spread_sig_spec in "INT:130" "TERM:143" "HUP:129"; do
+  _spread_sig_name=${_spread_sig_spec%%:*}
+  _spread_sig_want=${_spread_sig_spec##*:}
+  _spread_sig_case="$_spread_sig_tmp/${_spread_sig_name}"
+  mkdir -p "$_spread_sig_case"
+  _spread_sig_input="$_spread_sig_case/input.json"
+  _spread_sig_pidfile="$_spread_sig_case/pid"
+  printf '%s\n' '{"reviewer_timings":[{"reviewer":"a-reviewer","started_at":"2026-08-10T12:00:00Z"}]}' > "$_spread_sig_input"
+  : > "$_spread_sig_pidfile"
+  TMPDIR="$_spread_sig_case" RITE_SPREAD_SIG_NAME="$_spread_sig_name" \
+    RITE_SPREAD_SIG_PIDFILE="$_spread_sig_pidfile" RITE_SPREAD_REAL_JQ="$_spread_real_jq" \
+    PATH="$_spread_sig_bin:$PATH" \
+    bash -c 'printf "%s\n" "$$" > "$1"; shift; exec bash "$@"' _ "$_spread_sig_pidfile" \
+      "$SPREAD_SH" --input "$_spread_sig_input" >/dev/null 2>/dev/null
+  _spread_sig_rc=$?
+  assert "TC-6.6a SIG$_spread_sig_name: helper は exit $_spread_sig_want" \
+    "$_spread_sig_want" "$_spread_sig_rc"
+  assert "TC-6.6a SIG$_spread_sig_name: 作成済み tempfile を orphan にしない" "0" \
+    "$(find "$_spread_sig_case" -maxdepth 1 -name 'rite-review-spawn-spread-*' 2>/dev/null | wc -l | tr -d '[:space:]')"
+done
+
 # TC-6.7 ステップ 4.6 の呼び出しと転記規約の静的 pin。helper が正しくても、SKILL.md 側の
 # 呼び出しか 5.3.0.M への転記規約が消えれば観測結果はどこにも残らない。
 assert_grep "TC-6.7 4.6 が helper を live な bash block で呼ぶ" "$REVIEW_MD" '^bash \{plugin_root\}/hooks/scripts/review-spawn-spread-check\.sh'
