@@ -217,6 +217,13 @@ deletion_residue_patterns=(
   '構築。[^|]*と対称[)][[:space:]]*[|]'
   'emit、[[:space:]]+で'
   '。[[:space:]]+以降'
+  '[(（]の[^[:space:]]'
+  'emit[*]*、[[:space:]]+で'
+  '[.] D-[0-9]+'
+  'frozen[.][)]'
+  'AC-[0-9]+[.][)]'
+  '[[:alpha:]][,][[:space:]]*[;]'
+  'Static contract( tests)? for[[:space:]]*:'
 )
 deletion_residue_samples=(
   'context (で rationale'
@@ -233,6 +240,13 @@ deletion_residue_samples=(
   '集合を構築。helper と対称) |'
   'helper が emit、 で LLM'
   '完了。 以降'
+  '(の実測必須ゲート'
+  'helper が emit**、 で LLM'
+  '. D-01 requirement'
+  'intentionally frozen.)'
+  'AC-1.)'
+  'other, ; next'
+  'Static contract tests for : workflow'
 )
 deletion_residue_pattern=$(IFS='|'; printf '%s' "${deletion_residue_patterns[*]}")
 for i in "${!deletion_residue_patterns[@]}"; do

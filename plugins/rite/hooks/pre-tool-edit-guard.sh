@@ -290,7 +290,7 @@ if [ -z "$TARGET_ROOT" ]; then
   #       axis (git status --porcelain ignores .git). This hook is the structural defense for the
   #       Edit/Write/MultiEdit/NotebookEdit path; deny git-internal writes there, allow only genuine
   #       non-repo scratch. (The sibling Bash-tool vector — `echo > .git/hooks/...`, `tee`/`cp`/`ln`
-  #       into .git — is closed by pre-tool-bash-guard.sh sub-block (H), AC-1.)
+  #       into .git — is closed by pre-tool-bash-guard.sh sub-block (H), which enforces AC-1)
   if [ "$(git -C "$_tdir" rev-parse --is-inside-git-dir 2>/dev/null)" = "true" ]; then
     _deny_kind="git-dir"
   else
