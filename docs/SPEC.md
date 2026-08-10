@@ -225,7 +225,7 @@ rite-workflow/
 │ │ ├── settings-local-rite-hook-cleanup.sh / settings-local-rite-hook-cleanup.py # legacy hook entry 掃除 (.sh wrapper + .py 実体)
 │ │ ├── reviewer-registry-drift-check.sh # lint Phase 3.5 reviewer registry 3-way 同期検証
 │ │ ├── gitignore-health-check.sh
-│ │ ├── projects-board-drift-check.sh # lint Phase 3.18 CLOSED+COMPLETED board≠Done 検出
+│ │ ├── projects-board-drift-check.sh # lint Phase 3.18 CLOSED かつ board≠Done 検出
 │ │ ├── number-reference-check.sh # lint Phase 3.5 Issue/PR 番号参照 (#NNN) 検出 (CHANGELOG + lint.md)
 │ │ ├── sentinel-contract-check.sh # lint Phase 3.5 sentinel SoT / emitter / consumer 同期検証
 │ │ ├── tmp-hardcode-check.sh # lint Phase 3.5 sandbox 非互換パターン (mktemp+/tmp テンプレート・/tmp 直書き・push の upstream -u) 検出
@@ -1321,7 +1321,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `bang-backtick-check.sh` | Detect bash history-expansion pitfalls in generated content | — |
 | `reviewer-registry-drift-check.sh` | `/rite:lint` Phase 3.5 — detect reviewer registry drift across `agents/*-reviewer.md` and the 2 tables in `skills/reviewers/SKILL.md` (edit procedure: CONTRIBUTING.md "Adding a New Reviewer") | — |
 | `gitignore-health-check.sh` | Verify the `.rite/wiki/` last-line-of-defense `.gitignore` rule, emit `gitignore_drift` sentinel on mismatch | — |
-| `projects-board-drift-check.sh` | `/rite:lint` Phase 3.18 — detect CLOSED+COMPLETED Issues whose Projects board Status is not `Done` (NOT_PLANNED excluded), optionally reconcile via `--reconcile` | — |
+| `projects-board-drift-check.sh` | `/rite:lint` Phase 3.18 — detect CLOSED Issues whose Projects board Status is not `Done` (closure reason not consulted), optionally reconcile via `--reconcile` | — |
 | `number-reference-check.sh` | `/rite:lint` Phase 3.5 — detect Issue/PR number references (`#NNN` / `Issue #NNN` / `PR #NNN`) that crept back into the number-free documentation surface (`CHANGELOG.md` / `CHANGELOG.ja.md` / `lint.md`) | — |
 | `sentinel-contract-check.sh` | `/rite:lint` Phase 3.5 — verify the sentinel SoT against emitter and consumer skill files, and detect undeclared sentinel-shaped literals | Canonical contract: `references/sentinel-contract.md` |
 | `tmp-hardcode-check.sh` | `/rite:lint` Phase 3.5 — detect sandbox-incompatible patterns (`mktemp` + `/tmp` template, fixed `/tmp` path hardcode, `git push` upstream `-u`) in `plugins/rite/**/*.{md,sh}` + `docs/**/*.md` (test harnesses / error-catalog / self excluded) | — |
