@@ -1,7 +1,7 @@
 ---
 title: "Declarative enforcement で LLM の stop_reason: end_turn は抑制できない"
 domain: "anti-patterns"
-description: "`/rite:issue:create` の sub-skill return 後の implicit stop を防ぐ目的で、`Anti-pattern` / `Correct-pattern` / `same response turn` / `DO NOT stop` / `IMMEDIATELY` / Step 0 Immediate Bash literal / HTML コメント sentinel / plain-text marker などの **declarative enforcement** を 9 件の Issue (#3 → #651) で累積導入してきたが、本番セッション (`f0d8791d` 2026-04-24 / `f7afee09` 2026-04-21) の `.jsonl` 一次情報で LLM が **これらすべてを emit した上で `stop_reason: end_turn` を選択している** 事実が確認された。"
+description: "`/rite:issue:create` の sub-skill return 後の implicit stop を防ぐ目的で、`Anti-pattern` / `Correct-pattern` / `same response turn` / `DO NOT stop` / `IMMEDIATELY` / Step 0 Immediate Bash literal / HTML コメント sentinel / plain-text marker などの **declarative enforcement** を初期から後期までの 9 件の関連課題で累積導入してきたが、本番セッション (`f0d8791d` 2026-04-24 / `f7afee09` 2026-04-21) の `.jsonl` 一次情報で LLM が **これらすべてを emit した上で `stop_reason: end_turn` を選択している** 事実が確認された。"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/declarative-enforcement-cannot-prevent-llm-end-turn.md"
 created: "2026-04-25T12:30:00+00:00"

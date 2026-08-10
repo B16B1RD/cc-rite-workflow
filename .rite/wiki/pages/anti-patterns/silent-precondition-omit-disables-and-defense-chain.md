@@ -1,7 +1,7 @@
 ---
 title: "前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する"
 domain: "anti-patterns"
-description: "過去 9 件の Issue (#3 → #651) で導入した 8 種類の防御層 (declarative / sentinel / Pre-check list / whitelist / Pre-flight / Step 0 / 4-site 対称化 / hook case arm) は **AND 論理**で組まれていた。"
+description: "初期から後期までの 9 件の関連課題で導入した 8 種類の防御層 (declarative / sentinel / Pre-check list / whitelist / Pre-flight / Step 0 / 4-site 対称化 / hook case arm) は **AND 論理**で組まれていた。"
 promote: rite-plugin
 created: "2026-04-25T12:30:00+00:00"
 updated: "2026-07-31T01:26:57+09:00"
