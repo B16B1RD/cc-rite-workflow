@@ -233,6 +233,7 @@ deletion_residue_patterns=(
   '[[:space:]]{2,}で修正'
   '[(（][[:space:]]*:[[:space:]]'
   '[[:space:]]{2,}では'
+  '、[[:space:]]+がまさに'
 )
 deletion_residue_samples=(
   'context (で rationale'
@@ -265,6 +266,7 @@ deletion_residue_samples=(
   '点を  で修正'
   '(: missing rationale'
   'run —  では nine cycles'
+  '完了してしまい、 がまさに'
 )
 deletion_residue_pattern=$(IFS='|'; printf '%s' "${deletion_residue_patterns[*]}")
 for i in "${!deletion_residue_patterns[@]}"; do
