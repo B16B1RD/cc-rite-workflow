@@ -594,6 +594,20 @@ run_save --pr 123 --content-file "$JSON_EMPTY_REVIEWERS" --results-dir "$TMP_ROO
 assert "TC-3.5re reviewers 空配列: exit 0 (非ブロッキング)" "0" "$RC"
 assert_grep "TC-3.5re reason=schema_required_fields_missing emit" "$ERR" 'LOCAL_SAVE_FAILED=1; reason=schema_required_fields_missing'
 
+# 空白のみの body は jq が「文書 0 件」として rc=0 のまま何も出力しないため、必須フィールド検査を
+# 述語列挙 1 本に集約した形では欠落名が空文字になり本検査を素通りする。前段の型 guard が
+# 捕らえていることを pin する。実測では guard を外しても保存は成立せず、下流の findings[].id 検査が
+# `finding_id_format_or_uniqueness_violation` を出す — 落ちるのは reason の正しさなので、
+# 本 case は JSON_SAVED だけでなく **reason と 判定不能 ラベル**を pin する
+# (JSON_SAVED=false は guard の有無に依らず成立するため単独では検出力を持たない)。
+JSON_BLANK_BODY="$TMP_ROOT/json-blank-body.json"
+printf '   \n\n' > "$JSON_BLANK_BODY"
+run_save --pr 123 --content-file "$JSON_BLANK_BODY" --results-dir "$TMP_ROOT/results-tc35blank"
+assert "TC-3.5blank 空白のみ body: exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-3.5blank reason=schema_required_fields_missing emit" "$ERR" 'LOCAL_SAVE_FAILED=1; reason=schema_required_fields_missing'
+assert_grep "TC-3.5blank JSON_SAVED=false (保存させない)" "$ERR" 'JSON_SAVED=false'
+assert_grep "TC-3.5blank 欠落名ではなく判定不能として名指しする" "$ERR" '判定不能'
+
 JSON_SCALAR_REVIEWERS="$TMP_ROOT/json-scalar-reviewers.json"
 _save_fixture "$JSON_SCALAR_REVIEWERS" '  "verdict": "mergeable",' '  "reviewers": "code-quality-reviewer",'
 run_save --pr 123 --content-file "$JSON_SCALAR_REVIEWERS" --results-dir "$TMP_ROOT/results-tc35rt"

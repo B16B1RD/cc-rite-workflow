@@ -416,8 +416,19 @@ fi
 # 条件ごとの判定を 1 度だけ行い、**失敗キー名の列挙 `_missing` を唯一の真実の源**として
 # pass/fail と診断の両方を導く。同じ述語を「強制用の合成式」と「診断用の列挙」に複製すると、
 # 片方だけ緩めても他方が残るためファイル全体 grep の契約テストが drift を検出できなくなる。
-# jq 自体が失敗する形 (トップレベルが非オブジェクト等) は sentinel で失敗側へ倒す。
-if ! _missing=$(jq -r '
+# **列挙の前に「評価できる文書があるか」を確かめる**。`jq -r` は文書が 0 件のとき rc=0 と空
+# stdout を返すため、空文字を「欠落なし」と読むと空白のみの body が本検査を素通りする
+# (`jq -e` は同じ入力を rc=4 で落としていた — 判定手段の差し替えで失われた失敗条件)。
+# 本 guard は必須フィールドの述語を複製しないので、上記の単一定義性は保たれる。
+# 非オブジェクトはここへ来る前に上流の timestamp 注入が `write_failure` で落とすため、
+# 実際に本 guard が捕らえるのは「空白のみの body」= 文書 0 件の形である。
+# guard を外した実測では保存は成立せず、下流の findings[].id 検査が
+# `finding_id_format_or_uniqueness_violation` として落としていた。つまり本 guard が防ぐのは
+# 保存の誤成立ではなく **理由の誤帰属** — 入力に findings[] 自体が無いのに id 書式の是正を
+# 案内する復旧ヒントが出て、原因 (body が空) から遠ざかる。
+if ! jq -e 'type == "object"' "$json_tmp" >/dev/null 2>&1; then
+  _missing="判定不能 (JSON body が空か非オブジェクト)"
+elif ! _missing=$(jq -r '
   [ (if (.schema_version | type == "string" and length > 0) then empty else "schema_version" end),
     (if (.pr_number | type == "number") then empty else "pr_number" end),
     (if (.findings | type == "array") then empty else "findings" end),
@@ -438,7 +449,7 @@ if [ -n "$_missing" ]; then
   esac
   case " $_missing " in
     *" reviewers "*)
-      echo "  reviewers: pr-review.md ステップ 5.3.0.M step 1 が実走 reviewer 名簿を重複なく書いているか確認してください" >&2 ;;
+      echo "  reviewers: pr-review.md ステップ 5.3.0.M step 1 が実回収 reviewer 名簿 (結果を回収できた reviewer のみ) を重複なく書いているか確認してください" >&2 ;;
   esac
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=schema_required_fields_missing" >&2
   exit 0

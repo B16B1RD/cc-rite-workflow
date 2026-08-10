@@ -71,7 +71,7 @@
 #      契約の SoT は references/review-result-schema.md §verdict と reviewers
 #
 # トップレベルの他キー (reviewers / schema_version / commit_sha / guardrail_audit_log 等) は
-# 変換 jq が触らずそのまま保持する。`reviewers` (実走名簿) は caller が step 1 で書く。
+# 変換 jq が触らずそのまま保持する。`reviewers` (実回収名簿) は caller が step 1 で書く。
 #
 # 2 段判定 (assessment-rules.md §5.3.0.M の verbatim 実装):
 #   stage 1 = アンカー marker の**存在**判定。種別キーワードも colon 直後の空白も条件に含めず、

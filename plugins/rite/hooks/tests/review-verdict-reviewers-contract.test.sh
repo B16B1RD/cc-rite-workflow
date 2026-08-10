@@ -64,14 +64,21 @@ assert_grep "TC-1 スキーマが version からのキー存在推論を禁止" 
 assert_grep "TC-1 SKILL が 6.1.a Required JSON fields に verdict を含む" "$SKILL" 'Required JSON fields.*\*\*`verdict`\*\*'
 assert_grep "TC-1 SKILL が 6.1.a Required JSON fields に reviewers を含む" "$SKILL" 'Required JSON fields.*\*\*`reviewers\[\]`\*\*'
 assert_grep "TC-1 SKILL 5.3.0.M step 1 が verdict を書かない規約を持つ" "$SKILL" '\*\*`verdict` は書かない\*\*'
-assert_grep "TC-1 SKILL 5.3.0.M step 1 が reviewers を実走名簿と規定" "$SKILL" '`reviewers\[\]` = 本 cycle で ステップ 5\.1 が Task 結果を回収できた reviewer の名簿'
+assert_grep "TC-1 SKILL 5.3.0.M step 1 が reviewers を実回収名簿と規定" "$SKILL" '`reviewers\[\]` = 本 cycle で ステップ 5\.1 が Task 結果を回収できた reviewer の名簿'
 assert_grep "TC-1 SKILL が findings からの名簿導出を禁止" "$SKILL" '\*\*`findings\[\]` から導出して(は|も)ならない\*\*'
-# 名簿の母集団は「ステップ 5.1 が結果を回収できた reviewer」の単一定義。SKILL / SoT の両側に
-# 置き、片側だけ更新された drift を検出する (前 cycle は SKILL 側だけ更新して SoT を掃き残した)
-assert_grep "TC-1 SKILL が名簿の母集団を実回収集合と規定" "$SKILL" 'ステップ 5\.1 が Task 結果を回収できた reviewer'
+# 名簿の母集団は「ステップ 5.1 が結果を回収できた reviewer」の単一定義。SKILL は同一文言を
+# 2 サイト (5.3.0.M step 1 / 6.1.a Required JSON fields) に持つため、ファイル全体 grep では
+# 片方があれば緑になる。**両サイトを個別に錨付けする** — 前 cycle は 6.1.a が無保護だった
+assert_grep "TC-1 SKILL 6.1.a が名簿の母集団を実回収集合と規定" "$SKILL" \
+  'Required JSON fields.*ステップ 5\.1 が Task 結果を回収できた reviewer'
 assert_grep "TC-1 SoT が名簿の母集団を実回収集合と規定" "$SCHEMA" 'ステップ 5\.1 が Task 結果を回収できた reviewer'
-assert_grep "TC-1 SKILL が reviewers の値形式を導出式で規定" "$SKILL" '`-reviewer` を付した'
+assert_grep "TC-1 SKILL 5.3.0.M step 1 が reviewers の値形式を導出式で規定" "$SKILL" '`-reviewer` を付した形で書く'
+assert_grep "TC-1 SKILL 6.1.a が reviewers の値形式を導出式で規定" "$SKILL" \
+  'Required JSON fields.*`-reviewer` を付した形'
 assert_grep "TC-1 SoT が reviewers の値形式を導出式で規定" "$SCHEMA" '`-reviewer` を付した'
+# SoT のフィールド表と節見出しも同じ述語であること (前 cycle は本文だけ更新して表を掃き残した)
+assert_grep "TC-1 SoT のフィールド表が実回収述語を使う" "$SCHEMA" '^\| `reviewers` \|.*ステップ 5\.1 が Task 結果を回収できた'
+assert_not_grep "TC-1 SoT に旧語彙 (実走) が残っていない" "$SCHEMA" '実走'
 # reason カタログ (SKILL) と helper の WARNING で必須条件の記述が乖離しないことを pin する。
 # 前 cycle は「目視で検出する」と宣言しながら同じ commit で drift させた
 assert_grep "TC-1 SKILL の reason カタログが reviewers の一意性を含む" "$SKILL" 'reviewers\[\] が重複の無い非空配列'
