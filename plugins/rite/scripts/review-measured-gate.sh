@@ -64,7 +64,14 @@
 #      non_blocking_findings[] へ **append** で移送する (既存要素は保持)。
 #      scope=nit-noted は本ゲートの対象外のため非実測でも findings[] に残る
 #   3. 移送後の findings[] のうち gate 対象 scope の件数 (= blocking 件数) から
-#      overall_assessment を両方向で確定する (0 件 → mergeable / 1 件以上 → fix-needed)
+#      overall_assessment と verdict を両方向で確定する (0 件 → mergeable / 1 件以上 → fix-needed)。
+#      **verdict は本 script が唯一の書き手**で、caller (pr-review.md ステップ 5.3.0.M step 1) は
+#      書かない。merge ゲート (hooks/pre-tool-bash-guard.sh) が読む必須キーであり、両者を同一式から
+#      同時に代入することで「ゲートが判定を反転させた cycle で 2 つの判定が食い違う」経路を消す。
+#      契約の SoT は references/review-result-schema.md §verdict と reviewers
+#
+# トップレベルの他キー (reviewers / schema_version / commit_sha / guardrail_audit_log 等) は
+# 変換 jq が触らずそのまま保持する。`reviewers` (実回収名簿) は caller が step 1 で書く。
 #
 # 2 段判定 (assessment-rules.md §5.3.0.M の verbatim 実装):
 #   stage 1 = アンカー marker の**存在**判定。種別キーワードも colon 直後の空白も条件に含めず、
@@ -345,6 +352,12 @@ def with_verification:
       .findings = $kept
       | .non_blocking_findings = ((.non_blocking_findings // []) + $demoted)
       | .overall_assessment = (if $blocking == 0 then "mergeable" else "fix-needed" end)
+      # verdict は overall_assessment と同じ blocking 件数から同時に代入する。merge ゲートが読む
+      # 必須キーで、caller (5.3.0.M step 1) は書かない — caller が書いても本代入が無条件に上書き
+      # するため、書けば必ず捨てられる推測値になる (step 1 時点では移送後の blocking 件数が未確定)。
+      # verification の preset 尊重 (--reject-preset-verification が存在する理由) とは向きが逆で、
+      # verdict 側に preset を弾くフラグは要らない。
+      | .verdict = (if $blocking == 0 then "mergeable" else "fix-needed" end)
     ),
     stats: {
       blocking: $blocking,

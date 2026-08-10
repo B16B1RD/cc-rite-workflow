@@ -400,13 +400,58 @@ if ! jq empty "$json_tmp" 2>"${jq_val_err_r:-/dev/null}"; then
   exit 0
 fi
 
-if ! jq -e '
-  (.schema_version | type == "string" and length > 0)
-  and (.pr_number | type == "number")
-  and (.findings | type == "array")
-  ' "$json_tmp" >/dev/null 2>&1; then
-  echo "WARNING: JSON が必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型) を欠いています" >&2
+# verdict / reviewers は merge ゲート (pre-tool-bash-guard.sh) が要求する必須キー。ここで
+# fail-loud に拒否しないと、ゲートを通れない JSON が「保存成功」として永続化され、レビューを
+# 正しく経た PR ほど merge 段で初めて止まる。
+# reviewers の下限は **非空** に留める — ゲートの sole-reviewer guard floor (2) をここへ持ち込むと、
+# review.min_reviewers: 1 の下でどの reviewer パターンにもマッチせず code-quality が単独 fallback に
+# なった cycle (pr-review ステップ 2.3 の sole-reviewer guard は code-quality が既に単独のときは
+# 発火しない) の結果が保存すらされなくなる。
+# ただし **一意性は検査する** — ゲートは長さしか見ないため、同一名の重複ロスターが「2 名がレビューした」
+# 証拠として floor 2 を機械的に満たしてしまう。同ファイルの findings[].id 検証が書式 + 一意性の両方を
+# かけているのと同じ水準に揃える。一意性は floor とは独立なので 1 名 cycle の保存性は変わらない。
+# verdict と overall_assessment の同値性は検査しない (契約テストが pin する)。ここで落とすと
+# 手組みの復旧用 JSON が保存不能 = merge も不能になり救済経路を閉じるため。
+# 契約の SoT: references/review-result-schema.md §verdict と reviewers
+# 条件ごとの判定を 1 度だけ行い、**失敗キー名の列挙 `_missing` を唯一の真実の源**として
+# pass/fail と診断の両方を導く。同じ述語を「強制用の合成式」と「診断用の列挙」に複製すると、
+# 片方だけ緩めても他方が残るためファイル全体 grep の契約テストが drift を検出できなくなる。
+# **列挙の前に「評価できる文書があるか」を確かめる**。`jq -r` は文書が 0 件のとき rc=0 と空
+# stdout を返すため、空文字を「欠落なし」と読むと空白のみの body が本検査を素通りする
+# (`jq -e` は同じ入力を rc=4 で落としていた — 判定手段の差し替えで失われた失敗条件)。
+# 本 guard は必須フィールドの述語を複製しないので、上記の単一定義性は保たれる。
+# スカラー・配列はここへ来る前に上流の timestamp 注入が `write_failure` で落とし、`null` は
+# 同注入が object へ変換して本 guard を通過する (列挙が全キー欠落として正しく捕らえる) ため、
+# 実際に本 guard が捕らえるのは「空白のみの body」= 文書 0 件の形だけである。
+# guard を外した実測では保存は成立せず、下流の findings[].id 検査が
+# `finding_id_format_or_uniqueness_violation` として落としていた。つまり本 guard が防ぐのは
+# 保存の誤成立ではなく **理由の誤帰属** — 入力に findings[] 自体が無いのに id 書式の是正を
+# 案内する復旧ヒントが出て、原因 (body が空白のみ) から遠ざかる。
+if ! jq -e 'type == "object"' "$json_tmp" >/dev/null 2>&1; then
+  _missing="判定不能 (JSON body が空白のみで JSON 文書 0 件)"
+elif ! _missing=$(jq -r '
+  [ (if (.schema_version | type == "string" and length > 0) then empty else "schema_version" end),
+    (if (.pr_number | type == "number") then empty else "pr_number" end),
+    (if (.findings | type == "array") then empty else "findings" end),
+    (if (.verdict == "mergeable" or .verdict == "fix-needed") then empty else "verdict" end),
+    (if ((.reviewers | type) == "array")
+          and ((.reviewers | length) > 0)
+          and ((.reviewers | length) == (.reviewers | unique | length))
+     then empty else "reviewers" end) ]
+  | join(" ")' "$json_tmp" 2>/dev/null); then
+  _missing="判定不能"
+fi
+if [ -n "$_missing" ]; then
+  echo "WARNING: JSON が必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型 / verdict は mergeable|fix-needed / reviewers[] は重複の無い非空配列) を欠いています (欠落/不正: $_missing)" >&2
   echo "  対処: review-result-schema.md に従った完全な JSON が生成されているか確認してください" >&2
+  case " $_missing " in
+    *" verdict "*)
+      echo "  verdict: scripts/review-measured-gate.sh (実測必須ゲート) を経ずに保存へ回っていないか確認してください (verdict の書き手は同 helper のみ)" >&2 ;;
+  esac
+  case " $_missing " in
+    *" reviewers "*)
+      echo "  reviewers: pr-review.md ステップ 5.3.0.M step 1 が実回収 reviewer 名簿 (結果を回収できた reviewer のみ) を重複なく書いているか確認してください" >&2 ;;
+  esac
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=schema_required_fields_missing" >&2
   exit 0
 fi

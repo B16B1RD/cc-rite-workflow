@@ -29,6 +29,8 @@
 
 **`pre_existing` も 1.1.0 内で欠落を許容する additive optional field** — canonical write 側は reviewer の revert test 結果を収集しないため、`"1.1.0"` を出力しても `findings[].pre_existing` を書かない。read 側は schema_version に依らず default mapping を適用せず、欠落時は Cross-field invariant #5 を発火させない。`scope` は同じ 1.1.0 の field でも canonical write 側で必須であり、この optional 契約を適用してはならない。
 
+**`verdict` / `reviewers` も 1.1.0 内で additive 追加した** — こちらは write 側必須だが、**version は bump しない**。理由は 2 つある: (a) 唯一の判定 consumer である merge ゲートは `schema_version` の**値**を見ず、`verdict` / `reviewers` の**キー存在**で新旧を判別する。version を上げても判別は 1 mm も変わらない。(b) bump すると読取側 accept list 4 箇所と `hooks/tests/review-schema-write-version-parity.test.sh` の literal を同時更新する義務が発生し、機能上の利得ゼロに対して 5 箇所の同期コストだけが増える。**したがって `schema_version == "1.1.0"` から `verdict` / `reviewers` の存在を推論してはならない** (`verification` と同じ注意。本変更より前に保存された 1.1.0 JSON は両キーを持たない)。存在を要求する側は必ずキーを直接検査すること。
+
 **検証箇所の同期義務** (verified-review cycle 8 L-4 対応で本セクションを SoT 化、cycle 10 I-E 対応で read/write 非対称を明示、1.1.0 を accept list に追加):
 
 **読取側 (3 値受理義務、4 箇所で完全同期)**:
@@ -65,6 +67,8 @@
   "timestamp": "2026-04-11T12:34:56+09:00",
   "commit_sha": "abc1234",
   "overall_assessment": "fix-needed",
+  "verdict": "fix-needed",
+  "reviewers": ["code-quality-reviewer", "security-reviewer"],
   "findings": [
     {
       "id": "F-01",
@@ -170,6 +174,8 @@
 | `timestamp` | string | ✅ | レビュー実行時刻 (ISO 8601 `YYYY-MM-DDTHH:MM:SS+TZ`) |
 | `commit_sha` | string | ✅ | レビュー対象の commit SHA。用途: (a) verification mode 用の diff 起点、(b) Priority 0/2/3 の stale file detection 用の HEAD 比較キー (後述の「読取優先順位 (fix)」表 failure mode 列 `*_commit_sha_mismatch` を参照)、(c) `pr-review.md` ステップ 8.0.4 positive 検査の**判定軸** — 「本 cycle の JSON か」を prefix 一致で判定する (両オペランドとも 16 進 7 桁以上が下限。7 桁未満の帰結はオペランドで異なる: JSON 側は一致候補から外れ `save_result_json_absent` で fail (exit 1)、`--commit-sha` 側は入力検査で `save_result_json_undecidable` = degraded (exit 0) へ降りる)。write 側の値源は ステップ 1.2.5 で記録した commit SHA で、書き手 `hooks/review-result-save.sh` は本フィールドを検査しないため形状の担保は write 側の規約のみ。read 側 (`fix.md` ステップ 1.2.0) は各 Priority success 経路で `json_commit_sha` vs 現 HEAD を比較し、mismatch 時は WARNING + `[CONTEXT] REVIEW_SOURCE_STALE=1; reason=*_commit_sha_mismatch` emit + 次 Priority への routing を実行する (stale file protection) |
 | `overall_assessment` | **enum** (string) | ✅ | 総合評価。**受理値**: `"mergeable"` / `"fix-needed"` の 2 値のみ。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value` を stderr に出力し、Priority に応じた fallback/routing を実行する (P0: fallback、P2: Priority 3 routing、P3: legacy parser fallthrough。詳細は fix.md failure reasons table `overall_assessment_unknown_value` 参照) |
+| `verdict` | **enum** (string) | ✅ | 本 cycle の最終判定。**受理値**: `"mergeable"` / `"fix-needed"` の 2 値のみ (`overall_assessment` と同一語彙で、`pr-review.md` ステップ 8.1 の terminal sentinel `[review:mergeable]` / `[review:fix-needed:{n}]` と対応する)。**merge ゲート (`hooks/pre-tool-bash-guard.sh`) が読む必須キー**。`overall_assessment` と**同値であることが不変条件**で、両者は `scripts/review-measured-gate.sh` の単一の blocking 件数式から同時に代入される。下記 [verdict と reviewers](#verdict-と-reviewers) 参照 |
+| `reviewers` | array (string) | ✅ (非空) | 本 cycle で **ステップ 5.1 が Task 結果を回収できた** reviewer agent の名簿。`findings` とは独立で、findings 0 件の mergeable cycle でも非空になる。値は `plugins/rite/agents/*-reviewer.md` の basename (拡張子を除く、接尾辞 `-reviewer` を含む) と一致する — `findings[].reviewer` と同じ参照整合性規則。下記 [verdict と reviewers](#verdict-と-reviewers) 参照 |
 | `findings` | array | ✅ | `/rite:pr-review` ステップ 5.3.0.M 通過後の `全指摘事項` (0 件でも空配列として存在)。**blocking 指摘 + `scope == "nit-noted"` 指摘**を含む — nit-noted は本ゲートの対象外 (`assessment-rules.md` §5.3.0.M) のため非実測でも本配列に残る。ゲートで降格した非実測指摘 (scope ∈ {current-pr, follow-up}) のみが下記 `non_blocking_findings` に分離される |
 | `non_blocking_findings` | array | **write 側 ✅ (0 件でも `[]`)** / read 側は欠落許容 | 実測必須ゲート ([severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)) で non-blocking に降格した非実測指摘の配列 (要素の形は `findings[]` と同一)。下記 [non_blocking_findings 配列](#non_blocking_findings-配列) 参照 |
 | `guardrail_audit_log` | array | **write 側 ✅ (0 件でも `[]`)** / read 側は欠落許容 | Finding Quality Guardrail Category #2 で `指摘事項` から除外した候補の監査記録。audit-only で判定 consumer は無視する。各要素は `reviewer`, `filter_category` (`Category #2`), `original_severity`, `file_line`, `description`, `filter_reason`, `verification` を持つ |
@@ -192,6 +198,36 @@
 | `description` | string | ✅ | 指摘内容 |
 | `suggestion` | string | ✅ | 推奨対応 |
 | `status` | **enum** (string) | ✅ | 対応状態。**受理値**: `"open"` / `"fixed"` / `"replied"` / `"deferred"` / `"acknowledged"` の **5 値**。現行実装では `/rite:pr-review` ステップ 6.1.a は常に `"open"` を出力する (将来の state machine 拡張で `/rite:fix` 完了時に `"fixed"` / `"acknowledged"` 等を書き戻す slot を予約)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=status_unknown_value; value=<val>` を stderr 出力する |
+
+### `verdict` と `reviewers`
+
+<a id="verdict-と-reviewers"></a>
+
+merge ゲート (`hooks/pre-tool-bash-guard.sh` の `merge-review-*` 検査) が結果 JSON に要求する 2 つのトップレベル必須キー。**要求側 (ゲート) と生成側 (writer) が同一契約を持つことが本節の目的**であり、要求キー集合の一致は `hooks/tests/review-verdict-reviewers-contract.test.sh` が機械的に pin する。
+
+#### `verdict` — 書き手は実測必須ゲート helper のみ
+
+`scripts/review-measured-gate.sh` の変換 jq が、`overall_assessment` を確定するのと**同一の blocking 件数式**から `verdict` を代入する。したがって両者は構造上つねに同値であり、乖離しうる経路を持たない。
+
+- **`pr-review.md` ステップ 5.3.0.M step 1 の Claude は `verdict` を書かない**。helper は既存値ガードを持たず**無条件に代入する**ため、step 1 で書いた値は必ず捨てられる。しかも step 1 時点では移送後の blocking 件数が未確定なので、書けば必ず推測値になる（`overall_assessment` を暫定値でよいとしているのと同じ理由）。`findings[].verification` とは強制の向きが逆で、あちらは preset を尊重する（だから `--reject-preset-verification` がある）のに対し `verdict` は上書きされる。ゲート helper を経ずに保存へ回った JSON は `verdict` を欠き `hooks/review-result-save.sh` が fail-loud で拒否する — ただしこの遮断が成立するのは、上記「step 1 は書かない」という散文規約が守られている限りにおいてであり、save helper 側に helper 由来と caller 由来を区別する手段は無い
+- **なぜ `overall_assessment` と別キーなのか**: merge ゲートの必須キー契約が `verdict` を名指ししており、ゲート側の要求緩和は本スキーマの守備範囲外だから。値としては同一判定の別名であり、consumer が違う (`verdict` → merge ゲート / `overall_assessment` → `/rite:fix` の読取経路)。**同値性は save helper では検査しない** — 検査すると、手で組み立てた復旧用 JSON が「保存されない」ことで merge も不能になり、救済経路を閉じる。同値性の担保は上記の単一代入式と契約テストが持つ
+- **検査水準も両側で非対称**: save helper は `verdict` を 2 値 enum として検査するが、merge ゲートは**キーの存在しか見ない**（値は読まない）。したがって `verdict: "fix-needed"` の結果 JSON が存在する状態でもゲート自体は allow する — merge を止めるのは `/rite:iterate` の収束判定であってゲートではない
+
+#### `reviewers` — 実回収名簿、findings とは独立
+
+**本 cycle で `pr-review.md` ステップ 5.1 が Task 結果を回収できた reviewer** を、ステップ 5.3.0.M step 1 の Claude が書く。値は各 `reviewer_type` に `-reviewer` を付した形（`security` → `security-reviewer`。`rite:` prefix は付けない）で、`plugins/rite/agents/*-reviewer.md` の basename と一致する。ゲート helper は本キーに触れない (変換 jq は `.findings` / `.non_blocking_findings` / `.overall_assessment` / `.verdict` 以外のトップレベルキーをそのまま保持する)。
+
+**「実回収」を唯一の基準にする理由**: 選定時点のスナップショットを基準にすると、その後に集合が変わる経路（ステップ 3.3 standalone 確認での追加・削除、ステップ 4.4 の `incomplete` マーク）ごとに除外規則を書き足すことになり、書き漏らした経路が名簿の過大・過少計上として残る。回収できたかどうかは全経路の帰結を 1 つの述語で表すため、規則が 1 本で済む。
+
+- **`findings[].reviewer` から導出してはならない**: マージ直前の最終 cycle は findings 0 件が正常形であり、そこから名簿を導出すると「誰もレビューしていない」形になって sole-reviewer guard が成立しなくなる
+- **名簿を水増ししてはならない**: 回収できなかった reviewer を載せると、実際には走っていないレビューで sole-reviewer guard の floor 2 を満たせてしまう。回収の結果 1 名になった cycle は保存は通りマージは deny される — それが正しい挙動である
+- **下限がゲートと save helper で非対称**: save helper は**非空**のみを要求し、merge ゲートは**長さ 2 以上** (sole-reviewer guard floor) を要求する。`review.min_reviewers: 1` の下で、どの reviewer パターンにもマッチせず code-quality が単独 fallback になった cycle は 1 名になりうる（`skills/pr-review/SKILL.md` ステップ 2.3 の sole-reviewer guard は「code-quality が既に単独のときは追加しない」という明示的例外を持つ）。その結果は**保存はできるがマージはできない**。save helper 側を 2 に揃えると、その 1 名レビューの結果が永続チャネルから丸ごと消える。**なお XS/S 軽量レーンはこの経路ではない** — 軽量レーンが渡すのは上限 (`complexity_max = 3`) だけで、`skills/reviewers/SKILL.md` Phase 5 の effective floor `max(min_reviewers, sole_reviewer_guard_floor)` が最終 clamp で常に勝つ
+- **1 名 cycle の解消手段は 2 種で、原因によって効くものが違う**: (a) パターン無マッチで code-quality が単独 fallback になった cycle は、同じ diff で再レビューしても選定が同一なので **`review.security_reviewer.mandatory: true` を設定する**（ゲートの deny メッセージが案内する「再レビュー」だけでは floor 2 に到達しない）。**`review.min_reviewers` を上げても効かない** — `skills/reviewers/SKILL.md` Phase 4 は本キーを「どの reviewer にもマッチしなかったときに code-quality を選ぶ」fallback のラベルとしてのみ使い（`- min_reviewers: Minimum reviewers to select` の宣言行と見出し `Apply Minimum Limit` は下限の表明に留まり、選定数をその値まで**増やす手続き規則を持たない**）、Phase 5 は `effective_max`（上限）の floor と narrowing 時の保持フロアとして使う。どちらも「選定数が足りないから reviewer を足す」向きには働かず、ステップ 2.3 の sole-reviewer guard は code-quality が既に単独のとき明示的に追加しない。(b) 2 名選定のうち片方が spawn に失敗して回収できなかった cycle は、失敗が一過性なら**再レビューで解消する**。**どちらの場合も名簿の水増しで通してはならない**（`reviewers` の一意性は save helper が検査するが、実在名での水増しは機械的に塞げない — 散文規約が唯一の担保である）
+- **一意性は save helper が検査する**: ゲートは長さしか見ないため、`["security-reviewer", "security-reviewer"]` のような重複ロスターは floor 2 を機械的に満たしてしまう。これを塞ぐのは writer 側の責務で、`hooks/review-result-save.sh` が重複を fail-loud で拒否する（floor 2 自体は save 側へ持ち込まない — 一意性と下限は独立した検査であり、1 名 cycle の保存性は変わらない）
+
+#### 旧形式 JSON の非救済
+
+両キーを欠く既存の結果 JSON (本変更より前に保存されたもの) は merge ゲートに deny され続ける。ゲートは version 値ではなく**キー存在**で新旧を判別するため、遡及補正や version による例外は入れない。復旧経路は `/rite:pr-review` の再実行 (= 正典 writer による書き直し) のみ。
 
 ### `non_blocking_findings` 配列
 
@@ -387,6 +423,8 @@ emit の目的は observability — 「どの review-result file が 1.0 schema 
   "timestamp": "2026-04-11T12:34:56+09:00",
   "commit_sha": "abc1234",
   "overall_assessment": "fix-needed",
+  "verdict": "fix-needed",
+  "reviewers": ["code-quality-reviewer", "security-reviewer"],
   "findings": [
     {
       "id": "F-01",
