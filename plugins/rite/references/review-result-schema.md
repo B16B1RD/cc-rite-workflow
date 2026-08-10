@@ -215,11 +215,14 @@ merge ゲート (`hooks/pre-tool-bash-guard.sh` の `merge-review-*` 検査) が
 
 #### `reviewers` — 実走名簿、findings とは独立
 
-`pr-review.md` ステップ 3.3 で確定した「起動 reviewer」の一覧を、ステップ 5.3.0.M step 1 の Claude が書く。ゲート helper は本キーに触れない (変換 jq は `.findings` / `.non_blocking_findings` / `.overall_assessment` / `.verdict` 以外のトップレベルキーをそのまま保持する)。
+**本 cycle で `pr-review.md` ステップ 5.1 が Task 結果を回収できた reviewer** を、ステップ 5.3.0.M step 1 の Claude が書く。値は各 `reviewer_type` に `-reviewer` を付した形（`security` → `security-reviewer`。`rite:` prefix は付けない）で、`plugins/rite/agents/*-reviewer.md` の basename と一致する。ゲート helper は本キーに触れない (変換 jq は `.findings` / `.non_blocking_findings` / `.overall_assessment` / `.verdict` 以外のトップレベルキーをそのまま保持する)。
+
+**「実回収」を唯一の基準にする理由**: 選定時点のスナップショットを基準にすると、その後に集合が変わる経路（ステップ 3.3 standalone 確認での追加・削除、ステップ 4.4 の `incomplete` マーク）ごとに除外規則を書き足すことになり、書き漏らした経路が名簿の過大・過少計上として残る。回収できたかどうかは全経路の帰結を 1 つの述語で表すため、規則が 1 本で済む。
 
 - **`findings[].reviewer` から導出してはならない**: マージ直前の最終 cycle は findings 0 件が正常形であり、そこから名簿を導出すると「誰もレビューしていない」形になって sole-reviewer guard が成立しなくなる
+- **名簿を水増ししてはならない**: 回収できなかった reviewer を載せると、実際には走っていないレビューで sole-reviewer guard の floor 2 を満たせてしまう。回収の結果 1 名になった cycle は保存は通りマージは deny される — それが正しい挙動である
 - **下限がゲートと save helper で非対称**: save helper は**非空**のみを要求し、merge ゲートは**長さ 2 以上** (sole-reviewer guard floor) を要求する。`review.min_reviewers: 1` の下で、どの reviewer パターンにもマッチせず code-quality が単独 fallback になった cycle は 1 名になりうる（`skills/pr-review/SKILL.md` ステップ 2.3 の sole-reviewer guard は「code-quality が既に単独のときは追加しない」という明示的例外を持つ）。その結果は**保存はできるがマージはできない**。save helper 側を 2 に揃えると、その 1 名レビューの結果が永続チャネルから丸ごと消える。**なお XS/S 軽量レーンはこの経路ではない** — 軽量レーンが渡すのは上限 (`complexity_max = 3`) だけで、`skills/reviewers/SKILL.md` Phase 5 の effective floor `max(min_reviewers, sole_reviewer_guard_floor)` が最終 clamp で常に勝つ
-- **1 名 cycle は再レビューでは解消しない**: 同じ diff で `/rite:pr-review` を再実行しても選定は同一になるため、ゲートの deny メッセージが案内する「再レビュー」だけでは floor 2 に到達しない。解消するには `review.min_reviewers` を 2 に上げるか、当該 PR に該当する reviewer を明示指定して再レビューする。**名簿の水増しで通してはならない**（`reviewers` の一意性は save helper が検査する）
+- **1 名 cycle の解消手段は 2 種で、原因によって効くものが違う**: (a) パターン無マッチで code-quality が単独 fallback になった cycle は、同じ diff で再レビューしても選定が同一なので **`review.min_reviewers` を 2 に上げるか `review.security_reviewer.mandatory: true` を設定する**（ゲートの deny メッセージが案内する「再レビュー」だけでは floor 2 に到達しない）。(b) 2 名選定のうち片方が spawn に失敗して回収できなかった cycle は、失敗が一過性なら**再レビューで解消する**。**どちらの場合も名簿の水増しで通してはならない**（`reviewers` の一意性は save helper が検査するが、実在名での水増しは機械的に塞げない — 散文規約が唯一の担保である）
 - **一意性は save helper が検査する**: ゲートは長さしか見ないため、`["security-reviewer", "security-reviewer"]` のような重複ロスターは floor 2 を機械的に満たしてしまう。これを塞ぐのは writer 側の責務で、`hooks/review-result-save.sh` が重複を fail-loud で拒否する（floor 2 自体は save 側へ持ち込まない — 一意性と下限は独立した検査であり、1 名 cycle の保存性は変わらない）
 
 #### 旧形式 JSON の非救済

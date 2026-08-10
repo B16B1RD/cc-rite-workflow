@@ -64,18 +64,33 @@ assert_grep "TC-1 スキーマが version からのキー存在推論を禁止" 
 assert_grep "TC-1 SKILL が 6.1.a Required JSON fields に verdict を含む" "$SKILL" 'Required JSON fields.*\*\*`verdict`\*\*'
 assert_grep "TC-1 SKILL が 6.1.a Required JSON fields に reviewers を含む" "$SKILL" 'Required JSON fields.*\*\*`reviewers\[\]`\*\*'
 assert_grep "TC-1 SKILL 5.3.0.M step 1 が verdict を書かない規約を持つ" "$SKILL" '\*\*`verdict` は書かない\*\*'
-assert_grep "TC-1 SKILL 5.3.0.M step 1 が reviewers を実走名簿と規定" "$SKILL" '`reviewers\[\]` = 本 cycle で実走した reviewer の名簿'
+assert_grep "TC-1 SKILL 5.3.0.M step 1 が reviewers を実走名簿と規定" "$SKILL" '`reviewers\[\]` = 本 cycle で ステップ 5\.1 が Task 結果を回収できた reviewer の名簿'
 assert_grep "TC-1 SKILL が findings からの名簿導出を禁止" "$SKILL" '\*\*`findings\[\]` から導出して(は|も)ならない\*\*'
-assert_grep "TC-1 SKILL が incomplete reviewer の除外を規定 (名簿の過大計上防止)" "$SKILL" '`incomplete` とマークされた reviewer は除外する'
+# 名簿の母集団は「ステップ 5.1 が結果を回収できた reviewer」の単一定義。SKILL / SoT の両側に
+# 置き、片側だけ更新された drift を検出する (前 cycle は SKILL 側だけ更新して SoT を掃き残した)
+assert_grep "TC-1 SKILL が名簿の母集団を実回収集合と規定" "$SKILL" 'ステップ 5\.1 が Task 結果を回収できた reviewer'
+assert_grep "TC-1 SoT が名簿の母集団を実回収集合と規定" "$SCHEMA" 'ステップ 5\.1 が Task 結果を回収できた reviewer'
 assert_grep "TC-1 SKILL が reviewers の値形式を導出式で規定" "$SKILL" '`-reviewer` を付した'
+assert_grep "TC-1 SoT が reviewers の値形式を導出式で規定" "$SCHEMA" '`-reviewer` を付した'
+# reason カタログ (SKILL) と helper の WARNING で必須条件の記述が乖離しないことを pin する。
+# 前 cycle は「目視で検出する」と宣言しながら同じ commit で drift させた
+assert_grep "TC-1 SKILL の reason カタログが reviewers の一意性を含む" "$SKILL" 'reviewers\[\] が重複の無い非空配列'
+assert_grep "TC-1 save helper の WARNING が reviewers の一意性を含む" "$SAVE" 'reviewers\[\] は重複の無い非空配列'
 
 # --- 要求側 3/4: save helper (fail-loud 検証) ---
+# save helper は必須条件を **1 箇所** (_missing 算出 jq) だけで判定する。強制用と診断用に
+# 複製を持たないため、ファイル全体 grep でも「条件を緩めたら落ちる」検出力が成立する
+# (複製があると片方を消しても他方が pin を満たしてしまう)。
 assert_grep "TC-1 save helper が verdict enum を必須検証" "$SAVE" '\.verdict == "mergeable" or \.verdict == "fix-needed"'
-assert_grep "TC-1 save helper が reviewers の配列型を必須検証" "$SAVE" '\.reviewers \| type == "array"'
+assert_grep "TC-1 save helper が reviewers の配列型を必須検証" "$SAVE" '\(\.reviewers \| type\) == "array"'
 assert_grep "TC-1 save helper が reviewers の非空を必須検証" "$SAVE" '\(\.reviewers \| length\) > 0'
 assert_grep "TC-1 save helper が reviewers の一意性を必須検証" "$SAVE" '\(\.reviewers \| length\) == \(\.reviewers \| unique \| length\)'
-# floor 2 を save 側へ持ち込むと 1 名 cycle の結果が保存すらされなくなる (TC-2 の sole ケース参照)
-assert_not_grep "TC-1 save helper に sole-reviewer floor (2) を持ち込まない" "$SAVE" '\(\.reviewers \| length\) >= 2'
+# 判定を 1 箇所に保つ (複製が再導入されると検出力が失われる)
+save_uniq_sites=$(grep -c '\.reviewers | unique | length' "$SAVE" || true)
+assert "TC-1 save helper の必須条件判定は 1 箇所のみ" "1" "$save_uniq_sites"
+# floor 2 を save 側へ持ち込むと 1 名 cycle の結果が保存すらされなくなる (TC-2 の sole ケース参照)。
+# `>= 2` と `> 1` の両表記を塞ぐ
+assert_not_grep "TC-1 save helper に sole-reviewer floor (2) を持ち込まない" "$SAVE" '\(\.reviewers \| length\) (>= 2|> 1)'
 # 同値検査を入れると手組みの復旧用 JSON が保存不能 = merge 不能になり救済経路が閉じる
 assert_not_grep "TC-1 save helper が verdict == overall_assessment を検査しない" "$SAVE" '\.verdict == \.overall_assessment'
 

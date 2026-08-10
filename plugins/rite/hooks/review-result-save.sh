@@ -413,29 +413,24 @@ fi
 # verdict と overall_assessment の同値性は検査しない (契約テストが pin する)。ここで落とすと
 # 手組みの復旧用 JSON が保存不能 = merge も不能になり救済経路を閉じるため。
 # 契約の SoT: references/review-result-schema.md §verdict と reviewers
-if ! jq -e '
-  (.schema_version | type == "string" and length > 0)
-  and (.pr_number | type == "number")
-  and (.findings | type == "array")
-  and (.verdict == "mergeable" or .verdict == "fix-needed")
-  and (.reviewers | type == "array")
-  and ((.reviewers | length) > 0)
-  and ((.reviewers | length) == (.reviewers | unique | length))
-  ' "$json_tmp" >/dev/null 2>&1; then
-  # どの条件で落ちたかを算出してから報告する (同ファイルの cross-field invariant #4 が
-  # violation_count を先に数えてから報告するのと同じ方針。無条件のヒント併記は、実際の欠陥が
-  # schema_version / pr_number / findings のときに無関係な原因を名指しして誤誘導する)
-  _missing=$(jq -r '
-    [ (if (.schema_version | type == "string" and length > 0) then empty else "schema_version" end),
-      (if (.pr_number | type == "number") then empty else "pr_number" end),
-      (if (.findings | type == "array") then empty else "findings" end),
-      (if (.verdict == "mergeable" or .verdict == "fix-needed") then empty else "verdict" end),
-      (if ((.reviewers | type) == "array")
-            and ((.reviewers | length) > 0)
-            and ((.reviewers | length) == (.reviewers | unique | length))
-       then empty else "reviewers" end) ]
-    | join(" ")' "$json_tmp" 2>/dev/null)
-  echo "WARNING: JSON が必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型 / verdict は mergeable|fix-needed / reviewers[] は重複の無い非空配列) を欠いています (欠落/不正: ${_missing:-判定不能})" >&2
+# 条件ごとの判定を 1 度だけ行い、**失敗キー名の列挙 `_missing` を唯一の真実の源**として
+# pass/fail と診断の両方を導く。同じ述語を「強制用の合成式」と「診断用の列挙」に複製すると、
+# 片方だけ緩めても他方が残るためファイル全体 grep の契約テストが drift を検出できなくなる。
+# jq 自体が失敗する形 (トップレベルが非オブジェクト等) は sentinel で失敗側へ倒す。
+if ! _missing=$(jq -r '
+  [ (if (.schema_version | type == "string" and length > 0) then empty else "schema_version" end),
+    (if (.pr_number | type == "number") then empty else "pr_number" end),
+    (if (.findings | type == "array") then empty else "findings" end),
+    (if (.verdict == "mergeable" or .verdict == "fix-needed") then empty else "verdict" end),
+    (if ((.reviewers | type) == "array")
+          and ((.reviewers | length) > 0)
+          and ((.reviewers | length) == (.reviewers | unique | length))
+     then empty else "reviewers" end) ]
+  | join(" ")' "$json_tmp" 2>/dev/null); then
+  _missing="判定不能"
+fi
+if [ -n "$_missing" ]; then
+  echo "WARNING: JSON が必須フィールド (schema_version 非空文字列 / pr_number 数値型 / findings[] 配列型 / verdict は mergeable|fix-needed / reviewers[] は重複の無い非空配列) を欠いています (欠落/不正: $_missing)" >&2
   echo "  対処: review-result-schema.md に従った完全な JSON が生成されているか確認してください" >&2
   case " $_missing " in
     *" verdict "*)

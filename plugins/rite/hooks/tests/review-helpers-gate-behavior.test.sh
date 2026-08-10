@@ -631,8 +631,10 @@ JSON_BAD_PRNUM="$TMP_ROOT/json-bad-prnum.json"
 run_save --pr 123 --content-file "$JSON_BAD_PRNUM" --results-dir "$TMP_ROOT/results-tc35hint"
 assert "TC-3.5hint pr_number 型違反: exit 0 (非ブロッキング)" "0" "$RC"
 assert_grep "TC-3.5hint 欠落/不正キー名に pr_number を名指しする" "$ERR" '欠落/不正: .*pr_number'
-assert_not_grep "TC-3.5hint 無関係な verdict 復旧案内を出さない" "$ERR" 'verdict: scripts/review-measured-gate\.sh'
-assert_not_grep "TC-3.5hint 無関係な reviewers 復旧案内を出さない" "$ERR" 'reviewers: pr-review\.md'
+# 否定 assert は肯定側の双子 (TC-3.5v / TC-3.5r) と **同一リテラル** にする。ラベル語だけに
+# 依存させると、実装のラベルを書き換えたときに肯定 assert は落ちず否定側だけが黙って空振りする
+assert_not_grep "TC-3.5hint 無関係な verdict 復旧案内を出さない" "$ERR" 'review-measured-gate\.sh'
+assert_not_grep "TC-3.5hint 無関係な reviewers 復旧案内を出さない" "$ERR" '5\.3\.0\.M step 1'
 
 # TC-3.6 invalid JSON (jq timestamp 注入が parse 段階で fail → write_failure)
 JSON_BROKEN="$TMP_ROOT/json-broken.json"
