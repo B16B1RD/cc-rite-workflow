@@ -73,10 +73,14 @@ git branch --show-current
 > 以降の実行スニペットの `-R {owner_repo}` は、[Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)（ステップ 1.4 と同一の canonical 手順）で解決した owner/repo（slash 形式）をリテラル置換する（SSH host alias 環境対応。値が未解決ならステップ 1.4 の解決スニペットを先に実行して確定する）。
 
 ```bash
-gh pr list -R {owner_repo} --head {branch_name} --state all --json number,title,state,mergedAt,url
+gh pr list -R {owner_repo} --head {branch_name} --state all --json number,title,state,mergedAt,url,headRefName
 ```
 
 PR 未検出: `AskUserQuestion` で「ブランチを削除して続行 / キャンセル」を確認。未マージ PR: 「キャンセル (推奨) / 強制クリーンアップ」を確認。
+
+PR 検出時は返却された `headRefName` と `{branch_name}` の完全一致時だけ `{branch_identity_verified}=true`
+とする。不一致は削除対象 identity が確定しないため中断する。PR 未検出でユーザーが「ブランチを削除して続行」
+を明示選択した場合だけ承認済み入力として `true`、それ以外は `false`。prefix denylist で identity を推測しない。
 
 `mergedAt` が非 null（= PR が merge 済み）なら `{pr_merged}=true` として保持する。**それ以外のすべての経路**（未マージ PR の強制クリーンアップ、PR 未検出でブランチ削除を選んで続行した経路など）は `{pr_merged}=false` を既定とする。これによりステップ 4-W / ステップ 5 のすべての分岐で `{pr_merged}` が必ず literal substitute 可能になる（未定義値参照を防ぐ）。ステップ 4-W の worktree パス manifest 記録（Issue #1945）、およびステップ 5 のブランチ削除（squash 残渣の強制削除 / 遅延ブランチの manifest 記録）で参照する。
 
@@ -613,6 +617,10 @@ fi
 # （Fail-Fast First）。sentinel は空白を含めて refname として非合法にし、実在ブランチとの衝突を
 # 構造的に排除する。リモート削除ブロックも同じ検査を独立に持つ（各ブロックが単体で抽出・実行
 # されうるため、ガードもブロック単位で自己完結させる）。
+if [ "{branch_identity_verified}" != "true" ]; then
+  echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=branch-identity-unverified" >&2
+  echo "WARNING: 削除対象が PR head と一致すると確認できないためローカル削除を試行していません。" >&2
+else
 case "{branch_name}" in
   '')
     # 空値は処方を出さない。存在しないブランチに対する `git branch -D ""` は必ず失敗するため、
@@ -629,9 +637,9 @@ case "{branch_name}" in
 # ただし rc=1 は「本当に不在」だけを意味しない — refname として非合法な値（末尾空白 / `:` 混入 /
 # `..` や制御文字の混入等）でも rc=1 になり、同じく「既削除 = 正常系」へ倒れて削除していないのに
 # 完了と報告する。そこで **refname 構文に起因する rc=1 を分離する**ために先に合法性を検査する。
-# **これは rc=1 の多義性を解消しない** — `origin/foo` のように構文的には合法だが対象と別物の値、
-# および ref store 側の障害（ref ファイル不可読 / 破損）はこの検査を素通りし、依然として
-# 「不在」として扱われる。塞げていない範囲を「塞いだ」と書かないための注記。
+# 構文的に合法だが対象と別物の値は、ステップ 1.3 の `headRefName` 完全一致で排除する。
+# ref store 側の障害は show-ref rc=1 後の for-each-ref positive control で、非 0 rc または stderr warning
+# のどちらも `ref-store-*` として判定不能へ倒す。
 # stderr は退避して WARNING に載せる（rc=128 の原因が消えると認証失敗・リポジトリ外・破損が
 # 区別できない。リモート側が $_ls_err で原因を surface するのと対称）。
 LC_ALL=C git check-ref-format "refs/heads/{branch_name}" >/dev/null 2>&1; _cf_rc=$?
@@ -640,12 +648,21 @@ if [ "$_cf_rc" -ne 0 ]; then
   echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=invalid-refname" >&2
   echo "WARNING: ブランチ名が refname として非合法なため、ローカルブランチの存在を判定できず削除を試行していません (git check-ref-format rc=${_cf_rc})。" >&2
 elif [ "$_sr_rc" -eq 1 ]; then
+  # show-ref の rc=1 は不在だけでなく ref store 障害でも返りうる。全 local heads の走査が正常完了
+  # した場合だけ不在と確定し、走査不能は CHECK_FAILED へ倒す。
+  _fr_err=$(LC_ALL=C git for-each-ref --format='%(refname)' refs/heads 2>&1 >/dev/null); _fr_rc=$?
+  if [ "$_fr_rc" -ne 0 ] || [ -n "$_fr_err" ]; then
+    echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=ref-store-${_fr_rc}" >&2
+    echo "WARNING: ローカル ref store を走査できないため削除を試行していません:" >&2
+    printf '%s\n' "$_fr_err" | tr -d '\r' | sed 's/^/  /' >&2
+  else
   # 既に不在（cleanup の再実行 / 別セッションで削除済み）は正常系。存在確認せず `git branch -d` に
   # 渡すと "branch not found" で失敗して下の `*)` に落ち、BRANCH_DELETE_FAILED として
   # 「削除に失敗。`git branch -D` で手動削除」という**必ず失敗する処方**を出す。これはリモート側で
   # REMOTE_BRANCH_ALREADY_ABSENT として正常系に倒した症状と同型で、ローカル側だけ残っていた
   # （#2016）。git の診断メッセージ文字列に依存しないよう show-ref で判定する。
   echo "[CONTEXT] BRANCH_ALREADY_ABSENT=1; branch={branch_name}"
+  fi
 elif [ "$_sr_rc" -ne 0 ]; then
   # 存在有無が不明。削除を試行せず未完了として surface する（安全側）。
   echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=${_sr_rc}" >&2
@@ -653,7 +670,7 @@ elif [ "$_sr_rc" -ne 0 ]; then
   echo "--- show-ref stderr begin ---" >&2
   printf '%s\n' "${_sr_err}" | tr -d '\r' | sed 's/^/  /' >&2
   echo "--- show-ref stderr end ---" >&2
-elif del_err=$(LC_ALL=C git branch -d {branch_name} 2>&1); then
+elif del_err=$(LC_ALL=C git branch -d -- "{branch_name}" 2>&1); then
   echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}"
 else
   case "$del_err" in
@@ -674,7 +691,7 @@ else
     *"not fully merged"*)
       if [ "{pr_merged}" = "true" ]; then
         # squash merge の残渣 — PR は merged 済みなので強制削除して安全。
-        LC_ALL=C git branch -D {branch_name} >/dev/null 2>&1 \
+        LC_ALL=C git branch -D -- "{branch_name}" >/dev/null 2>&1 \
           && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=squash-merged" \
           || echo "[CONTEXT] BRANCH_DELETE_FAILED=1; branch={branch_name}" >&2
       else
@@ -693,6 +710,7 @@ else
 fi
     ;;
 esac
+fi
 # リモートブランチ削除（#2016）。`git ls-remote --heads` は ref 不在でも rc=0（空 stdout）を返すため、
 # `&&` では「存在するときだけ削除する」ガードにならない。--exit-code で ref 不在を rc=2 として
 # 判別する。リポジトリ設定 delete_branch_on_merge: true では merge 時にサーバサイドで head が
@@ -717,6 +735,10 @@ esac
 # ブランチ名が marker のデリミタ文字（`;` `=`）を含む場合は、`branch=` フィールドの右端境界を騙って
 # 別ブランチの判定ルールに一致しうる（`;` `=` はいずれも合法な refname 文字）。エンコード規約を
 # emitter/consumer の両側に増やすより、契約を満たせない入力を fail-fast で弾く（Fail-Fast First）。
+if [ "{branch_identity_verified}" != "true" ]; then
+  echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=branch-identity-unverified" >&2
+  echo "WARNING: 削除対象が PR head と一致すると確認できないためリモート削除を試行していません。" >&2
+else
 case "{branch_name}" in
   '')
     echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=empty-branch-name" >&2
@@ -823,8 +845,10 @@ case "$_ls_rc" in
 esac
 trap - EXIT INT TERM HUP
 fi
-fi ;;
+fi
+  ;;
 esac
+fi
 ```
 
 `BRANCH_DELETED=1; via=squash-merged`（PR が merged 済みで `git branch -d` が squash 残渣により拒否したケース）は通常削除と同様にステップ 12 で `x` に分岐する。`BRANCH_DELETE_UNMERGED=1`（未マージ PR の強制 cleanup で `{pr_merged}=false` のとき）は「強制削除 (`-D`) / スキップ」を確認する。**強制削除を選んだ場合**は `LC_ALL=C git branch -D {branch_name} && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=force"` を実行し、削除完了を marker で示す（ステップ 12 が `x` に分岐する）。スキップ時は marker を追加しない（残置のまま）。`BRANCH_DELETE_DEFERRED=1`（作業ツリーが未削除のまま残り削除を遅延したケース — 別セッション使用中(#1670) または sandbox マスク skip(#1957)。原因は断定しない）のときは**強制削除しない**。marker の `recovery=` で次セッション回収の可否が決まる: `recovery=auto`（{pr_merged}=true、reap manifest の記録を verify 済み、かつ対象 worktree が reaper と同じ filtered dirty gate を通過）は worktree 解放後に `pr-cycle-cleanup.sh` Step 5 が自動回収する。`recovery=manual`（未マージ PR の強制 cleanup、記録漏れ、dirty または判定不能な worktree）は自動回収されない。実パスを解決できた場合は `BRANCH_DELETE_DEFERRED_WORKTREE` marker の shell-escaped `path_q=` を用いて status を確認し、変更を commit / stash / copy して clean にした後だけ、非 force の `git worktree remove` → prune → branch delete を実行する。解決不能時は `git worktree list --porcelain` で先に実パスを特定する。ステップ 12 はこの `recovery=` 値で残置メッセージを出し分ける。
