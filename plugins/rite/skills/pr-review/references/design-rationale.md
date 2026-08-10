@@ -122,3 +122,12 @@ marker のパスは予測可能で、**ファイルの存在/不在そのもの�
 
 - `REVIEW_CYCLE_ID` は 6.1.d の記録経路と、その実行を保証する gate（6.1.d step 3 / 8.0.3）が「本 cycle で記録経路が走ったか」を stale marker と区別して判定するために使う。**値の生成と記録動作を別ブロックに分ける**ことで、gate 側に本 cycle の比較対象が独立に残る。詳細: [measured-gate-record.md#iteration-id](measured-gate-record.md#iteration-id)。
 - `NONBLOCKING_PENDING_MARKER` は 8.0.3 が prose 判定に加えて持つ**機械強制**の入力。sentinel の grep は LLM が会話を読む前提であり、読まずに result pattern へ進む経路を構造的には塞げない。marker は helper 側でしか消えないファイルなので、gate の bash が `[ -e ]` で見るだけで「6.1.d が完走したか」を LLM の認識に依存せず判定できる。詳細: [measured-gate-record.md#pending-marker](measured-gate-record.md#pending-marker)。
+
+## spawn-spread-threshold-notes
+
+ステップ 4.6 の spawn spread 閾値を **120 秒**にした理由と、判定を「観測のみ」に留める理由。
+
+- **閾値 120 秒**: 並列起動でも spawn は同時ではない。1 メッセージ内の複数 Task は harness が順に立ち上げ、各 reviewer は起動後の最初の tool call で `date` を実行するため、正常な並列でも数十秒のずれが出る。一方、直列化した run では 1 人目の完走を待って 2 人目が起動するので、ずれは reviewer 1 人分の所要時間（実測で 10 分超）にまで開く。両者は 1 桁以上離れており、閾値の置き所に精度は要らない。**誤検出を出さない側に倒す**方が重要（正常な並列を毎 cycle WARNING で汚すと、本物の直列化が埋もれる）ため、想定レンジ 90〜120 秒の保守側の端を採った。`--threshold` で上書きできるが、既定値の変更は運用データが積まれてから判断する。
+- **なぜ強制せず観測だけなのか**: Task の発行は LLM の応答構造そのもので、hook から「1 メッセージにまとめて発行しろ」を強制する経路が存在しない。宣言的 MUST が破れることは既に機構化知見として昇格済みであり、本チェックはその適用として**宣言 → 機械観測**の一段だけを埋める。強制層を将来足すかどうかは、ここで貯まる `reviewer_spawn_spread_seconds` の分布が決める。
+- **なぜ non-blocking なのか**: 直列化は壁時計を延ばすだけで、各 reviewer の指摘の質は変わらない。検出を merge ゲートや `overall_assessment` に結びつけると、成果が有効なレビューを効率違反を理由に捨てることになる。
+- **判定できないときにフラグを書かない理由**: 契約とキー欠落の意味は [review-result-schema.md](../../../references/review-result-schema.md#reviewer_timings-と直列化フラグ) を SoT とする。

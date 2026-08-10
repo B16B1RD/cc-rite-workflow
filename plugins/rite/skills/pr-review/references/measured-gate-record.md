@@ -113,7 +113,7 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 
 **anchor 配置が設計の核心**: 実行保証の marker は、守る対象（ステップ 6）の**外側**で、かつ**毎 cycle 再生成される**位置に張らなければならない。候補は 2 つあったが等価ではない。
 
-- **5.3.0.M step 1**（不採用）— この block の出力は `REVIEW_TMP_DIR=${TMPDIR:-/tmp}` だけで、値はセッション不変。stale な値を再利用しても Write 先は正しく解決するため、block を skip しても下流に何の齟齬も出ない。6.1.a step 0 が skip された理由（唯一の出力の消費者が、それ自身 skip 可能なステップだけ）と構造的に同一で、anchor 自身が同じ失敗をする。
+- **5.3.0.M step 1**（不採用）— この block は 2 系統を出す。`REVIEW_TMP_DIR=${TMPDIR:-/tmp}` はセッション不変で、stale な値を再利用しても Write 先は正しく解決する。もう 1 系統の `SPAWN_TIMINGS=present|not_run` は cycle ごとに変わり、skip すると ステップ 4.6 未実行の表面化が丸ごと消える。それでも anchor に採らないのは**顕著性の差**で、`SPAWN_TIMINGS` の消失は非ブロッキングな観測の欠落に留まり result pattern を壊さない — 「stale 値を使えば目に見えて壊れる」という anchor の要件を満たすのは下記 step 2 だけである。
 - **5.3.0.M step 2**（採用）— `review-measured-gate.sh` の `blocking={n}` は毎 cycle 変わり、`total_findings` を経て `[review:fix-needed:{n}]` に直結する。stale 値を使えば result pattern が目に見えて壊れるため、この block だけは構造的に skip できない。
 
 **なぜ helper は path ではなく id を受け取るのか**: caller から full path を受け取る形にすると、caller 由来の任意文字列が「削除対象」と「機械可読 sentinel の `marker=` フィールド」の両方へ同時に流れる。この形では traversal（`<dir>/rite-p61a-pending-x/../victim`）・sentinel 偽造（改行で 2 行目に完全な形の `[CONTEXT]` 行を綴る）・制御文字の 3 方向を個別に塞ぐ guard が要り、しかもその guard の受理値域が**生成側の値域**（`${TMPDIR}` の文字種）と食い違った瞬間に「保存は成功しているのに marker が消えず 8.0.4 が恒久的に落ちる」非収束を生む。id だけを受け取り path を helper 内で組み立てれば、この失敗クラスは構造的に存在しない（sibling の 6.1.d helper が `--iteration-id` で同じ形を採っているのと同型）。8.0.4 が使うのは path 側だけで、両者は同じ block から対で emit される。
