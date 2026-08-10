@@ -3082,9 +3082,9 @@ else
   fi
 
   # (h-1) 生成側: marker を作るのは 5.3.0.M step 2 の bash block (= ゲート helper 呼び出しと同じ
-  #       block) でなければならない。step 1 (REVIEW_TMP_DIR emit だけの block) へ移すと、その値は
-  #       セッション不変で stale でも下流が壊れないため anchor 自身が skip されうる (6.1.a step 0 が
-  #       skip された理由と構造的に同一)。step 2 の blocking={n} は result pattern に直結するため
+  #       block) でなければならない。step 1 へ移すと、その出力 (REVIEW_TMP_DIR はセッション不変、
+  #       SPAWN_TIMINGS は非ブロッキングな観測) はいずれも stale / 欠落でも result pattern を壊さず
+  #       anchor 自身が skip されうる。step 2 の blocking={n} は result pattern に直結するため
   #       skip できない。**区間は「helper 呼び出し行の直後から step 3 見出しまで」で取る**。
   _sec_530m_step2() { _section_of '^bash \{plugin_root\}/scripts/review-measured-gate\.sh' '^\*\*step 3:'; }
   assert "TC-5h 5.3.0.M step 2 区間に save-pending marker パス**代入**行が 1 本 (行頭 anchor)" "1" \
@@ -3713,7 +3713,13 @@ assert_grep "TC-6.7 4.6 が helper を live な bash block で呼ぶ" "$REVIEW_M
 assert_grep "TC-6.7 5.3.0.M step 1 が timings ファイルの Read 転記を規定" "$REVIEW_MD" '\{spawn_timings_file\}` を \*\*Read tool で読んで転記する'
 # timings パスは cycle ごとに一意でなければ「本 cycle で 4.6 が走ったか」を不在で判定できない
 # (TMPDIR がセッション内不変のため、固定名では前 cycle のファイルが残り不在にならない)。
-assert_grep "TC-6.7 4.6 が timings パスに cycle 一意の epoch を含める" "$REVIEW_MD" 'SPAWN_TIMINGS_FILE=\$\{TMPDIR:-/tmp\}/rite-reviewer-timings-\{pr_number\}-\$\(date \+%s\)\.json'
+# **かつ識別子は 4.6 の外から来なければならない** — 4.6 自身が鋳造すると、4.6 を飛ばした cycle に
+# 本 cycle のパスが存在しなくなり、判定が前 cycle のファイルを掴んで fail-open する
+# (検出したい状態でだけ判定が成立しない)。1.2.5 の commit SHA は 4.6 と 5.3.0.M の双方が独立に持つ。
+assert "TC-6.7 timings パスは 4.6 と 5.3.0.M が同一規則で組む (識別子は 1.2.5 の SHA)" "2" \
+  "$(grep -c 'rite-reviewer-timings-{pr_number}-{current_commit_sha}\.json' "$REVIEW_MD" || true)"
+assert "TC-6.7 4.6 自身が cycle 識別子を鋳造しない (epoch 生成を持たない)" "0" \
+  "$(grep -c 'SPAWN_TIMINGS_FILE' "$REVIEW_MD" || true)"
 assert_grep "TC-6.7 5.3.0.M が 4.6 未実行を無言で省略せず marker で表面化" "$REVIEW_MD" 'SPAWN_TIMINGS=not_run'
 assert_grep "TC-6.7 E2E 表が直列化 1 行を例外 5 として省略禁止に登録" "$REVIEW_MD" '例外 5: ステップ 5\.4 の `### 総合評価` にある `\*\*起動の直列化\*\*` の 1 行'
 assert_grep "TC-6.7 5.4 側にも例外 5 と対の注記がある" "$REVIEW_MD" '本行は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 5）'
