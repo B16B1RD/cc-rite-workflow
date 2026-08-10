@@ -55,6 +55,10 @@ set -u
 
 DEFAULT_THRESHOLD_SECONDS=120
 
+# shellcheck source=lib/tempfile.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/tempfile.sh"
+rite_tempfile_init || exit 2
+
 input=""
 threshold="$DEFAULT_THRESHOLD_SECONDS"
 while [ "$#" -gt 0 ]; do
@@ -96,11 +100,6 @@ if [ "$(jq -r '.reviewer_timings | type' "$input" 2>/dev/null)" != "array" ]; th
 fi
 
 out_tmp=""
-_cleanup() {
-  [ -n "${out_tmp:-}" ] && rm -f "$out_tmp"
-  return 0
-}
-trap 'rc=$?; _cleanup; exit $rc' EXIT
 
 # jq の出力は awk へ直接パイプせず、いったん変数へ受けて rc を検査する。直接繋ぐと jq の
 # element 単位 parse 失敗 (配列に非 object が混じる等) が rc ごと捨てられ、awk は切り詰め
@@ -169,8 +168,8 @@ if [ "$parsed" -eq 1 ] && [ "$total" -gt 1 ]; then _undetermined insufficient_pa
 
 if [ "$spread" -gt "$threshold" ]; then serialized=true; else serialized=false; fi
 
-if ! out_tmp=$(mktemp "${input}.spread.XXXXXX" 2>/dev/null); then
-  echo "ERROR: spawn spread 判定結果の tempfile を作成できません (dir: $(dirname "$input"))" >&2
+if ! rite_tempfile_new out_tmp "review-spawn-spread"; then
+  echo "ERROR: spawn spread 判定結果の tempfile を作成できません" >&2
   exit 2
 fi
 if ! jq --argjson serialized "$serialized" --argjson spread "$spread" \
