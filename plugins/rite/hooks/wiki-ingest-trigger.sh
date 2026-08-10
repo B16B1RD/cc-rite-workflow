@@ -163,13 +163,20 @@ if [[ -n "$ISSUE_NUMBER" ]]; then
   esac
 fi
 
-# TITLE is human-readable UTF-8 text. Rejecting C1 byte values here would also
-# reject valid UTF-8 continuation bytes (for example, 静 contains 0x9d). C0 and
-# DEL are sufficient to keep the one-line YAML value intact; SOURCE_REF remains
-# on the stricter byte-oriented identifier policy above.
+# TITLE is human-readable UTF-8 text. Validate the encoding before checking C1
+# as its UTF-8 code-point encoding (C2 80-9F); testing those byte values alone
+# would reject ordinary continuation bytes (for example, 静 contains 0x9d).
 if [[ -n "$TITLE" ]]; then
-  if contains_ctrl "$TITLE" --c0-only; then
-    echo "ERROR: --title must not contain control characters (newlines, tabs, or other C0/DEL control bytes)" >&2
+  if ! command -v iconv >/dev/null 2>&1; then
+    echo "ERROR: --title validation requires iconv" >&2
+    exit 1
+  fi
+  if ! printf '%s' "$TITLE" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1; then
+    echo "ERROR: --title must be valid UTF-8" >&2
+    exit 1
+  fi
+  if contains_ctrl "$TITLE" --c0-only || printf '%s' "$TITLE" | LC_ALL=C grep -q $'\302[\200-\237]'; then
+    echo "ERROR: --title must not contain control characters (C0/DEL/C1 code points)" >&2
     exit 1
   fi
   # reject odd trailing backslashes (escape ambiguity)

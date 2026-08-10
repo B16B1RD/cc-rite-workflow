@@ -1217,16 +1217,21 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-050b: C0 controls in --title remain rejected
+# TC-050b: C0/C1 controls and invalid UTF-8 in --title remain rejected
 # --------------------------------------------------------------------------
-echo "TC-050b: C0 controls in --title → exit 1"
-for control_name in tab soh; do
+echo "TC-050b: C0/C1 controls and invalid UTF-8 in --title → exit 1"
+for control_name in tab soh c1-codepoint raw-c1; do
   dir50b="$TEST_DIR/tc50b-$control_name"
   mkdir -p "$dir50b"
   echo "x" > "$dir50b/body.md"
-  if [ "$control_name" = tab ]; then bad_title=$'foo\tbar'; else bad_title=$'foo\x01bar'; fi
+  case "$control_name" in
+    tab) bad_title=$'foo\tbar' ;;
+    soh) bad_title=$'foo\x01bar' ;;
+    c1-codepoint) bad_title=$'foo\xc2\x9bbar' ;;
+    raw-c1) bad_title=$'foo\x9bbar' ;;
+  esac
   ( cd "$dir50b" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --title "$bad_title" >/dev/null 2>err.log ) && rc=0 || rc=$?
-  if [ $rc -eq 1 ] && grep -q 'control characters' "$dir50b/err.log"; then
+  if [ $rc -eq 1 ] && grep -qE 'control characters|valid UTF-8' "$dir50b/err.log"; then
     pass "$control_name in title → exit 1"
   else
     fail "Expected $control_name in title to be rejected, got rc=$rc, stderr=$(cat "$dir50b/err.log")"
