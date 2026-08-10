@@ -1199,20 +1199,39 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-050: C1 8-bit byte (0x9b CSI) in --title → exit 1
+# TC-050: Japanese UTF-8 title whose continuation bytes overlap C1 → exit 0
 # --------------------------------------------------------------------------
-# TC-018 (newline in title) と対になる C1 側 pin。SOURCE_REF / TITLE は隣接する
-# YAML キーに着地するため、検出範囲も対称であることを保証する。
-echo "TC-050: C1 0x9b in --title → exit 1"
+# 静 (E9 9D 99) / 的 (E7 9A 84) の UTF-8 継続バイトは 0x80-0x9f と
+# 重なる。TITLE は human-readable text なので C0 + DEL だけを拒否する。
+echo "TC-050: Japanese UTF-8 in --title → exit 0"
 dir50="$TEST_DIR/tc50"
 mkdir -p "$dir50"
 echo "x" > "$dir50/body.md"
-( cd "$dir50" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --title $'foo\x9bbar' >/dev/null 2>err.log ) && rc=0 || rc=$?
-if [ $rc -eq 1 ] && grep -q 'control characters' "$dir50/err.log"; then
-  pass "C1 0x9b in title → exit 1 (SOURCE_REF と対称の C1 reject)"
+( cd "$dir50" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --title '静的 pin' >out.log 2>err.log ) && rc=0 || rc=$?
+target_path50=$(cat "$dir50/out.log" 2>/dev/null || true)
+if [ $rc -eq 0 ] && [ -f "$dir50/$target_path50" ] && grep -q '^title: "静的 pin"$' "$dir50/$target_path50"; then
+  pass "Japanese UTF-8 title → exit 0 + title preserved"
 else
-  fail "Expected exit 1 'control characters', got rc=$rc, stderr=$(cat "$dir50/err.log")"
+  fail "Expected Japanese title to succeed and be preserved, got rc=$rc, stderr=$(cat "$dir50/err.log")"
 fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-050b: C0 controls in --title remain rejected
+# --------------------------------------------------------------------------
+echo "TC-050b: C0 controls in --title → exit 1"
+for control_name in tab soh; do
+  dir50b="$TEST_DIR/tc50b-$control_name"
+  mkdir -p "$dir50b"
+  echo "x" > "$dir50b/body.md"
+  if [ "$control_name" = tab ]; then bad_title=$'foo\tbar'; else bad_title=$'foo\x01bar'; fi
+  ( cd "$dir50b" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --title "$bad_title" >/dev/null 2>err.log ) && rc=0 || rc=$?
+  if [ $rc -eq 1 ] && grep -q 'control characters' "$dir50b/err.log"; then
+    pass "$control_name in title → exit 1"
+  else
+    fail "Expected $control_name in title to be rejected, got rc=$rc, stderr=$(cat "$dir50b/err.log")"
+  fi
+done
 echo ""
 
 # ==========================================================================

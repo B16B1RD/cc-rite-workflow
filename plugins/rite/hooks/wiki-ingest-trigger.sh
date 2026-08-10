@@ -163,14 +163,13 @@ if [[ -n "$ISSUE_NUMBER" ]]; then
   esac
 fi
 
-# Mirror the SOURCE_REF control-char rejection on TITLE — the two fields land
-# in adjacent YAML keys, so an asymmetric guard would leak the same injection
-# class through whichever side is unprotected. Byte-wise C1 detection also
-# rejects multibyte (e.g. Japanese) titles via their 0x80-0x9f continuation
-# bytes — accepted: all in-repo callers pass ASCII-fixed titles.
+# TITLE is human-readable UTF-8 text. Rejecting C1 byte values here would also
+# reject valid UTF-8 continuation bytes (for example, 静 contains 0x9d). C0 and
+# DEL are sufficient to keep the one-line YAML value intact; SOURCE_REF remains
+# on the stricter byte-oriented identifier policy above.
 if [[ -n "$TITLE" ]]; then
-  if contains_ctrl "$TITLE"; then
-    echo "ERROR: --title must not contain control characters (newlines, tabs, or other C0/DEL/C1 control bytes)" >&2
+  if contains_ctrl "$TITLE" --c0-only; then
+    echo "ERROR: --title must not contain control characters (newlines, tabs, or other C0/DEL control bytes)" >&2
     exit 1
   fi
   # reject odd trailing backslashes (escape ambiguity)
