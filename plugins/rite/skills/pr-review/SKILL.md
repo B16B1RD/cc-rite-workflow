@@ -1353,6 +1353,43 @@ Verification モードのレビュー指示テンプレート本文は [referenc
 | `{incremental_diff}` | `git diff {last_reviewed_commit}..HEAD` obtained in ステップ 1.2.4.1 | Full incremental diff (however, for large scale, only files relevant to the reviewer) |
 | `{change_intelligence_summary}` | Change Intelligence Summary from ステップ 1.2.6 | One-paragraph summary of change type, file classification, and focus area |
 
+### 4.6 Spawn Spread Check (並列起動の直列化検出、non-blocking)
+
+全 reviewer の Task 結果が返った直後に、各 reviewer 出力の `### 起動時刻` から `started_at:` を収集し、起動時刻の拡がり (spawn spread) が閾値を超えていないかを機械判定する。並列起動は ステップ 4.3 / 4.3.1 が MUST で宣言しているが、**宣言だけでは長時間セッションで守られない**ため、事後の観測層をここに置く。本チェックは並列起動を**強制しない** — Task 発行は LLM の応答構造そのもので hook から強制できず、可能なのは事後検出と表面化までである。
+
+# rationale: references/design-rationale.md#spawn-spread-threshold-notes
+
+**手順**:
+
+1. Write tool で `{review_tmp_dir}/rite-reviewer-timings-{pr_number}.json` に下記の形で保存する (`{review_tmp_dir}` は下記 bash が emit する `[CONTEXT] REVIEW_TMP_DIR=` marker の値をリテラル置換する。Write tool は TMPDIR の shell 展開ができないため)。`started_at` には各 reviewer 出力の `### 起動時刻` の値を**そのまま**書く。セクション欠落 / `計測不能` は `null` を書く — 省略も捏造もしない (欠落は「計測不能」として表面化させる):
+
+   ```json
+   {"reviewer_timings": [{"reviewer": "security-reviewer", "started_at": "2026-04-11T03:00:00Z"}, {"reviewer": "test-reviewer", "started_at": null}]}
+   ```
+
+   `reviewer` の値は `findings[].reviewer` と同じ形 (各 `reviewer_type` に `-reviewer` を付した形、`rite:` prefix なし)。**回収できた reviewer のみ**を並べる (`reviewers[]` と同じ「実回収」基準)。
+
+   ```bash
+   echo "[CONTEXT] REVIEW_TMP_DIR=${TMPDIR:-/tmp}" >&2
+   ```
+
+2. helper を実行する。閾値 (既定 120 秒)・判定・WARNING emit・判定結果の同ファイルへの書き戻しは helper が担う (SoT は helper docstring):
+
+```bash
+bash {plugin_root}/hooks/scripts/review-spawn-spread-check.sh \
+  --input {review_tmp_dir}/rite-reviewer-timings-{pr_number}.json
+```
+
+| 観測 | LLM action |
+|---|---|
+| 出力なし (rc=0) | 並列起動が保たれている。**何もしない** (成功時は無言) |
+| `[CONTEXT] SPAWN_SPREAD=serialized; spread={n}s; threshold={t}s; ...` (rc=0) | 直列化を検出。WARNING は helper が emit 済のため**会話で重複させない**。ステップ 5.4 統合レポートの `### 総合評価` に `**起動の直列化**` の 1 行を追加する |
+| `[CONTEXT] SPAWN_SPREAD=parallel; ...` (rc=0、一部欠落時のみ emit) | 測れた分は閾値内。計測不能があった事実を ステップ 5.4 の同じ 1 行に載せる |
+| `[CONTEXT] SPAWN_SPREAD=undetermined; reason={r}` (rc=0) | 計測不能。**判定を skip したことにしない** — ステップ 5.4 の同じ 1 行に `計測不能（reason={r}）` として載せる |
+| rc=2 (引数不正 / jq 不在 / 入力不正 / 書き出し失敗) | caller 契約違反または環境不備。ERROR 行に従って step 1 の JSON を作り直し **1 回だけ**再実行する。再発したら本チェックのみ skip し、`⚠️ spawn spread チェックを skip しました（{原因}）` を 1 行表示してレビュー本体を続行する |
+
+いずれの分岐でもレビュー結果の採否・`overall_assessment` / `verdict` / merge 判定は変わらない (直列化は効率違反であって品質低下ではない)。判定結果は helper が同ファイルへ書き戻すため、ステップ 5.3.0.M step 1 は**本ファイルを Read して**結果 JSON へ転記する (会話コンテキストの記憶から再構成しない — marker が context から失われると転記が silent に欠落するため)。
+
 ---
 
 ## ステップ 5: 結果検証と統合 (Critic フェーズ)
@@ -2064,6 +2101,7 @@ echo "[CONTEXT] REVIEW_TMP_DIR=${TMPDIR:-/tmp}" >&2
 - `suppressed_findings` 除外契約 (ステップ 5.1.2.A) を本 JSON 生成時に適用する — `findings[]` から除外し、Markdown 側 (ステップ 5.4 / 6.1.b) には audit log として残す
 - **`findings[].scope` を必ず明示する** (`current-pr` / `follow-up` / `nit-noted`)。scope は本ゲートの blocking 判定の入力そのもので、**値が外れてもキーが欠落しても `reason=scope_enum_violation` で hard fail し、JSON も書き換えられない**（フラグ有無に依らず発火）。未知 / 欠落 scope が blocking 集合からも移送対象からも同時に外れ、mergeable を無音で確定させるのを防ぐため
 - **`findings[].pre_existing` は書かない** — canonical `schema_version: "1.1.0"` 内の additive optional field であり、現行 write path は reviewer の revert test 結果を収集しない。欠落時も read 側は default mapping を適用せず、Cross-field invariant #5 は発火しない
+- **`reviewer_timings[]` / `reviewer_spawn_serialized` / `reviewer_spawn_spread_seconds`** = ステップ 4.6 の `{review_tmp_dir}/rite-reviewer-timings-{pr_number}.json` を **Read tool で読んで転記する**（会話コンテキストの記憶から再構成しない — 記憶と実測がずれると、直列化の記録が実際の計測と別のことを主張する）。`reviewer_timings[]` は同ファイルの値をそのまま写す。後 2 者は**同ファイルに存在するときだけ**書き、計測不能で helper が書かなかった場合は**キーごと省略する**（欠落 = 未判定。`verification` と同じ 3 値モデル）。ステップ 4.6 が未実行 / ファイル不在なら 3 者とも省略する（捏造しない）。ゲート helper は本キー群に触れず、`review-result-save.sh` も必須フィールドとして要求しないため、欠落しても保存・merge 判定は変わらない
 - 必須フィールドと各 finding のフィールド定義は ステップ 6.1.a の「Required JSON fields」節を参照する (定義の重複を避けるため本節では再掲しない)
 
 **step 2: ゲート適用**

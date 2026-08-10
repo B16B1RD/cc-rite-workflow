@@ -1,11 +1,12 @@
 #!/bin/bash
 # review-helpers-gate-behavior.test.sh
 #
-# Gate-behavior self-tests for the 4 review helpers:
-#   - hooks/review-skip-notification.sh   (pr-review.md ステップ 6.1.c)
-#   - hooks/review-comment-post.sh        (pr-review.md ステップ 6.1.b)
-#   - hooks/review-result-save.sh         (pr-review.md ステップ 6.1.a)
-#   - hooks/review-nonblocking-record.sh  (pr-review.md ステップ 6.1.d)
+# Gate-behavior self-tests for the 5 review helpers:
+#   - hooks/review-skip-notification.sh        (pr-review.md ステップ 6.1.c)
+#   - hooks/review-comment-post.sh             (pr-review.md ステップ 6.1.b)
+#   - hooks/review-result-save.sh              (pr-review.md ステップ 6.1.a)
+#   - hooks/review-nonblocking-record.sh       (pr-review.md ステップ 6.1.d)
+#   - hooks/scripts/review-spawn-spread-check.sh (pr-review.md ステップ 4.6)
 #
 # shift2-loop-hardening.test.sh は shift-loop no-hang の 1 軸のみをカバーし、これらの helper の
 # 中核 invariant である gate 分岐 (reason 語彙 / exit code / [CONTEXT] emit) には届かない。
@@ -43,6 +44,14 @@
 #        いることを要求する (AC-7/T-06 — 両語の共起だけを pin すると、比較セマンティクスを削って
 #        「存在するか」に弱めても REVIEW_CYCLE_ID の定義節に語が残るだけで素通りする。mutation 実測
 #        済み: 比較動詞のみ削除で 249/249 のまま検出漏れだったため「一致」を必須トークンに追加した)。
+#   TC-6 review-spawn-spread-check.sh — spread 判定の 3 帰結 (閾値内は stdout/stderr とも完全に
+#        無言 / 閾値超過は WARNING 1 行 + serialized marker + JSON フラグ / 計測不能は reason 別の
+#        undetermined marker とフラグ非書き込み) と、閾値の境界 (ちょうどは検出しない) /
+#        `--threshold` 上書き / 単独 reviewer の非誤検出 / 引数・入力 gate の rc=2。加えて
+#        観測結果が永続化まで届くための静的 pin (4.6 の helper 呼び出しが live な bash block に
+#        ある / 5.3.0.M step 1 が timings ファイルの Read 転記を規定する / reviewer prompt が
+#        起動時刻の記録を指示し出力セクションを持つ / schema が reviewer_timings を定義する /
+#        統合レポート 2 テンプレの両方に直列化の 1 行がある)
 #        さらに該当 Check 行が区間内に 1 本だけであることも固定する (区間内マッチ数のみの assertion
 #       A literal-presence-only assertion is insufficient because itを含む別行を足すだけで素通りするため) /
 #        (c) helper の MARKER 値と SKILL.md の variant 見出しの前方一致 coupling / (d) 8.0 の
@@ -3521,7 +3530,162 @@ EOF
   fi
 fi
 
+# =====================================================================
+echo "=== TC-6: review-spawn-spread-check.sh (4.6 spawn spread) ==="
+# =====================================================================
+
+SPREAD_SH="$PLUGIN_ROOT/hooks/scripts/review-spawn-spread-check.sh"
+SPREAD_DIR="$TMP_ROOT/spread"
+mkdir -p "$SPREAD_DIR"
+
+# $1=fixture 名, 残りは reviewer_timings[] の要素 JSON。fixture path を SPREAD_FIXTURE に置く。
+_spread_fixture() {
+  local _name="$1"; shift
+  local _items=""
+  local _item
+  for _item in "$@"; do
+    _items="${_items:+$_items,}$_item"
+  done
+  SPREAD_FIXTURE="$SPREAD_DIR/$_name.json"
+  printf '{"reviewer_timings":[%s]}\n' "$_items" > "$SPREAD_FIXTURE"
+}
+run_spread() {
+  RC=0
+  _timeout 10 bash "$SPREAD_SH" "$@" >"$OUT" 2>"$ERR" || RC=$?
+}
+
+# TC-6.1 閾値内は完全に無言 (AC-3 / T-03)。stdout / stderr のどちらかにでも出力が漏れると、
+# 正常系のレビューが毎 cycle ノイズを増やす。marker も出さない契約なのでバイト長で pin する。
+_spread_fixture parallel \
+  '{"reviewer":"security-reviewer","started_at":"2026-08-10T12:00:00Z"}' \
+  '{"reviewer":"test-reviewer","started_at":"2026-08-10T12:00:30Z"}'
+run_spread --input "$SPREAD_FIXTURE"
+assert "TC-6.1 閾値内: exit 0" "0" "$RC"
+assert "TC-6.1 閾値内: stdout が空" "0" "$(wc -c < "$OUT" | tr -d ' ')"
+assert "TC-6.1 閾値内: stderr が空 (成功時は無言)" "0" "$(wc -c < "$ERR" | tr -d ' ')"
+assert "TC-6.1 閾値内: serialized=false を JSON へ記録" "false" \
+  "$(jq -r '.reviewer_spawn_serialized' "$SPREAD_FIXTURE")"
+assert "TC-6.1 閾値内: spread 実測値を JSON へ記録" "30" \
+  "$(jq -r '.reviewer_spawn_spread_seconds' "$SPREAD_FIXTURE")"
+assert "TC-6.1 入力の reviewer_timings を保持 (AC-1)" "2" \
+  "$(jq -r '.reviewer_timings | length' "$SPREAD_FIXTURE")"
+
+# TC-6.2 閾値超過は WARNING 1 行 + marker + JSON フラグ (AC-2 / T-02)。
+_spread_fixture serialized \
+  '{"reviewer":"security-reviewer","started_at":"2026-08-10T12:00:00Z"}' \
+  '{"reviewer":"test-reviewer","started_at":"2026-08-10T12:11:43Z"}'
+run_spread --input "$SPREAD_FIXTURE"
+assert "TC-6.2 閾値超過: exit 0 (non-blocking)" "0" "$RC"
+assert_grep "TC-6.2 SPAWN_SPREAD=serialized marker を emit" "$ERR" 'SPAWN_SPREAD=serialized; spread=703s; threshold=120s; reviewers=2; measured=2'
+assert "TC-6.2 WARNING は 1 行" "1" "$(grep -c '^WARNING:' "$ERR" || true)"
+assert_grep "TC-6.2 WARNING は行動可能 (1 メッセージにまとめて発行)" "$ERR" '1 メッセージ内にまとめて発行'
+assert "TC-6.2 serialized=true を JSON へ記録" "true" \
+  "$(jq -r '.reviewer_spawn_serialized' "$SPREAD_FIXTURE")"
+assert "TC-6.2 spread 実測値を JSON へ記録" "703" \
+  "$(jq -r '.reviewer_spawn_spread_seconds' "$SPREAD_FIXTURE")"
+
+# TC-6.2b 閾値ちょうどは検出しない (境界)。`>=` へ緩める変異はここだけが捕まえる — 並列時の
+# 正常な spawn ずれを誤検出しない MUST NOT の境界そのもの。
+_spread_fixture boundary \
+  '{"reviewer":"security-reviewer","started_at":"2026-08-10T12:00:00Z"}' \
+  '{"reviewer":"test-reviewer","started_at":"2026-08-10T12:02:00Z"}'
+run_spread --input "$SPREAD_FIXTURE"
+assert "TC-6.2b 閾値ちょうど (120s): stderr が空" "0" "$(wc -c < "$ERR" | tr -d ' ')"
+assert "TC-6.2b 閾値ちょうど: serialized=false" "false" \
+  "$(jq -r '.reviewer_spawn_serialized' "$SPREAD_FIXTURE")"
+
+# TC-6.2c --threshold で閾値を変えられる (既定 120s に固定されていないこと)。
+run_spread --input "$SPREAD_FIXTURE" --threshold 60
+assert "TC-6.2c --threshold 60: 同じ fixture が serialized になる" "true" \
+  "$(jq -r '.reviewer_spawn_serialized' "$SPREAD_FIXTURE")"
+assert_grep "TC-6.2c marker に指定 threshold が載る" "$ERR" 'threshold=60s'
+
+# TC-6.3 一部欠落は「判定を実施しつつ計測不能を併記」(AC-4 / T-04)。閾値内でも無言にしない。
+_spread_fixture partial_missing \
+  '{"reviewer":"security-reviewer","started_at":"2026-08-10T12:00:00Z"}' \
+  '{"reviewer":"test-reviewer","started_at":"2026-08-10T12:00:20Z"}' \
+  '{"reviewer":"tech-writer-reviewer","started_at":null}'
+run_spread --input "$SPREAD_FIXTURE"
+assert "TC-6.3 一部欠落: exit 0" "0" "$RC"
+assert_grep "TC-6.3 判定は実施される (SPAWN_SPREAD=parallel marker)" "$ERR" 'SPAWN_SPREAD=parallel; spread=20s; threshold=120s; reviewers=3; measured=2'
+assert_grep "TC-6.3 計測不能を WARNING で併記 (silent skip 禁止)" "$ERR" '起動時刻を取得できず'
+assert_grep "TC-6.3 WARNING は計測不能の reviewer 名を挙げる" "$ERR" '計測不能: tech-writer-reviewer'
+assert "TC-6.3 判定できた分の結果は JSON へ記録" "20" \
+  "$(jq -r '.reviewer_spawn_spread_seconds' "$SPREAD_FIXTURE")"
+
+# TC-6.4 parse 不能は cycle 全体を計測不能へ倒す (AC-4 / T-04)。残りだけで測ると「どの
+# reviewer を測り落としたか」が判定値に現れないため、フラグごと書かない (欠落 = 未判定)。
+_spread_fixture unparseable \
+  '{"reviewer":"security-reviewer","started_at":"2026-08-10 12:00:00"}' \
+  '{"reviewer":"test-reviewer","started_at":"2026-08-10T12:00:20Z"}'
+run_spread --input "$SPREAD_FIXTURE"
+assert "TC-6.4 parse 不能: exit 0 (non-blocking)" "0" "$RC"
+assert_grep "TC-6.4 reason=timestamp_unparseable で undetermined" "$ERR" 'SPAWN_SPREAD=undetermined; reason=timestamp_unparseable; reviewers=2; measured=1'
+assert "TC-6.4 WARNING は 1 行" "1" "$(grep -c '^WARNING:' "$ERR" || true)"
+assert "TC-6.4 計測不能ではフラグを書かない (欠落 = 未判定)" "false" \
+  "$(jq -r 'has("reviewer_spawn_serialized")' "$SPREAD_FIXTURE")"
+assert "TC-6.4 計測不能では spread も書かない" "false" \
+  "$(jq -r 'has("reviewer_spawn_spread_seconds")' "$SPREAD_FIXTURE")"
+
+# TC-6.5 全員欠落を無言で通さない (AC-4 MUST NOT の silent skip)。
+_spread_fixture all_missing \
+  '{"reviewer":"security-reviewer","started_at":null}' \
+  '{"reviewer":"test-reviewer","started_at":null}'
+run_spread --input "$SPREAD_FIXTURE"
+assert "TC-6.5 全員欠落: exit 0" "0" "$RC"
+assert_grep "TC-6.5 reason=no_parseable_timing で undetermined" "$ERR" 'SPAWN_SPREAD=undetermined; reason=no_parseable_timing; reviewers=2; measured=0'
+assert "TC-6.5 全員欠落でフラグを書かない" "false" \
+  "$(jq -r 'has("reviewer_spawn_serialized")' "$SPREAD_FIXTURE")"
+
+# TC-6.5b 複数 reviewer で 1 件しか測れなければ spread は存在しない。ここを「spread=0 の並列」
+# と報告すると、3 名中 2 名の欠落が正常判定の隠れ蓑になる。
+_spread_fixture insufficient \
+  '{"reviewer":"security-reviewer","started_at":"2026-08-10T12:00:00Z"}' \
+  '{"reviewer":"test-reviewer","started_at":null}'
+run_spread --input "$SPREAD_FIXTURE"
+assert_grep "TC-6.5b reason=insufficient_parseable_timing で undetermined" "$ERR" 'SPAWN_SPREAD=undetermined; reason=insufficient_parseable_timing; reviewers=2; measured=1'
+assert "TC-6.5b 測れない cycle でフラグを書かない" "false" \
+  "$(jq -r 'has("reviewer_spawn_serialized")' "$SPREAD_FIXTURE")"
+
+# TC-6.5c 単独 reviewer は spread が構造的に 0 で、計測不能ではない。ここで WARNING を出すと
+# sole-reviewer cycle が毎回ノイズを吐く。
+_spread_fixture single '{"reviewer":"code-quality-reviewer","started_at":"2026-08-10T12:00:00Z"}'
+run_spread --input "$SPREAD_FIXTURE"
+assert "TC-6.5c 単独 reviewer: stderr が空" "0" "$(wc -c < "$ERR" | tr -d ' ')"
+assert "TC-6.5c 単独 reviewer: serialized=false" "false" \
+  "$(jq -r '.reviewer_spawn_serialized' "$SPREAD_FIXTURE")"
+assert "TC-6.5c 単独 reviewer: spread=0" "0" \
+  "$(jq -r '.reviewer_spawn_spread_seconds' "$SPREAD_FIXTURE")"
+
+# TC-6.6 caller 契約違反 / 環境不備は rc=2 で fail-loud (非ブロッキングの対象外)。
+run_spread --input "$SPREAD_DIR/no-such.json"
+assert "TC-6.6 入力不在: exit 2" "2" "$RC"
+printf 'not json\n' > "$SPREAD_DIR/broken.json"
+run_spread --input "$SPREAD_DIR/broken.json"
+assert "TC-6.6 不正 JSON: exit 2" "2" "$RC"
+printf '{"reviewer_timings":{}}\n' > "$SPREAD_DIR/not-array.json"
+run_spread --input "$SPREAD_DIR/not-array.json"
+assert "TC-6.6 reviewer_timings が配列でない: exit 2" "2" "$RC"
+run_spread
+assert "TC-6.6 --input 欠落: exit 2" "2" "$RC"
+_spread_fixture threshold_bad '{"reviewer":"a-reviewer","started_at":"2026-08-10T12:00:00Z"}'
+run_spread --input "$SPREAD_FIXTURE" --threshold abc
+assert "TC-6.6 非数値 threshold: exit 2" "2" "$RC"
+run_spread --input "$SPREAD_FIXTURE" --unknown-flag x
+assert "TC-6.6 未知フラグ: exit 2" "2" "$RC"
+
+# TC-6.7 ステップ 4.6 の呼び出しと転記規約の静的 pin。helper が正しくても、SKILL.md 側の
+# 呼び出しか 5.3.0.M への転記規約が消えれば観測結果はどこにも残らない。
+assert_grep "TC-6.7 4.6 が helper を live な bash block で呼ぶ" "$REVIEW_MD" '^bash \{plugin_root\}/hooks/scripts/review-spawn-spread-check\.sh'
+assert_grep "TC-6.7 5.3.0.M step 1 が timings ファイルの Read 転記を規定" "$REVIEW_MD" 'rite-reviewer-timings-\{pr_number\}\.json.*Read'
+assert_grep "TC-6.7 reviewer prompt が起動時刻の記録を指示" "$PLUGIN_ROOT/skills/pr-review/references/reviewer-prompt-generator.md" 'date -u \+%Y-%m-%dT%H:%M:%SZ'
+assert_grep "TC-6.7 reviewer prompt の出力フォーマットに起動時刻セクション" "$PLUGIN_ROOT/skills/pr-review/references/reviewer-prompt-generator.md" '^### 起動時刻'
+assert_grep "TC-6.7 schema が reviewer_timings を定義" "$PLUGIN_ROOT/references/review-result-schema.md" '^\| `reviewer_timings` \| array \|'
+assert_grep "TC-6.7 統合レポート (full) に直列化の 1 行" "$PLUGIN_ROOT/skills/pr-review/references/integrated-report-templates.md" '\*\*起動の直列化\*\*'
+assert "TC-6.7 統合レポート 2 テンプレ両方に 1 行がある" "2" \
+  "$(grep -c '\*\*起動の直列化\*\*' "$PLUGIN_ROOT/skills/pr-review/references/integrated-report-templates.md" || true)"
+
 if ! print_summary "$(basename "$0")" \
-  "drift: review helper 4 件 (review-skip-notification / review-comment-post / review-result-save / review-nonblocking-record) の gate 分岐・reason 語彙・exit code 契約、または skills/pr-review/SKILL.md ステップ 6.1.d / 8.0.3 の gate 契約が変更された可能性。各 helper のヘッダ契約コメントと skills/pr-review/SKILL.md ステップ 6.1 / 8.0 を確認すること。"; then
+  "drift: review helper 5 件 (review-skip-notification / review-comment-post / review-result-save / review-nonblocking-record / review-spawn-spread-check) の gate 分岐・reason 語彙・exit code 契約、または skills/pr-review/SKILL.md ステップ 4.6 / 6.1.d / 8.0.3 の gate 契約が変更された可能性。各 helper のヘッダ契約コメントと skills/pr-review/SKILL.md ステップ 4.6 / 6.1 / 8.0 を確認すること。"; then
   exit 1
 fi

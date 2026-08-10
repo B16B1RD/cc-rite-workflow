@@ -29,6 +29,8 @@
 
 **`pre_existing` も 1.1.0 内で欠落を許容する additive optional field** — canonical write 側は reviewer の revert test 結果を収集しないため、`"1.1.0"` を出力しても `findings[].pre_existing` を書かない。read 側は schema_version に依らず default mapping を適用せず、欠落時は Cross-field invariant #5 を発火させない。`scope` は同じ 1.1.0 の field でも canonical write 側で必須であり、この optional 契約を適用してはならない。
 
+**`reviewer_timings` / `reviewer_spawn_serialized` / `reviewer_spawn_spread_seconds` も 1.1.0 内で additive 追加した optional field** — audit-only で判定 consumer を持たず、read 側 accept list の同期義務も生まない。同じく version を bump しないため、`schema_version == "1.1.0"` から存在を推論してはならない ([reviewer_timings と直列化フラグ](#reviewer_timings-と直列化フラグ) 参照)。
+
 **`verdict` / `reviewers` も 1.1.0 内で additive 追加した** — こちらは write 側必須だが、**version は bump しない**。理由は 2 つある: (a) 唯一の判定 consumer である merge ゲートは `schema_version` の**値**を見ず、`verdict` / `reviewers` の**キー存在**で新旧を判別する。version を上げても判別は 1 mm も変わらない。(b) bump すると読取側 accept list 4 箇所と `hooks/tests/review-schema-write-version-parity.test.sh` の literal を同時更新する義務が発生し、機能上の利得ゼロに対して 5 箇所の同期コストだけが増える。**したがって `schema_version == "1.1.0"` から `verdict` / `reviewers` の存在を推論してはならない** (`verification` と同じ注意。本変更より前に保存された 1.1.0 JSON は両キーを持たない)。存在を要求する側は必ずキーを直接検査すること。
 
 **検証箇所の同期義務** (verified-review cycle 8 L-4 対応で本セクションを SoT 化、cycle 10 I-E 対応で read/write 非対称を明示、1.1.0 を accept list に追加):
@@ -179,6 +181,9 @@
 | `findings` | array | ✅ | `/rite:pr-review` ステップ 5.3.0.M 通過後の `全指摘事項` (0 件でも空配列として存在)。**blocking 指摘 + `scope == "nit-noted"` 指摘**を含む — nit-noted は本ゲートの対象外 (`assessment-rules.md` §5.3.0.M) のため非実測でも本配列に残る。ゲートで降格した非実測指摘 (scope ∈ {current-pr, follow-up}) のみが下記 `non_blocking_findings` に分離される |
 | `non_blocking_findings` | array | **write 側 ✅ (0 件でも `[]`)** / read 側は欠落許容 | 実測必須ゲート ([severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)) で non-blocking に降格した非実測指摘の配列 (要素の形は `findings[]` と同一)。下記 [non_blocking_findings 配列](#non_blocking_findings-配列) 参照 |
 | `guardrail_audit_log` | array | **write 側 ✅ (0 件でも `[]`)** / read 側は欠落許容 | Finding Quality Guardrail Category #2 で `指摘事項` から除外した候補の監査記録。audit-only で判定 consumer は無視する。各要素は `reviewer`, `filter_category` (`Category #2`), `original_severity`, `file_line`, `description`, `filter_reason`, `verification` を持つ |
+| `reviewer_timings` | array | (任意、1.1.0+) | 本 cycle で回収できた各 reviewer の起動時刻。要素は `{reviewer, started_at}` で、`reviewer` は `findings[].reviewer` と同じ参照整合性規則 (`agents/*-reviewer.md` の basename)、`started_at` は ISO 8601 UTC の正規形 (`YYYY-MM-DDThh:mm:ssZ`) または `null` (取得不能)。値源は `pr-review.md` ステップ 4.6。audit-only で、判定 consumer (`/rite:fix` / merge ゲート / 収束トレンド判定) は無視する。下記 [reviewer_timings と直列化フラグ](#reviewer_timings-と直列化フラグ) 参照 |
+| `reviewer_spawn_serialized` | bool | (任意、1.1.0+) | 起動時刻の拡がり (spawn spread) が閾値を超えたか。書き手は `hooks/scripts/review-spawn-spread-check.sh` のみ。**計測不能のときはキーごと欠落する** — `true` / `false` / 欠落 (= 未判定) の 3 値モデルで、`verification.measured` と同じ (下記参照) |
+| `reviewer_spawn_spread_seconds` | integer | (任意、1.1.0+) | 実測した spawn spread (秒、`max(started_at) - min(started_at)`)。`reviewer_spawn_serialized` と同時に書かれ、同時に欠落する |
 
 ### `findings[]` 要素
 
@@ -228,6 +233,20 @@ merge ゲート (`hooks/pre-tool-bash-guard.sh` の `merge-review-*` 検査) が
 #### 旧形式 JSON の非救済
 
 両キーを欠く既存の結果 JSON (本変更より前に保存されたもの) は merge ゲートに deny され続ける。ゲートは version 値ではなく**キー存在**で新旧を判別するため、遡及補正や version による例外は入れない。復旧経路は `/rite:pr-review` の再実行 (= 正典 writer による書き直し) のみ。
+
+### `reviewer_timings` と直列化フラグ
+
+<a id="reviewer_timings-と直列化フラグ"></a>
+
+reviewer の並列起動が実際に並列だったかを事後に観測するための audit-only な 3 キー。`pr-review.md` ステップ 4.6 が収集し `hooks/scripts/review-spawn-spread-check.sh` が判定して、ステップ 5.3.0.M step 1 が結果 JSON へ転記する。
+
+**なぜ記録するのか**: 並列起動は SKILL.md が MUST で多重に宣言しているが、実測では長時間セッションの後半で reviewer が逐次完走し、レビュー壁時計が数倍化した run がある。その違反はどこにも残らず、事後に検出する計器が存在しなかった。**強制ではなく観測**に留めるのは、Task 発行が LLM の応答構造そのもので hook から強制できないため。
+
+**判定 consumer への影響はゼロ**: 直列化は効率違反であって品質低下ではない (成果は有効のまま) ため、`overall_assessment` / `verdict` / merge ゲート / 収束トレンド判定のいずれもこの 3 キーを読まない。`review-result-save.sh` も必須フィールドとして要求しないため、3 キーが揃わない結果 JSON も従来どおり保存され merge できる。
+
+**3 値モデル (`true` / `false` / 欠落)**: `reviewer_spawn_serialized` と `reviewer_spawn_spread_seconds` は**判定できたときのみ**書かれ、計測不能ではキーごと欠落する。「並列だった」と「測れなかった」を `false` に丸めると、計測失敗が直列化の隠れ蓑になるため。何が測れなかったかは `reviewer_timings[].started_at` の `null` に残る。計測不能の理由自体は helper が `[CONTEXT] SPAWN_SPREAD=undetermined; reason=` として会話へ出すもので、本 JSON には持たない (永続化する意味を持つのは計測値であって、その cycle 限りの失敗理由ではない)。
+
+**schema_version は bump しない**: `verification` / `verdict` / `reviewers` と同じ additive 追加の方針で、読取側 accept list 4 箇所の同期変更を避ける。read 側は未知キーを無視するため旧 reader でも壊れない。**`schema_version == "1.1.0"` から本 3 キーの存在を推論してはならない**。
 
 ### `non_blocking_findings` 配列
 

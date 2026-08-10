@@ -222,6 +222,7 @@ rite-workflow/
 │ │ ├── review-schema-version-check.sh # review-result schema drift 検出
 │ │ ├── review-trend-divergence.sh # review⇄fix 収束トレンドの発散検出 (ブレーカー主経路)
 │ │ ├── review-save-json-verify.sh # pr-review 8.0.4 positive 検査 (本 cycle の結果 JSON の実在確認)
+│ │ ├── review-spawn-spread-check.sh # pr-review 4.6 reviewer 並列起動の直列化検出 (観測のみ・non-blocking)
 │ │ ├── settings-local-rite-hook-cleanup.sh / settings-local-rite-hook-cleanup.py # legacy hook entry 掃除 (.sh wrapper + .py 実体)
 │ │ ├── reviewer-registry-drift-check.sh # lint Phase 3.5 reviewer registry 3-way 同期検証
 │ │ ├── gitignore-health-check.sh
