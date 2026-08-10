@@ -194,7 +194,7 @@ else fail "expected rc=2 with repo-root error, got rc=$rc: $output"; fi
 # --------------------------------------------------------------------------
 echo "TC-013: generic rationale placeholders are absent"
 placeholder_pattern='the governing'' rationale|The observed'' review run|the contract''[.]s'
-if ! rg -n "$placeholder_pattern" \
+if ! grep -ERn "$placeholder_pattern" \
   "$REPO_ROOT/plugins/rite" "$REPO_ROOT/docs" >/dev/null; then
   pass "generic rationale placeholders are absent"
 else
@@ -274,19 +274,20 @@ deletion_residue_samples=(
 )
 deletion_residue_pattern=$(IFS='|'; printf '%s' "${deletion_residue_patterns[*]}")
 for i in "${!deletion_residue_patterns[@]}"; do
-  if printf '%s\n' "${deletion_residue_samples[$i]}" | rg -q "${deletion_residue_patterns[$i]}"; then
+  if printf '%s\n' "${deletion_residue_samples[$i]}" | grep -Eq "${deletion_residue_patterns[$i]}"; then
     pass "deletion-damage matcher arm $((i + 1)) has a positive control"
   else
     fail "deletion-damage matcher arm $((i + 1)) missed its positive control"
   fi
 done
-if ! printf '%s\n' 'context with durable rationale' | rg -q "$deletion_residue_pattern"; then
+if ! printf '%s\n' 'context with durable rationale' | grep -Eq "$deletion_residue_pattern"; then
   pass "deletion-damage matcher accepts valid prose"
 else
   fail "deletion-damage matcher rejected valid prose"
 fi
-if ! rg -n -g '!**/number-reference-check.test.sh' -g '!**/fixtures/**' "$deletion_residue_pattern" \
-  "$REPO_ROOT/plugins/rite" "$REPO_ROOT/docs" >/dev/null; then
+if ! find "$REPO_ROOT/plugins/rite" "$REPO_ROOT/docs" -type f \
+  ! -path '*/fixtures/*' ! -name 'number-reference-check.test.sh' -print0 \
+  | xargs -0 grep -En "$deletion_residue_pattern" >/dev/null; then
   pass "deletion-damage residue is absent"
 else
   fail "deletion-damage residue found under plugins/rite or docs"
