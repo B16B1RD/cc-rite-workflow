@@ -3716,19 +3716,45 @@ assert_grep "TC-6.7 5.3.0.M step 1 が timings ファイルの Read 転記を規
 # **かつ識別子は 4.6 の外から来なければならない** — 4.6 自身が鋳造すると、4.6 を飛ばした cycle に
 # 本 cycle のパスが存在しなくなり、判定が前 cycle のファイルを掴んで fail-open する
 # (検出したい状態でだけ判定が成立しない)。1.2.5 の commit SHA は 4.6 と 5.3.0.M の双方が独立に持つ。
-assert "TC-6.7 timings パスは 4.6 と 5.3.0.M が同一規則で組む (識別子は 1.2.5 の SHA)" "2" \
-  "$(grep -c 'rite-reviewer-timings-{pr_number}-{current_commit_sha}\.json' "$REVIEW_MD" || true)"
-assert "TC-6.7 4.6 自身が cycle 識別子を鋳造しない (epoch 生成を持たない)" "0" \
-  "$(grep -c 'SPAWN_TIMINGS_FILE' "$REVIEW_MD" || true)"
+# パス規則は**区間ごとに 1 本ずつ**取る。全体の件数一致だと両方を 4.6 に置く変異が素通りし、
+# 5.3.0.M が独立にパスを構成できるという本修正の核が pin されない。
+_sec_46()      { _section_of '^### 4\.6 ' '^## '; }
+_sec_530m_s1() { _section_of '^\*\*step 1: レビュー結果 JSON の生成' '^\*\*step 2: '; }
+assert "TC-6.7 4.6 区間に timings パス規則が 1 本" "1" \
+  "$(_sec_46 | grep -c 'rite-reviewer-timings-{pr_number}-{current_commit_sha}\.json' || true)"
+assert "TC-6.7 5.3.0.M step 1 区間にも同じパス規則が 1 本 (独立に構成できる)" "1" \
+  "$(_sec_530m_s1 | grep -c 'rite-reviewer-timings-{pr_number}-{current_commit_sha}\.json' || true)"
+# 識別子は 4.6 の外から来なければならない。4.6 区間が自前で epoch を鋳造すると、4.6 を飛ばした
+# cycle に本 cycle のパスが存在しなくなり、不在判定が前 cycle のファイルを掴んで fail-open する。
+assert "TC-6.7 4.6 区間が cycle 識別子を鋳造しない" "0" \
+  "$(_sec_46 | grep -c 'date +%s' || true)"
+# 4.6 の Write 先解決 (REVIEW_TMP_DIR の live emit) が消えると 5.3.0.M の不在判定と食い違い
+# 3 キーが省略されて AC-1 が満たせなくなる。live 行そのものを区間内で pin する。
+assert "TC-6.7 4.6 区間に REVIEW_TMP_DIR の live emit がある" "1" \
+  "$(_sec_46 | grep -c '^   echo "\[CONTEXT\] REVIEW_TMP_DIR=' || true)"
 assert_grep "TC-6.7 5.3.0.M が 4.6 未実行を無言で省略せず marker で表面化" "$REVIEW_MD" 'SPAWN_TIMINGS=not_run'
 assert_grep "TC-6.7 E2E 表が直列化 1 行を例外 5 として省略禁止に登録" "$REVIEW_MD" '例外 5: ステップ 5\.4 の `### 総合評価` にある `\*\*起動の直列化\*\*` の 1 行'
 assert_grep "TC-6.7 5.4 側にも例外 5 と対の注記がある" "$REVIEW_MD" '本行は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 5）'
-assert_grep "TC-6.7 reviewer prompt が起動時刻の記録を指示" "$PLUGIN_ROOT/skills/pr-review/references/reviewer-prompt-generator.md" 'date -u \+%Y-%m-%dT%H:%M:%SZ'
-assert_grep "TC-6.7 reviewer prompt の出力フォーマットに起動時刻セクション" "$PLUGIN_ROOT/skills/pr-review/references/reviewer-prompt-generator.md" '^### 起動時刻'
+# producer 側の pin は**区間で**取る。ファイル全体の grep だと、出力フォーマットの
+# placeholder 行だけで条件が満たされ「着手前に実行せよ」という指示節を丸ごと消す変異が
+# 素通りする (指示が消えると全 reviewer が null を返し AC-1 が構造的に成立しなくなる)。
+_prompt_gen="$PLUGIN_ROOT/skills/pr-review/references/reviewer-prompt-generator.md"
+_sec_started_at_instr() {
+  awk '/^## 起動時刻の記録/ { inside = 1 } inside && /^## 変更概要/ { exit } inside { print }' "$_prompt_gen"
+}
+assert "TC-6.7 reviewer prompt の指示節が着手前実行を命じる" "1" \
+  "$(_sec_started_at_instr | grep -c 'date -u +%Y-%m-%dT%H:%M:%SZ' || true)"
+assert "TC-6.7 指示節が「着手する前に」を明示" "1" \
+  "$(_sec_started_at_instr | grep -c '着手する\*\*前に\*\*' || true)"
+assert_grep "TC-6.7 reviewer prompt の出力フォーマットに起動時刻セクション" "$_prompt_gen" '^### 起動時刻'
 assert_grep "TC-6.7 schema が reviewer_timings を定義" "$PLUGIN_ROOT/references/review-result-schema.md" '^\| `reviewer_timings` \| array \|'
-assert_grep "TC-6.7 統合レポート (full) に直列化の 1 行" "$PLUGIN_ROOT/skills/pr-review/references/integrated-report-templates.md" '\*\*起動の直列化\*\*'
-assert "TC-6.7 統合レポート 2 テンプレ両方に 1 行がある" "2" \
-  "$(grep -c '\*\*起動の直列化\*\*' "$PLUGIN_ROOT/skills/pr-review/references/integrated-report-templates.md" || true)"
+# 統合レポートは**テンプレごとに**取る。全体の件数一致だと、verification テンプレから消して
+# full テンプレへ複製する変異が素通りし、verification cycle で AC-2 の Then が失効する。
+_tmpl="$PLUGIN_ROOT/skills/pr-review/references/integrated-report-templates.md"
+assert "TC-6.7 統合レポート full-mode テンプレに直列化の 1 行" "1" \
+  "$(awk '/^## full-mode-template$/ { inside = 1 } inside && /^## verification-mode-template$/ { exit } inside { print }' "$_tmpl" | grep -c '\*\*起動の直列化\*\*' || true)"
+assert "TC-6.7 統合レポート verification-mode テンプレに直列化の 1 行" "1" \
+  "$(awk '/^## verification-mode-template$/ { inside = 1 } inside { print }' "$_tmpl" | grep -c '\*\*起動の直列化\*\*' || true)"
 
 if ! print_summary "$(basename "$0")" \
   "drift: review helper 5 件 (review-skip-notification / review-comment-post / review-result-save / review-nonblocking-record / review-spawn-spread-check) の gate 分岐・reason 語彙・exit code 契約、または skills/pr-review/SKILL.md ステップ 4.6 / 6.1.d / 8.0.3 の gate 契約が変更された可能性。各 helper のヘッダ契約コメントと skills/pr-review/SKILL.md ステップ 4.6 / 6.1 / 8.0 を確認すること。"; then
