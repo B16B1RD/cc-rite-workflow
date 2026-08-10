@@ -338,7 +338,7 @@ Verification: failing_test <テストパス> => <失敗出力>
 **Rules**:
 
 - **アンカーの有無は、指摘を報告してよいかどうかを変えない。** 実測できない懸念も、3 ゲートを満たすなら従来どおり報告する。ただし**アンカー無しの指摘は merge を止めない** (non-blocking として記録される (永続 JSON の `non_blocking_findings[]` / ステップ 6.1.d の PR 記録コメント / ステップ 5.4 統合レポートの「実測なし指摘」section)、人間レビューに委ねられる)。実測できるなら必ずアンカーを添えること。
-- **アンカーは判定入力として消費される。** `/rite:pr-review` ステップ 5.3.0.M の [`scripts/review-measured-gate.sh`](../scripts/review-measured-gate.sh) が、reviewer 出力を写したレビュー結果 JSON の `findings[].description` からアンカーを機械的に読み、`findings[].verification` (`measured` / `repro` / `failing_test`) を設定した上で blocking / non-blocking を分類する (で配線完了)。したがって **アンカーは `内容` 列に書いた形のまま `description` へ引き継ぐ必要がある** — 要約・整形・装飾を加えると helper が正規形として検出できない。装飾・種別ラベル誤記・境界欠落・raw pipe・`=>` 右辺空のように **marker と `=>` が同一セグメントに残る**崩れは `measured=false` と確定させず **未判定 (= blocking のまま)** として扱い、`MEASURED_UNDETERMINED_ON_ANCHOR` で可視化する (判定不能な指摘が merge を止め続ける)。**正規形として検出できたアンカーは、LHS に句点や改行を含んでいても `measured=true` のまま blocking に残る** — 未判定と降格を分ける判定は、正規形として検出**できなかった**アンカーの中でだけ働く。その母集団の内側で、marker から `=>` までの間に改行 / `<br>` / 句点 (U+3002) が挟まると `measured=false` へ降格し `MEASURED_DEMOTED_ON_ANCHOR` が出る (実測済みの指摘が blocking 集合から消える)。したがって **repro は 1 セグメントに収め、marker と `=>` の間に `<br>` を入れないこと** — `<br>` は正規形の検出自体も破るため単独で降格要因になる。句点・改行は正規形なら無害だが、他の書式崩れと重なると未判定ではなく降格へ落ちるので避けるのが安全。これは検出層が満たせない要件で、reviewer と統合ステップ側の責務として残る。
+- **アンカーは判定入力として消費される。** `/rite:pr-review` ステップ 5.3.0.M の [`scripts/review-measured-gate.sh`](../scripts/review-measured-gate.sh) が、reviewer 出力を写したレビュー結果 JSON の `findings[].description` からアンカーを機械的に読み、`findings[].verification` (`measured` / `repro` / `failing_test`) を設定した上で blocking / non-blocking を分類する。したがって **アンカーは `内容` 列に書いた形のまま `description` へ引き継ぐ必要がある** — 要約・整形・装飾を加えると helper が正規形として検出できない。装飾・種別ラベル誤記・境界欠落・raw pipe・`=>` 右辺空のように **marker と `=>` が同一セグメントに残る**崩れは `measured=false` と確定させず **未判定 (= blocking のまま)** として扱い、`MEASURED_UNDETERMINED_ON_ANCHOR` で可視化する (判定不能な指摘が merge を止め続ける)。**正規形として検出できたアンカーは、LHS に句点や改行を含んでいても `measured=true` のまま blocking に残る** — 未判定と降格を分ける判定は、正規形として検出**できなかった**アンカーの中でだけ働く。その母集団の内側で、marker から `=>` までの間に改行 / `<br>` / 句点 (U+3002) が挟まると `measured=false` へ降格し `MEASURED_DEMOTED_ON_ANCHOR` が出る (実測済みの指摘が blocking 集合から消える)。したがって **repro は 1 セグメントに収め、marker と `=>` の間に `<br>` を入れないこと** — `<br>` は正規形の検出自体も破るため単独で降格要因になる。句点・改行は正規形なら無害だが、他の書式崩れと重なると未判定ではなく降格へ落ちるので避けるのが安全。これは検出層が満たせない要件で、reviewer と統合ステップ側の責務として残る。
 - `Verification:` アンカーを持たない指摘は `measured=false` (実測なし) として扱われ、**non-blocking に分類される** (報告してはならないという意味ではない — 上記のとおり掲載可否は変わらない)。
 - `Likelihood-Evidence:` とは **直交する別アンカー**。`Likelihood-Evidence:` は掲載可否 (Observed Likelihood Gate) を担い、`Verification:` は実測の記録を担う。`Likelihood-Evidence: runtime_observation` を書ける実測済み指摘は、同じ実測内容を `Verification: repro` / `Verification: failing_test` の形式でも添付すること (両方を書く)。
 - 実測は READ-ONLY Enforcement の範囲内で行う (テスト実行・再現コマンド実行は read-only 検証として許可される範囲。working tree を変更する実験は `## READ-ONLY Enforcement` § Mutation experiments の worktree 手順に従う)。
@@ -521,7 +521,7 @@ Hypothetical Exception Category 適用は不要 (コメント品質は security 
 
 **例 1 — 字面整合 (アンカー不適格)**: 「同一事項を述べる 2 つの節で、一方は記録先を『4 経路すべて』と書き、他方は内訳を 3 つしか列挙していない」。repro は両節の grep 出力の突合のみで、この記述に従った実行者が至る誤動作を示していない。→ アンカーを付けずに報告し、non-blocking として記録される。
 
-**例 2 — 挙動的帰結 (アンカー適格)**: 「ステップ 6 の指示どおりに `index.md` を更新すると 5 列テーブルが 3 列で上書きされ表が崩壊する」(型)。repro は記述された手順を実行し、成果物 (テーブル) の破損を観測している。→ `Verification: repro` アンカーに「手順の実行 ⇒ 崩れたテーブル出力」を記入して添付し、blocking のまま fix へ渡る (**実際の指摘に書くアンカーでは矢印を半角にすること** — 全角では正規形として検出されず降格する。本行が全角 `⇒` なのは、この Gate 文書を引用した指摘が恒久 blocking 化するのを避けるための文書側の退避であり、記入形式の指定ではない)。
+**例 2 — 挙動的帰結 (アンカー適格)**: 「ステップ 6 の指示どおりに `index.md` を更新すると 5 列テーブルが 3 列で上書きされ表が崩壊する」。repro は記述された手順を実行し、成果物 (テーブル) の破損を観測している。→ `Verification: repro` アンカーに「手順の実行 ⇒ 崩れたテーブル出力」を記入して添付し、blocking のまま fix へ渡る (**実際の指摘に書くアンカーでは矢印を半角にすること** — 全角では正規形として検出されず降格する。本行が全角 `⇒` なのは、この Gate 文書を引用した指摘が恒久 blocking 化するのを避けるための文書側の退避であり、記入形式の指定ではない)。
 
 **例 3 — 境界ケース**: 「helper が emit する marker 名が仕様書と実装で食い違う」。**実装側を実行して仕様書どおりの marker が出ないことを観測できる**なら挙動的帰結 (アンカー適格)。**2 つの文書の marker 名を grep で並べただけ**なら字面整合 (不適格)。同じ指摘でも repro の観測対象で決まる。
 
@@ -578,7 +578,7 @@ blocking か否かは「**その mutation が無効化するのは Issue 契約�
 
 ### 適用例
 
-**例 1 — 網羅的 pin 強化 (アンカー不適格)**: 「fix が cycle 1 で追加した抽出式の行アンカー `^` と `$` について、fixture が両者の論理積しか pin しておらず、片側だけを弱める mutant 4 本が生存する」(F-18 型)。契約 (#2041 の MUST) が規定するのは「記録コメントを durable な comment id で同定する」であり、行アンカーの片側弱化はその挙動を無効化しない (丸ごと壊す変異は既存 fixture が検出する)。→ アンカーを付けずに報告し、non-blocking として記録される。
+**例 1 — 網羅的 pin 強化 (アンカー不適格)**: 「fix が cycle 1 で追加した抽出式の行アンカー `^` と `$` について、fixture が両者の論理積しか pin しておらず、片側だけを弱める mutant 4 本が生存する」(F-18 型)。記録コメント契約 が規定するのは「記録コメントを durable な comment id で同定する」であり、行アンカーの片側弱化はその挙動を無効化しない (丸ごと壊す変異は既存 fixture が検出する)。→ アンカーを付けずに報告し、non-blocking として記録される。
 
 **例 2 — 契約対応の未 pin (アンカー適格)**: 「AC が規定する『id が指すコメントが記録コメントでなければ書き込まない』挙動について、検証述語を無効化してもスイートが green」。契約の `Then` 節が名指しする挙動そのものが除去可能なまま通る。→ `Verification: failing_test` アンカーに「述語を除去した worktree でスイート実行 ⇒ 全件 green (検出されず)」を記入して添付し、blocking のまま fix へ渡る (**実際の指摘に書くアンカーでは矢印を半角にすること** — 全角では正規形として検出されず降格する。本行が全角 `⇒` なのは、この Gate 文書を引用した指摘が恒久 blocking 化するのを避けるための文書側の退避であり、記入形式の指定ではない)。
 

@@ -2,7 +2,7 @@
 # wiki-index-update.test.sh
 #
 # Tests for wiki-index-update.sh (wiki-ingest SKILL.md ステップ 6 delegation
-# target,). The helper applies the #2047-fixed index.md spec
+# target). The helper applies the current index.md spec
 # (identification predicate / escaping / duplicate reclamation / stats sync)
 # deterministically; these fixtures pin the behavior the prose era established,
 # including the edge cases 's review loop surfaced (raw-pipe title,

@@ -1762,6 +1762,6 @@ assert "TC-2121: a newline in --phase cannot forge any column-zero WARNING" "0" 
   "$(LC_ALL=C grep -c '^WARNING: forged$' "$stderr_2115_10b" || true)"
 rm -f "$stderr_2115_10b"
 
-if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del + non-UUID acceptance (Layer 1 format-agnostic contract pin) + phase-transition append log (#2115)"; then
+if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del + non-UUID acceptance (Layer 1 format-agnostic contract pin) + phase-transition append log with phase-transition append log"; then
   exit 1
 fi

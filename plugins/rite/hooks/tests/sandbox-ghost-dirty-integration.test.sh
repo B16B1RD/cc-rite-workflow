@@ -16,7 +16,7 @@
 # property lib/git-status-filtered.sh inspects, and `git status --porcelain`
 # reports it as an ordinary `??` entry exactly like the genuine ghost mount.
 #
-# Fail-safe pin (cross-validation escalation,): when
+# Fail-safe pin (cross-validation escalation): when
 # lib/git-status-filtered.sh itself fails (e.g. mktemp exhaustion — a
 # failure mode the helper introduces that plain `git status --porcelain`
 # never had), both extracted lines must fall back to a non-empty "assume

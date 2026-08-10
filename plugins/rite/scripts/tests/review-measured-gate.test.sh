@@ -2,7 +2,7 @@
 # Tests for review-measured-gate.sh (実測必須ゲートの決定論的後処理)
 #
 # 本 helper は「非実測指摘が blocking のまま残り review-fix loop が収束しない」障害
-# (で 9 サイクル / 8 時間超) を機械的に閉じる層である。したがって本 suite は
+# （実運用では 9 サイクル / 8 時間超に及んだ）を機械的に閉じる層である。したがって本 suite は
 # 合成 fixture だけでなく **当該 PR の実レビュー結果 JSON 9 本** (fixtures/pr-2070/) を
 # 回帰入力として持つ (TC-06)。合成入力だけにすると、実データが持つ description の
 # 長さ・改行・記号分布が検出 regex に与える影響を取りこぼす。

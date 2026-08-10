@@ -79,7 +79,7 @@ These categories inherit [Hypothetical Exception Categories](../../../references
 
 5.3.0 の後・5.3.1 の前に適用する **mechanical** な分類ゲート。ゲート定義の SoT は [severity-levels.md §実測必須ゲート](../../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)。5.3.0 と同じく deterministic rule であり、AI judgment は関与しない (5.3.7 の禁止対象外 — mechanical rule = allowed)。
 
-**実行主体は `scripts/review-measured-gate.sh`**。本節の疑似コード・regex・WARNING 発火条件は helper の実装契約を定義する SoT であり、**LLM が手で適用する手順ではない**。`/rite:pr-review` ステップ 5.3.0.M は helper を 1 回呼び、その `[CONTEXT] MEASURED_GATE=` marker と書き換え後 JSON を 5.3.1 以降の入力にする。helper が非ゼロ終了した場合、caller は LLM 分類へ fallback せず `[review:error]` で停止する — fallback は本ゲートが閉じた不発 (で 9 サイクル分類が一度も実行されなかった事象) の再生産になる。
+**実行主体は `scripts/review-measured-gate.sh`**。本節の疑似コード・regex・WARNING 発火条件は helper の実装契約を定義する SoT であり、**LLM が手で適用する手順ではない**。`/rite:pr-review` ステップ 5.3.0.M は helper を 1 回呼び、その `[CONTEXT] MEASURED_GATE=` marker と書き換え後 JSON を 5.3.1 以降の入力にする。helper が非ゼロ終了した場合、caller は LLM 分類へ fallback せず `[review:error]` で停止する — fallback は本ゲートが閉じた不発（実運用で 9 サイクルにわたり分類が一度も実行されなかった事象）の再生産になる。
 
 **Mechanical detection + demotion**:
 
@@ -220,7 +220,7 @@ Use **only findings remaining in the post-5.3.0.M `全指摘事項` with `scope 
 
 **`total_findings` definition**: `total_findings = |post-5.3.0.M の 全指摘事項 ∩ {scope ∈ {current-pr, follow-up}}|` — すなわち §5.3.0.M の `Verification:` アンカー検出で measured=true と判定され `全指摘事項` に残った finding の件数。
 
-> **判定媒体に注意**: `/rite:pr-review` ステップ 5.3.0.M step 1 でレビュー結果 JSON が生成され、step 2 の `review-measured-gate.sh` が `findings[].verification.measured` を設定する (で配線。ステップ 6.1.a はこのファイルを**保存するだけ**で再生成しない)。したがって 5.3.3 が評価する集合は「helper がゲート適用後の JSON に残した `findings[]` ∩ `scope ∈ {current-pr, follow-up}`」であり、その件数は helper の `[CONTEXT] MEASURED_GATE=...; blocking=` が報告する。**Claude が `内容` 列やアンカーを読み直して数え直すことは禁止** — 分類を機械層に閉じた意味が失われる。`/rite:fix` ステップ 1.3 の measured lookup は同じフィールドを次サイクルで読む read 側であり、両者は同一の JSON 表現を共有する。
+> **判定媒体に注意**: `/rite:pr-review` ステップ 5.3.0.M step 1 でレビュー結果 JSON が生成され、step 2 の `review-measured-gate.sh` が `findings[].verification.measured` を設定する（この時点で配線。ステップ 6.1.a はこのファイルを**保存するだけ**で再生成しない)。したがって 5.3.3 が評価する集合は「helper がゲート適用後の JSON に残した `findings[]` ∩ `scope ∈ {current-pr, follow-up}`」であり、その件数は helper の `[CONTEXT] MEASURED_GATE=...; blocking=` が報告する。**Claude が `内容` 列やアンカーを読み直して数え直すことは禁止** — 分類を機械層に閉じた意味が失われる。`/rite:fix` ステップ 1.3 の measured lookup は同じフィールドを次サイクルで読む read 側であり、両者は同一の JSON 表現を共有する。
 
 `acknowledged_nit_count = count(findings where scope == "nit-noted")` は独立 metric で `overall_assessment` 評価には使われない (Phase 4.6 サマリ表示のみ)。`non_blocking_count = count(non_blocking_findings)` (5.3.0.M で分類) も独立 metric で、5.3.5 サマリと 5.4 統合レポートの `### 実測なし指摘 (non-blocking)` section に使う (`overall_assessment` 評価には使われない)。**本定義は `/rite:pr-review` 側の変数**であり、`/rite:fix` ステップ 4.6 の同名 placeholder は母集団も値も異なる別定義 (`measured_map` の false のうち nit-noted を除く件数 — fix/SKILL.md ステップ 1.2.1 step 6 が SoT。JSON 経路では常に 0)。`total_findings` と同じく **pr-review 側と fix 側で別概念**として扱うこと。
 

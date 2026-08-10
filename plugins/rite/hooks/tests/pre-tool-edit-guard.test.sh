@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for pre-tool-edit-guard.sh (PreToolUse hook,)
+# Tests for pre-tool-edit-guard.sh (PreToolUse hook)
 # Usage: bash plugins/rite/hooks/tests/pre-tool-edit-guard.test.sh
 #
 # Verifies AC-1 (reviewer subagent Edit/Write/MultiEdit/NotebookEdit to the parent
@@ -350,7 +350,7 @@ echo ""
 # --------------------------------------------------------------------------
 # These TCs used to be skipped wherever `realpath` could not resolve a dangling
 # symlink, because the hook resolved the final element with `realpath` and that
-# no-op'd on BSD/macOS — a production gap, not a test quirk (→ #2014).
+# no-op'd on BSD/macOS — a production gap, not a test quirk (tracked as a production portability gap).
 # The hook now retargets ABS_PATH via bare `readlink` and lets the _tdir walk do the
 # physical resolution, which needs no existence check and has no platform branch, so
 # the skip is gone and these run everywhere. TC-SYMLINK-BSD-REALPATH below pins that

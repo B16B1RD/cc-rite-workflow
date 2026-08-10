@@ -317,7 +317,7 @@ fi
   - **(C) エスケープハッチ**（ユーザーが明示選択した場合のみ）: 「従来 `git switch -c` で続行」は **recommended にしない**。worktree 分離を破棄する明示的な選択肢としてのみ残し、他セッション併走中は作業ツリーを破壊し合う危険がある旨を**警告**した上でステップ 2.3 にフォールバックする。
   - Bash 永続 cwd 駆動（cwd を main checkout に残したまま絶対パスで操作する経路）は**導入しない**（main tree を誤更新するリスクのため）。
 
-> 入場以降、sandbox 有効環境では main checkout 配下への state 書込（`flow-state.sh set` / `issue-claim.sh` / `issue-comment-wm-sync.sh` 等、本ステップ以降の全フェーズの hook 呼び出し）が「読み込み専用ファイルシステムです」で拒否されることがある。拒否された当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要。詳細: [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる)、）。
+> 入場以降、sandbox 有効環境では main checkout 配下への state 書込（`flow-state.sh set` / `issue-claim.sh` / `issue-comment-wm-sync.sh` 等、本ステップ以降の全フェーズの hook 呼び出し）が「読み込み専用ファイルシステムです」で拒否されることがある。拒否された当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要。詳細: [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる)）。
 
 入場後、claim に worktree path を記録する（reap / resume の discovery 用）:
 

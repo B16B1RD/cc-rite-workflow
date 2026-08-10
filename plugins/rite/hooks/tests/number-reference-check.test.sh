@@ -201,6 +201,22 @@ else
   fail "generic rationale placeholder residue found under plugins/rite or docs"
 fi
 
+echo "TC-014: deletion-damage residue is absent"
+deletion_residue_pattern='[(（]で |[(（]の |machine-gated since[)]|stdout em''it、[)）:]|tracked by[[:space:]]*[.]|approved by[[:space:]]*[.]|of '\''s|pattern[.]POSIX|、）|,[)]'
+malformed_sample="context (${empty_marker:-}で rationale)"
+if printf '%s\n' "$malformed_sample" | rg -q "$deletion_residue_pattern" &&
+   ! printf '%s\n' 'context with durable rationale' | rg -q "$deletion_residue_pattern"; then
+  pass "deletion-damage matcher distinguishes malformed and valid prose"
+else
+  fail "deletion-damage matcher positive/negative control failed"
+fi
+if ! rg -n -g '!**/number-reference-check.test.sh' "$deletion_residue_pattern" \
+  "$REPO_ROOT/plugins/rite" "$REPO_ROOT/docs" >/dev/null; then
+  pass "deletion-damage residue is absent"
+else
+  fail "deletion-damage residue found under plugins/rite or docs"
+fi
+
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------

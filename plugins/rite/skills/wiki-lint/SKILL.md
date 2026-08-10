@@ -694,7 +694,7 @@ Lint 完了後、`.rite/wiki/log.md` に OKF v0.1 予約構造（`## YYYY-MM-DD`
 - `lint:clean`: ブロッキングカテゴリ 5 種 (`n_contradictions`, `n_stale`, `n_orphans`, `n_missing_concept`, `n_broken_refs`) **すべてが 0** の場合。`n_unregistered_raw` の値に依存しない (`n_unregistered_raw > 0` でも他 5 カテゴリが全 0 なら `lint:clean`)
 - `lint:warning`: 上記 5 カテゴリのいずれか 1 つ以上が `> 0` の場合。`n_unregistered_raw` は判定から除外する
 
-**`lint_action` 自動判定** (Pattern 1: `[CONTEXT] key=value` stdout emit、): 上記 prose 判定基準を LLM 解釈から切り離し、bash block で機械的に決定して stdout に emit する。ステップ 8.3 の `{log_entry}` 組み立てはこの emit 値を **single source of truth** として参照する:
+**`lint_action` 自動判定** (Pattern 1: `[CONTEXT] key=value` stdout emit): 上記 prose 判定基準を LLM 解釈から切り離し、bash block で機械的に決定して stdout に emit する。ステップ 8.3 の `{log_entry}` 組み立てはこの emit 値を **single source of truth** として参照する:
 
 ```bash
 # ステップ 8.1 canonical lint_action decision logic (ステップ 8.3 sibling sync 契約相手)

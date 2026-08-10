@@ -5,8 +5,8 @@
 # `pr-cycle-cleanup.sh`. A producer that creates a throw-away branch or worktree
 # whose name is NOT covered by the cleanup script's strict patterns records it
 # here at creation time; cleanup then reaps it by identity (the manifest entry),
-# not by guessing the name. This is the "生成時マニフェスト" half of 's
-# name-independent reap contract (D-01): cleanup deletes ONLY what a rite producer
+# not by guessing the name. This is the producer half of the name-independent
+# reap contract (D-01): cleanup deletes ONLY what a rite producer
 # explicitly recorded, so an unrelated user branch/worktree is never touched.
 #
 # Subcommand:

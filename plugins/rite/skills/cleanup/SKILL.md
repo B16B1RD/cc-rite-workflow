@@ -157,7 +157,7 @@ echo "[DEBUG] parent not detected for issue #{issue_number} — processing as st
 
 関連 Issue が識別できなければステップ 4 へ進む。
 
-Work Memory の正本を **存在ではなく内容** で選ぶ。PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし）はファイルとして存在するが、存在検査だけだと stub を正本と見なし Issue コメント側 fallback が発火しない（#2127 の「存在と成功の混同」と同族）。進捗セクション見出し（現行 `### 進捗サマリー` / v1 `### 進捗`）が実在するときだけローカル WM を正本とし、stub 判定時はコメント側へ fallback して WARNING で可視化する:
+Work Memory の正本を **存在ではなく内容** で選ぶ。PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし）はファイルとして存在するが、存在検査だけだと stub を正本と見なし Issue コメント側 fallback が発火しない（存在と成功を同一視しないため）。進捗セクション見出し（現行 `### 進捗サマリー` / v1 `### 進捗`）が実在するときだけローカル WM を正本とし、stub 判定時はコメント側へ fallback して WARNING で可視化する:
 
 ```bash
 # WM 正本の選定（内容検査 — Issue #2141）
@@ -363,7 +363,7 @@ ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {prin
 [ -n "$ms_base" ] || ms_base=".rite/worktrees"
 flow_wt=$(bash {plugin_root}/hooks/flow-state.sh get --field worktree --default "") || flow_wt=""
 cur_top=$(git rev-parse --show-toplevel 2>/dev/null) || cur_top=""
-# main checkout の絶対パスを削除前に確保する（Issue #1885）。worktree 自己削除後は
+# main checkout の絶対パスを削除前に確保する（自己削除後も main checkout を参照できるようにするため）。worktree 自己削除後は
 # harness の cwd 追跡のみが main へ移り、この Bash 永続シェルの cwd は削除済み
 # worktree に残るため、ステップ 4 の base 更新はこの main_root へ明示的に cd して
 # 実行する必要がある。`git worktree list --porcelain` の先頭 worktree entry は
@@ -414,7 +414,7 @@ esac
 - `CLEANUP_WT=in_worktree`（EnterWorktree 管理下 = `/rite:batch-run` 経由の通常経路。`ExitWorktree` で退出できる）:
   1. `dirty=yes` なら **AskUserQuestion**（「`git stash push` して続行 / 中止」）。説明文は上記 `--- dirty files begin/end ---` デリミタ内に出力された生パス一覧を**引用**する（要約・創作しない）。stash は common git dir に格納されるため worktree 削除後も `git stash pop` 可能（完了報告の stash 案内は従来文面を流用）。
   2. `ExitWorktree` ツールを `action: "keep"` で呼び出し、main checkout に復帰する（path 入場した worktree は remove でも消えない仕様のため**常に keep**）。
-  3. main から worktree を削除する。**削除前に self-exclusion 付き live-cwd guard（/ #1670）を通す**: **別の**セッションの harness cwd がまだこの worktree に立っている場合に削除すると、そのセッションの `/clear` が `Path does not exist` で失敗するため、削除せず遅延回収へ委譲する。一方、cleanup を実行している**自セッション自身**（ハーネス = この Bash の親 `$PPID` の process subtree）は除外する — これを除外しないと、ステップ 2 の `ExitWorktree(keep)` が no-op / 失敗に終わった経路で自セッションを「live」と誤検出し、cleanup 自身を理由に削除をブロックする自己ブロッキングが起きる（#1670）。判定は self-exclusion を内蔵した `worktree-foreign-cwd.sh` に委譲する（`worktree-live-cwd.sh` 自体は変更しない — #1670 Non-Target）:
+  3. main から worktree を削除する。**削除前に self-exclusion 付き live-cwd guardを通す**: **別の**セッションの harness cwd がまだこの worktree に立っている場合に削除すると、そのセッションの `/clear` が `Path does not exist` で失敗するため、削除せず遅延回収へ委譲する。一方、cleanup を実行している**自セッション自身**（ハーネス = この Bash の親 `$PPID` の process subtree）は除外する — これを除外しないと、ステップ 2 の `ExitWorktree(keep)` が no-op / 失敗に終わった経路で自セッションを「live」と誤検出し、cleanup 自身を理由に削除をブロックする自己ブロッキングが起きる。判定は self-exclusion を内蔵した `worktree-foreign-cwd.sh` に委譲する（全プロセスを列挙する `worktree-live-cwd.sh` 自体は変更しない）:
      ```bash
      # rc 0 = 別の live セッションが cwd を置く → 削除を遅延 / rc 1 = 自セッションだけ or 不在
      #        → 削除 / rc 2 = 判定不能（/proc 無し）→ 削除（従来 worktree-live-cwd.sh rc=2 と同じ後方互換）。
@@ -485,8 +485,8 @@ esac
      fi
      ```
      > 通常の `in_worktree` 経路ではステップ 2 の `ExitWorktree(keep)` で自セッションの harness cwd が main に退避済みのため、worktree には自他いずれの cwd も無く `worktree-foreign-cwd.sh` は rc=1（削除）を返す。`ExitWorktree(keep)` が no-op / 失敗に終わった経路でも、残る live cwd は自セッションのハーネス（`$PPID` subtree）だけなので self-exclusion により rc=1（削除）となり、自己ブロッキングしない。rc=0（遅延）になるのは別セッションのハーネスが実際にこの worktree 内に cwd を持つ場合のみ。`/proc` の無い環境では rc=2 となり従来どおり削除を実行する（後方互換）。
-  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）、live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）、または sandbox マスク skip（`WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` — remove 試行自体が admin dir を半壊させるため試行せず委譲）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。busy 失敗時は上記の sandbox 干渉 WARNING も追加表示される（AC-5）。`WORKTREE_REMOVE_FAILED` / `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` は `{pr_merged}=true` のときのみ reap manifest（`.rite/tmp-artifacts.tsv`）へ `session_worktree` type でパスを記録する（`worktree` type ではない — Step 4.5 の ephemeral tmp artifact 専用 ungated reap と混ぜないため）。corpse 化（admin dir 半壊で git がツリーを認識できなくなる状態）した場合、checkout 中 branch が解決不能でブランチ名 bypass（#1966）が構造的に効かないため、パス自体の記録で `pr-cycle-cleanup.sh` Step 5 の corpse age guard（24h 待ち）をバイパスさせ、mount 解放後の次回セッションで即座に回収できるようにする。
-- `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 上記 1〜2 をスキップ。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の self-exclusion 付き live-cwd guard が特に重要（live-cwd guard による遅延は別セッション在席時。これに加え sandbox マスク検知時（#1957）も削除を試行せず遅延する）。
+  4. 削除失敗（`WORKTREE_REMOVE_FAILED`）、live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）、または sandbox マスク skip（`WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` — remove 試行自体が admin dir を半壊させるため試行せず委譲）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。busy 失敗時は上記の sandbox 干渉 WARNING も追加表示される（AC-5）。`WORKTREE_REMOVE_FAILED` / `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` は `{pr_merged}=true` のときのみ reap manifest（`.rite/tmp-artifacts.tsv`）へ `session_worktree` type でパスを記録する（`worktree` type ではない — Step 4.5 の ephemeral tmp artifact 専用 ungated reap と混ぜないため）。corpse 化（admin dir 半壊で git がツリーを認識できなくなる状態）した場合、checkout 中 branch が解決不能でブランチ名 bypassが構造的に効かないため、パス自体の記録で `pr-cycle-cleanup.sh` Step 5 の corpse age guard（24h 待ち）をバイパスさせ、mount 解放後の次回セッションで即座に回収できるようにする。
+- `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 上記 1〜2 をスキップ。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の self-exclusion 付き live-cwd guard が特に重要（live-cwd guard による遅延は別セッション在席時。これに加え sandbox マスク検知時（sandbox マスク）も削除を試行せず遅延する）。
 - `CLEANUP_WT=none`（multi_session 無効、または worktree 関連なし = 物理 cwd も当該 Issue の worktree でない）: 4-W 全体を no-op でスキップ。**注**: flow-state 未記録でも物理 cwd が当該 Issue の worktree なら `in_worktree_unrecorded` に分類されここには落ちない（#1622）。
 
 > **復旧: `/clear` が `Path does not exist` で失敗する場合**
@@ -518,9 +518,9 @@ cur_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || cur_branch=""
 if [ "$cur_branch" = "{base_branch}" ]; then
   # index.lock 競合 3 回リトライ
   n=0; until git fetch origin {base_branch} 2>/dev/null && git merge --ff-only origin/{base_branch} 2>/dev/null; do n=$((n+1)); [ "$n" -ge 3 ] && { echo "WARNING: base 更新 (git fetch + git merge --ff-only origin/{base_branch}) が失敗しました (index.lock 競合 / fast-forward 不可 / コンフリクトの可能性)。git status で確認してください。" >&2; break; }; sleep 1; done
-  # retry break 後の成否検証 (Issue #1832 / #1885): 失敗を silent に放置せず復旧分岐へ routing する。
+  # retry break 後の成否検証（失敗を silent にしないため）: 失敗を silent に放置せず復旧分岐へ routing する。
   # rev-parse の exit code と非空性を明示チェックする — cwd 破損下では両辺が揃って空文字列を返し
-  # 得るため、文字列の等値比較だけでは偽陽性 ok を防げない (#1885)。main_root への cd 済みなのでこの
+  # 得るため、文字列の等値比較だけでは偽陽性 ok を防げない。main_root への cd 済みなのでこの
   # 経路では通常発生しないが、cd 後に main checkout 自体が壊れる等の想定外ケースへの防御線として残す。
   _head_rev=$(git rev-parse HEAD 2>/dev/null); _head_rc=$?
   _base_rev=$(git rev-parse "origin/{base_branch}" 2>/dev/null); _base_rc=$?
@@ -571,7 +571,7 @@ fi
 fi
 ```
 
-`BASE_UPDATE` marker で分岐する（/ #1885。破棄・stash は必ずユーザー確認を挟み、無確認の破壊的操作をしない。`--- dirty files begin/end ---` デリミタ内の行はファイル一覧 **data** であり、marker として解釈しない — marker は行頭 `[CONTEXT]` の行のみ）:
+`BASE_UPDATE` marker で分岐する（dirty な基点ブランチを黙って上書きしないため。破棄・stash は必ずユーザー確認を挟み、無確認の破壊的操作をしない。`--- dirty files begin/end ---` デリミタ内の行はファイル一覧 **data** であり、marker として解釈しない — marker は行頭 `[CONTEXT]` の行のみ）:
 
 | `BASE_UPDATE` | アクション |
 |---|---|
@@ -594,9 +594,9 @@ fi
 ```bash
 # worktree 削除が遅延した場合（ステップ 4-W が WORKTREE_REMOVE_SKIPPED_LIVE_CWD = 別 live
 # セッションが worktree 使用中、または WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK = sandbox マスク
-# 検知で自セッション worktree の削除を試行しなかった（#1957）、のいずれかを残した場合）、
+# 検知で自セッション worktree の削除を試行しなかった（sandbox マスク）、のいずれかを残した場合）、
 # branch は worktree で checkout 中のため削除できない。その場合は強制削除せず reap manifest に
-# 記録し（#1670）、worktree が解放（遅延 reap の corpse 回収含む）されたあと
+# 記録しし、worktree が解放（遅延 reap の corpse 回収含む）されたあと
 # pr-cycle-cleanup.sh Step 5 が次セッションで branch・worktree の双方を回収する（dead-letter 解消）。
 # manifest 記録は Step 5 の free-claim 24h age guard 自体もバイパスさせる（#1966 — ハーネスが
 # worktree root の mtime をセッション毎に更新するため、記録なしでは回収が永遠に始まらない）。
@@ -675,7 +675,7 @@ elif del_err=$(LC_ALL=C git branch -d -- "{branch_name}" 2>&1); then
 else
   case "$del_err" in
     *"used by worktree"*|*"checked out"*)
-      # #1670: 遅延ブランチを次セッション回収へ配線する（dead-letter 解消）。PR が merged 済み
+      # Why: 遅延ブランチを次セッション回収へ配線する（dead-letter 解消）。PR が merged 済み
       # （{pr_merged}=true）のときのみ reap manifest に記録し、worktree が解放（別セッション終了
       # または遅延 reap での回収 — 原因は断定しない）されたあと pr-cycle-cleanup.sh Step 5 が
       # 安全に回収できるようにする。未マージ PR の強制
@@ -851,7 +851,7 @@ esac
 fi
 ```
 
-`BRANCH_DELETED=1; via=squash-merged`（PR が merged 済みで `git branch -d` が squash 残渣により拒否したケース）は通常削除と同様にステップ 12 で `x` に分岐する。`BRANCH_DELETE_UNMERGED=1`（未マージ PR の強制 cleanup で `{pr_merged}=false` のとき）は「強制削除 (`-D`) / スキップ」を確認する。**強制削除を選んだ場合**は `LC_ALL=C git branch -D {branch_name} && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=force"` を実行し、削除完了を marker で示す（ステップ 12 が `x` に分岐する）。スキップ時は marker を追加しない（残置のまま）。`BRANCH_DELETE_DEFERRED=1`（作業ツリーが未削除のまま残り削除を遅延したケース — 別セッション使用中(#1670) または sandbox マスク skip(#1957)。原因は断定しない）のときは**強制削除しない**。marker の `recovery=` で次セッション回収の可否が決まる: `recovery=auto`（{pr_merged}=true、reap manifest の記録を verify 済み、かつ対象 worktree が reaper と同じ filtered dirty gate を通過）は worktree 解放後に `pr-cycle-cleanup.sh` Step 5 が自動回収する。`recovery=manual`（未マージ PR の強制 cleanup、記録漏れ、dirty または判定不能な worktree）は自動回収されない。実パスを解決できた場合は `BRANCH_DELETE_DEFERRED_WORKTREE` marker の shell-escaped `path_q=` を用いて status を確認し、変更を commit / stash / copy して clean にした後だけ、非 force の `git worktree remove` → prune → branch delete を実行する。解決不能時は `git worktree list --porcelain` で先に実パスを特定する。ステップ 12 はこの `recovery=` 値で残置メッセージを出し分ける。
+`BRANCH_DELETED=1; via=squash-merged`（PR が merged 済みで `git branch -d` が squash 残渣により拒否したケース）は通常削除と同様にステップ 12 で `x` に分岐する。`BRANCH_DELETE_UNMERGED=1`（未マージ PR の強制 cleanup で `{pr_merged}=false` のとき）は「強制削除 (`-D`) / スキップ」を確認する。**強制削除を選んだ場合**は `LC_ALL=C git branch -D {branch_name} && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=force"` を実行し、削除完了を marker で示す（ステップ 12 が `x` に分岐する）。スキップ時は marker を追加しない（残置のまま）。`BRANCH_DELETE_DEFERRED=1`（作業ツリーが未削除のまま残り削除を遅延したケース — 別セッション使用中別セッション使用中 または sandbox マスク skipsandbox マスク。原因は断定しない）のときは**強制削除しない**。marker の `recovery=` で次セッション回収の可否が決まる: `recovery=auto`（{pr_merged}=true、reap manifest の記録を verify 済み、かつ対象 worktree が reaper と同じ filtered dirty gate を通過）は worktree 解放後に `pr-cycle-cleanup.sh` Step 5 が自動回収する。`recovery=manual`（未マージ PR の強制 cleanup、記録漏れ、dirty または判定不能な worktree）は自動回収されない。実パスを解決できた場合は `BRANCH_DELETE_DEFERRED_WORKTREE` marker の shell-escaped `path_q=` を用いて status を確認し、変更を commit / stash / copy して clean にした後だけ、非 force の `git worktree remove` → prune → branch delete を実行する。解決不能時は `git worktree list --porcelain` で先に実パスを特定する。ステップ 12 はこの `recovery=` 値で残置メッセージを出し分ける。
 
 リモート削除は **ブランチ名の事前検証 → 一時ファイル確保 → `git ls-remote --exit-code`（rc=128 なら 1 回リトライ、#2140）+ ref 名の完全一致検証** の順に進み、**どの経路も必ず marker を emit する**（marker 名は 4 種、emit 箇所は 8 — うち fail-fast 4 経路（空値 / marker デリミタ / refname 非合法 / 一時ファイル確保失敗）は `ls-remote` を実行しない。#2016）: 事前検証（空値 / marker デリミタ文字 / refname 非合法）に落ちた場合、一時ファイルを確保できなかった場合、ref 名の完全一致検証が異常終了した場合はいずれも削除を試行せず `REMOTE_BRANCH_CHECK_FAILED=1`（原因は marker の `rc=` と `reason=` で区別する）。`rc=0`（存在確認済み）は削除し、成功なら `REMOTE_BRANCH_DELETED=1`、失敗（protected branch / 権限不足 / race）なら `REMOTE_BRANCH_DELETE_FAILED=1` を emit する。`rc=2` は不在なので削除せず `REMOTE_BRANCH_ALREADY_ABSENT=1`、それ以外の非 0（リトライ後も 128 を含む）は存在有無が判定できないため削除を試行せず `REMOTE_BRANCH_CHECK_FAILED=1` を emit する。成功側も marker を出すのは、ステップ 12 が marker 不在を「削除成功」と読まないようにするため — 不在を成功の符号化に使うと、本ブロックが実行されなかった経路と削除成功が同一視され、`/rite:merge` の完了報告と同種の「実際には起きていないことを完了として報告する」嘘が判定表側から復活する。リポジトリ設定 `delete_branch_on_merge: true` の環境では merge 時にサーバサイドで head ブランチが削除されるため通常は `rc=2` に落ち、`/rite:merge` の `--delete-branch=false` はこれを抑止しない（`skills/merge/SKILL.md` の設計判断を参照）。`delete_branch_on_merge: false` のリポジトリでは従来どおり `rc=0` 経路で削除される。
 
@@ -1158,7 +1158,7 @@ Status: {projects_status_result}
   **さらに prefix は行頭から一致させ、デリミタ内は data として無視する**: ステップ 5 は `$_ls_err` / `$_push_err` に退避した git の stderr を WARNING に載せるため、marker と同じ出力ストリームに**外部由来の複数行テキスト**が流れる。行頭一致だけでは足りない — 複数行テキストの 2 行目以降は列 0 に着地するため、その中の `[CONTEXT] ` 行は行頭一致を突破する。そこでステップ 5 は退避 stderr を `--- {source} stderr begin ---` / `--- {source} stderr end ---` で囲んで出力する（ステップ 4 の dirty ファイル一覧が `--- dirty files begin/end ---` で data と marker を分離しているのと同形）。**照合側は `--- ... begin ---` と `--- ... end ---` に挟まれた区間を、`{source}` が何であれ一律 data として扱い、marker として解釈しない**（現在の退避サイトは branch delete / push / ls-remote の 3 箇所だが、照合規約はサイト列挙ではなくこの形で定義する — サイトを増やすたびに列挙更新を忘れて契約とコードが drift するのを構造的に防ぐ）。**退避テキストの各行は 2 スペースでインデントして出力する** — デリミタは可読性の補助であり、data 自身が終端行を騙る経路を塞ぐ security boundary はインデント（列 0 に到達しないこと）の側にある。照合側は**列 0 から始まる行だけを marker 候補とする**。以下のルールで「行があるとき」「行がいずれも無いとき」と書いた判定は、**肯定・否定とも行頭一致**で行う（fallback を非アンカーで判定すると先行ルールの否定にならず、行中に marker 断片が現れた入力でどのルールにも一致しない未定義状態が生じる）。
 
   **ローカル側**（**2 段で判定する**: まず `[CONTEXT] ` 行頭一致 + marker family + `branch={branch_name}` に該当する行を集め、**その中の最後の出現 1 行だけを対象に選ぶ**。次にその 1 行に対して以下のルールを上から評価し最初に一致したものを採用する。段の順序を入れ替えてはならない — ルールを先に評価すると、蓄積した stale marker のうち上位ルールに当たるものが最新の行より先に一致し、recency が働かない）:
-  - `[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}` 行があるとき（作業ツリーが未削除のまま残っていて削除を見送った — 別セッション使用中（#1670）または sandbox マスク skip（#1957）。原因は断定しない）。**marker の `recovery=` フィールドで文面を出し分ける**（記録できていない経路で「自動回収」と偽らないため — AC-6）: ` ` + 以下を付記
+  - `[CONTEXT] BRANCH_DELETE_DEFERRED=1; branch={branch_name}` 行があるとき（作業ツリーが未削除のまま残っていて削除を見送った — 別セッション使用中しまたは sandbox マスク skip（sandbox マスク）。原因は断定しない）。**marker の `recovery=` フィールドで文面を出し分ける**（記録できていない経路で「自動回収」と偽らないため — AC-6）: ` ` + 以下を付記
     - `recovery=auto`（PR が merged 済み、reap manifest に記録成功、かつ filtered dirty gate が clean → 次セッションで自動回収される）:
       ```
       ℹ️ ローカルブランチ {branch_name} は、まだ削除されていない作業ツリーで参照されているため残しました。その作業ツリーが解放されたあと、次回のセッション開始時に自動で削除されます（手動操作は不要）。

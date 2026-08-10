@@ -1,7 +1,7 @@
 #!/bin/bash
 # cleanup-wm-source-select.test.sh
 #
-# cleanup/SKILL.md ステップ 3 の WM 正本選定（存在検査 → 内容検査、）を pin する。
+# cleanup/SKILL.md ステップ 3 の WM 正本選定（存在検査 → 内容検査）を pin する。
 # SKILL.md から選定ブロックを抽出して sandbox で実行し、stub / 実 WM / 両不在の 3 経路を検証する。
 #
 # - T-01 (AC-1): stub（進捗セクションなし）→ stub_fallback → comment 正本 + WARNING

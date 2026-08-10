@@ -119,7 +119,7 @@ run_helper() {
   return 0
 }
 
-echo "=== wiki-lint-skipped-refs.sh tests (raw frontmatter scan,) ==="
+echo "=== wiki-lint-skipped-refs.sh tests (raw frontmatter scan) ==="
 echo ""
 
 # === TC-1: same_branch 抽出 ===

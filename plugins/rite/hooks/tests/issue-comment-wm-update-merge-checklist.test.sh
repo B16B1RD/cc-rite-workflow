@@ -5,7 +5,7 @@
 # §3.5.2 progress-merge delegation). Verifies:
 #   - full-body exact-line dedup (idempotency / partial dedup)
 #   - insertion at the end of the named section (before next `### ` / at EOF)
-#   - section-absent + new items → exit 10 (SectionAbsentError; fail-loud,)
+#   - section-absent + new items → exit 10 (SectionAbsentError; fail-loud)
 #   - real WM template heading `### 進捗サマリー` accepts the merge (AC-3)
 #   - trailing-newline state of the input preserved
 #   - missing --section → usage error (exit 1; AC-2 pin for required flag)
@@ -92,7 +92,7 @@ else
 fi
 echo ""
 
-# ─── TC-004: section absent + new items → exit 10 (fail-loud,) ─
+# ─── TC-004: section absent + new items → exit 10 (fail-loud) ─
 echo "TC-004: section absent → exit 10 (SectionAbsentError; items not silently dropped)"
 body4=$'## 📜 rite 作業メモリ\n\n### 完了情報\n- **PR**: #1\n'
 printf '%s' "$body4" > "$TEST_DIR/body4"

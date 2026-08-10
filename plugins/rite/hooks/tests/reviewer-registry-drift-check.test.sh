@@ -476,7 +476,7 @@ else
 fi
 
 # --- TC-15: numeric slug (web3) synced fixture → rc=0, correctly counted in
-# all 3 sync points (regression guard for AGENT_RE digit support,) ---
+# all 3 sync points (regression guard for AGENT_RE digit support) ---
 #  extended AGENT_RE from `[a-z][a-z-]*-reviewer[.]md` to
 # `[a-z][a-z0-9-]*-reviewer[.]md` so digit-bearing slugs (e.g. web3) are
 # extracted instead of silently dropping out of all 3 sets + the I3 row

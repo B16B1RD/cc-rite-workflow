@@ -48,8 +48,8 @@
 #   - `test` / `experiment` / `mutation` / `verify` / `check` / `sandbox`:
 #     reviewer-subagent verification experiments (observed in practice).
 #     The reviewer's READ-ONLY contract is the prompt-level Layer 1
-#     (`agents/_reviewer-base.md`; branch-creating git verbs are no longer
-#     machine-gated since), so these names should normally never
+#     (`agents/_reviewer-base.md`; branch-creating git verbs are not exhaustively
+#     machine-gated because command matching cannot safely cover every form), so these names should normally never
 #     be created but cannot be structurally prevented. This regex is the
 #     designed sweep for reviewer-leaked residue (with Layer 3
 #     post-review-state-verify.sh handling in-review detection).
@@ -946,7 +946,7 @@ _rite_ttl_protects() {
   [ "$age" -le "$ttl_seconds" ]
 }
 
-# Worktree liveness guard (+ #1552). The 4th protection layer:
+# Worktree liveness guard. The 4th protection layer:
 # extend Gate 0 self-exclusion to ALL sessions that may still resume into this
 # worktree. Two independent signals, either of which protects (skip reap):
 #   (A) flow-state.worktree scan — a session's per-session flow-state records

@@ -4,8 +4,8 @@
 #
 # Strategy: the migration script resolves its default REPO_ROOT via
 # hooks/state-path-resolve.sh (the same anchor as review-result-save.sh).
-# These tests pin the linked-worktree path (の state-root 統一,
-# regression tests deferred to): a regression back to
+# These tests pin the linked-worktree path and shared state-root behavior:
+# a regression back to
 # `git rev-parse --show-toplevel` would resolve the worktree root, miss the
 # main-root JSON, and turn the migration into a silent no-op. The sandbox
 # mirrors the plugin layout (scripts/ + hooks/) inside a real git repo with a

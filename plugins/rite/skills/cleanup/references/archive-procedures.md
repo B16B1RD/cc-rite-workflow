@@ -203,7 +203,7 @@ esac
 rm -f "${wm_sync_err:-}"
 ```
 
-**Note for Claude**: comment 取得・body 変換（全文 dedup + `### 進捗サマリー` セクション末尾挿入）・safety check・PATCH・backup はすべて helper 内部で完結するため、本ブロックを単一 Bash 呼び出しに収める必要はない。`{plugin_root}` はリテラル値で埋め込み、`{issue_number}` を cleanup.md コンテキストの実値で置換すること。対象セクション不在時は items を破棄せず `status=skipped; reason=section_absent` を返す（`status=success` と報告しない — fail-loud、）。参照: §3.5.1 の canonical caller パターン。
+**Note for Claude**: comment 取得・body 変換（全文 dedup + `### 進捗サマリー` セクション末尾挿入）・safety check・PATCH・backup はすべて helper 内部で完結するため、本ブロックを単一 Bash 呼び出しに収める必要はない。`{plugin_root}` はリテラル値で埋め込み、`{issue_number}` を cleanup.md コンテキストの実値で置換すること。対象セクション不在時は items を破棄せず `status=skipped; reason=section_absent` を返す（`status=success` と報告しない — fail-loud）。参照: §3.5.1 の canonical caller パターン。
 
 > **適用範囲の注記**: 対象見出しは現行 default WM フォーマットの `### 進捗サマリー`（table + 任意の checklist 追記）である（SoT: `skills/rite-workflow/references/work-memory-format.md`、init テンプレ: `issue-comment-wm-sync.sh`）。v1 legacy の `### 進捗` のみを持つ body では `section_absent` となり skip 表示される（旧「silent no-op success」は廃止）。v1 への互換フォールバックは持たない（実運用の init 経路は常に `進捗サマリー` を生成する）。
 

@@ -457,17 +457,17 @@ Two helper-driven patterns bracket the session-worktree lifecycle:
   checked-out branch is **reap-manifest-recorded**, i.e. cleanup already verified the
   PR merged and deferred the removal: that explicit "reap me" record bypasses the age
   guard, since the harness refreshes the worktree root mtime every session and the
-  guard would otherwise leak the deferred tree forever,), and a clean
+  guard would otherwise leak the deferred tree forever), and a clean
   `git status --porcelain` (a dirty worktree is never auto-reaped — the sole exception is
   an admin-HEAD-missing, git-unrecognized **corpse** whose status is structurally
   undeterminable: it bypasses the status gate and is reaped, working tree + admin dir,
-  behind the same claim + 24h age guards,). Once the worktree is gone, its
+  behind the same claim + 24h age guards). Once the worktree is gone, its
   branch is recovered rather than left untouched: `git branch -d` (safe-delete) runs
   first so an unmerged branch is preserved; if that's refused but the reap manifest
   confirms the PR was merged, `git branch -D` force-deletes it. On any successful
   recovery (`-d` and `-D` alike) the branch's manifest entry is consumed in the same
   run (a lingering entry is no longer inert once it also keys
-  the age-guard bypass,); an unmerged,
+  the age-guard bypass); an unmerged,
   manifest-unrecorded branch is kept with a WARNING. A corpse's HEAD can't
   be read, so branch recovery is structurally skipped for it.
 
@@ -497,7 +497,7 @@ push/fetch だけ失敗する非対称な挙動になる。
 （原因の 1, 2 段目が未解消のまま）。
 
 **現状の回避策**: 当該 `git push` / `git fetch` コマンドのみ `dangerouslyDisableSandbox: true`
-で再実行してよい（ユーザー確認は不要 — 既知の環境制約、）。sandbox のネットワーク許可
+で再実行してよい（ユーザー確認は不要 — 既知の環境制約）。sandbox のネットワーク許可
 リスト・credentials 保護設定はプラグイン外の環境設定のため、rite 側の設定変更では解消できない。
 SSH alias remote を使う任意のプロジェクトで同様に起こりうる。
 

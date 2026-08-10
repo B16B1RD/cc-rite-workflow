@@ -453,7 +453,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ## Phase 5.5: Active Batch 検出 → 継続
 
-Phase 5.4 の invoke が制御を返したら（再開先 skill が完了通知 or 終端 sentinel を emit した後）、**自セッションの** run-queue（`run-queue-{session_id}.json`）を参照し「この中断が `/rite:batch-run` 実行中の active batch 中断だったか」を判定する。stale な残骸（過去に完了/停止済みのバッチのキューが単に残っている）を誤って継続しないよう、鮮度判定を必須とする。session_id は batch-run と同じく `flow-state.sh path` の basename から導出する。recover は flow-state phase も ambient session_id で解決する（Phase 3 の `flow-state.sh get`）ため、真の active batch 中断（同一セッションでの compact / turn 跨ぎ）では recover の session_id と run-queue の session_id が一致し、自セッションのキューだけを参照する（他セッションのキューは別ファイルのため構造的に読まない、）。
+Phase 5.4 の invoke が制御を返したら（再開先 skill が完了通知 or 終端 sentinel を emit した後）、**自セッションの** run-queue（`run-queue-{session_id}.json`）を参照し「この中断が `/rite:batch-run` 実行中の active batch 中断だったか」を判定する。stale な残骸（過去に完了/停止済みのバッチのキューが単に残っている）を誤って継続しないよう、鮮度判定を必須とする。session_id は batch-run と同じく `flow-state.sh path` の basename から導出する。recover は flow-state phase も ambient session_id で解決する（Phase 3 の `flow-state.sh get`）ため、真の active batch 中断（同一セッションでの compact / turn 跨ぎ）では recover の session_id と run-queue の session_id が一致し、自セッションのキューだけを参照する（他セッションのキューは別ファイルのため構造的に読まない）。
 
 ### 5.5.1 判定
 
