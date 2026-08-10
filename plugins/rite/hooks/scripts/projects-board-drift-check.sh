@@ -1,21 +1,21 @@
 #!/bin/bash
 # rite workflow - Projects Board "Done" Drift Check
 #
-# Reconciliation drift-guard for the "CLOSED+COMPLETED but board != Done" gap.
+# Reconciliation drift-guard for the "CLOSED but board != Done" gap.
 # A Done transition is only wired into /rite:cleanup and /rite:issue-close, but
 # GitHub auto-closes Issues via a PR body "Closes #N" the moment the PR merges. When
 # /rite:cleanup is not run afterwards, the board freezes at its last value (In Review
 # for a ready Issue, Todo for an untouched one). No reconciliation picks these back up.
 #
-# This script scans recently-updated CLOSED Issues and reports the ones whose closure
-# reason is COMPLETED yet whose GitHub Projects board Status is not "Done". It is a
-# read-only detector by default (matching the other hooks/scripts/*-check.sh lint
-# checks); with --reconcile it drives scripts/projects-status-update.sh to set Status
-# to Done.
+# This script scans recently-updated CLOSED Issues and reports the ones whose GitHub
+# Projects board Status is not "Done". It is a read-only detector by default (matching
+# the other hooks/scripts/*-check.sh lint checks); with --reconcile it drives
+# scripts/projects-status-update.sh to set Status to Done.
 #
-# Closure-reason policy (AC-2): only stateReason == COMPLETED is considered. NOT_PLANNED
-# (wontfix / duplicate) Issues are intentionally left alone — their board state is not a
-# drift to correct.
+# Closure-reason policy: the closure reason is not consulted. The board's Status field
+# has no Cancelled-equivalent terminal option, so a wontfix / duplicate closure has
+# nowhere to land other than Done — leaving it filtered out only strands it in a
+# non-terminal column that no reconciler ever revisits.
 #
 # On-board policy: an Issue that is not on the project board (no projectItem for the
 # configured project_number) is NOT a drift — there is no board Status to reconcile.
@@ -71,8 +71,8 @@ while [ $# -gt 0 ]; do
       cat <<'USAGE_EOF'
 projects-board-drift-check.sh - Projects Board "Done" Drift Check
 
-Scans recently-updated CLOSED Issues and reports the ones whose closure reason is
-COMPLETED yet whose GitHub Projects board Status is not "Done" — the symptom of a
+Scans recently-updated CLOSED Issues and reports the ones whose GitHub Projects board
+Status is not "Done" — the symptom of a closure that never reached the board, such as a
 merge that auto-closed an Issue without /rite:cleanup running to set Done.
 
 Usage:
@@ -191,7 +191,7 @@ gql_err=$(mktemp "${TMPDIR:-/tmp}/rite-board-drift-gql-err-XXXXXX") || gql_err="
 jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-board-drift-jq-err-XXXXXX") || jq_err=""
 
 # jq emits one TSV line per drifted Issue: number<TAB>status<TAB>title
-# Drift = stateReason COMPLETED AND on board (projectItem for $pn) AND Status != "Done".
+# Drift = on board (projectItem for $pn) AND Status != "Done".
 if ! DRIFT_TSV=$(set -o pipefail; gh api graphql -f query='
 query($owner: String!, $repo: String!, $first: Int!) {
   repository(owner: $owner, name: $repo) {
@@ -199,7 +199,6 @@ query($owner: String!, $repo: String!, $first: Int!) {
       nodes {
         number
         title
-        stateReason
         projectItems(first: 10) {
           nodes {
             project { number }
@@ -221,7 +220,7 @@ query($owner: String!, $repo: String!, $first: Int!) {
       .data.repository.issues.nodes[]
       | . as $i
       | (([$i.projectItems.nodes[] | select(.project.number == $pn)][0]) // null) as $pitem
-      | select($i.stateReason == "COMPLETED" and $pitem != null)
+      | select($pitem != null)
       | (([$pitem.fieldValues.nodes[] | select(.field.name == "Status") | .name][0]) // "<no-status>") as $st
       | select($st != "Done")
       | "\($i.number)\t\($st)\t\($i.title)"
@@ -269,7 +268,7 @@ if [ -n "$DRIFT_TSV" ]; then
     fi
 
     echo "[projects-board-drift] #$issue_number \"$title\" status=\"$status\" (expected Done)$reconcile_suffix"
-    [ "$QUIET" = "true" ] || echo "projects-board-drift: WARNING #$issue_number CLOSED/COMPLETED but board Status=\"$status\" (expected Done)" >&2
+    [ "$QUIET" = "true" ] || echo "projects-board-drift: WARNING #$issue_number CLOSED but board Status=\"$status\" (expected Done)" >&2
   done <<< "$DRIFT_TSV"
 fi
 

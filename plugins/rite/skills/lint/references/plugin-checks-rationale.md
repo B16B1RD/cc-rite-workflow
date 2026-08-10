@@ -93,7 +93,9 @@ A block is flagged only when it exhibits **2 or more** of these signals (a singl
 
 ## Projects board drift check (projects-board-drift-check.sh)
 
-Detects the "CLOSED+COMPLETED but board != Done" reconciliation gap. A `Done` transition is only wired into `/rite:cleanup` (ステップ8 → `skills/cleanup/references/archive-procedures.md` Phase 3.2) and `/rite:issue-close` (Shared: Projects Status → Done), but GitHub auto-closes an Issue the moment a PR carrying `Closes #N` merges. When `/rite:cleanup` is not run afterwards, the board freezes at its last value (In Review for a ready Issue, Todo for an untouched one) and no reconciler picks it back up. The check scans recently-updated CLOSED Issues whose `stateReason` is `COMPLETED` and reports those that are on the project board with Status != "Done". Closure reason `NOT_PLANNED` (wontfix / duplicate) is intentionally excluded, and Issues that are not on the board are not drift (no board Status to reconcile).
+Detects the "CLOSED but board != Done" reconciliation gap. A `Done` transition is only wired into `/rite:cleanup` (ステップ8 → `skills/cleanup/references/archive-procedures.md` Phase 3.2) and `/rite:issue-close` (Shared: Projects Status → Done), but GitHub auto-closes an Issue the moment a PR carrying `Closes #N` merges. When `/rite:cleanup` is not run afterwards, the board freezes at its last value (In Review for a ready Issue, Todo for an untouched one) and no reconciler picks it back up. The check scans recently-updated CLOSED Issues and reports those that are on the project board with Status != "Done".
+
+The closure reason is deliberately not consulted. The board's Status field carries no Cancelled-equivalent terminal option (Todo / In Progress / In Review / Done), so a `NOT_PLANNED` closure — wontfix, duplicate — has nowhere to land other than Done; filtering it out only strands it in a non-terminal column that nothing else revisits. Issues that are not on the board remain outside the check (there is no board Status to reconcile), which is what keeps `--reconcile` from quietly adding rows to the board.
 
 ## Number reference check (number-reference-check.sh)
 

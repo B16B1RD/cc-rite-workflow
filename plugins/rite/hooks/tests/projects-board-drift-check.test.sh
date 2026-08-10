@@ -10,9 +10,13 @@
 #   T-6: config-aware no-op (projects disabled / rite-config absent) exits 0 with a
 #        0-findings summary line — exercised offline, no gh required (AC-4)
 #   T-7: behavioral fixture — the jq detection pipeline (extracted from source, not a
-#        copy) classifies all six cases correctly (drift / Done / NOT_PLANNED /
-#        not-on-board / other-project / <no-status>), catching semantic breaks that
-#        preserve jq literals but flip scoping (offline, jq-only, no gh)
+#        copy) classifies all six cases correctly (COMPLETED drift / NOT_PLANNED drift /
+#        Done / not-on-board / other-project / <no-status>), catching semantic breaks
+#        that preserve jq literals but flip scoping (offline, jq-only, no gh)
+#   T-9: behavioral — --reconcile drives the Status update helper to "Done" for a
+#        closure reason that used to be excluded (offline, gh shim records the item-edit)
+#  T-10: behavioral — a failing GraphQL scan exits 2 with a diagnostic, so lint never
+#        misreads an invocation/API error as "drift detected" (exit 1)
 #
 # Usage: bash plugins/rite/hooks/tests/projects-board-drift-check.test.sh
 set -euo pipefail
@@ -49,6 +53,16 @@ assert_absent() {
   local haystack="$1" needle="$2" description="$3"
   if printf '%s\n' "$haystack" | grep -qF -- "$needle"; then
     FAIL=$((FAIL + 1)); FAILURES+=("$description"); echo "  ✗ $description" >&2
+  else
+    PASS=$((PASS + 1)); echo "  ✓ $description"
+  fi
+}
+
+# Inverse of assert_file_contains: the pattern must NOT appear anywhere in the file.
+assert_file_lacks() {
+  local file="$1" pattern="$2" description="$3"
+  if grep -qE -e "$pattern" "$file"; then
+    FAIL=$((FAIL + 1)); FAILURES+=("$description (pattern: $pattern)"); echo "  ✗ $description" >&2
   else
     PASS=$((PASS + 1)); echo "  ✓ $description"
   fi
@@ -120,10 +134,12 @@ assert_file_contains "$DRIFT_SH" '\-\-limit\)' "case clause handles --limit flag
 assert_file_contains "$DRIFT_SH" '\-\-quiet\)' "case clause handles --quiet flag"
 assert_file_contains "$DRIFT_SH" 'Reconciliation drift-guard' "header documents drift-guard purpose"
 # Detection: anchor asserts to the load-bearing jq predicates (with quotes), NOT to the header
-# comments (which spell COMPLETED/Done without the jq quoting), so deleting the detection logic
-# actually fails the suite. The quoted `stateReason == "COMPLETED"` predicate also pins the AC-2
-# NOT_PLANNED exclusion: rewriting it to a wrong form (e.g. `!= "NOT_PLANNED"`) drops this literal.
-assert_file_contains "$DRIFT_SH" 'stateReason == "COMPLETED"' "AC-2: includes only COMPLETED (NOT_PLANNED excluded)"
+# comments (which spell Done without the jq quoting), so deleting the detection logic actually
+# fails the suite. Board membership is the only remaining inclusion gate, so pin its exact form;
+# the companion absence assert keeps a closure-reason filter from creeping back into the source
+# (the board has no terminal Status other than Done, so no closure reason may be filtered out).
+assert_file_contains "$DRIFT_SH" 'select\(\$pitem != null\)' "board 掲載のみで絞る (closure reason 非依存)"
+assert_file_lacks "$DRIFT_SH" 'stateReason' "closure reason への依存が残っていない"
 assert_file_contains "$DRIFT_SH" 'select.*\$st.*!= "Done"' "AC-1: drift when board Status != Done"
 assert_file_contains "$DRIFT_SH" 'projectItems' "queries projectItems for board membership"
 # AC-4: projects-enabled gate
@@ -184,8 +200,11 @@ else
   PASS=$((PASS + 1)); echo "  ✓ extracted jq detection program from source"
   # GraphQL-shaped fixture (models `gh api graphql` output) covering all six cases.
   # project_number ($pn) = 6. Titles are unique so present/absent asserts key on them.
-  # #101 / #106 are drift; #102 / #103 / #104 / #105 must be excluded. The bare {} node
-  # in #101 mirrors GraphQL emitting non-single-select fieldValues as empty objects.
+  # #101 / #103 / #106 are drift; #102 / #104 / #105 must be excluded. The stateReason
+  # values are retained (the query no longer selects the field) so the two closure reasons
+  # sit side by side and a reintroduced closure-reason filter drops #103 and fails here.
+  # The bare {} node in #101 mirrors GraphQL emitting non-single-select fieldValues as
+  # empty objects.
   fixture=$(cat <<'JSON'
 { "data": { "repository": { "issues": { "nodes": [
   { "number": 101, "title": "drift case", "stateReason": "COMPLETED",
@@ -194,9 +213,9 @@ else
   { "number": 102, "title": "done excluded", "stateReason": "COMPLETED",
     "projectItems": { "nodes": [ { "project": { "number": 6 },
       "fieldValues": { "nodes": [ { "field": { "name": "Status" }, "name": "Done" } ] } } ] } },
-  { "number": 103, "title": "not_planned excluded", "stateReason": "NOT_PLANNED",
+  { "number": 103, "title": "not_planned drift", "stateReason": "NOT_PLANNED",
     "projectItems": { "nodes": [ { "project": { "number": 6 },
-      "fieldValues": { "nodes": [ { "field": { "name": "Status" }, "name": "In Review" } ] } } ] } },
+      "fieldValues": { "nodes": [ { "field": { "name": "Status" }, "name": "Todo" } ] } } ] } },
   { "number": 104, "title": "not on board", "stateReason": "COMPLETED",
     "projectItems": { "nodes": [] } },
   { "number": 105, "title": "other project", "stateReason": "COMPLETED",
@@ -216,13 +235,13 @@ JSON
   else
     FAIL=$((FAIL + 1)); FAILURES+=("jq pipeline errored (rc=$jq_rc)"); echo "  ✗ jq pipeline errored (rc=$jq_rc)" >&2
   fi
-  # Exactly two drift rows — guards over-detection (e.g. a broken on-board scope letting
+  # Exactly three drift rows — guards over-detection (e.g. a broken on-board scope letting
   # not-on-board / other-project issues through). Count lines carrying a TAB separator.
   line_count=$(printf '%s\n' "$actual" | grep -c $'\t' || true)
-  if [ "$line_count" -eq 2 ]; then
-    PASS=$((PASS + 1)); echo "  ✓ exactly 2 drift rows emitted"
+  if [ "$line_count" -eq 3 ]; then
+    PASS=$((PASS + 1)); echo "  ✓ exactly 3 drift rows emitted"
   else
-    FAIL=$((FAIL + 1)); FAILURES+=("expected 2 drift rows, got $line_count"); echo "  ✗ expected 2 drift rows, got $line_count" >&2
+    FAIL=$((FAIL + 1)); FAILURES+=("expected 3 drift rows, got $line_count"); echo "  ✗ expected 3 drift rows, got $line_count" >&2
   fi
   # Case 1: COMPLETED + on-board(6) + Status="In Review" -> drift, status carried through.
   assert_present "$actual" "$(printf '101\tIn Review\tdrift case')" "case1: COMPLETED on-board non-Done -> drift row"
@@ -230,8 +249,8 @@ JSON
   assert_present "$actual" "$(printf '106\t<no-status>\tno-status boundary')" "case6: on-board without Status field -> <no-status> drift"
   # Case 2: Status already Done -> excluded.
   assert_absent "$actual" "done excluded" "case2: Status=Done excluded (AC-1)"
-  # Case 3: NOT_PLANNED closure -> excluded.
-  assert_absent "$actual" "not_planned excluded" "case3: NOT_PLANNED excluded (AC-2)"
+  # Case 3: NOT_PLANNED closure on a non-Done board row -> drift, same as COMPLETED.
+  assert_present "$actual" "$(printf '103\tTodo\tnot_planned drift')" "case3: NOT_PLANNED on-board non-Done -> drift row"
   # Case 4: not on the board (empty projectItems) -> excluded.
   assert_absent "$actual" "not on board" "case4: not-on-board excluded"
   # Case 5: on a different project (number != pn) -> excluded.
@@ -292,6 +311,110 @@ if grep -qE 'MOCK ASSERTION FAILED|gh repo view failed' "$T8_DIR/stderr.txt" 2>/
   echo "  ✗ wrong owner/repo value or gh repo view fallback was hit" >&2
 else
   PASS=$((PASS + 1)); echo "  ✓ exact owner=o repo=r threaded to graphql, gh repo view never consulted"
+fi
+
+echo ""
+echo "[T-9] Behavioral: --reconcile drives Status -> Done for a wontfix/duplicate closure"
+# The reconcile path hands off to scripts/projects-status-update.sh, which is invoked by
+# absolute path and cannot be shimmed — so the assertion is made at the gh boundary that
+# helper drives. The shim answers both graphql shapes (the drift scan is the one carrying
+# `states: CLOSED`), serves the Status field options, and records the item-edit arguments.
+T9_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rite-board-drift-t9-XXXXXX")
+trap 'rm -rf "${tmpd:-}" "$T8_DIR" "$T9_DIR"' EXIT
+mkdir -p "$T9_DIR/repo/bin"
+( cd "$T9_DIR/repo" && git init -q && git remote add origin "git@github.com:o/r.git" ) >/dev/null 2>&1
+cat > "$T9_DIR/repo/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+YAML
+cat > "$T9_DIR/repo/bin/gh" <<'GH_SHIM'
+#!/bin/bash
+case "$1 $2" in
+  "api graphql")
+    if printf '%s\n' "$*" | grep -q 'states: CLOSED'; then
+      cat <<'SCAN'
+{"data":{"repository":{"issues":{"nodes":[
+  {"number":103,"title":"closed as duplicate",
+   "projectItems":{"nodes":[{"project":{"number":1},
+     "fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}
+]}}}}
+SCAN
+    else
+      cat <<'ITEM'
+{"data":{"repository":{"issue":{"url":"https://github.com/o/r/issues/103",
+  "projectItems":{"nodes":[{"id":"ITEM_103","project":{"id":"PROJ_1","number":1}}]}}}}}
+ITEM
+    fi ;;
+  "project field-list")
+    echo '{"fields":[{"id":"FIELD_STATUS","name":"Status","options":[{"id":"OPT_TODO","name":"Todo"},{"id":"OPT_DONE","name":"Done"}]}]}' ;;
+  "project item-edit")
+    printf '%s\n' "$*" > "$GH_ITEM_EDIT_LOG" ;;
+  *) exit 0 ;;
+esac
+GH_SHIM
+chmod +x "$T9_DIR/repo/bin/gh"
+set +e
+t9_out=$(cd "$T9_DIR/repo" && PATH="$T9_DIR/repo/bin:$PATH" GH_ITEM_EDIT_LOG="$T9_DIR/item-edit.args" \
+  bash "$DRIFT_SH" --reconcile --quiet 2>"$T9_DIR/stderr.txt")
+t9_rc=$?
+set -e
+# exit 1 = drift detected (reconcile does not clear the finding); the summary proves the
+# helper reported success rather than a swallowed failure.
+if [ "$t9_rc" -eq 1 ] && printf '%s' "$t9_out" | grep -q 'reconcile summary: 1 updated, 0 failed'; then
+  PASS=$((PASS + 1)); echo "  ✓ reconcile reports 1 updated, 0 failed (exit 1 = drift detected)"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-9: expected exit 1 + '1 updated, 0 failed', got rc=$t9_rc; stdout: $(printf '%s' "$t9_out" | tr '\n' ' ' | head -c 300)")
+  echo "  ✗ reconcile summary wrong (exit $t9_rc)" >&2
+fi
+assert_present "$t9_out" "-> reconciled to Done" "T-9: finding row carries the reconciled marker"
+if [ -f "$T9_DIR/item-edit.args" ] && grep -q -- '--single-select-option-id OPT_DONE' "$T9_DIR/item-edit.args"; then
+  PASS=$((PASS + 1)); echo "  ✓ item-edit called with the Done option id"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-9: item-edit not called with Done option id (args: $(cat "$T9_DIR/item-edit.args" 2>/dev/null | head -c 300))")
+  echo "  ✗ item-edit not called with the Done option id" >&2
+fi
+
+echo ""
+echo "[T-10] Behavioral: a failing scan exits 2 with a diagnostic (never 1 = 'drift detected')"
+# lint Phase 3.18 reads exit 1 as a drift warning, so an API/pipeline failure must not
+# borrow that code — it exits 2 and says why.
+T10_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rite-board-drift-t10-XXXXXX")
+trap 'rm -rf "${tmpd:-}" "$T8_DIR" "$T9_DIR" "$T10_DIR"' EXIT
+mkdir -p "$T10_DIR/repo/bin"
+( cd "$T10_DIR/repo" && git init -q && git remote add origin "git@github.com:o/r.git" ) >/dev/null 2>&1
+cat > "$T10_DIR/repo/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+YAML
+cat > "$T10_DIR/repo/bin/gh" <<'GH_SHIM'
+#!/bin/bash
+case "$1 $2" in
+  "api graphql")
+    echo "HTTP 502: Bad gateway" >&2
+    exit 1 ;;
+  *) exit 0 ;;
+esac
+GH_SHIM
+chmod +x "$T10_DIR/repo/bin/gh"
+set +e
+(cd "$T10_DIR/repo" && PATH="$T10_DIR/repo/bin:$PATH" bash "$DRIFT_SH" --quiet >"$T10_DIR/stdout.txt" 2>"$T10_DIR/stderr.txt")
+t10_rc=$?
+set -e
+if [ "$t10_rc" -eq 2 ]; then
+  PASS=$((PASS + 1)); echo "  ✓ graphql failure exits 2 (invocation error, not drift)"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-10: expected exit 2, got $t10_rc"); echo "  ✗ expected exit 2, got $t10_rc" >&2
+fi
+if grep -q 'ERROR: gh api graphql or jq pipeline failed' "$T10_DIR/stderr.txt" && \
+   grep -q 'gh: HTTP 502' "$T10_DIR/stderr.txt"; then
+  PASS=$((PASS + 1)); echo "  ✓ stderr carries the ERROR line and the captured gh diagnostic"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-10: missing ERROR line or gh diagnostic: $(head -c 300 "$T10_DIR/stderr.txt" | tr '\n' ' ')")
+  echo "  ✗ stderr missing the ERROR line or the gh diagnostic" >&2
 fi
 
 echo ""
