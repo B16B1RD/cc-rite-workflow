@@ -102,7 +102,7 @@
 `non_blocking_findings[]` を独立配列として永続化する理由。
 
 - **なぜ独立配列に出すのか**: `findings[]` にだけ載せない設計にすると、既定 `post_comment: false` では PR コメントも投稿されないため、**永続成果物 (`.rite/review-results/*.json`) に降格の痕跡がゼロ**になり「`overall_assessment: mergeable` + `findings[]: []`」= 指摘ゼロのレビューと区別不能な記録が残る。これは `assessment-rules.md` §5.3.0.M の「破棄経路は存在しない」および「マージ後に人間が拾い直せる状態を保つ」という記録契約を既定構成で偽にする。独立配列にすることで `findings[]` の blocking 集合としての意味を保ちながら記録を永続化する。
-- **帰結**: (a) `/rite:fix` の JSON 経路は `findings[]` のみを読むため `non_blocking_count` は JSON 経路では 0 になる（Markdown / 会話経路の N とは一致しない）。 以降、`measured_map` 自体は空ではない — findings[] に残る nit-noted 非実測 finding が `measured=false` を持つため。ただし `non_blocking_count` は 0 のまま。(b) 非実測 finding と同一 file:line に GitHub thread がある場合、External review (blocking) に分類される — 安全側。(c) 非実測 finding を `measured: false` 付きで `findings[]` に統合する方向は cross-field invariant 同期が前提であり本 Issue では採らない。
+- **帰結**: (a) `/rite:fix` の JSON 経路は `findings[]` のみを読むため `non_blocking_count` は JSON 経路では 0 になる（Markdown / 会話経路の N とは一致しない）。一方、`measured_map` 自体は空ではない — findings[] に残る nit-noted 非実測 finding が `measured=false` を持つため。ただし `non_blocking_count` は 0 のまま。(b) 非実測 finding と同一 file:line に GitHub thread がある場合、External review (blocking) に分類される — 安全側。(c) 非実測 finding を `measured: false` 付きで `findings[]` に統合する方向は cross-field invariant 同期が前提であり本 Issue では採らない。
 
 ## save-pending-id-path-notes
 

@@ -202,13 +202,50 @@ else
 fi
 
 echo "TC-014: deletion-damage residue is absent"
-deletion_residue_pattern='[(（]で |[(（]の |machine-gated since[)]|stdout em''it、[)）:]|tracked by[[:space:]]*[.]|approved by[[:space:]]*[.]|of '\''s|pattern[.]POSIX|、）|,[)]'
-malformed_sample="context (${empty_marker:-}で rationale)"
-if printf '%s\n' "$malformed_sample" | rg -q "$deletion_residue_pattern" &&
-   ! printf '%s\n' 'context with durable rationale' | rg -q "$deletion_residue_pattern"; then
-  pass "deletion-damage matcher distinguishes malformed and valid prose"
+deletion_residue_patterns=(
+  '[(（]で '
+  '[(（]の '
+  'machine-gated since[)]'
+  'stdout emit、[)）:]'
+  'tracked by[[:space:]]*[.]'
+  'approved by[[:space:]]*[.]'
+  "of 's"
+  'pattern[.]POSIX'
+  '、）'
+  ',[)]'
+  '[[:lower:]][.][(][[:upper:]]'
+  '構築。[^|]*と対称[)][[:space:]]*[|]'
+  'emit、[[:space:]]+で'
+  '。[[:space:]]+以降'
+)
+deletion_residue_samples=(
+  'context (で rationale'
+  'context (の rationale'
+  'machine-gated since)'
+  'stdout emit、):'
+  'tracked by .'
+  'approved by .'
+  "half of 's contract"
+  'pattern.POSIX'
+  '理由、）'
+  'reason,)'
+  'silently.(The next sentence)'
+  '集合を構築。helper と対称) |'
+  'helper が emit、 で LLM'
+  '完了。 以降'
+)
+deletion_residue_pattern=$(IFS='|'; printf '%s' "${deletion_residue_patterns[*]}")
+for i in "${!deletion_residue_patterns[@]}"; do
+  if printf '%s\n' "${deletion_residue_samples[$i]}" | rg -q "${deletion_residue_patterns[$i]}"; then
+    pass "deletion-damage matcher arm $((i + 1)) has a positive control"
+  else
+    fail "deletion-damage matcher arm $((i + 1)) missed its positive control"
+  fi
+done
+if ! printf '%s\n' 'context with durable rationale' | rg -q "$deletion_residue_pattern"; then
+  pass "deletion-damage matcher accepts valid prose"
 else
-  fail "deletion-damage matcher positive/negative control failed"
+  fail "deletion-damage matcher rejected valid prose"
 fi
 if ! rg -n -g '!**/number-reference-check.test.sh' "$deletion_residue_pattern" \
   "$REPO_ROOT/plugins/rite" "$REPO_ROOT/docs" >/dev/null; then

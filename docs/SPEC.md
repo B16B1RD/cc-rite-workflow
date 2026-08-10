@@ -1332,7 +1332,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `review-raw-json-extract.sh` | `/rite:fix` レビュー結果取得 — extract the JSON payload of the last Raw JSON section from a `/rite:pr-review` PR comment body (same reason for living in a real file) | — |
 | `fix-reason-coverage-check.sh` | `/rite:fix` DoD 検証 (手動実行) — verify every emitted `WM_UPDATE_FAILED` reason appears as a row in fix.md's reason table; rc=1 lists the undocumented ones | — |
 | `wiki-branch-init.sh` | `/rite:wiki-init` ステップ 3.1 — orphan wiki ブランチ作成 + push + 元ブランチ復帰 (stash 退避/復帰、same_branch 両対応) | — |
-| `wiki-lint-skipped-refs.sh` | `/rite:wiki-lint` ステップ 6.0 — raw frontmatter (`ingest_status: skipped`) を走査して skipped_refs 集合を marker block + `log_read_ok` 4 値 enum で構築。skip SoT が log.md から raw frontmatter へ移行。6.2 `wiki-lint-source-refs.sh` と対称) | — |
+| `wiki-lint-skipped-refs.sh` | `/rite:wiki-lint` ステップ 6.0 — raw frontmatter (`ingest_status: skipped`) を走査して skipped_refs 集合を marker block + `log_read_ok` 4 値 enum で構築。skip SoT は log.md から raw frontmatter へ移行し、6.2 `wiki-lint-source-refs.sh` と対称 | — |
 | `wiki-lint-source-refs.sh` | `/rite:wiki-lint` ステップ 6.2 — Wiki ページの Sources 行から `all_source_refs` 集合を構築 (6.0 `wiki-lint-skipped-refs.sh` と対称) | — |
 | `wiki-lint-stale.sh` | `/rite:wiki-lint` ステップ 4 — frontmatter `updated` と cutoff 比較で陳腐化集合を marker block + `stale_check_ok` enum で構築 (GNU date 検査内包) | — |
 | `wiki-lint-orphans.sh` | `/rite:wiki-lint` ステップ 5 — index.md 登録ページと pages_list の集合差分を marker block + `orphan_check_ok` enum で構築 (index.md 読出内包) | — |
