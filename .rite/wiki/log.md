@@ -5,6 +5,7 @@
 * **Create**: [残余の緩和策として値を開示するなら、その値が問題発生時と正常時で違う値になるかを確かめる](pages/heuristics/disclosure-is-not-identification.md) — raw/reviews/20260810T160134Z-pr-2231.md を新規ページ化（決定論的に組まれた値は健全時と stale 時でバイト単位に同一の文字列を出すため、開示は残余の識別に使えない）。
 * **Update**: [散文契約の静的 pin には weakened probe による positive control を課す（見出しラベルで充足する pin を構造的に排除する）](pages/patterns/prose-pin-requires-positive-control.md) — raw/reviews/20260810T160134Z-pr-2231.md を統合（件数一致は総数を保ったまま帰属を変える mutation に盲目。区間の終端はレベル述語で書く、の 2 項を scope と単位の規律へ追加）。
 * **Update**: [同じ機構への N 回目のパッチは、その機構が依拠する述語が proxy である信号](pages/heuristics/nth-patch-signals-proxy-predicate.md) — raw/reviews/20260810T141417Z-pr-2231.md, raw/fixes/20260810T142033Z-pr-2231.md を統合（修正が新しい欠陥を生む比率 2/2 は機構ごと単純化の合図。単純化の rationale は境界値を手で当ててから書く）。
+* **lint:warning** — contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=308, broken_refs=0
 
 ## 2026-08-10
 
