@@ -273,6 +273,24 @@ deletion_residue_samples=(
   '拒否され、 が消した'
 )
 deletion_residue_pattern=$(IFS='|'; printf '%s' "${deletion_residue_patterns[*]}")
+scan_deletion_residue() {
+  local manifest="$TEST_DIR/deletion-residue-files"
+  local file grep_rc
+  if ! find "$@" -type f ! -path '*/fixtures/*' \
+    ! -name 'number-reference-check.test.sh' -print0 > "$manifest"; then
+    return 2
+  fi
+  while IFS= read -r -d '' file; do
+    grep_rc=0
+    grep -En "$deletion_residue_pattern" "$file" >/dev/null || grep_rc=$?
+    case "$grep_rc" in
+      0) return 0 ;;
+      1) ;;
+      *) return 2 ;;
+    esac
+  done < "$manifest"
+  return 1
+}
 for i in "${!deletion_residue_patterns[@]}"; do
   if printf '%s\n' "${deletion_residue_samples[$i]}" | grep -Eq "${deletion_residue_patterns[$i]}"; then
     pass "deletion-damage matcher arm $((i + 1)) has a positive control"
@@ -285,12 +303,19 @@ if ! printf '%s\n' 'context with durable rationale' | grep -Eq "$deletion_residu
 else
   fail "deletion-damage matcher rejected valid prose"
 fi
-if ! find "$REPO_ROOT/plugins/rite" "$REPO_ROOT/docs" -type f \
-  ! -path '*/fixtures/*' ! -name 'number-reference-check.test.sh' -print0 \
-  | xargs -0 grep -En "$deletion_residue_pattern" >/dev/null; then
-  pass "deletion-damage residue is absent"
+scan_rc=0
+scan_deletion_residue "$REPO_ROOT/plugins/rite" "$REPO_ROOT/docs" || scan_rc=$?
+case "$scan_rc" in
+  1) pass "deletion-damage residue is absent" ;;
+  0) fail "deletion-damage residue found under plugins/rite or docs" ;;
+  *) fail "deletion-damage residue scan failed operationally" ;;
+esac
+scan_rc=0
+scan_deletion_residue "$TEST_DIR/definitely-missing-root" 2>/dev/null || scan_rc=$?
+if [ "$scan_rc" -eq 2 ]; then
+  pass "deletion-damage scan fails closed when a scan root is unavailable"
 else
-  fail "deletion-damage residue found under plugins/rite or docs"
+  fail "deletion-damage scan did not distinguish an unavailable root (rc=$scan_rc)"
 fi
 
 # --------------------------------------------------------------------------
