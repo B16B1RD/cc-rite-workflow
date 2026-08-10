@@ -1,7 +1,7 @@
 # Wiki promotion references
 
 This directory is the distributed source of truth for the 38 rite-specific
-knowledge pages selected by promotion audit #2091 and tracked by the governing rationale.
+knowledge pages selected by promotion audit #2091 and tracked by .
 
 ## Promotion policy
 
@@ -15,6 +15,6 @@ knowledge pages selected by promotion audit #2091 and tracked by the governing r
 
 ## Inventory
 
-`manifest.txt` is the exact inventory approved by the governing rationale. The promotion
+`manifest.txt` is the exact inventory approved by . The promotion
 contract test compares it with the Markdown files byte-for-byte by relative
 path and verifies required plugin frontmatter plus link portability.

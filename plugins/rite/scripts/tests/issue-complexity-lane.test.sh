@@ -5,7 +5,7 @@
 # (a) M+ の Issue が軽量レーンへ落ちて検証深度が silent に下がる、または (b) XS/S が毎回
 # フル装備で回りレーンが一度も発動しない、のどちらかになる。(a) は品質を無言で削るため、
 # 本 suite は「情報が欠けた全経路で full へ倒れること」を reason ごとに個別に pin する
-# (the governing rationale AC-2 / T-02)。
+# (AC-2 / T-02)。
 #
 # gh は PATH shim で差し替える (hooks/tests/issue-comment-wm-sync.sh と同じ方式)。
 # 実 API を叩かないため body の記法バリエーションを網羅的に固定できる。

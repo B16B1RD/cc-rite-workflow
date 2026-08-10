@@ -68,4 +68,4 @@ review⇄fix ループのように同じ skill が同一 conversation 内で複�
 
 ## ソース
 
-- The observed review run review results (`Wiki provenance: ../../raw/reviews/20260726T164052Z-pr-2030.md`)
+- Review results (`Wiki provenance: ../../raw/reviews/20260726T164052Z-pr-2030.md`)

@@ -3,7 +3,7 @@
 # Blocks reviewer subagents from mutating the parent working tree via the
 # Edit / Write / MultiEdit / NotebookEdit tools.
 #
-# Why this exists :
+# Why this exists:
 #   The sibling `pre-tool-bash-guard.sh` guards only the Bash tool (since Issue
 #   #1879 its machine gate is the .git-write path) — it does nothing about a
 #   reviewer subagent that opens `Edit`/`Write` on a source file in the parent
@@ -23,7 +23,7 @@
 #      the substring / `..` re-entry forgery found in review cycle 1. A write into a
 #      .git directory of a non-isolation worktree also denies (review cycle 2:
 #      .git/hooks/pre-commit etc. → main-session code execution). MultiEdit is included
-#      even though the contract.s Technical Notes list only {Edit, Write, NotebookEdit}:
+#      even though the original technical notes listed only {Edit, Write, NotebookEdit}:
 #      MultiEdit mutates files identically and omitting it would be a trivial bypass.
 #
 # Fail direction (mirrors pre-tool-bash-guard.sh Pattern 4):
@@ -149,7 +149,7 @@ fi
 # A raw substring match would let a reviewer forge an isolation path —
 # `<repo>/rite-review-mutation-x/../plugins/rite/hooks.json` re-enters a tracked file, and
 # `<repo>/src/rite-review-mutation-hack.py` embeds the token in a filename — both empirically
-# bypassed the old substring allowlist (the governing rationale review cycle 1).
+# bypassed the old substring allowlist (review cycle 1).
 case "$FILE_PATH" in
   /*) ABS_PATH="$FILE_PATH" ;;
   *)  ABS_PATH="${CWD%/}/$FILE_PATH" ;;
@@ -177,7 +177,7 @@ while :; do
 done
 ABS_PATH=${_path_norm:-/}
 
-# --- Dereference a FINAL-element symlink before isolation scoping (the governing rationale AC-2) ---
+# --- Dereference a FINAL-element symlink before isolation scoping (AC-2) ---
 # The _tdir walk below resolves INTERMEDIATE dirs physically (via `[ -d ]` / `git -C`), but the
 # target's own final element is never dereferenced. A reviewer could drop a symlink inside its
 # sanctioned isolation worktree pointing at the parent repo's .git —
@@ -194,7 +194,7 @@ ABS_PATH=${_path_norm:-/}
 # that owns it. Nothing downstream needs a canonical ABS_PATH — it is only reported; the
 # decision is made on TARGET_ROOT, which `git -C` produces already-resolved.
 #
-# Why not `realpath` : it is the one step that would need the target to EXIST.
+# Why not `realpath`: it is the one step that would need the target to EXIST.
 # GNU realpath tolerates a dangling final component, BSD/macOS realpath errors on it, so the
 # old `realpath "$ABS_PATH"` returned empty for exactly the attack shape above (the target
 # `.git/hooks/pre-commit` normally does not exist) and this whole block silently no-op'd on
@@ -208,7 +208,7 @@ ABS_PATH=${_path_norm:-/}
 # would let a two-link chain land _tdir back on the isolation root. Capped at 40 hops (Linux's
 # own ELOOP limit) so a symlink cycle terminates; a cycle then falls through to the walk with
 # ABS_PATH still a link inside the isolation worktree → allowed, exactly as before this fix.
-#   Note (the governing rationale AC-3): Claude Code's own Edit/Write tools REFUSE to write through a
+#   Note (AC-3): Claude Code's own Edit/Write tools REFUSE to write through a
 #   final-element symlink ("Refusing to write through symlink …"), verified empirically, so this
 #   is defense-in-depth — it does not rely on that (undocumented) harness behavior.
 _hop=0
@@ -283,14 +283,14 @@ if [ -z "$TARGET_ROOT" ]; then
   # `--show-toplevel` is empty for two very different reasons, which MUST NOT be conflated:
   #   (a) the ancestor is in NO git repo (genuine /tmp scratch) → allow (fail-open), or
   #   (b) the target is INSIDE a .git directory — `rev-parse --show-toplevel` reports no work tree
-  #       there, so the old blanket `|| exit 0` allowed it (the governing rationale review cycle 2). A reviewer
+  #       there, so the old blanket `|| exit 0` allowed it (review cycle 2). A reviewer
   #       writing into .git (e.g. .git/hooks/pre-commit, or .git/config core.hooksPath / alias.*=!sh)
   #       can execute arbitrary code in the non-sandboxed MAIN session on the next git operation —
   #       strictly worse than a source-file edit, and invisible to the worktree-hash post-condition
   #       axis (git status --porcelain ignores .git). This hook is the structural defense for the
   #       Edit/Write/MultiEdit/NotebookEdit path; deny git-internal writes there, allow only genuine
   #       non-repo scratch. (The sibling Bash-tool vector — `echo > .git/hooks/...`, `tee`/`cp`/`ln`
-  #       into .git — is closed by pre-tool-bash-guard.sh sub-block (H), the governing rationale AC-1.)
+  #       into .git — is closed by pre-tool-bash-guard.sh sub-block (H), AC-1.)
   if [ "$(git -C "$_tdir" rev-parse --is-inside-git-dir 2>/dev/null)" = "true" ]; then
     _deny_kind="git-dir"
   else

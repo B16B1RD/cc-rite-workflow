@@ -124,9 +124,9 @@ caller 側の case routing だけでなく、**script 自身のすべての内�
 
 ## ソース
 
-- The observed review run fix cycle 1 (exit 2 semantic preservation) (`Wiki provenance: ../../raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md`)
-- The observed review run review (6-reviewer による exit code mismatch 検出) (`Wiki provenance: ../../raw/reviews/20260415T094007Z-pr-529.md`)
-- The observed review run review cycle 1 (peer copy-paste の exit-code 契約非対称 + shift 2/set -e abort) (`Wiki provenance: ../../raw/reviews/20260608T112156Z-pr-1306.md`)
-- The observed review run fix cycle 1 (`[ "$#" -lt 2 ]` gate で欠落時 exit 2 へ統一) (`Wiki provenance: ../../raw/fixes/20260608T112705Z-pr-1306.md`)
-- The observed review run review cycle 2 (markdown 表示ロジックでの legitimate-skip/failure 混同を cross-validation で検出) (`Wiki provenance: ../../raw/reviews/20260713T045650Z-pr-1847-cycle2.md`)
-- The observed review run fix cycle 2 (`{wiki_ingest_check}` パターンを参照した多分岐への再設計) (`Wiki provenance: ../../raw/fixes/20260713T045756Z-pr-1847-cycle2.md`)
+- Fix cycle 1 (exit 2 semantic preservation) (`Wiki provenance: ../../raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md`)
+- Review (6-reviewer による exit code mismatch 検出) (`Wiki provenance: ../../raw/reviews/20260415T094007Z-pr-529.md`)
+- Review cycle 1 (peer copy-paste の exit-code 契約非対称 + shift 2/set -e abort) (`Wiki provenance: ../../raw/reviews/20260608T112156Z-pr-1306.md`)
+- Fix cycle 1 (`[ "$#" -lt 2 ]` gate で欠落時 exit 2 へ統一) (`Wiki provenance: ../../raw/fixes/20260608T112705Z-pr-1306.md`)
+- Review cycle 2 (markdown 表示ロジックでの legitimate-skip/failure 混同を cross-validation で検出) (`Wiki provenance: ../../raw/reviews/20260713T045650Z-pr-1847-cycle2.md`)
+- Fix cycle 2 (`{wiki_ingest_check}` パターンを参照した多分岐への再設計) (`Wiki provenance: ../../raw/fixes/20260713T045756Z-pr-1847-cycle2.md`)

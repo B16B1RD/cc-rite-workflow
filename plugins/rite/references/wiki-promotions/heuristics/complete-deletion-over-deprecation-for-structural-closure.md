@@ -75,5 +75,5 @@ cycle 1 (7) → cycle 2 (3) → cycle 3 (2) → cycle 4 (0 = mergeable)
 
 ## ソース
 
-- The observed review run cycle 4 mergeable + 4 cycle dogfooding lessons (`Wiki provenance: ../../raw/reviews/20260518T084056Z-pr-1043-cycle4-mergeable.md`)
-- The observed review run cycle 1 review (self-referential failure mode 起点) (`Wiki provenance: ../../raw/reviews/20260518T075850Z-pr-1043.md`)
+- Cycle 4 mergeable + 4 cycle dogfooding lessons (`Wiki provenance: ../../raw/reviews/20260518T084056Z-pr-1043-cycle4-mergeable.md`)
+- Cycle 1 review (self-referential failure mode 起点) (`Wiki provenance: ../../raw/reviews/20260518T075850Z-pr-1043.md`)

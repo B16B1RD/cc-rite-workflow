@@ -83,7 +83,7 @@ _resolve_session_id() {
     _validate_session_id "$override" "--session override" || return 1
     printf '%s\n' "$override"; return 0
   fi
-  # Priority : override → env CLAUDE_CODE_SESSION_ID → env
+  # Priority: override → env CLAUDE_CODE_SESSION_ID → env
   # CLAUDE_SESSION_ID → `.rite-session-id` file (env-absent fallback).
   #
   # The env var is per-session, so it isolates concurrent Claude sessions that
@@ -617,7 +617,7 @@ _migrate_file() {
   # 実際の migration announcement と同じ経路で observability を確保する。
   # Brace-delimit variables that abut the multibyte `→` (U+2192): under a non-UTF-8
   # locale (e.g. macOS CI), bash otherwise folds the arrow's leading byte into the
-  # variable name (`$sv→` → `sv\xe2`), tripping `set -u` "unbound variable" .
+  # variable name (`$sv→` → `sv\xe2`), tripping `set -u` "unbound variable".
   [ "$dry" = 1 ] && { echo "  would migrate: $f (schema v${sv}→v$SCHEMA_VERSION_V3, phase ${cp}→$np)" >&2; return 0; }
   local now updated; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   # v3 schema: drop legacy `previous_phase` (replaced by step name discrimination in v3) and
@@ -642,7 +642,7 @@ _migrate_file() {
   # (session-start.sh silences only stdout) surfaces it. The no-op "skip (already
   # v3)" case above stays --verbose-gated to keep quiet session starts quiet.
   # `${sv}`/`${cp}` braces are load-bearing: they keep the abutting `→` (U+2192)
-  # out of the variable name under a non-UTF-8 locale (the governing rationale; see the dry-run branch).
+  # out of the variable name under a non-UTF-8 locale (see the dry-run branch).
   echo "  migrated: $f (v${sv}→v$SCHEMA_VERSION_V3, ${cp}→$np)" >&2
   return 0
 }

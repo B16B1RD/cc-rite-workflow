@@ -73,4 +73,4 @@ advisory finding が umbrella Issue spec **自身の語法問題**に由来す�
 
 ## ソース
 
-- The observed review run review results (`Wiki provenance: ../../raw/reviews/20260507T103117Z-pr-885.md`)
+- Review results (`Wiki provenance: ../../raw/reviews/20260507T103117Z-pr-885.md`)

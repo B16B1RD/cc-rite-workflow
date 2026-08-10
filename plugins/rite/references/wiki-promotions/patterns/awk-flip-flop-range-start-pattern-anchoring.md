@@ -66,4 +66,4 @@ assert_grep_in_section "..." "$CLEANUP" \
 
 ## ソース
 
-- The observed review run fix results (cycle 3, awk flip-flop レンジ過検出の修正) (`Wiki provenance: ../../raw/fixes/20260723T031622Z-pr-1974-cycle3.md`)
+- Fix results (cycle 3, awk flip-flop レンジ過検出の修正) (`Wiki provenance: ../../raw/fixes/20260723T031622Z-pr-1974-cycle3.md`)

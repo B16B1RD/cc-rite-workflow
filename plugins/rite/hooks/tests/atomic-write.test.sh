@@ -4,7 +4,7 @@
 # Purpose:
 #   `flow-state.sh` は state file を更新する際、
 #     mktemp ${FLOW_STATE}.XXXXXX  →  jq 出力で tempfile に書き込み  →  mv tempfile state_file
-#   の atomic write pattern を採る。POSIX で `mv` は同一 filesystem 内では
+# Why: temporary-file + rename provides the required atomic write pattern.POSIX で `mv` は同一 filesystem 内では
 #   atomic な rename(2) syscall として実装され、SIGKILL や process crash で
 #   write が中断されても state file 本体は **直前の整合状態を保持** するか
 #   **新しい完全な状態にすり替わる** いずれかになる。partial-write は構造的に
@@ -249,7 +249,7 @@ else
 fi
 
 # -------------------------------------------------------------------------
-# TC-6 (the governing rationale / T-02 / AC-2): flock 不在 PATH でも set が成功し
+# TC-6 (/ T-02 / AC-2): flock 不在 PATH でも set が成功し
 #       state file が書かれ、stderr に "flock timeout" が出ない
 # -------------------------------------------------------------------------
 # TC-1/2/5 はホストの flock を使う flock-present 分岐のみ通過するため、

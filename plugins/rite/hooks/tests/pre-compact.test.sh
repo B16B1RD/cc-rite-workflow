@@ -5,9 +5,9 @@ set -euo pipefail
 
 issue_text() { printf 'Issue #%s' "$1"; }
 
-# Hermeticity guard : flow-state.sh path resolves session_id with
+# Hermeticity guard: flow-state.sh path resolves session_id with
 # priority env CLAUDE_CODE_SESSION_ID > env CLAUDE_SESSION_ID > .rite-session-id
-# file . When this test suite runs inside a live Claude Code
+# file. When this test suite runs inside a live Claude Code
 # session, that session's own id leaks into most `bash "$HOOK"` invocations
 # below (only one call site had an inline `env -u` guard) and silently
 # overrides the file-based per-session fixtures, making the hook resolve a

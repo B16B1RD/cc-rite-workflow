@@ -1,6 +1,6 @@
 # Wiki Promotion Audit #2091 — Review/Fix Loop
 
-the governing rationale audited the eight `promote: rite-plugin` pages from promotion audit
+ audited the eight `promote: rite-plugin` pages from promotion audit
 #2091. This table is the durable routing log. A page is shelved when an existing
 mechanical contract already enforces it; otherwise the named gate is the
 mechanization target.
@@ -9,7 +9,7 @@ mechanization target.
 |---|---|---|
 | `aggregate-recommendation-label-evasion` | shelve — already mechanized | recommendation classification and disposition gate |
 | `fix-induced-drift-in-cumulative-defense` | shelve — already mechanized | `review-trend-divergence.sh` and the `iterate` circuit breaker |
-| `reviewer-likelihood-evidence-omission-induces-mechanical-demotion` | follow-up — producer enforcement incomplete | existing measured gate records demotion but does not prevent omitted evidence; tracked by the governing rationale |
+| `reviewer-likelihood-evidence-omission-induces-mechanical-demotion` | follow-up — producer enforcement incomplete | existing measured gate records demotion but does not prevent omitted evidence; tracked as an explicit follow-up |
 | `convention-escalation-has-no-terminus` | shelve — already mechanized | structured review JSON, helper gates, and fail-loud enum validation |
 | `differential-scope-review-blind-outside-diff` | mechanized here | `iterate/SKILL.md` post-breaker full review transition and normal review routing |
 | `reviewer-scope-split-escalates-to-user` | mechanized here | Scope Split Gate below and `pr-review/SKILL.md` |

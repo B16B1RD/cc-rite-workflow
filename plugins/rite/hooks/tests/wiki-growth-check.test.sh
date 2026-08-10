@@ -40,7 +40,7 @@ if ! command -v jq >/dev/null 2>&1; then
   fi
   # Emit the counted form so the runner rolls this into its "N skipped" headline —
   # a whole file that exits 0 without running anything would otherwise be scored
-  # as a pass (the governing rationale review I-03).
+  # as a pass (review I-03).
   echo "  ⏭️ SKIP: jq not available — wiki-growth-check requires jq"
   echo "SKIP: 1"
   exit 0

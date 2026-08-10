@@ -1,5 +1,5 @@
 #!/bin/bash
-# Security pin tests for hooks/_validate-state-root.sh (the governing rationale, AC-3)
+# Security pin tests for hooks/_validate-state-root.sh (AC-3)
 #
 # _validate-state-root.sh is the single source of truth for STATE_ROOT
 # validation across the state-read helpers. Its rejection rules (path

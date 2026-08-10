@@ -1,5 +1,5 @@
 #!/bin/bash
-# Static contract tests for the governing rationale: /rite:merge must fail closed when CI is
+# Static contract tests for : /rite:merge must fail closed when CI is
 # unhealthy, distinguish executed failures from jobs that never ran, and expose
 # only an explicit override. The skill is prose-driven, so grep-pin the routing
 # and classification invariants that an LLM executes.
@@ -51,6 +51,6 @@ assert_grep "never-run jobs surface a concrete rerun command" "$MERGE" 'gh run r
 assert_grep "all-never-run case says no CI signal exists" "$MERGE" 'CI シグナルが存在しない'
 assert_grep "automatic rerun is prohibited" "$MERGE" '自動で rerun してはならない'
 
-if ! print_summary "$(basename "$0")" "mergeStateStatus の CI gate・jobs API 分類・明示 override contract (the governing rationale T-01〜T-08)"; then
+if ! print_summary "$(basename "$0")" "mergeStateStatus の CI gate・jobs API 分類・明示 override contract (T-01〜T-08)"; then
   exit 1
 fi

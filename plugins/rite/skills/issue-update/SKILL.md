@@ -81,7 +81,7 @@ Branch name pattern: `{type}/issue-{number}-{slug}`
 
 Extraction rules:
 1. Extract the digits following `issue-`
-2. Example: `feat/issue-13-implement-update` → the governing rationale
+2. Example: `feat/issue-13-implement-update` → issue number `13`
 
 ### 0.2 If Issue Number Cannot Be Extracted from Branch Name
 

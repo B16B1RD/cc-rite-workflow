@@ -254,7 +254,7 @@ if [ -e "$target_path" ] && ! git -C "$target_path" rev-parse --is-inside-work-t
     echo "  対処: filesystem permission / EBUSY (プロセスが掴んでいる) / read-only filesystem を確認してください" >&2
     exit 3
   fi
-  # prune 失敗を 2>/dev/null で完全抑制せず WARNING として surface する (the contract の
+  # prune 失敗を 2>/dev/null で完全抑制せず WARNING として surface する (の
   # anti-silent-failure 方針、および本ファイル上方の prunable 回復が prune 失敗を扱う姿勢と整合)。
   # 非ブロッキング: prune は dangling metadata の掃除であり、失敗しても後続の
   # `git worktree add` が顕在化させるため exit はしない。

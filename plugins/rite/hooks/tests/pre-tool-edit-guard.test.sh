@@ -1,10 +1,10 @@
 #!/bin/bash
-# Tests for pre-tool-edit-guard.sh (PreToolUse hook, the governing rationale)
+# Tests for pre-tool-edit-guard.sh (PreToolUse hook,)
 # Usage: bash plugins/rite/hooks/tests/pre-tool-edit-guard.test.sh
 #
 # Verifies AC-1 (reviewer subagent Edit/Write/MultiEdit/NotebookEdit to the parent
 # working tree is denied — including token-in-filename / `..` re-entry forgery of the
-# isolation allowlist, the governing rationale review cycle 1) and AC-4 (normal review and
+# isolation allowlist,  review cycle 1) and AC-4 (normal review and
 # isolated-worktree mutation testing are NOT false-denied).
 set -euo pipefail
 
@@ -59,7 +59,7 @@ REAL_REALPATH=$(command -v realpath 2>/dev/null) || REAL_REALPATH=""
 # no-delimiter behaviour. Empty when readlink is absent — that TC then skips.
 REAL_READLINK=$(command -v readlink 2>/dev/null) || REAL_READLINK=""
 
-# _timeout <seconds> <command...> — portable timeout(1) for this test .
+# _timeout <seconds> <command...> — portable timeout(1) for this test.
 #
 # Byte-identical copy of the reference definition in _test-helpers.sh. This file does not
 # source _test-helpers.sh (it defines its own pass/fail/skip counters below), so the shim is
@@ -113,7 +113,7 @@ fi
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
 # Skips are counted so a platform-gated green states how many assertions never ran
-# (the governing rationale review G-04). This file does not source _test-helpers.sh.
+# (review G-04). This file does not source _test-helpers.sh.
 SKIP=0
 skip() { SKIP=$((SKIP + 1)); echo "  ⏭️ SKIP: $1"; }
 
@@ -177,7 +177,7 @@ assert_deny "subagent Edit (relative) to repo file blocked" "$out"
 echo ""
 
 # --------------------------------------------------------------------------
-# BYPASS regression (the governing rationale review cycle 1) — forged isolation paths → deny
+# BYPASS regression (review cycle 1) — forged isolation paths → deny
 # --------------------------------------------------------------------------
 echo "TC-BYPASS-A: token embedded in a repo filename → deny"
 out=$(run_edit_guard "Edit" "$TEST_REPO/src/rite-review-mutation-hack.py" "$TEST_REPO" "$SUBAGENT_TRANSCRIPT") || true
@@ -318,7 +318,7 @@ assert_allow "missing file_path fails open (cannot scope)" "$out" "$rc"
 echo ""
 
 # --------------------------------------------------------------------------
-# .git-internal writes → deny (the governing rationale review cycle 2 — .git/hooks/pre-commit
+# .git-internal writes → deny (review cycle 2 — .git/hooks/pre-commit
 # etc. would give main-session code execution; git rev-parse --show-toplevel is empty
 # inside .git so the naive "empty → allow" branch used to let these through).
 # --------------------------------------------------------------------------
@@ -342,7 +342,7 @@ assert_deny_gitdir "write into .git/config blocked" "$out"
 echo ""
 
 # --------------------------------------------------------------------------
-# Final-element symlink resolution (the governing rationale AC-2): a symlink dropped INSIDE a
+# Final-element symlink resolution (AC-2): a symlink dropped INSIDE a
 # sanctioned isolation worktree that points at the parent repo's .git / working tree
 # is dereferenced BEFORE the isolation decision, so it can no longer dodge the guard
 # by landing _tdir on the isolation root. AC-3 note: Claude Code's own Edit/Write
@@ -350,7 +350,7 @@ echo ""
 # --------------------------------------------------------------------------
 # These TCs used to be skipped wherever `realpath` could not resolve a dangling
 # symlink, because the hook resolved the final element with `realpath` and that
-# no-op'd on BSD/macOS — a production gap, not a test quirk (the governing rationale → #2014).
+# no-op'd on BSD/macOS — a production gap, not a test quirk (→ #2014).
 # The hook now retargets ABS_PATH via bare `readlink` and lets the _tdir walk do the
 # physical resolution, which needs no existence check and has no platform branch, so
 # the skip is gone and these run everywhere. TC-SYMLINK-BSD-REALPATH below pins that
@@ -402,7 +402,7 @@ echo ""
 
 # A two-link chain: resolving only ONE hop would leave ABS_PATH at `$ISO_MUT_DIR/hop`,
 # landing _tdir back on the isolation root → allow. Pins the loop against a future
-# "just dereference once" simplification .
+# "just dereference once" simplification.
 echo "TC-SYMLINK-chain: isolation symlink → symlink → parent .git → deny (git-dir)"
 ln -s "$TEST_REPO/.git/hooks/pre-commit" "$ISO_MUT_DIR/hop"
 ln -s "$ISO_MUT_DIR/hop" "$ISO_MUT_DIR/evil-chain"
@@ -412,7 +412,7 @@ rm -f "$ISO_MUT_DIR/evil-chain" "$ISO_MUT_DIR/hop"
 echo ""
 
 # The target's PARENT does not exist either, so any fix that canonicalizes the link
-# target's parent dir (the shape first proposed in the governing rationale) still no-ops here and
+# target's parent dir (the shape first proposed in) still no-ops here and
 # falls through to allow. Handing the raw target to the _tdir walk denies, because the
 # walk climbs to the nearest EXISTING ancestor ($TEST_REPO/src) before asking git.
 echo "TC-SYMLINK-missing-parent: isolation symlink → not-yet-created dir in parent tree → deny (parent-tree)"
@@ -596,7 +596,7 @@ rmdir "$ISO_MUT_DIR/$lf_dir" || fail "TC-SYMLINK-lf-dirname cleanup: $ISO_MUT_DI
 echo ""
 
 # --------------------------------------------------------------------------
-# BSD/macOS realpath parity . The gitdir TC above passes on Linux even
+# BSD/macOS realpath parity. The gitdir TC above passes on Linux even
 # with a realpath-based resolution, so it alone cannot catch a regression back to one
 # that needs `realpath` to tolerate a dangling final component. Shim `realpath` to BSD
 # semantics — every component INCLUDING the last must exist — and re-run the two attack

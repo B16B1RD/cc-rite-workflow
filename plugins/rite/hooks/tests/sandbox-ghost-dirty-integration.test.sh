@@ -16,7 +16,7 @@
 # property lib/git-status-filtered.sh inspects, and `git status --porcelain`
 # reports it as an ordinary `??` entry exactly like the genuine ghost mount.
 #
-# Fail-safe pin (cross-validation escalation, The observed review run): when
+# Fail-safe pin (cross-validation escalation,): when
 # lib/git-status-filtered.sh itself fails (e.g. mktemp exhaustion — a
 # failure mode the helper introduces that plain `git status --porcelain`
 # never had), both extracted lines must fall back to a non-empty "assume
@@ -100,7 +100,7 @@ assert "T-06 regression guard: real unstaged change still reported uncommitted" 
 
 # --- Fail-safe: when lib/git-status-filtered.sh itself fails, the extracted
 #     lines must NOT silently report clean (cross-validation escalation,
-#     The observed review run). A stub plugin_root replaces the real helper with one that
+#). A stub plugin_root replaces the real helper with one that
 #     always fails, and the same production lines are re-extracted against it.
 stub_root=$(mktemp -d) && cleanup_dirs+=("$stub_root") || { echo "ERROR: mktemp -d failed for stub_root, aborting" >&2; exit 1; }
 mkdir -p "$stub_root/hooks/scripts/lib"
@@ -128,7 +128,7 @@ case "$out" in
   *) pass "fail-safe: cleanup Step 4-W dirty= is non-empty when the helper fails ($out)" ;;
 esac
 
-# --- stderr visibility (The observed review run cycle 2, error-handling escalation): the
+# --- stderr visibility (cycle 2, error-handling escalation): the
 #     helper's own diagnostic WARNING (e.g. "mktemp failed") must reach
 #     stderr, not be discarded by a `2>/dev/null` on the call site ---------
 err_out=$( cd "$sbx_fail" && eval "$CLEANUP_LINE_FAIL" 2>&1 1>/dev/null )

@@ -443,7 +443,7 @@ cleanup_temp_repo "$TEST_REPO"
 #       (process substitution の rc 非伝播による silent no-op 化を防ぐ回帰テスト)
 # 0300 は mktemp によるファイル作成 (write+execute で足りる) を許可しつつ find の readdir
 # (read が必要) だけを失敗させ、mktemp の走査出力先確保と find の wholesale 失敗を分離する。
-# mktemp が TMPDIR を尊重するようになった  ため、旧来の「存在しないパス」技法
+# mktemp が TMPDIR を尊重するようになった ため、旧来の「存在しないパス」技法
 # では mktemp 自身も失敗し別の WARNING (走査の出力先 mktemp に失敗) に化けてしまう。
 # root は DAC 権限チェックをバイパスするため本テストはスキップする。
 # -----------------------------------------------------------------------
@@ -547,7 +547,7 @@ fi
 # the cleanup script's own mktemp (workdir_find_err/out) and find succeed
 # normally — only the victim workdir's OWN permission blocks its removal.
 # Chmod'ing the shared *base* to 0500 (as an earlier version of this test did)
-# would now also break the script's own TMPDIR-respecting mktemp ,
+# would now also break the script's own TMPDIR-respecting mktemp,
 # masking this per-item rm failure behind the wholesale mktemp-failure branch.
 # -----------------------------------------------------------------------
 echo "T-13: Step 3 orphan workdir rm 失敗で status=failed"
@@ -626,7 +626,7 @@ cleanup_temp_repo "$TEST_REPO"
 #       worktree-foreign-cwd (別 live セッション), not age — cleanup only runs at
 #       review entry / iterate end, never mid-parallel-review.
 # -----------------------------------------------------------------------
-echo "T-15: fresh detached TMPDIR worktree は Step 4-P で即回収 "
+echo "T-15: fresh detached TMPDIR worktree は Step 4-P で即回収"
 rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
 TEST_REPO=$(make_temp_repo)
 ( cd "$TEST_REPO" && git worktree add --detach -q "$WORKDIR_SCAN_TMP/rite-review-mutation-fresh" HEAD )
@@ -659,7 +659,7 @@ cleanup_temp_repo "$TEST_REPO"
 # the cleanup script's own mktemp (mutation_find_err/out) and find succeed
 # normally — only the victim worktree's OWN permission blocks its removal.
 # Chmod'ing the shared *base* to 0500 (as an earlier version of this test did)
-# would now also break the script's own TMPDIR-respecting mktemp ,
+# would now also break the script's own TMPDIR-respecting mktemp,
 # masking this per-item reap failure behind the wholesale mktemp-failure branch.
 # -----------------------------------------------------------------------
 echo "T-16: Step 4 mutation worktree reap 失敗で status=failed"
@@ -740,8 +740,8 @@ if [ -n "$t17_nl_name" ]; then
 fi
 
 # =======================================================================
-# the governing rationale — name-independent reap (bare pr-N / revert-test / manifest).
-# IDs below map to the governing rationale §6 Test Specification:
+# Why: name-independent reap (bare pr-N / revert-test / manifest).
+# IDs below map to the cleanup §6 Test Specification:
 #   T-18 → Issue T-01 / AC-1: bare `pr-{N}` branch reaped
 #   T-19 → Issue T-03 / AC-3: near-miss branches survive (bare pattern is exact)
 #   T-20 → Issue T-02 / AC-2: aged `rite-revert-test-*` worktree reaped
@@ -754,7 +754,7 @@ fi
 #   T-27 → Issue T-06 / AC-6: manifest worktree pointing at a non-git path is
 #          skipped WITHOUT aborting the run (regression for the set -e rc-capture fix)
 #   T-28 → Issue T-04 / AC-4: stale manifest entry (branch already gone) is dropped
-#   T-29 → the governing rationale: rite-tmp-artifact.sh `session_worktree` type round-trip
+#   T-29 → session-worktree manifest: rite-tmp-artifact.sh `session_worktree` type round-trip
 #          (helper writes the manifest line for an absolute path, rejects a
 #          relative one) — the reap-side behavior for this type is covered by
 #          pr-cycle-cleanup-session-reap.test.sh's C-05/C-05b/C-05c/C-05d/C-06;
@@ -876,7 +876,7 @@ cleanup_temp_repo "$TEST_REPO"
 
 # T-24: dirty manifest worktree is skipped + kept in manifest (AC-6 / Step 4.5)
 # Path is under TEST_REPO (not TMPDIR) so Step 4-P porcelain sweep does not
-# reap it first — the governing rationale made dirty TMPDIR detached worktrees reaped by
+# reap it first —  made dirty TMPDIR detached worktrees reaped by
 # Step 4-P, which would otherwise collapse this Step 4.5-only assertion.
 echo "T-24: dirty な manifest worktree は保護 + manifest 保持 (AC-6)"
 TEST_REPO=$(make_temp_repo)
@@ -982,8 +982,8 @@ else
 fi
 cleanup_temp_repo "$TEST_REPO"
 
-# T-29: rite-tmp-artifact.sh `session_worktree` type round-trip (the governing rationale, producer side)
-echo "T-29: rite-tmp-artifact.sh session_worktree type の記録・バリデーション "
+# T-29: rite-tmp-artifact.sh `session_worktree` type round-trip (producer side)
+echo "T-29: rite-tmp-artifact.sh session_worktree type の記録・バリデーション"
 TEST_REPO=$(make_temp_repo)
 t29_abs_id="$TEST_REPO/.rite/worktrees/issue-t29"
 (
@@ -1001,7 +1001,7 @@ fi
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-30: Step 4-P porcelain — 2 fresh detached under nested TMPDIR (AC-1 / the governing rationale)
+# T-30: Step 4-P porcelain — 2 fresh detached under nested TMPDIR (AC-1)
 # Given: two detached worktrees at $TMPDIR/nested/probe-{1,2} (NOT the name pattern
 #        find-based Step 4 looks for; nested so maxdepth-1 find cannot see them)
 # When: Cleanup runs
@@ -1027,7 +1027,7 @@ rm -rf "$t30_nest"
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-31: Step 4-P does NOT reap .rite/worktrees/* (AC-2 / the governing rationale)
+# T-31: Step 4-P does NOT reap .rite/worktrees/* (AC-2)
 # Given: a detached worktree under $TEST_REPO/.rite/worktrees/issue-N (session path shape)
 # When: Cleanup runs
 # Then: the worktree remains (repo-root exclusion)
@@ -1061,12 +1061,12 @@ fi
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-33: Step 4-P — tracked modified (dirty) mutation worktree を回収 (the governing rationale AC-1)
+# T-33: Step 4-P — tracked modified (dirty) mutation worktree を回収 (AC-1)
 # Given: detached TMPDIR worktree with uncommitted modification to a tracked file
 # When: Cleanup runs
 # Then: worktree reaped; mutation_worktrees >= 1 (dirty is NOT a skip reason)
 # -----------------------------------------------------------------------
-echo "T-33: Step 4-P が tracked modified な mutation worktree を回収 (the governing rationale AC-1)"
+echo "T-33: Step 4-P が tracked modified な mutation worktree を回収 (AC-1)"
 TEST_REPO=$(make_temp_repo)
 rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
 ( cd "$TEST_REPO" && git worktree add --detach -q "$WORKDIR_SCAN_TMP/rite-review-mutation-dirty-mod" HEAD )
@@ -1084,9 +1084,9 @@ rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-34: Step 4-P — untracked のみの dirty worktree を回収 (the governing rationale AC-2)
+# T-34: Step 4-P — untracked のみの dirty worktree を回収 (AC-2)
 # -----------------------------------------------------------------------
-echo "T-34: Step 4-P が untracked のみの mutation worktree を回収 (the governing rationale AC-2)"
+echo "T-34: Step 4-P が untracked のみの mutation worktree を回収 (AC-2)"
 TEST_REPO=$(make_temp_repo)
 rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
 ( cd "$TEST_REPO" && git worktree add --detach -q "$WORKDIR_SCAN_TMP/rite-review-mutation-untracked" HEAD )
@@ -1104,12 +1104,12 @@ rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-35: Step 4-P — 到達不能 commit を持つ worktree は WARNING 付きで残存 (the governing rationale AC-3)
+# T-35: Step 4-P — 到達不能 commit を持つ worktree は WARNING 付きで残存 (AC-3)
 # Given: detached worktree with a unique commit not reachable from any named ref
 # When: Cleanup runs
 # Then: worktree remains; WARNING mentions 到達不能 commit
 # -----------------------------------------------------------------------
-echo "T-35: Step 4-P が到達不能 commit worktree を WARNING 付きで保護 (the governing rationale AC-3)"
+echo "T-35: Step 4-P が到達不能 commit worktree を WARNING 付きで保護 (AC-3)"
 TEST_REPO=$(make_temp_repo)
 rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
 ( cd "$TEST_REPO" && git worktree add --detach -q "$WORKDIR_SCAN_TMP/rite-review-mutation-orphan-commit" HEAD )
@@ -1131,12 +1131,12 @@ rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-36: Step 4-P — 到達可能性判定不能時は安全側で見送り + WARNING (the governing rationale AC-4)
+# T-36: Step 4-P — 到達可能性判定不能時は安全側で見送り + WARNING (AC-4)
 # Given: detached worktree whose HEAD cannot be resolved (broken gitdir pointer)
 # When: Cleanup runs
 # Then: worktree remains; WARNING about HEAD 判定失敗
 # -----------------------------------------------------------------------
-echo "T-36: Step 4-P 判定不能時は残存 + WARNING (the governing rationale AC-4)"
+echo "T-36: Step 4-P 判定不能時は残存 + WARNING (AC-4)"
 TEST_REPO=$(make_temp_repo)
 rm -rf "$WORKDIR_SCAN_TMP"/rite-review-mutation-* 2>/dev/null || true
 t36_wt="$WORKDIR_SCAN_TMP/rite-review-mutation-broken-head"

@@ -5,7 +5,7 @@
 # stash list を変更した場合に検出し、可能な範囲で recovery する defense-in-depth layer。
 #
 # 一次防御: reviewer prompt の READ-ONLY 契約 (`plugins/rite/agents/_reviewer-base.md`,
-# Layer 1)。working-tree 変更 verb の機械ゲートは この仕様により撤去され、
+# Layer 1)。working-tree 変更 verb は網羅的な事前遮断が安全でないため機械ゲートから撤去され、
 # `pre-tool-bash-guard.sh` Pattern 4 が機械遮断するのは .git 書き込み経路のみになった。
 # 本スクリプト (Layer 3) は prompt 契約が破られた事故の検出と recovery を担う
 # post-condition gate であり、working-tree / branch / stash / branch-list drift の
@@ -27,7 +27,7 @@
 #   --original-branch <name>           Review 開始時の current branch 名 (required)
 #   --original-stash-count <N>         Review 開始時の `git stash list` 行数 (optional)
 #   --original-branch-list-hash <hash> Review 開始時の `git branch --list | sort | md5sum` (optional)
-#   --original-worktree-hash <hash>    Review 開始時の `lib/git-status-filtered.sh | md5sum` (optional、the governing rationale。
+#   --original-worktree-hash <hash>    Review 開始時の `lib/git-status-filtered.sh | md5sum` (optional).
 #                                      #1944 で raw `git status --porcelain` から sandbox ghost-mount
 #                                      フィルタ経由に変更 — snapshot 側もこのコマンドで計算すること)
 #   --auto-recover                     drift 検出時に automatic recovery を行う (default: true)
@@ -136,11 +136,11 @@ if [ -n "$_hash_cmd" ]; then
 else
   current_branch_list_hash=""
 fi
-# Worktree axis : `git status --porcelain` hash captures working-tree
+# Worktree axis: `git status --porcelain` hash captures working-tree
 # + index drift (modified / staged / untracked) that the branch / stash /
 # branch_list axes cannot see — e.g. a reviewer editing a source file in place via
 # Edit/Write and hand-restoring it, or leaving a `.bak` untracked. Advisory only.
-# Routed through git-status-filtered.sh (not raw `git status --porcelain`, the governing rationale):
+# Routed through git-status-filtered.sh rather than raw `git status --porcelain`:
 # the snapshot side (pr-review SKILL.md ステップ 4.0.A) and this verify side can run in
 # different sandbox contexts, and a bwrap sandbox overlays ghost-mount `??` entries
 # (#1936) that vary by context — comparing raw porcelain hashes false-positives on
@@ -202,7 +202,7 @@ if [ "$drift_detected" = "false" ] \
   drift_detail="reviewer leaked named branch(es); compare 'git branch --list' before/after"
 fi
 
-# worktree_hash check : 両側に hash 値がある場合のみ比較する。
+# worktree_hash check: 両側に hash 値がある場合のみ比較する。
 # 空文字列 (hash コマンド非利用 or hash 計算失敗) は比較不可として skip し silent
 # false-negative を防ぐ (branch_list check と同一ガード)。
 if [ "$drift_detected" = "false" ] \
@@ -225,13 +225,13 @@ echo "  type: $drift_type" >&2
 echo "  detail: $drift_detail" >&2
 # 破られた防御層の案内は drift 軸で出し分ける: worktree drift は Edit/Write 経路なら
 # pre-tool-edit-guard が block したはずだが、Bash 経由の state-changing git は機械ゲート
-# されない (この仕様により verb 列挙撤去 — 本スクリプトが検出の正)。それ以外の軸
+# されない（verb 列挙では安全に網羅できないため、本スクリプトの事後検出を正とする）。それ以外の軸
 # (branch / stash / branch_list) も同様に prompt 契約 (Layer 1) violation であり、
 # 本スクリプトによる検出が想定どおりの動作となる。
 if [ "$drift_type" = "worktree" ]; then
-  echo "  context: the reviewer prompt READ-ONLY contract (_reviewer-base.md) was violated via Edit/Write (pre-tool-edit-guard should have blocked — investigate subagent detection / hook registration) or via a state-changing git command (not machine-gated since the governing rationale; this detection is the designed guarantee)" >&2
+  echo "  context: the reviewer prompt READ-ONLY contract (_reviewer-base.md) was violated via Edit/Write (pre-tool-edit-guard should have blocked — investigate subagent detection / hook registration) or via a state-changing git command (working-tree git verbs are not pre-blocked because exhaustive command matching is unsafe; this post-condition check is the designed guarantee)" >&2
 else
-  echo "  context: the reviewer prompt READ-ONLY contract (_reviewer-base.md) was violated via a state-changing git command — not machine-gated since the governing rationale; this post-condition detection is the designed guarantee (Layer 3)" >&2
+  echo "  context: the reviewer prompt READ-ONLY contract (_reviewer-base.md) was violated via a state-changing git command — working-tree git verbs are not pre-blocked because exhaustive command matching is unsafe; this post-condition detection is the designed guarantee (Layer 3)" >&2
 fi
 
 recovered="false"
@@ -264,7 +264,7 @@ if [ "$drift_type" = "branch_list" ]; then
 fi
 
 # worktree drift は自動 recovery しない (reviewer が加えた変更を破棄すると PR ブランチの
-# 正当な作業まで巻き添えにするリスク。auto-recover は the contract の明示 non-goal)。
+# 正当な作業まで巻き添えにするリスク。auto-recover は内容消失を避けるため明示的な non-goal)。
 if [ "$drift_type" = "worktree" ]; then
   echo "  recovery: SKIPPED (working-tree drift is not auto-recovered — a blind revert could discard legitimate PR work)" >&2
   echo "  manual action: run 'git status --porcelain' and 'git diff' to triage the drift; a reviewer subagent likely edited a file in place (Edit/Write) or ran a state-changing git command — restore intended state manually before /rite:fix consumes the diff" >&2

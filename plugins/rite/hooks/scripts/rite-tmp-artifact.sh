@@ -5,7 +5,7 @@
 # `pr-cycle-cleanup.sh`. A producer that creates a throw-away branch or worktree
 # whose name is NOT covered by the cleanup script's strict patterns records it
 # here at creation time; cleanup then reaps it by identity (the manifest entry),
-# not by guessing the name. This is the "生成時マニフェスト" half of the contract.s
+# not by guessing the name. This is the "生成時マニフェスト" half of 's
 # name-independent reap contract (D-01): cleanup deletes ONLY what a rite producer
 # explicitly recorded, so an unrelated user branch/worktree is never touched.
 #
@@ -17,7 +17,7 @@
 #       artifacts consumed by pr-cycle-cleanup.sh Step 4.5's ungated reap
 #       (dirty-check only — no claim/self-exclusion/live-cwd gates).
 #       `session_worktree` is for `.rite/worktrees/issue-N` paths, actually
-#       reaped ONLY by Step 5's gated corpse-age-guard bypass .
+#       reaped ONLY by Step 5's gated corpse-age-guard bypass.
 #       Step 4.5 has a dedicated case arm for this type too, but that arm
 #       never reaps — it only drops a stale entry once the path is already
 #       gone (self-heal) and otherwise preserves it verbatim for Step 5, per

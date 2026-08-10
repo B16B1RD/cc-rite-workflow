@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for the three awk programs moved out of skill bodies :
+# Tests for the three awk programs moved out of skill bodies:
 #   hooks/scripts/pr-review-post-comment-read.sh
 #   hooks/scripts/review-raw-json-extract.sh
 #   hooks/scripts/fix-reason-coverage-check.sh

@@ -7,7 +7,7 @@
 #   AC-3: release removes only the OWN claim; another session's is untouched
 #   AC-4: release on an absent claim is idempotent (success)
 #   plus: free check, stale-steal, corrupt-claim → stale, live-other refusal (rc 10)
-#   the governing rationale: concurrent stale-STEAL CAS (TC-14, exactly one wins) + lone-steal
+# Why: concurrent stale-STEAL CAS (TC-14, exactly one wins) + lone-steal
 #                non-regression (TC-15) + no-flock branch lone steal (TC-16, F-03)
 set -euo pipefail
 
@@ -98,7 +98,7 @@ echo "=== TC-12: invalid --issue rejected (rc 1) ==="
 rc=0; bash "$IC" claim --session "$SID_A" --issue abc >/dev/null 2>&1 || rc=$?; assert "TC-12 non-numeric rc 1" "1" "$rc"
 rc=0; bash "$IC" check --session "$SID_A" --issue 0 >/dev/null 2>&1 || rc=$?; assert "TC-12 zero rc 1" "1" "$rc"
 
-echo "=== TC-13 : env-first resolution in _resolve_current_session_id (no --session path) ==="
+echo "=== TC-13: env-first resolution in _resolve_current_session_id (no --session path) ==="
 # Regression guard for the env-first precedence flip (review F-01). All TCs above pass --session,
 # so the env/file branch was never exercised — issue-claim.sh's env-first reorder was a dead guard
 # (mutation: reverting it to file-first kept every TC green). This pins env-first directly.
@@ -122,7 +122,7 @@ assert "TC-13 env-absent claim holder resolved via file sid (SID_B)" \
 assert "TC-13 env-absent check own (resolver returned file sid SID_B == holder)" \
   "own" "$(env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$IC" check --issue 711)"
 
-echo "=== TC-14 (the governing rationale AC-1): concurrent stale-STEAL → exactly one 'claimed' ==="
+echo "=== TC-14 (AC-1): concurrent stale-STEAL → exactly one 'claimed' ==="
 # TC-11 covers concurrent claim of a FREE issue (noclobber). This covers the
 # separate stale-STEAL path: N sessions all classify the SAME stale claim as
 # reclaimable out-of-lock, then race to overwrite it. Without the in-lock CAS
@@ -150,7 +150,7 @@ done
 assert "TC-14 exactly one stole the stale claim (AC-1)" "1" "$_stolen"
 assert "TC-14 the other four aborted with 'other'" "4" "$_other"
 
-echo "=== TC-15 (the governing rationale AC-2): single-session stale-steal is non-regressed ==="
+echo "=== TC-15 (AC-2): single-session stale-steal is non-regressed ==="
 # The CAS path must still let a lone stealer succeed (holder unchanged == expected).
 SID_STALE2="eeeeeeee-1010-1010-1010-101010101010"
 mk_active "$SID_STALE2" 951

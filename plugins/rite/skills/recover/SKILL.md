@@ -303,7 +303,7 @@ AskUserQuestion で「推定 phase で再開 / 別 phase を選ぶ / 中止」�
 echo "[CONTEXT] RESOLVED_PHASE=$resolved_phase"
 ```
 
-### 3.6 未完了事項の検出（the governing rationale、`resolved_phase` が `cleanup`/`completed` のときのみ、informational）
+### 3.6 未完了事項の検出（`resolved_phase` が `cleanup`/`completed` のときのみ、informational）
 
 当該 Issue が既に cleanup 段階を終えている（= これ以上 phase を進める作業は無い）場合に限り、過去の cleanup が非ブロッキングで残した可能性のある 2 種類の signal を git 実態から直接検出する（新しい記録先は持たない — 集約記録のありか自体が git/リモートの実態であり、既存の `.rite/wiki-worktree` / ローカルブランチ / `gh pr view` 以上のものを要求しない）。Phase 3.5 のフラグ判定・Phase 5.3 のルーティング表には影響しない、純粋な追加情報。
 
@@ -453,7 +453,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ## Phase 5.5: Active Batch 検出 → 継続
 
-Phase 5.4 の invoke が制御を返したら（再開先 skill が完了通知 or 終端 sentinel を emit した後）、**自セッションの** run-queue（`run-queue-{session_id}.json`）を参照し「この中断が `/rite:batch-run` 実行中の active batch 中断だったか」を判定する。stale な残骸（過去に完了/停止済みのバッチのキューが単に残っている）を誤って継続しないよう、鮮度判定を必須とする。session_id は batch-run と同じく `flow-state.sh path` の basename から導出する。recover は flow-state phase も ambient session_id で解決する（Phase 3 の `flow-state.sh get`）ため、真の active batch 中断（同一セッションでの compact / turn 跨ぎ）では recover の session_id と run-queue の session_id が一致し、自セッションのキューだけを参照する（他セッションのキューは別ファイルのため構造的に読まない、the governing rationale）。
+Phase 5.4 の invoke が制御を返したら（再開先 skill が完了通知 or 終端 sentinel を emit した後）、**自セッションの** run-queue（`run-queue-{session_id}.json`）を参照し「この中断が `/rite:batch-run` 実行中の active batch 中断だったか」を判定する。stale な残骸（過去に完了/停止済みのバッチのキューが単に残っている）を誤って継続しないよう、鮮度判定を必須とする。session_id は batch-run と同じく `flow-state.sh path` の basename から導出する。recover は flow-state phase も ambient session_id で解決する（Phase 3 の `flow-state.sh get`）ため、真の active batch 中断（同一セッションでの compact / turn 跨ぎ）では recover の session_id と run-queue の session_id が一致し、自セッションのキューだけを参照する（他セッションのキューは別ファイルのため構造的に読まない、）。
 
 ### 5.5.1 判定
 
@@ -524,7 +524,7 @@ Phase 5.4 で resume した個別スキルの終端状態を、[`skills/batch-ru
 | `init` / `branch` / `plan` / `implement` / `lint` / `pr` | `/rite:open {issue_arg}`（draft PR 作成まで） | Phase 5.4 の open invoke 結果を batch-run [ステップ 2](../batch-run/SKILL.md) の表と同じ基準で判定する。**成功**（`[pr:created:N]` sentinel + ブランチ行）: `{pr_number}` を取得し、続けて `/rite:iterate {pr_number}` を invoke（= batch-run [ステップ 3](../batch-run/SKILL.md) 相当）。終端 sentinel を同ステップ 3 の表で判定し、以降 `{run_mode}=merge` かつ mergeable ならステップ 4-6、`default` ならステップ 6 のカーソル前進へ直行。**失敗**（`[pr-create-failed]` / PR 番号なし / sentinel 不在）: iterate を invoke せず、下記「failed 記録 / 停止方針の委譲」の失敗停止経路（batch-run ステップ 8 相当）に直行する |
 | `review` / `fix` | `/rite:iterate {pr_number}`（終端 sentinel まで） | **再 invoke しない**。Phase 5.4 で得た終端 sentinel を batch-run [ステップ 3](../batch-run/SKILL.md) の表で判定し、以降は上記と同じ分岐 |
 | `ready` / `ready_error` | `/rite:ready {pr_number}` | Phase 5.4 の ready invoke 結果を batch-run [ステップ 4](../batch-run/SKILL.md) の表と同じ基準で判定する。**成功**（`[ready:returned-to-caller]`）: `{run_mode}=merge` なら続けて `/rite:merge {pr_number}` → `/rite:cleanup {branch_name}` を invoke（batch-run [ステップ 5-6](../batch-run/SKILL.md) と同じ判定）。`default` は通常到達しない（ready は batch-run の merge モードでのみ実行されるため）— 到達した場合は安全側としてそのままステップ 6 のカーソル前進へ。**失敗**（`[ready:error]` / sentinel 不在）: merge/cleanup を invoke せず、下記「failed 記録 / 停止方針の委譲」の失敗停止経路（batch-run ステップ 8 相当）に直行する |
-| `cleanup` / `ingest` | `/rite:cleanup {branch_name}` または `/rite:wiki-ingest` | 当該 Issue は既に完了。追加 invoke はしないが、Phase 5.4 の `/rite:cleanup` invoke が `[cleanup:returned-to-caller]` を返した場合は batch-run [ステップ 6](../batch-run/SKILL.md) の outstanding 記録 bash（`[cleanup:outstanding:N]` sentinel を読んで `run-queue-{session_id}.json` の `outstanding[]` へ記録）を**先に実行してから**カーソル前進 bash へ進む（the governing rationale: この記録を経由しないと、recover 経由の active batch 継続で cleanup が残した非ブロッキング失敗が run-queue に記録されず、batch-run ステップ 7 の完了通知ロールアップから欠落する）。`/rite:wiki-ingest` 経由（`resolved_phase=ingest`）はこの sentinel を持たないため対象外、そのままカーソル前進へ |
+| `cleanup` / `ingest` | `/rite:cleanup {branch_name}` または `/rite:wiki-ingest` | 当該 Issue は既に完了。追加 invoke はしないが、Phase 5.4 の `/rite:cleanup` invoke が `[cleanup:returned-to-caller]` を返した場合は batch-run [ステップ 6](../batch-run/SKILL.md) の outstanding 記録 bash（`[cleanup:outstanding:N]` sentinel を読んで `run-queue-{session_id}.json` の `outstanding[]` へ記録）を**先に実行してから**カーソル前進 bash へ進む（: この記録を経由しないと、recover 経由の active batch 継続で cleanup が残した非ブロッキング失敗が run-queue に記録されず、batch-run ステップ 7 の完了通知ロールアップから欠落する）。`/rite:wiki-ingest` 経由（`resolved_phase=ingest`）はこの sentinel を持たないため対象外、そのままカーソル前進へ |
 | `completed` | (Phase 5.4 は既存表により AskUserQuestion のみ) | ユーザーが「終了」を選んだ場合はカーソル前進へ、「新規作業として再開」を選んだ場合は本継続を中止（通常の recover 完了とする） |
 
 <!-- run orchestration: after invoking per the table above and observing the terminal sentinel, do NOT stop — proceed to the failed-record / stop-policy paragraph below (same routing as batch-run ステップ 3-8). -->

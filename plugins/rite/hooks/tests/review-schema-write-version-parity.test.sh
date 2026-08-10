@@ -1,5 +1,5 @@
 #!/bin/bash
-# Canonical write schema と reader accept list の parity を固定する 。
+# Canonical write schema と reader accept list の parity を固定する。
 
 set -u
 

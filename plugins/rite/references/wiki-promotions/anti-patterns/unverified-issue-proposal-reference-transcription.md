@@ -42,6 +42,6 @@ Issue body の対応案文字列を成果物にそのまま転記すると、対
 
 ## ソース
 
-- The observed review run review results (`Wiki provenance: ../../raw/reviews/20260609T191537Z-pr-1325.md`)
-- The observed review run fix results (`Wiki provenance: ../../raw/fixes/20260609T191759Z-pr-1325.md`)
-- The observed review run review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260609T192157Z-pr-1325.md`)
+- Review results (`Wiki provenance: ../../raw/reviews/20260609T191537Z-pr-1325.md`)
+- Fix results (`Wiki provenance: ../../raw/fixes/20260609T191759Z-pr-1325.md`)
+- Review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260609T192157Z-pr-1325.md`)

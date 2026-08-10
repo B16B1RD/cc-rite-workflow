@@ -40,7 +40,7 @@ else
 fi
 LOCKDIR="$STATE_ROOT/.rite/state/wiki-ingest-session.lockdir"
 
-# Priority : override → env CLAUDE_CODE_SESSION_ID → env CLAUDE_SESSION_ID
+# Priority: override → env CLAUDE_CODE_SESSION_ID → env CLAUDE_SESSION_ID
 # → `.rite-session-id` file (env-absent fallback). env-first keeps this lock helper's
 # session identity coherent with flow-state.sh; a stale shared file must not key the
 # lock to a foreign session. The file remains the env-absent fallback.

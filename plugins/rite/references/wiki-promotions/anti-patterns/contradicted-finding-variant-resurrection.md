@@ -69,7 +69,7 @@ reviewer agent の fact-check は以下を観測点としていた:
 
 ## ソース
 
-- The observed review run review cycle 1 (code-quality F-X1 TaskCreate 不在主張、CONTRADICTED) (`Wiki provenance: ../../raw/reviews/20260527T163952Z-pr-1164.md`)
-- The observed review run review cycle 2 (prompt-engineer F-X2 TaskCreate=Team variant 再提起、CONTRADICTED) (`Wiki provenance: ../../raw/reviews/20260527T165719Z-pr-1164.md`)
-- The observed review run review cycle 3 (再提起なし、orchestrator prompt 注入 effective) (`Wiki provenance: ../../raw/reviews/20260527T170947Z-pr-1164.md`)
-- The observed review run review cycle 2 (討論決着論点への拡張: 「解決済み論点を新 evidence なしに蒸し返さない」prompt 明示で source ガード論点の再燃なし、reviewer は修正検証に徹する役割転換が成立) (`Wiki provenance: ../../raw/reviews/20260605T182035Z-pr-1281-cycle2.md`)
+- Review cycle 1 (code-quality F-X1 TaskCreate 不在主張、CONTRADICTED) (`Wiki provenance: ../../raw/reviews/20260527T163952Z-pr-1164.md`)
+- Review cycle 2 (prompt-engineer F-X2 TaskCreate=Team variant 再提起、CONTRADICTED) (`Wiki provenance: ../../raw/reviews/20260527T165719Z-pr-1164.md`)
+- Review cycle 3 (再提起なし、orchestrator prompt 注入 effective) (`Wiki provenance: ../../raw/reviews/20260527T170947Z-pr-1164.md`)
+- Review cycle 2 (討論決着論点への拡張: 「解決済み論点を新 evidence なしに蒸し返さない」prompt 明示で source ガード論点の再燃なし、reviewer は修正検証に徹する役割転換が成立) (`Wiki provenance: ../../raw/reviews/20260605T182035Z-pr-1281-cycle2.md`)

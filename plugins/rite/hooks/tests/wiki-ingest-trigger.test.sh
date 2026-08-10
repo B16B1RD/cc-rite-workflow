@@ -12,7 +12,7 @@ HOOK="$SCRIPT_DIR/../wiki-ingest-trigger.sh"
 # /var/folders (symlinked to /private/var), so a raw mktemp path makes every
 # `cd "$TEST_DIR/tcN" && ... --content-file body.md` case fail the $PWD-arm match
 # ("must be under $PWD"). pwd -P aligns the fixture with the canonical form the
-# guard resolves to (the governing rationale; the guard's own $PWD-arm symlink handling is
+# guard resolves to; the guard's own $PWD-arm symlink handling is
 # tracked separately in #2012).
 #
 # Two steps, not `$(cd "$(mktemp -d)" && pwd -P)`: bash `cd ""` returns 0 without
@@ -41,7 +41,7 @@ fail() {
 }
 
 # Skips are counted so a platform-gated green states how many assertions never ran
-# (the governing rationale review I-03). Same shape as _test-helpers.sh skip().
+# (review I-03). Same shape as _test-helpers.sh skip.
 SKIP=0
 skip() {
   SKIP=$((SKIP + 1))
@@ -200,7 +200,7 @@ echo "Review body content here" > "$dir10/body.md"
   --source-ref pr-123 \
   --content-file body.md \
   --pr-number 123 \
-  --title "Code review for $(pr_text 123)" > out.log 2>err.log ) && rc=0 || rc=$?
+  --title "Code review for $(pr_text 123)" > out.log 2>err.log) && rc=0 || rc=$?
 
 target_path="$(cat "$dir10/out.log" 2>/dev/null || true)"
 if [ $rc -eq 0 ] && [ -n "$target_path" ] && [ -f "$dir10/$target_path" ]; then
@@ -735,7 +735,7 @@ echo ""
 
 # ==========================================================================
 # Phase: regression — /tmp/rite-* prefix と mktemp デフォルト pitfall
-#        + $TMPDIR/rite-* arm (the contract.sandbox 対応)
+#        + $TMPDIR/rite-* arm (sandbox 対応)
 # ==========================================================================
 
 # /tmp 外ファイルの明示 cleanup (review F-04: TEST_DIR 外は main cleanup() の対象外)
@@ -842,7 +842,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-036c: Content-file in $TMPDIR/rite-* → exit 0 (the contract.sandbox arm)
+# TC-036c: Content-file in $TMPDIR/rite-* → exit 0 (sandbox arm)
 # --------------------------------------------------------------------------
 # sandbox 有効環境では /tmp 直下が読み込み専用のため、caller は
 # mktemp "${TMPDIR:-/tmp}/rite-...-XXXXXX" で $TMPDIR 配下に content-file を作る。
@@ -1216,7 +1216,7 @@ fi
 echo ""
 
 # ==========================================================================
-# Phase: STATE_ROOT write anchoring  — TC-051 〜 TC-053
+# Phase: STATE_ROOT write anchoring — TC-051 〜 TC-053
 # trigger は raw を state-path-resolve ルート (linked worktree では main
 # checkout) 配下へ書く。wiki-ingest-commit.sh の scan ルートと一致させ、
 # multi-session worktree からの起動で raw が silent に取りこぼされる回帰を防ぐ。
@@ -1302,7 +1302,7 @@ echo ""
 #         worktree 起動 (STATE_ROOT != $PWD で cd が実走) の経路でも、ガードは cd の
 #         前に元 $PWD 基準で評価されるため、$PWD 外 / 非 /tmp-rite の content-file は
 #         従来どおり reject される。既存 TC-033/034/036 は git root (非 worktree) 起動
-#         のみをカバーしていたため、worktree 起動経路の AC-3 を本 TC で pin する。
+#         The previous fixture covered only the repository-root path, so、worktree 起動経路の AC-3 を本 TC で pin する。
 # --------------------------------------------------------------------------
 echo "TC-053: linked worktree 起動 + content-file が \$PWD 外 → exit 1 (AC-3 path containment 維持)"
 dir53="$TEST_DIR/tc53"

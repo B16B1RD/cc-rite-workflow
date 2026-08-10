@@ -3,7 +3,7 @@
 # state from pre-resolved inputs, deriving the worktree path from the PHYSICAL cwd
 # when flow-state did not record it.
 #
-# Why this exists :
+# Why this exists:
 #   ステップ 4-W previously trusted ONLY flow-state's `worktree` field (`flow_wt`)
 #   as the source of truth for "am I in a session worktree?". When a session runs
 #   physically inside `.rite/worktrees/issue-{N}` but flow-state never recorded
@@ -14,7 +14,7 @@
 #   neither the in-session removal (4-W skipped) nor the lazy reap
 #   (pr-cycle-cleanup.sh Step 5 self-excludes the running session's own worktree)
 #   handled them, and (at the time) the lazy reap never deleted branches — so the
-#   local branch leaked permanently. (the implementation now has added a self-exclusion
+#   local branch leaked permanently. A later guard added self-exclusion
 #   to the 4-W live-cwd guard so the running session removes its own worktree, and a
 #   merge-confirmed branch-recovery path to the lazy reap; this helper's
 #   in_worktree_unrecorded routing remains the front-line fix for the detection gap.)

@@ -61,8 +61,8 @@ confidence: high
 
 ## ソース
 
-- The observed review run review results (`Wiki provenance: ../../raw/reviews/20260702T065237Z-pr-1721.md`)
-- The observed review run review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260702T070751Z-pr-1721.md`)
-- The observed review run review results (cycle 3, mergeable) (`Wiki provenance: ../../raw/reviews/20260702T074935Z-pr-1721.md`)
-- The observed review run fix results (`Wiki provenance: ../../raw/fixes/20260702T065551Z-pr-1721.md`)
-- The observed review run fix results (cycle 2) (`Wiki provenance: ../../raw/fixes/20260702T071033Z-pr-1721.md`)
+- Review results (`Wiki provenance: ../../raw/reviews/20260702T065237Z-pr-1721.md`)
+- Review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260702T070751Z-pr-1721.md`)
+- Review results (cycle 3, mergeable) (`Wiki provenance: ../../raw/reviews/20260702T074935Z-pr-1721.md`)
+- Fix results (`Wiki provenance: ../../raw/fixes/20260702T065551Z-pr-1721.md`)
+- Fix results (cycle 2) (`Wiki provenance: ../../raw/fixes/20260702T071033Z-pr-1721.md`)

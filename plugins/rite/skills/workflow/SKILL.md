@@ -44,7 +44,7 @@ git branch --show-current
 
 Detect the active Issue from the branch name:
 - Pattern: `{type}/issue-{number}-{slug}`
-- Example: `feat/issue-123-add-feature` → the governing rationale
+- Example: `feat/issue-123-add-feature` → issue number `123`
 
 If there is an active Issue, reflect it in the "Next Steps" later.
 

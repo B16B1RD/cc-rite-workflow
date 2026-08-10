@@ -154,8 +154,8 @@ Projects Status In Review 遷移漏れを修正した PR の review-fix loop で
 
 ## ソース
 
-- The observed review run cycle 2 review (3 reviewer 独立検出 / F-01 syntax error + pipefail / dangling references) (`Wiki provenance: ../../raw/reviews/20260517T000446Z-pr-1004.md`)
-- The observed review run cycle 3 review (Self-violation cascade / DRY 4-site / Observability gap F-08/F-09/F-10) (`Wiki provenance: ../../raw/reviews/20260517T004634Z-pr-1004.md`)
-- The observed review run cycle 3 fix (stderr stage separation / sub-shell scope-internal retrieval / state_root_inaccessible emit) (`Wiki provenance: ../../raw/fixes/20260517T020335Z-pr-1004.md`)
-- The observed review run cycle 3 review — 5 reviewer 独立検出: 明示的な `if [ $? -ne 0 ]` チェックが Bash tool の per-invocation pipefail-off により dead code 化 (`Wiki provenance: ../../raw/reviews/20260722T221143Z-pr-1973.md`)
-- The observed review run cycle 3 fix (capture-first pattern で pipefail 非依存の exit code チェックに修正) (`Wiki provenance: ../../raw/fixes/20260722T221542Z-pr-1973.md`)
+- Cycle 2 review (3 reviewer 独立検出 / F-01 syntax error + pipefail / dangling references) (`Wiki provenance: ../../raw/reviews/20260517T000446Z-pr-1004.md`)
+- Cycle 3 review (Self-violation cascade / DRY 4-site / Observability gap F-08/F-09/F-10) (`Wiki provenance: ../../raw/reviews/20260517T004634Z-pr-1004.md`)
+- Cycle 3 fix (stderr stage separation / sub-shell scope-internal retrieval / state_root_inaccessible emit) (`Wiki provenance: ../../raw/fixes/20260517T020335Z-pr-1004.md`)
+- Cycle 3 review — 5 reviewer 独立検出: 明示的な `if [ $? -ne 0 ]` チェックが Bash tool の per-invocation pipefail-off により dead code 化 (`Wiki provenance: ../../raw/reviews/20260722T221143Z-pr-1973.md`)
+- Cycle 3 fix (capture-first pattern で pipefail 非依存の exit code チェックに修正) (`Wiki provenance: ../../raw/fixes/20260722T221542Z-pr-1973.md`)

@@ -60,4 +60,4 @@ caller 側 routing dispatcher は 3 種類の sentinel を **排他的に grep**
 
 ## ソース
 
-- The observed review run fix results (10 findings, 1 cycle) (`Wiki provenance: ../../raw/fixes/20260514T045140Z-pr-951.md`)
+- Fix results (10 findings, 1 cycle) (`Wiki provenance: ../../raw/fixes/20260514T045140Z-pr-951.md`)

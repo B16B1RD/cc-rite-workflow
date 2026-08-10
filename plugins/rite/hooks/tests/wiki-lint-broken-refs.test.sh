@@ -39,7 +39,7 @@ trap cleanup EXIT
 # wiki-lint-broken-refs.sh hard-requires GNU `realpath -m -s` (a documented known
 # limitation) and fails fast with exit 1 on BSD/macOS. The detection TCs are
 # unrunnable there by design, so guard them; the arg-validation TCs (TC-6/7/8)
-# exit before the realpath gate and stay platform-agnostic .
+# exit before the realpath gate and stay platform-agnostic.
 if realpath -m -s -- / >/dev/null 2>&1; then HAS_GNU_REALPATH=1; else HAS_GNU_REALPATH=0; fi
 
 PASS=0
@@ -47,7 +47,7 @@ FAIL=0
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
 # Skips are counted so a platform-gated green states how many assertions never ran
-# (the governing rationale review G-04). Same shape as _test-helpers.sh skip().
+# (review G-04). Same shape as _test-helpers.sh skip.
 SKIP=0
 skip() { SKIP=$((SKIP + 1)); echo "  ⏭️ SKIP: $1"; }
 

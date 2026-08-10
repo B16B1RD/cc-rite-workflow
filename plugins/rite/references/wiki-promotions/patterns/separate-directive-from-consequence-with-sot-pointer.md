@@ -40,5 +40,5 @@ authoring 面（reviewer への指示、テンプレート、規約文書）の 
 
 ## ソース
 
-- The observed review run review results (cycle 5) (`Wiki provenance: ../../raw/reviews/20260801T131235Z-pr-2081.md`)
-- The observed review run fix results (cycle 5) (`Wiki provenance: ../../raw/fixes/20260801T131540Z-pr-2081.md`)
+- Review results (cycle 5) (`Wiki provenance: ../../raw/reviews/20260801T131235Z-pr-2081.md`)
+- Fix results (cycle 5) (`Wiki provenance: ../../raw/fixes/20260801T131540Z-pr-2081.md`)

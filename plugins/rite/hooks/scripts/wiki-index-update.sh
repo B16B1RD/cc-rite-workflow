@@ -51,7 +51,7 @@
 #       Rewording the value to avoid `|` is prohibited (the title contract
 #       requires literal identity with frontmatter `title`).
 #   (a-prime) the title ADDITIONALLY neutralizes `]` to the HTML entity `&#93;`
-#       — but ONLY when the next character is `(`. The title is emitted inside
+# Why: but ONLY when the next character is `(`. The title is emitted inside
 #       the link text of the page column (the region the identification
 #       predicate scans), so a title containing `](pages/{d}/{s}.md)` would
 #       forge the FIRST-link key and hijack another page's registration row
@@ -151,7 +151,7 @@
 #   table's row count triggers nothing here — duplicates were reclaimed by
 #   3a and unregistered pages are wiki-lint's job.
 #
-# Observability of procedure 3b (the governing rationale design decision):
+# Observability of procedure 3b (design decision):
 #   In-cycle surface is intentional and sufficient: WARNING on stderr +
 #   stats_sync={synced|skipped_no_section|skipped_unreadable} markers, with
 #   skipped_unreadable / partial-sync WARNING rolled into wiki-ingest ステップ 9

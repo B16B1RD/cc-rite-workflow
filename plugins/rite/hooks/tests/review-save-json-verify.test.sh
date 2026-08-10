@@ -6,7 +6,7 @@
 # 区間ごと skip した cycle を「6.1.a が完走して marker を消した」場合と区別できない。ここで固定
 # するのは、その穴を塞ぐ判定 — 「現 run の results dir に、本 cycle の commit SHA を持つ結果 JSON が
 # 実在するか」— の分岐と exit code、および fail 時の診断が「区間ごと未実行」と「本 cycle 分だけ
-# 未保存」を切り分けられることである (the governing rationale AC-1〜AC-6)。
+# 未保存」を切り分けられることである (AC-1〜AC-6)。
 #
 # Convention (shared with the sibling suite): mktemp sandbox, no network, no gh,
 # GNU/BSD portable (jq only)。--results-dir / --since を明示するため git repo は不要。

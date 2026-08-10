@@ -63,6 +63,6 @@ confidence: high
 
 ## ソース
 
-- The observed review run review results — 指示の配置と実行地点の乖離 (`Wiki provenance: ../../raw/reviews/20260730T045358Z-pr-2056.md`)
-- The observed review run review results (cycle 2) — 実行地点側の導線 (`Wiki provenance: ../../raw/reviews/20260730T052429Z-pr-2056.md`)
-- The observed review run fix results (cycle 2) — フローの制御構造との突合 3 類型 (`Wiki provenance: ../../raw/fixes/20260730T053611Z-pr-2056.md`)
+- Review results — 指示の配置と実行地点の乖離 (`Wiki provenance: ../../raw/reviews/20260730T045358Z-pr-2056.md`)
+- Review results (cycle 2) — 実行地点側の導線 (`Wiki provenance: ../../raw/reviews/20260730T052429Z-pr-2056.md`)
+- Fix results (cycle 2) — フローの制御構造との突合 3 類型 (`Wiki provenance: ../../raw/fixes/20260730T053611Z-pr-2056.md`)

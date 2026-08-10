@@ -2,7 +2,7 @@
 # wiki-lint-skipped-refs.sh
 #
 # Build the `skipped_refs` set consumed by wiki/lint.md ステップ 6.2 (b) 分岐
-# (`unregistered_raw` 判定). the governing rationale (Sub-3): the skip SoT moved from log.md
+# (`unregistered_raw` 判定).  (Sub-3): the skip SoT moved from log.md
 # (a table) to each raw source's frontmatter (`ingest_status: skipped`). This
 # helper now scans `.rite/wiki/raw/**/*.md` frontmatter (via `git ls-tree` +
 # `git show` for separate_branch, `find` + `cat` for same_branch), collects each
@@ -101,7 +101,7 @@ fi
 # (wiki-lint-source-refs.sh の 6.2 gate と対称。LLM が `{branch_strategy}` /
 #  `{wiki_branch}` を literal substitute せずに helper を呼んだ場合の検出。
 #  旧 inline block では `{wiki_branch}` 残留が git show の stderr 文言次第で
-#  absent / io_error に揺れていた経路を fail-fast に統一する。)
+#  absent / io_error に揺れていた経路を fail-fast に統一する)
 case "$branch_strategy" in
   "{"*"}")
     echo "ERROR: ステップ 6.0 の {branch_strategy} placeholder が literal substitute されていません (値: '$branch_strategy')" >&2
@@ -179,7 +179,7 @@ skipped_refs=""
 # canonical 定義: references/bash-cross-boundary-state-transfer.md#pattern-1-multi-value-enum-via-key-value-stdout
 log_read_ok="unknown"
 
-# the governing rationale (Sub-3): the `ingest:skip` SoT moved from log.md (a table this
+# (Sub-3): the `ingest:skip` SoT moved from log.md (a table this
 # helper used to `awk -F'|'` parse) to each raw source's frontmatter
 # (`ingest_status: skipped`). log.md is now a human-facing OKF change log and is
 # NOT parsed here. This helper now scans `.rite/wiki/raw/**/*.md` frontmatter and

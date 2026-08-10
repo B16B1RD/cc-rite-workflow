@@ -11,7 +11,7 @@ HOOK="$SCRIPT_DIR/../session-start.sh"
 # symlink to /private/var/...), while session-start.sh resolves paths via
 # state-path-resolve.sh (git rev-parse) to the /private form. Comparing the raw
 # mktemp path against the canonical one would spuriously fail the reap-gate
-# path-equality checks (the governing rationale Family D — TC-6, T-03, TC-1968-*).
+# path-equality checks (Family D — TC-6, T-03, TC-1968-*).
 #
 # Two steps, not `$(cd "$(mktemp -d)" && pwd -P)`: bash `cd ""` returns 0 without
 # changing directory, so a failed mktemp inside that nesting would yield the
@@ -29,7 +29,7 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-# Clean session-id env . session-start.sh resolves the active state
+# Clean session-id env. session-start.sh resolves the active state
 # file via flow-state.sh, which is now env-first; the sandboxes here simulate a
 # session through `.rite-session-id`, so the dogfooding session's ambient
 # CLAUDE_CODE_SESSION_ID must not leak in (it would point the hook at a foreign
@@ -443,7 +443,7 @@ if echo "$output" | grep -q "中断した rite workflow を検出" && \
    echo "$output" | grep -q "$(issue_text 55)"; then
   pass "source=compact + recovering → interruption notice (PostCompact handles recovery)"
 else
-  fail "Expected interruption notice with $(issue_text 55), got: $output"
+  fail "Expected interruption notice with issue 55, got: $output"
 fi
 echo ""
 
@@ -1254,7 +1254,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-1524-* : dangling session-worktree self-heal (the governing rationale, AC-2 / AC-5)
+# TC-1524-* : dangling session-worktree self-heal (AC-2 / AC-5)
 # When flow-state records a `worktree` path that no longer exists (reaped by
 # another session's GC while this session was paused), session-start nulls the
 # field so re-entry / harness cwd-restore is not aimed at a dead dir.

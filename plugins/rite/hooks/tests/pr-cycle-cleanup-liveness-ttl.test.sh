@@ -1,6 +1,6 @@
 #!/bin/bash
 # Tests for pr-cycle-cleanup.sh's worktree liveness guard TTL judgment
-# .
+#.
 #
 # Before this Issue, an `active=true` holder protected its session worktree
 # with NO time bound (both signal (A) flow-state.worktree scan and signal (B)
@@ -177,7 +177,7 @@ echo "=== TC-6 (AC-6): TTL 境界近傍 (24h-60s、以内側) -> 保護 ==="
 # (reap decided age > ttl, protect assertion fails). A 60s safety margin makes
 # the "protected" side of the boundary immune to that drift.
 #
-# Honesty note (the governing rationale cycle 2 review): with this margin, no assertion in
+# Honesty note (cycle 2 review): with this margin, no assertion in
 # this suite pins the literal age == ttl_seconds equality AC-6 describes —
 # TC-6/TC-6b together only pin which side of the comparison is "protect" vs
 # "reap" near the boundary, not the exact integer where it flips. The
@@ -308,7 +308,7 @@ assert_grep "TC-11 worktree-liveness WARNING on stderr" "$R/pcc.err" "worktree l
 case "$out" in *"session_worktrees=0"*) pass "TC-11 status reports session_worktrees=0" ;; *) fail "TC-11 status: $out" ;; esac
 
 # ---------------------------------------------------------------------------
-# Signal (A) flow-state.worktree scan in isolation (the governing rationale cycle 2 review
+# Signal (A) flow-state.worktree scan in isolation (cycle 2 review
 # finding: TC-10/TC-11 above isolate signal B alone, but no fixture isolated
 # signal A's "protect" direction — every TC-2/TC-6/TC-13-style "survives"
 # assertion also has a matching claim (make_repo sets both signals together),
@@ -356,7 +356,7 @@ assert "TC-15 signal-A-only TTL exceeded -> reaped" "0" "$( [ -d "$R/.rite/workt
 case "$out" in *"session_worktrees=1"*) pass "TC-15 status reports session_worktrees=1" ;; *) fail "TC-15 status: $out" ;; esac
 
 # ---------------------------------------------------------------------------
-# `+00:00` offset format coverage (the governing rationale review finding F-01). flow-state.sh
+# `+00:00` offset format coverage (review finding F-01). flow-state.sh
 # (the canonical writer) emits `Z`, but pre-compact.sh / session-start.sh /
 # session-end.sh emit `+00:00` for the very same updated_at field — most
 # critically pre-compact.sh, whose heartbeat updates `updated_at` alone
@@ -390,4 +390,4 @@ assert_not_grep "TC-13 no date-incompatible WARNING (well-formed +00:00 must par
 case "$out" in *"session_worktrees=0"*) pass "TC-13 status reports session_worktrees=0" ;; *) fail "TC-13 status: $out" ;; esac
 
 print_summary "$(basename "$0")" \
-  "Drift hint: pr-cycle-cleanup.sh's worktree liveness guard (signals A/B, the governing rationale/#1552) now gates both on the liveness TTL (the governing rationale, RITE_SESSION_LIVENESS_TTL_HOURS, default 24h) instead of protecting active=true holders unconditionally — bounds the dead-lock where a session that never runs SessionEnd (crash/forced-quit) leaves active=true forever."
+  "Drift hint: pr-cycle-cleanup.sh's worktree liveness guard (signals A/B) now gates both on the liveness TTL (RITE_SESSION_LIVENESS_TTL_HOURS, default 24h) instead of protecting active=true holders unconditionally — bounds the dead-lock where a session that never runs SessionEnd (crash/forced-quit) leaves active=true forever."

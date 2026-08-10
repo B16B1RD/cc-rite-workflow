@@ -7,7 +7,7 @@
 # question as worktree-live-cwd.sh, but with the cleanup session's OWN process
 # tree excluded.
 #
-# Why this exists :
+# Why this exists:
 #   cleanup.md ステップ 4-W removes the session worktree it just finished with. It
 #   first calls ExitWorktree(keep), which retreats the harness cwd back to the
 #   main checkout — after that, the plain worktree-live-cwd.sh probe reports rc=1
@@ -21,7 +21,7 @@
 #   WITHOUT modifying worktree-live-cwd.sh (its OS detection method is unchanged —
 #   #1670 Non-Target §4.2). The caller passes --self-root (its harness pid); every
 #   process in that pid subtree is "self" and ignored, so only a genuine OTHER
-#   session standing in the tree defers the removal (the governing rationale AC-3).
+#   session standing in the tree defers the removal (AC-3).
 #
 # Usage:
 #   worktree-foreign-cwd.sh <dir> --self-root <pid>

@@ -37,7 +37,7 @@ CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
 # resolver would have found an active flow-state, one of these markers exists at
 # or above CWD, so the gate never skips real work. Parent-walk uses `${d%/*}`
 # (not dirname) to stay subprocess-free. Read-only: no marker is written
-# (the governing rationale MUST NOT). A permission-denied ancestor makes the `[ -f ]` / `[ -d ]`
+# (MUST NOT). A permission-denied ancestor makes the `[ -f ]` / `[ -d ]`
 # marker test false, but that requires the repo root itself to be unreadable
 # mid-workflow, where the flow is already broken — the optimized path is the
 # common non-rite one.

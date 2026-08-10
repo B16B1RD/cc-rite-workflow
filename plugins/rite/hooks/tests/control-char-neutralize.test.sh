@@ -92,7 +92,7 @@ echo "=== TC-8: 可読 ASCII 無傷 + 1:1 置換 (長さ保存 — 空削除へ�
 assert "TC-8: printable ASCII untouched" "readable TEXT-123_ok" "$(printf 'readable TEXT-123_ok' | neutralize_ctrl)"
 # `wc -c` right-justifies its count with leading spaces on BSD/macOS (GNU emits
 # the bare number). `$( )` strips the trailing newline but not the leading pad,
-# so strip whitespace before the string comparison .
+# so strip whitespace before the string comparison.
 assert "TC-8: 1:1 replacement preserves byte length" "3" "$(printf 'A\x9bB' | neutralize_ctrl | wc -c | tr -d ' ')"
 
 echo ""

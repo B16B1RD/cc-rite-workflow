@@ -5,6 +5,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 TARGET="$SCRIPT_DIR/../scripts/number-reference-check.sh"
 TEST_DIR="$(mktemp -d)"
 PASS=0
@@ -185,6 +186,20 @@ rc=0; output=$(bash "$TARGET" --repo-root /nonexistent/rite-xyz --target foo.md 
 if [ "$rc" -eq 2 ] && echo "$output" | grep -q 'repo-root not a directory'; then
   pass "bad --repo-root → exit 2 (invocation error)"
 else fail "expected rc=2 with repo-root error, got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
+# TC-013: rationale rewrites must not replace numbered journals with another
+#         undefined placeholder. These tokens previously produced broken prose
+#         such as malformed possessives and unnamed review runs.
+# --------------------------------------------------------------------------
+echo "TC-013: generic rationale placeholders are absent"
+placeholder_pattern='the governing'' rationale|The observed'' review run|the contract''[.]s'
+if ! rg -n "$placeholder_pattern" \
+  "$REPO_ROOT/plugins/rite" "$REPO_ROOT/docs" >/dev/null; then
+  pass "generic rationale placeholders are absent"
+else
+  fail "generic rationale placeholder residue found under plugins/rite or docs"
+fi
 
 # --------------------------------------------------------------------------
 # Summary

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Dogfooding 用 rite-config.yml の review.loop コメントを現行契約へ固定する 。
+# Dogfooding 用 rite-config.yml の review.loop コメントを現行契約へ固定する。
 
 set -u
 

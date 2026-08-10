@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Test: wiki-query-inject.sh — OKF v0.1 2-pass query (the governing rationale, Sub-2)
+# Test: wiki-query-inject.sh — OKF v0.1 2-pass query (Sub-2)
 #
-# Covers the the governing rationale Test Spec rows that the 2-pass rewrite introduces:
+# Covers the two-pass rewrite Test Spec rows that the 2-pass rewrite introduces:
 #   TC-1 (T-03/T-04) keyword match returns the page with frontmatter-derived metadata
 #   TC-2 (T-05)      confidence weighting (high > low) ordering is preserved
 #   TC-3 (T-08)      a candidate whose page is unreadable is skipped non-blocking
@@ -17,7 +17,7 @@
 # both streams.
 set -uo pipefail
 
-# _timeout <seconds> <command...> — portable timeout(1) for this test .
+# _timeout <seconds> <command...> — portable timeout(1) for this test.
 # GNU `timeout` is absent on macOS (BSD / no coreutils); fall back to a perl
 # fork/waitpid shim reproducing timeout(1)'s exit-code contract: 124 on timeout,
 # 128+N on signal death, the child's status otherwise (a naive

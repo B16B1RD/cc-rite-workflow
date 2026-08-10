@@ -1,5 +1,5 @@
 #!/bin/bash
-# Static contract for the governing rationale: every raw-commit caller retries an exit-4
+# Static contract for : every raw-commit caller retries an exit-4
 # push outside the sandbox and keeps an unresolved failure visible at completion.
 set -euo pipefail
 

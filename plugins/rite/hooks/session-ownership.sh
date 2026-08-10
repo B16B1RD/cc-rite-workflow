@@ -32,7 +32,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
 # Extract session_id from hook JSON payload
 # Args: $1 = hook JSON string (from stdin of the hook)
 # Output: session_id string, or empty string if not found
-# Consistency : the hook-side payload `.session_id` returned here and
+# Consistency: the hook-side payload `.session_id` returned here and
 #   the command-side env `CLAUDE_CODE_SESSION_ID` (now flow-state.sh's primary
 #   resolution source) both identify the SAME Claude session, so per-session
 #   ownership stays coherent across the hook boundary: the per-session state file

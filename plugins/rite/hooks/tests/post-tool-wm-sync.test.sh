@@ -3,9 +3,9 @@
 # Usage: bash plugins/rite/hooks/tests/post-tool-wm-sync.test.sh
 set -euo pipefail
 
-# Hermeticity guard : flow-state.sh path resolves session_id with
+# Hermeticity guard: flow-state.sh path resolves session_id with
 # priority env CLAUDE_CODE_SESSION_ID > env CLAUDE_SESSION_ID > .rite-session-id
-# file . When this test suite runs inside a live Claude Code
+# file. When this test suite runs inside a live Claude Code
 # session, that session's own id leaks into every `bash "$HOOK"` invocation
 # below and silently overrides the file-based per-session fixtures, making the
 # hook resolve a nonexistent (or wrong) flow-state file. Unsetting both here

@@ -156,7 +156,7 @@ else
   fail "TC-4 DRIFT-CHECK ANCHOR comment missing (create=$anchor_create, ready=$anchor_ready)"
 fi
 
-# The not-applicable skip-note handling added to the 0) case  MUST
+# The not-applicable skip-note handling added to the 0) case MUST
 # also be symmetric between create.md and ready.md. Pin the skip-note's
 # user-facing echo message ("...self-host していないため N/A..."), which is
 # unique to the 0)-case skip-note block. The bare substring "not applicable"

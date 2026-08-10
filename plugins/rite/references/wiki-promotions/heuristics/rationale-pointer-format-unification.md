@@ -38,5 +38,5 @@ rationale 退避 PR のレビューで観測された事実:
 
 ## ソース
 
-- The observed review run review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260717T021655Z-pr-1882.md`)
-- The observed review run review results (`Wiki provenance: ../../raw/reviews/20260717T014643Z-pr-1882.md`)
+- Review results (cycle 2) (`Wiki provenance: ../../raw/reviews/20260717T021655Z-pr-1882.md`)
+- Review results (`Wiki provenance: ../../raw/reviews/20260717T014643Z-pr-1882.md`)

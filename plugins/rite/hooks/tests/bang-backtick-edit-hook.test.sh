@@ -51,7 +51,7 @@ make_repo() {
   # (which follows symlinks), but FILE_PATH is built from this raw sandbox path.
   # On macOS the raw mktemp path is under /var/folders (symlinked to /private/...),
   # so the raw-vs-canonical prefix strip fails and the hook exits "outside repo"
-  # before scanning — TC-1/TC-7 then see no warning . pwd -P aligns
+  # before scanning — TC-1/TC-7 then see no warning. pwd -P aligns
   # the fixture path with what the hook canonicalizes to.
   d=$(cd "$d" && pwd -P) || return 1
   (
@@ -80,7 +80,7 @@ cleanup() {
     # Sanity check: only rm directories under a known temp root that we created
     # via mktemp -d. Never accept the literal "/tmp" or a non-temp path. macOS
     # mktemp lives under /var/folders (canonicalized to /private/var/folders),
-    # so accept those too or the sandboxes leak on the macOS runner .
+    # so accept those too or the sandboxes leak on the macOS runner.
     case "$d" in
       /tmp/tmp.*|/tmp/[A-Za-z0-9]*|/private/tmp/*|/var/folders/*|/private/var/folders/*)
         if [ -d "$d" ]; then rm -rf "$d"; fi

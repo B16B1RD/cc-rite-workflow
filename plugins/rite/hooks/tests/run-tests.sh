@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Run the suite with a clean session-id env . flow-state.sh now
+# Run the suite with a clean session-id env. flow-state.sh now
 # resolves session_id env-first (CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID) and
 # only falls back to each sandbox's `.rite-session-id` file when env is absent.
 # Most tests simulate a session by writing that file, so the dogfooding session's
@@ -19,7 +19,7 @@ PASSED=0
 FAILED=0
 FAILED_TESTS=()
 
-# Discover test files from BOTH conventions/locations :
+# Discover test files from BOTH conventions/locations:
 #   1. this dir's `*.test.sh` — the hook/entry-point suite
 #   2. the sibling `hooks/scripts/tests/test-*.sh` — the checker suite for
 #      hooks/scripts/ scripts. It uses a `test-*.sh` name in a separate

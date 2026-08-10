@@ -81,7 +81,7 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 
 - **fail-loud は不変** — 沈黙化するのは「成功した迂回の説明」であって、失敗の隠蔽ではない
 - **権限ゲート自体は対象外** — `dangerouslyDisableSandbox` の確認 UI 等は Claude Code の管轄。本規則は narration（説明文）のみ
-- **対処の機構は別 Issue** — リトライ回数・代替経路の実装は各スキル / helper が持つ（例: cleanup の ls-remote 1 リトライは the governing rationale）。本規則は「成功後にそれをどう語るか」だけを規定する
+- **対処の機構は別 Issue** — リトライ回数・代替経路の実装は各スキル / helper が持つ（例: cleanup の ls-remote 1 リトライは ）。本規則は「成功後にそれをどう語るか」だけを規定する
 
 **適用対象（優先）**: ネットワーク git / sandbox 迂回を行うスキル（`cleanup` / `merge` / `ready` / `iterate` / `open` / `batch-run` 等）。新規スキルで同様の迂回を行う場合も本セクションを 1 行参照すること。
 
