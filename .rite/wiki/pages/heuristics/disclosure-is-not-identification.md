@@ -61,7 +61,7 @@ confidence: high
 ## 関連ページ
 
 - [「step が走ったか」を後段で判定するとき、識別子の供給元をその step 自身にすると検出したい状態でだけ判定が成立しない](../anti-patterns/step-executed-check-minting-its-own-identifier.md)
-- [LLM が読む出力ストリームで marker を契約にするには prefix・行頭・デリミタ・識別子スコープの 4 条件すべてが要る](./llm-marker-contract-four-conditions.md)
+- [LLM が読む出力ストリームで marker を契約にするには prefix・行頭・デリミタ・識別子スコープの 4 条件すべてが要る](../patterns/llm-read-marker-contract-four-conditions.md)
 
 ## ソース
 
