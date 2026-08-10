@@ -353,8 +353,10 @@ def with_verification:
       | .non_blocking_findings = ((.non_blocking_findings // []) + $demoted)
       | .overall_assessment = (if $blocking == 0 then "mergeable" else "fix-needed" end)
       # verdict は overall_assessment と同じ blocking 件数から同時に代入する。merge ゲートが読む
-      # 必須キーで、caller (5.3.0.M step 1) は書かない — 別の書き手を許すと、ゲートが判定を
-      # 反転させた cycle で 2 つの判定が食い違い、どちらが正かを機械的に決められなくなる。
+      # 必須キーで、caller (5.3.0.M step 1) は書かない — caller が書いても本代入が無条件に上書き
+      # するため、書けば必ず捨てられる推測値になる (step 1 時点では移送後の blocking 件数が未確定)。
+      # verification の preset 尊重 (--reject-preset-verification が存在する理由) とは向きが逆で、
+      # verdict 側に preset を弾くフラグは要らない。
       | .verdict = (if $blocking == 0 then "mergeable" else "fix-needed" end)
     ),
     stats: {

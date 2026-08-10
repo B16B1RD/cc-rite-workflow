@@ -11,16 +11,19 @@
 # (スキーマ / SKILL / save helper / ゲート) で揃っていることを機械的に pin するのが本テストの責務。
 #
 # Coverage:
-#   TC-1 4 者契約の pin (AC-5) — スキーマ SoT / pr-review SKILL / save helper / merge ゲートの
-#        4 箇所が同じ 2 キーを要求し、書き手の分担 (verdict = 実測必須ゲート helper のみ /
-#        reviewers = 5.3.0.M step 1) が各所で一致していること
-#   TC-2 正典形 JSON のゲート素通し E2E (AC-3 / T-03) — 5.3.0.M step 1 形の JSON を
-#        review-measured-gate.sh → review-result-save.sh の正典チェーンに通し、保存された
-#        ファイルを merge ゲートに読ませて allow になること
+#   TC-1 各サイトの記述 pin (drift 検知) — スキーマ SoT / pr-review SKILL / save helper /
+#        merge ゲートの 4 箇所が同じ 2 キーを要求し、書き手の分担 (verdict = 実測必須ゲート
+#        helper のみ / reviewers = 5.3.0.M step 1) が各所で一致していること。**キー集合の乖離を
+#        実効的に検出するのは TC-2 の E2E** — ゲート側だけが要求を増やしても本 TC は green の
+#        まま通る。両者の役割を混同しないこと (AC-5 は TC-1 + TC-2 の組で満たす)
+#   TC-2 正典形 JSON のゲート素通し E2E (AC-1 / AC-3 / T-01 / T-03) — findings 0 cycle の
+#        5.3.0.M step 1 形 JSON を review-measured-gate.sh → review-result-save.sh の正典
+#        チェーンに通し、verdict 確定 + 非空 reviewers 保持を確認したうえで、保存された
+#        ファイルを merge ゲートに読ませて allow になること (対照 deny 付き)
 #   TC-3 旧形式 JSON の deny 維持 (AC-4 / T-04) — 両キーを欠く JSON しか無い PR は
 #        現行どおり deny され、再レビューへ誘導されること
-#   TC-4 findings 0 cycle の出力形 (AC-1 / T-01) — gate helper が verdict を確定し、
-#        caller が書いた reviewers を保持すること
+#   TC-4 findings 非 0 cycle の verdict 確定 (極性の反対側) — blocking 残存で fix-needed に
+#        なり、reviewers が findings 件数と独立に保持されること
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -62,12 +65,15 @@ assert_grep "TC-1 SKILL が 6.1.a Required JSON fields に verdict を含む" "$
 assert_grep "TC-1 SKILL が 6.1.a Required JSON fields に reviewers を含む" "$SKILL" 'Required JSON fields.*\*\*`reviewers\[\]`\*\*'
 assert_grep "TC-1 SKILL 5.3.0.M step 1 が verdict を書かない規約を持つ" "$SKILL" '\*\*`verdict` は書かない\*\*'
 assert_grep "TC-1 SKILL 5.3.0.M step 1 が reviewers を実走名簿と規定" "$SKILL" '`reviewers\[\]` = 本 cycle で実走した reviewer の名簿'
-assert_grep "TC-1 SKILL が findings からの名簿導出を禁止" "$SKILL" '\*\*`findings\[\]` から導出してはならない\*\*'
+assert_grep "TC-1 SKILL が findings からの名簿導出を禁止" "$SKILL" '\*\*`findings\[\]` から導出して(は|も)ならない\*\*'
+assert_grep "TC-1 SKILL が incomplete reviewer の除外を規定 (名簿の過大計上防止)" "$SKILL" '`incomplete` とマークされた reviewer は除外する'
+assert_grep "TC-1 SKILL が reviewers の値形式を導出式で規定" "$SKILL" '`-reviewer` を付した'
 
 # --- 要求側 3/4: save helper (fail-loud 検証) ---
 assert_grep "TC-1 save helper が verdict enum を必須検証" "$SAVE" '\.verdict == "mergeable" or \.verdict == "fix-needed"'
 assert_grep "TC-1 save helper が reviewers の配列型を必須検証" "$SAVE" '\.reviewers \| type == "array"'
 assert_grep "TC-1 save helper が reviewers の非空を必須検証" "$SAVE" '\(\.reviewers \| length\) > 0'
+assert_grep "TC-1 save helper が reviewers の一意性を必須検証" "$SAVE" '\(\.reviewers \| length\) == \(\.reviewers \| unique \| length\)'
 # floor 2 を save 側へ持ち込むと 1 名 cycle の結果が保存すらされなくなる (TC-2 の sole ケース参照)
 assert_not_grep "TC-1 save helper に sole-reviewer floor (2) を持ち込まない" "$SAVE" '\(\.reviewers \| length\) >= 2'
 # 同値検査を入れると手組みの復旧用 JSON が保存不能 = merge 不能になり救済経路が閉じる
@@ -132,14 +138,23 @@ fi
 guard_input() {
   jq -n --arg cmd "$1" '{tool_name:"Bash", tool_input:{command:$cmd}}'
 }
+# 対照確認を先に置く: 同じ harness・同じ state root で **結果 JSON が無い** PR 番号を投げ、
+# ゲートが確かに発火する (deny する) ことを示す。これが無いと、下の allow 判定は「ゲートが
+# 何も出力しなかった」— つまり fail-open で素通りした場合 — と区別できない。
+out=$(guard_input "gh pr merge 999999 --squash" \
+  | RITE_STATE_ROOT="$E2E_ROOT" bash "$GUARD" 2>/dev/null)
+ctl_decision=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // ""' 2>/dev/null)
+assert "TC-2 対照: 結果 JSON 不在の PR はゲートが deny する (harness がゲートに到達している)" "deny" "$ctl_decision"
+
+# ゲートの allow は **無出力** で表現される (pre-tool-bash-guard.sh は deny 経路でのみ
+# permissionDecision を emit し、成功時は stdout に何も書かない)。よって判定は「出力が空」。
 out=$(guard_input "gh pr merge $E2E_PR --squash" \
   | RITE_STATE_ROOT="$E2E_ROOT" bash "$GUARD" 2>/dev/null)
-decision=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // "allow"' 2>/dev/null)
-if [ "$decision" = "allow" ] || [ -z "$out" ]; then
+if [ -z "$out" ]; then
   pass "TC-2 正典形 JSON で merge ゲートが deny しない (AC-3)"
 else
   reason=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecisionReason // ""' 2>/dev/null)
-  fail "TC-2 正典形 JSON で merge ゲートが deny しない (decision=$decision reason=$reason)"
+  fail "TC-2 正典形 JSON で merge ゲートが deny しない (out=$out reason=$reason)"
 fi
 
 echo ""

@@ -209,15 +209,18 @@ merge ゲート (`hooks/pre-tool-bash-guard.sh` の `merge-review-*` 検査) が
 
 `scripts/review-measured-gate.sh` の変換 jq が、`overall_assessment` を確定するのと**同一の blocking 件数式**から `verdict` を代入する。したがって両者は構造上つねに同値であり、乖離しうる経路を持たない。
 
-- **`pr-review.md` ステップ 5.3.0.M step 1 の Claude は `verdict` を書かない**。`findings[].verification` と同じ「helper が唯一の書き手」規約に従う。ゲート helper を経ずに保存へ回った JSON は `verdict` を欠き、`hooks/review-result-save.sh` が fail-loud で拒否する — これは正しい挙動で、ゲート未適用の判定を永続化させないための遮断である
+- **`pr-review.md` ステップ 5.3.0.M step 1 の Claude は `verdict` を書かない**。helper は既存値ガードを持たず**無条件に代入する**ため、step 1 で書いた値は必ず捨てられる。しかも step 1 時点では移送後の blocking 件数が未確定なので、書けば必ず推測値になる（`overall_assessment` を暫定値でよいとしているのと同じ理由）。`findings[].verification` とは強制の向きが逆で、あちらは preset を尊重する（だから `--reject-preset-verification` がある）のに対し `verdict` は上書きされる。ゲート helper を経ずに保存へ回った JSON は `verdict` を欠き `hooks/review-result-save.sh` が fail-loud で拒否する — ただしこの遮断が成立するのは、上記「step 1 は書かない」という散文規約が守られている限りにおいてであり、save helper 側に helper 由来と caller 由来を区別する手段は無い
 - **なぜ `overall_assessment` と別キーなのか**: merge ゲートの必須キー契約が `verdict` を名指ししており、ゲート側の要求緩和は本スキーマの守備範囲外だから。値としては同一判定の別名であり、consumer が違う (`verdict` → merge ゲート / `overall_assessment` → `/rite:fix` の読取経路)。**同値性は save helper では検査しない** — 検査すると、手で組み立てた復旧用 JSON が「保存されない」ことで merge も不能になり、救済経路を閉じる。同値性の担保は上記の単一代入式と契約テストが持つ
+- **検査水準も両側で非対称**: save helper は `verdict` を 2 値 enum として検査するが、merge ゲートは**キーの存在しか見ない**（値は読まない）。したがって `verdict: "fix-needed"` の結果 JSON が存在する状態でもゲート自体は allow する — merge を止めるのは `/rite:iterate` の収束判定であってゲートではない
 
 #### `reviewers` — 実走名簿、findings とは独立
 
 `pr-review.md` ステップ 3.3 で確定した「起動 reviewer」の一覧を、ステップ 5.3.0.M step 1 の Claude が書く。ゲート helper は本キーに触れない (変換 jq は `.findings` / `.non_blocking_findings` / `.overall_assessment` / `.verdict` 以外のトップレベルキーをそのまま保持する)。
 
 - **`findings[].reviewer` から導出してはならない**: マージ直前の最終 cycle は findings 0 件が正常形であり、そこから名簿を導出すると「誰もレビューしていない」形になって sole-reviewer guard が成立しなくなる
-- **下限がゲートと save helper で非対称**: save helper は**非空**のみを要求し、merge ゲートは**長さ 2 以上** (sole-reviewer guard floor) を要求する。`rite-config.yml` の `review.min_reviewers: 1` と XS/S 軽量レーンは 1 名 cycle を正当に生みうるため、その結果は**保存はできるがマージはできない**。save helper 側を 2 に揃えると、正当な 1 名レビューの結果が永続チャネルから丸ごと消える
+- **下限がゲートと save helper で非対称**: save helper は**非空**のみを要求し、merge ゲートは**長さ 2 以上** (sole-reviewer guard floor) を要求する。`review.min_reviewers: 1` の下で、どの reviewer パターンにもマッチせず code-quality が単独 fallback になった cycle は 1 名になりうる（`skills/pr-review/SKILL.md` ステップ 2.3 の sole-reviewer guard は「code-quality が既に単独のときは追加しない」という明示的例外を持つ）。その結果は**保存はできるがマージはできない**。save helper 側を 2 に揃えると、その 1 名レビューの結果が永続チャネルから丸ごと消える。**なお XS/S 軽量レーンはこの経路ではない** — 軽量レーンが渡すのは上限 (`complexity_max = 3`) だけで、`skills/reviewers/SKILL.md` Phase 5 の effective floor `max(min_reviewers, sole_reviewer_guard_floor)` が最終 clamp で常に勝つ
+- **1 名 cycle は再レビューでは解消しない**: 同じ diff で `/rite:pr-review` を再実行しても選定は同一になるため、ゲートの deny メッセージが案内する「再レビュー」だけでは floor 2 に到達しない。解消するには `review.min_reviewers` を 2 に上げるか、当該 PR に該当する reviewer を明示指定して再レビューする。**名簿の水増しで通してはならない**（`reviewers` の一意性は save helper が検査する）
+- **一意性は save helper が検査する**: ゲートは長さしか見ないため、`["security-reviewer", "security-reviewer"]` のような重複ロスターは floor 2 を機械的に満たしてしまう。これを塞ぐのは writer 側の責務で、`hooks/review-result-save.sh` が重複を fail-loud で拒否する（floor 2 自体は save 側へ持ち込まない — 一意性と下限は独立した検査であり、1 名 cycle の保存性は変わらない）
 
 #### 旧形式 JSON の非救済
 

@@ -601,13 +601,38 @@ assert "TC-3.5rt reviewers が非配列: exit 0 (非ブロッキング)" "0" "$R
 assert_grep "TC-3.5rt reason=schema_required_fields_missing emit" "$ERR" 'LOCAL_SAVE_FAILED=1; reason=schema_required_fields_missing'
 
 # 1 名 reviewer は **保存できる** (merge ゲートの floor 2 を save helper へ持ち込まない)。
-# 揃えると review.min_reviewers: 1 / XS・S 軽量レーンが生む正当な 1 名 cycle の結果が
+# 揃えると review.min_reviewers: 1 の下で code-quality が単独 fallback になった cycle
+# (sole-reviewer guard は code-quality が既に単独のときは発火しない) の結果が
 # 永続チャネルから丸ごと消える。
 JSON_SOLE_REVIEWER="$TMP_ROOT/json-sole-reviewer.json"
 _save_fixture "$JSON_SOLE_REVIEWER" '  "verdict": "mergeable",' '  "reviewers": ["code-quality-reviewer"],'
 run_save --pr 123 --content-file "$JSON_SOLE_REVIEWER" --results-dir "$TMP_ROOT/results-tc35sole"
 assert "TC-3.5sole 1 名 reviewer: exit 0" "0" "$RC"
 assert_grep "TC-3.5sole 1 名 reviewer でも保存される (floor 2 はゲート側の責務)" "$ERR" 'JSON_SAVED=true'
+
+# 重複ロスターは拒否する。ゲートは長さしか見ないため、同一名 2 件が floor 2 を機械的に満たして
+# 「2 名がレビューした」偽の証拠になる。floor そのものは save 側へ持ち込まない (上の sole ケースが
+# 通り続けることで、一意性検査が下限検査に化けていないことを示す)。
+JSON_DUP_REVIEWERS="$TMP_ROOT/json-dup-reviewers.json"
+_save_fixture "$JSON_DUP_REVIEWERS" '  "verdict": "mergeable",' '  "reviewers": ["security-reviewer", "security-reviewer"],'
+run_save --pr 123 --content-file "$JSON_DUP_REVIEWERS" --results-dir "$TMP_ROOT/results-tc35dup"
+assert "TC-3.5dup reviewers 重複: exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-3.5dup reason=schema_required_fields_missing emit" "$ERR" 'LOCAL_SAVE_FAILED=1; reason=schema_required_fields_missing'
+assert_grep "TC-3.5dup 欠落/不正キー名に reviewers を名指しする" "$ERR" '欠落/不正: .*reviewers'
+
+# 復旧案内は欠落したキーだけに出す。無条件併記は、実際の欠陥が pr_number 型のときに
+# 無関係な 2 原因を名指しして読み手を誤誘導する。
+JSON_BAD_PRNUM="$TMP_ROOT/json-bad-prnum.json"
+{
+  printf '{\n  "schema_version": "1.1.0",\n  "pr_number": "123",\n  "timestamp": "%s",\n' "$SENTINEL"
+  printf '  "verdict": "mergeable",\n  "reviewers": ["code-quality-reviewer", "security-reviewer"],\n'
+  printf '  "findings": []\n}\n'
+} > "$JSON_BAD_PRNUM"
+run_save --pr 123 --content-file "$JSON_BAD_PRNUM" --results-dir "$TMP_ROOT/results-tc35hint"
+assert "TC-3.5hint pr_number 型違反: exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-3.5hint 欠落/不正キー名に pr_number を名指しする" "$ERR" '欠落/不正: .*pr_number'
+assert_not_grep "TC-3.5hint 無関係な verdict 復旧案内を出さない" "$ERR" 'verdict: scripts/review-measured-gate\.sh'
+assert_not_grep "TC-3.5hint 無関係な reviewers 復旧案内を出さない" "$ERR" 'reviewers: pr-review\.md'
 
 # TC-3.6 invalid JSON (jq timestamp 注入が parse 段階で fail → write_failure)
 JSON_BROKEN="$TMP_ROOT/json-broken.json"

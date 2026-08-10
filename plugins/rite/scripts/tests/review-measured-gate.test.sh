@@ -486,9 +486,13 @@ run_gate "$f"
 if [ "$(jq -r '.timestamp' "$f")" = "__RITE_TS_PLACEHOLDER_7f3a9b2c__" ]; then
   pass "timestamp sentinel がバイト等価で残る (review-result-save.sh の注入が成立)"
 else fail "timestamp sentinel が壊れた: $(jq -r '.timestamp' "$f")"; fi
-if [ "$(jq -r 'has("schema_version") and has("pr_number") and has("timestamp") and has("commit_sha") and has("overall_assessment") and has("findings") and has("non_blocking_findings")' "$f")" = "true" ]; then
-  pass "schema 必須フィールドが全て保存される"
+if [ "$(jq -r 'has("schema_version") and has("pr_number") and has("timestamp") and has("commit_sha") and has("overall_assessment") and has("verdict") and has("findings") and has("non_blocking_findings")' "$f")" = "true" ]; then
+  pass "schema 必須フィールドが全て保存される (verdict 含む)"
 else fail "必須フィールドが欠落した"; fi
+# verdict は本 helper が唯一の書き手。値まで pin しないと極性反転を helper 単体スイートで捕まえられない
+if [ "$(jq -r '.verdict' "$f")" = "$(jq -r '.overall_assessment' "$f")" ]; then
+  pass "verdict は overall_assessment と同値 (同一式からの代入)"
+else fail "verdict=$(jq -r '.verdict' "$f") / overall_assessment=$(jq -r '.overall_assessment' "$f") が乖離"; fi
 if [ "$(jq -r '.schema_version' "$f")" = "1.0.0" ]; then pass "schema_version を変更しない (verification は additive)"; else fail "schema_version が変更された"; fi
 if [ "$(jq -r '[.findings[].id, .non_blocking_findings[].id] | (length == (unique | length))' "$f")" = "true" ]; then
   pass "id が 2 配列の和集合で一意 (振り直しをしない)"
