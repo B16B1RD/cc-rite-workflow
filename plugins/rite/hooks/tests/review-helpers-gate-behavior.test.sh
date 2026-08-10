@@ -529,6 +529,8 @@ cat > "$JSON_OK" <<EOF
   "schema_version": "1.1.0",
   "pr_number": 123,
   "timestamp": "$SENTINEL",
+  "verdict": "mergeable",
+  "reviewers": ["code-quality-reviewer", "security-reviewer"],
   "findings": []
 }
 EOF
@@ -553,6 +555,60 @@ run_save --pr 123 --content-file "$JSON_NO_REQ" --results-dir "$TMP_ROOT/results
 assert "TC-3.5 必須フィールド欠落: exit 0 (非ブロッキング)" "0" "$RC"
 assert_grep "TC-3.5 reason=schema_required_fields_missing emit" "$ERR" 'LOCAL_SAVE_FAILED=1; reason=schema_required_fields_missing'
 
+# TC-3.5.v/r merge ゲートの必須キー (verdict / reviewers) を欠く JSON の fail-loud (T-02 / AC-2)。
+# ここを通すと、ゲートを通れない JSON が「保存成功」として永続化され、レビューを正しく経た PR
+# ほど merge 段で初めて止まる (Issue #2228 の原因)。reason 語彙は既存の必須フィールド gate を
+# 流用する (語彙を増やすと helper docstring / 6.1.a bullet / reason 表の 3 点同期義務が増える)。
+_save_fixture() {  # $1=path, 残りは JSON 本体に差し込むトップレベル行
+  local _p="$1"; shift
+  {
+    printf '{\n  "schema_version": "1.1.0",\n  "pr_number": 123,\n  "timestamp": "%s",\n' "$SENTINEL"
+    printf '%s\n' "$@"
+    printf '  "findings": []\n}\n'
+  } > "$_p"
+}
+
+JSON_NO_VERDICT="$TMP_ROOT/json-no-verdict.json"
+_save_fixture "$JSON_NO_VERDICT" '  "reviewers": ["code-quality-reviewer", "security-reviewer"],'
+run_save --pr 123 --content-file "$JSON_NO_VERDICT" --results-dir "$TMP_ROOT/results-tc35v"
+assert "TC-3.5v verdict 欠落: exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-3.5v reason=schema_required_fields_missing emit" "$ERR" 'LOCAL_SAVE_FAILED=1; reason=schema_required_fields_missing'
+assert_grep "TC-3.5v verdict の書き手 (実測必須ゲート) を復旧案内に出す" "$ERR" 'review-measured-gate\.sh'
+
+JSON_BAD_VERDICT="$TMP_ROOT/json-bad-verdict.json"
+_save_fixture "$JSON_BAD_VERDICT" '  "verdict": "maybe",' '  "reviewers": ["code-quality-reviewer", "security-reviewer"],'
+run_save --pr 123 --content-file "$JSON_BAD_VERDICT" --results-dir "$TMP_ROOT/results-tc35ve"
+assert "TC-3.5ve verdict enum 外: exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-3.5ve reason=schema_required_fields_missing emit" "$ERR" 'LOCAL_SAVE_FAILED=1; reason=schema_required_fields_missing'
+
+JSON_NO_REVIEWERS="$TMP_ROOT/json-no-reviewers.json"
+_save_fixture "$JSON_NO_REVIEWERS" '  "verdict": "mergeable",'
+run_save --pr 123 --content-file "$JSON_NO_REVIEWERS" --results-dir "$TMP_ROOT/results-tc35r"
+assert "TC-3.5r reviewers 欠落: exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-3.5r reason=schema_required_fields_missing emit" "$ERR" 'LOCAL_SAVE_FAILED=1; reason=schema_required_fields_missing'
+assert_grep "TC-3.5r reviewers の書き手 (5.3.0.M step 1) を復旧案内に出す" "$ERR" '5\.3\.0\.M step 1'
+
+JSON_EMPTY_REVIEWERS="$TMP_ROOT/json-empty-reviewers.json"
+_save_fixture "$JSON_EMPTY_REVIEWERS" '  "verdict": "mergeable",' '  "reviewers": [],'
+run_save --pr 123 --content-file "$JSON_EMPTY_REVIEWERS" --results-dir "$TMP_ROOT/results-tc35re"
+assert "TC-3.5re reviewers 空配列: exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-3.5re reason=schema_required_fields_missing emit" "$ERR" 'LOCAL_SAVE_FAILED=1; reason=schema_required_fields_missing'
+
+JSON_SCALAR_REVIEWERS="$TMP_ROOT/json-scalar-reviewers.json"
+_save_fixture "$JSON_SCALAR_REVIEWERS" '  "verdict": "mergeable",' '  "reviewers": "code-quality-reviewer",'
+run_save --pr 123 --content-file "$JSON_SCALAR_REVIEWERS" --results-dir "$TMP_ROOT/results-tc35rt"
+assert "TC-3.5rt reviewers が非配列: exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "TC-3.5rt reason=schema_required_fields_missing emit" "$ERR" 'LOCAL_SAVE_FAILED=1; reason=schema_required_fields_missing'
+
+# 1 名 reviewer は **保存できる** (merge ゲートの floor 2 を save helper へ持ち込まない)。
+# 揃えると review.min_reviewers: 1 / XS・S 軽量レーンが生む正当な 1 名 cycle の結果が
+# 永続チャネルから丸ごと消える。
+JSON_SOLE_REVIEWER="$TMP_ROOT/json-sole-reviewer.json"
+_save_fixture "$JSON_SOLE_REVIEWER" '  "verdict": "mergeable",' '  "reviewers": ["code-quality-reviewer"],'
+run_save --pr 123 --content-file "$JSON_SOLE_REVIEWER" --results-dir "$TMP_ROOT/results-tc35sole"
+assert "TC-3.5sole 1 名 reviewer: exit 0" "0" "$RC"
+assert_grep "TC-3.5sole 1 名 reviewer でも保存される (floor 2 はゲート側の責務)" "$ERR" 'JSON_SAVED=true'
+
 # TC-3.6 invalid JSON (jq timestamp 注入が parse 段階で fail → write_failure)
 JSON_BROKEN="$TMP_ROOT/json-broken.json"
 printf '{ broken json\n' > "$JSON_BROKEN"
@@ -567,6 +623,8 @@ cat > "$JSON_BAD_ID" <<EOF
   "schema_version": "1.0.0",
   "pr_number": 123,
   "timestamp": "$SENTINEL",
+  "verdict": "fix-needed",
+  "reviewers": ["code-quality-reviewer", "security-reviewer"],
   "findings": [{"id": "F-1"}]
 }
 EOF
@@ -581,6 +639,8 @@ cat > "$JSON_DUP_ID" <<EOF
   "schema_version": "1.0.0",
   "pr_number": 123,
   "timestamp": "$SENTINEL",
+  "verdict": "fix-needed",
+  "reviewers": ["code-quality-reviewer", "security-reviewer"],
   "findings": [{"id": "F-01"}, {"id": "F-01"}]
 }
 EOF
@@ -595,6 +655,8 @@ cat > "$JSON_BAD_SCOPE" <<EOF
   "schema_version": "1.1.0",
   "pr_number": 123,
   "timestamp": "$SENTINEL",
+  "verdict": "fix-needed",
+  "reviewers": ["code-quality-reviewer", "security-reviewer"],
   "findings": [{"id": "F-01", "scope": "bogus"}]
 }
 EOF
@@ -609,6 +671,8 @@ cat > "$JSON_INV4" <<EOF
   "schema_version": "1.1.0",
   "pr_number": 123,
   "timestamp": "$SENTINEL",
+  "verdict": "fix-needed",
+  "reviewers": ["code-quality-reviewer", "security-reviewer"],
   "findings": [{"id": "F-01", "severity": "CRITICAL", "scope": "nit-noted"}]
 }
 EOF
@@ -687,6 +751,8 @@ for _cyc in 1 2 3; do
   "pr_number": 123,
   "timestamp": "$SENTINEL",
   "commit_sha": "sha-cycle-$_cyc",
+  "verdict": "mergeable",
+  "reviewers": ["code-quality-reviewer", "security-reviewer"],
   "findings": [],
   "non_blocking_findings": []
 }

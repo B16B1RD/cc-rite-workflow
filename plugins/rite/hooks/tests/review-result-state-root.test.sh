@@ -66,6 +66,8 @@ json_body() {
   "timestamp": "__RITE_TS_PLACEHOLDER_7f3a9b2c__",
   "commit_sha": "$REPO_HEAD",
   "overall_assessment": "mergeable",
+  "verdict": "mergeable",
+  "reviewers": ["code-quality-reviewer", "security-reviewer"],
   "findings": []
 }
 JSON
