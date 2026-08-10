@@ -275,14 +275,14 @@ deletion_residue_samples=(
 deletion_residue_pattern=$(IFS='|'; printf '%s' "${deletion_residue_patterns[*]}")
 scan_deletion_residue() {
   local manifest="$TEST_DIR/deletion-residue-files"
-  local file grep_rc
+  local file grep_rc grep_bin="${DELETION_GREP_BIN:-grep}"
   if ! find "$@" -type f ! -path '*/fixtures/*' \
     ! -name 'number-reference-check.test.sh' -print0 > "$manifest"; then
     return 2
   fi
   while IFS= read -r -d '' file; do
     grep_rc=0
-    grep -En "$deletion_residue_pattern" "$file" >/dev/null || grep_rc=$?
+    "$grep_bin" -En "$deletion_residue_pattern" "$file" >/dev/null || grep_rc=$?
     case "$grep_rc" in
       0) return 0 ;;
       1) ;;
@@ -316,6 +316,26 @@ if [ "$scan_rc" -eq 2 ]; then
   pass "deletion-damage scan fails closed when a scan root is unavailable"
 else
   fail "deletion-damage scan did not distinguish an unavailable root (rc=$scan_rc)"
+fi
+scan_fixture="$TEST_DIR/deletion-scan-fixture"
+mkdir -p "$scan_fixture"
+printf '%s\n' "${deletion_residue_samples[0]}" > "$scan_fixture/residue.md"
+scan_rc=0
+scan_deletion_residue "$scan_fixture" || scan_rc=$?
+if [ "$scan_rc" -eq 0 ]; then
+  pass "deletion-damage scan reports residue found through the scan helper"
+else
+  fail "deletion-damage scan missed helper-level residue (rc=$scan_rc)"
+fi
+grep_fail_shim="$TEST_DIR/grep-fail"
+printf '%s\n' '#!/bin/bash' 'exit 2' > "$grep_fail_shim"
+chmod +x "$grep_fail_shim"
+scan_rc=0
+DELETION_GREP_BIN="$grep_fail_shim" scan_deletion_residue "$scan_fixture" || scan_rc=$?
+if [ "$scan_rc" -eq 2 ]; then
+  pass "deletion-damage scan fails closed on grep operational errors"
+else
+  fail "deletion-damage scan misclassified a grep operational error (rc=$scan_rc)"
 fi
 
 # --------------------------------------------------------------------------
