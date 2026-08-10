@@ -5,6 +5,7 @@
 * **Update**: [累積対策 PR の review-fix loop で fix 自体が drift を導入する](pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md) — raw/reviews/20260810T042756Z-pr-2227.md を統合（新規の指摘面が修正本体ではなく「修正を説明する文」に集中した 3 cycle 収束の観測を追加）。
 * **Update**: [診断メッセージの主語と射程は、その文が発火する条件が保証している対象に限る](pages/heuristics/diagnostic-claim-scoped-to-firing-condition.md) — raw/fixes/20260810T043320Z-pr-2227.md を統合（既存の中立ラベルを原因断定ラベルへ改名すると、断定の根拠が helper 実装に依存して壊れる型を追加）。
 * **Update**: [Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格](pages/heuristics/observed-likelihood-gate-with-evidence-anchors.md) — raw/reviews/20260810T045310Z-pr-2227.md を統合（ゲートが決めるのは merge を止めるかだけで、降格を「直さなくてよい」と読み替えないという運用の切り分けを追加）。
+* **lint:warning** — contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=304, broken_refs=0
 
 ## 2026-08-09
 
