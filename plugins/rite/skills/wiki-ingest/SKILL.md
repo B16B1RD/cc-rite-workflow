@@ -377,7 +377,7 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 |-----------|-------------|
 | `title` | 経験則を 1 行で表現（30-60 字推奨） |
 | `domain` | `patterns` / `heuristics` / `anti-patterns` |
-| `summary` | 1-2 文の要約（index.md に掲載される） |
+| `summary` | 1-2 文の Why 要約（page frontmatter `description` と index.md のサマリー列へ同一文言を掲載する）。Issue / PR 番号は出典の識別子であって概念の理由を説明しないため、`Issue #NNN` / `PR #NNN` / `refs #NNN` 等の説明的番号参照を書かず、番号が担っていた観測事実・条件・因果を自己完結した散文で記述する。provenance は `sources` に分離して保持する |
 | `details` | 背景・具体例・根拠を含む詳細 |
 | `confidence` | `high` / `medium` / `low`（根拠の強さ） |
 | `promote` | ステップ 4 の昇格分類で rite 挙動・スキル記述法かつ環境非依存（または一般化済み）と判定した場合のみ `rite-plugin`。それ以外はフィールド自体を付けない |
@@ -390,7 +390,7 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 - **統合**: 一部矛盾するが新情報の方が確度が高い場合は該当箇所を書き換え（`updated` フィールド更新）
 - **`sources` 配列追記**: 新しい Raw Source への参照を必ず追加する。追加する各エントリは `- type: "{type}"` / `  ref: "raw/{type}/{filename}"` の形式とし、**`ref` は必ず Raw Source のファイルパス形式 (`raw/{type}/{filename}`、wiki-root 起点)** にする。raw frontmatter の `source_ref` フィールド値（PR 識別子形式、例: `pr-1143`）を `ref` に転記してはならない（ステップ 5.3 `{source_ref}` 行の dual-use 警告と同一契約）
 - **`updated` 更新**: 現在の ISO 8601 タイムスタンプに更新
-- **`description` の新設・更新**: 本サイクルで概要が変わった場合は frontmatter `description` を更新する（未設定なら新設してよい）。ステップ 6 の helper はサマリー列の第 1 候補としてこの値を読むため、ここを更新しないと index のサマリーは既存値が保持される
+- **`description` の新設・更新**: 本サイクルで概要が変わった場合は frontmatter `description` を更新する（未設定なら新設してよい）。値は上表の番号なし Why 要約をそのまま使い、独自の短縮・言い換えをしない。ステップ 6 の helper はこの値を index サマリー列へ渡すため、ここを更新しないと index のサマリーは既存値が保持され、同源テキストが drift する
 
 ### 4.3 関連ページの特定
 
@@ -645,7 +645,7 @@ fi
 **入力契約**: 対象ページの frontmatter 値とファイルパスを substitute する。
 
 - `{title}` / `{description}` / `{updated}` / `{confidence}` は page frontmatter の値から **YAML の引用符を外して**渡す（`title: "…"` の実体は引用符の内側）。**値の加工はそれだけ** — セル区切りエスケープとリンク構文の中和は helper 内で一元適用するので呼び出し側では行わず、言い換えも禁止（ステップ 4.3 の title 規約が frontmatter `title` の生値との literal 一致を要求する）
-- `{description}` は frontmatter に `description` が無ければ**空のまま**渡す（helper が既存行のサマリー列を保持する）
+- `{description}` は frontmatter に `description` が無ければ**空のまま**渡す（helper が既存行のサマリー列を保持する）。非空ならステップ 4.1 で作成した番号なし Why 要約と literal に同じ値を渡し、index 用の別要約を生成しない
 - `{domain}` / `{slug}` は対象ページの**ファイルパス** `pages/{domain}/{slug}.md` から取る（新規経路はステップ 4.1 で決めた値、更新経路はステップ 5.0 手順 4 で Read した既存ファイルの domain ディレクトリ名とファイル名 stem）。`title` からの再導出はしない — ステップ 4.2 は title の書き換えを許容するため、再導出すると既存ファイル名と異なる slug が渡り、実在しないパスを指す登録行が新規追加される（旧行は旧値のまま残る）
 
 **substitute する 6 値はすべて quoted heredoc で受ける**（frontmatter は LLM 生成テキストで引用符・バックスラッシュ・`$(...)` を含みうる。double-quote されたシェル語へ直接置換すると値の `"` でクォートが閉じ、後続テキストがコマンドとして実行される — [`skills/fix/SKILL.md`](../fix/SKILL.md) の同旨規約と同じ理由。quoted heredoc は**終端子行と一致しない限り**シェル解釈を抑制する）。
