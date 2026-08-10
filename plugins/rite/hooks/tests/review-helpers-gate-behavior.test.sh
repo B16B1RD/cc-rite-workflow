@@ -557,7 +557,7 @@ assert_grep "TC-3.5 reason=schema_required_fields_missing emit" "$ERR" 'LOCAL_SA
 
 # TC-3.5.v/r merge ゲートの必須キー (verdict / reviewers) を欠く JSON の fail-loud (T-02 / AC-2)。
 # ここを通すと、ゲートを通れない JSON が「保存成功」として永続化され、レビューを正しく経た PR
-# ほど merge 段で初めて止まる (Issue #2228 の原因)。reason 語彙は既存の必須フィールド gate を
+# ほど merge 段で初めて止まる。reason 語彙は既存の必須フィールド gate を
 # 流用する (語彙を増やすと helper docstring / 6.1.a bullet / reason 表の 3 点同期義務が増える)。
 _save_fixture() {  # $1=path, 残りは JSON 本体に差し込むトップレベル行
   local _p="$1"; shift
