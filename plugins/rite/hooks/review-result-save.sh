@@ -420,14 +420,15 @@ fi
 # stdout を返すため、空文字を「欠落なし」と読むと空白のみの body が本検査を素通りする
 # (`jq -e` は同じ入力を rc=4 で落としていた — 判定手段の差し替えで失われた失敗条件)。
 # 本 guard は必須フィールドの述語を複製しないので、上記の単一定義性は保たれる。
-# 非オブジェクトはここへ来る前に上流の timestamp 注入が `write_failure` で落とすため、
-# 実際に本 guard が捕らえるのは「空白のみの body」= 文書 0 件の形である。
+# スカラー・配列はここへ来る前に上流の timestamp 注入が `write_failure` で落とし、`null` は
+# 同注入が object へ変換して本 guard を通過する (列挙が全キー欠落として正しく捕らえる) ため、
+# 実際に本 guard が捕らえるのは「空白のみの body」= 文書 0 件の形だけである。
 # guard を外した実測では保存は成立せず、下流の findings[].id 検査が
 # `finding_id_format_or_uniqueness_violation` として落としていた。つまり本 guard が防ぐのは
 # 保存の誤成立ではなく **理由の誤帰属** — 入力に findings[] 自体が無いのに id 書式の是正を
-# 案内する復旧ヒントが出て、原因 (body が空) から遠ざかる。
+# 案内する復旧ヒントが出て、原因 (body が空白のみ) から遠ざかる。
 if ! jq -e 'type == "object"' "$json_tmp" >/dev/null 2>&1; then
-  _missing="判定不能 (JSON body が空か非オブジェクト)"
+  _missing="判定不能 (JSON body が空白のみで JSON 文書 0 件)"
 elif ! _missing=$(jq -r '
   [ (if (.schema_version | type == "string" and length > 0) then empty else "schema_version" end),
     (if (.pr_number | type == "number") then empty else "pr_number" end),

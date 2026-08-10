@@ -606,7 +606,9 @@ run_save --pr 123 --content-file "$JSON_BLANK_BODY" --results-dir "$TMP_ROOT/res
 assert "TC-3.5blank 空白のみ body: exit 0 (非ブロッキング)" "0" "$RC"
 assert_grep "TC-3.5blank reason=schema_required_fields_missing emit" "$ERR" 'LOCAL_SAVE_FAILED=1; reason=schema_required_fields_missing'
 assert_grep "TC-3.5blank JSON_SAVED=false (保存させない)" "$ERR" 'JSON_SAVED=false'
-assert_grep "TC-3.5blank 欠落名ではなく判定不能として名指しする" "$ERR" '判定不能'
+# pattern は guard 固有のラベル全体を要求する。裸の `判定不能` は jq 実行失敗側の同語ラベル
+# にも当たるため、guard のラベルが崩れても判定が別経路へ流れても緑のまま通ってしまう
+assert_grep "TC-3.5blank 欠落名ではなく判定不能として名指しする" "$ERR" '判定不能 \(JSON body が空白のみで JSON 文書 0 件\)'
 
 JSON_SCALAR_REVIEWERS="$TMP_ROOT/json-scalar-reviewers.json"
 _save_fixture "$JSON_SCALAR_REVIEWERS" '  "verdict": "mergeable",' '  "reviewers": "code-quality-reviewer",'

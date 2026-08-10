@@ -68,17 +68,24 @@ assert_grep "TC-1 SKILL 5.3.0.M step 1 が reviewers を実回収名簿と規定
 assert_grep "TC-1 SKILL が findings からの名簿導出を禁止" "$SKILL" '\*\*`findings\[\]` から導出して(は|も)ならない\*\*'
 # 名簿の母集団は「ステップ 5.1 が結果を回収できた reviewer」の単一定義。SKILL は同一文言を
 # 2 サイト (5.3.0.M step 1 / 6.1.a Required JSON fields) に持つため、ファイル全体 grep では
-# 片方があれば緑になる。**両サイトを個別に錨付けする** — 前 cycle は 6.1.a が無保護だった
+# 片方があれば緑になる。**両サイトを個別に錨付けする** — 前 cycle は 6.1.a が無保護だった。
+# 錨は行頭 + コロンまで含める (`Required JSON fields` の裸リテラルは 5.3.0.M の参照行と
+# 6.1.a の導入散文にも現れ、リスト本体から定義が消えてもそれらが pin を代替成立させる)
 assert_grep "TC-1 SKILL 6.1.a が名簿の母集団を実回収集合と規定" "$SKILL" \
-  'Required JSON fields.*ステップ 5\.1 が Task 結果を回収できた reviewer'
+  '^- Required JSON fields: .*ステップ 5\.1 が Task 結果を回収できた reviewer'
 assert_grep "TC-1 SoT が名簿の母集団を実回収集合と規定" "$SCHEMA" 'ステップ 5\.1 が Task 結果を回収できた reviewer'
 assert_grep "TC-1 SKILL 5.3.0.M step 1 が reviewers の値形式を導出式で規定" "$SKILL" '`-reviewer` を付した形で書く'
 assert_grep "TC-1 SKILL 6.1.a が reviewers の値形式を導出式で規定" "$SKILL" \
-  'Required JSON fields.*`-reviewer` を付した形'
+  '^- Required JSON fields: .*`-reviewer` を付した形'
 assert_grep "TC-1 SoT が reviewers の値形式を導出式で規定" "$SCHEMA" '`-reviewer` を付した'
 # SoT のフィールド表と節見出しも同じ述語であること (前 cycle は本文だけ更新して表を掃き残した)
 assert_grep "TC-1 SoT のフィールド表が実回収述語を使う" "$SCHEMA" '^\| `reviewers` \|.*ステップ 5\.1 が Task 結果を回収できた'
-assert_not_grep "TC-1 SoT に旧語彙 (実走) が残っていない" "$SCHEMA" '実走'
+# 旧語彙の pin は F-24 が掃いた 4 サイト全てに掛ける (SoT だけだと残る 3 サイトが無保護)。
+# pattern は名簿文脈に限定する — 裸の `実走` はテストの実走のような無関係な語で誤発火する
+assert_not_grep "TC-1 SoT に旧語彙 (実走名簿) が残っていない" "$SCHEMA" '実走(した)? reviewer|実走名簿'
+assert_not_grep "TC-1 SKILL に旧語彙 (実走名簿) が残っていない" "$SKILL" '実走(した)? reviewer|実走名簿'
+assert_not_grep "TC-1 save helper に旧語彙 (実走名簿) が残っていない" "$SAVE" '実走(した)? reviewer|実走名簿'
+assert_not_grep "TC-1 ゲート script に旧語彙 (実走名簿) が残っていない" "$MGATE" '実走(した)? reviewer|実走名簿'
 # reason カタログ (SKILL) と helper の WARNING で必須条件の記述が乖離しないことを pin する。
 # 前 cycle は「目視で検出する」と宣言しながら同じ commit で drift させた
 assert_grep "TC-1 SKILL の reason カタログが reviewers の一意性を含む" "$SKILL" 'reviewers\[\] が重複の無い非空配列'
