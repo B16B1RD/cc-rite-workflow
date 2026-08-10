@@ -15,6 +15,7 @@
 * **Update**: [機構を削除して解くと、pin 面積だけでなく失敗モードの重さ（blast radius）も縮む](pages/heuristics/simplification-shrinks-pin-surface-and-blast-radius.md) — raw/fixes/20260810T074515Z-pr-2229.md を統合（複製の同期漏れを指摘されたら同期ではなく複製の削除を先に検討する判断を追加）。
 * **Update**: [機構を削除して解くと、pin 面積だけでなく失敗モードの重さ（blast radius）も縮む](pages/heuristics/simplification-shrinks-pin-surface-and-blast-radius.md) — raw/reviews/20260810T095742Z-pr-2229.md を統合（削除で応えるべきところに説明を足すと複製面積が増え、引用元の実文言と食い違う）。
 * **Update**: [変更・削除の掃き出しは旧語彙・置換した条件式・別記法トークンまで広げる](pages/heuristics/change-sweep-spans-old-vocabulary-and-notations.md) — raw/fixes/20260810T113055Z-pr-2229.md を統合（掃いた後に置く pin を狭めるときは履歴で除去済み全表記形を照合する、掃く範囲は共有 reference の登録リストまで）。
+* **lint:warning** — contradictions=0, stale=0, orphans=0, missing_concept=1, unregistered_raw=304, broken_refs=0
 
 ## 2026-08-09
 
