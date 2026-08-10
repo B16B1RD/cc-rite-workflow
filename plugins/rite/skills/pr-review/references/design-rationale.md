@@ -95,7 +95,7 @@
 
 ステップ 5.3.0.M を helper に委譲した理由。
 
-旧版は本ゲートを LLM の推論ステップとして書いていた。「自分の指摘を non-blocking 化して mergeable を宣言する」判断は reviewer 群の thoroughness 指示と正面衝突するため、裁量に置く限り構造的に実行されにくい —  では 9 サイクルすべてで一度も降格が実行されず、契約上 merge を止めてはならない散文精度指摘でループが 8 時間超継続した。分類を bash へ移し、mergeable 判定 (5.3.1) が LLM の分類を経由しない配置にする。
+旧版は本ゲートを LLM の推論ステップとして書いていた。「自分の指摘を non-blocking 化して mergeable を宣言する」判断は reviewer 群の thoroughness 指示と正面衝突するため、裁量に置く限り構造的に実行されにくい — 実測した run では 9 サイクルすべてで一度も降格が実行されず、契約上 merge を止めてはならない散文精度指摘でループが 8 時間超継続した。分類を bash へ移し、mergeable 判定 (5.3.1) が LLM の分類を経由しない配置にする。
 
 ## non-blocking-findings-array-notes
 

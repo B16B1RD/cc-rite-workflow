@@ -1214,7 +1214,7 @@ Status: {projects_status_result}
     手動回復: git -C .rite/wiki-worktree push origin {wiki_branch}
   ```
 
-`{outstanding_items_block}`（: 非ブロッキング失敗の集約 surface）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` のうち、**チェックボックスが `x` ではなく空欄（未チェック）として描画されたもの**があれば、そのチェックボックス直下の付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる。AC-1 / AC-2）。
+`{outstanding_items_block}`（非ブロッキング失敗の集約欄）: 上記チェックリストの `{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{projects_check}` / `{wiki_ingest_check}` / `{review_cleanup_check}` のうち、**チェックボックスが `x` ではなく空欄（未チェック）として描画されたもの**があれば、そのチェックボックス直下の付記文をそのまま箇条書きで列挙する（各チェックボックス直下の付記と同じ文言をここにも重複表示する — チェックリストは一覧性、本節は見落とし防止のための集約であり、両立させる。AC-1 / AC-2）。
 
 判定基準を「⚠️/ℹ️ 等の絵文字 prefix 一致」ではなく「チェックボックスの空欄/`x`」に統一する: 6 check の判定ルール（上記）はいずれも「実失敗・残作業のときのみ空欄 ` ` を割り当て、成功時および legitimate な informational skip（`{wiki_ingest_check}` の `reason=disabled`/`auto_ingest_off`/`no_pending`/`concurrent_ingest` 等）は `x` を割り当てる」という契約を既に持つ。付記文の絵文字 prefix は表示上の飾りに過ぎず（`{local_branch_check}` の `BRANCH_DELETE_FAILED`/`BRANCH_DELETE_UNMERGED` のように prefix を伴わない実失敗付記も存在する）、チェックボックス自体の空欄/`x`こそが「未完了か否か」の一次情報である。この統一により、prefix の有無に関わらず全 check の実失敗・残作業を漏れなく拾い、かつ legitimate skip（`x` 判定）は自然に除外される（追加の除外ルールは不要）。
 

@@ -473,7 +473,7 @@ fi
 # worktree is skipped (and kept in the manifest for a later retry) so uncommitted
 # work is never destroyed. The `worktree` type is contract-bound to EPHEMERAL
 # tmp artifacts; session worktrees go through Step 5's gated reap, never here
-# (: they use the distinct `session_worktree` type below, which
+# Cleanup-owned session worktrees use the distinct `session_worktree` type below, which
 # this step never reaps — only drops once the path is already gone).
 #
 # Manifest rewrite: lines we reap (or find already-gone) are dropped; skipped

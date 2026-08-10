@@ -980,7 +980,7 @@ Wiki Ingest が完了しました。
 | `skipped; reason=same_branch` | `Wiki push: 対象外 (same_branch 戦略。通常の PR push に含まれる)` |
 | marker なし（ステップ 8.6 未到達などの想定外経路） | `⚠️ Wiki push: 実行結果が確認できませんでした。git -C {wiki_worktree_abs} status で確認してください` |
 
-`{ingest_outstanding_line}`（: 非ブロッキング失敗の集約 surface。Wiki push については `{wiki_push_line}` と同じ `WIKI_INGEST_PUSH=` marker を再評価するだけで新しい記録先は持たない — local commit 自体が durable な記録であり、次回 ingest のステップ 8.6 が自動で flush を試みる）。**ステップ 6 の index 更新と Wiki push の 2 系統を評価し、該当するものをすべて列挙する**（index 更新の失敗・部分適用は Lint のどの観点にも載らず、ステップ 6 で表示した ERROR / WARNING が唯一のシグナルであるため、その場の表示に加えて本欄へ集約する）:
+`{ingest_outstanding_line}`（非ブロッキング失敗の集約欄。Wiki push については `{wiki_push_line}` と同じ `WIKI_INGEST_PUSH=` marker を再評価するだけで新しい記録先は持たない — local commit 自体が durable な記録であり、次回 ingest のステップ 8.6 が自動で flush を試みる）。**ステップ 6 の index 更新と Wiki push の 2 系統を評価し、該当するものをすべて列挙する**（index 更新の失敗・部分適用は Lint のどの観点にも載らず、ステップ 6 で表示した ERROR / WARNING が唯一のシグナルであるため、その場の表示に加えて本欄へ集約する）:
 
 | 系統 | 条件 | 展開 |
 |---|---|---|

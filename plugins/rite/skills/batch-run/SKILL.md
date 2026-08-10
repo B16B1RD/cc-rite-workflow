@@ -318,7 +318,7 @@ args: "{branch_name}"
 | `[cleanup:returned-to-caller]` | この Issue 完了。下記 bash で cursor を +1 してステップ 1 へループ |
 | sentinel 不在（cleanup 途中で停止） | merge は既に完了済み（成功扱い）。下記 bash で cursor を +1 してステップ 1 へ進む（cleanup の未完分は `/rite:recover {current_issue}` で個別補完できる旨を表示） |
 
-**（`[cleanup:returned-to-caller]` 経由の場合のみ）** cursor を進める前に、cleanup の完了報告に含まれる `[cleanup:outstanding:N]` sentinel（: 非ブロッキング失敗の集約 surface）を読み、`{outstanding_n}` が `0` より大きければ当該 Issue を `outstanding[]` に記録する（ステップ 7 完了通知のロールアップに使うため。`failed[]` と同じ記録パターン）。sentinel 不在（cleanup 途中停止）の場合は判定不能なので記録しない — silent に「outstanding 無し」と誤記録しない（`{current_issue}` / `{outstanding_n}` はステップ 1 の marker 値・cleanup 完了報告の sentinel 値をそれぞれリテラル置換）:
+**（`[cleanup:returned-to-caller]` 経由の場合のみ）** cursor を進める前に、cleanup の完了報告に含まれる `[cleanup:outstanding:N]` sentinel（非ブロッキング失敗の集約値）を読み、`{outstanding_n}` が `0` より大きければ当該 Issue を `outstanding[]` に記録する（ステップ 7 完了通知のロールアップに使うため。`failed[]` と同じ記録パターン）。sentinel 不在（cleanup 途中停止）の場合は判定不能なので記録しない — silent に「outstanding 無し」と誤記録しない（`{current_issue}` / `{outstanding_n}` はステップ 1 の marker 値・cleanup 完了報告の sentinel 値をそれぞれリテラル置換）:
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
@@ -399,7 +399,7 @@ rm -f "$queue_file"
 echo "[CONTEXT] RUN_DONE; processed=$processed; failed=$failed; outstanding=$outstanding; mode=$mode"
 ```
 
-`mode=`（`{run_mode}`）に応じて、`processed=` の Issue 一覧を `{processed_issues}`、`failed=` の非収束 Issue 一覧を `{failed_issues}` として完了通知を出し分ける。`failed=` が空配列 `[]` でない場合は、完了通知にサーキットブレーカーで failed 扱いとなった Issue を明示する（`[]` のときは該当行を省略する）。`outstanding=` の Issue 一覧を `{outstanding_issues}` として使う（: cleanup 完了報告の「未完了事項」ロールアップ。`mode=merge` のときのみ意味を持つ — デフォルトモードは cleanup を invoke しないため `outstanding` は常に空）。
+`mode=`（`{run_mode}`）に応じて、`processed=` の Issue 一覧を `{processed_issues}`、`failed=` の非収束 Issue 一覧を `{failed_issues}` として完了通知を出し分ける。`failed=` が空配列 `[]` でない場合は、完了通知にサーキットブレーカーで failed 扱いとなった Issue を明示する（`[]` のときは該当行を省略する）。`outstanding=` の Issue 一覧を `{outstanding_issues}` として使う（cleanup 完了報告の「未完了事項」をロールアップする。`mode=merge` のときのみ意味を持つ — デフォルトモードは cleanup を invoke しないため `outstanding` は常に空）。
 
 **デフォルト（`mode=default`）**: 各 Issue は draft PR で停止しており **merge していない**:
 

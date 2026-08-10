@@ -2042,7 +2042,7 @@ Skipping 5.3.0 / 5.3.0.M before 5.3.1 is **prohibited**: the Red blocking rule i
 # rationale: references/design-rationale.md#measured-gate-helper-notes
 
 **step 1: レビュー結果 JSON の生成 (本 review cycle で唯一の JSON authoring site)**
-Claude は [review-result-schema.md](../../references/review-result-schema.md) に従う JSON 本文を生成し、**Write tool で `{review_tmp_dir}/rite-review-result-{pr_number}.json` に保存**する。`{review_tmp_dir}` は下記 bash が emit する `[CONTEXT] REVIEW_TMP_DIR=` marker の値をリテラル置換する (Write tool は `${TMPDIR:-/tmp}` を展開できないため。sandbox 環境では `/tmp` 直下が読み込み専用 —)。
+Claude は [review-result-schema.md](../../references/review-result-schema.md) に従う JSON 本文を生成し、**Write tool で `{review_tmp_dir}/rite-review-result-{pr_number}.json` に保存**する。`{review_tmp_dir}` は下記 bash が emit する `[CONTEXT] REVIEW_TMP_DIR=` marker の値をリテラル置換する (Write tool は TMPDIR の shell 展開を実行できず、sandbox 環境では `/tmp` 直下が読み込み専用になるため、helper が実際の書込先を marker で渡す）。
 
 ```bash
 echo "[CONTEXT] REVIEW_TMP_DIR=${TMPDIR:-/tmp}" >&2
@@ -2397,7 +2397,7 @@ Save review results as a timestamped JSON file per [review-result-schema.md](../
    ```
 
    <!-- rationale: references/design-rationale.md#review-cycle-id-emit-notes -->
-1. **JSON body は再生成しない**: 保存対象の `{review_tmp_dir}/rite-review-result-{pr_number}.json` は ステップ 5.3.0.M step 1 で Write 済み・step 2 でゲート適用済である。本 phase は **その内容に一切手を加えない** (: JSON authoring site の一本化)。`suppressed_findings` 除外契約と `timestamp` sentinel の書き込みも 5.3.0.M step 1 で適用済で、`timestamp` の実値は下記 helper が `$iso_timestamp` で注入する。
+1. **JSON body は再生成しない**: 保存対象の `{review_tmp_dir}/rite-review-result-{pr_number}.json` は ステップ 5.3.0.M step 1 で Write 済み・step 2 でゲート適用済である。本 phase は **その内容に一切手を加えない**（JSON authoring site を一本化するため）。`suppressed_findings` 除外契約と `timestamp` sentinel の書き込みも 5.3.0.M step 1 で適用済で、`timestamp` の実値は下記 helper が `$iso_timestamp` で注入する。
 2. **helper 実行**: 以下の bash を実行する。helper が `iso_timestamp` 算出・sentinel 注入・schema validation・同秒衝突回避・atomic mv・`[CONTEXT]` emit を担う。JSON body / ファイル名 / `[CONTEXT]` emit の timestamp は helper 内の単一 `date` 由来で完全同期する。
 
 ```bash

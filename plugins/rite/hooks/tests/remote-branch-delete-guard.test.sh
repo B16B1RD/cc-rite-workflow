@@ -57,7 +57,7 @@ trap cleanup EXIT
 TEST_DIR="$(mktemp -d)" || exit 1
 # canonical 化は別変数へ受けてから代入する。`TEST_DIR="$(cd ... )" || exit 1` は cd/pwd が
 # 失敗したとき `|| exit 1` が走る前に TEST_DIR を空文字で上書きするため、EXIT trap の cleanup()
-# が no-op になり直前に作った temp dir が leak する (:48-49 の設計意図と正面から矛盾する)。
+# が no-op になり直前に作った temp dir が leak する (直前の cleanup 契約と正面から矛盾する)。
 _canon="$(cd "$TEST_DIR" && pwd -P)" || exit 1
 TEST_DIR="$_canon"
 REAL_GIT="$(command -v git)" || { echo "FATAL: git が見つかりません"; exit 1; }

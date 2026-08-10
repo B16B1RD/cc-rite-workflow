@@ -231,6 +231,8 @@ deletion_residue_patterns=(
   '、[。．]'
   '`[^`]+` は[[:space:]]+[、）]'
   '[[:space:]]{2,}で修正'
+  '[(（][[:space:]]*:[[:space:]]'
+  '[[:space:]]{2,}では'
 )
 deletion_residue_samples=(
   'context (で rationale'
@@ -261,6 +263,8 @@ deletion_residue_samples=(
   '環境制約、。'
   '`updated_at` は 、'
   '点を  で修正'
+  '(: missing rationale'
+  'run —  では nine cycles'
 )
 deletion_residue_pattern=$(IFS='|'; printf '%s' "${deletion_residue_patterns[*]}")
 for i in "${!deletion_residue_patterns[@]}"; do
@@ -275,7 +279,7 @@ if ! printf '%s\n' 'context with durable rationale' | rg -q "$deletion_residue_p
 else
   fail "deletion-damage matcher rejected valid prose"
 fi
-if ! rg -n -g '!**/number-reference-check.test.sh' "$deletion_residue_pattern" \
+if ! rg -n -g '!**/number-reference-check.test.sh' -g '!**/fixtures/**' "$deletion_residue_pattern" \
   "$REPO_ROOT/plugins/rite" "$REPO_ROOT/docs" >/dev/null; then
   pass "deletion-damage residue is absent"
 else

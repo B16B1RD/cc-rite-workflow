@@ -193,7 +193,7 @@ blocking = CONFIRMED (全指摘事項に残存)
 
 **「残った blocking 指摘ゼロ」の判定単位**: `findings[]` 配列全体の空ではなく、**`scope ∈ {current-pr, follow-up}` の部分集合が空**であることを指す (`total_findings` の定義と同一)。`scope == "nit-noted"` の finding は本ゲートの対象外として `findings[]` に残り続けるため、配列全体の空を条件にすると nit が 1 件でもある限り mergeable に到達しない (D-03)。
 
-**強制層**: 本ゲートの分類は `/rite:pr-review` ステップ 5.3.0.M の [`scripts/review-measured-gate.sh`](../scripts/review-measured-gate.sh) が JSON 後処理として決定論的に実行する。アンカー検出 (2 段判定)・`verification` の設定・`non_blocking_findings[]` への移送・`overall_assessment` の確定はすべて helper 側にあり、LLM は結果の marker を読むだけで分類を行わない。**LLM 裁量に置いた旧設計では、 の全 9 サイクルで一度も降格が実行されなかった** — 「自分の指摘を non-blocking 化して mergeable を宣言する」判断は reviewer 群の thoroughness 指示と正面衝突するため、裁量に置く限り構造的に実行されにくい。
+**強制層**: 本ゲートの分類は `/rite:pr-review` ステップ 5.3.0.M の [`scripts/review-measured-gate.sh`](../scripts/review-measured-gate.sh) が JSON 後処理として決定論的に実行する。アンカー検出 (2 段判定)・`verification` の設定・`non_blocking_findings[]` への移送・`overall_assessment` の確定はすべて helper 側にあり、LLM は結果の marker を読むだけで分類を行わない。**LLM 裁量に置いた旧設計では、実測した 9 サイクルの全てで降格が一度も実行されなかった** — 「自分の指摘を non-blocking 化して mergeable を宣言する」判断は reviewer 群の thoroughness 指示と正面衝突するため、裁量に置く限り構造的に実行されにくい。
 
 **強制層が依存するもの (裁量を消しても依存は消えない)**: 分類の入力は JSON の `findings[].scope` と `findings[].description` であり、どちらも LLM が書く。したがって強制層は「LLM の裁量」への依存を「LLM の**記述忠実性**」への依存に置き換えたにすぎない。helper はその依存を hard fail と marker で守る (hard fail はいずれも JSON を書かずに非ゼロ終了する = fail-closed):
 
