@@ -1,3 +1,11 @@
+## 2026-08-11
+
+* **Create**: [仕様が「A のとき報告・B のとき併記」を別々に定めている箇所を elif で書くと A ∧ B で B が消える](pages/anti-patterns/elif-drops-spec-required-co-reporting.md) — raw/reviews/20260810T134712Z-pr-2231.md, raw/fixes/20260810T135452Z-pr-2231.md を新規ページ化（2 つの述語が独立に成立しうるのに elif を使うと、両方成立する入力で後段の報告が構造的に出せなくなる。単独ケースのテストは全 green のまま）。
+* **Create**: [「step が走ったか」を後段で判定するとき、識別子の供給元をその step 自身にすると検出したい状態でだけ判定が成立しない](pages/anti-patterns/step-executed-check-minting-its-own-identifier.md) — raw/fixes/20260810T150514Z-pr-2231.md を新規ページ化（識別子を step の外から取ると marker と解決規則を削除できて検出が全 cycle で成立する。同じ idiom でも pass 条件の極性で安全性が反転する）。
+* **Create**: [残余の緩和策として値を開示するなら、その値が問題発生時と正常時で違う値になるかを確かめる](pages/heuristics/disclosure-is-not-identification.md) — raw/reviews/20260810T160134Z-pr-2231.md を新規ページ化（決定論的に組まれた値は健全時と stale 時でバイト単位に同一の文字列を出すため、開示は残余の識別に使えない）。
+* **Update**: [散文契約の静的 pin には weakened probe による positive control を課す（見出しラベルで充足する pin を構造的に排除する）](pages/patterns/prose-pin-requires-positive-control.md) — raw/reviews/20260810T160134Z-pr-2231.md を統合（件数一致は総数を保ったまま帰属を変える mutation に盲目。区間の終端はレベル述語で書く、の 2 項を scope と単位の規律へ追加）。
+* **Update**: [同じ機構への N 回目のパッチは、その機構が依拠する述語が proxy である信号](pages/heuristics/nth-patch-signals-proxy-predicate.md) — raw/reviews/20260810T141417Z-pr-2231.md, raw/fixes/20260810T142033Z-pr-2231.md を統合（修正が新しい欠陥を生む比率 2/2 は機構ごと単純化の合図。単純化の rationale は境界値を手で当ててから書く）。
+
 ## 2026-08-10
 
 * **Create**: [helper を新しく消費するコードは、診断がどのチャネルに載るかを先に確認して既存消費者と同じ転記をする](pages/heuristics/helper-diagnostic-channel-checked-before-consuming.md) — raw/reviews/20260810T035844Z-pr-2227.md を新規ページ化（診断を stdout の構造化戻り値にだけ載せる helper を成否フィールドだけ読んで消費すると、失敗理由が全出力から消え stderr 診断分岐が死枝になる）。

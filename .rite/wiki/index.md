@@ -259,7 +259,7 @@
 | [`set -euo pipefail` 下の `var=$(cmd \| jq ... 2>/dev/null)` は不正入力でテストを無言 abort させる](pages/anti-patterns/pipefail-jq-assignment-silent-abort.md) | anti-patterns | 被テスト対象の stdout を jq でパースして変数に代入する形は、`set -euo pipefail` 下では **jq の非ゼロ終了がそのまま代入コマンドの終了ステータス**になる。 | 2026-07-26T01:35:00+09:00 | high |
 | [コメントの主語は「変更イベント」ではなく「コードの現在の性質」に置く — lint が緑でも規約違反は成立する](pages/heuristics/comment-subject-present-tense-not-change-event.md) | heuristics | 判定形式を変えたとき、その理由を「旧形式は X を受け入れていた」と書くと、コメントの**主語が変更イベント（過去の行為）**になる。 | 2026-07-26T01:35:00+09:00 | high |
 | [LLM が読む出力ストリームで marker を契約にするには prefix・行頭・デリミタ・識別子スコープの 4 条件すべてが要る](pages/patterns/llm-read-marker-contract-four-conditions.md) | patterns | SKILL.md の bash ブロックが `[CONTEXT] X=1` 形式の marker を stdout/stderr に出し、同ファイルの散文（完了報告の判定ルール）を LLM が読んで分岐する設計は rite の基本構造である。 | 2026-07-26T19:05:51+09:00 | high |
-| [散文契約の静的 pin には weakened probe による positive control を課す（見出しラベルで充足する pin を構造的に排除する）](pages/patterns/prose-pin-requires-positive-control.md) | patterns | SKILL.md の散文（判定ルール・設計宣言）を契約として静的 grep で pin する設計は、pin 自体が容易に vacuous 化する。 | 2026-08-08T17:40:00+09:00 | high |
+| [散文契約の静的 pin には weakened probe による positive control を課す（見出しラベルで充足する pin を構造的に排除する）](pages/patterns/prose-pin-requires-positive-control.md) | patterns | SKILL.md の散文（判定ルール・設計宣言）を契約として静的 grep で pin する設計は、pin 自体が容易に vacuous 化する。 | 2026-08-11T01:20:00+09:00 | high |
 | [存在確認と破壊的操作で ref 解決規則が異なると、検証した ref 集合と破壊する ref 集合がずれる](pages/anti-patterns/ref-verify-delete-resolution-asymmetry.md) | anti-patterns | 「存在するなら削除する」型のガードは、存在確認と削除で ref 解決規則が違うと成立しない。 | 2026-07-26T19:05:51+09:00 | high |
 | [散文を契約とする設計では規約を強化するたび「まだ塞げていない入力クラス」が出るため、review-fix ループに終端がない](pages/heuristics/convention-escalation-has-no-terminus.md) | heuristics | 過去のレビュー事例の指摘推移は 5→5→6→6→1→1→4→6→4→7 で収束しなかった。 | 2026-07-29T02:10:00+09:00 | high |
 | [リポジトリ owner rename の一括置換はリポジトリ外成果物に届かない](pages/heuristics/repo-rename-sweep-misses-external-artifacts.md) | heuristics | owner 名・URL の一括置換 PR は、git grep で走査できるツリー内の参照しか更新できない。 | 2026-07-26T20:51:40+09:00 | medium |
@@ -369,7 +369,7 @@
 | [自身の検出を避けるために崩した書式は、読者に「こう書け」と読まれる](pages/anti-patterns/self-detection-evasion-format-read-as-prescription.md) | anti-patterns | 検出ゲートの仕様を記述する文書は、その仕様が検出する文字列を本文に書いた瞬間に自分自身が検出対象になる。 | 2026-08-03T23:41:26+09:00 | medium |
 | [テストの gate 条件がプラットフォーム事実を環境 capability の代理にすると恒常 red 化する](pages/anti-patterns/test-gate-proxy-indicator-drift.md) | anti-patterns | テストの floor（skip を禁じて fail させるガード）が、守りたい性質そのものではなく「プラットフォーム事実」を代理指標にしていると、代理の成立しない環境で恒常的に赤くなりスイート全体の signal を劣化させる。 | 2026-08-04T00:55:00+09:00 | medium |
 | [検出ゲートの仕様そのものを変える PR は自己言及で発散する — サーキットブレーカー到達を異常ではなく想定内として扱う](pages/heuristics/gate-spec-self-reference-pr-expects-circuit-breaker.md) | heuristics | 検出ゲートの規約を記述した散文を変更する PR では、**指摘の叙述そのものが規則の対象文字列を含む**。 | 2026-08-03T23:41:26+09:00 | medium |
-| [同じ機構への N 回目のパッチは、その機構が依拠する述語が proxy である信号](pages/heuristics/nth-patch-signals-proxy-predicate.md) | heuristics | review-fix loop で「前 cycle の fix が導入・変更した箇所」への指摘を受けたとき、既定の反応は同じ機構へのパッチ追加になりやすい。 | 2026-08-08T14:00:41+09:00 | medium |
+| [同じ機構への N 回目のパッチは、その機構が依拠する述語が proxy である信号](pages/heuristics/nth-patch-signals-proxy-predicate.md) | heuristics | review-fix loop で「前 cycle の fix が導入・変更した箇所」への指摘を受けたとき、既定の反応は同じ機構へのパッチ追加になりやすい。 | 2026-08-11T01:20:00+09:00 | medium |
 | [テスト検出力の回復は個別 assert の増築より golden 全文比較への置換を先に検討する](pages/patterns/golden-full-comparison-over-assert-accretion.md) | patterns | mutation testing で「grep 断片照合のみで検出力が無い」と判明した TC を修理するとき、生存した変異ごとに assert を 1 本ずつ足していく増築は保守コストが上がるわりに変異耐性が伸びない。 | 2026-08-05T09:26:00+09:00 | medium |
 | [委譲リファクタの呼び出しシームは invocation-symmetry test で機械固定する](pages/patterns/invocation-symmetry-test-for-delegation-seam.md) | patterns | 散文手順を helper script へ降ろすリファクタでは、helper 本体はテストで固定できるが、**SKILL.md（呼び出し側）→ helper の呼び出し契約は放置するとどちらか片側の編集で silent に壊れる**。 | 2026-08-05T09:26:00+09:00 | medium |
 | [fail-loud ガードは同じ帰結を持つ全出口に張る（症状側から出口を網羅する）](pages/heuristics/fail-loud-guard-covers-all-sibling-exits.md) | heuristics | silent データ損失（空文字が返る等）に fail-loud ガードを追加するとき、**指摘された 1 出口だけを塞ぐと、同じ帰結に至る兄弟出口が残って次サイクルで同型指摘として返ってくる**。 | 2026-08-06T00:40:00+09:00 | high |
@@ -419,8 +419,11 @@
 | [新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する](pages/heuristics/new-test-pins-the-contract-output-it-already-produces.md) | heuristics | end-to-end で対象を走らせる新規テストは契約出力を既に生成しているので、その場で固定できる。新機能が動いたことだけを assert して不変と規定された既存出力を素通しすると、変異が生存し「テストを足したから網羅した」という誤読が残る。 | 2026-08-10T05:20:00+09:00 | high |
 | [判定手段を差し替えるときは、旧手段が暗黙に提供していた失敗条件を列挙してから移す](pages/heuristics/replacing-a-judgment-mechanism-drops-its-implicit-failure-conditions.md) | heuristics | 判定コマンドを別のコマンドへ一本化すると、明示的に書かれていた条件は移植されるが、旧手段が副作用として持っていた失敗条件は移植対象として意識されないまま落ちる。 | 2026-08-10T11:55:05Z | medium |
 | [証拠フィールドを新設したら、質の担保は消費側ではなく writer 側に置く](pages/heuristics/evidence-field-quality-enforced-at-writer-side.md) | heuristics | ゲートが読む証拠フィールドを新設するとき、消費側が値の長さや非空しか見られない構造なら、値が証拠として成立しているかを検査できるのは書き込む側だけになる。 | 2026-08-10T11:55:05Z | medium |
+| [仕様が「A のとき報告・B のとき併記」を別々に定めている箇所を elif で書くと A ∧ B で B が消える](pages/anti-patterns/elif-drops-spec-required-co-reporting.md) | anti-patterns | 2 つの述語が独立に成立しうるのに実装で elif を使うと、両方が成立する入力で後段の報告が構造的に出せなくなる。A のみ・B のみのテストは両方 green のままなので、組合せ fixture がないと検出できない。 | 2026-08-11T01:20:00+09:00 | high |
+| [「step が走ったか」を後段で判定するとき、識別子の供給元をその step 自身にすると検出したい状態でだけ判定が成立しない](pages/anti-patterns/step-executed-check-minting-its-own-identifier.md) | anti-patterns | step の実行有無を中間ファイルの存在で判定する設計で、そのファイルパスに含む cycle 識別子を当の step が鋳造すると、step を飛ばした cycle には本 cycle のパスが存在せず、解決規則が前 cycle の実ファイルを掴んで fail-open する。 | 2026-08-11T01:20:00+09:00 | high |
+| [残余の緩和策として値を開示するなら、その値が問題発生時と正常時で違う値になるかを確かめる](pages/heuristics/disclosure-is-not-identification.md) | heuristics | 既知の残余に対して「値を marker へ併記するので silent にはならない」と書くとき、その値が決定論的に組まれていると健全な状態と stale な状態でバイト単位に同一の文字列が出るため、開示は残余の識別に使えず緩和策として機能しない。 | 2026-08-11T01:20:00+09:00 | high |
 ## 統計
 
-- 総ページ数: 413
-- ドメイン別: patterns=103, heuristics=177, anti-patterns=133
-- 最終更新: 2026-08-10T11:55:05Z
+- 総ページ数: 416
+- ドメイン別: patterns=103, heuristics=178, anti-patterns=135
+- 最終更新: 2026-08-11T01:20:00+09:00

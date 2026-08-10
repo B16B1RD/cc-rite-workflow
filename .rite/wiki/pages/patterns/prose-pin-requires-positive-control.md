@@ -6,7 +6,7 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/prose-pin-requires-positive-control.md"
 description: "SKILL.md の散文（判定ルール・設計宣言）を契約として静的 grep で pin する設計は、pin 自体が容易に vacuous 化する。"
 created: "2026-07-26T10:05:51Z"
-updated: "2026-08-08T17:40:00+09:00"
+updated: "2026-08-11T01:20:00+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260726T062935Z-pr-2022.md"
@@ -28,6 +28,8 @@ sources:
     ref: "raw/reviews/20260808T063447Z-pr-2150.md"
   - type: "fixes"
     ref: "raw/fixes/20260808T064117Z-pr-2150.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260810T160134Z-pr-2231.md"
 tags: []
 confidence: high
 ---
@@ -60,6 +62,8 @@ assert_prose_pin <text> <pattern> <weakened-probe> <label>
 ### scope と単位の規律
 
 - **pin は「検査したい範囲を抽出してから」掛ける。** ファイル全体を対象にすると、同じ literal が別セクション（判定表・ドキュメント）に存在するだけで充足され、emitter を消しても緑になる。判定ブロックから文を削除して「過去の設計では…」という歴史メモへ格下げする mutation も素通りする。
+- **件数一致（`grep -c` == N）は「いくつあるか」しか見ないため、総数を保ったまま帰属を変える mutation に盲目。** 抽出範囲を絞らない件数 pin は、存在を見る pin より強く見えて実は同じ穴を持つ。実測された生存 mutant は 3 つともこの形だった: (a) 2 テンプレに 1 本ずつある行を、一方から削って他方へ複製する（総数 2 のまま。片方のモードで契約が失効する）、(b) 指示節と出力フォーマットの両方に同じ literal があるとき指示節だけを削除する（残り 1 本で条件成立）、(c) 同じ marker が複数箇所にあるとき検出対象の 1 箇所だけ削除する。**N 本あることを数えるなら、その N 本がそれぞれどこにあるかまで固定する** — 区間を切ってから各区間で 1 本ずつ assert する。「テストが green」は「契約が守られている」ではなく「今の実装がテストを通る」でしかない。
+- **区間の終端はレベル述語で書き、特定の次節へハードコードしない。** 終端に具体的な見出し名を置くと、その手前に新節が挿入されたとき区間が新節を飲み込んで vacuous に pass する。同レベル以上の見出しで閉じる述語（`^(#{2}|#{3}) ` 等）なら挿入に耐える。あわせて区間の行数レンジを sanity assert する — 件数 0 を期待する assert は区間が空でも真になるため、同区間に件数 1 以上を期待する assert が併存していないと単独で vacuous 化する。
 - **section 内の 1 箇所ではなく要素単位で要求する。** `branch=` スコープの pin を section 全体への grep 1 本にしたところ、ルール側のスコープを全部外しても fallback に残った 1 箇所で緑になった。
 - **必須文字列はコード行だけに現れる形に狭める。** `push origin --delete` は同じ抽出範囲のコメント（「一方 `git push origin --delete` は tail 解決せず…」）だけで充足され、コマンド本体を消しても素通りした。説明文に登場する語をそのまま必須文字列にすると、その説明文が pin を無効化する。
 - **pin は「literal の存在」ではなく「marker 名 ↔ 判定値」の連言で書く。** 存在だけを要求する形は、(a) 判定値を正常系へ反転する mutation、(b) 分岐を `if false` で殺す mutation の両方を素通しする。**条件式そのもの** も pin 対象にする。
