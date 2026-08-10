@@ -218,7 +218,7 @@ resolved_pwd=$(realpath -- "$PWD" 2>/dev/null) || resolved_pwd="$PWD"
 # (owner-managed /tmp/rite-* namespace) として allowlist に含める。
 # sandbox 有効環境では /tmp 直下が読み込み専用で書込先が $TMPDIR (session-scoped,
 # owner-managed) になるため、$TMPDIR/rite-* も realpath 解決後の実パス比較で同じ
-# 信頼境界として受理する (。TMPDIR 未設定時は追加 arm なし = 従来挙動)。
+# 信頼境界として受理する（TMPDIR 未設定時は追加 arm なし = 従来挙動)。
 resolved_tmpdir=""
 if [[ -n "${TMPDIR:-}" ]]; then
   resolved_tmpdir=$(realpath -- "$TMPDIR" 2>/dev/null) || {

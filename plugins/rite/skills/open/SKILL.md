@@ -575,7 +575,7 @@ git push origin {branch_name}
 
 > `-u`（upstream 設定）は付けない。sandbox 有効環境で upstream tracking の `.git/config` 書込が拒否されるため。flow-state が `{branch_name}` を常時保持しているため upstream に依存する必要はない。
 >
-> `origin` が SSH host alias 経由（例: `git@github.com-work:...`）の環境で sandbox が有効な場合、`socat` の `Bad Gateway` エラーで push がネットワーク許可リストにブロックされることがある（`network.allowedDomains` への alias 追加は無効。原因の因果連鎖と `sandbox.excludedCommands` が Linux/WSL2 では恒久策として機能しない理由は [git-worktree-patterns.md](../../references/git-worktree-patterns.md#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) を参照）。当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約、。2026-07 時点で確実に機能する唯一の回避策）。この回避策はメインエージェントが直接実行する push にのみ適用でき、Task で spawn した reviewer subagent の Bash には渡せない（詳細: [git-worktree-patterns.md](../../references/git-worktree-patterns.md#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) の「本回避策が使えない経路」）。
+> `origin` が SSH host alias 経由（例: `git@github.com-work:...`）の環境で sandbox が有効な場合、`socat` の `Bad Gateway` エラーで push がネットワーク許可リストにブロックされることがある（`network.allowedDomains` への alias 追加は無効。原因の因果連鎖と `sandbox.excludedCommands` が Linux/WSL2 では恒久策として機能しない理由は [git-worktree-patterns.md](../../references/git-worktree-patterns.md#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) を参照）。当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約。2026-07 時点で確実に機能する唯一の回避策）。この回避策はメインエージェントが直接実行する push にのみ適用でき、Task で spawn した reviewer subagent の Bash には渡せない（詳細: [git-worktree-patterns.md](../../references/git-worktree-patterns.md#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) の「本回避策が使えない経路」）。
 
 ### 6.2 PR 作成
 

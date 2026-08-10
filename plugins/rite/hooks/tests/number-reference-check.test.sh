@@ -227,6 +227,10 @@ deletion_residue_patterns=(
   '。[[:space:]]+D-[0-9]+'
   '。[[:space:]]+で(は|本体|log)'
   '（で(機械|配線|skip)'
+  '[(（][。．]'
+  '、[。．]'
+  '`[^`]+` は[[:space:]]+[、）]'
+  '[[:space:]]{2,}で修正'
 )
 deletion_residue_samples=(
   'context (で rationale'
@@ -253,6 +257,10 @@ deletion_residue_samples=(
   '。 D-01 requirement'
   '。 で本体'
   '（で機械比率計算'
+  '(。TMPDIR'
+  '環境制約、。'
+  '`updated_at` は 、'
+  '点を  で修正'
 )
 deletion_residue_pattern=$(IFS='|'; printf '%s' "${deletion_residue_patterns[*]}")
 for i in "${!deletion_residue_patterns[@]}"; do
