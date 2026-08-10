@@ -163,14 +163,20 @@ if [[ -n "$ISSUE_NUMBER" ]]; then
   esac
 fi
 
-# Mirror the SOURCE_REF control-char rejection on TITLE — the two fields land
-# in adjacent YAML keys, so an asymmetric guard would leak the same injection
-# class through whichever side is unprotected. Byte-wise C1 detection also
-# rejects multibyte (e.g. Japanese) titles via their 0x80-0x9f continuation
-# bytes — accepted: all in-repo callers pass ASCII-fixed titles.
+# TITLE is human-readable UTF-8 text. Validate the encoding before checking C1
+# as its UTF-8 code-point encoding (C2 80-9F); testing those byte values alone
+# would reject ordinary continuation bytes (for example, 静 contains 0x9d).
 if [[ -n "$TITLE" ]]; then
-  if contains_ctrl "$TITLE"; then
-    echo "ERROR: --title must not contain control characters (newlines, tabs, or other C0/DEL/C1 control bytes)" >&2
+  if ! command -v iconv >/dev/null 2>&1; then
+    echo "ERROR: --title validation requires iconv" >&2
+    exit 1
+  fi
+  if ! printf '%s' "$TITLE" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1; then
+    echo "ERROR: --title must be valid UTF-8" >&2
+    exit 1
+  fi
+  if contains_ctrl "$TITLE" --c0-only || printf '%s' "$TITLE" | LC_ALL=C grep -q $'\302[\200-\237]'; then
+    echo "ERROR: --title must not contain control characters (C0/DEL/C1 code points)" >&2
     exit 1
   fi
   # reject odd trailing backslashes (escape ambiguity)
