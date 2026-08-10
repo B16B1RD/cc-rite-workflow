@@ -61,8 +61,8 @@ assert_grep "TC-1 スキーマが schema_version 据え置きを明記" "$SCHEMA
 assert_grep "TC-1 スキーマが version からのキー存在推論を禁止" "$SCHEMA" 'schema_version == "1.1.0"` から `verdict` / `reviewers` の存在を推論してはならない'
 
 # --- 要求側 2/4: pr-review SKILL (書き出し指示) ---
-assert_grep "TC-1 SKILL が 6.1.a Required JSON fields に verdict を含む" "$SKILL" 'Required JSON fields.*\*\*`verdict`\*\*'
-assert_grep "TC-1 SKILL が 6.1.a Required JSON fields に reviewers を含む" "$SKILL" 'Required JSON fields.*\*\*`reviewers\[\]`\*\*'
+assert_grep "TC-1 SKILL が 6.1.a Required JSON fields に verdict を含む" "$SKILL" '^- Required JSON fields: .*\*\*`verdict`\*\*'
+assert_grep "TC-1 SKILL が 6.1.a Required JSON fields に reviewers を含む" "$SKILL" '^- Required JSON fields: .*\*\*`reviewers\[\]`\*\*'
 assert_grep "TC-1 SKILL 5.3.0.M step 1 が verdict を書かない規約を持つ" "$SKILL" '\*\*`verdict` は書かない\*\*'
 assert_grep "TC-1 SKILL 5.3.0.M step 1 が reviewers を実回収名簿と規定" "$SKILL" '`reviewers\[\]` = 本 cycle で ステップ 5\.1 が Task 結果を回収できた reviewer の名簿'
 assert_grep "TC-1 SKILL が findings からの名簿導出を禁止" "$SKILL" '\*\*`findings\[\]` から導出して(は|も)ならない\*\*'
@@ -80,12 +80,13 @@ assert_grep "TC-1 SKILL 6.1.a が reviewers の値形式を導出式で規定" "
 assert_grep "TC-1 SoT が reviewers の値形式を導出式で規定" "$SCHEMA" '`-reviewer` を付した'
 # SoT のフィールド表と節見出しも同じ述語であること (前 cycle は本文だけ更新して表を掃き残した)
 assert_grep "TC-1 SoT のフィールド表が実回収述語を使う" "$SCHEMA" '^\| `reviewers` \|.*ステップ 5\.1 が Task 結果を回収できた'
-# 旧語彙の pin は F-24 が掃いた 4 サイト全てに掛ける (SoT だけだと残る 3 サイトが無保護)。
-# pattern は名簿文脈に限定する — 裸の `実走` はテストの実走のような無関係な語で誤発火する
-assert_not_grep "TC-1 SoT に旧語彙 (実走名簿) が残っていない" "$SCHEMA" '実走(した)? reviewer|実走名簿'
-assert_not_grep "TC-1 SKILL に旧語彙 (実走名簿) が残っていない" "$SKILL" '実走(した)? reviewer|実走名簿'
-assert_not_grep "TC-1 save helper に旧語彙 (実走名簿) が残っていない" "$SAVE" '実走(した)? reviewer|実走名簿'
-assert_not_grep "TC-1 ゲート script に旧語彙 (実走名簿) が残っていない" "$MGATE" '実走(した)? reviewer|実走名簿'
+# 旧語彙の pin は語彙掃除が及んだ 4 サイト全てに掛ける (SoT だけだと残る 3 サイトが無保護)。
+# pattern は裸の語のままにする — 文脈語を足すと強調記法 (`**実走した** reviewer`) を跨げず、
+# 実際に掃かれた表記形を取りこぼす。4 サイトとも現時点で出現 0 件なので誤発火の実例は無く、
+# 無関係な用法が入った時点で fail-loud に顕在化する。pattern は 1 度だけ書く (複製の同期漏れ回避)
+for _f in "$SCHEMA" "$SKILL" "$SAVE" "$MGATE"; do
+  assert_not_grep "TC-1 $(basename "$_f") に旧語彙 (実走) が残っていない" "$_f" '実走'
+done
 # reason カタログ (SKILL) と helper の WARNING で必須条件の記述が乖離しないことを pin する。
 # 前 cycle は「目視で検出する」と宣言しながら同じ commit で drift させた
 assert_grep "TC-1 SKILL の reason カタログが reviewers の一意性を含む" "$SKILL" 'reviewers\[\] が重複の無い非空配列'

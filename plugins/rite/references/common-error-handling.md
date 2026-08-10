@@ -175,6 +175,8 @@ and (.findings | type == "array")
 
 **Source検証**: [jq Manual](https://jqlang.org/manual/) — "false and null are considered 'false values', and anything else is a 'true value'. Everything else is 'true', even the number zero and the empty string, array and object." (`jq --help` or interactive `jq .` で確認可能)
 
+**merge ゲート必須キーの validation (ステップ 6.1.a のみ追加検証)**: 本 canonical snippet に加えて ステップ 6.1.a では `verdict` (`mergeable` / `fix-needed` の 2 値 enum) と `reviewers[]` (重複の無い非空配列) も検証し、欠落・不正を同じ `schema_required_fields_missing` で拒否する。merge ゲート (`hooks/pre-tool-bash-guard.sh`) がこの 2 キーを読むため、write 側で満たしていない JSON は保存しても merge できない。本 snippet 側を 3 件のまま据え置くのは、read 側 3 サイト (fix.md Priority 0 / 2 / 3) が書込済み JSON を信頼する設計で、snippet を広げると read 側が誤って厳格化されるため。契約の SoT は [review-result-schema.md §verdict と reviewers](./review-result-schema.md#verdict-と-reviewers)。
+
 **Finding ID validation (ステップ 6.1.a のみ追加検証)**: 本 canonical snippet に加えて ステップ 6.1.a では finding id の書式 (`^F-[0-9]{2,}$`) と一意性も検証する。これは write 側 (pr-review.md) でのみ enforce される「生成規則」であり、read 側 (fix.md) では既に書き込まれた JSON を信頼するため検証不要。
 
 検証は **2 段**に分かれる。`findings[]` 側の欠陥のみが hard fail (`JSON_SAVED=false`) で、`non_blocking_findings[]` 側に閉じた欠陥は非ブロッキング marker に落とす — advisory な監査記録の欠陥を理由に blocking findings ごと保存を失う fail-unsafe を避けるため (review-result-schema.md §non_blocking_findings 配列)。
