@@ -4,7 +4,7 @@ domain: "heuristics"
 description: "reviewer が finding を HIGH/MEDIUM/LOW で提出する際、Likelihood-Evidence anchor（tool=Read/Grep, path=..., line=... の形式）を伴わない場合は自動的に「推奨事項」に降格させる gate を適用する。"
 promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-14T07:35:00+09:00"
+updated: "2026-08-10T05:20:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260416T031452Z-pr-540.md"
@@ -22,6 +22,8 @@ sources:
     ref: "raw/reviews/20260713T051932Z-pr-1847-cycle3.md"
   - type: "reviews"
     ref: "raw/reviews/20260713T223454Z-pr-1852.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260810T045310Z-pr-2227.md"
 tags: ["review", "severity", "likelihood-evidence", "cross-validation", "hypothetical", "literal-output-contract", "finding-quality-guardrail"]
 confidence: high
 ---
@@ -131,6 +133,24 @@ self-declared 不要性の実測 (cycle 3) で観測した sub-pattern: reviewer
 重複降格の実測では review-fix ループ cycle2（検証レビュー）で、tech-writer が cycle1 と同一の pre-existing finding（旧ファイル名の残存参照）を再度検出した。cycle1 では当該 finding から follow-up Issue が既に切り出し済みだったため、cycle2 での再検出は `Likelihood-Evidence:` anchor 欠落により本 gate で機械的に推奨事項へ降格され、`[review:mergeable]` に収束した。
 
 ここでの追加の運用判断は「anchor 欠落による降格」自体は既存パターンの再現だが、**降格後の後処理**として「同一 finding が既に別 Issue 化済みであることを確認し、Step 7 トリアージで重複 Issue を再作成せず作業メモリの Decision Log にのみ記録する」という点。降格 gate は fix-needed → mergeable の収束を保証するが、Issue 台帳の重複防止は呼び出し側 (Step 7 トリアージ) の責務であり、cycle をまたいで同じ finding が浮上するたびに新規 Issue を作らないための明示的な既存 Issue 確認ステップが必要になる。
+
+### ゲートが決めるのは「merge を止めるか」だけで、「直さなくてよいか」ではない
+
+降格された finding を「対応不要」と読み替える経路がある。ゲートの出力が blocking 集合の縮小である以上、降格 = 作業から外れる、と読みたくなるため。
+
+観測例: cycle 2 で HIGH の指摘が実測アンカーを持たず non-blocking に落ちた。その指摘の内容は「自分が直前の fix で書いたコメントの行番号が、同一コミット内で既にズレている」というもので、**事実として正しかった**。ゲートは指摘の真偽を判定していない — 実測アンカーの有無だけを見て merge を止めるかを決めている。そこで降格されたことは、指摘が誤りであることを一切意味しない。
+
+この cycle では降格後も訂正した。自分が書いた文の事実誤りを、ゲートの出力を理由に残さない。
+
+**切り分け**:
+
+| 状況 | 扱い |
+|---|---|
+| 降格された指摘が、自分が書いた文の事実誤りを指している | blocking 集合の外でも訂正する |
+| reviewer 自身が finding 本文に「対応不要」「informational 寄り」と明記している | replied-only として尊重し、fix ループで再発火させない |
+| 降格された指摘が非実測の字面整合クラスで、実行時に主機能を打ち消さない | Decision Log に記録して後続 Issue へ切り出す |
+
+1 行目と 2 行目の違いは「誰が不要と言ったか」にある。ゲートは severity を機械的に降格するだけで、対応の要否について何も言っていない。reviewer が明示的に不要と述べた場合だけが、対応不要の根拠になる。
 
 ## 関連ページ
 

@@ -4,7 +4,7 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "同種 regression への N 回目の累積対策 PR では、review-fix loop の各 cycle で適用した fix 自体が次 cycle の新規 drift を生む fractal pattern が顕在化する。"
 created: "2026-04-21T10:35:00+00:00"
-updated: "2026-08-07T08:00:00+09:00"
+updated: "2026-08-10T05:20:00+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260806T173922Z-pr-2126-c4.md"
@@ -166,6 +166,10 @@ sources:
     ref: "raw/fixes/20260802T070715Z-pr-2052.md"
   - type: "reviews"
     ref: "raw/reviews/20260804T092934Z-pr-2102.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260810T042756Z-pr-2227.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260810T045310Z-pr-2227.md"
 tags: ["review-loop", "cumulative-defense", "convergence", "quality-signal", "architectural-surface", "literal-syntax-validity", "anchor-prose-propagation", "self-meta-drift", "propagation-scan-pattern", "self-referential-learned-section", "cycle-14-15-chain", "review-attention-bias-blind-spot", "anchor-specificity-retreat", "doc-precision-regression-cascade", "self-referential-prevention-violation", "section-relative-prevention-success", "successive-prevention-replication", "doc-heavy-fractal-pattern", "systemic-mass-fix", "auto-demote-low-override", "fix-over-correction", "enforcement-locus-misattribution"]
 confidence: high
 ---
@@ -885,3 +889,19 @@ cycle 4 は「pin 書込失敗時に stale pin を残さない」ために `rm -
 2. 残りは Decision Log に**明示的に後続 Issue へ切り出す**と書く。「安いから直しておく」は収束を遠ざける
 3. 直すと決めた散文修正は、**それが生む新しい参照面を同時に洗う**（変更した条件を参照している箇所を grep で数え上げる）
 4. サイクルをまたいで同じ修正が指摘を生み続けるなら、パッチではなく**その機構ごと削除できないか**を先に問う
+
+### 新規の指摘面は修正本体ではなく「修正を説明する文」に集中することがある（3 cycle 収束）
+
+検出条件を変更する小さめの PR で、blocking の推移は 2 → 1 → 0。各 cycle の blocking はいずれも「前 cycle の fix が持ち込んだもの」だったが、**どれも修正の対応そのものではなく、対応の説明として書き足した文言に含まれていた**。
+
+- cycle 1 fix → cycle 2 blocking: 指摘本文に書かれていた行番号をそのままコード内コメントへ転記した。fix が数行挿入した結果、同一コミットの中で既に指し先がズレていた
+- cycle 2 fix → cycle 3 で訂正: 診断ラベルの改名で原因を断定した。「この変数に中身が入るのは exec 失敗のときだけ」という前提でラベルを書き換えたが、helper 側が `set -euo pipefail` 下で stderr 未捕捉の `jq` を複数持つため、exec 成功後の runtime abort でも同じ変数に中身が入る
+
+コードの修正は 2 cycle とも指摘されなかった。指摘面になったのは、その修正が何をしているかを説明するために書いた散文だけである。
+
+**なぜここに集中するか**: 修正本体は「指摘された欠陥を消す」という検証可能な目標を持つので、書き手の注意がそこに向く。一方、説明文は目標を持たず「読み手に分かるように書く」だけなので、書き手の頭の中にある一時的な文脈（指摘に書いてあった行番号、直前に読んだ実装の挙動）がそのまま定着する。その文脈は commit の中で既に古くなっていることがある。
+
+**対処**: 修正本体と同じ厳しさで「その修正を説明する文」を読む。具体的には次の 2 点を修正のたびに確認する。
+
+1. 指摘が使った行番号を成果物へ持ち込んでいないか — 対象は構造名（どの `echo` 文か、どの関数か）で書き直す
+2. その文が原因を断定していないか — 断定するなら、そのチャネルに何が流れ込みうるかを helper 実装まで遡って確認する。遡れないなら中立な表現のままにする方が安全で、情報量も減らない

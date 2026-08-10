@@ -1,3 +1,11 @@
+## 2026-08-10
+
+* **Create**: [helper を新しく消費するコードは、診断がどのチャネルに載るかを先に確認して既存消費者と同じ転記をする](pages/heuristics/helper-diagnostic-channel-checked-before-consuming.md) — raw/reviews/20260810T035844Z-pr-2227.md を新規ページ化（診断を stdout の構造化戻り値にだけ載せる helper を成否フィールドだけ読んで消費すると、失敗理由が全出力から消え stderr 診断分岐が死枝になる）。
+* **Create**: [新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する](pages/heuristics/new-test-pins-the-contract-output-it-already-produces.md) — raw/fixes/20260810T040721Z-pr-2227.md を新規ページ化（end-to-end テストは契約出力を既に生成しているので、その場で固定できる。固定範囲は契約に現れる出力に限る）。
+* **Update**: [累積対策 PR の review-fix loop で fix 自体が drift を導入する](pages/anti-patterns/fix-induced-drift-in-cumulative-defense.md) — raw/reviews/20260810T042756Z-pr-2227.md を統合（新規の指摘面が修正本体ではなく「修正を説明する文」に集中した 3 cycle 収束の観測を追加）。
+* **Update**: [診断メッセージの主語と射程は、その文が発火する条件が保証している対象に限る](pages/heuristics/diagnostic-claim-scoped-to-firing-condition.md) — raw/fixes/20260810T043320Z-pr-2227.md を統合（既存の中立ラベルを原因断定ラベルへ改名すると、断定の根拠が helper 実装に依存して壊れる型を追加）。
+* **Update**: [Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格](pages/heuristics/observed-likelihood-gate-with-evidence-anchors.md) — raw/reviews/20260810T045310Z-pr-2227.md を統合（ゲートが決めるのは merge を止めるかだけで、降格を「直さなくてよい」と読み替えないという運用の切り分けを追加）。
+
 ## 2026-08-09
 
 * **Create**: [Reviewer の runtime trust は entrypoint ではなく推移的 execution graph で判定する](pages/heuristics/reviewer-runtime-trust-is-transitive.md) — raw/reviews/20260808T233606Z-pr-2187.md を新規ページ化（PR-controlled code・設定・依存物への推移的到達を除外できない runtime は secrets・network・外部 write を遮断した isolation boundary 内に限定）。
