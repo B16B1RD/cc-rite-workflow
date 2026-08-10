@@ -17,7 +17,7 @@
 - **推奨**: {マージ可 / マージ不可（指摘あり） / 修正必要}
 - **レビュアー数**: {count}人
 - **変更規模**: {additions}+ / {deletions}- ({changedFiles} files)
-- **起動の直列化**: {ステップ 4.6 の SPAWN_SPREAD 判定。`serialized` のとき `検出（spawn spread {spread}s > 閾値 {threshold}s）` / `undetermined` のとき `計測不能（reason={reason}）` / 計測不能を伴う `parallel` のとき `なし（{measured}/{reviewers} 名のみ計測）`。全員分が揃い閾値内だった場合は本行ごと省略する}
+- **起動の直列化**: {ステップ 4.6 の SPAWN_SPREAD 判定。marker の値は `spread=703s` のように単位付きなのでそのまま埋める。`serialized` のとき `検出（spawn spread {spread} > 閾値 {threshold}）` / `undetermined` のとき `計測不能（reason={reason}）` / 計測不能を伴う `parallel` のとき `なし（{measured}/{reviewers} 名のみ計測）`。`serialized` かつ `measured < reviewers` のときは検出表記の末尾に `、{measured}/{reviewers} 名のみ計測` を足す。全員分が揃い閾値内だった場合は本行ごと省略する}
 
 ### レビュー範囲（cycle 2+ 差分スコープ）（該当がある場合のみ）
 <!-- REVIEW_CYCLE_SCOPE == incremental のときのみ表示。full のときは本セクションごと省略する。
@@ -237,7 +237,7 @@
 - **レビューモード**: 検証 + フル
 - **レビュアー数**: {count}人
 - **変更規模**: {additions}+ / {deletions}- ({changedFiles} files)
-- **起動の直列化**: {ステップ 4.6 の SPAWN_SPREAD 判定。`serialized` のとき `検出（spawn spread {spread}s > 閾値 {threshold}s）` / `undetermined` のとき `計測不能（reason={reason}）` / 計測不能を伴う `parallel` のとき `なし（{measured}/{reviewers} 名のみ計測）`。全員分が揃い閾値内だった場合は本行ごと省略する}
+- **起動の直列化**: {ステップ 4.6 の SPAWN_SPREAD 判定。marker の値は `spread=703s` のように単位付きなのでそのまま埋める。`serialized` のとき `検出（spawn spread {spread} > 閾値 {threshold}）` / `undetermined` のとき `計測不能（reason={reason}）` / 計測不能を伴う `parallel` のとき `なし（{measured}/{reviewers} 名のみ計測）`。`serialized` かつ `measured < reviewers` のときは検出表記の末尾に `、{measured}/{reviewers} 名のみ計測` を足す。全員分が揃い閾値内だった場合は本行ごと省略する}
 
 ### 修正検証サマリー
 

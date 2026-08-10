@@ -3584,6 +3584,19 @@ assert "TC-6.2 serialized=true を JSON へ記録" "true" \
 assert "TC-6.2 spread 実測値を JSON へ記録" "703" \
   "$(jq -r '.reviewer_spawn_spread_seconds' "$SPREAD_FIXTURE")"
 
+# TC-6.2a 直列化かつ一部欠落。検出と計測不能の併記は独立に出る (排他にすると「何名を測り落と
+# したか」と「spread が実測分だけの値である」ことが直列化 cycle で消える)。
+_spread_fixture serialized_missing \
+  '{"reviewer":"security-reviewer","started_at":"2026-08-10T12:00:00Z"}' \
+  '{"reviewer":"test-reviewer","started_at":"2026-08-10T12:20:00Z"}' \
+  '{"reviewer":"tech-writer-reviewer","started_at":null}'
+run_spread --input "$SPREAD_FIXTURE"
+assert "TC-6.2a 直列化 + 欠落: WARNING は 2 行 (検出 + 計測不能)" "2" "$(grep -c '^WARNING:' "$ERR" || true)"
+assert_grep "TC-6.2a 直列化 WARNING が出る" "$ERR" '並列起動が直列化しています'
+assert_grep "TC-6.2a 計測不能 WARNING も併記される" "$ERR" '計測不能: tech-writer-reviewer'
+assert_grep "TC-6.2a marker は serialized で measured<reviewers を示す" "$ERR" 'SPAWN_SPREAD=serialized; spread=1200s; threshold=120s; reviewers=3; measured=2'
+assert "TC-6.2a 直列化 + 欠落: parallel marker は出さない" "0" "$(grep -c 'SPAWN_SPREAD=parallel' "$ERR" || true)"
+
 # TC-6.2b 閾値ちょうどは検出しない (境界)。`>=` へ緩める変異はここだけが捕まえる — 並列時の
 # 正常な spawn ずれを誤検出しない MUST NOT の境界そのもの。
 _spread_fixture boundary \
@@ -3666,6 +3679,14 @@ assert "TC-6.6 不正 JSON: exit 2" "2" "$RC"
 printf '{"reviewer_timings":{}}\n' > "$SPREAD_DIR/not-array.json"
 run_spread --input "$SPREAD_DIR/not-array.json"
 assert "TC-6.6 reviewer_timings が配列でない: exit 2" "2" "$RC"
+# 要素単位の parse 失敗を無音で通さない。jq をパイプの左に置くと rc が捨てられ、awk が
+# 切り詰めた stream をそのまま数えて serialized=false を無出力で書き込む経路が成立する。
+printf '{"reviewer_timings":[{"reviewer":"a-reviewer","started_at":"2026-08-10T12:00:00Z"},"broken",{"reviewer":"b-reviewer","started_at":"2026-08-10T13:00:00Z"}]}\n' > "$SPREAD_DIR/bad-element.json"
+run_spread --input "$SPREAD_DIR/bad-element.json"
+assert "TC-6.6 要素が object でない: exit 2 (無音で判定しない)" "2" "$RC"
+assert_grep "TC-6.6 要素 parse 失敗は ERROR で理由を示す" "$ERR" '\.reviewer_timings の要素を読み出せません'
+assert "TC-6.6 要素 parse 失敗ではフラグを書かない" "false" \
+  "$(jq -r 'has("reviewer_spawn_serialized")' "$SPREAD_DIR/bad-element.json")"
 run_spread
 assert "TC-6.6 --input 欠落: exit 2" "2" "$RC"
 _spread_fixture threshold_bad '{"reviewer":"a-reviewer","started_at":"2026-08-10T12:00:00Z"}'
