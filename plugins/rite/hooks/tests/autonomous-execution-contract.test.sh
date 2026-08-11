@@ -20,9 +20,13 @@ assert_grep "SoT gives host-independent routine effort guidance" "$PREAMBLE" \
 
 for skill in "$BATCH" "$ITERATE"; do
   assert_grep "$(basename "$(dirname "$skill")") references the autonomous execution SoT" "$skill" \
-    '\[Autonomous Execution\]\(\.\./rite-workflow/references/autonomous-execution\.md\)'
-  assert_not_grep "$(basename "$(dirname "$skill")") does not duplicate the preamble" "$skill" \
-    '計画・約束・質問だけで turn を終えず'
+    '^> 実行開始時は \[Autonomous Execution\]\(\.\./rite-workflow/references/autonomous-execution\.md\) を適用する。$'
+  for clause in \
+    '計画・約束・質問だけで turn を終えず' \
+    '依頼範囲内で可逆な行動は確認なしで進め' \
+    'タスク完了またはユーザーにしか出せない入力でブロックされたときだけ turn を終える'; do
+    assert_not_grep "$(basename "$(dirname "$skill")") does not duplicate a preamble clause" "$skill" "$clause"
+  done
 done
 
 if ! print_summary "$(basename "$0")"; then
