@@ -29,6 +29,18 @@ assert_not_grep() {
   fi
 }
 
+assert_grep_count() {
+  local label=$1 file=$2 pattern=$3 expected=$4
+  local actual
+  actual=$(grep -Fc -- "$pattern" "$file" || true)
+  if [ "$actual" = "$expected" ]; then
+    printf 'ok - %s\n' "$label"
+  else
+    printf 'not ok - %s (expected=%s actual=%s)\n' "$label" "$expected" "$actual" >&2
+    failures=$((failures + 1))
+  fi
+}
+
 assert_grep 'audit routes all pages to the shared gate' "$audit" \
   'All four are mechanized by the shared Documentation Fidelity Gate'
 assert_grep 'pivot page mechanized' "$audit" \
@@ -116,6 +128,19 @@ assert_not_grep 'fix fallback does not offer a second review run' \
   "$ROOT/plugins/rite/skills/fix/SKILL.md" '- レビュー実行: /rite:pr-review を起動してレビュー結果を生成する'
 assert_not_grep 'review overview does not require recommendation questions' \
   "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'recommendations AskUserQuestion 等の処理本体'
+assert_not_grep 'fix handoff does not restore caller questions' \
+  "$ROOT/plugins/rite/skills/fix/SKILL.md" 'after AskUserQuestion'
+assert_not_grep 'review retryable errors are not user prompts' \
+  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'Retries are not performed automatically'
+
+# 対象 6 スキルの質問点を棚卸した inventory。新しい AskUserQuestion を追加すると
+# 文言が異なっても fail し、2 類型のどちらかへの分類と inventory 更新を必須化する。
+assert_grep_count 'iterate question inventory is unchanged' "$ROOT/plugins/rite/skills/iterate/SKILL.md" 'AskUserQuestion' 5
+assert_grep_count 'fix question inventory is unchanged' "$ROOT/plugins/rite/skills/fix/SKILL.md" 'AskUserQuestion' 13
+assert_grep_count 'ready question inventory is unchanged' "$ROOT/plugins/rite/skills/ready/SKILL.md" 'AskUserQuestion' 2
+assert_grep_count 'merge question inventory is unchanged' "$ROOT/plugins/rite/skills/merge/SKILL.md" 'AskUserQuestion' 2
+assert_grep_count 'cleanup question inventory is unchanged' "$ROOT/plugins/rite/skills/cleanup/SKILL.md" 'AskUserQuestion' 4
+assert_grep_count 'pr-review question inventory is unchanged' "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'AskUserQuestion' 35
 
 if [ "$failures" -ne 0 ]; then
   printf '%s contract assertion(s) failed\n' "$failures" >&2

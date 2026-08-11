@@ -3600,7 +3600,7 @@ The `fix` flow-state write below records the v3 phase so a `/rite:recover` start
 **Handoff マーカー**: 結果に応じて 3 種類に分岐する (Stop hook による consume・再注入の機構解説: [stop-loop-continuation-contract.md#mechanism](../../references/stop-loop-continuation-contract.md#mechanism))。
 - **継続** (`[fix:pushed]` / `[fix:pushed-wm-stale]`): `--handoff "/rite:pr-review {pr_number}"` で**ループ継続マーカー**をセットする。
 - **正常終了** (`[fix:replied-only]`): `--handoff "FINALIZE:fix:replied-only:{pr_number}"` で**終了通知マーカー (FINALIZE handoff)** をセットする。
-- **エラー** (`[fix:error]`): `--handoff` を**付けない** (handoff はデフォルトクリア)。`[fix:error]` は clean terminal ではなく caller (`/rite:iterate` ステップ4) で AskUserQuestion (再試行/中止) に分岐するため、完了通知を強制してはならない。
+- **エラー** (`[fix:error]`): `--handoff` を**付けない** (handoff はデフォルトクリア)。`[fix:error]` は clean terminal ではなく caller (`/rite:iterate` ステップ4) で1回自動再試行し、再失敗時に停止するため、完了通知を強制してはならない。
 
 判定は本ステップ時点で**既に確定している入力**で行う (sentinel 評価テーブルより前だが、push 状態・fatal フラグ・本 cycle 内の accept 発生有無は ステップ 4.6 / 4.5 / 2.4 / 2.1.A / 1.0.1 で既知): **(`プッシュ: 完了` または 本 cycle 内で accept 決定が発生) かつ fatal フラグ (`FIX_FALLBACK_FAILED` / `REPLY_POST_FAILED` / `REPORT_POST_FAILED`) が context に未 set なら継続 = `--handoff "/rite:pr-review {pr_number}"`**。push 無し かつ 本 cycle 内で accept 決定なし かつ fatal フラグ未 set なら正常終了 = `--handoff "FINALIZE:fix:replied-only:{pr_number}"`。fatal フラグ有り (`[fix:error]`) なら `--handoff` なし。`WM_UPDATE_FAILED` は `[fix:pushed-wm-stale]` (= 継続) に縮退するため継続 handoff を打ち消さない。「本 cycle 内で accept 決定が発生」の判定条件（具体的な context マーカー、および累計値を使ってはならない理由）は ステップ 5.1 Output Pattern テーブル row 4/5 の直後の注記を**唯一の真実の源**として参照すること（重複記述はしない）。
 
@@ -3611,7 +3611,7 @@ The `fix` flow-state write below records the v3 phase so a `/rite:recover` start
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \
-  --next "rite:fix completed. Check recent result pattern in context: [fix:pushed]->caller の review-fix loop (/rite:pr-review を起動。範囲は 1.2.4 が cycle に応じて決定し、指摘の採否基準の緩和は禁止). [fix:pushed-wm-stale]->caller の review-fix loop (同上 after AskUserQuestion) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:replied-only]->caller の Ready & 完結 step. Do NOT stop." \
+  --next "rite:fix completed. Check recent result pattern in context: [fix:pushed]->caller の review-fix loop (/rite:pr-review を起動。範囲は 1.2.4 が cycle に応じて決定し、指摘の採否基準の緩和は禁止). [fix:pushed-wm-stale]->caller の review-fix loop (同上) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:replied-only]->caller の Ready & 完結 step. Do NOT stop." \
   --handoff "/rite:pr-review {pr_number}" \
   --if-exists
 
@@ -3619,7 +3619,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \
-  --next "rite:fix completed. Check recent result pattern in context: [fix:pushed]->caller の review-fix loop (/rite:pr-review を起動。範囲は 1.2.4 が cycle に応じて決定し、指摘の採否基準の緩和は禁止). [fix:pushed-wm-stale]->caller の review-fix loop (同上 after AskUserQuestion) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:replied-only]->caller の Ready & 完結 step. Do NOT stop." \
+  --next "rite:fix completed. Check recent result pattern in context: [fix:pushed]->caller の review-fix loop (/rite:pr-review を起動。範囲は 1.2.4 が cycle に応じて決定し、指摘の採否基準の緩和は禁止). [fix:pushed-wm-stale]->caller の review-fix loop (同上) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:replied-only]->caller の Ready & 完結 step. Do NOT stop." \
   --handoff "FINALIZE:fix:replied-only:{pr_number}" \
   --if-exists
 
@@ -3627,7 +3627,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \
-  --next "rite:fix completed. Check recent result pattern in context: [fix:pushed]->caller の review-fix loop (/rite:pr-review を起動。範囲は 1.2.4 が cycle に応じて決定し、指摘の採否基準の緩和は禁止). [fix:pushed-wm-stale]->caller の review-fix loop (同上 after AskUserQuestion) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:replied-only]->caller の Ready & 完結 step. Do NOT stop." \
+  --next "rite:fix completed. Check recent result pattern in context: [fix:pushed]->caller の review-fix loop (/rite:pr-review を起動。範囲は 1.2.4 が cycle に応じて決定し、指摘の採否基準の緩和は禁止). [fix:pushed-wm-stale]->caller の review-fix loop (同上) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:replied-only]->caller の Ready & 完結 step. Do NOT stop." \
   --if-exists
 ```
 

@@ -1294,7 +1294,7 @@ Determine the error type from the Task tool result. Claude analyzes the Task too
  - Proceed to ステップ 5 and generate the integrated report with only other reviewers' results
  - Include "{reviewer_type}: レビュー失敗" in the integrated report
 
-**Note**: Retries are not performed automatically. On error, prompt the user with AskUserQuestion to choose between retry or skip.
+**Note**: Timeout / network error / invalid output format は可逆で表の推奨が一意なため、質問せず 1 回だけ自動再試行する。再失敗後は当該 reviewer を incomplete として統合を続け、全 reviewer が resolution failure となる等、品質低下・中止に関するユーザー固有の判断が必要な場合だけ AskUserQuestion を使う。
 
 ### 4.5 Review Instruction Format
 
