@@ -79,6 +79,16 @@ git -C "$sb" add . && git -C "$sb" commit -qm unicode-bad
 out=$(bash "$sb/plugins/rite/hooks/scripts/descriptive-number-diff-gate.sh" --repo-root "$sb" --base-ref HEAD~1 2>&1); rc=$?
 assert "non-ASCII plugin path cannot bypass the gate" "1" "$rc"
 
+printf 'Issue #779 crossed boundary\n' > "$sb/plugins/rite/hooks/tests/rename-source.md" # example: excluded rename source
+git -C "$sb" add . && git -C "$sb" commit -qm boundary-rename-base
+mkdir -p "$sb/plugins/rite/skills/renamed-from-tests"
+mv "$sb/plugins/rite/hooks/tests/rename-source.md" "$sb/plugins/rite/skills/renamed-from-tests/SKILL.md"
+for i in $(seq 1 40); do printf 'unrelated-%s\n' "$i" >> "$sb/plugins/rite/skills/renamed-from-tests/SKILL.md"; done
+git -C "$sb" add -A && git -C "$sb" commit -qm boundary-rename
+out=$(bash "$sb/plugins/rite/hooks/scripts/descriptive-number-diff-gate.sh" --repo-root "$sb" --base-ref HEAD~1 2>&1); rc=$?
+assert "rename from tests into production treats destination as added" "1" "$rc"
+case "$out" in *'Issue #779'*) pass "boundary-crossing rename reports the moved reference" ;; *) fail "boundary-crossing rename reports the moved reference" ;; esac
+
 bash "$sb/plugins/rite/hooks/scripts/descriptive-number-diff-gate.sh" --repo-root "$sb" --base-ref does-not-exist >/dev/null 2>&1; rc=$?
 assert "invalid diff base fails closed" "2" "$rc"
 

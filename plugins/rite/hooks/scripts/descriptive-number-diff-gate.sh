@@ -57,6 +57,15 @@ if ! git -c core.quotePath=false diff --find-renames=1% --unified=0 --no-color "
 fi
 
 awk '
+  /^diff --git / { rename_from=""; rename_to=""; next }
+  /^rename from / { rename_from=substr($0,13); next }
+  /^rename to / {
+    rename_to=substr($0,11)
+    if (rename_from ~ /(^|\/)tests\// && rename_to ~ /^plugins\/rite\// && rename_to !~ /(^|\/)tests\//) {
+      print rename_to "\t*"
+    }
+    next
+  }
   /^\+\+\+ b\// { file=substr($0,7); sub(/\t.*$/, "", file); next }
   /^@@ / {
     if (match($0, /\+[0-9]+/)) line=substr($0, RSTART+1, RLENGTH-1)+0
@@ -83,12 +92,13 @@ if [ "$detector_rc" -gt 1 ]; then
   exit 2
 fi
 
-awk -F '\t' 'NR==FNR { added[$1 ":" $2]=1; next }
+awk -F '\t' 'NR==FNR { if ($2 == "*") all[$1]=1; else added[$1 ":" $2]=1; next }
   /^\[comment-journal\]\[P[56]\] / {
     rest=$0; sub(/^\[comment-journal\]\[P[56]\] /, "", rest)
     if (match(rest, /:[0-9]+:/)) {
       key=substr(rest,1,RSTART+RLENGTH-2)
-      if (added[key]) print $0
+      path=substr(rest,1,RSTART-1)
+      if (added[key] || all[path]) print $0
     }
   }
 ' "$added" "$detector_out" > "$tmp_dir/findings.txt"
