@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "./check-contract.sh && ./check-determinism.sh render/fixtures/valid-scene.html"
+    "check": "./check-contract.sh && ./check-determinism.sh render/fixtures/valid-scene.html && for scene in scenes/*.html; do ./check-determinism.sh \"$scene\" || exit; done"
   },
   "dependencies": {
     "playwright-core": "^1.62.1"

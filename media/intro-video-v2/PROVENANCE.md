@@ -76,7 +76,18 @@ ffmpeg -y \
   -map '[out]' -c:a libmp3lame -b:a 192k rite-synth-bgm.mp3
 ```
 
-生成した mp3 は再生成可能な中間素材としてコミットしない。5 シーンをレンダした後に次を実行する。
+生成した mp3 は再生成可能な中間素材としてコミットしない。クリーン checkout からは、依存を
+インストールして次のコマンドで 5 シーンを規定名へレンダする。
+
+```bash
+npm ci
+mkdir -p out
+for scene in 01-problem 02-loop 03-terminal 04-gates 05-closing; do
+  node render/render.mjs "scenes/${scene}.html" "out/${scene}.mp4" 30
+done
+```
+
+BGM を上記コマンドで生成した後、次を実行する。
 
 ```bash
 ./assemble.sh -P -o out/rite-intro-v2.mp4
