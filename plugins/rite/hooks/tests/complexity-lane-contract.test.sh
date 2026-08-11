@@ -179,6 +179,20 @@ assert_grep "5.1.0.1 excludes the fail-safe path from 'M or above'" "$IMPLEMENT"
   '^\| Complexity M or above \|.*かつ `complexity=` を伴う.*`COMPLEXITY_LANE_FALLBACK=1` を伴う fail-safe 経路は満たさない'
 
 echo "=== implement の生産量制約 (AC-3 / T-03) ==="
+assert_grep "implement owns the all-Complexity contract-literalism mandate" "$IMPLEMENT" \
+  '^### 5\.0\.L Contract Literalism Mandate（全 Complexity 共通）$'
+assert_grep "contract literalism rejects structures not justified by the Issue contract" "$IMPLEMENT" \
+  'Target Files、Scope、MUST / MUST NOT、Non-goal.*オプション・パラメータ・guard・一般化・予約フィールドは実装しない'
+assert_grep "contract literalism chooses the smaller implementation when the contract is ambiguous" "$IMPLEMENT" \
+  '迷った場合は小さい実装を選ぶ'
+assert_grep "contract literalism returns out-of-contract needs to the Issue instead of implementing them" "$IMPLEMENT" \
+  '契約外の必要性に気付いた場合は実装せず、既存の Issue コメントへ必要性と根拠を記録して差し戻す'
+assert_grep "contract literalism applies to every declared Complexity" "$IMPLEMENT" \
+  'XS / S / M / L / XL の全 Complexity に適用する'
+assert_grep "complexity-lane references the mandate without redefining it" "$LANE" \
+  '全 Complexity 共通 mandate の定義は .*issue-implement/SKILL\.md §5\.0\.L.*唯一の所有位置'
+assert_not_grep "complexity-lane does not duplicate the mandate's normative definition" "$LANE" \
+  'Target Files、Scope、MUST / MUST NOT、Non-goal.*オプション・パラメータ・guard・一般化・予約フィールド'
 assert_grep "implement resolves the lane through the shared helper" "$IMPLEMENT" \
   'scripts/issue-complexity-lane\.sh --issue \{issue_number\}'
 assert_grep "implement declares the production-constraint step" "$IMPLEMENT" \

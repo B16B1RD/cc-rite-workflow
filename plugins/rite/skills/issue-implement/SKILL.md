@@ -22,6 +22,14 @@ Perform actual implementation work following the implementation plan approved in
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
 
+### 5.0.L Contract Literalism Mandate（全 Complexity 共通）
+
+実装は Issue 契約の字義に限定する。契約の根拠として使えるのは Target Files、Scope、MUST / MUST NOT、Non-goal であり、これらで必要性を説明できないオプション・パラメータ・guard・一般化・予約フィールドは実装しない。迷った場合は小さい実装を選ぶ。
+
+契約外の必要性に気付いた場合は実装せず、既存の Issue コメントへ必要性と根拠を記録して差し戻す。拡張は実需を記した別 Issue の契約として扱い、現在の実装へ先回りして含めない。
+
+本 mandate は **XS / S / M / L / XL の全 Complexity に適用する**。Complexity レーンは儀式コストと生産量制約だけを変え、本 mandate の適用有無を変えない。
+
 ### 5.0.C Complexity Lane Determination (XS/S 軽量レーン)
 
 実装を始める前に、対象 Issue の**宣言 Complexity** からレーンを決める。同じ helper が 5.1.0.1 の並列実装ゲートと 5.1.0.8 の生産量制約の両方に供給する（Complexity の読み取りを 1 箇所に集約する）:

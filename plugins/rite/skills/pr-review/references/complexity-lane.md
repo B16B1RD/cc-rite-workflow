@@ -2,6 +2,8 @@
 
 > **Source of Truth**: 本ファイルは Issue の宣言 Complexity に応じて儀式コスト（reviewer の幅と検証の深さ、implement の生産量）を比例させる **XS/S 軽量レーン**の設計根拠・fail-safe 規約・合成規則を定義する。実行時に必要な分岐表・reason 表・marker 名は `SKILL.md` ステップ 1.3.2 / ステップ 3.2.1 / ステップ 4.5 本体と `skills/issue-implement/SKILL.md` 5.0.C / 5.1.0.8 に置き、本ファイルは rationale を持つ。
 
+> **Contract literalism**: 契約外構造を実装しない全 Complexity 共通 mandate の定義は [issue-implement/SKILL.md §5.0.L](../../issue-implement/SKILL.md#50l-contract-literalism-mandate全-complexity-共通) が唯一の所有位置である。本レーンは適用範囲や文言を再定義せず、儀式コストと XS/S 生産量制約だけを扱う。
+
 ## なぜレーンを設けるのか
 
 収束性（実測必須ゲート・発散検出）と churn 抑制（帰結クラス・pin 政策）が解決した後に残った構造問題は、**どの工程も変更の大きさを知らない**ことである。1 行の設定変更でも、9 reviewer がフル装備で起動し、implement が説明的な派生散文を新設し、その散文が次サイクルの churn の燃料になる。工程の固定費が diff サイズと無関係に積み上がる。
