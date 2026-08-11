@@ -26,6 +26,10 @@
 #      JSON に触らず CLASS_DEMOTION_GATE=noop を emit して exit 0 (再実行の冪等性はこの分岐が担う —
 #      降格発動後の JSON は blocking 0 のため常にここへ落ちる)
 #   1. 各 blocking finding の effective class を確定する
+#      - **実測未判定 (verification.measured が boolean でない = 5.3.0.M が形式崩れアンカーを
+#        blocking のまま残した形) の finding は分類対象外**。map を参照せず class A 側へ固定算入し
+#        WARNING + CLASS_DEMOTION_UNDETERMINED_MEASURED を emit する — 「判定不能を降格に丸めない」
+#        3 値モデルの保証を第 2 軸でも保つ (本政策の入力は宣言どおり実測付き blocking に限られる)
 #      - map に同 id の well-formed エントリ (class="A"、または class="B" ∧ scenario 非空) がある
 #        → その class。consequence_class / consequence_scenario を finding へ記録する
 #      - それ以外 (エントリ欠落 / class が A・B 以外 / class B なのに scenario 欠落・空 /
@@ -57,6 +61,7 @@
 #   [CONTEXT] CLASS_DEMOTION_GATE=applied; class_a=0; class_b={n}; demoted={n}; assessment=mergeable
 #   [CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a={n}; class_b={n}; demoted=0; assessment={v}
 #   [CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}
+#   [CONTEXT] CLASS_DEMOTION_UNDETERMINED_MEASURED=1; count={n}
 #   [CONTEXT] CLASS_DEMOTION_GATE_FAILED=1; reason=...
 #
 # 失敗経路では外部コマンド (jq / mktemp / mv) の stderr 先頭 5 行を ERROR 行の直後に転記する
@@ -76,6 +81,11 @@
 #   classification_unreadable   — --classification の読み取り権限がない (exit 1)
 #   classification_json_invalid — --classification が jq parse 不能 (exit 1)
 #   classifications_not_array   — .classifications が配列でない / キー欠落 (exit 1)
+#   classification_entry_not_object — .classifications 配列に object でない要素が混在 (exit 1)。
+#                                 LLM 生成の malformation で map を作り直せば収束する caller 契約違反。
+#                                 generic な jq_transform_failed に落とすと誤診断 + retry 経路から
+#                                 漏れるため専用 reason で fail-loud させる (per-finding fail-safe と
+#                                 隣接する defect class の一貫性)
 #   jq_transform_failed         — ゲート変換 jq が非ゼロ終了 (exit 1)
 #   stats_read_failed           — .stats.* の読み出し失敗、値が数値でない、または統計間の不変条件
 #                                 (class_a + class_b == blocking / unclassified <= class_a /
@@ -218,10 +228,29 @@ fi
 if [ "$(jq -r '.classifications | type' "$classification" 2>"${diag_file:-/dev/null}")" != "array" ]; then
   _fail classifications_not_array ".classifications が配列ではありません: $classification"
 fi
+# 非 object 要素は専用 reason で fail-loud させる (caller 契約違反 — map を作り直せば同 cycle で
+# 収束するため、SKILL.md 5.3.0.C step 3 の retry 対象に含める)。generic な jq_transform_failed に
+# 落とすと「helper 内部バグ」を示唆する誤診断 + retry 経路から漏れる。select による黙殺は
+# finding に紐付かない garbage が無音になるため採らない (fail-loud 原則)。
+non_object_count=$(jq -r '[.classifications[] | select(type != "object")] | length' "$classification" 2>"${diag_file:-/dev/null}")
+case "$non_object_count" in
+  ''|*[!0-9]*) _fail stats_read_failed "classification map の要素型検査に失敗しました: '$non_object_count'" ;;
+esac
+if [ "$non_object_count" -gt 0 ]; then
+  _fail classification_entry_not_object "classification map の classifications 配列に object でない要素が ${non_object_count} 件あります (LLM 生成の malformation)。map を作り直してください: $classification"
+fi
 
 # ---- ゲート変換 ----
 read -r -d '' JQ_PROG <<'JQEOF'
 def gated: ((.scope // "") as $s | $s == "current-pr" or $s == "follow-up");
+
+# 実測の有無が判定済みか (verification.measured が boolean)。scripts/review-measured-gate.sh の
+# has_measured_bool と同一述語。**未判定 (verification 欠落 = 5.3.0.M が形式崩れアンカーを
+# blocking のまま残した形) の gated finding は本ゲートの分類対象外**で、map を参照せず
+# class A 側へ固定算入する — 「判定不能を降格に丸めない」保証 (3 値モデル) を第 2 軸でも保つ。
+# これにより本政策の入力は宣言どおり「実測付き blocking」に限られる。
+def has_measured_bool:
+  ((.verification | type) == "object") and ((.verification.measured | type) == "boolean");
 
 # well-formed 判定: 単一エントリ ∧ class が "A"、または class が "B" ∧ scenario が非空文字列。
 # 降格に入る経路は well-formed B のみ — それ以外はすべて class A 扱い (判定不能を降格に丸めない)。
@@ -240,11 +269,17 @@ def effective_class($m):
 
 # 分類の記録: gated finding のみ consequence_class / consequence_scenario を持つ。
 # 既存値は算出結果で無条件に上書きする (map が唯一の入力 — preset は判定を変えられない)。
+# 未判定 (has_measured_bool 偽) の gated finding は map を参照せず class A 固定 (scenario なし)。
 def with_class($m):
   if gated then
-    effective_class($m) as $ec
-    | .consequence_class = $ec.class
-    | (if $ec.scenario != null then .consequence_scenario = $ec.scenario else del(.consequence_scenario) end)
+    if has_measured_bool then
+      effective_class($m) as $ec
+      | .consequence_class = $ec.class
+      | (if $ec.scenario != null then .consequence_scenario = $ec.scenario else del(.consequence_scenario) end)
+    else
+      .consequence_class = "A"
+      | del(.consequence_scenario)
+    end
   else . end;
 
 ($cls[0].classifications | group_by(.id // null) | map({key: ((.[0].id // null) | tostring), value: .})
@@ -275,7 +310,12 @@ def with_class($m):
       class_b: $class_b,
       demoted: ($demoted_set | length),
       blocking_after: $blocking_after,
-      unclassified: ([$orig[] | select(gated) | effective_class($by_id) | select(.unclassified)] | length),
+      # map 由来の判定不能 (エントリ欠落 / class 不正 / B の判定文欠落 / 重複)。
+      # 母集団は分類対象 (gated ∧ 実測判定済み) に限る — 未判定 A 固定分を混ぜると
+      # 「map を直せば解消する」件数と「アンカー書式を直せば解消する」件数が区別できない。
+      unclassified: ([$orig[] | select(gated and has_measured_bool) | effective_class($by_id) | select(.unclassified)] | length),
+      # 実測未判定のまま class A 固定した gated finding (5.3.0.M の形式崩れアンカー由来)。
+      undetermined_measured: ([$orig[] | select(gated and (has_measured_bool | not))] | length),
       applied: (if $applied then "true" else "false" end),
       assessment: (if $blocking_after == 0 then "mergeable" else "fix-needed" end)
     }
@@ -290,13 +330,14 @@ fi
 # fail-open 再生産を避ける — sibling と同根の理由)。
 if ! stats_tsv=$(printf '%s\n' "$result" | jq -r '
   [ .stats.blocking, .stats.class_a, .stats.class_b, .stats.demoted,
-    .stats.blocking_after, .stats.unclassified, .stats.applied, .stats.assessment ]
+    .stats.blocking_after, .stats.unclassified, .stats.undetermined_measured,
+    .stats.applied, .stats.assessment ]
   | map(tostring) | @tsv' 2>"${diag_file:-/dev/null}"); then
   _fail stats_read_failed "ゲート統計の読み出し jq が失敗しました"
 fi
-IFS=$'\t' read -r blocking class_a class_b demoted blocking_after unclassified applied assessment \
+IFS=$'\t' read -r blocking class_a class_b demoted blocking_after unclassified undetermined_measured applied assessment \
   <<< "$stats_tsv"
-for _stat_name in blocking class_a class_b demoted blocking_after unclassified; do
+for _stat_name in blocking class_a class_b demoted blocking_after unclassified undetermined_measured; do
   _stat_val="${!_stat_name-}"
   case "$_stat_val" in
     ''|*[!0-9]*) _fail stats_read_failed "ゲート統計 $_stat_name が数値ではありません: '$_stat_val'" ;;
@@ -318,6 +359,9 @@ if [ "$((class_a + class_b))" -ne "$blocking" ]; then
 fi
 if [ "$unclassified" -gt "$class_a" ]; then
   _fail stats_read_failed "ゲート統計の判定不能件数が class A 件数を超えています (unclassified=${unclassified} > class_a=${class_a})"
+fi
+if [ "$undetermined_measured" -gt "$class_a" ]; then
+  _fail stats_read_failed "ゲート統計の実測未判定件数が class A 件数を超えています (undetermined_measured=${undetermined_measured} > class_a=${class_a})"
 fi
 if [ "$applied" = "true" ]; then
   [ "$demoted" -eq "$class_b" ] || _fail stats_read_failed "降格発動なのに移送件数が class B 件数と一致しません (demoted=${demoted} != class_b=${class_b})"
@@ -343,6 +387,11 @@ out_tmp=""
 if [ "$unclassified" -gt 0 ]; then
   echo "WARNING: 帰結クラス分類が欠落・不正 (エントリなし / class が A・B 以外 / class B なのに判定文なし / 同 id の重複エントリ) の blocking finding ${unclassified} 件を class A 扱い (blocking 維持) にしました。判定不能を降格に丸めません" >&2
   echo "[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count=${unclassified}" >&2
+fi
+
+if [ "$undetermined_measured" -gt 0 ]; then
+  echo "WARNING: 実測の有無が未判定 (verification 欠落 = 実測必須ゲートが形式崩れアンカーを blocking のまま残した形) の blocking finding ${undetermined_measured} 件を分類対象外として class A 側に算入しました (map のエントリは参照しません)。判定不能を降格に丸めない 3 値モデルの保証を第 2 軸でも保つためです。アンカー書式を直せば次 cycle で分類対象になります" >&2
+  echo "[CONTEXT] CLASS_DEMOTION_UNDETERMINED_MEASURED=1; count=${undetermined_measured}" >&2
 fi
 
 if [ "$applied" = "true" ]; then

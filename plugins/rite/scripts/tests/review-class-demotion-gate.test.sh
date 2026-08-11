@@ -36,12 +36,25 @@ run_gate() {
   return 0
 }
 
-# finding 1 件を組み立てる: id severity scope description
+# finding 1 件を組み立てる: id severity scope description [file] [measured]
+# file: 省略時 plugins/rite/hooks/foo.sh。TC-01 は tests/ 配下パスを渡す (パス分類禁止の回帰ガード)
+# measured: "true" (default) = verification.measured=true 付与 (分類対象) /
+#           "none" = verification キーなし (実測未判定 — 分類対象外で class A 固定)
 mk_finding() {
-  jq -n --arg id "$1" --arg sev "$2" --arg scope "$3" --arg desc "$4" \
-    '{id:$id, reviewer:"code-quality-reviewer", category:"code_quality", severity:$sev,
-      file:"plugins/rite/hooks/foo.sh", line:1, description:$desc, suggestion:"s",
-      status:"open", scope:$scope}'
+  local file="${5:-plugins/rite/hooks/foo.sh}"
+  local measured="${6:-true}"
+  if [ "$measured" = "none" ]; then
+    jq -n --arg id "$1" --arg sev "$2" --arg scope "$3" --arg desc "$4" --arg file "$file" \
+      '{id:$id, reviewer:"code-quality-reviewer", category:"code_quality", severity:$sev,
+        file:$file, line:1, description:$desc, suggestion:"s",
+        status:"open", scope:$scope}'
+  else
+    jq -n --arg id "$1" --arg sev "$2" --arg scope "$3" --arg desc "$4" --arg file "$file" \
+      '{id:$id, reviewer:"code-quality-reviewer", category:"code_quality", severity:$sev,
+        file:$file, line:1, description:$desc, suggestion:"s",
+        status:"open", scope:$scope,
+        verification:{measured:true, repro:"bash t.sh => observed failure", failing_test:null}}'
+  fi
 }
 
 # review-result JSON を組み立てる: path <finding json...>
@@ -79,8 +92,10 @@ mk_entry() {
 echo "=== review-class-demotion-gate.sh tests ==="
 
 # ---- TC-01 (T-01/AC-1): class A 指定の finding は blocking に残る ----
-echo "TC-01: class A の維持 (実行時帰結あり)"
-f1=$(mk_finding "F-01" "HIGH" "current-pr" "clean fixture のため本番バグを検出できない")
+# fixture の file は tests/ 配下パス — テストへの指摘でも実行時帰結があれば class A であること
+# (§4.4 MUST NOT: ファイルパスによる機械分類の禁止) の回帰ガードを兼ねる
+echo "TC-01: class A の維持 (tests/ 配下でも実行時帰結があれば A — パス分類しない)"
+f1=$(mk_finding "F-01" "HIGH" "current-pr" "clean fixture のため本番バグを検出できない" "plugins/rite/scripts/tests/foo.test.sh")
 mk_json "$TEST_DIR/tc01.json" "$f1"
 mk_cls "$TEST_DIR/tc01-cls.json" "$(mk_entry F-01 A "本番バグ混入時に suite green のまま merge される")"
 run_gate "$TEST_DIR/tc01.json" "$TEST_DIR/tc01-cls.json"
@@ -254,6 +269,42 @@ run_gate "$TEST_DIR/tc10.json" "$TEST_DIR/tc10-cls.json"
   && pass "measured-gate entry has no demotion key" || fail "demotion leaked"
 [ "$(jq -r '.non_blocking_findings[1] | has("demotion")' "$TEST_DIR/tc10.json")" = "true" ] \
   && pass "class-b entry has demotion key" || fail "demotion missing"
+
+# ---- TC-12: 実測未判定の gated finding は分類対象外で class A 固定 ----
+# 5.3.0.M が形式崩れアンカーを blocking のまま残した形 (verification キーなし)。
+# class B の well-formed map エントリがあっても降格されない — 「判定不能を降格に丸めない」
+# 3 値モデルの保証を第 2 軸でも保つ (本政策の入力は宣言どおり実測付き blocking に限る)
+echo "TC-12: 実測未判定 → 分類対象外で class A 固定 (map の B エントリを参照しない)"
+f1=$(mk_finding "F-01" "HIGH" "current-pr" "書式崩れアンカーで未判定の CRITICAL 級指摘" "plugins/rite/hooks/foo.sh" "none")
+mk_json "$TEST_DIR/tc12.json" "$f1"
+mk_cls "$TEST_DIR/tc12-cls.json" "$(mk_entry F-01 B "文書整合に留まる (と主張する誤分類)")"
+run_gate "$TEST_DIR/tc12.json" "$TEST_DIR/tc12-cls.json"
+[ "$GATE_RC" -eq 0 ] && pass "rc=0" || fail "rc=$GATE_RC (expected 0)"
+grep -q "CLASS_DEMOTION_GATE=not-triggered; class_a=1; class_b=0" <<<"$GATE_STDERR" \
+  && pass "undetermined counted as class A (not-triggered)" || fail "marker mismatch: $GATE_STDERR"
+grep -q "CLASS_DEMOTION_UNDETERMINED_MEASURED=1; count=1" <<<"$GATE_STDERR" \
+  && pass "UNDETERMINED_MEASURED marker" || fail "marker missing: $GATE_STDERR"
+[ "$(jq -r '.findings | length' "$TEST_DIR/tc12.json")" = "1" ] \
+  && pass "undetermined stays blocking" || fail "undetermined was demoted"
+[ "$(jq -r '.findings[0].consequence_class' "$TEST_DIR/tc12.json")" = "A" ] \
+  && pass "consequence_class=A fixed" || fail "consequence_class not A"
+[ "$(jq -r '.findings[0] | has("consequence_scenario")' "$TEST_DIR/tc12.json")" = "false" ] \
+  && pass "no scenario for undetermined" || fail "unexpected scenario"
+[ "$(jq -r '.overall_assessment' "$TEST_DIR/tc12.json")" = "fix-needed" ] \
+  && pass "assessment stays fix-needed" || fail "assessment changed"
+
+# ---- TC-13: classification map の非 object 要素は専用 reason で fail-loud ----
+# generic な jq_transform_failed (誤診断 + retry 対象外) に落とさない
+echo "TC-13: map の非 object 要素 → classification_entry_not_object"
+f1=$(mk_finding "F-01" "MEDIUM" "current-pr" "desc")
+mk_json "$TEST_DIR/tc13.json" "$f1"
+printf '%s\n' '{"classifications": [{"id":"F-01","class":"B","scenario":"ok"}, "F-02 is class B"]}' > "$TEST_DIR/tc13-cls.json"
+run_gate "$TEST_DIR/tc13.json" "$TEST_DIR/tc13-cls.json"
+[ "$GATE_RC" -eq 1 ] && pass "rc=1" || fail "rc=$GATE_RC (expected 1)"
+grep -q "reason=classification_entry_not_object" <<<"$GATE_STDERR" \
+  && pass "reason=classification_entry_not_object" || fail "reason mismatch: $GATE_STDERR"
+[ "$(jq -r '.findings[0] | has("consequence_class")' "$TEST_DIR/tc13.json")" = "false" ] \
+  && pass "JSON untouched on entry-type fail" || fail "JSON was modified"
 
 # ---- TC-11: 他トップレベルキーの保持 ----
 echo "TC-11: 変換がトップレベルの他キーを保持する"

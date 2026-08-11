@@ -204,7 +204,7 @@
 | `description` | string | ✅ | 指摘内容 |
 | `suggestion` | string | ✅ | 推奨対応 |
 | `status` | **enum** (string) | ✅ | 対応状態。**受理値**: `"open"` / `"fixed"` / `"replied"` / `"deferred"` / `"acknowledged"` の **5 値**。現行実装では `/rite:pr-review` ステップ 6.1.a は常に `"open"` を出力する (将来の state machine 拡張で `/rite:fix` 完了時に `"fixed"` / `"acknowledged"` 等を書き戻す slot を予約)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=status_unknown_value; value=<val>` を stderr 出力する |
-| `consequence_class` | **enum** (string) | (任意、1.1.0+) | 帰結クラス降格政策 (§5.3.0.C) の分類結果。**受理値**: `"A"` / `"B"` の 2 値。**書き手は `scripts/review-class-demotion-gate.sh` のみ** — classification map から算出して無条件に上書きするため、ステップ 5.3.0.M step 1 の Claude が書いても helper の算出結果で必ず置き換わる (分類入力にはならない — 迂回防止)。キー欠落 = 本ゲート未適用 (blocking 0 件の cycle・ゲート導入前の JSON)。audit-only で判定 consumer は無視する |
+| `consequence_class` | **enum** (string) | (任意、1.1.0+) | 帰結クラス降格政策 (§5.3.0.C) の分類結果。**受理値**: `"A"` / `"B"` の 2 値。**書き手は `scripts/review-class-demotion-gate.sh` のみ** — classification map から算出して無条件に上書きするため、ステップ 5.3.0.M step 1 の Claude が書いても helper の算出結果で必ず置き換わる (分類入力にはならない — 迂回防止)。実測未判定 (verification 欠落) の gated finding は分類対象外だが `"A"` が固定で付く (map 非参照)。**キー欠落** = (a) `scope == "nit-noted"` の finding (本ゲート対象外のため降格発動 cycle でも付かない — nit が 1 件でもある cycle で常態)、(b) blocking 0 件で no-op になった cycle、(c) ゲート導入前の JSON。audit-only で判定 consumer は無視する |
 | `consequence_scenario` | string | (任意、1.1.0+) | 分類の判定文。class A は「放置時にどの操作で何が壊れるか」の実行時シナリオ 1 行、class B は「実行時シナリオを書けない」ことの認定文。`consequence_class` と同時に helper が書く (判定不能で class A に倒した finding は `consequence_class: "A"` のみで本キーは欠落する) |
 
 ### `verdict` と `reviewers`
@@ -255,7 +255,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 <a id="non_blocking_findings-配列"></a>
 
-`/rite:pr-review` ステップ 5.3.0.M の実測必須ゲートで non-blocking に降格した**非実測指摘**、およびステップ 5.3.0.C の帰結クラス降格政策 ([assessment-rules.md §5.3.0.C](../skills/fix/references/assessment-rules.md#530c-帰結クラス降格政策-consequence-class-demotion-gate)) で降格した **class B 指摘** (実測付き) を保持するトップレベル配列。要素のスキーマは `findings[]` と**同一** (上記 [findings[] 要素](#json-schema) の表の全フィールド — `pre_existing` を含む。本節では再掲しない)。
+`/rite:pr-review` ステップ 5.3.0.M の実測必須ゲートで non-blocking に降格した**非実測指摘**、およびステップ 5.3.0.C の帰結クラス降格政策 ([assessment-rules.md §5.3.0.C](../skills/fix/references/assessment-rules.md#530c-帰結クラス降格政策-consequence-class-demotion-gate)) で降格した **class B 指摘** (5.3.0.C の分類対象は実測判定済み — `verification.measured` が boolean — の blocking に限られ、実測未判定の finding は class A 固定で降格されないため、class B 降格分は常に実測付き) を保持するトップレベル配列。要素のスキーマは `findings[]` と**同一** (上記 [findings[] 要素](#json-schema) の表の全フィールド — `pre_existing` を含む。本節では再掲しない)。
 
 **`demotion` オブジェクト (任意、1.1.0+)**: 5.3.0.C 由来の降格要素のみが持つ追加フィールド。形は `{policy: "class-b-demotion", reason: <判定文>}` — `policy` は降格の出所の判別子 (現在は 1 値のみ)、`reason` は class B 認定の判定文 (classification map の `scenario`)。書き手は `scripts/review-class-demotion-gate.sh` のみ。**本キーの有無が実測ゲート降格分 (5.3.0.M、キーなし) と class B 降格分 (5.3.0.C、キーあり) を区別する唯一の監査判別子**であり、6.1.d の PR 記録コメントは本キーを持つ要素に降格理由を併記する。read 側は未知キーを無視するため旧 reader でも壊れない。
 

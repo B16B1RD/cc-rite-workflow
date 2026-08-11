@@ -220,11 +220,17 @@ blocking = findings[] of scope ∈ {current-pr, follow-up}   # post-5.3.0.M の 
 if blocking is empty: no-op (JSON 無変更、CLASS_DEMOTION_GATE=noop)
 
 For each finding in blocking:
-  entry = classification map の同 id エントリ
-  if entry が欠落 / class が A・B 以外 / class B なのに scenario (判定文) が欠落・空:
-    effective class = A + WARNING (判定不能を降格に丸めない。CLASS_DEMOTION_UNCLASSIFIED)
+  if verification.measured が boolean でない (実測未判定 = 5.3.0.M が形式崩れアンカーを
+     blocking のまま残した形):
+    effective class = A 固定 + WARNING (map を参照しない — 判定不能を降格に丸めない
+    3 値モデルの保証を第 2 軸でも保つ。CLASS_DEMOTION_UNDETERMINED_MEASURED)
   else:
-    effective class = entry.class
+    entry = classification map の同 id エントリ
+    if entry が欠落 / class が A・B 以外 / class B なのに scenario (判定文) が欠落・空 /
+       同 id の重複エントリ:
+      effective class = A + WARNING (判定不能を降格に丸めない。CLASS_DEMOTION_UNCLASSIFIED)
+    else:
+      effective class = entry.class
   finding に consequence_class / consequence_scenario を記録 (書き手は helper のみ)
 
 if (effective A の件数) == 0 and (effective B の件数) >= 1:
@@ -240,7 +246,7 @@ else:
 
 **分類入力 (classification map)**: `/rite:pr-review` ステップ 5.3.0.C step 1 が Write する独立 JSON (`{"classifications": [{"id", "class", "scenario"}]}`)。review-result JSON の `findings[].consequence_class` を分類入力にはしない — 判定の入力と適用結果を同じフィールドに置くと、LLM の先書きがゲートを無音で迂回する (5.3.0.M の verification preset と同じ穴)。helper は map だけを読み、`consequence_class` / `consequence_scenario` は算出結果として無条件に上書きする。
 
-**判定不能の安全側** (AC-6): map エントリの欠落・class 不正・class B の判定文欠落は、いずれも当該 finding を **class A 扱い (blocking 維持)** にして WARNING + `[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}` を emit する。silent 降格は存在しない — 降格に入る経路は「well-formed な class B エントリ」のみ。
+**判定不能の安全側** (AC-6): map エントリの欠落・class 不正・class B の判定文欠落・同 id の重複エントリは、いずれも当該 finding を **class A 扱い (blocking 維持)** にして WARNING + `[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}` を emit する。実測未判定 (verification 欠落) の finding は分類の手前で class A 固定 + `[CONTEXT] CLASS_DEMOTION_UNDETERMINED_MEASURED=1; count={n}` となり、map のエントリは参照されない。silent 降格は存在しない — 降格に入る経路は「実測判定済み ∧ well-formed な class B エントリ」のみ。
 
 **non_blocking_findings への移送**: 5.3.0.M と同じ移送メカニズムを流用する — `total_findings` にカウントしない / `id` は振り直さず和集合で一意 / 記録 4 経路 (永続 JSON・6.1.d PR 記録コメント・5.4 統合レポート section・E2E suffix) は 5.3.0.M §non_blocking_findings の扱い と同一。降格分は `demotion` オブジェクト (policy + 判定文) で実測ゲート降格分と区別でき、後から監査できる。
 

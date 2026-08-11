@@ -163,7 +163,7 @@ The final severity reported in the findings table is determined by combining the
 
 **降格政策**: class A が 0 件になった cycle で、class B の blocking を**全件** `non_blocking_findings[]` へ降格する。class A が 1 件でも残る cycle では class B も blocking のまま (磨きは実体修正と並走する)。降格後は既存の mergeable 経路で自然終了し、独立した freeze フェーズ・状態遷移は存在しない。降格分は必ず記録に残る (降格理由 = class B 認定の判定文付き。報告自体は抑制しない — 変わるのは blocking 継続条件のみ)。
 
-**実測必須ゲートとの直列関係**: 本政策は実測必須ゲートの**後段**でのみ作用する。実測を添付できない指摘は先に実測ゲートが降格するため、本政策の入力は常に「実測付き blocking」である。散文指摘では「2 文の食い違いを示す grep」が technically measured になる問題を authoring 層の帰結クラスが弁別するのと同様に、**実測付きでも帰結が字面・検出網に留まる指摘**が churn 尾部で再生産される問題を本政策がゲート層で弁別する。
+**実測必須ゲートとの直列関係**: 本政策は実測必須ゲートの**後段**でのみ作用する。実測を添付できない指摘は先に実測ゲートが降格するため、本政策の**分類対象**は常に「実測付き blocking」(`verification.measured` が boolean) である。**実測未判定** (verification 欠落 = 実測ゲートが形式崩れアンカーを blocking のまま残した形) の blocking finding は分類対象外で、`scripts/review-class-demotion-gate.sh` が classification map を参照せず **class A 側へ固定算入**する — 実測ゲートの「判定不能は blocking 維持」保証 (3 値モデル) は第 2 軸を通っても破られず、書式ミスだけで実測済み指摘が blocking 集合から消える経路は存在しない。散文指摘では「2 文の食い違いを示す grep」が technically measured になる問題を authoring 層の帰結クラスが弁別するのと同様に、**実測付きでも帰結が字面・検出網に留まる指摘**が churn 尾部で再生産される問題を本政策がゲート層で弁別する。
 
 **分類主体と強制層**: 分類 (A/B) は LLM が finding 発行者と**別コンテキスト**で判定し、適用 (A=0 判定・移送・監査記録) は `scripts/review-class-demotion-gate.sh` が機械強制する。判定不能 (分類出力の欠落・不正) は class A 扱い + WARNING (silent 降格しない)。集合演算・分類入力・実装契約の SoT は [assessment-rules.md §5.3.0.C](../skills/fix/references/assessment-rules.md#530c-帰結クラス降格政策-consequence-class-demotion-gate)、監査フィールドの形は [review-result-schema.md](./review-result-schema.md) を参照。
 
