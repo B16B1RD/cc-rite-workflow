@@ -50,58 +50,94 @@ fi
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-number-diff-gate-XXXXXX") || exit 2
 trap 'rm -rf "$tmp_dir"' EXIT INT TERM HUP
 added="$tmp_dir/added.tsv"
-diff_file="$tmp_dir/diff.txt"
-if ! git -c core.quotePath=false diff --find-renames=1% --unified=0 --no-color "$BASE_REF"...HEAD -- plugins/rite > "$diff_file"; then
+files_nul="$tmp_dir/files.nul"
+status_nul="$tmp_dir/status.nul"
+if ! git diff --find-renames=1% --name-only -z "$BASE_REF"...HEAD -- plugins/rite > "$files_nul" ||
+   ! git diff --find-renames=1% --name-status -z "$BASE_REF"...HEAD -- plugins/rite > "$status_nul"; then
   echo "ERROR: descriptive-number diff could not be read from $BASE_REF" >&2
   exit 2
 fi
 
-awk '
-  /^diff --git / { rename_from=""; rename_to=""; next }
-  /^rename from / { rename_from=substr($0,13); next }
-  /^rename to / {
-    rename_to=substr($0,11)
-    if (rename_from ~ /(^|\/)tests\// && rename_to ~ /^plugins\/rite\// && rename_to !~ /(^|\/)tests\//) {
-      print rename_to "\t*"
-    }
-    next
-  }
-  /^\+\+\+ b\// { file=substr($0,7); sub(/\t.*$/, "", file); next }
-  /^@@ / {
-    if (match($0, /\+[0-9]+/)) line=substr($0, RSTART+1, RLENGTH-1)+0
-    next
-  }
-  /^\+/ && !/^\+\+\+/ {
-    if (file ~ /^plugins\/rite\// && file !~ /(^|\/)tests\//) print file "\t" line
-    line++; next
-  }
-  /^-/ { next }
-  { if (file != "") line++ }
-' "$diff_file" > "$added"
+force_all="$tmp_dir/force-all.txt"
+: > "$force_all"
+declare -A rename_old_by_new=()
+while IFS= read -r -d '' status; do
+  case "$status" in
+    R*|C*)
+      IFS= read -r -d '' old_path || exit 2
+      IFS= read -r -d '' new_path || exit 2
+      if [[ "$old_path" == */tests/* && "$new_path" == plugins/rite/* && "$new_path" != */tests/* ]]; then
+        printf '%s\n' "$new_path" >> "$force_all"
+      elif [[ "$old_path" == plugins/rite/* && "$old_path" != */tests/* && "$new_path" == plugins/rite/* && "$new_path" != */tests/* ]]; then
+        rename_old_by_new["$new_path"]="$old_path"
+      fi
+      ;;
+    *) IFS= read -r -d '' _path || exit 2 ;;
+  esac
+done < "$status_nul"
 
-[ -s "$added" ] || { echo "Total descriptive-number diff findings: 0"; exit 0; }
-cut -f1 "$added" | sort -u > "$tmp_dir/files.txt"
-detector_out="$tmp_dir/detector.txt"
-detector_rc=0
-args=()
-while IFS= read -r file; do args+=(--target "$file"); done < "$tmp_dir/files.txt"
-bash "$SCRIPT_DIR/comment-journal-check.sh" --repo-root "$REPO_ROOT" --quiet "${args[@]}" > "$detector_out" 2>"$tmp_dir/detector.err" || detector_rc=$?
-if [ "$detector_rc" -gt 1 ]; then
-  cat "$tmp_dir/detector.err" >&2
-  echo "ERROR: descriptive-number detector could not complete" >&2
-  exit 2
-fi
+: > "$tmp_dir/findings.txt"
+while IFS= read -r -d '' file; do
+  case "$file" in plugins/rite/*/tests/*|plugins/rite/tests/*) continue ;; esac
+  [ -f "$file" ] || continue
+  case "$file" in *$'\n'*|*:*)
+    echo "ERROR: descriptive-number gate cannot safely represent path: $file" >&2
+    exit 2
+    ;;
+  esac
 
-awk -F '\t' 'NR==FNR { if ($2 == "*") all[$1]=1; else added[$1 ":" $2]=1; next }
-  /^\[comment-journal\]\[P[56]\] / {
-    rest=$0; sub(/^\[comment-journal\]\[P[56]\] /, "", rest)
-    if (match(rest, /:[0-9]+:/)) {
-      key=substr(rest,1,RSTART+RLENGTH-2)
-      path=substr(rest,1,RSTART-1)
-      if (added[key] || all[path]) print $0
+  lines="$tmp_dir/lines"
+  if grep -Fxq -- "$file" "$force_all"; then
+    printf '*\n' > "$lines"
+  else
+    per_diff="$tmp_dir/per-file.diff"
+    if ! git -c core.quotePath=false diff --find-renames=1% --unified=0 --no-color "$BASE_REF"...HEAD -- "$file" > "$per_diff"; then
+      echo "ERROR: descriptive-number diff could not be read for path: $file" >&2
+      exit 2
+    fi
+    awk '
+      /^@@ / { if (match($0, /\+[0-9]+/)) line=substr($0,RSTART+1,RLENGTH-1)+0; next }
+      /^\+/ && !/^\+\+\+/ { print line; line++; next }
+      /^-/ { next }
+      { if (line > 0) line++ }
+    ' "$per_diff" > "$lines"
+    if [ -n "${rename_old_by_new[$file]:-}" ]; then
+      old_snapshot="$tmp_dir/old-file"
+      filtered_lines="$tmp_dir/filtered-lines"
+      if ! git show "$BASE_REF:${rename_old_by_new[$file]}" > "$old_snapshot" 2>/dev/null; then
+        echo "ERROR: descriptive-number rename source could not be read: ${rename_old_by_new[$file]}" >&2
+        exit 2
+      fi
+      awk '
+        FILENAME == ARGV[1] { old[$0]++; next }
+        FILENAME == ARGV[2] { wanted[$1]=1; next }
+        FILENAME == ARGV[3] && wanted[FNR] {
+          if (old[$0] > 0) old[$0]--
+          else print FNR
+        }
+      ' "$old_snapshot" "$lines" "$file" > "$filtered_lines"
+      mv "$filtered_lines" "$lines"
+    fi
+  fi
+  [ -s "$lines" ] || continue
+
+  detector_out="$tmp_dir/detector.txt"
+  detector_rc=0
+  bash "$SCRIPT_DIR/comment-journal-check.sh" --repo-root "$REPO_ROOT" --quiet --target "$file" > "$detector_out" 2>"$tmp_dir/detector.err" || detector_rc=$?
+  if [ "$detector_rc" -gt 1 ]; then
+    cat "$tmp_dir/detector.err" >&2
+    echo "ERROR: descriptive-number detector could not complete" >&2
+    exit 2
+  fi
+  awk 'NR==FNR { if ($1=="*") all=1; else wanted[$1]=1; next }
+    /^\[comment-journal\]\[P[56]\] / {
+      if (match($0, /:[0-9]+:/)) {
+        n=substr($0,RSTART+1,RLENGTH-2)+0
+        if (all || wanted[n]) print $0
+      }
     }
-  }
-' "$added" "$detector_out" > "$tmp_dir/findings.txt"
+  ' "$lines" "$detector_out" >> "$tmp_dir/findings.txt"
+done < "$files_nul"
 
 count=$(wc -l < "$tmp_dir/findings.txt" | tr -d ' ')
 if [ "$count" -gt 0 ]; then

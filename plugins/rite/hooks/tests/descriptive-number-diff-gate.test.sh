@@ -52,6 +52,15 @@ git -C "$sb" add . && git -C "$sb" commit -qm space-bad
 out=$(bash "$sb/plugins/rite/hooks/scripts/descriptive-number-diff-gate.sh" --repo-root "$sb" --base-ref HEAD~1 2>&1); rc=$?
 assert "space-containing plugin path cannot bypass the gate" "1" "$rc"
 
+tab_dir=$'plugins/rite/skills/tab\tpath'
+mkdir -p "$sb/$tab_dir"
+printf 'base\n' > "$sb/$tab_dir/SKILL.md"
+git -C "$sb" add . && git -C "$sb" commit -qm tab-base
+printf 'PR #304 tab path\n' >> "$sb/$tab_dir/SKILL.md" # example: tab path fixture
+git -C "$sb" add . && git -C "$sb" commit -qm tab-bad
+out=$(bash "$sb/plugins/rite/hooks/scripts/descriptive-number-diff-gate.sh" --repo-root "$sb" --base-ref HEAD~1 2>&1); rc=$?
+assert "TAB-containing plugin path cannot bypass the gate" "1" "$rc"
+
 mkdir -p "$sb/plugins/rite/skills/rename-old"
 printf 'PR #401 pre-existing\na\nb\nc\nd\ne\nf\n' > "$sb/plugins/rite/skills/rename-old/SKILL.md" # example: rename fixture
 git -C "$sb" add . && git -C "$sb" commit -qm rename-base
