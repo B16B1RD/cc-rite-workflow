@@ -1,0 +1,12 @@
+{
+  "name": "rite-intro-video-v2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "render": "node render/render.mjs",
+    "check": "./check-determinism.sh render/fixtures/valid-scene.html"
+  },
+  "dependencies": {
+    "playwright-core": "^1.62.1"
+  }
+}

@@ -1,0 +1,3 @@
+# playwright-core は npm install で取得する（レンダー環境のローカル依存）。
+# リポジトリ root の .gitignore には node_modules エントリが無いため、ここで局所的に無視する。
+node_modules/
