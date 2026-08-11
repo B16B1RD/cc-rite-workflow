@@ -73,7 +73,10 @@ try {
   try {
     browser = await chromium.launch({ executablePath: chromePath, args: ['--disable-gpu'] });
   } catch (error) {
-    fail(`Chrome の起動に失敗しました: ${error.message}（sandbox 外で実行してください）`);
+    // Playwright の message は起動引数と call log を丸ごと抱えて 17 行になる。1 行目が原因で
+    // 残りは定型の再掲なので、他の環境不足経路と同じ 1 行に揃える。
+    const cause = error.message.split('\n', 1)[0];
+    fail(`Chrome の起動に失敗しました: ${cause}（sandbox 外で実行してください）`);
   }
 
   const page = await browser.newPage({
