@@ -49,6 +49,37 @@ expect_contract_failure duration-invalid invalid-duration.html '正の数値で�
 expect_contract_failure zero-frames     zero-frames.html      'フレームが 0 枚になります'   || failures=$((failures + 1))
 expect_contract_failure page-error      page-error.html       'シーン内で未捕捉の例外'      || failures=$((failures + 1))
 
+# 完成物の可聴性 gate を、同じ scene に低音量 / 正常音量の BGM を差し替えて境界の両側から pin する。
+ffmpeg -loglevel error -y -f lavfi -i color=c=black:s=1280x720:r=30:d=2 \
+  -c:v libx264 -pix_fmt yuv420p "$work/audibility-scene.mp4"
+ffmpeg -loglevel error -y -f lavfi -i sine=frequency=1000:duration=2:sample_rate=48000 \
+  -af volume=0.001 -c:a libmp3lame "$work/quiet.mp3"
+ffmpeg -loglevel error -y -f lavfi -i sine=frequency=1000:duration=2:sample_rate=48000 \
+  -af volume=2 -c:a libmp3lame "$work/audible.mp3"
+
+quiet_out="$work/quiet-output.mp4"
+if quiet_log="$("$here/assemble.sh" -o "$quiet_out" -b "$work/quiet.mp3" "$work/audibility-scene.mp4" 2>&1)"; then
+  echo "契約 NG [bgm-audibility-low]: 実質無音の BGM が正常終了しました" >&2
+  failures=$((failures + 1))
+elif ! printf '%s' "$quiet_log" | grep -q '実測 max_volume .* dB < 閾値 -20 dB'; then
+  echo "契約 NG [bgm-audibility-low]: 実測値と閾値の診断がありません" >&2
+  printf '%s\n' "$quiet_log" | tail -3 | sed 's/^/  /' >&2
+  failures=$((failures + 1))
+elif [ -e "$quiet_out" ]; then
+  echo "契約 NG [bgm-audibility-low]: エラー終了後に出力が残っています" >&2
+  failures=$((failures + 1))
+else
+  echo "契約 OK [bgm-audibility-low]: 実質無音を拒否"
+fi
+
+if "$here/assemble.sh" -o "$work/audible-output.mp4" -b "$work/audible.mp3" \
+  "$work/audibility-scene.mp4" >/dev/null 2>&1; then
+  echo "契約 OK [bgm-audibility-pass]: 適正音量を受理"
+else
+  echo "契約 NG [bgm-audibility-pass]: 適正音量の BGM を拒否しました" >&2
+  failures=$((failures + 1))
+fi
+
 if [ "$failures" -ne 0 ]; then
   echo "契約チェック: $failures 件失敗" >&2
   exit 1

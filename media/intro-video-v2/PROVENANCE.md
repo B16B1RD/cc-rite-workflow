@@ -63,21 +63,11 @@ BGM は本リポジトリに含めない。`assemble.sh -b <file>` で合成す�
 
 ### ショート動画 v2 で使用する BGM
 
-外部楽曲は使わず、ffmpeg の音源フィルタだけで生成したオリジナルのアンビエント音を使用する。
-第三者素材を含まないため、外部ライセンスや帰属表示はない。ローカル名は
-`rite-synth-bgm.mp3` とし、再生成コマンドは次のとおり。
-
-```bash
-ffmpeg -y \
-  -f lavfi -i 'sine=frequency=110:duration=45:sample_rate=48000' \
-  -f lavfi -i 'sine=frequency=164.81:duration=45:sample_rate=48000' \
-  -f lavfi -i 'sine=frequency=220:duration=45:sample_rate=48000' \
-  -filter_complex '[0:a]volume=0.025[a0];[1:a]volume=0.018[a1];[2:a]volume=0.012[a2];[a0][a1][a2]amix=inputs=3,lowpass=f=900,aecho=0.8:0.75:60:0.12[out]' \
-  -map '[out]' -c:a libmp3lame -b:a 192k rite-synth-bgm.mp3
-```
-
-生成した mp3 は再生成可能な中間素材としてコミットしない。クリーン checkout からは、依存を
-インストールして次のコマンドで 5 シーンを規定名へレンダする。
+既存 HyperFrames 版と同じ **BombinSound — Technology**（Pixabay, track ID `499581`）を使用する。
+入手元・Pixabay Content License・生 mp3 をコミットしない理由は
+[../intro-video/PROVENANCE.md](../intro-video/PROVENANCE.md) の記録を正本とする。Pixabay から
+`bombinsound-technology-tech-technology-90-second-499581.mp3` を取得し、このディレクトリ直下に
+置く。クリーン checkout からは、依存をインストールして次のコマンドで 5 シーンを規定名へレンダする。
 
 ```bash
 npm ci
@@ -87,12 +77,12 @@ for scene in 01-problem 02-loop 03-terminal 04-gates 05-closing; do
 done
 ```
 
-BGM を上記コマンドで生成した後、次を実行する。
+BGM を取得した後、次を実行する。
 
 ```bash
 ./assemble.sh -P -o out/rite-intro-v2.mp4
 ```
 
-`-P` は `out/01-problem.mp4` から `out/05-closing.mp4` までを絵コンテ順に連結し、生成 BGM を
+`-P` は `out/01-problem.mp4` から `out/05-closing.mp4` までを絵コンテ順に連結し、Pixabay BGM を
 fade in/out 付きで合成する。完成動画は楽曲単体ではなく映像・タイポグラフィ・アニメーションを
 組み合わせた新たな制作物として配布する。
