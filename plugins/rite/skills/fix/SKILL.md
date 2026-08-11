@@ -2145,7 +2145,7 @@ When "コードを修正する" is selected:
        128|*)
          echo "WARNING: git grep failed (rc=$rc): $(cat "${TMPDIR:-/tmp}/rite-fix-impact-scan-err-$$.txt" 2>/dev/null)" >&2
          echo "[CONTEXT] IMPACT_SCAN_DEGRADED=1; reason=git_grep_rc_$rc" >&2
-         echo "  Claude は thought-process verbalize 義務を継続し、grep 不可の影響範囲を手動推定すること" >&2
+         echo "  Claude は grep 不可の影響範囲を手動確認し、確認結果と根拠を構造化出力すること" >&2
          ;;
      esac
    fi
@@ -2157,8 +2157,8 @@ When "コードを修正する" is selected:
    - (b) 複数 symbol を含む大規模 fix → 各 symbol について Step 1 を反復
    - (c) Markdown / config rewording → 該当 file 名で grep + CHANGELOG / docs 内の参照を確認
 
-2. **影響範囲の thought process 出力**: 修正案の前に必ず以下を Claude 側で
-   verbalize する (chat への明示出力 - ユーザーが追跡できる形で):
+2. **影響範囲の確認結果を出力**: 修正案の前に必ず以下の確認結果と根拠を
+   構造化して chat へ明示する (ユーザーが追跡できる形で):
 
    ```
    修正対象 symbol: {symbol_name}
@@ -2185,10 +2185,10 @@ When "コードを修正する" is selected:
    (これらは過去 fix-introduced regression の主要発生源)。
 
    省略経路に入る場合も、判断根拠 (`local-only: typo-only: {対象文字列}`) を
-   chat に明示出力する。判断根拠の verbalize は省略不可。
+   chat に明示出力する。確認結果と根拠の記録は省略不可。
 
    省略しなかった場合 (= step 1-3 を実行する場合) も、「同一ファイル内のみで影響なし」
-   と早期確定するのは禁止。step 1 の grep 結果と step 2 の影響範囲 verbalize は
+   と早期確定するのは禁止。step 1 の grep 結果と step 2 の影響範囲の確認結果は
    **同一ファイル内変更であっても必須**。これは scope_discipline と
    no_journal_comment の前提条件 (修正の影響を caller / test / sibling まで追える
    状態にしてから Apply する) を満たすために必要。

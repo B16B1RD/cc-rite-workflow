@@ -10,6 +10,8 @@ argument-hint: "[--merge] <issue_number>..."
 
 # /rite:batch-run
 
+> 実行開始時は [Autonomous Execution](../rite-workflow/references/autonomous-execution.md) を適用する。
+
 1 個以上の Issue に対して、**デフォルトでは** `/rite:open` → `/rite:iterate` を **順次・完全自律（無確認）で実行** して draft PR を残す（merge せずレビュー待ち）。`--merge` 指定時のみ `/rite:ready` → `/rite:merge` → `/rite:cleanup` まで完走する。やることは以下のシーケンシャルなタスク列:
 
 0. 引数の Issue 群とモード（`--merge` の有無）でキューを初期化 / 既存キューから再開（`.rite/state/run-queue-{session_id}.json`）
