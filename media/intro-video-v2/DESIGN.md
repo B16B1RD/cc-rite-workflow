@@ -6,6 +6,51 @@
 
 HyperFrames 版（`media/intro-video/` / `media/intro-video-en/`）は変更せず併存させる。
 
+## ショート動画 v2 絵コンテ
+
+### ねらい
+
+「Issue を渡すと、実装・レビュー・修正を自律的に回し、根拠のあるゲートを通って収束する」ことを
+約 38 秒で伝える。機能名の羅列ではなく、停滞している開発がループへ入り、merge まで到達する
+一本の流れとして見せる。1280x720 / 30fps、シーン間は 0.5 秒のクロスフェードを使う。
+
+### 訴求する 3 点
+
+1. **実測必須レビュー** — レビュアーの推測をそのまま blocking にせず、実測のない指摘を
+   non-blocking に分離する。根拠のある指摘だけで修正ループを駆動するため。
+2. **発散検出と安全な復帰** — 収束トレンドが崩れたら circuit breaker を作動させ、その後は
+   軽量判定を引き継がず full review に戻す。自律性と安全側の停止を一つの流れで示せるため。
+3. **知見ループ** — cleanup で得た経験則を Wiki に統合し、次の Issue で再利用する。
+   一度の自動化ではなく、プロジェクト固有の学びが次のループへ戻ることを示すため。
+
+XS/S 軽量レーンや個別の Projects 操作も v0.10.0 の機能だが、30〜45 秒で主メッセージを
+ぼかさないため画面上の訴求から外す。
+
+### シーン構成
+
+| # | ファイル | 宣言尺 | 画面のメッセージ | 役割 |
+|---|---|---:|---|---|
+| 1 | `scenes/01-problem.html` | 6秒 | Issueを書いた。その先が止まる。 | 問題提起。停止した工程をループへ切り替える |
+| 2 | `scenes/02-loop.html` | 8秒 | Issue → 実装 → レビュー → 修正 → 収束 | rite のコア価値を一枚の循環で見せる |
+| 3 | `scenes/03-terminal.html` | 9秒 | `/rite:batch-run --merge 2241` | 実在コマンドと sentinel で open から cleanup まで進む実挙動を示す |
+| 4 | `scenes/04-gates.html` | 9秒 | 実測 / 発散検出 / full review | 訴求 1・2 を安全ゲートとして可視化する |
+| 5 | `scenes/05-closing.html` | 8秒 | Issueから、収束まで。 | 知見ループ、rite ロゴ、インストール手順で閉じる |
+
+宣言尺合計は 40 秒。0.5 秒のクロスフェードが 4 箇所あるため完成尺は約 38 秒となる。
+
+### 表記の実在根拠
+
+- コマンド: `skills/batch-run/SKILL.md` の起動契約
+- パイプライン: 同スキルの `open → iterate → ready → merge → cleanup`
+- sentinel: `skills/iterate/SKILL.md` の `[review:mergeable]`、
+  `skills/merge/SKILL.md` の `[merge:returned-to-caller]`
+- 実測必須ゲート: `skills/pr-review/SKILL.md` と `references/severity-levels.md`
+- 発散検出・breaker 後 full review: `skills/iterate/SKILL.md`
+- 知見統合: `skills/cleanup/SKILL.md` の Wiki ingest
+
+性能値や短縮率は画面に出さない。数値として表示するのは、このリポジトリ内で宣言・実測できる
+シーン尺、解像度、fps だけとする。
+
 ## なぜ frame-step なのか
 
 全アニメーションを `pause()` し、`currentTime` を 1/fps ずつ進めながら screenshot を撮る。

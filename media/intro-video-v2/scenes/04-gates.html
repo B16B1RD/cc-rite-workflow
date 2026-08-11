@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>rite — quality gates</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    width: 1280px;
+    height: 720px;
+    overflow: hidden;
+    background: #090c11;
+  }
+  body {
+    display: grid;
+    place-items: center;
+    font-family: "Inter", "Noto Sans JP", system-ui, sans-serif;
+    color: #ecf0f6;
+  }
+  body::before {
+    content: "";
+    position: absolute;
+    width: 620px;
+    height: 620px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(74,99,145,.13), transparent 67%);
+  }
+  .frame { position: relative; width: 1050px; }
+  .eyebrow {
+    margin: 0 0 22px 4px;
+    color: #68758a;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .2em;
+    animation: fade-up 650ms ease-out both;
+  }
+  h1 {
+    margin: 0 0 48px;
+    font-size: 49px;
+    font-weight: 580;
+    letter-spacing: -.035em;
+    animation: fade-up 700ms cubic-bezier(.2,.8,.2,1) 180ms both;
+  }
+  .gates { display: grid; gap: 15px; }
+  .gate {
+    position: relative;
+    display: grid;
+    grid-template-columns: 72px 1fr 218px;
+    align-items: center;
+    height: 105px;
+    padding: 0 28px 0 18px;
+    border: 1px solid #242b37;
+    border-radius: 14px;
+    background: rgba(16, 21, 29, .92);
+    box-shadow: 0 18px 50px rgba(0,0,0,.18);
+    opacity: 0;
+    transform: translateX(-24px);
+    animation: gate-in 700ms cubic-bezier(.2,.8,.2,1) both;
+  }
+  .gate:nth-child(1) { animation-delay: 1350ms; }
+  .gate:nth-child(2) { animation-delay: 3200ms; }
+  .gate:nth-child(3) { animation-delay: 5050ms; }
+  .index {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border: 1px solid #343e4e;
+    border-radius: 50%;
+    color: #7b8799;
+    font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .cause { font-size: 25px; font-weight: 520; letter-spacing: -.015em; }
+  .arrow { color: #586577; padding: 0 19px; }
+  .effect {
+    justify-self: stretch;
+    padding: 10px 14px;
+    border-radius: 8px;
+    text-align: center;
+    font: 650 14px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .04em;
+    color: #e4b95b;
+    background: rgba(228,185,91,.075);
+    border: 1px solid rgba(228,185,91,.18);
+  }
+  .gate:nth-child(2) .effect { color: #ef8d82; background: rgba(239,141,130,.07); border-color: rgba(239,141,130,.18); }
+  .gate:nth-child(3) .effect { color: #76dca5; background: rgba(118,220,165,.07); border-color: rgba(118,220,165,.18); }
+  .rule {
+    position: absolute;
+    left: 0;
+    bottom: -30px;
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #303846 18%, #303846 82%, transparent);
+    transform: scaleX(0);
+    animation: rule-in 900ms ease-out 6500ms both;
+  }
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(15px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes gate-in {
+    from { opacity: 0; transform: translateX(-24px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes rule-in {
+    from { opacity: 0; transform: scaleX(0); }
+    to { opacity: 1; transform: scaleX(1); }
+  }
+</style>
+</head>
+<body>
+  <main class="frame">
+    <p class="eyebrow">QUALITY GATES</p>
+    <h1>止める条件まで、設計する。</h1>
+    <section class="gates">
+      <article class="gate">
+        <span class="index">01</span>
+        <div class="cause">実測なし<span class="arrow">→</span></div>
+        <div class="effect">non-blocking</div>
+      </article>
+      <article class="gate">
+        <span class="index">02</span>
+        <div class="cause">発散を検出<span class="arrow">→</span></div>
+        <div class="effect">circuit breaker</div>
+      </article>
+      <article class="gate">
+        <span class="index">03</span>
+        <div class="cause">ブレーカー後<span class="arrow">→</span></div>
+        <div class="effect">full review</div>
+      </article>
+    </section>
+    <div class="rule"></div>
+  </main>
+  <script>window.SCENE = { duration_ms: 9000 };</script>
+</body>
+</html>
