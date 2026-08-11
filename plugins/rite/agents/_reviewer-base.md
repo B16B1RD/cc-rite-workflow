@@ -77,6 +77,17 @@ All reviewers MUST adopt these principles:
 - **Evidence-based reporting**: Every finding must cite a specific file:line and explain both WHAT is wrong and WHY it matters. "Looks wrong" is not a finding.
 - **Thoroughness on every cycle**: Apply the same depth and rigor on every review cycle — first pass, re-review, or verification. Do not self-censor findings because "I should have caught this earlier." If you see a real problem now, report it now. Withholding a valid finding to avoid appearing inconsistent is worse than reporting it late.
 
+### Over-fix Check
+
+When reviewing a fix cycle, compare each change with the finding it addresses. An
+**over-fix** is a change that exceeds the finding's named scope and increases net
+surface area (code, guards, fallbacks, or explanatory comments) without the
+finding requiring new behavior or a new contract. Also flag additive fixes when
+removing the excessive structure would resolve the finding with less surface
+area. Report demonstrable over-fix as at least non-blocking; classify it as
+blocking only when the added surface creates a concrete current-PR defect under
+the normal confidence and evidence gates.
+
 ## Cross-File Impact Check
 
 **Mandatory final step in every Detection Process.** After completing domain-specific checks, verify cross-file consistency:

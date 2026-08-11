@@ -1848,6 +1848,12 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
 
 ### Simplification-First Response Principle（追加より削除を先に検討）
 
+以下はすべての fix finding に適用する mandate であり、config で opt-out できない:
+
+- **MUST**: finding が名指しした範囲の最小差分に留める。
+- **MUST**: 削除で解消できる finding は削除で直す。原因が過剰構造ならその構造を除去する。
+- **MUST NOT**: 新 guard / fallback / 説明コメントの追加は finding が新挙動・新契約を要求する場合のみに限定する。
+
 指摘に対する修正方針を決定する前に、以下のチェックリストを必ず通過させること（Fail-Fast Response Principle と同様、config での opt-out は不可）:
 
 - [ ] 機構の**追加**（新しい分岐・ガード・規約・注記・例外条項）ではなく、既存機構の**削除・単純化**（分岐の統合、規則の一般化、複製の一本化）で指摘を解消できないか検討したか
@@ -2698,6 +2704,14 @@ commit_sha_after=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
 commit_sha_before=$(git rev-parse HEAD~1 2>/dev/null || echo "unknown")
 timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%S")
 files_changed=$(git diff --name-only HEAD~1..HEAD 2>/dev/null | jq -R -s 'split("\n") | map(select(length > 0))' 2>/dev/null || echo '[]')
+# 既存の cycle state に当該 fix commit の行数差分を記録する。バイナリの `-` は行数に含めない。
+diff_stats=$(git diff --numstat HEAD~1..HEAD 2>/dev/null | awk '
+  $1 ~ /^[0-9]+$/ { added += $1 }
+  $2 ~ /^[0-9]+$/ { deleted += $2 }
+  END { printf "%d %d", added, deleted }
+')
+lines_added=${diff_stats%% *}
+lines_deleted=${diff_stats##* }
 
 # Read existing state or initialize
 if [ -f "$state_file" ]; then
@@ -2714,6 +2728,8 @@ new_cycle=$(jq -n \
   --argjson fixed "{findings_fixed_count}" \
   --argjson propagated "{propagation_applied_count}" \
   --argjson files "$files_changed" \
+  --argjson added "$lines_added" \
+  --argjson deleted "$lines_deleted" \
   '{
     "cycle": 0,
     "timestamp": $ts,
@@ -2722,6 +2738,8 @@ new_cycle=$(jq -n \
     "findings_fixed": $fixed,
     "findings_new_from_fix": 0,
     "files_changed_by_fix": $files,
+    "lines_added": $added,
+    "lines_deleted": $deleted,
     "propagation_applied": $propagated
   }')
 
