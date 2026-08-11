@@ -131,16 +131,37 @@ Display warning and continue (python3 is required for work memory parsing but no
 ### 1.3 Verify GitHub Authentication Status
 
 ```bash
-gh auth status
+gh auth status --active --hostname github.com
 ```
 
-If not authenticated, show:
+If not authenticated, use AskUserQuestion to ask whether to authenticate now.
+
+- If the user chooses to authenticate, show the following command and ask them to run it with Claude Code's ！ prefix so the interactive login owns the user's TTY:
+
+  ```text
+  ! gh auth login --hostname github.com --web --scopes project
+  ```
+
+  If the ！ prefix is unavailable in the current environment, show `gh auth login --hostname github.com --web --scopes project` for execution in another terminal and end setup with instructions to rerun `/rite:setup` after authentication.
+- After the user reports that login is complete, run `gh auth status --active --hostname github.com` again. Continue to Phase 1.4 only when it succeeds.
+- If verification still fails, show the command output and use AskUserQuestion to offer retrying authentication or stopping setup. On retry, repeat the login guidance and verification above; do not poll in a Bash loop.
+- If the user declines authentication, show:
+
 ```
 GitHub に認証されていません
 
-認証コマンド: `gh auth login`
+認証コマンド: `gh auth login --hostname github.com --web --scopes project`
 ```
-and exit.
+
+  and exit without an error.
+
+If already authenticated, verify that the active token includes the `project` scope:
+
+```bash
+gh auth status --hostname github.com --json hosts --jq '[.hosts["github.com"][] | select(.active == true) | .scopes | split(",")[] | ltrimstr(" ")] | any(. == "project")'
+```
+
+If the result is not `true`, show `gh auth refresh --hostname github.com -s project` and ask the user to run it (with the ！ prefix when available). After the user reports completion, run `gh auth status --active --hostname github.com` and the scope check again. Continue to Phase 1.4 only when both succeed. If verification fails, show the failure and use AskUserQuestion to offer retrying the refresh or stopping setup; do not poll in a Bash loop.
 
 ### 1.4 Retrieve Repository Information
 
