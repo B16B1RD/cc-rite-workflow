@@ -545,7 +545,7 @@ fi
 {
   "category": "missing_concept",
   "raw_source": ".rite/wiki/raw/reviews/20260410T...md",
-  "title": "PR #123 review findings",
+  "title": "PR #{pr_number} review findings",
   "detail": "Ingest 済みだが対応ページも ingest_status: skipped 記録（raw frontmatter）も存在しない"
 }
 ```
@@ -707,7 +707,7 @@ n_stale={n_stale}
 n_orphans={n_orphans}
 n_missing_concept={n_missing_concept}
 n_broken_refs={n_broken_refs}
-# 参考: n_unregistered_raw={n_unregistered_raw} — 判定式から意図的に除外 (informational、Issue #563)
+# 参考: n_unregistered_raw={n_unregistered_raw} — informational のため判定式から意図的に除外
 
 # Placeholder residue fail-fast gate (同型 gate: ステップ 1.1 / 1.3 / 8.1 / 8.3 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5)): LLM が literal substitute を忘れると
 # `[ "{n_contradictions}" -gt 0 ]` が rc=2 を返し、set -o pipefail のみでは検知できず else 分岐に

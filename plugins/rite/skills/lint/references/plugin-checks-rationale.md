@@ -61,7 +61,7 @@ P6 は P5 より先に走らせ、報告した ja 接尾構文 (`#N で対応`) 
 
 Self-exclude: the script itself, `comment-best-practices.md` SoT, the parity test, and 検出器自身の test 2 本 (`comment-journal-check.test.sh` / `wiki-lint-descriptive-refs.test.sh`) — いずれも禁止句を例示 (test では fixture) として保持するため。
 
-**`docs/SPEC.md` は self-exclude しない**: 裸形への拡張により同ファイルの provenance 注記 (`Issue #2024` 等) が 8 件検出されるようになったが、これらは SoT の廃止判定ルール上ほんとうに説明的参照であり、「禁止句を定義・例示するファイル」という self-exclude の根拠には当たらない。除外を「検出されると煩わしいファイル」へ広げると、その範囲内で既知アンチパターンの再発が見えなくなる (本節の P5/P6 除外方針と同じ理由)。progressive cleanup の対象として warning に残す。
+**`docs/SPEC.md` は self-exclude しない**: 裸形への拡張で同ファイルの provenance 注記も検出対象になるが、これらは SoT の廃止判定ルール上ほんとうに説明的参照であり、「禁止句を定義・例示するファイル」という self-exclude の根拠には当たらない。除外を「検出されると煩わしいファイル」へ広げると、その範囲内で既知アンチパターンの再発が見えなくなる (本節の P5/P6 除外方針と同じ理由)。progressive cleanup の対象として warning に残す。
 
 ## Comment line-ref check (comment-line-ref-check.sh)
 

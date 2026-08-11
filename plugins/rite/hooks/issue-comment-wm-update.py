@@ -202,7 +202,7 @@ class SectionAbsentError(Exception):
     Distinct from an idempotent no-op (all items already present): the caller
     must surface this as ``status=skipped; reason=section_absent`` rather than
     ``status=success``, so that silent drop of checklist items is not reported
-    as a successful merge (fail-loud; Issue #2139).
+    as a successful merge (fail-loud).
     """
 
     def __init__(self, section_name: str):
@@ -223,7 +223,7 @@ def merge_checklist(body: str, section_name: str, items: list[str]) -> str:
     When the section is absent **and** there are new items to insert, raises
     :class:`SectionAbsentError` instead of dropping the items and returning the
     body unchanged. Callers map that to exit code 10 / ``reason=section_absent``
-    so the skip is visible (Issue #2139). When every item is already present
+    so the skip remains observable. When every item is already present
     (or the item list is empty), returns the body unchanged with no error —
     that is a true idempotent no-op, not a silent drop.
     """

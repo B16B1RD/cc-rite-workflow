@@ -250,7 +250,7 @@ Extract the related Issue number from the branch name:
 
 ```
 パターン: {type}/issue-{number}-{slug}
-例: feat/issue-17-pr-create → Issue #17
+例: feat/issue-{number}-pr-create → 対応する Issue
 ```
 
 If extraction fails, confirm with `AskUserQuestion`:
@@ -1011,7 +1011,7 @@ Output the following pattern based on PR creation result:
 
 **Example output:**
 ```
-PR #123 をドラフトとして作成しました。
+PR #{pr_number} をドラフトとして作成しました。
 
 [pr:created:123]
 ```
