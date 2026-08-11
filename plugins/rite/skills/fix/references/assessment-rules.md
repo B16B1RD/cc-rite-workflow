@@ -200,11 +200,59 @@ echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseabl
 
 **指摘ゼロの場合**: `全指摘事項` が空なら本ゲートは no-op であり、mergeable 判定は現行と同一 (AC-3 非退行)。
 
+## 5.3.0.C 帰結クラス降格政策 (Consequence-Class Demotion Gate)
+
+5.3.0.M の**後**・5.3.1 の**前**に適用する第 2 降格軸。語彙定義の SoT は [severity-levels.md §帰結クラス軸](../../../references/severity-levels.md#帰結クラス軸-consequence-class) の「ゲート層の class A/B 降格政策」小節。実測必須ゲートと同型の降格軸であり、新しい freeze フェーズ・状態遷移は持たない — 降格後は既存の mergeable 経路 (5.3.1 以降) で自然終了する。
+
+**実行主体は `scripts/review-class-demotion-gate.sh`**。分類判定 (class A / B) は LLM が行うが、**finding を発行した reviewer とは別コンテキスト** (`/rite:pr-review` の consolidation 実行主体) が行い、判定結果の適用 (A=0 判定・移送・監査記録・assessment/verdict 再確定) は helper が機械的に強制する。reviewer の自己申告は入力にしない。helper が非ゼロ終了した場合、caller は LLM 適用へ fallback せず `[review:error]` で停止する (5.3.0.M と同じ fallback 禁止)。
+
+**分類の定義** (判定質問は 1 つ):
+
+> この指摘を放置してマージしたとき、今回の成果物の**どの操作で何が壊れるか**を実行時シナリオ 1 行で書けるか。
+
+- **class A** — 書ける (放置すると今回の成果物の実行時挙動が変わる)。テストへの指摘でも「clean fixture のため本番バグを検出できない」類は実行時帰結を持つ class A (ファイルパスで機械分類しない)
+- **class B** — 書けない (帰結が検出網の目の細かさ・可読性・文書整合に留まる: テスト assert の錨付け精度・コメント文言・文書同期など)。不確実な場合も class B へ倒す (攻め側既定 — 保守既定は判定者の萎縮で現状維持に退化する。誤降格は record で可視、最終防衛線は人間のマージ判断)
+
+**Mechanical enforcement** (helper の実装契約):
+
+```
+blocking = findings[] of scope ∈ {current-pr, follow-up}   # post-5.3.0.M の blocking 集合
+if blocking is empty: no-op (JSON 無変更、CLASS_DEMOTION_GATE=noop)
+
+For each finding in blocking:
+  entry = classification map の同 id エントリ
+  if entry が欠落 / class が A・B 以外 / class B なのに scenario (判定文) が欠落・空:
+    effective class = A + WARNING (判定不能を降格に丸めない。CLASS_DEMOTION_UNCLASSIFIED)
+  else:
+    effective class = entry.class
+  finding に consequence_class / consequence_scenario を記録 (書き手は helper のみ)
+
+if (effective A の件数) == 0 and (effective B の件数) >= 1:
+  class B 全件を non_blocking_findings[] へ移送
+  (severity / scope / id は維持。各要素に demotion = {policy: "class-b-demotion", reason: 判定文} を付与)
+  overall_assessment / verdict を移送後の blocking 件数から再確定 (5.3.0.M と同一式 → mergeable)
+else:
+  移送しない (class A が 1 件でも残る cycle では class B も blocking のまま — 磨きは実体修正と並走する)
+  assessment / verdict は変更しない (fix-needed のまま)
+
+トップレベル class_demotion = {applied, class_a, class_b, demoted} を記録 (監査フラグ)
+```
+
+**分類入力 (classification map)**: `/rite:pr-review` ステップ 5.3.0.C step 1 が Write する独立 JSON (`{"classifications": [{"id", "class", "scenario"}]}`)。review-result JSON の `findings[].consequence_class` を分類入力にはしない — 判定の入力と適用結果を同じフィールドに置くと、LLM の先書きがゲートを無音で迂回する (5.3.0.M の verification preset と同じ穴)。helper は map だけを読み、`consequence_class` / `consequence_scenario` は算出結果として無条件に上書きする。
+
+**判定不能の安全側** (AC-6): map エントリの欠落・class 不正・class B の判定文欠落は、いずれも当該 finding を **class A 扱い (blocking 維持)** にして WARNING + `[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}` を emit する。silent 降格は存在しない — 降格に入る経路は「well-formed な class B エントリ」のみ。
+
+**non_blocking_findings への移送**: 5.3.0.M と同じ移送メカニズムを流用する — `total_findings` にカウントしない / `id` は振り直さず和集合で一意 / 記録 4 経路 (永続 JSON・6.1.d PR 記録コメント・5.4 統合レポート section・E2E suffix) は 5.3.0.M §non_blocking_findings の扱い と同一。降格分は `demotion` オブジェクト (policy + 判定文) で実測ゲート降格分と区別でき、後から監査できる。
+
+**発散検出 (トレンド) との相互作用**: 本ゲートの降格が発動する cycle は移送後の blocking が 0 になり、iterate ループは `[review:mergeable]` で終了する。したがって per-cycle blocking 数列への影響は**終端 cycle の値が 0 になることのみ**であり、発散検出 (`hooks/scripts/review-trend-divergence.sh`) の入力定義・実装は変更しない。
+
+**指摘ゼロの場合**: post-5.3.0.M の blocking が空なら本ゲートは no-op (JSON 無変更・分類判定もスキップ)。mergeable 判定は現行と同一 (AC-7 非退行)。
+
 ## 5.3.1 Assessment Rules
 
-**Red blocking rule: If even 1 finding with `scope ∈ {current-pr, follow-up}` and measured=true exists (after 5.3.0 / 5.3.0.M demotion), it MUST NOT be assessed as "Merge OK"**
+**Red blocking rule: If even 1 finding with `scope ∈ {current-pr, follow-up}` and measured=true exists (after 5.3.0 / 5.3.0.M / 5.3.0.C demotion), it MUST NOT be assessed as "Merge OK"**
 
-All findings (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW) with `scope ∈ {current-pr, follow-up}` remaining in `全指摘事項` after 5.3.0 **and 5.3.0.M (実測必須ゲート)** demotion are always blocking regardless of loop count. There is no gradual relaxation — every remaining blocking finding must be resolved before merge. 実測 (repro / failing_test) を伴わない finding は 5.3.0.M で `non_blocking_findings` に分類済みのため本 rule の対象に残らない — blocking = 「runtime 実測を伴う CONFIRMED 指摘」のみであり、「指摘ゼロ」は到達可能な終了条件になる。
+All findings (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW) with `scope ∈ {current-pr, follow-up}` remaining in `全指摘事項` after 5.3.0 **and 5.3.0.M (実測必須ゲート) and 5.3.0.C (帰結クラス降格政策)** demotion are always blocking regardless of loop count. There is no gradual relaxation — every remaining blocking finding must be resolved before merge. 実測 (repro / failing_test) を伴わない finding は 5.3.0.M で `non_blocking_findings` に分類済みのため本 rule の対象に残らない — blocking = 「runtime 実測を伴う CONFIRMED 指摘」のみであり、「指摘ゼロ」は到達可能な終了条件になる。
 
 **scope=nit-noted exclusion**: Findings with `scope == "nit-noted"` (`acknowledged` トラックの informational 情報共有) are **excluded from `overall_assessment`** and **excluded from the mergeable countdown**. They are surfaced via two separate paths: (a) `/rite:pr-review` ステップ 5.4 「指摘事項」表の **scope 列** (pr-review.md ステップ 5.4 Integrated Report の `全指摘事項` 表で scope=nit-noted 行として可視化)、および (b) `/rite:fix` ステップ 1.4 display の独立した「nit (認知のみ) ({nit_noted_count}件)」セクション (fix.md 内のサブセクション、修正対象外と明示)。両者は表示先が異なるが scope=nit-noted という意味は共通で、いずれも merge を block しない。 The `/rite:fix` ステップ 2.4 `nit-noted-reply` サブステップで「nit、認知済」reply を投稿することで decay-track され、ステップ 4.6 サマリでは `acknowledged_nit_count` として独立カウントされる。これは fix commit 対象からも完全除外される。schema invariant #4 (CRITICAL/HIGH × nit-noted FAIL) により blocker 級の指摘を nit に降格する経路は禁止されているため、本除外は安全に運用できる。詳細な fix loop 経路は [`fix-relaxation-rules.md`](./fix-relaxation-rules.md) §Fix Target Classification を参照。
 

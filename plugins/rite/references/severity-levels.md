@@ -148,6 +148,25 @@ The final severity reported in the findings table is determined by combining the
 - **実測必須ゲート**: 帰結クラスは authoring 層 (アンカーを添付するか否か) で作用し、[§実測必須ゲート](#実測必須ゲート-measured-confirmed-gate) の 3 値判定 (`true` / `false` / 未判定) のロジックには介入しない。形式崩れアンカーが未判定 = blocking のまま扱われる挙動は本軸の導入前後で不変
 - **scope 軸**: 字面整合クラスを `scope=nit-noted` にしてはならない。nit-noted は本ゲートの対象外 (`gated` 偽) で `non_blocking_findings[]` に載らず、4 経路記録が失われる
 
+### ゲート層の class A/B 降格政策 (Consequence-Class Demotion Gate)
+
+<a id="ゲート層の-class-ab-降格政策"></a>
+
+上記 2 ドメイン (散文 / テスト網羅性) が **authoring 層** (アンカー添付可否) で作用するのに対し、本小節は同じ帰結クラス軸を**ゲート層**へ拡張する — 実測必須ゲートを**通過した blocking finding** (実測アンカー付き) を、帰結の到達点でさらに 2 分する第 2 降格軸。churn 尾部 (実体収束後に pin 精度・文言クラスの指摘だけが再生産される状態) の凍結判断を、人間の手動プレイブックから機構へ移す。
+
+| class | 定義 | 判別 |
+|---|---|---|
+| **class A** | 放置してマージすると**今回の成果物の実行時挙動が変わる**指摘 | 「どの操作で何が壊れるか」の実行時シナリオを 1 行で書ける |
+| **class B** | 帰結が**検出網の目の細かさ・可読性・文書整合に留まる**指摘 (テスト assert の錨付け精度・コメント文言・文書同期など) | 実行時シナリオを書けない。不確実な場合も class B へ倒す (攻め側既定) |
+
+**判定はファイル種別で行わない** (本軸の総則と同じ)。テストへの指摘でも「clean fixture のため本番バグを検出できない」類は実行時帰結を持つ class A である。
+
+**降格政策**: class A が 0 件になった cycle で、class B の blocking を**全件** `non_blocking_findings[]` へ降格する。class A が 1 件でも残る cycle では class B も blocking のまま (磨きは実体修正と並走する)。降格後は既存の mergeable 経路で自然終了し、独立した freeze フェーズ・状態遷移は存在しない。降格分は必ず記録に残る (降格理由 = class B 認定の判定文付き。報告自体は抑制しない — 変わるのは blocking 継続条件のみ)。
+
+**実測必須ゲートとの直列関係**: 本政策は実測必須ゲートの**後段**でのみ作用する。実測を添付できない指摘は先に実測ゲートが降格するため、本政策の入力は常に「実測付き blocking」である。散文指摘では「2 文の食い違いを示す grep」が technically measured になる問題を authoring 層の帰結クラスが弁別するのと同様に、**実測付きでも帰結が字面・検出網に留まる指摘**が churn 尾部で再生産される問題を本政策がゲート層で弁別する。
+
+**分類主体と強制層**: 分類 (A/B) は LLM が finding 発行者と**別コンテキスト**で判定し、適用 (A=0 判定・移送・監査記録) は `scripts/review-class-demotion-gate.sh` が機械強制する。判定不能 (分類出力の欠落・不正) は class A 扱い + WARNING (silent 降格しない)。集合演算・分類入力・実装契約の SoT は [assessment-rules.md §5.3.0.C](../skills/fix/references/assessment-rules.md#530c-帰結クラス降格政策-consequence-class-demotion-gate)、監査フィールドの形は [review-result-schema.md](./review-result-schema.md) を参照。
+
 ## Hypothetical Exception Categories
 
 Four reviewer categories MAY retain **CRITICAL / HIGH / MEDIUM / LOW-MEDIUM** severity for Hypothetical findings (matching the Matrix rows that specify "降格 → 推奨事項 (例外カテゴリを除く)"), because in their domain a single occurrence of the bug is catastrophic and "wait until we observe it in production" is not an acceptable risk model:

@@ -179,11 +179,12 @@
 | `verdict` | **enum** (string) | ✅ | 本 cycle の最終判定。**受理値**: `"mergeable"` / `"fix-needed"` の 2 値のみ (`overall_assessment` と同一語彙で、`pr-review.md` ステップ 8.1 の terminal sentinel `[review:mergeable]` / `[review:fix-needed:{n}]` と対応する)。**merge ゲート (`hooks/pre-tool-bash-guard.sh`) が読む必須キー**。`overall_assessment` と**同値であることが不変条件**で、両者は `scripts/review-measured-gate.sh` の単一の blocking 件数式から同時に代入される。下記 [verdict と reviewers](#verdict-と-reviewers) 参照 |
 | `reviewers` | array (string) | ✅ (非空) | 本 cycle で **ステップ 5.1 が Task 結果を回収できた** reviewer agent の名簿。`findings` とは独立で、findings 0 件の mergeable cycle でも非空になる。値は `plugins/rite/agents/*-reviewer.md` の basename (拡張子を除く、接尾辞 `-reviewer` を含む) と一致する — `findings[].reviewer` と同じ参照整合性規則。下記 [verdict と reviewers](#verdict-と-reviewers) 参照 |
 | `findings` | array | ✅ | `/rite:pr-review` ステップ 5.3.0.M 通過後の `全指摘事項` (0 件でも空配列として存在)。**blocking 指摘 + `scope == "nit-noted"` 指摘**を含む — nit-noted は本ゲートの対象外 (`assessment-rules.md` §5.3.0.M) のため非実測でも本配列に残る。ゲートで降格した非実測指摘 (scope ∈ {current-pr, follow-up}) のみが下記 `non_blocking_findings` に分離される |
-| `non_blocking_findings` | array | **write 側 ✅ (0 件でも `[]`)** / read 側は欠落許容 | 実測必須ゲート ([severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)) で non-blocking に降格した非実測指摘の配列 (要素の形は `findings[]` と同一)。下記 [non_blocking_findings 配列](#non_blocking_findings-配列) 参照 |
+| `non_blocking_findings` | array | **write 側 ✅ (0 件でも `[]`)** / read 側は欠落許容 | 実測必須ゲート ([severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)) で non-blocking に降格した非実測指摘、および帰結クラス降格政策 (§5.3.0.C) で降格した class B 指摘の配列 (要素の形は `findings[]` と同一。class B 降格分のみ `demotion` オブジェクトを持つ)。下記 [non_blocking_findings 配列](#non_blocking_findings-配列) 参照 |
 | `guardrail_audit_log` | array | **write 側 ✅ (0 件でも `[]`)** / read 側は欠落許容 | Finding Quality Guardrail Category #2 で `指摘事項` から除外した候補の監査記録。audit-only で判定 consumer は無視する。各要素は `reviewer`, `filter_category` (`Category #2`), `original_severity`, `file_line`, `description`, `filter_reason`, `verification` を持つ |
 | `reviewer_timings` | array | (任意、1.1.0+) | 本 cycle で回収できた各 reviewer の起動時刻。要素は `{reviewer, started_at}` で、`reviewer` は `findings[].reviewer` と同じ参照整合性規則 (`agents/*-reviewer.md` の basename)、`started_at` は ISO 8601 UTC の正規形 (`YYYY-MM-DDThh:mm:ssZ`) または `null` (取得不能)。値源は `pr-review.md` ステップ 4.6。audit-only で、判定 consumer (`/rite:fix` / merge ゲート / 収束トレンド判定) は無視する。下記 [reviewer_timings と直列化フラグ](#reviewer_timings-と直列化フラグ) 参照 |
 | `reviewer_spawn_serialized` | bool | (任意、1.1.0+) | 起動時刻の拡がり (spawn spread) が閾値を超えたか。書き手は `hooks/scripts/review-spawn-spread-check.sh` のみ。**計測不能のときはキーごと欠落する** — `true` / `false` / 欠落 (= 未判定) の 3 値モデルで、`verification.measured` と同じ (下記参照) |
 | `reviewer_spawn_spread_seconds` | integer | (任意、1.1.0+) | 実測した spawn spread (秒、`max(started_at) - min(started_at)`)。`reviewer_spawn_serialized` と同時に書かれ、同時に欠落する |
+| `class_demotion` | object | (任意、1.1.0+) | 帰結クラス降格政策 ([assessment-rules.md §5.3.0.C](../skills/fix/references/assessment-rules.md#530c-帰結クラス降格政策-consequence-class-demotion-gate)) の監査フラグ。書き手は `scripts/review-class-demotion-gate.sh` のみ。形は `{applied: bool, class_a: int, class_b: int, demoted: int}` — `applied` は降格が発動したか (class A=0 ∧ class B≥1)、`class_a` / `class_b` は effective 分類の件数 (判定不能は class A に計上)、`demoted` は本 cycle で移送した件数。**キー欠落 = 本ゲート未適用の cycle** (blocking 0 件の no-op を含む)。audit-only で判定 consumer は無視する — assessment / verdict への反映は helper が代入済みのため、read 側が本キーから判定を再導出してはならない |
 
 ### `findings[]` 要素
 
@@ -203,6 +204,8 @@
 | `description` | string | ✅ | 指摘内容 |
 | `suggestion` | string | ✅ | 推奨対応 |
 | `status` | **enum** (string) | ✅ | 対応状態。**受理値**: `"open"` / `"fixed"` / `"replied"` / `"deferred"` / `"acknowledged"` の **5 値**。現行実装では `/rite:pr-review` ステップ 6.1.a は常に `"open"` を出力する (将来の state machine 拡張で `/rite:fix` 完了時に `"fixed"` / `"acknowledged"` 等を書き戻す slot を予約)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=status_unknown_value; value=<val>` を stderr 出力する |
+| `consequence_class` | **enum** (string) | (任意、1.1.0+) | 帰結クラス降格政策 (§5.3.0.C) の分類結果。**受理値**: `"A"` / `"B"` の 2 値。**書き手は `scripts/review-class-demotion-gate.sh` のみ** — classification map から算出して無条件に上書きするため、ステップ 5.3.0.M step 1 の Claude が書いても helper の算出結果で必ず置き換わる (分類入力にはならない — 迂回防止)。キー欠落 = 本ゲート未適用 (blocking 0 件の cycle・ゲート導入前の JSON)。audit-only で判定 consumer は無視する |
+| `consequence_scenario` | string | (任意、1.1.0+) | 分類の判定文。class A は「放置時にどの操作で何が壊れるか」の実行時シナリオ 1 行、class B は「実行時シナリオを書けない」ことの認定文。`consequence_class` と同時に helper が書く (判定不能で class A に倒した finding は `consequence_class: "A"` のみで本キーは欠落する) |
 
 ### `verdict` と `reviewers`
 
@@ -210,9 +213,9 @@
 
 merge ゲート (`hooks/pre-tool-bash-guard.sh` の `merge-review-*` 検査) が結果 JSON に要求する 2 つのトップレベル必須キー。**要求側 (ゲート) と生成側 (writer) が同一契約を持つことが本節の目的**であり、要求キー集合の一致は `hooks/tests/review-verdict-reviewers-contract.test.sh` が機械的に pin する。
 
-#### `verdict` — 書き手は実測必須ゲート helper のみ
+#### `verdict` — 書き手は降格ゲート helper のみ
 
-`scripts/review-measured-gate.sh` の変換 jq が、`overall_assessment` を確定するのと**同一の blocking 件数式**から `verdict` を代入する。したがって両者は構造上つねに同値であり、乖離しうる経路を持たない。
+`scripts/review-measured-gate.sh` の変換 jq が、`overall_assessment` を確定するのと**同一の blocking 件数式**から `verdict` を代入する。5.3.0.C の `scripts/review-class-demotion-gate.sh` も (class B 移送後の blocking 件数から) **同一式で両キーを同時に再代入する** — 書き手は 2 helper に増えたが「両キーは常に単一の blocking 件数式から同時に代入される」という構造は不変で、両者は構造上つねに同値であり、乖離しうる経路を持たない。
 
 - **`pr-review.md` ステップ 5.3.0.M step 1 の Claude は `verdict` を書かない**。helper は既存値ガードを持たず**無条件に代入する**ため、step 1 で書いた値は必ず捨てられる。しかも step 1 時点では移送後の blocking 件数が未確定なので、書けば必ず推測値になる（`overall_assessment` を暫定値でよいとしているのと同じ理由）。`findings[].verification` とは強制の向きが逆で、あちらは preset を尊重する（だから `--reject-preset-verification` がある）のに対し `verdict` は上書きされる。ゲート helper を経ずに保存へ回った JSON は `verdict` を欠き `hooks/review-result-save.sh` が fail-loud で拒否する — ただしこの遮断が成立するのは、上記「step 1 は書かない」という散文規約が守られている限りにおいてであり、save helper 側に helper 由来と caller 由来を区別する手段は無い
 - **なぜ `overall_assessment` と別キーなのか**: merge ゲートの必須キー契約が `verdict` を名指ししており、ゲート側の要求緩和は本スキーマの守備範囲外だから。値としては同一判定の別名であり、consumer が違う (`verdict` → merge ゲート / `overall_assessment` → `/rite:fix` の読取経路)。**同値性は save helper では検査しない** — 検査すると、手で組み立てた復旧用 JSON が「保存されない」ことで merge も不能になり、救済経路を閉じる。同値性の担保は上記の単一代入式と契約テストが持つ
@@ -252,7 +255,9 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 <a id="non_blocking_findings-配列"></a>
 
-`/rite:pr-review` ステップ 5.3.0.M の実測必須ゲートで **non-blocking に降格した非実測指摘**を保持するトップレベル配列。要素のスキーマは `findings[]` と**同一** (上記 [findings[] 要素](#json-schema) の表の全フィールド — `pre_existing` を含む。本節では再掲しない)。
+`/rite:pr-review` ステップ 5.3.0.M の実測必須ゲートで non-blocking に降格した**非実測指摘**、およびステップ 5.3.0.C の帰結クラス降格政策 ([assessment-rules.md §5.3.0.C](../skills/fix/references/assessment-rules.md#530c-帰結クラス降格政策-consequence-class-demotion-gate)) で降格した **class B 指摘** (実測付き) を保持するトップレベル配列。要素のスキーマは `findings[]` と**同一** (上記 [findings[] 要素](#json-schema) の表の全フィールド — `pre_existing` を含む。本節では再掲しない)。
+
+**`demotion` オブジェクト (任意、1.1.0+)**: 5.3.0.C 由来の降格要素のみが持つ追加フィールド。形は `{policy: "class-b-demotion", reason: <判定文>}` — `policy` は降格の出所の判別子 (現在は 1 値のみ)、`reason` は class B 認定の判定文 (classification map の `scenario`)。書き手は `scripts/review-class-demotion-gate.sh` のみ。**本キーの有無が実測ゲート降格分 (5.3.0.M、キーなし) と class B 降格分 (5.3.0.C、キーあり) を区別する唯一の監査判別子**であり、6.1.d の PR 記録コメントは本キーを持つ要素に降格理由を併記する。read 側は未知キーを無視するため旧 reader でも壊れない。
 
 **設計判断 — なぜ `findings[]` に混ぜないか**: `findings[]` は「merge を止める集合」という単一の意味を持ち、`overall_assessment` / `total_findings` / cross-field invariant #2 のいずれもその前提で書かれている。非実測指摘を同配列に混ぜると invariant #2 (mergeable × open CRITICAL/HIGH 禁止) を read 側 3 経路 + 本 SoT で同時に緩める必要が生じる。独立配列にすれば `findings[]` の契約を一切変えずに記録だけを永続化できる。
 
