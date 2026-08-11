@@ -7,6 +7,7 @@
 * **Skip**: [20260811T061304Z-pr-2242.md](raw/fixes/20260811T061304Z-pr-2242.md) — 兄弟出口網羅・境界の両側テスト・対称修正として既存ページがカバー
 * **Skip**: [20260811T093508Z-pr-2242.md](raw/fixes/20260811T093508Z-pr-2242.md) — mutation testing・guard predicate・実測ゲートとして既存ページがカバー
 * **Skip**: [20260811T102706Z-pr-2242.md](raw/fixes/20260811T102706Z-pr-2242.md) — 境界の両側テスト・成果物ガード・防御テストとして既存ページがカバー
+* **lint:warning** — contradictions=0, stale=2, orphans=0, missing_concept=1, unregistered_raw=315, broken_refs=0
 * **Create**: [仕様が「A のとき報告・B のとき併記」を別々に定めている箇所を elif で書くと A ∧ B で B が消える](pages/anti-patterns/elif-drops-spec-required-co-reporting.md) — raw/reviews/20260810T134712Z-pr-2231.md, raw/fixes/20260810T135452Z-pr-2231.md を新規ページ化（2 つの述語が独立に成立しうるのに elif を使うと、両方成立する入力で後段の報告が構造的に出せなくなる。単独ケースのテストは全 green のまま）。
 * **Create**: [「step が走ったか」を後段で判定するとき、識別子の供給元をその step 自身にすると検出したい状態でだけ判定が成立しない](pages/anti-patterns/step-executed-check-minting-its-own-identifier.md) — raw/fixes/20260810T150514Z-pr-2231.md を新規ページ化（識別子を step の外から取ると marker と解決規則を削除できて検出が全 cycle で成立する。同じ idiom でも pass 条件の極性で安全性が反転する）。
 * **Create**: [残余の緩和策として値を開示するなら、その値が問題発生時と正常時で違う値になるかを確かめる](pages/heuristics/disclosure-is-not-identification.md) — raw/reviews/20260810T160134Z-pr-2231.md を新規ページ化（決定論的に組まれた値は健全時と stale 時でバイト単位に同一の文字列を出すため、開示は残余の識別に使えない）。
