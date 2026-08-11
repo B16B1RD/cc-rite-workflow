@@ -698,7 +698,9 @@ do
     echo "WARNING: GitHub template temporary file could not be created: $destination_path" >&2
     continue
   }
-  if cp "$source_path" "$temp_path" && [ ! -e "$destination_path" ] && [ ! -L "$destination_path" ] && mv "$temp_path" "$destination_path"; then
+  # Hard-link publication is atomic and no-clobber: ln fails if a competing entry appeared.
+  if cp "$source_path" "$temp_path" && ln "$temp_path" "$destination_path"; then
+    rm -f "$temp_path"
     echo "CREATED: $destination_path"
   else
     rm -f "$temp_path"
