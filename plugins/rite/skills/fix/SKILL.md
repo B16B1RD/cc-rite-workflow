@@ -2508,10 +2508,11 @@ fi
 
 `FIX_COMMIT_GUARD=skip` ならステップ 3 全体を skip して ステップ 4.2 へ、`proceed` なら以下を通常どおり実行する。
 
-`proceed` の場合、最初の fix commit より前の `HEAD` を `fix_cycle_base_sha` として記録する。ステップ 3.2 で複数コミットを選んでも、3.3.1 ではこの同じ SHA を `{fix_cycle_base_sha}` に literal substitute し、cycle 全体の基準点として使う。
+`proceed` の場合、最初の fix commit より前の `HEAD` を marker に出力して会話コンテキストへ保持する。ステップ 3.2 で複数コミットを選んでも、3.3.1 では marker の値を `{fix_cycle_base_sha_from_context}` に literal substitute し、cycle 全体の基準点として使う。
 
 ```bash
-fix_cycle_base_sha=$(git rev-parse HEAD)
+fix_cycle_base_sha=$(git rev-parse HEAD) || { echo "[fix:error]"; exit 1; }
+printf '[CONTEXT] FIX_CYCLE_BASE_SHA=%s\n' "$fix_cycle_base_sha"
 ```
 
 Once all findings have been addressed, verify the changes:
@@ -2707,7 +2708,12 @@ mkdir -p "$_state_root/.rite/fix-cycle-state"
 pr_number="{pr_number}"
 state_file="$_state_root/.rite/fix-cycle-state/${pr_number}.json"
 commit_sha_after=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
-commit_sha_before="{fix_cycle_base_sha}"
+commit_sha_before="{fix_cycle_base_sha_from_context}"
+if ! git cat-file -e "${commit_sha_before}^{commit}" 2>/dev/null; then
+  echo "ERROR: FIX_CYCLE_BASE_SHA が未展開または無効です: $commit_sha_before" >&2
+  echo "[fix:error]"
+  exit 1
+fi
 timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%S")
 files_changed=$(git diff --name-only "$commit_sha_before"..HEAD 2>/dev/null | jq -R -s 'split("\n") | map(select(length > 0))' 2>/dev/null || echo '[]')
 # 既存の cycle state に当該 fix cycle 全体の行数差分を記録する。バイナリの `-` は行数に含めない。

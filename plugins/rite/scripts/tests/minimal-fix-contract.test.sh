@@ -28,7 +28,11 @@ assert_grep 'fix limits additive defenses and explanation' "$fix_skill" \
 # Pin the complete fix-cycle range and its numeric persistence. In particular,
 # HEAD~1 would silently shrink a multi-commit cycle to its final commit.
 assert_grep 'fix records the pre-commit cycle baseline' "$fix_skill" \
-  'fix_cycle_base_sha=$(git rev-parse HEAD)'
+  'FIX_CYCLE_BASE_SHA=%s'
+assert_grep 'fix consumes the retained cycle baseline' "$fix_skill" \
+  'commit_sha_before="{fix_cycle_base_sha_from_context}"'
+assert_grep 'fix rejects an invalid or unexpanded baseline' "$fix_skill" \
+  'git cat-file -e "${commit_sha_before}^{commit}"'
 assert_grep 'fix uses the cycle baseline for numstat' "$fix_skill" \
   'git diff --numstat "$commit_sha_before"..HEAD'
 assert_grep 'fix excludes binary additions from line totals' "$fix_skill" \
@@ -36,8 +40,12 @@ assert_grep 'fix excludes binary additions from line totals' "$fix_skill" \
 assert_grep 'fix excludes binary deletions from line totals' "$fix_skill" \
   '$2 ~ /^[0-9]+$/ { deleted += $2 }'
 assert_grep 'fix persists additions as a JSON number' "$fix_skill" \
-  '"lines_added": $added'
+  '--argjson added "$lines_added"'
 assert_grep 'fix persists deletions as a JSON number' "$fix_skill" \
+  '--argjson deleted "$lines_deleted"'
+assert_grep 'fix maps the numeric additions into the cycle entry' "$fix_skill" \
+  '"lines_added": $added'
+assert_grep 'fix maps the numeric deletions into the cycle entry' "$fix_skill" \
   '"lines_deleted": $deleted'
 
 assert_grep 'reviewer defines over-fix' "$reviewer" \
