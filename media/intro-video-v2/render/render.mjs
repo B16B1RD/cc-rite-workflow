@@ -6,8 +6,8 @@
 // 原理的に得られない。契約と環境前提は DESIGN.md を参照。
 import { chromium } from 'playwright-core';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
+import { dirname, extname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const WIDTH = 1280;
@@ -55,16 +55,27 @@ if (!existsSync(chromePath)) {
 const outPath = resolve(outArg);
 mkdirSync(dirname(outPath), { recursive: true });
 
-// WSL2 実測: GPU 経路（SwiftShader）はフレーム内容が揺らぎ、screenshot 自体も散発的に失敗する。
-// software rasterizer に固定して決定論を確保する。
-const browser = await chromium.launch({ executablePath: chromePath, args: ['--disable-gpu'] });
-
-// ffmpeg は try の外で宣言する。ループ内で throw したとき finally から解放できないと、
+// ffmpeg / browser は try の外で宣言する。ループ内で throw したとき finally から解放できないと、
 // stdin の EOF を待ち続ける子プロセスが event loop を保持し、エラーを出したままプロセスが
 // 終了しない（exit code が呼び出し元へ届かず check-determinism.sh が無限に待つ）。
 let ffmpeg = null;
+let browser = null;
+// 照合を通ったものだけを outPath へ移す。ffmpeg に outPath を直接書かせると、失敗した再レンダが
+// 既存の正常な成果物を潰し、フレーム数照合に落ちた短い mp4 が正規のパスに残る（assemble.sh と
+// 同じ理由。同じパイプラインで扱いを非対称にしない）。
+const tmpPath = `${outPath}.${process.pid}.part${extname(outPath)}`;
 
 try {
+  // WSL2 実測: GPU 経路（SwiftShader）はフレーム内容が揺らぎ、screenshot 自体も散発的に失敗する。
+  // software rasterizer に固定して決定論を確保する。
+  // launch を try の内側に置くのは、Chrome の起動失敗が最も頻度の高い環境不足であり、
+  // 他の環境不足と同じ 1 行の診断で落とすため（DESIGN.md の環境前提が sandbox 制約を明記している）。
+  try {
+    browser = await chromium.launch({ executablePath: chromePath, args: ['--disable-gpu'] });
+  } catch (error) {
+    fail(`Chrome の起動に失敗しました: ${error.message}（sandbox 外で実行してください）`);
+  }
+
   const page = await browser.newPage({
     viewport: { width: WIDTH, height: HEIGHT },
     deviceScaleFactor: 1,
@@ -109,7 +120,7 @@ try {
       '-pix_fmt', 'yuv420p',
       // 実行時刻がコンテナに載ると同一入力でも md5 が変わるため落とす。
       '-map_metadata', '-1',
-      outPath,
+      tmpPath,
     ],
     { stdio: ['pipe', 'ignore', 'inherit'] },
   );
@@ -152,6 +163,11 @@ try {
         break;
       } catch (error) {
         lastError = error;
+        // リトライは黙って飲まない。SwiftShader の揺らぎは頻度が上がると決定論そのものを疑う
+        // 材料になるため、成功して終わった回も痕跡を残す。
+        console.error(
+          `render: フレーム ${index}/${frames} の screenshot に失敗しました（${attempt}/${SCREENSHOT_ATTEMPTS} 回目）: ${error.message}`,
+        );
         await new Promise((r) => setTimeout(r, SCREENSHOT_RETRY_MS));
       }
     }
@@ -195,7 +211,7 @@ try {
     'ffprobe',
     [
       '-v', 'error', '-select_streams', 'v:0', '-count_packets',
-      '-show_entries', 'stream=nb_read_packets', '-of', 'csv=p=0', outPath,
+      '-show_entries', 'stream=nb_read_packets', '-of', 'csv=p=0', tmpPath,
     ],
     { encoding: 'utf8' },
   );
@@ -206,6 +222,7 @@ try {
     fail(`出力フレーム数が宣言尺と一致しません（期待 ${frames} / 実際 ${written}）: ${outPath}`);
   }
 
+  renameSync(tmpPath, outPath);
   console.log(`rendered ${frames} frames @${fps}fps -> ${outPath}`);
 } catch (error) {
   console.error(`render: ${error.message}`);
@@ -218,5 +235,8 @@ try {
     ffmpeg.stdin.destroy();
     ffmpeg.kill();
   }
-  await browser.close();
+  // 成功経路では rename 済みで no-op。失敗経路では書きかけを消す（残しても再実行で上書きされる
+  // だけだが、部分成果物を成果物ディレクトリに残さない）。
+  rmSync(tmpPath, { force: true });
+  if (browser) await browser.close();
 }

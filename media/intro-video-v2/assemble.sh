@@ -36,16 +36,12 @@ shift $((OPTIND - 1))
 # 原因（利用者が渡した -t の値）が診断から消える。
 # 先頭ドット（`.5`）を弾くのは ffmpeg の duration パーサが受理しないため。ここで通すと
 # まさに上記の「ffmpeg のエラーだけが残る」状態を自分で作る。
+# 0 以下の値をここで別途弾く必要はない。xfade を実際に使う n>=2 では後段の
+# 「クロスフェード > フレーム周期」検査がより具体的な診断つきで弾き、n==1 では xfade が
+# 一度も使われないため。
 case "$xfade" in
   ''|.*|*[!0-9.]*|*.*.*) echo "assemble: -t は正の数値で指定してください（先頭ドット表記は不可）: $xfade" >&2; exit 1 ;;
 esac
-# 0 は xfade を発行しない指定だが、ffmpeg の xfade は duration が 1 フレーム周期未満だと
-# 遷移点で出力を打ち切るため、2 本目以降のシーンが丸ごと消えた mp4 を exit 0 で残す。
-# 「クロスフェードなしで繋ぐ」用途は本スクリプトの対象外。
-if ! awk -v x="$xfade" 'BEGIN{exit !((x + 0) > 0)}'; then
-  echo "assemble: -t に 0 は指定できません（クロスフェードなしの連結は対象外）: $xfade" >&2
-  exit 1
-fi
 
 scenes=("$@")
 for scene in "${scenes[@]}"; do
@@ -59,8 +55,21 @@ fi
 # 入力の尺はコンテナ尺で採る。単一ストリームの入力ではストリーム尺と一致し、複数ストリームを
 # 持つ素材でも「素材全体の長さ」がここで欲しい値。ストリーム尺は容器によって `N/A` になる
 # （Matroska 等）ため、正当な入力を弾いてしまう。
+# ffprobe の戻り値は文字列で来る。`N/A` を awk の文字列比較が素通りさせるため、数値化して
+# 正値であることを確かめる述語をひとつに集約する（判定を変えるときの直し漏れを防ぐ）。
+is_positive() {
+  awk -v v="$1" 'BEGIN{exit !((v + 0) > 0)}'
+}
+
 probe_duration() {
   ffprobe -v error -show_entries format=duration -of csv=p=0 "$1"
+}
+
+# BGM の音声ストリームの有無。無い入力を渡すと `[N:a]` のマッピングで ffmpeg が落ちるだけで、
+# 原因が -b の指定であることが診断に出ない。
+probe_audio_codec() {
+  ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 "$1" \
+    | awk 'NF { print; exit }'
 }
 
 # 映像のフレームレート（`num/den`）。同じストリームが複数回列挙される容器（mpegts 等）が
@@ -87,7 +96,7 @@ for scene in "${scenes[@]}"; do
   fi
   # 数値であることを収集地点で確かめる。ここを空検査だけで通すと、ffprobe が `N/A` を返した
   # 素材が下のマージン判定まで運ばれ、「クロスフェード不足」という誤った原因で報告される。
-  if ! awk -v d="$d" 'BEGIN{exit !((d + 0) > 0)}'; then
+  if ! is_positive "$d"; then
     echo "assemble: シーンの尺を数値で取得できません: $scene (ffprobe: ${d:-空})" >&2
     exit 1
   fi
@@ -98,7 +107,7 @@ for scene in "${scenes[@]}"; do
     exit 1
   fi
   p="$(awk -F/ -v r="$r" 'BEGIN{ split(r, f, "/"); if (f[1] + 0 > 0 && f[2] + 0 > 0) printf "%.9f", f[2] / f[1] }')"
-  if ! awk -v p="$p" 'BEGIN{exit !((p + 0) > 0)}'; then
+  if ! is_positive "$p"; then
     echo "assemble: シーンのフレームレートを数値で取得できません: $scene (ffprobe: ${r:-空})" >&2
     exit 1
   fi
@@ -179,7 +188,7 @@ if [ -n "$bgm" ]; then
   fi
   # シーン尺と同じ扱いにする。ffprobe が `N/A` を返す入力では awk が文字列比較へ落ち、
   # `"N/A" < "3.500"` が偽になって下の尺不足ガードが黙って通る。
-  if ! awk -v b="$bgm_duration" 'BEGIN{exit !((b + 0) > 0)}'; then
+  if ! is_positive "$bgm_duration"; then
     echo "assemble: BGM の尺を数値で取得できません: $bgm (ffprobe: ${bgm_duration:-空})" >&2
     exit 1
   fi
@@ -189,9 +198,17 @@ if [ -n "$bgm" ]; then
     echo "assemble: BGM が総尺より短く末尾が無音になります（BGM ${bgm_duration}s < 総尺 ${total}s）" >&2
     exit 1
   fi
-  fade_out_start="$(awk -v t="$total" 'BEGIN{printf "%.3f", (t - 2 > 0) ? t - 2 : 0}')"
+  if [ -z "$(probe_audio_codec "$bgm")" ]; then
+    echo "assemble: BGM に音声ストリームがありません: $bgm" >&2
+    exit 1
+  fi
+  # fade は総尺に収まる長さへ縮める。既定の in 1s / out 2s を固定にすると総尺 3s 未満で区間が
+  # 重なり、BGM 全体が減衰した mp4 が exit 0 で残る（同梱 fixture は 2s なので既定手順で到達する）。
+  fade_in="$(awk -v t="$total" 'BEGIN{printf "%.3f", (t / 4 < 1) ? t / 4 : 1}')"
+  fade_out="$(awk -v t="$total" 'BEGIN{printf "%.3f", (t / 2 < 2) ? t / 2 : 2}')"
+  fade_out_start="$(awk -v t="$total" -v o="$fade_out" 'BEGIN{printf "%.3f", t - o}')"
   args+=(-i "$bgm")
-  filter+=";[${#scenes[@]}:a]afade=t=in:st=0:d=1,afade=t=out:st=${fade_out_start}:d=2[a]"
+  filter+=";[${#scenes[@]}:a]afade=t=in:st=0:d=${fade_in},afade=t=out:st=${fade_out_start}:d=${fade_out}[a]"
   maps+=(-map "[a]" -c:a aac -b:a 192k)
 fi
 
@@ -203,7 +220,14 @@ fi
 out_ext=""
 case "$out" in *.*) out_ext=".${out##*.}" ;; esac
 tmp_out="$(mktemp "${out}.XXXXXX${out_ext}")"
-trap 'rm -f "${tmp_out:-}"' EXIT INT TERM HUP
+# signal 側は明示的に exit する。exit を欠くと bash が signal を consume して以降の処理を
+# 続行し、一時ファイルを消したうえで無関係な原因を報告する（canonical:
+# plugins/rite/references/bash-trap-patterns.md）。
+_assemble_cleanup() { rm -f "${tmp_out:-}"; }
+trap 'rc=$?; _assemble_cleanup; exit $rc' EXIT
+trap '_assemble_cleanup; exit 130' INT
+trap '_assemble_cleanup; exit 143' TERM
+trap '_assemble_cleanup; exit 129' HUP
 
 # rc の捕捉は if/else 形式で行う（`if ! cmd; then rc=$?` は bash 仕様上 `$?` が常に 0 になる）。
 if ffmpeg "${args[@]}" -filter_complex "$filter" "${maps[@]}" \
@@ -221,16 +245,18 @@ fi
 # 現れる）、成果物そのものを測らないと検出できない。
 # 秒尺ではなくフレーム数を使うのは render.mjs と同じ理由に加え、フレーム数が容器に依存しない
 # ため（Matroska はストリーム尺を持たないが nb_read_packets は返す）。
-# 許容差 2 枚は `total` の %.3f 丸めがフレーム境界に整列しないことに由来する。両側で見るのは、
-# 欠落が短い側・ハードカット化が長い側と、向きが一定しないため。
+# 判定は短い側のみ、許容差 1 枚。`-t "$total"` が出力尺の上限を固定するため実測が期待値を
+# 超えるのは期待値の %d 丸め分（最大 1 枚）に限られ、長い側で失敗が起きる経路がない。
+# 実測（24/25/30/60fps × 整数尺/端数尺 × 1〜3 シーン）でも差は 0 か +1 のみで、短い側へは
+# 一度も振れなかった。素材が捨てられる欠落は数十枚単位で出るのでこの幅に隠れない。
 expected_frames="$(awk -v t="$total" -v p="$frame_period" 'BEGIN{printf "%d", (t / p) + 0.5}')"
 if ! actual_frames="$(probe_frame_count "$tmp_out")"; then
   echo "assemble: ffprobe が出力の解析に失敗しました" >&2
   exit 1
 fi
 if ! awk -v a="$actual_frames" -v e="$expected_frames" \
-  'BEGIN{ d = (a + 0) - (e + 0); if (d < 0) d = -d; exit !((a + 0) > 0 && d <= 2) }'; then
-  echo "assemble: 出力のフレーム数が期待値と一致しません（期待 ${expected_frames} / 実測 ${actual_frames:-取得不能}、宣言尺 ${total}s）" >&2
+  'BEGIN{ exit !((a + 0) > 0 && (e + 0) - (a + 0) <= 1) }'; then
+  echo "assemble: 出力のフレーム数が期待値より不足しています（期待 ${expected_frames} / 実測 ${actual_frames:-取得不能}、宣言尺 ${total}s）" >&2
   echo "  シーンが連結されずに捨てられた可能性があります。-t の値とシーン尺を確認してください。" >&2
   exit 1
 fi
