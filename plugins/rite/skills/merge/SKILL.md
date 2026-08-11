@@ -11,6 +11,8 @@ argument-hint: "[--force-ci] <pr_number>"
 
 # /rite:merge
 
+> **質問規律**: すべての質問・再判定判断は [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従う。merge 自体は不可逆操作として既存の承認境界を維持する。
+
 ## Contract
 
 **Input**: `[--force-ci]` + PR number (required)
@@ -91,7 +93,7 @@ echo "[CONTEXT] MERGE_CHECKS_STATE=$checks_state"
 | 状態 | アクション |
 |------|-----------|
 | `isDraft == true` | `[merge:not-ready]` emit + 「先に `/rite:ready {pr_number}` を実行してください」案内 + 終了 |
-| `mergeable != "MERGEABLE"` | `[merge:not-ready]` emit + 原因 (`mergeStateStatus`) 表示 + AskUserQuestion で「再判定 (`mergeStateStatus` を再取得して ステップ 1 をもう一度実行、1 回のみ) / 中止」を提示 |
+| `mergeable != "MERGEABLE"` | 再判定は可逆なので、原因 (`mergeStateStatus`) を表示・既存 work memory に記録して 1 回だけ自動再判定する。再度非 MERGEABLE なら `[merge:not-ready]` を emit して終了 |
 | `mergeable == "MERGEABLE"` + checks 0 件 | CI 未設定リポジトリとして従来どおりステップ 2 へ |
 | `mergeable == "MERGEABLE"` + checks が pending + `force_ci == false` | `[merge:not-ready]` emit + 「checks の完了を待って再実行」と表示して終了。待機・自動 retry はしない |
 | checks が pending + `force_ci == true` | 未完了 check の一覧を表示した後、ステップ 2 へ |

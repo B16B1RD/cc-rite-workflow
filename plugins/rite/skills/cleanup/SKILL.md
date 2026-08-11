@@ -10,6 +10,8 @@ argument-hint: "[branch_name]"
 
 # /rite:cleanup
 
+> **質問規律**: すべての質問・削除判断は [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従う。PR/Issue/branch の削除・close・新規 Issue 公開は不可逆操作として確認を維持する。
+
 PR マージ後のクリーンアップを実行する。やることは以下のシーケンシャルなタスク列:
 
 0. flow-state を `phase=cleanup, active=true` に初期化
