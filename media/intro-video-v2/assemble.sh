@@ -41,7 +41,7 @@ if [ "$preset" = true ]; then
     "out/04-gates.mp4"
     "out/05-closing.mp4"
   )
-  [ -n "$bgm" ] || bgm="rite-synth-bgm.mp3"
+  [ -n "$bgm" ] || bgm="bombinsound-technology-tech-technology-90-second-499581.mp3"
 else
   [ "$#" -ge 1 ] || usage
   scenes=("$@")
@@ -195,6 +195,31 @@ if ! awk -v a="$actual" -v t="$total" -v p="$frame_period" \
   echo "assemble: 出力の実尺が期待値と一致しません（期待 ${total}s / 実測 ${actual}s）: $out" >&2
   echo "  シーンが連結されずに捨てられた可能性があります。-t の値とシーン尺を確認してください。" >&2
   exit 1
+fi
+
+# BGM 指定時は完成物そのものを測る。入力音源の音量だけでは、fade / filter / encode 後の
+# 可聴性を保証できない。音声ストリーム不在や volumedetect の解析不能も未検証成功にしない。
+if [ -n "$bgm" ]; then
+  if volume_report="$(ffmpeg -nostdin -hide_banner -i "$out" -map 0:a:0 \
+    -af volumedetect -f null - 2>&1)"; then
+    :
+  else
+    rc=$?
+    unlink "$out" 2>/dev/null || true
+    echo "assemble: 出力音声の可聴性を測定できませんでした（volumedetect exit ${rc}）: $out" >&2
+    exit 1
+  fi
+  max_volume="$(printf '%s\n' "$volume_report" | sed -n 's/.*max_volume: \([-+0-9.]*\) dB.*/\1/p' | tail -1)"
+  if ! awk -v v="$max_volume" 'BEGIN{exit !(v ~ /^-?[0-9]+(\.[0-9]+)?$/)}'; then
+    unlink "$out" 2>/dev/null || true
+    echo "assemble: 出力音声の max_volume を解析できませんでした（volumedetect: ${max_volume:-空}）: $out" >&2
+    exit 1
+  fi
+  if ! awk -v v="$max_volume" 'BEGIN{exit !((v + 0) >= -20)}'; then
+    unlink "$out" 2>/dev/null || true
+    echo "assemble: BGM が実質無音です（実測 max_volume ${max_volume} dB < 閾値 -20 dB）" >&2
+    exit 1
+  fi
 fi
 
 echo "assembled ${#scenes[@]} scenes (${actual}s, xfade ${xfade}s) -> $out"
