@@ -162,7 +162,7 @@ echo "[DEBUG] parent not detected for issue #{issue_number} — processing as st
 Work Memory の正本を **存在ではなく内容** で選ぶ。PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし）はファイルとして存在するが、存在検査だけだと stub を正本と見なし Issue コメント側 fallback が発火しない（存在と成功を同一視しないため）。進捗セクション見出し（現行 `### 進捗サマリー` / v1 `### 進捗`）が実在するときだけローカル WM を正本とし、stub 判定時はコメント側へ fallback して WARNING で可視化する:
 
 ```bash
-# WM 正本の選定（内容検査 — Issue #2141）
+# WM 正本の選定（候補の存在ではなく内容を検査する）
 # 進捗セクション: 現行 `### 進捗サマリー` と v1 `### 進捗` の両方を認める
 # （incomplete 抽出が両見出しを拾う契約との整合）
 _wm_local=".rite-work-memory/issue-{issue_number}.md"
@@ -423,7 +423,7 @@ esac
      # --self-root "$PPID" でこの Bash の親（claude ハーネス）の process subtree を self として除外する。
      _fc_rc=0
      bash {plugin_root}/hooks/scripts/worktree-foreign-cwd.sh "{flow_wt}" --self-root "$PPID" >/dev/null 2>&1 || _fc_rc=$?
-     # sandbox マスク検知（Issue #1957）: sandbox が admin dir の config.worktree に
+     # sandbox マスク検知: sandbox が admin dir の config.worktree に
      # /dev/null マスクマウントを張っている（= character device に見える）状態で
      # `git worktree remove`（--force 含む）を実行すると、working tree 削除失敗後の
      # admin dir 再帰削除が HEAD を unlink した直後にマスクの EBUSY で中断し、HEAD のみ
@@ -439,7 +439,7 @@ esac
      elif [ -n "$_wt_admin" ] && [ -c "$_wt_admin/config.worktree" ]; then
        echo "WARNING: sandbox が作業ツリーの管理ディレクトリ（$_wt_admin/config.worktree）にマスクマウントを張っているため、削除を見送りました。この状態で git worktree remove を実行すると管理ディレクトリが半壊するため、削除自体を試行しません。次回のセッション開始時（sandbox 外）に作業ツリーとローカルブランチが自動で回収されます。実行エージェントはこの場で sandbox を無効化して remove を再試行しないこと。" >&2
        echo "[CONTEXT] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1; path={flow_wt}" >&2
-       # Issue #1945: このマスク検知は次に control が渡る側（admin dir 半壊 = corpse）の
+       # admin dir 半壊では、このマスク検知は次に control が渡る側（corpse）の
        # 直接の前兆であり、corpse は checkout 中 branch を git で解決できないため
        # pr-cycle-cleanup.sh Step 5 のブランチ名 manifest bypass（#1966）が構造的に効かない。パス自体を
        # 事前に記録しておけば、pr-cycle-cleanup.sh の corpse age guard がこの記録を見て
@@ -461,7 +461,7 @@ esac
        # git 診断メッセージは locale 翻訳で揺れるため LC_ALL=C で固定し、busy 検出の
        # substring マッチを安定させる（repo 既存の LC_ALL=C 規約と統一）。stderr を
        # 一時ファイルに退避するのは、通常 fallback（remove → remove --force）の
-       # どちらで失敗しても最後の失敗理由を busy 判定に使うため（Issue #1923 AC-5）。
+       # どちらで失敗しても最後の失敗理由を busy 判定に使うため。
        _wt_rm_err=$(mktemp 2>/dev/null) || _wt_rm_err=""
        if LC_ALL=C git worktree remove "{flow_wt}" 2>"${_wt_rm_err:-/dev/null}" \
           || LC_ALL=C git worktree remove --force "{flow_wt}" 2>"${_wt_rm_err:-/dev/null}"; then
@@ -471,7 +471,7 @@ esac
          if [ -n "$_wt_rm_err" ] && grep -qi "busy" "$_wt_rm_err" 2>/dev/null; then
            echo "WARNING: worktree 削除が「Device or resource busy」で失敗しました。Claude Code の sandbox が worktree の .git/worktrees/*/config.worktree・commondir に read-only bind mount を張っている環境では、sandbox 内からの git worktree remove（--force 含む）は構造的に失敗します。この失敗は意図的に non-blocking として遅延 reap（pr-cycle-cleanup.sh）へ委譲するため、実行エージェントはこの場で sandbox を無効化して同コマンドを再試行しないこと。復旧: ユーザーが sandbox 外のシェルで次を実行してください: git worktree remove --force '{flow_wt}' && git worktree prune" >&2
          fi
-         # Issue #1945: remove --force 自体がこの busy 失敗の過程で admin dir を
+         # remove --force 自体がこの busy 失敗の過程で admin dir を
          # 部分破壊し corpse 化した場合、上記マスク検知分岐と同じ理由でブランチ名
          # bypass（#1966）が効かなくなる。パスを reap manifest に記録し、
          # pr-cycle-cleanup.sh の corpse age guard バイパスに委ねる
@@ -721,7 +721,7 @@ fi
 # 存在有無が不明なため削除を試行せず未完了として surface する（不明を「既削除」に丸めると、
 # delete_branch_on_merge: false のリポジトリでリモートブランチが黙って残る）。
 # ただし rc=128 は sandbox の HTTPS プロキシ断など **transient** で再現することがある
-# （PR #2137 cleanup で 1 回目 128 → 2 回目 2 を実測。Issue #2140）。1 回目が 128 のときだけ
+# （初回 128 の後に状態が確定して 2 へ変わる実測がある）。1 回目が 128 のときだけ
 # **1 回再試行**し、2 回目の結果を採用する。2 回とも 128 なら従来どおり CHECK_FAILED で
 # 削除を処方しない（確認できていない状態での偽処方は #2016 と同型）。rc=0/2 の即返しは
 # 再試行せず 1 回で確定する（正常系の遅延を増やさない）。
@@ -779,7 +779,7 @@ if [ -z "$_ls_out" ]; then
   echo "WARNING: 一時ファイルを作成できずリモートブランチの存在確認ができないため、削除を試行していません。" >&2
 else
 _ls_err=$(LC_ALL=C git ls-remote --exit-code --heads origin "refs/heads/{branch_name}" 2>&1 >"$_ls_out"); _ls_rc=$?
-# transient 失敗 (rc=128: ネットワーク断・proxy 遮断等) は 1 回だけ再試行する (Issue #2140)。
+# transient 失敗 (rc=128: ネットワーク断・proxy 遮断等) は一過性たり得るため 1 回だけ再試行する。
 # 2 回目の結果を採用する。rc=0/2 の即返しは従来どおり 1 回で確定。2 回とも 128 なら
 # 下の `*)` が CHECK_FAILED を emit し、削除は処方しない（確認できていない状態での偽処方を防ぐ — #2016）。
 if [ "$_ls_rc" -eq 128 ]; then
@@ -834,7 +834,7 @@ case "$_ls_rc" in
     # 多バイト文字に隣接する変数展開は必ず brace で閉じる。日本語文中で `$_ls_err。` と書くと
     # bash が `。` の先頭バイト (0xE3) を変数名に取り込み、非 UTF-8 ロケール (macOS CI 等) で
     # 変数が未定義化して原因テキストが消える。残った不正バイトは下流の BSD sed 等も落とす
-    # （同 invariant: hooks/tests/flow-state.test.sh TC-8b-h、Issue #2008）。
+    # （同 invariant: hooks/tests/flow-state.test.sh TC-8b-h）。
     # 捕捉した stderr は文末に置く。ls-remote の stderr は空行を含む複数行が常態のため、文中に
     # 挿入すると operative な日本語（削除を試行していない旨）が英文パラグラフの末尾に孤立する。
     # 直上のローカル削除が $del_err を文末に置いているのと同じ配置。
@@ -896,8 +896,8 @@ rite_rm() {
 
 # レビュー結果 JSON は一律削除しない。**非実測指摘 (non_blocking_findings[]) を持つものは
 # 削除せず archive/ へ退避する** — ステップ 6.1.d の PR 記録コメントはポインタ (reviewer /
-# severity / file:line) + 降格理由 (判定文) しか載せないため (Issue #2039 / #2246)、無条件削除すると非実測 CRITICAL の詳細が
-# merge 直後にどこにも残らなくなり、Issue #2024 D-01「マージ後に人間が拾い直せる」が偽になる。
+# severity / file:line) + 降格理由 (判定文) しか載せないため、無条件削除すると非実測 CRITICAL の詳細が
+# merge 直後に失われ、人間が拾い直せなくなる。
 # 判定 (jq rc の値域分岐 / 判定不能は退避側へ倒す) と退避 (mkdir・mv の分離、同名衝突の検出) は
 # helper へ委譲済み。契約と reason 語彙の SoT は helper docstring、挙動は
 # hooks/tests/review-results-archive-or-rm.test.sh が behavioral に固定する。

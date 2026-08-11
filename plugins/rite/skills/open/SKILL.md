@@ -231,7 +231,7 @@ wt_path="$repo_root/$wt_rel"
 branch="{branch_name}"
 base="{base_branch}"
 
-# dirty main checkout 検出 (Issue #1832): worktree は origin/{base} 起点で作られるため、
+# dirty main checkout 検出: worktree は origin/{base} 起点で作られ、未commit変更を継承しないため、
 # main checkout の未コミット変更は構造的に引き継がれない。作業対象と重なる変更が警告なく
 # worktree から欠落するのを防ぐ (git status 失敗時はガード skip = 従来挙動で続行)
 if _dirty_files=$(git -C "$repo_root" status --porcelain 2>/dev/null); then

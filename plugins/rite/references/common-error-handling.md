@@ -77,6 +77,8 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 | **(b) 失敗** — 対処しても失敗が残り、人間の行動が必要 | **行動可能な 1 行のみ**（何をすればよいか）。プロキシの仕組み・診断過程・環境の背景説明は書かない |
 | **(c) 機械可読経路** | `[CONTEXT]` marker は従来どおり emit する（監査・後段 routing 用。本規則は人間向け散文のみを対象とする） |
 
+ユーザー可視メッセージには rite 開発リポジトリ固有の Issue / PR 番号を出さず、番号が担っていた理由・条件・対処を自己完結した文で示す。番号の出所は commit / PR body に置く。
+
 **不変条件**:
 
 - **fail-loud は不変** — 沈黙化するのは「成功した迂回の説明」であって、失敗の隠蔽ではない

@@ -279,7 +279,7 @@ tmpfile=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-content-XXXXXX")
 trigger_stderr=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-trigger-err-XXXXXX") || trigger_stderr=/dev/null
 trap 'rm -f "$tmpfile"; [ "$trigger_stderr" != "/dev/null" ] && rm -f "$trigger_stderr"' EXIT
 
-# heredoc content write 失敗ガード (pr-review.md 6.5.W / fix.md 4.6.W と対称、Issue #1522)。
+# heredoc content write 失敗を成功扱いしないガード (pr-review.md 6.5.W / fix.md 4.6.W と対称)。
 # /tmp full / permission 拒否 / inode 枯渇で tmpfile への write が truncate された場合、
 # truncated content を silent に wiki ingest するのを防ぐ。
 # close.md は Step 2 (heredoc) と trigger 呼び出しが単一 bash ブロックのため、

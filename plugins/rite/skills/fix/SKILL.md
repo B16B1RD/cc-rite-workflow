@@ -3822,7 +3822,7 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt" \
 
 **Example output:**
 ```
-PR #123 のレビュー指摘対応を完了しました
+PR #{pr_number} のレビュー指摘対応を完了しました
 
 全指摘: 4件
 対応した指摘: 4件

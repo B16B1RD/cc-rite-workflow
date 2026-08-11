@@ -355,8 +355,8 @@ When a GraphQL API call fails:
 /rite:issue-list all          # すべての Issue を一覧
 /rite:issue-list bug          # "bug" ラベルの Issue を一覧
 /rite:issue-list enhancement  # "enhancement" ラベルの Issue を一覧
-/rite:issue-list #42          # Issue #42 の詳細を表示
-/rite:issue-list 42           # Issue #42 の詳細を表示
+/rite:issue-list #{number}    # 指定 Issue の詳細を表示
+/rite:issue-list {number}     # 指定 Issue の詳細を表示
 
 # Sprint フィルタ（Iteration 有効時のみ）
 /rite:issue-list --sprint current     # 現在のスプリントの Issue を一覧

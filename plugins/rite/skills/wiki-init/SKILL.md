@@ -323,7 +323,7 @@ touch .rite/wiki/pages/anti-patterns/.gitkeep
 plugin_root="{plugin_root}"
 
 initialized_at=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")
-# log.md の OKF 日付見出し (## YYYY-MM-DD) 用の date-only 値 (Issue #1520)。
+# log.md の OKF 日付見出し (## YYYY-MM-DD) は日付だけを受理するため date-only 値を使う。
 initialized_date=$(date -u +"%Y-%m-%d")
 
 # SCHEMA.md（{initialized_at} プレースホルダーを含まないため単純コピー）
