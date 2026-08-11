@@ -31,6 +31,13 @@ shift $((OPTIND - 1))
 [ -n "$out" ] || usage
 [ "$#" -ge 1 ] || usage
 
+# 尺の比較を数値で行う以上、xfade も数値であることを入口で確かめる。非数値のまま通すと
+# 比較が 0 に潰れてシーン尺ガードが無条件通過し、ffmpeg のフィルタ解析エラーだけが残って
+# 原因（利用者が渡した -t の値）が診断から消える。
+case "$xfade" in
+  ''|*[!0-9.]*|*.*.*|.) echo "assemble: -t は 0 以上の数値で指定してください: $xfade" >&2; exit 1 ;;
+esac
+
 scenes=("$@")
 for scene in "${scenes[@]}"; do
   [ -f "$scene" ] || { echo "assemble: シーンが見つかりません: $scene" >&2; exit 1; }
