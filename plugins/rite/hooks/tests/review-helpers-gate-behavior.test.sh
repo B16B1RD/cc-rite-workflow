@@ -2292,9 +2292,9 @@ assert_not_grep "TC-4.16l 自 login 不明なら id の解決自体を試みな�
 assert_not_grep "TC-4.16l 段 1 を通らないので UNRESOLVED marker も出ない" "$ERR" 'NONBLOCKING_ID_UNRESOLVED'
 
 # =====================================================================
-# TC-4.17 / TC-4.18 []: ポインタのみ本文の受理と旧 6 列記録との互換
+# TC-4.17 / TC-4.18 []: ポインタ + 降格理由本文の受理と旧 6 列記録との互換
 # =====================================================================
-echo "--- TC-4.17/4.18: pointer-only 本文 ---"
+echo "--- TC-4.17/4.18: ポインタ + 降格理由本文 ---"
 
 # TC-4.17 [] `-` 入りの `file:line` セルを含む本文が helper の本文検査 4 段を素通り
 # すること (= 規約どおり書いた本文が弾かれないこと) を固定する。**規約そのもの (行を落とさず `-`
@@ -2318,9 +2318,10 @@ printf '## 📜 rite 非実測指摘の記録 (non-blocking)\n\n| レビュア�
 GH_LOOKUP_JSON="$NBR_EMPTY_COMMENTS" run_nbr --pr 9 --owner-repo o/r --count 3 --iteration-id 9-502 --content-file "$NBR_BODY_DROPPED"
 assert_grep "TC-4.17 [negative control] 行を落としても helper は検出しない (行数は caller 責務)" "$ERR" 'outcome=created; count=3; iteration_id=9-502;'
 
-# TC-4.18 [T-05 / AC-5] 旧 6 列形式の記録コメントが PR 上に既存としてあるとき、新形式 (3 列) で
+# TC-4.18 [T-05 / AC-5] 旧 6 列形式の記録コメントが PR 上に既存としてあるとき、新形式 (4 列) で
 # update-in-place される。lookup 述語が見るのは 1 行目 marker への前方一致と最終非空行 sentinel の
 # 2 つだけで**列構成に非依存**なので、列を変えても孤児化・重複作成は起きない — この非依存性が
+# fixture 本文にも及ぶ (fixture の列形状は任意 — helper は列を検査しないため 3 列のままでよい)。
 # AC-5 の根拠であり、述語に本文形状 (列見出し等) を足す退行をここで落とす。
 NBR_LEGACY6="$TMP_ROOT/nbr-legacy-6col.json"
 cat > "$NBR_LEGACY6" <<'EOF'
@@ -2988,13 +2989,13 @@ else
       #     (ラベルが「所在行」と表明している以上、同一行であることまで要求する)。
       assert "TC-5i variant A fence の所在行がパスと non_blocking_findings を同一行で示す" "1" \
         "$(printf '%s\n' "$_va_fence" | grep -cE '\.rite/review-results/.*non_blocking_findings' || true)"
-      # 列形状の pin だけでは「表を 3 列に保ったまま fence 内の別の場所へ全文を再掲載する」
+      # 列形状の pin だけでは「表を 4 列に保ったまま fence 内の別の場所へ全文を再掲載する」
       #     退行 (箇条書き / 脚注 / 追加 fence) を 1 assert も捕捉できない (実測: 表の下に
       #     `- **{file}:{line}** — {finding_detail_text}` を足しても全 assert green)。
       #     fence が持ってよい placeholder を allowlist で固定し、全文を運ぶ新しい placeholder の
       #     追加を落とす。値の追加・改名はどちらもここで loud fail し、期待値更新という形で
       #     人手のレビューを強制する。
-      #     **ラベルは「新規 placeholder の検出」までしか名乗らない** — allowlist 内の 7 種を
+      #     **ラベルは「新規 placeholder の検出」までしか名乗らない** — allowlist 内の 8 種を
       #     使って全文を再掲載する形はここでは落ちず、下の出現回数 pin が担う。
       #     placeholder を 1 つも含まない literal な散文はどちらの pin も見ないが、それは射程の
       #     穴ではない: 本 fence はレンダリング前のテンプレートで、finding ごとの全文は
@@ -3013,14 +3014,12 @@ else
         "$_va_ph"
       # allowlist 内の placeholder だけで全文を再掲載する形 (表の下に
       #     `- **{file}:{line}** — 指摘の全文` を足す / **2 つ目の表を足す** 等) を落とす。
-      #     **行の形ではなく fence 全体での出現回数**を pin する — finding 単位の 4 placeholder
-      #     (`{reviewer_type}` / `{severity}` / `{file}` / `{line}`) はデータ行 1 本に各 1 回だけ
+      #     **行の形ではなく fence 全体での出現回数**を pin する — finding 単位の 5 placeholder
+      #     (`{reviewer_type}` / `{severity}` / `{file}` / `{line}` / `{demotion_label}`) はデータ行 1 本に各 1 回だけ
       #     現れるので、2 回目の出現は「finding をもう一度列挙している」ことと同値になる。
       #     行形状フィルタ (`grep -v '^ *|'` で表行を除外する形) にすると、**2 つ目の表**による
       #     再掲載を 1 assert も捕捉できない (実測: 第 2 表を足しても 670/0 で通る)。出現回数なら
       #     箇条書き・脚注・追加 fence・追加表のすべてが同じ 1 本で落ちる。
-      #     demotion_label も対象に含める — 降格理由列を使った第 2 表 / 箇条書きによる再列挙も
-      #     finding 単位 placeholder の 2 回目の出現として同じ 1 本で落とすため。
       for _ph in reviewer_type severity file line demotion_label; do
         _va_ph_n=$(printf '%s\n' "$_va_fence" | grep -oF "{$_ph}" | wc -l | tr -d ' ')
         assert "TC-5i variant A fence の {$_ph} 出現回数が 1 (finding 再列挙 = 全文再掲載の検出)" "1" "$_va_ph_n"
@@ -3061,7 +3060,7 @@ else
   #
   #     全文掲載の禁止は「列」ではなく「本文への掲載そのもの」であることを宣言した文が消える
   #     退行を落とす。placeholder allowlist / row-scoped pin は形を見るが、この宣言は射程を
-  #     決めており、消えると後続の編集者が「3 列なら何を足してもよい」と読む。
+  #     決めており、消えると後続の編集者が「4 列なら何を足してもよい」と読む。
   assert "TC-5i' 6.1.d 区間に「表の外への全文再掲載も禁止」の宣言が 1 箇所" "1" \
     "$(_sec_610d | grep -c '表の外に別形式で全文を再掲載することも禁止' || true)"
   #     [T-04 / AC-2] `file:line` 未取得時に行を落とさず `-` を入れる規約。helper は表の行数を
@@ -3069,6 +3068,15 @@ else
   #     6.1.d の散文しかない (TC-5h の字下げ禁止 pin と同型)。
   assert "TC-5i' 6.1.d 区間に -（行を落とさない）規約が 1 箇所" "1" \
     "$(_sec_610d | grep -c '行ごと落とさず' || true)"
+  #     [AC-5] `{demotion_label}` の**値則** (demotion キーを持つとき `class B 降格: {demotion.reason}`、
+  #     持たないとき `実測なし`) の pin。TC-5i の allowlist / 出現回数 pin は 4 列目の**形**しか
+  #     固定せず、値則を「一律 実測なし」へ変異させても全 green で通る (実測)。値則が drift すると
+  #     class B 降格の判定文が記録コメントから無言で消え、AC-5 の監査チャネル (何がなぜ降格されたか
+  #     を PR 上で監査する唯一の共有経路) が壊れる。variant 別の値種固定 (TC-5g''') と同型の散文 pin。
+  assert "TC-5i' 6.1.d 区間に demotion_label の class B 側値則が 1 箇所" "1" \
+    "$(_sec_610d | grep -cF 'class B 降格: {demotion.reason}' || true)"
+  assert "TC-5i' 6.1.d 区間に demotion_label の非降格側値則 (実測なし) が 1 箇所" "1" \
+    "$(_sec_610d | grep -cF '持たないとき `実測なし`' || true)"
 
   # (h) 8.0.4 (ステップ 6.1.a JSON 保存の実行保証) の三者 coupling を固定する。
   #     ステップ 6 を丸ごと skip した cycle は 8.0.3 の anchor (REVIEW_CYCLE_ID /

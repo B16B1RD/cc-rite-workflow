@@ -894,7 +894,7 @@ rite_rm() {
 
 # レビュー結果 JSON は一律削除しない。**非実測指摘 (non_blocking_findings[]) を持つものは
 # 削除せず archive/ へ退避する** — ステップ 6.1.d の PR 記録コメントはポインタ (reviewer /
-# severity / file:line) + 降格理由 (判定文) しか載せないため (Issue #2039)、無条件削除すると非実測 CRITICAL の詳細が
+# severity / file:line) + 降格理由 (判定文) しか載せないため (Issue #2039 / #2246)、無条件削除すると非実測 CRITICAL の詳細が
 # merge 直後にどこにも残らなくなり、Issue #2024 D-01「マージ後に人間が拾い直せる」が偽になる。
 # 判定 (jq rc の値域分岐 / 判定不能は退避側へ倒す) と退避 (mkdir・mv の分離、同名衝突の検出) は
 # helper へ委譲済み。契約と reason 語彙の SoT は helper docstring、挙動は
