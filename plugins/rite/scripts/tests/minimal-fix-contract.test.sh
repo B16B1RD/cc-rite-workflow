@@ -25,6 +25,21 @@ assert_grep 'fix prefers deletion when deletion resolves the finding' "$fix_skil
 assert_grep 'fix limits additive defenses and explanation' "$fix_skill" \
   '新 guard / fallback / 説明コメントの追加は finding が新挙動・新契約を要求する場合のみ'
 
+# Pin the complete fix-cycle range and its numeric persistence. In particular,
+# HEAD~1 would silently shrink a multi-commit cycle to its final commit.
+assert_grep 'fix records the pre-commit cycle baseline' "$fix_skill" \
+  'fix_cycle_base_sha=$(git rev-parse HEAD)'
+assert_grep 'fix uses the cycle baseline for numstat' "$fix_skill" \
+  'git diff --numstat "$commit_sha_before"..HEAD'
+assert_grep 'fix excludes binary additions from line totals' "$fix_skill" \
+  '$1 ~ /^[0-9]+$/ { added += $1 }'
+assert_grep 'fix excludes binary deletions from line totals' "$fix_skill" \
+  '$2 ~ /^[0-9]+$/ { deleted += $2 }'
+assert_grep 'fix persists additions as a JSON number' "$fix_skill" \
+  '"lines_added": $added'
+assert_grep 'fix persists deletions as a JSON number' "$fix_skill" \
+  '"lines_deleted": $deleted'
+
 assert_grep 'reviewer defines over-fix' "$reviewer" \
   '**over-fix** is a change that exceeds the finding'
 assert_grep 'over-fix covers net surface area' "$reviewer" \
