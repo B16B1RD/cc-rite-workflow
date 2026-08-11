@@ -8,10 +8,15 @@
 - 2026-08-11 のスパイクで frame-step 方式（仮想時計 seek → screenshot → ffmpeg pipe）の
   決定論を実証した。2 シーン計 360 フレーム（1280x720 / 30fps）を 2 回独立にレンダし、
   mp4 の md5 が完全一致することを確認している。
-- Issue #2240 でスパイク版を本パイプラインとして整備した。スパイク版からの差分は、
-  契約違反（`window.SCENE`）・環境不足（Chrome / シーンの不在、ffmpeg の異常終了）の
-  fail-loud 化と Chrome パスの解決に限る。出力そのものの検証は実行時ガードではなく
-  `check-determinism.sh` と Issue の手動テスト（T-01 / T-02 / T-03）が担う。
+- Issue #2240 でスパイク版を本パイプラインとして整備した。スパイク版からの差分は次の 3 系統:
+  - **fail-loud 化**: 契約違反（`window.SCENE`、フレーム 0 枚、シーン内の未捕捉例外）と
+    環境不足（Chrome / シーンの不在、ffmpeg の異常終了）、および Chrome パスの解決
+  - **連結側の新規設計**: `-t` の入力検証、シーン尺のマージン検査、BGM 尺不足の検査、
+    BGM fade の総尺追従、出力実尺の照合。スパイク版に対応物はなく、本 Issue のレビュー中に
+    設計した
+  - **契約の自動 pin**: `check-contract.sh`（AC-3 / T-03）。fixture を置くだけでは契約ガードを
+    消しても決定論チェックが green のまま通ることを変異実験で確認したため追加した
+- レンダー出力のフレーム数照合は実行時ガードに置かず、Issue の手動テスト（T-01）が担う。
 
 ## 既存 HyperFrames 版との関係
 
@@ -28,7 +33,7 @@ rite workflow 自身で回せる。
 cd media/intro-video-v2
 npm install
 node render/render.mjs <scene.html> out/<name>.mp4 30
-./check-determinism.sh <scene.html>
+npm run check                       # 契約ガード (AC-3) + 決定論 (AC-2)
 ./assemble.sh -o out/final.mp4 out/01.mp4 out/02.mp4
 ```
 

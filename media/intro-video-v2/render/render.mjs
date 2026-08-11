@@ -68,6 +68,11 @@ try {
     viewport: { width: WIDTH, height: HEIGHT },
     deviceScaleFactor: 1,
   });
+  // シーン内の未捕捉例外を観測しないと、描画が途中で止まった絵をフレームとして撮り切って
+  // exit 0 で完走する。シーン不在を existsSync で弾いているのと同じ silent failure なので、
+  // 同じ強さで扱う（最初の 1 件を保持し、レンダー完了検査と同じ層で throw する）。
+  let pageError = null;
+  page.on('pageerror', (error) => { pageError ??= error; });
   await page.goto(pathToFileURL(scenePath).href, { waitUntil: 'load' });
   // フォント未ロードのままフレームを撮ると初期フレームだけ字形が変わり、決定論が崩れる。
   await page.evaluate(() => document.fonts.ready.then(() => true));
@@ -96,6 +101,11 @@ try {
   }
 
   const frames = Math.round((declaration.durationMs / 1000) * fps);
+  if (frames === 0) {
+    // 契約適合（duration_ms は正）でもフレームが 0 枚になる組み合わせがある。ここで弾かないと
+    // ffmpeg が入力ゼロで落ち、真因（尺と fps の組み合わせ）が診断から消える。
+    throw new Error(`${sceneArg}: 宣言尺 ${declaration.durationMs}ms と fps ${fps} ではフレームが 0 枚になります`);
+  }
 
   ffmpeg = spawn(
     'ffmpeg',
@@ -166,6 +176,7 @@ try {
   if (code !== 0) {
     throw new Error(`ffmpeg が ${signal ? `signal ${signal}` : `exit code ${code}`} で終了しました`);
   }
+  if (pageError) throw new Error(`${sceneArg}: シーン内で未捕捉の例外が発生しました: ${pageError.message}`);
 
   console.log(`rendered ${frames} frames @${fps}fps -> ${outPath}`);
 } catch (error) {
