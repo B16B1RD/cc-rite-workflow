@@ -633,12 +633,65 @@ If the user cancels: Display "アップグレードをキャンセルしまし�
 
 ### 4.2 Check Issue Templates
 
-If `.github/ISSUE_TEMPLATE/` does not exist, show:
-```
-.github/ISSUE_TEMPLATE/ が存在しません
+Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version), then detect each missing GitHub template individually:
 
-Issue テンプレートの作成を推奨します
+```bash
+missing_templates=""
+for relative_path in \
+  "ISSUE_TEMPLATE/bug_report.md" \
+  "ISSUE_TEMPLATE/feature_request.md" \
+  "ISSUE_TEMPLATE/config.yml" \
+  "PULL_REQUEST_TEMPLATE.md"
+do
+  [ -e ".github/$relative_path" ] || missing_templates="${missing_templates}${missing_templates:+,}$relative_path"
+done
+
+if [ -n "$missing_templates" ]; then
+  echo "[CONTEXT] GITHUB_TEMPLATES=missing; files=$missing_templates"
+else
+  echo "[CONTEXT] GITHUB_TEMPLATES=complete"
+fi
 ```
+
+- `GITHUB_TEMPLATES=complete`: generate nothing and continue to Phase 4.5.
+- `GITHUB_TEMPLATES=missing`: show the missing file list and use AskUserQuestion with exactly two choices: `生成する` / `スキップ`.
+  - If the user chooses `スキップ`, generate nothing and continue to Phase 4.5.
+  - If the user chooses `生成する`, copy only the missing files from the plugin's `templates/github/` SoT with the following Bash block. Replace `{plugin_root}` with the resolved absolute path before execution; do not reproduce template bodies in this skill.
+
+```bash
+template_source_root="{plugin_root}/templates/github"
+
+for relative_path in \
+  "ISSUE_TEMPLATE/bug_report.md" \
+  "ISSUE_TEMPLATE/feature_request.md" \
+  "ISSUE_TEMPLATE/config.yml" \
+  "PULL_REQUEST_TEMPLATE.md"
+do
+  source_path="$template_source_root/$relative_path"
+  destination_path=".github/$relative_path"
+
+  # Re-check immediately before copying so an existing user file is never overwritten.
+  if [ -e "$destination_path" ]; then
+    echo "SKIP: existing $destination_path"
+    continue
+  fi
+  if [ ! -f "$source_path" ]; then
+    echo "WARNING: GitHub template source not found: $source_path" >&2
+    continue
+  fi
+  if ! mkdir -p "$(dirname "$destination_path")"; then
+    echo "WARNING: GitHub template directory could not be created: $(dirname "$destination_path")" >&2
+    continue
+  fi
+  if cp "$source_path" "$destination_path"; then
+    echo "CREATED: $destination_path"
+  else
+    echo "WARNING: GitHub template could not be written: $destination_path" >&2
+  fi
+done
+```
+
+Missing SoT files, directory creation failures, and copy failures are all non-blocking. Preserve each existing destination unchanged, display the emitted warning or status lines, and continue to Phase 4.5 regardless of the result.
 
 ---
 
