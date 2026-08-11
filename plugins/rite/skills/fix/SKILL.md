@@ -1848,6 +1848,12 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
 
 ### Simplification-First Response Principle（追加より削除を先に検討）
 
+以下はすべての fix finding に適用する mandate であり、config で opt-out できない:
+
+- **MUST**: finding が名指しした範囲の最小差分に留める。
+- **MUST**: 削除で解消できる finding は削除で直す。原因が過剰構造ならその構造を除去する。
+- **MUST NOT**: 新 guard / fallback / 説明コメントの追加は finding が新挙動・新契約を要求する場合のみに限定する。
+
 指摘に対する修正方針を決定する前に、以下のチェックリストを必ず通過させること（Fail-Fast Response Principle と同様、config での opt-out は不可）:
 
 - [ ] 機構の**追加**（新しい分岐・ガード・規約・注記・例外条項）ではなく、既存機構の**削除・単純化**（分岐の統合、規則の一般化、複製の一本化）で指摘を解消できないか検討したか
@@ -2481,7 +2487,7 @@ EOF
 
 ### 3.1 Verify Changes
 
-**前置ガード — fix commit 不要 PR の skip (全経路共通)**: ステップ 3 に入る前に必ず評価する。**working tree が無変更**の場合 — nit-only / **non-blocking (実測なし) のみ** / reply-only、およびこれらの混在 — は**ステップ 3 全体 (3.1〜3.5) を skip** し、ステップ 4.2 (完了報告系) へ直行する (空 `git commit` の失敗と、3.3.1 が `HEAD~1..HEAD` = 前 cycle の commit を「本 cycle の fix」として fix-cycle-state に誤記録するのを防ぐ)。本ガードはステップ 2 の出口に相当し、2.4.N を経由しない non-blocking-only 経路でも必ず評価される (ステップ 2.4.N Loop termination の分岐は本ガードへの参照)。
+**前置ガード — fix commit 不要 PR の skip (全経路共通)**: ステップ 3 に入る前に必ず評価する。**working tree が無変更**の場合 — nit-only / **non-blocking (実測なし) のみ** / reply-only、およびこれらの混在 — は**ステップ 3 全体 (3.1〜3.5) を skip** し、ステップ 4.2 (完了報告系) へ直行する (空 `git commit` の失敗と、3.3.1 が前 cycle の commit を「本 cycle の fix」として fix-cycle-state に誤記録するのを防ぐ)。本ガードはステップ 2 の出口に相当し、2.4.N を経由しない non-blocking-only 経路でも必ず評価される (ステップ 2.4.N Loop termination の分岐は本ガードへの参照)。
 
 判定には **`git-status-filtered.sh` を使う** (raw `git status --porcelain` を使ってはならない — sandbox 内の Bash 呼び出しでは write-block bind mount が `??` エントリとして必ず現れるため raw 版は恒に非空になり、**ガードが一度も発火しない**。本 helper はその ghost-mount エントリを除去する。同型の理由で `pr-review/SKILL.md` ステップ 4.0.A も helper 経由にしている):
 
@@ -2501,6 +2507,13 @@ fi
 ```
 
 `FIX_COMMIT_GUARD=skip` ならステップ 3 全体を skip して ステップ 4.2 へ、`proceed` なら以下を通常どおり実行する。
+
+`proceed` の場合、最初の fix commit より前の `HEAD` を marker に出力して会話コンテキストへ保持する。ステップ 3.2 で複数コミットを選んでも、3.3.1 では marker の値を `{fix_cycle_base_sha_from_context}` に literal substitute し、cycle 全体の基準点として使う。
+
+```bash
+fix_cycle_base_sha=$(git rev-parse HEAD) || { echo "[fix:error]"; exit 1; }
+printf '[CONTEXT] FIX_CYCLE_BASE_SHA=%s\n' "$fix_cycle_base_sha"
+```
 
 Once all findings have been addressed, verify the changes:
 
@@ -2695,9 +2708,22 @@ mkdir -p "$_state_root/.rite/fix-cycle-state"
 pr_number="{pr_number}"
 state_file="$_state_root/.rite/fix-cycle-state/${pr_number}.json"
 commit_sha_after=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
-commit_sha_before=$(git rev-parse HEAD~1 2>/dev/null || echo "unknown")
+commit_sha_before="{fix_cycle_base_sha_from_context}"
+if ! git cat-file -e "${commit_sha_before}^{commit}" 2>/dev/null; then
+  echo "ERROR: FIX_CYCLE_BASE_SHA が未展開または無効です: $commit_sha_before" >&2
+  echo "[fix:error]"
+  exit 1
+fi
 timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%S")
-files_changed=$(git diff --name-only HEAD~1..HEAD 2>/dev/null | jq -R -s 'split("\n") | map(select(length > 0))' 2>/dev/null || echo '[]')
+files_changed=$(git diff --name-only "$commit_sha_before"..HEAD 2>/dev/null | jq -R -s 'split("\n") | map(select(length > 0))' 2>/dev/null || echo '[]')
+# 既存の cycle state に当該 fix cycle 全体の行数差分を記録する。バイナリの `-` は行数に含めない。
+diff_stats=$(git diff --numstat "$commit_sha_before"..HEAD 2>/dev/null | awk '
+  $1 ~ /^[0-9]+$/ { added += $1 }
+  $2 ~ /^[0-9]+$/ { deleted += $2 }
+  END { printf "%d %d", added, deleted }
+')
+lines_added=${diff_stats%% *}
+lines_deleted=${diff_stats##* }
 
 # Read existing state or initialize
 if [ -f "$state_file" ]; then
@@ -2714,6 +2740,8 @@ new_cycle=$(jq -n \
   --argjson fixed "{findings_fixed_count}" \
   --argjson propagated "{propagation_applied_count}" \
   --argjson files "$files_changed" \
+  --argjson added "$lines_added" \
+  --argjson deleted "$lines_deleted" \
   '{
     "cycle": 0,
     "timestamp": $ts,
@@ -2722,6 +2750,8 @@ new_cycle=$(jq -n \
     "findings_fixed": $fixed,
     "findings_new_from_fix": 0,
     "files_changed_by_fix": $files,
+    "lines_added": $added,
+    "lines_deleted": $deleted,
     "propagation_applied": $propagated
   }')
 
