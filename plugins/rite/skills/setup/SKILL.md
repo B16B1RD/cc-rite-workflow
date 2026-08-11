@@ -192,19 +192,28 @@ Before creating an initial commit, check for an existing commit:
 git rev-parse --verify HEAD >/dev/null 2>&1
 ```
 
-If no commit exists, display the number and list of files that `git add -A` would include, then use AskUserQuestion to confirm the initial commit. If declined, exit without an error. If approved, run `git add -A` followed by `git commit -m "chore: initial commit"`; stop and show the command error if either operation fails. Do not create a commit when `HEAD` already exists.
+If no commit exists, display the number and list of files that `git add -A` would include. Before asking for approval, scan those paths for likely sensitive files (`.env` and `.env.*`, private keys, `*.pem`, `*.p12`, credentials, and token/secret-named files). If any are found, do not stage or commit; show the paths and require the user to exclude or move them before rerunning setup. Never override this gate for a public repository. When the scan is clean, use AskUserQuestion to confirm the exact initial-commit file list. If declined, exit without an error. If approved, run `git add -A` followed by `git commit -m "chore: initial commit"`; stop and show the command error if either operation fails. Do not create a commit when `HEAD` already exists.
 
-When `remotes_present=false`, use AskUserQuestion to collect the owner, repository name (default: current directory name), and exactly one visibility (`public`, `private`, or `internal`). Then use a separate AskUserQuestion to confirm the repository creation before running:
+When `remotes_present=false`, use AskUserQuestion to collect the owner, repository name (default: current directory name), and exactly one visibility (`public`, `private`, or `internal`). Validate the owner against `^[A-Za-z0-9][A-Za-z0-9-]{0,38}$`, the repository name against `^[A-Za-z0-9._-]+$`, and the visibility against the three-value allowlist. Reject invalid values and ask again without executing a shell command. Map the selected visibility to one fixed flag; do not interpolate arbitrary text as an option. Bind the validated owner and repository name to shell variables and pass `"$owner/$repo_name"` as one argument. Then use a separate AskUserQuestion to confirm the repository creation before running:
 
 ```bash
-gh repo create "{owner}/{repo-name}" --source . --{visibility} --remote origin --push
+owner="{validated-owner}"
+repo_name="{validated-repo-name}"
+visibility_flag="{--public|--private|--internal}"
+gh repo create "$owner/$repo_name" --source . "$visibility_flag" --remote origin --push
 ```
 
-The visibility flag is mandatory; never invoke the interactive form. If creation or push fails, display gh's stderr and use AskUserQuestion to offer retrying the same command or stopping. For a name collision, stop after showing these manual commands; do not execute them automatically:
+The visibility flag is mandatory; never invoke the interactive form. If the command fails, display gh's stderr and probe both `gh repo view "$owner/$repo_name"` and `git remote get-url origin` before choosing recovery:
+
+- If neither repository nor origin exists, the create step failed before side effects. Use AskUserQuestion to offer retrying the create command or stopping.
+- If the repository and origin exist, treat this as a partial success in the push step. Resolve `current_branch=$(git branch --show-current)` and fail loudly if it is empty. Use AskUserQuestion to offer retrying only `git push -u origin "$current_branch"` or stopping; never rerun `gh repo create` on this path.
+- If only one of repository/origin exists, show the observed state and stop for manual recovery rather than guessing.
+
+For a name collision, resolve `current_branch=$(git branch --show-current)` and the existing repository URL with `gh repo view "$owner/$repo_name" --json url --jq .url`. Fail loudly if either is empty. Then stop after showing these commands with the resolved values; do not execute them automatically:
 
 ```text
-git remote add origin <existing-repository-url>
-git push -u origin <current-branch>
+git remote add origin {resolved-existing-repository-url}
+git push -u origin {resolved-current-branch}
 ```
 
 After successful creation, always display:
