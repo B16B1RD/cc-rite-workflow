@@ -78,7 +78,7 @@ if ! awk -v p="$frame_period" 'BEGIN{exit !((p + 0) > 0)}'; then
 fi
 
 # 連結後の総尺 = 全シーン尺の合計 − 重なり分（クロスフェード × 繋ぎ目の数）
-total="$(awk -v n="${#durations[@]}" -v x="$xfade" 'BEGIN{s=0} {s+=$1} END{printf "%.3f", s - (n-1)*x}' \
+total="$(awk -v n="${#durations[@]}" -v x="$xfade" 'BEGIN{s=0} {s+=$1} END{printf "%.6f", s - (n-1)*x}' \
   < <(printf '%s\n' "${durations[@]}"))"
 
 # クロスフェードは繋ぎ目ごとにシーンを食う。端のシーンは 1 回（x）、中間のシーンは前後 2 回（2x）
@@ -87,6 +87,15 @@ total="$(awk -v n="${#durations[@]}" -v x="$xfade" 'BEGIN{s=0} {s+=$1} END{print
 # mp4 を残す（実測: 2.0s×3 に -t 3.0 で総尺 0.000s・ストリーム 0 本の 262 バイト mp4 が成功終了）。
 n_scenes="${#durations[@]}"
 if [ "$n_scenes" -ge 2 ]; then
+  # 下限側。1 フレーム周期未満のクロスフェードは xfade が遷移を発行できず、後続シーンを
+  # まるごと落とす（実測: 30fps で -t 0.033 は先頭以外が消え、0.034 は正常に連結される）。
+  # 出力照合でも捕まるが、そちらの診断は「-t の値とシーン尺を確認してください」までしか言えず、
+  # 真の規則を名指しできない。入口検査が -t の値域を扱う以上、この条件もここで言う。
+  if ! awk -v x="$xfade" -v p="$frame_period" 'BEGIN{exit !((x + 0) >= (p + 0))}'; then
+    echo "assemble: クロスフェード ${xfade}s がシーンのフレーム周期 ${frame_period}s 未満です（xfade が遷移を発行できず後続シーンを落とします）" >&2
+    exit 1
+  fi
+
   for i in "${!durations[@]}"; do
     if [ "$i" -eq 0 ] || [ "$i" -eq $((n_scenes - 1)) ]; then
       need="$xfade"
@@ -110,15 +119,18 @@ if [ "${#scenes[@]}" -eq 1 ]; then
   filter="[0:v]null[v]"
 else
   # 累積出力尺 L_k = Σd(0..k) − k*x。k+1 本目を重ねるオフセットは L_k − x。
+  # 桁は %.6f。%.3f だと丸めが offset を切り上げる場合があり、`offset + x` がシーン尺を超えて
+  # xfade の遷移窓が入力の外へはみ出す（実測: 30fps・2.0s×2 に -t 0.0334 で offset が 1.9666 →
+  # 1.967 に丸まり、第 2 シーンが丸ごと落ちて 2.066667s になった。%.6f では 3.966667s で正常）。
   acc="${durations[0]}"
   prev="[0:v]"
   for ((i = 1; i < ${#scenes[@]}; i++)); do
-    offset="$(awk -v a="$acc" -v x="$xfade" 'BEGIN{printf "%.3f", a - x}')"
+    offset="$(awk -v a="$acc" -v x="$xfade" 'BEGIN{printf "%.6f", a - x}')"
     label="[vx$i]"
     [ "$i" -eq $((${#scenes[@]} - 1)) ] && label="[v]"
     filter+="${prev}[${i}:v]xfade=transition=fade:duration=${xfade}:offset=${offset}${label};"
     prev="$label"
-    acc="$(awk -v a="$acc" -v d="${durations[$i]}" -v x="$xfade" 'BEGIN{printf "%.3f", a + d - x}')"
+    acc="$(awk -v a="$acc" -v d="${durations[$i]}" -v x="$xfade" 'BEGIN{printf "%.6f", a + d - x}')"
   done
   filter="${filter%;}"
 fi
@@ -156,8 +168,9 @@ else
 fi
 
 # 完了行が名乗る尺は成果物から実測する。解析値 total をそのまま報告すると、素材が捨てられて
-# 短い mp4 になっても成功メッセージ自体が誤情報になる。許容差は 1 フレーム周期 —
-# `-t "$total"` が上限を固定するため、超過方向は total の %.3f 丸め分しか出ない。
+# 短い mp4 になっても成功メッセージ自体が誤情報になる。許容差は 1 フレーム周期 — ffmpeg は
+# フレーム境界でしか切れないため、`-t "$total"` を渡しても実尺は最大 1 フレーム分ずれる
+# （実測: 24〜60fps・1〜3 シーン・xfade 0.034〜1.2345 の掃引で差は常に 1 周期未満）。
 if ! actual="$(probe_duration "$out")"; then
   echo "assemble: 出力の尺を取得できませんでした: $out" >&2
   exit 1

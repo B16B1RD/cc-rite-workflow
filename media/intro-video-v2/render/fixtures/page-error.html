@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>page-error (契約違反 fixture)</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0d1117; }
+  </style>
+</head>
+<body>
+  <!-- 契約適合の SCENE 宣言を持ちながら、シーン内で未捕捉例外を投げる。
+       renderer が完走してしまうと「宣言尺どおり完結した mp4」が exit 1 とともに残るため、
+       check-contract.sh は「非ゼロ終了」と「成果物が残らないこと」の両方を pin する。 -->
+  <script>
+    window.SCENE = { duration_ms: 500 };
+    window.__riteMissingObject.boom();
+  </script>
+</body>
+</html>

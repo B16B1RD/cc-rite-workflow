@@ -7,7 +7,7 @@
 import { chromium } from 'playwright-core';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -85,7 +85,8 @@ try {
 
     if (typeof window.SCENE === 'undefined' || window.SCENE === null) return { status: 'missing' };
     const declared = window.SCENE.duration_ms;
-    if (typeof declared !== 'number' || !Number.isFinite(declared) || declared <= 0) {
+    // Number.isFinite は強制変換しないので、文字列・null・undefined・オブジェクトもここで落ちる。
+    if (!Number.isFinite(declared) || declared <= 0) {
       return { status: 'invalid', repr: String(declared) };
     }
     return { status: 'ok', durationMs: declared };
@@ -182,6 +183,11 @@ try {
 } catch (error) {
   console.error(`render: ${error.message}`);
   process.exitCode = 1;
+  // 失敗した実行は成果物を残さない。ここを消さないと、シーン内例外の経路（検出が ffmpeg の
+  // 完了後になる）で「exit 1 なのに宣言尺どおり完結した mp4」が出力パスに残り、正常レンダーの
+  // 成果物と区別がつかないまま下流の assemble.sh へ入る（実測済み）。ffmpeg は -y で outPath へ
+  // 直接書くため、失敗時に既存の成果物が生き残る経路は元から無い — 消し切るほうが状態が単純。
+  rmSync(outPath, { force: true });
 } finally {
   // 成功経路では既に close 済みで no-op。失敗経路では stdin を閉じて子プロセスを落とし、
   // event loop を空にして exit code を呼び出し元へ返す。
