@@ -5,6 +5,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../control-char-neutralize.sh
+source "$SCRIPT_DIR/../control-char-neutralize.sh"
 REPO_ROOT=""
 BASE_REF=""
 BASE_BRANCH=""
@@ -125,7 +127,7 @@ while IFS= read -r -d '' file; do
   detector_rc=0
   bash "$SCRIPT_DIR/comment-journal-check.sh" --repo-root "$REPO_ROOT" --quiet --target "$file" > "$detector_out" 2>"$tmp_dir/detector.err" || detector_rc=$?
   if [ "$detector_rc" -gt 1 ]; then
-    cat "$tmp_dir/detector.err" >&2
+    neutralize_ctrl --keep-newline < "$tmp_dir/detector.err" >&2
     echo "ERROR: descriptive-number detector could not complete" >&2
     exit 2
   fi

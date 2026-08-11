@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_test-helpers.sh"
 GATE="$SCRIPT_DIR/../scripts/descriptive-number-diff-gate.sh"
 DETECTOR="$SCRIPT_DIR/../scripts/comment-journal-check.sh"
+NEUTRALIZER="$SCRIPT_DIR/../control-char-neutralize.sh"
 LINT_SKILL="$SCRIPT_DIR/../../skills/lint/SKILL.md"
 
 sb=$(make_plain_sandbox)
@@ -12,6 +13,7 @@ trap 'rm -rf "$sb"' EXIT
 mkdir -p "$sb/plugins/rite/hooks/tests" "$sb/plugins/rite/skills/x" "$sb/plugins/rite/hooks/scripts"
 cp "$GATE" "$sb/plugins/rite/hooks/scripts/"
 cp "$DETECTOR" "$sb/plugins/rite/hooks/scripts/"
+cp "$NEUTRALIZER" "$sb/plugins/rite/hooks/"
 git -C "$sb" init -q
 git -C "$sb" config user.email test@example.com
 git -C "$sb" config user.name test
