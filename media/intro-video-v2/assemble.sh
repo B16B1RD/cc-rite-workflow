@@ -34,9 +34,18 @@ shift $((OPTIND - 1))
 # 尺の比較を数値で行う以上、xfade も数値であることを入口で確かめる。非数値のまま通すと
 # 比較が 0 に潰れてシーン尺ガードが無条件通過し、ffmpeg のフィルタ解析エラーだけが残って
 # 原因（利用者が渡した -t の値）が診断から消える。
+# 先頭ドット（`.5`）を弾くのは ffmpeg の duration パーサが受理しないため。ここで通すと
+# まさに上記の「ffmpeg のエラーだけが残る」状態を自分で作る。
 case "$xfade" in
-  ''|*[!0-9.]*|*.*.*|.) echo "assemble: -t は 0 以上の数値で指定してください: $xfade" >&2; exit 1 ;;
+  ''|.*|*[!0-9.]*|*.*.*) echo "assemble: -t は正の数値で指定してください（先頭ドット表記は不可）: $xfade" >&2; exit 1 ;;
 esac
+# 0 は xfade を発行しない指定だが、ffmpeg の xfade は duration が 1 フレーム周期未満だと
+# 遷移点で出力を打ち切るため、2 本目以降のシーンが丸ごと消えた mp4 を exit 0 で残す。
+# 「クロスフェードなしで繋ぐ」用途は本スクリプトの対象外。
+if awk -v x="$xfade" 'BEGIN{exit !(x + 0 <= 0)}'; then
+  echo "assemble: -t に 0 は指定できません（クロスフェードなしの連結は対象外）: $xfade" >&2
+  exit 1
+fi
 
 scenes=("$@")
 for scene in "${scenes[@]}"; do
@@ -73,13 +82,17 @@ n_scenes="${#durations[@]}"
 for i in "${!durations[@]}"; do
   if [ "$n_scenes" -eq 1 ]; then
     need=0
+    # 単一シーンは xfade を発行しないため、クロスフェードを理由に挙げると因果が繋がらない。
+    reason="尺が正の数値である必要があります（ffprobe が尺を返さない素材の可能性）"
   elif [ "$i" -eq 0 ] || [ "$i" -eq $((n_scenes - 1)) ]; then
     need="$xfade"
+    reason="クロスフェード ${xfade}s に対し ${need}s 超が必要"
   else
     need="$(awk -v x="$xfade" 'BEGIN{printf "%.6f", 2 * x}')"
+    reason="中間シーンは前後 2 回食われるためクロスフェード ${xfade}s に対し ${need}s 超が必要"
   fi
   if ! awk -v d="${durations[$i]}" -v need="$need" 'BEGIN{exit !((d + 0) > (need + 0))}'; then
-    echo "assemble: シーン $((i + 1)) の尺 ${durations[$i]}s が不足しています（クロスフェード ${xfade}s に対し ${need}s 超が必要）: ${scenes[$i]}" >&2
+    echo "assemble: シーン $((i + 1)) の尺 ${durations[$i]}s が不足しています（${reason}）: ${scenes[$i]}" >&2
     exit 1
   fi
 done
@@ -110,9 +123,15 @@ maps=(-map "[v]")
 
 if [ -n "$bgm" ]; then
   bgm_duration="$(probe_duration "$bgm")"
+  # シーン尺と同じ扱いにする。ffprobe が `N/A` を返す入力（live-mux 由来の webm 等）では
+  # awk が文字列比較へ落ち、`"N/A" < "3.500"` が偽になって下の尺不足ガードが黙って通る。
+  if ! awk -v b="$bgm_duration" 'BEGIN{exit !((b + 0) > 0)}'; then
+    echo "assemble: BGM の尺を数値で取得できません: $bgm (ffprobe: ${bgm_duration:-空})" >&2
+    exit 1
+  fi
   # `-shortest` を発行していないため映像は BGM 長に切り詰められないが、BGM が総尺より短いと
   # 末尾が無音になる。無音の完成尺を黙って出さないためにここで落とす。
-  if awk -v b="$bgm_duration" -v t="$total" 'BEGIN{exit !(b < t)}'; then
+  if awk -v b="$bgm_duration" -v t="$total" 'BEGIN{exit !((b + 0) < (t + 0))}'; then
     echo "assemble: BGM が総尺より短く末尾が無音になります（BGM ${bgm_duration}s < 総尺 ${total}s）" >&2
     exit 1
   fi
@@ -125,5 +144,23 @@ fi
 ffmpeg "${args[@]}" -filter_complex "$filter" "${maps[@]}" \
   -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p \
   -map_metadata -1 -t "$total" "$out"
+
+# 出力尺を実測して宣言値と突き合わせる。render.mjs がフレーム数で同じことをしているのと同じ
+# 理由 — ffmpeg はフィルタ側の入力が途中で尽きても exit 0 で短い mp4 を残す（xfade の offset
+# 計算がずれた場合に silent な素材欠落として現れる）。許容差は出力自身のフレーム周期 2 枚分で、
+# 定数ではなく生成物から採る（muxer の丸めは両端で最大 1 枚ずつ出る）。
+# 短い側だけを見るのは、この帰結が常に「素材が捨てられて短くなる」向きに出るため。
+actual_duration="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$out")"
+out_frame_rate="$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 "$out")"
+if ! awk -v a="$actual_duration" -v t="$total" -v r="$out_frame_rate" '
+  BEGIN {
+    split(r, fr, "/")
+    period = (fr[1] + 0 > 0 && fr[2] + 0 > 0) ? fr[2] / fr[1] : 0
+    exit !((a + 0) >= (t + 0) - 2 * period)
+  }'; then
+  echo "assemble: 出力尺が宣言と一致しません（宣言 ${total}s / 実測 ${actual_duration:-取得不能}s、fps ${out_frame_rate:-不明}）: $out" >&2
+  echo "  シーンが連結されずに捨てられた可能性があります。-t の値とシーン尺を確認してください。" >&2
+  exit 1
+fi
 
 echo "assembled ${#scenes[@]} scenes (${total}s, xfade ${xfade}s) -> $out"
