@@ -10,6 +10,8 @@ user-invocable: false
 
 # /rite:fix
 
+> **質問規律**: すべての質問・fallback 判断は [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従う。
+
 PR レビューコメントを取得・整理し、指摘への対応を効率的に支援する。やることは以下のシーケンシャルなタスク列:
 
 0. Work Memory のロード (E2E フロー時のみ)
@@ -716,7 +718,7 @@ fi
 
 > **Acceptance Criteria anchor**: AC-6 (全ソース欠落時に `AskUserQuestion` で「レビュー実行 / ファイルパス指定 / 中止」を提示する)。
 
-`{review_source}=fallback` (Priority 0-3 が全て不可) の場合、`AskUserQuestion` で 3 択を提示する:
+`{review_source}=fallback` (Priority 0-3 が全て不可) の場合、レビュー再実行は可逆かつ自己解決可能なので推奨として `/rite:pr-review {pr_number}` を 1 回自動実行し、その判断と欠落 source を既存 work memory の決定事項へ記録する。再実行後も source が得られない場合だけ、ユーザー固有の入力であるファイルパス指定または中止を `AskUserQuestion` で確認する:
 
 ```
 レビュー結果が見つかりませんでした

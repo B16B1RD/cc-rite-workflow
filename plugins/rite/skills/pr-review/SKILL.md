@@ -10,6 +10,8 @@ user-invocable: false
 
 # /rite:pr-review
 
+> **質問規律**: すべての質問・disposition 判断は [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従う。
+
 PR の変更内容を解析し、専門家スキルを動的にロードしてマルチレビュアー方式でレビューを行う。やることは以下のシーケンシャルなタスク列:
 
 0. Work Memory のロード (E2E フロー時のみ)
@@ -48,7 +50,7 @@ bash 4.0+ 必須 (`mapfile` builtin の存在を bash 4+ 判定に使用。ス�
 | ステップ 4 (Sub-Agent Execution) | Full execution | **Full execution** — sub-agents MUST run in parallel for every review cycle (including verification mode). No shortcut allowed. |
 | ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外 1: ステップ 5.4 の `### レビュー範囲（cycle 2+ 差分スコープ）` section は `REVIEW_CYCLE_SCOPE == incremental` のとき E2E でも省略禁止** (cycle 2+ は E2E からしか発生しないため、ここを minimize すると「スキップした reviewer を記録する」要求が空文になる — SoT: [cycle-scope.md](references/cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 2: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 AskUserQuestion と同じ identity 制約 — 既定 `post_comment: false` ではこの出力が非実測指摘を人間が見る唯一の同期経路であり、省略は「非実測指摘を破棄しない」という記録契約の喪失に直結する)。**例外 3: ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section は `COMPLEXITY_LANE == light` のとき E2E でも省略禁止** (軽量レーンが動機づけられた Scenario 1「XS が 1 サイクル収束して自律マージされる」は E2E ループでしか起きず、そこを minimize すると観測性の MUST が主対象シナリオでだけ空文になる — SoT: [complexity-lane.md](references/complexity-lane.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 4: ステップ 5.4 の `### Guardrail 監査ログ` section は `guardrail_audit_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` でも Category #2 の filter 判断を人間が確認できる同期経路を維持するため)。**例外 5: ステップ 5.4 の `### 総合評価` にある `**起動の直列化**` の 1 行は `SPAWN_SPREAD` が `serialized` / `undetermined` / 欠落を伴う `parallel` のとき E2E でも省略禁止** (直列化が起きるのは長時間 E2E セッションであり、そこを minimize すると本行が到達する経路が消える。既定 `post_comment: false` では統合レポートは PR にも載らないため、省略すると本行が主対象シナリオで空文になる。`serialized` / 欠落を伴う `parallel` では helper の stderr WARNING と結果 JSON のフラグが残るが、**`undetermined` では helper がフラグをキーごと書かない**ため、計測不能の**理由** (`reason=`) は揮発する stderr WARNING にしか残らない — 省略が最も高くつくのはこの条件。`reviewer_timings[]` はステップ 4.6 の timings ファイルが present のときだけ結果 JSON へ転記される) |
 | ステップ 6 (PR Comment) | Full comment + display | Post comment silently, output pattern only |
-| ステップ 7 (Triage) | Full report + guidance | **Recommendations only** — detect scope-irrelevant recommendations (findings/recommendations containing 別 Issue / スコープ外 keywords). **Always** prompt `AskUserQuestion` for each candidate (no E2E skip). Only when `[review:mergeable]`. |
+| ステップ 7 (Triage) | Full report + guidance | **Recommendations only** — detect scope-irrelevant recommendations (findings/recommendations containing 別 Issue / スコープ外 keywords). Decision Log 記録の推奨は可逆なので自動処理し、ユーザー固有・不可逆な disposition だけ `AskUserQuestion` で確認する。Only when `[review:mergeable]`. |
 
 E2E output format (ステップ 6, replaces full display):
 
@@ -3191,7 +3193,7 @@ Claude determines the invocation source from the conversation context:
 **Step 1: Process recommendation-based Issue candidates (ステップ 7)**
 Before outputting the result pattern, execute ステップ 7.1-7.4 to process recommendation-based Issue candidates:
 - Extract candidates per ステップ 7.1 (Source A scope-irrelevant findings and Source B recommendations — Source A findings not flagged as scope-irrelevant are handled by the fix loop)
-- If candidates exist: **always** invoke `AskUserQuestion` per ステップ 7.2-7.3 (E2E no longer skips user confirmation — user must approve each candidate)
+- If candidates exist: ステップ 7.2-7.3 で推奨を分類し、可逆な Decision Log 記録は自動処理、ユーザー固有・不可逆な候補だけ `AskUserQuestion` を invoke する
 - If no candidates: skip silently
 
 **Condition**: Execute only when the review result is `[review:mergeable]`. When `[review:fix-needed:N]`, skip ステップ 7 (the fix loop will continue; ステップ 7 will run on the eventual mergeable review to avoid duplicate Issue creation).
@@ -3231,7 +3233,7 @@ Extract candidates from **two sources**:
 **`candidate_count` assignment**:
 
 ステップ 7.1 deduplication 完了後、Source A + Source B 合算の最終 candidate 数を `candidate_count` として会話コンテキストに保持する。本値は:
-- ステップ 7.2 sentinel emit (`[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}` の `{N}`) に literal substitute される
+- ステップ 7.2 disposition-entry sentinel emit (`[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}` の `{N}`) に literal substitute される（marker 名は後方互換で維持し、自動 Decision Log 経路でも emit する）
 - ステップ 7.7 post-condition gate / ステップ 8.0.2 cross-reference の trigger 条件 (`candidate_count >= 1`) で参照される
 
 
@@ -3241,7 +3243,7 @@ Deduplicate across sources: if the same file:line appears in both Source A and S
 
 ### 7.2-7.3 推奨決定 + User Confirmation
 
-If 0 candidates: Skip ステップ 7 (and **skip ステップ 7.7 post-condition gate** — see 7.7 below). If 1+: **Always** confirm with `AskUserQuestion` — this confirmation is mandatory in both standalone and E2E flow. User must explicitly approve each candidate.
+If 0 candidates: Skip ステップ 7 (and **skip ステップ 7.7 post-condition gate** — see 7.7 below). If 1+: 推奨機械決定表の推奨が既存 Decision Log への記録である候補は可逆なので質問せず推奨で処理し、根拠を同じ Decision Log に残す。別 Issue 作成・本 PR への scope 追加・無視など外部公開またはユーザー固有の優先判断を伴う候補だけ `AskUserQuestion` で確認する。
 **推奨機械決定表**（裁量禁止。エージェントは自分の作業量を減らす目的で「別 Issue 作成」を推奨してはならない — 各候補の推奨は以下の表から機械的に決まる）:
 
 | 候補の性質 | 推奨 |
@@ -3251,9 +3253,9 @@ If 0 candidates: Skip ステップ 7 (and **skip ステップ 7.7 post-condition
 
 `{source_issue_number}`（ステップ 7.1 で解決）が空の候補は「Decision Log に記録」選択肢自体を非表示にする（3 択: 別 Issue 作成 / 本 PR で対応 / 無視。この場合は推奨を付与しない）。
 
-**MANDATORY — ステップ 7.2 sentinel emit**:
+**MANDATORY — ステップ 7.2 disposition-entry sentinel emit**:
 
-Immediately before invoking `AskUserQuestion`, emit the following sentinel to the conversation context so ステップ 7.7 post-condition gate can mechanically verify that ステップ 7.2 was executed:
+候補の disposition 処理を開始する直前（自動 Decision Log 経路では記録直前、質問経路では `AskUserQuestion` 直前）に、以下の既存 sentinel を emit してステップ 7.7 が実行を検証できるようにする。marker 名は互換性のため変更しない:
 
 ```bash
 # LLM (Claude) は以下を Bash tool で実行する前に literal 置換すること:
@@ -3263,7 +3265,7 @@ Immediately before invoking `AskUserQuestion`, emit the following sentinel to th
 echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iteration_id}" >&2
 ```
 
-Where `{N}` is the total count of candidates extracted in ステップ 7.1 (Source A + Source B, post-deduplication). `{iteration_id}` is a unique identifier per review iteration (recommended format: `${pr_number}-$(date +%s)`) so a later iteration of a review-fix loop does NOT false-positive match an earlier iteration's sentinel. This sentinel is consumed by ステップ 7.7 (post-condition gate) and ステップ 8.0.2 (gate reference) to verify that the LLM did NOT skip ステップ 7.2 when `candidate_count >= 1`. The sentinel MUST be emitted on stderr (not stdout) and MUST be included in the response text (stderr emit は Bash tool が transcript に取り込んで会話コンテキストに自動載せるが、grep 検出は response text 内の literal を直接参照するため LLM が response 内にも verbatim で含めることが SHOULD レベルの defensive practice として推奨される)。
+Where `{N}` is the total count of candidates extracted in ステップ 7.1 (Source A + Source B, post-deduplication). `{iteration_id}` is a unique identifier per review iteration (recommended format: `${pr_number}-$(date +%s)`) so a later iteration of a review-fix loop does NOT false-positive match an earlier iteration's sentinel. This sentinel is consumed by ステップ 7.7 (post-condition gate) and ステップ 8.0.2 (gate reference) to verify that the LLM did NOT skip disposition handling when `candidate_count >= 1`. The legacy name does not imply that every candidate was asked. The sentinel MUST be emitted on stderr (not stdout) and MUST be included in the response text (stderr emit は Bash tool が transcript に取り込んで会話コンテキストに自動載せるが、grep 検出は response text 内の literal を直接参照するため LLM が response 内にも verbatim で含めることが SHOULD レベルの defensive practice として推奨される)。
 
 **AskUserQuestion prompt text**:
 
@@ -3284,7 +3286,7 @@ Where `{N}` is the total count of candidates extracted in ステップ 7.1 (Sour
 - **Severity in Issue body**: `推奨事項（重要度なし）`
 - **File:line**: Use mentioned path if available; otherwise `特定ファイルなし`
 
-**E2E flow behavior**: Same as standalone — **always** present `AskUserQuestion` and wait for explicit user approval per candidate. Do NOT auto-decide disposition (Issue 作成 or Decision Log 記録) without user confirmation, even in E2E. Previous behavior (auto-create under E2E) has been removed to enforce user control over scope-irrelevant disposition.
+**E2E flow behavior**: Same as standalone. Decision Log 記録の推奨は可逆判断として自動実行し、Issue 作成・scope 追加・無視はユーザー固有または不可逆の判断として明示承認を待つ。Issue 作成を自動決定してはならない。
 
 ### 7.4 Disposition Execution
 
@@ -3529,7 +3531,7 @@ Post Issue list to PR comment (`mktemp` + `--body-file`). Decision Log に記録
 
 ### 7.7 Post-condition Gate — Recommendation Disposition Enforcement
 
-本 gate は **mechanical gate**。ステップ 7.1 で 1+ candidate 抽出時に ステップ 7.2 (`AskUserQuestion` for candidate_count) を実行せず `[review:mergeable]` / `[review:fix-needed:{n}]` (ステップ 8.1) を emit する silent skip を遮断する (prose-only enforcement の置換)。
+本 gate は **mechanical gate**。ステップ 7.1 で 1+ candidate 抽出時に ステップ 7.2 の disposition handling（自動 Decision Log または必要な `AskUserQuestion`）を実行せず `[review:mergeable]` / `[review:fix-needed:{n}]` (ステップ 8.1) を emit する silent skip を遮断する (prose-only enforcement の置換)。
 **Execution condition**: Always execute when ステップ 7 was entered (i.e., `candidate_count >= 1` (ステップ 7.1 Source A + Source B 合算、post-deduplication) was true). Skip silently when ステップ 7.1 yielded 0 candidates (ステップ 7.2 is legitimately not invoked).
 
 **Step 1 — Determine candidate count**:
@@ -3560,8 +3562,8 @@ Where `{N}` MUST be a positive integer matching the candidate count from Step 1,
 ```
 ERROR: ステップ 7.7 post-condition gate failed.
 candidate_count = {N} (>= 1) but no [CONTEXT] PHASE_7_ASKUSER_INVOKED sentinel found.
-This means ステップ 7.2 (AskUserQuestion) was NOT executed — silent skip of recommendation disposition.
-ACTION: Return to ステップ 7.2, emit the sentinel, invoke AskUserQuestion for each candidate, then re-enter ステップ 7.7.
+This means ステップ 7.2 disposition handling was NOT executed — silent skip of recommendation disposition.
+ACTION: Return to ステップ 7.2, emit the sentinel, auto-record reversible Decision Log recommendations and ask only user-specific/irreversible candidates, then re-enter ステップ 7.7.
 ⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until ステップ 7.2 has been executed and the sentinel is emitted.
 ANTI-PATTERN reference: This gate enforces the prohibition declared in
 .rite/wiki/pages/anti-patterns/aggregate-recommendation-label-evasion.md
@@ -3698,8 +3700,8 @@ ACTION: Return to ステップ 6.5.W and execute the Wiki Ingest Trigger before 
 ```
 ERROR: ステップ 8.0.2 ステップ 7 Post-condition Gate failed.
 candidate_count = {N} (>= 1) but no current-cycle [CONTEXT] PHASE_7_ASKUSER_INVOKED sentinel found.
-This means ステップ 7 (entire procedure 7.1 candidate extraction → 7.2 AskUserQuestion → 7.7 gate) was NOT executed in the current review cycle.
-ACTION: Return to ステップ 7.1, extract candidates, invoke AskUserQuestion (ステップ 7.2), emit sentinel, then re-enter ステップ 8.0.
+This means ステップ 7 (entire procedure 7.1 candidate extraction → 7.2 disposition handling → 7.7 gate) was NOT executed in the current review cycle.
+ACTION: Return to ステップ 7.1, extract candidates, handle reversible recommendations automatically and ask only user-specific/irreversible candidates, emit sentinel, then re-enter ステップ 8.0.
 ⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until ステップ 7 has been executed for the current cycle.
 ```
 

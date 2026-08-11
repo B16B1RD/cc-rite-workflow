@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)
 audit="$ROOT/plugins/rite/skills/pr-review/references/promotion-audit-2166.md"
 reviewer="$ROOT/plugins/rite/agents/_reviewer-base.md"
+principles="$ROOT/plugins/rite/skills/rite-workflow/references/coding-principles.md"
 failures=0
 
 assert_grep() {
@@ -67,6 +68,34 @@ assert_grep 'shared checklist maps the gate' "$reviewer" \
   '**Documentation fidelity (when triggered)**'
 assert_grep 'audit leaves blocking classification to measured gate' "$audit" \
   'classification remains the responsibility of the measured-confirmed gate'
+
+assert_grep 'question policy defines the two allowed classes' "$principles" \
+  'ユーザー固有の意思決定、または (b) merge、Issue close、外部公開、削除など不可逆操作'
+assert_grep 'question policy defaults reversible recommendations' "$principles" \
+  '質問せず推奨案で続行する'
+assert_grep 'question policy reuses existing records' "$principles" \
+  '新しい様式や marker を作らず'
+
+for skill in iterate fix ready merge cleanup pr-review; do
+  assert_grep "$skill points to the shared question policy" \
+    "$ROOT/plugins/rite/skills/$skill/SKILL.md" \
+    '[question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously)'
+done
+
+assert_grep 'iterate retries reversible review errors automatically' \
+  "$ROOT/plugins/rite/skills/iterate/SKILL.md" '可逆な再試行を推奨として 1 回だけ自動実行'
+assert_grep 'fix regenerates a missing review source automatically' \
+  "$ROOT/plugins/rite/skills/fix/SKILL.md" '推奨として `/rite:pr-review {pr_number}` を 1 回自動実行'
+assert_grep 'ready preserves standalone publication confirmation' \
+  "$ROOT/plugins/rite/skills/ready/SKILL.md" 'Ready 化は外部公開状態を変えるため、standalone 確認は維持する'
+assert_grep 'merge preserves irreversible approval boundary' \
+  "$ROOT/plugins/rite/skills/merge/SKILL.md" 'merge 自体は不可逆操作として既存の承認境界を維持する'
+assert_grep 'cleanup preserves destructive confirmation' \
+  "$ROOT/plugins/rite/skills/cleanup/SKILL.md" '削除・close・新規 Issue 公開は不可逆操作として確認を維持する'
+assert_grep 'review auto-records reversible recommendations' \
+  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'Decision Log への記録である候補は可逆なので質問せず推奨で処理'
+assert_grep 'review legacy gate covers automatic disposition' \
+  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" '自動 Decision Log 経路でも emit する'
 
 if [ "$failures" -ne 0 ]; then
   printf '%s contract assertion(s) failed\n' "$failures" >&2

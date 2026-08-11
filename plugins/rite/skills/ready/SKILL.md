@@ -10,6 +10,8 @@ argument-hint: "[pr_number]"
 
 # /rite:ready
 
+> **質問規律**: すべての質問・強制続行判断は [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従う。Ready 化は外部公開状態を変えるため、standalone 確認は維持する。
+
 ## Contract
 **Input**: PR number (or auto-detected), flow state (optional, e2e flow)
 **Output**: `[ready:returned-to-caller]` | `[ready:error]`
@@ -139,7 +141,7 @@ bash "$plugin_root/hooks/scripts/ready-pr-head-gate.sh" \
   --pr "$ready_pr_number" --repo {owner_repo} --plugin-root "$plugin_root"
 ```
 
-> **On exit 1 from this bash block**: The bash block exits before any `skills/ready/SKILL.md` result pattern (`[ready:returned-to-caller]` / `[ready:error]`) is emitted, so the orchestrator treats this as a missing-result-pattern Skill invocation — default 経路は `WARNING` を stderr に出力し、AskUserQuestion で「再試行 / 強制続行 / 中止」を提示する — **NOT** a `[ready:error]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
+> **On exit 1 from this bash block**: The bash block exits before any `skills/ready/SKILL.md` result pattern (`[ready:returned-to-caller]` / `[ready:error]`) is emitted. Invocation failure is a reversible diagnostic action, so the orchestrator retries the gate once and records the reason in the existing work memory; a second failure emits `[ready:error]` and stops. It never offers an unverified force-continue path. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic. For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
 
 ### 1.1 Check Arguments
 

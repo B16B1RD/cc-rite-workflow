@@ -22,6 +22,7 @@ The `knowledge_routing` principle additionally draws on t-wada's four quadrants 
 | `no_speculative_structure` | No Speculative Structure | Phase 5.1, PR Review |
 | `reference_discovery` | Discover Reference Implementations | Phase 3 |
 | `question_self_check` | Self-Check Before Asking | All Phases |
+| `question_resolution` | Resolve Recommended Reversible Decisions Autonomously | All Phases |
 | `documentation_consistency` | Sync Documentation with Specification Changes | Phase 5.1 |
 | `knowledge_routing` | Route Knowledge to Its Durable Medium | Phase 5.1, PR Review |
 
@@ -90,6 +91,16 @@ The `knowledge_routing` principle additionally draws on t-wada's four quadrants 
 **Summary**: Self-check whether the question is truly necessary before asking.
 
 **Details**: See the `question_self_check` section in [common-principles.md](./common-principles.md).
+
+### question_resolution (Resolve Recommended Reversible Decisions Autonomously)
+
+**Summary**: 人間への質問は、ユーザーの頭の中にしかない意思決定と不可逆操作に限定する。セッション自身が推奨を明記できる可逆判断は、その推奨で続行する。
+
+**Rules**:
+1. `AskUserQuestion` が許されるのは、(a) 優先順位・UX 方針・トレードオフなどユーザー固有の意思決定、または (b) merge、Issue close、外部公開、削除など不可逆操作の承認だけである。
+2. コード編集、commit、PR コメント、再試行などブランチ内で取り消せる判断についてセッション自身が推奨を明記した場合は、質問せず推奨案で続行する。
+3. 自律続行した判断と根拠は、新しい様式や marker を作らず、既存の work memory の決定事項・計画逸脱ログ、PR コメント、または commit body のうち、その phase が既に使用する記録先へ残す。
+4. 推奨を決められない可逆判断でも、まず探索・検証で自己解決する。探索後も複数案の優先がユーザー固有の価値判断に依存するときだけ (a) として質問する。
 
 ### documentation_consistency (Sync Documentation with Specification Changes)
 
