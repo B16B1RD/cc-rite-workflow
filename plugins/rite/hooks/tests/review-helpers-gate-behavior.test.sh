@@ -2954,15 +2954,17 @@ else
         assert "TC-5g'''' variant B テンプレート fence の最終非空行が sentinel" "$nbr_sentinel" "$(_fence_last_line "$_vb_line" "$_next_line")"
       fi
 
-      # (i) [ T-07] variant A の表が **ポインタ 3 列のみ** であることを構造 pin する。
+      # (i) [ T-07] variant A の表が **ポインタ + 降格理由の 4 列のみ** であることを構造 pin する。
       #     6.1.d の記録コメントは pr_review.post_comment に依存せず public PR へ投稿されるため、
       #     description / suggestion 列を戻すと既定構成のまま非実測 CRITICAL の詳細 (脆弱性の
-      #     再現手順等) が修正前に先行開示される。この開示方針は SKILL.md のテンプレート以外に
-      #     強制点を持たない — helper は本文の列構成を検査しない (見るのは 1 行目 marker /
-      #     最終非空行 sentinel / count 行の 3 つだけ) ため、列を戻す編集は helper 側テストを
-      #     全 green のまま通す。テンプレート側の pin が唯一の防御層になる。
+      #     再現手順等) が修正前に先行開示される。4 列目の降格理由 ({demotion_label} =
+      #     `class B 降格: {demotion.reason}` / `実測なし`) は finding 本文でなく降格帰属の認定文
+      #     のみを運ぶため開示方針と両立する (5.3.0.C AC-5)。この開示方針は SKILL.md の
+      #     テンプレート以外に強制点を持たない — helper は本文の列構成を検査しない (見るのは
+      #     1 行目 marker / 最終非空行 sentinel / count 行の 3 つだけ) ため、列を戻す編集は
+      #     helper 側テストを全 green のまま通す。テンプレート側の pin が唯一の防御層になる。
       #     negative assert (列が無い) 単体は fence が空になる mutation で trivially pass する
-      #     ため、positive (ヘッダ / データ行の 3 列一致) と対で置く。
+      #     ため、positive (ヘッダ / データ行の 4 列一致) と対で置く。
       _fence_body() {  # $1=start_line $2=end_line — fence 内の生行を出す
         sed -n "${1},$(( $2 - 1 ))p" "$REVIEW_MD" | awk '
           !infence && /^[[:space:]]*```markdown[[:space:]]*$/ { infence = 1; next }
@@ -2971,11 +2973,11 @@ else
         '
       }
       _va_fence=$(_fence_body "$_va_line" "$_vb_line")
-      # positive: ヘッダ行とデータ行が期待どおり 3 列 (列の増減・改名を検出)
-      assert "TC-5i variant A の表ヘッダが 3 列 (レビュアー / 重要度 / ファイル:行)" "1" \
-        "$(printf '%s\n' "$_va_fence" | grep -cE '^[[:space:]]*\| レビュアー \| 重要度 \| ファイル:行 \|[[:space:]]*$' || true)"
-      assert "TC-5i variant A のデータ行が 3 列 placeholder" "1" \
-        "$(printf '%s\n' "$_va_fence" | grep -cE '^[[:space:]]*\| \{reviewer_type\} \| \{severity\} \| \{file\}:\{line\} \|[[:space:]]*$' || true)"
+      # positive: ヘッダ行とデータ行が期待どおり 4 列 (列の増減・改名を検出)
+      assert "TC-5i variant A の表ヘッダが 4 列 (レビュアー / 重要度 / ファイル:行 / 降格理由)" "1" \
+        "$(printf '%s\n' "$_va_fence" | grep -cE '^[[:space:]]*\| レビュアー \| 重要度 \| ファイル:行 \| 降格理由 \|[[:space:]]*$' || true)"
+      assert "TC-5i variant A のデータ行が 4 列 placeholder" "1" \
+        "$(printf '%s\n' "$_va_fence" | grep -cE '^[[:space:]]*\| \{reviewer_type\} \| \{severity\} \| \{file\}:\{line\} \| \{demotion_label\} \|[[:space:]]*$' || true)"
       # negative: 全文を載せる列 / placeholder が fence 内に 1 つも無い (列を戻す mutation を検出)
       assert "TC-5i variant A fence に 内容 / 推奨対応 の列見出しが無い" "0" \
         "$(printf '%s\n' "$_va_fence" | grep -cE '\| *(内容|推奨対応) *\|' || true)"
@@ -3007,7 +3009,7 @@ else
       #     `LC_ALL=C` は prefix を共有する placeholder が将来現れたときの並び順を環境非依存にする。
       _va_ph=$(printf '%s\n' "$_va_fence" | grep -oE '\{[^}]+\}' | LC_ALL=C sort -u | tr '\n' ' ')
       assert "TC-5i variant A fence の placeholder 集合が allowlist と一致 (全文を運ぶ新規 placeholder の検出)" \
-        "{current_commit_sha} {file} {line} {non_blocking_count} {pr_number} {reviewer_type} {severity} " \
+        "{current_commit_sha} {demotion_label} {file} {line} {non_blocking_count} {pr_number} {reviewer_type} {severity} " \
         "$_va_ph"
       # allowlist 内の placeholder だけで全文を再掲載する形 (表の下に
       #     `- **{file}:{line}** — 指摘の全文` を足す / **2 つ目の表を足す** 等) を落とす。
@@ -3017,7 +3019,9 @@ else
       #     行形状フィルタ (`grep -v '^ *|'` で表行を除外する形) にすると、**2 つ目の表**による
       #     再掲載を 1 assert も捕捉できない (実測: 第 2 表を足しても 670/0 で通る)。出現回数なら
       #     箇条書き・脚注・追加 fence・追加表のすべてが同じ 1 本で落ちる。
-      for _ph in reviewer_type severity file line; do
+      #     demotion_label も対象に含める — 降格理由列を使った第 2 表 / 箇条書きによる再列挙も
+      #     finding 単位 placeholder の 2 回目の出現として同じ 1 本で落とすため。
+      for _ph in reviewer_type severity file line demotion_label; do
         _va_ph_n=$(printf '%s\n' "$_va_fence" | grep -oF "{$_ph}" | wc -l | tr -d ' ')
         assert "TC-5i variant A fence の {$_ph} 出現回数が 1 (finding 再列挙 = 全文再掲載の検出)" "1" "$_va_ph_n"
       done

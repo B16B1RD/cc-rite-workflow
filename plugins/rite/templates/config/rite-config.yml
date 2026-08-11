@@ -195,7 +195,7 @@ safety:
 # ただし投稿自体は best-effort — gh 失敗（create_failed / patch_failed）や本文不備では投稿されず
 # outcome=failed になる。**無条件の記録先はローカル JSON**（.rite/review-results/*.json の
 # non_blocking_findings[]）であってコメントではない。記録コメントが見当たらないときはそちらを見る。
-# 記録コメントに載るのは **ポインタのみ**（reviewer / severity / file:line と全文の所在 1 行）で、
+# 記録コメントに載るのは **ポインタ + 降格理由**（reviewer / severity / file:line / 降格の判定文と全文の所在 1 行）で、
 # 各指摘の description / suggestion は載らない。本設定に依らず public PR へ投稿される経路のため、
 # 非実測 CRITICAL の詳細（脆弱性の再現手順等）が修正前に先行開示されるのを避ける。既定の
 # post_comment: false では全文の保存先は上記ローカル JSON だけで、そこはレビューを実行した環境に
