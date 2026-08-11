@@ -167,10 +167,59 @@ If the result is not `true`, show `gh auth refresh --hostname github.com -s proj
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) — 下記 snippet の `git-remote.sh` 呼び出しで使用する（未解決のまま実行すると git-remote.sh 経路が silent に失敗し、SSH host alias 環境で fallback の `gh repo view` も失敗する）。
 
+First classify the local repository before attempting GitHub resolution:
+
+```bash
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  git_initialized=true
+  if [ -n "$(git remote -v 2>/dev/null)" ]; then remotes_present=true; else remotes_present=false; fi
+else
+  git_initialized=false
+  remotes_present=false
+fi
+echo "[CONTEXT] REPO_LOCAL_STATE; git_initialized=$git_initialized; remotes_present=$remotes_present"
+```
+
+Route by this marker:
+
+- `git_initialized=false`: use AskUserQuestion to confirm `git init`. If declined, show `GitHub リポジトリではありません` and exit without an error. If approved, run `git init`, verify success, then continue below.
+- `git_initialized=true; remotes_present=false`: continue below.
+- `remotes_present=true`: skip repository creation entirely and use the existing resolution path below. A remote that cannot be resolved may use an SSH host alias and MUST NOT be treated as an empty repository.
+
+Before creating an initial commit, check for an existing commit:
+
+```bash
+git rev-parse --verify HEAD >/dev/null 2>&1
+```
+
+If no commit exists, display the number and list of files that `git add -A` would include, then use AskUserQuestion to confirm the initial commit. If declined, exit without an error. If approved, run `git add -A` followed by `git commit -m "chore: initial commit"`; stop and show the command error if either operation fails. Do not create a commit when `HEAD` already exists.
+
+When `remotes_present=false`, use AskUserQuestion to collect the owner, repository name (default: current directory name), and exactly one visibility (`public`, `private`, or `internal`). Then use a separate AskUserQuestion to confirm the repository creation before running:
+
+```bash
+gh repo create "{owner}/{repo-name}" --source . --{visibility} --remote origin --push
+```
+
+The visibility flag is mandatory; never invoke the interactive form. If creation or push fails, display gh's stderr and use AskUserQuestion to offer retrying the same command or stopping. For a name collision, stop after showing these manual commands; do not execute them automatically:
+
+```text
+git remote add origin <existing-repository-url>
+git push -u origin <current-branch>
+```
+
+After successful creation, always display:
+
+```bash
+git remote get-url origin
+```
+
+If existing remotes in other local repositories or `~/.ssh/config` indicate a GitHub SSH alias, also show an informational `git remote set-url origin git@{alias}:{owner}/{repo-name}.git` example. Do not rewrite the URL automatically.
+
+For an existing remote, or after repository creation succeeds, resolve the repository through the existing SSH-alias-safe path:
+
 ```bash
 # owner/repo は SSH host alias 環境でも解決できる git-remote.sh を優先し、
-# id/url は解決済み repo を明示指定した gh repo view で取得する（明示指定なら alias 環境でも動く。
-# canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe）
+# id/url は解決済み repo を明示指定した gh repo view で取得する。
 owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
 owner=""; repo=""
 [ -n "$owner_repo" ] && IFS=$'\t' read -r owner repo <<< "$owner_repo"
@@ -181,11 +230,7 @@ else
 fi
 ```
 
-If not a Git repository or not a GitHub repository, show:
-```
-GitHub リポジトリではありません
-```
-and exit.
+If this resolution fails while `remotes_present=true`, show `GitHub リポジトリではありません` and exit. Do not propose `gh repo create` on this path.
 
 ---
 
