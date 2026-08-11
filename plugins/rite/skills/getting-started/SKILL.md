@@ -51,7 +51,7 @@ Required:
   ✓ gh CLI version ≥2.x
   ✓ git (any recent version)
   ✓ GitHub repository with Issues enabled
-  ✓ GitHub authentication (gh auth login)
+  ✓ GitHub authentication (`/rite:setup` guides login when needed)
 
 Optional:
   ○ GitHub Projects (recommended for workflow visualization)
@@ -91,13 +91,12 @@ gh auth status
 ```
 ⚠️ GitHub authentication required
 
-Please run:
-  gh auth login
-
-Then run this guide again.
+`/rite:setup` guides you through GitHub login and verifies the required
+permissions before continuing. You do not need to run a separate login
+command from this guide.
 ```
 
-Stop here if not authenticated.
+Continue the guide; Phase 3 directs the user to `/rite:setup`.
 
 ### 2.4 Verify Repository
 
@@ -119,11 +118,15 @@ gh repo view --json owner,name
 
 rite workflow requires a GitHub repository with Issues enabled.
 
-If this is a local repository, push it to GitHub first:
-  gh repo create --source . --push
+`/rite:setup` detects an uninitialized local directory or a repository with no
+remote and guides you through initialization, the first commit, repository
+creation, and push. You do not need to duplicate those commands here.
 ```
 
-Stop here if not a valid repository.
+Continue the guide; Phase 3 directs the user to `/rite:setup`. If a remote is
+already configured but cannot be resolved as GitHub, keep the SSH host alias
+note above as the troubleshooting path; setup does not propose creating a new
+repository for a non-empty remote.
 
 ---
 
