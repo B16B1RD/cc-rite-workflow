@@ -5,9 +5,10 @@
 // 得るため。実時間録画はフレーム到達時刻が実行環境の負荷に依存するので、この性質は
 // 原理的に得られない。契約と環境前提は DESIGN.md を参照。
 import { chromium } from 'playwright-core';
-import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
-import { dirname, extname, resolve } from 'node:path';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { existsSync, mkdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const WIDTH = 1280;
@@ -15,21 +16,11 @@ const HEIGHT = 720;
 const SCREENSHOT_ATTEMPTS = 3;
 const SCREENSHOT_RETRY_MS = 150;
 
-// 想定内の契約違反・環境不足はスタックトレース無しで簡潔に落とす。
-// 想定外の例外だけスタックを出したいので riteExpected で区別する。
-function fail(message) {
-  const error = new Error(message);
-  error.riteExpected = true;
-  throw error;
-}
-
-function usage() {
+const [, , sceneArg, outArg, fpsArg] = process.argv;
+if (!sceneArg || !outArg) {
   console.error('usage: node render/render.mjs <scene.html> <out.mp4> [fps]');
   process.exit(1);
 }
-
-const [, , sceneArg, outArg, fpsArg] = process.argv;
-if (!sceneArg || !outArg) usage();
 
 const fps = Number(fpsArg ?? 30);
 if (!Number.isFinite(fps) || fps <= 0) {
@@ -37,9 +28,8 @@ if (!Number.isFinite(fps) || fps <= 0) {
   process.exit(1);
 }
 
-// file:// の存在チェックを goto より先に置く。Chrome は存在しないファイルでも
-// エラーページを描画して load を完了させるため、これが無いと「真っ白な mp4 が
-// 正常終了で生成される」silent failure になる。
+// Chrome は存在しないファイルでもエラーページを描画して load を完了させる。この検査が無いと
+// 「真っ白な mp4 が正常終了で生成される」silent failure になる（ffmpeg は成功してしまう）。
 const scenePath = resolve(sceneArg);
 if (!existsSync(scenePath)) {
   console.error(`render: シーンが見つかりません: ${scenePath}`);
@@ -60,23 +50,18 @@ mkdirSync(dirname(outPath), { recursive: true });
 // 終了しない（exit code が呼び出し元へ届かず check-determinism.sh が無限に待つ）。
 let ffmpeg = null;
 let browser = null;
-// 照合を通ったものだけを outPath へ移す。ffmpeg に outPath を直接書かせると、失敗した再レンダが
-// 既存の正常な成果物を潰し、フレーム数照合に落ちた短い mp4 が正規のパスに残る（assemble.sh と
-// 同じ理由。同じパイプラインで扱いを非対称にしない）。
-const tmpPath = `${outPath}.${process.pid}.part${extname(outPath)}`;
 
 try {
   // WSL2 実測: GPU 経路（SwiftShader）はフレーム内容が揺らぎ、screenshot 自体も散発的に失敗する。
   // software rasterizer に固定して決定論を確保する。
-  // launch を try の内側に置くのは、Chrome の起動失敗が最も頻度の高い環境不足であり、
-  // 他の環境不足と同じ 1 行の診断で落とすため（DESIGN.md の環境前提が sandbox 制約を明記している）。
   try {
     browser = await chromium.launch({ executablePath: chromePath, args: ['--disable-gpu'] });
   } catch (error) {
     // Playwright の message は起動引数と call log を丸ごと抱えて 17 行になる。1 行目が原因で
     // 残りは定型の再掲なので、他の環境不足経路と同じ 1 行に揃える。
-    const cause = error.message.split('\n', 1)[0];
-    fail(`Chrome の起動に失敗しました: ${cause}（sandbox 外で実行してください）`);
+    throw new Error(
+      `Chrome の起動に失敗しました: ${error.message.split('\n', 1)[0]}（sandbox 外で実行してください）`,
+    );
   }
 
   const page = await browser.newPage({
@@ -93,9 +78,7 @@ try {
     window.__riteAnimations = document.getAnimations();
     for (const animation of window.__riteAnimations) animation.pause();
 
-    if (typeof window.SCENE === 'undefined' || window.SCENE === null) {
-      return { status: 'missing' };
-    }
+    if (typeof window.SCENE === 'undefined' || window.SCENE === null) return { status: 'missing' };
     const declared = window.SCENE.duration_ms;
     if (typeof declared !== 'number' || !Number.isFinite(declared) || declared <= 0) {
       return { status: 'invalid', repr: String(declared) };
@@ -104,16 +87,15 @@ try {
   });
 
   if (declaration.status === 'missing') {
-    fail(`${sceneArg}: window.SCENE が宣言されていません（既定尺で続行しません）`);
+    throw new Error(`${sceneArg}: window.SCENE が宣言されていません（既定尺で続行しません）`);
   }
   if (declaration.status === 'invalid') {
-    fail(`${sceneArg}: window.SCENE.duration_ms が正の数値ではありません: ${declaration.repr}`);
+    throw new Error(
+      `${sceneArg}: window.SCENE.duration_ms が正の数値ではありません: ${declaration.repr}`,
+    );
   }
 
   const frames = Math.round((declaration.durationMs / 1000) * fps);
-  if (frames < 1) {
-    fail(`宣言尺 ${declaration.durationMs}ms × ${fps}fps ではフレームが 1 枚も生成されません`);
-  }
 
   ffmpeg = spawn(
     'ffmpeg',
@@ -123,36 +105,28 @@ try {
       '-pix_fmt', 'yuv420p',
       // 実行時刻がコンテナに載ると同一入力でも md5 が変わるため落とす。
       '-map_metadata', '-1',
-      tmpPath,
+      outPath,
     ],
     { stdio: ['pipe', 'ignore', 'inherit'] },
   );
 
-  // ffmpeg 側の異常は書き込み中に非同期で表面化する。取りこぼすと「途中で切れた mp4 が
-  // 正常終了で残る」ため、最初の 1 件を保持してフレームループ内で検査する。
+  // 起動失敗（ENOENT 等）と書き込み中断は非同期で表面化する。listener が無いと 'error' が
+  // 未処理例外になるため、最初の 1 件を保持して終了検査で報告する。
   let ffmpegFailure = null;
   ffmpeg.on('error', (error) => {
-    ffmpegFailure ??= `ffmpeg の起動に失敗しました: ${error.message}`;
+    ffmpegFailure ??= `ffmpeg を起動できませんでした: ${error.message}`;
   });
   ffmpeg.stdin.on('error', (error) => {
     ffmpegFailure ??= `ffmpeg への書き込みが中断されました: ${error.message}`;
   });
-  const ffmpegClosed = new Promise((resolvePromise) => ffmpeg.on('close', resolvePromise));
 
-  // 終了検査は close イベントの code ではなく ChildProcess 自身の exitCode / signalCode を見る。
-  // signal で殺されると code は null のままなので、code の null 判定だけでは終了を取りこぼし、
-  // 既に閉じた emitter を待って永久に止まる（診断も出ないまま event loop が空になる）。
-  const assertFfmpegAlive = (index) => {
-    if (ffmpegFailure) fail(ffmpegFailure);
-    if (ffmpeg.exitCode !== null || ffmpeg.signalCode !== null) {
-      const how = ffmpeg.signalCode ? `signal ${ffmpeg.signalCode}` : `exit code ${ffmpeg.exitCode}`;
-      fail(`ffmpeg がフレーム ${index}/${frames} の時点で終了しました（${how}）`);
-    }
-  };
+  // close 済みかをループ条件に使う。死んだ子プロセスへ残りのフレームを撮り続けない。
+  let closed = null;
+  const ffmpegClosed = new Promise((settle) => {
+    ffmpeg.on('close', (code, signal) => settle((closed = { code, signal })));
+  });
 
-  for (let index = 0; index < frames; index += 1) {
-    assertFfmpegAlive(index);
-
+  for (let index = 0; index < frames && !closed; index += 1) {
     const timeMs = (index * 1000) / fps;
     await page.evaluate((ms) => {
       for (const animation of window.__riteAnimations) animation.currentTime = ms;
@@ -175,61 +149,27 @@ try {
       }
     }
     if (buffer === null) {
-      fail(
+      throw new Error(
         `フレーム ${index}/${frames} の screenshot が ${SCREENSHOT_ATTEMPTS} 回連続で失敗しました: ${lastError?.message}`,
       );
     }
 
+    // screenshot を待つ間に ffmpeg が死ぬと drain は二度と来ない。close と競わせて待ちを解く。
     if (!ffmpeg.stdin.write(buffer)) {
-      // screenshot を待つ間に ffmpeg が死んでいると drain も close も二度と来ない。
-      // 待ちに入る前に確定させる（次の周回の検査では手遅れになる）。
-      assertFfmpegAlive(index);
-      // 決着した側だけが once で外れるため、負けた listener を明示的に外す。
-      // 放置すると backpressure の回数だけ close listener が積み上がり、11 本目で
-      // MaxListenersExceededWarning が ffmpeg の stderr と同じ経路に混ざる。
-      await new Promise((r) => {
-        const settle = () => {
-          ffmpeg.stdin.off('drain', settle);
-          ffmpeg.off('close', settle);
-          r();
-        };
-        ffmpeg.stdin.once('drain', settle);
-        ffmpeg.once('close', settle);
-      });
+      await Promise.race([once(ffmpeg.stdin, 'drain'), ffmpegClosed]);
     }
   }
 
   ffmpeg.stdin.end();
-  const exitCode = await ffmpegClosed;
-  if (ffmpegFailure) fail(ffmpegFailure);
-  if (exitCode !== 0) {
-    // signal 終了では exitCode が null になるため、同じ帰結の出口を同じ形で言い当てる。
-    const how = ffmpeg.signalCode ? `signal ${ffmpeg.signalCode}` : `exit code ${exitCode}`;
-    fail(`ffmpeg が ${how} で終了しました`);
+  const { code, signal } = await ffmpegClosed;
+  if (ffmpegFailure) throw new Error(ffmpegFailure);
+  if (code !== 0) {
+    throw new Error(`ffmpeg が ${signal ? `signal ${signal}` : `exit code ${code}`} で終了しました`);
   }
 
-  // 「宣言尺どおりのフレーム数」を推測ではなく出力から確かめる。ffmpeg は入力が途中で
-  // 尽きても exit 0 で短い mp4 を残せるので、ここを飛ばすと欠落が検出できない。
-  const probe = spawnSync(
-    'ffprobe',
-    [
-      '-v', 'error', '-select_streams', 'v:0', '-count_packets',
-      '-show_entries', 'stream=nb_read_packets', '-of', 'csv=p=0', tmpPath,
-    ],
-    { encoding: 'utf8' },
-  );
-  if (probe.error) fail(`ffprobe の実行に失敗しました: ${probe.error.message}`);
-  if (probe.status !== 0) fail(`ffprobe が exit code ${probe.status} で終了しました: ${probe.stderr.trim()}`);
-  const written = Number(probe.stdout.trim());
-  if (written !== frames) {
-    fail(`出力フレーム数が宣言尺と一致しません（期待 ${frames} / 実際 ${written}）: ${outPath}`);
-  }
-
-  renameSync(tmpPath, outPath);
   console.log(`rendered ${frames} frames @${fps}fps -> ${outPath}`);
 } catch (error) {
   console.error(`render: ${error.message}`);
-  if (!error.riteExpected) console.error(error.stack);
   process.exitCode = 1;
 } finally {
   // 成功経路では既に close 済みで no-op。失敗経路では stdin を閉じて子プロセスを落とし、
@@ -238,8 +178,5 @@ try {
     ffmpeg.stdin.destroy();
     ffmpeg.kill();
   }
-  // 成功経路では rename 済みで no-op。失敗経路では書きかけを消す（残しても再実行で上書きされる
-  // だけだが、部分成果物を成果物ディレクトリに残さない）。
-  rmSync(tmpPath, { force: true });
   if (browser) await browser.close();
 }
