@@ -87,9 +87,11 @@
 #                                 漏れるため専用 reason で fail-loud させる (per-finding fail-safe と
 #                                 隣接する defect class の一貫性)
 #   jq_transform_failed         — ゲート変換 jq が非ゼロ終了 (exit 1)
-#   stats_read_failed           — .stats.* の読み出し失敗、値が数値でない、または統計間の不変条件
+#   stats_read_failed           — .stats.* の読み出し失敗、値が数値でない、統計間の不変条件
 #                                 (class_a + class_b == blocking / unclassified <= class_a /
-#                                 demoted の applied 整合) が破れている (exit 1)。握り潰すと後続の
+#                                 undetermined_measured <= class_a / demoted の applied 整合) が
+#                                 破れている、または変換前の件数算出 jq (blocking_pre の no-op 判定 /
+#                                 classification map の要素型検査) の失敗 (exit 1)。握り潰すと後続の
 #                                 数値比較が空文字で偽になり fail-open になる (measured-gate と同根)
 #   mktemp_failure              — 出力 tempfile の mktemp 失敗 (exit 1)
 #   write_failure               — tempfile への書き出し失敗 (exit 1)

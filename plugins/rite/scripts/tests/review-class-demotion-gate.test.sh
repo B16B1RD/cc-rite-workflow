@@ -273,19 +273,29 @@ run_gate "$TEST_DIR/tc10.json" "$TEST_DIR/tc10-cls.json"
 # ---- TC-12: 実測未判定の gated finding は分類対象外で class A 固定 ----
 # 5.3.0.M が形式崩れアンカーを blocking のまま残した形 (verification キーなし)。
 # class B の well-formed map エントリがあっても降格されない — 「判定不能を降格に丸めない」
-# 3 値モデルの保証を第 2 軸でも保つ (本政策の入力は宣言どおり実測付き blocking に限る)
-echo "TC-12: 実測未判定 → 分類対象外で class A 固定 (map の B エントリを参照しない)"
+# 3 値モデルの保証を第 2 軸でも保つ (本政策の入力は宣言どおり実測付き blocking に限る)。
+# fixture は measured 済み class B と**共存**させる (class_b >= 1 を成立させ、not-triggered の
+# 結論が「未判定が class A に算入されて降格を阻止した」ことのみに依存する形にする —
+# 未判定 1 件のみだと発動条件のもう一方の連言 class_b >= 1 で結論が過剰決定される)
+echo "TC-12: 実測未判定 → 分類対象外で class A 固定 (measured class B と共存し降格を阻止)"
 f1=$(mk_finding "F-01" "HIGH" "current-pr" "書式崩れアンカーで未判定の CRITICAL 級指摘" "plugins/rite/hooks/foo.sh" "none")
-mk_json "$TEST_DIR/tc12.json" "$f1"
-mk_cls "$TEST_DIR/tc12-cls.json" "$(mk_entry F-01 B "文書整合に留まる (と主張する誤分類)")"
+f2=$(mk_finding "F-02" "MEDIUM" "current-pr" "実測済みの文言同期指摘")
+mk_json "$TEST_DIR/tc12.json" "$f1" "$f2"
+mk_cls "$TEST_DIR/tc12-cls.json" \
+  "$(mk_entry F-01 B "文書整合に留まる (と主張する誤分類)")" \
+  "$(mk_entry F-02 B "文書整合に留まる")"
 run_gate "$TEST_DIR/tc12.json" "$TEST_DIR/tc12-cls.json"
 [ "$GATE_RC" -eq 0 ] && pass "rc=0" || fail "rc=$GATE_RC (expected 0)"
-grep -q "CLASS_DEMOTION_GATE=not-triggered; class_a=1; class_b=0" <<<"$GATE_STDERR" \
-  && pass "undetermined counted as class A (not-triggered)" || fail "marker mismatch: $GATE_STDERR"
+grep -q "CLASS_DEMOTION_GATE=not-triggered; class_a=1; class_b=1; demoted=0" <<<"$GATE_STDERR" \
+  && pass "undetermined blocks demotion (not-triggered, class_a=1 class_b=1)" || fail "marker mismatch: $GATE_STDERR"
 grep -q "CLASS_DEMOTION_UNDETERMINED_MEASURED=1; count=1" <<<"$GATE_STDERR" \
   && pass "UNDETERMINED_MEASURED marker" || fail "marker missing: $GATE_STDERR"
-[ "$(jq -r '.findings | length' "$TEST_DIR/tc12.json")" = "1" ] \
-  && pass "undetermined stays blocking" || fail "undetermined was demoted"
+grep -q "判定不能を降格に丸めない 3 値モデルの保証" <<<"$GATE_STDERR" \
+  && pass "undetermined WARNING emitted" || fail "WARNING missing: $GATE_STDERR"
+[ "$(jq -r '.findings | length' "$TEST_DIR/tc12.json")" = "2" ] \
+  && pass "both stay blocking (class B not demoted)" || fail "findings were demoted"
+[ "$(jq -r '.non_blocking_findings | length' "$TEST_DIR/tc12.json")" = "0" ] \
+  && pass "no demotion occurred" || fail "unexpected demotion"
 [ "$(jq -r '.findings[0].consequence_class' "$TEST_DIR/tc12.json")" = "A" ] \
   && pass "consequence_class=A fixed" || fail "consequence_class not A"
 [ "$(jq -r '.findings[0] | has("consequence_scenario")' "$TEST_DIR/tc12.json")" = "false" ] \
