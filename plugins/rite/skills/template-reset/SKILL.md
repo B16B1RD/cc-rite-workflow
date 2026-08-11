@@ -1,7 +1,7 @@
 ---
 name: template-reset
 description: |
-  rite workflow のテンプレート再生成ヘルパー: rite-config / Issue / PR / review テンプレートを
+  rite workflow のテンプレート再生成ヘルパー: rite-config / Issue / PR / review / GitHub テンプレートを
   再生成する。ユーザーが明示的に /rite:template-reset で起動する。auto-activate しない。
   起動: /rite:template-reset [target]
 argument-hint: "[target]"
@@ -19,7 +19,12 @@ Execute the following phases in order when this command is run.
 
 | Argument | Description |
 |------|------|
+| `github` | `.github/` の Issue / PR テンプレート一式を `templates/github/` から再生成 |
 | `--force` | Skip template overwrite confirmation (does not apply to rite-config.yml regeneration confirmation) |
+
+When `github` is specified, limit detection, overwrite confirmation, generation, and the completion report to the GitHub templates described in Phase 3.1.0. Without a target, preserve the existing all-template flow.
+
+For the `github` target, Phase 2 has exactly two choices: `GitHubテンプレート4ファイルをすべて上書き` / `キャンセル`. Retain the result as `github_reset_set=all|none`; `--force` maps directly to `all`. A partial Issue-only or PR-only selection is not offered for this target. Proceed to Phase 3.1.0 only for `all`.
 
 ---
 
@@ -90,6 +95,8 @@ If `--force` is specified, skip the confirmation and overwrite all.
 
 ## Phase 3: Template Generation
 
+Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before reading any bundled template. Do not duplicate bundled template contents in this skill.
+
 ### 3.0 Directory Preparation
 
 Create necessary directories before generating templates:
@@ -107,6 +114,23 @@ mkdir -p .github/ISSUE_TEMPLATE
 ---
 
 ### 3.1 Generate Issue Templates
+
+#### 3.1.0 Generate GitHub Templates (`github` target)
+
+When the target is `github`, use `{plugin_root}/templates/github/` as the single source of truth and regenerate exactly these files:
+
+| Source | Destination |
+|--------|-------------|
+| `{plugin_root}/templates/github/ISSUE_TEMPLATE/bug_report.md` | `.github/ISSUE_TEMPLATE/bug_report.md` |
+| `{plugin_root}/templates/github/ISSUE_TEMPLATE/feature_request.md` | `.github/ISSUE_TEMPLATE/feature_request.md` |
+| `{plugin_root}/templates/github/ISSUE_TEMPLATE/config.yml` | `.github/ISSUE_TEMPLATE/config.yml` |
+| `{plugin_root}/templates/github/PULL_REQUEST_TEMPLATE.md` | `.github/PULL_REQUEST_TEMPLATE.md` |
+
+Read each source and write it unchanged to its destination. Existing destination files are overwritten only after the Phase 2 confirmation, or when `--force` is specified. If any source is missing or unreadable, show a WARNING naming that source, do not synthesize replacement content, and leave its destination unchanged. Continue with the remaining sources and report every skipped file.
+
+Before any directory preparation or write, canonicalize the project root and reject the entire GitHub reset if `.github` or `.github/ISSUE_TEMPLATE` is a symbolic link. For the `github` target, skip the generic Phase 3.0 directory preparation; after this guard succeeds, create destination parents inside Phase 3.1.0 only. Reject an individual destination if it is a symbolic link or its canonical parent is outside the project root. Only `github_reset_set=all` may enter the write loop. Copy each source completely to a temporary file in the destination directory, re-check the symlink and canonical-parent guards, then atomically replace the explicitly approved destination with `mv temp destination`. Remove the temporary file on failure and preserve the old destination whenever the source copy did not complete. These failures are WARNING-only and processing continues with the next safe destination. This approved-replacement contract is intentionally different from setup Phase 4.2, which generates missing files with no-clobber publication.
+
+After processing these four files, skip Phases 3.1 (legacy Issue templates), 3.2, and 3.3 and proceed to Phase 4. This prevents the legacy inline templates and `templates/pr/generic.md` from overwriting the GitHub template SoT output.
 
 Generate the following template files:
 
@@ -238,6 +262,8 @@ rite-config.yml も再生成しますか？
 ## Phase 4: Completion Report
 
 ### 4.1 Display Generation Results
+
+For the `github` target, list the four GitHub template destinations above with their actual status (`作成`, `更新`, or `スキップ`) instead of the legacy example below.
 
 ```
 テンプレートを再生成しました
