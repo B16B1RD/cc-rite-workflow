@@ -6,11 +6,12 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-usage: assemble.sh -o <out.mp4> [-t <xfade_sec>] [-b <bgm.mp3>] <scene1.mp4> [scene2.mp4 ...]
+usage: assemble.sh [-P] -o <out.mp4> [-t <xfade_sec>] [-b <bgm.mp3>] <scene1.mp4> [scene2.mp4 ...]
 
   -o  出力 mp4（必須）
   -t  シーン間クロスフェード秒（既定: 0.5）
   -b  BGM 音声ファイル（任意。指定時は fade in/out を付けて合成する）
+  -P  intro-video-v2 プリセット（レンダ済み 5 シーンと既定 BGM を順番どおり使用）
 EOF
   exit 1
 }
@@ -18,18 +19,33 @@ EOF
 out=""
 xfade="0.5"
 bgm=""
-while getopts ":o:t:b:" opt; do
+preset=false
+while getopts ":o:t:b:P" opt; do
   case "$opt" in
     o) out="$OPTARG" ;;
     t) xfade="$OPTARG" ;;
     b) bgm="$OPTARG" ;;
+    P) preset=true ;;
     *) usage ;;
   esac
 done
 shift $((OPTIND - 1))
 
 [ -n "$out" ] || usage
-[ "$#" -ge 1 ] || usage
+if [ "$preset" = true ]; then
+  [ "$#" -eq 0 ] || { echo "assemble: -P とシーン引数は同時に指定できません" >&2; exit 1; }
+  scenes=(
+    "out/01-problem.mp4"
+    "out/02-loop.mp4"
+    "out/03-terminal.mp4"
+    "out/04-gates.mp4"
+    "out/05-closing.mp4"
+  )
+  [ -n "$bgm" ] || bgm="rite-synth-bgm.mp3"
+else
+  [ "$#" -ge 1 ] || usage
+  scenes=("$@")
+fi
 
 # 「正の数値であること」を述語として要求する。文字クラスの否定（`*[!0-9.]*` 等）では `.` 単体や
 # `0` が抜け、awk の比較が 0 に潰れたまま下流へ流れる。先頭ドット表記（`.5`）を除くのは ffmpeg の
@@ -41,7 +57,6 @@ if ! awk -v x="$xfade" 'BEGIN{ exit !(x ~ /^[0-9]+(\.[0-9]*)?$/ && (x + 0) > 0) 
   exit 1
 fi
 
-scenes=("$@")
 for scene in "${scenes[@]}"; do
   [ -f "$scene" ] || { echo "assemble: シーンが見つかりません: $scene" >&2; exit 1; }
 done
