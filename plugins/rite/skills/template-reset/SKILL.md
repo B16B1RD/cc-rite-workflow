@@ -24,6 +24,8 @@ Execute the following phases in order when this command is run.
 
 When `github` is specified, limit detection, overwrite confirmation, generation, and the completion report to the GitHub templates described in Phase 3.1.0. Without a target, preserve the existing all-template flow.
 
+For the `github` target, Phase 2 has exactly two choices: `GitHubテンプレート4ファイルをすべて上書き` / `キャンセル`. Retain the result as `github_reset_set=all|none`; `--force` maps directly to `all`. A partial Issue-only or PR-only selection is not offered for this target. Proceed to Phase 3.1.0 only for `all`.
+
 ---
 
 ## Phase 1: Configuration Check
@@ -125,6 +127,8 @@ When the target is `github`, use `{plugin_root}/templates/github/` as the single
 | `{plugin_root}/templates/github/PULL_REQUEST_TEMPLATE.md` | `.github/PULL_REQUEST_TEMPLATE.md` |
 
 Read each source and write it unchanged to its destination. Existing destination files are overwritten only after the Phase 2 confirmation, or when `--force` is specified. If any source is missing or unreadable, show a WARNING naming that source, do not synthesize replacement content, and leave its destination unchanged. Continue with the remaining sources and report every skipped file.
+
+Before writing, canonicalize the project root and reject the entire GitHub reset if `.github` or `.github/ISSUE_TEMPLATE` is a symbolic link. Reject an individual destination if it is a symbolic link or its canonical parent is outside the project root. Write each source through a temporary file in the destination directory and rename it only after the complete source copy succeeds; on failure, remove the temporary file and preserve the previous destination. These failures are WARNING-only and processing continues with the next safe destination.
 
 After processing these four files, skip Phases 3.1 (legacy Issue templates), 3.2, and 3.3 and proceed to Phase 4. This prevents the legacy inline templates and `templates/pr/generic.md` from overwriting the GitHub template SoT output.
 

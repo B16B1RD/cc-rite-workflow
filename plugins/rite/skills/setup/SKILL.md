@@ -643,7 +643,8 @@ for relative_path in \
   "ISSUE_TEMPLATE/config.yml" \
   "PULL_REQUEST_TEMPLATE.md"
 do
-  [ -e ".github/$relative_path" ] || missing_templates="${missing_templates}${missing_templates:+,}$relative_path"
+  destination_path=".github/$relative_path"
+  { [ -e "$destination_path" ] || [ -L "$destination_path" ]; } || missing_templates="${missing_templates}${missing_templates:+,}$relative_path"
 done
 
 if [ -n "$missing_templates" ]; then
@@ -660,6 +661,11 @@ fi
 
 ```bash
 template_source_root="{plugin_root}/templates/github"
+project_root=$(pwd -P)
+
+if [ -L ".github" ] || [ -L ".github/ISSUE_TEMPLATE" ]; then
+  echo "WARNING: GitHub template generation skipped because .github path contains a symbolic link" >&2
+else
 
 for relative_path in \
   "ISSUE_TEMPLATE/bug_report.md" \
@@ -671,7 +677,7 @@ do
   destination_path=".github/$relative_path"
 
   # Re-check immediately before copying so an existing user file is never overwritten.
-  if [ -e "$destination_path" ]; then
+  if [ -e "$destination_path" ] || [ -L "$destination_path" ]; then
     echo "SKIP: existing $destination_path"
     continue
   fi
@@ -683,12 +689,23 @@ do
     echo "WARNING: GitHub template directory could not be created: $(dirname "$destination_path")" >&2
     continue
   fi
-  if cp "$source_path" "$destination_path"; then
+  destination_parent=$(cd "$(dirname "$destination_path")" 2>/dev/null && pwd -P) || destination_parent=""
+  case "$destination_parent/" in
+    "$project_root/"*) ;;
+    *) echo "WARNING: GitHub template destination escapes project root: $destination_path" >&2; continue ;;
+  esac
+  temp_path=$(mktemp "$destination_parent/.rite-github-template-XXXXXX") || {
+    echo "WARNING: GitHub template temporary file could not be created: $destination_path" >&2
+    continue
+  }
+  if cp "$source_path" "$temp_path" && [ ! -e "$destination_path" ] && [ ! -L "$destination_path" ] && mv "$temp_path" "$destination_path"; then
     echo "CREATED: $destination_path"
   else
+    rm -f "$temp_path"
     echo "WARNING: GitHub template could not be written: $destination_path" >&2
   fi
 done
+fi
 ```
 
 Missing SoT files, directory creation failures, and copy failures are all non-blocking. Preserve each existing destination unchanged, display the emitted warning or status lines, and continue to Phase 4.5 regardless of the result.
