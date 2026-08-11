@@ -716,7 +716,7 @@ fi
 
 #### 1.2.0.1 Interactive Fallback (when all sources missing) <!-- AC-6 -->
 
-> **Acceptance Criteria anchor**: AC-6 (全ソース欠落時に `AskUserQuestion` で「レビュー実行 / ファイルパス指定 / 中止」を提示する)。
+> **Acceptance Criteria anchor**: AC-6 (全ソース欠落時はレビューを 1 回自動再生成し、再度欠落した場合のみ `AskUserQuestion` で「ファイルパス指定 / 中止」を提示する)。
 
 `{review_source}=fallback` (Priority 0-3 が全て不可) の場合、レビュー再実行は可逆かつ自己解決可能なので推奨として `/rite:pr-review {pr_number}` を 1 回自動実行し、その判断と欠落 source を既存 work memory の決定事項へ記録する。再実行後も source が得られない場合だけ、ユーザー固有の入力であるファイルパス指定または中止を `AskUserQuestion` で確認する:
 
@@ -729,7 +729,6 @@ fi
 どうしますか？
 
 オプション:
-- レビュー実行: /rite:pr-review を起動してレビュー結果を生成する
 - ファイルパス指定: 既存の JSON ファイルパスを入力する (Other で自由入力)
 - 中止: /rite:fix の処理を終了する
 ```
@@ -738,7 +737,6 @@ fi
 
 | User Choice | Action |
 |-------------|--------|
-| **レビュー実行** (Recommended) | `skill: "rite:pr-review", args: "{pr_number}"` を invoke し、完了後 ステップ 1.2 を再入する。再入時は会話コンテキストに新鮮な review があるため Priority 1 が `use` で発火する |
 | **ファイルパス指定** | ユーザー入力パスで ステップ 1.2.0 Priority 0 を **1 回だけ** 再実行する。再実行でも invalid なら `[CONTEXT] FIX_FALLBACK_FAILED=1; reason=user_file_path_invalid` を emit して `[fix:error]` で terminate する (リトライループなし) |
 | **中止** | `[CONTEXT] FIX_FALLBACK_FAILED=1; reason=user_cancelled` を emit し `[fix:error]` を出力して terminate する。ステップ 2+ のロジックは一切実行しない |
 

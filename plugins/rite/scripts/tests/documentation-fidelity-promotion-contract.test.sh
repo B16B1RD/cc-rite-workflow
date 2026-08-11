@@ -17,6 +17,18 @@ assert_grep() {
   fi
 }
 
+assert_not_grep() {
+  local label=$1
+  local file=$2
+  local pattern=$3
+  if grep -Fq -- "$pattern" "$file"; then
+    printf 'not ok - %s\n' "$label" >&2
+    failures=$((failures + 1))
+  else
+    printf 'ok - %s\n' "$label"
+  fi
+}
+
 assert_grep 'audit routes all pages to the shared gate' "$audit" \
   'All four are mechanized by the shared Documentation Fidelity Gate'
 assert_grep 'pivot page mechanized' "$audit" \
@@ -96,6 +108,14 @@ assert_grep 'review auto-records reversible recommendations' \
   "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'Decision Log への記録である候補は可逆なので質問せず推奨で処理'
 assert_grep 'review legacy gate covers automatic disposition' \
   "$ROOT/plugins/rite/skills/pr-review/SKILL.md" '自動 Decision Log 経路でも emit する'
+assert_not_grep 'iterate overview does not restore review error questions' \
+  "$ROOT/plugins/rite/skills/iterate/SKILL.md" 'その他 → AskUserQuestion'
+assert_not_grep 'iterate overview does not restore fix error questions' \
+  "$ROOT/plugins/rite/skills/iterate/SKILL.md" '`[fix:error]` → AskUserQuestion'
+assert_not_grep 'fix fallback does not offer a second review run' \
+  "$ROOT/plugins/rite/skills/fix/SKILL.md" '- レビュー実行: /rite:pr-review を起動してレビュー結果を生成する'
+assert_not_grep 'review overview does not require recommendation questions' \
+  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'recommendations AskUserQuestion 等の処理本体'
 
 if [ "$failures" -ne 0 ]; then
   printf '%s contract assertion(s) failed\n' "$failures" >&2
