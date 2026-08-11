@@ -441,7 +441,7 @@ Operating rules (important):
     the main checkout (.rite/sessions/, etc.) can be rejected as read-only.
     See ../../references/git-worktree-patterns.md, section "worktree cwd から
     main checkout 配下への書き込みが sandbox の write 許可リストでブロックされる"
-    (Windows checkout では shell hook が CRLF で実行不能になるため), for the fix (/rite:setup surfaces the same guidance when it
+    (session worktree から main checkout への書込みは sandbox の許可境界外になり得るため), for the fix (/rite:setup surfaces the same guidance when it
     detects this applies).
 
 Note: multi_session is a SEPARATE axis from parallel.mode: "worktree".

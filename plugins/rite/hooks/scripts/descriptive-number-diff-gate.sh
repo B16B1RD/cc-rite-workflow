@@ -57,17 +57,27 @@ if ! git diff --unified=0 --no-color "$BASE_REF"...HEAD -- plugins/rite > "$diff
 fi
 
 awk '
-  /^\+\+\+ b\// { file=substr($0,7); next }
+  /^\+\+\+ b\// { file=substr($0,7); sub(/\t.*$/, "", file); next }
   /^@@ / {
     if (match($0, /\+[0-9]+/)) line=substr($0, RSTART+1, RLENGTH-1)+0
     next
   }
   /^\+/ && !/^\+\+\+/ {
-    if (file ~ /^plugins\/rite\// && file !~ /(^|\/)tests\//) print file "\t" line
+    if (file ~ /^plugins\/rite\// && file !~ /(^|\/)tests\//) {
+      n++; add_file[n]=file; add_line[n]=line; add_text[n]=substr($0,2)
+    }
     line++; next
   }
-  /^-/ { next }
+  /^-/ && !/^---/ { removed[substr($0,2)]++; next }
   { if (file != "") line++ }
+  END {
+    # A line moved by a rename may appear as delete+add when similarity falls
+    # below Git rename detection. Identical removed content is not a new line.
+    for (i=1; i<=n; i++) {
+      if (removed[add_text[i]] > 0) { removed[add_text[i]]--; continue }
+      print add_file[i] "\t" add_line[i]
+    }
+  }
 ' "$diff_file" > "$added"
 
 [ -s "$added" ] || { echo "Total descriptive-number diff findings: 0"; exit 0; }
