@@ -51,7 +51,7 @@ tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-number-diff-gate-XXXXXX") || exit 2
 trap 'rm -rf "$tmp_dir"' EXIT INT TERM HUP
 added="$tmp_dir/added.tsv"
 diff_file="$tmp_dir/diff.txt"
-if ! git diff --unified=0 --no-color "$BASE_REF"...HEAD -- plugins/rite > "$diff_file"; then
+if ! git -c core.quotePath=false diff --find-renames=1% --unified=0 --no-color "$BASE_REF"...HEAD -- plugins/rite > "$diff_file"; then
   echo "ERROR: descriptive-number diff could not be read from $BASE_REF" >&2
   exit 2
 fi
@@ -63,21 +63,11 @@ awk '
     next
   }
   /^\+/ && !/^\+\+\+/ {
-    if (file ~ /^plugins\/rite\// && file !~ /(^|\/)tests\//) {
-      n++; add_file[n]=file; add_line[n]=line; add_text[n]=substr($0,2)
-    }
+    if (file ~ /^plugins\/rite\// && file !~ /(^|\/)tests\//) print file "\t" line
     line++; next
   }
-  /^-/ && !/^---/ { removed[substr($0,2)]++; next }
+  /^-/ { next }
   { if (file != "") line++ }
-  END {
-    # A line moved by a rename may appear as delete+add when similarity falls
-    # below Git rename detection. Identical removed content is not a new line.
-    for (i=1; i<=n; i++) {
-      if (removed[add_text[i]] > 0) { removed[add_text[i]]--; continue }
-      print add_file[i] "\t" add_line[i]
-    }
-  }
 ' "$diff_file" > "$added"
 
 [ -s "$added" ] || { echo "Total descriptive-number diff findings: 0"; exit 0; }

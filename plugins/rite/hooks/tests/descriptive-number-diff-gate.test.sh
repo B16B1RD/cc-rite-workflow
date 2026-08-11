@@ -63,6 +63,22 @@ assert "rename with edits still blocks a genuinely new reference" "1" "$rc"
 case "$out" in *'PR #401'*) fail "rename does not re-prosecute an identical moved reference" ;; *) pass "rename does not re-prosecute an identical moved reference" ;; esac
 case "$out" in *'PR #402'*) pass "rename reports the genuinely added reference" ;; *) fail "rename reports the genuinely added reference" ;; esac
 
+printf 'Issue #777 moved text\n' > "$sb/plugins/rite/hooks/tests/source.md" # example: excluded source fixture
+git -C "$sb" add . && git -C "$sb" commit -qm excluded-source
+rm "$sb/plugins/rite/hooks/tests/source.md"
+printf 'Issue #777 moved text\n' >> "$sb/plugins/rite/skills/x/SKILL.md" # example: production destination fixture
+git -C "$sb" add -A && git -C "$sb" commit -qm excluded-to-production
+out=$(bash "$sb/plugins/rite/hooks/scripts/descriptive-number-diff-gate.sh" --repo-root "$sb" --base-ref HEAD~1 2>&1); rc=$?
+assert "a tests deletion cannot mask a production addition" "1" "$rc"
+
+mkdir -p "$sb/plugins/rite/skills/日本語"
+printf 'base\n' > "$sb/plugins/rite/skills/日本語/SKILL.md"
+git -C "$sb" add . && git -C "$sb" commit -qm unicode-base
+printf 'Issue #778 unicode path\n' >> "$sb/plugins/rite/skills/日本語/SKILL.md" # example: unicode path fixture
+git -C "$sb" add . && git -C "$sb" commit -qm unicode-bad
+out=$(bash "$sb/plugins/rite/hooks/scripts/descriptive-number-diff-gate.sh" --repo-root "$sb" --base-ref HEAD~1 2>&1); rc=$?
+assert "non-ASCII plugin path cannot bypass the gate" "1" "$rc"
+
 bash "$sb/plugins/rite/hooks/scripts/descriptive-number-diff-gate.sh" --repo-root "$sb" --base-ref does-not-exist >/dev/null 2>&1; rc=$?
 assert "invalid diff base fails closed" "2" "$rc"
 
