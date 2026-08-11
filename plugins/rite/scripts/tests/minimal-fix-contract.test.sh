@@ -16,6 +16,17 @@ assert_grep() {
   fi
 }
 
+assert_block() {
+  local label=$1 file=$2 pattern=$3 content
+  content=$(<"$file")
+  if [[ "$content" == *"$pattern"* ]]; then
+    printf 'PASS: %s\n' "$label"
+  else
+    printf 'FAIL: %s\n' "$label" >&2
+    failures=$((failures + 1))
+  fi
+}
+
 # Keep the three fix-side mandates independent: removing or weakening any one
 # must fail this contract even when the surrounding section remains present.
 assert_grep 'fix stays within the finding named scope' "$fix_skill" \
@@ -33,7 +44,7 @@ assert_grep 'fix consumes the retained cycle baseline' "$fix_skill" \
   'commit_sha_before="{fix_cycle_base_sha_from_context}"'
 assert_grep 'fix rejects an invalid or unexpanded baseline' "$fix_skill" \
   'git cat-file -e "${commit_sha_before}^{commit}"'
-assert_grep 'invalid cycle baseline fails closed' "$fix_skill" \
+assert_block 'invalid cycle baseline fails closed' "$fix_skill" \
   'if ! git cat-file -e "${commit_sha_before}^{commit}" 2>/dev/null; then
   echo "ERROR: FIX_CYCLE_BASE_SHA が未展開または無効です: $commit_sha_before" >&2
   echo "[fix:error]"
