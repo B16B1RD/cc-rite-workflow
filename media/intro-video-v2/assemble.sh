@@ -55,17 +55,27 @@ done
 total="$(awk -v n="${#durations[@]}" -v x="$xfade" 'BEGIN{s=0} {s+=$1} END{printf "%.3f", s - (n-1)*x}' \
   < <(printf '%s\n' "${durations[@]}"))"
 
-# クロスフェードは繋ぎ目ごとに両側のシーンを食うため、判定は総尺ではなく最短シーン尺で行う。
-# 総尺だけを見ると `d0 < x < d0+d1` の窓を素通りし、xfade へ負の offset が渡って
-# ffmpeg が exit 0 のまま素材の大半を捨てた mp4 を残す。
-# （`x < min(d)` は `total > 0` を含意するので、総尺ガードはこれに包含される）
-if [ "${#durations[@]}" -ge 2 ]; then
-  min_d="$(printf '%s\n' "${durations[@]}" | sort -g | head -1)"
-  if awk -v x="$xfade" -v m="$min_d" 'BEGIN{exit !(x >= m)}'; then
-    echo "assemble: クロスフェード ${xfade}s が最短シーン尺 ${min_d}s 以上です（総尺 ${total}s）" >&2
+# クロスフェードは繋ぎ目ごとにシーンを食う。端のシーンは 1 回（x）、中間のシーンは前後
+# 2 回（2x）食われるため、必要マージンは位置で変わる。総尺 `Σd −(n−1)x` だけを見ると
+# `d0 < x < d0+d1` の窓も中間シーンの重なりも素通りし、負ないし重複した offset が xfade へ
+# 渡って ffmpeg が exit 0 のまま素材を捨てた mp4 を残す。
+# n==1（xfade を使わない）では必要マージンが 0 になり `d > 0` の検査へ自然に縮退するので、
+# 総尺ガードは本ループに含まれる。
+# `d+0` で数値化するのは、ffprobe が `N/A` を返した尺を awk の文字列比較が素通りさせるため。
+n_scenes="${#durations[@]}"
+for i in "${!durations[@]}"; do
+  if [ "$n_scenes" -eq 1 ]; then
+    need=0
+  elif [ "$i" -eq 0 ] || [ "$i" -eq $((n_scenes - 1)) ]; then
+    need="$xfade"
+  else
+    need="$(awk -v x="$xfade" 'BEGIN{printf "%.6f", 2 * x}')"
+  fi
+  if ! awk -v d="${durations[$i]}" -v need="$need" 'BEGIN{exit !((d + 0) > (need + 0))}'; then
+    echo "assemble: シーン $((i + 1)) の尺 ${durations[$i]}s が不足しています（クロスフェード ${xfade}s に対し ${need}s 超が必要）: ${scenes[$i]}" >&2
     exit 1
   fi
-fi
+done
 
 inputs=()
 for scene in "${scenes[@]}"; do inputs+=(-i "$scene"); done
@@ -93,10 +103,10 @@ maps=(-map "[v]")
 
 if [ -n "$bgm" ]; then
   bgm_duration="$(probe_duration "$bgm")"
-  # 出力尺は下の `-t "$total"` で固定するため映像は削られないが、BGM が総尺より短いと
+  # `-shortest` を発行していないため映像は BGM 長に切り詰められないが、BGM が総尺より短いと
   # 末尾が無音になる。無音の完成尺を黙って出さないためにここで落とす。
   if awk -v b="$bgm_duration" -v t="$total" 'BEGIN{exit !(b < t)}'; then
-    echo "assemble: BGM が総尺より短いため映像が切り詰められます（BGM ${bgm_duration}s < 総尺 ${total}s）" >&2
+    echo "assemble: BGM が総尺より短く末尾が無音になります（BGM ${bgm_duration}s < 総尺 ${total}s）" >&2
     exit 1
   fi
   fade_out_start="$(awk -v t="$total" 'BEGIN{printf "%.3f", (t - 2 > 0) ? t - 2 : 0}')"

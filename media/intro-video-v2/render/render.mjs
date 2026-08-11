@@ -117,25 +117,27 @@ try {
   // ffmpeg 側の異常は書き込み中に非同期で表面化する。取りこぼすと「途中で切れた mp4 が
   // 正常終了で残る」ため、最初の 1 件を保持してフレームループ内で検査する。
   let ffmpegFailure = null;
-  let ffmpegExitCode = null;
   ffmpeg.on('error', (error) => {
     ffmpegFailure ??= `ffmpeg の起動に失敗しました: ${error.message}`;
   });
   ffmpeg.stdin.on('error', (error) => {
     ffmpegFailure ??= `ffmpeg への書き込みが中断されました: ${error.message}`;
   });
-  const ffmpegClosed = new Promise((resolvePromise) => {
-    ffmpeg.on('close', (code) => {
-      ffmpegExitCode = code;
-      resolvePromise(code);
-    });
-  });
+  const ffmpegClosed = new Promise((resolvePromise) => ffmpeg.on('close', resolvePromise));
+
+  // 終了検査は close イベントの code ではなく ChildProcess 自身の exitCode / signalCode を見る。
+  // signal で殺されると code は null のままなので、code の null 判定だけでは終了を取りこぼし、
+  // 既に閉じた emitter を待って永久に止まる（診断も出ないまま event loop が空になる）。
+  const assertFfmpegAlive = (index) => {
+    if (ffmpegFailure) fail(ffmpegFailure);
+    if (ffmpeg.exitCode !== null || ffmpeg.signalCode !== null) {
+      const how = ffmpeg.signalCode ? `signal ${ffmpeg.signalCode}` : `exit code ${ffmpeg.exitCode}`;
+      fail(`ffmpeg がフレーム ${index}/${frames} の時点で終了しました（${how}）`);
+    }
+  };
 
   for (let index = 0; index < frames; index += 1) {
-    if (ffmpegFailure) fail(ffmpegFailure);
-    if (ffmpegExitCode !== null) {
-      fail(`ffmpeg がフレーム ${index}/${frames} の時点で exit code ${ffmpegExitCode} で終了しました`);
-    }
+    assertFfmpegAlive(index);
 
     const timeMs = (index * 1000) / fps;
     await page.evaluate((ms) => {
@@ -160,8 +162,9 @@ try {
     }
 
     if (!ffmpeg.stdin.write(buffer)) {
-      // ffmpeg が死んでいると drain は永久に来ない。close も待って hang を防ぐ
-      // （どちらで抜けたかは次の周回の failure 検査が判定する）。
+      // screenshot を待つ間に ffmpeg が死んでいると drain も close も二度と来ない。
+      // 待ちに入る前に確定させる（次の周回の検査では手遅れになる）。
+      assertFfmpegAlive(index);
       // 決着した側だけが once で外れるため、負けた listener を明示的に外す。
       // 放置すると backpressure の回数だけ close listener が積み上がり、11 本目で
       // MaxListenersExceededWarning が ffmpeg の stderr と同じ経路に混ざる。
@@ -180,7 +183,11 @@ try {
   ffmpeg.stdin.end();
   const exitCode = await ffmpegClosed;
   if (ffmpegFailure) fail(ffmpegFailure);
-  if (exitCode !== 0) fail(`ffmpeg が exit code ${exitCode} で終了しました`);
+  if (exitCode !== 0) {
+    // signal 終了では exitCode が null になるため、同じ帰結の出口を同じ形で言い当てる。
+    const how = ffmpeg.signalCode ? `signal ${ffmpeg.signalCode}` : `exit code ${exitCode}`;
+    fail(`ffmpeg が ${how} で終了しました`);
+  }
 
   // 「宣言尺どおりのフレーム数」を推測ではなく出力から確かめる。ffmpeg は入力が途中で
   // 尽きても exit 0 で短い mp4 を残せるので、ここを飛ばすと欠落が検出できない。
