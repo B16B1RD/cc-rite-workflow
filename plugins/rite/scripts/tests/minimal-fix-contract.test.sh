@@ -33,6 +33,12 @@ assert_grep 'fix consumes the retained cycle baseline' "$fix_skill" \
   'commit_sha_before="{fix_cycle_base_sha_from_context}"'
 assert_grep 'fix rejects an invalid or unexpanded baseline' "$fix_skill" \
   'git cat-file -e "${commit_sha_before}^{commit}"'
+assert_grep 'invalid cycle baseline fails closed' "$fix_skill" \
+  'if ! git cat-file -e "${commit_sha_before}^{commit}" 2>/dev/null; then
+  echo "ERROR: FIX_CYCLE_BASE_SHA が未展開または無効です: $commit_sha_before" >&2
+  echo "[fix:error]"
+  exit 1
+fi'
 assert_grep 'fix uses the cycle baseline for numstat' "$fix_skill" \
   'git diff --numstat "$commit_sha_before"..HEAD'
 assert_grep 'fix excludes binary additions from line totals' "$fix_skill" \
