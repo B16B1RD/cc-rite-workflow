@@ -54,9 +54,17 @@ done
 # 連結後の総尺 = 全シーン尺の合計 − 重なり分（クロスフェード × 繋ぎ目の数）
 total="$(awk -v n="${#durations[@]}" -v x="$xfade" 'BEGIN{s=0} {s+=$1} END{printf "%.3f", s - (n-1)*x}' \
   < <(printf '%s\n' "${durations[@]}"))"
-if awk -v t="$total" 'BEGIN{exit !(t <= 0)}'; then
-  echo "assemble: クロスフェード ${xfade}s がシーン尺に対して長すぎます（総尺 ${total}s）" >&2
-  exit 1
+
+# クロスフェードは繋ぎ目ごとに両側のシーンを食うため、判定は総尺ではなく最短シーン尺で行う。
+# 総尺だけを見ると `d0 < x < d0+d1` の窓を素通りし、xfade へ負の offset が渡って
+# ffmpeg が exit 0 のまま素材の大半を捨てた mp4 を残す。
+# （`x < min(d)` は `total > 0` を含意するので、総尺ガードはこれに包含される）
+if [ "${#durations[@]}" -ge 2 ]; then
+  min_d="$(printf '%s\n' "${durations[@]}" | sort -g | head -1)"
+  if awk -v x="$xfade" -v m="$min_d" 'BEGIN{exit !(x >= m)}'; then
+    echo "assemble: クロスフェード ${xfade}s が最短シーン尺 ${min_d}s 以上です（総尺 ${total}s）" >&2
+    exit 1
+  fi
 fi
 
 inputs=()
@@ -85,7 +93,8 @@ maps=(-map "[v]")
 
 if [ -n "$bgm" ]; then
   bgm_duration="$(probe_duration "$bgm")"
-  # -shortest は「短い方」で切るため、BGM が総尺より短いと映像が黙って削られる。
+  # 出力尺は下の `-t "$total"` で固定するため映像は削られないが、BGM が総尺より短いと
+  # 末尾が無音になる。無音の完成尺を黙って出さないためにここで落とす。
   if awk -v b="$bgm_duration" -v t="$total" 'BEGIN{exit !(b < t)}'; then
     echo "assemble: BGM が総尺より短いため映像が切り詰められます（BGM ${bgm_duration}s < 総尺 ${total}s）" >&2
     exit 1

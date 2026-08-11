@@ -59,6 +59,11 @@ mkdirSync(dirname(outPath), { recursive: true });
 // software rasterizer に固定して決定論を確保する。
 const browser = await chromium.launch({ executablePath: chromePath, args: ['--disable-gpu'] });
 
+// ffmpeg は try の外で宣言する。ループ内で throw したとき finally から解放できないと、
+// stdin の EOF を待ち続ける子プロセスが event loop を保持し、エラーを出したままプロセスが
+// 終了しない（exit code が呼び出し元へ届かず check-determinism.sh が無限に待つ）。
+let ffmpeg = null;
+
 try {
   const page = await browser.newPage({
     viewport: { width: WIDTH, height: HEIGHT },
@@ -71,7 +76,7 @@ try {
   const declaration = await page.evaluate(() => {
     // pause 済みの Animation を後続の seek 用に保持する。document.getAnimations() を
     // フレームごとに呼び直すと、途中で追加された Animation が混ざり再現性が落ちる。
-    window.__riteAnimations = document.getAnimations({ subtree: true });
+    window.__riteAnimations = document.getAnimations();
     for (const animation of window.__riteAnimations) animation.pause();
 
     if (typeof window.SCENE === 'undefined' || window.SCENE === null) {
@@ -96,7 +101,7 @@ try {
     fail(`宣言尺 ${declaration.durationMs}ms × ${fps}fps ではフレームが 1 枚も生成されません`);
   }
 
-  const ffmpeg = spawn(
+  ffmpeg = spawn(
     'ffmpeg',
     [
       '-y', '-f', 'image2pipe', '-framerate', String(fps), '-i', '-',
@@ -157,9 +162,17 @@ try {
     if (!ffmpeg.stdin.write(buffer)) {
       // ffmpeg が死んでいると drain は永久に来ない。close も待って hang を防ぐ
       // （どちらで抜けたかは次の周回の failure 検査が判定する）。
+      // 決着した側だけが once で外れるため、負けた listener を明示的に外す。
+      // 放置すると backpressure の回数だけ close listener が積み上がり、11 本目で
+      // MaxListenersExceededWarning が ffmpeg の stderr と同じ経路に混ざる。
       await new Promise((r) => {
-        ffmpeg.stdin.once('drain', r);
-        ffmpeg.once('close', r);
+        const settle = () => {
+          ffmpeg.stdin.off('drain', settle);
+          ffmpeg.off('close', settle);
+          r();
+        };
+        ffmpeg.stdin.once('drain', settle);
+        ffmpeg.once('close', settle);
       });
     }
   }
@@ -192,5 +205,11 @@ try {
   if (!error.riteExpected) console.error(error.stack);
   process.exitCode = 1;
 } finally {
+  // 成功経路では既に close 済みで no-op。失敗経路では stdin を閉じて子プロセスを落とし、
+  // event loop を空にして exit code を呼び出し元へ返す。
+  if (ffmpeg) {
+    ffmpeg.stdin.destroy();
+    ffmpeg.kill();
+  }
   await browser.close();
 }
