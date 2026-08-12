@@ -27,10 +27,9 @@ argument-hint: "<pr_number>"
 
 **サーキットブレーカーの発火条件は 2 つ**:
 
-- **収束トレンドの発散**（主経路）: 永続レビュー JSON の per-cycle blocking 件数から `hooks/scripts/review-trend-divergence.sh` が発散を機械判定する。「直近 2 値がともに過去の最良水準を超え、かつ下降中でもない」を発散とし、**収束中のループは本判定では殺されない**（cycle 数上限は別条件として下記 2. のとおり働く）。判定式の較正根拠（7 本のトラジェクトリによる backtest — 受入基準の契約値 3 本 / 実 run から復元した 3 本 / escape 節を守る合成列 1 本）は helper の header が SoT で、各列の出所は helper のテストが持つ
-- **`safety.max_review_cycles`（既定 15）到達**（保険）: 発散判定をすり抜ける非収束（漸減が続くが 0 に達しない、最良水準での平坦等）を受け止める backstop。`cc >= max_cycles` は trend 判定と**独立した発火条件**であり（ステップ 1 が先に評価するのは両立時にどちらを `CB_REASON` として報告するかを決めるためだけ）、**16 cycle 以上を要する収束中の run は既定値のままでも本経路で停止する**（backstop を残す以上この性質自体は消えない。引き上げ前の 5 では 6 cycle 以上を要する収束中の run を殺していた — backtest の `12,5,3,2,2` がその形で、cycle 5 時点でも blocking が 2 件残っている）。既定値を 15 へ引き上げた実測起点は run `8,5,4,6,3` で、収束トレンド判定が**判定の下りた head では一度も発散と判定しなかった**にもかかわらず、cycle 5 完了時点（`cycle_count == 5`、cycle 6 のループ頭）で backstop が発火した（この実測では判定は現 run の結果が 3 件揃うまで降りる — どの reason で降りるかは results dir と run 開始点 pin の状態で分かれるため、内訳はステップ 1 の `TREND_REASON` 説明を参照）。なお `10,9,8,7,6` は「漸減が続くが 0 に達しない」escape 節の対象で、本経路へ委ねること自体が設計どおりの帰着（AC-3）であり過剰発火例ではない。既定 15 は「引き上げ前の 5 が実測で不足したことへの暫定対応」で、最適値は運用データで再評価する
-
-> **Why**: cycle 数上限は努力と無駄を区別できない — 健全に収束中のループも残り数件のところで予算切れになり、発散しているループも上限まで燃やしてしまう（どちらも実運用で観測済み）。「品質を予算で縛らない・無駄は排除する」（CLAUDE.md プロジェクト原則）に従い、切るのは発散であって収束に向かう実サイクルではない。
+- **収束トレンドの発散**（主経路）: 永続レビュー JSON の per-cycle blocking 件数から `hooks/scripts/review-trend-divergence.sh` が発散を機械判定する。「直近 2 値がともに過去の最良水準を超え、かつ下降中でもない」を発散とし、**収束中のループは本判定では殺されない**（cycle 数上限は別条件として下記 2. のとおり働く）
+- **`safety.max_review_cycles`（既定 15）到達**（保険）: 発散判定をすり抜ける非収束を受け止める backstop。`cc >= max_cycles` は trend 判定と**独立した発火条件**。**16 cycle 以上を要する収束中の run は既定値のままでも本経路で停止する**
+rationale: references/rationale.md#circuit-breaker-conditions
 
 ブレーカー発火は差分スコープのループを停める signal である。発火後は counter と run 開始点をリセットし、人間の再実行を待たず post-breaker full review を 1 回強制する。その結果は通常の `[review:mergeable]` / `[review:fix-needed:N]` / `[review:error]` routing で扱い、finding を読まず Ready / merge へ進む特別分岐は作らない。full review が error または sentinel 不在で完了できない場合のみ発火を失敗として記録し、batch / 対話の既存停止 sentinel で終了する。cycle_count は flow-state に永続化され resume を跨いで継続する。
 
@@ -74,7 +73,8 @@ argument-hint: "<pr_number>"
 
 ## ステップ 0: flow-state から issue_number / branch_name を復元
 
-`{issue_number}` / `{branch_name}` は standalone 起動でも flow-state set 呼び出しで必須のため、本コマンド冒頭で flow-state から復元する。skills/open/SKILL.md Step 0 の canonical pattern (一行 + `|| var=""` fallback) と対称化する。
+`{issue_number}` / `{branch_name}` は standalone 起動でも flow-state set 呼び出しで必須のため、本コマンド冒頭で flow-state から復元する。
+rationale: references/rationale.md#step0-canonical-pattern
 
 ```bash
 # marker の emit / 照合は共有関数 marker_emit / marker_get が所有する。書式・行頭アンカー・
@@ -93,13 +93,14 @@ LLM は `[CONTEXT] ITERATE_ISSUE` / `ITERATE_BRANCH` から値を読み、後続
 
 ### ステップ 0.5: セッション worktree 健全性の保証（multi_session 有効時 / AC-2 #1676）
 
-ループに入る前に、対象作業ブランチの session worktree を保証する。これがないと、worktree 不在（resume / context 圧縮 / 別セッション跨ぎで欠落）のまま review/fix を invoke し、メインツリー（develop）上で PR 変更を読めないまま degraded に回り続ける（本 Issue の As-Is）。共通ヘルパー `ensure_session_worktree`（[`lib/worktree-git.sh`](../../hooks/scripts/lib/worktree-git.sh)）で検出・再構築する（`{issue_number}` / `{branch_name}` は ステップ 0 の `ITERATE_ISSUE` / `ITERATE_BRANCH` marker の値）:
+ループに入る前に、対象作業ブランチの session worktree を保証する。共通ヘルパー `ensure_session_worktree`（[`lib/worktree-git.sh`](../../hooks/scripts/lib/worktree-git.sh)）で検出・再構築する（`{issue_number}` / `{branch_name}` は ステップ 0 の `ITERATE_ISSUE` / `ITERATE_BRANCH` marker の値）:
+rationale: references/rationale.md#worktree-ensure-preamble
 
 ```bash
 bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --issue {issue_number} --branch {branch_name}
 ```
 
-> `--branch {branch_name}` を明示することで（review/fix の `--branch {head_ref}` 渡しと対称）、helper が issue-N の ref から branch を自動推定する経路を回避し、同一 issue に複数ブランチが存在する場合でも決定的に対象ブランチを選ぶ。`ITERATE_BRANCH` が空の場合は省略してよい（helper が ref 推定にフォールバックする）。
+> `--branch {branch_name}` を明示する（review/fix の `--branch {head_ref}` 渡しと対称）。`ITERATE_BRANCH` が空の場合は省略してよい（helper が ref 推定にフォールバックする）。
 
 `[CONTEXT] WT_ENSURE=` marker の分岐は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 3.1.5 の **WT_ENSURE 分岐表（SoT）** に従う:
 
@@ -110,13 +111,14 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 - `branch_absent` → 対象ブランチが実在しない。**develop 上で続行しない**。AskUserQuestion で「Issue 番号 / ブランチを確認して再実行 / 中止」を提示（誤再構築しない）。
 - `failed` → 再構築失敗（helper rc=1, stderr に原因 + 復旧手順）。**silent fallback せず明示停止**。develop 上で review/fix を回さない。
 
-> 各 review/fix cycle の入場でも `/rite:pr-review` / `/rite:fix` が各自の入場ゲートで同じ helper を通すため、cycle 途中で worktree が失われても次 cycle 頭で再保証される（AC-2 の「cycle 前段で worktree-ensure が通る」を多層で担保）。本ステップ 0.5 はループ全体の前段ゲート。
+> 各 review/fix cycle の入場でも `/rite:pr-review` / `/rite:fix` が同じ helper を通す。本ステップ 0.5 はループ全体の前段ゲート。
 
 ---
 
 ## ステップ 0.6: cycle counter の初期化 + max_review_cycles の検証
 
-ループに入る前に、review⇄fix サーキットブレーカーの cycle counter を初期化し、上限値を検証する（#1701）。counter は flow-state の `cycle_count` に永続化され、resume を跨いで継続する（AC-3）。
+ループに入る前に、review⇄fix サーキットブレーカーの cycle counter を初期化し、上限値を検証する。counter は flow-state の `cycle_count` に永続化され、resume を跨いで継続する（AC-3）。
+rationale: references/rationale.md#cycle-counter-init
 
 `{issue_number}` / `{branch_name}` は ステップ 0 の `ITERATE_ISSUE` / `ITERATE_BRANCH` marker の値をリテラル置換する:
 
@@ -284,7 +286,8 @@ marker_emit ITERATE_CYCLE_MAX "$max_cycles" "ITERATE_CYCLE=$cur_cc" "ITERATE_CYC
 
 `ITERATE_CYCLE_MAX` / `ITERATE_CYCLE` を retain してステップ 1 の上限チェックに渡す。
 
-`RESET` は reset を**試行した場合**の結果記録で、人間が失敗原因を追うための診断値。**停止通知の注意行の条件には使わない**（条件はステップ 0.6 の `REFIRE` とステップ 6 共有前段の `FIRE_RESET`）:
+`RESET` は reset を**試行した場合**の診断値。**停止通知の注意行の条件には使わない**（条件は `REFIRE` と `FIRE_RESET`）:
+rationale: references/rationale.md#reset-refire-run-since
 
 | `RESET` | 意味 |
 |---|---|
@@ -295,7 +298,7 @@ marker_emit ITERATE_CYCLE_MAX "$max_cycles" "ITERATE_CYCLE=$cur_cc" "ITERATE_CYC
 
 `REFIRE` は**この起動でステップ 1 が review を回さずに fire するか**の述語で、ステップ 6.2 の注意行 (a) の条件そのもの:
 
-`RUN_SINCE` は run 開始点 pin の記録結果。**pin が無い / 古いと発散判定は run 境界を確定できず判定を降ろす**（helper の `run_boundary_unresolved`）。縮退の向きは値で分かれる。`unresolved-root` / `write-failed` は helper に前 run の pin が渡らない（前者は同じ理由でステップ 1 も pin を読めず、後者は pin を削除する）ため、発散検出は全面的に働かなくなるが**停止側に倒れる**（「判定を降ろす」であって誤発火ではない）。`write-failed-pin-retained` だけが**誤発火側**で、stale pin が残るため前 run と現 run を連結した列で発火しうる（WARNING が手動削除を案内する）。counter reset の失敗（`RESET=failed-stale` / `failed-refire`）は本記録側の縮退を生まない — ゲートが `fresh || cur_cc == 0` の選言なので fresh 側で pin を張り直す。`none` は既存 pin をそのまま使う正常系、`ok-empty` は pin 不在と同じ扱いになるため実在数が counter を超えた時点で判定が降りる:
+`RUN_SINCE` は run 開始点 pin の記録結果。**pin が無い / 古いと発散判定は run 境界を確定できず判定を降ろす**（helper の `run_boundary_unresolved`）。`unresolved-root` / `write-failed` は**停止側**（判定を降ろす）。`write-failed-pin-retained` だけが**誤発火側**。`RESET=failed-stale` / `failed-refire` は本記録側の縮退を生まない（ゲートが `fresh || cur_cc == 0` の選言）。`ok-empty` は pin 不在と同じ扱いで、実在数が counter を超えた時点で判定が降りる:
 
 | `RUN_SINCE` | 意味 |
 |---|---|
@@ -306,7 +309,7 @@ marker_emit ITERATE_CYCLE_MAX "$max_cycles" "ITERATE_CYCLE=$cur_cc" "ITERATE_CYC
 | `write-failed` | pin ファイルを書けず、stale pin の**削除には成功した**。ステップ 1 は `absent` 経路へ倒れ、前 run の結果が同居していれば `run_boundary_unresolved` で判定を降ろす。WARNING 済み |
 | `write-failed-pin-retained` | pin ファイルを書けず、stale pin の**削除にも失敗した**（read-only FS / immutable）。前 run の pin が残るため誤発火しうる唯一の値。WARNING が手動削除を案内する |
 
-`RUN_SINCE_USED`（ステップ 1、両分岐に載る）は**実際に helper へ渡した pin の由来**。ステップ 0.6 の `RUN_SINCE` が記録側の結果なのに対し、こちらは消費側の結果で、両者は独立に失敗しうる（0.6 で `ok` でも、resume した別プロセスが state root を解決できなければ `unresolved-root` になる）:
+`RUN_SINCE_USED`（ステップ 1、両分岐に載る）は**実際に helper へ渡した pin の由来**（記録側 `RUN_SINCE` と独立に失敗しうる）:
 
 | `RUN_SINCE_USED` | 意味 |
 |---|---|
@@ -552,7 +555,8 @@ args: "{pr_number}"
 
 ### ステップ 5.0: 一時残骸の最終回収 (terminal cleanup)
 
-完了通知を出力する**前に**、本ループが残した一時ブランチ・worktree を回収する。`pr-cycle-cleanup.sh` は review entry (pr-review.md ステップ 1.0.0 PR Cycle Branch Cleanup) でも走るが、それは各 review **開始時** の発火であり、**最後の** review/fix cycle が残した残骸 (例: 最終 cycle の `rite-review-mutation-*` / `rite-revert-test-*` detached worktree、外部 checkout 由来の bare `pr-{N}` ブランチ) を sweep する後続 review が存在しない。本ループの終端で明示的に発火させ、回収の到達性を担保する (AC-2)。non-blocking — 失敗してもループ完了を妨げない (AC-5):
+完了通知を出力する**前に**、本ループが残した一時ブランチ・worktree を回収する。本ループの終端で明示的に発火させ、回収の到達性を担保する (AC-2)。non-blocking — 失敗してもループ完了を妨げない (AC-5):
+rationale: references/rationale.md#terminal-cleanup-age-guard
 
 ```bash
 bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
@@ -560,34 +564,18 @@ bash {plugin_root}/hooks/scripts/pr-cycle-cleanup.sh 2>&1 || true
 
 これは正常終了・ユーザー中断の**両経路**で実行する (どちらの出口でも残骸の累積を防ぐ)。出力 status 行 (`[pr-cycle-cleanup] status=...`) はそのまま表示し、何を回収したかを可視化する。
 
-> **24h age guard との関係**: `rite-review-mutation-*` / `rite-revert-test-*` detached worktree は cross-session in-flight 保護のため mtime 24h 未満は保護される (`pr-cycle-cleanup.sh` Step 4)。よって本ループが直前に作った若い worktree はこの発火では消えず、次回 cleanup (24h 経過後) で確実に回収される。即時 0 残骸ではなく **確実な最終回収** を担保する設計 (D-04)。即時回収には reviewer 側の session-scoped 記録が必要だが reviewer (`agents/_reviewer-base.md`) は本 Issue の Non-Target。
+> **24h age guard**: 直前に作った若い `rite-review-mutation-*` / `rite-revert-test-*` detached worktree はこの発火では消えず、次回 cleanup (24h 経過後) で回収される。即時 0 残骸ではなく **確実な最終回収**。
 
 ### ステップ 5.0.1: run を閉じる (cycle counter のリセット)
 
 完了通知を出力する**前に**、`cycle_count` を 0 にして run を明示的に閉じる。これをしないと終了 3 経路
 （`[review:mergeable]` / `[fix:replied-only]` / `[fix:cancelled-by-user]`）はいずれも counter を残したまま
-終わるため、**同じ PR に対する次の `/rite:iterate` が resume と判定され、ステップ 0.6 の run 開始点 pin 更新
-（`cur_cc == 0` 条件）に入らない**。その結果、新しい run が前 run の pin を使い続け、helper は「pin より
-新しいファイル」= 前 run の結果を現 run の列として読む。前 run の最良水準（`[review:mergeable]` 出口なら 0）
-が現 run の `prefix_min` に持ち込まれる。**害は「必ず殺される」ではなく「前 run の最良水準が
-`prefix_min` に居座り、以後の平坦・反転が過剰に発散と判定される」**である — escape 節 (2)（直近 2 値が
-下降中なら見逃す）が効くため、単調下降を続ける健全な run は stale pin があっても本判定では切られない
-（実測: `5,3,1,0,8,4,2` は最後まで `ok`）。発火するのは新 run の 2 値目が下降しない場合で、その最小例は
-`5,3,1,0,8,8`（`fire_at=6`）。
+終わり、**同じ PR に対する次の `/rite:iterate` が resume と判定され、ステップ 0.6 の pin 更新に入らない**。
+非ブロッキング — 失敗しても完了通知は出す。
 
-`cycle_count` は「現 run で消化した cycle 数」なので、run が終わった時点で 0 に戻すのが定義どおりである。
-リセットの経路は fresh entry（ステップ 0.6、run を**開く**側）と、発火時（ステップ 6 共有前段）と、
-本ステップ（run を**閉じる**側）の 3 つになる。非ブロッキング — 失敗しても完了通知は出す。
-
-**`--handoff` は既存値を読んで載せ直す**（省略すると `flow-state.sh set` が handoff キーを削除する）。
-ステップ 5 冒頭の構造的保証は sub-skill がセットした `FINALIZE:...` handoff を Stop hook が消費して
-完了通知なしの停止を差し戻すことで成り立っており、本ステップは通知の**前**に走るため、ここで消すと
-その保証が必要な区間の入口で失われる（ステップ 1 の fire 分岐が「sentinel を emit する前に counter を
-0 にすると発火が無記録になる」として reset を遅らせているのと同型の窓）。既存値を読み直す形なら、
-E2E（FINALIZE あり）でも standalone（handoff なし）でも実態がそのまま維持される。
-
-**`--phase` も現在値を維持する**。ハードコードすると `[fix:cancelled-by-user]` / `[fix:replied-only]` 経路で
-`fix` → `review` に書き換わり、直後に出力する中断通知の「phase=fix のため fix invoke から再開」が偽になる。
+**`--handoff` は既存値を読んで載せ直す**（省略すると handoff キーが消え、ステップ 5 冒頭の FINALIZE 差し戻し保証が通知前に失われる）。
+**`--phase` も現在値を維持する**（ハードコードすると中断通知の「phase=fix のため fix invoke から再開」が偽になる）。
+rationale: references/rationale.md#run-close-reset
 
 ```bash
 # 診断スニペット用 helper（ステップ 0.6 (0) / ステップ 1 と同型。Bash tool 呼び出し間でシェル状態は
@@ -662,11 +650,13 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 
 > **post-breaker full review invariant**: ブレーカー発火だけで成功・完了と判定してはならない。差分スコープ外の盲点を検査する full review を 1 回実行し、その finding の有無を既存の review routing が判定する。発火そのものから Ready / merge へ直行する分岐は存在しない。full review が完了できないときは従来の失敗 sentinel で停止する。
 >
-> 停止通知に記す `/rite:ready {pr_number}` は、人間が draft PR をレビューに出すために**明示的に叩く経路外のアクション**であり、本ステップの自動フローが辿る分岐ではない（かつ `/rite:ready` は Ready 化のみでマージしない）。発火から自動的にマージへ至る経路が無いという上記 invariant はこれによって崩れない。
+> 停止通知に記す `/rite:ready {pr_number}` は人間が明示的に叩く経路外のアクションであり、本ステップの自動フローが辿る分岐ではない。
 >
-> counter reset と run 開始点更新は post-breaker full review の前処理である。いずれかに失敗した場合は full scope を機械的に証明できないため review を invoke せず、6.1 / 6.2 の停止経路へ送る。
+> counter reset と run 開始点更新は post-breaker full review の前処理である。いずれかに失敗した場合は review を invoke せず、6.1 / 6.2 の停止経路へ送る。
+rationale: references/rationale.md#post-breaker-invariant
 
-ステップ 1 で `ITERATE_CB=fire`（収束トレンドの発散 or `cycle_count >= max_review_cycles`。理由は同 marker の `CB_REASON`）となったときのみ到達する。**発火理由は本ステップの停止構造を変えない** — 変わるのは 6.1 / 6.2 の「理由」行の文面と、そこに併記するトレンド推移だけである（sentinel・handoff 契約・counter reset はいずれも不変）。まず batch 実行（`/rite:batch-run` 経由）か対話実行かを **自セッションの** run-queue（`run-queue-{session_id}.json`）から判定する。`/rite:batch-run` は駆動中に `active=true` を立て、cursor が処理中 Issue を指す。iterate は batch-run から**同一セッションで invoke される**ため、driving 中なら本 iterate の ambient session_id と run-queue の session_id は一致し、自セッションのキューだけを参照する（他セッションのキューは別ファイルのため構造的に読まない、 AC-2）。よって **`active == true` かつ** cursor の Issue が本 iterate の対象と一致すれば batch と判定する（`active` 条件は、停止済み dormant キューが cursor 一致だけで active batch と誤判定されるのを防ぐ。read-only 参照。`{issue_number}` はステップ 0 の marker 値をリテラル置換）:
+ステップ 1 で `ITERATE_CB=fire`（収束トレンドの発散 or `cycle_count >= max_review_cycles`。理由は同 marker の `CB_REASON`）となったときのみ到達する。**発火理由は本ステップの停止構造を変えない** — 変わるのは 6.1 / 6.2 の「理由」行の文面とトレンド推移だけである（sentinel・handoff 契約・counter reset は不変）。batch / 対話は **自セッションの** run-queue（`run-queue-{session_id}.json`）から判定する。**`active == true` かつ** cursor の Issue が本 iterate の対象と一致すれば batch（read-only。`{issue_number}` はステップ 0 の marker 値をリテラル置換）:
+rationale: references/rationale.md#cb-mode-and-reset
 
 ```bash
 # 診断スニペット用 helper（ステップ 0.6 (0) と同型 — 縮退時の WARNING 告知まで含めて同じ）。
@@ -763,7 +753,7 @@ marker_emit POST_BREAKER_FULL_REVIEW "$post_breaker_ready" "pr={pr_number}"
 
 ### ステップ 6.0: post-breaker full review
 
-`FIRE_RESET=ok` のとき、共有前段と**同じ Bash block 内で** `post-breaker-full-review-prepare.sh` を呼び、現在の最新 review JSON を run 開始点 pin に原子的に記録する。helper は pin と同じ directory に `mktemp` した一時ファイルを cleanup trap で管理する。`review-cycle-scope.sh` は pin より新しい JSON が 0 件の場合に `REVIEW_CYCLE_SCOPE=full; reason=no_prev_json` を返すため、次の `/rite:pr-review` が差分スコープへ戻る経路を機械的に閉じる。
+`FIRE_RESET=ok` のとき、共有前段と**同じ Bash block 内で** `post-breaker-full-review-prepare.sh` を呼び、現在の最新 review JSON を run 開始点 pin に原子的に記録する。`review-cycle-scope.sh` は pin より新しい JSON が 0 件の場合に `REVIEW_CYCLE_SCOPE=full; reason=no_prev_json` を返す。
 
 | `POST_BREAKER_FULL_REVIEW` | アクション |
 |---|---|
@@ -785,12 +775,12 @@ sentinel の routing は `bash {plugin_root}/hooks/scripts/post-breaker-review-r
 | `batch` | post-breaker full review が完了できない場合のみステップ 6.1（failed sentinel emit）|
 | `interactive` | post-breaker full review が完了できない場合のみステップ 6.2（機械的停止通知）|
 
-**両分岐は挙動として同構造**（failed 記録 + draft 残し + 停止通知 + handoff クリア維持 + 共有前段での cycle counter reset。人間への問い合わせは行わない）であり、差は次の 2 点だけである。なお共有前段の counter reset は batch 経路にも適用されるが、ステップ 6.1 のブロック自体は無変更であり  §4.2 の Non-Target に抵触しない（batch では従来も次 Issue のステップ 0.6 fresh 判定で同じ counter が除去されており、より早く掃除されるだけで安全側）:
+**両分岐は挙動として同構造**（failed 記録 + draft 残し + 停止通知 + handoff クリア維持 + 共有前段での cycle counter reset。人間への問い合わせは行わない）。差は次の 2 点だけ:
 
-1. **sentinel の消費者**: `[iterate:max-cycles-reached]` は `/rite:batch-run` が grep して当該 Issue を `failed[]` に記録し次 Issue へ進むために消費する。`[iterate:max-cycles-stopped]` は消費者を持たない iterate 内部完結の最終状態表示。
-2. **`REFIRE=1` / `FIRE_RESET=failed` 注意行の有無**: ステップ 6.2（対話）のみが持つ。6.1（batch）は  §4.2 の Non-Target（MUST NOT modify）のため本スキルでは対称化しない。結果として batch では、前 Issue から漏れた stale counter の reset に失敗した場合、review を 1 cycle も回していない Issue が `failed[]` に「上限到達（非収束）」として記録されうる。対称化は別 Issue で扱う。
+1. **sentinel の消費者**: `[iterate:max-cycles-reached]` は `/rite:batch-run` が grep して当該 Issue を `failed[]` に記録し次 Issue へ進む。`[iterate:max-cycles-stopped]` は消費者を持たない iterate 内部完結の最終状態表示。
+2. **`REFIRE=1` / `FIRE_RESET=failed` 注意行の有無**: ステップ 6.2（対話）のみが持つ。6.1（batch）は対称化しない。
 
-**失敗停止の理由は両モードで永続化する** — 共有前段の reset 成功後は `cycle_count` / `handoff` を削除すると同時に、`stop_reason=circuit-breaker:{cb_reason}` を同じ atomic set で残す。これにより対話側も `session-start.sh` / `/rite:recover` から fresh review や Ctrl+C 中断と区別できる。batch 側はこれに加え、キュー全体の集約結果として `run-queue` の `failed[]` を持つ。`stop_reason` は後続の通常 `flow-state.sh set` が default-clear するため、新しい run の進行後まで stale に残らない。
+**失敗停止の理由は両モードで永続化する** — 共有前段の reset 成功後は `stop_reason=circuit-breaker:{cb_reason}` を同じ atomic set で残す。`stop_reason` は後続の通常 `flow-state.sh set` が default-clear する。
 
 どちらの経路もマージには到達しない（上記 invariant）。
 
@@ -840,9 +830,10 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 
 #### 発火理由の文面（6.1 / 6.2 共通の置換表）
 
-`{fire_reason_line}` はステップ 1 の `ITERATE_CB=fire` marker の `CB_REASON=` で決める。`{trend}` は同 marker の `TREND=` の値（カンマ区切りの per-cycle blocking 件数）をそのまま使い、`→` 区切りへ整形して表示する（例: `TREND=3,7,7,4` → `3 → 7 → 7 → 4`）。**この推移行は省略しない** — 発火が「予算切れ」ではなく「構造的な発散の検出」であることを人間が読んで検証できる唯一の材料であり、AC-4 が通知への包含を要求している:
+`{fire_reason_line}` はステップ 1 の `ITERATE_CB=fire` marker の `CB_REASON=` で決める。`{trend}` は同 marker の `TREND=` の値（カンマ区切りの per-cycle blocking 件数）をそのまま使い、`→` 区切りへ整形して表示する（例: `TREND=3,7,7,4` → `3 → 7 → 7 → 4`）。**この推移行は省略しない**。
 
-`max-cycles` の文面は **`TREND_VERDICT` で分岐する**。上限到達と発散判定は独立に成立しうるため、上限到達だけを見て「発散判定をすり抜けた」と書くと事実に反する場合がある（両方成立時は発散判定も fire している。判定が 3 cycle 未満で未実施のときは「すり抜けた」の前提自体が無い）:
+`max-cycles` の文面は **`TREND_VERDICT` で分岐する**（上限到達と発散判定は独立に成立しうる）:
+rationale: references/rationale.md#notice-trend-and-notes
 
 | `CB_REASON` | `TREND_VERDICT` | `{fire_reason_line}` |
 |---|---|---|
@@ -853,21 +844,21 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 
 `{trend_reason}` はステップ 1 の `TREND_REASON=` marker の値をそのままリテラル置換する（`need_3_cycles` / `no_results_file` / `helper_unavailable` 等。値の一覧はステップ 1 の `TREND_REASON` 説明を参照）。
 
-**`- blocking 推移:` 行の差し替え条件は `TREND_VERDICT` であって `TREND=` の空判定ではない。** `insufficient` のうち `need_3_cycles` だけは**部分トレンドを非空で返す**ため（例: `TREND=4,9; TREND_VERDICT=insufficient`）、空判定では差し替えが効かず、判定にかけていない推移を判定済みデータとして描画してしまう。`TREND_VERDICT` が `ok` / `fire` 以外のときは、推移行を次へ差し替える:
+**`- blocking 推移:` 行の差し替え条件は `TREND_VERDICT` であって `TREND=` の空判定ではない。** `TREND_VERDICT` が `ok` / `fire` 以外のときは、推移行を次へ差し替える:
 
 ```
 - blocking 推移: 判定未実施（{trend_reason}）
 ```
 
-**行ごと省略してはならない** — 推移が無いことと推移を出し忘れたことが読み手から区別できなくなる。`TREND_VERDICT` が `ok` / `fire` のときは `TREND=` の値を `→` 区切りで整形して表示する。
+**行ごと省略してはならない**。`TREND_VERDICT` が `ok` / `fire` のときは `TREND=` の値を `→` 区切りで整形して表示する。
 
-**`LOST` が `0` 以外のときは推移行に欠落を併記する**（例: `- blocking 推移: 5 → 9 → 9（1 cycle 分の結果が欠落）`）。**差し替えと併記は同時に成立しうる**（`need_3_cycles` は `insufficient` でありながら部分列と `lost=` の両方を返すため）。その場合は**差し替えを先に行い、差し替えた行に併記する**: `- blocking 推移: 判定未実施（need_3_cycles・1 cycle 分の結果が欠落）`。判定に使われた列には穴があり、欠落は verdict を反転させうるため、合成された推移を実測として提示してはならない。
+**`LOST` が `0` 以外のときは推移行に欠落を併記する**（例: `- blocking 推移: 5 → 9 → 9（1 cycle 分の結果が欠落）`）。**差し替えと併記は同時に成立しうる**。その場合は**差し替えを先に行い、差し替えた行に併記する**: `- blocking 推移: 判定未実施（need_3_cycles・1 cycle 分の結果が欠落）`。
 
 #### 注意行（ステップ 6.2 のみ）
 
-以下の (a) / (b) / (c) と「再開方法」第 1 bullet の差し替えは **ステップ 6.2（対話）専用**で、ステップ 6.1（batch）には適用しない（batch 側の非対称は本節冒頭の「2. `REFIRE=1` / `FIRE_RESET=failed` 注意行の有無」に記したとおり  §4.2 の Non-Target に由来する。batch テンプレートには「再開方法」節自体が無いため差し替え指示も解決先を持たない）。上記「発火理由の文面」の置換表までが 6.1 / 6.2 共通である。
+以下の (a) / (b) / (c) と「再開方法」第 1 bullet の差し替えは **ステップ 6.2（対話）専用**。上記「発火理由の文面」の置換表までが 6.1 / 6.2 共通である。
 
-ステップ 0.6 / ステップ 1 / **ステップ 6 共有前段**の `[CONTEXT]` marker を context で観測している場合、下記の条件で上記「理由」行の直後に注意行を追加する（§4.5 の error handling。同じ文面の停止通知が真の非収束と区別できなくなるのを防ぐ）。3 ステップすべてを観測対象に含めること — (b) が読む `FIRE_RESET` はステップ 6 共有前段が、(c) が読む `HANDOFF_CLEAR` はステップ 1 が emit する。値の読み取りは共有関数 `marker_get`（[`lib/context-marker.sh`](../../hooks/scripts/lib/context-marker.sh)）の契約に従う — 行頭アンカー・複数行 stderr 混入への耐性・`branch` スコープ・同一 KEY の recency・キーと field 名のトークン完全一致は関数側が所有し、契約の SoT は `hooks/tests/context-marker.test.sh`。**値の照合**（本ステップは bash block を持たず LLM が context 上の `KEY=VALUE` を直接読む）は `;` 区切りの `KEY=VALUE` 単位の**完全一致**とする — 部分一致は禁止（`failed` ⊂ `failed-refire`/`failed-stale`、`write-failed` ⊂ `write-failed-pin-retained` の衝突組が本ファイルに live。値側規約の所有者は `context-marker.sh` header の rule 5 + 同 fixture。本ファイルに散文を増やして再所有しないこと）。注意行および下記の差し替え行に含まれる `{plugin_root}` / `{pr_number}` / `{max_review_cycles}` / `{session_id}` / `{state_root}` はリテラル置換する（`{session_id}` / `{state_root}` はステップ 6 共有前段の `SESSION_ID=` / `STATE_ROOT=` marker の値。**どちらも値が得られないことがあり、その場合は (b) の pre-fill 表に従ってコマンドの当該部分だけを解決手順へ置き換える** — 空値や sentinel をそのまま埋めたコマンドは rc=0 のまま別の state を対象にして空振りするため）。**置換の対象は注意行の散文だけでなく、(b) が人間へ渡すすべての実行可能テキスト** — リセットコマンド本体・その手前の実在確認・pre-fill 表の案内文 — **に及ぶ**。人間の端末で live なシェル変数を前提にした記法（`$root` 等）は、その変数を同じ案内文の中で代入している箇所以外では使わない（未定義変数は空展開して確認や探索が黙って空振りする）。
+ステップ 0.6 / ステップ 1 / **ステップ 6 共有前段**の `[CONTEXT]` marker を観測している場合、下記の条件で「理由」行の直後に注意行を追加する。3 ステップすべてを観測対象に含める — (b) の `FIRE_RESET` は共有前段、(c) の `HANDOFF_CLEAR` はステップ 1。値の読み取りは `marker_get`（[`lib/context-marker.sh`](../../hooks/scripts/lib/context-marker.sh)）の契約に従う。**値の照合**は `;` 区切りの `KEY=VALUE` 単位の**完全一致**（部分一致は禁止）。注意行と差し替え行の `{plugin_root}` / `{pr_number}` / `{max_review_cycles}` / `{session_id}` / `{state_root}` はリテラル置換する（値が得られない側は (b) の pre-fill 表で解決手順へ置き換える）。**置換の対象は (b) が人間へ渡すすべての実行可能テキスト**に及ぶ。人間の端末で live なシェル変数を前提にした記法（`$root` 等）は、同じ案内文の中で代入している箇所以外では使わない。
 
 **(a) `REFIRE=1`**（この起動では review を 1 回も回さずに発火した。前回の最終 cycle 途中で中断した場合の正常な発火と、counter リセット失敗による再発火の**両方**を含む — marker だけでは区別できない）:
 
@@ -875,7 +866,7 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 - 注意: 起動時点で cycle counter が上限に達していたため、この起動では review を 1 回も回さずに発火しました（前回の最終 cycle 途中で中断していた場合はこれが正常な発火です）。ステップ 0.6 / ステップ 1 / ステップ 6 共有前段に WARNING が出ている場合は、その直後の flow-state.sh の診断を確認してください
 ```
 
-`REFIRE=0`（起動時点の counter が上限未満）では review が実際に回ってから到達しているため**追加しない**。`RESET` の値（`failed-refire` / `failed-stale` / `ok` / `none`）は本条件に使わない — 発火時の phase は `review` / `fix` なので再実行はステップ 0.6 で resume 判定となり reset ブロックに入らず、即再発火する当の経路で `RESET=none` になるため。`RESET` は reset を試行した場合の結果を記録するもので、即再発火の判定には `REFIRE` を使う。
+`REFIRE=0` では**追加しない**。`RESET` の値は本条件に使わない — 即再発火の判定には `REFIRE` を使う。
 
 **(b) `FIRE_RESET=failed`**（ステップ 6 共有前段の atomic set に失敗し、counter のリセットと `stop_reason` の永続化がどちらも行われなかった）:
 
@@ -892,11 +883,11 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 | `SESSION_ID=<実 UUID>` | `--session <実 UUID>` をそのまま埋める |
 | `SESSION_ID=`（空） | 埋めず、代わりにこう案内する: 「`{state_root}/.rite/sessions/` の各 `*.flow-state` から `pr_number` が {pr_number} **かつ `cycle_count` が 1 以上**のものを探して `--session` に補ってください（**同一 `pr_number` の state が複数残ることがある**ため、複数該当したら `updated_at` が最新のものを採ります。`updated_at` まで同値で並ぶ場合は `next_action` が「サーキットブレーカー発火」で始まる方を採ります）」。**`cycle_count` を `max_review_cycles` と比較しないこと** — `divergence` 発火はステップ 1 が上限を先に評価する構造上つねに `cycle_count < max_review_cycles` で成立するため、上限との比較を条件にすると発散発火が残した state に対して解が空集合になり、この復旧手順そのものが行き止まりになる。**一方 `cycle_count >= 1` は両発火理由に共通で成立し**（`divergence` は `1 <= cc < max`、`max-cycles` は `cc == max`）、正常終了・fresh entry の state は 0 またはキー欠落なので、fail-safe を保ったまま候補を絞れる。**`{state_root}` が同時に未解決の場合のみ**、上表 `STATE_ROOT=unresolved` 行の案内で得た `$root` をこの位置に使う |
 
-`SESSION_ID=` が空のまま `--session` を埋めると `--session --phase` となり `--phase` が session 値として食われて `ERROR: unknown option: review` で即失敗する。`STATE_ROOT=` が空や sentinel のまま `RITE_STATE_ROOT=` を埋めると、`flow-state.sh` の `[ -n ... ]` 判定で「未設定」と同義に縮退して cwd へフォールバックする。どちらも「渡したのに効かない」形の空振りなので、埋められない側は必ず上記の解決手順へ置き換える。
+埋められない側は必ず上記の解決手順へ置き換える。
 
-**実在確認をリセットコマンドの手前に置くこと**（注意行の中で、リセットコマンドより前の位置に 1 行として置く）: `[ -f "{state_root}/.rite/sessions/{session_id}.flow-state" ]` が偽なら state root か session_id が誤っている。**この 2 トークンもリセットコマンド本体と同じく pre-fill する**（shell 変数 `$root` を書いてはならない — `root` を代入するのは上表 `STATE_ROOT=unresolved` 行の案内文だけで、値が得られた支配的経路では人間の端末に `root` が存在せず、確認が常に偽になって正しい値を持つ人間を唯一の復旧手順から遠ざける）。この確認がないと `flow-state.sh set` は誤った root/session_id でも **rc=0・無出力**で新しい state file を作り、上限のまま止まっている本物の counter は手つかずで残る。しかも事後に `get --field cycle_count` を見ても、正しくリセットした場合（キー削除）と空振りした場合（新規 state にキーなし）が同じ結果を返すため**判別できない** — 実行前の確認だけが唯一の防護になる。
+**実在確認をリセットコマンドの手前に置くこと**: `[ -f "{state_root}/.rite/sessions/{session_id}.flow-state" ]` が偽なら state root か session_id が誤っている。**この 2 トークンもリセットコマンド本体と同じく pre-fill する**（shell 変数 `$root` を書いてはならない — `root` を代入するのは上表 `STATE_ROOT=unresolved` 行の案内文だけ）。
 
-handoff 迂回のリスクは (b) には含めない。**counter reset の失敗と handoff クリアの失敗は独立した別 set の成否**であり、しかもステップ 6 共有前段の set は `--handoff` を伴わないため handoff を default-clear する（`flow-state.sh` の `cmd_set` は `jq` で state を再構築し、`--handoff` 未指定ならキー自体を書かない）。したがって `HANDOFF_CLEAR=ok` かつ `FIRE_RESET=failed` のとき handoff は既に消えており、(b) に迂回リスクを書くと存在しない障害へ人間を誘導する。迂回が実際に成立するのは**両方の set が失敗したとき**だけなので、独立した条件 (c) として出す:
+handoff 迂回のリスクは (b) には含めない。迂回が成立するのは**両方の set が失敗したとき**だけなので、独立した条件 (c) として出す:
 
 **(c) `HANDOFF_CLEAR=failed` かつ `FIRE_RESET=failed`**（fire 分岐と共有前段の set が**どちらも**失敗し、継続 handoff が残存した）:
 
@@ -906,16 +897,16 @@ handoff 迂回のリスクは (b) には含めない。**counter reset の失敗
 
 `HANDOFF_CLEAR=failed` のみ（`FIRE_RESET=ok`）では**追加しない** — 共有前段の set が 2 度目の default-clear として働き handoff は消えているため、迂回は起きない。
 
-**(b) は注意行の追加だけでは足りない。** 上記テンプレートの「再開方法」1 行目が約束する「cycle counter と run 開始点がリセットされ、新しい run として cycle 1 から回る」は手動リセットを行うまで偽であり、注意行と同一通知内に並べると矛盾する 2 つの再開手順を人間に提示することになる（注意行は「理由」行の直後に入るため両者は数行しか離れていない）。よって **(b) を観測したときは、テンプレートの当該 1 行を次の 1 行へ差し替えて出力する**（追加ではなく置換）:
+**(b) は注意行の追加だけでは足りない。** **(b) を観測したときは、テンプレートの当該 1 行を次の 1 行へ差し替えて出力する**（追加ではなく置換）:
 
 ```
 - ループを再開する: 上記の手動リセットを実行してから /rite:iterate {pr_number} を再実行する
   （リセット前に再実行すると即座に再発火する）。/rite:recover 経由の再開も同じ経路
 ```
 
-差し替える単位は**「再開方法」の第 1 bullet 全体** — `- ループを再開する:` で始まる行から、次に `- ` で始まる行が現れる直前までの全行 — であり、第 1 物理行だけを置き換えてはならない（残った折り返し行が孤立する）。**物理行数を数えて指定しないこと**: bullet の文面が変わるたびに行数が drift し、その drift 自体が「孤立行を残すな」という当の禁止を破る指示になる。
+差し替える単位は**「再開方法」の第 1 bullet 全体** — `- ループを再開する:` で始まる行から、次に `- ` で始まる行が現れる直前までの全行 — であり、第 1 物理行だけを置き換えてはならない。**物理行数を数えて指定しないこと**。
 
-(a) のみを観測した場合はこの差し替えを**行わない**（(a) では counter はステップ 6 共有前段で正しくリセットされており、元の 1 行が真）。(a) / (b) / (c) は独立に評価するので、観測したものを **(a) → (b) → (c) の順に**追加し、差し替えは (b) を観測した場合のみ行う（(c) の本文は (b) 内の手動リセットコマンドを「上記の」で参照するため、順序を崩すと前方参照になる）。
+(a) のみを観測した場合はこの差し替えを**行わない**。(a) / (b) / (c) は独立に評価し、観測したものを **(a) → (b) → (c) の順に**追加する。差し替えは (b) を観測した場合のみ行う。
 
 ---
 
@@ -934,9 +925,10 @@ rationale: [stop-loop-continuation-contract.md#mechanism](../../references/stop-
 
 ## 設計判断
 
-- **blocking 指摘ゼロ（mergeable）到達が正常出口** — blocking の定義式は本ファイルに複製せず [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) を SoT とする（同 § は reviewer finding に閉じた canonical 式と fix loop 全体を対象とする consumer 式の差を「適用範囲」で意図的なスコープ差として定義している。本スキルはループ側なので後者に従い、実測の有無を判定できない指摘は blocking のまま扱う）。実測を伴わない指摘は non-blocking として `/rite:pr-review` ステップ 6.1.d の PR 記録コメント・ステップ 5.4 統合レポート・永続 JSON に記録されたまま残存するため、**非実測指摘が N 件残った状態でも `[review:mergeable]` に到達してループが正常終了しうる**（#2024）— 残存分は draft PR の人間レビューに委ねる設計。加えてサーキットブレーカーを唯一の自動安全網として持ち、reviewer の非決定的振動や非収束 PR による無限ループを構造的に防ぐ。同一 finding 検出 / quality signal escalation といった細粒度の安全網は依然として持たない（CLAUDE.md「シンプルさを死守」）
-- **ブレーカーの発火条件は「発散」であって「予算切れ」ではない** — 主経路は収束トレンドの発散検出（`hooks/scripts/review-trend-divergence.sh`）で、`safety.max_review_cycles`（既定 15）はそれをすり抜ける非収束を受け止める backstop へ格下げした（backstop を残す以上 16 cycle 以上を要する収束中の run には届くが、引き上げ前の 5 の頃のように 6 cycle 以上を要する収束中の run を殺すことは無くなった。既定 15 の根拠は #2129 D-02 で、最適値は運用データで再評価する）。cycle 数上限だけでは努力と無駄を区別できない（健全に収束中でも上限で殺し、発散していても上限まで燃やす）ため、「品質を予算で縛らない・無駄は排除する」（CLAUDE.md プロジェクト原則）に反していた。判定は helper に閉じ LLM の裁量を介在させない。判定式は実運用で観測されたトラジェクトリで backtest して確定した定数であり、**窓幅や閾値を config キーにしない** — 調整の実需が観測されてから Issue を切って設定化する（`no_speculative_structure`）。判定式の較正根拠と意図した境界（最良水準での平坦は発火させない = false positive 回避）は helper の header が SoT
-- **発火理由は post-breaker routing を変えない** — divergence / max-cycles のどちらでも run 開始点を更新し、full review を 1 回実行する。full review 不成立時の sentinel（`[iterate:max-cycles-reached]` / `[iterate:max-cycles-stopped]`）は理由に依らず不変で、`/rite:batch-run` の failed 記録契約を保つ
-- **発火後は full review の finding を通常 routing**: 人間に継続可否を問わず、full review が mergeable なら正常終了、fix-needed なら fix loop へ戻る。full review を実行できない場合だけ、batch は failed 扱いで次 Issue へ遷移し、対話は機械的に停止する
-- **cycle counter は flow-state に保持**: 専用 state file (`.rite/state/*.count` 等) は持たず、`cycle_count` を flow-state の merge-preserve フィールドとして永続化する（`worktree` と同じ additive パターン）。resume を跨いで継続し（AC-3）、fresh entry（phase が review/fix 以外）で 0 リセットして run バッチの Issue 間リークを防ぐ。加えて**発火が sentinel として記録される直前**（ステップ 6 の共有前段）と**正常終了時**（ステップ 5.0.1）で 0 にリセットする — 後者は run を明示的に閉じるためで、閉じないと次回起動が resume 判定になりステップ 0.6 の pin 更新条件（`cur_cc == 0`）に入らず、新 run が前 run の pin を引き継ぐ — リセットしないと再実行が即再発火してループを再開する術が無くなるが、発火後は継続 handoff が（ステップ 1 fire 分岐の set で）default-clear されて自動再入場の経路が消えるため、リセットしても自動継続は生じない。共有前段は counter reset と `stop_reason` の記録を同じ atomic set に載せるため、**共有前段の実行後・sentinel 出力前に turn が終わっても発火理由は durable に残る**。共有前段より手前で turn が終われば counter は上限のままなので次回ループ頭で再発火し、set 自体が失敗した場合は `FIRE_RESET=failed` の警告と復旧案内で counter 未更新・理由未記録の両方を明示する。「発火済み」を counter の別値（例: `cycle_count = max + 1`）として符号化する設計は採らない。`max_review_cycles` は invocation ごとに変わりうるため相対値の符号化が両方向に破綻するが、独立した文字列フィールドの `stop_reason` はその問題を持たない。Stop hook の handoff とも独立（handoff は one-shot consume される継続マーカー、cycle_count は accumulate されるカウンタ、`stop_reason` は次の通常 set まで残る失敗理由）
-- 別 Issue 化経路は廃止済み (commit 1a で fix.md Phase 4.3 削除) — 「別 Issue にスキップして loop 終了」の抜け穴は塞がれている
+- **blocking 指摘ゼロ（mergeable）到達が正常出口** — blocking の定義式は本ファイルに複製せず [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) を SoT とする。**非実測指摘が N 件残った状態でも `[review:mergeable]` に到達してループが正常終了しうる** — 残存分は draft PR の人間レビューに委ねる
+- **ブレーカーの発火条件は「発散」であって「予算切れ」ではない** — 主経路は収束トレンドの発散検出、`safety.max_review_cycles`（既定 15）は backstop。**窓幅や閾値を config キーにしない**
+- **発火理由は post-breaker routing を変えない** — sentinel（`[iterate:max-cycles-reached]` / `[iterate:max-cycles-stopped]`）は理由に依らず不変
+- **発火後は full review の finding を通常 routing** — mergeable なら正常終了、fix-needed なら fix loop。full review を実行できない場合だけ batch は failed、対話は機械的に停止
+- **cycle counter は flow-state に保持** — 専用 state file は持たない。resume 跨ぎ継続（AC-3）、fresh entry で 0 リセット。発火直前（ステップ 6 共有前段）と正常終了時（ステップ 5.0.1）でも 0 に戻す
+- 別 Issue 化経路は廃止済み — 「別 Issue にスキップして loop 終了」の抜け穴は塞がれている
+rationale: references/rationale.md#design-decisions
