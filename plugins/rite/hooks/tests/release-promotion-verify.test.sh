@@ -17,6 +17,7 @@ elif [ "$1" = "api" ]; then
   oid="0123456789abcdef0123456789abcdef01234567"
   case " $* " in
     *"/pulls/"*"/commits"*) printf '%s\n' "$oid" ;;
+    *"/pulls/"*) printf '%s\n' "${MOCK_COMMIT_COUNT:-1}" ;;
     *)
       if [ "${MOCK_UNREVIEWED:-0}" = 1 ]; then printf '[]\n'
       else jq -n --arg oid "$oid" '[{merged_at:"2026-08-01T00:00:00Z",merge_commit_sha:$oid}]'; fi
@@ -43,6 +44,10 @@ if MOCK_UNREVIEWED=1 bash "$HOOKS_DIR/release-promotion-verify.sh" 89 >/dev/null
 fi
 if MOCK_BASE=develop MOCK_HEAD=feature bash "$HOOKS_DIR/release-promotion-verify.sh" 90 >/dev/null 2>&1; then
   echo "FAIL: non-promotion PR shape was accepted" >&2
+  exit 1
+fi
+if MOCK_COMMIT_COUNT=251 bash "$HOOKS_DIR/release-promotion-verify.sh" 91 >/dev/null 2>&1; then
+  echo "FAIL: incomplete capped commit list was accepted" >&2
   exit 1
 fi
 

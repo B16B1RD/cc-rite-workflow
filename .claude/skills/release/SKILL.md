@@ -286,6 +286,8 @@ gh pr merge {RELEASE_PR_NUMBER} --merge --match-head-commit {VERIFIED_HEAD_OID}
 各 commit SHA について、同じ SHA を merge commit とする既マージ PR の存在を検証し、検証時の
 head SHA をアテステーションへ記録する。merge gate はそのアテステーションと
 `--match-head-commit` の SHA が一致するときだけレビュー結果 JSON の代替として扱う。
+GitHub API が返したコミット件数は PR metadata の総コミット数と照合し、API 上限等で完全な一覧を
+取得できない場合はアテステーションを作らず停止する。
 
 この方式により、通常の実装 PR は従来どおり review-results JSON が必須のまま、直接 push を含む
 昇格と検証後に head が変わった昇格は `merge-release-promotion-unverified` で fail-loud に停止する。

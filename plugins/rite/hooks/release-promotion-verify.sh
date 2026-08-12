@@ -23,6 +23,8 @@ head_oid=$(jq -r '.headRefOid // empty' <<< "$pr_json")
 commits_output=$(gh api --paginate -H 'Accept: application/vnd.github+json' \
   "repos/$owner/$repo/pulls/$PR_NUMBER/commits" --jq '.[].sha')
 mapfile -t commits <<< "$commits_output"
+expected_commit_count=$(gh api -H 'Accept: application/vnd.github+json' \
+  "repos/$owner/$repo/pulls/$PR_NUMBER" --jq '.commits')
 
 if [ "$base" != "main" ] || [ "$head" != "develop" ]; then
   echo "ERROR: release promotion must be develop -> main (actual: $head -> $base)" >&2
@@ -30,6 +32,11 @@ if [ "$base" != "main" ] || [ "$head" != "develop" ]; then
 fi
 if [[ ! "$head_oid" =~ ^[0-9a-fA-F]{40}$ ]] || [ -z "$commits_output" ] || [ "${#commits[@]}" -eq 0 ]; then
   echo "ERROR: release promotion PR head/commit list could not be verified" >&2
+  exit 4
+fi
+case "$expected_commit_count" in ''|*[!0-9]*) echo "ERROR: release promotion total commit count could not be verified" >&2; exit 4 ;; esac
+if [ "${#commits[@]}" -ne "$expected_commit_count" ]; then
+  echo "ERROR: release promotion commit list is incomplete (${#commits[@]}/$expected_commit_count); merge denied" >&2
   exit 4
 fi
 
