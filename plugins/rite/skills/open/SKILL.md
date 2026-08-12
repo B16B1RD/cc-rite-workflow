@@ -42,7 +42,7 @@ Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → 
 | `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
 | `{project_number}` | ステップ 2.4(A) 専用: `rite-config.yml` → `github.projects.project_number` |
 
-> **Note**: 上記 2 行（ステップ 2.4(A) 専用と注記したもの）を除き、`{owner}` / `{repo}` / `{project_number}` / `{parent_issue_number}` 等は下流 sub-skill (`rite:issue-implement` / `rite:pr-create` / Projects integration script 経由) が `rite-config.yml` / `gh` から個別に取得するため、本コマンド body 内で直接 substitute する経路は持たない (responsibility を sub-skill に委譲)。
+> **Note**: 「ステップ 2.4(A) 専用」と注記した 2 行を除き、`{owner}` / `{repo}` / `{project_number}` / `{parent_issue_number}` は本コマンド body で substitute しない — 下流 sub-skill が `rite-config.yml` / `gh` から個別に取得する。
 
 ---
 
@@ -63,9 +63,9 @@ else
 fi
 ```
 
-`{plugin_root}/hooks/flow-state.sh get --default ""` は session 解決失敗 / file 不在 / jq parse 失敗のいずれでも default を stdout に書く設計のため、外側 `|| ...` は helper validation 失敗 (`--field` 引数欠落 / invalid field name) 経路のみを catch する defensive fallback。stderr は WARNING channel として残し、`2>/dev/null` で握りつぶさない (想定外 ERROR を context に残すため)。
+stderr は `2>/dev/null` で握りつぶさない。rationale: references/rationale.md#defensive-fallback
 
-**LLM routing rule** (Bash tool shell state は次の Bash 呼び出しでリセットされるため `[CONTEXT] RESUME_DISPATCH=` marker を会話コンテキストから読む)。本表は **本コマンド内部の Step jump 用** の routing。`phase=review/fix/ready/cleanup` を含む外部スキルへの routing 全体は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.3 Phase enum → Step mapping (SoT) を参照:
+**LLM routing rule**: `[CONTEXT] RESUME_DISPATCH=` marker を会話コンテキストから読む（Bash shell state は次の呼び出しでリセットされる）。本表は本コマンド内部の Step jump 用で、外部スキルへの routing 全体は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.3 が SoT:
 
 | `RESUME_DISPATCH` value + `phase` | LLM action |
 |---|---|
@@ -84,7 +84,7 @@ fi
 
 ### 0.5 Worktree Re-entry（multi_session 有効時の Resume Dispatch）
 
-`RESUME_DISPATCH=1`（同一セッション内の再開）で、かつ flow-state に `worktree` field がセットされている場合、復帰先ステップへジャンプする**前に**そのセッション worktree へ再入場する。Bash ツール呼び出しと EnterWorktree ツールの cwd を一致させるための前処理:
+`RESUME_DISPATCH=1` かつ flow-state に `worktree` がある場合、復帰先ステップへジャンプする**前に**そのセッション worktree へ再入場する（Bash 呼び出しと EnterWorktree の cwd を一致させる）:
 
 ```bash
 resume_wt=$(bash {plugin_root}/hooks/flow-state.sh get --field worktree --default "") || resume_wt=""
@@ -92,11 +92,11 @@ cur_top=$(git rev-parse --show-toplevel 2>/dev/null) || cur_top=""
 echo "[CONTEXT] WORKTREE_REENTRY=$([ -n "$resume_wt" ] && [ "$resume_wt" != "$cur_top" ] && echo needed || echo none); worktree=$resume_wt"
 ```
 
-- `WORKTREE_REENTRY=needed`（flow-state `worktree` が現在の作業ツリーと不一致）→ `EnterWorktree` ツールを `path: {worktree}` で呼び出し（`{worktree}` は上記 marker の値）、その後にステップ 0 の routing 表で決まった復帰先ステップへジャンプする。
-- `WORKTREE_REENTRY=none` → そのまま復帰先ステップへ。
-- 入場後に worktree が消失している等で `EnterWorktree` が失敗した場合は、recover.md Phase 3.1.5 の worktree 再構築経路に委ねる（本コマンドでは新規 worktree を作らず、ユーザーに `/rite:recover {issue_number}` を案内する）。
+- `needed` → `EnterWorktree` を `path: {worktree}` で呼び、その後ステップ 0 の routing 表で決まった復帰先へジャンプする。
+- `none` → そのまま復帰先へ。
+- `EnterWorktree` 失敗（worktree 消失等）→ 新規 worktree は作らず `/rite:recover {issue_number}` を案内する（再構築は recover.md Phase 3.1.5 の責務）。
 
-`MULTI_SESSION_ENABLED=false` または flow-state に `worktree` が無い場合は no-op。
+`MULTI_SESSION_ENABLED=false` または `worktree` 不在なら no-op。
 
 ---
 
@@ -128,7 +128,7 @@ What / Why / Where / Scope の充足度で A-D 評価。C/D の場合は AskUser
 
 `rite-config.yml` の `language` field を取得し `[CONTEXT] WORKFLOW_LANGUAGE=` marker として emit。ステップ 4 の commit message テンプレで参照される。
 
-あわせて `multi_session` を読み、ステップ 2.2-W / 2.3-W のセッション worktree 分岐判定に使う `[CONTEXT]` marker を emit する（Bash ツール間でシェル変数は保持されないため marker 経由で参照する）:
+あわせて `multi_session` を読み、ステップ 2.2-W / 2.3-W の分岐判定に使う marker を emit する:
 
 ```bash
 ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || ms_section=""
@@ -141,7 +141,7 @@ ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {prin
 echo "[CONTEXT] MULTI_SESSION_ENABLED=$ms_enabled; WORKTREE_BASE=$ms_base"
 ```
 
-新規プロジェクトはテンプレート config が `enabled: true`（デフォルト ON）のため `MULTI_SESSION_ENABLED=true` となりステップ 2 で 2.2-W / 2.3-W（セッション worktree）を実行する。`MULTI_SESSION_ENABLED=false`（`enabled: false` を明示設定 / `multi_session:` ブロックが存在しない旧 config — 上記 `case` の fallback）のときは従来の Step 2.2 / 2.3 をそのまま実行し、挙動は単一セッション時と完全一致する。`multi_session:` キー欠落時の fallback を `false` に保つことで既存プロジェクトの後方互換を担保する（デフォルト変更が効くのは新規 `/rite:setup` 生成時のみ）。
+`multi_session:` キー欠落時に `false` へ倒すのは既存プロジェクトの後方互換のため（デフォルト ON が効くのは新規 `/rite:setup` 生成時のみ）。分岐そのものはステップ 2.1-G が再確定した値で行う。
 
 ### 1.5 Iteration 自動 assign
 
@@ -155,18 +155,16 @@ bash {plugin_root}/hooks/flow-state.sh set \
   --next "ブランチ作成へ進む"
 ```
 
-続けて Issue claim を取得する（**branch / worktree 作成という副作用の前の fail-fast**。`multi_session.enabled` に依らず常時有効 — Decision D-3）:
+続けて Issue claim を取得する（branch / worktree 作成の前の fail-fast。`multi_session.enabled` に依らず常時有効）:
 
 ```bash
 claim_out=$(bash {plugin_root}/hooks/issue-claim.sh claim --issue {issue_number} 2>&1); claim_rc=$?
 echo "[CONTEXT] ISSUE_CLAIM=$claim_out; rc=$claim_rc"
 ```
 
-- `rc=0`（`claimed` / `own` / stale 奪取）→ そのままステップ 2 へ進む。
-- `rc=10`（`other` = 他の live セッションが同一 Issue を作業中）→ **AskUserQuestion** で対応を選択する（無人での奪取はしない）:
-  - 「中止（推奨）」: 他セッションの作業を尊重して終了する。
-  - 「強制取得して続行」: 他セッションと衝突するリスクを表示した上で、`issue-claim.sh claim --issue {issue_number}` の再実行ではなく、ユーザーが当該セッションを停止済みであることを確認してから続行する（最終ガードはステップ 2.2-W の branch 衝突検出）。
-- それ以外の非 0 rc（環境エラー）→ stderr を表示して中止する。
+- `rc=0`（`claimed` / `own` / stale 奪取）→ ステップ 2 へ。
+- `rc=10`（`other` = 他の live セッションが作業中）→ **AskUserQuestion**（無人での奪取はしない）。「中止（推奨）」= 終了。「強制取得して続行」= 衝突リスクを表示し、`issue-claim.sh claim --issue {issue_number}` の**再実行ではなく**、ユーザーが当該セッションを停止済みであることを確認してから続行する（最終ガードはステップ 2.2-W の branch 衝突検出）。
+- その他の非 0 rc（環境エラー）→ stderr を表示して中止する。
 
 ---
 
@@ -181,9 +179,7 @@ echo "[CONTEXT] ISSUE_CLAIM=$claim_out; rc=$claim_rc"
 
 ### 2.1-G ブランチ作成前の multi_session hard 再確定（marker 非依存ゲート）
 
-> **Why（#1595）**: 旧版はステップ 2.2/2.3 の分岐を **ステップ 1.4 が emit した `[CONTEXT] MULTI_SESSION_ENABLED=` marker の会話 context 残存に依存**させていた。resume / context 圧縮 / フロー途中入場で marker が context から失われると「marker 欠落 → 従来 2.2/2.3」に倒れ、`multi_session.enabled: true` でも main ツリーへ `git switch -c` する **silent fallback** が起きた（F3）。これを防ぐため、**ブランチ作成という副作用の直前に必ず本ゲートを実行**し、`multi_session` 状態を記憶に頼らず Bash で再確定する。
-
-ブランチ作成（2.2/2.3 または 2.2-W/2.3-W）へ分岐する**前に**、`multi_session` 状態を rite-config.yml から再取得する。下記はステップ 1.4 と**同一のパース**（F4 で正常確認済の解析ロジック。本ゲートはそれを変更せず再利用するだけ）であり、毎回 marker を確実に再生成する:
+ブランチ作成へ分岐する**前に**、`multi_session` 状態を rite-config.yml から Bash で再取得する（記憶・context 残存に頼らない）。パースはステップ 1.4 と同一。rationale: references/rationale.md#branch-gate
 
 ```bash
 ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || ms_section=""
@@ -196,14 +192,14 @@ ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {prin
 echo "[CONTEXT] MULTI_SESSION_ENABLED=$ms_enabled; WORKTREE_BASE=$ms_base; SOURCE=branch-gate"
 ```
 
-この `SOURCE=branch-gate` の marker が、ステップ 1.4 由来の古い marker を**上書きする最新の真実**である。分岐は必ず本ゲートの値で行う:
+`SOURCE=branch-gate` の marker が最新の真実であり、分岐は必ずこの値で行う:
 
 | 本ゲートの `MULTI_SESSION_ENABLED` | 経路 |
 |---|---|
 | `true`（新規プロジェクトのデフォルト） | **2.2-W / 2.3-W**（セッション worktree）を実行し、従来の 2.2 / 2.3 は **置換**してスキップする |
 | `false`（`enabled: false` 明示設定 / `multi_session:` ブロック欠落の旧 config） | **2.2 / 2.3**（従来動作、単一セッション時と完全一致）を実行する |
 
-**silent fallback の禁止（hard invariant）**: 「marker が context に無い」ことを理由に従来 2.2/2.3 へ進む経路は **存在しない**。本ゲートは毎回 Bash で marker を再生成するため、分岐時に値が未取得になることはない。万一このゲートを実行せずにブランチ作成段へ到達した場合は、`git switch -c`（2.3）を実行せず**本ゲートに戻って再確定**すること。`true` のとき 2.2-W/2.3-W 以外でブランチを checkout してはならない。
+**hard invariant**: 本ゲートを経ずにブランチ作成段へ到達した場合は `git switch -c`（2.3）を実行せず本ゲートへ戻る。`true` のとき 2.2-W/2.3-W 以外でブランチを checkout してはならない。
 
 ### 2.2 既存ブランチチェック（multi_session 無効時）
 
@@ -211,7 +207,7 @@ echo "[CONTEXT] MULTI_SESSION_ENABLED=$ms_enabled; WORKTREE_BASE=$ms_base; SOURC
 
 ### 2.3 ブランチ作成（multi_session 無効時）
 
-> **Hard gate（#1595）**: 本ブロックは 2.1-G で再確定した `MULTI_SESSION_ENABLED=false` のときのみ実行する。`true` のとき本経路は **実行禁止** — 下記は cwd を main checkout に置いたまま新規ブランチを checkout するため、これが旧バグの silent fallback そのものを構成する。`true` のまま本ブロックへ到達した場合は実行せず 2.2-W へ戻ること。
+> **Hard gate**: 2.1-G で再確定した `MULTI_SESSION_ENABLED=false` のときのみ実行する。`true` のときは実行禁止（cwd を main checkout に置いたままブランチを切るため）— 2.2-W へ戻る。rationale: references/rationale.md#branch-gate
 
 ```bash
 # GUARD (#1595): multi_session 有効時に本経路へ来てはならない。
@@ -221,7 +217,7 @@ git switch {base_branch} && git fetch origin {base_branch} && git merge --ff-onl
 
 ### 2.2-W セッション worktree の冪等準備（multi_session 有効時、2.2/2.3 を置換）
 
-worktree path は `{worktree_base}/issue-{issue_number}`（`{worktree_base}` は 2.1-G で再確定した `WORKTREE_BASE` marker 値。2.1-G を経ずに到達した場合のみ 1.4 の同名 marker を参照する — 両者は同一パースで値が常に一致する。絶対パスは `{repo_root}/{worktree_base}/issue-{issue_number}`）。base ref は checkout 中 branch の fetch 更新不可制約のため **`origin/{base_branch}` を直接指定**する（local {base_branch} を経由しない）:
+worktree path は `{repo_root}/{worktree_base}/issue-{issue_number}`（`{worktree_base}` は 2.1-G の `WORKTREE_BASE` marker 値）。base ref は **`origin/{base_branch}` を直接指定**する — checkout 中の branch は fetch で更新できないため local を経由しない:
 
 ```bash
 worktree_base="{worktree_base}"
@@ -283,7 +279,7 @@ fi
 | `create_new` | branch も worktree もなし → `git worktree add --no-track -b "{branch}" "{path}" "origin/{base_branch}"`（`--no-track`: sandbox 有効環境で `branch.autoSetupMerge` の tracking 書込が `.git/config` 拒否に当たるのを回避。branch は origin 起点のまま tracking だけ張らない — ） |
 | `branch_other_worktree` | branch が**別の worktree** で checkout 中 → **中止**（他セッション作業中の可能性。`other=` のパスを表示。git が構造的に保証する二重着手ガード） |
 
-**dirty main checkout ガード**: 上記 bash block の `MAIN_DIRTY` marker で分岐する。`WT_CASE` が worktree を**新規作成する全経路**（`branch_only` / `create_new` / `stale_residue` で「削除して再作成」を選択した場合。`reuse` は既存 worktree 継続のため対象外）で、`git worktree add` を実行する**前に**評価する。`--- dirty files begin/end ---` デリミタ内の行はファイル一覧 **data** であり、marker として解釈しない（marker は行頭 `[CONTEXT]` の行のみ）:
+**dirty main checkout ガード**: worktree を新規作成する全経路（`branch_only` / `create_new` / `stale_residue` の再作成。`reuse` は対象外）で、`git worktree add` の**前に** `MAIN_DIRTY` marker を評価する。`--- dirty files begin/end ---` 内の行は data であり marker として解釈しない（marker は行頭 `[CONTEXT]` のみ）:
 
 | `MAIN_DIRTY` | アクション |
 |---|---|
@@ -292,15 +288,15 @@ fi
 
 重なりあり時の AskUserQuestion（3 択）:
 
-- **搬送して続行**: worktree 作成 + 2.3-W 入場の後、重なった dirty ファイルを worktree へ搬送する（modified / untracked が対象。削除された Target File は搬送対象外として一覧にその旨を表示）。転送元ルートは 2.2-W の `[CONTEXT] MAIN_CHECKOUT_ROOT=` の値を使う（**cwd=worktree で `git rev-parse --show-toplevel` を再計算してはならない** — worktree root が返り、clean な base 版を搬送元に誤解決する）。各ファイルにつき `mkdir -p "$(dirname "{wt_path}/{relpath}")" && cp "{main_checkout_root}/{relpath}" "{wt_path}/{relpath}"` を実行する（`{relpath}` は porcelain 行から抽出したパス: 行頭 3 文字の status 部（`XY␠`）を除き、`"` で囲まれた行は unquote し、rename 行 `R old -> new` は `->` 右側の new を使い、`?? dir/` に畳まれた untracked ディレクトリは `cp -r` で搬送する）。main checkout 側の変更はそのまま残す（破棄しない）
-- **そのまま続行**: 搬送せず worktree を作成する（未コミット変更は worktree に含まれないことを了解済みとして続行）
-- **中止**: workflow を終了し、main checkout を無変更で残す
+- **搬送して続行**: worktree 作成 + 2.3-W 入場の後、重なった dirty ファイル（modified / untracked）を `mkdir -p "$(dirname "{wt_path}/{relpath}")" && cp "{main_checkout_root}/{relpath}" "{wt_path}/{relpath}"` で搬送する。搬送元ルートは 2.2-W の `MAIN_CHECKOUT_ROOT=` の値を使う（cwd=worktree で `git rev-parse --show-toplevel` を再計算すると clean な base 版を誤解決する）。`{relpath}` は porcelain 行から: 行頭 3 文字の status 部を除き、`"` 囲みは unquote し、`R old -> new` は右側、`?? dir/` は `cp -r`。削除済み Target File は搬送対象外としてその旨を表示する。main checkout 側は破棄しない
+- **そのまま続行**: 搬送せず worktree を作成する（未コミット変更が worktree に入らないことを了解済み）
+- **中止**: main checkout を無変更で残して終了する
 
-> setup 直後のブートストラップ（setup が main checkout に生成した未コミットの rite-config.yml / .gitignore をこの Issue でコミットする）は正当なユースケースであり、「搬送して続行」で通す。ユーザー確認なしに未コミット変更を破棄・stash してはならない。
+> setup 直後のブートストラップ（未コミットの rite-config.yml / .gitignore をこの Issue でコミットする）は正当なユースケースであり「搬送して続行」で通す。ユーザー確認なしに未コミット変更を破棄・stash してはならない。
 
 ### 2.3-W EnterWorktree 入場（multi_session 有効時）
 
-worktree を作成・再利用したら、`.rite-plugin-root` と（存在する場合のみ）`.claude/settings.local.json` を worktree root へコピーしてから入場する（`.claude/` は gitignore 対象のため `git worktree add` では複製されず、ドッグフーディング上書き — `enabledPlugins["rite@rite-marketplace"]: false` — が worktree セッションで失われてキャッシュされた古い marketplace 版スキルがロードされるため。settings.local.json は worktree 作成時点のスナップショットとして複製される — 作成後に main checkout 側を更新しても既存 worktree には反映されない。）:
+worktree を作成・再利用したら、`.rite-plugin-root` と（存在する場合のみ）`.claude/settings.local.json` を worktree root へコピーしてから入場する。`.claude/` は gitignore 対象で `git worktree add` が複製しないため、コピーしないとドッグフーディング上書き（`enabledPlugins["rite@rite-marketplace"]: false`）が失われ、古い marketplace 版スキルがロードされる。複製は worktree 作成時点のスナップショットであり、以後の main checkout 側の更新は反映されない:
 
 ```bash
 [ -f "$repo_root/.rite-plugin-root" ] && cp "$repo_root/.rite-plugin-root" "$wt_path/.rite-plugin-root" 2>/dev/null || true
@@ -309,15 +305,17 @@ if [ -f "$repo_root/.claude/settings.local.json" ] && ! { mkdir -p "$wt_path/.cl
 fi
 ```
 
-その後 `EnterWorktree` ツールを `path: {wt_path}` で呼び出す（`{wt_path}` は 2.2-W の `WT_CASE` marker の `path=` 値。EnterWorktree のツール側ガード「ユーザー / プロジェクト指示で明示された場合のみ」は、`rite-config.yml` の `multi_session.enabled: true`（リポジトリにコミットされた**プロジェクト指示**。値がテンプレートのデフォルト ON 由来かユーザーの明示編集由来かに依らずプロジェクト指示として成立する）+ 本コマンド定義の明示指示の両方で満たす。デフォルトが ON でも、この `enabled: true` を marker 経由で確認した分岐内でのみ EnterWorktree を呼ぶため、ガードの根拠は default off 時と変わらず成立する）。
+その後 `EnterWorktree` ツールを `path: {wt_path}`（2.2-W の `WT_CASE` marker の `path=` 値）で呼び出す。EnterWorktree のツール側ガード「ユーザー / プロジェクト指示で明示された場合のみ」は、`rite-config.yml` の `multi_session.enabled: true`（コミット済みのプロジェクト指示）+ 本コマンド定義の明示指示で満たす。
 
-- **EnterWorktree が不在 / 失敗の場合**: **silent fallback はしない**。まず失敗原因を切り分ける（補助情報として `git -C "{wt_path}" rev-parse --is-inside-work-tree` の結果を提示してよい）:
-  - **(A) harness の git 誤判定**（`.git` が存在し `git -C "{wt_path}" rev-parse` は成功するのに、起動コンテキストが `Is a git repository: false` で EnterWorktree が「not in a git repository」エラーを返す）→ **推奨**。これは harness がセッション起動時に launch ディレクトリを git リポジトリと認識できなかったことが原因で、プラグインからは直せない。診断とともに「**リポジトリ root から Claude Code を再起動**し、`/rite:open {issue_number}` を再実行すれば、作成済み worktree が 2.2-W で `WT_CASE=reuse` と判定され**再作成せず継続**できる」と案内する。worktree は保持済みのため破壊しない。
-  - **(B) worktree path 消失などの別要因**（harness 誤判定以外）→ 既存どおり recover.md Phase 3.1.5 の worktree 再構築経路 / `/rite:recover {issue_number}` に委譲する（本コマンドでは新規 worktree を作らない。再起動案内へ誤誘導しない）。
-  - **(C) エスケープハッチ**（ユーザーが明示選択した場合のみ）: 「従来 `git switch -c` で続行」は **recommended にしない**。worktree 分離を破棄する明示的な選択肢としてのみ残し、他セッション併走中は作業ツリーを破壊し合う危険がある旨を**警告**した上でステップ 2.3 にフォールバックする。
-  - Bash 永続 cwd 駆動（cwd を main checkout に残したまま絶対パスで操作する経路）は**導入しない**（main tree を誤更新するリスクのため）。
+**EnterWorktree が不在 / 失敗の場合は silent fallback しない**。原因を切り分けて対処する（補助情報として `git -C "{wt_path}" rev-parse --is-inside-work-tree` を提示してよい）:
 
-> 入場以降、sandbox 有効環境では main checkout 配下への state 書込（`flow-state.sh set` / `issue-claim.sh` / `issue-comment-wm-sync.sh` 等、本ステップ以降の全フェーズの hook 呼び出し）が「読み込み専用ファイルシステムです」で拒否されることがある。拒否された当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要。詳細: [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる)）。
+- **(A) harness の git 誤判定**（`git -C {wt_path} rev-parse` は成功するのに「not in a git repository」）→ **推奨**。worktree は破壊せず、リポジトリ root から Claude Code を再起動して `/rite:open {issue_number}` を再実行すれば 2.2-W が `WT_CASE=reuse` で継続する、と案内する。
+- **(B) worktree path 消失などの別要因** → 新規 worktree を作らず `/rite:recover {issue_number}` へ委譲する（再起動案内へ誤誘導しない）。
+- **(C) 従来 `git switch -c` で続行** → ユーザーが明示選択した場合のみ。recommended にしない。他セッション併走中は作業ツリーを破壊し合う旨を警告してステップ 2.3 へフォールバックする。
+
+rationale: references/rationale.md#worktree-entry-failure
+
+> 入場以降、sandbox 有効環境では main checkout 配下への state 書込（`flow-state.sh set` / `issue-claim.sh` / `issue-comment-wm-sync.sh` 等）が「読み込み専用ファイルシステムです」で拒否されることがある。拒否された当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要。詳細: [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる)）。
 
 入場後、claim に worktree path を記録する（reap / resume の discovery 用）:
 
@@ -325,7 +323,7 @@ fi
 bash {plugin_root}/hooks/issue-claim.sh claim --issue {issue_number} --worktree "{wt_path}" >/dev/null 2>&1 || true
 ```
 
-続けて、**セッション worktree 上にいることを invariant として検証**する（#1595。EnterWorktree が失敗したのに気付かず main ツリーで implement/commit してしまう silent fallback を遮断する最終ガード）:
+続けて、セッション worktree 上にいることを invariant として検証する（EnterWorktree の失敗に気付かず main ツリーで implement/commit する silent fallback を遮断する最終ガード）:
 
 ```bash
 cur_top=$(git rev-parse --show-toplevel 2>/dev/null) || cur_top=""
@@ -341,18 +339,18 @@ else
 fi
 ```
 
-- `WORKTREE_INVARIANT=ok`（cwd が worktree path と一致、bash exit 0）→ ステップ 2.4 以降へ進む。
-- `WORKTREE_INVARIANT=violated`（EnterWorktree 失敗等で cwd が main checkout 等に残存）→ 本ブロックは **`exit 1` で停止**するため Bash ツールが非ゼロを返す（fail-loud）。**silent に続行しない**。main ツリー上での implement / commit を**行わず**、上記「EnterWorktree が不在 / 失敗の場合」の (A) harness git 誤判定 / (B) worktree path 消失 / (C) ユーザー明示選択 の切り分けへ戻る。`violated` のままブランチ実装へ進むことは禁止。
+- `WORKTREE_INVARIANT=ok` → ステップ 2.4 へ進む。
+- `WORKTREE_INVARIANT=violated` → 本ブロックが `exit 1` で停止する。main ツリー上で implement / commit を行わず、上記 (A) / (B) / (C) の切り分けへ戻る。`violated` のままブランチ実装へ進むことは禁止。
 
-ステップ 3〜6（implement / lint / push / PR create）は cwd 相対で完結するため**無変更**（S1 の state root 統一が前提）。`WORKTREE_INVARIANT=ok` が前提条件。
+rationale: references/rationale.md#worktree-invariant
+
+ステップ 3〜6 は cwd 相対で完結するため無変更で、`WORKTREE_INVARIANT=ok` を前提条件とする。
 
 ### 2.4 GitHub Projects Status 更新
 
-`rite-config.yml.github.projects.enabled: true` の場合、以下の **2 種類** の Status 更新を実行する。
+`rite-config.yml.github.projects.enabled: true` の場合、(A) と (B) の 2 種類を実行する。**(A) は skip 禁止**（inline してある理由は rationale: references/rationale.md#projects-status-inline）。
 
-**Critical**: (A) は Do NOT skip。過去に `skills/ready/SKILL.md` Phase 4.2 で「参照のみに留めた multi-stage pipeline は LLM の attention が sub-step 間で途切れると Status 更新自体が silent skip する」事象が確認されており（Status が `In Progress` へ進まず `Todo` のまま残留）、同じ理由で (A) の呼び出しは本ステップに直接 inline する。(B) は従来どおり `projects-integration.md` §2.4.7 に委譲する（複製しない）。
-
-**(A) 着手 Issue 自身の Status 更新** — 着手した Issue (`{issue_number}`) 自身の Projects Status を `In Progress` に更新する:
+**(A) 着手 Issue 自身の Status を `In Progress` にする**:
 
 ```bash
 status_json_args=$(jq -n \
@@ -381,19 +379,19 @@ case "$status_result" in
 esac
 ```
 
-`auto_add: true`（open 時点では Issue が未登録の可能性があるため `projects-status-update.sh` 内部で自動登録する。§2.4.3 相当）。**All result branches are non-blocking** — Status 更新の失敗で open をブロックしない。API レベルの詳細は [projects-integration.md §2.4.1–2.4.6](../../references/projects-integration.md#24-github-projects-status-update) を参照（複製はここまで）。
+`auto_add: true` は未登録 Issue を helper 内部で Project へ自動登録する。全 result 分岐は non-blocking で、Status 更新の失敗が open をブロックすることはない。API レベルの詳細は [projects-integration.md §2.4.1–2.4.6](../../references/projects-integration.md#24-github-projects-status-update)。
 
-**(B) 親 Issue の Status 更新（Sub-Issue 着手時、§2.4.7）** — `{issue_number}` が Sub-Issue の場合、**親 Issue の Status も In Progress に遷移させる**。これは省略不可の必須処理であり、(A) と独立に必ず実行する。ロジックは `projects-integration.md` §2.4.7 を実行する（open.md には複製しない）:
+**(B) 親 Issue の Status 更新（Sub-Issue 着手時）** — (A) と独立に必ず実行する。ロジックの SoT は `projects-integration.md` §2.4.7:
 
-1. **§2.4.7.1 親検出（3-method OR）** を必ず実行する: `## 親 Issue` body meta（PRIMARY）→ Sub-Issues API → tasklist search の順で親を検出する。この 3-method 構造は `../skills/issue-close/SKILL.md` Phase 4.5.1 と同一に保つ（method 順序・OR 意味・total-failure 時の `[DEBUG] parent not detected` emit を揃える。Method 3 の `--state open` は start 側固有の意図的差異）。
-2. 親が検出されたら **§2.4.7.2–2.4.7.4** を実行する: 親の Projects item / 現 Status を取得し、Status が **Todo または null（未設定）のときのみ** In Progress に更新する。親が既に **In Progress / In Review / Done** のときは上書きしない（sibling child による進捗を保持する）。
-3. 親が見つからない standalone Issue では `[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: body_meta, sub_issues_api, tasklist_search)` を emit して skip する（**silent skip 禁止**）。
+1. **§2.4.7.1 親検出（3-method OR）**: `## 親 Issue` body meta（PRIMARY）→ Sub-Issues API → tasklist search。この 3-method 構造は `../skills/issue-close/SKILL.md` Phase 4.5.1 と同一に保つ（Method 3 の `--state open` は start 側固有の意図的差異）。
+2. 親を検出したら **§2.4.7.2–2.4.7.4**: Status が **Todo または null のときのみ** In Progress にする。既に In Progress / In Review / Done なら上書きしない（sibling child の進捗を保持する）。
+3. 親が無い standalone Issue は `[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: body_meta, sub_issues_api, tasklist_search)` を emit して skip する（silent skip 禁止）。
 
-(B) はすべて non-blocking（親検出 / 親更新の失敗・親の Project 未登録は着手フローをブロックしない）。API 呼び出しの詳細とエラーハンドリングは §2.4.7 を参照する（複製しない）。
+(B) はすべて non-blocking。
 
 ### 2.5 Work Memory 初期化
 
-Issue の comment として work memory (backup replica) を初期投稿する。ローカルファイルが SoT で Issue コメントは replica (`../../skills/rite-workflow/references/work-memory-format.md` 参照)。投稿は `issue-comment-wm-sync.sh` の init mode に委譲する — この replica が無いと、以降の全フェーズの `issue-comment-wm-sync.sh update` 呼び出しが `status=skipped; reason=no_comment` で skip され、compact / cross-session recovery のバックアップ経路が機能しない:
+Issue の comment として work memory の backup replica を初期投稿する（ローカルファイルが SoT、Issue コメントは replica。形式: `../../skills/rite-workflow/references/work-memory-format.md`）。投稿は `issue-comment-wm-sync.sh` の init mode に委譲する。rationale: references/rationale.md#wm-replica-init
 
 ```bash
 # init は non-blocking 契約: gh 失敗 (auth / rate limit / network) でも helper は WARNING を出して
@@ -425,7 +423,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
   --next "実装計画策定へ進む"
 ```
 
-`MULTI_SESSION_ENABLED=true`（2.1-G で再確定した値）のときは末尾に `--worktree "{wt_path}" --require-worktree` を追加する（`{wt_path}` は 2.2-W の `path=` 値）。`--worktree` は merge-preserve かつ conditional-write のため、無効時（値が空）は state file に key を付与せず挙動は不変。`--require-worktree` は worktree path 不在のまま branch phase を記録しようとした場合に loud WARNING + `[CONTEXT] WORKTREE_INVARIANT=missing` marker を emit するデータ層検知（#1595。書き込み自体は完了するため work は失われない）。marker が `missing` の場合は worktree 化が漏れているため 2.2-W へ戻ること。
+2.1-G の `MULTI_SESSION_ENABLED=true` のときは末尾に `--worktree "{wt_path}" --require-worktree` を追加する（`{wt_path}` は 2.2-W の `path=` 値）。`--require-worktree` は worktree path 不在のまま branch phase を記録した場合に `[CONTEXT] WORKTREE_INVARIANT=missing` を emit する（書き込み自体は完了するため work は失われない）。`missing` を観測したら worktree 化が漏れているので 2.2-W へ戻る。
 
 ---
 
@@ -465,15 +463,13 @@ Issue body から「What / Why / Where / Acceptance Criteria」を抽出。
 - {note_1}
 ```
 
-**volatile-first 提示ルール**: `## 実装計画` の直後・`### 変更対象ファイル` の前に、ユーザーの判断で変わりやすい項目（データモデル変更・型/インターフェース定義・ユーザー可視挙動/UX）があれば「要判断ポイント」として箇条書きで列挙する。ステップ 3.4 の承認時にユーザーが本質的な判断へ注意を集中できるようにするため（出典: Thariq (Anthropic) "A Field Guide to Fable: Finding Your Unknowns" (2026) — "lead with the decisions I'm most likely to tweak"）。**「実装ステップ」自体の並び順（= 実行順）は変更しない**（issue-implement 側の実行順序決定に影響を与えないため）。該当項目がない計画ではこのブロックを出力しない。
+**volatile-first**: `## 実装計画` の直後・`### 変更対象ファイル` の前に、ユーザーの判断で変わりやすい項目（データモデル・型/インターフェース・ユーザー可視挙動）を「要判断ポイント」として列挙する。該当なしの計画では出力しない。**「実装ステップ」の並び順（= 実行順）は変更しない**。rationale: references/rationale.md#plan-volatile-first
 
-**参考実装セクション**: `reference_discovery` 原則（[coding-principles.md](../rite-workflow/references/coding-principles.md)）の「発見した参照を実装計画に記録し、参照ファイルの構造・慣習に従う」ルールに従い、ステップ 3.2 で発見した既存の参考実装（同ディレクトリの類似ファイル、命名パターンが一致するファイル等）を記録する。参考実装が見つからない場合（新規ディレクトリ、初めてのファイルパターン等）は、テーブルの代わりに `参考実装: なし（新規ディレクトリまたは初めてのファイルパターン）` の 1 行を出力する。
+**参考実装**: ステップ 3.2 で見つけた既存の参考実装（同ディレクトリの類似ファイル、命名パターン一致）を記録する（`reference_discovery` 原則 — [coding-principles.md](../rite-workflow/references/coding-principles.md)）。見つからない場合はテーブルの代わりに `参考実装: なし（新規ディレクトリまたは初めてのファイルパターン）` の 1 行を出力する。
 
 ### 3.4 計画承認（batch 時は自動承認 / standalone は AskUserQuestion）
 
-`/rite:batch-run` から駆動された batch 実行中かを run-queue で機械判定し、計画承認の要否を分岐する。batch 実行中（run-queue `active=true` かつ cursor が本 Issue を指す）は計画を**自動承認**して停止しない。standalone（直接 `/rite:open`）は従来どおり AskUserQuestion で確認する。
-
-> **Why（#1861）**: 旧仕様は本ステップを無条件 AskUserQuestion にしていたため、`/rite:batch-run` が宣言する「完全自律（無確認）」に反して Issue ごとに必ず 1 回停止していた。batch 時の自動承認で宣言と実挙動を一致させる。安全側の担保は batch-run のデフォルトモードが draft PR をレビュー待ちで残すこと・`--merge` が明示 opt-in であることに置く（本ステップでは停止しない）。batch 判定は iterate ステップ 6 の run-queue batch 判定と同型（`state-path-resolve.sh` / `flow-state.sh path` で session_id を導出 → `active` + cursor 一致）で、read-only。helper 失敗 / session_id 解決不可 / キュー不在のときは interactive（確認を出す）に fail-safe する。
+batch 実行中（run-queue `active=true` かつ cursor が本 Issue を指す）は計画を**自動承認**して停止しない。standalone は AskUserQuestion で確認する。判定は read-only で、helper 失敗 / session_id 解決不可 / キュー不在のときは interactive へ fail-safe する。rationale: references/rationale.md#plan-auto-approval
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
@@ -525,33 +521,15 @@ skill: rite:issue-implement
 args: "{issue_number}"
 ```
 
-`/rite:issue-implement` は以下を担う:
+`/rite:issue-implement` はチェックリスト駆動の実装・conventional commits でのコミット・Work Memory 更新を担い、全 step 完了後に `rite:lint` を自身で invoke する。`tdd.enabled: true`（デフォルト, opt-out）のときは Canon TDD サイクルで進む（詳細は `skills/issue-implement/SKILL.md` § 5.0.T）。
 
-- チェックリスト駆動で各ステップを実装 (Edit / Write ツール経由)
-- `tdd.enabled: true`（デフォルト, opt-out）のとき、実装は Canon TDD サイクル（テストリスト → Red → Green → Refactor、Issue の Section 6 Test Specification を初期ソースとする）で進む。`commands.test` 未設定時は Red/Green 実行を skip して test-list 規律のみ維持、`tdd.enabled: false` では従来フロー（詳細は `skills/issue-implement/SKILL.md` § 5.0.T）
-- conventional commits 形式でコミット (`{type}: {summary} (refs #{issue_number})`)
-- Work Memory のチェックリストを完了状態に更新
-- 全 step 完了後、autonomous に `rite:lint` を Skill ツール経由で invoke する
-  (旧 `start.md` — 本 PR で削除済 — の flat 設計を継承した内蔵動作。本コマンドの責務として lint 二重実行を避けるため、Step 5 は no-op になる)
-
-**実態としての挙動**:
-- `/rite:issue-implement` 完了時点で `phase=lint` が flow-state に書かれ、`rite:lint` の sentinel
-  (`[lint:success]` / `[lint:skipped]` / `[lint:error]` / `[lint:aborted]`) が会話 context に emit 済みとなる
-- 本コマンドは Step 5 で sentinel を**読み取るだけ**で `rite:lint` を再 invoke しない
-  (Step 4 が autonomous lint を内包しているため)
-- `/rite:issue-implement` 自体は固有 sentinel (`[implement:*]`) を emit しない設計のため、本ステップでは
-  `[lint:*]` sentinel の context 投入のみを期待し、判定そのものは Step 5 に委譲する (no-op step)
-
-Step 4 では Step 5 への引き渡し前提のため、本ステップ単体での sentinel routing table は持たない。
-`rite:lint` も含めて context に sentinel が全く emit されない場合 (implement が autonomous lint へ
-到達せず abort した稀ケース) は Step 5 末尾の「sentinel 不在」行で catch する。
+本ステップ完了時点で `phase=lint` と `[lint:*]` sentinel が揃っているのが正常であり、判定は Step 5 に委譲する。本ステップ単体の sentinel routing table は持たない。rationale: references/rationale.md#autonomous-lint
 
 ---
 
 ## ステップ 5: 品質チェック (Step 4 の autonomous lint 結果検証)
 
-Step 4 で `/rite:issue-implement` が autonomous に invoke した `rite:lint` の sentinel を会話 context から検証する。
-本ステップは sentinel を読むだけで、自前で `rite:lint` を再 invoke しない (二重実行防止)。
+Step 4 の autonomous lint が emit した sentinel を会話 context から読む。**`rite:lint` を再 invoke しない**（二重実行防止）:
 
 | Sentinel | 次のアクション |
 |---------|--------------|
@@ -561,7 +539,7 @@ Step 4 で `/rite:issue-implement` が autonomous に invoke した `rite:lint` 
 | `[lint:aborted]` | エラー終了。ユーザーに復旧手順を案内 |
 | sentinel 不在 | Step 4 で `/rite:issue-implement` が autonomous lint まで到達できなかった可能性。AskUserQuestion で「手動で `/rite:lint` 実行 / 中止」を提示 |
 
-`phase=lint` は Step 4 の `/rite:issue-implement` が既に flow-state に書き込んでいるため、本コマンドからの上書きは不要 (二重 write を避ける契約)。
+`phase=lint` は Step 4 が既に書いているため上書きしない（二重 write を避ける契約）。
 
 ---
 
@@ -573,9 +551,7 @@ Step 4 で `/rite:issue-implement` が autonomous に invoke した `rite:lint` 
 git push origin {branch_name}
 ```
 
-> `-u`（upstream 設定）は付けない。sandbox 有効環境で upstream tracking の `.git/config` 書込が拒否されるため。flow-state が `{branch_name}` を常時保持しているため upstream に依存する必要はない。
->
-> `origin` が SSH host alias 経由（例: `git@github.com-work:...`）の環境で sandbox が有効な場合、`socat` の `Bad Gateway` エラーで push がネットワーク許可リストにブロックされることがある（`network.allowedDomains` への alias 追加は無効。原因の因果連鎖と `sandbox.excludedCommands` が Linux/WSL2 では恒久策として機能しない理由は [git-worktree-patterns.md](../../references/git-worktree-patterns.md#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) を参照）。当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約。2026-07 時点で確実に機能する唯一の回避策）。この回避策はメインエージェントが直接実行する push にのみ適用でき、Task で spawn した reviewer subagent の Bash には渡せない（詳細: [git-worktree-patterns.md](../../references/git-worktree-patterns.md#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) の「本回避策が使えない経路」）。
+> `-u` は付けない（sandbox 環境で upstream tracking の `.git/config` 書込が拒否されるため）。SSH host alias 経由の `origin` では push が sandbox のネットワーク許可リストでブロックされることがあり、その場合は当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要）。rationale: references/rationale.md#push-no-upstream
 
 ### 6.2 PR 作成
 
@@ -591,14 +567,12 @@ skill: rite:pr-create
 | `[pr-create-failed]` | AskUserQuestion で「再試行 / 中止」を提示 |
 | **sentinel 不在 (missing-sentinel)** | `[pr:created:N]` / `[pr-create-failed]` のいずれも context に無い。Phase 3.4 の `gh pr create` が malformed tool-call で無言終了した可能性 (Cause A: harness/transport 側ゆらぎ、rite では除去不能 — 詳細は下記「malformed tool-call 回復契約」)。下記手順で回復する |
 
-**malformed tool-call 回復契約**:
+**malformed tool-call 回復契約** — sub-skill が sentinel を 1 つも emit せず無言終了した場合:
 
-sub-skill (`rite:pr-create` / `rite:issue-implement` / `rite:lint`) のターンが sentinel を 1 つも emit せず無言で終了した場合、flow-state には直前 phase が保持されているため作業は失われない。orchestrator は以下で回復する:
+1. **既存 draft PR の検出**: `gh pr list -R {owner_repo} --head {branch_name} --json number,url,isDraft`。存在すれば `[pr:created:N]` 相当として `{pr_number}` を再構成し、ステップ 6.3 へ進む（push/PR は冪等に再開可能）
+2. **未作成の場合**: AskUserQuestion で「PR 作成を再試行 / 中止」。中止時は `/rite:recover` で本ステップから再開できる旨を案内する
 
-1. **既存 draft PR の検出**: `gh pr list -R {owner_repo} --head {branch_name} --json number,url,isDraft` で当該ブランチの PR が既に作成済みか確認する。存在すれば実質 `[pr:created:N]` 相当として `{pr_number}` を再構成し、ステップ 6.3 へ進む (push/PR は冪等に再開可能)
-2. **未作成の場合**: AskUserQuestion で「PR 作成を再試行 / 中止」を提示する。中止時は flow-state の phase が保持されるため `/rite:recover` で本ステップから再開できる旨を案内する
-
-> Phase 3.4 の Write tool 委譲 は Cause B (インライン heredoc / 特殊文字 title による malform 増幅) を除去して発生確率を下げる対策であり、Cause A 自体は消せない。そのため本回復契約が最終的な堅牢化の担保となる。
+rationale: references/rationale.md#missing-sentinel-recovery
 
 ### 6.3 flow-state 更新
 
@@ -608,7 +582,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
   --next "レビュー/修正ループへ進む (/rite:iterate {pr_number})"
 ```
 
-`MULTI_SESSION_ENABLED=true` のときは末尾に `--worktree "{wt_path}" --require-worktree` を追加する（merge-preserve のため省略しても保持されるが、明示することで `--worktree` を伴わない他経路の set との順序非依存を担保する）。`--require-worktree` 検知の意味は 2.6 と同じ（#1595）。
+`MULTI_SESSION_ENABLED=true` のときは末尾に `--worktree "{wt_path}" --require-worktree` を追加する（merge-preserve のため省略しても保持されるが、明示して他経路の set との順序非依存を担保する）。検知の意味は 2.6 と同じ。
 
 ---
 
@@ -636,7 +610,6 @@ draft PR の作成が完了したら、ユーザーに以下を案内する:
 
 ## エラー時の方針
 
-- どこで止まっても flow-state.json に phase が記録されている
-- `/rite:recover` 経由で本コマンドの該当ステップから再開する
-- sub-skill (`rite:issue-implement` / `rite:lint` / `rite:pr-create`) の sentinel drop に備え、各 invoke 後に sentinel 検出を確認、不在なら AskUserQuestion で「再試行 / 中止」
-- **malformed tool-call による無言終了** (sub-skill が sentinel を 1 つも emit せずターン終了。Cause A: harness/transport 側ゆらぎ、rite では除去不能) も missing-sentinel として同様に扱う。PR 作成ステップの具体的な回復手順 (既存 draft PR 検出 → `/rite:recover`) はステップ 6.2「malformed tool-call 回復契約」を参照
+- どこで止まっても flow-state に phase が残るため、`/rite:recover` が該当ステップから再開する
+- sub-skill invoke 後は必ず sentinel の有無を確認する。不在なら AskUserQuestion で「再試行 / 中止」
+- 無言終了（sentinel を 1 つも emit せずターン終了）も missing-sentinel として同じ扱い。PR 作成段の回復手順はステップ 6.2 の「malformed tool-call 回復契約」

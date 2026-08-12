@@ -148,7 +148,7 @@ rite-workflow/
 │ └── error-handling-reviewer.md
 ├── skills/ # Claude Code auto-discovered skills (各スキル = 薄い SKILL.md + co-located references/)
 │ # --- PR lifecycle ---
-│ ├── open/ # /rite:open (Issue → branch → 実装 → lint → draft PR; end-to-end)
+│ ├── open/ # /rite:open (Issue → branch → 実装 → lint → draft PR; end-to-end; + references/rationale.md)
 │ ├── iterate/ # /rite:iterate (review ⇄ fix loop, mergeable まで)
 │ ├── pr-review/ # /rite:pr-review (multi-reviewer; + references/) — sub-skill
 │ ├── fix/ # /rite:fix (review 指摘対応; + references/) — sub-skill
@@ -229,6 +229,7 @@ rite-workflow/
 │ │ ├── projects-board-drift-check.sh # lint Phase 3.18 CLOSED かつ board≠Done 検出
 │ │ ├── number-reference-check.sh # lint Phase 3.5 Issue/PR 番号参照 (#NNN) 検出 (CHANGELOG + lint.md)
 │ │ ├── sentinel-contract-check.sh # lint Phase 3.5 sentinel SoT / emitter / consumer 同期検証
+│ │ ├── skill-rail-diff-check.sh # SKILL 記述ダイエットの機械レール逐語一致検証 (fenced block + table row を base ref と突合)
 │ │ ├── tmp-hardcode-check.sh # lint Phase 3.5 sandbox 非互換パターン (mktemp+/tmp テンプレート・/tmp 直書き・push の upstream -u) 検出
 │ │ ├── dollar-zero-check.sh # lint Phase 3.5 skill 本文の fenced block 内 位置パラメータ 0 参照 検出 (Skill loader が起動引数へ展開する)
 │ │ ├── tempfile-lifecycle-check.sh # lint Phase 3.5 mktemp ハンドル派生パス検出 (lib/tempfile.sh で消せない残余)
@@ -283,6 +284,7 @@ rite-workflow/
   ├── state-read-evolution.md # state-read.sh の変遷史 (rationale 保存)
   ├── stop-loop-continuation-contract.md # Stop hook handoff 機構の解説 SoT (iterate/pr-review/fix/cleanup/ready から参照)
   ├── sentinel-contract.md # skill 間 sentinel の emitter / consumer 対応 SoT
+  ├── skill-diet-method.md # SKILL 記述ダイエットの手法 SoT (線引き / pin 移送 / 測定)
   └── bottleneck-detection.md
   # Note: references/i18n-usage.md and plugins/rite/i18n/ directory (ja.yml,
   # en.yml, and the ja/ + en/ split files) were deleted entirely —
@@ -1345,6 +1347,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `wiki-index-update.sh` | `/rite:wiki-ingest` ステップ 6 — index.md `## ページ一覧` テーブルの登録行 追加/更新・重複行回収・`## 統計` 3 行同期の決定論的実装 (旧散文手順の 1:1 移植)。同定述語・エスケープ規約・中止条項は helper docstring が SoT。`row_action` / `dedup_removed` / `stats_sync` marker + atomic 書込 (tmp→mv 1 回)、fail-loud (exit 1/2) | — |
 | `bang-backtick-edit-hook.sh` | `bang-backtick-check.sh` の PostToolUse(Edit\|Write\|MultiEdit) wrapper — `hooks.json` 登録済 (`tool_input.file_path` でスコープを絞る) | — |
 | `bash-heaviness-check.sh` | `skills/**/*.md` 内の heavy operational bash block を non-blocking warning で検出 | — |
+| `skill-rail-diff-check.sh` | SKILL 記述ダイエットの機械レール逐語一致検証 — fenced block (fence 行込み) と markdown table row を**インデント有無を問わず**抽出して base ref (既定 `origin/develop`) と突合し、1 バイトでも異なれば exit 1。base ref に対象が無い場合のみ clean skip (exit 0)。base ref 未解決 / rail 0 行 / 引数不正は exit 2 (空の証明を green で返さない。`--extract-only` も同じ floor を通る)。**見出し・outcome・mandate・散文中の sentinel literal / marker 名は抽出対象外**で、それらの保護は目視に委ねる。`--extract-only` で before/after 計測用のレール抽出のみ | Canonical method: `references/skill-diet-method.md` |
 | `hardcoded-line-number-check.sh` | procedural markdown (`skills/**/*.md`) 内のハードコード行番号参照を検出 | — |
 | `comment-line-ref-check.sh` | shell comment 内の `<file>.<ext>:<NN>` 行番号参照を検出 (`hardcoded-line-number-check.sh` の companion) | — |
 | `comment-journal-check.sh` | `plugins/rite/**/*.{sh,md}` の journal 語法 comment 違反を機械検出 | — |
