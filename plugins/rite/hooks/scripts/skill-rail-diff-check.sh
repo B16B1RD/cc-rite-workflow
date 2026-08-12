@@ -64,10 +64,10 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Empty values are rejected rather than defaulted. An empty --base-ref would
-# make `git show ":path"` read the index, which succeeds and compares the
-# working tree against the caller's own staged copy — a proof that always
-# passes. An empty --repo-root would silently fall back to the caller's cwd.
+# --skill and --base-ref reject empty values rather than defaulting. An empty
+# --base-ref would make `git show ":path"` read the index, which succeeds and
+# compares the working tree against the caller's own staged copy — a proof that
+# always passes.
 if [ -z "$SKILL_PATH" ]; then
   echo "ERROR: --skill is required and must not be empty" >&2
   usage >&2
@@ -101,9 +101,10 @@ if [ ! -r "$ABS_PATH" ]; then
 fi
 
 # Machine rail = fenced blocks (fence lines included) + markdown table rows, at
-# any indentation. rite skills put both under numbered list items, so anchoring
-# at column 0 would drop most of the rail in iterate / fix / pr-review. The
-# fence pattern matches bash-heaviness-check.sh, which scans the same files.
+# any indentation. rite skills put both under numbered list items; anchoring at
+# column 0 misses about a tenth of the rail in fix and pr-review (iterate is
+# unaffected). The fence pattern matches bash-heaviness-check.sh, which scans
+# the same files.
 #
 # Line numbers are deliberately omitted: the diet removes prose lines, so every
 # rail line shifts. Only the rail's content and order are the contract.
@@ -115,23 +116,29 @@ extract_rail() {
   '
 }
 
-# Count lines without `wc -l`, which reports 1 for an empty string and so
-# cannot express "the rail is empty".
-count_lines() {
-  awk 'END { print NR }'
-}
+# Extract once, before the paths diverge, so the empty-rail floor covers
+# --extract-only too. A measurement that silently reports zero lines is the same
+# vacuous proof the comparison path guards against.
+head_rail=$(extract_rail < "$ABS_PATH")
+if [ -z "$head_rail" ]; then
+  echo "ERROR: $REL_PATH yielded an empty machine rail — nothing was proven" >&2
+  echo "  Either the file has no fenced blocks or table rows, or extraction broke." >&2
+  exit 2
+fi
 
 if [ "$EXTRACT_ONLY" -eq 1 ]; then
-  extract_rail < "$ABS_PATH"
+  printf '%s\n' "$head_rail"
   exit 0
 fi
 
 # Resolve the base ref before reading the blob. Without this, a typo'd or
 # un-fetched ref falls into the "absent at base ref" branch below and reports
-# success for a comparison that never happened.
-if ! git -C "$REPO_ROOT" rev-parse --verify -q "$BASE_REF^{commit}" >/dev/null 2>&1; then
-  echo "ERROR: --base-ref does not resolve to a commit: $BASE_REF" >&2
-  echo "  Fetch it first (git fetch origin) or pass a ref that exists." >&2
+# success for a comparison that never happened. git's own stderr passes through:
+# a non-git --repo-root fails here too, and "not a git repository" is the only
+# thing that names that cause.
+if ! git -C "$REPO_ROOT" rev-parse --verify "$BASE_REF^{commit}" >/dev/null; then
+  echo "ERROR: could not resolve --base-ref to a commit: $BASE_REF" >&2
+  echo "  See git's message above for the cause (unfetched ref, typo, or non-git --repo-root)." >&2
   exit 2
 fi
 
@@ -141,19 +148,11 @@ if ! base_blob=$(git -C "$REPO_ROOT" show "$BASE_REF:$REL_PATH" 2>/dev/null); th
 fi
 
 base_rail=$(printf '%s\n' "$base_blob" | extract_rail)
-head_rail=$(extract_rail < "$ABS_PATH")
-head_rail_lines=$(printf '%s' "$head_rail" | count_lines)
-
-# An empty rail on both sides compares equal, so without this guard a broken
-# extractor — or a file that has no rail at all — would report the same success
-# as a real 305-line match.
-if [ "$head_rail_lines" -eq 0 ]; then
-  echo "ERROR: $REL_PATH yielded an empty machine rail — nothing was proven" >&2
-  echo "  Either the file has no fenced blocks or table rows, or extraction broke." >&2
-  exit 2
-fi
 
 if [ "$base_rail" = "$head_rail" ]; then
+  # Display only — the floor above already established the rail is non-empty,
+  # so a miscount here cannot turn an empty proof into a passing one.
+  head_rail_lines=$(printf '%s\n' "$head_rail" | grep -c '')
   echo "[skill-rail-diff] $REL_PATH: machine rail identical to $BASE_REF ($head_rail_lines rail lines)" >&2
   exit 0
 fi

@@ -14,17 +14,18 @@ open スキルでのパイロット（#2277）で確立し、実測値を添え�
 
 - [ ] bash / text fenced block — **コメントを含めて 1 バイトも変えない**。in-fence コメントは
       「rationale っぽく見えても」レールの一部として扱う（判定を曖昧にすると自動検証が壊れる）
-- [ ] sentinel の literal（`[lint:success]` 等）と、それを載せた分岐表の行
-- [ ] `[CONTEXT] FOO=` marker 名と、marker 値を読む分岐表の行
+- [ ] sentinel literal と `[CONTEXT] FOO=` marker 名を**載せた分岐表の行**（`fenced block` 内も同様）
 
 **層 B — checker の対象外。diff を目視で確認する**:
 
 - [ ] 見出し（`## ステップ N`）— 他スキルが「ステップ 3.5」の形で参照する de facto contract。
       改名しても checker は green を返す（実測: open のステップ 6 を改名しても検出されず、
-      `lint/SKILL.md` の 9 箇所の参照先が消えた）
+      `grep -c "ステップ 6" plugins/rite/skills/lint/SKILL.md` = 12 の参照先が消えた）
 - [ ] outcome と検証条件（「何が成立したら次へ進むか」「何を観測したら戻るか」）
 - [ ] 短い mandate（`silent skip 禁止` / `再 invoke しない` / `破棄しない`）
-- [ ] 散文中に埋め込まれた sentinel literal（分岐表の外にあるもの）
+- [ ] 散文中に埋め込まれた sentinel literal / `[CONTEXT] FOO=` marker 名（分岐表・fenced block の
+      外にあるもの）。実例: open のステップ 1.4 は `[CONTEXT] WORKFLOW_LANGUAGE=` を散文行にのみ持ち、
+      リポジトリ内の唯一の定義箇所であるにもかかわらず checker のレールに含まれない
 
 **散文層 = 削る**:
 
@@ -74,9 +75,12 @@ bash plugins/rite/hooks/scripts/skill-rail-diff-check.sh --skill plugins/rite/sk
 `origin/develop`）と突き合わせて 1 バイトでも違えば exit 1 になる。base ref が解決できない・
 rail が 0 行になったときは exit 2 で止まる（証明が空回りしたまま green を返さない）。
 
-**層 B（見出し・outcome・mandate・散文中の sentinel）は checker が見ない。** §1 の層 B
-チェックリストを diff に対して目視で確認する。checker の green は「散文しか触っていない」の
+**層 B（見出し・outcome・mandate・散文中の sentinel literal / marker 名）は checker が見ない。**
+§1 の層 B チェックリストを diff に対して目視で確認する。checker の green は「散文しか触っていない」の
 証明ではなく「fenced block と table row は触っていない」の証明である。
+
+**rc=0 だけでも足りない。** stderr に `machine rail identical` が出ていることを確認する。出ていなければ
+base ref に対象ファイルが無く（skill の新設・rename・移動）、突合は一度も走っていない。
 
 **diet を始める前に 1 回実行して green を確認してから**削り始めると、途中で壊した瞬間に気付ける。
 
@@ -111,10 +115,11 @@ END {
 }
 ```
 
-**行数を主指標にしない。** open パイロットの実測: 総行数は 642 → 615（−4.2%）にしかならなかったが、
-散文バイト数は 19,238 → 12,359（**−35.8%**）だった。理由は総行数の内訳にある — 機械レール 305 行 +
-空行 158 行 + 見出し 40 行で全体の 8 割を占め、そもそも散文は 136 行しかない。加えて日本語散文は
-1 行が長い（削減前 141 B/行）ため、1 行削るだけで bash 3 行分のバイトが減る。
+**行数を主指標にしない。** open パイロットの実測（測定時点: `9bf3ebb8`。以降 open/SKILL.md を触る
+たびに動くため、引用ではなく再測定して使うこと）: 総行数は 642 → 615（−4.2%）にしかならなかったが、
+散文バイト数は 19,238 → 12,359（**−35.8%**）だった。理由は総行数の内訳にある — diet 前の 642 行は
+機械レール 305 行 + 空行 161 行 + 見出し 40 行で 8 割を占め、そもそも散文は 136 行しかない。加えて
+日本語散文は 1 行が長い（削減前 141 B/行）ため、1 行削るだけで bash 3 行分のバイトが減る。
 
 **主指標は `bytes_prose`、副指標が `lines_prose`。`bytes_rail` は before/after で完全一致すること**
 （一致しなければレールを壊している）。
@@ -149,9 +154,10 @@ END {
 }'
 ```
 
-open パイロットの実測: **退避 12 hunk で −3,766 B（削減の 54.7%）、圧縮 36 hunk で −3,116 B（45.3%）**。
-退避は hunk あたりの効きが圧縮の約 3.6 倍で、判断をほとんど伴わない（該当段落を references へ移して
-1 行ポインタに置き換えるだけ）。**削減の過半は機械的作業であり、安価なホストへ回せる。**
+open パイロットの実測（測定時点: `9bf3ebb8`）: **退避 12 hunk で −3,766 B（削減の 54.7%）、圧縮
+36 hunk で −3,116 B（45.3%）**。退避は hunk あたりの効きが圧縮の約 3.6 倍で、判断をほとんど伴わない
+（該当段落を references へ移して 1 行ポインタに置き換えるだけ）。**削減の過半は機械的作業であり、
+安価なホストへ回せる。**
 
 ### 3.3 挙動の非退行（観測点）
 
@@ -169,7 +175,12 @@ diet 後の `/rite:open` を 1 回実行し、以下が従来どおりである�
 1. pin 棚卸し（§2.1）→ 表を PR に残す
 2. before 計測（§3.1）+ `skill-rail-diff-check.sh` を green で確認（§2.2）
 3. rationale 退避（§2.3）— 効きが大きく判断が要らないのでここから
-4. 散文圧縮（§1 のチェックリスト）
-5. after 計測（§3.1, §3.2）+ レール逐語一致を再確認
-6. 全 suite + `sentinel-contract-check.sh --all` を green で確認
-7. 遷移観測（§3.3）
+4. 散文圧縮（§1 層 A のチェックリスト）
+5. **層 B の目視確認**（§1 層 B チェックリスト × diff）— 見出し・outcome・mandate・散文中の sentinel
+   literal / marker 名が変わっていないこと。checker はここを見ないので、この step を飛ばすと層 A の
+   green だけで「散文しか触っていない」と誤認する
+6. after 計測（§3.1, §3.2）+ レール逐語一致を再確認（`machine rail identical` の出力まで見る）
+7. 対象スキルに `references/` を新設した場合、`docs/SPEC.md` の skills ツリーの当該行へ
+   `(+ references/rationale.md)` を追記する（既存 10 スキルと同じ慣行）
+8. 全 suite + `sentinel-contract-check.sh --all` を green で確認
+9. 遷移観測（§3.3）

@@ -199,7 +199,12 @@ if [ "$rc" -eq 1 ]; then pass "fence language tag change → exit 1"; else fail 
 echo "TC-011: Empty --base-ref → exit 2"
 write_base
 rc=0; output=$(bash "$TARGET" --repo-root "$TEST_DIR" --skill "$REL" --base-ref "" 2>&1) || rc=$?
-if [ "$rc" -eq 2 ]; then pass "empty --base-ref → exit 2"; else fail "expected rc=2, got rc=$rc: $output"; fi
+# Message-matched, not exit-code-only: deleting the empty-value guard still
+# yields rc=2 from the ref-resolution check below it, so rc alone cannot tell
+# the two apart and the guard would be free to disappear.
+if [ "$rc" -eq 2 ] && echo "$output" | grep -q "must not be empty"; then
+  pass "empty --base-ref → exit 2 with the empty-value message"
+else fail "expected rc=2 + 'must not be empty', got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
 # TC-012: Unresolvable --base-ref → exit 2, not a clean skip. A typo'd ref must
@@ -208,9 +213,9 @@ if [ "$rc" -eq 2 ]; then pass "empty --base-ref → exit 2"; else fail "expected
 echo "TC-012: Unresolvable --base-ref → exit 2"
 write_base
 rc=0; output=$(bash "$TARGET" --repo-root "$TEST_DIR" --skill "$REL" --base-ref "no-such-ref" 2>&1) || rc=$?
-if [ "$rc" -eq 2 ] && echo "$output" | grep -q "does not resolve"; then
+if [ "$rc" -eq 2 ] && echo "$output" | grep -q "could not resolve --base-ref"; then
   pass "unresolvable --base-ref → exit 2"
-else fail "expected rc=2 + 'does not resolve', got rc=$rc: $output"; fi
+else fail "expected rc=2 + 'could not resolve --base-ref', got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
 # TC-013: A file with no rail → exit 2. Both sides extract to empty and compare
@@ -221,22 +226,30 @@ echo "TC-013: Empty rail → exit 2"
 NORAIL_REL="plugins/rite/skills/norail/SKILL.md"
 mkdir -p "$TEST_DIR/$(dirname "$NORAIL_REL")"
 printf '# prose only\n\nNo fences, no tables.\n' > "$TEST_DIR/$NORAIL_REL"
-(cd "$TEST_DIR" && git add -A && git commit -qm norail)
+# Stage only this fixture. `git add -A` would also commit the untracked file
+# TC-009 relies on being absent from the base ref, silently dissolving its
+# premise for any test added after this point.
+(cd "$TEST_DIR" && git add "$NORAIL_REL" && git commit -qm norail)
 rc=0; output=$(bash "$TARGET" --repo-root "$TEST_DIR" --skill "$NORAIL_REL" --base-ref HEAD 2>&1) || rc=$?
 if [ "$rc" -eq 2 ] && echo "$output" | grep -q "empty machine rail"; then
   pass "empty rail → exit 2"
 else fail "expected rc=2 + 'empty machine rail', got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
-# TC-014: A trailing valueless flag must reach the exit-2 contract instead of
-# spinning. `shift 2` with one argument left fails and, without `set -e`, the
-# loop never terminates.
+# TC-014: A one-line rail must be counted as one line, not zero. This is the
+# boundary that separates `awk 'END{print NR}'` from `wc -l` on input without a
+# trailing newline; at zero lines both agree, so TC-013 alone leaves the count
+# free to regress.
 # --------------------------------------------------------------------------
-echo "TC-014: Trailing valueless flag → exit 2, no hang"
-rc=0; output=$(timeout 5 bash "$TARGET" --repo-root "$TEST_DIR" --skill 2>&1) || rc=$?
-if [ "$rc" -eq 2 ]; then pass "trailing valueless flag → exit 2"
-elif [ "$rc" -eq 124 ]; then fail "timed out — argument loop spins on a valueless flag"
-else fail "expected rc=2, got rc=$rc: $output"; fi
+echo "TC-014: One-line rail counts as 1, not 0"
+ONE_REL="plugins/rite/skills/oneline/SKILL.md"
+mkdir -p "$TEST_DIR/$(dirname "$ONE_REL")"
+printf '# t\n\nprose\n\n| a | b |\n\nmore prose\n' > "$TEST_DIR/$ONE_REL"
+(cd "$TEST_DIR" && git add "$ONE_REL" && git commit -qm oneline)
+rc=0; output=$(bash "$TARGET" --repo-root "$TEST_DIR" --skill "$ONE_REL" --base-ref HEAD 2>&1) || rc=$?
+if [ "$rc" -eq 0 ] && echo "$output" | grep -q "(1 rail lines)"; then
+  pass "one-line rail → exit 0 with count 1"
+else fail "expected rc=0 + '(1 rail lines)', got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
 # TC-015: The diet target itself — open/SKILL.md keeps its rail against the base

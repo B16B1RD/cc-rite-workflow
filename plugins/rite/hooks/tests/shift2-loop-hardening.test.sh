@@ -12,7 +12,7 @@
 #   3. `shift 2` 到達前に required-value ガードがない
 # (1つでも欠ければ安全: set -u+bare $2 は nounset で fail-fast / set -e は即 exit / 明示ガードは exit)
 #
-# Coverage (hardening した脆弱だった 5 スクリプト 計 19 箇所 + 新規 helper 2 件 計 9 箇所):
+# Coverage (hardening した脆弱だった 5 スクリプト 計 19 箇所 + 新規 helper 3 件 計 12 箇所):
 #   TC-1 post-review-state-verify.sh (hooks/scripts/, 4 箇所) — 値なしフラグ末尾 → no-hang + exit 2
 #   TC-2 review-comment-post.sh      (hooks/,         5 箇所) — 値なしフラグ末尾 → no-hang
 #   TC-3 review-result-save.sh       (hooks/,         4 箇所) — 値なしフラグ末尾 → no-hang
@@ -24,7 +24,8 @@
 #   TC-6d review-cycle-scope.sh        (scripts/,       2 箇所) — 値なしフラグ末尾 → no-hang + exit 2
 #   TC-6f issue-complexity-lane.sh     (scripts/,       2 箇所) — 値なしフラグ末尾 → no-hang + exit 2
 #   TC-6e review-save-json-verify.sh   (hooks/scripts/, 4 箇所) — 値なしフラグ末尾 → no-hang + exit 0 (degraded)
-#   TC-7 anti-pattern guard — 12 スクリプトに実 `shift 2` 文が残存しないこと (comment 参照は許容)
+#   TC-6g skill-rail-diff-check.sh     (hooks/scripts/, 3 箇所) — 値なしフラグ末尾 → no-hang + exit 2
+#   TC-7 anti-pattern guard — 13 スクリプトに実 `shift 2` 文が残存しないこと (comment 参照は許容)
 #        うち `lib/context-marker.sh` は source 型 lib で subprocess entry point を持たないため
 #        TC-1〜TC-6b の実行ハーネス (run_no_hang) の対象外で、本静的検査のみが掛かる。
 #        値なしフラグ末尾での no-hang は hooks/tests/context-marker.test.sh が直接 assert する。

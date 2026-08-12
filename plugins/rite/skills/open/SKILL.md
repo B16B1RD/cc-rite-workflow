@@ -163,7 +163,7 @@ echo "[CONTEXT] ISSUE_CLAIM=$claim_out; rc=$claim_rc"
 ```
 
 - `rc=0`（`claimed` / `own` / stale 奪取）→ ステップ 2 へ。
-- `rc=10`（`other` = 他の live セッションが作業中）→ **AskUserQuestion**（無人での奪取はしない）。「中止（推奨）」= 終了。「強制取得して続行」= 衝突リスクを表示し、**claim を再実行せず**（live holder には最大 2 時間 rc=10 を返し続けるため行き止まりになる）ユーザーが当該セッションを停止済みであることを確認してから続行する（最終ガードはステップ 2.2-W の branch 衝突検出）。
+- `rc=10`（`other` = 他の live セッションが作業中）→ **AskUserQuestion**（無人での奪取はしない）。「中止（推奨）」= 終了。「強制取得して続行」= 衝突リスクを表示し、`issue-claim.sh claim --issue {issue_number}` の**再実行ではなく**、ユーザーが当該セッションを停止済みであることを確認してから続行する（最終ガードはステップ 2.2-W の branch 衝突検出）。
 - その他の非 0 rc（環境エラー）→ stderr を表示して中止する。
 
 ---
