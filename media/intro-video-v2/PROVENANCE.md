@@ -65,39 +65,16 @@ BGM は本リポジトリに含めない。`assemble.sh -b <file>` で合成す�
 
 ### ショート動画 v2 で使用する BGM
 
-**本カットの 2 本（フル / SNS）には、下記レシピで生成した `rite-synth-bgm-58s.mp3`
-（実測 58.104 秒）を合成している。** 外部楽曲は使わず ffmpeg の音源フィルタだけで作るため、
-第三者素材を含まず外部ライセンスや帰属表示は発生しない。生成物は `*.mp3` の gitignore 対象で
-コミットしないが、下記コマンドがそのまま再現手段になる。`{duration}` を秒数へ置換すると、
-その尺の `rite-synth-bgm-{duration}s.mp3` ができる:
-
-```bash
-# 本カットには {duration}=58 を使う（→ rite-synth-bgm-58s.mp3）。
-ffmpeg -y \
-  -f lavfi -i 'sine=frequency=110:duration={duration}:sample_rate=48000' \
-  -f lavfi -i 'sine=frequency=164.81:duration={duration}:sample_rate=48000' \
-  -f lavfi -i 'sine=frequency=220:duration={duration}:sample_rate=48000' \
-  -filter_complex '[0:a]volume=0.25[a0];[1:a]volume=0.18[a1];[2:a]volume=0.12[a2];[a0][a1][a2]amix=inputs=3,lowpass=f=900,aecho=0.8:0.75:60:0.12,volume=15[out]' \
-  -map '[out]' -c:a libmp3lame -b:a 192k rite-synth-bgm-{duration}s.mp3
-```
-
-A2・E3・A3 の正弦波を弱く重ね、`lowpass` と `aecho` で角を落としたアンビエント音になる。
-末尾の `volume=15` は `assemble.sh` の可聴性ガードを通すために必要で、これを外すと
-生成物は max_volume −38.0 dB になり、合成後の完成物（−37.9 dB）が閾値 −20 dB を下回って
-assemble が失敗する（`volume=15` ありの生成物は −14.5 dB）。
-
-`assemble.sh` は **BGM が総尺より短いとエラー終了する**（末尾が無音の完成尺を黙って出さない
-ため）。フルカットの完成尺は 55.0 秒なので、`rite-synth-bgm-58s.mp3`（実測 58.104 秒）が
-そのまま足りる。{duration}=45 で作る `rite-synth-bgm-45s.mp3`（実測 45.096 秒）は、
-このガードが発火することの確認に使う。
-
-既存 HyperFrames 版と同じ **BombinSound — Technology**（Pixabay, track ID `499581`、90 秒）も
-代替候補として使える。その場合は Pixabay から
+本カットの 2 本（フル / SNS）には、既存 HyperFrames 版と同じ
+**BombinSound — Technology**（Pixabay, track ID `499581`、実測 89.78 秒）を使用する。
+Pixabay から
 `bombinsound-technology-tech-technology-90-second-499581.mp3` を取得してこのディレクトリ直下に
 置く。入手元・Pixabay Content License・生 mp3 をコミットしない理由は
-[../intro-video/PROVENANCE.md](../intro-video/PROVENANCE.md) の記録を正本とする。90 秒あるため
-フルカットにはそのまま足りるが、**本カットの音声は上記の合成音であり、Pixabay 曲へ差し替えると
-音は一致しない**。
+[../intro-video/PROVENANCE.md](../intro-video/PROVENANCE.md) の記録を正本とする。
+
+以前の生成方式は、可聴性ガードを通る音量を持たないため棄却済みである。音量係数を足して
+ガードを通す形でも再導入しない。`assemble.sh` は BGM が総尺より短いとエラー終了するが、
+本曲はフルカットの完成尺 55.0 秒に足りる。
 
 ## レンダーと連結の手順
 
@@ -115,12 +92,12 @@ BGM を用意した後、2 本のカットを連結する。
 
 ```bash
 # フルカット（M1〜M7、約 55.0 秒）
-./assemble.sh -o out/rite-intro-v2-full.mp4 -t 0.5 -b rite-synth-bgm-58s.mp3 \
+./assemble.sh -o out/rite-intro-v2-full.mp4 -t 0.5 -b bombinsound-technology-tech-technology-90-second-499581.mp3 \
   out/01-problem.mp4 out/02-unknowns.mp4 out/03-loop.mp4 out/04-gates.mp4 \
   out/05-wiki.mp4 out/06-second-lap.mp4 out/07-closing.mp4
 
 # SNS カット（M1 + M3 + M5 + M7、約 31.5 秒）
-./assemble.sh -o out/rite-intro-v2-sns.mp4 -t 0.5 -b rite-synth-bgm-58s.mp3 \
+./assemble.sh -o out/rite-intro-v2-sns.mp4 -t 0.5 -b bombinsound-technology-tech-technology-90-second-499581.mp3 \
   out/01-problem.mp4 out/03-loop.mp4 out/05-wiki.mp4 out/07-closing.mp4
 ```
 
