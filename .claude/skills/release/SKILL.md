@@ -127,12 +127,50 @@ fi
 ブランチ作成前に、**Issue の Status を `In Progress` に更新する**。
 
 ```bash
+branch="chore/issue-{ISSUE_NUMBER}-v{VERSION_SLUG}-release-prep"
+ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || ms_section=""
+ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; exit}' \
+  | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' \
+  | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+case "$ms_enabled" in true|yes|1) ms_enabled=true ;; *) ms_enabled=false ;; esac
+
 git checkout develop
 git pull origin develop
-git checkout -b chore/issue-{ISSUE_NUMBER}-v{VERSION_SLUG}-release-prep
+
+if [ "$ms_enabled" = "true" ]; then
+  # main checkout では branch を checkout しない。local ref を作ってから共通 helper に
+  # session worktree への配置を委譲し、失敗時は develop 上で編集を始める前に停止する。
+  if ! git show-ref --verify --quiet "refs/heads/$branch"; then
+    git branch "$branch" origin/develop || exit 1
+  fi
+  ensure_out=$(bash plugins/rite/hooks/scripts/lib/worktree-git.sh \
+    ensure-session-worktree --issue {ISSUE_NUMBER} --branch "$branch") || {
+    printf '%s\n' "$ensure_out"
+    echo "ERROR: リリース準備用 session worktree の作成に失敗しました" >&2
+    exit 1
+  }
+  printf '%s\n' "$ensure_out"
+  case "$ensure_out" in
+    *"[CONTEXT] WT_ENSURE=reconstructed;"*|*"[CONTEXT] WT_ENSURE=reenter;"*|*"[CONTEXT] WT_ENSURE=already_in;"*) ;;
+    *)
+      echo "ERROR: session worktree を保証できないためリリース準備を停止します" >&2
+      exit 1 ;;
+  esac
+else
+  git checkout -b "$branch"
+fi
 ```
 
 `{VERSION_SLUG}` はバージョン番号のドット(`.`)をハイフン(`-`)に置換（例: `0.3.0` → `0-3-0`）。
+
+`multi_session=true` の場合は、上記出力の `[CONTEXT] WT_ENSURE=` を確認する。
+
+- `reconstructed` / `reenter`: `path=` の session worktree に `EnterWorktree` で入場し、`git rev-parse --abbrev-ref HEAD` が作成したリリース準備ブランチ名と一致することを確認して Phase 2.3 へ進む
+- `already_in`: 現在の worktree で同じ branch を checkout 済みなので、そのまま Phase 2.3 へ進む
+- `disabled`: 設定の再読込結果と矛盾するためエラーを表示して停止する
+- `residue` / `branch_other_worktree` / `branch_absent` / `failed`: エラーを表示して停止する。**develop 上で Phase 2.3 以降を実行しない**
+
+これにより分岐は Phase 2.2 だけに閉じ、入場後の Phase 2.3〜2.5 は `multi_session` の有効・無効にかかわらず同じ手順を使う。
 
 ### 2.3 バージョン番号の更新（5ファイル）
 
