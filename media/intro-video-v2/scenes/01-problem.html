@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=1280, initial-scale=1">
-  <title>rite — problem</title>
+  <title>rite — M1 problem</title>
   <style>
     * { box-sizing: border-box; }
     html, body { width: 1280px; height: 720px; margin: 0; overflow: hidden; }
     body {
       color: #f4f7fb;
       background:
-        radial-gradient(circle at 79% 18%, rgba(65, 214, 190, .09), transparent 27%),
-        radial-gradient(circle at 18% 90%, rgba(104, 116, 255, .09), transparent 34%),
+        radial-gradient(circle at 24% 46%, rgba(65, 214, 190, .07), transparent 32%),
+        radial-gradient(circle at 86% 86%, rgba(104, 116, 255, .08), transparent 32%),
         #080b10;
       font-family: Inter, "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif;
       letter-spacing: .02em;
@@ -22,79 +22,88 @@
       background-size: 40px 40px;
       mask-image: linear-gradient(to bottom, black, transparent 90%);
     }
-    .brand {
-      position: absolute; top: 55px; left: 68px;
-      color: #7ee7d0; font: 650 17px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-      letter-spacing: .18em;
-      animation: reveal .7s cubic-bezier(.2,.8,.2,1) 0s both;
+    header { position: absolute; left: 68px; right: 68px; top: 50px; display: flex; justify-content: space-between; align-items: baseline; animation: enter .7s ease-out 0s both; }
+    .brand { color: #7ee7d0; font: 650 16px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .18em; }
+    .caption { color: #657184; font: 500 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .13em; }
+
+    /* 周回の画: 軌道を 3 周しても中心のカウンタが 1 のまま動かない */
+    .orbit { position: absolute; left: 128px; top: 206px; width: 328px; height: 328px; }
+    .track { position: absolute; inset: 0; }
+    .track circle {
+      fill: none; stroke: rgba(150,168,188,.26); stroke-width: 2; stroke-dasharray: 6 10;
+      animation: trackIn .8s ease-out .25s both;
     }
-    .issue-card {
-      position: absolute; left: 68px; top: 150px; width: 468px; height: 346px;
-      padding: 32px; border: 1px solid rgba(213,224,240,.14); border-radius: 22px;
-      background: linear-gradient(145deg, rgba(25,31,41,.94), rgba(13,17,24,.95));
-      box-shadow: 0 30px 80px rgba(0,0,0,.4);
-      animation: cardIn .8s cubic-bezier(.16,1,.3,1) .15s both, cardOut .9s cubic-bezier(.7,0,.3,1) 3.55s both;
+    .runner {
+      position: absolute; inset: 0;
+      animation: spin 1.5s linear .95s 3 both;
     }
-    .card-top { display: flex; align-items: center; justify-content: space-between; color: #8d99aa; font-size: 14px; }
-    .status { padding: 7px 12px; border: 1px solid rgba(126,231,208,.28); border-radius: 999px; color: #7ee7d0; font-size: 12px; }
-    .issue-card h2 { margin: 45px 0 18px; max-width: 350px; font-size: 31px; line-height: 1.5; letter-spacing: -.015em; }
-    .meta { display: flex; gap: 11px; margin-top: 40px; }
-    .pill { height: 8px; border-radius: 99px; background: #333c49; }
-    .pill:nth-child(1) { width: 82px; } .pill:nth-child(2) { width: 118px; } .pill:nth-child(3) { width: 58px; }
-    .path {
-      position: absolute; left: 538px; top: 321px; width: 172px; height: 2px;
-      background: rgba(177,192,211,.2); transform-origin: left;
-      animation: pathDraw .65s ease-out .8s both, pathRelease .7s ease-in 3.45s both;
+    .runner::after {
+      content: ""; position: absolute; left: 50%; top: -7px; width: 14px; height: 14px; margin-left: -7px;
+      border-radius: 50%; background: #8d99aa; box-shadow: 0 0 0 8px rgba(141,153,170,.1);
     }
-    .path::after {
-      content: ""; position: absolute; right: -2px; top: -5px; width: 10px; height: 10px;
-      border-radius: 50%; background: #697486; box-shadow: 0 0 0 7px rgba(105,116,134,.12);
-      animation: waitPulse 1.25s ease-in-out 1.35s 2 both;
+    .counter {
+      position: absolute; left: 50%; top: 50%; width: 190px; margin: -52px 0 0 -95px;
+      text-align: center;
+      animation: counterIn .6s cubic-bezier(.16,1,.3,1) .95s both;
     }
-    .copy { position: absolute; left: 706px; top: 228px; width: 500px; }
-    .eyebrow { color: #718094; font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .15em; }
-    .problem, .answer { position: absolute; top: 39px; left: 0; margin: 0; font-weight: 650; font-size: 56px; line-height: 1.36; letter-spacing: -.045em; }
-    .problem { animation: textIn .75s cubic-bezier(.16,1,.3,1) .65s both, textOut .65s ease-in 3.2s both; }
-    .answer { color: #f8fbff; opacity: 0; animation: answerIn .95s cubic-bezier(.16,1,.3,1) 3.75s both; }
-    .answer em { color: #7ee7d0; font-style: normal; }
+    .counter b {
+      display: block; font-size: 52px; font-weight: 650; letter-spacing: -.03em; color: #f4f7fb;
+      animation: counterHit 1.5s ease-in-out .95s 3 both;
+    }
+    .counter span {
+      display: block; margin-top: 10px; color: #667487;
+      font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .16em;
+    }
+
+    .copy { position: absolute; left: 552px; top: 232px; width: 620px; }
+    .eyebrow { color: #718094; font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .15em; animation: enter .7s ease-out .55s both; }
+    h1 {
+      margin: 34px 0 0; font-size: 58px; font-weight: 650; line-height: 1.34; letter-spacing: -.045em;
+      animation: textIn .8s cubic-bezier(.16,1,.3,1) 1.15s both;
+    }
+    .sub {
+      margin: 30px 0 0; max-width: 560px; color: #a7b5c5; font-size: 25px; font-weight: 500; line-height: 1.62; letter-spacing: -.01em;
+      animation: textIn .8s cubic-bezier(.16,1,.3,1) 3.5s both;
+    }
+    .sub em { color: #f4f7fb; font-style: normal; font-weight: 620; }
     .rule {
-      position: absolute; left: 706px; top: 466px; width: 0; height: 2px;
+      position: absolute; left: 552px; top: 552px; width: 0; height: 2px;
       background: linear-gradient(90deg, #7ee7d0, rgba(126,231,208,0));
-      animation: ruleGrow .9s cubic-bezier(.16,1,.3,1) 4.15s both;
+      animation: ruleGrow .9s cubic-bezier(.16,1,.3,1) 4.4s both;
     }
     .foot {
       position: absolute; right: 72px; bottom: 55px; color: #566173;
       font: 500 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .13em;
-      animation: reveal .6s ease-out 4.45s both;
+      animation: enter .6s ease-out 4.8s both;
     }
-    @keyframes reveal { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-    @keyframes cardIn { from { opacity: 0; transform: translateY(24px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
-    @keyframes cardOut { from { opacity: 1; transform: translateX(0) scale(1); filter: blur(0); } to { opacity: .13; transform: translateX(-30px) scale(.96); filter: blur(2px); } }
-    @keyframes pathDraw { from { transform: scaleX(0); opacity: 0; } to { transform: scaleX(1); opacity: 1; } }
-    @keyframes pathRelease { from { opacity: 1; } to { opacity: 0; } }
-    @keyframes waitPulse { 0%,100% { transform: scale(.8); opacity: .5; } 50% { transform: scale(1.25); opacity: 1; } }
-    @keyframes textIn { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
-    @keyframes textOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-18px); } }
-    @keyframes answerIn { from { opacity: 0; transform: translateY(22px); filter: blur(5px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
-    @keyframes ruleGrow { from { width: 0; opacity: 0; } to { width: 356px; opacity: 1; } }
+    @keyframes enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes trackIn { from { opacity: 0; stroke-dashoffset: 60; } to { opacity: 1; stroke-dashoffset: 0; } }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes counterIn { from { opacity: 0; transform: scale(.86); } to { opacity: 1; transform: scale(1); } }
+    @keyframes counterHit { 0%, 72% { opacity: .82; transform: scale(1); } 88% { opacity: 1; transform: scale(1.06); } 100% { opacity: .82; transform: scale(1); } }
+    @keyframes textIn { from { opacity: 0; transform: translateY(20px); filter: blur(4px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
+    @keyframes ruleGrow { from { width: 0; opacity: 0; } to { width: 372px; opacity: 1; } }
   </style>
 </head>
 <body>
   <div class="grain"></div>
-  <div class="brand">RITE / 01</div>
-  <article class="issue-card">
-    <div class="card-top"><span>ISSUE #2241</span><span class="status">OPEN</span></div>
-    <h2>動画制作フローを<br>自律化する</h2>
-    <div class="meta"><span class="pill"></span><span class="pill"></span><span class="pill"></span></div>
-  </article>
-  <div class="path"></div>
+  <header><div class="brand">RITE / M1</div><div class="caption">THE FIRST LAP, AGAIN</div></header>
+
+  <div class="orbit">
+    <svg class="track" viewBox="0 0 328 328" aria-hidden="true">
+      <circle cx="164" cy="164" r="156" />
+    </svg>
+    <div class="runner"></div>
+    <div class="counter"><b>1周目</b><span>LAP COUNT</span></div>
+  </div>
+
   <section class="copy">
-    <div class="eyebrow">THE HANDOFF GAP</div>
-    <h1 class="problem">Issueを書いた。<br>その先が止まる。</h1>
-    <h1 class="answer"><em>rite</em>なら、<br>ループが進む。</h1>
+    <div class="eyebrow">NO COMPOUNDING</div>
+    <h1>何周しても、1周目。</h1>
+    <p class="sub">AI は速い。でも、<br><em>あなたのプロジェクトを学ばない。</em></p>
   </section>
   <div class="rule"></div>
-  <div class="foot">ISSUE → OUTCOME</div>
+  <div class="foot">SAME PROMPT / SAME MISTAKE</div>
   <script>window.SCENE = { duration_ms: 6000 };</script>
 </body>
 </html>
