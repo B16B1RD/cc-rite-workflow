@@ -5,7 +5,7 @@ description: "Documentation の prose が言及する実装側 (commands/, scrip
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/docs-review-implementation-grep-verification.md"
 created: "2026-05-26T00:00:00Z"
-updated: "2026-07-13T17:35:00+09:00"
+updated: "2026-08-12T16:40:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260713T082548Z-pr-1849.md"
@@ -37,6 +37,8 @@ sources:
     ref: "raw/reviews/20260603T174323Z-pr-1263.md"
   - type: "reviews"
     ref: "raw/reviews/20260607T013821Z-pr-1296.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260812T055512Z-pr-2265.md"
 tags: ["docs-drift", "verification-protocol", "implementation-grep", "release-prep", "deprecated-sync", "fact-check"]
 confidence: high
 ---
@@ -120,12 +122,17 @@ documentation review の verification protocol が **「内的整合 (CHANGELOG 
 
 cycle 2 / 0 findings 収束の PR で、本 protocol の **in-source 設計コメント層**（bash script のヘッダコメントが主張する構造的事実）への適用を実測。file-wide trap retrofit のヘッダコメントが関数 local tmpfile の除外根拠を「command substitution の subshell 内で mktemp されるため親の trap から構造的に到達不能」と全関数に一般化したが、error-handling / code-quality の 2 reviewer が独立に全 call site を grep し、`cache_comment_id` が init mode で親シェルから直接呼ばれる 2 経路（existing_id / created_id の cache 書込）を持つことを実証（cross-validation で MEDIUM→HIGH boost、Comment Rot 判定）。fix はコメントを経路ごと（`get_owner_repo` / `get_comment_id` = subshell 経由で到達不能、`cache_comment_id` = 親シェル直接呼び出しあり）に書き分けて 1 cycle で解消し、cycle 2 で全 6 reviewer が FIXED 判定。教訓: (1) 「構造的に不可能 / 到達不能」と断定する設計コメントは、コードの動作ではなくコメント自身が正しさの根拠を主張する層であり、書く前に全呼び出し site の実行形態（command substitution subshell か親シェル直接か）を grep で確認する。(2) コメントのみの修正でも revert test / 影響スキャン（同一文言の他出現 grep）を省略しない。docstring contract 層に続き、設計根拠コメント層でも本 protocol が機能した positive evidence。
 
+### Successful application — リリース CHANGELOG の実装・集合突合
+
+実行可能コードを変更しないリリース準備 PR でも、CHANGELOG の品質ゲートは文体確認ではなく、散文が名指しする helper・既定値・運用原則を実装で 1 件ずつ裏取りする作業になる。加えて、日英版はエントリ数だけでなく各行の PR 番号列の集合と順序を diff し、収録範囲は `git log <prev_tag>..develop` から抽出した PR 番号集合と CHANGELOG 記載集合の双方向差分で確定する。これにより、順序ドリフト、別変更への差し替え、記載漏れと未マージ記載を同時に機械検出できる。また、定型リリーススキルが rite の merge gate 外にある場合は、レビュ済み証明を生成する手順をスキル側に明示しないと、ドキュメントのみの PR でもマージは fail-loud に停止する。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 
 ## ソース
 
+- [PR #2265 review — リリース CHANGELOG の実装主張、日英 PR 番号列、前タグからのコミット網羅性を機械照合し 0 findings で収束](../../raw/reviews/20260812T055512Z-pr-2265.md)
 - [PR #1849 review cycle 1-2 (trap 被覆設計ヘッダコメントの機構誤認を 2 reviewer 独立検出、cross-validation boost、cycle 2 で FIXED 収束)](../../raw/reviews/20260713T082548Z-pr-1849.md)
 - [PR #1849 fix (経路ごとの書き分け修正で 1 cycle 解消、コメントのみ修正でも影響スキャン省略しない教訓)](../../raw/fixes/20260713T081301Z-pr-1849.md)
 - [PR #1773 review cycle 3 (Doc-Heavy Implementation Coverage 検証で削除対象一覧ドキュメントのファサード化を検出)](../../raw/reviews/20260706T220114Z-pr-1773-cycle3.md)
