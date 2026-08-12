@@ -115,6 +115,6 @@ BGM を用意した後、2 本のカットを連結する（`<bgm>` は上記で
 配布する。
 
 > `assemble.sh` の `-P`（プリセット）は Issue #2240 当時の 5 シーン構成（`01-problem` /
-> `02-loop` / `03-terminal` / `04-gates` / `05-closing`）を指したままで、現構成では使えない
-> （存在しないシーンを参照して fail-loud する）。`assemble.sh` は Issue #2258 の変更対象外
-> だったため据え置いており、上記のシーン明示形を正とする。
+> `02-loop` / `03-terminal` / `04-gates` / `05-closing`）と Pixabay 曲名を既定値に持ったままで、
+> 現構成では使えない（実測: `assemble: シーンが見つかりません: out/02-loop.mp4` で終了する）。
+> `assemble.sh` は Issue #2258 の変更対象外だったため据え置いており、上記のシーン明示形を正とする。
