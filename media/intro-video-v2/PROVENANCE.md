@@ -65,33 +65,38 @@ BGM は本リポジトリに含めない。`assemble.sh -b <file>` で合成す�
 
 ### ショート動画 v2 で使用する BGM
 
-**本カットの 2 本（フル / SNS）に実際に合成した音源は `rite-synth-bgm.mp3` を延長した
-`rite-synth-bgm-58s.mp3`（実測 58.032 秒）である。** `rite-synth-bgm.mp3`（実測 40.128 秒）は
-ffmpeg の合成音で作った自家製 BGM で、外部素材のライセンス制約を持たない。どちらも `*.mp3` の
-gitignore 対象のため、下記の延長レシピが唯一の再現手段になる。
+**本カットの 2 本（フル / SNS）には、下記レシピで生成した `rite-synth-bgm-58s.mp3`
+（実測 58.104 秒）を合成している。** 外部楽曲は使わず ffmpeg の音源フィルタだけで作るため、
+第三者素材を含まず外部ライセンスや帰属表示は発生しない。生成物は `*.mp3` の gitignore 対象で
+コミットしないが、下記コマンドがそのまま再現手段になる（`{duration}` を変えるだけで任意の尺を
+作れる）:
 
-既存 HyperFrames 版と同じ **BombinSound — Technology**（Pixabay, track ID `499581`、90 秒）は
-v2 でも代替候補として使える。その場合は Pixabay から
+```bash
+# {duration} を秒数へ置換する。本カットには 58、尺不足ガードの検証には 45 を使う。
+ffmpeg -y \
+  -f lavfi -i 'sine=frequency=110:duration={duration}:sample_rate=48000' \
+  -f lavfi -i 'sine=frequency=164.81:duration={duration}:sample_rate=48000' \
+  -f lavfi -i 'sine=frequency=220:duration={duration}:sample_rate=48000' \
+  -filter_complex '[0:a]volume=0.25[a0];[1:a]volume=0.18[a1];[2:a]volume=0.12[a2];[a0][a1][a2]amix=inputs=3,lowpass=f=900,aecho=0.8:0.75:60:0.12,volume=15[out]' \
+  -map '[out]' -c:a libmp3lame -b:a 192k rite-synth-bgm-58s.mp3
+```
+
+A2・E3・A3 の正弦波を弱く重ね、`lowpass` と `aecho` で角を落としたアンビエント音になる。
+末尾の `volume=15` は `assemble.sh` の可聴性ガードを通すために必要で、これを外すと
+生成物は max_volume −58 dB 前後になり、合成後の完成物が閾値 −20 dB を下回って assemble が
+失敗する（実測: `volume` 無し −58.1 dB / `volume=15` −14.5 dB）。
+
+`assemble.sh` は **BGM が総尺より短いとエラー終了する**（末尾が無音の完成尺を黙って出さない
+ため）。フルカットの完成尺は 55.0 秒なので、`duration=58` の生成物がそのまま足りる。
+`duration=45` の生成物（実測 45.096 秒）はこのガードが発火することの確認に使う。
+
+既存 HyperFrames 版と同じ **BombinSound — Technology**（Pixabay, track ID `499581`、90 秒）も
+代替候補として使える。その場合は Pixabay から
 `bombinsound-technology-tech-technology-90-second-499581.mp3` を取得してこのディレクトリ直下に
 置く。入手元・Pixabay Content License・生 mp3 をコミットしない理由は
 [../intro-video/PROVENANCE.md](../intro-video/PROVENANCE.md) の記録を正本とする。90 秒あるため
-フルカット（総尺 55.0 秒）にはそのまま足り、下記の延長は不要。
-
-`assemble.sh` は **BGM が総尺より短いとエラー終了する**（末尾が無音の完成尺を黙って出さない
-ため）。`rite-synth-bgm.mp3` のように総尺より短い音源を使う場合は、ループで延長してから渡す:
-
-```bash
-# 継ぎ目 2 秒のクロスフェードで 2 周ぶんに伸ばし、58 秒へ切り出す（宣言尺合計 58 秒ぶん確保して
-# おけば、完成尺 55.0 秒に対して余裕を持って BGM 尺ガードを通過する）。
-# 単純連結（-stream_loop）は継ぎ目で位相が飛んでクリックノイズになるため acrossfade を使う。
-# 本レシピは元尺が 30 秒以上の音源を前提とする（2 周 − 2 秒で 58 秒に届く下限）。
-ffmpeg -y -i rite-synth-bgm.mp3 -i rite-synth-bgm.mp3 \
-  -filter_complex "[0:a][1:a]acrossfade=d=2:c1=tri:c2=tri[a]" -map "[a]" \
-  -t 58 -c:a libmp3lame -q:a 2 rite-synth-bgm-58s.mp3
-```
-
-延長後の音量は変えない。`assemble.sh` は合成後の完成物を `volumedetect` で測り、
-`max_volume < -20dB` なら出力を残さず失敗する（実質無音の完成尺を防ぐガード）。
+フルカットにはそのまま足りるが、**本カットの音声は上記の合成音であり、Pixabay 曲へ差し替えると
+音は一致しない**。
 
 ## レンダーと連結の手順
 
@@ -105,16 +110,16 @@ for scene in 01-problem 02-unknowns 03-loop 04-gates 05-wiki 06-second-lap 07-cl
 done
 ```
 
-BGM を用意した後、2 本のカットを連結する（`<bgm>` は上記で用意した mp3）。
+BGM を用意した後、2 本のカットを連結する（配布物と同じ音声にするには `duration=58` の生成物を使う）。
 
 ```bash
 # フルカット（M1〜M7、約 55.0 秒）
-./assemble.sh -o out/rite-intro-v2-full.mp4 -t 0.5 -b <bgm> \
+./assemble.sh -o out/rite-intro-v2-full.mp4 -t 0.5 -b rite-synth-bgm-58s.mp3 \
   out/01-problem.mp4 out/02-unknowns.mp4 out/03-loop.mp4 out/04-gates.mp4 \
   out/05-wiki.mp4 out/06-second-lap.mp4 out/07-closing.mp4
 
 # SNS カット（M1 + M3 + M5 + M7、約 31.5 秒）
-./assemble.sh -o out/rite-intro-v2-sns.mp4 -t 0.5 -b <bgm> \
+./assemble.sh -o out/rite-intro-v2-sns.mp4 -t 0.5 -b rite-synth-bgm-58s.mp3 \
   out/01-problem.mp4 out/03-loop.mp4 out/05-wiki.mp4 out/07-closing.mp4
 ```
 
