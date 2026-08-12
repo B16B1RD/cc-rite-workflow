@@ -87,7 +87,7 @@ make_separate_branch_sandbox() {
 run_helper() {
   local repo="$1" input="$2"; shift 2
   local rc=0
-  HELPER_STDOUT=$( (cd "$repo" && printf '%s\n' "$input" | timeout 10 bash "$SCRIPT" --repo-root "$repo" "$@") 2>"$TEST_DIR/helper_stderr" ) || rc=$?
+  HELPER_STDOUT=$( (cd "$repo" && printf '%s\n' "$input" | _timeout 10 bash "$SCRIPT" --repo-root "$repo" "$@") 2>"$TEST_DIR/helper_stderr" ) || rc=$?
   HELPER_RC=$rc
   HELPER_STDERR=$(cat "$TEST_DIR/helper_stderr")
   return 0
@@ -181,7 +181,7 @@ else
 fi
 
 echo "=== TC-9: OKF 箇条書き index (Sub-2 reshape) でも orphan 検出 (登録 2 / 実在 3 → orphan 1) ==="
-# Issue #1519: index.md がテーブル → OKF 箇条書き (`* [title](pages/...) - desc`) に
+# Why: index.md がテーブル → OKF 箇条書き (`* [title](pages/...) - desc`) に
 # reshape されてもリンク grep `](pages/...)` が生存し orphan 検出が機能することを検証する。
 INDEX_FIXTURE_BULLET='# Wiki Index
 

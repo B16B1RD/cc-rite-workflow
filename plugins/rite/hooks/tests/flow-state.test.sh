@@ -18,7 +18,7 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-# Clean session-id env for standalone runs (Issue #1530). flow-state.sh resolves
+# Clean session-id env for standalone runs. flow-state.sh resolves
 # session_id env-first; the file-based sandboxes below must exercise the
 # `.rite-session-id` fallback, so the dogfooding session's ambient
 # CLAUDE_CODE_SESSION_ID must not leak in. TC-13/14/15 + T-01/T-02/T-04 set the
@@ -172,12 +172,27 @@ echo ""
 echo "=== TC-8b: AC-8 non-verbose migrate emits 'migrated:' to stderr; v3-only stays silent ==="
 # Why: session-start auto path silences only stdout. If `migrated:` is gated on --verbose or
 # moved to stdout, a real migration becomes silent and violates AC-8 (silent skip forbidden).
+# NOTE: each `err=$( … migrate … )` capture below records the exit code into $rc
+# instead of discarding it with `|| true`, so a migrate crash cannot masquerade as a normal run.
+# The root cause that made migrate exit non-zero on macOS — an unbraced `$sv→` in flow-state.sh
+# tripping `set -u` under a non-UTF-8 locale — is fixed at source, so migrate exits 0. Capturing
+# rather than discarding keeps the file from aborting under `set -e` (TC-8's own tolerance) while
+# preserving the crash signal: TC-8b-b asserts the *absence* of output, so without an explicit rc
+# assertion an aborted migrate would produce empty stderr and be scored as "correctly silent".
+assert_migrate_rc() { # <tc-label> <rc>
+  if [ "$2" = "0" ]; then
+    pass "$1: migrate exits 0"
+  else
+    fail "$1: migrate exited $2 (expected 0 — crash would otherwise be indistinguishable from a normal run)"
+  fi
+}
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 mkdir -p "$d/.rite/sessions"
 cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
 {"schema_version":2,"phase":"ingest_pre_lint","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
 EOF
-err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
+rc=0; err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || rc=$?
+assert_migrate_rc "TC-8b-a" "$rc"
 # Why: grep specificity に v[12]→v3 矢印と phase 変換 token を要求することで、emission format が
 # `migrate done:` 等にリネームされた場合も regression を検出できる (format stability invariant)。
 echo "$err" | grep -qE 'migrated:.*v[12]→v3.*[a-z_]+→[a-z_]+' \
@@ -188,7 +203,11 @@ echo "$err" | grep -qE 'migrated:.*v[12]→v3.*[a-z_]+→[a-z_]+' \
 # でのみ出力される invariant も同時に検証する (quiet session start での noise 抑制)。
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
 (cd "$d" && bash "$HOOK" set --phase fix --issue 8 --branch "b" --pr 1 --next "n")
-err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
+rc=0; err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || rc=$?
+# Why (review F-04): this is the only negative assertion in TC-8b — it passes when the
+# capture is empty. An aborted migrate also produces empty stderr, so the exit code is the sole
+# remaining signal distinguishing "correctly silent" from "crashed before printing anything".
+assert_migrate_rc "TC-8b-b" "$rc"
 if echo "$err" | grep -q "migrated:\|skip (already v3)"; then
   fail "TC-8b-b: non-verbose migrate of v3-only emitted output (should be silent): '$err'"
 else
@@ -203,7 +222,8 @@ mkdir -p "$d/.rite/sessions"
 cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
 {"phase":"cleanup_pre_ingest","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
 EOF
-err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
+rc=0; err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || rc=$?
+assert_migrate_rc "TC-8b-c" "$rc"
 echo "$err" | grep -qE 'migrated:.*v1→v3.*[a-z_]+→[a-z_]+' \
   && pass "TC-8b-c: non-verbose migrate of v1 (schema_version 欠落) announces 'migrated:' on stderr" \
   || fail "TC-8b-c: v1 schema 欠落 migrate did not emit expected 'migrated:.*v1→v3.*phase→phase' format: '$err'"
@@ -220,7 +240,8 @@ EOF
 cat > "$d/.rite/sessions/${sid2}.flow-state" <<EOF
 {"schema_version":2,"phase":"create_branch","session_id":"$sid2","issue_number":4,"branch":"b2","pr_number":0,"next_action":"y","active":true,"updated_at":"2026-05-22T00:00:00Z"}
 EOF
-err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 )
+rc=0; err=$( (cd "$d" && bash "$HOOK" migrate >/dev/null) 2>&1 ) || rc=$?
+assert_migrate_rc "TC-8b-d" "$rc"
 # Why: 行頭 anchor `^  migrated:` で固定することで、将来 hook が `Already migrated:` 等の文言を
 # 追加した場合の false match を防ぐ (TC-8b-e/g と同じ anchor 形式)。
 migrated_count=$(echo "$err" | grep -c '^  migrated:' || true)
@@ -280,7 +301,7 @@ else
     _tc8beg_test_cleanup() { chmod +w "$d/.rite/sessions" 2>/dev/null || true; }
     trap _tc8beg_test_cleanup EXIT INT TERM HUP
     chmod 0555 "$d/.rite/sessions"
-    combined=$( (cd "$d" && bash "$HOOK" migrate) 2>&1 )
+    combined=$( (cd "$d" && bash "$HOOK" migrate) 2>&1 ) || true
     chmod +w "$d/.rite/sessions"
     trap - EXIT INT TERM HUP
     eval "$_tc8beg_saved_trap"
@@ -309,12 +330,162 @@ mkdir -p "$d/.rite/sessions"
 cat > "$d/.rite/sessions/${sid}.flow-state" <<EOF
 {"schema_version":2,"phase":"ingest_pre_lint","session_id":"$sid","issue_number":3,"branch":"b","pr_number":0,"next_action":"x","active":true,"updated_at":"2026-05-22T00:00:00Z"}
 EOF
-err=$( (cd "$d" && bash "$HOOK" migrate --dry-run >/dev/null) 2>&1 )
+rc=0; err=$( (cd "$d" && bash "$HOOK" migrate --dry-run >/dev/null) 2>&1 ) || rc=$?
+assert_migrate_rc "TC-8b-f" "$rc"
 if echo "$err" | grep -q 'would migrate:'; then
   pass "TC-8b-f: --dry-run preview goes to stderr"
 else
   fail "TC-8b-f: --dry-run preview missing from stderr (regression — possibly moved back to stdout): '$err'"
 fi
+
+# --- TC-8b-h: the `${sv}`/`${cp}` braces around the U+2192 arrow are load-bearing ---
+# Why (review F-06): the braces were added because an unbraced variable abutting the
+# multibyte arrow folds the arrow's leading byte into the variable name under a non-UTF-8 locale,
+# tripping `set -u`. That failure mode does not reproduce on glibc — every locale available here
+# (C / POSIX / C.UTF-8 / en_US.utf8) expands the unbraced form correctly — so a behavioural TC
+# would be vacuous on the blocking Linux leg and the braces would read as a redundant style choice
+# that a later formatting pass could strip with CI still green. A static guard pins them on every
+# platform instead: no unbraced `$var` may sit directly against a non-ASCII byte. Comment lines are
+# exempt so the surrounding rationale can quote the anti-pattern verbatim.
+#
+# The guard covers every `*.sh` under plugins/rite, not just flow-state.sh. The invariant is a
+# whole-codebase one, and scoping the check to a single file while wording it as a rule would leave
+# the class looking closed when it was not: the same shape lived in seven other places
+# (pr-cycle-cleanup.sh and lib/worktree-git.sh, all on WARNING paths under `set -u`, where the
+# failure turns a warning into a hard abort). Those were braced in the same change.
+#
+# Scope limits, stated honestly:
+#   - Only leading-`#` comment LINES are exempt. A trailing comment quoting the anti-pattern
+#     (`foo   # see $sv→v3`) is still reported; stripping trailing comments would require
+#     distinguishing them from `#` inside strings and `${var#pat}`, which is not worth it here.
+#   - bash fenced in SKILL.md / references is NOT scanned. Those blocks are executed by rite but
+#     are not `*.sh` files, and extracting fences reliably is a separate job. Two such sites exist
+#     today (skills/setup/SKILL.md, skills/pr-review/references/finding-cycling.md); neither runs
+#     under `set -u`, so the failure mode there is garbled output rather than an abort.
+echo ""
+echo "=== TC-8b-h: no unbraced \$var abuts a multibyte character in any plugins/rite shell script ==="
+#
+# One awk pass per file, numbering against the ORIGINAL file. Piping through a
+# comment-stripping filter first and numbering the survivors reports the offset
+# within the filtered stream, not the real line — across ~200 files that is off by
+# hundreds of lines and sends the reader to unrelated code.
+_tc8bh_detect() {
+  LC_ALL=C awk '!/^[[:space:]]*#/ && /\$[A-Za-z_][A-Za-z0-9_]*[^ -~]/ { print FILENAME ":" NR ": " $0 }' "$1"
+}
+
+# Positive control. This is a negative assertion — it passes when nothing is found — so a broken
+# detector or an empty file list would report success. Prove the detector fires on a known
+# violation through the SAME function the scan uses, otherwise a rotted pattern would sail through
+# its own control.
+# No extension on the template: BSD mktemp(1) substitutes only trailing Xs, so a `-XXXXXX.sh`
+# template would hand back that literal name and collide on a leftover file. The detector below
+# reads the probe as a plain path, so the suffix bought nothing anyway.
+_tc8bh_probe=$(mktemp "${TMPDIR:-/tmp}/rite-tc8bh-probe-XXXXXX")
+printf 'sv=2\necho "v$sv\xe2\x86\x92v3"\n' > "$_tc8bh_probe"
+if [ "$(_tc8bh_detect "$_tc8bh_probe" | wc -l | tr -d '[:space:]')" = "1" ]; then
+  pass "TC-8b-h control: the detector reports a known unbraced-\$var violation"
+else
+  fail "TC-8b-h control: the detector did NOT report a known violation — the scan below is vacuous"
+fi
+rm -f "$_tc8bh_probe"
+
+unbraced_report=""
+unbraced_total=0
+_tc8bh_scanned=0
+while IFS= read -r _sh; do
+  _tc8bh_scanned=$((_tc8bh_scanned + 1))
+  _found=$(_tc8bh_detect "$_sh")
+  if [ -n "$_found" ]; then
+    _hits=$(printf '%s\n' "$_found" | wc -l | tr -d '[:space:]')
+    unbraced_total=$((unbraced_total + _hits))
+    unbraced_report="$unbraced_report
+$_found"
+  fi
+done < <(find "$PLUGIN_ROOT" -name '*.sh' -type f | sort)
+# A discovery that returns nothing is a broken scan, not a clean one.
+if [ "$_tc8bh_scanned" -eq 0 ]; then
+  fail "TC-8b-h: found no *.sh under $PLUGIN_ROOT — the scan matched nothing to check (layout changed?)"
+elif [ "$unbraced_total" = "0" ]; then
+  pass "TC-8b-h: all variables abutting multibyte characters are brace-delimited ($_tc8bh_scanned files scanned)"
+else
+  fail "TC-8b-h: $unbraced_total line(s) hold an unbraced \$var abutting a multibyte character — brace them (\${var}) or a non-UTF-8 locale will fold the following byte into the name and trip set -u:$unbraced_report"
+fi
+unset -f _tc8bh_detect
+unset unbraced_report unbraced_total _sh _hits _found _tc8bh_probe _tc8bh_scanned
+
+echo ""
+echo "=== TC-8b-i: every mktemp template in plugins/rite shell scripts ends in trailing Xs ==="
+#
+# BSD/macOS mktemp(1) substitutes only *trailing* Xs, so a template that carries a suffix
+# (`-XXXXXX.md`) is taken literally: the name never varies, and once one such file survives
+# a SIGKILL the next O_CREAT|O_EXCL fails with EEXIST for every later run on that machine.
+# GNU coreutils substitutes suffixed templates anyway, so the Linux leg cannot observe the
+# regression at runtime — the guard has to be static to protect the macOS leg.
+#
+# The detector pairs `mktemp` with "Xs followed by something that is not a template
+# terminator". Quote / whitespace / backtick / closing-paren after the Xs are the legitimate
+# endings; anything else (`.md`, `.sh`, `.json`) is a suffix. Comment lines are skipped
+# because prose about tempfile names ("...orphan ${TMPDIR:-/tmp}/rite-wiki-stage-XXXXXX.")
+# ends in a full stop and would otherwise read as a violation.
+#
+# Two constraints shape how the pattern is written. It matches three consecutive Xs rather
+# than an `X{3,}` interval because macOS ships BWK awk, whose older builds read `{` as a
+# literal — an interval here would silently stop matching on the very platform this guard
+# protects (no other scan in this suite relies on one). And the Xs are concatenated from a
+# -v variable at run time because spelling them out would make this line match its own scan.
+#
+# Scope limits, stated honestly:
+#   - bash fenced in SKILL.md / references is NOT scanned, same as TC-8b-h. One such site is
+#     live today: skills/fix/SKILL.md builds a `-XXXXXX.md` reply tempfile inside a bash fence
+#     that /rite:fix executes per nit-noted finding. Widening this scan to `.md` would turn the
+#     suite red until that site is fixed, so the two belong in one follow-up change rather than
+#     here. Until then, a green TC-8b-i means "no suffixed template in *.sh", not "the class is
+#     extinct".
+#   - The detector only sees `mktemp` and its template on the SAME line. A template built on one
+#     line and passed on the next (`tpl=...` then `mktemp "$tpl"`), or split across a line
+#     continuation, slips through. Writing both on one line does NOT slip through — the template
+#     is still on the `mktemp` line, so the scan catches it. No such call exists in the repo today.
+#   - Only leading-`#` comment LINES are exempt, same as TC-8b-h. A trailing comment that quotes a
+#     suffixed template is still reported.
+_tc8bi_detect() {
+  LC_ALL=C awk -v x=X '!/^[[:space:]]*#/ && /mktemp/ && $0 ~ (x x x "[^X[:space:]\"'"'"'`)]") { print FILENAME ":" NR ": " $0 }' "$1"
+}
+
+# Positive control, for the same reason TC-8b-h carries one: a negative assertion reports
+# success when the detector itself is broken. The probe body spells its Xs as octal escapes
+# so the line writing it does not match the very scan it feeds.
+_tc8bi_probe=$(mktemp "${TMPDIR:-/tmp}/rite-tc8bi-probe-XXXXXX")
+printf 'p=$(mktemp "probe-\130\130\130\130\130\130.md")\n' > "$_tc8bi_probe"
+if [ "$(_tc8bi_detect "$_tc8bi_probe" | wc -l | tr -d '[:space:]')" = "1" ]; then
+  pass "TC-8b-i control: the detector reports a known suffixed-template violation"
+else
+  fail "TC-8b-i control: the detector did NOT report a known violation — the scan below is vacuous"
+fi
+rm -f "$_tc8bi_probe"
+
+suffixed_report=""
+suffixed_total=0
+_tc8bi_scanned=0
+while IFS= read -r _sh; do
+  _tc8bi_scanned=$((_tc8bi_scanned + 1))
+  _found=$(_tc8bi_detect "$_sh")
+  if [ -n "$_found" ]; then
+    _hits=$(printf '%s\n' "$_found" | wc -l | tr -d '[:space:]')
+    suffixed_total=$((suffixed_total + _hits))
+    suffixed_report="$suffixed_report
+$_found"
+  fi
+done < <(find "$PLUGIN_ROOT" -name '*.sh' -type f | sort)
+# A discovery that returns nothing is a broken scan, not a clean one.
+if [ "$_tc8bi_scanned" -eq 0 ]; then
+  fail "TC-8b-i: found no *.sh under $PLUGIN_ROOT — the scan matched nothing to check (layout changed?)"
+elif [ "$suffixed_total" = "0" ]; then
+  pass "TC-8b-i: every mktemp template in *.sh ends in trailing Xs ($_tc8bi_scanned files scanned; markdown fences not covered)"
+else
+  fail "TC-8b-i: $suffixed_total mktemp template(s) put characters after the Xs — BSD mktemp leaves those templates unsubstituted, so the name is not unique:$suffixed_report"
+fi
+unset -f _tc8bi_detect
+unset suffixed_report suffixed_total _sh _hits _found _tc8bi_probe _tc8bi_scanned
 
 # --- TC-9: phase enum validation warns but accepts unknown phase ---
 echo ""
@@ -1070,7 +1241,7 @@ else
   fail "TC-24.4: --session override non-UUID rejected/degraded. stderr: '$err'"
 fi
 
-# --- TC-25: clear-worktree subcommand (Issue #1524) ---
+# --- TC-25: clear-worktree subcommand ---
 # Surgical del(.worktree) mirroring cmd_deactivate: removes only the worktree key,
 # preserves phase/active/branch, idempotent (no-op + no file churn when absent),
 # non-blocking on a missing state file. Used by pr-cycle-cleanup.sh reap null-ing
@@ -1104,7 +1275,7 @@ miss_rc=$( (cd "$d" && env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID \
   bash "$HOOK" clear-worktree --session "no-such-session-1524" >/dev/null 2>&1); echo $? )
 assert "TC-25: clear-worktree on missing state file is non-blocking (rc 0)" "0" "$miss_rc"
 
-# --- TC-26: --require-worktree data-layer detection marker (Issue #1595) ---
+# --- TC-26: --require-worktree data-layer detection marker ---
 echo ""
 echo "=== TC-26: --require-worktree emits WORKTREE_INVARIANT detection marker ==="
 result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
@@ -1155,6 +1326,45 @@ result=$(new_sandbox); d2="${result%|*}"; sid2="${result#*|}"
 sfile2="$d2/.rite/sessions/${sid2}.flow-state"
 (cd "$d2" && bash "$HOOK" set --phase branch --issue 701 --branch "feat/701" --pr 0 --next "n") >/dev/null
 assert "TC-27: backward compat → no cycle_count key without --cycle-count" "false" "$(jq -r 'has("cycle_count")' "$sfile2")"
+
+# --- TC-27b: stop_reason is default-cleared additive failure state (#2045) ---
+echo ""
+echo "=== TC-27b: --stop-reason writes and an ordinary set default-clears ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+sfile="$d/.rite/sessions/${sid}.flow-state"
+(cd "$d" && bash "$HOOK" set --phase review --issue 2045 --branch "fix/2045" --pr 99 --next "stopped" \
+  --cycle-count 0 --stop-reason "circuit-breaker:divergence") >/dev/null
+assert "TC-27b: stop_reason recorded" "circuit-breaker:divergence" "$(jq -r '.stop_reason // "ABSENT"' "$sfile")"
+assert "TC-27b: get returns stop_reason" "circuit-breaker:divergence" "$(cd "$d" && bash "$HOOK" get --field stop_reason --default "")"
+(cd "$d" && bash "$HOOK" set --phase review --issue 2045 --branch "fix/2045" --pr 99 --next "resumed") >/dev/null
+assert "TC-27b: ordinary set default-clears stop_reason" "false" "$(jq -r 'has("stop_reason")' "$sfile")"
+
+# --- TC-27c: iterate producer persists the breaker reason in the reset set (#2045) ---
+echo ""
+echo "=== TC-27c: iterate breaker preamble owns the stop_reason producer contract ==="
+iterate_skill="$PLUGIN_ROOT/skills/iterate/SKILL.md"
+breaker_set_block="$(awk '
+  /if cb_reset_out=.*flow-state\.sh set/ { capture=1 }
+  capture { print }
+  capture && /2>&1\); then/ { exit }
+' "$iterate_skill")"
+assert "TC-27c: breaker reset call resets cycle_count" "1" \
+  "$(printf '%s\n' "$breaker_set_block" | grep -c -- '--cycle-count 0' || true)"
+assert "TC-27c: same breaker reset call persists the reason token" "1" \
+  "$(printf '%s\n' "$breaker_set_block" | grep -cF -- '--stop-reason "circuit-breaker:{cb_reason}"' || true)"
+
+# A failure of that one atomic set loses both writes. Pin the user-visible
+# diagnostic so the recovery path cannot silently promise that the reason survived.
+breaker_failure_block="$(awk '
+  /else/ && seen_set { capture=1 }
+  /if cb_reset_out=.*flow-state\.sh set/ { seen_set=1 }
+  capture { print }
+  capture && /^fi$/ { exit }
+' "$iterate_skill")"
+assert "TC-27c: failed atomic set diagnoses counter reset" "1" \
+  "$(printf '%s\n' "$breaker_failure_block" | grep -cF -- 'cycle counter リセット' || true)"
+assert "TC-27c: failed atomic set diagnoses missing reason persistence" "1" \
+  "$(printf '%s\n' "$breaker_failure_block" | grep -cF -- 'stop_reason 永続化に失敗' || true)"
 
 # --- TC-28: wm_comment_id is merge-preserved across cmd_set (#1810) ---
 # wm_comment_id has NO --flag — it's written directly by issue-comment-wm-sync.sh's
@@ -1256,6 +1466,302 @@ fi
 got=$(cd "$d" && env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$envsid" bash "$HOOK" get --field issue_number --default "X")
 assert "T-04: get resolves via env sid (404, smoke)" "404" "$got"
 
-if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del (Issue #1524) + non-UUID acceptance (Layer 1 format-agnostic contract pin)"; then
+# --- TC-2115-01 (AC-1): each performed `set` appends one JSONL transition record ---
+echo ""
+echo "=== TC-2115-01 (AC-1): phase transitions are appended to .rite/logs/phase-transitions.log ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase implement --issue 2115 --branch "feat/x" --pr 0 --next "n1")
+(cd "$d" && bash "$HOOK" set --phase review --issue 2115 --pr 42 --next "n2")
+tlog="$d/.rite/logs/phase-transitions.log"
+assert_file_exists_or_fail "TC-2115-01: transition log created" "$tlog" || true
+assert "TC-2115-01: one line per transition (2 sets → 2 lines)" "2" "$(wc -l < "$tlog" | tr -d ' ')"
+# The `from` of the first record is empty: no state file existed yet. This is the
+# most common case (every fresh session starts here) and is deliberately recorded
+# as "" rather than a synthesized prior phase.
+assert "TC-2115-01: first record from='' (fresh session, no prior state)" "" "$(head -1 "$tlog" | jq -r .from)"
+assert "TC-2115-01: first record to=implement" "implement" "$(head -1 "$tlog" | jq -r .to)"
+assert "TC-2115-01: second record from=implement (pre-write phase)" "implement" "$(sed -n 2p "$tlog" | jq -r .from)"
+assert "TC-2115-01: second record to=review" "review" "$(sed -n 2p "$tlog" | jq -r .to)"
+assert "TC-2115-01: session_id recorded" "$sid" "$(sed -n 2p "$tlog" | jq -r .session_id)"
+assert "TC-2115-01: issue_number recorded" "2115" "$(sed -n 2p "$tlog" | jq -r .issue_number)"
+assert "TC-2115-01: pr_number recorded" "42" "$(sed -n 2p "$tlog" | jq -r .pr_number)"
+# The two numeric fields must stay JSON numbers. `jq -r` above collapses 2115 and
+# "2115" to the same string, so the value assertions alone would still pass if the
+# writer switched `--argjson` to `--arg`; the aggregation consumer this log exists
+# for would then break on arithmetic/grouping.
+assert "TC-2115-01: issue_number is a JSON number" "number" "$(sed -n 2p "$tlog" | jq -r '.issue_number|type')"
+assert "TC-2115-01: pr_number is a JSON number" "number" "$(sed -n 2p "$tlog" | jq -r '.pr_number|type')"
+# ts equals the state file's updated_at at second granularity, so a record can be
+# cross-referenced with the state it describes. That equality alone does not pin the
+# format — both sides read the same `$now`, so switching it to epoch seconds keeps
+# them equal — so assert the ISO 8601 shape separately.
+assert "TC-2115-01: ts equals the state file's updated_at" \
+  "$(jq -r .updated_at "$d/.rite/sessions/${sid}.flow-state")" "$(sed -n 2p "$tlog" | jq -r .ts)"
+assert "TC-2115-01: ts is ISO 8601 UTC" "ok" \
+  "$(sed -n 2p "$tlog" | jq -r 'if (.ts|test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) then "ok" else "bad: "+.ts end')"
+# Self-contained .gitignore so the log never leaks into downstream consuming repos.
+assert "TC-2115-01: log dir carries a self-contained .gitignore" "*" "$(cat "$d/.rite/logs/.gitignore" 2>/dev/null)"
+
+# --- TC-2115-02 (AC-1 MUST): a same-phase set is recorded too (from == to) ---
+echo ""
+echo "=== TC-2115-02 (AC-1): same-phase set is recorded (update frequency inside a stage is observable) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase fix --issue 7 --branch "feat/y" --pr 0 --next "n1")
+(cd "$d" && bash "$HOOK" set --phase fix --issue 7 --pr 0 --next "n2")
+tlog="$d/.rite/logs/phase-transitions.log"
+assert_file_exists_or_fail "TC-2115-02: transition log created" "$tlog" || true
+assert "TC-2115-02: same-phase set still appends (2 lines)" "2" "$(wc -l < "$tlog" | tr -d ' ')"
+assert "TC-2115-02: same-phase record has from == to" "fix|fix" \
+  "$(sed -n 2p "$tlog" | jq -r '.from + "|" + .to')"
+
+# --- TC-2115-03 (AC-1 MUST): `--if-exists` skips are NOT recorded (no write happened) ---
+echo ""
+echo "=== TC-2115-03: --if-exists skip writes no state and therefore no transition record ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase plan --issue 5 --pr 0 --next "n" --if-exists 2>/dev/null)
+if [ -e "$d/.rite/logs/phase-transitions.log" ]; then
+  fail "TC-2115-03: skipped set must not append a record (log file exists: $(cat "$d/.rite/logs/phase-transitions.log"))"
+else
+  pass "TC-2115-03: skipped set appended no record"
+fi
+
+# --- TC-2115-04 (MUST): one line per transition even when the phase carries a newline ---
+echo ""
+echo "=== TC-2115-04: a newline-bearing --phase cannot split one transition into two lines ==="
+# `_phase_is_valid` only WARNs about an unknown phase and never rejects it, so the
+# "1 transition = 1 line" invariant must come from the record encoder (jq -c escapes
+# the newline), not from input validation.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+(cd "$d" && bash "$HOOK" set --phase "$(printf 'weird\nINJECTED')" --issue 1 --pr 0 --next "n" 2>/dev/null)
+tlog="$d/.rite/logs/phase-transitions.log"
+assert_file_exists_or_fail "TC-2115-04: transition log created" "$tlog" || true
+assert "TC-2115-04: still exactly 1 line" "1" "$(wc -l < "$tlog" | tr -d ' ')"
+assert "TC-2115-04: newline preserved inside the JSON string" "$(printf 'weird\nINJECTED')" \
+  "$(head -1 "$tlog" | jq -r .to)"
+
+# --- TC-2115-05 (MUST): the log resolves to the main checkout from a linked worktree ---
+echo ""
+echo "=== TC-2115-05: a set run inside a linked worktree logs to the main checkout's .rite/logs ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+wt="$d/wt-2115"
+if (cd "$d" && git worktree add -q -b wt-branch-2115 "$wt" HEAD) >/dev/null 2>&1; then
+  echo "$sid" > "$wt/.rite-session-id"
+  (cd "$wt" && bash "$HOOK" set --phase lint --issue 88 --pr 0 --next "n")
+  # state-path-resolve.sh's linked-worktree unification makes $STATE_ROOT the main
+  # checkout, so one session's records stay in one file regardless of which tree a
+  # phase ran in. A per-worktree log would fragment exactly the timeline this
+  # feature exists to reconstruct.
+  assert_file_exists_or_fail "TC-2115-05: record landed in the MAIN checkout log" \
+    "$d/.rite/logs/phase-transitions.log" || true
+  if [ -e "$wt/.rite/logs/phase-transitions.log" ]; then
+    fail "TC-2115-05: a second log must not be created inside the worktree"
+  else
+    pass "TC-2115-05: no split log inside the worktree"
+  fi
+  assert "TC-2115-05: worktree-run transition recorded once in the main log" "lint" \
+    "$(tail -1 "$d/.rite/logs/phase-transitions.log" | jq -r .to)"
+  (cd "$d" && git worktree remove --force "$wt") >/dev/null 2>&1 || true
+else
+  skip "TC-2115-05: git worktree add unavailable in this sandbox"
+fi
+
+# --- TC-2115-06 (AC-2): a non-writable log destination is fully non-blocking ---
+echo ""
+echo "=== TC-2115-06 (AC-2): log write failure leaves exit code and state JSON unchanged ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/logs"
+chmod 555 "$d/.rite/logs"
+# Verify chmod actually enforces read-only for this user/filesystem first: root
+# bypasses DAC bits, and some filesystems (WSL2 DrvFs, overlay mounts) ignore the
+# owner write bit — either way the probe would succeed and the assertion below
+# would be vacuous rather than a real check. Braced so the open-failure message
+# itself is captured by the redirect (same pattern as session-start.test.sh).
+if { : > "$d/.rite/logs/.write-probe"; } 2>/dev/null; then
+  rm -f "$d/.rite/logs/.write-probe"
+  skip "TC-2115-06: filesystem/user does not enforce chmod 555 here — not a real read-only dir on this host"
+else
+  stderr_2115="$(mktemp)"
+  set +e
+  (cd "$d" && bash "$HOOK" set --phase plan --issue 9 --branch "feat/z" --pr 0 --next "n") 2>"$stderr_2115"
+  rc_2115=$?
+  set -e
+  assert "TC-2115-06: set still exits 0 (non-blocking)" "0" "$rc_2115"
+  sfile="$d/.rite/sessions/${sid}.flow-state"
+  assert_file_exists_or_fail "TC-2115-06: state file still written" "$sfile" || true
+  # AC-2 requires the state JSON to be unchanged, not merely that the command
+  # succeeded — a logging failure must not perturb any persisted field.
+  assert "TC-2115-06: state phase unaffected" "plan" "$(jq -r .phase "$sfile")"
+  assert "TC-2115-06: state issue_number unaffected" "9" "$(jq -r .issue_number "$sfile")"
+  assert "TC-2115-06: state branch unaffected" "feat/z" "$(jq -r .branch "$sfile")"
+  assert "TC-2115-06: no stray field added to the state JSON" \
+    "active branch error_count issue_number next_action parent_issue_number phase pr_number schema_version session_id updated_at" \
+    "$(jq -r 'keys | join(" ")' "$sfile")"
+  assert_grep "TC-2115-06: failure is announced, not silent" "$stderr_2115" 'WARNING: .*phase-transition log not writable'
+  # The same read-only dir also blocks the self-contained .gitignore, and that
+  # failure must be announced too — a missing exclusion is the path by which the
+  # log reaches a public repo, so swallowing it is the one outcome we cannot have.
+  assert_grep "TC-2115-06: .gitignore failure is announced too" \
+    "$stderr_2115" 'WARNING: .*cannot create .*\.gitignore'
+  # Its cause is captured and re-emitted indented (the `{ ...; } 2>&1` group scope),
+  # not dropped: without the group, bash reports the redirect's own EACCES before
+  # `2>&1` takes effect and the one line that names the cause escapes capture.
+  # Nothing may reach column 0: the append path's `2>/dev/null` must swallow bash's
+  # redirect-setup error entirely, and the .gitignore path's group capture must keep
+  # it behind that indent. Anchoring both ways is what separates "captured" from
+  # "leaked" — a bare pattern would read the indented cause as a leak.
+  #
+  # `LC_ALL=C` is load-bearing, not decoration. `neutralize_ctrl` blanks bytes
+  # 0x80-0x9f one byte at a time, which turns a localized diagnostic ("許可があり
+  # ません") into an invalid UTF-8 sequence; GNU grep under a UTF-8 locale then
+  # matches nothing on that line, so the two checks below would pass vacuously —
+  # the leak assertion in particular would stop catching real leaks. Hence the raw
+  # counts here instead of assert_grep / assert_not_grep, which have no locale
+  # override (same construction as review-result-state-root.test.sh TC-8).
+  gi_indented=$(LC_ALL=C grep -cE '^  .*\.gitignore: ' "$stderr_2115" || true)
+  gi_bare=$(LC_ALL=C grep -cE '^[^[:space:]].*flow-state\.sh: (line|行) [0-9]+:' "$stderr_2115" || true)
+  if [ "$gi_indented" -ge 1 ]; then
+    pass "TC-2115-06: .gitignore failure keeps its cause, indented"
+  else
+    fail "TC-2115-06: .gitignore failure lost its cause (indented lines: $gi_indented)"
+  fi
+  if [ "$gi_bare" -eq 0 ]; then
+    pass "TC-2115-06: no bash redirect error leaks to column 0"
+  else
+    fail "TC-2115-06: bash redirect error leaked to column 0 ($gi_bare line(s))"
+  fi
+  # The captured cause must still be readable after neutralization. `LC_ALL=C` on
+  # the failing command is what makes that hold: bash localizes its own errno, and
+  # neutralize_ctrl blanks 0x80-0x9f byte-wise, so under a localized LANG the errno
+  # degrades to `?` runs — dropping the one thing this line adds over the WARNING
+  # above. Matching a trailing ASCII errno pins it. Under a C locale the message is
+  # ASCII regardless and this passes without discriminating; it does the pinning on
+  # hosts whose LANG localizes the diagnostic. `.gitignore: ` itself is ASCII and
+  # survives mangling, so the earlier gi_indented check cannot stand in for this.
+  gi_ascii_errno=$(LC_ALL=C grep -cE '^  .*\.gitignore: [A-Za-z][A-Za-z ]+$' "$stderr_2115" || true)
+  if [ "$gi_ascii_errno" -ge 1 ]; then
+    pass "TC-2115-06: the captured cause survives neutralization (ASCII errno)"
+  else
+    fail "TC-2115-06: the captured cause was mangled (no ASCII errno line found)"
+  fi
+  rm -f "$stderr_2115"
+fi
+chmod 755 "$d/.rite/logs" 2>/dev/null || true
+
+# --- TC-2115-07: only a state write that actually landed is recorded ---
+echo ""
+echo "=== TC-2115-07: a set whose state write never persisted appends no transition ==="
+# SPEC pins "**実際に書き込みが成立した** `set` ごとに 1 行", and the helper call sits
+# immediately after `_atomic_write ... || return 1`. Nothing pinned that order, so
+# moving the call one line up — the exact "small edit" the surrounding comment warns
+# about — would silently start logging phases that were never persisted, poisoning
+# the duration data this log exists to produce. The log dir stays writable here, so
+# the only thing standing between a reversed order and a record is the ordering.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/sessions" "$d/.rite/logs"
+chmod 555 "$d/.rite/sessions"
+# Same probe as TC-2115-06 (root / DrvFs / overlay ignore the owner write bit).
+if { : > "$d/.rite/sessions/.write-probe"; } 2>/dev/null; then
+  rm -f "$d/.rite/sessions/.write-probe"
+  skip "TC-2115-07: filesystem/user does not enforce chmod 555 here — not a real read-only dir on this host"
+else
+  set +e
+  (cd "$d" && bash "$HOOK" set --phase plan --issue 11 --branch "feat/w" --pr 0 --next "n") 2>/dev/null
+  rc_2115_07=$?
+  set -e
+  assert "TC-2115-07: set reports the failed state write" "1" "$rc_2115_07"
+  if [ -e "$d/.rite/logs/phase-transitions.log" ]; then
+    fail "TC-2115-07: a transition that never persisted must not be recorded (log: $(cat "$d/.rite/logs/phase-transitions.log"))"
+  else
+    pass "TC-2115-07: no record for a state write that never landed"
+  fi
+fi
+chmod 755 "$d/.rite/sessions" 2>/dev/null || true
+
+# --- TC-2115-08: a 0-byte .gitignore residue is repaired on the next set ---
+echo ""
+echo "=== TC-2115-08: the .gitignore guard reads content, not mere existence ==="
+# `> file` truncates before writing, so a failed write (ENOSPC, interrupted run)
+# leaves a 0-byte .gitignore behind. An existence guard accepts that empty file as
+# "already created" and skips the rewrite forever, leaving .rite/logs/ un-ignored in
+# the consuming repo with no further signal. A content guard repairs it. No permission
+# tricks needed, so unlike TC-2115-06/07 this runs on every host including root.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/logs"
+: > "$d/.rite/logs/.gitignore"
+(cd "$d" && bash "$HOOK" set --phase plan --issue 12 --branch "feat/v" --pr 0 --next "n")
+assert "TC-2115-08: empty .gitignore is rewritten with the exclusion" "*" \
+  "$(cat "$d/.rite/logs/.gitignore" 2>/dev/null)"
+assert_file_exists_or_fail "TC-2115-08: the append still ran" "$d/.rite/logs/phase-transitions.log" || true
+
+# --- TC-2115-09 (AC-2): the log-dir branch is loud too, on every host ---
+echo ""
+echo "=== TC-2115-09 (AC-2): a non-creatable log dir warns and leaves the state write intact ==="
+# Without this, deleting the branch's WARNING — turning it into a complete silent
+# swallow — leaves the whole suite green. Occupying the log-dir path with a regular
+# file makes `mkdir -p` fail without any permission trick, so unlike TC-2115-06/07
+# this runs on every host, including the ones where the chmod probe skips those two.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite"
+: > "$d/.rite/logs"
+stderr_2115_09="$(mktemp)"
+set +e
+(cd "$d" && bash "$HOOK" set --phase plan --issue 13 --branch "feat/u" --pr 0 --next "n") 2>"$stderr_2115_09"
+rc_2115_09=$?
+set -e
+assert "TC-2115-09: set still exits 0 (non-blocking)" "0" "$rc_2115_09"
+sfile_09="$d/.rite/sessions/${sid}.flow-state"
+assert_file_exists_or_fail "TC-2115-09: state file still written" "$sfile_09" || true
+assert "TC-2115-09: state phase unaffected" "plan" "$(jq -r .phase "$sfile_09")"
+# Same key-set invariant TC-2115-06 pins, but reachable without chmod — on a host
+# where the probe skips TC-2115-06 this is the only assertion left guarding it.
+assert "TC-2115-09: no stray field added to the state JSON" \
+  "active branch error_count issue_number next_action parent_issue_number phase pr_number schema_version session_id updated_at" \
+  "$(jq -r 'keys | join(" ")' "$sfile_09")"
+assert_grep "TC-2115-09: the log dir failure is announced" "$stderr_2115_09" 'WARNING: .*log dir not creatable'
+rm -f "$stderr_2115_09"
+
+# --- TC-2115-10 (AC-2): the append branch is loud on every host too ---
+echo ""
+echo "=== TC-2115-10 (AC-2): a non-writable log file warns and leaves the state write intact ==="
+# TC-2115-06 already pins this branch, but every one of its assertions sits behind a
+# chmod probe that skips on some hosts — and TC-2115-07 skips with it, leaving AC-2
+# with no coverage there. Occupying the log path with a directory makes the append
+# fail with no permission trick, so this keeps a floor everywhere. The dir exists
+# before `set` runs, so `mkdir -p "$log_dir"` still succeeds and only the append
+# fails — the `.gitignore` write succeeds too, which separates the two failure modes
+# TC-2115-06 exercises together.
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+mkdir -p "$d/.rite/logs/phase-transitions.log"
+stderr_2115_10="$(mktemp)"
+set +e
+(cd "$d" && bash "$HOOK" set --phase plan --issue 14 --branch "feat/t" --pr 0 --next "n") 2>"$stderr_2115_10"
+rc_2115_10=$?
+set -e
+assert "TC-2115-10: set still exits 0 (non-blocking)" "0" "$rc_2115_10"
+sfile_10="$d/.rite/sessions/${sid}.flow-state"
+assert_file_exists_or_fail "TC-2115-10: state file still written" "$sfile_10" || true
+assert "TC-2115-10: no stray field added to the state JSON" \
+  "active branch error_count issue_number next_action parent_issue_number phase pr_number schema_version session_id updated_at" \
+  "$(jq -r 'keys | join(" ")' "$sfile_10")"
+assert_grep "TC-2115-10: the append failure is announced" "$stderr_2115_10" 'WARNING: .*log not writable'
+# The .gitignore path is independent of the append path and must still have run.
+assert "TC-2115-10: the exclusion was still written" "*" "$(cat "$d/.rite/logs/.gitignore" 2>/dev/null)"
+rm -f "$stderr_2115_10"
+# The WARNING sites run their runtime values through `neutralize_ctrl`; drop that and
+# a newline inside `--phase` splits this WARNING, forging a second one at column 0.
+# The same sandbox works — the log path is still a directory, so the append still
+# fails and `$to` still reaches the message. Count only the append line: the
+# Both the enum WARNING and append WARNING must neutralize the same runtime value.
+stderr_2115_10b="$(mktemp)"
+set +e
+(cd "$d" && bash "$HOOK" set --phase "$(printf 'plan\nWARNING: forged')" --issue 15 --pr 0 --next "n") 2>"$stderr_2115_10b"
+set -e
+assert "TC-2115-10: a newline in --phase cannot split the append WARNING" "1" \
+  "$(LC_ALL=C grep -cE 'phase-transition log not writable.*not recorded$' "$stderr_2115_10b" || true)"
+assert "TC-2121: a newline in --phase cannot forge any column-zero WARNING" "0" \
+  "$(LC_ALL=C grep -c '^WARNING: forged$' "$stderr_2115_10b" || true)"
+rm -f "$stderr_2115_10b"
+
+if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del + non-UUID acceptance (Layer 1 format-agnostic contract pin) + phase-transition append log with phase-transition append log"; then
   exit 1
 fi

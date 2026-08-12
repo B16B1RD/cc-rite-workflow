@@ -1,0 +1,194 @@
+name: CI
+
+# Cross-platform CI (Issue #2002): run the rite test suites on an
+# ubuntu-latest + macos-latest matrix and lint every shell script under
+# plugins/rite/ with shellcheck. This surfaces cross-platform regressions
+# (bash 4+ features, GNU/BSD tool divergence, flock availability) on every PR
+# instead of only in the author's Linux environment.
+#
+# Job split rationale:
+#   - `test` is the OS matrix (the suites are what actually differ by platform).
+#   - `shellcheck` is OS-independent, so it runs once on ubuntu only.
+#
+# macOS is intentionally run with Homebrew bash 5 (rite requires bash 4+) but
+# WITHOUT coreutils, leaving date/sed/stat as the BSD variants — that is what
+# exposes GNU/BSD divergence. It is marked continue-on-error during initial
+# rollout because its pass rate is unknown (Issue #2002 D-03); ubuntu is the
+# blocking gate.
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+
+# Least-privilege: this workflow only reads the repo, never writes back
+# (same rationale as test-hooks.yml / sentinel-contract-check.yml).
+permissions:
+  contents: read
+
+# Cancel superseded in-flight runs on the same ref to save CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # macOS is informational during rollout: a macOS-only failure must not block
+    # the PR while its pass rate is being triaged (Issue #2002 D-03). ubuntu stays
+    # blocking. AC-5 (fail-fast: false) still lets both legs run to completion.
+    continue-on-error: ${{ matrix.os == 'macos-latest' }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      # actions/checkout pinned by full SHA (v4.2.2) for supply-chain integrity —
+      # same convention as the existing workflows.
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 1
+
+      # rite requires bash 4+, but macOS ships bash 3.2 at /bin/bash. Install
+      # Homebrew bash (5.x) and prepend it to PATH so `bash <script>` resolves to
+      # it. Deliberately do NOT install coreutils: date/sed/stat stay BSD so the
+      # suite exercises GNU/BSD divergence (the whole point of the macOS leg).
+      - name: Install bash 5 on macOS (keep BSD coreutils)
+        if: runner.os == 'macOS'
+        run: |
+          brew install bash
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+
+      # Emit environment diagnostics so a failure can be attributed to a specific
+      # tool/version difference (Issue #2002 MUST: bash --version + jq/flock/gdate
+      # presence). set +e so probing a tool that lacks --version (e.g. BSD date)
+      # never aborts this informational step.
+      - name: Environment diagnostics
+        run: |
+          set +e
+          {
+            echo "## Environment — ${{ matrix.os }}"
+            echo '```'
+            echo "uname:   $(uname -a)"
+            echo "bash:    $(bash --version | head -1)"
+            echo "bash at: $(command -v bash)"
+            echo "jq:      $(command -v jq >/dev/null && jq --version || echo 'MISSING')"
+            echo "flock:   $(command -v flock || echo 'absent (expected on macOS)')"
+            echo "gdate:   $(command -v gdate || echo 'absent')"
+            echo "date:    $(command -v date) — $(date --version 2>/dev/null | head -1 || echo 'BSD date (no --version)')"
+            echo "sed:     $(command -v sed) — $(sed --version 2>/dev/null | head -1 || echo 'BSD sed (no --version)')"
+            echo "git:     $(git --version)"
+            echo "python3: $(command -v python3 >/dev/null && python3 --version || echo 'MISSING')"
+            # The test suite's _timeout shim needs timeout(1) or perl(1); with neither,
+            # sourcing _test-helpers.sh aborts rather than degrade hang detection.
+            echo "timeout: $(command -v timeout || echo 'absent (expected on macOS)')"
+            echo "perl:    $(command -v perl >/dev/null && perl -e 'print $^V' || echo 'MISSING — _timeout fallback unavailable')"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # shell: bash forces `bash --noprofile --norc -eo pipefail {0}`. Without it,
+      # the default `run:` shell is `bash -e {0}` (NO pipefail), so `<suite> | tee`
+      # would take tee's exit code (always 0) and mask a failing suite — the ubuntu
+      # blocking job would go green on a real regression. pipefail makes the suite's
+      # non-zero exit propagate through the pipe. On macOS, `shell: bash` resolves
+      # bash from PATH = the Homebrew bash 5 prepended above.
+      - name: Run hook test suite
+        shell: bash
+        run: bash plugins/rite/hooks/tests/run-tests.sh 2>&1 | tee hooks-tests.log
+
+      - name: Run script test suite
+        shell: bash
+        run: bash plugins/rite/scripts/tests/run-all.sh 2>&1 | tee scripts-tests.log
+
+      - name: Run rite-dev launcher test suite
+        shell: bash
+        run: bash tests/rite-dev.test.sh 2>&1 | tee rite-dev-tests.log
+
+      # SHOULD (Issue #2002 AC-5): surface which tests failed and on which OS in
+      # the job summary. Runs only when a preceding step failed.
+      - name: Summarize test failures
+        if: failure()
+        run: |
+          set +e
+          {
+            echo "### ❌ Test failures — ${{ matrix.os }}"
+            for log in hooks-tests.log scripts-tests.log rite-dev-tests.log; do
+              [ -f "$log" ] || continue
+              echo "<details><summary>$log</summary>"
+              echo ""
+              echo '```'
+              # `Skip accounting` / `^ERROR: ` cover the runners' skip-drift bail:
+              # it fails the job without emitting any FAIL marker, so without these
+              # the summary would show only a green-looking "N/N passed" line.
+              grep -E 'FAIL|Failed tests:|Skip accounting|^ERROR: |^  - |[0-9]+/[0-9]+ passed|[0-9]+ passed, [0-9]+ failed' "$log" || echo '(no failure markers captured — see full job log)'
+              echo '```'
+              echo "</details>"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 1
+
+      # shellcheck is pre-installed on GitHub ubuntu runners. It runs over EVERY
+      # *.sh under plugins/rite (Issue #2002 AC-3). error-severity findings are a
+      # BLOCKING gate (Issue #2006): the backlog that kept this informational at
+      # introduction (baseline error=5) is cleared, so a newly introduced
+      # error-level finding fails the job. warning/info/style stay informational
+      # and are reported to the job summary for the staged reduction tracked
+      # separately (Issue #2006 step 3).
+      #
+      # Note: a failing job only *blocks a merge* once this check is added to the
+      # branch's required status checks — a repo-admin setting outside this file.
+      - name: shellcheck plugins/rite/**/*.sh (error = blocking gate)
+        run: |
+          set -u
+          shellcheck --version
+          mapfile -t files < <(find plugins/rite -name '*.sh' -type f | sort)
+          echo "shellcheck targets: ${#files[@]} files"
+          # One scan at the lowest threshold captures every finding for the report.
+          report=$(shellcheck --severity=style --format=json "${files[@]}" 2>/dev/null || true)
+          {
+            echo "## shellcheck report — plugins/rite/**/*.sh"
+            echo ""
+            echo "Target files: ${#files[@]}"
+            echo ""
+            echo "| level | count |"
+            echo "|-------|-------|"
+            for lvl in error warning info style; do
+              n=$(printf '%s' "$report" | jq --arg l "$lvl" '[.[] | select(.level == $l)] | length' 2>/dev/null || echo '?')
+              echo "| $lvl | $n |"
+            done
+            echo ""
+            echo "> error is a blocking gate (Issue #2006). warning/info/style stay informational; staged reduction tracked separately."
+            echo ""
+            echo "<details><summary>error-level findings</summary>"
+            echo ""
+            echo '```'
+            printf '%s' "$report" | jq -r '.[] | select(.level == "error") | "\(.file):\(.line):\(.column) SC\(.code) \(.message)"' 2>/dev/null || echo '(none)'
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+          # Blocking gate: re-scan at severity=error and let shellcheck's own exit
+          # code decide (non-zero iff findings at/above the threshold). Using the
+          # exit code rather than a jq-parsed count means a shellcheck invocation
+          # failure fails the job loudly instead of passing silently on an empty
+          # report.
+          if shellcheck --severity=error "${files[@]}"; then
+            echo "✅ shellcheck: no error-severity findings (blocking gate passed)"
+          else
+            echo "::error::shellcheck found error-severity findings — blocking gate failed"
+            exit 1
+          fi

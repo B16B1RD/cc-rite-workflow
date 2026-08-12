@@ -23,11 +23,11 @@
 #     "projects": {
 #       "enabled": true,                    # default: true
 #       "project_number": 6,
-#       "owner": "asakaguchi",
+#       "owner": "{owner}",
 #       "status": "Todo",                   # default: "Todo"
 #       "priority": "High|Medium|Low"
 #     },
-#     "repo": "cc-rite-workflow",           # for link-sub-issue.sh
+#     "repo": "{repo}",                     # for link-sub-issue.sh
 #     "workdir": "path"                     # optional; rm -rf'd on EXIT if a dir
 #   }
 #

@@ -3,6 +3,56 @@
 # Usage: bash plugins/rite/hooks/tests/pre-tool-bash-guard.test.sh
 set -euo pipefail
 
+# _timeout <seconds> <command...> — portable timeout(1) for this test.
+# GNU `timeout` is absent on macOS (BSD / no coreutils); fall back to a perl
+# fork/waitpid shim reproducing timeout(1)'s exit-code contract: 124 on timeout,
+# 128+N on signal death, the child's status otherwise (a naive
+# `perl -e 'alarm; exec'` would exit 142 and defeat hang-detection assertions).
+# This file does not source _test-helpers.sh, so the shim is inlined here — keep
+# it byte-identical with _test-helpers.sh (timeout-shim.test.sh asserts no drift).
+_timeout() {
+  local _d="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$_d" "$@"
+  else
+    perl -e '
+      my $d = shift;
+      # alarm truncates to an integer, so a fractional deadline silently becomes
+      # alarm 0 — no timeout at all, and waitpid blocks until the CI job limit.
+      # Reject rather than degrade, and exit 125 rather than die: die exits 255,
+      # which every caller reads as "not 124, so no hang" — the same silent pass
+      # the rejection exists to prevent. GNU timeout accepts fractions, so this
+      # shim only claims the contract for integer seconds.
+      if ($d !~ /^[0-9]+$/) {
+        print STDERR "_timeout: fractional seconds are not supported by the perl fallback: $d\n";
+        exit 125;
+      }
+      my $pid = fork;
+      exit 127 unless defined $pid;
+      # setpgrp puts the child in its own process group so the alarm handler can
+      # signal the whole tree with a negative pid. GNU timeout does the same; without
+      # it the deadline only reaches the direct child, and a grandchild holding the
+      # captured stdout keeps the caller blocked long past the timeout (measured 30s
+      # against a 1s deadline). The runners capture output with $( ), so that stall
+      # would consume the CI job limit instead of failing at 124.
+      if ($pid == 0) { setpgrp(0, 0); exec { $ARGV[0] } @ARGV; exit 127; }
+      $SIG{ALRM} = sub { kill "TERM", -$pid; waitpid($pid, 0); exit 124; };
+      alarm $d; waitpid $pid, 0;
+      my $st = $?; exit($st & 127 ? 128 + ($st & 127) : $st >> 8);
+    ' "$_d" "$@"
+  fi
+}
+
+# Fail closed when no backend exists. Every `_timeout` caller reads a non-124 rc
+# as "no hang", so a missing backend would silently turn each hang assertion into
+# a pass. Abort at source time rather than degrade.
+if ! command -v timeout >/dev/null 2>&1 && ! command -v perl >/dev/null 2>&1; then
+  echo "ERROR: neither timeout(1) nor perl(1) is available — _timeout cannot detect" >&2
+  echo "  hangs, and every hang assertion in this suite would silently pass." >&2
+  echo "  Install GNU coreutils (timeout) or perl before running the test suite." >&2
+  exit 1
+fi
+
 # Tier 3 (env var) subagent detection を導入したため、host 環境に
 # CLAUDE_SUBAGENT_TYPE / CLAUDE_AGENT_TYPE が export されていると既存の
 # main-session allow テストが Tier 3 経路で誤って deny 判定され flake する。
@@ -35,6 +85,41 @@ fail() {
   FAIL=$((FAIL + 1))
   echo "  ❌ FAIL: $1"
 }
+
+# Hook stdout が壊れていても、個別 assertion を FAIL として記録して残りの
+# suite を継続する。bare command substitution は set -e によりファイル全体を
+# abort させ、どのケースで JSON が壊れたかという一次診断まで失わせる。
+extract_hook_field() {
+  local hook_output="$1"
+  local field="$2"
+  local jq_bin="${3:-jq}"
+  local parsed=""
+  local jq_rc=0
+  case "$field" in hookEventName|permissionDecision|permissionDecisionReason) ;; *) return 2 ;; esac
+  if parsed=$(printf '%s' "$hook_output" \
+    | "$jq_bin" -r --arg field "$field" '.hookSpecificOutput[$field] // empty' 2>/dev/null); then
+    printf '%s' "$parsed"
+    return 0
+  else
+    jq_rc=$?
+  fi
+  printf '  jq hook field extraction failed (field=%s, rc=%s, output_bytes=%s)\n' \
+    "$field" "$jq_rc" "$(printf '%s' "$hook_output" | wc -c | tr -d ' ')" >&2
+  return 0
+}
+
+echo "TC-000: malformed hook stdout does not abort decision extraction"
+tc000_after=false
+decision=$(extract_hook_field 'not-json' permissionDecision)
+reason=$(extract_hook_field 'not-json' permissionDecisionReason)
+event=$(extract_hook_field 'not-json' hookEventName)
+tc000_after=true
+if [ -z "$decision" ] && [ -z "$reason" ] && [ -z "$event" ] && [ "$tc000_after" = true ]; then
+  pass "TC-000 malformed JSON fields degrade to empty and suite continues"
+else
+  fail "TC-000 malformed JSON extraction did not preserve continuation"
+fi
+echo ""
 
 # Helper: run hook with given tool_name and command
 # Captures stderr to $STDERR_FILE for log verification
@@ -84,8 +169,8 @@ echo ""
 echo "TC-001: gh pr diff --stat → deny (with stderr log)"
 rc=0
 output=$(run_guard "Bash" "gh pr diff 123 --stat") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
 stderr_log=$(cat "$STDERR_FILE")
 if [ "$decision" = "deny" ] && [[ "$reason" == *"gh-pr-diff-stat"* ]]; then
   pass "gh pr diff --stat blocked with correct pattern name"
@@ -105,8 +190,8 @@ echo ""
 echo "TC-002: gh pr diff -- <path> → deny"
 rc=0
 output=$(run_guard "Bash" "gh pr diff 456 -- path/to/file.md") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
 if [ "$decision" = "deny" ] && [[ "$reason" == *"gh-pr-diff-file-filter"* ]]; then
   pass "gh pr diff -- <path> blocked with correct pattern name"
 else
@@ -120,8 +205,8 @@ echo ""
 echo "TC-003: != null in jq → deny"
 rc=0
 output=$(run_guard "Bash" "gh api repos/owner/repo/issues --jq '.[] | select(.field != null)'") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
 if [ "$decision" = "deny" ] && [[ "$reason" == *"jq-not-equal-null"* ]]; then
   pass "!= null blocked with correct pattern name"
 else
@@ -226,9 +311,9 @@ echo ""
 echo "TC-011: Deny JSON has all required fields (Pattern 2)"
 rc=0
 output=$(run_guard "Bash" "gh pr diff 99 -- src/file.ts") || rc=$?
-HAS_EVENT=$(echo "$output" | jq -r '.hookSpecificOutput.hookEventName // empty' 2>/dev/null)
-HAS_DECISION=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-HAS_REASON=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+HAS_EVENT=$(extract_hook_field "$output" hookEventName)
+HAS_DECISION=$(extract_hook_field "$output" permissionDecision)
+HAS_REASON=$(extract_hook_field "$output" permissionDecisionReason)
 if [ "$HAS_EVENT" = "PreToolUse" ] && \
    [ "$HAS_DECISION" = "deny" ] && \
    [ -n "$HAS_REASON" ]; then
@@ -278,8 +363,8 @@ echo ""
 echo "TC-014: !=null (no space) → deny"
 rc=0
 output=$(run_guard "Bash" "gh api repos/owner/repo/issues --jq '.[] | select(.field !=null)'") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
 if [ "$decision" = "deny" ] && [[ "$reason" == *"jq-not-equal-null"* ]]; then
   pass "!=null (no space) blocked with correct pattern name"
 else
@@ -309,7 +394,7 @@ echo "TC-016: Malformed JSON input → exit 0 (fail-open via jq fallback)"
 rc=0
 output=$(run_guard_raw "not valid json at all") || rc=$?
 if [ "$rc" = "0" ]; then
-  decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+  decision=$(extract_hook_field "$output" permissionDecision)
   if [ -z "$decision" ]; then
     pass "Malformed JSON → exit 0, no deny output (fail-open via || TOOL_NAME=\"\" fallback)"
   else
@@ -353,7 +438,7 @@ echo ""
 echo "TC-019: gh  pr  diff  123  -- file (multi-space) → deny"
 rc=0
 output=$(run_guard "Bash" "gh  pr  diff  123  -- file.md") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_hook_field "$output" permissionDecision)
 if [ "$decision" = "deny" ]; then
   pass "Multi-space Pattern 2 blocked"
 else
@@ -367,8 +452,8 @@ echo ""
 echo "TC-020: gh pr diff --stat -- file → deny with gh-pr-diff-stat (priority)"
 rc=0
 output=$(run_guard "Bash" "gh pr diff 123 --stat -- file.md") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
 if [ "$decision" = "deny" ] && [[ "$reason" == *"gh-pr-diff-stat"* ]]; then
   pass "Overlapping patterns: Pattern 1 (--stat) takes priority"
 else
@@ -383,7 +468,7 @@ echo "TC-021: Multiline command with --stat → deny"
 rc=0
 MULTILINE_CMD=$(printf 'gh pr diff 123 \\\n  --stat')
 output=$(run_guard "Bash" "$MULTILINE_CMD") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+decision=$(extract_hook_field "$output" permissionDecision)
 # bash case glob * matches across newlines, so deny is the expected result
 if [ "$decision" = "deny" ]; then
   pass "Multiline: glob * matches across newlines"
@@ -398,7 +483,7 @@ echo ""
 # Scope: Only when transcript_path contains "/subagents/" (Tier 1) or the
 # Tier 2/3 signals fire. Main session operations must continue to work.
 #
-# Issue #1879: the working-tree verb denylist (git checkout / reset / commit /
+# Why: the working-tree verb denylist (git checkout / reset / commit /
 # branch / stash / fetch flags / worktree sub-actions / ...) was REMOVED from
 # this hook. Those mutations are Layer 1 (reviewer prompt) + Layer 3
 # (post-review-state-verify.sh) territory now. The machine gate keeps only:
@@ -440,7 +525,7 @@ assert_main_allow() {
 
 # --------------------------------------------------------------------------
 # TC-201: verb-denylist removal — mutating git verbs are NOT machine-gated
-# (Issue #1879 AC-1/AC-4). These commands were denied by the removed sub-blocks
+# (AC-1/AC-4). These commands were denied by the removed sub-blocks
 # (A)-(G); after the removal they must pass the hook untouched. The READ-ONLY
 # guarantee for them is the reviewer prompt (Layer 1) + post-review-state-verify
 # (Layer 3), NOT this hook — this loop pins the hook's non-involvement so a
@@ -468,7 +553,7 @@ for verb_cmd in \
 done
 # NOTE: git update-ref / symbolic-ref / config-write / mutating-remote are NOT in
 # this allow set — they write .git directly and are denied by sub-block (N),
-# pinned in TC-127 below. They were never working-tree verbs (Issue #1879 removed
+# pinned in TC-127 below. They were never working-tree verbs (removed
 # working-tree verbs; .git-write is the retained gate).
 echo ""
 
@@ -490,7 +575,7 @@ done
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-203: past false-positive commands → allow (Issue #1879 AC-4)
+# TC-203: past false-positive commands → allow (AC-4)
 # Commands that historically required bypass/false-positive patches against the
 # removed verb denylist (quote-boundary echoes, grep pattern args, branch names
 # embedding flag substrings, worktree-add arg-loop noglob #1866). With the verb
@@ -511,7 +596,7 @@ for fp_cmd in \
   ; do
   assert_subagent_allow "subagent '$fp_cmd' allowed (no false positive)" "$fp_cmd"
 done
-# worktree-add arg with a bare glob from a CWD holding a `-b` file (Issue #1866
+# worktree-add arg with a bare glob from a CWD holding a `-b` file (
 # scenario): the arg-parsing loop is gone, so no CWD pathname expansion can
 # mis-latch a flag — pin from the crafted CWD to keep the regression meaningful.
 tc203_noglob_dir=$(mktemp -d)
@@ -546,7 +631,7 @@ echo ""
 # TC-057ad〜af: shell-wrapper (Z) — deny with read-only probe guidance
 # wrapper は中身が read-only でも一律 deny (緩和しない)。deny message には
 # 代替ガイダンス (subshell / 直接実行 / bash <script>) が入る。pattern 名は
-# verb 列挙撤去に伴い reviewer-shell-wrapper へ改名 (Issue #1879)。
+# verb 列挙撤去に伴い reviewer-shell-wrapper へ改名。
 # --------------------------------------------------------------------------
 
 # Helper: subagent deny かつ reason に wrapper guidance が含まれることを確認
@@ -557,8 +642,8 @@ assert_subagent_deny_wrapper_guidance() {
   local output
   output=$(run_guard_with_transcript "Bash" "$cmd" "$SUBAGENT_TRANSCRIPT") || rc=$?
   local decision reason
-  decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-  reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
   if [ "$decision" = "deny" ] \
     && [[ "$reason" == *"reviewer-shell-wrapper"* ]] \
     && [[ "$reason" == *"Shell-command wrappers"* ]] \
@@ -592,7 +677,7 @@ echo ""
 # --------------------------------------------------------------------------
 # Tier 2/3 subagent detection (TC-113〜115)
 # 検出そのものは (L)/(Z)/(H) のスコープ判定として存続する。deny 対象は verb
-# 列挙撤去に伴い .git write (H) に変更 (Issue #1879)。
+# 列挙撤去に伴い .git write (H) に変更。
 # --------------------------------------------------------------------------
 
 # alias of MAIN_TRANSCRIPT (above) — Tier 2/3 セクションを self-contained に保つため局所定義
@@ -622,8 +707,8 @@ echo "TC-113: input JSON subagent_type field → Tier 2 deny"
 rc=0
 tc113_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp, subagent_type: "code-reviewer"}')
 output=$(run_guard_clean_env "$tc113_input") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
 stderr_log=$(cat "$STDERR_FILE")
 if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-gitdir-write"* ]]; then
   pass "TC-113 subagent_type field triggers Tier 2 fallback"
@@ -645,8 +730,8 @@ echo "TC-113b: agent_type field set → Tier 2 deny"
 rc=0
 tc113b_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp, agent_type: "code-reviewer"}')
 output=$(run_guard_clean_env "$tc113b_input") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
 stderr_log=$(cat "$STDERR_FILE")
 if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-gitdir-write"* ]]; then
   pass "TC-113b agent_type field triggers Tier 2 fallback (OR with subagent_type)"
@@ -729,8 +814,8 @@ echo "TC-114: CLAUDE_SUBAGENT_TYPE env var → Tier 3 deny"
 rc=0
 tc114_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
 output=$(run_guard_clean_env "$tc114_input" "CLAUDE_SUBAGENT_TYPE=code-reviewer") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
 stderr_log=$(cat "$STDERR_FILE")
 if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-gitdir-write"* ]]; then
   pass "TC-114 CLAUDE_SUBAGENT_TYPE triggers Tier 3 fallback"
@@ -752,8 +837,8 @@ echo "TC-114b: CLAUDE_AGENT_TYPE env var → Tier 3 deny"
 rc=0
 tc114b_input=$(jq -n --arg tp "$MAIN_TRANSCRIPT_TC113" --arg cmd "$TIER_PROBE_CMD" '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
 output=$(run_guard_clean_env "$tc114b_input" "CLAUDE_AGENT_TYPE=code-reviewer") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
 stderr_log=$(cat "$STDERR_FILE")
 if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-gitdir-write"* ]]; then
   pass "TC-114b CLAUDE_AGENT_TYPE triggers Tier 3 fallback (OR with CLAUDE_SUBAGENT_TYPE)"
@@ -819,8 +904,8 @@ if printf '%s' "$output" | "$real_jq" -e . >/dev/null 2>&1; then
 else
   fail "TC-116 fallback output is not parseable JSON: $(printf '%s' "$output" | cat -v)"
 fi
-decision=$(printf '%s' "$output" | "$real_jq" -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(printf '%s' "$output" | "$real_jq" -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+decision=$(extract_hook_field "$output" permissionDecision "$real_jq")
+reason=$(extract_hook_field "$output" permissionDecisionReason "$real_jq")
 if [ "$decision" = "deny" ] && [[ "$reason" == *"gh-pr-diff-stat"* ]]; then
   pass "TC-116 deny decision and pattern name survive the fallback"
 else
@@ -937,8 +1022,8 @@ if printf '%s' "$output" | "$real_jq" -e . >/dev/null 2>&1; then
 else
   fail "TC-118 placeholder output is not parseable JSON: $(printf '%s' "$output" | cat -v)"
 fi
-decision=$(printf '%s' "$output" | "$real_jq" -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(printf '%s' "$output" | "$real_jq" -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+decision=$(extract_hook_field "$output" permissionDecision "$real_jq")
+reason=$(extract_hook_field "$output" permissionDecisionReason "$real_jq")
 if [ "$decision" = "deny" ]; then
   pass "TC-118 deny decision survives the placeholder degradation"
 else
@@ -961,7 +1046,7 @@ echo ""
 
 # --------------------------------------------------------------------------
 # TC-119〜122: Pattern 4 (security boundary) fail-closed vs Pattern 1-3 fail-open
-#   Issue #1717: Pattern 4 shared the fail-OPEN ERR trap with the convenience
+# Why: Pattern 4 shared the fail-OPEN ERR trap with the convenience
 #   patterns, so a parse crash inside Pattern 4 converged to exit 0 (allow) and
 #   silently bypassed the security boundary. The fix installs a fail-CLOSED ERR
 #   trap over the Pattern 4 block (deny + exit 2 + WARNING) and restores
@@ -978,8 +1063,8 @@ rc=0
 tc119_input=$(jq -n --arg cmd "git status" --arg tp "$SUBAGENT_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}')
 output=$(echo "$tc119_input" | RITE_BTG_TEST_CRASH=pattern4 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
 stderr_log=$(cat "$STDERR_FILE")
 if [ "$rc" = "2" ]; then
   pass "TC-119 Pattern 4 crash exits 2 (fail-closed, not the old exit 0 allow)"
@@ -1004,7 +1089,7 @@ echo "TC-120: Patterns 1-3 fail-open invariant is structurally preserved"
 # fail-CLOSED trap is installed ONLY inside the reviewer-only Pattern 4 block and
 # restored to fail-open at that block's exit. We deliberately do NOT ship a
 # fail-open fault-injection env var to drive this behaviorally — such a var would
-# be an allow-all backdoor to the security boundary (Issue #1717 review F-02). So
+# be an allow-all backdoor to the security boundary (review F-02). So
 # we pin the invariants that guarantee it by inspecting the hook source.
 tc120_src=$(cat "$HOOK")
 # (a) the default (pre-Pattern-4) ERR trap is the fail-OPEN handler
@@ -1024,7 +1109,7 @@ fi
 # as the default install (before Pattern 4) and once as the restore (block exit). This
 # is the only guard for the block-exit fail-open restoration (behavioral injection
 # was removed as an allow-all backdoor, F-02), so it must catch deletion of the
-# actual restore statement — not just its comment (Issue #1717 review F-04).
+# actual restore statement — not just its comment (review F-04).
 tc120_restore_count=$(printf '%s\n' "$tc120_src" | grep -c "trap '_rite_btg_pattern13_fail_open' ERR")
 if [ "${tc120_restore_count:-0}" -ge 2 ]; then
   pass "TC-120 fail-open trap statement appears >=2x (default install + block-exit restore)"
@@ -1068,7 +1153,7 @@ if [ -n "$tc122_timeout" ] && [[ "$tc122_timeout" =~ ^[0-9]+$ ]]; then
 else
   fail "TC-122 expected a numeric timeout on the PreToolUse:Bash hook, got '$tc122_timeout'"
 fi
-# Pin the exact value (Issue #1717 review F-03): the .sh header comment documents
+# Pin the exact value (review F-03): the .sh header comment documents
 # "10s" and nothing else ties that prose to the config. Pin 10 here so that
 # changing hooks.json without updating the header comment fails this test (drift
 # detection). Update BOTH this literal and the .sh header if the value ever changes.
@@ -1094,11 +1179,11 @@ jq -n --rawfile cmd "$tc124_dir/cmd.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/in.json"
 rc=0
 _t0=$(date +%s%N)
-output=$(timeout 15 bash "$HOOK" < "$tc124_dir/in.json" 2>"$STDERR_FILE") || rc=$?
+output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/in.json" 2>"$STDERR_FILE") || rc=$?
 _t1=$(date +%s%N)
 _ms=$(( (_t1 - _t0) / 1000000 ))
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
 if [ "$decision" = "deny" ] && [ "$rc" != "124" ]; then
   pass "TC-124 oversized (1.3MB) reviewer command is denied fail-closed"
 else
@@ -1119,8 +1204,8 @@ fi
 jq -n --rawfile cmd "$tc124_dir/ro.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/roin.json"
 rc=0
-output=$(timeout 15 bash "$HOOK" < "$tc124_dir/roin.json" 2>"$STDERR_FILE") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/roin.json" 2>"$STDERR_FILE") || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
 if [ "$decision" = "deny" ]; then
   pass "TC-124 oversized READ-ONLY reviewer command is denied (length guard, allow→deny flip)"
 else
@@ -1128,7 +1213,7 @@ else
 fi
 # (c) oversized because of a huge heredoc BODY, with a READ-ONLY prefix → deny.
 # The length guard checks ${#COMMAND} over the WHOLE command (heredoc body included),
-# so it fires here. Non-vacuous (Issue #1717 review F-06): the prefix `git status` is
+# so it fires here. Non-vacuous (review F-06): the prefix `git status` is
 # read-only, so WITHOUT the length guard the heredoc strip yields `git status` and the
 # command is ALLOWED — WITH it the command is denied. (Note: the `<<` sits near the
 # front, so `${COMMAND%%<<*}` is itself fast here regardless — this case pins the
@@ -1138,8 +1223,8 @@ fi
 jq -n --rawfile cmd "$tc124_dir/hd.txt" --arg tp "$SUBAGENT_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/hdin.json"
 rc=0
-output=$(timeout 15 bash "$HOOK" < "$tc124_dir/hdin.json" 2>"$STDERR_FILE") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/hdin.json" 2>"$STDERR_FILE") || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
 if [ "$decision" = "deny" ]; then
   pass "TC-124 heredoc-body-oversized READ-ONLY command is denied (length guard uses full command length)"
 else
@@ -1148,19 +1233,64 @@ fi
 # (d) oversized (~80KB) MAIN-session command → must NOT be denied (MUST NOT — reviewer-only guard)
 jq -n --rawfile cmd "$tc124_dir/ro.txt" --arg tp "$MAIN_TRANSCRIPT" \
   '{tool_name: "Bash", tool_input: {command: $cmd}, cwd: "/tmp", transcript_path: $tp}' > "$tc124_dir/mainin.json"
+# Positive control for the negative assertion that follows. The hook prints NOTHING
+# when it permits a command — a deny JSON is the only thing it ever emits, which is
+# why assert_subagent_allow spells allow as "rc 0 AND empty stdout" — so an empty
+# stdout is exactly what the passing case looks like and cannot double as the liveness
+# signal. Prove the fixture reaches the length guard instead: the same input with only
+# transcript_path flipped to the reviewer transcript must be denied. Without that
+# proof, a padding shortfall that drops ro.txt back under the byte ceiling, a corrupted
+# tool_name, or a hook that allows everything early all read as "correctly permitted".
+#
+# Deriving the control from mainin.json is load-bearing, not a duplicate of (b): (b)
+# builds roin.json independently, so a break in the jq that assembles mainin.json leaves
+# (b) green while the assertion below goes vacuous. Only a control fed by the very file
+# that assertion reads can catch it.
+#
+# Both assertions match the raw stdout instead of piping it through jq. Under
+# `set -euo pipefail` a non-JSON stdout makes the extraction assignment abort before any
+# assertion in this block runs, which loses the diagnosis entirely — the very failure
+# mode this control exists to surface. The deny envelope carries `"deny"` exactly once
+# and never inside the reason text, so the substring test is as strict as a
+# `permissionDecision` parse would be, and it keeps `rc` free to distinguish a crash
+# from a deny that exits non-zero. The
+# fixture jq below can still abort the same way, but it builds our own input rather than
+# reading the hook's output, and run-tests.sh reports that abort as a file-level failure.
+jq --arg tp "$SUBAGENT_TRANSCRIPT" '.transcript_path = $tp' "$tc124_dir/mainin.json" > "$tc124_dir/mainctl.json"
 rc=0
-output=$(timeout 15 bash "$HOOK" < "$tc124_dir/mainin.json" 2>"$STDERR_FILE") || rc=$?
-decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-if [ "$decision" != "deny" ]; then
-  pass "TC-124 oversized MAIN-session command is not denied by the reviewer-only length guard"
+output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/mainctl.json" 2>"$STDERR_FILE") || rc=$?
+case "$output" in
+  *'"deny"'*)
+    pass "TC-124 (d) control: the fixture drives the length guard (same input, reviewer transcript → deny)"
+    ;;
+  *)
+    fail "TC-124 (d) control: expected deny with the reviewer transcript, got rc=$rc output='$output' — the fixture or the guard regressed, so the MUST NOT assertion below would be vacuous: $(cat -v "$STDERR_FILE")"
+    ;;
+esac
+rc=0
+output=$(_timeout 15 bash "$HOOK" < "$tc124_dir/mainin.json" 2>"$STDERR_FILE") || rc=$?
+# Assert the permit contract positively (no output, then rc 0). A bare `!= "deny"` test
+# cannot express this contract: a crash, a timeout, and every output shape the hook never
+# emits all leave the extracted decision empty, so they would all pass.
+if [ -n "$output" ]; then
+  case "$output" in
+    *'"deny"'*)
+      fail "TC-124 oversized main-session command was wrongly denied (MUST NOT violation): $output"
+      ;;
+    *)
+      fail "TC-124 oversized main-session command: expected no output (permit), got: $output"
+      ;;
+  esac
+elif [ "$rc" != "0" ]; then
+  fail "TC-124 oversized main-session command: hook exited rc=$rc with no output instead of permitting: $(cat -v "$STDERR_FILE")"
 else
-  fail "TC-124 oversized main-session command was wrongly denied (MUST NOT violation)"
+  pass "TC-124 oversized MAIN-session command is not denied by the reviewer-only length guard"
 fi
 rm -rf "$tc124_dir"
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-125: reviewer WRITE into a .git directory (Issue #1864 AC-1, sub-block (H))
+# TC-125: reviewer WRITE into a .git directory (AC-1, sub-block (H))
 # The Bash-tool sibling of pre-tool-edit-guard's .git protection: a reviewer must not
 # `echo pwned > .git/hooks/pre-commit` (RCE via next git op). Reading .git stays allowed.
 # --------------------------------------------------------------------------
@@ -1172,8 +1302,8 @@ assert_subagent_deny_gitdir() {
   local output
   output=$(run_guard_with_transcript "Bash" "$cmd" "$SUBAGENT_TRANSCRIPT") || rc=$?
   local decision reason
-  decision=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
-  reason=$(echo "$output" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
   if [ "$decision" = "deny" ] && [[ "$reason" == *"reviewer-gitdir-write"* ]]; then
     pass "$label"
   else
@@ -1214,9 +1344,9 @@ assert_subagent_deny_gitdir "ln -s into .git blocked" "ln -s /tmp/evil .git/hook
 echo "TC-125k: subagent mv into .git → deny"
 assert_subagent_deny_gitdir "mv into .git blocked" "mv /tmp/evil .git/hooks/pre-commit"
 
-# --- CRITICAL regression: repo under a `/git`-containing ancestor (Issue #1864 fix) ---
+# --- CRITICAL regression: repo under a `/git`-containing ancestor (fix) ---
 # A removed `/git`→` git` invocation-normalization used to split these paths so `>` detached
-# from the `.git` token → silent allow (RCE). The normalization is gone (Issue #1879), but these
+# from the `.git` token → silent allow (RCE). The normalization is gone, but these
 # pin that /git-ancestor paths keep tokenizing intact.
 echo "TC-125l: subagent redirect into .git under a /srv/git ancestor → deny (path not corrupted)"
 assert_subagent_deny_gitdir "redirect into /srv/git/.../.git blocked" "echo evil > /srv/git/proj/.git/config"
@@ -1224,25 +1354,25 @@ assert_subagent_deny_gitdir "redirect into /srv/git/.../.git blocked" "echo evil
 echo "TC-125m: subagent append into .git under a ~/github ancestor → deny (path not corrupted)"
 assert_subagent_deny_gitdir "append into /home/u/github/.../.git blocked" "echo x >> /home/u/github/proj/.git/hooks/pre-commit"
 
-# --- fileverb absolute-path / backslash invocation (Issue #1864 fix) ---
+# --- fileverb absolute-path / backslash invocation (fix) ---
 echo "TC-125n: subagent absolute-path tee into .git → deny"
 assert_subagent_deny_gitdir "/usr/bin/tee into .git blocked" "/usr/bin/tee .git/hooks/pre-commit"
 
 echo "TC-125o: subagent backslash-escaped cp into .git → deny"
 assert_subagent_deny_gitdir "\\cp into .git blocked" "\\cp /tmp/evil .git/hooks/pre-commit"
 
-# --- dd of=<gitpath> write vector (Issue #1864 fix) ---
+# --- dd of=<gitpath> write vector (fix) ---
 echo "TC-125p: subagent dd of=.git/hooks → deny"
 assert_subagent_deny_gitdir "dd of=.git blocked" "dd if=/tmp/evil of=.git/hooks/pre-commit"
 
-# --- value-quoted dd of= (Issue #1864 cycle-2 fix: quote-strip-after-of= ordering) ---
+# --- value-quoted dd of= (cycle-2 fix: quote-strip-after-of= ordering) ---
 echo "TC-125q: subagent dd of='.git/…' (single-quoted value) → deny"
 assert_subagent_deny_gitdir "dd of='.git' (single-quoted) blocked" "dd if=/tmp/evil of='.git/hooks/pre-commit'"
 
 echo "TC-125r: subagent dd of=\".git/…\" (double-quoted value) → deny"
 assert_subagent_deny_gitdir "dd of=\".git\" (double-quoted) blocked" "dd if=/tmp/evil of=\".git/hooks/pre-commit\""
 
-# --- interior / nested quotes (Issue #1864 cycle-3 fix: global quote removal) ---
+# --- interior / nested quotes (cycle-3 fix: global quote removal) ---
 # A quote placed BETWEEN path components survives a fixed surrounding-strip but is removed by the
 # shell before opening the path — global `${tok//[\"\']/}` closes the whole class.
 echo "TC-125s: subagent dd of= with INTERIOR quote → deny"
@@ -1257,7 +1387,7 @@ assert_subagent_deny_gitdir "cp into .g'i't/… (interior quote) blocked" "cp /t
 echo "TC-125v: subagent dd of= with NESTED quotes → deny"
 assert_subagent_deny_gitdir "dd of=''.git/…'' (nested quotes) blocked" "dd if=/tmp/evil of=''.git/hooks/pre-commit''"
 
-# --- backslash-escaped .git path components (Issue #1864 cycle-4 fix: backslash removal) ---
+# --- backslash-escaped .git path components (cycle-4 fix: backslash removal) ---
 # POSIX quote-removal strips `\` too; the shell resolves `.g\it`→`.git`, so the gitpath check must
 # strip backslashes as well as quotes to see the real target.
 echo "TC-125w1: subagent redirect into backslash-in-component .git → deny"
@@ -1275,7 +1405,7 @@ assert_subagent_deny_gitdir "tee .g\\it/… blocked" "echo x | tee .g\\it/hooks/
 echo "TC-125w5: subagent dd with backslash-escaped of= prefix → deny"
 assert_subagent_deny_gitdir "dd \\of=.git/… blocked" "dd if=/tmp/evil \\of=.git/hooks/pre-commit"
 
-# --- obfuscated file-verb NAME (Issue #1864 cycle-5 fix: dequote the verb token too) ---
+# --- obfuscated file-verb NAME (cycle-5 fix: dequote the verb token too) ---
 # The verb token is dequoted (quotes + backslashes) then basename'd, so a quoted/escaped verb name
 # still latches the file-verb vector — the shell runs `'tee'` / `t\ee` as `tee`.
 echo "TC-125x1: subagent backslash-in-verb tee into .git → deny"
@@ -1293,7 +1423,7 @@ assert_subagent_deny_gitdir "c\\p into .git blocked" "c\\p /tmp/evil .git/hooks/
 echo "TC-125x5: subagent quoted verb 'dd' of=.git → deny"
 assert_subagent_deny_gitdir "'dd' of=.git blocked" "'dd' if=/tmp/evil of=.git/hooks/pre-commit"
 
-# --- additional positional file-writers (Issue #1864 cycle-5: sponge/patch, tee twins) ---
+# --- additional positional file-writers (cycle-5: sponge/patch, tee twins) ---
 echo "TC-125y1: subagent sponge into .git/hooks → deny"
 assert_subagent_deny_gitdir "sponge .git/hooks blocked" "echo pwned | sponge .git/hooks/pre-commit"
 
@@ -1305,7 +1435,7 @@ assert_subagent_deny_gitdir "'sponge' .git blocked" "echo x | 'sponge' .git/hook
 
 # --- file-verb blocklist completeness: install / rsync / truncate are IN the case list
 # (tee|cp|mv|ln|install|rsync|truncate|dd|sponge|patch) but lacked dedicated deny tests; pin them so
-# a future edit that drops one literal from the case is caught (Issue #1864 follow-up). ---
+# a future edit that drops one literal from the case is caught (follow-up). ---
 echo "TC-125z1: subagent install into .git/hooks → deny"
 assert_subagent_deny_gitdir "install into .git blocked" "install -m755 /tmp/evil .git/hooks/pre-commit"
 
@@ -1355,7 +1485,7 @@ assert_main_allow "main-session .git write not blocked by (H)" "echo x > .git/ho
 echo ""
 
 # --- noglob regression: the (H) tokenizer runs under `set -f`, so a reviewer command's bare glob
-# (`*`/`?`/`[`) is NOT pathname-expanded against the hook CWD (Issue #1864 follow-up). Without noglob
+# (`*`/`?`/`[`) is NOT pathname-expanded against the hook CWD (follow-up). Without noglob
 # a `*` sitting BEFORE a `.git` READ path expands to CWD entries; a file named like a write-verb
 # (cp/tee/…) then latches the file-verb vector and the legit `.git` READ is wrongly DENIED
 # (false-positive; unbounded expansion could also time the hook out → fail-open). This pins the fix:
@@ -1588,6 +1718,413 @@ assert_subagent_allow "/usr/bin/git status allowed" "/usr/bin/git status"
 
 echo "TC-127-ALLOW-f: MAIN session git config core.hooksPath → allow (reviewer-only gate)"
 assert_main_allow "main-session git config write not blocked by (N)" "git config core.hooksPath /tmp/x"
+echo ""
+
+# --------------------------------------------------------------------------
+# Pattern 5: Merge-point review-result positive gate
+# --------------------------------------------------------------------------
+# Isolates state via RITE_STATE_ROOT so real repo review-results never leak in.
+# Sole-reviewer guard floor = 2 (same constant as pr-review sole-reviewer guard).
+
+_mrg_setup_state() {
+  # $1 = temp root; creates sessions + review-results dirs and a session id file
+  local root="$1"
+  mkdir -p "$root/.rite/sessions" "$root/.rite/review-results"
+  printf '%s\n' "mrg-gate-sess" > "$root/.rite-session-id"
+  cat > "$root/.rite/sessions/mrg-gate-sess.flow-state" <<'EOF'
+{
+  "schema_version": 1,
+  "active": true,
+  "phase": "merge",
+  "issue_number": "2159",
+  "branch": "feat/test",
+  "pr_number": 0,
+  "session_id": "mrg-gate-sess",
+  "next_action": "",
+  "error_count": 0,
+  "updated_at": "2026-08-08T00:00:00Z"
+}
+EOF
+}
+
+_mrg_set_flow_pr() {
+  local root="$1" pr="$2"
+  jq --argjson pr "$pr" '.pr_number = $pr' \
+    "$root/.rite/sessions/mrg-gate-sess.flow-state" > "$root/.rite/sessions/mrg-gate-sess.flow-state.tmp"
+  mv "$root/.rite/sessions/mrg-gate-sess.flow-state.tmp" "$root/.rite/sessions/mrg-gate-sess.flow-state"
+}
+
+_mrg_write_json() {
+  # $1=root $2=filename $3=body
+  printf '%s\n' "$3" > "$1/.rite/review-results/$2"
+}
+
+_mrg_qualifying_json() {
+  # qualifying: schema_version + verdict keys, reviewers length >= 2
+  cat <<'EOF'
+{"schema_version":"1.1.0","verdict":"mergeable","reviewers":["code-quality","security"]}
+EOF
+}
+
+_mrg_run() {
+  # run_guard under RITE_STATE_ROOT; prints stdout, returns hook rc
+  local root="$1" cmd="$2"
+  local rc=0 output
+  output=$(RITE_STATE_ROOT="$root" jq -n --arg tn "Bash" --arg cmd "$cmd" \
+    '{tool_name: $tn, tool_input: {command: $cmd}, cwd: "/tmp"}' \
+    | RITE_STATE_ROOT="$root" bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+  printf '%s' "$output"
+  return $rc
+}
+
+echo "TC-128 / T-01: qualifying review JSON → gh pr merge N allowed (no extra stdout noise)"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_write_json "$_mrg_tmp" "99-good.json" "$(_mrg_qualifying_json)"
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 99 --squash") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-128 qualifying JSON allows gh pr merge 99 with empty stdout"
+else
+  fail "TC-128 expected allow (rc=0 empty stdout), got rc=$rc output=$output"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-129 / T-02: number-less gh pr merge resolves PR via flow-state"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_set_flow_pr "$_mrg_tmp" 77
+_mrg_write_json "$_mrg_tmp" "77-good.json" "$(_mrg_qualifying_json)"
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge --squash") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-129 flow-state pr_number=77 allows number-less gh pr merge"
+else
+  fail "TC-129 expected allow via flow-state, got rc=$rc output=$output"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-130 / T-03: no review JSON → deny + /rite:pr-review guidance"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 55 --squash") || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-json-absent"* ]] && [[ "$reason" == *"/rite:pr-review"* ]]; then
+  pass "TC-130 absent JSON denies with merge-review-json-absent and /rite:pr-review"
+else
+  fail "TC-130 expected deny absent+/rite:pr-review, got decision=$decision reason=$reason"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-131 / T-04: sole-reviewer (reviewers length 1) JSON → deny"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_write_json "$_mrg_tmp" "56-sole.json" \
+  '{"schema_version":1,"verdict":"mergeable","reviewers":["code-quality"]}'
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 56") || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-sole-reviewer"* ]]; then
+  pass "TC-131 sole-reviewer JSON denies with merge-review-sole-reviewer"
+else
+  fail "TC-131 expected sole-reviewer deny, got decision=$decision reason=$reason"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-132 / T-05: unparseable review JSON → deny"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_write_json "$_mrg_tmp" "57-broken.json" '{not valid json'
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 57") || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-json-parse"* ]]; then
+  pass "TC-132 broken JSON denies with merge-review-json-parse"
+else
+  fail "TC-132 expected parse deny, got decision=$decision reason=$reason"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-133 / T-06: PR number unresolvable → deny (no arg, flow-state pr_number=0)"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"   # pr_number stays 0
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge --squash") || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-pr-unresolved"* ]]; then
+  pass "TC-133 unresolvable PR number denies with merge-review-pr-unresolved"
+else
+  fail "TC-133 expected pr-unresolved deny, got decision=$decision reason=$reason"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-134 / T-07: non-merge gh commands still allowed (no regression on Pattern 5)"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+# No qualifying JSON present — if Pattern 5 false-fired these would deny.
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr view 1 --json title") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-134 gh pr view allowed (Pattern 5 does not false-positive)"
+else
+  fail "TC-134 expected allow for gh pr view, got rc=$rc output=$output"
+fi
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr diff 1") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-134 gh pr diff allowed (Pattern 5 does not false-positive)"
+else
+  fail "TC-134 expected allow for gh pr diff, got rc=$rc output=$output"
+fi
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh api repos/o/r/pulls/1") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-134 gh api non-merge REST allowed"
+else
+  fail "TC-134 expected allow for non-merge gh api, got rc=$rc output=$output"
+fi
+# REST merge endpoint is detected and denied when JSON absent
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh api repos/o/r/pulls/88/merge -X PUT") || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+if [ "$decision" = "deny" ]; then
+  pass "TC-134 REST pulls/88/merge is detected and denied without JSON"
+else
+  fail "TC-134 expected deny for REST merge, got decision=$decision output=$output"
+fi
+# GraphQL mergePullRequest detected
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh api graphql -f query='mutation { mergePullRequest(input:{pullRequestId:\"X\"}) { clientMutationId } }'") || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+# GraphQL has no PR number in path → pr-unresolved (or absent if number extracted)
+if [ "$decision" = "deny" ]; then
+  pass "TC-134 GraphQL mergePullRequest is detected and denied"
+else
+  fail "TC-134 expected deny for mergePullRequest, got decision=$decision output=$output"
+fi
+# Existing Pattern 1 still denies
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr diff 1 --stat") || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"gh-pr-diff-stat"* ]]; then
+  pass "TC-134 Pattern 1 (gh pr diff --stat) still denies (non-regression)"
+else
+  fail "TC-134 expected Pattern 1 deny, got decision=$decision reason=$reason"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-135: missing required keys (no reviewers) → deny incomplete"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_write_json "$_mrg_tmp" "60-incomplete.json" \
+  '{"schema_version":"1.0.0","verdict":"mergeable"}'
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 60") || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-json-incomplete"* ]]; then
+  pass "TC-135 incomplete keys deny with merge-review-json-incomplete"
+else
+  fail "TC-135 expected incomplete deny, got decision=$decision reason=$reason"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-136: one qualifying + one broken JSON for same PR → allow (any-pass)"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_write_json "$_mrg_tmp" "61-broken.json" '{broken'
+_mrg_write_json "$_mrg_tmp" "61-good.json" "$(_mrg_qualifying_json)"
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 61") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-136 any qualifying JSON allows merge even if a sibling file is broken"
+else
+  fail "TC-136 expected allow when one file qualifies, got rc=$rc output=$output"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-137: path-prefixed /usr/bin/gh pr merge is detected (no absolute-path bypass)"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "/usr/bin/gh pr merge 99 --squash") || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-json-absent"* ]]; then
+  pass "TC-137 /usr/bin/gh pr merge denies (path-prefixed binary is not a bypass)"
+else
+  fail "TC-137 expected deny for /usr/bin/gh pr merge, got decision=$decision reason=$reason"
+fi
+# hyphen-prefixed path also (Homebrew-style multi-component)
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "/opt/homebrew/bin/gh pr merge 99") || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+if [ "$decision" = "deny" ]; then
+  pass "TC-137 /opt/homebrew/bin/gh pr merge denies"
+else
+  fail "TC-137 expected deny for homebrew gh path, got decision=$decision"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+# --------------------------------------------------------------------------
+# Why: variable-form PR token must not fall back to flow-state
+# --------------------------------------------------------------------------
+
+echo "TC-138 / T-01 (#2173): variable-form \"\$PR\" denies even when flow-state has qualifying other PR"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_set_flow_pr "$_mrg_tmp" 77
+_mrg_write_json "$_mrg_tmp" "77-good.json" "$(_mrg_qualifying_json)"
+rc=0
+# Quoted variable form as it appears in tool_input.command after shell expansion
+# has NOT happened (hook sees the literal command string from the tool call).
+output=$(_mrg_run "$_mrg_tmp" 'gh pr merge "$PR" --squash') || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-pr-unresolved"* ]] && [[ "$reason" == *"gh pr merge"* || "$reason" == *"bare integer"* || "$reason" == *"explicitly"* ]]; then
+  pass "TC-138 variable-form \"\$PR\" denies with merge-review-pr-unresolved (no flow-state 77 pass-through)"
+else
+  fail "TC-138 expected pr-unresolved deny (not allow via flow-state 77), got decision=$decision reason=$reason rc=$rc"
+fi
+# Unquoted $PR form
+rc=0
+output=$(_mrg_run "$_mrg_tmp" 'gh pr merge $PR --squash') || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-review-pr-unresolved"* ]]; then
+  pass "TC-138 unquoted \$PR also denies with merge-review-pr-unresolved"
+else
+  fail "TC-138 expected pr-unresolved for unquoted \$PR, got decision=$decision reason=$reason"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-139 / T-02 (#2173): literal numeric form still allowed (non-regression of TC-128 path)"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_write_json "$_mrg_tmp" "99-good.json" "$(_mrg_qualifying_json)"
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 99 --squash") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-139 literal gh pr merge 99 still allows with qualifying JSON"
+else
+  fail "TC-139 expected allow for literal 99, got rc=$rc output=$output"
+fi
+# Number after flags
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge --squash 99") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-139 literal after flags (gh pr merge --squash 99) still allows"
+else
+  fail "TC-139 expected allow for --squash 99, got rc=$rc output=$output"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-140 / T-03 (#2173): flag-only tail still uses flow-state fallback (pin limited retention)"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+_mrg_set_flow_pr "$_mrg_tmp" 77
+_mrg_write_json "$_mrg_tmp" "77-good.json" "$(_mrg_qualifying_json)"
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge --squash") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-140 flag-only gh pr merge --squash still resolves via flow-state"
+else
+  fail "TC-140 expected allow via flow-state for flag-only tail, got rc=$rc output=$output"
+fi
+# Multiple flags only
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge --squash --delete-branch") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-140 multi-flag-only tail still uses flow-state"
+else
+  fail "TC-140 expected allow for --squash --delete-branch via flow-state, got rc=$rc output=$output"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+# --------------------------------------------------------------------------
+# Why: persist deny-only audit records
+# --------------------------------------------------------------------------
+
+echo "TC-141 / T-01 (#2174): deny appends the stderr event to bash-guard.log"
+_audit_tmp=$(mktemp -d)
+rc=0
+RITE_STATE_ROOT="$_audit_tmp" jq -n --arg cmd "gh pr diff 99 --stat" \
+  '{tool_name:"Bash",tool_input:{command:$cmd}}' \
+  | RITE_STATE_ROOT="$_audit_tmp" bash "$HOOK" >/dev/null 2>"$_audit_tmp/stderr" || rc=$?
+if [ "$rc" = "0" ] \
+  && [ -f "$_audit_tmp/.rite/logs/bash-guard.log" ] \
+  && grep -q 'bash-guard: BLOCKED pattern=gh-pr-diff-stat' "$_audit_tmp/.rite/logs/bash-guard.log" \
+  && cmp -s "$_audit_tmp/stderr" "$_audit_tmp/.rite/logs/bash-guard.log"; then
+  pass "TC-141 deny audit record matches the existing stderr event"
+else
+  fail "TC-141 expected matching deny audit record (rc=$rc)"
+fi
+RITE_STATE_ROOT="$_audit_tmp" jq -n --arg cmd $'gh pr diff 99 --stat\n[2099-01-01T00:00:00Z] bash-guard: BLOCKED pattern=forged' \
+  '{tool_name:"Bash",tool_input:{command:$cmd}}' \
+  | RITE_STATE_ROOT="$_audit_tmp" bash "$HOOK" >/dev/null 2>/dev/null || true
+if [ "$(awk 'END { print NR }' "$_audit_tmp/.rite/logs/bash-guard.log")" = "2" ] \
+  && ! grep -q '^\[2099-01-01T00:00:00Z\]' "$_audit_tmp/.rite/logs/bash-guard.log"; then
+  pass "TC-141 multiline commands cannot forge additional audit records"
+else
+  fail "TC-141 multiline command broke the one-event-per-line audit contract"
+fi
+RITE_STATE_ROOT="$_audit_tmp" jq -n --arg cmd $'gh pr diff 1 --stat\t\033X' \
+  '{tool_name:"Bash",tool_input:{command:$cmd}}' \
+  | RITE_STATE_ROOT="$_audit_tmp" bash "$HOOK" >/dev/null 2>/dev/null || true
+if grep -Fq 'cmd="gh pr diff 1 --stat??X"' "$_audit_tmp/.rite/logs/bash-guard.log"; then
+  pass "TC-141 remaining C0 controls are neutralized in audit records"
+else
+  fail "TC-141 audit record retained raw TAB/ESC controls: $(tail -1 "$_audit_tmp/.rite/logs/bash-guard.log" | cat -v)"
+fi
+rm -rf "$_audit_tmp"
+echo ""
+
+echo "TC-142 / T-02 (#2174): audit write failure preserves deny JSON and warns"
+_audit_tmp=$(mktemp -d)
+mkdir -p "$_audit_tmp/.rite"
+printf 'not-a-directory\n' > "$_audit_tmp/.rite/logs"
+rc=0
+output=$(jq -n --arg cmd "gh pr diff 99 --stat" \
+  '{tool_name:"Bash",tool_input:{command:$cmd}}' \
+  | RITE_STATE_ROOT="$_audit_tmp" bash "$HOOK" 2>"$_audit_tmp/stderr") || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+if [ "$decision" = "deny" ] && grep -q 'WARNING: unable to append deny audit log' "$_audit_tmp/stderr"; then
+  pass "TC-142 deny contract survives audit write failure with one WARNING"
+else
+  fail "TC-142 expected deny + audit WARNING, got decision=$decision rc=$rc stderr=$(cat -v "$_audit_tmp/stderr")"
+fi
+rm -rf "$_audit_tmp"
+echo ""
+
+echo "TC-143 / T-03 (#2174): allow does not create an audit log"
+_audit_tmp=$(mktemp -d)
+jq -n --arg cmd "printf safe" '{tool_name:"Bash",tool_input:{command:$cmd}}' \
+  | RITE_STATE_ROOT="$_audit_tmp" bash "$HOOK" >/dev/null 2>"$_audit_tmp/stderr" || true
+if [ ! -e "$_audit_tmp/.rite/logs/bash-guard.log" ]; then
+  pass "TC-143 allow path writes no audit record"
+else
+  fail "TC-143 allow path unexpectedly created bash-guard.log"
+fi
+rm -rf "$_audit_tmp"
 echo ""
 
 # --------------------------------------------------------------------------

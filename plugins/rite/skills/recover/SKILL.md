@@ -41,6 +41,7 @@ argument-hint: ""
 | `{git_in_merge}` | Phase 3.2: `[CONTEXT] GIT_IN_MERGE` marker (`git rev-parse --git-path MERGE_HEAD` の存在判定 = merge 解決待ち) |
 | `{git_in_rebase}` | Phase 3.2: `[CONTEXT] GIT_IN_REBASE` marker (`git rev-parse --git-path rebase-merge`/`rebase-apply` の存在判定 = rebase 中断) |
 | `{state_next}` | Phase 3.1: `[CONTEXT] STATE_NEXT` marker (flow-state `next_action`) |
+| `{state_stop_reason}` | Phase 3.1: `[CONTEXT] STATE_STOP_REASON` marker (flow-state `stop_reason`; empty = ordinary interruption) |
 | `{state_parent}` | Phase 3.1: `[CONTEXT] STATE_PARENT` marker (flow-state `parent_issue_number`) |
 | `{state_parent_display}` | Phase 3.1: `[CONTEXT] STATE_PARENT_DISPLAY` marker (`0`/空 → 「なし」、それ以外 → `#NN` 整形) |
 | `{pr_number}` | Phase 3.3: `gh pr view` の `.number` (Phase 3.1 `[CONTEXT] STATE_PR` も参照可) |
@@ -128,6 +129,7 @@ state_active=$(bash {plugin_root}/hooks/flow-state.sh get --field active --defau
 state_issue=$(bash {plugin_root}/hooks/flow-state.sh get --field issue_number --default "0")
 state_pr=$(bash {plugin_root}/hooks/flow-state.sh get --field pr_number --default "0")
 state_next=$(bash {plugin_root}/hooks/flow-state.sh get --field next_action --default "")
+state_stop_reason=$(bash {plugin_root}/hooks/flow-state.sh get --field stop_reason --default "")
 state_parent=$(bash {plugin_root}/hooks/flow-state.sh get --field parent_issue_number --default "0")
 
 # parent_issue_number=0 は「親 Issue なし」を意味するため、サマリ表示で "#0" を見せないよう "なし" に整形する
@@ -147,6 +149,7 @@ echo "[CONTEXT] STATE_ACTIVE=$state_active"
 echo "[CONTEXT] STATE_ISSUE=$state_issue"
 echo "[CONTEXT] STATE_PR=$state_pr"
 echo "[CONTEXT] STATE_NEXT=$state_next"
+echo "[CONTEXT] STATE_STOP_REASON=$state_stop_reason"
 echo "[CONTEXT] STATE_PARENT=$state_parent"
 echo "[CONTEXT] STATE_PARENT_DISPLAY=$parent_issue_display"
 ```
@@ -162,6 +165,8 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 ```
 
 > **本ブロックは WT_ENSURE 分岐表の SoT**（review / iterate / fix の入場ゲートが参照する。#1676）。EnterWorktree は LLM ツールのため helper からは呼べず、`reenter` / `reconstructed` の入場のみ下記表に従い LLM が実行する。
+>
+> **marker の読み取り規約は本ファイルが持たない**（#2025）。どの行が marker か（行頭アンカー）・stderr が複数行混入しても読めること・`branch=` スコープで他ブランチの値を拾わないこと・同一 KEY が複数回出たときは最新が勝つこと・キーと field 名がトークン完全一致であることは、共有関数 `marker_get`（[`lib/context-marker.sh`](../../hooks/scripts/lib/context-marker.sh)）の契約であり、SoT は `hooks/tests/context-marker.test.sh`。下表は **case 値ごとのアクション**のみを規定する。バッチ実行では同一 transcript に複数ブランチの `WT_ENSURE` が並ぶため、対象を取り違えないこと（規約の実体は上記関数、その `--branch` が対応する）。
 
 `WT_ENSURE` で分岐する:
 
@@ -298,7 +303,7 @@ AskUserQuestion で「推定 phase で再開 / 別 phase を選ぶ / 中止」�
 echo "[CONTEXT] RESOLVED_PHASE=$resolved_phase"
 ```
 
-### 3.6 未完了事項の検出（Issue #1946、`resolved_phase` が `cleanup`/`completed` のときのみ、informational）
+### 3.6 未完了事項の検出（`resolved_phase` が `cleanup`/`completed` のときのみ、informational）
 
 当該 Issue が既に cleanup 段階を終えている（= これ以上 phase を進める作業は無い）場合に限り、過去の cleanup が非ブロッキングで残した可能性のある 2 種類の signal を git 実態から直接検出する（新しい記録先は持たない — 集約記録のありか自体が git/リモートの実態であり、既存の `.rite/wiki-worktree` / ローカルブランチ / `gh pr view` 以上のものを要求しない）。Phase 3.5 のフラグ判定・Phase 5.3 のルーティング表には影響しない、純粋な追加情報。
 
@@ -354,6 +359,7 @@ Commits ahead of {base_branch}: {git_commit_count}
 Uncommitted changes: {git_has_uncommitted: "あり" or "なし"}
 Next action (state): {state_next}
 Next action (WM):    {wm_next}
+Stop reason:         {state_stop_reason: empty のとき「なし（通常の中断）」}
 ```
 
 ### 4.2 ユーザー確認
@@ -445,9 +451,9 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ---
 
-## Phase 5.5: Active Batch 検出 → 継続（Issue #1820）
+## Phase 5.5: Active Batch 検出 → 継続
 
-Phase 5.4 の invoke が制御を返したら（再開先 skill が完了通知 or 終端 sentinel を emit した後）、**自セッションの** run-queue（`run-queue-{session_id}.json`）を参照し「この中断が `/rite:batch-run` 実行中の active batch 中断だったか」を判定する。stale な残骸（過去に完了/停止済みのバッチのキューが単に残っている）を誤って継続しないよう、鮮度判定を必須とする。session_id は batch-run と同じく `flow-state.sh path` の basename から導出する。recover は flow-state phase も ambient session_id で解決する（Phase 3 の `flow-state.sh get`）ため、真の active batch 中断（同一セッションでの compact / turn 跨ぎ）では recover の session_id と run-queue の session_id が一致し、自セッションのキューだけを参照する（他セッションのキューは別ファイルのため構造的に読まない、Issue #1859）。
+Phase 5.4 の invoke が制御を返したら（再開先 skill が完了通知 or 終端 sentinel を emit した後）、**自セッションの** run-queue（`run-queue-{session_id}.json`）を参照し「この中断が `/rite:batch-run` 実行中の active batch 中断だったか」を判定する。stale な残骸（過去に完了/停止済みのバッチのキューが単に残っている）を誤って継続しないよう、鮮度判定を必須とする。session_id は batch-run と同じく `flow-state.sh path` の basename から導出する。recover は flow-state phase も ambient session_id で解決する（Phase 3 の `flow-state.sh get`）ため、真の active batch 中断（同一セッションでの compact / turn 跨ぎ）では recover の session_id と run-queue の session_id が一致し、自セッションのキューだけを参照する（他セッションのキューは別ファイルのため構造的に読まない）。
 
 ### 5.5.1 判定
 
@@ -518,7 +524,7 @@ Phase 5.4 で resume した個別スキルの終端状態を、[`skills/batch-ru
 | `init` / `branch` / `plan` / `implement` / `lint` / `pr` | `/rite:open {issue_arg}`（draft PR 作成まで） | Phase 5.4 の open invoke 結果を batch-run [ステップ 2](../batch-run/SKILL.md) の表と同じ基準で判定する。**成功**（`[pr:created:N]` sentinel + ブランチ行）: `{pr_number}` を取得し、続けて `/rite:iterate {pr_number}` を invoke（= batch-run [ステップ 3](../batch-run/SKILL.md) 相当）。終端 sentinel を同ステップ 3 の表で判定し、以降 `{run_mode}=merge` かつ mergeable ならステップ 4-6、`default` ならステップ 6 のカーソル前進へ直行。**失敗**（`[pr-create-failed]` / PR 番号なし / sentinel 不在）: iterate を invoke せず、下記「failed 記録 / 停止方針の委譲」の失敗停止経路（batch-run ステップ 8 相当）に直行する |
 | `review` / `fix` | `/rite:iterate {pr_number}`（終端 sentinel まで） | **再 invoke しない**。Phase 5.4 で得た終端 sentinel を batch-run [ステップ 3](../batch-run/SKILL.md) の表で判定し、以降は上記と同じ分岐 |
 | `ready` / `ready_error` | `/rite:ready {pr_number}` | Phase 5.4 の ready invoke 結果を batch-run [ステップ 4](../batch-run/SKILL.md) の表と同じ基準で判定する。**成功**（`[ready:returned-to-caller]`）: `{run_mode}=merge` なら続けて `/rite:merge {pr_number}` → `/rite:cleanup {branch_name}` を invoke（batch-run [ステップ 5-6](../batch-run/SKILL.md) と同じ判定）。`default` は通常到達しない（ready は batch-run の merge モードでのみ実行されるため）— 到達した場合は安全側としてそのままステップ 6 のカーソル前進へ。**失敗**（`[ready:error]` / sentinel 不在）: merge/cleanup を invoke せず、下記「failed 記録 / 停止方針の委譲」の失敗停止経路（batch-run ステップ 8 相当）に直行する |
-| `cleanup` / `ingest` | `/rite:cleanup {branch_name}` または `/rite:wiki-ingest` | 当該 Issue は既に完了。追加 invoke はしないが、Phase 5.4 の `/rite:cleanup` invoke が `[cleanup:returned-to-caller]` を返した場合は batch-run [ステップ 6](../batch-run/SKILL.md) の outstanding 記録 bash（`[cleanup:outstanding:N]` sentinel を読んで `run-queue-{session_id}.json` の `outstanding[]` へ記録）を**先に実行してから**カーソル前進 bash へ進む（Issue #1946: この記録を経由しないと、recover 経由の active batch 継続で cleanup が残した非ブロッキング失敗が run-queue に記録されず、batch-run ステップ 7 の完了通知ロールアップから欠落する）。`/rite:wiki-ingest` 経由（`resolved_phase=ingest`）はこの sentinel を持たないため対象外、そのままカーソル前進へ |
+| `cleanup` / `ingest` | `/rite:cleanup {branch_name}` または `/rite:wiki-ingest` | 当該 Issue は既に完了。追加 invoke はしないが、Phase 5.4 の `/rite:cleanup` invoke が `[cleanup:returned-to-caller]` を返した場合は batch-run [ステップ 6](../batch-run/SKILL.md) の outstanding 記録 bash（`[cleanup:outstanding:N]` sentinel を読んで `run-queue-{session_id}.json` の `outstanding[]` へ記録）を**先に実行してから**カーソル前進 bash へ進む（この記録を経由しないと、recover 経由の active batch 継続で cleanup が残した非ブロッキング失敗が run-queue に記録されず、batch-run ステップ 7 の完了通知ロールアップから欠落する）。`/rite:wiki-ingest` 経由（`resolved_phase=ingest`）はこの sentinel を持たないため対象外、そのままカーソル前進へ |
 | `completed` | (Phase 5.4 は既存表により AskUserQuestion のみ) | ユーザーが「終了」を選んだ場合はカーソル前進へ、「新規作業として再開」を選んだ場合は本継続を中止（通常の recover 完了とする） |
 
 <!-- run orchestration: after invoking per the table above and observing the terminal sentinel, do NOT stop — proceed to the failed-record / stop-policy paragraph below (same routing as batch-run ステップ 3-8). -->

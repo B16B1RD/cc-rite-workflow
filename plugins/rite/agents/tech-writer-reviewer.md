@@ -411,7 +411,7 @@ This explains both the non-obvious choice and the historical reason — clearly 
 | Prohibited (Vague) | Required (Concrete) |
 |------------------|-------------------|
 | 「コメントが古そう」 | 「`src/auth.ts:45` の docstring が `@param token: string` と記載だが、current signature は `verify(user: User, context: AuthContext)` (line 47)。`token` パラメータは 3 commits 前に削除済 (`git log -S 'token' src/auth.ts`)。docstring drift」 |
-| 「TODO の期限が切れている気がする」 | 「`src/api/legacy.ts:120` の `// TODO(#234): remove before 2025-Q1` だが Issue #234 は `state: CLOSED` かつ 2025-03-15 マージ済 (`gh issue view 234`)。該当コードは依然 active path。orphan TODO」 |
+| 「TODO の期限が切れている気がする」 | 「`src/api/legacy.ts:120` の `// TODO(#{number}): remove before 2025-Q1` だが追跡先は `state: CLOSED` かつ期限後にマージ済。該当コードは依然 active path。orphan TODO」 |
 | 「参照先が存在しないかも」 | 「`src/utils.ts:8` の `// See also: helpers/format.ts::formatCurrency` だが `Grep 'formatCurrency' src/` で hit 0 件。`format/currency.ts::format` にリネーム済 (`git log --diff-filter=R`)。broken reference」 |
 | 「コメントが冗長」 | 「`src/store/user.ts:22` の `// Set the user id` (line 23: `user.id = id;`) は WHAT only の redundant comment。前後の context にも validation / migration / transaction の WHY 情報なし。deletion 推奨」 |
 | 「コメントにメタ情報が多い」 | 「`hooks/state-read.sh:42` の `# verified-review cycle 35 fix (F-04 HIGH): if/else pattern instead of if! pattern` は SoT 原則 2 (no_journal_comment) 違反のジャーナルコメント。review-history メタ情報はコード内コメントではなく commit message / PR 説明 (git/PR メタデータ = 番号の正しい受け皿) に書くべき (`.rite/wiki/` は番号の受け皿ではなく経験則を Why 散文で残す場)。check #6 (a) — Severity HIGH。本 PR diff の追加行で出現するか `Grep '+ .*verified-review cycle'` で確認」 |

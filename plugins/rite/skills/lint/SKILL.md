@@ -442,6 +442,24 @@ When skipped, no output needed (silent skip).
 
 ### 3.5 Plugin-specific Checks (Generic Loop)
 
+Before the informational checks, run the descriptive-number diff gate. Unlike the generic checks below, a finding or an unreadable diff is blocking: record it in `lint_output`, increment `error_count`, and route to Phase 4.2 (`[lint:error]`). The gate resolves `branch.base` with the same origin-first fallback used in Phase 2.2 and scans only added lines under `plugins/rite/`; `tests/` remains excluded.
+
+```bash
+descriptive_number_diff_output=$(bash {plugin_root}/hooks/scripts/descriptive-number-diff-gate.sh 2>&1)
+descriptive_number_diff_rc=$?
+case "$descriptive_number_diff_rc" in
+  0) ;;
+  1|2)
+    lint_output="${lint_output}${lint_output:+\n}${descriptive_number_diff_output}"
+    error_count=$((error_count + 1))
+    ;;
+  *)
+    lint_output="${lint_output}${lint_output:+\n}ERROR: descriptive-number diff gate returned unexpected rc=$descriptive_number_diff_rc"
+    error_count=$((error_count + 1))
+    ;;
+esac
+```
+
 Run every rite-workflow internal quality check listed in the check table below through one generic execution loop. These checks are **independent of `commands.lint` configuration** (they lint the rite workflow definition itself, not the user's code). Per-check background (incident origin), detection patterns, and exclusion rules live in [references/plugin-checks-rationale.md](references/plugin-checks-rationale.md); each script's header comment is the SoT for its exact regex literals and algorithm.
 
 **Check table** (SoT for what runs and how — the loop, the Phase 4.1 appendix, and the Phase 4.3 summary rows all iterate over this table in order):
@@ -464,6 +482,9 @@ Run every rite-workflow internal quality check listed in the check table below t
 | 14 | Number reference check | `hooks/scripts/number-reference-check.sh --all` | `number_ref` | `Total number-ref findings: (\d+)` |
 | 15 | Sentinel contract check | `hooks/scripts/sentinel-contract-check.sh --all` | `sentinel_contract` | `Total sentinel-contract findings: (\d+)` |
 | 16 | Tmp hardcode check | `hooks/scripts/tmp-hardcode-check.sh --all --skip-if-no-target` | `tmp_hardcode` | `Total tmp-hardcode findings: (\d+)` |
+| 17 | Dollar-zero check | `hooks/scripts/dollar-zero-check.sh --all --skip-if-no-target` | `dollar_zero` | `Total dollar-zero findings: (\d+)` |
+| 18 | Tempfile lifecycle check | `hooks/scripts/tempfile-lifecycle-check.sh --all --skip-if-no-target` | `tempfile_lifecycle` | `Total tempfile-lifecycle findings: (\d+)` |
+| 19 | Pipefail grep-q check | `hooks/scripts/pipefail-grep-q-check.sh --all --skip-if-no-target` | `pipefail_grep_q` | `Total pipefail-grep-q findings: (\d+)` |
 
 **Execution loop** — for each table row, run (`{script}` = Invocation column path, `{args}` = Invocation column args, `{prefix}` = Vars prefix column):
 

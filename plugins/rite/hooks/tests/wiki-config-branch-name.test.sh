@@ -1,6 +1,6 @@
 #!/bin/bash
 # Security pin tests for validate_wiki_branch_name() in
-# hooks/scripts/lib/wiki-config.sh (Issue #1719, AC-3)
+# hooks/scripts/lib/wiki-config.sh (AC-3)
 #
 # validate_wiki_branch_name rejects branch names that would be unsafe as a git
 # ref or as the positional argument of `git -C ... add -- "$path"` (leading `-`

@@ -123,7 +123,7 @@ build_spec() {
   local spec="$wd/spec.json"
   jq -n --arg pt "$pt" --arg pf "$pf" --arg labels "$labels" --argjson subs "$subs" --arg wd "$wd" \
     '{parent:{title:$pt, body_file:$pf}, sub_issues:$subs, labels_csv:$labels,
-      projects:{enabled:true, project_number:6, owner:"asakaguchi", status:"Todo", priority:"Medium"},
+      projects:{enabled:true, project_number:6, owner:"B16B1RD", status:"Todo", priority:"Medium"},
       repo:"cc-rite-workflow", workdir:$wd}' > "$spec"
   echo "$spec"
 }

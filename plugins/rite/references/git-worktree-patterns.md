@@ -430,7 +430,7 @@ Consequences enforced across the workflow:
   (`git worktree add --no-track -b {branch} {path} origin/{base}`), not via a local
   `{base}` that another worktree may have checked out. `--no-track` avoids
   `branch.autoSetupMerge` writing upstream tracking to `.git/config`, which sandbox
-  environments reject (Issue #1894).
+  environments reject.
 - A branch is deleted **only after** its worktree is removed (a branch checked out
   in a worktree cannot be deleted or fetch-updated).
 - `cleanup`'s base update runs **only when the main checkout is on `{base}`**; on any
@@ -457,18 +457,18 @@ Two helper-driven patterns bracket the session-worktree lifecycle:
   checked-out branch is **reap-manifest-recorded**, i.e. cleanup already verified the
   PR merged and deferred the removal: that explicit "reap me" record bypasses the age
   guard, since the harness refreshes the worktree root mtime every session and the
-  guard would otherwise leak the deferred tree forever, Issue #1966), and a clean
+  guard would otherwise leak the deferred tree forever), and a clean
   `git status --porcelain` (a dirty worktree is never auto-reaped — the sole exception is
   an admin-HEAD-missing, git-unrecognized **corpse** whose status is structurally
   undeterminable: it bypasses the status gate and is reaped, working tree + admin dir,
-  behind the same claim + 24h age guards, Issue #1957). Once the worktree is gone, its
+  behind the same claim + 24h age guards). Once the worktree is gone, its
   branch is recovered rather than left untouched: `git branch -d` (safe-delete) runs
   first so an unmerged branch is preserved; if that's refused but the reap manifest
   confirms the PR was merged, `git branch -D` force-deletes it. On any successful
   recovery (`-d` and `-D` alike) the branch's manifest entry is consumed in the same
   run (a lingering entry is no longer inert once it also keys
-  the age-guard bypass, Issue #1966); an unmerged,
-  manifest-unrecorded branch is kept with a WARNING (Issue #1670). A corpse's HEAD can't
+  the age-guard bypass); an unmerged,
+  manifest-unrecorded branch is kept with a WARNING. A corpse's HEAD can't
   be read, so branch recovery is structurally skipped for it.
 
 ### SSH host alias 経由の `git push`/`fetch` が sandbox のネットワーク許可リストでブロックされる
@@ -497,7 +497,7 @@ push/fetch だけ失敗する非対称な挙動になる。
 （原因の 1, 2 段目が未解消のまま）。
 
 **現状の回避策**: 当該 `git push` / `git fetch` コマンドのみ `dangerouslyDisableSandbox: true`
-で再実行してよい（ユーザー確認は不要 — 既知の環境制約、Issue #1897）。sandbox のネットワーク許可
+で再実行してよい（ユーザー確認は不要 — 既知の環境制約）。sandbox のネットワーク許可
 リスト・credentials 保護設定はプラグイン外の環境設定のため、rite 側の設定変更では解消できない。
 SSH alias remote を使う任意のプロジェクトで同様に起こりうる。
 
@@ -549,14 +549,14 @@ flock 排他の前提）ため、worktree cwd からの state 書込は構造的
 こと（`/sandbox` コマンド / settings の sandbox 設定。プラグイン外の環境設定のため rite 側の
 変更では解消できない）。追加できない場合は、拒否された当該 hook / script 呼び出しのみ
 `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約、
-Issue #1896）。worktree 内のファイルだけを扱うコマンドは影響を受けないため、sandbox 有効のまま
+）。worktree 内のファイルだけを扱うコマンドは影響を受けないため、sandbox 有効のまま
 実行する。
 
 ### sandbox write-allowlist 設定の自動化（Decision Log）
 
 上記の恒久対処（write 許可リストへ main checkout root を追加）は、当初 `/rite:setup` Phase 4.8 で
 **案内表示のみ**（設定ファイルへの自動書き込みは MUST NOT）としていた。しかし実運用データから、
-この手動設定への依存自体が UX 問題であることが判明したため、Issue #1942 で自動化へ方針転換した。
+この手動設定への依存自体が UX 問題であることが判明したため、 で自動化へ方針転換した。
 
 **根拠データ**: 2026-07-20 の 1 セッションで、許可リスト未設定に起因する state-write バイパス
 （`dangerouslyDisableSandbox: true` の都度実行）が 30〜45 回発生（セッション 73fa87c6=45 回、
@@ -581,7 +581,7 @@ Issue #1896）。worktree 内のファイルだけを扱うコマンドは影響
   （[Configure the sandboxed Bash tool](https://code.claude.com/docs/en/sandboxing.md)）で
   「These paths are enforced at the OS level」と明記されており、`/sandbox` コマンドでのユーザー
   操作を経ずに設定ファイルへの記述だけで有効になる。main checkout root は開発者ごとに異なる絶対パス
-  のため、コミットされる `.claude/settings.json` ではなく `.claude/settings.local.json`
+  そのため、コミットされる `.claude/settings.json` ではなく `.claude/settings.local.json`
   （ユーザーローカル設定として書き込む意図のファイル）へ書き込む。この判断は、従来の「設定ファイルへの
   自動書き込みは MUST NOT」という Phase 4.8 の方針を **`.claude/settings.local.json` に限定して**
   撤回するものであり、コミットされる共有設定（`.claude/settings.json`）を自動変更する話ではない。

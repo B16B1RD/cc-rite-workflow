@@ -10,12 +10,12 @@
 
 ステップ 1.0 統合 bash block の設計理由。
 
-- **bash 4+ compat guard**: `mapfile` builtin は bash 4.0 で導入されたため、bash 3.2 (macOS default) では `command not found` で silent 失敗する。guard で fail-fast させる。ステップ 1.2.7 の `mapfile -t changed_file_paths` 利用は Issue #1881 の doc-heavy 検出簡素化で撤去済みだが、guard 自体は他の bash 4+ 機能の baseline として維持する。Source: GNU Bash 4.0 NEWS (https://tiswww.case.edu/php/chet/bash/NEWS)
+- **bash 4+ compat guard**: `mapfile` builtin は bash 4.0 で導入されたため、bash 3.2 (macOS default) では `command not found` で silent 失敗する。guard で fail-fast させる。ステップ 1.2.7 の `mapfile -t changed_file_paths` 利用は doc-heavy 検出の簡素化で撤去済みだが、guard 自体は他の bash 4+ 機能の baseline として維持する。Source: GNU Bash 4.0 NEWS (https://tiswww.case.edu/php/chet/bash/NEWS)
 - **config 読取を単一 awk に統合した理由 (C-2)**: `sed | awk | sed | sed | tr | tr` の 6 段 pipeline は pipefail 下で SIGPIPE rc=141 を起こし、fallback branch が config 値を silent に false へ上書きする latent regression を生む。単一 awk はファイルを直接読むため上流コマンドが存在せず、SIGPIPE 経路自体が消える。awk 終了コードは file IO / binary error 以外で 0 を返すため `if ! ...` で捕捉可能。Source: GNU bash manual — Pipelines / POSIX awk exit semantics
 
 ## doc-heavy-detection-notes
 
-ステップ 1.2.7 Doc-Heavy PR Detection の設計理由（Issue #1881 で機械比率計算 bash 実装を撤去し、目的文判断 + ステップ 1.1 の既存 `files` 配列の再利用に簡素化した）。
+ステップ 1.2.7 Doc-Heavy PR Detection の設計理由（機械比率計算 bash は目的を過剰に形式化するため撤去し、目的文判断 + ステップ 1.1 の既存 `files` 配列の再利用に簡素化した）。
 
 - **Self-only judgment を明示フラグにする理由**: 「分子から除外、分母には含める」方式では rite plugin self-only PR でも数学的には doc_lines == 0 (= ratio 0) になり「ratio 未満」と区別不能になるため、判定根拠の要約に明示的に記録する。
 - **全経路で `[CONTEXT]` を対称 emit する理由**: skip 経路のみ emit する非対称設計だと、後続 phase (ステップ 2.2.1 / 5.1.3 / 5.4) が「`[CONTEXT]` 行が会話履歴に存在しない = 正常」という negative inference に依存し、Claude の context grep が前 session の `[CONTEXT] doc_heavy_pr=true` を誤拾いするリスクを生む。全経路対称 emit なら grep は常に最新行を decisive に拾える。
@@ -37,6 +37,8 @@
 - **detached HEAD edge case**: orchestrator が `git worktree add --detach` で起動された場合や reviewer ループ中の特殊な checkout で HEAD が detached になると `git branch --show-current` は空文字列を返す。空文字列のままステップ 5.0.A に渡すと verifier が `[ -z "$ORIGINAL_BRANCH" ]` で exit 2 (invalid args) になるため、`DETACHED:<short-hash>` sentinel に置換する。verifier 側で `DETACHED:*` は branch drift check を skip する経路に乗る。
 - **md5sum portability**: Linux は `md5sum`、macOS は `shasum` を fallback として使う。両方とも stdout の先頭 token が hash であるため `awk '{print $1}'` で portable に取り出せる。
 - **ステップ 5.0.A の placeholder 残留 gate**: `{orig_br}` が `{...}` 形状のまま渡されると verifier が non-empty 文字列として branch 比較し silent false-positive cascade を起こすため、形状検査で早期 reject する (ステップ 6.1.b と同 pattern)。
+- **生の `git status --porcelain` ではなく `git-status-filtered.sh` を使う理由**: このスナップショットと ステップ 5.0.A の verify は異なる sandbox 実行コンテキストで走りうるため、bwrap sandbox が overlay する ghost-mount `??` エントリ が両側で食い違い、実変更が無くても hash 不一致 (false-positive drift) が起きる。フィルタを両側に適用するとその ghost-mount 差分が打ち消され、実際の working-tree 変更のみが hash に反映される。
+- **フィルタの exit code を明示チェックする理由 (capture-first)**: 生の `git status --porcelain` と異なりフィルタは `mktemp` に依存するため、sandbox の TMPDIR 制限下では plain `git status` が成功してもフィルタは失敗しうる。かつ SKILL.md の bash block は Bash tool の 1 回の呼び出しとして新規シェルで実行され pipefail は既定 off (呼び出し間でシェル状態は引き継がれない) なので、`filter | hash | awk` の `$?` は pipefail に依存させられない。フィルタ自身の出力を先に非パイプで capture してから exit code を判定する。`post-review-state-verify.sh` 側は単一スクリプト全体に `set -uo pipefail` がかかるため pipefail 経由の `$?` チェックで足りるが、SKILL.md block はそれとは独立した実行コンテキストのため同じ前提を流用できない。
 
 ## verification-post-condition-notes
 
@@ -87,3 +89,45 @@
 ステップ 6.5.W Wiki Raw Source 生成の配置理由。
 
 - **Position rationale**: 本 block は review-fix loop 終了後に配置される (caller `/rite:iterate` は `[review:mergeable]` または standalone 実行時のみ ステップ 6.5.W に入る)。loop 途中で書かれた Raw Source は未確定な review state を反映してしまうため、この配置は意図的。
+
+
+## measured-gate-helper-notes
+
+ステップ 5.3.0.M を helper に委譲した理由。
+
+旧版は本ゲートを LLM の推論ステップとして書いていた。「自分の指摘を non-blocking 化して mergeable を宣言する」判断は reviewer 群の thoroughness 指示と正面衝突するため、裁量に置く限り構造的に実行されにくい — 実測した run では 9 サイクルすべてで一度も降格が実行されず、契約上 merge を止めてはならない散文精度指摘でループが 8 時間超継続した。分類を bash へ移し、mergeable 判定 (5.3.1) が LLM の分類を経由しない配置にする。
+
+## non-blocking-findings-array-notes
+
+`non_blocking_findings[]` を独立配列として永続化する理由。
+
+- **なぜ独立配列に出すのか**: `findings[]` にだけ載せない設計にすると、既定 `post_comment: false` では PR コメントも投稿されないため、**永続成果物 (`.rite/review-results/*.json`) に降格の痕跡がゼロ**になり「`overall_assessment: mergeable` + `findings[]: []`」= 指摘ゼロのレビューと区別不能な記録が残る。これは `assessment-rules.md` §5.3.0.M の「破棄経路は存在しない」および「マージ後に人間が拾い直せる状態を保つ」という記録契約を既定構成で偽にする。独立配列にすることで `findings[]` の blocking 集合としての意味を保ちながら記録を永続化する。
+- **帰結**: (a) `/rite:fix` の JSON 経路は `findings[]` のみを読むため `non_blocking_count` は JSON 経路では 0 になる（Markdown / 会話経路の N とは一致しない）。一方、`measured_map` 自体は空ではない — findings[] に残る nit-noted 非実測 finding が `measured=false` を持つため。ただし `non_blocking_count` は 0 のまま。(b) 非実測 finding と同一 file:line に GitHub thread がある場合、External review (blocking) に分類される — 安全側。(c) 非実測 finding を `measured: false` 付きで `findings[]` に統合する方向は cross-field invariant 同期が前提であり本 Issue では採らない。
+
+## save-pending-id-path-notes
+
+5.3.0.M step 2 で save-pending marker の id と path を分けて持つ理由。
+
+6.1.a には **id だけ**を渡し (`--pending-id`)、path は helper が内部導出する — caller から full path を受け取る形は、任意文字列が削除対象と機械可読 sentinel の両方へ流れるため guard が要り、その guard が `${TMPDIR}` の文字種と食い違うと非収束になる。path 側は 8.0.4 の `[ -e ]` 検査にのみ使う。詳細: [measured-gate-record.md#save-pending-marker](measured-gate-record.md#save-pending-marker)。
+
+## noclobber-pending-marker-notes
+
+pending / save-pending marker 作成に `set -C` (noclobber) を使う理由。
+
+marker のパスは予測可能で、**ファイルの存在/不在そのものが gate の判定値**であるため、素の `: >` だと (a) 事前に張られた symlink を追随して任意ファイルを 0 バイトへ truncate でき、(b) 他者が作った既存ファイルを掴んでしまう。`set -C` で O_CREAT|O_EXCL 相当にし、拒否時は degraded へ縮退する。詳細: [measured-gate-record.md#pending-marker](measured-gate-record.md#pending-marker) / [#save-pending-marker](measured-gate-record.md#save-pending-marker)。
+
+## review-cycle-id-emit-notes
+
+`REVIEW_CYCLE_ID` と `NONBLOCKING_PENDING_MARKER` を 6.1.a step 0 で emit する理由。
+
+- `REVIEW_CYCLE_ID` は 6.1.d の記録経路と、その実行を保証する gate（6.1.d step 3 / 8.0.3）が「本 cycle で記録経路が走ったか」を stale marker と区別して判定するために使う。**値の生成と記録動作を別ブロックに分ける**ことで、gate 側に本 cycle の比較対象が独立に残る。詳細: [measured-gate-record.md#iteration-id](measured-gate-record.md#iteration-id)。
+- `NONBLOCKING_PENDING_MARKER` は 8.0.3 が prose 判定に加えて持つ**機械強制**の入力。sentinel の grep は LLM が会話を読む前提であり、読まずに result pattern へ進む経路を構造的には塞げない。marker は helper 側でしか消えないファイルなので、gate の bash が `[ -e ]` で見るだけで「6.1.d が完走したか」を LLM の認識に依存せず判定できる。詳細: [measured-gate-record.md#pending-marker](measured-gate-record.md#pending-marker)。
+
+## spawn-spread-threshold-notes
+
+ステップ 4.6 の spawn spread 閾値を **120 秒**にした理由と、判定を「観測のみ」に留める理由。
+
+- **閾値 120 秒**: 並列起動でも spawn は同時ではない。1 メッセージ内の複数 Task は harness が順に立ち上げ、各 reviewer は起動後の最初の tool call で `date` を実行するため、正常な並列でも数十秒のずれが出る。一方、直列化した run では 1 人目の完走を待って 2 人目が起動するので、ずれは reviewer 1 人分の所要時間（実測で 10 分超）にまで開く。両者は 1 桁以上離れており、閾値の置き所に精度は要らない。**誤検出を出さない側に倒す**方が重要（正常な並列を毎 cycle WARNING で汚すと、本物の直列化が埋もれる）ため、想定レンジ 90〜120 秒の保守側の端を採った。`--threshold` で上書きできるが、既定値の変更は運用データが積まれてから判断する。
+- **なぜ強制せず観測だけなのか**: Task の発行は LLM の応答構造そのもので、hook から「1 メッセージにまとめて発行しろ」を強制する経路が存在しない。宣言的 MUST が破れることは既に機構化知見として昇格済みであり、本チェックはその適用として**宣言 → 機械観測**の一段だけを埋める。強制層を将来足すかどうかは、ここで貯まる `reviewer_spawn_spread_seconds` の分布が決める。
+- **なぜ non-blocking なのか**: 直列化は壁時計を延ばすだけで、各 reviewer の指摘の質は変わらない。検出を merge ゲートや `overall_assessment` に結びつけると、成果が有効なレビューを効率違反を理由に捨てることになる。
+- **判定できないときにフラグを書かない理由**: 契約とキー欠落の意味は [review-result-schema.md](../../../references/review-result-schema.md#reviewer_timings-と直列化フラグ) を SoT とする。

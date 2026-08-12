@@ -50,26 +50,37 @@
 #   The convention exists so downstream consumers (CI log parsers, grep
 #   filters scanning for `❌` / `PASS:`) can rely on a single source stream
 #   to capture the full test-result narrative without losing failure
-#   detail context. `run-tests.sh` currently inherits the parent shell's
-#   streams (no per-test split), so the rule is observable rather than
-#   enforced — if the runner grows per-stream capture in the future,
-#   tests honoring this convention will continue to work without change.
+#   detail context. `run-tests.sh` and `scripts/tests/run-all.sh` capture
+#   each test file with `$(bash "$f" 2>&1)` — both streams MERGED — so that
+#   they can parse the per-file skip count out of the summary. The rule
+#   therefore remains observable rather than enforced: an environment error
+#   written to stderr lands in the same captured stream as the assertions,
+#   and the runner's skip parser anchors on summary-line shapes precisely
+#   so that stderr text cannot be mistaken for a count.
 #
 # Provided variables (initialized to 0 / empty array on source):
-#   PASS, FAIL, FAILED_NAMES
+#   PASS, FAIL, SKIP, FAILED_NAMES
+#
+# Preconditions:
+#   Sourcing ABORTS the caller (exit 1) when neither timeout(1) nor perl(1) is
+#   available, because _timeout below cannot detect hangs without one of them and
+#   every caller reads a non-124 exit code as "no hang". Failing loudly at source
+#   time is the only placement that cannot be swallowed by a `$( )` subshell.
 #
 # Provided functions:
 #   _helpers_resolve_plugin_root <script_dir>
 #   _helpers_resolve_repo_root   <script_dir>
 #   pass <label>                                 # writes to stdout
 #   fail <label>                                 # writes to stdout
+#   skip <label>                                 # writes to stdout, counted in SKIP
+#   _timeout <seconds> <command...>              # portable timeout(1); see Preconditions
 #   assert <label> <expected> <actual>           # writes to stdout (via pass/fail)
-#   assert_grep     <label> <file> <pattern>     # ERE, exits via fail() if not found
-#   assert_not_grep <label> <file> <pattern>     # ERE, exits via fail() if found
+#   assert_grep     <label> <file> <pattern>     # ERE (grep -E); bare | is alternation — see docstring
+#   assert_not_grep <label> <file> <pattern>     # ERE (grep -E); bare | is alternation — see docstring
 #   assert_file_exists_or_fail <label> <file>    # pre-condition guard for assertion-pair loops
 #                                                # (1 fail per missing file; caller pattern: || continue)
 #   assert_grep_in_section <label> <file> <start_pattern> <end_pattern> <grep_pattern>
-#                                                # extract awk-range section + ERE grep with self-cleanup
+#                                                # extract awk-range section + ERE grep; bare | hazard same as assert_grep
 #   print_summary [test_name] [drift_hint_text]  # writes to stdout, returns 1 if FAIL > 0
 #   make_sandbox       [--branch <name>] [--soft]   # git-init+commit sandbox, echoes path
 #   make_plain_sandbox [--soft]                     # bare mktemp -d sandbox, echoes path
@@ -93,12 +104,32 @@ _helpers_resolve_repo_root() {
 # normal pattern (run-tests.sh forks a fresh `bash` per test) makes that unnecessary.
 PASS=0
 FAIL=0
+SKIP=0
 FAILED_NAMES=()
 
 # Pass marker — writes to stdout (see "Output convention" in the file header).
 pass() {
   PASS=$((PASS + 1))
   echo "  ✅ $1"
+}
+
+# Skip marker — writes to stdout (see "Output convention" in the file header).
+#
+# Skips are counted, not just printed. A platform-gated suite that prints
+# "PASS: 8, FAIL: 0" tells the reader nothing about what never ran; on the macOS
+# leg roughly 30 assertions are gated away, several of them guarding known
+# production bugs (#2010 / #2011). Counting keeps "green" honest and
+# makes a growing skip set visible.
+#
+# The unit is one skip CALL, not one assertion — a single call can gate a whole
+# block (worktree-foreign-cwd gates eleven assertions with one). The runners
+# therefore report "N gated group(s) skipped" rather than "N skipped", so the
+# number is not mistaken for an assertion count.
+# Same shape as the pre-existing skip() in pre-compact.test.sh and
+# pr-cycle-cleanup.test.sh.
+skip() {
+  SKIP=$((SKIP + 1))
+  echo "  ⏭️ SKIP: $1"
 }
 
 # Fail marker — writes to stdout (see "Output convention" in the file header).
@@ -125,6 +156,13 @@ assert() {
 
 # Pattern presence assertion (ERE via grep -E).
 # File-existence check distinguishes "file missing" (grep exit 2) from "pattern absent" (grep exit 1).
+#
+# Hazard — pattern is interpreted as ERE. A bare `|` is alternation, not a
+# literal pipe. Escape a literal `|` as `\|`. Always-PASS example:
+#   assert_grep "label" "$FILE" '^| Complexity M or above |...'
+# is parsed as (`^`) OR (` Complexity...`), so the `^` arm matches every line
+# and the assertion always PASS. Typical footgun: pinning a Markdown table
+# row (a line that starts with `|` after `^`).
 assert_grep() {
   local label="$1"
   local file="$2"
@@ -142,6 +180,15 @@ assert_grep() {
 
 # Pattern absence assertion (ERE via grep -E).
 # File-existence check distinguishes "file missing" (grep exit 2) from "pattern absent" (grep exit 1).
+#
+# Hazard — pattern is interpreted as ERE. A bare `|` is alternation, not a
+# literal pipe. Escape a literal `|` as `\|`. Spurious-match example (same
+# shape as assert_grep's always-PASS):
+#   assert_not_grep "label" "$FILE" '^| Complexity M or above |...'
+# is parsed as (`^`) OR (` Complexity...`), so the `^` arm matches every line
+# and the absence assertion always FAIL regardless of content. Typical
+# footgun: pinning a Markdown table row (a line that starts with `|` after
+# `^`).
 assert_not_grep() {
   local label="$1"
   local file="$2"
@@ -187,6 +234,36 @@ assert_file_exists_or_fail() {
   return 0
 }
 
+# Mutation-test precondition: require a generated mutant to differ from its
+# source before interpreting behavioral equality/difference. This keeps sed/awk
+# selector drift from turning a mutation assertion into a vacuous green test.
+# The helper records only failure (matching the historical local helpers); the
+# caller's behavioral assertion records the PASS when the mutant is meaningful.
+assert_mutant_changed() {
+  local label="$1"
+  local original="$2"
+  local mutant="$3"
+  if ! assert_file_exists_or_fail "$label source" "$original"; then return 1; fi
+  if ! assert_file_exists_or_fail "$label mutant" "$mutant"; then return 1; fi
+  local diff_rc
+  if diff -q "$original" "$mutant" >/dev/null 2>&1; then
+    diff_rc=0
+  else
+    diff_rc=$?
+  fi
+  case "$diff_rc" in
+    0)
+      fail "$label (mutant is identical to source; mutation selector matched nothing)"
+      return 1
+      ;;
+    1) return 0 ;;
+    *)
+      fail "$label (diff could not compare source and mutant; rc=$diff_rc)"
+      return 1
+      ;;
+  esac
+}
+
 # Section-scoped pattern presence assertion.
 # Extracts an awk address-range section ([start_pattern, end_pattern]) from `file`
 # into a private tempfile, runs `grep -qE grep_pattern` against it, then self-cleans.
@@ -203,6 +280,13 @@ assert_file_exists_or_fail() {
 #
 # Patterns are passed to awk via `-v` variables (not interpolated into the awk
 # program text) so caller-supplied strings cannot inject awk syntax.
+#
+# Hazard (grep_pattern only — same as assert_grep): the section match uses
+# `grep -qE`, so `grep_pattern` is ERE. A bare `|` is alternation; escape a
+# literal `|` as `\|`. Always-PASS example:
+#   assert_grep_in_section "label" "$FILE" '^## Sec$' '^##[^#]' '^| col |...'
+# is parsed as (`^`) OR (` col |...`), so the `^` arm matches every line of
+# the extracted section. Typical footgun: pinning a Markdown table row.
 #
 # Failure modes (each falls through to fail() with diagnostic context):
 #   - file not found          → "file not found: <file>"
@@ -255,6 +339,70 @@ assert_grep_in_section() {
   fi
   rm -f "$section_file"
 }
+
+# _timeout <seconds> <command...> — portable timeout(1) for the test suite.
+#
+# GNU `timeout` is absent on macOS (BSD / no coreutils — the macOS CI leg
+# deliberately omits coreutils to expose GNU/BSD divergence, so the suite must
+# NOT depend on the binary). When it is present we use it; otherwise we fall
+# back to a perl fork/waitpid shim that reproduces timeout(1)'s full exit-code
+# contract: 124 on timeout (the value several suites assert on to detect an
+# infinite-loop regression), 128+N when the child dies from signal N, and the
+# child's own status otherwise. macOS ships /usr/bin/perl, so hang-protection
+# coverage is preserved rather than silently skipped. A naive
+# `perl -e 'alarm; exec'` is WRONG here — after exec, SIGALRM hits the target
+# with its default disposition and the process dies with 142 (128+14),
+# defeating the `== 124` assertions; the fork/waitpid form below maps the alarm
+# to a real 124. `exec` in the child keeps fd 0, so stdin-fed callers
+# (`printf ... | _timeout N bash ...`, `_timeout N bash hook < in.json`) work
+# unchanged. The block form `exec { $ARGV[0] } @ARGV` forces execvp even for a
+# single argument, so a command string containing shell metacharacters is never
+# handed to /bin/sh (plain `exec @ARGV` would shell-interpret it, diverging from
+# timeout(1) and turning the shim into an injection sink). The child also gets its
+# own process group so the deadline reaches the whole tree, not just the direct
+# child — see the comment on setpgrp below for what that costs when it is missing.
+_timeout() {
+  local _d="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$_d" "$@"
+  else
+    perl -e '
+      my $d = shift;
+      # alarm truncates to an integer, so a fractional deadline silently becomes
+      # alarm 0 — no timeout at all, and waitpid blocks until the CI job limit.
+      # Reject rather than degrade, and exit 125 rather than die: die exits 255,
+      # which every caller reads as "not 124, so no hang" — the same silent pass
+      # the rejection exists to prevent. GNU timeout accepts fractions, so this
+      # shim only claims the contract for integer seconds.
+      if ($d !~ /^[0-9]+$/) {
+        print STDERR "_timeout: fractional seconds are not supported by the perl fallback: $d\n";
+        exit 125;
+      }
+      my $pid = fork;
+      exit 127 unless defined $pid;
+      # setpgrp puts the child in its own process group so the alarm handler can
+      # signal the whole tree with a negative pid. GNU timeout does the same; without
+      # it the deadline only reaches the direct child, and a grandchild holding the
+      # captured stdout keeps the caller blocked long past the timeout (measured 30s
+      # against a 1s deadline). The runners capture output with $( ), so that stall
+      # would consume the CI job limit instead of failing at 124.
+      if ($pid == 0) { setpgrp(0, 0); exec { $ARGV[0] } @ARGV; exit 127; }
+      $SIG{ALRM} = sub { kill "TERM", -$pid; waitpid($pid, 0); exit 124; };
+      alarm $d; waitpid $pid, 0;
+      my $st = $?; exit($st & 127 ? 128 + ($st & 127) : $st >> 8);
+    ' "$_d" "$@"
+  fi
+}
+
+# Fail closed when no backend exists. Every `_timeout` caller reads a non-124 rc
+# as "no hang", so a missing backend would silently turn each hang assertion into
+# a pass. Abort at source time rather than degrade.
+if ! command -v timeout >/dev/null 2>&1 && ! command -v perl >/dev/null 2>&1; then
+  echo "ERROR: neither timeout(1) nor perl(1) is available — _timeout cannot detect" >&2
+  echo "  hangs, and every hang assertion in this suite would silently pass." >&2
+  echo "  Install GNU coreutils (timeout) or perl before running the test suite." >&2
+  exit 1
+fi
 
 # make_sandbox — git-init + initial-commit sandbox.
 #
@@ -321,6 +469,23 @@ make_sandbox() {
     [ "$soft_fail" -eq 1 ] && return 1
     exit 1
   }
+  # Canonicalize the sandbox root so it matches what the code under test sees.
+  # On macOS $TMPDIR lives under /var/folders (a symlink to /private/var/...),
+  # and git rev-parse / realpath in production canonicalize to the /private
+  # form. Comparing the raw mktemp path against those canonical paths would
+  # spuriously fail path-equality assertions (Family D).
+  #
+  # Fail closed on canonicalization failure. `cd ""` returns 0 without changing
+  # the directory, so letting an empty $d through would make the git init/commit
+  # subshell below run in the caller's CWD — the repository checkout under CI —
+  # instead of a sandbox, and the helper would still return 0.
+  local d_canon
+  d_canon=$(cd "$d" && pwd -P) || {
+    echo "ERROR: make_sandbox: failed to canonicalize sandbox root '$d'" >&2
+    [ "$soft_fail" -eq 1 ] && return 1
+    exit 1
+  }
+  d="$d_canon"
   sandbox_err=$(mktemp "${TMPDIR:-/tmp}/rite-sandbox-err-XXXXXX" 2>/dev/null) || {
     echo "WARNING: make_sandbox: mktemp ${TMPDIR:-/tmp}/rite-sandbox-err-XXXXXX failed; diagnostic capture disabled (git stderr will not be surfaced on failure)" >&2
     sandbox_err="/dev/null"
@@ -397,7 +562,17 @@ make_plain_sandbox() {
     [ "$soft_fail" -eq 1 ] && return 1
     exit 1
   }
-  echo "$d"
+  # Canonicalize so the sandbox root matches production's realpath/pwd -P view
+  # (macOS $TMPDIR is under the /private-symlinked /var/folders). See make_sandbox.
+  # Fail closed: emitting an empty path here would make callers' `cd "$sbx"` a
+  # no-op (bash `cd ""` returns 0) and land their fixtures in the caller's CWD.
+  local d_canon
+  d_canon=$(cd "$d" && pwd -P) || {
+    echo "ERROR: make_plain_sandbox: failed to canonicalize sandbox root '$d'" >&2
+    [ "$soft_fail" -eq 1 ] && return 1
+    exit 1
+  }
+  echo "$d_canon"
 }
 
 # Print summary block and return non-zero when any assertion failed.
@@ -413,6 +588,7 @@ print_summary() {
   echo "─── $test_name summary ──────────────────────"
   echo "PASS: $PASS"
   echo "FAIL: $FAIL"
+  [ "${SKIP:-0}" -gt 0 ] && echo "SKIP: $SKIP"
   if [ "$FAIL" -ne 0 ]; then
     if [ "${#FAILED_NAMES[@]}" -gt 0 ]; then
       echo "Failed assertions:"

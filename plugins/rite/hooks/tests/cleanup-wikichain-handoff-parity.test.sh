@@ -76,7 +76,7 @@ ingest_invoke_line=$(grep -n '^Skill: rite:wiki-ingest$' "$CLEANUP_MD" | head -1
 if [ -z "$ingest_invoke_line" ]; then
   fail "TC-2 cleanup.md に 'Skill: rite:wiki-ingest' invoke 行が見つかりません (ステップ 9 の構造変更を確認してください)"
 elif [ -z "$handoff_line" ]; then
-  echo "  ⏭️  TC-2 skipped (TC-1 で handoff set 不在を検出済み)"
+  skip "TC-2 skipped (TC-1 で handoff set 不在を検出済み)"
 elif [ "$handoff_line" -lt "$ingest_invoke_line" ]; then
   pass "TC-2 WIKICHAIN handoff set (line $handoff_line) が ingest invoke (line $ingest_invoke_line) より前に位置"
 else
@@ -145,7 +145,7 @@ if [ -n "$terminal_set_line" ]; then
 fi
 
 if [ -z "$handoff_line" ] || [ -z "$terminal_line" ]; then
-  echo "  ⏭️  TC-6 skipped (TC-1/TC-4 で anchor 不在を検出済み)"
+  skip "TC-6 skipped (TC-1/TC-4 で anchor 不在を検出済み)"
 elif [ "$handoff_line" -ge "$terminal_line" ]; then
   fail "TC-6 handoff set (line $handoff_line) が terminal set (line $terminal_line) より後にあります (ステップ 9 → 12 の構造順序が崩れています)"
 else

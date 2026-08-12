@@ -1,0 +1,15 @@
+# Grok dogfooding for this repository.
+#
+# Claude marketplace cache (user scope):
+#   ~/.claude/plugins/marketplaces/rite-marketplace/plugins/rite
+# is still installed globally for other projects. In this repo, the
+# project-scoped symlink .grok/plugins/rite -> ../../plugins/rite
+# wins on name collision so skills/hooks load from the working tree.
+#
+# Claude Code dogfooding remains separate:
+#   .claude/settings.local.json  enabledPlugins["rite@rite-marketplace"]=false
+#
+# Verify: grok inspect --json | jq '.plugins[] | select(.name=="rite")'
+# Expect path: .../cc-rite-workflow/.grok/plugins/rite (or plugins/rite)
+[plugins]
+enabled = ["rite"]

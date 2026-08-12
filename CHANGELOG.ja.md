@@ -25,6 +25,56 @@ Fixed/Changed/Removed エントリは修正対象の旧挙動を述べてよい�
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-12
+
+### 追加
+
+- **XS/S レーンにより、工程ごとの儀式コストが Issue の宣言 Complexity に比例するようになった** — 従来はどの工程も変更の大きさを知らず、1 行の設定変更でもフル装備の reviewer 群がフルの検証 mandate 付きで起動していた。Issue の宣言 Complexity（自動判定はしない。rite が作る全 Issue の Section 0 Meta に必ず存在する）から二値のレーンを決める — XS/S は `light`、M/L/XL と fail-safe の全経路は `full`（従来と完全に同一。Complexity が欠落・読み取り不能な場合は WARNING を出して常に `full` へ倒す。安全側は儀式を減らさない方であるため）。`light` が `pr-review` で変えるのは 2 点だけ: reviewers Phase 5 の `effective_max` 解決へ `complexity_max=3` を渡すこと（cap を別フィルタにすると `mandatory` 保護と reviewer floor を再実装することになるため解決の中に合流させた。final clamp より前に適用するので「常に 3 名以下」ではない）、および検証 mandate を touched テストまでに軽量化すること（全スイートの sandbox 複製と mutation 実験は M 以上の装備とする）。`issue-implement` 側では XS/S が新規テストファイルの新設を抑制して既存 suite への assert 追加を優先し、XS はさらに説明的な派生散文の新設を禁じる。採否基準・帰結クラス・Cross-File Impact Check は不変（後者は Complexity の過小宣言を吸収する安全網でもある）。(#2142)
+- **`merge` が `mergeable` だけに頼らず、CI が不健全な状態ではマージを停止するようになった** — マージ直前の安全判定に `mergeStateStatus` と jobs の実行実績を加え、未知の CI 状態は最優先で停止する（fail-closed）。pending check の schema は評価前に正規化する。PR トークンが解決不能な変数形のまま merge ゲートへ届いた場合は、推測せず deny する。(#2194, #2176)
+- **`/rite:setup` が環境セットアップを一気通貫でカバーするようになった** — 依存検査（`bash` 4 以上 / `jq` / `flock`）と環境別インストール案内 (#2005)、GitHub 認証フロー (#2236)、リポジトリ作成フロー (#2237)、GitHub テンプレート（`ISSUE_TEMPLATE` / `PULL_REQUEST_TEMPLATE`）の自動生成 (#2238)。`getting-started` は前提条件の記述を重複させず `setup` へ委譲する。(#2239)
+- **ubuntu + macos マトリクスの GitHub Actions CI** — マトリクスワークフロー (#2007) が hook / script のテストスイートを両プラットフォームで実行し、`shellcheck` を blocking 化して error backlog を解消 (#2009)、BSD/GNU 差異を吸収して macOS スイートを green 化 (#2013)、`rite-dev` テストも CI へ配線した (#2182)。
+- **レビュー結果スキーマへ `findings[].verification` を追加** — additive 追加であり、read 側に型ガードを入れて旧形式の結果 JSON も読めるようにした (#2035)。canonical write version は 1.1.0 へ同期した (#2211)。
+- **`issue-create` が生成した Issue 本文の断定をファクトチェックしてから Issue を作成するようになった** — 既存挙動についての生成断定を、主張のままにせずコードに照らして検証する。(#2056)
+- **コーディング原則 `no_speculative_structure` を新設** — 将来の拡張に備えた構造・予約フィールド・拡張点・設定キーは、実需の Issue が無い限り採らない。Guardrail には加えて運用環境到達性と fail-loud 既定を課す。(#2092)
+- **修正側の方針ゲート: `fix` に Simplification-First 原則を追加** (#2071)、**`issue-implement` に契約字義性 mandate を全 Complexity で導入**（Issue 契約の字義を実装上限とし、拡張要求は Issue へ差し戻す）(#2254)、**finding 対応を最小差分に限定** (#2255)。
+- **hook の判断を機械可読な監査ログとして永続化** — `pre-tool-bash-guard` の deny 判定 (#2180) と reviewer guardrail の監査 (#2222) を、セッション出力に留めず永続ログへ書き出す。
+- **`flow-state` が phase 遷移を append ログへ記録するようになった** — run をまたいで工程別の実時間が自動収集される。(#2120)
+- **`wiki-ingest` が機械検出可能な経験則を検出器化候補へ routing するようになった** — 散文のみの Wiki エントリとして寝かせず検出器化へ回す。昇格分類はエントリごとに 1 行で記録し、`promote` フィールドの指針を明文化した。(#2170, #2169)
+- **lint 検出器の追加** — `pipefail` 下の `grep -q` パイプライン (#2218)、plugin 配布境界を跨ぐ symlink (#2199)、配布ファイルへの環境固有トークン混入 (#2189)、および説明的な Issue/PR 番号参照（検出範囲を裸の `PR #N` / `Issue #N` 形式・`index.md`・追加行ゲートへ拡張）(#2066, #2070, #2224, #2225, #2257)。
+- **ホスト共通の開発ランチャー `scripts/rite-dev`（plugin root 配下ではなくリポジトリルート直下）** — 専用テストスイートと CONTRIBUTING の記載を伴う。(#2178)
+- **内製の frame-step 動画レンダリングパイプライン** — HTML → mp4 の生成を外部動画フレームワークに依存させず、リポジトリが所有する renderer + シーン契約で行う。実時間録画ではなく仮想時計の seek で駆動するため、同一シーンから md5 まで一致する mp4 が得られる。(#2242) 紹介動画はこの上で v2 として再制作し (#2243)、さらに rite 固有の差別化（実装前の探索・実測必須ゲート・Wiki に残る経験則の複利）を主役に据えた絵コンテで作り直した。実例も opt-in の `--merge` ではなく既定挙動（draft PR で停止する）を反映している。(#2260)
+
+### 変更
+
+- **レビュー/修正ループに到達可能な終了条件ができた: `blocking` を実測必須で再定義** — finding が blocking と数えられるのは CONFIRMED かつ `verification.measured == true` かつ `scope ∈ {current-pr, follow-up}` のときのみとし、非実測の指摘は `total_findings` から外して統合レポートの「実測なし指摘」section に記録する (#2036)。分類自体も LLM の裁量から `scripts/review-measured-gate.sh` へ移し、mergeable 判定より前に必ず走る配置にした — 「自分の指摘を non-blocking 化して mergeable を宣言する」判断は reviewer 群の thoroughness 指示と正面衝突するため、裁量に置く限り構造的に実行されない（実測では、ある PR の全 9 サイクルで一度も降格が実行されず、契約上 merge を止めてはならない散文精度の指摘だけでループが 8 時間超継続した）。`mergeable` は `findings[]` 配列全体の空ではなく `scope ∈ {current-pr, follow-up}` の blocking 部分集合が空であることで決める（`nit-noted` は設計上 `findings[]` に残るため）。(#2074)
+- **帰結クラスによる第 2 の降格軸が、churn の尾部を手動 freeze なしで終端する** — blocking finding を class A（放置すると成果物の実行時挙動が変わる）と class B（帰結が検出網・可読性・文書整合に留まる）に 2 分し、class A が 0 の cycle では class B を全件 non-blocking へ降格して既存の mergeable 経路で自然終了させる。分類は finding 発行者とは別の consolidation コンテキストでの LLM 判定、適用は `scripts/review-class-demotion-gate.sh` による機械強制とし、判定不能（エントリ欠落・class 不正・判定文なし・重複）は降格に丸めず class A 扱い + WARNING とする。(#2248)
+- **サーキットブレーカーが cycle 数上限ではなく収束トレンドからの発散を検出するようになった** — cycle 数上限は努力と無駄を区別できず、健全に収束中のループが残り数件で切られる一方、発散しているループは上限まで燃える。永続レビュー JSON から現 run の per-cycle blocking 列を復元し、「直近 2 値がともに過去の最良水準を超え、かつ下降中でもない」を発散の機械判定とする（判定式は窓幅ベースではなく、実測トラジェクトリで backtest して確定した）。`safety.max_review_cycles` は発散判定をすり抜ける遅い非収束を受け止める遠い backstop へ格下げし、既定値を 5 から 15 へ引き上げた (#2099, #2135)。ブレーカー発火は batch / 対話のいずれでも機械的停止に統一し (#2044)、ブレーカー起因の失敗停止を通常の中断と区別して停止した run が完了として誤報告されないようにし (#2220)、差分スコープ外の盲点を残さないようブレーカー後はフルレビューを強制する (#2195)。
+- **cycle 2 以降はレビューを fix の差分へスコープし、reviewer を動的選抜するようになった** — 指摘は fix が触った面に集中するにもかかわらず、全 reviewer が毎サイクル未変更部を含むフル diff とコードベースを再調査していた。終了意味論は健全なまま変わらない（blocking 0 = fix 面クリーン + 前回指摘全解消、未変更部は cycle 1 で審査済み）。判定入力は永続レビュー JSON のみとした（既定の `pr_review.post_comment: false` では PR コメントが存在しないため）。reviewer の絞り込みは cap 適用後のフィルタではなくパターンマッチの入力ファイル一覧を fix diff へ差し替える形で行い、sole-reviewer guard / `min_reviewers` / `mandatory` という Phase 5 の既存不変条件を一箇所に保つ。(#2126)
+- **散文指摘の blocking を挙動的帰結クラスへ限定** (#2095)、**test-pin 指摘の blocking を Issue 契約の MUST/AC 対応に限定** (#2122)、**指摘の発生源に Likelihood-Evidence producer gate を適用** (#2198)。
+- **記録コメントの同定を本文照合から durable な comment id へ移し、全文ではなくポインタのみを載せるようにした** (#2112, #2114)。記録経路は helper 化し、実行保証 gate を完了 sentinel に付け替えた (#2038)。
+- **アカウント移管 asakaguchi → B16B1RD** — `marketplace.json` / `plugin.json` の owner・author、README のバッジ URL と `marketplace add` 例、`docs/SPEC.md`・テンプレート・skills・scripts・テストフィクスチャの例示値を更新した。(#2029)
+- **スキル横断の実行規約を共有契約へ集約** — 自律実行前文と effort 指針を共有契約化し (#2256)、可逆な推奨レベルの判断はエスカレーションせず自律処理し (#2250)、環境起因の迂回対処は成功時無言・失敗時 1 行に統一した (#2162)。
+- **rite 自身の挙動に関する Wiki 知見を、plugin 本体の references / gate へ昇格** — Wiki は「思い出させる」だけで「強制しない」ため、レビュー・修正ループの知見 (#2183)、防御機構の完全性 (#2187)、文書検証 (#2191)、契約・履歴の知見 (#2192)、残る rite 固有エントリ (#2193) を機構として組み込んだ。`pr-create` にはインライン content 委譲の昇格監査を記録した (#2186)。
+- **`pr-review` の SKILL.md から rationale を同梱 references へ退避** — 本体には 1 行ポインタを残し、実行手順書としての行数余白を回復した。(#2155)
+- **インストール手順とテンプレートのドキュメント** — インストール手順に `/reload-plugins` ステップを追加し (#1992)、README の依存要件を英日両版で拡充して `.gitattributes` を同梱し (#2004)、Issue テンプレート Section 9 に Decision Log の受け入れ基準を明文化した (#2084)。
+- **繰り返し現れる内部機構をテスト付き helper へ集約** — `wiki-ingest` の index 操作 (#2111)、`iterate` 経路の marker emit・照合（共有関数 + fixture テスト化）(#2137)、`[CONTEXT]` marker の値側照合規約の所有者付け (#2151)、`.gitignore` 同梱処理 (#2219)。完了済みの Wiki 一時 backfill helper は削除した (#2215)。
+- **ドキュメントを実装へ再同期** — CONTRIBUTING の guard 判定契約 (#2208)、`max_review_cycles` の既定値記載 (#2209)、config テンプレートの `review.loop` コメント (#2210)、schema invariant 6 と gate 配線 (#2212)、test coverage gate と判断点の接続 (#2213)、SPEC の active guard / sentinel ファイル列挙 (#2214)、実測必須ゲート導入後に残った未修飾の「0 findings」記述 (#2043, #2106)、gate 配線で前提が変わった `fix` / SPEC AC-3 の括弧書き (#2102, #2104)、`wiki-ingest` の index 更新指示を実体の 5 列テーブル形式へ是正 (#2052)、SPEC の Plugin Structure 節における reference 列挙の記載漏れ 2 件 (#2108)。
+
+### 修正
+
+- **merge ゲートが、正しくフルレビューを経た PR ほどブロックする状態になっていた** — ゲートはレビュー結果 JSON に `schema_version` / `verdict` / `reviewers`（長さ 2 以上）を必須要求していたが、後 2 者はスキーマ SoT に定義が無く、どちらの正典 writer も書いていなかった。それまでマージが通っていたのは手書き JSON がたまたま要求形に適合していたためで、writer 側を拡張してゲートの要求を正しい仕様にした。(#2229)
+- **レビュー結果の完全性ゲートが、不在ではなく成果物そのものを検査するようになった** — レビュー結果 JSON 保存へのサイクル単位の実行保証 gate (#2078)、マージ前ゲートへの本 cycle 結果 JSON の positive 検査 (#2130) と実 HEAD への固定 (#2197)、孤児 review JSON と run-start pin の機械回収 (#2181)、形式崩れ Verification アンカーの未判定（blocking のまま）扱い (#2081)、`ready` の事前ゲートを PR head に一致させる修正 (#2196)、merge 実行点への review 実在 positive ゲートの追加 (#2161)。
+- **reviewer の並列起動を機械検証するようになった** — spawn 時刻の機械記録から直列化を検出し (#2231)、spawn spread の記述精度と静的 pin を硬化した (#2234)。
+- **hooks の sandbox / macOS・BSD 移植性** — `pr-cycle-cleanup.sh` の `TMPDIR` 判定を symlink の物理パスで解決 (#2172)、`mktemp` テンプレートの `X` 連を末尾へ移して BSD/macOS の tempfile 名一意性を回復 (#2080)、tempfile ライフサイクルを lib 化し残る 2 種に lint 検出器を追加 (#2124)、`pr-cycle-cleanup` が `TMPDIR` 配下の detached mutation worktree を回収（見送り条件を「working tree が dirty」から「どの named ref からも到達不能な commit」へ置換。mutation worktree は本質的に dirty であり旧条件では主回収対象が全件弾かれていた。判定不能時は WARNING 付きで見送る）(#2156, #2160)、stale な issue claim の奪取を macOS 対応 (#2201)、`flow-state` の `_atomic_write` の `flock` 呼び出しに `command -v` ガードを追加 (#2003)、診断中和の parity sweep を `scripts/` へ拡張 (#2206)。
+- **guard のパス処理を正規化** — `pre-tool-edit-guard` の AC-2 symlink 解決を `realpath` 非依存にし (#2017)、edit path と audit の正規化を揃え (#2204)、cwd content guard の入力を canonicalize し (#2203)、live な cwd を `lsof` 出力から検出する (#2202)。
+- **hooks の silent failure を loud 化** — pending marker の削除失敗を握り潰さず報告し (#2205)、作業メモリの checklist 統合が no-op success を返さないようにした (#2152)。
+- **作業メモリが従来落ちていた経路でも保持されるようになった** — `pr_number` / `loop_count` を通常更新経路で carry-forward し (#2094)、正本の選定を存在検査ではなく内容検査で決める (#2154)。
+- **`cleanup` が停止・過剰削除しなくなった** — worktree 内起点のセッションは項目を分割実行して main checkout 操作を委譲し (#2150)、ブランチ削除ガードを硬化 (#2223)、リモートブランチ削除ガードを `--exit-code` 化して `merge` の保証主張を実態に合わせ (#2022)、transient な `ls-remote` rc=128 に 1 リトライを足し (#2153)、`recovery=auto` を reaper の dirty gate に同期した (#2200)。
+- **`wiki-query` / `wiki`** — Pass 1 の候補抽出をテーブル形式 index に対応させ (#2097)、候補 0 件の経路を fail-loud にし (#2098)、macOS CI が不正 UTF-8 に破壊していた em-dash を診断文言から ASCII 化し (#2100)、日本語タイトルの C1 誤検出を修正し (#2235)、sandbox 外で wiki push を再試行するようにした (#2221)。
+- **`lint` とスキル定義のパース** — board drift 検出から closure reason の限定を外し (#2227)、fenced bash 内の位置パラメータ展開で YAML パーサが全キー空を返す経路を塞いだ (#2051)。
+- **テストスイートの vacuous pass を排除** — TC-036a の floor 条件を Linux 判定ではなく blocking gate 判定から導き (#2096)、TC-124 (d) に positive control を付け (#2020)、comment journal の mutation survivor を潰し (#2217)、`jq` 抽出失敗でも bash guard スイートが run を打ち切らず継続し (#2207)、backlink checker を worktree 横断で除外し (#2216)、grep 系 assert helper の docstring に ERE 裸パイプのハザードを明記した (#2157)。
+- **紹介動画のアセット** — v2 の BGM 可聴性とループ位相を修正 (#2245)、Pixabay BGM の provenance を復元 (#2262)、`assemble.sh` の `-P` を現行シーン構成へ追随させた (#2263)。
+
 ## [0.9.2] - 2026-07-24
 
 ### 変更
@@ -817,54 +867,55 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
-[0.9.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.9.1...v0.9.2
-[0.9.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.9.0...v0.9.1
-[0.9.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.8.3...v0.9.0
-[0.8.3]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.8.2...v0.8.3
-[0.8.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.8.1...v0.8.2
-[0.8.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.8.0...v0.8.1
-[0.8.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.7.2...v0.8.0
-[0.7.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.7.1...v0.7.2
-[0.7.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.7.0...v0.7.1
-[0.7.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.12...v0.7.0
-[0.6.12]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.11...v0.6.12
-[0.6.11]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.10...v0.6.11
-[0.6.10]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.9...v0.6.10
-[0.6.9]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.8...v0.6.9
-[0.6.8]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.7...v0.6.8
-[0.6.7]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.6...v0.6.7
-[0.6.6]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.5...v0.6.6
-[0.6.5]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.4...v0.6.5
-[0.6.4]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.3...v0.6.4
-[0.6.3]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.2...v0.6.3
-[0.6.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.1...v0.6.2
-[0.6.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.6.0...v0.6.1
-[0.6.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.5...v0.6.0
-[0.5.5]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.4...v0.5.5
-[0.5.4]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.3...v0.5.4
-[0.5.3]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.2...v0.5.3
-[0.5.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.1...v0.5.2
-[0.5.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.5.0...v0.5.1
-[0.5.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.3.10...v0.4.0
-[0.3.10]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.3.9...v0.3.10
-[0.3.9]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.3.8...v0.3.9
-[0.3.8]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.3.7...v0.3.8
-[0.3.7]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.3.6...v0.3.7
-[0.3.6]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.3.5...v0.3.6
-[0.3.5]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.3.4...v0.3.5
-[0.3.4]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.3.3...v0.3.4
-[0.3.3]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.3.2...v0.3.3
-[0.3.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.3.1...v0.3.2
-[0.3.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.2.5...v0.3.0
-[0.2.5]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.2.4...v0.2.5
-[0.2.4]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.2.3...v0.2.4
-[0.2.3]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.2.2...v0.2.3
-[0.2.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.2.1...v0.2.2
-[0.2.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.1.3...v0.2.0
-[0.1.3]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.1.2...v0.1.3
-[0.1.2]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.1.1...v0.1.2
-[0.1.1]: https://github.com/asakaguchi/cc-rite-workflow/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/asakaguchi/cc-rite-workflow/releases/tag/v0.1.0
+[0.10.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.9.2...v0.10.0
+[0.9.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.9.1...v0.9.2
+[0.9.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.8.3...v0.9.0
+[0.8.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.8.2...v0.8.3
+[0.8.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.8.1...v0.8.2
+[0.8.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.8.0...v0.8.1
+[0.8.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.7.2...v0.8.0
+[0.7.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.7.1...v0.7.2
+[0.7.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.7.0...v0.7.1
+[0.7.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.6.12...v0.7.0
+[0.6.12]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.6.11...v0.6.12
+[0.6.11]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.6.10...v0.6.11
+[0.6.10]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.6.9...v0.6.10
+[0.6.9]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.6.8...v0.6.9
+[0.6.8]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.6.7...v0.6.8
+[0.6.7]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.6.6...v0.6.7
+[0.6.6]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.6.5...v0.6.6
+[0.6.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.6.4...v0.6.5
+[0.6.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.6.3...v0.6.4
+[0.6.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.6.2...v0.6.3
+[0.6.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.6.1...v0.6.2
+[0.6.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.6.0...v0.6.1
+[0.6.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.5.5...v0.6.0
+[0.5.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.5.4...v0.5.5
+[0.5.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.5.3...v0.5.4
+[0.5.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.5.2...v0.5.3
+[0.5.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.5.1...v0.5.2
+[0.5.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.10...v0.4.0
+[0.3.10]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.9...v0.3.10
+[0.3.9]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.8...v0.3.9
+[0.3.8]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.7...v0.3.8
+[0.3.7]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.6...v0.3.7
+[0.3.6]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.5...v0.3.6
+[0.3.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.4...v0.3.5
+[0.3.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.3...v0.3.4
+[0.3.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.2...v0.3.3
+[0.3.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.5...v0.3.0
+[0.2.5]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.4...v0.2.5
+[0.2.4]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.3...v0.2.4
+[0.2.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.3...v0.2.0
+[0.1.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.1.0

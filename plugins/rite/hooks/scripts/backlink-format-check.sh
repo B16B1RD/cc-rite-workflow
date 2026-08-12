@@ -133,15 +133,12 @@ if [ "$USE_ALL" -eq 1 ]; then
       TARGETS+=("$f")
     done < <(find "$skills_dir" -type f -name '*.md' 2>/dev/null | sort)
   fi
-  # Self-exclusion: the awk regex literals in this script would match
-  # themselves when scanned. Compute the script's own path relative to
-  # REPO_ROOT and skip it in --all mode. --target still accepts explicit
-  # self-reference so test harnesses can verify behaviour deliberately.
-  self_abs="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/$(basename "$0")"
-  self_rel=""
-  case "$self_abs" in
-    "$REPO_ROOT"/*) self_rel="${self_abs#"$REPO_ROOT"/}" ;;
-  esac
+  # Self-exclusion: the awk regex literals in this script would match the copy
+  # inside the scanned tree. Identify that copy by its canonical path under the
+  # target scripts directory, not by the executable's absolute path: /rite:lint
+  # may invoke a plugin-root copy while --repo-root points at a session worktree.
+  # --target still accepts explicit self-reference for deliberate checks.
+  self_rel="$scripts_dir/$(basename "$0")"
   if [ -d "$scripts_dir" ]; then
     while IFS= read -r f; do
       if [ -n "$self_rel" ] && [ "$f" = "$self_rel" ]; then

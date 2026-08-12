@@ -10,7 +10,7 @@
 # (「# retry break 後の成否検証」〜 outer if の else) が壊れた場合はテスト自体が
 # fail するため、アンカー変更もテストが検出する。
 #
-# 回帰 pin の背景 (Issue #1832 review cycles):
+# 回帰 pin の背景 (review cycles):
 # - TC-2: tree 全体比較はマージが追加したファイルを D と数え discardable を divergent に
 #   誤流出させた。pathspec 限定後の正分類を pin
 # - TC-4: grep '^[^ ?]' は untracked (??) を素通りさせた。混在 dirty の
@@ -167,7 +167,7 @@ r=$(classify)
 [ "$r" = "ok" ] && pass "TC-9 ($r)" || fail "TC-9: expected ok, got '$r' (#1936 sandbox ghost mount regression)"
 rm -f ghost_devnull && git checkout -- :/
 
-# ─── TC-10: lib/git-status-filtered.sh 自体の失敗時 → divergent (fail-safe, PR #1937 cross-validation) ───
+# ─── TC-10: lib/git-status-filtered.sh 自体の失敗時 → divergent (fail-safe,  cross-validation) ───
 echo "TC-10: git-status-filtered.sh helper failure -> divergent (fail-safe, not silently clean)"
 advance_origin "v4" ""
 stub_root="$TEST_DIR/stub-plugin-root"

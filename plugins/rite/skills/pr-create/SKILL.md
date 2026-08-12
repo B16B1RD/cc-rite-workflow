@@ -250,7 +250,7 @@ Extract the related Issue number from the branch name:
 
 ```
 パターン: {type}/issue-{number}-{slug}
-例: feat/issue-17-pr-create → Issue #17
+例: feat/issue-{number}-pr-create → 対応する Issue
 ```
 
 If extraction fails, confirm with `AskUserQuestion`:
@@ -554,7 +554,7 @@ If "Create separate Issues and continue with PR creation" is selected, create an
 |-------------|--------|---------|
 | `{projects_enabled}` | `rite-config.yml` → `github.projects.enabled` | `true` |
 | `{project_number}` | `rite-config.yml` → `github.projects.project_number` | `6` |
-| `{owner}` | `rite-config.yml` → `github.projects.owner` | `asakaguchi` |
+| `{owner}` | `rite-config.yml` → `github.projects.owner` | `{owner}` |
 | `{iteration_mode}` | `rite-config.yml` → `iteration.enabled` が `true` かつ `iteration.auto_assign` が `true` なら `"auto"`、それ以外は `"none"` | `"none"` |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) | `/home/user/.claude/plugins/rite` |
 
@@ -764,7 +764,7 @@ Push the local branch to remote:
 git push origin {branch_name}
 ```
 
-> `-u`（upstream 設定）は付けない。sandbox 有効環境で upstream tracking の `.git/config` 書込が拒否されるため（Issue #1894）。3.4 の `gh pr create` は `--head` で明示的にブランチを指定するため upstream に依存しない。
+> `-u`（upstream 設定）は付けない。sandbox 有効環境で upstream tracking の `.git/config` 書込が拒否されるため。3.4 の `gh pr create` は `--head` で明示的にブランチを指定するため upstream に依存しない。
 
 ### 3.4 Create Draft PR
 
@@ -831,6 +831,7 @@ WM_SOURCE="create" \
   WM_NEXT_ACTION="rite:pr-review を実行" \
   WM_BODY_TEXT="PR #{pr_number} created." \
   WM_ISSUE_NUMBER="{issue_number}" \
+  WM_PR_NUMBER="{pr_number}" \
   bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
@@ -1010,7 +1011,7 @@ Output the following pattern based on PR creation result:
 
 **Example output:**
 ```
-PR #123 をドラフトとして作成しました。
+PR #{pr_number} をドラフトとして作成しました。
 
 [pr:created:123]
 ```

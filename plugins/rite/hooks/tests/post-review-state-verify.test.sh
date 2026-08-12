@@ -105,13 +105,19 @@ sbx2=$(make_sandbox) && cleanup_dirs+=("$sbx2") || { echo "ERROR: make_sandbox f
 branch2=$(cd "$sbx2" && git branch --show-current)
 wth2=$(snapshot_hash "$sbx2")
 ( cd "$sbx2" && echo changed >> a ) >/dev/null 2>&1
-out2=$(cd "$sbx2" && bash "$VERIFY" --original-branch "$branch2" --original-worktree-hash "$wth2" --auto-recover true)
+stderr2=$(mktemp) && cleanup_dirs+=("$stderr2")
+out2=$(cd "$sbx2" && bash "$VERIFY" --original-branch "$branch2" --original-worktree-hash "$wth2" --auto-recover true 2>"$stderr2")
 drift2=$(printf '%s' "$out2" | jq -r '.drift' 2>/dev/null)
 type2=$(printf '%s' "$out2" | jq -r '.type' 2>/dev/null)
 recovered2=$(printf '%s' "$out2" | jq -r '.recovered' 2>/dev/null)
 assert "T-02: real tracked-file edit reports drift=true" "true" "$drift2"
 assert "T-02: drift type is worktree" "worktree" "$type2"
 assert "T-02: worktree drift is not auto-recovered" "false" "$recovered2"
+if grep -qF 'working-tree git verbs are not pre-blocked because exhaustive command matching is unsafe' "$stderr2"; then
+  pass "T-02: drift diagnostic explains why post-condition detection is required"
+else
+  fail "T-02: drift diagnostic omitted the durable post-condition rationale"
+fi
 
 # --- T-02b: ghost mount + real edit together still detects the real drift ---
 sbx3=$(make_sandbox) && cleanup_dirs+=("$sbx3") || { echo "ERROR: make_sandbox failed, aborting" >&2; exit 1; }

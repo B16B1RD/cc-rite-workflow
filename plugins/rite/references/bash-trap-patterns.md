@@ -2,13 +2,15 @@
 
 > **Charter**: Subject to [Simplification Charter](../skills/rite-workflow/references/simplification-charter.md). Runtime に効かない経緯記述は書かない。
 
-対象 6 ファイル: `pr/fix.md` / `pr/pr-review.md` / `pr/open.md` / `pr/merge.md` / `wiki/lint.md` / `wiki/ingest.md`。
+採用 site は `skills/fix/SKILL.md` / `skills/pr-review/SKILL.md` / `skills/open/SKILL.md` /
+`skills/merge/SKILL.md` / `skills/wiki-lint/SKILL.md` / `skills/wiki-ingest/SKILL.md` /
+`skills/cleanup/SKILL.md` ステップ 5。旧 `commands/` 時代の path は対象外。
 本ファイルは **signal-specific trap + cleanup function パターン**の canonical 定義と根拠を集約する。
 各 bash block の冒頭では本ファイルへの anchor 参照を pointer コメントとして置く。
 
 > **⚠️ コード層との境界**: rationale / 説明文は本ファイル 1 箇所に集約されるが、cleanup 関数本体と
-> 4 行 trap (`EXIT`/`INT`/`TERM`/`HUP`) は対象 5 ファイル各 site にコードとして存在する。signal 動作
-> そのものの変更 (HUP 追加、TERM exit code 変更等) は本ファイル更新後に対象 5 ファイル全 site の
+> 4 行 trap (`EXIT`/`INT`/`TERM`/`HUP`) は各採用 site にコードとして存在する。signal 動作
+> そのものの変更 (HUP 追加、TERM exit code 変更等) は本ファイル更新後に全採用 site の
 > 4 行 trap を同時更新すること。
 
 ---
@@ -16,6 +18,8 @@
 ## Signal-Specific Trap Template
 
 <a id="signal-specific-trap-template"></a>
+
+> **新規の `hooks/` / `scripts/` helper が tempfile / tempdir を必要とする場合、本テンプレートを手書きせず `hooks/scripts/lib/tempfile.sh` を source する**（`rite_tempfile_init` → `rite_tempfile_new <outvar> [tag]`）。lib は下記の 4 行 trap をそのまま実装したうえで、生成と cleanup 登録を不可分にする。規約の SoT は [coding-principles.md](../skills/rite-workflow/references/coding-principles.md#shell-helper-conventions)「Shell Helper Conventions」。本テンプレートは lib を使えない site（tempfile 以外の cleanup、lib 自身）と既存 site 向けの canonical 定義として残る。
 
 canonical パターン:
 
@@ -291,5 +295,5 @@ indent 一貫性を確認する。
 # (rationale: signal 別 exit code、race window 回避、rc=$? capture、${var:-} safety、関数契約)
 ```
 
-signal 動作そのものを変更する場合は、本ファイル更新後に対象 5 ファイル全 site の 4 行 trap を
+signal 動作そのものを変更する場合は、本ファイル更新後に全採用 site の 4 行 trap を
 Instantiation Checklist に従って同時更新すること。

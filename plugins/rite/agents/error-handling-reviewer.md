@@ -35,6 +35,7 @@ For each error handler identified in Step 1:
 - **Catch specificity**: Is the catch narrowed to the expected error type, or does it catch all exceptions?
 - **Fallback behavior**: If a default value is returned, is the caller aware that the primary operation failed?
 - **Error propagation**: If the error is re-thrown, is the original cause preserved?
+- **Regression proof for newly added paths**: When the diff introduces a fallback, WARNING, catch/else branch, or other error path, verify that a test enters that exact branch, asserts its observable outcome, and fails when the pre-fix behavior is restored (or an equivalent mutation is applied). Report missing proof as a current-PR finding. See `skills/pr-review/references/promotion-audit-2091.md#new-error-path-regression-gate`.
 
 ### Step 3: Error Message Inspection
 

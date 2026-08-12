@@ -19,4 +19,4 @@ Closes #{issue_number}
 - [ ] Documentation updated (if applicable)
 
 ---
-🤖 Generated with [rite workflow](https://github.com/{owner}/cc-rite-workflow)
+🤖 Generated with [rite workflow](https://github.com/B16B1RD/cc-rite-workflow)

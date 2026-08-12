@@ -116,6 +116,14 @@ caller の `exit 1` 直前に emit が必要になる。
 - **`wc -l` の stderr を独立退避する理由**: `2>/dev/null` だと read permission 拒否 / inode 破損 / ファイル内容破壊などの IO エラーで silent に空文字列 → count=0 に落ちて、policy override の監査トレースが完成報告から silent drop する。
 - **exit 時に confidence_override / pr-comment tempfile を明示的に rm する理由 (defense-in-depth)**: ステップ 1.2 進入時の無条件 truncate (`: >`) に削除を委ねると、何らかの経路で truncate 呼び出しが skip された場合に前セッションの stale データが混入する silent regression が起きる。ステップ 5.1 (E2E) / ステップ 5.2 (Standalone) の終了経路で specific path による明示 rm を行い、次回実行時の混入を決定論的に防ぐ。
 
+## simplification-first-rationale
+
+ステップ 2 冒頭に本原則を置く理由: 多サイクル PR の実測分析（2026-07、複数の長期レビュー run の永続レビュー結果 JSON 9 cycle 分）で、cycle 2 以降の blocking 指摘の約 8 割が「前 cycle の fix が導入した機構への指摘」だった。指摘への修正が規約・分岐・ガードの**追加**で行われると、次 cycle がその追加物を同じ厳密さでレビューして新たな構造欠陥を検出し、ループが収束しない。実例となった docs 変更は +64/-16 の docs 変更に fix 6 cycle・実時間 10 時間超を要し、序盤 cycle が積み上げた分岐機構を「削除して行全体再生成へ単純化する」fix が入った時点で初めて収束へ向かった。
+
+新しいモデル世代（Opus 4.5 以降）には頼まれていない抽象・柔軟性を足す overengineering 傾向が公式に文書化されており（[Claude prompting best practices §Overeagerness](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-4-best-practices)）、追加型 fix はこの傾向と毎 cycle の全力 re-review の相互作用で発散する。
+
+Escalation trigger が「前 cycle fix への指摘」を名指しする理由: 同分析で cycle 3 以降の指摘はほぼ全てこの型であり、パッチ重ね掛けスパイラルの最も確度の高い観測シグナルであるため。Root Cause Gate（ステップ 3.2.1）とは直交する — あちらは commit body に根本原因の**記名**を求め、本原則は修正の**形**（追加 vs 削除・単純化）を問う。
+
 ## impact-scan-rationale
 
 ステップ 2.2.A Pre-Fix Impact Scan が必須である理由: 「指摘箇所だけ直す」では既存 caller / test / 他 file の同名
@@ -164,7 +172,7 @@ silent に行うと `[ -s "$commit_err" ]` guard が no-op 化し、/tmp が壊�
   - **stale**: work memory comment が最新の fix 内容を反映していない状態。`[fix:pushed-wm-stale]` 出力時の semantics で、caller は AskUserQuestion で続行/中断を選択する。
   - **hard fail-fast**: 即座に exit 1 で fix loop を kill する失敗 (引数 parse 失敗 / mktemp 失敗等)。`exit 1` だけでは Claude のフロー制御にならないため retained flag も併用する。
 - **local-wm-update hook の stderr 退避 + lock/non-lock 分岐の理由**: `2>/dev/null || true` は lock contention だけでなく permission denied / script 不在 / bash syntax error / 内部致命的エラーもすべて silent suppress する。lock 判定の exact phrase pattern (`file is locked|lock contention|resource busy`) は、`lock|contention|busy` の緩い pattern が permission denied / device busy 等まで silent suppress する欠陥を避けるため (canonical: common-error-handling.md#hook-lock-contention-classification-canonical)。mktemp 失敗時も silent skip に戻さず、`2>&1` + `head -5` の簡易 fallback で可視化する。
-- **WM_UPDATE_FAILED 網羅性 DoD 検証スクリプトの設計上の要点** (スクリプト本体は SKILL.md ステップ 5.1):
+- **WM_UPDATE_FAILED 網羅性 DoD 検証スクリプトの設計上の要点** (スクリプト本体は `hooks/scripts/fix-reason-coverage-check.sh`、呼び出しは SKILL.md ステップ 5.1):
   - `grep` 側は `WM_UPDATE_FAILED=1; reason=` で prefix を絞り、`CONFIDENCE_OVERRIDE_READ_FAILED` / `REPLY_POST_FAILED` / `REPORT_POST_FAILED` / `ISSUE_CREATE_FAILED` の別 context flag を前方一致で自動除外する。
   - `awk` 側は `| reason | 発生 Phase | 発生条件 |` の table header 行を起点に `in_table=1` を開始し、非 `|` 行で戻すことで reason 表のみを対象とする。他テーブルや周辺段落を起点/終点トリガーにしないため、blockquote が `**` 強調に格上げされても in_table 範囲を壊さない。
   - `sed 's/\$.*//'` は表側 reason に shell 変数展開 suffix が含まれる場合に備えた defensive 正規化 (現状該当なし、将来の drift 誤検出防止のため残置)。

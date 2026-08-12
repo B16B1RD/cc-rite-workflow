@@ -113,4 +113,4 @@ After generating the Issue body, verify all items:
 
 ---
 
-🤖 Generated with [rite workflow](https://github.com/{owner}/cc-rite-workflow)
+🤖 Generated with [rite workflow](https://github.com/B16B1RD/cc-rite-workflow)

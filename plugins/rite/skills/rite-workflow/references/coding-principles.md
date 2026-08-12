@@ -19,8 +19,10 @@ The `knowledge_routing` principle additionally draws on t-wada's four quadrants 
 | `inline_planning` | Present Plan Before Implementation | Phase 3 |
 | `issue_accountability` | Accountability for Discovered Issues | All Phases |
 | `no_unnecessary_fallback` | No Unnecessary Fallback | Phase 5.1, PR Review |
+| `no_speculative_structure` | No Speculative Structure | Phase 5.1, PR Review |
 | `reference_discovery` | Discover Reference Implementations | Phase 3 |
 | `question_self_check` | Self-Check Before Asking | All Phases |
+| `question_resolution` | Resolve Recommended Reversible Decisions Autonomously | All Phases |
 | `documentation_consistency` | Sync Documentation with Specification Changes | Phase 5.1 |
 | `knowledge_routing` | Route Knowledge to Its Durable Medium | Phase 5.1, PR Review |
 
@@ -63,6 +65,18 @@ The `knowledge_routing` principle additionally draws on t-wada's four quadrants 
 | Optional feature unavailable | Skip with notice | Expected absence — feature is optional |
 | Network error during branch detection | Error | Unexpected failure — don't guess the branch name |
 
+> **Operating-environment declaration**: Each project declares its operating environment (single-user development machine / shared host / multi-tenant, etc.) as prose in its own `CLAUDE.md` — not as a config key — because the reviewer-side [Finding Quality Guardrail](../../../agents/_reviewer-base.md#finding-quality-guardrail) Category #2 judges whether a defensive / hardening finding is reachable at all against that declaration.
+
+### no_speculative_structure (No Speculative Structure)
+
+**Summary**: Do not build for a future that has no Issue. Structure added "for later" — extension points, reserved fields, unused config keys, single-caller abstractions — is dead weight that still has to be read, reviewed, documented, and eventually removed.
+
+**Rules**:
+1. Add structure only when a real Issue requires it now. The anticipated future rarely arrives; when it does, handle it then — paying that cost later is cheaper than carrying an unused mechanism until then.
+2. Applies to specification text as much as to code: reserved sentinels, placeholder branches, unused marker fields, and "for future use" notes in skill / reference / template files.
+3. The legitimate trigger is the current Issue's Acceptance Criteria, or a consumer that lands in the same PR. "It might be needed" / "it keeps the design symmetric" is not a trigger.
+4. When a plan or a review finding proposes speculative structure, drop it rather than adding a smaller version of it — see the "Simplification-First Response Principle" section in [`skills/fix/SKILL.md`](../../../skills/fix/SKILL.md).
+
 ### reference_discovery (Discover Reference Implementations)
 
 **Summary**: Discover existing reference implementations in the same directory/pattern as change targets.
@@ -77,6 +91,16 @@ The `knowledge_routing` principle additionally draws on t-wada's four quadrants 
 **Summary**: Self-check whether the question is truly necessary before asking.
 
 **Details**: See the `question_self_check` section in [common-principles.md](./common-principles.md).
+
+### question_resolution (Resolve Recommended Reversible Decisions Autonomously)
+
+**Summary**: 人間への質問は、ユーザーの頭の中にしかない意思決定と不可逆操作に限定する。セッション自身が推奨を明記できる可逆判断は、その推奨で続行する。
+
+**Rules**:
+1. `AskUserQuestion` が許されるのは、(a) 優先順位・UX 方針・トレードオフなどユーザー固有の意思決定、または (b) merge、Issue close、外部公開、削除など不可逆操作の承認だけである。
+2. コード編集、commit、PR コメント、再試行などブランチ内で取り消せる判断についてセッション自身が推奨を明記した場合は、質問せず推奨案で続行する。
+3. 自律続行した判断と根拠は、新しい様式や marker を作らず、既存の work memory の決定事項・計画逸脱ログ、PR コメント、または commit body のうち、その phase が既に使用する記録先へ残す。
+4. 推奨を決められない可逆判断でも、まず探索・検証で自己解決する。探索後も複数案の優先がユーザー固有の価値判断に依存するときだけ (a) として質問する。
 
 ### documentation_consistency (Sync Documentation with Specification Changes)
 
@@ -189,6 +213,20 @@ OK patterns:
 
 ---
 
+## Shell Helper Conventions
+
+`hooks/` / `scripts/` の bash helper を**新規に書く**ときの規約。既存 helper の retrofit は求めない（実需の Issue が立ったときに個別に判断する）。
+
+### tempfile は lib 経由で作る
+
+**Rule**: 新規 helper で tempfile / tempdir が要るときは `mktemp` を直接書かず、`hooks/scripts/lib/tempfile.sh` を source して `rite_tempfile_init` → `rite_tempfile_new <outvar> [tag]`（ディレクトリは `rite_tempdir_new`）を使う。自前の handler を既に持つ helper は `rite_tempfile_init --caller-traps` + 自 handler からの `rite_tempfile_cleanup` で合成する（既定の `rite_tempfile_init` は EXIT/INT/TERM/HUP のいずれかに既存 handler があると上書きせず rc=1 で拒否する。無視状態で継承した signal は handler ではないので拒否対象にならず、その signal だけ設置を skip する。EXIT は signal ではなく継承もされないので、`trap '' EXIT` は caller が書いた handler として拒否する）。**`--caller-traps` では lib は handler を 1 つも設置しない** — INT/TERM/HUP の handler と 130/143/129 の exit は caller 側の責務になる。EXIT だけを張った caller がこの経路に落ちると、下記 Why が挙げる SIGINT の穴がそのまま残る。**本節が SoT**で、`CONTRIBUTING.md` の Hook Conventions には要点のみを置く。
+
+**Why**: 生成・cleanup 登録・signal 処理を毎回手書きしていたことが、mktemp 失敗の無音化・EXIT のみで INT/TERM/HUP を落とす cleanup・登録前に signal を受ける窓、という同型バグの反復再発源だった。EXIT のみの trap は signal 経路でも発火するが、その signal の exit code を持てない — 実測（bash 5.2 / Linux）では TERM / HUP は EXIT のみでも 143 / 129 で停止する一方、**foreground child のブロック中に届いた SIGINT は rc=0 のまま後続の命令まで実行される**（非対話 shell は foreground child が当該 signal で死んだ場合を除き SIGINT で終了しないため）。lib は canonical 順序（handler 設置 → mktemp → 即登録）を構造的に強制し、**既定経路では** 130/143/129 を決定論的に返し（`--caller-traps` では上記のとおり caller の責務）、`rite_tempfile_new` は fail-loud なので「空パスに落ちて黙って壊れる」書き方自体が無くなる。
+
+**Mechanical enforcement**: lib で消せない残余 — `mktemp` ハンドルまたは lib ハンドル**から派生させたパス** — は `/rite:lint` Phase 3.5 の `hooks/scripts/tempfile-lifecycle-check.sh` が `mktemp-derived-path` として非ブロッキング warning で surface する（`[lint:success]` は不変）。**手書きの `mktemp` 自体は検出対象外**で、そちらは lib 側の fail-loud が受け皿。意図的に派生させたパスは行内または直上行の `drift-check-ignore` marker で除外する（marker は派生行そのものに置く — mktemp 行に置くと直上行免除でその直下行の検出まで落ちる）。背景は [plugin-checks-rationale.md](../../lint/references/plugin-checks-rationale.md) を参照。
+
+---
+
 ## Phase Checklists
 
 各 phase の完了前に、該当する原則を自己チェックする（詳細節を持たない原則は標準規律としてチェックする）:
@@ -197,8 +235,8 @@ OK patterns:
 |-------|---------------------------|
 | All Phases (Common) | `issue_accountability` / `question_self_check` |
 | Phase 3 (Implementation Plan) | `assumption_surfacing` / `confusion_management` / `inline_planning` / `reference_discovery` |
-| Phase 5.1 (Implementation) | `simplicity_enforcement` / `scope_discipline` / `dead_code_hygiene` / `no_unnecessary_fallback` / `issue_accountability` / `documentation_consistency` / `knowledge_routing` |
-| PR Review | `push_back_when_warranted` / `simplicity_enforcement` / `scope_discipline` / `no_unnecessary_fallback` / `issue_accountability` / `knowledge_routing` |
+| Phase 5.1 (Implementation) | `simplicity_enforcement` / `scope_discipline` / `dead_code_hygiene` / `no_unnecessary_fallback` / `no_speculative_structure` / `issue_accountability` / `documentation_consistency` / `knowledge_routing` |
+| PR Review | `push_back_when_warranted` / `simplicity_enforcement` / `scope_discipline` / `no_unnecessary_fallback` / `no_speculative_structure` / `issue_accountability` / `knowledge_routing` |
 | Before PR Creation | `issue_accountability`（未対応の問題・レビュー指摘がないか / スコープ外の問題が別 Issue として追跡されているか） |
 
 **Reference**: The `/rite:pr-create` Phase 2.5 ([create.md](../../../skills/pr-create/SKILL.md), "2.5 Unaddressed Issues Check" section) implements the unaddressed issues check.
@@ -211,6 +249,7 @@ OK patterns:
 - [Phase Mapping](./phase-mapping.md) - Phase details
 - [PR Create Command](../../../skills/pr-create/SKILL.md) - Unaddressed issues check before PR creation (Phase 2.5)
 - [Markdown Authoring Conventions](#markdown-authoring-conventions) - Skill loader に load される Markdown ファイルの記述規約 (bash negation operator inline code convention / operational bash block heaviness convention)
+- [Shell Helper Conventions](#shell-helper-conventions) - `hooks/` / `scripts/` の bash helper を新規に書くときの規約 (tempfile は lib 経由で作る)
 - [gh-cli-patterns.md](../../../references/gh-cli-patterns.md) - Related bang character (U+0021) handling in bash command contexts (Shell Escaping Notes)
 - [graphql-helpers.md](../../../references/graphql-helpers.md) - Related bang character handling in GraphQL query / jq contexts (History Expansion and Special Character Prevention)
 - [gh-cli-error-catalog.md](../../../references/gh-cli-error-catalog.md) - Related bang character handling error catalog (Category 6)

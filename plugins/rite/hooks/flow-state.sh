@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/state-path-resolve.sh"
 # shellcheck source=control-char-neutralize.sh
 source "$SCRIPT_DIR/control-char-neutralize.sh"
+# shellcheck source=gitignore-ensure.sh
+source "$SCRIPT_DIR/gitignore-ensure.sh"
 
 # Callers may pre-resolve STATE_ROOT (e.g., session-start.sh resolves it from
 # the hook payload's `cwd` field, which differs from flow-state.sh's own CWD)
@@ -81,7 +83,7 @@ _resolve_session_id() {
     _validate_session_id "$override" "--session override" || return 1
     printf '%s\n' "$override"; return 0
   fi
-  # Priority (Issue #1530): override → env CLAUDE_CODE_SESSION_ID → env
+  # Priority: override → env CLAUDE_CODE_SESSION_ID → env
   # CLAUDE_SESSION_ID → `.rite-session-id` file (env-absent fallback).
   #
   # The env var is per-session, so it isolates concurrent Claude sessions that
@@ -127,6 +129,9 @@ _state_path() {
 # or any non-zero from the flock+mv subshell. Callers MUST check rc (e.g.
 # `_atomic_write "$f" "$updated" || return 1`) — silent success leads to false
 # "migrated:" announcements when EROFS/ENOSPC/EXDEV/EACCES truncate the tmpfile.
+# Degrades to a plain atomic mv when flock is unavailable (stock macOS /
+# Windows Git Bash without util-linux) — matches _atomic_claim_write and the
+# wiki helpers; rename(2) atomicity holds without the advisory lock.
 _atomic_write() {
   local target="$1" content="$2" lockfile="${1}.lock" tmpfile rc=0
   tmpfile=$(mktemp "${target}.XXXXXX") || return 1
@@ -147,8 +152,13 @@ _atomic_write() {
     rm -f "$tmpfile" 2>/dev/null
     return 1
   }
-  ( flock -w 3 9 || { echo "ERROR: flock timeout: $lockfile" >&2; exit 1; }
-    mv "$tmpfile" "$target" ) 9>"$lockfile" || rc=$?
+  if command -v flock >/dev/null 2>&1; then
+    ( flock -w 3 9 || { echo "ERROR: flock timeout: $lockfile" >&2; exit 1; }
+      mv "$tmpfile" "$target" ) 9>"$lockfile" || rc=$?
+  else
+    # No flock (stock macOS / Windows Git Bash): lock skip + plain atomic mv.
+    mv "$tmpfile" "$target" || rc=$?
+  fi
   [ -f "$tmpfile" ] && rm -f "$tmpfile" 2>/dev/null || true
   return $rc
 }
@@ -170,17 +180,92 @@ _emit_jq_err_snippet() {
   fi
 }
 
+# Append one JSON Lines record per **performed** `set` write so per-phase
+# durations can be derived offline (#2115). flow-state itself is overwritten in
+# place, so without this the workflow left no phase history and the only way to
+# get a stage breakdown was reading file mtimes by hand.
+#
+# Write-only by contract: no subcommand reads this file. The consumer is a future
+# aggregation Issue; adding a reader here would be speculative structure.
+#
+# Placement follows the `.rite/logs/` convention that session-start.sh
+# established for `pr-cycle-cleanup.log`. `$STATE_ROOT` (resolved once at script
+# top) is reused rather than re-derived: it already honors the `RITE_STATE_ROOT`
+# override and carries state-path-resolve.sh's linked-worktree unification, so a
+# phase that ran inside a session worktree lands in the same main-checkout log as
+# the rest of that session.
+#
+# Fully non-blocking (AC-2): every failure path emits a WARNING and returns 0, so
+# a read-only / full / permission-denied log destination changes neither cmd_set's
+# exit code nor the state JSON. `jq -c` supplies the "1 transition = 1 line"
+# invariant structurally — `_phase_is_valid` only WARNs about an unknown `--phase`
+# and never rejects it, so a value carrying a newline gets escaped into the record
+# instead of splitting it in two.
+_append_phase_transition() {
+  local from="$1" to="$2" sid="$3" issue="$4" pr="$5" ts="$6"
+  local log_dir="$STATE_ROOT/.rite/logs"
+  local log_file="$log_dir/phase-transitions.log"
+  # Every runtime-derived value below goes through `neutralize_ctrl` before landing in
+  # a WARNING: `$log_dir` / `$log_file` carry `$STATE_ROOT`, `$from` comes from the state
+  # file and `$to` straight from `--phase`, and a raw 0x9b in any of them is read as a CSI
+  # introducer by some terminals — enough to forge a second `WARNING:` line.
+  if ! mkdir -p "$log_dir" 2>/dev/null; then
+    echo "WARNING: flow-state.sh: phase-transition log dir not creatable ($(printf '%s' "$log_dir" | neutralize_ctrl)); transition $(printf '%s' "${from:-<none>}" | neutralize_ctrl) -> $(printf '%s' "$to" | neutralize_ctrl) not recorded" >&2
+    return 0
+  fi
+  # Self-contained `.gitignore` (`*`), because /rite:setup's generated .gitignore
+  # does not cover `.rite/logs/`. The guard reads the file's **content** (`-s`),
+  # not its existence: `> file` truncates before the write, so an ENOSPC leaves a
+  # 0-byte `.gitignore` that an existence guard would accept as "already created",
+  # making every later `set` skip the rewrite while the directory stays un-ignored.
+  # A failure is announced rather than swallowed — a missing exclusion is the exact
+  # path by which the log reaches a public repo. Same form as review-result-save.sh
+  # and review-results-archive-or-rm.sh. Still non-blocking: the append runs either way.
+  if ! _ensure_dir_gitignore "$log_dir"; then
+      echo "WARNING: flow-state.sh: cannot create $(printf '%s' "$log_dir" | neutralize_ctrl)/.gitignore; verify by hand that this directory is excluded from git" >&2
+      [ -n "$_RITE_GITIGNORE_ERROR" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+  fi
+  # `--argjson` keeps the two numeric fields as JSON numbers; both values already
+  # survived the identical `--argjson` in the state write above, so anything it would
+  # reject cannot reach here — the state write would have failed and returned before
+  # the append. What the guard below is for is jq failing to *run* at all
+  # (fork/exec/OOM): `line` would be empty and the append would put a blank line into
+  # the JSONL. That is why the branch stays despite being unreachable via bad input.
+  local line
+  if ! line=$(jq -cn --arg ts "$ts" --arg session "$sid" \
+      --argjson issue "$issue" --argjson pr "$pr" \
+      --arg from "$from" --arg to "$to" \
+      '{ts:$ts, session_id:$session, issue_number:$issue, pr_number:$pr, from:$from, to:$to}' 2>/dev/null); then
+    echo "WARNING: flow-state.sh: phase-transition record could not be built (jq did not run); transition $(printf '%s' "${from:-<none>}" | neutralize_ctrl) -> $(printf '%s' "$to" | neutralize_ctrl) not recorded" >&2
+    return 0
+  fi
+  # O_APPEND single-line write — no lock, no rotation (single-user dev machine;
+  # a lone `printf` of one short line is atomic enough at this size).
+  # The `{ ...; } 2>/dev/null` grouping is load-bearing (same form as
+  # session-start.sh's log probe): a plain `printf >> "$f" 2>/dev/null` still
+  # leaks the shell's own "Permission denied" redirect-setup error, because the
+  # `>>` is opened before the `2>` takes effect. Redirecting the group first puts
+  # /dev/null in place ahead of the failing open, leaving only our WARNING.
+  if ! { printf '%s\n' "$line" >> "$log_file"; } 2>/dev/null; then
+    echo "WARNING: flow-state.sh: phase-transition log not writable ($(printf '%s' "$log_file" | neutralize_ctrl)); transition $(printf '%s' "${from:-<none>}" | neutralize_ctrl) -> $(printf '%s' "$to" | neutralize_ctrl) not recorded" >&2
+    return 0
+  fi
+  return 0
+}
+
 cmd_set() {
   # Merge semantics: unspecified scalar fields preserve existing values (旧 patch 互換).
   # Required: --phase, --next. Optional fields fall back to existing JSON or defaults.
   local phase="" next="" session="" if_exists=0 preserve_error=0 require_worktree=0
   local issue="" branch="" pr="" parent_issue="" active="" handoff="" worktree="" cycle_count=""
+  local stop_reason=""
   while [ $# -gt 0 ]; do case "$1" in
     --phase) phase="$2"; shift 2 ;;
     --issue) issue="$2"; shift 2 ;;
     --branch) branch="$2"; shift 2 ;;
     --worktree) worktree="$2"; shift 2 ;;
     --cycle-count) cycle_count="$2"; shift 2 ;;
+    --stop-reason) stop_reason="$2"; shift 2 ;;
     --pr) pr="$2"; shift 2 ;;
     --parent-issue) parent_issue="$2"; shift 2 ;;
     --next) next="$2"; shift 2 ;;
@@ -194,7 +279,7 @@ cmd_set() {
   esac; done
   [ -z "$phase" ] && { echo "ERROR: --phase is required" >&2; return 1; }
   [ -z "$next" ] && { echo "ERROR: --next is required" >&2; return 1; }
-  _phase_is_valid "$phase" || echo "WARNING: unknown phase: $phase (allowed: $PHASE_ENUM_V3)" >&2
+  _phase_is_valid "$phase" || echo "WARNING: unknown phase: $(printf '%s' "$phase" | neutralize_ctrl) (allowed: $PHASE_ENUM_V3)" >&2
   local sid path; sid=$(_resolve_session_id "$session") || return 1
   path=$(_state_path "$sid")
   if [ $if_exists -eq 1 ] && [ ! -f "$path" ]; then
@@ -225,7 +310,12 @@ cmd_set() {
   # される。1 回の composite jq + stderr capture に集約し、jq 失敗時に WARNING を stderr emit
   # して operator が corrupt overwrite を検出できるようにする。Unit separator () で field
   # を分割し、IFS で安全に split (whitespace collapse 防止)。
-  local cur_issue=0 cur_branch="" cur_pr=0 cur_parent=0 cur_active=true cur_err=0 cur_last_synced="" cur_worktree="" cur_cycle=0 cur_wm_comment_id=""
+  # `cur_phase` (#2115) rides along on this composite read purely to supply the
+  # phase-transition log's `from` value — it is NOT merged into the write (the
+  # new phase is always the caller's `--phase`). It stays "" when no state file
+  # exists yet (fresh session) or when the read below failed (corrupt JSON), and
+  # the log records that as an empty `from` rather than inventing a prior phase.
+  local cur_issue=0 cur_branch="" cur_pr=0 cur_parent=0 cur_active=true cur_err=0 cur_last_synced="" cur_worktree="" cur_cycle=0 cur_wm_comment_id="" cur_phase=""
   if [ -f "$path" ]; then
     local _cur_jq_err="" _cur_data _cur_rc=0
     _cur_jq_err=$(mktemp 2>/dev/null) || _cur_jq_err=""
@@ -240,13 +330,14 @@ cmd_set() {
                        (.last_synced_phase // ""),
                        (.worktree // ""),
                        (.cycle_count // 0 | tostring),
-                       (.wm_comment_id // "" | tostring)] | join("")' "$path" 2>"${_cur_jq_err:-/dev/null}") || _cur_rc=$?
+                       (.wm_comment_id // "" | tostring),
+                       (.phase // "")] | join("")' "$path" 2>"${_cur_jq_err:-/dev/null}") || _cur_rc=$?
     if [ "$_cur_rc" -ne 0 ]; then
       # basename only — multi-tenant 環境での絶対 path leakage を最小化 (cmd_get / cmd_set --if-exists と対称化)
       echo "WARNING: flow-state.sh cmd_set: existing state read failed for $(basename "$path") (may be corrupt; merged write will use defaults)" >&2
       _emit_jq_err_snippet "$_cur_jq_err"
     else
-      IFS=$'\x1f' read -r cur_issue cur_branch cur_pr cur_parent cur_active cur_err cur_last_synced cur_worktree cur_cycle cur_wm_comment_id <<< "$_cur_data"
+      IFS=$'\x1f' read -r cur_issue cur_branch cur_pr cur_parent cur_active cur_err cur_last_synced cur_worktree cur_cycle cur_wm_comment_id cur_phase <<< "$_cur_data"
     fi
   fi
   [ -z "$issue" ] && issue=$cur_issue
@@ -296,6 +387,16 @@ cmd_set() {
   #   機構変更は不要 — prefix 分岐は Stop hook (stop-loop-continuation.sh) 側の reason 生成で行う。
   # Stop hook が `consume-handoff` で読み取り + 削除し、prefix で reason を分岐して block する
   # (block 可否は handoff 非空かどうかで決まり、prefix は再注入する reason の選択にのみ影響する)。
+  #
+  # `stop_reason` (#2045) は `handoff` と**同じ default-clear** (merge-read に含めず、
+  # `--stop-reason` 明示時だけ書く)。`cycle_count` の merge-preserve とは逆なので取り違えないこと。
+  # 用途はワークフローが「失敗として止まった」ことの durable な記録で、`session-start.sh` の再開案内が
+  # ブレーカー失敗停止と Ctrl+C 中断を区別するために読む。default-clear である必要があるのは、
+  # 停止後に再開・継続するどの set (open / fix / review 完了時の set 等) も理由を自動的に消してくれないと
+  # stale な失敗記録が「今まさに失敗停止中」として案内され続けるため。
+  # 値は自由記述ではなく `circuit-breaker:max-cycles` / `circuit-breaker:divergence` のような
+  # 列挙トークン (SoT: docs/SPEC.md の Optional field 表)。`max_review_cycles` 等の設定値は
+  # 埋めない — 上限値は invocation ごとに config から読み直されるため、state に焼くと変更時に破綻する。
   local now new; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   # `_new_jq_err` capture (symmetric with the composite read's `_cur_jq_err`): the
   # `tonumber` conversion below can fail on a corrupt on-disk `wm_comment_id`, and jq's
@@ -312,6 +413,7 @@ cmd_set() {
     --argjson err "$err_count" --arg ts "$now" \
     --arg lsp "$cur_last_synced" --arg handoff "$handoff" --arg worktree "$worktree" \
     --argjson cycle "$cycle_count" --arg wmcid "$cur_wm_comment_id" \
+    --arg stopreason "$stop_reason" \
     '{schema_version:$schema, session_id:$session, phase:$phase,
       issue_number:$issue, branch:$branch, pr_number:$pr,
       parent_issue_number:$parent, next_action:$next, active:$active,
@@ -319,6 +421,7 @@ cmd_set() {
      | (if $lsp != "" then .last_synced_phase = $lsp else . end)
      | (if $worktree != "" then .worktree = $worktree else . end)
      | (if $handoff != "" then .handoff = $handoff else . end)
+     | (if $stopreason != "" then .stop_reason = $stopreason else . end)
      | (if $cycle != 0 then .cycle_count = $cycle else . end)
      | (if $wmcid != "" then .wm_comment_id = ($wmcid | tonumber) else . end)' 2>"${_new_jq_err:-/dev/null}") || _new_rc=$?
   if [ "$_new_rc" -ne 0 ]; then
@@ -328,11 +431,19 @@ cmd_set() {
     return 1
   fi
   [ -n "$_new_jq_err" ] && rm -f "$_new_jq_err"
-  # `_atomic_write` の header コメント ("Callers MUST check rc") を遵守。現状は cmd_set の
-  # 最終 statement のため set -e で rc が暗黙伝播するが、将来 `_atomic_write` の後に log 行を
-  # 1 つ足す等の小修正で silent failure path が即復活する fragile pattern を避けるため、明示的
-  # に `|| return 1` で rc を伝播させる (`_migrate_file` の `_atomic_write` 呼び出し直前と対称化)。
+  # `_atomic_write` の header 契約 ("Callers MUST check rc") を遵守 (`_migrate_file` の
+  # `_atomic_write` 呼び出し直前と対称化)。
   _atomic_write "$path" "$new" || return 1
+  # Record only after the write physically landed, so the log never claims a
+  # transition that failed to persist. Reuses `$now` (the same timestamp the
+  # state file's `updated_at` carries) so a record can be cross-referenced with
+  # the state file it describes. `|| true` keeps this trailing statement from
+  # becoming cmd_set's exit code under `set -e` (AC-2: exit code unchanged) —
+  # belt-and-braces with the helper's own unconditional `return 0`.
+  # Sets skipped by `--if-exists` return earlier and are correctly not recorded:
+  # no write happened. A same-phase set (from == to) IS recorded — update
+  # frequency inside a stage is part of what this log is for.
+  _append_phase_transition "$cur_phase" "$phase" "$sid" "$issue" "$pr" "$now" || true
 }
 
 # clear-worktree: surgically remove the `worktree` field from a session's
@@ -504,7 +615,10 @@ _migrate_file() {
   # `--dry-run` の preview を stderr に統一する (本関数末尾の `migrated:` announcement と対称化)。
   # session-start.sh は stdout のみ silence するため、dry-run preview を stderr に出すことで
   # 実際の migration announcement と同じ経路で observability を確保する。
-  [ "$dry" = 1 ] && { echo "  would migrate: $f (schema v$sv→v$SCHEMA_VERSION_V3, phase $cp→$np)" >&2; return 0; }
+  # Brace-delimit variables that abut the multibyte `→` (U+2192): under a non-UTF-8
+  # locale (e.g. macOS CI), bash otherwise folds the arrow's leading byte into the
+  # variable name (`$sv→` → `sv\xe2`), tripping `set -u` "unbound variable".
+  [ "$dry" = 1 ] && { echo "  would migrate: $f (schema v${sv}→v$SCHEMA_VERSION_V3, phase ${cp}→$np)" >&2; return 0; }
   local now updated; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   # v3 schema: drop legacy `previous_phase` (replaced by step name discrimination in v3) and
   # normalize legacy `branch_name` → `branch`. `last_synced_phase` is preserved because
@@ -527,7 +641,9 @@ _migrate_file() {
   # announced on stderr, even without --verbose, so the session-start auto path
   # (session-start.sh silences only stdout) surfaces it. The no-op "skip (already
   # v3)" case above stays --verbose-gated to keep quiet session starts quiet.
-  echo "  migrated: $f (v$sv→v$SCHEMA_VERSION_V3, $cp→$np)" >&2
+  # `${sv}`/`${cp}` braces are load-bearing: they keep the abutting `→` (U+2192)
+  # out of the variable name under a non-UTF-8 locale (see the dry-run branch).
+  echo "  migrated: $f (v${sv}→v$SCHEMA_VERSION_V3, ${cp}→$np)" >&2
   return 0
 }
 
@@ -572,6 +688,7 @@ Usage: $0 {set|get|deactivate|clear-worktree|consume-handoff|migrate|path} [opti
   set --phase <P> --next <T> [--issue N] [--branch S] [--pr N] [--parent-issue N]
       [--active true|false] [--handoff CMD] [--session UUID] [--if-exists] [--preserve-error-count]
       [--worktree PATH] [--require-worktree]   # --require-worktree: warn + emit WORKTREE_INVARIANT marker when worktree empty (non-blocking)
+      [--stop-reason TOKEN]                    # durable "stopped as a failure" marker; default-clear like --handoff
   get --field <F> [--default V] [--session UUID]
       | --jq-filter <FILTER> [--default V] [--session UUID]
   deactivate [--next T] [--session UUID]

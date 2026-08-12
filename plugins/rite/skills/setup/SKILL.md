@@ -24,6 +24,75 @@ When `--upgrade` is specified, skip to [Phase 4.1.3 (Upgrade)](#413-upgrade-exis
 
 ## Phase 1: Environment Check
 
+### 1.0 Verify Core Dependencies (bash ≥4 / jq / flock)
+
+rite の hook / スクリプト群は bash 4+ / jq に依存し、flow-state のロックに flock を使う。導入時点でこれらを検査し、欠落があれば OS 別のインストール案内を出す（macOS stock bash 3.2 のまま pr-review 系が不可解に失敗する事故の予防）。**この検査は non-blocking**（欠落があっても setup は継続し、`exit 1` しない）。全依存 OK のときは 1 行サマリのみで邪魔をしない。
+
+> **検査基準（Decision D-01）**: bash は「実行中の bash の `BASH_VERSION`」を基準にする。macOS での PATH 解決（Homebrew bash か `/bin/bash` 3.2 か）が環境依存で不確実なため、実行コンテキスト自身を測るのが最も正確。
+
+```bash
+# OS 検出（uname -s ベース。テスト時は uname() 関数を定義して shadow 可能）
+os=$(uname -s 2>/dev/null || echo "unknown")
+case "$os" in
+  Darwin) os_kind=macos ;;
+  Linux)  os_kind=linux ;;
+  MINGW*|MSYS*|CYGWIN*) os_kind=windows ;;
+  *) os_kind=unknown ;;
+esac
+
+dep_bash=ok; dep_jq=ok; dep_flock=ok
+
+# bash バージョン検査（実行中の bash の BASH_VERSION を基準。テスト時は先頭で
+# BASH_VERSION=3.2.57 を注入すれば <4 経路を実際に踏める — BASH_VERSION は再代入可能）
+if [ -z "${BASH_VERSION:-}" ]; then
+  dep_bash=nonbash
+  echo "⚠️ BASH_VERSION が空です（bash 以外で実行されている可能性）。bash 依存検査をスキップします。"
+  echo "   rite の hook / スクリプトは bash 実行を前提とします。bash で再実行してください。"
+else
+  bash_major=${BASH_VERSION%%.*}
+  if [ "$bash_major" -lt 4 ] 2>/dev/null; then
+    dep_bash=old
+    echo "⚠️ bash ${BASH_VERSION} を検出しました。rite の一部スクリプト（pr-review の review-source-resolve.sh 等）は bash 4 以上を必要とします。"
+    case "$os_kind" in
+      macos)   echo "   インストール: brew install bash（macOS 標準の bash 3.2 は古すぎます）" ;;
+      linux)   echo "   インストール: sudo apt install --only-upgrade bash（Debian/Ubuntu）/ sudo dnf upgrade bash（Fedora）" ;;
+      windows) echo "   インストール: Git for Windows 同梱の bash（4+）を使うか、winget/scoop で更新してください" ;;
+      *)       echo "   インストール: お使いの環境のパッケージマネージャで bash 4+ を導入してください（https://www.gnu.org/software/bash/）" ;;
+    esac
+  fi
+fi
+
+# jq 検査（欠落は ⚠️ 警告 + OS 別案内。案内は本フェーズで 1 回だけ出し、Phase 4.5.0 の
+# NO_JQ 経路では繰り返さない — AC-3）
+if ! command -v jq >/dev/null 2>&1; then
+  dep_jq=missing
+  echo "⚠️ jq が見つかりません。rite の hook / スクリプトは JSON 処理に jq を必要とします。"
+  case "$os_kind" in
+    macos)   echo "   インストール: brew install jq" ;;
+    linux)   echo "   インストール: sudo apt install jq（Debian/Ubuntu）/ sudo dnf install jq（Fedora）" ;;
+    windows) echo "   インストール: winget install jqlang.jq または scoop install jq" ;;
+    *)       echo "   インストール: https://jqlang.github.io/jq/ を参照してください" ;;
+  esac
+fi
+
+# flock 検査（non-blocking = ℹ️ 情報表示のみ。警告レベルにしない — AC-4）
+if ! command -v flock >/dev/null 2>&1; then
+  dep_flock=missing
+  echo "ℹ️ flock が見つかりません（macOS / Git Bash では標準未同梱）。flow-state のロックは degrade 動作（ロックなし）になりますが、rite の動作は妨げません。"
+fi
+
+# 全依存 OK なら 1 行サマリのみ（AC-1）
+if [ "$dep_bash" = "ok" ] && [ "$dep_jq" = "ok" ] && [ "$dep_flock" = "ok" ]; then
+  echo "✅ 依存検査: bash ${BASH_VERSION%%.*}+ / jq / flock をすべて検出しました（os=$os）"
+fi
+
+# 機械可読 marker（data contract として全ケースで emit する。現状どの後続フェーズも機械 parse しない
+# — jq 案内の重複排除は Phase 4.5.0 の NO_JQ メッセージが Phase 1.0 を文言で参照して達成する）
+echo "[CONTEXT] DEP_CHECK; bash=$dep_bash; jq=$dep_jq; flock=$dep_flock; os=$os_kind"
+```
+
+この bash ブロックは **常に exit 0** で終わる（依存欠落を理由に setup を停止しない）。`[CONTEXT] DEP_CHECK` marker の各フィールド（`bash=ok|old|nonbash` / `jq=ok|missing` / `flock=ok|missing` / `os=macos|linux|windows|unknown`）は data contract / observability として全ケースで emit するが、現状どの bash フェーズも機械 parse しない（jq 案内の重複排除は Phase 4.5.0 の NO_JQ メッセージが Phase 1.0 を文言で参照して達成しており、marker の消費には依存しない）。出力を読んだうえで、欠落があってもそのまま 1.1 へ続行する。
+
 ### 1.1 Verify gh CLI Installation
 
 ```bash
@@ -62,25 +131,104 @@ Display warning and continue (python3 is required for work memory parsing but no
 ### 1.3 Verify GitHub Authentication Status
 
 ```bash
-gh auth status
+gh auth status --active --hostname github.com
 ```
 
-If not authenticated, show:
+If not authenticated, use AskUserQuestion to ask whether to authenticate now.
+
+- If the user chooses to authenticate, show the following command and ask them to run it with Claude Code's ！ prefix so the interactive login owns the user's TTY:
+
+  ```text
+  ! gh auth login --hostname github.com --web --scopes project
+  ```
+
+  If the ！ prefix is unavailable in the current environment, show `gh auth login --hostname github.com --web --scopes project` for execution in another terminal and end setup with instructions to rerun `/rite:setup` after authentication.
+- After the user reports that login is complete, run `gh auth status --active --hostname github.com` again. Continue to Phase 1.4 only when it succeeds.
+- If verification still fails, show the command output and use AskUserQuestion to offer retrying authentication or stopping setup. On retry, repeat the login guidance and verification above; do not poll in a Bash loop.
+- If the user declines authentication, show:
+
 ```
 GitHub に認証されていません
 
-認証コマンド: `gh auth login`
+認証コマンド: `gh auth login --hostname github.com --web --scopes project`
 ```
-and exit.
+
+  and exit without an error.
+
+If already authenticated, verify that the active token includes the `project` scope:
+
+```bash
+gh auth status --hostname github.com --json hosts --jq '[.hosts["github.com"][] | select(.active == true) | .scopes | split(",")[] | ltrimstr(" ")] | any(. == "project")'
+```
+
+If the result is not `true`, show `gh auth refresh --hostname github.com -s project` and ask the user to run it (with the ！ prefix when available). After the user reports completion, run `gh auth status --active --hostname github.com` and the scope check again. Continue to Phase 1.4 only when both succeed. If verification fails, show the failure and use AskUserQuestion to offer retrying the refresh or stopping setup; do not poll in a Bash loop.
 
 ### 1.4 Retrieve Repository Information
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) — 下記 snippet の `git-remote.sh` 呼び出しで使用する（未解決のまま実行すると git-remote.sh 経路が silent に失敗し、SSH host alias 環境で fallback の `gh repo view` も失敗する）。
 
+First classify the local repository before attempting GitHub resolution:
+
+```bash
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  git_initialized=true
+  if [ -n "$(git remote -v 2>/dev/null)" ]; then remotes_present=true; else remotes_present=false; fi
+else
+  git_initialized=false
+  remotes_present=false
+fi
+echo "[CONTEXT] REPO_LOCAL_STATE; git_initialized=$git_initialized; remotes_present=$remotes_present"
+```
+
+Route by this marker:
+
+- `git_initialized=false`: use AskUserQuestion to confirm `git init`. If declined, show `GitHub リポジトリではありません` and exit without an error. If approved, run `git init`, verify success, then continue below.
+- `git_initialized=true; remotes_present=false`: continue below.
+- `remotes_present=true`: skip repository creation entirely and use the existing resolution path below. A remote that cannot be resolved may use an SSH host alias and MUST NOT be treated as an empty repository.
+
+Before creating an initial commit, check for an existing commit:
+
+```bash
+git rev-parse --verify HEAD >/dev/null 2>&1
+```
+
+If no commit exists, display the number and list of files that `git add -A` would include. Before asking for approval, scan those paths for likely sensitive files (`.env` and `.env.*`, private keys, `*.pem`, `*.p12`, credentials, and token/secret-named files). If any are found, do not stage or commit; show the paths and require the user to exclude or move them before rerunning setup. Never override this gate for a public repository. When the scan is clean, use AskUserQuestion to confirm the exact initial-commit file list. If declined, exit without an error. If approved, run `git add -A` followed by `git commit -m "chore: initial commit"`; stop and show the command error if either operation fails. Do not create a commit when `HEAD` already exists.
+
+When `remotes_present=false`, use AskUserQuestion to collect the owner, repository name (default: current directory name), and exactly one visibility (`public`, `private`, or `internal`). Validate the owner against `^[A-Za-z0-9][A-Za-z0-9-]{0,38}$`, the repository name against `^[A-Za-z0-9._-]+$`, and the visibility against the three-value allowlist. Reject invalid values and ask again without executing a shell command. Map the selected visibility to one fixed flag; do not interpolate arbitrary text as an option. Bind the validated owner and repository name to shell variables and pass `"$owner/$repo_name"` as one argument. Then use a separate AskUserQuestion to confirm the repository creation before running:
+
+```bash
+owner="{validated-owner}"
+repo_name="{validated-repo-name}"
+visibility_flag="{--public|--private|--internal}"
+gh repo create "$owner/$repo_name" --source . "$visibility_flag" --remote origin --push
+```
+
+The visibility flag is mandatory; never invoke the interactive form. If the command fails, display gh's stderr and probe both `gh repo view "$owner/$repo_name"` and `git remote get-url origin` before choosing recovery:
+
+- If neither repository nor origin exists, the create step failed before side effects. Use AskUserQuestion to offer retrying the create command or stopping.
+- If the repository and origin exist, treat this as a partial success in the push step. Resolve `current_branch=$(git branch --show-current)` and fail loudly if it is empty. Use AskUserQuestion to offer retrying only `git push -u origin "$current_branch"` or stopping; never rerun `gh repo create` on this path.
+- If only one of repository/origin exists, show the observed state and stop for manual recovery rather than guessing.
+
+For a name collision, resolve `current_branch=$(git branch --show-current)` and the existing repository URL with `gh repo view "$owner/$repo_name" --json url --jq .url`. Fail loudly if either is empty. Then stop after showing these commands with the resolved values; do not execute them automatically:
+
+```text
+git remote add origin {resolved-existing-repository-url}
+git push -u origin {resolved-current-branch}
+```
+
+After successful creation, always display:
+
+```bash
+git remote get-url origin
+```
+
+If existing remotes in other local repositories or `~/.ssh/config` indicate a GitHub SSH alias, also show an informational `git remote set-url origin git@{alias}:{owner}/{repo-name}.git` example. Do not rewrite the URL automatically.
+
+For an existing remote, or after repository creation succeeds, resolve the repository through the existing SSH-alias-safe path:
+
 ```bash
 # owner/repo は SSH host alias 環境でも解決できる git-remote.sh を優先し、
-# id/url は解決済み repo を明示指定した gh repo view で取得する（明示指定なら alias 環境でも動く。
-# canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe）
+# id/url は解決済み repo を明示指定した gh repo view で取得する。
 owner_repo=$(bash {plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo 2>/dev/null) || owner_repo=""
 owner=""; repo=""
 [ -n "$owner_repo" ] && IFS=$'\t' read -r owner repo <<< "$owner_repo"
@@ -91,11 +239,7 @@ else
 fi
 ```
 
-If not a Git repository or not a GitHub repository, show:
-```
-GitHub リポジトリではありません
-```
-and exit.
+If this resolution fails while `remotes_present=true`, show `GitHub リポジトリではありません` and exit. Do not propose `gh repo create` on this path.
 
 ---
 
@@ -489,12 +633,84 @@ If the user cancels: Display "アップグレードをキャンセルしまし�
 
 ### 4.2 Check Issue Templates
 
-If `.github/ISSUE_TEMPLATE/` does not exist, show:
-```
-.github/ISSUE_TEMPLATE/ が存在しません
+Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version), then detect each missing GitHub template individually:
 
-Issue テンプレートの作成を推奨します
+```bash
+missing_templates=""
+for relative_path in \
+  "ISSUE_TEMPLATE/bug_report.md" \
+  "ISSUE_TEMPLATE/feature_request.md" \
+  "ISSUE_TEMPLATE/config.yml" \
+  "PULL_REQUEST_TEMPLATE.md"
+do
+  destination_path=".github/$relative_path"
+  { [ -e "$destination_path" ] || [ -L "$destination_path" ]; } || missing_templates="${missing_templates}${missing_templates:+,}$relative_path"
+done
+
+if [ -n "$missing_templates" ]; then
+  echo "[CONTEXT] GITHUB_TEMPLATES=missing; files=$missing_templates"
+else
+  echo "[CONTEXT] GITHUB_TEMPLATES=complete"
+fi
 ```
+
+- `GITHUB_TEMPLATES=complete`: generate nothing and continue to Phase 4.5.
+- `GITHUB_TEMPLATES=missing`: show the missing file list and use AskUserQuestion with exactly two choices: `生成する` / `スキップ`.
+  - If the user chooses `スキップ`, generate nothing and continue to Phase 4.5.
+  - If the user chooses `生成する`, copy only the missing files from the plugin's `templates/github/` SoT with the following Bash block. Replace `{plugin_root}` with the resolved absolute path before execution; do not reproduce template bodies in this skill.
+
+```bash
+template_source_root="{plugin_root}/templates/github"
+project_root=$(pwd -P)
+
+if [ -L ".github" ] || [ -L ".github/ISSUE_TEMPLATE" ]; then
+  echo "WARNING: GitHub template generation skipped because .github path contains a symbolic link" >&2
+else
+
+for relative_path in \
+  "ISSUE_TEMPLATE/bug_report.md" \
+  "ISSUE_TEMPLATE/feature_request.md" \
+  "ISSUE_TEMPLATE/config.yml" \
+  "PULL_REQUEST_TEMPLATE.md"
+do
+  source_path="$template_source_root/$relative_path"
+  destination_path=".github/$relative_path"
+
+  # Re-check immediately before copying so an existing user file is never overwritten.
+  if [ -e "$destination_path" ] || [ -L "$destination_path" ]; then
+    echo "SKIP: existing $destination_path"
+    continue
+  fi
+  if [ ! -f "$source_path" ]; then
+    echo "WARNING: GitHub template source not found: $source_path" >&2
+    continue
+  fi
+  if ! mkdir -p "$(dirname "$destination_path")"; then
+    echo "WARNING: GitHub template directory could not be created: $(dirname "$destination_path")" >&2
+    continue
+  fi
+  destination_parent=$(cd "$(dirname "$destination_path")" 2>/dev/null && pwd -P) || destination_parent=""
+  case "$destination_parent/" in
+    "$project_root/"*) ;;
+    *) echo "WARNING: GitHub template destination escapes project root: $destination_path" >&2; continue ;;
+  esac
+  temp_path=$(mktemp "$destination_parent/.rite-github-template-XXXXXX") || {
+    echo "WARNING: GitHub template temporary file could not be created: $destination_path" >&2
+    continue
+  }
+  # Hard-link publication is atomic and no-clobber: ln fails if a competing entry appeared.
+  if cp "$source_path" "$temp_path" && ln "$temp_path" "$destination_path"; then
+    rm -f "$temp_path"
+    echo "CREATED: $destination_path"
+  else
+    rm -f "$temp_path"
+    echo "WARNING: GitHub template could not be written: $destination_path" >&2
+  fi
+done
+fi
+```
+
+Missing SoT files, directory creation failures, and copy failures are all non-blocking. Preserve each existing destination unchanged, display the emitted warning or status lines, and continue to Phase 4.5 regardless of the result.
 
 ---
 
@@ -542,11 +758,11 @@ fi
 ```
 
 - If `LOCAL:<path>` or `MARKETPLACE:<path>` → extract all text after the first `:` (the absolute path) and use it as `{hooks_dir}` for all subsequent phases. Also retain the source type (`LOCAL` or `MARKETPLACE`) for use in the Phase 5 completion report.
-- If `NOT_FOUND:NO_JQ` → display warning and **skip the rest of Phase 4.5**:
+- If `NOT_FOUND:NO_JQ` → display warning and **skip the rest of Phase 4.5**（jq のインストール案内は Phase 1.0 の依存検査で既出のため、ここでは繰り返さない — AC-3。NO_JQ 経路に入る時点で jq は必ず欠落しており Phase 1.0 が既に OS 別案内を表示済み）:
     ```
-    ⚠️ Hook scripts not found. jq is required for hook scripts but was not detected.
-    Install jq (https://jqlang.github.io/jq/) to enable hooks.
-    Skipping hook registration. Workflow will function normally without hooks.
+    ⚠️ Hook scripts not found. jq was not detected, so hook registration is skipped.
+    (See the Phase 1.0 dependency check above for jq installation guidance.)
+    Workflow will function normally without hooks.
     ```
 - If `NOT_FOUND:NO_HOOKS` → display warning and **skip the rest of Phase 4.5**:
     ```
@@ -1011,7 +1227,10 @@ done
 # .rite/ 配下のディレクトリエントリは実効判定でゲートする: 既に `.rite/` 広域ルール等で
 # 実効的に ignore されている場合は書かない（親ルールに包含される到達不能な行を作らない）。
 # 未カバーのときのみ追記する（gitignore-health-check.sh の probe と同じ check-ignore 方式）。
-for dir_entry in ".rite/sessions/" ".rite/worktrees/"; do
+# `.rite/review-results/` は非実測指摘の `description` / `suggestion` 全文を持つ。マージ後も
+# `/rite:cleanup` が `archive/` へ退避して残す設計 (記録コメントはポインタと降格理由しか載せないため) なので、
+# ignore されていないと脆弱性の詳細が `git add -A` で公開リポジトリへ恒久 commit されうる。
+for dir_entry in ".rite/sessions/" ".rite/worktrees/" ".rite/review-results/"; do
   if ! git check-ignore -q "${dir_entry}.rite-lint-probe" 2>/dev/null; then
     echo "$dir_entry" >> .gitignore
   fi
@@ -1218,7 +1437,7 @@ else
 fi
 ```
 
-**sandbox + multi_session 環境では、上記スクリプトが `added`/`already_present` を返さず初回から marker `failed` になるのが既定経路である**（例外ケースではない）。`jq ... > "$settings_file.tmp"` リダイレクトが単独で「読み込み専用ファイルシステムです」等のエラーを起こし、bash 全体としては正常終了（exit 0）したまま `else` 節に落ちて marker が直接 `failed` になる（bash ツール呼び出し自体はエラーにならない）。そのため **「コマンド自体が失敗したかどうか」を再試行の判定条件にしない** — marker が `failed` であれば理由を問わず、当該 bash ブロック全体を一度だけ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — 既知の環境制約、Issue #1896 と同じ扱い。ブロック全体の再実行は `grep -qF` / `unique` により冪等なので、gitignore 追記側だけ再実行するより安全）。再実行後も `failed`（JSON 破損等、sandbox 起因でない失敗）の場合のみ、下記の手動案内メッセージにフォールバックする。
+**sandbox + multi_session 環境では、上記スクリプトが `added`/`already_present` を返さず初回から marker `failed` になるのが既定経路である**（例外ケースではない）。`jq ... > "$settings_file.tmp"` リダイレクトが単独で「読み込み専用ファイルシステムです」等のエラーを起こし、bash 全体としては正常終了（exit 0）したまま `else` 節に落ちて marker が直接 `failed` になる（bash ツール呼び出し自体はエラーにならない）。そのため **「コマンド自体が失敗したかどうか」を再試行の判定条件にしない** — marker が `failed` であれば理由を問わず、当該 bash ブロック全体を一度だけ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — sandbox に拒否された main checkout 書き込みだけを再試行する既存ポリシーと同じ扱い。ブロック全体の再実行は `grep -qF` / `unique` により冪等なので、gitignore 追記側だけ再実行するより安全）。再実行後も `failed`（JSON 破損等、sandbox 起因でない失敗）の場合のみ、下記の手動案内メッセージにフォールバックする。
 
 `SANDBOX_ALLOWLIST_AUTOWRITE` marker で分岐する:
 

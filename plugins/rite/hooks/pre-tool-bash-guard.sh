@@ -16,9 +16,16 @@
 #            remote / update-ref / symbolic-ref) → deny (writes .git/config or
 #            .git refs with no redirect or file verb for (H) to see)
 #        (H) WRITE into a .git dir via redirect / file-mutating verb → deny
+#   5. Merge-point review-result positive gate — main-session
+#      (and any session) Bash that issues `gh pr merge` / REST pulls/{n}/merge /
+#      GraphQL mergePullRequest is denied unless `.rite/review-results/{pr}-*.json`
+#      exists with minimum form (schema_version + verdict keys, reviewers array
+#      length >= sole-reviewer guard floor 2). Fail-closed on PR-number
+#      unresolvable / missing / malformed / floor-under JSON. Purpose: block
+#      procedure-omission bypass of /rite:pr-review, not adversarial forgery.
 #
 # Reviewer working-tree mutations (git checkout / reset / commit / branch / ...)
-# are deliberately NOT machine-gated here (Issue #1879). They are visible and
+# are deliberately NOT machine-gated here. They are visible and
 # recoverable via `git status`; their guarantee is Layer 1 (the reviewer prompt
 # READ-ONLY contract, plugins/rite/agents/_reviewer-base.md) + Layer 3
 # (post-review-state-verify.sh drift detection after each review). Only the
@@ -243,7 +250,7 @@ fi
 
 # Pattern 4: Reviewer subagent .git-write gate.
 # Scope: only when IS_SUBAGENT=1. Main-session operations are never affected.
-# This block does NOT enumerate working-tree-mutating git verbs (Issue #1879) —
+# This block does NOT enumerate working-tree-mutating git verbs —
 # see the header. It holds one machine guarantee (no writes into .git) via the
 # (Z) wrapper check, the (N) native-subcommand gate, and the (H) write
 # detection below, inside a fail-CLOSED trap region.
@@ -315,7 +322,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   # RCE vector the header invariant names, so the write forms keep a machine
   # gate. This is a FIXED closed set whose only write target is .git itself — a
   # .git-write gate, NOT a revival of the working-tree verb enumeration
-  # (Issue #1879 removed working-tree verbs; these were never in that class:
+  # (removed working-tree verbs; these were never in that class:
   # .git/config writes are invisible to `git status` and Layer 3 has no
   # config/ref axis, so Layer 1 would be the sole backstop without this gate).
   #
@@ -449,14 +456,14 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
 
     if [ -n "$_gn_hit" ]; then
       BLOCKED_PATTERN="reviewer-gitdir-write"
-      BLOCKED_REASON="Reviewer subagents must not WRITE into Git internals via native git subcommands. This command uses ${_gn_hit}, which writes .git/config or .git refs directly (or injects config inline) — no redirect or file-mutating verb involved, so the redirect/file-verb write detection cannot see it. Planting 'git config core.hooksPath / core.fsmonitor / alias.*=!cmd' (or 'git -c core.hooksPath=… <cmd>') executes arbitrary code in the non-sandboxed main session on the next git operation, and .git/config is invisible to 'git status' (no Layer 3 axis covers it). This is a fixed .git-write gate (config write forms incl. inline -c / mutating remote / update-ref / symbolic-ref, global-flag-normalized), not a working-tree verb denylist (Issue #1879)."
+      BLOCKED_REASON="Reviewer subagents must not WRITE into Git internals via native git subcommands. This command uses ${_gn_hit}, which writes .git/config or .git refs directly (or injects config inline) — no redirect or file-mutating verb involved, so the redirect/file-verb write detection cannot see it. Planting 'git config core.hooksPath / core.fsmonitor / alias.*=!cmd' (or 'git -c core.hooksPath=… <cmd>') executes arbitrary code in the non-sandboxed main session on the next git operation, and .git/config is invisible to 'git status' (no Layer 3 axis covers it). This is a fixed .git-write gate (config write forms incl. inline -c / mutating remote / update-ref / symbolic-ref, global-flag-normalized), not a working-tree verb denylist."
       BLOCKED_ALTERNATIVE="Read-only inspection stays allowed: 'git config --list', 'git config --get <key>', 'cat .git/config', 'git rev-parse --symbolic-full-name HEAD', 'git remote -v', 'git ls-remote'. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement)."
     fi
   fi
 
   # --- (H) reviewer WRITE into a .git directory (redirect / file-mutating verb) ---
   # pre-tool-edit-guard.sh blocks the Edit/Write path into a parent .git; this
-  # closes the sibling Bash-tool gap (Issue #1864). Only WRITES into a .git dir
+  # closes the sibling Bash-tool gap. Only WRITES into a .git dir
   # component are denied; READING .git (cat/ls/grep .git/config, `dd if=.git/…`)
   # stays allowed.
   #
@@ -519,7 +526,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
       # three are removed globally — a fixed surrounding strip would leave
       # obfuscated vectors (`of='.git/x'`, `> .g\it/hooks/x`) that still open the
       # real .git for the shell. Backslash removal runs BEFORE the `of=` strip so
-      # `\of=.git/x` normalizes first (Issue #1864 cycle-3/4 fix). Only the
+      # `\of=.git/x` normalizes first (cycle-3/4 fix). Only the
       # `.git` component match uses `_gd_p`; `_gd_prev` and `_gd_verb` use the
       # RAW `_gd_tok`. `$'…'` ANSI-C decoding is NOT done — that is a
       # `$`-expansion, already out-of-scope above.
@@ -554,7 +561,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
     # Restore the prior noglob state.
     [ "$_gd_noglob_was_set" = "1" ] || set +f
     if [ "$BLOCKED_PATTERN" = "reviewer-gitdir-write" ]; then
-      BLOCKED_REASON="Reviewer subagents must not WRITE into a Git internal (.git) directory. This command writes into a .git path via a shell redirect (> / >>) or a file-mutating command (tee / cp / mv / ln / install / rsync / truncate / dd of= / sponge / patch). Planting or altering .git/hooks/* or .git/config (core.hooksPath / alias.*=!sh / core.fsmonitor) executes arbitrary code in the non-sandboxed main session on the next git operation — strictly worse than a source edit and invisible to 'git status'. The Edit/Write path is already blocked by pre-tool-edit-guard.sh; this closes the Bash-tool gap (Issue #1864)."
+      BLOCKED_REASON="Reviewer subagents must not WRITE into a Git internal (.git) directory. This command writes into a .git path via a shell redirect (> / >>) or a file-mutating command (tee / cp / mv / ln / install / rsync / truncate / dd of= / sponge / patch). Planting or altering .git/hooks/* or .git/config (core.hooksPath / alias.*=!sh / core.fsmonitor) executes arbitrary code in the non-sandboxed main session on the next git operation — strictly worse than a source edit and invisible to 'git status'. The Edit/Write path is already blocked by pre-tool-edit-guard.sh; this closes the Bash-tool gap."
       BLOCKED_ALTERNATIVE="Reviewers are strictly read-only — never write into .git. To INSPECT it, read instead: 'cat .git/config', 'git config --list', 'git cat-file -p <obj>', 'git show <ref>:<file>', 'git rev-parse'. See plugins/rite/agents/_reviewer-base.md (READ-ONLY Enforcement)."
     fi
   fi
@@ -564,16 +571,212 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
   trap '_rite_btg_pattern13_fail_open' ERR
 fi
 
+# --- Pattern 5: Merge-point review-result positive gate ---
+# Blocks merge commands that have not been through /rite:pr-review far enough
+# to leave a qualifying review-results JSON. Applies to any session (not just
+# subagents): the bypass path observed in the wild was main-session batch-run
+# skipping pr-review. Fail direction is CLOSED (inspection failure → deny) so
+# "cannot tell" never becomes "allow merge".
+#
+# Detection surface (CMD_CHECK after heredoc strip, same as Patterns 1-3):
+#   - `gh pr merge` (CLI)
+#   - REST `.../pulls/{n}/merge` (gh api)
+#   - GraphQL `mergePullRequest`
+# Non-merge `gh` / other Bash is untouched.
+if [ -z "$BLOCKED_PATTERN" ]; then
+  _mrg_is_merge=0
+  # CLI: `gh pr merge` with flexible whitespace (flags/args may follow).
+  # Boundary is (^|non-alnum-non-underscore) so path-prefixed binaries
+  # (`/usr/bin/gh pr merge`) match — excluding `/` from the boundary class
+  # would let absolute-path invocations silent-bypass the gate (measured).
+  if [[ "$CMD_CHECK" =~ (^|[^[:alnum:]_])gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$) ]]; then
+    _mrg_is_merge=1
+  # REST merge endpoint (gh api / curl-style path fragment).
+  elif [[ "$CMD_CHECK" =~ /pulls/[0-9]+/merge ]]; then
+    _mrg_is_merge=1
+  # GraphQL merge mutation name (argument forms vary; name is stable).
+  elif [[ "$CMD_CHECK" =~ mergePullRequest ]]; then
+    _mrg_is_merge=1
+  fi
+
+  if [ "$_mrg_is_merge" = "1" ]; then
+    _mrg_pr=""
+    # Set when `gh pr merge` tail has a non-flag token that is neither a bare
+    # integer nor a /pull/{n} URL. Variable forms ("$PR", $PR) and flag values
+    # that look like free tokens land here. flow-state fallback must NOT run
+    # in that case — a different session's pr_number must not become the gate
+    # target for an unresolved merge argv.
+    _mrg_nonflag_unresolved=0
+
+    # --- PR number resolution (arg first, then flow-state only if flag-only) ---
+    # 1) REST path /pulls/{n}/merge
+    if [[ "$CMD_CHECK" =~ /pulls/([0-9]+)/merge ]]; then
+      _mrg_pr="${BASH_REMATCH[1]}"
+    fi
+    # 2) `gh pr merge` tail: first bare integer token, or /pull/{n} URL form
+    if [ -z "$_mrg_pr" ] && [[ "$CMD_CHECK" =~ gh[[:space:]]+pr[[:space:]]+merge[[:space:]]+(.*) ]]; then
+      _mrg_tail="${BASH_REMATCH[1]}"
+      # shellcheck disable=SC2086  # intentional word-split of merge argv tail
+      for _mrg_tok in $_mrg_tail; do
+        case "$_mrg_tok" in
+          --*) continue ;;  # flag; value may be next token (non-numeric for known flags)
+        esac
+        if [[ "$_mrg_tok" =~ ^[0-9]+$ ]]; then
+          _mrg_pr="$_mrg_tok"
+          _mrg_nonflag_unresolved=0
+          break
+        fi
+        if [[ "$_mrg_tok" =~ /pull/([0-9]+)(/|$) ]]; then
+          _mrg_pr="${BASH_REMATCH[1]}"
+          _mrg_nonflag_unresolved=0
+          break
+        fi
+        # Non-flag token that did not resolve to a PR number (variable form,
+        # flag value, etc.). Keep scanning in case a later numeric token exists
+        # (e.g. --body msg 2172); if none does, block flow-state fallback.
+        _mrg_nonflag_unresolved=1
+      done
+    fi
+    # 3) flow-state pr_number — only when the merge argv has no unresolved
+    # non-flag token. Number-less `gh pr merge --squash` (merge skill on the PR
+    # branch) still falls back; `"$PR"` / `$PR` must deny fail-loud (#2173).
+    if [ -z "$_mrg_pr" ] && [ "$_mrg_nonflag_unresolved" != "1" ]; then
+      _mrg_pr=$(bash "$SCRIPT_DIR/flow-state.sh" get --field pr_number --default "" 2>/dev/null) || _mrg_pr=""
+      # treat unset / 0 / non-numeric as unresolved
+      case "$_mrg_pr" in
+        ''|0|*[!0-9]*) _mrg_pr="" ;;
+      esac
+    fi
+
+    if [ -z "$_mrg_pr" ]; then
+      BLOCKED_PATTERN="merge-review-pr-unresolved"
+      if [ "$_mrg_nonflag_unresolved" = "1" ]; then
+        BLOCKED_REASON="Cannot resolve PR number for merge: a non-flag token is present in the merge argv but is not a numeric PR number or /pull/{n} URL (e.g. variable form \"\$PR\"). flow-state is not used as a fallback for unresolved tokens — a different session PR must not gate this merge."
+        BLOCKED_ALTERNATIVE="Pass the PR number explicitly as a bare integer (gh pr merge {N}) and re-run. Variable or quoted-variable forms are denied fail-loud."
+      else
+        BLOCKED_REASON="Cannot resolve PR number for merge (no numeric arg / URL / REST path, and flow-state pr_number is unset). Merge is denied fail-loud rather than allowed without a review-result check."
+        BLOCKED_ALTERNATIVE="Pass the PR number explicitly (gh pr merge {N}) or run inside a rite session with flow-state pr_number set. After /rite:pr-review, re-run merge."
+      fi
+    else
+      # --- review-results positive check ---
+      _mrg_root=""
+      if [ -n "${RITE_STATE_ROOT:-}" ] && [ -d "${RITE_STATE_ROOT}" ]; then
+        _mrg_root="$RITE_STATE_ROOT"
+      else
+        _mrg_root=$(bash "$SCRIPT_DIR/state-path-resolve.sh" 2>/dev/null) || _mrg_root=""
+      fi
+      _mrg_dir="${_mrg_root:+$_mrg_root/}.rite/review-results"
+      # When state root is empty, still try cwd-relative path (best-effort); empty
+      # root would otherwise look in "/.rite/..." which is wrong.
+      if [ -z "$_mrg_root" ]; then
+        _mrg_dir=".rite/review-results"
+      fi
+
+      _mrg_ok=0
+      _mrg_any=0
+      _mrg_fail_kind="absent"  # absent | parse_error | missing_keys | sole_reviewer
+      # nullglob so a no-match pattern expands to zero words (not the literal glob).
+      _mrg_noglob_was_set=0
+      case "$-" in *f*) _mrg_noglob_was_set=1 ;; esac
+      set +f
+      shopt -s nullglob 2>/dev/null || true
+      _mrg_files=("$_mrg_dir/${_mrg_pr}-"*.json)
+      shopt -u nullglob 2>/dev/null || true
+      [ "$_mrg_noglob_was_set" = "1" ] && set -f || true
+
+      for _mrg_f in "${_mrg_files[@]+"${_mrg_files[@]}"}"; do
+        # Skip if array empty (bash 4.4+ empty-array iterate safety)
+        [ -n "$_mrg_f" ] || continue
+        [ -f "$_mrg_f" ] || continue
+        _mrg_any=1
+        # parse + minimum form in one jq; map outcomes to fail kinds
+        _mrg_check=$(jq -r '
+          if (has("schema_version")|not)
+             or (.schema_version == null)
+             or ((.schema_version | tostring | length) == 0)
+             or (has("verdict")|not)
+             or ((.reviewers | type) != "array")
+            then "missing_keys"
+          elif ((.reviewers | length) < 2)
+            then "sole_reviewer"
+          else "ok"
+          end
+        ' "$_mrg_f" 2>/dev/null) || _mrg_check="parse_error"
+        if [ "$_mrg_check" = "ok" ]; then
+          _mrg_ok=1
+          break
+        fi
+        # Keep the most specific failure seen (prefer sole_reviewer / missing_keys
+        # over a later parse_error so a mixed dir still names the real defect).
+        case "$_mrg_fail_kind:$_mrg_check" in
+          absent:*|parse_error:missing_keys|parse_error:sole_reviewer|missing_keys:sole_reviewer)
+            _mrg_fail_kind="$_mrg_check"
+            ;;
+          *)
+            [ "$_mrg_fail_kind" = "absent" ] && _mrg_fail_kind="$_mrg_check"
+            ;;
+        esac
+      done
+
+      if [ "$_mrg_ok" != "1" ]; then
+        if [ "$_mrg_any" = "0" ]; then
+          BLOCKED_PATTERN="merge-review-json-absent"
+          BLOCKED_REASON="No review-results JSON for PR #${_mrg_pr} under ${_mrg_dir}/${_mrg_pr}-*.json. Merge requires a prior /rite:pr-review result (positive existence + minimum form)."
+          BLOCKED_ALTERNATIVE="Run /rite:pr-review ${_mrg_pr} (or /rite:iterate ${_mrg_pr}) so a qualifying review-results JSON is written, then re-run merge."
+        else
+          case "$_mrg_fail_kind" in
+            sole_reviewer)
+              BLOCKED_PATTERN="merge-review-sole-reviewer"
+              BLOCKED_REASON="Review-results JSON for PR #${_mrg_pr} has reviewers array length below sole-reviewer guard floor (2). A single-reviewer (or empty) result does not satisfy the merge gate."
+              BLOCKED_ALTERNATIVE="Re-run /rite:pr-review ${_mrg_pr} so at least 2 reviewers are recorded, then re-run merge."
+              ;;
+            parse_error)
+              BLOCKED_PATTERN="merge-review-json-parse"
+              BLOCKED_REASON="Review-results JSON for PR #${_mrg_pr} could not be parsed (jq non-zero). A broken file is not treated as a qualifying review."
+              BLOCKED_ALTERNATIVE="Remove or replace the broken ${_mrg_dir}/${_mrg_pr}-*.json and run /rite:pr-review ${_mrg_pr}, then re-run merge."
+              ;;
+            *)
+              BLOCKED_PATTERN="merge-review-json-incomplete"
+              BLOCKED_REASON="Review-results JSON for PR #${_mrg_pr} is missing required keys (schema_version non-empty, verdict present, reviewers array). Minimum form is not satisfied."
+              BLOCKED_ALTERNATIVE="Run /rite:pr-review ${_mrg_pr} to write a complete review-results JSON, then re-run merge."
+              ;;
+          esac
+        fi
+      fi
+      # success: leave BLOCKED_PATTERN empty — no extra output (AC-1)
+    fi
+  fi
+fi
+
 # --- Result ---
 
 if [ -z "$BLOCKED_PATTERN" ]; then
   exit 0
 fi
 
-# Log block event (stderr, for effect measurement)
+# Log block event (stderr + deny-only persistent audit trail)
 CMD_SUMMARY="${COMMAND:0:80}"
 CMD_SUMMARY="${CMD_SUMMARY//\"/\\\"}"
-echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] bash-guard: BLOCKED pattern=$BLOCKED_PATTERN cmd=\"$CMD_SUMMARY\"" >&2
+# Keep one deny event on one physical line. Use built-in substitutions here so
+# the deny path remains independent from the JSON fallback helper.
+CMD_SUMMARY="${CMD_SUMMARY//$'\n'/?}"
+CMD_SUMMARY="${CMD_SUMMARY//$'\r'/?}"
+CMD_SUMMARY=$(printf '%s' "$CMD_SUMMARY" | neutralize_ctrl --c0-only) \
+  || CMD_SUMMARY="[control-neutralization-failed]"
+BLOCK_EVENT="[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] bash-guard: BLOCKED pattern=$BLOCKED_PATTERN cmd=\"$CMD_SUMMARY\""
+echo "$BLOCK_EVENT" >&2
+
+# Auditing must never interfere with the guard's primary deny contract. Resolve
+# the shared state root when no explicit test/runtime override is present, then
+# make directory creation and append one best-effort operation.
+_audit_root="${RITE_STATE_ROOT:-}"
+if [ -z "$_audit_root" ]; then
+  _audit_root=$(bash "$SCRIPT_DIR/state-path-resolve.sh" 2>/dev/null) || _audit_root=""
+fi
+_audit_log="${_audit_root:+$_audit_root/}.rite/logs/bash-guard.log"
+if ! { mkdir -p "$(dirname "$_audit_log")" && printf '%s\n' "$BLOCK_EVENT" >> "$_audit_log"; } 2>/dev/null; then
+  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] bash-guard: WARNING: unable to append deny audit log: $_audit_log" >&2
+fi
 
 # Deny with reason and alternative. jq is required to emit the final permission
 # payload; an intermittent jq failure here would silently downgrade the deny to

@@ -15,9 +15,12 @@ HELPERS="$SCRIPT_DIR/_test-helpers.sh"
 OUTER_PASS=0
 OUTER_FAIL=0
 OUTER_FAILED=()
+OUTER_SKIP=0
 
 outer_pass() { OUTER_PASS=$((OUTER_PASS + 1)); echo "  ✅ $1"; }
 outer_fail() { OUTER_FAIL=$((OUTER_FAIL + 1)); OUTER_FAILED+=("$1"); echo "  ❌ $1"; }
+# Counted rather than a bare echo so the runner's marker/count cross-check agrees.
+outer_skip() { OUTER_SKIP=$((OUTER_SKIP + 1)); echo "  ⏭️ SKIP: $1"; }
 
 if [ ! -f "$HELPERS" ]; then
   # Output convention: Hard precondition (missing executable) → stderr
@@ -108,7 +111,9 @@ echo
 echo "TC-4: assert_grep / assert_not_grep"
 
 tmpfile=$(mktemp)
-trap 'rm -f "$tmpfile"' EXIT
+mutant_file="${tmpfile}.mutant"
+diff_shim_dir="${tmpfile}.diff-shim"
+trap 'rm -f "$tmpfile" "$mutant_file"; rm -rf "$diff_shim_dir"' EXIT
 printf 'hello world\nfoo bar\n' > "$tmpfile"
 
 grep_state=$(bash -c "
@@ -512,11 +517,131 @@ else
   outer_fail "TC-13.2: expected PASS=0 FAIL=1 RC=1 + diagnostic, got PASS=$mp FAIL=$mf RC=$mrc state='$missing_state'"
 fi
 
+# Cycle 3 G-H03: TC-14 — the sandbox roots are canonicalized.
+#
+# The canonicalization exists because macOS puts $TMPDIR under /var/folders, a
+# symlink to /private/var, while production resolves paths through git rev-parse /
+# realpath — so a raw mktemp path fails every path-equality assertion. Reverting
+# both call sites left the whole hooks suite at 103/103, and the macOS leg is
+# `continue-on-error`, so the fix had no coverage anywhere.
+#
+# Two assertions, because no single one is load-bearing on both platforms:
+#
+#   TC-14.1/.2 — the returned path is already its own `pwd -P`. On macOS this is
+#     load-bearing on its own: bare `mktemp -d` returns the /var/folders form and
+#     the helper must hand back the /private/var one. On Linux, where $TMPDIR is
+#     usually canonical to begin with, it holds either way.
+#   TC-14.3/.4 — the same helpers under a $TMPDIR that IS a symlink, which makes
+#     the assertion load-bearing on Linux too. This needs `mktemp -d` to honour
+#     $TMPDIR; BSD mktemp does not for a bare invocation, so it is probed rather
+#     than assumed, with a floor requiring it on the blocking gate.
+tc14_real=$(mktemp -d) || exit 1
+tc14_real=$(cd "$tc14_real" && pwd -P) || exit 1
+
+for _tc14 in "1:make_plain_sandbox" "2:make_sandbox"; do
+  _n="${_tc14%%:*}"; _fn="${_tc14#*:}"
+  _sbx=$(bash -c "source '$HELPERS'; $_fn")
+  _sbx_resolved=$(cd "$_sbx" && pwd -P)
+  if [ "$_sbx" = "$_sbx_resolved" ]; then
+    outer_pass "TC-14.$_n: $_fn returns an already-canonical path"
+  else
+    outer_fail "TC-14.$_n: $_fn returned '$_sbx' but its canonical form is '$_sbx_resolved' — pwd -P canonicalization lost?"
+  fi
+  rm -rf "$_sbx"
+done
+
+# Probe: does a bare `mktemp -d` honour $TMPDIR? GNU does, BSD does not.
+tc14_link="${tc14_real}-link"
+tc14_honors_tmpdir=0
+if ln -s "$tc14_real" "$tc14_link" 2>/dev/null; then
+  _probe=$(TMPDIR="$tc14_link" mktemp -d 2>/dev/null) || _probe=""
+  case "$_probe" in "$tc14_link"/*) tc14_honors_tmpdir=1 ;; esac
+  [ -n "$_probe" ] && rm -rf "$_probe"
+else
+  outer_fail "TC-14: could not create the symlink fixture at $tc14_link — the Linux-side assertions would go unverified"
+fi
+
+# Floor: on the blocking gate the symlink variant must actually run, otherwise the
+# only coverage that is load-bearing on Linux would disappear without a trace.
+if [ -d /proc ] && [ "$tc14_honors_tmpdir" != 1 ]; then
+  outer_fail "TC-14: bare 'mktemp -d' does not honour \$TMPDIR on Linux — the symlinked-TMPDIR assertions cannot run on the blocking gate"
+fi
+
+if [ "$tc14_honors_tmpdir" = 1 ]; then
+  for _tc14 in "3:make_plain_sandbox" "4:make_sandbox"; do
+    _n="${_tc14%%:*}"; _fn="${_tc14#*:}"
+    _sbx=$(TMPDIR="$tc14_link" bash -c "source '$HELPERS'; $_fn")
+    case "$_sbx" in
+      "$tc14_link"/*)
+        outer_fail "TC-14.$_n: $_fn returned an uncanonicalized path under the symlink ($_sbx) — pwd -P canonicalization lost?" ;;
+      "$tc14_real"/*)
+        outer_pass "TC-14.$_n: $_fn canonicalizes the sandbox root through a symlinked TMPDIR" ;;
+      *)
+        outer_fail "TC-14.$_n: unexpected sandbox path '$_sbx' (expected under $tc14_real)" ;;
+    esac
+    rm -rf "$_sbx"
+  done
+else
+  outer_skip "TC-14.3/.4 (bare 'mktemp -d' does not honour \$TMPDIR here — BSD/macOS; TC-14.1/.2 still cover canonicalization on this platform)"
+fi
+rm -f "$tc14_link"
+rm -rf "$tc14_real"
+
+# Cycle 3 G-H05: TC-15 — skip() counts and print_summary reports it.
+#
+# Without this, dropping the `SKIP=$((SKIP + 1))` from skip() would go unnoticed:
+# the ⏭️ line would still print and every suite would still be green, which is the
+# exact "green says nothing about what did not run" failure skip() was added for.
+skip_state=$(bash -c "source '$HELPERS'; skip TC-dummy >/dev/null; skip TC-dummy2 >/dev/null; print_summary skip-probe")
+if echo "$skip_state" | grep -qx 'SKIP: 2'; then
+  outer_pass "TC-15.1: skip() increments SKIP and print_summary reports it"
+else
+  # Newlines are folded out of the captured summary before it lands in the message:
+  # printed verbatim, its `SKIP: 2` line starts a line of its own and the runner's
+  # `^[[:space:]]*SKIP: N$` parser counts it, while the ⏭️ markers stayed in /dev/null.
+  # The resulting mismatch reports "summary format drift" instead of this failure.
+  outer_fail "TC-15.1: expected 'SKIP: 2' in print_summary output, got: $(printf '%s' "$skip_state" | tr '\n' '|')"
+fi
+no_skip_state=$(bash -c "source '$HELPERS'; print_summary skip-probe-zero")
+if echo "$no_skip_state" | grep -q 'SKIP:'; then
+  outer_fail "TC-15.2: print_summary printed a SKIP line with SKIP=0 (should be omitted): $(printf '%s' "$no_skip_state" | tr '\n' '|')"
+else
+  outer_pass "TC-15.2: print_summary omits the SKIP line when nothing was skipped"
+fi
+
+# === TC-16: shared mutation precondition ===
+printf 'original\n' > "$tmpfile"
+printf 'changed\n' > "$mutant_file"
+if bash -c "source '$HELPERS'; assert_mutant_changed changed '$tmpfile' '$mutant_file'" >/dev/null; then
+  outer_pass "TC-16.1: assert_mutant_changed accepts a real mutation"
+else
+  outer_fail "TC-16.1: assert_mutant_changed rejected different files"
+fi
+printf 'original\n' > "$mutant_file"
+if bash -c "source '$HELPERS'; assert_mutant_changed identical '$tmpfile' '$mutant_file'" >/dev/null; then
+  outer_fail "TC-16.2: assert_mutant_changed accepted an identical mutant"
+else
+  outer_pass "TC-16.2: assert_mutant_changed rejects a no-op mutation"
+fi
+mkdir -p "$diff_shim_dir"
+printf '%s\n' '#!/bin/sh' 'exit 2' > "$diff_shim_dir/diff"
+chmod +x "$diff_shim_dir/diff"
+# Keep inputs different: without the shim the real diff returns 1 and the helper
+# accepts them, so this assertion specifically discriminates the injected rc=2
+# path instead of passing through the identical-mutant rejection branch.
+printf 'changed-again\n' > "$mutant_file"
+if PATH="$diff_shim_dir:$PATH" bash -c "source '$HELPERS'; assert_mutant_changed compare-error '$tmpfile' '$mutant_file'" >/dev/null; then
+  outer_fail "TC-16.3: assert_mutant_changed accepted a diff comparison error"
+else
+  outer_pass "TC-16.3: assert_mutant_changed rejects diff rc>=2"
+fi
+
 # === Summary ===
 echo
 echo "─── $(basename "$0") summary ──────────────────────"
 echo "PASS: $OUTER_PASS"
 echo "FAIL: $OUTER_FAIL"
+[ "$OUTER_SKIP" -gt 0 ] && echo "SKIP: $OUTER_SKIP"
 
 if [ "$OUTER_FAIL" -ne 0 ]; then
   echo "Failed assertions:"

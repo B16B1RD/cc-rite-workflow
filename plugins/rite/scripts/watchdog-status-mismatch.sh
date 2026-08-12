@@ -85,6 +85,8 @@ fi
 # --- Locate rite-config.yml ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(dirname "$SCRIPT_DIR")"
+# shellcheck source=../hooks/control-char-neutralize.sh
+source "$SCRIPT_DIR/../hooks/control-char-neutralize.sh"
 
 # Find repo root (look upward for rite-config.yml or .git)
 CWD="$(pwd)"
@@ -149,10 +151,10 @@ if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
   if ! REPO_INFO=$(gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
     echo "ERROR: gh repo view failed" >&2
     if [ -n "$repo_view_err" ] && [ -s "$repo_view_err" ]; then
-      head -5 "$repo_view_err" | sed 's/^/  /' >&2
+      head -5 "$repo_view_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
     if [ -n "$git_remote_err" ] && [ -s "$git_remote_err" ]; then
-      head -3 "$git_remote_err" | sed 's/^/  git-remote: /' >&2
+      head -3 "$git_remote_err" | neutralize_ctrl --keep-newline | sed 's/^/  git-remote: /' >&2
     fi
     echo "  対処: gh auth status / network 接続を確認してください" >&2
     exit 1
@@ -174,7 +176,7 @@ pr_list_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-pr-list-err-XXXXXX") || pr_l
 if ! PR_LIST=$(gh pr list --repo "$REPO_OWNER/$REPO_NAME" --state open --limit "$LIMIT" --json number,isDraft,body,headRefName 2>"${pr_list_err:-/dev/null}"); then
   echo "ERROR: gh pr list failed" >&2
   if [ -n "$pr_list_err" ] && [ -s "$pr_list_err" ]; then
-    head -5 "$pr_list_err" | sed 's/^/  /' >&2
+    head -5 "$pr_list_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   fi
   echo "  対処: gh auth status / network 接続 / repository 権限を確認してください" >&2
   exit 1
@@ -204,7 +206,7 @@ while IFS= read -r pr_entry; do
   head_ref=$(printf '%s' "$pr_entry" | jq -r '.headRefName // empty' 2>/dev/null) || head_ref=""
   if [ -z "$pr_number" ] || [ -z "$is_draft" ]; then
     if [ "$QUIET" != "true" ]; then
-      echo "[watchdog] ⚠️ jq parse failed for PR entry, skipping (pr_entry preview: $(printf '%s' "$pr_entry" | head -c 80))" >&2
+      echo "[watchdog] ⚠️ jq parse failed for PR entry, skipping (pr_entry preview: $(printf '%s' "$pr_entry" | head -c 80 | neutralize_ctrl))" >&2
     fi
     continue
   fi
@@ -254,8 +256,8 @@ query($owner: String!, $repo: String!, $number: Int!) {
     # gh / jq pipeline 失敗 — silent skip せず warnings に記録 (debug 可能性向上)
     # 4-site stderr root cause attribution: gh_stderr と jq_stderr を独立表示
     if [ "$QUIET" != "true" ]; then
-      gql_err_oneline=$(head -c 200 "${gql_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
-      jq_err_oneline=$(head -c 200 "${jq_err:-/dev/null}" 2>/dev/null | tr '\n' ' ')
+      gql_err_oneline=$(head -c 200 "${gql_err:-/dev/null}" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl)
+      jq_err_oneline=$(head -c 200 "${jq_err:-/dev/null}" 2>/dev/null | tr '\n' ' ' | neutralize_ctrl)
       echo "[watchdog] ⚠️ gh api graphql or jq failed for Issue #$issue_number (gh_stderr=$gql_err_oneline, jq_stderr=$jq_err_oneline)" >&2
     fi
     current_status=""
@@ -285,7 +287,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
       else
         RECONCILE_FAILURES=$((RECONCILE_FAILURES + 1))
         if [ -n "$reconcile_err" ] && [ -s "$reconcile_err" ]; then
-          reconcile_stderr_oneline=$(head -c 200 "$reconcile_err" | tr '\n' ' ')
+          reconcile_stderr_oneline=$(head -c 200 "$reconcile_err" | tr '\n' ' ' | neutralize_ctrl)
           if [ "$QUIET" != "true" ]; then
             echo "[watchdog] ⚠️ reconcile failed for Issue #$issue_number: $reconcile_stderr_oneline" >&2
           fi

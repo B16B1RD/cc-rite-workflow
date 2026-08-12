@@ -5,7 +5,7 @@
 # (cwd at it or nested under it)?" — independent of rite's own flow-state
 # bookkeeping.
 #
-# Why this exists (Issue #1544, regression of #1524):
+# Why this exists (regression guard):
 #   When a session enters a session worktree via `EnterWorktree`, the harness
 #   records that worktree as the session's cwd and restores it on `/clear`. If the
 #   worktree is removed (cross-session lazy reap in pr-cycle-cleanup.sh Step 5, or
@@ -77,11 +77,10 @@ _rite_probe_proc() {
 # processes whose working directory is at or under <dir>; any hit means a live cwd.
 # Returns 2 (undeterminable) when lsof itself is unavailable.
 _rite_probe_lsof() {
+  local out
   command -v lsof >/dev/null 2>&1 || return 2
-  if lsof -a -d cwd +D "$target_canon" >/dev/null 2>&1; then
-    return 0
-  fi
-  return 1
+  out=$(lsof -a -d cwd +D "$target_canon" 2>/dev/null) || true
+  [ -n "$out" ]
 }
 
 case "$probe" in

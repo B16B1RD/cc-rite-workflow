@@ -53,7 +53,7 @@ This table is the **source of truth** for reviewer file patterns (used by `skill
 
 ## Finding Quality Policy
 
-All reviewers follow a single Finding Quality Policy enforced in [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md) and injected into each reviewer's user prompt via the `{shared_reviewer_principles}` extraction (`skills/pr-review/SKILL.md` ステップ 4.5). It covers Reviewer Mindset (healthy skepticism, evidence-based reporting, thoroughness on every cycle), the Observed Likelihood Gate, Fail-Fast First, the Finding Quality Guardrail (filter bikeshedding / defensive / style-only — all findings are mandatory fixes, so reviewers must report only substantive issues), Confidence Scoring, and External Claim Awareness. Each reviewer's own checklist and Finding Quality Guidelines live in its named-subagent definition (`agents/{reviewer_type}-reviewer.md`).
+All reviewers follow a single Finding Quality Policy enforced in [`agents/_reviewer-base.md`](../../agents/_reviewer-base.md) and injected into each reviewer's user prompt via the `{shared_reviewer_principles}` extraction (`skills/pr-review/SKILL.md` ステップ 4.5). It covers Reviewer Mindset (healthy skepticism, evidence-based reporting, thoroughness on every cycle), the Observed Likelihood Gate, Fail-Fast First, the Finding Quality Guardrail (filter bikeshedding / defensive / style-only — all findings are mandatory fixes, so reviewers must report only substantive issues), the `Verification:` anchor for recording runtime measurement alongside a finding (orthogonal to the inclusion gates — it records whether the finding is backed by a reproduction or a failing test, and does not change whether the finding may be reported), Confidence Scoring, and External Claim Awareness. Each reviewer's own checklist and Finding Quality Guidelines live in its named-subagent definition (`agents/{reviewer_type}-reviewer.md`).
 
 > **Reference**: See [Finding Examples](./references/finding-examples.md) for concrete Few-shot examples of good findings, findings that should NOT be reported, and borderline judgment cases.
 
@@ -77,7 +77,7 @@ Mapping of reviewer identifiers (`reviewer_type`) to display names. Update this 
 
 ## Legacy Reviewer Type Aliases
 
-api / frontend / performance / database / type-design の 5 reviewer は `application` に統合された（Issue #1877）。旧 reviewer_type が入力として現れた場合（rite-config.yml の設定値、過去のレビュー結果 JSON の `reviewer` フィールド、ユーザーの手動指定など）は、**silent skip せず** WARNING を表示して統合先 type で代替実行する:
+api / frontend / performance / database / type-design の 5 reviewer は `application` に統合された。旧 reviewer_type が入力として現れた場合（rite-config.yml の設定値、過去のレビュー結果 JSON の `reviewer` フィールド、ユーザーの手動指定など）は、**silent skip せず** WARNING を表示して統合先 type で代替実行する:
 
 | Legacy reviewer_type | 統合先 |
 |---------------------|--------|
@@ -99,6 +99,15 @@ For each changed file:
   2. Collect matching reviewers
   3. Track file count per reviewer
 ```
+
+**"changed file" の定義は review cycle で変わる**（`skills/pr-review/SKILL.md` ステップ 1.2.4 の `REVIEW_CYCLE_SCOPE` marker が決める。パターン表そのものは変わらない — 変わるのは表に照合させる入力だけ）:
+
+| `REVIEW_CYCLE_SCOPE` | Phase 1 の "changed file" |
+|---|---|
+| `full`（cycle 1 / fail-safe） | PR 全体の変更ファイル |
+| `incremental`（cycle 2+） | 前回レビュー起点からの fix diff (`git diff --name-only {cycle_base_sha}..HEAD`) |
+
+`incremental` では、Phase 1 の結果に**前サイクルで blocking を出した reviewer を `selection_type: mandatory` として合流**させる（Phase 5 が落とさないことを保証しているのは `mandatory` のみのため）。設計根拠は [`skills/pr-review/references/cycle-scope.md`](../pr-review/references/cycle-scope.md)。
 
 ### Phase 2: Content Analysis (Optional)
 
@@ -174,12 +183,26 @@ effective_max resolution (config validation):
   - max_reviewers non-numeric      -> WARNING, fall back to default 6
   - max_reviewers < min_reviewers  -> WARNING, min_reviewers takes priority (effective_max = min_reviewers)
   - otherwise                      -> effective_max = max_reviewers
+  - complexity lane bound          -> when COMPLEXITY_LANE == light (Issue Complexity XS / S, resolved by
+        `skills/pr-review/SKILL.md` ステップ 1.3.2), take the tighter of the two:
+        effective_max = min(effective_max, complexity_max) where complexity_max = 3.
+        Applied BEFORE the final clamp, so the floors below still win. When COMPLEXITY_LANE is
+        `full` (M / L / XL) or the lane could not be resolved, this line is a no-op and the
+        resolution is byte-identical to the pre-lane behavior.
   - final clamp (all paths)        -> effective_max = max(effective_max, min_reviewers)
         (guarantees effective_max >= min_reviewers even for the unset/non-numeric paths when min_reviewers > 6)
 
 When matched count <= effective_max (e.g. the default 6 with fewer matches), the selection is
 identical to the pre-cap behavior (backward compatible).
 ```
+
+**Complexity lane bound rationale**: The `light` lane narrows the *upper* bound only — it never
+overrides the `mandatory` guarantee or the effective floor, both of which are evaluated after it.
+A `light` review can therefore still spawn more than 3 reviewers (4 mandatory reviewers stay 4).
+Placing the bound here rather than in a post-cap filter keeps `effective_max` resolution in one
+place; a second narrowing step would have to re-implement the floors and the mandatory protection.
+Why the bound is 3, why the lane boundary is `{XS, S}`, and why no new floor is introduced:
+[complexity-lane.md](../pr-review/references/complexity-lane.md#reviewer-上限を-phase-5-に置く理由).
 
 The dropped-reviewer list and the pre-spawn summary are rendered by `skills/pr-review/SKILL.md` ステップ 3.2.1 (cap application) / ステップ 3.3 (Confirm Reviewers).
 

@@ -36,10 +36,29 @@ TEST_DIR="$(mktemp -d)"
 cleanup() { rm -rf "$TEST_DIR"; }
 trap cleanup EXIT
 
+# wiki-lint-broken-refs.sh hard-requires GNU `realpath -m -s` (a documented known
+# limitation) and fails fast with exit 1 on BSD/macOS. The detection TCs are
+# unrunnable there by design, so guard them; the arg-validation TCs (TC-6/7/8)
+# exit before the realpath gate and stay platform-agnostic.
+if realpath -m -s -- / >/dev/null 2>&1; then HAS_GNU_REALPATH=1; else HAS_GNU_REALPATH=0; fi
+
 PASS=0
 FAIL=0
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
+# Skips are counted so a platform-gated green states how many assertions never ran
+# (review G-04). Same shape as _test-helpers.sh skip.
+SKIP=0
+skip() { SKIP=$((SKIP + 1)); echo "  ⏭️ SKIP: $1"; }
+
+# The probe above is a capability check, not a platform check: `realpath` missing
+# or shadowed on a Linux host would skip TC-1..TC-5 and TC-9 and still exit 0,
+# leaving the blocking gate with only the arg-validation TCs. Require the probe to
+# succeed where the gate actually blocks. `[ -d /proc ]` rather than `uname -s`
+# because `uname` resolves through the same PATH that would be hiding `realpath`.
+if [ -d /proc ] && [ "$HAS_GNU_REALPATH" != 1 ]; then
+  fail "HAS_GNU_REALPATH probe: GNU 'realpath -m -s' unavailable on Linux (missing or shadowed on PATH?) — the broken-refs detection TCs must never be skipped on the blocking gate"
+fi
 
 # page A: 検査対象。有効 / broken / 除外対象の link を混在させる
 PAGE_A='---
@@ -124,12 +143,13 @@ make_separate_branch_sandbox() {
 run_helper() {
   local repo="$1" input="$2"; shift 2
   local rc=0
-  HELPER_STDOUT=$( (cd "$repo" && printf '%s' "$input" | timeout 10 bash "$SCRIPT" --repo-root "$repo" "$@") 2>"$TEST_DIR/helper_stderr" ) || rc=$?
+  HELPER_STDOUT=$( (cd "$repo" && printf '%s' "$input" | _timeout 10 bash "$SCRIPT" --repo-root "$repo" "$@") 2>"$TEST_DIR/helper_stderr" ) || rc=$?
   HELPER_RC=$rc
   HELPER_STDERR=$(cat "$TEST_DIR/helper_stderr")
   return 0
 }
 
+if [ "$HAS_GNU_REALPATH" = 1 ]; then
 echo "=== TC-1: same_branch 検出 (broken 2 件のみ、除外対象は非検出) ==="
 repo=$(make_same_branch_sandbox tc1)
 run_helper "$repo" "$(stdin_input)" --branch-strategy same_branch
@@ -174,6 +194,12 @@ if [ "$HELPER_RC" -eq 0 ] \
 else
   fail "TC-5 (rc=$HELPER_RC stdout=$HELPER_STDOUT stderr=$HELPER_STDERR)"
 fi
+else
+  skip "TC-1..TC-5 skipped (GNU 'realpath -m -s' absent; broken-refs detection is a no-op here by design)"
+  # TC-6/7/8 (arg validation) still run — they exit before the realpath gate —
+  # but need a valid $repo to cd into (the detection TCs above normally set it).
+  repo=$(make_same_branch_sandbox tc_argval)
+fi
 
 echo "=== TC-6: placeholder residue (--branch-strategy) → exit 1 ==="
 run_helper "$repo" "" --branch-strategy "{branch_strategy}"
@@ -199,6 +225,7 @@ else
   fail "TC-8 (rc=$HELPER_RC)"
 fi
 
+if [ "$HAS_GNU_REALPATH" = 1 ]; then
 echo "=== TC-9: 空 stdin → n_broken_refs=0 + 空 marker block ==="
 run_helper "$repo" "" --branch-strategy same_branch
 if [ "$HELPER_RC" -eq 0 ] \
@@ -210,7 +237,10 @@ if [ "$HELPER_RC" -eq 0 ] \
 else
   fail "TC-9 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
 fi
+else
+  skip "TC-9 skipped (GNU 'realpath -m -s' absent; broken-refs is a no-op here by design)"
+fi
 
 echo ""
-echo "Results: $PASS passed, $FAIL failed"
+echo "Results: $PASS passed, $FAIL failed$( [ "$SKIP" -gt 0 ] && printf ", %s skipped" "$SKIP" )"
 [ "$FAIL" -eq 0 ] || exit 1

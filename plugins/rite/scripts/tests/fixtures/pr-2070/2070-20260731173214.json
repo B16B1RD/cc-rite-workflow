@@ -1,0 +1,136 @@
+{
+  "schema_version": "1.1.0",
+  "pr_number": 2070,
+  "timestamp": "2026-07-31T17:32:14+09:00",
+  "commit_sha": "4b7eb2adbc4ad627735c2f28bb28c1465112e56b",
+  "overall_assessment": "fix-needed",
+  "findings": [
+    {
+      "id": "F-01",
+      "reviewer": "application-reviewer",
+      "category": "documentation",
+      "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "canonical index-template.md をコピーし `[SCHEMA](SCHEMA.md)` を 1 行足して helper を same_branch 実行 => WARNING: ページ .rite/wiki/index.md からエントリ行を 1 件も認識できませんでした ... 検出失敗として計上します / descriptive_refs_read_errors=1。ガードは entries==0 が発火条件なので、記法例コメントは entry として parse されていないことの直接証明",
+        "failing_test": null
+      },
+      "file": "plugins/rite/skills/wiki-lint/references/descriptive-refs-rationale.md",
+      "line": 100,
+      "description": "本 PR が追加した rationale の 2 段落が互いに矛盾し、後者は実装と不一致 (Comment Rot)。同ファイル :68-70 は「HTML コメントブロックを行の分類より前に落とす。落とさないと記法例が実エントリとして数えられて…」と書き、現実装では記法例はエントリに数えられないことを前提にしている。ところが :100-102 は「ガードの発火条件を『全行 skip (parsed == 0)』にしないのは、index-template.md の前文が箇条書きの記法例を含み、それがエントリ行として 1 件 parse されるため」と現在形で正反対を主張し、結論「全滅条件では…構造的に発火しない」も成立しない。cycle 3 が新しい制御フロー (END ラッチ検査) を足した箇所の設計根拠 SoT がこの状態だと、次サイクルで guard 条件を触る担当者が偽の前提のまま linkrows > 0 を冗長と判断しうる。Likelihood-Evidence: new_call_site plugins/rite/skills/wiki-lint/references/descriptive-refs-rationale.md:100 (本 PR diff の + 行で追加。develop に該当段落なし)",
+      "suggestion": ":100-102 を現実装に合わせて書き直すか、:68-70 が同じ論点を既に正しく述べているので段落ごと削除して統合する。書き直す場合の主旨: 「発火条件を parsed == 0 にしないのは、記法例コメントを落とした後の canonical template では parsed == 0 が『形式 drift』と『まだ登録が無いカタログ』を区別できないため。両者を分ける材料は linkrows にしかない」。",
+      "status": "open"
+    },
+    {
+      "id": "F-02",
+      "reviewer": "tech-writer-reviewer",
+      "category": "documentation",
+      "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "gh api 'repos/GoogleCloudPlatform/knowledge-catalog/contents/okf/SPEC.md?ref=d44368c1' --jq .content ¦ base64 -d ¦ sed -n '278p;392p' => \"Index files contain no frontmatter.\" / \"Bundles MAY declare the OKF version they target by including\"。また grep -c okf_version plugins/rite/skills/wiki-ingest/SKILL.md => 0。¦ は raw pipe の表記代替",
+        "failing_test": null
+      },
+      "file": "docs/SPEC.md",
+      "line": 1640,
+      "description": "cycle 3 の書き換えが、非対称の解消を狙って新しい事実誤りを 2 つ導入した。(a)「OKF requires bundle-root frontmatter okf_version」は誤り。OKF v0.1 §6 は \"Index files contain no frontmatter.\"、§Versioning は \"Bundles MAY declare the OKF version ... in a bundle-root index.md frontmatter block\" と定めており frontmatter は MAY (任意)。よって live wiki ブランチに frontmatter が無いことは conformance gap ではないのに、本文は「neither gap」と両者を同格の gap として扱っている (テーブル形式の方は §9 conformance 3 号により実際に gap なので 2 つは同格ではない)。(b)「templates/wiki/index-template.md and /rite:wiki-ingest step 6 specify both」も誤り。wiki-ingest/SKILL.md に okf_version は 0 hits で、step 6 の frontmatter 言及はすべて page frontmatter を指す。frontmatter を配置するのは /rite:wiki-init (index-template.md を sed 展開)。cycle 2 で指摘した「修飾の非対称」を対称化する過程で、対称化の前提そのものが誤っている。Likelihood-Evidence: existing_call_site plugins/rite/skills/wiki-lint/references/descriptive-refs-rationale.md:63-64 (本 PR 自身の rationale が「template と wiki-ingest ステップ 6 が指示しているのは箇条書き」と書いており同 PR の SPEC 編集と矛盾)",
+      "suggestion": "該当セルを全面書き換えする。frontmatter は optional (MAY) と明記し、配置主体を /rite:wiki-init に訂正する。**テーブル形式が実際の非適合であることと、/rite:wiki-query Pass 1 の既知非適合の記述は維持すること**。spec 再確認時は upstream HEAD が v0.2 のため必ず ?ref=d44368c1 (v0.1 Draft) を指定する。",
+      "status": "open"
+    },
+    {
+      "id": "F-03",
+      "reviewer": "tech-writer-reviewer",
+      "category": "documentation",
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "sed -n '339,340p' plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh => 行 339 末尾 \"テーブル専用にすると\" と行 340 冒頭 \"どちらか一方専用にすると\" が排他的な条件節として連続する",
+        "failing_test": null
+      },
+      "file": "plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh",
+      "line": 339,
+      "description": "cycle 3 が語彙訂正を転記した際、置換後の行だけを + で入れて、置換前の行末に残っていた条件節の書き出しを削除しなかったため、条件節が二重化した壊れた文が残っている。現在の連結: 「…であり、テーブル専用にすると / どちらか一方専用にすると、指示と実挙動の乖離が解消された時点、あるいはその過程で検出が無言で 0 件へ倒れる。」— 排他的な 2 つの条件節が並び、テーブル専用にすると が係り先を失っている。この段落は「なぜ行単位で両形式を受けるのか」という設計判断の WHY であり、rationale 側 (:65) では正しい 1 節のみになっている。実装挙動には影響しないが、cycle 3 commit が掲げた「cycle 2 の語彙・前提訂正を全サイトへ届かせる」の内部で起きた非対称転記であり、CLAUDE.md の「タスク完了時に旧フォーマットを残さない」に反する。Likelihood-Evidence: existing_call_site plugins/rite/skills/wiki-lint/references/descriptive-refs-rationale.md:65 (同一趣旨の文が rationale では単一条件節で成立)",
+      "suggestion": "行 339 末尾の「テーブル専用にすると」を削除し「…であり、」で行 340 の「どちらか一方専用にすると、」へ繋げる。",
+      "status": "open"
+    },
+    {
+      "id": "F-04",
+      "reviewer": "prompt-engineer-reviewer",
+      "category": "prompt_quality",
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "T=$(mktemp -d); mkdir -p $T/.rite/wiki; index.md を「（準備中）」+ 未閉鎖 HTML コメントのみにして printf '' ¦ bash plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh --branch-strategy same_branch --repo-root $T => descriptive_refs_read_errors=1 / descriptive_refs_read_ok=io_error (表 :1076 は「read_errors に数えない」と規定)。¦ は raw pipe の表記代替",
+        "failing_test": null
+      },
+      "file": "plugins/rite/skills/wiki-lint/SKILL.md",
+      "line": 1076,
+      "description": "cycle 3 で追加した END 終端検査 (除外ブロック未閉鎖 → entries=0 / linkrows=1 を返して検出失敗ガードへ合流) が「エラーハンドリング」分岐表に反映されていない。:1076 は「index.md にリンク形状の行が 1 行もない (まだ登録が無いカタログ) → 静かに 0 件として扱う (drift ではないため read_errors に数えない)」と規定するが、リンク行 0 かつ未閉鎖 HTML コメント / コードフェンスの index.md では実挙動が read_errors=1 / read_ok=io_error になり、行の前件が真のまま後件が偽になる。隣の :1075 も前件が「リンク形状の行はあるがリンク先が pages/ と認識できない」で未閉鎖ケース (リンク行 0 でも発火) を説明できない。同一ファイルの :668 は「除外ブロックが未閉鎖のまま EOF に達した場合は検出失敗として本カウンタに載る」と逆のことを書いており、両方とも本 PR の追加行。分岐表は本プロジェクトの行数原則が本体維持と定めた実行時情報のため、運用者は read_errors=1 を表と突き合わせて「起こりえない値」と誤診する。Likelihood-Evidence: entrypoint_connection plugins/rite/skills/wiki-lint/SKILL.md:1076 → plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh:434-438 (END ラッチ検査、本 PR で追加)",
+      "suggestion": "分岐表に未閉鎖ブロックの行を 1 行追加し、:1076 の後件に例外を明示する。新規行を :1075 の直後に置き、:1076 を「リンク形状の行が 1 行もなく、かつ除外ブロックがすべて閉じている場合」へ限定する。",
+      "status": "open"
+    },
+    {
+      "id": "F-05",
+      "reviewer": "test-reviewer",
+      "category": "test_coverage",
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "隔離コピーで END の exit 行のみ削除し bash plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh => PASS 166 ¦ FAIL 0 (変異が生存。同入力の stderr では guard WARNING が消え arity WARNING 2 行が出現)。¦ は raw pipe の表記代替",
+        "failing_test": null
+      },
+      "file": "plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh",
+      "line": 859,
+      "description": "分岐 9 の新規コードのうち END ラッチ分岐の exit だけが 1 つの assertion にも pin されていない。exit を削ると END は print 0,0,0,1 の後に通常の 4 値 print へ落ち、awk が 8 フィールドを返す。呼出側は arity 検査に捕まって read_errors=1 を立てるため stdout は byte 単位で不変、ラッチ WARNING も従来どおり出る — 一方で検出失敗ガードの WARNING (エントリ行を 1 件も認識できませんでした) が消え、代わりに「検出アクションが 4 値を返しませんでした (フィールド数=8)」という、作者が破っていない arity 契約を名指しする 2 行が出る。TC-51 が (a)/(e) で「原因を名指しする WARNING」を価値として掲げている以上、その診断連鎖の後半が無 pin なのは同 TC 群の目的と不整合。Likelihood-Evidence: runtime_observation 隔離コピー上で exit 行のみ削除した変異が全 166 assertion を緑のまま通過",
+      "suggestion": "TC-51 (a) に guard WARNING の assert を 1 行足す: assert_grep \"TC-51 (a) 検出失敗ガードの WARNING まで到達する\" \"$unc_err\" 'エントリ行を 1 件も認識できませんでした'。原本ではこの行が出て変異版では出ないことを実測済み。",
+      "status": "open"
+    },
+    {
+      "id": "F-06",
+      "reviewer": "test-reviewer",
+      "category": "test_coverage",
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "隔離コピーで fn != sumncol を fn < sumncol へ変異し bash plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh => PASS 166 ¦ FAIL 0 (変異が生存)。同変異下でサマリー内生パイプ行の skipped_rows が 1 から 0 へ、列数=7 ヘッダー=5 の WARNING が消失。¦ は raw pipe の表記代替",
+        "failing_test": null
+      },
+      "file": "plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh",
+      "line": 555,
+      "description": "TC-31 は (#2069 T-07) を名乗るが、T-07 の仕様文「列数が壊れた行」の 2 方向のうち under-column 側しか fixture を持たない。fixture の行は列数=4 / ヘッダー=5。実装の fn != sumncol を fn < sumncol へ緩めると、サマリーに生パイプを含む over-column 行がスキップされずヘッダー由来の位置で別列を黙って読む状態になり、行番号つき WARNING が消え descriptive_refs_skipped_rows が 1 から 0 へ落ちる。これは helper 自身のコメントが「位置固定の列パースは silent no-op に倒れるため、ヘッダー由来の位置決めとスキップ行数の stdout 露出を対にする」と宣言している契約そのものの片側崩壊。AC を名乗って半分しか検証していない traceability 欠落。Likelihood-Evidence: runtime_observation fn != sumncol を fn < sumncol へ変異させた隔離コピーが全 166 assertion 緑",
+      "suggestion": "TC-31 に over-column 方向の fixture を 1 本追加する。5 列ヘッダーに対しサマリー本文へコードスパンで包まない生パイプを持つ行を置き、skipped_rows=1 と WARNING 中の「列数=7, ヘッダー=5」を assert する。既存 fixture は「列数=4, ヘッダー=5」を出すので両 assert の共存で方向を分離できる。",
+      "status": "open"
+    },
+    {
+      "id": "F-07",
+      "reviewer": "prompt-engineer-reviewer",
+      "category": "prompt_quality",
+      "severity": "LOW-MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": false,
+      "verification": {
+        "measured": true,
+        "repro": "同一内容 (行頭 HTML コメント内に PR 番号) のファイルを index.md と pages 配下の両方に置いて helper を実行 => marker block は page=.rite/wiki/pages/patterns/a.md; hits=1 のみ (同内容の index.md は hits 0 = HTML コメント除去が index 側だけに効く)",
+        "failing_test": null
+      },
+      "file": "plugins/rite/skills/wiki-lint/SKILL.md",
+      "line": 624,
+      "description": "「除外規則は index.md にも適用するが、E5 (TODO/FIXME) の適用単位だけが異なる」の「だけ」が実挙動より強い。index.md には本文ページに存在しない HTML コメントブロックの除去 (^[[:space:]]*<!-- 開始 / --> を含む行で終了) が働くため、同一の PR #N 記述がページ本文では hit、index.md では非 hit になる。SKILL.md 本体だけを読む者は「index でも同じく数える」と予測して外す (rationale L68-72 には正しく記載があり退避原則自体は満たされているが、本体の断定が pointer より強く読まれる)。本行は本 PR の追加行。Likelihood-Evidence: new_call_site plugins/rite/skills/wiki-lint/SKILL.md:624 (本 PR diff の + 行で追加)",
+      "suggestion": "「だけ」を外し index 専用規則を 1 句足す。例: 「除外規則は index.md にも適用するが、E5 の適用単位が異なる (ページは行単位、index.md はエントリのサマリー単位) ほか、index.md では HTML コメントブロックを行の分類前に落とすためコメント内の番号は数えない (ページ本文では数える)」。",
+      "status": "open"
+    }
+  ],
+  "non_blocking_findings": []
+}

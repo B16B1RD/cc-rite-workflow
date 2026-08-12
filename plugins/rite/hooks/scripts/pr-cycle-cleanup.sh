@@ -33,7 +33,7 @@
 # worktree (`.rite/wiki-worktree`) is excluded unconditionally — see
 # skills/cleanup/SKILL.md §2.6.
 #
-# Also reaps (Issue #1526):
+# Also reaps:
 #   - bare `pr-{N}` (no suffix, `^pr-[0-9]+$`): external/manual PR-checkout leak
 #     (`git fetch origin pull/{N}/head:pr-{N}`). rite work branches are
 #     `{type}/issue-{N}-{slug}`, so the exact match cannot collide (AC-1/D-02).
@@ -48,8 +48,8 @@
 #   - `test` / `experiment` / `mutation` / `verify` / `check` / `sandbox`:
 #     reviewer-subagent verification experiments (observed in practice).
 #     The reviewer's READ-ONLY contract is the prompt-level Layer 1
-#     (`agents/_reviewer-base.md`; branch-creating git verbs are no longer
-#     machine-gated since Issue #1879), so these names should normally never
+#     (`agents/_reviewer-base.md`; branch-creating git verbs are not exhaustively
+#     machine-gated because command matching cannot safely cover every form), so these names should normally never
 #     be created but cannot be structurally prevented. This regex is the
 #     designed sweep for reviewer-leaked residue (with Layer 3
 #     post-review-state-verify.sh handling in-review detection).
@@ -123,14 +123,14 @@ cd -- "$repo_root"
 readonly PATTERN='^pr-[0-9]+-(cycle[0-9]+|test|experiment|mutation|verify|check|sandbox)$'
 # Bare `pr-{N}` (no suffix). Not created by rite's own code — it leaks from
 # external/manual PR checkout (`git fetch origin pull/{N}/head:pr-{N}`,
-# `gh pr checkout`) during the workflow (Issue #1526 §3.2 Open Question resolved:
+# `gh pr checkout`) during the workflow (§3.2 Open Question resolved:
 # rite-internal grep finds no producer). rite's own work branches are
 # `{type}/issue-{N}-{slug}`, so an exact `^pr-[0-9]+$` sweep cannot collide with
 # them — the same low-risk, naming-convention basis as the suffixed PATTERN above
-# (Issue #1526 AC-1 / D-02).
+# (AC-1 / D-02).
 readonly BARE_PR_PATTERN='^pr-[0-9]+$'
 readonly WIKI_WORKTREE_PATH=".rite/wiki-worktree"
-# Name-independent reap manifest (Issue #1526 D-01/D-05). Producers append
+# Name-independent reap manifest (D-01/D-05). Producers append
 # `<type>\t<value>` via hooks/scripts/rite-tmp-artifact.sh; cleanup reaps each
 # recorded branch/worktree by identity, never by guessing the name. Resolved
 # under repo_root (the SHARED state root — we already cd'd there).
@@ -143,6 +143,9 @@ mutation_worktrees_reaped=0
 session_worktrees_reaped=0
 session_branches_deleted=0
 manifest_reaped=0
+orphan_reviews_deleted=0
+orphan_reviews_archived=0
+orphan_review_pins_deleted=0
 errors=0
 
 # trap + cleanup パターン (canonical: references/bash-trap-patterns.md#signal-specific-trap-template)
@@ -162,9 +165,9 @@ mutation_find_out=""
 revert_find_out=""
 # Step 4.5 manifest reap の survivor 書き出し用 (NUL 不使用だが trap で確実に掃除する)
 manifest_keep=""
-# Step 5 branch recovery の manifest エントリ即時消費用 (Issue #1966)
+# Step 5 branch recovery の manifest エントリ即時消費用
 session_branch_mf_keep=""
-# Step 5 corpse reap の session_worktree manifest エントリ即時消費用 (Issue #1945)
+# Step 5 corpse reap の session_worktree manifest エントリ即時消費用
 _wt_mf_keep=""
 _rite_pr_cycle_cleanup() {
   rm -f "${wt_list_err:-}" "${prune_err:-}" "${ref_err:-}" "${workdir_find_err:-}" "${mutation_find_err:-}" \
@@ -415,7 +418,7 @@ reap_orphan_dirs "orphan workdir" "$workdir_tmp_base" 'rite-pr-create-*' \
 #
 # 名前空間: sanctioned な `rite-review-mutation-*` に加え、実機で観測された
 # `rite-revert-test-*` (revert して挙動を確認する検証 worktree) も同じ `rite-`
-# reviewer-tmp 名前空間として回収する (Issue #1526 AC-2 / D-03)。prefix 自体が
+# reviewer-tmp 名前空間として回収する (AC-2 / D-03)。prefix 自体が
 # name-independent な「これは rite 由来 tmp worktree」マーカーとして機能するため、
 # 個別命名を regex で追い続けるモグラ叩きを避けられる。
 #
@@ -426,7 +429,7 @@ reap_orphan_dirs "orphan workdir" "$workdir_tmp_base" 'rite-pr-create-*' \
 # age ガード (mtime > WORKDIR_REAP_AGE_MINUTES) は Step 3 workdir reap と同一閾値
 # (24h) を共有する: 健全な検証は reviewer subagent の当該ターン (数分) で完結するため、
 # 閾値超過の worktree は確実に orphan。並行 session の in-flight worktree を誤回収しない
-# ための保守的マージン (Issue #1526 D-04: 即時 0 残骸ではなく cross-session 安全と両立する
+# ための保守的マージン (D-04: 即時 0 残骸ではなく cross-session 安全と両立する
 # 確実な最終回収。即時回収は reviewer 側 session-scoped 記録を要し本 Issue の Non-Target)。
 # 走査先は create.md / `mktemp -d -t` と同じ `${TMPDIR:-/tmp}` を尊重する。
 #
@@ -458,7 +461,7 @@ fi
 
 # -----------------------------------------------------------------------
 # Step 4.5: Name-independent reap of manifest-recorded tmp artifacts
-# (Issue #1526 D-01/D-05, AC-4). A producer that creates a throw-away branch /
+# (D-01/D-05, AC-4). A producer that creates a throw-away branch /
 # worktree whose name no strict pattern above would match records it via
 # `rite-tmp-artifact.sh record`; here we reap each recorded entry BY IDENTITY,
 # never by guessing the name. 誤削除防止 (AC-3): only entries the manifest lists
@@ -470,7 +473,7 @@ fi
 # worktree is skipped (and kept in the manifest for a later retry) so uncommitted
 # work is never destroyed. The `worktree` type is contract-bound to EPHEMERAL
 # tmp artifacts; session worktrees go through Step 5's gated reap, never here
-# (Issue #1945: they use the distinct `session_worktree` type below, which
+# Cleanup-owned session worktrees use the distinct `session_worktree` type below, which
 # this step never reaps — only drops once the path is already gone).
 #
 # Manifest rewrite: lines we reap (or find already-gone) are dropped; skipped
@@ -584,7 +587,7 @@ if [ -f "$manifest_path" ]; then
           fi
           ;;
         session_worktree)
-          # Issue #1945: session worktree paths (`.rite/worktrees/issue-N`) are
+          # Why: session worktree paths (`.rite/worktrees/issue-N`) are
           # NEVER reaped here — that is Step 5's job, behind its claim /
           # self-exclusion / live-cwd gates (the "worktree" type case above is
           # ungated and reserved for ephemeral tmp artifacts only; mixing
@@ -609,12 +612,12 @@ if [ -f "$manifest_path" ]; then
     if [ "$DRY_RUN" = "0" ]; then
       if [ -s "$manifest_keep" ]; then
         if ! cp "$manifest_keep" "$manifest_path" 2>/dev/null; then
-          echo "WARNING: manifest '$manifest_path' の書き戻しに失敗しました (回収済エントリが残存し age-guard バイパスを継承する可能性 — Issue #1966)" >&2
+          echo "WARNING: manifest '$manifest_path' の書き戻しに失敗しました (回収済エントリが残存し age-guard バイパスを継承する可能性あり）" >&2
           errors=$((errors + 1))
         fi
       # All entries reaped/dropped → remove the now-empty manifest. The unlink
       # can fail like Step 5's consumption arm (EACCES/EROFS on the .rite/
-      # parent — sandbox masks have blocked repo writes before, Issue #1959),
+      # parent — sandbox masks have blocked repo writes before),
       # and with the #1966 bypass keyed on lingering entries a silent failure
       # here is no longer inert — surface it (WARNING only, no errors++: the
       # entries were all processed, next run's verify-drop self-heals).
@@ -625,6 +628,143 @@ if [ -f "$manifest_path" ]; then
     rm -f "$manifest_keep" 2>/dev/null || true
   fi
 fi
+
+# -----------------------------------------------------------------------
+# Step 4-P: porcelain 走査による TMPDIR 配下 detached worktree 回収。
+#
+# 背景: Step 4 の find は (a) maxdepth 1 で `$TMPDIR/rite-review-mutation-*` しか見ない
+# ため `$TMPDIR/claude-*/rite-review-mutation-*` のような入れ子を取りこぼし、(b) 24h age
+# ガードが同一 review サイクル内の残留 (数分〜数時間) を保護し続けて回収しない。実測で
+# `git worktree list` に `$TMPDIR/claude-<uid>/rite-review-mutation-*` が 8 個残ったのに
+# `mutation_worktrees=0` と報告された。
+#
+# 本ステップは `git worktree list --porcelain` を権威として:
+#   - path が `${TMPDIR}/` 配下 (論理形・`pwd -P` 物理形の両方で prefix 一致、入れ子可。
+#     macOS の `/var`→`/private/var` 等で porcelain が物理パスを返すケースを含む)
+#   - detached HEAD (porcelain の `detached` 行。`branch refs/heads/...` を持つものは除外)
+#   - リポジトリ配下 (`.rite/worktrees/*` / wiki-worktree / main) は除外
+#   - 自セッション live cwd は除外 (worktree-foreign-cwd.sh --self-root $PPID)
+#   - HEAD がどの ref からも到達不能な commit の worktree は除外
+# を満たす worktree を age ガード無しで回収する。reviewer は READ-ONLY で remove できず、
+# cleanup は review 入口 / iterate 終端でのみ走るため、並行 reviewer の in-flight を
+# age で守る必要は無い — 別セッション在席は foreign-cwd が塞ぐ。
+#
+# dirty は見送り理由にしない: mutation worktree は tracked 書き換えと
+# 実験スクリプトが本質であり、status --porcelain 非空は回収対象の性質そのもの。
+# 保護するのは「どの named ref からも到達不能な commit」のみ（使い捨て dirty と
+# 区別する）。判定コマンド失敗時は安全側で見送り + WARNING（silent skip しない）。
+# カウンタは既存 `mutation_worktrees_reaped` を共有する。
+# -----------------------------------------------------------------------
+_tmp_prefix="${TMPDIR:-/tmp}"
+_tmp_prefix="${_tmp_prefix%/}"
+# Physical (symlink-resolved) forms for macOS-safe prefix match. Git worktree
+# porcelain typically emits the physical path (`/private/var/folders/...`,
+# `/private/tmp/...`), while `$TMPDIR` / `repo_root` may still be the logical
+# form (`/var/folders/...`, `/tmp`). A string-prefix compare between those two
+# shapes never matches, so Step 4-P reports mutation_worktrees=0 and leaves
+# every detached TMPDIR worktree in place (macOS CI failure on T-15/T-30/T-33+).
+# Resolve once with `cd && pwd -P` (same idiom as the Step 4.5 containment
+# guard; GNU realpath is not assumed — macOS bash 3.2 portability floor).
+_tmp_prefix_phys=$( cd -- "$_tmp_prefix" 2>/dev/null && pwd -P ) || _tmp_prefix_phys="$_tmp_prefix"
+_repo_root_phys=$( cd -- "$repo_root" 2>/dev/null && pwd -P ) || _repo_root_phys="$repo_root"
+# 正規化: 末尾スラッシュ無しの prefix + "/" で「配下」判定する。
+# 論理形・物理形の両方を受け付ける（path が片方だけ解決されているケースを含む）。
+_is_under_tmpdir() {
+  local p="$1" p_phys
+  case "$p" in
+    "$_tmp_prefix"|"$_tmp_prefix"/*) return 0 ;;
+  esac
+  p_phys=$( cd -- "$p" 2>/dev/null && pwd -P ) || p_phys="$p"
+  case "$p_phys" in
+    "$_tmp_prefix_phys"|"$_tmp_prefix_phys"/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+_is_under_repo() {
+  local p="$1" p_phys
+  case "$p" in
+    "$repo_root"|"$repo_root"/*) return 0 ;;
+  esac
+  p_phys=$( cd -- "$p" 2>/dev/null && pwd -P ) || p_phys="$p"
+  case "$p_phys" in
+    "$_repo_root_phys"|"$_repo_root_phys"/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+# Step 1 で既に取得した porcelain があれば再利用したいが、Step 1 は失敗時に空、かつ
+# その後の Step 4 find 経路で worktree が変わりうるため、ここで再取得する (失敗は non-blocking)。
+_p_list_err=$(mktemp "${TMPDIR:-/tmp}/rite-pr-cycle-cleanup-porcelain-err-XXXXXX" 2>/dev/null) || _p_list_err=""
+if _p_list=$(git worktree list --porcelain 2>"${_p_list_err:-/dev/null}"); then
+  _p_path=""
+  _p_detached=0
+  _p_flush() {
+    # 1 entry 分を判定して必要なら回収。空 path は no-op。
+    [ -n "$_p_path" ] || return 0
+    if [ "$_p_detached" -eq 1 ] \
+       && _is_under_tmpdir "$_p_path" \
+       && ! _is_under_repo "$_p_path"; then
+      # 自セッション / 別 live セッションの cwd 保護 (self-exclusion 付き)
+      _p_fc_rc=0
+      bash "$SCRIPT_DIR/worktree-foreign-cwd.sh" "$_p_path" --self-root "$PPID" >/dev/null 2>&1 || _p_fc_rc=$?
+      # rc=0 = 別 live セッションが cwd を置く → 見送り / rc=1 = 自のみ or 不在 → 回収 /
+      # rc=2 = 判定不能 → 回収 (Step 4-W と同規約の後方互換)
+      if [ "$_p_fc_rc" -eq 0 ]; then
+        echo "WARNING: 別セッションが detached worktree ($_p_path) を使用中のため回収を見送りました" >&2
+      else
+        # 到達不能 commit 保護: mutation worktree は本質的に dirty なので
+        # 未コミット変更は見送り理由にしない。保護するのは「どの named ref からも
+        # 到達不能な commit」のみ。for-each-ref --contains は worktree HEAD
+        # (.git/worktrees/*/HEAD) を列挙しないため、detached 上でだけ作られた
+        # commit は EMPTY になる。判定失敗時は削除せず WARNING で観測可能にする。
+        _p_head=$(git -C "$_p_path" rev-parse HEAD 2>/dev/null) || _p_head=""
+        if [ -z "$_p_head" ]; then
+          echo "WARNING: detached TMPDIR worktree ($_p_path) の HEAD 判定に失敗したため回収を見送りました" >&2
+        elif ! _p_refs=$(git -C "$_p_path" for-each-ref --contains="$_p_head" --format='%(refname)' 2>/dev/null); then
+          echo "WARNING: detached TMPDIR worktree ($_p_path) の到達可能性判定に失敗したため回収を見送りました" >&2
+        elif [ -z "$_p_refs" ]; then
+          echo "WARNING: detached TMPDIR worktree ($_p_path) に到達不能 commit があるため回収を見送りました" >&2
+        elif [ "$DRY_RUN" = "1" ]; then
+          echo "[dry-run] would reap detached TMPDIR worktree: $(printf '%s' "$_p_path" | neutralize_ctrl)"
+        else
+          _reap_mutation_worktree "$_p_path"
+        fi
+      fi
+    fi
+    _p_path=""
+    _p_detached=0
+  }
+  while IFS= read -r _p_line; do
+    case "$_p_line" in
+      "worktree "*)
+        _p_flush
+        _p_path="${_p_line#worktree }"
+        _p_detached=0
+        ;;
+      "detached")
+        _p_detached=1
+        ;;
+      "branch "*)
+        # named branch を持つ entry は本ステップの対象外 (Step 1 の責務)
+        _p_detached=0
+        ;;
+      "")
+        _p_flush
+        ;;
+    esac
+  done <<< "$_p_list"
+  _p_flush
+  if [ "$DRY_RUN" = "0" ] && [ "$mutation_reaped_any" = "1" ]; then
+    git worktree prune 2>/dev/null || true
+  fi
+else
+  _p_rc=$?
+  echo "WARNING: Step 4-P git worktree list --porcelain が失敗しました (rc=$_p_rc)。detached TMPDIR 回収を skip します" >&2
+  if [ -n "$_p_list_err" ] && [ -s "$_p_list_err" ]; then
+    head -3 "$_p_list_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  fi
+  # non-blocking: errors は増やさない (既存 Step 1 が既に list 失敗を errors++ している場合と二重計上しない)
+fi
+[ -n "$_p_list_err" ] && rm -f "$_p_list_err"
 
 # -----------------------------------------------------------------------
 # Step 5: Lazy reap of orphaned SESSION worktrees (multi-session design §8).
@@ -645,7 +785,7 @@ fi
 #      して即 reap する — ハーネスの .claude/.cc-writes churn が root mtime を
 #      セッション毎に更新するため、age guard 単独では永久リークする
 #   3. `git -C <wt> status --porcelain` が空 (dirty worktree は絶対に auto-reap
-#      しない — WARNING + 手動コマンド提示で skip)。例外 (Issue #1957): corpse
+#      しない — WARNING + 手動コマンド提示で skip)。例外: corpse
 #      (admin dir の HEAD 欠落 + git 非認識 — sandbox のマスクマウント下で
 #      `git worktree remove --force` が半壊させた残骸) は status 判定が構造的に
 #      不可能なため本ゲートをバイパスし、claim 非 live + 24h age guard の通過後に
@@ -653,7 +793,7 @@ fi
 # 処理は Step 1/4 と同型: `git worktree remove --force` → fallback `rm -rf` →
 # ループ後 `git worktree prune` + 対応 claim ファイル削除。
 #
-# **Branch recovery (Issue #1670)**: worktree reap 後に、その worktree が checkout
+# **Branch recovery**: worktree reap 後に、その worktree が checkout
 # していた feature ブランチを **安全に回収する**。従来は branch を一切削除せず、cleanup.md
 # が live-cwd guard で削除を遅延した feature ブランチが回収経路を持たず永久残置 (dead-letter)
 # だった。回収は `git branch -d` (safe — 未マージは拒否 → クラッシュセッションの作業を保全, AC-4)
@@ -707,7 +847,7 @@ _rite_dir_is_self() {
 rite_self_dir="${RITE_WORKTREE:-$rite_invocation_pwd}"
 rite_self_canon=$(_rite_canonical_dir "$rite_self_dir")
 
-# Liveness TTL (Issue #1923). Both signals below used to protect an
+# Liveness TTL. Both signals below used to protect an
 # active=true holder with NO time bound, which deadlocks this guard forever
 # when a session ends WITHOUT session-end.sh's SessionEnd hook firing (forced
 # quit / crash / terminal close — see session-end.sh header for which exits
@@ -751,7 +891,7 @@ fi
 # for any session whose last heartbeat came from one of those, reintroducing
 # this Issue's own dead-lock.
 #
-# Single source of truth (Issue #1923 cycle 2 review finding): this regex is
+# Single source of truth (cycle 2 review finding): this regex is
 # read by BOTH _rite_epoch_of_ts (below) and _rite_ttl_protects's
 # date-incompatible check, to tell "malformed timestamp" (no WARNING, silent
 # fail-safe) apart from "well-formed but this host's date can't parse it"
@@ -780,7 +920,7 @@ _rite_epoch_of_ts() {
 }
 
 # _rite_ttl_protects: whether an active=true holder last active at
-# `updated_at` (ISO 8601 UTC) is still within the liveness TTL (Issue #1923).
+# `updated_at` (ISO 8601 UTC) is still within the liveness TTL.
 #   0 = protect: within TTL: OR updated_at missing/malformed (AC-4 fail-safe,
 #       silent) OR this host's `date` cannot parse a well-formed timestamp
 #       (4.5 fail-safe, WARNING emitted once per run — TTL enforcement
@@ -806,26 +946,26 @@ _rite_ttl_protects() {
   [ "$age" -le "$ttl_seconds" ]
 }
 
-# Worktree liveness guard (Issue #1524 + #1552). The 4th protection layer:
+# Worktree liveness guard. The 4th protection layer:
 # extend Gate 0 self-exclusion to ALL sessions that may still resume into this
 # worktree. Two independent signals, either of which protects (skip reap):
 #   (A) flow-state.worktree scan — a session's per-session flow-state records
-#       this worktree as its `active` `worktree` (Issue #1524), protected
-#       while `updated_at` is within the liveness TTL above (Issue #1923;
+#       this worktree as its `active` `worktree`, protected
+#       while `updated_at` is within the liveness TTL above (
 #       previously unbounded — "no time bound: an active session protects
 #       its tree regardless of idle time").
-#   (B) claim-join (Issue #1552) — the issue's claim file records this worktree
+#   (B) claim-join — the issue's claim file records this worktree
 #       and its holder session is still `active=true`, EVEN IF the claim's
 #       heartbeat (flow-state `updated_at`) has aged past the 2h staleness window
 #       used by issue-claim.sh `check` — but, like (A), only while that SAME
-#       `updated_at` is within the liveness TTL (Issue #1923). A session that
+#       `updated_at` is within the liveness TTL. A session that
 #       is active=true but idle >2h (and <TTL) has a `stale` claim, which
 #       Gate 2 alone would treat as reapable — reaping a worktree the harness
 #       can still resume into and restore as cwd, breaking `/clear` with
 #       `Path does not exist`. (B) closes that window for sessions whose
 #       flow-state.worktree drifted empty/mismatched so (A) misses them,
 #       since the claim reliably records the worktree↔holder binding.
-# Both signals protect ONLY active=true holders WITHIN the TTL (Issue #1923):
+# Both signals protect ONLY active=true holders WITHIN the TTL:
 # a deactivated/abandoned holder (active=false) stays reapable as before, and
 # an active=true holder whose `updated_at` has aged past the TTL also stops
 # being protected — bounding the worktree/branch leak from sessions that end
@@ -854,7 +994,7 @@ _rite_worktree_protected_by_flow_state() {
       _hactive=$(RITE_STATE_ROOT="$repo_root" bash "$SCRIPT_DIR/../flow-state.sh" \
                  get --session "$_holder" --field active --default "false" 2>/dev/null) || _hactive="false"
       if [ "$_hactive" = "true" ]; then
-        # TTL gate (Issue #1923): active=true alone no longer protects — the
+        # TTL gate: active=true alone no longer protects — the
         # holder's updated_at must also be within the liveness TTL.
         _hupdated=$(RITE_STATE_ROOT="$repo_root" bash "$SCRIPT_DIR/../flow-state.sh" \
                    get --session "$_holder" --field updated_at --default "" 2>/dev/null) || _hupdated=""
@@ -862,7 +1002,7 @@ _rite_worktree_protected_by_flow_state() {
       fi
     fi
   fi
-  # (A) flow-state.worktree scan (Issue #1524).
+  # (A) flow-state.worktree scan.
   local sdir="$repo_root/.rite/sessions"
   [ -d "$sdir" ] || return 1
   # Existing-but-unreadable dir is an enumeration failure → conservative skip.
@@ -878,7 +1018,7 @@ _rite_worktree_protected_by_flow_state() {
     [ "$_active" = "true" ] || continue
     [ -n "$_wt" ] || continue
     if [ "$_wt" = "$target_canon" ] || [ "$(_rite_canonical_dir "$_wt")" = "$target_canon" ]; then
-      # TTL gate (Issue #1923): active=true + worktree match alone no longer
+      # TTL gate: active=true + worktree match alone no longer
       # protects — this holder's updated_at must also be within the TTL.
       _rite_ttl_protects "$_updated" && return 0
     fi
@@ -890,7 +1030,7 @@ _rite_worktree_protected_by_flow_state() {
 # After a session worktree is reaped, clear the `worktree` reference from every
 # flow-state that still records it, so neither rite's own re-entry path
 # (open.md Step 0.5 / recover.md) nor a later harness cwd-restore is pointed at the
-# now-deleted directory (Issue #1524 MUST: reap → null the owner's flow-state
+# now-deleted directory (MUST: reap → null the owner's flow-state
 # worktree). The write is routed through `flow-state.sh clear-worktree` to honor
 # the `_atomic_write` convention; per-session failure WARNs and is non-blocking
 # (AC-5). $1 = raw wt_path (already removed), $2 = its canonical form captured
@@ -948,7 +1088,7 @@ if [ -d "$session_wt_root" ]; then
     # pre-removal canonical form — a deleted dir no longer canonicalizes).
     _wt_canon=$(_rite_canonical_dir "$wt_path")
 
-    # Gate (worktree liveness, Issue #1524 + #1552): never reap a worktree that a
+    # Gate (worktree liveness + claim-join): never reap a worktree that a
     # session may still resume into — either a session records it as its active
     # `worktree` (#1524), OR the issue's claim holder is still active=true even
     # though its claim heartbeat aged past the 2h staleness window (#1552: an
@@ -968,7 +1108,7 @@ if [ -d "$session_wt_root" ]; then
       continue
     fi
 
-    # Gate (OS-level live cwd, Issue #1544): never reap a worktree that ANY live
+    # Gate (OS-level live cwd): never reap a worktree that ANY live
     # process is standing in (cwd at or under it). This is the flow-state-
     # independent backstop for #1524's recurrence: the cross-session liveness
     # guard above only protects worktrees a session records as its `active`
@@ -990,7 +1130,7 @@ if [ -d "$session_wt_root" ]; then
       continue
     fi
 
-    # Corpse detection (Issue #1957): a sandbox-masked `git worktree remove
+    # Corpse detection: a sandbox-masked `git worktree remove
     # --force` half-destroys the admin dir — HEAD alone unlinked, commondir /
     # gitdir / index left behind — after which every `git -C <wt>` operation
     # fails ("not a git repository"). Gate 3's conservative skip would protect
@@ -1009,9 +1149,12 @@ if [ -d "$session_wt_root" ]; then
       _corpse=1
     fi
 
-    # Gate 3: dirty worktree is NEVER auto-reaped. An indeterminate status
+    # Gate 3: dirty worktree is NEVER auto-reaped. Use the same filtered status
+    # boundary as cleanup Step 4-W so sandbox ghost mounts and ignored ambient
+    # session files cannot make the producer and consumer disagree (#2048).
+    # An indeterminate status
     # (rc != 0) is treated conservatively as "do not reap" to avoid data loss.
-    # A corpse bypasses this gate (Issue #1957 D-01): "indeterminable =
+    # A corpse bypasses this gate (D-01): "indeterminable =
     # protect" would mean "protect forever" for a tree git can no longer
     # operate on at all. The uncommitted-work risk is accepted behind the
     # claim gate (Gate 2) plus the corpse age guard below.
@@ -1020,7 +1163,7 @@ if [ -d "$session_wt_root" ]; then
       # rc would abort the whole reap loop instead of taking the conservative
       # skip below — the exact broken-tree inputs this gate exists to protect.
       _st_rc=0
-      _st_out=$(git -C "$wt_path" status --porcelain 2>/dev/null) || _st_rc=$?
+      _st_out=$(cd "$wt_path" && bash "$SCRIPT_DIR/lib/git-status-filtered.sh") || _st_rc=$?
       if [ "$_st_rc" -ne 0 ]; then
         echo "WARNING: session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' の status を判定できません (rc=$_st_rc) — 安全側で reap をスキップします" >&2
         continue
@@ -1052,13 +1195,13 @@ if [ -d "$session_wt_root" ]; then
       free|"")
         # No claim recorded → conservative mtime age guard (24h) so an in-flight
         # worktree that simply has not written a claim yet is not reaped. A fresh
-        # corpse is excluded from this silent continue (Issue #1957): cleanup
+        # corpse is excluded from this silent continue: cleanup
         # releases the claim unconditionally, so a real-world corpse is claim-free
         # — this path would otherwise hide the anomaly without a WARNING. The
         # corpse falls through to the logged corpse age guard below (same 24h
         # window), which skips it loudly.
         #
-        # Manifest bypass (Issue #1966): a worktree whose checked-out branch is
+        # Manifest bypass: a worktree whose checked-out branch is
         # manifest-recorded (`branch\t<name>`) skips the age guard. cleanup.md
         # writes that entry ONLY after verifying the PR merged (recovery=auto)
         # and releases the claim unconditionally, so the real-world deferred
@@ -1091,16 +1234,16 @@ if [ -d "$session_wt_root" ]; then
         ;;
     esac
 
-    # Corpse age guard (Issue #1957 D-01): a corpse's dirty state cannot be
+    # Corpse age guard (D-01): a corpse's dirty state cannot be
     # examined, so a not-live claim alone (Gate 2 above) must not reap it —
     # require the same 24h mtime age Gate 2 applies to free claims, for the
     # stale-claim path too (AC-4: a fresh corpse is never reaped). The skip is
     # logged, not silent: a corpse's existence is itself an anomaly the user
     # should see before the guard expires.
     #
-    # Manifest bypass (Issue #1945): a corpse cannot resolve its checked-out
+    # Manifest bypass: a corpse cannot resolve its checked-out
     # branch (git no longer recognizes the tree), so the branch-keyed bypass
-    # above (Issue #1966, free-claim arm) structurally never fires for it —
+    # above (free-claim arm) structurally never fires for it —
     # every corpse would wait the full 24h even when cleanup.md already tried
     # and failed to remove this exact path. cleanup.md Step 4-W records the
     # worktree's own PATH (not branch) into the manifest at the moment
@@ -1133,9 +1276,9 @@ if [ -d "$session_wt_root" ]; then
       continue
     fi
 
-    # Corpse reap is loud (Issue #1957 MUST): name the target before touching it.
+    # Corpse reap is loud (MUST): name the target before touching it.
     if [ "$_corpse" -eq 1 ]; then
-      echo "WARNING: corpse session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' (admin HEAD 欠落・git 非認識) を rm -rf + prune で回収します (Issue #1957)。" >&2
+      echo "WARNING: corpse session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' (admin HEAD 欠落・git 非認識) を rm -rf + prune で回収します。" >&2
     fi
 
     # Capture the checked-out branch BEFORE removal (the worktree is gone after) so
@@ -1150,7 +1293,7 @@ if [ -d "$session_wt_root" ]; then
     # at validation ("'<wt>/.git' is not a .git file", rc=128) without deleting
     # anything.
     if git worktree remove --force "$wt_path" 2>/dev/null || rm -rf "$wt_path" 2>/dev/null; then
-      # Corpse admin-dir recovery (Issue #1957): the rm -rf above only removed
+      # Corpse admin-dir recovery: the rm -rf above only removed
       # the working tree; the half-destroyed admin dir would otherwise survive
       # (prune-independent removal — the corrupt entry must not linger in
       # `git worktree list` until the post-loop prune). Failure is non-blocking:
@@ -1167,7 +1310,7 @@ if [ -d "$session_wt_root" ]; then
       # not pointed at the just-removed dir. Non-blocking (AC-5).
       _rite_null_worktree_refs "$wt_path" "$_wt_canon"
 
-      # Manifest entry consumption (Issue #1945, symmetric with the branch
+      # Manifest entry consumption (symmetric with the branch
       # consumption below — #1966): a lingering `session_worktree\t<path>`
       # entry is not inert — the corpse age-guard bypass above is keyed on it,
       # so a DIFFERENT worktree later created at this same path (e.g. the
@@ -1183,17 +1326,17 @@ if [ -d "$session_wt_root" ]; then
           _wt_mf_rc=0
           grep -vxF "session_worktree$(printf '\t')$wt_path" "$manifest_path" > "$_wt_mf_keep" 2>/dev/null || _wt_mf_rc=$?
           if [ "$_wt_mf_rc" -ge 2 ]; then
-            echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費（survivor 抽出）に失敗しました (rc=$_wt_mf_rc)（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: $manifest_path）。" >&2
+            echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費（survivor 抽出）に失敗しました (rc=$_wt_mf_rc)（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: ${manifest_path}）。" >&2
           elif [ -s "$_wt_mf_keep" ]; then
             cp "$_wt_mf_keep" "$manifest_path" 2>/dev/null \
-              || echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費（書き戻し）に失敗しました（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: $manifest_path）。" >&2
+              || echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費（書き戻し）に失敗しました（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: ${manifest_path}）。" >&2
           elif ! rm -f "$manifest_path" 2>/dev/null; then
-            echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費（manifest 削除）に失敗しました（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: $manifest_path）。" >&2
+            echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費（manifest 削除）に失敗しました（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: ${manifest_path}）。" >&2
           fi
           rm -f "$_wt_mf_keep" 2>/dev/null || true
           _wt_mf_keep=""
         else
-          echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費用 mktemp に失敗しました（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: $manifest_path）。" >&2
+          echo "WARNING: manifest エントリ 'session_worktree $(printf '%s' "$wt_path" | neutralize_ctrl)' の即時消費用 mktemp に失敗しました（reap 済みでパス自体は既に存在しないため、次回セッション開始時に Step 4.5 の「既に消滅」チェックで自動的に破棄されます — 手動確認: ${manifest_path}）。" >&2
         fi
       fi
 
@@ -1259,7 +1402,7 @@ if [ -d "$session_wt_root" ]; then
             elif ! rm -f "$manifest_path" 2>/dev/null; then
               # The single-entry arm's unlink can fail too (EACCES/EROFS on the
               # .rite/ parent — sandbox masks have blocked repo writes before,
-              # Issue #1959). `rm -f` returns 0 for a missing file, so this
+              # The preceding successful removal makes this cleanup idempotent. `rm -f` returns 0 for a missing file, so this
               # WARNING never fires spuriously.
               echo "WARNING: manifest エントリ 'branch $(printf '%s' "$_reaped_branch" | neutralize_ctrl)' の即時消費（manifest 削除）に失敗しました（残存エントリが age-guard バイパスを継承する可能性 — 次 run の Step 4.5 verify-drop による自己修復待ち）。" >&2
             fi
@@ -1274,7 +1417,7 @@ if [ -d "$session_wt_root" ]; then
     else
       if [ "$_corpse" -eq 1 ]; then
         # Symmetric with the admin-dir failure branch above: a corpse reap
-        # failure must carry the manual recovery command (Issue #1957 §4.5),
+        # failure must carry the manual recovery command (§4.5),
         # including the admin dir path the generic message would lose.
         echo "WARNING: corpse session worktree '$(printf '%s' "$wt_path" | neutralize_ctrl)' の回収に失敗しました。手動回収: rm -rf '$wt_path' '$_admin_dir' && git worktree prune" >&2
       else
@@ -1290,16 +1433,102 @@ if [ -d "$session_wt_root" ]; then
 fi
 
 # -----------------------------------------------------------------------
+# Step 6: Reap orphaned review results and run-start pins.
+# Active flow-state PRs are protected. If any flow-state cannot be read, skip
+# this entire step: an incomplete active set is not safe enough for deletion.
+# -----------------------------------------------------------------------
+review_dir="$repo_root/.rite/review-results"
+session_dir="$repo_root/.rite/sessions"
+active_prs=$'\n'
+review_gc_safe=1
+if [ -d "$session_dir" ]; then
+  while IFS= read -r state_file; do
+    [ -n "$state_file" ] || continue
+    if state_pair=$(jq -r '[.active // false, .pr_number // 0] | @tsv' "$state_file" 2>/dev/null); then
+      state_active=${state_pair%%$'\t'*}
+      state_pr=${state_pair#*$'\t'}
+      if [ "$state_active" = "true" ]; then
+        case "$state_pr" in
+          ''|0|*[!0-9]*) ;;
+          *) active_prs="${active_prs}${state_pr}"$'\n' ;;
+        esac
+      fi
+    else
+      echo "WARNING: flow-state '$(printf '%s' "$state_file" | neutralize_ctrl)' の読取に失敗したため orphan review 回収をスキップします" >&2
+      review_gc_safe=0
+      break
+    fi
+  done < <(find "$session_dir" -maxdepth 1 -type f -name '*.flow-state' -print 2>/dev/null)
+fi
+
+if [ "$review_gc_safe" -eq 1 ] && [ -d "$review_dir" ]; then
+  archive_dir="$review_dir/archive"
+  while IFS= read -r review_file; do
+    [ -n "$review_file" ] || continue
+    review_name=${review_file##*/}
+    review_pr=${review_name%%-*}
+    case "$review_pr" in ''|*[!0-9]*) continue ;; esac
+    case "$active_prs" in *$'\n'"$review_pr"$'\n'*) continue ;; esac
+
+    if nb_count=$(jq -er '(.non_blocking_findings // []) as $items | if ($items|type)=="array" then ($items|length) else error("invalid non_blocking_findings") end' "$review_file" 2>/dev/null); then
+      :
+    else
+      echo "WARNING: review JSON '$(printf '%s' "$review_file" | neutralize_ctrl)' を解析できないため保持します" >&2
+      continue
+    fi
+
+    if [ "$DRY_RUN" = "1" ]; then
+      if [ "$nb_count" -gt 0 ]; then
+        echo "[dry-run] would archive orphan review JSON: $review_name"
+      else
+        echo "[dry-run] would delete orphan review JSON: $review_name"
+      fi
+      continue
+    fi
+
+    if [ "$nb_count" -gt 0 ]; then
+      if [ -e "$archive_dir/$review_name" ] || [ -L "$archive_dir/$review_name" ]; then
+        echo "WARNING: orphan review JSON '$review_name' の archive 先が既に存在するため元ファイルを保持します" >&2
+        errors=$((errors + 1))
+        continue
+      elif mkdir -p "$archive_dir" 2>/dev/null && mv "$review_file" "$archive_dir/$review_name" 2>/dev/null; then
+        orphan_reviews_archived=$((orphan_reviews_archived + 1))
+      else
+        echo "WARNING: orphan review JSON '$review_name' の archive に失敗したため元ファイルを保持します" >&2
+        errors=$((errors + 1))
+        continue
+      fi
+    elif rm -f "$review_file" 2>/dev/null; then
+      orphan_reviews_deleted=$((orphan_reviews_deleted + 1))
+    else
+      echo "WARNING: orphan review JSON '$review_name' の削除に失敗しました" >&2
+      errors=$((errors + 1))
+      continue
+    fi
+
+    pin_file="$repo_root/.rite/state/review-run-since-${review_pr}.txt"
+    if [ -e "$pin_file" ] || [ -L "$pin_file" ]; then
+      if rm -f "$pin_file" 2>/dev/null; then
+        orphan_review_pins_deleted=$((orphan_review_pins_deleted + 1))
+      else
+        echo "WARNING: orphan review pin '$(printf '%s' "$pin_file" | neutralize_ctrl)' の削除に失敗しました" >&2
+        errors=$((errors + 1))
+      fi
+    fi
+  done < <(find "$review_dir" -maxdepth 1 -type f -name '[0-9]*-*.json' -print 2>/dev/null)
+fi
+
+# -----------------------------------------------------------------------
 # Status line
 # -----------------------------------------------------------------------
 if [ "$DRY_RUN" = "1" ]; then
   echo "[pr-cycle-cleanup] status=dry-run; pattern=$PATTERN"
 elif [ "$errors" -gt 0 ]; then
-  echo "[pr-cycle-cleanup] status=failed; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; session_worktrees=$session_worktrees_reaped; session_branches=$session_branches_deleted; manifest=$manifest_reaped; errors=$errors"
-elif [ "$worktrees_removed" -eq 0 ] && [ "$branches_deleted" -eq 0 ] && [ "$workdirs_reaped" -eq 0 ] && [ "$mutation_worktrees_reaped" -eq 0 ] && [ "$session_worktrees_reaped" -eq 0 ] && [ "$session_branches_deleted" -eq 0 ] && [ "$manifest_reaped" -eq 0 ]; then
-  echo "[pr-cycle-cleanup] status=noop; worktrees=0; branches=0; workdirs=0; mutation_worktrees=0; session_worktrees=0; session_branches=0; manifest=0"
+  echo "[pr-cycle-cleanup] status=failed; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; session_worktrees=$session_worktrees_reaped; session_branches=$session_branches_deleted; manifest=$manifest_reaped; orphan_reviews_deleted=$orphan_reviews_deleted; orphan_reviews_archived=$orphan_reviews_archived; orphan_review_pins=$orphan_review_pins_deleted; errors=$errors"
+elif [ "$worktrees_removed" -eq 0 ] && [ "$branches_deleted" -eq 0 ] && [ "$workdirs_reaped" -eq 0 ] && [ "$mutation_worktrees_reaped" -eq 0 ] && [ "$session_worktrees_reaped" -eq 0 ] && [ "$session_branches_deleted" -eq 0 ] && [ "$manifest_reaped" -eq 0 ] && [ "$orphan_reviews_deleted" -eq 0 ] && [ "$orphan_reviews_archived" -eq 0 ] && [ "$orphan_review_pins_deleted" -eq 0 ]; then
+  echo "[pr-cycle-cleanup] status=noop; worktrees=0; branches=0; workdirs=0; mutation_worktrees=0; session_worktrees=0; session_branches=0; manifest=0; orphan_reviews_deleted=0; orphan_reviews_archived=0; orphan_review_pins=0"
 else
-  echo "[pr-cycle-cleanup] status=cleaned; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; session_worktrees=$session_worktrees_reaped; session_branches=$session_branches_deleted; manifest=$manifest_reaped"
+  echo "[pr-cycle-cleanup] status=cleaned; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; session_worktrees=$session_worktrees_reaped; session_branches=$session_branches_deleted; manifest=$manifest_reaped; orphan_reviews_deleted=$orphan_reviews_deleted; orphan_reviews_archived=$orphan_reviews_archived; orphan_review_pins=$orphan_review_pins_deleted"
 fi
 
 exit 0

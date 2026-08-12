@@ -61,7 +61,7 @@ source "$SCRIPT_DIR/control-char-neutralize.sh"
 # checkout, so anchoring the write here keeps trigger (write) and commit (scan)
 # on the SAME root. A `$PWD`-relative write would land the raw in the worktree's
 # `.rite/wiki/raw` while commit scans the main checkout's — silently dropping it
-# (Issue #1664). The two scripts MUST stay keyed off state-path-resolve.sh.
+#. The two scripts MUST stay keyed off state-path-resolve.sh.
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$PWD" 2>/dev/null) || STATE_ROOT="$PWD"
 
 TYPE=""
@@ -163,14 +163,20 @@ if [[ -n "$ISSUE_NUMBER" ]]; then
   esac
 fi
 
-# Mirror the SOURCE_REF control-char rejection on TITLE — the two fields land
-# in adjacent YAML keys, so an asymmetric guard would leak the same injection
-# class through whichever side is unprotected. Byte-wise C1 detection also
-# rejects multibyte (e.g. Japanese) titles via their 0x80-0x9f continuation
-# bytes — accepted: all in-repo callers pass ASCII-fixed titles.
+# TITLE is human-readable UTF-8 text. Validate the encoding before checking C1
+# as its UTF-8 code-point encoding (C2 80-9F); testing those byte values alone
+# would reject ordinary continuation bytes (for example, 静 contains 0x9d).
 if [[ -n "$TITLE" ]]; then
-  if contains_ctrl "$TITLE"; then
-    echo "ERROR: --title must not contain control characters (newlines, tabs, or other C0/DEL/C1 control bytes)" >&2
+  if ! command -v iconv >/dev/null 2>&1; then
+    echo "ERROR: --title validation requires iconv" >&2
+    exit 1
+  fi
+  if ! printf '%s' "$TITLE" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1; then
+    echo "ERROR: --title must be valid UTF-8" >&2
+    exit 1
+  fi
+  if contains_ctrl "$TITLE" --c0-only || printf '%s' "$TITLE" | LC_ALL=C grep -q $'\302[\200-\237]'; then
+    echo "ERROR: --title must not contain control characters (C0/DEL/C1 code points)" >&2
     exit 1
   fi
   # reject odd trailing backslashes (escape ambiguity)
@@ -208,12 +214,17 @@ resolved_content=$(realpath -- "$CONTENT_FILE") || {
   echo "  hint: ensure the file exists and realpath is available (coreutils)" >&2
   exit 1
 }
+# Compare canonical paths on both sides. A logical $PWD can retain symlink
+# components (notably macOS /var -> /private/var), while realpath above always
+# returns the physical content path. Falling back to $PWD preserves the
+# existing fail-closed boundary when the cwd itself cannot be canonicalized.
+resolved_pwd=$(realpath -- "$PWD" 2>/dev/null) || resolved_pwd="$PWD"
 # /tmp/* → /tmp/rite-* に限定して exfiltration 経路を縮小。macOS では realpath が
 # /tmp → /private/tmp に symlink 解決するため /private/tmp/rite-* も同じ信頼境界
 # (owner-managed /tmp/rite-* namespace) として allowlist に含める。
 # sandbox 有効環境では /tmp 直下が読み込み専用で書込先が $TMPDIR (session-scoped,
 # owner-managed) になるため、$TMPDIR/rite-* も realpath 解決後の実パス比較で同じ
-# 信頼境界として受理する (Issue #1904。TMPDIR 未設定時は追加 arm なし = 従来挙動)。
+# 信頼境界として受理する（TMPDIR 未設定時は追加 arm なし = 従来挙動)。
 resolved_tmpdir=""
 if [[ -n "${TMPDIR:-}" ]]; then
   resolved_tmpdir=$(realpath -- "$TMPDIR" 2>/dev/null) || {
@@ -224,7 +235,7 @@ if [[ -n "${TMPDIR:-}" ]]; then
   }
 fi
 case "$resolved_content" in
-  "$PWD"/*|/tmp/rite-*|/private/tmp/rite-*)
+  "$resolved_pwd"/*|/tmp/rite-*|/private/tmp/rite-*)
     : # allowed ($PWD 配下 / /tmp/rite-* / /private/tmp/rite-* — 後者は macOS realpath 解決後)
     ;;
   *)
@@ -255,13 +266,17 @@ fi
 #
 # YAML parse logic sync: the canonical implementation lives in
 # `hooks/scripts/lib/wiki-config.sh` (`parse_wiki_scalar()` / `validate_wiki_branch_name()`).
-# Three sites still re-implement YAML parsing inline and must be kept in sync
-# when the lib's parse contract changes:
+# The complete site inventory is `references/wiki-patterns.md` §分散実装ファイル一覧 (SoT);
+# this comment lists only the sites that still re-implement the parse inline and
+# must be kept in sync when the lib's parse contract changes:
 #   1. this script (wiki-ingest-trigger.sh) — strict 3-arm with fail-fast `*` (safe-default policy)
 #   2. hooks/scripts/wiki-growth-check.sh — lenient (layer 3 growth stall detection)
-#   3. skills/wiki-ingest/SKILL.md ステップ 1.1 — lenient 2-arm (`extract_yaml_key` helper 経由、page integration)
-# The lib-using scripts (wiki-ingest-commit.sh / wiki-worktree-commit.sh /
-# wiki-worktree-setup.sh) source the canonical implementation directly.
+#   3. hooks/scripts/gitignore-health-check.sh — lenient (gitignore drift detection)
+# The lib-using callers source the canonical implementation directly: the scripts
+# wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh, and
+# the skill bodies wiki-ingest / wiki-lint / cleanup / issue-close. A skill body
+# cannot host its own parser — the Skill loader rewrites positional parameters in
+# it (static check: hooks/scripts/dollar-zero-check.sh).
 if [[ -f "$STATE_ROOT/rite-config.yml" ]]; then
   # Capture sed/awk stderr to a tempfile so syntax errors / binary corruption /
   # IO errors don't get conflated with "no match". The old `2>/dev/null || ...=""`
@@ -365,7 +380,7 @@ if [[ -z "$slug" ]]; then
   exit 1
 fi
 
-# --- Anchor the write at STATE_ROOT (Issue #1664) ---
+# --- Anchor the write at STATE_ROOT ---
 # All path-containment validation above evaluates `--content-file` against the
 # ORIGINAL $PWD (and reads the body via the absolute realpath result
 # $resolved_content), so they have already completed — moving cwd now does not
@@ -378,7 +393,7 @@ if [ "$STATE_ROOT" != "$PWD" ]; then
   # Detectable signal (re-divergence guard): surface that the raw is written to
   # the resolved state root rather than cwd, so a multi-session worktree /
   # subdirectory invocation is observable instead of silently redirecting.
-  echo "NOTE: raw source を state-path-resolve ルート '$STATE_ROOT' 配下へ書き込みます (cwd='$PWD' とは別 — multi-session worktree / サブディレクトリ起動)。wiki-ingest-commit.sh の scan ルートと一致させる整合動作です (Issue #1664)。" >&2
+  echo "NOTE: raw source を state-path-resolve ルート '$STATE_ROOT' 配下へ書き込みます (cwd='$PWD' とは別 — multi-session worktree / サブディレクトリ起動)。wiki-ingest-commit.sh の scan ルートと一致させる整合動作です。" >&2
 fi
 cd "$STATE_ROOT" || {
   echo "ERROR: state root '$STATE_ROOT' への cd に失敗しました — raw source の書込先を確定できません" >&2
@@ -453,7 +468,7 @@ trap 'trap - EXIT; _rite_trigger_target_rollback 129; exit 129' HUP
   fi
   printf 'ingested: false\n'
   # `ingest_status` / `skip_reason` are intentionally NOT emitted at creation
-  # (Issue #1520, Sub-3): a raw source starts un-ingested with no skip status.
+  # (Sub-3): a raw source starts un-ingested with no skip status.
   # When `/rite:wiki-ingest` ステップ 5 decides to skip a raw, it adds
   # `ingest_status: skipped` + `skip_reason: "..."` to that raw's frontmatter.
   # Absence of `ingest_status` means "not skipped" (wiki-lint-skipped-refs.sh

@@ -111,6 +111,62 @@ The final severity reported in the findings table is determined by combining the
 - **`git blame` 実証**: `git blame {file}` で当該コメント行が対応する code change より明確に古い (= merge 済み) ことを示し、かつコメント中の reference (`cycle N` / `PR #N` / 関数名) が現コードベースで grep ヒット 0 であることを実証 → 該当 reference の宛先が更新されていない Comment Rot として **HIGH** 以上で finding 発行可
 - **新規 diff 由来**: `git diff {base_branch}...HEAD` の `+` 行に対象コメントが追加されている場合、`Likelihood-Evidence: new_call_site {file}:{line} (本 PR diff の `+` 行で追加)` を提示できるため Demonstrable 確定 (これは [`_reviewer-base.md` Comment Quality Finding Gate `Hypothetical → Demonstrable 昇格 signal`](../agents/_reviewer-base.md#hypothetical--demonstrable-昇格-signal) と同じ判定基準)
 
+## 帰結クラス軸 (Consequence Class)
+
+<a id="帰結クラス軸-consequence-class"></a>
+
+指摘を「**その指摘が示す帰結は、観測可能な誤動作か**」で分ける軸。Impact 軸 / Observed Likelihood 軸 / scope 軸と直交する第 4 の軸であり、判定は **ファイル種別ではなく指摘の帰結種別** で行う。適用ドメインは 2 つあり、それぞれ判別子を持つ — 散文への指摘 (直下) とテスト網羅性への指摘 (後述の小節)。
+
+### 散文の帰結クラス
+
+散文 (手順書・仕様書・reference) への指摘を「**この記述に字義どおり従う実行者が、観測可能な誤動作に至るか**」で 2 分する。
+
+| 帰結クラス | 定義 | `Verification:` アンカー |
+|---|---|---|
+| **挙動的帰結** | 記述された手順を実行すると成果物の破損が観測される (テーブル崩壊 / script 非ゼロ終了 / sentinel 欠落 等) | 適格 (実測を添付できる) |
+| **字面整合** | 観測できるのはレビュー対象文書自身のテキスト差分のみ (文言非対称 / pin 不在 / 限定句不足 / 二重定義の未同期) | 不適格 (アンカーを付けずに報告する) |
+
+**なぜこの軸が要るか**: 散文では「2 文の食い違いを示す grep」が technically measured になるため、実測必須ゲートだけでは重要度を弁別できない。実測ゲート導入後、指摘の大半が字面整合に寄った長期レビューは 3 run・11 記録サイクルで発散した。本軸はその弁別を authoring 層で行う。
+
+**判別子と適用手順の SoT は [`_reviewer-base.md` §手順書・仕様書ドメイン Finding Gate](../agents/_reviewer-base.md#prose-domain-finding-gate)**。本ファイルは語彙定義のみを持ち、判別子表・適用例・MUST NOT 規則は複製しない (COMMENT_QUALITY 軸と同じ forward-pointer 方式)。
+
+### テスト網羅性の帰結クラス
+
+「テストが挙動を固定していない」型の指摘 (mutation 生存 / assert の検証力不足 / pin 欠落) にも同じ軸を適用する。散文と異なり mutation 実験は実際に走らせるが、生存する mutant が示すのは HEAD の誤動作ではなく **reviewer が持ち込んだ架空の欠陥に対する番人の不在**であるため、実測必須ゲートだけでは churn 級の pin 強化要求を弁別できない。
+
+| 帰結クラス | 定義 | `Verification:` アンカー |
+|---|---|---|
+| **契約対応の未 pin** | Issue 契約 (§4.4 MUST / §5 AC の `Then`) が規定する挙動そのものを無効化しても検出されない、または当該挙動に対応するテストが存在しない | 適格 |
+| **網羅的 pin 強化** | 契約挙動を丸ごと壊す変異は既存 pin が検出し、生存するのはより細粒度の変異 (連言の片側弱化・実装内部の分岐) のみ | 不適格 (アンカーを付けずに報告する) |
+| **テストの誤り** | テストが名乗った挙動に対してどんな実装でも落ちない (トートロジー assert / 空振り fixture / 仕様と逆を固定) | 適格 — 網羅性ではなく**正しさ**の欠陥のため本軸の対象外 |
+
+**判別子・契約対応の判定手順・適用例の SoT は [`_reviewer-base.md` §テスト網羅性 Finding Gate](../agents/_reviewer-base.md#test-coverage-finding-gate)**。本ファイルは語彙定義のみを持ち、判定手順・適用例・MUST NOT 規則は複製しない (散文の帰結クラスと同じ forward-pointer 方式)。
+
+**他軸との関係**:
+
+- **Impact 軸**: 帰結クラスは severity を変えない。字面整合の CRITICAL 指摘は severity CRITICAL のまま non-blocking になる (severity = Impact、blocking = 実測軸で直交)
+- **実測必須ゲート**: 帰結クラスは authoring 層 (アンカーを添付するか否か) で作用し、[§実測必須ゲート](#実測必須ゲート-measured-confirmed-gate) の 3 値判定 (`true` / `false` / 未判定) のロジックには介入しない。形式崩れアンカーが未判定 = blocking のまま扱われる挙動は本軸の導入前後で不変
+- **scope 軸**: 字面整合クラスを `scope=nit-noted` にしてはならない。nit-noted は本ゲートの対象外 (`gated` 偽) で `non_blocking_findings[]` に載らず、4 経路記録が失われる
+
+### ゲート層の class A/B 降格政策 (Consequence-Class Demotion Gate)
+
+<a id="ゲート層の-class-ab-降格政策"></a>
+
+上記 2 ドメイン (散文 / テスト網羅性) が **authoring 層** (アンカー添付可否) で作用するのに対し、本小節は同じ帰結クラス軸を**ゲート層**へ拡張する — 実測必須ゲートを通過した blocking finding を、帰結の到達点でさらに 2 分する第 2 降格軸 (**分類対象は実測判定済みのものに限る** — 実測未判定の blocking は 2 分されず class A 側へ固定算入される。詳細は下記「実測必須ゲートとの直列関係」)。churn 尾部 (実体収束後に pin 精度・文言クラスの指摘だけが再生産される状態) の凍結判断を、人間の手動プレイブックから機構へ移す。
+
+| class | 定義 | 判別 |
+|---|---|---|
+| **class A** | 放置してマージすると**今回の成果物の実行時挙動が変わる**指摘 | 「どの操作で何が壊れるか」の実行時シナリオを 1 行で書ける |
+| **class B** | 帰結が**検出網の目の細かさ・可読性・文書整合に留まる**指摘 (テスト assert の錨付け精度・コメント文言・文書同期など) | 実行時シナリオを書けない。不確実な場合も class B へ倒す (攻め側既定) |
+
+**判定はファイル種別で行わない** (本軸の総則と同じ)。テストへの指摘でも「clean fixture のため本番バグを検出できない」類は実行時帰結を持つ class A である。
+
+**降格政策**: class A が 0 件になった cycle で、class B の blocking を**全件** `non_blocking_findings[]` へ降格する。class A が 1 件でも残る cycle では class B も blocking のまま (磨きは実体修正と並走する)。降格後は既存の mergeable 経路で自然終了し、独立した freeze フェーズ・状態遷移は存在しない。降格分は必ず記録に残る (降格理由 = class B 認定の判定文付き。報告自体は抑制しない — 変わるのは blocking 継続条件のみ)。
+
+**実測必須ゲートとの直列関係**: 本政策は実測必須ゲートの**後段**でのみ作用する。実測を添付できない指摘は先に実測ゲートが降格するため、本政策の**分類対象**は常に「実測付き blocking」(`verification.measured` が boolean) である。**実測未判定** (verification 欠落 = 実測ゲートが形式崩れアンカーを blocking のまま残した形) の blocking finding は分類対象外で、`scripts/review-class-demotion-gate.sh` が classification map を参照せず **class A 側へ固定算入**する — 実測ゲートの「判定不能は blocking 維持」保証 (3 値モデル) は第 2 軸を通っても破られず、書式ミスだけで実測済み指摘が blocking 集合から消える経路は存在しない。散文指摘では「2 文の食い違いを示す grep」が technically measured になる問題を authoring 層の帰結クラスが弁別するのと同様に、**実測付きでも帰結が字面・検出網に留まる指摘**が churn 尾部で再生産される問題を本政策がゲート層で弁別する。
+
+**分類主体と強制層**: 分類 (A/B) は LLM が finding 発行者と**別コンテキスト**で判定し、適用 (A=0 判定・移送・監査記録) は `scripts/review-class-demotion-gate.sh` が機械強制する。判定不能 (分類出力の欠落・不正) は class A 扱い + WARNING (silent 降格しない)。集合演算・分類入力・実装契約の SoT は [assessment-rules.md §5.3.0.C](../skills/fix/references/assessment-rules.md#530c-帰結クラス降格政策-consequence-class-demotion-gate)、監査フィールドの形は [review-result-schema.md](./review-result-schema.md) を参照。
+
 ## Hypothetical Exception Categories
 
 Four reviewer categories MAY retain **CRITICAL / HIGH / MEDIUM / LOW-MEDIUM** severity for Hypothetical findings (matching the Matrix rows that specify "降格 → 推奨事項 (例外カテゴリを除く)"), because in their domain a single occurrence of the bug is catastrophic and "wait until we observe it in production" is not an acceptable risk model:
@@ -126,7 +182,46 @@ Reviewers in these categories MUST still record the Likelihood classification in
 
 All other reviewers MUST apply the matrix above and downgrade Hypothetical findings.
 
+> **本例外は Likelihood 軸のみに適用される**: 例外カテゴリで severity を維持できるのは「Hypothetical でも `全指摘事項` に残せる」ことまでで、**merge を止めるか (blocking) は [§実測必須ゲート](#実測必須ゲート-measured-confirmed-gate) が別途決める**。実測 (`Verification:` アンカー) を伴わない例外カテゴリ指摘は severity を維持したまま non-blocking に分類され、ステップ 5.4 統合レポートの「実測なし指摘」section に記録されて draft PR の人間レビューに委ねられる。上の rationale 列の「観測を待つのは許容できないリスクモデル」は severity 判定の根拠であり、blocking 判定の根拠ではない。
+
 > **Note — 3 ゲート運用への forward-pointer**: 指摘事項化の必要条件は impact + likelihood の 2 軸に加えて **revert test を含む 3 ゲート** を同時充足することが求められます。revert test の運用手順は [`agents/_reviewer-base.md` "Necessary conditions for inclusion in 指摘事項"](../agents/_reviewer-base.md#necessary-conditions-for-inclusion-in-指摘事項) を参照してください。本ファイル (severity-levels.md) は impact + likelihood の 2 軸定義に特化しており、revert test の定義は意図的に `_reviewer-base.md` に集約されています。
+
+## 実測必須ゲート (Measured CONFIRMED Gate)
+
+<a id="実測必須ゲート-measured-confirmed-gate"></a>
+
+mergeable 判定の blocking 条件を「**runtime 実測を伴う CONFIRMED 指摘ゼロ**」に定義する。「CONFIRMED 指摘」= 3 ゲート (Confidence >= 80 / Observed Likelihood >= Demonstrable / revert test pass) を通過して `全指摘事項` に残った指摘を指す。
+
+**blocking の定義** (実測必須ゲート適用後):
+
+```
+blocking = CONFIRMED (全指摘事項に残存)
+         AND verification.measured == true   (repro または failing_test の実測証跡あり)
+                                             (※ 未判定 = 本式の対象外。下記「適用範囲」参照)
+         AND scope in {current-pr, follow-up}  (nit-noted は従来どおり対象外)
+```
+
+- **適用範囲 (measured は 3 値)**: 本式が対象とするのは **`全指摘事項` に載る rite reviewer finding のみ**。`measured` は `true` / `false` に加えて **未判定** の 3 値を取る。未判定は「実測の有無を判定する構造そのものが無い」状態で、(a) 外部ツール / 人間レビュー由来の指摘 (`Verification:` アンカーを構造的に持てない)、(b) レビュー結果 JSON の `findings[].verification` が欠落している場合 (**本ゲートを適用する前に書かれた旧形式 JSON**)、(c) **形式崩れアンカー** — marker と同一セグメント内に `=>` があるのに検出 regex に match しない finding (raw pipe / `=>` 右辺空 / 種別ラベル誤記 / 装飾 marker / アンカー直前の境界欠落) の 3 経路がある。(c) では `scripts/review-measured-gate.sh` が **`verification` を設定しない**ことで未判定を表現する — アンカーの書式が読めない状態を `measured=false` と確定させると、実測済みの指摘が書式ミスだけで blocking から消えるため。したがってゲート適用後の JSON でも `verification` は欠落しうる。いずれも **未判定 = 本ゲートの対象外**として従来どおり blocking に扱う (SoT は [`fix/SKILL.md`](../skills/fix/SKILL.md) ステップ 1.3 分類表の External review 行と同ステップの measured lookup)。したがって consumer 側の [`fix-relaxation-rules.md`](../skills/fix/references/fix-relaxation-rules.md) が `blocking = measured != false` と書くのは本式との**意図的なスコープ差**であり矛盾ではない — 本式は rite reviewer finding に閉じた定義、consumer 側は未判定を含む fix loop 全体の定義。
+- **severity 閾値**: 既存の 5.3.1 Red blocking rule を踏襲し **全 severity 帯** (CRITICAL〜LOW) が対象 (nit-noted / auto-demote 済みを除く)。severity による段階的緩和は導入しない。
+- **実測 (measured=true) の受理形式**: (a) 再現コマンド + 観測される誤動作 (`repro`)、または (b) failing test のパス + 失敗出力 (`failing_test`) のいずれか。形式は [`review-result-schema.md` §verification サブフィールド](./review-result-schema.md#verification-サブフィールド) で固定し、LLM の自由裁量に委ねない。
+- **非実測指摘 (measured=false) の扱い**: 破棄せず **non-blocking** に分類し、**4 経路すべてに記録する** — (1) 永続 JSON (`.rite/review-results/*.json` の トップレベル `non_blocking_findings[]`。**`description` / `suggestion` を含む全文を持つ。既定構成 `post_comment: false` では全文の唯一の保存先**)、(2) `/rite:pr-review` ステップ 6.1.d の PR 記録コメント (`## 📜 rite 非実測指摘の記録`、update-in-place の 1 件。**載るのは reviewer / severity / `file:line` のポインタと降格理由 (class B 降格分は `demotion.reason` の判定文、それ以外は「実測なし」) のみで全文は載らない** — 経路 (1) との対比。既定構成 `post_comment: false` でも本経路は投稿されるため、非実測 CRITICAL の詳細が修正前に public PR へ先行開示されるのを避ける。本文には全文の所在 (経路 (1) のパスと配列名) を明記する。`pr_review.post_comment` 設定に**依存しない** — 記録経路を常時維持するため opt-out 対象外。PATCH 先の同定は 2 段で、第一候補が PR body に永続化した comment id (形状の SoT は helper の `ID_MARKER_*` 定数。marker は行全体を占める)、fallback が本文照合 (author ∧ 1 行目 marker 前方一致 ∧ 最終非空行 sentinel)。id 側は author に加え **所属 PR** と **対象が記録コメントであること** も検証する (`issues/comments/{id}` は repo スコープで issue 非依存、かつ PR body は書き込み権限なしの PR 作成者でも編集できるため)。lookup が自分の過去投稿を見つけられない場合 (**id 側と fallback 側の両方が外れたとき**に限る) は縮退する。`NONBLOCKING_ID_UNRESOLVED` marker の reason 語彙は 8 種で、いずれも帰結は fallback へ倒すこと (`id_read_failed` / `id_malformed` / `id_fetch_failed` / `id_fetch_unparseable` / `id_author_mismatch` / `id_pr_mismatch` / `id_target_not_record` / `id_comment_deleted`)。**「id 側が外れた」と「この 8 種のどれかが出る」は同値ではない** — `gh api user` が失敗した cycle は自 login が無く id 側の author 検証も本文照合の author 条件も評価できないため、段 1 自体が呼ばれず marker を 1 つも出さないまま両側が同時に外れる。**id が PR body に無い初回 cycle も marker を出さない** — 永続化前は fallback が正しい経路であり、毎 cycle 出すと本当の異常が埋もれるため。fallback 側が外れるのは (i) `gh api user` の失敗 (**この 1 種だけは段 1 も同時に外れる** — 自 login が無いと id 側の author 検証も評価できないため)、(ii) コメント一覧取得 (`gh api --paginate`) の失敗 (**段 1 には触れないので、id が解決していれば `degraded=0` のまま update-in-place が成立する**)、(iii) 別トークン identity での過去投稿、(iv) 既存記録コメントの最終非空行が機械専用 sentinel でない場合 (sentinel 導入前の記録 / marker で始まる手書きコメント。この経路は `degraded=0` のまま発生し `NONBLOCKING_LEGACY_ORPHAN` marker で可視化される)。**id で PATCH 先を特定できた cycle は本文照合の lookup が失敗しても縮退しない** (`degraded=0` のまま update-in-place が成立する) — **帰結は件数依存**で、本 cycle の非実測指摘が 1 件以上なら新規作成となり 2 件目が作られ、0 件なら投稿自体を省くため前 cycle の記録が stale で残る (他 4 文書 SPEC.md / CONFIGURATION.md / rite-config.yml / assessment-rules.md と同じ分岐)、(3) `/rite:pr-review` ステップ 5.4 統合レポートの `### 実測なし指摘 (non-blocking)` section (severity 明示、E2E でも省略禁止)、(4) E2E output line の `| non-blocking: {n}` suffix (件数 > 0 のときのみ)。(1) は無条件、(2) は best-effort (「0 件 ∧ helper が既存の記録コメントを**検出できない**」ときは投稿を省き、本文不備 4 種 / gh 失敗 2 種 / jq 実行環境起因 1 種 (`body_check_unavailable`) では `outcome=failed` で投稿されない。lookup が degraded した cycle では既存が実在しても検出できず skip に落ち、前 cycle の記録が stale で残る)、(3)(4) は実行モードと件数に依存する補助経路。fix サイクルは起動しない (mergeable countdown / `total_findings` から除外)。ただし同一 file:line の GitHub thread が rite finding 由来と確認できない場合は [`fix/SKILL.md`](../skills/fix/SKILL.md) ステップ 1.3 step 4 の出自確認で External review = blocking へ振り替わる — 本ゲートは finding を対象とし、thread routing は別レイヤ。既定構成 (`pr_review.post_comment: false`) では (1) がローカルの、(2) が PR 上で共有可能な永続チャネルであり、これによりマージ後に人間が拾い直せる状態を保つ (D-01。`.rite/review-results/` は gitignore 対象のためレビュアーと共有できるのは (2) のみ — ただし (2) が共有するのはポインタ + 降格理由までで、**全文はレビューを実行した環境のローカル JSON にしか存在せず共有経路を持たない**。checkout では取得できない。マージ後も残すため `/rite:cleanup` は `non_blocking_findings[]` が非空の JSON を削除せず `.rite/review-results/archive/` へ退避する)。
+- **Observed Likelihood 軸との関係**: `measured=true` は Likelihood 軸の **Observed** (runtime 実測済み) に相当する。Demonstrable のうち **evidence type 1-3 (existing/new call site・entrypoint connection — call site 提示のみで実測なし)** は CONFIRMED ではあるが measured=false のため non-blocking。**evidence type 4 (runtime observation) は Observed 相当で measured=true** — この場合は `Likelihood-Evidence: runtime_observation` と `Verification: repro` / `failing_test` の**両方**を添付する ([_reviewer-base.md §Verification: runtime 実測の添付](../agents/_reviewer-base.md#verification-runtime-measurement))。Likelihood 軸のゲート (Hypothetical 降格) は従来どおり **先に** 適用され、実測必須ゲートはその後段で blocking / non-blocking を分ける。
+- **Hypothetical Exception Categories との関係**: 例外カテゴリ (security / database migration / devops infra / dependencies) は Likelihood 軸の例外 (Hypothetical でも severity 維持で `全指摘事項` に残せる) であって、**実測必須ゲートの例外ではない**。実測を伴わない例外カテゴリ指摘も non-blocking として ステップ 5.4 に記録され (severity 明示)、draft PR の人間レビューで判断される。ループ収束性 (「指摘ゼロ」の到達可能性) を優先する設計判断。
+
+**判定の全体順序**: Impact × Likelihood Matrix (Hypothetical 降格) → 3 ゲート通過で CONFIRMED → **実測必須ゲート** (measured=false → non-blocking 降格 + ステップ 5.4 記録) → 残った blocking 指摘ゼロで mergeable。適用手順の実装は [`assessment-rules.md`](../skills/fix/references/assessment-rules.md) **§5.3.0.M (適用手順)** / **§5.3.1・§5.3.3 (判定への反映)** を参照。
+
+**「残った blocking 指摘ゼロ」の判定単位**: `findings[]` 配列全体の空ではなく、**`scope ∈ {current-pr, follow-up}` の部分集合が空**であることを指す (`total_findings` の定義と同一)。`scope == "nit-noted"` の finding は本ゲートの対象外として `findings[]` に残り続けるため、配列全体の空を条件にすると nit が 1 件でもある限り mergeable に到達しない (D-03)。
+
+**強制層**: 本ゲートの分類は `/rite:pr-review` ステップ 5.3.0.M の [`scripts/review-measured-gate.sh`](../scripts/review-measured-gate.sh) が JSON 後処理として決定論的に実行する。アンカー検出 (2 段判定)・`verification` の設定・`non_blocking_findings[]` への移送・`overall_assessment` の確定はすべて helper 側にあり、LLM は結果の marker を読むだけで分類を行わない。**LLM 裁量に置いた旧設計では、実測した 9 サイクルの全てで降格が一度も実行されなかった** — 「自分の指摘を non-blocking 化して mergeable を宣言する」判断は reviewer 群の thoroughness 指示と正面衝突するため、裁量に置く限り構造的に実行されにくい。
+
+**強制層が依存するもの (裁量を消しても依存は消えない)**: 分類の入力は JSON の `findings[].scope` と `findings[].description` であり、どちらも LLM が書く。したがって強制層は「LLM の裁量」への依存を「LLM の**記述忠実性**」への依存に置き換えたにすぎない。helper はその依存を hard fail と marker で守る (hard fail はいずれも JSON を書かずに非ゼロ終了する = fail-closed):
+
+- **`scope` は 3 値 enum を要求する** — 値が外れてもキーが欠落しても `reason=scope_enum_violation` で停止する (フラグ有無に依らず発火)。欠落を severity ベースの default mapping で補完する互換モードは持たない — 補完の帰結は enum 外と同一 (`current-pr` の LOW / LOW-MEDIUM が gated から脱落する) で、検出形の違いだけで扱いを割る理由がないため。gated 判定は完全一致のため、未知 scope は blocking 件数からも `non_blocking_findings[]` への移送対象からも**同時に**外れ、実測済み CRITICAL を `findings[]` に残したまま `assessment=mergeable` を確定させる (`blocking=0; demoted=0` は「指摘ゼロの正常終了」と区別できない)。
+- **アンカーは直前の境界 (行頭 / `<br>` / 空白) を要求する** — 境界を落とした転記や raw pipe を含む repro は full regex に match しない。この形は **`measured=false` へ潰さず未判定 (= blocking のまま) として扱う** (上記「適用範囲」の経路 (c))。`MEASURED_UNDETERMINED_ON_ANCHOR` marker + WARNING で可視化し、**helper は停止しない**。**未判定と降格を分ける判別子 (定義の SoT は [`assessment-rules.md` §5.3.0.M](../skills/fix/references/assessment-rules.md#530m-実測必須ゲート-measured-confirmed-gate)) は、full regex が no-match だった finding の中でだけ評価される** — 正規形として検出できたアンカーは、LHS に句点や改行を含んでいても `measured=true` のまま blocking に残る。その母集団の内側で、marker から `=>` までの間に改行 / `<br>` / 句点 (U+3002) が挟まる形と距離が判別子の上限を超える形が `measured=false` で降格し、`MEASURED_DEMOTED_ON_ANCHOR` marker + WARNING を出す。この絞り込みが無いと、stage 1 の意図的に緩い存在判定が拾う散文がそのまま恒久 blocking になる。**判別子は字句的で、書き損じか散文かを意図では区別しない** — 同一セグメント内に `=>` が現れる散文は未判定へ倒れ、逆に書き損じたアンカーもセグメントが切れていれば降格する。どちらも既知の残存限界 (範囲と上限の担保は [`assessment-rules.md` §5.3.0.M](../skills/fix/references/assessment-rules.md#530m-実測必須ゲート-measured-confirmed-gate) の「(i) は完全な分離ではない」を SoT とする)。集約的な hard fail (「blocking 候補が全件形式崩れなら止める」等) は一度導入したが撤去しており、per-finding の 3 値化で是正した現在も導入しない。
+
+**判定はいずれも helper 側に置く。** caller 側の散文 routing に置くと、本 Issue が排除対象にした「LLM が marker を読んで止める」依存が強制層の中に残るため。caller が観測するのは非ゼロ終了と `reason` だけで、そこに裁量の余地はない (routing は `pr-review/SKILL.md` ステップ 5.3.0.M step 3 の表)。
+
+**なお強制は全域には及ばない。** `--reject-preset-verification` が弾くのは「既存 `verification.measured` が本ゲートの算出結果 (実測あり / 実測なし / 未判定) と**食い違う**」形だけで、算出結果と一致する preset は素通りし、その `repro` / `failing_test` は helper の抽出を経ず LLM が書いた文字列のまま永続 JSON に残る。preset の存在自体を弾く形にはできない — ゲート適用後の JSON は**未判定を除き** `verification` を持つため、再実行が必ず失敗し冪等性 (AC-5) が壊れる (未判定はキー自体を持たないので再実行でも preset とみなされない)。したがって「実測していないのに正規形アンカーと整合する `verification` を書けば通る」経路は残依存として残る。
 
 ## Severity × Scope Matrix
 

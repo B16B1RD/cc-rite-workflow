@@ -234,7 +234,7 @@ assert_grep "TC-11 --wiki-branch 必須エラー" "$errf" 'separate_branch で�
 echo "=== TC-12: 値なしフラグ末尾 (無限ループ耐性) ==="
 errf=$(mk_tmp)
 printf '%s\n' ".rite/wiki/pages/p1.md" \
-  | timeout 5 bash "$SCRIPT" --branch-strategy 2>"$errf" >/dev/null
+  | _timeout 5 bash "$SCRIPT" --branch-strategy 2>"$errf" >/dev/null
 rc=$?
 if [ "$rc" -eq 124 ]; then
   fail "TC-12 timeout (無限ループ検出) — shift 2 retが残存している可能性"

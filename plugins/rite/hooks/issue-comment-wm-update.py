@@ -25,7 +25,7 @@ Usage:
         --content-file /tmp/completion.md > updated.txt
 
     cat body.txt | python3 issue-comment-wm-update.py merge-checklist \
-        --section 進捗 --content-file /tmp/items.md > updated.txt
+        --section 進捗サマリー --content-file /tmp/items.md > updated.txt
 
     cat body.txt | python3 issue-comment-wm-update.py update-checkboxes \
         --tasks "task1,task2" > updated.txt
@@ -36,6 +36,8 @@ Exit codes:
     0: Success (updated body written to stdout)
     1: Usage error (missing arguments, unknown option)
     2: File read error (content-file or changed-files-file not found)
+    10: Section absent (merge-checklist only: new items remain but target
+       section header is missing — caller must not treat this as success)
 """
 
 import re
@@ -193,6 +195,21 @@ def append_eof(body: str, content: str) -> str:
     return body.rstrip("\n") + "\n\n" + content.rstrip("\n") + "\n"
 
 
+class SectionAbsentError(Exception):
+    """Raised by merge_checklist when new items cannot be placed because the
+    target ``### {section}`` header is missing from the body.
+
+    Distinct from an idempotent no-op (all items already present): the caller
+    must surface this as ``status=skipped; reason=section_absent`` rather than
+    ``status=success``, so that silent drop of checklist items is not reported
+    as a successful merge (fail-loud).
+    """
+
+    def __init__(self, section_name: str):
+        self.section_name = section_name
+        super().__init__(f"section absent: {section_name}")
+
+
 def merge_checklist(body: str, section_name: str, items: list[str]) -> str:
     """Merge checklist items into the end of a named section, skipping any item
     already present as an exact full line anywhere in the body.
@@ -200,20 +217,30 @@ def merge_checklist(body: str, section_name: str, items: list[str]) -> str:
     Ports the progress-section merge from archive-procedures.md §3.5.2: full-body
     exact-line dedup (matching the original ``grep -qxF``), insertion at the end
     of the section (before the next ``### `` header, or at EOF when the section is
-    last). When the section is absent the items are dropped and the body returned
-    unchanged — matching both the original block and append_section's
-    no-op-on-absent contract. Idempotent: re-running with the same items is a
-    no-op. Trailing-newline state of the input is preserved.
+    last). Idempotent: re-running with the same items is a no-op. Trailing-newline
+    state of the input is preserved.
+
+    When the section is absent **and** there are new items to insert, raises
+    :class:`SectionAbsentError` instead of dropping the items and returning the
+    body unchanged. Callers map that to exit code 10 / ``reason=section_absent``
+    so the skip remains observable. When every item is already present
+    (or the item list is empty), returns the body unchanged with no error —
+    that is a true idempotent no-op, not a silent drop.
     """
     existing = set(body.split("\n"))
     new_items = [item for item in items if item not in existing]
     if not new_items:
         return body
 
+    section_header = "### " + section_name
+    section_found = any(line.rstrip() == section_header for line in body.split("\n"))
+    if not section_found:
+        raise SectionAbsentError(section_name)
+
     result: list[str] = []
     in_section = False
     for line in body.split("\n"):
-        if line.rstrip() == "### " + section_name:
+        if line.rstrip() == section_header:
             in_section = True
             result.append(line)
             continue
@@ -373,7 +400,13 @@ def main():
             sys.exit(1)
         content = read_file_content(opts["content_file"])
         items = [line for line in content.split("\n") if line.strip()]
-        body = merge_checklist(body, opts["section"], items)
+        try:
+            body = merge_checklist(body, opts["section"], items)
+        except SectionAbsentError as exc:
+            # Exit 10 is the contract for section_absent (see module docstring).
+            # Do not write body to stdout — caller must not PATCH a partial body.
+            print(f"ERROR: {exc}", file=sys.stderr)
+            sys.exit(10)
 
     elif subcommand == "update-checkboxes":
         if "tasks" not in opts:

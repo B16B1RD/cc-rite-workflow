@@ -9,6 +9,56 @@
 # Usage: bash plugins/rite/scripts/tests/review-findings-maps.test.sh
 set -uo pipefail
 
+# _timeout <seconds> <command...> — portable timeout(1) for this test.
+# GNU `timeout` is absent on macOS (BSD / no coreutils); fall back to a perl
+# fork/waitpid shim reproducing timeout(1)'s exit-code contract: 124 on timeout,
+# 128+N on signal death, the child's status otherwise (a naive
+# `perl -e 'alarm; exec'` would exit 142 and defeat hang-detection assertions).
+# This file does not source _test-helpers.sh, so the shim is inlined here — keep
+# it byte-identical with _test-helpers.sh (timeout-shim.test.sh asserts no drift).
+_timeout() {
+  local _d="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$_d" "$@"
+  else
+    perl -e '
+      my $d = shift;
+      # alarm truncates to an integer, so a fractional deadline silently becomes
+      # alarm 0 — no timeout at all, and waitpid blocks until the CI job limit.
+      # Reject rather than degrade, and exit 125 rather than die: die exits 255,
+      # which every caller reads as "not 124, so no hang" — the same silent pass
+      # the rejection exists to prevent. GNU timeout accepts fractions, so this
+      # shim only claims the contract for integer seconds.
+      if ($d !~ /^[0-9]+$/) {
+        print STDERR "_timeout: fractional seconds are not supported by the perl fallback: $d\n";
+        exit 125;
+      }
+      my $pid = fork;
+      exit 127 unless defined $pid;
+      # setpgrp puts the child in its own process group so the alarm handler can
+      # signal the whole tree with a negative pid. GNU timeout does the same; without
+      # it the deadline only reaches the direct child, and a grandchild holding the
+      # captured stdout keeps the caller blocked long past the timeout (measured 30s
+      # against a 1s deadline). The runners capture output with $( ), so that stall
+      # would consume the CI job limit instead of failing at 124.
+      if ($pid == 0) { setpgrp(0, 0); exec { $ARGV[0] } @ARGV; exit 127; }
+      $SIG{ALRM} = sub { kill "TERM", -$pid; waitpid($pid, 0); exit 124; };
+      alarm $d; waitpid $pid, 0;
+      my $st = $?; exit($st & 127 ? 128 + ($st & 127) : $st >> 8);
+    ' "$_d" "$@"
+  fi
+}
+
+# Fail closed when no backend exists. Every `_timeout` caller reads a non-124 rc
+# as "no hang", so a missing backend would silently turn each hang assertion into
+# a pass. Abort at source time rather than degrade.
+if ! command -v timeout >/dev/null 2>&1 && ! command -v perl >/dev/null 2>&1; then
+  echo "ERROR: neither timeout(1) nor perl(1) is available — _timeout cannot detect" >&2
+  echo "  hangs, and every hang assertion in this suite would silently pass." >&2
+  echo "  Install GNU coreutils (timeout) or perl before running the test suite." >&2
+  exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TARGET="$SCRIPT_DIR/../review-findings-maps.sh"
 TEST_DIR="$(mktemp -d)"
@@ -213,7 +263,7 @@ run_reference() {
   sed -e "s|^review_source=\"{review_source}\"|review_source=\"$source\"|" \
       -e "s|^review_source_path=\"{review_source_path}\"|review_source_path=\"$path\"|" "$REF_TEMPLATE" > "$script"
   local rc=0
-  REF_STDOUT=$( (cd "$repo" && timeout 10 bash "$script") 2>"$TEST_DIR/ref_stderr" ) || rc=$?
+  REF_STDOUT=$( (cd "$repo" && _timeout 10 bash "$script") 2>"$TEST_DIR/ref_stderr" ) || rc=$?
   REF_RC=$rc
   REF_STDERR=$(cat "$TEST_DIR/ref_stderr")
   return 0
@@ -222,7 +272,7 @@ run_reference() {
 run_helper() {
   local repo="$1" source="$2" path="$3"
   local rc=0
-  HELPER_STDOUT=$( timeout 10 bash "$TARGET" --review-source "$source" --review-source-path "$path" --repo-root "$repo" 2>"$TEST_DIR/helper_stderr" ) || rc=$?
+  HELPER_STDOUT=$( _timeout 10 bash "$TARGET" --review-source "$source" --review-source-path "$path" --repo-root "$repo" 2>"$TEST_DIR/helper_stderr" ) || rc=$?
   HELPER_RC=$rc
   HELPER_STDERR=$(cat "$TEST_DIR/helper_stderr")
   return 0
@@ -344,14 +394,14 @@ fi
 echo "TC-8: invocation errors"
 repo=$(make_sandbox tc8 default)
 rc=0
-out=$(timeout 10 bash "$TARGET" --review-source local_file --repo-root "$repo" 2>&1) || rc=$?
+out=$(_timeout 10 bash "$TARGET" --review-source local_file --repo-root "$repo" 2>&1) || rc=$?
 if [ "$rc" = "2" ]; then
   pass "path 欠落 → exit 2"
 else
   fail "unexpected rc=$rc: $out"
 fi
 rc=0
-out=$(timeout 10 bash "$TARGET" --review-source local_file --review-source-path 2>&1) || rc=$?
+out=$(_timeout 10 bash "$TARGET" --review-source local_file --review-source-path 2>&1) || rc=$?
 if [ "$rc" != "124" ]; then
   pass "値なしフラグ末尾 no-hang (rc=$rc)"
 else

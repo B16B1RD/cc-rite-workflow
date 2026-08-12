@@ -10,6 +10,8 @@ argument-hint: "[pr_number]"
 
 # /rite:ready
 
+> **質問規律**: すべての質問・強制続行判断は [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従う。Ready 化は外部公開状態を変えるため、standalone 確認は維持する。
+
 ## Contract
 **Input**: PR number (or auto-detected), flow state (optional, e2e flow)
 **Output**: `[ready:returned-to-caller]` | `[ready:error]`
@@ -17,6 +19,10 @@ argument-hint: "[pr_number]"
 Change PR to Ready for review and update the related Issue's Status
 
 > **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[ready:returned-to-caller]` or `[ready:error]`) and **returns control to the caller** (orchestrator — caller-name agnostic). The caller determines the next action based on this output pattern.
+
+## E2E Output Minimization
+
+**環境起因の迂回・リトライの出力姿勢**: [common-error-handling.md#environment-workaround-output-posture](../../references/common-error-handling.md#environment-workaround-output-posture) — 成功時は無言、失敗時は行動可能な 1 行のみ（規則本文はそちら。本スキルは複製しない）。
 
 ---
 
@@ -101,7 +107,7 @@ Even if the argument is omitted, retrieve and use the PR number from work memory
 
 > **Reference**: Pre-submission hard gate for the parser-trigger pattern (backtick + bang adjacency in inline code spans of `plugins/rite/{commands,skills,agents,references}/**/*.md`). The underlying static check is `plugins/rite/hooks/scripts/bang-backtick-check.sh`.
 >
-> **DRIFT-CHECK ANCHOR (MUST)**: This bash block is intentionally synchronized between `skills/pr-create/SKILL.md` §1.0 and `skills/ready/SKILL.md` §1.0. Any modification to either side MUST be replicated to the other. Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」の dominant failure mode を構造的に予防する。
+> **DRIFT-CHECK ANCHOR (SHARED CORE ONLY)**: scanner の起動と rc 分岐は `skills/pr-create/SKILL.md` §1.0 と同期する。一方、PR 番号を入力に持つ ready 固有の PR head 解決は構造が非対称なため同期対象外であり、pr-create へ転記しない。
 >
 > **Independent of the `/rite:lint` Phase 3.5 bang-backtick check**: lint records bang-backtick findings as warnings (`[lint:success]` is preserved). This gate, in contrast, **blocks** Ready transition when the same pattern is present — lint is the early heads-up, this is the final hard gate before Ready for review.
 
@@ -110,40 +116,32 @@ Resolve plugin_root with the inline one-liner (per [Plugin Path Resolution](../.
 ```bash
 plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 
-if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/bang-backtick-check.sh" ]; then
-  echo "[CONTEXT] BANG_BACKTICK_CHECK_INVOCATION_FAILED=1; reason=script_missing; resolved_root=${plugin_root:-<empty>}" >&2
-  echo "ERROR: bang-backtick-check.sh not found. Cannot proceed with Ready gate." >&2
-  exit 1
-fi
-
-bang_output=$(bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all --skip-if-no-target 2>&1)
-bang_rc=$?
-case "$bang_rc" in
-  0)
-    # A clean scan and a not-applicable skip both mean "proceed". The skip happens
-    # in a consumer repo (rite used as a marketplace plugin only — no plugins/rite/
-    # in this working tree, hence --skip-if-no-target above). Surface a one-line
-    # informational note for the skip case so the gate pass is not silent.
-    if printf '%s' "$bang_output" | grep -q '\[bang-backtick\] not applicable'; then
-      echo "ℹ️ Bang-backtick gate: 本リポジトリは plugins/rite/ を self-host していないため N/A（clean skip）。" >&2
-    fi
-    ;;
-  1)
-    echo "❌ Bang-backtick adjacency detected — Ready transition blocked:" >&2
-    printf '%s\n' "$bang_output" >&2
-    echo "ACTION: Apply Style A (full-width 「!」) or Style B (expand 'if ! cmd; then') — see plugins/rite/hooks/scripts/bang-backtick-check.sh header for the judgment flow." >&2
-    exit 1
-    ;;
-  *)
-    echo "[CONTEXT] BANG_BACKTICK_CHECK_INVOCATION_FAILED=1; reason=invocation_error; rc=$bang_rc" >&2
-    echo "ERROR: bang-backtick-check.sh invocation error (rc=$bang_rc):" >&2
-    printf '%s\n' "$bang_output" >&2
-    exit 1
+# Optional argument is resolved before the gate so `/rite:ready` without an
+# argument remains deterministic. The helper then owns PR-head resolution,
+# fail-loud routing, scanner rc handling, and signal-safe worktree cleanup.
+ready_pr_number="{pr_number}"
+case "$ready_pr_number" in
+  ''|*[!0-9]*)
+    ready_branch=$(git branch --show-current) || { echo "ERROR: Ready gate: current branch を解決できません" >&2; exit 1; }
+    case "$ready_branch" in
+      main|master)
+        echo "エラー: 現在 $ready_branch ブランチにいます" >&2
+        echo "Ready for review にする PR を指定してください: /rite:ready <PR番号>" >&2
+        exit 1
+        ;;
+    esac
+    ready_pr_number=$(gh pr view "$ready_branch" -R {owner_repo} --json number --jq '.number') || {
+      echo "ERROR: Ready gate: branch '$ready_branch' の PR を解決できません" >&2
+      exit 1
+    }
     ;;
 esac
+
+bash "$plugin_root/hooks/scripts/ready-pr-head-gate.sh" \
+  --pr "$ready_pr_number" --repo {owner_repo} --plugin-root "$plugin_root"
 ```
 
-> **On exit 1 from this bash block**: The bash block exits before any `skills/ready/SKILL.md` result pattern (`[ready:returned-to-caller]` / `[ready:error]`) is emitted, so the orchestrator treats this as a missing-result-pattern Skill invocation — default 経路は `WARNING` を stderr に出力し、AskUserQuestion で「再試行 / 強制続行 / 中止」を提示する — **NOT** a `[ready:error]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
+> **On exit 1 from this bash block**: The bash block exits before any `skills/ready/SKILL.md` result pattern (`[ready:returned-to-caller]` / `[ready:error]`) is emitted. Invocation failure is a reversible diagnostic action, so the orchestrator retries the gate once and records the reason in the existing work memory; a second failure emits `[ready:error]` and stops. It never offers an unverified force-continue path. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic. For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
 
 ### 1.1 Check Arguments
 
@@ -345,13 +343,8 @@ End processing.
 After `gh pr ready` succeeds, update local work memory (SoT):
 
 ```bash
-WM_SOURCE="ready" \
-  WM_PHASE="ready" \
-  WM_PHASE_DETAIL="Ready for review に変更完了" \
-  WM_NEXT_ACTION="レビュー待ち" \
-  WM_BODY_TEXT="PR marked as ready for review." \
-  WM_ISSUE_NUMBER="{issue_number}" \
-  bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
+bash {plugin_root}/hooks/scripts/ready-work-memory-update.sh \
+  --pr {pr_number} --issue {issue_number} --repo {owner_repo} --plugin-root {plugin_root}
 ```
 
 **On lock failure**: Log a warning and continue — local work memory update is best-effort.

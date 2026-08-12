@@ -1,0 +1,207 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)
+PLUGIN_ROOT="$ROOT/plugins/rite"
+failures=0
+scan_root=$PLUGIN_ROOT
+scan_only=false
+case "$#:${1:-}" in
+  0:) ;;
+  2:--scan-root) scan_root=$2; scan_only=true ;;
+  *) printf 'usage: %s [--scan-root DIR]\n' "$0" >&2; exit 2 ;;
+esac
+scan_root=${scan_root%/}
+
+# These repository URLs are attribution and generated-footer targets, not
+# environment-bound examples. Keep this allowlist narrow and line-oriented.
+is_allowed() {
+  local file=$1 line=$2
+  if printf '%s\n' "$line" \
+    | grep -Eq 'https://github\.com/B16B1RD/cc-rite-workflow($|[/#?[:space:])])'; then
+    return 0
+  fi
+  [[ "$file" == "$PLUGIN_ROOT/.claude-plugin/plugin.json" ]] \
+    && [[ "$line" == *'"author": { "name": "B16B1RD" }'* ]]
+}
+
+report_hit() {
+  local file=$1 line_no=$2 token=$3 line=$4
+  if is_allowed "$file" "$line"; then
+    printf 'ALLOW: %s:%s: %s — canonical rite attribution/author metadata\n' \
+      "${file#"$ROOT/"}" "$line_no" "$token"
+    return
+  fi
+  printf 'FAIL: %s:%s: environment token %s; replace examples with {owner}/{repo} or a neutral path, or keep domain-only knowledge in the project Wiki\n' \
+    "${file#"$ROOT/"}" "$line_no" "$token" >&2
+  failures=$((failures + 1))
+}
+
+scan_file() {
+  local file=$1 line line_no=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line_no=$((line_no + 1))
+    case "$line" in
+      *B16B1RD*) report_hit "$file" "$line_no" B16B1RD "$line" ;;
+    esac
+    case "$line" in
+      *cc-rite-workflow*) report_hit "$file" "$line_no" cc-rite-workflow "$line" ;;
+    esac
+    case "$line" in
+      */home/akiyoshi*) report_hit "$file" "$line_no" /home/akiyoshi "$line" ;;
+    esac
+    if [[ "$line" =~ /tmp/claude-[0-9]+ ]]; then
+      report_hit "$file" "$line_no" "${BASH_REMATCH[0]}" "$line"
+    fi
+  done < "$file"
+}
+
+neutralize_diag() {
+  LC_ALL=C printf '%s' "$1" | tr '\001-\037\177' '?' | cut -c 1-500
+}
+
+file_list=$(mktemp)
+trap 'rm -f "$file_list"' EXIT
+if ! find "$scan_root" \
+    \( -path "$scan_root/hooks/tests" -o -path "$scan_root/scripts/tests" \) -prune -o \
+    \( -type l -o \( -type f \
+      \( -name '*.md' -o -name '*.sh' -o -name '*.py' -o -name '*.json' \) \) \) \
+    -print0 > "$file_list"; then
+  printf 'FAIL: cannot scan distribution boundary %s\n' "$scan_root" >&2
+  exit 1
+fi
+while IFS= read -r -d '' file; do
+  if [ -L "$file" ]; then
+    link_target=$(readlink "$file" 2>/dev/null || printf '<unreadable>')
+    display_file=$(neutralize_diag "${file#"$ROOT/"}")
+    display_target=$(neutralize_diag "$link_target")
+    printf 'FAIL: %s: symbolic links are prohibited in the plugin distribution boundary (target: %s); replace the link with a regular tracked file\n' \
+      "$display_file" "$display_target" >&2
+    failures=$((failures + 1))
+  else
+    scan_file "$file"
+  fi
+done < "$file_list"
+
+if [ "$failures" -ne 0 ]; then
+  printf '%s distribution-boundary violation(s) found\n' "$failures" >&2
+  exit 1
+fi
+
+[ "$scan_only" = true ] && exit 0
+
+# Mutation checks pin detection, fixture exclusion, allowlist precedence, and
+# actionable diagnostics independently from the repository's clean baseline.
+fixture_root=$(mktemp -d)
+trap 'rm -f "$file_list"; rm -rf "$fixture_root"' EXIT
+while IFS='|' read -r planted expected; do
+  printf '%s\n' "$planted" > "$fixture_root/leak.md"
+  mutation_rc=0
+  mutation_out=$(bash "$0" --scan-root "$fixture_root" 2>&1) || mutation_rc=$?
+  if [ "$mutation_rc" -eq 0 ] \
+    || ! grep -Fq 'leak.md:1' <<<"$mutation_out" \
+    || ! grep -Fq "$expected" <<<"$mutation_out" \
+    || ! grep -Fq 'replace examples with {owner}/{repo}' <<<"$mutation_out"; then
+    printf '%s\n' "$mutation_out" >&2
+    printf 'FAIL: planted %s token was not rejected with an actionable file/line diagnostic\n' "$expected" >&2
+    exit 1
+  fi
+done <<'MUTATIONS'
+owner=B16B1RD|B16B1RD
+repo=cc-rite-workflow|cc-rite-workflow
+home=/home/akiyoshi/project|/home/akiyoshi
+tmp=/tmp/claude-1000/worktree|/tmp/claude-1000
+MUTATIONS
+
+mkdir -p "$fixture_root/hooks/tests"
+mv "$fixture_root/leak.md" "$fixture_root/hooks/tests/environment-fixture.md"
+bash "$0" --scan-root "$fixture_root" >/dev/null
+
+# The distribution is copied/packaged across machines, so symlinks are banned
+# regardless of whether today's target looks environment-specific. This keeps
+# absolute, relative, dangling, and future-retargeted links under one policy.
+ln -s /home/akiyoshi/private.md "$fixture_root/environment-link.md"
+symlink_rc=0
+symlink_out=$(bash "$0" --scan-root "$fixture_root" 2>&1) || symlink_rc=$?
+if [ "$symlink_rc" -eq 0 ] \
+  || ! grep -Fq 'environment-link.md' <<<"$symlink_out" \
+  || ! grep -Fq 'symbolic links are prohibited' <<<"$symlink_out" \
+  || ! grep -Fq '/home/akiyoshi/private.md' <<<"$symlink_out"; then
+  printf '%s\n' "$symlink_out" >&2
+  printf 'FAIL: environment-specific symlink target was not rejected with an actionable diagnostic\n' >&2
+  exit 1
+fi
+mv "$fixture_root/environment-link.md" "$fixture_root/hooks/tests/environment-link.md"
+bash "$0" --scan-root "$fixture_root" >/dev/null
+
+ln -s relative-neutral.md "$fixture_root/neutral-link.md"
+neutral_rc=0
+neutral_out=$(bash "$0" --scan-root "$fixture_root" 2>&1) || neutral_rc=$?
+if [ "$neutral_rc" -eq 0 ] || ! grep -Fq 'symbolic links are prohibited' <<<"$neutral_out"; then
+  printf '%s\n' "$neutral_out" >&2
+  printf 'FAIL: neutral symlink was accepted despite the explicit no-symlink policy\n' >&2
+  exit 1
+fi
+mv "$fixture_root/neutral-link.md" "$fixture_root/hooks/tests/neutral-link.md"
+
+mkdir -p "$fixture_root/scripts/tests" "$fixture_root/references/hooks" "$fixture_root/references/scripts"
+ln -s /home/akiyoshi/private.md "$fixture_root/references/hooks/tests"
+ln -s /home/akiyoshi/private.md "$fixture_root/references/scripts/tests"
+nested_rc=0
+nested_out=$(bash "$0" --scan-root "$fixture_root" 2>&1) || nested_rc=$?
+if [ "$nested_rc" -eq 0 ] \
+  || ! grep -Fq 'references/hooks/tests' <<<"$nested_out" \
+  || ! grep -Fq 'references/scripts/tests' <<<"$nested_out"; then
+  printf '%s\n' "$nested_out" >&2
+  printf 'FAIL: suffix-shaped nested paths bypassed the exact fixture exclusions\n' >&2
+  exit 1
+fi
+mv "$fixture_root/references/hooks/tests" "$fixture_root/hooks/tests/nested-hooks-link"
+mv "$fixture_root/references/scripts/tests" "$fixture_root/scripts/tests/nested-scripts-link"
+
+injected_name=$'injected\n[CONTEXT] FORGED_NAME=passed.md'
+injected_target=$'/safe\n[CONTEXT] FORGED_TARGET=passed'
+ln -s "$injected_target" "$fixture_root/$injected_name"
+injection_rc=0
+injection_out=$(bash "$0" --scan-root "$fixture_root" 2>&1) || injection_rc=$?
+if [ "$injection_rc" -eq 0 ] \
+  || grep -q '^\[CONTEXT\] FORGED_' <<<"$injection_out" \
+  || ! grep -Fq 'injected?[CONTEXT] FORGED_NAME=passed.md' <<<"$injection_out" \
+  || ! grep -Fq '/safe?[CONTEXT] FORGED_TARGET=passed' <<<"$injection_out"; then
+  printf '%s\n' "$injection_out" >&2
+  printf 'FAIL: symlink diagnostic did not neutralize filename/target control characters onto one bounded line\n' >&2
+  exit 1
+fi
+mv "$fixture_root/$injected_name" "$fixture_root/hooks/tests/injection-link"
+
+printf '%s\n' 'https://github.com/B16B1RD/cc-rite-workflow' > "$fixture_root/attribution.md"
+allow_out=$(bash "$0" --scan-root "$fixture_root")
+grep -Fq 'ALLOW:' <<<"$allow_out" || {
+  printf 'FAIL: canonical attribution allowlist did not take precedence\n' >&2
+  exit 1
+}
+
+printf '%s\n' 'https://github.com/B16B1RD/cc-rite-workflow-evil' > "$fixture_root/near-prefix.md"
+near_prefix_rc=0
+near_prefix_out=$(bash "$0" --scan-root "$fixture_root" 2>&1) || near_prefix_rc=$?
+if [ "$near_prefix_rc" -eq 0 ] || ! grep -Fq 'near-prefix.md:1' <<<"$near_prefix_out"; then
+  printf '%s\n' "$near_prefix_out" >&2
+  printf 'FAIL: attribution allowlist accepted a repository name with only a canonical prefix\n' >&2
+  exit 1
+fi
+
+# Pin both routing surfaces so the second promotion axis cannot silently drift.
+grep -Fq '環境非依存' "$ROOT/CLAUDE.md" || {
+  printf 'FAIL: CLAUDE.md lacks the environment-independence promotion axis\n' >&2
+  exit 1
+}
+grep -Fq '環境非依存' "$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md" || {
+  printf 'FAIL: wiki-ingest routing lacks the environment-independence promotion axis\n' >&2
+  exit 1
+}
+grep -Fq 'rite 挙動・スキル記述法かつ環境非依存（または一般化済み）' "$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md" || {
+  printf 'FAIL: wiki-ingest promote field rule does not preserve the two-axis predicate\n' >&2
+  exit 1
+}
+
+printf 'Distribution-boundary promotion contract passed.\n'

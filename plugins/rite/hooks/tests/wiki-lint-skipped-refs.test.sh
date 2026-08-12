@@ -2,7 +2,7 @@
 # wiki-lint-skipped-refs.test.sh
 #
 # Tests for wiki-lint-skipped-refs.sh (wiki/lint.md ステップ 6.0 delegation
-# target). Issue #1520 (Sub-3): the skip SoT moved from log.md (a table) to each
+# target).  (Sub-3): the skip SoT moved from log.md (a table) to each
 # raw source's frontmatter (`ingest_status: skipped`). The helper now scans
 # `.rite/wiki/raw/**/*.md` frontmatter and emits the `skipped_refs` set
 # (`raw/{type}/{filename}`) inside a marker block + a 4-value `log_read_ok` enum
@@ -113,13 +113,13 @@ make_separate_branch_sandbox() {
 run_helper() {
   local repo="$1"; shift
   local rc=0
-  HELPER_STDOUT=$( (cd "$repo" && timeout 10 bash "$SCRIPT" --repo-root "$repo" "$@") 2>"$TEST_DIR/helper_stderr" ) || rc=$?
+  HELPER_STDOUT=$( (cd "$repo" && _timeout 10 bash "$SCRIPT" --repo-root "$repo" "$@") 2>"$TEST_DIR/helper_stderr" ) || rc=$?
   HELPER_RC=$rc
   HELPER_STDERR=$(cat "$TEST_DIR/helper_stderr")
   return 0
 }
 
-echo "=== wiki-lint-skipped-refs.sh tests (raw frontmatter scan, Issue #1520) ==="
+echo "=== wiki-lint-skipped-refs.sh tests (raw frontmatter scan) ==="
 echo ""
 
 # === TC-1: same_branch 抽出 ===

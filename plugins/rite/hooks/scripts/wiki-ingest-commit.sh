@@ -41,12 +41,14 @@
 # every review/fix/close cycle, even if step (3) is deferred.
 #
 # Usage:
-# bash wiki-ingest-commit.sh [--dry-run]
+# bash wiki-ingest-commit.sh [--dry-run] [--push-only]
 #
 # Options:
 # --dry-run Report the pending raw sources and the target wiki branch
 # but perform no git operations. Returns exit 0 even when
 # pending sources exist (unlike the normal path).
+# --push-only Push the already-landed local wiki branch without scanning,
+# staging, or committing raw sources. Works with or without wiki-worktree.
 #
 # Exit codes:
 # 0 success (pending raw sources were committed, OR there were none)
@@ -87,9 +89,11 @@ export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes}"
 # Option parsing
 # -----------------------------------------------------------------------
 DRY_RUN=false
+PUSH_ONLY=false
 while [[ $# -gt 0 ]]; do
  case "$1" in
  --dry-run) DRY_RUN=true; shift ;;
+ --push-only) PUSH_ONLY=true; shift ;;
  --help|-h)
  # Extract header block up to the `--- END HEADER ---` sentinel so the
  # help text never drifts out of sync with the documented surface.
@@ -123,7 +127,7 @@ source "$_SCRIPT_DIR/../control-char-neutralize.sh"
 # on the main checkout's single inode (multi-session design §1). Byte-identical
 # to `git rev-parse --show-toplevel` for non-worktree sessions.
 #
-# INVARIANT (Issue #1664): wiki-ingest-trigger.sh writes the Raw Source under
+# INVARIANT: wiki-ingest-trigger.sh writes the Raw Source under
 # this SAME state-path-resolve.sh root. The scan below (`find .rite/wiki/raw`,
 # run after the `cd "$repo_root"` on the next line) only sees what trigger wrote
 # if both stay keyed off state-path-resolve.sh — do not switch this scan to a
@@ -210,6 +214,25 @@ case "$branch_strategy" in
  exit 1
  ;;
 esac
+
+# Retry surface for callers that observed exit 4. Push the local branch ref
+# directly, so this works both with the modern wiki worktree and the supported
+# legacy/fresh-clone layout where `.rite/wiki-worktree` does not exist.
+if [[ "$PUSH_ONLY" == "true" ]]; then
+ if ! git show-ref --verify --quiet "refs/heads/$wiki_branch"; then
+  echo "ERROR: local wiki branch '$wiki_branch' does not exist" >&2
+  exit 2
+ fi
+ push_err=""
+ if push_err=$(git push --quiet origin "refs/heads/$wiki_branch:refs/heads/$wiki_branch" 2>&1); then
+  echo "[wiki-ingest-commit] branch=${wiki_branch}; push=ok; mode=push-only"
+  exit 0
+ fi
+ echo "WARNING: git push origin '$wiki_branch' failed — local wiki commit remains unpushed" >&2
+ printf '%s\n' "$push_err" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+ echo "[wiki-ingest-commit] branch=${wiki_branch}; push=failed; mode=push-only"
+ exit 4
+fi
 
 # -----------------------------------------------------------------------
 # Enumerate pending raw sources on the CURRENT branch working tree.

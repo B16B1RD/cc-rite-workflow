@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # rite workflow - Worktree git helpers (commit/push + session-worktree ensure)
 #
 # Responsibility 1 (source-only): provide the canonical
@@ -693,7 +694,7 @@ ensure_session_worktree() {
       # loses enabledPlugins["rite@rite-marketplace"]:false and the stale
       # marketplace-cached skill definitions load instead of local plugins/rite.
       if [ -f "$main_root/.claude/settings.local.json" ] && ! { mkdir -p "$wt_path/.claude" && cp "$main_root/.claude/settings.local.json" "$wt_path/.claude/settings.local.json"; } 2>/dev/null; then
-        echo "WARNING: ensure_session_worktree: .claude/settings.local.json のコピーに失敗しました（issue #$issue）— ドッグフーディング上書きが worktree に反映されません" >&2
+        echo "WARNING: ensure_session_worktree: .claude/settings.local.json のコピーに失敗しました（issue #${issue}）— ドッグフーディング上書きが worktree に反映されません" >&2
       fi
       echo "[CONTEXT] WT_ENSURE=reconstructed; path=$wt_path; branch=$branch"
       return 0
@@ -708,20 +709,20 @@ ensure_session_worktree() {
     # fetch is best-effort (do NOT hard-fail — an offline resume must still
     # reconstruct from the existing origin/$branch ref). But all-retries-
     # exhausted is surfaced as a WARNING rather than swallowed, so a stale
-    # reconstruction is never silent (Issue #1676 error table: 取得不能を明示).
+    # reconstruction is never silent (error table: 取得不能を明示).
     local n=0 fetch_ok=no
     while [ "$n" -lt 3 ]; do
       if git fetch origin "$branch" >/dev/null 2>&1; then fetch_ok=yes; break; fi
       n=$((n+1)); [ "$n" -lt 3 ] && sleep 1
     done
     if [ "$fetch_ok" != yes ]; then
-      echo "WARNING: ensure_session_worktree: git fetch origin '$branch' が 3 回失敗しました — 既存の origin/$branch（stale の可能性）から再構築します (issue #$issue)" >&2
+      echo "WARNING: ensure_session_worktree: git fetch origin '$branch' が 3 回失敗しました — 既存の origin/${branch}（stale の可能性）から再構築します (issue #$issue)" >&2
     fi
     if git worktree add --track -b "$branch" "$wt_path" "origin/$branch" 1>&2; then
       # Dogfooding override (#1943): see the branch_local reconstruction
       # branch above for why this copy is needed.
       if [ -f "$main_root/.claude/settings.local.json" ] && ! { mkdir -p "$wt_path/.claude" && cp "$main_root/.claude/settings.local.json" "$wt_path/.claude/settings.local.json"; } 2>/dev/null; then
-        echo "WARNING: ensure_session_worktree: .claude/settings.local.json のコピーに失敗しました（issue #$issue）— ドッグフーディング上書きが worktree に反映されません" >&2
+        echo "WARNING: ensure_session_worktree: .claude/settings.local.json のコピーに失敗しました（issue #${issue}）— ドッグフーディング上書きが worktree に反映されません" >&2
       fi
       echo "[CONTEXT] WT_ENSURE=reconstructed; path=$wt_path; branch=$branch"
       return 0

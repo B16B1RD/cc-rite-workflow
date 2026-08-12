@@ -2,7 +2,7 @@
 
 > Universal Issue-Driven Development Workflow for Claude Code
 
-[![Version](https://img.shields.io/badge/version-0.9.2-blue.svg)](https://github.com/asakaguchi/cc-rite-workflow/releases/tag/v0.9.2)
+[![Version](https://img.shields.io/badge/version-0.10.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.10.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **English** | [日本語](README.ja.md)
@@ -10,6 +10,8 @@
 ## Demo
 
 From Issue to PR — see Rite Workflow turn development into a *rite*. A ~125-second intro (English).
+
+> **Note**: The install command and the closing footer URL shown in the video still use the previous repository owner (`asakaguchi`). See [Installation](#installation) below for the current command.
 
 https://github.com/user-attachments/assets/b1f50f60-6c7c-4d86-9ceb-9071ae4b1c9f
 
@@ -38,12 +40,12 @@ The name comes from the English word **rite**, meaning "ritual" or "ceremony." I
 
 ## Installation
 
-Rite Workflow uses a two-step installation: first register the marketplace, then install the plugin from it.
+Rite Workflow uses a three-step installation: register the marketplace, install the plugin, then reload plugins to activate the new commands.
 
 **Step 1**: Add the marketplace
 
 ```bash
-/plugin marketplace add asakaguchi/cc-rite-workflow
+/plugin marketplace add B16B1RD/cc-rite-workflow
 ```
 
 **Step 2**: Install the plugin
@@ -51,6 +53,14 @@ Rite Workflow uses a two-step installation: first register the marketplace, then
 ```bash
 /plugin install rite@rite-marketplace
 ```
+
+**Step 3**: Reload plugins
+
+```bash
+/reload-plugins
+```
+
+If `/rite:` commands are still not recognized after this, restart Claude Code.
 
 **Verify installation**: Run `/rite:setup` to confirm the plugin is working.
 
@@ -174,7 +184,15 @@ See [Configuration Reference](docs/CONFIGURATION.md) for all options.
 
 ## Requirements
 
-- [GitHub CLI (gh)](https://cli.github.com/) - Required for GitHub operations
+Required:
+
+- [GitHub CLI (gh)](https://cli.github.com/) - Required for GitHub operations (Issues, PRs, Projects)
+- [jq](https://jqlang.github.io/jq/) - Required by the hooks and scripts for JSON parsing
+- **bash 4+** - Required; hooks and scripts rely on bash 4 features such as associative arrays (`declare -A`) and `mapfile`
+
+Recommended:
+
+- **macOS**: [coreutils](https://formulae.brew.sh/formula/coreutils) (`brew install coreutils`) - The Wiki staleness check calls GNU `date -d`, which macOS's default BSD `date` lacks. Install coreutils and put its `gnubin` on your `PATH` (so `date` resolves to GNU `date`) to enable that check; without it, only that check is skipped
 
 ## License
 

@@ -407,7 +407,7 @@ See [gh-cli-error-catalog.md Category 6](./gh-cli-error-catalog.md#category-6-gr
 
 ```bash
 # ✅ OK: -f for simple string values (no special characters)
-gh api graphql -f query='...' -f owner="asakaguchi" -f repo="cc-rite-workflow"
+gh api graphql -f query='...' -f owner="{owner}" -f repo="{repo}"
 
 # ✅ OK: -F for integer values
 gh api graphql -f query='...' -F number=123
@@ -490,7 +490,7 @@ The helper script `plugins/rite/scripts/link-sub-issue.sh` encapsulates node ID 
 bash plugins/rite/scripts/link-sub-issue.sh <owner> <repo> <parent_number> <child_number>
 
 # Example
-result=$(bash plugins/rite/scripts/link-sub-issue.sh "asakaguchi" "cc-rite-workflow" 514 600)
+result=$(bash plugins/rite/scripts/link-sub-issue.sh "{owner}" "{repo}" 514 600)
 status=$(printf '%s' "$result" | jq -r '.status')
 case "$status" in
  ok|already-linked)

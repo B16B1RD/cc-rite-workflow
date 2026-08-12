@@ -2,11 +2,11 @@
 
 > **Status**: ✅ 方針決定（調査のみ。採用方針の実装は後続 Issue に委ねる）
 >
-> **本ドキュメントの位置付け**: Issue #1709 の背景（多角評価レポート、重大度【中】）を受けた調査 Issue の成果物。`[CONTEXT]` marker（Bash tool 呼び出し境界を越えて LLM の会話コンテキスト経由で分岐値を受け渡す設計パターン）の全使用箇所を棚卸しし、Issue #1595 のような silent fallback の再発リスクを評価した上で、4 つの代替案を比較し推奨方針を決定する。実装は本 Issue のスコープ外（Non-Target Files: `plugins/rite/skills/**`, `hooks/**`）。
+> **本ドキュメントの位置付け**: `[CONTEXT]` marker（Bash tool 呼び出し境界を越えて LLM の会話コンテキスト経由で分岐値を受け渡す設計パターン）の全使用箇所を棚卸しし、marker 消失時の silent fallback 再発リスクを評価した上で、4 つの代替案を比較し推奨方針を決定する調査成果物。実装は本ドキュメントのスコープ外（Non-Target Files: `plugins/rite/skills/**`, `hooks/**`）。
 >
 > **関連ドキュメント**:
 > - [`skills/wiki-lint/references/bash-cross-boundary-state-transfer.md`](../../plugins/rite/skills/wiki-lint/references/bash-cross-boundary-state-transfer.md) — `[CONTEXT] key=value` パターンそのものを明文化した既存の canonical reference。本調査はこのドキュメントを廃止するのではなく、判断基準を追加拡張する立場を取る。
-> - [`skills/open/SKILL.md` 2.1-G](../../plugins/rite/skills/open/SKILL.md) — Issue #1595 対策として導入済みの唯一の hard gate 実装例。
+> - [`skills/open/SKILL.md` 2.1-G](../../plugins/rite/skills/open/SKILL.md) — marker 消失対策として導入済みの唯一の hard gate 実装例。
 
 <!-- Section ID: SPEC-BACKGROUND -->
 ## 1. 背景
@@ -33,7 +33,7 @@ if [ "true" = "true" ]; then ...; fi
 - **compact**: 長い会話が要約されるとき、`[CONTEXT]` marker 行が要約対象になり文字列として保持されない可能性がある
 - **途中入場**: orchestrator（`/rite:batch-run`, `/rite:iterate` 等）が sub-skill を呼び出す際、sub-skill 内の marker が期待した粒度で親の会話コンテキストに伝播しないケース
 
-**実例（Issue #1595）**: `open/SKILL.md` は元々「ステップ 1.4 で `MULTI_SESSION_ENABLED` を emit し、ステップ 2.2/2.3 の分岐でその値を会話コンテキストから読む」設計だった。resume / 途中入場で marker が context から失われると、「marker が見つからない → 従来の `false` 相当の経路（`git switch -c`）にフォールバックする」暗黙の挙動が発生し、`multi_session.enabled: true` であるにも関わらず main ツリーへ直接 `git switch -c` する silent fallback バグを生んだ。対策として「副作用（ブランチ作成）直前に marker を再確定する hard gate」（2.1-G）が導入されたが、これは対症療法であり、他のスキルの同種パターンには適用されていない。
+**実例**: `open/SKILL.md` は元々「ステップ 1.4 で `MULTI_SESSION_ENABLED` を emit し、ステップ 2.2/2.3 の分岐でその値を会話コンテキストから読む」設計だった。resume / 途中入場で marker が context から失われると、「marker が見つからない → 従来の `false` 相当の経路（`git switch -c`）にフォールバックする」暗黙の挙動が発生し、`multi_session.enabled: true` であるにも関わらず main ツリーへ直接 `git switch -c` する silent fallback バグを生んだ。対策として「副作用（ブランチ作成）直前に marker を再確定する hard gate」（2.1-G）が導入されたが、これは対症療法であり、他のスキルの同種パターンには適用されていない。
 
 <!-- Section ID: SPEC-AC1 -->
 ## 2. AC-1: `[CONTEXT]` marker 全使用箇所の棚卸し
@@ -106,7 +106,7 @@ grep ヒット行のうち:
 
 ### 2.6 既存の hard gate 対策
 
-Issue #1595 由来の「marker 再生成による防御」は現状 **`open/SKILL.md` の 2.1-G のみ**:
+ 由来の「marker 再生成による防御」は現状 **`open/SKILL.md` の 2.1-G のみ**:
 
 - `open/SKILL.md` 2.1-G: 「ブランチ作成前の multi_session hard 再確定」。副作用（ブランチ作成）の**直前**にステップ1.4と同一パースロジックを再実行し、「marker が context に無いことを理由に旧経路へ進む分岐は存在しない」ことを構造的に保証する。
 - `open/SKILL.md` `--require-worktree`: worktree path 不在のまま記録しようとした場合に `WORKTREE_INVARIANT=missing` を emit するデータ層検知（実行はブロックしない loud warning）。
@@ -126,7 +126,7 @@ review / fix / cleanup / wiki-lint 側には同種の「副作用直前の再生
 | **compact** | 長い会話が要約される | 全パターン。要約プロセスが `[CONTEXT]` 行を「重要でない中間出力」として圧縮対象にする可能性 | 中〜高 — 本ドキュメント作成セッション自体で「CRITICAL: Respond with TEXT ONLY... STOP. Compact detected」のような compact 発火を経験しており、実際に発生しうる事象であることを確認済み |
 | **途中入場** | orchestrator が sub-skill を Skill ツール経由で呼び出す際、期待した marker 粒度が親の会話コンテキストに伝播しない | ファイル跨ぎパターン（§2.5 #3, #5） | 中 — Skill ツール呼び出しは通常同一ターン内の会話に統合されるため直接の欠落は稀だが、大量の中間出力がある場合に LLM の注意が逸れて「読み忘れる」リスクは marker 消失と同型の failure mode |
 
-**Issue #1595 の実例との対応**: 上記「途中入場」に近いシナリオ（`open/SKILL.md` が resume 経由で phase=branch から再開したときに、ステップ1.4 の marker が同一ターンに存在しない）で実際に発生した。
+** の実例との対応**: 上記「途中入場」に近いシナリオ（`open/SKILL.md` が resume 経由で phase=branch から再開したときに、ステップ1.4 の marker が同一ターンに存在しない）で実際に発生した。
 
 <!-- Section ID: SPEC-AC2 -->
 ## 4. AC-2: 代替案の比較評価
@@ -205,7 +205,7 @@ marker を「性質」で分類し、対策を使い分ける:
 | **Stage 1** | §5.2 の判断基準を `bash-cross-boundary-state-transfer.md` に追記。新規 marker 追加時のレビュー観点として `prompt-engineer-reviewer` の checklist に反映を検討 | ドキュメントのみ、コード変更なし |
 | **Stage 2** | §2.5 で特定した高リスク長距離パターンのうち、最もリスクが高い2件（`resume/SKILL.md` の `WT_ENSURE` ファイル跨ぎ参照、`fix/SKILL.md` の `REVIEW_SOURCE`/`REVIEW_FILE_PATH` 多段中継）に hard gate を適用 | resume/SKILL.md, fix/SKILL.md |
 | **Stage 3** | 残る長距離パターン（review/SKILL.md の追加ゲート化検討、cleanup/SKILL.md のブランチ削除分岐、wiki-lint/SKILL.md の fan-in 判定）に順次展開。`iteration_id` dedup パターンを review/SKILL.md 以外にも横展開 | review/SKILL.md, cleanup/SKILL.md, wiki-lint/SKILL.md |
-| **Stage 4（任意）** | Issue #1709 で新設した `sentinel-contract-check.sh` 型の静的検証を拡張し、「2 Bash 呼び出し以上を跨ぐ `[CONTEXT]` emit/consume ペアで hard gate も flow-state 裏付けも無いもの」を機械的に検出する lint を追加。棚卸しを一度きりの監査で終わらせず継続的な contract として維持する | 新規 lint script（別 Issue） |
+| **Stage 4（任意）** | `sentinel-contract-check.sh` 型の静的検証を拡張し、「2 Bash 呼び出し以上を跨ぐ `[CONTEXT]` emit/consume ペアで hard gate も flow-state 裏付けも無いもの」を機械的に検出する lint を追加。棚卸しを一度きりの監査で終わらせず継続的な contract として維持する | 新規 lint script（別 Issue） |
 
 Stage 1-2 が本調査の直接の follow-up として妥当な粒度。Stage 3-4 は Stage 2 の効果測定後に個別 Issue 化する。
 

@@ -39,12 +39,16 @@
 #     stdout as "no context to inject" and continue.
 #   - Reads index.md via `git show` for separate_branch strategy, via direct
 #     file read for same_branch strategy.
-#   - OKF v0.1 2-pass (Issue #1519): the index.md is an OKF reserved bullet
-#     structure (`* [title](path) - description`) carrying only title/path/
-#     description. Pass 1 parses those candidates; Pass 2 reads each candidate
-#     page's frontmatter for domain/confidence/updated (Source of Truth). A
-#     candidate whose page frontmatter is unreadable is skipped with a WARNING
-#     (non-blocking — the index→page drift surfaces but other candidates render).
+#   - OKF v0.1 2-pass: Pass 1 parses both catalog forms — the 5-column table
+#     (page / domain / summary / updated / confidence) that wiki-ingest writes
+#     today, and the OKF bullet form (`* [title](path) - description`) still
+#     live in repos initialized under the earlier template. The table columns
+#     are a copy — Pass 2 reads each candidate page's frontmatter for
+#     domain/confidence/updated (Source of Truth). A candidate whose page
+#     frontmatter is unreadable is skipped with a WARNING (non-blocking — the
+#     index→page drift surfaces but other candidates render). Zero candidates
+#     against an index that does carry `](pages/...)` links warns too, so a
+#     future format drift is not mistaken for an empty wiki.
 #   - Scoring is case-insensitive substring match across page title + domain
 #     + description, weighted by confidence (high=1.5, medium=1.0, low=0.5).
 set -uo pipefail
@@ -70,8 +74,9 @@ _index_err=""
 _git_show_err=""
 _git_show_err_failed=0
 _awk_err=""
+_drop_meta=""
 _rite_wiki_query_cleanup() {
-  rm -f "${_yaml_err:-}" "${_index_err:-}" "${_git_show_err:-}" "${_awk_err:-}"
+  rm -f "${_yaml_err:-}" "${_index_err:-}" "${_git_show_err:-}" "${_awk_err:-}" "${_drop_meta:-}"
 }
 trap 'rc=$?; _rite_wiki_query_cleanup; exit $rc' EXIT
 trap '_rite_wiki_query_cleanup; exit 130' INT
@@ -326,46 +331,193 @@ if [[ -z "$index_content" ]]; then
   exit 0
 fi
 
-# --- Pass 1: Parse OKF bullet index for candidates ---
-# OKF v0.1 index.md is a reserved bullet structure (Sub-2 reshape, Issue #1519):
-#   * [{title}]({path}) - {description}
-# The index intentionally carries only title + path + description; per-page
-# metadata (domain / confidence / updated) lives in each page's frontmatter
-# (Source of Truth). Pass 1 extracts the candidates; Pass 2 (in the scoring
-# loop below) reads each candidate page's frontmatter for the metadata.
+# --- Pass 1: Parse the index catalog for candidates ---
+# Pass 1 understands both catalog forms the wiki has been written in:
+#   table  : | [{title}]({path}) | {domain} | {summary} | {updated} | {confidence} |
+#   bullet : * [{title}]({path}) - {description}
+# The table is what wiki-ingest writes today (see skills/wiki-ingest/SKILL.md
+# ステップ 6 for the column contract); the bullet form is still live in repos
+# initialized while the template emitted the OKF bullet catalog. Reading only
+# one of them silently drops half the corpus, so both are parsed. The table
+# columns are a copy — per-page metadata (domain / confidence / updated) lives
+# in each page's frontmatter (Source of Truth). Pass 1 extracts the candidates;
+# Pass 2 (in the scoring loop below) reads each candidate page's frontmatter for
+# the metadata.
 #
 # awk extracts: title | path | description, separated by unit separator (\x1f).
-# Both `*` and `-` bullet markers are accepted; only links whose target
-# contains `pages/` are kept (the orphan-link grep contract — see
-# wiki-lint-orphans.sh — relies on the same `pages/{domain}/{slug}.md` target).
-# HTML comment blocks (`<!-- ... -->`) are skipped so that illustrative bullet
-# examples inside the index-template.md comment are NOT parsed as real
-# candidates (otherwise a pristine `wiki-init` index would yield a phantom
-# candidate whose page does not exist, emitting a misleading "index.md may be
-# stale" WARNING on every query).
-candidates=$(printf '%s\n' "$index_content" | awk '
-  /<!--/ { in_comment=1 }
+# Only links whose target contains `pages/` are kept (the orphan-link grep
+# contract — see wiki-lint-orphans.sh — relies on the same
+# `pages/{domain}/{slug}.md` target), which is also what makes the table header
+# row (`| ページ | ドメイン | ... |`) fall out without a dedicated rule.
+#
+# Table cells escape a literal `|` as `\|` (the cell separator would otherwise
+# split the row), so the row is split with the escapes swapped out for \x01 and
+# swapped back per field — splitting first would cut a title/summary in half and
+# shift every later column. Only the FIRST link in the page cell is taken: real
+# summaries carry cross-links to other pages, and taking the last match would
+# make a row point at whichever page it happens to cite.
+#
+# HTML comment blocks (`<!-- ... -->`) are skipped so that illustrative examples
+# inside an index prologue are NOT parsed as real candidates (otherwise such an
+# index would yield a phantom candidate whose page does not exist, emitting a
+# misleading "index.md may be stale" WARNING on every query).
+if ! _drop_meta=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-query-drop-XXXXXX"); then
+  echo "WARNING: mktemp failed for drop-report capture; partial parse losses will not be reported" >&2
+  echo "  hint: check /tmp permission / read-only mount / inode exhaustion" >&2
+  _drop_meta=""
+fi
+candidates=$(printf '%s\n' "$index_content" | awk -v dropmeta="$_drop_meta" '
+  # Pipes inside inline code spans are NOT escaped by the writer, so they would
+  # split the row at the wrong place. Swap them for the same \x01 placeholder the
+  # backslash escapes use, preserving length and content so cell offsets hold.
+  function protect_code_span_pipes(s,   out, rest, seg) {
+    out = ""; rest = s
+    while (match(rest, /`[^`]*`/)) {
+      seg = substr(rest, RSTART, RLENGTH)
+      gsub(/\|/, "\001", seg)
+      out = out substr(rest, 1, RSTART - 1) seg
+      rest = substr(rest, RSTART + RLENGTH)
+    }
+    return out rest
+  }
+  # Both halves anchor on the `](` that actually separates text from target. The
+  # obvious forms break on real titles:
+  # a bare /\([^)]*\)/ takes the LEFTMOST parenthesis group, so a title carrying
+  # its own parentheses ("... (assert_not_grep) は…") yields a title fragment as
+  # the path (54 of 362 live rows), and /\[[^]]*\]/ stops at the first `]`, so a
+  # title containing brackets ("[CONTEXT] sentinel", "`[[:cntrl:]]`") loses its
+  # tail and the target with it (4 more rows).
+  function link_target(link,   t) {
+    t = ""
+    if (match(link, /\]\([^)]*\)$/)) t = substr(link, RSTART + 2, RLENGTH - 3)
+    return t
+  }
+  function link_text(link,   t) {
+    t = ""
+    if (match(link, /^\[.*\]\(/)) t = substr(link, 2, RLENGTH - 3)
+    return t
+  }
+  function emit(title, path, desc) {
+    if (path == "" || index(path, "pages/") == 0) {
+      # A row that carries a registration link but produced no candidate is a
+      # parse failure, not a header row — count it so the partial loss is
+      # reported instead of silently shrinking the corpus.
+      if (index($0, "](pages/") > 0) {
+        dropped++
+        if (dropped <= 3) dropped_sample[dropped] = substr($0, 1, 110)
+      }
+      return
+    }
+    gsub(/\001/, "|", title); gsub(/\001/, "|", desc)      # restore protected pipes
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", title)
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", desc)
+    printf "%s\037%s\037%s\n", title, path, desc
+  }
+  # Anchored at line start: an unanchored /<!--/ also fires on rows that merely
+  # quote the comment syntax inside a cell, swallowing real entries.
+  /^[[:space:]]*<!--/ { in_comment=1 }
   in_comment { if (index($0, "-->") > 0) in_comment=0; next }
+  /^[[:space:]]*\|/ {
+    line = $0
+    if (line ~ /^[[:space:]]*\|[[:space:]]*:?-+:?[[:space:]]*\|/) next   # separator row
+    gsub(/\\\|/, "\001", line)
+    line = protect_code_span_pipes(line)
+    sub(/^[[:space:]]*\|/, "", line); sub(/\|[[:space:]]*$/, "", line)
+    n = split(line, cells, "|")
+    # The catalog contract is exactly 5 columns, so any other count means the
+    # row did not split where the writer intended. Route through emit() rather
+    # than `next` so the drop counter sees it: skipping here would make a
+    # miscounted row the one shape that vanishes with neither stdout nor a
+    # warning. `n > 5` matters as much as `n < 3` — an unescaped pipe in the
+    # summary silently truncates that cell, so the page still renders but with
+    # more than half its text gone. Re-joining the cells would paper over a
+    # writer-side escape violation instead of surfacing it.
+    if (n != 5) { emit("", "", ""); next }
+    title = ""; path = ""
+    if (match(cells[1], /\[([^]]|\][^(])*\]\([^)]*\)/)) {
+      link = substr(cells[1], RSTART, RLENGTH)
+      title = link_text(link)
+      path = link_target(link)
+    }
+    emit(title, path, cells[3])
+    next
+  }
   /^[[:space:]]*[*-][[:space:]]+\[/ {
     line = $0
     title = ""; path = ""; desc = ""
-    if (match(line, /\[[^]]*\]\([^)]*\)/)) {
+    if (match(line, /\[([^]]|\][^(])*\]\([^)]*\)/)) {
       link = substr(line, RSTART, RLENGTH)
       rest = substr(line, RSTART + RLENGTH)   # text after the markdown link
-      if (match(link, /\[[^]]*\]/)) title = substr(link, RSTART + 1, RLENGTH - 2)
-      if (match(link, /\([^)]*\)/)) path  = substr(link, RSTART + 1, RLENGTH - 2)
+      title = link_text(link)
+      path = link_target(link)
       # description = text after the " - " separator following the link
       if (match(rest, /^[[:space:]]*-[[:space:]]+/)) {
         desc = substr(rest, RSTART + RLENGTH)
       }
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", desc)
     }
-    if (path == "" || index(path, "pages/") == 0) next  # skip non-page / malformed
-    printf "%s\037%s\037%s\n", title, path, desc
+    emit(title, path, desc)
+  }
+  END {
+    # Written to a file, not straight to stderr: the samples are raw index bytes
+    # and every other diagnostic in this script routes them through
+    # neutralize_ctrl first. Emitting here would put ESC/OSC sequences on the
+    # developer terminal, and the parity test that pins that rule anchors on the
+    # `head ... | neutralize_ctrl` shape, so an awk-internal write slips past it.
+    if (dropped > 0 && dropmeta != "") {
+      printf "%d\n", dropped > dropmeta
+      for (i = 1; i <= dropped && i <= 3; i++) printf "%s\n", dropped_sample[i] > dropmeta
+    }
   }
 ')
 
+# Render the partial-drop report: fixed Japanese text straight to stderr, raw
+# index samples only after neutralize_ctrl (same idiom as the other diagnostics
+# in this file). Samples degrade to `?` for multibyte content — the documented
+# trade-off in control-char-neutralize.sh.
+if [[ -n "$_drop_meta" && -s "$_drop_meta" ]]; then
+  _drop_n=$(head -1 "$_drop_meta")
+  echo "WARNING: index.md の ${_drop_n} 行が登録リンク (](pages/...)) を持ちながら候補になりませんでした" >&2
+  tail -n +2 "$_drop_meta" | neutralize_ctrl --keep-newline | sed 's/^/    /' >&2
+  echo "  カタログ行の形状が Pass 1 の想定 (5 列テーブル / OKF 箇条書き) と異なる可能性があります" >&2
+fi
+
 if [[ -z "$candidates" ]]; then
+  # Separate "the catalog has entries this parser cannot read" from "the wiki has
+  # no pages yet". Both exit 0 with no stdout, so without this the first case is
+  # indistinguishable from a legitimately empty wiki and a format drift stays
+  # invisible for as long as it lasts.
+  #
+  # Comment blocks are dropped with the SAME rule Pass 1 uses (line-anchored
+  # start, closed on the first `-->`), not `sed '/<!--/,/-->/d'`: sed's range
+  # treats a self-closing `<!-- ... -->` as a range START and deletes on to the
+  # next `-->`, which removed 41 live rows from the live index. Two different
+  # comment semantics in one file make the guard inspect a different corpus than
+  # the parser it guards.
+  #
+  # Captured into a variable rather than piped into `grep -q`: grep exits at the
+  # first match, the upstream writer dies of SIGPIPE, and `set -o pipefail` turns
+  # that into rc=141 so the `if` reads false and the WARNING never prints. That
+  # only happens past the pipe buffer — measured silent above ~89 KB, and the
+  # live index is 375 KB, so the guard was dead exactly at the scale that needs
+  # it. Same failure class this PR fixes in read_page_meta below.
+  stripped=$(awk '
+    /^[[:space:]]*<!--/ { in_comment=1 }
+    in_comment { if (index($0, "-->") > 0) in_comment=0; next }
+    { print }
+  ' <<< "$index_content")
+  if grep -q '](pages/' <<< "$stripped"; then
+    echo "WARNING: .rite/wiki/index.md に登録リンク (](pages/...)) を含む行がありますが、候補を 1 件も抽出できませんでした" >&2
+    echo "  カタログの形式が Pass 1 の対応形式 (5 列テーブル / OKF 箇条書き) と異なる可能性があります" >&2
+    # Also on stdout. Five of the six callers invoke this script with
+    # `2>/dev/null` (pr-review, fix, issue-implement, issue-create, unknowns);
+    # only the manual `/rite:wiki-query` path keeps stderr. So in every path
+    # that runs inside a workflow the line above reaches nobody — and an empty
+    # stdout is exactly
+    # what "no matching pages" looks like, which is the misattribution this
+    # guard exists to break. One line, marked as a notice rather than content,
+    # so a reader of the injected block can tell the wiki was not consulted.
+    printf '> ⚠️ Wiki index に登録行がありますが、そこから候補を抽出できませんでした（カタログ形式が Pass 1 の対応形式と異なる可能性）。今回、Wiki 経験則は注入されていません。\n'
+  fi
   exit 0
 fi
 
@@ -383,7 +535,12 @@ read_page_meta() {
     body=$(cat ".rite/wiki/${p}" 2>/dev/null) || return 1
   fi
   [[ -z "$body" ]] && return 1
-  printf '%s\n' "$body" | awk '
+  # here-string, not `printf | awk`: the awk below exits at the frontmatter
+  # terminator, so on a page whose body exceeds the pipe buffer the writer is
+  # still mid-write and dies of SIGPIPE. Under `set -o pipefail` that makes the
+  # pipeline return 141 and the caller reports a perfectly readable page as
+  # unreadable. Measured on a 61 KB page (rc=141) against a 14 KB page (rc=0).
+  awk '
     BEGIN { d=""; c=""; u=""; infm=0 }
     NR == 1 && /^---[[:space:]]*$/ { infm=1; next }
     infm && /^---[[:space:]]*$/ { exit }
@@ -391,7 +548,7 @@ read_page_meta() {
     infm && /^confidence:/ { v=$0; sub(/^confidence:[[:space:]]*/,"",v); gsub(/^["'\'']|["'\'']$/,"",v); c=v }
     infm && /^updated:/    { v=$0; sub(/^updated:[[:space:]]*/,"",v);    gsub(/^["'\'']|["'\'']$/,"",v); u=v }
     END { printf "%s\037%s\037%s", d, c, u }
-  '
+  ' <<< "$body"
 }
 
 # --- Pass 2 + Score ---
@@ -399,6 +556,18 @@ read_page_meta() {
 # updated, then count case-insensitive substring matches across
 # title + domain + description for each keyword. Weight by confidence.
 IFS=',' read -r -a kw_array <<< "$KEYWORDS"
+
+# Normalize the keywords once, not once per candidate. Pass 1 now yields the
+# whole catalog (360 candidates on the live wiki when measured, up from 0 before
+# table support),
+# so anything inside the loop is multiplied by the corpus size: the per-candidate
+# `sed`+`tr` alone cost 7,220 subprocesses for 10 keywords, and the query went
+# from 0.04 s to 13.2 s.
+kw_norm=()
+for kw in "${kw_array[@]}"; do
+  kw_trim=$(printf '%s' "$kw" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
+  [[ -n "$kw_trim" ]] && kw_norm+=("$kw_trim")
+done
 
 # Build scored list: "score<US>title<US>path<US>domain<US>summary<US>updated<US>confidence"
 # (`summary` slot carries the OKF index description, keeping the render section
@@ -410,29 +579,25 @@ while IFS=$'\x1f' read -r title path description; do
   # page is unreadable (stale index → page drift) is skipped with a WARNING and
   # the remaining candidates still render (AC-8).
   if ! meta=$(read_page_meta "$path"); then
-    echo "WARNING: cannot read frontmatter of ${path} — skipping candidate (index.md may be stale)" >&2
+    # `path` comes from index.md too, so it goes through the same neutralizer as
+    # the drop samples above (this site became reachable for 360 candidates once
+    # table rows started producing candidates).
+    printf 'WARNING: cannot read frontmatter of %s - skipping candidate (index.md may be stale)\n' "$path" \
+      | neutralize_ctrl --keep-newline >&2
     continue
   fi
   IFS=$'\x1f' read -r domain confidence updated <<< "$meta"
   [[ -z "$confidence" ]] && confidence="medium"  # default mirrors page-template.md
   haystack=$(printf '%s %s %s' "$title" "$domain" "$description" | tr '[:upper:]' '[:lower:]')
   raw_score=0
-  for kw in "${kw_array[@]}"; do
-    kw_trim=$(printf '%s' "$kw" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
-    [[ -z "$kw_trim" ]] && continue
-    # Count occurrences (portable: awk)
-    count=$(printf '%s' "$haystack" | awk -v k="$kw_trim" '
-      BEGIN { n = 0 }
-      {
-        s = $0
-        while ((i = index(s, k)) > 0) { n++; s = substr(s, i + length(k)) }
-      }
-      END { print n }
-    ')
-    # Defensive default: an awk failure returns empty under `set -u` without
-    # `-e`, and the following arithmetic would break. Normalize empty to 0.
-    count=${count:-0}
-    raw_score=$((raw_score + count))
+  for kw_trim in "${kw_norm[@]}"; do
+    # Counted in-shell rather than by spawning awk per keyword per candidate:
+    # same substring semantics, no subprocess in the hot loop.
+    rest="$haystack"
+    while [[ "$rest" == *"$kw_trim"* ]]; do
+      raw_score=$((raw_score + 1))
+      rest="${rest#*"$kw_trim"}"
+    done
   done
 
   # Confidence weight (integer math ×10 to avoid floats)

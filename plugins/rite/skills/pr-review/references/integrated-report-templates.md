@@ -17,6 +17,36 @@
 - **推奨**: {マージ可 / マージ不可（指摘あり） / 修正必要}
 - **レビュアー数**: {count}人
 - **変更規模**: {additions}+ / {deletions}- ({changedFiles} files)
+- **起動の直列化**: {ステップ 4.6 の SPAWN_SPREAD 判定。marker の値は `spread=703s` のように単位付きなのでそのまま埋める。`serialized` のとき `検出（spawn spread {spread} > 閾値 {threshold}）` / `undetermined` のとき `計測不能（reason={reason}）` / 計測不能を伴う `parallel` のとき `なし（{measured}/{reviewers} 名のみ計測）`。`serialized` かつ `measured < reviewers` のときは検出表記の末尾に `、{measured}/{reviewers} 名のみ計測` を足す。全員分が揃い閾値内だった場合は本行ごと省略する}
+
+### レビュー範囲（cycle 2+ 差分スコープ）（該当がある場合のみ）
+<!-- REVIEW_CYCLE_SCOPE == incremental のときのみ表示。full のときは本セクションごと省略する。
+     E2E フローでも省略禁止 — cycle 2+ は E2E からしか発生しないため、ここを minimize すると
+     観測性の要求が空文になる（SoT: cycle-scope.md §選抜結果の記録を E2E で省略しない理由）。 -->
+
+- **スコープ**: 差分（`{cycle_base_sha}`..HEAD） — 未変更部は cycle 1 のフルレビューで審査済み
+- **起動した reviewer**: {selected_reviewers_with_reason}
+- **今サイクルはスキップした reviewer**: {skipped_reviewers_with_reason}
+
+| reviewer | 今サイクル | 理由 |
+|----------|-----------|------|
+| {type} | 起動 / スキップ | 前サイクル finder（mandatory 合流）/ fix diff の領域担当（{matched_file_count} ファイル）/ fix diff に該当ファイルなし |
+
+### レビューレーン（XS/S 軽量レーン）（該当がある場合のみ）
+<!-- COMPLEXITY_LANE == light のときのみ表示。full のときは本セクションごと省略する。
+     E2E フローでも省略禁止 — 本機能の主対象である Scenario 1（XS が 1 サイクル収束して
+     自律マージされる）は E2E ループでしか起きず、そこを minimize すると「何名スキップし
+     何を軽量化したか」が人間に届く唯一の同期経路が消える
+     （SoT: complexity-lane.md §選抜結果の記録を E2E で省略しない理由）。 -->
+
+- **レーン**: 軽量（Issue #{issue_number} の宣言 Complexity: {complexity}） — reviewer 上限 {effective_max}
+- **軽量化した検証 mandate**: 全スイートの sandbox 複製実行と mutation 実験を実施せず、touched テストの実行までとした
+- **不変**: 指摘の採否基準（4 必須自問 / Confidence / Observed Likelihood / 実測アンカー）、Cross-File Impact Check、実測必須ゲート、帰結クラス分類
+- **レーンによりスキップした reviewer**: {lane_skipped_reviewers_with_reason}
+
+| reviewer | 今サイクル | 理由 |
+|----------|-----------|------|
+| {type} | 起動 / スキップ | 領域担当（{matched_file_count} ファイル）/ 軽量レーンの上限 {effective_max} により除外（relevance 下位） |
 
 ### レビュアー合意状況
 
@@ -112,6 +142,7 @@
 | Retry 回数サマリー | {verification_post_condition_retry_summary} | per-reviewer retry counter の集計 |
 
 **影響**: `verification_post_condition == warning` または `error` の場合、該当 reviewer の指摘は全件 blocking 扱いとなり、総合評価は **`修正必要`** に昇格する。
+ここでの「全件 blocking 扱い」は verification-mode / severity 軸での降格を禁止する意味であり、ステップ 5.3.0.M の実測必須ゲートは orthogonal に後段で適用される (`Verification:` アンカーを持たない指摘は non-blocking に分類され `total_findings` から外れる)。escalation は総合評価を昇格させるが sentinel routing は `total_findings` が確定させる (詳細は pr-review/SKILL.md ステップ 5.1.1.1 の「escalation の効力範囲」注記)。
 
 
 ### 全指摘事項
@@ -145,6 +176,28 @@
 |---------|-------|------------|------|---------|
 | {severity} | 推奨事項 / （削除） | {file:line} | {description} | Likelihood-Evidence marker 未提示 / LOW × Hypothetical は報告禁止 |
 
+### Guardrail 監査ログ（該当がある場合のみ）
+<!-- reviewer の `### 監査ログ` から収集した Category #2 行がある場合のみ表示。0 件なら省略。
+ audit-only で評価・finding 件数・merge 判定には影響しない。既定 post_comment:false でも人間が確認できるよう、
+ guardrail_audit_count > 0 のとき E2E でも省略禁止。永続 JSON の guardrail_audit_log[] と同じ集合を描画する。 -->
+
+| レビュアー | Filter Category | 元重要度 | ファイル:行 | 除外した内容 | 除外理由 | 実測 |
+|-----------|-----------------|----------|------------|--------------|----------|------|
+| {reviewer} | Category #2 | {original_severity} | {file_line} | {description} | {filter_reason} | {verification or なし} |
+
+### 実測なし指摘 (non-blocking)（該当がある場合のみ）
+<!-- ステップ 5.3.0.M 実測必須ゲート / ステップ 5.3.0.C 帰結クラス降格政策で non-blocking に分類された non_blocking_findings がある場合のみ表示。0件の場合はこのセクション自体を省略。
+ blocking ではない (mergeable countdown 対象外)。severity は明示する (非実測 CRITICAL/HIGH の人間可視化)。
+ demotion キーを持つ要素 (class B 降格分) は 内容 セルの先頭に [class B 降格: {demotion.reason}] を併記する (列は追加しない — fix 側の 6 列パース保護)。
+ 記録先は 4 経路 (永続 JSON の non_blocking_findings[] / ステップ 6.1.d の PR 記録コメント / 本 section / E2E output line の件数 suffix) で破棄経路は存在しない。
+ 本 section は E2E でも省略禁止 (non_blocking_count > 0 のとき)。
+ 両 template (full mode / verification mode) で同一内容で同期すること (drift 防止) -->
+
+
+| レビュアー | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|-----------|--------|----------|------------|------|---------|
+| {reviewer_type} | {severity} | {scope} | {file:line} | {description} | {suggestion} |
+
 ### 調査推奨（該当がある場合のみ）
 <!-- ステップ 5.1 で収集した investigation_suggestions がある場合のみ表示。blocking ではない。0件の場合はこのセクション自体を省略。
  両 template (full mode / verification mode) で同一内容で同期すること (drift 防止)。
@@ -171,11 +224,21 @@
 ```markdown
 ## 📜 rite レビュー結果
 
+### Guardrail 監査ログ（該当がある場合のみ）
+<!-- reviewer の `### 監査ログ` から収集した Category #2 行がある場合のみ表示。0 件なら省略。
+ audit-only で評価・finding 件数・merge 判定には影響しない。既定 post_comment:false でも人間が確認できるよう、
+ guardrail_audit_count > 0 のとき E2E でも省略禁止。永続 JSON の guardrail_audit_log[] と同じ集合を描画する。 -->
+
+| レビュアー | Filter Category | 元重要度 | ファイル:行 | 除外した内容 | 除外理由 | 実測 |
+|-----------|-----------------|----------|------------|--------------|----------|------|
+| {reviewer} | Category #2 | {original_severity} | {file_line} | {description} | {filter_reason} | {verification or なし} |
+
 ### 総合評価
 - **推奨**: {マージ可 / マージ不可（指摘あり） / 修正必要}
 - **レビューモード**: 検証 + フル
 - **レビュアー数**: {count}人
 - **変更規模**: {additions}+ / {deletions}- ({changedFiles} files)
+- **起動の直列化**: {ステップ 4.6 の SPAWN_SPREAD 判定。marker の値は `spread=703s` のように単位付きなのでそのまま埋める。`serialized` のとき `検出（spawn spread {spread} > 閾値 {threshold}）` / `undetermined` のとき `計測不能（reason={reason}）` / 計測不能を伴う `parallel` のとき `なし（{measured}/{reviewers} 名のみ計測）`。`serialized` かつ `measured < reviewers` のときは検出表記の末尾に `、{measured}/{reviewers} 名のみ計測` を足す。全員分が揃い閾値内だった場合は本行ごと省略する}
 
 ### 修正検証サマリー
 
@@ -186,6 +249,15 @@
 | NOT_FIXED（未修正） | {not_fixed_count} |
 | PARTIAL（部分修正） | {partial_count} |
 | リグレッション（新規） | {regression_count} |
+
+### レビューレーン（XS/S 軽量レーン）（該当がある場合のみ）
+<!-- full mode template と同一。COMPLEXITY_LANE == light のときのみ表示し full では省略する。
+     描画条件は review_mode に依存しないため、verification mode でも同じ section を持つ。 -->
+
+- **レーン**: 軽量（Issue #{issue_number} の宣言 Complexity: {complexity}） — reviewer 上限 {effective_max}
+- **軽量化した検証 mandate**: 全スイートの sandbox 複製実行と mutation 実験を実施せず、touched テストの実行までとした
+- **不変**: 指摘の採否基準（4 必須自問 / Confidence / Observed Likelihood / 実測アンカー）、Cross-File Impact Check、実測必須ゲート、帰結クラス分類
+- **レーンによりスキップした reviewer**: {lane_skipped_reviewers_with_reason}
 
 ### レビュアー合意状況
 
@@ -290,6 +362,7 @@
 | Retry 回数サマリー | {verification_post_condition_retry_summary} | per-reviewer retry counter の集計 |
 
 **影響**: `verification_post_condition == warning` または `error` の場合、該当 reviewer の指摘は全件 blocking 扱いとなり、総合評価は **`修正必要`** に昇格する。
+ここでの「全件 blocking 扱い」は verification-mode / severity 軸での降格を禁止する意味であり、ステップ 5.3.0.M の実測必須ゲートは orthogonal に後段で適用される (`Verification:` アンカーを持たない指摘は non-blocking に分類され `total_findings` から外れる)。escalation は総合評価を昇格させるが sentinel routing は `total_findings` が確定させる (詳細は pr-review/SKILL.md ステップ 5.1.1.1 の「escalation の効力範囲」注記)。
 
 
 ### 全指摘事項
@@ -322,6 +395,19 @@
 | 元重要度 | 降格後 | ファイル:行 | 内容 | 降格理由 |
 |---------|-------|------------|------|---------|
 | {severity} | 推奨事項 / （削除） | {file:line} | {description} | Likelihood-Evidence marker 未提示 / LOW × Hypothetical は報告禁止 |
+
+### 実測なし指摘 (non-blocking)（該当がある場合のみ）
+<!-- ステップ 5.3.0.M 実測必須ゲート / ステップ 5.3.0.C 帰結クラス降格政策で non-blocking に分類された non_blocking_findings がある場合のみ表示。0件の場合はこのセクション自体を省略。
+ blocking ではない (mergeable countdown 対象外)。severity は明示する (非実測 CRITICAL/HIGH の人間可視化)。
+ demotion キーを持つ要素 (class B 降格分) は 内容 セルの先頭に [class B 降格: {demotion.reason}] を併記する (列は追加しない — fix 側の 6 列パース保護)。
+ 記録先は 4 経路 (永続 JSON の non_blocking_findings[] / ステップ 6.1.d の PR 記録コメント / 本 section / E2E output line の件数 suffix) で破棄経路は存在しない。
+ 本 section は E2E でも省略禁止 (non_blocking_count > 0 のとき)。
+ 両 template (full mode / verification mode) で同一内容で同期すること (drift 防止) -->
+
+
+| レビュアー | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|-----------|--------|----------|------------|------|---------|
+| {reviewer_type} | {severity} | {scope} | {file:line} | {description} | {suggestion} |
 
 ### 調査推奨（該当がある場合のみ）
 <!-- ステップ 5.1 で収集した investigation_suggestions がある場合のみ表示。blocking ではない。0件の場合はこのセクション自体を省略。

@@ -35,13 +35,13 @@ rite workflow のスキル間連携は、各 sub-skill が bash 出力に埋め�
 | `[merge:not-ready]` | merge | batch-run | PR が draft または mergeable でないため merge 不可 |
 | `[merge:error]` | merge | batch-run | merge 実行中にエラー発生 |
 | `[cleanup:returned-to-caller]` | cleanup | batch-run | クリーンアップ完了、caller へ制御を返す |
-| `[cleanup:outstanding:N]` | cleanup | batch-run | 完了報告の「未完了事項」件数（N 件、0 も明示）。batch-run は N>0 のとき run-queue の `outstanding[]` に記録する（Issue #1946） |
+| `[cleanup:outstanding:N]` | cleanup | batch-run | 完了報告の「未完了事項」件数（N 件、0 も明示）。batch-run は N>0 のとき run-queue の `outstanding[]` に記録する |
 | `[ingest:returned-to-caller]` | wiki-ingest | (caller の turn 継続マーカー、literal consumer なし) | Wiki ingest 完了。cleanup 側は本 sentinel を literal grep で consume せず、独自の `[CONTEXT] WIKI_INGEST_DONE/FAILED` 等で成否判定する。sentinel 自体は turn-boundary heuristic 誤発火を防ぐ active disambiguation 目的 |
 | `[create:returned-to-caller:N]` | issue-create | (terminal、consumer なし) | Issue #N 作成完了。issue-create は他 skill から呼ばれない flat workflow のため、caller への継続ルーティングは持たない terminal sentinel |
 | `[pr:created:N]` | pr-create | open, recover, batch-run | PR #N を作成完了 |
 | `[pr-create-failed]` | pr-create | open, batch-run | PR 作成に失敗 |
-| `[iterate:max-cycles-reached]` | iterate | batch-run | review⇄fix ループが `safety.max_cycles` の上限に到達 |
-| `[iterate:max-cycles-stopped]` | iterate | (iterate 内部完結) | 上限到達によりループを停止した最終状態表示 |
+| `[iterate:max-cycles-reached]` | iterate | batch-run | review⇄fix ループのサーキットブレーカーが発火（収束トレンドの発散検出、または `safety.max_review_cycles` 到達 = backstop）。**sentinel は発火理由に依らず同一 literal**（batch は理由を問わず failed 記録するため） |
+| `[iterate:max-cycles-stopped]` | iterate | (iterate 内部完結) | サーキットブレーカー発火（発散検出 または `safety.max_review_cycles` backstop）でループを停止した最終状態表示。理由は停止通知の「理由」行が担う |
 | `[run:all-completed]` | batch-run | (batch-run 内部完結、最終出力) | バッチ処理対象の全 Issue が完了 |
 | `[run:stopped]` | batch-run | (batch-run 内部完結、最終出力) | サーキットブレーカー等でバッチ処理を中断 |
 | `[projects:fetch-failed]` | issue-list | (issue-list 内部完結) | GitHub Projects からのフィールド取得に失敗 |

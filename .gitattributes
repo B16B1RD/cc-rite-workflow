@@ -1,0 +1,8 @@
+# Normalize line endings on checkin so the repository stores LF regardless of
+# the contributor's platform or core.autocrlf setting.
+* text=auto
+
+# Shell scripts must check out with LF even on Windows (core.autocrlf=true):
+# bash aborts with "\r: command not found" style errors on CRLF line endings,
+# and rite is installed via git clone, so a CRLF checkout would break every hook.
+*.sh text eol=lf

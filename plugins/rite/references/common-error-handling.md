@@ -63,6 +63,30 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 {operation} をスキップします
 ```
 
+## Environment Workaround Output Posture (canonical)
+
+<a id="environment-workaround-output-posture"></a>
+
+環境起因の制約への対処（sandbox 迂回・`dangerouslyDisableSandbox` 再実行・egress プロキシ断のリトライ・検証の代替経路など）の **人間向け出力姿勢** を定義する。本文は本セクションのみを SoT とする。各スキルは本規則を複製せず、1 行参照に留める（drift 防止）。
+
+**規則**:
+
+| 条件 | 人間向け出力 |
+|------|-------------|
+| **(a) 成功** — 迂回・リトライ・代替経路の結果、処理が完了した | **無言**。完了報告・進捗表示に迂回の前置き・背景解説・仕組みの説明を含めない（「サンドボックスの制約を先に共有します」等の定型前置きを含む） |
+| **(b) 失敗** — 対処しても失敗が残り、人間の行動が必要 | **行動可能な 1 行のみ**（何をすればよいか）。プロキシの仕組み・診断過程・環境の背景説明は書かない |
+| **(c) 機械可読経路** | `[CONTEXT]` marker は従来どおり emit する（監査・後段 routing 用。本規則は人間向け散文のみを対象とする） |
+
+ユーザー可視メッセージには rite 開発リポジトリ固有の Issue / PR 番号を出さず、番号が担っていた理由・条件・対処を自己完結した文で示す。番号の出所は commit / PR body に置く。
+
+**不変条件**:
+
+- **fail-loud は不変** — 沈黙化するのは「成功した迂回の説明」であって、失敗の隠蔽ではない
+- **権限ゲート自体は対象外** — `dangerouslyDisableSandbox` の確認 UI 等は Claude Code の管轄。本規則は narration（説明文）のみ
+- **対処の機構は別 Issue** — リトライ回数・代替経路の実装は各スキル / helper が持つ（例: cleanup は ls-remote の一時的失敗に対して 1 回だけ再試行する）。本規則は「成功後にそれをどう語るか」だけを規定する
+
+**適用対象（優先）**: ネットワーク git / sandbox 迂回を行うスキル（`cleanup` / `merge` / `ready` / `iterate` / `open` / `batch-run` 等）。新規スキルで同様の迂回を行う場合も本セクションを 1 行参照すること。
+
 ## Non-blocking Contract (canonical 定義)
 
 「Non-blocking Contract」とは、特定の sub-phase の失敗が **upstream phase 全体を失敗扱いにしない** ことを保証する設計上の契約。`/rite:pr-review` ステップ 6.1.a (ローカル JSON 保存) や `/rite:cleanup` ステップ 6 (review 結果ファイル削除、旧 Phase 2.5) など複数 phase で参照される。両方とも本セクションの定義を SoT とすること。
@@ -75,10 +99,12 @@ When Projects-related API calls fail, display a warning and continue. Projects o
 | **retained flag emit** | `[CONTEXT] {SCOPE}_FAILED=1; reason={reason}` を stderr に必ず emit する。reason 値は各 phase の reason 表で列挙される |
 | **IO エラーの可視化** | ファイル不在は silent no-op で OK だが、`rm` / `mkdir` / `mv` 等の **真の IO 失敗** (permission denied / disk full / readonly filesystem) は WARNING + stderr 5 行以上で必ず可視化する。`2>/dev/null` 等の silent suppression は禁止 |
 | **ステップ全体の exit code** | 本 sub-phase 単独の失敗では ステップ全体の exit code を変更しない。downstream の ステップ は retained flag を見て分岐する |
+| **判定値と emit 可否の分離 (carve-out)** | 本契約が保証するのは **判定値 (`overall_assessment` 等) を変えない**ことであって、**その判定値を result pattern として emit してよいか**までは保証しない。記録・保存の失敗のうち caller が入力を作り直せば収束するものは、判定値を変えないまま pending marker を残し、後段の gate が emit を差し戻すことがある。**caller 起因の**差し戻しは 1 iteration で収束するため retry 上限を持たない。どの reason が marker を残すか・その exit code・sub-phase 間の非対称は下記「適用箇所」を参照 (6.1.a と 6.1.d で異なる) |
 | **observability emit の必須化** | 異常終了経路 (signal trap 経由含む) でも `[CONTEXT]` flag が emit されるよう、trap handler 内で flag emit を行う (skip notification phase が flag を読む前提で動作する) |
 
 **適用箇所**:
-- `/rite:pr-review` ステップ 6.1.a (Local JSON File Save)
+- `/rite:pr-review` ステップ 6.1.a (Local JSON File Save — 15 種の `LOCAL_SAVE_FAILED` reason のうち **14 種は `exit 0`** の完全な非ブロッキング。`signal_aborted` のみ signal trap 由来で rc=130/143/129 を返すが、reason emit と marker 削除は他 14 種と同一 (ステップ 6 の exit code は 6.1.c が決める)。**save-pending marker は保存の成否に依らず EXIT trap で削除する** — 成功時のみ削除すると本契約が ステップ 8.0.4 経由で blocking gate に化ける。marker path は caller から受け取らず `--pending-id` から helper 内で導出するため、caller 由来の任意 path が削除対象になる経路そのものが存在しない。marker が残るのは (i) trap 設置**前**の `exit 1` (`--content-file` 未指定 / unknown option) と `--pending-id` の形状違反で path を導出できなかった場合、(ii) `rm` 自体が失敗した場合の 2 群。(i) は caller 側を直せば 1 iteration で収束するのに対し、(ii) は環境起因で再実行では収束せず手動削除を要する。**`--pr` 欠落 / 非数値 (`pr_number_placeholder_residue`) と `--content-file` 不在 (`write_failure`) は marker を残さない** — どちらの gate も trap 設置**後**の `exit 0` のため marker は削除され、可視化は 6.1.c ケース 2 が担う。直下の 6.1.d はこの 2 つに対応する `pr_number_placeholder_residue` / `content_file_missing` をいずれも exit-1 + marker 残存の群に置くため、**6.1.a はこの 2 点で非対称**)
+- `/rite:pr-review` ステップ 6.1.d (非実測指摘の PR コメント記録 — **2 群で帰結が異なる**。gh / IO 失敗 (`patch_failed` / `create_failed` / lookup degraded / `body_check_unavailable`) と signal 中断 (`signal_aborted`) は完全に非ブロッキングで、pending marker も削除する。本文不備 4 種 (`body_file_empty` / `body_marker_missing` / `body_sentinel_missing` / `count_body_mismatch`) は `exit 0` かつ `overall_assessment` 不変だが **pending marker を保持し ステップ 8.0.3 が result pattern の emit を差し戻す** (caller 契約違反の再試行で 1 iteration 収束)。placeholder residue 5 種 + `content_file_missing` + `unknown_option` の 7 種は caller 契約違反として `exit 1` し、同じく marker が残る。**marker 削除自体の `rm` 失敗は上記いずれとも別群**で、marker が残り 8.0.3 が差し戻す — 環境起因のため再実行では収束せず手動削除を要する。6.1.a と異なり helper 側の検出・WARNING は無く無音で起きる)
 - `/rite:cleanup` ステップ 6 (Review Results File Cleanup、旧 Phase 2.5)
 - 将来追加される sub-phase で「失敗しても upstream を kill しない」契約が必要なものは本セクションを参照すること
 
@@ -151,17 +177,38 @@ and (.findings | type == "array")
 
 **Source検証**: [jq Manual](https://jqlang.org/manual/) — "false and null are considered 'false values', and anything else is a 'true value'. Everything else is 'true', even the number zero and the empty string, array and object." (`jq --help` or interactive `jq .` で確認可能)
 
+**merge ゲート必須キーの validation (ステップ 6.1.a のみ追加検証)**: 本 canonical snippet に加えて ステップ 6.1.a では `verdict` (`mergeable` / `fix-needed` の 2 値 enum) と `reviewers[]` (重複の無い非空配列) も検証し、欠落・不正を同じ `schema_required_fields_missing` で拒否する。merge ゲート (`hooks/pre-tool-bash-guard.sh`) がこの 2 キーを読むため、write 側で満たしていない JSON は保存しても merge できない。本 snippet 側を 3 件のまま据え置くのは、read 側 3 サイト (fix.md Priority 0 / 2 / 3) が書込済み JSON を信頼する設計で、snippet を広げると read 側が誤って厳格化されるため。契約の SoT は [review-result-schema.md §verdict と reviewers](./review-result-schema.md#verdict-と-reviewers)。
+
 **Finding ID validation (ステップ 6.1.a のみ追加検証)**: 本 canonical snippet に加えて ステップ 6.1.a では finding id の書式 (`^F-[0-9]{2,}$`) と一意性も検証する。これは write 側 (pr-review.md) でのみ enforce される「生成規則」であり、read 側 (fix.md) では既に書き込まれた JSON を信頼するため検証不要。
 
+検証は **2 段**に分かれる。`findings[]` 側の欠陥のみが hard fail (`JSON_SAVED=false`) で、`non_blocking_findings[]` 側に閉じた欠陥は非ブロッキング marker に落とす — advisory な監査記録の欠陥を理由に blocking findings ごと保存を失う fail-unsafe を避けるため (review-result-schema.md §non_blocking_findings 配列)。
+
 ```jq
+# (1) findings[] 側 — hard fail (reason=finding_id_format_or_uniqueness_violation)
+# 左辺は括弧で束縛する。`[.findings[].id] | unique | length == (.findings | length)` と書くと
+# パイプ後の `.` が unique 済み配列になり "Cannot index array with string findings" で rc=5 になる
 (.findings | length == 0)
 or (
   (.findings | all(.id? // "" | test("^F-[0-9]{2,}$")))
-  and ([.findings[].id] | unique | length == (.findings | length))
+  and (([.findings[].id] | unique | length) == (.findings | length))
 )
 ```
 
-Failure reason: `finding_id_format_or_uniqueness_violation`
+```jq
+# (2) 和集合 (findings[] ∪ non_blocking_findings[]) — 非ブロッキング
+#     marker: NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION
+# 非配列は空配列に畳む ($nb)。畳まないと length が非 0 になる型 ("abc"→3 / 3→3 / {"a":1}→1) が
+# $total を水増しし、非ブロッキングと宣言した経路が型によって hard fail に化ける
+((if (.non_blocking_findings | type) == "array" then .non_blocking_findings else [] end)) as $nb
+| ((.findings | length) + ($nb | length)) as $total
+| ($total == 0)
+or (
+  ([(.findings[]?, $nb[])] | all(.id? // "" | test("^F-[0-9]{2,}$")))
+  and (([(.findings[]?, $nb[]) | .id] | unique | length) == $total)
+)
+```
+
+Failure reason: `finding_id_format_or_uniqueness_violation` ((1) のみ。(2) は reason ではなく observability marker)
 
 ## Hook Lock-Contention Classification (canonical)
 

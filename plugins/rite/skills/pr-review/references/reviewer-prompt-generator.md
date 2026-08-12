@@ -2,11 +2,23 @@
 
 `/rite:pr-review` ステップ 4.5 で各 reviewer agent に渡す通常レビュー指示のテンプレート。SKILL.md 側の「Placeholder embedding method」表に従い `{placeholder}` を埋めて使用する。
 
-```
+````
 PR #{number}: {title} のレビューを {reviewer_type} として実行してください。
+
+## 起動時刻の記録（レビュー着手前に実行）
+
+レビュー作業に着手する**前に** Bash で `date -u +%Y-%m-%dT%H:%M:%SZ` を 1 回だけ実行し、その出力をそのまま下記「出力フォーマット」の `### 起動時刻` セクションに書いてください。これは全 reviewer が並列に起動したかを事後に観測するための計測値で、レビューの深さ・所要時間・指摘の採否には一切影響しません（測るだけで、あなたの作業を制約しません）。取得できなかった場合は `started_at: 計測不能` と書き、**セクション自体は省略しないでください**（欠落を無言にすると、直列化していたのか計測に失敗したのかを後から区別できなくなります）。
 
 ## 変更概要
 {change_intelligence_summary}
+
+## レビュースコープ（cycle 2+ 差分スコープ — 適用時のみ非空）
+<!-- REVIEW_CYCLE_SCOPE == incremental のときのみ内容が入る（cycle-scope.md の Reviewer mandate 節を抽出）。full のときは空文字列で、このセクションごと省略する。 -->
+{cycle_scope_mandate}
+
+## レビューレーン（XS/S 軽量レーン — 適用時のみ非空）
+<!-- COMPLEXITY_LANE == light のときのみ内容が入る（complexity-lane.md の Reviewer mandate 節を抽出し {complexity} を埋める）。full のときは空文字列で、このセクションごと省略する — 空見出しが残ると M+ の prompt が変化する。上の差分スコープとは直交し、両方が非空になりうる（範囲を絞るのが差分スコープ、検証の実行コストを絞るのが軽量レーン）。 -->
+{complexity_lane_mandate}
 
 ## レビュー対象ファイル
 {relevant_files}
@@ -22,6 +34,9 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 2. **仕様自体に問題がある（矛盾、曖昧さ、技術的に不可能）と判断した場合** → 指摘として挙げず、「仕様への疑問」セクションに記載し、ユーザー確認を促す
 3. **仕様に記載がない実装判断** → 通常のレビュー基準で評価
 
+**仕様中の番号参照は裏取りしてから判定に使う**: 仕様が commit / Issue / PR 番号を引いて内容を主張している場合（「#N で X された」「#N 以降 Y で運用」等）、その断定を評価基準に使う**前に** `git log --oneline -1 {sha}` / `git show {sha}^:{path}` と `git show {sha}:{path}`（変更方向は両側必須）/ `gh issue view {N} -R <owner>/<repo> --json number,title,state,url` / `gh pr view {N} -R <owner>/<repo>` で裏取りする。**`gh` には `-R <owner>/<repo>` を必ず明示すること** — 省略すると SSH host alias 環境で別リポジトリを引く（owner/repo の解決手順は [`references/gh-cli-patterns.md` の Owner/Repo Resolution](../../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) に従う）。裏取りで仕様側の誤りが判明したら、実装を「仕様不整合」として指摘するのではなく上記ルール 2 の「仕様への疑問」に回す（誤った仕様を ground truth として扱うと仕様の誤りが CRITICAL 指摘として増幅される）。squash merge commit の subject 末尾 `(#N)` は **PR 番号**であり Issue 番号ではない。`gh issue view` は PR 番号を渡しても成功して PR を返すため、Issue として引く番号は返った `url` のパスセグメントが `/issues/` であることを先に確認する（`/pull/` なら PR。title 照合は PR title が Issue title から派生するため判別に使えず、`state` も open な PR が Issue と同じ `OPEN` を返すため単独では使えない）。裏取りできない場合（`gh` 認証切れ等）は仕様の当該断定を評価基準に使わず、「仕様への疑問」に未検証として記載する。
+<!-- 番号種別判定（url パスセグメント / title・state が使えない理由）の同旨記述: skills/issue-create/references/body-fact-check.md のクラス 1。reviewer prompt は subagent に注入されるため本文は自己完結させるが、gh の挙動が変わったときは両方を更新すること -->
+
 ## 共通レビュー原則
 <!-- `_reviewer-base.md` から抽出される全 reviewer 共通の原則。READ-ONLY Enforcement / Mindset / Cross-File Impact Check / Confidence Scoring が含まれる。reviewer 固有の identity (Role / Core Principles / Detection Process / Detailed Checklist (Expertise Areas, Review Checklist, Severity Definitions, Finding Quality Guidelines) / Output Format) は named subagent の system prompt (agents/{reviewer_type}-reviewer.md) として自動注入されるためここには含めない -->
 {shared_reviewer_principles}
@@ -36,6 +51,10 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 
 ## 出力フォーマット
 以下の形式で評価を出力してください:
+
+### 起動時刻
+
+started_at: {冒頭「起動時刻の記録」で実行した `date -u +%Y-%m-%dT%H:%M:%SZ` の出力をそのまま。取得できなかった場合は 計測不能}
 
 ### 評価: [可 / 条件付き / 要修正]
 
@@ -61,9 +80,37 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 3. **Observed Likelihood 基準**: この問題が発生する call site を今のコードから Grep で示せるか？（ハイポセティカル禁止）
 4. **立証責任基準**: 指摘の内容欄に「{file}:{line} でこの入力が渡される」と書けるか？（証拠提示必須）
 
+さらに、掲載可否とは独立に次を自問してください（**No でも報告可**。掲載可否は上の 4 自問だけが決めます）:
+
+5. **実測基準**: 再現コマンド + 観測される誤動作、または failing test を `Verification:` アンカーとして添付できるか？（Yes → `Verification:` アンカーを `内容` 列に添付する。No → アンカーを付けずに報告する。記録経路の現況は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照） **アンカー無しの指摘は merge を止めない** (実測必須ゲートで non-blocking に分類され fix サイクルを起動しない)。実測できるなら必ずアンカーを添えること。**アンカーに装飾を付けないこと** (`**Verification:**` / `` `Verification:` `` / 全角コロン等は後段の形式検証を通らず、**未判定 (blocking のまま) として扱われる** — 実測済みでも non-blocking にはならないが、判定不能な指摘として merge を止め続ける)。**marker と `=>` の間に `<br>` を入れないこと** (`<br>` は正規形の検出自体を破るため単独で `measured=false` へ降格し、実測済みの指摘が merge を止めなくなる)。句点・改行は正規形アンカーなら無害だが、装飾等の書式崩れと重なると未判定ではなく降格へ落ちるので、LHS に入れないのが安全。
+
+### 監査ログ
+
+Finding Quality Guardrail Category #2 で除外した候補を次の表へ必ず記録してください。実測済みでも declared operating environment に反して除外した候補を含みます。該当なしの場合は `なし` と明記してください。この section は `指摘事項` ではなく評価・件数・merge 判定に影響しません。
+
+| Filter Category | 元重要度 | ファイル:行 | 除外した内容 | 除外理由 | 実測 |
+|-----------------|----------|------------|--------------|----------|------|
+| Category #2 | {severity} | {file:line or -} | {filtered suggestion} | {failed condition} | {Verification anchor or なし} |
+
+> ⚠️ **散文 (手順書・仕様書・references) への指摘では「観測される誤動作」は挙動的帰結に限る**。レビュー対象文書自身のテキスト差分を示す grep (文言非対称 / pin 不在 / 限定句不足 / 二重定義の未同期) はアンカー適格ではないため、アンカーを付けずに報告する。判別子と適用例は `_reviewer-base.md` §手順書・仕様書ドメイン Finding Gate を必ず通すこと。
+
+> ⚠️ **テスト網羅性への指摘 (mutation 生存 / assert の検証力不足 / pin 欠落) では、生存 mutant は「観測される誤動作」ではない**。アンカー適格性は変異が無効化する挙動が Issue 契約 (§4.4 MUST / §5 AC の `Then`) に現れるかで決まる。判別子と適用例は `_reviewer-base.md` §テスト網羅性 Finding Gate を必ず通すこと。
+
 | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
 |--------|----------|------------|------|----------|
 | {CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW} | {current-pr/follow-up/nit-noted} | {file:line} | {WHAT: 何が問題か} + {WHY: なぜ問題か（影響・リスク・既存パターンとの比較）} | {FIX: 修正方法} + {EXAMPLE: コード例（該当時）} |
+
+**`内容` 列のアンカー記入例**（`Likelihood-Evidence:` は掲載可否、`Verification:` は実測の記録を担う直交アンカー。実測できた指摘は両方を末尾に付けること）:
+
+> ⚠️ **`内容` 列の中では raw `|` (パイプ) を使わないこと**（`Likelihood-Evidence:` / `Verification:` / 叙述部のいずれも対象）。テーブルのセル境界と衝突して 5 列構造を壊します。セルを跨がずに `description` へ届いた場合、アンカーは検出 regex に match せず原則として**未判定 (blocking のまま)** になり、判定不能な指摘が merge を止め続けます。ただし marker から `=>` までの間に改行 / `<br>` / 句点があるとその手前で判定が切れ `measured=false` へ降格します (実測済みでも merge を止めません)。パイプは `¦` (U+00A6) で代替表記してください（下記 2 番目の例）。詳細は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照。
+
+```
+{WHAT + WHY の叙述}<br>Likelihood-Evidence: existing_call_site src/api.ts:45<br>Verification: repro node dist/cli.js --input empty.json => TypeError: Cannot read properties of undefined
+```
+
+```
+{WHAT + WHY の叙述}<br>Likelihood-Evidence: runtime_observation printf '%s' "$raw" ¦ jq -e '.a' が false を返す<br>Verification: repro printf '%s' "$raw" ¦ jq -e '.a' => false (¦ は raw pipe の表記代替)
+```
 
 
 ### 推奨事項
@@ -90,4 +137,4 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 
 ## 制約
 [READ-ONLY RULE] このレビューは読み取り専用。`Edit`/`Write` 禁止、問題は指摘事項として報告し修正は `/rite:fix` に委譲する。許可/禁止コマンドの完全一覧は上記「共通レビュー原則」に注入済みの `_reviewer-base.md` `## READ-ONLY Enforcement` を SoT として参照。
-```
+````

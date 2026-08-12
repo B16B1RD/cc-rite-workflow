@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for worktree-live-cwd.sh — OS-ground-truth liveness probe (Issue #1544).
+# Tests for worktree-live-cwd.sh — OS-ground-truth liveness probe.
 #
 #   TC-1: missing <dir> argument                       → rc 2
 #   TC-2: directory with NO process standing in it     → rc 1
@@ -88,11 +88,18 @@ echo "=== TC-8: invalid backend value → rc 2 ==="
 assert "TC-8 probe=bogus → rc 2" "2" "$(RITE_WORKTREE_LIVE_CWD_PROBE=bogus bash "$PROBE" "$D5" >/dev/null 2>&1; echo $?)"
 
 echo "=== TC-9: forced 'proc' backend behaves like auto on Linux ==="
+# The forced 'proc' backend inspects /proc/<pid>/cwd; on a host without /proc
+# (macOS) it can never detect a holder, so the held-dir assertion cannot hold.
+# Guard behind /proc — this is the by-design degradation, not a bug (Family C).
+if [ -d /proc ]; then
 D6=$(mktemp -d); cleanup_dirs+=("$D6")
 assert "TC-9 probe=proc free dir → rc 1" "1" "$(RITE_WORKTREE_LIVE_CWD_PROBE=proc bash "$PROBE" "$D6" >/dev/null 2>&1; echo $?)"
 ( cd "$D6" && sleep 30 ) & holders+=("$!")
 sleep 0.3
 assert "TC-9 probe=proc held dir → rc 0" "0" "$(RITE_WORKTREE_LIVE_CWD_PROBE=proc bash "$PROBE" "$D6" >/dev/null 2>&1; echo $?)"
+else
+  skip "TC-9 skipped (forced 'proc' backend requires /proc; absent on macOS by design)"
+fi
 
 echo "=== TC-10: forced 'lsof' backend (the BSD/macOS fallback) ==="
 D7=$(mktemp -d); cleanup_dirs+=("$D7")
@@ -102,6 +109,10 @@ if command -v lsof >/dev/null 2>&1; then
   ( cd "$D7" && sleep 30 ) & holders+=("$!")
   sleep 0.3
   assert "TC-10 probe=lsof held dir → rc 0" "0" "$(RITE_WORKTREE_LIVE_CWD_PROBE=lsof bash "$PROBE" "$D7" >/dev/null 2>&1; echo $?)"
+  mkdir -p "$D7/sub/deep"
+  ( cd "$D7/sub/deep" && sleep 30 ) & holders+=("$!")
+  sleep 0.3
+  assert "TC-10 probe=lsof nested-held dir → rc 0" "0" "$(RITE_WORKTREE_LIVE_CWD_PROBE=lsof bash "$PROBE" "$D7" >/dev/null 2>&1; echo $?)"
 else
   # lsof absent → the lsof backend reports undeterminable (rc 2), not a false negative.
   assert "TC-10 probe=lsof w/o lsof → rc 2" "2" "$(RITE_WORKTREE_LIVE_CWD_PROBE=lsof bash "$PROBE" "$D7" >/dev/null 2>&1; echo $?)"
@@ -119,6 +130,6 @@ sleep 0.3
 assert "TC-11 real path → rc 0" "0" "$(probe_rc "$Dreal/wt")"
 assert "TC-11 symlinked path → rc 0" "0" "$(probe_rc "$Dlink/wtlink")"
 
-if ! print_summary "$(basename "$0")" "worktree-live-cwd.sh の OS 接地 liveness 判定 (Issue #1544)"; then
+if ! print_summary "$(basename "$0")" "worktree-live-cwd.sh の OS 接地 liveness 判定"; then
   exit 1
 fi

@@ -3,9 +3,22 @@
 # Usage: bash plugins/rite/hooks/tests/session-start.test.sh
 set -euo pipefail
 
+issue_text() { printf 'Issue #%s' "$1"; }
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$SCRIPT_DIR/../session-start.sh"
-TEST_DIR="$(mktemp -d)"
+# Canonicalize the sandbox root: on macOS $TMPDIR is under /var/folders (a
+# symlink to /private/var/...), while session-start.sh resolves paths via
+# state-path-resolve.sh (git rev-parse) to the /private form. Comparing the raw
+# mktemp path against the canonical one would spuriously fail the reap-gate
+# path-equality checks (Family D — TC-6, T-03, TC-1968-*).
+#
+# Two steps, not `$(cd "$(mktemp -d)" && pwd -P)`: bash `cd ""` returns 0 without
+# changing directory, so a failed mktemp inside that nesting would yield the
+# current directory (the repository checkout under CI) with a zero exit status,
+# and the `rm -rf "$TEST_DIR"` in the EXIT trap below would delete it.
+TEST_DIR="$(mktemp -d)" || exit 1
+TEST_DIR="$(cd "$TEST_DIR" && pwd -P)" || exit 1
 LAST_STDERR_FILE=""
 PASS=0
 FAIL=0
@@ -16,7 +29,7 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-# Clean session-id env (Issue #1530). session-start.sh resolves the active state
+# Clean session-id env. session-start.sh resolves the active state
 # file via flow-state.sh, which is now env-first; the sandboxes here simulate a
 # session through `.rite-session-id`, so the dogfooding session's ambient
 # CLAUDE_CODE_SESSION_ID must not leak in (it would point the hook at a foreign
@@ -165,6 +178,50 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-006b: circuit-breaker stop reason is distinct from an ordinary interruption
+# --------------------------------------------------------------------------
+echo "TC-006b: stop_reason changes compact interruption notice to failure stop"
+dir006b="$TEST_DIR/tc006b"
+mkdir -p "$dir006b"
+create_state_file "$dir006b" '{
+  "active": true,
+  "issue_number": 2045,
+  "phase": "review",
+  "stop_reason": "circuit-breaker:max-cycles"
+}'
+output=$(run_hook_with_source "$dir006b" "compact")
+if echo "$output" | grep -q "失敗停止した rite workflow" && \
+   echo "$output" | grep -q "cycle が上限に到達" && \
+   ! echo "$output" | grep -q "中断した rite workflow"; then
+  pass "stop_reason produces a failure-specific compact notice"
+else
+  fail "Expected failure-specific stop notice, got: $output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# TC-006c: startup defensive reset preserves and surfaces the stop reason
+# --------------------------------------------------------------------------
+echo "TC-006c: startup reset reports circuit-breaker failure reason"
+dir006c="$TEST_DIR/tc006c"
+mkdir -p "$dir006c"
+create_state_file "$dir006c" '{
+  "active": true,
+  "issue_number": 2045,
+  "branch": "fix/issue-2045",
+  "phase": "review",
+  "stop_reason": "circuit-breaker:divergence"
+}'
+output=$(run_hook_with_source "$dir006c" "startup")
+if echo "$output" | grep -q "失敗停止した rite workflow の状態をリセット" && \
+   echo "$output" | grep -q "収束トレンドの発散を検出"; then
+  pass "startup defensive reset surfaces the durable failure reason"
+else
+  fail "Expected failure-specific startup reset notice, got: $output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # TC-002: CWD is not a directory → exit 0
 # --------------------------------------------------------------------------
 echo "TC-002: CWD is not a directory → exit 0"
@@ -241,7 +298,7 @@ create_state_file "$dir006" '{
 
 output=$(run_hook_with_source "$dir006" "compact")
 if echo "$output" | grep -q "中断した rite workflow を検出" && \
-   echo "$output" | grep -q "Issue #42" && \
+   echo "$output" | grep -q "$(issue_text 42)" && \
    echo "$output" | grep -q "phase: implementing" && \
    echo "$output" | grep -q "/rite:recover"; then
   pass "Interruption notice contains issue + phase + resume hint"
@@ -281,7 +338,7 @@ mkdir -p "$dir008"
 create_state_file "$dir008" '{"active": true, "issue_number": 99}'
 
 output=$(run_hook_with_source "$dir008" "compact")
-if echo "$output" | grep -q "Issue #99" && \
+if echo "$output" | grep -q "$(issue_text 99)" && \
    echo "$output" | grep -q "phase: unknown"; then
   pass "Missing optional fields → phase defaults to unknown"
 else
@@ -363,7 +420,7 @@ create_state_file "$dir011" '{
 }'
 
 output=$(run_hook_with_source "$dir011" "compact")
-if echo "$output" | grep -q "Issue #77" && \
+if echo "$output" | grep -q "$(issue_text 77)" && \
    echo "$output" | grep -q "phase: Phase with spaces"; then
   pass "Unit-separator-delimited field extraction handles spaces in phase"
 else
@@ -383,10 +440,10 @@ echo '{"compact_state": "recovering", "active_issue": 55}' > "$dir012/.rite-comp
 
 output=$(run_hook_with_source "$dir012" "compact")
 if echo "$output" | grep -q "中断した rite workflow を検出" && \
-   echo "$output" | grep -q "Issue #55"; then
+   echo "$output" | grep -q "$(issue_text 55)"; then
   pass "source=compact + recovering → interruption notice (PostCompact handles recovery)"
 else
-  fail "Expected interruption notice with issue #55, got: $output"
+  fail "Expected interruption notice with issue 55, got: $output"
 fi
 echo ""
 
@@ -401,7 +458,7 @@ echo '{"compact_state": "normal"}' > "$dir013/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir013" "compact")
 if echo "$output" | grep -q "中断した rite workflow を検出" && \
-   echo "$output" | grep -q "Issue #56"; then
+   echo "$output" | grep -q "$(issue_text 56)"; then
   pass "source=compact + normal → interruption notice"
 else
   fail "Expected interruption notice, got: $output"
@@ -418,7 +475,7 @@ create_state_file "$dir014" '{"active": true, "issue_number": 57, "phase": "test
 
 output=$(run_hook_with_source "$dir014" "compact")
 if echo "$output" | grep -q "中断した rite workflow を検出" && \
-   echo "$output" | grep -q "Issue #57"; then
+   echo "$output" | grep -q "$(issue_text 57)"; then
   pass "source=compact + no compact state file → interruption notice"
 else
   fail "Expected interruption notice, got: $output"
@@ -769,6 +826,7 @@ cp "$src_hook_dir/session-start.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/hook-preamble.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/state-path-resolve.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/control-char-neutralize.sh" "$sandbox_hook_dir/"
+cp "$src_hook_dir/gitignore-ensure.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/flow-state.sh" "$sandbox_hook_dir/"
 # Sandbox に canonical mktemp helper を含める (silent suppress 禁止 — sibling cp と同じ fail-fast)
 cp "$src_hook_dir/_mktemp-stderr-guard.sh" "$sandbox_hook_dir/"
@@ -812,6 +870,7 @@ cp "$src_hook_dir_b/session-start.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/hook-preamble.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/state-path-resolve.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/control-char-neutralize.sh" "$sandbox_hook_dir_b/"
+cp "$src_hook_dir_b/gitignore-ensure.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/flow-state.sh" "$sandbox_hook_dir_b/"
 # canonical mktemp helper を sandbox に同期コピーする (silent suppress 禁止 — sibling cp と同じ fail-fast)
 cp "$src_hook_dir_b/_mktemp-stderr-guard.sh" "$sandbox_hook_dir_b/"
@@ -876,7 +935,7 @@ cat > "$dir680a/.rite/sessions/${sid680a}.flow-state" <<EOF
 EOF
 output=$(run_hook_with_session "$dir680a" "resume" "$sid680a") && rc=0 || rc=$?
 if [ $rc -eq 0 ] && echo "$output" | grep -q "中断した rite workflow を検出" \
-   && echo "$output" | grep -q "Issue #680"; then
+   && echo "$output" | grep -q "$(issue_text 680)"; then
   pass "TC-per-session-detect-A: per-session file read → interruption notice fired (AC-LOCAL-2)"
 else
   fail "TC-per-session-detect-A: expected workflow-detected output from per-session file; got rc=$rc, output='$output'"
@@ -1065,7 +1124,7 @@ else
   pass "TC-settings-local-noop-downstream: rc=1 no-op stays silent (no false failure WARNING)"
 fi
 if printf '%s' "$out_1241b" | grep -qF '前回のセッション状態が残っていたためリセットしました' \
-   && printf '%s' "$out_1241b" | grep -qF 'Issue #1241'; then
+   && printf '%s' "$out_1241b" | grep -qF "$(issue_text 1241)"; then
   pass "TC-settings-local-noop-downstream: downstream STATE_FILE resolution + defensive reset reached"
 else
   fail "TC-settings-local-noop-downstream: downstream not reached (hook stopped before reset); stdout: $out_1241b"
@@ -1109,7 +1168,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-DEP-1..4: flow_state.schema_version: 1 deprecation warning 
+# TC-DEP-1..4: flow_state.schema_version: 1 deprecation warning
 #   AC-2 / T-02: explicit `: 1` at startup → one-line stderr deprecation warning.
 #   AC-3 / T-03: gated on SOURCE=startup (only session-start emits it, and only
 #                on startup), so a session start surfaces exactly one — verified
@@ -1195,7 +1254,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-1524-* : dangling session-worktree self-heal (Issue #1524, AC-2 / AC-5)
+# TC-1524-* : dangling session-worktree self-heal (AC-2 / AC-5)
 # When flow-state records a `worktree` path that no longer exists (reaped by
 # another session's GC while this session was paused), session-start nulls the
 # field so re-entry / harness cwd-restore is not aimed at a dead dir.
@@ -1207,7 +1266,7 @@ _mk_wt_sandbox() {
   mkdir -p "$dir/sandbox/hooks"
   sbx="$dir/sandbox/hooks"
   src="$(cd "$SCRIPT_DIR/.." && pwd)"
-  for f in session-start.sh hook-preamble.sh state-path-resolve.sh control-char-neutralize.sh flow-state.sh _mktemp-stderr-guard.sh; do
+  for f in session-start.sh hook-preamble.sh state-path-resolve.sh control-char-neutralize.sh gitignore-ensure.sh flow-state.sh _mktemp-stderr-guard.sh; do
     cp "$src/$f" "$sbx/"
   done
   cat > "$sbx/session-ownership.sh" <<'STUB_EOF'
@@ -1297,7 +1356,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-1530: .rite-session-id write is conditioned on env-absence (Issue #1530)
+# TC-1530: .rite-session-id write is conditioned on env-absence
 # --------------------------------------------------------------------------
 echo "TC-1530: .rite-session-id write conditioned on env-absence"
 

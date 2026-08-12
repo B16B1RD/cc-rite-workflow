@@ -3,9 +3,24 @@
 # Usage: bash plugins/rite/hooks/tests/wiki-ingest-trigger.test.sh
 set -euo pipefail
 
+pr_text() { printf 'PR #%s' "$1"; }
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$SCRIPT_DIR/../wiki-ingest-trigger.sh"
-TEST_DIR="$(mktemp -d)"
+# Canonicalize the sandbox root. wiki-ingest-trigger.sh's --content-file guard
+# compares realpath(content-file) against $PWD; on macOS $TMPDIR is under
+# /var/folders (symlinked to /private/var), so a raw mktemp path makes every
+# `cd "$TEST_DIR/tcN" && ... --content-file body.md` case fail the $PWD-arm match
+# ("must be under $PWD"). pwd -P aligns the fixture with the canonical form the
+# guard resolves to; the guard's own $PWD-arm symlink handling is
+# tracked separately in #2012).
+#
+# Two steps, not `$(cd "$(mktemp -d)" && pwd -P)`: bash `cd ""` returns 0 without
+# changing directory, so a failed mktemp inside that nesting would yield the
+# current directory (the repository checkout under CI) with a zero exit status,
+# and the `rm -rf "$TEST_DIR"` in the EXIT trap below would delete it.
+TEST_DIR="$(mktemp -d)" || exit 1
+TEST_DIR="$(cd "$TEST_DIR" && pwd -P)" || exit 1
 PASS=0
 FAIL=0
 
@@ -23,6 +38,14 @@ pass() {
 fail() {
   FAIL=$((FAIL + 1))
   echo "  ❌ FAIL: $1"
+}
+
+# Skips are counted so a platform-gated green states how many assertions never ran
+# (review I-03). Same shape as _test-helpers.sh skip.
+SKIP=0
+skip() {
+  SKIP=$((SKIP + 1))
+  echo "  ⏭️ SKIP: $1"
 }
 
 echo "=== wiki-ingest-trigger.sh tests ==="
@@ -177,7 +200,7 @@ echo "Review body content here" > "$dir10/body.md"
   --source-ref pr-123 \
   --content-file body.md \
   --pr-number 123 \
-  --title "Code review for PR #123" > out.log 2>err.log ) && rc=0 || rc=$?
+  --title "Code review for $(pr_text 123)" > out.log 2>err.log) && rc=0 || rc=$?
 
 target_path="$(cat "$dir10/out.log" 2>/dev/null || true)"
 if [ $rc -eq 0 ] && [ -n "$target_path" ] && [ -f "$dir10/$target_path" ]; then
@@ -185,7 +208,7 @@ if [ $rc -eq 0 ] && [ -n "$target_path" ] && [ -f "$dir10/$target_path" ]; then
      grep -q '^source_ref: "pr-123"$' "$dir10/$target_path" && \
      grep -q '^pr_number: 123$' "$dir10/$target_path" && \
      grep -q '^ingested: false$' "$dir10/$target_path" && \
-     grep -q '^title: "Code review for PR #123"$' "$dir10/$target_path" && \
+     grep -q "^title: \"Code review for $(pr_text 123)\"$" "$dir10/$target_path" && \
      grep -qE '^captured_at: "[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\+00:00"$' "$dir10/$target_path" && \
      grep -q 'Review body content here' "$dir10/$target_path"; then
     pass "Happy path: file created with correct frontmatter (incl. captured_at ISO8601) and body"
@@ -648,6 +671,32 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# TC-034b: symlink component in $PWD + regular content-file → exit 0 (#2012)
+# --------------------------------------------------------------------------
+echo "TC-034b: symlink component in \$PWD + regular content-file → exit 0"
+dir34b_real="$TEST_DIR/tc34b-real"
+dir34b_link="$TEST_DIR/tc34b-link"
+mkdir -p "$dir34b_real"
+ln -s "$dir34b_real" "$dir34b_link"
+cat > "$dir34b_real/rite-config.yml" <<'EOF'
+wiki:
+  enabled: true
+EOF
+echo "content below logical cwd" > "$dir34b_real/body.md"
+( cd -L "$dir34b_link" && bash "$HOOK" --type reviews --source-ref pr-2012 --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
+if [ $rc -eq 0 ]; then
+  target_path34b=$(tr -d '[:space:]' < "$dir34b_real/out.log")
+  if [ -n "$target_path34b" ] && [ -f "$dir34b_real/$target_path34b" ]; then
+    pass "Canonical content path is accepted below symlinked \$PWD"
+  else
+    fail "Symlinked \$PWD → rc=0 but output file not found (path='$target_path34b')"
+  fi
+else
+  fail "Expected rc=0 below symlinked \$PWD, got rc=$rc, stderr=$(cat "$dir34b_real/err.log")"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # TC-035: Control character in --source-ref → exit 1 (F-14)
 # --------------------------------------------------------------------------
 echo "TC-035: Control character in --source-ref → exit 1"
@@ -686,7 +735,7 @@ echo ""
 
 # ==========================================================================
 # Phase: regression — /tmp/rite-* prefix と mktemp デフォルト pitfall
-#        + $TMPDIR/rite-* arm (Issue #1904 sandbox 対応)
+#        + $TMPDIR/rite-* arm (sandbox 対応)
 # ==========================================================================
 
 # /tmp 外ファイルの明示 cleanup (review F-04: TEST_DIR 外は main cleanup() の対象外)
@@ -711,7 +760,8 @@ trap '_rite_issue518_cleanup; cleanup' EXIT
 # NOTE: content-file の /tmp/rite-* literal は被テスト hook の path-containment allowlist
 # ($PWD/* | /tmp/rite-* | /private/tmp/rite-*) に一致させる load-bearing fixture であり、
 # ${TMPDIR:-/tmp} 化してはならない (TMPDIR≠/tmp の環境で hook が正しく拒否し偽 FAIL する)。
-# /tmp 直下が書込不可な sandbox 環境では本 TC は検証不能のため明示 skip する。
+# /tmp 直下が書込不可な環境では本 TC は検証不能。CI (blocking gate) では floor として
+# fail し、それ以外の環境では明示 skip する。
 echo "TC-036a: Content-file in /tmp/rite-* prefix → exit 0 (regression)"
 if _probe36a=$(mktemp /tmp/rite-probe-XXXXXX 2>/dev/null); then
   rm -f "$_probe36a"
@@ -737,8 +787,21 @@ EOF
   else
     fail "Expected rc=0 for /tmp/rite-* prefix, got rc=$rc, stderr=$(cat "$dir36a/err.log")"
   fi
+elif [ -n "${CI:-}" ] && [ -d /proc ]; then
+  # Floor: writability of /tmp is a capability probe, not a platform fact, so the
+  # gate has to name the environment where that capability is actually guaranteed
+  # — the Linux CI leg, which ci.yml designates the blocking gate (macOS runs
+  # informational). "Any Linux" is too wide a stand-in: a developer machine whose
+  # sandbox mounts /tmp read-only is Linux too, and a permanent red there is noise
+  # that masks real regressions rather than signal. On the blocking gate a
+  # non-writable /tmp does mean the environment was constrained, not that the
+  # platform cannot do this — skipping there would drop the only coverage of the
+  # hook's /tmp/rite-* allowlist arm while the run stays green. `$CI` is what
+  # GitHub Actions sets; `[ -d /proc ]` rather than `uname -s`, which resolves
+  # through the same PATH.
+  fail "TC-036a floor: /tmp is not writable on the Linux blocking gate (CI) — the /tmp/rite-* prefix acceptance must never be skipped there"
 else
-  echo "  SKIP: TC-036a — /tmp 直下が書込不可 (sandbox 環境) のため /tmp/rite-* prefix 受容を検証できません"
+  skip "TC-036a — /tmp 直下が書込不可 (sandbox 環境等) のため /tmp/rite-* prefix 受容を検証できません (CI では floor として fail する)"
 fi
 echo ""
 
@@ -779,7 +842,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-036c: Content-file in $TMPDIR/rite-* → exit 0 (Issue #1904 sandbox arm)
+# TC-036c: Content-file in $TMPDIR/rite-* → exit 0 (sandbox arm)
 # --------------------------------------------------------------------------
 # sandbox 有効環境では /tmp 直下が読み込み専用のため、caller は
 # mktemp "${TMPDIR:-/tmp}/rite-...-XXXXXX" で $TMPDIR 配下に content-file を作る。
@@ -1136,24 +1199,48 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-050: C1 8-bit byte (0x9b CSI) in --title → exit 1
+# TC-050: Japanese UTF-8 title whose continuation bytes overlap C1 → exit 0
 # --------------------------------------------------------------------------
-# TC-018 (newline in title) と対になる C1 側 pin。SOURCE_REF / TITLE は隣接する
-# YAML キーに着地するため、検出範囲も対称であることを保証する。
-echo "TC-050: C1 0x9b in --title → exit 1"
+# 静 (E9 9D 99) / 的 (E7 9A 84) の UTF-8 継続バイトは 0x80-0x9f と
+# 重なる。TITLE は human-readable text なので C0 + DEL だけを拒否する。
+echo "TC-050: Japanese UTF-8 in --title → exit 0"
 dir50="$TEST_DIR/tc50"
 mkdir -p "$dir50"
 echo "x" > "$dir50/body.md"
-( cd "$dir50" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --title $'foo\x9bbar' >/dev/null 2>err.log ) && rc=0 || rc=$?
-if [ $rc -eq 1 ] && grep -q 'control characters' "$dir50/err.log"; then
-  pass "C1 0x9b in title → exit 1 (SOURCE_REF と対称の C1 reject)"
+( cd "$dir50" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --title '静的 pin' >out.log 2>err.log ) && rc=0 || rc=$?
+target_path50=$(cat "$dir50/out.log" 2>/dev/null || true)
+if [ $rc -eq 0 ] && [ -f "$dir50/$target_path50" ] && grep -q '^title: "静的 pin"$' "$dir50/$target_path50"; then
+  pass "Japanese UTF-8 title → exit 0 + title preserved"
 else
-  fail "Expected exit 1 'control characters', got rc=$rc, stderr=$(cat "$dir50/err.log")"
+  fail "Expected Japanese title to succeed and be preserved, got rc=$rc, stderr=$(cat "$dir50/err.log")"
 fi
 echo ""
 
+# --------------------------------------------------------------------------
+# TC-050b: C0/C1 controls and invalid UTF-8 in --title remain rejected
+# --------------------------------------------------------------------------
+echo "TC-050b: C0/C1 controls and invalid UTF-8 in --title → exit 1"
+for control_name in tab soh c1-codepoint raw-c1; do
+  dir50b="$TEST_DIR/tc50b-$control_name"
+  mkdir -p "$dir50b"
+  echo "x" > "$dir50b/body.md"
+  case "$control_name" in
+    tab) bad_title=$'foo\tbar' ;;
+    soh) bad_title=$'foo\x01bar' ;;
+    c1-codepoint) bad_title=$'foo\xc2\x9bbar' ;;
+    raw-c1) bad_title=$'foo\x9bbar' ;;
+  esac
+  ( cd "$dir50b" && bash "$HOOK" --type reviews --source-ref pr-1 --content-file body.md --title "$bad_title" >/dev/null 2>err.log ) && rc=0 || rc=$?
+  if [ $rc -eq 1 ] && grep -qE 'control characters|valid UTF-8' "$dir50b/err.log"; then
+    pass "$control_name in title → exit 1"
+  else
+    fail "Expected $control_name in title to be rejected, got rc=$rc, stderr=$(cat "$dir50b/err.log")"
+  fi
+done
+echo ""
+
 # ==========================================================================
-# Phase: STATE_ROOT write anchoring (Issue #1664) — TC-051 〜 TC-053
+# Phase: STATE_ROOT write anchoring — TC-051 〜 TC-053
 # trigger は raw を state-path-resolve ルート (linked worktree では main
 # checkout) 配下へ書く。wiki-ingest-commit.sh の scan ルートと一致させ、
 # multi-session worktree からの起動で raw が silent に取りこぼされる回帰を防ぐ。
@@ -1192,7 +1279,7 @@ if git -C "$dir51" worktree add -q "$wt51" -b wt-issue-1664 2>"$dir51/wt-add-err
      [ -f "$dir51/$target_path" ] && \
      grep -q 'Review body in worktree' "$dir51/$target_path" && \
      [ ! -e "$wt51/.rite/wiki/raw" ] && \
-     grep -q 'NOTE:' "$wt51/err.log" && grep -q 'Issue #1664' "$wt51/err.log"; then
+     grep -q 'NOTE:' "$wt51/err.log"; then
     pass "linked worktree 起動 → raw が main checkout へ着地 + body 内容捕捉 + 相対パス維持 + NOTE シグナル"
   else
     fail "Expected raw under main checkout ($dir51) not worktree ($wt51) with body content and NOTE, got path='$target_path' rc=$rc; worktree raw exists=$([ -e "$wt51/.rite/wiki/raw" ] && echo yes || echo no); stderr=$(cat "$wt51/err.log" 2>/dev/null)"
@@ -1239,7 +1326,7 @@ echo ""
 #         worktree 起動 (STATE_ROOT != $PWD で cd が実走) の経路でも、ガードは cd の
 #         前に元 $PWD 基準で評価されるため、$PWD 外 / 非 /tmp-rite の content-file は
 #         従来どおり reject される。既存 TC-033/034/036 は git root (非 worktree) 起動
-#         のみをカバーしていたため、worktree 起動経路の AC-3 を本 TC で pin する。
+#         The previous fixture covered only the repository-root path, so、worktree 起動経路の AC-3 を本 TC で pin する。
 # --------------------------------------------------------------------------
 echo "TC-053: linked worktree 起動 + content-file が \$PWD 外 → exit 1 (AC-3 path containment 維持)"
 dir53="$TEST_DIR/tc53"
@@ -1277,7 +1364,7 @@ echo ""
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
-echo "=== Results: $PASS passed, $FAIL failed ==="
+echo "=== Results: $PASS passed, $FAIL failed$( [ "$SKIP" -gt 0 ] && printf ", %s skipped" "$SKIP" ) ==="
 if [ $FAIL -gt 0 ]; then
   exit 1
 fi

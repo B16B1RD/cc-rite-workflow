@@ -2,12 +2,13 @@
 # issue-comment-wm-update-merge-checklist.test.sh
 #
 # Pins the `merge-checklist` transform (archive-procedures
-# §3.5.2 progress-merge delegation). Verifies the verbatim-fidelity contract
-# ported from the original inline Python block:
+# §3.5.2 progress-merge delegation). Verifies:
 #   - full-body exact-line dedup (idempotency / partial dedup)
 #   - insertion at the end of the named section (before next `### ` / at EOF)
-#   - section-absent → body unchanged, items dropped
+#   - section-absent + new items → exit 10 (SectionAbsentError; fail-loud)
+#   - real WM template heading `### 進捗サマリー` accepts the merge (AC-3)
 #   - trailing-newline state of the input preserved
+#   - missing --section → usage error (exit 1; AC-2 pin for required flag)
 #
 # The transform is a pure stdin→stdout text op (no gh API), so it is driven
 # end-to-end here. run-tests.sh auto-discovers this file via the *.test.sh glob.
@@ -31,7 +32,7 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-# The standard 3 completion items the §3.5.2 caller merges into ### 進捗.
+# The standard 3 completion items the §3.5.2 caller merges into ### 進捗サマリー.
 items_file="$TEST_DIR/items.txt"
 printf '%s\n' "- [x] レビュー完了" "- [x] マージ完了" "- [x] クリーンアップ完了" > "$items_file"
 
@@ -91,15 +92,30 @@ else
 fi
 echo ""
 
-# ─── TC-004: section absent → body unchanged, items dropped ──────────────
-echo "TC-004: section absent → no-op (verbatim with original block)"
+# ─── TC-004: section absent + new items → exit 10 (fail-loud) ─
+echo "TC-004: section absent → exit 10 (SectionAbsentError; items not silently dropped)"
 body4=$'## 📜 rite 作業メモリ\n\n### 完了情報\n- **PR**: #1\n'
 printf '%s' "$body4" > "$TEST_DIR/body4"
-python3 "$PY" merge-checklist --section 進捗 --content-file "$items_file" < "$TEST_DIR/body4" > "$TEST_DIR/out4"
-if cmp -s "$TEST_DIR/body4" "$TEST_DIR/out4"; then
-  pass "TC-004: body unchanged when 進捗 section absent"
+set +e
+python3 "$PY" merge-checklist --section 進捗 --content-file "$items_file" \
+  < "$TEST_DIR/body4" > "$TEST_DIR/out4" 2>"$TEST_DIR/err4"
+rc4=$?
+set -e
+if [ "$rc4" -eq 10 ]; then
+  pass "TC-004a: exit code 10 when section absent with new items"
 else
-  fail "TC-004: body changed despite absent section"
+  fail "TC-004a: expected exit 10, got $rc4"
+fi
+if grep -qF "section absent" "$TEST_DIR/err4"; then
+  pass "TC-004b: stderr names section absent"
+else
+  fail "TC-004b: stderr missing section-absent detail ($(cat "$TEST_DIR/err4"))"
+fi
+# stdout must not carry a body that a caller could PATCH as "success"
+if [ ! -s "$TEST_DIR/out4" ]; then
+  pass "TC-004c: stdout empty (no body to PATCH)"
+else
+  fail "TC-004c: stdout non-empty despite section absent (would enable silent success PATCH)"
 fi
 echo ""
 
@@ -163,6 +179,65 @@ if [ -n "$item_ln8" ] && [ -n "$new_ln" ] && [ -n "$done_ln8" ] \
   pass "TC-008: items inserted at last 進捗 block (after 新しい進捗, before 完了情報)"
 else
   fail "TC-008: insertion at wrong 進捗 block (古い=$old_ln, 新しい=$new_ln, item=$item_ln8, 完了情報=$done_ln8)"
+fi
+echo ""
+
+# ─── TC-009: real WM template ### 進捗サマリー → merge succeeds (AC-3) ───
+echo "TC-009: real init template heading 進捗サマリー accepts merge (AC-3)"
+body9=$'## 📜 rite 作業メモリ\n\n### 進捗サマリー\n\n| 項目 | 状態 | 備考 |\n|------|------|------|\n| 実装 | ✅ 完了 | - |\n| テスト | ✅ 完了 | - |\n| ドキュメント | ✅ 完了 | - |\n\n### 要確認事項\n_確認事項はありません_\n'
+printf '%s' "$body9" | python3 "$PY" merge-checklist --section 進捗サマリー --content-file "$items_file" > "$TEST_DIR/out9"
+if grep -qxF -- "- [x] レビュー完了" "$TEST_DIR/out9" \
+   && grep -qxF -- "- [x] マージ完了" "$TEST_DIR/out9" \
+   && grep -qxF -- "- [x] クリーンアップ完了" "$TEST_DIR/out9"; then
+  pass "TC-009a: 3 items merged into 進捗サマリー"
+else
+  fail "TC-009a: items missing after 進捗サマリー merge"
+fi
+item_ln9=$(grep -nF -- "- [x] クリーンアップ完了" "$TEST_DIR/out9" | head -1 | cut -d: -f1 || true)
+next_ln9=$(grep -nF -- "### 要確認事項" "$TEST_DIR/out9" | head -1 | cut -d: -f1 || true)
+table_ln9=$(grep -nF -- "| ドキュメント |" "$TEST_DIR/out9" | head -1 | cut -d: -f1 || true)
+if [ -n "$item_ln9" ] && [ -n "$next_ln9" ] && [ -n "$table_ln9" ] \
+   && [ "$item_ln9" -gt "$table_ln9" ] && [ "$item_ln9" -lt "$next_ln9" ]; then
+  pass "TC-009b: items after table, before next ### (within 進捗サマリー)"
+else
+  fail "TC-009b: insertion position wrong (table=$table_ln9, item=$item_ln9, next=$next_ln9)"
+fi
+echo ""
+
+# ─── TC-010: missing --section → usage error exit 1 (AC-2 pin) ───────────
+echo "TC-010: missing --section → exit 1 (usage error; example must include --section)"
+body10=$'## 📜 rite 作業メモリ\n\n### 進捗サマリー\n\n| 項目 | 状態 |\n'
+printf '%s' "$body10" > "$TEST_DIR/body10"
+set +e
+python3 "$PY" merge-checklist --content-file "$items_file" \
+  < "$TEST_DIR/body10" > "$TEST_DIR/out10" 2>"$TEST_DIR/err10"
+rc10=$?
+set -e
+if [ "$rc10" -eq 1 ]; then
+  pass "TC-010a: exit 1 when --section omitted"
+else
+  fail "TC-010a: expected exit 1, got $rc10"
+fi
+if grep -qiE "section|required" "$TEST_DIR/err10"; then
+  pass "TC-010b: stderr mentions --section requirement"
+else
+  fail "TC-010b: stderr missing section requirement ($(cat "$TEST_DIR/err10"))"
+fi
+echo ""
+
+# ─── TC-011: section absent + all items already in body → exit 0 no-op ───
+echo "TC-011: section absent but all items already present → idempotent exit 0"
+body11=$'## 📜 rite 作業メモリ\n\n### 完了情報\n- [x] レビュー完了\n- [x] マージ完了\n- [x] クリーンアップ完了\n'
+printf '%s' "$body11" > "$TEST_DIR/body11"
+set +e
+python3 "$PY" merge-checklist --section 進捗サマリー --content-file "$items_file" \
+  < "$TEST_DIR/body11" > "$TEST_DIR/out11" 2>"$TEST_DIR/err11"
+rc11=$?
+set -e
+if [ "$rc11" -eq 0 ] && cmp -s "$TEST_DIR/body11" "$TEST_DIR/out11"; then
+  pass "TC-011: exit 0 + body unchanged when items already present (even without section)"
+else
+  fail "TC-011: expected exit 0 + unchanged body (rc=$rc11)"
 fi
 echo ""
 

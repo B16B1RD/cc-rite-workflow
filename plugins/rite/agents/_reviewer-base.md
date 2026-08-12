@@ -77,6 +77,17 @@ All reviewers MUST adopt these principles:
 - **Evidence-based reporting**: Every finding must cite a specific file:line and explain both WHAT is wrong and WHY it matters. "Looks wrong" is not a finding.
 - **Thoroughness on every cycle**: Apply the same depth and rigor on every review cycle — first pass, re-review, or verification. Do not self-censor findings because "I should have caught this earlier." If you see a real problem now, report it now. Withholding a valid finding to avoid appearing inconsistent is worse than reporting it late.
 
+### Over-fix Check
+
+When reviewing a fix cycle, compare each change with the finding it addresses. An
+**over-fix** is a change that exceeds the finding's named scope and increases net
+surface area (code, guards, fallbacks, or explanatory comments) without the
+finding requiring new behavior or a new contract. Also flag additive fixes when
+removing the excessive structure would resolve the finding with less surface
+area. Report demonstrable over-fix as at least non-blocking; classify it as
+blocking only when the added surface creates a concrete current-PR defect under
+the normal confidence and evidence gates.
+
 ## Cross-File Impact Check
 
 **Mandatory final step in every Detection Process.** After completing domain-specific checks, verify cross-file consistency:
@@ -95,6 +106,143 @@ All reviewers MUST adopt these principles:
    - **Platform-dependent separators and line endings**: Hardcoded `/` or `\\` path separators, `\n` vs `\r\n` assumptions in files shared between platforms.
 
    Use `Grep` to confirm that introduced patterns match the actual shape of data in the repository (e.g., existing identifiers, existing filenames) before flagging. Confidence 80+ requires at least one concrete repository example that the pattern would fail against. Skip this check when the diff does not introduce or modify any pattern-like or identifier-like constructs.
+
+## Defense Mechanism Integrity Gate
+
+Apply this gate whenever the diff adds or changes a guard, resolver, fallback,
+validation predicate, fast-path, hook, sibling script in an established family,
+or prose that claims an ownership, identity, ordering, or isolation guarantee is
+structurally enforced. This gate is part of the Detection Process; do not treat
+it as optional hardening.
+
+1. **Precondition-chain continuity**: Enumerate every precondition required for
+   the defense to fire, then `Grep` the producer and patch sites that establish
+   those values. A consumer-side guard is incomplete when any normal producer
+   can silently omit a required value. Statically trace at least one natural
+   entrypoint from its real initial state; a fixture that pre-sets the final
+   precondition is not sufficient evidence. Do not execute PR-controlled code
+   to establish this evidence. Runtime execution is permitted only when a
+   static trace proves the complete execution graph loads no PR-controlled
+   code, configuration, or dependencies, or when an isolation boundary
+   explicitly removes secrets, network access, and write access outside a
+   disposable tree.
+2. **Latest-sibling inheritance**: Before accepting a new sibling script, list
+   the family with `Grep` and use `git log -S` or `git log -p` to identify the
+   most recently hardened sibling. Compare parser behavior, usage/exit-code
+   contract, output normalization, cleanup, diagnostics, and the hardening tests'
+   target set. A filename allowlist that omits the new sibling is a finding;
+   prefer a family sweep when the repository shape permits it.
+3. **Defect-class coverage**: Abstract each newly handled byte, enum value, or
+   condition to its defect class and test representative adjacent members.
+   Prefer a class predicate (for example, all forbidden control characters or
+   "normal state not proven") over another one-off deny case. If broadening is
+   intentionally out of scope, require a concrete threat-boundary reason and a
+   durable follow-up destination when unresolved work remains.
+4. **Fallback observability**: First apply [Fail-Fast First](#fail-fast-first).
+   When fallback is justified, it must not erase the helper/resolver failure:
+   preserve the exit code and a bounded diagnostic. A fallback that changes the
+   operated resource, ownership scope, or state file requires an always-visible
+   warning; an outcome-equivalent diagnostic may be debug-gated. Apply the same
+   policy to every matching caller found by `Grep`.
+5. **Code-level structural enforcement**: For every claim that ownership,
+   identity, ordering, or isolation is "structurally guaranteed", identify the
+   caller assumption behind it and verify an explicit check at the trust or
+   fast-path boundary. Pin expected accept, expected reject, and documented
+   compatibility behavior in a helper-level test. Prose and path shape alone do
+   not enforce an invariant.
+
+Report a current-PR finding when a changed defense fails one of these checks and
+the normal entrypoint or changed caller makes the gap demonstrable. Record the
+exact producer/caller and the failing representative in `Likelihood-Evidence`;
+do not report speculative family-wide hardening without such evidence.
+
+### Shared Review Checklist
+
+- [ ] **Defense mechanism integrity (when triggered)**: Verify all five gate
+  checks: precondition-chain continuity, latest-sibling inheritance,
+  defect-class coverage, fallback observability, and code-level structural
+  enforcement. Confirm that evidence collection did not execute untrusted
+  PR-controlled code outside the required isolation boundary.
+
+## Documentation Fidelity Gate
+
+Apply this gate whenever the diff changes prose, comments, recovery guidance,
+reference extraction, or a code sample that describes another implementation
+site. This gate is mandatory detection work even when the changed file is not a
+documentation file.
+
+1. **Pivot and delegation sweep**: For every renamed mode, changed predicate,
+   moved helper, or other design pivot, `Grep` the old vocabulary and the
+   affected identifiers across the complete changed files and their explanatory
+   references. Verify distant comments and prose describe the post-pivot design.
+   Prefer ownership-only cross-references over duplicating implementation detail.
+2. **Human-context recovery verification**: Evaluate every recovery command from
+   the location, environment, session identity, and lifecycle state in which the
+   human recipient will actually run it. First inspect sibling recovery guidance
+   for required location and timing qualifiers. Resolve project and state paths
+   through their canonical helpers, require the intended target to exist before
+   mutation, and verify a command chain does not delete its own cwd or another
+   prerequisite before later commands run. Trace every promised warning,
+   diagnostic, or next-step signal to the surface the human can actually observe;
+   a message redirected only to a log is not user-visible guidance. `rc=0` against
+   a different target is not success.
+3. **Citation content fidelity**: Before accepting an Issue/PR number, AC phrase,
+   invariant, canonical-owner statement, or sibling-policy claim, `Read` the
+   cited source and use an exact `Grep` anchor to verify that it supports the
+   stated meaning. Path existence alone is insufficient; when a file contains
+   multiple canonical declarations, match the declaration's semantic scope.
+4. **Canonical sample synchronization**: When prose claims that a sample mirrors
+   a canonical implementation, compare the complete blocks verbatim. Include
+   control flow and exit-code capture, every argument and separator, defensive
+   initialization, imports/functions, prerequisites supplied by the caller, and
+   return-value consumption. If intentional abstraction prevents exact equality,
+   narrow the claim instead of saying "verbatim" or "identical".
+5. **Consumer portability**: When an instruction mutates a consumer-owned file
+   by matching a literal anchor, prove that the anchor is distributed or
+   created on every supported entrypoint. Otherwise require an exact
+   precondition check and an anchor-independent, user-visible fallback. A
+   literal that exists only in the plugin's dogfooding repository is not a
+   portable mutation contract.
+6. **Aggregation and provenance truthfulness**: When prose claims that a helper
+   centralizes a concern, enumerate what moved behind the helper and what names,
+   schemas, defaults, or callers remain distributed. `Grep` every old inline
+   implementation to verify migration completeness. When a summary attributes
+   several additions to one Issue, PR, or commit, use `git log -S` for each
+   independently introduced literal, compare same-file cross-references, and
+   run a repository-wide propagation scan; do not collapse incremental history
+   into a single provenance claim.
+7. **Counterfactual and executable backing**: Trace every changed claim that an
+   ordering, guard, marker, or invariant changes behavior to its executable
+   producer and consumer. For an ordering justification, write down each
+   branch outcome and verify that swapping the stages really changes the stated
+   result; shared accept or reject outcomes do not prove deterioration. When an
+   invariant is mechanically expressible, require a test that fails when the
+   invariant is broken and treat the test's green result as the contract instead
+   of adding another cross-axis prose mapping.
+8. **Command and query semantics**: Verify changed CLI filters against their
+   actual matching and default-state semantics, not against the visual shape of
+   a sibling command. In particular, do not use wildcard-looking values with an
+   exact-match option; fetch the required state range and filter the returned
+   structured field client-side when substring matching is intended.
+9. **Success-predicate completeness**: A success check over command-substitution
+   output must preserve each producer's exit status and reject empty required
+   values before comparing them. Equality of two empty strings is not evidence
+   of success. When cwd or another prerequisite can disappear during the
+   lifecycle, verify the prerequisite independently as well as hardening the
+   final predicate.
+
+Report a current-PR finding only when the changed explanation, command, citation,
+or sample fails one of these checks and the resulting contradiction or wrong
+target is demonstrable. Record the exact source and consumer in
+`Likelihood-Evidence`; do not infer a mismatch from naming alone.
+
+### Documentation Fidelity Checklist
+
+- [ ] **Documentation fidelity (when triggered)**: Verify pivot/delegation
+  references, human-context recovery commands, citation content, and canonical
+  sample blocks against their actual source and execution context. Also verify
+  consumer portability, aggregation/provenance claims, counterfactual and
+  executable backing, command-filter semantics, and complete success predicates.
 
 ## Confidence Scoring
 
@@ -150,7 +298,7 @@ The `内容` column of every **指摘事項** MUST explicitly state which eviden
 Likelihood-Evidence: <evidence_type> <location_or_observation>
 ```
 
-Place this line at the end of the `内容` column. For Markdown table cells where physical newlines are not supported, use `<br>` as the separator, or append the line as a continuation after the WHAT + WHY narrative on the same logical row.
+Place this line at the end of the `内容` column — or, when a `Verification:` anchor is also attached, immediately before it (see [Verification: runtime 実測の添付](#verification-runtime-measurement) for the anchor order). For Markdown table cells where physical newlines are not supported, use `<br>` as the separator, or append the line as a continuation after the WHAT + WHY narrative on the same logical row.
 
 Where `<evidence_type>` is one of the following literal labels:
 
@@ -175,6 +323,39 @@ The following patterns are typical Hypothetical claims that MUST be downgraded (
 - "race condition の可能性がある" — without showing two concurrent paths that actually reach the shared state
 - "メモリリークするかもしれない" — without showing a long-running entrypoint that exercises the leak
 - "悪意あるユーザーが ... できる" — without an entrypoint exposing the surface (this is exception-category-eligible if `security-reviewer.md` is the reviewer)
+
+## Verification: runtime 実測の添付
+
+<a id="verification-runtime-measurement"></a>
+
+指摘に runtime 実測 (実際に走らせて観測した誤動作、または落ちるテスト) を伴う場合、`内容` 列に以下の machine-readable アンカーを添付する。形式は schema 側で固定されている — [review-result-schema.md §verification サブフィールド](../references/review-result-schema.md#verification-サブフィールド)。
+
+**本節は 4 つ目の掲載条件ではない。** 掲載可否は `## Observed Likelihood Gate` 配下の「Necessary conditions for inclusion in 指摘事項」が挙げる 3 ゲートだけが決める。本アンカーはそれと直交するが、**merge を止めるか (blocking) を決める判定入力**である — `/rite:pr-review` ステップ 5.3.0.M の実測必須ゲートが本アンカーを `内容` 列から直接読み、アンカーを持たない指摘を non-blocking に分類する ([severity-levels.md §実測必須ゲート](../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate))。
+
+**Machine-readable format**:
+
+```
+Verification: repro <再現コマンド> => <観測される誤動作>
+Verification: failing_test <テストパス> => <失敗出力>
+```
+
+| アンカー形式 | 記入例 |
+|---|---|
+| `Verification: repro` | `Verification: repro bash hooks/flow-state.sh get --field x => ERROR: invalid field name` |
+| `Verification: failing_test` | `Verification: failing_test hooks/tests/test-flow-state.sh => TC-07 FAILED: expected 0 got 1` |
+
+**Placement**: `Likelihood-Evidence:` 行の**直後**、`内容` 列の最後尾に置く (`Likelihood-Evidence:` 側の「末尾に置く」規約と衝突しないよう順序を固定する)。Markdown テーブルセル内では `<br>` を separator に使うか、WHAT + WHY 叙述の後に同一論理行で続ける。
+
+**Rules**:
+
+- **アンカーの有無は、指摘を報告してよいかどうかを変えない。** 実測できない懸念も、3 ゲートを満たすなら従来どおり報告する。ただし**アンカー無しの指摘は merge を止めない** (non-blocking として記録される (永続 JSON の `non_blocking_findings[]` / ステップ 6.1.d の PR 記録コメント / ステップ 5.4 統合レポートの「実測なし指摘」section)、人間レビューに委ねられる)。実測できるなら必ずアンカーを添えること。
+- **アンカーは判定入力として消費される。** `/rite:pr-review` ステップ 5.3.0.M の [`scripts/review-measured-gate.sh`](../scripts/review-measured-gate.sh) が、reviewer 出力を写したレビュー結果 JSON の `findings[].description` からアンカーを機械的に読み、`findings[].verification` (`measured` / `repro` / `failing_test`) を設定した上で blocking / non-blocking を分類する。したがって **アンカーは `内容` 列に書いた形のまま `description` へ引き継ぐ必要がある** — 要約・整形・装飾を加えると helper が正規形として検出できない。装飾・種別ラベル誤記・境界欠落・raw pipe・`=>` 右辺空のように **marker と `=>` が同一セグメントに残る**崩れは `measured=false` と確定させず **未判定 (= blocking のまま)** として扱い、`MEASURED_UNDETERMINED_ON_ANCHOR` で可視化する (判定不能な指摘が merge を止め続ける)。**正規形として検出できたアンカーは、LHS に句点や改行を含んでいても `measured=true` のまま blocking に残る** — 未判定と降格を分ける判定は、正規形として検出**できなかった**アンカーの中でだけ働く。その母集団の内側で、marker から `=>` までの間に改行 / `<br>` / 句点 (U+3002) が挟まると `measured=false` へ降格し `MEASURED_DEMOTED_ON_ANCHOR` が出る (実測済みの指摘が blocking 集合から消える)。したがって **repro は 1 セグメントに収め、marker と `=>` の間に `<br>` を入れないこと** — `<br>` は正規形の検出自体も破るため単独で降格要因になる。句点・改行は正規形なら無害だが、他の書式崩れと重なると未判定ではなく降格へ落ちるので避けるのが安全。これは検出層が満たせない要件で、reviewer と統合ステップ側の責務として残る。
+- `Verification:` アンカーを持たない指摘は `measured=false` (実測なし) として扱われ、**non-blocking に分類される** (報告してはならないという意味ではない — 上記のとおり掲載可否は変わらない)。
+- `Likelihood-Evidence:` とは **直交する別アンカー**。`Likelihood-Evidence:` は掲載可否 (Observed Likelihood Gate) を担い、`Verification:` は実測の記録を担う。`Likelihood-Evidence: runtime_observation` を書ける実測済み指摘は、同じ実測内容を `Verification: repro` / `Verification: failing_test` の形式でも添付すること (両方を書く)。
+- 実測は READ-ONLY Enforcement の範囲内で行う (テスト実行・再現コマンド実行は read-only 検証として許可される範囲。working tree を変更する実験は `## READ-ONLY Enforcement` § Mutation experiments の worktree 手順に従う)。
+- `=>` の右辺 (観測結果) を空にしない。実測結果を書けないなら、そもそもアンカーを付けずに報告する (アンカー無しはステップ 5.3.0.M で `measured=false` = non-blocking に分類される)。**空 RHS を救う自動降格はない** — [invariant #6](../references/review-result-schema.md#cross-field-invariants-型レベルで表現しきれない制約) は配線後も、`repro` と `failing_test` を**両方とも空のまま** `measured: true` を宣言した場合しか降格しない。`repro` に `cmd =>` と書けば非空文字列として通る。
+- **アンカーに装飾を付けないこと** (`**Verification:**` / `` `Verification:` `` / `_Verification_:` / 全角コロン `Verification：` など)。検出側は装飾文字と全角コロンを吸収するよう正規化してあるが、`Verification:` の**後段**の形式 (`repro|failing_test <LHS> => <RHS>`) は正規形のみを受理するため、装飾を挟むと**未判定 (= blocking のまま) として扱われ `MEASURED_UNDETERMINED_ON_ANCHOR` が出る** — ただしこれは marker と `=>` が同一セグメントに収まっている場合に限る。セグメントが切れていれば (marker と `=>` の間に `<br>` / 改行 / 句点) `measured=false` へ降格し、実測済みの指摘が blocking 集合から消える。素の `Verification: repro ... => ...` / `Verification: failing_test ... => ...` で書く。
+- **`内容` 列の中では raw `|` (パイプ) を使わないこと** (`Likelihood-Evidence:` / `Verification:` / WHAT + WHY 叙述のいずれも対象)。制約の実体はアンカー種別ではなく Markdown テーブルセルの性質で、セル境界と衝突して 5 列構造を壊す。アンカーを機械抽出する側もセル境界を跨げない。**セルを跨がずに `description` へ届いた場合**はアンカーが正規形として検出されず、marker と `=>` が同一セグメントに残っていれば**未判定 (blocking のまま)** になる。**セル境界で切れた場合**、および同一セグメントに `=>` が残らない場合は `measured=false` へ降格し、実測の記録が blocking 集合から失われる。パイプを含むコマンドは `¦` (U+00A6) で代替表記し、その旨を実測結果側に添える。例: `Verification: repro printf '%s' "$json" ¦ jq -e '.a' => false (¦ は raw pipe の表記代替)`
 
 ## Scope Assignment Flowchart
 
@@ -299,6 +480,138 @@ Hypothetical Exception Category 適用は不要 (コメント品質は security 
 >
 > 順序 1 と順序 2 はどちらも「許容」へ進む判定であり、入れ替えても最終的な finding 採否は変わらないが、上記 (1) (2) の意味的・運用的理由から **順序逆転は禁止** とする。
 
+## 手順書・仕様書ドメイン Finding Gate
+
+<a id="prose-domain-finding-gate"></a>
+
+> **Reference**: 語彙定義は [`severity-levels.md` §帰結クラス軸](../references/severity-levels.md#帰結クラス軸-consequence-class)、blocking 判定側の適用手順は [`assessment-rules.md` §5.3.0.M](../skills/fix/references/assessment-rules.md#530m-実測必須ゲート-measured-confirmed-gate) を参照。本セクションは reviewer 側の **authoring Gate** (帰結クラスの判別子・`Verification:` アンカー適格性・severity 保持規則) を一元化する。Comment Quality Finding Gate と同型・同居の散文ドメイン Gate であり、新しい機構ではない。
+
+### Scope: 散文ファイルへの指摘
+
+本 Gate は **手順書・仕様書・reference の散文** (`skills/**/*.md` の手順本文、`references/**/*.md`、`agents/**/*.md`、`docs/`) への指摘に適用する。判定軸は **ファイル種別ではなく指摘の帰結種別** — 同じ `*.md` でも、記述に字義どおり従う実行者が観測可能な誤動作に至る指摘は挙動的帰結クラスであり、blocking のまま扱う。
+
+### 帰結クラスの判別子
+
+指摘に添えた repro が **何を観測しているか** で 2 クラスに分ける。判別子は 1 つだけで、reviewer の主観に開かない:
+
+| 帰結クラス | 判別子 (repro の観測対象) | `Verification:` アンカー |
+|---|---|---|
+| **挙動的帰結** | 記述された手順を**実行**し、成果物の破損を観測する (テーブルが崩れる / script が非ゼロ終了する / sentinel が emit されない / helper が期待と異なる値を返す) | **適格** — アンカーを添付する |
+| **字面整合** | レビュー対象文書**自身のテキスト差分**のみを観測する (2 つの記述の食い違いを grep / diff で表示するだけで、実行者が至る誤動作を示していない) | **不適格** — アンカーを付けずに報告する |
+
+字面整合クラスに属する典型パターン (すべてアンカー不適格):
+
+| パターン | 内容 |
+|---|---|
+| 文言非対称 | 同一事項を述べる 2 箇所の表現が揃っていない |
+| pin 不在 | 値・literal・regex が 1 箇所にしか書かれておらず、テストで固定されていない |
+| 限定句不足 | 記述に「〜の場合に限る」等の限定が欠けている (誤読の余地がある) |
+| 二重定義の未同期 | 同一定義が 2 箇所にあり、片方が更新されていない |
+
+判別に迷う場合は **repro を実行して何が観測できるかを見る**。「2 つの文字列が違う」以外に何も観測できないなら字面整合クラスである。
+
+### アンカー適格性の帰結
+
+字面整合クラスの指摘は `Verification:` アンカーを持たないため、実測必須ゲート ([severity-levels.md §実測必須ゲート](../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)) が `measured=false` として **non-blocking** に分類し、4 経路すべてに記録する。**そのためには指摘の `内容` 列で verification の語の直後にコロンを置かないこと** — 検出層の literal は大文字小文字を区別せず、装飾文字・バッククォート・空白を吸収してからコロンに達するため、JSON フィールド名としての小文字の言及も母集団に入る。「アンカー」「verification フィールド」等の語で言い換える。検出層は marker の有無だけで母集団を決めるため、書けば以後の帰結は [§Verification: runtime 実測の添付](#verification-runtime-measurement) の Rules が決める（本節では再掲しない）。**`Likelihood-Evidence:` には `runtime_observation` を使わないこと** — grep / diff の実行は runtime_observation ではなく、同 Rules がこのラベルに対して実測アンカーの併記を無条件に要求するため、字面整合クラスと衝突する。`existing_call_site` / `new_call_site` を使う。指摘の**報告自体は抑止しない** — 変わるのは blocking 分類だけで、掲載可否は従来どおり Observed Likelihood Gate の 3 ゲートが決める。
+
+**severity は降格時も維持する** (`assessment-rules.md` §5.3.0.M「severity / scope は維持したまま blocking 集合から除外」)。CRITICAL の字面整合指摘が non-blocking になるのは設計どおり — severity は Impact 軸、blocking は実測軸であり、両者は直交する。この 2 軸の分離は実測必須ゲートの前提そのもの なので、severity を下げて辻褄を合わせてはならない。
+
+**MUST NOT — `scope=nit-noted` への転用**: 字面整合クラスを non-blocking にする手段として `scope=nit-noted` を使ってはならない。nit-noted は実測必須ゲートの **対象外** (`gated` 偽) であり `non_blocking_findings[]` に載らないため、4 経路記録が失われる。scope は [Scope Assignment Flowchart](#scope-assignment-flowchart) の判定順序でのみ決める。
+
+**helper の 3 値判定には介入しない**: 帰結クラス判定は「アンカーを添付するか否か」の **authoring 判断**であり、`scripts/review-measured-gate.sh` の 3 値判定 (`true` / `false` / 未判定) のロジックには一切触れない。形式崩れアンカーが未判定 (= blocking のまま) として扱われる挙動は本 Gate の前後で不変である。
+
+### Comment Quality Finding Gate と異なる点 (意図的な非対称)
+
+同型の Gate だが、以下 3 点は Comment Quality Gate が持つ機構を **意図的に持たない**。同居する 2 Gate の差分を読み手が drift と誤認しないよう明示する:
+
+- **severity プリセット表を置かない**: severity は Impact 軸から従来どおり継承し、帰結クラスは blocking 軸のみを決める。字面整合クラスは severity に依らず non-blocking になるため、プリセットを置いても消費者がいない (置けば no_speculative_structure に反する)。
+- **`+` 行限定の diff scope 制約を課さない**: Comment Quality Gate がスコープを新規 diff の追加行に限るのは、既存違反まで対象にすると finding が爆発するため。本 Gate は finding を**生む**のではなく blocking 集合から**降格させる**だけなので、pre-existing 散文への指摘を含めても爆発は起きない。掲載可否は従来どおり Observed Likelihood Gate の 3 ゲート (revert test を含む) が決める。
+- **Hypothetical Exception Categories の例外を持たない**: 4 例外 reviewer (`security` / `application` / `devops` / `dependencies`) は **Likelihood 軸**の例外であって本 Gate の例外ではない。例外カテゴリの reviewer が出した字面整合クラスの指摘も non-blocking になる ([実測必須ゲート](../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) が例外カテゴリを対象外にしないのと同じ扱い)。
+
+### 適用例
+
+**例 1 — 字面整合 (アンカー不適格)**: 「同一事項を述べる 2 つの節で、一方は記録先を『4 経路すべて』と書き、他方は内訳を 3 つしか列挙していない」。repro は両節の grep 出力の突合のみで、この記述に従った実行者が至る誤動作を示していない。→ アンカーを付けずに報告し、non-blocking として記録される。
+
+**例 2 — 挙動的帰結 (アンカー適格)**: 「ステップ 6 の指示どおりに `index.md` を更新すると 5 列テーブルが 3 列で上書きされ表が崩壊する」。repro は記述された手順を実行し、成果物 (テーブル) の破損を観測している。→ `Verification: repro` アンカーに「手順の実行 ⇒ 崩れたテーブル出力」を記入して添付し、blocking のまま fix へ渡る (**実際の指摘に書くアンカーでは矢印を半角にすること** — 全角では正規形として検出されず降格する。本行が全角 `⇒` なのは、この Gate 文書を引用した指摘が恒久 blocking 化するのを避けるための文書側の退避であり、記入形式の指定ではない)。
+
+**例 3 — 境界ケース**: 「helper が emit する marker 名が仕様書と実装で食い違う」。**実装側を実行して仕様書どおりの marker が出ないことを観測できる**なら挙動的帰結 (アンカー適格)。**2 つの文書の marker 名を grep で並べただけ**なら字面整合 (不適格)。同じ指摘でも repro の観測対象で決まる。
+
+## テスト網羅性 Finding Gate
+
+<a id="test-coverage-finding-gate"></a>
+
+> **Reference**: 語彙定義は [`severity-levels.md` §帰結クラス軸](../references/severity-levels.md#帰結クラス軸-consequence-class)、blocking 判定側の適用手順は [`assessment-rules.md` §5.3.0.M](../skills/fix/references/assessment-rules.md#530m-実測必須ゲート-measured-confirmed-gate) を参照。本セクションは reviewer 側の **authoring Gate** (契約対応の判定手順・アンカー適格性・severity 保持規則) を一元化する。直上の §手順書・仕様書ドメイン Finding Gate と同型・同居の Gate であり、新しい機構ではない。
+
+### Scope: テスト網羅性への指摘
+
+本 Gate は **「テストが挙動を固定していない」型の指摘** — mutation 生存 (ある行を変異させてもスイートが green)、assert の検証力不足、pin 欠落 — に適用する。**本 Gate は finding を生む側ではない**: `test-reviewer.md` の Detection Process と Review Checklist (「Missing Critical Tests」等) は従来どおり finding を生み、本 Gate はその**後**に働いて severity を変えずに blocking 集合への帰属だけを決める。調査深度・報告義務・cycle 1 の徹底性はいずれも不変。
+
+### 契約対応の判定手順
+
+blocking か否かは「**その mutation が無効化するのは Issue 契約が規定する挙動か、実装内部の細部か**」で決まる。判定材料は Issue body に固定し、reviewer の主観に開かない:
+
+1. PR body の `refs #N` / `Closes #N` から対象 Issue を解決する
+2. その Issue の **`## 4. Implementation Details` §4.4 Behavioral Requirements の MUST 箇条書き**と、**`## 5. Acceptance Criteria` 各 AC の `Then` 節**を読む
+3. mutation が無効化する挙動が上記のいずれかに**文として現れていれば契約対応**、現れていなければ実装内部
+
+**契約リンクを解決できない場合 (PR body に Issue 参照が無い / Issue 取得に失敗) は blocking へ倒す** — 契約対応とみなして扱う。non-blocking を既定にすると実指摘を無音で握り潰すため、fail-loud 側に倒す。
+
+### 判別子
+
+| クラス | 判別子 | `Verification:` アンカー |
+|---|---|---|
+| **契約対応の未 pin** | 契約 (§4.4 MUST / §5 AC の `Then`) が規定する挙動**そのもの**を無効化する変異を加えてもスイートが green。または当該挙動に対応するテストが存在しない | **適格** — アンカーを添付し blocking のまま fix へ渡る |
+| **網羅的 pin 強化** | 契約挙動を丸ごと壊す変異は既存 pin が検出する。生存するのは**より細粒度の**変異 (連言の片側弱化・境界の一方のみ・実装が内部に持つ分岐や helper) だけ | **不適格** — アンカーを付けずに報告し non-blocking として記録する |
+| **テストの誤り (正しさ)** | テストが**名乗った挙動に対してどんな実装でも落ちない** (トートロジーな assert / fixture が対象経路に到達せず空振り / 仕様と逆を固定) | **適格** — 網羅性ではなく正しさの欠陥のため本 Gate の対象外。blocking のまま |
+
+**3 行目は脚注ではなく独立クラス**である。「変異が生存する」と「テストが常時 pass する」は別物で、前者はテストに検証力があるが特定の細粒度変異を捕まえないこと、後者はテストがそもそも落ちようがないことを指す。判別は **「そのテストは、名乗った挙動に対して落ちうるか」** の一問で行う — 落ちようがないなら正しさの欠陥 (blocking)、落ちうるが変異 M を捕まえないなら網羅性 (契約対応で分岐)。
+
+### アンカー適格性の帰結
+
+網羅的 pin 強化クラスは `Verification:` アンカーを持たないため、実測必須ゲート ([severity-levels.md §実測必須ゲート](../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)) が `measured=false` として **non-blocking** に分類し、4 経路すべてに記録する。
+
+**mutation を実行したのにアンカーを付けないのは矛盾ではない**。[§Verification: runtime 実測の添付](#verification-runtime-measurement) が実測と呼ぶのは「実際に走らせて観測した**誤動作**、または落ちるテスト」である。生存する mutant が示すのは HEAD の誤動作ではなく、**reviewer が持ち込んだ架空の欠陥に対する番人の不在**であり、スイートは green のままで何も落ちていない。契約対応クラスだけがアンカー適格なのは、そこで観測されるのが「契約が要求する挙動を除去しても成果物が気付かない」という、契約それ自体に照らした誤動作だからである。
+
+**mutation の実行結果そのものは `内容` 列の叙述に書く** (何を変異させ何件生存したか)。抑止されるのはアンカーの添付だけで、報告は従来どおり行う。ただし **`内容` 列で verification の語の直後にコロンを置かないこと** — 検出層の literal は大文字小文字を区別せず装飾文字・バッククォート・空白を吸収してからコロンに達するため、言及も母集団に入る。「アンカー」「verification フィールド」等の語で言い換える。**`Likelihood-Evidence:` には `runtime_observation` を使わないこと** — 同 Rules がこのラベルに対して実測アンカーの併記を無条件に要求するため、アンカー不適格クラスと衝突する。`existing_call_site` / `new_call_site` を使う。
+
+**severity は降格時も維持する** (`assessment-rules.md` §5.3.0.M「severity / scope は維持したまま blocking 集合から除外」)。CRITICAL の pin 強化要求が non-blocking になるのは設計どおり — severity は Impact 軸、blocking は実測軸であり両者は直交する。severity を下げて辻褄を合わせてはならない。
+
+**MUST NOT — `scope=nit-noted` への転用**: 網羅的 pin 強化クラスを non-blocking にする手段として `scope=nit-noted` を使ってはならない。nit-noted は実測必須ゲートの **対象外** (`gated` 偽) であり `non_blocking_findings[]` に載らないため、4 経路記録が失われる。scope は [Scope Assignment Flowchart](#scope-assignment-flowchart) の判定順序でのみ決める。
+
+**helper の 3 値判定には介入しない**: 本 Gate は「アンカーを添付するか否か」の **authoring 判断**であり、`scripts/review-measured-gate.sh` の 3 値判定 (`true` / `false` / 未判定) のロジックには一切触れない。
+
+### 手順書・仕様書ドメイン Gate と異なる点 (意図的な非対称)
+
+同型の Gate だが、判別子の構造が 1 点だけ異なる。同居する 2 Gate の差分を読み手が drift と誤認しないよう明示する:
+
+- **判別子が Issue body を参照する**: 散文 Gate の判別子は指摘内部で閉じる (repro が何を観測しているか) が、本 Gate は **Issue の §4.4 / §5 という外部文書**を参照しないと契約対応を決められない。これは「契約に対応するか」という問い自体が PR 外部の仕様を必要とするためで、参照先と読む節を上記「契約対応の判定手順」で固定することで主観に開かないようにしている。**解決不能時に blocking へ倒す既定**を持つのもこの非対称に由来する (散文 Gate は外部参照を持たないため同種の既定を必要としない)。
+- **severity プリセット表を置かない / `+` 行限定の diff scope 制約を課さない / Hypothetical Exception Categories の例外を持たない**: いずれも散文 Gate と同じ理由で持たない (それぞれ「消費者がいない」「finding を生むのではなく降格させるだけ」「例外は Likelihood 軸のもの」)。詳細は [§手順書・仕様書ドメイン Finding Gate](#prose-domain-finding-gate) の同名項を参照する (複製しない)。
+
+### 適用例
+
+**例 1 — 網羅的 pin 強化 (アンカー不適格)**: 「fix が cycle 1 で追加した抽出式の行アンカー `^` と `$` について、fixture が両者の論理積しか pin しておらず、片側だけを弱める mutant 4 本が生存する」(F-18 型)。記録コメント契約 が規定するのは「記録コメントを durable な comment id で同定する」であり、行アンカーの片側弱化はその挙動を無効化しない (丸ごと壊す変異は既存 fixture が検出する)。→ アンカーを付けずに報告し、non-blocking として記録される。
+
+**例 2 — 契約対応の未 pin (アンカー適格)**: 「AC が規定する『id が指すコメントが記録コメントでなければ書き込まない』挙動について、検証述語を無効化してもスイートが green」。契約の `Then` 節が名指しする挙動そのものが除去可能なまま通る。→ `Verification: failing_test` アンカーに「述語を除去した worktree でスイート実行 ⇒ 全件 green (検出されず)」を記入して添付し、blocking のまま fix へ渡る (**実際の指摘に書くアンカーでは矢印を半角にすること** — 全角では正規形として検出されず降格する。本行が全角 `⇒` なのは、この Gate 文書を引用した指摘が恒久 blocking 化するのを避けるための文書側の退避であり、記入形式の指定ではない)。
+
+**例 3 — テストの誤り (対象外・blocking 維持)**: 「TC-4.16o''' は fixture が正規 marker を併せ持つため probe に到達せず空振りしている」(F-30 型)。このテストは probe がどう実装されていても落ちない = 名乗った挙動に対する検証力がゼロであり、網羅性ではなく正しさの欠陥。→ 本 Gate の対象外として従来どおり blocking。同じ指摘に併記された「probe の `^` と `[[:space:]]*` がどちらも未 pin」の側は網羅性クラスとして例 1 と同じ扱いになる — **1 つの指摘が両クラスにまたがる場合はクラスごとに分けて起票する**。
+
+**例 4 — 過去データでの再分類 (AC-4)**: 凍結クローズに至った PR の churn テールを本規則で再分類すると、主燃料は non-blocking 側へ落ちる。
+
+| PR | finding | 契約対応 | 本規則での分類 |
+|---|---|---|---|
+| #2114 | F-04 rc→marker 変換の pin 不足 | 実装内部の変換 | 網羅的 pin 強化 → non-blocking |
+| #2114 | F-05 consumer 判定表のテスト不在 | 実装内部の判定表 | 網羅的 pin 強化 → non-blocking |
+| #2114 | F-06 gitignore ブロック配置の pin 不足 | 実装内部の配置 | 網羅的 pin 強化 → non-blocking |
+| #2112 | F-18 行アンカー片側 mutant 4 本生存 | 契約挙動は既存 pin が保護 | 網羅的 pin 強化 → non-blocking |
+| #2112 | F-21 tempfile グローバル化の未 pin | fix が導入した内部変更 | 網羅的 pin 強化 → non-blocking |
+| #2112 | F-29 `_is_record` 連言の片側弱化 3 mutant 生存 | 契約挙動は既存 negative control が保護 | 網羅的 pin 強化 → non-blocking |
+| #2112 | F-30 probe 2 要素の未 pin (空振り側を除く) | 実装内部の probe | 網羅的 pin 強化 → non-blocking |
+| #2112 | F-31 静的 pin の denylist が `declare` を素通り | fix 自身の pin の強化要求 | 網羅的 pin 強化 → non-blocking |
+| #2114 | F-01 marker field 順の非対称で helper 失敗が成功と報告される | — | 挙動の欠陥 (テスト網羅性指摘ではない) → blocking 維持 |
+| #2112 | F-30 TC-4.16o''' の空振り | — | テストの誤り → blocking 維持 |
+
+後半サイクルの pin 要求 8 件がすべて non-blocking へ落ち、実バグ (#2114 F-01 型) とテストの誤り (#2112 F-30 空振り側) は blocking に残る。
+
 ## Fail-Fast First
 
 Before recommending a fallback (`||` default, `try/catch` swallowing, null guard, default value substitution, retry-and-give-up), reviewers MUST first consider whether the correct fix is to **fail fast** — `throw` / `raise` / re-throw to the caller and let the existing error boundary handle it.
@@ -343,7 +656,7 @@ If the Wiki documents a project-specific allowance for the fallback pattern in q
 
 ## Finding Quality Guardrail
 
-Reviewers MUST filter out the following categories of findings **before** writing them to the output table. The filter is applied after Observed Likelihood Gate and Fail-Fast First but before Confidence Scoring. Filtered findings are logged to the reviewer's `監査ログ` section (optional) but MUST NOT appear in `指摘事項`.
+Reviewers MUST filter out the following categories of findings **before** writing them to the output table. The filter is applied after Observed Likelihood Gate and Fail-Fast First but before Confidence Scoring. Filtered findings MUST NOT appear in `指摘事項`. Category #2 items are written to the reviewer's `監査ログ` section so that even a runtime-measured suggestion rejected by the declared-environment rule remains auditable.
 
 This guardrail implements Quality Signal 4 of the four review-fix loop quality signals (see the Quality Signal 1-4 table in `skills/pr-review/references/finding-cycling.md`).
 rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-low-signal-findings-are-filtered
@@ -353,7 +666,7 @@ rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-low-sig
 | # | Category | Examples | Filter rule |
 |---|----------|----------|-------------|
 | 1 | **Bikeshedding** | "変数名 `x` をより記述的にすべき", "マジックナンバー `7` を定数化すべき", "`let` より `const` を優先", フォーマッタで機械的に決まる事項 | Filter **unless** the reviewer can cite a project convention (Wiki entry / CLAUDE.md / linter rule) that the finding violates. Pure preference without cited convention → filter |
-| 2 | **Defensive code suggestion** | "念のため null check を追加", "想定外の値に備えて default を返す", "型的に到達不可能な else に throw を追加" | Filter **unless** the reviewer identifies a concrete call site that can reach the undefended branch. Suggestions based on "just in case" without a demonstrable call path → filter |
+| 2 | **Defensive code suggestion / speculative hardening** | "念のため null check を追加", "想定外の値に備えて default を返す", "型的に到達不可能な else に throw を追加", 単一ユーザー開発機を宣言したプロジェクトでの共有ホスト前提の squat / TOCTOU 対策 | Filter **unless both** hold: (a) the reviewer identifies a concrete call site that can reach the undefended branch, **and** (b) that call site is reachable under the project's **declared operating environment** (the prose declaration in `CLAUDE.md` — when the project declares none, (a) alone decides). A hardening demand that contradicts the declaration is filtered **even when backed by runtime measurement**. For findings that survive, the default `推奨対応` is fail-loud — 例外の可否は [Fail-Fast First](#fail-fast-first) が決める |
 | 3 | **Hypothetical without entry point** | "もし悪意あるユーザーが ... できたら", "もし race condition が起きたら" | Already governed by Observed Likelihood Gate; here this guardrail adds a belt-and-suspenders filter. If the finding has no `Likelihood-Evidence:` line and the reviewer is not in an Exception Category → filter |
 | 4 | **Style-only without rule** | "コメント文体を揃える", "ファイル末尾改行", "import 並び替え" unless enforced by a configured linter | Filter |
 | 5 | **Scope self-degradation chain** | reviewer が CRITICAL/HIGH と判定した finding を severity 自己降格 (CRITICAL → MEDIUM) と同時に scope 自己降格 (current-pr → nit-noted) させる二重 degrade パターン。例: CRITICAL → MEDIUM (severity 降格) + current-pr → nit-noted (scope 降格) の連鎖。本来の severity を保ったまま `original_severity` フィールドに記録すべき (schema 1.1.0 `findings[].original_severity` 参照) | Filter **and** warn the reviewer to either: (a) keep the original severity and use `current-pr` / `follow-up` scope, or (b) downgrade only severity (LOW-MEDIUM などへ) keeping `current-pr` scope. **CRITICAL/HIGH を本 Category #5 で filter した場合、reviewer は強制的に [Reviewer self-degradation → Signal 4](#reviewer-self-degradation--signal-4) の `Status: degraded` を emit すること** (Signal 4 強制発火 — silent suppression 防止)。二重 degrade は finding を silent suppression する経路となり review-fix loop の収束を阻害するため、本 Filter は完全消去ではなく **warn + escalation** を意図する設計上の対称性を担保する |
@@ -362,7 +675,7 @@ rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-low-sig
 
 rationale: ../skills/reviewers/references/reviewer-base-rationale.md#why-low-signal-findings-are-filtered
 
-Filtered findings are **NOT discarded** — reviewers SHOULD list them in a separate `監査ログ` section (optional, off by default) so a human can audit what was filtered. This preserves auditability without impacting the loop.
+Filtered findings are **NOT discarded**. Category #2 items MUST be listed in the separate `監査ログ` section; Categories #1/#3/#4/#5 MAY also be listed there. When no item is logged, emit `なし`. The log is audit-only and never affects assessment, finding counts, or the merge decision.
 
 ### Reviewer self-degradation → Signal 4
 
@@ -421,7 +734,14 @@ Output using this format with evaluation (可/条件付き/要修正), findings 
 | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
 |--------|----------|------------|------|----------|
 | {SEVERITY} | {SCOPE} | {file:line} | {issue} | {recommendation} |
+
+### 監査ログ
+| Filter Category | 元重要度 | ファイル:行 | 除外した内容 | 除外理由 | 実測 |
+|-----------------|----------|------------|--------------|----------|------|
+| Category #2 | {SEVERITY} | {file:line or -} | {filtered suggestion} | {failed condition} | {Verification anchor or なし} |
 ```
+
+`監査ログ` は常に出力する。該当なしの場合は表の代わりに `なし` と書く。Category #2 の行は省略禁止で、内容中の `Verification:` anchor は改変しない。
 
 ### Column Structure Rules
 

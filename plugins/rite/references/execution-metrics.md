@@ -151,7 +151,7 @@ Defined in `rite-config.yml` under the `safety` section. See [Safety Configurati
 ```yaml
 safety:
  max_implementation_rounds: 20 # implementation round hard limit
- max_review_cycles: 5 # /rite:iterate review-fix loop circuit breaker per PR (default: 5)
+ max_review_cycles: 15 # /rite:iterate circuit breaker backstop (default: 15). Primary fire condition is convergence-trend divergence
  time_budget_minutes: 120 # time budget per Issue (advisory, not enforced by timer)
  auto_stop_on_repeated_failure: true # stop on repeated failure
  repeated_failure_threshold: 3 # consecutive same-class failure count
@@ -201,7 +201,7 @@ metrics:
 
 safety:
  max_implementation_rounds: 20 # implementation round hard limit
- max_review_cycles: 5 # /rite:iterate review-fix loop circuit breaker per PR (default: 5)
+ max_review_cycles: 15 # /rite:iterate circuit breaker backstop (default: 15). Primary fire condition is convergence-trend divergence
  time_budget_minutes: 120 # time budget per Issue (advisory, not enforced by timer)
  auto_stop_on_repeated_failure: true # stop on repeated failure
  repeated_failure_threshold: 3 # consecutive same-class failure count

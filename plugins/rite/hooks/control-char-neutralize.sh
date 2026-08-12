@@ -1,7 +1,7 @@
 #!/bin/bash
 # rite workflow - Control Character Neutralization (shared)
 # Provides the single source of truth for the "control chars → ?" diagnostic
-# neutralization convention shared by all hooks/ diagnostic snippet emission
+# neutralization convention shared by all hooks/ and scripts/ diagnostic snippet emission
 # sites (`head -3 "$err_file" | neutralize_ctrl --keep-newline | sed ... >&2`
 # — the parity is pinned by
 # tests/diag-snippet-neutralize-parity.test.sh), by stop-loop-continuation.sh
@@ -33,6 +33,7 @@
 #   head -3 "$file" | neutralize_ctrl --keep-newline        # \n は保持 (行構造を保つ snippet 用)
 #   printf '%s' "$value" | neutralize_ctrl --c0-only        # C0+DEL のみ (UTF-8 本文を保持する JSON 用)
 #   contains_ctrl "$value" && reject                        # 検出 (reject) 用 — 範囲は default と同一
+#   contains_ctrl "$value" --c0-only && reject              # 検出 (reject) 用 — 範囲は --c0-only と同一
 #
 # Contract:
 #   - stdin → stdout byte filter; LC_ALL=C tr なので NUL を含む任意バイト列を扱える
@@ -66,26 +67,32 @@ neutralize_ctrl() {
 # validation. Sharing the byte-range definition here keeps detection and
 # replacement symmetric.
 #
-# Usage: contains_ctrl "$value"   # rc 0 = C0/DEL/C1 byte present, rc 1 = clean
+# Usage: contains_ctrl "$value"              # rc 0 = C0/DEL/C1 byte present, rc 1 = clean
+#        contains_ctrl "$value" --c0-only    # rc 0 = C0/DEL byte present (0x80 以上は素通し)
 #
 # Contract:
 #   - argument-based, not a stdin filter: every call site tests a bash
 #     variable, and bash variables cannot carry NUL — so 0x00 is structurally
 #     unreachable here (the stdin-filter neutralize_ctrl still covers it)
-#   - byte-wise under LC_ALL=C: UTF-8 continuation bytes overlapping 0x80-0x9f
-#     (e.g. most Japanese characters) are detected as control bytes — accepted
-#     設計判断: all call sites are ASCII-identifier / ASCII-title
-#     fields. 日本語 TITLE が必要になったら UTF-8 セーフモードを別途追加する
-#   - implementation reuses the exact neutralize_ctrl default tr range and
-#     compares byte counts before/after deletion. grep は使わない — grep 実装に
-#     よっては (例: ugrep) LC_ALL=C でも raw 8-bit バイトを UTF-8 として扱い
-#     リテラル 0x9b にすらマッチしないため、検出が環境依存で silent に壊れる
+#   - byte-wise under LC_ALL=C: in the default range, UTF-8 continuation bytes
+#     overlapping 0x80-0x9f (e.g. most Japanese characters) are detected as
+#     control bytes — accepted 設計判断 for the ASCII-identifier / ASCII-title
+#     call sites. **UTF-8 本文 (日本語 TITLE 等) を検査する call site は
+#     `--c0-only` を使う**: 範囲は neutralize_ctrl --c0-only と同一 (C0 + DEL)
+#     で、行構造を壊す制御バイトだけを拒否しつつ多バイト文字を通す。raw 8-bit
+#     単独の C1 が素通しになる点は neutralize_ctrl --c0-only と同じ非対称
+#   - implementation reuses the exact neutralize_ctrl tr range of the selected
+#     mode and compares byte counts before/after deletion. grep は使わない —
+#     grep 実装によっては (例: ugrep) LC_ALL=C でも raw 8-bit バイトを UTF-8
+#     として扱いリテラル 0x9b にすらマッチしないため、検出が環境依存で silent
+#     に壊れる
 #   - fail-closed: pipeline failure / non-numeric wc output counts as
 #     "detected" so the reject path cannot silently degrade into pass-through
 contains_ctrl() {
-  local _in_bytes _stripped_bytes
+  local _in_bytes _stripped_bytes _range='\000-\037\177\200-\237'
+  [ "${2:-}" = "--c0-only" ] && _range='\000-\037\177'
   _in_bytes=$(printf '%s' "$1" | LC_ALL=C wc -c) || _in_bytes=""
-  _stripped_bytes=$(printf '%s' "$1" | LC_ALL=C tr -d '\000-\037\177\200-\237' | LC_ALL=C wc -c) || _stripped_bytes=""
+  _stripped_bytes=$(printf '%s' "$1" | LC_ALL=C tr -d "$_range" | LC_ALL=C wc -c) || _stripped_bytes=""
   # BSD wc は数値を空白パディングするため除去してから数値検証する
   _in_bytes=${_in_bytes//[[:space:]]/}
   _stripped_bytes=${_stripped_bytes//[[:space:]]/}

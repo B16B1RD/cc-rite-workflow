@@ -2,8 +2,8 @@
 # state-root-observers.test.sh
 #
 # Pin the state-path-resolve based root resolution of the observation-surface
-# scripts unified in the review-result state-root change (Issue #1831,
-# regression tests deferred to Issue #1845):
+# scripts unified in the shared review-result state-root change (
+# regression tests deferred to):
 #
 #   TC-1..3  hooks/scripts/review-schema-version-check.sh --all (scan-root 解決)
 #   TC-4..5  hooks/review-skip-notification.sh              (表示パス解決)
@@ -38,7 +38,20 @@ fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
 echo "=== state-root-observers tests ==="
 
 if ! command -v jq >/dev/null 2>&1; then
-  echo "SKIP: jq not available — review-schema-version-check requires jq" >&2
+  # Floor first: jq is a prerequisite for every leg, so its absence on the blocking
+  # gate means it was removed or shadowed on PATH, not that the platform lacks it.
+  # Skipping there would drop this file's entire coverage while the run stays green.
+  # `[ -d /proc ]` rather than `uname -s`, which resolves through the same PATH.
+  if [ -d /proc ]; then
+    echo "  ❌ FAIL: state-root-observers floor: jq unavailable on Linux (missing or shadowed on PATH?) — this file's coverage must never be skipped on the blocking gate"
+    echo "Results: 0 passed, 1 failed"
+    exit 1
+  fi
+  # Emit the counted form so the runner rolls this into its "N skipped" headline —
+  # a whole file that exits 0 without running anything would otherwise be scored
+  # as a pass (review I-03).
+  echo "  ⏭️ SKIP: jq not available — state-root-observers requires jq"
+  echo "SKIP: 1"
   exit 0
 fi
 

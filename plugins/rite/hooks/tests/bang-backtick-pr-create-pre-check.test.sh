@@ -36,6 +36,7 @@ REPO_ROOT="$(cd "$PLUGIN_ROOT/../.." && pwd)"
 CHECK_SCRIPT="$HOOK_DIR/scripts/bang-backtick-check.sh"
 CREATE_MD="$PLUGIN_ROOT/skills/pr-create/SKILL.md"
 READY_MD="$PLUGIN_ROOT/skills/ready/SKILL.md"
+READY_GATE_HELPER="$HOOK_DIR/scripts/ready-pr-head-gate.sh"
 LINT_MD="$PLUGIN_ROOT/skills/lint/SKILL.md"
 PASS=0
 FAIL=0
@@ -43,6 +44,7 @@ FAIL=0
 [ -f "$CHECK_SCRIPT" ] || { echo "ERROR: $CHECK_SCRIPT not found" >&2; exit 1; }
 [ -f "$CREATE_MD" ] || { echo "ERROR: $CREATE_MD not found" >&2; exit 1; }
 [ -f "$READY_MD" ] || { echo "ERROR: $READY_MD not found" >&2; exit 1; }
+[ -f "$READY_GATE_HELPER" ] || { echo "ERROR: $READY_GATE_HELPER not found" >&2; exit 1; }
 [ -f "$LINT_MD" ] || { echo "ERROR: $LINT_MD not found" >&2; exit 1; }
 
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
@@ -116,22 +118,18 @@ else
 fi
 rm -f "$sentinel_stderr"
 
-# ----- TC-4: §7 MUST — create.md/ready.md DRIFT-CHECK ANCHOR ---------------
-# The Phase 1.0 bash block invocation literal MUST be byte-for-byte identical
-# between create.md and ready.md (Wiki 経験則「Asymmetric Fix Transcription」).
-# We pin three sentinels: the scanner invocation, the sentinel emit literal,
-# and the sub-section header.
-echo "TC-4: §7 MUST — DRIFT-CHECK ANCHOR between create.md and ready.md"
+# ----- TC-4: shared scanner core and ready-only PR-head resolution ----------
+echo "TC-4: shared scanner core and ready-only PR-head resolution"
 inv_create=$(grep -c 'bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all --skip-if-no-target 2>&1' "$CREATE_MD" || true)
-inv_ready=$(grep -c 'bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all --skip-if-no-target 2>&1' "$READY_MD" || true)
+inv_ready=$(grep -c 'bash "$plugin_root/hooks/scripts/bang-backtick-check.sh" --all --skip-if-no-target --repo-root "$scan_root" 2>&1' "$READY_GATE_HELPER" || true)
 if [ "$inv_create" -ge 1 ] && [ "$inv_ready" -ge 1 ]; then
-  pass "TC-4 scanner invocation literal present in BOTH create.md and ready.md"
+  pass "TC-4 scanner core present with ready-specific --repo-root"
 else
-  fail "TC-4 scanner invocation literal mismatch (create=$inv_create, ready=$inv_ready)"
+  fail "TC-4 scanner invocation missing (create=$inv_create, ready=$inv_ready)"
 fi
 
 sentinel_create=$(grep -c 'BANG_BACKTICK_CHECK_INVOCATION_FAILED=1' "$CREATE_MD" || true)
-sentinel_ready=$(grep -c 'BANG_BACKTICK_CHECK_INVOCATION_FAILED=1' "$READY_MD" || true)
+sentinel_ready=$(grep -c 'BANG_BACKTICK_CHECK_INVOCATION_FAILED=1' "$READY_GATE_HELPER" || true)
 if [ "$sentinel_create" -ge 2 ] && [ "$sentinel_ready" -ge 2 ]; then
   # ≥2 because the literal appears in both the script_missing branch and
   # the rc=invocation_error branch.
@@ -158,14 +156,14 @@ else
   fail "TC-4 DRIFT-CHECK ANCHOR comment missing (create=$anchor_create, ready=$anchor_ready)"
 fi
 
-# The not-applicable skip-note handling added to the 0) case (Issue #1550) MUST
+# The not-applicable skip-note handling added to the 0) case MUST
 # also be symmetric between create.md and ready.md. Pin the skip-note's
 # user-facing echo message ("...self-host していないため N/A..."), which is
 # unique to the 0)-case skip-note block. The bare substring "not applicable"
 # is NOT used: it also appears in unrelated review-scope prose elsewhere in
 # create.md, so it would pass even if the real skip-note line were deleted.
 skipnote_create=$(grep -cF 'self-host していないため N/A' "$CREATE_MD" || true)
-skipnote_ready=$(grep -cF 'self-host していないため N/A' "$READY_MD" || true)
+skipnote_ready=$(grep -cF 'clean skip' "$READY_GATE_HELPER" || true)
 if [ "$skipnote_create" -ge 1 ] && [ "$skipnote_ready" -ge 1 ]; then
   pass "TC-4 not-applicable skip-note present in BOTH create.md and ready.md"
 else
@@ -194,7 +192,7 @@ fi
 # CRITICAL bug が発生 (3 site 同形 transcription、Wiki 経験則「Asymmetric Fix Transcription」の
 # inverse failure)。byte 比較で single-quote 囲みであることを pin する。
 echo "TC-12: CRITICAL regression — Style B 'if ! cmd; then' literal must use single-quotes (not backticks)"
-for f in "$CREATE_MD" "$READY_MD"; do
+for f in "$CREATE_MD" "$READY_GATE_HELPER"; do
   fname=$(basename "$f")
   if grep -qF "expand 'if ! cmd; then'" "$f"; then
     pass "TC-12 $fname uses single-quoted Style B example"
@@ -213,7 +211,7 @@ done
 # working tree) must NOT hard-error the gate. With --skip-if-no-target — which
 # the Phase 1.0 blocks now pass — --all exits 0 (not-applicable clean skip) and
 # emits an informational note; without the flag the exit-2 diagnostic is still
-# preserved (MUST NOT drop it unconditionally). (Issue #1550)
+# preserved (MUST NOT drop it unconditionally).
 echo "TC-6: AC-1/AC-2 — consumer repo (no plugins/rite) gate skip"
 consumer_root=$(mktemp -d)
 skip_rc=0
@@ -237,6 +235,13 @@ else
   fail "TC-6 expected exit 2 without flag, got $diag_rc"
 fi
 rm -rf "$consumer_root"
+
+# Runtime behavior is covered by ready-pr-head-gate.test.sh. Keep only the
+# command-document wiring assertions here.
+echo "TC-13: ready gate helper wiring"
+for needle in 'ready-pr-head-gate.sh' '--pr "$ready_pr_number"' 'ready-work-memory-update.sh' '--pr {pr_number} --issue {issue_number}'; do
+  if grep -qF -- "$needle" "$READY_MD"; then pass "TC-13 wiring: $needle"; else fail "TC-13 missing: $needle"; fi
+done
 
 # ----- Summary --------------------------------------------------------------
 echo ""

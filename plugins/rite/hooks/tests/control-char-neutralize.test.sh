@@ -32,6 +32,9 @@
 #   TC-18: contains_ctrl: UTF-8 U+009B (0xc2 0x9b) を 2 バイト目で検出
 #   TC-19: contains_ctrl: empty string は clean / UTF-8 マルチバイト (日本語) は検出
 #          (byte-wise 設計判断 pin — 継続バイト 0x80-0x9f 重複は accepted trade-off)
+#   TC-20: contains_ctrl --c0-only: C0+DEL のみ検出・C1/日本語は clean
+#          (neutralize_ctrl --c0-only と同一範囲を共有する検出側モード。UTF-8 本文を
+#           検査する call site 用。未知の第 2 引数は default 範囲へ倒す fail-closed も pin)
 #
 # Usage: bash plugins/rite/hooks/tests/control-char-neutralize.test.sh
 set -euo pipefail
@@ -87,7 +90,10 @@ assert "TC-7: newline preserved, others neutralized" "6c313f0a6c323f0a" "$(print
 echo ""
 echo "=== TC-8: 可読 ASCII 無傷 + 1:1 置換 (長さ保存 — 空削除への revert を catch) ==="
 assert "TC-8: printable ASCII untouched" "readable TEXT-123_ok" "$(printf 'readable TEXT-123_ok' | neutralize_ctrl)"
-assert "TC-8: 1:1 replacement preserves byte length" "3" "$(printf 'A\x9bB' | neutralize_ctrl | wc -c)"
+# `wc -c` right-justifies its count with leading spaces on BSD/macOS (GNU emits
+# the bare number). `$( )` strips the trailing newline but not the leading pad,
+# so strip whitespace before the string comparison.
+assert "TC-8: 1:1 replacement preserves byte length" "3" "$(printf 'A\x9bB' | neutralize_ctrl | wc -c | tr -d ' ')"
 
 echo ""
 echo "=== TC-9: NUL バイト (0x00) → ? (バイトストリーム性 pin) ==="
@@ -153,6 +159,24 @@ assert "TC-19: empty string clean" "clean" "$(ctrl_verdict '')"
 # UTF-8 継続バイト (0x80-0x9f 重複) の検出は accepted trade-off (設計判断)。
 # この assert が fail し始めたら byte-wise 契約自体が変わったことを意味する。
 assert "TC-19: multibyte (Japanese) detected via continuation bytes" "detected" "$(ctrl_verdict 'あ')"
+
+echo ""
+echo "=== TC-20: contains_ctrl --c0-only — 範囲は neutralize_ctrl --c0-only と同一 ==="
+# UTF-8 本文 (日本語 title 等) を検査する call site 用モード。default 範囲との差分は
+# C1 (0x80-0x9f) の扱いのみで、そこが継続バイトを巻き込む false positive の発生源。
+# neutralize_ctrl --c0-only (TC-10〜13) と同じ範囲を共有していることを両側で pin する。
+ctrl_verdict_c0() { if contains_ctrl "$1" --c0-only; then echo detected; else echo clean; fi; }
+assert "TC-20: C0 (SOH) detected in --c0-only" "detected" "$(ctrl_verdict_c0 $'a\x01b')"
+assert "TC-20: TAB detected in --c0-only" "detected" "$(ctrl_verdict_c0 $'a\tb')"
+assert "TC-20: newline detected in --c0-only" "detected" "$(ctrl_verdict_c0 $'a\nb')"
+assert "TC-20: DEL detected in --c0-only" "detected" "$(ctrl_verdict_c0 $'a\x7fb')"
+# 本モードの存在意義: default が detected を返す日本語が clean になる (TC-19 と対の差分 pin)
+assert "TC-20: multibyte (Japanese) clean in --c0-only" "clean" "$(ctrl_verdict_c0 'あ')"
+assert "TC-20: C1 (0x9b CSI) clean in --c0-only" "clean" "$(ctrl_verdict_c0 $'a\x9bb')"
+assert "TC-20: printable ASCII clean in --c0-only" "clean" "$(ctrl_verdict_c0 'a-b_c.d')"
+assert "TC-20: empty string clean in --c0-only" "clean" "$(ctrl_verdict_c0 '')"
+# 未知の第 2 引数は default 範囲へ倒す (typo を silent に緩い判定へ落とさない fail-closed 側)
+assert "TC-20: unknown 2nd arg falls back to default range" "detected" "$(ctrl_verdict_c0_typo() { if contains_ctrl "$1" --c0only; then echo detected; else echo clean; fi; }; ctrl_verdict_c0_typo 'あ')"
 
 if ! print_summary "$(basename "$0")" "control-char-neutralize.sh — C0+DEL+C1 byte-wise neutralization + detection shared helper"; then
   exit 1

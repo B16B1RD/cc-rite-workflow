@@ -15,8 +15,8 @@ Variables use the following formats:
 
 | Variable | Description | Source | Example |
 |----------|-------------|--------|---------|
-| `{owner}` | Repository owner (user or organization) | `git-remote.sh resolve-owner-repo` (fallback: `gh repo view --json owner --jq '.owner.login'`) | `asakaguchi` |
-| `{repo}` | Repository name | `git-remote.sh resolve-owner-repo` (fallback: `gh repo view --json name --jq '.name'`) | `cc-rite-workflow` |
+| `{owner}` | Repository owner (user or organization) | `git-remote.sh resolve-owner-repo` (fallback: `gh repo view --json owner --jq '.owner.login'`) | `{owner}` |
+| `{repo}` | Repository name | `git-remote.sh resolve-owner-repo` (fallback: `gh repo view --json name --jq '.name'`) | `{repo}` |
 | `{default_branch}` | Repository default branch | `gh repo view "$owner/$repo" --json defaultBranchRef --jq '.defaultBranchRef.name'`（`$owner/$repo` は上記 2 行で解決済みの値。明示指定なら SSH host alias 環境でも動く） | `main` or `develop` |
 
 ### Issue Information
