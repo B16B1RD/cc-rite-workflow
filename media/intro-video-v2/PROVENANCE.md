@@ -92,9 +92,7 @@ BGM を用意した後、2 本のカットを連結する。
 
 ```bash
 # フルカット（M1〜M7、約 55.0 秒）
-./assemble.sh -o out/rite-intro-v2-full.mp4 -t 0.5 -b bombinsound-technology-tech-technology-90-second-499581.mp3 \
-  out/01-problem.mp4 out/02-unknowns.mp4 out/03-loop.mp4 out/04-gates.mp4 \
-  out/05-wiki.mp4 out/06-second-lap.mp4 out/07-closing.mp4
+./assemble.sh -P -o out/rite-intro-v2-full.mp4
 
 # SNS カット（M1 + M3 + M5 + M7、約 31.5 秒）
 ./assemble.sh -o out/rite-intro-v2-sns.mp4 -t 0.5 -b bombinsound-technology-tech-technology-90-second-499581.mp3 \
@@ -104,9 +102,5 @@ BGM を用意した後、2 本のカットを連結する。
 完成動画は楽曲単体ではなく映像・タイポグラフィ・アニメーションを組み合わせた新たな制作物として
 配布する。
 
-> `assemble.sh` の `-P`（プリセット）は Issue #2240 当時の 5 シーン構成（`01-problem` /
-> `02-loop` / `03-terminal` / `04-gates` / `05-closing`）と Pixabay 曲名を既定値に持ったままで、
-> 現構成では使えない（実測: `assemble: シーンが見つかりません: out/02-loop.mp4` で終了する）。
-> 同スクリプトの usage 文言も「レンダ済み 5 シーンと既定 BGM」と旧構成のままである。
-> `assemble.sh` は Issue #2258 の変更対象外だったため据え置いており、上記のシーン明示形を正とする。
-> `-P` の新構成対応（または撤去）は Issue #2259 で扱う。
+`-P` は現行のフルカット（M1〜M7）と上記の既定 BGM を選ぶ。SNS カットは
+フルカットとシーン構成が異なるため、意図が見える上記のシーン明示形を正とする。
