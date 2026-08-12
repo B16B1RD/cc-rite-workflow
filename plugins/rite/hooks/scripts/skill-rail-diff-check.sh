@@ -44,8 +44,9 @@ Options:
   --base-ref REF     Ref to compare against (default: origin/develop). Must
                      resolve to a commit.
   --repo-root DIR    Repository root (default: git rev-parse --show-toplevel).
-  --extract-only     Print the extracted machine rail to stdout and exit 0.
-                     Useful for recording a before/after measurement.
+  --extract-only     Print the extracted machine rail to stdout (exit 0), for
+                     recording a before/after measurement. A rail of 0 lines
+                     exits 2 here too — same floor as the comparison path.
   -h, --help         Show this help.
 EOF
 }
@@ -64,10 +65,10 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# --skill and --base-ref reject empty values rather than defaulting. An empty
-# --base-ref would make `git show ":path"` read the index, which succeeds and
-# compares the working tree against the caller's own staged copy — a proof that
-# always passes.
+# --skill and --base-ref reject empty values rather than defaulting. The ref
+# check below would catch an empty --base-ref too, but its message ("Needed a
+# single revision") reads as a typo and sends the caller looking for the wrong
+# thing; naming the empty value here keeps the diagnosis honest.
 if [ -z "$SKILL_PATH" ]; then
   echo "ERROR: --skill is required and must not be empty" >&2
   usage >&2

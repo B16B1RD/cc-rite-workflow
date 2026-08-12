@@ -7,11 +7,15 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TARGET="$SCRIPT_DIR/../scripts/skill-rail-diff-check.sh"
 PLUGIN_ROOT="$SCRIPT_DIR/../.."
 TEST_DIR="$(mktemp -d)"
+# Sibling of TEST_DIR, never `git init`-ed. It cannot live inside TEST_DIR:
+# `git -C` walks up to the enclosing repo, so a subdirectory would resolve to
+# TEST_DIR's own .git and the non-git case would never be exercised.
+NONGIT_DIR="$(mktemp -d)"
 PASS=0
 FAIL=0
 SKIP=0
 
-cleanup() { rm -rf "$TEST_DIR"; }
+cleanup() { rm -rf "$TEST_DIR" "$NONGIT_DIR"; }
 trap 'rc=$?; cleanup; exit $rc' EXIT
 trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
@@ -138,9 +142,9 @@ if [ "$rc" -eq 1 ]; then pass "in-fence comment edit → exit 1"; else fail "exp
 
 # --------------------------------------------------------------------------
 # TC-008: Indented fence and indented table row are part of the rail.
-# rite skills put bash blocks and branch tables under numbered list items, so
-# anchoring the extractor at column 0 would silently drop most of the rail in
-# iterate / fix / pr-review.
+# rite skills put bash blocks and branch tables under numbered list items;
+# anchoring the extractor at column 0 misses about a tenth of the rail in fix
+# and pr-review (iterate is unaffected), which is the shape this TC pins.
 # --------------------------------------------------------------------------
 echo "TC-008: Indented fence edit → exit 1"
 write_base
@@ -218,6 +222,20 @@ if [ "$rc" -eq 2 ] && echo "$output" | grep -q "could not resolve --base-ref"; t
 else fail "expected rc=2 + 'could not resolve --base-ref', got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
+# TC-012b: git's own diagnosis reaches the caller. The script points at "git's
+# message above", so suppressing git's stderr would leave that instruction
+# naming output that no longer exists — and a non-git --repo-root would read as
+# an unfetched ref, which no amount of fetching fixes.
+# --------------------------------------------------------------------------
+echo "TC-012b: Non-git --repo-root surfaces git's own message"
+mkdir -p "$NONGIT_DIR/$(dirname "$REL")"
+cp "$F" "$NONGIT_DIR/$REL"
+rc=0; output=$(bash "$TARGET" --repo-root "$NONGIT_DIR" --skill "$REL" --base-ref HEAD 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && echo "$output" | grep -q "not a git repository"; then
+  pass "non-git --repo-root → exit 2 with git's own diagnosis"
+else fail "expected rc=2 + 'not a git repository', got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
 # TC-013: A file with no rail → exit 2. Both sides extract to empty and compare
 # equal, so without a floor check an empty proof reports the same success as a
 # real one.
@@ -235,11 +253,20 @@ if [ "$rc" -eq 2 ] && echo "$output" | grep -q "empty machine rail"; then
   pass "empty rail → exit 2"
 else fail "expected rc=2 + 'empty machine rail', got rc=$rc: $output"; fi
 
+echo "TC-013b: Empty rail → exit 2 on --extract-only too"
+# The floor sits ahead of the --extract-only branch on purpose: a measurement
+# that silently reports zero lines is the same vacuous proof. Moving the floor
+# back behind the branch passes every other TC, so this one pins the order.
+rc=0; output=$(bash "$TARGET" --repo-root "$TEST_DIR" --skill "$NORAIL_REL" --extract-only 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && echo "$output" | grep -q "empty machine rail"; then
+  pass "empty rail on --extract-only → exit 2"
+else fail "expected rc=2 + 'empty machine rail', got rc=$rc: $output"; fi
+
 # --------------------------------------------------------------------------
-# TC-014: A one-line rail must be counted as one line, not zero. This is the
-# boundary that separates `awk 'END{print NR}'` from `wc -l` on input without a
-# trailing newline; at zero lines both agree, so TC-013 alone leaves the count
-# free to regress.
+# TC-014: A one-line rail must be counted as one line, not zero. The count feeds
+# on `printf '%s\n'`, so it breaks only if that trailing newline is dropped —
+# which is exactly what the pre-restructure form did. At zero lines every
+# variant agrees, so TC-013 alone leaves the count free to regress.
 # --------------------------------------------------------------------------
 echo "TC-014: One-line rail counts as 1, not 0"
 ONE_REL="plugins/rite/skills/oneline/SKILL.md"

@@ -148,7 +148,7 @@ rite-workflow/
 │ └── error-handling-reviewer.md
 ├── skills/ # Claude Code auto-discovered skills (各スキル = 薄い SKILL.md + co-located references/)
 │ # --- PR lifecycle ---
-│ ├── open/ # /rite:open (Issue → branch → 実装 → lint → draft PR; end-to-end)
+│ ├── open/ # /rite:open (Issue → branch → 実装 → lint → draft PR; end-to-end; + references/rationale.md)
 │ ├── iterate/ # /rite:iterate (review ⇄ fix loop, mergeable まで)
 │ ├── pr-review/ # /rite:pr-review (multi-reviewer; + references/) — sub-skill
 │ ├── fix/ # /rite:fix (review 指摘対応; + references/) — sub-skill
