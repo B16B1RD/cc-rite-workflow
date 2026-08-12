@@ -5,7 +5,7 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "静的チェックスクリプトの exit code 設計に「検出できなかった」状態が無いと、走査失敗（対象ファイルを開けない / パーサが fatal で落ちた / 対象が 1 件も見つからない）がすべて「findings 0 件 = 問題なし」として rc=0 で返る。"
 created: "2026-07-30T01:20:00+09:00"
-updated: "2026-08-06T22:40:00+09:00"
+updated: "2026-08-12T18:34:40Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260729T142410Z-pr-2051.md"
@@ -13,6 +13,8 @@ sources:
     ref: "raw/fixes/20260729T144345Z-pr-2051.md"
   - type: "reviews"
     ref: "raw/reviews/20260806T103116Z-pr-2124.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260812T133631Z-pr-2278.md"
 tags: []
 confidence: high
 ---
@@ -84,6 +86,17 @@ exit 0                                    # 全ファイル走査済み・findin
 
 同じ機能の実装がリポジトリに複数あるとき、**どれを写すかで欠陥が決まる**。PR #2124 の新規検出器は、より古い `bash-heaviness-check.sh` の形（`2>/dev/null || true` で失敗を飲む）を写したため、本ページの教訓を持つ `dollar-zero-check.sh` の `SKIPPED` カウンタが伝播しなかった。**レビューを経た最新の実装を写す**。
 
+### exit 0 の多義性を潰す 2 つの解法（PR #2278 実測）
+
+「一致した」と「対象が無いので skip」を同じ exit code に載せると、呼び出し側の assertion は必ず片肺になる。起点事例では、抽出結果が 0 行でも等値比較が成立して exit 0 を返し、テストの assertion が exit code しか見ていなかったため「一致」と「not applicable」を区別できなかった。
+
+収束した解法は 2 つある:
+
+- **skip 側を減らす**: base ref 未解決を clean skip ではなく exit 2 にする。証明対象を一度も読めていない状態で停止する方が、guard を積み増すより短く fail-loud 原則とも一致した
+- **呼び出し側を 2 段判定にする**: exit code に加えてメッセージ照合を足し、「一致」と「skip」を区別する
+
+> **規則**: 検証スクリプトの exit 0 は「実際に走査して一致した」だけを意味させる。走査不能・対象 0 件・入力未解決は別 rc に分ける。呼び出し側が exit code だけを見る前提なら、多義な exit 0 は必ず片肺の assertion を生む。
+
 ## 関連ページ
 
 - [CI lint チェックを blocking gate に昇格するときはツール自身の exit code を gate にする](../heuristics/ci-blocking-gate-tool-exit-code.md)
@@ -95,3 +108,4 @@ exit 0                                    # 全ファイル走査済み・findin
 - [PR #2051 review results](../../raw/reviews/20260729T142410Z-pr-2051.md)
 - [PR #2051 fix results](../../raw/fixes/20260729T144345Z-pr-2051.md)
 - [PR #2124 review results (cycle 2)](../../raw/reviews/20260806T103116Z-pr-2124.md)
+- [PR #2278 fix results — exit 0 の多義性を exit 2 と 2 段判定で潰した cycle](../../raw/fixes/20260812T133631Z-pr-2278.md)

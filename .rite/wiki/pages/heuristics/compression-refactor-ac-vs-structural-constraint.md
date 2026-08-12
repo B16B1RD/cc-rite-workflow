@@ -4,12 +4,14 @@ domain: "heuristics"
 description: "Markdown / Code 大規模圧縮 refactor で行数 AC を野心目標で決め打ちすると、protected 区域 (機械検証必須項目 / Pre-flight bash block / Return Output 等) と SPEC-OUT-OF-SCOPE 制約 (新規 references 作成禁止 / references 側 modify 禁止) の組み合わせで構造的に達成困難になり、user 介入による緩和が cycle 中盤で必要になる。"
 promote: rite-plugin
 created: "2026-05-04T09:50:00Z"
-updated: "2026-07-07T03:56:13+00:00"
+updated: "2026-08-12T18:34:40Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260504T090515Z-pr-809.md"
   - type: "reviews"
     ref: "raw/reviews/20260707T005014Z-pr-1774.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260812T180508Z-pr-2278.md"
 tags: ["refactor", "compression", "acceptance-criteria", "scope", "trade-off"]
 confidence: high
 ---
@@ -60,6 +62,23 @@ review/fix SKILL.md（各 4,040 行）のコンテキストダイエット PR �
 2. **Sole reviewer guard の有効性**: 1 reviewer のみの選定だった場合でも sole reviewer guard で異種 reviewer を追加すると、prompt-engineer (structure 妥当性) + code-quality (cross-file 完全性) のような相補的視点で 0 findings 確信度が向上する。AC 緩和判断の sign-off にも reviewer 多様性が寄与
 3. **Compression による narrative 弱化**: 圧縮された narrative は意味論等価性を保つが、grep target としての rule label 喪失や相対参照の曖昧化を伴う (LOW level 推奨事項として典型的に出現)。AC 緩和を許容しても narrative の grep traceability は維持する方針が必要
 
+### 行数は散文削減の指標として弱い — 主指標は散文バイト数にする（PR #2278 実測）
+
+圧縮 refactor の AC を総行数で決めると、削減の実態を大きく見誤る。SKILL.md の散文ダイエットで実測した内訳:
+
+| 指標 | before | after | 差 |
+|---|---|---|---|
+| 総行数 | 642 | 615 | -4.2% |
+| 散文行数 | 136 | 112 | -17.6% |
+| **散文バイト数** | 19,238 | 12,359 | **-35.8%** |
+| 機械レール バイト数 | 15,465 | 15,465 | ±0（逐語一致） |
+
+総行数の 8 割が機械レール 305 行 + 空行 158 行 + 見出し 40 行で占められ、そもそも散文は 136 行しかない。加えて日本語散文は 1 行が長い（削減前 141 B/行）ため、行数で測ると効果が縮んで見える。
+
+削減作業を diff の hunk 単位で機械分類すると、**退避**（rationale を references へ移し 1 行ポインタ化）が 12 hunk で -3,766 B、**圧縮**（行動列挙・ナレーション・反復 MUST をその場で再構成）が 36 hunk で -3,116 B だった。退避は hunk あたりの効きが圧縮の数倍で、かつ判断をほとんど伴わないため、**削減の過半は安価なホストへ回せる**。
+
+> **規則**: 散文削減の AC は散文バイト数を主指標にする。行数目標を置くなら、機械レール・空行・見出しを除いた散文行のみを対象にする。見せかけの行数調整で数字を作るより、指標を実態に合わせて報告し直す方が正しい。
+
 ## 関連ページ
 
 - [Markdown 大規模圧縮 refactor 時の heading hierarchy skip](../anti-patterns/heading-hierarchy-skip-on-large-markdown-compression.md)
@@ -69,3 +88,4 @@ review/fix SKILL.md（各 4,040 行）のコンテキストダイエット PR �
 
 - [PR #809 review findings: 0 findings, 5 recommendations (-35% slimdown)](../../raw/reviews/20260504T090515Z-pr-809.md)
 - [PR #1774 review results](../../raw/reviews/20260707T005014Z-pr-1774.md)
+- [PR #2278 review results (cycle 5) — 行数 vs 散文バイトの実測と退避/圧縮の hunk 別内訳](../../raw/reviews/20260812T180508Z-pr-2278.md)

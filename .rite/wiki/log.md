@@ -1,3 +1,12 @@
+## 2026-08-13
+
+* **Create**: [テストが何を kill するかの counterfactual 記述は、変異を当てない限り外れる — 撤去で収束させる](pages/anti-patterns/counterfactual-kill-claim-in-test-comment.md) — raw/reviews/20260812T180508Z-pr-2278.md, raw/fixes/20260812T133631Z-pr-2278.md を新規ページ化（同一箇所で 3 cycle 連続して counterfactual の記述に失敗した事実自体が、その記述クラスを置くべきでない証拠になる。概数から導く派生値も同じ系として書かない）。
+* **Update**: [新設した検証機構が、その機構自身の目的を局所的に打ち消す](pages/anti-patterns/self-defeating-guard-local-purpose-negation.md) — raw/fixes/20260812T133631Z-pr-2278.md を統合（形態 5 として「証明そのものが空回りしても緑になる」を追加。1 cycle の 14 件中 7 件が同型で、機構の周辺ではなく中心が空でも成立する点が形態 1〜4 と異なる）。
+* **Update**: [テンプレート流用の新規スクリプトは最新兄弟の防御を継承する](pages/heuristics/new-script-inherits-latest-sibling-defenses.md) — raw/fixes/20260812T133631Z-pr-2278.md を統合（継承対象は防御だけでなく抽出述語そのもの。同じ対象を走査する既存 helper があるならその正規表現を流用する）。
+* **Update**: [検出器が「走査できなかった」を「問題なし」に畳むと、ガードが黙って無検査になる](pages/anti-patterns/checker-conflates-unscannable-with-clean.md) — raw/fixes/20260812T133631Z-pr-2278.md を統合（exit 0 の多義性を潰す 2 解法: skip 側を exit 2 に減らす / 呼び出し側でメッセージ照合の 2 段判定にする）。
+* **Update**: [圧縮 refactor の AC は protected 区域 + scope 制約から逆算して決める](pages/heuristics/compression-refactor-ac-vs-structural-constraint.md) — raw/reviews/20260812T180508Z-pr-2278.md を統合（行数は散文削減の指標として弱く主指標は散文バイト数。退避は圧縮より hunk あたりの効きが大きく判断を伴わないため安価なホストへ回せる）。
+* **Update**: [対象プラットフォーム挙動を shim して blocking gate 側で pin する](pages/heuristics/portability-fix-needs-target-platform-shim-on-blocking-gate.md) — raw/fixes/20260812T133631Z-pr-2278.md を統合（CI の赤は「テストが落ちた」だけでなく「テストが走らなかった」形で来る。失敗名だけでなく実行件数を確認する）。
+
 ## 2026-08-12
 
 * **Update**: [Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする](pages/heuristics/docs-review-implementation-grep-verification.md) — raw/reviews/20260812T055512Z-pr-2265.md を統合（リリース CHANGELOG では実装主張の全数裏取りに加え、日英の PR 番号列と前タグからの収録集合を双方向に照合する）。

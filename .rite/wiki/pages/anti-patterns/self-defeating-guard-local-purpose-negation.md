@@ -5,7 +5,7 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "過去のレビュー事例（macOS/BSD 対応でテストスイートを green 化）の 4 cycle・累積 26 指摘のうち **最多の型が本パターン（5 件）**だった。"
 created: "2026-07-25T07:05:21Z"
-updated: "2026-07-25T07:05:21Z"
+updated: "2026-08-12T18:34:40Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260725T003541Z-pr-2013.md"
@@ -17,6 +17,8 @@ sources:
     ref: "raw/fixes/20260725T004542Z-pr-2013.md"
   - type: "fixes"
     ref: "raw/fixes/20260725T025323Z-pr-2013.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260812T133631Z-pr-2278.md"
 tags: ["fail-closed", "self-defeating", "observability", "parser", "diagnostics"]
 confidence: high
 ---
@@ -62,6 +64,20 @@ SKIP カウンタを導入して集計行には gated group 数を出したの�
 3. **一貫性**: 集計だけでなく成功/失敗メッセージ、姉妹コンポーネントまで通しているか
 4. **消費側**: この出力を読む側（CI の grep、log 抽出、下流 parser）を同じ PR で更新したか
 
+### 形態 5: 証明そのものが空回りしても緑になる
+
+「証明する機構」を新規に足す PR では、証明が成立しない経路が複数同時に残る。起点事例（機械レールの逐語一致チェッカー新設）では、1 cycle の 14 件中 7 件が「checker が green を返すが実際には何も検証していない」形だった:
+
+- 抽出述語が行頭 0 桁アンカーで対象の大半を取りこぼす
+- base ref 未解決を clean skip に潰す
+- 空 base ref が git index (`:path`) と比較して常に一致する
+- 抽出結果が 0 行でも等値比較が成立する
+- テストの assertion が exit code のみで「一致」と「not applicable」を区別しない
+
+いずれも単体では小さいが、合成すると「証明が空回りしても緑」という同一の帰結に収束する。形態 1〜4 が「機構の周辺を監査していない」欠落なのに対し、本形態は**機構の中心が空でも成立してしまう**点が異なる。
+
+> **規則**: 証明機構を新設したら、証明が**成立しない入力**（対象 0 件 / base ref 未解決 / 空文字列 / 抽出 0 行）を列挙し、そのそれぞれが緑を返さないことを確認する。guard を積み増すより、証明対象を一度も読めていない状態で停止する（exit 2）方が短く、fail-loud 原則とも一致する。
+
 ## 関連ページ
 
 - [`2>&1` と `2>&1 | head -N` で sentinel/exit code が silent suppression される (self-defeating observability)](./stderr-merge-silent-sentinel-suppression.md)
@@ -75,3 +91,4 @@ SKIP カウンタを導入して集計行には gated group 数を出したの�
 - [PR #2013 review cycle 4 — 累積 26 指摘の型別集計で本型が最多（5 件）と確定](../../raw/reviews/20260725T041328Z-pr-2013.md)
 - [PR #2013 fix results — 4 件すべてが本型に収まった cycle](../../raw/fixes/20260725T004542Z-pr-2013.md)
 - [PR #2013 fix results (cycle 2) — 検証機構の周辺に同型の穴が残る構造](../../raw/fixes/20260725T025323Z-pr-2013.md)
+- [PR #2278 fix results — 証明機構の新設で「緑だが何も検証していない」経路が 14 件中 7 件](../../raw/fixes/20260812T133631Z-pr-2278.md)

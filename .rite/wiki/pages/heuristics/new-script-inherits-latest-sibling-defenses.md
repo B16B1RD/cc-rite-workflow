@@ -5,7 +5,7 @@ domain: "heuristics"
 promote: rite-plugin
 description: "既存スクリプト（bang-backtick-check.sh）をテンプレートに新規 check スクリプトを作ったところ、兄弟スクリプト群が**後から**獲得した防御 — `wc -l` の空白正規化（BSD/macOS パディング対応、sentinel-contract-check.sh が獲得済み）、usage の exit code 契約と実装の一致（同）— を継承し漏らし、cycle 1 レビューで MEDIUM×2 の指摘になった。"
 created: "2026-07-19T15:00:00+09:00"
-updated: "2026-08-07T23:45:00+09:00"
+updated: "2026-08-12T18:34:40Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260719T022247Z-pr-1909.md"
@@ -15,6 +15,8 @@ sources:
     ref: "raw/reviews/20260805T233057Z-pr-2120.md"
   - type: "fixes"
     ref: "raw/fixes/20260807T134638Z-pr-2137.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260812T133631Z-pr-2278.md"
 tags: []
 confidence: high
 ---
@@ -68,6 +70,14 @@ PR #2120 は `.rite/logs/.gitignore` を生成する 3 番目の書き手を追�
 
 **修正の検出力は変異で実測する**: 同 PR では引数ガード無効化 + `shift 2` 復元の変異で新規 assertion が rc=124 で落ちることを確認した。「テストを足した」だけでは、それが何を守るのか分からない（[アサーションの検証強度は「該当行を壊して赤くなるか」でしか測れない](./mutation-testing-measures-assertion-strength.md)）。
 
+### 継承対象は防御だけでなく「抽出述語」そのもの（PR #2278 実測）
+
+新規スクリプトが継承し漏らすのは防御（空白正規化・exit code 契約）だけではない。**同じ対象を走査する正規表現そのもの**も継承対象になる。
+
+起点事例では、新規 checker が SKILL.md 群から fenced block を抽出する際に行頭 0 桁アンカーの述語を使い、インデントされた fence を取りこぼした。同じファイル群を走査する `bash-heaviness-check.sh` は既にインデント fence を扱っており、**新規 checker だけが後退していた**。
+
+> **規則**: 新しい checker を書く前に、同じ対象を走査する既存 helper を探し、その抽出述語を流用する。流用しないなら、なぜ違う述語が必要かを明示する。同じ対象に対する違う述語は drift の定義そのものであり、どちらが正しいかは走査結果を突き合わせるまで決まらない。
+
 ## 関連ページ
 
 - [再発防止 guard スクリプトは docstring の宣言意図と実装 regex を実測で校正する](./guard-script-contract-calibration.md)
@@ -81,3 +91,4 @@ PR #2120 は `.rite/logs/.gitignore` を生成する 3 番目の書き手を追�
 - [PR #1909 fix results (cycle 1)](../../raw/fixes/20260719T022630Z-pr-1909.md)
 - [PR #2120 review results (cycle 1)](../../raw/reviews/20260805T233057Z-pr-2120.md)
 - [PR #2137 fix results — ファイル名列挙型の hardening test が新規 lib を死角に入れる](../../raw/fixes/20260807T134638Z-pr-2137.md)
+- [PR #2278 fix results — 抽出述語を sibling helper と揃えず新規 checker だけが後退した](../../raw/fixes/20260812T133631Z-pr-2278.md)
