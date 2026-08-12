@@ -12,11 +12,16 @@ cat > "$TMP_ROOT/bin/gh" <<'EOF'
 if [ "$1 $2" = "pr view" ]; then
   jq -n --arg base "${MOCK_BASE:-main}" --arg head "${MOCK_HEAD:-develop}" \
     --arg oid "0123456789abcdef0123456789abcdef01234567" \
-    '{baseRefName:$base,headRefName:$head,headRefOid:$oid,commits:[{oid:$oid}]}'
+    '{baseRefName:$base,headRefName:$head,headRefOid:$oid}'
 elif [ "$1" = "api" ]; then
   oid="0123456789abcdef0123456789abcdef01234567"
-  if [ "${MOCK_UNREVIEWED:-0}" = 1 ]; then printf '[]\n'
-  else jq -n --arg oid "$oid" '[{merged_at:"2026-08-01T00:00:00Z",merge_commit_sha:$oid}]'; fi
+  case " $* " in
+    *"/pulls/"*"/commits"*) printf '%s\n' "$oid" ;;
+    *)
+      if [ "${MOCK_UNREVIEWED:-0}" = 1 ]; then printf '[]\n'
+      else jq -n --arg oid "$oid" '[{merged_at:"2026-08-01T00:00:00Z",merge_commit_sha:$oid}]'; fi
+      ;;
+  esac
 else
   exit 64
 fi

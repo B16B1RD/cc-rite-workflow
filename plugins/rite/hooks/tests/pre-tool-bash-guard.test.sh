@@ -2099,6 +2099,26 @@ fi
 rm -rf "$_mrg_tmp"
 echo ""
 
+echo "TC-140c / T-06 (#2269): pin in a later shell command cannot authenticate the merge"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+mkdir -p "$_mrg_tmp/.rite/release-promotions"
+_promotion_oid="0123456789abcdef0123456789abcdef01234567"
+jq -n --arg oid "$_promotion_oid" \
+  '{schema_version:"1.0.0",pr_number:91,base:"main",head:"develop",head_oid:$oid,commits:[$oid],verified_at:"2026-08-12T00:00:00Z"}' \
+  > "$_mrg_tmp/.rite/release-promotions/91.json"
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 91 --merge; echo --match-head-commit $_promotion_oid") || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-release-promotion-unverified"* ]]; then
+  pass "TC-140c unrelated later pin is rejected"
+else
+  fail "TC-140c expected promotion-unverified deny, got decision=$decision reason=$reason"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
 # --------------------------------------------------------------------------
 # Why: persist deny-only audit records
 # --------------------------------------------------------------------------

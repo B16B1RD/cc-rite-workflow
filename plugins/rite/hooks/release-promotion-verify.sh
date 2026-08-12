@@ -16,17 +16,19 @@ if [ -z "$owner" ] || [ -z "$repo" ]; then
 fi
 owner_repo="$owner/$repo"
 
-pr_json=$(gh pr view "$PR_NUMBER" -R "$owner_repo" --json baseRefName,headRefName,headRefOid,commits)
+pr_json=$(gh pr view "$PR_NUMBER" -R "$owner_repo" --json baseRefName,headRefName,headRefOid)
 base=$(jq -r '.baseRefName // empty' <<< "$pr_json")
 head=$(jq -r '.headRefName // empty' <<< "$pr_json")
 head_oid=$(jq -r '.headRefOid // empty' <<< "$pr_json")
-mapfile -t commits < <(jq -r '.commits[].oid' <<< "$pr_json")
+commits_output=$(gh api --paginate -H 'Accept: application/vnd.github+json' \
+  "repos/$owner/$repo/pulls/$PR_NUMBER/commits" --jq '.[].sha')
+mapfile -t commits <<< "$commits_output"
 
 if [ "$base" != "main" ] || [ "$head" != "develop" ]; then
   echo "ERROR: release promotion must be develop -> main (actual: $head -> $base)" >&2
   exit 3
 fi
-if [[ ! "$head_oid" =~ ^[0-9a-fA-F]{40}$ ]] || [ "${#commits[@]}" -eq 0 ]; then
+if [[ ! "$head_oid" =~ ^[0-9a-fA-F]{40}$ ]] || [ -z "$commits_output" ] || [ "${#commits[@]}" -eq 0 ]; then
   echo "ERROR: release promotion PR head/commit list could not be verified" >&2
   exit 4
 fi

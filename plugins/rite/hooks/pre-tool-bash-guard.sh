@@ -603,6 +603,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
 
   if [ "$_mrg_is_merge" = "1" ]; then
     _mrg_pr=""
+    _mrg_cli_argv=""
     # Set when `gh pr merge` tail has a non-flag token that is neither a bare
     # integer nor a /pull/{n} URL. Variable forms ("$PR", $PR) and flag values
     # that look like free tokens land here. flow-state fallback must NOT run
@@ -618,6 +619,16 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     # 2) `gh pr merge` tail: first bare integer token, or /pull/{n} URL form
     if [ -z "$_mrg_pr" ] && [[ "$CMD_CHECK" =~ gh[[:space:]]+pr[[:space:]]+merge[[:space:]]+(.*) ]]; then
       _mrg_tail="${BASH_REMATCH[1]}"
+      # Limit security-sensitive argv inspection to this simple command. A pin
+      # in a later `;`, `&&`, pipe, newline, or comment must not authenticate an
+      # earlier unpinned merge. Conservative truncation is fail-closed for rare
+      # quoted metacharacters in unrelated flag values.
+      _mrg_cli_argv="$_mrg_tail"
+      _mrg_cli_argv="${_mrg_cli_argv%%;*}"
+      _mrg_cli_argv="${_mrg_cli_argv%%&*}"
+      _mrg_cli_argv="${_mrg_cli_argv%%|*}"
+      _mrg_cli_argv="${_mrg_cli_argv%%$'\n'*}"
+      _mrg_cli_argv="${_mrg_cli_argv%%#*}"
       # shellcheck disable=SC2086  # intentional word-split of merge argv tail
       for _mrg_tok in $_mrg_tail; do
         case "$_mrg_tok" in
@@ -727,7 +738,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
         _mrg_promotion_file="${_mrg_root:+$_mrg_root/}.rite/release-promotions/${_mrg_pr}.json"
         [ -n "$_mrg_root" ] || _mrg_promotion_file=".rite/release-promotions/${_mrg_pr}.json"
         _mrg_head_arg=""
-        if [[ "$CMD_CHECK" =~ --match-head-commit[[:space:]]+([0-9a-fA-F]{40})([[:space:]]|$) ]]; then
+        if [[ "$_mrg_cli_argv" =~ --match-head-commit[[:space:]]+([0-9a-fA-F]{40})([[:space:]]|$) ]]; then
           _mrg_head_arg="${BASH_REMATCH[1]}"
         fi
         if [ -f "$_mrg_promotion_file" ] && [ -n "$_mrg_head_arg" ]; then
