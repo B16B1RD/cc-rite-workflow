@@ -68,27 +68,28 @@ BGM は本リポジトリに含めない。`assemble.sh -b <file>` で合成す�
 **本カットの 2 本（フル / SNS）には、下記レシピで生成した `rite-synth-bgm-58s.mp3`
 （実測 58.104 秒）を合成している。** 外部楽曲は使わず ffmpeg の音源フィルタだけで作るため、
 第三者素材を含まず外部ライセンスや帰属表示は発生しない。生成物は `*.mp3` の gitignore 対象で
-コミットしないが、下記コマンドがそのまま再現手段になる（`{duration}` を変えるだけで任意の尺を
-作れる）:
+コミットしないが、下記コマンドがそのまま再現手段になる。`{duration}` を秒数へ置換すると、
+その尺の `rite-synth-bgm-{duration}s.mp3` ができる:
 
 ```bash
-# {duration} を秒数へ置換する。本カットには 58、尺不足ガードの検証には 45 を使う。
+# 本カットには {duration}=58 を使う（→ rite-synth-bgm-58s.mp3）。
 ffmpeg -y \
   -f lavfi -i 'sine=frequency=110:duration={duration}:sample_rate=48000' \
   -f lavfi -i 'sine=frequency=164.81:duration={duration}:sample_rate=48000' \
   -f lavfi -i 'sine=frequency=220:duration={duration}:sample_rate=48000' \
   -filter_complex '[0:a]volume=0.25[a0];[1:a]volume=0.18[a1];[2:a]volume=0.12[a2];[a0][a1][a2]amix=inputs=3,lowpass=f=900,aecho=0.8:0.75:60:0.12,volume=15[out]' \
-  -map '[out]' -c:a libmp3lame -b:a 192k rite-synth-bgm-58s.mp3
+  -map '[out]' -c:a libmp3lame -b:a 192k rite-synth-bgm-{duration}s.mp3
 ```
 
 A2・E3・A3 の正弦波を弱く重ね、`lowpass` と `aecho` で角を落としたアンビエント音になる。
 末尾の `volume=15` は `assemble.sh` の可聴性ガードを通すために必要で、これを外すと
-生成物は max_volume −58 dB 前後になり、合成後の完成物が閾値 −20 dB を下回って assemble が
-失敗する（実測: `volume` 無し −58.1 dB / `volume=15` −14.5 dB）。
+生成物は max_volume −38.0 dB になり、合成後の完成物（−37.9 dB）が閾値 −20 dB を下回って
+assemble が失敗する（`volume=15` ありの生成物は −14.5 dB）。
 
 `assemble.sh` は **BGM が総尺より短いとエラー終了する**（末尾が無音の完成尺を黙って出さない
-ため）。フルカットの完成尺は 55.0 秒なので、`duration=58` の生成物がそのまま足りる。
-`duration=45` の生成物（実測 45.096 秒）はこのガードが発火することの確認に使う。
+ため）。フルカットの完成尺は 55.0 秒なので、`rite-synth-bgm-58s.mp3`（実測 58.104 秒）が
+そのまま足りる。{duration}=45 で作る `rite-synth-bgm-45s.mp3`（実測 45.096 秒）は、
+このガードが発火することの確認に使う。
 
 既存 HyperFrames 版と同じ **BombinSound — Technology**（Pixabay, track ID `499581`、90 秒）も
 代替候補として使える。その場合は Pixabay から
@@ -110,7 +111,7 @@ for scene in 01-problem 02-unknowns 03-loop 04-gates 05-wiki 06-second-lap 07-cl
 done
 ```
 
-BGM を用意した後、2 本のカットを連結する（配布物と同じ音声にするには `duration=58` の生成物を使う）。
+BGM を用意した後、2 本のカットを連結する。
 
 ```bash
 # フルカット（M1〜M7、約 55.0 秒）
