@@ -197,6 +197,14 @@ git add .claude-plugin/marketplace.json \
   plugins/rite/.claude-plugin/plugin.json \
   README.md README.ja.md docs/SPEC.md CHANGELOG.md CHANGELOG.ja.md
 git status --short --untracked-files=no
+expected_staged=$(printf '%s\n' \
+  .claude-plugin/marketplace.json plugins/rite/.claude-plugin/plugin.json \
+  README.md README.ja.md docs/SPEC.md CHANGELOG.md CHANGELOG.ja.md | sort)
+actual_staged=$(git diff --cached --name-only | sort)
+if [ "$actual_staged" != "$expected_staged" ]; then
+  echo "ERROR: release staging が期待する7ファイルと一致しません" >&2
+  exit 1
+fi
 git commit -m "chore: v{VERSION} バージョンバンプ + CHANGELOG 更新"
 git push -u origin HEAD
 ```
