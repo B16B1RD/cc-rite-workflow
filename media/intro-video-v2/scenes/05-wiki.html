@@ -41,16 +41,18 @@
     .node strong { display: block; font-size: 21px; font-weight: 620; letter-spacing: .01em; }
     .node.human strong { display: flex; align-items: center; gap: 9px; }
     .node.human svg { flex: none; }
-    .node.human { left: 92px; animation: nodeIn .55s ease-out .6s both, activeHuman 2.6s ease-in-out 1.2s both, hold .3s ease-out 3.6s both; }
-    .node.merge { left: 392px; animation: nodeIn .55s ease-out .8s both, active 2.2s ease-in-out 2.3s both, hold .3s ease-out 4.4s both; }
-    .node.cleanup { left: 692px; animation: nodeIn .55s ease-out 1.0s both, active 2.2s ease-in-out 3.3s both, hold .3s ease-out 5.4s both; }
+    /* 入り → ハイライト → 点灯維持を 1 本の keyframes で書く。複数アニメーションに分けると
+       後勝ち合成で末尾の both が delay 前から 0% を backwards fill し、入りが描画されない */
+    .node.human { left: 92px; animation: humanNode 9s cubic-bezier(.16,1,.3,1) both; }
+    .node.merge { left: 392px; animation: mergeNode 9s cubic-bezier(.16,1,.3,1) both; }
+    .node.cleanup { left: 692px; animation: cleanupNode 9s cubic-bezier(.16,1,.3,1) both; }
 
     .conn { position: absolute; height: 2px; background: rgba(140,160,180,.25); top: 292px; transform-origin: 0 50%; }
     .conn.c1 { left: 284px; width: 108px; animation: growX .4s ease-out 2.1s both; }
     .conn.c2 { left: 584px; width: 108px; animation: growX .4s ease-out 3.1s both; }
 
     .beam {
-      position: absolute; left: 872px; top: 344px; width: 2px; height: 96px;
+      position: absolute; left: 787px; top: 344px; width: 2px; height: 98px;
       background: linear-gradient(#6fdbc5, rgba(111,219,197,.15));
       transform-origin: 50% 0; box-shadow: 0 0 10px rgba(111,219,197,.5);
       animation: growY .5s ease-out 4.0s both;
@@ -92,18 +94,27 @@
     .result::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #7ee7d0; box-shadow: 0 0 16px #7ee7d0; }
 
     @keyframes enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-    @keyframes nodeIn { from { opacity: 0; transform: translateY(13px) scale(.97); } to { opacity: .54; transform: translateY(0) scale(1); } }
-    @keyframes active {
-      0%, 100% { opacity: .54; border-color: rgba(195,211,228,.14); transform: scale(1); }
-      22% { opacity: 1; border-color: rgba(126,231,208,.7); transform: scale(1.035); box-shadow: 0 20px 55px rgba(0,0,0,.4), 0 0 28px rgba(91,211,187,.12); }
-      62% { opacity: 1; border-color: rgba(126,231,208,.45); transform: scale(1.01); }
+    @keyframes humanNode {
+      0%, 6.7% { opacity: 0; transform: translateY(13px) scale(.97); border-color: rgba(195,211,228,.14); }
+      12.8% { opacity: .54; transform: translateY(0) scale(1); border-color: rgba(195,211,228,.14); }
+      16% { opacity: 1; transform: scale(1.035); border-color: rgba(240,184,108,.75); box-shadow: 0 20px 55px rgba(0,0,0,.4), 0 0 28px rgba(240,184,108,.14); }
+      25% { opacity: 1; transform: scale(1.01); border-color: rgba(240,184,108,.5); }
+      42%, 100% { opacity: 1; transform: scale(1); border-color: rgba(195,211,228,.14); }
     }
-    @keyframes activeHuman {
-      0%, 100% { opacity: .54; border-color: rgba(195,211,228,.14); transform: scale(1); }
-      22% { opacity: 1; border-color: rgba(240,184,108,.75); transform: scale(1.035); box-shadow: 0 20px 55px rgba(0,0,0,.4), 0 0 28px rgba(240,184,108,.14); }
-      62% { opacity: 1; border-color: rgba(240,184,108,.5); transform: scale(1.01); }
+    @keyframes mergeNode {
+      0%, 8.9% { opacity: 0; transform: translateY(13px) scale(.97); border-color: rgba(195,211,228,.14); }
+      15% { opacity: .54; transform: translateY(0) scale(1); border-color: rgba(195,211,228,.14); }
+      30% { opacity: 1; transform: scale(1.035); border-color: rgba(126,231,208,.7); box-shadow: 0 20px 55px rgba(0,0,0,.4), 0 0 28px rgba(91,211,187,.12); }
+      38% { opacity: 1; transform: scale(1.01); border-color: rgba(126,231,208,.45); }
+      52%, 100% { opacity: 1; transform: scale(1); border-color: rgba(195,211,228,.14); }
     }
-    @keyframes hold { from { opacity: .54; } to { opacity: 1; } }
+    @keyframes cleanupNode {
+      0%, 11.1% { opacity: 0; transform: translateY(13px) scale(.97); border-color: rgba(195,211,228,.14); }
+      17.2% { opacity: .54; transform: translateY(0) scale(1); border-color: rgba(195,211,228,.14); }
+      41% { opacity: 1; transform: scale(1.035); border-color: rgba(126,231,208,.7); box-shadow: 0 20px 55px rgba(0,0,0,.4), 0 0 28px rgba(91,211,187,.12); }
+      49% { opacity: 1; transform: scale(1.01); border-color: rgba(126,231,208,.45); }
+      63%, 100% { opacity: 1; transform: scale(1); border-color: rgba(195,211,228,.14); }
+    }
     @keyframes growX { from { transform: scaleX(0); opacity: 0; } to { transform: scaleX(1); opacity: 1; } }
     @keyframes growY { from { transform: scaleY(0); opacity: 0; } to { transform: scaleY(1); opacity: 1; } }
     @keyframes wcIn { from { opacity: 0; transform: translateY(26px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }

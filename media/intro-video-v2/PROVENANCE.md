@@ -65,22 +65,29 @@ BGM は本リポジトリに含めない。`assemble.sh -b <file>` で合成す�
 
 ### ショート動画 v2 で使用する BGM
 
-既存 HyperFrames 版と同じ **BombinSound — Technology**（Pixabay, track ID `499581`）を使用する。
-入手元・Pixabay Content License・生 mp3 をコミットしない理由は
-[../intro-video/PROVENANCE.md](../intro-video/PROVENANCE.md) の記録を正本とする。Pixabay から
-`bombinsound-technology-tech-technology-90-second-499581.mp3` を取得し、このディレクトリ直下に
-置く。
+**本カットの 2 本（フル / SNS）に実際に合成した音源は `rite-synth-bgm.mp3` を延長した
+`rite-synth-bgm-58s.mp3`（実測 58.032 秒）である。** `rite-synth-bgm.mp3`（実測 40.128 秒）は
+ffmpeg の合成音で作った自家製 BGM で、外部素材のライセンス制約を持たない。どちらも `*.mp3` の
+gitignore 対象のため、下記の延長レシピが唯一の再現手段になる。
+
+既存 HyperFrames 版と同じ **BombinSound — Technology**（Pixabay, track ID `499581`、90 秒）は
+v2 でも代替候補として使える。その場合は Pixabay から
+`bombinsound-technology-tech-technology-90-second-499581.mp3` を取得してこのディレクトリ直下に
+置く。入手元・Pixabay Content License・生 mp3 をコミットしない理由は
+[../intro-video/PROVENANCE.md](../intro-video/PROVENANCE.md) の記録を正本とする。90 秒あるため
+フルカット（総尺 55.0 秒）にはそのまま足り、下記の延長は不要。
 
 `assemble.sh` は **BGM が総尺より短いとエラー終了する**（末尾が無音の完成尺を黙って出さない
-ため）。フルカットの総尺は約 55.0 秒なので、90 秒の上記楽曲はそのまま使える。総尺より短い
-音源を使う場合は、ループで延長してから渡す:
+ため）。`rite-synth-bgm.mp3` のように総尺より短い音源を使う場合は、ループで延長してから渡す:
 
 ```bash
-# 例: 40.1 秒の音源を継ぎ目 2 秒のクロスフェードで 2 周ぶんに伸ばし、58 秒へ切り出す。
+# 継ぎ目 2 秒のクロスフェードで 2 周ぶんに伸ばし、58 秒へ切り出す（宣言尺合計 58 秒ぶん確保して
+# おけば、完成尺 55.0 秒に対して余裕を持って BGM 尺ガードを通過する）。
 # 単純連結（-stream_loop）は継ぎ目で位相が飛んでクリックノイズになるため acrossfade を使う。
-ffmpeg -y -i <source>.mp3 -i <source>.mp3 \
+# 本レシピは元尺が 30 秒以上の音源を前提とする（2 周 − 2 秒で 58 秒に届く下限）。
+ffmpeg -y -i rite-synth-bgm.mp3 -i rite-synth-bgm.mp3 \
   -filter_complex "[0:a][1:a]acrossfade=d=2:c1=tri:c2=tri[a]" -map "[a]" \
-  -t 58 -c:a libmp3lame -q:a 2 <source>-58s.mp3
+  -t 58 -c:a libmp3lame -q:a 2 rite-synth-bgm-58s.mp3
 ```
 
 延長後の音量は変えない。`assemble.sh` は合成後の完成物を `volumedetect` で測り、
@@ -117,4 +124,6 @@ BGM を用意した後、2 本のカットを連結する（`<bgm>` は上記で
 > `assemble.sh` の `-P`（プリセット）は Issue #2240 当時の 5 シーン構成（`01-problem` /
 > `02-loop` / `03-terminal` / `04-gates` / `05-closing`）と Pixabay 曲名を既定値に持ったままで、
 > 現構成では使えない（実測: `assemble: シーンが見つかりません: out/02-loop.mp4` で終了する）。
+> 同スクリプトの usage 文言も「レンダ済み 5 シーンと既定 BGM」と旧構成のままである。
 > `assemble.sh` は Issue #2258 の変更対象外だったため据え置いており、上記のシーン明示形を正とする。
+> `-P` の新構成対応（または撤去）は Issue #2259 で扱う。
