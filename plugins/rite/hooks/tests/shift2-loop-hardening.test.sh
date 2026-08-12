@@ -72,6 +72,7 @@ run_no_hang "TC-6c wiki-index-update"         "hooks/scripts/wiki-index-update.s
 run_no_hang "TC-6d review-cycle-scope"        "scripts/review-cycle-scope.sh"            "--pr"              "2"
 run_no_hang "TC-6e review-save-json-verify"   "hooks/scripts/review-save-json-verify.sh" "--pr"              "0"
 run_no_hang "TC-6f issue-complexity-lane"     "scripts/issue-complexity-lane.sh"         "--issue"           "2"
+run_no_hang "TC-6g skill-rail-diff-check"     "hooks/scripts/skill-rail-diff-check.sh"   "--skill"           "2"
 
 # === TC-7: anti-pattern guard — 実 `shift 2` 文が再混入していないこと ===
 # comment 内の `shift 2` 参照 (backtick 囲み) は許容し、実際の statement だけを検出する。
@@ -89,6 +90,7 @@ for script in \
   "scripts/issue-complexity-lane.sh" \
   "hooks/scripts/review-save-json-verify.sh" \
   "hooks/scripts/lib/context-marker.sh" \
+  "hooks/scripts/skill-rail-diff-check.sh" \
   "scripts/decompose-issues.sh"; do
   path="$PLUGIN_ROOT/$script"
   real_hits=$(grep -nE '(^|;)[[:space:]]*shift 2([[:space:]]|;|$)' "$path" || true)

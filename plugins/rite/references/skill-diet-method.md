@@ -8,16 +8,23 @@ open スキルでのパイロット（#2277）で確立し、実測値を添え�
 
 ## 1. 線引きチェックリスト
 
-**機械レール = 残す**（fenced block・markdown table row。両者は `skill-rail-diff-check.sh` の抽出定義と
-一致する）:
+残す対象は 2 層に分かれる。**checker が機械検証するのは前者だけ**で、後者は人間が目視で守る。
+
+**層 A — `skill-rail-diff-check.sh` が機械検証する**（fenced block・markdown table row。インデント有無を問わない）:
 
 - [ ] bash / text fenced block — **コメントを含めて 1 バイトも変えない**。in-fence コメントは
       「rationale っぽく見えても」レールの一部として扱う（判定を曖昧にすると自動検証が壊れる）
 - [ ] sentinel の literal（`[lint:success]` 等）と、それを載せた分岐表の行
 - [ ] `[CONTEXT] FOO=` marker 名と、marker 値を読む分岐表の行
-- [ ] 見出し（`## ステップ N`）— 他スキルが「ステップ 3.5」の形で参照する de facto contract
+
+**層 B — checker の対象外。diff を目視で確認する**:
+
+- [ ] 見出し（`## ステップ N`）— 他スキルが「ステップ 3.5」の形で参照する de facto contract。
+      改名しても checker は green を返す（実測: open のステップ 6 を改名しても検出されず、
+      `lint/SKILL.md` の 9 箇所の参照先が消えた）
 - [ ] outcome と検証条件（「何が成立したら次へ進むか」「何を観測したら戻るか」）
 - [ ] 短い mandate（`silent skip 禁止` / `再 invoke しない` / `破棄しない`）
+- [ ] 散文中に埋め込まれた sentinel literal（分岐表の外にあるもの）
 
 **散文層 = 削る**:
 
@@ -57,15 +64,21 @@ grep -rn -E "(find|grep -r).*skills|SKILLS_DIR|SCAN_DIR" plugins/rite/hooks/scri
 
 ### 2.2 逐語一致の証明
 
-散文だけを触ったことは、目視ではなく `skill-rail-diff-check.sh` で証明する:
+**層 A（fenced block と table row）については** `skill-rail-diff-check.sh` が証明する:
 
 ```bash
 bash plugins/rite/hooks/scripts/skill-rail-diff-check.sh --skill plugins/rite/skills/<target>/SKILL.md
 ```
 
-fenced block と table row を抽出して base ref（既定 `origin/develop`）と突き合わせ、1 バイトでも
-違えば exit 1 になる。**diet を始める前に 1 回実行して green を確認してから**削り始めると、
-途中で壊した瞬間に気付ける。
+インデント有無を問わず fenced block（fence 行込み）と table row を抽出し、base ref（既定
+`origin/develop`）と突き合わせて 1 バイトでも違えば exit 1 になる。base ref が解決できない・
+rail が 0 行になったときは exit 2 で止まる（証明が空回りしたまま green を返さない）。
+
+**層 B（見出し・outcome・mandate・散文中の sentinel）は checker が見ない。** §1 の層 B
+チェックリストを diff に対して目視で確認する。checker の green は「散文しか触っていない」の
+証明ではなく「fenced block と table row は触っていない」の証明である。
+
+**diet を始める前に 1 回実行して green を確認してから**削り始めると、途中で壊した瞬間に気付ける。
 
 ### 2.3 退避先の作法
 
@@ -81,11 +94,11 @@ fenced block と table row を抽出して base ref（既定 `origin/develop`）
 ```awk
 # measure.awk — usage: awk -f measure.awk <SKILL.md>
 BEGIN { inb = 0 }
-/^```/ { inb = !inb; fence++; fence_b += length($0) + 1; next }
+/^[[:space:]]*(```|~~~)/ { inb = !inb; fence++; fence_b += length($0) + 1; next }
 {
   n = length($0) + 1
   if (inb)                       { code++;  code_b  += n }
-  else if ($0 ~ /^\|/)           { tbl++;   tbl_b   += n }
+  else if ($0 ~ /^[[:space:]]*\|/) { tbl++; tbl_b   += n }
   else if ($0 ~ /^[[:space:]]*$/){ blank++; blank_b += n }
   else if ($0 ~ /^#/)            { hdr++;   hdr_b   += n }
   else                           { prose++; prose_b += n }
@@ -111,8 +124,13 @@ END {
 diet の diff を hunk 単位で「退避（`rationale: references/` ポインタが入った）」と「圧縮（その場で
 書き換えた）」に分け、どちらがどれだけ効いたかを測る。ホスト配分（安価モデルへ回せる比率）の根拠になる:
 
+**base ref レンジを必ず渡す。** ref を省いた `git diff` は working tree と index の差分を測るため、
+diet を commit した後は空入力になり、`hunks=0 net=0B` を exit 0 で無言のまま返す（測ったのでは
+なく、測る対象が無かっただけ）。空入力は非ゼロで止める:
+
 ```bash
-git diff --unified=0 -- plugins/rite/skills/<target>/SKILL.md | awk '
+BASE=${BASE:-origin/develop}
+git diff "$BASE...HEAD" --unified=0 -- plugins/rite/skills/<target>/SKILL.md | awk '
 /^@@/ { flush(); inhunk = 1; rem = 0; add = 0; isexile = 0; next }
 inhunk && /^-/ { rem += length($0); next }
 inhunk && /^\+/ { add += length($0); if ($0 ~ /rationale: references\//) isexile = 1; next }
@@ -122,6 +140,10 @@ function flush() {
 }
 END {
   flush()
+  if (ex_h + cp_h == 0) {
+    print "ERROR: hunk が 0 件 — BASE を確認 (現在: 空入力)" > "/dev/stderr"
+    exit 1
+  }
   printf "exile:    hunks=%d net=%dB\n", ex_h, ex_add - ex_rem
   printf "compress: hunks=%d net=%dB\n", cp_h, cp_add - cp_rem
 }'
