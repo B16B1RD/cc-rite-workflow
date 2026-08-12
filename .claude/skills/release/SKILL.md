@@ -407,6 +407,7 @@ CHANGELOG.md から該当バージョンのセクションを抽出してリリ�
 release_notes=$(mktemp) || exit 1
 sed -n '/^## \[{VERSION}\]/,/^## \[/{ /^## \[{VERSION}\]/d; /^## \[/d; p; }' \
   CHANGELOG.md > "$release_notes" || exit 1
+echo "[CONTEXT] RELEASE_NOTES_PATH=$release_notes"
 ```
 
 スクラッチファイルを指定して Release を作成する。プロセス置換は使用しない。
@@ -418,7 +419,7 @@ gh release create "v{VERSION}" \
   --target main
 ```
 
-`{RELEASE_NOTES_PATH}` は直前の `mktemp` が出力した `$release_notes` の実パスへリテラル置換する。
+`{RELEASE_NOTES_PATH}` は直前の `[CONTEXT] RELEASE_NOTES_PATH=` marker の値へリテラル置換する。
 Release 作成後にそのスクラッチファイルを削除する。
 
 ```bash
