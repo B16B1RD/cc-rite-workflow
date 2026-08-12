@@ -29,8 +29,9 @@ PR レビューコメントを取得・整理し、指摘への対応を効率�
 
 ## Contract
 
-**Input**: PR number, review findings from `/rite:pr-review`, flow state with `phase: fix` (written by `skills/iterate/SKILL.md` fix side) or `phase: phase5_fix` (legacy compat — sub-skill still patches the old name so resume from an interrupted earlier session keeps working until every writer migrates off the legacy name)
+**Input**: PR number, review findings from `/rite:pr-review`, flow state with `phase: fix` (iterate fix side) or `phase: phase5_fix` (legacy resume)
 **Output**: `[fix:pushed]` | `[fix:pushed-wm-stale]` | `[fix:replied-only]` | `[fix:cancelled-by-user]` | `[fix:error]`
+rationale: references/design-rationale.md#contract-legacy-phase
 
 ## Inline Annotation Convention
 
@@ -42,7 +43,8 @@ bash 4.0+ 必須 (複数の bash block で `mapfile -t < <(...)` builtin を使�
 
 ## E2E Output Minimization
 
-`/rite:iterate` E2E flow から呼ばれた時、出力のみ minimize する。fix implementation / commit/push / work memory 更新等の処理本体は standalone と同等に実行する (時間・context を理由にした修正内容省略・commit 分割省略は identity 違反; [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md))。
+E2E では完了報告の表示だけ minimize する。本体処理は standalone と同等 ([workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md))。
+rationale: references/design-rationale.md#e2e-output-minimization-scope
 
 | Phase | Standalone | E2E Flow |
 |-------|-----------|----------|
@@ -69,17 +71,17 @@ Detection: ステップ 0.1 end-to-end flow determination を再利用。
 | `[comment_url]` | PR comment URL (`https://github.com/{owner}/{repo}/pull/{N}#issuecomment-{ID}`) |
 | (引数なし) | 現在のブランチに紐づく PR を自動検出 |
 
-すべての引数形式は ステップ 1.0 (Argument Parsing Pre-flight) で正規化され、`{pr_number}` と (該当時のみ) `{target_comment_id}` が抽出される。`comment_url` を指定すると、その特定コメントから直接 findings をパースする (ステップ 1.2 で分岐)。**複数の引数を同時に渡すことはできない** (ステップ 1.0 は最初に解釈成功した形式のみを採用する)。
+ステップ 1.0 が `{pr_number}` と (該当時) `{target_comment_id}` を抽出する。`comment_url` は対象コメント直読み (1.2)。複数引数は不可 (最初に解釈できた形式のみ)。
 
 ---
 
 ## ステップ 0: Work Memory のロード (E2E フロー時のみ)
 
-When executed within the end-to-end flow, load required information from work memory (shared memory).
+E2E 時のみ work memory から必要情報を読む。
 
 ### 0.1 Determine End-to-End Flow
 
-Determine the caller from the conversation context:
+会話 context から caller を判定:
 
 | Condition | Determination | Action |
 |-----------|---------------|--------|
@@ -88,7 +90,7 @@ Determine the caller from the conversation context:
 
 ### 0.2 Load Work Memory
 
-Extract the Issue number from the current branch and retrieve work memory:
+ブランチから Issue 番号を取り work memory を取得:
 
 ```bash
 # ブランチ名から Issue 番号を抽出
@@ -111,7 +113,7 @@ gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
 
 ### 0.3 Information to Retrieve
 
-Extract the following information from work memory and retain in context:
+work memory から抽出し retain:
 
 | Field | Extraction Pattern | Purpose |
 |-------|-------------------|---------|
@@ -120,9 +122,7 @@ Extract the following information from work memory and retain in context:
 | Phase | `- **フェーズ**: (.+)` | Confirm flow position |
 | Review result | `### レビュー対応履歴` section | Check previous state |
 
-**For standalone execution:**
-- If no PR number is specified as an argument, obtain from the current branch's PR
-- The "related PR" section in work memory can also be referenced
+standalone: 引数なしなら現在ブランチの PR。work memory の関連 PR も参照可。
 
 ---
 
@@ -130,11 +130,7 @@ Extract the following information from work memory and retain in context:
 
 > **Reference**: [Wiki Query](../wiki-query/SKILL.md) — `wiki-query-inject.sh` API
 
-Before retrieving review comments, inject relevant experiential knowledge from the Wiki to inform the fix approach.
-
-**Condition**: Execute only when `wiki.enabled: true` AND `wiki.auto_query: true` in `rite-config.yml`. Skip silently otherwise.
-
-**Step 1**: Check Wiki configuration:
+レビュー取得前に Wiki 経験則を注入する。条件: `wiki.enabled: true` かつ `wiki.auto_query: true`。それ以外は silent skip。
 
 ```bash
 wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
@@ -153,11 +149,7 @@ case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; 
 echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
 ```
 
-If `wiki_enabled=false` or `auto_query=false`, skip this section and proceed to ステップ 1.
-
-**Step 2**: Generate keywords from the review context and invoke the query:
-
-Keywords are derived from: review finding categories (from conversation context if available), target file paths, and finding types (e.g., `security`, `performance`, `error-handling`).
+`wiki_enabled=false` または `auto_query=false` なら ステップ 1 へ。キーワードは指摘カテゴリ・対象パス・finding 種別。
 
 ```bash
 # {plugin_root} はリテラル値で埋め込む
@@ -174,7 +166,7 @@ else
 fi
 ```
 
-**Step 3**: If `wiki_context` is non-empty, retain it in conversation context and reference it during fix application (ステップ 2). The injected experiential knowledge may inform: effective fix strategies for similar findings, common overcorrection patterns to avoid, and proven fix approaches.
+非空なら context に残し、ステップ 2 の修正方針に使う。
 
 ---
 
@@ -184,10 +176,9 @@ fi
 ### 1.0 Argument Parsing (Pre-flight)
 
 
-**Always run this sub-phase**. ステップ 1.1 が `gh pr view` を実行する前に、引数形式を正規化して `{pr_number}` と（該当時のみ）`{target_comment_id}` を抽出する。bare integer (`^[0-9]+$`) や引数なしの場合でも本サブフェーズを実行し、Detection rules table の順序 1 / 順序 4 で pr_number を抽出した上で **`{target_comment_id} = null` を explicit set** する (undefined 参照防止)。
+**Always run**。1.1 の `gh pr view` 前に正規化し `{pr_number}` / (該当時) `{target_comment_id}` を取る。数字のみ・引数なしでも実行し、順序 1 / 4 のあと **`{target_comment_id} = null` を explicit set** する。
 
-
-**Detection rules** (順序ベース判定 — bash POSIX ERE は negative lookahead 非対応のため、より特殊なパターンを先に試して fallthrough する):
+**Detection rules** (特殊パターン先行。POSIX ERE は lookaround 非対応):
 
 | 順序 | Format | Regex (POSIX ERE 互換、lookaround なし) | Extracted |
 |------|--------|------------------------------------------|-----------|
@@ -196,11 +187,13 @@ fi
 | 3 | PR URL (trailing path / query / fragment 任意) | `^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+)(/[^#?]*)?(\?[^#]*)?(#.*)?$` | `pr_number` = group 1 (trailing `/files`, `/commits`, `/checks` 等の sub-page、`?tab=...` 等の query string、`#diff-...` 等の fragment はすべて受け入れて無視) |
 | 4 | 引数なし | — | 既存ロジック (current branch から PR 検出) |
 
-target_comment_id は **常に group 3** に位置する (group 2 は `#fragment` 前の query string、group 4 は `#fragment` 後の query string)。bash 実装では `${BASH_REMATCH[3]}` を target_comment_id として参照する。**順序 2 (issuecomment URL) を必ず順序 3 (一般 PR URL) より先に試す** (POSIX ERE は lookaround 非対応のため、パターンの試行順序で排他を保証する)。 <!-- rationale: references/design-rationale.md#argument-detection-rules -->
+target_comment_id は **常に group 3** (`${BASH_REMATCH[3]}`)。**順序 2 を順序 3 より先に試す**。
+rationale: references/design-rationale.md#argument-detection-rules
 
-**全角数字の扱い** (順序 1): 日本語 IME の fullwidth モードで入力された `１２３` のような全角数字をユーザーが誤って投入するケースを救済する。マッチした場合は `tr '０-９' '0-9'` 相当の変換で半角に正規化してから `{pr_number}` として保持する。ASCII 数字のみの場合は変換せずそのまま使用。
+**全角数字** (順序 1): マッチしたら半角へ正規化して `{pr_number}` に保持。ASCII のみは無変換。
+rationale: references/design-rationale.md#fullwidth-normalization
 
-**正規化発火時の通知** (silent transformation 防止): 全角→半角の正規化が発火した場合、以下を **stderr に必ず出力** する。これにより `１２３` を渡したつもりが別 PR `123` を fix する結果になっても、ユーザーは何が起きたか即座に理解できる:
+正規化が発火したら **stderr に必ず出力** (silent transformation 禁止):
 
 ```
 INFO: 全角数字 '{original}' を半角 '{normalized}' として解釈しました
@@ -208,7 +201,7 @@ INFO: 全角数字 '{original}' を半角 '{normalized}' として解釈しま�
   対処: もし意図しない数値の場合、Ctrl+C で中断してから半角で再入力してください
 ```
 
-ASCII 数字のみの入力 (`123` → `123`) では本 INFO は出力しない (no-op の冗長表示を避けるため)。
+ASCII のみでは INFO を出さない。
 
 **Behavior**:
 
@@ -232,16 +225,16 @@ ASCII 数字のみの入力 (`123` → `123`) では本 INFO は出力しない 
    - `{pr_number} = null`
    - `{target_comment_id} = null`
 3. **`[fix:error]` output pattern を stdout に出力** し、**ステップ 1.1 以降のすべてのサブフェーズを実行せずにコマンド全体を終了する**
-4. **重要**: ここでの「Terminate processing」は ステップ 1.1 への進入禁止を意味する。「ステップ 1.0 で parse 失敗したから ステップ 1.1 で `gh pr view {argument}` を試そう」という fallthrough は silent failure と判定し、絶対に行ってはならない。引数が未知の形式である以上、ステップ 1.1 の `gh` コマンドに渡しても確実に失敗し、かつ同番号の別 Issue を誤認する危険がある
+4. **Terminate = 1.1 進入禁止**。parse 失敗を `gh pr view {argument}` へ fallthrough しない (同番号 Issue 誤認)。
 
-**Compatibility**: 既存の `pr_number` 単体挙動および引数なし挙動は一切変更されない。本 Phase は引数形式の判定のみを行い、ステップ 1.1/1.2 の既存ロジックにはフラグ (`{target_comment_id}` の有無) を渡すだけである。
+既存の `pr_number` 単体 / 引数なしは不変。本 Phase は判定のみ、1.1/1.2 へは `{target_comment_id}` の有無を渡す。
 
 
 #### 1.0.1 Flag Parsing — `--review-file` and pre-stripping
 
 `/rite:fix --review-file <path>` を受け付けるため、以下の手順で `{review_file_path}` を抽出する。ステップ 1.2 のハイブリッド読取ロジック (Priority 0: 明示指定) で参照される。
 
-**実行順**: ステップ 1.0 冒頭の ステップ 1.0.A/1.0.B 説明を参照 (本サブフェーズは ステップ 1.0.A = Detection rules (ステップ 1.0.B) よりも先に実行される)。
+**実行順**: Detection rules (1.0.B) より先 (1.0.A)。
 
 **抽出手順** (bash 実装):
 
@@ -307,17 +300,15 @@ echo "[CONTEXT] REVIEW_FILE_PATH=$review_file_path" >&2
 echo "[CONTEXT] REMAINING_ARGS=$remaining_args" >&2
 ```
 
-**Validation**: この Phase では **パスの存在確認は行わない**。存在確認は ステップ 1.2 のハイブリッド読取ロジック Priority 0 で実施し、失敗時は ステップ 1.2.0.1 Interactive Fallback に誘導する ([review-result-schema.md 読取優先順位セクション](../../references/review-result-schema.md#読取優先順位-fix) 参照)。ただし `--review-file=` (値なし) のみは上記 bash block 内で即 fail-fast する (後段で silent fallback に流れないため)。
+**Validation**: 本 Phase では **パス存在確認をしない** (Priority 0)。`--review-file=` (値なし) だけは即 fail-fast。
 
-**制約 — 空白を含むパスは未対応**: `--review-file` の regex parsing は `[^[:space:]]*` で値を capture するため、`/Users/name/Google Drive/foo.json` のような**空白を含むパスは正しくパースされない** (空白位置でトークン分割され、PR 番号候補として誤認される)。この制約は Claude Code の `$ARGUMENTS` が単一文字列として渡される仕様に起因し、真の argv 復元は不可能。空白を含むパスを使いたい場合は ステップ 1.2.0.1 Interactive Fallback の「ファイルパス指定」option で入力すること (AskUserQuestion は単一文字列として受け取るため空白を含むパスも受理される)。
+**制約 — 空白を含むパスは未対応**: `[^[:space:]]*` のため空白パスは分割され PR 番号に誤認される。空白パスは 1.2.0.1 の「ファイルパス指定」(AskUserQuestion) で入れる。
 
-**Claude data flow**: Claude は上記 bash block の **stderr** から `[CONTEXT] REVIEW_FILE_PATH=...` と `[CONTEXT] REMAINING_ARGS=...` を会話コンテキストで読み取り、以後 ステップ 1.0 Detection rules を `remaining_args` に対して適用する。Detection rules 側の regex は **必ず** `$ARGUMENTS` ではなく `remaining_args` を入力とすること。Claude Code の Bash tool は stdout/stderr 両方をコンテキストに取り込むため、stderr 読取で支障はない。
-
-**Compatibility**: `--review-file` を使わない既存呼び出し (`/rite:fix 123` 等) は一切挙動変更なし — `remaining_args = original_args` となり既存ロジックと等価。本フラグは ステップ 1.2 冒頭の読取優先順位決定にのみ影響する。
+Detection rules の入力は **必ず** `$ARGUMENTS` ではなく stderr の `remaining_args`。フラグなし呼び出しは不変。
 
 ### 1.1 Identify the PR
 
-After ステップ 1.0 has extracted `{pr_number}` (and optionally `{target_comment_id}`), retrieve repository information:
+1.0 抽出後に owner/repo を取る:
 
 - **Within end-to-end flow**: `{owner}` and `{repo}` are already available from ステップ 0.2. Reuse them — no additional owner/repo resolution needed.
 - **Standalone execution**: ステップ 0 was not executed. Retrieve them here:
@@ -375,9 +366,8 @@ Terminate processing.
 
 ### 1.1.5 セッション worktree 健全性の保証（multi_session 有効時 / #1676）
 
-fix は ステップ 2 以降で **作業ツリーのファイルを Edit / Write で修正**する。その前に対象 PR の作業ブランチに対応する session worktree を保証する。これがないと、worktree 不在（resume / context 圧縮 / 別セッション跨ぎで欠落）のとき fix がメインツリー（develop）上で実行され、`git branch --show-current` が develop を返して issue 番号抽出が空になり、最悪 **develop の作業ツリーへ修正を書き込む**（§4.4 MUST / MUST NOT）。
-
-ステップ 1.1 で取得した PR の `headRefName`（作業ブランチ）から issue 番号を抽出し、共通ヘルパー `ensure_session_worktree`（[`lib/worktree-git.sh`](../../hooks/scripts/lib/worktree-git.sh)、検出 + 再構築を bash 側で完結し `[CONTEXT] WT_ENSURE=` を emit）で検出・再構築する（`{head_ref}` は ステップ 1.1 の `gh pr view` が返した `.headRefName`）:
+ステップ 2 の Edit/Write 前に session worktree を保証する。`{head_ref}` は 1.1 の `.headRefName`。helper: `ensure_session_worktree`（[`lib/worktree-git.sh`](../../hooks/scripts/lib/worktree-git.sh)）。
+rationale: references/design-rationale.md#worktree-ensure-preamble
 
 ```bash
 issue_number=$(printf '%s' "{head_ref}" | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
@@ -389,21 +379,22 @@ else
 fi
 ```
 
-`[CONTEXT] WT_ENSURE=` marker の分岐は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 3.1.5 の **WT_ENSURE 分岐表（SoT）** に従う（`disabled`〜`reconstructed` の共通 case は SoT 表と同一。**終端の `branch_absent` / `failed` のみ caller 固有**で、recover の AskUserQuestion / 停止に対し、非対話サブ起動の fix は機械的に `[fix:error]` 停止する — 下記）:
+`[CONTEXT] WT_ENSURE=` は [recover Phase 3.1.5](../recover/SKILL.md) の **WT_ENSURE 分岐表（SoT）** に従う。**`branch_absent` / `failed` だけ caller 固有** — recover の AskUserQuestion に対し、fix は `[fix:error]` で機械停止:
 
 - `disabled` / `already_in` / `skip` → no-op、ステップ 1.2 へ（`disabled` = `multi_session.enabled: false`。従来どおり単一ツリーで動作し挙動不変）。
 - `reenter` / `reconstructed` → `EnterWorktree` ツールを `path: {path}`（marker の `path=` 値）で呼び出してからステップ 1.2 へ。`reconstructed` は helper が `git worktree add` 済み。EnterWorktree 失敗時の切り分けは recover.md Phase 3.1.5 / /rite:open Step 2.3-W と同じ（silent に新規扱いしない）。
 - `residue` → AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止）。
 - `branch_other_worktree` → 中止（並行セッションの可能性。`other=` のパスを表示）。
-- `branch_absent` → 対象ブランチがローカル・リモートどこにも実在しない。誤再構築しない。ただし ステップ 1.1 で `gh pr view {pr_number}` が成功している以上、PR の head ブランチは本来 remote に存在するはずで、`branch_absent` の到達は PR 状態との不整合を意味する。**develop 上で fix を続行せず**、`[fix:error]` を emit して明示停止する（`failed` と同じ機械的停止。ステップ 2 以降の Edit/Write へ進まない＝develop の作業ツリーへ書かない）。
-- `failed` → 再構築失敗（helper rc=1, stderr に原因 + 復旧手順）。**silent fallback せず `[fix:error]` を emit して明示停止**する（develop の作業ツリーへ修正を書かない）。
+- `branch_absent` → 誤再構築しない。**develop 上で続行せず** `[fix:error]`（Edit/Write へ進まない）。
+- `failed` → **silent fallback せず `[fix:error]`**。
 
 ### 1.2 Retrieve Review Comments
 
 #### 1.2.0 Hybrid Review Source Resolution <!-- AC-3 / AC-4 / AC-5 / D-01 -->
 
 
-> **Acceptance Criteria anchor**: AC-3 (Priority 1: 同一セッション内の会話コンテキストを最優先で使用)。AC-4 (Priority 2: 会話になければ最新 timestamp のローカルファイルを使用)。AC-5 (Priority 3: 既存 PR コメントの `📜 rite レビュー結果` を後方互換 fallback として読取)。D-01 (会話 > ローカルファイル > PR コメントのハイブリッド方式を採用した理由: セッション横断作業と即時連携の両立)。
+> AC-3/4/5: 会話 > ローカル JSON > PR コメント。
+rationale: references/design-rationale.md#hybrid-source-priority
 
 **Priority chain**:
 
@@ -417,14 +408,14 @@ fi
 
 **⚠️ Selection logic — Claude substitution required**:
 
-ステップ 1.2.0 の Selection logic (Priority 0/1/2/3 + fallback の解決) は `scripts/review-source-resolve.sh` に委譲する。シェル変数は Bash tool 呼び出し間で継承されないため、Claude は下記 bash block を生成する前に、ステップ 1.0 / 1.0.1 の値と Priority 1 会話判定を **helper の引数として literal substitute** すること:
+Selection logic は `scripts/review-source-resolve.sh` に委譲。下記引数を **literal substitute**:
 
 - `{pr_number}` — ステップ 1.0 で正規化された PR 番号 (数値)。非数値は「未 substitute」として `reason=pr_number_placeholder_residue` で fail-fast。
 - `{review_file_path_from_phase_1_0_1}` — ステップ 1.0.1 の `[CONTEXT] REVIEW_FILE_PATH=...` 値を会話コンテキストから読み取る (未指定時は `__RITE_UNSET__`)。
 - `{conversation_review_decision}` — **Priority 1 判定**: Priority 0 が未発火の前提で、同一 session の直前 assistant turn に `## 📜 rite レビュー結果` を含む `/rite:pr-review` 出力が残っていれば、その findings を会話コンテキストから読み取り `use` を渡す。なければ `none` を渡す。
 - `{p1_scan_turns}` / `{p1_scan_found}` — Priority 1 receipt: scan した assistant turn 数 (use 時 1 以上) と発見有無 (`use`→`true` / `none`→`false`)。
 
-helper は全 `[CONTEXT] REVIEW_SOURCE*` marker を **stderr** に emit し、解決完了時に最終 marker `[CONTEXT] REVIEW_SOURCE=<source>; review_source_path=<path or empty>; pr_number=<n>` を emit する。下流の severity_map build ブロックはこの marker を読んで `review_source` / `review_source_path` を literal 置換する (**marker フォーマット不変が hard constraint**)。fatal 時は helper が `[CONTEXT] FIX_FALLBACK_FAILED=1; reason=...` を stderr emit + 非ゼロ exit し、caller が `[fix:error]` を stdout 出力する (**[fix:error] stdout 分離**)。helper の Priority chain / 各 `REVIEW_SOURCE_*` reason / corrupt-file rename 副作用 / trap cleanup は旧 inline block から verbatim 移設済み。
+helper は `[CONTEXT] REVIEW_SOURCE*` を **stderr** に出す。最終 marker `[CONTEXT] REVIEW_SOURCE=<source>; review_source_path=<path or empty>; pr_number=<n>` のフォーマットは不変。fatal は helper が `FIX_FALLBACK_FAILED` + 非ゼロ、caller が `[fix:error]` stdout (**stdout 分離**)。
 
 **Selection logic**:
 
@@ -450,12 +441,10 @@ bash {plugin_root}/scripts/review-source-resolve.sh \
 }
 ```
 
-**`review_source` state transitions within pr_comment path**: `review_source="pr_comment"` に設定された後、Priority 3 処理 (下記 awk block) における state 遷移と意味論は以下の通り:
+**On Priority 0 failure**: `review_source="fallback"` → 1.2.0.1。`--review-file` 明示時に P1–P3 へ silent fallthrough しない。
 
-
-**On Priority 0 failure** (explicit file missing/invalid/schema_unknown): `review_source="fallback"` triggers ステップ 1.2.0.1 interactive fallback. Do NOT fall through to Priority 1-3 silently when `--review-file` was explicitly requested but unusable — the user's intent was to use that specific file.
-
-**On Priority 2 success**: Skip the existing "Target Comment Fast Path" and "Broad Comment Retrieval" sub-sections below. `severity_map` / `scope_map` の構築 + schema 1.1.0 normalization は `scripts/review-findings-maps.sh` に委譲する。helper は schema 1.0/1.0.0 の scope default mapping (a)・invariant #5 auto-correct (b)・auto_demote_low 降格 (e, `rite-config.yml` 読込含む)・重複 file:line 検出・line null/0 の `anchor` sentinel 正規化・severity_map/scope_map 構築検証・normalized tempfile の trap 削除をすべて内包し、`[CONTEXT] REVIEW_SOURCE_*` retained flag を **stderr** に旧 inline block から verbatim emit する (reason SoT は helper docstring。fix.md 側は下記 bullet 列挙で参照)。file-based source (local_file / explicit_file) 以外を渡した場合は no-op exit 0 (旧 if guard と同一)。
+**On Priority 2 success**: Skip "Target Comment Fast Path" and "Broad Comment Retrieval"。map 構築は `scripts/review-findings-maps.sh` へ委譲 (reason は下記 bullet。file-based 以外は no-op exit 0)。
+rationale: references/design-rationale.md#priority2-helper-delegation
 
 `{review_source}` / `{review_source_path}` は ステップ 1.2.0 の最終 marker `[CONTEXT] REVIEW_SOURCE=...` から literal substitute する。severity_map 構築失敗時のみ helper が非ゼロ exit し、caller が `[fix:error]` を stdout 出力する (**[fix:error] stdout 分離** — 上記 review-source-resolve.sh caller と同型):
 
@@ -470,7 +459,7 @@ bash {plugin_root}/scripts/review-findings-maps.sh \
 }
 ```
 
-**On Priority 3 (PR comment, backward-compat)**: After the existing Broad Retrieval retrieves the comment body, check for a `### 📄 Raw JSON` section with code fence. Scope the awk parser to after the `### 📄 Raw JSON` section marker so that sample JSON blocks in findings' suggestion columns (which appear earlier in the comment) are not mistakenly captured.
+**On Priority 3**: Broad Retrieval 後に `### 📄 Raw JSON` fence を読む。parser は当該 section 以降にスコープする。
 
 
 ```bash
@@ -712,7 +701,7 @@ else
 fi
 ```
 
-**Retain in context**: `{review_source}` (`explicit_file` / `conversation` / `local_file` / `pr_comment` / `fallback`) is used by later phases to log provenance in the fix commit message and work memory.
+`{review_source}` を later phase の provenance に使う。
 
 #### 1.2.0.1 Interactive Fallback (when all sources missing) <!-- AC-6 -->
 
@@ -759,11 +748,11 @@ echo "[fix:error]"
 exit 1
 ```
 
-**ステップ 2+ 進入禁止**: `[fix:error]` が emit された時点で Claude は以降の Phase (ステップ 2 Categorization, ステップ 3 Commit, ステップ 4 Report) への bash tool 呼び出しを一切行ってはならない。bash の `exit 1` による機械的強制ルールであり、自然言語判断による例外を認めない。
+**ステップ 2+ 進入禁止**: `[fix:error]` 後は 2/3/4 の bash を呼ばない (`exit 1`。例外なし)。
 
 **ステップ 1.0.1 / 1.2.0 / 1.2.0.1 failure reasons**:
 
-> **注**: ステップ 1.2.0 Selection logic (Priority 0/1/2/3 + fallback) の reason は `scripts/review-source-resolve.sh` へ移設済み。Priority 0/2 (file-based) の severity_map build / normalization の reason は `scripts/review-findings-maps.sh` へ移設済み (下記 bullet 列挙)。本表は ステップ 1.0.1 / 1.2.0 caller guard / 1.2.0.1 Interactive Fallback / Priority 3 pr_comment (string-based 鏡像含む) の reason を扱う。
+> Selection / P0–P2 map reason は各 helper。本表は 1.0.1 / caller guard / 1.2.0.1 / P3。
 
 | reason | Description |
 |--------|-------------|
@@ -795,7 +784,7 @@ exit 1
 | `broad_retrieval_jq_extraction_failed` | ステップ 1.2.0 Priority 3 Broad Comment Retrieval で `pr_comments` からの rite review コメント抽出 jq が失敗 (jq バイナリ異常 / OOM / GitHub API レスポンスの JSON 破損、tempfile 不在として `BROAD_RETRIEVAL_SKIPPED_OR_NO_COMMENT` へ routing、`REVIEW_SOURCE_PARSE_FAILED` flag) |
 | `git_rev_parse_head_failed` | Priority 3 の commit_sha stale detection 用 `git rev-parse HEAD` が失敗 (stale 判定を skip し `head_sha=""` で継続、`REVIEW_SOURCE_STALE_CHECK_FAILED` flag。`jq_error_on_commit_sha` と同じ stale-check namespace) |
 
-> **Note**: Priority 0/2 (file-based) の severity_map build / normalization の reason は委譲先 helper `scripts/review-findings-maps.sh` が emit する (SoT は helper docstring)。委譲済 reason は「この SKILL.md 自身が emit する reason」と区別できるよう **markdown table 行にせず bullet 形式**で列挙し、本文 prose でも bare backtick 名で参照する。helper の stderr `[CONTEXT]` emit は caller の bash 出力として LLM コンテキストに surface するため、下記 reason は fix flow 上で従来どおり観測される。
+> P0/P2 map reason は helper docstring が SoT。委譲済は **table 行にせず bullet**。
 
 **review-findings-maps.sh reasons** (helper が `[CONTEXT] REVIEW_SOURCE_*` / `FIX_FALLBACK_FAILED` を emit。normalization 系 4 reason — `scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `low_current_pr_demoted_to_nit_noted` / `jq_mutation_failed` — は Priority 3 鏡像も同名 emit するため上の table 行にも存在する):
 - `mktemp_failure_norm_tmp`: schema 1.1.0 normalization 用 tempfile (`${TMPDIR:-/tmp}/rite-fix-normalized-XXXXXX`) の mktemp が失敗 (disk full / inode 枯渇 / read-only filesystem / permission denied、`REVIEW_SOURCE_NORMALIZATION_FAILED` flag、非ブロッキング、原 JSON のまま続行)。silent skip 防止のため WARNING + retained flag を必ず emit する
@@ -803,12 +792,12 @@ exit 1
 - `severity_map_build_failed`: Priority 0/2 で severity_map 構築用 jq が失敗 (0 件で正常終了する silent regression 防止、helper exit 1 → caller が `findings_maps_build_failed` + `[fix:error]` に昇格)
 - `scope_map_build_failed`: Priority 0/2 (file-based) で scope_map_json 構築用 jq が失敗 (`FIX_FALLBACK_FAILED` flag、非ブロッキング、`scope_map_json="{}"` で legacy blocking 扱いに fallback)
 
-**Eval-order enumeration** (Pattern-2 documented-union input): 本 enumeration の reason は fix.md に対する Pattern-2 forward check の **documented set（reason 表 ∪ enumeration）** に寄与する。reason 表と本 enumeration は人間可読性のため同期させること（Pattern 2 はどちらか一方に存在すれば documented とみなすため、両者の厳密な同期や enumeration 側の reverse staleness — 列挙済だが emit されない reason — は機械検証されない）。reason を追加・削除する際は表と本 enumeration の両方を更新する (`scripts/review-findings-maps.sh` へ委譲済の reason は helper docstring 側の enumeration に記載するため本 enumeration には含めない)。emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `low_current_pr_demoted_to_nit_noted` / `pr_comment_scope_map_build_failed` / `review_source_resolve_failed` / `findings_maps_build_failed`)
+**Eval-order enumeration** (Pattern-2 documented-union): emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `low_current_pr_demoted_to_nit_noted` / `pr_comment_scope_map_build_failed` / `review_source_resolve_failed` / `findings_maps_build_failed`)
 
 #### Legacy Branching (PR Comment Path Only)
 
 
-**Branch by `{target_comment_id}`** (set in ステップ 1.0): the Legacy Branching (PR Comment Path Only) section has two execution paths depending on whether a comment URL was passed. The sub-sections below (Target Comment Fast Path / Broad Comment Retrieval) are **h4-level branches within the Legacy Branching section** and are independent execution paths — they are **not** numbered sub-phases of ステップ 1.2.1. The existing `### 1.2.1 Retrieve rite Review Results` is a separate, h3-level sub-phase that runs only when the Broad Comment Retrieval path is taken (i.e. when `{target_comment_id}` is NOT set).
+**Branch by `{target_comment_id}`**: Fast Path / Broad Retrieval は本節内の独立 h4。`### 1.2.1` は Broad Retrieval 時のみ。
 
 #### Target Comment Fast Path — when `{target_comment_id}` is set
 
@@ -1171,9 +1160,8 @@ echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
      | `Low-Medium`, `LowMedium`, `low_medium`, `中低`, `軽中` | `LOW-MEDIUM` |
      | `Low`, `INFO`, `TRIVIAL`, `🔵`, `低`, `情報` | `LOW` |
 
-     > **Note — 既知の外部ツール出力形式**: rite plugin 配下に `/verified-review` は存在しない (実体はユーザーレベルの `~/.claude/commands/verified-review.md` にある独立コマンドで、rite plugin が提供するものではない)。同コマンドが出力するレビュー結果テーブルは `重要度` 列に **Title Case の `Critical` / `Important`** を使うため、上記マッピング表ではこれらを HIGH / CRITICAL に正規化する経路を必須としている。`pr-review-toolkit:review-pr` も同様に Title Case を使う場合があり、同じ経路で吸収される。
-     >
-     > **絵文字エイリアスの実運用検証状況**: 絵文字 (`🔴`/`🟠`/`🟡`/`🔵`) は将来の互換性のため列挙しているが、上記 2 ツールが絵文字を出力する事例は未検証。新しい外部レビューツールへの対応として絵文字エイリアスを追加した場合は、本 Note にツール名を追記すること。
+     > Title Case (`Critical` / `Important`) は CRITICAL / HIGH へ正規化する。
+rationale: references/design-rationale.md#external-tool-title-case
 
      - 上記のいずれにもマッチしない場合、`MEDIUM` をデフォルトとし、**認識不能な severity 値の一覧をユーザーに必ず警告表示する** (silent fallback 禁止):
        ```
@@ -1281,7 +1269,7 @@ echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
 
 **外部ツール由来 finding の Confidence ゲート** (`feedback_review_zero_findings` / `feedback_review_quality.md` 準拠):
 
-外部ツール (`/verified-review`, `pr-review-toolkit:review-pr`, 手動コメント等) のコメントは `📜 rite レビュー結果` と異なり、Confidence 列を持たない形式が多い。そのまま fix ループに投入すると hallucinated finding (Confidence < 80 相当) が修正対象になり、rite の「Confidence 80+ のみ取り込み」原則を破る。
+外部ツールコメントは Confidence 列が無いことが多い。未記載のまま入れると 80+ ゲートを破る。
 
 **取り扱いルール**:
 
@@ -1375,10 +1363,8 @@ echo "[CONTEXT] BLOCK_C_COMPLETE=1; pr_number={pr_number}; target_comment_id={ta
 | 4.3.4 (Issue 本文) | `{confidence_value}` | finding 単位の値。rite review 由来なら finding の severity (CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW)、外部ツール由来かつ Confidence 列なしなら literal `70 (暫定)` |
 | 4.3.4 (Issue 本文) | `{confidence_override_value}` | finding 単位の boolean。`confidence_override_findings` に当該 file:line が含まれていれば `true (外部ツール由来、Confidence 70 のまま 80+ ゲートをバイパスする policy override、ユーザー承認済み)`、それ以外は `false` |
 
-この手順により、外部レビューツールの信頼度を silent に無視することなく、かつ hallucinated finding の混入も防ぎ、かつ Confidence 80+ ゲート invariant の破壊を silent に起こさない (override は常に trackable)。
-
-
-パース完了後、抽出した findings を持って直接 ステップ 2 (Categorization) に進む。ステップ 1.2 の Broad Comment Retrieval ブロックおよび ステップ 1.2.1 のフィルタ選択処理は Fast Path では実行しない (対象コメントは既に取得済みのため)。ステップ 1.2.1 の Markdown table parsing algorithm のみを `$target_body` に適用する。
+override は常に trackable。パース後は ステップ 2 へ。Fast Path では Broad Retrieval / 1.2.1 フィルタを走らせず、1.2.1 の table parse だけを `$target_body` に適用する。
+rationale: references/design-rationale.md#confidence-override-h1
 
 #### Broad Comment Retrieval — when `{target_comment_id}` is NOT set
 
@@ -1471,7 +1457,7 @@ fi
 [ -n "$jq_broad_err" ] && rm -f "$jq_broad_err"
 ```
 
-**Implementation note for Claude**: `$pr_comments` はシェル変数ではなく、**会話コンテキスト内で保持するデータ**として扱うこと。Claude Code が各 bash コードブロックを個別の Bash ツール呼び出しで実行する場合、シェル変数はブロック間で引き継がれない。ステップ 1.2.1 では、この値をコンテキストから読み直すか、ステップ 1.2 のコードブロックと ステップ 1.2.1 のコードブロックを単一の Bash ツール呼び出しとして結合して実行すること。
+`$pr_comments` はシェル変数ではなく context 保持。1.2 と 1.2.1 は同一 Bash 呼び出しにするか、context から再注入する。
 
 ```bash
 # スレッド情報と解決状態を取得（GraphQL）
@@ -1538,7 +1524,7 @@ Retrieve the `/rite:pr-review` results from PR comments and extract severity inf
 echo "$pr_comments" | jq '[.[] | select(.body | contains("## 📜 rite レビュー結果"))] | sort_by(.createdAt) | last | {id: .id, body: .body, author: .author.login, createdAt: .createdAt}'
 ```
 
-**Note**: When multiple rite review result comments exist (when review has been run multiple times), use the one with the most recent `createdAt`.
+複数の rite 結果コメントがあるときは最新 `createdAt`。
 
 **Parsing the Markdown table:**
 
@@ -1578,23 +1564,22 @@ The rite review result comment (output format of `/rite:pr-review`) has the foll
    }
    ```
 
-6. **`### 実測なし指摘 (non-blocking)` セクションの抽出 + `measured_map` 構築 (実測必須ゲート)**: コメント本文に `### 実測なし指摘 (non-blocking)` で**前方一致**する見出し (テンプレート実体は「（該当がある場合のみ）」等の注記が付く) のセクションが存在する場合、その配下の表 (**6 列**: レビュアー | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 — `全指摘事項` の 5 列と列数が異なる点に注意。列ズレ防止のため本セクション専用の 6 列パースを適用する) の各行を `non_blocking_findings` として retain し、**severity_map / scope_map にも通常どおり投入した上で** `measured_map[file:line] = false` として登録する (母集団を severity_map に統一 — 除外すると 1.3 step 4 に到達できず、rite finding 由来の co-located thread まで一律 External review へ落ちて measured 判定を受けられない。非 rite thread を意図的に External review へ振り替えるのは step 4 の出自確認の役割で、両者は別物)。`### 全指摘事項` 由来の行は `measured_map[file:line] = true` として登録する。
+6. **`### 実測なし指摘 (non-blocking)` + `measured_map`**: 見出しは**前方一致**。配下は **6 列**パース。行は `non_blocking_findings` に retain し、**severity_map / scope_map にも投入**した上で `measured_map[file:line] = false`。`### 全指摘事項` 行は `true`。
 
-   **measured_map 構築の共通規則 (JSON / Markdown / 会話の全経路に適用)**:
-   - (a) **scope による登録除外はしない — 全 finding を `measured_map` に登録する**。nit-noted の除外は登録時ではなく**参照時に正規化後の `scope_map` を引いて**行う (1.3 step 4 の nit 分岐が measured lookup より先に評価される)。理由: `measured_map` は正規化**前**の原ファイル (`{review_source_path}`) から構築されるのに対し `scope_map` は `review-findings-maps.sh` の正規化 (auto_demote_low / invariant #5 auto-correct) **後** tempfile 由来のため、登録条件に原ファイルの scope を使うと 2 つの map が別 scope を見て「auto-demote された finding の二重計上 (finalize 等式破綻)」と「auto-correct された finding の未登録 = 未判定扱いによるゲート bypass」の両方向に破綻する。**なお本破綻シナリオが成立するのは、`false` を持つ finding の scope が正規化で書き換わるときに限る** (ゲート配線後の JSON 経路に入る `false` は `scope == "nit-noted"` の非実測 finding 由来のみ — gated な `measured=false` は `non_blocking_findings[]` へ移送され `findings[]` に残らない。現行世代の JSON は `pre_existing` を持たず invariant #5 が発火しないため、この scope は正規化後も nit-noted のまま)。規則自体は fail-safe として無害なため先行して固定しておく。
+   **measured_map 共通規則** (全経路):
+   - (a) **scope で登録除外しない — 全 finding を登録**。nit 除外は**参照時に正規化後 `scope_map`** (1.3 step 4 の nit 分岐が先)。
    - (b) **key 正規化は severity_map と同一** (`line == null || line == 0` → `{file}:anchor`)。
-   - (c) **同一 key の衝突は `true` (blocking) 優先** — false で上書きしない (blocking-biased fail-safe: 複数 reviewer が同一 file:line を指摘し一方のみ実測付きの場合、実測済み blocking 指摘の silent skip を防ぐ)。
-   - (d) **3 値を潰さない** — 登録するのは「実測の有無を判定できた finding」のみ。判定する構造が無い finding (外部ツール / 人間レビュー由来、および JSON に `verification` が無い finding) は**未登録のまま残す** (= 未判定)。未判定を `false` に畳んではならない (実測必須ゲートの対象外 = 従来どおり blocking。SoT は [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) の「適用範囲 (measured は 3 値)」)。
+   - (c) **同一 key は `true` 優先** — false で上書きしない。
+   - (d) **3 値を潰さない** — 判定できた finding だけ登録。未判定を `false` に畳まない (SoT: [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate))。
+   rationale: references/design-rationale.md#measured-map-construction
 
-   件数 `non_blocking_count` は **`measured_map` の `false` のうち `scope_map[key] != "nit-noted"` の件数** (正規化後 scope による nit 除外 — `acknowledged_nit_count` との二重計上を参照時に遮断) として導出し、ステップ 1.4 表示・ステップ 4.6 集計に使う (ステップ 1.3 の non-blocking 分類条件と同一フィルタ。ただし step 4 の**出自確認で External review へ振り替えた key は分類数から外れる**ため、その分だけ「分類数 < カウント」になる — **振り替えた key のみ**を導出時に減算する (対応する GitHub thread が存在しない key は減算対象ではない — rite は per-line thread を作らないため既定構成では大半がこれに該当する))。セクション不在時は当該登録なし (`non_blocking_count = 0`)。**経路間で値は一致しない**: `/rite:pr-review` ステップ 5.3.0.M の `review-measured-gate.sh` が gated な非実測 finding を `findings[]` から `non_blocking_findings[]` へ移送する契約のため、JSON 経路 (Priority 0/2/3) の `measured_map` に入る `false` は `scope == "nit-noted"` の非実測 finding 由来のみで、上記の nit 除外フィルタに掛かるため `non_blocking_count` は 0 になる。N 件が入るのは `### 実測なし指摘 (non-blocking)` section を読める Markdown / 会話経路のみ。write 側が `verification` を出力する前提は #2072 で満たされたが、5.3.0.M の移送契約は現行のままのため、全経路一致は未成立。
+   `non_blocking_count` は **`measured_map` の `false` のうち `scope_map[key] != "nit-noted"` の件数**。step 4 で External review へ振り替えた key だけ減算。セクション不在は 0。**経路間で値は一致しない**。
 
-**Note**: When multiple reviewers have flagged the same file:line, adopt the highest severity (CRITICAL > HIGH > MEDIUM > LOW-MEDIUM > LOW). The `scope` column is consumed downstream by `/rite:fix` ステップ 2 (nit-noted 受け流し経路) to determine acknowledge vs. fix-required handling.
+同一 file:line は最高 severity。`scope` はステップ 2 の nit 分岐で使う。
 
 **When rite review results are not found:**
 
-When no rite review results exist in PR comments (manual review only, or `/rite:pr-review` was not run):
-- Continue processing with an empty `severity_map`
-- ステップ 1.3 falls back to GitHub state-based classification
+rite 結果が無いときは空 `severity_map` で続行し、1.3 が GitHub state へ fallback。
 
 ### 1.3 Classify Comments
 
@@ -1619,16 +1604,18 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
 4. If it exists, look up the corresponding entry in `scope_map`:
    - **`scope == "nit-noted"`** -> **nit (認知のみ)**; route directly to ステップ 2.4 `nit-noted-reply` (skip ステップ 2.1 selection、fix commit 対象外)
    - **measured lookup (実測必須ゲート)**: 判定は **`measured_map[file:line]` の参照に統一**する (母集団は severity_map と同一 — **scope による登録除外なし**。nit-noted は本分岐に到達する前に上の nit 分岐 (正規化後 `scope_map` 参照) が先取するため lookup 対象にならない。key 正規化・tie-break・3 値保持を含む構築共通規則はステップ 1.2.1 step 6 が単一定義。**3 値**: `false` = non-blocking / `true` = blocking / **未登録** = 未判定 (実測の有無を判定する構造が無い) → blocking)。`measured_map` の構築は経路別:
-     - **JSON 経路 (Priority 0/2/3 Raw JSON)**: finding が `verification` を object として持ち、かつ `verification.measured` が boolean のときに限り `measured_map[file:line] = .verification.measured` を登録する。**`verification` 欠落 / `verification.measured` 欠落の finding は登録しない (= 未判定 → blocking)**。`(.verification.measured // false)` で畳んではならない — `//` は欠落と `false` を同一視するため、write 側が `verification` を出力しない世代の JSON (旧形式、および本ゲート配線前に生成されたもの) を読むと**全 finding が non-blocking になり fix が 0 件で完了し、レビューループが指摘を 1 件も解消しないまま `safety.max_review_cycles` まで空転する**。**欠落は現行世代の JSON でも発生する** — `scripts/review-measured-gate.sh` は形式崩れアンカー (アンカー文字列と `=>` はあるが検出 regex に match しない) の finding に対し、`measured=false` と確定させずに `verification` を設定しないことで「未判定」を表現するため。したがって本経路の「欠落 = 未判定 → blocking」は後方互換のためだけの規定ではなく、**現行フローの主経路の 1 つ**である。`review-result-schema.md` §verification の default mapping (「欠落時は `measured=false` 扱い」) は `measured` が判定に使われない記録専用フィールドだった時点の規定であり、本ゲートで判定入力になった以降は同節の「3 値モデル」注記が優先する
-     - **会話コンテキスト経路 (Priority 1)**: integrated report の `### 全指摘事項` の行を `true`、`### 実測なし指摘 (non-blocking)` section の行を `false` として登録する。**Markdown 経路と同様に、`### 実測なし指摘` の行も `severity_map` / `scope_map` へ投入する** (ステップ 1.2.1 step 6 と同一規則。投入しないと `total_count` の母集団 = severity_map から非実測指摘が抜け、ステップ 4.6 の `全指摘 == 対応指摘` が成立せず reply-only cycle で不要な re-review が 1 サイクル余分に走る)
-     - **Markdown パース経路 (Target Comment Fast Path の rite レビュー結果 / Priority 3 legacy Markdown fallthrough)**: ステップ 1.2.1 step 6 の構築規則に従う — `### 全指摘事項` の行は `true` (5.3.0.M 通過済み blocking 集合。5.3.0.M 導入前の旧コメントも全件 blocking 前提で描画されているため true が後方互換上も正しい)、`### 実測なし指摘 (non-blocking)` section の行は `false`
-     - **外部ツール / best-effort parse 経路 (手動コメント / verified-review 等)**: `Verification:` アンカーを構造的に持てないため `measured_map` に**登録しない** (= 未判定)。実測必須ゲートの対象外 — 未判定を non-blocking と解釈せず、従来どおり External review (Action required = blocking) として扱う
+     - **JSON (P0/2/3)**: `verification` が object かつ `verification.measured` が boolean のときだけ登録。**欠落は登録しない (= 未判定 → blocking)**。`(.verification.measured // false)` で畳まない
+     - **会話 (P1)**: `### 全指摘事項` → `true`、`### 実測なし指摘 (non-blocking)` → `false`。後者も `severity_map` / `scope_map` へ投入 (1.2.1 step 6)
+     - **Markdown (Fast Path / P3 legacy)**: 1.2.1 step 6。全指摘事項 = `true`、実測なし = `false`
+     - **外部ツール / best-effort**: 登録しない (= 未判定)。External review (blocking)
+     rationale: references/design-rationale.md#measured-map-construction
 
      判定の結果 **`measured_map[file:line] == false`** -> **non-blocking (実測なし)**; skip ステップ 2.1 selection、fix commit 対象外 (記録は `/rite:pr-review` の 4 経路 — 永続 JSON の `non_blocking_findings[]` / ステップ 6.1.d の PR 記録コメント / ステップ 5.4 の「実測なし指摘」section / E2E output line — が担う)
 
-     > **人間 thread の巻き添え防止 (MUST)**: `measured_map` は file:line を key にするため、非実測 finding と**同一 file:line にある人間レビュアーの未解決 thread** が本分岐に巻き込まれ、fix も reply もされないまま `non_blocking_count` に「対応済み」として計上されうる。これを防ぐため、本分岐に落とす前に **thread の出自を確認する**: thread 本文が当該 rite finding の description と対応しない (= rite review 由来と確認できない) 場合は non-blocking に落とさず、**step 5 の External review (Action required = blocking)** として扱う。出自が判定できない場合も External review 側 (安全側) に倒す。rite finding 由来と確認できた thread のみが non-blocking になる。
+     > **人間 thread の巻き添え防止 (MUST)**: 同一 file:line の人間 thread は、rite finding 由来と確認できない限り **External review (blocking)**。判定不能も安全側。
      >
-     > **振り替え時の marker (MUST)**: 本例外で External review へ振り替えた key が 1 件以上あれば、以下を bash で実行して痕跡を残す (`MEASURED_DEMOTED_ON_ANCHOR` と同じ observability marker。reason 表への登録は不要)。分類を変える唯一の例外分岐であり、かつ後述の `non_blocking_count` 減算を伴うため、無痕跡だと減算漏れによる finalize 等式の永久不成立 (`max_review_cycles` まで空転) の原因が追えない:
+     > **振り替え時の marker (MUST)**: 振り替え key が 1 件以上あれば emit (reason 表への登録は不要):
+     rationale: references/design-rationale.md#human-thread-provenance
      >
      > ```bash
      > echo "[CONTEXT] MEASURED_RECLASSIFIED_TO_EXTERNAL=1; count={n}; cause=provenance_unconfirmed" >&2
@@ -1636,7 +1623,7 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
    - `scope ∈ {current-pr, follow-up}` AND measured ∈ {true, 未判定} AND severity ∈ {CRITICAL, HIGH} -> Required fix
    - `scope ∈ {current-pr, follow-up}` AND measured ∈ {true, 未判定} AND severity ∈ {MEDIUM, LOW-MEDIUM, LOW} -> Needs fix
 
-   **step 4 は severity_map 登録済み finding の終端 (1 例外あり)**: 本 step で分類が確定した finding を step 5 (External review) へ落としてはならない。外部ツール / best-effort parse 由来で severity_map に**登録済み**の finding (Confidence override 取込分を含む) は `measured_map` 未登録 = 未判定として上記 2 分岐に入り Required fix / Needs fix になる (blocking という結論は External review と同じで、二重計上のみを避ける)。**唯一の例外は measured lookup の出自確認**で、`measured_map[key] == false` かつ thread が rite finding 由来と確認できない場合のみ step 5 へ振り替える (下記 MUST 参照)。step 5 の対象は severity_map に**登録されていない**未対応コメント、および本例外で振り替えられた thread。
+   **step 4 は severity_map 登録済みの終端 (1 例外)**: 分類確定分を step 5 へ落とさない。**例外は出自確認** (`measured_map[key] == false` かつ rite 由来未確認 → step 5)。step 5 は未登録コメント + 振り替え thread。
 5. Unresolved comments not in `severity_map`、**または step 4 の出自確認で振り替えられた thread** -> External review (Action required = blocking)
 
 
@@ -1742,7 +1729,7 @@ PR #{number} のレビューコメント
 
 **「キャンセル」選択時の Behavior** (silent orphan ファイル防止):
 
-`/rite:fix` 実行時に Fast Path (ステップ 1.2 Target Comment Fast Path) を経由して Fast Path 一時ファイル (ハンドオフ 3 + raw_json + intermediate 3、合計 7 本) を作成した状態で「キャンセル」が選択された場合、ステップ 1.5 cleanup を経由しないため、**ステップ 1.4 末尾でも明示的に Fast Path の全一時ファイル + confidence_override (合計 8 本) を削除する**。これは ステップ 1.2 best-effort parse の「Cancel/Re-run 経路でのハンドオフ cleanup 義務」段落と同じ defense-in-depth 原則に従う。
+Fast Path 経由でキャンセルした場合、1.5 を通らないので **1.4 末尾で一時ファイル + confidence_override を削除**する。
 
 ```bash
 # ステップ 1.4 「キャンセル」選択時の cleanup (silent orphan ファイル防止)
@@ -1759,7 +1746,7 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
       "${TMPDIR:-/tmp}/rite-fix-pr-comment-{pr_number}.txt"
 ```
 
-**FINALIZE handoff の設定 (E2E flow 時のみ)**: `[fix:cancelled-by-user]` は終了 sentinel のため、`/rite:iterate` ステップ5 中断通知を構造的に強制する FINALIZE handoff をセットする。`[fix:cancelled-by-user]` は本ステップ (ステップ 1.4 cancel) の早期 exit で emit され Step 5.1 を経由しないため、handoff は**ここで**セットする。**E2E flow の場合のみ** (ステップ 5 Flow detection 表と同一判定: `rite:fix` が Skill 経由で invoke された / work memory に `コマンド: /rite:open`) 下記 bash を `[fix:cancelled-by-user]` 出力の直前に実行する。standalone 実行 (ユーザーが `/rite:fix` を直接入力) では実行しない (`--if-exists` も二次的に gate するが、prose 判定が primary = AC-4)。
+**FINALIZE handoff (E2E のみ)**: `[fix:cancelled-by-user]` は 5.1 を通らないので**ここで**セット。standalone では実行しない (AC-4)。
 
 ```bash
 # E2E flow 時のみ: FINALIZE 終了通知 handoff をセット (Stop hook が ステップ5 中断通知を 1 回だけ強制)
@@ -1796,13 +1783,9 @@ Terminate processing.
 
 ### 1.5 Fast Path Handoff File Cleanup (ステップ 1 終端)
 
-**Execution condition**: Fast Path 経由で一時ファイル (`${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt` 等) を作成し、かつ ステップ 1.4 を「キャンセル以外」(= 「すべての指摘に対応」「CRITICAL/HIGH のみ対応」「特定の指摘を選択」のいずれか) で完走した場合のみ実行する。Broad Comment Retrieval 経路 (Fast Path 未経由) や ステップ 1.4 「キャンセル」経路ではこれらのファイルは存在しないか別経路 (ステップ 1.4 「キャンセル」Behavior block) で削除済みのため、`rm -f` は silent no-op となる。
+**条件**: Fast Path で一時ファイルを作り、1.4 をキャンセル以外で完走したとき。他経路は `rm -f` no-op。
 
-**Purpose**: ステップ 1.2 Fast Path で作成した一時ファイル (ハンドオフ 3 + raw_json + intermediate 3、合計 7 本) を明示的に削除する。**ステップ 1.5 として独立に実行する** (ステップ 1 の最終サブフェーズ、ステップ 2 遷移直前のタイミング)。これにより `/tmp` 累積汚染と再実行時の stale data 参照を防ぐ。
-
-**Important — specific path 必須** (並列 fix 実行の他セッション破壊防止):
-- wildcard glob (`${TMPDIR:-/tmp}/rite-fix-target-body-*.txt` 等) は**絶対に使わない**。並行 terminal / 手動複数セッションで他セッションの一時ファイルも silent に消す事故になる
-- 必ず `{pr_number}-{target_comment_id}` suffix を含む specific path で削除する
+**specific path 必須** (wildcard 禁止)。`{pr_number}-{target_comment_id}` で消す。
 
 ```bash
 # ステップ 1.5: Fast Path Handoff File Cleanup
@@ -1821,7 +1804,7 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
       "${TMPDIR:-/tmp}/rite-fix-pr-comment-{pr_number}.txt"
 ```
 
-**Idempotency**: `rm -f` は対象ファイルが存在しない場合でも exit 0 で成功するため、Broad Retrieval 経路でも安全に実行できる。また再実行時 (同一 pr_number + target_comment_id で再度 /rite:fix を実行) でも古いファイルが確実に削除される。
+`rm -f` は idempotent。
 
 ---
 
@@ -1844,7 +1827,7 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
 - 外部 API 呼び出しで、stale cache を返すことが requirement に明示されている
 - ユーザー向けエラー表示で、技術的詳細を隠蔽する必要がある
 
-これらに該当しない修正を採用する場合、Wiki (`/rite:wiki-query`) で project-specific な許容パターンを事前確認すること。本原則は fix.md の手順として常時適用される（config での opt-out は不可）。
+該当しない fallback は Wiki で許容パターンを確認する。opt-out 不可。
 
 ### Simplification-First Response Principle（追加より削除を先に検討）
 
@@ -1860,13 +1843,11 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
 - [ ] 追加しようとしている分岐 / ガード / 規約は、指摘された 1 ケース専用になっていないか（1 ケース対応の追加は、次 cycle でその追加自体が新たなレビュー対象面となり指摘を再生産する）
 - [ ] 修正 diff は指摘の解消に必要な最小か。指摘されていない「ついで」の防御・柔軟性・将来対応を含んでいないか
 
-本原則の対象は**機構の追加**（分岐・ガード・規約・注記・例外条項）である。テストケースの追加や既存複製の同期更新は対象外（それらは通常それ自体が正しい修正であり、削除で代替しない）。
-
-本原則は生成側の `no_speculative_structure`（[coding-principles.md](../../skills/rite-workflow/references/coding-principles.md)）と対をなす。
+対象は**機構の追加**。テスト追加・複製同期は対象外。[coding-principles.md](../../skills/rite-workflow/references/coding-principles.md) の `no_speculative_structure` と対。
 
 **Escalation trigger（パッチの重ね掛け停止）**: 対応中の finding が**同一 PR の前 cycle の fix が導入・変更した箇所**への指摘である場合（description が「cycle N で導入した」「前 cycle で追加した」等で当該 fix を名指しする場合を含む）、同じ機構への追加パッチを既定選択にしないこと。まず「当該機構ごと削除・単純化して指摘群を根から消せないか」を検討し、修正案の提示（ステップ 2.3）の前にその判断を chat へ 1 行明示する（例: `simplification-first: 分岐機構を削除し行全体再生成へ単純化` / `simplification-first: 追加パッチを選択 — 理由: {reason}`）。
 
-**追加で修正する場合**、commit message に「なぜ削除・単純化ではなく追加を選んだか」を明示すること（Fail-Fast の fallback 明示義務と同型）。
+追加で直すなら commit に「なぜ削除ではないか」を書く。
 
 rationale: references/design-rationale.md#simplification-first-rationale
 
@@ -1874,13 +1855,13 @@ rationale: references/design-rationale.md#simplification-first-rationale
 
 **Entry routing — scope=nit-noted skip**:
 
-各 finding を ステップ 2.1 で処理する前に `scope_map` を look up し、**`scope == "nit-noted"` の finding は ステップ 2.1 を完全に skip して ステップ 2.4 `nit-noted-reply` サブステップに直行する**。これは nit-noted 受け流し経路の核となる routing 分岐:
+**`scope == "nit-noted"` は 2.1 を skip して 2.4 `nit-noted-reply` へ**:
 
 1. scope_map[file:line] を look up
 2. `scope == "nit-noted"` → ステップ 2.1 (本セクション) を skip、ステップ 2.4 `nit-noted-reply` サブステップで「nit、認知済」reply を 1 件投稿
 3. **measured lookup (実測必須ゲート)**: ステップ 1.3 で **non-blocking (実測なし)** に分類された finding (`measured_map[file:line] == false`) → ステップ 2.1 (本セクション) を **skip** し、ステップ 2.4 の reply も投稿しない (fix commit 対象外。記録は `/rite:pr-review` ステップ 5.4 の「実測なし指摘」section が担う)
 4. `scope ∈ {current-pr, follow-up}` かつ **measured != false** (= `measured_map` で `true`、または未登録 = **未判定** — ステップ 1.3 step 4 の measured lookup 参照)、または scope 未登録 (legacy / fallback) → 本セクション以降を通常通り実行 (Confidence override で取り込んだ外部ツール finding は severity_map 登録済みのため ステップ 1.3 step 4 でここに合流し、silent skip されない)
-5. nit-noted / non-blocking skip 経路では「コードを修正する / accept (認知のみ) / 説明・返信のみ」の選択 UI は **表示しない** (ユーザー判断不要)。nit-noted reply の冪等性は ステップ 2.4 サブステップ内で comment ID 単位で管理される
+5. skip 経路では選択 UI を **出さない**。nit reply の冪等は 2.4 が comment ID 単位。
 
 
 ---
@@ -1939,7 +1920,7 @@ Claude は ステップ 1 末尾で skip_file を、`{target_author}` が必要�
 
 ### 2.1.A accept (認知のみ)
 
-**Owner**: ステップ 2.1 内の `accept (認知のみ)` 選択時 sub-flow。**Trigger**: ユーザーが ステップ 2.1 で「accept (認知のみ)」を選択した finding。**Purpose**: 「reviewer の指摘は理解したが本 PR では修正しない」決着を `acknowledged` 状態として記録し、次 cycle で同一 finding が再出現しても fingerprint で自動 suppression する受け流し経路の核。本 PR 外への先延ばし手段は提供しない (別 Issue 化禁止ポリシー)。
+accept = 本 PR では直さない決着を `acknowledged` にし、fingerprint で次 cycle を suppression。別 Issue 化はしない。
 
 **accept 選択時の処理 (4 つを同期実行)**:
 
@@ -2074,11 +2055,7 @@ if [ "$accept_count" -ge 5 ]; then
 fi
 ```
 
-**Revocability (AC-5)**: accept は **revocable**。state file (`.rite/state/accepted-fingerprints-{pr_number}.txt`) を手動削除すれば、次 review cycle で当該 finding が再出現した際に suppression が解除され、通常の ステップ 2.1 選択 UI に戻る。手動編集で特定行 (fingerprint) のみ削除しても部分的に revoke 可能。
-
-**fix 対象除外との関係**: accept で `status == "acknowledged"` となった finding は **ステップ 3 (commit) の対象から完全除外** される。これにより accept された finding は fix commit 対象にならない (本 PR で先延ばしの記録だけが残る)。
-
-**ステップ 3.2 commit trailer**: 1 commit に複数の accept finding が含まれる場合、commit trailer に `Acknowledged-finding: F-NN (file:line) — reason` 行を **反復生成** する (詳細は ステップ 3.2 セクション参照)。
+accept は **revocable** (state file の行削除)。`acknowledged` は ステップ 3 の commit 対象外。trailer は 3.2。
 
 **`acknowledged` retained flag namespace** (ステップ 2.1.A 独立、ステップ 1.2.0 reason 表とは別 namespace):
 
@@ -2092,7 +2069,7 @@ fi
 | `ACCEPT_FINGERPRINT_PERSIST_FAILED` | `mv_failed` | tmpfile から state file への atomic mv 失敗 |
 | `ACCEPT_LIMIT_EXCEEDED` | (warning marker) | 同一 PR 内 accept 件数が 5 件以上に達した警告 (AC-4) |
 
-**Non-blocking contract**: 上記 `ACCEPT_FINGERPRINT_PERSIST_FAILED` reason はすべて WARNING + retained flag emit で続行する。accept 自体は ステップ 2.4 reply 投稿で完了しており、永続化失敗は次 cycle での auto-suppression を諦めるだけで fix loop 自体は止めない。
+永続化失敗は WARNING + flag で続行 (reply は済、suppression だけ諦める)。
 
 ### 2.2 Identify Fix Location
 
@@ -2187,11 +2164,7 @@ When "コードを修正する" is selected:
    省略経路に入る場合も、判断根拠 (`local-only: typo-only: {対象文字列}`) を
    chat に明示出力する。確認結果と根拠の記録は省略不可。
 
-   省略しなかった場合 (= step 1-3 を実行する場合) も、「同一ファイル内のみで影響なし」
-   と早期確定するのは禁止。step 1 の grep 結果と step 2 の影響範囲の確認結果は
-   **同一ファイル内変更であっても必須**。これは scope_discipline と
-   no_journal_comment の前提条件 (修正の影響を caller / test / sibling まで追える
-   状態にしてから Apply する) を満たすために必要。
+   省略しない場合、「同一ファイル内のみ」と早期確定しない。grep 結果と影響範囲は必須。
 
 ### 2.3 Apply the Fix
 
@@ -2344,11 +2317,11 @@ fi
 set +o pipefail
 ```
 
-**Implementation note for Claude**: When Claude generates commands, write the reply content to a temporary file via `mktemp` + HEREDOC, then use `jq -n --rawfile body "$tmpfile"` to safely construct the JSON payload. Use the REST API numeric ID directly for `$comment_id` via `--argjson`. `jq --rawfile` reads the file as a raw string and handles all JSON escaping automatically.
+reply は `mktemp` + HEREDOC → `jq --rawfile`。`$comment_id` は `--argjson`。
 
 ### 2.4.N nit-noted-reply
 
-**Owner**: `/rite:fix` ステップ 2.4 内サブステップ。**Trigger**: ステップ 2.1 entry routing で `scope == "nit-noted"` と判定された finding 群すべてに対し、本サブステップで「nit、認知済」reply を per-finding で投稿する。**Purpose**: scope=nit-noted finding を「PR コメント返信のみで決着、Issue 化しない」受け流し経路として `acknowledged` 状態化する。
+`scope == "nit-noted"` の全 finding に「nit、認知済」reply を投稿し `acknowledged` にする。Issue 化しない。
 
 **Pre-condition**:
 - ステップ 1.2.0 で `scope_map_json` が構築済 (空 `{}` も含む)
@@ -2477,7 +2450,7 @@ EOF
 
 **Eval-order enumeration** (ステップ 2.4.N 独立 namespace、ステップ 1.2.0 enumeration とは別): emit reasons sequence = (`already_replied` / `mktemp_failed` / `gh_api_post_failure`)
 
-これらの reason は ステップ 1.2.0 の `FIX_FALLBACK_FAILED` / `REVIEW_SOURCE_*` 系列とは独立した namespace で、`/rite:iterate` 側の ステップ 4 (fix sentinel 判定) では情報提示のみに使われる (ステップ 4.6 の `acknowledged_nit_count > 0` を超える詳細 routing には参加しない)。
+本 namespace は iterate ステップ 4 では情報提示のみ。
 
 ---
 
@@ -2487,9 +2460,7 @@ EOF
 
 ### 3.1 Verify Changes
 
-**前置ガード — fix commit 不要 PR の skip (全経路共通)**: ステップ 3 に入る前に必ず評価する。**working tree が無変更**の場合 — nit-only / **non-blocking (実測なし) のみ** / reply-only、およびこれらの混在 — は**ステップ 3 全体 (3.1〜3.5) を skip** し、ステップ 4.2 (完了報告系) へ直行する (空 `git commit` の失敗と、3.3.1 が前 cycle の commit を「本 cycle の fix」として fix-cycle-state に誤記録するのを防ぐ)。本ガードはステップ 2 の出口に相当し、2.4.N を経由しない non-blocking-only 経路でも必ず評価される (ステップ 2.4.N Loop termination の分岐は本ガードへの参照)。
-
-判定には **`git-status-filtered.sh` を使う** (raw `git status --porcelain` を使ってはならない — sandbox 内の Bash 呼び出しでは write-block bind mount が `??` エントリとして必ず現れるため raw 版は恒に非空になり、**ガードが一度も発火しない**。本 helper はその ghost-mount エントリを除去する。同型の理由で `pr-review/SKILL.md` ステップ 4.0.A も helper 経由にしている):
+**前置ガード**: working tree 無変更なら **ステップ 3 全体を skip** して 4.2 へ (全経路。2.4.N 非経由も含む)。判定は **`git-status-filtered.sh`** (raw porcelain 禁止)。
 
 ```bash
 # helper の rc 非 0 (mktemp 失敗等) は dirty 側 = ガード非発火 = 従来どおりステップ 3 実行 に倒す
@@ -2508,7 +2479,7 @@ fi
 
 `FIX_COMMIT_GUARD=skip` ならステップ 3 全体を skip して ステップ 4.2 へ、`proceed` なら以下を通常どおり実行する。
 
-`proceed` の場合、最初の fix commit より前の `HEAD` を marker に出力して会話コンテキストへ保持する。ステップ 3.2 で複数コミットを選んでも、3.3.1 では marker の値を `{fix_cycle_base_sha_from_context}` に literal substitute し、cycle 全体の基準点として使う。
+`proceed` なら commit 前 HEAD を marker に残し、3.3.1 が `{fix_cycle_base_sha_from_context}` に使う。
 
 ```bash
 fix_cycle_base_sha=$(git rev-parse HEAD) || { echo "[fix:error]"; exit 1; }
@@ -2560,7 +2531,7 @@ printf '[CONTEXT] PRE_COMMIT_DRIFT_CHECK exit=%d\n' "$drift_exit"
 
 Generate a commit message based on the addressed findings.
 
-**Fail-Fast Response Principle linkage**: If the fix adopted a **fallback** path (rather than throw/raise propagation) after passing the ステップ 2 Fail-Fast Response checklist, the commit body MUST state the reason the fallback was adopted. LLM: when you detect that any finding's fix introduced defensive code (null check / try-catch wrap / optional chaining / default return), add an explicit sentence naming the skill exception clause or requirement that justified the fallback. Unannotated fallbacks will be re-flagged in ステップ 5 re-review.
+fallback を選んだら commit body に「なぜ throw ではないか」を書く。無注釈の防御コードは re-review で再指摘される。
 
 **Commit message language:**
 
@@ -2605,7 +2576,8 @@ Use a free-form commit body. Include the reason for the change ("why") in the co
 - English: `Addresses review comments from {reviewer_display_1}, {reviewer_display_2}`
 - Japanese: `{reviewer_display_1}, {reviewer_display_2} のレビューコメントに対応`
 
-**展開ルールの単一源**: 本 phase と ステップ 2.1 の 2 箇所で同一の `{reviewer_display}` 展開ルール (ステップ 2.1 の表) を参照する。mention 生成ロジックを書き直す場合は ステップ 2.1 の表のみを更新し、本 phase の literal 記述は追加しない (drift 防止)。
+**展開ルールの単一源**: ステップ 2.1 の表。ここへ literal を複製しない。
+rationale: references/design-rationale.md#reviewer-display-single-source
 
 **Acknowledged-finding trailer (accept で `status: acknowledged` 化された finding 用)**:
 
@@ -2661,9 +2633,7 @@ fix(review): {description}
 
 Before committing a fix, the commit body **MUST** include a root-cause explanation. This gate implements Quality Signal 2 (root-cause-missing fix detection) — see the Quality Signal 1-4 table in `skills/pr-review/references/finding-cycling.md`.
 
-**Step 1 — Semantic LLM check (no shell variable dependency)**: The LLM examines the commit body it generated in ステップ 3.2 and determines whether a root-cause explanation is present. Because shell variables do not persist across Bash tool invocations, this gate is intentionally LLM-semantic rather than bash-automated.
-
-A commit body passes the gate when it contains a `Root cause:` / `根本原因:` prefix paragraph that explicitly names the root cause (not just the symptom fixed).
+**Step 1**: 3.2 の commit body に `Root cause:` / `根本原因:` 段落があるか LLM が判定する (Bash 状態非依存)。
 
 Emit one of the two context markers so downstream logic can route:
 
@@ -2682,7 +2652,7 @@ echo "[CONTEXT] ROOT_CAUSE_GATE=missing"
 | 意図的な補足コミットとして通過 | Prepend a `Root cause (bypass): {理由}` paragraph to the commit body (the bypass rationale recorded alongside the commit for machine-traceability) AND append the same rationale to work memory `決定事項・メモ`. The bypass is still recorded |
 | Abort | Skip this fix cycle; emit `[fix:error]` and return control to the caller |
 
-**Step 3**: Purely cosmetic fixes (typo in a docstring with no functional change) may legitimately select option 2. The bypass MUST be recorded so a later auditor can distinguish "no root cause needed" from "author forgot to identify root cause".
+cosmetic は option 2 可。bypass は記録必須。
 
 
 ### 3.3 Execute the Commit
@@ -2786,7 +2756,7 @@ git push origin HEAD
 
 ### 3.5 Cycle Branch Cleanup (Post-Push)
 
-After commit + push completes for the current fix cycle, run cleanup so reviewer-created `pr-{N}-cycle{X}` worktrees / branches do not accumulate across cycles. Reviewers run under READ-ONLY enforcement and cannot self-clean (`agents/_reviewer-base.md` § READ-ONLY Enforcement). Cleanup is non-blocking — its failure must not halt the workflow.
+commit+push 後に reviewer の cycle worktree / branch を掃除する。non-blocking。
 
 ```bash
 # {plugin_root} はリテラル値で埋め込む (詳細は ../../references/plugin-path-resolution.md)
@@ -3040,7 +3010,8 @@ fi
 ```
 
 
-**Implementation note for Claude**: `{pr_body}` はドキュメントのプレースホルダ。Claude はスクリプト生成前に実際の PR body で置換する。**必ず single-quoted HEREDOC delimiter (`<<'PRBODY_EOF'`) を使う**こと — double-quoted printf 形式 (`printf '%s' "{pr_body}"`) は PR body 内の `"` でクォート閉じが起きると bash parser が後続テキストをコマンドラインとして解釈する構文エラーになり、さらに `$(...)` 形式の command substitution が literal 展開時に実行される **command injection リスク** を生む。PR body は外部入力 (PR 投稿者) であるため、shell expansion を完全抑制する HEREDOC が必須。
+`{pr_body}` は事前置換。**`<<'PRBODY_EOF'` 必須** (外部入力の expansion 禁止)。
+rationale: references/design-rationale.md#work-memory-update-rationale
 
 If no Issue number is found, display a warning **and emit a `WM_UPDATE_FAILED=1` retained flag** so the caller (`/rite:iterate` review-fix loop) treats the result as `[fix:pushed-wm-stale]` instead of silently treating it as `[fix:pushed]`:
 
@@ -3061,12 +3032,7 @@ fi
 
 #### 4.5.2 Retrieve and Update Work Memory Comment
 
-The work memory comment update is delegated to `issue-comment-wm-sync.sh` (canonical caller: `skills/issue-implement/SKILL.md` 5.1.1.2) via **two transforms**, with a thin shim that maps helper failures to the `WM_UPDATE_FAILED` retained flag:
-
-1. **`update-progress`**: 進捗サマリーテーブル + 変更ファイルセクションを更新
-2. **`append-section`**: レビュー対応履歴 (4.5.3 の内容) を `### レビュー対応履歴` セクションへ追記
-
-委譲後に caller が担うのは base_branch 解決と `git diff` による変更ファイル markdown 生成のみ。comment 取得・body 変換・safety check・PATCH・backup は helper 内部で完結する。helper の機械可読な `status=...; reason=...` 行を shim が読み、`no_comment` (legitimate no-op) 以外の skipped/error を `[CONTEXT] WM_UPDATE_FAILED=1` にマップする。これにより ステップ 5.1 が `[fix:pushed-wm-stale]` を出力し、原 inline 実装が持っていた silent-regression guard (work memory 更新失敗を `[fix:pushed]` に潰さない) を維持する。
+WM 更新は `issue-comment-wm-sync.sh` の **two transforms** (`update-progress` / `append-section`)。caller は base_branch 解決と `git diff` markdown のみ。`no_comment` 以外の skipped/error を `WM_UPDATE_FAILED` にマップし、5.1 が `[fix:pushed-wm-stale]` にする。
 
 ```bash
 # ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること。
@@ -3197,7 +3163,7 @@ fi
 - テスト: Test files (`*.test.*`, `*.spec.*`) have changes → update accordingly
 - ドキュメント: Documentation files (`*.md`, `docs/*`) have changes → update accordingly
 
-**Note for Claude**: ⚠️ このブロック全体を**1つの Bash ツール呼び出し**で実行すること。`git diff` による変更ファイル生成・helper の `update-progress` / `append-section` 呼び出し・各 status= の shim 判定を別の Bash 呼び出しに分割すると、`git_diff_failed` フラグや `changed_files_tmp` パス等のシェル変数が失われる。`{4.5.3 のエントリを実際の値で置換して記述...}` を 4.5.3 のテンプレートから生成した実際の追記内容 (見出し行を除く) で置換し、**すべてを1ブロックで**実行する。
+⚠️ 本ブロックは**1つの Bash 呼び出し**。4.5.3 エントリは見出しなしで置換。
 
 #### 4.5.3 Update Content
 
@@ -3246,9 +3212,7 @@ Claude は ステップ 1.2.0 の bash block stderr から `[CONTEXT] REVIEW_SOU
 - **Confidence override**: src/foo.ts:42; src/bar.ts:18
 ```
 
-**placeholder 責務分離**: `{confidence_override_section}` には **純粋に findings 一覧のみ** (`; ` 区切り) を入れる。policy override の説明文 (`外部ツール由来、Confidence 70 のまま 80+ ゲートをバイパスする policy override、ユーザー承認済み`) は work memory レビュー対応履歴側 (ステップ 4.5.3) で展開される。
-
-**重要 — 改行禁止**: bullet item 内に改行と子箇条書きを入れる場合 Markdown は子側に 2 スペースインデントを要求するが、placeholder 展開時の自動インデント処理は脆弱で履歴の構造を壊しやすい。そのため `{confidence_override_section}` は **同一行に押し込める** 形式を厳格に採用する。
+`{confidence_override_section}` は findings 一覧のみ (`; ` 区切り、**同一行**)。説明文は 4.5.3 側。
 
 ### 4.6 Completion Report
 
@@ -3290,9 +3254,9 @@ accept_count=$(wc -l < "$_state_root/.rite/state/accepted-fingerprints-{pr_numbe
 case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac
 ```
 
-数値正規化 (BSD wc は出力先頭に空白を付ける platform 依存問題を回避、ステップ 2.1.A Step 7 と bit-exact 対称)。ファイル不在時 / 空ファイル時は `0`。state file は cycle を跨いで永続化される (Issue 完了まで保持) ため、本 cycle で新規 accept が 0 件でも累積件数が表示される。
+BSD wc 空白は剥がす (2.1.A Step 7 と対称)。不在/空は `0`。state は Issue 完了まで累積。
 
-**`acknowledged_nit_count` との関係**: 両者は **独立したカウンタ**。`acknowledged_nit_count` は reviewer の scope 判定 (`scope == "nit-noted"`) で reply-only 経路に流れた finding 数 (ステップ 2.4.N)、`accept_count` は user が ステップ 2.1 で「accept (認知のみ)」を選択した finding 数 (ステップ 2.1.A)。両方とも最終的に `status == "acknowledged"` になるが、エントリ経路 (reviewer 判定 vs user 判定) と永続化方法 (ステップ 2.4.N tempfile vs `.rite/state/accepted-fingerprints-*.txt`) が異なる。
+`acknowledged_nit_count` (reviewer nit、2.4.N) と `accept_count` (user accept、2.1.A) は独立。
 
 **`{acknowledged_nit_count}` の展開ルール**:
 
@@ -3303,7 +3267,7 @@ case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac
 
 **読み出し方法**: `nit_count_file="${TMPDIR:-/tmp}/rite-fix-acknowledged-nit-{pr_number}.txt"` の行数を `wc -l < "$nit_count_file"` で取得する (ステップ 2.4.N で各成功投稿で `echo "$comment_id" >> "$nit_count_file"` により append されている)。tempfile 不在の場合は `0` を表示。ステップ 5.1 cleanup で本 tempfile も削除する。
 
-**重要**: `acknowledged_nit_count == 0` の場合でも本行は省略せず常に表示する (M2 受け流し経路の動作観測のため、ゼロ件であることを明示)。本 metric は `/rite:pr-review` ステップ 5.3 評価では使われない (nit-noted は `overall_assessment` に影響せず、mergeable 判定の countdown 対象外 — [`assessment-rules.md`](./references/assessment-rules.md) §5.3.1 参照)。fix loop 内で `acknowledged_nit_count > 0` の場合、`プッシュ: 未実行` かつ 本 cycle 内で accept 決定なし (判定条件はステップ 5.1 Output Pattern テーブル row 4/5 参照) かつ `全指摘 == 対応指摘` であれば re-review はトリガーされず、本 cycle で finalize する (AC-1: nit-only PR の 2 cycle 即収束)。
+0 件でも行は省略しない。5.3 の mergeable 判定には使わない。nit-only の finalize 条件は 5.1 row 4/5。
 
 **`{confidence_override_count}` / `{confidence_override_files_suffix}` の展開ルール** (Confidence policy override の追跡可視化):
 
@@ -3312,7 +3276,7 @@ case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac
 | 0 件 (override なし、通常時) | `0` | 空文字列 |
 | 1 件以上 (override 適用あり) | `{N}` | ` ({file:line_1}; {file:line_2}; ...)` (先頭スペース付きカッコ内に `; ` 区切りで一覧、ステップ 1.2 の data flow 定義と統一) |
 
-**重要**: `confidence_override_count == 0` の場合でも本行は省略せず常に表示する (override が「なし」であることを明示し、silent な policy bypass の有無を可視化するため)。
+0 件でも行は省略しない。
 
 **Field descriptions:**
 
@@ -3324,12 +3288,13 @@ case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac
 | `Confidence override (policy bypass): {N}件` | Number of findings imported via Confidence policy override | ステップ 1.2 best-effort parse で「Confidence 70 のままバイパス」を選択した finding 数 (Confidence 80+ ゲート invariant の policy override 追跡義務)。0 件でも常時表示 |
 | `レビューソース: {review_source} (...)` | Provenance of the review findings consumed by this fix run | ステップ 1.2.0 Priority chain で決定された `review_source` 値 (schema.md Priority 1 emit 義務の provenance 契約を ステップ 4.6 で履行)。展開ルールは ステップ 4.5.3 の `{review_source}` / `{review_source_path_display}` 表を参照 |
 
-**Note**: The review-fix loop of `/rite:iterate` checks the content of this completion report to determine the next action:
-- `プッシュ: 完了` -> Execute re-review (`/rite:pr-review` を起動。範囲は同 skill の ステップ 1.2.4 が cycle に応じて決める — fix 側で範囲を宣言しない)
-- 本 cycle 内で accept 決定が発生 -> Execute re-review (同上。accept は fingerprint 永続化のみを行い、実際の suppression 適用は次回 `/rite:pr-review` ステップ 5.1.2.A [Non-Target] が担うため、re-review せずに終端すると suppression の成否が未確認のまま loop が終わる —)
-- `プッシュ: 未実行` and 本 cycle 内で accept 決定なし and `全指摘 == 対応指摘` -> Proceed to completion report (all addressed via replies)
+iterate は本報告で次を決める:
+- `プッシュ: 完了` → re-review (範囲は pr-review 1.2.4。fix 側で宣言しない)
+- 本 cycle で accept 発生 → re-review
+- `プッシュ: 未実行` かつ accept なし かつ `全指摘 == 対応指摘` → 完了
 
-「本 cycle 内で accept 決定が発生」の**唯一の真実の源**（判定に使う具体的な context マーカー）は ステップ 5.1 Output Pattern テーブル row 4/5 (下記) を参照すること。本 Note では条件を重複記述しない（cycle 2 で「別Issue作成: N件」という commit `0dee5b22` で削除済みの旧 Phase 4.3 の残骸フィールドを条件として複製していたことが判明したため、以後は複製ではなく参照に統一する）。
+accept 発生の SoT は 5.1 row 4/5。
+rationale: references/design-rationale.md#accept-cycle-markers
 
 
 ### 4.6.W Wiki Ingest Trigger (Conditional)
@@ -3439,7 +3404,7 @@ fi
 echo "content_write_failed=$content_write_failed"
 ```
 
-**Non-blocking**: `wiki-ingest-trigger.sh` exit 2 (Wiki disabled/uninitialized) and other errors are captured in `trigger_exit` and do not halt the workflow. The LLM reads `trigger_exit` from stdout and skips ステップ 4.6.W.2 when it is non-zero. The LLM **also reads `content_write_failed` from the prior Step 2 stdout** (`echo "content_write_failed=$content_write_failed"`) and re-establishes it before evaluating Step 3 — a separate bash invocation does not inherit shell state, so the carry-forward of `content_write_failed` is required exactly as for `trigger_exit`. `content_write_failed=1` means the heredoc content write failed and the trigger was never invoked. Ingest failure does not block the fix workflow.
+**Non-blocking**。非ゼロなら 4.6.W.2 を skip。`content_write_failed` も Step 2 stdout から再注入して Step 3 で使う (Bash 呼び出し間でシェル状態は消える)。
 
 **Step 3 — Failure surfacing**: 2 つの失敗経路を区別して surface する。
 
@@ -3562,9 +3527,7 @@ result pattern の emit 前に、**現在の `WIKI_PUSH_ATTEMPT` と同じ `atte
 | `commit_branch_missing` | `wiki-ingest-commit.sh` が exit 2 (wiki branch 不在 / 無効) で終了 (`WIKI_INGEST_SKIPPED` flag、非ブロッキング) |
 | `commit_rc_4` | `wiki-ingest-commit.sh` が exit 4 (commit はローカルに landed したが push 失敗) で終了 (`WIKI_INGEST_PUSH_FAILED` flag、非ブロッキング)。その他の非ゼロ exit は `commit_rc_$wiki_ingest_commit_rc` 動的 reason として `WIKI_INGEST_FAILED` flag で emit される |
 
-**Position rationale**: ステップ 4.6.W (and therefore 4.6.W.2) runs after the review-fix loop has exited. Raw sources written mid-loop would reflect unsettled fix state, so the placement is intentional.
-
-**Responsibility boundary**: `wiki-ingest-trigger.sh` writes a raw source file into the dev branch working tree; `wiki-ingest-commit.sh` moves that file onto the `wiki` branch and commits it. LLM-driven page integration is the exclusive responsibility of `/rite:wiki-ingest` at a later time.
+rationale: references/design-rationale.md#wiki-ingest-placement
 
 ---
 
@@ -3582,7 +3545,8 @@ See [Common Error Handling](../../references/common-error-handling.md) for share
 ## ステップ 5: E2E フロー継続 (出力パターン)
 
 
-**用語定義**: 本 fix.md では **soft failure** (retained flag を emit して caller に判断を委ねる — ステップ 5.1 で `[fix:error]` / `[fix:pushed-wm-stale]` に昇格) / **hard fail-fast** (即 exit 1 + retained flag 併用) / **stale** (work memory が最新 fix 未反映 = `[fix:pushed-wm-stale]`) / **silent regression** (soft failure の silent handle) を厳密に区別する。 <!-- rationale: references/design-rationale.md#output-pattern-notes -->
+**用語**: **soft failure** / **hard fail-fast** / **stale** / **silent regression** を区別する。
+rationale: references/design-rationale.md#output-pattern-notes
 
 **Flow detection method:** Claude determines the caller from the conversation context using mechanical pattern matching:
 
@@ -3632,9 +3596,9 @@ The `fix` flow-state write below records the v3 phase so a `/rite:recover` start
 - **正常終了** (`[fix:replied-only]`): `--handoff "FINALIZE:fix:replied-only:{pr_number}"` で**終了通知マーカー (FINALIZE handoff)** をセットする。
 - **エラー** (`[fix:error]`): `--handoff` を**付けない** (handoff はデフォルトクリア)。`[fix:error]` は clean terminal ではなく caller (`/rite:iterate` ステップ4) で1回自動再試行し、再失敗時に停止するため、完了通知を強制してはならない。
 
-判定は本ステップ時点で**既に確定している入力**で行う (sentinel 評価テーブルより前だが、push 状態・fatal フラグ・本 cycle 内の accept 発生有無は ステップ 4.6 / 4.5 / 2.4 / 2.1.A / 1.0.1 で既知): **(`プッシュ: 完了` または 本 cycle 内で accept 決定が発生) かつ fatal フラグ (`FIX_FALLBACK_FAILED` / `REPLY_POST_FAILED` / `REPORT_POST_FAILED`) が context に未 set なら継続 = `--handoff "/rite:pr-review {pr_number}"`**。push 無し かつ 本 cycle 内で accept 決定なし かつ fatal フラグ未 set なら正常終了 = `--handoff "FINALIZE:fix:replied-only:{pr_number}"`。fatal フラグ有り (`[fix:error]`) なら `--handoff` なし。`WM_UPDATE_FAILED` は `[fix:pushed-wm-stale]` (= 継続) に縮退するため継続 handoff を打ち消さない。「本 cycle 内で accept 決定が発生」の判定条件（具体的な context マーカー、および累計値を使ってはならない理由）は ステップ 5.1 Output Pattern テーブル row 4/5 の直後の注記を**唯一の真実の源**として参照すること（重複記述はしない）。
+判定入力は本ステップ時点で確定済み。**(push 完了 or 本 cycle accept) かつ fatal 未 set → 継続 handoff**。push 無しかつ accept なしかつ fatal 未 set → FINALIZE。fatal → `--handoff` なし。`WM_UPDATE_FAILED` は継続を打ち消さない。accept 条件の SoT は row 4/5 注記。
 
-> **Note (review がセットした handoff の消去経路)**: 上記の判定が責務とするのは fix.md が**自身でセットする** handoff (継続 `/rite:pr-review` / 終了 `FINALIZE:fix:replied-only`) のみ。pr-review.md Step 8.0 が**セットした** `/rite:fix` handoff は `[fix:error]` 早期 exit (本 Step 5.1 不到達) では fix.md 側で消去されず、その default-clear は iterate.md ステップ3 の clearing set (`flow-state.sh set --phase fix` を `--handoff` なしで実行) にのみ依存する。iterate.md ステップ3 の set を変更/削除すると stale な `/rite:fix` handoff が残存し誤った再注入を招きうるため、そちらを触る際は本依存に注意すること。
+> `[fix:error]` 早期 exit では pr-review がセットした `/rite:fix` handoff を消さない。default-clear は iterate ステップ 3 の `--handoff` なし set。
 
 ```bash
 # 継続 ([fix:pushed] / [fix:pushed-wm-stale]: push 完了 OR 本 cycle accept 発生 & fatal フラグ無し) の場合 (継続 handoff):
@@ -3661,7 +3625,8 @@ bash {plugin_root}/hooks/flow-state.sh set \
   --if-exists
 ```
 
-**Note on `error_count`**: `flow-state.sh set` は phase transition ごとに error_count を 0 にリセットする (`--preserve-error-count` 指定時のみ保持)。 <!-- rationale: references/design-rationale.md#output-pattern-notes -->
+**Note on `error_count`**: phase transition ごとに 0 リセット (`--preserve-error-count` で保持)。
+rationale: references/design-rationale.md#output-pattern-notes
 
 **Also update local work memory** (`.rite-work-memory/issue-{n}.md`) with phase transition:
 
@@ -3719,7 +3684,7 @@ else
 fi
 ```
 
-**On lock failure**: Log a warning and continue — local work memory update is best-effort. **Non-lock failure** (script 不在 / permission denied / bash syntax error / 内部致命的エラー) は WARNING + stderr 5 行を表示してから継続する (E2E flow を block しない)。両者は stderr の exact phrase pattern `(file is locked|lock contention|resource busy)` で分岐される (H-1 で canonical helper に集約、詳細は [common-error-handling.md#hook-lock-contention-classification-canonical](../../references/common-error-handling.md#hook-lock-contention-classification-canonical) 参照)。
+lock failure は WARNING で継続。non-lock は WARNING + stderr 5 行で継続。分岐は exact phrase ([common-error-handling.md](../../references/common-error-handling.md#hook-lock-contention-classification-canonical))。
 
 Then, based on the ステップ 4.6 completion report content **and the WM_UPDATE_FAILED context flag**, output the corresponding machine-readable pattern:
 
@@ -3732,21 +3697,16 @@ Then, based on the ステップ 4.6 completion report content **and the WM_UPDAT
 | 5 | Push なし かつ 本 cycle 内で accept 決定なし (上記 2 マーカーがいずれも非出現) かつ All findings replied | `[fix:replied-only]` |
 | 6 | Unexpected state / error | `[fix:error]` |
 
-**評価順序の重要性**: 上から順に評価し、最初にマッチした条件の output pattern を採用する。`FIX_FALLBACK_FAILED=1` / `REPLY_POST_FAILED=1` / `REPORT_POST_FAILED=1` の検出は最優先で、これらが set された場合は `[fix:error]` に昇格する。次に `WM_UPDATE_FAILED=1` を評価し、set されていれば `[fix:pushed-wm-stale]` に昇格する (silent regression 防止のため `[fix:pushed]` よりも先に判定する)。これらの retained flag をすべて評価した後に push 成功 / 返信のみ などの通常終了状態を判定する。
+上から最初にマッチした pattern を採用。fatal 3 旗 → `[fix:error]`。次に `WM_UPDATE_FAILED` → `[fix:pushed-wm-stale]`。その後に通常終了。
 
-**row 4/5 の accept 条件 — 唯一の真実の源**: 本 output pattern テーブルは `/rite:iterate` ステップ4 が実際に分岐する **literal な sentinel 文字列** (`[fix:pushed]` / `[fix:replied-only]`) の唯一の決定箇所であり、上記の「Handoff マーカー」節 (5.1 冒頭) や ステップ 4.6 completion report の Note はここを**参照するのみ**で、条件を重複記述しない (bit-exact 手動同期に頼らない)。
+**row 4/5 の accept 条件 — 唯一の真実の源**: iterate ステップ 4 が読む sentinel の決定箇所。Handoff 節と 4.6 Note は参照のみ。
 
-「本 cycle 内で accept 決定が発生」の判定は `ACCEPT_FINGERPRINT_PERSISTED=1`（fingerprint 永続化成功）と `ACCEPT_FINGERPRINT_PERSIST_FAILED=1`（ステップ 2.1.A の `pr_number_placeholder_residue` / `sha1_helper_missing` / `mkdir_failed` / `mktemp_failed` / `mv_failed` いずれかの理由による永続化失敗）の**両方をトリガーとする**。理由: accept 選択時、reply 投稿 (ステップ 2.1.A item 3) は fingerprint 永続化 (item 4) の成否に関わらず既に完了しており、永続化に失敗した場合は次回 review で suppression が**確実に効かない** (`pr-review.md` ステップ 5.1.2.A の suppression は当該 fingerprint の状態ファイル登録に依存する)。ここで re-review を発火させなければ、suppression が絶対に効かないことが確定しているにもかかわらず `[fix:replied-only]` で正常終了してしまい、この再レビュー条件が解消しようとしている「suppression 未確認のまま loop 終了」というバグ型をこの経路だけ再現する。
+「本 cycle 内で accept 決定が発生」= `ACCEPT_FINGERPRINT_PERSISTED=1` **または** `ACCEPT_FINGERPRINT_PERSIST_FAILED=1` の本 cycle 出現。`{accept_count}` (累計) は使わない。両マーカー欠落時は accept 無し。
+rationale: references/design-rationale.md#accept-cycle-markers
 
-判定材料は両マーカー (ステップ 2.1.A が本 cycle 内で emit 済み、同一 Bash tool 呼び出し境界を跨いでも会話コンテキストに残る) の**本 cycle 内での出現有無**であり、`{accept_count}` (Issue 完了まで累計、4.6 completion report 参照) を使ってはならない — 過去 cycle の累計が 1 件でもあれば恒久的に継続扱いになり無限 re-review を招くため。いずれのマーカーも判定できない場合 (context 圧縮等で欠落) は accept 無しとして扱い、従来ロジック (push 有無のみ) にフォールバックする。
+`WM_UPDATE_FAILED=1` を会話から拾ったら `[fix:pushed-wm-stale]`。
 
-**`[CONTEXT] WM_UPDATE_FAILED=1` の検出方法** (Claude による retain と再注入):
-
-ステップ 4.5.1 または ステップ 4.5.2 の bash block が stdout に `[CONTEXT] WM_UPDATE_FAILED=1; reason=...; ...` を出力した場合、Claude は会話履歴からこの行を検索し、検出された場合は本 phase の Output Pattern 評価で `[fix:pushed-wm-stale]` を採用する。検出されなかった場合は通常の評価順序 (WM_UPDATE_FAILED 以降の条件) に従う。
-
-**`reason` フィールドの取りうる値** (ステップ 4.5.1 / 4.5.2 で発火する経路の網羅):
-
-**完全性保証** — fix.md 内で `echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=..."` として emit されるすべての reason は、下記 reason 表に行として存在する (WM_UPDATE_FAILED reason ⊆ 表。表は他フラグの reason も併記する superset のため逆方向は保証しない)。DoD 検証スクリプト (手動実行、空出力 + rc=0 で網羅性を確認。設計上の要点は [design-rationale.md#output-pattern-notes](references/design-rationale.md#output-pattern-notes) 参照):
+emit される `WM_UPDATE_FAILED` reason は下表に存在する ( ⊆ 表)。検証:
 
 ```bash
 bash {plugin_root}/hooks/scripts/fix-reason-coverage-check.sh
@@ -3794,13 +3754,12 @@ bash {plugin_root}/hooks/scripts/fix-reason-coverage-check.sh
 | `author_file_missing_at_post_condition` | ステップ 1.2 Fast Path Block C | Block C の post-condition check で author_file が存在しない (`[ -f ]` 失敗、empty は許容) |
 | `skip_file_empty_at_post_condition` | ステップ 1.2 Fast Path Block C | Block C の post-condition check で skip_file が空または存在しない (`[ -s ]` 失敗) |
 
-**`[fix:pushed-wm-stale]` の caller 側 semantics**: caller の review-fix loop (`/rite:iterate` 等) は本 pattern を受け取った場合、push 自体は完了しているが work memory が stale であることを認識し、次のいずれかを実行する: (a) 手動介入を促す (推奨)、(b) 警告ログを出した上で次の iteration に進む (loop 継続)。silent に `[fix:pushed]` 扱いしてはならない。
+`[fix:pushed-wm-stale]`: push 済だが WM stale。`[fix:pushed]` 扱い禁止。
 
 **Important**:
 - Do **NOT** invoke `rite:pr-review` via the Skill tool
 - Return control to the caller (`/rite:iterate` 等)
-- The caller determines the next action based on this output pattern
-- **re-review は必ず `/rite:pr-review` を通すこと**: caller が `[fix:pushed]` / `[fix:pushed-wm-stale]` を受けて re-review を実行する際、レビュー範囲の決定は同 skill の ステップ 1.2.4 に委ね、**fix 側で範囲を宣言しない**（「前回指摘の修正確認のみ」「context 効率のため範囲限定」等を fix 側から指示するのは一切禁止）。ステップ 1.2.4 が決めた範囲を全レビュアーのサブエージェント並列起動で審査し、指摘の採否基準は初回と完全に同等に保つこと
+- **re-review は `/rite:pr-review` 経由**。範囲は 1.2.4 が cycle に応じて決定。fix 側で範囲を宣言しない
 
 **Confidence override tempfile cleanup** (silent orphan 防止):
 
@@ -3842,7 +3801,8 @@ For standalone execution, ステップ 5 is not executed. The completion report 
 
 **Confidence override tempfile cleanup** (Standalone 経路の orphan 防止):
 
-Standalone 実行では ステップ 5 が skip されるため、ステップ 4.6 の completion report 出力**直後**に明示的な cleanup bash block を実行して confidence_override tempfile を削除する。これを忘れると `${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt` が orphan として永続残留し、次回同 PR 実行時に `touch` ではなく `: >` truncate を入れていても、何らかの経路で truncate 呼び出しが skip された場合に stale データが混入するリスクがある (defense-in-depth)。
+Standalone は ステップ 5 を skip するので、4.6 直後に confidence_override tempfile を消す。
+rationale: references/design-rationale.md#confidence-gate-notes
 
 ```bash
 # ステップ 5.2 Standalone 経路: confidence_override + pr-comment + acknowledged-nit tempfile の明示的 cleanup
@@ -3854,4 +3814,4 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt" \
       "${TMPDIR:-/tmp}/rite-fix-acknowledged-nit-{pr_number}.txt"
 ```
 
-**Idempotency**: override tempfile が作成されなかった経路 (confidence override 発動なし) では `rm -f` は silent no-op となり安全。
+未作成なら `rm -f` は no-op。

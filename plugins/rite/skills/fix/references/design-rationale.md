@@ -177,3 +177,61 @@ silent に行うと `[ -s "$commit_err" ]` guard が no-op 化し、/tmp が壊�
   - `awk` 側は `| reason | 発生 Phase | 発生条件 |` の table header 行を起点に `in_table=1` を開始し、非 `|` 行で戻すことで reason 表のみを対象とする。他テーブルや周辺段落を起点/終点トリガーにしないため、blockquote が `**` 強調に格上げされても in_table 範囲を壊さない。
   - `sed 's/\$.*//'` は表側 reason に shell 変数展開 suffix が含まれる場合に備えた defensive 正規化 (現状該当なし、将来の drift 誤検出防止のため残置)。
 - **error_count のリセット挙動**: `flow-state.sh set` は phase transition ごとに error_count を 0 にリセットし、`--preserve-error-count` 指定時のみ既存値を保持する。error_count は現在 production reader のない reserved/legacy schema slot で、リセットにより将来の再導入時に stale count を持ち越さない。
+
+## contract-legacy-phase
+
+`phase: phase5_fix` を Input 契約に残すのは、sub-skill が旧名をまだ書く経路があり、中断した旧セッションからの resume が新名だけだと recover で誤分類されるため。writer が全て flat `fix` へ移るまで dual-accept する。
+
+## e2e-output-minimization-scope
+
+E2E で削るのは完了報告の表示だけ。fix 本体・commit/push・work memory を時間や context を理由に省略すると workflow-identity 違反になる。
+
+## fullwidth-normalization
+
+順序 1 の全角数字救済は日本語 IME の誤投入を吸収するためのもの。正規化は silent にすると別 PR を触ったことに気付けないので INFO を出す。ASCII のみは no-op なので INFO を出さない。
+
+## worktree-ensure-preamble
+
+fix はステップ 2 以降で作業ツリーを Edit/Write する。session worktree が無いとメインツリー (develop) 上で走り、`git branch --show-current` が develop を返して issue 抽出が空になり、最悪 develop へ修正を書く。`branch_absent` / `failed` を `[fix:error]` で止めるのは非対話サブ起動のため (recover の AskUserQuestion と対称にしない)。
+
+## hybrid-source-priority
+
+会話 > ローカルファイル > PR コメントのハイブリッドは、同一セッションの即時連携とセッション横断再開を両立するため。`--review-file` 明示時に P1–P3 へ silent fallthrough しないのは、ユーザーがそのファイルを使う意図を捨てないため。
+
+## priority2-helper-delegation
+
+Priority 2 成功時に Fast Path / Broad Retrieval を skip するのは、file-based source では PR コメント経路が不要だから。map 構築と schema 1.1.0 normalization は `review-findings-maps.sh` に委譲済み (旧 inline の verbatim emit)。helper の reason SoT は docstring。
+
+## confidence-override-h1
+
+H-1: ステップ 1.2 進入時に confidence_override tempfile を無条件 truncate するのは、前セッションが SIGINT 等で orphan を残しても次回起動へ混入させないため。機械的な値取得をファイル経由にするのは、会話履歴 grep が context 圧縮で欠けるため。`[CONTEXT]` 行の併用は人間が tail で見える補助であり、機械取得の SoT ではない。
+
+## external-tool-title-case
+
+`/verified-review` は rite plugin 配下に無く、ユーザーレベルの独立コマンド。同コマンドと `pr-review-toolkit:review-pr` は Title Case (`Critical` / `Important`) を使うため別名マッピングが必須。絵文字エイリアスは未検証の将来互換で、実ツールが出力したら Note に追記する。
+
+## measured-map-construction
+
+`measured_map` は正規化前の原ファイルから、`scope_map` は helper 正規化後 tempfile から来る。登録条件に原 scope を使うと auto-demote の二重計上と auto-correct の未登録 (ゲート bypass) が両方向に起きる。現行世代では `false` を持つ finding の scope は nit-noted のままなので破綻シナリオは限定的だが、規則は fail-safe として固定する。
+
+JSON 経路の `non_blocking_count` が 0 になるのは、write 側が gated な非実測 finding を `non_blocking_findings[]` へ移送する契約のため。N 件が入るのは Markdown / 会話経路のみ。全経路一致は未成立。
+
+`(.verification.measured // false)` で畳むと、verification を持たない旧 JSON と形式崩れアンカー (helper が `verification` を書かない = 未判定) の全 finding が non-blocking になり、ループが指摘を解消せず空転する。
+
+## human-thread-provenance
+
+`measured_map` は file:line キーなので、非実測 finding と同座標の人間 thread が巻き込まれ、fix も reply もされずに「対応済み」へ入る。出自確認できない thread は External review (安全側)。振り替えは `non_blocking_count` 減算を伴うため、無痕跡だと finalize 等式が永久不成立になり `max_review_cycles` まで空転する。
+
+## accept-cycle-markers
+
+「本 cycle 内で accept 決定が発生」は `ACCEPT_FINGERPRINT_PERSISTED` と `ACCEPT_FINGERPRINT_PERSIST_FAILED` の両方をトリガーにする。reply は永続化の成否に関わらず完了しており、失敗時は次回 review で suppression が効かない。ここで re-review しないと `[fix:replied-only]` で正常終了し、suppression 未確認のまま loop が終わる。`{accept_count}` (累計) を使うと過去 cycle の 1 件で恒久継続になり無限 re-review する。
+
+条件の SoT はステップ 5.1 Output Pattern テーブル row 4/5。4.6 Note と Handoff 節は参照のみ (bit-exact 手動同期に頼らない)。旧 Phase 4.3 の「別Issue作成」残骸を条件に複製していた事故への再発防止。
+
+## wiki-ingest-placement
+
+4.6.W / 4.6.W.2 をループ退出後に置くのは、途中で書いた raw が未決着の fix 状態を永久化するため。trigger は raw を dev 作業ツリーへ書き、commit helper が wiki ブランチへ移す。ページ統合は `/rite:wiki-ingest` の責務。
+
+## reviewer-display-single-source
+
+`{reviewer_display}` 展開ルールはステップ 2.1 の表が単一源。ステップ 3.2 trailer は同表を参照するだけで literal を複製しない (drift 防止)。
