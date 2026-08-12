@@ -196,9 +196,9 @@ rc=0; output=$(run) || rc=$?
 if [ "$rc" -eq 1 ]; then pass "fence language tag change → exit 1"; else fail "expected rc=1, got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
-# TC-011: Empty --base-ref → exit 2. An empty ref makes `git show ":path"` read
-# the index, which succeeds and compares the working tree against the caller's
-# own staged copy — a proof that always passes.
+# TC-011: Empty --base-ref → exit 2, with the message that names the empty
+# value. The ref check would stop it too, but under a message that reads as a
+# typo — see the assertion below.
 # --------------------------------------------------------------------------
 echo "TC-011: Empty --base-ref → exit 2"
 write_base
@@ -217,17 +217,22 @@ else fail "expected rc=2 + 'must not be empty', got rc=$rc: $output"; fi
 echo "TC-012: Unresolvable --base-ref → exit 2"
 write_base
 rc=0; output=$(bash "$TARGET" --repo-root "$TEST_DIR" --skill "$REL" --base-ref "no-such-ref" 2>&1) || rc=$?
-if [ "$rc" -eq 2 ] && echo "$output" | grep -q "could not resolve --base-ref"; then
-  pass "unresolvable --base-ref → exit 2"
-else fail "expected rc=2 + 'could not resolve --base-ref', got rc=$rc: $output"; fi
+# Two-part: the script's own line, plus git's. `-q` on the rev-parse would keep
+# the former and silence the latter, leaving "See git's message above" pointing
+# at nothing — for a typo'd ref, git's line is the only one naming the cause.
+if [ "$rc" -eq 2 ] \
+  && echo "$output" | grep -q "could not resolve --base-ref" \
+  && echo "$output" | grep -q "Needed a single revision"; then
+  pass "unresolvable --base-ref → exit 2 with git's own diagnosis"
+else fail "expected rc=2 + both messages, got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
-# TC-012b: git's own diagnosis reaches the caller. The script points at "git's
-# message above", so suppressing git's stderr would leave that instruction
-# naming output that no longer exists — and a non-git --repo-root would read as
-# an unfetched ref, which no amount of fetching fixes.
+# TC-012b: The same passthrough for a non-git --repo-root, where git's line is
+# what separates "unfetched ref" from "this is not a repository" — the latter
+# is not fixed by any amount of fetching.
 # --------------------------------------------------------------------------
 echo "TC-012b: Non-git --repo-root surfaces git's own message"
+write_base
 mkdir -p "$NONGIT_DIR/$(dirname "$REL")"
 cp "$F" "$NONGIT_DIR/$REL"
 rc=0; output=$(bash "$TARGET" --repo-root "$NONGIT_DIR" --skill "$REL" --base-ref HEAD 2>&1) || rc=$?
@@ -263,10 +268,11 @@ if [ "$rc" -eq 2 ] && echo "$output" | grep -q "empty machine rail"; then
 else fail "expected rc=2 + 'empty machine rail', got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
-# TC-014: A one-line rail must be counted as one line, not zero. The count feeds
-# on `printf '%s\n'`, so it breaks only if that trailing newline is dropped —
-# which is exactly what the pre-restructure form did. At zero lines every
-# variant agrees, so TC-013 alone leaves the count free to regress.
+# TC-014: A one-line rail must be counted as one line, not zero. TC-013 cannot
+# pin the count at all — its input hits the empty-rail floor and exits before
+# the count is ever evaluated — so this is the only case that holds the count
+# expression in place. It kills a revert to the pre-restructure form
+# (`printf '%s'` feeding a counter that ignores an unterminated final line).
 # --------------------------------------------------------------------------
 echo "TC-014: One-line rail counts as 1, not 0"
 ONE_REL="plugins/rite/skills/oneline/SKILL.md"

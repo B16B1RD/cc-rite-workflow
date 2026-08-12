@@ -12,24 +12,27 @@
 #   3. `shift 2` 到達前に required-value ガードがない
 # (1つでも欠ければ安全: set -u+bare $2 は nounset で fail-fast / set -e は即 exit / 明示ガードは exit)
 #
-# Coverage (hardening した脆弱だった 5 スクリプト 計 19 箇所 + 新規 helper 7 件 計 29 箇所
-#           + 静的検査のみの lib/context-marker.sh 2 箇所):
-#   TC-1 post-review-state-verify.sh (hooks/scripts/, 4 箇所) — 値なしフラグ末尾 → no-hang + exit 2
-#   TC-2 review-comment-post.sh      (hooks/,         5 箇所) — 値なしフラグ末尾 → no-hang
-#   TC-3 review-result-save.sh       (hooks/,         4 箇所) — 値なしフラグ末尾 → no-hang
-#   TC-4 review-source-resolve.sh    (scripts/,       5 箇所) — 値なしフラグ末尾 → no-hang
-#   TC-5 decompose-issues.sh         (scripts/,       1 箇所) — 値なしフラグ末尾 → no-hang + exit 2
-#   TC-6 review-skip-notification.sh (hooks/,         4 箇所) — 値なしフラグ末尾 → no-hang (新規 helper、当初から shift; shift 採用)
-#   TC-6b review-nonblocking-record.sh (hooks/,        5 箇所) — 値なしフラグ末尾 → no-hang + exit 1
-#   TC-6c wiki-index-update.sh         (hooks/scripts/, 8 箇所) — 値なしフラグ末尾 → no-hang + exit 2
-#   TC-6d review-cycle-scope.sh        (scripts/,       3 箇所) — 値なしフラグ末尾 → no-hang + exit 2
-#   TC-6f issue-complexity-lane.sh     (scripts/,       2 箇所) — 値なしフラグ末尾 → no-hang + exit 2
-#   TC-6e review-save-json-verify.sh   (hooks/scripts/, 4 箇所) — 値なしフラグ末尾 → no-hang + exit 0 (degraded)
-#   TC-6g skill-rail-diff-check.sh     (hooks/scripts/, 3 箇所) — 値なしフラグ末尾 → no-hang + exit 2
-#   TC-7 anti-pattern guard — 13 スクリプトに実 `shift 2` 文が残存しないこと (comment 参照は許容)
-#        うち `lib/context-marker.sh` は source 型 lib で subprocess entry point を持たないため
-#        TC-1〜TC-6g の実行ハーネス (run_no_hang) の対象外で、本静的検査のみが掛かる。
-#        値なしフラグ末尾での no-hang は hooks/tests/context-marker.test.sh が直接 assert する。
+# Coverage — 対象スクリプトと期待 exit code。**箇所数は書かない**: この数は run_no_hang からも
+# TC-7 からも消費されず (前者はスクリプトごとにフラグ 1 個しか叩かず、後者は path 一覧で全箇所を
+# 走査する)、手で数え直すたびに実測から drift して同じ指摘を再生産してきた。機械的な契約は
+# TC-7 のリスト本体が持つ。
+#   TC-1 post-review-state-verify.sh (hooks/scripts/) — 値なしフラグ末尾 → no-hang + exit 2
+#   TC-2 review-comment-post.sh      (hooks/)         — 値なしフラグ末尾 → no-hang
+#   TC-3 review-result-save.sh       (hooks/)         — 値なしフラグ末尾 → no-hang
+#   TC-4 review-source-resolve.sh    (scripts/)       — 値なしフラグ末尾 → no-hang
+#   TC-5 decompose-issues.sh         (scripts/)       — 値なしフラグ末尾 → no-hang + exit 2
+#   TC-6 review-skip-notification.sh (hooks/)         — 値なしフラグ末尾 → no-hang (新規 helper、当初から shift; shift 採用)
+#   TC-6b review-nonblocking-record.sh (hooks/)         — 値なしフラグ末尾 → no-hang + exit 1
+#   TC-6c wiki-index-update.sh         (hooks/scripts/) — 値なしフラグ末尾 → no-hang + exit 2
+#   TC-6d review-cycle-scope.sh        (scripts/)       — 値なしフラグ末尾 → no-hang + exit 2
+#   TC-6f issue-complexity-lane.sh     (scripts/)       — 値なしフラグ末尾 → no-hang + exit 2
+#   TC-6e review-save-json-verify.sh   (hooks/scripts/) — 値なしフラグ末尾 → no-hang + exit 0 (degraded)
+#   TC-6g skill-rail-diff-check.sh     (hooks/scripts/) — 値なしフラグ末尾 → no-hang + exit 2
+#   TC-7 anti-pattern guard — 下記リストの全スクリプトに実 `shift 2` 文が残存しないこと
+#        (comment 参照は許容)。うち `lib/context-marker.sh` は source 型 lib で subprocess
+#        entry point を持たないため TC-1〜TC-6g の実行ハーネス (run_no_hang) の対象外で、
+#        本静的検査のみが掛かる。値なしフラグ末尾での no-hang は
+#        hooks/tests/context-marker.test.sh が直接 assert する。
 #
 # 各 TC は `timeout 5` で hang (exit 124) を検出する。値なしフラグはいずれも required value を
 # 空にし、ループ完了後のローカル guard で exit する経路 (network/git に触れない) を選択している。
