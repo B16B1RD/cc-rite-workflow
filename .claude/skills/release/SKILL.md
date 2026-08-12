@@ -207,7 +207,9 @@ gh pr create \
   --body "Closes #{PREP_ISSUE_NUMBER}"
 ```
 
-`AskUserQuestion` でユーザーに PR を確認してマージしてよいか確認し、承認後にマージ:
+`/rite:iterate {PREP_PR_NUMBER}` を実行し、`[review:mergeable]` を確認する。レビューが
+収束しない場合はマージせず停止する。その後、`AskUserQuestion` でユーザーに PR を確認して
+マージしてよいか確認し、承認後にマージ:
 
 ```bash
 gh pr merge --merge
@@ -263,11 +265,31 @@ gh pr create \
   --body "Merge develop into main for v{VERSION} release. Closes #{RELEASE_ISSUE_NUMBER}"
 ```
 
-`AskUserQuestion` でユーザーに main へのマージを確認し、承認後にマージ:
+昇格 PR の全コミットが既にマージ済み PR 経由であることを検証する。helper は PR が
+`develop -> main` であることも確認し、merge gate 用のアテステーションを保存する:
 
 ```bash
-gh pr merge --merge
+VERIFIED_HEAD_OID=$(bash plugins/rite/hooks/release-promotion-verify.sh {RELEASE_PR_NUMBER})
 ```
+
+検証失敗時は fail-loud で停止する。成功後、`AskUserQuestion` でユーザーに main へのマージを
+確認し、承認後に、出力された SHA を下記の `{VERIFIED_HEAD_OID}` に**リテラル置換**してマージする
+（変数形式のまま実行しない）:
+
+```bash
+gh pr merge {RELEASE_PR_NUMBER} --merge --match-head-commit {VERIFIED_HEAD_OID}
+```
+
+#### 3.2.1 Decision Log
+
+昇格マージは base/head の形状だけでは許可しない。`release-promotion-verify.sh` が差分内の
+各 commit SHA について、同じ SHA を merge commit とする既マージ PR の存在を検証し、検証時の
+head SHA をアテステーションへ記録する。merge gate はそのアテステーションと
+`--match-head-commit` の SHA が一致するときだけレビュー結果 JSON の代替として扱う。
+
+この方式により、通常の実装 PR は従来どおり review-results JSON が必須のまま、直接 push を含む
+昇格と検証後に head が変わった昇格は `merge-release-promotion-unverified` で fail-loud に停止する。
+単なる `base=main` / `head=develop` 判定は、未レビュー commit を区別できないため採用しない。
 
 ### 3.3 タグ作成 + GitHub Release
 
@@ -340,6 +362,7 @@ git pull origin develop
 | CHANGELOG の形式不備 | 既存エントリのパターンに合わせて修正 |
 | main マージ前に Release を作成してしまった | Release を削除 → main マージ → Release 再作成 |
 | PR マージ衝突 | 衝突を解消してから再試行 |
+| 昇格コミットの PR 検証失敗 | 直接 push を取り除くか、対象 commit を通常 PR 経由で develop に取り込み直してから検証を再実行 |
 | Projects 登録失敗 | `gh project item-add` を再実行。`--limit` を増やして Item ID を再取得 |
 | ステータス更新失敗 | Field ID / Option ID を再取得して `gh project item-edit` を再実行 |
 

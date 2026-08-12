@@ -2060,6 +2060,45 @@ fi
 rm -rf "$_mrg_tmp"
 echo ""
 
+echo "TC-140a / T-04 (#2269): verified develop -> main promotion with pinned head is allowed"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+mkdir -p "$_mrg_tmp/.rite/release-promotions"
+_promotion_oid="0123456789abcdef0123456789abcdef01234567"
+jq -n --arg oid "$_promotion_oid" \
+  '{schema_version:"1.0.0",pr_number:88,base:"main",head:"develop",head_oid:$oid,commits:[$oid],verified_at:"2026-08-12T00:00:00Z"}' \
+  > "$_mrg_tmp/.rite/release-promotions/88.json"
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 88 --merge --match-head-commit $_promotion_oid") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-140a verified promotion allows merge with exact head pin"
+else
+  fail "TC-140a expected verified promotion allow, got rc=$rc output=$output"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
+echo "TC-140b / T-05 (#2269): stale or unpinned promotion attestation denies fail-loud"
+_mrg_tmp=$(mktemp -d)
+_mrg_setup_state "$_mrg_tmp"
+mkdir -p "$_mrg_tmp/.rite/release-promotions"
+_promotion_oid="0123456789abcdef0123456789abcdef01234567"
+_stale_oid="fedcba9876543210fedcba9876543210fedcba98"
+jq -n --arg oid "$_promotion_oid" \
+  '{schema_version:"1.0.0",pr_number:89,base:"main",head:"develop",head_oid:$oid,commits:[$oid],verified_at:"2026-08-12T00:00:00Z"}' \
+  > "$_mrg_tmp/.rite/release-promotions/89.json"
+rc=0
+output=$(_mrg_run "$_mrg_tmp" "gh pr merge 89 --merge --match-head-commit $_stale_oid") || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$decision" = "deny" ] && [[ "$reason" == *"merge-release-promotion-unverified"* ]]; then
+  pass "TC-140b stale promotion head denies with distinct failure class"
+else
+  fail "TC-140b expected promotion-unverified deny, got decision=$decision reason=$reason"
+fi
+rm -rf "$_mrg_tmp"
+echo ""
+
 # --------------------------------------------------------------------------
 # Why: persist deny-only audit records
 # --------------------------------------------------------------------------

@@ -20,7 +20,9 @@
 #      (and any session) Bash that issues `gh pr merge` / REST pulls/{n}/merge /
 #      GraphQL mergePullRequest is denied unless `.rite/review-results/{pr}-*.json`
 #      exists with minimum form (schema_version + verdict keys, reviewers array
-#      length >= sole-reviewer guard floor 2). Fail-closed on PR-number
+#      length >= sole-reviewer guard floor 2), or a release-promotion attestation
+#      proves a develop -> main PR contains only already-reviewed merge commits
+#      and pins the verified head with --match-head-commit. Fail-closed on PR-number
 #      unresolvable / missing / malformed / floor-under JSON. Purpose: block
 #      procedure-omission bypass of /rite:pr-review, not adversarial forgery.
 #
@@ -718,8 +720,38 @@ if [ -z "$BLOCKED_PATTERN" ]; then
         esac
       done
 
+      # A release promotion has no new implementation diff to re-review. It may
+      # pass only with a verifier-produced attestation and an exact head pin in
+      # the merge command; shape-only recognition would allow direct pushes.
       if [ "$_mrg_ok" != "1" ]; then
-        if [ "$_mrg_any" = "0" ]; then
+        _mrg_promotion_file="${_mrg_root:+$_mrg_root/}.rite/release-promotions/${_mrg_pr}.json"
+        [ -n "$_mrg_root" ] || _mrg_promotion_file=".rite/release-promotions/${_mrg_pr}.json"
+        _mrg_head_arg=""
+        if [[ "$CMD_CHECK" =~ --match-head-commit[[:space:]]+([0-9a-fA-F]{40})([[:space:]]|$) ]]; then
+          _mrg_head_arg="${BASH_REMATCH[1]}"
+        fi
+        if [ -f "$_mrg_promotion_file" ] && [ -n "$_mrg_head_arg" ]; then
+          _mrg_attested_head=$(jq -r --argjson pr "$_mrg_pr" '
+            if .schema_version == "1.0.0"
+               and .pr_number == $pr
+               and .base == "main"
+               and .head == "develop"
+               and (.head_oid | type == "string" and test("^[0-9a-fA-F]{40}$"))
+               and (.commits | type == "array" and length > 0)
+              then .head_oid else empty end
+          ' "$_mrg_promotion_file" 2>/dev/null) || _mrg_attested_head=""
+          if [ -n "$_mrg_attested_head" ] && [ "$_mrg_attested_head" = "$_mrg_head_arg" ]; then
+            _mrg_ok=1
+          fi
+        fi
+      fi
+
+      if [ "$_mrg_ok" != "1" ]; then
+        if [ -f "${_mrg_promotion_file:-}" ]; then
+          BLOCKED_PATTERN="merge-release-promotion-unverified"
+          BLOCKED_REASON="Release-promotion attestation for PR #${_mrg_pr} is invalid, or the merge command does not pin its verified head with --match-head-commit. Promotion merge is denied fail-loud."
+          BLOCKED_ALTERNATIVE="Re-run release-promotion-verify.sh ${_mrg_pr}, then merge with the exact verified head SHA as --match-head-commit."
+        elif [ "$_mrg_any" = "0" ]; then
           BLOCKED_PATTERN="merge-review-json-absent"
           BLOCKED_REASON="No review-results JSON for PR #${_mrg_pr} under ${_mrg_dir}/${_mrg_pr}-*.json. Merge requires a prior /rite:pr-review result (positive existence + minimum form)."
           BLOCKED_ALTERNATIVE="Run /rite:pr-review ${_mrg_pr} (or /rite:iterate ${_mrg_pr}) so a qualifying review-results JSON is written, then re-run merge."
