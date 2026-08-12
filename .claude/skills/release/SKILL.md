@@ -301,6 +301,39 @@ git push origin --delete chore/issue-{ISSUE_NUMBER}-v{VERSION_SLUG}-release-prep
 
 Phase 2 の PR が develop にマージされた後に実行する。
 
+### 3.0 session worktree から退出
+
+Phase 2 で `/rite:iterate` を経由した場合、セッションは session worktree 内にいる。Phase 3 は
+main checkout 上で `develop` / `main` を操作するため、最初に現在地を判定する。
+
+```bash
+current_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 1
+common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || exit 1
+case "$common_dir" in /*) ;; *) common_dir="$current_root/$common_dir" ;; esac
+main_root=$(cd "$(dirname "$common_dir")" && pwd -P) || exit 1
+if [ "$current_root" = "$main_root" ]; then
+  echo "[CONTEXT] RELEASE_PHASE3_EXIT=noop; main_root=$main_root"
+else
+  echo "[CONTEXT] RELEASE_PHASE3_EXIT=required; worktree=$current_root; main_root=$main_root"
+fi
+```
+
+- `RELEASE_PHASE3_EXIT=noop`: すでに main checkout にいるため、そのまま Phase 3.1 へ進む
+- `RELEASE_PHASE3_EXIT=required`: `ExitWorktree` ツールを **`action: "keep"`** で呼び出す。`remove` は使わない。リリース準備 branch と `.rite/worktrees/issue-{N}` の削除は `/rite:cleanup` に委ねる
+
+退出後は、別の Bash 呼び出しで main checkout に戻ったことを検証する。不一致なら Phase 3.1 へ進まない。
+
+```bash
+current_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 1
+common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || exit 1
+case "$common_dir" in /*) ;; *) common_dir="$current_root/$common_dir" ;; esac
+main_root=$(cd "$(dirname "$common_dir")" && pwd -P) || exit 1
+[ "$current_root" = "$main_root" ] || {
+  echo "ERROR: main checkout への退出を確認できないため Phase 3 を停止します" >&2
+  exit 1
+}
+```
+
 ### 3.1 リリース実行 Issue の作成
 
 ```
@@ -371,10 +404,25 @@ git pull origin main
 CHANGELOG.md から該当バージョンのセクションを抽出してリリースノートに使用:
 
 ```bash
+release_notes=$(mktemp) || exit 1
+sed -n '/^## \[{VERSION}\]/,/^## \[/{ /^## \[{VERSION}\]/d; /^## \[/d; p; }' \
+  CHANGELOG.md > "$release_notes" || exit 1
+```
+
+スクラッチファイルを指定して Release を作成する。プロセス置換は使用しない。
+
+```bash
 gh release create "v{VERSION}" \
   --title "v{VERSION}" \
-  --notes-file <(sed -n '/^## \[{VERSION}\]/,/^## \[/{ /^## \[{VERSION}\]/d; /^## \[/d; p; }' CHANGELOG.md) \
+  --notes-file "{RELEASE_NOTES_PATH}" \
   --target main
+```
+
+`{RELEASE_NOTES_PATH}` は直前の `mktemp` が出力した `$release_notes` の実パスへリテラル置換する。
+Release 作成後にそのスクラッチファイルを削除する。
+
+```bash
+rm -f "{RELEASE_NOTES_PATH}"
 ```
 
 ### 3.4 リリース実行 Issue のクローズ
