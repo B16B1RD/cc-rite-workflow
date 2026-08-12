@@ -193,7 +193,10 @@ grep -rn "{OLD_VERSION}" .claude-plugin/ plugins/rite/.claude-plugin/ README.md 
 ### 2.5 コミット・PR 作成・マージ
 
 ```bash
-git add -A
+git add .claude-plugin/marketplace.json \
+  plugins/rite/.claude-plugin/plugin.json \
+  README.md README.ja.md docs/SPEC.md CHANGELOG.md CHANGELOG.ja.md
+git status --short --untracked-files=no
 git commit -m "chore: v{VERSION} バージョンバンプ + CHANGELOG 更新"
 git push -u origin HEAD
 ```
