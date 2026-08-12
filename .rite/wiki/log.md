@@ -1,3 +1,8 @@
+## 2026-08-12
+
+* **Create**: [「A が不明」への修正は「A は X である」と書く — X の根拠を同時に用意しないと欠陥は 1 段深い位置へ移動するだけになる](pages/heuristics/fix-relocates-defect-when-new-claim-unbacked.md) — raw/reviews/20260812T030028Z-pr-2260.md を新規ページ化（特定を求める指摘に応える修正は必ず新しい断定を書く。その断定の根拠を同じサイクルで用意しないと欠陥は解消せず 1 段深い位置へ移る）。
+* **Create**: [同一性・再現性を測る検証は正しさを測らない — 欠陥が決定論的なら同じ壊れ方が再現して green になる](pages/heuristics/identity-check-green-under-deterministic-defect.md) — raw/reviews/20260812T022554Z-pr-2260.md, raw/fixes/20260812T023940Z-pr-2260.md を新規ページ化（2 回実行の一致は実行の再現性しか測らない。時間軸を持つ成果物は終端が正常でも始端が壊れうるため始端を明示的に検証する）。
+
 ## 2026-08-11
 
 * **Skip**: [20260811T053354Z-pr-2242.md](raw/reviews/20260811T053354Z-pr-2242.md) — fail-loud ガードの出口網羅・防御コードの失敗パステストとして既存ページがカバー

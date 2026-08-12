@@ -422,8 +422,10 @@
 | [仕様が「A のとき報告・B のとき併記」を別々に定めている箇所を elif で書くと A ∧ B で B が消える](pages/anti-patterns/elif-drops-spec-required-co-reporting.md) | anti-patterns | 2 つの述語が独立に成立しうるのに実装で elif を使うと、両方が成立する入力で後段の報告が構造的に出せなくなる。A のみ・B のみのテストは両方 green のままなので、組合せ fixture がないと検出できない。 | 2026-08-11T01:20:00+09:00 | high |
 | [「step が走ったか」を後段で判定するとき、識別子の供給元をその step 自身にすると検出したい状態でだけ判定が成立しない](pages/anti-patterns/step-executed-check-minting-its-own-identifier.md) | anti-patterns | step の実行有無を中間ファイルの存在で判定する設計で、そのファイルパスに含む cycle 識別子を当の step が鋳造すると、step を飛ばした cycle には本 cycle のパスが存在せず、解決規則が前 cycle の実ファイルを掴んで fail-open する。 | 2026-08-11T01:20:00+09:00 | high |
 | [残余の緩和策として値を開示するなら、その値が問題発生時と正常時で違う値になるかを確かめる](pages/heuristics/disclosure-is-not-identification.md) | heuristics | 既知の残余に対して「値を marker へ併記するので silent にはならない」と書くとき、その値が決定論的に組まれていると健全な状態と stale な状態でバイト単位に同一の文字列が出るため、開示は残余の識別に使えず緩和策として機能しない。 | 2026-08-11T01:20:00+09:00 | high |
+| [「A が不明」への修正は「A は X である」と書く — X の根拠を同時に用意しないと欠陥は 1 段深い位置へ移動するだけになる](pages/heuristics/fix-relocates-defect-when-new-claim-unbacked.md) | heuristics | 特定を求める指摘に応える修正は必ず新しい断定を書く。その断定自体の根拠を同じサイクルで用意しないと、指摘は形式的に解消されたまま欠陥の位置が 1 段深いところへ移り、次のサイクルで別の reviewer が同じ場所を指す。 | 2026-08-12T12:45:00+09:00 | high |
+| [同一性・再現性を測る検証は正しさを測らない — 欠陥が決定論的なら同じ壊れ方が再現して green になる](pages/heuristics/identity-check-green-under-deterministic-defect.md) | heuristics | 2 回実行して出力が一致することを確かめる検証は、欠陥が入力に依存しない限り健全な出力と壊れた出力を区別できない。時間軸を持つ成果物では終端状態が正常でも初期状態が壊れている形の欠陥が成立するため、検証は始端を明示的に読む。 | 2026-08-12T12:45:00+09:00 | high |
 ## 統計
 
-- 総ページ数: 416
-- ドメイン別: patterns=103, heuristics=178, anti-patterns=135
-- 最終更新: 2026-08-11T01:20:00+09:00
+- 総ページ数: 418
+- ドメイン別: patterns=103, heuristics=180, anti-patterns=135
+- 最終更新: 2026-08-12T12:45:00+09:00
