@@ -20,6 +20,8 @@
     消しても決定論チェックが green のまま通ることを変異実験で確認したため追加した。
     レンダー側の各 fail-loud ガードに 1 ケースずつ対応させている
 - レンダー出力のフレーム数照合は実行時ガードに置かず、Issue の手動テスト（T-01）が担う。
+- Issue #2258 で絵コンテを「回るたび、賢くなる」（複利の物語）へ作り直し、シーンを 7 本に
+  組み替えた。同じシーン mp4 群からフルカットと SNS カットの 2 本を作る構成になっている。
 
 ## 既存 HyperFrames 版との関係
 
@@ -67,22 +69,52 @@ BGM は本リポジトリに含めない。`assemble.sh -b <file>` で合成す�
 入手元・Pixabay Content License・生 mp3 をコミットしない理由は
 [../intro-video/PROVENANCE.md](../intro-video/PROVENANCE.md) の記録を正本とする。Pixabay から
 `bombinsound-technology-tech-technology-90-second-499581.mp3` を取得し、このディレクトリ直下に
-置く。クリーン checkout からは、依存をインストールして次のコマンドで 5 シーンを規定名へレンダする。
+置く。
+
+`assemble.sh` は **BGM が総尺より短いとエラー終了する**（末尾が無音の完成尺を黙って出さない
+ため）。フルカットの総尺は約 55.0 秒なので、90 秒の上記楽曲はそのまま使える。総尺より短い
+音源を使う場合は、ループで延長してから渡す:
+
+```bash
+# 例: 40.1 秒の音源を継ぎ目 2 秒のクロスフェードで 2 周ぶんに伸ばし、58 秒へ切り出す。
+# 単純連結（-stream_loop）は継ぎ目で位相が飛んでクリックノイズになるため acrossfade を使う。
+ffmpeg -y -i <source>.mp3 -i <source>.mp3 \
+  -filter_complex "[0:a][1:a]acrossfade=d=2:c1=tri:c2=tri[a]" -map "[a]" \
+  -t 58 -c:a libmp3lame -q:a 2 <source>-58s.mp3
+```
+
+延長後の音量は変えない。`assemble.sh` は合成後の完成物を `volumedetect` で測り、
+`max_volume < -20dB` なら出力を残さず失敗する（実質無音の完成尺を防ぐガード）。
+
+## レンダーと連結の手順
+
+クリーン checkout からは、依存をインストールして次のコマンドで 7 シーンを規定名へレンダする。
 
 ```bash
 npm ci
 mkdir -p out
-for scene in 01-problem 02-loop 03-terminal 04-gates 05-closing; do
+for scene in 01-problem 02-unknowns 03-loop 04-gates 05-wiki 06-second-lap 07-closing; do
   node render/render.mjs "scenes/${scene}.html" "out/${scene}.mp4" 30
 done
 ```
 
-BGM を取得した後、次を実行する。
+BGM を用意した後、2 本のカットを連結する（`<bgm>` は上記で用意した mp3）。
 
 ```bash
-./assemble.sh -P -o out/rite-intro-v2.mp4
+# フルカット（M1〜M7、約 55.0 秒）
+./assemble.sh -o out/rite-intro-v2-full.mp4 -t 0.5 -b <bgm> \
+  out/01-problem.mp4 out/02-unknowns.mp4 out/03-loop.mp4 out/04-gates.mp4 \
+  out/05-wiki.mp4 out/06-second-lap.mp4 out/07-closing.mp4
+
+# SNS カット（M1 + M3 + M5 + M7、約 31.5 秒）
+./assemble.sh -o out/rite-intro-v2-sns.mp4 -t 0.5 -b <bgm> \
+  out/01-problem.mp4 out/03-loop.mp4 out/05-wiki.mp4 out/07-closing.mp4
 ```
 
-`-P` は `out/01-problem.mp4` から `out/05-closing.mp4` までを絵コンテ順に連結し、Pixabay BGM を
-fade in/out 付きで合成する。完成動画は楽曲単体ではなく映像・タイポグラフィ・アニメーションを
-組み合わせた新たな制作物として配布する。
+完成動画は楽曲単体ではなく映像・タイポグラフィ・アニメーションを組み合わせた新たな制作物として
+配布する。
+
+> `assemble.sh` の `-P`（プリセット）は Issue #2240 当時の 5 シーン構成（`01-problem` /
+> `02-loop` / `03-terminal` / `04-gates` / `05-closing`）を指したままで、現構成では使えない
+> （存在しないシーンを参照して fail-loud する）。`assemble.sh` は Issue #2258 の変更対象外
+> だったため据え置いており、上記のシーン明示形を正とする。
