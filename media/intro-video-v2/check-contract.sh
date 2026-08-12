@@ -80,6 +80,45 @@ else
   failures=$((failures + 1))
 fi
 
+# -P は現行のフルカット M1〜M7 をその順序で連結する。同じ素材を使い回すことで、
+# プリセットのファイル名契約と 7 本連結の両方を実行経路で pin する。
+preset_scenes="$(awk '
+  /scenes=\(/ { in_scenes=1; next }
+  in_scenes && /^[[:space:]]*\)/ { exit }
+  in_scenes { gsub(/^[[:space:]]*"|"[[:space:]]*$/, ""); print }
+' "$here/assemble.sh")"
+expected_preset_scenes="$(printf '%s\n' \
+  out/01-problem.mp4 out/02-unknowns.mp4 out/03-loop.mp4 out/04-gates.mp4 \
+  out/05-wiki.mp4 out/06-second-lap.mp4 out/07-closing.mp4)"
+if [ "$preset_scenes" = "$expected_preset_scenes" ]; then
+  echo "契約 OK [full-preset-order]: M1〜M7 の順序が一致"
+else
+  echo "契約 NG [full-preset-order]: -P のシーン順序が M1〜M7 と一致しません" >&2
+  failures=$((failures + 1))
+fi
+
+preset_work="$work/preset"
+mkdir -p "$preset_work/out"
+for scene in 01-problem 02-unknowns 03-loop 04-gates 05-wiki 06-second-lap 07-closing; do
+  cp "$work/audibility-scene.mp4" "$preset_work/out/$scene.mp4"
+done
+ffmpeg -loglevel error -y -f lavfi -i sine=frequency=1000:duration=12:sample_rate=48000 \
+  -af volume=2 -c:a libmp3lame \
+  "$preset_work/bombinsound-technology-tech-technology-90-second-499581.mp3"
+if preset_log="$(cd "$preset_work" && "$here/assemble.sh" -P -o out/preset.mp4 2>&1)"; then
+  if printf '%s\n' "$preset_log" | grep -q 'assembled 7 scenes'; then
+    echo "契約 OK [full-preset]: M1〜M7 を連結"
+  else
+    echo "契約 NG [full-preset]: 7 シーン連結の完了診断がありません" >&2
+    printf '%s\n' "$preset_log" | tail -3 | sed 's/^/  /' >&2
+    failures=$((failures + 1))
+  fi
+else
+  echo "契約 NG [full-preset]: -P が現行シーン構成を連結できません" >&2
+  printf '%s\n' "$preset_log" | tail -3 | sed 's/^/  /' >&2
+  failures=$((failures + 1))
+fi
+
 if [ "$failures" -ne 0 ]; then
   echo "契約チェック: $failures 件失敗" >&2
   exit 1

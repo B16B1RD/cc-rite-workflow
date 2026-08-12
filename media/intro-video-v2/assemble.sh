@@ -11,7 +11,7 @@ usage: assemble.sh [-P] -o <out.mp4> [-t <xfade_sec>] [-b <bgm.mp3>] <scene1.mp4
   -o  出力 mp4（必須）
   -t  シーン間クロスフェード秒（既定: 0.5）
   -b  BGM 音声ファイル（任意。指定時は fade in/out を付けて合成する）
-  -P  intro-video-v2 プリセット（レンダ済み 5 シーンと既定 BGM を順番どおり使用）
+  -P  intro-video-v2 フルカットプリセット（M1〜M7 と既定 BGM を使用）
 EOF
   exit 1
 }
@@ -36,10 +36,12 @@ if [ "$preset" = true ]; then
   [ "$#" -eq 0 ] || { echo "assemble: -P とシーン引数は同時に指定できません" >&2; exit 1; }
   scenes=(
     "out/01-problem.mp4"
-    "out/02-loop.mp4"
-    "out/03-terminal.mp4"
+    "out/02-unknowns.mp4"
+    "out/03-loop.mp4"
     "out/04-gates.mp4"
-    "out/05-closing.mp4"
+    "out/05-wiki.mp4"
+    "out/06-second-lap.mp4"
+    "out/07-closing.mp4"
   )
   [ -n "$bgm" ] || bgm="bombinsound-technology-tech-technology-90-second-499581.mp3"
 else
