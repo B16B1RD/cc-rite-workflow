@@ -13,6 +13,7 @@
 * **lint:warning** — contradictions=0, stale=5, orphans=0, missing_concept=1, unregistered_raw=323, broken_refs=0
 * **Skip**: [20260812T233122Z-pr-2285.md](raw/reviews/20260812T233122Z-pr-2285.md) — cycle artifact: 0 findings; fire-no-counter-reset ポインタ欠落は既存 rationale ポインタ heuristic の再確認に留まり新規経験則なし
 * **Skip**: [20260813T001119Z-pr-2286.md](raw/reviews/20260813T001119Z-pr-2286.md) — cycle 1 指摘 0 と diet mergeable 傾向は既存ヒューリスティックと重複。SPAWN_SPREAD=undetermined は Grok 環境固有で一般化不能
+* **lint:warning** — contradictions=0, stale=5, orphans=0, missing_concept=1, unregistered_raw=324, broken_refs=0
 
 ## 2026-08-12
 
