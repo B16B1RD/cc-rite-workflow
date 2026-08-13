@@ -1,6 +1,6 @@
 # intro-video-en — Provenance and handling
 
-HyperFrames source for the **English** intro video (~125s) referenced in the "Demo" section of `README.md`.
+HyperFrames source for the former Demo (replaced in v0.11.0 by the v2 full cut under `media/intro-video-v2`).
 
 ## Provenance
 
