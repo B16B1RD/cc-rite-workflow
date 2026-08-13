@@ -859,7 +859,9 @@ assert_not_grep "消費側: helper 値域と不一致の JSON_SAVED=1 を成功�
 assert_grep "消費側: fire 分岐で handoff を default-clear する" "$ITERATE_SKILL" \
   'lost 修復ゲート発火'
 assert_grep "消費側: _undecidable の lost 欠落をデータ不在 reason で fire する" "$ITERATE_SKILL" \
-  'no_results_file|results_dir_missing|no_file_after_pin'
+  'no_results_file\|results_dir_missing\|no_file_after_pin) lost_gate=fire'
+assert_grep "消費側: ゲートは coerce 前の raw lost を見る" "$ITERATE_SKILL" \
+  'trend_lost_raw='
 assert_grep "消費側: (b) 不成立は ITERATE_LOST_REPAIR=failed" "$ITERATE_SKILL" \
   'ITERATE_LOST_REPAIR=failed'
 assert_grep "非退行: LOST 注記（推移行併記）が残っている" "$ITERATE_SKILL" \
