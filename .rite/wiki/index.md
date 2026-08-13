@@ -193,7 +193,7 @@
 | [複数コマンドの引数プレースホルダ表記は既存正典ドキュメントの慣習を事前 Grep で確認する](pages/patterns/command-placeholder-notation-precheck-canonical-docs.md) | patterns | `/rite:iterate <pr>` `/rite:ready <pr>` `/rite:cleanup [branch]` のように複数コマンドの引数プレースホルダを並記するドキュメントを新規に書く（または改修する）とき、書き手が新しい表記（例: 大文字 `<PR>`）を独自に導入すると、(1) 実際のコマンドシグネチャ（`argument-hint`）との不一致、(2) プロジェクト内で既に確立された表記慣習（小文字 `<pr>`）との不一致、の2種類の drift を同時に生む。 | 2026-07-02T16:55:00+09:00 | high |
 | [上限機構(cap)の追加は既存の下限・補完機構が確立した floor を全経路で尊重する](pages/heuristics/cap-respects-existing-floor-invariants.md) | heuristics | 既存の選定/補完パイプライン（例: reviewer 選定）に**上限機構 (cap, cost 上限)** を後段挿入すると、既存の**下限・補完機構**が確立した floor を silent に undo する穴が生じる。 | 2026-07-02T23:12:48Z | high |
 | [新規 helper は既存 sibling の安全規約に整合させる（trap・tree 解決・制御文字無害化）](pages/heuristics/new-helper-conform-to-sibling-safety-conventions.md) | heuristics | 新規の shell helper を書くとき、同ディレクトリの既存 sibling helper が確立した安全規約（signal-specific trap での tempfile 回収 / branch-strategy 依存の tree 解決 / 制御文字無害化 / 委譲先の stderr 素通し / summary の不変条件）へ整合させる。 | 2026-07-03T00:42:39+00:00 | high |
-| [共有パスに置く進捗/status 表示は到達する全経路で真な文言にする（成功含意を避ける）](pages/heuristics/status-display-truthful-for-all-reachable-paths.md) | heuristics | 複数の実行経路が合流する共有コードパスに進捗カウンタや status 表示を置くときは、成功経路だけでなく到達する全経路で真である文言にする。 | 2026-08-01T23:12:28+09:00 | medium |
+| [共有パスに置く進捗/status 表示は到達する全経路で真な文言にする（成功含意を避ける）](pages/heuristics/status-display-truthful-for-all-reachable-paths.md) | heuristics | 複数の実行経路が合流する共有コードパスに進捗カウンタや status 表示を置くときは、成功経路だけでなく到達する全経路で真である文言にする。常時出す完了文に空集合除外（「failed 扱いを除き」等）を置くのも同型で、空のときは条件付き専用行に任せ常時行から落とす。 | 2026-08-13T05:55:07Z | medium |
 | [worktree 運用の git 状態検出は .git 直書きせず git rev-parse --git-path で解決する](pages/patterns/worktree-aware-git-state-detection.md) | patterns | worktree では merge/rebase の中断状態を示す `MERGE_HEAD` / `rebase-merge` / `rebase-apply` が `.git/worktrees/<name>/` 配下に置かれる。 | 2026-07-03T13:33:06+09:00 | high |
 | [path を返す test fixture ヘルパーの cleanup 登録は $() サブシェルではなく親シェルで行う](pages/patterns/test-fixture-helper-parent-shell-cleanup-registration.md) | patterns | path を `echo`/`printf` で返す fixture ヘルパーを `X="$(new_repo ...)"` の **コマンド置換 (`$()`)** 経由で呼ぶと、そのヘルパーは **subshell** で実行される。 | 2026-07-03T06:00:00+09:00 | high |
 | [位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）](pages/patterns/positional-parse-row-count-guard.md) | patterns | `awk -F'\|' '{ slug = $2; agent = $4 }'` のような位置依存の列パースは、表形式変更（Agent 列より前へのカラム挿入等）でトークンが期待列からずれる。 | 2026-07-03T18:30:00+00:00 | high |
@@ -429,4 +429,4 @@
 
 - 総ページ数: 419
 - ドメイン別: patterns=103, heuristics=180, anti-patterns=136
-- 最終更新: 2026-08-12T18:34:40Z
+- 最終更新: 2026-08-13T05:55:07Z

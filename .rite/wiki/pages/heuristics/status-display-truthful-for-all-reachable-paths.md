@@ -3,9 +3,9 @@ type: "heuristics"
 title: "共有パスに置く進捗/status 表示は到達する全経路で真な文言にする（成功含意を避ける）"
 domain: "heuristics"
 promote: rite-plugin
-description: "複数の実行経路が合流する共有コードパスに進捗カウンタや status 表示を置くときは、成功経路だけでなく到達する全経路で真である文言にする。"
+description: "複数の実行経路が合流する共有コードパスに進捗カウンタや status 表示を置くときは、成功経路だけでなく到達する全経路で真である文言にする。常時出す完了文に空集合除外（「failed 扱いを除き」等）を置くのも同型で、空のときは条件付き専用行に任せ常時行から落とす。"
 created: "2026-07-03T11:30:00+09:00"
-updated: "2026-08-01T23:12:28+09:00"
+updated: "2026-08-13T05:55:07Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260703T021717Z-pr-1733.md"
@@ -17,6 +17,8 @@ sources:
     ref: "raw/fixes/20260801T104510Z-pr-2081.md"
   - type: "fixes"
     ref: "raw/fixes/20260801T112516Z-pr-2081.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260813T054655Z-pr-2300.md"
 tags: []
 confidence: medium
 ---
@@ -25,7 +27,7 @@ confidence: medium
 
 ## 概要
 
-複数の実行経路が合流する共有コードパスに進捗カウンタや status 表示を置くときは、成功経路だけでなく到達する全経路で真である文言にする。「進めた件数（advanced / processed）」と「成功件数（succeeded）」を区別し、✅ /「完了」等の成功含意語を、非収束・失敗経路でも一律発火する表示に使わない。表示に使う marker が収束状況を持たないなら、その表示は「前進した事実」だけを語れる文言に限定する。
+複数の実行経路が合流する共有コードパスに進捗カウンタや status 表示を置くときは、成功経路だけでなく到達する全経路で真である文言にする。「進めた件数（advanced / processed）」と「成功件数（succeeded）」を区別し、✅ /「完了」等の成功含意語を、非収束・失敗経路でも一律発火する表示に使わない。表示に使う marker が収束状況を持たないなら、その表示は「前進した事実」だけを語れる文言に限定する。常時出す完了文に空集合除外（「failed 扱いを除き」等）を置くのも同型で、空のときは条件付き専用行に任せ常時行から落とす。
 
 ## 詳細
 
@@ -44,6 +46,7 @@ confidence: medium
 - status / 進捗表示を置く前に「このコードパスに合流する全経路」を列挙し、その表示文言が **全経路で真か** を verify する。happy path でしか真でない文言（✅ / 完了 / 成功 / done）を共有パスに置かない。
 - 表示に使う marker / カウンタが「成否」の情報を持たないなら、表示は「前進した事実（advanced / processed / N/M reached）」だけを語れる中立語に限定する。成否の内訳は成否を知っている別レイヤー（終端の完了通知・failed 集計）に委ねる。
 - 文言修正時は「表示を組み立てる本文」と「その placeholder を定義する Legend / スキーマ」の両方を同期する。
+- 終端の完了通知でも同じ真実性を守る。失敗の内訳を条件付き専用行（空なら出さない）に分けているなら、常時行に「failed 扱いを除き」のような空集合除外を残さない。除外表現は failed が空の到達経路で偽になり、専用行の省略規則と矛盾する。常時行は全件完走の事実だけを述べ、除外は専用行側に閉じる。
 
 **関連する path 対称性**: 「共有パスの表示は全経路で真であるべき」は、[Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) の「contract-implementation path 対称性（section 内の全 path が契約を満たすか verify する）」を、コード契約ではなく **ユーザー向けメッセージの真実性** の側面に適用したもの。
 
@@ -70,3 +73,4 @@ confidence: medium
 - [PR #2081 review results](../../raw/reviews/20260801T103500Z-pr-2081.md)
 - [PR #2081 fix results](../../raw/fixes/20260801T104510Z-pr-2081.md)
 - [PR #2081 fix results (cycle 2)](../../raw/fixes/20260801T112516Z-pr-2081.md)
+- [PR #2300 review results](../../raw/reviews/20260813T054655Z-pr-2300.md)

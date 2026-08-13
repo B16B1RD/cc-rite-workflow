@@ -1,5 +1,6 @@
 ## 2026-08-13
 
+* **Update**: [共有パスに置く進捗/status 表示は到達する全経路で真な文言にする（成功含意を避ける）](pages/heuristics/status-display-truthful-for-all-reachable-paths.md) — raw/reviews/20260813T054655Z-pr-2300.md を統合（常時出す完了文に空集合除外を置くのも同型。除外は条件付き専用行に閉じ、常時行は全件完走の事実だけを述べる）
 * **Skip**: [20260813T051635Z-pr-2298.md](raw/reviews/20260813T051635Z-pr-2298.md) — rite-plugin: context-budget 停止禁止と報告規律は autonomous-execution.md に既に実装済み。0 指摘レビューは一時結果で新規 domain 経験則なし
 * **Skip**: [20260813T042943Z-pr-2296.md](raw/reviews/20260813T042943Z-pr-2296.md) — detector-candidate: spawn spread の値源は orchestrator 発行時刻であり、review-spawn-spread-check.sh と pr-review 4.3.1/4.6 が機械検証する
 * **Skip**: [20260813T033429Z-pr-2295.md](raw/reviews/20260813T033429Z-pr-2295.md) — セッション記録のみ: AC 充足と実測なし指摘の降格は既存の実測ゲート / プラグイン原則に既出で新規経験則なし
