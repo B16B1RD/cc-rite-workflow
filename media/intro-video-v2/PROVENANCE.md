@@ -22,6 +22,10 @@
 - レンダー出力のフレーム数照合は実行時ガードに置かず、Issue の手動テスト（T-01）が担う。
 - Issue #2258 で絵コンテを「回るたび、賢くなる」（複利の物語）へ作り直し、シーンを 7 本に
   組み替えた。同じシーン mp4 群からフルカットと SNS カットの 2 本を作る構成になっている。
+- Issue #2297 で英語シーン（`scenes-en/`）と画面上のバージョン表記（M1 / M7）を追加し、
+  両 README の Demo を本ディレクトリのフルカットへ差し替えた。README 掲載までを 1 本の
+  Issue に含めたのは、Issue #2258 が README 埋め込みを Non-goal にしたまま後続 Issue が
+  作られず、Demo が旧版のまま取り残されたためである。
 
 ## 既存 HyperFrames 版との関係
 
@@ -82,9 +86,10 @@ Pixabay から
 
 ```bash
 npm ci
-mkdir -p out
+mkdir -p out out/en
 for scene in 01-problem 02-unknowns 03-loop 04-gates 05-wiki 06-second-lap 07-closing; do
   node render/render.mjs "scenes/${scene}.html" "out/${scene}.mp4" 30
+  node render/render.mjs "scenes-en/${scene}.html" "out/en/${scene}.mp4" 30
 done
 ```
 
@@ -93,14 +98,35 @@ BGM を用意した後、2 本のカットを連結する。
 ```bash
 # フルカット（M1〜M7、約 55.0 秒）
 ./assemble.sh -P -o out/rite-intro-v2-full.mp4
+./assemble.sh -P -d out/en -o out/rite-intro-v2-full-en.mp4
 
 # SNS カット（M1 + M3 + M5 + M7、約 31.5 秒）
 ./assemble.sh -o out/rite-intro-v2-sns.mp4 -t 0.5 -b bombinsound-technology-tech-technology-90-second-499581.mp3 \
   out/01-problem.mp4 out/03-loop.mp4 out/05-wiki.mp4 out/07-closing.mp4
+./assemble.sh -o out/rite-intro-v2-sns-en.mp4 -t 0.5 -b bombinsound-technology-tech-technology-90-second-499581.mp3 \
+  out/en/01-problem.mp4 out/en/03-loop.mp4 out/en/05-wiki.mp4 out/en/07-closing.mp4
 ```
 
 完成動画は楽曲単体ではなく映像・タイポグラフィ・アニメーションを組み合わせた新たな制作物として
 配布する。
 
-`-P` は現行のフルカット（M1〜M7）と上記の既定 BGM を選ぶ。SNS カットは
-フルカットとシーン構成が異なるため、意図が見える上記のシーン明示形を正とする。
+`-P` は現行のフルカット（M1〜M7）と上記の既定 BGM を選ぶ。`-d` はそのシーン探索先で、
+既定 `out`（日本語）に対し英語は `out/en` を指す。SNS カットはフルカットとシーン構成が
+異なるため、意図が見える上記のシーン明示形を正とする。
+
+## README への公開手順
+
+README の Demo に映る動画の正本は git ではなく **GitHub の user-attachments URL** である。
+`out/*.mp4` は `.gitignore` 済みの再生成物であり、シーン HTML を更新しても README の Demo は
+変わらない。差し替えは次の順で行う。
+
+1. 上記の手順で日英フルカットをレンダ・連結する
+2. `ffprobe` で 1280x720 / 30fps / 約 55.0 秒、`stat` で 10,485,760 bytes 以下を確認する
+   （GitHub のコメント添付上限。超えたらアップロードせず圧縮または絵を見直す）
+3. 2 本を GitHub の Issue / PR コメントへドラッグしてアップロードし、生成された
+   `https://github.com/user-attachments/assets/<uuid>` を控える（Web UI が要るため人手の工程）
+4. `README.md` に英語カットの URL、`README.ja.md` に日本語カットの URL を書く
+5. URL が両 README に入るまで PR を Ready にしない
+
+5 を運用として明記するのは、URL 差し替えを follow-up に回した PR（Issue #2258 / PR #2029）が
+そのまま忘れられ、Demo が旧版のまま公開され続けた実績があるためである。

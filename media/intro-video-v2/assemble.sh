@@ -6,12 +6,13 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-usage: assemble.sh [-P] -o <out.mp4> [-t <xfade_sec>] [-b <bgm.mp3>] <scene1.mp4> [scene2.mp4 ...]
+usage: assemble.sh [-P [-d <scene_dir>]] -o <out.mp4> [-t <xfade_sec>] [-b <bgm.mp3>] <scene1.mp4> [scene2.mp4 ...]
 
   -o  出力 mp4（必須）
   -t  シーン間クロスフェード秒（既定: 0.5）
   -b  BGM 音声ファイル（任意。指定時は fade in/out を付けて合成する）
   -P  intro-video-v2 フルカットプリセット（M1〜M7 と既定 BGM を使用）
+  -d  -P のシーン探索ディレクトリ（既定: out。英語カットは out/en）
 EOF
   exit 1
 }
@@ -20,11 +21,13 @@ out=""
 xfade="0.5"
 bgm=""
 preset=false
-while getopts ":o:t:b:P" opt; do
+scene_dir=""
+while getopts ":o:t:b:d:P" opt; do
   case "$opt" in
     o) out="$OPTARG" ;;
     t) xfade="$OPTARG" ;;
     b) bgm="$OPTARG" ;;
+    d) scene_dir="$OPTARG" ;;
     P) preset=true ;;
     *) usage ;;
   esac
@@ -34,17 +37,22 @@ shift $((OPTIND - 1))
 [ -n "$out" ] || usage
 if [ "$preset" = true ]; then
   [ "$#" -eq 0 ] || { echo "assemble: -P とシーン引数は同時に指定できません" >&2; exit 1; }
+  # 言語別カットは同じ 7 本の構成を別ディレクトリのレンダー成果物から組む。
+  # シーン列を preset ごとに複製すると、シーン追加のたびに両方を直す必要が出る。
+  [ -n "$scene_dir" ] || scene_dir="out"
   scenes=(
-    "out/01-problem.mp4"
-    "out/02-unknowns.mp4"
-    "out/03-loop.mp4"
-    "out/04-gates.mp4"
-    "out/05-wiki.mp4"
-    "out/06-second-lap.mp4"
-    "out/07-closing.mp4"
+    "$scene_dir/01-problem.mp4"
+    "$scene_dir/02-unknowns.mp4"
+    "$scene_dir/03-loop.mp4"
+    "$scene_dir/04-gates.mp4"
+    "$scene_dir/05-wiki.mp4"
+    "$scene_dir/06-second-lap.mp4"
+    "$scene_dir/07-closing.mp4"
   )
   [ -n "$bgm" ] || bgm="bombinsound-technology-tech-technology-90-second-499581.mp3"
 else
+  # -d は -P のシーン列を組み立てる指定なので、明示シーン列と併用されたら黙って無視しない。
+  [ -z "$scene_dir" ] || { echo "assemble: -d は -P と併用してください（明示シーン列にはパスを直接書きます）" >&2; exit 1; }
   [ "$#" -ge 1 ] || usage
   scenes=("$@")
 fi

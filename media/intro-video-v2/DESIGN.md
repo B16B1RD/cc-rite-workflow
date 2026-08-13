@@ -53,6 +53,18 @@ XS/S 軽量レーンや個別の Projects 操作も同様に、主メッセー�
 SNS カットは「学ばない → draft で待つ自律ループ → 学びが残る → 回るたび賢くなる」で単体でも
 物語が閉じる。連結コマンドは [PROVENANCE.md](./PROVENANCE.md) を参照する。
 
+### 日本語版と英語版
+
+シーンは日本語（`scenes/`）と英語（`scenes-en/`）の 2 組を持つ。ファイル名・宣言尺・レイアウト・
+アニメーションは対応する 2 本で同一とし、差分は画面のテキストと `<html lang>` だけに限る。
+宣言尺を揃えるのは、上表のカット構成とクロスフェードのオフセット計算を言語ごとに分岐させない
+ためである。
+
+英語シーンを別ディレクトリ（`intro-video-v2-en/`）ではなく本ディレクトリ配下に置くのは、
+`render.mjs` / `assemble.sh` / 契約ガードを 1 組に保つためである。分けるのはレンダー成果物だけで、
+日本語は `out/`、英語は `out/en/` へ出す。連結時は `assemble.sh -P -d <dir>` でプリセットの
+シーン探索先を切り替える。
+
 ### 表記の実在根拠
 
 - コマンドの既定挙動: `skills/batch-run/SKILL.md` — 引数なしの `/rite:batch-run <N>` は
@@ -67,7 +79,12 @@ SNS カットは「学ばない → draft で待つ自律ループ → 学びが
   `hooks/wiki-query-inject.sh` の出力形式。M5 と M6 は同一カードを表示する
 
 性能値や短縮率は画面に出さない。数値として表示するのは、このリポジトリ内で宣言・実測できる
-シーン尺、解像度、fps だけとする。
+シーン尺、解像度、fps と、製品バージョンだけとする。
+
+製品バージョンだけを例外にするのは、それが訴求の材料ではなく「この動画がどの版の rite を
+写しているか」を読み手が確かめるための identifier だからである。表示位置は M1 のヘッダー
+バッジと M7 のフッターの 2 箇所（日英とも）。リリースで版が上がったら両シーンの文字列を
+更新する — 画面の版と README の配布物がずれた動画は、注記で逃げるしかなくなる。
 
 ## なぜ frame-step なのか
 
@@ -123,6 +140,10 @@ npm run check
 # シーンを連結（クロスフェード 0.5s、BGM は任意）
 ./assemble.sh -o out/final.mp4 -t 0.5 out/01.mp4 out/02.mp4
 ./assemble.sh -o out/final.mp4 -b bgm.mp3 out/01.mp4 out/02.mp4
+
+# フルカットのプリセット（-d でシーン探索先を切り替える。既定は out）
+./assemble.sh -P -o out/rite-intro-v2-full.mp4
+./assemble.sh -P -d out/en -o out/rite-intro-v2-full-en.mp4
 ```
 
 `npm run check` は Chrome を起動するため **sandbox 外**で実行する（下記「環境前提」参照）。
