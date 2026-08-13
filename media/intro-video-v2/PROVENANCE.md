@@ -22,10 +22,11 @@
 - レンダー出力のフレーム数照合は実行時ガードに置かず、Issue の手動テスト（T-01）が担う。
 - Issue #2258 で絵コンテを「回るたび、賢くなる」（複利の物語）へ作り直し、シーンを 7 本に
   組み替えた。同じシーン mp4 群からフルカットと SNS カットの 2 本を作る構成になっている。
-- Issue #2297 で英語シーン（`scenes-en/`）と画面上のバージョン表記（M1 / M7）を追加し、
-  両 README の Demo を本ディレクトリのフルカットへ差し替えた。README 掲載までを 1 本の
-  Issue に含めたのは、Issue #2258 が README 埋め込みを Non-goal にしたまま後続 Issue が
-  作られず、Demo が旧版のまま取り残されたためである。
+- Issue #2297 で英語シーン（`scenes-en/`）と画面上のバージョン表記（M1 / M7）を追加した。
+  同 Issue は両 README の Demo を本ディレクトリのフルカットへ差し替えるところまでを範囲に
+  含む（差し替えの手順は下記「README への公開手順」）。README 掲載までを 1 本の Issue に
+  含めたのは、Issue #2258 が README 埋め込みを Non-goal とし、PR #2029 が動画の差し替えを
+  follow-up に回したまま後続 Issue が作られず、Demo が旧版のまま取り残されたためである。
 
 ## 既存 HyperFrames 版との関係
 
@@ -128,5 +129,6 @@ README の Demo に映る動画の正本は git ではなく **GitHub の user-a
 4. `README.md` に英語カットの URL、`README.ja.md` に日本語カットの URL を書く
 5. URL が両 README に入るまで PR を Ready にしない
 
-5 を運用として明記するのは、URL 差し替えを follow-up に回した PR（Issue #2258 / PR #2029）が
-そのまま忘れられ、Demo が旧版のまま公開され続けた実績があるためである。
+5 を運用として明記するのは、URL 差し替えを follow-up に回した PR #2029 がそのまま忘れられ、
+Demo が旧版のまま公開され続けた実績があるためである（Issue #2258 は README 埋め込み自体を
+Non-goal と決めた側で、follow-up に回したのは PR #2029）。

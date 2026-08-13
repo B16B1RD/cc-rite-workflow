@@ -27,7 +27,11 @@ while getopts ":o:t:b:d:P" opt; do
     o) out="$OPTARG" ;;
     t) xfade="$OPTARG" ;;
     b) bgm="$OPTARG" ;;
-    d) scene_dir="$OPTARG" ;;
+    # 空文字は「未指定」と同じ値になるため、ここで弾かないと下の 2 つのガードが同時に不発する
+    # （-P なしでは併用ガードが素通りし、-P ありでは既定の out へ黙って倒れて日本語素材から
+    #   組んだ mp4 が -en の名前で正常終了する）。
+    d) [ -n "$OPTARG" ] || { echo "assemble: -d に空のディレクトリは指定できません" >&2; exit 1; }
+       scene_dir="$OPTARG" ;;
     P) preset=true ;;
     *) usage ;;
   esac
