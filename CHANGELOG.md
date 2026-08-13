@@ -27,6 +27,22 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-13
+
+### Changed
+
+- **SKILL description diet: outcome + verification + mechanical steps, with rationale exiled to bundled references** — prose (`bytes_prose`) is compressed and moved to per-skill `references/`, while mechanical rails (fenced bash, branch tables, sentinels) stay byte-identical. The method is recorded in `plugins/rite/references/skill-diet-method.md` (line-drawing checklist, pin-transfer procedure, measurement template) and piloted on `open` (~−36%) (#2278). Wave 1 applied it to `iterate` (−33.3%) / `fix` (−32.3%) / `pr-review` (−25.5%) (#2285, #2286, #2287). Wave 2 covered the remaining skills: the large four (`setup` / `cleanup` / `wiki-lint` / `wiki-ingest`) (#2292), the medium four (`pr-create` / `lint` / `issue-implement` / `issue-close`) (#2293), and the remaining 19 small skills (#2294). CLAUDE.md's skill line-count principle is rewritten around the diet generation: `bytes_prose` is the primary metric, and the 4,000-line cap is no longer treated as a writing budget (#2295).
+- **README Demo points at the v0.11.0 English/Japanese v2 intro videos** (~55s full cuts from `media/intro-video-v2`). The retired HyperFrames `PROVENANCE.md` opening claim is updated so it no longer says the README still references that cut. (#2297, #2307)
+- **Autonomous-execution preamble forbids stopping for a context-budget reason and limits reports to outcome / next action.** Resume after exhaustion stays with the existing compact/recovery path. (#2279)
+
+### Fixed
+
+- **`iterate` promotes a missing review-result JSON at the cycle boundary to a repair gate** — if the previous cycle's result is still in context it is saved immediately through the existing helper; otherwise the cycle counter is held (`INC=held`) and the review is re-run. LOST annotation and trend calculation stay unchanged. (#2305)
+- **`/rite:cleanup` / `/rite:issue-close` still sync a parent Issue's Projects Status to Done when the parent is already CLOSED** — close-idempotency skip and board sync are separated, so an already-closed parent with all children closed still reaches Done. (#2301)
+- **Reviewer spawn-spread is measured from the orchestrator's spawn timestamp**, not from the time the report is written, so a long parallel review is no longer misclassified as serialized. Reviewers in the same message share one value. (#2281)
+- **`/rite:batch-run --merge` completion text no longer says "excluding failed" when `failed=[]`.** A non-empty failed list is still listed on its own line. (#2299)
+- **`/rite:release` can complete a develop→main promotion safely** — the prep PR now runs `/rite:iterate`; promotion commits must already have arrived via merged PRs (`release-promotion-verify.sh`); the verified head SHA is pinned with `--match-head-commit`; Phase 2.5 stages only the seven release files (sandbox-safe); with `multi_session.enabled` the prep branch is placed in the issue session worktree; Phase 3 exits that worktree (`action: keep`) before touching `main`. (#2269, #2268, #2270, #2271)
+
 ## [0.10.0] - 2026-08-12
 
 ### Added
@@ -870,6 +886,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.11.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.9.0...v0.9.1

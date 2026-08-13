@@ -25,6 +25,22 @@ Fixed/Changed/Removed エントリは修正対象の旧挙動を述べてよい�
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-13
+
+### 変更
+
+- **SKILL 記述ダイエット: outcome + 検証 + 機械ステップへ再構成し、rationale を同梱 references へ退避** — 散文（`bytes_prose`）だけを圧縮・退避し、機械レール（fenced bash・分岐表・sentinel）はバイト一致のまま残す。手法は `plugins/rite/references/skill-diet-method.md`（線引きチェックリスト・pin 移送手順・測定テンプレート）に記録し、`open` パイロットで約 −36% を確認した (#2278)。第 1 波は `iterate`（−33.3%）/ `fix`（−32.3%）/ `pr-review`（−25.5%）(#2285, #2286, #2287)。第 2 波は残り全数: 大型 4 本（`setup` / `cleanup` / `wiki-lint` / `wiki-ingest`）(#2292)、中型 4 本（`pr-create` / `lint` / `issue-implement` / `issue-close`）(#2293)、小型残り 19 本 (#2294)。CLAUDE.md のスキル行数原則も diet 世代基準へ改訂し、主指標を `bytes_prose` とし、4,000 行上限を「書いてよい量」としては使わない (#2295)。
+- **README Demo が v0.11.0 日英 v2 紹介動画を指すようになった**（`media/intro-video-v2` の約 55 秒フルカット）。退役した HyperFrames 版 `PROVENANCE.md` の冒頭宣言も、README が今もそのカットを参照しているという主張を外すよう更新した。(#2297, #2307)
+- **自律実行前文が、コンテキスト制限を理由にした停止を禁じ、報告を outcome / 次の一手に限る** — 枯渇時の再開は既存の compact / recovery 経路のまま。(#2279)
+
+### 修正
+
+- **`iterate` が、cycle 境界で前 cycle の review-result JSON が無いとき修復ゲートへ昇格する** — コンテキストに結果が残っていれば既存 save helper で即時保存し、残っていなければ cycle counter を進めず（`INC=held`）再レビューする。LOST 注記とトレンド計算は変えない。(#2305)
+- **`/rite:cleanup` / `/rite:issue-close` が、親 Issue が既に CLOSED でも Projects Status を Done に同期する** — close の冪等 skip と board 同期を分離し、全子 CLOSED の already-closed 親も Done に到達する。(#2301)
+- **reviewer の spawn spread 計測を orchestrator の spawn 時刻から取る** — レポート執筆時刻に寄ると長時間の並列レビューが直列化と誤判定されていた。同一メッセージの reviewer は同じ値を共有する。(#2281)
+- **`/rite:batch-run --merge` の完了文が、`failed=[]` のとき「failed 扱いを除き」を出さない** — 非空のときは専用行で列挙する。(#2299)
+- **`/rite:release` が develop→main 昇格を安全に完走できるようになった** — リリース準備 PR に `/rite:iterate` を組み込み、昇格コミットは既マージ PR 経由であること（`release-promotion-verify.sh`）を検証し、検証済み head SHA を `--match-head-commit` で固定する。Phase 2.5 の staging は更新対象 7 ファイルに限定（sandbox 安全）。`multi_session.enabled` 時は準備ブランチを issue session worktree に置き、Phase 3 は `main` を触る前にその worktree から退出する（`action: keep`）。(#2269, #2268, #2270, #2271)
+
 ## [0.10.0] - 2026-08-12
 
 ### 追加
@@ -867,6 +883,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.11.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.9.0...v0.9.1
