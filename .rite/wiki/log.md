@@ -1,5 +1,6 @@
 ## 2026-08-13
 
+* **Skip**: [20260813T051635Z-pr-2298.md](raw/reviews/20260813T051635Z-pr-2298.md) — rite-plugin: context-budget 停止禁止と報告規律は autonomous-execution.md に既に実装済み。0 指摘レビューは一時結果で新規 domain 経験則なし
 * **Skip**: [20260813T042943Z-pr-2296.md](raw/reviews/20260813T042943Z-pr-2296.md) — detector-candidate: spawn spread の値源は orchestrator 発行時刻であり、review-spawn-spread-check.sh と pr-review 4.3.1/4.6 が機械検証する
 * **Skip**: [20260813T033429Z-pr-2295.md](raw/reviews/20260813T033429Z-pr-2295.md) — セッション記録のみ: AC 充足と実測なし指摘の降格は既存の実測ゲート / プラグイン原則に既出で新規経験則なし
 * **Skip**: [20260813T014159Z-pr-2292.md](raw/reviews/20260813T014159Z-pr-2292.md) — detector-candidate: SKILL 散文 diet の bytes_rail 同一性は skill-rail-diff-check.sh が機械検証する。0 指摘レビューは一時結果で新規経験則なし
