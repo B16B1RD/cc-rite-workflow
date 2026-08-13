@@ -39,7 +39,7 @@ Fixed/Changed/Removed エントリは修正対象の旧挙動を述べてよい�
 - **`/rite:cleanup` / `/rite:issue-close` が、親 Issue が既に CLOSED でも Projects Status を Done に同期する** — close の冪等 skip と board 同期を分離し、全子 CLOSED の already-closed 親も Done に到達する。(#2301)
 - **reviewer の spawn spread 計測を orchestrator の spawn 時刻から取る** — レポート執筆時刻に寄ると長時間の並列レビューが直列化と誤判定されていた。同一メッセージの reviewer は同じ値を共有する。(#2281)
 - **`/rite:batch-run --merge` の完了文が、`failed=[]` のとき「failed 扱いを除き」を出さない** — 非空のときは専用行で列挙する。(#2299)
-- **`/rite:release` が develop→main 昇格を安全に完走できるようになった** — リリース準備 PR に `/rite:iterate` を組み込み、昇格コミットは既マージ PR 経由であること（`release-promotion-verify.sh`）を検証し、検証済み head SHA を `--match-head-commit` で固定する。Phase 2.5 の staging は更新対象 7 ファイルに限定（sandbox 安全）。`multi_session.enabled` 時は準備ブランチを issue session worktree に置き、Phase 3 は `main` を触る前にその worktree から退出する（`action: keep`）。(#2269, #2268, #2270, #2271)
+- **プロジェクトローカルの `/release` スキルが develop→main 昇格を安全に完走できるようになった** — リリース準備 PR に `/rite:iterate` を組み込み、昇格コミットは既マージ PR 経由であること（`release-promotion-verify.sh`）を検証し、検証済み head SHA を `--match-head-commit` で固定する。Phase 2.5 の staging は更新対象 7 ファイルに限定（sandbox 安全）。`multi_session.enabled` 時は準備ブランチを issue session worktree に置き、Phase 3 は `main` を触る前にその worktree から退出する（`action: keep`）。(#2269, #2268, #2270, #2271)
 
 ## [0.10.0] - 2026-08-12
 

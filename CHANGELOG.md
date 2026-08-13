@@ -41,7 +41,7 @@ that aid upgraders are kept verbatim.
 - **`/rite:cleanup` / `/rite:issue-close` still sync a parent Issue's Projects Status to Done when the parent is already CLOSED** — close-idempotency skip and board sync are separated, so an already-closed parent with all children closed still reaches Done. (#2301)
 - **Reviewer spawn-spread is measured from the orchestrator's spawn timestamp**, not from the time the report is written, so a long parallel review is no longer misclassified as serialized. Reviewers in the same message share one value. (#2281)
 - **`/rite:batch-run --merge` completion text no longer says "excluding failed" when `failed=[]`.** A non-empty failed list is still listed on its own line. (#2299)
-- **`/rite:release` can complete a develop→main promotion safely** — the prep PR now runs `/rite:iterate`; promotion commits must already have arrived via merged PRs (`release-promotion-verify.sh`); the verified head SHA is pinned with `--match-head-commit`; Phase 2.5 stages only the seven release files (sandbox-safe); with `multi_session.enabled` the prep branch is placed in the issue session worktree; Phase 3 exits that worktree (`action: keep`) before touching `main`. (#2269, #2268, #2270, #2271)
+- **The project-local `/release` skill can complete a develop→main promotion safely** — the prep PR now runs `/rite:iterate`; promotion commits must already have arrived via merged PRs (`release-promotion-verify.sh`); the verified head SHA is pinned with `--match-head-commit`; Phase 2.5 stages only the seven release files (sandbox-safe); with `multi_session.enabled` the prep branch is placed in the issue session worktree; Phase 3 exits that worktree (`action: keep`) before touching `main`. (#2269, #2268, #2270, #2271)
 
 ## [0.10.0] - 2026-08-12
 
