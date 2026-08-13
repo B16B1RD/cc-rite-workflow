@@ -60,7 +60,7 @@ SNS カットは「学ばない → draft で待つ自律ループ → 学びが
 文字幅差を吸収する局所的な寸法調整に限る。ファイル名を縛るのは `assemble.sh -P` が `-d` の指す
 ディレクトリ配下に同じ 7 つの basename を決め打ちで要求するためであり、宣言尺を縛るのは上表の
 カット構成とクロスフェードのオフセット計算の前提だからであり、`@keyframes` と `animation` 宣言を
-縛るのは 2 本のカットを同じ動きで進めるためである。寸法調整を例外にするのは、英語は
+縛るのは対応する 2 本を同じ動きで進めるためである。寸法調整を例外にするのは、英語は
 同じ意味でも字幅が変わり、1280x720 に収めるには局所的な調整が要るためである（現に M7 の
 `.loop-label` は英語ラベルが長く、`inset` の左右マージンだけ JA と異なる）。
 
@@ -150,8 +150,9 @@ npm run check
 ./assemble.sh -P -d out/en -o out/rite-intro-v2-full-en.mp4
 ```
 
-`npm run check` の決定論スイープは fixture 1 本と日英 14 シーンを各 2 回レンダするため、Chrome の
-起動を 30 回伴う。**sandbox 外**で実行する（下記「環境前提」参照）。
+`npm run check` は契約チェックで Chrome を 4 回、決定論スイープで fixture 1 本と日英 14 シーンを
+各 2 回レンダして 30 回、合わせて 34 回起動する。**sandbox 外**で実行する（`./check-contract.sh`
+単体も Chrome を要する。下記「環境前提」参照）。
 リポジトリ root の `rite-config.yml` の `commands.test` には登録しない — 本リポジトリは
 markdown 中心で、全 PR の lint 経路に Chrome 実行を持ち込むのは Issue #2240 の Non-goal
 （CI での動画レンダリング）に反するため。
