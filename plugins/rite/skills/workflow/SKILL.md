@@ -10,11 +10,7 @@ argument-hint: ""
 
 # /rite:workflow
 
-rite ワークフロー全体のガイドを表示
-
----
-
-When this command is executed, run the following phases in order.
+rite ワークフロー全体のガイドを表示。次の Phase を順に実行する。
 
 ## Phase 1: Check Current State
 
@@ -165,12 +161,10 @@ Based on the state confirmed in Phase 1, suggest the next action.
   4. /rite:ready <pr> → /rite:merge <pr> → /rite:cleanup で完了
 ```
 
-> **multi-session 時の注意**: `multi_session.enabled: true` の場合、この作業は
-> セッション worktree（`.rite/worktrees/issue-{N}`）内で進行しています。中断後は
-> `/rite:recover` がその worktree へ自動で再入場します（消失していればブランチから
-> 再構築）。main checkout のカレントブランチは base（`branch.base`）のままにしておく
-> こと — rite は main checkout のブランチを切り替えません。詳細は
-> `docs/designs/multi-session-worktree.md` 参照。
+> **multi-session 時の注意**: 作業はセッション worktree（`.rite/worktrees/issue-{N}`）内。
+> 中断後は `/rite:recover` がその worktree へ再入場する。main checkout のカレントブランチは
+> base（`branch.base`）のまま。詳細: `docs/designs/multi-session-worktree.md`。
+> rationale: references/rationale.md#main-checkout-untouched
 
 > `{owner_repo}` は [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute する。
 
@@ -228,7 +222,7 @@ Display the results:
 ```
 ## Language Support
 
-During the initialization check in Phase 1.1, read the `language` field from `rite-config.yml` using the Read tool, and determine the output language for Phase 2 onward.
+Phase 1.1 で `rite-config.yml` の `language` を Read し、Phase 2 以降の出力言語を決める。
 
 | Setting | Behavior |
 |---------|----------|
@@ -242,7 +236,7 @@ During the initialization check in Phase 1.1, read the `language` field from `ri
 
 **Dynamic language switching implementation:**
 
-The workflow diagram and command list in Phase 2 should switch output according to the determined language. The following table shows representative examples — all user-facing text in the templates should be switched similarly:
+Phase 2 の図・一覧は確定言語で出し分ける。下表は代表例 — ユーザー向け文面は同様に切り替える:
 
 | Element | Japanese (`ja`) | English (`en`) |
 |---------|-----------------|----------------|
@@ -252,4 +246,5 @@ The workflow diagram and command list in Phase 2 should switch output according 
 | Action guidance | `次のステップ:` | `Next Steps:` |
 | Tips | `💡 Tips: Context limit reached で中断した場合は /clear → /rite:recover で再開できます` | `💡 Tips: If interrupted by context limit, run /clear → /rite:recover to resume` |
 
-**Note**: Status values (Todo, In Progress, etc.) use the GitHub Projects setting values as-is, so they are common regardless of the language setting.
+**Note**: Status 値は GitHub Projects の設定値をそのまま使う。
+rationale: references/rationale.md#status-language-invariant

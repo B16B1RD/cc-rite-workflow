@@ -152,37 +152,37 @@ rite-workflow/
 │ ├── iterate/ # /rite:iterate (review ⇄ fix loop, mergeable まで; + references/rationale.md)
 │ ├── pr-review/ # /rite:pr-review (multi-reviewer; + references/) — sub-skill
 │ ├── fix/ # /rite:fix (review 指摘対応; + references/) — sub-skill
-│ ├── ready/ # /rite:ready (Ready for review 化)
-│ ├── merge/ # /rite:merge (squash merge)
+│ ├── ready/ # /rite:ready (Ready for review 化; + references/rationale.md)
+│ ├── merge/ # /rite:merge (squash merge; + references/rationale.md)
 │ ├── cleanup/ # /rite:cleanup (+ references/archive-procedures.md; + references/rationale.md)
-│ ├── batch-run/ # /rite:batch-run (複数 Issue 順次 open→iterate; --merge で ready→merge→cleanup まで)
+│ ├── batch-run/ # /rite:batch-run (複数 Issue 順次 open→iterate; --merge で ready→merge→cleanup まで; + references/rationale.md)
 │ ├── pr-create/ # /rite:pr-create (draft PR 作成; + references/rationale.md) — sub-skill
 │ # --- Issue 管理 ---
-│ ├── issue-create/ # /rite:issue-create (+ references/: complexity-gate / contract-section-mapping / slug-generation / body-fact-check / unknowns-boundary-rationale)
-│ ├── issue-list/ # /rite:issue-list
-│ ├── issue-update/ # /rite:issue-update
+│ ├── issue-create/ # /rite:issue-create (+ references/: complexity-gate / contract-section-mapping / slug-generation / body-fact-check / unknowns-boundary-rationale; + references/rationale.md)
+│ ├── issue-list/ # /rite:issue-list (+ references/rationale.md)
+│ ├── issue-update/ # /rite:issue-update (+ references/rationale.md)
 │ ├── issue-close/ # /rite:issue-close (+ references/rationale.md)
-│ ├── issue-edit/ # /rite:issue-edit
+│ ├── issue-edit/ # /rite:issue-edit (+ references/rationale.md)
 │ ├── issue-implement/ # /rite:issue-implement (sub-skill, /rite:open から呼出; + references/rationale.md)
 │ # --- Wiki ---
-│ ├── wiki-init/ # /rite:wiki-init
-│ ├── wiki-query/ # /rite:wiki-query
+│ ├── wiki-init/ # /rite:wiki-init (+ references/rationale.md)
+│ ├── wiki-query/ # /rite:wiki-query (+ references/rationale.md)
 │ ├── wiki-ingest/ # /rite:wiki-ingest (+ references/wiki-troubleshooting.md; + references/rationale.md)
 │ ├── wiki-lint/ # /rite:wiki-lint (+ references/: broken-ref-resolution / bash-cross-boundary-state-transfer / descriptive-refs-rationale; + references/rationale.md)
 │ # --- meta / top-level ---
 │ ├── setup/ # /rite:setup (+ --upgrade; + references/rationale.md)
-│ ├── getting-started/ # /rite:getting-started
-│ ├── workflow/ # /rite:workflow (rite ワークフロー全体ガイド)
-│ ├── unknowns/ # /rite:unknowns (実装前探索: ブラインドスポット/ブレスト/プロトタイプ/インタビュー; + references/feedback-mode.html)
-│ ├── investigate/ # /rite:investigate (構造化コード調査)
-│ ├── learn/ # /rite:learn (Socratic 理解度チェック)
+│ ├── getting-started/ # /rite:getting-started (+ references/rationale.md)
+│ ├── workflow/ # /rite:workflow (rite ワークフロー全体ガイド; + references/rationale.md)
+│ ├── unknowns/ # /rite:unknowns (実装前探索: ブラインドスポット/ブレスト/プロトタイプ/インタビュー; + references/feedback-mode.html; + references/rationale.md)
+│ ├── investigate/ # /rite:investigate (構造化コード調査; + references/rationale.md)
+│ ├── learn/ # /rite:learn (Socratic 理解度チェック; + references/rationale.md)
 │ ├── lint/ # /rite:lint (品質チェック; orchestrator から呼ばれる sub-skill 兼用; + references/plugin-checks-rationale.md; + references/rationale.md)
-│ ├── recover/ # /rite:recover (中断した作業の再開)
-│ ├── skill-suggest/ # /rite:skill-suggest
-│ ├── template-reset/ # /rite:template-reset
+│ ├── recover/ # /rite:recover (中断した作業の再開; + references/rationale.md)
+│ ├── skill-suggest/ # /rite:skill-suggest (+ references/rationale.md)
+│ ├── template-reset/ # /rite:template-reset (+ references/rationale.md)
 │ # --- orchestration / knowledge (auto-discovered context) ---
-│ ├── rite-workflow/ # state detection / phase routing / 共有コーディング原則 (SKILL.md + references/)
-│ └── reviewers/ # reviewer 選定 + テーブル (+ references/; per-reviewer profile は agents/{type}-reviewer.md)
+│ ├── rite-workflow/ # state detection / phase routing / 共有コーディング原則 (SKILL.md + references/; + references/rationale.md)
+│ └── reviewers/ # reviewer 選定 + テーブル (+ references/; per-reviewer profile は agents/{type}-reviewer.md; + references/rationale.md)
 ├── hooks/ # Claude Code lifecycle hooks + helpers
 │ ├── hooks.json # Hook registration manifest
 │ ├── session-start.sh / session-end.sh / session-ownership.sh

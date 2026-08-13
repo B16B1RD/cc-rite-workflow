@@ -132,7 +132,8 @@ title 類似度 / label 一致 / 更新日時 / state（OPEN > CLOSED）で top 
 
 ### 4.0 仮定表面化（Assumption Surfacing）
 
-Contract 生成（4.2）の前に、モデルが暗黙に補完した仮定を表面化し 3 分類で処理する。**設計原則**: 質問はユーザーの頭の中にしかない情報（ユーザー固有の意思決定）のみに限定し、リポジトリ・Wiki から導出可能な情報はモデルが探索で自己解決する。
+Contract 生成（4.2）の前に、暗黙の仮定を表面化し 3 分類する。質問はユーザー固有の意思決定のみ。
+rationale: references/rationale.md#ask-only-user-unique
 
 **探索サマリ検出時の軽量化**: ステップ 1.3.1 で「# 探索サマリ:」を検出した場合、以下の手順 1-3 に次の軽量化を適用する（rationale: [`references/unknowns-boundary-rationale.md#なぜ探索サマリ検出で-4050-を丸ごとスキップしないか`](./references/unknowns-boundary-rationale.md#なぜ探索サマリ検出で-4050-を丸ごとスキップしないか)）:
 
@@ -332,7 +333,8 @@ fi
 
 ### 4.4 完了レポート
 
-完了レポートの最終 2 行は `<!-- skill return signal: caller must continue next step -->` + `<!-- [create:returned-to-caller:{issue_number}] -->` HTML コメント sentinel とし、user-visible な末端は `✅ ...` 完了メッセージで終わる。sentinel は hook / grep 契約のため必須だが、HTML コメント化することでユーザーに「完了したのか途中なのか」の判別を阻害しない。
+完了レポートの最終 2 行は `<!-- skill return signal: caller must continue next step -->` + `<!-- [create:returned-to-caller:{issue_number}] -->`。user-visible な末端は `✅ ...`。
+rationale: references/rationale.md#sentinel-html-comment
 
 ```markdown
 ✅ Issue #{issue_number} を作成しました
@@ -353,7 +355,8 @@ fi
 <!-- [create:returned-to-caller:{issue_number}] -->
 ```
 
-以上で `/rite:issue-create` は完了（flow-state には触れない）。
+以上で完了（flow-state には触れない）。
+rationale: references/rationale.md#no-flow-state
 
 ---
 
@@ -397,9 +400,8 @@ fi
 
 ### 5.1.1 仕様書の断定のファクトチェック
 
-5.1 で生成した設計仕様書に対して ステップ 4.2.1 と同一の検査を適用する。**Read tool で [`references/body-fact-check.md`](./references/body-fact-check.md) を読み込んでから検査する**（4.2.1 と同じ共通参照。裏取りコマンド表は同 reference にのみ存在するため、読込を省くと検査が実行できない）。分解パスは ステップ 4.1 を通らないため確定 Complexity を持たないが、親仕様書は親 Complexity が `XL` 固定（5.5 Step 1 の helper 契約）のため **3 クラスすべて**を検査範囲とする（ステップ 3.1 の分解判定は Complexity 以外の条件でも成立しうるため、見込み値を根拠にしない）。検査対象 0 件時の silent skip・`CONTRADICTED` の 3 択・自己矛盾候補の表面化・`UNVERIFIED` の「要確認」付記はいずれも 4.2.1 と同一。裏取りコマンドが失敗した場合の分類も 4.2.1 と同じく reference のエラー処理表に委ね、条件を本体へ写さない。表面化した項目は 5.2 のユーザー確認より**前**に解消する（5.2 の 3 択に混ぜない）。**承認された訂正・付記を反映した仕様書を以降の `{spec_document}` とする** — 5.2 の提示も 5.5 Step 1 (B) が `parent_body.md` へ書く内容も、反映後の版を指す（4.2 が「Step 4.2.1 の検証を経て Step 4.3 で渡す」と配線しているのと同型）。**5.2 で「分解を修正」が選ばれて仕様書が再生成された場合は、本ステップを再実行する** — ただし既に決着済みの項目は再質問しない（決定内容をセッション状態で持ち越す。`issue-edit` Phase 3.1.1 が同じ再入問題に対して採っている扱いと揃える）。
-
-検査対象は 5.1 の設計仕様書に閉じる。5.5 で生成する Sub-Issue body は本ステップの対象外とする（本機能の Scope は 4.2 直後と 5.1 後に限定されており、検査を生成地点である 5.5 まで広げるのは別 Issue の範囲）。
+5.1 の設計仕様書に ステップ 4.2.1 と同一の検査を適用する。**先に [`references/body-fact-check.md`](./references/body-fact-check.md) を Read する**。親仕様書は親 Complexity `XL` 固定のため **3 クラスすべて**を検査する。検査対象 0 件の silent skip・`CONTRADICTED` の 3 択・自己矛盾・`UNVERIFIED` 付記は 4.2.1 と同一。表面化は 5.2 より**前**。**承認反映後の仕様書を `{spec_document}` とする**。**5.2 で「分解を修正」なら本ステップを再実行**（決着済みは再質問しない）。対象は 5.1 の仕様書に閉じ、5.5 の Sub-Issue body は対象外。
+rationale: references/rationale.md#fact-check-before-create
 
 ### 5.2 ユーザー確認
 
@@ -407,7 +409,8 @@ AskUserQuestion で「この分解で進める / 分解を修正 / 中止」を�
 
 ### 5.3 + 5.4 + 5.5 Step 1: 親 Issue 作成 + Sub-Issue 一括作成 + fetch（helper 委譲）
 
-> **3 段プロトコル**: 親作成・Sub 一括作成・link・fetch は `scripts/decompose-issues.sh` に委譲する。LLM は (A) workdir を `mktemp` で確保 → (B) **Write tool** で各 body を raw ファイル化＋spec.json 生成（heredoc malform 源を撤廃）→ (C) helper を単一呼び出し、の 3 段で実行する。helper が spec の `workdir` を trap で cleanup し、3 つの `[CONTEXT]` marker と fetch_output を emit するので、Step 5.5 Step 2/3 はそれを literal parse する。
+> **3 段プロトコル**: 親作成・Sub 一括作成・link・fetch は `scripts/decompose-issues.sh` に委譲する。LLM は (A) workdir を `mktemp` で確保 → (B) **Write tool** で各 body を raw ファイル化＋spec.json 生成 → (C) helper を単一呼び出し。helper が `workdir` を trap cleanup し、3 つの `[CONTEXT]` marker と fetch_output を emit する。
+> rationale: references/rationale.md#decompose-three-stage
 
 **(A) workdir 確保**
 
@@ -492,7 +495,8 @@ fi
 
 ### 5.6 完了レポート
 
-Decompose path も完了レポートの最終 2 行は `<!-- skill return signal: caller must continue next step -->` + `<!-- [create:returned-to-caller:{parent_issue_number}] -->` HTML コメント sentinel で終わる。Single Issue path と同じく、sentinel は hook / grep 契約のため必須で、HTML コメント化することで user-visible な末端は `✅ ...` 完了メッセージとなる。`link_failures > 0` 時の警告ブロックは sentinel より前に挿入する。
+Decompose path も最終 2 行は `<!-- skill return signal: caller must continue next step -->` + `<!-- [create:returned-to-caller:{parent_issue_number}] -->`。`link_failures > 0` の警告は sentinel より前。
+rationale: references/rationale.md#sentinel-html-comment
 
 ```markdown
 ✅ Issue #{parent_issue_number} を分解して {sub_count} 件の Sub-Issue を作成しました
@@ -522,9 +526,8 @@ Decompose path も完了レポートの最終 2 行は `<!-- skill return signal
 - 復旧: `bash {plugin_root}/scripts/link-sub-issue.sh {owner} {repo} {parent_issue_number} {sub_X_number}` を該当 Sub-Issue ごとに手動再実行してください
 ```
 
-以上で `/rite:issue-create` は完了。
-
-> **Note**: 本コマンドは Issue 作成のみで work phase を持たず、flow-state を init / 所有しない。したがって完結時に flow-state を completed/inactive 化する処理は持たない。これは別の active な work フロー（`/rite:open` 等）の途中で本コマンドが sub-task として呼ばれたとき、親セッションの flow-state を誤って上書きしないための設計（standalone 実行でも flow-state には一切触れない）。
+以上で完了。flow-state は init / 所有しない。
+rationale: references/rationale.md#no-flow-state
 
 ---
 

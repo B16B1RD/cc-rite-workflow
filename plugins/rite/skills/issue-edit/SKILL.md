@@ -9,15 +9,8 @@ argument-hint: "<issue_number>"
 
 # /rite:issue-edit
 
-Interactively edit an existing Issue's title, body, and Projects fields
-
----
-
-## Overview
-
-This command is for **interactively** editing existing Issue content.
-
-### Difference from `/rite:issue-update`
+既存 Issue の title / body / Projects fields を対話編集する。
+rationale: references/rationale.md#vs-issue-update
 
 | Command | Role |
 |---------|------|
@@ -36,7 +29,7 @@ This command is for **interactively** editing existing Issue content.
 
 ---
 
-Execute the following phases in order when this command is invoked.
+次の Phase を順に実行する。
 
 ## Arguments
 
@@ -255,7 +248,7 @@ Display the pending changes in diff format:
 
 Apply the same verification the `issue-create` skill runs at ステップ 4.2.1 to the **changed body portion only** — the sections shown in the 3.1 diff, not the whole body.
 
-**Load [`../issue-create/references/body-fact-check.md`](../issue-create/references/body-fact-check.md) with the Read tool before running the check** (shared SoT — do not duplicate the logic here). The detection rules, the **back-verification command table**, the **three-value handling** (including the stderr `WARNING` obligation on every non-`VERIFIED` verdict **and on class-3 self-contradiction candidates**, how that warning must be emitted, and the class-2 qualifier suggestions), and the error handling exist only in that reference; skipping the load leaves no commands to run, which drops the check into the memory-based `VERIFIED` verdict the reference forbids.
+**検査前に [`../issue-create/references/body-fact-check.md`](../issue-create/references/body-fact-check.md) を Read する**（共有 SoT。検出規則・裏取りコマンド表・3 値処理・エラー処理は同 reference にのみ存在する。読み込まずに進めると記憶ベースの `VERIFIED` に落ちる）。
 
 **Complexity source**: use the Projects Complexity field value retrieved in Phase 1.3. When the Issue is not registered in Projects (or the field is unset), narrow the scope to the **number-reference class only** — this errs toward under-detection, matching the reference's stated preference.
 
@@ -268,15 +261,14 @@ Apply the same verification the `issue-create` skill runs at ステップ 4.2.1 
 | `UNVERIFIED` present | Annotate the body with 「要確認」(or 「要検証」for external-spec claims) as the reference's three-value table specifies. Do not block the edit |
 | Back-verification command failed | Classify per the reference's エラー処理 table, then proceed. **Do not restate its conditions here** — summarising them drops branches (the table splits on `gh` *and* `git` stderr signals) |
 
-This check raises **its own `AskUserQuestion`** — it does not fold into the Phase 3.2 confirmation. That keeps the reference's per-call item limit and its overflow rule applicable verbatim (Phase 3.2's own question never competes for the slots — and note the limit is per `AskUserQuestion` call, not a total budget: the reference resolves any overflow by issuing further calls until no items remain), and it settles every fact-check decision before the user is asked to approve the edit.
+本チェックは **独自の `AskUserQuestion`** を出す（Phase 3.2 に折り込まない）。承認結果を `{new_body}` に反映したら **3.1 の diff を再表示する**（再検査はしない）。annotation-only でも再表示する。byte 同一のときだけ skip。
+rationale: references/rationale.md#fact-check-own-question
 
-Apply the approved results to `{new_body}`, then **re-display the 3.1 diff blocks** — re-render the display only; do not re-run this check — so that what Phase 3.2 asks the user to approve, and what Phase 4.1 subsequently writes, is the post-check body. Re-display whenever this check changed `{new_body}`, **including annotation-only changes that raised no question**; skip it only when `{new_body}` is byte-identical to what 3.1 already displayed.
+自己矛盾候補は reference のクラス 3 節で評価する。**発火条件が `M 以上` のときだけ**スコープに入る。
+rationale: references/rationale.md#class3-scope
 
-Self-contradiction candidates sit on an axis orthogonal to the table above — but only the *verdict* axis, not the 発火条件. Evaluate them per the reference's クラス 3 section regardless of which row applied, **but only when the 発火条件 puts class 3 in scope (`M 以上`)**; when Phase 1.3 gave no Complexity and the scope narrowed to the number-reference class, class 3 is out of scope too. That section is the single definition of when to raise them, so both consumers stay in step.
-
-When a claim already carries a 「要確認」/「要検証」annotation, skip only the **annotation step** — still run the verification. The `issue-create` skill annotates at ステップ 4.2.1 and 5.1.1, so an edited section can arrive here with those markers already in place, and an unguarded pass would add a second one. Skipping the verification itself would be wrong: the marker records that the claim was once unverifiable, and says nothing about the claim as it now reads. Rewriting an annotated claim (`「#N で A→B」` → `「#N で B→A」`) is squarely inside this phase's 「changed body portion」 scope, so it must be re-checked; if the verdict is still `UNVERIFIED`, keep the existing marker and do not add a second one, and if it turns into `CONTRADICTED`, raise it as usual.
-
-Also skip any claim the user has already decided **in this session**. Carry each decision (`訂正案を採用` / `要確認を付記して続行` / `そのまま続行` / `修正して続行`) in session state rather than inferring it from the body: `そのまま続行` leaves no marker, so a body-only guard would re-ask it on every re-entry from Phase 3.2's 「変更を修正」 or Phase 5.2's 「追加の修正」, re-consuming `AskUserQuestion` slots on every pass without progressing.
+既存の「要確認」/「要検証」は **annotation ステップだけ skip** し、検証は走らせる。このセッションで決着済みの項目は再質問しない（決定は session state で持つ。body から推論しない）。
+rationale: references/rationale.md#annotated-claim-recheck
 
 ### 3.2 User Confirmation
 
@@ -376,7 +368,8 @@ gh api users/{owner} --jq '.type'
 
 #### 4.2.3 Retrieve Field Information
 
-**Important**: Option IDs must always be retrieved from the API. Only field IDs can be specified via `field_ids`; option IDs (Done, In Progress, etc.) are not included.
+**Important**: option ID は常に API から取る。`field_ids` で指定できるのは field ID だけ。
+rationale: references/rationale.md#option-ids-from-api
 
 ```bash
 gh project field-list {project_number} --owner {owner} --format json

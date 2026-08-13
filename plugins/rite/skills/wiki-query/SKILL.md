@@ -10,14 +10,7 @@ argument-hint: "<keywords>"
 
 # /rite:wiki-query
 
-Wiki Query エンジン。`.rite/wiki/index.md` からキーワード一致で関連ページを検索し、フォーマットされた Markdown コンテキストブロックとして出力する。やることは以下のシーケンシャルなタスク列:
-
-1. 事前チェック (Wiki 設定 / plugin root の解決)
-2. キーワードの決定 (引数 / AskUserQuestion)
-3. Query 実行 (`wiki-query-inject.sh` 呼び出し)
-4. 結果の扱い (マッチ有り / マッチ無し)
-
-rite ワークフロー各フェーズで自動注入することも、手動で任意キーワードから検索することも可能。共通パターン (ディレクトリ構造 / ブランチ管理) は [Wiki Patterns](../../references/wiki-patterns.md)、設計背景は [Experience Heuristics Persistence Layer — F3 Query サイクル](../../../../docs/designs/experience-heuristics-persistence-layer.md) を参照。
+`.rite/wiki/index.md` からキーワード一致で関連ページを検索し、Markdown コンテキストブロックとして出力する。共通パターンは [Wiki Patterns](../../references/wiki-patterns.md)、設計は [F3 Query サイクル](../../../../docs/designs/experience-heuristics-persistence-layer.md)。
 
 **Arguments** (オプショナル):
 
@@ -39,7 +32,8 @@ rite ワークフロー各フェーズで自動注入することも、手動で
 
 ### 1.1 Wiki 設定の確認
 
-`rite-config.yml` の `wiki.enabled` を確認する ([Wiki 有効判定パターン](../../references/wiki-patterns.md#wiki-有効判定パターン))。`wiki-query-inject.sh` 内で同じチェックを行うため、ここでは UX 上の早期メッセージ専用の probe 用簡易パーサとして読み取る (`ingest.md` ステップ 1.1 の YAML パース (set 解除済み probe ブロック) と機能的にはほぼ同等の lenient パーサ。値の真の採用は `wiki-query-inject.sh` 内の `_extract_yaml_value` が行う):
+`rite-config.yml` の `wiki.enabled` を確認する ([Wiki 有効判定パターン](../../references/wiki-patterns.md#wiki-有効判定パターン))。
+rationale: references/rationale.md#wiki-config-probe
 
 ```bash
 wiki_enabled=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
@@ -85,7 +79,8 @@ echo "plugin_root=$plugin_root"
 
 ### 2.2 引数未指定時
 
-引数が未指定の場合は `AskUserQuestion` でキーワード入力を促します。`AskUserQuestion` は選択式 UI のため、フリーテキスト入力には **Other 選択肢**を使います (既存 `skills/issue-edit/SKILL.md` Phase 2.1 と同じパターン):
+引数未指定時は `AskUserQuestion` でキーワード入力を促す。フリーテキストは **Other**。
+rationale: references/rationale.md#other-choice
 
 ```
 Wiki を検索するキーワードを入力してください。
@@ -104,7 +99,7 @@ Wiki を検索するキーワードを入力してください。
 
 ## ステップ 3: Query 実行
 
-`wiki-query-inject.sh` を呼び出して検索を実行します。結果は stdout に Markdown ブロックとして出力されます:
+`wiki-query-inject.sh` を呼び出す。結果は stdout の Markdown ブロック:
 
 ```bash
 # ステップ 1.2 の値をリテラルで埋め込む
@@ -127,21 +122,18 @@ bash "${plugin_root}/hooks/wiki-query-inject.sh" \
 | `--format full` | ページ本文まで含めて出力（コンテキスト消費が大きい） |
 | `--format compact` | タイトル・サマリーのみ（デフォルト） |
 
-詳細な検索動作が必要な場合は `--format full` を使い、全体把握には `--format compact` を使います。
-
 ---
 
 ## ステップ 4: 結果の扱い
 
 ### 4.1 マッチ有り
 
-`wiki-query-inject.sh` が Markdown ブロックを出力した場合、そのまま表示します。LLM はこの内容を参照してユーザーへの回答に役立てます。
-
-**ただし出力が `> ⚠️ Wiki index に登録行がありますが…` の 1 行だけの場合はマッチ有りではありません**。index に登録行はあるが Pass 1 が候補を抽出できなかった（カタログ形式のドリフト等）ことを示す通知で、経験則は 1 件も注入されていません。その 1 行を表示したうえで 4.2 のヒント（別キーワードでの再検索 / `/rite:wiki-ingest`）も併せて提示してください。本コマンドは stderr を捨てない唯一の経路なので、同趣旨の WARNING が 2 行 stderr にも出ています。
+Markdown ブロックをそのまま表示する。**出力が `> ⚠️ Wiki index に登録行がありますが…` の 1 行だけの場合はマッチ有りではない**。その 1 行を表示したうえで 4.2 のヒントも併せて提示する。
+rationale: references/rationale.md#warning-only-not-match
 
 ### 4.2 マッチ無し
 
-`wiki-query-inject.sh` が空出力の場合（該当ページ無し、Wiki 未初期化、ブランチ参照失敗など）は以下を表示:
+空出力（該当ページ無し、Wiki 未初期化、ブランチ参照失敗など）は以下を表示:
 
 ```
 該当する Wiki ページが見つかりませんでした（キーワード: {keywords}）。
@@ -156,7 +148,7 @@ bash "${plugin_root}/hooks/wiki-query-inject.sh" \
 
 ## 注入先フェーズ（自動統合）
 
-`wiki.auto_query: true` 時、以下のコマンドから内部で `wiki-query-inject.sh` が自動呼び出しされ、結果がコンテキストに注入される。手動での `/rite:wiki-query` 実行も引き続き利用可能:
+`wiki.auto_query: true` 時、以下から `wiki-query-inject.sh` が自動呼び出しされる。手動 `/rite:wiki-query` も利用可能:
 
 | コマンド | 注入タイミング | キーワードソース | 統合セクション |
 |---------|--------------|------------------|--------------|
