@@ -1,5 +1,6 @@
 ## 2026-08-13
 
+* **Skip**: [20260813T033429Z-pr-2295.md](raw/reviews/20260813T033429Z-pr-2295.md) — セッション記録のみ: AC 充足と実測なし指摘の降格は既存の実測ゲート / プラグイン原則に既出で新規経験則なし
 * **Skip**: [20260813T014159Z-pr-2292.md](raw/reviews/20260813T014159Z-pr-2292.md) — detector-candidate: SKILL 散文 diet の bytes_rail 同一性は skill-rail-diff-check.sh が機械検証する。0 指摘レビューは一時結果で新規経験則なし
 * **Skip**: [20260813T004958Z-pr-2287.md](raw/reviews/20260813T004958Z-pr-2287.md) — cycle 1 指摘 0。散文 diet / 層 A 不変は skill-diet-method.md が SoT。SPAWN_SPREAD=undetermined は Grok 環境固有で一般化不能
 * **lint:warning** — contradictions=0, stale=5, orphans=0, missing_concept=1, unregistered_raw=323, broken_refs=0
