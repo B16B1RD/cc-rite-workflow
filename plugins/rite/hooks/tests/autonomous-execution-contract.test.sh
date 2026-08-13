@@ -17,6 +17,10 @@ assert_grep "SoT limits end-turn to completion or user-only input" "$PREAMBLE" \
   'タスク完了またはユーザーにしか出せない入力でブロックされたときだけ turn を終える'
 assert_grep "SoT gives host-independent routine effort guidance" "$PREAMBLE" \
   'ルーチン作業を effort 調整可能なモデルで実行する場合は、過剰な熟考・検証を避けるため低めの effort を選ぶ（ホスト固有設定として強制しない）'
+assert_grep "SoT forbids self-stop for context-budget concern" "$PREAMBLE" \
+  'コンテキスト制限を理由に停止・要約・新セッション提案・作業の切り詰めをしない'
+assert_grep "SoT limits reports to outcome and next action" "$PREAMBLE" \
+  '報告は outcome と次の一手のみ'
 
 for skill in "$BATCH" "$ITERATE"; do
   assert_grep "$(basename "$(dirname "$skill")") references the autonomous execution SoT" "$skill" \
