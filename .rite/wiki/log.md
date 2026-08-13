@@ -1,6 +1,7 @@
 ## 2026-08-13
 
 * **Skip**: [20260813T064101Z-pr-2302.md](raw/reviews/20260813T064101Z-pr-2302.md) — rite-plugin: close 冪等と board 同期の分離は issue-close / archive-procedures に既実装。class B のテスト pin 弱さと proceed 文言はセッション残渣で新規 domain 経験則なし
+* **lint:warning** — contradictions=0, stale=6, orphans=0, missing_concept=1, unregistered_raw=327, broken_refs=0
 * **Update**: [共有パスに置く進捗/status 表示は到達する全経路で真な文言にする（成功含意を避ける）](pages/heuristics/status-display-truthful-for-all-reachable-paths.md) — raw/reviews/20260813T054655Z-pr-2300.md を統合（常時出す完了文に空集合除外を置くのも同型。除外は条件付き専用行に閉じ、常時行は全件完走の事実だけを述べる）
 * **Skip**: [20260813T051635Z-pr-2298.md](raw/reviews/20260813T051635Z-pr-2298.md) — rite-plugin: context-budget 停止禁止と報告規律は autonomous-execution.md に既に実装済み。0 指摘レビューは一時結果で新規 domain 経験則なし
 * **Skip**: [20260813T042943Z-pr-2296.md](raw/reviews/20260813T042943Z-pr-2296.md) — detector-candidate: spawn spread の値源は orchestrator 発行時刻であり、review-spawn-spread-check.sh と pr-review 4.3.1/4.6 が機械検証する
