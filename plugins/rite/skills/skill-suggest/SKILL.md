@@ -9,11 +9,7 @@ argument-hint: ""
 
 # /rite:skill-suggest
 
-Analyze the current context (Issue, changed files, work state) and suggest applicable skills.
-
----
-
-When this command is executed, run the following phases in order.
+現在のコンテキスト（Issue、変更ファイル、作業状態）を分析し、適用可能なスキルを提案する。次の Phase を順に実行する。
 
 ## Phase 1: Context Collection
 
@@ -73,10 +69,7 @@ Glob: plugins/**/SKILL.md
 Glob: plugins/**/*.skill.md
 ```
 
-**Note**: The reason for using the Glob tool instead of the Bash `find` command:
-- The Glob tool is optimized for file searches
-- Pattern matching is simple and fast
-- It is the standard file exploration method in Claude Code
+rationale: references/rationale.md#glob-not-find
 
 ### 2.2 Collect Information for Each Skill
 
@@ -102,15 +95,16 @@ Extract the following from each discovered skill file:
 
 ## Phase 3: Skill Matching
 
-Phase 1 で収集したコンテキスト（Issue の title / body / labels、ブランチ名、変更ファイル、プロジェクト構成）と Phase 2 のスキル情報（説明・キーワード・適用条件）を突き合わせ、**現在の作業に関連する rite スキルを関連度順に選ぶ**。数値スコアや重み付け表は使わない — 列挙表はそこにないコンテキストで提案を硬直させるため、何が今の作業を前に進めるかをコンテキスト全体から判断する。
+Phase 1 のコンテキストと Phase 2 のスキル情報を突き合わせ、**現在の作業に関連する rite スキルを関連度順に選ぶ**。数値スコアや重み付け表は使わない。
+rationale: references/rationale.md#no-numeric-score
 
-**判断の観点**（ヒントであり網羅ではない — 例えば wiki 作業中・hooks 修正中のような観点表に載らないコンテキストでも、作業内容とスキルの目的が噛み合うなら提案する）:
+**判断の観点**（ヒントであり網羅ではない）:
 
 - Issue の内容・ラベルとスキルの目的が噛み合うか（キーワードの表面一致ではなく、作業の種類とスキルの守備範囲で判断する）
 - 変更ファイルの種類・場所がスキルの対象領域に入るか（reviewer 系は `skills/reviewers/SKILL.md` の Available Reviewers 表の `Activation` 列が対象領域の SoT）
 - 現在のワークフロー状態（着手前 / 実装中 / レビュー待ち / merge 後 等）でそのスキルを使う局面か
 
-**出力の分類**（Phase 4 の表示契約）: 関連度の高い順に並べ、確信を持って勧められるものを【強く推奨】、状況によっては役立つものを【推奨】に分類する。関連が薄いスキルは提案に含めない。各提案には「なぜ今の作業に関連するか」の適用理由を必ず添える（Phase 4 表示の `{reason}` スロット）。
+**出力の分類**（Phase 4 の表示契約）: 関連度の高い順に【強く推奨】/【推奨】。薄いスキルは含めない。各提案に適用理由（`{reason}`）を必ず添える。
 
 ---
 

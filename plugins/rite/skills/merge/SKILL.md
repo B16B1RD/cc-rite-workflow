@@ -18,7 +18,7 @@ argument-hint: "[--force-ci] <pr_number>"
 **Input**: `[--force-ci]` + PR number (required)
 **Output**: `[merge:returned-to-caller]` / `[merge:not-ready]` / `[merge:error]`
 
-`gh pr merge --squash` を叩いて PR をマージするだけ。**cleanup は走らせない**。マージ後の cleanup (ブランチ削除 / Projects 更新 / Wiki ingest 等) は `/rite:cleanup` を別途実行する。
+`gh pr merge --squash` を叩いて PR をマージするだけ。**cleanup は走らせない**。マージ後の cleanup は `/rite:cleanup` を別途実行する。
 
 ## E2E Output Minimization
 
@@ -47,7 +47,8 @@ argument-hint: "[--force-ci] <pr_number>"
 
 ## ステップ 1: mergeable 判定
 
-Ready/merge 可否の権威判定はここ (`gh pr view`) に一本化する。flow-state は離散コマンド運用 (`/clear` 毎) では writer (`/rite:open`) と reader (本スキル) が別セッションになり常に空を読むため、前提チェックは設けず不在を正常系として扱う (設計ドキュメント `docs/designs/clear-per-command-flow-state-decoupling.md` §AC-4)。
+Ready/merge 可否の権威判定はここ (`gh pr view`) に一本化する。前提チェックは設けず flow-state 不在を正常系として扱う。
+rationale: references/rationale.md#no-flow-state-prereq
 
 ```bash
 force_ci=false
@@ -102,7 +103,8 @@ echo "[CONTEXT] MERGE_CHECKS_STATE=$checks_state"
 | `mergeable == "MERGEABLE"` + checks が全件 healthy | ステップ 2 へ |
 | `checks_state == "unknown"`（malformed / 未知 status・conclusion / jq 失敗） | `[merge:not-ready]` emit + 生の `statusCheckRollup` を表示して終了。`--force-ci` でも unknown は override しない |
 
-> **「再判定」option の挙動**: 再判定は **1 回のみ**。再判定後も `MERGEABLE` でなければ `[merge:not-ready]` で確定終了する (ping-pong 防止)。`gh pr view` の mergeable 計算は数秒〜数十秒遅延するため、再判定前に短時間待機 (sleep / 手動 wait) するかはユーザー判断に委ねる。自動 sleep は提供しない (再判定を自動で繰り返さない最小主義と整合。iterate の review⇄fix ループとは別経路で、こちらは 1 回のみの再判定に留める)。
+> **「再判定」option の挙動**: 再判定は **1 回のみ**。再判定後も `MERGEABLE` でなければ `[merge:not-ready]` で確定終了する。自動 sleep は提供しない。
+> rationale: references/rationale.md#rematch-once
 
 ### CI red の分類
 
@@ -199,9 +201,9 @@ fi
 
 ## 設計判断
 
-- **責務は merge のみ**: `gh pr merge` を叩く 1 アクションに専念。cleanup を呼び出さない (`pr.auto_cleanup_after_merge` 等の設定キーも追加しない)
 - **`--delete-branch=false` 明示**: `gh` の default 挙動に任せてクライアント側から削除 API を呼ぶことを抑止し、ブランチ削除を `/rite:cleanup` の責務に寄せる。ただし**抑止できるのは gh クライアント側の削除だけ**で、リポジトリ設定 `delete_branch_on_merge: true` の環境では GitHub がマージ完了時にサーバサイドで head ブランチを削除する。このフラグはそれを止められないため、「マージ後もブランチが必ず残る」ことは保証されない（#2016）。`/rite:cleanup` のリモート削除ステップは、この既削除を正常系として扱う（`skills/cleanup/SKILL.md` ステップ 5 の `git ls-remote --exit-code` ガード）
-- **flow-state は触らない**: マージ完了時点では `phase=ready` のまま。`completed` への遷移は `/rite:cleanup` 末尾で行う (既存仕様維持)
-- **マージ戦略は squash ハードコード**: 設定キー (`pr.merge_strategy` 等) を追加すると将来対応スキャフォルディングになる。`merge` / `rebase` に変えたい場合は本ファイルを直接編集する
-- **stderr 分離**: `gh pr merge` の stderr は `gh_err` tmpfile に退避し、成功時は warning (deprecation / rate-limit) のみ surface、失敗時は詳細を表示する。`2>&1` で stdout merge すると warning が混在し原因診断が困難になるため避ける
-- **CI gate は merge 直前だけ**: Ready 化は CI 完了前にも行う操作なので変更しない。`--force-ci` は緊急時の明示的 override であり、既定経路は unhealthy / pending / 分類不能を fail-closed で停止する
+- その他（責務は merge のみ / flow-state は触らない / squash ハードコード / stderr 分離 / CI gate は merge 直前だけ）:
+  rationale: references/rationale.md#merge-only
+  rationale: references/rationale.md#squash-hardcoded
+  rationale: references/rationale.md#stderr-split
+  rationale: references/rationale.md#ci-gate-at-merge

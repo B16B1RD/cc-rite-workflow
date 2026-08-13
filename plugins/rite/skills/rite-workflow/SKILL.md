@@ -11,48 +11,21 @@ user-invocable: false
 
 # Rite Workflow Skill
 
-This skill provides context for rite workflow operations.
+rite workflow 操作のコンテキスト: 状態検出・コマンド案内・共有原則。
 
-## Context
-
-When activated, this skill provides:
-
-1. **Workflow Awareness**
-   - Current branch and associated Issue
-   - Work memory state
-   - Status in GitHub Projects
-
-2. **Command Guidance**
-   - Suggest appropriate commands
-   - Remind about work memory updates
-   - Guide through workflow steps
-
-3. **Best Practices**
-   - Conventional Commits format
-   - Branch naming conventions
-   - PR template usage
-
-4. **Coding Principles**
-   - Avoid common AI coding failure patterns
-   - See [references/coding-principles.md](./references/coding-principles.md) for details
-
-5. **Common Principles**
-   - Reduce excessive AskUserQuestion usage
-   - See [references/common-principles.md](./references/common-principles.md) for details
-
-6. **Comment Best Practices**
-   - WHY > WHAT, no journal comments, no line/cycle number references, jargon whitelist enforcement
-   - See [references/comment-best-practices.md](./references/comment-best-practices.md) for details
+- Workflow Awareness / Command Guidance / Best Practices（Conventional Commits・ブランチ命名・PR テンプレート）
+- [coding-principles.md](./references/coding-principles.md) / [common-principles.md](./references/common-principles.md) / [comment-best-practices.md](./references/comment-best-practices.md)
 
 ## Workflow Identity (品質 > 時間/context)
 
-rite workflow の identity は「定義された step を全て実行し、生成物の品質を担保する」ことである。**時間的制約や context 残量を理由にした step の省略は禁止**。残量の推論も禁止。context が実際に枯渇した場合の正規経路は `/clear` + `/rite:recover` の組合せであり、LLM が自己判断でワークフローを短縮する経路は存在しない。
+rite workflow の identity は「定義された step を全て実行し、生成物の品質を担保する」ことである。**時間的制約や context 残量を理由にした step の省略は禁止**。残量の推論も禁止。context 枯渇の正規経路は `/clear` + `/rite:recover`。LLM が自己判断でワークフローを短縮する経路は存在しない。
 
-**さらに、workflow は途中で止まらない。そして最後のわけのわからない出力で終わらない。** sub-skill の return tag (`[lint:*]` / `[pr:created:N]` / `[review:*]` / `[fix:*]` / `[ready:returned-to-caller]`) は **turn 境界ではなく継続トリガ** である。ユーザー介入 (`continue` 入力) を要求せずに、同 turn 内で次 phase へ進む。
+**workflow は途中で止まらない。最後のわけのわからない出力で終わらない。** sub-skill の return tag (`[lint:*]` / `[pr:created:N]` / `[review:*]` / `[fix:*]` / `[ready:returned-to-caller]`) は **turn 境界ではなく継続トリガ**。ユーザー介入を要求せず同 turn 内で次 phase へ進む。
 
-`create.md` の flat workflow 終端で出力される `[create:returned-to-caller:{N}]` HTML コメント marker は、他 sub-skill の return tag と異なり create.md 内で完結する terminal sentinel である (create は orchestrator から sub-skill として呼ばれず、継続すべき caller skill を持たない)。`:returned-to-caller` という命名は terminal vocabulary (`:completed`) が LLM の turn-boundary heuristic を誤発火させるのを避けるための全 producer 統一形式であり、create に caller skill が存在することを意味しない (hook / grep 契約のため必須)。ワークフロー完了時の user-visible な最終行は sentinel marker ではなく「✅ Issue #{N} を作成しました: {url}」のような人間可読な完了メッセージとし、sentinel は HTML コメント化等で user-visible な末端に孤立させない。
+`[create:returned-to-caller:{N}]` は create.md 内で完結する terminal sentinel。user-visible な最終行は「✅ Issue #{N} を作成しました: {url}」等の完了メッセージとし、sentinel は HTML コメント化して末端に孤立させない。
 
-> **Sentinel naming policy**: skill return signal の literal は `:returned-to-caller` 形式で統一する。旧 `:completed` 形式は LLM の turn-boundary heuristic と衝突し、caller skill の次 step を skip して turn が暗黙終了する事象を構造的に誘発する (実測ベース)。新形式は「caller に return した = caller の次 step に進む」という semantic に置換することで terminal vocabulary を構造的に排除する。各 emit site では sentinel 直前に `<!-- skill return signal: caller must continue next step -->` を併記して active disambiguation を提供する。
+> **Sentinel naming policy**: skill return signal の literal は `:returned-to-caller` 形式で統一する。各 emit site では sentinel 直前に `<!-- skill return signal: caller must continue next step -->` を併記する。
+> rationale: references/rationale.md#sentinel-naming
 
 | 禁止事項 | 正規経路 |
 |---------|---------|
@@ -66,14 +39,13 @@ rite workflow の identity は「定義された step を全て実行し、生�
 
 ## Multi-Step Workflow Task Tracking
 
-3 step 以上の sequential workflow を実行する際は、以下の手順で `TaskCreate` / `TaskUpdate` / `TaskList` を使って進捗を能動追跡する。ここで「最外側 skill」とは `TaskCreate` を発行する skill (= ユーザーが invoke した最上位の skill) を指し、それ以外の skill (最外側から Skill ツール経由で呼ばれた skill) を「nested sub-skill」と呼ぶ。閾値を「3 step 以上」とするのは、2 step 以下の skill は単一 turn 内で逐次実行する想定で TaskList 管理の overhead が利点を上回らないため。代表例: `cleanup`, `iterate`, `open`, `review`, `fix`, `wiki-ingest`, `wiki-lint` (列挙は例示で完全網羅ではない)。
+3 step 以上の sequential workflow では `TaskCreate` / `TaskUpdate` / `TaskList` で進捗を追跡する。「最外側 skill」= `TaskCreate` を発行する skill、「nested sub-skill」= Skill ツール経由で呼ばれた skill。代表例: `cleanup`, `iterate`, `open`, `review`, `fix`, `wiki-ingest`, `wiki-lint`。
+rationale: references/rationale.md#task-tracking-threshold
 
 - **開始時 (最外側 skill のみ)**: `TaskCreate` でステップ列を全件登録する。nested sub-skill は既存 TaskList に対し下記 **各 step 完了時** ルールと **nested sub-skill の return 時点** ルールのみ適用する (二重 TaskCreate 禁止)。
 - **各 step 完了時**: `TaskUpdate` で当該 step の status を `completed` に更新する。
 - **最外側 skill の return 時点**: `TaskList` で未完了タスクの有無を確認する。未完了タスクが残っている場合は、未実行の最初の step に戻って実行を継続する (turn を終了しない)。全タスクが `completed` の場合のみ turn を終了する。
 - **nested sub-skill (例: `wiki-ingest` から呼ばれた `wiki-lint`) の return 時点**: `TaskUpdate` のみ行い、turn 終了の判断は最外側 skill に委ねる。
-
-これにより skill ネスト時 (例: `cleanup → wiki-ingest → wiki-lint`) の最内側 sentinel を turn 終了と誤認する事故を防ぐ。
 
 ## Workflow State Detection
 
@@ -98,7 +70,7 @@ Detect current state from:
 
 ## Question Management
 
-> **Key Principle**: Always apply `question_self_check` (see [references/common-principles.md](./references/common-principles.md)) before asking questions. Most questions can be avoided through context inference and using sensible defaults.
+> **Key Principle**: 質問前に必ず `question_self_check`（[common-principles.md](./references/common-principles.md)）。大半は推論とデフォルトで避けられる。
 
 ### When Questions Are Necessary
 
@@ -143,7 +115,8 @@ See [references/work-memory-format.md](./references/work-memory-format.md) for w
 
 ## 4 Command Architecture
 
-`/rite:issue-start` は廃止され、**4 つの単機能コマンド** に分解されている (詳細は CHANGELOG 参照):
+**4 つの単機能コマンド**（旧 `/rite:issue-start` 分解。詳細は CHANGELOG）:
+rationale: references/rationale.md#four-command-split
 
 | コマンド | 責務 | 区分 |
 |---|---|---|
@@ -152,11 +125,11 @@ See [references/work-memory-format.md](./references/work-memory-format.md) for w
 | `/rite:ready <pr>` | Ready 化 + Projects Status + 親判定 + 完了レポート | self-contained command |
 | `/rite:merge <pr>` | `gh pr merge --squash` を叩くだけ (cleanup は分離) | self-contained command |
 
-`/rite:issue-create` は引き続き flat single-file workflow を維持。マージ後の cleanup は `/rite:cleanup` (既存) を別途実行する。
+`/rite:issue-create` は flat single-file を維持。マージ後の cleanup は `/rite:cleanup` を別途実行。
 
-複数 Issue をまとめて回す場合は `/rite:batch-run <issue>...` が各 Issue に対し **デフォルトでは** `open → iterate` を順次・完全自律で実行して draft PR を残し (merge せずレビュー待ち)、`--merge` 指定時のみ `ready → merge → cleanup` まで完走する (meta-orchestrator。成功する限り無確認、失敗で即停止、残りキューとモードは `.rite/state/run-queue-{session_id}.json` にセッションごとに永続化 = 並行 batch-run が相互破壊しない)。flow-state の handoff は使わず、継続は flat step 構造に委ねる。
+複数 Issue は `/rite:batch-run <issue>...` が **デフォルトでは** `open → iterate` を順次自律実行して draft PR を残し、`--merge` 時のみ `ready → merge → cleanup` まで完走する（成功する限り無確認、失敗で即停止、残りキューは `.rite/state/run-queue-{session_id}.json`）。flow-state の handoff は使わず、継続は flat step 構造に委ねる。
 
-LLM が途中で停止した場合の正規復帰経路は `/rite:recover` で、`skills/recover/SKILL.md` Phase 5.3 (Phase enum → Step mapping (SoT)) の phase→新 4 コマンド routing 表に従う。implicit-stop 対策の hook 群 (`auto-fire-step0.sh` / `stop-create-interview-block.sh` / `verify-terminal-output.sh`) は撤去済み。
+途中停止の正規復帰は `/rite:recover`（`skills/recover/SKILL.md` Phase 5.3 の phase→step 表）。
 
 ### Sub-skill sentinel 一覧 (orchestrator から grep される SoT)
 
@@ -171,25 +144,19 @@ LLM が途中で停止した場合の正規復帰経路は `/rite:recover` で�
 | `rite:merge` | `[merge:returned-to-caller]` / `[merge:not-ready]` / `[merge:error]` | ユーザー直接 / `run` orchestrator |
 | `rite:cleanup` | `[cleanup:returned-to-caller]` | ユーザー直接 / `run` orchestrator |
 
-orchestrator (`open` / `iterate`) が sub-skill 出力の sentinel を grep で routing する。`ready` / `merge` / `cleanup` は self-contained だが、`run` (meta-orchestrator) が各 Issue に対しデフォルトでは `open → iterate` を、`--merge` 指定時のみ続けて `ready → merge → cleanup` を順に invoke し、それぞれの sentinel を grep して次段へ進む (失敗で即停止)。`run` は flow-state の handoff を使わず、継続は flat step 構造に委ねる。
-
-現行の continuation enforcement は Layer 3 caller-continuation hints + Layer 4a/4b orchestrator-side reinforcements + flat sequential structure による (旧 Layer 1 prompt contract は cleanup.md flat 化と同時に物理排除済)。
+orchestrator (`open` / `iterate`) が sub-skill 出力の sentinel を grep で routing する。`run` はデフォルト `open → iterate`、`--merge` 時は続けて `ready → merge → cleanup`（失敗で即停止）。handoff は使わず flat step 構造に委ねる。
 
 ## AI Coding Principles (Summary)
 
-Avoid common AI coding failure patterns: surface assumptions, manage confusion, push back when warranted, enforce simplicity, maintain scope discipline, clean dead code, plan inline, address all discovered issues, and keep documentation in sync with specification changes (`documentation_consistency`) — when the implementation changes user-visible behavior, update related README / docs / CLAUDE.md / plugin .md files in the same PR rather than deferring to a follow-up Issue. Route each kind of knowledge to its durable medium (`knowledge_routing`): How → code, What → tests, Why → commit log, Why not → code comments.
+仮定を表面化し、押し返し、シンプルさ・スコープ規律を死守する。user-visible な挙動が変わったら README / docs / CLAUDE.md / plugin .md を同じ PR で更新する（`documentation_consistency`）。知識の経路（`knowledge_routing`）: How → code, What → tests, Why → commit log, Why not → code comments。全文: [coding-principles.md](./references/coding-principles.md)。
 
-See [references/coding-principles.md](./references/coding-principles.md) for the full principle list and details.
-
-**Canon TDD in the implementation phase**: When `tdd.enabled: true` (default, opt-out) in `rite-config.yml`, `rite:issue-implement` drives a Canon TDD cycle — build a test list (seeded from the Issue's Section 6 Test Specification), then for each behavior: write a test → confirm it fails (Red) → minimal implementation (Green) → Refactor → repeat until the list is empty. The cycle is defined in [`skills/issue-implement/SKILL.md`](../issue-implement/SKILL.md) § 5.0.T. It degrades to test-list discipline only (Red/Green runs skipped) when `commands.test` is unset, and is skipped entirely when `tdd.enabled: false`. Config schema: [docs/CONFIGURATION.md](../../../../docs/CONFIGURATION.md) `### tdd`.
+**Canon TDD**: `tdd.enabled: true`（default, opt-out）のとき `rite:issue-implement` が Canon TDD を回す（[`issue-implement/SKILL.md`](../issue-implement/SKILL.md) § 5.0.T）。`commands.test` 未設定なら test-list discipline のみ、`tdd.enabled: false` なら skip。スキーマ: [CONFIGURATION.md](../../../../docs/CONFIGURATION.md) `### tdd`。
 
 ## Simplification Charter (rite plugin maintenance)
 
-`plugins/rite/` 配下のファイルを編集する LLM・メンテナ、および rite workflow が生成する commit message / Issue body / PR description / review 指摘は、自己生成的に肥大化しないよう **Simplification Charter** に従う。runtime に効かない経緯記述は書かない / git log で代替できるものはコードに書かない / `Issue #` / `PR #` / `cycle #` の本文引用は禁止 / 重複 confirmation 禁止。
+`plugins/rite/` の編集と生成物（commit / Issue / PR / review）は **Simplification Charter** に従う。runtime に効かない経緯は書かない / git log で足りるものはコードに書かない / `Issue #` / `PR #` / `cycle #` の本文引用は禁止 / 重複 confirmation 禁止。cleanup / fix / review の `references/` は主要適用対象。
 
-特に `skills/cleanup/SKILL.md` および pr lifecycle 系スキル（cleanup / fix / review）の `references/` 配下のファイル群（**pr/cleanup 系**）は本 charter の主要適用対象であり、各ファイル冒頭に charter SoT 参照行を持つ。
-
-See [references/simplification-charter.md](./references/simplification-charter.md) for the 5 self-questions (5 つの自問) / prohibited patterns (禁止パターン) / recommended patterns (推奨パターン).
+See [simplification-charter.md](./references/simplification-charter.md)。
 
 ## Common Principles (AskUserQuestion Reduction)
 
@@ -208,9 +175,8 @@ All `gh` commands that accept `--body` or `--comment` parameters **MUST** use sa
 
 ## Workflow Failure Surfacing
 
-When a step of `/rite:open` / `/rite:iterate` / `/rite:ready` / `/rite:merge` fails or is skipped (Skill load failure, hook abnormal exit, Wiki ingest skip/failure, etc.), the affected skill or hook emits a plain `WARNING` / `ERROR` line to **stderr**. The orchestrator surfaces it in the conversation context, and the user re-runs the affected step via `/rite:recover`. Failures are visible but not auto-registered as Issues; the user decides whether to file one.
-
-> The earlier auto-registration mechanism (`workflow-incident-emit.sh` sentinel + `/rite:issue-start` detection + `workflow_incident:` config key) was removed in favor of this single-layer plain-stderr design. See `docs/SPEC.md` "Workflow Failure Surfacing" for details.
+`/rite:open` / `/rite:iterate` / `/rite:ready` / `/rite:merge` の失敗・skip は該当 skill / hook が `WARNING` / `ERROR` を **stderr** に出す。orchestrator が会話へ surface し、ユーザーは `/rite:recover` で再実行する。失敗は可視だが Issue 自動登録はしない。
+rationale: references/rationale.md#incident-emit-removed
 
 ## Integration
 

@@ -16,9 +16,9 @@ argument-hint: "[pr_number]"
 **Input**: PR number (or auto-detected), flow state (optional, e2e flow)
 **Output**: `[ready:returned-to-caller]` | `[ready:error]`
 
-Change PR to Ready for review and update the related Issue's Status
+PR を Ready for review にし、関連 Issue の Status を更新する。
 
-> **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[ready:returned-to-caller]` or `[ready:error]`) and **returns control to the caller** (orchestrator — caller-name agnostic). The caller determines the next action based on this output pattern.
+> **Important**: e2e 内では `[ready:returned-to-caller]` / `[ready:error]` を出して **caller に制御を戻す**。次アクションは caller が決める。
 
 ## E2E Output Minimization
 
@@ -26,7 +26,7 @@ Change PR to Ready for review and update the related Issue's Status
 
 ---
 
-When this command is executed, run the following phases in order.
+次の Phase を順に実行する。
 
 ## Arguments
 
@@ -141,7 +141,8 @@ bash "$plugin_root/hooks/scripts/ready-pr-head-gate.sh" \
   --pr "$ready_pr_number" --repo {owner_repo} --plugin-root "$plugin_root"
 ```
 
-> **On exit 1 from this bash block**: The bash block exits before any `skills/ready/SKILL.md` result pattern (`[ready:returned-to-caller]` / `[ready:error]`) is emitted. Invocation failure is a reversible diagnostic action, so the orchestrator retries the gate once and records the reason in the existing work memory; a second failure emits `[ready:error]` and stops. It never offers an unverified force-continue path. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic. For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
+> **本 bash が exit 1**: `[ready:returned-to-caller]` / `[ready:error]` より前に終わる。invocation failure は orchestrator が 1 回 retry し、2 回目で `[ready:error]`。未検証の force-continue は出さない。`BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` は stderr-only。finding（rc=1）では flag を立てない。
+> rationale: references/rationale.md#bang-backtick-hard-gate
 
 ### 1.1 Check Arguments
 
@@ -217,11 +218,9 @@ End processing.
 
 ### 2.1 Confirm with User (Standalone Path)
 
-> **Skip this confirmation when invoked from the main end-to-end flow path**: the orchestrator has already confirmed the Ready transition with the user, so a second confirmation is duplicate (per [Simplification Charter](../../skills/rite-workflow/references/simplification-charter.md) — fourth of the five self-questions: "Is this re-confirming an already-approved decision? → eliminate duplicates"). This sub-skill reads the flow state `.phase` and `.active`, and skips the confirmation when `.phase` matches one of the post-review / post-fix transition phases — either the legacy `phase5_post_review` / `phase5_post_fix` (no current writer — these values only persist as residue in pre-v3 state files; the whitelist still accepts them for resume-from-old-state compatibility) or the flat `review` / `fix` (current writers: `skills/iterate/SKILL.md` review/fix sides, plus the sub-skills themselves — `skills/pr-review/SKILL.md` ステップ 8.0 / `skills/fix/SKILL.md` ステップ 5.1) — AND `.active` is `true` (the AND condition closes the same-session interruption gap — see the next paragraph for details).
->
-> **Side paths fall back fail-safe to the standalone path (legacy behavior)**: when this sub-skill is reached via any non-main path (e.g., via `/rite:recover`, a standalone re-invocation after an in-session e2e interruption, or an unexpected `.phase` value), or when the flow state is not active (`active=false`), the `else` branch sets `in_e2e_flow=false` and the confirmation is shown. Erring on the side of "silent confirm" rather than "silent skip" preserves UX safety. Same-session interruption + standalone re-invocation is also covered by the bash AND condition (`active = "true"`): `flow-state.sh` cross-session guard classifies the legacy file as `same` (`legacy.session_id == current_sid`), so the helper returns the legacy file's stored value rather than the default. The bash test `[ "$active" = "true" ]` then rejects the legacy file because its `active` field is `false` once the e2e flow stopped.
->
-> **Standalone execution** (direct `/rite:ready` invocation): always confirm via `AskUserQuestion` as a misuse safety net.
+> **e2e 本経路ではこの確認を skip する**（`.phase` が `phase5_post_review` / `phase5_post_fix` / `review` / `fix` かつ `.active` が `true`）。side path / `active=false` / 予期しない `.phase` は standalone 確認へ fail-safe。
+> **Standalone**（直接 `/rite:ready`）は常に `AskUserQuestion`。
+> rationale: references/rationale.md#standalone-confirm
 
 **E2E flow detection** (canonical pattern: on helper invocation failure, emit a WARNING + sentinel and fall back fail-safe):
 
@@ -320,7 +319,8 @@ Proceed to the next phase.
 2. GitHub Web UI から直接変更を試す
 ```
 
-**In e2e flow**: If flow state file exists, update the state file and output `[ready:error]` before ending to signal the failure to the caller (orchestrator). Use the dedicated `ready_error` flat phase so `/rite:recover` routes back to `/rite:ready` for retry — writing `phase=pr` would route resume to `/rite:open` ステップ 6 (PR creation) and re-invoke `/rite:pr-create` against the already-existing PR.
+**e2e**: flow-state があれば `ready_error` を書いて `[ready:error]` を出す。`phase=pr` にはしない。
+rationale: references/rationale.md#ready-error-phase
 
 ```bash
 bash {plugin_root}/hooks/flow-state.sh set \
@@ -365,9 +365,9 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
 
 ## Phase 4: Update Issue Status
 
-> **Note**: 新 4 コマンドアーキテクチャでは `skills/ready/SKILL.md` が Projects Status In Review 更新の **唯一の writer**。本 Phase 4 は standalone / orchestrator 経由の両経路で必須。
+> **Note**: 本スキルが Projects Status In Review 更新の **唯一の writer**。standalone / orchestrator 両経路で必須。
 
-**Critical**: Do NOT skip this phase. After `gh pr ready` succeeds in Phase 3, this Status update MUST be executed before proceeding to Phase 5.
+**Critical**: 本 Phase を skip しない。Phase 3 の `gh pr ready` 成功後、Phase 5 の前に Status 更新を実行する。
 
 ### 4.1 Identify Related Issue
 
@@ -383,7 +383,8 @@ gh pr view {pr_number} -R {owner_repo} --json body,headRefName
 
 ### 4.2 Update Status via Shared Script
 
-> **Source of truth**: This phase delegates to `plugins/rite/scripts/projects-status-update.sh` — the same shared script used by `skills/open/SKILL.md` ステップ 2.4 / 後続 Projects Status callsite。Direct inline `gh api graphql` (Organization-aware) + `gh project item-edit` calls have been removed because the multi-stage inline pipeline produced silent skips when LLM attention was lost between substeps, leaving Issue Status at "In Progress" instead of advancing to "In Review" (observed as a stuck "In Progress" Status persisting through subsequent cleanup).
+> **SoT**: `plugins/rite/scripts/projects-status-update.sh` に委譲する（`open` ステップ 2.4 と同じ）。
+> rationale: references/rationale.md#projects-delegate
 
 Skip Phase 4.2 if `github.projects.enabled: false` in `rite-config.yml` or if no related Issue was identified in Phase 4.1, and proceed to Phase 4.6. Otherwise, invoke the shared script to transition the Issue Status to **In Review**:
 
@@ -400,7 +401,7 @@ status_json_args=$(jq -n \
 bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"
 ```
 
-`auto_add: false` because by ready time the Issue is already registered in the Project (`skills/open/SKILL.md` ステップ 2.4 auto-added it if missing). The script internally executes the GraphQL `projectItems` query → `gh project field-list` → `gh project item-edit` triple in a single fail-fast pipeline. The query uses GraphQL の `repository(owner:)` 形式 (User / Organization どちらの owner でも透過的に解決されるため、client-side type detection は不要)。旧 ready.md inline 経路は `user(login:)` を直接 query して Organization fallback を行う実装だったが、`repository(owner:)` への delegation でこの分岐自体が不要になった。
+`auto_add: false`（ready 時点では open ステップ 2.4 が登録済み）。script は GraphQL `projectItems` → `field-list` → `item-edit` を単一 fail-fast pipeline で実行する。query は `repository(owner:)` 形式。
 
 #### 4.2.1 Result Handling
 
@@ -412,9 +413,10 @@ Inspect the script's stdout JSON and route by `.result`:
 | `"skipped_not_in_project"` | Display `警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします` and proceed to Phase 4.6 | **MUST** `WARNING` を stderr に出力 (silent skip 禁止) |
 | `"failed"` | Display each `.warnings[]` entry to stderr, then display `警告: Projects Status の "In Review" への更新に失敗しました。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "In Review" に変更するか、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <in_review_option_id> を実行してください。` and proceed to Phase 4.6 | **MUST** `WARNING` を stderr に出力 (silent skip 禁止) |
 
-**All result branches are non-blocking** — the ready-for-review transition is already complete (Phase 3 `gh pr ready` succeeded); a Status update issue MUST NOT abort the workflow.
+**全 result 分岐は non-blocking**。Ready 遷移は Phase 3 で完了済み。Status 失敗で止めない。
 
-> **失敗 surface MUST**: 旧仕様では `skipped_not_in_project` / `failed` の両経路で **silent skip** していたため、observation log がどこにも残らず、user が手動確認するまで Status が `In Progress` に滞留する事象 が発生していた。本契約により、両経路は必ず `WARNING` を stderr に出力する。Status 更新失敗はブロッキングではなく、ユーザーが stderr を見て手動回復 (`/rite:recover` または手動 `gh project item-edit`) する。
+> **失敗 surface MUST**: `skipped_not_in_project` / `failed` は必ず `WARNING` を stderr に出す（silent skip 禁止）。
+> rationale: references/rationale.md#no-silent-skip-status
 
 > **Bash 実装 minimal skeleton (delegate-only 経路の標準形)**:
 >
@@ -444,7 +446,8 @@ Inspect the script's stdout JSON and route by `.result`:
 
 ### 4.6 Defense-in-Depth: State Update Before Output (End-to-End Flow)
 
-Before outputting the result pattern (`[ready:returned-to-caller]`) or skipping output, update flow state to reflect the post-ready phase (defense-in-depth). ready は handoff を**セットしない**(ループの出口でありユーザー判断で merge へ進むため。継続保証は flow-state の `next_action` = resume 用に委ねる)。
+`[ready:returned-to-caller]` の前に flow-state を post-ready へ更新する。handoff は**セットしない**。
+rationale: references/rationale.md#no-handoff
 rationale: [stop-loop-continuation-contract.md#why-ready-sets-no-handoff](../../references/stop-loop-continuation-contract.md#why-ready-sets-no-handoff)
 
 **Condition**: Execute only when flow state file exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
@@ -463,7 +466,8 @@ bash {plugin_root}/hooks/flow-state.sh set \
   --if-exists
 ```
 
-**Note on `error_count`**: `flow-state.sh set` resets `error_count` to 0 by default on every phase transition, and preserves the existing value only when `--preserve-error-count` is passed. `error_count` is currently a reserved/legacy schema slot with no production reader; resetting on transition keeps the slot well-defined for future re-introduction without carrying stale counts.
+**Note on `error_count`**: `flow-state.sh set` は transition で `error_count` を 0 に戻す（`--preserve-error-count` のときのみ保持）。
+rationale: references/rationale.md#error-count-reset
 
 **Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when flow state file exists:
 
@@ -494,7 +498,7 @@ Determine the caller from the conversation context:
 | Called via Skill tool from an orchestrator (caller-name agnostic) | Within end-to-end flow | **Skip completion report** — return control to caller (orchestrator handles the report) |
 | `/rite:ready` executed standalone | Standalone complete | Output Phase 5.1.2 format |
 
-> **Note**: 新 4 コマンドアーキテクチャ (`/rite:open` / `/rite:iterate` / `/rite:ready` / `/rite:merge`) では `/rite:ready` は self-contained command として user が直接 invoke するのが標準経路。本表の "Within end-to-end flow" 行は caller-name agnostic な return-to-caller 契約として保持し、任意の orchestrator が Skill tool 経由で `/rite:ready` を呼んだ場合に機能する。
+> **Note**: 標準経路は user 直接 invoke。表の e2e 行は caller-name agnostic な return-to-caller 契約。
 
 **Detection method:**
 
@@ -507,18 +511,15 @@ Check the conversation history and determine "within end-to-end flow" if any of 
 
 #### 5.1.1 End-to-End Flow (Skip Completion Report, Output Signal)
 
-When called within the end-to-end flow (detected in Phase 5.0), **do NOT output any completion report**. The completion report is the responsibility of the caller orchestrator — outputting it here causes duplicate reports.
-
-**Instead, output the following 2-line machine-readable signal** to indicate successful return to the caller:
+e2e（Phase 5.0）では **完了レポートを出さない**。代わりに次の 2 行:
 
 ```
 <!-- skill return signal: caller must continue next step -->
 <!-- [ready:returned-to-caller] -->
 ```
 
-This pattern is **mandatory** in e2e flow. It allows the caller orchestrator to detect that `rite:ready` has returned to the caller and immediately proceed to caller-specific 完了処理。Without this signal, the caller may incorrectly interpret the lack of output as task completion.
-
-The signal comment + sentinel pair replaces the older `ready:completed` form. The new naming makes explicit that the sub-skill is *returning to caller* (and the caller must continue), not *terminating the workflow* — this prevents LLM turn-boundary heuristic misfires. The sentinel is wrapped in an HTML comment to match the canonical emit style used by `create.md` / `cleanup.md` / `ingest.md` so that the user-visible terminus is never a bare bracket sentinel — disambiguator marker と sentinel が共に HTML コメント化されることで「ユーザー向けに見える最終行」と「caller への signal 行」が完全に分離される。
+e2e ではこの 2 行が **必須**。
+rationale: references/rationale.md#returned-to-caller
 
 #### 5.1.2 Standalone Execution
 

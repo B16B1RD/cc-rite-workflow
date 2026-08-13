@@ -9,13 +9,9 @@ argument-hint: ""
 
 # /rite:recover
 
-中断した rite ワークフローを再開する。flow-state (phase enum v3 SoT) と commit 数 / PR 状態 / work memory を cross-check して、最適な再開点を決定する。
+中断した rite ワークフローを再開する。flow-state (phase enum v3 SoT) と commit 数 / PR 状態 / work memory を cross-check して再開点を決める。
 
-**Use cases:**
-- Claude Code クラッシュ後の再開
-- セッション切断後の再開
-- 手動中断後の再開
-- **Context 枯渇時の継続**: セッションの context が逼迫した場合は `/clear` で会話履歴をリセットしてから `/rite:recover` を実行する。これが rite workflow における context 枯渇時の **唯一の正規経路** (詳細: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md))。
+**Use cases:** クラッシュ / セッション切断 / 手動中断 / **Context 枯渇**（`/clear` 後に本コマンド。これが **唯一の正規経路**。[workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md)）。
 
 ---
 
@@ -27,7 +23,8 @@ argument-hint: ""
 
 ## Placeholder Legend
 
-> 後続 Phase は別々の Bash tool 呼び出しとなりシェル変数を引き継げないため、Phase 3.1 / 3.5 / 4.2 が stdout に emit する `[CONTEXT] STATE_* / RESOLVED_PHASE / FINAL_PHASE` marker を source とし、LLM が会話コンテキストから読んで placeholder を実値置換する (詳細は Phase 5.2 の注記参照)。
+> Phase 3.1 / 3.5 / 4.2 の `[CONTEXT] STATE_* / RESOLVED_PHASE / FINAL_PHASE` を source とし、placeholder を実値置換する。
+> rationale: references/rationale.md#context-marker-bridge
 
 | Placeholder | Source |
 |-------------|--------|
@@ -156,17 +153,17 @@ echo "[CONTEXT] STATE_PARENT_DISPLAY=$parent_issue_display"
 
 ### 3.1.5 セッション worktree への再入場（multi_session 有効時、cross-check より前）
 
-git/PR 状態クロスチェック（Phase 3.2 / 3.3 の `git rev-list origin/{base}..HEAD` / `gh pr view`）は**カレントブランチ依存**のため、worktree への再入場は**その前に**行う必要がある（順序が本質）。session ⇄ worktree は 1:1 でない（クラッシュで session_id が変わる）ため、**issue 番号 → worktree パス導出（discovery fallback）が正規の対応関係**であり、flow-state `worktree` field は同一セッション内のヒントに留まる:
+worktree 再入場は Phase 3.2 / 3.3 の **前** に行う。**issue 番号 → worktree パス導出が正規の対応**。flow-state `worktree` field は同一セッション内のヒント。
+rationale: references/rationale.md#worktree-before-crosscheck
 
-検出・再構築は共通ヘルパー `ensure_session_worktree`（[`lib/worktree-git.sh`](../../hooks/scripts/lib/worktree-git.sh)、#1676 で #1368 のロジックを SoT 化）に委譲する。ヘルパーは `multi_session` の読取・worktree パス導出（`--git-common-dir` から main checkout root を求める）・branch 解決（issue-N の local/remote ref から自動）・**再構築（`git worktree add`）まで bash 側で完結**し、唯一の `[CONTEXT] WT_ENSURE=` marker を emit する。session ⇄ worktree は 1:1 でない（クラッシュで session_id が変わる）ため、helper は issue 番号 → worktree パス導出を正規の対応とし、flow-state `worktree` field には依存しない:
+検出・再構築は `ensure_session_worktree`（[`lib/worktree-git.sh`](../../hooks/scripts/lib/worktree-git.sh)）に委譲する。helper は `multi_session` 読取・パス導出・branch 解決・**再構築**まで完結し、`[CONTEXT] WT_ENSURE=` を emit する:
 
 ```bash
 bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --issue "$issue_arg"
 ```
 
-> **本ブロックは WT_ENSURE 分岐表の SoT**（review / iterate / fix の入場ゲートが参照する。#1676）。EnterWorktree は LLM ツールのため helper からは呼べず、`reenter` / `reconstructed` の入場のみ下記表に従い LLM が実行する。
->
-> **marker の読み取り規約は本ファイルが持たない**（#2025）。どの行が marker か（行頭アンカー）・stderr が複数行混入しても読めること・`branch=` スコープで他ブランチの値を拾わないこと・同一 KEY が複数回出たときは最新が勝つこと・キーと field 名がトークン完全一致であることは、共有関数 `marker_get`（[`lib/context-marker.sh`](../../hooks/scripts/lib/context-marker.sh)）の契約であり、SoT は `hooks/tests/context-marker.test.sh`。下表は **case 値ごとのアクション**のみを規定する。バッチ実行では同一 transcript に複数ブランチの `WT_ENSURE` が並ぶため、対象を取り違えないこと（規約の実体は上記関数、その `--branch` が対応する）。
+> **本ブロックは WT_ENSURE 分岐表の SoT**（review / iterate / fix の入場ゲートが参照する）。EnterWorktree は LLM が実行する。下表は **case 値ごとのアクション**のみ。
+> rationale: references/rationale.md#worktree-before-crosscheck
 
 `WT_ENSURE` で分岐する:
 
@@ -243,7 +240,8 @@ fi
 
 ### 3.4.5 コンフリクト / rebase 状態の優先判定 (#1705)
 
-Phase 3.2 の `[CONTEXT] GIT_CONFLICT_FILES` / `GIT_IN_MERGE` / `GIT_IN_REBASE` marker と Phase 3.3 の `PR_MERGEABLE` marker を読み、**いずれかがコンフリクト / rebase 中断を示す場合は、Phase 3.5 の phase 推定より本判定を優先する**。コンフリクトマーカーが残ったまま generic な「実装途中」扱いで復帰し、未解決の変更を上書きコミットへ誘導される事故を防ぐのが本判定の目的（マーカーの検出は git 実態からの読み取りで完結するため flow-state schema の変更は不要）。
+Phase 3.2 / 3.3 の marker を読み、**いずれかがコンフリクト / rebase 中断なら Phase 3.5 より本判定を優先する**。
+rationale: references/rationale.md#conflict-priority
 
 **判定条件（OR、いずれか成立でコンフリクト状態）**:
 
@@ -305,9 +303,10 @@ echo "[CONTEXT] RESOLVED_PHASE=$resolved_phase"
 
 ### 3.6 未完了事項の検出（`resolved_phase` が `cleanup`/`completed` のときのみ、informational）
 
-当該 Issue が既に cleanup 段階を終えている（= これ以上 phase を進める作業は無い）場合に限り、過去の cleanup が非ブロッキングで残した可能性のある 2 種類の signal を git 実態から直接検出する（新しい記録先は持たない — 集約記録のありか自体が git/リモートの実態であり、既存の `.rite/wiki-worktree` / ローカルブランチ / `gh pr view` 以上のものを要求しない）。Phase 3.5 のフラグ判定・Phase 5.3 のルーティング表には影響しない、純粋な追加情報。
+`resolved_phase` が `cleanup` / `completed` のときだけ、過去の cleanup が残した 2 種類の signal を git 実態から検出する。新しい記録先は持たない。Phase 3.5 / 5.3 には影響しない。
+rationale: references/rationale.md#outstanding-informational
 
-> **重要 — Bash tool 境界での変数消失**: 本 step は Phase 3.5 とは別の Bash tool 呼び出しのため、`$resolved_phase` / `$issue_arg` をシェル変数として直接参照できない（Phase 5.2「Bash tool 境界での変数消失」の注記と同じ制約）。LLM は Phase 3.5 の `{resolved_phase}` と Phase 1.1 の `{issue_arg}` を会話コンテキストから読み、下記 bash block 内の placeholder を実値に置換してから実行すること。
+> **重要**: 本 step は Phase 3.5 と別 Bash 呼び出し。`{resolved_phase}` / `{issue_arg}` を placeholder 置換してから実行する（`$resolved_phase` は使わない）。
 
 ```bash
 if [ "{resolved_phase}" = "cleanup" ] || [ "{resolved_phase}" = "completed" ]; then
@@ -386,7 +385,8 @@ echo "[CONTEXT] FINAL_PHASE=$user_selected_phase"
 
 ### 5.1 ブランチ切り替え（worktree モードでは検証のみ）
 
-`WT_ENSURE=reenter` / `reconstructed`（Phase 3.1.5 で worktree へ再入場・再構築済み。`already_in` も worktree モード）では、worktree の HEAD は既に state branch を指しているはずなので **`git switch` は行わず検証のみ**にする（worktree 内から base への switch は不可かつ不要）。不一致は WARNING に留める:
+`WT_ENSURE=reenter` / `reconstructed` / `already_in` では **`git switch` は行わず検証のみ**。不一致は WARNING。
+rationale: references/rationale.md#no-switch-in-worktree
 
 ```bash
 if [ "$RESUME_WT_MODE" = "worktree" ]; then
@@ -408,9 +408,8 @@ fi
 
 ### 5.2 flow-state の active=true 復元
 
-中断時 (例: クラッシュ / context 枯渇) で active=false になっている可能性があるため、resume では active=true に復元。merge semantics により他のフィールドは保持される。
-
-> **重要 — Bash tool 境界での変数消失**: 本 step は Phase 3.1 とは別の Bash tool 呼び出しとなるため、`$state_phase` / `$resolved_phase` / `$state_next` 等のシェル変数を直接参照できない (Claude Code の Bash tool 境界でシェル状態は失われる)。LLM は Phase 3.1 末尾で stdout に emit された `[CONTEXT] STATE_PHASE=...` / `[CONTEXT] STATE_NEXT=...` marker と Phase 3.5 の cross-check 結果 `{resolved_phase}` を読み、下記 bash block 内の placeholder を実値に置換してから実行すること。`--if-exists` フラグにより flow state file 不在時は no-op (idempotent)、merge semantics により未指定フィールドは既存値を保持する:
+resume では `active=true` に復元する。他フィールドは merge semantics で保持。placeholder を `[CONTEXT]` marker から実値置換してから実行する。`--if-exists` で file 不在は no-op。
+rationale: references/rationale.md#context-marker-bridge
 
 ```bash
 # Placeholder substitution rule:
@@ -453,7 +452,8 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ## Phase 5.5: Active Batch 検出 → 継続
 
-Phase 5.4 の invoke が制御を返したら（再開先 skill が完了通知 or 終端 sentinel を emit した後）、**自セッションの** run-queue（`run-queue-{session_id}.json`）を参照し「この中断が `/rite:batch-run` 実行中の active batch 中断だったか」を判定する。stale な残骸（過去に完了/停止済みのバッチのキューが単に残っている）を誤って継続しないよう、鮮度判定を必須とする。session_id は batch-run と同じく `flow-state.sh path` の basename から導出する。recover は flow-state phase も ambient session_id で解決する（Phase 3 の `flow-state.sh get`）ため、真の active batch 中断（同一セッションでの compact / turn 跨ぎ）では recover の session_id と run-queue の session_id が一致し、自セッションのキューだけを参照する（他セッションのキューは別ファイルのため構造的に読まない）。
+Phase 5.4 の後、**自セッションの** `run-queue-{session_id}.json` を見て active batch 中断かを判定する。鮮度判定は必須。session_id は `flow-state.sh path` の basename。
+rationale: references/rationale.md#batch-continue-freshness
 
 ### 5.5.1 判定
 
@@ -570,4 +570,5 @@ ready_error / cleanup / ingest / completed
 
 旧 v1/v2 schema の phase 値 (`cleanup_pre_ingest`, `ingest_pre_lint`, `create_*`, `implementing` 等) は Phase 2 の自動 migration で v3 に変換される。Migration の reduction matrix は `plugins/rite/hooks/flow-state.sh` の `_phase_migrate` 関数を参照。
 
-なお `phase5_*` 系の legacy 名 (pre-v3 の sub-skill chain アーキテクチャが書き込んだ古い state file に残存しうる) は `_phase_migrate` の reduction matrix に **含まれず pass-through される**。これらは PHASE_ENUM_V3 (13 個) に該当しないため Phase 2 migration では変換されず、Phase 3.5 の整合性判定 (cross-check) で再開 phase が確定される (cross-check は rule 1 で v3 enum 値のみを直接採用するため、非 v3 enum の legacy 値はそのまま採用されず、cross-check の判定を経て v3 phase へ解決される)。
+`phase5_*` 系の legacy 名は `_phase_migrate` に **含まれず pass-through** される。Phase 3.5 の cross-check で v3 phase へ解決する。
+rationale: references/rationale.md#phase5-passthrough

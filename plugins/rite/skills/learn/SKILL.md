@@ -14,18 +14,8 @@ argument-hint: "[issue_or_pr]"
 **Input**: 任意 — Issue/PR 番号。無ければ現在ブランチから推定。難易度ヒント（`eli5` / `eli14` / `intern`）も任意。
 **Output**: 理解度チェックリスト（markdown）→ 段階的クイズ → 最終マスタリーサマリ → sentinel `[learn:complete]`
 
-完了した作業セッション（Issue/PR）を題材に、ユーザー本人が変更を深く理解しているかを Socratic
-方式で検証する。問題・解決策・広い文脈を 3 グループのチェックリストにし、AskUserQuestion で
-段階的にクイズして、全項目の習得が確認できるまでセッションを終えない。
-
----
-
-## 背景
-
-rite は実装の多くを Claude が書くため、「動くからマージする」=自分で書いていない変更を理解しない
-まま取り込む vibe coding が起きやすい。特にこのワークフローでは hooks / skills の変更が他作業に
-即波及するため、理解の取りこぼしのコストが高い。本コマンドは試験官役となり、本人の理解の穴を
-炙り出して埋める。**解説して終わりにせず、本人が自力で説明できる状態をゴールにする。**
+3 グループのチェックリストを AskUserQuestion で段階的にクイズし、全項目の習得が確認できるまで終えない。**解説して終わりにせず、本人が自力で説明できる状態をゴールにする。**
+rationale: references/rationale.md#vibe-coding
 
 ## 引数
 
@@ -43,13 +33,12 @@ rite は実装の多くを Claude が書くため、「動くからマージす�
 
 ## Phase 1: セッション文脈の収集（read-only）
 
-クイズの題材を集める。**この Phase ではファイルを書かない。** 収集物は会話コンテキストにのみ置く。
+**この Phase ではファイルを書かない。** 収集物は会話コンテキストにのみ置く。
 
 ### 1.1 引数のパースと対象の解決
 
-まず引数トークンを順に走査し、`eli5` / `eli14` / `intern` のいずれかに一致するものを**難易度ヒント**、数値（先頭 `#` は任意）を**番号トークン**として振り分ける。番号トークンが無ければ下表の `(なし)` 経路で対象を解決する。難易度ヒントは Phase 3 の既定粒度に使う（例: `/rite:learn eli5` は番号なし＝`(なし)` 経路 + eli5 粒度、`/rite:learn 1241 intern` は番号 1241 + intern 粒度）。
-
-GitHub では Issue と PR が単一の番号空間を共有するため、番号トークン `#N` は Issue **または** PR のどちらか一方を一意に指す。下表で `{issue_number}` と `{pr_number}` の双方を可能な範囲で解決する（片方しか得られないこともある）。
+引数トークンを順に走査し、`eli5` / `eli14` / `intern` を**難易度ヒント**、数値（先頭 `#` は任意）を**番号トークン**として振り分ける。番号トークンが無ければ下表の `(なし)` 経路。難易度ヒントは Phase 3 の既定粒度（例: `/rite:learn eli5` は `(なし)` + eli5、`/rite:learn 1241 intern` は 1241 + intern）。`{issue_number}` と `{pr_number}` の双方を可能な範囲で解決する。
+rationale: references/rationale.md#issue-pr-number-space
 
 > `{owner_repo}` は [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute する。
 
@@ -102,8 +91,7 @@ git rev-parse --verify {base_branch} 2>/dev/null \
 
 ## Phase 2: 理解度チェックリストの生成
 
-収集した文脈から、3 グループの running checklist を組み立てて**一度提示する**。各項目はその
-セッション固有の具体的な問いに展開する（下はテンプレート。実際は対象に即して具体化する）。
+3 グループの running checklist を**一度提示する**。各項目はそのセッション固有の具体的な問いに展開する（下はテンプレート）。
 
 ```markdown
 ## 理解度チェックリスト
@@ -157,8 +145,8 @@ sentinel を 1 つだけ出して停止する:
 [learn:complete]
 ```
 
-> **注意**: learn は Issue→PR の状態機械の外側にある終端 ritual。後段に連鎖しないため、
-> flow-state 系 sentinel（`returned-to-caller` 等）や `flow-state.sh` は呼ばない。
+> **注意**: flow-state 系 sentinel（`returned-to-caller` 等）や `flow-state.sh` は呼ばない。
+> rationale: references/rationale.md#no-flow-state
 
 ---
 
