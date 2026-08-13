@@ -8,6 +8,7 @@
 * **Update**: [対象プラットフォーム挙動を shim して blocking gate 側で pin する](pages/heuristics/portability-fix-needs-target-platform-shim-on-blocking-gate.md) — raw/fixes/20260812T133631Z-pr-2278.md を統合（CI の赤は「テストが落ちた」だけでなく「テストが走らなかった」形で来る。失敗名だけでなく実行件数を確認する）。
 * **lint:warning** — contradictions=0, stale=5, orphans=0, missing_concept=1, unregistered_raw=323, broken_refs=0
 * **Skip**: [20260812T233122Z-pr-2285.md](raw/reviews/20260812T233122Z-pr-2285.md) — cycle artifact: 0 findings; fire-no-counter-reset ポインタ欠落は既存 rationale ポインタ heuristic の再確認に留まり新規経験則なし
+* **Skip**: [20260813T001119Z-pr-2286.md](raw/reviews/20260813T001119Z-pr-2286.md) — cycle 1 指摘 0 と diet mergeable 傾向は既存ヒューリスティックと重複。SPAWN_SPREAD=undetermined は Grok 環境固有で一般化不能
 
 ## 2026-08-12
 
