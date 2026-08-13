@@ -154,7 +154,7 @@ rite-workflow/
 │ ├── fix/ # /rite:fix (review 指摘対応; + references/) — sub-skill
 │ ├── ready/ # /rite:ready (Ready for review 化)
 │ ├── merge/ # /rite:merge (squash merge)
-│ ├── cleanup/ # /rite:cleanup (+ references/archive-procedures.md)
+│ ├── cleanup/ # /rite:cleanup (+ references/archive-procedures.md; + references/rationale.md)
 │ ├── batch-run/ # /rite:batch-run (複数 Issue 順次 open→iterate; --merge で ready→merge→cleanup まで)
 │ ├── pr-create/ # /rite:pr-create (draft PR 作成) — sub-skill
 │ # --- Issue 管理 ---
@@ -167,10 +167,10 @@ rite-workflow/
 │ # --- Wiki ---
 │ ├── wiki-init/ # /rite:wiki-init
 │ ├── wiki-query/ # /rite:wiki-query
-│ ├── wiki-ingest/ # /rite:wiki-ingest (+ references/wiki-troubleshooting.md)
-│ ├── wiki-lint/ # /rite:wiki-lint (+ references/: broken-ref-resolution / bash-cross-boundary-state-transfer / descriptive-refs-rationale)
+│ ├── wiki-ingest/ # /rite:wiki-ingest (+ references/wiki-troubleshooting.md; + references/rationale.md)
+│ ├── wiki-lint/ # /rite:wiki-lint (+ references/: broken-ref-resolution / bash-cross-boundary-state-transfer / descriptive-refs-rationale; + references/rationale.md)
 │ # --- meta / top-level ---
-│ ├── setup/ # /rite:setup (+ --upgrade)
+│ ├── setup/ # /rite:setup (+ --upgrade; + references/rationale.md)
 │ ├── getting-started/ # /rite:getting-started
 │ ├── workflow/ # /rite:workflow (rite ワークフロー全体ガイド)
 │ ├── unknowns/ # /rite:unknowns (実装前探索: ブラインドスポット/ブレスト/プロトタイプ/インタビュー; + references/feedback-mode.html)

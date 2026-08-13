@@ -23,7 +23,8 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 8. log.md 追記 (`lint:clean` / `lint:warning`)
 9. 完了レポート (通常モード / `--auto` モード)
 
-機械判定可能な 3 カテゴリ (陳腐化 / 孤児 / 壊れた相互参照) は helper script に委譲する。helper が件数を marker block + `[CONTEXT]` sentinel で emit するため、LLM は数値を転記するだけになり「bash を実行せず 0 件と推測報告する」経路が構造的に存在しない (欠落概念の集合構築 helper `wiki-lint-skipped-refs.sh` / `wiki-lint-source-refs.sh` と同じ保証)。
+機械判定可能な 3 カテゴリ (陳腐化 / 孤児 / 壊れた相互参照) は helper に委譲する。件数は helper の marker block + `[CONTEXT]` を転記する（LLM 独自カウント禁止）。
+rationale: references/rationale.md#helper-delegation
 
 | 観点 | 検出対象 | ブロッキング |
 |------|---------|--------------|
@@ -35,9 +36,10 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 | **未登録 raw (unregistered_raw)** | `ingested: true` で `sources.ref` 未登録だが、raw frontmatter に `ingest_status: skipped` 記録がある raw。意図的に経験則化しなかった件数の informational 指標 | **No** (`n_warnings` 不加算) |
 | **説明的番号参照 (descriptive_number_ref)** | ページ本文と `index.md` のエントリサマリーに残った説明目的の Issue/PR 番号参照（裸の「PR #N は…」「Issue #N」、括弧付き「(refs #N)」、日本語の「#N で対応」「詳細は #N」）。Wiki は番号の受け皿ではなく Why 散文の場のため surface する。frontmatter の `sources:` ブロック・`## ソース` 節・コードフェンス / スパン・TODO/FIXME は除外。`log.md` / `raw/**` / `SCHEMA.md` は走査しない（意図的除外） | **No** (`n_warnings` 不加算、ステップ 7.5) |
 
-**設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗 (下記 (c) を除く)・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.2 / 8.3 で同型 fail-fast。うち 4 / 5 / 6.0 / 6.2 / 7 / 7.5 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)、(c) `lib/wiki-config.sh` の source 失敗 (ステップ 1.1)。いずれも設定ミス / 実装ミスを silent に通過させないための設計判断。
+**設計契約**: lint は **読み取り専用** (`log.md` への追記を除く)。**原則 exit 0**で終了し、検出件数・事前チェック失敗 (下記 (c) を除く)・ブランチ読取失敗は非ブロッキングとして扱う。例外は (a) `branch_strategy` 未知値検出 (ステップ 2.2 / 4 / 5 / 6.0 / 6.2 / 7 / 7.5 / 8.2 / 8.3 で同型 fail-fast。うち 4 / 5 / 6.0 / 6.2 / 7 / 7.5 は helper 内で実行)、(b) `{mode}` / `{pages_list}` / `{log_entry}` / counter 等の Claude placeholder 残留検知 (各 site で同型 fail-fast)、(c) `lib/wiki-config.sh` の source 失敗 (ステップ 1.1)。
+rationale: references/rationale.md#fail-loud-contract
 
-矛盾検出 (ステップ 3) と欠落概念検出 (ステップ 6) は LLM のセマンティック読解に依存する。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md) で解決する。共通パターン (ディレクトリ構造 / ブランチ管理 / テンプレート展開) は [Wiki Patterns](../../references/wiki-patterns.md) を参照。
+矛盾検出 (ステップ 3) と欠落概念検出 (ステップ 6) は LLM のセマンティック読解に依存する。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md) で解決する。共通パターンは [Wiki Patterns](../../references/wiki-patterns.md) を参照。
 
 ## Arguments
 
@@ -60,7 +62,7 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 
 ### 1.1 Wiki 設定の読み取りとブランチ戦略判定
 
-`rite-config.yml` から `wiki_enabled` / `wiki_branch` / `branch_strategy` を取得する。ingest.md ステップ 1.1 と同型の設定読み取り (`lib/wiki-config.sh` 委譲)。`branch_strategy` 未知値は fail-fast (silent default を撤廃):
+`rite-config.yml` から `wiki_enabled` / `wiki_branch` / `branch_strategy` を取得する。ingest ステップ 1.1 と同型の設定読み取り (`lib/wiki-config.sh` 委譲)。`branch_strategy` 未知値は fail-fast:
 
 ```bash
 # YAML 読み取りは canonical helper (実ファイル) に委譲する。skill 本文の fenced bash に
@@ -104,7 +106,8 @@ echo "branch_strategy=$branch_strategy"
 echo "wiki_branch=$wiki_branch"
 ```
 
-分散実装の完全一覧と設計差異は [Wiki 有効判定パターン §分散実装ファイル一覧](../../references/wiki-patterns.md#分散実装ファイル一覧-single-source-of-truth) を SoT として参照する。本ファイルは ingest.md と対称な `parse_wiki_scalar` 委譲の lenient 2-arm 経路 (#483 opt-out default)。`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1` (bash rc=1) のときは設定を判定できていないため無効扱いへ倒さず中止し、plugin のインストール状態確認 / `/rite:setup` 再実行を案内する。
+分散実装の一覧は [Wiki 有効判定パターン §分散実装ファイル一覧](../../references/wiki-patterns.md#分散実装ファイル一覧-single-source-of-truth) を SoT とする。`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1` (bash rc=1) のときは無効扱いへ倒さず中止し、plugin のインストール状態確認 / `/rite:setup` 再実行を案内する。
+rationale: references/rationale.md#wiki-config-opt-out
 
 **Wiki が無効の場合**: 早期 return (`--auto` モードでは ステップ 9.2 の 3 行出力契約を必ず守る):
 
@@ -270,7 +273,8 @@ echo "---"
 [ -n "$raw_list" ] && printf '%s\n' "$raw_list"
 ```
 
-LLM は stdout から `pages_list` と `raw_list` を会話コンテキストに保持する。両方空なら **ステップ 3-7 (7.5 を除く) を skip し、ステップ 7.5 → ステップ 9 に進む**。ステップ 7.5 だけは skip しない — `index.md` が単独で走査対象になりうるためで、skip すると wiki 初期化直後や `git ls-tree` 失敗時に index.md の指摘が無言で 0 件になる。
+LLM は stdout から `pages_list` と `raw_list` を会話コンテキストに保持する。両方空なら **ステップ 3-7 (7.5 を除く) を skip し、ステップ 7.5 → ステップ 9 に進む**。ステップ 7.5 だけは skip しない — `index.md` が単独で走査対象になりうる。
+rationale: references/rationale.md#empty-lists-keep-7-5
 
 `index.md` は ステップ 5 の `wiki-lint-orphans.sh` と ステップ 7.5 の `wiki-lint-descriptive-refs.sh` がそれぞれ自力で読み出すため、本ステップでの事前読出は不要。
 
@@ -326,11 +330,11 @@ LLM が `pages_list` の全ページペアを意味的に比較し、以下の�
 
 ## ステップ 4: 陳腐化検出
 
-検出本体は `wiki-lint-stale.sh` に委譲する。helper は全ページの frontmatter `updated` を cutoff (`now - stale_days`) と比較し、件数 + stale 集合を marker block で emit する。GNU date 事前検査 (macOS/BSD 非互換 skip) も helper が内包する。
+検出本体は `wiki-lint-stale.sh` に委譲する。helper は全ページの frontmatter `updated` を cutoff (`now - stale_days`) と比較し、件数 + stale 集合を marker block で emit する。GNU date 事前検査も helper が内包する。
 
-> **Reference**: canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-stale.sh`。helper は GNU date 検査・branch_strategy 別のページ読出 (`git show`(separate_branch) / `cat`(same_branch))・`updated` frontmatter 抽出・date パース失敗の WARNING skip・marker block / `stale_check_ok` enum / `[CONTEXT]` sentinel 出力をすべて内包する (旧 GNU date 事前検査 + 陳腐化検出 inline 実装を委譲)。placeholder residue gate も helper 内で実行される。state machine 契約 (marker block + enum) は `references/bash-cross-boundary-state-transfer.md` の Pattern 1/2 を参照。
+> **Reference**: `plugins/rite/hooks/scripts/wiki-lint-stale.sh`。state machine 契約は `references/bash-cross-boundary-state-transfer.md` の Pattern 1/2。
 
-**Bash tool 呼び出し境界での state 伝達**: ステップ 1.1 の `branch_strategy` / `wiki_branch` は helper の `--branch-strategy` / `--wiki-branch` arg、ステップ 1.4 の `stale_days` は `--stale-days` arg に literal substitute する。`pages_list` は stdin (HEREDOC、single-quoted delimiter) で渡す (ステップ 6.2 の `wiki-lint-source-refs.sh` 呼び出しと同じ契約)。
+**Bash tool 呼び出し境界での state 伝達**: `branch_strategy` / `wiki_branch` は helper の `--branch-strategy` / `--wiki-branch` arg、`stale_days` は `--stale-days` arg に literal substitute する。`pages_list` は stdin (HEREDOC、single-quoted delimiter) で渡す (ステップ 6.2 と同じ契約)。
 
 **`{pages_list}` substitute 契約**: ステップ 2.2 stdout の **pages_list ブロックのみ** (separator `---` より前の `.rite/wiki/pages/...` 行のみ) を substitute する。空 HEREDOC は Wiki 初期化直後 / 0 件で legitimate (`n_stale=0` が emit される)。
 
@@ -376,9 +380,9 @@ fi
 
 ## ステップ 5: 孤児ページ検出
 
-検出本体は `wiki-lint-orphans.sh` に委譲する。helper は index.md を branch_strategy 別に読み出し、カタログに登録されたページと `pages_list` の集合差分を marker block で emit する。登録ページの抽出は `](pages/...)` リンクの grep ベース（テーブルか箇条書きかに非依存）なので、箇条書き形式でもテーブル形式でも無改修で機能する（リンク先 `pages/{domain}/{slug}.md` を維持する条件）。
+検出本体は `wiki-lint-orphans.sh` に委譲する。helper は index.md を branch_strategy 別に読み出し、カタログ登録ページと `pages_list` の集合差分を marker block で emit する。登録抽出は `](pages/...)` リンクの grep ベース（テーブル / 箇条書き非依存。リンク先 `pages/{domain}/{slug}.md` を維持する条件）。
 
-> **Reference**: canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-orphans.sh`。helper は index.md 読出 (`git show`(separate_branch) / `cat`(same_branch))・登録ページ抽出 (`](pages/...)` リンクの `./pages/` / `../pages/` 形式対応の緩和 regex + `sort -u`、テーブル／箇条書き両形式で機能)・`.rite/wiki/` プレフィックス正規化・集合差分・読出失敗 / 抽出 0 件の skip 判定 (全ページ orphan 誤検出防止)・marker block / `orphan_check_ok` enum / `[CONTEXT]` sentinel 出力をすべて内包する (旧 index.md 事前読出 + 孤児検出 inline 実装を委譲)。placeholder residue gate も helper 内で実行される。
+> **Reference**: `plugins/rite/hooks/scripts/wiki-lint-orphans.sh`。state machine 契約は `references/bash-cross-boundary-state-transfer.md` の Pattern 1/2。
 
 **Bash tool 呼び出し境界での state 伝達**: `branch_strategy` / `wiki_branch` は helper の arg、`pages_list` は stdin (HEREDOC) で渡す。substitute 契約はステップ 4 と同一 (pages_list ブロックのみ)。
 
@@ -426,11 +430,12 @@ fi
 
 ### 6.0 skip 済み raw source の集合構築
 
-ステップ 6.2 で参照する `skipped_refs` 集合の構築 (ステップ 6.2 の `all_source_refs` と対称な marker block + `log_read_ok` 4 値 enum) は `wiki-lint-skipped-refs.sh` に委譲する。 (Sub-3) で skip SoT が log.md から raw frontmatter (`ingest_status: skipped`) へ移行したため、helper は log.md ではなく **raw frontmatter を走査**する。
+ステップ 6.2 で参照する `skipped_refs` 集合の構築 (ステップ 6.2 の `all_source_refs` と対称な marker block + `log_read_ok` 4 値 enum) は `wiki-lint-skipped-refs.sh` に委譲する。helper は **raw frontmatter を走査**する。
+rationale: references/rationale.md#skip-sot-raw-frontmatter
 
-> **Reference**: 集合構築の canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-skipped-refs.sh`。helper は `branch_strategy` 別の raw 走査 (`git ls-tree` + `git show`(separate_branch) / `find` + `cat`(same_branch)) で `.rite/wiki/raw/**/*.md` の frontmatter を読み、`ingest_status: skipped` を持つ raw を `raw/{type}/{filename}` 形式で抽出する・**legitimate absence** (raw ディレクトリ不在) と**真の IO error** (permission / 破損 / wiki_branch race) の `LC_ALL=C` 固定 stderr pattern 判別・`sort -u` 重複排除・列挙失敗時の io_error 降格・marker block / `log_read_ok` 4 値 enum 出力 (enum 名は stdout 契約のため据え置き、値は raw 走査状態を表す)・signal-specific trap cleanup をすべて内包する。`ingest_status` 欠落 raw は skipped でないものとして permissive に扱う (AC-6 後方互換)。placeholder residue gate も helper 内で実行される。state machine 契約 (marker block + 4 値 enum) は `references/bash-cross-boundary-state-transfer.md` の Pattern 1/2 を参照。
+> **Reference**: `plugins/rite/hooks/scripts/wiki-lint-skipped-refs.sh`。state machine 契約は `references/bash-cross-boundary-state-transfer.md` の Pattern 1/2。
 
-**Bash tool 呼び出し境界での state 伝達**: ステップ 1.1 の `branch_strategy` / `wiki_branch` は別 Bash tool 呼び出しで定義されているため、Claude は会話コンテキストから helper の `--branch-strategy` / `--wiki-branch` arg に literal substitute する (ステップ 6.2 の `wiki-lint-source-refs.sh` 呼び出しと同じ契約)。
+**Bash tool 呼び出し境界での state 伝達**: ステップ 1.1 の `branch_strategy` / `wiki_branch` は helper の `--branch-strategy` / `--wiki-branch` arg に literal substitute する (ステップ 6.2 と同じ契約)。
 
 ```bash
 # plugin_root 解決 (ステップ 2.1 の inline one-liner。
@@ -455,7 +460,7 @@ else
 fi
 ```
 
-**`log_read_ok` 4 値 enum による状態伝達**: bash 変数は Bash tool 呼び出し境界を超えて失われるため、`log_read_ok` を stdout に `log_read_ok={value}` 形式で出力する。 (Sub-3) で skip SoT が log.md から raw frontmatter (`ingest_status: skipped`) へ移行したため、本 enum は **raw frontmatter 走査の状態**を表す (enum 名は lint.md の stdout 契約のため据え置き):
+**`log_read_ok` 4 値 enum による状態伝達**: bash 変数は Bash tool 呼び出し境界を超えて失われるため、`log_read_ok` を stdout に `log_read_ok={value}` 形式で出力する。本 enum は **raw frontmatter 走査の状態**を表す (enum 名は stdout 契約のため据え置き):
 
 | 値 | 意味 | ステップ 9.1 完了レポートでの扱い |
 |----|------|---------------------------------|
@@ -498,11 +503,12 @@ fi
 
 **`all_source_refs` の集合構築** (ステップ 6.0 の `skipped_refs` と対称な marker block + io_error 3 値 enum) は `wiki-lint-source-refs.sh` に委譲する。
 
-> **Reference**: 集合構築の canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-source-refs.sh`。helper は per-page の `git show`(separate_branch) / `cat`(same_branch) 読出・`sources[].ref` 抽出 (legacy 単行形式 `- ref:` と canonical multi-line 形式 ` ref:` の両対応)・legitimate absence と真の io_error の `LC_ALL=C` 固定 stderr pattern 判別・`sort -u` 重複排除・marker block / read_ok enum 出力・signal-specific trap cleanup をすべて内包する (旧 ~240 行 inline 実装を委譲)。placeholder residue gate / partial pollution gate も helper 内に移設済み。state machine 契約 (marker block + io_error 3 値 enum) は `references/bash-cross-boundary-state-transfer.md` の Pattern 1/2 を参照。
+> **Reference**: `plugins/rite/hooks/scripts/wiki-lint-source-refs.sh`。state machine 契約は `references/bash-cross-boundary-state-transfer.md` の Pattern 1/2。
 
-**Bash tool 呼び出し境界での state 伝達**: ステップ 1.1 の `branch_strategy` / `wiki_branch` と ステップ 2.2 の `pages_list` は別 Bash tool 呼び出しで定義されているため、Claude は会話コンテキストから literal substitute する。`branch_strategy` / `wiki_branch` は helper の `--branch-strategy` / `--wiki-branch` arg、`pages_list` は stdin (HEREDOC、single-quoted delimiter で shell expansion 抑制) で渡す。
+**Bash tool 呼び出し境界での state 伝達**: ステップ 1.1 の `branch_strategy` / `wiki_branch` は helper の `--branch-strategy` / `--wiki-branch` arg、ステップ 2.2 の `pages_list` は stdin (HEREDOC、single-quoted delimiter) で渡す。
 
-**`{pages_list}` substitute 契約**: ステップ 2.2 stdout は「pages_list 行 → '---' separator → raw_list 行」の 3 部構成。LLM は **pages_list ブロックのみ** (separator より前の `.rite/wiki/pages/...` 行のみ) を HEREDOC に substitute する。`.rite/wiki/raw/...` 行を含めると helper の partial pollution gate が fail-fast (exit 1) する (旧 silent missing_concept 誤分類の再発防止契約)。空 HEREDOC は Wiki 初期化直後 / 0 件で legitimate。
+**`{pages_list}` substitute 契約**: ステップ 2.2 stdout は「pages_list 行 → '---' separator → raw_list 行」の 3 部構成。LLM は **pages_list ブロックのみ** (separator より前の `.rite/wiki/pages/...` 行のみ) を HEREDOC に substitute する。`.rite/wiki/raw/...` 行を含めると helper の partial pollution gate が fail-fast (exit 1) する。空 HEREDOC は Wiki 初期化直後 / 0 件で legitimate。
+rationale: references/rationale.md#pages-list-pollution
 
 ```bash
 # plugin_root 解決 (ステップ 2.1 の inline one-liner。
@@ -532,7 +538,8 @@ fi
 
 **`skipped_refs` 集合の参照方法**: ステップ 6.0 の bash block 終了後、LLM は stdout から `---skipped_refs_begin---` と `---skipped_refs_end---` で囲まれた行を抽出して会話コンテキストに集合として保持する。ファイルパスの比較は両辺を `raw/{type}/{filename}` 形式に正規化してから完全一致で判定する。
 
-**marker block 未受信時の fallback** (silent false positive 防止): step 3 の 3 分岐は LLM が stdout の marker block を会話コンテキストに保持する契約に依存する。bash block が途中異常終了 (SIGPIPE / OOM / 構文 error / LLM context truncation) で marker block 自体を受信できなかった場合、当該集合を「空」と同視してはならない:
+**marker block 未受信時の fallback** (silent false positive 防止): bash block が途中異常終了で marker block 自体を受信できなかった場合、当該集合を「空」と同視してはならない:
+rationale: references/rationale.md#marker-unreceived-io-error
 
 - `---skipped_refs_begin---` / `---skipped_refs_end---` のいずれかが欠落 → `log_read_ok="io_error"` と同等扱い、ステップ 9.1 の false positive note を展開
 - `---all_source_refs_begin---` / `---all_source_refs_end---` のいずれかが欠落 → `all_source_refs_read_ok="io_error"` と同等扱い、ステップ 9.1 の false positive note を展開
@@ -571,7 +578,7 @@ fi
 
 検出本体は `wiki-lint-broken-refs.sh` に委譲する。helper は各ページ本文から Markdown リンクを抽出し、ページディレクトリ起点の `realpath -m -s` 解決で実在確認した結果を marker block で emit する。
 
-> **Reference**: canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-broken-refs.sh`。解決規約 (page_dir 起点 / `realpath -m -s` / 文字列マッチ禁止) と edge case は [Broken Reference Resolution](./references/broken-ref-resolution.md) を参照。helper は branch_strategy 別のページ読出・リンク抽出 (コードフェンス除去は awk による indent 不問の開閉トラッキングで、旧 `sed '/^```/,/^```/d'` の行頭限定の限界を解消。インライン code span 内の説明的リンク引用も除去)・画像リンク / 絶対パス / 外部 URL / アンカーのみの除外・`pages_list` / `raw_list` 突合・marker block / `broken_refs_read_ok` enum / `[CONTEXT]` sentinel 出力をすべて内包する (旧 7.1/7.2 inline 実装を委譲)。placeholder residue gate も helper 内で実行される。
+> **Reference**: `plugins/rite/hooks/scripts/wiki-lint-broken-refs.sh`。解決規約は [Broken Reference Resolution](./references/broken-ref-resolution.md)。state machine 契約は `references/bash-cross-boundary-state-transfer.md` の Pattern 1/2。
 
 **Bash tool 呼び出し境界での state 伝達**: `branch_strategy` / `wiki_branch` は helper の arg。stdin には ステップ 2.2 stdout の **3 部構成をそのまま** (pages_list 行 → `---` separator → raw_list 行) substitute する (raw_list は `raw/...` 参照リンクの突合に使用するため、ステップ 4/5 と異なり separator 以降も含める)。
 
@@ -617,28 +624,32 @@ fi
 
 ## ステップ 7.5: 説明的番号参照検出 (informational)
 
-Wiki ページ本文と `index.md` のエントリサマリーに残った**説明目的の Issue/PR 番号参照**を検出する。Wiki は番号の受け皿ではなく経験則を Why 散文で残す場であり（Comment Best Practices SoT の[適用スコープ](../../skills/rite-workflow/references/comment-best-practices.md#適用スコープ)が Wiki ページを含む）、本文に「PR #N は…を統一した」「Issue #N 系譜の継続」「詳細は #N 参照」「(refs #N)」等が残っていれば finding として surface する。括弧やキーワードに包まれない裸の `PR #N` / `Issue #N` も対象で、これは SoT §C Detection Heuristics が reviewer 側 regex として既に宣言している範囲に機構を追随させたもの。[廃止判定ルール](../../skills/rite-workflow/references/comment-best-practices.md#廃止判定ルール-説明的参照-vs-前方ポインタ)に従い、TODO/FIXME 追跡番号は検出除外する。
+Wiki ページ本文と `index.md` のエントリサマリーに残った**説明目的の Issue/PR 番号参照**を検出する。本文に「PR #N は…」「Issue #N」「詳細は #N 参照」「(refs #N)」等が残っていれば finding として surface する。裸の `PR #N` / `Issue #N` も対象。[廃止判定ルール](../../skills/rite-workflow/references/comment-best-practices.md#廃止判定ルール-説明的参照-vs-前方ポインタ)に従い、TODO/FIXME 追跡番号は検出除外する。
+rationale: references/rationale.md#descriptive-refs-surface
 
 **検出対象と除外**:
 - 対象: ステップ 2 で収集した `pages_list` の各ページ全体（frontmatter の `sources:` ブロックを除く）と、`index.md` の**エントリごとのサマリーのみ**
-- 除外: frontmatter の `sources:` ブロック（`ref:` はファイルパスで番号規則に一致しないため防御的除外。`title:` / `description:` の散文は走査対象）、`## ソース` 節（provenance リンクラベル。維持対象）、コードフェンス / インラインコードスパン（literal 引用）、TODO/FIXME（前方追跡ポインタ）。除外規則は `index.md` にも適用するが、2 点だけ異なる。(1) **E5（TODO/FIXME）の適用単位** — ページは行単位で落とし、`index.md` はエントリのサマリー単位で判定する（コードスパンのマスク後に見るため、引用された TODO は無効化され hit として残る）。(2) **`index.md` 固有の除外** — 行頭 `<!--` で始まる HTML コメントブロックを行の分類より前に落とすため、コメント内の番号は数えない（ページ本文では数える）。箇条書きテンプレートが配布されていた期間に初期化された bundle の index.md 前文が記法例をコメントで保持しているためで（現行の配布テンプレートは記法例コメントを持たない）、落とさないと記法例が実エントリとして数えられ、それらの index.md では検出失敗ガードが恒久的に発火しなくなる。rationale: [references/descriptive-refs-rationale.md#index-summary-extraction](references/descriptive-refs-rationale.md#index-summary-extraction)
-- 走査しないファイル（意図的除外）: `log.md`（append-only の ingest / lint 台帳。番号の正しい受け皿）、`raw/**`（レビュー / fix の生ログ = provenance 資料）、`SCHEMA.md`（散文を持たない）。rationale: [references/descriptive-refs-rationale.md#scan-scope](references/descriptive-refs-rationale.md#scan-scope)
+- 除外: frontmatter の `sources:` ブロック（`title:` / `description:` の散文は走査対象）、`## ソース` 節、コードフェンス / インラインコードスパン、TODO/FIXME。除外規則は `index.md` にも適用するが、2 点だけ異なる。(1) **E5（TODO/FIXME）の適用単位** — ページは行単位、`index.md` はエントリのサマリー単位（コードスパンのマスク後）。(2) **`index.md` 固有の除外** — 行頭 `<!--` で始まる HTML コメントブロックを行の分類より前に落とす（ページ本文では数える）。
+rationale: references/descriptive-refs-rationale.md#index-summary-extraction
+- 走査しないファイル（意図的除外）: `log.md` / `raw/**` / `SCHEMA.md`
+rationale: references/descriptive-refs-rationale.md#scan-scope
 
 **本ステップは `pages_list` が空でも実行する** — `index.md` が単独で走査対象になりうるため（helper が自力で拾う）。ステップ 2.2 の「両方空なら skip」は ステップ 3-7 (7.5 を除く) が対象で、本ステップは含まない。helper の検出失敗ガードもこの契約に合わせて `pages_list` ではなく `index.md` 自身の内容で発火する。
-rationale: [references/descriptive-refs-rationale.md#entries-zero-guard](references/descriptive-refs-rationale.md#entries-zero-guard)
+rationale: references/descriptive-refs-rationale.md#entries-zero-guard
 
 **`index.md` の扱い**: helper が自力で読み出す（stdin に足す必要はない。渡した場合も完全一致で受理し重複計上しない）。**ステップ 2.2 の `pages_list` 構築は変更しない**。`index.md` が存在しない場合（Wiki 初期化直後）は静かに対象から落とし、`descriptive_refs_read_errors` にも走査母数にも数えない（存在するのに読めない場合のみ read error として計上する）。
-rationale: [references/descriptive-refs-rationale.md#pages-list-unchanged](references/descriptive-refs-rationale.md#pages-list-unchanged)
+rationale: references/descriptive-refs-rationale.md#pages-list-unchanged
 
-検出は 2 規則の**正規化**で表現する（表層形の列挙ではない）。R1 は「参照キーワードが番号の直前に来る」形で、括弧付き `(refs #N)` / `see PR #N` / 裸の `PR #N は…` はすべてこの 1 規則に畳まれる。R2 はキーワードを持たない日本語 2 構文（`#N で対応` / `詳細は #N`）。キーワードを伴わない裸の `#N` は正当な文脈が多すぎるため検出しない。語境界は `([^0-9]|$)` で表現する（gawk の `\b` はバックスペース扱いで never-match になるため使用禁止）。各除外の判断根拠と副作用（その範囲内では既知の再発が見えなくなる）は `references/descriptive-refs-rationale.md#exclusions` に記録している。
+検出は 2 規則の**正規化**で表現する。R1 は参照キーワードが番号の直前に来る形（`(refs #N)` / 裸の `PR #N は…` を含む）。R2 はキーワードを持たない日本語 2 構文（`#N で対応` / `詳細は #N`）。キーワードを伴わない裸の `#N` は検出しない。語境界は `([^0-9]|$)` で表現する（`\b` 使用禁止）。
+rationale: references/descriptive-refs-rationale.md#exclusions
 
 **検出ロジック**は `wiki-lint-descriptive-refs.sh` に委譲する（stdin `pages_list` はステップ 6.2 helper と同型 — ステップ 6.0 helper は入力を自前で列挙し stdin を読まない。marker block + read_ok enum は 6.0 / 6.2 の双方と同型）。
 
-> **Reference**: canonical 実装は `plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh`。helper は per-page の `git show`(separate_branch) / `cat`(same_branch) 読出・`index.md` の存在プローブ付き読出とエントリ単位のサマリー抽出（テーブル / OKF 箇条書きを行単位で判別。テーブルのサマリー列位置と列数はヘッダー行から導出するため列数不問）・本文抽出フィルタ（frontmatter の `sources:` ブロック / `## ソース` 節 / コードフェンス / コードスパン / TODO・FIXME）・2 規則の検出・placeholder residue gate / partial pollution gate（`index.md` は完全一致で許容、`raw/` 行と `..` は従来どおり fail-fast）をすべて内包する。
+> **Reference**: `plugins/rite/hooks/scripts/wiki-lint-descriptive-refs.sh`。state machine 契約は `references/bash-cross-boundary-state-transfer.md` の Pattern 1/2。
 
-**Bash tool 呼び出し境界での state 伝達**: ステップ 1.1 の `branch_strategy` / `wiki_branch` は helper の `--branch-strategy` / `--wiki-branch` arg、ステップ 2.2 の `pages_list` は stdin (HEREDOC、single-quoted delimiter) で渡す（ステップ 6.2 の `wiki-lint-source-refs.sh` 呼び出しと同じ契約）。
+**Bash tool 呼び出し境界での state 伝達**: ステップ 1.1 の `branch_strategy` / `wiki_branch` は helper の `--branch-strategy` / `--wiki-branch` arg、ステップ 2.2 の `pages_list` は stdin (HEREDOC、single-quoted delimiter) で渡す（ステップ 6.2 と同じ契約）。
 
-`{pages_list}` の substitute 契約はステップ 4 / 5 / 6.2 と同一（separator より前の `.rite/wiki/pages/...` 行のみ）。`index.md` を足す必要はない — helper が自力で拾うため、substitute を忘れても走査から落ちない。`pages_list` が空の場合は HEREDOC 本文を空のまま substitute する（空 HEREDOC は Wiki 初期化直後 / 0 件で legitimate。`(なし)` 等のリテラルを埋めると helper の partial pollution gate が exit 1 する）。本ステップは**両 list が空の経路でも実行される唯一のステップ**であるため、ステップ 4 / 5 / 6.2 / 7 が skip される状況でも空 HEREDOC を渡す（`pages_list` 空・`raw_list` 非空の経路では**ステップ 4 / 5 / 6.2** も実行され、同じく空 HEREDOC を受け取る — ステップ 4 / 6.2 の同旨の記述を参照。**ステップ 7 だけは別**で、HEREDOC が `pages_list` + separator + `raw_list` の 3 部構成のため `raw_list` が非空なら空にならない）。
+`{pages_list}` の substitute 契約はステップ 4 / 5 / 6.2 と同一（separator より前の `.rite/wiki/pages/...` 行のみ）。`index.md` を足す必要はない — helper が自力で拾う。`pages_list` が空の場合は HEREDOC 本文を空のまま substitute する（空 HEREDOC は Wiki 初期化直後 / 0 件で legitimate。`(なし)` 等のリテラルを埋めると helper の partial pollution gate が exit 1 する）。本ステップは**両 list が空の経路でも実行される唯一のステップ**であるため、ステップ 4 / 5 / 6.2 / 7 が skip される状況でも空 HEREDOC を渡す（`pages_list` 空・`raw_list` 非空の経路では**ステップ 4 / 5 / 6.2** も実行され、同じく空 HEREDOC を受け取る。**ステップ 7 だけは別**で、HEREDOC が `pages_list` + separator + `raw_list` の 3 部構成のため `raw_list` が非空なら空にならない）。
 
 ```bash
 # plugin_root 解決 (ステップ 2.1 の inline one-liner。
@@ -665,15 +676,17 @@ PAGES_LIST_EOF
 fi
 ```
 
-**`descriptive_refs_read_ok` enum**: `true`（対象 0 件、または 1 対象ファイル以上の**読出と検出**に成功 — **部分失敗も true のままで、欠損件数は `descriptive_refs_read_errors` が表す**）/ `io_error`（対象が 1 件以上あり全件失敗 — 0 件が実体を反映していない）/ `skipped_helper_missing`（上記 fallback）。marker block 未受信も `skipped_helper_missing` 同等に扱う（未受信を劣化値へ倒す点のみステップ 7 と同型。倒す先は異なる）。**`io_error` の発火条件は兄弟ステップ 7 と異なる**（7 は 1 件でも失敗すれば `io_error`、7.5 は全件失敗時のみ）ため、sibling の enum 説明をそのまま流用しないこと。`descriptive_refs_read_errors` は**読出または検出できなかった**対象ファイル数で、`read_ok=true` でも部分欠損があれば正の値を取る（`index.md` を読み出せてもエントリ形式を認識できない / `index.md` の HTML コメントブロック・コードフェンスが未閉鎖のまま EOF に達した場合は「検出失敗」として本カウンタに載る。frontmatter の `sources:` ブロックと `## ソース` 節は検査対象外）。`descriptive_refs_skipped_rows` は `index.md` 内でサマリーを抽出できなかった**行数**（ファイル単位ではない）。ステップ 9 完了レポートの note 展開はこの 3 値で決まる（展開表は同ステップの `{descriptive_refs_read_ok_note}` 展開ルールを参照）。
+**`descriptive_refs_read_ok` enum**: `true`（対象 0 件、または 1 対象ファイル以上の**読出と検出**に成功 — **部分失敗も true のままで、欠損件数は `descriptive_refs_read_errors` が表す**）/ `io_error`（対象が 1 件以上あり全件失敗 — 0 件が実体を反映していない）/ `skipped_helper_missing`（上記 fallback）。marker block 未受信も `skipped_helper_missing` 同等に扱う。**`io_error` の発火条件は兄弟ステップ 7 と異なる**（7 は 1 件でも失敗すれば `io_error`、7.5 は全件失敗時のみ）ため、sibling の enum 説明をそのまま流用しないこと。`descriptive_refs_read_errors` は**読出または検出できなかった**対象ファイル数で、`read_ok=true` でも部分欠損があれば正の値を取る（`index.md` を読み出せてもエントリ形式を認識できない / HTML コメントブロック・コードフェンスが未閉鎖のまま EOF に達した場合は「検出失敗」として本カウンタに載る。frontmatter の `sources:` ブロックと `## ソース` 節は検査対象外）。`descriptive_refs_skipped_rows` は `index.md` 内でサマリーを抽出できなかった**行数**（ファイル単位ではない）。ステップ 9 完了レポートの note 展開はこの 3 値で決まる（展開表は `{descriptive_refs_read_ok_note}` 展開ルール）。
 
-**検出結果の記録**: 本カテゴリは **informational 指標のため `issues[]` へは転記しない**（ステップ 9 完了レポートの専用行だけで surface する）。ステップ 1.4 カウンタ表の `issues[]` 行が定める generic 契約「helper 委譲カテゴリは marker block の行を転記する」の例外は**本ステップのみ**で、もう 1 つの informational 指標 `unregistered_raw` はステップ 6.3 で `issues[]` に記録されステップ 9.1 の `### 未登録 raw（skip 済）` グループとして出力される（対象外にしてはならない）。本ステップを転記すると 233 ページ分の検出詳細行（実測 736 hits）が `{issues_list_formatted}` を埋め、`n_warnings` に加算されない指標が warning 一覧を占有する。
+**検出結果の記録**: 本カテゴリは **informational 指標のため `issues[]` へは転記しない**（ステップ 9 完了レポートの専用行だけで surface する）。ステップ 1.4 カウンタ表の `issues[]` 行が定める generic 契約「helper 委譲カテゴリは marker block の行を転記する」の例外は**本ステップのみ**。`unregistered_raw` はステップ 6.3 で `issues[]` に記録する（対象外にしてはならない）。
+rationale: references/rationale.md#descriptive-refs-issues-exception
 
-marker block（`page=...; hits=...`）と `descriptive_refs_pages` は sibling helper（ステップ 6.0 / 6.2）との出力形状 parity のために出力しており、**件数**は本 SKILL.md 内に消費者を持たない（helper を直接実行したときの対象ファイル内訳がここでしか得られないため、出力自体は削らないこと）。対象ファイル内訳を人間が見たい場合は helper を直接実行する。
+marker block（`page=...; hits=...`）と `descriptive_refs_pages` は sibling helper（ステップ 6.0 / 6.2）との出力形状 parity のために出力しており、**件数**は本 SKILL.md 内に消費者を持たない（出力自体は削らないこと）。対象ファイル内訳を人間が見たい場合は helper を直接実行する。
 
-**扱い**: `n_descriptive_refs` は **informational 指標**（`unregistered_raw` と同様に `n_warnings` に加算しない）。canonical な `Lint: contradictions=...` summary 行（ステップ 9）の形式は **変更しない**（ingest 側の `^Lint: contradictions=...broken_refs=([0-9]+)$` parser 互換を維持するため）。検出結果はステップ 9 完了レポートの専用行で別途 surface する。
+**扱い**: `n_descriptive_refs` は **informational 指標**（`unregistered_raw` と同様に `n_warnings` に加算しない）。canonical な `Lint: contradictions=...` summary 行（ステップ 9）の形式は **変更しない**。検出結果はステップ 9 完了レポートの専用行で別途 surface する。
 
-> **検出機構との関係**: 同じ説明的参照は `/rite:lint` Phase 3.5（generic loop の `comment-journal-check.sh`、`.rite/wiki/**/*.md` をスコープに含む）でも検出される。ただし `comment-journal-check.sh` の `.rite/wiki` 走査が実体に届くのは `wiki.branch_strategy: same_branch` のときだけで、`separate_branch` では Wiki が wiki ブランチにあるため走査範囲外になる。本ステップは `git show` で wiki ブランチを直接読むため、`separate_branch` では Wiki ページの番号参照を見る唯一の経路である。
+> **検出機構との関係**: `/rite:lint` Phase 3.5 の `comment-journal-check.sh` は `same_branch` のときだけ `.rite/wiki` に届く。本ステップは `git show` で wiki ブランチを読むため、`separate_branch` では Wiki ページの番号参照を見る唯一の経路である。
+rationale: references/descriptive-refs-rationale.md#scan-scope
 
 ---
 
@@ -681,7 +694,8 @@ marker block（`page=...; hits=...`）と `descriptive_refs_pages` は sibling h
 
 ### 8.1 検出結果の log.md 記録
 
-Lint 完了後、`.rite/wiki/log.md` に OKF v0.1 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新）で **append-only** にエントリを追記する。今日の日付見出し `## YYYY-MM-DD` が `# Directory Update Log` 直後（ログ先頭）に無ければ新規追加し、その見出し配下の **bullet 群末尾** に以下の 1 bullet を追加する（同日内の追記位置を ingest.md ステップ 7 と揃え、bullet 順序を実行者非依存にする。log.md は表形式より追記順を保ちやすい OKF 形式へ移行）:
+Lint 完了後、`.rite/wiki/log.md` に OKF v0.1 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新）で **append-only** にエントリを追記する。今日の日付見出し `## YYYY-MM-DD` が `# Directory Update Log` 直後（ログ先頭）に無ければ新規追加し、その見出し配下の **bullet 群末尾** に以下の 1 bullet を追加する:
+rationale: references/rationale.md#okf-log-append
 
 ```
 * **{lint_action}** — contradictions={n}, stale={n}, orphans={n}, missing_concept={n}, unregistered_raw={n}, broken_refs={n}
@@ -694,7 +708,8 @@ Lint 完了後、`.rite/wiki/log.md` に OKF v0.1 予約構造（`## YYYY-MM-DD`
 - `lint:clean`: ブロッキングカテゴリ 5 種 (`n_contradictions`, `n_stale`, `n_orphans`, `n_missing_concept`, `n_broken_refs`) **すべてが 0** の場合。`n_unregistered_raw` の値に依存しない (`n_unregistered_raw > 0` でも他 5 カテゴリが全 0 なら `lint:clean`)
 - `lint:warning`: 上記 5 カテゴリのいずれか 1 つ以上が `> 0` の場合。`n_unregistered_raw` は判定から除外する
 
-**`lint_action` 自動判定** (Pattern 1: `[CONTEXT] key=value` stdout emit): 上記 prose 判定基準を LLM 解釈から切り離し、bash block で機械的に決定して stdout に emit する。ステップ 8.3 の `{log_entry}` 組み立てはこの emit 値を **single source of truth** として参照する:
+**`lint_action` 自動判定** (Pattern 1: `[CONTEXT] key=value` stdout emit): bash block で機械的に決定して stdout に emit する。ステップ 8.3 の `{log_entry}` 組み立てはこの emit 値を **single source of truth** として参照する:
+rationale: references/rationale.md#lint-action-machine
 
 ```bash
 # ステップ 8.1 canonical lint_action decision logic (ステップ 8.3 sibling sync 契約相手)
@@ -945,7 +960,8 @@ Wiki Lint が完了しました。
 
 **`{n_pages}` / `{n_raw}` 展開ルール**: LLM は ステップ 2.2 bash block stdout から `pages_list` / `raw_list` を会話コンテキストに保持している。各配列の要素数（空行と `---` separator を除いた非空行の数）を数えて展開する。両 list が空の場合は `0`。
 
-**`{n_descriptive_refs}` / `{descriptive_refs_read_ok_note}` 展開ルール**: LLM は ステップ 7.5 の helper stdout から `[CONTEXT] WIKI_DESCRIPTIVE_REFS=` を読み取り `{n_descriptive_refs}` に展開する。**`pages_list` が空でもステップ 7.5 は実行する** — `index.md` が単独で走査対象になりうるため（helper が自力で拾う）。note は兄弟 enum（`{stale_check_ok_note}` 等）と同じく件数の直後に置き、`descriptive_refs_read_ok` / `descriptive_refs_read_errors` / `descriptive_refs_skipped_rows` の 3 値から下表で決める — 読出失敗由来の `0` や部分欠損した集計を「解消済み」と読ませないため。**下表の条件は排他で、一致する行はちょうど 1 つ**（優先順位規約に依存しない）:
+**`{n_descriptive_refs}` / `{descriptive_refs_read_ok_note}` 展開ルール**: LLM は ステップ 7.5 の helper stdout から `[CONTEXT] WIKI_DESCRIPTIVE_REFS=` を読み取り `{n_descriptive_refs}` に展開する。**`pages_list` が空でもステップ 7.5 は実行する** — `index.md` が単独で走査対象になりうるため（helper が自力で拾う）。note は兄弟 enum（`{stale_check_ok_note}` 等）と同じく件数の直後に置き、`descriptive_refs_read_ok` / `descriptive_refs_read_errors` / `descriptive_refs_skipped_rows` の 3 値から下表で決める。**下表の条件は排他で、一致する行はちょうど 1 つ**（優先順位規約に依存しない）:
+rationale: references/rationale.md#descriptive-refs-note-unread
 
 | 条件 | note（件数の直後） |
 |------|------------------|
@@ -1015,7 +1031,7 @@ LLM は ステップ 6.0 stdout から `log_read_ok={value}`、ステップ 6.2 
 
 ### 9.2 `--auto` モードの出力
 
-Ingest 完了直後に呼ばれる場合、出力は最小化される。`--auto` モードの stdout は次の 3 行を **この順序で** 出力する:
+`--auto` モードの stdout は次の 3 行を **この順序で** 出力する:
 
 ```
 Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, missing_concept={n_missing_concept}, unregistered_raw={n_unregistered_raw}, broken_refs={n_broken_refs}
@@ -1028,21 +1044,21 @@ Lint: contradictions={n_contradictions}, stale={n_stale}, orphans={n_orphans}, m
 3. **HTML コメント sentinel** (`<!-- [lint:returned-to-caller:auto] -->`): 最終行に出力。rendered view では不可視で `grep -F '[lint:returned-to-caller:auto]'` で検出可能
 
 検出件数が全て 0 の場合も含めて常にこの 3 行を出力する。空 stdout は ingest 側で「lint 実行失敗」として扱われる。
-
-> **Why `returned-to-caller` (not `completed`)**: 旧 `lint:completed:auto` 形式は literal `completed` が LLM の turn-boundary heuristic と衝突し、caller skill (ingest 等) の次 step を skip して turn が暗黙終了する事象が複数回再発した。`returned-to-caller` は「caller に return した = caller の次 step に進む」という semantic に置換することで、terminal vocabulary を構造的に排除する。
+rationale: references/rationale.md#returned-to-caller
 
 ### 9.3 exit code
 
 - **原則 exit 0**: 検出件数・事前チェック失敗 (下記 helper 解決失敗を除く)・ブランチ読取失敗のいずれも非ブロッキング
 - **例外 (`exit 1` fail-fast)**:
-  - `lib/wiki-config.sh` の source 失敗 (ステップ 1.1、`WIKI_CONFIG_HELPER_UNAVAILABLE`。設定を判定できないまま「Wiki 無効」へ倒す silent default の防止)
-  - `branch_strategy` 未知値 (ステップ 2.2 / 8.2 / 8.3 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5) で同型。設定ミスの silent 通過防止)
+  - `lib/wiki-config.sh` の source 失敗 (ステップ 1.1、`WIKI_CONFIG_HELPER_UNAVAILABLE`)
+  - `branch_strategy` 未知値 (ステップ 2.2 / 8.2 / 8.3 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5) で同型)
   - `{mode}` placeholder 残留 (ステップ 1.1 / 1.3 / 8.3)
-  - helper 委譲ステップ (4 / 5 / 6.0 / 6.2 / 7 / 7.5) の placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{stale_days}` / `{pages_list}` + 6.2 / 7.5 の partial pollution gate、LLM substitute 忘れによる silent 誤分類防止。各 helper 内で検知)
-  - ステップ 8.1 の counter placeholder (`n_*` 5 種) 残留 / 非整数検知 (silent `lint:clean` 誤 emit 防止)
-  - ステップ 8.3 の placeholder 残留 (`{log_entry}` / `{branch_strategy}` の 2 種、literal 残留 commit landed 防止)
-  - GNU realpath (-m -s) 不在 (全 link silent broken 判定の防止、ステップ 7 helper 内)
+  - helper 委譲ステップ (4 / 5 / 6.0 / 6.2 / 7 / 7.5) の placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{stale_days}` / `{pages_list}` + 6.2 / 7.5 の partial pollution gate。各 helper 内で検知)
+  - ステップ 8.1 の counter placeholder (`n_*` 5 種) 残留 / 非整数検知
+  - ステップ 8.3 の placeholder 残留 (`{log_entry}` / `{branch_strategy}` の 2 種)
+  - GNU realpath (-m -s) 不在 (ステップ 7 helper 内)
 - 内部 bash 構文エラー等の unrecoverable error のみ非 0 exit となる可能性あり
+rationale: references/rationale.md#fail-loud-contract
 
 ---
 
