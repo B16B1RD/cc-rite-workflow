@@ -18,7 +18,7 @@ argument-hint: "<pr_number>"
 
 0. flow-state から issue_number / branch_name を復元
 0.6. cycle counter を初期化（fresh は 0 にリセット / resume は継続）+ `safety.max_review_cycles` を読込・検証
-1. 発火条件チェック（収束トレンドの発散 / `max_review_cycles` 到達）→ 不成立なら counter を +1 して `/rite:pr-review` を invoke / 成立なら サーキットブレーカー（ステップ 6）へ
+1. lost 修復ゲート（前 cycle JSON 不在なら即時保存 or counter 不前進の再レビュー）→ 発火条件チェック（収束トレンドの発散 / `max_review_cycles` 到達）→ 不成立なら counter を +1 して `/rite:pr-review` を invoke / 成立なら サーキットブレーカー（ステップ 6）へ
 2. review sentinel を判定（`[review:mergeable]` → 終了 / `[review:fix-needed:N]` → ステップ 3 / error・不在 → 1 回自動再試行、再失敗時は停止）
 3. `/rite:fix` を invoke
 4. fix sentinel を判定（`[fix:pushed]` → ステップ 1 に戻る / `[fix:replied-only]` `[fix:cancelled-by-user]` → 終了 / error・不在 → 1 回自動再試行、再失敗時は停止）
@@ -317,7 +317,7 @@ rationale: references/rationale.md#reset-refire-run-since
 | `absent` | pin ファイルが無い、**または中身が空**（0.6 が `ok-empty` を記録した新規 PR）で空文字を渡した。前 2 者は WARNING 済み、空 pin 経路は WARNING を出さない |
 | `unresolved-root` | state root を解決できず空文字を渡した。WARNING 済み |
 
-`LOST`（両分岐に載る）は helper が返した `lost=` の値で、**cycle_count に対して失われた結果の件数**（保存失敗 / review 中断）。`0` 以外なら判定に使われた列に穴があり、ステップ 6.2 の推移行はその旨を併記する。
+`LOST`（両分岐に載る）は helper が返した `lost=` の値で、**cycle_count に対して失われた結果の件数**（保存失敗 / review 中断）。`0` 以外なら判定に使われた列に穴があり、ステップ 6.2 の推移行はその旨を併記する。同じ値がステップ 1 の修復ゲート入力になる（注記の文面・算出は変えない）。
 
 | `REFIRE` | 意味 |
 |---|---|
@@ -328,10 +328,12 @@ rationale: references/rationale.md#reset-refire-run-since
 
 ## ステップ 1: 発火条件チェック → /rite:pr-review を invoke
 
-ループ頭でサーキットブレーカーの **2 つの発火条件** を評価する。**どちらも不成立なら** counter を +1 して `phase=review` に更新後 `/rite:pr-review` を invoke、**いずれかが成立したら** サーキットブレーカー（ステップ 6）へ分岐する:
+ループ頭で **lost 修復ゲートを先に**評価し、穴が無いときだけサーキットブレーカーの **2 つの発火条件** を評価する。ゲートが fire なら increment も次 cycle の review も始めない。ゲートが ok で発火条件がどちらも不成立なら counter を +1 して `phase=review` に更新後 `/rite:pr-review` を invoke、いずれかが成立したらサーキットブレーカー（ステップ 6）へ分岐する:
 
-1. **収束トレンドの発散**（主経路）— `hooks/scripts/review-trend-divergence.sh` が永続レビュー JSON から現 run の per-cycle blocking 列を復元し発散と判定した場合。`cycle_count` が上限未満でも発火する
-2. **`max_review_cycles` 到達**（保険）— 発散判定をすり抜けた非収束を受け止める backstop（既定 15 では 16 cycle 以上を要する収束中の run にも届きうる）
+1. **lost 修復ゲート** — helper の `lost=` が `0` より大きい（完了済み cycle に対して JSON 不足 = 増分）。次 cycle を始めず (a)/(b) へ
+2. **収束トレンドの発散**（主経路）— `hooks/scripts/review-trend-divergence.sh` が永続レビュー JSON から現 run の per-cycle blocking 列を復元し発散と判定した場合。`cycle_count` が上限未満でも発火する
+3. **`max_review_cycles` 到達**（保険）— 発散判定をすり抜けた非収束を受け止める backstop（既定 15 では 16 cycle 以上を要する収束中の run にも届きうる）
+rationale: references/rationale.md#lost-repair-gate
 
 `max_review_cycles` は marker 依存を避けるため config から silent 再読込する（検証・WARNING はステップ 0.6 で実施済）:
 
@@ -411,8 +413,16 @@ if [ "$trend_rc" -ne 0 ] || [ -z "$trend_verdict" ]; then
   trend_lost=0
 fi
 
+# lost 修復ゲート。次 cycle の increment / review / CB 発火より先に評価する。
+# `lost > 0` = 完了済み cycle に対して JSON が不足（増分）。helper の lost= をそのまま使う。
+lost_gate=ok
+if [ "$trend_lost" -gt 0 ] 2>/dev/null; then
+  lost_gate=fire
+fi
+
 # 発火理由を決める。**cycle 上限を先に評価する** — 両方成立しているとき、上限到達は
 # 従来からの契約（AC-3 の保険）であり、そちらを理由として報告するほうが挙動の説明として正確。
+# lost ゲートが fire のときは下の分岐で CB を保留する（本算出は行わないわけではない）。
 cb_reason=""
 if [ "$cc" -ge "$max_cycles" ] 2>/dev/null; then
   cb_reason=max-cycles
@@ -420,7 +430,17 @@ elif [ "$trend_verdict" = fire ]; then
   cb_reason=divergence
 fi
 
-if [ -n "$cb_reason" ]; then
+if [ "$lost_gate" = fire ]; then
+  # increment しない（marker の cycle は永続 counter と一致 = INC=held）。
+  # ITERATE_CB=ok を載せるのは既存 CB 表の fire 分岐に落とさないため。
+  # review invoke は ITERATE_LOST_GATE 表が決める（本 marker の ok を「次 cycle 開始」と読まない）。
+  marker_emit ITERATE_LOST_GATE fire "lost=$trend_lost" "cycle=$cc" "max=$max_cycles" \
+    "TREND=$trend_series" "TREND_VERDICT=$trend_verdict" "TREND_REASON=$trend_reason" \
+    "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=held"
+  marker_emit ITERATE_CB ok "cycle=$cc" "max=$max_cycles" \
+    "TREND=$trend_series" "TREND_VERDICT=$trend_verdict" "TREND_REASON=$trend_reason" \
+    "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=held"
+elif [ -n "$cb_reason" ]; then
   # 直前の [fix:pushed] が fix.md ステップ5.1 で set した継続 handoff (`/rite:pr-review {pr}`) を
   # default-clear する（`--handoff` を伴わない set は handoff を消す）。これをしないと、fire 後に
   # turn が終わったとき stop-loop-continuation.sh が残存 handoff を consume して `/rite:pr-review` を
@@ -453,6 +473,8 @@ if [ -n "$cb_reason" ]; then
   [ -n "$fire_out" ] && printf '%s\n' "$fire_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   # CB_REASON / TREND はステップ 6.2 の停止通知が「理由」行とトレンド推移の表示に使う（AC-4）。
   # ステップ 6 は別の Bash 呼び出しでシェル変数を引き継げないため marker で渡す。
+  marker_emit ITERATE_LOST_GATE ok "lost=$trend_lost" "cycle=$cc" "max=$max_cycles" \
+    "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=none"
   marker_emit ITERATE_CB fire "cycle=$cc" "max=$max_cycles" "CB_REASON=$cb_reason" \
     "TREND=$trend_series" "TREND_VERDICT=$trend_verdict" "TREND_REASON=$trend_reason" \
     "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "HANDOFF_CLEAR=$handoff_clear"
@@ -477,16 +499,36 @@ else
   # 表示は fire 分岐と同一形（毎 cycle 通る最頻経路なので、ここだけ中和を欠くと corrupt state
   # 診断の制御文字が最も高い頻度で端末へ素通しする）。
   [ -n "$inc_out" ] && printf '%s\n' "$inc_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  marker_emit ITERATE_LOST_GATE ok "lost=$trend_lost" "cycle=$new_cc" "max=$max_cycles" \
+    "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=$inc_status"
   marker_emit ITERATE_CB ok "cycle=$new_cc" "max=$max_cycles" \
     "TREND=$trend_series" "TREND_VERDICT=$trend_verdict" "TREND_REASON=$trend_reason" \
     "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=$inc_status"
 fi
 ```
 
+| `ITERATE_LOST_GATE` | アクション |
+|---------|-----------|
+| `ok` | 穴なし。既存の `ITERATE_CB` 表へ |
+| `fire` | 次 cycle の review を開始しない（`INC=held` = 永続 counter も marker の `cycle=` も据え置き）。下記 (a)/(b) へ。`ITERATE_CB=ok` は CB fire 回避用であり、次 cycle 開始を意味しない |
+
+| 分岐 | 条件 | アクション |
+|---------|-----------|
+| (a) | 直前 cycle のレビュー結果がセッションコンテキストに残存 | pr-review ステップ 6.1.a と同じ手順（timestamp sentinel + Write tmpfile + `bash {plugin_root}/hooks/review-result-save.sh --pr {pr_number} --content-file <tmp>`）で即時保存。`JSON_SAVED=1` なら下の `ITERATE_LOST_REPAIR=saved` を emit して**ステップ 1 の bash を再実行**。失敗は (b) |
+| (b) | 残存しない / (a) 失敗 | 下の `ITERATE_LOST_REPAIR=rereview` を emit し、counter 不前進のまま `/rite:pr-review` を invoke。保存が成立しなければ停止。成立ならステップ 2 |
+
+```bash
+source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit できないため中止します" >&2; exit 1; }
+marker_emit ITERATE_LOST_REPAIR "{repair}" "cycle={cycle_count}" "lost={lost}"
+```
+
+`{repair}` は `saved` / `rereview` / `failed`。`{cycle_count}` はゲート発火時の `cycle=`（increment 前の永続値）。`{lost}` は同 marker の `lost=`。
+
 | `ITERATE_CB` marker | アクション |
 |---------|-----------|
-| `ok` | 発火条件のいずれにも該当せず。counter を +1 済。`/rite:pr-review` を invoke（下記）してステップ 2 へ |
-| `fire` | 発火（`CB_REASON` に理由）。**review を invoke せず** サーキットブレーカー（ステップ 6）へ直行（mergeable 判定済 PR には発火しない = ステップ 2 で先に `[review:mergeable]` 終了するため到達しない） |
+| `ok` かつ `ITERATE_LOST_GATE=ok` | 発火条件のいずれにも該当せず。counter を +1 済。`/rite:pr-review` を invoke（下記）してステップ 2 へ |
+| `ok` かつ `ITERATE_LOST_GATE=fire` | 上の lost-gate 表。(b) 以外で pr-review を invoke しない |
+| `fire` | 発火（`CB_REASON` に理由）。**review を invoke せず** サーキットブレーカー（ステップ 6）へ直行（mergeable 判定済 PR には発火しない = ステップ 2 で先に `[review:mergeable]` 終了するため到達しない。lost-gate が fire のときは本行に到達しない） |
 
 `CB_REASON` は発火理由で、ステップ 6.2 の停止通知の「理由」行を決める（sentinel 自体は理由に依らず不変 — ステップ 6 参照）:
 
@@ -499,7 +541,7 @@ fi
 
 `TREND_REASON` は helper が返した `reason=` の値で、**判定が下りなかったときにその理由を運ぶ唯一の経路**。helper は理由を stdout の `reason=` に載せるため、ここで抽出して marker に載せないと呼び出し側からは消える。主な値: `need_3_cycles`（現 run の結果が 3 件に満たない。全 run が cycle 2〜3 で必ず通る正常系）/ `no_file_after_pin`（run 開始点 pin より新しい結果が 0 件。**再実行直後の 1 cycle 目は正常系**で、全面不作動を疑うのは helper が stderr WARNING を併発したとき = `cycle_count>=1`）/ `run_boundary_unresolved`（実在数が `cycle_count` を超え、他 run の結果が混ざっている。pin が無い / 古い。誤発火を避けて判定を降ろした状態で、`RUN_SINCE_USED` が原因を示す）/ `no_results_file`・`results_dir_missing`（結果ディレクトリ自体を読めない = 発散検出の全面不作動。cycle_count>=1 なら helper が stderr にも WARNING を出す）/ `json_parse_failure`・`schema_version_unknown`・`scope_enum_violation`・`pr_number_mismatch`・`blocking_count_failed`（データ異常。いずれも helper の stderr WARNING に詳細）/ `helper_unavailable`（helper 自体を実行できなかった。上記 WARNING が対）/ 判定が下りた場合は `converging_or_descending`・`no_new_minimum_and_not_descending`。
 
-`ITERATE_CB=ok` のとき `/rite:pr-review` を invoke:
+`ITERATE_CB=ok` かつ `ITERATE_LOST_GATE=ok` のとき `/rite:pr-review` を invoke:
 
 ```text
 skill: rite:pr-review

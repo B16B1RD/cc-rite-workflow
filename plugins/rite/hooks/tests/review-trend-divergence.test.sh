@@ -829,4 +829,32 @@ else
   skip "実 fixture pr-2070 が存在しない"
 fi
 
+# ---------------------------------------------------------------------------
+# iterate 消費側: lost 修復ゲート (注記からゲートへの昇格)
+# helper の lost= 算出は上で pin 済み。ここでは消費側が lost>0 を次 cycle 開始の遮断に
+# 使うこと・counter 不前進・分岐 marker を static-contract で pin する。
+# ---------------------------------------------------------------------------
+echo "--- iterate lost 修復ゲート (消費側契約) ---"
+
+ITERATE_SKILL="$SCRIPT_DIR/../../skills/iterate/SKILL.md"
+assert_file_exists_or_fail "iterate/SKILL.md が存在する" "$ITERATE_SKILL"
+assert_grep "消費側: lost>0 でゲートを fire する" "$ITERATE_SKILL" \
+  'if \[ "\$trend_lost" -gt 0 \]'
+assert_grep "消費側: ゲート fire 時は INC=held（counter 不前進）" "$ITERATE_SKILL" \
+  'INC=held'
+assert_grep "消費側: ITERATE_LOST_GATE fire を marker_emit する" "$ITERATE_SKILL" \
+  'marker_emit ITERATE_LOST_GATE fire'
+assert_grep "消費側: 分岐結果を ITERATE_LOST_REPAIR に記録する" "$ITERATE_SKILL" \
+  'marker_emit ITERATE_LOST_REPAIR'
+assert_grep "消費側: (a) は既存 save helper 経由" "$ITERATE_SKILL" \
+  'hooks/review-result-save.sh --pr \{pr_number\} --content-file'
+assert_grep "消費側: (b) は counter 不前進のまま pr-review" "$ITERATE_SKILL" \
+  'counter 不前進のまま `/rite:pr-review`'
+assert_grep "消費側: ゲート fire 時は次 cycle の review を開始しない" "$ITERATE_SKILL" \
+  '次 cycle の review を開始しない'
+assert_grep "非退行: LOST 注記（推移行併記）が残っている" "$ITERATE_SKILL" \
+  '`LOST` が `0` 以外のときは推移行に欠落を併記する'
+assert_not_grep "非退行: helper の lost= 算出を iterate 側で上書きしない" "$ITERATE_SKILL" \
+  'trend_lost=\$\(\('
+
 print_summary "review-trend-divergence"
