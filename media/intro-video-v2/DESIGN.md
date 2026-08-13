@@ -178,10 +178,12 @@ markdown 中心で、全 PR の lint 経路に Chrome 実行を持ち込むの�
 
 レンダー側の各ガードは `check-contract.sh` が「非ゼロ終了 + 期待メッセージ + 成果物が残らないこと」
 の 3 点で pin する。`render.mjs` にガードを足したら同スクリプトにもケースを 1 行足し、上の「使い方」節が
-名乗る Chrome 起動回数も併せて直すこと（回数は同スクリプトのケース数に直結する） —
+名乗る Chrome 起動回数も併せて直すこと（回数が直結するのは `expect_contract_failure` の呼び出し数で、
+`assemble.sh` 側のケースは Chrome を起動しないため回数を動かさない） —
 fixture を置くだけではガードを消しても決定論チェックが green のまま通る（実測済み）。同スクリプトの
-ケース同定は `render.mjs` と `assemble.sh` のメッセージ文言に依存するため、文言を変えると
-「契約チェック不能」として検出される（silent には落ちない）。
+ケース同定は `render.mjs` と `assemble.sh` のメッセージ文言に依存するため、文言を変えると契約チェックが
+失敗する（silent には落ちない。見出しは `render.mjs` 側が「契約チェック不能」、`assemble.sh` 側は
+`scene-dir-redirect` の既定 `out` 診断のみ「契約チェック不能」で、残りは「契約 NG」）。
 
 ### レンダー（`render/render.mjs`）
 
