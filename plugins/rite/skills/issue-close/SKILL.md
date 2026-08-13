@@ -25,7 +25,7 @@ Check the completion status of an Issue and guide necessary actions.
 
 ## Shared: Projects Status → Done (delegate pattern)
 
-Phase 1.3.2 / 4.2 / 4.6.3 は Projects Status を **Done** に更新する。`projects-status-update.sh` に委譲する（`skills/open/SKILL.md` ステップ 2.4 / `skills/ready/SKILL.md` Phase 4 と同一）。冪等。API 詳細は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update)。
+Phase 1.3.2 / 4.2 / 4.6.3 / `skip_already_closed`（全子 CLOSED）は Projects Status を **Done** に更新する。`projects-status-update.sh` に委譲する（`skills/open/SKILL.md` ステップ 2.4 / `skills/ready/SKILL.md` Phase 4 と同一）。冪等。API 詳細は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update)。
 rationale: references/rationale.md#projects-status-delegate
 
 **委譲呼び出し**（`{issue}` は対象 Issue 番号、`auto_add false`・`non_blocking true`）:
@@ -494,7 +494,7 @@ rationale: references/rationale.md#parent-direct-only
 
 ### 4.6.0 + 4.6.1 Idempotency Check & Child Enumeration
 
-冪等性チェック（親が既 closed なら no-op）→ 子列挙 → `all_closed` を **単一 Bash block** で行う。stderr は tempfile に退避。`set -uo pipefail`（`-e` は明示 `|| fallback` のため省略）。
+冪等性チェック（親が既 closed なら close は no-op。Status → Done は 4.6.1 の後）→ 子列挙 → `all_closed` を **単一 Bash block** で行う。stderr は tempfile に退避。`set -uo pipefail`（`-e` は明示 `|| fallback` のため省略）。
 rationale: references/rationale.md#single-block-p460
 
 ```bash
@@ -519,7 +519,7 @@ p46_err=""
 trap 'rm -f "${p46_err:-}"' EXIT INT TERM HUP
 p46_err=$(mktemp 2>/dev/null) || p46_err=""
 
-# --- 4.6.0: Idempotency — 親が既に CLOSED なら no-op (close-side idempotency, extends AC-6 principle) ---
+# --- 4.6.0: Idempotency — 親が既に CLOSED なら close は no-op。Status → Done は 4.6.1 の後 ---
 parent_state=""
 if parent_state=$(gh issue view "$parent_number" -R "$owner_repo_slash" --json state --jq '.state' 2>"${p46_err:-/dev/null}"); then
   echo "parent_state=$parent_state"
@@ -534,11 +534,11 @@ if [ -z "$parent_state" ]; then
   echo "[CONTEXT] P460_DECISION=skip_retrieval_failed"
   exit 0
 elif [ "$parent_state" = "CLOSED" ]; then
-  echo "[DEBUG] parent #${parent_number} already closed — skipping Phase 4.6 (close-side idempotency)"
+  echo "[DEBUG] parent #${parent_number} already closed — skip close; continue for Status → Done"
   echo "[CONTEXT] P460_DECISION=skip_already_closed"
-  exit 0
+else
+  echo "[CONTEXT] P460_DECISION=proceed_to_enumeration"
 fi
-echo "[CONTEXT] P460_DECISION=proceed_to_enumeration"
 
 # --- 4.6.1: Enumerate children (Method A: trackedIssues / Tasklists API → Method B: body parse) ---
 # trackedIssues は Tasklists 機能 (body `- [ ] #N` parser)。GitHub Sub-Issues API (subIssues) とは別物。
@@ -600,10 +600,12 @@ fi
 |----|-------------|
 | `P460_DECISION=skip_routing_bug` | routing bug（empty/literal/非数値）。Phase 4.6 を抜けて Phase 5 へ |
 | `P460_DECISION=skip_retrieval_failed` | 親 state 取得失敗。Phase 4.6 を抜けて Phase 5 へ（non-blocking） |
-| `P460_DECISION=skip_already_closed` | 親が既 closed の no-op。Phase 4.6 を抜けて Phase 5 へ |
-| `P461_DECISION=skip_empty_children` | 子一覧取得不可。`親 Issue #{parent_number} の子 Issue 一覧が取得できませんでした。自動クローズをスキップします。` を表示し Phase 5 へ |
-| `P461_DECISION=skip_open_children; open_count=N` | `親 Issue #{parent_number} にはまだ N 件の未完了子 Issue があります。自動クローズはスキップします。` を表示し Phase 5 へ |
-| `P461_DECISION=proceed_to_confirmation` | 4.6.2 へ |
+| `P460_DECISION=skip_already_closed` + `P461_DECISION=proceed_to_confirmation` | close は skip。Shared: Status → Done（`{issue}` = `{parent_number}`）。4.6.2 / 4.6.3 は実行しない。Phase 5 へ |
+| `P460_DECISION=skip_already_closed` + `P461_DECISION=skip_open_children` | Phase 5 へ（Status も Done にしない） |
+| `P460_DECISION=skip_already_closed` + `P461_DECISION=skip_empty_children` | 子一覧取得不可。`親 Issue #{parent_number} の子 Issue 一覧が取得できませんでした。自動クローズをスキップします。` を表示し Phase 5 へ |
+| `P461_DECISION=skip_empty_children`（`P460=proceed_to_enumeration`） | 子一覧取得不可。`親 Issue #{parent_number} の子 Issue 一覧が取得できませんでした。自動クローズをスキップします。` を表示し Phase 5 へ |
+| `P461_DECISION=skip_open_children; open_count=N`（`P460=proceed_to_enumeration`） | `親 Issue #{parent_number} にはまだ N 件の未完了子 Issue があります。自動クローズはスキップします。` を表示し Phase 5 へ |
+| `P461_DECISION=proceed_to_confirmation`（`P460=proceed_to_enumeration`） | 4.6.2 へ |
 
 ### 4.6.2 User Confirmation
 
