@@ -9,7 +9,7 @@ argument-hint: ""
 
 # /rite:wiki-init
 
-Wiki の初期化を行います。3層ディレクトリ構造の作成、テンプレート展開、Git ブランチの設定を実行します。
+Wiki の初期化。3 層ディレクトリ作成、テンプレート展開、Git ブランチ設定。
 
 > **Reference**: [Wiki Patterns](../../references/wiki-patterns.md) — ディレクトリ構造、ブランチ管理、テンプレート展開の共通パターン
 
@@ -104,11 +104,13 @@ Wiki は既に初期化されています。
 - `separate_branch`: `set -o pipefail && ts=$(date +%s) && mkdir -p .rite/wiki.bak.$ts && git archive "$wiki_branch" -- .rite/wiki/ | tar -x -C .rite/wiki.bak.$ts && set +o pipefail && git branch -D "$wiki_branch" && { git push origin --delete "$wiki_branch" 2>/dev/null || true; }` で wiki ブランチからデータを取得後、既存ブランチを削除（`set -o pipefail` で `git archive` 失敗時にバックアップなしでブランチ削除に進行することを防止。`|| true` は `git push origin --delete` のみに適用。`git checkout --orphan` が同名ブランチ存在時に失敗するため削除が必要）
 - `same_branch`: `cp -r .rite/wiki .rite/wiki.bak.$(date +%s)` で working tree から直接コピー
 
-**変数保持指示**: ステップ 1.2 で出力された `branch_strategy` と `wiki_branch` の値を保持し、**ステップ 1.3 以降のすべての Bash ブロック** (ステップ 1.3 / 2 / 3 / 3.5 / 3.5.1) で**リテラル値として埋め込んで**使用すること。Claude Code の Bash ツール間でシェル変数は保持されないため、各 Bash ブロックの冒頭で値をリテラルに再定義する必要がある。
+**変数保持指示**: ステップ 1.2 の `branch_strategy` / `wiki_branch` を、**ステップ 1.3 以降のすべての Bash ブロック**で**リテラル値として埋め込む**。
+rationale: references/rationale.md#variable-literal-embed
 
 ### 1.3 same_branch 戦略向け .gitignore negation 自動注入
 
-`.rite/wiki/` が `.gitignore` に追加されているため、`same_branch` 戦略ユーザーは ステップ 3.1 の `git add .rite/wiki/` が "paths are ignored" で hard fail します。本ステップは negation エントリ (`!.rite/wiki/` および `!.rite/wiki/**`) を対話的に追記し、hard fail を未然に防ぎます。
+`same_branch` ではステップ 3.1 の `git add .rite/wiki/` が "paths are ignored" で hard fail する。negation エントリ（`!.rite/wiki/` および `!.rite/wiki/**`）を対話的に追記する。
+rationale: references/rationale.md#gitignore-negation
 
 **発動条件** (すべて満たすときのみ):
 
@@ -273,11 +275,12 @@ else
 fi
 ```
 
-`--verify-negation` モードは post-injection 専用で、config 読込・strategy 判定・parent-exclusion check をスキップし、全分岐 non-blocking (exit 0) で結果を stdout / stderr に出す。probe の親ディレクトリ (`.rite/wiki/raw/`) は rmdir せず残すため、後続ステップ 2 のディレクトリ作成と衝突しない。
+`--verify-negation` は post-injection 専用。全分岐 non-blocking (exit 0)。
+rationale: references/rationale.md#verify-negation-nonblocking
 
-**成功時**: helper が `✅ .gitignore negation verification OK: ...` を **stdout** に出力する。続けて `✅ .gitignore に negation エントリを追記しました` を表示して ステップ 2 へ。
+**成功時**: helper が `✅ .gitignore negation verification OK: ...` を **stdout** に出す。続けて `✅ .gitignore に negation エントリを追記しました` を表示してステップ 2 へ。
 
-**失敗時 (non-blocking)**: helper が `WARNING: .gitignore negation verification failed ...` を **stderr** に出力する。WARNING 表示のみで ステップ 2 に進行する。ステップ 3.1 の `git add .rite/wiki/` で改めてエラーが出れば、そこでユーザーに手動対応を促す。
+**失敗時 (non-blocking)**: helper が `WARNING: .gitignore negation verification failed ...` を **stderr** に出す。WARNING のみでステップ 2 へ。ステップ 3.1 の `git add` で改めてエラーが出れば手動対応。
 
 ## ステップ 2: ディレクトリ構造の作成
 
@@ -294,11 +297,12 @@ fi
 echo "plugin_root=$plugin_root"
 ```
 
-**変数保持指示**: ステップ 2.1 で出力された `plugin_root` の値を保持し、以降の Bash ブロックでは**リテラル値として埋め込んで**使用すること。
+**変数保持指示**: ステップ 2.1 の `plugin_root` を以降の Bash ブロックで**リテラル埋め込み**する。
 
 ### 2.2 ディレクトリ作成と `.gitkeep` 配置
 
-`pages/{patterns,heuristics,anti-patterns}/` は初期状態ではファイルを持たないため、`.gitkeep` を配置して git tree に保持する。これがないと `/rite:wiki-ingest` が page を書き込もうとした際に親ディレクトリ不在で Write が失敗する。
+`.gitkeep` を配置して空ディレクトリを git tree に保持する。
+rationale: references/rationale.md#gitkeep
 
 ```bash
 mkdir -p .rite/wiki/raw/reviews
@@ -346,9 +350,9 @@ sed "s/{initialized_date}/$initialized_date/g" \
 
 > **Reference**: [separate_branch 戦略のブランチ操作](../../references/wiki-patterns.md#separate_branch-戦略のブランチ操作)
 
-ステップ 2 で展開した `.rite/wiki/` の初期コミットは `wiki-branch-init.sh` に委譲する。helper は separate_branch (orphan ブランチ作成 + push + 元ブランチ復帰、dirty tree の stash 退避/復帰、異常終了時の trap による元ブランチ復帰保証) / same_branch (現在ブランチへコミット) の両戦略と、未知 strategy の fail-fast をすべて内包する (旧 ~95 行 inline block を委譲)。
+ステップ 2 で展開した `.rite/wiki/` の初期コミットは `wiki-branch-init.sh` に委譲する。
 
-**出力契約** (旧 inline block と同一): 成功時は `✅ Wiki ブランチ '{wiki_branch}' を作成しました` (separate_branch) または `✅ Wiki を現在のブランチに初期化しました` (same_branch) を stdout 出力。失敗時は `ERROR: ...` (stderr) + exit 1 (blocking)。
+**出力契約**: 成功時は `✅ Wiki ブランチ '{wiki_branch}' を作成しました` (separate_branch) または `✅ Wiki を現在のブランチに初期化しました` (same_branch)。失敗時は `ERROR: ...` (stderr) + exit 1 (blocking)。
 
 ```bash
 # ステップ 1.2 の値と ステップ 2.1 で解決済みの plugin_root をリテラルで埋め込む
@@ -361,7 +365,8 @@ bash "$plugin_root/hooks/scripts/wiki-branch-init.sh" \
 
 ## ステップ 3.5: Wiki Worktree セットアップ
 
-`separate_branch` 戦略の場合、ステップ 3.1 で wiki ブランチを作成した直後に `.rite/wiki-worktree/` worktree を作成します。これにより `/rite:wiki-ingest` は dev ブランチを離脱することなく wiki ブランチのツリーに Write/Edit できるようになります。
+`separate_branch` のとき、ステップ 3.1 直後に `.rite/wiki-worktree/` を作成する。
+rationale: references/rationale.md#worktree-setup-nonblocking
 
 ```bash
 branch_strategy="{branch_strategy}"
@@ -387,7 +392,8 @@ fi
 
 ### 3.5.1 既存 wiki ブランチへの `.gitkeep` 補完 migration
 
-`.gitkeep` の自動補完が導入される以前に init した wiki ブランチは `pages/{patterns,heuristics,anti-patterns}/.gitkeep` を持たないため、`/rite:wiki-ingest` の Write が親ディレクトリ不在で失敗します。この migration は冪等に既存 wiki ブランチに `.gitkeep` を補完します。worktree 経由で commit するため dev ブランチの HEAD は移動しません:
+導入前に init した wiki ブランチへ `.gitkeep` を冪等補完する。
+rationale: references/rationale.md#gitkeep
 
 ```bash
 branch_strategy="{branch_strategy}"

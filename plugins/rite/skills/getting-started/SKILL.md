@@ -9,11 +9,8 @@ argument-hint: ""
 
 # /rite:getting-started
 
-Getting Started guide for rite workflow
-
----
-
-When this command is executed, run the following phases in order. Phase 4.5 is an **on-demand reference** — display it only when the user asks about running multiple Claude Code sessions in parallel, not during the normal onboarding sweep.
+rite workflow の Getting Started ガイド。次の Phase を順に実行する。Phase 4.5 は **on-demand** — 複数セッションを聞かれたときだけ表示する。
+rationale: references/rationale.md#on-demand-multisession
 
 ## Phase 1: Display Welcome Message
 
@@ -104,12 +101,10 @@ Continue the guide; Phase 3 directs the user to `/rite:setup`.
 gh repo view --json owner,name
 ```
 
-> **Note (SSH host alias remote)**: origin が `git@github.com-work:owner/repo.git` のような
-> SSH host alias の場合、GitHub リポジトリであってもこのコマンドは
-> `none of the git remotes configured for this repository point to a known GitHub host` で失敗する。
-> その場合は `git remote get-url origin` で owner/repo を確認できれば GitHub リポジトリとして扱ってよい
-> （rite の各スキルは `git-remote.sh` による remote URL 直接パースで owner/repo を解決するため動作する。
-> canonical: references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe）。
+> **Note (SSH host alias remote)**: origin が SSH host alias だと `gh repo view` が
+> `none of the git remotes configured...` で失敗する。`git remote get-url origin` で
+> owner/repo が取れれば GitHub リポジトリとして扱う。
+> rationale: references/rationale.md#ssh-alias-gh-repo-view
 
 **If not a GitHub repository:**
 
@@ -123,10 +118,8 @@ remote and guides you through initialization, the first commit, repository
 creation, and push. You do not need to duplicate those commands here.
 ```
 
-Continue the guide; Phase 3 directs the user to `/rite:setup`. If a remote is
-already configured but cannot be resolved as GitHub, keep the SSH host alias
-note above as the troubleshooting path; setup does not propose creating a new
-repository for a non-empty remote.
+Phase 3 で `/rite:setup` へ案内する。非空 remote が GitHub として解決できないときは上記
+SSH host alias 注記を troubleshooting とする。
 
 ---
 
@@ -167,64 +160,16 @@ This is a one-time setup. You can reconfigure later by running /rite:setup again
 
 **Upgrading an existing project (`/rite:setup --upgrade`)**
 
-If you have been using rite workflow on this project for a while, the bundled
-configuration schema may have moved ahead of your local `rite-config.yml`. In
-that case, run the upgrade variant instead of a fresh `/rite:setup`:
+schema が古いときは fresh setup ではなく upgrade を案内する。手順の SoT は `/rite:setup`。
 
 ```
 /rite:setup --upgrade
 ```
 
-When to run it:
-
-- After updating the rite workflow plugin and seeing a warning that
-  `rite-config.yml` schema is outdated. The exact wording differs slightly
-  by emitter: `/rite:setup` emits `rite-config.yml のスキーマが古くなっています
-  (v{current} → v{latest})。/rite:setup --upgrade でアップグレードできます。`
-  and the session-start hook emits a variant ending in
-  `/rite:setup --upgrade を実行してください。` Both signal the same situation
-- When release notes (`CHANGELOG.md`) announce new
-  configuration sections (e.g., `wiki:`, `review.debate:`) that are missing from
-  your local `rite-config.yml`
-- When the `schema_version` value at the top of your `rite-config.yml` diverges
-  from the bundled template in
-  `plugins/rite/templates/config/rite-config.yml`
-
-What `/rite:setup --upgrade` does:
-
-  ✓ Creates a timestamped backup (`rite-config.yml.bak.YYYYMMDD-HHMMSS`)
-  ✓ Compares your current `schema_version` against the latest template version
-  ✓ Shows a preview of changes: deprecated keys to remove, new sections to
-    add (including commented-out Advanced sections), and values that will be
-    preserved (e.g., `project_number`, `owner`, `branch.base`, `language`)
-  ✓ Asks for confirmation via AskUserQuestion before applying schema changes
-    on the upgrade path (deprecated-key removal, `schema_version` bump, new
-    sections); this single apply/cancel prompt also gates the drift back-add
-    items below when a schema upgrade is pending. When the schema is already
-    up to date, the short-circuit path back-adds any missing drift — the
-    `multi_session` / `wiki:` sections, newly added active sections, and
-    missing sub-keys — idempotently and without an additional prompt (the
-    preview/confirm step is shown only on the schema-upgrade path)
-  ✓ Appends the `wiki:` section if it is absent, so the Wiki
-    auto-initialization step of `/rite:setup` can run for existing projects
-  ✓ Back-adds the `multi_session:` section with `enabled: true` if it is
-    absent, so upgraded projects get the default-on per-session worktree
-    behavior; an existing explicit `enabled: false` is preserved
-  ✓ Fills in sub-keys that are missing from an active section you already
-    have, adding only the absent keys from the template default while
-    preserving every existing sibling value you customized
-  ✓ Adds any new active top-level section the template introduces, so the
-    upgrade keeps pace with newly added defaults
-  ✓ Updates `schema_version` to the latest value on success
-
-The upgrade is non-destructive: user-customized values are preserved, and a
-backup is created before any edits are made. If your configuration has no
-missing drift (all active sections, their sub-keys, and the `multi_session` /
-`wiki:` sections are already present) and Wiki is already initialized, the
-command makes no changes to `rite-config.yml` itself — it still creates a
-timestamped backup, reports "configuration is up to date", then runs the Wiki
-auto-initialization idempotency check of `/rite:setup` and displays a final
-Wiki status line before exiting.
+いつ走らせるか: schema outdated 警告（`rite-config.yml のスキーマが古くなっています
+(v{current} → v{latest})。/rite:setup --upgrade でアップグレードできます。` / session-start
+は `を実行してください。`）、CHANGELOG の新セクション欠落、`schema_version` の乖離。
+rationale: references/rationale.md#upgrade-delegate
 
 Check if `rite-config.yml` exists:
 
@@ -316,14 +261,9 @@ After the draft PR is created:
    (Deletes the branch, closes the Issue, updates Projects status)
 ```
 
-> **Test-Driven Development (Canon TDD) is on by default.** During implementation
-> (`/rite:open` → `/rite:issue-implement`), rite drives a Canon TDD cycle —
-> write a test, confirm it fails (Red), make it pass with the minimal change
-> (Green), then Refactor — seeded from the Issue's Section 6 Test Specification.
-> To turn it off for doc-centric / non-software projects, set `tdd.enabled: false`
-> in `rite-config.yml`. When `commands.test` is not configured, the Red/Green test
-> runs are skipped automatically while the one-behavior-at-a-time discipline still
-> applies.
+> **Canon TDD is on by default**（`/rite:open` → `/rite:issue-implement`）。無効化は
+> `tdd.enabled: false`。`commands.test` 未設定なら Red/Green は skip、one-behavior-at-a-time
+> は残る。
 
 ---
 
@@ -381,9 +321,7 @@ Common Issues and Solutions:
 
 ## Phase 4.5: Multiple Sessions at Once (multi_session) (On Demand)
 
-This phase is **not** part of the normal onboarding sweep. Display this FAQ only
-when the user asks about running several Claude Code sessions on the same
-repository in parallel (e.g. one terminal per Issue):
+通常の onboarding には出さない。複数セッションを聞かれたときだけ表示する:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐

@@ -25,7 +25,8 @@ Check the completion status of an Issue and guide necessary actions.
 
 ## Shared: Projects Status → Done (delegate pattern)
 
-Phase 1.3.2 / 4.2 / 4.6.3 はいずれも Projects Status を **Done** に更新する。直接の `gh api graphql` + `field-list` + `item-edit` インライン呼び出しは substep 間で LLM attention が失われ silent skip を生むため、共通スクリプト `projects-status-update.sh` に委譲する（`skills/open/SKILL.md` ステップ 2.4 / `skills/ready/SKILL.md` Phase 4 と同一）。スクリプトは冪等で、API 詳細は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update) を参照。
+Phase 1.3.2 / 4.2 / 4.6.3 / `skip_already_closed`（全子 CLOSED）は Projects Status を **Done** に更新する。`projects-status-update.sh` に委譲する（`skills/open/SKILL.md` ステップ 2.4 / `skills/ready/SKILL.md` Phase 4 と同一）。冪等。API 詳細は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update)。
+rationale: references/rationale.md#projects-status-delegate
 
 **委譲呼び出し**（`{issue}` は対象 Issue 番号、`auto_add false`・`non_blocking true`）:
 
@@ -85,7 +86,8 @@ Read tool で `rite-config.yml` の `github.projects.enabled` を確認。`false
 
 ### 1.3.2 Update Status
 
-[Shared: Projects Status → Done](#shared-projects-status--done-delegate-pattern) の委譲パターンを実行する（`{issue}` = `{issue_number}`、`auto_add false` の理由: 既に CLOSED の Issue を auto-add するのは config drift を masking するため）。結果分岐は共通テーブルに従い、いずれの場合も Phase 5 へ進む（non-blocking — Issue は既にクローズ済み）。
+[Shared: Projects Status → Done](#shared-projects-status--done-delegate-pattern) を実行する（`{issue}` = `{issue_number}`、`auto_add false`）。結果は共通テーブル。いずれも Phase 5（non-blocking）。
+rationale: references/rationale.md#auto-add-false-closed
 
 ---
 
@@ -205,7 +207,8 @@ gh issue close {issue_number} -R {owner_repo}
 
 ### 4.2 Update Projects Status
 
-`github.projects.enabled: false` ならスキップして Phase 4.3 へ。そうでなければ [Shared: Projects Status → Done](#shared-projects-status--done-delegate-pattern) の委譲パターンを実行する（`{issue}` = `{issue_number}`、`auto_add false` の理由: close 時点で `skills/open/SKILL.md` ステップ 2.4 が登録済み）。結果分岐は共通テーブルに従い、いずれの場合も Phase 4.3 へ（non-blocking — close は Phase 4.1 で実行済み）。
+`github.projects.enabled: false` なら Phase 4.3 へ。そうでなければ [Shared: Projects Status → Done](#shared-projects-status--done-delegate-pattern)（`{issue}` = `{issue_number}`、`auto_add false`）。いずれも Phase 4.3（non-blocking）。
+rationale: references/rationale.md#auto-add-false-closed
 
 ### 4.3 Update Local Work Memory
 
@@ -221,7 +224,7 @@ WM_SOURCE="close" \
   bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
-lock 失敗時は WARNING を出して続行（best-effort — Phase 5 でどのみち削除される）。Issue コメントへの backup sync は不要（最終的な archival record は `rite:cleanup` Phase 4.5 が更新する）。
+lock 失敗は WARNING して続行（best-effort）。Issue comment backup は不要（archival は `rite:cleanup` Phase 4.5）。
 
 ### 4.4 Completion Report
 
@@ -238,9 +241,10 @@ Status: Done
 
 ### 4.4.W Wiki Ingest Trigger (Conditional)
 
-> **Reference**: [Wiki Ingest](../wiki-ingest/SKILL.md) — `wiki-ingest-trigger.sh` API。本 Phase は raw source の **蓄積** を担う（page 統合は後続の `/rite:wiki-ingest` が冪等に行う）。raw 蓄積と page 統合を分離することで、page 統合が skip / 失敗しても raw source は失われない。
+> **Reference**: [Wiki Ingest](../wiki-ingest/SKILL.md) — `wiki-ingest-trigger.sh` API。本 Phase は raw の **蓄積**。page 統合は `/rite:wiki-ingest`。
+> rationale: references/rationale.md#wiki-raw-page-split
 
-> **⚠️ E2E Mandatory**: 本 Phase は出力最小化ルールで skip しない。orchestrator 経由 (例: `/rite:open` 後の parent close routing) でも実行する。唯一の正当な skip は Step 1 の config ベース skip（`WIKI_INGEST_SKIPPED=1` sentinel + WARNING を必ず emit）。
+> **⚠️ E2E Mandatory**: 出力最小化で skip しない。正当な skip は Step 1 の config のみ（`WIKI_INGEST_SKIPPED=1` + WARNING を必ず emit）。
 
 **Step 1**: Wiki 設定を確認する（`wiki.enabled` opt-out default true / `wiki.auto_ingest` default false）:
 
@@ -330,11 +334,13 @@ else
 fi
 ```
 
-**Non-blocking**: trigger 失敗・content write 失敗のいずれも workflow を止めない。LLM は `trigger_exit` を読み、非 0 なら Phase 4.4.W.2 をスキップする。`content_write_failed=1` (heredoc write 失敗) のときは trigger を起動せず、`WIKI_INGEST_FAILED reason=content_write_failed` を gate-visible に emit したうえで `trigger_exit=1` を設定して同じスキップ経路に合流する。これにより `/tmp` full 等での truncated retrospective の silent ingest を防ぐ (pr-review.md 6.5.W / fix.md 4.6.W と対称)。
+**Non-blocking**: trigger / content write 失敗で止めない。`trigger_exit` 非 0 なら Phase 4.4.W.2 を skip。`content_write_failed=1` は trigger 未起動のまま `WIKI_INGEST_FAILED reason=content_write_failed` を emit し `trigger_exit=1` で同じ skip へ合流する。
+rationale: references/rationale.md#content-write-fail-loud
 
 ### 4.4.W.2 Wiki Raw Commit
 
-> raw source の commit を単一スクリプト `wiki-ingest-commit.sh`（stash→checkout→add→commit→push→checkout-back→stash-pop を 1 プロセスで完結）に委譲する。LLM の multi-step orchestration に依存した旧 Skill 設計が E2E で fragile だったため。**本 block は raw source のみ commit**（page 統合は `/rite:wiki-ingest`）。
+> raw commit は `wiki-ingest-commit.sh` に委譲する。**本 block は raw のみ commit**（page 統合は `/rite:wiki-ingest`）。
+> rationale: references/rationale.md#commit-delegate-single-process
 
 **Condition**: `wiki_enabled=true` AND `auto_ingest=true` AND `trigger_exit=0` の場合のみ実行。満たさなければスキップして Phase 4.5 へ。
 
@@ -365,7 +371,8 @@ fi
 trap - EXIT INT TERM HUP
 ```
 
-`commit_rc=4` を観測した場合は、上の Bash block とは**別の Bash tool call**で次を 1 回だけ再試行する。`{wiki_push_attempt}` は直前の `WIKI_PUSH_ATTEMPT` marker の値へリテラル置換する。tool call には `dangerouslyDisableSandbox: true` を指定する（ユーザー確認不要。`/rite:open` ステップ 6.1 と同じ既知の SSH host-key / network sandbox 制約）。通常 sandbox のまま同じ push を繰り返してはならない。
+`commit_rc=4` を観測した場合は、上の Bash block とは**別の Bash tool call**で次を 1 回だけ再試行する。`{wiki_push_attempt}` は直前の `WIKI_PUSH_ATTEMPT` marker の値へリテラル置換する。tool call には `dangerouslyDisableSandbox: true` を指定する（ユーザー確認不要）。通常 sandbox のまま同じ push を繰り返してはならない。
+rationale: references/rationale.md#push-retry-sandbox
 
 ```bash
 if retry_out=$(bash {plugin_root}/hooks/scripts/wiki-ingest-commit.sh --push-only 2>&1); then
@@ -394,7 +401,8 @@ close の完了報告前に、**現在の `WIKI_PUSH_ATTEMPT` と同じ `attempt
 
 ### 4.5.1 Detect Parent Issue
 
-親 Issue を **3 method の OR 検出**で特定する。この 3-method 構造は [`projects-integration.md` §2.4.7.1](../../references/projects-integration.md#247-parent-issue-status-update-for-child-issues) と一致させる（method 順序・OR 意味・total-failure 時の `[DEBUG] parent not detected` emission に加え、**Method 3 の検証ループ本体**（自己マッチ除外 `cand != {issue_number}`・候補 body の tasklist 行再検証 regex・`--limit 10`）も両サイトで揃える。差異は `--state` のみ。method 順序・OR 意味・loop 本体のいずれかが乖離すると silent-skip / 誤検出回帰が再発する）。
+親 Issue を **3 method の OR 検出**で特定する。構造は [`projects-integration.md` §2.4.7.1](../../references/projects-integration.md#247-parent-issue-status-update-for-child-issues) と一致させる（順序・OR・`[DEBUG] parent not detected`・**Method 3 検証ループ**（自己マッチ除外 `cand != {issue_number}`・候補 body の tasklist 再検証・`--limit 10`）。差異は `--state` のみ）。
+rationale: references/rationale.md#three-method-parent
 
 **Method 1: `## 親 Issue` body meta（PRIMARY）** — `/rite:issue-create`（Decompose Path）が書く section:
 
@@ -419,7 +427,8 @@ echo "method2_parent=${parent_number:-none}"
 
 非空なら 4.5.2 へ。
 
-**Method 3: Tasklist search（last resort）** — 両 method が失敗した場合。GitHub code search の `[`/`]` は不安定（リテラルを無視しほぼ全 Issue を返す）なので最後の手段。複数候補を取得し、自己マッチ除外＋各候補 body に当該 tasklist 行が実在するか再検証してから採用する（根拠は [`projects-integration.md` §2.4.7.1](../../references/projects-integration.md#247-parent-issue-status-update-for-child-issues) の Note 参照）。`--state all`（closing Issue の親が既に closed の可能性）:
+**Method 3: Tasklist search（last resort）** — 両 method が失敗した場合。複数候補を取得し、自己マッチ除外＋各候補 body の tasklist 再検証してから採用する。`--state all`。
+rationale: references/rationale.md#three-method-parent
 
 ```bash
 # GitHub code search は `[`/`]` を無視する緩いマッチのため、複数候補を取得して検証する
@@ -438,7 +447,7 @@ done
 echo "method3_parent=${parent_number:-none}"
 ```
 
-**3 method すべて失敗（`parent_number` 空）の場合**は standalone として処理する（AC-4 — 正常動作。silent-skip 回帰検出のため debug log は残す）:
+**3 method すべて失敗（`parent_number` 空）**は standalone（AC-4。debug log は残す）:
 
 ```bash
 echo "[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: body_meta, sub_issues_api, tasklist_search)"
@@ -478,13 +487,15 @@ exit 0 で成功（`--diff-check` で変更不要時は skip）。非 0 なら�
 
 ## Phase 4.6: Parent Auto-Close (All Children Completed)
 
-検出した親のすべての子 Issue が closed になったら、親の auto-close を提案する（"child close → parent stays Open" の silent-skip hole を塞ぐ）。
+親の全子が closed なら auto-close を提案する。
 
-**実行条件**: Phase 4.5.1 で `{parent_number}` が検出された場合のみ。未検出なら Phase 4.6 全体をスキップして Phase 5 へ。**直接の親のみ処理**し、祖父母には再帰しない（three-level nesting は out of scope）。
+**実行条件**: Phase 4.5.1 で `{parent_number}` が検出された場合のみ。未検出なら Phase 4.6 全体をスキップして Phase 5 へ。**直接の親のみ処理**し、祖父母には再帰しない。
+rationale: references/rationale.md#parent-direct-only
 
 ### 4.6.0 + 4.6.1 Idempotency Check & Child Enumeration
 
-冪等性チェック（親が既 closed なら no-op）→ 子 Issue 列挙 → `all_closed` 判定を **単一 Bash block** で行う（block 間の shell state 喪失を回避）。stderr は tempfile に退避して surface する（`2>/dev/null` の silent-skip anti-pattern を避ける）。`set -uo pipefail`（`-e` は明示 `|| fallback` のため省略）。
+冪等性チェック（親が既 closed なら close は no-op。Status → Done は 4.6.1 の後）→ 子列挙 → `all_closed` を **単一 Bash block** で行う。stderr は tempfile に退避。`set -uo pipefail`（`-e` は明示 `|| fallback` のため省略）。
+rationale: references/rationale.md#single-block-p460
 
 ```bash
 set -uo pipefail
@@ -508,7 +519,7 @@ p46_err=""
 trap 'rm -f "${p46_err:-}"' EXIT INT TERM HUP
 p46_err=$(mktemp 2>/dev/null) || p46_err=""
 
-# --- 4.6.0: Idempotency — 親が既に CLOSED なら no-op (close-side idempotency, extends AC-6 principle) ---
+# --- 4.6.0: Idempotency — 親が既に CLOSED なら close は no-op。Status → Done は 4.6.1 の後 ---
 parent_state=""
 if parent_state=$(gh issue view "$parent_number" -R "$owner_repo_slash" --json state --jq '.state' 2>"${p46_err:-/dev/null}"); then
   echo "parent_state=$parent_state"
@@ -523,11 +534,11 @@ if [ -z "$parent_state" ]; then
   echo "[CONTEXT] P460_DECISION=skip_retrieval_failed"
   exit 0
 elif [ "$parent_state" = "CLOSED" ]; then
-  echo "[DEBUG] parent #${parent_number} already closed — skipping Phase 4.6 (close-side idempotency)"
+  echo "[DEBUG] parent #${parent_number} already closed — skip close; continue for Status → Done"
   echo "[CONTEXT] P460_DECISION=skip_already_closed"
-  exit 0
+else
+  echo "[CONTEXT] P460_DECISION=proceed_to_enumeration"
 fi
-echo "[CONTEXT] P460_DECISION=proceed_to_enumeration"
 
 # --- 4.6.1: Enumerate children (Method A: trackedIssues / Tasklists API → Method B: body parse) ---
 # trackedIssues は Tasklists 機能 (body `- [ ] #N` parser)。GitHub Sub-Issues API (subIssues) とは別物。
@@ -589,10 +600,12 @@ fi
 |----|-------------|
 | `P460_DECISION=skip_routing_bug` | routing bug（empty/literal/非数値）。Phase 4.6 を抜けて Phase 5 へ |
 | `P460_DECISION=skip_retrieval_failed` | 親 state 取得失敗。Phase 4.6 を抜けて Phase 5 へ（non-blocking） |
-| `P460_DECISION=skip_already_closed` | 親が既 closed の no-op。Phase 4.6 を抜けて Phase 5 へ |
-| `P461_DECISION=skip_empty_children` | 子一覧取得不可。`親 Issue #{parent_number} の子 Issue 一覧が取得できませんでした。自動クローズをスキップします。` を表示し Phase 5 へ |
-| `P461_DECISION=skip_open_children; open_count=N` | `親 Issue #{parent_number} にはまだ N 件の未完了子 Issue があります。自動クローズはスキップします。` を表示し Phase 5 へ |
-| `P461_DECISION=proceed_to_confirmation` | 4.6.2 へ |
+| `P460_DECISION=skip_already_closed` + `P461_DECISION=proceed_to_confirmation` | close は skip。Shared: Status → Done（`{issue}` = `{parent_number}`）。4.6.2 / 4.6.3 は実行しない。Phase 5 へ |
+| `P460_DECISION=skip_already_closed` + `P461_DECISION=skip_open_children` | Phase 5 へ（Status も Done にしない） |
+| `P460_DECISION=skip_already_closed` + `P461_DECISION=skip_empty_children` | 子一覧取得不可。`親 Issue #{parent_number} の子 Issue 一覧が取得できませんでした。自動クローズをスキップします。` を表示し Phase 5 へ |
+| `P461_DECISION=skip_empty_children`（`P460=proceed_to_enumeration`） | 子一覧取得不可。`親 Issue #{parent_number} の子 Issue 一覧が取得できませんでした。自動クローズをスキップします。` を表示し Phase 5 へ |
+| `P461_DECISION=skip_open_children; open_count=N`（`P460=proceed_to_enumeration`） | `親 Issue #{parent_number} にはまだ N 件の未完了子 Issue があります。自動クローズはスキップします。` を表示し Phase 5 へ |
+| `P461_DECISION=proceed_to_confirmation`（`P460=proceed_to_enumeration`） | 4.6.2 へ |
 
 ### 4.6.2 User Confirmation
 
@@ -610,7 +623,8 @@ fi
 
 ### 4.6.3 Update Parent Status to Done & Close
 
-親の Projects Status → Done（[共通委譲パターン](#shared-projects-status--done-delegate-pattern)、`github.projects.enabled: false` ならスキップ）と `gh issue close` を **単一 block** で実行する。Step 3 の state-inconsistency summary を**必ず** emit し、片方成功/片方失敗の silent data corruption を可視化する。`{projects_enabled}` / `{project_number}` / `{owner}` / `{repo}` は `rite-config.yml` から、`{parent_number}` / `{issue_number}` は前 Phase から置換する。`{owner_repo}` は [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した実リポジトリの owner/repo（slash 形式）を literal substitute する（`{owner}` は Project owner 由来で repo owner と乖離しうるため、`-R` には使わない）。
+親の Projects Status → Done（[共通委譲パターン](#shared-projects-status--done-delegate-pattern)、`github.projects.enabled: false` ならスキップ）と `gh issue close` を **単一 block** で実行する。Step 3 の state-inconsistency summary を**必ず** emit する。`{projects_enabled}` / `{project_number}` / `{owner}` / `{repo}` は `rite-config.yml`、`{parent_number}` / `{issue_number}` は前 Phase。`{owner_repo}` は [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) の slash 形式（`-R` に `{owner}` は使わない）。
+rationale: references/rationale.md#step3-inconsistency-summary
 
 ```bash
 set -uo pipefail
@@ -701,7 +715,7 @@ esac
 trap - EXIT INT TERM HUP
 ```
 
-いずれの結果でも Phase 5 へ（non-blocking — Step 3 summary が silent failure を不可能にする invariant）。
+いずれの結果でも Phase 5 へ（non-blocking）。
 
 ---
 
@@ -709,13 +723,13 @@ trap - EXIT INT TERM HUP
 
 **実行条件**: 既クローズ（Phase 1.2）/ 新規クローズ（Phase 4）を問わず最終 Phase として常に実行。`{issue_number}` のみ必要。
 
-指定 Issue のローカル作業メモリファイルと lockdir を削除する（close mode: 指定 Issue のファイルのみ削除。flow state reset や stale sweep はしない）。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) で解決:
+指定 Issue のローカル作業メモリと lockdir を削除する（close mode。flow-state reset / stale sweep はしない）。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version):
 
 ```bash
 bash {plugin_root}/hooks/cleanup-work-memory.sh --issue {issue_number}
 ```
 
-`--issue` フラグは Issue 番号を直接渡し、スクリプトが内部でパスを構築する（LLM placeholder 置換をバイパス）。`.rite-work-memory/` ディレクトリ自体は削除しない（スクリプトが保持）。
+`--issue` は番号を直接渡す。`.rite-work-memory/` ディレクトリ自体は残す。
 
 **エラーハンドリング**（すべて non-blocking — 失敗時は警告して終了）:
 

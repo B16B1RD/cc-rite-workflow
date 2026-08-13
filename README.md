@@ -2,18 +2,16 @@
 
 > Universal Issue-Driven Development Workflow for Claude Code
 
-[![Version](https://img.shields.io/badge/version-0.10.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.10.0)
+[![Version](https://img.shields.io/badge/version-0.11.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.11.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **English** | [日本語](README.ja.md)
 
 ## Demo
 
-From Issue to PR — see Rite Workflow turn development into a *rite*. A ~125-second intro (English).
+From Issue to PR — see Rite Workflow turn development into a *rite*. A ~55-second intro (English).
 
-> **Note**: The install command and the closing footer URL shown in the video still use the previous repository owner (`asakaguchi`). See [Installation](#installation) below for the current command.
-
-https://github.com/user-attachments/assets/b1f50f60-6c7c-4d86-9ceb-9071ae4b1c9f
+https://github.com/user-attachments/assets/7874c4cf-f50a-4c0c-8925-295d7f37b43d
 
 ## Why "Rite"?
 

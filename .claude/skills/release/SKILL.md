@@ -127,12 +127,67 @@ fi
 ブランチ作成前に、**Issue の Status を `In Progress` に更新する**。
 
 ```bash
-git checkout develop
-git pull origin develop
-git checkout -b chore/issue-{ISSUE_NUMBER}-v{VERSION_SLUG}-release-prep
+branch="chore/issue-{ISSUE_NUMBER}-v{VERSION_SLUG}-release-prep"
+ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || ms_section=""
+ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; exit}' \
+  | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' \
+  | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
+case "$ms_enabled" in true|yes|1) ms_enabled=true ;; *) ms_enabled=false ;; esac
+
+if [ "$ms_enabled" = "true" ]; then
+  # main checkout では branch を checkout しない。local ref を作ってから共通 helper に
+  # session worktree への配置を委譲し、失敗時は develop 上で編集を始める前に停止する。
+  git fetch origin develop || exit 1
+  if ! git show-ref --verify --quiet "refs/heads/$branch"; then
+    git branch "$branch" origin/develop || exit 1
+  fi
+  ensure_out=$(bash plugins/rite/hooks/scripts/lib/worktree-git.sh \
+    ensure-session-worktree --issue {ISSUE_NUMBER} --branch "$branch") || {
+    printf '%s\n' "$ensure_out"
+    echo "ERROR: リリース準備用 session worktree の作成に失敗しました" >&2
+    exit 1
+  }
+  printf '%s\n' "$ensure_out"
+  case "$ensure_out" in
+    *"[CONTEXT] WT_ENSURE=reconstructed;"*|*"[CONTEXT] WT_ENSURE=reenter;"*) ;;
+    *"[CONTEXT] WT_ENSURE=already_in;"*)
+      [ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" = "$branch" ] || {
+        echo "ERROR: session worktree の HEAD がリリース準備ブランチと一致しません" >&2
+        exit 1
+      } ;;
+    *)
+      echo "ERROR: session worktree を保証できないためリリース準備を停止します" >&2
+      exit 1 ;;
+  esac
+else
+  git checkout develop || exit 1
+  git pull origin develop || exit 1
+  git checkout -b "$branch"
+fi
 ```
 
 `{VERSION_SLUG}` はバージョン番号のドット(`.`)をハイフン(`-`)に置換（例: `0.3.0` → `0-3-0`）。
+
+`multi_session=true` の場合は、上記出力の `[CONTEXT] WT_ENSURE=` を確認する。
+
+- `reconstructed` / `reenter`: `path=` の session worktree に `EnterWorktree` で入場し、直後に下記の hard gate を実行する
+- `already_in`: 現在の worktree で同じ branch を checkout 済みなので、そのまま Phase 2.3 へ進む
+- `disabled`: 設定の再読込結果と矛盾するためエラーを表示して停止する
+- `residue` / `branch_other_worktree` / `branch_absent` / `failed`: エラーを表示して停止する。**develop 上で Phase 2.3 以降を実行しない**
+
+これにより分岐は Phase 2.2 だけに閉じ、入場後の Phase 2.3〜2.5 は `multi_session` の有効・無効にかかわらず同じ手順を使う。
+
+`reconstructed` / `reenter` で入場したら、marker の `path=` を `{WORKTREE_PATH}` に置換して、cwd と HEAD の両方を機械検証する。不一致時は Phase 2.3 へ進まない。
+
+```bash
+expected_worktree="{WORKTREE_PATH}"
+expected_branch="chore/issue-{ISSUE_NUMBER}-v{VERSION_SLUG}-release-prep"
+[ "$(git rev-parse --show-toplevel 2>/dev/null)" = "$expected_worktree" ] \
+  && [ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" = "$expected_branch" ] || {
+  echo "ERROR: session worktree の cwd または HEAD がリリース準備ブランチと一致しません" >&2
+  exit 1
+}
+```
 
 ### 2.3 バージョン番号の更新（5ファイル）
 
@@ -193,7 +248,18 @@ grep -rn "{OLD_VERSION}" .claude-plugin/ plugins/rite/.claude-plugin/ README.md 
 ### 2.5 コミット・PR 作成・マージ
 
 ```bash
-git add -A
+git add .claude-plugin/marketplace.json \
+  plugins/rite/.claude-plugin/plugin.json \
+  README.md README.ja.md docs/SPEC.md CHANGELOG.md CHANGELOG.ja.md
+git status --short --untracked-files=no
+expected_staged=$(printf '%s\n' \
+  .claude-plugin/marketplace.json plugins/rite/.claude-plugin/plugin.json \
+  README.md README.ja.md docs/SPEC.md CHANGELOG.md CHANGELOG.ja.md | sort)
+actual_staged=$(git diff --cached --name-only | sort)
+if [ "$actual_staged" != "$expected_staged" ]; then
+  echo "ERROR: release staging が期待する7ファイルと一致しません" >&2
+  exit 1
+fi
 git commit -m "chore: v{VERSION} バージョンバンプ + CHANGELOG 更新"
 git push -u origin HEAD
 ```
@@ -207,7 +273,9 @@ gh pr create \
   --body "Closes #{PREP_ISSUE_NUMBER}"
 ```
 
-`AskUserQuestion` でユーザーに PR を確認してマージしてよいか確認し、承認後にマージ:
+`/rite:iterate {PREP_PR_NUMBER}` を実行し、`[review:mergeable]` を確認する。レビューが
+収束しない場合はマージせず停止する。その後、`AskUserQuestion` でユーザーに PR を確認して
+マージしてよいか確認し、承認後にマージ:
 
 ```bash
 gh pr merge --merge
@@ -232,6 +300,39 @@ git push origin --delete chore/issue-{ISSUE_NUMBER}-v{VERSION_SLUG}-release-prep
 ## Phase 3: リリース実行（develop → main マージ + GitHub Release）
 
 Phase 2 の PR が develop にマージされた後に実行する。
+
+### 3.0 session worktree から退出
+
+Phase 2 で `/rite:iterate` を経由した場合、セッションは session worktree 内にいる。Phase 3 は
+main checkout 上で `develop` / `main` を操作するため、最初に現在地を判定する。
+
+```bash
+current_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 1
+common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || exit 1
+case "$common_dir" in /*) ;; *) common_dir="$current_root/$common_dir" ;; esac
+main_root=$(cd "$(dirname "$common_dir")" && pwd -P) || exit 1
+if [ "$current_root" = "$main_root" ]; then
+  echo "[CONTEXT] RELEASE_PHASE3_EXIT=noop; main_root=$main_root"
+else
+  echo "[CONTEXT] RELEASE_PHASE3_EXIT=required; worktree=$current_root; main_root=$main_root"
+fi
+```
+
+- `RELEASE_PHASE3_EXIT=noop`: すでに main checkout にいるため、そのまま Phase 3.1 へ進む
+- `RELEASE_PHASE3_EXIT=required`: `ExitWorktree` ツールを **`action: "keep"`** で呼び出す。`remove` は使わない。リリース準備 branch と `.rite/worktrees/issue-{N}` の削除は `/rite:cleanup` に委ねる
+
+退出後は、別の Bash 呼び出しで main checkout に戻ったことを検証する。不一致なら Phase 3.1 へ進まない。
+
+```bash
+current_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 1
+common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || exit 1
+case "$common_dir" in /*) ;; *) common_dir="$current_root/$common_dir" ;; esac
+main_root=$(cd "$(dirname "$common_dir")" && pwd -P) || exit 1
+[ "$current_root" = "$main_root" ] || {
+  echo "ERROR: main checkout への退出を確認できないため Phase 3 を停止します" >&2
+  exit 1
+}
+```
 
 ### 3.1 リリース実行 Issue の作成
 
@@ -263,11 +364,33 @@ gh pr create \
   --body "Merge develop into main for v{VERSION} release. Closes #{RELEASE_ISSUE_NUMBER}"
 ```
 
-`AskUserQuestion` でユーザーに main へのマージを確認し、承認後にマージ:
+昇格 PR の全コミットが既にマージ済み PR 経由であることを検証する。helper は PR が
+`develop -> main` であることも確認し、merge gate 用のアテステーションを保存する:
 
 ```bash
-gh pr merge --merge
+VERIFIED_HEAD_OID=$(bash plugins/rite/hooks/release-promotion-verify.sh {RELEASE_PR_NUMBER})
 ```
+
+検証失敗時は fail-loud で停止する。成功後、`AskUserQuestion` でユーザーに main へのマージを
+確認し、承認後に、出力された SHA を下記の `{VERIFIED_HEAD_OID}` に**リテラル置換**してマージする
+（変数形式のまま実行しない）:
+
+```bash
+gh pr merge {RELEASE_PR_NUMBER} --merge --match-head-commit {VERIFIED_HEAD_OID}
+```
+
+#### 3.2.1 Decision Log
+
+昇格マージは base/head の形状だけでは許可しない。`release-promotion-verify.sh` が差分内の
+各 commit SHA について、同じ SHA を merge commit とする既マージ PR の存在を検証し、検証時の
+head SHA をアテステーションへ記録する。merge gate はそのアテステーションと
+`--match-head-commit` の SHA が一致するときだけレビュー結果 JSON の代替として扱う。
+GitHub API が返したコミット件数は PR metadata の総コミット数と照合し、API 上限等で完全な一覧を
+取得できない場合はアテステーションを作らず停止する。
+
+この方式により、通常の実装 PR は従来どおり review-results JSON が必須のまま、直接 push を含む
+昇格と検証後に head が変わった昇格は `merge-release-promotion-unverified` で fail-loud に停止する。
+単なる `base=main` / `head=develop` 判定は、未レビュー commit を区別できないため採用しない。
 
 ### 3.3 タグ作成 + GitHub Release
 
@@ -281,10 +404,26 @@ git pull origin main
 CHANGELOG.md から該当バージョンのセクションを抽出してリリースノートに使用:
 
 ```bash
+release_notes=$(mktemp) || exit 1
+sed -n '/^## \[{VERSION}\]/,/^## \[/{ /^## \[{VERSION}\]/d; /^## \[/d; p; }' \
+  CHANGELOG.md > "$release_notes" || exit 1
+echo "[CONTEXT] RELEASE_NOTES_PATH=$release_notes"
+```
+
+スクラッチファイルを指定して Release を作成する。プロセス置換は使用しない。
+
+```bash
 gh release create "v{VERSION}" \
   --title "v{VERSION}" \
-  --notes-file <(sed -n '/^## \[{VERSION}\]/,/^## \[/{ /^## \[{VERSION}\]/d; /^## \[/d; p; }' CHANGELOG.md) \
+  --notes-file "{RELEASE_NOTES_PATH}" \
   --target main
+```
+
+`{RELEASE_NOTES_PATH}` は直前の `[CONTEXT] RELEASE_NOTES_PATH=` marker の値へリテラル置換する。
+Release 作成後にそのスクラッチファイルを削除する。
+
+```bash
+rm -f "{RELEASE_NOTES_PATH}"
 ```
 
 ### 3.4 リリース実行 Issue のクローズ
@@ -340,6 +479,7 @@ git pull origin develop
 | CHANGELOG の形式不備 | 既存エントリのパターンに合わせて修正 |
 | main マージ前に Release を作成してしまった | Release を削除 → main マージ → Release 再作成 |
 | PR マージ衝突 | 衝突を解消してから再試行 |
+| 昇格コミットの PR 検証失敗 | 直接 push を取り除くか、対象 commit を通常 PR 経由で develop に取り込み直してから検証を再実行 |
 | Projects 登録失敗 | `gh project item-add` を再実行。`--limit` を増やして Item ID を再取得 |
 | ステータス更新失敗 | Field ID / Option ID を再取得して `gh project item-edit` を再実行 |
 

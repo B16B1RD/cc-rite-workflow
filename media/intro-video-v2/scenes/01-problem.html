@@ -25,6 +25,10 @@
     header { position: absolute; left: 68px; right: 68px; top: 50px; display: flex; justify-content: space-between; align-items: baseline; animation: enter .7s ease-out 0s both; }
     .brand { color: #7ee7d0; font: 650 16px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .18em; }
     .caption { color: #657184; font: 500 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .13em; }
+    .ver {
+      margin-left: 15px; padding: 4px 10px; border: 1px solid rgba(126,231,208,.32); border-radius: 999px;
+      color: #7ee7d0; font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em;
+    }
 
     /* 周回の画: 軌道を 3 周しても中心のカウンタが 1 のまま動かない */
     .orbit { position: absolute; left: 128px; top: 206px; width: 328px; height: 328px; }
@@ -87,7 +91,7 @@
 </head>
 <body>
   <div class="grain"></div>
-  <header><div class="brand">RITE / M1</div><div class="caption">THE FIRST LAP, AGAIN</div></header>
+  <header><div class="brand">RITE / M1<span class="ver">v0.11.0</span></div><div class="caption">THE FIRST LAP, AGAIN</div></header>
 
   <div class="orbit">
     <svg class="track" viewBox="0 0 328 328" aria-hidden="true">

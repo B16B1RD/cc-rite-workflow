@@ -148,41 +148,41 @@ rite-workflow/
 │ └── error-handling-reviewer.md
 ├── skills/ # Claude Code auto-discovered skills (各スキル = 薄い SKILL.md + co-located references/)
 │ # --- PR lifecycle ---
-│ ├── open/ # /rite:open (Issue → branch → 実装 → lint → draft PR; end-to-end)
-│ ├── iterate/ # /rite:iterate (review ⇄ fix loop, mergeable まで)
+│ ├── open/ # /rite:open (Issue → branch → 実装 → lint → draft PR; end-to-end; + references/rationale.md)
+│ ├── iterate/ # /rite:iterate (review ⇄ fix loop, mergeable まで; + references/rationale.md)
 │ ├── pr-review/ # /rite:pr-review (multi-reviewer; + references/) — sub-skill
 │ ├── fix/ # /rite:fix (review 指摘対応; + references/) — sub-skill
-│ ├── ready/ # /rite:ready (Ready for review 化)
-│ ├── merge/ # /rite:merge (squash merge)
-│ ├── cleanup/ # /rite:cleanup (+ references/archive-procedures.md)
-│ ├── batch-run/ # /rite:batch-run (複数 Issue 順次 open→iterate; --merge で ready→merge→cleanup まで)
-│ ├── pr-create/ # /rite:pr-create (draft PR 作成) — sub-skill
+│ ├── ready/ # /rite:ready (Ready for review 化; + references/rationale.md)
+│ ├── merge/ # /rite:merge (squash merge; + references/rationale.md)
+│ ├── cleanup/ # /rite:cleanup (+ references/archive-procedures.md; + references/rationale.md)
+│ ├── batch-run/ # /rite:batch-run (複数 Issue 順次 open→iterate; --merge で ready→merge→cleanup まで; + references/rationale.md)
+│ ├── pr-create/ # /rite:pr-create (draft PR 作成; + references/rationale.md) — sub-skill
 │ # --- Issue 管理 ---
-│ ├── issue-create/ # /rite:issue-create (+ references/: complexity-gate / contract-section-mapping / slug-generation / body-fact-check / unknowns-boundary-rationale)
-│ ├── issue-list/ # /rite:issue-list
-│ ├── issue-update/ # /rite:issue-update
-│ ├── issue-close/ # /rite:issue-close
-│ ├── issue-edit/ # /rite:issue-edit
-│ ├── issue-implement/ # /rite:issue-implement (sub-skill, /rite:open から呼出)
+│ ├── issue-create/ # /rite:issue-create (+ references/: complexity-gate / contract-section-mapping / slug-generation / body-fact-check / unknowns-boundary-rationale; + references/rationale.md)
+│ ├── issue-list/ # /rite:issue-list (+ references/rationale.md)
+│ ├── issue-update/ # /rite:issue-update (+ references/rationale.md)
+│ ├── issue-close/ # /rite:issue-close (+ references/rationale.md)
+│ ├── issue-edit/ # /rite:issue-edit (+ references/rationale.md)
+│ ├── issue-implement/ # /rite:issue-implement (sub-skill, /rite:open から呼出; + references/rationale.md)
 │ # --- Wiki ---
-│ ├── wiki-init/ # /rite:wiki-init
-│ ├── wiki-query/ # /rite:wiki-query
-│ ├── wiki-ingest/ # /rite:wiki-ingest (+ references/wiki-troubleshooting.md)
-│ ├── wiki-lint/ # /rite:wiki-lint (+ references/: broken-ref-resolution / bash-cross-boundary-state-transfer / descriptive-refs-rationale)
+│ ├── wiki-init/ # /rite:wiki-init (+ references/rationale.md)
+│ ├── wiki-query/ # /rite:wiki-query (+ references/rationale.md)
+│ ├── wiki-ingest/ # /rite:wiki-ingest (+ references/wiki-troubleshooting.md; + references/rationale.md)
+│ ├── wiki-lint/ # /rite:wiki-lint (+ references/: broken-ref-resolution / bash-cross-boundary-state-transfer / descriptive-refs-rationale; + references/rationale.md)
 │ # --- meta / top-level ---
-│ ├── setup/ # /rite:setup (+ --upgrade)
-│ ├── getting-started/ # /rite:getting-started
-│ ├── workflow/ # /rite:workflow (rite ワークフロー全体ガイド)
-│ ├── unknowns/ # /rite:unknowns (実装前探索: ブラインドスポット/ブレスト/プロトタイプ/インタビュー; + references/feedback-mode.html)
-│ ├── investigate/ # /rite:investigate (構造化コード調査)
-│ ├── learn/ # /rite:learn (Socratic 理解度チェック)
-│ ├── lint/ # /rite:lint (品質チェック; orchestrator から呼ばれる sub-skill 兼用; + references/plugin-checks-rationale.md)
-│ ├── recover/ # /rite:recover (中断した作業の再開)
-│ ├── skill-suggest/ # /rite:skill-suggest
-│ ├── template-reset/ # /rite:template-reset
+│ ├── setup/ # /rite:setup (+ --upgrade; + references/rationale.md)
+│ ├── getting-started/ # /rite:getting-started (+ references/rationale.md)
+│ ├── workflow/ # /rite:workflow (rite ワークフロー全体ガイド; + references/rationale.md)
+│ ├── unknowns/ # /rite:unknowns (実装前探索: ブラインドスポット/ブレスト/プロトタイプ/インタビュー; + references/feedback-mode.html; + references/rationale.md)
+│ ├── investigate/ # /rite:investigate (構造化コード調査; + references/rationale.md)
+│ ├── learn/ # /rite:learn (Socratic 理解度チェック; + references/rationale.md)
+│ ├── lint/ # /rite:lint (品質チェック; orchestrator から呼ばれる sub-skill 兼用; + references/plugin-checks-rationale.md; + references/rationale.md)
+│ ├── recover/ # /rite:recover (中断した作業の再開; + references/rationale.md)
+│ ├── skill-suggest/ # /rite:skill-suggest (+ references/rationale.md)
+│ ├── template-reset/ # /rite:template-reset (+ references/rationale.md)
 │ # --- orchestration / knowledge (auto-discovered context) ---
-│ ├── rite-workflow/ # state detection / phase routing / 共有コーディング原則 (SKILL.md + references/)
-│ └── reviewers/ # reviewer 選定 + テーブル (+ references/; per-reviewer profile は agents/{type}-reviewer.md)
+│ ├── rite-workflow/ # state detection / phase routing / 共有コーディング原則 (SKILL.md + references/; + references/rationale.md)
+│ └── reviewers/ # reviewer 選定 + テーブル (+ references/; per-reviewer profile は agents/{type}-reviewer.md; + references/rationale.md)
 ├── hooks/ # Claude Code lifecycle hooks + helpers
 │ ├── hooks.json # Hook registration manifest
 │ ├── session-start.sh / session-end.sh / session-ownership.sh
@@ -229,6 +229,7 @@ rite-workflow/
 │ │ ├── projects-board-drift-check.sh # lint Phase 3.18 CLOSED かつ board≠Done 検出
 │ │ ├── number-reference-check.sh # lint Phase 3.5 Issue/PR 番号参照 (#NNN) 検出 (CHANGELOG + lint.md)
 │ │ ├── sentinel-contract-check.sh # lint Phase 3.5 sentinel SoT / emitter / consumer 同期検証
+│ │ ├── skill-rail-diff-check.sh # SKILL 記述ダイエットの機械レール逐語一致検証 (fenced block + table row を base ref と突合)
 │ │ ├── tmp-hardcode-check.sh # lint Phase 3.5 sandbox 非互換パターン (mktemp+/tmp テンプレート・/tmp 直書き・push の upstream -u) 検出
 │ │ ├── dollar-zero-check.sh # lint Phase 3.5 skill 本文の fenced block 内 位置パラメータ 0 参照 検出 (Skill loader が起動引数へ展開する)
 │ │ ├── tempfile-lifecycle-check.sh # lint Phase 3.5 mktemp ハンドル派生パス検出 (lib/tempfile.sh で消せない残余)
@@ -283,6 +284,7 @@ rite-workflow/
   ├── state-read-evolution.md # state-read.sh の変遷史 (rationale 保存)
   ├── stop-loop-continuation-contract.md # Stop hook handoff 機構の解説 SoT (iterate/pr-review/fix/cleanup/ready から参照)
   ├── sentinel-contract.md # skill 間 sentinel の emitter / consumer 対応 SoT
+  ├── skill-diet-method.md # SKILL 記述ダイエットの手法 SoT (線引き / pin 移送 / 測定)
   └── bottleneck-detection.md
   # Note: references/i18n-usage.md and plugins/rite/i18n/ directory (ja.yml,
   # en.yml, and the ja/ + en/ split files) were deleted entirely —
@@ -296,7 +298,7 @@ Plugin metadata file format:
 ```json
 {
  "name": "rite",
- "version": "0.10.0",
+ "version": "0.11.0",
  "description": "Universal Issue-driven development workflow for Claude Code",
  "author": { "name": "B16B1RD" },
  "license": "MIT"
@@ -315,7 +317,11 @@ Plugin metadata file format:
 
 rite の全機能はスキル (`skills/<name>/SKILL.md`) として実装される（旧 `commands/` は v0.7 で全廃）。各スキルは薄い SKILL.md + 同梱 `references/` で構成し、`/rite:<name>` で起動する。
 
-**スキル行数原則**: 入口スキルの SKILL.md は 500 行未満に保つ。実行手順書スキル（pr-review / fix / lint / setup など bash 実行ブロックを本体に持つもの）は 4,000 行以内を上限とし、rationale（設計理由・背景解説）は SKILL.md 本体に書かず同梱 references/ へ退避して該当箇所に 1 行ポインタ（`rationale: references/<file>.md#<anchor>`）を残す。実行時に必要な情報（分岐表・sentinel 表・エラー処理指示・reason 表）は本体に維持する。
+**スキル行数原則**: 短いほど良い。増える変更は理由を要する。行数上限までの余白を埋めてはならない。
+
+- **主指標は散文バイト**（`bytes_prose`）。総行数は副次。実測: open パイロット 約 −36%（`plugins/rite/references/skill-diet-method.md` §3.1）、第 1 波 iterate −33.3% / fix −32.3% / pr-review −25.5%。4,000 行上限を「書いてよい量」としては使わない。
+- **構成**: outcome + 検証条件 + 機械ステップ。rationale（設計理由・背景解説）は SKILL.md 本体に書かず同梱 `references/` へ退避し、該当箇所に 1 行ポインタ（`rationale: references/<file>.md#<anchor>`）を残す。機械レール（分岐表・sentinel 表・fenced bash・エラー処理指示）は本体に維持する。
+- **入口スキル**は薄い SKILL.md を保つ（500 行は薄さの目安であり上限ではない）。新規作成・追記は `plugins/rite/references/skill-diet-method.md` に従う。
 
 SKILL.md は YAML frontmatter を持つ:
 
@@ -1345,6 +1351,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `wiki-index-update.sh` | `/rite:wiki-ingest` ステップ 6 — index.md `## ページ一覧` テーブルの登録行 追加/更新・重複行回収・`## 統計` 3 行同期の決定論的実装 (旧散文手順の 1:1 移植)。同定述語・エスケープ規約・中止条項は helper docstring が SoT。`row_action` / `dedup_removed` / `stats_sync` marker + atomic 書込 (tmp→mv 1 回)、fail-loud (exit 1/2) | — |
 | `bang-backtick-edit-hook.sh` | `bang-backtick-check.sh` の PostToolUse(Edit\|Write\|MultiEdit) wrapper — `hooks.json` 登録済 (`tool_input.file_path` でスコープを絞る) | — |
 | `bash-heaviness-check.sh` | `skills/**/*.md` 内の heavy operational bash block を non-blocking warning で検出 | — |
+| `skill-rail-diff-check.sh` | SKILL 記述ダイエットの機械レール逐語一致検証 — fenced block (fence 行込み) と markdown table row を**インデント有無を問わず**抽出して base ref (既定 `origin/develop`) と突合し、1 バイトでも異なれば exit 1。base ref に対象が無い場合のみ clean skip (exit 0)。base ref 未解決 / rail 0 行 / 引数不正は exit 2 (空の証明を green で返さない。`--extract-only` も同じ floor を通る)。**見出し・outcome・mandate・散文中の sentinel literal / marker 名は抽出対象外**で、それらの保護は目視に委ねる。`--extract-only` で before/after 計測用のレール抽出のみ | Canonical method: `references/skill-diet-method.md` |
 | `hardcoded-line-number-check.sh` | procedural markdown (`skills/**/*.md`) 内のハードコード行番号参照を検出 | — |
 | `comment-line-ref-check.sh` | shell comment 内の `<file>.<ext>:<NN>` 行番号参照を検出 (`hardcoded-line-number-check.sh` の companion) | — |
 | `comment-journal-check.sh` | `plugins/rite/**/*.{sh,md}` の journal 語法 comment 違反を機械検出 | — |
@@ -1403,7 +1410,7 @@ The `session_id` is the same UUID stored in `.rite-session-id` and propagated to
 | Optional | `handoff` | `flow-state.sh set --handoff <cmd>` (writer; **default-clears on every set** — present only when `--handoff` is passed) / `flow-state.sh consume-handoff` (reader+deleter) | One-shot continuation marker with three value families: continuation `/rite:...` set by `pr-review.md` Step 8.0 (`/rite:fix {pr}` on `[review:fix-needed]`) and `fix.md` Step 5.1 (`/rite:pr-review {pr}` on `[fix:pushed]`/`[fix:pushed-wm-stale]`); terminal `FINALIZE:{result}:{pr}` set by the same steps on terminal sentinels; chain `WIKICHAIN:{caller}:{pr}` set by `cleanup.md` Step 9 before invoking `rite:wiki-ingest` (cleared by the Step 12 terminal set's default-clear when the chain completes). Consumed (printed + deleted) by the `Stop` hook `stop-loop-continuation.sh`, which emits `decision:block` with a prefix-selected reason. Default-clear semantics mirror `error_count`; no `schema_version` bump (additive, backward-compatible via `.handoff // ""`) |
 | Optional | `stop_reason` | `flow-state.sh set --stop-reason <token>` | Durable marker that distinguishes a workflow stopped as a failure from an ordinary interruption. Current tokens are `circuit-breaker:max-cycles` and `circuit-breaker:divergence`; `session-start.sh` and `/rite:recover` surface the value. It **default-clears on every set** and is only written when `--stop-reason` is passed, so resuming the workflow removes stale failure state. Additive and backward-compatible via `.stop_reason // ""`; no `schema_version` bump. |
 | Optional | `worktree` | `flow-state.sh set --worktree <abs-path>` | Session worktree absolute path under multi-session mode (`.rite/worktrees/issue-{N}`, design §2). **Merge-preserve** semantics like `branch` (NOT default-clear like `handoff`): an unspecified `--worktree` preserves the existing value across phase-transition sets. Written conditionally — non-worktree (single-session) sessions never gain the key, so the state file is byte-identical and no `schema_version` bump is needed (additive, read via `.worktree // ""`). A same-session hint only: the canonical session↔worktree correspondence is the issue-number → path derivation in `/rite:recover` (session_id changes on crash, so the field is not authoritative) |
-| Optional | `cycle_count` | `flow-state.sh set --cycle-count <N>` | The `/rite:iterate` review⇄fix cycle counter for the circuit breaker (#1701). It is compared against `safety.max_review_cycles` for the backstop. It is **not** the run boundary for the trend check — that boundary is a separate run-start pin (`.rite/state/review-run-since-{pr}.txt`, written by step 0.6 when the counter is 0 and passed to the helper as `--since`), because deriving the boundary from this counter assumes one saved result per counted cycle and that assumption breaks on a save failure or an interrupted review. The trend check still consults it as a diagnostic: a file count **below** the counter costs only a `lost=N` warning, and a count **above** it drops the check (`run_boundary_unresolved`) **only when no pin is set, or when the counter is still 0** — the latter catches a stale pin (a previous run that never closed), since a counter skew needs at least one completed review to arise. Once the pin has been refreshed for the current run and the counter has advanced, an excess merely means the counter lagged (a failed increment, or a Stop-hook re-injection that bypassed it) and the judgment proceeds. `/rite:iterate` increments it at each loop head, resets it to `0` on a fresh entry (phase not in `review`/`fix`), again when the loop exits normally, and again when the breaker trips. At trip time, step 6's shared preamble atomically resets the counter and writes `stop_reason` immediately before step 6.1/6.2 emits the trip sentinel; step 1's fire branch separately default-clears `handoff` (#2026). This preserves a durable failure reason without encoding the mutable `max_review_cycles` value. A turn ending before the shared preamble leaves the counter at the limit and trips again on the next loop head; a turn ending after it retains `stop_reason`, so session recovery still identifies the failure. **Merge-preserve** semantics like `worktree`/`branch` (NOT default-clear like `handoff`/`stop_reason`): an unspecified `--cycle-count` preserves the existing value. `--cycle-count 0` deletes the key. Written conditionally — sessions that never run the breaker never gain the key, so the state file is byte-identical and no `schema_version` bump is needed (additive, read via `.cycle_count // 0`) |
+| Optional | `cycle_count` | `flow-state.sh set --cycle-count <N>` | The `/rite:iterate` review⇄fix cycle counter for the circuit breaker (#1701). It is compared against `safety.max_review_cycles` for the backstop. It is **not** the run boundary for the trend check — that boundary is a separate run-start pin (`.rite/state/review-run-since-{pr}.txt`, written by step 0.6 when the counter is 0 and passed to the helper as `--since`), because deriving the boundary from this counter assumes one saved result per counted cycle and that assumption breaks on a save failure or an interrupted review. The trend check still consults it as a diagnostic: a file count **below** the counter costs a `lost=N` warning from the helper (the helper still continues on the remaining series); `/rite:iterate` step 1 treats `lost>0` as a repair gate (immediate save or re-review without increment) before starting the next cycle, and a count **above** it drops the check (`run_boundary_unresolved`) **only when no pin is set, or when the counter is still 0** — the latter catches a stale pin (a previous run that never closed), since a counter skew needs at least one completed review to arise. Once the pin has been refreshed for the current run and the counter has advanced, an excess merely means the counter lagged (a failed increment, or a Stop-hook re-injection that bypassed it) and the judgment proceeds. `/rite:iterate` increments it at each loop head, resets it to `0` on a fresh entry (phase not in `review`/`fix`), again when the loop exits normally, and again when the breaker trips. At trip time, step 6's shared preamble atomically resets the counter and writes `stop_reason` immediately before step 6.1/6.2 emits the trip sentinel; step 1's fire branch separately default-clears `handoff` (#2026). This preserves a durable failure reason without encoding the mutable `max_review_cycles` value. A turn ending before the shared preamble leaves the counter at the limit and trips again on the next loop head; a turn ending after it retains `stop_reason`, so session recovery still identifies the failure. **Merge-preserve** semantics like `worktree`/`branch` (NOT default-clear like `handoff`/`stop_reason`): an unspecified `--cycle-count` preserves the existing value. `--cycle-count 0` deletes the key. Written conditionally — sessions that never run the breaker never gain the key, so the state file is byte-identical and no `schema_version` bump is needed (additive, read via `.cycle_count // 0`) |
 | Optional | `schema_version` | `flow-state.sh set` | `3` for the per-session structure; absent or `!= 3` triggers migration |
 
 > **`needs_clear` field**: Removed. The previous compact-recovery design discussed `needs_clear` as a flag, but production code never had a writer or non-test reader. Test fixtures (`pre-compact.test.sh` TC-014 / TC-014b) actively assert that `pre-compact does NOT set needs_clear`. The new schema does not include this field.

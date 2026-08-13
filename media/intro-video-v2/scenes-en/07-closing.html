@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280, initial-scale=1">
+<title>rite — M7 closing</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --ink: #f4f0e8;
+    --muted: #8e96a3;
+    --gold: #e8b339;
+    --gold-soft: rgba(232, 179, 57, 0.22);
+    --line: rgba(244, 240, 232, 0.12);
+  }
+
+  * { box-sizing: border-box; }
+
+  html,
+  body {
+    width: 1280px;
+    height: 720px;
+    margin: 0;
+    overflow: hidden;
+    background: #0b0e13;
+  }
+
+  body {
+    position: relative;
+    color: var(--ink);
+    font-family: Inter, "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .ambient {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 50% 45%, rgba(232, 179, 57, 0.075), transparent 33%),
+      linear-gradient(135deg, #0b0e13 0%, #10141b 48%, #090c11 100%);
+    animation: ambient-in 8000ms ease-out both;
+  }
+
+  .frame {
+    position: absolute;
+    inset: 38px;
+    border: 1px solid rgba(244, 240, 232, 0.055);
+    animation: frame-in 8000ms cubic-bezier(.22, 1, .36, 1) both;
+  }
+
+  .content {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding-bottom: 12px;
+  }
+
+  .loop {
+    position: relative;
+    width: 176px;
+    height: 50px;
+    margin-bottom: 35px;
+    animation: loop-in 8000ms cubic-bezier(.22, 1, .36, 1) both;
+  }
+
+  .loop::before,
+  .loop::after {
+    content: "";
+    position: absolute;
+    top: 20px;
+    width: 68px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(232, 179, 57, 0.7));
+    transform-origin: right center;
+  }
+
+  .loop::before { left: 2px; }
+  .loop::after {
+    right: 2px;
+    transform: rotate(180deg);
+  }
+
+  .loop-node {
+    position: absolute;
+    left: 50%;
+    top: 15px;
+    width: 11px;
+    height: 11px;
+    margin-left: -6px;
+    border: 1px solid var(--gold);
+    border-radius: 50%;
+    box-shadow: 0 0 18px var(--gold-soft);
+    animation: node-pulse 8000ms ease-in-out both;
+  }
+
+  .loop-label {
+    position: absolute;
+    inset: 36px -60px auto;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: .16em;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: 58px;
+    font-weight: 570;
+    letter-spacing: .035em;
+    line-height: 1.28;
+    animation: statement-in 8000ms cubic-bezier(.22, 1, .36, 1) both;
+  }
+
+  .rule {
+    width: 1px;
+    height: 48px;
+    margin: 31px 0 27px;
+    background: linear-gradient(to bottom, var(--gold), rgba(232, 179, 57, 0.08));
+    transform-origin: top center;
+    animation: rule-in 8000ms cubic-bezier(.22, 1, .36, 1) both;
+  }
+
+  .brand {
+    margin: 0 0 26px;
+    color: var(--gold);
+    font-size: 36px;
+    font-weight: 650;
+    letter-spacing: .21em;
+    text-indent: .21em;
+    animation: brand-in 8000ms cubic-bezier(.22, 1, .36, 1) both;
+  }
+
+  .install {
+    display: flex;
+    align-items: center;
+    min-height: 42px;
+    padding: 0 20px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.025);
+    color: #c8ced7;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: 15px;
+    letter-spacing: .015em;
+    animation: install-in 8000ms cubic-bezier(.22, 1, .36, 1) both;
+  }
+
+  .install .slash { color: var(--gold); }
+
+  .foot {
+    position: absolute;
+    right: 74px;
+    bottom: 62px;
+    color: var(--muted);
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: .16em;
+    animation: foot-in 8000ms cubic-bezier(.22, 1, .36, 1) both;
+  }
+
+  @keyframes ambient-in {
+    0% { opacity: .25; }
+    18%, 100% { opacity: 1; }
+  }
+
+  @keyframes frame-in {
+    0%, 5% { opacity: 0; transform: scale(.985); }
+    20%, 90% { opacity: 1; transform: scale(1); }
+    100% { opacity: .72; transform: scale(1); }
+  }
+
+  @keyframes loop-in {
+    0%, 8% { opacity: 0; transform: translateY(12px); }
+    25%, 100% { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes node-pulse {
+    0%, 18% { background: transparent; transform: scale(.6); }
+    30% { background: var(--gold); transform: scale(1); }
+    45% { background: rgba(232, 179, 57, .2); transform: scale(.82); }
+    58%, 100% { background: var(--gold); transform: scale(1); }
+  }
+
+  @keyframes statement-in {
+    0%, 16% { opacity: 0; transform: translateY(26px); filter: blur(5px); }
+    34%, 100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+  }
+
+  @keyframes rule-in {
+    0%, 29% { opacity: 0; transform: scaleY(0); }
+    44%, 100% { opacity: 1; transform: scaleY(1); }
+  }
+
+  @keyframes brand-in {
+    0%, 37% { opacity: 0; transform: translateY(13px); }
+    53%, 100% { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes foot-in {
+    0%, 57% { opacity: 0; transform: translateY(10px); }
+    72%, 100% { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes install-in {
+    0%, 49% { opacity: 0; transform: translateY(12px); }
+    65%, 92% { opacity: 1; transform: translateY(0); }
+    100% { opacity: .82; transform: translateY(0); }
+  }
+</style>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"></div>
+  <div class="frame" aria-hidden="true"></div>
+  <main class="content">
+    <div class="loop" aria-label="Lessons carry to the next Issue">
+      <span class="loop-node" aria-hidden="true"></span>
+      <span class="loop-label">LESSONS CARRY TO THE NEXT ISSUE</span>
+    </div>
+    <h1>Every lap, sharper.</h1>
+    <div class="rule" aria-hidden="true"></div>
+    <p class="brand">rite</p>
+    <div class="install"><span class="slash">/</span>plugin install rite@rite-marketplace</div>
+  </main>
+  <div class="foot">v0.11.0</div>
+  <script>window.SCENE = { duration_ms: 8000 };</script>
+</body>
+</html>

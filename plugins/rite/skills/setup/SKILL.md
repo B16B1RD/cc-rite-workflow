@@ -26,9 +26,8 @@ When `--upgrade` is specified, skip to [Phase 4.1.3 (Upgrade)](#413-upgrade-exis
 
 ### 1.0 Verify Core Dependencies (bash ≥4 / jq / flock)
 
-rite の hook / スクリプト群は bash 4+ / jq に依存し、flow-state のロックに flock を使う。導入時点でこれらを検査し、欠落があれば OS 別のインストール案内を出す（macOS stock bash 3.2 のまま pr-review 系が不可解に失敗する事故の予防）。**この検査は non-blocking**（欠落があっても setup は継続し、`exit 1` しない）。全依存 OK のときは 1 行サマリのみで邪魔をしない。
-
-> **検査基準（Decision D-01）**: bash は「実行中の bash の `BASH_VERSION`」を基準にする。macOS での PATH 解決（Homebrew bash か `/bin/bash` 3.2 か）が環境依存で不確実なため、実行コンテキスト自身を測るのが最も正確。
+bash 4+ / jq / flock を検査し、欠落時は OS 別インストール案内を出す。**この検査は non-blocking**（欠落しても `exit 1` しない）。全依存 OK なら 1 行サマリのみ。
+rationale: references/rationale.md#dep-check-nonblocking
 
 ```bash
 # OS 検出（uname -s ベース。テスト時は uname() 関数を定義して shadow 可能）
@@ -91,7 +90,8 @@ fi
 echo "[CONTEXT] DEP_CHECK; bash=$dep_bash; jq=$dep_jq; flock=$dep_flock; os=$os_kind"
 ```
 
-この bash ブロックは **常に exit 0** で終わる（依存欠落を理由に setup を停止しない）。`[CONTEXT] DEP_CHECK` marker の各フィールド（`bash=ok|old|nonbash` / `jq=ok|missing` / `flock=ok|missing` / `os=macos|linux|windows|unknown`）は data contract / observability として全ケースで emit するが、現状どの bash フェーズも機械 parse しない（jq 案内の重複排除は Phase 4.5.0 の NO_JQ メッセージが Phase 1.0 を文言で参照して達成しており、marker の消費には依存しない）。出力を読んだうえで、欠落があってもそのまま 1.1 へ続行する。
+この bash ブロックは **常に exit 0** で終わる。`[CONTEXT] DEP_CHECK` の各フィールド（`bash=ok|old|nonbash` / `jq=ok|missing` / `flock=ok|missing` / `os=macos|linux|windows|unknown`）は全ケースで emit する。欠落があっても 1.1 へ続行する。
+rationale: references/rationale.md#dep-check-nonblocking
 
 ### 1.1 Verify gh CLI Installation
 
@@ -165,7 +165,8 @@ If the result is not `true`, show `gh auth refresh --hostname github.com -s proj
 
 ### 1.4 Retrieve Repository Information
 
-> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) — 下記 snippet の `git-remote.sh` 呼び出しで使用する（未解決のまま実行すると git-remote.sh 経路が silent に失敗し、SSH host alias 環境で fallback の `gh repo view` も失敗する）。
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) — 下記 snippet の `git-remote.sh` 呼び出しで使用する。
+rationale: references/rationale.md#plugin-path-before-git-remote
 
 First classify the local repository before attempting GitHub resolution:
 
@@ -269,7 +270,8 @@ gh project create --owner {owner} --title "{repo-name}" --format json
 
 ### 3.3.5 Link Project to Repository (Both Paths)
 
-新規作成（3.3）・既存 Project 選択（3.2）のどちらのパスでも、Project 番号が確定したら必ず実行する。`gh project link` はリポジトリと Project を関連付け、Issue 作成 helper のフィールド取得 GraphQL クエリ（`repository(owner:, name:) { projectV2(number:) }` ルート、[../../references/graphql-helpers.md](../../references/graphql-helpers.md) 参照）を解決可能にする。link しないままだと初回 `/rite:issue-create` が `project_registration: "partial"` で失敗する。
+新規作成（3.3）・既存 Project 選択（3.2）のどちらのパスでも、Project 番号が確定したら必ず実行する。
+rationale: references/rationale.md#project-link
 
 ```bash
 # 冪等: 既にリンク済みでも成功する。失敗しても setup は続行する（non-blocking）
@@ -398,7 +400,7 @@ If the user selects "set up later", proceed to Phase 4 with `iteration.enabled: 
 
 ### 4.1 Generate rite-config.yml
 
-> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing any steps in Phase 4.1. This resolved path is used by 1.4 (repository information retrieval — 通常は 1.4 到達時点で解決済み), 4.1.1 (template schema_version read), 4.1.2 (template-based generation), and 4.1.3 (upgrade).
+> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing any steps in Phase 4.1（1.4 / 4.1.1 / 4.1.2 / 4.1.3。通常は 1.4 到達時点で解決済み）。
 
 #### 4.1.1 Check for Existing Configuration
 
@@ -460,11 +462,12 @@ Generate `rite-config.yml` from the template config file.
 
 **Step 4**: Write the result to `rite-config.yml` in the project root using the Write tool.
 
-> **Note on wiki section**: `templates/config/rite-config.yml` declares the `wiki:` section **above** the `# --- Advanced ---` boundary as an active (non-commented) block. Step 2 (extract content up to the Advanced boundary) therefore includes the active `wiki:` section automatically in the generated `rite-config.yml`. No additional append step is required for new-generation path. The Advanced boundary is the single source of truth for what gets emitted vs commented-out.
+> **Note on wiki section**: 新規生成は Advanced 境界より上を抽出するだけ。追加 append は不要。
+rationale: references/rationale.md#wiki-section-new-gen
 
 #### 4.1.3 Upgrade Existing Configuration
 
-> This phase is executed when `--upgrade` is specified. It upgrades an existing `rite-config.yml` to the latest schema version while preserving user-customized values.
+> `--upgrade` 指定時に実行。既存 `rite-config.yml` を最新 schema へ上げ、ユーザーカスタム値は保持する。
 
 **Step 1: Read current config and template**
 
@@ -481,16 +484,16 @@ Read both files with the Read tool:
 - Current: Read `schema_version` from existing file. If missing, treat as v1.
 - Latest: Read `schema_version` from template. If missing, treat as v1.
 
-**Branching** (Wiki follow-through を含む全 drift 追従): schema 同等であってもテンプレートはスキーマ版を bump せずに active セクション/サブキー（`multi_session`・新規セクション・Wiki 等）を獲得し得るため、`current >= latest` 経路でも config に欠落している drift を back-add して最新デフォルトへ追従させる必要がある。以下のとおり分岐する。**表の実行順序は左から右** (Step 番号順ではなく矢印順):
+**Branching** (全 drift 追従。**表の実行順序は左から右** — Step 番号順ではなく矢印順):
+rationale: references/rationale.md#upgrade-branching
 
 | Condition | Execution order (left → right) |
 |-----------|--------------------------------|
 | `current < latest` | (1) Step 3 Backup → (2) Step 4 Identify → (3) Step 5 Preview → (4) Step 6 Apply → (5) Step 7 Phase 4.7 |
 | `current >= latest` | (1) Step 3 Backup → (2) Step 4 Identify（drift のみ）→ (3) Step 6 Apply（multi_session/新規セクション/欠落サブキー/Wiki の back-add。User-customized 保全・冪等・preview なし）→ (4) Step 7 Phase 4.7 |
 
-両経路とも Step 6 が config を変更し得るため Step 3 Backup を必ず先に実行する (precondition)。`current >= latest` 経路は Step 5 Preview/confirm を挟まず、欠落している active セクション/サブキーのみを冪等に back-add する（テンプレート defaults への追従であり、User-customized 値（明示的な `enabled: false` を含む）は保全されるため無確認で適用する）。旧 Step 3.5 の Wiki 専用救済はこの一般化に吸収され、Wiki も他の active セクションと同様に Step 6 item 7 で back-add される（drift anchor SoT に一貫化）。
-
-`current >= latest` 経路で back-add 対象が皆無（全 active セクション/サブキーが既存）の場合、Step 6 は config を書き換えず `rite-config.yml は最新です (v{current})` を表示する。Phase 4.7 はそのまま実行され、Wiki 初期化済みなら Phase 4.7.2 が `wiki_status=already_initialized` を set して Skill 呼び出しは skip される (冪等)。
+両経路とも Step 3 Backup を必ず先に実行する (precondition)。`current >= latest` は Step 5 を挟まず、欠落 active セクション/サブキーのみを冪等に back-add する（User-customized 値と明示的な `enabled: false` は保全）。back-add 対象が皆無なら Step 6 は書き換えず `rite-config.yml は最新です (v{current})` を表示する。Phase 4.7 はそのまま実行（Wiki 初期化済みなら Skill は skip）。
+rationale: references/rationale.md#upgrade-branching
 
 **Step 3: Create backup**
 
@@ -515,11 +518,12 @@ Compare current config against the template and classify each key:
 | **`wiki:` section** | **Step 3/4 は扱わない**。wiki セクションの追加は **Phase 4.1.2 Step 2 (新規生成: template の Advanced 境界より上にある active block が自動コピーされる) および Phase 4.1.3 Step 6 item 7 (Upgrade path: 未存在時に active block として append。`current < latest` / `current >= latest` 両経路で実行) の専権**。template 側にはコメント形式の `# wiki:` ブロックは存在しない (active 位置に移動済み) ため、重複追加経路はない |
 | **Unknown key** (user-added keys not in template) | **Preserve with warning** — keep but display warning |
 
-**Unknown key 判定の scope**: Step 4 の "Unknown key" 判定 (user-added keys not in template) は、**template の `# --- Advanced (below this line) ---` 境界より上の active section のみ**を参照する。境界より下 (コメント形式の Advanced sections + 末尾コメント) は template 側で意図的に省略または注記のため存在する領域であり、ユーザー設定の classification 対象外。
+**Unknown key 判定の scope**: Step 4 の "Unknown key" 判定は **template の `# --- Advanced (below this line) ---` 境界より上の active section のみ**を参照する。
+rationale: references/rationale.md#unknown-key-scope
 
-**Active top-level sections covered on --upgrade** (drift anchor — the `init-upgrade-drift` test asserts this list ⊇ the template's active top-level keys above the `--- Advanced ---` marker): `schema_version`, `github`, `iteration`, `branch`, `commands`, `verification`, `issue`, `review`, `language`, `wiki`, `multi_session`, `tdd`, `safety`. Each is handled by Step 4/Step 6 above (User-customized values are preserved, missing sections/sub-keys are added). **When a new active top-level section is added to the template, add it to this list too** — otherwise the drift test fails and `--upgrade` would silently miss it.
+**Active top-level sections covered on --upgrade** (drift anchor): `schema_version`, `github`, `iteration`, `branch`, `commands`, `verification`, `issue`, `review`, `language`, `wiki`, `multi_session`, `tdd`, `safety`. Step 4/6 が扱う。**When a new active top-level section is added to the template, add it to this list too** — otherwise the drift test fails and `--upgrade` would silently miss it.
 
-**Active sub-keys covered on --upgrade** (drift anchor — the `init-upgrade-drift` test T-12 asserts, per section, this list ⊇ each template active section's **direct** sub-keys above the `--- Advanced ---` marker; Step 6 item 4 adds any missing sub-key while preserving existing siblings). Sections whose value is a scalar (`schema_version`, `language`) have no sub-keys and are omitted:
+**Active sub-keys covered on --upgrade** (drift anchor。スカラー `schema_version` / `language` は省略):
 
 - `github`: `projects`
 - `iteration`: `enabled`, `field_name`, `auto_assign`, `show_in_list`
@@ -533,9 +537,9 @@ Compare current config against the template and classify each key:
 - `tdd`: `enabled`
 - `safety`: `max_implementation_rounds`, `max_review_cycles`, `time_budget_minutes`, `auto_stop_on_repeated_failure`, `repeated_failure_threshold`
 
-**When a new sub-key is added to an existing template section, add it to the matching row above too** — otherwise the T-12 sub-key drift test fails and `--upgrade` would silently miss it (the same guard as the top-level list, one level down).
+**When a new sub-key is added to an existing template section, add it to the matching row above too** — otherwise the T-12 sub-key drift test fails and `--upgrade` would silently miss it.
 
-**Step 5: Preview and confirm** (`current < latest` 経路のみ — `current >= latest` 短絡経路は Step 5 を挟まず Step 6 で欠落 drift を冪等に back-add する)
+**Step 5: Preview and confirm** (`current < latest` 経路のみ。`current >= latest` は Step 5 を挟まない)
 
 Display the changes to the user:
 
@@ -563,7 +567,8 @@ Ask with `AskUserQuestion`:
 
 **Step 6: Apply changes**
 
-**Path-dependent application**: On the `current < latest` path, apply all items below after the user confirms in Step 5. On the `current >= latest` short-circuit path (Step 5 skipped), apply **only items 3, 4, 6, 7** — the drift back-add (missing active sections / missing sub-keys / multi_session / wiki) — directly without confirmation. Items 1, 2, 5 (schema_version bump / deprecated-key removal / Advanced-section comments) are full-upgrade-only and are skipped on the short-circuit path (schema is already current, so item 1 would be a no-op anyway). Every back-add item (3, 4, 6, 7) is idempotent and preserves User-customized values (including an explicit `enabled: false`), so the short-circuit path applies unattended; when no item finds anything missing, the config is left unchanged and `rite-config.yml は最新です (v{current})` is displayed.
+**Path-dependent application**: On the `current < latest` path, apply all items below after the user confirms in Step 5. On the `current >= latest` short-circuit path (Step 5 skipped), apply **only items 3, 4, 6, 7** — the drift back-add (missing active sections / missing sub-keys / multi_session / wiki) — directly without confirmation. Items 1, 2, 5 は full-upgrade-only。back-add（3, 4, 6, 7）は冪等で User-customized（明示的な `enabled: false` を含む）を保全する。対象が皆無なら config は不変で `rite-config.yml は最新です (v{current})` を表示する。
+rationale: references/rationale.md#upgrade-apply-ssot
 
 Apply the following:
 
@@ -574,21 +579,24 @@ Apply the following:
 5. Add Advanced sections as comments (prefixed with `#`) using the Edit tool
 6. **If `multi_session:` section is absent**: append the active `multi_session:` block from the template (`enabled: true` + `worktree_base`) so `--upgrade`-ed projects get the same default-on session-worktree behavior as new generation.
 
-   **Block source (SSOT)**: Read `{plugin_root}/templates/config/rite-config.yml` and extract the active `multi_session:` block (the `multi_session:` key line through its last sub-key, above the `# --- Advanced (below this line) ---` marker). Do not duplicate the literal here — any change to template defaults propagates to both new-install and `--upgrade`.
+   **Block source (SSOT)**: Read `{plugin_root}/templates/config/rite-config.yml` and extract the active `multi_session:` block (the `multi_session:` key line through its last sub-key, above the `# --- Advanced (below this line) ---` marker)。本文にリテラルを複製しない。
+rationale: references/rationale.md#upgrade-apply-ssot
 
    **Idempotency guard**: Before inserting, Grep `^multi_session:` (excluding comment lines starting with `#`) in the project's `rite-config.yml`. If an active section already exists, skip the Edit entirely (no-op) — this preserves a user's existing block, **including an explicit `enabled: false`** (never overwrite `enabled`).
 
    **Anchor selection**: insert immediately before the `# --- Advanced (below this line) ---` marker line (`old_string` = marker line, `new_string` = multi_session block + `\n\n` + marker line). If the Advanced marker is absent (user-trimmed config), append after the last top-level active key. Display `rite-config.yml に multi_session セクションを追加しました（active, enabled: true）。` only when the Edit actually ran.
 7. **If `wiki:` section is absent**: append the active `wiki:` block from the template (single source of truth) so Phase 4.7 can auto-initialize Wiki.
 
-   **Wiki block source (SSOT)**: Read `{plugin_root}/templates/config/rite-config.yml` and extract the block from `# Wiki settings` through the end of the `wiki:` section (the lines above the `# --- Advanced (below this line) ---` marker). This avoids literal duplication between `setup.md` and the template — any change to default values (e.g., `auto_ingest`, `branch_strategy`) in the template automatically propagates to both new-install and `--upgrade` paths.
+   **Wiki block source (SSOT)**: Read `{plugin_root}/templates/config/rite-config.yml` and extract the block from `# Wiki settings` through the end of the `wiki:` section (the lines above the `# --- Advanced (below this line) ---` marker)。本文にリテラルを複製しない。
+rationale: references/rationale.md#upgrade-apply-ssot
 
    **Idempotency guard**: Before inserting, Grep `^wiki:` (excluding comment lines starting with `#`) in the project's `rite-config.yml`. If an active section already exists, skip the Edit entirely (no-op).
 
    **Anchor selection**:
    - **Primary anchor**: the `language:` line in `rite-config.yml`. This is unique in the default template and provides a stable insertion point.
    - **Fallback anchor** (if `language:` line is absent due to user customization): the `# --- Advanced (below this line) ---` boundary marker line. Insert the wiki block **immediately before** this marker (`old_string` = marker line, `new_string` = wiki block + `\n\n` + marker line). If the Advanced marker is also absent, use the last top-level active key (line starting with `[a-z]` followed by `:`) before any comment-only tail region.
-   - **NOT tail-based**: do not anchor to the last non-empty line of the file — this can collide with the template's repeated `enabled: true` / `auto_query: true` lines in multi-section tails.
+   - **NOT tail-based**: do not anchor to the last non-empty line of the file。
+rationale: references/rationale.md#upgrade-apply-ssot
 
    **Edit action**:
    - `old_string` = the anchor line exactly as read (preserving trailing whitespace)
@@ -608,7 +616,8 @@ Step 7 has two sub-steps:
 
 Execute [Phase 4.7: Wiki Initialization](#phase-47-wiki-initialization-491) to bring existing users up to Wiki-initialized state. This is non-blocking; Phase 4.7 failure does not affect `--upgrade` success.
 
-Phase 4.7's internal "next step" instructions (e.g., "proceed to the next step: `--upgrade`: Phase 4.1.3 Step 7b status-line display and exit") mean **return to Step 7b here** (continuation after Phase 4.7 completes), not a recursive re-entry into Step 7a.
+Phase 4.7 内部の「次のステップ」は **Step 7b へ戻る**（7a への再入ではない）。
+rationale: references/rationale.md#upgrade-step7
 
 **Step 7b: Display status line and exit**
 
@@ -619,17 +628,12 @@ After Phase 4.7.1/4.7.2/4.7.4 returns control to Step 7, display a Wiki status l
 - Else if `wiki_status == "skipped_disabled"` → `Wiki: スキップ（無効）`
 - Else if `wiki_status == "failed"` → `Wiki: 失敗`
 
-Before exiting, execute [Phase 4.8: Sandbox Write-Allowlist 自動設定](#phase-48-sandbox-write-allowlist-自動設定multi_session-有効時1896--1942) and then [Phase 4.9: SSH Host Alias Remote の Sandbox 事前案内](#phase-49-ssh-host-alias-remote-の-sandbox-事前案内1907) (both non-blocking, each self-gated by its own check — safe to invoke unconditionally). Then display the status line and exit. (`--upgrade` skips Phases 1-3 and the Phase 5 full completion report, so only the Wiki status (and, when applicable, the Phase 4.8 / 4.9 guidance) is reported — there is no merge conflict with Phase 5 because `--upgrade` does not enter the new-install path.)
+Before exiting, execute [Phase 4.8: Sandbox Write-Allowlist 自動設定](#phase-48-sandbox-write-allowlist-自動設定multi_session-有効時1896--1942) and then [Phase 4.9: SSH Host Alias Remote の Sandbox 事前案内](#phase-49-ssh-host-alias-remote-の-sandbox-事前案内1907) (both non-blocking, each self-gated — invoke unconditionally). Then display the status line and exit.
+rationale: references/rationale.md#upgrade-step7
 
 If the user cancels: Display "アップグレードをキャンセルしました" and exit.
 
-**MUST requirements**:
-- `schema_version` 未設定の config は暗黙的に v1 として扱う
-- ユーザーカスタム値（project_number, owner, iteration, branch 等）を保持する
-- バックアップ (`rite-config.yml.bak.{timestamp}`) を作成する
-- 廃止キー (`project.name`, `commit.style`, `commit.enforce`, `commit.contextual`, `branch.release`, `branch.types`, `version`) を削除する
-- Advanced セクションはコメントアウトで追加する
-- テンプレートにないユーザー追加キーを削除しない（Unknown key → Preserve with warning）
+**MUST requirements**: Step 4 分類表が SoT。`schema_version` 欠落は v1。Backup 必須。Unknown key は削除しない。
 
 ### 4.2 Check Issue Templates
 
@@ -710,7 +714,7 @@ done
 fi
 ```
 
-Missing SoT files, directory creation failures, and copy failures are all non-blocking. Preserve each existing destination unchanged, display the emitted warning or status lines, and continue to Phase 4.5 regardless of the result.
+SoT 欠落・ディレクトリ作成失敗・copy 失敗はすべて non-blocking。既存 destination は不変のまま Phase 4.5 へ続行する。
 
 ---
 
@@ -718,11 +722,12 @@ Missing SoT files, directory creation failures, and copy failures are all non-bl
 
 > **Placeholder convention**: All `{hooks_dir}` occurrences in fenced code blocks within Phase 4.5 are **templates**, not literal commands. Replace `{hooks_dir}` with the absolute path resolved in Phase 4.5.0 before executing each command via the Bash tool.
 
-> **rite hook command の判定基準 (SoT)**: Phase 4.5 の各サブフェーズで hook command が「rite 自身の hook か」を判定する箇所では、command path 中で `rite` が **hooks ディレクトリ直上の完全な path segment** である場合のみ rite hook とみなす（その間に version segment を 1 個まで許容）。具体的には dev/relative の `…/rite/hooks/` と cache install の `…/rite-marketplace/rite/<version>/hooks/` がマッチし、`favorite/hooks/`・`prerite/hooks/`・`rite-something/hooks/` のように `rite` が別 segment の部分文字列にすぎない look-alike はマッチしない。これは helper の正規表現の**単一定義実体** `scripts/settings-local-rite-hook-cleanup.py` の `RITE_HOOK_RE`（正規表現 `(?:^|/)rite/(?:[^/]+/)?hooks/`）と同一基準であり、本ドキュメントで **「rite hook command」** と表記する箇所はすべてこの基準を指す。同名 `.sh` wrapper（python3 guard・atomic write を担う）も `session-start.sh` の settings.local.json 修復経路も、JSON 変換＝regex 適用をこの `.py` に委譲するため、正規表現の定義は `.py` 1 箇所のみに存在する（session-start.sh のインライン複製を解消）。素朴な substring `rite/hooks/` 一致は `favorite/hooks/` 等を over-match するため使わない。
+> **rite hook command の判定基準 (SoT)**: command path 中で `rite` が **hooks ディレクトリ直上の完全な path segment** である場合のみ（間に version segment を 1 個まで許容）。`…/rite/hooks/` と `…/rite-marketplace/rite/<version>/hooks/` がマッチ。`favorite/hooks/`・`prerite/hooks/`・`rite-something/hooks/` はマッチしない。正規表現の単一定義は `scripts/settings-local-rite-hook-cleanup.py` の `RITE_HOOK_RE`（`(?:^|/)rite/(?:[^/]+/)?hooks/`）。本ドキュメントの **「rite hook command」** はすべてこの基準。substring `rite/hooks/` 一致は使わない。
+rationale: references/rationale.md#rite-hook-command
 
 ### 4.5.0 Resolve Hook Script Directory
 
-Run the following bash command to detect the hook scripts directory. This command assumes CWD is the project root (Claude Code's Bash tool resets CWD to the project root on each invocation):
+次の bash で hook scripts ディレクトリを検出する。CWD はプロジェクト root（Bash tool は呼び出しごとに root へ戻す）:
 
 ```bash
 if [ -f "plugins/rite/hooks/pre-compact.sh" ]; then
@@ -758,7 +763,8 @@ fi
 ```
 
 - If `LOCAL:<path>` or `MARKETPLACE:<path>` → extract all text after the first `:` (the absolute path) and use it as `{hooks_dir}` for all subsequent phases. Also retain the source type (`LOCAL` or `MARKETPLACE`) for use in the Phase 5 completion report.
-- If `NOT_FOUND:NO_JQ` → display warning and **skip the rest of Phase 4.5**（jq のインストール案内は Phase 1.0 の依存検査で既出のため、ここでは繰り返さない — AC-3。NO_JQ 経路に入る時点で jq は必ず欠落しており Phase 1.0 が既に OS 別案内を表示済み）:
+rationale: references/rationale.md#plugin-path-mismatch
+- If `NOT_FOUND:NO_JQ` → display warning and **skip the rest of Phase 4.5**（jq 案内は Phase 1.0 で既出 — 繰り返さない）:
     ```
     ⚠️ Hook scripts not found. jq was not detected, so hook registration is skipped.
     (See the Phase 1.0 dependency check above for jq installation guidance.)
@@ -774,11 +780,10 @@ fi
 
 **Condition**: Execute only when Phase 4.5.0 returns `MARKETPLACE`.
 
-**Purpose**: Detect copy-type installations that don't receive automatic updates, compare versions with the latest release, and guide users to update if outdated.
+**Purpose**: copy 型インストール（自動更新なし）を検出し、最新リリースと版を比較して更新を案内する。
+rationale: references/rationale.md#copy-type-install
 
-> **Placeholder convention**: Step 1 derives `{marketplace_name}` and `{marketplace_dir}` from `{hooks_dir}`. Replace these placeholders in all subsequent bash blocks before execution, following the same convention as `{hooks_dir}` in Phase 4.5.
->
-> **Path note**: `~/.claude/plugins/marketplaces/{marketplace_name}/` is the directory where Claude Code clones marketplace source repositories during plugin installation. This is distinct from `~/.claude/plugins/cache/` (the extracted plugin files used at runtime).
+> **Placeholder convention**: Step 1 が `{hooks_dir}` から `{marketplace_name}` / `{marketplace_dir}` を導出する。以降の bash では Phase 4.5 の `{hooks_dir}` と同じく実行前に置換する。
 
 #### Step 1: Determine Install Type
 
@@ -800,7 +805,8 @@ else
 fi
 ```
 
-> **Path derivation**: `{hooks_dir}` has the format `.../cache/{marketplace_name}/{plugin_name}/{version}/hooks`. Removing the last component (`hooks`) gives the install root, then navigating two levels up yields a directory whose basename is the marketplace name. This name is used to construct the marketplace source directory path `$HOME/.claude/plugins/marketplaces/{marketplace_name}`.
+> **Path derivation**: `{hooks_dir}` = `.../cache/{marketplace_name}/{plugin_name}/{version}/hooks`。末尾 `hooks` を除き 2 階層上が marketplace 名。
+rationale: references/rationale.md#copy-type-install
 
 **Result handling**:
 - `SYMLINK` → Display "✅ Symlink インストールを検出（自動更新可能）" and **skip to Phase 4.5.0.2**.
@@ -910,7 +916,8 @@ Continue to Phase 4.5.0.1.
 
 Read `.claude/settings.json` (the project-level, non-local settings file) and check for hooks that may conflict with rite hooks.
 
-**Purpose**: Claude Code executes hooks from both `.claude/settings.json` and `.claude/settings.local.json`. If non-rite hooks exist in `settings.json` for the same events that rite registers (e.g., SessionStart, SessionEnd, PreCompact), they will be executed alongside rite hooks, causing duplicate execution. This check warns the user about such conflicts.
+**Purpose**: `settings.json` の非-rite hook と rite hook の二重実行を警告する（advisory only）。
+rationale: references/rationale.md#settings-json-conflict
 
 **Check procedure**:
 
@@ -934,11 +941,12 @@ settings.json の hooks は rite hooks と二重実行されます。
 
 **If no conflicting hooks are found**, no output is displayed.
 
-**Important**: This check is **advisory only**. Do not modify `.claude/settings.json` automatically. Do not block init execution regardless of the result. Continue to Phase 4.5.0.2 in all cases.
+**Important**: **advisory only**。`.claude/settings.json` は自動変更しない。結果に依らず init を止めず 4.5.0.2 へ進む。
 
 ### 4.5.0.2 Native Hook Management Check (hooks.json)
 
-**Purpose**: `hooks.json` が存在する場合、Claude Code はプラグインの hook をネイティブに管理する（`${CLAUDE_PLUGIN_ROOT}` を動的に解決）。この場合、`settings.local.json` への hook 登録は不要であり、バージョン更新時にパスが壊れる原因となる。
+**Purpose**: `hooks.json` があるときは `settings.local.json` への hook 登録をスキップする。
+rationale: references/rationale.md#native-hooks-json
 
 **Check procedure**:
 
@@ -953,7 +961,7 @@ fi
 [ -f "$_hooks_json" ] && echo "NATIVE" || echo "LEGACY"
 ```
 
-**Note**: `{hooks_dir}` は Phase 4.5.0 で解決された hooks ディレクトリの絶対パス。`hooks.json` は通常 `{hooks_dir}/hooks.json` に存在する。
+**Note**: `{hooks_dir}` は Phase 4.5.0 の絶対パス。`hooks.json` は通常 `{hooks_dir}/hooks.json`。
 
 **When `NATIVE` is returned** (hooks.json exists):
 
@@ -969,7 +977,8 @@ fi
    bash "{hooks_dir}/scripts/settings-local-rite-hook-cleanup.sh" ".claude/settings.local.json"
    ```
 
-   > **Helper contract**: `settings-local-rite-hook-cleanup.sh` は **rite hook を実際に除去したときのみ** `CLEANED` を返し、それ以外の安全側ケース (python3 不在・file 不在・対象 hook 不在・不正 JSON・mktemp/mv 失敗を含む) ではすべて `NO_RITE_HOOKS` を返す。ただし **mv 失敗** だけは「変換は成功したが swap-in できず stale な rite hook が残る」ケースであり真の silent skip ではないため、`NO_RITE_HOOKS` (+ exit 0 非ブロッキング) を保ったまま stderr に `[rite] WARNING: ... mv failed` を emit する。`*.py` を `*.sh` wrapper 経由で呼ぶ先例 `issue-comment-wm-update.py` / `issue-comment-wm-sync.sh` に準拠。
+   > **Helper contract**: 実際に除去したときのみ `CLEANED`。それ以外の安全側は `NO_RITE_HOOKS`。**mv 失敗**は `NO_RITE_HOOKS` のまま stderr に `[rite] WARNING: ... mv failed`。
+rationale: references/rationale.md#cleanup-helper-contract
 
    - If `CLEANED` → display `ℹ️ settings.local.json からレガシー rite hook エントリを削除しました。`
    - If `NO_RITE_HOOKS` → no output (no rite hooks removed)
@@ -991,7 +1000,8 @@ Proceed to Phase 4.5.1 (existing flow — validate and register hooks in `settin
 
 Read `.claude/settings.local.json` and check for existing hooks section. If the file does not exist, it will be created.
 
-**⚠️ 重要: 4.5.1.1 と 4.5.1.2 は両方とも必ず実行すること。4.5.1.1 で全パスが正常でも 4.5.1.2 は必ず実行する。** 4.5.1.1 は既存フックのパス検証のみを行い、フックイベント自体の欠落は検出しない。4.5.1.2 が必須フックの存在チェックを担当する。
+**⚠️ 重要: 4.5.1.1 と 4.5.1.2 は両方とも必ず実行すること。4.5.1.1 で全パスが正常でも 4.5.1.2 は必ず実行する。**
+rationale: references/rationale.md#hook-path-absolute
 
 #### 4.5.1.1 Validate Existing Hook Paths
 
@@ -1002,7 +1012,8 @@ If the file already contains hooks, check each hook command for rite hook patter
 3. For each matching command, construct the expected full command string `bash {hooks_dir}/{script_name}` (where `{hooks_dir}` is the absolute path resolved in Phase 4.5.0 and `{script_name}` is the filename like `pre-tool-bash-guard.sh`). Compare the existing command string with the expected one
 4. If the existing command does NOT match the expected command, mark it as **needs update**
 
-**Note**: Phase 4.5.0 resolves `{hooks_dir}` as an absolute path (via `cd ... && pwd`). If existing hooks use relative paths (e.g., `bash plugins/rite/hooks/pre-tool-bash-guard.sh`), they will not match the absolute path and will be correctly marked for update. This is intentional — converting relative paths to absolute paths is one of the goals of this validation.
+**Note**: 既存 hook が相対パスなら絶対パスと一致せず更新対象になる（意図どおり）。
+rationale: references/rationale.md#hook-path-absolute
 
 **Display when outdated paths are detected** (where `{event}` is the hook event name such as PreCompact/PostCompact/SessionStart/SessionEnd/PreToolUse, and `{current_cmd}` is the existing command string):
 ```
@@ -1016,9 +1027,7 @@ If the file already contains hooks, check each hook command for rite hook patter
 
 #### 4.5.1.2 Check Required Hook Presence
 
-**⚠️ このサブフェーズは 4.5.1.1 の結果に関わらず必ず実行する。** 4.5.1.1 が「全パス正常」と判定しても、フックイベント自体が欠落している可能性がある（例: SessionEnd, PreToolUse が未登録）。
-
-After validating existing hook paths in 4.5.1.1, verify that **all** required rite hooks are registered. This check prevents the scenario where some hooks (e.g., PreCompact, SessionStart) are correctly configured but others (e.g., SessionEnd, PostCompact) are missing entirely.
+必須 rite hook がすべて登録されていることを確認する（4.5.1.1 の結果に関わらず実行）。
 
 **Required hooks**:
 
@@ -1038,7 +1047,7 @@ After validating existing hook paths in 4.5.1.1, verify that **all** required ri
 2. For each required hook event that **exists** in `.hooks`, check if any hook command is a **rite hook command** (per the 判定基準 above) ending in `{script_name}`. If no matching command is found, mark it as **missing**.
 3. Collect all **missing** hook events from steps 1 and 2.
 
-**Note**: If no required hooks are missing, no output is displayed from this sub-phase. The decision is deferred to the combined Decision logic below.
+**Note**: 欠落がなければ本サブフェーズは無出力。判定は下記 Decision logic。
 
 **Display when missing hooks are detected** (`{total_count}` = number of required hooks, currently 7):
 ```
@@ -1155,11 +1164,11 @@ Add the following hooks to `.claude/settings.local.json`:
 
 **Important**:
 - **Non-rite hooks**: If `.claude/settings.local.json` already has hooks whose command is NOT a **rite hook command** (per the 判定基準 above — this includes look-alikes such as `favorite/hooks/`), preserve them as-is. Do not overwrite or remove user-defined hooks.
-- **rite hooks (path update)**: If existing hooks are **rite hook commands** (per the 判定基準 above) but use an outdated path (detected in Phase 4.5.1.1), **replace** those hook entries with the updated `{hooks_dir}` path. This ensures re-running `/rite:setup` always corrects stale paths.
-- **Missing rite hooks**: If any of the required rite hooks (PreCompact, PostCompact, SessionStart, SessionEnd, PreToolUse, PostToolUse) are not present, add them. PostToolUse has two matchers (`Bash` and `Edit|Write|MultiEdit`) — both entries must coexist.
-- **Obsolete hooks**: If `post-compact-guard.sh` (PreToolUse) または `context-pressure.sh` (PostToolUse) exists, **remove** it. `post-compact-guard.sh` は `post-compact.sh` に置き換え済み。`context-pressure.sh` は廃止済み。
-- **Matcher rules**: `post-tool-wm-sync.sh` and `pre-tool-bash-guard.sh` use `"matcher": "Bash"` to fire only on Bash tool calls. `scripts/bang-backtick-edit-hook.sh` uses `"matcher": "Edit|Write|MultiEdit"` to fire only on file-edit tool calls. All other hooks use `"matcher": ""`.
-- **Permission for WM_SOURCE**: Add `"Bash(WM_SOURCE:*)"` to `.permissions.allow` if not already present. This allows the LLM to execute work memory update commands without prompting (defense-in-depth alongside the PostToolUse hook).
+- **rite hooks (path update)**: outdated **rite hook commands**（4.5.1.1）は `{hooks_dir}` パスへ **replace**。
+- **Missing rite hooks**: 必須 rite hook が無ければ追加。PostToolUse は 2 matcher（`Bash` と `Edit|Write|MultiEdit`）が共存必須。
+- **Obsolete hooks**: `post-compact-guard.sh` (PreToolUse) または `context-pressure.sh` (PostToolUse) があれば **remove**。
+- **Matcher rules**: `post-tool-wm-sync.sh` / `pre-tool-bash-guard.sh` は `"matcher": "Bash"`。`scripts/bang-backtick-edit-hook.sh` は `"matcher": "Edit|Write|MultiEdit"`。他は `"matcher": ""`。
+- **Permission for WM_SOURCE**: 未設定なら `.permissions.allow` へ `"Bash(WM_SOURCE:*)"` を追加。
 
 ### 4.5.3 Make Scripts Executable
 
@@ -1193,7 +1202,7 @@ Missing or non-executable scripts will be skipped at runtime.
 
 ### 4.5.5 Record Installed Version
 
-Write the current plugin version to a marker file for update detection by `session-start.sh`:
+現在の plugin 版を marker ファイルへ書く（`session-start.sh` の更新検出用）:
 
 ```bash
 PLUGIN_JSON="{hooks_dir}/../.claude-plugin/plugin.json"
@@ -1243,9 +1252,10 @@ Display: `✅ Work memory directory initialized (.rite-work-memory/)`
 
 ## Phase 4.7: Wiki Initialization
 
-Auto-initialize the Experience Wiki so the user does not need to run `/rite:wiki-init` manually. Executed after Phase 4.6 (new install) and after the Phase 4.1.3 Apply step (`--upgrade` path).
+Wiki を自動初期化する（手動 `/rite:wiki-init` 不要）。新規は Phase 4.6 の後、`--upgrade` は Phase 4.1.3 Apply の後。
 
-> **Non-blocking contract**: Phase 4.7 failure (including Skill invocation failure) MUST NOT abort `/rite:setup`. On failure, display a warning and continue to Phase 5. The flow always reports Wiki status via the completion report (Phase 5).
+> **Non-blocking contract**: Phase 4.7 failure (Skill 呼び出し失敗を含む) MUST NOT abort `/rite:setup`。失敗時は警告を出して Phase 5 へ。Wiki 状態は完了レポートで必ず報告する。
+rationale: references/rationale.md#wiki-init-contract
 
 > **Status enum** (consumed by Phase 5 — identifier-compatible values, no whitespace/parens):
 >
@@ -1256,15 +1266,13 @@ Auto-initialize the Experience Wiki so the user does not need to run `/rite:wiki
 > | `skipped_disabled` | `wiki.enabled: false` detected |
 > | `failed` | Post-check after Skill invocation found Wiki still uninitialized |
 
-**Retain `wiki_status` as LLM conversational state (NOT a shell variable)**. Claude Code's Bash tool invocations are independent subshells — shell variables do NOT persist across tool calls. Each status set point below instructs the LLM to **remember the value directly in conversation context** and carry it forward to Phase 5. Do NOT attempt `echo $wiki_status` in a subsequent Bash call.
-
-The enum values are identifier-compatible (snake_case, no whitespace or parentheses) so that Phase 5 / Step 7b can branch on `wiki_status` with an explicit if/else and select the matching literal directly. Do not construct the message dynamically from `wiki_status`.
+**Retain `wiki_status` as LLM conversational state (NOT a shell variable)**。後続 Bash で `echo $wiki_status` してはならない。Phase 5 / Step 7b は明示 if/else でリテラルを選ぶ。`wiki_status` から文面を動的組み立てしない。
+rationale: references/rationale.md#wiki-init-contract
 
 ### 4.7.1 Wiki Enabled Check
 
-Read `wiki.enabled` from `rite-config.yml`. Wiki is **opt-out**: missing section / missing key / unparseable value → treat as `true`. This mirrors `skills/wiki-init/SKILL.md` ステップ 1.1 logic, including the typo-detection WARNING path.
-
-> **sed range robustness note**: The `sed -n '/^wiki:/,/^[a-zA-Z]/p'` pattern terminates at the next line starting with any ASCII letter — which matches the next top-level YAML key. This relies on `rite-config.yml` following the standard shape produced by `/rite:setup` (wiki section followed by another top-level key or EOF). In pathological user-customized configs where the wiki section is the last top-level block and is followed only by comment lines, sed reads to EOF, which is still correct. The known limitation: if a user inserts comment lines **inside** the wiki section that start with a letter (e.g., `auto_query: true # note:`), the trailing `# note:` does not affect sed (it's part of the same line). Therefore this pattern is safe for configs conforming to the template shape. Drift in non-standard configs is tracked as a known limitation, not a blocker for the wiki section drift handling.
+Read `wiki.enabled` from `rite-config.yml`。Wiki は **opt-out**: セクション欠落 / キー欠落 / 解釈不能 → `true`。`wiki-init` ステップ 1.1 と同じ（typo 検出 WARNING を含む）。
+rationale: references/rationale.md#wiki-enabled-sed
 
 ```bash
 wiki_enabled=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null \
@@ -1345,11 +1353,13 @@ Display `rite:wiki-init を呼び出して Wiki を初期化します...`, then 
 skill: "rite:wiki-init"
 ```
 
-> **Rationale**: Claude Code's Skill tool does not surface a return value, so failure detection is done via post-check (4.7.4). Do NOT re-implement Wiki initialization logic here — always delegate to the Skill.
+Wiki 初期化ロジックをここへ再実装しない — 常に Skill へ委譲する。
+rationale: references/rationale.md#wiki-init-delegate
 
 ### 4.7.4 Post-check: Confirm Initialization
 
-After the Skill returns, re-run **only the detection portion** of 4.7.2 (the `if [ "$branch_strategy" = "separate_branch" ]; then ... fi` block) to confirm the Wiki was actually created. The `branch_strategy` / `wiki_branch` values from 4.7.2 are already known to the LLM and should be embedded as literals rather than re-parsing `rite-config.yml` — this avoids any drift if the Skill modified the config.
+Skill 復帰後、4.7.2 の **検出部分だけ**（`if [ "$branch_strategy" = "separate_branch" ]; then ... fi`）を再実行する。`branch_strategy` / `wiki_branch` は 4.7.2 の観測値を literal 埋め込みし、`rite-config.yml` を再パースしない。
+rationale: references/rationale.md#wiki-init-delegate
 
 **Detection-only re-run** (embed literal values from 4.7.2):
 
@@ -1392,17 +1402,19 @@ Then:
 
 ## Phase 4.8: Sandbox Write-Allowlist 自動設定（multi_session 有効時、#1896 / #1942）
 
-`multi_session.enabled: true`（Phase 4.1 で決定済み。新規生成・back-add いずれの経路でも既定 ON）**かつ** Claude 自身の Bash tool 定義（sandbox セクション）が filesystem write 制限を伴う sandbox で動作していることを示している場合のみ、以下を実行する。いずれか一方でも該当しない場合（`multi_session.enabled: false`、または sandbox 無効／write 制限なし）は本節を完全に silent skip する（案内・warning 共に一切出さない — AC-3）。
+`multi_session.enabled: true`（Phase 4.1 で決定済み。新規生成・back-add いずれでも既定 ON）**かつ** Claude 自身の Bash tool 定義（sandbox セクション）が filesystem write 制限付き sandbox で動作している場合のみ実行する。いずれか一方でも該当しない場合は本節を完全に silent skip する（案内・warning 共に一切出さない — AC-3）。
 
-判定は Claude 自身の実行コンテキスト（system prompt に記述された sandbox の write 許可リスト）を読んで行う。bash コマンドでは検出できない（sandbox の有無はセッションの起動設定であり、ファイルから読み取れる状態ではないため）。
+判定は実行コンテキスト（system prompt の sandbox write 許可リスト）を読む。bash では検出できない。
 
-該当する場合、まず main checkout root の絶対パスを取得する。`git rev-parse --show-toplevel` は現在の worktree の toplevel を返すため、setup がセッション worktree cwd から実行された場合（例: EnterWorktree 後の `/rite:setup --upgrade` 手動実行）に worktree パスを誤って返す（[`lib/worktree-git.sh`](../../hooks/scripts/lib/worktree-git.sh) が同じ理由でこのパターンを避けている）。代わりに `state-path-resolve.sh` で main checkout root を解決する:
+該当時は `state-path-resolve.sh` で main checkout root を解決する（`git rev-parse --show-toplevel` は使わない）:
+rationale: references/rationale.md#sandbox-allowlist
 
 ```bash
 bash {plugin_root}/hooks/state-path-resolve.sh
 ```
 
-その値を `{repo_root}` として、`.claude/settings.local.json`（コミットされる `.claude/settings.json` は書き換えない）の `sandbox.filesystem.allowWrite` へ idempotent に自動追記する。書込先はユーザーローカル設定として扱う意図のファイルだが、**リポジトリの `.gitignore` に明示エントリがなければコミット済み扱いになる**（開発者個人のグローバル gitignore に依存した除外は他の contributor 環境では効かない）ため、まず対象リポジトリの `.gitignore` に `.claude/settings.local.json` を保証してから書き込む（Phase 4.6 の gitignore 追記パターンと同形式）。方針転換の背景・(a)/(b)/(c) 比較検討は [git-worktree-patterns.md の Decision Log](../../references/git-worktree-patterns.md#sandbox-write-allowlist-設定の自動化decision-log) を参照（複製しない）:
+その値を `{repo_root}` として、`.claude/settings.local.json`（`.claude/settings.json` は書き換えない）の `sandbox.filesystem.allowWrite` へ idempotent に自動追記する。先に対象リポジトリの `.gitignore` へ `.claude/settings.local.json` を保証してから書く（Phase 4.6 と同形式）。詳細: [git-worktree-patterns.md の Decision Log](../../references/git-worktree-patterns.md#sandbox-write-allowlist-設定の自動化decision-log)。
+rationale: references/rationale.md#sandbox-allowlist
 
 ```bash
 # .gitignore に .claude/settings.local.json エントリを保証（未カバー時のみ追記）。
@@ -1437,7 +1449,8 @@ else
 fi
 ```
 
-**sandbox + multi_session 環境では、上記スクリプトが `added`/`already_present` を返さず初回から marker `failed` になるのが既定経路である**（例外ケースではない）。`jq ... > "$settings_file.tmp"` リダイレクトが単独で「読み込み専用ファイルシステムです」等のエラーを起こし、bash 全体としては正常終了（exit 0）したまま `else` 節に落ちて marker が直接 `failed` になる（bash ツール呼び出し自体はエラーにならない）。そのため **「コマンド自体が失敗したかどうか」を再試行の判定条件にしない** — marker が `failed` であれば理由を問わず、当該 bash ブロック全体を一度だけ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要 — sandbox に拒否された main checkout 書き込みだけを再試行する既存ポリシーと同じ扱い。ブロック全体の再実行は `grep -qF` / `unique` により冪等なので、gitignore 追記側だけ再実行するより安全）。再実行後も `failed`（JSON 破損等、sandbox 起因でない失敗）の場合のみ、下記の手動案内メッセージにフォールバックする。
+**sandbox + multi_session では初回から marker `failed` になるのが既定経路**（例外ではない）。**「コマンド自体が失敗したか」を再試行条件にしない** — marker が `failed` なら理由を問わず、当該 bash ブロック全体を一度だけ `dangerouslyDisableSandbox: true` で再実行してよい（確認不要。ブロック全体は冪等）。再実行後も `failed` の場合のみ下記の手動案内へフォールバックする。
+rationale: references/rationale.md#sandbox-allowlist
 
 `SANDBOX_ALLOWLIST_AUTOWRITE` marker で分岐する:
 
@@ -1476,9 +1489,10 @@ fi
 
 ## Phase 4.9: SSH Host Alias Remote の Sandbox 事前案内（#1907）
 
-`origin` remote が SSH host alias 経由（例: `git@github.com-work:owner/repo.git`）で、かつ Claude 自身の Bash tool 定義（sandbox セクション）がネットワーク制限を伴う sandbox で動作していることを示している場合のみ、以下を表示する。いずれか一方でも該当しない場合（HTTPS remote / sandbox 無効）は本節を完全に silent skip する（案内・warning 共に一切出さない）。`multi_session` の有無には依存しない（Phase 4.8 と異なり、本問題は SSH alias remote + sandbox の組合せのみで発生するため独立した gate とする）。
+`origin` が SSH host alias 経由（例: `git@github.com-work:owner/repo.git`）**かつ** Claude 自身の Bash tool 定義がネットワーク制限付き sandbox のときのみ表示する。いずれか一方でも該当しない場合は本節を完全に silent skip する（案内・warning 共に一切出さない）。`multi_session` の有無には依存しない。
 
-SSH host alias remote かどうかは bash で判定できる（git config の読み取りであり検出可能。Phase 4.8 の sandbox 判定とは性質が異なる）:
+SSH host alias 判定は bash で行う:
+rationale: references/rationale.md#ssh-alias-sandbox
 
 ```bash
 origin_url=$(git remote get-url origin 2>/dev/null) || origin_url=""
@@ -1501,9 +1515,10 @@ else
 fi
 ```
 
-一方 sandbox の有効判定は Phase 4.8 と同じ理由（bash コマンドでは検出できない — sandbox の有無はセッションの起動設定であり、ファイルから読み取れる状態ではないため）により、Claude 自身の実行コンテキスト（system prompt に記述された sandbox のネットワーク許可リスト）を読んで行う。settings ファイルの `sandbox.enabled` を `jq` で読む経路は使わない（Phase 4.8 の判定方針と統一）。
+sandbox 有効判定は実行コンテキスト（system prompt のネットワーク許可リスト）を読む。settings の `sandbox.enabled` を `jq` で読まない。
 
-`SSH_ALIAS_REMOTE=yes` **かつ** sandbox 有効の両方が真のときのみ、以下を表示する（原因の因果連鎖や恒久対処の詳細本文は複製せず、要約 + [git-worktree-patterns.md](../../references/git-worktree-patterns.md#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる) への 1 行ポインタに留める）。以下のテンプレートをそのまま出力し、要約・言い換え（「〜旨を案内」等の間接話法を含む）をしないこと:
+`SSH_ALIAS_REMOTE=yes` **かつ** sandbox 有効のときのみ、以下を表示する。詳細は [git-worktree-patterns.md](../../references/git-worktree-patterns.md#ssh-host-alias-経由の-git-pushfetch-が-sandbox-のネットワーク許可リストでブロックされる)。テンプレートをそのまま出力し、要約・言い換え（「〜旨を案内」等の間接話法を含む）をしないこと:
+rationale: references/rationale.md#ssh-alias-sandbox
 
 ```
 ℹ️ sandbox 環境かつ origin remote が SSH host alias（{host}）経由です。sandbox 内からの
@@ -1517,7 +1532,7 @@ fi
 
 settings ファイルへの自動書き込みは行わない（案内のみ、MUST NOT）。
 
-**→ Proceed to Phase 5 (new-install) — this Phase is only reached via the new-install exit points in Phase 4.7 (§4.7.1/4.7.2/4.7.4) followed by Phase 4.8; `--upgrade` invokes this Phase directly after Phase 4.8 from Step 7b and then exits without a Phase 5 report.**
+**→ Proceed to Phase 5 (new-install)。`--upgrade` は Step 7b から Phase 4.8 の直後に本 Phase を呼び、Phase 5 なしで exit する。**
 
 ## Phase 5: Completion Report
 

@@ -10,11 +10,9 @@ user-invocable: false
 
 # Implementation Guidance
 
-This module handles the actual implementation work, commits, pushes, and checklist updates.
-
 ## 5.1 Implementation Work
 
-Perform actual implementation work following the implementation plan approved in `skills/open/SKILL.md` ステップ 3 (実装計画).
+`skills/open/SKILL.md` ステップ 3 で承認した計画に従って実装する。
 
 > **Reference**: Apply the Phase 5.1 checklist from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
 > In particular, check `simplicity_enforcement`, `scope_discipline`, `dead_code_hygiene`, and `knowledge_routing` — route each finding to its durable medium (How → code, What → tests, Why → commit log, Why not → comments).
@@ -32,7 +30,8 @@ Perform actual implementation work following the implementation plan approved in
 
 ### 5.0.C Complexity Lane Determination (XS/S 軽量レーン)
 
-実装を始める前に、対象 Issue の**宣言 Complexity** からレーンを決める。同じ helper が 5.1.0.1 の並列実装ゲートと 5.1.0.8 の生産量制約の両方に供給する（Complexity の読み取りを 1 箇所に集約する）:
+対象 Issue の**宣言 Complexity** からレーンを決める。同じ helper が 5.1.0.1 と 5.1.0.8 の両方に供給する。
+rationale: references/rationale.md#complexity-read-once
 
 ```bash
 bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
@@ -51,11 +50,9 @@ bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
 
 > **Reference**: [Wiki Query](../wiki-query/SKILL.md) — `wiki-query-inject.sh` API
 
-Before starting implementation, inject relevant experiential knowledge from the Wiki to inform the implementation approach.
+**Condition**: `wiki.enabled: true` AND `wiki.auto_query: true`。それ以外は silent skip。
 
-**Condition**: Execute only when `wiki.enabled: true` AND `wiki.auto_query: true` in `rite-config.yml`. Skip silently otherwise.
-
-**Step 1**: Check Wiki configuration:
+**Step 1**: Wiki 設定:
 
 ```bash
 wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
@@ -74,11 +71,9 @@ case "$auto_query" in true|yes|1) auto_query="true" ;; *) auto_query="false" ;; 
 echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
 ```
 
-If `wiki_enabled=false` or `auto_query=false`, skip this section and proceed to implementation.
+`wiki_enabled=false` または `auto_query=false` なら実装へ。
 
-**Step 2**: Generate keywords from the implementation plan and invoke the query:
-
-Keywords are derived from: implementation plan step descriptions, target file paths, and relevant domain terms from the plan.
+**Step 2**: 計画のステップ記述・対象パス・ドメイン用語から keywords を生成して query:
 
 ```bash
 # {plugin_root} はリテラル値で埋め込む
@@ -95,13 +90,13 @@ else
 fi
 ```
 
-**Step 3**: If `wiki_context` is non-empty, retain it in conversation context and reference it during implementation. The injected experiential knowledge may inform: common implementation patterns, known pitfalls, and effective approaches for similar changes.
+**Step 3**: `wiki_context` が非空なら会話 context に保持し、実装中に参照する。
 
 ### 5.0.T Canon TDD Cycle (Conditional)
 
 > **Reference**: Canon TDD (Kent Beck) — test list → pick one behavior → Red (write a failing test) → Green (minimal implementation) → Refactor → repeat until the list is empty. The `tdd:` config key is documented in [CONFIGURATION.md](../../../../docs/CONFIGURATION.md) (`### tdd`).
 
-When `tdd.enabled: true` (default, opt-out) in `rite-config.yml`, drive the implementation phase as a Canon TDD cycle instead of the conventional "implement, then verify" flow. The cycle applies to each behavior implemented in 5.1.
+`tdd.enabled: true`（既定、opt-out）なら 5.1 の各挙動を Canon TDD で進める。
 
 **Step T1: Configuration gate** (same sed/awk read pattern as 5.0.W):
 
@@ -143,20 +138,17 @@ echo "[CONTEXT] TDD_ENABLED=$tdd_enabled; TEST_CMD_SET=$([ -n "$test_cmd" ] && e
 5. **Refactor — only after Green**: improve structure with tests passing. **Refactoring on a Red / unverified state is prohibited** — if not Green (Full mode) or Green is unconfirmed (Degraded mode), do not refactor; return to step 4 or move to the next behavior.
 6. **Repeat** from step 2 until the test list is empty (every listed behavior implemented and, in Full mode, Green).
 
-**Relationship with 5.1.0 Parallel Implementation**: When TDD is active (Full / Degraded), the Canon TDD cycle takes precedence over parallel implementation for behavior implementation — the one-test-one-cycle sequencing must be preserved. Parallel implementation (5.1.0) is limited to independent Refactor-phase tasks (step 5) that do not share the cycle's Red/Green state.
+TDD 中の並列は Red/Green を共有しない Refactor（T2.5）に限る。per-behavior Green は 5.1.0.6 の実行手順だけ再利用し、フルゲート（rounds / 5.1 戻り）は pre-commit で 1 回。
+rationale: references/rationale.md#tdd-green-reuse
 
-**Green confirmation reuse (no duplication)**: 5.0.T does not implement its own test runner. The per-behavior Green check (T2.4) reuses 5.1.0.6's test-execution step (`commands.test` run + exit-code check); the full 5.1.0.6 Test Verification Gate then runs **once** at pre-commit time as the final verification (rounds budget / Phase-5.1-return semantics apply only to that final gate, not to each per-behavior Green check). 5.0.T only sequences *when* Red (before implementation) and Green (after implementation) are checked; the actual test run is owned by 5.1.0.6 / `commands.test`.
-
-**Disabled mode (`tdd.enabled: false`)**: 5.0.T is skipped entirely and the implementation phase behaves exactly as before this feature (conventional 5.1.0 / Basic implementation flow + the 5.1.0.6 pre-commit test gate). No behavioral change.
+**Disabled**（`tdd.enabled: false`）: 5.0.T を skip。従来の 5.1.0 / Basic + 5.1.0.6 と同一。
 
 **Basic implementation flow:**
 
-1. Check current file content with Read tool
-2. Apply changes with Edit tool
-3. After changes, verify behavior with Bash as needed (test execution, etc.)
-4. Repeat following plan order when there are multiple file changes
-
-**Tools used:**
+1. Read で現状確認
+2. Edit で変更
+3. 必要なら Bash で検証
+4. 計画順に繰り返す
 
 | Tool | Usage |
 |------|-------|
@@ -165,37 +157,18 @@ echo "[CONTEXT] TDD_ENABLED=$tdd_enabled; TEST_CMD_SET=$([ -n "$test_cmd" ] && e
 | Bash | Verify changes with `git status`, run tests |
 | Glob/Grep | Explore related files (when needed) |
 
-**When there is an implementation plan:**
-- Follow the plan's "Implementation steps (dependency graph)" — pick the next step whose `depends_on` prerequisites are all complete
-- After each step completion, re-evaluate remaining steps (see 5.1.0.5 Adaptive Re-evaluation)
-- Update work memory after each step completion as needed (described below)
-
-**When the implementation plan was skipped:**
-- Refer to the Issue's **What** (what to do) and **Where** (where to change) for work
-- Explore related files with Glob tool (file pattern search) or Grep tool (keyword search) as needed
-
-**Decisions during implementation:**
-- Record important design decisions in work memory
-- Pause and record the situation when unexpected problems occur
-
-**Work memory update (optional):**
-
-For large changes or work spanning multiple sessions, invoke `/rite:issue-update` via Skill tool to record progress:
+計画あり: `depends_on` が揃った次ステップを実行し、完了ごとに 5.1.0.5 で再評価。計画 skip: Issue の What / Where。判断は work memory に残す。大規模・複数セッションは `/rite:issue-update`（小変更は省略可）:
 
 ```
 Skill ツール呼び出し:
   skill: "rite:issue-update"
 ```
 
-**Note**: Can be omitted for small changes. Recommended at session end or interruption.
-
 ### 5.1.0 Parallel Implementation (Conditional)
 
-Execute parallel implementation when conditions are met if `parallel.enabled` is `true` (default) in `rite-config.yml`.
+`parallel.enabled` が `true`（既定）かつ下記 **all** のとき並列する。
 
 #### 5.1.0.1 Parallel Implementation Condition Check
-
-Execute parallel implementation when **all** of the following conditions are met:
 
 | Condition | Determination Method |
 |-----------|---------------------|
@@ -203,11 +176,12 @@ Execute parallel implementation when **all** of the following conditions are met
 | Complexity M or above | 5.0.C の marker が `COMPLEXITY_LANE=full` **かつ `complexity=` を伴う**（= 宣言値が M / L / XL）。**`COMPLEXITY_LANE_FALLBACK=1` を伴う fail-safe 経路は満たさない**（下記）。**helper が両記法（`**Complexity**: X` / `## 複雑度`）を受理するため、ここで body を再解析しない** — 2 箇所で別々に読むと片方だけが片方の記法に対応する drift が生まれる |
 | 2 or more independent tasks | Determined from implementation plan (see below) |
 
-> **fail-safe の向きは consumer ごとに違う**: レビュー側は `full` が「reviewer を減らさない」= 安全側だが、**本ゲートでは `full` が「並列 sub-agent を許可する」= 攻撃的な側**になる。したがって Complexity を読めなかった Issue（`COMPLEXITY_LANE_FALLBACK=1`）は `full` に含めず**順次実装へ倒す**。判定キーは `COMPLEXITY_LANE=full` 単独ではなく `complexity=` の存在（＝ `COMPLEXITY_LANE_FALLBACK` の不在）である。
+Complexity を読めなかった Issue（`COMPLEXITY_LANE_FALLBACK=1`）は `full` に含めず**順次実装へ倒す**。判定キーは `COMPLEXITY_LANE=full` 単独ではなく `complexity=` の存在。
+rationale: references/rationale.md#fail-safe-orientation
 
 **Independent task determination:**
 
-Analyze the "files to change" from the implementation plan (`skills/open/SKILL.md` ステップ 3) and determine independence using the following criteria:
+計画（`skills/open/SKILL.md` ステップ 3）の変更ファイルから独立性を判定:
 
 | Criterion | Determined as Independent | Determined as Dependent |
 |-----------|--------------------------|------------------------|
@@ -290,7 +264,7 @@ Task tool parameters:
   prompt: "{task_description}. Work ONLY in {worktree_path}. Use ABSOLUTE paths for all file operations (e.g., {worktree_path}/src/file.ts). Do NOT run any git commands (checkout, commit, push, branch, merge, stash). You may use Read, Edit, Write, Glob, Grep, and Bash (for non-git commands like test/lint) tools."
 ```
 
-**Critical**: Agent prompts must explicitly prohibit git operations (checkout, commit, push, branch, merge, stash). Only the orchestrator performs git operations.
+Agent prompt は git 操作（checkout, commit, push, branch, merge, stash）を明示禁止する。git は orchestrator だけ。
 
 **Step 4: Quality gate per worktree**
 
@@ -336,13 +310,10 @@ Use sequential implementation when: `parallel.enabled: false`, complexity S or b
 
 #### 5.1.0.5 Adaptive Re-evaluation Checkpoint
 
-After completing each implementation step, re-evaluate the remaining steps before proceeding to the next one. This follows the "tackle the next most obvious problem" strategy from autonomous agent patterns.
+各ステップ完了後、残ステップを再評価する。対象は `depends_on` 列のある計画（`skills/open/SKILL.md` ステップ 3.3）。計画 skip（ステップ 3.4）または `depends_on` 無しは skip。並列中は **batch 完了ごと**（個別タスクごとではない）。
 
-**When to execute**: After every step completion when the plan uses the dependency graph format (`skills/open/SKILL.md` ステップ 3.3 plan table with `depends_on` column). Skip if the plan was skipped at `skills/open/SKILL.md` ステップ 3.4 user confirmation, or if the plan lacks a `depends_on` column (pre-existing numbered list format).
-
-**Relationship with parallel implementation (5.1.0.1-5.1.0.4)**: When parallel implementation is active, execute the re-evaluation checkpoint **after each parallel batch completes** (not after each individual parallel task). The batch completion triggers dependency state update, and newly unblocked steps are candidates for the next parallel batch.
-
-**Re-evaluation purpose**（固定した手順表・チェック表・閾値は持たない — 列挙外の状況で判断が硬直するため。work memory への記録義務は維持する）:
+固定の手順表・チェック表・閾値は持たない。記録義務は維持する。
+rationale: references/rationale.md#adaptive-no-fixed-checklist
 
 各ステップ完了時に、次の 4 つを状況に応じて判断し、判断の痕跡を work memory に残す:
 
@@ -351,7 +322,7 @@ After completing each implementation step, re-evaluate the remaining steps befor
 3. **次ステップの選定**: `depends_on` が解けたステップの中から「次に最も明白な問題」を選ぶ。目安: 下流を最も多く解放するもの・リスクが高く早く失敗を表面化させたいもの・小さく完了して勢いを保てるもの — どれを優先するかは残りの計画全体を見て判断する
 4. **行き詰まりの検知**: このステップが計画時の粒度見積もりを明らかに超えて膨らんでいる（修正の往復が続く、変更ファイル・行数が想定と乖離した）と感じたら、[Bottleneck Detection Reference](../../references/bottleneck-detection.md) の Oracle discovery（既存の正しい実装を構造ガイドに使う）でステップをサブステップ `S{n}.1`, `S{n}.2`, ... に再分解し、work memory の「ボトルネック検出ログ」に記録する（記録は次回 bulk update = commit 時）。固定閾値は使わない — 膨らみの判断は計画粒度との乖離で行う。再分解後は最初のサブステップから実行を続ける
 
-**Mark step complete**: Output the display format below. This serves as the record in conversation context. For persistence across `/clear`, completed step IDs are reflected in the work memory's implementation plan `状態` column (bulk-updated from `⬜` to `✅` at commit time in 5.1.1.2, not after every step).
+完了表示を出す。永続化は commit 時 5.1.1.2 の一括更新（毎ステップではない）。
 
 **Display format** (after each step, normal path):
 
@@ -403,8 +374,8 @@ Read `rite-config.yml` and check:
 - `commands.test` is `null` or not set
 - `verification.run_tests_before_pr` is `false`
 
-When skipped, display the appropriate message:
-- `commands.test` not set: `テスト検証: スキップ（commands.test 未設定）`
+skip 時の表示:
+- `commands.test` 未設定: `テスト検証: スキップ（commands.test 未設定）`
 - `run_tests_before_pr: false`: `テスト検証: スキップ（verification.run_tests_before_pr: false）`
 
 ##### Test Execution
@@ -432,11 +403,11 @@ When skipped, display the appropriate message:
 実装を修正してテストを再実行してください。
 ```
 
-Return to Phase 5.1 (implementation). Do NOT proceed to commit.
+Phase 5.1 へ戻る。commit しない。
 
-**Re-execution limit**: Test re-execution follows the `safety.max_implementation_rounds` limit in `rite-config.yml`. When the limit is reached, display via `AskUserQuestion`: `テスト再実行の上限に達しました（{max_implementation_rounds}回）。続行しますか？ オプション: 継続する / 中断してユーザーに確認`
+再実行上限は `safety.max_implementation_rounds`。到達時は `AskUserQuestion`: `テスト再実行の上限に達しました（{max_implementation_rounds}回）。続行しますか？ オプション: 継続する / 中断してユーザーに確認`
 
-**Note**: When called from the `/rite:open` end-to-end flow, test results are retained in conversation context. The subsequent `/rite:lint` Phase 3.4 can skip duplicate test execution if tests were already run and passed in this phase.
+E2E では結果を context に残す（`/rite:lint` Phase 3.4 が再利用できる）。
 
 ##### 5.1.0.6.1 Acceptance Criteria Check (Conditional)
 
@@ -483,15 +454,14 @@ The section extends from the matched heading to the next `##` heading or end of 
 | All criteria satisfied | Proceed to 5.1.0.7 (documentation impact investigation) → 5.1.0.8 (XS/S production constraint) → 5.1.1 (commit) |
 | Some need attention | Display via `AskUserQuestion`: `受入条件の一部が未確認です。続行しますか？ オプション: コミットに進む / 実装に戻る` |
 
-**Note**: This check is advisory — it helps catch missed requirements but does not block the flow when the user chooses to proceed.
+advisory。ユーザーが続行を選べば止めない。
 
 #### 5.1.0.7 Documentation Impact Investigation
 
 > **Reference**: Apply `documentation_consistency` from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
 
-Before committing, investigate whether the implementation introduces any user-facing specification change that requires updating related documentation (README, `docs/`, `CLAUDE.md`, `plugins/rite/**/*.md`, etc.). When stale documentation is detected, fix it immediately within the same branch — do NOT defer to a separate Issue, do NOT ask the user via `AskUserQuestion`.
-
-This step is the implementer's responsibility and complements (does not replace) the tech-writer reviewer at PR review time. Catching documentation drift before commit avoids a review round-trip.
+コミット前にユーザー可視の仕様変更がドキュメント更新を要するか調べ、stale なら同じブランチで即直す。別 Issue に回さない。`AskUserQuestion` しない。
+rationale: references/rationale.md#doc-impact-no-defer
 
 ##### Skip Conditions
 
@@ -507,14 +477,12 @@ The decision is made by the LLM based on the actual diff (`git diff --name-statu
 
 ##### Investigation Procedure
 
-（探し方の固定手順（必須 glob の列挙）は持たない — 台本ではなく「何を見つけて直すか」の目的で指示する。）
+固定 glob 列挙は持たない。実装が導入した**ユーザー可視の識別子**（コマンド名・config キー・ファイルパス・phase / workflow 名・hook / helper 名。ソースは work memory の「決定事項・メモ」と diff。内部限定は除く）ごとにリポジトリ全体を探し、食い違う記述を直す:
 
-実装が導入した**ユーザー可視の識別子**（コマンド名・config キー・ファイルパス・phase / workflow 名・hook / helper 名。work memory の「決定事項・メモ」と diff 自体がソース。明らかに内部限定のものは除く）ごとに、**リポジトリ全体**からその識別子に言及するドキュメントを探し、実装後の仕様と食い違う記述を見つけて直す:
-
-- 探索は Grep で行い、識別子の性質から言及がありそうな場所を判断して掃く。Markdown（`CLAUDE.md` / `docs/` / `plugins/**/*.md`）だけでなく、拡張子なし README や CHANGELOG のような `*.md` glob が取りこぼすファイルも対象に含める（「普段は *.md だから」と決め打ちすると silent drift になる）
-- 今回の変更ファイル集合（`git diff --name-only origin/{base_branch}...HEAD` — 通常は複数ファイル）は既に更新済みのため、調査対象から除外する
-- ヒットした各ファイルは Read で該当行の周辺を確認し、古い挙動・旧名称・削除済み機能を記述していれば Edit で即時修正する。周辺文脈がまだ正しいなら触らない。**迷ったら stale として更新する**（ドキュメントの過剰更新は drift の放置より安い）
-- 修正したドキュメントは実装と同じコミットにステージする。`AskUserQuestion` は使わない（下記 Constraints）
+- Grep。`*.md` 決め打ちしない（拡張子なし README / CHANGELOG も対象）
+- 今回の変更ファイル集合（`git diff --name-only origin/{base_branch}...HEAD`）は除外
+- ヒットは Read で周辺確認。古い挙動・旧名称・削除済みなら Edit。正しいなら触らない。**迷ったら stale として更新する**
+- 修正は実装と同じコミットにステージ。`AskUserQuestion` は使わない
 
 ##### Result Handling
 
@@ -535,7 +503,8 @@ The decision is made by the LLM based on the actual diff (`git diff --name-statu
 
 **Execution condition**: 5.0.C の `COMPLEXITY_LANE == light`。`full`（M / L / XL、および fail-safe 全 reason）のときは本サブセクション全体を skip し、挙動は本機能導入前と完全に同一。
 
-コミット前に、本レーンで**生産しすぎていないか**を確認する。過剰な生産物はそれ自体が次サイクルの churn の燃料になる（実測: 1 行の設定変更に対して implement が +250 行を生産し、その説明的散文が 2 サイクル分の指摘を生んだ）。該当したものはコミット前に**削る**（follow-up Issue へ回さない）:
+コミット前に、本レーンで**生産しすぎていないか**を確認する。該当したものはコミット前に**削る**（follow-up Issue へ回さない）:
+rationale: references/rationale.md#production-constraint-churn
 
 | 制約 | 適用 | 判定 |
 |---|---|---|
@@ -544,45 +513,25 @@ The decision is made by the LLM based on the actual diff (`git diff --name-statu
 
 **縮小しないもの**（本レーンでも M+ と同一）: 5.1.0.6 Test Verification Gate、5.1.0.6.1 Acceptance Criteria Check、5.1.0.7 Documentation Impact Investigation。5.1.0.7 が検出した stale ドキュメントの修正は「既存記述の同期」であり、XS でも**必ず実施する** — 本制約が禁じるのは新規の説明散文であって、既存記述を実装に合わせることではない。
 
-制約に抵触した生産物を削った場合は、その事実を work memory の「決定事項・メモ」に記録する（silent な削除は、後から「なぜこの説明が無いのか」を追えなくする）。
+削った事実は work memory の「決定事項・メモ」に記録する（silent 削除禁止）。
 
 > **Reference**: なぜ散文の新設禁止が XS 限定で、新規テストファイル抑制が XS/S 両方なのか: [complexity-lane.md](../pr-review/references/complexity-lane.md#レーン境界を二値にする理由)。
 
 ### 5.1.1 Commit and Push Changes
 
-After implementation is complete, push changes to remote:
-
 **Commit procedure:**
 
-1. Check changed files with `git status`
-2. Stage the changed files explicitly with `git add {changed_files}` (the paths edited/created in this implementation — **not** `git add .`: sandbox 有効環境では read-deny 対象の home dotfile が character-special device としてマスクされ untracked 表示されるため、`git add .` はそれらを拾って `can only add regular files, symbolic links or git-directories` で hard fail する —)
-3. Generate commit message in Conventional Commits format
-4. Commit with `git commit`
-5. Push to remote with `git push origin {branch_name}` (no `-u`: sandbox 環境での upstream tracking 書込拒否を避けるため)
+1. `git status` で変更ファイルを確認
+2. `git add {changed_files}` で明示 stage（**not** `git add .`）
+3. Conventional Commits でメッセージ生成
+4. `git commit`
+5. `git push origin {branch_name}`（`-u` なし）
+rationale: references/rationale.md#git-add-dot-sandbox
+rationale: references/rationale.md#push-no-upstream
 
-**Commit message generation:**
+> **⚠️ CRITICAL**: commit message の `description` は `language` 設定に従う。例の言語をコピーしない。
 
-> **⚠️ CRITICAL**: The `description` part of the commit message **MUST** follow the `language` setting in `rite-config.yml`. The examples below are for reference only — always generate the description in the language determined by the setting, not by copying the example language.
-
-Generated based on Issue title and implementation content:
-- Format: `{type}({scope}): {description}`
-- Examples:
-  - English: `feat(issue): add end-to-end workflow support`
-  - Japanese: `feat(issue): Issue一気通貫ワークフローを追加`
-
-**Commit message language:**
-
-Follow the `language` setting in `rite-config.yml` (`auto`: detect user input language, `ja`: Japanese, `en`: English). For `auto`, determine by presence of Japanese characters (hiragana, katakana, kanji). type/scope are always in English.
-
-**Commit body:**
-
-Use a free-form commit body. Include the reason for the change ("why") in the commit body.
-
-- Leave a blank line between the description line and the body
-- Write in free-form — no specific prefix or template required
-- Focus on "why" the change was needed, not "what" was changed (the description line already covers "what")
-- Follow the same language setting as the description line
-- Can be omitted for trivial changes (typo fixes, formatting, etc.)
+形式 `{type}({scope}): {description}`。言語は `rite-config.yml` の `language`（`auto` は日本語文字の有無）。type/scope は常に英語。body は why を自由形式。description との間に空行。trivial は省略可。
 
 ```bash
 git add {changed_files}
@@ -593,23 +542,18 @@ EOF
 git push origin {branch_name}
 ```
 
-`{changed_files}` は Claude が本フェーズで Edit/Write した実ファイルパスの明示列挙（`skills/fix/SKILL.md` ステップ 3.3 と同じ規約）。`git status`（手順 1）の出力を diff scope の確認に使ってよいが、`git add` の引数には常に把握済みの実装対象パスを渡す — カレントディレクトリ全体を無条件に stage する `git add .` / `git add -A` は使わない。
-
-**Note**: Commit and push must be completed before invoking `/rite:pr-create`.
+`{changed_files}` は本フェーズで Edit/Write した実パスの明示列挙（`skills/fix/SKILL.md` ステップ 3.3 と同規約）。`git add .` / `git add -A` は使わない。commit / push は `/rite:pr-create` より前に完了する。
 
 #### 5.1.1.1 Issue Body Checklist Update
 
-**Execution condition**: Execute only when Issue body checklist was extracted and retained at `skills/open/SKILL.md` ステップ 3.5 (Issue Body Checklist 更新).
+**Execution condition**: `skills/open/SKILL.md` ステップ 3.5 でチェックリストを保持しているときだけ。
 
-**Update as each task is completed**. Immediately update the Issue body checklist as implementation, test, and documentation tasks are completed.
+`git commit` 成功後と Phase 5.1 完了時に、変更ファイルとチェック項目の対応を見て `[ ]` → `[x]`。
 
-**Update trigger:** After `git commit` succeeds and at Phase 5.1 completion, Claude determines the relevance between changed files and checklist items, and updates `[ ]` to `[x]` for completed items.
+> **⚠️ 注意**: `--body "$var"` は禁止。`--body-file` + 一時ファイル。
+> rationale: references/rationale.md#body-file-not-var
 
-> **⚠️ 注意**: `--body "$var"` による直接更新は body 消失のリスクがあるため禁止。必ず `--body-file` + 一時ファイルパターンを使用すること。
-
-**Update procedure** (3-step safe update pattern):
-
-Execute in 3 stages (Bash → Read+Write → Bash). Shell variables do not persist across Bash tool calls, so the temp file paths output by Step 1 are passed to Step 3 as literals. On any validation failure, output a WARNING and skip remaining steps (do NOT `exit 1` — subsequent phase processing must continue).
+3 段（Bash → Read+Write → Bash）。temp パスは Step 1 出力を Step 3 へ literal 渡し。検証失敗は WARNING して残りを skip（`exit 1` しない）。
 
 **Step 1: Bash tool call — Fetch body and validate**
 
@@ -625,8 +569,7 @@ Outputs: `tmpfile_read=<path>`, `tmpfile_write=<path>`, `original_length=<n>`. I
 2. Create the full text with `[ ]` → `[x]` updates based on the read content
 3. Write the updated body to `$tmpfile_write` (path output in Step 1) using Claude Code's Write tool
 
-> Partial content causes the entire Issue body to be replaced with a fragment, losing all other sections (description, acceptance criteria, etc.).
-> **CRITICAL**: The Write tool output MUST contain the ENTIRE Issue body with only checkbox changes. Never output partial content or only the changed lines.
+> **CRITICAL**: Write はチェックボックス以外を変えない **全文**。部分出力禁止。
 
 **Step 3: Bash tool call — Validate and apply**
 
@@ -642,9 +585,7 @@ Also synchronize the "Issue checklist" section in the work memory.
 
 #### 5.1.1.2 Work Memory Progress Summary and Changed Files Update
 
-**Execution condition**: Execute after commit and push succeed, when on a work branch with an Issue number (`issue-{n}` pattern).
-
-**Purpose**: Update the progress summary table, implementation plan step statuses (`状態` column), and changed files section in the Issue work memory comment to reflect the actual implementation state. This ensures these sections are not left in their initial "⬜ 未着手" / "_まだ変更はありません_" state after implementation completes.
+**Execution condition**: commit / push 成功後、`issue-{n}` ブランチ。進捗表・計画 `状態`・変更ファイルを実装後の状態へ更新する。
 
 **Step 1: Determine progress summary statuses**
 
@@ -706,11 +647,8 @@ rm -f "$changed_files_tmp"
 
 #### 5.1.1.3 Local Work Memory Update
 
-**Execution condition**: Execute when on a work branch with an Issue number (`issue-{n}` pattern).
-
-After commit and push, update the local work memory file to record the phase transition to lint. Uses `mkdir` lock for concurrent access safety with pre-compact hook.
-
-Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands) for details and marketplace install notes.
+**Execution condition**: `issue-{n}` ブランチ。commit / push 後に `phase=lint` へ。
+[Work Memory Format](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands)
 
 ```bash
 WM_SOURCE="implement" \
@@ -722,11 +660,11 @@ WM_SOURCE="implement" \
   bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
-**On lock failure**: Log a warning (`rite: implement: local work memory lock failed`) and continue — local work memory update is best-effort. The flow state update (step 4a) is the primary state record.
+lock 失敗は WARNING（`rite: implement: local work memory lock failed`）して続行。主記録は 4a の flow-state。
 
 #### 5.1.2 Parent Issue Progress Update (only when working on child Issue)
 
-**Execution condition**: Execute only when `parent_issue_number` is non-zero. Read deterministically via `flow-state.sh` so per-session state is consulted instead of the legacy state file snapshot (also survives context compaction):
+**Execution condition**: `parent_issue_number` が非 0 のときだけ。`flow-state.sh` で読む:
 
 ```bash
 # `if ! var=$(cmd); then rc=$?` は bash 仕様上 `$?` が常に 0 になるため、capture と exit code を
@@ -760,9 +698,11 @@ Skip this section when `PARENT_ISSUE=none`.
 
 Update the relevant child Issue's `- [ ]` to `- [x]` in the `## Sub-Issues` section of the parent Issue body.
 
-> **⚠️ 注意**: `--body "$var"` による直接更新は body 消失のリスクがあるため禁止。必ず `--body-file` + 一時ファイルパターンを使用すること。
+> **⚠️ 注意**: `--body "$var"` は禁止。`--body-file` + 一時ファイル。
+> rationale: references/rationale.md#body-file-not-var
 
-Execute in 3 stages (Bash → Read+Write → Bash). On any validation failure, output a WARNING and skip remaining steps (do NOT `exit 1` — subsequent phase processing must continue).
+3 段（Bash → Read+Write → Bash）。検証失敗は WARNING して残りを skip（`exit 1` しない）。
+rationale: references/rationale.md#parent-step1-no-exit-trap
 
 **Step 1: Bash tool call — Fetch parent Issue body and validate**
 
@@ -840,12 +780,11 @@ Check the state of remaining child Issues with `trackedIssues` and calculate `re
 
 **After 5.1.1 commit/push completion:**
 
-1. Parent Issue progress update (only when working on child Issue, see 5.1.2)
-2. **Update work memory** (record phase info, changed files, next steps)
-3. **Update local work memory** (`.rite-work-memory/issue-{n}.md`) — see 5.1.1.3 above
-4. **CRITICAL: Initialize flow state and invoke lint** (atomic pair - MUST execute both):
-
-   > **Note**: All flow state writes use `flow-state.sh` which handles atomic write (PID-based temp file + `mv`) internally to prevent race conditions with concurrent hook shell processes (e.g. pre-compact, post-compact, session-start, session-end, post-tool-wm-sync, cleanup-work-memory).
+1. 親進捗（子 Issue のとき、5.1.2）
+2. **work memory 更新**
+3. **ローカル work memory 更新**（5.1.1.3）
+4. **CRITICAL: flow-state 初期化と lint invoke**（atomic pair — 両方必須）:
+rationale: references/rationale.md#lint-atomic-pair
 
    **4a**: Create state file:
 
@@ -856,17 +795,15 @@ Check the state of remaining child Issues with `trackedIssues` and calculate `re
      --next "After rite:lint returns: [lint:success/skipped]->/rite:open ステップ 6 (PR creation). [lint:error]->fix and re-invoke. [lint:aborted]->/rite:open 完了通知でユーザー判断. Do NOT stop."
    ```
 
-   **4b**: **Immediately** invoke `rite:lint` via Skill tool (following the flow continuation principle, stopping is prohibited)
+   **4b**: **Immediately** invoke `rite:lint` via Skill tool（停止禁止）
 
 ### Mandatory Action After Phase 5.1.1 Completion (Absolute Requirement)
 
-> **Warning**: Stopping without executing the following actions is prohibited.
->
-> 1. Confirm that commit and push succeeded
-> 2. **Immediately** invoke `rite:lint` via Skill tool
-> 3. Do NOT stop and guide the user with "Next steps"
+> 停止禁止。
+> 1. commit / push 成功を確認
+> 2. **Immediately** `rite:lint` を Skill で呼ぶ
+> 3. 「次のステップ」案内で止めない
 
-**Flow verification check (must confirm at Phase 5.1.1 completion):**
 - [ ] Commit complete
 - [ ] Push complete
 - [ ] **Next action**: Invoke `rite:lint` via Skill tool (**execute now**)

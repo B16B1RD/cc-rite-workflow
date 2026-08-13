@@ -20,8 +20,9 @@ PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 CLOSE_MD="$PLUGIN_ROOT/skills/issue-close/SKILL.md"
 PR_OPEN_MD="$PLUGIN_ROOT/skills/open/SKILL.md"
 PROJECTS_REF="$PLUGIN_ROOT/references/projects-integration.md"
+ARCHIVE_MD="$PLUGIN_ROOT/skills/cleanup/references/archive-procedures.md"
 
-for f in "$CLOSE_MD" "$PR_OPEN_MD" "$PROJECTS_REF"; do
+for f in "$CLOSE_MD" "$PR_OPEN_MD" "$PROJECTS_REF" "$ARCHIVE_MD"; do
   [ -f "$f" ] || { echo "ERROR: required file not found: $f" >&2; exit 1; }
 done
 
@@ -50,5 +51,13 @@ echo "=== Phase 4: projects-integration.md retains 3-method documentation ==="
 assert_grep "projects-integration.md §2.4.7 retains Method 1 (## 親 Issue body meta)" "$PROJECTS_REF" "## 親 Issue"
 assert_grep "projects-integration.md §2.4.7 retains Method 2 (sub_issues GraphQL feature)" "$PROJECTS_REF" "sub_issues"
 assert_grep "projects-integration.md §2.4.7 retains Method 3 (tasklist / in:body search)" "$PROJECTS_REF" "in:body|tasklist"
+
+echo "=== Phase 5: already-closed parent still syncs Status → Done ==="
+# close 冪等 skip と board 同期が同一 skip に畳まれると AC-1 が壊れる。
+assert_grep "close.md skip_already_closed continues for Status → Done" "$CLOSE_MD" "continue for Status"
+assert_grep "close.md skip_already_closed + all-closed runs Shared Status on parent" "$CLOSE_MD" "skip_already_closed.*Shared: Status|Shared: Status → Done（\\{issue\\} = \\{parent_number\\}）"
+assert_not_grep "close.md skip_already_closed no longer exits Phase 4.6 before enumeration" "$CLOSE_MD" "skipping Phase 4.6 \\(close-side idempotency\\)"
+assert_grep "archive-procedures already-CLOSED parent runs 3.7.2.1 only" "$ARCHIVE_MD" "parent is already CLOSED.*3\\.7\\.2\\.1"
+assert_grep "archive-procedures 3.7.2.2 skipped when parent already CLOSED" "$ARCHIVE_MD" "Skip this substep if the parent Issue is already CLOSED"
 
 print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or pr/open.md ステップ 1.2, regression risk reopens. Re-confirm cross-references before removing methods."

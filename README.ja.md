@@ -2,18 +2,16 @@
 
 > Claude Code のための汎用 Issue ドリブン開発ワークフロー
 
-[![Version](https://img.shields.io/badge/version-0.10.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.10.0)
+[![Version](https://img.shields.io/badge/version-0.11.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.11.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [English](README.md) | **日本語**
 
 ## Demo
 
-Issue から PR まで、開発を“儀式”に変える — 約125秒で分かる紹介動画（日本語字幕）。
+Issue から PR まで、開発を“儀式”に変える — 約55秒で分かる紹介動画。
 
-> **注**: 動画内のインストールコマンドおよび末尾のフッター URL は旧リポジトリオーナー（`asakaguchi`）表記のままです。最新のコマンドは下記[インストール](#インストール)を参照してください。
-
-https://github.com/user-attachments/assets/82ba8e65-0c07-4346-9964-5a482a1f4df5
+https://github.com/user-attachments/assets/8f36c6b4-1595-4b30-8019-0fe6f0be9b52
 
 ## なぜ "Rite" なのか
 

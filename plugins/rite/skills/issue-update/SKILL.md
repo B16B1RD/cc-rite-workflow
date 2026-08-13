@@ -9,19 +9,12 @@ argument-hint: ""
 
 # /rite:issue-update
 
-Manually update the work memory comment on an Issue
+作業メモリコメントを手動更新する。次の Phase を順に実行する。
 
----
+> **Plugin Path**: bash hook の前に `{plugin_root}` を [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) で解決する。
 
-## Overview
-
-> **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
-
-This command is for **manually** updating the work memory.
-
-### Automatic vs Manual Updates
-
-In the rite workflow, the work memory is **automatically updated** when the following commands are executed:
+自動更新との役割分担:
+rationale: references/rationale.md#auto-vs-manual
 
 | Command | Auto-update content |
 |---------|-------------|
@@ -31,19 +24,6 @@ In the rite workflow, the work memory is **automatically updated** when the foll
 | `/rite:fix` | 進捗サマリー更新、変更ファイル更新、レビュー対応履歴の記録 |
 | `/rite:cleanup` | 完了情報の記録 |
 | `/rite:lint` | 品質チェック結果の記録（条件付き: Issue ブランチのみ） |
-
-### Use Cases for This Command
-
-Use `/rite:issue-update` in the following situations:
-
-1. **Recording decisions**: When you want to note important design decisions or policy choices
-2. **Adding supplementary info**: When you want to record additional information not captured by auto-updates
-3. **Manual progress updates**: When you want to record progress at a specific point in time
-4. **Handoff to next session**: When you want to organize the current state before ending a session
-
----
-
-Execute the following phases in order when this command is invoked.
 
 ## Arguments
 
@@ -164,7 +144,8 @@ comment_id=$(gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
 
 ### 1.4 Compatibility with Existing Formats
 
-The work memory may exist in one of two formats (old and new):
+旧形式 (v1) と新形式 (v2) が混在しうる。`### 進捗サマリー` なら v2、`### 進捗` なら v1。読取は両対応、更新は既存形式を維持、新規作成は v2。
+rationale: references/rationale.md#format-compat
 
 **Old format (v1):**
 ```markdown
@@ -186,16 +167,6 @@ The work memory may exist in one of two formats (old and new):
 ### 要確認事項
 ...
 ```
-
-**Compatibility rules:**
-
-1. **On read**: Both formats must be parsed correctly
-2. **On update**: Preserve the existing format (do not force migration)
-3. **On new creation**: Use the new format (v2)
-
-**Format detection:**
-
-If the content contains `### 進捗サマリー`, treat it as v2; if it contains `### 進捗`, treat it as v1.
 
 ---
 
@@ -236,11 +207,13 @@ If a memo is provided as an argument, add it to the "決定事項・メモ" sect
 
 ## Phase 3: Update Work Memory
 
-> **Warning**: The work memory is published as a comment on the Issue. On public repositories, it is visible to third parties. Do not record sensitive information (credentials, personal data, internal URLs, etc.) in the work memory.
+> **Warning**: 作業メモリは Issue コメントとして公開される。機密情報を書かない。
+> rationale: references/rationale.md#public-comment
 
 ### 3.1 Re-read Work Memory
 
-Re-read the local work memory file immediately before updating. This defends against context compaction that may have discarded the content retrieved in Phase 1:
+更新直前にローカル作業メモリを再読する。
+rationale: references/rationale.md#reread-before-write
 
 ```
 Read: .rite-work-memory/issue-{issue_number}.md
@@ -256,7 +229,7 @@ If this fails, fall back to the content retained from Phase 1. Retain this conte
 
 ### 3.2 Selective Section Update
 
-**Critical**: Do NOT reconstruct the entire comment body from context or memory. Use the re-fetched `comment_body` from Phase 3.1 as the base and modify **only** the target sections listed below.
+**Critical**: コメント本文全体を記憶から再構成しない。Phase 3.1 の `comment_body` をベースに、下表の対象セクションだけを変更する。
 
 **Sections to UPDATE:**
 

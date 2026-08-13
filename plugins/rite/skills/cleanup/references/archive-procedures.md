@@ -362,13 +362,13 @@ query($owner: String!, $repo: String!, $number: Int!) {
 
 | Condition | Processing |
 |-----------|-----------|
-| Parent Issue is already CLOSED | Skip (no message) |
-| All child Issues are CLOSED | Proceed to Phase 3.7.2 (auto-close parent Issue) |
-| Some child Issues are OPEN | Proceed to Phase 3.7.3 (notify about remaining child Issues) |
+| Some child Issues are OPEN | Proceed to Phase 3.7.3 (notify about remaining child Issues). Do not update parent Status to Done. Do not close |
+| All child Issues are CLOSED and parent is OPEN | Proceed to Phase 3.7.2 (Status → Done then close) |
+| All child Issues are CLOSED and parent is already CLOSED | Proceed to 3.7.2.1 (Status → Done) only. Skip 3.7.2.2 (do not run `gh issue close`) |
 
 #### 3.7.2 Auto-Close Parent Issue
 
-If all child Issues are complete, auto-close the parent Issue without user confirmation.
+If all child Issues are complete, auto-close the parent Issue without user confirmation. If the parent is already CLOSED, skip 3.7.2.2 (close) but still run 3.7.2.1 (Status → Done).
 
 ##### 3.7.2.1 Update Parent Issue's Projects Status to "Done"
 
@@ -418,6 +418,8 @@ Inspect the script's stdout JSON:
 
 ##### 3.7.2.2 Close the Parent Issue
 
+Skip this substep if the parent Issue is already CLOSED. Do not execute `gh issue close`.
+
 Close with a detailed comment and short close reason (2-step pattern per `gh-cli-patterns.md` policy):
 
 **Note**: The following code block is a template. `cat <<'BODY_EOF'` is a **single-quoted HEREDOC**, so bash variable expansion does not occur. Claude should replace placeholders as an LLM and then construct the command.
@@ -462,6 +464,14 @@ Generated from `trackedIssues.nodes` retrieved in Phase 3.7.1:
 ```
 
 ##### 3.7.2.3 Close Completion Message
+
+親が既 CLOSED で 3.7.2.2 を skip した場合:
+
+```
+親 Issue #{parent_issue_number} は既に CLOSED です。Projects Status を Done に同期しました
+```
+
+それ以外（3.7.2.2 で close した場合）:
 
 ```
 親 Issue #{parent_issue_number} を自動クローズしました

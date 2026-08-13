@@ -10,11 +10,7 @@ argument-hint: "[filters]"
 
 # /rite:issue-list
 
-GitHub Issue の一覧を表示
-
----
-
-When this command is executed, run the following phases in order.
+GitHub Issue の一覧を表示。次の Phase を順に実行する。
 
 ## Phase 1: Parse Arguments
 
@@ -167,9 +163,10 @@ Also read `github.projects.project_number` and `github.projects.owner` from `rit
 
 ### 4.2 Fetch Projects Data and Build Status Map
 
-Projects 全 item の取得と正規化は `scripts/projects-items-fetch.sh` に委譲する。helper は Project node ID 解決 (owner-type agnostic — user / organization 両対応)・`pageInfo.hasNextPage` / `endCursor` による全件 cursor pagination (固定 `--limit` が起こしていた 100/500 件超の silent truncation を防止)・各 node の `{content:{number}, status}` への正規化・signal-specific trap cleanup をすべて内包する (旧 ~44 行 inline 実装を委譲)。
+Projects 全 item の取得と正規化は `scripts/projects-items-fetch.sh` に委譲する。
+rationale: references/rationale.md#projects-fetch-delegate
 
-**出力契約** (旧 inline 実装と同一): 成功時は正規化 JSON tempfile の path を 1 行 stdout 出力。失敗時は `[projects:fetch-failed] <reason>` を出力し path は出力しない。**全経路 exit 0** (non-blocking — Phase 4 の失敗は一覧表示自体を止めない)。
+**出力契約**: 成功時は正規化 JSON tempfile の path を 1 行 stdout。失敗時は `[projects:fetch-failed] <reason>` を出力し path は出さない。**全経路 exit 0**（non-blocking）。
 
 **Tool call 1 (Bash)**: `{project_number}` / `{owner}` は Phase 4.1 で読んだ値を literal substitute する:
 

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1280, initial-scale=1">
+  <title>rite — M1 problem</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 1280px; height: 720px; margin: 0; overflow: hidden; }
+    body {
+      color: #f4f7fb;
+      background:
+        radial-gradient(circle at 24% 46%, rgba(65, 214, 190, .07), transparent 32%),
+        radial-gradient(circle at 86% 86%, rgba(104, 116, 255, .08), transparent 32%),
+        #080b10;
+      font-family: Inter, "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif;
+      letter-spacing: .02em;
+    }
+    .grain {
+      position: absolute; inset: 0; opacity: .18;
+      background-image: linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
+      background-size: 40px 40px;
+      mask-image: linear-gradient(to bottom, black, transparent 90%);
+    }
+    header { position: absolute; left: 68px; right: 68px; top: 50px; display: flex; justify-content: space-between; align-items: baseline; animation: enter .7s ease-out 0s both; }
+    .brand { color: #7ee7d0; font: 650 16px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .18em; }
+    .caption { color: #657184; font: 500 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .13em; }
+    .ver {
+      margin-left: 15px; padding: 4px 10px; border: 1px solid rgba(126,231,208,.32); border-radius: 999px;
+      color: #7ee7d0; font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em;
+    }
+
+    /* 周回の画: 軌道を 3 周しても中心のカウンタが 1 のまま動かない */
+    .orbit { position: absolute; left: 128px; top: 206px; width: 328px; height: 328px; }
+    .track { position: absolute; inset: 0; }
+    .track circle {
+      fill: none; stroke: rgba(150,168,188,.26); stroke-width: 2; stroke-dasharray: 6 10;
+      animation: trackIn .8s ease-out .25s both;
+    }
+    .runner {
+      position: absolute; inset: 0;
+      animation: spin 1.5s linear .95s 3 both;
+    }
+    .runner::after {
+      content: ""; position: absolute; left: 50%; top: -7px; width: 14px; height: 14px; margin-left: -7px;
+      border-radius: 50%; background: #8d99aa; box-shadow: 0 0 0 8px rgba(141,153,170,.1);
+    }
+    .counter {
+      position: absolute; left: 50%; top: 50%; width: 190px; margin: -52px 0 0 -95px;
+      text-align: center;
+      animation: counterIn .6s cubic-bezier(.16,1,.3,1) .95s both;
+    }
+    .counter b {
+      display: block; font-size: 52px; font-weight: 650; letter-spacing: -.03em; color: #f4f7fb;
+      animation: counterHit 1.5s ease-in-out .95s 3 both;
+    }
+    .counter span {
+      display: block; margin-top: 10px; color: #667487;
+      font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .16em;
+    }
+
+    .copy { position: absolute; left: 552px; top: 232px; width: 620px; }
+    .eyebrow { color: #718094; font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .15em; animation: enter .7s ease-out .55s both; }
+    h1 {
+      margin: 34px 0 0; font-size: 58px; font-weight: 650; line-height: 1.34; letter-spacing: -.045em;
+      animation: textIn .8s cubic-bezier(.16,1,.3,1) 1.15s both;
+    }
+    .sub {
+      margin: 30px 0 0; max-width: 560px; color: #a7b5c5; font-size: 25px; font-weight: 500; line-height: 1.62; letter-spacing: -.01em;
+      animation: textIn .8s cubic-bezier(.16,1,.3,1) 3.5s both;
+    }
+    .sub em { color: #f4f7fb; font-style: normal; font-weight: 620; }
+    .rule {
+      position: absolute; left: 552px; top: 552px; width: 0; height: 2px;
+      background: linear-gradient(90deg, #7ee7d0, rgba(126,231,208,0));
+      animation: ruleGrow .9s cubic-bezier(.16,1,.3,1) 4.4s both;
+    }
+    .foot {
+      position: absolute; right: 72px; bottom: 55px; color: #566173;
+      font: 500 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .13em;
+      animation: enter .6s ease-out 4.8s both;
+    }
+    @keyframes enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes trackIn { from { opacity: 0; stroke-dashoffset: 60; } to { opacity: 1; stroke-dashoffset: 0; } }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes counterIn { from { opacity: 0; transform: scale(.86); } to { opacity: 1; transform: scale(1); } }
+    @keyframes counterHit { 0%, 72% { opacity: .82; transform: scale(1); } 88% { opacity: 1; transform: scale(1.06); } 100% { opacity: .82; transform: scale(1); } }
+    @keyframes textIn { from { opacity: 0; transform: translateY(20px); filter: blur(4px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
+    @keyframes ruleGrow { from { width: 0; opacity: 0; } to { width: 372px; opacity: 1; } }
+  </style>
+</head>
+<body>
+  <div class="grain"></div>
+  <header><div class="brand">RITE / M1<span class="ver">v0.11.0</span></div><div class="caption">THE FIRST LAP, AGAIN</div></header>
+
+  <div class="orbit">
+    <svg class="track" viewBox="0 0 328 328" aria-hidden="true">
+      <circle cx="164" cy="164" r="156" />
+    </svg>
+    <div class="runner"></div>
+    <div class="counter"><b>Lap 1</b><span>LAP COUNT</span></div>
+  </div>
+
+  <section class="copy">
+    <div class="eyebrow">NO COMPOUNDING</div>
+    <h1>Every lap is lap one.</h1>
+    <p class="sub">AI is fast. But it<br><em>never learns your project.</em></p>
+  </section>
+  <div class="rule"></div>
+  <div class="foot">SAME PROMPT / SAME MISTAKE</div>
+  <script>window.SCENE = { duration_ms: 6000 };</script>
+</body>
+</html>
