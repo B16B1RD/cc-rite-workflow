@@ -330,7 +330,7 @@ rationale: references/rationale.md#reset-refire-run-since
 
 ループ頭で **lost 修復ゲートを先に**評価し、穴が無いときだけサーキットブレーカーの **2 つの発火条件** を評価する。ゲートが fire なら increment も次 cycle の review も始めない。ゲートが ok で発火条件がどちらも不成立なら counter を +1 して `phase=review` に更新後 `/rite:pr-review` を invoke、いずれかが成立したらサーキットブレーカー（ステップ 6）へ分岐する:
 
-1. **lost 修復ゲート** — helper の `lost=` が `0` より大きい（完了済み cycle に対して JSON 不足 = 増分）。次 cycle を始めず (a)/(b) へ
+1. **lost 修復ゲート** — helper の `lost=` が `0` より大きい（完了済み cycle に対して JSON 不足 = 増分）、または `cc>=1` かつ raw `lost=` 欠落かつ reason が `no_results_file` / `results_dir_missing` / `no_file_after_pin`（`_undecidable` は `lost=` を出さない）。次 cycle を始めず (a)/(b) へ。`cc=0` と `helper_unavailable` は発火させない
 2. **収束トレンドの発散**（主経路）— `hooks/scripts/review-trend-divergence.sh` が永続レビュー JSON から現 run の per-cycle blocking 列を復元し発散と判定した場合。`cycle_count` が上限未満でも発火する
 3. **`max_review_cycles` 到達**（保険）— 発散判定をすり抜けた非収束を受け止める backstop（既定 15 では 16 cycle 以上を要する収束中の run にも届きうる）
 rationale: references/rationale.md#lost-repair-gate
@@ -401,7 +401,10 @@ trend_reason=$(printf '%s\n' "$trend_out" | marker_get TREND_DIVERGENCE --field 
 # 失われた結果の件数。列に穴があることを停止通知まで運ぶ（欠落は verdict を反転させうるため、
 # 合成された推移を実測として描画させない）。`lost=` を出さないのは `_undecidable` 経路だけで、
 # `need_3_cycles` は部分列とともに出す（差し替えと併記が同時成立する — ステップ 6.2 参照）。
-trend_lost=$(printf '%s\n' "$trend_out" | marker_get TREND_DIVERGENCE --field lost)
+# ゲートは raw を見る。coerce は注記 (`LOST=`) 用で、空を 0 に潰すと本 Issue の主シナリオ
+# （cc>=1 かつ JSON 0 件）が fire しない。
+trend_lost_raw=$(printf '%s\n' "$trend_out" | marker_get TREND_DIVERGENCE --field lost)
+trend_lost=$trend_lost_raw
 case "$trend_lost" in ''|*[!0-9]*) trend_lost=0 ;; esac
 if [ "$trend_rc" -ne 0 ] || [ -z "$trend_verdict" ]; then
   # rc=2（引数不正 / jq 不在）や helper 不在（marketplace 版とローカル版の skew 等）。
@@ -415,9 +418,15 @@ fi
 
 # lost 修復ゲート。次 cycle の increment / review / CB 発火より先に評価する。
 # `lost > 0` = 完了済み cycle に対して JSON が不足（増分）。helper の lost= をそのまま使う。
+# `_undecidable` は lost= を出さないため、cc>=1 かつ raw 欠落かつデータ不在 reason でも fire。
+# helper_unavailable は発火させない（判定不能を修復ゲートへ倒すと再レビュー空転する）。
 lost_gate=ok
 if [ "$trend_lost" -gt 0 ] 2>/dev/null; then
   lost_gate=fire
+elif [ "$cc" -ge 1 ] 2>/dev/null && [ -z "$trend_lost_raw" ] && [ "$trend_reason" != "helper_unavailable" ]; then
+  case "$trend_reason" in
+    no_results_file|results_dir_missing|no_file_after_pin) lost_gate=fire ;;
+  esac
 fi
 
 # 発火理由を決める。**cycle 上限を先に評価する** — 両方成立しているとき、上限到達は
@@ -434,9 +443,20 @@ if [ "$lost_gate" = fire ]; then
   # increment しない（marker の cycle は永続 counter と一致 = INC=held）。
   # ITERATE_CB=ok を載せるのは既存 CB 表の fire 分岐に落とさないため。
   # review invoke は ITERATE_LOST_GATE 表が決める（本 marker の ok を「次 cycle 開始」と読まない）。
+  # `--handoff` なしの set で直前 [fix:pushed] の継続 handoff を default-clear する。
+  # `--cycle-count` は付けない（INC=held）。CB fire 分岐と同型。
+  if fire_out=$(LC_ALL=C bash {plugin_root}/hooks/flow-state.sh set \
+    --phase review --issue {issue_number} --branch {branch_name} --pr {pr_number} \
+    --next "lost 修復ゲート発火 (JSON 欠落 lost=$trend_lost)" 2>&1); then
+    handoff_clear=ok
+  else
+    handoff_clear=failed
+    echo "WARNING: lost 修復ゲート発火時の handoff クリアに失敗（handoff が残り Stop hook が /rite:pr-review を再注入してゲートを迂回する恐れ）" >&2
+  fi
+  [ -n "$fire_out" ] && printf '%s\n' "$fire_out" | head -5 | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   marker_emit ITERATE_LOST_GATE fire "lost=$trend_lost" "cycle=$cc" "max=$max_cycles" \
     "TREND=$trend_series" "TREND_VERDICT=$trend_verdict" "TREND_REASON=$trend_reason" \
-    "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=held"
+    "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=held" "HANDOFF_CLEAR=$handoff_clear"
   marker_emit ITERATE_CB ok "cycle=$cc" "max=$max_cycles" \
     "TREND=$trend_series" "TREND_VERDICT=$trend_verdict" "TREND_REASON=$trend_reason" \
     "LOST=$trend_lost" "RUN_SINCE_USED=$run_since_used" "INC=held"
@@ -514,15 +534,15 @@ fi
 
 | 分岐 | 条件 | アクション |
 |---------|-----------|
-| (a) | 直前 cycle のレビュー結果がセッションコンテキストに残存 | pr-review ステップ 6.1.a と同じ手順（timestamp sentinel + Write tmpfile + `bash {plugin_root}/hooks/review-result-save.sh --pr {pr_number} --content-file <tmp>`）で即時保存。`JSON_SAVED=1` なら下の `ITERATE_LOST_REPAIR=saved` を emit して**ステップ 1 の bash を再実行**。失敗は (b) |
-| (b) | 残存しない / (a) 失敗 | 下の `ITERATE_LOST_REPAIR=rereview` を emit し、counter 不前進のまま `/rite:pr-review` を invoke。保存が成立しなければ停止。成立ならステップ 2 |
+| (a) | 直前 cycle のレビュー結果がセッションコンテキストに残存 | pr-review ステップ 6.1.a と同じ手順（timestamp sentinel + Write tmpfile + `bash {plugin_root}/hooks/review-result-save.sh --pr {pr_number} --content-file <tmp>`）で即時保存。**成立は `JSON_SAVED=true`（helper の値域。`=1` ではない）**。成立なら下の `ITERATE_LOST_REPAIR=saved` を emit して**ステップ 1 の bash を再実行**。失敗は (b) |
+| (b) | 残存しない / (a) 失敗 | 下の `ITERATE_LOST_REPAIR=rereview` を emit し、counter 不前進のまま `/rite:pr-review` を invoke。**保存成立の観測子は `JSON_SAVED=true` または `REVIEW_SAVE_JSON_OK=1`**（`[review:mergeable]` 素通しは batch が収束扱いするので使わない）。不成立は `ITERATE_LOST_REPAIR=failed` を emit し、iterate 失敗形で停止（新 CB sentinel は作らない。caller の既存「sentinel 不在 / `[review:error]` → 失敗停止」に倒す）。成立ならステップ 2 |
 
 ```bash
 source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit できないため中止します" >&2; exit 1; }
 marker_emit ITERATE_LOST_REPAIR "{repair}" "cycle={cycle_count}" "lost={lost}"
 ```
 
-`{repair}` は `saved` / `rereview` / `failed`。`{cycle_count}` はゲート発火時の `cycle=`（increment 前の永続値）。`{lost}` は同 marker の `lost=`。
+`{repair}` は `saved` / `rereview` / `failed`。`failed` は (b) 後に `JSON_SAVED=true` も `REVIEW_SAVE_JSON_OK=1` も無いときだけ emit する。`{cycle_count}` はゲート発火時の `cycle=`（increment 前の永続値）。`{lost}` は同 marker の `lost=`。
 
 | `ITERATE_CB` marker | アクション |
 |---------|-----------|

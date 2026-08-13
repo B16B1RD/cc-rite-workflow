@@ -852,6 +852,16 @@ assert_grep "消費側: (b) は counter 不前進のまま pr-review" "$ITERATE_
   'counter 不前進のまま `/rite:pr-review`'
 assert_grep "消費側: ゲート fire 時は次 cycle の review を開始しない" "$ITERATE_SKILL" \
   '次 cycle の review を開始しない'
+assert_grep "消費側: (a) 成功条件は JSON_SAVED=true" "$ITERATE_SKILL" \
+  'JSON_SAVED=true'
+assert_not_grep "消費側: helper 値域と不一致の JSON_SAVED=1 を成功条件にしない" "$ITERATE_SKILL" \
+  'JSON_SAVED=1'
+assert_grep "消費側: fire 分岐で handoff を default-clear する" "$ITERATE_SKILL" \
+  'lost 修復ゲート発火'
+assert_grep "消費側: _undecidable の lost 欠落をデータ不在 reason で fire する" "$ITERATE_SKILL" \
+  'no_results_file|results_dir_missing|no_file_after_pin'
+assert_grep "消費側: (b) 不成立は ITERATE_LOST_REPAIR=failed" "$ITERATE_SKILL" \
+  'ITERATE_LOST_REPAIR=failed'
 assert_grep "非退行: LOST 注記（推移行併記）が残っている" "$ITERATE_SKILL" \
   '`LOST` が `0` 以外のときは推移行に欠落を併記する'
 assert_not_grep "非退行: helper の lost= 算出を iterate 側で上書きしない" "$ITERATE_SKILL" \
