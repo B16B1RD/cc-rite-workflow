@@ -10,7 +10,7 @@ argument-hint: ""
 
 # /rite:wiki-ingest
 
-Wiki Ingest エンジン。`.rite/wiki/raw/` の Raw Source を読解し、`.rite/wiki/pages/` に経験則として統合する。やることは以下のシーケンシャルなタスク列:
+Wiki Ingest エンジン。`.rite/wiki/raw/` の Raw Source を読解し、`.rite/wiki/pages/` に経験則として統合する。
 
 1. 事前チェック（Wiki 設定 / plugin root / worktree セットアップ）
 2. Raw Source の候補列挙と `ingested: false` 判定
@@ -24,7 +24,7 @@ Wiki Ingest エンジン。`.rite/wiki/raw/` の Raw Source を読解し、`.rit
 
 Raw Source の wiki branch 着地は `wiki-ingest-commit.sh` が `review` / `fix` / `issue-close` から直接呼ばれて完了している前提。本コマンドが扱うのは page 統合の LLM 責務のみ。
 
-`separate_branch` 戦略では `.rite/wiki-worktree/` worktree のツリーに対して Read/Write/Edit を行う。dev ブランチは ingest 実行中も常にそのまま。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md) で解決する。共通パターン (ディレクトリ構造 / ブランチ管理 / テンプレート展開) は [Wiki Patterns](../../references/wiki-patterns.md) を参照。Wiki が育たない / 動作しないときの診断手順 (raw が増えない / page が増えない / growth-check alarm の読み方) は [Wiki トラブルシューティング](./references/wiki-troubleshooting.md) を参照。
+`separate_branch` では `.rite/wiki-worktree/` に対して Read/Write/Edit する。dev ブランチは触らない。`{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md)。共通パターンは [Wiki Patterns](../../references/wiki-patterns.md)。診断は [Wiki トラブルシューティング](./references/wiki-troubleshooting.md)。
 
 ## Arguments
 
@@ -45,7 +45,8 @@ Raw Source の wiki branch 着地は `wiki-ingest-commit.sh` が `review` / `fix
 
 ### 1.1 Wiki 設定の読み取りとブランチ戦略判定
 
-`rite-config.yml` から `wiki_enabled` / `wiki_branch` / `branch_strategy` を**単一の bash ブロック**で取得する (本ブロックはプローブ用。helper 解決失敗のみ明示 fail-fast で扱い、値の欠落は `${var:-default}` で吸収するため `set -euo pipefail` は不要。strict mode はステップ 5.1 / 5.2 で明示宣言する):
+`rite-config.yml` から `wiki_enabled` / `wiki_branch` / `branch_strategy` を**単一の bash ブロック**で取得する:
+rationale: references/rationale.md#wiki-config-opt-out
 
 ```bash
 # YAML 読み取りは canonical helper (実ファイル) に委譲する。skill 本文の fenced bash に
@@ -71,9 +72,9 @@ branch_strategy="${branch_strategy:-separate_branch}"
 echo "wiki_enabled=$wiki_enabled branch_strategy=$branch_strategy wiki_branch=$wiki_branch"
 ```
 
-分散実装の完全一覧と設計差異は [Wiki 有効判定パターン §分散実装ファイル一覧](../../references/wiki-patterns.md#分散実装ファイル一覧-single-source-of-truth) を SoT として参照する。本ファイルは `lib/wiki-config.sh` の `parse_wiki_scalar` を直接呼ぶ lenient 2-arm 経路 (inject.sh と同型の lenient ファミリ、opt-out default)。trigger.sh は意図的に strict 3-arm fail-fast で別経路 — 詳細は SoT を参照。
+分散実装の一覧は [Wiki 有効判定パターン §分散実装ファイル一覧](../../references/wiki-patterns.md#分散実装ファイル一覧-single-source-of-truth) を SoT とする。
 
-**`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1` (bash が rc=1 で終了) の場合**: 設定を判定できていないため無効扱いへ倒さず、そのまま中止してユーザーに案内する:
+**`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1` (bash が rc=1 で終了) の場合**: 無効扱いへ倒さず中止し、ユーザーに案内する:
 
 ```
 Wiki 設定を読み取れませんでした（hooks/scripts/lib/wiki-config.sh を解決できません）。
@@ -89,7 +90,8 @@ Wiki 機能が無効です（wiki.enabled: false）。
 
 ### 1.2 Plugin Root の解決
 
-ステップ 1.3 の `wiki-worktree-setup.sh` 呼び出しが `$plugin_root` に依存するため、Wiki 初期化判定よりも前に解決する:
+Wiki 初期化判定より前に `plugin_root` を解決する:
+rationale: references/rationale.md#plugin-root-literal-embed
 
 ```bash
 plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
@@ -100,11 +102,11 @@ fi
 echo "plugin_root=$plugin_root"
 ```
 
-以降のすべての Bash ブロックでは `plugin_root` / `branch_strategy` / `wiki_branch`、および ステップ 1.3 で取得した `wiki_worktree_abs`（`WIKI_WORKTREE_ABS` の値）をリテラル値として埋め込んで使用する（Claude Code の Bash ツール間でシェル変数は保持されない）。
+以降のすべての Bash ブロックでは `plugin_root` / `branch_strategy` / `wiki_branch`、およびステップ 1.3 の `wiki_worktree_abs`（`WIKI_WORKTREE_ABS`）をリテラル埋め込みする。
 
 ### 1.3 Wiki 初期化判定と worktree セットアップ
 
-ステップ 1.1 で取得した `branch_strategy` / `wiki_branch` とステップ 1.2 の `plugin_root` を使い、wiki ブランチの存在と worktree の有効性を確認する。`separate_branch` 戦略では、ブランチがローカル/リモートのどちらかに存在することと worktree が有効に存在することを両方確認する:
+ステップ 1.1 の `branch_strategy` / `wiki_branch` とステップ 1.2 の `plugin_root` で、wiki ブランチの存在と worktree の有効性を確認する。`separate_branch` ではローカル/リモートいずれかのブランチ存在と有効な worktree の両方を確認する:
 
 ```bash
 branch_strategy="{branch_strategy}"
@@ -160,11 +162,13 @@ Wiki が初期化されていません ({reason})。先に /rite:wiki-init を�
 
 `reason=worktree_setup_failed` の場合は `wiki-worktree-setup.sh` のエラー出力を確認し、`git worktree prune` / `git fetch origin wiki:wiki` 等で復旧してから再実行する。
 
-`separate_branch` の場合、ステップ 1.3 が出力した絶対パス `WIKI_WORKTREE_ABS` を基点に（以降 `{wiki_worktree_abs}` として `plugin_root` と同様にリテラル埋め込みする）、すべての Wiki Read / Write / Edit と bash ブロックは `{wiki_worktree_abs}/.rite/wiki/...` で指す。これにより呼び出し時の cwd（セッション worktree でも main checkout でも）に依存せず、常に共有 root の wiki worktree 一箇所に解決される（multi-session design §9 / AC-5）。`{wiki_worktree_abs}` が空（旧バージョン互換のため未取得の場合）は `.rite/wiki-worktree` の相対パスに縮退してよい。
+`separate_branch` ではステップ 1.3 の絶対パス `WIKI_WORKTREE_ABS` を `{wiki_worktree_abs}` としてリテラル埋め込みし、すべての Wiki Read / Write / Edit と bash は `{wiki_worktree_abs}/.rite/wiki/...` で指す。空なら `.rite/wiki-worktree` に縮退してよい。
+rationale: references/rationale.md#cwd-independent-worktree
 
 ### 1.4 Ingest セッション lock の取得（並行 ingest の直列化）
 
-複数セッションが同時に ingest（cleanup → ingest 連鎖を含む）へ入っても安全になるよう、LLM の Write/Edit フェーズを直列化する。`flock` は複数 Bash 呼び出しに跨る ingest を守れないため、ingest 期間中保持する持続的 mkdir lock（`<共有root>/.rite/state/wiki-ingest-session.lockdir`）を取得する。stale 判定は保持セッションの flow-state liveness（`active=true` ∧ `updated_at` 2h 以内）を流用する（multi-session design §9）:
+Write/Edit フェーズを直列化する持続的 mkdir lock（`<共有root>/.rite/state/wiki-ingest-session.lockdir`）を取得する:
+rationale: references/rationale.md#session-lock-mkdir
 
 ```bash
 plugin_root="{plugin_root}"
@@ -174,7 +178,7 @@ bash "$plugin_root/hooks/scripts/wiki-ingest-lock.sh" acquire
 出力で分岐する:
 
 - `acquired` / `acquired_stale_reclaimed`（rc 0）: 取得成功。ステップ 2 以降へ進む。
-- `concurrent_ingest`（rc 11）: 他の live セッションが ingest 中。**以下を出力して即座に終了する**（pending raw は wiki branch に残り、次回 ingest が冪等に回収する — AC-4。新しい回収機構は作らない）:
+- `concurrent_ingest`（rc 11）: 他の live セッションが ingest 中。**以下を出力して即座に終了する**（pending raw は次回 ingest が冪等回収。新しい回収機構は作らない）:
 
   ```
   [CONTEXT] WIKI_INGEST_SKIPPED reason=concurrent_ingest
@@ -192,7 +196,7 @@ bash "$plugin_root/hooks/scripts/wiki-ingest-lock.sh" acquire
 
 引数 `<raw-file-path>` が指定されている場合は単一ファイルを Ingest 対象とし、省略時は `.rite/wiki/raw/` 配下から `ingested: false` を持つ Raw Source を全て列挙する。
 
-以下のカウンターを会話コンテキストに保持し、各ステップで incrementate する。値は ステップ 5 commit message と ステップ 9 完了レポートで literal substitute されるため、placeholder のまま使用してはならない:
+以下のカウンターを会話コンテキストに保持し、各ステップで incrementate する。ステップ 5 commit message とステップ 9 完了レポートで literal substitute する。placeholder のまま使用してはならない:
 
 | 変数 | 初期値 | 確定 / incrementate するタイミング |
 |------|:--:|---|
@@ -205,11 +209,13 @@ bash "$plugin_root/hooks/scripts/wiki-ingest-lock.sh" acquire
 | `n_dedup_removed` | 0 | ステップ 6 の各 helper 呼び出しが出力する `dedup_removed=` の値を加算 |
 | `n_contradictions` / `n_stale` / `n_orphans` / `n_missing_concept` / `n_unregistered_raw` / `n_broken_refs` | 0 | ステップ 8.3 step 2 (6 フィールド regex match) で Lint stdout から抽出 |
 
-`n_unregistered_raw` と `n_dedup_removed` は informational 指標で `n_warnings` には加算しない（意図的に経験則化しなかった件数、および index の自己修復として回収した重複行の件数は、いずれも警告ではない）。`auto_lint=false` 経路で ステップ 8.2-8.5 が skip された場合も、本ステップで 0 初期化されているためステップ 9 完了レポートの placeholder 残留は発生しない。
+`n_unregistered_raw` と `n_dedup_removed` は informational で `n_warnings` には加算しない。`auto_lint=false` で 8.2-8.5 が skip されても、本ステップの 0 初期化でステップ 9 の placeholder 残留は起きない。
+rationale: references/rationale.md#informational-counters
 
 ### 2.2 候補 Raw Source の列挙 (worktree ベース)
 
-`separate_branch` 戦略では Raw Source は wiki ブランチ上にあり、`{wiki_worktree_abs}/.rite/wiki/raw/` を直接 find する。dev ブランチ側 (`.rite/wiki/raw/`) は通常存在しないが、過去バージョンからのマイグレーション残骸を検出するために存在チェックして WARNING を出す:
+`separate_branch` では `{wiki_worktree_abs}/.rite/wiki/raw/` を直接 find する。dev 側 `.rite/wiki/raw/` が存在すれば WARNING を出す:
+rationale: references/rationale.md#dev-tree-drift
 
 ```bash
 branch_strategy="{branch_strategy}"
@@ -286,7 +292,7 @@ case "$ingested_norm" in
 esac
 ```
 
-候補は worktree (separate_branch) または dev ツリー (same_branch) を直接 Read / `cat` で読み取れる（`git show` / `git checkout` は不要）。読み取り失敗時は WARNING を出して次の候補へ:
+候補は worktree (separate_branch) または dev ツリー (same_branch) を Read / `cat` で読む（`git show` / `git checkout` は不要）。読み取り失敗時は WARNING を出して次の候補へ:
 
 ```bash
 # signal-specific trap (EXIT/INT/TERM/HUP) は反復ごとに再設定される (bash 仕様で idempotent)。
@@ -320,7 +326,7 @@ fi
 新しい経験則を蓄積するには /rite:pr-review や /rite:fix の完了後に再実行してください。
 ```
 
-**処理対象が確定したら**: ステップ 2.1 で初期化した `n_raw_sources` を件数に上書きする。各 Raw Source の完全な本文 (frontmatter + body) を Read ツールで取得し、会話コンテキストに保持する（ステップ 5 の Write/Edit phase で参照）。
+**処理対象が確定したら**: `n_raw_sources` を件数に上書きする。各 Raw Source の完全な本文 (frontmatter + body) を Read し、会話コンテキストに保持する。
 
 ---
 
@@ -355,8 +361,10 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 
 1. **読解**: Raw Source 本文から抽出可能な経験則を特定
 2. **ドメイン判定**: `patterns` / `heuristics` / `anti-patterns` に分類
-2.5. **昇格分類**: 本経験則が rite workflow 自体の挙動・スキル記述法に関するものなら、環境非依存性も判定する。環境非依存なら frontmatter に `promote: rite-plugin` を付け、環境固有なら一般化してから昇格するか、一般化できない domain 知見として Wiki に残す（マーケットプレイス配布先で Wiki 留置のままでは不活性になる知見の仕分け。CLAUDE.md「知見のルーティング」）。**機械検出可能（2.6）と両方に該当する場合は 2.6 が優先**し、ページを作らない（`promote` はページ作成時のみ）
-2.6. **検出器化候補の分類**: この経験則は grep / lint / lib 関数で機械的に強制できるか、を判定してフラグ付けするのみ（アクション決定は行わない）。できるなら `detector_candidate=true`、できないなら `false`。判断の正例: trap 順序の静的検査・mktemp 無音化の lint 化 → `true`。負例: ブランチ戦略の運用判断・ドメイン固有の文脈知識 → `false`（従来どおりページ化）
+2.5. **昇格分類**: 本経験則が rite workflow 自体の挙動・スキル記述法に関するものなら、環境非依存性も判定する。環境非依存なら frontmatter に `promote: rite-plugin` を付け、環境固有なら一般化してから昇格するか、一般化できない domain 知見として Wiki に残す。**機械検出可能（2.6）と両方に該当する場合は 2.6 が優先**し、ページを作らない（`promote` はページ作成時のみ）
+   rationale: references/rationale.md#knowledge-routing
+2.6. **検出器化候補の分類**: grep / lint / lib 関数で機械的に強制できるかフラグ付けするのみ（アクション決定はしない）。できるなら `detector_candidate=true`、できないなら `false`
+   rationale: references/rationale.md#detector-candidate
 3. **既存ページ照合**: `index.md` に同テーマの既存ページが存在するかを意味的に判定 (厳密一致ではなく、一行サマリーとタイトルから判断)
 4. **アクション決定**: 下表に**上から first-match**で 新規 / 更新 / スキップ を決定（2.6 のフラグとステップ 3 の照合結果を入力とする）
 5. **関連ページ特定**: ステップ 5.3 の `{related_page_title}` / `{related_page_path}` の値を決定 (詳細はステップ 4.3)
@@ -388,13 +396,16 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 
 - **追記**: 既存内容と矛盾せず補強する場合は「## 詳細」セクションに追記
 - **統合**: 一部矛盾するが新情報の方が確度が高い場合は該当箇所を書き換え（`updated` フィールド更新）
-- **`sources` 配列追記**: 新しい Raw Source への参照を必ず追加する。追加する各エントリは `- type: "{type}"` / `  ref: "raw/{type}/{filename}"` の形式とし、**`ref` は必ず Raw Source のファイルパス形式 (`raw/{type}/{filename}`、wiki-root 起点)** にする。raw frontmatter の `source_ref` フィールド値（PR 識別子形式、例: `pr-1143`）を `ref` に転記してはならない（ステップ 5.3 `{source_ref}` 行の dual-use 警告と同一契約）
+- **`sources` 配列追記**: 新しい Raw Source への参照を必ず追加する。追加する各エントリは `- type: "{type}"` / `  ref: "raw/{type}/{filename}"` の形式とし、**`ref` は必ず Raw Source のファイルパス形式 (`raw/{type}/{filename}`、wiki-root 起点)** にする。raw frontmatter の `source_ref` フィールド値（PR 識別子形式、例: `pr-1143`）を `ref` に転記してはならない
 - **`updated` 更新**: 現在の ISO 8601 タイムスタンプに更新
-- **`description` の新設・更新**: 本サイクルで概要が変わった場合は frontmatter `description` を更新する（未設定なら新設してよい）。値は上表の番号なし Why 要約をそのまま使い、独自の短縮・言い換えをしない。ステップ 6 の helper はこの値を index サマリー列へ渡すため、ここを更新しないと index のサマリーは既存値が保持され、同源テキストが drift する
+- **`description` の新設・更新**: 本サイクルで概要が変わった場合は frontmatter `description` を更新する（未設定なら新設してよい）。値は上表の番号なし Why 要約をそのまま使い、独自の短縮・言い換えをしない。ステップ 6 の helper はこの値を index サマリー列へ渡す
+rationale: references/rationale.md#source-ref-path-form
+rationale: references/rationale.md#summary-provenance
 
 ### 4.3 関連ページの特定
 
-新規ページ作成・既存ページ更新のいずれの場合も、ステップ 5.3 で展開する `{related_page_title}` / `{related_page_path}` placeholder の値を本ステップで決定する（本セクションが値決定手順の canonical source。ステップ 5.3 placeholder 表との矛盾発生時は本 4.3 を優先）。
+新規・更新のいずれも、ステップ 5.3 の `{related_page_title}` / `{related_page_path}` を本ステップで決定する（値決定の canonical source。5.3 表と矛盾したら本 4.3 を優先）。
+rationale: references/rationale.md#related-page-literal
 
 **実行タイミング**: ステップ 4.1 でタイトル/ドメイン決定後、ステップ 5 の Write/Edit に進む前。
 
@@ -406,7 +417,7 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 | 確信度 | LLM の判定として確信があるもの 1-3 件に絞る（量より質） |
 | index.md との照合 | ステップ 3 で読み込んだ `index_content` の一行サマリーとタイトルから判断する |
 
-**title 規約**: `{related_page_title}` は対象ページの frontmatter `title` フィールドと **literal 一致** させる。独自言い換えは禁止 (index.md ↔ link text の drift 防止)。`index.md` 登録行の link text は同じ値だが、ステップ 6 の 2 種の措置が適用されている場合がある — セル区切りエスケープ（`|` → `\|`）と、リンク構文の中和（`](` の `]` → `&#93;`。同定述語が読む先頭リンクを title が詐称できないようにするため）。**literal 一致の基準は frontmatter `title` の生値**であり、index 側のこれらは表記上の措置なので転記してはならない。
+**title 規約**: `{related_page_title}` は対象ページの frontmatter `title` フィールドと **literal 一致** させる。独自言い換えは禁止。**literal 一致の基準は frontmatter `title` の生値**であり、index 側のセル区切りエスケープとリンク構文中和は転記しない。
 
 **path 計算規約**: `{related_page_path}` には **page-dir 相対** の path を substitute する。新規 page 格納位置 `.rite/wiki/pages/{domain}/{slug}.md` の page-dir = `.rite/wiki/pages/{domain}/` を起点として相対 path を計算する:
 
@@ -415,9 +426,9 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 | 同ドメイン内 | `./other-page.md` (`./` prefix 付き推奨。page-dir 相対の意図を視覚的に表現する) |
 | 別ドメイン | `../{domain}/other-page.md` |
 
-`{source_ref}` (template 側で `../../` prefix を hardcode、wiki-root 起点) とは起点が異なるため、`{related_page_path}` には template リテラル側で prefix を付けず、placeholder 値そのものに page-dir 相対 path を入れる。
+`{source_ref}`（template 側で `../../` prefix、wiki-root 起点）とは起点が異なる。`{related_page_path}` には template 側 prefix を付けず、page-dir 相対 path を入れる。
 
-**該当ページなし時の処理**: 確信ある関連ページが特定できない場合、`## 関連ページ` セクション全体を Edit ツールで以下に置き換える（空 placeholder のままだと Markdown リンク `[]()` が破綻するため）:
+**該当ページなし時の処理**: 確信ある関連ページが特定できない場合、`## 関連ページ` セクション全体を Edit で以下に置き換える:
 
 ```
 ## 関連ページ
@@ -435,7 +446,7 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 
 ### 5.0 LLM が実行すべき具体的手順 (worktree ベース)
 
-`separate_branch` では `{wiki_worktree_abs}/` worktree のツリー（ステップ 1.3 で取得した絶対パス）に対して、`same_branch` では dev ツリーに対して直接 Write/Edit する。絶対パスを使うことで、ingest がセッション worktree 内から起動された場合でも共有 root の wiki worktree に正しく書き込まれる（§9 / AC-5）。LLM は以下を順に実施するだけ:
+`separate_branch` では `{wiki_worktree_abs}/`（ステップ 1.3 の絶対パス）、`same_branch` では dev ツリーに直接 Write/Edit する。順に実施する:
 
 1. **Raw Source 本文の確保**: ステップ 2.3 末尾で取得した本文を作業メモリに展開
 2. **Raw Source の `ingested: true` 化** (全戦略共通 — create / update / skip いずれでも実施):
@@ -447,15 +458,17 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 
    `n_pages_created` を +1 する
 
-   > **複数 Raw Source からの作成**: page-template.md の `sources:` は単一スロット（`{source_type}`/`{source_ref}` 各 1 個）のみ。multi-cycle PR 等で複数の Raw Source を 1 ページに統合する場合は、Write 後に Edit で `- type: "{type}"` / `  ref: "raw/{type}/{filename}"` エントリを追加する。**追加・置換するすべての `ref` は Raw Source のファイルパス形式 (`raw/{type}/{filename}`)** であり、raw frontmatter の `source_ref` フィールド値（PR 識別子形式）ではない（ステップ 5.3 `{source_ref}` 行の dual-use 警告と同一契約）。
+   > **複数 Raw Source からの作成**: page-template.md の `sources:` は単一スロット（`{source_type}`/`{source_ref}` 各 1 個）のみ。複数 Raw Source を 1 ページに統合する場合は、Write 後に Edit で `- type: "{type}"` / `  ref: "raw/{type}/{filename}"` を追加する。**すべての `ref` はファイルパス形式 (`raw/{type}/{filename}`)** であり、raw の `source_ref`（PR 識別子）ではない。
 4. **既存 Wiki ページの更新** (ステップ 4 で更新決定): 対象ページを Read で読み、Edit で `## 詳細` 追記・`updated` 更新・`sources` 配列追記。`n_pages_updated` を +1 する。**`sources` に追記する各 `ref` は必ず Raw Source のファイルパス形式 `raw/{type}/{filename}`**（PR 識別子形式 `pr-NNNN` 禁止。ステップ 4.2 / 5.3 と同一契約）
-5. **スキップ決定の処理** (ステップ 4 で skip 決定): step 2 と同じ手順で `ingested: true` 化し、**さらに当該 raw frontmatter に `ingest_status: skipped` と `skip_reason: "{理由}"` を Edit で追記する**（skip 状態の Source of Truth は raw frontmatter。lint の `wiki-lint-skipped-refs.sh` がこれを走査して `unregistered_raw` を判定する。）。**検出器化候補**（ステップ 4 表の `detector_candidate=true` かつ既存ページなし）の場合は `skip_reason: "detector-candidate: {one-line-summary}"` を使い、同じ要約をステップ 9 の `{detector_candidate_lines}` に列挙する。ステップ 7 の log.md には人間向けの Skip エントリ (OKF bullet) も追記する。`n_skipped` を +1 する
-6. **index.md の更新**: **手順 3 / 4 を実施した Raw Source についてのみ**、ステップ 6 の指示に従い `wiki-index-update.sh` helper を bash で呼び出す（LLM は Edit しない）。**skip 決定（手順 5）の Raw Source では実行しない** — helper が必須とする page metadata（title / domain / slug / updated / confidence）が存在せず、raw 由来の値で代用すると実在しないパスを指す登録行が新規追加されて孤児検出のシグナルを汚すため
+5. **スキップ決定の処理** (ステップ 4 で skip 決定): step 2 と同じ手順で `ingested: true` 化し、**さらに当該 raw frontmatter に `ingest_status: skipped` と `skip_reason: "{理由}"` を Edit で追記する**（skip 状態の SoT は raw frontmatter）。**検出器化候補**（ステップ 4 表の `detector_candidate=true` かつ既存ページなし）は `skip_reason: "detector-candidate: {one-line-summary}"` を使い、同じ要約をステップ 9 の `{detector_candidate_lines}` に列挙する。ステップ 7 の log.md に人間向け Skip エントリ (OKF bullet) を追記する。`n_skipped` を +1 する
+6. **index.md の更新**: **手順 3 / 4 を実施した Raw Source についてのみ**、ステップ 6 に従い `wiki-index-update.sh` を bash で呼ぶ（LLM は Edit しない）。**skip 決定（手順 5）では実行しない**
+   rationale: references/rationale.md#skip-no-index-update
 7. **log.md への追記**: ステップ 7 の指示に従い Edit で append-only 追加する
 
 ### 5.0.c canonical commit message 契約
 
-ステップ 5.1 (separate_branch) と ステップ 5.2 (same_branch) の両 bash block で使用する commit message は以下を **唯一の真実源** とする。両 phase は独立した bash block (Bash tool 呼び出し間でシェル状態が継承されない) のため、両サイトで以下と literal 一致する実装を保持する。drift 検出は将来 /rite:lint が本 section と ステップ 5.1 / 5.2 を grep で比較する予定。
+ステップ 5.1 と ステップ 5.2 の commit message は以下を **唯一の真実源** とする。両サイトで以下と literal 一致させる。
+rationale: references/rationale.md#commit-msg-three-sites
 
 **canonical template**:
 
@@ -479,7 +492,8 @@ esac
 
 ### 5.1 separate_branch 戦略 (worktree ベース)
 
-ステップ 5.0 手順 1-7 を Write/Edit ツールで実施した後、以下の bash ブロックを実行して worktree 内の変更を commit する。**push はここでは行わない**（#1941 wiki push batch/defer: 複数 raw source を処理するループの中で raw source ごとに push すると、SSH host alias 環境で毎回 sandbox バイパスが必要になり同一 push の短時間重複実行も起きていた。ステップ 8.6 で全 raw source 処理後にまとめて 1 回だけ push する）。commit 処理は `wiki-worktree-commit.sh --commit-only` に委譲されており、LLM が bash 契約を書く必要はない:
+ステップ 5.0 手順 1-7 を Write/Edit した後、以下で worktree 内の変更を commit する。**push はここでは行わない**。commit は `wiki-worktree-commit.sh --commit-only` に委譲する:
+rationale: references/rationale.md#push-defer-1941
 
 ```bash
 # ステップ 5.2 と対称に set -euo pipefail を宣言する (strict mode)
@@ -545,7 +559,7 @@ fi
 
 ### 5.2 same_branch 戦略
 
-`same_branch` では Raw Source / ページ / index.md / log.md はすべて dev ブランチのワークツリーに存在する。ステップ 5.0 手順 1-7 を Write/Edit で実施した後、以下の bash ブロックで一括 commit する (ブランチ切り替え不要、worktree も不要):
+`same_branch` では Raw Source / ページ / index.md / log.md はすべて dev ブランチ上。ステップ 5.0 手順 1-7 の後、以下で一括 commit する（ブランチ切り替え・worktree 不要）:
 
 ```bash
 set -euo pipefail
@@ -634,23 +648,25 @@ fi
 | `{related_page_title}` / `{related_page_path}` | ステップ 4.3 で決定した値。**該当ページがない場合は `## 関連ページ` セクション全体を `- （関連ページなし）` の平文 1 行に Edit で書き換える** (空 placeholder のままにすると Markdown link `[]()` が破綻) |
 | `{source_description}` | Raw Source の `title` フィールド (空なら `source_ref` を使用)。`## ソース` セクションのリンク表示テキストに使われ、URL には `{source_ref}` が使われることで両者を分離する |
 
-**confidence フィールド**: page-template.md の `confidence: medium` はリテラル値で、placeholder 走査の誤置換を避けるため上表とは別管理。Write 後に Edit で ステップ 4 の判定値 (`high` / `medium` / `low`) に置換する。
+**confidence フィールド**: page-template.md の `confidence: medium` はリテラル。Write 後に Edit でステップ 4 の判定値 (`high` / `medium` / `low`) に置換する。
+rationale: references/rationale.md#confidence-literal
 
 ---
 
 ## ステップ 6: index.md の更新
 
-`.rite/wiki/index.md` の `## ページ一覧` 5 列テーブル（列順: ページ / ドメイン / サマリー / 更新日 / 確信度）への登録行の追加/更新・重複行の回収・`## 統計` 3 行の同期を、`{plugin_root}/hooks/scripts/wiki-index-update.sh` の 1 回呼び出しで行う。同定述語・セル区切りエスケープ規約・重複時の中止条項・統計最小形・統計節不在スキップの確定仕様は **helper のヘッダ docstring が Source of Truth** であり、挙動は `hooks/tests/wiki-index-update.test.sh` の fixture が固定する。本ステップは入力の substitute と結果 marker の読み取りのみを担い、index.md への書き換えは helper が atomic に実施する（LLM が Read/Edit で index.md を直接操作してはならない）。
+`.rite/wiki/index.md` の `## ページ一覧` 5 列テーブル（列順: ページ / ドメイン / サマリー / 更新日 / 確信度）への登録行の追加/更新・重複行の回収・`## 統計` 3 行の同期を、`{plugin_root}/hooks/scripts/wiki-index-update.sh` の 1 回呼び出しで行う。同定述語・セル区切りエスケープ・重複中止・統計最小形・統計節不在スキップの確定仕様は **helper のヘッダ docstring が Source of Truth**。挙動は `hooks/tests/wiki-index-update.test.sh` の fixture が固定する。本ステップは substitute と結果 marker の読み取りのみ。index.md への書き換えは helper が atomic に行う（LLM が Read/Edit で index.md を直接操作してはならない）。
 
 **入力契約**: 対象ページの frontmatter 値とファイルパスを substitute する。
 
-- `{title}` / `{description}` / `{updated}` / `{confidence}` は page frontmatter の値から **YAML の引用符を外して**渡す（`title: "…"` の実体は引用符の内側）。**値の加工はそれだけ** — セル区切りエスケープとリンク構文の中和は helper 内で一元適用するので呼び出し側では行わず、言い換えも禁止（ステップ 4.3 の title 規約が frontmatter `title` の生値との literal 一致を要求する）
+- `{title}` / `{description}` / `{updated}` / `{confidence}` は page frontmatter の値から **YAML の引用符を外して**渡す（`title: "…"` の実体は引用符の内側）。**値の加工はそれだけ** — セル区切りエスケープとリンク構文の中和は helper 内で一元適用するので呼び出し側では行わず、言い換えも禁止
 - `{description}` は frontmatter に `description` が無ければ**空のまま**渡す（helper が既存行のサマリー列を保持する）。非空ならステップ 4.1 で作成した番号なし Why 要約と literal に同じ値を渡し、index 用の別要約を生成しない
-- `{domain}` / `{slug}` は対象ページの**ファイルパス** `pages/{domain}/{slug}.md` から取る（新規経路はステップ 4.1 で決めた値、更新経路はステップ 5.0 手順 4 で Read した既存ファイルの domain ディレクトリ名とファイル名 stem）。`title` からの再導出はしない — ステップ 4.2 は title の書き換えを許容するため、再導出すると既存ファイル名と異なる slug が渡り、実在しないパスを指す登録行が新規追加される（旧行は旧値のまま残る）
+- `{domain}` / `{slug}` は対象ページの**ファイルパス** `pages/{domain}/{slug}.md` から取る（新規経路はステップ 4.1 で決めた値、更新経路はステップ 5.0 手順 4 で Read した既存ファイルの domain ディレクトリ名とファイル名 stem）。`title` からの再導出はしない
 
-**substitute する 6 値はすべて quoted heredoc で受ける**（frontmatter は LLM 生成テキストで引用符・バックスラッシュ・`$(...)` を含みうる。double-quote されたシェル語へ直接置換すると値の `"` でクォートが閉じ、後続テキストがコマンドとして実行される — [`skills/fix/SKILL.md`](../fix/SKILL.md) の同旨規約と同じ理由。quoted heredoc は**終端子行と一致しない限り**シェル解釈を抑制する）。
+**substitute する 6 値はすべて quoted heredoc で受ける**。
+rationale: references/rationale.md#index-quoted-heredoc
 
-**実行前ゲート（必須）**: substitute する 6 値のいずれかが**複数行**、またはいずれかの**行が終端子 `WIU_EOF` と完全一致**する場合、**この bash を実行してはならない**。heredoc がその行で早期終了し、値の後続がシェルのコマンドとして実行される（quoted heredoc に残る唯一の脱出口で、6 つの heredoc が同じ終端子を共有するため後続の `wiu_*=$(cat <<'WIU_EOF'` が再度開いて構文が通り、helper 呼び出し行も正常に走るため **rc=0 + 3 marker 揃いの成功に見える**）。値は bash に渡る前の substitute 時点でしか検査できない（block 内のシェルは parse 済みで手遅れ）ため、本ゲートは LLM 側の責務である。該当した場合は当該ページの index 更新をスキップし、ステップ 9 の未完了事項に載せる（marker 表の exit 1 行と同じ扱い）。1 行値であることは helper 側の C0 検査でも担保されるが、それは**この bash を実行できた場合に限る**:
+**実行前ゲート（必須）**: substitute する 6 値のいずれかが**複数行**、またはいずれかの**行が終端子 `WIU_EOF` と完全一致**する場合、**この bash を実行してはならない**。該当したら当該ページの index 更新をスキップし、ステップ 9 の未完了事項に載せる（marker 表の exit 1 行と同じ扱い）:
 
 ```bash
 branch_strategy="{branch_strategy}"
@@ -691,7 +707,8 @@ bash "{plugin_root}/hooks/scripts/wiki-index-update.sh" \
   --updated "$wiu_updated" --confidence "$wiu_confidence"
 ```
 
-**結果 marker**: helper は 1 回の呼び出しで `row_action=` / `dedup_removed=` / `stats_sync=` の 3 marker を**必ず同時に**出力する。**`row_action` 軸と `stats_sync` 軸は独立で、両軸の該当行をそれぞれ適用する**（ステップ 9 の `{wiki_push_line}` 表のような first-match ではない — 片方で打ち切ると同時に出ている他方の WARNING 表示指示に到達しない）。`dedup_removed=` は分岐を持たず、1 以上なら回収件数をステップ 9 の未完了事項へ載せる状態値である:
+**結果 marker**: helper は 1 回の呼び出しで `row_action=` / `dedup_removed=` / `stats_sync=` の 3 marker を**必ず同時に**出力する。**`row_action` 軸と `stats_sync` 軸は独立で、両軸の該当行をそれぞれ適用する**。`dedup_removed=` は分岐を持たず、1 以上なら回収件数をステップ 9 の未完了事項へ載せる:
+rationale: references/rationale.md#index-axes-independent
 
 | 結果 | アクション |
 |---|---|
@@ -705,15 +722,15 @@ bash "{plugin_root}/hooks/scripts/wiki-index-update.sh" \
 | exit 1（ERROR 出力） | 環境・構造要因（index.md 不在・想定外構造）で再実行では解消しない。**部分適用は無い**（同上）。ERROR をそのまま表示して当該 Raw Source の index 更新をスキップし、ステップ 7 へ続行する。新規ページの未登録はステップ 8 の Lint が orphans として検出するが、**既存ページの更新失敗は登録行が旧値のまま残り Lint のどの観点にも載らない** — 表示した ERROR が唯一のシグナルなのでステップ 9 の未完了事項（`{ingest_outstanding_line}`）に必ず含める |
 | 上記以外の非ゼロ exit（helper パスを解決できない 127、signal 中断の 130 / 143 / 129 等。marker は 1 行も出力されない） | helper の出力（あれば）と exit code をそのまま表示し、当該 Raw Source の index 更新をスキップしてステップ 7 へ続行する。**部分適用は無い**（同上）。exit 1 と同様、表示した内容をステップ 9 の未完了事項に含める |
 
-**全 Raw Source が skip 決定だったサイクルでは本ステップが 1 度も走らない**（ステップ 5.0 手順 6 の条件）。その場合 helper の Procedure 3a（重複登録行の回収）も走らないため、既存の重複は次に page 作成/更新を伴うサイクルまで残る。docstring が 3a を「毎回実行」と規定しているのは**呼び出しごと**の意味であり、呼び出し自体の有無は本ステップの条件が決める。
-
-書き込みはステップ 5 と同じブランチコンテキスト (separate_branch なら worktree、same_branch なら dev ツリー) で行われる。パス解決の cwd 依存性は分岐で異なる — `separate_branch` かつ `{wiki_worktree_abs}` が非空なら絶対パス基点で cwd に依存しないが、`same_branch` および `{wiki_worktree_abs}` が空のときの縮退経路は相対パスなので、ステップ 3 の `wiki_index_path` 解決と同じく **dev ツリー root を cwd とする前提**で動く（前提が崩れると helper は index.md 不在の exit 1 で fail-loud に止まる）。
+**全 Raw Source が skip 決定だったサイクルでは本ステップが 1 度も走らない**（ステップ 5.0 手順 6 の条件）。書き込みはステップ 5 と同じブランチコンテキスト。`same_branch` および `{wiki_worktree_abs}` 空の縮退は **dev ツリー root を cwd とする前提**。
+rationale: references/rationale.md#skip-cycle-no-3a
 
 ---
 
 ## ステップ 7: log.md の追記
 
-`.rite/wiki/log.md` に OKF v0.1 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新）で **append-only** に変更履歴を追記する。本ログは人間向けの変更履歴であり、skip 等の機械可読状態は raw frontmatter の `ingest_status`（ステップ 5）が Source of Truth で、本ログには保持しない。
+`.rite/wiki/log.md` に OKF v0.1 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新）で **append-only** に変更履歴を追記する。skip 等の機械可読状態は raw frontmatter の `ingest_status`（ステップ 5）が SoT。
+rationale: references/rationale.md#log-human-only
 
 **追記ルール**:
 
@@ -724,8 +741,6 @@ bash "{plugin_root}/hooks/scripts/wiki-index-update.sh" \
   - **スキップ**: `* **Skip**: [{filename}](raw/{type}/{filename}) — {skip_reason}`（`{filename}` は当該 Raw Source のファイル名、`{type}` は Raw Source type）
 - 既存の日付見出し・bullet（過去エントリ）は改変しない
 
-log.md は append-only。既存エントリを変更してはいけない。
-
 ---
 
 ## ステップ 8: 自動 Lint
@@ -734,7 +749,8 @@ Ingest 直後、Wiki 全体の品質チェックを `/rite:wiki-lint --auto` と
 
 ### 8.1 auto_lint 設定の確認
 
-`rite-config.yml` の `wiki.auto_lint` を読み取る。**ステップ 1.1 とは別の inline lenient パーサ**を使う (1.1 は `lib/wiki-config.sh` の `parse_wiki_scalar` へ委譲済み。本ステップの awk は位置パラメータを参照しない bare regex 形のため Skill loader の展開を受けず、委譲しなくても壊れない — 検出は `hooks/scripts/dollar-zero-check.sh`)。**1.1 の旧形 (awk で行全体を参照する形) をここへ持ち込んではならない**:
+`rite-config.yml` の `wiki.auto_lint` を読み取る。**ステップ 1.1 とは別の inline lenient パーサ**を使う。**1.1 の旧形 (awk で行全体を参照する形) をここへ持ち込んではならない**:
+rationale: references/rationale.md#auto-lint-inline-parser
 
 ```bash
 wiki_section=$(sed -n '/^wiki:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || wiki_section=""
@@ -747,23 +763,22 @@ esac
 echo "auto_lint=$auto_lint"
 ```
 
-**`auto_lint=false` の場合**: ステップ 8.2-8.5 を skip する。**ステップ 8.6 (push の集約) はスキップしない** — ステップ 5.1 で `--commit-only` 積んだ raw source の commit を push するのは auto_lint の有無に関わらず必須のため、ステップ 8.6 を実行してからステップ 9 へ進む。Lint カウンタ 6 種はステップ 2.1 で 0 初期化済みのため placeholder 残留は発生しない。ステップ 9 完了レポートの「Wiki 品質警告」行は「スキップ (auto_lint disabled)」、「未登録 raw」行は `0` 件として表示する。
+**`auto_lint=false` の場合**: ステップ 8.2-8.5 を skip する。**ステップ 8.6 (push の集約) はスキップしない**。ステップ 8.6 を実行してからステップ 9 へ進む。Lint カウンタ 6 種はステップ 2.1 で 0 初期化済み。ステップ 9 の「Wiki 品質警告」行は「スキップ (auto_lint disabled)」、「未登録 raw」行は `0` 件。
 
 ### 8.2 Lint エンジンの呼び出し
 
 LLM は `skill: "rite:wiki-lint", args: "--auto"` 形式で `/rite:wiki-lint` を `--auto` モードで呼び出す。`--auto` モードの契約:
 
-- `Lint: contradictions={n}, stale={n}, orphans={n}, missing_concept={n}, unregistered_raw={n}, broken_refs={n}` 形式の 1 行 + `<!-- skill return signal: caller must continue next step -->` + `<!-- [lint:returned-to-caller:auto] -->` HTML コメント sentinel の 3 行を出力する (0 件でも必ず出力)。本 phase の parser (ステップ 8.3) は 1 行目の `^Lint: contradictions=` regex のみに依存するため、2 行目以降の disambiguator marker 追加 は互換性に影響しない
+- `Lint: contradictions={n}, stale={n}, orphans={n}, missing_concept={n}, unregistered_raw={n}, broken_refs={n}` 形式の 1 行 + `<!-- skill return signal: caller must continue next step -->` + `<!-- [lint:returned-to-caller:auto] -->` HTML コメント sentinel の 3 行を出力する (0 件でも必ず出力)
 - log.md への追記は lint.md 側がブランチ状態を判定し自律実行する
 - 常に exit 0 (非ブロッキング)
+rationale: references/rationale.md#lint-parser-first-line
 
-呼び出し時の CWD は常に dev ブランチ。lint.md ステップ 8.2 は `separate_branch` 戦略時に worktree 内で log.md 追記 → `wiki-worktree-commit.sh` 呼び出しを行う。
-
-Skill return 後、ステップ 8.3 (パース) → 8.4 (完了レポート統合) → 8.5 (n_warnings 加算) → ステップ 9 を順に実行する。
+呼び出し時の CWD は常に dev ブランチ。lint ステップ 8.2 は `separate_branch` 時に worktree 内で log.md 追記 → `wiki-worktree-commit.sh` を呼ぶ。Skill return 後、8.3 → 8.4 → 8.5 → ステップ 9 の順。
 
 ### 8.3 Lint 実行結果の取得とパース
 
-LLM は Skill 応答テキスト (= `lint.md` ステップ 9.2 の最終 stdout 出力) を会話コンテキストからパースする。Skill ツール呼び出しはシェル exit code を返さないため、**Skill 応答テキストの内容**で成否を判定する。以降の「stdout」はすべて Skill 応答テキストを指し、lint.md 内部の中間出力 (`pages_list=` 等) ではない。
+LLM は Skill 応答テキスト (= `lint.md` ステップ 9.2 の最終 stdout) を会話コンテキストからパースする。**Skill 応答テキストの内容**で成否を判定する。
 
 判定優先順位 (step 番号は **項目の論理的役割の名称** であり実行順とは異なる):
 
@@ -784,7 +799,7 @@ LLM は Skill 応答テキスト (= `lint.md` ステップ 9.2 の最終 stdout 
   └─ n_warnings += 1, n_lint_anomaly += 1, 6 変数を 0 fallback
 ```
 
-通常時は step 2 のみで完結する (lint.md ステップ 9.2 が必ず 6 フィールド 1 行を emit する契約のため)。
+通常時は step 2 のみで完結する。
 
 1. **ERROR 行の検出**: Skill 応答テキストに `ERROR:` で始まる任意行 (例: `ERROR: 未知の branch_strategy 値を検出しました`) が含まれるかを検査する。検出時:
 
@@ -813,9 +828,7 @@ LLM は Skill 応答テキスト (= `lint.md` ステップ 9.2 の最終 stdout 
    | `n_unregistered_raw` | group 5 |
    | `n_broken_refs` | group 6 |
 
-   全行 scan + 最初の match 採用とすることで、lint.md 側で preamble の echo / debug 出力が混入しても決定論的に `Lint:` 行を拾う (`set -x` debug / observability echo / informational banner 等の追加変更に対する resilience)。
-
-3. **stdout が空の場合**: **Lint 実行失敗として扱う** (lint.md の契約では regex-matchable な `Lint:` data 行を 0 件でも必ず 1 行出力するため、stdout 空は bash syntax error / 未捕捉 fatal error / SIGPIPE / OOM 等の異常経路。lint.md の総出力は disambiguator marker + sentinel を含めて 3 行だが、本 phase の parser が依存するのは regex `^Lint:` でマッチする 1 行目の data 行のみ):
+3. **stdout が空の場合**: **Lint 実行失敗として扱う**:
 
    - `n_warnings += 1` + `n_lint_anomaly += 1`
    - 6 変数を `0` に fallback
@@ -831,7 +844,7 @@ LLM は Skill 応答テキスト (= `lint.md` ステップ 9.2 の最終 stdout 
 
    - ステップ 8.4 では「Lint 結果: 実行失敗（stdout が空のため詳細取得不可）」と表示
 
-4. **stdout のどの行も regex にマッチしない場合**: Lint 側のフォーマット変更を検出した警告として扱う (silent に 0 件と誤認することを防ぐ):
+4. **stdout のどの行も regex にマッチしない場合**: フォーマット変更の警告として扱う:
 
    - `n_warnings += 1` + `n_lint_anomaly += 1` (format drift を Lint 異常経路として計上)
    - 6 変数を `0` に fallback
@@ -858,23 +871,21 @@ ERROR / stdout 空 / regex mismatch 経路では「Lint 結果: 実行失敗（{
 
 ### 8.5 `n_warnings` カウンタへの加算
 
-本ステップは **ステップ 8.3 step 2 (6 フィールド regex match 成功) 経路でのみ実行する**。step 1/3/4 経路ではステップ 8.3 内で既に `n_warnings += 1` と `n_lint_anomaly += 1` が加算済みのため skip する。
-
-ステップ 2.1 で初期化した `n_warnings` に、Lint の検出件数合計を加算する (step 2 経路のみ):
+**ステップ 8.3 step 2 (6 フィールド regex match 成功) 経路でのみ実行する**。step 1/3/4 は 8.3 内で加算済みのため skip。step 2 経路のみ `n_warnings` に Lint 検出件数合計を加算する:
 
 ```
 n_warnings += n_contradictions + n_stale + n_orphans + n_missing_concept + n_broken_refs
 ```
 
-**`n_unregistered_raw` は加算しない**: skip 済み raw (`ingest_status: skipped`) は意図的に経験則化しなかった件数 (skip 理由は raw frontmatter の `skip_reason` に記録済み) であり、警告として数えると skip 運用が膨らむほど警告カウンタが無意味に肥大する。informational 指標として完了レポートの内訳にのみ表示する。
+**`n_unregistered_raw` は加算しない**。informational 指標として完了レポートの内訳にのみ表示する。
+rationale: references/rationale.md#n-unregistered-not-warning
 
 **詳細な修正対応**: 検出結果の詳細確認は、Ingest 完了後に `/rite:wiki-lint`（`--auto` なし）で再実行して取得する。
 
 ### 8.6 Wiki push の集約（#1941 wiki push batch/defer）
 
-**`auto_lint` の値に関わらず必ず実行する**（ステップ 8.1 参照）。ステップ 5.1 (separate_branch) は raw source ごとに `--commit-only` で commit のみを行い、push を意図的に遅延させてきた。ステップ 8.2 の自動 Lint (`--auto` モード) も同様に `--commit-only` で log.md 追記を積む（[skills/wiki-lint/SKILL.md](../wiki-lint/SKILL.md) ステップ 8.3 参照）。ここで、蓄積されたローカル commit（0 件のこともある）をまとめて 1 回だけ push する（AC-1: 1 回の ingest フローで `git push origin {wiki_branch}` は最大 1 回）。
-
-`same_branch` では worktree を使わず push もこのフローの管轄外（PR ブランチの通常 push に含まれる）のため本ステップは no-op:
+**`auto_lint` の値に関わらず必ず実行する**（ステップ 8.1 参照）。蓄積されたローカル commit（0 件のこともある）をまとめて 1 回だけ push する。`same_branch` では本ステップは no-op:
+rationale: references/rationale.md#push-defer-1941
 
 ```bash
 branch_strategy="{branch_strategy}"
@@ -912,7 +923,7 @@ else
 fi
 ```
 
-`push_out` に含まれる `push=no-op` はそもそも push すべき commit が無かった（今回の全 raw source が skip 判定だった等）ことを示し、失敗ではない (`WIKI_INGEST_PUSH=ok` 扱いで問題ない)。`[CONTEXT] WIKI_INGEST_PUSH=` marker はステップ 9.0 完了レポートの push 状態表示、および `/rite:cleanup` ステップ 9 の push 失敗判定（stdout 中の `push=failed` 部分文字列を検出）に使う。
+`push_out` の `push=no-op` は失敗ではない（`WIKI_INGEST_PUSH=ok`）。`[CONTEXT] WIKI_INGEST_PUSH=` はステップ 9.0 の push 状態表示と `/rite:cleanup` ステップ 9 の push 失敗判定（stdout 中の `push=failed`）に使う。
 
 ---
 
@@ -920,7 +931,8 @@ fi
 
 ### 9.0 Ingest セッション lock の解放
 
-ステップ 5〜8 の Write/Edit/commit/lint がすべて完了したので、ステップ 1.4 で取得した ingest セッション lock を解放する（保持し続けると他セッションの ingest が `concurrent_ingest` で skip され続ける）。万一解放を逃しても次回 ingest が stale 判定で回収するため fail-safe だが、正常系では明示的に解放する:
+ステップ 1.4 で取得した ingest セッション lock を解放する:
+rationale: references/rationale.md#lock-release-failsafe
 
 ```bash
 bash "{plugin_root}/hooks/scripts/wiki-ingest-lock.sh" release
@@ -953,14 +965,14 @@ Wiki Ingest が完了しました。
 - 詳細な品質チェックは /rite:wiki-lint で確認してください（ステップ 8 で自動実行済み）
 ```
 
-`{detector_candidate_lines}` の展開規則（ステップ 4 の検出器化候補 routing。人間が Issue 化を判断する材料）:
+`{detector_candidate_lines}` の展開規則:
 
 | 条件 | 展開 |
 |------|------|
 | 1 件以上 | 各候補を `- [検出器化候補] {one-line-summary}（raw/{type}/{filename}）` の 1 行で列挙（1 経験則 1 行。`skip_reason: "detector-candidate: ..."` の要約と同一文にする） |
 | 0 件 | `- なし` |
 
-`{wiki_warnings_line}` の展開ルール (lint.md ステップ 9.1 と設計対称):
+`{wiki_warnings_line}` の展開ルール:
 
 | `auto_lint` | 「Wiki 品質警告:」行の展開 |
 |-------------|-----------------------|
@@ -969,9 +981,9 @@ Wiki Ingest が完了しました。
 
 「未登録 raw」行は `auto_lint=false` の場合も `0` 件として展開する (ステップ 2.1 で 0 初期化済みの値)。
 
-**等式**: `n_warnings = n_contradictions + n_stale + n_orphans + n_missing_concept + n_broken_refs + n_lint_anomaly`。step 2 成功時は `n_lint_anomaly=0` のため 5 カテゴリ合計が `n_warnings` と一致。step 1/3/4 anomaly 経路では 5 カテゴリは 0 fallback だが `n_lint_anomaly >= 1` のため `n_warnings >= 1` となる。
+**等式**: `n_warnings = n_contradictions + n_stale + n_orphans + n_missing_concept + n_broken_refs + n_lint_anomaly`。step 2 成功時は `n_lint_anomaly=0`。step 1/3/4 では 5 カテゴリは 0 fallback だが `n_lint_anomaly >= 1` のため `n_warnings >= 1`。
 
-`{wiki_push_line}` の展開ルール (ステップ 8.6 の `[CONTEXT] WIKI_INGEST_PUSH=` marker を上から評価し最初の一致を採用。#1941 AC-2: 未 push の wiki commit があれば回復コマンドを明示する):
+`{wiki_push_line}` の展開ルール (ステップ 8.6 の `[CONTEXT] WIKI_INGEST_PUSH=` を上から評価し最初の一致を採用):
 
 | `WIKI_INGEST_PUSH=` | 展開 |
 |---|---|
@@ -980,7 +992,8 @@ Wiki Ingest が完了しました。
 | `skipped; reason=same_branch` | `Wiki push: 対象外 (same_branch 戦略。通常の PR push に含まれる)` |
 | marker なし（ステップ 8.6 未到達などの想定外経路） | `⚠️ Wiki push: 実行結果が確認できませんでした。git -C {wiki_worktree_abs} status で確認してください` |
 
-`{ingest_outstanding_line}`（非ブロッキング失敗の集約欄。Wiki push については `{wiki_push_line}` と同じ `WIKI_INGEST_PUSH=` marker を再評価するだけで新しい記録先は持たない — local commit 自体が durable な記録であり、次回 ingest のステップ 8.6 が自動で flush を試みる）。**ステップ 6 の index 更新と Wiki push の 2 系統を評価し、該当するものをすべて列挙する**（index 更新の失敗・部分適用は Lint のどの観点にも載らず、ステップ 6 で表示した ERROR / WARNING が唯一のシグナルであるため、その場の表示に加えて本欄へ集約する）:
+`{ingest_outstanding_line}`（非ブロッキング失敗の集約欄。Wiki push については `{wiki_push_line}` と同じ `WIKI_INGEST_PUSH=` marker を再評価するだけで新しい記録先は持たない）。**ステップ 6 の index 更新と Wiki push の 2 系統を評価し、該当するものをすべて列挙する**:
+rationale: references/rationale.md#outstanding-no-new-store
 
 | 系統 | 条件 | 展開 |
 |---|---|---|
@@ -1000,9 +1013,8 @@ Wiki Ingest が完了しました。
 <!-- [ingest:returned-to-caller] -->
 ```
 
-sentinel は grep 可能 (`grep -F '[ingest:returned-to-caller]'`) で rendered view では不可視。bare bracket `[ingest:returned-to-caller]` は LLM turn-boundary heuristic 誤発火のため禁止、HTML コメント形式のみ許容する。
-
-> **Why `returned-to-caller` (not `completed`)**: 旧 `ingest:completed` 形式は literal `completed` が LLM の turn-boundary heuristic と衝突し、caller skill (cleanup / open 等) の次 step を skip して turn が暗黙終了する事象が複数回再発した。`returned-to-caller` は「caller skill に return した = caller の次 step に進む」というネスト構造を semantic に内包し、terminal vocabulary を構造的に排除する。
+sentinel は grep 可能 (`grep -F '[ingest:returned-to-caller]'`) で rendered view では不可視。bare bracket `[ingest:returned-to-caller]` は禁止、HTML コメント形式のみ許容する。
+rationale: references/rationale.md#returned-to-caller
 
 ---
 
