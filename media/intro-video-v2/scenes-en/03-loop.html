@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1280, initial-scale=1">
+  <title>rite — M3 autonomous loop</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 1280px; height: 720px; margin: 0; overflow: hidden; }
+    body {
+      color: #eef4fa; background: #080b10;
+      font-family: Inter, "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif;
+      letter-spacing: .02em;
+    }
+    .ambient { position: absolute; inset: 0; background: radial-gradient(circle at 30% 44%, rgba(51,178,157,.11), transparent 36%), radial-gradient(circle at 88% 86%, rgba(95,90,220,.08), transparent 30%); }
+    header { position: absolute; left: 68px; right: 68px; top: 50px; display: flex; justify-content: space-between; align-items: baseline; animation: enter .7s ease-out 0s both; }
+    .brand { color: #7ee7d0; font: 650 16px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .18em; }
+    .caption { color: #657184; font: 500 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .13em; }
+    h1 {
+      position: absolute; left: 68px; top: 106px; margin: 0;
+      font-size: 38px; font-weight: 650; line-height: 1.3; letter-spacing: -.035em;
+      animation: enter .8s cubic-bezier(.16,1,.3,1) .15s both;
+    }
+    h1 span { color: #7ee7d0; }
+
+    /* 左: 実コマンドと進行ログ */
+    .term {
+      position: absolute; left: 68px; top: 208px; width: 626px; height: 384px;
+      border-radius: 16px; border: 1px solid rgba(195,211,228,.16);
+      background: linear-gradient(160deg, rgba(16,21,29,.99), rgba(9,12,17,.99));
+      box-shadow: 0 26px 66px rgba(0,0,0,.45);
+      animation: enter .8s cubic-bezier(.2,.8,.2,1) .85s both;
+      font: 500 19px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .term-bar { display: flex; align-items: center; gap: 8px; padding: 16px 20px 13px; border-bottom: 1px solid rgba(195,211,228,.09); }
+    .term-bar i { width: 11px; height: 11px; border-radius: 50%; background: rgba(160,176,192,.25); }
+    .term-bar b { margin-left: auto; color: #647083; font-size: 12px; font-weight: 500; letter-spacing: .12em; }
+    .term-body { padding: 24px 26px; display: flex; flex-direction: column; gap: 17px; }
+    .tl .p { color: #e7b452; }
+    .tl.cmd { color: #eef4fa; animation: tlIn .45s ease-out 1.3s both; }
+    .tl.open { color: #a7b5c5; animation: tlIn .45s ease-out 2.2s both; }
+    .tl.iter { color: #a7b5c5; animation: tlIn .45s ease-out 3.4s both; }
+    .tl.sentinel {
+      align-self: flex-start; padding: 9px 15px; border-left: 2px solid #69d49a;
+      background: rgba(105,212,154,.06); color: #76dda5; font-size: 18px;
+      animation: tlIn .5s ease-out 5.6s both;
+    }
+    .tl.halt {
+      align-self: flex-start; padding: 9px 15px; border-left: 2px solid #e7b452;
+      background: rgba(231,180,82,.06); color: #eac272; font-size: 18px;
+      animation: tlIn .5s ease-out 7.5s both;
+    }
+
+    /* 右上: レビュー ⇄ 修正 の局所ループ */
+    .loopfig { position: absolute; left: 754px; top: 214px; width: 396px; height: 232px; }
+    .loopfig svg { position: absolute; inset: 0; }
+    .loopfig path { fill: none; stroke-width: 2; stroke-linecap: round; }
+    .loopfig .lp { stroke: rgba(126,231,208,.34); stroke-dasharray: 7 9; animation: enter .8s ease-out 2.9s both; }
+    .loopfig .flow { stroke: #6fdbc5; stroke-width: 2.5; stroke-dasharray: 115 570; filter: drop-shadow(0 0 7px rgba(111,219,197,.55)); animation: flow 10s linear both; }
+    .lnode {
+      position: absolute; width: 176px; height: 84px; padding: 16px 18px; border-radius: 15px;
+      border: 1px solid rgba(195,211,228,.14);
+      background: linear-gradient(145deg, rgba(25,31,41,.98), rgba(14,18,25,.98));
+      box-shadow: 0 16px 40px rgba(0,0,0,.3); opacity: .54;
+    }
+    .lnode::before { content: attr(data-step); display: block; margin-bottom: 10px; color: #667487; font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; }
+    .lnode strong { display: block; font-size: 20px; font-weight: 620; }
+    /* 入り → ハイライト → 点灯維持を 1 本の keyframes で書く。複数アニメーションに分けると
+       後勝ち合成で末尾の both が delay 前から 0% を backwards fill し、入りが描画されない */
+    .lnode.review { left: 0; top: 0; animation: reviewNode 10s cubic-bezier(.2,.8,.2,1) both; }
+    .lnode.fix { left: 0; top: 148px; animation: fixNode 10s cubic-bezier(.2,.8,.2,1) both; }
+
+    /* 右下: draft のまま停止する PR */
+    .pr {
+      position: absolute; left: 754px; top: 470px; width: 396px;
+      padding: 20px 24px 18px; border-radius: 15px;
+      border: 1px solid rgba(231,180,82,.34); border-left: 4px solid #e7b452;
+      background: linear-gradient(145deg, rgba(32,28,20,.97), rgba(14,15,20,.98));
+      box-shadow: 0 22px 56px rgba(0,0,0,.45);
+      animation: prIn .7s cubic-bezier(.16,1,.3,1) 6.6s both;
+    }
+    .pr-head { display: flex; align-items: center; gap: 11px; margin-bottom: 13px; }
+    .pr-chip { padding: 5px 11px; border: 1px solid rgba(231,180,82,.42); border-radius: 999px; color: #eac272; font: 650 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; }
+    .pr-num { color: #8d99aa; font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
+    .pr-title { font-size: 20px; font-weight: 620; line-height: 1.45; letter-spacing: -.01em; }
+
+    .result {
+      position: absolute; left: 50%; bottom: 46px; display: flex; align-items: center; gap: 13px;
+      color: #c8d3df; font-size: 16px; letter-spacing: .08em;
+      animation: resultIn .75s cubic-bezier(.16,1,.3,1) 8.4s both;
+    }
+    .result::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #e7b452; box-shadow: 0 0 16px #e7b452; }
+
+    @keyframes enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes tlIn { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes reviewNode {
+      0%, 29% { opacity: 0; transform: translateY(13px) scale(.97); border-color: rgba(195,211,228,.14); }
+      35% { opacity: .54; transform: translateY(0) scale(1); border-color: rgba(195,211,228,.14); }
+      40% { opacity: 1; transform: scale(1.03); border-color: rgba(126,231,208,.7); box-shadow: 0 18px 48px rgba(0,0,0,.4), 0 0 26px rgba(91,211,187,.12); }
+      48% { opacity: 1; transform: scale(1.005); border-color: rgba(126,231,208,.42); }
+      56%, 100% { opacity: 1; transform: scale(1); border-color: rgba(195,211,228,.14); }
+    }
+    @keyframes fixNode {
+      0%, 31% { opacity: 0; transform: translateY(13px) scale(.97); border-color: rgba(195,211,228,.14); }
+      37% { opacity: .54; transform: translateY(0) scale(1); border-color: rgba(195,211,228,.14); }
+      47% { opacity: 1; transform: scale(1.03); border-color: rgba(126,231,208,.7); box-shadow: 0 18px 48px rgba(0,0,0,.4), 0 0 26px rgba(91,211,187,.12); }
+      55% { opacity: 1; transform: scale(1.005); border-color: rgba(126,231,208,.42); }
+      63%, 100% { opacity: 1; transform: scale(1); border-color: rgba(195,211,228,.14); }
+    }
+    @keyframes flow {
+      0%, 32% { stroke-dashoffset: 0; opacity: 0; }
+      35% { opacity: 1; }
+      60% { stroke-dashoffset: -1370; opacity: 1; }
+      64%, 100% { stroke-dashoffset: -1370; opacity: 0; }
+    }
+    @keyframes prIn { from { opacity: 0; transform: translateY(20px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    @keyframes resultIn { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  </style>
+</head>
+<body>
+  <div class="ambient"></div>
+  <header><div class="brand">RITE / M3</div><div class="caption">AUTONOMOUS LOOP · DRAFT BY DEFAULT</div></header>
+  <h1>Runs on its own, <span>waits at draft.</span></h1>
+
+  <main class="term">
+    <div class="term-bar"><i></i><i></i><i></i><b>RITE / BATCH</b></div>
+    <div class="term-body">
+      <div class="tl cmd"><span class="p">$</span> /rite:batch-run 2258</div>
+      <div class="tl open">▸ open&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;branch / draft PR created</div>
+      <div class="tl iter">▸ iterate&nbsp;&nbsp;review ⇄ fix …</div>
+      <div class="tl sentinel">[review:mergeable]</div>
+      <div class="tl halt">stops at draft — no merge</div>
+    </div>
+  </main>
+
+  <section class="loopfig">
+    <svg viewBox="0 0 396 232" aria-hidden="true">
+      <defs>
+        <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0 0 L8 4 L0 8 Z" fill="#6fdbc5" stroke="none" />
+        </marker>
+      </defs>
+      <path class="lp" d="M88 84 V142" marker-end="url(#arrow)" />
+      <path class="lp" d="M176 190 C264 190 264 42 182 42" marker-end="url(#arrow)" />
+      <path class="flow" d="M88 84 V142" />
+      <path class="flow" d="M176 190 C264 190 264 42 182 42" />
+    </svg>
+    <div class="lnode review" data-step="VERIFY"><strong>Review</strong></div>
+    <div class="lnode fix" data-step="REFINE"><strong>Fix</strong></div>
+  </section>
+
+  <section class="pr">
+    <div class="pr-head"><span class="pr-chip">DRAFT</span><span class="pr-num">PULL REQUEST</span></div>
+    <div class="pr-title">Waiting for your review</div>
+  </section>
+
+  <div class="result">No merge by default. It stops where it should.</div>
+  <script>window.SCENE = { duration_ms: 10000 };</script>
+</body>
+</html>

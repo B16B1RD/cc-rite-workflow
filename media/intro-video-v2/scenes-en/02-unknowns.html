@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1280, initial-scale=1">
+  <title>rite — M2 unknowns</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 1280px; height: 720px; margin: 0; overflow: hidden; }
+    body {
+      color: #eef4fa; background: #080b10;
+      font-family: Inter, "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif;
+      letter-spacing: .02em;
+    }
+    .ambient { position: absolute; inset: 0; background: radial-gradient(circle at 22% 40%, rgba(51,178,157,.11), transparent 34%), radial-gradient(circle at 88% 82%, rgba(95,90,220,.08), transparent 30%); }
+    header { position: absolute; left: 68px; right: 68px; top: 50px; display: flex; justify-content: space-between; align-items: baseline; animation: enter .7s ease-out 0s both; }
+    .brand { color: #7ee7d0; font: 650 16px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .18em; }
+    .caption { color: #657184; font: 500 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .13em; }
+
+    h1 {
+      position: absolute; left: 68px; top: 138px; margin: 0; width: 430px;
+      font-size: 40px; font-weight: 650; line-height: 1.32; letter-spacing: -.035em;
+      animation: enter .8s cubic-bezier(.16,1,.3,1) .15s both;
+    }
+    h1 span { color: #7ee7d0; }
+
+    .cmd {
+      position: absolute; left: 68px; top: 288px;
+      display: flex; align-items: center; gap: 12px;
+      padding: 13px 20px; border: 1px solid rgba(195,211,228,.16); border-radius: 11px;
+      background: rgba(14,19,26,.94);
+      font: 500 21px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #eef4fa;
+      animation: enter .6s cubic-bezier(.16,1,.3,1) .9s both;
+    }
+    .cmd .prompt { color: #e7b452; }
+
+    .hbadge {
+      position: absolute; left: 68px; top: 368px;
+      display: flex; align-items: center; gap: 10px;
+      color: #f0b86c; font: 650 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .11em;
+      animation: enter .6s ease-out 1.5s both;
+    }
+
+    .matrix { position: absolute; left: 556px; top: 178px; width: 656px; }
+    .axis-col {
+      display: grid; grid-template-columns: 96px 1fr 1fr; gap: 12px;
+      margin-bottom: 11px;
+      color: #667487; font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .14em;
+      animation: enter .6s ease-out 2.0s both;
+    }
+    .axis-col span { text-align: center; }
+    .row { display: grid; grid-template-columns: 96px 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .axis-row {
+      display: flex; align-items: center; justify-content: flex-end;
+      color: #667487; font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .14em;
+      animation: enter .6s ease-out 2.0s both;
+    }
+    .cell {
+      height: 148px; padding: 18px 19px; border-radius: 14px;
+      border: 1px solid rgba(195,211,228,.13);
+      background: linear-gradient(145deg, rgba(25,31,41,.96), rgba(14,18,25,.97));
+      display: flex; align-items: center;
+      font-size: 18px; font-weight: 520; line-height: 1.55; letter-spacing: -.005em; color: #c8d3df;
+    }
+    .cell.c1 { animation: cellIn .6s cubic-bezier(.16,1,.3,1) 2.6s both; }
+    .cell.c2 { animation: cellIn .6s cubic-bezier(.16,1,.3,1) 3.5s both; }
+    .cell.c3 { animation: cellIn .6s cubic-bezier(.16,1,.3,1) 4.4s both; }
+    .cell.c4 {
+      color: #eef4fa;
+      animation: cellIn .6s cubic-bezier(.16,1,.3,1) 5.3s both, cellHot 1.3s ease-out 5.9s both;
+    }
+
+    .result {
+      position: absolute; left: 50%; bottom: 52px; display: flex; align-items: center; gap: 13px;
+      color: #c8d3df; font-size: 16px; letter-spacing: .08em;
+      animation: resultIn .75s cubic-bezier(.16,1,.3,1) 7.2s both;
+    }
+    .result::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #7ee7d0; box-shadow: 0 0 16px #7ee7d0; }
+
+    @keyframes enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes cellIn { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    @keyframes cellHot {
+      0% { border-color: rgba(195,211,228,.13); box-shadow: 0 0 0 rgba(126,231,208,0); }
+      40% { border-color: rgba(126,231,208,.62); box-shadow: 0 0 34px rgba(126,231,208,.2); }
+      100% { border-color: rgba(126,231,208,.42); box-shadow: 0 0 16px rgba(126,231,208,.09); }
+    }
+    @keyframes resultIn { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  </style>
+</head>
+<body>
+  <div class="ambient"></div>
+  <header><div class="brand">RITE / M2</div><div class="caption">EXPLORE BEFORE YOU BUILD</div></header>
+
+  <h1>Kill the unknowns<br><span>while they're cheap.</span></h1>
+
+  <div class="cmd"><span class="prompt">$</span> /rite:unknowns</div>
+
+  <div class="hbadge">
+    <svg width="18" height="18" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="7.2" r="4" fill="#f0b86c"/><path d="M2.8 20 C3.6 14.8 7 12.6 11 12.6 C15 12.6 18.4 14.8 19.2 20 Z" fill="#f0b86c"/></svg>
+    HUMAN STEP 1/2 — HAND OVER REQUIREMENTS
+  </div>
+
+  <main class="matrix">
+    <div class="axis-col"><i></i><span>KNOWNS</span><span>UNKNOWNS</span></div>
+    <div class="row">
+      <div class="axis-row">KNOWN</div>
+      <div class="cell c1">What you can put in the prompt</div>
+      <div class="cell c2">What you know you haven't decided yet</div>
+    </div>
+    <div class="row">
+      <div class="axis-row">UNKNOWN</div>
+      <div class="cell c3">Too obvious to write down, obvious once seen</div>
+      <div class="cell c4">What you never even considered</div>
+    </div>
+  </main>
+
+  <div class="result">Fill all four quadrants before you build.</div>
+  <script>window.SCENE = { duration_ms: 9000 };</script>
+</body>
+</html>

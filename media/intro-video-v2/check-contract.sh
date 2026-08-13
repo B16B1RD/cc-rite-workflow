@@ -82,14 +82,16 @@ fi
 
 # -P は現行のフルカット M1〜M7 をその順序で連結する。同じ素材を使い回すことで、
 # プリセットのファイル名契約と 7 本連結の両方を実行経路で pin する。
+# 比較は basename 列で行う。シーンの探索先（`-d` で切り替わる接頭辞）まで期待値に含めると、
+# 探索先の表現を変えるたびに順序 pin が壊れ、順序は正しいのに「一致しません」と誤報する。
 preset_scenes="$(awk '
   /scenes=\(/ { in_scenes=1; next }
   in_scenes && /^[[:space:]]*\)/ { exit }
-  in_scenes { gsub(/^[[:space:]]*"|"[[:space:]]*$/, ""); print }
+  in_scenes { gsub(/^[[:space:]]*"|"[[:space:]]*$/, ""); sub(/^.*\//, ""); print }
 ' "$here/assemble.sh")"
 expected_preset_scenes="$(printf '%s\n' \
-  out/01-problem.mp4 out/02-unknowns.mp4 out/03-loop.mp4 out/04-gates.mp4 \
-  out/05-wiki.mp4 out/06-second-lap.mp4 out/07-closing.mp4)"
+  01-problem.mp4 02-unknowns.mp4 03-loop.mp4 04-gates.mp4 \
+  05-wiki.mp4 06-second-lap.mp4 07-closing.mp4)"
 if [ "$preset_scenes" = "$expected_preset_scenes" ]; then
   echo "契約 OK [full-preset-order]: M1〜M7 の順序が一致"
 else
@@ -117,6 +119,61 @@ else
   echo "契約 NG [full-preset]: -P が現行シーン構成を連結できません" >&2
   printf '%s\n' "$preset_log" | tail -3 | sed 's/^/  /' >&2
   failures=$((failures + 1))
+fi
+
+# -d は -P のシーン探索先を切り替える指定なので、-P なしで渡されたら黙って無視せず落ちる。
+if d_log="$("$here/assemble.sh" -d out/en -o "$work/d-without-p.mp4" \
+  "$work/audibility-scene.mp4" 2>&1)"; then
+  echo "契約 NG [d-requires-preset]: -P なしの -d が正常終了しました" >&2
+  failures=$((failures + 1))
+elif ! printf '%s' "$d_log" | grep -q -- '-d は -P と併用してください'; then
+  echo "契約 NG [d-requires-preset]: 併用要求の診断がありません" >&2
+  printf '%s\n' "$d_log" | tail -3 | sed 's/^/  /' >&2
+  failures=$((failures + 1))
+else
+  echo "契約 OK [d-requires-preset]: -P なしの -d を拒否"
+fi
+
+# -d "" は「未指定」と同じ値になるため、拒否がないと -P 側で既定の out へ黙って倒れる。
+if empty_log="$("$here/assemble.sh" -P -d "" -o "$work/d-empty.mp4" 2>&1)"; then
+  echo "契約 NG [d-empty]: 空の -d が正常終了しました" >&2
+  failures=$((failures + 1))
+elif ! printf '%s' "$empty_log" | grep -q -- '-d に空のディレクトリは指定できません'; then
+  echo "契約 NG [d-empty]: 空値拒否の診断がありません" >&2
+  printf '%s\n' "$empty_log" | tail -3 | sed 's/^/  /' >&2
+  failures=$((failures + 1))
+else
+  echo "契約 OK [d-empty]: 空の -d を拒否"
+fi
+
+# -d が実際に探索先を切り替えることを実行経路で pin する。順序 pin は basename 列だけを
+# 比較するため、-d を no-op へ変異させても字面の照合は素通りする。-d の効き目を確かめるのは
+# ここだけになる。
+# 既定の out を空のまま out/en にだけ素材を置き、-P 単体が落ちて -P -d out/en が通ることを
+# 両側から確かめる（片側だけでは「常に out を読む」変異と「常に out/en を読む」変異を分離できない）。
+scenedir_work="$work/scenedir"
+mkdir -p "$scenedir_work/out/en"
+for scene in 01-problem 02-unknowns 03-loop 04-gates 05-wiki 06-second-lap 07-closing; do
+  cp "$work/audibility-scene.mp4" "$scenedir_work/out/en/$scene.mp4"
+done
+cp "$preset_work/bombinsound-technology-tech-technology-90-second-499581.mp3" "$scenedir_work/"
+if default_log="$(cd "$scenedir_work" && "$here/assemble.sh" -P -o out/preset.mp4 2>&1)"; then
+  echo "契約 NG [scene-dir-redirect]: 素材が out/en にしか無いのに -P 単体が成功しました" >&2
+  failures=$((failures + 1))
+elif ! printf '%s' "$default_log" | grep -q 'シーンが見つかりません: out/01-problem.mp4'; then
+  echo "契約チェック不能 [scene-dir-redirect]: -P 単体は落ちましたが既定 out を見た診断がありません" >&2
+  printf '%s\n' "$default_log" | tail -3 | sed 's/^/  /' >&2
+  failures=$((failures + 1))
+elif ! redirect_log="$(cd "$scenedir_work" && "$here/assemble.sh" -P -d out/en -o out/preset-en.mp4 2>&1)"; then
+  echo "契約 NG [scene-dir-redirect]: -P -d out/en が out/en の素材を連結できません" >&2
+  printf '%s\n' "$redirect_log" | tail -3 | sed 's/^/  /' >&2
+  failures=$((failures + 1))
+elif ! printf '%s\n' "$redirect_log" | grep -q 'assembled 7 scenes'; then
+  echo "契約 NG [scene-dir-redirect]: 7 シーン連結の完了診断がありません" >&2
+  printf '%s\n' "$redirect_log" | tail -3 | sed 's/^/  /' >&2
+  failures=$((failures + 1))
+else
+  echo "契約 OK [scene-dir-redirect]: -d が探索先を out/en へ切り替え"
 fi
 
 if [ "$failures" -ne 0 ]; then
