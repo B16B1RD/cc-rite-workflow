@@ -317,7 +317,11 @@ Plugin metadata file format:
 
 rite の全機能はスキル (`skills/<name>/SKILL.md`) として実装される（旧 `commands/` は v0.7 で全廃）。各スキルは薄い SKILL.md + 同梱 `references/` で構成し、`/rite:<name>` で起動する。
 
-**スキル行数原則**: 入口スキルの SKILL.md は 500 行未満に保つ。実行手順書スキル（pr-review / fix / lint / setup など bash 実行ブロックを本体に持つもの）は 4,000 行以内を上限とし、rationale（設計理由・背景解説）は SKILL.md 本体に書かず同梱 references/ へ退避して該当箇所に 1 行ポインタ（`rationale: references/<file>.md#<anchor>`）を残す。実行時に必要な情報（分岐表・sentinel 表・エラー処理指示・reason 表）は本体に維持する。
+**スキル行数原則**: 短いほど良い。増える変更は理由を要する。行数上限までの余白を埋めてはならない。
+
+- **主指標は散文バイト**（`bytes_prose`）。総行数は副次。実測: open パイロット 約 −36%（`plugins/rite/references/skill-diet-method.md` §3.1）、第 1 波 iterate −33.3% / fix −32.3% / pr-review −25.5%。4,000 行上限を「書いてよい量」としては使わない。
+- **構成**: outcome + 検証条件 + 機械ステップ。rationale（設計理由・背景解説）は SKILL.md 本体に書かず同梱 `references/` へ退避し、該当箇所に 1 行ポインタ（`rationale: references/<file>.md#<anchor>`）を残す。機械レール（分岐表・sentinel 表・fenced bash・エラー処理指示）は本体に維持する。
+- **入口スキル**は薄い SKILL.md を保つ（500 行は薄さの目安であり上限ではない）。新規作成・追記は `plugins/rite/references/skill-diet-method.md` に従う。
 
 SKILL.md は YAML frontmatter を持つ:
 
