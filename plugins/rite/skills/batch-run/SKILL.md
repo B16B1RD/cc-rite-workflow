@@ -418,7 +418,7 @@ echo "[CONTEXT] RUN_DONE; processed=$processed; failed=$failed; outstanding=$out
 ## /rite:batch-run 完了
 
 処理した Issue: {processed_issues}
-全 Issue を処理しました（failed 扱いを除き open→iterate→ready→merge→cleanup を完走）。
+全 Issue を処理しました（open→iterate→ready→merge→cleanup を完走）。
 （`failed=` が非空のときのみ）サーキットブレーカーで非収束（failed）となり merge/cleanup をスキップした Issue: {failed_issues} — draft/open PR をレビュー待ちで残しています。`/rite:iterate <pr>` で再開できます。
 未完了事項: （`outstanding=` が空のとき）なし（全 Issue） / （非空のとき）{outstanding_issues} の cleanup で非ブロッキング失敗が残っています — 各 Issue の cleanup 完了報告（本セッションのログ）を参照するか、`/rite:recover <issue>` で確認してください。
 
