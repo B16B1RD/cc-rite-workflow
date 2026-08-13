@@ -20,38 +20,28 @@ user-invocable: false
 
 ## E2E Output Minimization
 
-When called from an orchestrator's end-to-end flow (e.g. `/rite:open` ステップ 6), minimize output to reduce context window consumption:
-
 | Phase | Standalone | E2E Flow |
 |-------|-----------|----------|
 | Phase 3 (PR Creation) | Full output | `[pr:created:{number}]` + PR URL only |
 | Phase 4 (Completion) | Full report | **Skip** (pattern already output) |
 
-**Detection**: Reuse Caller Context determination in the "Caller Context and End-to-End Flow" section below.
-
----
-
-Execute the following phases in order when this command is invoked.
+判定は下記 Caller Context 表。
 
 ## Caller Context and End-to-End Flow
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
-
-This command can be invoked in two ways: standalone execution or from an orchestrator's end-to-end flow (e.g. `/rite:open` ステップ 6).
 
 | Caller | Subsequent Action |
 |-----------|---------------|
 | End-to-end flow (via any orchestrator's Skill tool invocation, e.g. `/rite:open` ステップ 6) | **Output pattern and return control to caller** |
 | Standalone execution | Display "next steps" guidance |
 
-**Determination method**: Claude determines the caller from conversation context:
-
 | Condition | Determination |
 |------|---------|
 | Invoked via `Skill` tool from any orchestrator within the same session (caller-name agnostic — e.g. `/rite:open`) | Within end-to-end flow |
 | All other cases (user directly typed `/rite:pr-create`) | Standalone execution |
 
-> **Important (responsibility for flow continuation)**: When executed within the end-to-end flow, this Skill outputs a machine-readable output pattern (`[pr:created:{number}]` or `[pr-create-failed]`) and **returns control to the caller** (orchestrator). The caller determines the next action based on this output pattern.
+E2E では `[pr:created:{number}]` / `[pr-create-failed]` を出して **caller に制御を返す**。次アクションは caller が決める。
 
 ---
 
@@ -65,11 +55,7 @@ This command can be invoked in two ways: standalone execution or from an orchest
 
 ## Phase 0: Load Work Memory (During End-to-End Flow)
 
-When executed within the end-to-end flow, load necessary information from work memory (shared memory).
-
 ### 0.1 Determine End-to-End Flow Status
-
-Determine the caller from conversation context:
 
 | Condition | Determination | Action |
 |------|---------|------|
@@ -78,16 +64,14 @@ Determine the caller from conversation context:
 
 ### 0.2 Load Work Memory
 
-Extract Issue number from the current branch and retrieve work memory from local file (SoT):
+ブランチ名から Issue 番号を取り、ローカル work memory（SoT）を読む:
 
 ```bash
 # ブランチ名から Issue 番号を抽出
 issue_number=$(git branch --show-current | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
 ```
 
-**Local work memory (SoT)**: Read `.rite-work-memory/issue-{issue_number}.md` with the Read tool. This local file is the Source of Truth.
-
-**Fallback (local file missing/corrupt)**: If the local file does not exist or is corrupt, fall back to the Issue comment API:
+Read `.rite-work-memory/issue-{issue_number}.md`（SoT）。欠落 / 破損時は Issue comment API:
 
 ```bash
 # SSH host alias 対応: git-remote.sh 優先 + gh repo view fallback
@@ -106,8 +90,6 @@ gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
 
 ### 0.3 Information to Retrieve
 
-Extract the following information from work memory and retain in context:
-
 | Field | Extraction Pattern | Purpose |
 |-----------|-------------|------|
 | Issue number | `issue-(\d+)` from branch name | Generate `Closes #XX` in PR body |
@@ -115,9 +97,7 @@ Extract the following information from work memory and retain in context:
 | Phase | `- **フェーズ**: (.+)` | Confirm flow position |
 | lint results | `### 品質チェック履歴` section | Reflect in PR body |
 
-**If work memory is not found:**
-
-If Issue number cannot be retrieved, delegate to Phase 1.4 fallback processing.
+Issue 番号が取れなければ Phase 1.4。
 
 ---
 
@@ -125,13 +105,12 @@ If Issue number cannot be retrieved, delegate to Phase 1.4 fallback processing.
 
 ### 1.0 Bang-Backtick Adjacency Pre-Check (Pre-PR Gate)
 
-> **Reference**: Pre-submission hard gate for the parser-trigger pattern (backtick + bang adjacency in inline code spans of `plugins/rite/{commands,skills,agents,references}/**/*.md`). The underlying static check is `plugins/rite/hooks/scripts/bang-backtick-check.sh`.
+> **DRIFT-CHECK ANCHOR (MUST)**: `skills/pr-create/SKILL.md` §1.0 と `skills/ready/SKILL.md` §1.0 の bash は同期する。片方の変更は必ず他方へ複製する。
 >
-> **DRIFT-CHECK ANCHOR (MUST)**: This bash block is intentionally synchronized between `skills/pr-create/SKILL.md` §1.0 and `skills/ready/SKILL.md` §1.0. Any modification to either side MUST be replicated to the other. Wiki 経験則「Asymmetric Fix Transcription (対称位置への伝播漏れ)」の dominant failure mode を構造的に予防する。
->
-> **Independent of the `/rite:lint` Phase 3.5 bang-backtick check**: lint records bang-backtick findings as warnings (`[lint:success]` is preserved). This gate, in contrast, **blocks** PR mutation when the same pattern is present — lint is the early heads-up, this is the final hard gate before submission.
+> lint Phase 3.5 は warning（`[lint:success]` は保つ）。本ゲートは同じパターンが残っていれば **PR mutation を止める**。
+> rationale: references/rationale.md#bang-backtick-gate
 
-Resolve plugin_root with the inline one-liner (per [Plugin Path Resolution](../../references/plugin-path-resolution.md#inline-one-liner-for-command-files)) and run the check:
+`{plugin_root}` は [inline one-liner](../../references/plugin-path-resolution.md#inline-one-liner-for-command-files) で解決して実行する:
 
 ```bash
 plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
@@ -169,7 +148,8 @@ case "$bang_rc" in
 esac
 ```
 
-> **On exit 1 from this bash block**: The bash block exits before any `skills/pr-create/SKILL.md` result pattern (`[pr:created:{N}]` / `[pr-create-failed]`) is emitted, so the orchestrator treats this as a missing-result-pattern Skill invocation — default 経路は `WARNING` を stderr に出力し、AskUserQuestion で「手動作成 / 再試行 / 中止」を提示する — **NOT** a `[pr-create-failed]` pattern. The `BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` retention flag is a stderr-only diagnostic; operators must triage the retained flag manually for invocation-side failures (script missing / rc=2). For finding detection (rc=1 — a normal "fix the code" feedback path), no flag is set at all (the failure is expected and the user fixes the code).
+> exit 1 のとき結果パターンは出ない。orchestrator は missing-result-pattern として扱う（**NOT** `[pr-create-failed]`）。default は stderr `WARNING` + AskUserQuestion「手動作成 / 再試行 / 中止」。`BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` は script 不在 / rc=2 のみ（rc=1 の検出はフラグなし）。
+> rationale: references/rationale.md#bang-backtick-gate
 
 ### 1.1 Retrieve Base Branch
 
@@ -179,18 +159,8 @@ Read `rite-config.yml` at the project root using the Read tool, and get the `bra
 Read: rite-config.yml
 ```
 
-**Retrieval logic:**
-1. If `rite-config.yml` exists and `branch.base` is set -> Use that value as `{base_branch}`
-2. If `rite-config.yml` does not exist (Read tool returns an error), or `branch.base` is not set -> Use `main` as default
-
-**Definition of "not set":**
-- `branch.base` key does not exist
-- `branch.base` key value is `null` or empty string
-- `branch` section itself does not exist
-
-**Placeholder interpretation:**
-
-`{base_branch}` in this document is replaced with the actual branch name obtained by the logic above. For example, if `branch.base: "develop"` is configured, the subsequent bash command `git diff --stat origin/{base_branch}...HEAD` is executed as `git diff --stat origin/develop...HEAD`.
+1. `rite-config.yml` に `branch.base` があればその値を `{base_branch}` にする
+2. ファイル不在 / キー不在 / `null` / 空文字 / `branch` 節不在 → `main`
 
 ### 1.2 Branch Verification
 
@@ -232,7 +202,8 @@ git log --oneline origin/{base_branch}...HEAD
 3. 手動で差分を確認: git diff <base_branch>...HEAD
 ```
 
-Terminate processing. Do not fall back to `HEAD` diff — this would produce an inaccurate change summary.
+処理を中止する。`HEAD` 差分へ倒さない。
+rationale: references/rationale.md#no-head-diff-fallback
 
 **If no commits exist:**
 
@@ -293,10 +264,7 @@ Retrieve work memory from Issue comments:
 gh api repos/{owner}/{repo}/issues/{issue_number}/comments --jq '.[] | select(.body | contains("rite 作業メモリ"))'
 ```
 
-If work memory is found, extract the following information:
-- Progress status
-- Changed files
-- Decisions and notes
+見つかれば進捗・変更ファイル・決定事項を抽出する。
 
 ---
 
@@ -304,7 +272,7 @@ If work memory is found, extract the following information:
 
 ### 2.1 Verify Auto-Detected Commands
 
-Retrieve build/lint commands from `rite-config.yml`:
+`rite-config.yml` から build/lint コマンドを取る:
 
 ```yaml
 commands:
@@ -312,14 +280,11 @@ commands:
   lint: null   # 自動検出
 ```
 
-Auto-detection logic:
-1. Detect from `scripts` in `package.json`
-2. Detect from targets in `Makefile`
-3. Language-specific default commands
+自動検出: `package.json` の `scripts` → `Makefile` の target → 言語既定。
 
 ### 2.2 Confirm Quality Check Execution
 
-Confirm execution with `AskUserQuestion`:
+`AskUserQuestion`:
 
 ```
 PR 作成前に品質チェックを実行しますか？
@@ -335,8 +300,6 @@ PR 作成前に品質チェックを実行しますか？
 ```
 
 ### 2.3 Execute Checks
-
-Execute the selected checks:
 
 ```bash
 # lint 実行例
@@ -358,11 +321,11 @@ npm run lint
 
 ### 2.4 Verify Issue Body Checklist
 
-If the Issue body contains a checklist, check for incomplete items and display a warning.
+Issue 本文にチェックリストがあれば未完了を警告する。
 
 #### 2.4.1 Extract Checklist
 
-Extract checklist from the Issue body obtained in Phase 1.5:
+Phase 1.5 の本文から抽出:
 
 ```bash
 # Issue 本文を取得（既に Phase 1.5 で取得済みの場合は再利用）
@@ -377,7 +340,7 @@ gh issue view {issue_number} -R {owner_repo} --json body --jq '.body'
 
 **Exclusion pattern:**
 
-Exclude Tasklists containing Issue references (used for parent-child Issue management):
+親子管理の Issue 参照 Tasklist は除外:
 
 ```
 パターン: /^- \[[ xX]\] #\d+/gm
@@ -385,13 +348,7 @@ Exclude Tasklists containing Issue references (used for parent-child Issue manag
 
 #### 2.4.2 Detect Incomplete Check Items
 
-Detect incomplete items (`- [ ]`) from the extracted checklist.
-
-**If no incomplete items (all checklist items completed):**
-
-If a checklist exists and all items are completed (`- [x]`), proceed to Phase 2.5.
-
-**If incomplete items exist:**
+未完了は `- [ ]`。全完了（`- [x]`）またはチェックリスト無しなら Phase 2.5。未完了があれば:
 
 ```
 警告: Issue 本文に未完了のチェック項目があります
@@ -417,7 +374,7 @@ If a checklist exists and all items are completed (`- [x]`), proceed to Phase 2.
 
 #### 2.4.3 Record Incomplete Items in PR Body
 
-If "Create PR with incomplete items" is selected, add the following section to the PR body:
+「未完了のまま PR 作成」なら PR 本文へ:
 
 ```markdown
 ## 未完了の Issue チェック項目
@@ -433,17 +390,13 @@ If "Create PR with incomplete items" is selected, add the following section to t
 
 #### 2.4.4 If No Checklist Exists
 
-If the Issue body does not contain a checklist, skip this section and proceed to Phase 2.5.
+チェックリストが無ければ Phase 2.5。
 
 ### 2.5 Verify Unresolved Issues (issue_accountability)
 
-> **Reference**: [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md) - `issue_accountability` (Sincere response to identified issues)
-
-Before creating the PR, verify that there are no unresolved issues or findings.
+> **Reference**: [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md) - `issue_accountability`
 
 #### 2.5.1 Verification Targets
-
-Detect unresolved issues from the following sources:
 
 | Source | What to Verify |
 |--------|----------|
@@ -451,15 +404,11 @@ Detect unresolved issues from the following sources:
 | Conversation history | Warnings/errors detected by lint/test |
 | Review results in conversation history | Findings judged as "out of scope" or "not applicable" (including self-review results)[^1] |
 
-[^1]: If self-review results do not exist in the same session (e.g., when `/rite:pr-create` is executed standalone), this source is skipped.
+[^1]: 同一セッションに self-review が無い（standalone 起動など）ならこの source は skip。
 
 #### 2.5.2 Verify Work Memory
 
-Parse the "要確認事項" section of work memory.
-
-**Note**: If work memory was already retrieved in Phase 0.2, reuse that content without making another API call. For standalone execution, use values (`{owner}`, `{repo}`, `{issue_number}`) already retrieved in Phase 1.6.
-
-**Determination method**: If work memory has already been retrieved within this session (API call made in Phase 0.2 or Phase 1.6), the result is retained in context, so the command below is not executed; instead, the retained content is referenced.
+Phase 0.2 / 1.6 で取得済みなら再利用。未取得のときだけ:
 
 ```bash
 # 作業メモリから要確認事項を抽出（Phase 0.2 または Phase 1.6 で未取得の場合のみ実行）
@@ -467,21 +416,18 @@ gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
   --jq '.[] | select(.body | contains("📜 rite 作業メモリ")) | .body'
 ```
 
-Claude extracts the "### 要確認事項" section from the retrieved work memory body and detects unchecked items (`- [ ]` format).
+`### 要確認事項` の `- [ ]` を検出する。bash の `grep -A` 等は使わない。
+rationale: references/rationale.md#no-bash-grep-wm
 
-**Note**: Do not use bash text processing (`grep -A`, etc.); Claude analyzes the entire body to identify the section. This avoids line count limitation issues.
-
-If unchecked items exist, display a warning.
+未チェックがあれば警告。
 
 #### 2.5.3 Detection from Conversation History
 
-Claude **reviews conversations within its own context window** and checks whether there are statements matching the following **specific patterns**.
-
-Detect the following from conversation context: "out of scope"/"not applicable" judgments, "pre-existing issue" judgments, unresolved lint/test warnings, newly added TODO/FIXME comments (detected via `git diff origin/{base_branch}...HEAD | grep -E "^\+.*(TODO:|FIXME:|XXX:)"`). Resolved determination: if any of the following exists in conversation history, consider it resolved: fix (Edit/Write), Issue creation (`gh issue create`), or explanation/reply.
+会話 context から検出: 「対象外」/「該当せず」/「既存問題」、未解決の lint/test 警告、新規 TODO/FIXME（`git diff origin/{base_branch}...HEAD | grep -E "^\+.*(TODO:|FIXME:|XXX:)"`）。解決済み: 修正（Edit/Write）、Issue 作成（`gh issue create`）、説明/返信のいずれかがあれば解決。
 
 #### 2.5.4 Processing When Unresolved Issues Exist
 
-If unresolved issues are detected, confirm with `AskUserQuestion`:
+`AskUserQuestion`:
 
 ```
 警告: 未対応の問題・指摘があります
@@ -501,9 +447,7 @@ If unresolved issues are detected, confirm with `AskUserQuestion`:
 - PR 作成を中止する: 問題を確認してから再実行します
 ```
 
-**Note**: `{problem_summary}` and `{detection_source}` are the same placeholders defined in Phase 2.5.5.
-
-**Subsequent processing for each option:**
+`{problem_summary}` / `{detection_source}` は 2.5.5 と同じ。
 
 | Option | Subsequent Processing |
 |--------|----------|
@@ -511,11 +455,8 @@ If unresolved issues are detected, confirm with `AskUserQuestion`:
 | **問題を今すぐ修正する** | Display guidance to fix unresolved issues and re-run `/rite:pr-create`, then terminate processing |
 | **PR 作成を中止する** | Terminate processing |
 
-**When there are many issues (5 or more):**
-
-**Note**: This threshold (5) is a fixed value and cannot be changed in `rite-config.yml`. It is set to optimize user experience by recommending batch processing.
-
-If 5 or more unresolved issues are detected, recommend batch processing:
+5 件以上は一括を推奨（閾値は固定）。
+rationale: references/rationale.md#issue-accountability-never-skip
 
 ```
 警告: 未対応の問題・指摘が {count} 件あります（5件以上）
@@ -536,19 +477,13 @@ If 5 or more unresolved issues are detected, recommend batch processing:
 
 #### 2.5.5 Auto-Create Issues
 
-If "Create separate Issues and continue with PR creation" is selected, create an Issue for each unresolved problem:
+「別 Issue を作成して続行」なら未対応ごとに 1 Issue。
 
 > **Reference**: [Issue Creation with Projects Integration](../../references/issue-create-with-projects.md)
 
-**Note**: The heredoc below contains `{placeholder}` markers. Claude substitutes these with actual values **before** generating the bash script — they are not shell variables.
+heredoc の `{placeholder}` はスクリプト生成前に実値へ置換（シェル変数ではない）。ブロック全体を **単一 Bash 呼び出し**で実行する。Priority 既定 → Medium。Complexity: XS = 1 行/1 箇所、S = 1–2 ファイルの複数行。
 
-**Important**: The entire script block must be executed in a **single Bash tool invocation**.
-
-**Priority mapping**: Default → Medium
-
-**Complexity mapping**: XS: single-line/single-location fix. S: multi-line change within 1-2 files
-
-**Placeholder value sources** (Claude はスクリプト生成前に必ず以下のソースから値を取得し、プレースホルダーを置換すること):
+プレースホルダーはスクリプト生成前に置換する:
 
 | Placeholder | Source | Example |
 |-------------|--------|---------|
@@ -634,11 +569,7 @@ printf '%s' "$result" | jq -r '.warnings[]' 2>/dev/null | while read -r w; do ec
 | Script returns `issue_url: ""` | Display warning with error details. If remaining candidates exist, continue creating others |
 | `project_registration: "partial"` or `"failed"` | Display warnings from result. Issue creation itself succeeded |
 
-Apply the `tech-debt` label only if it exists (skip if not). On Issue creation failure, choose retry/skip/abort (max 2 retries).
-
-After creation, append to the "Related Issues" section of the PR body:
-
-**Sequential suffix naming convention**: When creating multiple Issues, assign sequential suffixes `_1`, `_2`, ... in creation order. For example, if 3 Issues are created, they become `{created_issue_1}`, `{created_issue_2}`, `{created_issue_3}`.
+`tech-debt` ラベルは存在するときだけ。作成失敗は retry/skip/abort（最大 2 回）。作成後、PR 本文の「関連 Issue」へ追記。複数時は作成順に `_1`, `_2`, ...。
 
 ```markdown
 ## 関連 Issue
@@ -653,17 +584,13 @@ Closes #{original_issue_number}
 
 #### 2.5.6 If No Issues Found
 
-If no unresolved issues are detected:
-
 ```
 未対応の問題は検出されませんでした。Phase 3 へ進みます。
 ```
 
-Proceed to Phase 3.
+Phase 3 へ。
 
 #### 2.5.7 Behavior During End-to-End Flow
-
-Behavior when invoked from an orchestrator (e.g. `/rite:open` ステップ 6):
 
 | Situation | Behavior |
 |------|------|
@@ -671,7 +598,8 @@ Behavior when invoked from an orchestrator (e.g. `/rite:open` ステップ 6):
 | Unresolved issues (fewer than 5) | Proceed to Phase 3 after individual confirmation |
 | Unresolved issues (5 or more) | Proceed to Phase 3 after batch confirmation |
 
-**Important**: Even within the end-to-end flow, verification of unresolved issues is **never skipped**. This is the core of the `issue_accountability` principle and is mandatory to prevent suppression of issues.
+E2E でも未対応問題の検証は **skip しない**。
+rationale: references/rationale.md#issue-accountability-never-skip
 
 ---
 
@@ -679,11 +607,7 @@ Behavior when invoked from an orchestrator (e.g. `/rite:open` ステップ 6):
 
 ### 3.1 Generate PR Title
 
-Generate the title in Conventional Commits format:
-
-**Language determination rules:**
-
-Determine the PR title language according to the `language` setting in `rite-config.yml`:
+Conventional Commits。言語は `rite-config.yml` の `language`:
 
 | Setting | Behavior |
 |--------|------|
@@ -691,14 +615,9 @@ Determine the PR title language according to the `language` setting in `rite-con
 | `ja` | Generate title in Japanese |
 | `en` | Generate title in English |
 
-**Note**: If the Issue title is in a different language from the configured language, translate to the configured language when generating the title.
+Issue タイトルが設定言語と違うときは翻訳する。type はブランチ名、scope / description は Issue タイトル。
 
-**Title generation rules:**
-1. Use the type from the branch name
-2. Extract scope and description from the Issue title
-3. Generate the title in the determined language
-
-> **⚠️ CRITICAL**: The `description` part of the PR title **MUST** follow the `language` setting in `rite-config.yml`. The examples below are for reference only — always generate the description in the language determined by the setting, not by copying the example language.
+> **⚠️ CRITICAL**: PR title の `description` は `language` 設定に従う。例の言語をコピーしない。
 
 ```
 Pattern: {type}({scope}): {description}
@@ -721,9 +640,7 @@ Example (Japanese): feat(pr): /rite:pr-create コマンドを実装
 
 Template file: `templates/pr/generic.md`
 
-**Language consistency rules:**
-
-Generate the PR body in **the same language determined in Phase 3.1**:
+本文言語は **Phase 3.1 と同じ**。
 
 | Element | Subject to Language Unification |
 |------|---------------|
@@ -731,44 +648,40 @@ Generate the PR body in **the same language determined in Phase 3.1**:
 | Boilerplate text | Description for `Closes #XX`, etc. |
 | Checklist items | `- [ ] Tests added` / `- [ ] テスト追加`, etc. |
 
-Information to include in the PR body: summary, related Issue (`Closes #{number}`), changes (from work memory or git diff), checklist, Implementation Notes summary (§3.2.2, when applicable). Generate all in the language determined in Phase 3.1.
+含める: 概要、関連 Issue（`Closes #{number}`）、変更（work memory または git diff）、チェックリスト、Implementation Notes（§3.2.2、該当時）。
 
 #### 3.2.1 Context Optimization During End-to-End Flow
 
-When executed via an orchestrator's end-to-end flow (e.g. `/rite:open` ステップ 6), apply the following optimizations to reduce context usage.
-
-**Optimization conditions (OR evaluation):** During end-to-end flow execution / 20 or more changed files / Over 30 tool invocations. 30 invocations is lightweight optimization for PR creation alone; 50 invocations (see `skills/open/SKILL.md` 等の上位 orchestrator) is full-scale mitigation.
-
-**Optimization content:** Changes -> file list and summary only (show top 3 files), Work memory -> progress summary only, Checklist -> mandatory items only, Implementation Notes -> capped per §3.2.2's E2E optimization cap rule. Applied automatically without user confirmation.
+OR: E2E 実行中 / 変更ファイル 20 以上 / ツール呼び出し 30 超。確認なしで適用。変更は上位 3 ファイルの一覧と要約、work memory は進捗要約、チェックリストは必須項目のみ、Implementation Notes は §3.2.2 の cap。
+rationale: references/rationale.md#impl-notes-for-reviewers
 
 #### 3.2.2 Implementation Notes Summary (Plan Deviation / Decision Log)
 
-Before finalizing the PR body, gather two additional sources so reviewers start with the same unknowns the implementer had (rather than re-deriving them from the diff alone):
+1. **Work memory Plan Deviation Log**（`### 計画逸脱ログ` — [Work Memory Format](../../skills/rite-workflow/references/work-memory-format.md#plan-deviation-log-section)）。ローカル SoT、無ければ Issue comment。`_計画逸脱はありません_` / 節不在は 0 件（error にしない）。
+2. **Issue body Section 9 Decision Log**（`## 9. Decision Log` — [Issue Template Structure](../../templates/issue/template-structure.md)）。context の本文。`D-xx:` 無しは 0 件。
 
-1. **Work memory Plan Deviation Log** (`### 計画逸脱ログ` table — see [Work Memory Format](../../skills/rite-workflow/references/work-memory-format.md#plan-deviation-log-section)). Read the local work memory file or, if absent, the Issue comment sync. If the table shows only `_計画逸脱はありません_` (or the section/file is absent), treat this source as 0 items — do not error.
-2. **Issue body Section 9 Decision Log** (`## 9. Decision Log` — see [Issue Template Structure](../../templates/issue/template-structure.md)). Read the Issue body already retained in conversation context. If the section is absent or contains no `D-xx:` entries, treat this source as 0 items — do not error.
+各項目 1 行: `{種別}: {1 行要約} — {理由}`。`種別` は Phase 3.1 の言語（`en`: Deviation / Decision、`ja`: 逸脱 / 判断）。1 文。ポインタであり全文転記ではない。
 
-**Summarization rule**: For each item found, generate one line: `{種別}: {1 行要約} — {理由}`, where `種別` is `Deviation` / `逸脱` (from the Plan Deviation Log) or `Decision` / `判断` (from the Decision Log), following the language determined in Phase 3.1 — use the English label in `en` mode and the Japanese label in `ja` mode, matching the heading's language switch below. Keep each line to a single sentence — this is a pointer for the reviewer, not a full transcript.
+**Zero-item rule (MUST)**: 両ソース 0 件なら節ごと省略（見出し含む）。空見出し・空リストは出さない。
 
-**Zero-item rule (MUST)**: If both sources yield 0 items, omit the entire section — heading included. Never emit an empty heading or an empty bullet list.
+見出し: `## Implementation Notes`（en）/ `## 実装中の判断・計画逸脱`（ja）。位置は `## Changes` と `## Checklist` の間（`templates/pr/generic.md`）。
 
-**Section heading**: Follow the language determined in Phase 3.1 — `## Implementation Notes` (English) or `## 実装中の判断・計画逸脱` (Japanese). Place the section between `## Changes` and `## Checklist` (see `templates/pr/generic.md`).
-
-**E2E optimization cap**: When Phase 3.2.1's optimization conditions are met, cap the summary to the top 3 items — Plan Deviation items first, then Decision Log items, both in source order — and append a note stating how many were omitted (e.g. `(他 N 件省略)` / `(N more omitted)`).
+E2E 最適化時は上位 3 件（逸脱 → 判断、ソース順）、省略数を注記（`(他 N 件省略)` / `(N more omitted)`）。
+rationale: references/rationale.md#impl-notes-for-reviewers
 
 ### 3.3 Push to Remote
-
-Push the local branch to remote:
 
 ```bash
 git push origin {branch_name}
 ```
 
-> `-u`（upstream 設定）は付けない。sandbox 有効環境で upstream tracking の `.git/config` 書込が拒否されるため。3.4 の `gh pr create` は `--head` で明示的にブランチを指定するため upstream に依存しない。
+> `-u` は付けない。3.4 の `gh pr create` は `--head` でブランチを指定する。
+> rationale: references/rationale.md#push-no-upstream
 
 ### 3.4 Create Draft PR
 
-> **3 段プロトコル**: PR title / body をインライン heredoc・インライン `--title` で bash ブロックに埋め込むと、特殊文字（全角記号・`≠`・括弧・コロン等）を含む長文で Claude のツールコール解析が malform し、エラーなく無言でターンが終了する。これを構造的に避けるため、LLM は (A) workdir を `mktemp -d` で確保 → (B) **Write tool** で title / body を raw ファイル化（heredoc を使わない）→ (C) bash は変数 / `--body-file` 経由で `gh pr create` を実行、の 3 段で行う。title 特殊文字を bash ブロックに一切インライン展開しないのがこの設計の要点。
+> **3 段プロトコル**: (A) workdir を `mktemp -d` で確保 → (B) **Write tool** で title / body を raw ファイル化（heredoc を使わない）→ (C) bash は変数 / `--body-file` 経由で `gh pr create` を実行。title を bash ブロックにインライン展開しない。
+> rationale: references/rationale.md#three-stage-protocol
 
 **(A) workdir 確保**
 
@@ -786,9 +699,8 @@ echo "[CONTEXT] PR_CREATE_WORKDIR=$pr_workdir"
 
 **(C) gh pr create（単一 bash block）**
 
-> `{PR_CREATE_WORKDIR}` は (A) の CONTEXT marker から literal 置換する（`mktemp -d` 生成パスのため特殊文字を含まない）。冒頭で literal を shell 変数 `pr_workdir` に束縛し、以降の cat / `--body-file` / cleanup すべてで `$pr_workdir` を参照する（literal placeholder 置換漏れ時の `rm -rf "{...}"` 誤動作を防ぐ）。title は変数（ファイル読込）経由のため bash ブロックに inline しない。workdir の cleanup は inline `rm -rf` ではなく **signal-specific trap** で行い、空 body / 空 title / `gh` 失敗 / SIGINT/TERM/HUP のすべての exit 経路で確実に削除する（同一ファイル他ブロック・`coding-principles.md` Rule 5・[bash-trap-patterns.md](../../references/bash-trap-patterns.md#signal-specific-trap-template) の canonical 形に準拠）。空 body / 空 title チェックは title / body が動的生成のため必須（body と title は対称にガードする）。
->
-> **既知の trade-off (Cause A)**: 3 段プロトコルは workdir を (A)/(B Write)/(C) の **別プロセス**に跨がせるため、malformed tool-call で (A) 確保後・(C) 到達前に無言終了した場合（Cause A: harness/transport 側ゆらぎ、rite では除去不能）、`mktemp -d` した空 workdir が orphan として残る。本 trap は (C) 自身の中断のみカバーし、この cross-process orphan は救えない（OS の `/tmp` reaping と `/rite:recover` 再開で実害は限定的）。この `rite-pr-create-*` 孤児 workdir の能動的 GC は `pr-cycle-cleanup.sh` Step 3 で実装済み — review/fix/cleanup の各サイクルで `${TMPDIR:-/tmp}/rite-pr-create-*` のうち age 超過 (mtime > 24h) のものを回収する。age ガードにより in-flight workdir は誤回収されない。
+> `{PR_CREATE_WORKDIR}` は (A) の CONTEXT marker から literal 置換し、冒頭で `pr_workdir` に束縛する。以降は `$pr_workdir` のみ。title は変数経由（bash に inline しない）。cleanup は **signal-specific trap**（空 body / 空 title / `gh` 失敗 / SIGINT/TERM/HUP）。空 title / 空 body は対称にガードする。[bash-trap-patterns.md](../../references/bash-trap-patterns.md#signal-specific-trap-template)
+> rationale: references/rationale.md#three-stage-protocol
 
 ```bash
 pr_workdir="{PR_CREATE_WORKDIR}"
@@ -816,13 +728,12 @@ gh pr create -R {owner_repo} --draft --base "{base_branch}" --head "{branch_name
 
 ### 3.5 Update Work Memory Phase
 
-After PR creation, update the local work memory (SoT) and sync to Issue comment (backup).
-
-**Note**: Phase 3.5 performs immediate phase transition (`pr`) right after PR creation. Phase 4.1.2 later adds detailed information (progress summary, changed files, PR metadata). The `update-progress` in Phase 4.1.2 also updates the timestamp, effectively superseding Phase 3.5's timestamp. This two-step approach ensures the phase transition is recorded even if Phase 4 fails.
+ローカル SoT を更新し、Issue comment へ backup sync。3.5 は `phase=pr` の即時遷移、4.1.2 が詳細を足す。
+rationale: references/rationale.md#wm-two-step
 
 **Step 1: Update local work memory**
 
-Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands) for details.
+[Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands)
 
 ```bash
 WM_SOURCE="create" \
@@ -855,11 +766,7 @@ bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
 
 > **Warning**: Work memory is published as Issue comments. In public repositories, it is viewable by third parties. Do not record confidential information (credentials, personal information, internal URLs, etc.) in work memory.
 
-Automatically update the Issue's work memory comment.
-
 #### 4.1.1 Collect Update Information
-
-Automatically collect the following information during PR creation:
 
 ```bash
 # 変更ファイルの取得
@@ -871,7 +778,7 @@ git log --oneline origin/{base_branch}...HEAD
 
 #### 4.1.2 Retrieve and Update Work Memory Comment
 
-The update has two parts: (A) **update progress and changed files**, and (B) **append PR-specific sections**. Both use `issue-comment-wm-sync.sh` for deterministic execution.
+(A) 進捗と変更ファイル、(B) PR 固有節の追記。どちらも `issue-comment-wm-sync.sh`。
 
 ```bash
 # Part (A): 進捗サマリー + 変更ファイル更新
@@ -930,9 +837,7 @@ rm -f "$pr_info_tmp"
 
 #### 4.1.3 Update Content Reference
 
-The 4.1.2 bash block performs the following updates:
-
-**(A) Update existing sections** (via Python inline script):
+4.1.2 の更新内容:
 
 | Section | Update |
 |---------|--------|
@@ -941,22 +846,16 @@ The 4.1.2 bash block performs the following updates:
 | `次のステップ` section | Set to `/rite:pr-review #{pr_number}` |
 | `最終更新` timestamp | Replace with current timestamp |
 
-**(B) Append new sections** (via heredoc):
+`{pr_number}` は実番号。placeholder のまま残さない。
 
-**Note**: `{pr_number}` is replaced with the actual PR number when recording. It must not be recorded as a placeholder.
-
-**Changed files format** (for `changed_files_md`):
-
-Generate from `git diff --name-status origin/{base_branch}...HEAD`:
+`changed_files_md` は `git diff --name-status origin/{base_branch}...HEAD` から:
 
 ```markdown
 - `path/to/file1.ts` - 変更
 - `path/to/file2.ts` - 追加
 ```
 
-Status mapping: `A` → 追加, `M` → 変更, `D` → 削除, `R` → 名前変更.
-
-**Note**: If the work memory comment is not found, skip the update and display a warning.
+`A` → 追加, `M` → 変更, `D` → 削除, `R` → 名前変更。work memory comment が無ければ警告して skip。
 
 ### 4.2 Completion Report
 
@@ -995,19 +894,15 @@ Follow `language` in `rite-config.yml` (`auto`: detect input language, `ja`: Jap
 
 ### 5.1 Output Pattern (Return Control to Caller)
 
-Output the following pattern based on PR creation result:
-
 | State | Output Pattern |
 |-------|---------------|
 | PR creation succeeded | `[pr:created:{pr_number}]` |
 | PR creation failed | `[pr-create-failed]` |
 
-**Important**:
-- Do **NOT** invoke `rite:pr-review` via the Skill tool
-- Return control to the caller (orchestrator — caller-name agnostic, e.g. `/rite:open`)
-- The caller determines the next action based on this output pattern
+`rite:pr-review` を Skill で **呼ばない**。caller（orchestrator）に制御を返す。
 
-> **Missing-sentinel recovery contract**: Phase 3.4 で `gh pr create` が malformed tool-call により sentinel を 1 つも emit せず無言でターンが終了する（Cause A: harness/transport 側のゆらぎ。rite では除去不能）ことがある。この場合 caller（orchestrator）は `[pr:created:{N}]` / `[pr-create-failed]` のいずれも context に観測できないため **missing-sentinel** として扱う。本 Skill は flow-state を所有せず caller が `phase` を保持するため、caller 側の missing-sentinel 検出 → `/rite:recover` 再開で PR 作成ステップを安全にやり直せる（重複 draft PR の検出・再構成は orchestrator の resume 経路が担う。`skills/open/SKILL.md` ステップ 0 phase=pr / ステップ 6 参照）。Phase 3.4 の Write tool 委譲はこの Cause A 自体を消すものではなく、Cause B（インライン heredoc / 特殊文字 title による malform 増幅）を除去して発生確率を下げる対策である。
+> **Missing-sentinel recovery contract**: Phase 3.4 が sentinel 無しで無言終了したら、caller は `[pr:created:{N}]` / `[pr-create-failed]` を観測できず **missing-sentinel** として扱う。再開は caller の `/rite:recover`（`skills/open/SKILL.md` ステップ 0 phase=pr / ステップ 6）。
+> rationale: references/rationale.md#missing-sentinel-recovery
 
 **Example output:**
 ```
@@ -1018,4 +913,4 @@ PR #{pr_number} をドラフトとして作成しました。
 
 ### 5.2 Behavior During Standalone Execution
 
-For standalone execution, skip Phase 5 entirely and display the Phase 4.2 completion report (see the blockquote at the beginning of Phase 5 for details).
+standalone は Phase 5 を skip し、Phase 4.2 の完了報告を出して終了する。

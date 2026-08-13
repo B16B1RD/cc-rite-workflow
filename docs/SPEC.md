@@ -156,14 +156,14 @@ rite-workflow/
 │ ├── merge/ # /rite:merge (squash merge)
 │ ├── cleanup/ # /rite:cleanup (+ references/archive-procedures.md; + references/rationale.md)
 │ ├── batch-run/ # /rite:batch-run (複数 Issue 順次 open→iterate; --merge で ready→merge→cleanup まで)
-│ ├── pr-create/ # /rite:pr-create (draft PR 作成) — sub-skill
+│ ├── pr-create/ # /rite:pr-create (draft PR 作成; + references/rationale.md) — sub-skill
 │ # --- Issue 管理 ---
 │ ├── issue-create/ # /rite:issue-create (+ references/: complexity-gate / contract-section-mapping / slug-generation / body-fact-check / unknowns-boundary-rationale)
 │ ├── issue-list/ # /rite:issue-list
 │ ├── issue-update/ # /rite:issue-update
-│ ├── issue-close/ # /rite:issue-close
+│ ├── issue-close/ # /rite:issue-close (+ references/rationale.md)
 │ ├── issue-edit/ # /rite:issue-edit
-│ ├── issue-implement/ # /rite:issue-implement (sub-skill, /rite:open から呼出)
+│ ├── issue-implement/ # /rite:issue-implement (sub-skill, /rite:open から呼出; + references/rationale.md)
 │ # --- Wiki ---
 │ ├── wiki-init/ # /rite:wiki-init
 │ ├── wiki-query/ # /rite:wiki-query
@@ -176,7 +176,7 @@ rite-workflow/
 │ ├── unknowns/ # /rite:unknowns (実装前探索: ブラインドスポット/ブレスト/プロトタイプ/インタビュー; + references/feedback-mode.html)
 │ ├── investigate/ # /rite:investigate (構造化コード調査)
 │ ├── learn/ # /rite:learn (Socratic 理解度チェック)
-│ ├── lint/ # /rite:lint (品質チェック; orchestrator から呼ばれる sub-skill 兼用; + references/plugin-checks-rationale.md)
+│ ├── lint/ # /rite:lint (品質チェック; orchestrator から呼ばれる sub-skill 兼用; + references/plugin-checks-rationale.md; + references/rationale.md)
 │ ├── recover/ # /rite:recover (中断した作業の再開)
 │ ├── skill-suggest/ # /rite:skill-suggest
 │ ├── template-reset/ # /rite:template-reset

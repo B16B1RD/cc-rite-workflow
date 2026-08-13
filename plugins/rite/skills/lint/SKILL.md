@@ -18,8 +18,6 @@ argument-hint: ""
 
 ## E2E Output Minimization
 
-When called from the `/rite:open` end-to-end flow, minimize output to reduce context window consumption:
-
 | Phase | Standalone | E2E Flow |
 |-------|-----------|----------|
 | Phase 3 (Execution) | Full output | Full output (needed for error diagnosis) |
@@ -28,41 +26,29 @@ When called from the `/rite:open` end-to-end flow, minimize output to reduce con
 | Phase 4.3 (Summary) | Full table | **Skip entirely** |
 | Phase 4.4 (Work Memory) | Full update | Full update (no change) |
 
-> **⚠️ "Skip entirely" は出力の話**: Phase 4.3 の "Skip entirely" は **人間向けサマリー表示を省く** ことを意味するのみで、Phase 3 の lint 実行や Phase 4.4 の work memory 更新など処理本体は常に実行する。時間・context を理由にした lint 処理そのものの省略は禁止。Identity: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md)。
+> **⚠️ "Skip entirely" は出力の話**: Phase 4.3 は **人間向けサマリー表示を省く** だけ。Phase 3 の実行と Phase 4.4 の work memory 更新は常に行う。Identity: [workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md)。
+> rationale: references/rationale.md#skip-entirely-display-only
 
-**Detection**: See [Caller Context and End-to-End Flow](#caller-context-and-end-to-end-flow) determination method below.
-
----
-
-Execute the following phases in order when this command is invoked.
+判定は下記 Caller Context 表。
 
 ## Caller Context and End-to-End Flow
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
-
-This command has two invocation cases: standalone execution and being called from the `/rite:open` end-to-end flow.
 
 | Caller | Output Pattern | Subsequent Action |
 |-----------|-------------|---------------|
 | `/rite:open` (end-to-end flow) | Output (required) | `/rite:open` calls `rite:pr-create` at ステップ 6 after consuming the lint result at ステップ 5.1 |
 | Standalone execution | Output (required) | Display "next steps" guidance |
 
-**Determination method**: Claude determines the caller from conversation context:
-
 | Condition | Result |
 |------|---------|
 | `rite:lint` was called via the `Skill` tool immediately prior within the same session | Within end-to-end flow |
 | Otherwise (user directly typed `/rite:lint`) | Standalone execution |
 
-**Note**: `skills/fix/SKILL.md` also uses conversation context for determination in the same manner.
+必須パターン: `[lint:success]` / `[lint:skipped]` / `[lint:error]` / `[lint:aborted]`
 
-**Output patterns (required regardless of caller):**
-- `[lint:success]` - lint completed successfully
-- `[lint:skipped]` - lint skipped
-- `[lint:error]` - lint errors detected
-- `[lint:aborted]` - user aborted
-
-> **Important (flow continuation responsibility)**: When executed within the end-to-end flow, **this command does NOT directly call `rite:pr-create`; it returns control to the caller `/rite:open`**. `/rite:open` calls `rite:pr-create` at ステップ 6 after consuming the lint result at ステップ 5.1 (checklist completion confirmation happens earlier at ステップ 4.4).
+E2E では **`rite:pr-create` を直接呼ばない**。sentinel を出して `/rite:open` に返す。
+rationale: references/rationale.md#no-direct-pr-create
 
 ---
 
@@ -76,11 +62,7 @@ This command has two invocation cases: standalone execution and being called fro
 
 ## Phase 0: Load Work Memory (End-to-End Flow)
 
-When executed within the end-to-end flow, load necessary information from work memory (shared memory).
-
 ### 0.1 End-to-End Flow Determination
-
-Determine the caller from conversation context:
 
 | Condition | Result | Action |
 |------|---------|------|
@@ -88,8 +70,6 @@ Determine the caller from conversation context:
 | `/rite:lint` was executed standalone | Standalone execution | Can identify Issue from branch name |
 
 ### 0.2 Load Work Memory
-
-Extract the Issue number from the current branch and retrieve work memory:
 
 ```bash
 # ブランチ名から Issue 番号を抽出
@@ -112,8 +92,6 @@ gh api repos/{owner}/{repo}/issues/{issue_number}/comments \
 
 ### 0.3 Information to Retrieve
 
-Extract the following information from work memory and retain in context:
-
 | Field | Extraction Pattern | Purpose |
 |-----------|-------------|------|
 | Issue number | `issue-(\d+)` from branch name | Phase 4.4 work memory update |
@@ -121,11 +99,7 @@ Extract the following information from work memory and retain in context:
 | Phase | `- **フェーズ**: (.+)` | Flow position confirmation |
 | Next steps | `### 次のステップ` section | Expected operation confirmation |
 
-**If work memory is not found:**
-
-If the Issue number cannot be obtained or the work memory comment does not exist:
-- Display a warning and skip
-- Continue with normal lint execution (proceed to Phase 1)
+Issue 番号または work memory が無ければ警告して skip し、Phase 1 へ。
 
 ---
 
@@ -133,25 +107,21 @@ If the Issue number cannot be obtained or the work memory comment does not exist
 
 ### 1.1 Check Explicit Configuration
 
-Retrieve the lint command from `rite-config.yml`:
+`rite-config.yml` から lint コマンドを取る:
 
 ```yaml
 commands:
   lint: "npm run lint"  # 明示的に設定されている場合
 ```
 
-Read the configuration file:
-
 ```bash
 # rite-config.yml を読み取り
 cat rite-config.yml
 ```
 
-If `commands.lint` has a configured value, use it.
+`commands.lint` があればそれを使う。
 
 ### 1.2 Auto-Detection (When No Configuration Exists)
-
-Detect project files and determine the lint command:
 
 | File | Detection Condition | Lint Command |
 |----------|----------|---------------|
@@ -179,9 +149,7 @@ ls package.json pyproject.toml Cargo.toml go.mod Makefile 2>/dev/null
 
 ### 1.3 When Command Cannot Be Detected
 
-If the lint command cannot be detected, use the `AskUserQuestion` tool to interactively confirm.
-
-**Note**: `AskUserQuestion` is a standard Claude Code tool that presents choices to the user and retrieves their response.
+検出できなければ `AskUserQuestion`:
 
 ```
 lint コマンドを検出できませんでした
@@ -198,17 +166,13 @@ lint コマンドを検出できませんでした
 - 中断: 処理を中断します
 ```
 
-**Subsequent processing for each choice:**
-
 | Choice | Subsequent Processing |
 |--------|----------|
 | **Skip and continue** | Record "lint skipped" in conversation context, skip Phase 2 onward, and complete normally. If called from `/rite:open`, proceed to the next step (PR creation) |
 | **Specify command** | Follow up with `AskUserQuestion` to prompt for command input (see below), then execute Phase 2 onward with the entered command |
 | **Abort** | Abort processing and display guidance to "configure lint and run again" |
 
-**Output and recording when skipped:**
-
-When lint is skipped, output the completion message in the following format:
+スキップ時:
 
 **Standalone execution:**
 ```
@@ -230,30 +194,17 @@ lint をスキップしました。
 🔄 **フロー継続**: 呼び出し元の `/rite:open` が ステップ 6（PR 作成）を実行
 ```
 
-> If `/rite:lint` continues to PR creation directly, it bypasses the checklist confirmation in the caller, potentially creating a PR with incomplete tasks.
-> **CRITICAL**: When called from `/rite:open`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr-create` is made by `/rite:open` at ステップ 6 after the lint result is consumed at ステップ 5.1.
+> **CRITICAL**: `/rite:open` から呼ばれたときは上記を出して **終了**する。`rite:pr-create` は `/rite:open` ステップ 5.1 が sentinel を消費したあと ステップ 6 が呼ぶ。
+> rationale: references/rationale.md#no-direct-pr-create
 
-**Meaning of output patterns:**
-- `[lint:skipped]`: Used by `/rite:open` ステップ 5.1 to detect this pattern and decide to proceed to ステップ 6 (PR creation)
-- `[lint:success]`: When lint completed successfully (output in Phase 4.1)
-- `[lint:error]`: When lint detected errors (output in Phase 4.2)
-- `[lint:aborted]`: When the user selected "Abort"
-
-**Clarification of responsibilities:**
-
-Reflecting the lint skip in the PR body is the responsibility of `/rite:open` ステップ 5:
-1. `/rite:lint` only outputs the above output patterns
-2. When `/rite:open` detects `[lint:skipped]`, it prepares the PR body template before calling `/rite:pr-create`
-3. The "Known Issues" section of the PR body includes the following:
+`[lint:skipped]` の PR 本文反映は `/rite:open` ステップ 5 の責務:
 
 ```markdown
 ## Known Issues
 - lint 未実行（lint コマンドが検出されませんでした）
 ```
 
-**Processing when command is specified:**
-
-When "Specify command" is selected, use `AskUserQuestion` to prompt for command input:
+「コマンドを指定」なら:
 
 ```
 使用する lint コマンドを入力してください（例: npm run lint, ruff check .）
@@ -264,13 +215,7 @@ When "Specify command" is selected, use `AskUserQuestion` to prompt for command 
 - 他のコマンドを入力（Other を選択）
 ```
 
-**Note**: Present representative commands as choices in `AskUserQuestion` `options`. The user can also select "Other" to enter a custom command.
-
-When the user enters/selects a command:
-
-1. Execute Phase 2 onward using the entered command
-2. Do not save to `rite-config.yml` (temporary use only)
-3. If saving to configuration is needed, guide the user to `/rite:setup` or manual editing
+代表コマンドを選択肢に出し、Other で任意入力可。入力後は Phase 2 以降をそのコマンドで実行する。`rite-config.yml` には書かない。永続化は `/rite:setup` または手動編集。
 
 ---
 
@@ -296,34 +241,16 @@ If the path does not exist:
 
 ### 2.2 When Arguments Are Omitted
 
-Detect changed files (in priority order):
-
 #### 2.2.1 Get Base Branch
-
-Read `rite-config.yml` from the project root using the Read tool, and retrieve the `branch.base` value:
 
 ```
 Read: rite-config.yml
 ```
 
-**Retrieval logic:**
-1. If `rite-config.yml` exists and `branch.base` is set -> Use that value as `{base_branch}`
-2. If `rite-config.yml` does not exist (Read tool returns an error), or `branch.base` is not set -> Use `main` as the default
-
-**Definition of "not set":**
-- `branch.base` key does not exist
-- `branch.base` key value is `null` or empty string
-- `branch` section itself does not exist
-
-**Placeholder interpretation:**
-
-`{base_branch}` in this document is replaced with the actual branch name obtained by the above logic. For example, if `branch.base: "develop"` is configured, the subsequent bash command `git diff --name-only origin/{base_branch}...HEAD` is executed as `git diff --name-only origin/develop...HEAD`.
+1. `branch.base` があれば `{base_branch}`
+2. ファイル不在 / キー不在 / `null` / 空文字 / `branch` 節不在 → `main`
 
 #### 2.2.2 Detect Changed Files
-
-Use the `{base_branch}` value obtained above to detect diffs. Follow the fallback logic below, trying each in sequence:
-
-**Fallback logic (sequential attempts):**
 
 | Priority | Condition | Command to Execute |
 |--------|------|-------------|
@@ -354,7 +281,8 @@ git diff --name-only {base_branch}...HEAD
 3. git fetch origin でリモート情報を更新
 ```
 
-Terminate processing. Do not silently fall back to `HEAD` diff or targeting the entire project — this would change the lint scope without the user's knowledge.
+処理を中止する。`HEAD` 差分やプロジェクト全体へ黙って倒さない。
+rationale: references/rationale.md#no-silent-head-fallback
 
 **When there are no changed files:**
 
@@ -365,7 +293,7 @@ Terminate processing. Do not silently fall back to `HEAD` diff or targeting the 
 特定のパスに限定するには /rite:lint <path> を指定してください。
 ```
 
-Target the entire project (current directory) with a visible warning that the scope has expanded.
+スコープ拡大を警告したうえでプロジェクト全体を対象にする。
 
 ---
 
@@ -387,35 +315,20 @@ Target the entire project (current directory) with a visible warning that the sc
 {lint_command} {target_files}
 ```
 
-**Notes:**
-- The method for specifying target files varies by command
-- `npm run lint` follows the project configuration
-- `ruff check` accepts paths as arguments
-- Display output even if there are errors (determine by exit code)
+対象ファイルの指定方法はコマンド依存。エラー時も出力を表示し、判定は exit code。
 
 ### 3.3 Capture Execution Results
 
-Record the command's exit code and output:
-- Exit code 0: No issues
-- Exit code 1+: Errors or warnings present
+exit 0 = 問題なし。exit 1+ = エラーまたは警告。
 
 ### 3.4 Test Execution (Conditional)
 
-Execute test commands as part of quality check when configured.
+**Condition**: `commands.test` が non-null かつ `verification.run_tests_before_pr` が `true`（既定 `true`）。`verification` 節不在は既定 enabled。`commands.test` は必須。
 
-**Condition**: `commands.test` is set (non-null) in `rite-config.yml` AND `verification.run_tests_before_pr` is `true` (default: `true`).
+**Skip**（いずれか → Phase 4）: `commands.test` が `null` / 未設定、または `run_tests_before_pr: false`。
 
-**Skip conditions** (any match → skip to Phase 4):
-- `commands.test` is `null` or not set
-- `verification.run_tests_before_pr` is `false`
-
-**Note**: When the `verification` section does not exist in `rite-config.yml`, treat defaults as enabled (`run_tests_before_pr: true`). The test execution condition still requires `commands.test` to be set.
-
-**Duplicate execution avoidance**: When called from the `/rite:open` end-to-end flow and tests were already run and passed in `implement.md` Phase 5.1.0.6 (Test Verification Gate — implement.md retains its own internal phase numbering; test results available in conversation context), skip duplicate test execution and reuse previous results.
-
-When skipped, no output needed (silent skip).
-
-**Execution:**
+E2E で implement.md Phase 5.1.0.6 が既に成功していれば再実行せず結果を再利用する。skip 時は無出力。
+rationale: references/rationale.md#no-duplicate-test-in-e2e
 
 ```
 テストを実行しています...
@@ -435,14 +348,12 @@ When skipped, no output needed (silent skip).
 | 0 | Tests passed — record success, continue to Phase 4 |
 | Non-zero | Tests failed — record as error, include in Phase 4 report |
 
-**Record test results** alongside lint results for Phase 4 reporting:
-- `test_status`: `success` / `error` / `skipped`
-- `test_error_count`: Number of failed tests (0 if success)
-- `test_output`: Test command output (truncated if >500 lines)
+Phase 4 用: `test_status`（`success` / `error` / `skipped`）、`test_error_count`、`test_output`（500 行超は truncate）。
 
 ### 3.5 Plugin-specific Checks (Generic Loop)
 
-Before the informational checks, run the descriptive-number diff gate. Unlike the generic checks below, a finding or an unreadable diff is blocking: record it in `lint_output`, increment `error_count`, and route to Phase 4.2 (`[lint:error]`). The gate resolves `branch.base` with the same origin-first fallback used in Phase 2.2 and scans only added lines under `plugins/rite/`; `tests/` remains excluded.
+情報系チェックの前に descriptive-number diff gate を実行する。finding または読めない diff は blocking: `lint_output` に記録し `error_count` を増やし Phase 4.2（`[lint:error]`）。`branch.base` は Phase 2.2 と同じ origin-first。走査は `plugins/rite/` の追加行のみ。`tests/` は除外。
+rationale: references/rationale.md#descriptive-number-blocking
 
 ```bash
 descriptive_number_diff_output=$(bash {plugin_root}/hooks/scripts/descriptive-number-diff-gate.sh 2>&1)
@@ -460,9 +371,9 @@ case "$descriptive_number_diff_rc" in
 esac
 ```
 
-Run every rite-workflow internal quality check listed in the check table below through one generic execution loop. These checks are **independent of `commands.lint` configuration** (they lint the rite workflow definition itself, not the user's code). Per-check background (incident origin), detection patterns, and exclusion rules live in [references/plugin-checks-rationale.md](references/plugin-checks-rationale.md); each script's header comment is the SoT for its exact regex literals and algorithm.
+下記表の rite 内部チェックを 1 つの generic loop で回す。`commands.lint` 非依存。根拠は [plugin-checks-rationale.md](references/plugin-checks-rationale.md)。regex / アルゴリズムは各 script header が SoT。
 
-**Check table** (SoT for what runs and how — the loop, the Phase 4.1 appendix, and the Phase 4.3 summary rows all iterate over this table in order):
+**Check table**（loop / 4.1 appendix / 4.3 行の SoT。表順）:
 
 | # | Check (label) | Invocation (relative to `{plugin_root}/`) | Vars prefix | Count line (regex) |
 |---|---------------|-------------------------------------------|-------------|---------------------|
@@ -506,33 +417,32 @@ fi
 | 2 | `error` | Invocation error — record as warning, display error message |
 | -1 | `skipped` | Script not found (e.g., marketplace install without the script directory) — **skip silently** |
 
-- **Findings are warnings, not errors**: no check result changes the overall lint result pattern — `[lint:success]` remains `[lint:success]` regardless of findings. Do NOT promote a warning to an error. These checks surface awareness for progressive cleanup; they do not gate CI.
-- **Recording** (for Phase 4 reporting, 3 variables per check): `{prefix}_status` (per the table above) / `{prefix}_finding_count` (extract from `{prefix}_output` by matching the Count line regex in the check table; if no match found, default to 0) / `{prefix}_output` (script output, truncated if >50 lines). Example: the `bang_backtick` prefix records `bang_backtick_status` / `bang_backtick_finding_count` / `bang_backtick_output`.
-- **Out-of-contract exit codes** (anything other than 0/1/2/-1): treat as `error` — record as warning and continue.
+- **Findings are warnings, not errors**: どのチェックも結果パターンを変えない。`[lint:success]` は findings があっても `[lint:success]`。warning を error に昇格しない。
+- **Recording**（チェックごと 3 変数）: `{prefix}_status` / `{prefix}_finding_count`（Count line regex。無マッチは 0）/ `{prefix}_output`（50 行超は truncate）。例: `bang_backtick` → `bang_backtick_status` / `bang_backtick_finding_count` / `bang_backtick_output`。
+- **Out-of-contract exit codes**（0/1/2/-1 以外）: `error` として warning 記録し続行。
+rationale: references/rationale.md#findings-are-warnings
 
-**Per-check notes** (differences the table cannot express):
+**Per-check notes**: Number reference — 走査面（CHANGELOG en/ja と本ファイル）へ Issue/PR 番号参照を戻さない。面を広げるなら script の `DEFAULT_TARGETS` へ追加。
 
-- **Number reference check**: operational rule — do not reintroduce Issue/PR number references into the scanned surface (CHANGELOG en/ja and this file); cite the rationale in prose instead. To widen the surface, append paths to `DEFAULT_TARGETS` in the script.
-
-**Adding a new check**: add one row to the check table (script path + label + vars prefix + count-line regex), make the script follow the exit code contract above (0 = pass / 1 = findings / 2 = invocation error) and emit a count line, then add its background to [references/plugin-checks-rationale.md](references/plugin-checks-rationale.md). No new Phase section, appendix, or summary row is needed — the generic loop, appendix, and summary iterate over the table.
+**Adding a new check**: 表に 1 行（path / label / prefix / count regex）、exit 契約（0/1/2）と count line、根拠を [plugin-checks-rationale.md](references/plugin-checks-rationale.md) へ。新 Phase / appendix / summary 行は不要。
 
 <!-- Heading numbers 3.8 / 3.9 / 3.15 / 3.18 below are pinned: header comments in hooks/scripts (Non-Target files) structurally reference these lint.md Phase numbers, and sh-cross-ref-check verifies those references against this file's heading numbers. Do not renumber or remove these supplement headings without updating the referencing scripts. -->
 
 ### 3.8 Wiki Growth Check supplement (internal no-op contract)
 
-Warns when the wiki branch has gone unchanged for `wiki.growth_check.threshold_prs` consecutive merged PRs (evidence that the wiki-update phases in pr-review / fix / issue-close are being silently skipped). Wiki disabled / wiki branch absent / `gh` CLI missing / `rite-config.yml` absent are all handled inside the script → exit 0 with `findings: 0`, and the Phase 4.3 summary row simply shows `success (0 findings)` for these legitimate no-op states.
+wiki 無効 / wiki branch 不在 / `gh` 不在 / config 不在は script 内で exit 0・`findings: 0`。4.3 は `success (0 findings)`。
 
 ### 3.9 Gitignore Health Check supplement (internal no-op contract)
 
-Detects regression of the `.rite/wiki/` exclusion rule in `.gitignore` (the last line of defense against wiki-ingest silent leaks). Wiki disabled / config absent are handled inside the script → exit 0 with `findings: 0`.
+wiki 無効 / config 不在は script 内で exit 0・`findings: 0`。
 
 ### 3.15 Orphan Reference Check supplement (detection inputs)
 
-Flags a file as orphan only when inbound references (searched in `plugins/rite/`, `docs/`, `.github/`, excluding self-references) AND test pins (searched in `plugins/rite/hooks/tests/` and `plugins/rite/scripts/tests/`) are both zero. Well-known static assets (`.gitkeep`, `__init__.py`, `LICENSE`, `CHANGELOG.md`) are skipped.
+orphan は inbound（`plugins/rite/` / `docs/` / `.github/`、自己参照除く）AND test pin（`hooks/tests/` / `scripts/tests/`）が両方 0 のときだけ。静的資産（`.gitkeep` / `__init__.py` / `LICENSE` / `CHANGELOG.md`）は skip。
 
 ### 3.18 Projects Board Drift Check supplement (detect-and-enumerate only)
 
-Lint does NOT auto-reconcile — the `Done` transition stays the responsibility of `/rite:cleanup` / `/rite:issue-close`; on-demand reconciliation is available via the script's `--reconcile` flag. Its no-op contract (projects disabled / config absent → exit 0 inside the script) matches the 3.8 / 3.9 supplements.
+lint は auto-reconcile しない。`Done` 遷移は `/rite:cleanup` / `/rite:issue-close`。on-demand は `--reconcile`。no-op（projects 無効 / config 不在 → exit 0）は 3.8 / 3.9 と同じ。
 
 ---
 
@@ -540,11 +450,8 @@ Lint does NOT auto-reconcile — the `Done` transition stays the responsibility 
 
 ### 4.0 Defense-in-Depth: State Update Before Output (End-to-End Flow)
 
-Before outputting any result pattern (`[lint:success]`, `[lint:skipped]`, `[lint:error]`, `[lint:aborted]`), update flow state to reflect the post-lint phase (defense-in-depth). This prevents intermittent flow interruptions when the fork context returns to the caller — even if the LLM churns after fork return and the system forcibly terminates the turn (bypassing the Stop hook), the state file will already contain the correct `next_action` for resumption.
-
-**Condition**: Execute only when flow state file exists (indicating e2e flow). Skip if the file does not exist (standalone execution).
-
-**State update by result**:
+結果パターンを出す**前に** flow-state を更新する。flow-state ファイルがあるときだけ（standalone は skip）。
+rationale: references/rationale.md#defense-in-depth-state
 
 | Result | Phase | Phase Detail | Next Action |
 |--------|-------|-------------|-------------|
@@ -560,13 +467,10 @@ bash {plugin_root}/hooks/flow-state.sh set \
   --if-exists
 ```
 
-Replace `{phase_value}` and `{next_action_value}` with the values from the table above based on the lint result.
+`{phase_value}` / `{next_action_value}` は上表。`error_count` は set のたびに 0（`--preserve-error-count` 以外）。
+rationale: references/rationale.md#defense-in-depth-state
 
-**Note on `error_count`**: `flow-state.sh set` resets `error_count` to 0 by default on every phase transition, and preserves the existing value only when `--preserve-error-count` is passed. `error_count` is currently a reserved/legacy schema slot with no production reader; resetting on transition keeps the slot well-defined for future re-introduction without carrying stale counts.
-
-**Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when flow state file exists:
-
-Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands) for details and marketplace install notes.
+flow-state があるときはローカル work memory も同期。[Work Memory Format](../../skills/rite-workflow/references/work-memory-format.md#usage-in-commands)
 
 ```bash
 WM_SOURCE="lint" \
@@ -580,9 +484,7 @@ WM_SOURCE="lint" \
   bash {plugin_root}/hooks/local-wm-update.sh 2>/dev/null || true
 ```
 
-Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the flow state update above. Claude substitutes these with the actual values based on the lint result before executing.
-
-**On lock failure**: Log a warning and continue — local work memory update is best-effort.
+placeholder は上表の実値。lock 失敗は WARNING して続行（best-effort）。
 
 ### 4.1 When No Issues Found
 
@@ -602,18 +504,15 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the flo
 [lint:success] — lint passed ({target_file_count} files)
 ```
 
-**Plugin-specific check appendix** (both standalone and E2E): for each check in the Phase 3.5 check table (in table order), when `{prefix}_status` is `warning` **or `error`**, append the following after the lint result output. Both statuses use the same appendix so that invocation failures (exit code 2) are never silently dropped — for `warning` the `{prefix}_output` carries the findings, for `error` it carries the failure diagnostic. These appendices do NOT change the result pattern — `[lint:success]` remains the pattern regardless of how many checks report warnings or invocation errors:
+**Plugin-specific check appendix**（standalone / E2E）: Phase 3.5 表の順で `{prefix}_status` が `warning` **または `error`** なら追記。exit 2 を黙って落とさない。appendix は結果パターンを変えない:
 
 ```
 ⚠️ {check label}: {finding_count} findings detected ({status}, non-blocking)
 {output}
 ```
 
-> **Context savings**: Omit target description, command details, and flow continuation text. The caller already knows the context.
-
-> **CRITICAL**: When called from `/rite:open`, `/rite:lint` outputs the above message and **terminates**. The call to `rite:pr-create` is made by `/rite:open` at ステップ 6 after the lint result is consumed at ステップ 5.1.
-
-**Note**: `[lint:success]` is an output pattern used by `/rite:open` ステップ 5.1 to determine the lint result.
+> E2E では対象・コマンド・継続文を省く。出力して **終了**。`rite:pr-create` は呼ばない。
+> rationale: references/rationale.md#no-direct-pr-create
 
 ### 4.2 When Issues Found
 
@@ -623,7 +522,7 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the flo
 {first 10 lines of lint_output}
 ```
 
-> **Context savings**: In e2e flow, omit fix suggestions (the caller returns to ステップ 4 implementation for fixes). Only include first 10 lines of lint output to identify the issue category.
+> E2E では修正提案を省き、lint 出力は先頭 10 行。
 
 **Standalone execution:**
 ```
@@ -639,11 +538,7 @@ Where `{phase_value}`, `{phase_detail}`, and `{next_action_value}` match the flo
 修正案:
 ```
 
-**Note**: `[lint:error]` is an output pattern used by `/rite:open` ステップ 5.1 to determine the lint result.
-
-**Presenting fix suggestions:**
-
-Analyze the error content and present fix suggestions when possible:
+**Presenting fix suggestions**（standalone）:
 
 1. **When auto-fix is available:**
    ```
@@ -689,29 +584,25 @@ Analyze the error content and present fix suggestions when possible:
 > **注**: `/rite:open` の一気通貫フローから呼び出された場合、この「次のステップ」案内は**スキップ**されます。呼び出し元が出力パターン（`[lint:success]` 等）を検出し、自動的に次のアクション（PR 作成）に進みます。**この案内は単独実行時のみ参照してください**。
 ```
 
-**Note**: The `テスト` row is only shown when `commands.test` is configured. When tests were skipped, omit the row entirely. Plugin-specific check rows follow one shared rule: one row per check in the Phase 3.5 check table (table order), omit the row when `{prefix}_status` is `skipped`, and display it for `success` / `warning` / `error` (`success` = no findings or a legitimate internal no-op; `warning` = findings detected; `error` = invocation failure — displayed so the failure is surfaced rather than silently dropped).
+`テスト` 行は `commands.test` があるときだけ。skip なら省略。プラグイン行は Phase 3.5 表順、1 チェック 1 行。`skipped` は省略。`success` / `warning` / `error` は表示（`error` = 起動失敗を落とさない）。
 
 ### 4.4 Automatic Work Memory Update (Conditional)
 
 > **WARNING**: Work memory is published as Issue comments. In public repositories, it is visible to third parties. Do not record confidential information (credentials, personal information, internal URLs, etc.) in work memory.
 
-Record the quality check results in work memory.
-
-**Execution condition**: Automatically executed only when on a work branch linked to an Issue (branch containing the `issue-{number}` pattern). Not executed on main/master branches or branches that do not contain an Issue number.
+`issue-{number}` ブランチのときだけ。main/master や Issue 番号無しは実行しない。
 
 #### 4.4.1 Identify Related Issue
 
-Extract the Issue number from the branch name:
+ブランチ名から Issue 番号:
 
 ```bash
 issue_number=$(git branch --show-current | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
 ```
 
-If no Issue number is found, skip the work memory update.
+番号が無ければ skip。
 
 #### 4.4.2 Retrieve and Update Work Memory Comment
-
-Write the lint result content (from 4.4.3 template) to a temp file, then append to the work memory comment:
 
 ```bash
 lint_result_tmp=$(mktemp)
@@ -733,7 +624,7 @@ rm -f "$lint_result_tmp"
 
 #### 4.4.3 Update Content
 
-Automatically append the following to work memory:
+追記テンプレート:
 
 ```markdown
 ### 品質チェック履歴
@@ -745,16 +636,11 @@ Automatically append the following to work memory:
 - **対象**: {target}
 ```
 
-**Notes**:
-- If the work memory comment is not found, skip the update
-- If on the main/master branch, skip the update
-- This update is performed automatically and does not require user confirmation
+comment 不在 / main・master なら skip。確認不要。
 
 #### 4.4.4 Record "Next Steps"
 
-After the quality check is complete, record "next steps" in work memory.
-
-**Content to append (on lint success):**
+**success:**
 
 ```markdown
 ### 次のステップ
@@ -763,7 +649,7 @@ After the quality check is complete, record "next steps" in work memory.
 - **備考**: lint 完了、PR 作成準備完了
 ```
 
-**Content to append (on lint skip):**
+**skip:**
 
 ```markdown
 ### 次のステップ
@@ -772,7 +658,7 @@ After the quality check is complete, record "next steps" in work memory.
 - **備考**: lint スキップ（コマンド未検出）、PR 作成準備完了
 ```
 
-**Content to append (on lint error):**
+**error:**
 
 ```markdown
 ### 次のステップ
@@ -781,16 +667,7 @@ After the quality check is complete, record "next steps" in work memory.
 - **備考**: lint エラー修正後、再度 lint を実行
 ```
 
-**Notes**:
-- If an existing `### 次のステップ` section exists, replace its content
-- If the section does not exist, append to the end of work memory
-
-**Specific replacement procedure:**
-
-1. Retrieve the existing work memory body
-2. Detect from `### 次のステップ` to the next `###` or EOF
-3. Replace that section with the new "next steps" section
-4. If the section is not found, append to the end of the body
+既存 `### 次のステップ` は置換、無ければ末尾追記。
 
 ```bash
 # lint 結果に応じて次のステップの内容を選択し、一時ファイルに書き出す
@@ -885,8 +762,6 @@ go vet {files}
 
 ### 5.1 Flow Continuation Decision
 
-Continue the end-to-end flow based on the output pattern from Phase 4.
-
 | Output Pattern | Action in End-to-End Flow |
 |-------------|---------------------------|
 | `[lint:success]` | `/rite:lint` execution completes, and the caller `/rite:open` consumes the sentinel at ステップ 5.1 then proceeds to ステップ 6 (PR creation) |
@@ -894,23 +769,13 @@ Continue the end-to-end flow based on the output pattern from Phase 4.
 | `[lint:error]` | After fixing errors, run lint again (return to Phase 3) |
 | `[lint:aborted]` | Flow ends (execution of `/rite:open` also ends) |
 
-**Note**: During standalone execution (when the user directly executes `/rite:lint`), the ステップ 5.1 sentinel consumption and ステップ 6 PR creation are **not executed**. Lint sentinel consumption and PR creation are features only executed within the `/rite:open` end-to-end flow; standalone lint execution ends without flow continuation.
+standalone では ステップ 5.1 の sentinel 消費も ステップ 6 の PR 作成も **実行しない**。
 
 ### 5.2 Processing After `/rite:lint` Completion
 
-When `[lint:success]` or `[lint:skipped]` is output:
-
-**`/rite:lint` execution completes**, and Claude returns to `/rite:open` ステップ 5.1 to consume the lint sentinel, then proceeds to ステップ 6 to call `rite:pr-create`.
-
-**Important**:
-- `/rite:lint` does **NOT directly call** `rite:pr-create`
-- The caller `/rite:open` consumes the lint sentinel at ステップ 5.1 and proceeds to ステップ 6 (PR creation)
-- After all checklist items are complete, `/rite:open` calls `rite:pr-create`
-
-**Design intent**:
-- Guard function to prevent proceeding to PR creation until all Issue checklist items are complete
-- If there are incomplete items, return to ステップ 4 (implementation) to continue implementation
+`[lint:success]` / `[lint:skipped]` なら実行完了。`/rite:open` ステップ 5.1 が sentinel を消費し ステップ 6 で `rite:pr-create` を呼ぶ。本スキルは **`rite:pr-create` を直接呼ばない**。
+rationale: references/rationale.md#checklist-guard
 
 ### 5.3 Standalone Execution Behavior
 
-During standalone execution, Phase 5 is not executed; display the "next steps" guidance from Phase 4 and terminate.
+Phase 5 は実行しない。Phase 4 の案内を出して終了する。
