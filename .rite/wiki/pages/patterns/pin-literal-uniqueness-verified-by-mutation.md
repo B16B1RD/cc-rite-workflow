@@ -6,7 +6,7 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/pin-literal-uniqueness-verified-by-mutation.md"
 description: "散文の実行契約を守る静的 assert（pin）は、**張っただけでは守れていない**。"
 created: "2026-08-02T22:05:00+09:00"
-updated: "2026-08-13T19:20:00+09:00"
+updated: "2026-08-13T10:27:46Z"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260802T074021Z-pr-2052.md"
@@ -18,6 +18,8 @@ sources:
     ref: "raw/fixes/20260804T145425Z-pr-2111.md"
   - type: "reviews"
     ref: "raw/reviews/20260813T094525Z-pr-2306.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260813T094616Z-pr-2306.md"
 tags: ["pin", "mutation-testing", "static-assert", "producer-consumer-symmetry", "drift-detection"]
 confidence: high
 ---
@@ -120,6 +122,7 @@ grep -rn '<特徴的な文字列>' plugins/rite/hooks/tests/
 
 - 交替を書く前に、各枝を**単独で** `grep -n` して当たった行を目視する
 - 説明文に当たるなら、行頭アンカー・周辺トークンの併記・`grep -F` の固定文字列化のいずれかで実行行に限定する
+- 消費側 pin に `|` を書くなら ERE 交替にしないようエスケープする。fire 腕は判定語（例: `lost_gate=fire`）まで固定し、raw lost 入力も対で pin する
 - 確定は必ず変異注入で行う。**対象の腕を 1 つ削除して pin が落ちること**を実測する
 
 ## 関連ページ
@@ -135,3 +138,4 @@ grep -rn '<特徴的な文字列>' plugins/rite/hooks/tests/
 - [PR 2052 fix cycle 5: pin selection after edits, producer/consumer marker pins, emit-point relocation](../../raw/fixes/20260802T082508Z-pr-2052.md)
 - [PR #2111 fix results (cycle 3)](../../raw/fixes/20260804T145425Z-pr-2111.md)
 - [PR #2306 cycle 2 review (交替を素で書いた消費側 pin が説明文に当たり fire 腕の退行を検出しなかった)](../../raw/reviews/20260813T094525Z-pr-2306.md)
+- [PR #2306 pin fix (消費側 pin の | をエスケープし fire 腕と raw lost 入力を固定)](../../raw/fixes/20260813T094616Z-pr-2306.md)

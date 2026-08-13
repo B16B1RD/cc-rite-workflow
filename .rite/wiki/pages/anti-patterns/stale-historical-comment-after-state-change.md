@@ -4,7 +4,7 @@ domain: "anti-patterns"
 description: "config 値の bump (例: `enabled: false → true`) や AC の完了マーク (`⏳ 実行予定 → ✅ 実行済`) など状態を変更する commit で、**同一行 / 近傍のインラインコメント** が旧値や未来形 (`default: false` / `... 後に true 化予定`) のまま残置する drift。"
 promote: rite-plugin
 created: "2026-05-19T20:10:23Z"
-updated: "2026-08-13T19:20:00+09:00"
+updated: "2026-08-13T10:27:46Z"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260519T195007Z-pr-1065.md"
@@ -24,6 +24,8 @@ sources:
     ref: "raw/reviews/20260813T081206Z-pr-2304.md"
   - type: "fixes"
     ref: "raw/fixes/20260813T081923Z-pr-2304.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260813T102011Z-pr-2308.md"
 tags: [config-bump, inline-comment, drift, rollout-strategy, order-emphasis-consistency, delegation-refactor, terminology-table, byte-unchanged-stale]
 confidence: high
 ---
@@ -131,6 +133,12 @@ control-flow 分類を変える refactor (hard-fail-fast → soft-failure、Pyth
 
 対処は、記録簿の記述を**範囲宣言**として書くこと。「この Issue が閉じる範囲は〜であり、公開手順は次の 5 ステップ」と書けば、途中で止まっても文書は偽にならない。完了形は、完了を観測してから書く。
 
+### 同一記録簿で両方向が連続する
+
+同じ来歴記録簿で、未了を完了形で書いたあと、差し替えが実際に入った後も冒頭宣言が旧実態のまま残った。公開面は新版フルカットへ置き換わっていたが、出典ファイルの先頭行はまだ旧 Demo の出典だと書いていた。旧数字（尺など）は出典側の duration と CHANGELOG 履歴にだけ残してよく、冒頭宣言は新実態に合わせる。
+
+鏡像形（完了形の先書き）を直したあと、本形（状態が進んだのに宣言が旧値）が同じファイルに残る。片方を直したら、もう片方の時制も同じ sweep に入れる。
+
 ### 関連 anti-pattern との区別
 
 | pattern | scope | 検出 timing |
@@ -157,3 +165,4 @@ control-flow 分類を変える refactor (hard-fail-fast → soft-failure、Pyth
 - [PR #1201 fix cycle 3 (用語定義表 stale 同期)](../../raw/fixes/20260529T153627Z-pr-1201.md)
 - [PR #2304 review results (恒久記録簿へ未了工程を完了形で書いた形を検出)](../../raw/reviews/20260813T081206Z-pr-2304.md)
 - [PR #2304 fix results (来歴記述を範囲宣言へ書き換え、公開手順を 5 ステップで明示)](../../raw/fixes/20260813T081923Z-pr-2304.md)
+- [PR #2308 review results (差し替え後も出典ファイルの冒頭宣言が旧実態のまま残っていた形)](../../raw/reviews/20260813T102011Z-pr-2308.md)

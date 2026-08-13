@@ -30,6 +30,9 @@
 * **Skip**: [20260813T001119Z-pr-2286.md](raw/reviews/20260813T001119Z-pr-2286.md) — cycle 1 指摘 0 と diet mergeable 傾向は既存ヒューリスティックと重複。SPAWN_SPREAD=undetermined は Grok 環境固有で一般化不能
 * **lint:warning** — contradictions=0, stale=5, orphans=0, missing_concept=1, unregistered_raw=324, broken_refs=0
 * **lint:warning** — contradictions=0, stale=5, orphans=0, missing_concept=1, unregistered_raw=326, broken_refs=0
+* **Skip**: [20260813T095217Z-pr-2306.md](raw/reviews/20260813T095217Z-pr-2306.md) — cycle 3 確認のみ: tautological pin 解消は pin-literal-uniqueness-verified-by-mutation に既統合。0 指摘は一時結果
+* **Update**: [状態変化後も未来形 / 旧値前提のインラインコメントが残置する (stale historical comment drift)](pages/anti-patterns/stale-historical-comment-after-state-change.md) — raw/reviews/20260813T102011Z-pr-2308.md を統合
+* **Update**: [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — raw/fixes/20260813T094616Z-pr-2306.md を統合
 
 ## 2026-08-12
 
