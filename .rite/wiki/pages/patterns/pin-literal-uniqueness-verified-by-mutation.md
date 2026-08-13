@@ -6,7 +6,7 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/pin-literal-uniqueness-verified-by-mutation.md"
 description: "散文の実行契約を守る静的 assert（pin）は、**張っただけでは守れていない**。"
 created: "2026-08-02T22:05:00+09:00"
-updated: "2026-08-05T09:26:00+09:00"
+updated: "2026-08-13T19:20:00+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260802T074021Z-pr-2052.md"
@@ -16,6 +16,8 @@ sources:
     ref: "raw/fixes/20260802T082508Z-pr-2052.md"
   - type: "fixes"
     ref: "raw/fixes/20260804T145425Z-pr-2111.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260813T094525Z-pr-2306.md"
 tags: ["pin", "mutation-testing", "static-assert", "producer-consumer-symmetry", "drift-detection"]
 confidence: high
 ---
@@ -110,6 +112,16 @@ grep -rn '<特徴的な文字列>' plugins/rite/hooks/tests/
 | 表への行追加 | 既存行に pin があるなら新規行にも pin |
 | 散文の書き換え前 | 対象段落の文字列で `hooks/tests/` を grep |
 
+### 交替（alternation）を含む pin は「別文脈への当たり」を先に潰す
+
+`grep -E 'A|B'` のように交替を素で書いた pin は、意図した実行行だけでなく、**その literal を引用している説明文**にも当たる。説明文が同じファイルに常在すると、pin は対象の実行行を消しても生き残り、退行を検出しない（恒真化）。
+
+観測例では、消費側 pin の交替に含めた語が判定ロジックの説明文（`TREND_REASON` の解説）に当たり、fire 側の腕を削除しても pin が pass した。1 行に閉じた `grep -c` の一意性確認では、行が複数ある場合に気づけない。
+
+- 交替を書く前に、各枝を**単独で** `grep -n` して当たった行を目視する
+- 説明文に当たるなら、行頭アンカー・周辺トークンの併記・`grep -F` の固定文字列化のいずれかで実行行に限定する
+- 確定は必ず変異注入で行う。**対象の腕を 1 つ削除して pin が落ちること**を実測する
+
 ## 関連ページ
 
 - [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く](../anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md)
@@ -122,3 +134,4 @@ grep -rn '<特徴的な文字列>' plugins/rite/hooks/tests/
 - [PR 2052 review cycle 5: pin uniqueness, marker producer/consumer symmetry, guard-induced dead code](../../raw/reviews/20260802T080828Z-pr-2052.md)
 - [PR 2052 fix cycle 5: pin selection after edits, producer/consumer marker pins, emit-point relocation](../../raw/fixes/20260802T082508Z-pr-2052.md)
 - [PR #2111 fix results (cycle 3)](../../raw/fixes/20260804T145425Z-pr-2111.md)
+- [PR #2306 cycle 2 review (交替を素で書いた消費側 pin が説明文に当たり fire 腕の退行を検出しなかった)](../../raw/reviews/20260813T094525Z-pr-2306.md)

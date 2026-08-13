@@ -4,12 +4,16 @@ title: "glob で集合を指すと、集合の増減に silent に追随しな�
 domain: "anti-patterns"
 description: "エラー分類の集合（例: 「caller 契約違反である本文検査 4 段」）を、判定述語として `reason=body_*` のような **glob（接頭辞パターン）で指す**と、集合と glob の一致は保証されない。"
 created: "2026-07-28T21:30:00+09:00"
-updated: "2026-07-28T21:30:00+09:00"
+updated: "2026-08-13T19:20:00+09:00"
 sources:
   - type: "fixes"
     ref: "raw/fixes/20260728T122258Z-pr-2038.md"
   - type: "reviews"
     ref: "raw/reviews/20260728T081222Z-pr-2038.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260813T081206Z-pr-2304.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260813T081923Z-pr-2304.md"
 tags: []
 confidence: high
 ---
@@ -68,6 +72,14 @@ glob が問題になるのは**判定述語**として使う場合であり、gr
 - 分岐・診断・転記条件 → **明示列挙**（対象外も書く）
 - 探索補助・概説 → glob でよい
 
+### ファイル集合を指す glob でも同じ穴が開く
+
+判定述語だけでなく、**検査対象のファイル集合を指す glob** でも取りこぼしが起きる。決定論レンダリングの契約チェックは `for scene in scenes/*.html` で全シーンを走査していたが、英語版シーン 7 本を新設した `scenes-en/` は glob の外にあり、**英語シーンだけが契約ガードの対象集合から抜けた**。
+
+決定的なのは、同じ PR の設計文書に「契約ガードを 1 組に保つため同一ディレクトリへ置く」と書いた直後に、その主張が実装で成立していない状態になっていたこと。glob は「ディレクトリを 1 つ増やす」という変更に silent で、追加したファイル側にも既存 glob 側にも警告は出ない。
+
+対処は glob の明示列挙化（`for scene in scenes/*.html scenes-en/*.html`）。**sibling ディレクトリを新設したら、既存の走査 glob を grep で洗い出す**のが、この方向の drift に対する唯一の機械的な手当てになる。
+
 ### 一般化
 
 - 集合を指す述語を書くとき、**その集合の全要素を数え、glob が過不足なく一致するか**を確かめる
@@ -84,3 +96,5 @@ glob が問題になるのは**判定述語**として使う場合であり、gr
 
 - [PR #2038 fix results (cycle 6, final)](../../raw/fixes/20260728T122258Z-pr-2038.md)
 - [PR #2038 review results (cycle 2)](../../raw/reviews/20260728T081222Z-pr-2038.md)
+- [PR #2304 review results (新設 `scenes-en/` が決定論スイープ glob の外に落ちた)](../../raw/reviews/20260813T081206Z-pr-2304.md)
+- [PR #2304 fix results (スイープ glob を明示列挙して sibling ディレクトリを取り込んだ)](../../raw/fixes/20260813T081923Z-pr-2304.md)

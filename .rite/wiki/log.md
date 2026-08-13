@@ -1,5 +1,14 @@
 ## 2026-08-13
 
+* **Create**: [静的 pin が壊れたら期待値を書き写す前に、pin が観測する表現を不変部分へ寄せられないか検討する](pages/heuristics/pin-observes-invariant-not-incidental-representation.md) — raw/reviews/20260813T081206Z-pr-2304.md / raw/fixes/20260813T081923Z-pr-2304.md / raw/reviews/20260813T090426Z-pr-2304.md を新規ページ化（producer のリテラル変更で consumer の字面 pin だけが壊れる形。期待値の書き写しではなく観測面を basename へ絞る）
+* **Create**: [値の妥当性ガードは消費する場所ではなく値が入る場所に置く — 空値と未指定が sentinel を共有すると消費側のガードは不発する](pages/heuristics/validity-guard-at-assignment-site-not-consumption-site.md) — raw/reviews/20260813T081206Z-pr-2304.md / raw/fixes/20260813T081923Z-pr-2304.md / raw/reviews/20260813T090426Z-pr-2304.md を新規ページ化（`-d ""` で guard が不発し、誤った素材の成果物が exit 0 で完成する経路）
+* **Create**: [散文の主語を広げたら、その主語に係る述語を数え上げて検算する — 数え上げられない粒度は書かずに削る](pages/heuristics/widened-subject-requires-predicate-enumeration.md) — raw/reviews/20260813T093749Z-pr-2304.md を新規ページ化（主語拡大後の述語未検算と「直結する」の外延未確認。次は加筆でなく削減へ）
+* **Update**: [glob で集合を指すと、集合の増減に silent に追随しない — 診断・分岐の述語には明示列挙を使う](pages/anti-patterns/glob-set-membership-silent-drift.md) — raw/reviews/20260813T081206Z-pr-2304.md / raw/fixes/20260813T081923Z-pr-2304.md を統合（判定述語だけでなく検査対象のファイル集合を指す glob でも sibling ディレクトリを取りこぼす）
+* **Update**: [エラーを 1 つの reason へ畳むときは「原因の類型」が同じかを確かめる — 復旧手順が違うなら分ける](pages/heuristics/error-classification-by-cause-not-detection-site.md) — raw/reviews/20260813T090426Z-pr-2304.md を統合（規約を書いた本人が直下の新分岐で違反し、畳んだ else が事実に反する原因を名乗る）
+* **Update**: [状態変化後も未来形 / 旧値前提のインラインコメントが残置する (stale historical comment drift)](pages/anti-patterns/stale-historical-comment-after-state-change.md) — raw/reviews/20260813T081206Z-pr-2304.md / raw/fixes/20260813T081923Z-pr-2304.md を統合（鏡像形として、未了工程を恒久記録簿へ完了形で先に書く drift を追加）
+* **Update**: [散文で宣言した設計は対応する実装契約がなければ機能しない](pages/anti-patterns/prose-design-without-backing-implementation.md) — raw/reviews/20260813T081206Z-pr-2304.md / raw/fixes/20260813T081923Z-pr-2304.md を統合（宣言と反例が同一 PR に同居する派生形。守らせたい側で断定の射程を狭める）
+* **Update**: [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — raw/reviews/20260813T094525Z-pr-2306.md を統合（交替を素で書いた pin が説明文に当たり恒真化する）
+* **Update**: [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) — raw/reviews/20260813T093122Z-pr-2306.md / raw/fixes/20260813T093419Z-pr-2306.md を統合（値域の食い違いは「弾きすぎ」だけでなく「発火しない」向きにも出る）
 * **Skip**: [20260813T064101Z-pr-2302.md](raw/reviews/20260813T064101Z-pr-2302.md) — rite-plugin: close 冪等と board 同期の分離は issue-close / archive-procedures に既実装。class B のテスト pin 弱さと proceed 文言はセッション残渣で新規 domain 経験則なし
 * **lint:warning** — contradictions=0, stale=6, orphans=0, missing_concept=1, unregistered_raw=327, broken_refs=0
 * **Update**: [共有パスに置く進捗/status 表示は到達する全経路で真な文言にする（成功含意を避ける）](pages/heuristics/status-display-truthful-for-all-reachable-paths.md) — raw/reviews/20260813T054655Z-pr-2300.md を統合（常時出す完了文に空集合除外を置くのも同型。除外は条件付き専用行に閉じ、常時行は全件完走の事実だけを述べる）

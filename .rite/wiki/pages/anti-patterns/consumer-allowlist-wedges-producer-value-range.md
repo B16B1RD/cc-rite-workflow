@@ -4,7 +4,7 @@ title: "消費側だけに足した allowlist は生成側の値域と食い違�
 domain: "anti-patterns"
 description: "「危険な入力を弾く」allowlist を**消費側だけ**に追加すると、生成側が正当に作れる値まで拒否する。"
 created: "2026-08-01T05:40:00Z"
-updated: "2026-08-01T05:40:00Z"
+updated: "2026-08-13T19:20:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260801T012055Z-pr-2078.md"
@@ -12,6 +12,10 @@ sources:
     ref: "raw/fixes/20260801T013839Z-pr-2078.md"
   - type: "fixes"
     ref: "raw/fixes/20260801T032503Z-pr-2078.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260813T093122Z-pr-2306.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260813T093419Z-pr-2306.md"
 tags: []
 confidence: high
 ---
@@ -65,6 +69,12 @@ confidence: high
 
 **入力を狭める変更を入れたら、「弾かれる側の正当な入力」を fixture に必ず 1 本入れる。** 攻撃入力（弾かれるべき値）だけを足しても、false reject 側は検出できない。
 
+### 値域の食い違いは「弾きすぎ」だけでなく「発火しない」方向にも出る
+
+同じ非対称は、消費側が **producer が実際には出さない値**を待つ形でも起きる。修復ゲートを新設した際、消費側の判定が helper の出力する値域と 1 語ずれており（helper は `JSON_SAVED=true` を出すのに別表記を待っていた）、**ゲートが主シナリオで一度も発火しなかった**。allowlist 型の wedge が「正当な値を拒否する」のに対し、こちらは「異常値を通す」向きの縮退で、症状は無音である。
+
+どちらの向きも原因は同じ — **消費側の値域を、producer の実装ではなく設計意図から書いた**こと。新設する判定は、必ず producer の出力を実測（または helper の docstring 契約）から引く。加えて、成立を観測する marker を「保存が成功した」ことに限定し、判定不能を成功へ倒さない。
+
 ## 関連ページ
 
 - [非収束の review ループは個別修正ではなく構造を疑う](../heuristics/non-converging-review-loop-suspect-structure.md)
@@ -75,3 +85,5 @@ confidence: high
 
 - [PR #2078 review results (cycle 2)](../../raw/reviews/20260801T012055Z-pr-2078.md)
 - [PR #2078 fix results (cycle 2)](../../raw/fixes/20260801T013839Z-pr-2078.md)
+- [PR #2306 review results (消費側ゲートの値域が helper 契約と食い違い主シナリオで発火しなかった)](../../raw/reviews/20260813T093122Z-pr-2306.md)
+- [PR #2306 fix results (判定を helper 契約の値域へ揃え、保存観測を成功時 marker に限定)](../../raw/fixes/20260813T093419Z-pr-2306.md)

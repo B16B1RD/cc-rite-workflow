@@ -4,7 +4,7 @@ domain: "anti-patterns"
 description: "config 値の bump (例: `enabled: false → true`) や AC の完了マーク (`⏳ 実行予定 → ✅ 実行済`) など状態を変更する commit で、**同一行 / 近傍のインラインコメント** が旧値や未来形 (`default: false` / `... 後に true 化予定`) のまま残置する drift。"
 promote: rite-plugin
 created: "2026-05-19T20:10:23Z"
-updated: "2026-05-29T15:59:38Z"
+updated: "2026-08-13T19:20:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260519T195007Z-pr-1065.md"
@@ -20,6 +20,10 @@ sources:
     ref: "raw/fixes/20260529T150155Z-pr-1201.md"
   - type: "fixes"
     ref: "raw/fixes/20260529T153627Z-pr-1201.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260813T081206Z-pr-2304.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260813T081923Z-pr-2304.md"
 tags: [config-bump, inline-comment, drift, rollout-strategy, order-emphasis-consistency, delegation-refactor, terminology-table, byte-unchanged-stale]
 confidence: high
 ---
@@ -117,6 +121,16 @@ control-flow 分類を変える refactor (hard-fail-fast → soft-failure、Pyth
 
 教訓: diff に出る変更行だけでなく、**「diff に出ない unchanged 行で、他箇所の変更により真実値が変わったもの」も review/sync 対象**。control-flow 分類を変える refactor では reason 表・routing 表に加え「用語定義表」のような副次的説明テーブルの例示も同期 scope に含める (Asymmetric Fix Transcription の説明テーブル版)。3 cycle 連鎖事例は cycle 1=comment rot → cycle 2=stderr 破棄 → cycle 3=用語定義表 stale と、実装の正しさ → 診断品質 → 説明整合性 の順に深掘りされた。
 
+### 鏡像形: 未了の工程を恒久記録簿へ完了形で書く
+
+時制の drift は「状態が進んだのにコメントが旧値のまま」だけでなく、**状態が進んでいないのに記録が完了形で先に書かれる**方向にも起きる。
+
+来歴記録簿（PROVENANCE）に「両 README の Demo を差し替えた」と書いたが、README は当該 PR で未変更だった。書き手の視点では「この Issue で閉じる工程」なので完了形が自然に出るが、記録簿は **merge 後に単独で読まれる恒久文書**であり、読み手にはその区別が付かない。
+
+旧値残置と違い、この形は **commit 時点では自己矛盾を検出できない**（README の変更は同じ PR の後続 commit で入る予定だった）。したがって差分レビューでは「まだ入っていない」としか見えず、記録簿だけが先行して真になる。
+
+対処は、記録簿の記述を**範囲宣言**として書くこと。「この Issue が閉じる範囲は〜であり、公開手順は次の 5 ステップ」と書けば、途中で止まっても文書は偽にならない。完了形は、完了を観測してから書く。
+
 ### 関連 anti-pattern との区別
 
 | pattern | scope | 検出 timing |
@@ -141,3 +155,5 @@ control-flow 分類を変える refactor (hard-fail-fast → soft-failure、Pyth
 - [PR #1201 review cycle 3 (用語定義表 stale 検出)](../../raw/reviews/20260529T152911Z-pr-1201.md)
 - [PR #1201 fix cycle 1 (comment rot 修正 — helper 実挙動 runtime 検証)](../../raw/fixes/20260529T150155Z-pr-1201.md)
 - [PR #1201 fix cycle 3 (用語定義表 stale 同期)](../../raw/fixes/20260529T153627Z-pr-1201.md)
+- [PR #2304 review results (恒久記録簿へ未了工程を完了形で書いた形を検出)](../../raw/reviews/20260813T081206Z-pr-2304.md)
+- [PR #2304 fix results (来歴記述を範囲宣言へ書き換え、公開手順を 5 ステップで明示)](../../raw/fixes/20260813T081923Z-pr-2304.md)

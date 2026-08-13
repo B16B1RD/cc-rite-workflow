@@ -4,7 +4,7 @@ domain: "anti-patterns"
 description: "設計意図を散文で記述しつつ、それを機能させる実装 / 契約 / consumer が存在しない状態を「Prose-only design」と呼ぶ。"
 promote: rite-plugin
 created: "2026-04-17T04:30:00+00:00"
-updated: "2026-07-24T10:32:51Z"
+updated: "2026-08-13T19:20:00+09:00"
 sources:
   - type: "reviews"
     ref: "raw/reviews/20260417T035556Z-pr-559.md"
@@ -24,6 +24,10 @@ sources:
     ref: "raw/reviews/20260724T100356Z-pr-2005.md"
   - type: "fixes"
     ref: "raw/fixes/20260724T100752Z-pr-2005.md"
+  - type: "reviews"
+    ref: "raw/reviews/20260813T081206Z-pr-2304.md"
+  - type: "fixes"
+    ref: "raw/fixes/20260813T081923Z-pr-2304.md"
   - type: "reviews"
     ref: "raw/reviews/20260724T102005Z-pr-2005.md"
 tags: ["prose-design", "enforcement-gap", "machine-verification", "mvp-undefined-note", "prose-code-consistency", "defense-in-depth-claim-divergence", "phantom-marker-consumer"]
@@ -162,6 +166,14 @@ phantom consumer 事例 (setup 依存検査追加) で、新設した `[CONTEXT]
 
 **review→fix→verify アークでの grep 反射**: cycle 1 で 2 reviewer が `grep -rn DEP_CHECK` により consumer ゼロを提示して指摘 → fix でコメント/散文を実態 (機械 parse されない) に訂正 → cycle 2 で reviewer が **訂正後の universal-negative 主張「現状どの後続フェーズも機械 parse しない」を再び grep で独立検証** して解消確認。この「主張の真偽を反例 (consumer) の grep 探索で裏取りする」反射は [[docs-review-implementation-grep-verification]] と同根で、data-contract emit の comment 精度検証に一般化できる。
 
+### 派生形: 同じ PR の中で宣言した不変条件を、同じ PR の別ファイルが破る
+
+prose-only design の亜種として、**宣言と反例が同一 PR に同居する**形がある。設計文書へ「日英 2 本のシーンはレイアウトも同一」と書いた一方、英語版の最終シーンだけがラベル長を吸収するため異なる `inset` 値を持っていた。実装契約が「無い」のではなく、**同じ PR の実装が既にその宣言の反例になっている**。
+
+この形で重要なのは、どちらを直すかの判断が自明でないこと。誤っていたのは CSS ではなく断定のほうで、Issue の error handling 節は字幅由来の寸法調整を明示的に許容していた。断定をそのまま守る後続作業者は、**正当な調整を規約違反と読んで戻してしまう**。したがって CSS を宣言に合わせるのではなく、宣言を実態に合わせて狭めた（同一を断定するのはファイル名・宣言尺・`@keyframes`・`animation` 宣言に限り、寸法調整は例外と明記）。
+
+判定は「宣言と実装のどちらが正しいか」ではなく「**どちらを守らせたいか**」で行う。守らせたい側が実装なら、宣言の射程を狭める。
+
 ## 関連ページ
 
 - [Exit code semantic preservation: caller は case で語彙を保持する](../patterns/exit-code-semantic-preservation.md)
@@ -179,3 +191,5 @@ phantom consumer 事例 (setup 依存検査追加) で、新設した `[CONTEXT]
 - [PR #2005 review cycle 1 (DEP_CHECK marker の phantom consumer 断定を grep で検出)](../../raw/reviews/20260724T100356Z-pr-2005.md)
 - [PR #2005 fix (marker コメント/散文を data-contract emit の実態に訂正)](../../raw/fixes/20260724T100752Z-pr-2005.md)
 - [PR #2005 review cycle 2 (訂正後の universal-negative 主張を grep で再検証・解消確認)](../../raw/reviews/20260724T102005Z-pr-2005.md)
+- [PR #2304 review results (同一 PR 内で宣言した「レイアウト同一」を同 PR の CSS が破っていた)](../../raw/reviews/20260813T081206Z-pr-2304.md)
+- [PR #2304 fix results (CSS を戻さず断定の射程を狭める判断)](../../raw/fixes/20260813T081923Z-pr-2304.md)
