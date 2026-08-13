@@ -154,7 +154,7 @@ $stats
 EOF
 
 _undetermined() {
-  echo "WARNING: reviewer の spawn spread を判定できません (reason=$1)。reviewer prompt の「起動時刻の記録」指示が全 reviewer に届いているか確認してください" >&2
+  echo "WARNING: reviewer の spawn spread を判定できません (reason=$1)。ステップ 4.3.1 の orchestrator spawn 時刻が timings JSON に届いているか確認してください" >&2
   echo "[CONTEXT] SPAWN_SPREAD=undetermined; reason=$1; reviewers=$total; measured=$parsed" >&2
   exit 0
 }

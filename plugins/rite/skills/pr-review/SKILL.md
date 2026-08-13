@@ -1222,6 +1222,17 @@ rationale: references/design-rationale.md#named-subagent-and-foreground
 **Legacy type fallback**: 旧 type（`api` / `frontend` / `performance` / `database` / `type-design`）は WARNING 付きで `application` に代替（silent skip 禁止。`skills/reviewers/SKILL.md` Legacy Reviewer Type Aliases）。
 **⚠️ CRITICAL**: 各 Task は **`run_in_background: false` を明示**。省略でも harness default は background。
 
+**Spawn 時刻（4.6 の値源）**: Task を発行する**直前**に 1 回だけ記録する。同一メッセージの全 reviewer がこの 1 値を共有する。後続の初回 wave（別メッセージで新たに起動する reviewer 群）では再実行して新しい値を取る。4.4 / 5.1.1.1 の retry では本 block を再実行せず、初回の値を保持する。
+
+```bash
+orchestrator_spawn_at=$(date -u +%Y-%m-%dT%H:%M:%SZ) || orchestrator_spawn_at=""
+if [ -n "$orchestrator_spawn_at" ]; then
+  echo "[CONTEXT] ORCHESTRATOR_SPAWN_AT=$orchestrator_spawn_at" >&2
+else
+  echo "[CONTEXT] ORCHESTRATOR_SPAWN_AT=null; reason=date_failed" >&2
+fi
+```
+
 ### 4.4 Retry Logic
 
 Retry procedure when a Task tool returns an error:
@@ -1255,6 +1266,7 @@ Determine the error type from the Task tool result. Claude analyzes the Task too
 3. If retryable:
  - Keep other reviewers' results intact
  - Re-execute only the failed Task (with the same or modified prompt)
+ - **Do not re-run the 4.3.1 date block** — keep the first `{orchestrator_spawn_at}`
 4. If the retry limit (1 time) is reached:
  - Mark the reviewer as "incomplete"
  - Proceed to ステップ 5 and generate the integrated report with only other reviewers' results
@@ -1322,13 +1334,13 @@ Verification テンプレート本文は [references/reviewer-prompt-verificatio
 
 ### 4.6 Spawn Spread Check (並列起動の直列化検出、non-blocking)
 
-全 Task 結果の直後に `### 起動時刻` の `started_at:` から spawn spread を機械判定する。並列は強制せず観測のみ。
+全 Task 結果の直後に ステップ 4.3.1 の `{orchestrator_spawn_at}` から spawn spread を機械判定する。並列は強制せず観測のみ。
 
 # rationale: references/design-rationale.md#spawn-spread-threshold-notes
 
 **手順**:
 
-1. Write tool で `{review_tmp_dir}/rite-reviewer-timings-{pr_number}-{current_commit_sha}.json` (以降 `{spawn_timings_file}`) へ下記の形で保存する (`{review_tmp_dir}` は下記 bash の `[CONTEXT] REVIEW_TMP_DIR=` marker 値、`{current_commit_sha}` は **ステップ 1.2.5 で記録した本 cycle の commit SHA** をリテラル置換する。Write tool は TMPDIR の shell 展開ができないため)。パスは **commit ごと**に分離し、その識別子を本ステップの外から取る。`${TMPDIR}` はセッション内不変なので固定名では別 commit のファイルまで共有する一方、識別子を本ステップ自身が鋳造すると本ステップを飛ばした cycle で 5.3.0.M が同じパスを構成できない。1.2.5 の SHA は 4.6 と 5.3.0.M の双方が独立に持つため、両者が同じ規則で同じパスを組み立てられる。HEAD 不変の再入 cycle に残る識別上の制約は 5.3.0.M step 1 の **既知の残余**を SoT とする。`started_at` には各 reviewer 出力の `### 起動時刻` の値を**そのまま**書く。セクション欠落 / `計測不能` は `null` を書く — 省略も捏造もしない (欠落は「計測不能」として表面化させる):
+1. Write tool で `{review_tmp_dir}/rite-reviewer-timings-{pr_number}-{current_commit_sha}.json` (以降 `{spawn_timings_file}`) へ下記の形で保存する (`{review_tmp_dir}` は下記 bash の `[CONTEXT] REVIEW_TMP_DIR=` marker 値、`{current_commit_sha}` は **ステップ 1.2.5 で記録した本 cycle の commit SHA** をリテラル置換する。Write tool は TMPDIR の shell 展開ができないため)。パスは **commit ごと**に分離し、その識別子を本ステップの外から取る。`${TMPDIR}` はセッション内不変なので固定名では別 commit のファイルまで共有する一方、識別子を本ステップ自身が鋳造すると本ステップを飛ばした cycle で 5.3.0.M が同じパスを構成できない。1.2.5 の SHA は 4.6 と 5.3.0.M の双方が独立に持つため、両者が同じ規則で同じパスを組み立てられる。HEAD 不変の再入 cycle に残る識別上の制約は 5.3.0.M step 1 の **既知の残余**を SoT とする。`started_at` には 4.3.1 の `{orchestrator_spawn_at}` を書く（同一メッセージの reviewer は同じ値。4.4 retry は初回を保持）。4.3.1 欠落 / `ORCHESTRATOR_SPAWN_AT=null` は `null` — 省略も捏造もしない (欠落は「計測不能」として表面化させる):
 
    ```json
    {"reviewer_timings": [{"reviewer": "security-reviewer", "started_at": "2026-04-11T03:00:00Z"}, {"reviewer": "test-reviewer", "started_at": null}]}

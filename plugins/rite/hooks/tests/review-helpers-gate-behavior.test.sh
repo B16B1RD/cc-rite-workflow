@@ -51,8 +51,8 @@
 #        あわせて閾値の境界 (ちょうどは検出しない) /
 #        `--threshold` 上書き / 単独 reviewer の非誤検出 / 引数・入力 gate の rc=2。加えて
 #        観測結果が永続化まで届くための静的 pin (4.6 の helper 呼び出しが live な bash block に
-#        ある / 5.3.0.M step 1 が timings ファイルの Read 転記を規定する / reviewer prompt が
-#        起動時刻の記録を指示し出力セクションを持つ / schema が reviewer_timings を定義する /
+#        ある / 5.3.0.M step 1 が timings ファイルの Read 転記を規定する / 4.3.1 が orchestrator
+#        spawn 時刻を記録し reviewer prompt に自己申告が無い / schema が reviewer_timings を定義する /
 #        統合レポート 2 テンプレの両方に直列化の 1 行がある)
 #        さらに該当 Check 行が区間内に 1 本だけであることも固定する (区間内マッチ数のみの assertion
 #       A literal-presence-only assertion is insufficient because itを含む別行を足すだけで素通りするため) /
@@ -3800,22 +3800,22 @@ assert "TC-6.7 4.6 区間に REVIEW_TMP_DIR の live emit がある" "1" \
 assert_grep "TC-6.7 5.3.0.M が 4.6 未実行を無言で省略せず marker で表面化" "$REVIEW_MD" 'SPAWN_TIMINGS=not_run'
 assert_grep "TC-6.7 E2E 表が直列化 1 行を例外 5 として省略禁止に登録" "$REVIEW_MD" '例外 5: ステップ 5\.4 の `### 総合評価` にある `\*\*起動の直列化\*\*` の 1 行'
 assert_grep "TC-6.7 5.4 側にも例外 5 と対の注記がある" "$REVIEW_MD" '本行は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 5）'
-# producer 側の pin は**区間で**取る。ファイル全体の grep だと、出力フォーマットの
-# placeholder 行だけで条件が満たされ「着手前に実行せよ」という指示節を丸ごと消す変異が
-# 素通りする (指示が消えると全 reviewer が null を返し AC-1 が構造的に成立しなくなる)。
+# 値源は 4.3.1 の orchestrator spawn 時刻。reviewer 自己申告（レポート執筆時刻）に戻すと
+# 長時間並列で偽陽性が再発する。producer 側の pin は**区間で**取る。
 _prompt_gen="$PLUGIN_ROOT/skills/pr-review/references/reviewer-prompt-generator.md"
-_sec_started_at_instr() {
-  start_re='^## 起動時刻の記録' head_re='^## ' awk '
-    !inside && $0 ~ ENVIRON["start_re"] { inside = 1; print; next }
-    inside && $0 ~ ENVIRON["head_re"] { exit }
-    inside { print }
-  ' "$_prompt_gen"
-}
-assert "TC-6.7 reviewer prompt の指示節が着手前実行を命じる" "1" \
-  "$(_sec_started_at_instr | grep -c 'date -u +%Y-%m-%dT%H:%M:%SZ' || true)"
-assert "TC-6.7 指示節が「着手する前に」を明示" "1" \
-  "$(_sec_started_at_instr | grep -c '着手する\*\*前に\*\*' || true)"
-assert_grep "TC-6.7 reviewer prompt の出力フォーマットに起動時刻セクション" "$_prompt_gen" '^### 起動時刻'
+_sec_431() { _section_of '^### 4\.3\.1 ' '^### '; }
+assert "TC-6.7 4.3.1 が Task spawn 直前に date -u を記録する" "1" \
+  "$(_sec_431 | grep -c 'date -u +%Y-%m-%dT%H:%M:%SZ' || true)"
+assert "TC-6.7 4.3.1 が ORCHESTRATOR_SPAWN_AT を emit する" "2" \
+  "$(_sec_431 | grep -c 'ORCHESTRATOR_SPAWN_AT=' || true)"
+assert "TC-6.7 4.6 の値源は orchestrator_spawn_at" "2" \
+  "$(_sec_46 | grep -c '{orchestrator_spawn_at}' || true)"
+assert "TC-6.7 4.6 が reviewer 自己申告を値源にしない" "0" \
+  "$(_sec_46 | grep -c '### 起動時刻' || true)"
+assert "TC-6.7 reviewer prompt に自己申告指示節が無い" "0" \
+  "$(grep -c '^## 起動時刻の記録' "$_prompt_gen" || true)"
+assert "TC-6.7 reviewer prompt に起動時刻出力セクションが無い" "0" \
+  "$(grep -c '^### 起動時刻' "$_prompt_gen" || true)"
 assert_grep "TC-6.7 schema が reviewer_timings を定義" "$PLUGIN_ROOT/references/review-result-schema.md" '^\| `reviewer_timings` \| array \|'
 # helper 自身が tempfile lifecycle を手書きへ戻すと signal ごとの終了コードと cleanup が再び
 # caller ごとに分岐する。共通 lib への委譲と、lib 側の 3 signal handler を同じ静的層で pin する。
