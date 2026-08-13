@@ -9,11 +9,9 @@
 
 ## Demo
 
-From Issue to PR — see Rite Workflow turn development into a *rite*. A ~125-second intro (English).
+From Issue to PR — see Rite Workflow turn development into a *rite*. A ~55-second intro (English).
 
-> **Note**: The install command and the closing footer URL shown in the video still use the previous repository owner (`asakaguchi`). See [Installation](#installation) below for the current command.
-
-https://github.com/user-attachments/assets/b1f50f60-6c7c-4d86-9ceb-9071ae4b1c9f
+https://github.com/user-attachments/assets/7874c4cf-f50a-4c0c-8925-295d7f37b43d
 
 ## Why "Rite"?
 
