@@ -208,6 +208,22 @@ resume 判定となり reset ブロックに入らず、即再発火する当の
 条件にすると発散発火が残した state に対して解が空集合になる。`cycle_count >= 1` は両発火理由
 に共通で、正常終了・fresh entry の state は 0 またはキー欠落なので候補を絞れる。
 
+## lost-repair-gate
+
+`LOST=N` 注記は観測であり、次 cycle の開始を止めない。保存ステップの脱落は全ホストで実測される普遍現象で、注記のまま進むと trend が穴あきの列を実測として読む。修復が安価なのは「結果がまだセッションコンテキストに残っている」境界だけで、そこを過ぎると再レビュー以外に穴を埋める手段がない。
+
+ゲートを increment / CB より前に置くのは、次 cycle を始める前が唯一の遮断点だから。CB を先に評価すると、穴あき列で発火理由が確定し、修復の機会を失う。`lost > 0` を増分とするのは、本ゲート導入後は穴を抱えたまま進めないため「前回からの増加」と「現在の不足」が一致するから。helper に `lost_delta` を足さない — 既存 `lost=` で足り、返却値の追加は必要時だけという契約に従う。
+
+(a) を既存 `review-result-save.sh` に閉じるのは、必須フィールド・schema 検証を二重実装しないため。虚偽保存のうち形式不合格は helper が弾き、形式合格の捏造だけが残る — merge ゲートと同じ受容済みトレードオフ。(a) の成功条件は helper の値域 `JSON_SAVED=true`（`=1` ではない）。(b) で counter を進めないのは、再レビューが「次 cycle」ではなく「当該 cycle のやり直し」だから。marker の `cycle=` を永続 counter に一致させたまま `INC=held` とするのは、既存の counter invariant（marker と永続値が一致）を壊さないため。
+
+(b) 後の成立観測は `JSON_SAVED=true` / `REVIEW_SAVE_JSON_OK=1`。`[review:mergeable]` は使わない — 未保存のまま素通しすると batch が収束扱いする。不成立は `ITERATE_LOST_REPAIR=failed` を出して iterate 失敗形で止める。新しい停止 sentinel は作らない — caller（batch-run）の既存「sentinel 不在 / `[review:error]` → 失敗停止」に倒す。
+
+fire 分岐でも `--handoff` なしの `flow-state.sh set` を呼ぶのは、直前 `[fix:pushed]` の継続 handoff が残ると Stop hook が `/rite:pr-review` を再注入し、ゲートを迂回するため。`--cycle-count` は付けない（INC=held）。
+
+`_undecidable` は `lost=` を出さない。coerce で空を 0 にすると `cc>=1` かつ JSON 0 件（`no_results_file` / `results_dir_missing` / `no_file_after_pin`）でゲートが発火しない。helper の lost 算出は変えない — 消費側が raw 欠落 + 当該 reason + `cc>=1` で fire する。`cc=0` と `helper_unavailable` は発火させない。
+
+8.0.4（pr-review 内）と LOST 注記は触らない。ゲートは境界に足す層であり、内側の保存ゲートや観測注記の置換ではない。
+
 ## design-decisions
 
 blocking の定義式は本ファイルに複製せず severity-levels.md の実測必須ゲートを SoT とする。
