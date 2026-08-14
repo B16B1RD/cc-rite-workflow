@@ -39,7 +39,7 @@
 #     stdout as "no context to inject" and continue.
 #   - Reads index.md via `git show` for separate_branch strategy, via direct
 #     file read for same_branch strategy.
-#   - OKF v0.1 2-pass: Pass 1 parses both catalog forms — the 5-column table
+#   - OKF 2-pass: Pass 1 parses both catalog forms — the 5-column table
 #     (page / domain / summary / updated / confidence) that wiki-ingest writes
 #     today, and the OKF bullet form (`* [title](path) - description`) still
 #     live in repos initialized under the earlier template. The table columns
@@ -521,8 +521,8 @@ if [[ -z "$candidates" ]]; then
   exit 0
 fi
 
-# Read a candidate page's frontmatter metadata (domain / confidence / updated).
-# Returns "domain\x1f confidence\x1f updated" on stdout, or exit 1 on read
+# Read a candidate page's frontmatter metadata (domain / confidence / generated.at).
+# Returns "domain\x1f confidence\x1f generated.at" on stdout, or exit 1 on read
 # failure (the caller treats failure as a non-blocking skip — AC-8). Reads via
 # the same `ref` (separate_branch) / working-tree (same_branch) selection used
 # for index.md and per-page body reads, keeping origin/wiki fallback consistent.
@@ -546,7 +546,12 @@ read_page_meta() {
     infm && /^---[[:space:]]*$/ { exit }
     infm && /^domain:/     { v=$0; sub(/^domain:[[:space:]]*/,"",v);     gsub(/^["'\'']|["'\'']$/,"",v); d=v }
     infm && /^confidence:/ { v=$0; sub(/^confidence:[[:space:]]*/,"",v); gsub(/^["'\'']|["'\'']$/,"",v); c=v }
-    infm && /^updated:/    { v=$0; sub(/^updated:[[:space:]]*/,"",v);    gsub(/^["'\'']|["'\'']$/,"",v); u=v }
+    infm && (/^generated:/ || /^[[:space:]]+at:[[:space:]]*/) {
+      v=$0
+      sub(/.*at:[[:space:]]*/, "", v)
+      gsub(/[",}[:space:]]/, "", v)
+      if (v != "") u=v
+    }
     END { printf "%s\037%s\037%s", d, c, u }
   ' <<< "$body"
 }
