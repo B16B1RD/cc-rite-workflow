@@ -3,6 +3,7 @@
 * **Skip**: [20260814T110029Z-pr-2316.md](raw/reviews/20260814T110029Z-pr-2316.md) — 一時的なレビュー件数サマリのみで、再利用可能な経験則が抽出できない
 * **Skip**: [20260813T105727Z-pr-2310.md](raw/reviews/20260813T105727Z-pr-2310.md) — 一時的なレビュー件数サマリのみで、再利用可能な経験則が抽出できない
 * **Update**: Migrated bundle frontmatter to OKF v0.2 (`sources[].ref` → `resource`, `updated` → `generated`)
+* **lint:warning** — contradictions=0, stale=7, orphans=0, missing_concept=1, unregistered_raw=331, broken_refs=0
 
 ## 2026-08-13
 
