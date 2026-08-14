@@ -1,4 +1,5 @@
 ## 2026-08-14
+* **Skip**: [20260814T144713Z-pr-2323.md](raw/reviews/20260814T144713Z-pr-2323.md) — detector-candidate: リリース準備 PR の merge は squash-only。merge_commit_sha と develop の SHA 一致は release-promotion-verify が機械検証する
 * **Skip**: [20260814T110029Z-pr-2316.md](raw/reviews/20260814T110029Z-pr-2316.md) — 一時的なレビュー件数サマリのみで、再利用可能な経験則が抽出できない
 * **Skip**: [20260813T105727Z-pr-2310.md](raw/reviews/20260813T105727Z-pr-2310.md) — 一時的なレビュー件数サマリのみで、再利用可能な経験則が抽出できない
 * **Update**: Migrated bundle frontmatter to OKF v0.2 (`sources[].ref` → `resource`, `updated` → `generated`)
