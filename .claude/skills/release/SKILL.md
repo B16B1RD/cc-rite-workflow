@@ -278,22 +278,22 @@ gh pr create \
 マージしてよいか確認し、承認後にマージ:
 
 ```bash
-gh pr merge --merge
+gh pr merge {PREP_PR_NUMBER} --squash
 ```
+
+prep PR は `--squash` でマージする。Phase 3.2 の `release-promotion-verify.sh` は、
+前回リリース以降の develop の全 commit が squash commit であること（その SHA 自身を
+`merge_commit_sha` とする merged PR を持つこと）を要求する。merge commit 方式だと
+develop に載る実コミットがこの不変条件を満たさない。
+
+GitHub UI から merge commit / rebase merge を選んでも同じ不変条件を破れる
+（`allow_merge_commit` / `allow_rebase_merge` が有効な間）。本スキルはリポジトリの
+マージ方式設定を変更しない。prep PR は必ず上記コマンドで squash すること。
 
 マージ後、**Issue の Status を `Done` に更新する**。`Closes` キーワードで自動クローズされるが、されなければ手動でクローズ。
 
-**ブランチ削除**: マージ後、不要になったリリース準備ブランチをローカルとリモートから削除する:
-
-```bash
-# develop に切り替え
-git checkout develop
-git pull origin develop
-
-# リリース準備ブランチを削除
-git branch -d chore/issue-{ISSUE_NUMBER}-v{VERSION_SLUG}-release-prep
-git push origin --delete chore/issue-{ISSUE_NUMBER}-v{VERSION_SLUG}-release-prep 2>/dev/null || true
-```
+リリース準備ブランチと session worktree の削除は Phase 3.0 の `/rite:cleanup` に委ねる。
+Phase 2.5 ではブランチ切替もブランチ削除も行わない。
 
 ---
 
