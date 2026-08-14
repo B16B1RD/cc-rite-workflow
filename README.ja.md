@@ -33,7 +33,7 @@ https://github.com/user-attachments/assets/8f36c6b4-1595-4b30-8019-0fe6f0be9b52
 - **ローカル作業メモリ (Local Work Memory)**: lock / 再開サポート付きの compact 耐性のある作業状態管理
 - **Implementation Contract**: 仕様を明確にする構造化 Issue テンプレート形式
 - **仮定の表面化 (Assumption Surfacing)**: `/rite:issue-create` はモデルが暗黙に補った仮定を Implementation Contract に固定される前に表面化して解決し、リポジトリや Wiki から導出できない事項だけをユーザーに質問します。詳細なプロトコルは [docs/SPEC.md](docs/SPEC.md)（Phase 1.5）を参照
-- **Experience Wiki**: レビュー/修正の結果を自動取り込みし、各 Issue の冒頭で関連する経験則を注入する LLM 駆動のプロジェクト知識ベース（opt-out 可）。[OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog) 準拠バンドルとして保存されます。詳細は [`plugins/rite/references/wiki-patterns.md`](plugins/rite/references/wiki-patterns.md) を参照
+- **Experience Wiki**: レビュー/修正の結果を自動取り込みし、各 Issue の冒頭で関連する経験則を注入する LLM 駆動のプロジェクト知識ベース（opt-out 可）。[OKF v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog) 準拠バンドルとして保存されます。詳細は [`plugins/rite/references/wiki-patterns.md`](plugins/rite/references/wiki-patterns.md) を参照
 - **sandbox 対応 (Sandbox-aware)**: `/rite:setup` が既知の sandbox 環境制約を失敗が発生する前に事前検出し、対応する回避策を提示します
 
 ## インストール

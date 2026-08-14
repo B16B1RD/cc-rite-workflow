@@ -15,7 +15,7 @@ Wiki Lint エンジン。`.rite/wiki/pages/` の Wiki ページ、`.rite/wiki/ra
 1. 事前チェック (Wiki 設定 / 初期化判定 / 引数解析・カウンタ初期化)
 2. 検査対象の収集 (pages_list / raw_list)
 3. 矛盾検出 (タイトル衝突 / 方針逆転 / 重複情報)
-4. 陳腐化検出 (`updated` frontmatter が閾値超過、`wiki-lint-stale.sh` 委譲)
+4. 陳腐化検出 (`generated.at` frontmatter が閾値超過、`wiki-lint-stale.sh` 委譲)
 5. 孤児ページ検出 (`index.md` 未登録、`wiki-lint-orphans.sh` 委譲)
 6. 欠落概念検出 (`missing_concept` + `unregistered_raw` の 3 分岐)
 7. 壊れた相互参照検出 (Markdown link 解決失敗、`wiki-lint-broken-refs.sh` 委譲)
@@ -29,7 +29,7 @@ rationale: references/rationale.md#helper-delegation
 | 観点 | 検出対象 | ブロッキング |
 |------|---------|--------------|
 | **矛盾** | 同じトピックで異なる結論を持つページ（タイトル衝突・方針逆転・重複情報） | Yes |
-| **陳腐化** | `updated` frontmatter が閾値（デフォルト 90 日）を超えて更新されていないページ | Yes |
+| **陳腐化** | `generated.at` frontmatter が閾値（デフォルト 90 日）を超えて更新されていないページ | Yes |
 | **孤児ページ** | `pages/` 配下に存在するが `index.md` のページカタログ（`## ページ一覧` の 5 列テーブル。箇条書きテンプレートが配布されていた期間に初期化された bundle の箇条書き `* [title](pages/...) - desc` も登録として扱う）に登録されていないページ | Yes |
 | **欠落概念 (missing_concept)** | `raw/` に `ingested: true` の Raw Source があるが、対応ページも `sources.ref` 登録も `ingest_status: skipped` 記録（raw frontmatter）も存在しない真の欠落 | Yes |
 | **壊れた相互参照** | ページ本文の Markdown リンク `](...)` が `pages/` 配下の実在ファイルを指していない | Yes |
@@ -290,7 +290,7 @@ rationale: references/rationale.md#empty-lists-keep-7-5
 |-----------|--------|------|
 | `title` | YAML frontmatter | タイトル衝突検出 |
 | `domain` | YAML frontmatter | ドメイン単位での比較 |
-| `updated` | YAML frontmatter | ステップ 4（陳腐化）で使用 |
+| `generated.at` | YAML frontmatter | ステップ 4（陳腐化）で使用 |
 | `confidence` | YAML frontmatter | 矛盾判定の優先度 |
 | 本文（概要・詳細） | frontmatter 除外後 | 方針逆転・重複情報の検出 |
 
@@ -330,7 +330,7 @@ LLM が `pages_list` の全ページペアを意味的に比較し、以下の�
 
 ## ステップ 4: 陳腐化検出
 
-検出本体は `wiki-lint-stale.sh` に委譲する。helper は全ページの frontmatter `updated` を cutoff (`now - stale_days`) と比較し、件数 + stale 集合を marker block で emit する。GNU date 事前検査も helper が内包する。
+検出本体は `wiki-lint-stale.sh` に委譲する。helper は全ページの frontmatter `generated.at` を cutoff (`now - stale_days`) と比較し、件数 + stale 集合を marker block で emit する。GNU date 事前検査も helper が内包する。
 
 > **Reference**: `plugins/rite/hooks/scripts/wiki-lint-stale.sh`。state machine 契約は `references/bash-cross-boundary-state-transfer.md` の Pattern 1/2。
 
@@ -492,9 +492,9 @@ fi
 
 ### 6.2 対応ページの存在確認と 3 分岐
 
-`raw_list` のパスは `.rite/wiki/` プレフィックス付き (例: `.rite/wiki/raw/reviews/20260410T...md`) で取得されているため、`sources[].ref` および ステップ 6.0 の `skipped_refs` と比較する前に両辺から `.rite/wiki/` を除去して `raw/{type}/{filename}` 形式に正規化する:
+`raw_list` のパスは `.rite/wiki/` プレフィックス付き (例: `.rite/wiki/raw/reviews/20260410T...md`) で取得されているため、`sources[].resource` および ステップ 6.0 の `skipped_refs` と比較する前に両辺から `.rite/wiki/` を除去して `raw/{type}/{filename}` 形式に正規化する:
 
-1. `pages_list` の各 Wiki ページ本文を取得し、frontmatter `sources[].ref` を抽出して `all_source_refs` 集合を保持する (step 3(a) で参照される)
+1. `pages_list` の各 Wiki ページ本文を取得し、frontmatter `sources[].resource` を抽出して `all_source_refs` 集合を保持する (step 3(a) で参照される)
 2. `raw_list` の各 Raw Source について `.rite/wiki/` プレフィックスを除去した相対パスを計算
 3. 相対パスを以下の優先順で 3 分岐する:
    - **(a) 登録済み**: step 1 の `all_source_refs` のいずれかに含まれる → 何もしない (健全)
@@ -694,7 +694,7 @@ rationale: references/descriptive-refs-rationale.md#scan-scope
 
 ### 8.1 検出結果の log.md 記録
 
-Lint 完了後、`.rite/wiki/log.md` に OKF v0.1 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新）で **append-only** にエントリを追記する。今日の日付見出し `## YYYY-MM-DD` が `# Directory Update Log` 直後（ログ先頭）に無ければ新規追加し、その見出し配下の **bullet 群末尾** に以下の 1 bullet を追加する:
+Lint 完了後、`.rite/wiki/log.md` に OKF 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新。v0.2 §9 は v0.1 から不変）で **append-only** にエントリを追記する。今日の日付見出し `## YYYY-MM-DD` が `# Directory Update Log` 直後（ログ先頭）に無ければ新規追加し、その見出し配下の **bullet 群末尾** に以下の 1 bullet を追加する:
 rationale: references/rationale.md#okf-log-append
 
 ```
@@ -948,7 +948,7 @@ Wiki Lint が完了しました。
 
 次のステップ:
 - 矛盾は手動で該当ページを統合してください
-- 陳腐化ページは /rite:wiki-ingest で新しい Raw Source を統合するか、手動で updated フィールドを更新してください
+- 陳腐化ページは /rite:wiki-ingest で新しい Raw Source を統合するか、手動で generated.at フィールドを更新してください
 - 孤児ページは index.md に追加するか、不要なら削除してください
 - 欠落概念は /rite:wiki-ingest で該当 Raw Source を再処理してください
 - 壊れた相互参照は該当ページを手動で修正してください

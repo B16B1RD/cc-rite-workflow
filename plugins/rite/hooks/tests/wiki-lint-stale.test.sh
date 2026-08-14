@@ -2,7 +2,7 @@
 # wiki-lint-stale.test.sh
 #
 # Tests for wiki-lint-stale.sh (wiki/lint.md ステップ 4 delegation target).
-# The helper compares each page's `updated` frontmatter against the cutoff
+# The helper compares each page's `generated.at` frontmatter against the cutoff
 # and emits a marker block + stale_check_ok enum + [CONTEXT] sentinel.
 # Structure mirrors wiki-lint-skipped-refs.test.sh (6.0 counterpart).
 #
@@ -82,14 +82,14 @@ if [ -d /proc ] && [ "$HAS_GNU_DATE" != 1 ]; then
   fail "HAS_GNU_DATE probe: 'date -d' unavailable on Linux (missing or shadowed on PATH?) — the stale-detection TCs must never be skipped on the blocking gate"
 fi
 
-# ページフィクスチャ: stale (2020 年) / fresh (現在) / updated 欠落 / パース不能
+# ページフィクスチャ: stale (2020 年) / fresh (現在) / generated.at 欠落 / パース不能
 make_page() {
   local path="$1" updated="$2"
   mkdir -p "$(dirname "$path")"
   if [ "$updated" = "__none__" ]; then
     printf -- '---\ntitle: "t"\n---\nbody\n' > "$path"
   else
-    printf -- '---\ntitle: "t"\nupdated: "%s"\n---\nbody\n' "$updated" > "$path"
+    printf -- '---\ntitle: "t"\ngenerated: { by: "rite-wiki-ingest/test", at: "%s" }\n---\nbody\n' "$updated" > "$path"
   fi
 }
 
@@ -157,8 +157,8 @@ if [ "$HELPER_RC" -eq 0 ] \
 else
   fail "TC-1 (rc=$HELPER_RC stdout=$HELPER_STDOUT)"
 fi
-if printf '%s\n' "$HELPER_STDERR" | grep -q 'no-updated.md に updated フィールドが存在しません' \
-   && printf '%s\n' "$HELPER_STDERR" | grep -q "bad-date.md の updated フィールド 'not-a-date' をパースできません"; then
+if printf '%s\n' "$HELPER_STDERR" | grep -q 'no-updated.md に generated.at フィールドが存在しません' \
+   && printf '%s\n' "$HELPER_STDERR" | grep -q "bad-date.md の generated.at フィールド 'not-a-date' をパースできません"; then
   pass "TC-1 欠落 / パース不能の WARNING を stderr に emit"
 else
   fail "TC-1 WARNING (stderr=$HELPER_STDERR)"

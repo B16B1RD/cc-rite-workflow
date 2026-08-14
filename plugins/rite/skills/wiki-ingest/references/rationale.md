@@ -67,10 +67,17 @@ Issue / PR 番号は出典の識別子であって概念の理由を説明しな
 因果は自己完結した散文にし、provenance は `sources` に分離する。`description` を更新しないと
 ステップ 6 helper が既存サマリー列を保持し、同源テキストが drift する。
 
+## okf-migrate-on-first-touch
+
+版数検査と一括 migration を ingest 冒頭（lock 取得後）に置くのは、配布先 bundle の移行を手動
+script 実行前提にしないため。`wiki.enabled: false` では 1.1 で既に return 済みなので helper は
+呼ばれない。helper 失敗時に `okf_version` を bump しないのは、途中失敗の再実行を冪等に完走
+させるため。
+
 ## source-ref-path-form
 
-raw frontmatter の `source_ref`（PR 識別子、例: `pr-1143`）を page の `sources[].ref` に転記する
-と、同名 placeholder と raw フィールドの dual-use で drift する。lint は `ref` をファイルパス
+raw frontmatter の `source_ref`（PR 識別子、例: `pr-1143`）を page の `sources[].resource` に転記する
+と、同名 placeholder と raw フィールドの dual-use で drift する。lint は `resource` をファイルパス
 形式で raw と突合するため、PR 識別子だと raw→page 追跡が切れ false `missing_concept` を量産する。
 概念は Wiki anti-pattern `placeholder-dual-use-resolution-drift`（wiki ブランチ上の経験則。
 develop ツリーには実体なし）。

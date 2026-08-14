@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Test: wiki-query-inject.sh — OKF v0.1 2-pass query (Sub-2)
+# Test: wiki-query-inject.sh — OKF 2-pass query (Sub-2)
 #
 # Covers the two-pass rewrite Test Spec rows that the 2-pass rewrite introduces:
 #   TC-1 (T-03/T-04) keyword match returns the page with frontmatter-derived metadata
@@ -120,7 +120,7 @@ type: "heuristics"
 title: "Cache Strategy"
 domain: heuristics
 description: "キャッシュ戦略の cache 経験則"
-updated: "2026-06-15"
+generated: { by: "rite-wiki-ingest/test", at: "2026-06-15" }
 confidence: high
 ---'
 run_query "$repo" --keywords "cache" --format compact
@@ -146,14 +146,14 @@ write_page "$repo" pages/heuristics/hi.md '---
 title: "High Page"
 domain: heuristics
 description: "widget の高信頼"
-updated: "2026-06-15"
+generated: { by: "rite-wiki-ingest/test", at: "2026-06-15" }
 confidence: high
 ---'
 write_page "$repo" pages/patterns/lo.md '---
 title: "Low Page"
 domain: patterns
 description: "widget の低信頼"
-updated: "2026-06-10"
+generated: { by: "rite-wiki-ingest/test", at: "2026-06-10" }
 confidence: low
 ---'
 run_query "$repo" --keywords "widget" --format compact
@@ -177,7 +177,7 @@ write_page "$repo" pages/heuristics/good.md '---
 title: "Good Page"
 domain: heuristics
 description: "gizmo の良いページ"
-updated: "2026-06-15"
+generated: { by: "rite-wiki-ingest/test", at: "2026-06-15" }
 confidence: medium
 ---'
 # missing.md は作らない
@@ -219,7 +219,7 @@ write_page "$repo" pages/patterns/real.md '---
 title: "Real Page"
 domain: patterns
 description: "thing の実ページ"
-updated: "2026-06-15"
+generated: { by: "rite-wiki-ingest/test", at: "2026-06-15" }
 confidence: high
 ---'
 # pages/heuristics/example.md は作らない（コメント内の例なので実在しない）
@@ -247,7 +247,7 @@ write_page "$repo" pages/heuristics/tbl.md '---
 title: "Table Page"
 domain: heuristics
 description: "mktemp 失敗時の扱い"
-updated: "2026-06-15"
+generated: { by: "rite-wiki-ingest/test", at: "2026-06-15" }
 confidence: high
 ---'
 run_query "$repo" --keywords "mktemp" --format compact
@@ -276,14 +276,14 @@ write_page "$repo" pages/patterns/bul.md '---
 title: "Bullet Page"
 domain: patterns
 description: "gadget の箇条書きページ"
-updated: "2026-06-14"
+generated: { by: "rite-wiki-ingest/test", at: "2026-06-14" }
 confidence: high
 ---'
 write_page "$repo" pages/heuristics/tbl.md '---
 title: "Table Page"
 domain: heuristics
 description: "gadget のテーブルページ"
-updated: "2026-06-15"
+generated: { by: "rite-wiki-ingest/test", at: "2026-06-15" }
 confidence: medium
 ---'
 run_query "$repo" --keywords "gadget" --format compact
@@ -310,7 +310,7 @@ write_page "$repo" pages/anti-patterns/pipe.md '---
 title: "`cmd | grep` の罠"
 domain: anti-patterns
 description: "`set -o pipefail` なしの `a | b` は widget を取りこぼす"
-updated: "2026-06-15"
+generated: { by: "rite-wiki-ingest/test", at: "2026-06-15" }
 confidence: high
 ---'
 run_query "$repo" --keywords "widget" --format compact
@@ -359,7 +359,7 @@ write_page "$repo" pages/patterns/realtbl.md '---
 title: "Real Table Page"
 domain: patterns
 description: "doodad の実ページ"
-updated: "2026-06-15"
+generated: { by: "rite-wiki-ingest/test", at: "2026-06-15" }
 confidence: high
 ---'
 # pages/heuristics/example.md は作らない（コメント内の例なので実在しない）
@@ -389,7 +389,7 @@ write_page "$repo" pages/patterns/owner.md '---
 title: "Owner Page"
 domain: patterns
 description: "thingamajig の話"
-updated: "2026-06-15"
+generated: { by: "rite-wiki-ingest/test", at: "2026-06-15" }
 confidence: high
 ---'
 # pages/heuristics/other.md は作らない（サマリー内の相互リンク先を候補にしていないことの検証）
@@ -423,7 +423,7 @@ mkdir -p "$repo/.rite/wiki/pages/patterns"
   printf '%s\n' 'title: "Big Page"'
   printf '%s\n' 'domain: patterns'
   printf '%s\n' 'description: "whatsit の大きいページ"'
-  printf '%s\n' 'updated: "2026-06-15"'
+  printf '%s\n' 'generated: { by: "rite-wiki-ingest/test", at: "2026-06-15" }'
   printf '%s\n' 'confidence: high'
   printf '%s\n' '---'
   printf '# body\n'
@@ -474,7 +474,7 @@ for spec in "pages/patterns/paren.md|absence pin (assert_not_grep) は base 側�
 title: \"$ttl\"
 domain: $dom
 description: \"doohickey のページ\"
-updated: \"2026-06-15\"
+generated: { by: \"rite-wiki-ingest/test\", at: \"2026-06-15\" }
 confidence: high
 ---"
 done
@@ -505,7 +505,7 @@ write_page "$repo" pages/patterns/good14.md '---
 title: "Good Row"
 domain: patterns
 description: "whozit の正常行"
-updated: "2026-06-15"
+generated: { by: "rite-wiki-ingest/test", at: "2026-06-15" }
 confidence: high
 ---'
 run_query "$repo" --keywords "whozit" --format compact
@@ -560,7 +560,7 @@ write_page "$repo" pages/patterns/first.md '---
 title: "First Link"
 domain: patterns
 description: "flapdoodle の 2 リンク行"
-updated: "2026-06-15"
+generated: { by: "rite-wiki-ingest/test", at: "2026-06-15" }
 confidence: high
 ---'
 # pages/heuristics/second.md は作らない（2 つ目に解決したら stale WARNING で露見する）
@@ -595,7 +595,7 @@ for rel in fine17 short17 long17; do
 title: \"$rel\"
 domain: patterns
 description: \"thingummy のページ\"
-updated: \"2026-06-15\"
+generated: { by: \"rite-wiki-ingest/test\", at: \"2026-06-15\" }
 confidence: high
 ---"
 done

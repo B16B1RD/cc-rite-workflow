@@ -4,10 +4,10 @@ title: "{title}"
 domain: "{domain}"
 description: "{description}"
 created: "{created}"
-updated: "{updated}"
+generated: { by: "rite-wiki-ingest/{model_id}", at: "{generated_at}" }
 sources:
   - type: "{source_type}"
-    ref: "{source_ref}"
+    resource: "{source_ref}"
 tags: []
 confidence: medium
 ---
