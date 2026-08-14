@@ -27,6 +27,12 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-08-15
+
+### Fixed
+
+- **`/release` Phase 2.5 merges the prep PR with `--squash`** — `release-promotion-verify.sh` requires every develop commit since the last release to be a squash commit (the SHA itself is a merged PR's `merge_commit_sha`). Phase 2.5 now uses `gh pr merge {PREP_PR_NUMBER} --squash` so the next develop→main promotion can pass that invariant. Branch deletion is left to `/rite:cleanup`. (#2323)
+
 ## [0.12.0] - 2026-08-14
 
 ### Changed
@@ -892,6 +898,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.12.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.9.2...v0.10.0
