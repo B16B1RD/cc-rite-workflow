@@ -25,6 +25,12 @@ Fixed/Changed/Removed エントリは修正対象の旧挙動を述べてよい�
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-08-15
+
+### 修正
+
+- **`/release` Phase 2.5 が準備 PR を `--squash` でマージする** — `release-promotion-verify.sh` は前回リリース以降の develop の全 commit が squash commit であること（その SHA 自身を `merge_commit_sha` とする merged PR を持つこと）を要求する。Phase 2.5 は `gh pr merge {PREP_PR_NUMBER} --squash` を使うため、次の develop→main 昇格がこの不変条件を通る。ブランチ削除は `/rite:cleanup` に委ねる。(#2323)
+
 ## [0.12.0] - 2026-08-14
 
 ### 変更
@@ -889,6 +895,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.12.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.9.2...v0.10.0
