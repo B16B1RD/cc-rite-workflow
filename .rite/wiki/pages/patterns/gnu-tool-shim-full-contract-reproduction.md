@@ -4,20 +4,20 @@ title: "GNU ツールの代替 shim は exit code だけでなく期限・シグ
 domain: "patterns"
 description: "macOS/BSD で GNU ツール（`timeout` 等）が無い環境向けに shim を書くとき、**契約の一部だけを再現すると fail-open になる**。"
 created: "2026-07-25T07:05:21Z"
-updated: "2026-07-25T07:05:21Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260724T175144Z-pr-2013.md"
+    resource: "raw/reviews/20260724T175144Z-pr-2013.md"
   - type: "reviews"
-    ref: "raw/reviews/20260725T032345Z-pr-2013.md"
+    resource: "raw/reviews/20260725T032345Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260724T180733Z-pr-2013.md"
+    resource: "raw/fixes/20260724T180733Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260724T193804Z-pr-2013.md"
+    resource: "raw/fixes/20260724T193804Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260725T033607Z-pr-2013.md"
+    resource: "raw/fixes/20260725T033607Z-pr-2013.md"
 tags: ["shim", "portability", "gnu-bsd", "timeout", "fail-open", "exit-code-contract"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-25T07:05:21Z" }
 ---
 
 # GNU ツールの代替 shim は exit code だけでなく期限・シグナル範囲まで契約を全部再現する

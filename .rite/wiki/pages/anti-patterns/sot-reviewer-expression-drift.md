@@ -4,14 +4,14 @@ domain: "anti-patterns"
 description: "SoT (Single Source of Truth) 側で「期待値 X 以上」(pos 表現)、reviewer 側で「X 未満で finding 発行」(neg 表現) のように同一概念を相反方向で記述すると、severity table のような派生記述で pos / neg 方向のいずれかに silent drift する経路が発生する。"
 promote: rite-plugin
 created: "2026-04-28T18:55:00+00:00"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260428T183538Z-pr-706.md"
+    resource: "raw/reviews/20260428T183538Z-pr-706.md"
   - type: "fixes"
-    ref: "raw/fixes/20260428T184201Z-pr-706.md"
+    resource: "raw/fixes/20260428T184201Z-pr-706.md"
 tags: ["sot", "reviewer-rule", "drift", "dry"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # SoT-reviewer 表現 drift: pos/neg 方向の差で派生記述が silent drift する

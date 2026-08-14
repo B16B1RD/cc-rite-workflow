@@ -4,18 +4,18 @@ title: "bash の signal 挙動は「誰が送るか」「何をしている最�
 domain: "heuristics"
 description: "signal 経路の cleanup を検証・記述するとき、**条件を揃えないまま計測すると結論が反転する**。"
 created: "2026-08-06T22:40:00+09:00"
-updated: "2026-08-06T22:40:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260806T053845Z-pr-2124.md"
+    resource: "raw/reviews/20260806T053845Z-pr-2124.md"
   - type: "fixes"
-    ref: "raw/fixes/20260806T055534Z-pr-2124.md"
+    resource: "raw/fixes/20260806T055534Z-pr-2124.md"
   - type: "reviews"
-    ref: "raw/reviews/20260806T120815Z-pr-2124.md"
+    resource: "raw/reviews/20260806T120815Z-pr-2124.md"
   - type: "fixes"
-    ref: "raw/fixes/20260806T121439Z-pr-2124.md"
+    resource: "raw/fixes/20260806T121439Z-pr-2124.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T22:40:00+09:00" }
 ---
 
 # bash の signal 挙動は「誰が送るか」「何をしている最中か」で反転する — 条件を揃えない実測は正しい記述を誤りと判定する

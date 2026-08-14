@@ -5,12 +5,12 @@ domain: "heuristics"
 promote: rite-plugin
 description: "既知の残余に対して「値を marker へ併記するので silent にはならない」と書くとき、その値が決定論的に組まれていると健全な状態と stale な状態でバイト単位に同一の文字列が出るため、開示は残余の識別に使えず緩和策として機能しない。"
 created: "2026-08-11T01:20:00+09:00"
-updated: "2026-08-11T01:20:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260810T160134Z-pr-2231.md"
+    resource: "raw/reviews/20260810T160134Z-pr-2231.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-11T01:20:00+09:00" }
 ---
 
 # 残余の緩和策として値を開示するなら、その値が問題発生時と正常時で違う値になるかを確かめる

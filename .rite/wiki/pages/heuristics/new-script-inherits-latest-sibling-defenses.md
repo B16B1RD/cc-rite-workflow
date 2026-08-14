@@ -5,20 +5,20 @@ domain: "heuristics"
 promote: rite-plugin
 description: "既存スクリプト（bang-backtick-check.sh）をテンプレートに新規 check スクリプトを作ったところ、兄弟スクリプト群が**後から**獲得した防御 — `wc -l` の空白正規化（BSD/macOS パディング対応、sentinel-contract-check.sh が獲得済み）、usage の exit code 契約と実装の一致（同）— を継承し漏らし、cycle 1 レビューで MEDIUM×2 の指摘になった。"
 created: "2026-07-19T15:00:00+09:00"
-updated: "2026-08-12T18:34:40Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260719T022247Z-pr-1909.md"
+    resource: "raw/reviews/20260719T022247Z-pr-1909.md"
   - type: "fixes"
-    ref: "raw/fixes/20260719T022630Z-pr-1909.md"
+    resource: "raw/fixes/20260719T022630Z-pr-1909.md"
   - type: "reviews"
-    ref: "raw/reviews/20260805T233057Z-pr-2120.md"
+    resource: "raw/reviews/20260805T233057Z-pr-2120.md"
   - type: "fixes"
-    ref: "raw/fixes/20260807T134638Z-pr-2137.md"
+    resource: "raw/fixes/20260807T134638Z-pr-2137.md"
   - type: "fixes"
-    ref: "raw/fixes/20260812T133631Z-pr-2278.md"
+    resource: "raw/fixes/20260812T133631Z-pr-2278.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-12T18:34:40Z" }
 ---
 
 # テンプレート流用の新規スクリプトは最新兄弟の防御を継承する

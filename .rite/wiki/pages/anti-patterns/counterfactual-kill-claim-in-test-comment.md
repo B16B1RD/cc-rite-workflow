@@ -4,14 +4,14 @@ title: "テストが何を kill するかの counterfactual 記述は、変異�
 domain: "anti-patterns"
 description: "テストコメントに「この assert は変異 X を kill する」と counterfactual で書くと、その変異を実際に当てて確かめない限りほぼ確実に外れる。実在した過去の実装形を名指しする記述は特に危険で、修正は言い換えではなく撤去が収束する。"
 created: "2026-08-12T18:32:43Z"
-updated: "2026-08-12T18:32:43Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260812T180508Z-pr-2278.md"
+    resource: "raw/reviews/20260812T180508Z-pr-2278.md"
   - type: "fixes"
-    ref: "raw/fixes/20260812T133631Z-pr-2278.md"
+    resource: "raw/fixes/20260812T133631Z-pr-2278.md"
 tags: ["test-comment", "counterfactual", "overclaim", "removal-over-rephrase"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-12T18:32:43Z" }
 ---
 
 # テストが何を kill するかの counterfactual 記述は、変異を当てない限り外れる — 撤去で収束させる

@@ -4,16 +4,16 @@ title: "値の妥当性ガードは消費する場所ではなく値が入る場
 domain: "heuristics"
 description: "「引数を黙って無視しない」ためのガードを、その値を使う分岐に置くと、明示的な空値が「未指定」と同じ sentinel（空文字）に落ちるため不発する。ガードを値が変数に入る地点へ移すと、消費側の複数分岐に開いていた穴が同時に閉じる。"
 created: "2026-08-13T19:20:00+09:00"
-updated: "2026-08-13T19:20:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260813T081206Z-pr-2304.md"
+    resource: "raw/reviews/20260813T081206Z-pr-2304.md"
   - type: "fixes"
-    ref: "raw/fixes/20260813T081923Z-pr-2304.md"
+    resource: "raw/fixes/20260813T081923Z-pr-2304.md"
   - type: "reviews"
-    ref: "raw/reviews/20260813T090426Z-pr-2304.md"
+    resource: "raw/reviews/20260813T090426Z-pr-2304.md"
 tags: ["guard", "fail-loud", "sentinel", "bash", "getopts"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-13T19:20:00+09:00" }
 ---
 
 # 値の妥当性ガードは消費する場所ではなく値が入る場所に置く — 空値と未指定が sentinel を共有すると消費側のガードは不発する

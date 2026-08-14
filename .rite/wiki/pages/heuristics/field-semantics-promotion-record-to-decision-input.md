@@ -5,12 +5,12 @@ domain: "heuristics"
 promote: rite-plugin
 description: "「これまで記録・表示にしか使っていなかったフィールドを、これからは判定の入力にする」という変更は一見小さいが、そのフィールドを読む経路・語る文書・書く経路のすべてに影響が及ぶ。"
 created: "2026-07-27T17:54:54+09:00"
-updated: "2026-07-27T17:54:54+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260727T041403Z-pr-2036.md"
+    resource: "raw/reviews/20260727T041403Z-pr-2036.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-27T17:54:54+09:00" }
 ---
 
 # 記録専用フィールドを判定入力に格上げする変更は 4 点を同時に同期する

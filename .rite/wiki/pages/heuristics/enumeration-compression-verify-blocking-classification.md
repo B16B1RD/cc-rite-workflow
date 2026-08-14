@@ -5,16 +5,16 @@ domain: "heuristics"
 promote: rite-plugin
 description: "README 等の案内板化でカテゴリ列挙を短縮する際、ブロッキング/informational の区別を SoT（実装側のカテゴリ表）で確認せずに削ると、ブロッキングカテゴリが脱落して実装とのImplementation Coverage 乖離を生む。"
 created: "2026-07-23T19:20:00+09:00"
-updated: "2026-07-23T19:20:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260723T094207Z-pr-1980.md"
+    resource: "raw/reviews/20260723T094207Z-pr-1980.md"
   - type: "fixes"
-    ref: "raw/fixes/20260723T094612Z-pr-1980.md"
+    resource: "raw/fixes/20260723T094612Z-pr-1980.md"
   - type: "reviews"
-    ref: "raw/reviews/20260723T100548Z-pr-1980-cycle2.md"
+    resource: "raw/reviews/20260723T100548Z-pr-1980-cycle2.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-23T19:20:00+09:00" }
 ---
 
 # カテゴリ列挙の圧縮はブロッキング/informational の分類を SoT で確認してから削る

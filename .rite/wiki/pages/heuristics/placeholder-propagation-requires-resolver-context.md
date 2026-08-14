@@ -6,14 +6,14 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/placeholder-propagation-requires-resolver-context.md"
 description: "`{plugin_root}` / `{owner_repo}` のような literal substitution 方式の placeholder を新しいファイルへ展開する際は、「そのファイルを読んで実行する主体が、placeholder を解決する手段を持つか」を先に確認する。"
 created: "2026-07-20T01:15:00+09:00"
-updated: "2026-07-20T01:15:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260719T154814Z-pr-1919-c3.md"
+    resource: "raw/reviews/20260719T154814Z-pr-1919-c3.md"
   - type: "fixes"
-    ref: "raw/fixes/20260719T154952Z-pr-1919-c3.md"
+    resource: "raw/fixes/20260719T154952Z-pr-1919-c3.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T01:15:00+09:00" }
 ---
 
 # placeholder 伝播は実行主体の解決経路を確認してから適用する

@@ -4,20 +4,20 @@ title: "機械的制裁を伴う規約は「何をすると」「何がどこま
 domain: "heuristics"
 description: "規約に機械的な制裁（CI で落ちる）を伴わせるなら、**発火条件と制裁の範囲**を文書に書かなければ、規約どおりに従ったコントリビューターが blocking gate を落とす。"
 created: "2026-07-25T07:05:21Z"
-updated: "2026-07-25T07:05:21Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260725T024207Z-pr-2013.md"
+    resource: "raw/reviews/20260725T024207Z-pr-2013.md"
   - type: "reviews"
-    ref: "raw/reviews/20260725T032345Z-pr-2013.md"
+    resource: "raw/reviews/20260725T032345Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260725T025323Z-pr-2013.md"
+    resource: "raw/fixes/20260725T025323Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260725T033607Z-pr-2013.md"
+    resource: "raw/fixes/20260725T033607Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260725T004542Z-pr-2013.md"
+    resource: "raw/fixes/20260725T004542Z-pr-2013.md"
 tags: ["convention", "documentation", "blast-radius", "reserved-token", "blocking-gate"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-25T07:05:21Z" }
 ---
 
 # 機械的制裁を伴う規約は「何をすると」「何がどこまで」落ちるかを書く

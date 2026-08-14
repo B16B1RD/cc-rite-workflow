@@ -5,14 +5,14 @@ domain: "heuristics"
 promote: rite-plugin
 description: "コードを inline から helper スクリプトへ切り出すと、**何が最も起こりやすい失敗か**が変わる。"
 created: "2026-07-30T01:20:00+09:00"
-updated: "2026-07-30T01:20:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260729T153523Z-pr-2051-c3.md"
+    resource: "raw/reviews/20260729T153523Z-pr-2051-c3.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T153947Z-pr-2051-c3.md"
+    resource: "raw/fixes/20260729T153947Z-pr-2051-c3.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T01:20:00+09:00" }
 ---
 
 # inline 実装を helper へ委譲したら、診断メッセージを新しい失敗分布へ揃える

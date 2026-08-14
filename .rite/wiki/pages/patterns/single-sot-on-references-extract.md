@@ -3,22 +3,22 @@ title: "References 抽出 refactor では canonical contract の SoT を 1 refer
 domain: "patterns"
 description: "本体 command を slim 化するために散文 rationale + bash literal を複数 references に分割する refactor では、共通契約 (Sentinel Visibility Rule のような cross-cutting な canonical contract) を両方の reference に重複保持してはならない。"
 created: "2026-05-12T15:29:45Z"
-updated: "2026-05-27T05:00:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260512T134356Z-pr-936.md"
+    resource: "raw/reviews/20260512T134356Z-pr-936.md"
   - type: "fixes"
-    ref: "raw/fixes/20260512T134908Z-pr-936.md"
+    resource: "raw/fixes/20260512T134908Z-pr-936.md"
   - type: "reviews"
-    ref: "raw/reviews/20260519T114404Z-pr-1062.md"
+    resource: "raw/reviews/20260519T114404Z-pr-1062.md"
   - type: "reviews"
-    ref: "raw/reviews/20260519T122133Z-pr-1062.md"
+    resource: "raw/reviews/20260519T122133Z-pr-1062.md"
   - type: "reviews"
-    ref: "raw/reviews/20260526T182658Z-pr-1155-cycle2.md"
+    resource: "raw/reviews/20260526T182658Z-pr-1155-cycle2.md"
   - type: "fixes"
-    ref: "raw/fixes/20260526T183041Z-pr-1155-cycle2-fix.md"
+    resource: "raw/fixes/20260526T183041Z-pr-1155-cycle2-fix.md"
 tags: ["sot", "refactor", "references-extraction", "drift", "canonical-contract", "inline-summary-deletion"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-27T05:00:00Z" }
 ---
 
 # References 抽出 refactor では canonical contract の SoT を 1 reference に固定し他は anchor 参照のみとする

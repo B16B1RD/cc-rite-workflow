@@ -4,16 +4,16 @@ title: "markdown テーブル行に対する greedy `.*` はセル境界を跨�
 domain: "anti-patterns"
 description: "reviewer が出力する markdown テーブルの `内容` 列からアンカー（`Verification: repro <cmd> => <observed>`）を抽出する検出 regex に greedy `.*` を使うと、セル区切りの `|` を跨いで隣のセル（`推奨対応` 列）までマッチする。"
 created: "2026-07-27T10:57:51+09:00"
-updated: "2026-07-27T10:57:51+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260726T150008Z-pr-2030-cycle5.md"
+    resource: "raw/reviews/20260726T150008Z-pr-2030-cycle5.md"
   - type: "reviews"
-    ref: "raw/reviews/20260726T160331Z-pr-2030.md"
+    resource: "raw/reviews/20260726T160331Z-pr-2030.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T150940Z-pr-2030-cycle5.md"
+    resource: "raw/fixes/20260726T150940Z-pr-2030-cycle5.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-27T10:57:51+09:00" }
 ---
 
 # markdown テーブル行に対する greedy `.*` はセル境界を跨いでマッチし、右辺の空検出を dead 化する

@@ -5,12 +5,12 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "ゲートが要素を配列 A から配列 B へ*移送*する設計では、A だけを読む consumer に 2 方向の欠陥が同時に成立する — 「A に残るべきでない余分が入る」と「B へ出ていった分が抜ける」。"
 created: "2026-08-07T07:57:00+09:00"
-updated: "2026-08-07T07:57:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260806T160550Z-pr-2126.md"
+    resource: "raw/fixes/20260806T160550Z-pr-2126.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T07:57:00+09:00" }
 ---
 
 # 配列間で要素を移送するゲートの consumer は、入ってくる余分と出ていく不足の両方向を見る

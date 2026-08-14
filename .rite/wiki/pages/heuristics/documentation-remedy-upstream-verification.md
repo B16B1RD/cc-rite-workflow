@@ -4,20 +4,20 @@ title: "ドキュメントが提示する解決策は上流ソース（公式ド
 domain: "heuristics"
 description: "ドキュメントのみの変更（コード変更を伴わない reference / skill 定義の修正）であっても、記載する設定・コマンド・回避策が実際に機能するかどうかは、公式ドキュメントだけでなく外部ツールの issue tracker で裏取りする必要がある。"
 created: "2026-07-20T18:16:28+00:00"
-updated: "2026-07-20T18:16:28+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260720T154907Z-pr-1933.md"
+    resource: "raw/reviews/20260720T154907Z-pr-1933.md"
   - type: "reviews"
-    ref: "raw/reviews/20260720T163001Z-pr-1933-cycle2.md"
+    resource: "raw/reviews/20260720T163001Z-pr-1933-cycle2.md"
   - type: "reviews"
-    ref: "raw/reviews/20260720T170155Z-pr-1933-cycle3-final.md"
+    resource: "raw/reviews/20260720T170155Z-pr-1933-cycle3-final.md"
   - type: "fixes"
-    ref: "raw/fixes/20260720T155318Z-pr-1933.md"
+    resource: "raw/fixes/20260720T155318Z-pr-1933.md"
   - type: "fixes"
-    ref: "raw/fixes/20260720T163246Z-pr-1933-cycle2.md"
+    resource: "raw/fixes/20260720T163246Z-pr-1933-cycle2.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T18:16:28+00:00" }
 ---
 
 # ドキュメントが提示する解決策は上流ソース（公式ドキュメント・issue tracker）で機能を裏取りする

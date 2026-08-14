@@ -4,20 +4,20 @@ title: "分岐表は判定キーを 1 つの観測量へ統一し、直交軸は
 domain: "patterns"
 description: "散文手順（LLM が runtime で読むワークフロー定義）の欠陥は、個々の文が誤っているのではなく、**複数の正しい文が同時に成立したときの優先順位が書かれていない**ことに現れる。"
 created: "2026-07-30T15:40:55Z"
-updated: "2026-07-30T15:40:55Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260730T010615Z-pr-2052.md"
+    resource: "raw/reviews/20260730T010615Z-pr-2052.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T011723Z-pr-2052.md"
+    resource: "raw/fixes/20260730T011723Z-pr-2052.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T055209Z-pr-2056.md"
+    resource: "raw/reviews/20260730T055209Z-pr-2056.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T055555Z-pr-2056.md"
+    resource: "raw/fixes/20260730T055555Z-pr-2056.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T063315Z-pr-2056.md"
+    resource: "raw/reviews/20260730T063315Z-pr-2056.md"
 tags: ["prose-procedure", "branch-table", "llm-instruction", "orthogonality"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 ---
 
 # 分岐表は判定キーを 1 つの観測量へ統一し、直交軸は表から出して独立段落に書く

@@ -3,20 +3,20 @@ title: "Bullet 内の bold emphasis は命令本体に集中させ、rationale �
 domain: "patterns"
 description: "bullet (numbered list / unordered list) 内で MUST-DO 命令と META / rationale 文を混在させ、rationale 側にだけ bold emphasis を適用すると、bullet スキャン読みで rationale が命令本体より目立つ **emphasis 逆転** が発生する。"
 created: "2026-05-18T10:36:15Z"
-updated: "2026-05-18T10:36:15Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260518T095947Z-pr-1044.md"
+    resource: "raw/reviews/20260518T095947Z-pr-1044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260518T100632Z-pr-1044.md"
+    resource: "raw/fixes/20260518T100632Z-pr-1044.md"
   - type: "reviews"
-    ref: "raw/reviews/20260518T101307Z-pr-1044.md"
+    resource: "raw/reviews/20260518T101307Z-pr-1044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260518T101701Z-pr-1044.md"
+    resource: "raw/fixes/20260518T101701Z-pr-1044.md"
   - type: "reviews"
-    ref: "raw/reviews/20260518T102416Z-pr-1044.md"
+    resource: "raw/reviews/20260518T102416Z-pr-1044.md"
 tags: ["markdown", "prompt-engineering", "emphasis", "scannability", "responsibility-separation", "review-finding"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-18T10:36:15Z" }
 ---
 
 # Bullet 内の bold emphasis は命令本体に集中させ、rationale は commit/PR layer に分離する

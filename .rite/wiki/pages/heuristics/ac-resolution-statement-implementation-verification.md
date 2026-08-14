@@ -4,14 +4,14 @@ domain: "heuristics"
 description: "PR description / commit message の Acceptance Criteria 解消 statement に「数値の解釈」(`N/N passed` の N は何を表すか、`X 件対応` の X はどこから来たか) が含まれる場合、その数値解釈を**実装 (テストランナー / カウンタ loop / 集計 script) を直接 grep して裏取りせずに書く**と、AC 解消対象だった conflate (混同) を別形で再現する経路を生む。"
 promote: rite-plugin
 created: "2026-05-02T00:30:00+09:00"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260502T001118Z-pr-761.md"
+    resource: "raw/fixes/20260502T001118Z-pr-761.md"
   - type: "reviews"
-    ref: "raw/reviews/20260502T001651Z-pr-761.md"
+    resource: "raw/reviews/20260502T001651Z-pr-761.md"
 tags: [ac-resolution, fact-check, pr-description, numeric-interpretation, conflate-recurrence]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # AC 解消 statement の数値解釈は実装で裏取りする (PR description fact-check gate)

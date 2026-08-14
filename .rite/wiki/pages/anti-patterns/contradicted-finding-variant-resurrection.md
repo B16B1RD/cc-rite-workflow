@@ -5,18 +5,18 @@ description: "reviewer agent が fact-check phase で CONTRADICTED 除外され�
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/contradicted-finding-variant-resurrection.md"
 created: "2026-05-28T03:00:00+00:00"
-updated: "2026-06-05T18:33:35Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260605T182035Z-pr-1281-cycle2.md"
+    resource: "raw/reviews/20260605T182035Z-pr-1281-cycle2.md"
   - type: "reviews"
-    ref: "raw/reviews/20260527T163952Z-pr-1164.md"
+    resource: "raw/reviews/20260527T163952Z-pr-1164.md"
   - type: "reviews"
-    ref: "raw/reviews/20260527T165719Z-pr-1164.md"
+    resource: "raw/reviews/20260527T165719Z-pr-1164.md"
   - type: "reviews"
-    ref: "raw/reviews/20260527T170947Z-pr-1164.md"
+    resource: "raw/reviews/20260527T170947Z-pr-1164.md"
 tags: ["fact-check", "reviewer-observability", "false-positive"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-05T18:33:35Z" }
 ---
 
 # Fact-check で CONTRADICTED 除外された主張の variant 再提起 (reviewer の observability gap)

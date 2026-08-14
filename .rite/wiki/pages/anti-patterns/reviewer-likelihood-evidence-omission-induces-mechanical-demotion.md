@@ -4,12 +4,12 @@ domain: "anti-patterns"
 description: "Hypothetical Exception Categories (security/database/devops/dependencies) 外の reviewer (prompt-engineer / code-quality / tech-writer 等) が、grep で示せる現実的 finding を出しながら `Likelihood-Evidence:` anchor を出力しないことで、Phase 5.3.0 Observed Likelihood Gate (Post-Reviewer Safety Net) によって CRITICAL/HIGH/MEDIUM/LOW-MEDIUM 重要度の指摘がすべて推奨事項に機械的降格される失敗 mode。"
 promote: rite-plugin
 created: "2026-05-18T20:30:00+09:00"
-updated: "2026-05-18T20:30:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260518T112318Z-pr-1045.md"
+    resource: "raw/reviews/20260518T112318Z-pr-1045.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-18T20:30:00+09:00" }
 ---
 
 # Reviewer の Likelihood-Evidence anchor 未提示が現実的 finding の機械的降格を誘発

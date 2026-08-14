@@ -5,18 +5,18 @@ domain: "heuristics"
 promote: rite-plugin
 description: "サーキットブレーカーの「発火後か」を `cycle_count >= max_review_cycles` で判定していたが、この等式は**最終 cycle を実行している間ずっと成立する通常状態**でもあった。"
 created: "2026-07-29T21:32:36+09:00"
-updated: "2026-07-29T21:32:36+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260729T001538Z-pr-2044.md"
+    resource: "raw/reviews/20260729T001538Z-pr-2044.md"
   - type: "reviews"
-    ref: "raw/reviews/20260729T004127Z-pr-2044.md"
+    resource: "raw/reviews/20260729T004127Z-pr-2044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T002139Z-pr-2044.md"
+    resource: "raw/fixes/20260729T002139Z-pr-2044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T004628Z-pr-2044.md"
+    resource: "raw/fixes/20260729T004628Z-pr-2044.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-29T21:32:36+09:00" }
 ---
 
 # 終端状態は「到達した事実」で記録し、可変値との境界比較で代用しない

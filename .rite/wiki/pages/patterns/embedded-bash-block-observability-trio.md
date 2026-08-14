@@ -5,20 +5,20 @@ description: "command / skill ファイル (`.md`) に埋め込まれた bash bl
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/embedded-bash-block-observability-trio.md"
 created: "2026-05-17T09:08:26Z"
-updated: "2026-07-22T22:54:19Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260722T221143Z-pr-1973.md"
+    resource: "raw/reviews/20260722T221143Z-pr-1973.md"
   - type: "fixes"
-    ref: "raw/fixes/20260722T221542Z-pr-1973.md"
+    resource: "raw/fixes/20260722T221542Z-pr-1973.md"
   - type: "reviews"
-    ref: "raw/reviews/20260517T000446Z-pr-1004.md"
+    resource: "raw/reviews/20260517T000446Z-pr-1004.md"
   - type: "reviews"
-    ref: "raw/reviews/20260517T004634Z-pr-1004.md"
+    resource: "raw/reviews/20260517T004634Z-pr-1004.md"
   - type: "fixes"
-    ref: "raw/fixes/20260517T020335Z-pr-1004.md"
+    resource: "raw/fixes/20260517T020335Z-pr-1004.md"
 tags: ["embedded-bash", "pipefail", "stderr-attribution", "observability", "root-cause-attribution", "silent-suppression"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-22T22:54:19Z" }
 ---
 
 # Embedded markdown bash block の observability 三要素 (pipefail 宣言 + stderr stage 分離 + cd 失敗可視化)

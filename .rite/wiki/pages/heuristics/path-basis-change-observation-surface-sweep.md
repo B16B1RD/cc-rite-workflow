@@ -3,12 +3,12 @@ title: "保存パス基準の変更は観測面と全 caller 引数の同時ス�
 domain: "heuristics"
 description: "状態ファイルの保存パス基準を変更する PR (例: cwd 相対 → 共有 state root) では、実装本体の 3 経路 (save / read / delete) を揃えるだけでは不十分。"
 created: "2026-07-13T07:40:00Z"
-updated: "2026-07-13T07:40:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260712T223319Z-pr-1839.md"
+    resource: "raw/reviews/20260712T223319Z-pr-1839.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-13T07:40:00Z" }
 ---
 
 # 保存パス基準の変更は観測面と全 caller 引数の同時スイープが必要

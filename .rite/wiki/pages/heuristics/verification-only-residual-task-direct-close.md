@@ -5,12 +5,12 @@ domain: "heuristics"
 promote: rite-plugin
 description: "実装対象のコードが既に別 PR でマージ済みであり、残作業 Issue の役割が実機での動作確認（例: 特定の経路が sandbox 環境で完走することの確認）に限られる場合、`/rite:open` → `/rite:iterate` の PR パイプラインを無理に通すと、コード変更を伴わない trivial な diff のため reviewer が何も指摘せず、fix サイクルも発火せず、検証として不完全になる。"
 created: "2026-07-21T16:45:00+09:00"
-updated: "2026-07-21T16:45:00+09:00"
 sources:
   - type: "retrospectives"
-    ref: "raw/retrospectives/20260721T045336Z-issue-1918.md"
+    resource: "raw/retrospectives/20260721T045336Z-issue-1918.md"
 tags: ["issue-management", "verification-only", "residual-task", "issue-close", "pr-pipeline-scope"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-21T16:45:00+09:00" }
 ---
 
 # verification-only な残作業 Issue は PR パイプラインを経由せず issue-close で直接検証する

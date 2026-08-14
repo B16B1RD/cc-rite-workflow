@@ -4,12 +4,12 @@ domain: "patterns"
 description: "reviewer が「neighbor pattern と drift している」と指摘した際、neighbor 自身が drift 元である可能性があるため、`canonical schema` の不変条件 (例: `WORKFLOW_INCIDENT=1` family の `sep_count=3` semicolon-separated key=value invariant) で direction を機械検証してから fix する。"
 promote: rite-plugin
 created: "2026-05-18T04:00:00+00:00"
-updated: "2026-05-18T04:00:00+00:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260518T031424Z-pr-1035.md"
+    resource: "raw/fixes/20260518T031424Z-pr-1035.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-18T04:00:00+00:00" }
 ---
 
 # Peer pattern の drift 判定は canonical schema 不変条件で cross-check する

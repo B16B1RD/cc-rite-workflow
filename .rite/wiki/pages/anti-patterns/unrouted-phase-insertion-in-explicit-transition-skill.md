@@ -5,12 +5,12 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "「Proceed to Phase X」のような明示的な遷移指示でフェーズ間を駆動する設計の SKILL.md では、document-order の fall-through（文書内で上から下に読み進めば自然に次の Phase に到達する、という前提）は実行モデルとして成立していない。"
 created: "2026-07-20T07:50:27Z"
-updated: "2026-07-20T07:50:27Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260720T071821Z-pr-1925.md"
+    resource: "raw/fixes/20260720T071821Z-pr-1925.md"
 tags: ["skill-authoring", "phase-routing", "prompt-engineering", "dead-code"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T07:50:27Z" }
 ---
 
 # 明示的 Phase 遷移で駆動する SKILL.md に新規 Phase を挿入する際、既存の終端ルーティング更新漏れで到達不能になる

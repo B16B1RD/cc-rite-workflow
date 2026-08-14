@@ -4,18 +4,18 @@ title: "全滅形だけを想定したガード条件は部分欠損形を必ず
 domain: "anti-patterns"
 description: "検出器が無言で 0 件を返す事故を塞ぐガードは、つい「1 件も取れていないなら壊れている」という全滅条件で書きたくなる。"
 created: "2026-08-01T00:21:06+09:00"
-updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260731T005941Z-pr-2070.md"
+    resource: "raw/reviews/20260731T005941Z-pr-2070.md"
   - type: "reviews"
-    ref: "raw/reviews/20260731T072309Z-pr-2070.md"
+    resource: "raw/reviews/20260731T072309Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260731T010916Z-pr-2070.md"
+    resource: "raw/fixes/20260731T010916Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260731T080852Z-pr-2070.md"
+    resource: "raw/fixes/20260731T080852Z-pr-2070.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 ---
 
 # 全滅形だけを想定したガード条件は部分欠損形を必ず取り逃す

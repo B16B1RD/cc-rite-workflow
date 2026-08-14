@@ -5,12 +5,12 @@ domain: "patterns"
 promote: rite-plugin
 description: "worktree では merge/rebase の中断状態を示す `MERGE_HEAD` / `rebase-merge` / `rebase-apply` が `.git/worktrees/<name>/` 配下に置かれる。"
 created: "2026-07-03T13:33:06+09:00"
-updated: "2026-07-03T13:33:06+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260703T042604Z-pr-1734.md"
+    resource: "raw/reviews/20260703T042604Z-pr-1734.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-03T13:33:06+09:00" }
 ---
 
 # worktree 運用の git 状態検出は .git 直書きせず git rev-parse --git-path で解決する

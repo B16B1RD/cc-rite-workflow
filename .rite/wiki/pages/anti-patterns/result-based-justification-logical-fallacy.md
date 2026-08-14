@@ -4,14 +4,14 @@ domain: "anti-patterns"
 description: "「順序を逆転すると X が悪化する」と説明する実装ノートが、実際に逆転しても X が悪化しない (結果不変) 場合、reviewer LLM が説明を信じて誤った重要性付けをするリスクが発生する。"
 promote: rite-plugin
 created: "2026-04-28T18:55:00+00:00"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260428T184201Z-pr-706.md"
+    resource: "raw/fixes/20260428T184201Z-pr-706.md"
   - type: "reviews"
-    ref: "raw/reviews/20260428T183538Z-pr-706.md"
+    resource: "raw/reviews/20260428T183538Z-pr-706.md"
 tags: ["prose-design", "logical-fallacy", "implementation-note"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # 結果論的弁明の論理破綻: 順序逆転で結果不変なのに『悪化する』と説明する実装ノート

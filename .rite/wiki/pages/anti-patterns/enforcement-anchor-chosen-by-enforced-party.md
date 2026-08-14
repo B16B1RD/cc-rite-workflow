@@ -4,12 +4,12 @@ title: "機械強制の anchor を強制される側が選べる値にすると�
 domain: "anti-patterns"
 description: "gate が「何を基準に判定するか」の anchor（commit SHA、PR 番号、タイムスタンプ等）を、**gate される側が渡す値**に取ると、その値の選択を誤ったときに gate は誤りを検出せず追認する。"
 created: "2026-08-07T18:40:00+09:00"
-updated: "2026-08-07T18:40:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260807T043149Z-pr-2130.md"
+    resource: "raw/reviews/20260807T043149Z-pr-2130.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T18:40:00+09:00" }
 ---
 
 # 機械強制の anchor を強制される側が選べる値にすると、2 層の gate が同一の誤りで同時に無効化される

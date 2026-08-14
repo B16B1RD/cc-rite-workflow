@@ -4,18 +4,18 @@ domain: "patterns"
 description: "hook 内の文字列処理連鎖 (エスケープ等) が **静的入力 (literal な reason 文字列等) のみに適用され、テストから入力を注入する経路が存在しない** 場合、hook 全体の統合テスト (fake jq 等で fallback を発火させる方式) では連鎖を exercise できず、「valid JSON」「raw 制御バイト非漏出」のような assertion が vacuous false positive 化する。"
 promote: rite-plugin
 created: "2026-06-05T18:33:35Z"
-updated: "2026-06-09T02:35:18Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260605T181146Z-pr-1281.md"
+    resource: "raw/fixes/20260605T181146Z-pr-1281.md"
   - type: "reviews"
-    ref: "raw/reviews/20260605T180128Z-pr-1281.md"
+    resource: "raw/reviews/20260605T180128Z-pr-1281.md"
   - type: "reviews"
-    ref: "raw/reviews/20260605T182035Z-pr-1281-cycle2.md"
+    resource: "raw/reviews/20260605T182035Z-pr-1281-cycle2.md"
   - type: "reviews"
-    ref: "raw/reviews/20260609T010819Z-pr-1314.md"
+    resource: "raw/reviews/20260609T010819Z-pr-1314.md"
 tags: ["test", "vacuous-assertion", "function-extraction", "mutation-testing", "bash", "unit-test", "awk-boundary-extract", "intentional-asymmetry"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-09T02:35:18Z" }
 ---
 
 # 入力注入経路のない静的文字列処理連鎖は関数抽出 + 境界行 extract で非 vacuous unit テスト化する

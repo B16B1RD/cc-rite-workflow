@@ -4,14 +4,14 @@ title: "実測アンカーの repro に書くパイプは U+00A6 へ置換する
 domain: "patterns"
 description: "実測必須ゲートは、レビュー指摘が blocking であるために `Verification:` アンカー付きの再現手順を要求する。"
 created: "2026-08-01T00:21:06+09:00"
-updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260731T060239Z-pr-2070.md"
+    resource: "raw/reviews/20260731T060239Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260731T060927Z-pr-2070.md"
+    resource: "raw/fixes/20260731T060927Z-pr-2070.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 ---
 
 # 実測アンカーの repro に書くパイプは U+00A6 へ置換する

@@ -5,16 +5,16 @@ domain: "heuristics"
 promote: rite-plugin
 description: "end-to-end で対象を走らせる新規テストは契約出力を既に生成しているので、その場で固定できる。新機能が動いたことだけを assert して不変と規定された既存出力を素通しすると、変異が生存し「テストを足したから網羅した」という誤読が残る。"
 created: "2026-08-10T05:20:00+09:00"
-updated: "2026-08-10T05:20:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260810T040721Z-pr-2227.md"
+    resource: "raw/fixes/20260810T040721Z-pr-2227.md"
   - type: "reviews"
-    ref: "raw/reviews/20260810T035844Z-pr-2227.md"
+    resource: "raw/reviews/20260810T035844Z-pr-2227.md"
   - type: "reviews"
-    ref: "raw/reviews/20260810T045310Z-pr-2227.md"
+    resource: "raw/reviews/20260810T045310Z-pr-2227.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T05:20:00+09:00" }
 ---
 
 # 新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する

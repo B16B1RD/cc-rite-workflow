@@ -4,14 +4,14 @@ title: "リポジトリ owner rename の一括置換はリポジトリ外成果�
 domain: "heuristics"
 description: "owner 名・URL の一括置換 PR は、git grep で走査できるツリー内の参照しか更新できない。"
 created: "2026-07-26T20:51:40+09:00"
-updated: "2026-07-26T20:51:40+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260726T110848Z-pr-2029.md"
+    resource: "raw/reviews/20260726T110848Z-pr-2029.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T111323Z-pr-2029.md"
+    resource: "raw/fixes/20260726T111323Z-pr-2029.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-26T20:51:40+09:00" }
 ---
 
 # リポジトリ owner rename の一括置換はリポジトリ外成果物に届かない

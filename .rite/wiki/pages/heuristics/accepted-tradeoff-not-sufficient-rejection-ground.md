@@ -4,12 +4,12 @@ title: "「既存ドキュメントが accepted trade-off と書いている」�
 domain: "heuristics"
 description: "reviewer が finding を出したとき、helper の header や設計ドキュメントに「これは意図的な trade-off であり accepted」と書かれていることを根拠に却下する経路がある。"
 created: "2026-08-06T02:49:27Z"
-updated: "2026-08-06T02:49:27Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260806T001717Z-pr-2120.md"
+    resource: "raw/reviews/20260806T001717Z-pr-2120.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T02:49:27Z" }
 ---
 
 # 「既存ドキュメントが accepted trade-off と書いている」は指摘却下の十分条件ではない

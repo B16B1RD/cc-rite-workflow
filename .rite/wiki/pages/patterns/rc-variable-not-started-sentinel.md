@@ -5,18 +5,18 @@ domain: "patterns"
 promote: rite-plugin
 description: "多段 pipeline（例: `python3 ... | jq ...`）の各段の rc を診断メッセージへ載せる設計で、後段の rc 変数を `0` で初期化すると、**後段が一度も起動しない経路で「起動して成功した」と能動的に断定する**。"
 created: "2026-08-03T07:46:56Z"
-updated: "2026-08-03T07:46:56Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260803T013513Z-pr-2094.md"
+    resource: "raw/fixes/20260803T013513Z-pr-2094.md"
   - type: "fixes"
-    ref: "raw/fixes/20260803T005938Z-pr-2094.md"
+    resource: "raw/fixes/20260803T005938Z-pr-2094.md"
   - type: "reviews"
-    ref: "raw/reviews/20260803T004941Z-pr-2094.md"
+    resource: "raw/reviews/20260803T004941Z-pr-2094.md"
   - type: "reviews"
-    ref: "raw/reviews/20260803T012646Z-pr-2094.md"
+    resource: "raw/reviews/20260803T012646Z-pr-2094.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T07:46:56Z" }
 ---
 
 # rc 変数を 0 で初期化すると、未起動の段を「起動して成功した」と断定する

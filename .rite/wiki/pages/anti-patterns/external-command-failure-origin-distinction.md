@@ -4,26 +4,26 @@ domain: "anti-patterns"
 description: "`gh pr view N` のような外部コマンドが失敗したとき、失敗種別 (origin) を区別せず無条件に「別の番号空間・別経路とみなす」分岐は silent failure である。"
 promote: rite-plugin
 created: "2026-06-02T03:50:58Z"
-updated: "2026-07-30T15:40:55Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260602T033014Z-pr-1244.md"
+    resource: "raw/reviews/20260602T033014Z-pr-1244.md"
   - type: "fixes"
-    ref: "raw/fixes/20260602T033213Z-pr-1244.md"
+    resource: "raw/fixes/20260602T033213Z-pr-1244.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T073356Z-pr-2056.md"
+    resource: "raw/reviews/20260730T073356Z-pr-2056.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T073832Z-pr-2056.md"
+    resource: "raw/fixes/20260730T073832Z-pr-2056.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T075618Z-pr-2056.md"
+    resource: "raw/reviews/20260730T075618Z-pr-2056.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T075954Z-pr-2056.md"
+    resource: "raw/fixes/20260730T075954Z-pr-2056.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T081603Z-pr-2056.md"
+    resource: "raw/reviews/20260730T081603Z-pr-2056.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T081940Z-pr-2056.md"
+    resource: "raw/fixes/20260730T081940Z-pr-2056.md"
 tags: ["gh-cli", "error-handling", "silent-failure"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 ---
 
 # 外部コマンド (gh) 失敗時に not-found と一時障害を区別せず別経路へ落とすのは silent failure

@@ -4,14 +4,14 @@ title: "ガードの識別力は「そのガード単独で発火する形状」
 domain: "heuristics"
 description: "エラーガードのテストが (a) rc の非ゼロ性と (b) 総称的な `grep -q 'ERROR'` しか assert していないと、**兄弟ガードが同じ rc・同じ総称文言で発火するため、対象ガードを削除してもテストは全緑で通る**。"
 created: "2026-08-05T09:26:00+09:00"
-updated: "2026-08-05T09:26:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260804T173728Z-pr-2111.md"
+    resource: "raw/reviews/20260804T173728Z-pr-2111.md"
   - type: "fixes"
-    ref: "raw/fixes/20260804T175004Z-pr-2111.md"
+    resource: "raw/fixes/20260804T175004Z-pr-2111.md"
 tags: ["guard", "discriminating-power", "diagnostic-literal", "fixture-design", "sibling-tc-transcription"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T09:26:00+09:00" }
 ---
 
 # ガードの識別力は「そのガード単独で発火する形状」の fixture とガード固有文言 assert で担保する

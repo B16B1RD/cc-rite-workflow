@@ -4,18 +4,18 @@ domain: "anti-patterns"
 description: "path 内の固定セグメント名 (`rite` 等) を `rite.*?/hooks/` のような **substring 正規表現** でマッチすると、`favorite/hooks/`・`prerite/hooks/`・`rite-something/hooks/` のような **look-alike セグメント**を誤マッチし、本来保持すべき対象 (ユーザー定義 hook 等) を silent に over-remove する。"
 promote: rite-plugin
 created: "2026-06-01T18:27:24+00:00"
-updated: "2026-06-02T00:07:23Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260601T180203Z-pr-1236.md"
+    resource: "raw/reviews/20260601T180203Z-pr-1236.md"
   - type: "reviews"
-    ref: "raw/reviews/20260601T185616Z-pr-1238.md"
+    resource: "raw/reviews/20260601T185616Z-pr-1238.md"
   - type: "reviews"
-    ref: "raw/reviews/20260601T191319Z-pr-1238.md"
+    resource: "raw/reviews/20260601T191319Z-pr-1238.md"
   - type: "fixes"
-    ref: "raw/fixes/20260601T190814Z-pr-1238.md"
+    resource: "raw/fixes/20260601T190814Z-pr-1238.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-02T00:07:23Z" }
 ---
 
 # path セグメントの substring マッチが look-alike を誤マッチし対象を silent に over-remove する

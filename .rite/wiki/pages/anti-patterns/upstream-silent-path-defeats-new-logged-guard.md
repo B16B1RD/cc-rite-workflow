@@ -4,18 +4,18 @@ title: "新設 logged ガードの上流に同一判定の silent 経路が残�
 domain: "anti-patterns"
 description: "「silent skip 禁止 — スキップは WARNING で可視化する」という MUST 要件に対して logged ガードを新設しても、**同じ判定条件（例: 24h age guard）を持つ既存の silent continue が制御フロー上流に残っている**と、実運用で最も起きやすい入力がそちらに先に吸われ、新設ガードは到達不能になる。"
 created: "2026-07-21T18:30:00Z"
-updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260721T171603Z-pr-1959.md"
+    resource: "raw/reviews/20260721T171603Z-pr-1959.md"
   - type: "fixes"
-    ref: "raw/fixes/20260721T172102Z-pr-1959.md"
+    resource: "raw/fixes/20260721T172102Z-pr-1959.md"
   - type: "fixes"
-    ref: "raw/fixes/20260721T173955Z-pr-1959.md"
+    resource: "raw/fixes/20260721T173955Z-pr-1959.md"
   - type: "fixes"
-    ref: "raw/fixes/20260731T021333Z-pr-2070.md"
+    resource: "raw/fixes/20260731T021333Z-pr-2070.md"
 tags: ["silent-skip", "guard-ordering", "visibility", "case-arm-enumeration"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 ---
 
 # 新設 logged ガードの上流に同一判定の silent 経路が残ると支配的入力で可視化が無効化される

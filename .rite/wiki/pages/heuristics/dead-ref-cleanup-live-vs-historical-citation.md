@@ -4,16 +4,16 @@ domain: "heuristics"
 description: "削除・改名されたファイル / シンボルへの参照を整理する PR では、すべての出現を一律に書き換えるのではなく、「現行 SoT として現在形・行番号付きで参照する live citation（=修正対象）」と「過去形・period-accurate な旧名を残す historical 記述（=据え置き）」を区別する。"
 promote: rite-plugin
 created: "2026-05-24T18:01:50Z"
-updated: "2026-05-28T08:53:59+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260524T175056Z-pr-1132.md"
+    resource: "raw/reviews/20260524T175056Z-pr-1132.md"
   - type: "fixes"
-    ref: "raw/fixes/20260528T073410Z-pr-1166.md"
+    resource: "raw/fixes/20260528T073410Z-pr-1166.md"
   - type: "fixes"
-    ref: "raw/fixes/20260528T083422Z-pr-1166.md"
+    resource: "raw/fixes/20260528T083422Z-pr-1166.md"
 tags: ["historical-preservation", "rename-pr", "retired-fixture"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-28T08:53:59+00:00" }
 ---
 
 # dead reference 整理では live citation と historical 記述を区別する

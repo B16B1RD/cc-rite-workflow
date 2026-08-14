@@ -6,22 +6,22 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/pin-literal-uniqueness-verified-by-mutation.md"
 description: "散文の実行契約を守る静的 assert（pin）は、**張っただけでは守れていない**。"
 created: "2026-08-02T22:05:00+09:00"
-updated: "2026-08-13T10:27:46Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260802T074021Z-pr-2052.md"
+    resource: "raw/fixes/20260802T074021Z-pr-2052.md"
   - type: "reviews"
-    ref: "raw/reviews/20260802T080828Z-pr-2052.md"
+    resource: "raw/reviews/20260802T080828Z-pr-2052.md"
   - type: "fixes"
-    ref: "raw/fixes/20260802T082508Z-pr-2052.md"
+    resource: "raw/fixes/20260802T082508Z-pr-2052.md"
   - type: "fixes"
-    ref: "raw/fixes/20260804T145425Z-pr-2111.md"
+    resource: "raw/fixes/20260804T145425Z-pr-2111.md"
   - type: "reviews"
-    ref: "raw/reviews/20260813T094525Z-pr-2306.md"
+    resource: "raw/reviews/20260813T094525Z-pr-2306.md"
   - type: "fixes"
-    ref: "raw/fixes/20260813T094616Z-pr-2306.md"
+    resource: "raw/fixes/20260813T094616Z-pr-2306.md"
 tags: ["pin", "mutation-testing", "static-assert", "producer-consumer-symmetry", "drift-detection"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-13T10:27:46Z" }
 ---
 
 # pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する

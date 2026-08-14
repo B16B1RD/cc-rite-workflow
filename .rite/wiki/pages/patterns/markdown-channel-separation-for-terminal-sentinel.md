@@ -5,20 +5,20 @@ description: "CommonMark HTML block (type 2) は前後に空行を要求する�
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/markdown-channel-separation-for-terminal-sentinel.md"
 created: "2026-04-24T14:55:00+00:00"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260424T095915Z-pr-655-cycle6.md"
+    resource: "raw/reviews/20260424T095915Z-pr-655-cycle6.md"
   - type: "reviews"
-    ref: "raw/reviews/20260424T085837Z-pr-655.md"
+    resource: "raw/reviews/20260424T085837Z-pr-655.md"
   - type: "reviews"
-    ref: "raw/reviews/20260424T080338Z-pr-655.md"
+    resource: "raw/reviews/20260424T080338Z-pr-655.md"
   - type: "fixes"
-    ref: "raw/fixes/20260424T081225Z-pr-655.md"
+    resource: "raw/fixes/20260424T081225Z-pr-655.md"
   - type: "fixes"
-    ref: "raw/fixes/20260424T090428Z-pr-655.md"
+    resource: "raw/fixes/20260424T090428Z-pr-655.md"
 tags: [markdown, commonmark, html-block, sentinel, bash-tool, terminal-workflow]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # Markdown channel separation で HTML sentinel の終端性と bash tool 実行を両立させる

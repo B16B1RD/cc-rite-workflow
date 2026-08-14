@@ -4,28 +4,28 @@ domain: "anti-patterns"
 description: "bash の `!` 演算子は直前コマンドの exit status を boolean で反転するため、`if ! cmd; then ...` ブロック内での `$?` は `!` の結果 (= 0) を返す。"
 promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-21T18:30:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260721T171603Z-pr-1959.md"
+    resource: "raw/reviews/20260721T171603Z-pr-1959.md"
   - type: "reviews"
-    ref: "raw/reviews/20260517T221249Z-pr-1032.md"
+    resource: "raw/reviews/20260517T221249Z-pr-1032.md"
   - type: "fixes"
-    ref: "raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md"
+    resource: "raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md"
   - type: "fixes"
-    ref: "raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md"
+    resource: "raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md"
   - type: "fixes"
-    ref: "raw/fixes/20260416T172110Z-pr-548.md"
+    resource: "raw/fixes/20260416T172110Z-pr-548.md"
   - type: "fixes"
-    ref: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
+    resource: "raw/fixes/20260416T173607Z-pr-548-cycle3.md"
   - type: "reviews"
-    ref: "raw/reviews/20260416T171008Z-pr-548.md"
+    resource: "raw/reviews/20260416T171008Z-pr-548.md"
   - type: "reviews"
-    ref: "raw/reviews/20260416T173035Z-pr-548.md"
+    resource: "raw/reviews/20260416T173035Z-pr-548.md"
   - type: "reviews"
-    ref: "raw/reviews/20260427T154519Z-pr-688.md"
+    resource: "raw/reviews/20260427T154519Z-pr-688.md"
 tags: ["bash", "rc-capture", "silent-failure"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-21T18:30:00Z" }
 ---
 
 # `if ! cmd; then rc=$?` は常に 0 を捕捉する

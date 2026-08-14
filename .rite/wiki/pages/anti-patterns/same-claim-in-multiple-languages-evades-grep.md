@@ -4,14 +4,14 @@ title: "同一主張を複数言語で持つ記述は grep の盲点になる"
 domain: "anti-patterns"
 description: "実装が前提を falsify したとき、その前提を述べている記述をすべて更新する必要がある。"
 created: "2026-08-01T00:21:06+09:00"
-updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260731T111118Z-pr-2074.md"
+    resource: "raw/reviews/20260731T111118Z-pr-2074.md"
   - type: "fixes"
-    ref: "raw/fixes/20260731T114035Z-pr-2074.md"
+    resource: "raw/fixes/20260731T114035Z-pr-2074.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 ---
 
 # 同一主張を複数言語で持つ記述は grep の盲点になる

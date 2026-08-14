@@ -3,14 +3,14 @@ title: "新規 lint helper は findings→stdout / summary→stderr(log()) の�
 domain: "patterns"
 description: "`hooks/scripts/` に新規 lint / check helper を追加するとき、summary 行 (`==> Total ... findings: N` 等) は `echo` (stdout) ではなく `log()` (stderr, `--quiet` 尊重) で出力し、「findings 本体 → stdout / progress + summary → stderr」という兄弟 helper 多数派 (sh-cross-ref-check.sh / bang-backtick-check.sh / comment-line-ref-check.sh 等) の出力チャネル規約に揃える。"
 created: "2026-06-01T10:48:51+09:00"
-updated: "2026-06-01T10:48:51+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260601T002552Z-pr-1222.md"
+    resource: "raw/reviews/20260601T002552Z-pr-1222.md"
   - type: "fixes"
-    ref: "raw/fixes/20260601T010229Z-pr-1222.md"
+    resource: "raw/fixes/20260601T010229Z-pr-1222.md"
 tags: ["bash", "lint-helper", "stdout-stderr-channel", "quiet-flag", "sibling-convention-conformance"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-01T10:48:51+09:00" }
 ---
 
 # 新規 lint helper は findings→stdout / summary→stderr(log()) の出力チャネル規約を兄弟 helper に揃える

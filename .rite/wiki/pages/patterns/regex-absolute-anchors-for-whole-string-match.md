@@ -4,12 +4,12 @@ title: "jq / Oniguruma の `$` は末尾改行の直前にも match する — �
 domain: "patterns"
 description: "jq の `test()` が使う Oniguruma（および Perl / Ruby 系の正規表現エンジン）では、`$` は「文字列末尾」ではなく「文字列末尾**または末尾改行の直前**」に match する。"
 created: "2026-08-07T07:59:00+09:00"
-updated: "2026-08-07T07:59:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260806T181047Z-pr-2126-c5.md"
+    resource: "raw/fixes/20260806T181047Z-pr-2126-c5.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T07:59:00+09:00" }
 ---
 
 # jq / Oniguruma の `$` は末尾改行の直前にも match する

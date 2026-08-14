@@ -4,12 +4,12 @@ domain: "heuristics"
 description: "過去 PR で merge 済みのパターンとの統一を目的とする follow-up PR (cycle N 推奨事項として別 PR 化された scope cleanup) では、Wiki 経験則違反 (overclaim 語彙等) であってもパターン統一を優先し、改善は別 Issue で追跡する。"
 promote: rite-plugin
 created: "2026-05-15T15:05:00+09:00"
-updated: "2026-05-15T15:05:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260515T054955Z-pr-973.md"
+    resource: "raw/reviews/20260515T054955Z-pr-973.md"
 tags: ["wiki", "review", "follow-up", "consistency"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-15T15:05:00+09:00" }
 ---
 
 # Pattern 統一 follow-up PR では Wiki 経験則違反でも統一を優先する

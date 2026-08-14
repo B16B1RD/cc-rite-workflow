@@ -4,14 +4,14 @@ title: "恒久規範の理由付けを「今は動かない」という現時点
 domain: "anti-patterns"
 description: "原則ファイルに「運用環境は `CLAUDE.md` に宣言する — **Wiki は reviewer が読まないため** — なぜなら reviewer 側の Guardrail がこの宣言を参照するから」と書いた。"
 created: "2026-08-03T00:55:00+09:00"
-updated: "2026-08-03T00:55:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260802T143430Z-pr-2092.md"
+    resource: "raw/reviews/20260802T143430Z-pr-2092.md"
   - type: "fixes"
-    ref: "raw/fixes/20260802T143712Z-pr-2092.md"
+    resource: "raw/fixes/20260802T143712Z-pr-2092.md"
 tags: ["documentation-drift", "stale-assertion", "prompt-engineering", "cross-file-consistency"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T00:55:00+09:00" }
 ---
 
 # 恒久規範の理由付けを「今は動かない」という現時点の欠陥への断定に置くと、欠陥が直った時点で規範が静かに誤りになる

@@ -4,20 +4,20 @@ title: "プラットフォーム skip を増やすなら「緑の意味」を痩
 domain: "heuristics"
 description: "クロスプラットフォーム対応は skip を増やす。"
 created: "2026-07-25T07:05:21Z"
-updated: "2026-07-25T07:05:21Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260724T175144Z-pr-2013.md"
+    resource: "raw/reviews/20260724T175144Z-pr-2013.md"
   - type: "reviews"
-    ref: "raw/reviews/20260725T003541Z-pr-2013.md"
+    resource: "raw/reviews/20260725T003541Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260724T184410Z-pr-2013.md"
+    resource: "raw/fixes/20260724T184410Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260724T193804Z-pr-2013.md"
+    resource: "raw/fixes/20260724T193804Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260724T202517Z-pr-2013.md"
+    resource: "raw/fixes/20260724T202517Z-pr-2013.md"
 tags: ["test", "skip", "vacuous-green", "observability", "cross-platform"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-25T07:05:21Z" }
 ---
 
 # プラットフォーム skip を増やすなら「緑の意味」を痩せさせない skip 会計をセットで入れる

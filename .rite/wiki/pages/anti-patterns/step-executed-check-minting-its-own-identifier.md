@@ -5,12 +5,12 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "step の実行有無を中間ファイルの存在で判定する設計で、そのファイルパスに含む cycle 識別子を当の step が鋳造すると、step を飛ばした cycle には本 cycle のパスが存在せず、解決規則が前 cycle の実ファイルを掴んで fail-open する。"
 created: "2026-08-11T01:20:00+09:00"
-updated: "2026-08-11T01:20:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260810T150514Z-pr-2231.md"
+    resource: "raw/fixes/20260810T150514Z-pr-2231.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-11T01:20:00+09:00" }
 ---
 
 # 「step が走ったか」を後段で判定するとき、識別子の供給元をその step 自身にすると検出したい状態でだけ判定が成立しない

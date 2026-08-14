@@ -5,16 +5,16 @@ description: "`/rite:issue:create` の sub-skill return 後の implicit stop を
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/declarative-enforcement-cannot-prevent-llm-end-turn.md"
 created: "2026-04-25T12:30:00+00:00"
-updated: "2026-05-28T08:53:59+00:00"
 sources:
   - type: "retrospectives"
-    ref: "raw/retrospectives/20260425T122746Z-meta-issue-create-stuck-rootcause.md"
+    resource: "raw/retrospectives/20260425T122746Z-meta-issue-create-stuck-rootcause.md"
   - type: "reviews"
-    ref: "raw/reviews/20260528T025244Z-pr-1166.md"
+    resource: "raw/reviews/20260528T025244Z-pr-1166.md"
   - type: "reviews"
-    ref: "raw/reviews/20260528T084055Z-pr-1166.md"
+    resource: "raw/reviews/20260528T084055Z-pr-1166.md"
 tags: [llm-turn-boundary, declarative-enforcement, stop-reason, end-turn, sub-skill-return, sentinel, mode-b, vocabulary-level-enforcement, sentinel-rename]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-28T08:53:59+00:00" }
 ---
 
 # Declarative enforcement で LLM の stop_reason: end_turn は抑制できない

@@ -4,18 +4,18 @@ domain: "anti-patterns"
 description: "`status: structurally_resolved` の anti-pattern doc / design doc で front-matter に「本文中の `Phase` 番号は PR #XXXX 以前の旧構造の歴史的記述として保持」と明示宣言されているにも関わらず、rename PR の機械的置換 fix が body の Phase 参照を `ステップ` に書き換え、**front-matter declaration と body の矛盾** を発生させる anti-pattern。"
 promote: rite-plugin
 created: "2026-05-27T01:30:00Z"
-updated: "2026-05-27T01:30:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260526T153732Z-pr-1151.md"
+    resource: "raw/reviews/20260526T153732Z-pr-1151.md"
   - type: "reviews"
-    ref: "raw/reviews/20260526T155823Z-pr-1151.md"
+    resource: "raw/reviews/20260526T155823Z-pr-1151.md"
   - type: "fixes"
-    ref: "raw/fixes/20260526T154013Z-pr-1151.md"
+    resource: "raw/fixes/20260526T154013Z-pr-1151.md"
   - type: "fixes"
-    ref: "raw/fixes/20260526T160217Z-pr-1151.md"
+    resource: "raw/fixes/20260526T160217Z-pr-1151.md"
 tags: ["archive-doc", "frontmatter-policy", "historical-preservation", "rename-pr", "reviewer-classification-disagreement"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-27T01:30:00Z" }
 ---
 
 # Archive doc の front-matter で宣言した preservation policy を body 編集が無視して矛盾を生む

@@ -3,12 +3,12 @@ title: "節の表示条件を変えたら inbound の位置参照を grep して
 domain: "heuristics"
 description: "ドキュメント / command 定義の 1 節を「常時表示」から「条件付き表示 (on-demand / Optional)」へ変えると、その節を「下記 (below)」「FAQ below」のような**固定位置を含意する文言で参照していた常時表示テキスト**が dangling reference 化する。"
 created: "2026-06-10T12:41:54Z"
-updated: "2026-06-10T12:41:54Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260610T123423Z-pr-1387.md"
+    resource: "raw/reviews/20260610T123423Z-pr-1387.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-10T12:41:54Z" }
 ---
 
 # 節の表示条件を変えたら inbound の位置参照を grep して文言同期する

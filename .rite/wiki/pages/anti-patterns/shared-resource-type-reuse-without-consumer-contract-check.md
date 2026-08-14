@@ -5,16 +5,16 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "新機能実装で既存の共有リソース（reap manifest の type 名前空間等）を再利用する際、その共有リソースの既存消費者（別のロジック段）が持つ契約——多くはコード内コメントで明示された不変条件——を確認しないまま実装すると、共有リソースの解釈が衝突し、既存の健全なリソースが無警告で破壊されうる。"
 created: "2026-07-23T04:14:28Z"
-updated: "2026-08-08T17:40:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260723T005459Z-pr-1974.md"
+    resource: "raw/reviews/20260723T005459Z-pr-1974.md"
   - type: "fixes"
-    ref: "raw/fixes/20260723T010449Z-pr-1974.md"
+    resource: "raw/fixes/20260723T010449Z-pr-1974.md"
   - type: "reviews"
-    ref: "raw/reviews/20260723T020925Z-pr-1974-cycle2.md"
+    resource: "raw/reviews/20260723T020925Z-pr-1974-cycle2.md"
 tags: ["shared-resource-contract", "namespace-reuse", "reap-manifest", "existing-consumer-verification", "mutation-testing", "cross-validation"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T17:40:00+09:00" }
 ---
 
 # 共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる

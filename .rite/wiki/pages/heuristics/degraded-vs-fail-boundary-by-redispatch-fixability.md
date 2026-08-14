@@ -4,14 +4,14 @@ title: "degraded と fail の境界は「差し戻して直るか」で引く"
 domain: "heuristics"
 description: "gate に「縮退 (degraded、判定不能だが続行)」と「失敗 (fail、差し戻す)」の 2 出口があるとき、振り分けの基準を**状態の種類**（「存在しない」「読めない」「解決できない」）で書くと、必ずどちらかの方向に間違える。"
 created: "2026-08-07T18:40:00+09:00"
-updated: "2026-08-07T18:40:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260807T013056Z-pr-2130.md"
+    resource: "raw/fixes/20260807T013056Z-pr-2130.md"
   - type: "reviews"
-    ref: "raw/reviews/20260807T011214Z-pr-2130.md"
+    resource: "raw/reviews/20260807T011214Z-pr-2130.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T18:40:00+09:00" }
 ---
 
 # degraded と fail の境界は「差し戻して直るか」で引く

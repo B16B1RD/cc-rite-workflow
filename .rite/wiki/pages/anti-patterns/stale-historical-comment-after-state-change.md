@@ -4,30 +4,30 @@ domain: "anti-patterns"
 description: "config 値の bump (例: `enabled: false → true`) や AC の完了マーク (`⏳ 実行予定 → ✅ 実行済`) など状態を変更する commit で、**同一行 / 近傍のインラインコメント** が旧値や未来形 (`default: false` / `... 後に true 化予定`) のまま残置する drift。"
 promote: rite-plugin
 created: "2026-05-19T20:10:23Z"
-updated: "2026-08-13T10:27:46Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260519T195007Z-pr-1065.md"
+    resource: "raw/reviews/20260519T195007Z-pr-1065.md"
   - type: "reviews"
-    ref: "raw/reviews/20260519T195734Z-pr-1065-cycle2.md"
+    resource: "raw/reviews/20260519T195734Z-pr-1065-cycle2.md"
   - type: "fixes"
-    ref: "raw/fixes/20260519T195351Z-pr-1065.md"
+    resource: "raw/fixes/20260519T195351Z-pr-1065.md"
   - type: "reviews"
-    ref: "raw/reviews/20260529T145515Z-pr-1201.md"
+    resource: "raw/reviews/20260529T145515Z-pr-1201.md"
   - type: "reviews"
-    ref: "raw/reviews/20260529T152911Z-pr-1201.md"
+    resource: "raw/reviews/20260529T152911Z-pr-1201.md"
   - type: "fixes"
-    ref: "raw/fixes/20260529T150155Z-pr-1201.md"
+    resource: "raw/fixes/20260529T150155Z-pr-1201.md"
   - type: "fixes"
-    ref: "raw/fixes/20260529T153627Z-pr-1201.md"
+    resource: "raw/fixes/20260529T153627Z-pr-1201.md"
   - type: "reviews"
-    ref: "raw/reviews/20260813T081206Z-pr-2304.md"
+    resource: "raw/reviews/20260813T081206Z-pr-2304.md"
   - type: "fixes"
-    ref: "raw/fixes/20260813T081923Z-pr-2304.md"
+    resource: "raw/fixes/20260813T081923Z-pr-2304.md"
   - type: "reviews"
-    ref: "raw/reviews/20260813T102011Z-pr-2308.md"
+    resource: "raw/reviews/20260813T102011Z-pr-2308.md"
 tags: [config-bump, inline-comment, drift, rollout-strategy, order-emphasis-consistency, delegation-refactor, terminology-table, byte-unchanged-stale]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-13T10:27:46Z" }
 ---
 
 # 状態変化後も未来形 / 旧値前提のインラインコメントが残置する (stale historical comment drift)

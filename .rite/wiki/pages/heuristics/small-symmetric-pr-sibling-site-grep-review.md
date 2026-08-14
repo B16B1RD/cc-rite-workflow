@@ -4,26 +4,26 @@ domain: "heuristics"
 description: "5 行程度の極小 refactor PR (特定 Phase の sibling site 対称化) では、複数の同型箇所 (例: 4 sibling site) を Grep + Read で網羅的に照合し、変数名とラベル以外の構造的差分を洗い出すことで、「指摘事項 0 件 + merge 可」の判定を短時間で Confidence 80+ として出せる。"
 promote: rite-plugin
 created: "2026-04-19T06:45:00Z"
-updated: "2026-06-10T00:54:18Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260610T005202Z-pr-1341.md"
+    resource: "raw/reviews/20260610T005202Z-pr-1341.md"
   - type: "reviews"
-    ref: "raw/reviews/20260606T143925Z-pr-1294.md"
+    resource: "raw/reviews/20260606T143925Z-pr-1294.md"
   - type: "fixes"
-    ref: "raw/fixes/20260606T135607Z-pr-1294.md"
+    resource: "raw/fixes/20260606T135607Z-pr-1294.md"
   - type: "reviews"
-    ref: "raw/reviews/20260419T062330Z-pr-592.md"
+    resource: "raw/reviews/20260419T062330Z-pr-592.md"
   - type: "reviews"
-    ref: "raw/reviews/20260514T182616Z-pr-963.md"
+    resource: "raw/reviews/20260514T182616Z-pr-963.md"
   - type: "fixes"
-    ref: "raw/fixes/20260514T223534Z-pr-967.md"
+    resource: "raw/fixes/20260514T223534Z-pr-967.md"
   - type: "reviews"
-    ref: "raw/reviews/20260514T224021Z-pr-967.md"
+    resource: "raw/reviews/20260514T224021Z-pr-967.md"
   - type: "fixes"
-    ref: "raw/fixes/20260526T154013Z-pr-1151.md"
+    resource: "raw/fixes/20260526T154013Z-pr-1151.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-10T00:54:18Z" }
 ---
 
 # 極小対称化 PR は sibling site Grep 照合で短時間・高確信レビューできる

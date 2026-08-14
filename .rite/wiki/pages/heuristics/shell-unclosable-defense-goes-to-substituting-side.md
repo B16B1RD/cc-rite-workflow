@@ -4,14 +4,14 @@ title: "シェル層で閉じられない注入防御は値を substitute する
 domain: "heuristics"
 description: "LLM が値を literal substitute する bash block では、**防御の層を 1 つ塞ぐたびに同じ機構の中の「次の層」が露出する**。"
 created: "2026-08-05T09:26:00+09:00"
-updated: "2026-08-05T09:26:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260804T235430Z-pr-2111.md"
+    resource: "raw/reviews/20260804T235430Z-pr-2111.md"
   - type: "fixes"
-    ref: "raw/fixes/20260805T000150Z-pr-2111.md"
+    resource: "raw/fixes/20260805T000150Z-pr-2111.md"
 tags: ["quoted-heredoc", "delimiter-escape", "llm-pre-gate", "silent-success", "producer-consumer", "injection"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T09:26:00+09:00" }
 ---
 
 # シェル層で閉じられない注入防御は値を substitute する側（LLM）の実行前ゲートとして書く

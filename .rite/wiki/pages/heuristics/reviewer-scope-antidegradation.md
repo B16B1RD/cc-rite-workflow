@@ -4,20 +4,20 @@ domain: "heuristics"
 description: "re-review / verification mode (前回 review comment の検証モード) では、reviewer の scope が「前回指摘の解消確認」に偏り、初回レビューで verify すべきだった latent design issue を見落とす経路がある。"
 promote: rite-plugin
 created: "2026-04-19T03:30:00+00:00"
-updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260419T032801Z-pr-586.md"
+    resource: "raw/fixes/20260419T032801Z-pr-586.md"
   - type: "reviews"
-    ref: "raw/reviews/20260419T032159Z-pr-586.md"
+    resource: "raw/reviews/20260419T032159Z-pr-586.md"
   - type: "reviews"
-    ref: "raw/reviews/20260420T043312Z-pr-617-cycle2.md"
+    resource: "raw/reviews/20260420T043312Z-pr-617-cycle2.md"
   - type: "reviews"
-    ref: "raw/reviews/20260430T033635Z-pr-747.md"
+    resource: "raw/reviews/20260430T033635Z-pr-747.md"
   - type: "reviews"
-    ref: "raw/reviews/20260504T030800Z-pr-800-cycle4.md"
+    resource: "raw/reviews/20260504T030800Z-pr-800-cycle4.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 ---
 
 # re-review / verification mode でも初回レビューと同等の網羅性を確保する (Anti-Degradation Guardrail)

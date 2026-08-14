@@ -5,16 +5,16 @@ domain: "heuristics"
 promote: rite-plugin
 description: "「read 経路 3 コピーのうち 1 つだけ変更されており、残り 2 つと SoT が未同期」という指摘に対する自然な反応は「残り 3 箇所を同期する」だが、過去のレビュー事例の cycle 1 では**変更した 1 箇所を revert する**ほうが安全だった。"
 created: "2026-07-27T17:54:54+09:00"
-updated: "2026-07-29T21:32:36+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260727T042311Z-pr-2036.md"
+    resource: "raw/fixes/20260727T042311Z-pr-2036.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T051956Z-pr-2044.md"
+    resource: "raw/fixes/20260729T051956Z-pr-2044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T073316Z-pr-2044.md"
+    resource: "raw/fixes/20260729T073316Z-pr-2044.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-29T21:32:36+09:00" }
 ---
 
 # 「N 箇所で同期が必要」と指摘されたら、同期する前に N を減らせないか検討する

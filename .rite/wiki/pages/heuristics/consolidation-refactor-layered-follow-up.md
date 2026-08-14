@@ -5,18 +5,18 @@ domain: "heuristics"
 promote: rite-plugin
 description: "reviewer registry 統合（13→9 種）の PR は 4 cycle で収束し、各 cycle の指摘は毎回異なる「層」に集中した: cycle 1 = 降格アルゴリズムの SoT・周縁 docs（CHANGELOG.ja / CLAUDE.md / SPEC.md）、cycle 2 = references/ 配下の例示・Few-shot 教材・並行コピー、cycle 3 = 同一リスト内の兄弟行の取りこぼし。"
 created: "2026-07-17T12:04:54Z"
-updated: "2026-07-17T12:04:54Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260717T110218Z-pr-1891.md"
+    resource: "raw/reviews/20260717T110218Z-pr-1891.md"
   - type: "reviews"
-    ref: "raw/reviews/20260717T112303Z-pr-1891.md"
+    resource: "raw/reviews/20260717T112303Z-pr-1891.md"
   - type: "reviews"
-    ref: "raw/reviews/20260717T115736Z-pr-1891.md"
+    resource: "raw/reviews/20260717T115736Z-pr-1891.md"
   - type: "fixes"
-    ref: "raw/fixes/20260717T110651Z-pr-1891.md"
+    resource: "raw/fixes/20260717T110651Z-pr-1891.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-17T12:04:54Z" }
 ---
 
 # 統合 refactor の追従は「実行テーブル → SoT/docs → references 例示 → 兄弟行」と層を降りる

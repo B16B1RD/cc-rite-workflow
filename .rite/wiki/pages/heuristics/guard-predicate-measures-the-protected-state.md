@@ -4,12 +4,12 @@ title: "ガードの述語は「守りたい状態」そのものを測る — �
 domain: "heuristics"
 description: "冪等性のためにガードを置くとき、述語が「守りたい不変量」ではなく「その代理指標」を測っていると、代理と実体が乖離した瞬間にガードが恒久的な無音 skip へ変わる。"
 created: "2026-08-06T00:40:00+09:00"
-updated: "2026-08-06T00:40:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260805T122139Z-pr-2114.md"
+    resource: "raw/reviews/20260805T122139Z-pr-2114.md"
 tags: ["guard", "invariant", "fail-loud", "self-healing", "enospc", "idempotence"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T00:40:00+09:00" }
 ---
 
 # ガードの述語は「守りたい状態」そのものを測る — 存在ではなく内容を測る

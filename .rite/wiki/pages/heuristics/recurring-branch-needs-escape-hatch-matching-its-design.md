@@ -5,14 +5,14 @@ domain: "heuristics"
 promote: rite-plugin
 description: "「原因が特定できないため破壊的操作をしない」という設計判断で no-op に倒した分岐は、設計としては正しくても**同じ入力が毎回選ばれて同じ WARNING を出し続ける**状態を作る。"
 created: "2026-07-27T10:57:51+09:00"
-updated: "2026-07-27T10:57:51+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260727T011853Z-pr-2035.md"
+    resource: "raw/fixes/20260727T011853Z-pr-2035.md"
   - type: "reviews"
-    ref: "raw/reviews/20260727T014642Z-pr-2035.md"
+    resource: "raw/reviews/20260727T014642Z-pr-2035.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-27T10:57:51+09:00" }
 ---
 
 # 毎回同じ入力で発火する分岐には脱出手順を書き、その破壊性を分岐自身の設計判断に揃える

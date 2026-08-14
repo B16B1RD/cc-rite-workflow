@@ -4,14 +4,14 @@ domain: "anti-patterns"
 description: "GitHub Flavored Markdown の table 内部に `<!-- comment -->` を挿入すると、その時点で table 構造が終了したと解釈され、後続行が `<p>` 段落として render される silent regression を起こす。"
 promote: rite-plugin
 created: "2026-05-03T12:53:26Z"
-updated: "2026-08-06T22:40:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260503T110855Z-pr-792-fix-cycle3.md"
+    resource: "raw/fixes/20260503T110855Z-pr-792-fix-cycle3.md"
   - type: "fixes"
-    ref: "raw/fixes/20260806T111135Z-pr-2124.md"
+    resource: "raw/fixes/20260806T111135Z-pr-2124.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T22:40:00+09:00" }
 ---
 
 # Markdown table 内に HTML コメントを挿入すると GFM table boundary が破壊される

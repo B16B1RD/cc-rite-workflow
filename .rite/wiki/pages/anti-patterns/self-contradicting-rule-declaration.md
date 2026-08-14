@@ -4,14 +4,14 @@ domain: "anti-patterns"
 description: "新規ルール (Comment Quality Gate / 禁止句リスト等) を declarative gate として宣言する際、当該 gate の本文中にルール違反パターン (line 番号参照 / cycle 番号参照 / 禁止句) が混入する anti-pattern。"
 promote: rite-plugin
 created: "2026-05-26T00:30:00Z"
-updated: "2026-05-26T00:30:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260525T162232Z-pr-1143.md"
+    resource: "raw/reviews/20260525T162232Z-pr-1143.md"
   - type: "fixes"
-    ref: "raw/fixes/20260525T162704Z-pr-1143.md"
+    resource: "raw/fixes/20260525T162704Z-pr-1143.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-26T00:30:00Z" }
 ---
 
 # Self-contradicting rule declaration: 新規ルール宣言時にルール本文自身がルール違反を含む

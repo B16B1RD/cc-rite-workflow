@@ -6,16 +6,16 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/changelog-shared-precondition-overgeneralization.md"
 description: "CHANGELOG 等のドキュメントで、複数の環境制約や事象を1つの共有前提条件（例: 特定のオプション機能が有効であること）でまとめて記述すると、実際にはそのうち一部だけがその前提に依存し、残りは独立して発生しうるという粒度の違いが読者に伝わらなくなる。"
 created: "2026-07-21T16:45:00+09:00"
-updated: "2026-07-21T16:45:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260721T063551Z-pr-1948.md"
+    resource: "raw/fixes/20260721T063551Z-pr-1948.md"
   - type: "reviews"
-    ref: "raw/reviews/20260721T063155Z-pr-1948.md"
+    resource: "raw/reviews/20260721T063155Z-pr-1948.md"
   - type: "reviews"
-    ref: "raw/reviews/20260721T064945Z-pr-1948-cycle2.md"
+    resource: "raw/reviews/20260721T064945Z-pr-1948-cycle2.md"
 tags: ["changelog", "doc-heavy-review", "cross-reference", "precondition-granularity", "overgeneralization"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-21T16:45:00+09:00" }
 ---
 
 # 複数の独立した制約を1つの共有前提条件に総称すると片方だけの前提差異が握り潰される

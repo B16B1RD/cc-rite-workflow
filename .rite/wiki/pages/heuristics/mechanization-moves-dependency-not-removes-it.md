@@ -4,16 +4,16 @@ title: "強制層の機械化は裁量を消すが依存を消さない — 依�
 domain: "heuristics"
 description: "「LLM の判断に置くと構造的に実行されない」種類の契約を、決定論的な helper へ機械化するのは正しい方向である。"
 created: "2026-08-01T00:21:06+09:00"
-updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260731T111118Z-pr-2074.md"
+    resource: "raw/reviews/20260731T111118Z-pr-2074.md"
   - type: "fixes"
-    ref: "raw/fixes/20260731T114035Z-pr-2074.md"
+    resource: "raw/fixes/20260731T114035Z-pr-2074.md"
   - type: "fixes"
-    ref: "raw/fixes/20260731T135712Z-pr-2074.md"
+    resource: "raw/fixes/20260731T135712Z-pr-2074.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 ---
 
 # 強制層の機械化は裁量を消すが依存を消さない — 依存先が移った先に検出と復旧を同時に設計する

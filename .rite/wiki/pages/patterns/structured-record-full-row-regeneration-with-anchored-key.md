@@ -4,18 +4,18 @@ title: "構造化レコードの部分更新は全行再生成へ置き換え、
 domain: "patterns"
 description: "構造化データ（GFM テーブル行等）の部分更新は「どの列か」の解決を必ず要求する。"
 created: "2026-07-30T15:40:55Z"
-updated: "2026-07-30T15:40:55Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260730T014137Z-pr-2052.md"
+    resource: "raw/reviews/20260730T014137Z-pr-2052.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T014656Z-pr-2052.md"
+    resource: "raw/fixes/20260730T014656Z-pr-2052.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T024604Z-pr-2052.md"
+    resource: "raw/fixes/20260730T024604Z-pr-2052.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T021430Z-pr-2052.md"
+    resource: "raw/fixes/20260730T021430Z-pr-2052.md"
 tags: ["structured-data", "idempotency", "regeneration", "predicate", "healing"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 ---
 
 # 構造化レコードの部分更新は全行再生成へ置き換え、同定述語をキー位置まで anchor する

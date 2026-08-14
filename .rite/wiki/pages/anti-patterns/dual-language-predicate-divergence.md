@@ -5,18 +5,18 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "「本文の最終非空行が sentinel と一致するか」のような判定条件を、read 側（lookup の jq）と write 側（投稿前検査の shell）で**別々に実装**すると、同じ意図の述語でも受理する入力の集合が一致しない。"
 created: "2026-07-28T21:30:00+09:00"
-updated: "2026-07-28T21:30:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260728T093135Z-pr-2038.md"
+    resource: "raw/fixes/20260728T093135Z-pr-2038.md"
   - type: "fixes"
-    ref: "raw/fixes/20260728T090203Z-pr-2038.md"
+    resource: "raw/fixes/20260728T090203Z-pr-2038.md"
   - type: "fixes"
-    ref: "raw/fixes/20260728T070208Z-pr-2038.md"
+    resource: "raw/fixes/20260728T070208Z-pr-2038.md"
   - type: "reviews"
-    ref: "raw/reviews/20260728T081222Z-pr-2038.md"
+    resource: "raw/reviews/20260728T081222Z-pr-2038.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-28T21:30:00+09:00" }
 ---
 
 # 同じ述語を 2 言語で並行実装すると受理集合が環境で割れる — 定義を 1 本に寄せるまで症状は再発し続ける

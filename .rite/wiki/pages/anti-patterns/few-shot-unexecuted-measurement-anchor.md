@@ -4,16 +4,16 @@ title: "few-shot 例に「実行していない実測」を書く — LLM はも
 domain: "anti-patterns"
 description: "reviewer / agent 向けの calibration 文書（finding-examples.md 等）に「実測アンカー付きの良い例」を追加するとき、例に載せる再現コマンドと観測結果を実際には走らせずに書いてしまう anti-pattern。"
 created: "2026-07-27T10:57:51+09:00"
-updated: "2026-07-27T10:57:51+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260727T010154Z-pr-2035.md"
+    resource: "raw/fixes/20260727T010154Z-pr-2035.md"
   - type: "fixes"
-    ref: "raw/fixes/20260727T011853Z-pr-2035.md"
+    resource: "raw/fixes/20260727T011853Z-pr-2035.md"
   - type: "reviews"
-    ref: "raw/reviews/20260726T171439Z-pr-2030.md"
+    resource: "raw/reviews/20260726T171439Z-pr-2030.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-27T10:57:51+09:00" }
 ---
 
 # few-shot 例に「実行していない実測」を書く — LLM はもっともらしいコマンドを書く挙動を学習する

@@ -4,20 +4,20 @@ title: "記録義務を規約に書く前に、その記録先を読む consumer
 domain: "patterns"
 description: "「条件 X に当たる指摘は filter する。"
 created: "2026-08-03T00:55:00+09:00"
-updated: "2026-08-03T00:55:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260802T141413Z-pr-2092.md"
+    resource: "raw/reviews/20260802T141413Z-pr-2092.md"
   - type: "fixes"
-    ref: "raw/fixes/20260802T141842Z-pr-2092.md"
+    resource: "raw/fixes/20260802T141842Z-pr-2092.md"
   - type: "reviews"
-    ref: "raw/reviews/20260802T145006Z-pr-2092.md"
+    resource: "raw/reviews/20260802T145006Z-pr-2092.md"
   - type: "fixes"
-    ref: "raw/fixes/20260802T145247Z-pr-2092.md"
+    resource: "raw/fixes/20260802T145247Z-pr-2092.md"
   - type: "reviews"
-    ref: "raw/reviews/20260802T150522Z-pr-2092.md"
+    resource: "raw/reviews/20260802T150522Z-pr-2092.md"
 tags: ["producer-consumer", "obligation-design", "compensating-control", "prompt-engineering"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T00:55:00+09:00" }
 ---
 
 # 記録義務を規約に書く前に、その記録先を読む consumer が実在するかを grep で確かめる

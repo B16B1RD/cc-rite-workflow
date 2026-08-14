@@ -4,18 +4,18 @@ domain: "anti-patterns"
 description: "command 指示書 (`commands/**/*.md`) が Edit ツールの `old_string` に「自プラグイン開発 repo 固有のコメント / anchor」(例: `# <<< gitignore-wiki-section-end`) を hardcode しつつ、発動条件で anchor 存在を verify しない設計は、consumer project で Edit が `old_string not found` となり hard fail する典型的な **dogfooding bias**。"
 promote: rite-plugin
 created: "2026-04-19T03:30:00+00:00"
-updated: "2026-07-22T08:20:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260419T032159Z-pr-586.md"
+    resource: "raw/reviews/20260419T032159Z-pr-586.md"
   - type: "fixes"
-    ref: "raw/fixes/20260419T032801Z-pr-586.md"
+    resource: "raw/fixes/20260419T032801Z-pr-586.md"
   - type: "reviews"
-    ref: "raw/reviews/20260722T063747Z-pr-1969.md"
+    resource: "raw/reviews/20260722T063747Z-pr-1969.md"
   - type: "fixes"
-    ref: "raw/fixes/20260722T064426Z-pr-1969.md"
+    resource: "raw/fixes/20260722T064426Z-pr-1969.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-22T08:20:00+00:00" }
 ---
 
 # 自 repo 固有 anchor を Edit old_string に hardcode すると consumer project で hard fail する (dogfooding bias)

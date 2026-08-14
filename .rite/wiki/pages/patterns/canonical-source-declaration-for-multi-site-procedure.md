@@ -4,24 +4,24 @@ domain: "patterns"
 description: "同一の placeholder 値生成手順 / 規約 / 設計判断が文書内の複数 site に書かれる場合、放置すると Asymmetric Fix Transcription を誘発する。"
 promote: rite-plugin
 created: "2026-05-13T06:43:41Z"
-updated: "2026-05-13T08:55:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260513T063128Z-pr-946-cycle2.md"
+    resource: "raw/reviews/20260513T063128Z-pr-946-cycle2.md"
   - type: "fixes"
-    ref: "raw/fixes/20260513T060844Z-pr-946.md"
+    resource: "raw/fixes/20260513T060844Z-pr-946.md"
   - type: "reviews"
-    ref: "raw/reviews/20260513T080326Z-pr-947.md"
+    resource: "raw/reviews/20260513T080326Z-pr-947.md"
   - type: "reviews"
-    ref: "raw/reviews/20260513T081242Z-pr-947-cycle-2.md"
+    resource: "raw/reviews/20260513T081242Z-pr-947-cycle-2.md"
   - type: "reviews"
-    ref: "raw/reviews/20260513T082018Z-pr-947-cycle-3.md"
+    resource: "raw/reviews/20260513T082018Z-pr-947-cycle-3.md"
   - type: "fixes"
-    ref: "raw/fixes/20260513T080706Z-pr-947-fix-cycle-1.md"
+    resource: "raw/fixes/20260513T080706Z-pr-947-fix-cycle-1.md"
   - type: "fixes"
-    ref: "raw/fixes/20260513T081626Z-pr-947-fix-cycle-2.md"
+    resource: "raw/fixes/20260513T081626Z-pr-947-fix-cycle-2.md"
 tags: ["canonical-source", "drift-prevention", "asymmetric-fix-transcription", "precedence-rule", "review-fix-convergence", "multi-canonical-per-file", "citation-structuring"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-13T08:55:00+00:00" }
 ---
 
 # 同一手順が複数 site に分散する場合は片方を canonical source と宣言する

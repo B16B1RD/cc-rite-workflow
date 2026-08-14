@@ -4,20 +4,20 @@ title: "SoT を consumer 依存の条件付きにすると seam が増え、指�
 domain: "anti-patterns"
 description: "共有 SoT（reference）と複数 consumer を持つ構成で、個別指摘へ局所修正を重ねると、SoT 側に条件付き分岐が積み上がる。"
 created: "2026-07-30T15:40:55Z"
-updated: "2026-07-30T15:40:55Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260730T061343Z-pr-2056.md"
+    resource: "raw/reviews/20260730T061343Z-pr-2056.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T061745Z-pr-2056.md"
+    resource: "raw/fixes/20260730T061745Z-pr-2056.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T063315Z-pr-2056.md"
+    resource: "raw/reviews/20260730T063315Z-pr-2056.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T063609Z-pr-2056.md"
+    resource: "raw/fixes/20260730T063609Z-pr-2056.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T093514Z-pr-2056.md"
+    resource: "raw/reviews/20260730T093514Z-pr-2056.md"
 tags: ["sot", "consumer", "seam", "shared-reference", "convergence"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 ---
 
 # SoT を consumer 依存の条件付きにすると seam が増え、指摘数が反転する

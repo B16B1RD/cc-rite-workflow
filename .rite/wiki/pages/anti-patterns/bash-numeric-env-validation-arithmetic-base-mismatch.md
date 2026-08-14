@@ -4,12 +4,12 @@ title: "bash 数値 env override 検証と算術評価の基数不一致（先�
 domain: "anti-patterns"
 description: "運用者が上書き可能な数値 env var（例: `RITE_SESSION_LIVENESS_TTL_HOURS`）を `[[ \"$VAR\" =~ ^[0-9]+$ ]]` のような「10進数として妥当か」で検証しても、その値を後段で `$(( VAR * 3600 ))` のような bash 算術式にそのまま渡すと、先頭ゼロを含む値（`\"010\"` 等）は bash 算術の規則で **8進数として再解釈** される。"
 created: "2026-07-20T05:14:41+00:00"
-updated: "2026-07-20T05:14:41+00:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260720T051441Z-pr-1924.md"
+    resource: "raw/fixes/20260720T051441Z-pr-1924.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T05:14:41+00:00" }
 ---
 
 # bash 数値 env override 検証と算術評価の基数不一致（先頭ゼロの8進誤解釈）

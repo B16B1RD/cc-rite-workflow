@@ -3,16 +3,16 @@ title: "Race window probe の identification power: outcome classification で t
 domain: "patterns"
 description: "SIGKILL を使った race window probe (write 中に kill して atomic invariant を verify する test) では、`sleep` が短すぎると kill が **write 開始前** に landing し、全 iter で state file が ENOENT (pre-write 状態) のまま「PASS」する false positive 経路を生む。"
 created: "2026-05-02T00:30:00+09:00"
-updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260501T140844Z-pr-759.md"
+    resource: "raw/reviews/20260501T140844Z-pr-759.md"
   - type: "reviews"
-    ref: "raw/reviews/20260502T000523Z-pr-761.md"
+    resource: "raw/reviews/20260502T000523Z-pr-761.md"
   - type: "reviews"
-    ref: "raw/reviews/20260502T001651Z-pr-761.md"
+    resource: "raw/reviews/20260502T001651Z-pr-761.md"
 tags: [test-fidelity, race-window, sigkill, identification-power, mutation-testing, atomic-write, post-condition-redefinition]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 ---
 
 # Race window probe の identification power: outcome classification で test の真正性を担保する

@@ -4,20 +4,20 @@ domain: "patterns"
 description: "wiki のような「別ブランチに蓄積するが dev ブランチからの書き込みが主な用途」のワークフローでは、`git stash + git checkout wiki + ... + git checkout-back + git stash pop` という Block A/B パターンが構造的に脆弱（失敗経路での rollback、`plugins/` が消える、LLM への多段契約）。"
 promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
-updated: "2026-06-26T03:18:14+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260626T031814Z-pr-1663.md"
+    resource: "raw/reviews/20260626T031814Z-pr-1663.md"
   - type: "fixes"
-    ref: "raw/fixes/20260416T165559Z-pr-548.md"
+    resource: "raw/fixes/20260416T165559Z-pr-548.md"
   - type: "fixes"
-    ref: "raw/fixes/20260416T172110Z-pr-548.md"
+    resource: "raw/fixes/20260416T172110Z-pr-548.md"
   - type: "reviews"
-    ref: "raw/reviews/20260416T171008Z-pr-548.md"
+    resource: "raw/reviews/20260416T171008Z-pr-548.md"
   - type: "reviews"
-    ref: "raw/reviews/20260416T182704Z-pr-548-cycle6.md"
+    resource: "raw/reviews/20260416T182704Z-pr-548-cycle6.md"
 tags: ["git", "worktree", "wiki", "branch-strategy", "issue-547", "self-healing", "stale-gitdir", "rc-aware"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-26T03:18:14+00:00" }
 ---
 
 # separate_branch 戦略は git worktree で dev ブランチ不動を実現する

@@ -5,12 +5,12 @@ description: "「検証してから破棄」型のフローでは、(1) 判定�
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/classifier-destructive-action-same-tree-alignment.md"
 created: "2026-07-13T09:15:00Z"
-updated: "2026-07-13T09:15:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260713T000901Z-pr-1840.md"
+    resource: "raw/reviews/20260713T000901Z-pr-1840.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-13T09:15:00Z" }
 ---
 
 # 破壊的操作を承認する分類器は判定・実行・承認文言が同じ対象を見ることを保証する

@@ -4,14 +4,14 @@ title: "意図的除外と失敗を同じカウンタに載せると、そのカ
 domain: "heuristics"
 description: "無音の欠損を可視化するために失敗カウンタを新設したら、そこに何を載せるかが設計判断になる。"
 created: "2026-08-01T00:21:06+09:00"
-updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260731T023545Z-pr-2070.md"
+    resource: "raw/fixes/20260731T023545Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260731T030122Z-pr-2070.md"
+    resource: "raw/fixes/20260731T030122Z-pr-2070.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 ---
 
 # 意図的除外と失敗を同じカウンタに載せると、そのカウンタの存在理由が消える

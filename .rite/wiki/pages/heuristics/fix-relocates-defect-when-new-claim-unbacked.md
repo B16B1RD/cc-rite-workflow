@@ -5,12 +5,12 @@ domain: "heuristics"
 promote: rite-plugin
 description: "特定を求める指摘に応える修正は必ず新しい断定を書く。その断定自体の根拠を同じサイクルで用意しないと、指摘は形式的に解消されたまま欠陥の位置が 1 段深いところへ移り、次のサイクルで別の reviewer が同じ場所を指す。"
 created: "2026-08-12T12:45:00+09:00"
-updated: "2026-08-12T12:45:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260812T030028Z-pr-2260.md"
+    resource: "raw/reviews/20260812T030028Z-pr-2260.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-12T12:45:00+09:00" }
 ---
 
 # 「A が不明」への修正は「A は X である」と書く — X の根拠を同時に用意しないと欠陥は 1 段深い位置へ移動するだけになる

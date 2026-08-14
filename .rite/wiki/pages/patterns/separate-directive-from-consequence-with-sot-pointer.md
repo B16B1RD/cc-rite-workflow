@@ -6,14 +6,14 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/separate-directive-from-consequence-with-sot-pointer.md"
 description: "authoring 面（reviewer への指示、テンプレート、規約文書）の 1 文が「こう書け」という**行動指示**と「そう書かなかったらどうなるか」という**帰結記述**を同時に担っていると、判定ロジックの帰結が変わるたびに authoring 面の書き換えが必要になる。"
 created: "2026-08-01T23:12:28+09:00"
-updated: "2026-08-01T23:12:28+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260801T131235Z-pr-2081.md"
+    resource: "raw/reviews/20260801T131235Z-pr-2081.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T131540Z-pr-2081.md"
+    resource: "raw/fixes/20260801T131540Z-pr-2081.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T23:12:28+09:00" }
 ---
 
 # 行動指示と帰結記述を 1 文に混載しない — 帰結は SoT の表へのポインタに置き換える

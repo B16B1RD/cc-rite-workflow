@@ -4,14 +4,14 @@ title: "runtime 診断は「どこを見ればいいか」だけ示す — 原�
 domain: "heuristics"
 description: "診断 WARNING に「lowercase key / 全角コロン / リスト項目化 / 未展開 placeholder 等の崩れが疑われます」という**原因の列挙**を書くと、その列挙は分岐が増えるたびに実態とずれる。"
 created: "2026-08-08T14:00:41+09:00"
-updated: "2026-08-08T14:00:41+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260808T032734Z-pr-2142.md"
+    resource: "raw/fixes/20260808T032734Z-pr-2142.md"
   - type: "reviews"
-    ref: "raw/reviews/20260808T031704Z-pr-2142.md"
+    resource: "raw/reviews/20260808T031704Z-pr-2142.md"
 tags: ["diagnostics", "sot", "warning-message", "maintenance", "drift"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T14:00:41+09:00" }
 ---
 
 # runtime 診断は「どこを見ればいいか」だけ示す — 原因の分類は SoT に持たせる

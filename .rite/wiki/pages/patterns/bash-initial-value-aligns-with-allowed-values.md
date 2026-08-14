@@ -3,16 +3,16 @@ title: "bash 文字列変数の初期値は allowed values 列挙に含めるか
 domain: "patterns"
 description: "bash の case 文で routing する文字列変数 (例: `status_update_result`) の初期値が allowed values 列挙 (例: `success` / `not_registered` / `update_failed` / `projects_disabled`) 外の sentinel 値 (例: `skipped`) だと、case 文に対応 arm がない場合に silent fall-through する経路を生む。"
 created: "2026-04-25T11:40:00+00:00"
-updated: "2026-07-29T21:32:36+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260425T081422Z-pr-659-cycle2.md"
+    resource: "raw/reviews/20260425T081422Z-pr-659-cycle2.md"
   - type: "reviews"
-    ref: "raw/reviews/20260729T070922Z-pr-2044.md"
+    resource: "raw/reviews/20260729T070922Z-pr-2044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T071243Z-pr-2044.md"
+    resource: "raw/fixes/20260729T071243Z-pr-2044.md"
 tags: ["bash", "case-statement", "silent-fall-through", "defensive-programming", "fail-loud"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-29T21:32:36+09:00" }
 ---
 
 # bash 文字列変数の初期値は allowed values 列挙に含めるか fail-loud sentinel で defensive に倒す

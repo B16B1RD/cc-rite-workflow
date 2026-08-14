@@ -4,20 +4,20 @@ domain: "anti-patterns"
 description: "`set -euo pipefail` 配下で `count=$(grep -oE 'pattern' file | wc -l | tr -d ' ')` を ratchet test の occurrence count 取得に使うと、grep が 0 マッチ (exit 1) を返した瞬間 pipefail が pipeline 全体を abort させ、test 全体が pass/fail のいずれも emit せず silent terminate する。"
 promote: rite-plugin
 created: "2026-05-08T17:43:55+00:00"
-updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260508T174355Z-pr-906.md"
+    resource: "raw/fixes/20260508T174355Z-pr-906.md"
   - type: "reviews"
-    ref: "raw/reviews/20260508T175233Z-pr-906.md"
+    resource: "raw/reviews/20260508T175233Z-pr-906.md"
   - type: "reviews"
-    ref: "raw/reviews/20260725T032345Z-pr-2013.md"
+    resource: "raw/reviews/20260725T032345Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260725T033607Z-pr-2013.md"
+    resource: "raw/fixes/20260725T033607Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T195300Z-pr-2066.md"
+    resource: "raw/fixes/20260730T195300Z-pr-2066.md"
 tags: ["bash", "pipefail", "set-euo-pipefail", "grep", "ratchet-test", "silent-abort"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 ---
 
 # `grep -oE | wc -l` が ratchet ideal 値到達時に pipefail で silent abort

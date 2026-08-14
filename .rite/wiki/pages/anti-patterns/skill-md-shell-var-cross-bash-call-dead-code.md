@@ -6,14 +6,14 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/skill-md-shell-var-cross-bash-call-dead-code.md"
 description: "SKILL.md（プロンプト実行体）の新規セクションで、別 Bash tool 呼び出しをまたぐ値受け渡しにシェル変数（`$var`）を使うと、Bash ツール呼び出し間でシェル状態が保持されないため常に空文字になり、依存する検出ロジック全体が dead code 化する。"
 created: "2026-07-23T06:38:31Z"
-updated: "2026-07-23T06:38:31Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260723T052236Z-pr-1975.md"
+    resource: "raw/reviews/20260723T052236Z-pr-1975.md"
   - type: "fixes"
-    ref: "raw/fixes/20260723T052849Z-pr-1975.md"
+    resource: "raw/fixes/20260723T052849Z-pr-1975.md"
 tags: ["skill-md", "cross-bash-call", "shell-variable", "placeholder-convention", "dead-code", "code-review-convergence"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-23T06:38:31Z" }
 ---
 
 # SKILL.md 新規セクションでシェル変数を Bash 呼び出し間の値受け渡しに使うと dead code 化する

@@ -5,14 +5,14 @@ domain: "heuristics"
 promote: rite-plugin
 description: "`/rite:pr-review` の cross-validation で 2 レビュアーが同一箇所に対して逆の総合評価（修正必要 / マージ可）を出したとき、討論フェーズの既定の動きは「どちらの主張が正しいか」を決めることになりがちだが、**割れたこと自体が本文の曖昧性の兆候**であることが多い。"
 created: "2026-08-02T11:59:42+09:00"
-updated: "2026-08-02T11:59:42+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260802T023626Z-pr-2084.md"
+    resource: "raw/fixes/20260802T023626Z-pr-2084.md"
   - type: "reviews"
-    ref: "raw/reviews/20260802T025011Z-pr-2084.md"
+    resource: "raw/reviews/20260802T025011Z-pr-2084.md"
 tags: [review-loop, cross-validation, debate-phase]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T11:59:42+09:00" }
 ---
 
 # レビュアーの結論が正面から割れたら、勝敗を決める前に語の多義性を疑う

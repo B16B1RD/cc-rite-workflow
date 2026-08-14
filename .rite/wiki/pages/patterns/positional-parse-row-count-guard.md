@@ -4,14 +4,14 @@ title: "位置依存の表パースには検査行数ガードを対にする（
 domain: "patterns"
 description: "`awk -F'|' '{ slug = $2; agent = $4 }'` のような位置依存の列パースは、表形式変更（Agent 列より前へのカラム挿入等）でトークンが期待列からずれる。"
 created: "2026-07-03T18:30:00+00:00"
-updated: "2026-07-03T18:30:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260703T164934Z-pr-1743.md"
+    resource: "raw/reviews/20260703T164934Z-pr-1743.md"
   - type: "fixes"
-    ref: "raw/fixes/20260703T165654Z-pr-1743.md"
+    resource: "raw/fixes/20260703T165654Z-pr-1743.md"
 tags: ["bash", "awk", "lint", "fail-fast", "drift-check"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-03T18:30:00+00:00" }
 ---
 
 # 位置依存の表パースには検査行数ガードを対にする（silent false-pass 遮断）

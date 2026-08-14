@@ -4,16 +4,16 @@ title: "同定に使う needle は位置まで固定し、人間が複製でき�
 domain: "anti-patterns"
 description: "「この文書は自分が生成したものか」を本文の文字列で判定する場面（update-in-place する PR コメント、生成物の再認識など）では、**needle の一致方法**が破壊的操作の安全性を直接決める。"
 created: "2026-07-28T21:30:00+09:00"
-updated: "2026-07-28T21:30:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260728T090203Z-pr-2038.md"
+    resource: "raw/fixes/20260728T090203Z-pr-2038.md"
   - type: "fixes"
-    ref: "raw/fixes/20260728T082625Z-pr-2038.md"
+    resource: "raw/fixes/20260728T082625Z-pr-2038.md"
   - type: "fixes"
-    ref: "raw/fixes/20260728T070208Z-pr-2038.md"
+    resource: "raw/fixes/20260728T070208Z-pr-2038.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-28T21:30:00+09:00" }
 ---
 
 # 同定に使う needle は位置まで固定し、人間が複製できる文字列を使わない

@@ -4,14 +4,14 @@ domain: "patterns"
 description: "Bash block 末尾に新規 statement を追加する際、既存の閉じフェンス ``` ``` ``` 直前に挿入すると closing fence が欠落し fence count が奇数になる silent regression が発生する。"
 promote: rite-plugin
 created: "2026-04-20T01:10:00+00:00"
-updated: "2026-07-27T10:57:51+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260419T162557Z-pr-608-cycle2.md"
+    resource: "raw/fixes/20260419T162557Z-pr-608-cycle2.md"
   - type: "fixes"
-    ref: "raw/fixes/20260727T011853Z-pr-2035.md"
+    resource: "raw/fixes/20260727T011853Z-pr-2035.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-27T10:57:51+09:00" }
 ---
 
 # Markdown code fence の balance は commit 前に awk で機械検証する

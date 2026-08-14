@@ -4,12 +4,12 @@ title: "mktemp テンプレートは `${TMPDIR:-/tmp}` を使う — `/tmp` 直�
 domain: "patterns"
 description: "sandbox 有効環境では書き込み許可ディレクトリが `$TMPDIR`（例: `/tmp/claude-1000/...`）に限定される。"
 created: "2026-07-18T23:38:52Z"
-updated: "2026-07-18T23:38:52Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260718T194343Z-pr-1902.md"
+    resource: "raw/reviews/20260718T194343Z-pr-1902.md"
 tags: ["bash", "mktemp", "tmpdir", "sandbox", "portability"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-18T23:38:52Z" }
 ---
 
 # mktemp テンプレートは `${TMPDIR:-/tmp}` を使う — `/tmp` 直下ハードコードは sandbox で書き込み拒否される

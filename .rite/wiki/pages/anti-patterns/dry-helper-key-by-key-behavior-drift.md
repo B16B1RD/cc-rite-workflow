@@ -3,14 +3,14 @@ title: "Config parser helper の DRY 化が key 別 subtle 差異を silent に�
 domain: "anti-patterns"
 description: "重複した YAML / config パース処理を helper 関数に DRY 化する際、key 別の subtle な差異 (lowercase 変換の有無 / quote 除去の有無 / trim の範囲) を helper 内に一律適用すると、helper 化前に key 単位で異なっていた挙動が silent に抹消される。"
 created: "2026-05-27T00:30:00Z"
-updated: "2026-05-27T00:30:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260526T175307Z-pr-1155.md"
+    resource: "raw/reviews/20260526T175307Z-pr-1155.md"
   - type: "fixes"
-    ref: "raw/fixes/20260526T180309Z-pr-1155.md"
+    resource: "raw/fixes/20260526T180309Z-pr-1155.md"
 tags: ["dry", "helper-extraction", "yaml-parser", "behavior-preservation", "silent-regression", "case-sensitivity"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-27T00:30:00Z" }
 ---
 
 # Config parser helper の DRY 化が key 別 subtle 差異を silent に抹消する

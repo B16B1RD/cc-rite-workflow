@@ -6,16 +6,16 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/gate-placed-inside-guarded-scope.md"
 description: "LLM が読む手順書で「手順 X が実行されたこと」を保証する post-condition gate を新設するとき、gate を X のサブステップとして書くと自己参照で無力化する。"
 created: "2026-07-27T10:57:51+09:00"
-updated: "2026-07-27T10:57:51+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260726T164052Z-pr-2030.md"
+    resource: "raw/reviews/20260726T164052Z-pr-2030.md"
   - type: "reviews"
-    ref: "raw/reviews/20260726T171439Z-pr-2030.md"
+    resource: "raw/reviews/20260726T171439Z-pr-2030.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T165153Z-pr-2030.md"
+    resource: "raw/fixes/20260726T165153Z-pr-2030.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-27T10:57:51+09:00" }
 ---
 
 # gate を守る対象の内側に置くと、守るべき唯一の failure mode で gate も一緒に skip される

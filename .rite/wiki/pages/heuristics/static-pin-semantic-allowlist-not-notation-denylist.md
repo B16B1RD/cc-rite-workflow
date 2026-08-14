@@ -4,14 +4,14 @@ title: "静的 pin は禁止表記の denylist ではなく、成立させたい
 domain: "heuristics"
 description: "静的 pin（ソースの文字列を grep して構造を固定するテスト）を「この表記が出現しないこと」として書くと、**同じ意味を持つ別表記が pin を素通りする**。"
 created: "2026-08-05T05:30:00+00:00"
-updated: "2026-08-05T05:30:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260805T043752Z-pr-2112.md"
+    resource: "raw/reviews/20260805T043752Z-pr-2112.md"
   - type: "fixes"
-    ref: "raw/fixes/20260805T050456Z-pr-2112.md"
+    resource: "raw/fixes/20260805T050456Z-pr-2112.md"
 tags: ["test", "static-pin", "allowlist", "mutation", "bash"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T05:30:00+00:00" }
 ---
 
 # 静的 pin は禁止表記の denylist ではなく、成立させたい性質の allowlist で書く

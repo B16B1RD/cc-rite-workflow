@@ -5,12 +5,12 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "過去のレビュー事例の cycle 2 で HIGH（repro 付き）として検出。"
 created: "2026-07-27T17:54:54+09:00"
-updated: "2026-07-27T17:54:54+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260727T053017Z-pr-2036.md"
+    resource: "raw/fixes/20260727T053017Z-pr-2036.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-27T17:54:54+09:00" }
 ---
 
 # sandbox 環境では raw な git status --porcelain が恒に非空になり clean 判定ガードが一度も発火しない

@@ -4,14 +4,14 @@ title: "assert_not_grep は「対象が fixture に存在する」ことを前�
 domain: "anti-patterns"
 description: "`assert_not_grep \"$LOG\" 'pattern'` 型の否定 assertion は、**その run の入力に対象が含まれていなければ、実装が何をしても pass する**。"
 created: "2026-07-28T21:30:00+09:00"
-updated: "2026-07-28T21:30:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260728T093135Z-pr-2038.md"
+    resource: "raw/fixes/20260728T093135Z-pr-2038.md"
   - type: "reviews"
-    ref: "raw/reviews/20260728T081222Z-pr-2038.md"
+    resource: "raw/reviews/20260728T081222Z-pr-2038.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-28T21:30:00+09:00" }
 ---
 
 # assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く

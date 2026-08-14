@@ -4,14 +4,14 @@ title: "SoT から事実を 1 つ引くとき、その事実に付いた強度 q
 domain: "anti-patterns"
 description: "SoT が複数の要素を列挙し、要素ごとに「無条件」「best-effort」「実行モード依存」のような**強度分類**を持っているとき、consumer 側の文書がそこから事実だけを抜き出すと強度が脱落する。"
 created: "2026-07-29T02:10:00+09:00"
-updated: "2026-07-29T02:10:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260728T160636Z-pr-2043.md"
+    resource: "raw/reviews/20260728T160636Z-pr-2043.md"
   - type: "reviews"
-    ref: "raw/reviews/20260728T163233Z-pr-2043.md"
+    resource: "raw/reviews/20260728T163233Z-pr-2043.md"
 tags: ["sot", "drift", "documentation", "dry"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-29T02:10:00+09:00" }
 ---
 
 # SoT から事実を 1 つ引くとき、その事実に付いた強度 qualifier ごと持ってこないと別種の不正確さを新設する

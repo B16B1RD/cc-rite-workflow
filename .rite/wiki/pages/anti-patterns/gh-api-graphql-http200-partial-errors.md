@@ -4,14 +4,14 @@ domain: "anti-patterns"
 description: "`gh api graphql` は GraphQL レベルのエラーが起きても HTTP 200 (= `gh` の exit 0) を返し、レスポンス body に `.data` と `.errors[]` を**併存**させることがある。"
 promote: rite-plugin
 created: "2026-05-29T04:21:34+00:00"
-updated: "2026-05-29T04:21:34+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260529T040843Z-pr-1185.md"
+    resource: "raw/reviews/20260529T040843Z-pr-1185.md"
   - type: "fixes"
-    ref: "raw/fixes/20260529T041436Z-pr-1185.md"
+    resource: "raw/fixes/20260529T041436Z-pr-1185.md"
 tags: ["gh-cli", "graphql", "silent-failure", "error-handling"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-29T04:21:34+00:00" }
 ---
 
 # gh api graphql は HTTP 200 + .errors[] で partial failure を返す (exit code では検知できない)

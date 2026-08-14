@@ -5,22 +5,22 @@ domain: "heuristics"
 promote: rite-plugin
 description: "`2>/dev/null || true` 等で無音化されていた失敗を「WARNING を stderr へ出力する」形に是正する fix は、成功パスのテストだけでは不十分。"
 created: "2026-07-22T21:35:00+00:00"
-updated: "2026-08-06T02:49:27Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260806T013904Z-pr-2120.md"
+    resource: "raw/fixes/20260806T013904Z-pr-2120.md"
   - type: "reviews"
-    ref: "raw/reviews/20260722T102818Z-pr-1970.md"
+    resource: "raw/reviews/20260722T102818Z-pr-1970.md"
   - type: "fixes"
-    ref: "raw/fixes/20260722T103236Z-pr-1970.md"
+    resource: "raw/fixes/20260722T103236Z-pr-1970.md"
   - type: "reviews"
-    ref: "raw/reviews/20260722T112806Z-pr-1970-cycle2.md"
+    resource: "raw/reviews/20260722T112806Z-pr-1970-cycle2.md"
   - type: "fixes"
-    ref: "raw/fixes/20260722T113522Z-pr-1970-cycle2.md"
+    resource: "raw/fixes/20260722T113522Z-pr-1970-cycle2.md"
   - type: "reviews"
-    ref: "raw/reviews/20260722T122232Z-pr-1970-cycle3.md"
+    resource: "raw/reviews/20260722T122232Z-pr-1970-cycle3.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T02:49:27Z" }
 ---
 
 # 無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する

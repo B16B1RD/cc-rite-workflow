@@ -4,16 +4,16 @@ domain: "heuristics"
 description: "累積対策 PR の review-fix loop で reviewer が「真に finding が無いときに何か挙げないと bias と見なされる」と感じる認知傾向は、fractal pattern が完全収束した cycle で **false-positive を意図的に作る** 経路となり review-fix loop を永久化させる。"
 promote: rite-plugin
 created: "2026-05-26T05:00:00+00:00"
-updated: "2026-07-22T08:20:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260526T041118Z-pr-1146.md"
+    resource: "raw/reviews/20260526T041118Z-pr-1146.md"
   - type: "reviews"
-    ref: "raw/reviews/20260526T034356Z-pr-1146.md"
+    resource: "raw/reviews/20260526T034356Z-pr-1146.md"
   - type: "reviews"
-    ref: "raw/reviews/20260722T080039Z-pr-1969-mergeable.md"
+    resource: "raw/reviews/20260722T080039Z-pr-1969-mergeable.md"
 tags: ["reviewer-discipline", "false-positive-prevention", "fractal-pattern-convergence", "doc-heavy-review", "loop-termination"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-22T08:20:00+00:00" }
 ---
 
 # 0 件 finding = 正常終了として受容する (false-positive 回避義務)

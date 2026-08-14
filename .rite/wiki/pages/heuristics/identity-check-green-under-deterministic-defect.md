@@ -5,14 +5,14 @@ domain: "heuristics"
 promote: rite-plugin
 description: "2 回実行して出力が一致することを確かめる検証は、欠陥が入力に依存しない限り健全な出力と壊れた出力を区別できない。時間軸を持つ成果物では終端状態が正常でも初期状態が壊れている形の欠陥が成立するため、検証は始端を明示的に読む。"
 created: "2026-08-12T12:45:00+09:00"
-updated: "2026-08-12T12:45:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260812T022554Z-pr-2260.md"
+    resource: "raw/reviews/20260812T022554Z-pr-2260.md"
   - type: "fixes"
-    ref: "raw/fixes/20260812T023940Z-pr-2260.md"
+    resource: "raw/fixes/20260812T023940Z-pr-2260.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-12T12:45:00+09:00" }
 ---
 
 # 同一性・再現性を測る検証は正しさを測らない — 欠陥が決定論的なら同じ壊れ方が再現して green になる

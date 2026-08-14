@@ -5,12 +5,12 @@ domain: "heuristics"
 promote: rite-plugin
 description: "文書やコメントから他ファイルの特定行を指す参照は、コード変更で silent に腐る。"
 created: "2026-07-25T07:05:21Z"
-updated: "2026-07-25T07:05:21Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260725T041328Z-pr-2013.md"
+    resource: "raw/reviews/20260725T041328Z-pr-2013.md"
 tags: ["documentation", "reference-drift", "semantic-anchor", "line-number"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-25T07:05:21Z" }
 ---
 
 # 参照先が「将来編集される前提の行」なら行番号でなく構造（TC 名・見出し）で指す

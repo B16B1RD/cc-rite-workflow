@@ -5,12 +5,12 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "テストの floor（skip を禁じて fail させるガード）が、守りたい性質そのものではなく「プラットフォーム事実」を代理指標にしていると、代理の成立しない環境で恒常的に赤くなりスイート全体の signal を劣化させる。"
 created: "2026-08-04T00:55:00+09:00"
-updated: "2026-08-04T00:55:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260803T155051Z-pr-2096.md"
+    resource: "raw/reviews/20260803T155051Z-pr-2096.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-04T00:55:00+09:00" }
 ---
 
 # テストの gate 条件がプラットフォーム事実を環境 capability の代理にすると恒常 red 化する

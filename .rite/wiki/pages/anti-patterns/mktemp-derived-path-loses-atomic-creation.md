@@ -5,14 +5,14 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "`mktemp` の安全性は「ランダムな名前を `O_CREAT|O_EXCL` で atomic に作る」ことに由来する。"
 created: "2026-07-30T01:20:00+09:00"
-updated: "2026-07-30T01:20:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260729T142410Z-pr-2051.md"
+    resource: "raw/reviews/20260729T142410Z-pr-2051.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T144345Z-pr-2051.md"
+    resource: "raw/fixes/20260729T144345Z-pr-2051.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T01:20:00+09:00" }
 ---
 
 # mktemp が作った名前から派生させたパスは O_CREAT|O_EXCL 保証を失う

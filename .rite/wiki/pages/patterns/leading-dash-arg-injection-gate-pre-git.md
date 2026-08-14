@@ -3,12 +3,12 @@ title: "leading-dash 引数注入 gate は git 操作前に配置し代表 1 値
 domain: "patterns"
 description: "shell script が外部由来の値 (branch 名等) を `git push -u origin \"$v\"` のような形で渡す場合、値が `-` で始まると git が option として解釈する argument injection の理論的余地が生まれる。"
 created: "2026-06-07T19:38:45Z"
-updated: "2026-06-07T19:38:45Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260607T185308Z-pr-1299.md"
+    resource: "raw/reviews/20260607T185308Z-pr-1299.md"
 tags: ["security", "argument-injection", "leading-dash", "option-injection", "git", "fail-fast", "input-gate", "non-vacuous-test", "differential-test", "sibling-audit"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-07T19:38:45Z" }
 ---
 
 # leading-dash 引数注入 gate は git 操作前に配置し代表 1 値の非 vacuous test で検証する

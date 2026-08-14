@@ -5,24 +5,24 @@ domain: "heuristics"
 promote: rite-plugin
 description: "既存の選定/補完パイプライン（例: reviewer 選定）に**上限機構 (cap, cost 上限)** を後段挿入すると、既存の**下限・補完機構**が確立した floor を silent に undo する穴が生じる。"
 created: "2026-07-02T23:12:48Z"
-updated: "2026-07-02T23:12:48Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260702T223143Z-pr-1729.md"
+    resource: "raw/fixes/20260702T223143Z-pr-1729.md"
   - type: "fixes"
-    ref: "raw/fixes/20260702T224204Z-pr-1729.md"
+    resource: "raw/fixes/20260702T224204Z-pr-1729.md"
   - type: "fixes"
-    ref: "raw/fixes/20260702T225338Z-pr-1729.md"
+    resource: "raw/fixes/20260702T225338Z-pr-1729.md"
   - type: "reviews"
-    ref: "raw/reviews/20260702T222623Z-pr-1729.md"
+    resource: "raw/reviews/20260702T222623Z-pr-1729.md"
   - type: "reviews"
-    ref: "raw/reviews/20260702T223947Z-pr-1729.md"
+    resource: "raw/reviews/20260702T223947Z-pr-1729.md"
   - type: "reviews"
-    ref: "raw/reviews/20260702T225129Z-pr-1729.md"
+    resource: "raw/reviews/20260702T225129Z-pr-1729.md"
   - type: "reviews"
-    ref: "raw/reviews/20260702T230045Z-pr-1729.md"
+    resource: "raw/reviews/20260702T230045Z-pr-1729.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-02T23:12:48Z" }
 ---
 
 # 上限機構(cap)の追加は既存の下限・補完機構が確立した floor を全経路で尊重する

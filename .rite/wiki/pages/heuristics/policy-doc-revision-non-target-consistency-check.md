@@ -6,22 +6,22 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/policy-doc-revision-non-target-consistency-check.md"
 description: "frontmatter ポリシー表のような分類ルールを新設・改訂する PR では、変更対象のファイルだけでなく、意図的に変更しなかった既存要素（Non-Target）が新しい分類ルールの記述内容と矛盾しないかを確認するチェックが有効。"
 created: "2026-07-01T15:35:00+09:00"
-updated: "2026-07-02T18:21:39+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260701T051115Z-pr-1694.md"
+    resource: "raw/reviews/20260701T051115Z-pr-1694.md"
   - type: "reviews"
-    ref: "raw/reviews/20260701T052256Z-pr-1694-cycle2.md"
+    resource: "raw/reviews/20260701T052256Z-pr-1694-cycle2.md"
   - type: "reviews"
-    ref: "raw/reviews/20260701T060811Z-pr-1694.md"
+    resource: "raw/reviews/20260701T060811Z-pr-1694.md"
   - type: "fixes"
-    ref: "raw/fixes/20260701T051428Z-pr-1694.md"
+    resource: "raw/fixes/20260701T051428Z-pr-1694.md"
   - type: "fixes"
-    ref: "raw/fixes/20260701T060350Z-pr-1694.md"
+    resource: "raw/fixes/20260701T060350Z-pr-1694.md"
   - type: "reviews"
-    ref: "raw/reviews/20260702T091438Z-pr-1724.md"
+    resource: "raw/reviews/20260702T091438Z-pr-1724.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-02T18:21:39+09:00" }
 ---
 
 # ポリシー分類ドキュメント改訂では、意図的に対象外とした既存要素が新記述と矛盾しないか確認する

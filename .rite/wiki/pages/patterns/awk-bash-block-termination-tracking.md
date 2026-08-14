@@ -4,14 +4,14 @@ domain: "patterns"
 description: "## ソース"
 promote: rite-plugin
 created: "2026-05-08T17:20:17+00:00"
-updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260508T172017Z-pr-906.md"
+    resource: "raw/fixes/20260508T172017Z-pr-906.md"
   - type: "reviews"
-    ref: "raw/reviews/20260508T171533Z-pr-906.md"
+    resource: "raw/reviews/20260508T171533Z-pr-906.md"
 tags: ["awk", "bash", "state-machine", "test-design", "markdown-parsing", "robustness"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 ---
 
 # bash code block 終端は固定 +N 行 window ではなく awk state machine で動的追跡する

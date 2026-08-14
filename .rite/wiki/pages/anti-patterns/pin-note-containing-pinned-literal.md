@@ -4,14 +4,14 @@ title: "pin の説明文に pin 対象の literal を書くと、注記自身が
 domain: "anti-patterns"
 description: "「特定の文字列がファイル内にちょうど N 個ある」という count pin を導入したあと、その pin の意図を説明する注記に**対象の literal をそのまま書く**と、注記自身が N+1 個目の出現になり pin が落ちる。"
 created: "2026-08-07T18:40:00+09:00"
-updated: "2026-08-07T18:40:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260807T082131Z-pr-2135.md"
+    resource: "raw/fixes/20260807T082131Z-pr-2135.md"
   - type: "fixes"
-    ref: "raw/fixes/20260807T085227Z-pr-2135.md"
+    resource: "raw/fixes/20260807T085227Z-pr-2135.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T18:40:00+09:00" }
 ---
 
 # pin の説明文に pin 対象の literal を書くと、注記自身が出現数に数えられて count pin が落ちる

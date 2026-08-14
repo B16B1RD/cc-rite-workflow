@@ -3,12 +3,12 @@ title: "branch を作る gh コマンドは git-flow で --base を明示し def
 domain: "heuristics"
 description: "`branch.base` ≠ リポジトリの default branch という git-flow 構成では、remote ブランチを作成する gh CLI（`gh issue develop` 等）に `--base` を明示しないと、remote が default branch (main) 起点で作られ、local の base 派生ブランチと乖離して初回 push が non-fast-forward で必ず失敗する。"
 created: "2026-05-23T11:37:40Z"
-updated: "2026-05-23T11:37:40Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260523T112739Z-pr-1097.md"
+    resource: "raw/reviews/20260523T112739Z-pr-1097.md"
 tags: ["gh-cli", "git-flow", "branch-base", "drift-prevention"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-23T11:37:40Z" }
 ---
 
 # branch を作る gh コマンドは git-flow で --base を明示し default branch 起点の push 衝突を防ぐ

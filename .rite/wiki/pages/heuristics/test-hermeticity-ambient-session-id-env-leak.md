@@ -5,14 +5,14 @@ domain: "heuristics"
 promote: rite-plugin
 description: "`flow-state.sh` の session_id 解決優先順位（CLI `--session` > env `CLAUDE_CODE_SESSION_ID` > env `CLAUDE_SESSION_ID` > `.rite-session-id` ファイルの優先順）は、hook を単体で叩く分にはファイルベース fixture を安全に isolate できる設計だが、テストスイート自体が **稼働中の Claude Code セッション内**（`bash \"$HOOK\"` を素の子プロセスとして呼ぶ形）で実行されると、そのセッション自身の環境変数がテストの各 `bash \"$HOOK\"` 呼び出しへ暗黙に継承され、優先順位の上位で fixture を握り潰す。"
 created: "2026-07-20T09:47:41Z"
-updated: "2026-07-20T14:26:26Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260720T094042Z-pr-1928.md"
+    resource: "raw/reviews/20260720T094042Z-pr-1928.md"
   - type: "reviews"
-    ref: "raw/reviews/20260720T142626Z-pr-1932.md"
+    resource: "raw/reviews/20260720T142626Z-pr-1932.md"
 tags: ["test", "hermeticity", "env-var-leak", "session-id", "flow-state", "sandbox"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T14:26:26Z" }
 ---
 
 # hook のテストスイートは ambient な session-id 環境変数 (CLAUDE_CODE_SESSION_ID 等) に依存させない (non-hermetic test)

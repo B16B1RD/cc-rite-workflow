@@ -3,12 +3,12 @@ title: "PR シリーズ間で stub 残置 markdown formatting を踏襲する"
 domain: "patterns"
 description: "PR シリーズで複数 references を順次抽出する場合、最初の PR で確立された stub 残置 markdown formatting (`> **Moved (Issue #N PR M/T)**:` 形式) を新規 reference 抽出時にも踏襲することで、保守者が `git grep` で stub 一覧を機械検索できる traceability を維持する。"
 created: "2026-05-04T05:30:00+00:00"
-updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260504T051358Z-pr-802-cycle2.md"
+    resource: "raw/fixes/20260504T051358Z-pr-802-cycle2.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 ---
 
 # PR シリーズ間で stub 残置 markdown formatting を踏襲する

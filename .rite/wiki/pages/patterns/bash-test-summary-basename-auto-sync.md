@@ -3,14 +3,14 @@ title: "bash test の summary 行は $(basename \"$0\") で自動同期する"
 domain: "patterns"
 description: "bash test スクリプトの summary 行 (`echo \"─── foo summary ───\"` 等) で実ファイル名を hardcode すると、ファイル rename / コピー作成時に表示名と実体が drift する。"
 created: "2026-05-03T05:50:00+09:00"
-updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260502T171105Z-pr-784.md"
+    resource: "raw/reviews/20260502T171105Z-pr-784.md"
   - type: "fixes"
-    ref: "raw/fixes/20260502T171352Z-pr-784.md"
+    resource: "raw/fixes/20260502T171352Z-pr-784.md"
 tags: ["bash", "test-script", "self-reference", "drift-prevention"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 ---
 
 # bash test の summary 行は $(basename "$0") で自動同期する

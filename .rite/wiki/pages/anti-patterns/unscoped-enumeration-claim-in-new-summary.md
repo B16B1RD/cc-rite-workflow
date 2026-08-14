@@ -5,16 +5,16 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "ドキュメントに新しく要約セクションを書く際、「rite workflow has 3 independently-versioned schemas」のように件数を断定すると、リポジトリ内に実在する類似だが対象外の構造（本件では他にも `schema_version` を持つ work-memory ローカルファイルや issue-claim JSON）を見落として、読者に「これが全てだ」という誤読を与える。"
 created: "2026-07-07T02:00:00+00:00"
-updated: "2026-07-07T02:00:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260706T164658Z-pr-1770.md"
+    resource: "raw/reviews/20260706T164658Z-pr-1770.md"
   - type: "fixes"
-    ref: "raw/fixes/20260706T164946Z-pr-1770.md"
+    resource: "raw/fixes/20260706T164946Z-pr-1770.md"
   - type: "reviews"
-    ref: "raw/reviews/20260706T165606Z-pr-1770.md"
+    resource: "raw/reviews/20260706T165606Z-pr-1770.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-07T02:00:00+00:00" }
 ---
 
 # 新設要約文の「N 個の~系統」的な断定は対象外の類似構造を見落としやすい

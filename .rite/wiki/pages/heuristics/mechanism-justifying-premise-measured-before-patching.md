@@ -4,14 +4,14 @@ title: "機構の欠陥を潰す前に、その機構を正当化している前
 domain: "heuristics"
 description: "「この形だと壊れる」を根拠に分岐・移行手順・退避規則を足したあと、レビューでその機構の欠陥を 1 つずつ潰していくと cycle が伸びる。"
 created: "2026-07-30T15:40:55Z"
-updated: "2026-07-30T15:40:55Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260730T014137Z-pr-2052.md"
+    resource: "raw/reviews/20260730T014137Z-pr-2052.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T014656Z-pr-2052.md"
+    resource: "raw/fixes/20260730T014656Z-pr-2052.md"
 tags: ["premise", "overclaim", "simplification", "review-loop", "measurement"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 ---
 
 # 機構の欠陥を潰す前に、その機構を正当化している前提文を実測で検証する

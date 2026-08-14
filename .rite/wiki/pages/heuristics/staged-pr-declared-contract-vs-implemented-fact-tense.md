@@ -5,18 +5,18 @@ domain: "heuristics"
 promote: rite-plugin
 description: "Sub-Issue でデータ契約だけを先に切る PR では、SoT ドキュメントと LLM 向け指示が「write 側は常に N キーを出力する」「フィールドとして保存される」と現在形で書かれやすい。"
 created: "2026-07-27T10:57:51+09:00"
-updated: "2026-07-27T10:57:51+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260727T001018Z-pr-2035.md"
+    resource: "raw/reviews/20260727T001018Z-pr-2035.md"
   - type: "reviews"
-    ref: "raw/reviews/20260727T014642Z-pr-2035.md"
+    resource: "raw/reviews/20260727T014642Z-pr-2035.md"
   - type: "fixes"
-    ref: "raw/fixes/20260727T002133Z-pr-2035.md"
+    resource: "raw/fixes/20260727T002133Z-pr-2035.md"
   - type: "fixes"
-    ref: "raw/fixes/20260727T004206Z-pr-2035.md"
+    resource: "raw/fixes/20260727T004206Z-pr-2035.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-27T10:57:51+09:00" }
 ---
 
 # 段階分割 PR では「契約として宣言したこと」と「いま実装されていること」を時制で書き分ける

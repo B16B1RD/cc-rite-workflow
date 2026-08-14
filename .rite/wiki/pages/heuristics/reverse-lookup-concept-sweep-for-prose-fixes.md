@@ -4,16 +4,16 @@ title: "散文修正の完了検査は「削除した旧表現」ではなく「
 domain: "heuristics"
 description: "散文の是正を終えたあと、削除・置換した旧表現を全文検索して残存 0 件を確認するのは自然な完了検査だが、**構造的に 4 クラスを取り逃す**。"
 created: "2026-08-01T00:21:06+09:00"
-updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260731T083326Z-pr-2070.md"
+    resource: "raw/reviews/20260731T083326Z-pr-2070.md"
   - type: "reviews"
-    ref: "raw/reviews/20260731T090329Z-pr-2070.md"
+    resource: "raw/reviews/20260731T090329Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260731T083919Z-pr-2070.md"
+    resource: "raw/fixes/20260731T083919Z-pr-2070.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 ---
 
 # 散文修正の完了検査は「削除した旧表現」ではなく「主張した概念」で走査する（逆引き検査）

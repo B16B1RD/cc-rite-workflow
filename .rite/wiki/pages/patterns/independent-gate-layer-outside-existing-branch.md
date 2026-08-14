@@ -5,14 +5,14 @@ domain: "patterns"
 promote: rite-plugin
 description: "既存の gate に新しい検査層を足すとき、新層を既存層の `case` の 1 arm の内側に書くと「既存層が degraded に降りる状態」で新層が一度も走らない。"
 created: "2026-08-07T18:40:00+09:00"
-updated: "2026-08-07T18:40:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260807T011214Z-pr-2130.md"
+    resource: "raw/reviews/20260807T011214Z-pr-2130.md"
   - type: "fixes"
-    ref: "raw/fixes/20260807T013056Z-pr-2130.md"
+    resource: "raw/fixes/20260807T013056Z-pr-2130.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T18:40:00+09:00" }
 ---
 
 # 独立した判定層は既存層の分岐の内側に置かない — 層ごとに別 marker を持たせ可否は failure marker の不在で決める

@@ -4,18 +4,18 @@ title: "全称主張の散文（排他性・網羅性）は経路追加で偽化
 domain: "heuristics"
 description: "「本経路に来るのは別 live セッション在席時のみ」「3 gates all pass のときのみ reap」のような**全称主張（排他性・網羅性）を含む散文**は、新しい到達経路やゲート例外が追加されると、**その行自体は未変更のまま偽になる**（comment rot: 周辺コードの変更が未変更行を偽化する）。"
 created: "2026-07-21T18:30:00Z"
-updated: "2026-07-21T18:30:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260721T173620Z-pr-1959.md"
+    resource: "raw/reviews/20260721T173620Z-pr-1959.md"
   - type: "fixes"
-    ref: "raw/fixes/20260721T173955Z-pr-1959.md"
+    resource: "raw/fixes/20260721T173955Z-pr-1959.md"
   - type: "reviews"
-    ref: "raw/reviews/20260721T175725Z-pr-1959.md"
+    resource: "raw/reviews/20260721T175725Z-pr-1959.md"
   - type: "reviews"
-    ref: "raw/reviews/20260721T181434Z-pr-1959.md"
+    resource: "raw/reviews/20260721T181434Z-pr-1959.md"
 tags: ["comment-rot", "cause-neutral", "exclusivity-claim", "doc-sync", "not-grep-pin"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-21T18:30:00Z" }
 ---
 
 # 全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin

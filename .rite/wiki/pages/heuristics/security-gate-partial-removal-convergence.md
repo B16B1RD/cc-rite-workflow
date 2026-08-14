@@ -4,20 +4,20 @@ title: "セキュリティ機械ゲートの部分撤去は撤去前 covered set
 domain: "heuristics"
 description: "denylist / 列挙型の機械ゲートを「一部だけ残して大半を撤去する」リファクタ（例: reviewer read-only 強制の verb 列挙を撤去し .git 書き込み経路のみ機械ゲートに残す）は、単純そうに見えて review-fix ループが長期化しやすい。"
 created: "2026-07-18T11:08:13+09:00"
-updated: "2026-07-18T11:08:13+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260717T142837Z-pr-1892.md"
+    resource: "raw/reviews/20260717T142837Z-pr-1892.md"
   - type: "fixes"
-    ref: "raw/fixes/20260717T145126Z-pr-1892.md"
+    resource: "raw/fixes/20260717T145126Z-pr-1892.md"
   - type: "fixes"
-    ref: "raw/fixes/20260717T212804Z-pr-1892.md"
+    resource: "raw/fixes/20260717T212804Z-pr-1892.md"
   - type: "fixes"
-    ref: "raw/fixes/20260718T000447Z-pr-1892.md"
+    resource: "raw/fixes/20260718T000447Z-pr-1892.md"
   - type: "fixes"
-    ref: "raw/fixes/20260718T004618Z-pr-1892.md"
+    resource: "raw/fixes/20260718T004618Z-pr-1892.md"
 tags: ["security-gate", "partial-removal", "fail-closed", "static-parser", "convergence", "threat-model", "revert-test"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-18T11:08:13+09:00" }
 ---
 
 # セキュリティ機械ゲートの部分撤去は撤去前 covered set の superset 維持と per-occurrence fail-closed 判定で収束させる

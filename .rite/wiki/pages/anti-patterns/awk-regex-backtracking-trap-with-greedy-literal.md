@@ -4,16 +4,16 @@ domain: "anti-patterns"
 description: "awk POSIX ERE で「行頭が `#` 以外で、行内に literal `X` を含む」を表現するつもりで `^[[:space:]]*[^#].*X` や `^[[:space:]]*[^[:space:]#].*X` と書くと、X が行頭から始まる行で `[^...]` 部分が `X` の先頭文字を消費し、続く `.*X` が literal X を再発見できず silent miss する backtracking 経路を作る。"
 promote: rite-plugin
 created: "2026-05-09T03:50:00+00:00"
-updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260509T031148Z-pr-911.md"
+    resource: "raw/reviews/20260509T031148Z-pr-911.md"
   - type: "reviews"
-    ref: "raw/reviews/20260509T032936Z-pr-911-cycle2.md"
+    resource: "raw/reviews/20260509T032936Z-pr-911-cycle2.md"
   - type: "fixes"
-    ref: "raw/fixes/20260509T033229Z-pr-911-cycle2-fix.md"
+    resource: "raw/fixes/20260509T033229Z-pr-911-cycle2-fix.md"
 tags: ["awk", "regex", "backtracking", "silent-miss", "shell-comment-exclusion", "negative-class", "greedy-quantifier"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 ---
 
 # awk negative-class + greedy + literal の組み合わせは backtracking で literal を silent miss する

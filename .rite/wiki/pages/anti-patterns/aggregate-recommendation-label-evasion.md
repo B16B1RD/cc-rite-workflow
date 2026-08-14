@@ -4,18 +4,18 @@ domain: "anti-patterns"
 description: "`/rite:pr:review` の reviewer が出力する「推奨事項」を **件数のみの aggregate label** (「推奨 N 件」「follow-up 候補 N 件」「全て scope 外」) で完了報告し、各 item の disposition (起票済 / user 保留 / 観察のみ) を明示せずに silent skip する anti-pattern。"
 promote: rite-plugin
 created: "2026-05-18T00:00:00+09:00"
-updated: "2026-05-18T00:00:00+09:00"
 sources:
   - type: "retrospectives"
-    ref: "raw/retrospectives/20260518T-pr-1039-recommendation-aggregate-evasion.md"
+    resource: "raw/retrospectives/20260518T-pr-1039-recommendation-aggregate-evasion.md"
   - type: "issues"
-    ref: "https://github.com/B16B1RD/cc-rite-workflow/issues/1042"
+    resource: "https://github.com/B16B1RD/cc-rite-workflow/issues/1042"
   - type: "issues"
-    ref: "https://github.com/B16B1RD/cc-rite-workflow/issues/1040"
+    resource: "https://github.com/B16B1RD/cc-rite-workflow/issues/1040"
   - type: "issues"
-    ref: "https://github.com/B16B1RD/cc-rite-workflow/issues/1041"
+    resource: "https://github.com/B16B1RD/cc-rite-workflow/issues/1041"
 tags: [recommendation, aggregate-label, silent-skip, askuserquestion, disposition, phase-7, review-loop, responsibility-obscuring]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-18T00:00:00+09:00" }
 ---
 
 # aggregate label による推奨事項の責任曖昧化 (「推奨 N 件 (全て scope 外)」)

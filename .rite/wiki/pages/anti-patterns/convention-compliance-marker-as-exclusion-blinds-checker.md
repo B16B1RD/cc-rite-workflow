@@ -5,14 +5,14 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "規約の遵守を測る静的チェックを書くとき、「もう対応済みの行」を除外したくなる。"
 created: "2026-08-01T00:21:06+09:00"
-updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260730T202223Z-pr-2066.md"
+    resource: "raw/fixes/20260730T202223Z-pr-2066.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T205113Z-pr-2066.md"
+    resource: "raw/fixes/20260730T205113Z-pr-2066.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 ---
 
 # 「規約を守っている印」を除外条件にすると、印を持つ違反が検査から消える

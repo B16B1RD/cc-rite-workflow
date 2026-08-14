@@ -4,12 +4,12 @@ title: "owner/repo 解決テストは ambient な git remote 状態に依存さ�
 domain: "heuristics"
 description: "owner/repo 解決ロジック (`git-remote.sh resolve-owner-repo` / `gh repo view` 等) のテストケースが、テスト実行環境の**実際の** git remote 設定 (origin の存在・URL 形式・SSH host alias 定義の有無) に依存して結果が決まる構造になっていると、CI とローカル、あるいは異なる開発者の環境間で remote 構成が異なるだけでテストの pass/fail が変わる non-hermetic (非決定的) なテストになる。"
 created: "2026-07-20T10:36:25+09:00"
-updated: "2026-07-20T10:36:25+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260720T013625Z-pr-1921.md"
+    resource: "raw/reviews/20260720T013625Z-pr-1921.md"
 tags: ["test", "hermeticity", "git-remote", "ambient-dependency", "ci"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T10:36:25+09:00" }
 ---
 
 # owner/repo 解決テストは ambient な git remote 状態に依存させない (non-hermetic test)

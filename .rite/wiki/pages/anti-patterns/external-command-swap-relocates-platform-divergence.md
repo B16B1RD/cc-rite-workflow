@@ -4,14 +4,14 @@ title: "移植性のための外部コマンド差し替えは分岐を消さず
 domain: "anti-patterns"
 description: "GNU/BSD で挙動が割れるコマンドを別コマンドへ置き換えるとき、比較するのは「解決セマンティクス（何を返すか）」に偏りがちである。"
 created: "2026-07-25T14:18:43Z"
-updated: "2026-07-25T14:18:43Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260725T093800Z-pr-2017.md"
+    resource: "raw/reviews/20260725T093800Z-pr-2017.md"
   - type: "fixes"
-    ref: "raw/fixes/20260725T121640Z-pr-2017-macos.md"
+    resource: "raw/fixes/20260725T121640Z-pr-2017-macos.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-25T14:18:43Z" }
 ---
 
 # 移植性のための外部コマンド差し替えは分岐を消さず「別の層」へ移動させる

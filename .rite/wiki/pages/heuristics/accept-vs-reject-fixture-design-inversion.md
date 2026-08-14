@@ -4,16 +4,16 @@ title: "accept fixture と reject fixture は設計目的が逆 — 安全側の
 domain: "heuristics"
 description: "分岐チェーンに新しいガードを挿入したとき、「そのガードが先行分岐より前にある」という順序契約は fixture の形状に依存して観測可能／不可能が決まる。"
 created: "2026-07-27T10:57:51+09:00"
-updated: "2026-07-27T10:57:51+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260727T001018Z-pr-2035.md"
+    resource: "raw/reviews/20260727T001018Z-pr-2035.md"
   - type: "fixes"
-    ref: "raw/fixes/20260727T002133Z-pr-2035.md"
+    resource: "raw/fixes/20260727T002133Z-pr-2035.md"
   - type: "fixes"
-    ref: "raw/fixes/20260727T004206Z-pr-2035.md"
+    resource: "raw/fixes/20260727T004206Z-pr-2035.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-27T10:57:51+09:00" }
 ---
 
 # accept fixture と reject fixture は設計目的が逆 — 安全側の形状を両方に適用すると順序契約が pin できなくなる

@@ -4,12 +4,12 @@ domain: "patterns"
 description: "`templates/config/rite-config.yml` のある設定を「新規プロジェクトでデフォルト ON」にしたいなら、その active ブロックを `# --- Advanced (below this line) ---` マーカーより **上** に置く。"
 promote: rite-plugin
 created: "2026-06-11T00:57:13+09:00"
-updated: "2026-06-11T00:57:13+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260610T155713Z-pr-1392.md"
+    resource: "raw/reviews/20260610T155713Z-pr-1392.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-11T00:57:13+09:00" }
 ---
 
 # config テンプレートの default-on 設定は Advanced マーカーより上に配置する

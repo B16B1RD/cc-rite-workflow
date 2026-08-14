@@ -4,14 +4,14 @@ title: "増え続ける corpus の実測値は絶対値ではなく下限 + cave
 domain: "heuristics"
 description: "ドキュメントやコメントに実測値を書くとき、その値が **サイクルごとに増え続ける corpus** から取られたものなら、絶対値のまま書くと確実に陳腐化する。"
 created: "2026-08-02T09:53:11+09:00"
-updated: "2026-08-02T09:53:11+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260801T170512Z-pr-2070.md"
+    resource: "raw/reviews/20260801T170512Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T224211Z-pr-2070.md"
+    resource: "raw/fixes/20260801T224211Z-pr-2070.md"
 tags: ["stale-measurement", "doc-accuracy", "defect-class-sweep", "hedge"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T09:53:11+09:00" }
 ---
 
 # 増え続ける corpus の実測値は絶対値ではなく下限 + caveat で書く

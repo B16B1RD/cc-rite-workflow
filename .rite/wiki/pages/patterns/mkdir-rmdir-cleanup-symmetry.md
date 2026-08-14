@@ -4,14 +4,14 @@ domain: "patterns"
 description: "健全性チェックや verification のために `mkdir -p` で一時 directory を作って probe file を置いた場合、cleanup 関数は probe file の `rm -f` だけでは不十分で、`rmdir` による親 directory の対称削除をセットにする必要がある。"
 promote: rite-plugin
 created: "2026-04-19T01:10:00+00:00"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260419T004413Z-pr-585.md"
+    resource: "raw/reviews/20260419T004413Z-pr-585.md"
   - type: "fixes"
-    ref: "raw/fixes/20260419T004921Z-pr-585.md"
+    resource: "raw/fixes/20260419T004921Z-pr-585.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # mkdir -p で作成した directory は rmdir で対称 cleanup する (probe file 単独削除は pollution 残留)

@@ -4,16 +4,16 @@ title: "「実体に合わせる」是正では実体の観測母集団を確認
 domain: "heuristics"
 description: "「指示が実体と食い違っているので実体に合わせる」という是正は自然に見えるが、**その実体がどの母集団で観測されたか**を確認しないと、観測範囲の外へ退行を拡張する。"
 created: "2026-07-30T15:40:55Z"
-updated: "2026-07-30T15:40:55Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260730T021430Z-pr-2052.md"
+    resource: "raw/fixes/20260730T021430Z-pr-2052.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T002941Z-pr-2052.md"
+    resource: "raw/reviews/20260730T002941Z-pr-2052.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T003940Z-pr-2052.md"
+    resource: "raw/fixes/20260730T003940Z-pr-2052.md"
 tags: ["premise", "population", "multi-repo", "spec", "provenance"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 ---
 
 # 「実体に合わせる」是正では実体の観測母集団を確認し、1 リポジトリの観測を仕様の前提に昇格させない

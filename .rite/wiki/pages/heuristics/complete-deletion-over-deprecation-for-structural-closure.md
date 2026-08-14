@@ -5,14 +5,14 @@ description: "Refactor で命名衝突 / semantic 混在を解消する際に「
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/complete-deletion-over-deprecation-for-structural-closure.md"
 created: "2026-05-18T09:00:00Z"
-updated: "2026-05-18T09:00:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260518T084056Z-pr-1043-cycle4-mergeable.md"
+    resource: "raw/reviews/20260518T084056Z-pr-1043-cycle4-mergeable.md"
   - type: "reviews"
-    ref: "raw/reviews/20260518T075850Z-pr-1043.md"
+    resource: "raw/reviews/20260518T075850Z-pr-1043.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-18T09:00:00Z" }
 ---
 
 # Legacy field の「deprecate + 残置」よりも「完全削除」が構造的閉塞を実現する

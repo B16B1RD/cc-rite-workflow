@@ -4,16 +4,16 @@ domain: "heuristics"
 description: "Markdown / Code 大規模圧縮 refactor で行数 AC を野心目標で決め打ちすると、protected 区域 (機械検証必須項目 / Pre-flight bash block / Return Output 等) と SPEC-OUT-OF-SCOPE 制約 (新規 references 作成禁止 / references 側 modify 禁止) の組み合わせで構造的に達成困難になり、user 介入による緩和が cycle 中盤で必要になる。"
 promote: rite-plugin
 created: "2026-05-04T09:50:00Z"
-updated: "2026-08-12T18:34:40Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260504T090515Z-pr-809.md"
+    resource: "raw/reviews/20260504T090515Z-pr-809.md"
   - type: "reviews"
-    ref: "raw/reviews/20260707T005014Z-pr-1774.md"
+    resource: "raw/reviews/20260707T005014Z-pr-1774.md"
   - type: "reviews"
-    ref: "raw/reviews/20260812T180508Z-pr-2278.md"
+    resource: "raw/reviews/20260812T180508Z-pr-2278.md"
 tags: ["refactor", "compression", "acceptance-criteria", "scope", "trade-off"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-12T18:34:40Z" }
 ---
 
 # 圧縮 refactor の AC は protected 区域 + scope 制約から逆算して決める

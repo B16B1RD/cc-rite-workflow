@@ -5,16 +5,16 @@ domain: "heuristics"
 promote: rite-plugin
 description: "複数の reviewer が **独立に同じ欠陥へ到達しながら、処置の scope が割れる**ことがある。"
 created: "2026-08-02T22:05:00+09:00"
-updated: "2026-08-03T23:41:26+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260802T110823Z-pr-2052.md"
+    resource: "raw/reviews/20260802T110823Z-pr-2052.md"
   - type: "fixes"
-    ref: "raw/fixes/20260803T124230Z-pr-2095.md"
+    resource: "raw/fixes/20260803T124230Z-pr-2095.md"
   - type: "fixes"
-    ref: "raw/fixes/20260803T114017Z-pr-2095.md"
+    resource: "raw/fixes/20260803T114017Z-pr-2095.md"
 tags: ["review-scope", "escalation", "producer-consumer", "deferred-treatment", "issue-scope-boundary"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T23:41:26+09:00" }
 ---
 
 # 同一欠陥に対し reviewer の scope が割れたらユーザー判断へエスカレートする — follow-up は current-pr と同義ではない

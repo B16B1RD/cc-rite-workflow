@@ -5,26 +5,26 @@ domain: "heuristics"
 promote: rite-plugin
 description: "識別子リネーム PR では `rite:{old}` の完全コマンド文字列だけでなく `{old}.md` のファイル名 shorthand、および拡張子なしの裸トークン（一覧・例示内での言及）の3階層を意識的に洗い出さないと、review-fix ループが段階的に狭いスコープへ収束しながら複数サイクルを消費する。"
 created: "2026-07-08T13:13:15+09:00"
-updated: "2026-07-08T09:10:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260708T013530Z-pr-1795.md"
+    resource: "raw/reviews/20260708T013530Z-pr-1795.md"
   - type: "reviews"
-    ref: "raw/reviews/20260708T021200Z-pr-1795-cycle2.md"
+    resource: "raw/reviews/20260708T021200Z-pr-1795-cycle2.md"
   - type: "reviews"
-    ref: "raw/reviews/20260708T024653Z-pr-1795-cycle5.md"
+    resource: "raw/reviews/20260708T024653Z-pr-1795-cycle5.md"
   - type: "reviews"
-    ref: "raw/reviews/20260708T034554Z-pr-1795.md"
+    resource: "raw/reviews/20260708T034554Z-pr-1795.md"
   - type: "fixes"
-    ref: "raw/fixes/20260708T013823Z-pr-1795.md"
+    resource: "raw/fixes/20260708T013823Z-pr-1795.md"
   - type: "fixes"
-    ref: "raw/fixes/20260708T021456Z-pr-1795-cycle2.md"
+    resource: "raw/fixes/20260708T021456Z-pr-1795-cycle2.md"
   - type: "fixes"
-    ref: "raw/fixes/20260708T022258Z-pr-1795-cycle3.md"
+    resource: "raw/fixes/20260708T022258Z-pr-1795-cycle3.md"
   - type: "reviews"
-    ref: "raw/reviews/20260708T090103Z-pr-1796.md"
+    resource: "raw/reviews/20260708T090103Z-pr-1796.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-08T09:10:00+00:00" }
 ---
 
 # 識別子リネームは3階層（コマンド文字列・ファイル名shorthand・裸トークン）で置換対象を洗い出す

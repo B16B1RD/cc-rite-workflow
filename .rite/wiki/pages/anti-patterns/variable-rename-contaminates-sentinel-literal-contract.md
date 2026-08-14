@@ -5,16 +5,16 @@ description: "bash 変数 rename refactor の際、変数名の見た目と同�
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/variable-rename-contaminates-sentinel-literal-contract.md"
 created: "2026-05-18T00:34:00Z"
-updated: "2026-05-18T00:34:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260518T001536Z-pr-1034.md"
+    resource: "raw/reviews/20260518T001536Z-pr-1034.md"
   - type: "reviews"
-    ref: "raw/reviews/20260518T002525Z-pr-1034.md"
+    resource: "raw/reviews/20260518T002525Z-pr-1034.md"
   - type: "fixes"
-    ref: "raw/fixes/20260518T001912Z-pr-1034.md"
+    resource: "raw/fixes/20260518T001912Z-pr-1034.md"
 tags: ["refactor-scope", "sentinel-contract", "cross-file-aggregation", "silent-regression", "literal-token", "observability"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-18T00:34:00Z" }
 ---
 
 # Variable Rename が Sentinel Literal Contract を汚染する

@@ -4,18 +4,18 @@ title: "実装が分岐しているならテストも分岐の数だけ要る �
 domain: "heuristics"
 description: "同じ責務が設定値によって別実装に分かれているとき（`separate_branch` と `same_branch`、`git cat-file -e` と `[ -f ]` など）、片方のテストは他方を一切担保しない。"
 created: "2026-08-01T00:21:06+09:00"
-updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260731T064414Z-pr-2070.md"
+    resource: "raw/reviews/20260731T064414Z-pr-2070.md"
   - type: "reviews"
-    ref: "raw/reviews/20260731T072309Z-pr-2070.md"
+    resource: "raw/reviews/20260731T072309Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260731T065426Z-pr-2070.md"
+    resource: "raw/fixes/20260731T065426Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260731T073514Z-pr-2070.md"
+    resource: "raw/fixes/20260731T073514Z-pr-2070.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 ---
 
 # 実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい

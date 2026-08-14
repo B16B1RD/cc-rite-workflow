@@ -5,14 +5,14 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "2 つの述語が独立に成立しうるのに実装で elif を使うと、両方が成立する入力で後段の報告が構造的に出せなくなる。A のみ・B のみのテストは両方 green のままなので、組合せ fixture がないと検出できない。"
 created: "2026-08-11T01:20:00+09:00"
-updated: "2026-08-11T01:20:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260810T134712Z-pr-2231.md"
+    resource: "raw/reviews/20260810T134712Z-pr-2231.md"
   - type: "fixes"
-    ref: "raw/fixes/20260810T135452Z-pr-2231.md"
+    resource: "raw/fixes/20260810T135452Z-pr-2231.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-11T01:20:00+09:00" }
 ---
 
 # 仕様が「A のとき報告・B のとき併記」を別々に定めている箇所を elif で書くと A ∧ B で B が消える

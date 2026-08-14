@@ -4,14 +4,14 @@ title: "診断を 1 行足す修正は、外部入力・エラー経路・テス
 domain: "heuristics"
 description: "診断メッセージの追加は「1 行足すだけ」に見える。"
 created: "2026-08-08T14:00:41+09:00"
-updated: "2026-08-08T14:00:41+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260808T004750Z-pr-2142.md"
+    resource: "raw/reviews/20260808T004750Z-pr-2142.md"
   - type: "fixes"
-    ref: "raw/fixes/20260808T014357Z-pr-2142.md"
+    resource: "raw/fixes/20260808T014357Z-pr-2142.md"
 tags: ["diagnostics", "review-fix-loop", "external-input", "sanitization", "test-coverage"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T14:00:41+09:00" }
 ---
 
 # 診断を 1 行足す修正は、外部入力・エラー経路・テスト網羅の 3 領域を同時に開く

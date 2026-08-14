@@ -5,12 +5,12 @@ domain: "heuristics"
 promote: rite-plugin
 description: "docstring / SPEC / コメントの「例示」(e.g. 〜等) に使う語彙が、別レイヤで定義された用語だと、実体のない帰属を doc に固定してしまう。"
 created: "2026-07-13T02:50:00+09:00"
-updated: "2026-07-13T02:50:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260712T174329Z-pr-1838.md"
+    resource: "raw/reviews/20260712T174329Z-pr-1838.md"
 tags: ["doc-accuracy", "sot-verification", "illustrative-example", "attribution"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-13T02:50:00+09:00" }
 ---
 
 # doc の例示語彙は定義元 (SoT) と突合してから書く

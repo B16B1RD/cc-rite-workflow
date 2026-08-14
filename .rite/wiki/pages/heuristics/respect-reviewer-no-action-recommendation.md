@@ -4,22 +4,22 @@ domain: "heuristics"
 description: "reviewer が finding 本文に「対応不要」「informational 寄り」「次回 PR で対応可能」など **明示的な non-blocking 推奨** を付した LOW (まれに MEDIUM) 指摘を blocking 扱いで fix すると、(a) 同じ finding が次サイクルで informational として再指摘される無限ループ、(b) reviewer 推奨に反する修正で本来不要な regression を導入する経路、の 2 つのリスクが発生する。"
 promote: rite-plugin
 created: "2026-05-04T03:30:00+00:00"
-updated: "2026-05-19T13:36:19Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260504T012717Z-pr-800.md"
+    resource: "raw/fixes/20260504T012717Z-pr-800.md"
   - type: "fixes"
-    ref: "raw/fixes/20260504T025959Z-pr-800-cycle2.md"
+    resource: "raw/fixes/20260504T025959Z-pr-800-cycle2.md"
   - type: "reviews"
-    ref: "raw/reviews/20260504T012358Z-pr-800.md"
+    resource: "raw/reviews/20260504T012358Z-pr-800.md"
   - type: "reviews"
-    ref: "raw/reviews/20260504T030800Z-pr-800-cycle4.md"
+    resource: "raw/reviews/20260504T030800Z-pr-800-cycle4.md"
   - type: "fixes"
-    ref: "raw/fixes/20260519T074133Z-pr-1059.md"
+    resource: "raw/fixes/20260519T074133Z-pr-1059.md"
   - type: "reviews"
-    ref: "raw/reviews/20260519T132229Z-pr-1063-cycle2.md"
+    resource: "raw/reviews/20260519T132229Z-pr-1063-cycle2.md"
 tags: ["reviewer-recommendation", "fix-loop-termination", "replied-only", "anti-degradation", "intentional-duplication", "scope-nit-noted-relay", "m2-dogfooding"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-19T13:36:19Z" }
 ---
 
 # Reviewer 自身が「対応不要」と明記する LOW finding は replied-only として尊重し fix loop で再発火させない

@@ -4,12 +4,12 @@ title: "bash は `$` の後の `[A-Za-z0-9_]` 連続を 1 つの変数名とし�
 domain: "patterns"
 description: "「変数 `$v` から派生したパス」を追跡する検出器で、**変数名の接頭辞一致を派生と読むと誤検知する**。"
 created: "2026-08-06T22:40:00+09:00"
-updated: "2026-08-06T22:40:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260806T055534Z-pr-2124.md"
+    resource: "raw/fixes/20260806T055534Z-pr-2124.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T22:40:00+09:00" }
 ---
 
 # bash は `$` の後の `[A-Za-z0-9_]` 連続を 1 つの変数名として読む — 無括弧の `$v_suffix` は派生ではなく別変数

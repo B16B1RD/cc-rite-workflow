@@ -4,14 +4,14 @@ domain: "heuristics"
 description: "severity 等級 (CRITICAL / HIGH / MEDIUM / LOW など) を**拡張する**ような fundamental change は、宣言した SoT 表だけ更新しても運用層 (write spec / JSON schema / read parser / extract regex / measure dict) のいずれか 1 段階が旧 4 値前提のままだと、reviewer が新等級で finding を発行した瞬間に silent fallback して severity が消失する。"
 promote: rite-plugin
 created: "2026-04-29T05:30:00+09:00"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260428T201715Z-pr-708-cycle-3.md"
+    resource: "raw/fixes/20260428T201715Z-pr-708-cycle-3.md"
   - type: "fixes"
-    ref: "raw/fixes/20260428T202946Z-pr-708-cycle-4.md"
+    resource: "raw/fixes/20260428T202946Z-pr-708-cycle-4.md"
 tags: ["severity-levels", "cross-file-invariant", "silent-fallback", "scope-expansion", "closed-loop-verification"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # Severity 等級拡張は read/write/parse/measure の closed-loop 6 段階を verify する

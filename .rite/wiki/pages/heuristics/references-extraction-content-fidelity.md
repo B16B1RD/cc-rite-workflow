@@ -4,26 +4,26 @@ domain: "heuristics"
 description: "Refactor 系 PR で `commands/issue/references/` に新規ファイルを抽出する際、引用先 references ファイルに書かれている Issue 番号や AC phrase を **推測ベースで関連付けると silent factual divergence を生む**。"
 promote: rite-plugin
 created: "2026-05-04T05:30:00+00:00"
-updated: "2026-05-14T01:25:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260504T050342Z-pr-802.md"
+    resource: "raw/reviews/20260504T050342Z-pr-802.md"
   - type: "fixes"
-    ref: "raw/fixes/20260504T050654Z-pr-802.md"
+    resource: "raw/fixes/20260504T050654Z-pr-802.md"
   - type: "reviews"
-    ref: "raw/reviews/20260506T162735Z-pr-868.md"
+    resource: "raw/reviews/20260506T162735Z-pr-868.md"
   - type: "fixes"
-    ref: "raw/fixes/20260506T163131Z-pr-868.md"
+    resource: "raw/fixes/20260506T163131Z-pr-868.md"
   - type: "reviews"
-    ref: "raw/reviews/20260513T080326Z-pr-947.md"
+    resource: "raw/reviews/20260513T080326Z-pr-947.md"
   - type: "fixes"
-    ref: "raw/fixes/20260513T080706Z-pr-947-fix-cycle-1.md"
+    resource: "raw/fixes/20260513T080706Z-pr-947-fix-cycle-1.md"
   - type: "reviews"
-    ref: "raw/reviews/20260514T010100Z-pr-950.md"
+    resource: "raw/reviews/20260514T010100Z-pr-950.md"
   - type: "fixes"
-    ref: "raw/fixes/20260514T010559Z-pr-950.md"
+    resource: "raw/fixes/20260514T010559Z-pr-950.md"
 tags: ["cross-file-reference", "test-docstring", "comment-rot", "canonical-reference-note"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-14T01:25:00+00:00" }
 ---
 
 # References 抽出時は引用先 SoT の内容を Read tool で verify する

@@ -5,16 +5,16 @@ description: "Issue body の対応案文字列を成果物にそのまま転記�
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/unverified-issue-proposal-reference-transcription.md"
 created: "2026-06-09T19:40:00+00:00"
-updated: "2026-06-09T19:40:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260609T191537Z-pr-1325.md"
+    resource: "raw/reviews/20260609T191537Z-pr-1325.md"
   - type: "fixes"
-    ref: "raw/fixes/20260609T191759Z-pr-1325.md"
+    resource: "raw/fixes/20260609T191759Z-pr-1325.md"
   - type: "reviews"
-    ref: "raw/reviews/20260609T192157Z-pr-1325.md"
+    resource: "raw/reviews/20260609T192157Z-pr-1325.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-09T19:40:00+00:00" }
 ---
 
 # Issue 対応案の番号参照を未検証のまま転記すると事実誤認が伝播する

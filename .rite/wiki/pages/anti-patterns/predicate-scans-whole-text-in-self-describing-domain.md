@@ -4,14 +4,14 @@ title: "判別述語を対象テキスト全体に広げると、その規則自
 domain: "anti-patterns"
 description: "判別述語を「ある記号がテキスト中に存在するか」の形で書くと、その記号を論じる文書そのものが判定対象になった瞬間に崩れる。"
 created: "2026-08-01T23:12:28+09:00"
-updated: "2026-08-01T23:12:28+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260801T103500Z-pr-2081.md"
+    resource: "raw/reviews/20260801T103500Z-pr-2081.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T104510Z-pr-2081.md"
+    resource: "raw/fixes/20260801T104510Z-pr-2081.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T23:12:28+09:00" }
 ---
 
 # 判別述語を対象テキスト全体に広げると、その規則自体を論じる文書で自己言及的に誤発火する

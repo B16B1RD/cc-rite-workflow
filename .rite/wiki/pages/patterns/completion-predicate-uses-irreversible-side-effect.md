@@ -4,18 +4,18 @@ title: "中断されうる処理の完了判定は、完了した処理だけが
 domain: "patterns"
 description: "signal で中断されうる処理について「完了したか」を判定するとき、成果物の**存在**（`[ -e \"$dst\" ]`）を証拠に使ってはならない。"
 created: "2026-08-01T05:40:00Z"
-updated: "2026-08-01T05:40:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260801T030530Z-pr-2078.md"
+    resource: "raw/reviews/20260801T030530Z-pr-2078.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T032503Z-pr-2078.md"
+    resource: "raw/fixes/20260801T032503Z-pr-2078.md"
   - type: "reviews"
-    ref: "raw/reviews/20260801T021633Z-pr-2078.md"
+    resource: "raw/reviews/20260801T021633Z-pr-2078.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T022733Z-pr-2078.md"
+    resource: "raw/fixes/20260801T022733Z-pr-2078.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T05:40:00Z" }
 ---
 
 # 中断されうる処理の完了判定は、完了した処理だけが持つ不可逆な副作用を述語にする

@@ -4,20 +4,20 @@ title: "散文手順のレビューでも文書内の構造的事実は実測で
 domain: "heuristics"
 description: "散文手順（LLM が runtime で読むワークフロー定義）のレビューでは、**実測アンカーを付けられるかどうかが reviewer 側の技量差として現れる**。"
 created: "2026-07-30T15:40:55Z"
-updated: "2026-07-30T15:40:55Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260730T052429Z-pr-2056.md"
+    resource: "raw/reviews/20260730T052429Z-pr-2056.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T055209Z-pr-2056.md"
+    resource: "raw/reviews/20260730T055209Z-pr-2056.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T093514Z-pr-2056.md"
+    resource: "raw/reviews/20260730T093514Z-pr-2056.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T073356Z-pr-2056.md"
+    resource: "raw/reviews/20260730T073356Z-pr-2056.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T114443Z-pr-2056.md"
+    resource: "raw/reviews/20260730T114443Z-pr-2056.md"
 tags: ["review", "measurement", "prose-procedure", "verification", "convergence"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 ---
 
 # 散文手順のレビューでも文書内の構造的事実は実測でき、実測不能と決めつけると指摘が滞留する

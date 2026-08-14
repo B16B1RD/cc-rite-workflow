@@ -6,16 +6,16 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/verification-doc-guarantee-matches-invariants.md"
 description: "機械検証ツール（drift-check / lint）を追加する PR では、手順書側の保証文言が実装の検証範囲を超えて「漏れは必ず検出される」と全称的に書かれやすい。"
 created: "2026-07-03T18:30:00+00:00"
-updated: "2026-07-03T18:30:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260703T174623Z-pr-1743.md"
+    resource: "raw/reviews/20260703T174623Z-pr-1743.md"
   - type: "fixes"
-    ref: "raw/fixes/20260703T175226Z-pr-1743.md"
+    resource: "raw/fixes/20260703T175226Z-pr-1743.md"
   - type: "reviews"
-    ref: "raw/reviews/20260703T180609Z-pr-1743.md"
+    resource: "raw/reviews/20260703T180609Z-pr-1743.md"
 tags: ["documentation", "drift-check", "overclaim", "guarantee", "contributing"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-03T18:30:00+00:00" }
 ---
 
 # 検証ツールの保証文言は検証される不変量と非検出 gap に正確に対応させる

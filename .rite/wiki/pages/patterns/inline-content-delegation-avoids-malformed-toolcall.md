@@ -4,16 +4,16 @@ domain: "patterns"
 description: "command spec (`.md`) 内で gh CLI に渡す title / body をインライン展開 (特殊文字 title の素埋め込み / heredoc body) すると、LLM が tool-call を組み立てる際に malformed tool-call を引き起こし workflow が停止する。"
 promote: rite-plugin
 created: "2026-06-09T00:00:00Z"
-updated: "2026-06-09T00:00:00Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260608T145054Z-pr-1310.md"
+    resource: "raw/fixes/20260608T145054Z-pr-1310.md"
   - type: "reviews"
-    ref: "raw/reviews/20260608T144010Z-pr-1310.md"
+    resource: "raw/reviews/20260608T144010Z-pr-1310.md"
   - type: "reviews"
-    ref: "raw/reviews/20260608T154358Z-pr-1310.md"
+    resource: "raw/reviews/20260608T154358Z-pr-1310.md"
 tags: ["malformed-tool-call", "inline-delegation", "write-tool", "body-file", "three-stage-protocol", "cause-scoping"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-09T00:00:00Z" }
 ---
 
 # インライン特殊文字 content (title/body) は Write tool・--body-file 委譲で malformed tool-call を構造的に除去する

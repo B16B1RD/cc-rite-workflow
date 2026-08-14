@@ -5,12 +5,12 @@ domain: "heuristics"
 promote: rite-plugin
 description: "同種のクリーンアップ系列（例: 用語統一・裸ファイル名参照の一掃）で複数レビュアーが独立に同一箇所を「本 PR で対応すべき」と推奨しても、その箇所が先行 Issue/PR で明示的に Non-Target（対象外）と宣言されていた場合は、reviewer 推奨をそのまま実行せず、先行判断の経緯を提示したうえでユーザーに再確認する。"
 created: "2026-07-08T03:06:55+09:00"
-updated: "2026-07-08T03:06:55+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260707T175542Z-pr-1794.md"
+    resource: "raw/reviews/20260707T175542Z-pr-1794.md"
 tags: ["non-target", "scope-boundary", "reviewer-recommendation", "precedent", "askuserquestion"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-08T03:06:55+09:00" }
 ---
 
 # 先行 Issue の明示的 Non-Target 指定は、reviewer 推奨だけで覆さずユーザー確認する

@@ -4,12 +4,12 @@ title: "2 つの値が一致することの assert は、その値の書式を p
 domain: "patterns"
 description: "「ログの `ts` と state file の `updated_at` が一致すること」だけを見る assert は、**両者が同じ変数由来である限り、書式を何に変えても通り続ける**。"
 created: "2026-08-06T02:49:27Z"
-updated: "2026-08-06T02:49:27Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260806T010533Z-pr-2120.md"
+    resource: "raw/fixes/20260806T010533Z-pr-2120.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T02:49:27Z" }
 ---
 
 # 2 つの値が一致することの assert は、その値の書式を pin しない

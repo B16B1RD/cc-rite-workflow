@@ -4,18 +4,18 @@ domain: "heuristics"
 description: "ブランチ名や Issue 番号から関連 PR を解決するとき、`gh pr list --head \"*issue-N*\"` のような glob/wildcard 指定は**機能しない**。"
 promote: rite-plugin
 created: "2026-06-02T03:50:58Z"
-updated: "2026-06-02T03:50:58Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260602T030609Z-pr-1244.md"
+    resource: "raw/reviews/20260602T030609Z-pr-1244.md"
   - type: "fixes"
-    ref: "raw/fixes/20260602T030809Z-pr-1244.md"
+    resource: "raw/fixes/20260602T030809Z-pr-1244.md"
   - type: "reviews"
-    ref: "raw/reviews/20260602T031333Z-pr-1244.md"
+    resource: "raw/reviews/20260602T031333Z-pr-1244.md"
   - type: "fixes"
-    ref: "raw/fixes/20260602T031509Z-pr-1244.md"
+    resource: "raw/fixes/20260602T031509Z-pr-1244.md"
 tags: ["gh-cli", "error-handling"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-02T03:50:58Z" }
 ---
 
 # 関連 PR 探索は gh pr list --head (exact-match) ではなく --state all + client-side headRefName filter で行う

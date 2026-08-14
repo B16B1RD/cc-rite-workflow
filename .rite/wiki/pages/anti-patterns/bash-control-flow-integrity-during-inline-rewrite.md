@@ -4,16 +4,16 @@ domain: "anti-patterns"
 description: "bash literal block (`.md` ファイル内に埋め込まれた bash skeleton) 内で `continue` / `break` / `return` を使用する場合、enclosing 構文 (`for` / `while` / `until` loop または function 定義) を**同じ bash literal 内**に明示的に含める必要がある。"
 promote: rite-plugin
 created: "2026-05-26T13:30:00+00:00"
-updated: "2026-05-26T13:30:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260526T121902Z-pr-1149-cycle6.md"
+    resource: "raw/reviews/20260526T121902Z-pr-1149-cycle6.md"
   - type: "fixes"
-    ref: "raw/fixes/20260526T125406Z-pr-1149-cycle6.md"
+    resource: "raw/fixes/20260526T125406Z-pr-1149-cycle6.md"
   - type: "reviews"
-    ref: "raw/reviews/20260526T105538Z-pr-1149-cycle2.md"
+    resource: "raw/reviews/20260526T105538Z-pr-1149-cycle2.md"
 tags: ["bash", "control-flow", "inline-rewrite", "silent-regression", "cumulative-defense"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-26T13:30:00+00:00" }
 ---
 
 # bash control-flow integrity: continue/break/return は enclosing 構文を bash literal 内に明示する

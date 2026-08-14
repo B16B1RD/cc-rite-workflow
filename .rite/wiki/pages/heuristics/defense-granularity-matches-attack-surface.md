@@ -5,18 +5,18 @@ domain: "heuristics"
 promote: rite-plugin
 description: "注入・詐称への防御（中和・棄却ガード）を攻撃が実際に成立する形より広い範囲へ適用すると、**正当な値を棄却・破壊する別の実害**になる。"
 created: "2026-08-05T09:26:00+09:00"
-updated: "2026-08-05T09:26:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260804T151916Z-pr-2111-cycle4.md"
+    resource: "raw/reviews/20260804T151916Z-pr-2111-cycle4.md"
   - type: "fixes"
-    ref: "raw/fixes/20260804T152800Z-pr-2111-cycle4.md"
+    resource: "raw/fixes/20260804T152800Z-pr-2111-cycle4.md"
   - type: "reviews"
-    ref: "raw/reviews/20260804T182250Z-pr-2111.md"
+    resource: "raw/reviews/20260804T182250Z-pr-2111.md"
   - type: "fixes"
-    ref: "raw/fixes/20260804T183250Z-pr-2111.md"
+    resource: "raw/fixes/20260804T183250Z-pr-2111.md"
 tags: ["sanitization", "over-neutralization", "attack-surface", "free-text", "closed-domain", "injection"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T09:26:00+09:00" }
 ---
 
 # 防御は攻撃面と同じ粒度で張る — 過剰防御は「安全側」ではなく別の実害

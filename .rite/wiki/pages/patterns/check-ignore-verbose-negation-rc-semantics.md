@@ -5,14 +5,14 @@ domain: "patterns"
 promote: rite-plugin
 description: "`git check-ignore` の exit code は flag によって意味論が異なる: `-q` (quiet / non-verbose) は negation ルール (`!pattern`) 決着時に rc=1 (= not ignored) を返すが、`-v` (verbose) は negation マッチも「マッチあり」として数え rc=0 を返す。"
 created: "2026-07-13T00:29:27+09:00"
-updated: "2026-07-13T00:29:27+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260712T145139Z-pr-1836.md"
+    resource: "raw/fixes/20260712T145139Z-pr-1836.md"
   - type: "reviews"
-    ref: "raw/reviews/20260712T151954Z-pr-1836.md"
+    resource: "raw/reviews/20260712T151954Z-pr-1836.md"
 tags: ["git", "check-ignore", "gitignore", "negation", "effective-judgment", "rc-semantics"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-13T00:29:27+09:00" }
 ---
 
 # git check-ignore の実効判定は -q と -v で rc 意味論が異なる (negation マッチ検査の要否)

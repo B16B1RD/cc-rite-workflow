@@ -4,18 +4,18 @@ title: "glob で集合を指すと、集合の増減に silent に追随しな�
 domain: "anti-patterns"
 description: "エラー分類の集合（例: 「caller 契約違反である本文検査 4 段」）を、判定述語として `reason=body_*` のような **glob（接頭辞パターン）で指す**と、集合と glob の一致は保証されない。"
 created: "2026-07-28T21:30:00+09:00"
-updated: "2026-08-13T19:20:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260728T122258Z-pr-2038.md"
+    resource: "raw/fixes/20260728T122258Z-pr-2038.md"
   - type: "reviews"
-    ref: "raw/reviews/20260728T081222Z-pr-2038.md"
+    resource: "raw/reviews/20260728T081222Z-pr-2038.md"
   - type: "reviews"
-    ref: "raw/reviews/20260813T081206Z-pr-2304.md"
+    resource: "raw/reviews/20260813T081206Z-pr-2304.md"
   - type: "fixes"
-    ref: "raw/fixes/20260813T081923Z-pr-2304.md"
+    resource: "raw/fixes/20260813T081923Z-pr-2304.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-13T19:20:00+09:00" }
 ---
 
 # glob で集合を指すと、集合の増減に silent に追随しない — 診断・分岐の述語には明示列挙を使う

@@ -4,18 +4,18 @@ domain: "anti-patterns"
 description: "`set -euo pipefail` 配下の同型コードでも、**function 内の `local v=$(cmd)` と top-level の `v=$(cmd)` は `set -e` 伝播の挙動が異なる**。"
 promote: rite-plugin
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-06-09T07:58:52+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260426T231807Z-pr-688.md"
+    resource: "raw/reviews/20260426T231807Z-pr-688.md"
   - type: "fixes"
-    ref: "raw/fixes/20260426T232316Z-pr-688.md"
+    resource: "raw/fixes/20260426T232316Z-pr-688.md"
   - type: "fixes"
-    ref: "raw/fixes/20260426T233931Z-pr-688.md"
+    resource: "raw/fixes/20260426T233931Z-pr-688.md"
   - type: "reviews"
-    ref: "raw/reviews/20260609T071104Z-pr-1318.md"
+    resource: "raw/reviews/20260609T071104Z-pr-1318.md"
 tags: ["bash", "set-e", "pipefail", "writer-reader-asymmetry", "silent-failure"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-09T07:58:52+00:00" }
 ---
 
 # function 内 `local v=$(...)` と top-level `v=$(...)` の `set -e` 伝播差で writer/reader 非対称が偶然 mask される

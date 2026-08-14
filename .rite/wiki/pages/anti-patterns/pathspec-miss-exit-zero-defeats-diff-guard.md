@@ -3,12 +3,12 @@ title: "pathspec 不一致の git diff --quiet は exit 0 を返し「差分な�
 domain: "anti-patterns"
 description: "`git diff --quiet <rev> -- <pathspec>` は pathspec がどのファイルにも一致しないとき「比較対象なし = 差分なし = exit 0」を返す。"
 created: "2026-07-13T09:15:00Z"
-updated: "2026-07-13T09:15:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260713T000901Z-pr-1840.md"
+    resource: "raw/reviews/20260713T000901Z-pr-1840.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-13T09:15:00Z" }
 ---
 
 # pathspec 不一致の git diff --quiet は exit 0 を返し「差分なし」ガードを無効化する

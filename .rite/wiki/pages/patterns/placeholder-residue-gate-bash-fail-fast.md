@@ -5,16 +5,16 @@ description: "LLM が literal substitute する bash 変数 (例: `commit_msg=\"
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/placeholder-residue-gate-bash-fail-fast.md"
 created: "2026-04-18T12:50:00+00:00"
-updated: "2026-08-05T09:26:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260418T122454Z-pr-579.md"
+    resource: "raw/reviews/20260418T122454Z-pr-579.md"
   - type: "fixes"
-    ref: "raw/fixes/20260418T122707Z-pr-579.md"
+    resource: "raw/fixes/20260418T122707Z-pr-579.md"
   - type: "reviews"
-    ref: "raw/reviews/20260804T145133Z-pr-2111.md"
+    resource: "raw/reviews/20260804T145133Z-pr-2111.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T09:26:00+09:00" }
 ---
 
 # LLM substitute placeholder は bash residue gate で fail-fast 化する

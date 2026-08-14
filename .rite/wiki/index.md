@@ -1,3 +1,7 @@
+---
+okf_version: "0.2"
+---
+
 # Wiki Index
 
 このファイルは Wiki 全ページのカタログです。Ingest サイクルごとに自動更新されます。

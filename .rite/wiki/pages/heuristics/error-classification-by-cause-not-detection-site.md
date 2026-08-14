@@ -4,24 +4,24 @@ title: "エラーを 1 つの reason へ畳むときは「原因の類型」が�
 domain: "heuristics"
 description: "`result=$(cmd 2>/dev/null) || result=\"\"` は「失敗したら空にする」定番の書き方だが、**2 つの意味的に違う失敗を同じ値へ畳む**。"
 created: "2026-07-28T21:30:00+09:00"
-updated: "2026-08-13T19:20:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260728T100957Z-pr-2038.md"
+    resource: "raw/fixes/20260728T100957Z-pr-2038.md"
   - type: "fixes"
-    ref: "raw/fixes/20260728T122258Z-pr-2038.md"
+    resource: "raw/fixes/20260728T122258Z-pr-2038.md"
   - type: "fixes"
-    ref: "raw/fixes/20260728T070208Z-pr-2038.md"
+    resource: "raw/fixes/20260728T070208Z-pr-2038.md"
   - type: "reviews"
-    ref: "raw/reviews/20260727T103843Z-pr-2038.md"
+    resource: "raw/reviews/20260727T103843Z-pr-2038.md"
   - type: "reviews"
-    ref: "raw/reviews/20260805T022816Z-pr-2112.md"
+    resource: "raw/reviews/20260805T022816Z-pr-2112.md"
   - type: "fixes"
-    ref: "raw/fixes/20260805T025341Z-pr-2112.md"
+    resource: "raw/fixes/20260805T025341Z-pr-2112.md"
   - type: "reviews"
-    ref: "raw/reviews/20260813T090426Z-pr-2304.md"
+    resource: "raw/reviews/20260813T090426Z-pr-2304.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-13T19:20:00+09:00" }
 ---
 
 # エラーを 1 つの reason へ畳むときは「原因の類型」が同じかを確かめる — 復旧手順が違うなら分ける

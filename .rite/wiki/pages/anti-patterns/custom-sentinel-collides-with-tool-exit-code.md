@@ -4,14 +4,14 @@ title: "自前 sentinel exit code は呼び出す外部コマンドの予約値�
 domain: "anti-patterns"
 description: "awk プログラムなどに「この状態を呼び出し側へ伝えたい」という独自の意味を持たせた exit code を割り当てるとき、値を 2 にすると gawk / mawk が fatal error で返す 2 と区別できなくなる。"
 created: "2026-07-30T01:20:00+09:00"
-updated: "2026-07-30T01:20:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260729T142410Z-pr-2051.md"
+    resource: "raw/reviews/20260729T142410Z-pr-2051.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T144345Z-pr-2051.md"
+    resource: "raw/fixes/20260729T144345Z-pr-2051.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T01:20:00+09:00" }
 ---
 
 # 自前 sentinel exit code は呼び出す外部コマンドの予約値を避けて選ぶ

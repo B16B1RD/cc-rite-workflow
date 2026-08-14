@@ -6,14 +6,14 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/rationale-pointer-format-unification.md"
 description: "実行パスの設計解説(rationale)を references へ退避する際、元位置に残すポインタの形式が 3 種類(bare `rationale: <path>#<anchor>` / markdown link `[text](path#anchor)` / hybrid `rationale: [text](path#anchor)`)に分裂しやすい。"
 created: "2026-07-17T02:44:35Z"
-updated: "2026-07-17T02:44:35Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260717T021655Z-pr-1882.md"
+    resource: "raw/reviews/20260717T021655Z-pr-1882.md"
   - type: "reviews"
-    ref: "raw/reviews/20260717T014643Z-pr-1882.md"
+    resource: "raw/reviews/20260717T014643Z-pr-1882.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-17T02:44:35Z" }
 ---
 
 # rationale ポインタ形式は bare `rationale:` 形式に統一する

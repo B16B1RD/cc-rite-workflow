@@ -3,31 +3,31 @@ title: "「網羅」を主張する列挙は grep 全数棚卸し + scope note �
 domain: "heuristics"
 promote: rite-plugin
 created: "2026-06-10T12:50:00+09:00"
-updated: "2026-08-04T21:15:00+09:00"
 description: "ドキュメントやテストの保守ガイダンスで「contract の全 consumer」のような網羅性を主張する列挙を書くとき、reviewer の指摘任せに 1 件ずつ追加していくと cycle ごとに新たな漏れが見つかり review-fix loop が発散する。"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260804T120832Z-pr-2108.md"
+    resource: "raw/reviews/20260804T120832Z-pr-2108.md"
   - type: "reviews"
-    ref: "raw/reviews/20260725T041328Z-pr-2013.md"
+    resource: "raw/reviews/20260725T041328Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260724T193804Z-pr-2013.md"
+    resource: "raw/fixes/20260724T193804Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260724T202517Z-pr-2013.md"
+    resource: "raw/fixes/20260724T202517Z-pr-2013.md"
   - type: "reviews"
-    ref: "raw/reviews/20260609T233431Z-pr-1334.md"
+    resource: "raw/reviews/20260609T233431Z-pr-1334.md"
   - type: "fixes"
-    ref: "raw/fixes/20260609T230419Z-pr-1332.md"
+    resource: "raw/fixes/20260609T230419Z-pr-1332.md"
   - type: "fixes"
-    ref: "raw/fixes/20260609T230945Z-pr-1332-c2.md"
+    resource: "raw/fixes/20260609T230945Z-pr-1332-c2.md"
   - type: "fixes"
-    ref: "raw/fixes/20260609T231510Z-pr-1332-c3.md"
+    resource: "raw/fixes/20260609T231510Z-pr-1332-c3.md"
   - type: "fixes"
-    ref: "raw/fixes/20260609T232051Z-pr-1332-c4.md"
+    resource: "raw/fixes/20260609T232051Z-pr-1332-c4.md"
   - type: "reviews"
-    ref: "raw/reviews/20260609T232442Z-pr-1332-c5.md"
+    resource: "raw/reviews/20260609T232442Z-pr-1332-c5.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-04T21:15:00+09:00" }
 ---
 
 # 「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる

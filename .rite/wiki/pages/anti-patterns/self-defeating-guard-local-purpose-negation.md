@@ -5,22 +5,22 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "過去のレビュー事例（macOS/BSD 対応でテストスイートを green 化）の 4 cycle・累積 26 指摘のうち **最多の型が本パターン（5 件）**だった。"
 created: "2026-07-25T07:05:21Z"
-updated: "2026-08-12T18:34:40Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260725T003541Z-pr-2013.md"
+    resource: "raw/reviews/20260725T003541Z-pr-2013.md"
   - type: "reviews"
-    ref: "raw/reviews/20260725T024207Z-pr-2013.md"
+    resource: "raw/reviews/20260725T024207Z-pr-2013.md"
   - type: "reviews"
-    ref: "raw/reviews/20260725T041328Z-pr-2013.md"
+    resource: "raw/reviews/20260725T041328Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260725T004542Z-pr-2013.md"
+    resource: "raw/fixes/20260725T004542Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260725T025323Z-pr-2013.md"
+    resource: "raw/fixes/20260725T025323Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260812T133631Z-pr-2278.md"
+    resource: "raw/fixes/20260812T133631Z-pr-2278.md"
 tags: ["fail-closed", "self-defeating", "observability", "parser", "diagnostics"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-12T18:34:40Z" }
 ---
 
 # 新設した検証機構が、その機構自身の目的を局所的に打ち消す

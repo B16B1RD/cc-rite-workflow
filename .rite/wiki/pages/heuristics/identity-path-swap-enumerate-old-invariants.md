@@ -4,18 +4,18 @@ title: "同定手段の取得経路を差し替えるときは、旧経路が構
 domain: "heuristics"
 description: "同定子・キー・参照を取りに行く経路（API エンドポイント・クエリ・検索式）を差し替えると、**旧経路がパスやクエリの形で暗黙に保証していた制約が落ちる**。"
 created: "2026-08-05T05:30:00+00:00"
-updated: "2026-08-05T05:30:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260805T022816Z-pr-2112.md"
+    resource: "raw/reviews/20260805T022816Z-pr-2112.md"
   - type: "fixes"
-    ref: "raw/fixes/20260805T025341Z-pr-2112.md"
+    resource: "raw/fixes/20260805T025341Z-pr-2112.md"
   - type: "reviews"
-    ref: "raw/reviews/20260805T033632Z-pr-2112.md"
+    resource: "raw/reviews/20260805T033632Z-pr-2112.md"
   - type: "fixes"
-    ref: "raw/fixes/20260805T040711Z-pr-2112.md"
+    resource: "raw/fixes/20260805T040711Z-pr-2112.md"
 tags: ["invariant", "refactor", "identity", "api", "security", "review-fix-loop"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T05:30:00+00:00" }
 ---
 
 # 同定手段の取得経路を差し替えるときは、旧経路が構造的に保証していた述語を先に全部列挙する

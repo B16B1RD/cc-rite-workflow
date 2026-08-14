@@ -4,24 +4,24 @@ domain: "anti-patterns"
 description: "虚偽の test 担保宣言・scope 範囲・契約宣言を「scope を限定する正確な表現」に置換する fix で、reviewer が指摘した overclaim (例: `... で test 担保`) を解消する際、置換後の言い換えに別種の overclaim 語彙 (`固有 (unique to)`、`専用 (specific to)`、`全て (all)`、`必ず (always)` 等) を持ち込むリスク。"
 promote: rite-plugin
 created: "2026-05-15T10:05:00+09:00"
-updated: "2026-07-29T21:32:36+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260515T005613Z-pr-969.md"
+    resource: "raw/reviews/20260515T005613Z-pr-969.md"
   - type: "fixes"
-    ref: "raw/fixes/20260515T005734Z-pr-969.md"
+    resource: "raw/fixes/20260515T005734Z-pr-969.md"
   - type: "reviews"
-    ref: "raw/reviews/20260515T010126Z-pr-969.md"
+    resource: "raw/reviews/20260515T010126Z-pr-969.md"
   - type: "reviews"
-    ref: "raw/reviews/20260729T045143Z-pr-2044.md"
+    resource: "raw/reviews/20260729T045143Z-pr-2044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T045549Z-pr-2044.md"
+    resource: "raw/fixes/20260729T045549Z-pr-2044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T085910Z-pr-2044.md"
+    resource: "raw/fixes/20260729T085910Z-pr-2044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T064931Z-pr-2044.md"
+    resource: "raw/fixes/20260729T064931Z-pr-2044.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-29T21:32:36+09:00" }
 ---
 
 # Scope drift fix での overclaim substitution (置換後に新たな過剰主張を持ち込む)

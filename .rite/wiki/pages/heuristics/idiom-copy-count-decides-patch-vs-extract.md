@@ -5,12 +5,12 @@ domain: "heuristics"
 promote: rite-plugin
 description: "review-fix loop で同じ箇所への指摘が cycle をまたいで繰り返すとき、追加パッチを当て続けるのが自然な反応になる。"
 created: "2026-08-06T02:49:27Z"
-updated: "2026-08-06T02:49:27Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260806T013318Z-pr-2120.md"
+    resource: "raw/reviews/20260806T013318Z-pr-2120.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T02:49:27Z" }
 ---
 
 # 同一箇所への指摘が N cycle 連続したら、その箇所が何番目のコピーかを数える

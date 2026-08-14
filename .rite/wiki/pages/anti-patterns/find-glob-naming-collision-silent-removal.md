@@ -4,12 +4,12 @@ domain: "anti-patterns"
 description: "既存の find glob (例: `.rite-flow-state.??????*` で `??????` が 6 文字 wildcard、`*` が任意文字) と、新規導入する file 命名 (例: `.rite-flow-state.legacy.<timestamp>`) が**偶発的に一致**する場合、find が新規 file をマッチしてしまい、`-mmin +1` 経過後に silent 削除される。"
 promote: rite-plugin
 created: "2026-04-30T03:50:00+00:00"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260430T031013Z-pr-747.md"
+    resource: "raw/fixes/20260430T031013Z-pr-747.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # 新規 file 命名と既存 find glob が collision して silent 削除を起こす

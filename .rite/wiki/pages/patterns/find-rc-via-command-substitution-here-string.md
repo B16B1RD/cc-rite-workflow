@@ -4,16 +4,16 @@ domain: "patterns"
 description: "cleanup/GC スクリプトで `find` の結果をループ処理する際、`while read; do ...; done < <(find ... 2>/dev/null)` の **process substitution** を使うと、`find` 自身の wholesale 失敗 (`$TMPDIR` 不在 / 権限なし / IO エラー) の exit code がシェルに伝播せず、空ループ → 無言 no-op になる。"
 promote: rite-plugin
 created: "2026-06-09T04:36:49+00:00"
-updated: "2026-06-09T04:36:49+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260609T040553Z-pr-1315.md"
+    resource: "raw/reviews/20260609T040553Z-pr-1315.md"
   - type: "fixes"
-    ref: "raw/fixes/20260609T041117Z-pr-1315.md"
+    resource: "raw/fixes/20260609T041117Z-pr-1315.md"
   - type: "reviews"
-    ref: "raw/reviews/20260609T042259Z-pr-1315.md"
+    resource: "raw/reviews/20260609T042259Z-pr-1315.md"
 tags: ["bash", "process-substitution", "command-substitution", "here-string", "rc-propagation", "find", "cleanup-gc", "sibling-symmetry"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-09T04:36:49+00:00" }
 ---
 
 # rc 観測が必要な find は process substitution でなく command substitution + here-string で呼ぶ

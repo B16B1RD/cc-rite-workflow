@@ -5,14 +5,14 @@ domain: "heuristics"
 promote: rite-plugin
 description: "実装計画テンプレートに「ユーザーの判断で変わりやすい項目を先頭に提示する」ような提示順ルールを追加する際、対象テンプレートが `depends_on` 列を持つ依存グラフ形式か、`depends_on` 列を持たないプレーン番号リスト形式かで、そのルールが「実行順」にまで波及するかどうかが変わる。"
 created: "2026-07-06T02:34:59Z"
-updated: "2026-07-06T02:34:59Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260706T020946Z-pr-1752.md"
+    resource: "raw/reviews/20260706T020946Z-pr-1752.md"
   - type: "fixes"
-    ref: "raw/fixes/20260706T021735Z-pr-1752.md"
+    resource: "raw/fixes/20260706T021735Z-pr-1752.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-06T02:34:59Z" }
 ---
 
 # 提示順ルールを計画テンプレートに追加する際は depends_on 列の有無を確認する

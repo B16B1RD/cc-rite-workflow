@@ -5,22 +5,22 @@ domain: "patterns"
 promote: rite-plugin
 description: "SKILL.md 内の markdown 埋め込み bash は実行テストできないため、grep ベースの静的 parity テスト（述語文字列の出現数 + 行の並び）で drift を pin する運用がある。"
 created: "2026-07-27T10:57:51+09:00"
-updated: "2026-08-02T09:53:11+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260726T150008Z-pr-2030-cycle5.md"
+    resource: "raw/reviews/20260726T150008Z-pr-2030-cycle5.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T161811Z-pr-2030.md"
+    resource: "raw/fixes/20260726T161811Z-pr-2030.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T150940Z-pr-2030-cycle5.md"
+    resource: "raw/fixes/20260726T150940Z-pr-2030-cycle5.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T134912Z-pr-2030.md"
+    resource: "raw/fixes/20260726T134912Z-pr-2030.md"
   - type: "reviews"
-    ref: "raw/reviews/20260801T170512Z-pr-2070.md"
+    resource: "raw/reviews/20260801T170512Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T171512Z-pr-2070.md"
+    resource: "raw/fixes/20260801T171512Z-pr-2070.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T09:53:11+09:00" }
 ---
 
 # 静的 parity テストには到達性 pin と emit pin を対で足す — 出現数 + 行順だけでは semantics を守れない

@@ -3,14 +3,14 @@ title: "GFM 番号付きリスト分断: 連番途中に block 要素を挟む�
 domain: "anti-patterns"
 description: "GFM (GitHub Flavored Markdown) で `1. ... N.` の連番リストを書く際、items 間に table / paragraph / 注釈などの block 要素を挟むと、後続 item が新規リスト (`1. ` から再採番) として render される。"
 created: "2026-05-13T06:43:41Z"
-updated: "2026-05-13T06:43:41Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260513T060555Z-pr-946.md"
+    resource: "raw/reviews/20260513T060555Z-pr-946.md"
   - type: "fixes"
-    ref: "raw/fixes/20260513T060844Z-pr-946.md"
+    resource: "raw/fixes/20260513T060844Z-pr-946.md"
 tags: ["markdown", "gfm", "rendering", "numbered-list", "review-finding", "cross-validated"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-13T06:43:41Z" }
 ---
 
 # GFM 番号付きリスト分断: 連番途中に block 要素を挟むと新規リストとして render される

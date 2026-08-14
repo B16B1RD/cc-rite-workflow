@@ -4,22 +4,22 @@ domain: "anti-patterns"
 description: "`case \"$VAR\" in FINALIZE:*) ...;; *) ...;; esac` のように prefix で分岐する case 文で、`*)` catch-all に「意味のある既定動作」(例: 継続コマンド再注入) を置くと、将来 prefix 名前空間を拡張した際に**未知の新 prefix が silent に default 動作へ吸収される**。"
 promote: rite-plugin
 created: "2026-05-28T23:42:28Z"
-updated: "2026-07-29T21:32:36+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260604T061732Z-pr-1267.md"
+    resource: "raw/reviews/20260604T061732Z-pr-1267.md"
   - type: "reviews"
-    ref: "raw/reviews/20260528T232433Z-pr-1177.md"
+    resource: "raw/reviews/20260528T232433Z-pr-1177.md"
   - type: "fixes"
-    ref: "raw/fixes/20260528T232834Z-pr-1177.md"
+    resource: "raw/fixes/20260528T232834Z-pr-1177.md"
   - type: "reviews"
-    ref: "raw/reviews/20260728T234725Z-pr-2044.md"
+    resource: "raw/reviews/20260728T234725Z-pr-2044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260728T235426Z-pr-2044.md"
+    resource: "raw/fixes/20260728T235426Z-pr-2044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T004628Z-pr-2044.md"
+    resource: "raw/fixes/20260729T004628Z-pr-2044.md"
 tags: ["bash", "case-statement", "extensibility", "hook"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-29T21:32:36+09:00" }
 ---
 
 # prefix 分岐 case の `*)` catch-all は未知の将来 prefix を silent に default 動作へ吸収する

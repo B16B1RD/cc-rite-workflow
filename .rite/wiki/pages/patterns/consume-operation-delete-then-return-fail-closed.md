@@ -4,14 +4,14 @@ domain: "patterns"
 description: "state ファイルから値を read し、その値に基づいて消費者が判断を下す **consume 操作 (read + delete + return value)** は、必ず **delete (= 状態変更の確定) を先に行ってから値を return / emit する** 順序で実装する。"
 promote: rite-plugin
 created: "2026-05-28T15:05:43Z"
-updated: "2026-05-28T15:05:43Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260528T142118Z-pr-1169.md"
+    resource: "raw/fixes/20260528T142118Z-pr-1169.md"
   - type: "reviews"
-    ref: "raw/reviews/20260528T141817Z-pr-1169.md"
+    resource: "raw/reviews/20260528T141817Z-pr-1169.md"
 tags: ["fail-closed", "consume-operation", "ordering", "atomic-write", "stop-hook", "handoff", "infinite-loop", "asymmetric-fix-transcription"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-28T15:05:43Z" }
 ---
 
 # consume 操作 (read+delete+return) は delete-then-return 順で fail-closed にする

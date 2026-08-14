@@ -4,16 +4,16 @@ domain: "anti-patterns"
 description: "cycle 1 fix で「呼び出し側責務」「caller 側で対応」「同様の修正を別 site で」のような **委譲表現 (delegation phrase)** を使うと、caller 側 / 別 site 側の実装が同 PR 内で完成しないまま「方針宣言だけ」が landed する。"
 promote: rite-plugin
 created: "2026-05-03T18:46:59Z"
-updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260503T182831Z-pr-799-cycle3.md"
+    resource: "raw/fixes/20260503T182831Z-pr-799-cycle3.md"
   - type: "reviews"
-    ref: "raw/reviews/20260503T181256Z-pr-799.md"
+    resource: "raw/reviews/20260503T181256Z-pr-799.md"
   - type: "fixes"
-    ref: "raw/fixes/20260503T181755Z-pr-799.md"
+    resource: "raw/fixes/20260503T181755Z-pr-799.md"
 tags: ["partial-fix", "review-fix-loop", "delegation", "scope-deferral", "cycle-spanning"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 ---
 
 # 委譲表現を含む fix は次サイクルで PARTIAL fix として再指摘される

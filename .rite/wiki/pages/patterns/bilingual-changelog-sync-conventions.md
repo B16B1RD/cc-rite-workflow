@@ -4,16 +4,16 @@ title: "bilingual CHANGELOG は PR 単位で同期し、バージョン見出し
 domain: "patterns"
 description: "CHANGELOG.md / CHANGELOG.ja.md のロケールペアは PR 単位で同時更新するのが確立慣習で、片側のみの更新は cross-file impact（i18n parity）違反として HIGH になる。"
 created: "2026-07-17T12:04:54Z"
-updated: "2026-07-17T12:04:54Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260717T114250Z-pr-1891.md"
+    resource: "raw/reviews/20260717T114250Z-pr-1891.md"
   - type: "fixes"
-    ref: "raw/fixes/20260717T110651Z-pr-1891.md"
+    resource: "raw/fixes/20260717T110651Z-pr-1891.md"
   - type: "fixes"
-    ref: "raw/fixes/20260717T112606Z-pr-1891.md"
+    resource: "raw/fixes/20260717T112606Z-pr-1891.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-17T12:04:54Z" }
 ---
 
 # bilingual CHANGELOG は PR 単位で同期し、バージョン見出しは英語・新規エントリは number-free に保つ

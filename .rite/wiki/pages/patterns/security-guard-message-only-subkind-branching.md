@@ -4,12 +4,12 @@ domain: "patterns"
 description: "security hook の over-broad block 体験 (中身が無害でも一律 block される等) を改善する際、判定 (deny gate) を一切緩和せず、メッセージのみを subkind タグで分岐する。"
 promote: rite-plugin
 created: "2026-06-09T18:38:00Z"
-updated: "2026-06-09T18:38:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260609T182954Z-pr-1323.md"
+    resource: "raw/reviews/20260609T182954Z-pr-1323.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-09T18:38:00Z" }
 ---
 
 # security guard の deny メッセージ改善は判定ロジック不変の subkind タグ分岐で行う

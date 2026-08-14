@@ -4,12 +4,12 @@ title: "緩い検出述語の出力を停止条件へ昇格させてはならな
 domain: "anti-patterns"
 description: "検出器の述語には「厳しく作ると見逃す」「緩く作ると誤検出する」のトレードオフがあり、可視化目的の述語はしばしば**意図的に緩く**設計される。"
 created: "2026-08-01T00:21:06+09:00"
-updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260731T135712Z-pr-2074.md"
+    resource: "raw/fixes/20260731T135712Z-pr-2074.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 ---
 
 # 緩い検出述語の出力を停止条件へ昇格させてはならない

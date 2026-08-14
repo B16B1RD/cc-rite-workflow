@@ -4,16 +4,16 @@ title: "「規約」と「その規約を検査する検出器」を同一 PR �
 domain: "heuristics"
 description: "同じ PR が (a)「新規コードはこう書け」という規約と (b)「こう書いたら警告する」という検出器を同時に導入すると、検出器の正規表現は **PR より前から存在する書き方**に対して書かれる。"
 created: "2026-08-06T22:40:00+09:00"
-updated: "2026-08-06T22:40:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260806T053845Z-pr-2124.md"
+    resource: "raw/reviews/20260806T053845Z-pr-2124.md"
   - type: "fixes"
-    ref: "raw/fixes/20260806T055534Z-pr-2124.md"
+    resource: "raw/fixes/20260806T055534Z-pr-2124.md"
   - type: "reviews"
-    ref: "raw/reviews/20260806T124223Z-pr-2124.md"
+    resource: "raw/reviews/20260806T124223Z-pr-2124.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T22:40:00+09:00" }
 ---
 
 # 「規約」と「その規約を検査する検出器」を同一 PR で入れると、規約に従った書き方が検出器の盲点に入る

@@ -4,24 +4,24 @@ title: "診断メッセージの主語と射程は、その文が発火する条
 domain: "heuristics"
 description: "縮退時の診断が誤情報になると、既に degraded な状況でのトリアージを誤らせる。"
 created: "2026-08-03T07:46:56Z"
-updated: "2026-08-10T05:20:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260802T183824Z-pr-2094.md"
+    resource: "raw/fixes/20260802T183824Z-pr-2094.md"
   - type: "fixes"
-    ref: "raw/fixes/20260802T181206Z-pr-2094.md"
+    resource: "raw/fixes/20260802T181206Z-pr-2094.md"
   - type: "reviews"
-    ref: "raw/reviews/20260802T173849Z-pr-2094.md"
+    resource: "raw/reviews/20260802T173849Z-pr-2094.md"
   - type: "reviews"
-    ref: "raw/reviews/20260802T180459Z-pr-2094.md"
+    resource: "raw/reviews/20260802T180459Z-pr-2094.md"
   - type: "reviews"
-    ref: "raw/reviews/20260802T183251Z-pr-2094.md"
+    resource: "raw/reviews/20260802T183251Z-pr-2094.md"
   - type: "reviews"
-    ref: "raw/reviews/20260802T170618Z-pr-2094.md"
+    resource: "raw/reviews/20260802T170618Z-pr-2094.md"
   - type: "fixes"
-    ref: "raw/fixes/20260810T043320Z-pr-2227.md"
+    resource: "raw/fixes/20260810T043320Z-pr-2227.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T05:20:00+09:00" }
 ---
 
 # 診断メッセージの主語と射程は、その文が発火する条件が保証している対象に限る

@@ -6,16 +6,16 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/run-repo-own-checkers-before-commit.md"
 description: "リポジトリが規約 checker（ハードコード行番号検出、コメント品質検出、スキーマ drift 検出など）を持っているなら、**commit 前に変更ファイル全件へ回す**。"
 created: "2026-07-28T21:30:00+09:00"
-updated: "2026-08-06T22:40:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260728T100957Z-pr-2038.md"
+    resource: "raw/fixes/20260728T100957Z-pr-2038.md"
   - type: "fixes"
-    ref: "raw/fixes/20260728T122258Z-pr-2038.md"
+    resource: "raw/fixes/20260728T122258Z-pr-2038.md"
   - type: "reviews"
-    ref: "raw/reviews/20260806T110520Z-pr-2124.md"
+    resource: "raw/reviews/20260806T110520Z-pr-2124.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T22:40:00+09:00" }
 ---
 
 # commit 前にリポジトリ自身の checker を全変更ファイルへ回す — 機械検出できる違反を reviewer に探させない

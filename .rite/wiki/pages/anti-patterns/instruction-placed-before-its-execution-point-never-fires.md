@@ -6,16 +6,16 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/instruction-placed-before-its-execution-point-never-fires.md"
 description: "散文手順を線形に実行する LLM は、**対象がまだ存在しない地点に置かれた指示**を、対象が生成される地点で思い出さない。"
 created: "2026-07-30T15:40:55Z"
-updated: "2026-07-30T15:40:55Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260730T045358Z-pr-2056.md"
+    resource: "raw/reviews/20260730T045358Z-pr-2056.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T052429Z-pr-2056.md"
+    resource: "raw/reviews/20260730T052429Z-pr-2056.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T053611Z-pr-2056.md"
+    resource: "raw/fixes/20260730T053611Z-pr-2056.md"
 tags: ["prose-procedure", "llm-instruction", "dead-instruction", "placement"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 ---
 
 # 「後続ステップで生成するものに検査を適用せよ」を生成地点より前に置くと一度も実行されない

@@ -4,24 +4,24 @@ title: "mutation は述語軸だけでなく配置・routing・副作用・到�
 domain: "heuristics"
 description: "「静的 pin を追加したらその場で mutation を当てて落ちることを確認する」は既に確立した規約だが、**当てる mutation の軸**が規約に含まれていないと、述語（条件式そのもの）にだけ変異を入れて満足してしまう。"
 created: "2026-07-27T10:57:51+09:00"
-updated: "2026-08-01T23:12:28+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260727T001018Z-pr-2035.md"
+    resource: "raw/reviews/20260727T001018Z-pr-2035.md"
   - type: "reviews"
-    ref: "raw/reviews/20260727T014642Z-pr-2035.md"
+    resource: "raw/reviews/20260727T014642Z-pr-2035.md"
   - type: "fixes"
-    ref: "raw/fixes/20260727T004206Z-pr-2035.md"
+    resource: "raw/fixes/20260727T004206Z-pr-2035.md"
   - type: "fixes"
-    ref: "raw/fixes/20260727T010154Z-pr-2035.md"
+    resource: "raw/fixes/20260727T010154Z-pr-2035.md"
   - type: "reviews"
-    ref: "raw/reviews/20260726T150008Z-pr-2030-cycle5.md"
+    resource: "raw/reviews/20260726T150008Z-pr-2030-cycle5.md"
   - type: "reviews"
-    ref: "raw/reviews/20260801T131235Z-pr-2081.md"
+    resource: "raw/reviews/20260801T131235Z-pr-2081.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T124925Z-pr-2081.md"
+    resource: "raw/fixes/20260801T124925Z-pr-2081.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T23:12:28+09:00" }
 ---
 
 # mutation は述語軸だけでなく配置・routing・副作用・到達の各軸に当てる

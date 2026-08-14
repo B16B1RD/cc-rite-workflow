@@ -4,14 +4,14 @@ title: "汎用契約の表に経路固有の詳細を書かず下位節へ委譲
 domain: "heuristics"
 description: "複数の呼び出し元が参照する汎用契約（例: Non-blocking Contract の「契約の構成要素」表）へ、特定経路の reason 集合・exit code・ステップ番号を書き込むと、**同じファイルの数行下にある「適用箇所」節が明示的に否定する主張**を同時に複数導入する。"
 created: "2026-08-04T19:55:00+09:00"
-updated: "2026-08-04T20:40:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260804T104340Z-pr-2104.md"
+    resource: "raw/reviews/20260804T104340Z-pr-2104.md"
   - type: "reviews"
-    ref: "raw/reviews/20260804T113022Z-pr-2106.md"
+    resource: "raw/reviews/20260804T113022Z-pr-2106.md"
 tags: ["abstraction-level", "delegation", "canonical-contract", "sibling-parity", "defined-term", "spec-implementation-drift", "relative-reference", "causal-attribution"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-04T20:40:00+09:00" }
 ---
 
 # 汎用契約の表に経路固有の詳細を書かず下位節へ委譲する。ただし委譲は委譲先の網羅性を load-bearing にする

@@ -4,16 +4,16 @@ title: "`cmd=$(...) || cmd=\"\"` は非ゼロ終了時に stdout 済みの診断
 domain: "anti-patterns"
 description: "`status_json=$(bash script.sh args) || status_json=\"\"` という一見安全な defensive fallback は、`script.sh` が非ゼロ終了したときに **既に stdout へ出力済みの診断 JSON（失敗理由を含む）を空文字列で上書き・破棄する**。"
 created: "2026-07-13T14:30:00+09:00"
-updated: "2026-07-13T21:55:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260713T043138Z-pr-1847.md"
+    resource: "raw/reviews/20260713T043138Z-pr-1847.md"
   - type: "fixes"
-    ref: "raw/fixes/20260713T043947Z-pr-1847.md"
+    resource: "raw/fixes/20260713T043947Z-pr-1847.md"
   - type: "reviews"
-    ref: "raw/reviews/20260713T123348Z-pr-1851.md"
+    resource: "raw/reviews/20260713T123348Z-pr-1851.md"
 tags: ["bash", "command-substitution", "error-handling", "diagnostics", "sentinel"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-13T21:55:00+09:00" }
 ---
 
 # `cmd=$(...) || cmd=""` は非ゼロ終了時に stdout 済みの診断 JSON を空文字列で上書きする

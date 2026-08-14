@@ -4,18 +4,18 @@ title: "限界を説明する例は検出器に食わせ、「〜としてのみ
 domain: "heuristics"
 description: "コメントやドキュメントで機構の限界・用途を説明するとき、**主張は頭の中で検証できるが、それを支える具体例と数え方は実行しないと逆を書く**。"
 created: "2026-08-01T17:45:00+09:00"
-updated: "2026-08-03T23:41:26+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260801T080814Z-pr-2080.md"
+    resource: "raw/reviews/20260801T080814Z-pr-2080.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T081201Z-pr-2080.md"
+    resource: "raw/fixes/20260801T081201Z-pr-2080.md"
   - type: "reviews"
-    ref: "raw/reviews/20260803T104952Z-pr-2095.md"
+    resource: "raw/reviews/20260803T104952Z-pr-2095.md"
   - type: "fixes"
-    ref: "raw/fixes/20260803T121106Z-pr-2095.md"
+    resource: "raw/fixes/20260803T121106Z-pr-2095.md"
 tags: [comment-accuracy, documentation, empirical-verification, grep-verification, example-validation]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T23:41:26+09:00" }
 ---
 
 # 限界を説明する例は検出器に食わせ、「〜としてのみ使う」型の断定は grep で数えてから書く

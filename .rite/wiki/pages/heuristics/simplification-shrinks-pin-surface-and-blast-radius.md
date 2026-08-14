@@ -4,18 +4,18 @@ title: "機構を削除して解くと、pin 面積だけでなく失敗モー�
 domain: "heuristics"
 description: "「規律を作って pin で守る」より「規律が要らない構造にする」ほうが安い、という判断は pin の本数だけでは測れない。"
 created: "2026-08-08T14:00:41+09:00"
-updated: "2026-08-10T11:55:05Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260808T035533Z-pr-2142.md"
+    resource: "raw/reviews/20260808T035533Z-pr-2142.md"
   - type: "fixes"
-    ref: "raw/fixes/20260808T032734Z-pr-2142.md"
+    resource: "raw/fixes/20260808T032734Z-pr-2142.md"
   - type: "fixes"
-    ref: "raw/fixes/20260810T074515Z-pr-2229.md"
+    resource: "raw/fixes/20260810T074515Z-pr-2229.md"
   - type: "reviews"
-    ref: "raw/reviews/20260810T095742Z-pr-2229.md"
+    resource: "raw/reviews/20260810T095742Z-pr-2229.md"
 tags: ["simplification", "mutation-testing", "blast-radius", "review-fix-loop", "convergence", "duplication-removal"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T11:55:05Z" }
 ---
 
 # 機構を削除して解くと、pin 面積だけでなく失敗モードの重さ（blast radius）も縮む

@@ -5,18 +5,18 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "設計判断をコメントに残すとき「A を却下して B を採用した」と書く。"
 created: "2026-07-25T07:05:21Z"
-updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260725T024207Z-pr-2013.md"
+    resource: "raw/reviews/20260725T024207Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260725T025323Z-pr-2013.md"
+    resource: "raw/fixes/20260725T025323Z-pr-2013.md"
   - type: "reviews"
-    ref: "raw/reviews/20260731T072309Z-pr-2070.md"
+    resource: "raw/reviews/20260731T072309Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260731T073514Z-pr-2070.md"
+    resource: "raw/fixes/20260731T073514Z-pr-2070.md"
 tags: ["rationale", "comment-drift", "design-decision", "empirical-verification"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 ---
 
 # 却下理由が採用案にも等しく当てはまる — differentiator でない根拠をコメントに残す

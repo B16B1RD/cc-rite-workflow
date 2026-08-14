@@ -4,12 +4,12 @@ title: "lint のスキャン除外スコープは既知アンチパターンの�
 domain: "anti-patterns"
 description: "起点のスイープ PR で `/tmp` 直下ハードコード（sandbox 環境で書込拒否される anti-pattern）を本番コード 21 ファイルで機械的に `${TMPDIR:-/tmp}/xxx` へ統一し、再発防止のため `tmp-hardcode-check.sh` という lint チェックが導入された。"
 created: "2026-07-20T09:24:00Z"
-updated: "2026-07-20T09:24:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260720T091826Z-pr-1927.md"
+    resource: "raw/reviews/20260720T091826Z-pr-1927.md"
 tags: ["lint-coverage", "tmp-hardcode", "sandbox", "test-file", "scan-scope"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T09:24:00Z" }
 ---
 
 # lint のスキャン除外スコープは既知アンチパターンの再発を検出しない盲点になる

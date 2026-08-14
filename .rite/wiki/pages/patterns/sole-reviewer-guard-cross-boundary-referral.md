@@ -4,12 +4,12 @@ domain: "patterns"
 description: "sole reviewer guard で追加された co-reviewer が、他 reviewer 管轄の checklist 項目 (例: CFIC #6 Documentation i18n parity は tech-writer 管轄) に該当する defect を検出した場合、自分で severity を確定せず **boundary 推奨として申し送り**、orchestrator が管轄 reviewer に follow-up 評価を依頼して確定ゲート (Confidence / Demonstrable / revert test) で severity を確定する。"
 promote: rite-plugin
 created: "2026-06-06T15:31:02Z"
-updated: "2026-06-06T15:31:02Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260606T134627Z-pr-1294.md"
+    resource: "raw/reviews/20260606T134627Z-pr-1294.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-06T15:31:02Z" }
 ---
 
 # 責務境界外 finding は boundary 申し送り → 管轄 reviewer の follow-up 評価で確定する

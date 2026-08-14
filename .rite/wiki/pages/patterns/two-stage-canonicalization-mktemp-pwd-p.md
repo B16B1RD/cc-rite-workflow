@@ -5,18 +5,18 @@ domain: "patterns"
 promote: rite-plugin
 description: "macOS の `$TMPDIR` は `/var/folders/...`（`/private` への symlink）なので、テストが temp ディレクトリの path を比較すると symlink 解決の差で落ちる。"
 created: "2026-07-25T07:05:21Z"
-updated: "2026-07-25T07:05:21Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260724T175144Z-pr-2013.md"
+    resource: "raw/reviews/20260724T175144Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260724T180733Z-pr-2013.md"
+    resource: "raw/fixes/20260724T180733Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260724T193804Z-pr-2013.md"
+    resource: "raw/fixes/20260724T193804Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260725T004542Z-pr-2013.md"
+    resource: "raw/fixes/20260725T004542Z-pr-2013.md"
 tags: ["portability", "macos", "mktemp", "canonicalization", "fail-open", "destructive"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-25T07:05:21Z" }
 ---
 
 # mktemp -d の canonical 化は 2 段階に分ける — `cd "$(mktemp -d)"` は失敗時にリポジトリ本体を掴む

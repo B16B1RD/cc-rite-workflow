@@ -4,14 +4,14 @@ title: "同じ処理を 2 経路で実装したら fixture の「意地悪さ」
 domain: "heuristics"
 description: "同じ処理を 2 つの入力形式・2 つの経路で実装したとき、新しく足した側の fixture が「素朴な形」しか持たないと、経路の**存在**は測れても経路の**正しさ**は測れない。"
 created: "2026-08-02T09:53:11+09:00"
-updated: "2026-08-02T09:53:11+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260801T184452Z-pr-2070.md"
+    resource: "raw/reviews/20260801T184452Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T185220Z-pr-2070.md"
+    resource: "raw/fixes/20260801T185220Z-pr-2070.md"
 tags: ["fixture-design", "dual-path", "mutation-testing", "test-strength"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T09:53:11+09:00" }
 ---
 
 # 同じ処理を 2 経路で実装したら fixture の「意地悪さ」も 2 経路で揃える

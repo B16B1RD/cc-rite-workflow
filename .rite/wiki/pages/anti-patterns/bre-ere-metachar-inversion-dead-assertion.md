@@ -4,16 +4,16 @@ title: "grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパ�
 domain: "anti-patterns"
 description: "`grep` と `grep -E` はメタ文字の意味が反転する。"
 created: "2026-08-02T09:53:11+09:00"
-updated: "2026-08-02T09:53:11+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260801T184452Z-pr-2070.md"
+    resource: "raw/reviews/20260801T184452Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T185220Z-pr-2070.md"
+    resource: "raw/fixes/20260801T185220Z-pr-2070.md"
   - type: "reviews"
-    ref: "raw/reviews/20260802T000641Z-pr-2070.md"
+    resource: "raw/reviews/20260802T000641Z-pr-2070.md"
 tags: ["dead-assertion", "bre-vs-ere", "mutation-testing", "assert-helper"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T09:53:11+09:00" }
 ---
 
 # grep (BRE) と grep -E (ERE) のメタ文字反転で assert ヘルパーが常時緑の dead assertion になる

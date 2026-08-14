@@ -5,12 +5,12 @@ domain: "heuristics"
 promote: rite-plugin
 description: "ドキュメントに「ここに X を書くな」型の規則を追加するとき、その場所へ**書き込む既存経路**が X の形をしたものを書いていれば規則は初日から破られる。"
 created: "2026-08-02T11:59:42+09:00"
-updated: "2026-08-02T11:59:42+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260802T020939Z-pr-2084.md"
+    resource: "raw/reviews/20260802T020939Z-pr-2084.md"
 tags: [documentation, rule-design, cross-file-impact]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T11:59:42+09:00" }
 ---
 
 # 新規禁止規則を書く前に、その場所へ書き込む既存経路が書くフィールドの実体を読む

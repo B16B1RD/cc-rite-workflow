@@ -3,16 +3,16 @@ title: "ratchet test では occurrence 単位 (`grep -oE | wc -l`) を原則と�
 domain: "patterns"
 description: "charter 違反パターンの上限・下限を機械検証する ratchet test では、measurement unit は **occurrence (`grep -oE pattern | wc -l`)** に統一すること。"
 created: "2026-05-08T17:15:33+00:00"
-updated: "2026-08-07T18:40:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260508T171533Z-pr-906.md"
+    resource: "raw/reviews/20260508T171533Z-pr-906.md"
   - type: "fixes"
-    ref: "raw/fixes/20260508T172017Z-pr-906.md"
+    resource: "raw/fixes/20260508T172017Z-pr-906.md"
   - type: "fixes"
-    ref: "raw/fixes/20260807T082131Z-pr-2135.md"
+    resource: "raw/fixes/20260807T082131Z-pr-2135.md"
 tags: ["bash", "test-design", "ratchet-test", "grep", "measurement-unit"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T18:40:00+09:00" }
 ---
 
 # ratchet test では occurrence 単位 (`grep -oE | wc -l`) を原則とし line 単位は混在させない

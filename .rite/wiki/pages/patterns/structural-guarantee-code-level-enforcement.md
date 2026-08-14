@@ -4,14 +4,14 @@ domain: "patterns"
 description: "「per-session file 構造でファイル名 = session_id にしたから ownership は構造的に保証される」のような structural invariant は、現 caller が必ず resolver 経由で path を組み立てる前提でのみ成り立つ。"
 promote: rite-plugin
 created: "2026-04-30T08:03:08Z"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260430T074655Z-pr-750-cycle-1.md"
+    resource: "raw/fixes/20260430T074655Z-pr-750-cycle-1.md"
   - type: "reviews"
-    ref: "raw/reviews/20260430T075231Z-pr-750-cycle-2.md"
+    resource: "raw/reviews/20260430T075231Z-pr-750-cycle-2.md"
 tags: [defense-in-depth, api-contract, structural-invariant, fast-path]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # structural ownership guarantee は code-level defense-in-depth で enforce する

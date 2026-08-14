@@ -5,22 +5,22 @@ domain: "heuristics"
 promote: rite-plugin
 description: "review-fix loop で「前 cycle の fix が導入・変更した箇所」への指摘を受けたとき、既定の反応は同じ機構へのパッチ追加になりやすい。"
 created: "2026-08-04T15:54:17+09:00"
-updated: "2026-08-11T01:20:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260804T060209Z-pr-2099.md"
+    resource: "raw/reviews/20260804T060209Z-pr-2099.md"
   - type: "fixes"
-    ref: "raw/fixes/20260804T060834Z-pr-2099.md"
+    resource: "raw/fixes/20260804T060834Z-pr-2099.md"
   - type: "fixes"
-    ref: "raw/fixes/20260808T014357Z-pr-2142.md"
+    resource: "raw/fixes/20260808T014357Z-pr-2142.md"
   - type: "fixes"
-    ref: "raw/fixes/20260808T010121Z-pr-2142.md"
+    resource: "raw/fixes/20260808T010121Z-pr-2142.md"
   - type: "reviews"
-    ref: "raw/reviews/20260810T141417Z-pr-2231.md"
+    resource: "raw/reviews/20260810T141417Z-pr-2231.md"
   - type: "fixes"
-    ref: "raw/fixes/20260810T142033Z-pr-2231.md"
+    resource: "raw/fixes/20260810T142033Z-pr-2231.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-11T01:20:00+09:00" }
 ---
 
 # 同じ機構への N 回目のパッチは、その機構が依拠する述語が proxy である信号

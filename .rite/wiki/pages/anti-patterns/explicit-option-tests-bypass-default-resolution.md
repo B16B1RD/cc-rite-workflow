@@ -4,16 +4,16 @@ title: "オプションを常に明示するテストは、既定値解決とい
 domain: "anti-patterns"
 description: "helper のテストがすべての TC でオプションを明示すると、production が実際に通る「オプション省略時の既定値解決」経路にテストが 1 本も当たらない。"
 created: "2026-08-07T07:56:00+09:00"
-updated: "2026-08-07T18:40:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260806T153014Z-pr-2126.md"
+    resource: "raw/fixes/20260806T153014Z-pr-2126.md"
   - type: "fixes"
-    ref: "raw/fixes/20260806T181047Z-pr-2126-c5.md"
+    resource: "raw/fixes/20260806T181047Z-pr-2126-c5.md"
   - type: "reviews"
-    ref: "raw/reviews/20260807T011214Z-pr-2130.md"
+    resource: "raw/reviews/20260807T011214Z-pr-2130.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T18:40:00+09:00" }
 ---
 
 # オプションを常に明示するテストは、既定値解決という最も壊れやすい経路を丸ごと素通りさせる

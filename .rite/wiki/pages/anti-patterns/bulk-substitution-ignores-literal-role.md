@@ -5,16 +5,16 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "`/tmp/rite-*` → `${TMPDIR:-/tmp}/rite-*` のような一括 sed スイープは、同じ文字列でも**役割が違う出現**を巻き込むと意味論を壊す。"
 created: "2026-07-19T15:00:00+09:00"
-updated: "2026-07-19T15:00:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260719T051605Z-pr-1910.md"
+    resource: "raw/reviews/20260719T051605Z-pr-1910.md"
   - type: "fixes"
-    ref: "raw/fixes/20260719T051827Z-pr-1910.md"
+    resource: "raw/fixes/20260719T051827Z-pr-1910.md"
   - type: "reviews"
-    ref: "raw/reviews/20260719T053756Z-pr-1910-c2.md"
+    resource: "raw/reviews/20260719T053756Z-pr-1910-c2.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-19T15:00:00+09:00" }
 ---
 
 # 機械的一括置換は同一リテラルの役割差を無視すると load-bearing fixture を壊す

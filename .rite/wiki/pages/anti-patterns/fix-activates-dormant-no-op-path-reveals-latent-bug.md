@@ -6,14 +6,14 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/fix-activates-dormant-no-op-path-reveals-latent-bug.md"
 description: "ある bug fix が「これまで存在しなかった値を指すファイルパス」等の解決を変えると、それを書き込み先として使っていた別の既存コードが、以前は「実在しない/無害な経路」への no-op 書き込みだったものが「実在ファイルへの書き込み」に変わる。"
 created: "2026-07-09T09:29:35Z"
-updated: "2026-07-09T09:29:35Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260709T090623Z-pr-1809-cycle2.md"
+    resource: "raw/reviews/20260709T090623Z-pr-1809-cycle2.md"
   - type: "fixes"
-    ref: "raw/fixes/20260709T090806Z-pr-1809-cycle2.md"
+    resource: "raw/fixes/20260709T090806Z-pr-1809-cycle2.md"
 tags: ["latent-bug", "side-effect", "code-path-activation", "review-fix-loop"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-09T09:29:35Z" }
 ---
 
 # 修正が既存の no-op 経路を有効化すると、その経路に潜んでいたバグが初めて顕在化する

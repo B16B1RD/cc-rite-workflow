@@ -3,12 +3,12 @@ title: "Markdown inline code を Japanese corner brackets 「!」 に置換す�
 domain: "anti-patterns"
 description: "Markdown 文書内で本来 backtick inline code (`` `!` ``) で囲うべき記号や演算子を、Japanese corner brackets (`「!」` / `「//!」`) に置換する pattern は、(a) Markdown renderer で inline code の monospace / 灰背景表示が消失して可読性が劣化、(b) LLM が prompt として読む際に「コード片」としての semantic boundary が失われて解釈が劣化、という 2 段の failure mode を引き起こす。"
 created: "2026-04-30T01:58:00+00:00"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260430T013507Z-pr-688.md"
+    resource: "raw/reviews/20260430T013507Z-pr-688.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # Markdown inline code を Japanese corner brackets 「!」 に置換すると LLM 提示時 semantic interpretation が劣化する

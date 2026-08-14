@@ -4,14 +4,14 @@ title: "証拠フィールドを新設したら、質の担保は消費側では
 domain: "heuristics"
 description: "ゲートが読む証拠フィールドを新設するとき、消費側が値の長さや非空しか見られない構造なら、値が証拠として成立しているかを検査できるのは書き込む側だけになる。"
 created: "2026-08-10T11:55:05Z"
-updated: "2026-08-10T11:55:05Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260810T065257Z-pr-2229.md"
+    resource: "raw/reviews/20260810T065257Z-pr-2229.md"
   - type: "fixes"
-    ref: "raw/fixes/20260810T070440Z-pr-2229.md"
+    resource: "raw/fixes/20260810T070440Z-pr-2229.md"
 tags: ["schema", "validation", "gate", "evidence", "writer-reader"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T11:55:05Z" }
 ---
 
 # 証拠フィールドを新設したら、質の担保は消費側ではなく writer 側に置く

@@ -4,12 +4,12 @@ domain: "heuristics"
 description: "Test 内の特定セクション (例: assertion ブロック / meta-test ブロック) を `STRICT_CHARTER=1` のような env gate でガードしていると、PR description が「CI で常時実行される」と主張していても、CI workflow の起動コマンドが env を未設定で test を呼ぶ場合、gate された assertion は **silent に skip** される。"
 promote: rite-plugin
 created: "2026-05-09T09:10:00Z"
-updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260509T071343Z-pr-915.md"
+    resource: "raw/reviews/20260509T071343Z-pr-915.md"
 tags: [test, env-gate, ci-alignment, pr-description-claim, meta-test]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 ---
 
 # Test の env gate 配置と CI workflow 起動コマンドの claim alignment を empirical 検証する

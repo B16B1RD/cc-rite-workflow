@@ -4,14 +4,14 @@ domain: "patterns"
 description: "LLM が prompt / skill / command 定義を実装する際、numbered list は各 step の「動作詳細 bullet の有無・粒度」を**対称配置**する必要がある。"
 promote: rite-plugin
 created: "2026-04-18T17:40:00+09:00"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260418T071459Z-pr-564.md"
+    resource: "raw/fixes/20260418T071459Z-pr-564.md"
   - type: "reviews"
-    ref: "raw/reviews/20260418T072254Z-pr-564-rerun.md"
+    resource: "raw/reviews/20260418T072254Z-pr-564-rerun.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # prompt 内 numbered list は同型構造で書く（全 step に動作詳細 bullet を対称配置）

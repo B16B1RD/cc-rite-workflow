@@ -4,14 +4,14 @@ title: "pin を足す「前」に mutation を当てると、pin の要否と有
 domain: "patterns"
 description: "修正を入れたあと回帰 pin を書くとき、**mutation を当てる順序**で得られる情報が変わる。"
 created: "2026-07-28T21:30:00+09:00"
-updated: "2026-07-28T21:30:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260728T100957Z-pr-2038.md"
+    resource: "raw/fixes/20260728T100957Z-pr-2038.md"
   - type: "fixes"
-    ref: "raw/fixes/20260728T122258Z-pr-2038.md"
+    resource: "raw/fixes/20260728T122258Z-pr-2038.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-28T21:30:00+09:00" }
 ---
 
 # pin を足す「前」に mutation を当てると、pin の要否と有効性を分離して判定できる

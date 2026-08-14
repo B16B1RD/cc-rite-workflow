@@ -4,16 +4,16 @@ domain: "heuristics"
 description: "i18n 同期 PR (EN → JA 全面追従など) では、忠実翻訳が原本 (EN) に既存する事実誤りをそのまま翻訳側へ転写する。"
 promote: rite-plugin
 created: "2026-06-03T23:10:10Z"
-updated: "2026-06-04T01:45:55Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260603T174323Z-pr-1263.md"
+    resource: "raw/reviews/20260603T174323Z-pr-1263.md"
   - type: "fixes"
-    ref: "raw/fixes/20260603T175332Z-pr-1263.md"
+    resource: "raw/fixes/20260603T175332Z-pr-1263.md"
   - type: "reviews"
-    ref: "raw/reviews/20260604T000828Z-pr-1265.md"
+    resource: "raw/reviews/20260604T000828Z-pr-1265.md"
 tags: ["i18n-parity", "faithful-translation", "accept-path", "fingerprint-suppression", "follow-up-issue", "fact-check"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-04T01:45:55Z" }
 ---
 
 # i18n 同期 PR の忠実翻訳は原本の誤りを転写する — 検出時は accept + 両側同時修正 follow-up で決着する

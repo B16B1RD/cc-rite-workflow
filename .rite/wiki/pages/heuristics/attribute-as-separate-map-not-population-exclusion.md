@@ -4,20 +4,20 @@ title: "属性は母集団からの除外ではなく別 map で持つ — 除�
 domain: "heuristics"
 description: "既存の分類 map（severity_map など）に新しい軸（実測済みか否か）を導入するとき、「条件を満たさない要素を母集団から除外する」設計にすると、その map を参照する下流の全分岐が経路依存で壊れる。"
 created: "2026-07-27T10:57:51+09:00"
-updated: "2026-07-27T10:57:51+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260726T140529Z-pr-2030.md"
+    resource: "raw/reviews/20260726T140529Z-pr-2030.md"
   - type: "reviews"
-    ref: "raw/reviews/20260726T142820Z-pr-2030.md"
+    resource: "raw/reviews/20260726T142820Z-pr-2030.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T141238Z-pr-2030.md"
+    resource: "raw/fixes/20260726T141238Z-pr-2030.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T144002Z-pr-2030-cycle4.md"
+    resource: "raw/fixes/20260726T144002Z-pr-2030-cycle4.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T150940Z-pr-2030-cycle5.md"
+    resource: "raw/fixes/20260726T150940Z-pr-2030-cycle5.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-27T10:57:51+09:00" }
 ---
 
 # 属性は母集団からの除外ではなく別 map で持つ — 除外は下流の全分岐を経路依存で壊す

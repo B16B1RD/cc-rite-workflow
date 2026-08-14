@@ -5,12 +5,12 @@ domain: "heuristics"
 promote: rite-plugin
 description: "新規の shell helper を書くとき、同ディレクトリの既存 sibling helper が確立した安全規約（signal-specific trap での tempfile 回収 / branch-strategy 依存の tree 解決 / 制御文字無害化 / 委譲先の stderr 素通し / summary の不変条件）へ整合させる。"
 created: "2026-07-03T00:42:39+00:00"
-updated: "2026-07-03T00:42:39+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260703T003518Z-pr-1731.md"
+    resource: "raw/reviews/20260703T003518Z-pr-1731.md"
 tags: ["sibling-convention", "bash", "git-worktree", "control-char", "utf-8", "signal-trap", "code-review-convergence"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-03T00:42:39+00:00" }
 ---
 
 # 新規 helper は既存 sibling の安全規約に整合させる（trap・tree 解決・制御文字無害化）

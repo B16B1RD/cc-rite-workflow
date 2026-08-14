@@ -4,18 +4,18 @@ title: "番号・識別子の grep に語境界を付けないと短い番号が
 domain: "anti-patterns"
 description: "commit を番号で解決する手順に `git log --grep \"refs #N\"` のような**語境界を持たない部分一致**を書くと、短い番号が長い番号の prefix として一致する（`関連する設計記録` が `関連する設計記録` に一致する）。"
 created: "2026-07-30T15:40:55Z"
-updated: "2026-07-30T15:40:55Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260730T085655Z-pr-2056.md"
+    resource: "raw/reviews/20260730T085655Z-pr-2056.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T090005Z-pr-2056.md"
+    resource: "raw/fixes/20260730T090005Z-pr-2056.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T101445Z-pr-2056.md"
+    resource: "raw/reviews/20260730T101445Z-pr-2056.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T101445Z-pr-2056.md"
+    resource: "raw/fixes/20260730T101445Z-pr-2056.md"
 tags: ["grep", "regex", "word-boundary", "identifier", "verification"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 ---
 
 # 番号・識別子の grep に語境界を付けないと短い番号が長い番号の prefix として衝突する

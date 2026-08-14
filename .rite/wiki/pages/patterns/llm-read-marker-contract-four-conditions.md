@@ -6,28 +6,28 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/llm-read-marker-contract-four-conditions.md"
 description: "SKILL.md の bash ブロックが `[CONTEXT] X=1` 形式の marker を stdout/stderr に出し、同ファイルの散文（完了報告の判定ルール）を LLM が読んで分岐する設計は rite の基本構造である。"
 created: "2026-07-26T10:05:51Z"
-updated: "2026-07-26T10:05:51Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260726T055002Z-pr-2022.md"
+    resource: "raw/fixes/20260726T055002Z-pr-2022.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T033136Z-pr-2022.md"
+    resource: "raw/fixes/20260726T033136Z-pr-2022.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T042425Z-pr-2022.md"
+    resource: "raw/fixes/20260726T042425Z-pr-2022.md"
   - type: "reviews"
-    ref: "raw/reviews/20260726T031335Z-pr-2022.md"
+    resource: "raw/reviews/20260726T031335Z-pr-2022.md"
   - type: "reviews"
-    ref: "raw/reviews/20260726T024606Z-pr-2022.md"
+    resource: "raw/reviews/20260726T024606Z-pr-2022.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T001219Z-pr-2022.md"
+    resource: "raw/fixes/20260726T001219Z-pr-2022.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T004149Z-pr-2022.md"
+    resource: "raw/fixes/20260726T004149Z-pr-2022.md"
   - type: "reviews"
-    ref: "raw/reviews/20260726T000331Z-pr-2022.md"
+    resource: "raw/reviews/20260726T000331Z-pr-2022.md"
   - type: "reviews"
-    ref: "raw/reviews/20260726T094803Z-pr-2022.md"
+    resource: "raw/reviews/20260726T094803Z-pr-2022.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-26T10:05:51Z" }
 ---
 
 # LLM が読む出力ストリームで marker を契約にするには prefix・行頭・デリミタ・識別子スコープの 4 条件すべてが要る

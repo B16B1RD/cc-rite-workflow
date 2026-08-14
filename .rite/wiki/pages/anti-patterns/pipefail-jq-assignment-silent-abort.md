@@ -4,14 +4,14 @@ title: "`set -euo pipefail` 下の `var=$(cmd | jq ... 2>/dev/null)` は不正�
 domain: "anti-patterns"
 description: "被テスト対象の stdout を jq でパースして変数に代入する形は、`set -euo pipefail` 下では **jq の非ゼロ終了がそのまま代入コマンドの終了ステータス**になる。"
 created: "2026-07-26T01:35:00+09:00"
-updated: "2026-07-26T01:35:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260725T151649Z-pr-2020.md"
+    resource: "raw/reviews/20260725T151649Z-pr-2020.md"
   - type: "fixes"
-    ref: "raw/fixes/20260725T152249Z-pr-2020.md"
+    resource: "raw/fixes/20260725T152249Z-pr-2020.md"
 tags: ["test", "pipefail", "jq", "silent-failure", "dead-branch", "diagnosis"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-26T01:35:00+09:00" }
 ---
 
 # `set -euo pipefail` 下の `var=$(cmd | jq ... 2>/dev/null)` は不正入力でテストを無言 abort させる

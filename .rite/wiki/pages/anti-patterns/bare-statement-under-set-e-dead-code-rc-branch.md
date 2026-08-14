@@ -4,16 +4,16 @@ domain: "anti-patterns"
 description: "`set -euo pipefail` 下で外部コマンド (`python3` / `jq` / `grep` 等) を **単独文 (bare statement)** として実行すると、コマンドが非ゼロ終了した瞬間に `set -e` が script 全体を abort する。"
 promote: rite-plugin
 created: "2026-06-02T04:59:29Z"
-updated: "2026-06-08T13:10:25Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260602T045929Z-pr-1242.md"
+    resource: "raw/reviews/20260602T045929Z-pr-1242.md"
   - type: "reviews"
-    ref: "raw/reviews/20260608T112156Z-pr-1306.md"
+    resource: "raw/reviews/20260608T112156Z-pr-1306.md"
   - type: "fixes"
-    ref: "raw/fixes/20260608T112705Z-pr-1306.md"
+    resource: "raw/fixes/20260608T112705Z-pr-1306.md"
 tags: ["bash", "rc-capture", "set-e", "silent-failure", "dead-code"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-08T13:10:25Z" }
 ---
 
 # set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する

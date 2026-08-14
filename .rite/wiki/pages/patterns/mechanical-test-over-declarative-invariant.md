@@ -4,18 +4,18 @@ domain: "patterns"
 description: "SoT 集約 PR で declarative invariant note (両者の集合差を 0 にする 等) を追加すると、note 文言自身が次 cycle の review finding 源になる self-referential loop が発生する。"
 promote: rite-plugin
 created: "2026-05-26T00:30:00Z"
-updated: "2026-06-04T16:30:25Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260525T221902Z-pr-1143.md"
+    resource: "raw/fixes/20260525T221902Z-pr-1143.md"
   - type: "fixes"
-    ref: "raw/fixes/20260525T233957Z-pr-1143.md"
+    resource: "raw/fixes/20260525T233957Z-pr-1143.md"
   - type: "reviews"
-    ref: "raw/reviews/20260604T061732Z-pr-1267.md"
+    resource: "raw/reviews/20260604T061732Z-pr-1267.md"
   - type: "reviews"
-    ref: "raw/reviews/20260604T160823Z-pr-1270.md"
+    resource: "raw/reviews/20260604T160823Z-pr-1270.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-04T16:30:25Z" }
 ---
 
 # Wording 層の self-referential loop は mechanical test 化で構造解消する

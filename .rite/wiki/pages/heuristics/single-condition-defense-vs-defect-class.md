@@ -5,16 +5,16 @@ domain: "heuristics"
 promote: rite-plugin
 description: "レビュー指摘は具体的な 1 ケースで届く。"
 created: "2026-08-03T07:46:56Z"
-updated: "2026-08-03T07:46:56Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260803T044103Z-pr-2094.md"
+    resource: "raw/reviews/20260803T044103Z-pr-2094.md"
   - type: "fixes"
-    ref: "raw/fixes/20260803T041505Z-pr-2094.md"
+    resource: "raw/fixes/20260803T041505Z-pr-2094.md"
   - type: "fixes"
-    ref: "raw/fixes/20260803T045324Z-pr-2094.md"
+    resource: "raw/fixes/20260803T045324Z-pr-2094.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T07:46:56Z" }
 ---
 
 # 特定の 1 バイト・1 条件で書いた防御は、defect class 全体を覆うか修正直後に自問する

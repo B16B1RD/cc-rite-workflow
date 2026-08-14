@@ -6,12 +6,12 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/awk-flip-flop-range-start-pattern-anchoring.md"
 description: "`assert_grep_in_section` のようなテストヘルパーが awk flip-flop レンジ (`$0 ~ start, $0 ~ end`) で SKILL.md 内の特定セクションを抽出する場合、start pattern が生の marker 名（例: `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1`）だけだと、その marker 名を引用する散文の説明行にも一致してしまう。"
 created: "2026-07-23T04:14:28Z"
-updated: "2026-07-23T04:14:28Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260723T031622Z-pr-1974-cycle3.md"
+    resource: "raw/fixes/20260723T031622Z-pr-1974-cycle3.md"
 tags: ["awk", "flip-flop-range", "test-helper", "section-scoping", "gawk-escaping", "no-journal-comment"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-23T04:14:28Z" }
 ---
 
 # テストヘルパーの awk flip-flop レンジは start pattern をコード行に一意なプレフィックスでアンカーする

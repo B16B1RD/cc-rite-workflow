@@ -5,22 +5,22 @@ domain: "heuristics"
 promote: rite-plugin
 description: "複数の実行経路が合流する共有コードパスに進捗カウンタや status 表示を置くときは、成功経路だけでなく到達する全経路で真である文言にする。常時出す完了文に空集合除外（「failed 扱いを除き」等）を置くのも同型で、空のときは条件付き専用行に任せ常時行から落とす。"
 created: "2026-07-03T11:30:00+09:00"
-updated: "2026-08-13T05:55:07Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260703T021717Z-pr-1733.md"
+    resource: "raw/reviews/20260703T021717Z-pr-1733.md"
   - type: "fixes"
-    ref: "raw/fixes/20260703T021912Z-pr-1733.md"
+    resource: "raw/fixes/20260703T021912Z-pr-1733.md"
   - type: "reviews"
-    ref: "raw/reviews/20260801T103500Z-pr-2081.md"
+    resource: "raw/reviews/20260801T103500Z-pr-2081.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T104510Z-pr-2081.md"
+    resource: "raw/fixes/20260801T104510Z-pr-2081.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T112516Z-pr-2081.md"
+    resource: "raw/fixes/20260801T112516Z-pr-2081.md"
   - type: "reviews"
-    ref: "raw/reviews/20260813T054655Z-pr-2300.md"
+    resource: "raw/reviews/20260813T054655Z-pr-2300.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-13T05:55:07Z" }
 ---
 
 # 共有パスに置く進捗/status 表示は到達する全経路で真な文言にする（成功含意を避ける）

@@ -4,12 +4,12 @@ title: "「破棄しない」を保証する記録先は永続チャネルに置
 domain: "patterns"
 description: "過去のレビュー事例の cycle 2 で 3 reviewer が独立に CRITICAL として検出した欠陥。"
 created: "2026-07-27T17:54:54+09:00"
-updated: "2026-07-27T17:54:54+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260727T053017Z-pr-2036.md"
+    resource: "raw/fixes/20260727T053017Z-pr-2036.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-27T17:54:54+09:00" }
 ---
 
 # 「破棄しない」を保証する記録先は永続チャネルに置き、除外契約と保存先をセットで規定する

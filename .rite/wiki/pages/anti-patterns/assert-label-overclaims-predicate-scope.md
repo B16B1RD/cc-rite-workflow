@@ -4,14 +4,14 @@ title: "assert のラベルが述語より広い範囲を名乗ると「虚偽�
 domain: "anti-patterns"
 description: "assert のラベル（テスト名・メッセージ）は、その assert が守る契約の宣言である。"
 created: "2026-08-08T14:00:41+09:00"
-updated: "2026-08-08T14:00:41+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260808T013358Z-pr-2142.md"
+    resource: "raw/reviews/20260808T013358Z-pr-2142.md"
   - type: "fixes"
-    ref: "raw/fixes/20260808T014357Z-pr-2142.md"
+    resource: "raw/fixes/20260808T014357Z-pr-2142.md"
 tags: ["test", "mutation-testing", "assertion-strength", "contract", "review-fix-loop"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T14:00:41+09:00" }
 ---
 
 # assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる

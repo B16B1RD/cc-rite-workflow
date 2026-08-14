@@ -5,18 +5,18 @@ domain: "heuristics"
 promote: rite-plugin
 description: "ある経路を「回復不能」「構造的に成立しない」と判定するとき、判定の根拠を**委譲側（不具合を出す側）の記述**だけに置いてはならない。"
 created: "2026-08-08T17:40:00+09:00"
-updated: "2026-08-08T17:40:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260808T063447Z-pr-2150.md"
+    resource: "raw/reviews/20260808T063447Z-pr-2150.md"
   - type: "fixes"
-    ref: "raw/fixes/20260808T064117Z-pr-2150.md"
+    resource: "raw/fixes/20260808T064117Z-pr-2150.md"
   - type: "fixes"
-    ref: "raw/fixes/20260808T070139Z-pr-2150-cycle2.md"
+    resource: "raw/fixes/20260808T070139Z-pr-2150-cycle2.md"
   - type: "fixes"
-    ref: "raw/fixes/20260808T074827Z-pr-2150-cycle4.md"
+    resource: "raw/fixes/20260808T074827Z-pr-2150-cycle4.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T17:40:00+09:00" }
 ---
 
 # 回復経路が「成立しない」判定は、回復側セッションでその分岐が発火するかから辿り直して下す

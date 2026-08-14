@@ -4,18 +4,18 @@ title: "外部依存の挙動は hedge か断定かの二択ではない — 既
 domain: "heuristics"
 description: "管理外の上流ツール・ライブラリの挙動をドキュメントに書くとき、「断定するか / 『要検証』と逃げるか」の二択で考えると、どちらを選んでも欠陥になる。"
 created: "2026-08-02T09:53:11+09:00"
-updated: "2026-08-02T09:53:11+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260801T202243Z-pr-2070.md"
+    resource: "raw/reviews/20260801T202243Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T211356Z-pr-2070.md"
+    resource: "raw/fixes/20260801T211356Z-pr-2070.md"
   - type: "reviews"
-    ref: "raw/reviews/20260801T223635Z-pr-2070.md"
+    resource: "raw/reviews/20260801T223635Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T224211Z-pr-2070.md"
+    resource: "raw/fixes/20260801T224211Z-pr-2070.md"
 tags: ["external-dependency", "hedge", "citation", "doc-accuracy", "upstream-verification"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T09:53:11+09:00" }
 ---
 
 # 外部依存の挙動は hedge か断定かの二択ではない — 既定形は「断定 + 出典 + 確認日 + 再検証手順」

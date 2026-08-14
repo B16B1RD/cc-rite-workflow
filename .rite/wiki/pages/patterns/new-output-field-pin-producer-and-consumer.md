@@ -4,20 +4,20 @@ title: "新設した出力フィールドは producer と consumer の両側を 
 domain: "patterns"
 description: "stdout フィールド・sentinel・marker など「出力の契約」を新設したとき、producer 側の emit だけを assert するテストは **「値が出ること」しか保証せず、「値が使われること」は保証しない**。"
 created: "2026-08-02T09:53:11+09:00"
-updated: "2026-08-06T00:40:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260801T202243Z-pr-2070.md"
+    resource: "raw/reviews/20260801T202243Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T211356Z-pr-2070.md"
+    resource: "raw/fixes/20260801T211356Z-pr-2070.md"
   - type: "reviews"
-    ref: "raw/reviews/20260801T223635Z-pr-2070.md"
+    resource: "raw/reviews/20260801T223635Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T224211Z-pr-2070.md"
+    resource: "raw/fixes/20260801T224211Z-pr-2070.md"
   - type: "reviews"
-    ref: "raw/reviews/20260805T104742Z-pr-2114.md"
+    resource: "raw/reviews/20260805T104742Z-pr-2114.md"
 tags: ["producer-consumer", "static-pin", "branch-table", "test-strength", "reason-vocabulary"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T00:40:00+09:00" }
 ---
 
 # 新設した出力フィールドは producer と consumer の両側を pin する — consumer が表なら行単位で pin する

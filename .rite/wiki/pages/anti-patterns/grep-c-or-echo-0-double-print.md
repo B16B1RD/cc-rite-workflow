@@ -3,14 +3,14 @@ title: "grep -c || echo 0 が \"0\\n0\" を吐き出す double-print 罠"
 domain: "anti-patterns"
 description: "bash で `count=$(grep -cE pattern file || echo 0)` パターンを使うと、grep が match 0 件 (exit 1) のとき count 変数が `\"0\\n0\"` (改行付き 2 行) に汚染される。"
 created: "2026-05-03T05:50:00+09:00"
-updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260502T171105Z-pr-784.md"
+    resource: "raw/reviews/20260502T171105Z-pr-784.md"
   - type: "fixes"
-    ref: "raw/fixes/20260502T171352Z-pr-784.md"
+    resource: "raw/fixes/20260502T171352Z-pr-784.md"
 tags: ["bash", "grep", "test-script", "silent-failure"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 ---
 
 # grep -c || echo 0 が "0\n0" を吐き出す double-print 罠

@@ -6,14 +6,14 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/invocation-symmetry-test-for-delegation-seam.md"
 description: "散文手順を helper script へ降ろすリファクタでは、helper 本体はテストで固定できるが、**SKILL.md（呼び出し側）→ helper の呼び出し契約は放置するとどちらか片側の編集で silent に壊れる**。"
 created: "2026-08-05T09:26:00+09:00"
-updated: "2026-08-05T09:26:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260804T142514Z-pr-2111.md"
+    resource: "raw/reviews/20260804T142514Z-pr-2111.md"
   - type: "fixes"
-    ref: "raw/fixes/20260804T143100Z-pr-2111.md"
+    resource: "raw/fixes/20260804T143100Z-pr-2111.md"
 tags: ["delegation-refactor", "invocation-symmetry", "seam-contract", "skill-md", "helper"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T09:26:00+09:00" }
 ---
 
 # 委譲リファクタの呼び出しシームは invocation-symmetry test で機械固定する

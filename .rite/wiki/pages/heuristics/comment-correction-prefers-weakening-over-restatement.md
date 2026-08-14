@@ -4,12 +4,12 @@ title: "コメントの「正確化」は主張を強めがち — 実態へ合�
 domain: "heuristics"
 description: "コメントに誤りを指摘されたとき、自然な反応は「正しく書き直す」ことである。"
 created: "2026-08-06T02:49:27Z"
-updated: "2026-08-06T02:49:27Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260806T020412Z-pr-2120.md"
+    resource: "raw/reviews/20260806T020412Z-pr-2120.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T02:49:27Z" }
 ---
 
 # コメントの「正確化」は主張を強めがち — 実態へ合わせるより強度を下げる方が安全

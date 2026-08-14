@@ -4,16 +4,16 @@ title: "コメントの主語は「変更イベント」ではなく「コード
 domain: "heuristics"
 description: "判定形式を変えたとき、その理由を「旧形式は X を受け入れていた」と書くと、コメントの**主語が変更イベント（過去の行為）**になる。"
 created: "2026-07-26T01:35:00+09:00"
-updated: "2026-07-26T01:35:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260725T160402Z-pr-2020.md"
+    resource: "raw/reviews/20260725T160402Z-pr-2020.md"
   - type: "fixes"
-    ref: "raw/fixes/20260725T160545Z-pr-2020.md"
+    resource: "raw/fixes/20260725T160545Z-pr-2020.md"
   - type: "fixes"
-    ref: "raw/fixes/20260725T154630Z-pr-2020.md"
+    resource: "raw/fixes/20260725T154630Z-pr-2020.md"
 tags: ["comment", "journal-comment", "review", "lint", "verification"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-26T01:35:00+09:00" }
 ---
 
 # コメントの主語は「変更イベント」ではなく「コードの現在の性質」に置く — lint が緑でも規約違反は成立する

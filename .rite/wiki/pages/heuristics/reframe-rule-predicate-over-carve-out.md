@@ -6,14 +6,14 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/reframe-rule-predicate-over-carve-out.md"
 description: "「X を書くな」型の禁止規則を新設したとき、その場所へ書き込む既存経路が X の形をしたものを書いていると規則が自分のワークフローを違反者にする。"
 created: "2026-08-02T11:59:42+09:00"
-updated: "2026-08-02T11:59:42+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260802T020939Z-pr-2084.md"
+    resource: "raw/reviews/20260802T020939Z-pr-2084.md"
   - type: "fixes"
-    ref: "raw/fixes/20260802T021249Z-pr-2084.md"
+    resource: "raw/fixes/20260802T021249Z-pr-2084.md"
 tags: [documentation, rule-design, simplification-first]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T11:59:42+09:00" }
 ---
 
 # 禁止規則が自分のワークフローと衝突したら、例外条項を足す前に規則の軸を言い換える

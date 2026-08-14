@@ -4,14 +4,14 @@ domain: "heuristics"
 description: "「将来 X が起きたら留意」型の future-note Issue は、起票から実装までの間にコードベースが進み前提が変わっていることがある。"
 promote: rite-plugin
 created: "2026-06-09T19:45:00+00:00"
-updated: "2026-06-09T19:56:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260609T193647Z-pr-1326.md"
+    resource: "raw/reviews/20260609T193647Z-pr-1326.md"
   - type: "retrospectives"
-    ref: "raw/retrospectives/20260609T195524Z-issue-1211.md"
+    resource: "raw/retrospectives/20260609T195524Z-issue-1211.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-09T19:56:00+00:00" }
 ---
 
 # future-note Issue は実装前に前提の現在性を再検証する

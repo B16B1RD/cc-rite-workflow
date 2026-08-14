@@ -5,26 +5,26 @@ domain: "heuristics"
 promote: rite-plugin
 description: "過去のレビュー事例の指摘推移は 5→5→6→6→1→1→4→6→4→7 で収束しなかった。"
 created: "2026-07-26T10:05:51Z"
-updated: "2026-07-29T02:10:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260726T044237Z-pr-2022.md"
+    resource: "raw/reviews/20260726T044237Z-pr-2022.md"
   - type: "reviews"
-    ref: "raw/reviews/20260726T035338Z-pr-2022.md"
+    resource: "raw/reviews/20260726T035338Z-pr-2022.md"
   - type: "reviews"
-    ref: "raw/reviews/20260726T020559Z-pr-2022.md"
+    resource: "raw/reviews/20260726T020559Z-pr-2022.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T040115Z-pr-2022.md"
+    resource: "raw/fixes/20260726T040115Z-pr-2022.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T021138Z-pr-2022.md"
+    resource: "raw/fixes/20260726T021138Z-pr-2022.md"
   - type: "reviews"
-    ref: "raw/reviews/20260728T160636Z-pr-2043.md"
+    resource: "raw/reviews/20260728T160636Z-pr-2043.md"
   - type: "reviews"
-    ref: "raw/reviews/20260728T163233Z-pr-2043.md"
+    resource: "raw/reviews/20260728T163233Z-pr-2043.md"
   - type: "reviews"
-    ref: "raw/reviews/20260728T165431Z-pr-2043.md"
+    resource: "raw/reviews/20260728T165431Z-pr-2043.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-29T02:10:00+09:00" }
 ---
 
 # 散文を契約とする設計では規約を強化するたび「まだ塞げていない入力クラス」が出るため、review-fix ループに終端がない

@@ -4,14 +4,14 @@ title: "安全側へ倒れる fail-safe は、倒れた事実が観測されな�
 domain: "anti-patterns"
 description: "「情報が欠ければ従来のフル装備へ倒す」型の fail-safe は、倒れた向きが安全側であるがゆえに**壊れていることを誰にも伝えない**。"
 created: "2026-08-08T14:00:41+09:00"
-updated: "2026-08-08T14:00:41+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260807T235335Z-pr-2142.md"
+    resource: "raw/reviews/20260807T235335Z-pr-2142.md"
   - type: "fixes"
-    ref: "raw/fixes/20260808T001157Z-pr-2142.md"
+    resource: "raw/fixes/20260808T001157Z-pr-2142.md"
 tags: ["fail-safe", "silent-failure", "observability", "portability", "diagnostics"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T14:00:41+09:00" }
 ---
 
 # 安全側へ倒れる fail-safe は、倒れた事実が観測されない限り機能の恒久的不作動を隠す

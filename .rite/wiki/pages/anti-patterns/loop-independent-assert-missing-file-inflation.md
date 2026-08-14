@@ -3,14 +3,14 @@ title: "loop 内の独立 assert は missing file で fail message が assertion
 domain: "anti-patterns"
 description: "per-iteration ループ内で `assert_grep` / `assert_not_grep` のような file 引数を取る assertion helper を **同一 file に対して独立に複数回呼ぶ** パターンは、当該 file が不在の場合 1 iteration = N fail message (N = assertion 数) に膨張する。"
 created: "2026-05-19T05:50:00+09:00"
-updated: "2026-05-19T11:50:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260518T203629Z-pr-1050.md"
+    resource: "raw/reviews/20260518T203629Z-pr-1050.md"
   - type: "reviews"
-    ref: "raw/reviews/20260519T023807Z-pr-1052.md"
+    resource: "raw/reviews/20260519T023807Z-pr-1052.md"
 tags: ["bash", "test-helpers", "assert-grep", "loop-pattern", "fail-message", "premature-abstraction"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-19T11:50:00+09:00" }
 ---
 
 # loop 内の独立 assert は missing file で fail message が assertion 数倍に膨張する

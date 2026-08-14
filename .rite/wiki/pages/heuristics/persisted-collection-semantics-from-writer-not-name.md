@@ -6,12 +6,12 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/persisted-collection-semantics-from-writer-not-name.md"
 description: "永続化された配列を新しい consumer が読むとき、配列名から意味を推測すると書込側が定義した実際の集合とずれる。"
 created: "2026-08-07T07:55:00+09:00"
-updated: "2026-08-07T07:55:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260806T151643Z-pr-2126.md"
+    resource: "raw/reviews/20260806T151643Z-pr-2126.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T07:55:00+09:00" }
 ---
 
 # 既存の永続データを新規 consumer が読むときは、集合の意味を書込側の定義から引く

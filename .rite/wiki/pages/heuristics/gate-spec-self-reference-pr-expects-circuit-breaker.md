@@ -4,18 +4,18 @@ title: "検出ゲートの仕様そのものを変える PR は自己言及で�
 domain: "heuristics"
 description: "検出ゲートの規約を記述した散文を変更する PR では、**指摘の叙述そのものが規則の対象文字列を含む**。"
 created: "2026-08-03T23:41:26+09:00"
-updated: "2026-08-03T23:41:26+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260803T131002Z-pr-2095.md"
+    resource: "raw/fixes/20260803T131002Z-pr-2095.md"
   - type: "fixes"
-    ref: "raw/fixes/20260803T124230Z-pr-2095.md"
+    resource: "raw/fixes/20260803T124230Z-pr-2095.md"
   - type: "reviews"
-    ref: "raw/reviews/20260803T104952Z-pr-2095.md"
+    resource: "raw/reviews/20260803T104952Z-pr-2095.md"
   - type: "reviews"
-    ref: "raw/reviews/20260803T140734Z-pr-2095.md"
+    resource: "raw/reviews/20260803T140734Z-pr-2095.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T23:41:26+09:00" }
 ---
 
 # 検出ゲートの仕様そのものを変える PR は自己言及で発散する — サーキットブレーカー到達を異常ではなく想定内として扱う

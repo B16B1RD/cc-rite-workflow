@@ -5,14 +5,14 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "awk のデフォルト FS は space / tab / newline であり **`\\r` を含まない**。"
 created: "2026-08-08T14:00:41+09:00"
-updated: "2026-08-08T14:00:41+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260808T022209Z-pr-2142.md"
+    resource: "raw/reviews/20260808T022209Z-pr-2142.md"
   - type: "fixes"
-    ref: "raw/fixes/20260808T024257Z-pr-2142.md"
+    resource: "raw/fixes/20260808T024257Z-pr-2142.md"
 tags: ["awk", "crlf", "line-ending", "external-input", "portability"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T14:00:41+09:00" }
 ---
 
 # awk のデフォルト FS は `\r` を含まない — CRLF 入力で「空行」判定が壊れる

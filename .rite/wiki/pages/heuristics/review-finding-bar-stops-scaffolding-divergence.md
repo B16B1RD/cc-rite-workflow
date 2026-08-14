@@ -5,12 +5,12 @@ domain: "heuristics"
 promote: rite-plugin
 description: "修正 1 件は新しいレビュー対象面を 1 つ作る。"
 created: "2026-07-25T14:18:43Z"
-updated: "2026-07-25T14:18:43Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260725T112757Z-pr-2017-cycle5.md"
+    resource: "raw/reviews/20260725T112757Z-pr-2017-cycle5.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-25T14:18:43Z" }
 ---
 
 # レビューが足場を対象に発散したら finding の基準を prompt で明示して止める

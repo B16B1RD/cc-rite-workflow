@@ -3,26 +3,26 @@ title: "trap 登録 → mktemp の順序で tempfile lifecycle を守る"
 domain: "patterns"
 description: "`mktemp` で tempfile を作った直後に `trap 'rm -f \"$f\"' EXIT ...` を登録するのでは、signal (INT/TERM/HUP) が `mktemp` 成功直後〜`trap` 登録前の窓で届いた場合に orphan tempfile が残る。"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-28T21:30:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md"
+    resource: "raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md"
   - type: "fixes"
-    ref: "raw/fixes/20260416T165559Z-pr-548.md"
+    resource: "raw/fixes/20260416T165559Z-pr-548.md"
   - type: "fixes"
-    ref: "raw/fixes/20260416T180658Z-pr-548.md"
+    resource: "raw/fixes/20260416T180658Z-pr-548.md"
   - type: "reviews"
-    ref: "raw/reviews/20260416T180001Z-pr-548.md"
+    resource: "raw/reviews/20260416T180001Z-pr-548.md"
   - type: "reviews"
-    ref: "raw/reviews/20260517T231929Z-pr-1033.md"
+    resource: "raw/reviews/20260517T231929Z-pr-1033.md"
   - type: "fixes"
-    ref: "raw/fixes/20260713T093252Z-pr-1850.md"
+    resource: "raw/fixes/20260713T093252Z-pr-1850.md"
   - type: "reviews"
-    ref: "raw/reviews/20260713T104006Z-pr-1850.md"
+    resource: "raw/reviews/20260713T104006Z-pr-1850.md"
   - type: "fixes"
-    ref: "raw/fixes/20260728T122258Z-pr-2038.md"
+    resource: "raw/fixes/20260728T122258Z-pr-2038.md"
 tags: ["bash", "tempfile", "trap", "cleanup", "lifecycle", "hand-off", "cleanup-variable-assignment-order"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-28T21:30:00+09:00" }
 ---
 
 # trap 登録 → mktemp の順序で tempfile lifecycle を守る

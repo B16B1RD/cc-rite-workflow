@@ -4,28 +4,28 @@ domain: "patterns"
 description: "reference 文書 (bash-trap-patterns.md / bash-cross-boundary-state-transfer.md 等) のサンプルコードはコピペ利用される前提のため、canonical 実装と一字一句揃っていなければ silent failure を下流に伝播させる。"
 promote: rite-plugin
 created: "2026-04-18T17:40:00+09:00"
-updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260418T072254Z-pr-564-rerun.md"
+    resource: "raw/reviews/20260418T072254Z-pr-564-rerun.md"
   - type: "fixes"
-    ref: "raw/fixes/20260418T071459Z-pr-564.md"
+    resource: "raw/fixes/20260418T071459Z-pr-564.md"
   - type: "reviews"
-    ref: "raw/reviews/20260418T113250Z-pr-578.md"
+    resource: "raw/reviews/20260418T113250Z-pr-578.md"
   - type: "fixes"
-    ref: "raw/fixes/20260418T113520Z-pr-578.md"
+    resource: "raw/fixes/20260418T113520Z-pr-578.md"
   - type: "reviews"
-    ref: "raw/reviews/20260419T035346Z-pr-586-cycle7.md"
+    resource: "raw/reviews/20260419T035346Z-pr-586-cycle7.md"
   - type: "reviews"
-    ref: "raw/reviews/20260419T094545Z-pr-596.md"
+    resource: "raw/reviews/20260419T094545Z-pr-596.md"
   - type: "reviews"
-    ref: "raw/reviews/20260419T104043Z-pr-598.md"
+    resource: "raw/reviews/20260419T104043Z-pr-598.md"
   - type: "reviews"
-    ref: "raw/reviews/20260503T181256Z-pr-799.md"
+    resource: "raw/reviews/20260503T181256Z-pr-799.md"
   - type: "fixes"
-    ref: "raw/fixes/20260503T181755Z-pr-799.md"
+    resource: "raw/fixes/20260503T181755Z-pr-799.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 ---
 
 # canonical reference 文書のサンプルコードは canonical 実装と一字一句同期する

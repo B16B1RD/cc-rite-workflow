@@ -4,12 +4,12 @@ title: "位置決めを外部データから取る設計で「取れなかった
 domain: "anti-patterns"
 description: "テーブルのヘッダー行から列位置を決める、設定ファイルからインデックスを引く、といった「位置を外部データから取る」処理では、取得に失敗したときの分岐が要る。"
 created: "2026-08-01T00:21:06+09:00"
-updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260731T013212Z-pr-2070.md"
+    resource: "raw/fixes/20260731T013212Z-pr-2070.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 ---
 
 # 位置決めを外部データから取る設計で「取れなかったら既定値を仮定する」と、無言の縮退になる

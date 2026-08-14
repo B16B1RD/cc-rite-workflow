@@ -3,12 +3,12 @@ title: "共有 /tmp の leak 検査は count delta ではなく path 集合差�
 domain: "patterns"
 description: "共有 `/tmp` 上の tempfile leak 検査を「実行前後のファイル数 count delta」で行うと、(a) 並列実行中の他プロセスが同 glob のファイルを削除した場合に false-fail、(b) 自テストの leak と他プロセスの削除が相殺した場合に false-PASS する。"
 created: "2026-06-06T17:33:06Z"
-updated: "2026-06-06T17:33:06Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260606T171726Z-pr-1295.md"
+    resource: "raw/reviews/20260606T171726Z-pr-1295.md"
 tags: ["test", "tempfile-leak", "comm-set-difference", "parallel-test-isolation", "false-fail", "false-pass"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-06T17:33:06Z" }
 ---
 
 # 共有 /tmp の leak 検査は count delta ではなく path 集合差分 (comm -13) で行う

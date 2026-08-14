@@ -4,16 +4,16 @@ title: "依存要件ドキュメントの「ツールを入れれば有効化」
 domain: "heuristics"
 description: "README 等の依存要件で「ツール X（例: coreutils / gdate）を入れれば機能 Y が有効化される」と書く前に、実コードがそのツール名を literal に呼んでいるかを grep で裏取りする。"
 created: "2026-07-24T17:57:51+09:00"
-updated: "2026-07-24T17:57:51+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260724T083434Z-pr-2004.md"
+    resource: "raw/reviews/20260724T083434Z-pr-2004.md"
   - type: "fixes"
-    ref: "raw/fixes/20260724T083743Z-pr-2004.md"
+    resource: "raw/fixes/20260724T083743Z-pr-2004.md"
   - type: "reviews"
-    ref: "raw/reviews/20260724T084754Z-pr-2004.md"
+    resource: "raw/reviews/20260724T084754Z-pr-2004.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-24T17:57:51+09:00" }
 ---
 
 # 依存要件ドキュメントの「ツールを入れれば有効化」主張は実コードの呼び出し名を grep で裏取りする

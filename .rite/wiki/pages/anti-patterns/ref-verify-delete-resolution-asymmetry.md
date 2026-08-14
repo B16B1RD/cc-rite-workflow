@@ -4,20 +4,20 @@ title: "存在確認と破壊的操作で ref 解決規則が異なると、検�
 domain: "anti-patterns"
 description: "「存在するなら削除する」型のガードは、存在確認と削除で ref 解決規則が違うと成立しない。"
 created: "2026-07-26T10:05:51Z"
-updated: "2026-07-26T10:05:51Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260726T080036Z-pr-2022.md"
+    resource: "raw/reviews/20260726T080036Z-pr-2022.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T082019Z-pr-2022.md"
+    resource: "raw/fixes/20260726T082019Z-pr-2022.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T040115Z-pr-2022.md"
+    resource: "raw/fixes/20260726T040115Z-pr-2022.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T092442Z-pr-2022.md"
+    resource: "raw/fixes/20260726T092442Z-pr-2022.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T085050Z-pr-2022.md"
+    resource: "raw/fixes/20260726T085050Z-pr-2022.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-26T10:05:51Z" }
 ---
 
 # 存在確認と破壊的操作で ref 解決規則が異なると、検証した ref 集合と破壊する ref 集合がずれる

@@ -4,14 +4,14 @@ domain: "patterns"
 description: "「現在のブランチ名を取得する」という同一目的を実現する 2 つの git idiom は、detached HEAD 状態で**挙動が分岐する**: `git rev-parse --abbrev-ref HEAD` は文字列 `HEAD` を出力し、`git branch --show-current` は**空文字**を出力する。"
 promote: rite-plugin
 created: "2026-06-02T03:50:58Z"
-updated: "2026-06-02T03:50:58Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260602T032246Z-pr-1244.md"
+    resource: "raw/reviews/20260602T032246Z-pr-1244.md"
   - type: "fixes"
-    ref: "raw/fixes/20260602T032513Z-pr-1244.md"
+    resource: "raw/fixes/20260602T032513Z-pr-1244.md"
 tags: ["git", "bash", "error-handling"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-02T03:50:58Z" }
 ---
 
 # 現在ブランチ取得は git branch --show-current で統一する (rev-parse --abbrev-ref HEAD は detached HEAD で挙動分岐)

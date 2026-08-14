@@ -4,14 +4,14 @@ title: "awk -v 代入はバックスラッシュを剥がす — escape 付き�
 domain: "anti-patterns"
 description: "`awk -v var=value` の代入では、value 内のバックスラッシュが**エスケープシーケンスとして解釈され剥がれる**。"
 created: "2026-08-08T14:00:41+09:00"
-updated: "2026-08-08T17:40:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260808T010121Z-pr-2142.md"
+    resource: "raw/fixes/20260808T010121Z-pr-2142.md"
   - type: "reviews"
-    ref: "raw/reviews/20260808T013358Z-pr-2142.md"
+    resource: "raw/reviews/20260808T013358Z-pr-2142.md"
 tags: ["awk", "test", "assertion-strength", "escape", "mutation-testing"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T17:40:00+09:00" }
 ---
 
 # awk -v 代入はバックスラッシュを剥がす — escape 付きパターンを渡した範囲指定 assert は常に PASS する

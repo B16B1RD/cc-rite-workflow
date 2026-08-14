@@ -4,16 +4,16 @@ domain: "patterns"
 description: "同一 state の動作を「実装ロジックの Skip 条件記述」と「LLM 分岐テーブル」のように 2 箇所に分けて記述する場合、両者で動作の文字列 (silent / verbose / 表示メッセージ内容) が食い違うと **LLM 実行時の動作が不定** になる。"
 promote: rite-plugin
 created: "2026-04-19T03:30:00+00:00"
-updated: "2026-08-02T11:59:42+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260419T034237Z-pr-586-cycle5.md"
+    resource: "raw/reviews/20260419T034237Z-pr-586-cycle5.md"
   - type: "fixes"
-    ref: "raw/fixes/20260420T150304Z-pr-624-cycle2.md"
+    resource: "raw/fixes/20260420T150304Z-pr-624-cycle2.md"
   - type: "reviews"
-    ref: "raw/reviews/20260802T025011Z-pr-2084.md"
+    resource: "raw/reviews/20260802T025011Z-pr-2084.md"
 tags: [ring-pattern, helper-caller-sync, observability]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T11:59:42+09:00" }
 ---
 
 # state machine を 2 箇所で記述する場合は動作の文字列レベルで同期する

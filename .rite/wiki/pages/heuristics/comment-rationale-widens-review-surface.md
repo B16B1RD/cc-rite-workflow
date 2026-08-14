@@ -4,20 +4,20 @@ title: "修正に添えるコメントは機構を語るほど次サイクルの
 domain: "heuristics"
 description: "コードの修正そのものより、その修正に添えたコメントのほうが次のレビューサイクルで指摘を生みやすい。"
 created: "2026-08-03T07:46:56Z"
-updated: "2026-08-06T02:49:27Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260806T005558Z-pr-2120.md"
+    resource: "raw/reviews/20260806T005558Z-pr-2120.md"
   - type: "reviews"
-    ref: "raw/reviews/20260803T051521Z-pr-2094.md"
+    resource: "raw/reviews/20260803T051521Z-pr-2094.md"
   - type: "fixes"
-    ref: "raw/fixes/20260803T052647Z-pr-2094.md"
+    resource: "raw/fixes/20260803T052647Z-pr-2094.md"
   - type: "fixes"
-    ref: "raw/fixes/20260802T164206Z-pr-2094.md"
+    resource: "raw/fixes/20260802T164206Z-pr-2094.md"
   - type: "reviews"
-    ref: "raw/reviews/20260802T163111Z-pr-2094.md"
+    resource: "raw/reviews/20260802T163111Z-pr-2094.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T02:49:27Z" }
 ---
 
 # 修正に添えるコメントは機構を語るほど次サイクルの検証対象面を広げる — 根拠はテストに置く

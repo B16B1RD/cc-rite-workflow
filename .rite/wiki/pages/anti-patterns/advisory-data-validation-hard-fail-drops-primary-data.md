@@ -4,12 +4,12 @@ title: "advisory データの欠陥検証を hard fail にすると primary デ�
 domain: "anti-patterns"
 description: "過去のレビュー事例で 2 サイクル連続して踏んだ fail-unsafe。"
 created: "2026-07-27T17:54:54+09:00"
-updated: "2026-07-27T17:54:54+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260727T084223Z-pr-2036.md"
+    resource: "raw/reviews/20260727T084223Z-pr-2036.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-27T17:54:54+09:00" }
 ---
 
 # advisory データの欠陥検証を hard fail にすると primary データごと失われる

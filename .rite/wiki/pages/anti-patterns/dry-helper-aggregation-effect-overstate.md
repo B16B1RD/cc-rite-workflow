@@ -4,14 +4,14 @@ domain: "anti-patterns"
 description: "DRY 化助手 (shared helper script / function) を導入する際、効果を「N 箇所更新が不要になり drift 防止」と記述しながら、実際には集約されたのは validation logic のような一部のみで、helper 名 list / 引数 schema / DEFAULT_* 配列のような他箇所の同期更新が依然必要なケース。"
 promote: rite-plugin
 created: "2026-04-29T02:55:00+00:00"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260428T111028Z-pr-688.md"
+    resource: "raw/fixes/20260428T111028Z-pr-688.md"
   - type: "reviews"
-    ref: "raw/reviews/20260428T105854Z-pr-688.md"
+    resource: "raw/reviews/20260428T105854Z-pr-688.md"
 tags: ["dry", "helper-aggregation", "documentation-overstate", "drift-vector", "migration-completeness"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # DRY 集約助手の効果記述は『何が集約され、何が依然分散しているか』を明示する

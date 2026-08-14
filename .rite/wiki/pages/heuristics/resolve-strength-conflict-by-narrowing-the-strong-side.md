@@ -4,14 +4,14 @@ title: "規約の強制度が矛盾したら、緩い側を強めるより強い
 domain: "heuristics"
 description: "同一ファイル内で「規則 A が記録を命じている」のに「受け皿 B の定義は optional / off by default」という強制度の矛盾が生じたとき、解き方は 2 通りある:"
 created: "2026-08-03T00:55:00+09:00"
-updated: "2026-08-03T00:55:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260802T143430Z-pr-2092.md"
+    resource: "raw/reviews/20260802T143430Z-pr-2092.md"
   - type: "fixes"
-    ref: "raw/fixes/20260802T143712Z-pr-2092.md"
+    resource: "raw/fixes/20260802T143712Z-pr-2092.md"
 tags: ["obligation-design", "scope-narrowing", "simplification-first", "prompt-engineering"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T00:55:00+09:00" }
 ---
 
 # 規約の強制度が矛盾したら、緩い側を強めるより強い側の適用範囲を絞る

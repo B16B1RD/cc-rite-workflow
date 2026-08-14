@@ -6,16 +6,16 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/generalized-claim-false-while-implementation-specialized.md"
 description: "同じ契約が複数箇所に書かれているとき、書き手は場所ごとに違う抽象度で表現しがちである。"
 created: "2026-08-01T00:21:06+09:00"
-updated: "2026-08-01T23:12:28+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260731T090329Z-pr-2070.md"
+    resource: "raw/reviews/20260731T090329Z-pr-2070.md"
   - type: "reviews"
-    ref: "raw/reviews/20260801T131235Z-pr-2081.md"
+    resource: "raw/reviews/20260801T131235Z-pr-2081.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T131540Z-pr-2081.md"
+    resource: "raw/fixes/20260801T131540Z-pr-2081.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T23:12:28+09:00" }
 ---
 
 # 一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える

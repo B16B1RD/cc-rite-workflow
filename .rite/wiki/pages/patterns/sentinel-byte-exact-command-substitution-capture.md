@@ -4,12 +4,12 @@ title: "sentinel でコマンド置換のバイト厳密性を守る"
 domain: "patterns"
 description: "`var=$(cmd)` はコマンド出力の **末尾の改行を全て** 除去する。"
 created: "2026-07-25T14:18:43Z"
-updated: "2026-07-25T14:18:43Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260725T094630Z-pr-2017.md"
+    resource: "raw/fixes/20260725T094630Z-pr-2017.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-25T14:18:43Z" }
 ---
 
 # sentinel でコマンド置換のバイト厳密性を守る

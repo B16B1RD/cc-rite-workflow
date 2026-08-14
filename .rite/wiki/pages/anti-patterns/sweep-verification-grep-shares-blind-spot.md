@@ -4,14 +4,14 @@ title: "スイープの検証 grep にスイープ対象と同一パターンを
 domain: "anti-patterns"
 description: "横断スイープ（全域への機械的変更）の完了検証を、スイープ対象の抽出に使ったのと同じ grep パターンで行うと、抽出時の死角が検証にもそのまま引き継がれ、「残存ゼロ」という検証結果が構造的に偽りになる。"
 created: "2026-07-20T01:15:00+09:00"
-updated: "2026-07-20T01:15:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260719T154814Z-pr-1919-c3.md"
+    resource: "raw/reviews/20260719T154814Z-pr-1919-c3.md"
   - type: "fixes"
-    ref: "raw/fixes/20260719T154952Z-pr-1919-c3.md"
+    resource: "raw/fixes/20260719T154952Z-pr-1919-c3.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T01:15:00+09:00" }
 ---
 
 # スイープの検証 grep にスイープ対象と同一パターンを再利用する

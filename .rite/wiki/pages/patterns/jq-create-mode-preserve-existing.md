@@ -4,20 +4,20 @@ domain: "patterns"
 description: "`.rite-flow-state` のような state file を `jq -n` (null input) で毎回全フィールド再構築する設計は、後続の `create` 呼び出しで永続化すべきフィールド (`parent_issue_number`, `loop_count` 等) をリセットしてしまう CRITICAL 欠陥を持つ。"
 promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-09T19:44:33+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260416T122803Z-pr-545.md"
+    resource: "raw/fixes/20260416T122803Z-pr-545.md"
   - type: "reviews"
-    ref: "raw/reviews/20260416T122506Z-pr-545.md"
+    resource: "raw/reviews/20260416T122506Z-pr-545.md"
   - type: "reviews"
-    ref: "raw/reviews/20260709T100928Z-pr-1812.md"
+    resource: "raw/reviews/20260709T100928Z-pr-1812.md"
   - type: "reviews"
-    ref: "raw/reviews/20260709T104501Z-pr-1812.md"
+    resource: "raw/reviews/20260709T104501Z-pr-1812.md"
   - type: "fixes"
-    ref: "raw/fixes/20260709T101456Z-pr-1812.md"
+    resource: "raw/fixes/20260709T101456Z-pr-1812.md"
 tags: ["jq", "state-file", "persistence", "flow-state"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-09T19:44:33+09:00" }
 ---
 
 # jq -n create mode: 既存値を読み取ってから再構築する

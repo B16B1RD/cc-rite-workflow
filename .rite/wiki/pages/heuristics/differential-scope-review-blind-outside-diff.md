@@ -5,12 +5,12 @@ domain: "heuristics"
 promote: rite-plugin
 description: "レビューループの cycle 2 以降を差分スコープ（前 cycle の fix diff のみを見る）にすると効率は上がるが、**範囲の外にある欠陥は「基準を満たすか」以前に観測されない**。"
 created: "2026-08-07T18:40:00+09:00"
-updated: "2026-08-07T18:40:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260807T043149Z-pr-2130.md"
+    resource: "raw/reviews/20260807T043149Z-pr-2130.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T18:40:00+09:00" }
 ---
 
 # 差分スコープのレビューは diff の外を基準以前に見られない — cycle 上限到達後にフルレビューを 1 回挟む

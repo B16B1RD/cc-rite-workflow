@@ -5,12 +5,12 @@ domain: "patterns"
 promote: rite-plugin
 description: "mutation testing で「grep 断片照合のみで検出力が無い」と判明した TC を修理するとき、生存した変異ごとに assert を 1 本ずつ足していく増築は保守コストが上がるわりに変異耐性が伸びない。"
 created: "2026-08-05T09:26:00+09:00"
-updated: "2026-08-05T09:26:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260804T135955Z-pr-2111.md"
+    resource: "raw/fixes/20260804T135955Z-pr-2111.md"
 tags: ["test", "golden-comparison", "mutation-testing", "detection-power", "diff-u"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T09:26:00+09:00" }
 ---
 
 # テスト検出力の回復は個別 assert の増築より golden 全文比較への置換を先に検討する

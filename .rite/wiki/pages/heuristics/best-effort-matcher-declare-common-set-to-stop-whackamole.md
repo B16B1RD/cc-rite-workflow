@@ -4,26 +4,26 @@ title: "best-effort な静的 matcher hardening は allowlist を COMMON-SET（�
 domain: "heuristics"
 description: "静的 bash matcher で危険操作を捕捉する security hardening（reviewer の `.git` 書き込み遮断等）は、原理的に列挙を完全にできない（任意の write ツール・難読化形を静的に enumerate できない）。"
 created: "2026-07-16T06:07:53+09:00"
-updated: "2026-07-16T06:07:53+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260715T160953Z-pr-1865.md"
+    resource: "raw/fixes/20260715T160953Z-pr-1865.md"
   - type: "fixes"
-    ref: "raw/fixes/20260715T163038Z-pr-1865.md"
+    resource: "raw/fixes/20260715T163038Z-pr-1865.md"
   - type: "fixes"
-    ref: "raw/fixes/20260715T164655Z-pr-1865.md"
+    resource: "raw/fixes/20260715T164655Z-pr-1865.md"
   - type: "fixes"
-    ref: "raw/fixes/20260715T171255Z-pr-1865.md"
+    resource: "raw/fixes/20260715T171255Z-pr-1865.md"
   - type: "fixes"
-    ref: "raw/fixes/20260715T173545Z-pr-1865.md"
+    resource: "raw/fixes/20260715T173545Z-pr-1865.md"
   - type: "reviews"
-    ref: "raw/reviews/20260715T194532Z-pr-1865.md"
+    resource: "raw/reviews/20260715T194532Z-pr-1865.md"
   - type: "fixes"
-    ref: "raw/fixes/20260715T195606Z-pr-1865.md"
+    resource: "raw/fixes/20260715T195606Z-pr-1865.md"
   - type: "reviews"
-    ref: "raw/reviews/20260715T203920Z-pr-1865.md"
+    resource: "raw/reviews/20260715T203920Z-pr-1865.md"
 tags: ["security", "static-matcher", "allowlist", "common-set", "whack-a-mole", "review-loop", "scope", "layer-1", "mergeable", "hardening"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-16T06:07:53+09:00" }
 ---
 
 # best-effort な静的 matcher hardening は allowlist を COMMON-SET（非網羅）と宣言して review の whack-a-mole を止める

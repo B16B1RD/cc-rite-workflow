@@ -3,12 +3,12 @@ title: "Bash 配列の slash-deletion は要素を空文字列に置換するだ
 domain: "anti-patterns"
 description: "`cleanup_dirs=(\"${cleanup_dirs[@]/$target}\")` のような bash パラメータ展開 `${arr[@]/pattern}` は、各要素内の `pattern` 一致部分を空文字列に置換するだけで配列スロット自体を削除しない。"
 created: "2026-05-16T13:30:00+09:00"
-updated: "2026-05-16T13:30:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260516T041304Z-pr-991.md"
+    resource: "raw/reviews/20260516T041304Z-pr-991.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-16T13:30:00+09:00" }
 ---
 
 # Bash 配列の slash-deletion は要素を空文字列に置換するだけで削除しない

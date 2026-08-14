@@ -4,14 +4,14 @@ title: "`$( )` でコマンド置換したヘルパーの `exit` は呼び出し
 domain: "anti-patterns"
 description: "シェル関数の中に書いた `exit 1` は、その関数が `$( )` の中で呼ばれた場合、**コマンド置換のサブシェルを終了させるだけ**で呼び出し元スクリプトは走り続ける。"
 created: "2026-07-30T01:20:00+09:00"
-updated: "2026-07-30T01:20:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260729T150808Z-pr-2051-c2.md"
+    resource: "raw/reviews/20260729T150808Z-pr-2051-c2.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T151517Z-pr-2051-c2.md"
+    resource: "raw/fixes/20260729T151517Z-pr-2051-c2.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T01:20:00+09:00" }
 ---
 
 # `$( )` でコマンド置換したヘルパーの `exit` は呼び出し元を止めない

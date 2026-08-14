@@ -3,28 +3,28 @@ title: "Declarative invariant の wording 追加は self-meta-conflict trap (fra
 domain: "anti-patterns"
 description: "SoT 集約 PR で「両者を集合等価に保つ」等の declarative invariant note を追加すると、note の文言自体が新たな self-meta-conflict 経路を生む。"
 created: "2026-05-26T00:30:00Z"
-updated: "2026-05-26T00:30:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260525T164503Z-pr-1143.md"
+    resource: "raw/reviews/20260525T164503Z-pr-1143.md"
   - type: "reviews"
-    ref: "raw/reviews/20260525T182553Z-pr-1143.md"
+    resource: "raw/reviews/20260525T182553Z-pr-1143.md"
   - type: "reviews"
-    ref: "raw/reviews/20260525T221531Z-pr-1143.md"
+    resource: "raw/reviews/20260525T221531Z-pr-1143.md"
   - type: "fixes"
-    ref: "raw/fixes/20260525T164714Z-pr-1143.md"
+    resource: "raw/fixes/20260525T164714Z-pr-1143.md"
   - type: "fixes"
-    ref: "raw/fixes/20260525T191243Z-pr-1143.md"
+    resource: "raw/fixes/20260525T191243Z-pr-1143.md"
   - type: "fixes"
-    ref: "raw/fixes/20260525T221902Z-pr-1143.md"
+    resource: "raw/fixes/20260525T221902Z-pr-1143.md"
   - type: "fixes"
-    ref: "raw/fixes/20260525T233957Z-pr-1143.md"
+    resource: "raw/fixes/20260525T233957Z-pr-1143.md"
   - type: "fixes"
-    ref: "raw/fixes/20260526T000611Z-pr-1143.md"
+    resource: "raw/fixes/20260526T000611Z-pr-1143.md"
   - type: "fixes"
-    ref: "raw/fixes/20260526T001800Z-pr-1143.md"
+    resource: "raw/fixes/20260526T001800Z-pr-1143.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-26T00:30:00Z" }
 ---
 
 # Declarative invariant の wording 追加は self-meta-conflict trap (fractal pattern は layer を変えて再発する)

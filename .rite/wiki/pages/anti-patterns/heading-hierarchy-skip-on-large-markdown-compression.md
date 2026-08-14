@@ -3,14 +3,14 @@ title: "Markdown 大規模圧縮 refactor 時の heading hierarchy skip"
 domain: "anti-patterns"
 description: "Markdown 文書を大幅圧縮 (例: 734 → 334 行、-55%) する refactor では、セクション削除・統合の過程で heading level (h2 → h3 → h4) の連続性が意図せず崩れ、`## → ####` のような skip が発生しやすい。"
 created: "2026-05-04T06:50:00Z"
-updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260504T062954Z-pr-808.md"
+    resource: "raw/reviews/20260504T062954Z-pr-808.md"
   - type: "reviews"
-    ref: "raw/reviews/20260504T090515Z-pr-809.md"
+    resource: "raw/reviews/20260504T090515Z-pr-809.md"
 tags: ["markdown", "refactor", "heading", "compression", "review-finding", "self-application"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 ---
 
 # Markdown 大規模圧縮 refactor 時の heading hierarchy skip

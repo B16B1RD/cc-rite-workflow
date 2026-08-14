@@ -5,20 +5,20 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "bash が exit 127 で出す `command not found` のようなエラーメッセージは gettext でローカライズされるため（ja_JP.UTF-8 では `コマンドが見つかりません`）、英語文字列を `grep -q \"command not found\"` で検査する assert は非英語 locale のホストで**常に空振りして pass する**。"
 created: "2026-07-24T16:55:00+09:00"
-updated: "2026-08-06T02:49:27Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260724T070805Z-pr-2003.md"
+    resource: "raw/reviews/20260724T070805Z-pr-2003.md"
   - type: "fixes"
-    ref: "raw/fixes/20260724T071409Z-pr-2003.md"
+    resource: "raw/fixes/20260724T071409Z-pr-2003.md"
   - type: "reviews"
-    ref: "raw/reviews/20260729T061547Z-pr-2044.md"
+    resource: "raw/reviews/20260729T061547Z-pr-2044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T062345Z-pr-2044.md"
+    resource: "raw/fixes/20260729T062345Z-pr-2044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260805T234810Z-pr-2120.md"
+    resource: "raw/fixes/20260805T234810Z-pr-2120.md"
 tags: ["bash", "test-quality", "locale", "dead-assertion", "identification-power", "degrade-path", "LC_ALL"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T02:49:27Z" }
 ---
 
 # エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する

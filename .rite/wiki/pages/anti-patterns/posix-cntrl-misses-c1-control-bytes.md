@@ -4,14 +4,14 @@ domain: "anti-patterns"
 description: "glibc (C / UTF-8 両ロケールでバイト単位実測確認) の `[[:cntrl:]]` POSIX 文字クラスは C0 (0x00–0x1f) + DEL (0x7f) のみを cntrl と分類し、C1 8-bit 制御バイト (0x80–0x9f、特に CSI introducer 0x9b) を素通しする。"
 promote: rite-plugin
 created: "2026-06-05T05:45:26Z"
-updated: "2026-06-05T17:02:41Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260605T045347Z-pr-1277.md"
+    resource: "raw/reviews/20260605T045347Z-pr-1277.md"
   - type: "reviews"
-    ref: "raw/reviews/20260605T163454Z-pr-1280.md"
+    resource: "raw/reviews/20260605T163454Z-pr-1280.md"
 tags: ["bash", "posix-character-class", "c1-control-bytes", "csi-introducer", "neutralize", "locale", "utf-8"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-05T17:02:41Z" }
 ---
 
 # POSIX `[[:cntrl:]]` は C1 8-bit 制御バイト (0x80–0x9f) を分類しない

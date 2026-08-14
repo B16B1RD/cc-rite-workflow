@@ -4,18 +4,18 @@ title: "承認ゲートを跨ぐ自動書き換えは、両立しない不変条
 domain: "patterns"
 description: "「差分表示 → ユーザー承認 → 適用」の順序を持つフローで、**表示後・承認前に本文を自動付記する**と、ユーザーが承認した内容と実際に適用される内容が乖離する。"
 created: "2026-07-30T15:40:55Z"
-updated: "2026-07-30T15:40:55Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260730T045358Z-pr-2056.md"
+    resource: "raw/reviews/20260730T045358Z-pr-2056.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T053611Z-pr-2056.md"
+    resource: "raw/fixes/20260730T053611Z-pr-2056.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T061343Z-pr-2056.md"
+    resource: "raw/reviews/20260730T061343Z-pr-2056.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T061745Z-pr-2056.md"
+    resource: "raw/fixes/20260730T061745Z-pr-2056.md"
 tags: ["approval-gate", "invariant", "prose-procedure", "ux"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 ---
 
 # 承認ゲートを跨ぐ自動書き換えは、両立しない不変条件を掲げるのではなく差分の再描画で閉じる

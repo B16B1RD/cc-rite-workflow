@@ -4,16 +4,16 @@ domain: "anti-patterns"
 description: "実装途中で設計を pivot (例: sweep 条件の変更) した際、pivot した実装本体とそのコメントは更新されるが、**同一 PR 内の別箇所にある cross-reference コメント (他の検査・関数を説明する参照文)** が旧設計の説明のまま残り、同一ファイル内で自己矛盾する記述が生まれる。"
 promote: rite-plugin
 created: "2026-06-10T00:38:14Z"
-updated: "2026-06-10T01:19:36Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260610T001830Z-pr-1337.md"
+    resource: "raw/reviews/20260610T001830Z-pr-1337.md"
   - type: "fixes"
-    ref: "raw/fixes/20260610T002120Z-pr-1337.md"
+    resource: "raw/fixes/20260610T002120Z-pr-1337.md"
   - type: "reviews"
-    ref: "raw/reviews/20260610T011729Z-pr-1343.md"
+    resource: "raw/reviews/20260610T011729Z-pr-1343.md"
 tags: ["comment-rot", "design-pivot", "cross-reference", "self-inconsistency", "sweep-test", "helper-delegation", "cross-file-impact-check"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-10T01:19:36Z" }
 ---
 
 # 同一 PR 内の設計 pivot 後に cross-reference コメントが旧設計の説明のまま残る

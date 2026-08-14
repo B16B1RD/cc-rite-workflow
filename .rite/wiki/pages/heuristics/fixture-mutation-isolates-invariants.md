@@ -4,24 +4,24 @@ title: "テスト fixture の変異は各不変量・guard を単独で kill す
 domain: "heuristics"
 description: "複数の不変量（集合差分 I1/I2 + 行内整合 I3 等）を持つ検証スクリプトのテストでは、fixture 変異の設計を誤ると「テストは green だが特定の不変量・guard を削除しても green のまま」という vacuous coverage が生まれる。"
 created: "2026-07-03T18:30:00+00:00"
-updated: "2026-08-05T05:30:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260703T164934Z-pr-1743.md"
+    resource: "raw/reviews/20260703T164934Z-pr-1743.md"
   - type: "fixes"
-    ref: "raw/fixes/20260703T165654Z-pr-1743.md"
+    resource: "raw/fixes/20260703T165654Z-pr-1743.md"
   - type: "reviews"
-    ref: "raw/reviews/20260703T180609Z-pr-1743.md"
+    resource: "raw/reviews/20260703T180609Z-pr-1743.md"
   - type: "reviews"
-    ref: "raw/reviews/20260805T033632Z-pr-2112.md"
+    resource: "raw/reviews/20260805T033632Z-pr-2112.md"
   - type: "fixes"
-    ref: "raw/fixes/20260805T040711Z-pr-2112.md"
+    resource: "raw/fixes/20260805T040711Z-pr-2112.md"
   - type: "reviews"
-    ref: "raw/reviews/20260805T043752Z-pr-2112.md"
+    resource: "raw/reviews/20260805T043752Z-pr-2112.md"
   - type: "fixes"
-    ref: "raw/fixes/20260805T050456Z-pr-2112.md"
+    resource: "raw/fixes/20260805T050456Z-pr-2112.md"
 tags: ["test", "fixture", "mutation", "invariant", "coverage"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T05:30:00+00:00" }
 ---
 
 # テスト fixture の変異は各不変量・guard を単独で kill する配置で設計する

@@ -4,20 +4,20 @@ title: "判定の強さと観測可能性を逆相関させると、確定した
 domain: "anti-patterns"
 description: "判定値を持つ検査を設計するとき、**最も強い判定ほど痕跡を残さない**という逆転が起きやすい。"
 created: "2026-07-30T15:40:55Z"
-updated: "2026-07-30T15:40:55Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260730T093514Z-pr-2056.md"
+    resource: "raw/reviews/20260730T093514Z-pr-2056.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T094251Z-pr-2056.md"
+    resource: "raw/fixes/20260730T094251Z-pr-2056.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T101445Z-pr-2056.md"
+    resource: "raw/reviews/20260730T101445Z-pr-2056.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T103733Z-pr-2056.md"
+    resource: "raw/reviews/20260730T103733Z-pr-2056.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T110514Z-pr-2056.md"
+    resource: "raw/fixes/20260730T110514Z-pr-2056.md"
 tags: ["observability", "verdict", "warning", "prose-procedure"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 ---
 
 # 判定の強さと観測可能性を逆相関させると、確定した矛盾が検証不能と区別できなくなる

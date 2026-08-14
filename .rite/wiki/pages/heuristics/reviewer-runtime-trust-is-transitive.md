@@ -3,12 +3,12 @@ title: "Reviewer の runtime trust は entrypoint ではなく推移的 executio
 description: "reviewer prompt が「自然な entrypoint を実行して検証する」と要求すると、未信頼 PR が変更したコードを reviewer 権限で実行する誘導経路になる。"
 domain: "heuristics"
 created: "2026-08-09T08:43:00+09:00"
-updated: "2026-08-09T08:43:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260808T233606Z-pr-2187.md"
+    resource: "raw/reviews/20260808T233606Z-pr-2187.md"
 tags: ["reviewer", "security", "runtime", "trust-boundary", "sandbox"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-09T08:43:00+09:00" }
 ---
 
 # Reviewer の runtime trust は entrypoint ではなく推移的 execution graph で判定する

@@ -4,16 +4,16 @@ title: "fail-loud ガードは同じ帰結を持つ全出口に張る（症状�
 domain: "heuristics"
 description: "silent データ損失（空文字が返る等）に fail-loud ガードを追加するとき、**指摘された 1 出口だけを塞ぐと、同じ帰結に至る兄弟出口が残って次サイクルで同型指摘として返ってくる**。"
 created: "2026-08-05T09:26:00+09:00"
-updated: "2026-08-06T00:40:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260804T155148Z-pr-2111-cycle5.md"
+    resource: "raw/reviews/20260804T155148Z-pr-2111-cycle5.md"
   - type: "fixes"
-    ref: "raw/fixes/20260804T155921Z-pr-2111-cycle5.md"
+    resource: "raw/fixes/20260804T155921Z-pr-2111-cycle5.md"
   - type: "fixes"
-    ref: "raw/fixes/20260805T110153Z-pr-2114.md"
+    resource: "raw/fixes/20260805T110153Z-pr-2114.md"
 tags: ["fail-loud", "guard", "exit-exhaustive", "sibling-exit", "trap", "boundary-tc", "static-pin"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T00:40:00+09:00" }
 ---
 
 # fail-loud ガードは同じ帰結を持つ全出口に張る（症状側から出口を網羅する）

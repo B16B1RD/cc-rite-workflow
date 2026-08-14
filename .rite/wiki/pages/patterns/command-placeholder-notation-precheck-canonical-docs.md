@@ -6,20 +6,20 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/command-placeholder-notation-precheck-canonical-docs.md"
 description: "`/rite:iterate <pr>` `/rite:ready <pr>` `/rite:cleanup [branch]` のように複数コマンドの引数プレースホルダを並記するドキュメントを新規に書く（または改修する）とき、書き手が新しい表記（例: 大文字 `<PR>`）を独自に導入すると、(1) 実際のコマンドシグネチャ（`argument-hint`）との不一致、(2) プロジェクト内で既に確立された表記慣習（小文字 `<pr>`）との不一致、の2種類の drift を同時に生む。"
 created: "2026-07-02T16:55:00+09:00"
-updated: "2026-07-02T16:55:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260702T065237Z-pr-1721.md"
+    resource: "raw/reviews/20260702T065237Z-pr-1721.md"
   - type: "reviews"
-    ref: "raw/reviews/20260702T070751Z-pr-1721.md"
+    resource: "raw/reviews/20260702T070751Z-pr-1721.md"
   - type: "reviews"
-    ref: "raw/reviews/20260702T074935Z-pr-1721.md"
+    resource: "raw/reviews/20260702T074935Z-pr-1721.md"
   - type: "fixes"
-    ref: "raw/fixes/20260702T065551Z-pr-1721.md"
+    resource: "raw/fixes/20260702T065551Z-pr-1721.md"
   - type: "fixes"
-    ref: "raw/fixes/20260702T071033Z-pr-1721.md"
+    resource: "raw/fixes/20260702T071033Z-pr-1721.md"
 tags: ["placeholder-notation", "argument-hint", "cross-file-consistency", "documentation-pr", "propagation-scan"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-02T16:55:00+09:00" }
 ---
 
 # 複数コマンドの引数プレースホルダ表記は既存正典ドキュメントの慣習を事前 Grep で確認する

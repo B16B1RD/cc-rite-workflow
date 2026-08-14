@@ -5,16 +5,16 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "state ファイル等の corrupt/改竄された値を診断メッセージに含める際、同一ファイル内の既存の読み取り経路（READ）が `neutralize_ctrl` 等の制御文字中和ヘルパー経由で stderr emit する規約を確立している場合、新規に追加した書き込み経路（WRITE）のエラーハンドリングもこの規約を踏襲しないと、ESC/CSI 等の制御バイトが未中和のまま operator 端末へ到達しうる。"
 created: "2026-07-09T19:44:33+09:00"
-updated: "2026-08-07T23:45:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260709T102352Z-pr-1812.md"
+    resource: "raw/reviews/20260709T102352Z-pr-1812.md"
   - type: "fixes"
-    ref: "raw/fixes/20260709T103432Z-pr-1812.md"
+    resource: "raw/fixes/20260709T103432Z-pr-1812.md"
   - type: "reviews"
-    ref: "raw/reviews/20260807T133323Z-pr-2137.md"
+    resource: "raw/reviews/20260807T133323Z-pr-2137.md"
 tags: ["control-char", "neutralize", "stderr", "security", "jq"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T23:45:00+09:00" }
 ---
 
 # 新規診断出力の追加は同一ファイル内の既存 control-char 中和規約を踏襲する

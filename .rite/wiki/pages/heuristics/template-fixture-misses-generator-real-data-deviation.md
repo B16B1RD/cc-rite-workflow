@@ -5,18 +5,18 @@ domain: "heuristics"
 promote: rite-plugin
 description: "除外規則やパーサの fixture を「そのファイル種別のテンプレート」に合わせて作ると、テンプレートが持つ偶然の性質（当該見出しが最終節にある、など）によって**誤った実装と正しい実装が同じ結果を返す**。"
 created: "2026-08-01T00:21:06+09:00"
-updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260730T184559Z-pr-2066.md"
+    resource: "raw/reviews/20260730T184559Z-pr-2066.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T192125Z-pr-2066.md"
+    resource: "raw/reviews/20260730T192125Z-pr-2066.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T190134Z-pr-2066.md"
+    resource: "raw/fixes/20260730T190134Z-pr-2066.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T192847Z-pr-2066.md"
+    resource: "raw/fixes/20260730T192847Z-pr-2066.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 ---
 
 # テンプレート準拠の fixture では、生成器が実データで作る構造的逸脱を検出できない

@@ -4,24 +4,24 @@ title: "再発防止 guard スクリプトは docstring の宣言意図と実装
 domain: "heuristics"
 description: "lint / recurrence-guard 系スクリプトのレビューでは「docstring が宣言する検出範囲」と「実際の regex が検出する範囲」の対応が合成テストで実測検証され、乖離は指摘になる。"
 created: "2026-07-19T15:00:00+09:00"
-updated: "2026-07-19T23:01:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260719T030534Z-pr-1909-c3.md"
+    resource: "raw/reviews/20260719T030534Z-pr-1909-c3.md"
   - type: "fixes"
-    ref: "raw/fixes/20260719T030743Z-pr-1909-c3.md"
+    resource: "raw/fixes/20260719T030743Z-pr-1909-c3.md"
   - type: "reviews"
-    ref: "raw/reviews/20260719T031816Z-pr-1909-c4.md"
+    resource: "raw/reviews/20260719T031816Z-pr-1909-c4.md"
   - type: "fixes"
-    ref: "raw/fixes/20260719T031957Z-pr-1909-c4.md"
+    resource: "raw/fixes/20260719T031957Z-pr-1909-c4.md"
   - type: "reviews"
-    ref: "raw/reviews/20260719T120555Z-pr-1909.md"
+    resource: "raw/reviews/20260719T120555Z-pr-1909.md"
   - type: "fixes"
-    ref: "raw/fixes/20260719T121530Z-pr-1909.md"
+    resource: "raw/fixes/20260719T121530Z-pr-1909.md"
   - type: "reviews"
-    ref: "raw/reviews/20260719T122934Z-pr-1909.md"
+    resource: "raw/reviews/20260719T122934Z-pr-1909.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-19T23:01:00+09:00" }
 ---
 
 # 再発防止 guard スクリプトは docstring の宣言意図と実装 regex を実測で校正する

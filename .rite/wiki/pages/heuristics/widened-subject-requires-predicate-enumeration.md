@@ -4,12 +4,12 @@ title: "散文の主語を広げたら、その主語に係る述語を数え上
 domain: "heuristics"
 description: "「X は A に依存する」の主語へ B を足すとき、続く述語がそのまま残ると、B について偽の主張になる。主語を広げる編集は述語を検算する編集とセットであり、検算に外延の数え上げが要るなら、その粒度は文書に写さないほうが腐朽が遅い。"
 created: "2026-08-13T19:20:00+09:00"
-updated: "2026-08-13T19:20:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260813T093749Z-pr-2304.md"
+    resource: "raw/reviews/20260813T093749Z-pr-2304.md"
 tags: ["documentation", "comment-rot", "scope", "verification", "coupling"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-13T19:20:00+09:00" }
 ---
 
 # 散文の主語を広げたら、その主語に係る述語を数え上げて検算する — 数え上げられない粒度は書かずに削る

@@ -6,20 +6,20 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/transcription-scope-quantifier-inflation.md"
 description: "rationale（設計理由・背景解説）を SKILL.md 本体から references/ へ退避するコンテキストダイエット型 refactor では、転記時の文章圧縮によって主張の量化スコープが改変される系統的エラーが発生する。"
 created: "2026-07-07T03:56:13+00:00"
-updated: "2026-07-07T03:56:13+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260707T005014Z-pr-1774.md"
+    resource: "raw/reviews/20260707T005014Z-pr-1774.md"
   - type: "fixes"
-    ref: "raw/fixes/20260707T005536Z-pr-1774.md"
+    resource: "raw/fixes/20260707T005536Z-pr-1774.md"
   - type: "reviews"
-    ref: "raw/reviews/20260707T011246Z-pr-1774.md"
+    resource: "raw/reviews/20260707T011246Z-pr-1774.md"
   - type: "fixes"
-    ref: "raw/fixes/20260707T011502Z-pr-1774.md"
+    resource: "raw/fixes/20260707T011502Z-pr-1774.md"
   - type: "reviews"
-    ref: "raw/reviews/20260707T012957Z-pr-1774.md"
+    resource: "raw/reviews/20260707T012957Z-pr-1774.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-07T03:56:13+00:00" }
 ---
 
 # rationale 転記圧縮時の主張スコープ量化拡大（この箇所→全体への過大一般化）

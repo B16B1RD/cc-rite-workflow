@@ -4,12 +4,12 @@ title: "PIPESTATUS はコマンド置換 `$(...)` のサブシェル境界を越
 domain: "heuristics"
 description: "bash の `$(...)` コマンド置換は内部でサブシェルを生成して実行される。"
 created: "2026-07-21T12:40:00+09:00"
-updated: "2026-07-21T12:40:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260721T005522Z-pr-1937.md"
+    resource: "raw/fixes/20260721T005522Z-pr-1937.md"
 tags: ["bash", "pipestatus", "subshell", "command-substitution", "exit-code"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-21T12:40:00+09:00" }
 ---
 
 # PIPESTATUS はコマンド置換 `$(...)` のサブシェル境界を越えない

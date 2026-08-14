@@ -5,14 +5,14 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "アンインストール手順やクリーンアップ手順のドキュメントで、gitignore 済みディレクトリを「安全に削除してよい」と単純化すると、その配下に git worktree のような live な状態管理対象が含まれるケースを見落とす。"
 created: "2026-07-07T22:03:17+00:00"
-updated: "2026-07-07T22:03:17+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260706T213530Z-pr-1773.md"
+    resource: "raw/reviews/20260706T213530Z-pr-1773.md"
   - type: "fixes"
-    ref: "raw/fixes/20260706T213921Z-pr-1773.md"
+    resource: "raw/fixes/20260706T213921Z-pr-1773.md"
 tags: ["docs-safety", "git-worktree", "cleanup-instructions", "destructive-command"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-07T22:03:17+00:00" }
 ---
 
 # アンインストール/クリーンアップ手順の rm -rf 推奨は git worktree 等の live 状態管理対象を見落としやすい

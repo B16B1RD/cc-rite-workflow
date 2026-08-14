@@ -4,12 +4,12 @@ domain: "patterns"
 description: "`assert_file_exists_or_fail` のような **pre-condition guard 系 helper** は、成功時に `pass()` を呼ばずに silent return (rc=0) する契約を持つべきである。"
 promote: rite-plugin
 created: "2026-05-19T11:50:00+09:00"
-updated: "2026-05-19T11:50:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260519T023807Z-pr-1052.md"
+    resource: "raw/reviews/20260519T023807Z-pr-1052.md"
 tags: ["bash", "test-helpers", "precondition-guard", "assertion-semantics", "pass-counter"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-19T11:50:00+09:00" }
 ---
 
 # Silent guard contract — pre-condition guard は pass() を呼ばずに silent return する

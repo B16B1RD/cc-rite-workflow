@@ -5,14 +5,14 @@ domain: "heuristics"
 promote: rite-plugin
 description: "helper が失敗理由を stdout の構造化戻り値にだけ載せ自身の stderr へは何も書かない場合、呼び出し側が成否フィールドだけを読むと失敗理由が全出力から消え、既に書いてある stderr 診断分岐が到達不能な死枝になる。"
 created: "2026-08-10T05:20:00+09:00"
-updated: "2026-08-10T05:20:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260810T035844Z-pr-2227.md"
+    resource: "raw/reviews/20260810T035844Z-pr-2227.md"
   - type: "fixes"
-    ref: "raw/fixes/20260810T040721Z-pr-2227.md"
+    resource: "raw/fixes/20260810T040721Z-pr-2227.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T05:20:00+09:00" }
 ---
 
 # helper を新しく消費するコードは、診断がどのチャネルに載るかを先に確認して既存消費者と同じ転記をする

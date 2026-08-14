@@ -3,22 +3,22 @@ title: "HINT-specific 文言 pin で case arm 削除 regression を検知する"
 domain: "patterns"
 description: "hook script の phase 別 case arm 内でのみ emit される HINT 文言 (`Phase 4.W.2 phase recorded` 等) を test fixture で literal pin することで、case arm 自体が削除された場合の silent regression を検知する。"
 created: "2026-04-20T13:20:00+00:00"
-updated: "2026-06-01T03:07:26+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260420T104328Z-pr-623.md"
+    resource: "raw/reviews/20260420T104328Z-pr-623.md"
   - type: "fixes"
-    ref: "raw/fixes/20260420T105116Z-pr-623.md"
+    resource: "raw/fixes/20260420T105116Z-pr-623.md"
   - type: "fixes"
-    ref: "raw/fixes/20260421T033138Z-pr-636-cycle-3.md"
+    resource: "raw/fixes/20260421T033138Z-pr-636-cycle-3.md"
   - type: "reviews"
-    ref: "raw/reviews/20260601T023442Z-pr-1223.md"
+    resource: "raw/reviews/20260601T023442Z-pr-1223.md"
   - type: "fixes"
-    ref: "raw/fixes/20260601T023854Z-pr-1223.md"
+    resource: "raw/fixes/20260601T023854Z-pr-1223.md"
   - type: "reviews"
-    ref: "raw/reviews/20260601T024546Z-pr-1223.md"
+    resource: "raw/reviews/20260601T024546Z-pr-1223.md"
 tags: [testing, regression-detection, bash, hook-assertion, twin-site-contract, exit-code-path-pin]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-01T03:07:26+00:00" }
 ---
 
 # HINT-specific 文言 pin で case arm 削除 regression を検知する

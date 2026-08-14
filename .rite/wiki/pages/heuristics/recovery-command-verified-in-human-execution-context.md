@@ -5,26 +5,26 @@ domain: "heuristics"
 promote: rite-plugin
 description: "停止通知やエラーメッセージに埋め込む「手動復旧コマンド」は、agent が自分の Bash tool で叩いて rc=0 を確認しても検証にならない。"
 created: "2026-07-29T21:32:36+09:00"
-updated: "2026-08-08T17:40:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260729T064538Z-pr-2044.md"
+    resource: "raw/reviews/20260729T064538Z-pr-2044.md"
   - type: "reviews"
-    ref: "raw/reviews/20260729T070922Z-pr-2044.md"
+    resource: "raw/reviews/20260729T070922Z-pr-2044.md"
   - type: "reviews"
-    ref: "raw/reviews/20260729T085226Z-pr-2044.md"
+    resource: "raw/reviews/20260729T085226Z-pr-2044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T051956Z-pr-2044.md"
+    resource: "raw/fixes/20260729T051956Z-pr-2044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T073316Z-pr-2044.md"
+    resource: "raw/fixes/20260729T073316Z-pr-2044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T075214Z-pr-2044.md"
+    resource: "raw/fixes/20260729T075214Z-pr-2044.md"
   - type: "reviews"
-    ref: "raw/reviews/20260808T072312Z-pr-2150-cycle3.md"
+    resource: "raw/reviews/20260808T072312Z-pr-2150-cycle3.md"
   - type: "fixes"
-    ref: "raw/fixes/20260808T072610Z-pr-2150-cycle3-fix.md"
+    resource: "raw/fixes/20260808T072610Z-pr-2150-cycle3-fix.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T17:40:00+09:00" }
 ---
 
 # agent が人間に渡す復旧コマンドは、人間の実行コンテキストで正しいかを検証する

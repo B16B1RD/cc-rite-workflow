@@ -4,14 +4,14 @@ title: "CI lint チェックを blocking gate に昇格するときはツール�
 domain: "heuristics"
 description: "lint / 静的解析ジョブを informational（常時 exit 0）から blocking CI gate へ昇格するとき、gate 判定を「レポート JSON を jq でパースして error 件数を数え、`[ \"$err_count\" -gt 0 ]` で判定する」方式にすると、ツールが実行不能（binary 欠落 / IO エラー / 空レポート）だったときに `err_count=0` と誤認して **silent pass** する経路が残る。"
 created: "2026-07-24T13:47:35Z"
-updated: "2026-08-01T08:45:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260724T133654Z-pr-2009.md"
+    resource: "raw/reviews/20260724T133654Z-pr-2009.md"
   - type: "reviews"
-    ref: "raw/reviews/20260801T083836Z-pr-2080.md"
+    resource: "raw/reviews/20260801T083836Z-pr-2080.md"
 tags: [ci, blocking-gate, exit-code, fail-loud, lint, silent-pass, version-pinning, devops, continue-on-error, advisory-leg]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T08:45:00Z" }
 ---
 
 # CI lint チェックを blocking gate に昇格するときはツール自身の exit code を gate にする

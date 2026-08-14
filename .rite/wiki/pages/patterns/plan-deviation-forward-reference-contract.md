@@ -3,14 +3,14 @@ title: "計画変更時の前方参照契約"
 domain: "patterns"
 description: "評価レポート / 設計ドキュメントで「リスク緩和策」「Implementation 計画」を上方に書いた後、下方の「実施報告」「結果セクション」で計画逸脱 (一部未実施) が開示される構造では、リスク表 / 計画表側に **前方参照** (forward reference) を必ず追加する。"
 created: "2026-05-05T11:15:55+00:00"
-updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260505T105152Z-pr-837.md"
+    resource: "raw/reviews/20260505T105152Z-pr-837.md"
   - type: "fixes"
-    ref: "raw/fixes/20260505T105459Z-pr-837.md"
+    resource: "raw/fixes/20260505T105459Z-pr-837.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 ---
 
 # 計画変更時の前方参照契約

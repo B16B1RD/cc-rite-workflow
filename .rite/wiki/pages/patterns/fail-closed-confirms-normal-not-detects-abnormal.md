@@ -4,14 +4,14 @@ title: "fail-closed ガードは「異常を検出したら止める」ではな
 domain: "patterns"
 description: "cross-Issue の値転写を遮断する fail-closed ガードが、「identity が**食い違う**」ときにしか発火しない実装になっていた。"
 created: "2026-08-03T07:46:56Z"
-updated: "2026-08-03T07:46:56Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260803T045324Z-pr-2094.md"
+    resource: "raw/fixes/20260803T045324Z-pr-2094.md"
   - type: "reviews"
-    ref: "raw/reviews/20260803T044103Z-pr-2094.md"
+    resource: "raw/reviews/20260803T044103Z-pr-2094.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T07:46:56Z" }
 ---
 
 # fail-closed ガードは「異常を検出したら止める」ではなく「正常を確認できなければ止める」で書く

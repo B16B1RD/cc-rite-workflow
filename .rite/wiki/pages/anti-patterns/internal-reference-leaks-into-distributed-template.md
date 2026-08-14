@@ -5,14 +5,14 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "`templates/` 配下のように **ユーザープロジェクトへ展開される成果物** は、開発リポジトリの内部とは別の名前空間に着地する。"
 created: "2026-08-02T22:05:00+09:00"
-updated: "2026-08-02T22:05:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260802T102657Z-pr-2052.md"
+    resource: "raw/reviews/20260802T102657Z-pr-2052.md"
   - type: "fixes"
-    ref: "raw/fixes/20260802T103655Z-pr-2052.md"
+    resource: "raw/fixes/20260802T103655Z-pr-2052.md"
 tags: ["distribution-boundary", "template", "propagation-scan", "implicit-invariant", "lint-blind-spot"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T22:05:00+09:00" }
 ---
 
 # 配布テンプレートへの内部参照流入は 1 箇所直しても閉じない — 同一配布単位の sibling を base 件数と比較する

@@ -4,20 +4,20 @@ domain: "heuristics"
 description: "`parse_wiki_scalar()` や worktree fast path のような同型 helper 関数を、兄弟 shell script (`wiki-ingest-commit.sh` / `wiki-worktree-commit.sh` / `wiki-worktree-setup.sh`) に個別コピーで実装すると drift リスクが増大する。"
 promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-20T10:36:25+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260720T013625Z-pr-1921.md"
+    resource: "raw/reviews/20260720T013625Z-pr-1921.md"
   - type: "fixes"
-    ref: "raw/fixes/20260416T092207Z-pr-544.md"
+    resource: "raw/fixes/20260416T092207Z-pr-544.md"
   - type: "fixes"
-    ref: "raw/fixes/20260416T180658Z-pr-548.md"
+    resource: "raw/fixes/20260416T180658Z-pr-548.md"
   - type: "reviews"
-    ref: "raw/reviews/20260416T091926Z-pr-544.md"
+    resource: "raw/reviews/20260416T091926Z-pr-544.md"
   - type: "reviews"
-    ref: "raw/reviews/20260416T180001Z-pr-548.md"
+    resource: "raw/reviews/20260416T180001Z-pr-548.md"
 tags: ["dry", "shared-lib", "refactor", "duplication"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T10:36:25+09:00" }
 ---
 
 # 兄弟 shell script の重複 helper は shared lib 抽出で解く

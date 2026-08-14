@@ -4,16 +4,16 @@ title: "absence pin (assert_not_grep) は「base に存在・head に不在」�
 domain: "patterns"
 description: "旧文面の除去を drift ガードとして固定する `assert_not_grep` pin には 2 つの構造的な罠がある。"
 created: "2026-07-21T18:30:00Z"
-updated: "2026-07-28T21:30:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260721T175725Z-pr-1959.md"
+    resource: "raw/reviews/20260721T175725Z-pr-1959.md"
   - type: "fixes"
-    ref: "raw/fixes/20260721T175931Z-pr-1959.md"
+    resource: "raw/fixes/20260721T175931Z-pr-1959.md"
   - type: "fixes"
-    ref: "raw/fixes/20260728T093135Z-pr-2038.md"
+    resource: "raw/fixes/20260728T093135Z-pr-2038.md"
 tags: ["assert-not-grep", "vacuous-pin", "ere-portability", "test-pin", "fixture-scope"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-28T21:30:00+09:00" }
 ---
 
 # absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する

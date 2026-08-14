@@ -4,14 +4,14 @@ domain: "patterns"
 description: "LLM が実行する command spec (`.md`) で、単一の汎用 placeholder `{number}` を `gh issue view {number}` と `gh pr view {number}` の両方の代入先に使うと、LLM が「どちらの entity 番号か」を一意に解決できず 404・誤参照を招く。"
 promote: rite-plugin
 created: "2026-06-02T03:50:58Z"
-updated: "2026-06-02T03:50:58Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260602T025347Z-pr-1244.md"
+    resource: "raw/reviews/20260602T025347Z-pr-1244.md"
   - type: "fixes"
-    ref: "raw/fixes/20260602T025909Z-pr-1244.md"
+    resource: "raw/fixes/20260602T025909Z-pr-1244.md"
 tags: ["prompt-engineering", "llm-command-spec"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-02T03:50:58Z" }
 ---
 
 # LLM 向けコマンド spec の placeholder は解決元 entity を一意化する (単一 {number} を {issue_number}/{pr_number} に分離)

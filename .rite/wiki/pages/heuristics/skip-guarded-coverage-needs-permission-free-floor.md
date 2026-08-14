@@ -4,14 +4,14 @@ title: "1 つの skip ガードの背後に AC の全カバレッジを置かな
 domain: "heuristics"
 description: "書き込み失敗のような異常系を検証する TC は `chmod` で権限を落として作ることが多く、権限操作が効かない環境（root / WSL2 DrvFs / overlay マウント）向けに skip ガードを付ける。"
 created: "2026-08-06T02:49:27Z"
-updated: "2026-08-06T02:49:27Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260806T010533Z-pr-2120.md"
+    resource: "raw/fixes/20260806T010533Z-pr-2120.md"
   - type: "fixes"
-    ref: "raw/fixes/20260806T002741Z-pr-2120.md"
+    resource: "raw/fixes/20260806T002741Z-pr-2120.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T02:49:27Z" }
 ---
 
 # 1 つの skip ガードの背後に AC の全カバレッジを置かない — permission 非依存の失敗誘発で床を残す

@@ -5,12 +5,12 @@ domain: "heuristics"
 promote: rite-plugin
 description: "`jq '[...] | @tsv'` の出力を `IFS=$'\\t' read -r a b c` で読む実装は、POSIX の IFS whitespace 規則により、tab を含む IFS では連続する区切り文字が1個に圧縮される。"
 created: "2026-07-06T23:20:00+09:00"
-updated: "2026-07-06T23:20:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260706T141300Z-pr-1767.md"
+    resource: "raw/reviews/20260706T141300Z-pr-1767.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-06T23:20:00+09:00" }
 ---
 
 # @tsv+IFS read の field-shift hazard 横断監査は cut-f免除と空フィールド可否の2条件で判定する

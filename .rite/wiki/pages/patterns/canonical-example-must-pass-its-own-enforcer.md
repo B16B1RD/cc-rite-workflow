@@ -4,16 +4,16 @@ title: "canonical 例を持つ SoT は「例が自身の enforcer を通る」�
 domain: "patterns"
 description: "過去のレビュー事例の cycle 4 で **4 reviewer が独立に検出**した欠陥クラス。"
 created: "2026-07-27T17:54:54+09:00"
-updated: "2026-08-03T00:55:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260727T084223Z-pr-2036.md"
+    resource: "raw/reviews/20260727T084223Z-pr-2036.md"
   - type: "reviews"
-    ref: "raw/reviews/20260802T145006Z-pr-2092.md"
+    resource: "raw/reviews/20260802T145006Z-pr-2092.md"
   - type: "fixes"
-    ref: "raw/fixes/20260802T145247Z-pr-2092.md"
+    resource: "raw/fixes/20260802T145247Z-pr-2092.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T00:55:00+09:00" }
 ---
 
 # canonical 例を持つ SoT は「例が自身の enforcer を通る」ことを実測で確かめる

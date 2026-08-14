@@ -3,18 +3,18 @@ title: "Test assertion は section-scoped で行頭 prefix を必須にし narra
 domain: "patterns"
 description: "構造保護 test (例: 「契約 row が table に存在する」「特定 bash literal が 1 reference に存在する」) を substring grep ベースで書くと、narrative の言及 (= prose で言葉として書かれているだけ) や heading-only mention、single-instance match で pass する false negative を生む。"
 created: "2026-05-12T15:29:45Z"
-updated: "2026-06-08T13:10:25Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260512T134356Z-pr-936.md"
+    resource: "raw/reviews/20260512T134356Z-pr-936.md"
   - type: "fixes"
-    ref: "raw/fixes/20260512T134908Z-pr-936.md"
+    resource: "raw/fixes/20260512T134908Z-pr-936.md"
   - type: "reviews"
-    ref: "raw/reviews/20260608T113726Z-pr-1306.md"
+    resource: "raw/reviews/20260608T113726Z-pr-1306.md"
   - type: "fixes"
-    ref: "raw/fixes/20260608T121039Z-pr-1306.md"
+    resource: "raw/fixes/20260608T121039Z-pr-1306.md"
 tags: ["test-design", "grep", "false-negative", "section-scoped", "assertion-strictness"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-08T13:10:25Z" }
 ---
 
 # Test assertion は section-scoped で行頭 prefix を必須にし narrative mention の false negative を防ぐ

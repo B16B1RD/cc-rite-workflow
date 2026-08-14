@@ -4,14 +4,14 @@ domain: "anti-patterns"
 description: "検証結果 doc / 設計書に `_TBD_` / `（追記予定）` / `<!-- TODO: post-hoc 観測 -->` のような placeholder を埋め込み「merge 後に観測値を追記する」設計は、merge 前 enforcement (CI check / pre-commit / required reviewer 等) なしでは長期残留し、後続 reader が「ここに何が来るはずだったか」を context 喪失した状態で読む drift を生む。"
 promote: rite-plugin
 created: "2026-05-19T20:10:23Z"
-updated: "2026-05-19T20:10:23Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260519T195007Z-pr-1065.md"
+    resource: "raw/reviews/20260519T195007Z-pr-1065.md"
   - type: "fixes"
-    ref: "raw/fixes/20260519T195351Z-pr-1065.md"
+    resource: "raw/fixes/20260519T195351Z-pr-1065.md"
 tags: [tbd-placeholder, post-hoc-observation, merge-gate, enforcement, pr-description-tracking]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-19T20:10:23Z" }
 ---
 
 # doc 内 _TBD_ placeholder は merge 前 enforcement なしだと長期残留する

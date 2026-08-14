@@ -5,12 +5,12 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "自由入力（reviewer 指摘の要約、ユーザー入力等）をシェルに渡す際、quoted heredoc (`<<'EOF'`) でコマンド置換 (`` ` `` / `$(...)`) や変数展開 (`$VAR`) を無害化しても、その「無害化済み」の値を次の境界（別のツール、例えば `awk -v var=value`）へそのまま渡すと、そのツール固有のエスケープ解釈によって別種の破損が起きる。"
 created: "2026-07-09T00:40:00+09:00"
-updated: "2026-07-09T00:40:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260708T153610Z-pr-1802.md"
+    resource: "raw/reviews/20260708T153610Z-pr-1802.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-09T00:40:00+09:00" }
 ---
 
 # 境界での無害化は下流ツールの別エスケープ意味論までは保証しない（quoted heredoc → awk -v 伝播）

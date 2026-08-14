@@ -4,14 +4,14 @@ domain: "heuristics"
 description: "命令書型の Markdown skill (`commands/pr/fix.md` など) で Phase 番号を付ける際、`### 8.0.1` のような sub-phase を追加したら親である `### 8.0` も必ず存在させる。"
 promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260416T040604Z-pr-541.md"
+    resource: "raw/fixes/20260416T040604Z-pr-541.md"
   - type: "reviews"
-    ref: "raw/reviews/20260416T040322Z-pr-541.md"
+    resource: "raw/reviews/20260416T040322Z-pr-541.md"
 tags: ["docs", "phase-numbering", "structural-integrity"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # Phase 番号は構造的対称性を保つ（孤立 sub-phase を生まない）

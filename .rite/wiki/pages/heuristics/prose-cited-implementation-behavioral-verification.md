@@ -3,16 +3,16 @@ title: "散文が引用する実装 (regex literal / 帰属ファイル / 挙動
 domain: "heuristics"
 description: "SoT 散文 / 設計ドキュメントが実装 (正規表現リテラル・helper file・挙動主張) を要約参照するとき、レビューは「散文を読む」だけでは整合を保証できない。"
 created: "2026-06-02T00:07:23Z"
-updated: "2026-06-02T00:07:23Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260601T185616Z-pr-1238.md"
+    resource: "raw/reviews/20260601T185616Z-pr-1238.md"
   - type: "reviews"
-    ref: "raw/reviews/20260601T191319Z-pr-1238.md"
+    resource: "raw/reviews/20260601T191319Z-pr-1238.md"
   - type: "fixes"
-    ref: "raw/fixes/20260601T190814Z-pr-1238.md"
+    resource: "raw/fixes/20260601T190814Z-pr-1238.md"
 tags: ["verification-protocol", "prose-implementation-sync", "regex", "behavioral-test", "attribution"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-02T00:07:23Z" }
 ---
 
 # 散文が引用する実装 (regex literal / 帰属ファイル / 挙動) は文字一致・帰属・behavioral test の 3 点で裏取りする

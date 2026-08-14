@@ -4,14 +4,14 @@ title: "path を返す test fixture ヘルパーの cleanup 登録は $() サブ
 domain: "patterns"
 description: "path を `echo`/`printf` で返す fixture ヘルパーを `X=\"$(new_repo ...)\"` の **コマンド置換 (`$()`)** 経由で呼ぶと、そのヘルパーは **subshell** で実行される。"
 created: "2026-07-03T06:00:00+09:00"
-updated: "2026-07-03T06:00:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260703T054500Z-pr-1735.md"
+    resource: "raw/fixes/20260703T054500Z-pr-1735.md"
   - type: "reviews"
-    ref: "raw/reviews/20260703T055450Z-pr-1735.md"
+    resource: "raw/reviews/20260703T055450Z-pr-1735.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-03T06:00:00+09:00" }
 ---
 
 # path を返す test fixture ヘルパーの cleanup 登録は $() サブシェルではなく親シェルで行う

@@ -3,14 +3,14 @@ title: "新規 test helper は同ディレクトリ sibling test の既存 helpe
 domain: "heuristics"
 description: "bash test スクリプトに新しい helper (`skip()` / `pass()` / `fail()` 等) を追加するときは、echo のみの最小実装で済ませず、**同ディレクトリの sibling test file が既に確立している helper 慣習 (カウンタ変数の初期化 + helper 内 increment + Summary 行での報告) を踏襲する**。"
 created: "2026-06-09T07:58:52+00:00"
-updated: "2026-07-20T10:36:25+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260719T235117Z-pr-1921.md"
+    resource: "raw/reviews/20260719T235117Z-pr-1921.md"
   - type: "reviews"
-    ref: "raw/reviews/20260609T064947Z-pr-1318.md"
+    resource: "raw/reviews/20260609T064947Z-pr-1318.md"
 tags: ["test", "bash", "observability", "convention", "skip-counter"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T10:36:25+09:00" }
 ---
 
 # 新規 test helper は同ディレクトリ sibling test の既存 helper 慣習を踏襲する (counter + summary 報告)

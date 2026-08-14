@@ -4,14 +4,14 @@ title: "対象プラットフォーム挙動を shim して blocking gate 側で
 domain: "heuristics"
 description: "移植性の修正は、対象プラットフォームで検証されて初めて意味を持つ。"
 created: "2026-07-25T14:18:43Z"
-updated: "2026-08-12T18:34:40Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260725T100748Z-pr-2017-cycle2.md"
+    resource: "raw/reviews/20260725T100748Z-pr-2017-cycle2.md"
   - type: "fixes"
-    ref: "raw/fixes/20260812T133631Z-pr-2278.md"
+    resource: "raw/fixes/20260812T133631Z-pr-2278.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-12T18:34:40Z" }
 ---
 
 # 対象プラットフォーム挙動を shim して blocking gate 側で pin する

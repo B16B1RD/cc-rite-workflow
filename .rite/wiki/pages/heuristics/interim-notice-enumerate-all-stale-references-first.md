@@ -4,16 +4,16 @@ title: "暫定注記は対象成果物内の同種表記を全数列挙してか
 domain: "heuristics"
 description: "陳腐化した成果物（再生成できない動画等）への暫定注記を書くとき、注記が言及する「旧表記」の範囲は対象成果物内の同種表記を最初に全数把握してから決める。"
 created: "2026-07-26T20:51:40+09:00"
-updated: "2026-07-26T20:51:40+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260726T112624Z-pr-2029.md"
+    resource: "raw/reviews/20260726T112624Z-pr-2029.md"
   - type: "reviews"
-    ref: "raw/reviews/20260726T114240Z-pr-2029.md"
+    resource: "raw/reviews/20260726T114240Z-pr-2029.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T112821Z-pr-2029.md"
+    resource: "raw/fixes/20260726T112821Z-pr-2029.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-26T20:51:40+09:00" }
 ---
 
 # 暫定注記は対象成果物内の同種表記を全数列挙してから書く

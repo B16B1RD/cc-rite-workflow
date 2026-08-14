@@ -4,18 +4,18 @@ domain: "anti-patterns"
 description: "大規模な terminology rename PR で Acceptance Criteria を `grep \"Phase [0-9]+(\\.[0-9]+)?\"` のような **「キーワード + 数字」必須** の正規表現で定義すると、bare キーワード単独 prose (`本 Phase` / `各 Phase` / `後続 Phase` / `5 Phase`)、表ヘッダのキーワード列名、命名規約 prose 内のキーワード参照、副詞句 (`現 Phase は set -e なし`) を **すべて捕捉できない盲点** が生じる。"
 promote: rite-plugin
 created: "2026-05-27T01:30:00Z"
-updated: "2026-05-28T08:53:59+00:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260526T152327Z-pr-1151.md"
+    resource: "raw/fixes/20260526T152327Z-pr-1151.md"
   - type: "reviews"
-    ref: "raw/reviews/20260526T151003Z-pr-1151.md"
+    resource: "raw/reviews/20260526T151003Z-pr-1151.md"
   - type: "reviews"
-    ref: "raw/reviews/20260528T043041Z-pr-1166.md"
+    resource: "raw/reviews/20260528T043041Z-pr-1166.md"
   - type: "fixes"
-    ref: "raw/fixes/20260528T050131Z-pr-1166.md"
+    resource: "raw/fixes/20260528T050131Z-pr-1166.md"
 tags: ["acceptance-criteria", "verification-grep", "word-boundary", "rename-pr", "definition-of-done", "fixed-string-grep", "suffix-bearing-token"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-28T08:53:59+00:00" }
 ---
 
 # AC 検証 grep を狭い正規表現で定義すると bare prose / 表ヘッダ / 副詞句が捕捉できない

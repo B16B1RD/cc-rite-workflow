@@ -6,14 +6,14 @@ promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/clear-failure-state-after-recording-it.md"
 description: "サーキットブレーカー発火時に cycle counter を 0 へリセットする設計（「再実行でループを再開できる」ため）を入れたが、そのリセットは発火を記録する唯一の手段である sentinel emit より**手前**にあった。"
 created: "2026-07-29T21:32:36+09:00"
-updated: "2026-07-29T21:32:36+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260729T042319Z-pr-2044.md"
+    resource: "raw/reviews/20260729T042319Z-pr-2044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T043110Z-pr-2044.md"
+    resource: "raw/fixes/20260729T043110Z-pr-2044.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-29T21:32:36+09:00" }
 ---
 
 # 失敗状態のクリアは失敗の記録より後に置く

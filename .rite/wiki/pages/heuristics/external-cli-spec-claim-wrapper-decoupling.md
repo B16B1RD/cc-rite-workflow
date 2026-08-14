@@ -5,12 +5,12 @@ domain: "heuristics"
 promote: rite-plugin
 description: "外部 CLI の挙動に関する主張（例: 「`gh project link` は既にリンク済みでも成功する」）は、reviewer が read-only で実行検証できない場合 Demonstrable ゲートを越えないため、blocking finding ではなく調査推奨（要検証マーカー付き）に分離する。"
 created: "2026-07-12T22:55:00+09:00"
-updated: "2026-07-12T22:55:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260712T134842Z-pr-1835.md"
+    resource: "raw/reviews/20260712T134842Z-pr-1835.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-12T22:55:00+09:00" }
 ---
 
 # 外部 CLI の仕様主張（冪等性等）は wrapper 構造で spec 要求から分離し、実行検証なしでは blocking にしない

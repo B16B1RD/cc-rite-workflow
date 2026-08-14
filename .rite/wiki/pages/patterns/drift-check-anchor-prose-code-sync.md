@@ -4,26 +4,26 @@ domain: "patterns"
 description: "doc に書かれた AC anchor / reasons table / Eval-order enumeration と、bash 実装の emit 順は 3 者対等な契約であり、いずれかのドリフトを検出する pre-commit lint (`distributed-fix-drift-check.sh` Pattern-2 / Pattern-5) で機械的に整合性を保証する。"
 promote: rite-plugin
 created: "2026-04-17T00:49:00+00:00"
-updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260417T002317Z-pr-553.md"
+    resource: "raw/reviews/20260417T002317Z-pr-553.md"
   - type: "reviews"
-    ref: "raw/reviews/20260417T003119Z-pr-553-cycle-2.md"
+    resource: "raw/reviews/20260417T003119Z-pr-553-cycle-2.md"
   - type: "reviews"
-    ref: "raw/reviews/20260417T003737Z-pr-553-cycle-3.md"
+    resource: "raw/reviews/20260417T003737Z-pr-553-cycle-3.md"
   - type: "reviews"
-    ref: "raw/reviews/20260425T153740Z-pr-661.md"
+    resource: "raw/reviews/20260425T153740Z-pr-661.md"
   - type: "reviews"
-    ref: "raw/reviews/20260425T161137Z-pr-661.md"
+    resource: "raw/reviews/20260425T161137Z-pr-661.md"
   - type: "fixes"
-    ref: "raw/fixes/20260425T154517Z-pr-661-cycle-1.md"
+    resource: "raw/fixes/20260425T154517Z-pr-661-cycle-1.md"
   - type: "fixes"
-    ref: "raw/fixes/20260425T161635Z-pr-661.md"
+    resource: "raw/fixes/20260425T161635Z-pr-661.md"
   - type: "fixes"
-    ref: "raw/fixes/20260503T183643Z-pr-799-cycle4.md"
+    resource: "raw/fixes/20260503T183643Z-pr-799-cycle4.md"
 tags: ["drift-detection", "lint", "pre-commit", "convergence", "mechanical-validation", "anchor-prose-enumeration"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 ---
 
 # AC anchor / prose / コード emit 順は drift 検出 lint で 3 者同期する

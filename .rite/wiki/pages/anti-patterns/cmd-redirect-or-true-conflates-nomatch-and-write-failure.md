@@ -4,14 +4,14 @@ title: "`cmd > file || true` は no-match (rc=1) と書き込み失敗 (rc>=2) �
 domain: "anti-patterns"
 description: "`grep pattern > file || true` のような best-effort リダイレクトは、grep の「no-match」(rc=1) と「書き込み失敗」(rc>=2、disk full / permission denied 等) をどちらも `|| true` で握り潰し区別しない。"
 created: "2026-07-22T13:15:00+09:00"
-updated: "2026-07-22T13:15:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260722T022920Z-pr-1967.md"
+    resource: "raw/reviews/20260722T022920Z-pr-1967.md"
   - type: "fixes"
-    ref: "raw/fixes/20260722T023104Z-pr-1967.md"
+    resource: "raw/fixes/20260722T023104Z-pr-1967.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-22T13:15:00+09:00" }
 ---
 
 # `cmd > file || true` は no-match (rc=1) と書き込み失敗 (rc>=2) を混同する

@@ -5,14 +5,14 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "reviewer の false-positive 指摘 (「この記述は無関係な対象まで拾ってしまう」) を受けて記述を厳密化する修正は、対象実装 (正規表現・マッチングロジック等) が実際に許容する**全ての**正当な形状を再確認せずに行うと、修正前には正しくカバーできていた別の形状を取りこぼす under-match を新規に導入する。"
 created: "2026-07-07T22:03:17+00:00"
-updated: "2026-07-07T22:03:17+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260706T214706Z-pr-1773-cycle2.md"
+    resource: "raw/reviews/20260706T214706Z-pr-1773-cycle2.md"
   - type: "fixes"
-    ref: "raw/fixes/20260706T214905Z-pr-1773-cycle2.md"
+    resource: "raw/fixes/20260706T214905Z-pr-1773-cycle2.md"
 tags: ["docs-drift", "precision-regression", "review-fix-loop", "regex-verification"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-07T22:03:17+00:00" }
 ---
 
 # 過剰マッチ防止の精緻化修正は、実装が許容する全形状を再確認しないと過小マッチという別の欠陥を生む (振り子現象)

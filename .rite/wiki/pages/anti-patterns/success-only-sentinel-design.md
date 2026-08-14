@@ -5,14 +5,14 @@ description: "sub-skill 切出し時に success path 用 HTML sentinel (`<!-- [s
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/anti-patterns/success-only-sentinel-design.md"
 created: "2026-05-14T05:30:00+00:00"
-updated: "2026-05-14T05:30:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260514T043949Z-pr-951.md"
+    resource: "raw/reviews/20260514T043949Z-pr-951.md"
   - type: "fixes"
-    ref: "raw/fixes/20260514T045140Z-pr-951.md"
+    resource: "raw/fixes/20260514T045140Z-pr-951.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-14T05:30:00+00:00" }
 ---
 
 # Success-only Sentinel Design — sub-skill abort path sentinel 未定義

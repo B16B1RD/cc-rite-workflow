@@ -4,14 +4,14 @@ domain: "heuristics"
 description: "Issue body などの specification 入力と schema doc などの canonical SoT 表記のある文書で、同一フィールドの仕様が正面から矛盾した場合、`canonical SoT` 側を採用する。"
 promote: rite-plugin
 created: "2026-05-19T17:45:00Z"
-updated: "2026-05-19T17:45:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260519T153513Z-pr-1064.md"
+    resource: "raw/reviews/20260519T153513Z-pr-1064.md"
   - type: "fixes"
-    ref: "raw/fixes/20260519T154330Z-pr-1064-cycle1.md"
+    resource: "raw/fixes/20260519T154330Z-pr-1064-cycle1.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-19T17:45:00Z" }
 ---
 
 # Spec-vs-spec 矛盾は canonical SoT 表記のある側を優先する

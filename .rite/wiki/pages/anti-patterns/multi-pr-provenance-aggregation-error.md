@@ -4,16 +4,16 @@ domain: "anti-patterns"
 description: "対称化 / 要約 PR で「先行 PR が追加したガード・機能の履歴」を散文で要約するとき、**複数 PR にまたがって incremental に追加された項目を単一 PR に誤集約する** failure mode。"
 promote: rite-plugin
 created: "2026-06-03T08:38:00Z"
-updated: "2026-06-03T08:38:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260603T041655Z-pr-1255.md"
+    resource: "raw/reviews/20260603T041655Z-pr-1255.md"
   - type: "reviews"
-    ref: "raw/reviews/20260603T042748Z-pr-1255.md"
+    resource: "raw/reviews/20260603T042748Z-pr-1255.md"
   - type: "fixes"
-    ref: "raw/fixes/20260603T042218Z-pr-1255.md"
+    resource: "raw/fixes/20260603T042218Z-pr-1255.md"
 tags: ["provenance", "attribution", "git-pickaxe", "intra-file-contradiction", "symmetrization-pr"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-03T08:38:00Z" }
 ---
 
 # 複数 PR にまたがる incremental 追加履歴を単一 PR に誤集約する (multi-PR provenance aggregation error)

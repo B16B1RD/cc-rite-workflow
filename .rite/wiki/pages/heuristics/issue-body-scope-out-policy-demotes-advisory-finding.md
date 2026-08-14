@@ -5,12 +5,12 @@ description: "umbrella Issue (Phase A/B/C 等の段階分割で 1 PR 1 Phase を
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/issue-body-scope-out-policy-demotes-advisory-finding.md"
 created: "2026-05-07T19:32:00+09:00"
-updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260507T103117Z-pr-885.md"
+    resource: "raw/reviews/20260507T103117Z-pr-885.md"
 tags: ["umbrella-issue", "scope-out-policy", "reviewer-finding-demotion", "advisory-finding", "issue-spec-authoring"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 ---
 
 # Issue body 内 `Scope 外指摘ハンドリングポリシー` 宣言で reviewer advisory finding を Issue 化なし recommendation に降格する

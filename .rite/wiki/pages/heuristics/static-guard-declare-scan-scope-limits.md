@@ -5,14 +5,14 @@ domain: "heuristics"
 promote: rite-plugin
 description: "退行を機械的に止める静的ガード（find + 検出器で全ファイルを走査するテスト等）を追加するとき、**走査面が何を含まないか**と、**その盲点に現時点で違反が残っているか**をテスト本体のコメントと PASS 文言に書く。"
 created: "2026-08-01T17:45:00+09:00"
-updated: "2026-08-01T17:45:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260801T074423Z-pr-2080.md"
+    resource: "raw/reviews/20260801T074423Z-pr-2080.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T074952Z-pr-2080.md"
+    resource: "raw/fixes/20260801T074952Z-pr-2080.md"
 tags: [static-guard, test-comment, scope-limit, false-confidence, regression-guard, coverage]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T17:45:00+09:00" }
 ---
 
 # 静的ガードを新設したら、走査面の限界と現存する未カバーサイトをテスト本体のコメントに書く

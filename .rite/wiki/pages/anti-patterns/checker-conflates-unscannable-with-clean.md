@@ -5,18 +5,18 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "静的チェックスクリプトの exit code 設計に「検出できなかった」状態が無いと、走査失敗（対象ファイルを開けない / パーサが fatal で落ちた / 対象が 1 件も見つからない）がすべて「findings 0 件 = 問題なし」として rc=0 で返る。"
 created: "2026-07-30T01:20:00+09:00"
-updated: "2026-08-12T18:34:40Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260729T142410Z-pr-2051.md"
+    resource: "raw/reviews/20260729T142410Z-pr-2051.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T144345Z-pr-2051.md"
+    resource: "raw/fixes/20260729T144345Z-pr-2051.md"
   - type: "reviews"
-    ref: "raw/reviews/20260806T103116Z-pr-2124.md"
+    resource: "raw/reviews/20260806T103116Z-pr-2124.md"
   - type: "fixes"
-    ref: "raw/fixes/20260812T133631Z-pr-2278.md"
+    resource: "raw/fixes/20260812T133631Z-pr-2278.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-12T18:34:40Z" }
 ---
 
 # 検出器が「走査できなかった」を「問題なし」に畳むと、ガードが黙って無検査になる

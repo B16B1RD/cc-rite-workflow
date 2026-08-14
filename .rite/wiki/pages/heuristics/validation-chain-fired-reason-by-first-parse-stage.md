@@ -4,14 +4,14 @@ domain: "heuristics"
 description: "validation chain の error reason を doc 化する際は「どの段階が最初に入力を parse するか」が実発火 reason を決める。"
 promote: rite-plugin
 created: "2026-06-01T06:01:05+00:00"
-updated: "2026-06-01T08:15:52+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260601T054111Z-pr-1226.md"
+    resource: "raw/reviews/20260601T054111Z-pr-1226.md"
   - type: "reviews"
-    ref: "raw/reviews/20260601T073303Z-pr-1228.md"
+    resource: "raw/reviews/20260601T073303Z-pr-1228.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-01T08:15:52+00:00" }
 ---
 
 # Validation chain の発火 reason は最初に入力を parse する段階で決まる（暗黙 validation が後続 check を unreachable 化）

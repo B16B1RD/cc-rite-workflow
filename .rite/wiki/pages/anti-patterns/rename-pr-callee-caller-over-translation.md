@@ -4,16 +4,16 @@ domain: "anti-patterns"
 description: "大規模な heading rename PR (例: `Phase N` → `ステップ N`) で callee 側 prose に書かれた caller 参照を **片方向に翻訳した結果**、Phase 構造を維持している Out-of-Scope の caller (pr:*, issue:close 等) を「ステップ X.Y」と書き換えた箇所が、実在しない見出しを指す forward-reference drift を生む anti-pattern。"
 promote: rite-plugin
 created: "2026-05-27T01:30:00Z"
-updated: "2026-05-27T01:30:00Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260526T151003Z-pr-1151.md"
+    resource: "raw/reviews/20260526T151003Z-pr-1151.md"
   - type: "reviews"
-    ref: "raw/reviews/20260526T153732Z-pr-1151.md"
+    resource: "raw/reviews/20260526T153732Z-pr-1151.md"
   - type: "fixes"
-    ref: "raw/fixes/20260526T152327Z-pr-1151.md"
+    resource: "raw/fixes/20260526T152327Z-pr-1151.md"
 tags: ["rename-pr", "cross-reference", "out-of-scope-boundary", "callee-caller-asymmetry", "forward-reference-drift"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-27T01:30:00Z" }
 ---
 
 # Rename PR の callee → caller 片方向 over-translation で Out-of-Scope の broken cross-ref を生成する

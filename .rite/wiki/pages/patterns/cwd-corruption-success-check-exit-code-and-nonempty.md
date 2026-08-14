@@ -5,12 +5,12 @@ domain: "patterns"
 promote: rite-plugin
 description: "`[ \"$(cmd_a)\" = \"$(cmd_b)\" ]` のような command substitution の等値比較は、両コマンドが cwd 破損等で失敗し共に空文字列を返した場合でも `true` と評価される。"
 created: "2026-07-17T09:50:00+00:00"
-updated: "2026-07-17T09:50:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260717T094246Z-pr-1888.md"
+    resource: "raw/reviews/20260717T094246Z-pr-1888.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-17T09:50:00+00:00" }
 ---
 
 # cwd破損下の成否検証は非空性とexit codeの両方をチェックする（文字列等値比較だけでは偽陽性を防げない）

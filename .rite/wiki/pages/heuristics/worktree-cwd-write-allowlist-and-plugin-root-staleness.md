@@ -5,16 +5,16 @@ domain: "heuristics"
 promote: rite-plugin
 description: "`multi_session` によるセッション worktree 運用と sandbox 環境を組み合わせたとき、cwd の位置とファイルの実体が乖離する 3 種類の罠が観測された（罠 1・2 は sandbox 対応 PR の作業中に、罠 3 はその後続 PR のレビューで実際に踏んだ）。"
 created: "2026-07-18T23:38:52Z"
-updated: "2026-07-20T07:50:27Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260718T194343Z-pr-1902.md"
+    resource: "raw/reviews/20260718T194343Z-pr-1902.md"
   - type: "reviews"
-    ref: "raw/reviews/20260719T011000Z-pr-1908.md"
+    resource: "raw/reviews/20260719T011000Z-pr-1908.md"
   - type: "fixes"
-    ref: "raw/fixes/20260720T070808Z-pr-1925.md"
+    resource: "raw/fixes/20260720T070808Z-pr-1925.md"
 tags: ["multi-session", "worktree", "sandbox", "plugin-root", "write-allowlist", "show-toplevel"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T07:50:27Z" }
 ---
 
 # セッション worktree + sandbox 環境の 3 つの罠: cwd 相対 write-allowlist・`.rite-plugin-root` のブランチ相違・`--show-toplevel` の誤解決

@@ -4,16 +4,16 @@ title: "静的 pin が壊れたら期待値を書き写す前に、pin が観測
 domain: "heuristics"
 description: "producer 側のリテラルを変えたとき、そのリテラルを字面で照合していた consumer 側の静的 pin だけが壊れることがある。実行経路は完全に不変なので動作確認では検出できず、期待値へ新しい表現を書き写す最小パッチは同じ誤報の再発構造を残す。"
 created: "2026-08-13T19:20:00+09:00"
-updated: "2026-08-13T19:20:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260813T081206Z-pr-2304.md"
+    resource: "raw/reviews/20260813T081206Z-pr-2304.md"
   - type: "fixes"
-    ref: "raw/fixes/20260813T081923Z-pr-2304.md"
+    resource: "raw/fixes/20260813T081923Z-pr-2304.md"
   - type: "reviews"
-    ref: "raw/reviews/20260813T090426Z-pr-2304.md"
+    resource: "raw/reviews/20260813T090426Z-pr-2304.md"
 tags: ["pin", "static-assert", "producer-consumer", "brittleness", "refactor"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-13T19:20:00+09:00" }
 ---
 
 # 静的 pin が壊れたら期待値を書き写す前に、pin が観測する表現を不変部分へ寄せられないか検討する

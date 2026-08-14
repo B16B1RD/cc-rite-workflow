@@ -4,18 +4,18 @@ domain: "heuristics"
 description: "reviewer rule (`tech-writer.md` / `_reviewer-base.md` 等) を編集する PR では、reviewer (a) が rule 文書内の例示・禁止語例 (`verified-review` / `cycle N F-Y で確立` 等) を **rule 文書自身に対して self-application** する false positive リスクが発生する。"
 promote: rite-plugin
 created: "2026-04-28T19:00:00+00:00"
-updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260428T185933Z-pr-706.md"
+    resource: "raw/reviews/20260428T185933Z-pr-706.md"
   - type: "fixes"
-    ref: "raw/fixes/20260428T185144Z-pr-706.md"
+    resource: "raw/fixes/20260428T185144Z-pr-706.md"
   - type: "fixes"
-    ref: "raw/fixes/20260504T030513Z-pr-800-cycle3.md"
+    resource: "raw/fixes/20260504T030513Z-pr-800-cycle3.md"
   - type: "reviews"
-    ref: "raw/reviews/20260504T030800Z-pr-800-cycle4.md"
+    resource: "raw/reviews/20260504T030800Z-pr-800-cycle4.md"
 tags: ["reviewer-rule", "self-application", "whitelist", "verification", "cross-check"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 ---
 
 # Reviewer rule 自身を編集する PR は self-application false positive を verify する

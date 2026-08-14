@@ -5,20 +5,20 @@ description: "bash block 内でシェル変数として計算した値を、別�
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/bash-cross-boundary-emit-explicit-context.md"
 created: "2026-04-30T01:58:00+00:00"
-updated: "2026-05-19T12:30:00Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260430T014425Z-pr-688.md"
+    resource: "raw/fixes/20260430T014425Z-pr-688.md"
   - type: "fixes"
-    ref: "raw/fixes/20260429T141610Z-pr-688.md"
+    resource: "raw/fixes/20260429T141610Z-pr-688.md"
   - type: "reviews"
-    ref: "raw/reviews/20260514T082816Z-pr-953.md"
+    resource: "raw/reviews/20260514T082816Z-pr-953.md"
   - type: "reviews"
-    ref: "raw/reviews/20260519T114404Z-pr-1062.md"
+    resource: "raw/reviews/20260519T114404Z-pr-1062.md"
   - type: "reviews"
-    ref: "raw/reviews/20260519T122133Z-pr-1062.md"
+    resource: "raw/reviews/20260519T122133Z-pr-1062.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-19T12:30:00Z" }
 ---
 
 # Bash tool 境界を跨ぐ値は [CONTEXT] sentinel として明示 emit する

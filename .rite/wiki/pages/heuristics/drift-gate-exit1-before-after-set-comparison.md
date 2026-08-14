@@ -4,24 +4,24 @@ domain: "heuristics"
 description: "pre-commit drift gate (`distributed-fix-drift-check.sh` 等の機械的 lint) が `exit 1` で「drift 検出」を返したとき、その findings が **自分の変更が導入した drift** なのか **commit 前から存在する detector noise (pre-existing false-positive)** なのかを区別する手段が gate 自身にはない。"
 promote: rite-plugin
 created: "2026-05-29T15:59:38Z"
-updated: "2026-05-29T15:59:38Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260529T150155Z-pr-1201.md"
+    resource: "raw/fixes/20260529T150155Z-pr-1201.md"
   - type: "fixes"
-    ref: "raw/fixes/20260529T151834Z-pr-1201.md"
+    resource: "raw/fixes/20260529T151834Z-pr-1201.md"
   - type: "fixes"
-    ref: "raw/fixes/20260529T153627Z-pr-1201.md"
+    resource: "raw/fixes/20260529T153627Z-pr-1201.md"
   - type: "reviews"
-    ref: "raw/reviews/20260529T145515Z-pr-1201.md"
+    resource: "raw/reviews/20260529T145515Z-pr-1201.md"
   - type: "reviews"
-    ref: "raw/reviews/20260529T151325Z-pr-1201.md"
+    resource: "raw/reviews/20260529T151325Z-pr-1201.md"
   - type: "reviews"
-    ref: "raw/reviews/20260529T152911Z-pr-1201.md"
+    resource: "raw/reviews/20260529T152911Z-pr-1201.md"
   - type: "reviews"
-    ref: "raw/reviews/20260529T154822Z-pr-1201.md"
+    resource: "raw/reviews/20260529T154822Z-pr-1201.md"
 tags: [drift-check, pre-commit-gate, git-stash, revert-test, false-positive, scope-discipline, push-back]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-29T15:59:38Z" }
 ---
 
 # Mechanical drift gate の exit 1 は git-stash before/after 集合比較で pre-existing 判定する

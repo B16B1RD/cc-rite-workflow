@@ -4,22 +4,22 @@ domain: "anti-patterns"
 description: "`active=false` / `phase mismatch` 等の guard 条件で fixture が early exit するテストは、検証対象のロジックを一切実行しないまま rc=0 で pass する silent false-positive を生む。"
 promote: rite-plugin
 created: "2026-04-20T01:10:00+00:00"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260419T230924Z-pr-608-cycle5-review.md"
+    resource: "raw/reviews/20260419T230924Z-pr-608-cycle5-review.md"
   - type: "fixes"
-    ref: "raw/fixes/20260419T231616Z-pr-608-cycle6.md"
+    resource: "raw/fixes/20260419T231616Z-pr-608-cycle6.md"
   - type: "reviews"
-    ref: "raw/reviews/20260419T232356Z-pr-608-cycle7.md"
+    resource: "raw/reviews/20260419T232356Z-pr-608-cycle7.md"
   - type: "fixes"
-    ref: "raw/fixes/20260419T232739Z-pr-608-cycle8.md"
+    resource: "raw/fixes/20260419T232739Z-pr-608-cycle8.md"
   - type: "reviews"
-    ref: "raw/reviews/20260421T045816Z-pr-636.md"
+    resource: "raw/reviews/20260421T045816Z-pr-636.md"
   - type: "fixes"
-    ref: "raw/fixes/20260421T050914Z-pr-636.md"
+    resource: "raw/fixes/20260421T050914Z-pr-636.md"
 tags: ["silent-false-pass", "fault-injection", "test-coverage"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # Test が early exit 経路で silent pass する false-positive

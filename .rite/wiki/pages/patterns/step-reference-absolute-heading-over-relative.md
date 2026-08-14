@@ -3,16 +3,16 @@ title: "Step 番号参照は relative (Step N + 1) ではなく absolute (headin
 domain: "patterns"
 description: "prompt / 文書内で「Step 2/3 を skip」「次の Step」のような relative step 参照を書くと、後続の reorder / step 追加で actual heading 構造とのずれが発生し、参照が silent に間違った step を指す regression を生む。"
 created: "2026-04-30T01:58:00+00:00"
-updated: "2026-07-12T22:55:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260430T005759Z-pr-688.md"
+    resource: "raw/reviews/20260430T005759Z-pr-688.md"
   - type: "reviews"
-    ref: "raw/reviews/20260712T133608Z-pr-1835.md"
+    resource: "raw/reviews/20260712T133608Z-pr-1835.md"
   - type: "fixes"
-    ref: "raw/fixes/20260712T133936Z-pr-1835.md"
+    resource: "raw/fixes/20260712T133936Z-pr-1835.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-12T22:55:00+09:00" }
 ---
 
 # Step 番号参照は relative (Step N + 1) ではなく absolute (heading title 名 + Step 番号) で書く

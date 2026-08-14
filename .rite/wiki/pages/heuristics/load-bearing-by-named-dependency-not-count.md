@@ -4,12 +4,12 @@ title: "「SoT が N 個と書いている」だけでは load-bearing 性は決
 domain: "heuristics"
 description: "consumer 側の文書が SoT の N 要素のうち M 個（M < N）しか列挙していないとき、「SoT は N と書いているから欠落は欠陥だ」という推論は一段飛ばしになっている。"
 created: "2026-07-29T02:10:00+09:00"
-updated: "2026-07-29T02:10:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260728T165431Z-pr-2043.md"
+    resource: "raw/reviews/20260728T165431Z-pr-2043.md"
 tags: ["sot", "review", "cross-validation", "documentation"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-29T02:10:00+09:00" }
 ---
 
 # 「SoT が N 個と書いている」だけでは load-bearing 性は決まらない — 依存側が名指ししている要素を読む

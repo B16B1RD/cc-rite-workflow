@@ -4,22 +4,22 @@ title: "mutation は適用前に一致件数を、適用後に構文を検証し
 domain: "heuristics"
 description: "mutation テストの結論（「このアサーションは守れている / 守れていない」）は、mutation 自体が正しく適用されて初めて意味を持つ。"
 created: "2026-08-03T07:46:56Z"
-updated: "2026-08-03T07:46:56Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260802T173849Z-pr-2094.md"
+    resource: "raw/reviews/20260802T173849Z-pr-2094.md"
   - type: "fixes"
-    ref: "raw/fixes/20260802T174557Z-pr-2094.md"
+    resource: "raw/fixes/20260802T174557Z-pr-2094.md"
   - type: "fixes"
-    ref: "raw/fixes/20260802T171659Z-pr-2094.md"
+    resource: "raw/fixes/20260802T171659Z-pr-2094.md"
   - type: "reviews"
-    ref: "raw/reviews/20260802T183251Z-pr-2094.md"
+    resource: "raw/reviews/20260802T183251Z-pr-2094.md"
   - type: "reviews"
-    ref: "raw/reviews/20260803T012646Z-pr-2094.md"
+    resource: "raw/reviews/20260803T012646Z-pr-2094.md"
   - type: "fixes"
-    ref: "raw/fixes/20260803T013513Z-pr-2094.md"
+    resource: "raw/fixes/20260803T013513Z-pr-2094.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T07:46:56Z" }
 ---
 
 # mutation は適用前に一致件数を、適用後に構文を検証してから結論に使う

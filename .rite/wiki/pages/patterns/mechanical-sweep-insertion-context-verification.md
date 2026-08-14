@@ -4,18 +4,18 @@ title: "機械的スイープでは挿入先コンテキストを検証してか
 domain: "patterns"
 description: "横断スイープ（多数ファイルへの同型変更の一括適用）は、変更そのものは機械的でも、挿入先のコンテキストは機械的ではない。"
 created: "2026-07-20T01:15:00+09:00"
-updated: "2026-07-20T01:15:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260719T151010Z-pr-1919.md"
+    resource: "raw/reviews/20260719T151010Z-pr-1919.md"
   - type: "fixes"
-    ref: "raw/fixes/20260719T151513Z-pr-1919.md"
+    resource: "raw/fixes/20260719T151513Z-pr-1919.md"
   - type: "reviews"
-    ref: "raw/reviews/20260719T153208Z-pr-1919-c2.md"
+    resource: "raw/reviews/20260719T153208Z-pr-1919-c2.md"
   - type: "fixes"
-    ref: "raw/fixes/20260719T153443Z-pr-1919-c2.md"
+    resource: "raw/fixes/20260719T153443Z-pr-1919-c2.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T01:15:00+09:00" }
 ---
 
 # 機械的スイープでは挿入先コンテキストを検証してから変更を適用する

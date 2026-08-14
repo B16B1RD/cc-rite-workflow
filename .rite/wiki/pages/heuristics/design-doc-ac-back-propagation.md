@@ -4,14 +4,14 @@ domain: "heuristics"
 description: "Umbrella Issue 配下の Sub-Issue series で各 PR の AC (例: 行数目標) が user 承認のもと段階的に緩和された場合、Umbrella 起点の設計ドキュメント (`docs/designs/...`) の goal-setting 記述にも back-propagation する運用が必要。"
 promote: rite-plugin
 created: "2026-05-04T11:20:00Z"
-updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260504T105615Z-pr-813.md"
+    resource: "raw/reviews/20260504T105615Z-pr-813.md"
   - type: "fixes"
-    ref: "raw/fixes/20260504T110207Z-pr-813-cycle2.md"
+    resource: "raw/fixes/20260504T110207Z-pr-813-cycle2.md"
 tags: ["design-doc", "ac-relaxation", "back-propagation", "umbrella-issue", "sub-issue-series"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 ---
 
 # Sub-Issue series で AC 緩和が発生したら設計 doc 側にも back-propagation する

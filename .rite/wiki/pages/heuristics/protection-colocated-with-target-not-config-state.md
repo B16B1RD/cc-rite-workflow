@@ -4,14 +4,14 @@ title: "保護は「設定ファイルの内容」ではなく「保護対象と
 domain: "heuristics"
 description: "「機密を含むファイルが公開リポジトリに入らないようにする」ような保護を、セットアップが生成する設定ファイル（`.gitignore` など）へ 1 行追記する形で実装すると、その保護は 3 つの状態に同時に依存する — セットアップをいつ実行したか、アップグレード経路が追記ブロックに到達するか、ユーザーが設定を手で編集していないか。"
 created: "2026-08-06T00:40:00+09:00"
-updated: "2026-08-06T00:40:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260805T112936Z-pr-2114.md"
+    resource: "raw/reviews/20260805T112936Z-pr-2114.md"
   - type: "fixes"
-    ref: "raw/fixes/20260805T114122Z-pr-2114.md"
+    resource: "raw/fixes/20260805T114122Z-pr-2114.md"
 tags: ["gitignore", "setup", "upgrade-path", "colocation", "config-drift", "distribution"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T00:40:00+09:00" }
 ---
 
 # 保護は「設定ファイルの内容」ではなく「保護対象と同じ場所」に置く

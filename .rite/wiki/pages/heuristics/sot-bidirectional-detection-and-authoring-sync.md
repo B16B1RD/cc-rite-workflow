@@ -5,18 +5,18 @@ domain: "heuristics"
 promote: rite-plugin
 description: "「アンカーが特定の regex にマッチしたら blocking として扱う」のような機構は、**検出する側**（assessment-rules.md / SKILL.md の判定ステップ）と**書く側**（`_reviewer-base.md` / reviewer-prompt-generator.md）の 2 つの SoT を持つ。"
 created: "2026-07-27T10:57:51+09:00"
-updated: "2026-07-27T10:57:51+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260726T160331Z-pr-2030.md"
+    resource: "raw/reviews/20260726T160331Z-pr-2030.md"
   - type: "reviews"
-    ref: "raw/reviews/20260726T130838Z-pr-2030.md"
+    resource: "raw/reviews/20260726T130838Z-pr-2030.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T161811Z-pr-2030.md"
+    resource: "raw/fixes/20260726T161811Z-pr-2030.md"
   - type: "fixes"
-    ref: "raw/fixes/20260726T131902Z-pr-2030.md"
+    resource: "raw/fixes/20260726T131902Z-pr-2030.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-27T10:57:51+09:00" }
 ---
 
 # SoT 同期は detection 側と authoring 側の双方向に書く — 片側だけでは機構が silent に空振りする

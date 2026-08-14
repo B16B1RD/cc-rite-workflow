@@ -4,18 +4,18 @@ domain: "heuristics"
 description: "[Asymmetric Fix Transcription](../anti-patterns/asymmetric-fix-transcription.md) (対称位置への伝播漏れ) を解決する際、自然な選択肢は (A) 両側に同じ参照や fix を追加して symmetry を物理的に保つことだが、これは将来の drift 経路を温存する。"
 promote: rite-plugin
 created: "2026-05-06T04:50:00Z"
-updated: "2026-05-30T11:46:11+09:00"
 sources:
   - type: "retrospectives"
-    ref: "raw/retrospectives/20260506T040636Z-issue-851.md"
+    resource: "raw/retrospectives/20260506T040636Z-issue-851.md"
   - type: "reviews"
-    ref: "raw/reviews/20260506T035708Z-pr-858.md"
+    resource: "raw/reviews/20260506T035708Z-pr-858.md"
   - type: "reviews"
-    ref: "raw/reviews/20260506T135719Z-pr-867.md"
+    resource: "raw/reviews/20260506T135719Z-pr-867.md"
   - type: "reviews"
-    ref: "raw/reviews/20260530T024611Z-pr-1203.md"
+    resource: "raw/reviews/20260530T024611Z-pr-1203.md"
 tags: ["asymmetric-fix-transcription", "hub-creation", "single-source-of-truth", "responsibility-separation", "structural-drift-prevention", "option-selection-meta-heuristic", "bullet-list-threshold", "inline-copy-to-delegation"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-30T11:46:11+09:00" }
 ---
 
 # Asymmetric Fix Transcription の解決は両側修正 (Option A) より hub 化 + 責務分離文書化 (Option B) を選ぶ

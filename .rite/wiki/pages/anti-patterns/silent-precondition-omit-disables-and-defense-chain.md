@@ -4,30 +4,30 @@ domain: "anti-patterns"
 description: "初期から後期までの 9 件の関連課題で導入した 8 種類の防御層 (declarative / sentinel / Pre-check list / whitelist / Pre-flight / Step 0 / 4-site 対称化 / hook case arm) は **AND 論理**で組まれていた。"
 promote: rite-plugin
 created: "2026-04-25T12:30:00+00:00"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "retrospectives"
-    ref: "raw/retrospectives/20260425T122746Z-meta-issue-create-stuck-rootcause.md"
+    resource: "raw/retrospectives/20260425T122746Z-meta-issue-create-stuck-rootcause.md"
   - type: "reviews"
-    ref: "raw/reviews/20260425T133145Z-pr-661.md"
+    resource: "raw/reviews/20260425T133145Z-pr-661.md"
   - type: "reviews"
-    ref: "raw/reviews/20260425T153740Z-pr-661.md"
+    resource: "raw/reviews/20260425T153740Z-pr-661.md"
   - type: "reviews"
-    ref: "raw/reviews/20260425T161137Z-pr-661.md"
+    resource: "raw/reviews/20260425T161137Z-pr-661.md"
   - type: "reviews"
-    ref: "raw/reviews/20260425T165246Z-pr-661.md"
+    resource: "raw/reviews/20260425T165246Z-pr-661.md"
   - type: "reviews"
-    ref: "raw/reviews/20260425T171440Z-pr-661-cycle-4.md"
+    resource: "raw/reviews/20260425T171440Z-pr-661-cycle-4.md"
   - type: "fixes"
-    ref: "raw/fixes/20260425T133451Z-pr-661.md"
+    resource: "raw/fixes/20260425T133451Z-pr-661.md"
   - type: "fixes"
-    ref: "raw/fixes/20260425T154517Z-pr-661-cycle-1.md"
+    resource: "raw/fixes/20260425T154517Z-pr-661-cycle-1.md"
   - type: "fixes"
-    ref: "raw/fixes/20260425T161635Z-pr-661.md"
+    resource: "raw/fixes/20260425T161635Z-pr-661.md"
   - type: "fixes"
-    ref: "raw/fixes/20260425T165546Z-pr-661.md"
+    resource: "raw/fixes/20260425T165546Z-pr-661.md"
 tags: [defense-in-depth, and-logic, precondition, flow-state, stop-guard, silent-failure, fragility, hook]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # 前提条件の silent omit が AND 論理の防御層チェーンを全体無効化する

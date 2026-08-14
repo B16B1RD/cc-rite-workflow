@@ -4,16 +4,16 @@ title: "awk の exit は END 規則を実行する — 早期終了と END フ�
 domain: "anti-patterns"
 description: "POSIX awk の `exit` は**プログラムを即座に終えるのではなく END 規則へ飛ぶ**。"
 created: "2026-08-08T14:00:41+09:00"
-updated: "2026-08-08T14:00:41+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260808T022209Z-pr-2142.md"
+    resource: "raw/reviews/20260808T022209Z-pr-2142.md"
   - type: "fixes"
-    ref: "raw/fixes/20260808T024257Z-pr-2142.md"
+    resource: "raw/fixes/20260808T024257Z-pr-2142.md"
   - type: "fixes"
-    ref: "raw/fixes/20260808T032734Z-pr-2142.md"
+    resource: "raw/fixes/20260808T032734Z-pr-2142.md"
 tags: ["awk", "bash", "double-output", "diagnostics", "simplification"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T14:00:41+09:00" }
 ---
 
 # awk の exit は END 規則を実行する — 早期終了と END フォールバックの併用は二重出力になる

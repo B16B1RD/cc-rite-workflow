@@ -4,12 +4,12 @@ domain: "heuristics"
 description: "`bash-heaviness-check.sh` が surface した heavy operational bash ブロックを「pipe refactor / `drift-check-ignore` exempt」で解消する PR のレビューは、PR body・marker コメント・先例の主張をそのまま信用すると false-positive (虚偽の指摘) と false-negative (冗長 exempt・未検証 helper の見逃し) の両方を生む。"
 promote: rite-plugin
 created: "2026-06-01T11:39:00+00:00"
-updated: "2026-06-01T11:39:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260601T111247Z-pr-1233.md"
+    resource: "raw/reviews/20260601T111247Z-pr-1233.md"
 tags: ["review-discipline", "bash-heaviness", "drift-check-ignore", "empirical-verification", "pre-existing-gate", "pipe-refactor"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-01T11:39:00+00:00" }
 ---
 
 # operational-bash-heaviness の exempt / pipe-refactor レビューは claim を信用せず empirical 検証で gate する

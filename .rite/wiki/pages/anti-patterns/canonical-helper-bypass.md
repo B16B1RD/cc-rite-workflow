@@ -4,22 +4,22 @@ domain: "anti-patterns"
 description: "過去の review-fix loop で抽出された canonical helper (例: `_mktemp-stderr-guard.sh`) がある領域に新規実装を追加する際、helper を呼び出す代わりに inline で再実装してしまう anti-pattern。"
 promote: rite-plugin
 created: "2026-05-01T03:27:29Z"
-updated: "2026-07-29T21:32:36+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260430T204843Z-pr-756.md"
+    resource: "raw/reviews/20260430T204843Z-pr-756.md"
   - type: "reviews"
-    ref: "raw/reviews/20260516T032759Z-pr-989.md"
+    resource: "raw/reviews/20260516T032759Z-pr-989.md"
   - type: "reviews"
-    ref: "raw/reviews/20260729T004127Z-pr-2044.md"
+    resource: "raw/reviews/20260729T004127Z-pr-2044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T004628Z-pr-2044.md"
+    resource: "raw/fixes/20260729T004628Z-pr-2044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T035608Z-pr-2044.md"
+    resource: "raw/fixes/20260729T035608Z-pr-2044.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T073316Z-pr-2044.md"
+    resource: "raw/fixes/20260729T073316Z-pr-2044.md"
 tags: ["dry-violation", "helper-bypass", "doctrine-drift", "filter-symmetry", "stderr-passthrough", "test-helper-symmetry"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-29T21:32:36+09:00" }
 ---
 
 # Canonical helper bypass: 既存集約 helper を bypass して inline 再実装する

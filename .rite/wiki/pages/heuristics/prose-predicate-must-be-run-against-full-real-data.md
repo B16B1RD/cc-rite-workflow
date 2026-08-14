@@ -5,14 +5,14 @@ domain: "heuristics"
 promote: rite-plugin
 description: "散文が実行契約であるリポジトリでは、手順書に書く「対象行の同定述語」「値の抽出規則」はコードと同じ厳密さを要求される。"
 created: "2026-08-02T22:05:00+09:00"
-updated: "2026-08-02T22:05:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260802T054612Z-pr-2052.md"
+    resource: "raw/reviews/20260802T054612Z-pr-2052.md"
   - type: "fixes"
-    ref: "raw/fixes/20260802T055750Z-pr-2052.md"
+    resource: "raw/fixes/20260802T055750Z-pr-2052.md"
 tags: ["prose-as-contract", "predicate-design", "real-data-verification", "self-repair-path"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T22:05:00+09:00" }
 ---
 
 # 散文で機械的述語を定義したら、字義どおりの実装を実データ全件へ当ててから書く

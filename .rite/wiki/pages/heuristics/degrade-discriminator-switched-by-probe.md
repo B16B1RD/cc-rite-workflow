@@ -4,16 +4,16 @@ title: "degrade する対象をテストするときは判別子を probe と連
 domain: "heuristics"
 description: "スクリプトが GNU ツール不在時に `n_stale=0` + rc 0 で短絡する設計だと、「0 件を期待する TC」は **degrade 経路でも PASS する**（vacuous green）。"
 created: "2026-07-25T07:05:21Z"
-updated: "2026-07-25T07:05:21Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260724T175144Z-pr-2013.md"
+    resource: "raw/reviews/20260724T175144Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260724T184410Z-pr-2013.md"
+    resource: "raw/fixes/20260724T184410Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260724T193804Z-pr-2013.md"
+    resource: "raw/fixes/20260724T193804Z-pr-2013.md"
 tags: ["test", "vacuous-green", "fail-closed", "cross-platform", "degradation-contract"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-25T07:05:21Z" }
 ---
 
 # degrade する対象をテストするときは判別子を probe と連動させる — 片側の値で固定すると degrade 環境が恒久 RED になる

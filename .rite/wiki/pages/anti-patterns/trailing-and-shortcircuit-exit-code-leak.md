@@ -3,14 +3,14 @@ title: "末尾の && 短絡文が非ブロッキング script の exit code を 
 domain: "anti-patterns"
 description: "`set -e` を使わない (`set -uo pipefail` のみの) helper script で、`[ -n \"$var\" ] && cmd` のような `A && B` 短絡が **script の最終実行文**になると、`$var` が空のとき `[ -n \"\" ]` が rc=1 を返し、`&&` 短絡で compound 文全体が rc=1 を返す。"
 created: "2026-06-02T07:42:13Z"
-updated: "2026-06-02T07:42:13Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260602T064758Z-pr-1246.md"
+    resource: "raw/reviews/20260602T064758Z-pr-1246.md"
   - type: "fixes"
-    ref: "raw/fixes/20260602T065355Z-pr-1246.md"
+    resource: "raw/fixes/20260602T065355Z-pr-1246.md"
 tags: ["bash", "exit-code", "non-blocking-contract", "short-circuit", "trailing-statement", "silent-regression"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-02T07:42:13Z" }
 ---
 
 # 末尾の && 短絡文が非ブロッキング script の exit code を leak する (末尾 exit 0 を明示する)

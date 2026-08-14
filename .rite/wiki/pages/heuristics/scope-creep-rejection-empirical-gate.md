@@ -4,14 +4,14 @@ domain: "heuristics"
 description: "review-fix loop で author が `rejected(scope-creep)` として承認した tradeoff が、後続 cycle reviewer の **empirical revert test** で CRITICAL silent corruption / data corruption と認定される事例が発生する。"
 promote: rite-plugin
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260427T121800Z-pr-688.md"
+    resource: "raw/reviews/20260427T121800Z-pr-688.md"
   - type: "fixes"
-    ref: "raw/fixes/20260427T122511Z-pr-688.md"
+    resource: "raw/fixes/20260427T122511Z-pr-688.md"
 tags: ["scope-creep", "review-discipline", "rejection-gate", "empirical-verification", "ac-trade-off"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # `rejected(scope-creep)` judgment は cross-validation + empirical revert test で gate する

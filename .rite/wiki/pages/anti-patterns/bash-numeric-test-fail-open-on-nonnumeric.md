@@ -4,12 +4,12 @@ title: "bash の算術比較は非数値入力で rc=2 を返し、fail-closed �
 domain: "anti-patterns"
 description: "`[ \"$x\" -eq 0 ]` は `$x` が非数値のとき「偽」ではなく **rc=2（エラー）** を返す。"
 created: "2026-08-03T07:46:56Z"
-updated: "2026-08-03T07:46:56Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260803T035738Z-pr-2094.md"
+    resource: "raw/reviews/20260803T035738Z-pr-2094.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T07:46:56Z" }
 ---
 
 # bash の算術比較は非数値入力で rc=2 を返し、fail-closed の意図が else 側へ倒れる

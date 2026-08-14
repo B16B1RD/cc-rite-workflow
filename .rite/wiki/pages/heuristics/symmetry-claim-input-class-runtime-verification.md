@@ -4,16 +4,16 @@ domain: "heuristics"
 description: "設計判断コメントで「経路 A の挙動は経路 B と対称」という sanitization 保証 claim を書く場合、対象データの**入力クラスを列挙し、各クラスごとに runtime byte-level 検証 (xxd 等) してから**書く。"
 promote: rite-plugin
 created: "2026-06-05T10:33:05Z"
-updated: "2026-06-05T10:33:05Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260605T085618Z-pr-1279.md"
+    resource: "raw/reviews/20260605T085618Z-pr-1279.md"
   - type: "fixes"
-    ref: "raw/fixes/20260605T090238Z-pr-1279.md"
+    resource: "raw/fixes/20260605T090238Z-pr-1279.md"
   - type: "reviews"
-    ref: "raw/reviews/20260605T091117Z-pr-1279.md"
+    resource: "raw/reviews/20260605T091117Z-pr-1279.md"
 tags: ["comment-rot", "sanitization", "symmetry-claim", "input-class", "byte-level-verification", "xxd", "control-characters", "utf-8", "jq"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-05T10:33:05Z" }
 ---
 
 # sanitization 対称性 claim は入力クラス別に runtime byte-level 検証してから書く

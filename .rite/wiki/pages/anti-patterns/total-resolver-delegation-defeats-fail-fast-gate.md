@@ -3,14 +3,14 @@ title: "全域で成功する resolver への委譲が既存 fail-fast ガード
 domain: "anti-patterns"
 description: "「入力がどうであれ必ず非空値を返す (total な)」helper に値の解決を委譲すると、その値の空チェックに依存していた既存の fail-fast ERROR ガードが到達不能な dead code になり、従来エラーだった状況が silent success に変わる。"
 created: "2026-07-13T07:40:00Z"
-updated: "2026-08-01T23:12:28+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260712T223319Z-pr-1839.md"
+    resource: "raw/reviews/20260712T223319Z-pr-1839.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T112516Z-pr-2081.md"
+    resource: "raw/fixes/20260801T112516Z-pr-2081.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T23:12:28+09:00" }
 ---
 
 # 全域で成功する resolver への委譲が既存 fail-fast ガードを silent success 化する

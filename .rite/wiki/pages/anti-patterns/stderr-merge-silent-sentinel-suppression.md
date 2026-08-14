@@ -4,16 +4,16 @@ domain: "anti-patterns"
 description: "`2>&1` で stderr を stdout に merge する pattern は、(a) `2>&1 | head -N` 形式では pipeline 終端の `head` が前段の exit code を消す silent failure を生み、(b) helper の stderr 出力が caller 側で classification 文字列に混入し case arm が defensive `*)` 経路に落ちる silent sentinel suppression を生む。"
 promote: rite-plugin
 created: "2026-04-27T23:01:24+00:00"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260427T033904Z-pr-688.md"
+    resource: "raw/reviews/20260427T033904Z-pr-688.md"
   - type: "fixes"
-    ref: "raw/fixes/20260427T035029Z-pr-688.md"
+    resource: "raw/fixes/20260427T035029Z-pr-688.md"
   - type: "reviews"
-    ref: "raw/reviews/20260427T151741Z-pr-688.md"
+    resource: "raw/reviews/20260427T151741Z-pr-688.md"
 tags: ["bash", "stderr", "sentinel", "silent-failure", "observability", "pipefail"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # `2>&1` と `2>&1 | head -N` で sentinel/exit code が silent suppression される (self-defeating observability)

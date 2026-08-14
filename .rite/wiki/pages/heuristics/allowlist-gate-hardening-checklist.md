@@ -5,22 +5,22 @@ description: "入力検証 gate を denylist から allowlist に強化する PR
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/heuristics/allowlist-gate-hardening-checklist.md"
 created: "2026-06-10T10:10:00+09:00"
-updated: "2026-07-19T23:01:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260609T223122Z-pr-1330.md"
+    resource: "raw/fixes/20260609T223122Z-pr-1330.md"
   - type: "fixes"
-    ref: "raw/fixes/20260609T223943Z-pr-1330-c2.md"
+    resource: "raw/fixes/20260609T223943Z-pr-1330-c2.md"
   - type: "fixes"
-    ref: "raw/fixes/20260609T224734Z-pr-1330-c3.md"
+    resource: "raw/fixes/20260609T224734Z-pr-1330-c3.md"
   - type: "reviews"
-    ref: "raw/reviews/20260609T225247Z-pr-1330-c4.md"
+    resource: "raw/reviews/20260609T225247Z-pr-1330-c4.md"
   - type: "reviews"
-    ref: "raw/reviews/20260719T120555Z-pr-1909.md"
+    resource: "raw/reviews/20260719T120555Z-pr-1909.md"
   - type: "fixes"
-    ref: "raw/fixes/20260719T121530Z-pr-1909.md"
+    resource: "raw/fixes/20260719T121530Z-pr-1909.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-19T23:01:00+09:00" }
 ---
 
 # 形状検証 gate の allowlist 化は複数行 bypass・上流 degraded 値・コメント同期をセットで棚卸しする

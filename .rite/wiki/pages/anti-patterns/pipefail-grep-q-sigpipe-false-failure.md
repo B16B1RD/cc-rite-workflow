@@ -4,20 +4,20 @@ title: "`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で
 domain: "anti-patterns"
 description: "`grep -q` は最初の一致で即座に終了する。"
 created: "2026-08-03T07:46:56Z"
-updated: "2026-08-06T22:40:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260803T052647Z-pr-2094.md"
+    resource: "raw/fixes/20260803T052647Z-pr-2094.md"
   - type: "reviews"
-    ref: "raw/reviews/20260805T043752Z-pr-2112.md"
+    resource: "raw/reviews/20260805T043752Z-pr-2112.md"
   - type: "fixes"
-    ref: "raw/fixes/20260805T050456Z-pr-2112.md"
+    resource: "raw/fixes/20260805T050456Z-pr-2112.md"
   - type: "reviews"
-    ref: "raw/reviews/20260806T053845Z-pr-2124.md"
+    resource: "raw/reviews/20260806T053845Z-pr-2124.md"
   - type: "fixes"
-    ref: "raw/fixes/20260806T055534Z-pr-2124.md"
+    resource: "raw/fixes/20260806T055534Z-pr-2124.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T22:40:00+09:00" }
 ---
 
 # `set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる

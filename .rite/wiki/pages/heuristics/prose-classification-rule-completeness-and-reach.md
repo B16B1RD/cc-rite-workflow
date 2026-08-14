@@ -5,16 +5,16 @@ domain: "heuristics"
 promote: rite-plugin
 description: "rite の reviewer 規則は散文の契約であり、LLM がそれを読んで判断する。"
 created: "2026-08-06T04:11:14+00:00"
-updated: "2026-08-10T11:55:05Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260806T040205Z-pr-2122.md"
+    resource: "raw/reviews/20260806T040205Z-pr-2122.md"
   - type: "fixes"
-    ref: "raw/fixes/20260810T070440Z-pr-2229.md"
+    resource: "raw/fixes/20260810T070440Z-pr-2229.md"
   - type: "reviews"
-    ref: "raw/reviews/20260810T095742Z-pr-2229.md"
+    resource: "raw/reviews/20260810T095742Z-pr-2229.md"
 tags: ["reviewer-rule", "prose-contract", "sot", "activation", "classification", "unreachable-rationale"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T11:55:05Z" }
 ---
 
 # 散文で分類規則を追加するときは『規則の完全性』と『判断点への到達』を別々に点検する

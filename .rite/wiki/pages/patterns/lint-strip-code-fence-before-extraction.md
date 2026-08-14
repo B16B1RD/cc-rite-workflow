@@ -4,16 +4,16 @@ domain: "patterns"
 description: "markdown を解析する検証ツール (lint / drift-check) が `grep -E '^#{1,6}'` のような単純パターンで見出しを抽出すると、` ```bash ` コードフェンス内の shell コメント (`# ...`) を markdown 見出しと誤認する。"
 promote: rite-plugin
 created: "2026-05-28T12:42:26Z"
-updated: "2026-05-28T12:42:26Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260528T112627Z-pr-1167.md"
+    resource: "raw/reviews/20260528T112627Z-pr-1167.md"
   - type: "fixes"
-    ref: "raw/fixes/20260528T121938Z-pr-1167.md"
+    resource: "raw/fixes/20260528T121938Z-pr-1167.md"
   - type: "reviews"
-    ref: "raw/reviews/20260528T122742Z-pr-1167.md"
+    resource: "raw/reviews/20260528T122742Z-pr-1167.md"
 tags: ["lint", "verification", "false-negative", "code-fence", "markdown", "heading-extraction", "awk-state-machine", "self-loosening-verification"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-28T12:42:26Z" }
 ---
 
 # Lint の見出し抽出はコードフェンス内行を除外してから行う (検証ツール自身の false-negative 防止)

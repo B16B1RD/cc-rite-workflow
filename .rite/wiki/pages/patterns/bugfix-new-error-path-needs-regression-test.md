@@ -5,14 +5,14 @@ domain: "patterns"
 promote: rite-plugin
 description: "バグ修正PRが対象バグの fallback/WARNING 分岐を新規追加すると、その新分岐自体は「修正対象のバグ」ではないという理由で回帰テストの追加が見落とされやすい。"
 created: "2026-07-09T06:56:16+00:00"
-updated: "2026-07-09T06:56:16+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260709T061246Z-pr-1808-cycle2.md"
+    resource: "raw/reviews/20260709T061246Z-pr-1808-cycle2.md"
   - type: "fixes"
-    ref: "raw/fixes/20260709T061632Z-pr-1808-cycle2.md"
+    resource: "raw/fixes/20260709T061632Z-pr-1808-cycle2.md"
 tags: [test-coverage, regression-test, revert-test, non-vacuous, self-referential]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-09T06:56:16+00:00" }
 ---
 
 # バグ修正PRが新設したエラーパス自身にも回帰テストを追加する

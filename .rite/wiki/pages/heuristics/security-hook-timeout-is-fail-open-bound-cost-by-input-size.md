@@ -4,28 +4,28 @@ title: "セキュリティ境界 hook の timeout は fail-open — 評価コス
 domain: "heuristics"
 description: "PreToolUse 等の hook の timeout は **fail-open**（timeout に達すると Claude Code が hook を kill して tool 実行を許可する）である。"
 created: "2026-07-03T08:30:23+00:00"
-updated: "2026-07-16T08:16:06+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260703T070536Z-pr-1736.md"
+    resource: "raw/reviews/20260703T070536Z-pr-1736.md"
   - type: "fixes"
-    ref: "raw/fixes/20260703T071412Z-pr-1736.md"
+    resource: "raw/fixes/20260703T071412Z-pr-1736.md"
   - type: "reviews"
-    ref: "raw/reviews/20260703T073719Z-pr-1736.md"
+    resource: "raw/reviews/20260703T073719Z-pr-1736.md"
   - type: "fixes"
-    ref: "raw/fixes/20260703T075749Z-pr-1736.md"
+    resource: "raw/fixes/20260703T075749Z-pr-1736.md"
   - type: "reviews"
-    ref: "raw/reviews/20260703T082154Z-pr-1736.md"
+    resource: "raw/reviews/20260703T082154Z-pr-1736.md"
   - type: "reviews"
-    ref: "raw/reviews/20260715T194532Z-pr-1865.md"
+    resource: "raw/reviews/20260715T194532Z-pr-1865.md"
   - type: "fixes"
-    ref: "raw/fixes/20260715T195606Z-pr-1865.md"
+    resource: "raw/fixes/20260715T195606Z-pr-1865.md"
   - type: "reviews"
-    ref: "raw/reviews/20260715T203920Z-pr-1865.md"
+    resource: "raw/reviews/20260715T203920Z-pr-1865.md"
   - type: "reviews"
-    ref: "raw/reviews/20260715T230852Z-pr-1867.md"
+    resource: "raw/reviews/20260715T230852Z-pr-1867.md"
 tags: ["security", "hook", "timeout", "fail-open", "fail-closed", "dos", "input-size-bound", "pretooluse", "super-linear", "bypass", "noglob", "glob", "unquoted-loop"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-16T08:16:06+09:00" }
 ---
 
 # セキュリティ境界 hook の timeout は fail-open — 評価コストは入力サイズで O(1) 上限を設けて bound する

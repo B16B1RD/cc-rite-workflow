@@ -4,16 +4,16 @@ domain: "heuristics"
 description: "reviewer が「この PR が導入した regression」「revert すれば消える」と CRITICAL を主張しても、orchestrator はその attribution (帰属) を鵜呑みにしてはならない。"
 promote: rite-plugin
 created: "2026-06-02T01:52:19Z"
-updated: "2026-07-22T13:15:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260722T025804Z-pr-1967.md"
+    resource: "raw/fixes/20260722T025804Z-pr-1967.md"
   - type: "reviews"
-    ref: "raw/reviews/20260602T012648Z-pr-1240.md"
+    resource: "raw/reviews/20260602T012648Z-pr-1240.md"
   - type: "reviews"
-    ref: "raw/reviews/20260702T070751Z-pr-1721.md"
+    resource: "raw/reviews/20260702T070751Z-pr-1721.md"
 tags: ["verification-protocol", "regression-attribution", "revert-test", "reviewer-claim", "git-show", "pre-existing", "delegation-refactor", "acceptance-criteria-override"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-22T13:15:00+09:00" }
 ---
 
 # reviewer の regression 主張は revert test (git show / git diff) で PR 由来か pre-existing かを独立検証する

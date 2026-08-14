@@ -4,16 +4,16 @@ title: "修飾は主張単位ではなく同格の主張の集合単位でかけ
 domain: "heuristics"
 description: "同格の主張が並ぶ場所で片方だけに「これは未検証」「これは指示であって観測ではない」といった限定を付けると、**無修飾で残った他方が検証済み・観測事実として読まれる**。"
 created: "2026-08-01T00:21:06+09:00"
-updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260731T080225Z-pr-2070.md"
+    resource: "raw/reviews/20260731T080225Z-pr-2070.md"
   - type: "reviews"
-    ref: "raw/reviews/20260731T083326Z-pr-2070.md"
+    resource: "raw/reviews/20260731T083326Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260731T083919Z-pr-2070.md"
+    resource: "raw/fixes/20260731T083919Z-pr-2070.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 ---
 
 # 修飾は主張単位ではなく同格の主張の集合単位でかける

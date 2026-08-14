@@ -4,26 +4,26 @@ title: "否定アサーションには positive control を添える — `|| tru
 domain: "patterns"
 description: "否定アサーション（「出力が空であること」「canary ファイルが作られないこと」で pass する TC）は、**被テストコマンドの exit code が唯一残った crash signal** である。"
 created: "2026-07-25T07:05:21Z"
-updated: "2026-07-26T01:35:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260724T175144Z-pr-2013.md"
+    resource: "raw/reviews/20260724T175144Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260724T180733Z-pr-2013.md"
+    resource: "raw/fixes/20260724T180733Z-pr-2013.md"
   - type: "fixes"
-    ref: "raw/fixes/20260724T184410Z-pr-2013.md"
+    resource: "raw/fixes/20260724T184410Z-pr-2013.md"
   - type: "reviews"
-    ref: "raw/reviews/20260725T151649Z-pr-2020.md"
+    resource: "raw/reviews/20260725T151649Z-pr-2020.md"
   - type: "fixes"
-    ref: "raw/fixes/20260725T152249Z-pr-2020.md"
+    resource: "raw/fixes/20260725T152249Z-pr-2020.md"
   - type: "reviews"
-    ref: "raw/reviews/20260725T154346Z-pr-2020.md"
+    resource: "raw/reviews/20260725T154346Z-pr-2020.md"
   - type: "fixes"
-    ref: "raw/fixes/20260725T154630Z-pr-2020.md"
+    resource: "raw/fixes/20260725T154630Z-pr-2020.md"
   - type: "reviews"
-    ref: "raw/reviews/20260725T162025Z-pr-2020.md"
+    resource: "raw/reviews/20260725T162025Z-pr-2020.md"
 tags: ["test", "negative-assert", "positive-control", "fail-open", "mutation-testing"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-26T01:35:00+09:00" }
 ---
 
 # 否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す

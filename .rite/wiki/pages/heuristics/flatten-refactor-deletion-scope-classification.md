@@ -3,20 +3,20 @@ title: "Flatten refactor の削除スコープは 3 軸 (歴史注釈 / 同期�
 domain: "heuristics"
 description: "「declarative defense layer の物理排除」を目標とする flatten refactor PR では、削除対象を **(a) 歴史注釈 / (b) 現役の同期保守情報 / (c) 機能を持つ statement** の 3 軸で classification してから削除する。"
 created: "2026-05-27T00:30:00Z"
-updated: "2026-07-17T05:40:58Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260526T175307Z-pr-1155.md"
+    resource: "raw/reviews/20260526T175307Z-pr-1155.md"
   - type: "fixes"
-    ref: "raw/fixes/20260526T180309Z-pr-1155.md"
+    resource: "raw/fixes/20260526T180309Z-pr-1155.md"
   - type: "reviews"
-    ref: "raw/reviews/20260717T053018Z-pr-1886.md"
+    resource: "raw/reviews/20260717T053018Z-pr-1886.md"
   - type: "reviews"
-    ref: "raw/reviews/20260717T054058Z-pr-1886.md"
+    resource: "raw/reviews/20260717T054058Z-pr-1886.md"
   - type: "fixes"
-    ref: "raw/fixes/20260717T053143Z-pr-1886.md"
+    resource: "raw/fixes/20260717T053143Z-pr-1886.md"
 tags: ["refactor", "flatten", "deletion-scope", "silent-regression", "declarative-defense", "orphan-file-removal", "changelog-cross-check"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-17T05:40:58Z" }
 ---
 
 # Flatten refactor の削除スコープは 3 軸 (歴史注釈 / 同期保守情報 / 機能 statement) で classification する

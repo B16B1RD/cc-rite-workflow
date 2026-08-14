@@ -4,18 +4,18 @@ title: "機械的な述語を文書化するときは意図の語彙ではなく
 domain: "heuristics"
 description: "判別子は字句的にしか判定できない。"
 created: "2026-08-01T23:12:28+09:00"
-updated: "2026-08-03T23:41:26+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260801T124341Z-pr-2081.md"
+    resource: "raw/reviews/20260801T124341Z-pr-2081.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T124925Z-pr-2081.md"
+    resource: "raw/fixes/20260801T124925Z-pr-2081.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T115711Z-pr-2081.md"
+    resource: "raw/fixes/20260801T115711Z-pr-2081.md"
   - type: "fixes"
-    ref: "raw/fixes/20260803T131002Z-pr-2095.md"
+    resource: "raw/fixes/20260803T131002Z-pr-2095.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T23:41:26+09:00" }
 ---
 
 # 機械的な述語を文書化するときは意図の語彙ではなく字句の語彙で書く

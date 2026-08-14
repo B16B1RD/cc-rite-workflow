@@ -4,14 +4,14 @@ title: "検出範囲を広げる修正は「広がった」と「広がりすぎ
 domain: "patterns"
 description: "検出器が取りこぼしていた入力を拾えるようにする修正で、positive fixture（新しく拾えるようになった形）だけを足すと**拡張の上限が守られない**。"
 created: "2026-08-06T22:40:00+09:00"
-updated: "2026-08-06T22:40:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260806T103316Z-pr-2124.md"
+    resource: "raw/fixes/20260806T103316Z-pr-2124.md"
   - type: "fixes"
-    ref: "raw/fixes/20260806T124959Z-pr-2124.md"
+    resource: "raw/fixes/20260806T124959Z-pr-2124.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T22:40:00+09:00" }
 ---
 
 # 検出範囲を広げる修正は「広がった」と「広がりすぎていない」を対で pin する

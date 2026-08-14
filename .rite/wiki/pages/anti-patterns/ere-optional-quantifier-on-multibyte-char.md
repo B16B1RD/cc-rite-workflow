@@ -5,14 +5,14 @@ domain: "anti-patterns"
 promote: rite-plugin
 description: "ERE の `?`（直前の 1 要素を optional にする）を多バイト文字へ直接掛けると、`LC_ALL=C` ではロケールが文字境界を知らないため**バイト単位で評価**される。"
 created: "2026-08-07T18:40:00+09:00"
-updated: "2026-08-07T18:40:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260807T073304Z-pr-2135.md"
+    resource: "raw/reviews/20260807T073304Z-pr-2135.md"
   - type: "fixes"
-    ref: "raw/fixes/20260807T074604Z-pr-2135.md"
+    resource: "raw/fixes/20260807T074604Z-pr-2135.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T18:40:00+09:00" }
 ---
 
 # ERE の ? を多バイト文字に直接掛けると LC_ALL=C でバイト単位評価になり検出が失効する

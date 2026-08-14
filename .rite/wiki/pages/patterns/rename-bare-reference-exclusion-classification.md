@@ -5,12 +5,12 @@ domain: "patterns"
 promote: rite-plugin
 description: "スキル/コマンドのリネーム（例: `/rite:resume` → `/rite:recover`）後、旧名への「裸のスキル名参照」（bare-word reference、例: 「resume の AskUserQuestion」のような文中の裸表記）をリポジトリ横断で修正するとき、旧名と同じ文字列を含むが**修正してはいけない**箇所を誤って置換しないよう分類する必要がある。"
 created: "2026-07-08T02:20:00+00:00"
-updated: "2026-07-08T02:20:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260707T171543Z-pr-1793.md"
+    resource: "raw/reviews/20260707T171543Z-pr-1793.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-08T02:20:00+00:00" }
 ---
 
 # 識別子リネーム後の裸参照置換で除外すべき参照の分類

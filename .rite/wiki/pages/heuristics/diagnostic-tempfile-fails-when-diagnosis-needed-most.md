@@ -4,12 +4,12 @@ title: "診断退避用の tempfile は診断が最も要る場面でだけ消�
 domain: "heuristics"
 description: "stderr を退避して WARNING に載せるために tempfile を確保する定型（`err=$(mktemp ... 2>/dev/null) || err=\"\"` に続けて `cmd 2>\"${err:-/dev/null}\"`）は、mktemp が失敗したときに後続コマンドの診断を丸ごと `/dev/null` へ捨てる。"
 created: "2026-08-06T00:40:00+09:00"
-updated: "2026-08-06T00:40:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260805T101044Z-pr-2114.md"
+    resource: "raw/fixes/20260805T101044Z-pr-2114.md"
 tags: ["mktemp", "diagnostics", "fail-loud", "command-substitution", "mechanism-removal", "correlated-failure"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T00:40:00+09:00" }
 ---
 
 # 診断退避用の tempfile は診断が最も要る場面でだけ消える — command substitution へ畳む

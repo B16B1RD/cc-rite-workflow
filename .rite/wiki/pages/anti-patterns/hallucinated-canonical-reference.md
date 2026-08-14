@@ -3,14 +3,14 @@ title: "fix コメント / commit message で hallucinated canonical reference �
 domain: "anti-patterns"
 description: "fix サイクルで「canonical 参照」をコメントや commit message に書く際、Claude が実在しないファイル / 行番号 / anchor を生成する (hallucinate) リスクがある。"
 created: "2026-04-19T03:30:00+00:00"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260419T025335Z-pr-586.md"
+    resource: "raw/fixes/20260419T025335Z-pr-586.md"
   - type: "fixes"
-    ref: "raw/fixes/20260428T195448Z-pr-708-cycle-1.md"
+    resource: "raw/fixes/20260428T195448Z-pr-708-cycle-1.md"
 tags: ["architectural-false-reference", "hallucinated-named-category"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # fix コメント / commit message で hallucinated canonical reference を生成する

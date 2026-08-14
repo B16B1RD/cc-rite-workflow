@@ -4,14 +4,14 @@ title: "ガードの precondition に代理値を使うと、守るべき経路�
 domain: "anti-patterns"
 description: "ガードを書くとき、発火条件に「守りたい対象」そのものではなく、そのとき手近にあって相関している別の値を使ってしまうことがある。"
 created: "2026-08-01T00:21:06+09:00"
-updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260731T044111Z-pr-2070.md"
+    resource: "raw/reviews/20260731T044111Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260731T045234Z-pr-2070.md"
+    resource: "raw/fixes/20260731T045234Z-pr-2070.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 ---
 
 # ガードの precondition に代理値を使うと、守るべき経路でだけ無効化される

@@ -5,16 +5,16 @@ domain: "heuristics"
 promote: rite-plugin
 description: "複数の異種 signal（各ステップが出す `[CONTEXT]` marker、チェックボックスの x/空欄、絵文字 prefix 付き付記文など）を集約する新規ロジックを書く際、一律の仮定（「marker が無ければ異常」）や表層的な文字列パターン一致（「絵文字 prefix で判定する」）を先に決めてしまうと、各 signal の実際の emit 条件を個別確認していないぶんだけ取りこぼしや誤検知を生む。"
 created: "2026-07-23T06:38:31Z"
-updated: "2026-07-23T06:38:31Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260723T062652Z-pr-1975.md"
+    resource: "raw/reviews/20260723T062652Z-pr-1975.md"
   - type: "fixes"
-    ref: "raw/fixes/20260723T055411Z-pr-1975.md"
+    resource: "raw/fixes/20260723T055411Z-pr-1975.md"
   - type: "fixes"
-    ref: "raw/fixes/20260723T061352Z-pr-1975.md"
+    resource: "raw/fixes/20260723T061352Z-pr-1975.md"
 tags: ["signal-aggregation", "false-positive", "false-negative", "design-heuristic", "code-review-convergence"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-23T06:38:31Z" }
 ---
 
 # 複数の異種 signal を集約するロジックは表層パターンではなく共通の構造化された状態を判定基準にする

@@ -4,20 +4,20 @@ title: "消費側だけに足した allowlist は生成側の値域と食い違�
 domain: "anti-patterns"
 description: "「危険な入力を弾く」allowlist を**消費側だけ**に追加すると、生成側が正当に作れる値まで拒否する。"
 created: "2026-08-01T05:40:00Z"
-updated: "2026-08-13T19:20:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260801T012055Z-pr-2078.md"
+    resource: "raw/reviews/20260801T012055Z-pr-2078.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T013839Z-pr-2078.md"
+    resource: "raw/fixes/20260801T013839Z-pr-2078.md"
   - type: "fixes"
-    ref: "raw/fixes/20260801T032503Z-pr-2078.md"
+    resource: "raw/fixes/20260801T032503Z-pr-2078.md"
   - type: "reviews"
-    ref: "raw/reviews/20260813T093122Z-pr-2306.md"
+    resource: "raw/reviews/20260813T093122Z-pr-2306.md"
   - type: "fixes"
-    ref: "raw/fixes/20260813T093419Z-pr-2306.md"
+    resource: "raw/fixes/20260813T093419Z-pr-2306.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-13T19:20:00+09:00" }
 ---
 
 # 消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る

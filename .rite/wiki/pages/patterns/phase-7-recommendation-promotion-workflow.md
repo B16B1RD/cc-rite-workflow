@@ -4,22 +4,22 @@ domain: "patterns"
 description: "PR review で `[review:mergeable]` 到達後も reviewer recommendation (actionable / boundary / design_confirmation) が surface することがある。"
 promote: rite-plugin
 created: "2026-05-28T03:00:00+00:00"
-updated: "2026-05-28T03:00:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260527T172656Z-pr-1164.md"
+    resource: "raw/reviews/20260527T172656Z-pr-1164.md"
   - type: "reviews"
-    ref: "raw/reviews/20260527T174107Z-pr-1164.md"
+    resource: "raw/reviews/20260527T174107Z-pr-1164.md"
   - type: "reviews"
-    ref: "raw/reviews/20260527T174507Z-pr-1164.md"
+    resource: "raw/reviews/20260527T174507Z-pr-1164.md"
   - type: "fixes"
-    ref: "raw/fixes/20260527T170259Z-pr-1164.md"
+    resource: "raw/fixes/20260527T170259Z-pr-1164.md"
   - type: "fixes"
-    ref: "raw/fixes/20260527T172902Z-pr-1164.md"
+    resource: "raw/fixes/20260527T172902Z-pr-1164.md"
   - type: "fixes"
-    ref: "raw/fixes/20260527T174222Z-pr-1164.md"
+    resource: "raw/fixes/20260527T174222Z-pr-1164.md"
 tags: ["review-fix-loop", "phase-7", "escalation"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-28T03:00:00+00:00" }
 ---
 
 # Phase 7 user-escalated recommendation を fix loop に統合する canonical flow

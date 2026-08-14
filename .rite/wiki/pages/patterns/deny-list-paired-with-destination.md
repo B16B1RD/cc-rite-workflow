@@ -5,14 +5,14 @@ domain: "patterns"
 promote: rite-plugin
 description: "「A・B・C をここに書くな。"
 created: "2026-08-02T11:59:42+09:00"
-updated: "2026-08-02T11:59:42+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260802T014423Z-pr-2084.md"
+    resource: "raw/reviews/20260802T014423Z-pr-2084.md"
   - type: "fixes"
-    ref: "raw/fixes/20260802T014756Z-pr-2084.md"
+    resource: "raw/fixes/20260802T014756Z-pr-2084.md"
 tags: [documentation, enumeration-sync, structural-invariant]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T11:59:42+09:00" }
 ---
 
 # 「N 種を禁止し行き先を示す」規則は禁止列挙と行き先を 1 つの対リストに畳む

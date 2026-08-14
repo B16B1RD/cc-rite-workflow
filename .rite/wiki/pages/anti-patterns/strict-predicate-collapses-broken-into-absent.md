@@ -4,14 +4,14 @@ title: "抽出述語の厳格化は「壊れた入力」と「入力なし」を
 domain: "anti-patterns"
 description: "「散文中の同形文字列を誤検出しない」ために抽出述語へアンカーや厳密条件を足すと、**正規の入力でも表記の揺れ（行末 CR・字下げ・末尾空白）があれば不一致になる**。"
 created: "2026-08-05T05:30:00+00:00"
-updated: "2026-08-05T05:30:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260805T033632Z-pr-2112.md"
+    resource: "raw/reviews/20260805T033632Z-pr-2112.md"
   - type: "fixes"
-    ref: "raw/fixes/20260805T040711Z-pr-2112.md"
+    resource: "raw/fixes/20260805T040711Z-pr-2112.md"
 tags: ["fail-loud", "regex", "predicate", "silent-failure", "review-fix-loop"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T05:30:00+00:00" }
 ---
 
 # 抽出述語の厳格化は「壊れた入力」と「入力なし」を同一経路へ畳み、fail-loud を構造的に壊す

@@ -4,14 +4,14 @@ domain: "patterns"
 description: "`set -euo pipefail` 配下で `grep -F ... | head -1` 系の pipeline から値を取り出すと、grep の no-match (exit 1) が pipefail で伝播し、後続の空文字列フォールバック (`|| true` / 後段 if check) より先に script 全体を silent abort させる経路がある。"
 promote: rite-plugin
 created: "2026-05-07T01:08:00+00:00"
-updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260506T162735Z-pr-868.md"
+    resource: "raw/reviews/20260506T162735Z-pr-868.md"
   - type: "fixes"
-    ref: "raw/fixes/20260506T163131Z-pr-868.md"
+    resource: "raw/fixes/20260506T163131Z-pr-868.md"
 tags: ["bash", "pipefail", "set-euo-pipefail", "process-substitution", "mapfile", "grep-no-match"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 ---
 
 # `mapfile -t < <(...)` で pipefail safe な iteration を書く

@@ -4,12 +4,12 @@ title: "否定形の assert は前提条件が崩れると fail-silent になる
 domain: "anti-patterns"
 description: "「X が起きていないこと」を検証する assert は、そもそも X が起こりうる条件が成立していなければ自動的に通る。"
 created: "2026-07-25T14:18:43Z"
-updated: "2026-07-25T14:18:43Z"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260725T103734Z-pr-2017-cycle3.md"
+    resource: "raw/fixes/20260725T103734Z-pr-2017-cycle3.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-25T14:18:43Z" }
 ---
 
 # 否定形の assert は前提条件が崩れると fail-silent になる

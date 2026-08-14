@@ -3,18 +3,18 @@ title: "Bash lib helper の contract は実装と同じ rigour で保証する"
 domain: "patterns"
 description: "shared bash lib の docstring に「caller owns shell options」「caller's outer trap is restored」と書くなら、実装側で `set -e` 強制 / `trap - EXIT ...` 消去をしてはいけない。"
 created: "2026-04-17T00:00:00+00:00"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260416T201615Z-pr-550.md"
+    resource: "raw/reviews/20260416T201615Z-pr-550.md"
   - type: "reviews"
-    ref: "raw/reviews/20260416T214545Z-pr-550.md"
+    resource: "raw/reviews/20260416T214545Z-pr-550.md"
   - type: "fixes"
-    ref: "raw/fixes/20260416T202213Z-pr-550.md"
+    resource: "raw/fixes/20260416T202213Z-pr-550.md"
   - type: "fixes"
-    ref: "raw/fixes/20260416T214823Z-pr-550.md"
+    resource: "raw/fixes/20260416T214823Z-pr-550.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # Bash lib helper の contract は実装と同じ rigour で保証する

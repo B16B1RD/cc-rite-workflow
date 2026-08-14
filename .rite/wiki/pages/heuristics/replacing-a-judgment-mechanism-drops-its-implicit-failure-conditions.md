@@ -4,12 +4,12 @@ title: "判定手段を差し替えるときは、旧手段が暗黙に提供し
 domain: "heuristics"
 description: "判定コマンドを別のコマンドへ一本化すると、明示的に書かれていた条件は移植されるが、旧手段が副作用として持っていた失敗条件は移植対象として意識されないまま落ちる。"
 created: "2026-08-10T11:55:05Z"
-updated: "2026-08-10T11:55:05Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260810T080754Z-pr-2229.md"
+    resource: "raw/reviews/20260810T080754Z-pr-2229.md"
 tags: ["jq", "exit-code", "fail-loud", "refactor", "review-fix-loop"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T11:55:05Z" }
 ---
 
 # 判定手段を差し替えるときは、旧手段が暗黙に提供していた失敗条件を列挙してから移す

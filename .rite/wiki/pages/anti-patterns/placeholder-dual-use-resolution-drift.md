@@ -4,16 +4,16 @@ domain: "anti-patterns"
 description: "同一 placeholder トークン (例: `{source_ref}`) を「frontmatter フィールドの識別子 (bare path、resolution 対象外)」と「Markdown link URL の path 値 (resolution 対象)」の 2 用途で再利用すると、後者の resolution 文脈で必要な prefix (例: `../../`) が抜けたまま実装されて silent broken_refs を量産する failure mode。"
 promote: rite-plugin
 created: "2026-05-13T00:00:00+00:00"
-updated: "2026-05-13T11:55:00+00:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260512T235812Z-pr-939.md"
+    resource: "raw/reviews/20260512T235812Z-pr-939.md"
   - type: "reviews"
-    ref: "raw/reviews/20260513T004127Z-pr-942.md"
+    resource: "raw/reviews/20260513T004127Z-pr-942.md"
   - type: "reviews"
-    ref: "raw/reviews/20260513T030502Z-pr-943.md"
+    resource: "raw/reviews/20260513T030502Z-pr-943.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-13T11:55:00+00:00" }
 ---
 
 # 同一 placeholder を識別子と resolution-target で再利用すると path-resolution drift を生む

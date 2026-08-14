@@ -4,16 +4,16 @@ domain: "patterns"
 description: "shell script が `cd \"$repo_root\"` を実行した後に `$(dirname \"$0\")` や `$(dirname \"${BASH_SOURCE[0]}\")` で sibling ライブラリを `source` すると、相対 path で invoke された場合に source path が `./scripts/lib/...` として壊れた状態で解釈される。"
 promote: rite-plugin
 created: "2026-04-17T00:00:00+00:00"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260416T201615Z-pr-550.md"
+    resource: "raw/reviews/20260416T201615Z-pr-550.md"
   - type: "reviews"
-    ref: "raw/reviews/20260416T214545Z-pr-550.md"
+    resource: "raw/reviews/20260416T214545Z-pr-550.md"
   - type: "fixes"
-    ref: "raw/fixes/20260416T202213Z-pr-550.md"
+    resource: "raw/fixes/20260416T202213Z-pr-550.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # _SCRIPT_DIR canonicalize: cd 前に BASH_SOURCE を絶対 path 化する

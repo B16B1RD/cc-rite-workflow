@@ -4,12 +4,12 @@ domain: "heuristics"
 description: "charter 違反 / refactor 残作業を扱う Issue を起票するとき、Issue body に書く「違反あり」「残作業あり」前提は既に過去の関連 PR で解消済みのケースがある。"
 promote: rite-plugin
 created: "2026-05-08T15:34:21+00:00"
-updated: "2026-08-08T13:37:28Z"
 sources:
   - type: "retrospectives"
-    ref: "raw/retrospectives/20260508T153421Z-issue-892.md"
+    resource: "raw/retrospectives/20260508T153421Z-issue-892.md"
 tags: ["issue-management", "grep", "precondition-verification", "scope-management", "charter"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 ---
 
 # Issue 起票前の grep 棚卸しで「違反あり」前提が既に解消済みか確認する

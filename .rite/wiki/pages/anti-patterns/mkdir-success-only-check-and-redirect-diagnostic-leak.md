@@ -3,22 +3,22 @@ title: "mkdir 成功のみの判定漏れと brace group 未使用によるリ�
 domain: "anti-patterns"
 description: "`if mkdir -p DIR 2>/dev/null; then <実際に書く> else <破棄> fi` のように、フォールバック判定を先頭コマンド (mkdir) の終了コードだけに頼ると、DIR が既存の読み取り専用ディレクトリの場合でも mkdir -p は rc=0 を返すため、後続のファイル open 失敗（権限不一致・パス衝突・ディスクフル）を判定できない。"
 created: "2026-07-22T08:20:00+00:00"
-updated: "2026-08-06T00:40:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260722T050800Z-pr-1969.md"
+    resource: "raw/reviews/20260722T050800Z-pr-1969.md"
   - type: "fixes"
-    ref: "raw/fixes/20260722T051500Z-pr-1969.md"
+    resource: "raw/fixes/20260722T051500Z-pr-1969.md"
   - type: "fixes"
-    ref: "raw/fixes/20260722T060230Z-pr-1969-cycle3.md"
+    resource: "raw/fixes/20260722T060230Z-pr-1969-cycle3.md"
   - type: "reviews"
-    ref: "raw/reviews/20260722T070904Z-pr-1969-cycle5.md"
+    resource: "raw/reviews/20260722T070904Z-pr-1969-cycle5.md"
   - type: "fixes"
-    ref: "raw/fixes/20260722T070928Z-pr-1969-cycle5.md"
+    resource: "raw/fixes/20260722T070928Z-pr-1969-cycle5.md"
   - type: "fixes"
-    ref: "raw/fixes/20260805T124633Z-pr-2114.md"
+    resource: "raw/fixes/20260805T124633Z-pr-2114.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T00:40:00+09:00" }
 ---
 
 # mkdir 成功のみの判定漏れと brace group 未使用によるリダイレクト診断メッセージ漏洩

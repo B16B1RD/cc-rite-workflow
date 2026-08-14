@@ -4,16 +4,16 @@ domain: "heuristics"
 description: "LLM agent が参照する calibration source (few-shot example / output template) に新規 enum 値を導入する際、**全 enum 値の使用例を 1 件以上含める**こと。"
 promote: rite-plugin
 created: "2026-05-18T15:50:00+09:00"
-updated: "2026-05-19T08:00:33Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260518T062827Z-pr-1039.md"
+    resource: "raw/reviews/20260518T062827Z-pr-1039.md"
   - type: "reviews"
-    ref: "raw/reviews/20260519T065513Z-pr-1056.md"
+    resource: "raw/reviews/20260519T065513Z-pr-1056.md"
   - type: "reviews"
-    ref: "raw/reviews/20260519T073950Z-pr-1059.md"
+    resource: "raw/reviews/20260519T073950Z-pr-1059.md"
 tags: ["enum-extension", "few-shot-calibration", "reviewer-skill-sot", "coverage-gap", "scope-column", "severity-levels", "recommendation-column-consistency"]
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-19T08:00:33Z" }
 ---
 
 # Enum 拡張時は few-shot example で全 enum 値の使用例を網羅する (calibration coverage gap 防止)

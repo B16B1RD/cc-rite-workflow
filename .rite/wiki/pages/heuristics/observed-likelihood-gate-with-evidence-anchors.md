@@ -4,28 +4,28 @@ domain: "heuristics"
 description: "reviewer が finding を HIGH/MEDIUM/LOW で提出する際、Likelihood-Evidence anchor（tool=Read/Grep, path=..., line=... の形式）を伴わない場合は自動的に「推奨事項」に降格させる gate を適用する。"
 promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
-updated: "2026-08-10T05:20:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260416T031452Z-pr-540.md"
+    resource: "raw/reviews/20260416T031452Z-pr-540.md"
   - type: "reviews"
-    ref: "raw/reviews/20260416T173035Z-pr-548.md"
+    resource: "raw/reviews/20260416T173035Z-pr-548.md"
   - type: "reviews"
-    ref: "raw/reviews/20260419T043538Z-pr-589.md"
+    resource: "raw/reviews/20260419T043538Z-pr-589.md"
   - type: "reviews"
-    ref: "raw/reviews/20260502T155859Z-pr-779.md"
+    resource: "raw/reviews/20260502T155859Z-pr-779.md"
   - type: "reviews"
-    ref: "raw/reviews/20260505T095516Z-pr-834.md"
+    resource: "raw/reviews/20260505T095516Z-pr-834.md"
   - type: "reviews"
-    ref: "raw/reviews/20260709T104501Z-pr-1812.md"
+    resource: "raw/reviews/20260709T104501Z-pr-1812.md"
   - type: "reviews"
-    ref: "raw/reviews/20260713T051932Z-pr-1847-cycle3.md"
+    resource: "raw/reviews/20260713T051932Z-pr-1847-cycle3.md"
   - type: "reviews"
-    ref: "raw/reviews/20260713T223454Z-pr-1852.md"
+    resource: "raw/reviews/20260713T223454Z-pr-1852.md"
   - type: "reviews"
-    ref: "raw/reviews/20260810T045310Z-pr-2227.md"
+    resource: "raw/reviews/20260810T045310Z-pr-2227.md"
 tags: ["review", "severity", "likelihood-evidence", "cross-validation", "hypothetical", "literal-output-contract", "finding-quality-guardrail"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T05:20:00+09:00" }
 ---
 
 # Observed Likelihood Gate — evidence anchor 未提示は推奨事項に降格

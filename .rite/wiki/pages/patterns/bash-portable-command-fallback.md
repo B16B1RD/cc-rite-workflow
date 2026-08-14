@@ -4,16 +4,16 @@ domain: "patterns"
 description: "Linux coreutils と macOS BSD userland でコマンド可用性が異なる bash ユーティリティ (sha1sum / readlink -f / date -Iseconds 等) は、`command -v` による存在確認を連鎖させた fallback chain で portable 化する。"
 promote: rite-plugin
 created: "2026-04-17T04:30:00+00:00"
-updated: "2026-07-31T01:26:57+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260417T035556Z-pr-559.md"
+    resource: "raw/reviews/20260417T035556Z-pr-559.md"
   - type: "reviews"
-    ref: "raw/reviews/20260419T004413Z-pr-585.md"
+    resource: "raw/reviews/20260419T004413Z-pr-585.md"
   - type: "fixes"
-    ref: "raw/fixes/20260419T004921Z-pr-585.md"
+    resource: "raw/fixes/20260419T004921Z-pr-585.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 ---
 
 # cross-platform bash コマンドは fallback chain で portable 化する

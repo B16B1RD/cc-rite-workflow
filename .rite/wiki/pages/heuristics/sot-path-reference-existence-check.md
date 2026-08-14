@@ -3,26 +3,26 @@ title: "SoT 文書の path 参照は本 PR マージ時点の origin/develop で
 domain: "heuristics"
 description: "新規 SoT (Single Source of Truth) 文書を作成する際、文書内部から他リポジトリ要素 (file path / skill 名 / canonical 文書) への参照を含める場合は、参照先の存在を **本 PR がマージされる時点の origin/develop** で機械的に検証する。"
 created: "2026-04-29T02:55:00+00:00"
-updated: "2026-06-10T01:03:44Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260610T010210Z-pr-1342.md"
+    resource: "raw/reviews/20260610T010210Z-pr-1342.md"
   - type: "reviews"
-    ref: "raw/reviews/20260428T171940Z-pr-705.md"
+    resource: "raw/reviews/20260428T171940Z-pr-705.md"
   - type: "reviews"
-    ref: "raw/reviews/20260428T173005Z-pr-705-cycle2.md"
+    resource: "raw/reviews/20260428T173005Z-pr-705-cycle2.md"
   - type: "fixes"
-    ref: "raw/fixes/20260428T172314Z-pr-705.md"
+    resource: "raw/fixes/20260428T172314Z-pr-705.md"
   - type: "reviews"
-    ref: "raw/reviews/20260504T040112Z-pr-801.md"
+    resource: "raw/reviews/20260504T040112Z-pr-801.md"
   - type: "fixes"
-    ref: "raw/fixes/20260504T040558Z-pr-801.md"
+    resource: "raw/fixes/20260504T040558Z-pr-801.md"
   - type: "reviews"
-    ref: "raw/reviews/20260523T144332Z-pr-1102.md"
+    resource: "raw/reviews/20260523T144332Z-pr-1102.md"
   - type: "reviews"
-    ref: "raw/reviews/20260529T072948Z-pr-1190.md"
+    resource: "raw/reviews/20260529T072948Z-pr-1190.md"
 tags: ["sot-document", "path-reference", "broken-ref", "self-violation", "cross-pr-fragility", "identifier-consistency", "relative-path-depth"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-10T01:03:44Z" }
 ---
 
 # SoT 文書の path 参照は本 PR マージ時点の origin/develop で existence check する

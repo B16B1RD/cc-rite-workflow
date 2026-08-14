@@ -4,12 +4,12 @@ title: "診断WARNINGの宛先（実行エージェント向けかユーザー�
 domain: "heuristics"
 description: "skill やスクリプトが出す診断 WARNING（例:「sandbox の read-only bind mount により git worktree remove が構造的に失敗します」）は、そのメッセージ自体が「失敗原因は sandbox 起因である」という、実行環境（Claude Code の harness）が持つ別の自動化ルールの発火条件を満たしてしまうことがある。"
 created: "2026-07-20T05:29:02+00:00"
-updated: "2026-07-20T05:29:02+00:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260720T052902Z-pr-1924.md"
+    resource: "raw/fixes/20260720T052902Z-pr-1924.md"
 tags: []
 confidence: medium
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T05:29:02+00:00" }
 ---
 
 # 診断WARNINGの宛先（実行エージェント向けかユーザー向けか）を主語で明示する

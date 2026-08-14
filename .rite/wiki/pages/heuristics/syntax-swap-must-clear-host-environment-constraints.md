@@ -5,12 +5,12 @@ domain: "heuristics"
 promote: rite-plugin
 description: "複数の指摘を 1 つの構文置換で同時に閉じられるとき、その置換は正しい判断であることが多い。"
 created: "2026-08-02T22:05:00+09:00"
-updated: "2026-08-02T22:05:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260802T111323Z-pr-2052.md"
+    resource: "raw/fixes/20260802T111323Z-pr-2052.md"
 tags: ["skill-md", "static-checker", "fix-verification", "host-environment-constraint", "dollar-zero"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T22:05:00+09:00" }
 ---
 
 # 穴を塞ぐ構文置換は、新しい構文が実行環境固有の制約に触れないかを検出器のローカル実行で確かめる

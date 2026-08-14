@@ -4,24 +4,24 @@ domain: "anti-patterns"
 description: "同一 prompt ファイル内で「形式 X を禁止 (MUST NOT)」する既存規約と、新しく追加する「形式 X を義務化 (MUST)」する指示が衝突する設計欠陥。"
 promote: rite-plugin
 created: "2026-04-20T13:25:00+00:00"
-updated: "2026-08-03T23:41:26+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260420T104328Z-pr-623.md"
+    resource: "raw/reviews/20260420T104328Z-pr-623.md"
   - type: "fixes"
-    ref: "raw/fixes/20260420T105116Z-pr-623.md"
+    resource: "raw/fixes/20260420T105116Z-pr-623.md"
   - type: "reviews"
-    ref: "raw/reviews/20260420T143336Z-pr-624.md"
+    resource: "raw/reviews/20260420T143336Z-pr-624.md"
   - type: "fixes"
-    ref: "raw/fixes/20260420T144134Z-pr-624.md"
+    resource: "raw/fixes/20260420T144134Z-pr-624.md"
   - type: "reviews"
-    ref: "raw/reviews/20260604T233350Z-pr-1272.md"
+    resource: "raw/reviews/20260604T233350Z-pr-1272.md"
   - type: "reviews"
-    ref: "raw/reviews/20260713T003651Z-pr-1841.md"
+    resource: "raw/reviews/20260713T003651Z-pr-1841.md"
   - type: "fixes"
-    ref: "raw/fixes/20260803T124230Z-pr-2095.md"
+    resource: "raw/fixes/20260803T124230Z-pr-2095.md"
 tags: [prompt-engineering, design-conflict, cross-validation, bare-sentinel, step-addition]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T23:41:26+09:00" }
 ---
 
 # 同 file 内 MUST NOT vs MUST 衝突: bare form 禁止規約と bare form 出力義務の自己矛盾

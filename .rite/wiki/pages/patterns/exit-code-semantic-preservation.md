@@ -5,26 +5,26 @@ description: "shell script の header で `Exit codes: 0=success, 2=legitimate s
 promote: rite-plugin
 reference: "plugins/rite/references/wiki-promotions/patterns/exit-code-semantic-preservation.md"
 created: "2026-04-16T19:37:16Z"
-updated: "2026-07-13T14:35:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md"
+    resource: "raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md"
   - type: "reviews"
-    ref: "raw/reviews/20260415T094007Z-pr-529.md"
+    resource: "raw/reviews/20260415T094007Z-pr-529.md"
   - type: "reviews"
-    ref: "raw/reviews/20260608T112156Z-pr-1306.md"
+    resource: "raw/reviews/20260608T112156Z-pr-1306.md"
   - type: "fixes"
-    ref: "raw/fixes/20260608T112705Z-pr-1306.md"
+    resource: "raw/fixes/20260608T112705Z-pr-1306.md"
   - type: "reviews"
-    ref: "raw/reviews/20260703T164934Z-pr-1743.md"
+    resource: "raw/reviews/20260703T164934Z-pr-1743.md"
   - type: "fixes"
-    ref: "raw/fixes/20260703T165654Z-pr-1743.md"
+    resource: "raw/fixes/20260703T165654Z-pr-1743.md"
   - type: "reviews"
-    ref: "raw/reviews/20260713T045650Z-pr-1847-cycle2.md"
+    resource: "raw/reviews/20260713T045650Z-pr-1847-cycle2.md"
   - type: "fixes"
-    ref: "raw/fixes/20260713T045756Z-pr-1847-cycle2.md"
+    resource: "raw/fixes/20260713T045756Z-pr-1847-cycle2.md"
 tags: ["bash", "exit-code", "api-contract", "sentinel"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-13T14:35:00+09:00" }
 ---
 
 # Exit code semantic preservation: caller は case で語彙を保持する

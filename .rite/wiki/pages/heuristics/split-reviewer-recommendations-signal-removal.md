@@ -4,14 +4,14 @@ title: "修正案が「一方の失敗モードを他方と交換する」形に
 domain: "heuristics"
 description: "レビュー指摘に対する修正案が複数出て、どれも「誤発火を減らすと見逃しが増える／見逃しを減らすと誤発火が増える」形にしかならないとき、選ぶべきなのはどの案でもない。"
 created: "2026-08-01T00:21:06+09:00"
-updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260731T135712Z-pr-2074.md"
+    resource: "raw/fixes/20260731T135712Z-pr-2074.md"
   - type: "fixes"
-    ref: "raw/fixes/20260731T060927Z-pr-2070.md"
+    resource: "raw/fixes/20260731T060927Z-pr-2070.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 ---
 
 # 修正案が「一方の失敗モードを他方と交換する」形に割れたら、その機構は測るべき量を測っていない

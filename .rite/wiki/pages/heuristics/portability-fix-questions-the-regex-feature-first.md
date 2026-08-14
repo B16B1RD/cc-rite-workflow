@@ -4,14 +4,14 @@ title: "移植性の指摘は「環境分岐を足す」より先に「その正
 domain: "heuristics"
 description: "`sed` の抽出式が GNU 拡張の `\\b`（単語境界）に依存していた。"
 created: "2026-08-08T14:00:41+09:00"
-updated: "2026-08-08T14:00:41+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260807T235335Z-pr-2142.md"
+    resource: "raw/reviews/20260807T235335Z-pr-2142.md"
   - type: "fixes"
-    ref: "raw/fixes/20260808T001157Z-pr-2142.md"
+    resource: "raw/fixes/20260808T001157Z-pr-2142.md"
 tags: ["portability", "posix", "sed", "regex", "simplification"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T14:00:41+09:00" }
 ---
 
 # 移植性の指摘は「環境分岐を足す」より先に「その正規表現機能が本当に要るか」を疑う

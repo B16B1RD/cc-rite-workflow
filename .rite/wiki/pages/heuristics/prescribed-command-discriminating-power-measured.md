@@ -4,18 +4,18 @@ title: "検証手順を書くときは処方するコマンドの判別能力そ
 domain: "heuristics"
 description: "検証手順を新設する変更では、**手順が処方するコマンドが、その手順の防ごうとしている失敗モードを検出できない**という自己言及的な欠陥が最上位の指摘になりやすい。"
 created: "2026-07-30T15:40:55Z"
-updated: "2026-07-30T15:40:55Z"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260730T045358Z-pr-2056.md"
+    resource: "raw/reviews/20260730T045358Z-pr-2056.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T050205Z-pr-2056.md"
+    resource: "raw/fixes/20260730T050205Z-pr-2056.md"
   - type: "fixes"
-    ref: "raw/fixes/20260730T084017Z-pr-2056.md"
+    resource: "raw/fixes/20260730T084017Z-pr-2056.md"
   - type: "reviews"
-    ref: "raw/reviews/20260730T083745Z-pr-2056.md"
+    resource: "raw/reviews/20260730T083745Z-pr-2056.md"
 tags: ["gh-cli", "verification", "prose-procedure", "discriminator"]
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 ---
 
 # 検証手順を書くときは処方するコマンドの判別能力そのものを実測する

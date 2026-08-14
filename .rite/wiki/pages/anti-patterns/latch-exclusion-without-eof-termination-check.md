@@ -4,14 +4,14 @@ title: "開始・終了の対で囲む除外をラッチで実装すると、未
 domain: "anti-patterns"
 description: "走査対象から一定の範囲を除外するとき、開始トークンでフラグを立て終了トークンで倒す「ラッチ」は自然な実装だが、**終了トークンが現れないまま入力が尽きる経路**を誰も検査していない。"
 created: "2026-08-01T00:21:06+09:00"
-updated: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260731T080225Z-pr-2070.md"
+    resource: "raw/reviews/20260731T080225Z-pr-2070.md"
   - type: "fixes"
-    ref: "raw/fixes/20260731T080852Z-pr-2070.md"
+    resource: "raw/fixes/20260731T080852Z-pr-2070.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 ---
 
 # 開始・終了の対で囲む除外をラッチで実装すると、未閉鎖のまま EOF に達した経路が無音で全行を落とす

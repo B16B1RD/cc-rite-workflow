@@ -4,12 +4,12 @@ title: "検査と使用は同一の式に畳む — 分けると述語ずれ・�
 domain: "patterns"
 description: "「入力を検査してから使う」を 2 つの式（guard と抽出、validate と transform）に分けた瞬間、3 種類の欠陥が同時に生える。"
 created: "2026-08-07T07:58:00+09:00"
-updated: "2026-08-07T07:58:00+09:00"
 sources:
   - type: "fixes"
-    ref: "raw/fixes/20260806T165050Z-pr-2126-c3.md"
+    resource: "raw/fixes/20260806T165050Z-pr-2126-c3.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T07:58:00+09:00" }
 ---
 
 # 検査と使用は同一の式に畳む

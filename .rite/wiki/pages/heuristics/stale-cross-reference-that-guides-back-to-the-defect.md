@@ -5,14 +5,14 @@ domain: "heuristics"
 promote: rite-plugin
 description: "相互参照が古くなったとき、実害の大きさは 2 段階に分かれる。"
 created: "2026-07-30T01:20:00+09:00"
-updated: "2026-07-30T01:20:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260729T153523Z-pr-2051-c3.md"
+    resource: "raw/reviews/20260729T153523Z-pr-2051-c3.md"
   - type: "fixes"
-    ref: "raw/fixes/20260729T153947Z-pr-2051-c3.md"
+    resource: "raw/fixes/20260729T153947Z-pr-2051-c3.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T01:20:00+09:00" }
 ---
 
 # 陳腐化した相互参照には「ただ古い」ものと「修正した欠陥へ戻す誘導」がある

@@ -4,16 +4,16 @@ title: "排他性を pin するテストは件数固定に加えて配置を両�
 domain: "patterns"
 description: "「この marker を emit してよいのは 1 箇所だけ」「このガードを持つのは 3 ステップだけ」という**排他性**の主張を pin するとき、`grep -c` による出現数固定だけでは足りない。"
 created: "2026-08-08T17:40:00+09:00"
-updated: "2026-08-08T17:40:00+09:00"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260808T072312Z-pr-2150-cycle3.md"
+    resource: "raw/reviews/20260808T072312Z-pr-2150-cycle3.md"
   - type: "fixes"
-    ref: "raw/fixes/20260808T072610Z-pr-2150-cycle3-fix.md"
+    resource: "raw/fixes/20260808T072610Z-pr-2150-cycle3-fix.md"
   - type: "fixes"
-    ref: "raw/fixes/20260808T074827Z-pr-2150-cycle4.md"
+    resource: "raw/fixes/20260808T074827Z-pr-2150-cycle4.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T17:40:00+09:00" }
 ---
 
 # 排他性を pin するテストは件数固定に加えて配置を両方向で固定する（在る側と無い側の 2 assert）
