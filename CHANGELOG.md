@@ -27,6 +27,12 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-14
+
+### Changed
+
+- **Wiki bundles migrate to Open Knowledge Format (OKF) v0.2 conformance** — page frontmatter `sources[].ref` is renamed to the v0.2 reserved shape `sources[].resource`, and `updated` is consolidated into the trust family `generated: {by, at}`. Reinforcement-only ingest cycles append one `verified` entry (revision cycles leave `verified` untouched), and `status: deprecated` / `stale_after` are written only when their triggering event occurs. Existing v0.1-shaped bundles are bulk-migrated on first contact by `wiki-okf-migrate.sh` (invoked from `wiki-ingest`; idempotent, fail-loud, supports both branch strategies), declaring `okf_version: "0.2"` in `index.md`. The three consumer scripts (`wiki-lint-source-refs.sh` / `wiki-query-inject.sh` / `wiki-index-update.sh`) read only the migrated single shape. (#2315)
+
 ## [0.11.0] - 2026-08-13
 
 ### Changed
@@ -886,6 +892,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.12.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.9.1...v0.9.2

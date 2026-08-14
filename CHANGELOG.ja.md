@@ -25,6 +25,12 @@ Fixed/Changed/Removed エントリは修正対象の旧挙動を述べてよい�
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-14
+
+### 変更
+
+- **Wiki bundle を Open Knowledge Format (OKF) v0.2 準拠へ移行** — ページ frontmatter の `sources[].ref` を v0.2 予約形状 `sources[].resource` へ rename し、`updated` を trust ファミリー `generated: {by, at}` へ一本化。補強のみの ingest サイクルは `verified` を 1 件追記し（改訂サイクルは `verified` 不変）、`status: deprecated` / `stale_after` は該当イベント発生時のみ書く。既存の v0.1 形状 bundle は初回接触時に `wiki-okf-migrate.sh`（wiki-ingest から呼び出し・冪等・fail-loud・両 branch_strategy 対応）で一括移行し、`index.md` に `okf_version: "0.2"` を宣言。consumer 3 script（`wiki-lint-source-refs.sh` / `wiki-query-inject.sh` / `wiki-index-update.sh`）は移行後の単一形状のみを読む。(#2315)
+
 ## [0.11.0] - 2026-08-13
 
 ### 変更
@@ -883,6 +889,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.12.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.9.1...v0.9.2

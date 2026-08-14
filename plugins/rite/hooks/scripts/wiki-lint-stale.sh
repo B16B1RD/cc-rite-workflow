@@ -2,7 +2,7 @@
 # wiki-lint-stale.sh
 #
 # Detect stale Wiki pages for wiki/lint.md ステップ 4 (陳腐化検出). Read each
-# page from stdin (pages_list), extract the `updated` frontmatter field,
+# page from stdin (pages_list), extract the `generated.at` frontmatter field,
 # compare against the cutoff (now - stale_days), and emit the stale set inside
 # a marker block alongside a stale_check_ok enum + [CONTEXT] sentinel.
 #
@@ -55,7 +55,7 @@ usage() {
   cat <<'EOF'
 Usage: wiki-lint-stale.sh --branch-strategy STRATEGY [--wiki-branch BRANCH] [--stale-days N] [--repo-root DIR] < pages_list
 
-Reads pages_list from stdin, compares each page's `updated` frontmatter
+Reads pages_list from stdin, compares each page's `generated.at` frontmatter
 against the cutoff, and emits the stale set marker block + stale_check_ok
 enum + [CONTEXT] sentinel on stdout.
 
@@ -179,15 +179,22 @@ while IFS= read -r page_path; do
     continue
   fi
 
-  updated_str=$(printf '%s' "$page_content" | awk '/^updated:/ { gsub(/^updated:[[:space:]]*"?|"$/, ""); print; exit }')
+  updated_str=$(printf '%s' "$page_content" | awk '
+    /^generated:/ || /^[[:space:]]+at:[[:space:]]*/ {
+      v=$0
+      sub(/.*at:[[:space:]]*/, "", v)
+      gsub(/[",}[:space:]]/, "", v)
+      if (v != "") { print v; exit }
+    }
+  ')
 
   if [ -z "$updated_str" ]; then
-    echo "WARNING: $page_path に updated フィールドが存在しません。陳腐化判定を skip します" >&2
+    echo "WARNING: $page_path に generated.at フィールドが存在しません。陳腐化判定を skip します" >&2
     continue
   fi
 
   if ! updated_epoch=$(date -d "$updated_str" +%s 2>/dev/null); then
-    echo "WARNING: $page_path の updated フィールド '$updated_str' をパースできません。陳腐化判定を skip します" >&2
+    echo "WARNING: $page_path の generated.at フィールド '$updated_str' をパースできません。陳腐化判定を skip します" >&2
     echo "  対処: ISO 8601 形式（例: 2025-01-01T00:00:00+09:00）で記述してください" >&2
     continue
   fi

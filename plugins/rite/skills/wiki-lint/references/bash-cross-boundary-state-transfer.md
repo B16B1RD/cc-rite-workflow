@@ -145,7 +145,7 @@ LLM 側は会話コンテキストから 2 つの marker に挟まれた範囲�
 - `plugins/rite/skills/wiki-lint/SKILL.md` ステップ 6.0 — `---skipped_refs_begin---` / `---skipped_refs_end---` で
  raw frontmatter `ingest_status: skipped` を持つ raw の集合を伝達 (実装実体は `hooks/scripts/wiki-lint-skipped-refs.sh`)
 - 同 ステップ 6.2 — `---all_source_refs_begin---` / `---all_source_refs_end---` で全 Wiki ページの
- `sources[].ref` 集合を伝達。本 marker block は ステップ 6.2 step 3(a) で LLM が登録済み判定 (集合
+ `sources[].resource` 集合を伝達。本 marker block は ステップ 6.2 step 3(a) で LLM が登録済み判定 (集合
  包含) を行うために参照される (Pattern 2 の参照実装を拡充。実装実体は
  `hooks/scripts/wiki-lint-source-refs.sh` へ委譲済)
 

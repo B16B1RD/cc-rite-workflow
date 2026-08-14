@@ -7,13 +7,13 @@
 #
 # Coverage:
 #   TC-1  same_branch 抽出 (canonical multi-line + legacy 単行、prefix 正規化、sort -u dedup
-#         を p2 の重複 ref + 出力行数=1 assert で load-bearing 化)
+#         を p2 の重複 resource + 出力行数=1 assert で load-bearing 化)
 #   TC-2  same_branch 欠落ページ (legitimate absence) → read_ok=true, 空集合
 #   TC-3  空 pages_list → 空 marker block, read_ok=true, errors=0
 #   TC-4  placeholder residue (--branch-strategy "{...}") → exit 1 + LINT_PHASE_6_2_PLACEHOLDER_RESIDUE marker
 #   TC-5  partial pollution (.rite/wiki/raw/ 行混入) → exit 1
 #   TC-6  unknown branch_strategy → exit 1
-#   TC-7  sources: 節あるが ref 0 件 → WARNING + read_ok=true (空集合)
+#   TC-7  sources: 節あるが resource 0 件 → WARNING + read_ok=true (空集合)
 #   TC-8  separate_branch 抽出 (git show)
 #   TC-9  separate_branch io_error (存在しない wiki_branch ref) → read_ok=io_error
 #   TC-10 --branch-strategy 欠落 → exit 2 (invocation error)
@@ -58,29 +58,29 @@ mk_tmp() {
 write_pages() {
   local root="$1"
   mkdir -p "$root/.rite/wiki/pages"
-  # canonical multi-line 形式 + `.rite/wiki/` prefix 付き ref (正規化対象)
+  # canonical multi-line 形式 + `.rite/wiki/` prefix 付き resource (正規化対象)
   cat > "$root/.rite/wiki/pages/p1.md" <<'EOF'
 ---
 title: "Page 1"
 sources:
   - type: "review"
-    ref: ".rite/wiki/raw/reviews/20260410T000000Z.md"
+    resource: ".rite/wiki/raw/reviews/20260410T000000Z.md"
   - type: "fix"
-    ref: "raw/fixes/20260411T000000Z.md"
+    resource: "raw/fixes/20260411T000000Z.md"
 tags: ["x"]
 ---
 body
 EOF
-  # legacy 単行形式 `- ref:`。2 本目は p1 と同一の正規化済み `raw/fixes/...` ref で、
+  # legacy 単行形式 `- resource:`。2 本目は p1 と同一の正規化済み `raw/fixes/...` resource で、
   # TC-1 の sort -u dedup assertion 用の意図的な重複 fixture。両ページとも prefix なしの
   # 正規化済み形式のため正規化は no-op で、helper の `sort -u` だけが重複を 1 行に集約する
-  # (sort -u を cat に置換すると当該 ref が 2 行になり TC-1 dedup assert が fail する)。
+  # (sort -u を cat に置換すると当該 resource が 2 行になり TC-1 dedup assert が fail する)。
   cat > "$root/.rite/wiki/pages/p2.md" <<'EOF'
 ---
 title: "Page 2"
 sources:
-- ref: "raw/issues/20260412T000000Z.md"
-- ref: "raw/fixes/20260411T000000Z.md"
+- resource: "raw/issues/20260412T000000Z.md"
+- resource: "raw/fixes/20260411T000000Z.md"
 ---
 EOF
 }
@@ -94,9 +94,9 @@ printf '%s\n' ".rite/wiki/pages/p1.md" ".rite/wiki/pages/p2.md" \
   | bash "$SCRIPT" --branch-strategy same_branch --wiki-branch "" --repo-root "$sbx" >"$outf" 2>"$errf"
 rc=$?
 assert "TC-1 exit 0" "0" "$rc"
-assert_grep     "TC-1 multi-line ref 抽出 (review)"  "$outf" '^raw/reviews/20260410T000000Z\.md$'
-assert_grep     "TC-1 multi-line ref 抽出 (fix)"     "$outf" '^raw/fixes/20260411T000000Z\.md$'
-assert_grep     "TC-1 legacy 単行 ref 抽出"          "$outf" '^raw/issues/20260412T000000Z\.md$'
+assert_grep     "TC-1 multi-line resource 抽出 (review)"  "$outf" '^raw/reviews/20260410T000000Z\.md$'
+assert_grep     "TC-1 multi-line resource 抽出 (fix)"     "$outf" '^raw/fixes/20260411T000000Z\.md$'
+assert_grep     "TC-1 legacy 単行 resource 抽出"          "$outf" '^raw/issues/20260412T000000Z\.md$'
 assert_not_grep "TC-1 prefix 正規化 (.rite/wiki/ 残留なし)" "$outf" '\.rite/wiki/raw/'
 assert_grep     "TC-1 marker begin"  "$outf" '^---all_source_refs_begin---$'
 assert_grep     "TC-1 marker end"    "$outf" '^---all_source_refs_end---$'
@@ -159,8 +159,8 @@ rc=$?
 assert "TC-6 exit 1 (fail-fast)" "1" "$rc"
 assert_grep "TC-6 unknown branch_strategy エラー" "$errf" '未知の branch_strategy'
 
-# === TC-7: sources: 節あるが ref 0 件 → WARNING + read_ok=true ===
-echo "=== TC-7: sources 節あるが ref 0 件 ==="
+# === TC-7: sources: 節あるが resource 0 件 → WARNING + read_ok=true ===
+echo "=== TC-7: sources 節あるが resource 0 件 ==="
 sbx=$(make_sandbox); cleanup_dirs+=("$sbx")
 mkdir -p "$sbx/.rite/wiki/pages"
 cat > "$sbx/.rite/wiki/pages/empty-src.md" <<'EOF'
@@ -176,7 +176,7 @@ printf '%s\n' ".rite/wiki/pages/empty-src.md" \
 rc=$?
 assert "TC-7 exit 0" "0" "$rc"
 assert_grep "TC-7 read_ok=true (空集合は io_error ではない)" "$outf" '^all_source_refs_read_ok=true$'
-assert_grep "TC-7 sources_section_empty WARNING" "$errf" 'ref が 1 件も抽出できませんでした'
+assert_grep "TC-7 sources_section_empty WARNING" "$errf" 'resource が 1 件も抽出できませんでした'
 
 # === TC-8: separate_branch 抽出 (git show) ===
 echo "=== TC-8: separate_branch 抽出 ==="

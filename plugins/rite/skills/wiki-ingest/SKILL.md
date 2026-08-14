@@ -188,6 +188,35 @@ bash "$plugin_root/hooks/scripts/wiki-ingest-lock.sh" acquire
 
 ステップ 9 完了時（およびエラー終了時）に `wiki-ingest-lock.sh release` で解放する（ステップ 9 参照）。
 
+### 1.5 OKF 版数検査と一括 migration
+
+`wiki.enabled: true` のときのみ到達する（1.1 の早期 return 済み）。`index.md` frontmatter の `okf_version` が不在または `"0.1"` なら `wiki-okf-migrate.sh` を実行してから通常処理へ進む。既に `"0.2"` なら helper が無変更で終了する。helper 非ゼロは fail-loud（`okf_version` は bump されない）。
+rationale: references/rationale.md#okf-migrate-on-first-touch
+
+```bash
+branch_strategy="{branch_strategy}"
+wiki_wt_abs="{wiki_worktree_abs}"
+plugin_root="{plugin_root}"
+if [ "$branch_strategy" = "separate_branch" ]; then
+  wiki_root="${wiki_wt_abs:-.rite/wiki-worktree}/.rite/wiki"
+else
+  wiki_root=".rite/wiki"
+fi
+if [ ! -x "$plugin_root/hooks/scripts/wiki-okf-migrate.sh" ]; then
+  echo "ERROR: wiki-okf-migrate.sh が見つからないか実行権限がありません: $plugin_root/hooks/scripts/wiki-okf-migrate.sh" >&2
+  exit 1
+fi
+set +e
+migrate_out=$(bash "$plugin_root/hooks/scripts/wiki-okf-migrate.sh" --wiki-root "$wiki_root")
+migrate_rc=$?
+set -e
+printf '%s\n' "$migrate_out"
+if [ "$migrate_rc" -ne 0 ]; then
+  echo "ERROR: OKF v0.2 migration が失敗しました (rc=$migrate_rc)。原因除去後に再実行してください（okf_version は bump されていません）" >&2
+  exit 1
+fi
+```
+
 ---
 
 ## ステップ 2: Raw Source の解決
@@ -394,10 +423,12 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 
 ### 4.2 既存ページ更新時の統合方針
 
-- **追記**: 既存内容と矛盾せず補強する場合は「## 詳細」セクションに追記
-- **統合**: 一部矛盾するが新情報の方が確度が高い場合は該当箇所を書き換え（`updated` フィールド更新）
-- **`sources` 配列追記**: 新しい Raw Source への参照を必ず追加する。追加する各エントリは `- type: "{type}"` / `  ref: "raw/{type}/{filename}"` の形式とし、**`ref` は必ず Raw Source のファイルパス形式 (`raw/{type}/{filename}`、wiki-root 起点)** にする。raw frontmatter の `source_ref` フィールド値（PR 識別子形式、例: `pr-1143`）を `ref` に転記してはならない
-- **`updated` 更新**: 現在の ISO 8601 タイムスタンプに更新
+- **追記（補強のみ）**: 既存内容と矛盾せず補強する場合は「## 詳細」に追記する。`generated` を `{ by: "rite-wiki-ingest/<model-id>", at: <now> }` に更新し、`verified` へ `{ by, at }` を 1 件追記する
+- **統合（改訂を 1 件でも含む）**: 該当箇所を書き換える。`generated` のみ更新する。既存 `verified` は追記もクリアもしない
+- **混在**: 同一サイクルに補強 raw と改訂 raw の両方がある場合は `generated` のみ更新し、`verified` へ追記しない
+- **`sources` 配列追記**: 新しい Raw Source への参照を必ず追加する。追加する各エントリは `- type: "{type}"` / `  resource: "raw/{type}/{filename}"` の形式とし、**`resource` は必ず Raw Source のファイルパス形式 (`raw/{type}/{filename}`、wiki-root 起点)** にする。raw frontmatter の `source_ref` フィールド値（PR 識別子形式、例: `pr-1143`）を `resource` に転記してはならない
+- **`generated` 更新**: 現在の ISO 8601 タイムスタンプを `generated.at` に書く。`<model-id>` はセッションが報告する実行モデル ID。特定できない場合は該当 write を失敗させる（既定値を握り込まない）
+- **`verified` / `status` / `stale_after`**: 実イベント時のみ。空の `verified: []` は書かない。`status` はページ全文が撤回されたときだけ `deprecated`（現行 ingest の新規/追記/統合では書かない）。`stale_after` は本文に絶対日付拘束がある経験則にのみ `YYYY-MM-DD` で書く。`human:` prefix は書かない
 - **`description` の新設・更新**: 本サイクルで概要が変わった場合は frontmatter `description` を更新する（未設定なら新設してよい）。値は上表の番号なし Why 要約をそのまま使い、独自の短縮・言い換えをしない。ステップ 6 の helper はこの値を index サマリー列へ渡す
 rationale: references/rationale.md#source-ref-path-form
 rationale: references/rationale.md#summary-provenance
@@ -458,8 +489,8 @@ rationale: references/rationale.md#related-page-literal
 
    `n_pages_created` を +1 する
 
-   > **複数 Raw Source からの作成**: page-template.md の `sources:` は単一スロット（`{source_type}`/`{source_ref}` 各 1 個）のみ。複数 Raw Source を 1 ページに統合する場合は、Write 後に Edit で `- type: "{type}"` / `  ref: "raw/{type}/{filename}"` を追加する。**すべての `ref` はファイルパス形式 (`raw/{type}/{filename}`)** であり、raw の `source_ref`（PR 識別子）ではない。
-4. **既存 Wiki ページの更新** (ステップ 4 で更新決定): 対象ページを Read で読み、Edit で `## 詳細` 追記・`updated` 更新・`sources` 配列追記。`n_pages_updated` を +1 する。**`sources` に追記する各 `ref` は必ず Raw Source のファイルパス形式 `raw/{type}/{filename}`**（PR 識別子形式 `pr-NNNN` 禁止。ステップ 4.2 / 5.3 と同一契約）
+   > **複数 Raw Source からの作成**: page-template.md の `sources:` は単一スロット（`{source_type}`/`{source_ref}` 各 1 個）のみ。複数 Raw Source を 1 ページに統合する場合は、Write 後に Edit で `- type: "{type}"` / `  resource: "raw/{type}/{filename}"` を追加する。**すべての `resource` はファイルパス形式 (`raw/{type}/{filename}`)** であり、raw の `source_ref`（PR 識別子）ではない。新規ページは `generated: { by: "rite-wiki-ingest/<model-id>", at }` を書き、`verified` / `status` は書かない。
+4. **既存 Wiki ページの更新** (ステップ 4 で更新決定): 対象ページを Read で読み、Edit で `## 詳細` 追記・`generated` 更新・（補強のみなら）`verified` 追記・`sources` 配列追記。`n_pages_updated` を +1 する。**`sources` に追記する各 `resource` は必ず Raw Source のファイルパス形式 `raw/{type}/{filename}`**（PR 識別子形式 `pr-NNNN` 禁止。ステップ 4.2 / 5.3 と同一契約）
 5. **スキップ決定の処理** (ステップ 4 で skip 決定): step 2 と同じ手順で `ingested: true` 化し、**さらに当該 raw frontmatter に `ingest_status: skipped` と `skip_reason: "{理由}"` を Edit で追記する**（skip 状態の SoT は raw frontmatter）。**検出器化候補**（ステップ 4 表の `detector_candidate=true` かつ既存ページなし）は `skip_reason: "detector-candidate: {one-line-summary}"` を使い、同じ要約をステップ 9 の `{detector_candidate_lines}` に列挙する。ステップ 7 の log.md に人間向け Skip エントリ (OKF bullet) を追記する。`n_skipped` を +1 する
 6. **index.md の更新**: **手順 3 / 4 を実施した Raw Source についてのみ**、ステップ 6 に従い `wiki-index-update.sh` を bash で呼ぶ（LLM は Edit しない）。**skip 決定（手順 5）では実行しない**
    rationale: references/rationale.md#skip-no-index-update
@@ -636,13 +667,13 @@ fi
 
 | プレースホルダー | 値 |
 |----------------|-----|
-| `{concept_type}` | OKF v0.1 必須フィールド。page-template.md の frontmatter トップレベル `type:` に substitute する concept 種別。値は `{domain}` と同じ literal（`patterns` / `heuristics` / `anti-patterns`）を入れる。OKF consumer の type ベース routing 用。**⚠️ 本 placeholder は同名衝突回避のため `{concept_type}` と命名している** — ステップ 4.2 / 5.0 の `raw/{type}/{filename}` パスや `sources[].type` 追記で使う `{type}` は Raw Source type（`reviews` / `retrospectives` / `fixes`、`{source_type}` 由来）であり別物 |
+| `{concept_type}` | OKF v0.2 必須フィールド。page-template.md の frontmatter トップレベル `type:` に substitute する concept 種別。値は `{domain}` と同じ literal（`patterns` / `heuristics` / `anti-patterns`）を入れる。OKF consumer の type ベース routing 用。**⚠️ 本 placeholder は同名衝突回避のため `{concept_type}` と命名している** — ステップ 4.2 / 5.0 の `raw/{type}/{filename}` パスや `sources[].type` 追記で使う `{type}` は Raw Source type（`reviews` / `retrospectives` / `fixes`、`{source_type}` 由来）であり別物 |
 | `{title}` | ステップ 4.1 で生成したタイトル |
 | `{domain}` | `patterns` / `heuristics` / `anti-patterns` |
 | `{description}` | ステップ 4.1 のサマリー（`{summary}` と同源の 1-2 文）。OKF 推奨の concept 説明文として page frontmatter `description` に機械可読で保持し、ステップ 6 で index.md 登録行のサマリー列にも反映する。`/rite:wiki-query` の Pass 1（`hooks/wiki-query-inject.sh`）はテーブル行のサマリー列をキーワード照合に使う（箇条書き形式の index も引き続き読む） |
-| `{created}` / `{updated}` | 現在の ISO 8601 タイムスタンプ |
+| `{created}` / `{generated_at}` | `{created}` は初出時刻（独自拡張）。`{generated_at}` は最終内容変更時刻（OKF `generated.at`）。いずれも現在の ISO 8601。`{model_id}` はセッションが報告する実行モデル ID。空なら Write しない（fail-loud） |
 | `{source_type}` | Raw Source の `type` フィールド (`reviews` / `retrospectives` / `fixes` の 3 値のみ — `wiki-ingest-trigger.sh` が受理する値と一致) |
-| `{source_ref}` | Raw Source の wiki-root 起点ファイル相対パス（例: `raw/reviews/20260413T...md`）。template 側で `../../` prefix を hardcode するため、placeholder 値自体には prefix を含めない。**⚠️ raw frontmatter の `source_ref` フィールド値（PR 識別子、例: `pr-1143`）をそのまま使ってはならない** — page の `sources[].ref` は常に Raw Source の**ファイルパス形式** `raw/{type}/{filename}` であり、PR 識別子形式ではない（同名 placeholder と raw フィールドの dual-use 混同による drift。概念は Wiki anti-pattern `placeholder-dual-use-resolution-drift`〔wiki ブランチに蓄積される経験則ページ。develop ツリーには実体なし〕）。lint はこの `ref` をファイルパス形式で raw と突合するため、PR 識別子だと raw→page 追跡が切れ false `missing_concept` を量産する |
+| `{source_ref}` | Raw Source の wiki-root 起点ファイル相対パス（例: `raw/reviews/20260413T...md`）。template 側で `../../` prefix を hardcode するため、placeholder 値自体には prefix を含めない。**⚠️ raw frontmatter の `source_ref` フィールド値（PR 識別子、例: `pr-1143`）をそのまま使ってはならない** — page の `sources[].resource` は常に Raw Source の**ファイルパス形式** `raw/{type}/{filename}` であり、PR 識別子形式ではない（同名 placeholder と raw フィールドの dual-use 混同による drift。概念は Wiki anti-pattern `placeholder-dual-use-resolution-drift`〔wiki ブランチに蓄積される経験則ページ。develop ツリーには実体なし〕）。lint はこの `resource` をファイルパス形式で raw と突合するため、PR 識別子だと raw→page 追跡が切れ false `missing_concept` を量産する |
 | `{summary}` | ステップ 4.1 のサマリー |
 | `{details}` | ステップ 4.1 の詳細 |
 | `{related_page_title}` / `{related_page_path}` | ステップ 4.3 で決定した値。**該当ページがない場合は `## 関連ページ` セクション全体を `- （関連ページなし）` の平文 1 行に Edit で書き換える** (空 placeholder のままにすると Markdown link `[]()` が破綻) |
@@ -659,7 +690,7 @@ rationale: references/rationale.md#confidence-literal
 
 **入力契約**: 対象ページの frontmatter 値とファイルパスを substitute する。
 
-- `{title}` / `{description}` / `{updated}` / `{confidence}` は page frontmatter の値から **YAML の引用符を外して**渡す（`title: "…"` の実体は引用符の内側）。**値の加工はそれだけ** — セル区切りエスケープとリンク構文の中和は helper 内で一元適用するので呼び出し側では行わず、言い換えも禁止
+- `{title}` / `{description}` / `{updated}` / `{confidence}` は page frontmatter の値から **YAML の引用符を外して**渡す（`title: "…"` の実体は引用符の内側）。`{updated}` の値は `generated.at`（index 列名「更新日」と `--updated` フラグ名は不変）。**値の加工はそれだけ** — セル区切りエスケープとリンク構文の中和は helper 内で一元適用するので呼び出し側では行わず、言い換えも禁止
 - `{description}` は frontmatter に `description` が無ければ**空のまま**渡す（helper が既存行のサマリー列を保持する）。非空ならステップ 4.1 で作成した番号なし Why 要約と literal に同じ値を渡し、index 用の別要約を生成しない
 - `{domain}` / `{slug}` は対象ページの**ファイルパス** `pages/{domain}/{slug}.md` から取る（新規経路はステップ 4.1 で決めた値、更新経路はステップ 5.0 手順 4 で Read した既存ファイルの domain ディレクトリ名とファイル名 stem）。`title` からの再導出はしない
 
@@ -729,7 +760,7 @@ rationale: references/rationale.md#skip-cycle-no-3a
 
 ## ステップ 7: log.md の追記
 
-`.rite/wiki/log.md` に OKF v0.1 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新）で **append-only** に変更履歴を追記する。skip 等の機械可読状態は raw frontmatter の `ingest_status`（ステップ 5）が SoT。
+`.rite/wiki/log.md` に OKF 予約構造（`## YYYY-MM-DD` 見出し + 散文 bullet、**新しい順** = 先頭が最新。v0.2 §9 は v0.1 から不変）で **append-only** に変更履歴を追記する。skip 等の機械可読状態は raw frontmatter の `ingest_status`（ステップ 5）が SoT。
 rationale: references/rationale.md#log-human-only
 
 **追記ルール**:
@@ -1022,7 +1053,8 @@ rationale: references/rationale.md#returned-to-caller
 
 | エラー | 対処 |
 |--------|------|
-| `wiki.enabled: false` | 早期 return（ステップ 1.1） |
+| `wiki.enabled: false` | 早期 return（ステップ 1.1。版数検査・migration とも不発動） |
+| `wiki-okf-migrate.sh` 非ゼロ（ステップ 1.5） | exit 1 で fail-loud。`okf_version` は bump されない。原因除去後に再実行 |
 | `lib/wiki-config.sh` 読込失敗 (helper 不在 / 解決失敗) | exit 1 で fail-fast（`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1`。設定を判定できないまま無効扱いへ倒さない。plugin のインストール状態を確認するか `/rite:setup` を再実行、ステップ 1.1） |
 | Wiki 未初期化 / worktree セットアップ失敗 | `/rite:wiki-init` を案内、または `wiki-worktree-setup.sh` のエラー出力を確認して `git worktree prune` / `git fetch origin wiki:wiki` で復旧 (ステップ 1.3) |
 | 処理対象 0 件 | 静かに終了し情報メッセージのみ表示（ステップ 2.3） |

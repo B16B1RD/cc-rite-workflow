@@ -73,6 +73,7 @@
 #       escaped.
 #   Escaping applies to the index registration row only; page frontmatter is
 #   never modified. {path}/{domain}/{updated}/{confidence} are slug / enum /
+#   (--updated is the index 「更新日」 column; callers pass page generated.at).
 #   ISO 8601 values that cannot contain `|` (validated below, fail-loud).
 #
 # Procedure 0 (unconditional, every invocation):

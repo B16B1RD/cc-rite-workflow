@@ -97,7 +97,7 @@ cat > "$SBX/$FIXTURE_REL" <<'FIXTURE'
 title: "fixture"
 sources:
   - type: "reviews"
-    ref: "raw/reviews/20260101T000000Z-pr-1300.md"
+    resource: "raw/reviews/20260101T000000Z-pr-1300.md"
 ---
 
 # fixture
@@ -246,11 +246,11 @@ assert "TC-1 キーワードなし裸 #N は hit しない" "0" "$(single_hits '
 # E1 は frontmatter 全体ではなく `sources:` ブロックのみを落とす。ref 値はファイルパスで
 # 番号規則に一致しないため除外は防御的だが、`description:` / `title:` の散文は本物の
 # 説明的参照を含む (実 wiki で 22 件)。両方を 1 つの fixture で測る。
-tc8_fm=$(printf -- '---\ndescription: "PR #1300 の経緯"\nsources:\n  - type: "reviews"\n    ref: "raw/reviews/x-pr-1300.md"\ntags: ["a"]\n---\n\n# t\n\n本文に番号なし\n')
+tc8_fm=$(printf -- '---\ndescription: "PR #1300 の経緯"\nsources:\n  - type: "reviews"\n    resource: "raw/reviews/x-pr-1300.md"\ntags: ["a"]\n---\n\n# t\n\n本文に番号なし\n')
 assert "TC-8 frontmatter description の番号参照は hit する" "1" "$(single_hits "$tc8_fm")"
 # ref 値に `#N` を含ませる。ファイルパスに `#` は現れないため E1 は防御的除外だが、`#` を
 # 持たない fixture では E1 を削除しても 0 のままで、この assert が何も pin しない。
-tc8_src=$(printf -- '---\ntitle: "t"\nsources:\n  - type: "reviews"\n    ref: "raw/reviews/PR #1300.md"\n---\n\n# t\n\n本文に番号なし\n')
+tc8_src=$(printf -- '---\ntitle: "t"\nsources:\n  - type: "reviews"\n    resource: "raw/reviews/PR #1300.md"\n---\n\n# t\n\n本文に番号なし\n')
 assert "TC-8 frontmatter sources ブロックは hit しない" "0" "$(single_hits "$tc8_src")"
 
 # TC-2: `## ソース` 節のみを持つページ (本文に対象なし) は 0 件
@@ -484,7 +484,7 @@ assert_grep "TC-24 読出失敗が WARNING で観測できる" "$rd_err" 'の読
 assert_not_grep "TC-24 読出失敗を検出失敗と取り違えない" "$rd_err" '検出 awk が失敗'
 
 # E1 のブロック終端: `sources:` の後ろに来るキーが走査対象へ戻ること。
-tc8_after=$(printf -- '---\nsources:\n  - ref: "raw/reviews/x.md"\nnote: "PR #1301 の経緯"\n---\n\n# t\n\n本文に番号なし\n')
+tc8_after=$(printf -- '---\nsources:\n  - resource: "raw/reviews/x.md"\nnote: "PR #1301 の経緯"\n---\n\n# t\n\n本文に番号なし\n')
 assert "TC-24 sources ブロックの後ろのキーは走査対象へ戻る" "1" "$(single_hits "$tc8_after")"
 
 # ---- TC-25..TC-46: index.md 走査 (AC-1..AC-6) ------------------------------

@@ -2,7 +2,7 @@
 
 > Universal Issue-Driven Development Workflow for Claude Code
 
-[![Version](https://img.shields.io/badge/version-0.11.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.11.0)
+[![Version](https://img.shields.io/badge/version-0.12.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.12.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **English** | [日本語](README.ja.md)
@@ -33,7 +33,7 @@ The name comes from the English word **rite**, meaning "ritual" or "ceremony." I
 - **Local Work Memory**: Compact-resilient work state management with lock/resuming support
 - **Implementation Contract**: Structured Issue template format for clear specifications
 - **Assumption Surfacing**: `/rite:issue-create` surfaces the assumptions the model implicitly filled in and resolves them before they are locked into the Implementation Contract, asking the user only what cannot be derived from the repository or Wiki. See [docs/SPEC.md](docs/SPEC.md) (Phase 1.5) for the full protocol
-- **Experience Wiki**: LLM-driven project knowledge base that auto-ingests review/fix outcomes and injects relevant heuristics at the start of each Issue (opt-out). Stored as an [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog)-conformant bundle; see [`plugins/rite/references/wiki-patterns.md`](plugins/rite/references/wiki-patterns.md) for details
+- **Experience Wiki**: LLM-driven project knowledge base that auto-ingests review/fix outcomes and injects relevant heuristics at the start of each Issue (opt-out). Stored as an [OKF v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog)-conformant bundle; see [`plugins/rite/references/wiki-patterns.md`](plugins/rite/references/wiki-patterns.md) for details
 - **Sandbox-aware**: `/rite:setup` proactively detects known sandbox environment constraints and surfaces the supported workarounds before they cause a failure
 
 ## Installation

@@ -4,7 +4,7 @@
 # Build the `all_source_refs` set consumed by wiki/lint.md ステップ 6.2
 # (対応ページの存在確認と 3 分岐). For each Wiki page in the supplied
 # pages_list, read its body (via `git show` for separate_branch, `cat` for
-# same_branch), extract frontmatter `sources[].ref` entries, dedup, and emit
+# same_branch), extract frontmatter `sources[].resource` entries, dedup, and emit
 # the set inside a marker block alongside a 3-value read_ok enum.
 #
 # Why a helper:
@@ -221,34 +221,34 @@ while IFS= read -r page; do
 
   if [ "$page_read_cmd_rc" -eq 0 ]; then
     page_content="$page_read_cmd_result"
-    # frontmatter YAML list から sources[].ref を抽出。
+    # frontmatter YAML list から sources[].resource を抽出。
     # awk diag mktemp で sources_seen / extracted のカウントを stderr 経由で per-page 可視化
-    # (「sources: 節は検出したが ref が 0 件」という YAML 破損を可視化)
+    # (「sources: 節は検出したが resource が 0 件」という YAML 破損を可視化)
     awk_diag=$(mktemp "${TMPDIR:-/tmp}/rite-lint-p62-awk-diag-XXXXXX" 2>/dev/null) || awk_diag=""
     if [ -z "$awk_diag" ]; then
       awk_diag_mktemp_failed=$((awk_diag_mktemp_failed + 1))
     fi
-    # page-template.md の canonical YAML は multi-line 形式 (`- type: "..."\n  ref: "..."`)。
-    # 同一行 `- ref:` の legacy 単行形式と multi-line 形式 ` ref:` (dash なしインデント付き) の両方を support する。
+    # page-template.md の canonical YAML は multi-line 形式 (`- type: "..."\n  resource: "..."`)。
+    # 同一行 `- resource:` の legacy 単行形式と multi-line 形式 ` resource:` (dash なしインデント付き) の両方を support する。
     page_refs=$(printf '%s\n' "$page_content" | awk -v diag="${awk_diag:-/dev/null}" -v page="$page" '
       /^sources:/ { in_sources=1; sources_seen++; next }
       # frontmatter terminator (`---`) を明示検出。
       # minimal frontmatter (sources: 直後に `---` で閉じる、tags:/confidence: なし) でも
-      # sources 節が確実に閉じ、body 内 YAML code block の ` ref:` 誤抽出を防ぐ。
+      # sources 節が確実に閉じ、body 内 YAML code block の ` resource:` 誤抽出を防ぐ。
       in_sources && /^---[[:space:]]*$/ { in_sources=0; next }
       in_sources && /^[a-zA-Z]/ { in_sources=0 }
-      in_sources && /^[[:space:]]*-[[:space:]]*ref:[[:space:]]/ {
-        # legacy 単行形式: `- ref: "..."`
-        sub(/^[[:space:]]*-[[:space:]]*ref:[[:space:]]*/, "")
+      in_sources && /^[[:space:]]*-[[:space:]]*resource:[[:space:]]/ {
+        # legacy 単行形式: `- resource: "..."`
+        sub(/^[[:space:]]*-[[:space:]]*resource:[[:space:]]*/, "")
         gsub(/["\x27]/, "")
         sub(/^\.rite\/wiki\//, "")  # prefix 正規化
         extracted++
         print
         next
       }
-      in_sources && /^[[:space:]]+ref:[[:space:]]/ {
-        # canonical multi-line 形式: `  ref: "..."` (前行が `- type: ...`)
-        sub(/^[[:space:]]+ref:[[:space:]]*/, "")
+      in_sources && /^[[:space:]]+resource:[[:space:]]/ {
+        # canonical multi-line 形式: `  resource: "..."` (前行が `- type: ...`)
+        sub(/^[[:space:]]+resource:[[:space:]]*/, "")
         gsub(/["\x27]/, "")
         sub(/^\.rite\/wiki\//, "")
         extracted++
@@ -258,7 +258,7 @@ while IFS= read -r page; do
         if (sources_seen > 0 && extracted == 0) {
           if (diag == "/dev/null") {
             # mktemp 失敗 fallback: bash 側 check が false になるため awk から直接 stderr に emit
-            printf "WARNING: %s の frontmatter に sources: 節が存在しますが ref が 1 件も抽出できませんでした (awk_diag mktemp 失敗経路 fallback)\n", page > "/dev/stderr"
+            printf "WARNING: %s の frontmatter に sources: 節が存在しますが resource が 1 件も抽出できませんでした (awk_diag mktemp 失敗経路 fallback)\n", page > "/dev/stderr"
             printf "  原因候補: YAML 構造破損 (改行混入 / quote 不整合 / インデント不正)\n" > "/dev/stderr"
             printf "  影響: 本ページが参照する raw source が all_source_refs 集合から欠落し、登録済み raw が missing_concept に誤分類される可能性\n" > "/dev/stderr"
           } else {
@@ -268,7 +268,7 @@ while IFS= read -r page; do
       }
     ')
     if [ -n "$awk_diag" ] && [ -s "$awk_diag" ]; then
-      echo "WARNING: $page の frontmatter に sources: 節が存在しますが ref が 1 件も抽出できませんでした" >&2
+      echo "WARNING: $page の frontmatter に sources: 節が存在しますが resource が 1 件も抽出できませんでした" >&2
       echo "  原因候補: YAML 構造破損 (改行混入 / quote 不整合 / インデント不正)" >&2
       echo "  影響: 本ページが参照する raw source が all_source_refs 集合から欠落し、登録済み raw が missing_concept に誤分類される可能性" >&2
     fi
@@ -288,7 +288,7 @@ while IFS= read -r page; do
     else
       # 真の IO error: all_source_refs_read_errors を increment (後段で io_error に畳み込み)
       all_source_refs_read_errors=$((all_source_refs_read_errors + 1))
-      echo "WARNING: $page の sources[].ref 抽出に失敗 (rc=$page_read_cmd_rc, branch_strategy=$branch_strategy)" >&2
+      echo "WARNING: $page の sources[].resource 抽出に失敗 (rc=$page_read_cmd_rc, branch_strategy=$branch_strategy)" >&2
       [ -n "$page_err" ] && [ -s "$page_err" ] && head -3 "$page_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     fi
   fi

@@ -51,7 +51,7 @@ stdin から渡す経路も完全一致で受理するが（重複は畳む）�
 **ステップ 2.2 の `pages_list` を変えない理由**: `pages_list` はステップ 3 / 4 / 5 / 6.2 / 7 が共有する入力で、
 ステップ 5（孤児検出）は `pages_list` の各ページが index 登録集合に含まれるかを見る（`pages_list ∖ index 登録ページ`）。
 `index.md` は自分自身に登録されないため、`pages_list` に足すと index.md 自身が未登録として孤児 +1 になる。
-ステップ 4（陳腐化）は frontmatter `updated` を要求するが、index.md はそれを持たないため「updated フィールドが存在しません」の
+ステップ 4（陳腐化）は frontmatter `generated.at` を要求するが、index.md はそれを持たないため「generated.at フィールドが存在しません」の
 WARNING skip が 1 件増える。helper 側で完結させれば他カテゴリの入力はバイト同一のまま保たれ、非回帰が測定ではなく**構成**で保証される。
 
 <a id="index-summary-extraction"></a>
