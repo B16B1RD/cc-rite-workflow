@@ -1,6 +1,14 @@
 #!/bin/bash
 # Verify that a develop -> main promotion contains only commits already merged
 # through pull requests, then persist a short-lived merge-gate attestation.
+#
+# Invariant (squash-only): every commit on develop since the previous release
+# must itself be the merge_commit_sha of a merged PR. Squash merges satisfy
+# this; a merge-commit or rebase merge leaves the original commit SHA on
+# develop and fails the jq check below (merged_at present and
+# merge_commit_sha equal to the commit oid). Release prep PRs must be
+# squash-merged (`gh pr merge {PREP_PR_NUMBER} --squash`). This script
+# does not relax the condition — a non-squash commit is a hard fail (exit 5).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
