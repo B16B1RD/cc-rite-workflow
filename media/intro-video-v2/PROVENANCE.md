@@ -75,7 +75,7 @@ BGM は本リポジトリに含めない。`assemble.sh -b <file>` で合成す�
 Pixabay から
 `bombinsound-technology-tech-technology-90-second-499581.mp3` を取得してこのディレクトリ直下に
 置く。入手元・Pixabay Content License・生 mp3 をコミットしない理由は
-[../intro-video/PROVENANCE.md](../intro-video/PROVENANCE.md) の記録を正本とする。
+[../intro-video/PROVENANCE.md](../intro-video/PROVENANCE.md) の記録に従う。
 
 以前の生成方式は、可聴性ガードを通る音量を持たないため棄却済みである。音量係数を足して
 ガードを通す形でも再導入しない。`assemble.sh` は BGM が総尺より短いとエラー終了するが、
@@ -117,7 +117,7 @@ BGM を用意した後、2 本のカットを連結する。
 
 ## README への公開手順
 
-README の Demo に映る動画の正本は git ではなく **GitHub の user-attachments URL** である。
+README の Demo に映る動画の原本は git ではなく **GitHub の user-attachments URL** である。
 `out/*.mp4` は `.gitignore` 済みの再生成物であり、シーン HTML を更新しても README の Demo は
 変わらない。差し替えは次の順で行う。
 
