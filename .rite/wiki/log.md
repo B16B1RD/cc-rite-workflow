@@ -1,4 +1,5 @@
 ## 2026-08-21
+* **lint:warning** — contradictions=0, stale=20, orphans=0, missing_concept=1, unregistered_raw=338, broken_refs=0
 * **Skip**: [20260820T165225Z-pr-2331.md](raw/reviews/20260820T165225Z-pr-2331.md) — detector-candidate: SKILL.md の awk 抽出アンカーと hooks/tests の結合は同一コミットで同期する。max-review-cycles-default / cleanup-wm-source-select / remote-branch-delete-guard / issue-comment-wm-sync が機械検証する
 * **Skip**: [20260820T155554Z-pr-2329.md](raw/reviews/20260820T155554Z-pr-2329.md) — detector-candidate: SKILL.md の awk アンカーコメントと test.sh の start pattern は同一コミットで同期する。cleanup-wm-source-select.test.sh が機械検証する
 * **Skip**: [20260814T151958Z-pr-2325.md](raw/reviews/20260814T151958Z-pr-2325.md) — 一時的なレビュー件数サマリのみで、再利用可能な経験則が抽出できない
