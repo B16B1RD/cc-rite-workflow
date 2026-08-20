@@ -27,6 +27,13 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-08-21
+
+### Changed
+
+- **Japanese prose replaces 「正本」 by usage** — `cleanup`'s WM source selection uses 「採用元 / 採用する」, `pr-review`'s retained-flag rationale and intro-video provenance use 「判断基準 / 従う」, and the video location uses 「原本」. Runtime values (`WM_SOURCE`, sentinels, WARNING text) are unchanged. (#2328)
+- **awk extraction anchors are annotated at the source comment** — `iterate` / `cleanup` SKILL.md and `issue-comment-wm-sync.sh` now carry a one-line note immediately above each comment that tests use as an awk extraction start, so the coupling is visible at the edit site. Extraction method, fail-loud hard exit, and test-side awk patterns are unchanged. (#2330)
+
 ## [0.12.1] - 2026-08-15
 
 ### Fixed
@@ -898,6 +905,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.12.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.10.0...v0.11.0
