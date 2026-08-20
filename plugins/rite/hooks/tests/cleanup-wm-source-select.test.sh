@@ -1,10 +1,10 @@
 #!/bin/bash
 # cleanup-wm-source-select.test.sh
 #
-# cleanup/SKILL.md ステップ 3 の WM 正本選定（存在検査 → 内容検査）を pin する。
+# cleanup/SKILL.md ステップ 3 の WM 採用元選定（存在検査 → 内容検査）を pin する。
 # SKILL.md から選定ブロックを抽出して sandbox で実行し、stub / 実 WM / 両不在の 3 経路を検証する。
 #
-# - T-01 (AC-1): stub（進捗セクションなし）→ stub_fallback → comment 正本 + WARNING
+# - T-01 (AC-1): stub（進捗セクションなし）→ stub_fallback → comment 採用 + WARNING
 # - T-02 (AC-2): 進捗セクションありの実 WM → local 採用（comment を呼ばない）
 # - T-03 (AC-3): ローカル WM もコメントも無い → none
 
@@ -23,16 +23,16 @@ FAIL=0
 pass() { PASS=$((PASS + 1)); echo "  PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
 
-# 選定ブロック抽出: `# WM 正本の選定` 〜 incomplete 抽出の直前まで
+# 選定ブロック抽出: `# WM 採用元の選定` 〜 incomplete 抽出の直前まで
 extract_select() {
-  awk '/^# WM 正本の選定/{f=1} f && /^# 未完了タスク抽出/{exit} f{print}' "$CLEANUP_MD" \
+  awk '/^# WM 採用元の選定/{f=1} f && /^# 未完了タスク抽出/{exit} f{print}' "$CLEANUP_MD" \
     | sed -e 's|{issue_number}|9999|g' -e 's|{owner}|o|g' -e 's|{repo}|r|g'
 }
 
 SELECT="$TEST_DIR/select.sh"
 extract_select > "$SELECT"
 if [ ! -s "$SELECT" ] || ! grep -q 'WM_SOURCE=stub_fallback' "$SELECT"; then
-  echo "FAIL: cleanup/SKILL.md から WM 正本選定ブロックを抽出できません（#2141 の契約消失）"
+  echo "FAIL: cleanup/SKILL.md から WM 採用元選定ブロックを抽出できません（#2141 の契約消失）"
   echo "  抽出: $(wc -l < "$SELECT") 行"
   exit 1
 fi

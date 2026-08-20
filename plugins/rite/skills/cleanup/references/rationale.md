@@ -22,7 +22,7 @@ standalone closing Issue が自分自身や無関係 Issue を親と誤検出す
 ## wm-source-content
 
 PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし）はファイルとして存在する。
-存在検査だけだと stub を正本と見なし Issue コメント側 fallback が発火しない（存在と成功を同一視
+存在検査だけだと stub を採用してしまい Issue コメント側 fallback が発火しない（存在と成功を同一視
 しないため）。#2141。
 
 ## cleanup-source-label

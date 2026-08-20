@@ -169,7 +169,7 @@ AskUserQuestion を 2 種に分ける理由（#1861）。
 
 `numstat_availability` / `numstat_fallback_reason` を success path でも explicit set する理由。
 
-undefined を残すとステップ 5.4 の placeholder が literal または error になる。空文字列で defined にし、失敗時だけ要約を入れる。stderr WARNING は会話から消えることがあるため、retained flag が可視性の正本。
+undefined を残すとステップ 5.4 の placeholder が literal または error になる。空文字列で defined にし、失敗時だけ要約を入れる。stderr WARNING は会話から消えることがあるため、可視性の判断基準は retained flag。
 
 ## change-intelligence-reuse
 
