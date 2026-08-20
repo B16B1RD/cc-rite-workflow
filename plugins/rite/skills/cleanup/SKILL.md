@@ -161,11 +161,12 @@ echo "[DEBUG] parent not detected for issue #{issue_number} — processing as st
 
 関連 Issue が識別できなければステップ 4 へ進む。
 
-Work Memory の正本を **存在ではなく内容** で選ぶ。進捗セクション見出し（現行 `### 進捗サマリー` / v1 `### 進捗`）が実在するときだけローカル WM を正本とし、stub 判定時はコメント側へ fallback して WARNING で可視化する:
+Work Memory の採用元を **存在ではなく内容** で選ぶ。進捗セクション見出し（現行 `### 進捗サマリー` / v1 `### 進捗`）が実在するときだけローカル WM を採用し、stub 判定時はコメント側へ fallback して WARNING で可視化する:
 rationale: references/rationale.md#wm-source-content
 
 ```bash
-# WM 正本の選定（候補の存在ではなく内容を検査する）
+# ⚠ 下行はテスト hooks/tests/cleanup-wm-source-select.test.sh が awk 抽出アンカーとして参照する。変更時はテスト側の awk パターンも同時更新すること
+# WM 採用元の選定（候補の存在ではなく内容を検査する）
 # 進捗セクション: 現行 `### 進捗サマリー` と v1 `### 進捗` の両方を認める
 # （incomplete 抽出が両見出しを拾う契約との整合）
 _wm_local=".rite-work-memory/issue-{issue_number}.md"
@@ -210,9 +211,9 @@ echo "incomplete_count=$(printf '%s\n' "$incomplete" | grep -c . 2>/dev/null || 
 
 | `WM_SOURCE` | 意味 |
 |---|---|
-| `local` | 進捗セクションを持つ実 WM を正本として採用（AC-2） |
+| `local` | 進捗セクションを持つ実 WM を採用（AC-2） |
 | `stub_fallback` → 後続で `comment` / `none` | stub を不採用しコメントへ fallback。切替理由は WARNING 済み（AC-1） |
-| `comment` | ローカル WM 不在 or stub 後のコメント正本 |
+| `comment` | ローカル WM 不在 or stub 後のコメントを採用 |
 | `none` | ローカルもコメントも無い。既存の「WM なし」経路（AC-3） |
 
 未完了タスクがあれば `AskUserQuestion` で「未完了タスクを Issue 化 (推奨) / 無視して続行 / キャンセル」を確認。Issue 化選択時は各タスクを `残作業` label 付きで作成する。
@@ -718,6 +719,7 @@ fi
     ;;
 esac
 fi
+# ⚠ 下行はテスト hooks/tests/remote-branch-delete-guard.test.sh が awk 抽出アンカーとして参照する。変更時はテスト側の awk パターンも同時更新すること
 # リモートブランチ削除（#2016）。`git ls-remote --heads` は ref 不在でも rc=0（空 stdout）を返すため、
 # `&&` では「存在するときだけ削除する」ガードにならない。--exit-code で ref 不在を rc=2 として
 # 判別する。リポジトリ設定 delete_branch_on_merge: true では merge 時にサーバサイドで head が

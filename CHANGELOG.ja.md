@@ -25,6 +25,13 @@ Fixed/Changed/Removed エントリは修正対象の旧挙動を述べてよい�
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-08-21
+
+### 変更
+
+- **散文の「正本」を用法別に「採用元 / 基準 / 原本」へ置き換える** — `cleanup` の WM 選定は「採用元 / 採用する」、`pr-review` の retained flag と intro-video provenance は「判断基準 / 従う」、動画の所在は「原本」。実行時の値（`WM_SOURCE`・sentinel・WARNING 文言）は変えない。(#2328)
+- **awk 抽出アンカーの結合をソース側コメントで可視化する** — `iterate` / `cleanup` の SKILL.md と `issue-comment-wm-sync.sh` で、テストが awk 抽出開始に使うコメントの直前に 1 行注記を置く。抽出方式・fail-loud・テスト側の awk パターンは変えない。(#2330)
+
 ## [0.12.1] - 2026-08-15
 
 ### 修正
@@ -895,6 +902,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.12.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.10.0...v0.11.0
