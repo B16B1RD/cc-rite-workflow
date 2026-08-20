@@ -144,6 +144,7 @@ fi
 # 落ちるのと marker が消えるのとでは帰結が異なり、後者は LLM の routing 自体を壊す。
 source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit できないため中止します" >&2; exit 1; }
 
+# ⚠ 下行はテスト hooks/tests/max-review-cycles-default.test.sh が awk 抽出アンカーとして参照する。変更時はテスト側の awk パターンも同時更新すること
 # (1) max_review_cycles を rite-config.yml から読取・検証（AC-4）。無効値（0 以下 / 非数値）は WARNING + 既定値 15
 raw_max=$(awk '/^safety:/{s=1;next} s&&/^[a-zA-Z]/{exit} s&&/^[[:space:]]+max_review_cycles:/{print;exit}' rite-config.yml 2>/dev/null \
   | sed 's/[[:space:]]#.*//' | sed 's/.*max_review_cycles:[[:space:]]*//' | tr -d '[:space:]"'"'"'')

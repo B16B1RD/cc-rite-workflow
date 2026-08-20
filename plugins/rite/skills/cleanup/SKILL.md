@@ -165,6 +165,7 @@ Work Memory の採用元を **存在ではなく内容** で選ぶ。進捗セ�
 rationale: references/rationale.md#wm-source-content
 
 ```bash
+# ⚠ 下行はテスト hooks/tests/cleanup-wm-source-select.test.sh が awk 抽出アンカーとして参照する。変更時はテスト側の awk パターンも同時更新すること
 # WM 採用元の選定（候補の存在ではなく内容を検査する）
 # 進捗セクション: 現行 `### 進捗サマリー` と v1 `### 進捗` の両方を認める
 # （incomplete 抽出が両見出しを拾う契約との整合）
@@ -718,6 +719,7 @@ fi
     ;;
 esac
 fi
+# ⚠ 下行はテスト hooks/tests/remote-branch-delete-guard.test.sh が awk 抽出アンカーとして参照する。変更時はテスト側の awk パターンも同時更新すること
 # リモートブランチ削除（#2016）。`git ls-remote --heads` は ref 不在でも rc=0（空 stdout）を返すため、
 # `&&` では「存在するときだけ削除する」ガードにならない。--exit-code で ref 不在を rc=2 として
 # 判別する。リポジトリ設定 delete_branch_on_merge: true では merge 時にサーバサイドで head が
