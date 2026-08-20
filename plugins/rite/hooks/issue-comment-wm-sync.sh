@@ -90,6 +90,7 @@ trap '_rite_wm_sync_cleanup; exit 130' INT
 trap '_rite_wm_sync_cleanup; exit 143' TERM
 trap '_rite_wm_sync_cleanup; exit 129' HUP
 
+# ⚠ 下行はテスト hooks/tests/issue-comment-wm-sync.test.sh が awk 抽出アンカーとして参照する。変更時はテスト側の awk パターンも同時更新すること
 # Resolve repository root for .rite-flow-state access
 CWD="${CWD:-$(pwd)}"
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
