@@ -413,9 +413,10 @@ else
         fi
       fi
     else
-      # owner/repo skip 等: status 行なし + exit 0。既存の non-blocking skip を維持し phase を進める。
-      log_debug "fetch empty-status rc=${_fetch_rc}; treating as non-blocking skip"
-      _phase_sync_ok=1
+      # owner/repo 未解決等: status 行なし + exit 0。成功扱いすると last_synced_phase が進み
+      # 同一 phase の再試行が消え、stderr WARNING は PostToolUse ではモデルに届かない。
+      log_debug "fetch empty-status rc=${_fetch_rc}; treating as sync failure"
+      _set_sysmsg "作業メモリ replica の取得先リポジトリを解決できませんでした。git remote と gh auth status を確認してください。次のツール実行時に再試行されます。"
     fi
   fi
 fi

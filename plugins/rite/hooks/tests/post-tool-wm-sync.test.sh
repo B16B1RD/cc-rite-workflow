@@ -273,7 +273,8 @@ else
 fi
 echo ""
 
-# TC-POST-WM-PER-SESSION-2: per-session state, last_synced_phase update writes to per-session file
+# TC-POST-WM-PER-SESSION-2: per-session state, last_synced_phase update writes to per-session file.
+# wm_replica=absent で gh なしに _phase_sync_ok=1 にする（fetch 空 status は失敗扱い）。
 echo "TC-POST-WM-PER-SESSION-2: per-session state → last_synced_phase atomic write targets per-session path"
 dir_ps2="$TEST_DIR/tc_per_session_2"
 mkdir -p "$dir_ps2/.rite-work-memory" "$dir_ps2/.rite/sessions"
@@ -289,6 +290,7 @@ cat > "$ps2_state" <<STATE_EOF
   "issue_number": 42,
   "phase": "phase5_post_lint",
   "last_synced_phase": "phase5_lint",
+  "wm_replica": "absent",
   "session_id": "$sid_ps2",
   "updated_at": "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")"
 }
@@ -680,10 +682,11 @@ run_hook_cap "$dir_n01" || rc_n01=$?
 get_n01=$(grep -c '^GET$' "$dir_n01/gh.class" 2>/dev/null || true); : "${get_n01:=0}"
 patch_n01=$(grep -c '^PATCH$' "$dir_n01/gh.class" 2>/dev/null || true); : "${patch_n01:=0}"
 list_n01=$(grep -c '/issues/42/comments' "$dir_n01/gh.urls" 2>/dev/null || true); : "${list_n01:=0}"
-if [ "$get_n01" = "1" ] && [ "$patch_n01" = "1" ] && [ "$list_n01" = "0" ]; then
-  pass "T-01: gated phase GET 1 + PATCH 1 (no list GET)"
+lsp_n01=$(jq -r '.last_synced_phase // empty' "$(state_file_path "$dir_n01")")
+if [ "$get_n01" = "1" ] && [ "$patch_n01" = "1" ] && [ "$list_n01" = "0" ] && [ "$lsp_n01" = "implement" ]; then
+  pass "T-01: gated phase GET 1 + PATCH 1 (no list GET), last_synced_phase=implement"
 else
-  fail "T-01: GET=$get_n01 PATCH=$patch_n01 list=$list_n01 class=$(cat "$dir_n01/gh.class" 2>/dev/null) log=$(cat "$dir_n01/gh.log" 2>/dev/null)"
+  fail "T-01: GET=$get_n01 PATCH=$patch_n01 list=$list_n01 lsp=$lsp_n01 class=$(cat "$dir_n01/gh.class" 2>/dev/null) log=$(cat "$dir_n01/gh.log" 2>/dev/null)"
 fi
 echo ""
 
@@ -713,13 +716,15 @@ get_n05=$(grep -c '^GET$' "$dir_n05/gh.class" 2>/dev/null || true); : "${get_n05
 patch_n05=$(grep -c '^PATCH$' "$dir_n05/gh.class" 2>/dev/null || true); : "${patch_n05:=0}"
 body_n05=""
 [ -f "$dir_n05/patch-body.txt" ] && body_n05=$(jq -r '.body // empty' "$dir_n05/patch-body.txt" 2>/dev/null) || body_n05=""
+lsp_n05=$(jq -r '.last_synced_phase // empty' "$(state_file_path "$dir_n05")")
 if [ "$get_n05" = "1" ] && [ "$patch_n05" = "1" ] \
    && printf '%s' "$body_n05" | grep -qF '**フェーズ**: plan' \
    && printf '%s' "$body_n05" | grep -q '| 実装 | ⬜ 未着手 |' \
-   && printf '%s' "$body_n05" | grep -q '| S1 | 実装 | ⬜ |'; then
-  pass "T-05: ungated phase 2 gh calls, PATCH is update-phase only"
+   && printf '%s' "$body_n05" | grep -q '| S1 | 実装 | ⬜ |' \
+   && [ "$lsp_n05" = "plan" ]; then
+  pass "T-05: ungated phase 2 gh calls, PATCH is update-phase only, last_synced_phase=plan"
 else
-  fail "T-05: GET=$get_n05 PATCH=$patch_n05 body=$body_n05"
+  fail "T-05: GET=$get_n05 PATCH=$patch_n05 lsp=$lsp_n05 body=$body_n05"
 fi
 echo ""
 
@@ -819,7 +824,7 @@ fi
 unset TMPDIR
 echo ""
 
-echo "T-14: AC-1/4/8/9 paths all exit 0"
+echo "T-14: AC-1/4/8/9 paths all exit 0; AC-4 Then (systemMessage JSON, wm_replica, lsp, list GET 1)"
 # AC-1 = T-01 success 2-rt, AC-4 = no_comment first detect, AC-8 = T-10 base skip, AC-9 = T-11 PATCH fail
 dir_n14="$TEST_DIR/n14"
 mkdir -p "$dir_n14/.rite-work-memory"
@@ -831,6 +836,10 @@ touch "$dir_n14/list-empty.flag"
 install_gh_shim "$dir_n14"
 rc_n14=0
 run_hook_cap "$dir_n14" || rc_n14=$?
+stdout14=$(cat "$dir_n14/hook.stdout" 2>/dev/null)
+lsp14=$(jq -r '.last_synced_phase // empty' "$(state_file_path "$dir_n14")")
+wmrep14=$(jq -r '.wm_replica // empty' "$(state_file_path "$dir_n14")")
+list14=$(grep -c '/issues/42/comments' "$dir_n14/gh.urls" 2>/dev/null || true); : "${list14:=0}"
 ok14=1
 [ "$rc_n01" -eq 0 ] || ok14=0
 [ "$rc_n10" -eq 0 ] || ok14=0
@@ -840,6 +849,46 @@ if [ "$ok14" = "1" ]; then
   pass "T-14: AC-1/4/8/9 paths all exit 0 (rc01=$rc_n01 rc10=$rc_n10 rc11=$rc_n11 rc14=$rc_n14)"
 else
   fail "T-14: expected all exit 0 (rc01=$rc_n01 rc10=$rc_n10 rc11=$rc_n11 rc14=$rc_n14)"
+fi
+if printf '%s' "$stdout14" | jq -e '.systemMessage | type=="string" and length>0' >/dev/null 2>&1 \
+   && [ "$wmrep14" = "absent" ] \
+   && [ "$lsp14" = "plan" ] \
+   && [ "$list14" = "1" ]; then
+  pass "T-14b: AC-4 Then — systemMessage JSON, wm_replica=absent, last_synced_phase=plan, list GET 1"
+else
+  fail "T-14b: AC-4 Then missing. stdout=$stdout14 wm_replica=$wmrep14 lsp=$lsp14 list=$list14"
+fi
+echo ""
+
+echo "T-15: fetch empty status (no origin, gh repo view fails) → systemMessage, last_synced_phase unchanged, exit 0"
+dir_n15="$TEST_DIR/n15"
+mkdir -p "$dir_n15/.rite-work-memory" "$dir_n15/bin"
+( cd "$dir_n15" &&
+  git init -q &&
+  git checkout -q -b main &&
+  printf 'x\n' > README.md &&
+  git add README.md &&
+  git -c user.email=t@t.local -c user.name=t commit -q -m i
+)
+printf '# rite\n' > "$dir_n15/rite-config.yml"
+echo "existing wm" > "$dir_n15/.rite-work-memory/issue-42.md"
+create_state_file "$dir_n15" '{"active": true, "issue_number": 42, "phase": "plan", "last_synced_phase": "init"}'
+cat > "$dir_n15/bin/gh" <<'GH_SHIM'
+#!/bin/bash
+echo "gh: HTTP 401: Bad credentials" >&2
+exit 1
+GH_SHIM
+chmod +x "$dir_n15/bin/gh"
+rc_n15=0
+run_hook_cap "$dir_n15" || rc_n15=$?
+stdout15=$(cat "$dir_n15/hook.stdout" 2>/dev/null)
+lsp15=$(jq -r '.last_synced_phase // empty' "$(state_file_path "$dir_n15")")
+if [ "$rc_n15" -eq 0 ] \
+   && printf '%s' "$stdout15" | jq -e '.systemMessage | type=="string" and length>0' >/dev/null 2>&1 \
+   && [ "$lsp15" = "init" ]; then
+  pass "T-15: empty-status fetch → systemMessage, last_synced_phase unchanged, exit 0"
+else
+  fail "T-15: rc=$rc_n15 lsp=$lsp15 stdout=$stdout15 stderr=$(cat "$dir_n15/hook.stderr" 2>/dev/null)"
 fi
 echo ""
 
