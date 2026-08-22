@@ -1,3 +1,9 @@
+## 2026-08-23
+* **Skip**: [20260822T180317Z-pr-2337.md](raw/reviews/20260822T180317Z-pr-2337.md) — rite-plugin: fetch 空 status の fail-loud と AC Then pin（systemMessage / last_synced_phase）は post-tool-wm-sync.sh と T-14b/T-15/T-01 に既実装。exit 0 のみの pin は test-pin-protection-theater に既出
+* **Skip**: [20260822T180702Z-pr-2337.md](raw/fixes/20260822T180702Z-pr-2337.md) — rite-plugin: 空 status を失敗扱いし AC Then をテストで pin する修正は hook とテストに既実装。新規 domain 経験則なし
+* **Skip**: [20260822T181725Z-pr-2337.md](raw/reviews/20260822T181725Z-pr-2337.md) — 一時的なレビュー件数サマリのみで、再利用可能な経験則が抽出できない
+* **Skip**: [20260820T171819Z-pr-2333.md](raw/reviews/20260820T171819Z-pr-2333.md) — 一時的なレビュー件数サマリのみで、再利用可能な経験則が抽出できない
+
 ## 2026-08-21
 * **lint:warning** — contradictions=0, stale=20, orphans=0, missing_concept=1, unregistered_raw=338, broken_refs=0
 * **Skip**: [20260820T165225Z-pr-2331.md](raw/reviews/20260820T165225Z-pr-2331.md) — detector-candidate: SKILL.md の awk 抽出アンカーと hooks/tests の結合は同一コミットで同期する。max-review-cycles-default / cleanup-wm-source-select / remote-branch-delete-guard / issue-comment-wm-sync が機械検証する
