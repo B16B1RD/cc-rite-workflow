@@ -92,9 +92,11 @@ body_tmp=""
 updated_tmp=""
 py_err_tmp=""
 patch_err=""
+_fetch_out=""
 _rite_wm_sync_cleanup() {
   rm -f "${_fs_err:-}" "${_pre_err:-}" "${tmpfile:-}" "${_init_err:-}" "${_verify_err:-}" \
-    "${_cb_err:-}" "${body_tmp:-}" "${updated_tmp:-}" "${py_err_tmp:-}" "${patch_err:-}"
+    "${_cb_err:-}" "${body_tmp:-}" "${updated_tmp:-}" "${py_err_tmp:-}" "${patch_err:-}" \
+    "${_fetch_out:-}"
 }
 trap 'rc=$?; _rite_wm_sync_cleanup; exit $rc' EXIT
 trap '_rite_wm_sync_cleanup; exit 130' INT
@@ -723,8 +725,14 @@ if ! py_err_tmp=$(mktemp 2>/dev/null); then
   echo "[rite] WARNING: issue-comment-wm-sync: update mode py_err_tmp mktemp 失敗。skip." >&2
   exit 0
 fi
-
-_fetch_line=$(do_fetch "$body_tmp")
+# do_fetch をコマンド置換で呼ぶと COMMENT_ID 代入がサブシェルに閉じ、
+# flow-state 不在時に do_patch が id を失う。stdout だけファイルへ書いて親で読む。
+if ! _fetch_out=$(mktemp 2>/dev/null); then
+  echo "[rite] WARNING: issue-comment-wm-sync: update mode _fetch_out mktemp 失敗。skip." >&2
+  exit 0
+fi
+do_fetch "$body_tmp" > "$_fetch_out"
+_fetch_line=$(cat "$_fetch_out")
 case "$_fetch_line" in
   status=success)
     ;;

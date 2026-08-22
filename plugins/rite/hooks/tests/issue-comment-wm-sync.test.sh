@@ -662,6 +662,65 @@ else
 fi
 echo ""
 
+# ─── T-nfs: flow-state 不在でも update は GET 1 + PATCH 1 で status=success ───
+echo "T-nfs: no flow-state → update GET 1 + PATCH 1, status=success (COMMENT_ID survives do_fetch)"
+dir_tnfs="$TEST_DIR/tnfs"
+mkdir -p "$dir_tnfs/bin"
+# flow-state 不在: .rite-session-id / .rite/sessions / .rite-flow-state を作らない
+wm_body_fixture > "$dir_tnfs/wm-body.md"
+GH_LOG_NFS="$dir_tnfs/gh.log"
+GH_CLASS_NFS="$dir_tnfs/gh.class"
+cat > "$dir_tnfs/bin/gh" <<GH_SHIM
+#!/bin/bash
+printf 'gh %s\n' "\$*" >> "$GH_LOG_NFS"
+is_patch=0
+prev=""
+for a in "\$@"; do
+  if [ "\$a" = "PATCH" ] && [ "\$prev" = "-X" ]; then is_patch=1; fi
+  prev="\$a"
+done
+if [ "\$is_patch" = 1 ]; then
+  echo PATCH >> "$GH_CLASS_NFS"
+  cat >/dev/null
+  exit 0
+fi
+case "\$1 \$2" in
+  "repo view") echo GET_REPO >> "$GH_CLASS_NFS"; echo "testowner/testrepo"; exit 0 ;;
+esac
+echo GET >> "$GH_CLASS_NFS"
+case "\$*" in
+  *"/issues/42/comments"*)
+    jq -n --rawfile body "$dir_tnfs/wm-body.md" '{id:4242, body:\$body}'
+    exit 0
+    ;;
+  *"/issues/comments/4242"*)
+    cat "$dir_tnfs/wm-body.md"
+    exit 0
+    ;;
+esac
+exit 0
+GH_SHIM
+chmod +x "$dir_tnfs/bin/gh"
+# origin remote あり（Issue 再現条件）。git-remote 解決が gh repo view に倒れても shim が受ける
+git -C "$dir_tnfs" init -q
+git -C "$dir_tnfs" remote add origin git@github.com:testowner/testrepo.git
+printf 'branch:\n  base: develop\n' > "$dir_tnfs/rite-config.yml"
+set +e
+out_tnfs=$(cd "$dir_tnfs" && PATH="$dir_tnfs/bin:$PATH" \
+  bash "$HOOK" update --issue 42 --transform update-plan-status 2>/dev/null)
+rc_tnfs=$?
+set -e
+get_nfs=$(grep -c '^GET$' "$GH_CLASS_NFS" 2>/dev/null || true)
+patch_nfs=$(grep -c '^PATCH$' "$GH_CLASS_NFS" 2>/dev/null || true)
+: "${get_nfs:=0}" "${patch_nfs:=0}"
+if printf '%s' "$out_tnfs" | grep -qF "status=success" \
+   && [ "$rc_tnfs" -eq 0 ] && [ "$get_nfs" = "1" ] && [ "$patch_nfs" = "1" ]; then
+  pass "T-nfs: no flow-state update GET 1 + PATCH 1, status=success"
+else
+  fail "T-nfs: out=$out_tnfs rc=$rc_tnfs GET=$get_nfs PATCH=$patch_nfs class=$(cat "$GH_CLASS_NFS" 2>/dev/null) log=$(cat "$GH_LOG_NFS" 2>/dev/null)"
+fi
+echo ""
+
 # ─── T-13: init gh call sequence unchanged ───
 echo "T-13: init gh call sequence unchanged (pre-check GET → gh issue comment → verify GET)"
 dir_t13="$TEST_DIR/t13"

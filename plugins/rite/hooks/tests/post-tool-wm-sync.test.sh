@@ -683,10 +683,17 @@ get_n01=$(grep -c '^GET$' "$dir_n01/gh.class" 2>/dev/null || true); : "${get_n01
 patch_n01=$(grep -c '^PATCH$' "$dir_n01/gh.class" 2>/dev/null || true); : "${patch_n01:=0}"
 list_n01=$(grep -c '/issues/42/comments' "$dir_n01/gh.urls" 2>/dev/null || true); : "${list_n01:=0}"
 lsp_n01=$(jq -r '.last_synced_phase // empty' "$(state_file_path "$dir_n01")")
+stdout01=$(cat "$dir_n01/hook.stdout" 2>/dev/null)
+obs01=$(printf '%s\n' "$stdout01" | grep -c '^status=success round_trips=2$' || true); : "${obs01:=0}"
 if [ "$get_n01" = "1" ] && [ "$patch_n01" = "1" ] && [ "$list_n01" = "0" ] && [ "$lsp_n01" = "implement" ]; then
   pass "T-01: gated phase GET 1 + PATCH 1 (no list GET), last_synced_phase=implement"
 else
   fail "T-01: GET=$get_n01 PATCH=$patch_n01 list=$list_n01 lsp=$lsp_n01 class=$(cat "$dir_n01/gh.class" 2>/dev/null) log=$(cat "$dir_n01/gh.log" 2>/dev/null)"
+fi
+if [ "$obs01" = "1" ] && [ "$rc_n01" -eq 0 ]; then
+  pass "T-01b: stdout has status=success round_trips=2 (1 line), exit 0"
+else
+  fail "T-01b: expected obs line once. obs=$obs01 rc=$rc_n01 stdout=$stdout01"
 fi
 echo ""
 
@@ -807,6 +814,13 @@ create_state_file "$dir_n11" '{"active": true, "issue_number": 42, "phase": "pla
 wm_body_fixture > "$dir_n11/wm-body.md"
 install_gh_shim "$dir_n11"
 export PATCH_RC=1
+if [ "${TMPDIR+x}" = "x" ]; then
+  _t11_tmpdir_saved="$TMPDIR"
+  _t11_tmpdir_set=1
+else
+  _t11_tmpdir_saved=""
+  _t11_tmpdir_set=0
+fi
 export TMPDIR="$dir_n11"
 rc_n11=0
 run_hook_cap "$dir_n11" || rc_n11=$?
@@ -821,7 +835,11 @@ if [ -n "$bak11" ] && [ -f "$bak11" ] \
 else
   fail "T-11: bak=$bak11 stdout=$stdout11 lsp=$lsp11 stderr=$(cat "$dir_n11/hook.stderr" 2>/dev/null)"
 fi
-unset TMPDIR
+if [ "$_t11_tmpdir_set" = "1" ]; then
+  export TMPDIR="$_t11_tmpdir_saved"
+else
+  unset TMPDIR
+fi
 echo ""
 
 echo "T-14: AC-1/4/8/9 paths all exit 0; AC-4 Then (systemMessage JSON, wm_replica, lsp, list GET 1)"

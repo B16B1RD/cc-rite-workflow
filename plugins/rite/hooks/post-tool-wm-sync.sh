@@ -180,6 +180,7 @@ _backup_file=""
 _body_file=""
 _updated_file=""
 _changed_files_tmp=""
+_obs_line=""
 
 _rite_post_wm_cleanup() {
   [ -n "${_body_file:-}" ] && rm -f "$_body_file"
@@ -406,6 +407,7 @@ else
           rm -f "$_backup_file"
           _backup_file=""
           _phase_sync_ok=1
+          _obs_line="status=success round_trips=2"
           log_debug "round_trips=2 path=fetch+patch"
         else
           _set_sysmsg "作業メモリ replica の更新に失敗しました。バックアップを保持しています。認証とネットワークを確認してください。"
@@ -455,5 +457,8 @@ if [ "$_phase_sync_ok" = "1" ]; then
 fi
 
 _flush_sysmsg
+if [ -n "${_obs_line:-}" ]; then
+  printf '%s\n' "$_obs_line"
+fi
 log_debug "phase sync completed ($_last_synced_phase -> $_phase)"
 exit 0
