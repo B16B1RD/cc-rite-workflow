@@ -379,12 +379,13 @@ esac
 case "$1 $2" in
   "repo view") echo "testowner/testrepo"; exit 0 ;;
   "api repos/testowner/testrepo/issues/42/comments")
-    # get_comment_id list path — return a bare comment id (shim replaces --jq)
-    echo "555"
+    # fetch list path — {id, body} (shim replaces --jq). body は header のみで
+    # ### 進捗サマリー を持たない（section_absent を起こす）。
+    printf '%s\n' '{"id":555,"body":"## 📜 rite 作業メモリ\n\n### 完了情報\n- **PR**: #1"}'
     exit 0
     ;;
   "api repos/testowner/testrepo/issues/comments/555")
-    # body fetch (and any cache verify that lands here). Return body only.
+    # body GET (cached path). Return body only.
     printf '%s\n' \
       '## 📜 rite 作業メモリ' \
       '' \
@@ -422,6 +423,338 @@ if [ "$rc011" -eq 0 ]; then
   pass "TC-011c: process exit 0 on section_absent (non-blocking)"
 else
   fail "TC-011c: expected exit 0, got $rc011"
+fi
+echo ""
+
+# --- WM fixture (init テンプレ相当。python transform が成功する最低限) ---
+wm_body_fixture() {
+  cat <<'EOF'
+## 📜 rite 作業メモリ
+
+### セッション情報
+- **Issue**: #42
+- **開始**: 2026-01-01T00:00:00+09:00
+- **ブランチ**: feat/issue-42-test
+- **最終更新**: 2026-01-01T00:00:00+09:00
+- **コマンド**: /rite:open
+- **フェーズ**: branch
+- **フェーズ詳細**: ブランチ作成完了
+
+### 進捗サマリー
+
+| 項目 | 状態 | 備考 |
+|------|------|------|
+| 実装 | ⬜ 未着手 | - |
+| テスト | ⬜ 未着手 | - |
+| ドキュメント | ⬜ 未着手 | - |
+
+### 変更ファイル
+<!-- 自動更新 -->
+_まだ変更はありません_
+
+### 実装計画
+
+| ID | 内容 | 状態 |
+|----|------|------|
+| S1 | 実装 | ⬜ |
+
+### 次のステップ
+1. 実装を開始
+EOF
+}
+
+# ─── T-03 / T-04: update は status=/exit 0 のまま、gh は GET 1 + PATCH 1 ───
+echo "T-03/T-04: update emits status=success exit 0; gh is GET 1 + PATCH 1 (no verify GET)"
+dir_t03="$TEST_DIR/t03"
+mkdir -p "$dir_t03/bin"
+echo '{"active":true,"issue_number":42,"wm_comment_id":4242}' > "$dir_t03/.rite-flow-state"
+wm_body_fixture > "$dir_t03/wm-body.md"
+GH_LOG_T03="$dir_t03/gh.log"
+GH_CLASS_T03="$dir_t03/gh.class"
+cat > "$dir_t03/bin/gh" <<GH_SHIM
+#!/bin/bash
+printf 'gh %s\n' "\$*" >> "$GH_LOG_T03"
+is_patch=0
+prev=""
+for a in "\$@"; do
+  if [ "\$a" = "PATCH" ] && [ "\$prev" = "-X" ]; then is_patch=1; fi
+  prev="\$a"
+done
+if [ "\$is_patch" = 1 ]; then
+  echo PATCH >> "$GH_CLASS_T03"
+  cat >/dev/null
+  exit 0
+fi
+case "\$1 \$2" in
+  "repo view") echo GET_REPO >> "$GH_CLASS_T03"; echo "testowner/testrepo"; exit 0 ;;
+esac
+echo GET >> "$GH_CLASS_T03"
+case "\$*" in
+  *"/issues/comments/4242"*)
+    cat "$dir_t03/wm-body.md"
+    exit 0
+    ;;
+  *"/issues/42/comments"*)
+    echo "UNEXPECTED_LIST_GET" >> "$GH_CLASS_T03"
+    echo '{"id":4242,"body":"x"}'
+    exit 0
+    ;;
+esac
+exit 0
+GH_SHIM
+chmod +x "$dir_t03/bin/gh"
+set +e
+out_t03=$(cd "$dir_t03" && PATH="$dir_t03/bin:$PATH" \
+  bash "$HOOK" update --issue 42 --transform update-phase \
+    --phase "implement" --phase-detail "実装中" 2>/dev/null)
+rc_t03=$?
+set -e
+if printf '%s' "$out_t03" | grep -qF "status=success" && [ "$rc_t03" -eq 0 ]; then
+  pass "T-03: update status=success exit 0"
+else
+  fail "T-03: expected status=success exit 0. out=$out_t03 rc=$rc_t03"
+fi
+get_n=$(grep -c '^GET$' "$GH_CLASS_T03" 2>/dev/null || true)
+patch_n=$(grep -c '^PATCH$' "$GH_CLASS_T03" 2>/dev/null || true)
+list_n=$(grep -c 'UNEXPECTED_LIST_GET' "$GH_CLASS_T03" 2>/dev/null || true)
+: "${get_n:=0}" "${patch_n:=0}" "${list_n:=0}"
+if [ "$get_n" = "1" ] && [ "$patch_n" = "1" ] && [ "$list_n" = "0" ]; then
+  pass "T-04: gh calls are GET 1 + PATCH 1 (verification/list GET gone)"
+else
+  fail "T-04: expected GET=1 PATCH=1 list=0, got GET=$get_n PATCH=$patch_n list=$list_n class=$(cat "$GH_CLASS_T03" 2>/dev/null) log=$(cat "$GH_LOG_T03" 2>/dev/null)"
+fi
+echo ""
+
+# ─── T-06: 0 comments → list GET 1, wm_replica=absent, no_comment ───
+echo "T-06: 0 comments → list GET 1, writes wm_replica=absent, status=skipped; reason=no_comment"
+dir_t06="$TEST_DIR/t06"
+mkdir -p "$dir_t06/bin"
+echo '{"active":true,"issue_number":42}' > "$dir_t06/.rite-flow-state"
+GH_CLASS_T06="$dir_t06/gh.class"
+cat > "$dir_t06/bin/gh" <<GH_SHIM
+#!/bin/bash
+is_patch=0
+prev=""
+for a in "\$@"; do
+  if [ "\$a" = "PATCH" ] && [ "\$prev" = "-X" ]; then is_patch=1; fi
+  prev="\$a"
+done
+if [ "\$is_patch" = 1 ]; then echo PATCH >> "$GH_CLASS_T06"; exit 0; fi
+case "\$1 \$2" in
+  "repo view") echo "testowner/testrepo"; exit 0 ;;
+esac
+echo GET >> "$GH_CLASS_T06"
+# 0 comments: empty --jq result
+exit 0
+GH_SHIM
+chmod +x "$dir_t06/bin/gh"
+out_t06=$(cd "$dir_t06" && PATH="$dir_t06/bin:$PATH" \
+  bash "$HOOK" update --issue 42 --transform update-phase \
+    --phase "implement" --phase-detail "実装中" 2>/dev/null) || true
+if printf '%s' "$out_t06" | grep -qF "status=skipped; reason=no_comment"; then
+  pass "T-06a: 0 comments → status=skipped; reason=no_comment"
+else
+  fail "T-06a: expected no_comment. out=$out_t06"
+fi
+replica=$(jq -r '.wm_replica // empty' "$dir_t06/.rite-flow-state" 2>/dev/null)
+cid=$(jq -r '.wm_comment_id // empty' "$dir_t06/.rite-flow-state" 2>/dev/null)
+if [ "$replica" = "absent" ] && [ -z "$cid" ]; then
+  pass "T-06b: wm_replica=absent written; wm_comment_id not a sentinel"
+else
+  fail "T-06b: expected wm_replica=absent and no wm_comment_id (replica=$replica cid=$cid)"
+fi
+get_n6=$(grep -c '^GET$' "$GH_CLASS_T06" 2>/dev/null || true)
+patch_n6=$(grep -c '^PATCH$' "$GH_CLASS_T06" 2>/dev/null || true)
+: "${get_n6:=0}" "${patch_n6:=0}"
+if [ "$get_n6" = "1" ] && [ "$patch_n6" = "0" ]; then
+  pass "T-06c: list GET 1, no PATCH"
+else
+  fail "T-06c: expected GET=1 PATCH=0, got GET=$get_n6 PATCH=$patch_n6"
+fi
+echo ""
+
+# ─── T-08: init success deletes wm_replica and writes wm_comment_id ───
+echo "T-08: after absent, init success deletes wm_replica and writes wm_comment_id"
+dir_t08="$TEST_DIR/t08"
+mkdir -p "$dir_t08/bin"
+echo '{"active":true,"issue_number":42,"wm_replica":"absent"}' > "$dir_t08/.rite-flow-state"
+GH_SHIM_MARKER8="$dir_t08/posted.marker"
+cat > "$dir_t08/bin/gh" <<GH_SHIM
+#!/bin/bash
+case "\$1 \$2" in
+  "repo view") echo "testowner/testrepo"; exit 0 ;;
+  "api repos/testowner/testrepo/issues/42/comments")
+    if [ -f "$GH_SHIM_MARKER8" ]; then echo "888"; fi
+    exit 0 ;;
+  "issue comment")
+    touch "$GH_SHIM_MARKER8"
+    echo "https://github.com/testowner/testrepo/issues/42#issuecomment-8"
+    exit 0 ;;
+esac
+exit 0
+GH_SHIM
+chmod +x "$dir_t08/bin/gh"
+out_t08=$(cd "$dir_t08" && PATH="$dir_t08/bin:$PATH" \
+  bash "$HOOK" init --issue 42 --branch "fix/issue-42-test" 2>/dev/null) || true
+has_rep=$(jq -r 'has("wm_replica")' "$dir_t08/.rite-flow-state")
+cid8=$(jq -r '.wm_comment_id // empty' "$dir_t08/.rite-flow-state")
+if printf '%s' "$out_t08" | grep -qF "status=success" \
+   && [ "$has_rep" = "false" ] && [ "$cid8" = "888" ]; then
+  pass "T-08: init success deleted wm_replica and wrote wm_comment_id=888"
+else
+  fail "T-08: expected del wm_replica + wm_comment_id=888. out=$out_t08 has_rep=$has_rep cid=$cid8"
+fi
+echo ""
+
+# ─── T-12: stale cached id → 404 then list GET once → re-cache → PATCH ───
+echo "T-12: stale cached id → 404 then list GET once → re-cache → PATCH completes"
+dir_t12="$TEST_DIR/t12"
+mkdir -p "$dir_t12/bin"
+echo '{"active":true,"issue_number":42,"wm_comment_id":999}' > "$dir_t12/.rite-flow-state"
+wm_body_fixture > "$dir_t12/wm-body.md"
+GH_CLASS_T12="$dir_t12/gh.class"
+GH_URLS_T12="$dir_t12/gh.urls"
+cat > "$dir_t12/bin/gh" <<GH_SHIM
+#!/bin/bash
+is_patch=0
+prev=""
+url=""
+for a in "\$@"; do
+  if [ "\$a" = "PATCH" ] && [ "\$prev" = "-X" ]; then is_patch=1; fi
+  case "\$a" in repos/*) url="\$a" ;; esac
+  prev="\$a"
+done
+echo "\$url" >> "$GH_URLS_T12"
+if [ "\$is_patch" = 1 ]; then
+  echo PATCH >> "$GH_CLASS_T12"
+  cat >/dev/null
+  exit 0
+fi
+case "\$1 \$2" in
+  "repo view") echo "testowner/testrepo"; exit 0 ;;
+esac
+echo GET >> "$GH_CLASS_T12"
+case "\$url" in
+  *"/issues/comments/999")
+    echo "gh: Not Found (HTTP 404)" >&2
+    exit 1
+    ;;
+  *"/issues/42/comments")
+    jq -n --rawfile body "$dir_t12/wm-body.md" '{id:888, body:\$body}'
+    exit 0
+    ;;
+esac
+exit 0
+GH_SHIM
+chmod +x "$dir_t12/bin/gh"
+out_t12=$(cd "$dir_t12" && PATH="$dir_t12/bin:$PATH" \
+  bash "$HOOK" update --issue 42 --transform update-phase \
+    --phase "implement" --phase-detail "実装中" 2>/dev/null) || true
+cid12=$(jq -r '.wm_comment_id // empty' "$dir_t12/.rite-flow-state")
+list_gets=$(grep -c '/issues/42/comments' "$GH_URLS_T12" 2>/dev/null || true)
+patch_n12=$(grep -c '^PATCH$' "$GH_CLASS_T12" 2>/dev/null || true)
+: "${list_gets:=0}" "${patch_n12:=0}"
+if printf '%s' "$out_t12" | grep -qF "status=success" \
+   && [ "$cid12" = "888" ] && [ "$list_gets" = "1" ] && [ "$patch_n12" = "1" ]; then
+  pass "T-12: 404 → list GET once → re-cache 888 → PATCH success"
+else
+  fail "T-12: out=$out_t12 cid=$cid12 list_gets=$list_gets patch=$patch_n12 urls=$(cat "$GH_URLS_T12" 2>/dev/null)"
+fi
+echo ""
+
+# ─── T-nfs: flow-state 不在でも update は GET 1 + PATCH 1 で status=success ───
+echo "T-nfs: no flow-state → update GET 1 + PATCH 1, status=success (COMMENT_ID survives do_fetch)"
+dir_tnfs="$TEST_DIR/tnfs"
+mkdir -p "$dir_tnfs/bin"
+# flow-state 不在: .rite-session-id / .rite/sessions / .rite-flow-state を作らない
+wm_body_fixture > "$dir_tnfs/wm-body.md"
+GH_LOG_NFS="$dir_tnfs/gh.log"
+GH_CLASS_NFS="$dir_tnfs/gh.class"
+cat > "$dir_tnfs/bin/gh" <<GH_SHIM
+#!/bin/bash
+printf 'gh %s\n' "\$*" >> "$GH_LOG_NFS"
+is_patch=0
+prev=""
+for a in "\$@"; do
+  if [ "\$a" = "PATCH" ] && [ "\$prev" = "-X" ]; then is_patch=1; fi
+  prev="\$a"
+done
+if [ "\$is_patch" = 1 ]; then
+  echo PATCH >> "$GH_CLASS_NFS"
+  cat >/dev/null
+  exit 0
+fi
+case "\$1 \$2" in
+  "repo view") echo GET_REPO >> "$GH_CLASS_NFS"; echo "testowner/testrepo"; exit 0 ;;
+esac
+echo GET >> "$GH_CLASS_NFS"
+case "\$*" in
+  *"/issues/42/comments"*)
+    jq -n --rawfile body "$dir_tnfs/wm-body.md" '{id:4242, body:\$body}'
+    exit 0
+    ;;
+  *"/issues/comments/4242"*)
+    cat "$dir_tnfs/wm-body.md"
+    exit 0
+    ;;
+esac
+exit 0
+GH_SHIM
+chmod +x "$dir_tnfs/bin/gh"
+# origin remote あり（Issue 再現条件）。git-remote 解決が gh repo view に倒れても shim が受ける
+git -C "$dir_tnfs" init -q
+git -C "$dir_tnfs" remote add origin git@github.com:testowner/testrepo.git
+printf 'branch:\n  base: develop\n' > "$dir_tnfs/rite-config.yml"
+set +e
+out_tnfs=$(cd "$dir_tnfs" && PATH="$dir_tnfs/bin:$PATH" \
+  bash "$HOOK" update --issue 42 --transform update-plan-status 2>/dev/null)
+rc_tnfs=$?
+set -e
+get_nfs=$(grep -c '^GET$' "$GH_CLASS_NFS" 2>/dev/null || true)
+patch_nfs=$(grep -c '^PATCH$' "$GH_CLASS_NFS" 2>/dev/null || true)
+: "${get_nfs:=0}" "${patch_nfs:=0}"
+if printf '%s' "$out_tnfs" | grep -qF "status=success" \
+   && [ "$rc_tnfs" -eq 0 ] && [ "$get_nfs" = "1" ] && [ "$patch_nfs" = "1" ]; then
+  pass "T-nfs: no flow-state update GET 1 + PATCH 1, status=success"
+else
+  fail "T-nfs: out=$out_tnfs rc=$rc_tnfs GET=$get_nfs PATCH=$patch_nfs class=$(cat "$GH_CLASS_NFS" 2>/dev/null) log=$(cat "$GH_LOG_NFS" 2>/dev/null)"
+fi
+echo ""
+
+# ─── T-13: init gh call sequence unchanged ───
+echo "T-13: init gh call sequence unchanged (pre-check GET → gh issue comment → verify GET)"
+dir_t13="$TEST_DIR/t13"
+mkdir -p "$dir_t13/bin"
+echo '{"active":true,"issue_number":42}' > "$dir_t13/.rite-flow-state"
+GH_SEQ_T13="$dir_t13/gh.seq"
+GH_SHIM_MARKER13="$dir_t13/posted.marker"
+cat > "$dir_t13/bin/gh" <<GH_SHIM
+#!/bin/bash
+case "\$1 \$2" in
+  "repo view") echo "testowner/testrepo"; exit 0 ;;
+  "api repos/testowner/testrepo/issues/42/comments")
+    echo LIST >> "$GH_SEQ_T13"
+    if [ -f "$GH_SHIM_MARKER13" ]; then echo "777"; fi
+    exit 0 ;;
+  "issue comment")
+    echo COMMENT >> "$GH_SEQ_T13"
+    touch "$GH_SHIM_MARKER13"
+    echo "https://github.com/testowner/testrepo/issues/42#issuecomment-7"
+    exit 0 ;;
+esac
+echo OTHER >> "$GH_SEQ_T13"
+exit 0
+GH_SHIM
+chmod +x "$dir_t13/bin/gh"
+out_t13=$(cd "$dir_t13" && PATH="$dir_t13/bin:$PATH" \
+  bash "$HOOK" init --issue 42 --branch "fix/issue-42-test" 2>/dev/null) || true
+seq13=$(tr '\n' ' ' < "$GH_SEQ_T13" | sed 's/ *$//')
+# pre-check LIST (empty) → COMMENT → verify LIST (id)
+if printf '%s' "$out_t13" | grep -qF "status=success" \
+   && [ "$seq13" = "LIST COMMENT LIST" ]; then
+  pass "T-13: init sequence pre-check GET → gh issue comment → verify GET"
+else
+  fail "T-13: expected 'LIST COMMENT LIST', got '$seq13' out=$out_t13"
 fi
 echo ""
 

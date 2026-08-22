@@ -273,7 +273,8 @@ else
 fi
 echo ""
 
-# TC-POST-WM-PER-SESSION-2: per-session state, last_synced_phase update writes to per-session file
+# TC-POST-WM-PER-SESSION-2: per-session state, last_synced_phase update writes to per-session file.
+# wm_replica=absent で gh なしに _phase_sync_ok=1 にする（fetch 空 status は失敗扱い）。
 echo "TC-POST-WM-PER-SESSION-2: per-session state → last_synced_phase atomic write targets per-session path"
 dir_ps2="$TEST_DIR/tc_per_session_2"
 mkdir -p "$dir_ps2/.rite-work-memory" "$dir_ps2/.rite/sessions"
@@ -289,6 +290,7 @@ cat > "$ps2_state" <<STATE_EOF
   "issue_number": 42,
   "phase": "phase5_post_lint",
   "last_synced_phase": "phase5_lint",
+  "wm_replica": "absent",
   "session_id": "$sid_ps2",
   "updated_at": "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")"
 }
@@ -356,22 +358,20 @@ echo ""
 
 echo "TC-012: WARNING output preserves real sync rc (regression guard for if-not antipattern)"
 # A revert to `if ! cmd; then _rc=$?` would set `_rc=0` due to POSIX `!`
-# inversion. File-global grep alone would let a refactor add a new unrelated
-# else/$? pair elsewhere and pass while the sync site regresses; check the 3
-# literals (sync invocation / `else` / `_rc=$?`) co-occur within a window of
-# 8 lines via awk-based proximity matching so they must form a single block.
+# inversion. fetch / patch 呼び出しで if/else / \$? が 8 行以内に共起することを pin する。
 proximity=$(awk '
-  /if "\$SCRIPT_DIR\/issue-comment-wm-sync\.sh" update/ { start=NR; saw_else=0; saw_rc=0; matched=0 }
+  /if _fetch_line=\$\("\$SCRIPT_DIR\/issue-comment-wm-sync\.sh" fetch/ { start=NR; saw_else=0; saw_rc=0; matched=0 }
+  /if _patch_line=\$\("\$SCRIPT_DIR\/issue-comment-wm-sync\.sh" patch/ { start=NR; saw_else=0; saw_rc=0; matched=0 }
   start && NR <= start+8 && /^[[:space:]]*else[[:space:]]*$/ { saw_else=1 }
-  start && NR <= start+8 && /_rc=\$\?/ { saw_rc=1 }
+  start && NR <= start+8 && /_fetch_rc=\$\?|_patch_rc=\$\?/ { saw_rc=1 }
   start && NR > start+8 && saw_else && saw_rc { matched=1; start=0 }
   start && NR > start+8 { start=0; saw_else=0; saw_rc=0 }
   END { if (matched || (start && saw_else && saw_rc)) print "ok" }
 ' "$HOOK")
 if [ "$proximity" = "ok" ]; then
-  pass "TC-012 if/else form + \$? capture co-located around sync call (proximity-checked)"
+  pass "TC-012 if/else form + \$? capture co-located around fetch/patch call (proximity-checked)"
 else
-  fail "TC-012 if/else/\$? not co-located within 8 lines of the sync call — sync failure WARNING may report misleading rc=0"
+  fail "TC-012 if/else/\$? not co-located within 8 lines of the fetch/patch call — sync failure WARNING may report misleading rc=0"
 fi
 # Also pin that the WARNING text references `last_synced_phase will NOT be advanced`
 # so a refactor that drops the gate documentation (and likely the gate too) is caught.
@@ -560,6 +560,367 @@ if [ -f "$git_log_ee4" ]; then
   pass "TC-EARLYEXIT-4 gate ascended to the ancestor .rite marker (git rev-parse reached, exit code: $rc_ee4)"
 else
   fail "TC-EARLYEXIT-4 gate did not walk up to the ancestor marker (CWD-only detection regression)"
+fi
+echo ""
+
+# --- 2 round-trip sync + fail-loud ---
+wm_body_fixture() {
+  cat <<'EOF'
+## 📜 rite 作業メモリ
+
+### セッション情報
+- **Issue**: #42
+- **開始**: 2026-01-01T00:00:00+09:00
+- **ブランチ**: feat/issue-42-test
+- **最終更新**: 2026-01-01T00:00:00+09:00
+- **コマンド**: /rite:open
+- **フェーズ**: branch
+- **フェーズ詳細**: ブランチ作成完了
+
+### 進捗サマリー
+
+| 項目 | 状態 | 備考 |
+|------|------|------|
+| 実装 | ⬜ 未着手 | - |
+| テスト | ⬜ 未着手 | - |
+| ドキュメント | ⬜ 未着手 | - |
+
+### 変更ファイル
+<!-- 自動更新 -->
+_まだ変更はありません_
+
+### 実装計画
+
+| ID | 内容 | 状態 |
+|----|------|------|
+| S1 | 実装 | ⬜ |
+
+### 次のステップ
+1. 実装を開始
+EOF
+}
+
+setup_git_repo() {
+  local dir="$1"
+  local base="${2:-develop}"
+  ( cd "$dir" &&
+    git init -q &&
+    git checkout -q -b "$base" &&
+    printf 'base\n' > README.md &&
+    git add README.md &&
+    git -c user.email=t@t.local -c user.name=t commit -q -m init &&
+    git checkout -q -b feat/issue-42 &&
+    printf 'feat\n' >> README.md &&
+    git add README.md &&
+    git -c user.email=t@t.local -c user.name=t commit -q -m feat &&
+    git remote add origin "https://github.com/testowner/testrepo.git" &&
+    git update-ref "refs/remotes/origin/${base}" HEAD~1
+  )
+}
+
+install_gh_shim() {
+  local dir="$1"
+  mkdir -p "$dir/bin"
+  cat > "$dir/bin/gh" <<GH_SHIM
+#!/bin/bash
+printf 'gh %s\n' "\$*" >> "$dir/gh.log"
+is_patch=0
+prev=""
+url=""
+for a in "\$@"; do
+  if [ "\$a" = "PATCH" ] && [ "\$prev" = "-X" ]; then is_patch=1; fi
+  case "\$a" in repos/*) url="\$a" ;; esac
+  prev="\$a"
+done
+if [ "\$is_patch" = 1 ]; then
+  echo PATCH >> "$dir/gh.class"
+  cat > "$dir/patch-body.txt"
+  exit \${PATCH_RC:-0}
+fi
+case "\$1 \$2" in
+  "repo view") echo GET_REPO >> "$dir/gh.class"; echo "testowner/testrepo"; exit 0 ;;
+esac
+echo GET >> "$dir/gh.class"
+echo "\$url" >> "$dir/gh.urls"
+case "\$url" in
+  *"/issues/"*"/comments")
+    if [ -f "$dir/list-empty.flag" ]; then exit 0; fi
+    jq -n --rawfile body "$dir/wm-body.md" '{id:4242, body:\$body}'
+    exit 0
+    ;;
+  *"/issues/comments/"*)
+    cat "$dir/wm-body.md"
+    exit 0
+    ;;
+esac
+exit 0
+GH_SHIM
+  chmod +x "$dir/bin/gh"
+}
+
+run_hook_cap() {
+  local cwd="$1"
+  local stdout_f="$cwd/hook.stdout"
+  local stderr_f="$cwd/hook.stderr"
+  local rc=0
+  echo "{\"tool_name\": \"Bash\", \"cwd\": \"$cwd\"}" \
+    | PATH="$cwd/bin:$PATH" bash "$HOOK" >"$stdout_f" 2>"$stderr_f" || rc=$?
+  return $rc
+}
+
+echo "T-01: 3-transform gated phase → gh log is GET 1 + PATCH 1 exactly"
+dir_n01="$TEST_DIR/n01"
+mkdir -p "$dir_n01/.rite-work-memory"
+setup_git_repo "$dir_n01" develop
+printf 'branch:\n  base: develop\n' > "$dir_n01/rite-config.yml"
+echo "existing wm" > "$dir_n01/.rite-work-memory/issue-42.md"
+create_state_file "$dir_n01" '{"active": true, "issue_number": 42, "phase": "implement", "last_synced_phase": "init", "wm_comment_id": 4242}'
+wm_body_fixture > "$dir_n01/wm-body.md"
+install_gh_shim "$dir_n01"
+rc_n01=0
+run_hook_cap "$dir_n01" || rc_n01=$?
+get_n01=$(grep -c '^GET$' "$dir_n01/gh.class" 2>/dev/null || true); : "${get_n01:=0}"
+patch_n01=$(grep -c '^PATCH$' "$dir_n01/gh.class" 2>/dev/null || true); : "${patch_n01:=0}"
+list_n01=$(grep -c '/issues/42/comments' "$dir_n01/gh.urls" 2>/dev/null || true); : "${list_n01:=0}"
+lsp_n01=$(jq -r '.last_synced_phase // empty' "$(state_file_path "$dir_n01")")
+stdout01=$(cat "$dir_n01/hook.stdout" 2>/dev/null)
+obs01=$(printf '%s\n' "$stdout01" | grep -c '^status=success round_trips=2$' || true); : "${obs01:=0}"
+if [ "$get_n01" = "1" ] && [ "$patch_n01" = "1" ] && [ "$list_n01" = "0" ] && [ "$lsp_n01" = "implement" ]; then
+  pass "T-01: gated phase GET 1 + PATCH 1 (no list GET), last_synced_phase=implement"
+else
+  fail "T-01: GET=$get_n01 PATCH=$patch_n01 list=$list_n01 lsp=$lsp_n01 class=$(cat "$dir_n01/gh.class" 2>/dev/null) log=$(cat "$dir_n01/gh.log" 2>/dev/null)"
+fi
+if [ "$obs01" = "1" ] && [ "$rc_n01" -eq 0 ]; then
+  pass "T-01b: stdout has status=success round_trips=2 (1 line), exit 0"
+else
+  fail "T-01b: expected obs line once. obs=$obs01 rc=$rc_n01 stdout=$stdout01"
+fi
+echo ""
+
+echo "T-02: PATCH body contains update-phase + update-progress + update-plan-status changes"
+body_n01=""
+[ -f "$dir_n01/patch-body.txt" ] && body_n01=$(jq -r '.body // empty' "$dir_n01/patch-body.txt" 2>/dev/null) || body_n01=""
+if printf '%s' "$body_n01" | grep -qF '**フェーズ**: implement' \
+   && printf '%s' "$body_n01" | grep -q '| 実装 | ✅ 完了 |' \
+   && printf '%s' "$body_n01" | grep -q '| S1 | 実装 | ✅ |'; then
+  pass "T-02: PATCH body has phase + progress + plan-status transforms"
+else
+  fail "T-02: PATCH body missing expected transforms. body=$body_n01 raw=$(cat "$dir_n01/patch-body.txt" 2>/dev/null)"
+fi
+echo ""
+
+echo "T-05: ungated phase → still 2 gh calls, PATCH has update-phase only"
+dir_n05="$TEST_DIR/n05"
+mkdir -p "$dir_n05/.rite-work-memory"
+setup_git_repo "$dir_n05" develop
+printf 'branch:\n  base: develop\n' > "$dir_n05/rite-config.yml"
+echo "existing wm" > "$dir_n05/.rite-work-memory/issue-42.md"
+create_state_file "$dir_n05" '{"active": true, "issue_number": 42, "phase": "plan", "last_synced_phase": "init", "wm_comment_id": 4242}'
+wm_body_fixture > "$dir_n05/wm-body.md"
+install_gh_shim "$dir_n05"
+run_hook_cap "$dir_n05" || true
+get_n05=$(grep -c '^GET$' "$dir_n05/gh.class" 2>/dev/null || true); : "${get_n05:=0}"
+patch_n05=$(grep -c '^PATCH$' "$dir_n05/gh.class" 2>/dev/null || true); : "${patch_n05:=0}"
+body_n05=""
+[ -f "$dir_n05/patch-body.txt" ] && body_n05=$(jq -r '.body // empty' "$dir_n05/patch-body.txt" 2>/dev/null) || body_n05=""
+lsp_n05=$(jq -r '.last_synced_phase // empty' "$(state_file_path "$dir_n05")")
+if [ "$get_n05" = "1" ] && [ "$patch_n05" = "1" ] \
+   && printf '%s' "$body_n05" | grep -qF '**フェーズ**: plan' \
+   && printf '%s' "$body_n05" | grep -q '| 実装 | ⬜ 未着手 |' \
+   && printf '%s' "$body_n05" | grep -q '| S1 | 実装 | ⬜ |' \
+   && [ "$lsp_n05" = "plan" ]; then
+  pass "T-05: ungated phase 2 gh calls, PATCH is update-phase only, last_synced_phase=plan"
+else
+  fail "T-05: GET=$get_n05 PATCH=$patch_n05 lsp=$lsp_n05 body=$body_n05"
+fi
+echo ""
+
+echo "T-07: wm_replica=absent already set → 0 gh calls, empty stdout, last_synced_phase advances"
+dir_n07="$TEST_DIR/n07"
+mkdir -p "$dir_n07/.rite-work-memory"
+printf '# rite\n' > "$dir_n07/rite-config.yml"
+echo "existing wm" > "$dir_n07/.rite-work-memory/issue-42.md"
+create_state_file "$dir_n07" '{"active": true, "issue_number": 42, "phase": "implement", "last_synced_phase": "init", "wm_replica": "absent"}'
+install_gh_shim "$dir_n07"
+rc_n07=0
+run_hook_cap "$dir_n07" || rc_n07=$?
+stdout07=$(cat "$dir_n07/hook.stdout" 2>/dev/null)
+lsp07=$(jq -r '.last_synced_phase // empty' "$(state_file_path "$dir_n07")")
+if [ ! -s "$dir_n07/gh.log" ] && [ -z "$stdout07" ] && [ "$lsp07" = "implement" ] && [ "$rc_n07" -eq 0 ]; then
+  pass "T-07: 0 gh calls, empty stdout, last_synced_phase advanced"
+else
+  fail "T-07: log=$(cat "$dir_n07/gh.log" 2>/dev/null) stdout='$stdout07' lsp=$lsp07 rc=$rc_n07"
+fi
+echo ""
+
+echo "T-09: no branch.base, origin/HEAD=main → git diff uses origin/main...HEAD"
+dir_n09="$TEST_DIR/n09"
+mkdir -p "$dir_n09/.rite-work-memory"
+setup_git_repo "$dir_n09" main
+( cd "$dir_n09" && git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main )
+printf '# rite (no branch.base)\n' > "$dir_n09/rite-config.yml"
+echo "existing wm" > "$dir_n09/.rite-work-memory/issue-42.md"
+create_state_file "$dir_n09" '{"active": true, "issue_number": 42, "phase": "implement", "last_synced_phase": "init", "wm_comment_id": 4242}'
+wm_body_fixture > "$dir_n09/wm-body.md"
+install_gh_shim "$dir_n09"
+REAL_GIT=$(command -v git)
+GIT_LOG_N09="$dir_n09/git.log"
+cat > "$dir_n09/bin/git" <<GIT_SHIM
+#!/bin/sh
+echo "git \$*" >> "$GIT_LOG_N09"
+exec "$REAL_GIT" "\$@"
+GIT_SHIM
+chmod +x "$dir_n09/bin/git"
+run_hook_cap "$dir_n09" || true
+if grep -q 'diff --name-status origin/main...HEAD' "$GIT_LOG_N09" 2>/dev/null; then
+  pass "T-09: git diff uses origin/main...HEAD"
+else
+  fail "T-09: expected origin/main...HEAD in git log: $(cat "$GIT_LOG_N09" 2>/dev/null)"
+fi
+echo ""
+
+echo "T-10: no branch.base and no origin/HEAD → skip progress + systemMessage; update-phase still in PATCH"
+dir_n10="$TEST_DIR/n10"
+mkdir -p "$dir_n10/.rite-work-memory"
+setup_git_repo "$dir_n10" develop
+# origin/HEAD を作らない (symbolic-ref 失敗させる)
+printf '# rite (no branch.base)\n' > "$dir_n10/rite-config.yml"
+echo "existing wm" > "$dir_n10/.rite-work-memory/issue-42.md"
+create_state_file "$dir_n10" '{"active": true, "issue_number": 42, "phase": "implement", "last_synced_phase": "init", "wm_comment_id": 4242}'
+wm_body_fixture > "$dir_n10/wm-body.md"
+install_gh_shim "$dir_n10"
+rc_n10=0
+run_hook_cap "$dir_n10" || rc_n10=$?
+stdout10=$(cat "$dir_n10/hook.stdout" 2>/dev/null)
+body_n10=""
+[ -f "$dir_n10/patch-body.txt" ] && body_n10=$(jq -r '.body // empty' "$dir_n10/patch-body.txt" 2>/dev/null) || body_n10=""
+if printf '%s' "$stdout10" | jq -e . >/dev/null 2>&1 \
+   && printf '%s' "$stdout10" | grep -q '"systemMessage"' \
+   && printf '%s' "$stdout10" | grep -q 'branch.base' \
+   && printf '%s' "$body_n10" | grep -qF '**フェーズ**: implement' \
+   && printf '%s' "$body_n10" | grep -q '| 実装 | ⬜ 未着手 |'; then
+  pass "T-10: systemMessage + update-phase in PATCH, progress skipped (stdout is 1 JSON object)"
+else
+  fail "T-10: stdout=$stdout10 body=$body_n10 stderr=$(cat "$dir_n10/hook.stderr" 2>/dev/null)"
+fi
+echo ""
+
+echo "T-11: PATCH non-zero → backup remains, systemMessage, last_synced_phase unchanged"
+dir_n11="$TEST_DIR/n11"
+mkdir -p "$dir_n11/.rite-work-memory"
+setup_git_repo "$dir_n11" develop
+printf 'branch:\n  base: develop\n' > "$dir_n11/rite-config.yml"
+echo "existing wm" > "$dir_n11/.rite-work-memory/issue-42.md"
+create_state_file "$dir_n11" '{"active": true, "issue_number": 42, "phase": "plan", "last_synced_phase": "init", "wm_comment_id": 4242}'
+wm_body_fixture > "$dir_n11/wm-body.md"
+install_gh_shim "$dir_n11"
+export PATCH_RC=1
+if [ "${TMPDIR+x}" = "x" ]; then
+  _t11_tmpdir_saved="$TMPDIR"
+  _t11_tmpdir_set=1
+else
+  _t11_tmpdir_saved=""
+  _t11_tmpdir_set=0
+fi
+export TMPDIR="$dir_n11"
+rc_n11=0
+run_hook_cap "$dir_n11" || rc_n11=$?
+unset PATCH_RC
+lsp11=$(jq -r '.last_synced_phase // empty' "$(state_file_path "$dir_n11")")
+stdout11=$(cat "$dir_n11/hook.stdout" 2>/dev/null)
+bak11=$(ls -1 "$dir_n11"/rite-wm-backup-42-* 2>/dev/null | head -1 || true)
+if [ -n "$bak11" ] && [ -f "$bak11" ] \
+   && printf '%s' "$stdout11" | grep -q '"systemMessage"' \
+   && [ "$lsp11" = "init" ]; then
+  pass "T-11: backup remains, systemMessage, last_synced_phase unchanged"
+else
+  fail "T-11: bak=$bak11 stdout=$stdout11 lsp=$lsp11 stderr=$(cat "$dir_n11/hook.stderr" 2>/dev/null)"
+fi
+if [ "$_t11_tmpdir_set" = "1" ]; then
+  export TMPDIR="$_t11_tmpdir_saved"
+else
+  unset TMPDIR
+fi
+if [ "$_t11_tmpdir_set" = "1" ]; then
+  if [ "${TMPDIR-}" = "$_t11_tmpdir_saved" ]; then
+    pass "T-11b: TMPDIR restored to saved value"
+  else
+    fail "T-11b: TMPDIR after restore got=${TMPDIR-} saved=$_t11_tmpdir_saved"
+  fi
+else
+  if [ "${TMPDIR+x}" = "x" ]; then
+    fail "T-11b: TMPDIR still set after restore (expected unset): TMPDIR=$TMPDIR"
+  else
+    pass "T-11b: TMPDIR remains unset after restore"
+  fi
+fi
+echo ""
+
+echo "T-14: AC-1/4/8/9 paths all exit 0; AC-4 Then (systemMessage JSON, wm_replica, lsp, list GET 1)"
+# AC-1 = T-01 success 2-rt, AC-4 = no_comment first detect, AC-8 = T-10 base skip, AC-9 = T-11 PATCH fail
+dir_n14="$TEST_DIR/n14"
+mkdir -p "$dir_n14/.rite-work-memory"
+printf '# rite\n' > "$dir_n14/rite-config.yml"
+echo "existing wm" > "$dir_n14/.rite-work-memory/issue-42.md"
+create_state_file "$dir_n14" '{"active": true, "issue_number": 42, "phase": "plan", "last_synced_phase": "init"}'
+wm_body_fixture > "$dir_n14/wm-body.md"
+touch "$dir_n14/list-empty.flag"
+install_gh_shim "$dir_n14"
+rc_n14=0
+run_hook_cap "$dir_n14" || rc_n14=$?
+stdout14=$(cat "$dir_n14/hook.stdout" 2>/dev/null)
+lsp14=$(jq -r '.last_synced_phase // empty' "$(state_file_path "$dir_n14")")
+wmrep14=$(jq -r '.wm_replica // empty' "$(state_file_path "$dir_n14")")
+list14=$(grep -c '/issues/42/comments' "$dir_n14/gh.urls" 2>/dev/null || true); : "${list14:=0}"
+ok14=1
+[ "$rc_n01" -eq 0 ] || ok14=0
+[ "$rc_n10" -eq 0 ] || ok14=0
+[ "$rc_n11" -eq 0 ] || ok14=0
+[ "$rc_n14" -eq 0 ] || ok14=0
+if [ "$ok14" = "1" ]; then
+  pass "T-14: AC-1/4/8/9 paths all exit 0 (rc01=$rc_n01 rc10=$rc_n10 rc11=$rc_n11 rc14=$rc_n14)"
+else
+  fail "T-14: expected all exit 0 (rc01=$rc_n01 rc10=$rc_n10 rc11=$rc_n11 rc14=$rc_n14)"
+fi
+if printf '%s' "$stdout14" | jq -e '.systemMessage | type=="string" and length>0' >/dev/null 2>&1 \
+   && [ "$wmrep14" = "absent" ] \
+   && [ "$lsp14" = "plan" ] \
+   && [ "$list14" = "1" ]; then
+  pass "T-14b: AC-4 Then — systemMessage JSON, wm_replica=absent, last_synced_phase=plan, list GET 1"
+else
+  fail "T-14b: AC-4 Then missing. stdout=$stdout14 wm_replica=$wmrep14 lsp=$lsp14 list=$list14"
+fi
+echo ""
+
+echo "T-15: fetch empty status (no origin, gh repo view fails) → systemMessage, last_synced_phase unchanged, exit 0"
+dir_n15="$TEST_DIR/n15"
+mkdir -p "$dir_n15/.rite-work-memory" "$dir_n15/bin"
+( cd "$dir_n15" &&
+  git init -q &&
+  git checkout -q -b main &&
+  printf 'x\n' > README.md &&
+  git add README.md &&
+  git -c user.email=t@t.local -c user.name=t commit -q -m i
+)
+printf '# rite\n' > "$dir_n15/rite-config.yml"
+echo "existing wm" > "$dir_n15/.rite-work-memory/issue-42.md"
+create_state_file "$dir_n15" '{"active": true, "issue_number": 42, "phase": "plan", "last_synced_phase": "init"}'
+cat > "$dir_n15/bin/gh" <<'GH_SHIM'
+#!/bin/bash
+echo "gh: HTTP 401: Bad credentials" >&2
+exit 1
+GH_SHIM
+chmod +x "$dir_n15/bin/gh"
+rc_n15=0
+run_hook_cap "$dir_n15" || rc_n15=$?
+stdout15=$(cat "$dir_n15/hook.stdout" 2>/dev/null)
+lsp15=$(jq -r '.last_synced_phase // empty' "$(state_file_path "$dir_n15")")
+if [ "$rc_n15" -eq 0 ] \
+   && printf '%s' "$stdout15" | jq -e '.systemMessage | type=="string" and length>0' >/dev/null 2>&1 \
+   && [ "$lsp15" = "init" ]; then
+  pass "T-15: empty-status fetch → systemMessage, last_synced_phase unchanged, exit 0"
+else
+  fail "T-15: rc=$rc_n15 lsp=$lsp15 stdout=$stdout15 stderr=$(cat "$dir_n15/hook.stderr" 2>/dev/null)"
 fi
 echo ""
 
