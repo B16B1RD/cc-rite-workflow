@@ -561,7 +561,7 @@ else
 fi
 echo ""
 
-# --- Issue #2336: 2 round-trip sync + fail-loud ---
+# --- 2 round-trip sync + fail-loud ---
 wm_body_fixture() {
   cat <<'EOF'
 ## 📜 rite 作業メモリ
