@@ -1,4 +1,5 @@
 ## 2026-08-23
+* **lint:warning** — contradictions=0, stale=21, orphans=0, missing_concept=1, unregistered_raw=342, broken_refs=0
 * **Skip**: [20260822T180317Z-pr-2337.md](raw/reviews/20260822T180317Z-pr-2337.md) — rite-plugin: fetch 空 status の fail-loud と AC Then pin（systemMessage / last_synced_phase）は post-tool-wm-sync.sh と T-14b/T-15/T-01 に既実装。exit 0 のみの pin は test-pin-protection-theater に既出
 * **Skip**: [20260822T180702Z-pr-2337.md](raw/fixes/20260822T180702Z-pr-2337.md) — rite-plugin: 空 status を失敗扱いし AC Then をテストで pin する修正は hook とテストに既実装。新規 domain 経験則なし
 * **Skip**: [20260822T181725Z-pr-2337.md](raw/reviews/20260822T181725Z-pr-2337.md) — 一時的なレビュー件数サマリのみで、再利用可能な経験則が抽出できない
