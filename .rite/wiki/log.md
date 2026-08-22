@@ -7,6 +7,7 @@
 * **Skip**: [20260822T191112Z-pr-2339.md](raw/reviews/20260822T191112Z-pr-2339.md) — detector-candidate: PostToolUse stdout は JSON 1 object（観測行と systemMessage を混在させない）。T-10 の jq -e . と T-11b の TMPDIR 同一性 assert が機械検証する
 * **Skip**: [20260822T191650Z-pr-2339.md](raw/fixes/20260822T191650Z-pr-2339.md) — rite-plugin: PostToolUse stdout JSON 1 object と TMPDIR 復元同一性は post-tool-wm-sync.sh と T-10/T-11b に既実装。新規 domain 経験則なし
 * **Skip**: [20260822T193049Z-pr-2339.md](raw/reviews/20260822T193049Z-pr-2339.md) — 一時的な cycle 2 確認のみ。F-01/F-02 解消は T-10/T-11b に既 pin。T-11b set=1 未強制は class B 検出網で新規経験則なし
+* **lint:warning** — contradictions=0, stale=21, orphans=0, missing_concept=1, unregistered_raw=345, broken_refs=0
 
 ## 2026-08-21
 * **lint:warning** — contradictions=0, stale=20, orphans=0, missing_concept=1, unregistered_raw=338, broken_refs=0
