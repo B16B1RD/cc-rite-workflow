@@ -8,6 +8,13 @@
 #   Init mode (create new work memory comment):
 #     bash issue-comment-wm-sync.sh init --issue 42 --branch "feat/issue-42-test"
 #
+#   Fetch mode (GET body once into a file; no PATCH):
+#     bash issue-comment-wm-sync.sh fetch --issue 42 --out /tmp/wm-body.md
+#
+#   Patch mode (safety_check + PATCH an already-transformed file):
+#     bash issue-comment-wm-sync.sh patch --issue 42 --in /tmp/wm-updated.md \
+#       --original-length 1234 --transform-label update-phase
+#
 #   Update mode (transform and PATCH existing comment):
 #     bash issue-comment-wm-sync.sh update --issue 42 \
 #       --transform update-phase --phase "phase5_review" --phase-detail "レビュー中"
@@ -27,9 +34,13 @@
 #       --transform merge-checklist --section 進捗サマリー --content-file "${TMPDIR:-/tmp}/items.md"
 #
 # Options:
-#   --issue          Issue number (required)
-#   --branch         Branch name (init mode)
-#   --transform      Python subcommand to apply (update mode, required)
+#   --issue            Issue number (required)
+#   --branch           Branch name (init mode)
+#   --transform        Python subcommand to apply (update mode, required)
+#   --out              Output file for fetch mode
+#   --in               Input file for patch mode
+#   --original-length  Original body byte length (patch mode, 50% rule)
+#   --transform-label  Transform name for safety_check (patch mode)
 #   (remaining args are passed through to the Python script)
 #
 # Exit codes:
@@ -181,7 +192,7 @@ cache_comment_id() {
   local _jq_err
   _jq_err=$(mktemp 2>/dev/null) || _jq_err=""
   local _jq_rc=0
-  if jq --arg cid "$cid" '. + {wm_comment_id: ($cid | tonumber)}' "$FLOW_STATE" > "$tmp" 2>"${_jq_err:-/dev/null}"; then
+  if jq --arg cid "$cid" '. + {wm_comment_id: ($cid | tonumber)} | del(.wm_replica)' "$FLOW_STATE" > "$tmp" 2>"${_jq_err:-/dev/null}"; then
     # Capture both rc and stderr so EXDEV / EACCES / ENOSPC / SELinux deny is
     # distinguishable. `if ! mv ...; then _rc=$?` would zero $? in its
     # then-branch (bash `!` semantics) and collapse the real errno.
@@ -205,68 +216,223 @@ cache_comment_id() {
   [ -n "$_jq_err" ] && rm -f "$_jq_err"
 }
 
-# --- Get comment ID (with flow-state cache) ---
-# 各 gh / jq 呼び出しの stderr を tempfile capture することで、rate limit / auth expiry /
-# 真の comment 不在 を区別する。stderr を /dev/null に落とすと「キャッシュ無効」と
-# 「rate limit」を同一視し、full-scan に降格して rate limit を増幅する経路ができる。
-get_comment_id() {
+# Negative cache: replica 不在を flow-state に記録する (wm_comment_id には sentinel を入れない)。
+# jq+mktemp+mv は cache_comment_id と同じ契約。書込失敗は WARNING を出して rc=1 を返し、
+# 呼び出し側は success を捏造しない (caller/hook が systemMessage する)。
+record_wm_replica_absent() {
+  if [ ! -f "$FLOW_STATE" ]; then
+    echo "[rite] WARNING: issue-comment-wm-sync: wm_replica を記録できない (FLOW_STATE missing)" >&2
+    return 1
+  fi
+  local tmp
+  if ! tmp=$(mktemp 2>/dev/null); then
+    echo "[rite] WARNING: issue-comment-wm-sync: record_wm_replica_absent mktemp failed; wm_replica は記録されない" >&2
+    return 1
+  fi
+  local _jq_err
+  _jq_err=$(mktemp 2>/dev/null) || _jq_err=""
+  local _jq_rc=0
+  if jq '. + {wm_replica: "absent"} | del(.wm_comment_id)' "$FLOW_STATE" > "$tmp" 2>"${_jq_err:-/dev/null}"; then
+    local _mv_err
+    _mv_err=$(mktemp 2>/dev/null) || _mv_err=""
+    if mv "$tmp" "$FLOW_STATE" 2>"${_mv_err:-/dev/null}"; then
+      :
+    else
+      local _mv_rc=$?
+      echo "[rite] WARNING: issue-comment-wm-sync: record_wm_replica_absent mv failed (rc=$_mv_rc)" >&2
+      [ -n "$_mv_err" ] && [ -s "$_mv_err" ] && head -3 "$_mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+      rm -f "$tmp"
+      [ -n "$_mv_err" ] && rm -f "$_mv_err"
+      [ -n "$_jq_err" ] && rm -f "$_jq_err"
+      return 1
+    fi
+    [ -n "$_mv_err" ] && rm -f "$_mv_err"
+  else
+    _jq_rc=$?
+    echo "[rite] WARNING: issue-comment-wm-sync: record_wm_replica_absent jq failed (rc=$_jq_rc — FLOW_STATE may be corrupt)" >&2
+    [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    rm -f "$tmp"
+    [ -n "$_jq_err" ] && rm -f "$_jq_err"
+    return 1
+  fi
+  [ -n "$_jq_err" ] && rm -f "$_jq_err"
+  return 0
+}
+
+# Stale cached id を消す (404 後の rescan 前)。失敗は WARNING のみ (best-effort)。
+clear_cached_comment_id() {
+  [ -f "$FLOW_STATE" ] || return 0
+  local tmp
+  if ! tmp=$(mktemp 2>/dev/null); then
+    echo "[rite] WARNING: issue-comment-wm-sync: clear_cached_comment_id mktemp failed" >&2
+    return 0
+  fi
+  local _jq_err
+  _jq_err=$(mktemp 2>/dev/null) || _jq_err=""
+  if jq 'del(.wm_comment_id)' "$FLOW_STATE" > "$tmp" 2>"${_jq_err:-/dev/null}"; then
+    mv "$tmp" "$FLOW_STATE" 2>/dev/null || rm -f "$tmp"
+  else
+    echo "[rite] WARNING: issue-comment-wm-sync: clear_cached_comment_id jq failed" >&2
+    [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    rm -f "$tmp"
+  fi
+  [ -n "$_jq_err" ] && rm -f "$_jq_err"
+}
+
+# comments list を 1 回 GET し、作業メモリ comment の id と body を取り出す。
+# stdout: 成功時は JSON object {id, body}。不在は空。API 失敗は rc=1。
+# 検証 GET は行わない (abolished)。body は list レスポンスから取るので list+body の 2 GET にしない。
+scan_wm_comment() {
   local issue="$1"
   local owner_repo="$2"
-  local _err _rc
-
-  if [ -f "$FLOW_STATE" ]; then
-    local cached
-    _err=$(mktemp 2>/dev/null) || _err=""
-    _rc=0
-    cached=$(jq -r '.wm_comment_id // empty' "$FLOW_STATE" 2>"${_err:-/dev/null}") || _rc=$?
-    if [ "$_rc" -ne 0 ]; then
-      echo "[rite] WARNING: issue-comment-wm-sync: cache 読み取り jq 失敗 (rc=$_rc — FLOW_STATE may be corrupt)" >&2
-      [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-      cached=""
-    fi
-    [ -n "$_err" ] && rm -f "$_err"
-
-    if [ -n "$cached" ] && [ "$cached" != "null" ]; then
-      local verify
-      _err=$(mktemp 2>/dev/null) || _err=""
-      _rc=0
-      verify=$(gh api "repos/${owner_repo}/issues/comments/${cached}" --jq '.id // empty' 2>"${_err:-/dev/null}") || _rc=$?
-      if [ "$_rc" -ne 0 ]; then
-        # cached id が 404 になっただけ (legitimate cache invalidation) と rate-limit / auth
-        # 失敗を区別する。auth / rate limit エラーは WARNING で operator に通知。
-        if [ -n "$_err" ] && [ -s "$_err" ] && grep -qiE 'rate limit|HTTP 401|HTTP 403|network' "$_err"; then
-          echo "[rite] WARNING: issue-comment-wm-sync: cache 検証 gh api 失敗 (rc=$_rc, auth/rate/network 系)" >&2
-          head -3 "$_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-        fi
-        verify=""
-      fi
-      [ -n "$_err" ] && rm -f "$_err"
-      if [ -n "$verify" ]; then
-        echo "$cached"
-        return 0
-      fi
-    fi
-  fi
-
-  local comment_id
+  local _err _rc=0 _payload
   _err=$(mktemp 2>/dev/null) || _err=""
-  _rc=0
-  comment_id=$(gh api "repos/${owner_repo}/issues/${issue}/comments" \
-    --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | .id // empty' 2>"${_err:-/dev/null}") || _rc=$?
+  _payload=$(gh api "repos/${owner_repo}/issues/${issue}/comments" \
+    --jq '[.[] | select(.body | contains("📜 rite 作業メモリ"))] | last | select(. != null) | {id, body}' \
+    2>"${_err:-/dev/null}") || _rc=$?
   if [ "$_rc" -ne 0 ]; then
     echo "[rite] WARNING: issue-comment-wm-sync: comment 一覧取得 gh api 失敗 (rc=$_rc — auth/rate/network 系の可能性)" >&2
     [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-    comment_id=""
-  fi
-  [ -n "$_err" ] && rm -f "$_err"
-
-  if [ -z "$comment_id" ]; then
+    [ -n "$_err" ] && rm -f "$_err"
     return 1
   fi
+  [ -n "$_err" ] && rm -f "$_err"
+  printf '%s' "$_payload"
+  return 0
+}
 
-  cache_comment_id "$comment_id"
+_read_cached_comment_id() {
+  local cached="" _err _rc=0
+  [ -f "$FLOW_STATE" ] || { printf '%s' ""; return 0; }
+  _err=$(mktemp 2>/dev/null) || _err=""
+  cached=$(jq -r '.wm_comment_id // empty' "$FLOW_STATE" 2>"${_err:-/dev/null}") || _rc=$?
+  if [ "$_rc" -ne 0 ]; then
+    echo "[rite] WARNING: issue-comment-wm-sync: cache 読み取り jq 失敗 (rc=$_rc — FLOW_STATE may be corrupt)" >&2
+    [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    cached=""
+  fi
+  [ -n "$_err" ] && rm -f "$_err"
+  if [ "$cached" = "null" ]; then
+    cached=""
+  fi
+  printf '%s' "$cached"
+}
 
-  echo "$comment_id"
+# fetch: GET body を outfile に書く。キャッシュ検証 GET はしない。
+# stdout: status=success / status=skipped; reason=no_comment / status=skipped; reason=body_fetch_failed
+# 成功時は COMMENT_ID グローバルをセットする (同一プロセスの patch / update 用)。
+COMMENT_ID=""
+do_fetch() {
+  local outfile="$1"
+  local cached body _err _rc _payload _id _body
+
+  cached=$(_read_cached_comment_id)
+  if [ -n "$cached" ]; then
+    _err=$(mktemp 2>/dev/null) || _err=""
+    _rc=0
+    body=$(gh api "repos/${OWNER_REPO}/issues/comments/${cached}" --jq '.body // empty' 2>"${_err:-/dev/null}") || _rc=$?
+    if [ "$_rc" -eq 0 ] && [ -n "$body" ]; then
+      [ -n "$_err" ] && rm -f "$_err"
+      COMMENT_ID="$cached"
+      if ! printf '%s' "$body" > "$outfile"; then
+        echo "[rite] WARNING: issue-comment-wm-sync: fetch --out 書き込み失敗" >&2
+        echo "status=skipped; reason=body_fetch_failed"
+        return 0
+      fi
+      echo "status=success"
+      return 0
+    fi
+    if [ "$_rc" -ne 0 ] && [ -n "$_err" ] && [ -s "$_err" ] && grep -qiE 'HTTP[[:space:]]*404' "$_err"; then
+      [ -n "$_err" ] && rm -f "$_err"
+      clear_cached_comment_id
+      cached=""
+    elif [ "$_rc" -ne 0 ]; then
+      echo "[rite] WARNING: issue-comment-wm-sync: comment body 取得 gh api 失敗 (rc=$_rc — auth/rate/network/404 系)" >&2
+      [ -n "$_err" ] && [ -s "$_err" ] && head -3 "$_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+      [ -n "$_err" ] && rm -f "$_err"
+      echo "status=skipped; reason=body_fetch_failed"
+      return 0
+    else
+      [ -n "$_err" ] && rm -f "$_err"
+      echo "WARNING: Could not retrieve comment body. Skipping update." >&2
+      echo "status=skipped; reason=body_fetch_failed"
+      return 0
+    fi
+    [ -n "$_err" ] && rm -f "$_err"
+  fi
+
+  _payload=$(scan_wm_comment "$ISSUE" "$OWNER_REPO") || {
+    echo "status=skipped; reason=body_fetch_failed"
+    return 0
+  }
+  if [ -z "$_payload" ]; then
+    record_wm_replica_absent || true
+    echo "WARNING: Work memory comment not found for Issue #${ISSUE}. Skipping update." >&2
+    echo "status=skipped; reason=no_comment"
+    return 0
+  fi
+  _id=$(printf '%s' "$_payload" | jq -r '.id // empty' 2>/dev/null) || _id=""
+  _body=$(printf '%s' "$_payload" | jq -r '.body // empty' 2>/dev/null) || _body=""
+  if [ -z "$_id" ] || [ -z "$_body" ]; then
+    record_wm_replica_absent || true
+    echo "WARNING: Work memory comment not found for Issue #${ISSUE}. Skipping update." >&2
+    echo "status=skipped; reason=no_comment"
+    return 0
+  fi
+  cache_comment_id "$_id"
+  COMMENT_ID="$_id"
+  if ! printf '%s' "$_body" > "$outfile"; then
+    echo "[rite] WARNING: issue-comment-wm-sync: fetch --out 書き込み失敗" >&2
+    echo "status=skipped; reason=body_fetch_failed"
+    return 0
+  fi
+  echo "status=success"
+  return 0
+}
+
+# patch: safety_check のあと PATCH 1 回。COMMENT_ID 未設定なら flow-state の wm_comment_id を読む。
+do_patch() {
+  local in_file="${1:-}"
+  local orig_len="${2:-}"
+  local tlabel="${3:-}"
+  local cid="${COMMENT_ID:-}"
+  local _err _rc
+
+  if [ -z "$cid" ] && [ -f "$FLOW_STATE" ]; then
+    _err=$(mktemp 2>/dev/null) || _err=""
+    _rc=0
+    cid=$(jq -r '.wm_comment_id // empty' "$FLOW_STATE" 2>"${_err:-/dev/null}") || _rc=$?
+    [ -n "$_err" ] && rm -f "$_err"
+    if [ "$_rc" -ne 0 ] || [ -z "$cid" ] || [ "$cid" = "null" ]; then
+      cid=""
+    fi
+  fi
+  if [ -z "$cid" ]; then
+    echo "[rite] WARNING: issue-comment-wm-sync: PATCH 先 comment id が無い" >&2
+    echo "status=error; reason=patch_failed"
+    return 0
+  fi
+  COMMENT_ID="$cid"
+
+  if ! safety_check "$in_file" "$orig_len" "${backup_file:-$in_file}" "$tlabel"; then
+    echo "status=skipped; reason=safety_check_failed"
+    return 0
+  fi
+
+  patch_err=$(mktemp 2>/dev/null) || patch_err=""
+  local patch_status=0
+  ( set -o pipefail; jq -n --rawfile body "$in_file" '{"body": $body}' \
+    | gh api "repos/${OWNER_REPO}/issues/comments/${cid}" -X PATCH --input - > /dev/null 2>"${patch_err:-/dev/null}" ) || patch_status=$?
+
+  if [ "$patch_status" -ne 0 ]; then
+    echo "[rite] WARNING: issue-comment-wm-sync: PATCH failed (rc=$patch_status, Backup: ${backup_file:-retained})" >&2
+    [ -n "$patch_err" ] && [ -s "$patch_err" ] && head -3 "$patch_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    [ -n "$patch_err" ] && rm -f "$patch_err"
+    echo "status=error; reason=patch_failed"
+    return 0
+  fi
+  [ -n "$patch_err" ] && rm -f "$patch_err"
+  echo "status=success"
   return 0
 }
 
@@ -314,13 +480,21 @@ shift 2>/dev/null || true
 ISSUE=""
 BRANCH=""
 TRANSFORM=""
+OUTFILE=""
+INFILE=""
+ORIGINAL_LENGTH=""
+TRANSFORM_LABEL=""
 TRANSFORM_ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --issue)     ISSUE="$2"; shift 2 ;;
-    --branch)    BRANCH="$2"; shift 2 ;;
-    --transform) TRANSFORM="$2"; shift 2 ;;
+    --issue)             ISSUE="$2"; shift 2 ;;
+    --branch)            BRANCH="$2"; shift 2 ;;
+    --transform)         TRANSFORM="$2"; shift 2 ;;
+    --out)               OUTFILE="$2"; shift 2 ;;
+    --in)                INFILE="$2"; shift 2 ;;
+    --original-length)   ORIGINAL_LENGTH="$2"; shift 2 ;;
+    --transform-label)   TRANSFORM_LABEL="$2"; shift 2 ;;
     --)
       shift
       TRANSFORM_ARGS+=("$@")
@@ -349,8 +523,28 @@ case "$MODE" in
       exit 1
     fi
     ;;
+  fetch)
+    if [ -z "$OUTFILE" ]; then
+      echo "ERROR: fetch mode requires --out" >&2
+      exit 1
+    fi
+    ;;
+  patch)
+    if [ -z "$INFILE" ]; then
+      echo "ERROR: patch mode requires --in" >&2
+      exit 1
+    fi
+    if [ -z "$ORIGINAL_LENGTH" ]; then
+      echo "ERROR: patch mode requires --original-length" >&2
+      exit 1
+    fi
+    if [ -z "$TRANSFORM_LABEL" ]; then
+      echo "ERROR: patch mode requires --transform-label" >&2
+      exit 1
+    fi
+    ;;
   *)
-    echo "ERROR: Unknown mode: $MODE. Use 'init' or 'update'" >&2
+    echo "ERROR: Unknown mode: $MODE. Use 'init', 'update', 'fetch' or 'patch'" >&2
     exit 1
     ;;
 esac
@@ -497,19 +691,24 @@ INIT_EOF
 fi
 
 # ============================================================
-# UPDATE MODE
+# FETCH MODE
 # ============================================================
-
-# Step 1: Get comment ID
-COMMENT_ID=$(get_comment_id "$ISSUE" "$OWNER_REPO") || {
-  echo "WARNING: Work memory comment not found for Issue #${ISSUE}. Skipping update." >&2
-  # reason=no_comment は legitimate no-op (初回 fix / コメント削除済み)。caller の WM_UPDATE_FAILED
-  # shim はこの reason のみ flag を立てない (他の skipped/error reason とは区別する必要がある)。
-  echo "status=skipped; reason=no_comment"
+if [ "$MODE" = "fetch" ]; then
+  do_fetch "$OUTFILE"
   exit 0
-}
+fi
 
-# Step 2: Get current body
+# ============================================================
+# PATCH MODE
+# ============================================================
+if [ "$MODE" = "patch" ]; then
+  do_patch "$INFILE" "$ORIGINAL_LENGTH" "$TRANSFORM_LABEL"
+  exit 0
+fi
+
+# ============================================================
+# UPDATE MODE (fetch → one python transform → patch)
+# ============================================================
 # /tmp 関連の failure (inode 枯渇 / readonly fs / quota) は各 mktemp で rc を見て degrade させる
 # (途中失敗時の先行 tmpfile は file-wide trap が清掃する)。
 if ! body_tmp=$(mktemp 2>/dev/null); then
@@ -524,36 +723,25 @@ if ! py_err_tmp=$(mktemp 2>/dev/null); then
   echo "[rite] WARNING: issue-comment-wm-sync: update mode py_err_tmp mktemp 失敗。skip." >&2
   exit 0
 fi
+
+_fetch_line=$(do_fetch "$body_tmp")
+case "$_fetch_line" in
+  status=success)
+    ;;
+  *)
+    # no_comment / body_fetch_failed / その他。status 行は 1 本だけ出す (fetch が既に出力済み)。
+    printf '%s\n' "$_fetch_line"
+    exit 0
+    ;;
+esac
+
 # Backup は失敗時の post-mortem 用。蓄積した場合は `rm -f "${TMPDIR:-/tmp}"/rite-wm-backup-*` で手動清掃。
 # /tmp 直書きは sandbox 環境で読み込み専用のため set -euo pipefail 下で即死する。
 backup_file="${TMPDIR:-/tmp}/rite-wm-backup-${ISSUE}-$(date +%s).md"
+cp "$body_tmp" "$backup_file" || true
+original_length=$(wc -c < "$body_tmp" | tr -d ' ')
 
-# Capture gh stderr so that auth expiry / rate limit / 404 / network failure are
-# distinguishable in the operator log instead of collapsing into an empty body.
-_cb_err=$(mktemp 2>/dev/null) || _cb_err=""
-_cb_rc=0
-current_body=$(gh api "repos/${OWNER_REPO}/issues/comments/${COMMENT_ID}" --jq '.body // empty' 2>"${_cb_err:-/dev/null}") || _cb_rc=$?
-if [ "$_cb_rc" -ne 0 ]; then
-  echo "[rite] WARNING: issue-comment-wm-sync: comment body 取得 gh api 失敗 (rc=$_cb_rc — auth/rate/network/404 系)" >&2
-  [ -n "$_cb_err" ] && [ -s "$_cb_err" ] && head -3 "$_cb_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  current_body=""
-fi
-[ -n "$_cb_err" ] && rm -f "$_cb_err"
-
-if [ -z "$current_body" ]; then
-  echo "WARNING: Could not retrieve comment body. Skipping update." >&2
-  # reason=body_fetch_failed は gh api 失敗 (auth/rate/network/404)。comment は存在するが更新
-  # 不可のため、caller の shim は WM_UPDATE_FAILED を立てる (no_comment とは区別する)。
-  echo "status=skipped; reason=body_fetch_failed"
-  exit 0
-fi
-
-# Step 3: Backup
-printf '%s' "$current_body" > "$backup_file"
-printf '%s' "$current_body" > "$body_tmp"
-original_length=$(printf '%s' "$current_body" | wc -c)
-
-# Step 4: Apply Python transformation
+# Apply Python transformation
 # pipefail を local subshell で有効にすることで、cat 失敗 (permission denied / IO error) が
 # python3 の rc に隠蔽されず transform_status に反映される。直接リダイレクトに切り替えれば
 # cat のみ確実だが、後続の transform で stdin が pipe 終端であることを期待しているため pipe 形式を保つ。
@@ -579,33 +767,9 @@ if [ "$transform_status" -ne 0 ]; then
   exit 0
 fi
 
-# Step 5: Safety checks
-if ! safety_check "$updated_tmp" "$original_length" "$backup_file" "$TRANSFORM"; then
-  # safety_check 失敗は body が空 / header 欠落 / <50% で PATCH を拒否したケース。caller の
-  # shim は WM_UPDATE_FAILED を立てる (no_comment とは区別する)。
-  echo "status=skipped; reason=safety_check_failed"
-  exit 0
+_patch_line=$(do_patch "$updated_tmp" "$original_length" "$TRANSFORM")
+if [ "$_patch_line" = "status=success" ]; then
+  rm -f "$backup_file"
 fi
-
-# Step 6: PATCH
-# stderr を `/dev/null` に流すと auth / rate-limit / 404 / network outage / jq rawfile 失敗を
-# すべて generic exit code に潰すため、原因分類が出来ない。stderr を tempfile capture し
-# pipefail を local subshell で有効化することで上流 jq の失敗も rc に反映する。
-patch_err=$(mktemp 2>/dev/null) || patch_err=""
-patch_status=0
-( set -o pipefail; jq -n --rawfile body "$updated_tmp" '{"body": $body}' \
-  | gh api "repos/${OWNER_REPO}/issues/comments/${COMMENT_ID}" -X PATCH --input - > /dev/null 2>"${patch_err:-/dev/null}" ) || patch_status=$?
-
-if [ "$patch_status" -ne 0 ]; then
-  echo "[rite] WARNING: issue-comment-wm-sync: PATCH failed (rc=$patch_status, Backup: $backup_file)" >&2
-  [ -n "$patch_err" ] && [ -s "$patch_err" ] && head -3 "$patch_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  [ -n "$patch_err" ] && rm -f "$patch_err"
-  echo "status=error; reason=patch_failed"
-  exit 0
-fi
-[ -n "$patch_err" ] && rm -f "$patch_err"
-
-# Clean up backup on success (only needed on failure for post-mortem)
-rm -f "$backup_file"
-echo "status=success"
+printf '%s\n' "$_patch_line"
 exit 0
