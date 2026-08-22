@@ -31,7 +31,7 @@ that aid upgraders are kept verbatim.
 
 ### Fixed
 
-- **`post-tool-wm-sync` reduces GitHub API round-trips from 9 to 2 per phase transition** — `issue-comment-wm-sync.sh` now exposes `fetch` / `patch`; `update` is a fetch → transform → patch wrapper. Replica-absent (`wm_replica: "absent"`) and unresolved `branch.base` are fail-loud via PostToolUse `systemMessage` instead of silent skip / `develop` fallback. (#2336)
+- **`post-tool-wm-sync` reduces GitHub API round-trips from 9 to 2 per phase transition** — `issue-comment-wm-sync.sh` now exposes `fetch` / `patch`; `update` is a fetch → transform → patch wrapper. Replica-absent first detect (`no_comment`) is fail-loud via PostToolUse `systemMessage`; subsequent `wm_replica: "absent"` is a negative cache (no gh, empty stdout). Unresolved `branch.base` skips `update-progress` with `systemMessage` instead of a `develop` fallback. (#2336)
 - **`issue-comment-wm-sync.sh` update mode keeps `COMMENT_ID` outside a subshell** — `do_fetch` stdout is read via a temp file so PATCH still succeeds when flow-state is absent. T-11 restores `TMPDIR`; the hook success path emits `status=success round_trips=2`. (#2338)
 
 ## [0.12.2] - 2026-08-21
