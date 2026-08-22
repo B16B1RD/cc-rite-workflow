@@ -304,6 +304,9 @@ cmd_set() {
   # `cur_wm_comment_id` も同型: issue-comment-wm-sync.sh の cache_comment_id() が
   # flow-state ファイルへ直接書き込む runtime-only field。lsp と同様に merge-preserve しないと
   # 直後の他 skill の set 呼び出しで無警告に消える (#1810)。
+  # `cur_wm_replica` も同型 (CLI flag なし): issue-comment-wm-sync.sh が no_comment 時に
+  # `"absent"` だけを書く negative cache。preserve するのはその値のみ。init / cache_comment_id
+  # 成功側は del(.wm_replica) するので、ここへ他の値を通す必要はない。
   #
   # Single composite jq read: 6 つの独立 jq 呼び出しの silent fallback chain
   # では既存 state が corrupt JSON でも全フィールドが default に縮退して silent overwrite
@@ -315,7 +318,7 @@ cmd_set() {
   # new phase is always the caller's `--phase`). It stays "" when no state file
   # exists yet (fresh session) or when the read below failed (corrupt JSON), and
   # the log records that as an empty `from` rather than inventing a prior phase.
-  local cur_issue=0 cur_branch="" cur_pr=0 cur_parent=0 cur_active=true cur_err=0 cur_last_synced="" cur_worktree="" cur_cycle=0 cur_wm_comment_id="" cur_phase=""
+  local cur_issue=0 cur_branch="" cur_pr=0 cur_parent=0 cur_active=true cur_err=0 cur_last_synced="" cur_worktree="" cur_cycle=0 cur_wm_comment_id="" cur_wm_replica="" cur_phase=""
   if [ -f "$path" ]; then
     local _cur_jq_err="" _cur_data _cur_rc=0
     _cur_jq_err=$(mktemp 2>/dev/null) || _cur_jq_err=""
@@ -331,13 +334,14 @@ cmd_set() {
                        (.worktree // ""),
                        (.cycle_count // 0 | tostring),
                        (.wm_comment_id // "" | tostring),
+                       (.wm_replica // ""),
                        (.phase // "")] | join("")' "$path" 2>"${_cur_jq_err:-/dev/null}") || _cur_rc=$?
     if [ "$_cur_rc" -ne 0 ]; then
       # basename only — multi-tenant 環境での絶対 path leakage を最小化 (cmd_get / cmd_set --if-exists と対称化)
       echo "WARNING: flow-state.sh cmd_set: existing state read failed for $(basename "$path") (may be corrupt; merged write will use defaults)" >&2
       _emit_jq_err_snippet "$_cur_jq_err"
     else
-      IFS=$'\x1f' read -r cur_issue cur_branch cur_pr cur_parent cur_active cur_err cur_last_synced cur_worktree cur_cycle cur_wm_comment_id cur_phase <<< "$_cur_data"
+      IFS=$'\x1f' read -r cur_issue cur_branch cur_pr cur_parent cur_active cur_err cur_last_synced cur_worktree cur_cycle cur_wm_comment_id cur_wm_replica cur_phase <<< "$_cur_data"
     fi
   fi
   [ -z "$issue" ] && issue=$cur_issue
@@ -413,6 +417,7 @@ cmd_set() {
     --argjson err "$err_count" --arg ts "$now" \
     --arg lsp "$cur_last_synced" --arg handoff "$handoff" --arg worktree "$worktree" \
     --argjson cycle "$cycle_count" --arg wmcid "$cur_wm_comment_id" \
+    --arg wmrep "$cur_wm_replica" \
     --arg stopreason "$stop_reason" \
     '{schema_version:$schema, session_id:$session, phase:$phase,
       issue_number:$issue, branch:$branch, pr_number:$pr,
@@ -423,7 +428,8 @@ cmd_set() {
      | (if $handoff != "" then .handoff = $handoff else . end)
      | (if $stopreason != "" then .stop_reason = $stopreason else . end)
      | (if $cycle != 0 then .cycle_count = $cycle else . end)
-     | (if $wmcid != "" then .wm_comment_id = ($wmcid | tonumber) else . end)' 2>"${_new_jq_err:-/dev/null}") || _new_rc=$?
+     | (if $wmcid != "" then .wm_comment_id = ($wmcid | tonumber) else . end)
+     | (if $wmrep == "absent" then .wm_replica = "absent" else . end)' 2>"${_new_jq_err:-/dev/null}") || _new_rc=$?
   if [ "$_new_rc" -ne 0 ]; then
     echo "WARNING: flow-state.sh cmd_set: state write failed for $(basename "$path") (wm_comment_id not numeric, or other jq failure)" >&2
     _emit_jq_err_snippet "$_new_jq_err"

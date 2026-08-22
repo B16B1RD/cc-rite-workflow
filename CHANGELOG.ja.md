@@ -25,6 +25,13 @@ Fixed/Changed/Removed エントリは修正対象の旧挙動を述べてよい�
 
 ## [Unreleased]
 
+## [0.12.3] - 2026-08-23
+
+### 修正
+
+- **`post-tool-wm-sync` の phase 遷移同期を GitHub API 9 往復から 2 往復にする** — `issue-comment-wm-sync.sh` に `fetch` / `patch` を追加し、`update` は fetch → transform → patch の wrapper。replica 不在の初回検出（`no_comment`）は PostToolUse `systemMessage` で fail-loud。2 回目以降の `wm_replica: "absent"` は負キャッシュ（gh なし・stdout 空）。`branch.base` 未解決は `develop` 固定縮退ではなく `update-progress` を skip して `systemMessage` で通知する。(#2336)
+- **`issue-comment-wm-sync.sh` の update mode が `COMMENT_ID` をサブシェル外で保持する** — `do_fetch` の stdout を一時ファイル経由で読むため、flow-state 不在でも PATCH が成功する。T-11 は `TMPDIR` を復元し、hook 成功経路は `status=success round_trips=2` を出す。(#2338)
+
 ## [0.12.2] - 2026-08-21
 
 ### 変更
@@ -902,6 +909,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.12.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.11.0...v0.12.0
