@@ -24,6 +24,9 @@ export RITE_WM_HOOK_ACTIVE=1
 INPUT=$(cat) || INPUT=""
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
 [ -n "$CWD" ] && [ -d "$CWD" ] || exit 0
+# helper (issue-comment-wm-sync.sh) は CWD env を STATE_ROOT 解決に使う。export しないと
+# subprocess の pwd が hook の起動ディレクトリのままになり、wm_replica が別 flow-state に書かれる。
+export CWD
 
 # Lightweight rite-project gate (subprocess-free early-exit).
 # Before spawning state-path-resolve.sh (git rev-parse ×2) and flow-state.sh
@@ -87,8 +90,8 @@ fi
 # would left-shift every field so _phase and _last_synced_phase swap,
 # making the diff guard fire erroneously and sending the wrong value
 # through issue-comment-wm-sync.sh --transform update-phase.
-_flow_data=$(jq -r '[(.active // false | tostring), (.issue_number // "" | tostring), (.phase // "" | tostring), (.last_synced_phase // "" | tostring)] | join("\u001f")' "$FLOW_STATE" 2>/dev/null) || exit 0
-IFS=$'\x1f' read -r _active issue_number _phase _last_synced_phase <<< "$_flow_data"
+_flow_data=$(jq -r '[(.active // false | tostring), (.issue_number // "" | tostring), (.phase // "" | tostring), (.last_synced_phase // "" | tostring), (.wm_replica // "" | tostring)] | join("\u001f")' "$FLOW_STATE" 2>/dev/null) || exit 0
+IFS=$'\x1f' read -r _active issue_number _phase _last_synced_phase _wm_replica <<< "$_flow_data"
 [ "$_active" = "true" ] || exit 0
 [ -n "$issue_number" ] || exit 0
 # Session ownership check: skip sync for other session's state.
@@ -171,154 +174,254 @@ fi
 
 log_debug "phase changed: $_last_synced_phase -> $_phase, syncing to issue comment"
 
-# --- 1. Phase update ---
-# Run the python3|jq pipeline under pipefail with a captured stderr tempfile so a
-# python3 crash (missing interpreter, traceback on malformed LOCAL_WM) surfaces as
-# a WARNING instead of masquerading as a successful-but-empty parse that silently
-# routes to the $_phase fallback. The stderr_capture=disabled tag distinguishes
-# "no stderr emitted" from "we lost the stderr because /tmp is broken".
-_phase_detail=""
-_pd_err=$(mktemp 2>/dev/null) || _pd_err=""
-_pd_rc=0
-_phase_detail=$(set -o pipefail; python3 "$SCRIPT_DIR/work-memory-parse.py" "$LOCAL_WM" 2>"${_pd_err:-/dev/null}" \
-  | jq -r '.data.phase_detail // ""' 2>>"${_pd_err:-/dev/null}") || _pd_rc=$?
-if [ "$_pd_rc" -ne 0 ]; then
-  _pd_tag=""
-  [ -z "$_pd_err" ] && _pd_tag=" stderr_capture=disabled"
-  echo "[rite] WARNING: post-tool-wm-sync: phase_detail 取得失敗 (rc=$_pd_rc${_pd_tag}) — phase 名に縮退" >&2
-  [ -n "$_pd_err" ] && [ -s "$_pd_err" ] && head -3 "$_pd_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-  _phase_detail=""
-fi
-[ -n "$_pd_err" ] && rm -f "$_pd_err"
-[ -n "$_phase_detail" ] || _phase_detail="$_phase"
-
-# Capture sync rc so a failed phase update does NOT advance last_synced_phase —
-# advancing on failure makes the same phase skip its retry indefinitely until
-# the user changes phase again, producing a silent drift in Issue comment work
-# memory (gh auth expiry / rate limit / network failure all leave no trace
-# under the previous `2>/dev/null || log_debug` swallow).
-# Tag the WARNING with `stderr_capture=disabled` when mktemp fails so triagers
-# can distinguish "sync failed AND we lost the root-cause stderr" from "sync
-# failed and the captured stderr below tells us why". Without this flag a
-# rate-limit / auth-expiry failure on a hardened CI runner (read-only /tmp,
-# inode exhaustion, SELinux deny) is indistinguishable from "the helper
-# emitted no stderr at all".
-_phase_sync_err=$(mktemp 2>/dev/null) || _phase_sync_err=""
-_phase_sync_stderr_tag=""
-[ -z "$_phase_sync_err" ] && _phase_sync_stderr_tag=" stderr_capture=disabled"
 _phase_sync_ok=0
-if "$SCRIPT_DIR/issue-comment-wm-sync.sh" update \
-    --issue "$issue_number" \
-    --transform update-phase \
-    --phase "$_phase" \
-    --phase-detail "$_phase_detail" 2>"${_phase_sync_err:-/dev/null}"; then
+_sysmsg=""
+_backup_file=""
+_body_file=""
+_updated_file=""
+_changed_files_tmp=""
+
+_rite_post_wm_cleanup() {
+  [ -n "${_body_file:-}" ] && rm -f "$_body_file"
+  [ -n "${_updated_file:-}" ] && rm -f "$_updated_file"
+  [ -n "${_changed_files_tmp:-}" ] && rm -f "$_changed_files_tmp"
+  return 0
+}
+# backup_file は失敗時 post-mortem 用に trap 対象外 (成功時のみ明示 rm)。
+trap '_rite_post_wm_cleanup' EXIT
+
+_set_sysmsg() { _sysmsg="$1"; }
+_flush_sysmsg() {
+  [ -z "$_sysmsg" ] && return 0
+  jq -nc --arg m "$_sysmsg" '{systemMessage:$m}' 2>/dev/null || true
+}
+
+_gated_progress_phase() {
+  case "$1" in
+    phase5_lint|phase5_post_lint|phase5_post_execute|phase5_pr*|phase5_post_review|phase5_post_ready|implement|lint|pr|review|fix|completed)
+      return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+_run_py_transform() {
+  local transform="$1" infile="$2" outfile="$3"
+  shift 3
+  local py_err py_rc=0
+  py_err=$(mktemp 2>/dev/null) || py_err=""
+  ( set -o pipefail; cat "$infile" | python3 "$SCRIPT_DIR/issue-comment-wm-update.py" "$transform" "$@" > "$outfile" 2>"${py_err:-/dev/null}" ) || py_rc=$?
+  if [ "$py_rc" -ne 0 ]; then
+    echo "[rite] WARNING: post-tool-wm-sync: python transform $transform failed (rc=$py_rc). Backup: ${_backup_file:-none}" >&2
+    [ -n "$py_err" ] && [ -s "$py_err" ] && head -3 "$py_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    [ -n "$py_err" ] && rm -f "$py_err"
+    return "$py_rc"
+  fi
+  [ -n "$py_err" ] && rm -f "$py_err"
+  return 0
+}
+
+if [ "$_wm_replica" = "absent" ]; then
+  # AC-5: 負キャッシュ済みなら gh を呼ばず last_synced_phase だけ進める (stdout 空)。
+  log_debug "wm_replica=absent; skip gh; round_trips=0"
   _phase_sync_ok=1
 else
-  _rc=$?
-  echo "[rite] WARNING: post-tool-wm-sync: update-phase failed (rc=$_rc${_phase_sync_stderr_tag}) — last_synced_phase will NOT be advanced so next hook invocation retries" >&2
-  [ -n "$_phase_sync_err" ] && [ -s "$_phase_sync_err" ] && head -3 "$_phase_sync_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+  # phase_detail: local WM から。失敗は phase 名に縮退 (既存契約)。
+  _phase_detail=""
+  _pd_err=$(mktemp 2>/dev/null) || _pd_err=""
+  _pd_rc=0
+  _phase_detail=$(set -o pipefail; python3 "$SCRIPT_DIR/work-memory-parse.py" "$LOCAL_WM" 2>"${_pd_err:-/dev/null}" \
+    | jq -r '.data.phase_detail // ""' 2>>"${_pd_err:-/dev/null}") || _pd_rc=$?
+  if [ "$_pd_rc" -ne 0 ]; then
+    _pd_tag=""
+    [ -z "$_pd_err" ] && _pd_tag=" stderr_capture=disabled"
+    echo "[rite] WARNING: post-tool-wm-sync: phase_detail 取得失敗 (rc=$_pd_rc${_pd_tag}) — phase 名に縮退" >&2
+    [ -n "$_pd_err" ] && [ -s "$_pd_err" ] && head -3 "$_pd_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    _phase_detail=""
+  fi
+  [ -n "$_pd_err" ] && rm -f "$_pd_err"
+  [ -n "$_phase_detail" ] || _phase_detail="$_phase"
+
+  _body_file=$(mktemp 2>/dev/null) || _body_file=""
+  if [ -z "$_body_file" ]; then
+    echo "[rite] WARNING: post-tool-wm-sync: body_file mktemp 失敗 — last_synced_phase will NOT be advanced" >&2
+    _set_sysmsg "作業メモリ同期用の一時ファイルを作成できませんでした。ディスク容量を確認してください。"
+  else
+    _fetch_err=$(mktemp 2>/dev/null) || _fetch_err=""
+    _fetch_rc=0
+    _fetch_line=""
+    # `if ! cmd; then _rc=$?` は POSIX `!` で rc が潰れるため else で実 rc を残す。
+    if _fetch_line=$("$SCRIPT_DIR/issue-comment-wm-sync.sh" fetch \
+        --issue "$issue_number" --out "$_body_file" 2>"${_fetch_err:-/dev/null}"); then
+      :
+    else
+      _fetch_rc=$?
+      echo "[rite] WARNING: post-tool-wm-sync: fetch failed (rc=$_fetch_rc) — last_synced_phase will NOT be advanced" >&2
+    fi
+    [ -n "$_fetch_err" ] && [ -s "$_fetch_err" ] && head -3 "$_fetch_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    [ -n "$_fetch_err" ] && rm -f "$_fetch_err"
+
+    _fetch_status="${_fetch_line%%;*}"
+    _fetch_status="${_fetch_status#status=}"
+    _fetch_reason=""
+    case "$_fetch_line" in
+      *reason=*) _fetch_reason="${_fetch_line#*reason=}" ;;
+    esac
+
+    if [ "$_fetch_rc" -ne 0 ]; then
+      _set_sysmsg "作業メモリ replica の取得に失敗しました。認証とネットワークを確認してください。次のツール実行時に再試行されます。"
+    elif [ "$_fetch_status" = "skipped" ] && [ "$_fetch_reason" = "no_comment" ]; then
+      # AC-4: 初回検知。fetch 側が wm_replica=absent を記録済み。legitimate no-op なので phase は進める。
+      log_debug "fetch no_comment; round_trips=1 path=fetch"
+      _set_sysmsg "作業メモリの Issue コメント replica が見つかりません。/rite:open が未実行か init に失敗しています。/rite:open を実行して replica を作成してください。"
+      _phase_sync_ok=1
+    elif [ "$_fetch_status" = "skipped" ] && [ "$_fetch_reason" = "body_fetch_failed" ]; then
+      _set_sysmsg "作業メモリ replica の取得に失敗しました。認証・rate limit・ネットワークを確認してください。次のツール実行時に再試行されます。"
+    elif [ "$_fetch_status" = "success" ]; then
+      log_debug "fetch success; applying local transforms then one PATCH"
+      _backup_file="${TMPDIR:-/tmp}/rite-wm-backup-${issue_number}-$(date +%s).md"
+      cp "$_body_file" "$_backup_file" || true
+      _orig_len=$(wc -c < "$_body_file" | tr -d ' ')
+      _updated_file=$(mktemp 2>/dev/null) || _updated_file=""
+      _xf_ok=1
+      _last_transform="update-phase"
+
+      if [ -z "$_updated_file" ]; then
+        _xf_ok=0
+        _set_sysmsg "作業メモリ同期用の一時ファイルを作成できませんでした。ディスク容量を確認してください。"
+        echo "[rite] WARNING: post-tool-wm-sync: updated_file mktemp 失敗 — last_synced_phase will NOT be advanced" >&2
+      elif ! _run_py_transform update-phase "$_body_file" "$_updated_file" \
+          --phase "$_phase" --phase-detail "$_phase_detail"; then
+        _xf_ok=0
+        _set_sysmsg "作業メモリの変換に失敗したため更新を中止しました。バックアップを保持しています。"
+        echo "[rite] WARNING: post-tool-wm-sync: update-phase transform failed — last_synced_phase will NOT be advanced" >&2
+      else
+        cp "$_updated_file" "$_body_file"
+
+        _skip_progress=0
+        if _gated_progress_phase "$_phase"; then
+          cd "$STATE_ROOT" || { log_debug "cd STATE_ROOT failed"; _flush_sysmsg; exit 0; }
+
+          _base_rc=0
+          _base_branch=$(awk '/^[[:space:]]+base:/ { sub(/^[[:space:]]+base:[[:space:]]*/, ""); gsub(/["'"'"'\r]/, ""); sub(/[[:space:]]+$/, ""); print; exit }' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || _base_rc=$?
+          if [ -z "$_base_branch" ] || [ "$_base_rc" -ne 0 ]; then
+            _sym=""
+            _sym=$(git -C "$CWD" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null) || _sym=""
+            _base_branch="${_sym#refs/remotes/origin/}"
+            if [ -z "$_base_branch" ] || [ "$_base_branch" = "$_sym" ]; then
+              _skip_progress=1
+              _base_branch=""
+              _set_sysmsg "rite-config.yml の branch.base も origin/HEAD も解決できないため、進捗テーブルの更新をスキップしました。branch.base を設定するか git remote set-head origin --auto を実行してください。"
+              log_debug "base-branch unresolved; skip update-progress (no develop fallback)"
+            fi
+          fi
+
+          if [ "$_skip_progress" -eq 0 ]; then
+            _changed_files_tmp=$(mktemp 2>/dev/null) || _changed_files_tmp="${TMPDIR:-/tmp}/rite-wm-sync-files.$$.${RANDOM}"
+            _git_diff_err=$(mktemp 2>/dev/null) || _git_diff_err=""
+            _diff_rc=0
+            # State access uses STATE_ROOT (shared main checkout, via the `cd` above), but
+            # the progress-table diff MUST run in the SESSION's working tree: under
+            # multi-session, STATE_ROOT resolves to the main checkout while the session's
+            # commits live in its linked worktree ($CWD). `git -C "$CWD"` targets that
+            # tree (design §1). Non-worktree sessions have $CWD inside the same checkout,
+            # so diff output (repo-root-relative paths) is unchanged.
+            _diff_raw=$(git -C "$CWD" diff --name-status "origin/${_base_branch}...HEAD" 2>"${_git_diff_err:-/dev/null}") || _diff_rc=$?
+            if [ "$_diff_rc" -ne 0 ] || { [ -n "$_git_diff_err" ] && [ -s "$_git_diff_err" ]; }; then
+              _skip_progress=1
+              _set_sysmsg "git diff に失敗したため進捗テーブルを更新できませんでした。origin の base ブランチが fetch 済みか確認してください。"
+              echo "[rite] WARNING: post-tool-wm-sync: git diff failed — progress table not updated:" >&2
+              [ -n "$_git_diff_err" ] && [ -s "$_git_diff_err" ] && head -3 "$_git_diff_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+            fi
+            [ -n "$_git_diff_err" ] && rm -f "$_git_diff_err"
+          fi
+
+          if [ "$_skip_progress" -eq 0 ]; then
+            echo "$_diff_raw" | while IFS=$'\t' read -r status file; do
+              [ -n "$status" ] || continue
+              case "$status" in
+                A) echo "- \`$file\` - 追加" ;;
+                M) echo "- \`$file\` - 変更" ;;
+                D) echo "- \`$file\` - 削除" ;;
+                R*) echo "- \`$file\` - 名前変更" ;;
+              esac
+            done > "$_changed_files_tmp" 2>/dev/null || true
+
+            _diff_files=$(echo "$_diff_raw" | awk -F'\t' '{print $2}')
+            _impl_status="✅ 完了"
+            _test_status="⬜ 未着手"
+            _doc_status="⬜ 未着手"
+            grep -qE '\.(test|spec)\.|test_|tests/' <<< "$_diff_files" 2>/dev/null && _test_status="✅ 完了"
+            grep -qE '(docs/.*\.md|README\.md|CHANGELOG\.md|API\.md)' <<< "$_diff_files" 2>/dev/null && _doc_status="✅ 完了"
+
+            if ! _run_py_transform update-progress "$_body_file" "$_updated_file" \
+                --impl-status "$_impl_status" \
+                --test-status "$_test_status" \
+                --doc-status "$_doc_status" \
+                --changed-files-file "$_changed_files_tmp"; then
+              _xf_ok=0
+              _set_sysmsg "作業メモリの変換に失敗したため更新を中止しました。バックアップを保持しています。"
+              echo "[rite] WARNING: post-tool-wm-sync: update-progress transform failed — last_synced_phase will NOT be advanced" >&2
+            else
+              cp "$_updated_file" "$_body_file"
+              _last_transform="update-progress"
+            fi
+            rm -f "$_changed_files_tmp"
+            _changed_files_tmp=""
+          fi
+
+          if [ "$_xf_ok" -eq 1 ]; then
+            if ! _run_py_transform update-plan-status "$_body_file" "$_updated_file"; then
+              _xf_ok=0
+              _set_sysmsg "作業メモリの変換に失敗したため更新を中止しました。バックアップを保持しています。"
+              echo "[rite] WARNING: post-tool-wm-sync: update-plan-status transform failed — last_synced_phase will NOT be advanced" >&2
+            else
+              cp "$_updated_file" "$_body_file"
+              _last_transform="update-plan-status"
+            fi
+          fi
+          log_debug "progress sync completed"
+        fi
+      fi
+
+      if [ "$_xf_ok" = "1" ]; then
+        _patch_err=$(mktemp 2>/dev/null) || _patch_err=""
+        _patch_rc=0
+        _patch_line=""
+        if _patch_line=$("$SCRIPT_DIR/issue-comment-wm-sync.sh" patch \
+            --issue "$issue_number" \
+            --in "$_body_file" \
+            --original-length "$_orig_len" \
+            --transform-label "$_last_transform" 2>"${_patch_err:-/dev/null}"); then
+          :
+        else
+          _patch_rc=$?
+          echo "[rite] WARNING: post-tool-wm-sync: patch failed (rc=$_patch_rc) — last_synced_phase will NOT be advanced" >&2
+        fi
+        [ -n "$_patch_err" ] && [ -s "$_patch_err" ] && head -3 "$_patch_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+        [ -n "$_patch_err" ] && rm -f "$_patch_err"
+
+        _patch_status="${_patch_line%%;*}"
+        _patch_status="${_patch_status#status=}"
+        if [ "$_patch_rc" -eq 0 ] && [ "$_patch_status" = "success" ]; then
+          rm -f "$_backup_file"
+          _backup_file=""
+          _phase_sync_ok=1
+          log_debug "round_trips=2 path=fetch+patch"
+        else
+          _set_sysmsg "作業メモリ replica の更新に失敗しました。バックアップを保持しています。認証とネットワークを確認してください。"
+          echo "[rite] WARNING: post-tool-wm-sync: PATCH non-success (line=${_patch_line:-empty}) — last_synced_phase will NOT be advanced" >&2
+        fi
+      fi
+    else
+      # owner/repo 未解決等: status 行なし + exit 0。成功扱いすると last_synced_phase が進み
+      # 同一 phase の再試行が消え、stderr WARNING は PostToolUse ではモデルに届かない。
+      log_debug "fetch empty-status rc=${_fetch_rc}; treating as sync failure"
+      _set_sysmsg "作業メモリ replica の取得先リポジトリを解決できませんでした。git remote と gh auth status を確認してください。次のツール実行時に再試行されます。"
+    fi
+  fi
 fi
-[ -n "$_phase_sync_err" ] && rm -f "$_phase_sync_err"
 
-# --- 2. Progress table + changed files update (per-commit and post-implementation phases) ---
-# Flat phase `implement` fires for every commit during implementation (so the
-# progress table can track files added/modified incrementally); legacy
-# `phase5_post_execute` is the pre-flat equivalent. lint/pr/review/fix/completed
-# trigger end-of-cycle refresh.
-case "$_phase" in
-  phase5_lint|phase5_post_lint|phase5_post_execute|phase5_pr*|phase5_post_review|phase5_post_ready|implement|lint|pr|review|fix|completed)
-    cd "$STATE_ROOT" || { log_debug "cd STATE_ROOT failed"; exit 0; }
-
-    # base branch を rite-config.yml から awk で抽出する。grep|sed の pipe では pipefail 無し
-    # で sed の rc が握り潰され、config 不在 / permission denied / `base:` key 欠落の全てが
-    # silent な `develop` fallback に集約されていた。awk の rc を独立 capture し fallback
-    # 発動を RITE_DEBUG 時に観測可能にする。
-    _base_rc=0
-    _base_branch=$(awk '/^[[:space:]]+base:/ { sub(/^[[:space:]]+base:[[:space:]]*/, ""); gsub(/["'"'"'\r]/, ""); sub(/[[:space:]]+$/, ""); print; exit }' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || _base_rc=$?
-    if [ -z "$_base_branch" ] || [ "$_base_rc" -ne 0 ]; then
-      _base_branch="develop"
-      [ -n "${RITE_DEBUG:-}" ] && log_debug "rite-config.yml の base 取得が rc=$_base_rc / 空。default 'develop' にフォールバック"
-    fi
-
-    # mktemp fallback uses $$ + $RANDOM to avoid TOCTOU collision when two
-    # Claude Code sessions share a PID; pure $$ on /tmp is race-prone.
-    _changed_files_tmp=$(mktemp 2>/dev/null) || _changed_files_tmp="${TMPDIR:-/tmp}/rite-wm-sync-files.$$.${RANDOM}"
-    _git_diff_err=$(mktemp 2>/dev/null) || _git_diff_err=""
-    # State access uses STATE_ROOT (shared main checkout, via the `cd` above), but
-    # the progress-table diff MUST run in the SESSION's working tree: under
-    # multi-session, STATE_ROOT resolves to the main checkout while the session's
-    # commits live in its linked worktree ($CWD). `git -C "$CWD"` targets that
-    # tree (design §1). Non-worktree sessions have $CWD inside the same checkout,
-    # so diff output (repo-root-relative paths) is unchanged.
-    _diff_raw=$(git -C "$CWD" diff --name-status "origin/${_base_branch}...HEAD" 2>"${_git_diff_err:-/dev/null}") || _diff_raw=""
-    if [ -n "$_git_diff_err" ] && [ -s "$_git_diff_err" ]; then
-      echo "[rite] WARNING: post-tool-wm-sync: git diff failed — progress table may show stale or empty file list:" >&2
-      head -3 "$_git_diff_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-    fi
-    [ -n "$_git_diff_err" ] && rm -f "$_git_diff_err"
-
-    echo "$_diff_raw" | while IFS=$'\t' read -r status file; do
-      [ -n "$status" ] || continue
-      case "$status" in
-        A) echo "- \`$file\` - 追加" ;;
-        M) echo "- \`$file\` - 変更" ;;
-        D) echo "- \`$file\` - 削除" ;;
-        R*) echo "- \`$file\` - 名前変更" ;;
-      esac
-    done > "$_changed_files_tmp" 2>/dev/null || true
-
-    _diff_files=$(echo "$_diff_raw" | awk -F'\t' '{print $2}')
-    _impl_status="✅ 完了"
-    _test_status="⬜ 未着手"
-    _doc_status="⬜ 未着手"
-    # Here-string avoids SIGPIPE from `grep -q` early-exit reaching the upstream `echo`.
-    grep -qE '\.(test|spec)\.|test_|tests/' <<< "$_diff_files" 2>/dev/null && _test_status="✅ 完了"
-    grep -qE '(docs/.*\.md|README\.md|CHANGELOG\.md|API\.md)' <<< "$_diff_files" 2>/dev/null && _doc_status="✅ 完了"
-
-    _progress_sync_err=$(mktemp 2>/dev/null) || _progress_sync_err=""
-    _progress_sync_stderr_tag=""
-    [ -z "$_progress_sync_err" ] && _progress_sync_stderr_tag=" stderr_capture=disabled"
-    # `if ! cmd; then _rc=$?` forces rc=0 inside the then-branch (POSIX `!` inverts
-    # status). Use the else-branch to preserve the real exit code so triage logs
-    # show `rc=N` (auth=1, rate-limit=4 etc.), not the misleading `rc=0`.
-    if "$SCRIPT_DIR/issue-comment-wm-sync.sh" update \
-        --issue "$issue_number" \
-        --transform update-progress \
-        --impl-status "$_impl_status" \
-        --test-status "$_test_status" \
-        --doc-status "$_doc_status" \
-        --changed-files-file "$_changed_files_tmp" 2>"${_progress_sync_err:-/dev/null}"; then
-      :
-    else
-      _rc=$?
-      echo "[rite] WARNING: post-tool-wm-sync: update-progress failed (rc=$_rc${_progress_sync_stderr_tag}) — last_synced_phase will NOT be advanced" >&2
-      [ -n "$_progress_sync_err" ] && [ -s "$_progress_sync_err" ] && head -3 "$_progress_sync_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-      _phase_sync_ok=0
-    fi
-    [ -n "$_progress_sync_err" ] && rm -f "$_progress_sync_err"
-
-    rm -f "$_changed_files_tmp"
-
-    _plan_sync_err=$(mktemp 2>/dev/null) || _plan_sync_err=""
-    _plan_sync_stderr_tag=""
-    [ -z "$_plan_sync_err" ] && _plan_sync_stderr_tag=" stderr_capture=disabled"
-    if "$SCRIPT_DIR/issue-comment-wm-sync.sh" update \
-        --issue "$issue_number" \
-        --transform update-plan-status 2>"${_plan_sync_err:-/dev/null}"; then
-      :
-    else
-      _rc=$?
-      echo "[rite] WARNING: post-tool-wm-sync: update-plan-status failed (rc=$_rc${_plan_sync_stderr_tag}) — last_synced_phase will NOT be advanced" >&2
-      [ -n "$_plan_sync_err" ] && [ -s "$_plan_sync_err" ] && head -3 "$_plan_sync_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-      _phase_sync_ok=0
-    fi
-    [ -n "$_plan_sync_err" ] && rm -f "$_plan_sync_err"
-
-    log_debug "progress sync completed"
-    ;;
-esac
-
-# --- 3. Update last_synced_phase only when ALL sync calls succeeded ---
+# --- Update last_synced_phase only when ALL sync calls succeeded ---
 # Advancing on partial failure would silently lose retry opportunity for the
 # subset that failed; gating on _phase_sync_ok ensures the next hook invocation
 # re-attempts every transformer that has not yet succeeded for this phase.
@@ -351,5 +454,6 @@ if [ "$_phase_sync_ok" = "1" ]; then
   [ -n "$_last_phase_jq_err" ] && rm -f "$_last_phase_jq_err"
 fi
 
+_flush_sysmsg
 log_debug "phase sync completed ($_last_synced_phase -> $_phase)"
 exit 0
