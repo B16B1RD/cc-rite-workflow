@@ -794,11 +794,12 @@ run_hook_cap "$dir_n10" || rc_n10=$?
 stdout10=$(cat "$dir_n10/hook.stdout" 2>/dev/null)
 body_n10=""
 [ -f "$dir_n10/patch-body.txt" ] && body_n10=$(jq -r '.body // empty' "$dir_n10/patch-body.txt" 2>/dev/null) || body_n10=""
-if printf '%s' "$stdout10" | grep -q '"systemMessage"' \
+if printf '%s' "$stdout10" | jq -e . >/dev/null 2>&1 \
+   && printf '%s' "$stdout10" | grep -q '"systemMessage"' \
    && printf '%s' "$stdout10" | grep -q 'branch.base' \
    && printf '%s' "$body_n10" | grep -qF '**フェーズ**: implement' \
    && printf '%s' "$body_n10" | grep -q '| 実装 | ⬜ 未着手 |'; then
-  pass "T-10: systemMessage + update-phase in PATCH, progress skipped"
+  pass "T-10: systemMessage + update-phase in PATCH, progress skipped (stdout is 1 JSON object)"
 else
   fail "T-10: stdout=$stdout10 body=$body_n10 stderr=$(cat "$dir_n10/hook.stderr" 2>/dev/null)"
 fi
@@ -839,6 +840,19 @@ if [ "$_t11_tmpdir_set" = "1" ]; then
   export TMPDIR="$_t11_tmpdir_saved"
 else
   unset TMPDIR
+fi
+if [ "$_t11_tmpdir_set" = "1" ]; then
+  if [ "${TMPDIR-}" = "$_t11_tmpdir_saved" ]; then
+    pass "T-11b: TMPDIR restored to saved value"
+  else
+    fail "T-11b: TMPDIR after restore got=${TMPDIR-} saved=$_t11_tmpdir_saved"
+  fi
+else
+  if [ "${TMPDIR+x}" = "x" ]; then
+    fail "T-11b: TMPDIR still set after restore (expected unset): TMPDIR=$TMPDIR"
+  else
+    pass "T-11b: TMPDIR remains unset after restore"
+  fi
 fi
 echo ""
 

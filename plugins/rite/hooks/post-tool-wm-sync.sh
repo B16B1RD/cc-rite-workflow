@@ -457,7 +457,8 @@ if [ "$_phase_sync_ok" = "1" ]; then
 fi
 
 _flush_sysmsg
-if [ -n "${_obs_line:-}" ]; then
+# PostToolUse stdout は JSON 1 object。systemMessage があるときは観測行を出さない。
+if [ -z "${_sysmsg:-}" ] && [ -n "${_obs_line:-}" ]; then
   printf '%s\n' "$_obs_line"
 fi
 log_debug "phase sync completed ($_last_synced_phase -> $_phase)"
