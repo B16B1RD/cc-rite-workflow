@@ -27,6 +27,13 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.12.3] - 2026-08-23
+
+### Fixed
+
+- **`post-tool-wm-sync` reduces GitHub API round-trips from 9 to 2 per phase transition** — `issue-comment-wm-sync.sh` now exposes `fetch` / `patch`; `update` is a fetch → transform → patch wrapper. Replica-absent (`wm_replica: "absent"`) and unresolved `branch.base` are fail-loud via PostToolUse `systemMessage` instead of silent skip / `develop` fallback. (#2336)
+- **`issue-comment-wm-sync.sh` update mode keeps `COMMENT_ID` outside a subshell** — `do_fetch` stdout is read via a temp file so PATCH still succeeds when flow-state is absent. T-11 restores `TMPDIR`; the hook success path emits `status=success round_trips=2`. (#2338)
+
 ## [0.12.2] - 2026-08-21
 
 ### Changed
@@ -905,6 +912,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.12.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.11.0...v0.12.0
