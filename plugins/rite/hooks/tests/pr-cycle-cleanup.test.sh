@@ -123,6 +123,39 @@ make_temp_repo() {
   echo "$tmp"
 }
 
+# gh shim for Step 6's GitHub OPEN/MERGED/CLOSED gate. State is selected by
+# GH_PR_STATE_<pr> in the helper's environment (OPEN / MERGED / CLOSED / fail).
+# Unset or `fail` → exit 1, which the helper treats as unknown (keep).
+write_gh_pr_mock() {
+  local dest="$1/bin/gh"
+  mkdir -p "$1/bin"
+  cat > "$dest" <<'EOF'
+#!/bin/bash
+pr=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --repo|-R|--json|--jq)
+      shift
+      [ $# -gt 0 ] && shift
+      ;;
+    *)
+      case "$1" in
+        *[!0-9]*) ;;
+        *) pr="$1" ;;
+      esac
+      shift
+      ;;
+  esac
+done
+st=$(printenv "GH_PR_STATE_$pr" 2>/dev/null || true)
+case "$st" in
+  fail|'') exit 1 ;;
+  *) printf '%s\n' "$st"; exit 0 ;;
+esac
+EOF
+  chmod +x "$dest"
+}
+
 cleanup_temp_repo() {
   local repo="$1"
   if [ -n "$repo" ] && [ -d "$repo" ]; then
@@ -1199,6 +1232,7 @@ cleanup_temp_repo "$TEST_REPO"
 # -----------------------------------------------------------------------
 echo "T-38..42: orphan review JSON / pin cleanup"
 TEST_REPO=$(make_temp_repo)
+write_gh_pr_mock "$TEST_REPO"
 mkdir -p "$TEST_REPO/.rite/review-results" "$TEST_REPO/.rite/sessions" "$TEST_REPO/.rite/state"
 printf '{"active":true,"pr_number":700}\n' > "$TEST_REPO/.rite/sessions/live.flow-state"
 printf '{"non_blocking_findings":[]}\n' > "$TEST_REPO/.rite/review-results/701-clean.json"
@@ -1207,7 +1241,9 @@ printf '{"non_blocking_findings":[]}\n' > "$TEST_REPO/.rite/review-results/700-a
 printf 'broken\n' > "$TEST_REPO/.rite/review-results/703-broken.json"
 printf '701-clean.json\n' > "$TEST_REPO/.rite/state/review-run-since-701.txt"
 printf '700-active.json\n' > "$TEST_REPO/.rite/state/review-run-since-700.txt"
-t38_output=$(cd "$TEST_REPO" && bash "$CLEANUP" 2>&1)
+t38_output=$(cd "$TEST_REPO" && \
+  GH_PR_STATE_701=MERGED GH_PR_STATE_702=MERGED \
+  PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
 if [ ! -e "$TEST_REPO/.rite/review-results/701-clean.json" ] && [ ! -e "$TEST_REPO/.rite/state/review-run-since-701.txt" ]; then pass "T-38 orphan nb=0 JSON + pin deleted"; else fail "T-38 orphan nb=0 residue remained"; fi
 if [ -e "$TEST_REPO/.rite/review-results/archive/702-notes.json" ] && [ ! -e "$TEST_REPO/.rite/review-results/702-notes.json" ]; then pass "T-39 orphan nb>0 JSON archived"; else fail "T-39 nb>0 JSON not archived"; fi
 if [ -e "$TEST_REPO/.rite/review-results/700-active.json" ] && [ -e "$TEST_REPO/.rite/state/review-run-since-700.txt" ]; then pass "T-40 active PR artifacts protected"; else fail "T-40 active PR artifacts changed"; fi
@@ -1222,6 +1258,60 @@ printf 'broken\n' > "$TEST_REPO/.rite/sessions/broken.flow-state"
 printf '{"non_blocking_findings":[]}\n' > "$TEST_REPO/.rite/review-results/704-clean.json"
 t43_output=$(cd "$TEST_REPO" && bash "$CLEANUP" 2>&1)
 if [ -e "$TEST_REPO/.rite/review-results/704-clean.json" ] && echo "$t43_output" | grep -q '回収をスキップ'; then pass "T-43 unreadable flow-state fails safe"; else fail "T-43 flow-state failure did not protect review JSON"; fi
+cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-44..47: OPEN/draft PR JSON is not archived across session boundaries
+# -----------------------------------------------------------------------
+echo "T-44..47: OPEN PR review JSON kept (no active flow-state)"
+TEST_REPO=$(make_temp_repo)
+write_gh_pr_mock "$TEST_REPO"
+mkdir -p "$TEST_REPO/.rite/review-results" "$TEST_REPO/.rite/sessions" "$TEST_REPO/.rite/state"
+# no active flow-state — this is the session-end → next session-start boundary
+printf '{"active":false,"pr_number":705}\n' > "$TEST_REPO/.rite/sessions/stale.flow-state"
+printf '{"non_blocking_findings":[{"id":"F-01"}]}\n' > "$TEST_REPO/.rite/review-results/705-20260101000000.json"
+printf '{"non_blocking_findings":[{"id":"F-02"}]}\n' > "$TEST_REPO/.rite/review-results/705-20260102000000.json"
+printf '{"non_blocking_findings":[]}\n' > "$TEST_REPO/.rite/review-results/706-clean.json"
+printf '{"non_blocking_findings":[{"id":"F-03"}]}\n' > "$TEST_REPO/.rite/review-results/707-notes.json"
+printf '{"non_blocking_findings":[{"id":"F-04"}]}\n' > "$TEST_REPO/.rite/review-results/708-merged.json"
+printf '705-pin\n' > "$TEST_REPO/.rite/state/review-run-since-705.txt"
+printf '706-pin\n' > "$TEST_REPO/.rite/state/review-run-since-706.txt"
+t44_output=$(cd "$TEST_REPO" && \
+  GH_PR_STATE_705=OPEN GH_PR_STATE_706=OPEN GH_PR_STATE_707=fail GH_PR_STATE_708=MERGED \
+  PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
+if [ -e "$TEST_REPO/.rite/review-results/705-20260101000000.json" ] \
+  && [ -e "$TEST_REPO/.rite/review-results/705-20260102000000.json" ] \
+  && [ ! -e "$TEST_REPO/.rite/review-results/archive/705-20260101000000.json" ] \
+  && [ -e "$TEST_REPO/.rite/state/review-run-since-705.txt" ]; then
+  pass "T-44 OPEN PR nb>0 JSON + pin kept (AC-1)"
+else
+  fail "T-44 OPEN PR JSON was archived or pin deleted"
+fi
+if [ -e "$TEST_REPO/.rite/review-results/706-clean.json" ] \
+  && [ -e "$TEST_REPO/.rite/state/review-run-since-706.txt" ]; then
+  pass "T-45 OPEN PR nb=0 JSON kept (not deleted)"
+else
+  fail "T-45 OPEN PR nb=0 JSON was deleted"
+fi
+if [ -e "$TEST_REPO/.rite/review-results/707-notes.json" ] \
+  && echo "$t44_output" | grep -q 'GitHub 状態を取得できない'; then
+  pass "T-46 undetermined GitHub state keeps JSON (fail-safe)"
+else
+  fail "T-46 gh failure did not keep JSON: $t44_output"
+fi
+# T-03: trend helper reads -maxdepth 1; both cycle files must still be there.
+t47_found=$(find "$TEST_REPO/.rite/review-results" -maxdepth 1 -type f -name '705-*.json' | wc -l | tr -d ' ')
+if [ "$t47_found" = "2" ]; then
+  pass "T-47 multi-run OPEN JSON remains at maxdepth 1 for trend (T-03)"
+else
+  fail "T-47 expected 2 live 705 JSON files, got $t47_found"
+fi
+if [ -e "$TEST_REPO/.rite/review-results/archive/708-merged.json" ] \
+  && [ ! -e "$TEST_REPO/.rite/review-results/708-merged.json" ]; then
+  pass "T-48 MERGED PR without active flow-state still archived (AC-2)"
+else
+  fail "T-48 MERGED PR JSON was not archived"
+fi
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
