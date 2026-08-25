@@ -7,6 +7,7 @@
 * **Create**: [既存術語の動詞を別意味に流用せず、新しい意味には別語を立てる](pages/heuristics/existing-term-verb-not-repurposed-for-new-meaning.md) — raw/retrospectives/20260825T171831Z-issue-2354.md を新規ページ化
 * **lint:warning** — contradictions=0, stale=29, orphans=0, missing_concept=1, unregistered_raw=350, broken_refs=0
 * **lint:warning** — contradictions=0, stale=29, orphans=0, missing_concept=1, unregistered_raw=350, broken_refs=0
+* **lint:warning** — contradictions=0, stale=29, orphans=0, missing_concept=1, unregistered_raw=351, broken_refs=0
 
 ## 2026-08-25
 * **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — raw/reviews/20260825T152548Z-pr-2361.md を統合
