@@ -8,6 +8,7 @@
 * **Skip**: [20260825T064722Z-pr-2353.md](raw/reviews/20260825T064722Z-pr-2353.md) — detector-candidate: 自問5の必須添付と散文 Finding Gate のアンカー不適格は同一 prompt 内で衝突しうる。契約テストで Finding Gate 第4分岐を pin できる
 * **Skip**: [20260822T201555Z-pr-2341.md](raw/reviews/20260822T201555Z-pr-2341.md) — 一時的なレビュー件数サマリのみで、再利用可能な経験則が抽出できない
 * **Skip**: [20260822T202252Z-pr-2341.md](raw/reviews/20260822T202252Z-pr-2341.md) — 一時的なレビュー件数サマリのみで、再利用可能な経験則が抽出できない
+* **lint:warning** — contradictions=0, stale=29, orphans=0, missing_concept=1, unregistered_raw=347, broken_refs=0
 
 ## 2026-08-23
 * **lint:warning** — contradictions=0, stale=21, orphans=0, missing_concept=1, unregistered_raw=342, broken_refs=0
