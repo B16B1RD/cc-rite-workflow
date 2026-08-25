@@ -122,8 +122,17 @@ assert_grep 'review legacy gate covers automatic disposition' \
   "$ROOT/plugins/rite/skills/pr-review/SKILL.md" '自動 Decision Log 経路でも emit する'
 assert_grep 'review interactive triage waits for confirmation before write' \
   "$ROOT/plugins/rite/skills/pr-review/SKILL.md" '回答を得るまで 7.4（Decision Log 追記・Issue 作成）を実行しない'
+assert_grep 'review e2e missing marker fail-safes to ask' \
+  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" '欠落は `false`（確認を出す側）'
+assert_grep 'review undecidable triage fail-safes to ask' \
+  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" '判定不能時は確認を出す側へ倒す'
 assert_grep 'review phase7 sentinel records confirmation evidence' \
   "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'mode={mode}; choice={choice}; reason={reason}'
+assert_grep 'review phase7 producer echo records confirmation evidence' \
+  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" \
+  'echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iteration_id}; mode={mode}; choice={choice}; reason={reason}"'
+assert_grep_count 'review phase7 evidence fields appear in producer and consumer' \
+  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'mode={mode}; choice={choice}; reason={reason}' 2
 assert_grep 'review phase7 gate rejects emit-before-evidence' \
   "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'sentinel が確認証跡を欠く（emit-before-evidence）'
 assert_not_grep 'iterate overview does not restore review error questions' \
