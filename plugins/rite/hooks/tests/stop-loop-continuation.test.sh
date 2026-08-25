@@ -454,6 +454,107 @@ rm -rf "$fake_bin17" "$err17"
 out17b=$(stop_payload "$d17" "$SID" true | bash "$HOOK")
 assert "TC-17: second stop allows (one-shot consume preserved through placeholder path)" "" "$out17b"
 
-if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (review↔fix loop continuation + FINALIZE terminal backstop + WIKICHAIN cleanup-chain gate + C1 8-bit coverage via shared neutralize_ctrl + JSON emit fallback C0 neutralization + neutralize-failure placeholder degradation)"; then
+# --- TC-18: FINALIZE:review:mergeable + transcript に残件欄なし → 差し戻し (AC-3 / T-03) ---
+echo ""
+echo "=== TC-18: FINALIZE:review:mergeable transcript missing remaining field → bounce once ==="
+d18=$(new_sandbox)
+RITE_STATE_ROOT="$d18" bash "$FS" set --phase review --issue 2346 --branch b --pr 99 \
+  --next n --handoff "FINALIZE:review:mergeable:99" --session "$SID" >/dev/null
+tp18=$(mktemp)
+cat > "$tp18" <<'EOF'
+{"type":"user","message":{"role":"user","content":"ok"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"## /rite:iterate 完了\n\n- PR: #99\n- 終了理由: review:mergeable\n- ブランチ: b\n"}]}}
+EOF
+out=$(jq -nc --arg c "$d18" --arg s "$SID" --arg tp "$tp18" \
+  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
+assert "TC-18: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+_reason18=$(printf '%s' "$out" | jq -r '.reason // ""')
+if printf '%s' "$_reason18" | grep -q "未処理 non-blocking"; then
+  pass "TC-18: reason requires the remaining-field"
+else
+  fail "TC-18: reason missing remaining-field directive: $out"
+fi
+if printf '%s' "$_reason18" | grep -q "欄がありません"; then
+  pass "TC-18: reason reports the field is missing from the last notice"
+else
+  fail "TC-18: reason did not report missing field: $out"
+fi
+sf18=$(state_file_for "$d18")
+assert "TC-18: handoff deleted after block (one-shot)" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$sf18")"
+out18b=$(jq -nc --arg c "$d18" --arg s "$SID" --arg tp "$tp18" \
+  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:true}' | bash "$HOOK")
+assert "TC-18: second stop allows (one-shot / no infinite block)" "" "$out18b"
+rm -f "$tp18"
+
+# --- TC-19: FINALIZE:review:mergeable + transcript_path 欠落 → 検査不能 fail-safe 差し戻し ---
+echo ""
+echo "=== TC-19: FINALIZE:review:mergeable without transcript → fail-safe bounce ==="
+d19=$(new_sandbox)
+RITE_STATE_ROOT="$d19" bash "$FS" set --phase review --issue 2346 --branch b --pr 99 \
+  --next n --handoff "FINALIZE:review:mergeable:99" --session "$SID" >/dev/null
+out=$(stop_payload "$d19" | bash "$HOOK")
+assert "TC-19: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+_reason19=$(printf '%s' "$out" | jq -r '.reason // ""')
+if printf '%s' "$_reason19" | grep -q "判定できなかった"; then
+  pass "TC-19: inspect-fail fail-safe asks to re-output the remaining field"
+else
+  fail "TC-19: inspect-fail reason missing fail-safe wording: $out"
+fi
+if printf '%s' "$_reason19" | grep -q "未処理 non-blocking"; then
+  pass "TC-19: inspect-fail reason still requires the remaining field"
+else
+  fail "TC-19: inspect-fail reason missing remaining-field directive: $out"
+fi
+
+# --- TC-20: FINALIZE:fix:replied-only は残件欄検査の対象外 ---
+echo ""
+echo "=== TC-20: FINALIZE:fix:replied-only does not require remaining-field inspection ==="
+d20=$(new_sandbox)
+RITE_STATE_ROOT="$d20" bash "$FS" set --phase fix --issue 2346 --branch b --pr 99 \
+  --next n --handoff "FINALIZE:fix:replied-only:99" --session "$SID" >/dev/null
+out=$(stop_payload "$d20" | bash "$HOOK")
+assert "TC-20: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+_reason20=$(printf '%s' "$out" | jq -r '.reason // ""')
+if printf '%s' "$_reason20" | grep -q "未処理 non-blocking"; then
+  fail "TC-20: replied-only reason wrongly required remaining field: $out"
+else
+  pass "TC-20: replied-only reason does not mention remaining field"
+fi
+if printf '%s' "$_reason20" | grep -q "完了通知"; then
+  pass "TC-20: replied-only still requests the completion notice"
+else
+  fail "TC-20: replied-only reason lost the completion-notice directive: $out"
+fi
+
+# --- TC-21: FINALIZE:review:mergeable + 残件欄ありでも 1 回は差し戻す（既存 FINALIZE 契約） ---
+echo ""
+echo "=== TC-21: FINALIZE:review:mergeable with remaining field still bounces once ==="
+d21=$(new_sandbox)
+RITE_STATE_ROOT="$d21" bash "$FS" set --phase review --issue 2346 --branch b --pr 99 \
+  --next n --handoff "FINALIZE:review:mergeable:99" --session "$SID" >/dev/null
+tp21=$(mktemp)
+cat > "$tp21" <<'EOF'
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"## /rite:iterate 完了\n\n- PR: #99\n- 終了理由: review:mergeable\n- 未処理 non-blocking: 0 件\n"}]}}
+EOF
+out=$(jq -nc --arg c "$d21" --arg s "$SID" --arg tp "$tp21" \
+  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
+assert "TC-21: decision=block (existing FINALIZE one-shot preserved)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+_reason21=$(printf '%s' "$out" | jq -r '.reason // ""')
+if printf '%s' "$_reason21" | grep -q "必ず含めて"; then
+  pass "TC-21: present-field reason still requires the remaining field in re-output"
+else
+  fail "TC-21: present-field reason missing keep-the-field directive: $out"
+fi
+if printf '%s' "$_reason21" | grep -q "欄がありません"; then
+  fail "TC-21: present-field reason wrongly claimed the field is missing: $out"
+else
+  pass "TC-21: present-field reason does not claim the field is missing"
+fi
+out21b=$(jq -nc --arg c "$d21" --arg s "$SID" --arg tp "$tp21" \
+  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:true}' | bash "$HOOK")
+assert "TC-21: second stop allows" "" "$out21b"
+rm -f "$tp21"
+
+if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (review↔fix loop continuation + FINALIZE terminal backstop + remaining-field inspect on mergeable + WIKICHAIN cleanup-chain gate + C1 8-bit coverage via shared neutralize_ctrl + JSON emit fallback C0 neutralization + neutralize-failure placeholder degradation)"; then
   exit 1
 fi
