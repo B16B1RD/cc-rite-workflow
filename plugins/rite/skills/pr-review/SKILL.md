@@ -3257,7 +3257,7 @@ echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iterati
 
 **E2E**: standalone と同じ。Decision Log 推奨は自動。Issue 作成・scope 追加・無視は明示承認。Issue 作成を自動決定しない。
 
-既存 Issue #{N} を引き受け先として新規作成を見送る場合は 7.4.4 を必須実行する。CLOSED なら投稿せず 7.2 へ差し戻す（新規の disposition 質問は出さない）。
+「別 Issue 作成」で既存 Issue #{N} へ新規作成を見送る場合の実行は 7.4 表。CLOSED なら当該候補について 7.2 の既存 4 択を再掲する（新規の disposition 質問種別は出さない）。
 rationale: references/design-rationale.md#assignee-handoff-comment
 
 ### 7.4 Disposition Execution
@@ -3266,12 +3266,11 @@ rationale: references/design-rationale.md#assignee-handoff-comment
 
 | User selection | Action |
 |-----------------|--------|
-| 別 Issue 作成 | 7.4.1-7.4.2（Issue 作成）を実行 |
+| 別 Issue 作成 | 新規作成なら 7.4.1-7.4.2。既存 Issue #{N} への見送りなら 7.4.4 の後に 7.4.3。CLOSED なら投稿せず当該候補について 7.2 の既存 4 択を再掲し、`HANDOFF_COMMENT_REJECTED=1` のときは 7.4.3 / 7.5 へ進まない |
 | Decision Log に記録 | 7.4.3（Decision Log Append）を実行。既存 Issue #{N} を引き受け先とする場合は 7.4.4 を先に必須実行し、記録のみで完了扱いにしない |
-| 既存 Issue #{N} で対応（新規作成見送り） | 7.4.4 の後に 7.4.3。CLOSED なら投稿せず 7.2 へ差し戻す |
 | 本 PR で対応 / 無視 | 追加のアクションなし（既存動作を維持） |
 
-「別 Issue 作成」は `gh issue create` + Projects 登録。`/rite:issue-create` Skill は使わない。
+「別 Issue 作成」の新規作成枝は `gh issue create` + Projects 登録。`/rite:issue-create` Skill は使わない。見送りは 7.2 の 5 択ではなく「別 Issue 作成」の結果分岐である。
 Issue creation failure reasons: (`body_tmpfile_write_failure` / `empty_body_tmpfile` / `empty_script_result`)
 
 | reason | Description |
@@ -3502,8 +3501,18 @@ Decision Log append failure reasons: (`line_content_write_failure` / `body_fetch
 既存 Issue `{assignee_issue}` を引き受け先とする候補ごとに実行する。Decision Log のみでは完了にしない。
 rationale: references/design-rationale.md#assignee-handoff-comment
 
+heredoc の `{placeholder}` はスクリプト生成前に埋める（shell 変数ではない）。**候補ごとに単一 Bash invocation**。
+
+| Placeholder | Source | Example |
+|-------------|--------|---------|
+| `{assignee_issue}` | 見送り先として確定した既存 Issue 番号。`{source_issue_number}`（元 Issue）および 7.2 sentinel の `{N}`（candidate 総数）と混同しない | `2340` |
+| `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) の slash 形式 | `owner/repo` |
+| `{pr_number}` | 本レビューの PR 番号 | `42` |
+| `{summary}` | 当該候補の指摘要約 | （1 段落） |
+| `{check_points}` | 引き受け先で着手するときの確認点 | （箇条書き） |
+
 1. `gh issue view {assignee_issue} -R {owner_repo} --json state --jq '.state'`
-2. `OPEN` 以外 → 投稿しない。`[CONTEXT] HANDOFF_COMMENT_REJECTED=1; issue={assignee_issue}; reason=closed` を emit し、当該候補を 7.2 へ差し戻す
+2. `OPEN` 以外 → 投稿しない。`[CONTEXT] HANDOFF_COMMENT_REJECTED=1; issue={assignee_issue}; reason=closed` を emit し、当該候補について 7.2 の既存 4 択を再掲する（7.4.3 / 7.5 へ進まない）
 3. `OPEN` → `--body-file` で申し送りを投稿（指摘要約・元 PR・着手時確認点）。成功は `[CONTEXT] HANDOFF_COMMENT_POSTED=1; issue={assignee_issue}`。失敗は WARNING + `[CONTEXT] HANDOFF_COMMENT_FAILED=1; issue={assignee_issue}; reason=gh_comment_failure`（完了レポートに未投稿として列挙）
 
 ```bash
@@ -3553,7 +3562,7 @@ Handoff comment failure reasons: (`closed` / `body_write_failure` / `gh_comment_
 | `body_write_failure` | 申し送り本文の一時ファイル書き込みに失敗 |
 | `gh_comment_failure` | `gh issue comment` が非ゼロ終了（権限・ネットワーク） |
 
-CLOSED 差し戻しは当該候補の disposition を完了にしない。投稿失敗は non-blocking だが記録のみで完了扱いにせず、7.5-7.6 の完了レポートに未投稿として列挙する。
+`HANDOFF_COMMENT_REJECTED=1` を観測したら当該候補の 7.4.3 を実行せず 7.5 へ進まない。投稿失敗は non-blocking だが記録のみで完了扱いにせず、7.5-7.6 の完了レポートに未投稿として列挙する。
 
 ### 7.5-7.6 Append to PR & Report
 

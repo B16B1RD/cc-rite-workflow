@@ -337,4 +337,4 @@ Decision Log append を候補ごとに単一 Bash invocation にする理由。
 
 既存 Issue を引き受け先にして新規作成を見送る経路に申し送りコメントを必須化した理由。
 
-「引き受け先が実在する」判定だけで triage を閉じると、#N 側に何も残らず、後から「フォローアップ Issue 化はありませんか」と問われて初めてコメントが投稿される。Decision Log は元 Issue の記録であり引き受け先への通知ではない。CLOSED Issue は着手対象にできないため投稿せず 7.2 へ差し戻す。新規 AskUserQuestion を足さないのは既存 disposition 質問へ戻す方が inventory を増やさず、差し戻し先が既にあるため。
+「引き受け先が実在する」判定だけで triage を閉じると、#N 側に何も残らず、後から「フォローアップ Issue 化はありませんか」と問われて初めてコメントが投稿される。Decision Log は元 Issue の記録であり引き受け先への通知ではない。CLOSED Issue は着手対象にできないため投稿せず、当該候補について 7.2 の既存 4 択を再掲する。新規 AskUserQuestion を足さないのは既存 disposition 質問へ戻す方が inventory を増やさず、差し戻し先が既にあるため。見送りは 7.2 の 5 択ではなく「別 Issue 作成」の結果分岐である。`HANDOFF_COMMENT_REJECTED=1` のあとに 7.4.3 へ進むと AC-3 が空文になる。
