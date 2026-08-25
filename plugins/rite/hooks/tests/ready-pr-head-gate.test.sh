@@ -123,7 +123,7 @@ reset_case; export GH_WM_FIELDS=$'feature/ok\tfeedface'
 bash "$WM_HELPER" --pr 42 --issue 42 --repo owner/repo --plugin-root "$SB/plugin" >/dev/null 2>"$SB/wm-writer-fail"
 grep -q 'writer failed (rc=7)' "$SB/wm-writer-fail" && ok || bad wm_writer_warning
 
-# ----- reviewed-head gate (Issue #2347) ------------------------------------
+# ----- reviewed-head gate (latest review JSON commit_sha vs HEAD) ----------
 RH="$ROOT/hooks/scripts/ready-reviewed-head-gate.sh"
 RH_DIR="$SB/review-results"
 mkdir -p "$RH_DIR"
