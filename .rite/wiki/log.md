@@ -1,4 +1,5 @@
 ## 2026-08-25
+* **Skip**: [20260825T100148Z-pr-2356.md](raw/reviews/20260825T100148Z-pr-2356.md) — detector-candidate: SKILL.md の同一 fenced bash に fail-loud helper を並べると、先行 helper の非ゼロ rc は後続成功で潰れる。各呼び出しに `|| exit` を付け、契約テストで pin する
 * **Skip**: [20260825T092007Z-pr-2355.md](raw/reviews/20260825T092007Z-pr-2355.md) — rite-plugin: iterate 完了通知の残件欄機械取得と Stop hook 検査は SKILL.md ステップ 5.0.2 と stop-loop-continuation.sh / TC-18-21 に既実装。新規 domain 経験則なし
 * **Skip**: [20260825T064722Z-pr-2353.md](raw/reviews/20260825T064722Z-pr-2353.md) — detector-candidate: 自問5の必須添付と散文 Finding Gate のアンカー不適格は同一 prompt 内で衝突しうる。契約テストで Finding Gate 第4分岐を pin できる
 * **Skip**: [20260822T201555Z-pr-2341.md](raw/reviews/20260822T201555Z-pr-2341.md) — 一時的なレビュー件数サマリのみで、再利用可能な経験則が抽出できない
