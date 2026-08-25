@@ -526,11 +526,11 @@ else
   fail "TC-20: replied-only reason lost the completion-notice directive: $out"
 fi
 
-# --- TC-21: FINALIZE:review:mergeable + 残件欄ありでも 1 回は差し戻す（既存 FINALIZE 契約） ---
+# --- TC-21: FINALIZE:review:mergeable + 完了通知 + 残件欄あり → 差し戻さない (AC-1 / T-01) ---
 echo ""
-echo "=== TC-21: FINALIZE:review:mergeable with remaining field still bounces once ==="
+echo "=== TC-21: FINALIZE:review:mergeable with notice + remaining field allows stop ==="
 d21=$(new_sandbox)
-RITE_STATE_ROOT="$d21" bash "$FS" set --phase review --issue 2346 --branch b --pr 99 \
+RITE_STATE_ROOT="$d21" bash "$FS" set --phase review --issue 2349 --branch b --pr 99 \
   --next n --handoff "FINALIZE:review:mergeable:99" --session "$SID" >/dev/null
 tp21=$(mktemp)
 cat > "$tp21" <<'EOF'
@@ -538,23 +538,83 @@ cat > "$tp21" <<'EOF'
 EOF
 out=$(jq -nc --arg c "$d21" --arg s "$SID" --arg tp "$tp21" \
   '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
-assert "TC-21: decision=block (existing FINALIZE one-shot preserved)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
-_reason21=$(printf '%s' "$out" | jq -r '.reason // ""')
-if printf '%s' "$_reason21" | grep -q "必ず含めて"; then
-  pass "TC-21: present-field reason still requires the remaining field in re-output"
-else
-  fail "TC-21: present-field reason missing keep-the-field directive: $out"
-fi
-if printf '%s' "$_reason21" | grep -q "欄がありません"; then
-  fail "TC-21: present-field reason wrongly claimed the field is missing: $out"
-else
-  pass "TC-21: present-field reason does not claim the field is missing"
-fi
+assert "TC-21: notice+field allows stop (no output)" "" "$out"
+sf21=$(state_file_for "$d21")
+assert "TC-21: handoff consumed even when allowing" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$sf21")"
 out21b=$(jq -nc --arg c "$d21" --arg s "$SID" --arg tp "$tp21" \
   '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:true}' | bash "$HOOK")
-assert "TC-21: second stop allows" "" "$out21b"
+assert "TC-21: second stop still allows" "" "$out21b"
 rm -f "$tp21"
 
-if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (review↔fix loop continuation + FINALIZE terminal backstop + remaining-field inspect on mergeable + WIKICHAIN cleanup-chain gate + C1 8-bit coverage via shared neutralize_ctrl + JSON emit fallback C0 neutralization + neutralize-failure placeholder degradation)"; then
+# --- TC-22: FINALIZE:fix:replied-only + 完了通知あり → 差し戻さない (AC-1 / T-01) ---
+echo ""
+echo "=== TC-22: FINALIZE:fix:replied-only with completion notice allows stop ==="
+d22=$(new_sandbox)
+RITE_STATE_ROOT="$d22" bash "$FS" set --phase fix --issue 2349 --branch b --pr 99 \
+  --next n --handoff "FINALIZE:fix:replied-only:99" --session "$SID" >/dev/null
+tp22=$(mktemp)
+cat > "$tp22" <<'EOF'
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"## /rite:iterate 完了\n\n- PR: #99\n- 終了理由: fix:replied-only\n"}]}}
+EOF
+out=$(jq -nc --arg c "$d22" --arg s "$SID" --arg tp "$tp22" \
+  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
+assert "TC-22: replied-only notice allows stop (no output)" "" "$out"
+rm -f "$tp22"
+
+# --- TC-23: FINALIZE:fix:cancelled-by-user + 中断通知あり → 差し戻さない (AC-1) ---
+echo ""
+echo "=== TC-23: FINALIZE:fix:cancelled-by-user with interrupt notice allows stop ==="
+d23=$(new_sandbox)
+RITE_STATE_ROOT="$d23" bash "$FS" set --phase fix --issue 2349 --branch b --pr 99 \
+  --next n --handoff "FINALIZE:fix:cancelled-by-user:99" --session "$SID" >/dev/null
+tp23=$(mktemp)
+cat > "$tp23" <<'EOF'
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"## /rite:iterate 中断\n\n- PR: #99\n- 終了理由: fix:cancelled-by-user\n"}]}}
+EOF
+out=$(jq -nc --arg c "$d23" --arg s "$SID" --arg tp "$tp23" \
+  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
+assert "TC-23: cancelled notice allows stop (no output)" "" "$out"
+rm -f "$tp23"
+
+# --- TC-24: FINALIZE + 最終 assistant が空 / jq 不能 → 差し戻す (AC-3 / T-03) ---
+echo ""
+echo "=== TC-24: FINALIZE with unparseable transcript fail-safe bounces ==="
+d24=$(new_sandbox)
+RITE_STATE_ROOT="$d24" bash "$FS" set --phase review --issue 2349 --branch b --pr 99 \
+  --next n --handoff "FINALIZE:review:mergeable:99" --session "$SID" >/dev/null
+tp24=$(mktemp)
+printf 'not-json\n' > "$tp24"
+out=$(jq -nc --arg c "$d24" --arg s "$SID" --arg tp "$tp24" \
+  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
+assert "TC-24: decision=block (inspect-fail fail-safe)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+_reason24=$(printf '%s' "$out" | jq -r '.reason // ""')
+if printf '%s' "$_reason24" | grep -q "完了通知"; then
+  pass "TC-24: inspect-fail still requests the completion notice"
+else
+  fail "TC-24: inspect-fail reason missing completion-notice directive: $out"
+fi
+rm -f "$tp24"
+
+# --- TC-25: 継続 handoff は完了通知があっても差し戻す（FINALIZE 限定の検査範囲） ---
+echo ""
+echo "=== TC-25: continuation handoff still blocks even when iterate notice is present ==="
+d25=$(new_sandbox)
+RITE_STATE_ROOT="$d25" bash "$FS" set --phase review --issue 2349 --branch b --pr 99 \
+  --next n --handoff "/rite:fix 99" --session "$SID" >/dev/null
+tp25=$(mktemp)
+cat > "$tp25" <<'EOF'
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"## /rite:iterate 完了\n"}]}}
+EOF
+out=$(jq -nc --arg c "$d25" --arg s "$SID" --arg tp "$tp25" \
+  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
+assert "TC-25: decision=block (notice does not suppress continuation)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "/rite:fix 99"; then
+  pass "TC-25: continuation reason still re-injects /rite:fix"
+else
+  fail "TC-25: continuation reason lost the command: $out"
+fi
+rm -f "$tp25"
+
+if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (review↔fix loop continuation + FINALIZE terminal backstop + skip bounce when iterate notice already present + remaining-field inspect on mergeable + WIKICHAIN cleanup-chain gate + C1 8-bit coverage via shared neutralize_ctrl + JSON emit fallback C0 neutralization + neutralize-failure placeholder degradation)"; then
   exit 1
 fi
