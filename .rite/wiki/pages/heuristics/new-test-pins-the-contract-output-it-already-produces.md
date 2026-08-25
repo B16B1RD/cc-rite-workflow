@@ -12,9 +12,15 @@ sources:
     resource: "raw/reviews/20260810T035844Z-pr-2227.md"
   - type: "reviews"
     resource: "raw/reviews/20260810T045310Z-pr-2227.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260825T111042Z-pr-2357.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260825T112921Z-pr-2357.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T05:20:00+09:00" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T21:06:14+09:00" }
+verified:
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T21:06:14+09:00" }
 ---
 
 # 新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する
@@ -56,6 +62,10 @@ end-to-end で対象を走らせる新規テストは契約出力を既に生成
 
 なお `--quiet` 付きでしか走らないテストばかりだと、非 quiet の stderr 経路が一度も踏まれない。失敗経路のテストを足すときに `--quiet` を外すと、この穴も同時に埋まる。
 
+### 成功 echo と失敗 WARNING も契約出力である
+
+契約テストが「分岐や見出しが存在すること」だけを grep し、成功時の echo 形状と失敗時の WARNING 全文を pin しないと、それらの行を削除してもスイートは green のまま残る。新規テストは対象を走らせた時点でその出力を既に生成している。契約が不変と規定した成功/失敗の文言は、差分側の assert とは別に行まるごと固定する。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -67,3 +77,5 @@ end-to-end で対象を走らせる新規テストは契約出力を既に生成
 - [PR #2227 fix results](../../raw/fixes/20260810T040721Z-pr-2227.md)
 - [PR #2227 review results](../../raw/reviews/20260810T035844Z-pr-2227.md)
 - [PR #2227 review results (cycle 3, mergeable)](../../raw/reviews/20260810T045310Z-pr-2227.md)
+- [PR #2357 review results](../../raw/reviews/20260825T111042Z-pr-2357.md)
+- [PR #2357 fix results](../../raw/fixes/20260825T112921Z-pr-2357.md)

@@ -1,4 +1,7 @@
 ## 2026-08-25
+* **Update**: [新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する](pages/heuristics/new-test-pins-the-contract-output-it-already-produces.md) — raw/reviews/20260825T111042Z-pr-2357.md を統合
+* **Skip**: [20260825T115528Z-pr-2357.md](raw/reviews/20260825T115528Z-pr-2357.md) — 一時的な cycle 2 確認のみ。F-01..F-05 解消は契約テストに既 pin。design_confirmation の文言 nit は新規経験則なし
+* **Update**: [新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する](pages/heuristics/new-test-pins-the-contract-output-it-already-produces.md) — raw/fixes/20260825T112921Z-pr-2357.md を統合
 * **Skip**: [20260825T100148Z-pr-2356.md](raw/reviews/20260825T100148Z-pr-2356.md) — detector-candidate: SKILL.md の同一 fenced bash に fail-loud helper を並べると、先行 helper の非ゼロ rc は後続成功で潰れる。各呼び出しに `|| exit` を付け、契約テストで pin する
 * **lint:warning** — contradictions=0, stale=29, orphans=0, missing_concept=1, unregistered_raw=346, broken_refs=0
 * **Skip**: [20260825T092007Z-pr-2355.md](raw/reviews/20260825T092007Z-pr-2355.md) — rite-plugin: iterate 完了通知の残件欄機械取得と Stop hook 検査は SKILL.md ステップ 5.0.2 と stop-loop-continuation.sh / TC-18-21 に既実装。新規 domain 経験則なし
