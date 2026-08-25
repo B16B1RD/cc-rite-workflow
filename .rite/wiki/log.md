@@ -13,6 +13,7 @@
 * **Update**: [無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する](pages/heuristics/defensive-code-needs-its-own-failure-path-test.md) — raw/fixes/20260825T141757Z-pr-2360.md を統合
 * **Skip**: [20260825T142716Z-pr-2360.md](raw/reviews/20260825T142716Z-pr-2360.md) — 一時的な cycle 2 確認のみ。前回 blocking 3 件の FIXED は防御コード失敗パステストのページに統合済み。新規経験則なし
 * **Skip**: [20260825T133150Z-pr-2359.md](raw/reviews/20260825T133150Z-pr-2359.md) — 一時的なレビュー件数サマリのみ（blocking 0）。OPEN PR の review JSON 保持は実装済みで、再利用可能な新規経験則は抽出できない
+* **lint:warning** — contradictions=0, stale=29, orphans=0, missing_concept=1, unregistered_raw=349, broken_refs=0
 
 ## 2026-08-23
 * **lint:warning** — contradictions=0, stale=21, orphans=0, missing_concept=1, unregistered_raw=342, broken_refs=0
