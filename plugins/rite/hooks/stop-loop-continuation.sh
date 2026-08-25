@@ -6,6 +6,8 @@
 # 出した直後に turn を終了してしまっても、構造的な層で差し戻すことを保証する。
 #   - 継続 sentinel ([review:fix-needed:N] / [fix:pushed] / [fix:pushed-wm-stale]) → 次ループへ自動継続
 #   - 終了 sentinel ([review:mergeable] / [fix:replied-only] / [fix:cancelled-by-user]) → 完了通知を強制
+#     FINALIZE:review:mergeable では transcript 最終 assistant に「未処理 non-blocking」欄があるか
+#     検査し、欠落 / 判定不能は差し戻し reason に欄の再出力を要求する（1 回制限は consume に相乗り）
 # 同じ one-shot handoff 機構で /rite:cleanup の wiki チェーン (cleanup → wiki-ingest →
 # wiki-lint --auto) の未完走も差し戻す:
 #   - ネスト最深部の [lint:returned-to-caller:auto] / [ingest:returned-to-caller] 直後に
@@ -51,10 +53,11 @@ source "$SCRIPT_DIR/control-char-neutralize.sh"
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 
-# Parse session_id + cwd from the Stop payload (single jq invocation).
+# Parse session_id + cwd + transcript_path from the Stop payload (single jq invocation).
 # Unit separator (\x1f) avoids IFS collapsing an empty field and left-shifting cwd.
-_jq_out=$(printf '%s' "$INPUT" | jq -r '[(.session_id // ""), (.cwd // "")] | join("")' 2>/dev/null) || _jq_out=$'\x1f'
-IFS=$'\x1f' read -r SESSION_ID CWD <<< "$_jq_out"
+# transcript_path が string 以外（array/object）なら空扱い = 残件欄検査不能 → fail-safe 差し戻し。
+_jq_out=$(printf '%s' "$INPUT" | jq -r '[(.session_id // ""), (.cwd // ""), ((.transcript_path | if type == "string" then . else "" end) // "")] | join("")' 2>/dev/null) || _jq_out=$'\x1f\x1f'
+IFS=$'\x1f' read -r SESSION_ID CWD TRANSCRIPT_PATH <<< "$_jq_out"
 
 # session_id 不在 → loop state を解決できない → 停止許可 (fail-open)。
 # Claude Code の Stop payload は常に session_id を含むため、空は非 Claude Code クライアント等の例外。
@@ -87,7 +90,38 @@ fi
 case "$HANDOFF" in
   FINALIZE:*)
     _result="${HANDOFF#FINALIZE:}"
-    _reason="rite の review↔fix ループ (/rite:iterate) が終了 sentinel (${_result}) に到達しました。停止する前に /rite:iterate ステップ5 の完了通知 (終了理由 + 次ステップ案内) を必ず出力してください。
+    _nb_note=""
+    case "$_result" in
+      review:mergeable:*)
+        # 残件欄検査。判定不能は差し戻す側へ fail-safe。1 回制限は既存 consume に相乗り。
+        _nb_status=unknown
+        if [ -n "${TRANSCRIPT_PATH:-}" ] && [ -f "$TRANSCRIPT_PATH" ] && [ -r "$TRANSCRIPT_PATH" ]; then
+          _last_text=$(tail -n 200 "$TRANSCRIPT_PATH" | jq -rs '
+            [ .[]
+              | select(.type == "assistant")
+              | .message.content
+              | if type == "string" then .
+                elif type == "array" then ([.[] | select(.type == "text") | .text] | join("\n"))
+                else empty end
+            ] | last // empty
+          ' 2>/dev/null) || _last_text=""
+          if [ -z "$_last_text" ]; then
+            _nb_status=unknown
+          elif printf '%s' "$_last_text" | grep -q '未処理 non-blocking'; then
+            _nb_status=present
+          else
+            _nb_status=missing
+          fi
+        fi
+        case "$_nb_status" in
+          present) _nb_note="完了通知に「未処理 non-blocking:」欄を必ず含めてください（0 件でも省略しない）。" ;;
+          missing) _nb_note="直前の完了通知に「未処理 non-blocking:」欄がありません。欄を含む完了通知を再出力してください（0 件でも省略しない）。" ;;
+          *)       _nb_note="残件欄の有無を判定できなかったため、確認を出す側へ倒します。「未処理 non-blocking:」欄を含む完了通知を再出力してください（0 件でも省略しない）。" ;;
+        esac
+        ;;
+    esac
+    _reason="rite の review↔fix ループ (/rite:iterate) が終了 sentinel (${_result}) に到達しました。停止する前に /rite:iterate ステップ5 の完了通知 (終了理由 + 次ステップ案内) を必ず出力してください。${_nb_note:+
+$_nb_note}
 
 handoff は consume 済みのため、完了通知を出力した後に再度停止すれば停止が許可されます (無限 block しません)。"
     ;;
