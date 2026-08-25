@@ -333,7 +333,7 @@ okf_version: "0.2"
 | [散文修正の完了検査は「削除した旧表現」ではなく「主張した概念」で走査する（逆引き検査）](pages/heuristics/reverse-lookup-concept-sweep-for-prose-fixes.md) | heuristics | 散文の是正を終えたあと、削除・置換した旧表現を全文検索して残存 0 件を確認するのは自然な完了検査だが、**構造的に 4 クラスを取り逃す**。 | 2026-08-01T00:21:06+09:00 | high |
 | [実装が分岐しているならテストも分岐の数だけ要る — 既定構成の経路こそ抜けやすい](pages/heuristics/implementation-branch-count-equals-test-branch-count.md) | heuristics | 同じ責務が設定値によって別実装に分かれているとき（`separate_branch` と `same_branch`、`git cat-file -e` と `[ -f ]` など）、片方のテストは他方を一切担保しない。 | 2026-08-01T00:21:06+09:00 | high |
 | [修飾は主張単位ではなく同格の主張の集合単位でかける](pages/heuristics/qualifier-applies-to-peer-claim-set.md) | heuristics | 同格の主張が並ぶ場所で片方だけに「これは未検証」「これは指示であって観測ではない」といった限定を付けると、**無修飾で残った他方が検証済み・観測事実として読まれる**。 | 2026-08-01T00:21:06+09:00 | high |
-| [一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える](pages/heuristics/generalized-claim-false-while-implementation-specialized.md) | heuristics | 同じ契約が複数箇所に書かれているとき、書き手は場所ごとに違う抽象度で表現しがちである。 | 2026-08-01T23:12:28+09:00 | high |
+| [一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える](pages/heuristics/generalized-claim-false-while-implementation-specialized.md) | heuristics | 同じ契約が複数箇所に書かれているとき、書き手は場所ごとに違う抽象度で表現しがちである。 | 2026-08-26T02:16:20+09:00 | high |
 | [意図的除外と失敗を同じカウンタに載せると、そのカウンタの存在理由が消える](pages/heuristics/intentional-exclusion-not-counted-as-failure.md) | heuristics | 無音の欠損を可視化するために失敗カウンタを新設したら、そこに何を載せるかが設計判断になる。 | 2026-08-01T00:21:06+09:00 | high |
 | [実測アンカーの repro に書くパイプは U+00A6 へ置換する](pages/patterns/verification-anchor-pipe-substitution.md) | patterns | 実測必須ゲートは、レビュー指摘が blocking であるために `Verification:` アンカー付きの再現手順を要求する。 | 2026-08-01T00:21:06+09:00 | high |
 | [テンプレート準拠の fixture では、生成器が実データで作る構造的逸脱を検出できない](pages/heuristics/template-fixture-misses-generator-real-data-deviation.md) | heuristics | 除外規則やパーサの fixture を「そのファイル種別のテンプレート」に合わせて作ると、テンプレートが持つ偶然の性質（当該見出しが最終節にある、など）によって**誤った実装と正しい実装が同じ結果を返す**。 | 2026-08-01T00:21:06+09:00 | high |
@@ -436,4 +436,4 @@ okf_version: "0.2"
 
 - 総ページ数: 422
 - ドメイン別: patterns=103, heuristics=183, anti-patterns=136
-- 最終更新: 2026-08-25T16:50:12Z
+- 最終更新: 2026-08-26T02:16:20+09:00

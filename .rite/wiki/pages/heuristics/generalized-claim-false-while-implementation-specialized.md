@@ -13,9 +13,13 @@ sources:
     resource: "raw/reviews/20260801T131235Z-pr-2081.md"
   - type: "fixes"
     resource: "raw/fixes/20260801T131540Z-pr-2081.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260825T171132Z-pr-2362.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T23:12:28+09:00" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-26T02:16:20+09:00" }
+verified:
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-26T02:16:20+09:00" }
 ---
 
 # 一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える
@@ -43,6 +47,12 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T23:12:28+09:00" }
 **正しい枠取りは repo 内に既にあることが多い**: 同じ事例では `pr-review/SKILL.md` が「検出 regex に match しない finding のうち」と母集団を先に置き、その内側で未判定 / 降格を分けていた。散文を新規に発明せず、**既に正しい面の枠取りを流用する**ことで 4 面の記述が収束した。
 
 なお、この「強すぎる断定」は前 cycle の「弱すぎる断定」（意味論の語彙による言い換え）を修正した結果として生まれている。字句の語彙へ寄せる際に母集団の束縛を落とさないこと（[機械的な述語を文書化するときは意図の語彙ではなく字句の語彙で書く](./mechanical-predicate-prose-lexical-vocabulary.md)）。
+
+### 既存術語の動詞を別意味に流用しない
+
+同じ契約を書く複数サイトでは、既存の術語を**別の意味で再利用**しても偽になる。`review-result-schema.md` の verification 節は「`verification` を設定しない」を未判定（キー欠落＝blocking）の術語として既に使っている。`Measurement-Blocked:` 補記が「`verification` オブジェクトを設定せず」と書くと、helper の実挙動（no-anchor 経路で `measured=false` を書いて non-blocking へ移送）と衝突する。3 値判定の入力集合を増やさないこと（検出 regex に本 marker を足さない）自体は正しいが、未判定と動詞を共有した瞬間、読者はキー欠落と読む。
+
+対策は新しい言い回しを発明せず、既存の最も限定的な面（「helper は本 marker を実測アンカーとして読まない。`Verification:` 欠落と同じ no-anchor 経路で `measured=false` になり、キー欠落にはしない」）へ揃える。確定文は契約テストで一意 pin できる。
 
 ## 関連ページ
 
