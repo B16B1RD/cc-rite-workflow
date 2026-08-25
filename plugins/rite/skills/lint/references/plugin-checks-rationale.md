@@ -99,11 +99,11 @@ The closure reason is deliberately not consulted. The board's Status field carri
 
 ## Number reference check (number-reference-check.sh)
 
-Detects Issue/PR number references (`#NNN`, `Issue #NNN`, `PR #NNN`) that have crept back into the number-free documentation surface — `CHANGELOG.md`, `CHANGELOG.ja.md`, and `plugins/rite/skills/lint/SKILL.md`. Project policy is to drop descriptive Issue/PR numbers and state the rationale directly as prose; release notes habitually re-add the merging PR (`(#NNNN)`) and command docs accrete `Issue #NNN` provenance over time, so a static check surfaces recurrence at lint time rather than at the next manual audit.
+Detects Issue/PR number references (`#NNN`, `Issue #NNN`, `PR #NNN`) that have crept back into the number-free documentation surface — currently `plugins/rite/skills/lint/SKILL.md`. Project policy for that surface is to drop descriptive Issue/PR numbers and state the rationale directly as prose; command docs accrete `Issue #NNN` provenance over time, so a static check surfaces recurrence at lint time rather than at the next manual audit. CHANGELOG.md / CHANGELOG.ja.md are repository documents that keep Issue numbers as pointers and are outside this surface.
 
 The detected token is a 3-4 digit `#NNN` at a word boundary, which subsumes the `Issue #NNN` / `PR #NNN` prose forms. Not matched (structural — no allowlist needed): functional code (`{issue_number}` placeholder, `issue-[0-9]+` branch-name extraction, `/issues/.../` API paths — none contain a literal `#NNN`) and markdown step/phase headings (`## 3.19`, where `#` is followed by `#` or a space, never a digit). 1-2 digit refs and 5+ digit tokens are outside the matched band. Exclusions: self, `plugins/rite/hooks/tests/` (fixtures intentionally embed bad refs), and lines containing the `drift-check-ignore` marker.
 
-**Staged rollout**: the `--all` surface is the number-free guarantee of this work — CHANGELOG (en/ja) and `lint.md`. The wider comment/doc cleanup is owned by sibling work; as those paths are cleaned, append them to `DEFAULT_TARGETS` in the script. CHANGELOG entries describe each change at the feature level and stand without the merging PR number.
+**Staged rollout**: the `--all` surface is the number-free guarantee of this work — `lint.md`. The wider comment/doc cleanup is owned by sibling work; as those paths are cleaned, append them to `DEFAULT_TARGETS` in the script.
 
 ## Sentinel contract check (sentinel-contract-check.sh)
 

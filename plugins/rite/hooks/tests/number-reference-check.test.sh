@@ -1,6 +1,6 @@
 #!/bin/bash
 # Tests for number-reference-check.sh
-# Guards the Issue/PR number-free surface (CHANGELOG, lint.md) against recurrence.
+# Guards the Issue/PR number-free surface (lint.md) against recurrence.
 # Usage: bash plugins/rite/hooks/tests/number-reference-check.test.sh
 set -euo pipefail
 
@@ -23,7 +23,7 @@ fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
 echo "=== number-reference-check.sh tests ==="
 echo ""
 
-mkdir -p "$TEST_DIR/plugins/rite/skills"
+mkdir -p "$TEST_DIR/plugins/rite/skills/lint"
 mkdir -p "$TEST_DIR/plugins/rite/hooks/tests"
 (cd "$TEST_DIR" && git init -q 2>/dev/null || true)
 
@@ -117,18 +117,45 @@ if [ "$rc" -eq 0 ] && ! echo "$output" | grep -q '#1700'; then
 else fail "expected rc=0 with no finding, got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
-# TC-008: --all scans the number-free surface (CHANGELOG present here) and
-#         reports a re-introduced number.
+# TC-008: --all scans the number-free surface (lint/SKILL.md) and reports a
+#         re-introduced number.
 # --------------------------------------------------------------------------
-echo "TC-008: --all scans CHANGELOG surface"
-cat > "$TEST_DIR/CHANGELOG.md" <<'MD'
-## [0.6.0]
+echo "TC-008: --all scans lint/SKILL.md surface"
+mkdir -p "$TEST_DIR/plugins/rite/skills/lint"
+cat > "$TEST_DIR/plugins/rite/skills/lint/SKILL.md" <<'MD'
+## Notes
 - A re-introduced PR number (#1600) sneaks in here.
 MD
 rc=0; output=$(bash "$TARGET" --all --repo-root "$TEST_DIR" 2>&1) || rc=$?
 if [ "$rc" -eq 1 ] && echo "$output" | grep -q '#1600'; then
-  pass "--all detects re-introduced number in CHANGELOG"
+  pass "--all detects re-introduced number in lint/SKILL.md"
 else fail "expected rc=1 with #1600, got rc=$rc: $output"; fi
+
+# --------------------------------------------------------------------------
+# TC-008b: --all does not report CHANGELOG even when it contains a number
+#          (CHANGELOG is a repository document, not the number-free surface).
+# --------------------------------------------------------------------------
+echo "TC-008b: --all ignores CHANGELOG numbers"
+cat > "$TEST_DIR/CHANGELOG.md" <<'MD'
+## [0.6.0]
+- A changelog pointer (#1700) is allowed here.
+MD
+cat > "$TEST_DIR/CHANGELOG.ja.md" <<'MD'
+## [0.6.0]
+- 番号付きポインタ (#1701) はここにあってよい。
+MD
+cat > "$TEST_DIR/plugins/rite/skills/lint/SKILL.md" <<'MD'
+## Notes
+- clean surface with no issue numbers.
+MD
+rc=0; output=$(bash "$TARGET" --all --repo-root "$TEST_DIR" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ] \
+   && ! echo "$output" | grep -q 'CHANGELOG.md' \
+   && ! echo "$output" | grep -q 'CHANGELOG.ja.md' \
+   && ! echo "$output" | grep -q '#1700' \
+   && ! echo "$output" | grep -q '#1701'; then
+  pass "--all ignores CHANGELOG numbers"
+else fail "expected rc=0 with no CHANGELOG findings, got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
 # TC-009 (T-06): a clean surface file → 0 findings
