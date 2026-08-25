@@ -3257,6 +3257,9 @@ echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iterati
 
 **E2E**: standalone と同じ。Decision Log 推奨は自動。Issue 作成・scope 追加・無視は明示承認。Issue 作成を自動決定しない。
 
+既存 Issue #{N} を引き受け先として新規作成を見送る場合は 7.4.4 を必須実行する。CLOSED なら投稿せず 7.2 へ差し戻す（新規の disposition 質問は出さない）。
+rationale: references/design-rationale.md#assignee-handoff-comment
+
 ### 7.4 Disposition Execution
 
 ステップ 7.2-7.3 で確定した候補ごとの選択に応じて分岐する:
@@ -3264,7 +3267,8 @@ echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iterati
 | User selection | Action |
 |-----------------|--------|
 | 別 Issue 作成 | 7.4.1-7.4.2（Issue 作成）を実行 |
-| Decision Log に記録 | 7.4.3（Decision Log Append）を実行 |
+| Decision Log に記録 | 7.4.3（Decision Log Append）を実行。既存 Issue #{N} を引き受け先とする場合は 7.4.4 を先に必須実行し、記録のみで完了扱いにしない |
+| 既存 Issue #{N} で対応（新規作成見送り） | 7.4.4 の後に 7.4.3。CLOSED なら投稿せず 7.2 へ差し戻す |
 | 本 PR で対応 / 無視 | 追加のアクションなし（既存動作を維持） |
 
 「別 Issue 作成」は `gh issue create` + Projects 登録。`/rite:issue-create` Skill は使わない。
@@ -3493,9 +3497,67 @@ Decision Log append failure reasons: (`line_content_write_failure` / `body_fetch
 
 失敗は non-blocking。WARNING + 記録予定行を出し、7.5-7.6 の completion report にも転記する（AC-5）。
 
+#### 7.4.4 引き受け先 Issue への申し送りコメント
+
+既存 Issue `{assignee_issue}` を引き受け先とする候補ごとに実行する。Decision Log のみでは完了にしない。
+rationale: references/design-rationale.md#assignee-handoff-comment
+
+1. `gh issue view {assignee_issue} -R {owner_repo} --json state --jq '.state'`
+2. `OPEN` 以外 → 投稿しない。`[CONTEXT] HANDOFF_COMMENT_REJECTED=1; issue={assignee_issue}; reason=closed` を emit し、当該候補を 7.2 へ差し戻す
+3. `OPEN` → `--body-file` で申し送りを投稿（指摘要約・元 PR・着手時確認点）。成功は `[CONTEXT] HANDOFF_COMMENT_POSTED=1; issue={assignee_issue}`。失敗は WARNING + `[CONTEXT] HANDOFF_COMMENT_FAILED=1; issue={assignee_issue}; reason=gh_comment_failure`（完了レポートに未投稿として列挙）
+
+```bash
+assignee_issue={assignee_issue}
+owner_repo={owner_repo}
+
+state=$(gh issue view "$assignee_issue" -R "$owner_repo" --json state --jq '.state' 2>/dev/null || echo "")
+if [ "$state" != "OPEN" ]; then
+  echo "ERROR: 引き受け先 Issue #${assignee_issue} は ${state:-取得失敗} のため引き受け先にできない。triage 判定を 7.2 へ差し戻す" >&2
+  echo "[CONTEXT] HANDOFF_COMMENT_REJECTED=1; issue=$assignee_issue; reason=closed" >&2
+  exit 0
+fi
+
+tmpfile=$(mktemp)
+trap 'rm -f "$tmpfile"' EXIT
+if ! cat <<'HANDOFF_EOF' > "$tmpfile"
+## 申し送り（PR #{pr_number} レビューのスコープ外指摘）
+
+### 指摘の要約
+{summary}
+
+### 元 PR
+#{pr_number}
+
+### 着手時の確認点
+{check_points}
+HANDOFF_EOF
+then
+  echo "WARNING: 申し送りコメント本文の一時ファイル書き込みに失敗" >&2
+  echo "[CONTEXT] HANDOFF_COMMENT_FAILED=1; issue=$assignee_issue; reason=body_write_failure" >&2
+  exit 0
+fi
+
+if gh issue comment "$assignee_issue" -R "$owner_repo" --body-file "$tmpfile"; then
+  echo "[CONTEXT] HANDOFF_COMMENT_POSTED=1; issue=$assignee_issue"
+else
+  echo "WARNING: 引き受け先 Issue #${assignee_issue} への申し送りコメント投稿に失敗しました" >&2
+  echo "[CONTEXT] HANDOFF_COMMENT_FAILED=1; issue=$assignee_issue; reason=gh_comment_failure" >&2
+fi
+```
+
+Handoff comment failure reasons: (`closed` / `body_write_failure` / `gh_comment_failure`)
+
+| reason | Description |
+|--------|-------------|
+| `closed` | 引き受け先 Issue が OPEN でない（CLOSED または state 取得失敗） |
+| `body_write_failure` | 申し送り本文の一時ファイル書き込みに失敗 |
+| `gh_comment_failure` | `gh issue comment` が非ゼロ終了（権限・ネットワーク） |
+
+CLOSED 差し戻しは当該候補の disposition を完了にしない。投稿失敗は non-blocking だが記録のみで完了扱いにせず、7.5-7.6 の完了レポートに未投稿として列挙する。
+
 ### 7.5-7.6 Append to PR & Report
 
-Issue 一覧を PR コメントへ（`mktemp` + `--body-file`）。`DECISION_LOG_APPENDED=1` の件数と、失敗があれば「手動追記してください」行を completion report に転記する（AC-5）。
+Issue 一覧を PR コメントへ（`mktemp` + `--body-file`）。`DECISION_LOG_APPENDED=1` の件数と、失敗があれば「手動追記してください」行を completion report に転記する（AC-5）。`HANDOFF_COMMENT_POSTED=1` / `HANDOFF_COMMENT_FAILED=1` も転記し、失敗分は未投稿の申し送りとして列挙する。
 
 ### 7.7 Post-condition Gate — Recommendation Disposition Enforcement
 
