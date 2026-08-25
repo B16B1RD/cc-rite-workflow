@@ -1,4 +1,5 @@
 ## 2026-08-26
+* **Update**: [bilingual CHANGELOG は PR 単位で同期し、バージョン見出しは英語、本文には Issue 番号を書いてよい](pages/patterns/bilingual-changelog-sync-conventions.md) — raw/reviews/20260825T190409Z-pr-2369.md を統合
 * **Update**: [一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える](pages/heuristics/generalized-claim-false-while-implementation-specialized.md) — raw/reviews/20260825T171132Z-pr-2362.md を統合
 * **lint:warning** — contradictions=0, stale=29, orphans=0, missing_concept=1, unregistered_raw=354, broken_refs=0
 * **Update**: [bilingual CHANGELOG は PR 単位で同期し、バージョン見出しは英語・新規エントリは number-free に保つ](pages/patterns/bilingual-changelog-sync-conventions.md) — raw/reviews/20260825T182043Z-pr-2364.md を統合

@@ -224,7 +224,7 @@ okf_version: "0.2"
 | [best-effort な静的 matcher hardening は allowlist を COMMON-SET（非網羅）と宣言して review の whack-a-mole を止める](pages/heuristics/best-effort-matcher-declare-common-set-to-stop-whackamole.md) | heuristics | 静的 bash matcher で危険操作を捕捉する security hardening（reviewer の `.git` 書き込み遮断等）は、原理的に列挙を完全にできない（任意の write ツール・難読化形を静的に enumerate できない）。 | 2026-07-16T06:07:53+09:00 | high |
 | [条件付き確認 skip は既存 in-flow 判定と同型にし fail-safe を「確認を出す」側へ倒す](pages/heuristics/conditional-confirmation-skip-isomorphic-failsafe.md) | heuristics | 自律ワークフロー（batch / iterate 等）と矛盾する AskUserQuestion を条件付きで skip する機械判定を新設するときは、(1) 判定ロジックを既存の in-flow 判定（`in_e2e_flow` / batch 判定）と同型に流用し新しいシグナルを発明しない、(2) helper / read 失敗時は必ず「確認を出す（安全側）」へ fail-safe する、(3) WARNING の有無は「失敗が正常系か想定外か」で出し分ける。 | 2026-07-16T09:37:48+09:00 | high |
 | [統合 refactor の追従は「実行テーブル → SoT/docs → references 例示 → 兄弟行」と層を降りる](pages/heuristics/consolidation-refactor-layered-follow-up.md) | heuristics | reviewer registry 統合（13→9 種）の PR は 4 cycle で収束し、各 cycle の指摘は毎回異なる「層」に集中した: cycle 1 = 降格アルゴリズムの SoT・周縁 docs（CHANGELOG.ja / CLAUDE.md / SPEC.md）、cycle 2 = references/ 配下の例示・Few-shot 教材・並行コピー、cycle 3 = 同一リスト内の兄弟行の取りこぼし。 | 2026-07-17T21:04:54+09:00 | high |
-| [bilingual CHANGELOG は PR 単位で同期し、バージョン見出しは英語・新規エントリは number-free に保つ](pages/patterns/bilingual-changelog-sync-conventions.md) | patterns | CHANGELOG.md / CHANGELOG.ja.md のロケールペアは PR 単位で同時更新するのが確立慣習で、片側のみの更新は cross-file impact（i18n parity）違反として HIGH になる。 | 2026-08-25T18:26:48Z | high |
+| [bilingual CHANGELOG は PR 単位で同期し、バージョン見出しは英語、本文には Issue 番号を書いてよい](pages/patterns/bilingual-changelog-sync-conventions.md) | patterns | CHANGELOG の英日ペアは同一 PR で同時更新し、バージョン見出しは英語の bracket 形式を維持する。本文の Issue 番号はリポジトリ文書として書いてよく、機械チェックの走査面には含めない。 | 2026-08-25T19:13:44Z | high |
 | [セキュリティ機械ゲートの部分撤去は撤去前 covered set の superset 維持と per-occurrence fail-closed 判定で収束させる](pages/heuristics/security-gate-partial-removal-convergence.md) | heuristics | denylist / 列挙型の機械ゲートを「一部だけ残して大半を撤去する」リファクタ（例: reviewer read-only 強制の verb 列挙を撤去し .git 書き込み経路のみ機械ゲートに残す）は、単純そうに見えて review-fix ループが長期化しやすい。 | 2026-07-18T11:08:13+09:00 | high |
 | [mktemp テンプレートは `${TMPDIR:-/tmp}` を使う — `/tmp` 直下ハードコードは sandbox で書き込み拒否される](pages/patterns/mktemp-tmpdir-prefix-for-sandbox-compat.md) | patterns | sandbox 有効環境では書き込み許可ディレクトリが `$TMPDIR`（例: `/tmp/claude-1000/...`）に限定される。 | 2026-07-18T23:38:52Z | high |
 | [セッション worktree + sandbox 環境の 3 つの罠: cwd 相対 write-allowlist・`.rite-plugin-root` のブランチ相違・`--show-toplevel` の誤解決](pages/heuristics/worktree-cwd-write-allowlist-and-plugin-root-staleness.md) | heuristics | `multi_session` によるセッション worktree 運用と sandbox 環境を組み合わせたとき、cwd の位置とファイルの実体が乖離する 3 種類の罠が観測された（罠 1・2 は sandbox 対応 PR の作業中に、罠 3 はその後続 PR のレビューで実際に踏んだ）。 | 2026-07-20T07:50:27Z | medium |
@@ -437,4 +437,4 @@ okf_version: "0.2"
 
 - 総ページ数: 423
 - ドメイン別: patterns=103, heuristics=184, anti-patterns=136
-- 最終更新: 2026-08-25T18:26:48Z
+- 最終更新: 2026-08-25T19:13:44Z
