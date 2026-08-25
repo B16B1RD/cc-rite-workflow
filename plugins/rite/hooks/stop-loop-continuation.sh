@@ -6,8 +6,10 @@
 # 出した直後に turn を終了してしまっても、構造的な層で差し戻すことを保証する。
 #   - 継続 sentinel ([review:fix-needed:N] / [fix:pushed] / [fix:pushed-wm-stale]) → 次ループへ自動継続
 #   - 終了 sentinel ([review:mergeable] / [fix:replied-only] / [fix:cancelled-by-user]) → 完了通知を強制
-#     FINALIZE:review:mergeable では transcript 最終 assistant に「未処理 non-blocking」欄があるか
-#     検査し、欠落 / 判定不能は差し戻し reason に欄の再出力を要求する（1 回制限は consume に相乗り）
+#     FINALIZE:* では transcript 最終 assistant に完了通知（`## /rite:iterate 完了` /
+#     `## /rite:iterate 中断`）があるか検査し、出力済みなら差し戻さない。検査不能は差し戻す側へ
+#     fail-safe。FINALIZE:review:mergeable では加えて「未処理 non-blocking」欄を検査し、
+#     欠落 / 判定不能は差し戻し reason に欄の再出力を要求する（1 回制限は consume に相乗り）
 # 同じ one-shot handoff 機構で /rite:cleanup の wiki チェーン (cleanup → wiki-ingest →
 # wiki-lint --auto) の未完走も差し戻す:
 #   - ネスト最深部の [lint:returned-to-caller:auto] / [ingest:returned-to-caller] 直後に
@@ -22,15 +24,17 @@
 #     (例 "WIKICHAIN:cleanup:99") をセットする。チェーンがステップ 12 まで
 #     完走した場合はステップ 12 末尾の flow-state.sh set (--handoff なし) が default-clear する。
 #   - 本 hook は turn 終了時に flow-state.sh consume-handoff で handoff を
-#     **読み取り + 削除** する (one-shot)。非空なら decision:block で停止を差し戻す。
-#     handoff の prefix で reason を分岐する: "/rite:..." は次コマンド再注入、"FINALIZE:..." は
+#     **読み取り + 削除** する (one-shot)。継続 / WIKICHAIN / 未知 prefix は非空なら
+#     decision:block で差し戻す。FINALIZE は完了通知未出力 / 検査不能のときだけ block し、
+#     prefix で reason を分岐する: "/rite:..." は次コマンド再注入、"FINALIZE:..." は
 #     /rite:iterate ステップ5 完了通知の出力を要求、"WIKICHAIN:..." は cleanup チェーンの
 #     残り step (ingest 残処理 → cleanup ステップ 10-12) の継続を要求する。
 #   - 削除済みのため、進捗 (次コマンド実行 / 完了通知出力) の後に再度停止すれば handoff は空
 #     → block しない (無限 block ループ防止)。
 #   - 各継続点で継続 handoff が再セットされるため複数サイクル継続する。
-#     終了点では FINALIZE handoff が 1 回だけ block し、完了通知出力後はクリーン終了する。
-#     WIKICHAIN handoff も 1 回だけ block する one-shot で、チェーン再開後の再停止は許可される。
+#     終了点では、同一ターンの最終 assistant に完了通知が既にあれば block せず、未出力 /
+#     検査不能のときだけ 1 回 block する。WIKICHAIN handoff も 1 回だけ block する one-shot で、
+#     チェーン再開後の再停止は許可される。
 #
 # Exit behavior:
 #   exit 0 (no stdout)        — allow stop (handoff 不在 / loop 外 / 解決失敗 = fail-open)
@@ -81,8 +85,9 @@ fi
 [ -n "$HANDOFF" ] || exit 0
 
 # handoff pending: 停止を差し戻す。handoff の prefix で reason を分岐する。
-# block 可否は「handoff 非空」の軸のみで決まり、prefix は reason 文面の選択にのみ影響する。
-#   FINALIZE:{result}:{pr}  = 終了 sentinel 到達 → /rite:iterate ステップ5 完了通知を強制
+# 継続 / WIKICHAIN / 未知 prefix の block 可否は「handoff 非空」の軸のみ。FINALIZE は
+# 直近 assistant に完了通知が既にあるとき差し戻さない（未出力 / 検査不能は差し戻す側）。
+#   FINALIZE:{result}:{pr}  = 終了 sentinel 到達 → 完了通知未出力ならステップ5 完了通知を強制
 #   WIKICHAIN:{caller}:{pr} = cleanup チェーン未完走 → 残り step の継続を強制
 #   /rite:...               = 継続 sentinel 到達 → 次ループコマンドを再注入
 #   それ以外                 = 未知 prefix。silent に既定動作へ吸収せず WARNING で可視化した上で
@@ -91,27 +96,38 @@ case "$HANDOFF" in
   FINALIZE:*)
     _result="${HANDOFF#FINALIZE:}"
     _nb_note=""
+    _nb_status=""
+    _last_text=""
+    _notice_status=unknown
+    if [ -n "${TRANSCRIPT_PATH:-}" ] && [ -f "$TRANSCRIPT_PATH" ] && [ -r "$TRANSCRIPT_PATH" ]; then
+      _last_text=$(tail -n 200 "$TRANSCRIPT_PATH" | jq -rs '
+        [ .[]
+          | select(.type == "assistant")
+          | .message.content
+          | if type == "string" then .
+            elif type == "array" then ([.[] | select(.type == "text") | .text] | join("\n"))
+            else empty end
+        ] | last // empty
+      ' 2>/dev/null) || _last_text=""
+      if [ -z "$_last_text" ]; then
+        _notice_status=unknown
+      elif grep -qE '## /rite:iterate (完了|中断)' <<< "$_last_text"; then
+        _notice_status=present
+      else
+        _notice_status=missing
+      fi
+    fi
     case "$_result" in
       review:mergeable:*)
         # 残件欄検査。判定不能は差し戻す側へ fail-safe。1 回制限は既存 consume に相乗り。
+        # transcript 抽出は上で済んでいるので、空 / grep だけ見る。
         _nb_status=unknown
-        if [ -n "${TRANSCRIPT_PATH:-}" ] && [ -f "$TRANSCRIPT_PATH" ] && [ -r "$TRANSCRIPT_PATH" ]; then
-          _last_text=$(tail -n 200 "$TRANSCRIPT_PATH" | jq -rs '
-            [ .[]
-              | select(.type == "assistant")
-              | .message.content
-              | if type == "string" then .
-                elif type == "array" then ([.[] | select(.type == "text") | .text] | join("\n"))
-                else empty end
-            ] | last // empty
-          ' 2>/dev/null) || _last_text=""
-          if [ -z "$_last_text" ]; then
-            _nb_status=unknown
-          elif printf '%s' "$_last_text" | grep -q '未処理 non-blocking'; then
-            _nb_status=present
-          else
-            _nb_status=missing
-          fi
+        if [ -z "$_last_text" ]; then
+          _nb_status=unknown
+        elif grep -q '未処理 non-blocking' <<< "$_last_text"; then
+          _nb_status=present
+        else
+          _nb_status=missing
         fi
         case "$_nb_status" in
           present) _nb_note="完了通知に「未処理 non-blocking:」欄を必ず含めてください（0 件でも省略しない）。" ;;
@@ -120,6 +136,20 @@ case "$HANDOFF" in
         esac
         ;;
     esac
+    # 完了通知出力済みの FINALIZE は差し戻さない。mergeable の残件欄欠落 / 判定不能は
+    # 通知があっても差し戻す（残件欄契約が優先）。検査不能は差し戻す側へ fail-safe。
+    if [ "$_notice_status" = "present" ]; then
+      case "$_result" in
+        review:mergeable:*)
+          if [ "$_nb_status" = "present" ]; then
+            exit 0
+          fi
+          ;;
+        *)
+          exit 0
+          ;;
+      esac
+    fi
     _reason="rite の review↔fix ループ (/rite:iterate) が終了 sentinel (${_result}) に到達しました。停止する前に /rite:iterate ステップ5 の完了通知 (終了理由 + 次ステップ案内) を必ず出力してください。${_nb_note:+
 $_nb_note}
 
