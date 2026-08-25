@@ -7,11 +7,10 @@
 # directly as prose; this check guards the cleaned surface against recurrence.
 #
 # Why a separate hook:
-#   Manual removal alone recurs — release notes habitually cite the merging PR
-#   (`(#NNNN)`), and command docs accrete `Issue #NNN` provenance over time. A
-#   static check surfaces re-introduction at lint time instead of at the next
-#   manual audit. Findings are warnings (non-blocking); the convention is
-#   enforced progressively, not by gating CI.
+#   Manual removal alone recurs — command docs accrete `Issue #NNN` provenance
+#   over time. A static check surfaces re-introduction at lint time instead of
+#   at the next manual audit. Findings are warnings (non-blocking); the
+#   convention is enforced progressively, not by gating CI.
 #
 # What is detected:
 #   A 3-4 digit hash-number token: `#[0-9]{3,4}` at a word boundary. This
@@ -31,7 +30,9 @@
 #   - Any line containing the marker `drift-check-ignore`.
 #
 # Scope (--all): the number-free surface this project guarantees and guards —
-#   CHANGELOG.md, CHANGELOG.ja.md, and plugins/rite/skills/lint/SKILL.md. The wider
+#   plugins/rite/skills/lint/SKILL.md. CHANGELOG.md / CHANGELOG.ja.md record
+#   Issue numbers as pointers and are outside this surface (repository
+#   documents, not marketplace-distributed plugin files). The wider
 #   comment/doc cleanup is handled by sibling work; as those land, their cleaned
 #   paths can be appended to DEFAULT_TARGETS below.
 #
@@ -43,9 +44,9 @@
 set -uo pipefail
 
 # The number-free surface guarded by --all (repo-relative paths).
+# CHANGELOG.md / CHANGELOG.ja.md are omitted: they are repository documents
+# that keep Issue numbers as pointers, not the marketplace number-free set.
 DEFAULT_TARGETS=(
-  "CHANGELOG.md"
-  "CHANGELOG.ja.md"
   "plugins/rite/skills/lint/SKILL.md"
 )
 
@@ -62,8 +63,7 @@ usage() {
 Usage: number-reference-check.sh [options]
 
 Options:
-  --all              Scan the number-free surface (CHANGELOG.md, CHANGELOG.ja.md,
-                     plugins/rite/skills/lint/SKILL.md)
+  --all              Scan the number-free surface (plugins/rite/skills/lint/SKILL.md)
   --target FILE      Check FILE (repeatable). Path relative to repo root.
   --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
   --quiet            Suppress progress/summary output on stderr
