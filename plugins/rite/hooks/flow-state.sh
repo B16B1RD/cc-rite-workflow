@@ -580,14 +580,24 @@ cmd_reap_issue() {
     return 0
   }
 
-  local f sid issue_n active q qsid has others now updated
+  local f sid issue_n active q has others now updated jq_err=""
+  # RETURN trap は使わない: ネストした _reap_lock の return で発火し loop 途中で消える。
+  jq_err=$(mktemp 2>/dev/null) || jq_err=""
   if [ -d "$SESSION_DIR" ]; then
     for f in "$SESSION_DIR"/*.flow-state; do
       [ -f "$f" ] || continue
       sid=$(basename "$f" .flow-state)
-      issue_n=$(jq -r '.issue_number // empty' "$f" 2>/dev/null) || issue_n=""
+      if ! issue_n=$(jq -r '.issue_number // empty' "$f" 2>"${jq_err:-/dev/null}"); then
+        echo "WARNING: reap-issue: flow-state 読み取り失敗: $(printf '%s' "$f" | neutralize_ctrl)" >&2
+        _emit_jq_err_snippet "$jq_err"
+        continue
+      fi
       [ "$issue_n" = "$issue" ] || continue
-      active=$(jq -r '.active // false' "$f" 2>/dev/null) || active="false"
+      if ! active=$(jq -r '.active // false' "$f" 2>"${jq_err:-/dev/null}"); then
+        echo "WARNING: reap-issue: flow-state 読み取り失敗: $(printf '%s' "$f" | neutralize_ctrl)" >&2
+        _emit_jq_err_snippet "$jq_err"
+        continue
+      fi
       if [ "$active" = "true" ]; then
         echo "WARNING: reap-issue: stale flow-state (active=true) for issue #${issue}: $(printf '%s' "$f" | neutralize_ctrl)" >&2
         cmd_deactivate --session "$sid" --next "none" \
@@ -607,25 +617,39 @@ cmd_reap_issue() {
     now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
     for q in "$queue_dir"/run-queue-*.json; do
       [ -f "$q" ] || continue
-      qsid=$(basename "$q" .json)
-      qsid="${qsid#run-queue-}"
-      has=$(jq --argjson n "$issue" '(.issues // []) | index($n) != null' "$q" 2>/dev/null) || has="false"
+      if ! has=$(jq --argjson n "$issue" '(.issues // []) | index($n) != null' "$q" 2>"${jq_err:-/dev/null}"); then
+        echo "WARNING: reap-issue: run-queue 読み取り失敗: $(printf '%s' "$q" | neutralize_ctrl)" >&2
+        _emit_jq_err_snippet "$jq_err"
+        continue
+      fi
       [ "$has" = "true" ] || continue
-      active=$(jq -r '.active // false' "$q" 2>/dev/null) || active="false"
+      if ! active=$(jq -r '.active // false' "$q" 2>"${jq_err:-/dev/null}"); then
+        echo "WARNING: reap-issue: run-queue 読み取り失敗: $(printf '%s' "$q" | neutralize_ctrl)" >&2
+        _emit_jq_err_snippet "$jq_err"
+        continue
+      fi
       [ "$active" = "true" ] || continue
-      others=$(jq --argjson n "$issue" \
-        '((.issues // [])[(.cursor // 0):] | map(select(. != $n)) | length)' "$q" 2>/dev/null) || others=""
+      if ! others=$(jq --argjson n "$issue" \
+        '((.issues // [])[(.cursor // 0):] | map(select(. != $n)) | length)' "$q" 2>"${jq_err:-/dev/null}"); then
+        echo "WARNING: reap-issue: run-queue 読み取り失敗: $(printf '%s' "$q" | neutralize_ctrl)" >&2
+        _emit_jq_err_snippet "$jq_err"
+        continue
+      fi
       if [ "$others" != "0" ]; then
         continue
       fi
-      updated=$(jq --arg ts "$now" '.active = false | .updated_at = $ts' "$q" 2>/dev/null) || {
+      updated=$(jq --arg ts "$now" '.active = false | .updated_at = $ts' "$q" 2>"${jq_err:-/dev/null}") || {
         echo "WARNING: reap-issue: run-queue 非 active 化失敗: $(printf '%s' "$q" | neutralize_ctrl)" >&2
+        _emit_jq_err_snippet "$jq_err"
+        _reap_lock "${q}.lock"
         continue
       }
       _atomic_write "$q" "$updated" \
         || echo "WARNING: reap-issue: run-queue 非 active 化失敗: $(printf '%s' "$q" | neutralize_ctrl)" >&2
+      _reap_lock "${q}.lock"
     done
   fi
+  [ -n "$jq_err" ] && rm -f "$jq_err"
   return 0
 }
 

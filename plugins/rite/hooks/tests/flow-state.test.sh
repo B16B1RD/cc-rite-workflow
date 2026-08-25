@@ -1807,8 +1807,14 @@ assert "T-01: batch run-queue with remaining issues stays active" "true" \
   "$(jq -r .active "$d/.rite/state/run-queue-${sid}.json")"
 assert "T-01: unrelated issue run-queue stays active" "true" \
   "$(jq -r .active "$d/.rite/state/run-queue-${sid_c}.json")"
-assert_grep "T-01: stale active flow-state is warned" "$stderr_reap01" \
-  'stale flow-state \(active=true\) for issue #42'
+assert_grep "T-01: stale warning names the current-session flow-state path" "$stderr_reap01" \
+  "stale flow-state \\(active=true\\) for issue #42: .*${sid}\\.flow-state"
+assert_grep "T-01: stale warning names the other-session flow-state path" "$stderr_reap01" \
+  "stale flow-state \\(active=true\\) for issue #42: .*${sid_b}\\.flow-state"
+assert "T-01: deactivated run-queue json.lock reaped" "absent" \
+  "$([ -e "$d/.rite/state/run-queue-${sid_b}.json.lock" ] && echo present || echo absent)"
+assert "T-01: untouched batch run-queue json.lock not created" "absent" \
+  "$([ -e "$d/.rite/state/run-queue-${sid}.json.lock" ] && echo present || echo absent)"
 
 echo ""
 echo "=== T-02: reap-issue reaps another session's flow-state and lock (AC-1) ==="
@@ -1851,8 +1857,32 @@ assert_grep "T-03: WARNING names the failed lock path" "$stderr_reap03" \
   "lock 回収失敗: .*${sid_b}\\.flow-state\\.lock"
 assert "T-03: orphan lock without sibling flow-state is removed" "absent" \
   "$([ -e "$d/.rite/sessions/${sid_orphan}.flow-state.lock" ] && echo present || echo absent)"
+assert "T-03: deactivated run-queue json.lock reaped" "absent" \
+  "$([ -e "$d/.rite/state/run-queue-${sid_b}.json.lock" ] && echo present || echo absent)"
 rmdir "$d/.rite/sessions/${sid_b}.flow-state.lock" 2>/dev/null || true
 rm -f "$stderr_reap03"
+
+echo ""
+echo "=== T-04: corrupt matching flow-state WARNs with path and continues ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+sid_b="bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
+_write_reap_fs "$d" "$sid" 42 true
+printf '{not-json' > "$d/.rite/sessions/${sid_b}.flow-state"
+: > "$d/.rite/sessions/${sid_b}.flow-state.lock"
+_write_reap_q "$d" "$sid" '[42]' 0 true
+stderr_reap04="$(mktemp)"
+set +e
+(cd "$d" && bash "$HOOK" reap-issue --issue 42) 2>"$stderr_reap04"
+rc_reap04=$?
+set -e
+assert "T-04: reap-issue exits 0 on corrupt sibling" "0" "$rc_reap04"
+assert "T-04: valid session flow-state still deactivated" "false" \
+  "$(jq -r .active "$d/.rite/sessions/${sid}.flow-state")"
+assert_grep "T-04: WARNING names the corrupt flow-state path" "$stderr_reap04" \
+  "flow-state 読み取り失敗: .*${sid_b}\\.flow-state"
+assert "T-04: corrupt flow-state is left in place" "present" \
+  "$([ -e "$d/.rite/sessions/${sid_b}.flow-state" ] && echo present || echo absent)"
+rm -f "$stderr_reap04"
 
 if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del + non-UUID acceptance (Layer 1 format-agnostic contract pin) + phase-transition append log + reap-issue cross-session deactivate"; then
   exit 1
