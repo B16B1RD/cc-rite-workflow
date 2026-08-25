@@ -97,7 +97,7 @@ grep ヒット行のうち:
 
 | # | 箇所 | 内容 | 距離 |
 |---|---|---|---|
-| 1 | `review/SKILL.md` ステップ7.1 → 7.7 / 8.0.2 | `PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={ID}` を emit、review-fix ループの複数 cycle を跨いで2箇所（gate + gate reference）で consume。`iteration_id` による「最新行採用」規約で cycle 間の stale match を防止済み | 中〜高（cycle跨ぎ） |
+| 1 | `review/SKILL.md` ステップ7.1 → 7.7 / 8.0.2 | `PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={ID}; mode={mode}; choice={choice}; reason={reason}` を確認完了後に emit、review-fix ループの複数 cycle を跨いで2箇所（gate + gate reference）で consume。`iteration_id` による「最新行採用」に加え、`mode=` / `choice=` / `reason=` 欠落は未確認 emit として採用しない | 中〜高（cycle跨ぎ） |
 | 2 | `fix/SKILL.md` ステップ1.0.1 → 1.2.0 | `REVIEW_FILE_PATH` / `REMAINING_ARGS` を emit、100行以上先の別ステップで `{review_file_path_from_phase_1_0_1}` として参照。さらに `REVIEW_SOURCE=<source>; review_source_path=<path>; pr_number=<n>` を別プロセス（helper script）が emit し、下流の severity_map 構築ブロックで再度参照 | 高（多段中継） |
 | 3 | `resume/SKILL.md` `WT_ENSURE` 分岐表（SoT）→ `fix/SKILL.md`, `review/SKILL.md` 等 | resume 側で定義した分岐表を**別スキルファイル**が「resume の SoT 表に従う」と参照する、ファイル境界を跨ぐ最も遠いパターン | 最高（ファイル跨ぎ） |
 | 4 | `cleanup/SKILL.md` ステップ5 → ステップ12 | `BRANCH_DELETED` / `BRANCH_DELETE_DEFERRED` 等の複数排他的 marker を emit、100行以上先の完了レポート生成ステップで分岐 | 中 |

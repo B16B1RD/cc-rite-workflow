@@ -120,6 +120,24 @@ assert_grep 'review auto-records reversible recommendations' \
   "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'Decision Log への記録である候補は可逆なので質問せず推奨で処理'
 assert_grep 'review legacy gate covers automatic disposition' \
   "$ROOT/plugins/rite/skills/pr-review/SKILL.md" '自動 Decision Log 経路でも emit する'
+assert_grep 'review interactive triage waits for confirmation before write' \
+  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" '回答を得るまで 7.4（Decision Log 追記・Issue 作成）を実行しない'
+assert_grep 'review e2e missing marker fail-safes to ask' \
+  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" '欠落は `false`（確認を出す側）'
+assert_grep 'review undecidable triage fail-safes to ask' \
+  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" '判定不能時は確認を出す側へ倒す'
+assert_grep 'review phase7 producer echo records confirmation evidence' \
+  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" \
+  'echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iteration_id}; mode={mode}; choice={choice}; reason={reason}"'
+assert_grep 'review phase7 consumer greps confirmation evidence' \
+  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" \
+  '[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={ID}; mode={mode}; choice={choice}; reason={reason}'
+assert_grep 'review phase7 gate rejects emit-before-evidence' \
+  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'sentinel が確認証跡を欠く（emit-before-evidence）'
+assert_grep 'review 8.0.2 emit-before-evidence ACTION returns to 7.2 only' \
+  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'Return to ステップ 7.2 only'
+assert_grep 'review 8.0.2 ACTION limits 7.1 re-extract to absent or stale' \
+  "$ROOT/plugins/rite/skills/pr-review/SKILL.md" '7.1 からの再抽出は sentinel 不在 / stale に限定する'
 assert_not_grep 'iterate overview does not restore review error questions' \
   "$ROOT/plugins/rite/skills/iterate/SKILL.md" 'その他 → AskUserQuestion'
 assert_not_grep 'iterate overview does not restore fix error questions' \

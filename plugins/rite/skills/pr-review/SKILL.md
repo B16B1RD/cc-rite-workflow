@@ -3212,7 +3212,15 @@ Source A は `Likelihood-Evidence:` の有無を保持する。
 
 ### 7.2-7.3 推奨決定 + User Confirmation
 
-0 件: ステップ 7 を skip（**7.7 も skip**）。1+: Decision Log への記録である候補は可逆なので質問せず推奨で処理する。別 Issue 作成・本 PR への scope 追加・無視だけ `AskUserQuestion`。
+0 件: ステップ 7 を skip（**7.7 も skip**）。1+: 下記モード表で分岐する。
+**モード判定**: ステップ 3.3 の `PR_REVIEW_IN_E2E` を読む。欠落は `false`（確認を出す側）。
+rationale: references/design-rationale.md#phase7-askuser-evidence
+
+| `PR_REVIEW_IN_E2E` | 分岐 |
+|---|---|
+| `true` | E2E / batch。Decision Log への記録である候補は可逆なので質問せず推奨で処理する。別 Issue 作成・本 PR への scope 追加・無視だけ `AskUserQuestion` |
+| `false` | 対話。全候補を `AskUserQuestion` で確認する。**回答を得るまで 7.4（Decision Log 追記・Issue 作成）を実行しない** |
+
 **推奨機械決定表**（裁量禁止）:
 
 | 候補の性質 | 推奨 |
@@ -3224,17 +3232,25 @@ Source A は `Likelihood-Evidence:` の有無を保持する。
 
 **MANDATORY — ステップ 7.2 disposition-entry sentinel emit**:
 
-disposition 開始直前（自動 Decision Log では記録直前、質問経路では `AskUserQuestion` 直前）に sentinel を emit する。marker 名は変えない:
+sentinel は **確認完了後**（対話: 選択値を得た後 / E2E 自動: 推奨機械決定表の判定を確定した後）に emit する。marker 名は変えない。`mode=` と `choice=` と `reason=` を必須とする（自動 Decision Log 経路でも emit する）。**7.4 は本 sentinel の後でのみ実行する**:
 
 ```bash
 # LLM (Claude) は以下を Bash tool で実行する前に literal 置換すること:
 # - {N} → ステップ 7.1 で抽出した candidate 総数 (Source A + Source B、dedup 後の正整数)
 # - {iteration_id} → ステップ 7.1 で生成した一意 ID (例: pr_number-$(date +%s) 形式)
+# - {mode} → ask | auto
+# - {choice} → 対話の選択値（自動は decision_log）。空禁止
+# - {reason} → user_answer | reversible_decision_log
 # Bash 変数 (${candidate_count} 等) は Bash tool 呼び出し間で継承されないため使用不可
-echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iteration_id}" >&2
+echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iteration_id}; mode={mode}; choice={choice}; reason={reason}" >&2
 ```
 
 `{N}` は 7.1 の合算。`{iteration_id}` は iteration 一意（推奨: `${pr_number}-$(date +%s)`）。7.7 / 8.0.2 が読む。stderr に MUST emit。
+- 対話: `mode=ask; choice={ユーザー選択}; reason=user_answer`
+- E2E 自動 Decision Log: `mode=auto; choice=decision_log; reason=reversible_decision_log`
+- E2E で質問した候補: `mode=ask; choice={ユーザー選択}; reason=user_answer`
+
+判定不能時は確認を出す側へ倒す。Issue 作成を自動決定しない。
 
 **AskUserQuestion prompt text**:
 
@@ -3255,7 +3271,7 @@ echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iterati
 - **Severity in Issue body**: `推奨事項（重要度なし）`
 - **File:line**: Use mentioned path if available; otherwise `特定ファイルなし`
 
-**E2E**: standalone と同じ。Decision Log 推奨は自動。Issue 作成・scope 追加・無視は明示承認。Issue 作成を自動決定しない。
+**E2E**: Decision Log 推奨は自動。Issue 作成・scope 追加・無視は明示承認。Issue 作成を自動決定しない。対話は 7.2-7.3 モード表のとおり確認後にのみ 7.4 へ進む。
 
 「別 Issue 作成」で既存 Issue #{N} へ新規作成を見送る場合の実行は 7.4 表。CLOSED なら当該候補について 7.2 の既存 4 択を再掲する（新規の disposition 質問種別は出さない）。
 rationale: references/design-rationale.md#assignee-handoff-comment
@@ -3580,16 +3596,17 @@ Issue 一覧を PR コメントへ（`mktemp` + `--body-file`）。`DECISION_LOG
 Search the conversation context (ステップ 7.2 emit site) for the following sentinel pattern:
 
 ```
-[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={ID}
+[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={ID}; mode={mode}; choice={choice}; reason={reason}
 ```
 
-`{N}` は Step 1 の件数、`{ID}` は 7.2 の iteration。複数行なら **最大 iteration_id** を採用する。
+`{N}` は Step 1 の件数、`{ID}` は 7.2 の iteration。複数行なら **最大 iteration_id** を採用する。`mode=` と `choice=` と `reason=` が無い行は未確認の emit として採用しない。
 
 **Step 3 — Routing**:
 
 | Condition | Action |
 |-----------|--------|
-| Latest sentinel found with `candidates >= 1` AND iteration_id matches current cycle | Gate passes — proceed to ステップ 8.0 (Defense-in-Depth State Update) |
+| Latest sentinel found with `candidates >= 1` AND iteration_id matches current cycle AND `mode=` / `choice=` / `reason=` が全て非空 | Gate passes — proceed to ステップ 8.0 (Defense-in-Depth State Update) |
+| Latest sentinel found with matching iteration_id but `mode=` / `choice=` / `reason=` のいずれかが欠落 | **ERROR**: sentinel が確認証跡を欠く（emit-before-evidence）。Execute the ACTION below |
 | Latest sentinel NOT found AND candidate_count >= 1 | **ERROR**: ステップ 7.2 was skipped in current cycle. Execute the ACTION below |
 | Latest sentinel found but iteration_id is **stale** (matches cycle N-1, not current cycle N) | **ERROR**: ステップ 7.2 was skipped in current cycle (cycle N-1 sentinel false-positive avoided). Execute the ACTION below |
 | Sentinel found but `candidates == 0` | Defensive observation: ステップ 7.1 / 7.2 count mismatch (e.g., dedup edge case). Display WARNING and proceed (non-blocking, gate passes); the discrepancy is observability-only. ステップ 7.2-7.3 の "If 0 candidates: Skip ステップ 7" 規約が成立しているため、本行は通常到達不能 dead branch だが defense-in-depth として残す |
@@ -3600,7 +3617,7 @@ Search the conversation context (ステップ 7.2 emit site) for the following s
 ERROR: ステップ 7.7 post-condition gate failed.
 candidate_count = {N} (>= 1) but no [CONTEXT] PHASE_7_ASKUSER_INVOKED sentinel found.
 This means ステップ 7.2 disposition handling was NOT executed — silent skip of recommendation disposition.
-ACTION: Return to ステップ 7.2, emit the sentinel, auto-record reversible Decision Log recommendations and ask only user-specific/irreversible candidates, then re-enter ステップ 7.7.
+ACTION: Return to ステップ 7.2, complete confirmation (対話は回答後、E2E 自動は判定確定後), emit the sentinel with mode/choice/reason, then re-enter ステップ 7.7. Do not run 7.4 before that sentinel.
 ⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until ステップ 7.2 has been executed and the sentinel is emitted.
 ANTI-PATTERN reference: This gate enforces the prohibition declared in
 .rite/wiki/pages/anti-patterns/aggregate-recommendation-label-evasion.md
@@ -3724,15 +3741,25 @@ rationale: references/design-rationale.md#w-phase-gate-sole
 
 7.7 を cross-reference する result-emit 前の defense-in-depth（sentinel 有無。7.7 実行の有無には依存しない）。
 **Condition**: `candidate_count >= 1`。0 なら skip。
-**Check**: 最新 `PHASE_7_ASKUSER_INVOKED`（iteration_id 最大）。
+**Check**: 最新 `PHASE_7_ASKUSER_INVOKED`（iteration_id 最大）。`mode=` / `choice=` / `reason=` が全て非空であること。
 **Routing** (8.0.1 と対称):
 
 | Condition | Action |
 |-----------|--------|
 | `candidate_count == 0` (ステップ 7 skipped) | Gate passes — proceed to the next gate in the 8.0 evaluation order |
-| Latest sentinel found with `candidates >= 1` AND iteration_id matches current cycle | Gate passes — proceed to the next gate in the 8.0 evaluation order |
+| Latest sentinel found with `candidates >= 1` AND iteration_id matches current cycle AND `mode=` / `choice=` / `reason=` が全て非空 | Gate passes — proceed to the next gate in the 8.0 evaluation order |
+| Latest sentinel found with matching iteration_id but `mode=` / `choice=` / `reason=` のいずれかが欠落 | **ERROR**: sentinel が確認証跡を欠く。Execute ACTION below |
 | Latest sentinel NOT found AND `candidate_count >= 1` | **ERROR**: ステップ 7 entire procedure (7.1-7.7) was skipped. Execute ACTION below |
 | Latest sentinel found but iteration_id is stale (cycle N-1, not current cycle N) | **ERROR**: ステップ 7 was skipped in current cycle. Execute ACTION below |
+
+**On ERROR** (`mode=` / `choice=` / `reason=` 欠落 = emit-before-evidence。sentinel は current-cycle に存在する):
+
+```
+ERROR: ステップ 8.0.2 ステップ 7 Post-condition Gate failed.
+current-cycle [CONTEXT] PHASE_7_ASKUSER_INVOKED sentinel は存在するが確認証跡 (mode=/choice=/reason=) を欠く（emit-before-evidence）。
+ACTION: Return to ステップ 7.2 only. complete confirmation (対話は回答後、E2E 自動は判定確定後), emit the sentinel with mode/choice/reason, then re-enter ステップ 8.0. Do not run 7.4 before that sentinel. Do not re-run 7.1.
+⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until ステップ 7 has been executed for the current cycle.
+```
 
 **On ERROR** (sentinel absent or stale, `candidate_count >= 1`):
 
@@ -3740,7 +3767,7 @@ rationale: references/design-rationale.md#w-phase-gate-sole
 ERROR: ステップ 8.0.2 ステップ 7 Post-condition Gate failed.
 candidate_count = {N} (>= 1) but no current-cycle [CONTEXT] PHASE_7_ASKUSER_INVOKED sentinel found.
 This means ステップ 7 (entire procedure 7.1 candidate extraction → 7.2 disposition handling → 7.7 gate) was NOT executed in the current review cycle.
-ACTION: Return to ステップ 7.1, extract candidates, handle reversible recommendations automatically and ask only user-specific/irreversible candidates, emit sentinel, then re-enter ステップ 8.0.
+ACTION: Return to ステップ 7.2, complete confirmation (対話は回答後、E2E 自動は判定確定後), emit the sentinel with mode/choice/reason, then re-enter ステップ 8.0. Do not run 7.4 before that sentinel. 7.1 からの再抽出は sentinel 不在 / stale に限定する。
 ⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until ステップ 7 has been executed for the current cycle.
 ```
 
