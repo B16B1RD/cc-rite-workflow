@@ -24,8 +24,9 @@
 #     (例 "WIKICHAIN:cleanup:99") をセットする。チェーンがステップ 12 まで
 #     完走した場合はステップ 12 末尾の flow-state.sh set (--handoff なし) が default-clear する。
 #   - 本 hook は turn 終了時に flow-state.sh consume-handoff で handoff を
-#     **読み取り + 削除** する (one-shot)。非空なら decision:block で停止を差し戻す。
-#     handoff の prefix で reason を分岐する: "/rite:..." は次コマンド再注入、"FINALIZE:..." は
+#     **読み取り + 削除** する (one-shot)。継続 / WIKICHAIN / 未知 prefix は非空なら
+#     decision:block で差し戻す。FINALIZE は完了通知未出力 / 検査不能のときだけ block し、
+#     prefix で reason を分岐する: "/rite:..." は次コマンド再注入、"FINALIZE:..." は
 #     /rite:iterate ステップ5 完了通知の出力を要求、"WIKICHAIN:..." は cleanup チェーンの
 #     残り step (ingest 残処理 → cleanup ステップ 10-12) の継続を要求する。
 #   - 削除済みのため、進捗 (次コマンド実行 / 完了通知出力) の後に再度停止すれば handoff は空
@@ -110,7 +111,7 @@ case "$HANDOFF" in
       ' 2>/dev/null) || _last_text=""
       if [ -z "$_last_text" ]; then
         _notice_status=unknown
-      elif printf '%s' "$_last_text" | grep -qE '## /rite:iterate (完了|中断)'; then
+      elif grep -qE '## /rite:iterate (完了|中断)' <<< "$_last_text"; then
         _notice_status=present
       else
         _notice_status=missing
@@ -119,15 +120,14 @@ case "$HANDOFF" in
     case "$_result" in
       review:mergeable:*)
         # 残件欄検査。判定不能は差し戻す側へ fail-safe。1 回制限は既存 consume に相乗り。
+        # transcript 抽出は上で済んでいるので、空 / grep だけ見る。
         _nb_status=unknown
-        if [ -n "${TRANSCRIPT_PATH:-}" ] && [ -f "$TRANSCRIPT_PATH" ] && [ -r "$TRANSCRIPT_PATH" ]; then
-          if [ -z "$_last_text" ]; then
-            _nb_status=unknown
-          elif printf '%s' "$_last_text" | grep -q '未処理 non-blocking'; then
-            _nb_status=present
-          else
-            _nb_status=missing
-          fi
+        if [ -z "$_last_text" ]; then
+          _nb_status=unknown
+        elif grep -q '未処理 non-blocking' <<< "$_last_text"; then
+          _nb_status=present
+        else
+          _nb_status=missing
         fi
         case "$_nb_status" in
           present) _nb_note="完了通知に「未処理 non-blocking:」欄を必ず含めてください（0 件でも省略しない）。" ;;

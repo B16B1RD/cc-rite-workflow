@@ -1,7 +1,8 @@
 #!/bin/bash
 # Tests for plugins/rite/hooks/stop-loop-continuation.sh
-# Verifies the Stop hook re-injects the review↔fix loop continuation command when a
-# handoff marker is present, allows the stop otherwise, and consumes the marker one-shot.
+# Verifies the Stop hook re-injects continuation commands when a handoff is pending,
+# allows FINALIZE when the last assistant already has an iterate completion notice,
+# fail-safes to bounce when inspect cannot run, and consumes the marker one-shot.
 set -euo pipefail
 
 pr_text() { printf 'PR #%s' "$1"; }
@@ -559,6 +560,8 @@ EOF
 out=$(jq -nc --arg c "$d22" --arg s "$SID" --arg tp "$tp22" \
   '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
 assert "TC-22: replied-only notice allows stop (no output)" "" "$out"
+sf22=$(state_file_for "$d22")
+assert "TC-22: handoff consumed even when allowing" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$sf22")"
 rm -f "$tp22"
 
 # --- TC-23: FINALIZE:fix:cancelled-by-user + 中断通知あり → 差し戻さない (AC-1) ---
@@ -574,6 +577,8 @@ EOF
 out=$(jq -nc --arg c "$d23" --arg s "$SID" --arg tp "$tp23" \
   '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
 assert "TC-23: cancelled notice allows stop (no output)" "" "$out"
+sf23=$(state_file_for "$d23")
+assert "TC-23: handoff consumed even when allowing" "ABSENT" "$(jq -r '.handoff // "ABSENT"' "$sf23")"
 rm -f "$tp23"
 
 # --- TC-24: FINALIZE + 最終 assistant が空 / jq 不能 → 差し戻す (AC-3 / T-03) ---
@@ -615,6 +620,74 @@ else
 fi
 rm -f "$tp25"
 
-if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (review↔fix loop continuation + FINALIZE terminal backstop + skip bounce when iterate notice already present + remaining-field inspect on mergeable + WIKICHAIN cleanup-chain gate + C1 8-bit coverage via shared neutralize_ctrl + JSON emit fallback C0 neutralization + neutralize-failure placeholder degradation)"; then
+# --- TC-26: parseable transcript, last assistant has no notice heading → bounce (AC-2 production) ---
+echo ""
+echo "=== TC-26: parseable transcript without notice heading bounces (AC-2 missing branch) ==="
+d26=$(new_sandbox)
+RITE_STATE_ROOT="$d26" bash "$FS" set --phase fix --issue 2349 --branch b --pr 99 \
+  --next n --handoff "FINALIZE:fix:replied-only:99" --session "$SID" >/dev/null
+tp26=$(mktemp)
+cat > "$tp26" <<'EOF'
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"[fix:replied-only] 指摘に返信して完了しました\n"}]}}
+EOF
+out=$(jq -nc --arg c "$d26" --arg s "$SID" --arg tp "$tp26" \
+  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
+assert "TC-26: decision=block (missing notice with parseable last text)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+if printf '%s' "$out" | jq -r '.reason // ""' | grep -q "完了通知"; then
+  pass "TC-26: missing-notice path still requests the completion notice"
+else
+  fail "TC-26: missing-notice reason lost completion-notice directive: $out"
+fi
+rm -f "$tp26"
+
+# --- TC-27: mergeable remaining field present but heading absent → bounce ---
+echo ""
+echo "=== TC-27: mergeable remaining field without heading still bounces ==="
+d27=$(new_sandbox)
+RITE_STATE_ROOT="$d27" bash "$FS" set --phase review --issue 2349 --branch b --pr 99 \
+  --next n --handoff "FINALIZE:review:mergeable:99" --session "$SID" >/dev/null
+tp27=$(mktemp)
+cat > "$tp27" <<'EOF'
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"未処理 non-blocking: 0 件\n"}]}}
+EOF
+out=$(jq -nc --arg c "$d27" --arg s "$SID" --arg tp "$tp27" \
+  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
+assert "TC-27: decision=block (remaining field does not substitute for heading)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+rm -f "$tp27"
+
+# --- TC-28: replied-only + unparseable transcript → bounce (AC-3 isolated from remaining-field) ---
+echo ""
+echo "=== TC-28: replied-only unparseable transcript fail-safe bounces (AC-3 isolated) ==="
+d28=$(new_sandbox)
+RITE_STATE_ROOT="$d28" bash "$FS" set --phase fix --issue 2349 --branch b --pr 99 \
+  --next n --handoff "FINALIZE:fix:replied-only:99" --session "$SID" >/dev/null
+tp28=$(mktemp)
+printf 'not-json\n' > "$tp28"
+out=$(jq -nc --arg c "$d28" --arg s "$SID" --arg tp "$tp28" \
+  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
+assert "TC-28: decision=block (inspect-fail without remaining-field contract)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+rm -f "$tp28"
+
+# --- TC-29: heading at start of 128KiB last text → allow (pipefail SIGPIPE pin) ---
+echo ""
+echo "=== TC-29: heading at start of large last text allows stop (no SIGPIPE false missing) ==="
+d29=$(new_sandbox)
+RITE_STATE_ROOT="$d29" bash "$FS" set --phase fix --issue 2349 --branch b --pr 99 \
+  --next n --handoff "FINALIZE:fix:replied-only:99" --session "$SID" >/dev/null
+tp29=$(mktemp)
+python3 - "$tp29" <<'PY'
+import json, sys
+path = sys.argv[1]
+text = "## /rite:iterate 完了\n" + ("x" * 131072)
+rec = {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": text}]}}
+with open(path, "w", encoding="utf-8") as f:
+    f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+PY
+out=$(jq -nc --arg c "$d29" --arg s "$SID" --arg tp "$tp29" \
+  '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:false}' | bash "$HOOK")
+assert "TC-29: large heading-at-start allows stop (no output)" "" "$out"
+rm -f "$tp29"
+
+if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (review↔fix loop continuation + FINALIZE terminal backstop + skip bounce when iterate notice already present + remaining-field inspect on mergeable + WIKICHAIN cleanup-chain gate + C1 8-bit coverage via shared neutralize_ctrl + JSON emit fallback C0 neutralization + neutralize-failure placeholder degradation + notice missing/inspect-fail isolation + SIGPIPE-safe heading scan)"; then
   exit 1
 fi
