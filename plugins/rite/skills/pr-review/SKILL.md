@@ -52,17 +52,17 @@ rationale: references/design-rationale.md#e2e-askuser-split
 |-------|-----------|----------|
 | ステップ 3.3 (Confirm Reviewers) | `AskUserQuestion` で構成確認 | **`AskUserQuestion`（オプション選択）を skip**（pre-flight 確認のみ。flow-state ベース判定はステップ 3.3 参照）。`起動 reviewer {count} 名` サマリ行・省略された reviewer 表示は両経路で必須維持 |
 | ステップ 4 (Sub-Agent Execution) | Full execution | **Full execution** — sub-agents MUST run in parallel for every review cycle (including verification mode). No shortcut allowed. |
-| ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外 1: ステップ 5.4 の `### レビュー範囲（cycle 2+ 差分スコープ）` section は `REVIEW_CYCLE_SCOPE == incremental` のとき E2E でも省略禁止** (cycle 2+ は E2E からしか発生しないため、ここを minimize すると「スキップした reviewer を記録する」要求が空文になる — SoT: [cycle-scope.md](references/cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 2: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 AskUserQuestion と同じ identity 制約 — 既定 `post_comment: false` ではこの出力が非実測指摘を人間が見る唯一の同期経路であり、省略は「非実測指摘を破棄しない」という記録契約の喪失に直結する)。**例外 3: ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section は `COMPLEXITY_LANE == light` のとき E2E でも省略禁止** (軽量レーンが動機づけられた Scenario 1「XS が 1 サイクル収束して自律マージされる」は E2E ループでしか起きず、そこを minimize すると観測性の MUST が主対象シナリオでだけ空文になる — SoT: [complexity-lane.md](references/complexity-lane.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 4: ステップ 5.4 の `### Guardrail 監査ログ` section は `guardrail_audit_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` でも Category #2 の filter 判断を人間が確認できる同期経路を維持するため)。**例外 5: ステップ 5.4 の `### 総合評価` にある `**起動の直列化**` の 1 行は `SPAWN_SPREAD` が `serialized` / `undetermined` / 欠落を伴う `parallel` のとき E2E でも省略禁止** (直列化が起きるのは長時間 E2E セッションであり、そこを minimize すると本行が到達する経路が消える。既定 `post_comment: false` では統合レポートは PR にも載らないため、省略すると本行が主対象シナリオで空文になる。`serialized` / 欠落を伴う `parallel` では helper の stderr WARNING と結果 JSON のフラグが残るが、**`undetermined` では helper がフラグをキーごと書かない**ため、計測不能の**理由** (`reason=`) は揮発する stderr WARNING にしか残らない — 省略が最も高くつくのはこの条件。`reviewer_timings[]` はステップ 4.6 の timings ファイルが present のときだけ結果 JSON へ転記される) |
+| ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外 1: ステップ 5.4 の `### レビュー範囲（cycle 2+ 差分スコープ）` section は `REVIEW_CYCLE_SCOPE == incremental` のとき E2E でも省略禁止** (cycle 2+ は E2E からしか発生しないため、ここを minimize すると「スキップした reviewer を記録する」要求が空文になる — SoT: [cycle-scope.md](references/cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 2: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 AskUserQuestion と同じ identity 制約 — 既定 `post_comment: false` ではこの出力が非実測指摘を人間が見る唯一の同期経路であり、省略は「非実測指摘を破棄しない」という記録契約の喪失に直結する)。**例外 3: ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section は `COMPLEXITY_LANE == light` のとき E2E でも省略禁止** (軽量レーンが動機づけられた Scenario 1「XS が 1 サイクル収束して自律マージされる」は E2E ループでしか起きず、そこを minimize すると観測性の MUST が主対象シナリオでだけ空文になる — SoT: [complexity-lane.md](references/complexity-lane.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 4: ステップ 5.4 の `### Guardrail 監査ログ` section は `guardrail_audit_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` でも Category #2 の filter 判断を人間が確認できる同期経路を維持するため)。**例外 5: ステップ 5.4 の `### 総合評価` にある `**起動の直列化**` の 1 行は `SPAWN_SPREAD` が `serialized` / `undetermined` / 欠落を伴う `parallel` のとき E2E でも省略禁止** (直列化が起きるのは長時間 E2E セッションであり、そこを minimize すると本行が到達する経路が消える。既定 `post_comment: false` では統合レポートは PR にも載らないため、省略すると本行が主対象シナリオで空文になる。`serialized` / 欠落を伴う `parallel` では helper の stderr WARNING と結果 JSON のフラグが残るが、**`undetermined` では helper がフラグをキーごと書かない**ため、計測不能の**理由** (`reason=`) は揮発する stderr WARNING にしか残らない — 省略が最も高くつくのはこの条件。`reviewer_timings[]` はステップ 4.6 の timings ファイルが present のときだけ結果 JSON へ転記される)。**例外 6: ステップ 5.4 の `### 実測阻害` section は `measurement_blocked_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` ではこの出力が実測阻害の件数・内訳を人間が見る同期経路であり、省略は無言の measured=false 降格を再導入する) |
 | ステップ 6 (PR Comment) | Full comment + display | Post comment silently, output pattern only |
 | ステップ 7 (Triage) | Full report + guidance | **Recommendations only** — detect scope-irrelevant recommendations (findings/recommendations containing 別 Issue / スコープ外 keywords). Decision Log 記録の推奨は可逆なので自動処理し、ユーザー固有・不可逆な disposition だけ `AskUserQuestion` で確認する。Only when `[review:mergeable]`. |
 
 E2E output format (ステップ 6, replaces full display):
 
 ```
-[review:{result}:{n}] — {total_findings} findings ({critical} CRITICAL, {high} HIGH, {medium} MEDIUM, {low_medium} LOW-MEDIUM, {low} LOW) | non-blocking: {non_blocking_count} | fact-check: {v}✅ {c}❌ {u}⚠️
+[review:{result}:{n}] — {total_findings} findings ({critical} CRITICAL, {high} HIGH, {medium} MEDIUM, {low_medium} LOW-MEDIUM, {low} LOW) | non-blocking: {non_blocking_count} | measurement-blocked: {measurement_blocked_count} | fact-check: {v}✅ {c}❌ {u}⚠️
 ```
 
-`| non-blocking: {n}` suffix は `non_blocking_count > 0` のときのみ付与する (実測必須ゲート + 帰結クラス降格の合算。0 件なら suffix ごと省略)。`| fact-check: ...` は external claims > 0 のときのみ。`{total_findings}` は post-fact-check カウント (CONTRADICTED と UNVERIFIED:ソース未確認 除外)。Invocation 判定は次節を再利用する。
+`| non-blocking: {n}` suffix は `non_blocking_count > 0` のときのみ付与する (実測必須ゲート + 帰結クラス降格の合算。0 件なら suffix ごと省略)。`| measurement-blocked: {n}` suffix は `measurement_blocked_count > 0` のときのみ付与する (`description` に `Measurement-Blocked:` を含む finding の件数。0 件なら suffix ごと省略)。`| fact-check: ...` は external claims > 0 のときのみ。`{total_findings}` は post-fact-check カウント (CONTRADICTED と UNVERIFIED:ソース未確認 除外)。Invocation 判定は次節を再利用する。
 
 > **Reference**: Apply `push_back_when_warranted` from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md). 問題実装に対し代替案付きで push back する。
 > **Reference**: Apply `no_unnecessary_fallback` from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md). 失敗原因を隠したり silent に scope を変える fallback を flag する。
@@ -1279,7 +1279,7 @@ Determine the error type from the Task tool result. Claude analyzes the Task too
 各 reviewer への指示を生成する。
 
 **Finding quality guidelines:** 曖昧な指摘禁止。Read/Grep/WebSearch で調べてから報告。確認済みの事実だけ。
-**Mandatory fix policy:** **runtime 実測付き**の指摘だけが blocking（`Verification:` アンカー。repro / failing_test）。実測できない指摘は報告してよいが non-blocking（ステップ 5.4）。標準フローで既存 call path を指せる問題だけ。仮説は `security` の攻撃面以外禁止。file:line を grep できないなら報告しない。
+**Mandatory fix policy:** **検証済み（`Verification:` アンカー。静的検証を含む repro / failing_test）**の指摘だけが blocking。検証できない指摘は報告してよいが non-blocking（ステップ 5.4）。検証実施済みならアンカー添付は必須。環境制約で検証がブロックされた場合は `Measurement-Blocked:` を添付する（無言の降格禁止）。標準フローで既存 call path を指せる問題だけ。仮説は `security` の攻撃面以外禁止。file:line を grep できないなら報告しない。
 **Thoroughness on every cycle:** 初回・再レビュー・verification で同じ深さ。後出しを避けて妥当な指摘を隠さない。
 **Scope judgment rule:** **本 PR の diff が導入した問題**だけを指摘にする（revert test）。既存の smell / 負債 / スタイルは findings にしない。調査が必要なら ステップ 5 の「調査推奨」。Issue 自動作成しない。
 
@@ -1459,7 +1459,7 @@ rationale: references/design-rationale.md#recommendation-classification
 - **`recommendation_items`**: 全推奨 + classification（Source B の元）
 - **`candidate_count`**: ステップ 7.1 の Source A + Source B 合算（dedup 後）。7.7 / 8.0.2 が参照
 
-**Non-measured findings**: 本ステップでは `Verification:` の走査・分類を **行わない**。検出は 5.3.0.M。責務は `内容` のアンカーを**改変せず** `description` へ引き継ぐこと。5.4 / 6.1.d の情報源はゲート後 JSON の `non_blocking_findings[]`。
+**Non-measured findings**: 本ステップでは `Verification:` / `Measurement-Blocked:` の走査・分類を **行わない**。検出は 5.3.0.M（`Verification:` のみ）と 5.4（`Measurement-Blocked:` の件数 surface）。責務は `内容` の両アンカーを**改変せず** `description` へ引き継ぐこと。5.4 / 6.1.d の情報源はゲート後 JSON の `non_blocking_findings[]`。
 **Guardrail audit collection**: 各 `### 監査ログ` の `Category #2` 全行を `guardrail_audit_log` として保持する (`reviewer`, `filter_category` ほか)。`なし` は `[]`。直後に **`guardrail_audit_count = guardrail_audit_log.length`** を retain する（E2E 例外 4 と 5.4 の唯一の値源）。assessment / 件数 / merge には加算しない。
 **Investigation suggestion collection**: 「### 調査推奨」を `investigation_suggestions` として保持する。findings でも Issue 候補でもない。ステップ 7 は自動 Issue 化しない。
 **Demoted findings collection**: `Likelihood-Evidence:` 欠落かつ Hypothetical 例外カテゴリ外（security/devops/dependencies。`application` は `Likelihood: Hypothetical (例外カテゴリ: database migration)` 付きに限り継承）を `demoted_findings` として 5.3.0 / 5.4 用に保持する。行先は `推奨事項` または `（削除）`（LOW）。
@@ -2096,7 +2096,7 @@ fi
 - **`verdict` は書かない** — merge ゲートが読む必須キーだが、書き手は step 2 の `review-measured-gate.sh` **のみ**で、`overall_assessment` と同一の blocking 件数式から**無条件に代入される**（step 1 で書いた値は必ず捨てられる）。step 1 時点では移送後の blocking 件数が未確定なので、書けば必ず推測値になる（`overall_assessment` を「暫定値でよい」としているのと同じ理由）。`findings[].verification` とは違い preset を尊重する経路が無いため、`--reject-preset-verification` のような強制フラグも持たない
 - **`reviewers[]` = 本 cycle で ステップ 5.1 が Task 結果を回収できた reviewer の名簿**（非空・重複なし）。値は各 `reviewer_type` に `-reviewer` を付した形で書く（例: `security` → `security-reviewer`。`plugins/rite/agents/*-reviewer.md` の basename と一致させる。`rite:` prefix は付けない、日本語表示名や suffix なし slug も書かない）。**判定基準は「回収できたか」だけ**で、ステップ 3.3 の追加・削除も ステップ 4.4 の `incomplete` マークもこの一本の規則に自動的に従う（回収できなかった reviewer は載らない）。名簿を水増ししてはならない — 回収の結果 1 名になった cycle は save は通り merge ゲートの floor 2 で deny されるが、それが正しい挙動である。**`findings[]` から導出してもならない** — マージ直前の最終 cycle は findings 0 件が正常形で、そこから導出すると名簿が空になり sole-reviewer guard の証拠が構造的に消える。ゲート helper は本キーに触れないため、ここで書かなければ欠落のまま保存へ回り `review-result-save.sh` が `schema_required_fields_missing` で拒否する。契約の SoT は [review-result-schema.md §verdict と reviewers](../../references/review-result-schema.md#verdict-と-reviewers)
 - **`findings[].verification` は書かない** — 本フィールドは helper が `description` のアンカーから算出する唯一の書き手である。Claude が先に書くと helper は既存値を正として尊重し (§4.5)、アンカー検出を経ない値がそのまま blocking 判定に入る (= 本ゲートが閉じたはずの裁量が復活する)。**step 2 の `--reject-preset-verification` による強制は部分的**で、本規約の完全な履行は依然として Claude 側の忠実性に依存する (何が弾かれ何が素通りするかの詳細は helper docstring §Why --reject-preset-verification を SoT として参照)
-- **アンカーの直前の境界を保つ** — reviewer の `内容` 列から `description` へ転記するとき、`Verification:` / `Likelihood-Evidence:` アンカーの**直前は行頭・`<br>`・空白のいずれか**でなければならない。helper の検出 regex は境界を要求するため、Markdown セルの `<br>` を日本語の句点 (`。`) や連結で潰すと**全 finding が `anchor_unparseable` になる**。marker と `=>` が同一セグメントに残る潰し方 (marker 直前の `<br>` だけを句点にした等) では**未判定 = blocking のまま**据え置かれ、実測済みの指摘が判定不能なまま merge を止め続ける。marker と `=>` の間に句点・改行が入る潰し方では `measured=false` へ降格し、実測済みの指摘が blocking 集合から消える。どちらも実測の記録を壊すので、単一行の JSON 文字列へ畳むときは `<br>` をそのまま残すこと
+- **アンカーの直前の境界を保つ** — reviewer の `内容` 列から `description` へ転記するとき、`Verification:` / `Likelihood-Evidence:` / `Measurement-Blocked:` アンカーの**直前は行頭・`<br>`・空白のいずれか**でなければならない。helper の検出 regex は境界を要求するため、Markdown セルの `<br>` を日本語の句点 (`。`) や連結で潰すと**全 finding が `anchor_unparseable` になる**。marker と `=>` が同一セグメントに残る潰し方 (marker 直前の `<br>` だけを句点にした等) では**未判定 = blocking のまま**据え置かれ、実測済みの指摘が判定不能なまま merge を止め続ける。marker と `=>` の間に句点・改行が入る潰し方では `measured=false` へ降格し、実測済みの指摘が blocking 集合から消える。どちらも実測の記録を壊すので、単一行の JSON 文字列へ畳むときは `<br>` をそのまま残すこと
 - `timestamp` は literal sentinel `"__RITE_TS_PLACEHOLDER_7f3a9b2c__"` (実値は ステップ 6.1.a の helper が注入する)
 - `suppressed_findings` 除外契約 (ステップ 5.1.2.A) を本 JSON 生成時に適用する — `findings[]` から除外し、Markdown 側 (ステップ 5.4 / 6.1.b) には audit log として残す
 - **`findings[].scope` を必ず明示する** (`current-pr` / `follow-up` / `nit-noted`)。scope は本ゲートの blocking 判定の入力そのもので、**値が外れてもキーが欠落しても `reason=scope_enum_violation` で hard fail し、JSON も書き換えられない**（フラグ有無に依らず発火）。未知 / 欠落 scope が blocking 集合からも移送対象からも同時に外れ、mergeable を無音で確定させるのを防ぐため
@@ -2347,6 +2347,7 @@ fi
 **`### 総合評価` の `**起動の直列化**` 行**: ステップ 4.6 の `SPAWN_SPREAD` が `serialized` / `undetermined`、または欠落を伴う `parallel` のときに描画する（全員分が揃い閾値内だった正常系は行ごと省略する）。silent な省略は禁止で、本行は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 5）。
 
 **`### 実測なし指摘 (non-blocking)` の情報源**: ゲート適用済 JSON の `non_blocking_findings[]` を Read して描画する。記憶から再構成しない。`{non_blocking_count}` は 5.3.0.C 発動 cycle は移送後配列長、それ以外は `MEASURED_GATE` の `non_blocking_total=`。**`demotion` 付きは `内容` 先頭に `[class B 降格: {demotion.reason}]`**。**列は追加しない**（6 列固定）。
+**`### 実測阻害` の情報源**: ゲート適用済 JSON の `findings[]` と `non_blocking_findings[]` の和から `description` に `Measurement-Blocked:` を含む要素を抽出し描画する。記憶から再構成しない。`{measurement_blocked_count}` はその件数。0 件ならセクションごと省略。helper は本 marker を実測アンカーとして読まないため、当該 finding は通常 `non_blocking_findings[]` に入る。**列は `実測なし指摘` 表に足さない**（6 列固定）。本 section は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 6）。
 
 ---
 
@@ -3811,7 +3812,7 @@ Based on the ステップ 6 review results, output the corresponding machine-rea
 
 > **`total_findings` は blocking 集合の件数**。5.3.0.M で降格した指摘と scope=nit-noted は含まない（[assessment-rules.md §5.3.3](../fix/references/assessment-rules.md)）。非実測が N 件でも `total_findings == 0` なら `[review:mergeable]`（AC-2）。
 
-**E2E suffixes**: `non_blocking_count > 0` なら `| non-blocking: {n}`。fact-check 実行時は `| fact-check: ...`。`{total_findings}` は post-fact-check。
+**E2E suffixes**: `non_blocking_count > 0` なら `| non-blocking: {n}`。`measurement_blocked_count > 0` なら `| measurement-blocked: {n}`。fact-check 実行時は `| fact-check: ...`。`{total_findings}` は post-fact-check。
 **⚠️ aggregate label 禁止**: result / E2E 行に **「推奨 N 件」「follow-up 候補 N 件」を含めてはならない**。
 rationale: references/design-rationale.md#aggregate-label-ban
 
