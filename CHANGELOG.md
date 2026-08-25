@@ -27,6 +27,22 @@ that aid upgraders are kept verbatim.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-26
+
+### Added
+
+- **`Verification:` anchors are mandatory on statically verified review findings** — a reviewer that confirmed a finding by grep, file comparison, artifact reading, or command execution must attach a `Verification:` anchor. When an environment constraint blocks the check, `Measurement-Blocked:` records it in a structured form and the integrated report surfaces the count in a `### 実測阻害` section plus a `| measurement-blocked: {n}` suffix on the E2E line. The three-valued measured gate (true / false / undetermined) is unchanged; `review-result-schema.md` documents that `Measurement-Blocked:` produces no `verification` field and does not intervene in that gate. (#2353, #2354)
+- **`/rite:iterate` mergeable completion notices carry a mandatory unresolved non-blocking count** — the notice splits into zero / non-zero / retrieval-failure forms with the count read mechanically from the latest review JSON, so remaining items no longer depend on the model volunteering them. `stop-loop-continuation.sh` sends the turn back once when the field is missing or cannot be inspected. The `[review:mergeable]` sentinel is unchanged. (#2355)
+- **`/rite:ready` refuses to promote when HEAD differs from the last reviewed commit** — `ready-reviewed-head-gate.sh` compares the latest review JSON's `commit_sha` against `git rev-parse HEAD`. A mismatch, an absent JSON (including archived), or a `rev-parse` failure stops fail-loud without marking the PR ready and points to `/rite:iterate {pr}`. (#2356)
+- **Out-of-scope triage must post a handoff comment on the receiving Issue** — when `pr-review` routes a finding to an existing Issue, the Decision Log entry alone is not sufficient; the handoff comment is a required action. A CLOSED receiving Issue gets no comment and the triage returns to reselection. (#2357)
+
+### Fixed
+
+- **`stop-loop-continuation.sh` no longer re-requests a completion notice it already saw** — the FINALIZE path now inspects the latest assistant output for the `## /rite:iterate 完了` / `## /rite:iterate 中断` markers and sends the turn back only when the notice is absent or uninspectable. A mergeable notice missing the unresolved non-blocking field is still sent back. (#2358)
+- **`pr-cycle-cleanup.sh` keeps review JSON for PRs that are still open** — the orphan reap gained a GitHub PR state gate, so only MERGED / CLOSED PRs have their review JSON moved to `archive/`; OPEN (including draft) and undeterminable states are retained. (#2359)
+- **`/rite:cleanup` reaps flow-state and run-queue entries left by other sessions** — `flow-state.sh reap-issue --issue N` deactivates every flow-state for the Issue, deactivates run-queues with no remaining work, and collects the corresponding and orphaned `.flow-state.lock` files. Failures continue with a WARNING naming the path, and batch run-queues that still hold other Issues are left untouched. (#2360)
+- **`PHASE_7_ASKUSER_INVOKED` is emitted only after the confirmation completes** — in interactive out-of-scope triage the marker now carries `mode` / `choice` / `reason` and is emitted after the user answers, closing the path that reached the Decision Log before confirmation. Automatic Decision Log entries for E2E and batch modes are unchanged. (#2361)
+
 ## [0.12.3] - 2026-08-23
 
 ### Fixed
@@ -912,6 +928,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.13.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.0...v0.12.1

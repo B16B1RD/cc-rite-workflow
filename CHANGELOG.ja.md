@@ -25,6 +25,22 @@ Fixed/Changed/Removed エントリは修正対象の旧挙動を述べてよい�
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-26
+
+### 追加
+
+- **静的検証済みのレビュー指摘に `Verification:` アンカーの添付を必須化する** — reviewer が grep・ファイル対照・配布物読解・コマンド実行で確認した指摘は `Verification:` アンカーを必ず添える。環境制約で検証がブロックされた場合は `Measurement-Blocked:` で構造化して記録し、統合レポートの `### 実測阻害` section と E2E 行の `| measurement-blocked: {n}` suffix に件数を出す。実測必須ゲートの 3 値判定（true / false / 未判定）は変えない。`review-result-schema.md` に、`Measurement-Blocked:` は `verification` を生成せずこの 3 値判定に介入しない旨を明記する。(#2353, #2354)
+- **`/rite:iterate` の mergeable 完了通知に未処理 non-blocking 件数の必須欄を設ける** — 通知を 0 件 / 非 0 件 / 取得失敗に分け、件数は最新 review JSON から機械取得するため、残件の有無が LLM の自発的補足に依存しない。`stop-loop-continuation.sh` は欄欠落・検査不能を 1 回差し戻す。`[review:mergeable]` sentinel は変えない。(#2355)
+- **HEAD が最終レビュー済み commit と不一致なら `/rite:ready` が Ready 化を拒否する** — `ready-reviewed-head-gate.sh` が最新 review JSON の `commit_sha` と `git rev-parse HEAD` を照合する。不一致・JSON 不在（archive 済みを含む）・`rev-parse` 失敗は Ready 化せず fail-loud に停止し、`/rite:iterate {pr}` を案内する。(#2356)
+- **スコープ外トリアージで引き受け先 Issue への申し送りコメント投稿を必須アクションにする** — `pr-review` が指摘を既存 Issue へ引き渡すとき、Decision Log への記録だけでは足りず、当該 Issue への申し送りコメントを必ず投稿する。引き受け先が CLOSED の場合は投稿せず引き受け先の選び直しへ差し戻す。(#2357)
+
+### 修正
+
+- **`stop-loop-continuation.sh` が出力済みの完了通知を再要求しない** — FINALIZE 経路で直近 assistant 出力の `## /rite:iterate 完了` / `## /rite:iterate 中断` マーカーを検査し、通知が未出力・検査不能のときだけ 1 回差し戻す。mergeable 通知の未処理 non-blocking 欄が欠落している場合は通知があっても差し戻す。(#2358)
+- **`pr-cycle-cleanup.sh` が OPEN の PR の review JSON を保持する** — orphan 回収に GitHub PR 状態ゲートを追加し、`archive/` へ移すのは MERGED / CLOSED の PR だけにする。OPEN（draft を含む）と状態を判定できない場合は保持する。(#2359)
+- **`/rite:cleanup` が別セッションの残した flow-state と run-queue を回収する** — `flow-state.sh reap-issue --issue N` が当該 Issue の全 flow-state を非 active 化し、残作業のない run-queue を非 active 化して、対応する lock と orphan lock を回収する。失敗は対象パス付きの WARNING で続行し、他の Issue が残っている batch run-queue は触らない。(#2360)
+- **`PHASE_7_ASKUSER_INVOKED` を確認完了後にのみ emit する** — 対話モードのスコープ外トリアージで marker に `mode` / `choice` / `reason` を持たせ、ユーザーの回答後に出す。これにより確認前に Decision Log へ短絡できた経路を塞ぐ。E2E / batch モードの自動 Decision Log は変えない。(#2361)
+
 ## [0.12.3] - 2026-08-23
 
 ### 修正
@@ -909,6 +925,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.13.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.0...v0.12.1
