@@ -21,6 +21,12 @@ Fixed/Changed/Removed エントリは修正対象の旧挙動を述べてよい�
 なので、名前付きのキー・機能に紐づかないバージョン跨ぎの「従来は / 以前は」表現は
 避けます。アップグレード利用者向けの breaking change 告知・移行ガイドはそのまま
 保持します。
+
+番号参照方針: エントリは GitHub Issue 番号を括弧付きポインタ（例: `(#NNNN)`）
+として書いてよい。CHANGELOG.md / CHANGELOG.ja.md はリポジトリ文書であり、
+marketplace 配布のプラグインファイルではないため、`number-reference-check.sh`
+が守る number-free 面の対象外とする。`/release` スキルのテンプレートはこの
+ポインタを書く。番号を除去しないこと。
 -->
 
 ## [Unreleased]
