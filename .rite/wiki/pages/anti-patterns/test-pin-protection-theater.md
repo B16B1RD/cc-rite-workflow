@@ -50,9 +50,17 @@ sources:
     resource: "raw/reviews/20260810T080754Z-pr-2229.md"
   - type: "fixes"
     resource: "raw/fixes/20260810T100637Z-pr-2229.md"
-tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase, same-file-3-site-sync, subsidiary-claim-empirical-verification, cross-file-cross-site-coverage, multi-axis-mutation-verification, channel-collision, negative-control, twin-site-satisfaction, anchor-uniqueness]
+  - type: "reviews"
+    resource: "raw/reviews/20260825T152548Z-pr-2361.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260825T153842Z-pr-2361.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260825T162042Z-pr-2361.md"
+tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase, same-file-3-site-sync, subsidiary-claim-empirical-verification, cross-file-cross-site-coverage, multi-axis-mutation-verification, channel-collision, negative-control, twin-site-satisfaction, anchor-uniqueness, occurrence-count-pin]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T11:55:05Z" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T16:50:12Z" }
+verified:
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T16:50:12Z" }
 ---
 
 # Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する
@@ -507,6 +515,18 @@ PR #2137 cycle 2 では、この gap を 3 reviewer（security / error-handling 
 
 > **検出保証を散文で宣言するのは、その保証が機械的に成立していることを実測してからにする。** 実測しないなら主張自体を書かない方が安全（起点 PR では 4 reviewer 全員が「主張を狭める」を推奨した）。
 
+### Occurrence-count pin は一意行削除を素通りする
+
+`assert_grep` の `count=2` のような部分文字列出現回数 pin は、同じ部分文字列が ERROR fence 分割や decoy HTML コメントで残れば、**producer echo・MUST 文・ACTION 行を消しても緑のまま通る**。consumer 側の部分文字列存在だけを見る pin も同型で、producer を削除しても consumer 残渣で合格する。
+
+| mutation | count=2 / consumer 部分文字列 pin |
+|---|---|
+| producer echo 行を削除 | ❌ 素通り（consumer 側に同じ部分文字列が残る） |
+| ACTION を cycle 1 の「7.1 へ戻れ」に差し替え | ❌ 素通り（他 fence に同じ語が残る） |
+| consumer 3 欄を decoy HTML コメント化 | ❌ 素通り（count=2 は別サイトで満たされる） |
+
+対策: 出現回数 pin をやめ、**一意の producer 行 / consumer 行 / ACTION 文**をそれぞれ独立に pin する。decoy（HTML コメント化、cycle 1 ACTION 差し替え）で緑が残る経路を mutation で塞ぐ。ERROR fence を経路ごとに分割したあとは、Routing 表の行数 pin を同時更新する。
+
 ## ソース（追記分）
 
 - [PR #2094 review results (cycle 2) — 静的 pin が行継続文字を照合せず 1 文字 drift を素通り](../../raw/reviews/20260803T004941Z-pr-2094.md)
@@ -516,3 +536,6 @@ PR #2137 cycle 2 では、この gap を 3 reviewer（security / error-handling 
 - [PR #2229 review results (cycle 2) — 述語の複製で pin が代替成立、否定 assert の空振り](../../raw/reviews/20260810T073435Z-pr-2229.md)
 - [PR #2229 review results (cycle 3) — 双子サイトが doc 側へ移動、「契約テストが検出する」宣言が 5 条件中 1 条件](../../raw/reviews/20260810T080754Z-pr-2229.md)
 - [PR #2229 fix results (cycle 4) — 前置リテラル錨が同リテラルの別行で代替成立](../../raw/fixes/20260810T100637Z-pr-2229.md)
+- [PR #2361 review (cycle 1) — 8.0.2 ACTION 非対称と producer/fail-safe の pin 欠落](../../raw/reviews/20260825T152548Z-pr-2361.md)
+- [PR #2361 fix (cycle 1) — producer / fail-safe を直接 pin し 8.0.2 ACTION を 7.7 と対称化](../../raw/fixes/20260825T153842Z-pr-2361.md)
+- [PR #2361 fix (cycle 2) — count=2 部分文字列 pin を一意 pin に置換し decoy mutation で緑経路を塞ぐ](../../raw/fixes/20260825T162042Z-pr-2361.md)
