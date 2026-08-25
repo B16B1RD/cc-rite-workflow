@@ -75,8 +75,16 @@
 
 ステップ 7.7 / 8.0.2 gate の設計理由。
 
-- **Defensive layering の全体像**: (a) ステップ 4.5 reviewer template が 3-classification を要求 → (b) ステップ 5.1 collection で classification を extract (default fallback あり) → (c) ステップ 7.1 で candidates を構築 → (d) ステップ 7.2 で sentinel emit → (e) ステップ 7.7 で grep verify → (f) ステップ 8.0.2 で end-to-end gate continuity 参照。各層は個別に失敗しうるが、ステップ 7.7 は result emit 前の last-line-of-defense mechanical gate。ステップ 5/6 が abort-relevant findings を生成しても、ステップ 7.1 candidate extraction (recommendation_items) は独立しており ステップ 7.2 で user confirm が必須。
+- **Defensive layering の全体像**: (a) ステップ 4.5 reviewer template が 3-classification を要求 → (b) ステップ 5.1 collection で classification を extract (default fallback あり) → (c) ステップ 7.1 で candidates を構築 → (d) ステップ 7.2 で確認完了後に証跡付き sentinel emit → (e) ステップ 7.7 で grep verify → (f) ステップ 8.0.2 で end-to-end gate continuity 参照。各層は個別に失敗しうるが、ステップ 7.7 は result emit 前の last-line-of-defense mechanical gate。ステップ 5/6 が abort-relevant findings を生成しても、ステップ 7.1 candidate extraction (recommendation_items) は独立しており ステップ 7.2 で user confirm が必須。
 - **dual placement (7.7 + 8.0.2) の理由**: ステップ 7.7 はステップ 7.1 → 7.2 → 7.7 の sequence で 7.7 が呼ばれた場合に 7.2 sentinel emit を verify する (procedure 内部の integrity check)。ステップ 8.0.2 はステップ 7 entire procedure (7.1-7.7) が skip された場合の最終 fallback で、`candidate_count >= 1` という trigger 条件が満たされている時点で「ステップ 7 が走るはずだった」と判定できる (ステップ 7.7 自体が呼ばれていない silent skip 経路でも catch する)。ステップ 8.0.1 W Phase gate と完全に対称的で、result-emit boundary における defense-in-depth pattern を構成する。
+
+## phase7-askuser-evidence
+
+ステップ 7.2 sentinel を「確認完了後」に移し `mode=` / `choice=` / `reason=` を必須にした理由。
+
+- **emit-before-evidence が空文になる**: 旧手順は `AskUserQuestion` 直前に `PHASE_7_ASKUSER_INVOKED=1` を出していた。7.7 / 8.0.2 は marker の有無しか見ないため、marker を出した直後に 7.4 へ短絡しても gate は pass する。配布先の実測では、対話セッションで marker 直後に AskUserQuestion の tool_use 0 件のまま Decision Log へ全件記録された。
+- **値が入る場所に証跡を置く**: marker 名は変えず、確認結果（対話の選択値 / E2E 自動の判定根拠）を同じ行に載せる。guard を 7.7 消費側だけに足しても、証跡の無い行を「確認済み」と読めてしまう。
+- **E2E 自動分岐は維持する**: Decision Log 記録は可逆なので E2E / batch では質問せず推奨で処理する既存分岐は残す。変えるのは対話経路と、自動経路でも `reason=reversible_decision_log` を残すこと。判定不能は確認を出す側へ倒す。
 
 ## reviewer-selection-notes
 
@@ -332,3 +340,9 @@ Decision Log append を候補ごとに単一 Bash invocation にする理由。
 5.3.0 → 5.3.0.M → 5.3.0.C → 5.3.1 の順を守る理由。
 
 5.3.1 の Red blocking は全降格**後**の `全指摘事項` に対して働く。前段を飛ばすと Hypothetical / 非実測 / class B が blocking のまま残り、契約上止めてはならない指摘でループが続く。
+
+## assignee-handoff-comment
+
+既存 Issue を引き受け先にして新規作成を見送る経路に申し送りコメントを必須化した理由。
+
+「引き受け先が実在する」判定だけで triage を閉じると、#N 側に何も残らず、後から「フォローアップ Issue 化はありませんか」と問われて初めてコメントが投稿される。Decision Log は元 Issue の記録であり引き受け先への通知ではない。CLOSED Issue は着手対象にできないため投稿せず、当該候補について 7.2 の既存 4 択を再掲する。新規 AskUserQuestion を足さないのは既存 disposition 質問へ戻す方が inventory を増やさず、差し戻し先が既にあるため。見送りは 7.2 の 5 択ではなく「別 Issue 作成」の結果分岐である。`HANDOFF_COMMENT_REJECTED=1` のあとに 7.4.3 へ進むと AC-3 が空文になる。

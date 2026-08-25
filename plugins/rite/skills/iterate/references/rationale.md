@@ -252,3 +252,12 @@ handoff とも独立（handoff は one-shot consume される継続マーカー�
 されるカウンタ、`stop_reason` は次の通常 set まで残る失敗理由）。
 
 別 Issue 化経路は廃止済み — 「別 Issue にスキップして loop 終了」の抜け穴は塞がれている。
+
+## nb-remaining-notice
+
+完了通知の残件欄をテンプレート必須欄にするのは、LLM の自発的補足と Stop hook 差し戻し再出力の
+両方で欄が脱落する実測があるため。件数は最新 review JSON から機械取得し、取得失敗は欄に
+「取得失敗」と書いて通知は止めるな（fail-loud だが完了通知自体は出す）。0 件でも欄は省略しない。
+非 0 件の見出しを「blocking ゼロ、残件 N 件」にするのは、「完了 / マージ可」と読める語彙が
+残件の存在を隠すため。`[review:mergeable]` sentinel は下流 routing が依存するので変えない。
+replied-only / 中断 / サーキットブレーカーのテンプレートは対象外。

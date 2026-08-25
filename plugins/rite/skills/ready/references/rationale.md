@@ -16,6 +16,14 @@ Simplification Charter の重複 confirmation。side path / `active=false` / hel
 "true" ]` の AND だけが安全。`[ x = "false" ]` は禁止（flow-state.sh の caveat）。legacy
 `phase5_post_*` は現 writer が無く、pre-v3 残渣の resume 互換のため whitelist に残す。
 
+## reviewed-head-gate
+
+Ready は mergeable 判定後の追加 commit を見ていなかった。配布先で、人手の修正 commit を
+未レビューのまま Ready 化しかけた実測がある。照合不能（JSON 不在・archive のみ・
+`git rev-parse HEAD` 失敗・`commit_sha` 空）を Ready 許可に倒すと、その穴を残す。
+schema のキーは `commit_sha`（Issue 文の `reviewed_commit` は PR コメント marker 名）。
+`--force` フラグは作らない。強行はユーザーの明示指示で helper 呼び出しを除く。
+
 ## bang-backtick-hard-gate
 
 lint の bang-backtick は warning（`[lint:success]` を保つ）。本ゲートは同じパターンで Ready 遷移を

@@ -3508,11 +3508,12 @@ EOF
     #
     # 期待値 `見出し:データ行数:pass 行数:ERROR 行数`:
     #   - 8.0.1 = 3:2:1  (pass 2 / ERROR 1)
-    #   - 8.0.2 = 4:2:2  (pass 2 / ERROR 2)
+    #   - 8.0.2 = 5:2:3  (pass 2 / ERROR 3)。mode=/choice=/reason= 欠落の emit-before-evidence 行を
+    #     ERROR として独立させたため、旧 4:2:2 よりデータ行 +1 / ERROR +1。
     #   - 8.0.3 = 4:1:2  (pass 1 / ERROR 2)。pass が 1 本なのは legitimate-skip 行 (ステップ 6 hard fail) が
     #     hand-off を持たない片方向の終端行だから。この行は ERROR でも pass でもないため 1+2 < 4 になる。
     #   - 8.0.4 = 4:1:2  (pass 1 / ERROR 2)。8.0.3 と同型の 4 行構成 (legitimate-skip 1 / pass 1 / ERROR 2)。
-    for _g_spec in '8.0.1:3:2:1' '8.0.2:4:2:2' '8.0.3:4:1:2' '8.0.4:4:1:2'; do
+    for _g_spec in '8.0.1:3:2:1' '8.0.2:5:2:3' '8.0.3:4:1:2' '8.0.4:4:1:2'; do
       _g=${_g_spec%%:*}
       _g_rest=${_g_spec#*:}
       _g_rows_exp=${_g_rest%%:*}

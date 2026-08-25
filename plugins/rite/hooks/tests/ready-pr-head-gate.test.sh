@@ -123,5 +123,69 @@ reset_case; export GH_WM_FIELDS=$'feature/ok\tfeedface'
 bash "$WM_HELPER" --pr 42 --issue 42 --repo owner/repo --plugin-root "$SB/plugin" >/dev/null 2>"$SB/wm-writer-fail"
 grep -q 'writer failed (rc=7)' "$SB/wm-writer-fail" && ok || bad wm_writer_warning
 
+# ----- reviewed-head gate (latest review JSON commit_sha vs HEAD) ----------
+RH="$ROOT/hooks/scripts/ready-reviewed-head-gate.sh"
+RH_DIR="$SB/review-results"
+mkdir -p "$RH_DIR"
+write_review_json() {
+  local sha="$1" name="$2"
+  jq -n --arg sha "$sha" --argjson pr 42 \
+    '{schema_version:"1.1.0", pr_number:$pr, timestamp:"T", commit_sha:$sha, overall_assessment:"approve", findings:[]}' \
+    > "$RH_DIR/$name"
+}
+run_rh() {
+  PATH="$SB/bin:$PATH" bash "$RH" --pr 42 --plugin-root "$SB/plugin" --results-dir "$RH_DIR"
+}
+chmod +x "$RH"
+
+# T-01: matching commit_sha lets Ready proceed (rc=0).
+reset_case
+export CURRENT_HEAD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+rm -f "$RH_DIR"/42-*.json
+write_review_json "$CURRENT_HEAD" "42-20260101000000.json"
+run_rh >/dev/null 2>"$SB/rh-err" && grep -q 'READY_REVIEWED_HEAD=match' "$SB/rh-err" && ok || bad RH-T-01
+
+# T-02: commit_sha older than HEAD is a fail-loud mismatch (rc=1) with both SHAs and iterate hint.
+reset_case
+export CURRENT_HEAD=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+rm -f "$RH_DIR"/42-*.json
+write_review_json "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" "42-20260101000000.json"
+rc=0; run_rh >/dev/null 2>"$SB/rh-err" || rc=$?
+[ "$rc" -eq 1 ] \
+  && grep -q 'READY_REVIEWED_HEAD=mismatch' "$SB/rh-err" \
+  && grep -q 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$SB/rh-err" \
+  && grep -q 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' "$SB/rh-err" \
+  && grep -q '/rite:iterate 42' "$SB/rh-err" \
+  && ok || bad RH-T-02
+
+# T-03: missing review JSON (including archive-only) is fail-loud, never Ready.
+reset_case
+export CURRENT_HEAD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+rm -f "$RH_DIR"/42-*.json
+mkdir -p "$RH_DIR/archive"
+write_review_json "$CURRENT_HEAD" "archive/42-20260101000000.json"
+rc=0; run_rh >/dev/null 2>"$SB/rh-err" || rc=$?
+[ "$rc" -eq 1 ] \
+  && grep -q 'READY_REVIEWED_HEAD=missing_json' "$SB/rh-err" \
+  && grep -q 'archive 済み' "$SB/rh-err" \
+  && grep -q '/rite:iterate 42' "$SB/rh-err" \
+  && ok || bad RH-T-03
+
+# git rev-parse failure is fail-loud (not a Ready permit).
+reset_case
+cat > "$SB/bin/git" <<'EOF'
+#!/bin/bash
+printf 'git %s\n' "$*" >> "$CALL_LOG"
+case "$1 $2" in
+  'rev-parse HEAD') exit 1 ;;
+esac
+exit 0
+EOF
+chmod +x "$SB/bin/git"
+rm -f "$RH_DIR"/42-*.json
+write_review_json aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "42-20260101000000.json"
+rc=0; run_rh >/dev/null 2>"$SB/rh-err" || rc=$?
+[ "$rc" -eq 1 ] && grep -q 'READY_REVIEWED_HEAD=rev_parse_failed' "$SB/rh-err" && ok || bad RH-rev-parse
+
 echo "$pass PASS / $fail FAIL"
 [ "$fail" -eq 0 ]

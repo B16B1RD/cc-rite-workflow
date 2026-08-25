@@ -52,17 +52,17 @@ rationale: references/design-rationale.md#e2e-askuser-split
 |-------|-----------|----------|
 | ステップ 3.3 (Confirm Reviewers) | `AskUserQuestion` で構成確認 | **`AskUserQuestion`（オプション選択）を skip**（pre-flight 確認のみ。flow-state ベース判定はステップ 3.3 参照）。`起動 reviewer {count} 名` サマリ行・省略された reviewer 表示は両経路で必須維持 |
 | ステップ 4 (Sub-Agent Execution) | Full execution | **Full execution** — sub-agents MUST run in parallel for every review cycle (including verification mode). No shortcut allowed. |
-| ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外 1: ステップ 5.4 の `### レビュー範囲（cycle 2+ 差分スコープ）` section は `REVIEW_CYCLE_SCOPE == incremental` のとき E2E でも省略禁止** (cycle 2+ は E2E からしか発生しないため、ここを minimize すると「スキップした reviewer を記録する」要求が空文になる — SoT: [cycle-scope.md](references/cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 2: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 AskUserQuestion と同じ identity 制約 — 既定 `post_comment: false` ではこの出力が非実測指摘を人間が見る唯一の同期経路であり、省略は「非実測指摘を破棄しない」という記録契約の喪失に直結する)。**例外 3: ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section は `COMPLEXITY_LANE == light` のとき E2E でも省略禁止** (軽量レーンが動機づけられた Scenario 1「XS が 1 サイクル収束して自律マージされる」は E2E ループでしか起きず、そこを minimize すると観測性の MUST が主対象シナリオでだけ空文になる — SoT: [complexity-lane.md](references/complexity-lane.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 4: ステップ 5.4 の `### Guardrail 監査ログ` section は `guardrail_audit_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` でも Category #2 の filter 判断を人間が確認できる同期経路を維持するため)。**例外 5: ステップ 5.4 の `### 総合評価` にある `**起動の直列化**` の 1 行は `SPAWN_SPREAD` が `serialized` / `undetermined` / 欠落を伴う `parallel` のとき E2E でも省略禁止** (直列化が起きるのは長時間 E2E セッションであり、そこを minimize すると本行が到達する経路が消える。既定 `post_comment: false` では統合レポートは PR にも載らないため、省略すると本行が主対象シナリオで空文になる。`serialized` / 欠落を伴う `parallel` では helper の stderr WARNING と結果 JSON のフラグが残るが、**`undetermined` では helper がフラグをキーごと書かない**ため、計測不能の**理由** (`reason=`) は揮発する stderr WARNING にしか残らない — 省略が最も高くつくのはこの条件。`reviewer_timings[]` はステップ 4.6 の timings ファイルが present のときだけ結果 JSON へ転記される) |
+| ステップ 5 (Consolidation) | Full findings table | Result pattern + summary counts only。**例外 1: ステップ 5.4 の `### レビュー範囲（cycle 2+ 差分スコープ）` section は `REVIEW_CYCLE_SCOPE == incremental` のとき E2E でも省略禁止** (cycle 2+ は E2E からしか発生しないため、ここを minimize すると「スキップした reviewer を記録する」要求が空文になる — SoT: [cycle-scope.md](references/cycle-scope.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 2: ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section は `non_blocking_count > 0` のとき E2E でも省略禁止** (ステップ 7 AskUserQuestion と同じ identity 制約 — 既定 `post_comment: false` ではこの出力が非実測指摘を人間が見る唯一の同期経路であり、省略は「非実測指摘を破棄しない」という記録契約の喪失に直結する)。**例外 3: ステップ 5.4 の `### レビューレーン（XS/S 軽量レーン）` section は `COMPLEXITY_LANE == light` のとき E2E でも省略禁止** (軽量レーンが動機づけられた Scenario 1「XS が 1 サイクル収束して自律マージされる」は E2E ループでしか起きず、そこを minimize すると観測性の MUST が主対象シナリオでだけ空文になる — SoT: [complexity-lane.md](references/complexity-lane.md#選抜結果の記録を-e2e-で省略しない理由))。**例外 4: ステップ 5.4 の `### Guardrail 監査ログ` section は `guardrail_audit_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` でも Category #2 の filter 判断を人間が確認できる同期経路を維持するため)。**例外 5: ステップ 5.4 の `### 総合評価` にある `**起動の直列化**` の 1 行は `SPAWN_SPREAD` が `serialized` / `undetermined` / 欠落を伴う `parallel` のとき E2E でも省略禁止** (直列化が起きるのは長時間 E2E セッションであり、そこを minimize すると本行が到達する経路が消える。既定 `post_comment: false` では統合レポートは PR にも載らないため、省略すると本行が主対象シナリオで空文になる。`serialized` / 欠落を伴う `parallel` では helper の stderr WARNING と結果 JSON のフラグが残るが、**`undetermined` では helper がフラグをキーごと書かない**ため、計測不能の**理由** (`reason=`) は揮発する stderr WARNING にしか残らない — 省略が最も高くつくのはこの条件。`reviewer_timings[]` はステップ 4.6 の timings ファイルが present のときだけ結果 JSON へ転記される)。**例外 6: ステップ 5.4 の `### 実測阻害` section は `measurement_blocked_count > 0` のとき E2E でも省略禁止** (既定 `post_comment: false` ではこの出力が実測阻害の件数・内訳を人間が見る同期経路であり、省略は無言の measured=false 降格を再導入する) |
 | ステップ 6 (PR Comment) | Full comment + display | Post comment silently, output pattern only |
 | ステップ 7 (Triage) | Full report + guidance | **Recommendations only** — detect scope-irrelevant recommendations (findings/recommendations containing 別 Issue / スコープ外 keywords). Decision Log 記録の推奨は可逆なので自動処理し、ユーザー固有・不可逆な disposition だけ `AskUserQuestion` で確認する。Only when `[review:mergeable]`. |
 
 E2E output format (ステップ 6, replaces full display):
 
 ```
-[review:{result}:{n}] — {total_findings} findings ({critical} CRITICAL, {high} HIGH, {medium} MEDIUM, {low_medium} LOW-MEDIUM, {low} LOW) | non-blocking: {non_blocking_count} | fact-check: {v}✅ {c}❌ {u}⚠️
+[review:{result}:{n}] — {total_findings} findings ({critical} CRITICAL, {high} HIGH, {medium} MEDIUM, {low_medium} LOW-MEDIUM, {low} LOW) | non-blocking: {non_blocking_count} | measurement-blocked: {measurement_blocked_count} | fact-check: {v}✅ {c}❌ {u}⚠️
 ```
 
-`| non-blocking: {n}` suffix は `non_blocking_count > 0` のときのみ付与する (実測必須ゲート + 帰結クラス降格の合算。0 件なら suffix ごと省略)。`| fact-check: ...` は external claims > 0 のときのみ。`{total_findings}` は post-fact-check カウント (CONTRADICTED と UNVERIFIED:ソース未確認 除外)。Invocation 判定は次節を再利用する。
+`| non-blocking: {n}` suffix は `non_blocking_count > 0` のときのみ付与する (実測必須ゲート + 帰結クラス降格の合算。0 件なら suffix ごと省略)。`| measurement-blocked: {n}` suffix は `measurement_blocked_count > 0` のときのみ付与する (`description` に `Measurement-Blocked:` を含む finding の件数。0 件なら suffix ごと省略)。`| fact-check: ...` は external claims > 0 のときのみ。`{total_findings}` は post-fact-check カウント (CONTRADICTED と UNVERIFIED:ソース未確認 除外)。Invocation 判定は次節を再利用する。
 
 > **Reference**: Apply `push_back_when_warranted` from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md). 問題実装に対し代替案付きで push back する。
 > **Reference**: Apply `no_unnecessary_fallback` from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md). 失敗原因を隠したり silent に scope を変える fallback を flag する。
@@ -1279,7 +1279,7 @@ Determine the error type from the Task tool result. Claude analyzes the Task too
 各 reviewer への指示を生成する。
 
 **Finding quality guidelines:** 曖昧な指摘禁止。Read/Grep/WebSearch で調べてから報告。確認済みの事実だけ。
-**Mandatory fix policy:** **runtime 実測付き**の指摘だけが blocking（`Verification:` アンカー。repro / failing_test）。実測できない指摘は報告してよいが non-blocking（ステップ 5.4）。標準フローで既存 call path を指せる問題だけ。仮説は `security` の攻撃面以外禁止。file:line を grep できないなら報告しない。
+**Mandatory fix policy:** **検証済み（`Verification:` アンカー。静的検証を含む repro / failing_test）**の指摘だけが blocking。検証できない指摘は報告してよいが non-blocking（ステップ 5.4）。検証実施済みならアンカー添付は必須。環境制約で検証がブロックされた場合は `Measurement-Blocked:` を添付する（無言の降格禁止）。標準フローで既存 call path を指せる問題だけ。仮説は `security` の攻撃面以外禁止。file:line を grep できないなら報告しない。
 **Thoroughness on every cycle:** 初回・再レビュー・verification で同じ深さ。後出しを避けて妥当な指摘を隠さない。
 **Scope judgment rule:** **本 PR の diff が導入した問題**だけを指摘にする（revert test）。既存の smell / 負債 / スタイルは findings にしない。調査が必要なら ステップ 5 の「調査推奨」。Issue 自動作成しない。
 
@@ -1459,7 +1459,7 @@ rationale: references/design-rationale.md#recommendation-classification
 - **`recommendation_items`**: 全推奨 + classification（Source B の元）
 - **`candidate_count`**: ステップ 7.1 の Source A + Source B 合算（dedup 後）。7.7 / 8.0.2 が参照
 
-**Non-measured findings**: 本ステップでは `Verification:` の走査・分類を **行わない**。検出は 5.3.0.M。責務は `内容` のアンカーを**改変せず** `description` へ引き継ぐこと。5.4 / 6.1.d の情報源はゲート後 JSON の `non_blocking_findings[]`。
+**Non-measured findings**: 本ステップでは `Verification:` / `Measurement-Blocked:` の走査・分類を **行わない**。検出は 5.3.0.M（`Verification:` のみ）と 5.4（`Measurement-Blocked:` の件数 surface）。責務は `内容` の両アンカーを**改変せず** `description` へ引き継ぐこと。5.4 / 6.1.d の情報源はゲート後 JSON の `non_blocking_findings[]`。
 **Guardrail audit collection**: 各 `### 監査ログ` の `Category #2` 全行を `guardrail_audit_log` として保持する (`reviewer`, `filter_category` ほか)。`なし` は `[]`。直後に **`guardrail_audit_count = guardrail_audit_log.length`** を retain する（E2E 例外 4 と 5.4 の唯一の値源）。assessment / 件数 / merge には加算しない。
 **Investigation suggestion collection**: 「### 調査推奨」を `investigation_suggestions` として保持する。findings でも Issue 候補でもない。ステップ 7 は自動 Issue 化しない。
 **Demoted findings collection**: `Likelihood-Evidence:` 欠落かつ Hypothetical 例外カテゴリ外（security/devops/dependencies。`application` は `Likelihood: Hypothetical (例外カテゴリ: database migration)` 付きに限り継承）を `demoted_findings` として 5.3.0 / 5.4 用に保持する。行先は `推奨事項` または `（削除）`（LOW）。
@@ -2096,7 +2096,7 @@ fi
 - **`verdict` は書かない** — merge ゲートが読む必須キーだが、書き手は step 2 の `review-measured-gate.sh` **のみ**で、`overall_assessment` と同一の blocking 件数式から**無条件に代入される**（step 1 で書いた値は必ず捨てられる）。step 1 時点では移送後の blocking 件数が未確定なので、書けば必ず推測値になる（`overall_assessment` を「暫定値でよい」としているのと同じ理由）。`findings[].verification` とは違い preset を尊重する経路が無いため、`--reject-preset-verification` のような強制フラグも持たない
 - **`reviewers[]` = 本 cycle で ステップ 5.1 が Task 結果を回収できた reviewer の名簿**（非空・重複なし）。値は各 `reviewer_type` に `-reviewer` を付した形で書く（例: `security` → `security-reviewer`。`plugins/rite/agents/*-reviewer.md` の basename と一致させる。`rite:` prefix は付けない、日本語表示名や suffix なし slug も書かない）。**判定基準は「回収できたか」だけ**で、ステップ 3.3 の追加・削除も ステップ 4.4 の `incomplete` マークもこの一本の規則に自動的に従う（回収できなかった reviewer は載らない）。名簿を水増ししてはならない — 回収の結果 1 名になった cycle は save は通り merge ゲートの floor 2 で deny されるが、それが正しい挙動である。**`findings[]` から導出してもならない** — マージ直前の最終 cycle は findings 0 件が正常形で、そこから導出すると名簿が空になり sole-reviewer guard の証拠が構造的に消える。ゲート helper は本キーに触れないため、ここで書かなければ欠落のまま保存へ回り `review-result-save.sh` が `schema_required_fields_missing` で拒否する。契約の SoT は [review-result-schema.md §verdict と reviewers](../../references/review-result-schema.md#verdict-と-reviewers)
 - **`findings[].verification` は書かない** — 本フィールドは helper が `description` のアンカーから算出する唯一の書き手である。Claude が先に書くと helper は既存値を正として尊重し (§4.5)、アンカー検出を経ない値がそのまま blocking 判定に入る (= 本ゲートが閉じたはずの裁量が復活する)。**step 2 の `--reject-preset-verification` による強制は部分的**で、本規約の完全な履行は依然として Claude 側の忠実性に依存する (何が弾かれ何が素通りするかの詳細は helper docstring §Why --reject-preset-verification を SoT として参照)
-- **アンカーの直前の境界を保つ** — reviewer の `内容` 列から `description` へ転記するとき、`Verification:` / `Likelihood-Evidence:` アンカーの**直前は行頭・`<br>`・空白のいずれか**でなければならない。helper の検出 regex は境界を要求するため、Markdown セルの `<br>` を日本語の句点 (`。`) や連結で潰すと**全 finding が `anchor_unparseable` になる**。marker と `=>` が同一セグメントに残る潰し方 (marker 直前の `<br>` だけを句点にした等) では**未判定 = blocking のまま**据え置かれ、実測済みの指摘が判定不能なまま merge を止め続ける。marker と `=>` の間に句点・改行が入る潰し方では `measured=false` へ降格し、実測済みの指摘が blocking 集合から消える。どちらも実測の記録を壊すので、単一行の JSON 文字列へ畳むときは `<br>` をそのまま残すこと
+- **アンカーの直前の境界を保つ** — reviewer の `内容` 列から `description` へ転記するとき、`Verification:` / `Likelihood-Evidence:` / `Measurement-Blocked:` アンカーの**直前は行頭・`<br>`・空白のいずれか**でなければならない。helper の検出 regex は境界を要求するため、Markdown セルの `<br>` を日本語の句点 (`。`) や連結で潰すと**全 finding が `anchor_unparseable` になる**。marker と `=>` が同一セグメントに残る潰し方 (marker 直前の `<br>` だけを句点にした等) では**未判定 = blocking のまま**据え置かれ、実測済みの指摘が判定不能なまま merge を止め続ける。marker と `=>` の間に句点・改行が入る潰し方では `measured=false` へ降格し、実測済みの指摘が blocking 集合から消える。どちらも実測の記録を壊すので、単一行の JSON 文字列へ畳むときは `<br>` をそのまま残すこと
 - `timestamp` は literal sentinel `"__RITE_TS_PLACEHOLDER_7f3a9b2c__"` (実値は ステップ 6.1.a の helper が注入する)
 - `suppressed_findings` 除外契約 (ステップ 5.1.2.A) を本 JSON 生成時に適用する — `findings[]` から除外し、Markdown 側 (ステップ 5.4 / 6.1.b) には audit log として残す
 - **`findings[].scope` を必ず明示する** (`current-pr` / `follow-up` / `nit-noted`)。scope は本ゲートの blocking 判定の入力そのもので、**値が外れてもキーが欠落しても `reason=scope_enum_violation` で hard fail し、JSON も書き換えられない**（フラグ有無に依らず発火）。未知 / 欠落 scope が blocking 集合からも移送対象からも同時に外れ、mergeable を無音で確定させるのを防ぐため
@@ -2347,6 +2347,7 @@ fi
 **`### 総合評価` の `**起動の直列化**` 行**: ステップ 4.6 の `SPAWN_SPREAD` が `serialized` / `undetermined`、または欠落を伴う `parallel` のときに描画する（全員分が揃い閾値内だった正常系は行ごと省略する）。silent な省略は禁止で、本行は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 5）。
 
 **`### 実測なし指摘 (non-blocking)` の情報源**: ゲート適用済 JSON の `non_blocking_findings[]` を Read して描画する。記憶から再構成しない。`{non_blocking_count}` は 5.3.0.C 発動 cycle は移送後配列長、それ以外は `MEASURED_GATE` の `non_blocking_total=`。**`demotion` 付きは `内容` 先頭に `[class B 降格: {demotion.reason}]`**。**列は追加しない**（6 列固定）。
+**`### 実測阻害` の情報源**: ゲート適用済 JSON の `findings[]` と `non_blocking_findings[]` の和から `description` に `Measurement-Blocked:` を含む要素を抽出し描画する。記憶から再構成しない。`{measurement_blocked_count}` はその件数。0 件ならセクションごと省略。helper は本 marker を実測アンカーとして読まないため、当該 finding は通常 `non_blocking_findings[]` に入る。**列は `実測なし指摘` 表に足さない**（6 列固定）。本 section は E2E でも省略禁止（上記 E2E Output Minimization 表の例外 6）。
 
 ---
 
@@ -3211,7 +3212,15 @@ Source A は `Likelihood-Evidence:` の有無を保持する。
 
 ### 7.2-7.3 推奨決定 + User Confirmation
 
-0 件: ステップ 7 を skip（**7.7 も skip**）。1+: Decision Log への記録である候補は可逆なので質問せず推奨で処理する。別 Issue 作成・本 PR への scope 追加・無視だけ `AskUserQuestion`。
+0 件: ステップ 7 を skip（**7.7 も skip**）。1+: 下記モード表で分岐する。
+**モード判定**: ステップ 3.3 の `PR_REVIEW_IN_E2E` を読む。欠落は `false`（確認を出す側）。
+rationale: references/design-rationale.md#phase7-askuser-evidence
+
+| `PR_REVIEW_IN_E2E` | 分岐 |
+|---|---|
+| `true` | E2E / batch。Decision Log への記録である候補は可逆なので質問せず推奨で処理する。別 Issue 作成・本 PR への scope 追加・無視だけ `AskUserQuestion` |
+| `false` | 対話。全候補を `AskUserQuestion` で確認する。**回答を得るまで 7.4（Decision Log 追記・Issue 作成）を実行しない** |
+
 **推奨機械決定表**（裁量禁止）:
 
 | 候補の性質 | 推奨 |
@@ -3223,17 +3232,25 @@ Source A は `Likelihood-Evidence:` の有無を保持する。
 
 **MANDATORY — ステップ 7.2 disposition-entry sentinel emit**:
 
-disposition 開始直前（自動 Decision Log では記録直前、質問経路では `AskUserQuestion` 直前）に sentinel を emit する。marker 名は変えない:
+sentinel は **確認完了後**（対話: 選択値を得た後 / E2E 自動: 推奨機械決定表の判定を確定した後）に emit する。marker 名は変えない。`mode=` と `choice=` と `reason=` を必須とする（自動 Decision Log 経路でも emit する）。**7.4 は本 sentinel の後でのみ実行する**:
 
 ```bash
 # LLM (Claude) は以下を Bash tool で実行する前に literal 置換すること:
 # - {N} → ステップ 7.1 で抽出した candidate 総数 (Source A + Source B、dedup 後の正整数)
 # - {iteration_id} → ステップ 7.1 で生成した一意 ID (例: pr_number-$(date +%s) 形式)
+# - {mode} → ask | auto
+# - {choice} → 対話の選択値（自動は decision_log）。空禁止
+# - {reason} → user_answer | reversible_decision_log
 # Bash 変数 (${candidate_count} 等) は Bash tool 呼び出し間で継承されないため使用不可
-echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iteration_id}" >&2
+echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iteration_id}; mode={mode}; choice={choice}; reason={reason}" >&2
 ```
 
 `{N}` は 7.1 の合算。`{iteration_id}` は iteration 一意（推奨: `${pr_number}-$(date +%s)`）。7.7 / 8.0.2 が読む。stderr に MUST emit。
+- 対話: `mode=ask; choice={ユーザー選択}; reason=user_answer`
+- E2E 自動 Decision Log: `mode=auto; choice=decision_log; reason=reversible_decision_log`
+- E2E で質問した候補: `mode=ask; choice={ユーザー選択}; reason=user_answer`
+
+判定不能時は確認を出す側へ倒す。Issue 作成を自動決定しない。
 
 **AskUserQuestion prompt text**:
 
@@ -3254,7 +3271,10 @@ echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iterati
 - **Severity in Issue body**: `推奨事項（重要度なし）`
 - **File:line**: Use mentioned path if available; otherwise `特定ファイルなし`
 
-**E2E**: standalone と同じ。Decision Log 推奨は自動。Issue 作成・scope 追加・無視は明示承認。Issue 作成を自動決定しない。
+**E2E**: Decision Log 推奨は自動。Issue 作成・scope 追加・無視は明示承認。Issue 作成を自動決定しない。対話は 7.2-7.3 モード表のとおり確認後にのみ 7.4 へ進む。
+
+「別 Issue 作成」で既存 Issue #{N} へ新規作成を見送る場合の実行は 7.4 表。CLOSED なら当該候補について 7.2 の既存 4 択を再掲する（新規の disposition 質問種別は出さない）。
+rationale: references/design-rationale.md#assignee-handoff-comment
 
 ### 7.4 Disposition Execution
 
@@ -3262,11 +3282,11 @@ echo "[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={iterati
 
 | User selection | Action |
 |-----------------|--------|
-| 別 Issue 作成 | 7.4.1-7.4.2（Issue 作成）を実行 |
-| Decision Log に記録 | 7.4.3（Decision Log Append）を実行 |
+| 別 Issue 作成 | 新規作成なら 7.4.1-7.4.2。既存 Issue #{N} への見送りなら 7.4.4 の後に 7.4.3。CLOSED なら投稿せず当該候補について 7.2 の既存 4 択を再掲し、`HANDOFF_COMMENT_REJECTED=1` のときは 7.4.3 / 7.5 へ進まない |
+| Decision Log に記録 | 7.4.3（Decision Log Append）を実行。既存 Issue #{N} を引き受け先とする場合は 7.4.4 を先に必須実行し、記録のみで完了扱いにしない |
 | 本 PR で対応 / 無視 | 追加のアクションなし（既存動作を維持） |
 
-「別 Issue 作成」は `gh issue create` + Projects 登録。`/rite:issue-create` Skill は使わない。
+「別 Issue 作成」の新規作成枝は `gh issue create` + Projects 登録。`/rite:issue-create` Skill は使わない。見送りは 7.2 の 5 択ではなく「別 Issue 作成」の結果分岐である。
 Issue creation failure reasons: (`body_tmpfile_write_failure` / `empty_body_tmpfile` / `empty_script_result`)
 
 | reason | Description |
@@ -3492,9 +3512,77 @@ Decision Log append failure reasons: (`line_content_write_failure` / `body_fetch
 
 失敗は non-blocking。WARNING + 記録予定行を出し、7.5-7.6 の completion report にも転記する（AC-5）。
 
+#### 7.4.4 引き受け先 Issue への申し送りコメント
+
+既存 Issue `{assignee_issue}` を引き受け先とする候補ごとに実行する。Decision Log のみでは完了にしない。
+rationale: references/design-rationale.md#assignee-handoff-comment
+
+heredoc の `{placeholder}` はスクリプト生成前に埋める（shell 変数ではない）。**候補ごとに単一 Bash invocation**。
+
+| Placeholder | Source | Example |
+|-------------|--------|---------|
+| `{assignee_issue}` | 見送り先として確定した既存 Issue 番号。`{source_issue_number}`（元 Issue）および 7.2 sentinel の `{N}`（candidate 総数）と混同しない | `2340` |
+| `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) の slash 形式 | `owner/repo` |
+| `{pr_number}` | 本レビューの PR 番号 | `42` |
+| `{summary}` | 当該候補の指摘要約 | （1 段落） |
+| `{check_points}` | 引き受け先で着手するときの確認点 | （箇条書き） |
+
+1. `gh issue view {assignee_issue} -R {owner_repo} --json state --jq '.state'`
+2. `OPEN` 以外 → 投稿しない。`[CONTEXT] HANDOFF_COMMENT_REJECTED=1; issue={assignee_issue}; reason=closed` を emit し、当該候補について 7.2 の既存 4 択を再掲する（7.4.3 / 7.5 へ進まない）
+3. `OPEN` → `--body-file` で申し送りを投稿（指摘要約・元 PR・着手時確認点）。成功は `[CONTEXT] HANDOFF_COMMENT_POSTED=1; issue={assignee_issue}`。失敗は WARNING + `[CONTEXT] HANDOFF_COMMENT_FAILED=1; issue={assignee_issue}; reason=gh_comment_failure`（完了レポートに未投稿として列挙）
+
+```bash
+assignee_issue={assignee_issue}
+owner_repo={owner_repo}
+
+state=$(gh issue view "$assignee_issue" -R "$owner_repo" --json state --jq '.state' 2>/dev/null || echo "")
+if [ "$state" != "OPEN" ]; then
+  echo "ERROR: 引き受け先 Issue #${assignee_issue} は ${state:-取得失敗} のため引き受け先にできない。triage 判定を 7.2 へ差し戻す" >&2
+  echo "[CONTEXT] HANDOFF_COMMENT_REJECTED=1; issue=$assignee_issue; reason=closed" >&2
+  exit 0
+fi
+
+tmpfile=$(mktemp)
+trap 'rm -f "$tmpfile"' EXIT
+if ! cat <<'HANDOFF_EOF' > "$tmpfile"
+## 申し送り（PR #{pr_number} レビューのスコープ外指摘）
+
+### 指摘の要約
+{summary}
+
+### 元 PR
+#{pr_number}
+
+### 着手時の確認点
+{check_points}
+HANDOFF_EOF
+then
+  echo "WARNING: 申し送りコメント本文の一時ファイル書き込みに失敗" >&2
+  echo "[CONTEXT] HANDOFF_COMMENT_FAILED=1; issue=$assignee_issue; reason=body_write_failure" >&2
+  exit 0
+fi
+
+if gh issue comment "$assignee_issue" -R "$owner_repo" --body-file "$tmpfile"; then
+  echo "[CONTEXT] HANDOFF_COMMENT_POSTED=1; issue=$assignee_issue"
+else
+  echo "WARNING: 引き受け先 Issue #${assignee_issue} への申し送りコメント投稿に失敗しました" >&2
+  echo "[CONTEXT] HANDOFF_COMMENT_FAILED=1; issue=$assignee_issue; reason=gh_comment_failure" >&2
+fi
+```
+
+Handoff comment failure reasons: (`closed` / `body_write_failure` / `gh_comment_failure`)
+
+| reason | Description |
+|--------|-------------|
+| `closed` | 引き受け先 Issue が OPEN でない（CLOSED または state 取得失敗） |
+| `body_write_failure` | 申し送り本文の一時ファイル書き込みに失敗 |
+| `gh_comment_failure` | `gh issue comment` が非ゼロ終了（権限・ネットワーク） |
+
+`HANDOFF_COMMENT_REJECTED=1` を観測したら当該候補の 7.4.3 を実行せず 7.5 へ進まない。投稿失敗は non-blocking だが記録のみで完了扱いにせず、7.5-7.6 の完了レポートに未投稿として列挙する。
+
 ### 7.5-7.6 Append to PR & Report
 
-Issue 一覧を PR コメントへ（`mktemp` + `--body-file`）。`DECISION_LOG_APPENDED=1` の件数と、失敗があれば「手動追記してください」行を completion report に転記する（AC-5）。
+Issue 一覧を PR コメントへ（`mktemp` + `--body-file`）。`DECISION_LOG_APPENDED=1` の件数と、失敗があれば「手動追記してください」行を completion report に転記する（AC-5）。`HANDOFF_COMMENT_POSTED=1` / `HANDOFF_COMMENT_FAILED=1` も転記し、失敗分は未投稿の申し送りとして列挙する。
 
 ### 7.7 Post-condition Gate — Recommendation Disposition Enforcement
 
@@ -3508,16 +3596,17 @@ Issue 一覧を PR コメントへ（`mktemp` + `--body-file`）。`DECISION_LOG
 Search the conversation context (ステップ 7.2 emit site) for the following sentinel pattern:
 
 ```
-[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={ID}
+[CONTEXT] PHASE_7_ASKUSER_INVOKED=1; candidates={N}; iteration_id={ID}; mode={mode}; choice={choice}; reason={reason}
 ```
 
-`{N}` は Step 1 の件数、`{ID}` は 7.2 の iteration。複数行なら **最大 iteration_id** を採用する。
+`{N}` は Step 1 の件数、`{ID}` は 7.2 の iteration。複数行なら **最大 iteration_id** を採用する。`mode=` と `choice=` と `reason=` が無い行は未確認の emit として採用しない。
 
 **Step 3 — Routing**:
 
 | Condition | Action |
 |-----------|--------|
-| Latest sentinel found with `candidates >= 1` AND iteration_id matches current cycle | Gate passes — proceed to ステップ 8.0 (Defense-in-Depth State Update) |
+| Latest sentinel found with `candidates >= 1` AND iteration_id matches current cycle AND `mode=` / `choice=` / `reason=` が全て非空 | Gate passes — proceed to ステップ 8.0 (Defense-in-Depth State Update) |
+| Latest sentinel found with matching iteration_id but `mode=` / `choice=` / `reason=` のいずれかが欠落 | **ERROR**: sentinel が確認証跡を欠く（emit-before-evidence）。Execute the ACTION below |
 | Latest sentinel NOT found AND candidate_count >= 1 | **ERROR**: ステップ 7.2 was skipped in current cycle. Execute the ACTION below |
 | Latest sentinel found but iteration_id is **stale** (matches cycle N-1, not current cycle N) | **ERROR**: ステップ 7.2 was skipped in current cycle (cycle N-1 sentinel false-positive avoided). Execute the ACTION below |
 | Sentinel found but `candidates == 0` | Defensive observation: ステップ 7.1 / 7.2 count mismatch (e.g., dedup edge case). Display WARNING and proceed (non-blocking, gate passes); the discrepancy is observability-only. ステップ 7.2-7.3 の "If 0 candidates: Skip ステップ 7" 規約が成立しているため、本行は通常到達不能 dead branch だが defense-in-depth として残す |
@@ -3528,7 +3617,7 @@ Search the conversation context (ステップ 7.2 emit site) for the following s
 ERROR: ステップ 7.7 post-condition gate failed.
 candidate_count = {N} (>= 1) but no [CONTEXT] PHASE_7_ASKUSER_INVOKED sentinel found.
 This means ステップ 7.2 disposition handling was NOT executed — silent skip of recommendation disposition.
-ACTION: Return to ステップ 7.2, emit the sentinel, auto-record reversible Decision Log recommendations and ask only user-specific/irreversible candidates, then re-enter ステップ 7.7.
+ACTION: Return to ステップ 7.2, complete confirmation (対話は回答後、E2E 自動は判定確定後), emit the sentinel with mode/choice/reason, then re-enter ステップ 7.7. Do not run 7.4 before that sentinel.
 ⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until ステップ 7.2 has been executed and the sentinel is emitted.
 ANTI-PATTERN reference: This gate enforces the prohibition declared in
 .rite/wiki/pages/anti-patterns/aggregate-recommendation-label-evasion.md
@@ -3652,15 +3741,25 @@ rationale: references/design-rationale.md#w-phase-gate-sole
 
 7.7 を cross-reference する result-emit 前の defense-in-depth（sentinel 有無。7.7 実行の有無には依存しない）。
 **Condition**: `candidate_count >= 1`。0 なら skip。
-**Check**: 最新 `PHASE_7_ASKUSER_INVOKED`（iteration_id 最大）。
+**Check**: 最新 `PHASE_7_ASKUSER_INVOKED`（iteration_id 最大）。`mode=` / `choice=` / `reason=` が全て非空であること。
 **Routing** (8.0.1 と対称):
 
 | Condition | Action |
 |-----------|--------|
 | `candidate_count == 0` (ステップ 7 skipped) | Gate passes — proceed to the next gate in the 8.0 evaluation order |
-| Latest sentinel found with `candidates >= 1` AND iteration_id matches current cycle | Gate passes — proceed to the next gate in the 8.0 evaluation order |
+| Latest sentinel found with `candidates >= 1` AND iteration_id matches current cycle AND `mode=` / `choice=` / `reason=` が全て非空 | Gate passes — proceed to the next gate in the 8.0 evaluation order |
+| Latest sentinel found with matching iteration_id but `mode=` / `choice=` / `reason=` のいずれかが欠落 | **ERROR**: sentinel が確認証跡を欠く。Execute ACTION below |
 | Latest sentinel NOT found AND `candidate_count >= 1` | **ERROR**: ステップ 7 entire procedure (7.1-7.7) was skipped. Execute ACTION below |
 | Latest sentinel found but iteration_id is stale (cycle N-1, not current cycle N) | **ERROR**: ステップ 7 was skipped in current cycle. Execute ACTION below |
+
+**On ERROR** (`mode=` / `choice=` / `reason=` 欠落 = emit-before-evidence。sentinel は current-cycle に存在する):
+
+```
+ERROR: ステップ 8.0.2 ステップ 7 Post-condition Gate failed.
+current-cycle [CONTEXT] PHASE_7_ASKUSER_INVOKED sentinel は存在するが確認証跡 (mode=/choice=/reason=) を欠く（emit-before-evidence）。
+ACTION: Return to ステップ 7.2 only. complete confirmation (対話は回答後、E2E 自動は判定確定後), emit the sentinel with mode/choice/reason, then re-enter ステップ 8.0. Do not run 7.4 before that sentinel. Do not re-run 7.1.
+⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until ステップ 7 has been executed for the current cycle.
+```
 
 **On ERROR** (sentinel absent or stale, `candidate_count >= 1`):
 
@@ -3668,7 +3767,7 @@ rationale: references/design-rationale.md#w-phase-gate-sole
 ERROR: ステップ 8.0.2 ステップ 7 Post-condition Gate failed.
 candidate_count = {N} (>= 1) but no current-cycle [CONTEXT] PHASE_7_ASKUSER_INVOKED sentinel found.
 This means ステップ 7 (entire procedure 7.1 candidate extraction → 7.2 disposition handling → 7.7 gate) was NOT executed in the current review cycle.
-ACTION: Return to ステップ 7.1, extract candidates, handle reversible recommendations automatically and ask only user-specific/irreversible candidates, emit sentinel, then re-enter ステップ 8.0.
+ACTION: Return to ステップ 7.2, complete confirmation (対話は回答後、E2E 自動は判定確定後), emit the sentinel with mode/choice/reason, then re-enter ステップ 8.0. Do not run 7.4 before that sentinel. 7.1 からの再抽出は sentinel 不在 / stale に限定する。
 ⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until ステップ 7 has been executed for the current cycle.
 ```
 
@@ -3811,7 +3910,7 @@ Based on the ステップ 6 review results, output the corresponding machine-rea
 
 > **`total_findings` は blocking 集合の件数**。5.3.0.M で降格した指摘と scope=nit-noted は含まない（[assessment-rules.md §5.3.3](../fix/references/assessment-rules.md)）。非実測が N 件でも `total_findings == 0` なら `[review:mergeable]`（AC-2）。
 
-**E2E suffixes**: `non_blocking_count > 0` なら `| non-blocking: {n}`。fact-check 実行時は `| fact-check: ...`。`{total_findings}` は post-fact-check。
+**E2E suffixes**: `non_blocking_count > 0` なら `| non-blocking: {n}`。`measurement_blocked_count > 0` なら `| measurement-blocked: {n}`。fact-check 実行時は `| fact-check: ...`。`{total_findings}` は post-fact-check。
 **⚠️ aggregate label 禁止**: result / E2E 行に **「推奨 N 件」「follow-up 候補 N 件」を含めてはならない**。
 rationale: references/design-rationale.md#aggregate-label-ban
 
