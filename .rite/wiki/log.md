@@ -1,5 +1,6 @@
 ## 2026-08-26
 * **Update**: [一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える](pages/heuristics/generalized-claim-false-while-implementation-specialized.md) — raw/reviews/20260825T171132Z-pr-2362.md を統合
+* **lint:warning** — contradictions=0, stale=29, orphans=0, missing_concept=1, unregistered_raw=354, broken_refs=0
 
 ## 2026-08-25
 * **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — raw/reviews/20260825T152548Z-pr-2361.md を統合
