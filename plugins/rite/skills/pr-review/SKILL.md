@@ -3752,7 +3752,16 @@ rationale: references/design-rationale.md#w-phase-gate-sole
 | Latest sentinel NOT found AND `candidate_count >= 1` | **ERROR**: ステップ 7 entire procedure (7.1-7.7) was skipped. Execute ACTION below |
 | Latest sentinel found but iteration_id is stale (cycle N-1, not current cycle N) | **ERROR**: ステップ 7 was skipped in current cycle. Execute ACTION below |
 
-**On ERROR** (sentinel absent, stale, or 欠落（emit-before-evidence）, `candidate_count >= 1`):
+**On ERROR** (`mode=` / `choice=` / `reason=` 欠落 = emit-before-evidence。sentinel は current-cycle に存在する):
+
+```
+ERROR: ステップ 8.0.2 ステップ 7 Post-condition Gate failed.
+current-cycle [CONTEXT] PHASE_7_ASKUSER_INVOKED sentinel は存在するが確認証跡 (mode=/choice=/reason=) を欠く（emit-before-evidence）。
+ACTION: Return to ステップ 7.2 only. complete confirmation (対話は回答後、E2E 自動は判定確定後), emit the sentinel with mode/choice/reason, then re-enter ステップ 8.0. Do not run 7.4 before that sentinel. Do not re-run 7.1.
+⚠️ LLM MUST NOT output [review:mergeable] or [review:fix-needed:{n}] until ステップ 7 has been executed for the current cycle.
+```
+
+**On ERROR** (sentinel absent or stale, `candidate_count >= 1`):
 
 ```
 ERROR: ステップ 8.0.2 ステップ 7 Post-condition Gate failed.
