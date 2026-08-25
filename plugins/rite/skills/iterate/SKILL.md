@@ -67,6 +67,9 @@ rationale: references/rationale.md#circuit-breaker-conditions
 | `{cycle_count}` | flow-state `cycle_count` field（review⇄fix cycle の消化数。ステップ 1 で increment、fresh entry で 0 リセット。発火時はステップ 6 の共有前段が、正常終了時はステップ 5.0.1 が 0 にリセットする） |
 | `{state_root}` | ステップ 6 共有前段の `[CONTEXT] STATE_ROOT=` marker の値（`hooks/state-path-resolve.sh` の解決結果。未解決時は sentinel `unresolved`）。ステップ 6.2 注意行 (b) の手動リセットコマンドでのみ使い、値が得られないときは同節の pre-fill 表に従って解決手順へ置き換える |
 | `{session_id}` | ステップ 6 共有前段の `[CONTEXT] SESSION_ID=` marker の値（`flow-state.sh path` の basename）。用途と未解決時の扱いは `{state_root}` と同じ |
+| `{nb_count}` | ステップ 5.0.2 の `ITERATE_NB_REMAINING` marker 値（最新 review JSON の `non_blocking_findings[]` 長。取得失敗時は `failed`） |
+| `{nb_record}` | 同 marker の `record=`（review JSON パス。失敗時は空） |
+| `{nb_by_severity}` | 同 marker の `by_severity=`（`SEVERITY:count` のカンマ区切り。0 件 / 失敗時は空） |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 
 ---
@@ -677,13 +680,104 @@ marker_emit ITERATE_RUN_CLOSE "$run_close" "phase=$close_phase"
 | `ok` | counter を 0 にして run を閉じた。次回起動は fresh entry となり pin が更新される |
 | `failed` | リセットに失敗。次回起動は resume 判定となり前 run の pin を引き継ぐ（WARNING 済み）。`/rite:recover` で再開する前に手動で `--cycle-count 0` を打つとよい |
 
-### 正常終了 (`[review:mergeable]` or `[fix:replied-only]`)
+### ステップ 5.0.2: 未処理 non-blocking 件数（`[review:mergeable]` 完了通知用）
+
+完了通知の必須欄を埋める。件数は最新 review JSON から機械取得する（LLM の自発的補足に依存しない）。取得失敗でも通知は止めず、欄に「取得失敗」を出す。
+rationale: references/rationale.md#nb-remaining-notice
+
+```bash
+source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit できないため中止します" >&2; exit 1; }
+nb_status=failed
+nb_count=""
+nb_path=""
+nb_by=""
+nb_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || nb_root=""
+if [ -n "$nb_root" ]; then
+  nb_path=$(find "$nb_root/.rite/review-results" -maxdepth 1 -type f -name "{pr_number}-*.json" 2>/dev/null \
+    | LC_ALL=C sort | tail -1)
+fi
+if [ -n "$nb_path" ]; then
+  nb_count=$(jq -r '(.non_blocking_findings // []) | length' "$nb_path" 2>/dev/null) || nb_count=""
+  case "$nb_count" in
+    ''|*[!0-9]*) nb_count="" ;;
+    *)
+      nb_status=ok
+      nb_by=$(jq -r '[(.non_blocking_findings // [])[] | .severity // "UNKNOWN"] | group_by(.) | map("\(.[0]):\(length)") | join(",")' "$nb_path" 2>/dev/null) || nb_by=""
+      ;;
+  esac
+fi
+marker_emit ITERATE_NB_REMAINING "${nb_count:-failed}" "status=$nb_status" "record=${nb_path:-}" "by_severity=${nb_by:-}"
+```
+
+| `ITERATE_NB_REMAINING` | 完了通知への埋め方 |
+|---|---|
+| `status=ok` かつ値が `0` | `- 未処理 non-blocking: 0 件`。内訳・記録先行は出さない（余分な残件セクション禁止） |
+| `status=ok` かつ値が `1` 以上 | 見出しを残件ありに差し替え。`- 未処理 non-blocking: {nb_count} 件（review JSON {nb_record} / PR コメント「rite 非実測指摘の記録」）` と `- 内訳: {nb_by_severity}` |
+| `status=failed`（値が `failed`） | `- 未処理 non-blocking: 取得失敗`。通知自体は出す |
+
+### 正常終了 (`[review:mergeable]`)
+
+`ITERATE_NB_REMAINING` を読んで下のいずれか 1 つを出す。`[review:mergeable]` sentinel 文字列は変えない。
+
+**0 件** (`status=ok` かつ `{nb_count}=0`):
 
 ```
 ## /rite:iterate 完了
 
 - PR: #{pr_number}
-- 終了理由: {review:mergeable | fix:replied-only}
+- 終了理由: review:mergeable
+- ブランチ: {branch_name}
+- 未処理 non-blocking: 0 件
+
+次のステップ:
+- Ready 化: /rite:ready {pr_number}
+- マージ (Ready 後): /rite:merge {pr_number}
+
+flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に phase=ready に遷移します。
+```
+
+**非 0 件** (`status=ok` かつ `{nb_count}` ≥ 1):
+
+```
+## /rite:iterate 完了（blocking ゼロ、残件 {nb_count} 件）
+
+- PR: #{pr_number}
+- 終了理由: review:mergeable
+- ブランチ: {branch_name}
+- 未処理 non-blocking: {nb_count} 件（review JSON {nb_record} / PR コメント「rite 非実測指摘の記録」）
+- 内訳: {nb_by_severity}
+
+次のステップ:
+- Ready 化: /rite:ready {pr_number}
+- マージ (Ready 後): /rite:merge {pr_number}
+
+flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に phase=ready に遷移します。
+```
+
+**取得失敗** (`status=failed`):
+
+```
+## /rite:iterate 完了
+
+- PR: #{pr_number}
+- 終了理由: review:mergeable
+- ブランチ: {branch_name}
+- 未処理 non-blocking: 取得失敗
+
+次のステップ:
+- Ready 化: /rite:ready {pr_number}
+- マージ (Ready 後): /rite:merge {pr_number}
+
+flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に phase=ready に遷移します。
+```
+
+### 正常終了 (`[fix:replied-only]`)
+
+```
+## /rite:iterate 完了
+
+- PR: #{pr_number}
+- 終了理由: fix:replied-only
 - ブランチ: {branch_name}
 
 次のステップ:

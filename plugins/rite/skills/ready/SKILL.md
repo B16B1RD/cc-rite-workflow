@@ -138,11 +138,17 @@ case "$ready_pr_number" in
 esac
 
 bash "$plugin_root/hooks/scripts/ready-pr-head-gate.sh" \
-  --pr "$ready_pr_number" --repo {owner_repo} --plugin-root "$plugin_root"
+  --pr "$ready_pr_number" --repo {owner_repo} --plugin-root "$plugin_root" || exit
+
+# HEAD が最終レビュー済み commit と一致すること。JSON 不在 / 不一致 / rev-parse 失敗は
+# fail-loud（Ready 化しない）。フィールドは schema の commit_sha。
+bash "$plugin_root/hooks/scripts/ready-reviewed-head-gate.sh" \
+  --pr "$ready_pr_number" --plugin-root "$plugin_root" || exit
 ```
 
-> **本 bash が exit 1**: `[ready:returned-to-caller]` / `[ready:error]` より前に終わる。invocation failure は orchestrator が 1 回 retry し、2 回目で `[ready:error]`。未検証の force-continue は出さない。`BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` は stderr-only。finding（rc=1）では flag を立てない。
+> **本 bash が exit 1**: `[ready:returned-to-caller]` / `[ready:error]` より前に終わる。invocation failure は orchestrator が 1 回 retry し、2 回目で `[ready:error]`。未検証の force-continue は出さない。`BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` は stderr-only。finding（rc=1）では flag を立てない。reviewed-head ゲートの rc=1（不一致 / JSON 不在 / 照合不能）も同じ停止契約。ユーザーが本ターンで「未レビューのまま Ready 化を強行」と明示した場合のみ、reviewed-head helper の 1 行を除いて実行する。
 > rationale: references/rationale.md#bang-backtick-hard-gate
+> rationale: references/rationale.md#reviewed-head-gate
 
 ### 1.1 Check Arguments
 

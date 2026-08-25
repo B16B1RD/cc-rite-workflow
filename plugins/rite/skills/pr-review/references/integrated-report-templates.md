@@ -198,6 +198,19 @@
 |-----------|--------|----------|------------|------|---------|
 | {reviewer_type} | {severity} | {scope} | {file:line} | {description} | {suggestion} |
 
+### 実測阻害（該当がある場合のみ）
+<!-- description に `Measurement-Blocked:` を持つ finding がある場合のみ表示。0件なら省略。
+ helper はこの marker を実測アンカーとして読まない（3 値判定は不変）。件数と内訳を surface する。
+ 情報源はゲート適用済 JSON の findings[] と non_blocking_findings[] の和。
+ E2E でも省略禁止（measurement_blocked_count > 0 のとき）。
+ 両 template (full mode / verification mode) で同一内容で同期すること (drift 防止) -->
+
+- **件数**: {measurement_blocked_count}
+
+| レビュアー | 重要度 | ファイル:行 | ブロックされたコマンド | 理由 |
+|-----------|--------|------------|----------------------|------|
+| {reviewer_type} | {severity} | {file:line} | {cmd} | {reason} |
+
 ### 調査推奨（該当がある場合のみ）
 <!-- ステップ 5.1 で収集した investigation_suggestions がある場合のみ表示。blocking ではない。0件の場合はこのセクション自体を省略。
  両 template (full mode / verification mode) で同一内容で同期すること (drift 防止)。
@@ -408,6 +421,19 @@
 | レビュアー | 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
 |-----------|--------|----------|------------|------|---------|
 | {reviewer_type} | {severity} | {scope} | {file:line} | {description} | {suggestion} |
+
+### 実測阻害（該当がある場合のみ）
+<!-- description に `Measurement-Blocked:` を持つ finding がある場合のみ表示。0件なら省略。
+ helper はこの marker を実測アンカーとして読まない（3 値判定は不変）。件数と内訳を surface する。
+ 情報源はゲート適用済 JSON の findings[] と non_blocking_findings[] の和。
+ E2E でも省略禁止（measurement_blocked_count > 0 のとき）。
+ 両 template (full mode / verification mode) で同一内容で同期すること (drift 防止) -->
+
+- **件数**: {measurement_blocked_count}
+
+| レビュアー | 重要度 | ファイル:行 | ブロックされたコマンド | 理由 |
+|-----------|--------|------------|----------------------|------|
+| {reviewer_type} | {severity} | {file:line} | {cmd} | {reason} |
 
 ### 調査推奨（該当がある場合のみ）
 <!-- ステップ 5.1 で収集した investigation_suggestions がある場合のみ表示。blocking ではない。0件の場合はこのセクション自体を省略。

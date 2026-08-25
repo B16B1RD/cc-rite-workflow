@@ -2,7 +2,7 @@
 
 > Claude Code のための汎用 Issue ドリブン開発ワークフロー
 
-[![Version](https://img.shields.io/badge/version-0.12.3-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.12.3)
+[![Version](https://img.shields.io/badge/version-0.13.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.13.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [English](README.md) | **日本語**

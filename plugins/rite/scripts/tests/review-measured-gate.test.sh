@@ -952,6 +952,47 @@ else
   else fail "行列が空白量の変異を判別できない (等価性テストが変異を素通りさせる)"; fi
 fi
 
+# ---------------------------------------------------------------------------
+# T-02 / T-04: Measurement-Blocked: のみの finding は Verification: ではないため
+# measured=false へ降格する。helper は本 marker を実測アンカーとして読まない。
+# ---------------------------------------------------------------------------
+echo "--- T-02/T-04: Measurement-Blocked: 単独は measured=false 降格（3 値非介入） ---"
+f="$TEST_DIR/tc_mb.json"
+mk_json "$f" \
+  "$(mk_finding F-01 HIGH current-pr '検証不能。<br>Measurement-Blocked: bash hooks/foo.sh && bash hooks/bar.sh => worktree isolation denied compound command')" \
+  "$(mk_finding F-02 MEDIUM current-pr '認証付き実環境が必要な指摘（marker なし）')"
+run_gate "$f"
+if [ "$(jq '.findings | length' "$f")" = "0" ] && [ "$(jq '.non_blocking_findings | length' "$f")" = "2" ]; then
+  pass "Measurement-Blocked: 単独と marker なしはともに non_blocking へ移送"
+else fail "findings=$(jq '.findings|length' "$f") non_blocking=$(jq '.non_blocking_findings|length' "$f") (期待 0 / 2)"; fi
+if [ "$(jq '[.non_blocking_findings[] | select(.verification.measured == false)] | length' "$f")" = "2" ]; then
+  pass "2 件とも measured=false"
+else fail "measured=false が 2 件でない: $(jq -c '[.non_blocking_findings[].verification]' "$f")"; fi
+if grep -qE '^\[CONTEXT\] MEASURED_UNDETERMINED_ON_ANCHOR' <<<"$GATE_STDERR"; then
+  fail "Measurement-Blocked: を形式崩れ Verification: として未判定にした"
+else pass "Measurement-Blocked: は MEASURED_UNDETERMINED_ON_ANCHOR を出さない"; fi
+if grep -qE '^\[CONTEXT\] MEASURED_DEMOTED_ON_ANCHOR' <<<"$GATE_STDERR"; then
+  fail "Measurement-Blocked: を Verification: 形式崩れの降格 marker に算入した"
+else pass "Measurement-Blocked: は MEASURED_DEMOTED_ON_ANCHOR を出さない"; fi
+
+# ---------------------------------------------------------------------------
+# T-05: Measurement-Blocked: 併記があっても形式崩れ Verification: は未判定 = blocking
+# ---------------------------------------------------------------------------
+echo "--- T-05: 形式崩れ Verification: は Measurement-Blocked: 併記でも未判定のまま ---"
+f="$TEST_DIR/tc_mb_undetermined.json"
+mk_json "$f" \
+  "$(mk_finding F-01 HIGH current-pr '形式崩れ<br>Verification: repro printf x | jq . => false<br>Measurement-Blocked: bash x.sh => isolation')"
+run_gate "$f"
+if [ "$(jq '.findings | length' "$f")" = "1" ] && [ "$(jq '.non_blocking_findings | length' "$f")" = "0" ]; then
+  pass "形式崩れ Verification: は findings[] に残る (降格しない)"
+else fail "未判定が降格した: findings=$(jq -c '[.findings[].id]' "$f") non_blocking=$(jq -c '[.non_blocking_findings[].id]' "$f")"; fi
+if [ "$(jq '[.findings[] | select(has("verification") | not)] | length' "$f")" = "1" ]; then
+  pass "verification キーを持たない (= 未判定の表現)"
+else fail "verification が設定された: $(jq -c '[.findings[] | {id, v: (.verification // "ABSENT")}]' "$f")"; fi
+if grep -q '\[CONTEXT\] MEASURED_UNDETERMINED_ON_ANCHOR=1; count=1; cause=anchor_unparseable' <<<"$GATE_STDERR"; then
+  pass "MEASURED_UNDETERMINED_ON_ANCHOR=1; count=1 を emit"
+else fail "MEASURED_UNDETERMINED_ON_ANCHOR 不一致: $GATE_STDERR"; fi
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [ "$FAIL" -eq 0 ] || exit 1

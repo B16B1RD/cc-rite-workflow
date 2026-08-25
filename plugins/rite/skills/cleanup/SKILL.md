@@ -25,7 +25,7 @@ PR マージ後のクリーンアップを実行する。やることは以下�
 8. Projects Status を Done に更新
 9. (Wiki が有効なら) `rite:wiki-ingest` で raw source を統合
 10. 関連 Issue / 親 Issue をクローズ
-11. 作業メモリを最終更新 + ローカルファイル削除
+11. 作業メモリを最終更新 + ローカルファイル削除 + 対象 Issue の cross-session state 回収
 12. 完了報告を出す
 
 途中で止まったら flow-state に `phase=cleanup, active=true` が残るので `/rite:recover` で再開する。
@@ -1095,6 +1095,13 @@ rationale: references/rationale.md#wm-dual-finalize
 
 ```bash
 bash {plugin_root}/hooks/issue-claim.sh release --issue {issue_number} 2>&1 || echo "WARNING: issue-claim release が失敗しました（claim は stale 判定 + reap で回収されます）。" >&2
+```
+
+続けて対象 Issue に紐づく**全セッション**の flow-state・run-queue を非 active 化し、不要 lock を回収する（`cleanup-work-memory.sh` は自セッションのみ）。`reap-issue` は `flow-state.sh set` ではないため WIKICHAIN handoff を default-clear しない。残作業のある自セッション run-queue（batch 継続中）は残 issue があると判定して触れない。失敗は WARNING（対象パス付き）で続行:
+
+```bash
+bash {plugin_root}/hooks/flow-state.sh reap-issue --issue {issue_number} 2>&1 \
+  || echo "WARNING: reap-issue が失敗しました（stale flow-state / run-queue / lock が残る可能性）。" >&2
 ```
 
 ---

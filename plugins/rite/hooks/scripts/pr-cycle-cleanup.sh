@@ -42,6 +42,9 @@
 #   - manifest-recorded artifacts (`.rite/tmp-artifacts.tsv`): name-independent
 #     reap of branches/worktrees a producer recorded via rite-tmp-artifact.sh —
 #     Step 4.5 deletes ONLY recorded entries, never by guessing names (AC-4/D-05).
+#   - orphan review JSON under `.rite/review-results/` whose GitHub PR is
+#     MERGED/CLOSED (OPEN/draft is kept even without an active flow-state;
+#     undetermined GitHub state is kept).
 #
 # Variation history:
 #   - `cycle{N}`: orchestrator-created (`/rite:pr-review` cycle worktrees)
@@ -1434,8 +1437,12 @@ fi
 
 # -----------------------------------------------------------------------
 # Step 6: Reap orphaned review results and run-start pins.
-# Active flow-state PRs are protected. If any flow-state cannot be read, skip
-# this entire step: an incomplete active set is not safe enough for deletion.
+# Active flow-state PRs are protected. OPEN/draft PRs on GitHub are also
+# protected even when no session currently holds them: session-end clears
+# active=true, so the next session-start reap would otherwise archive JSON
+# for a PR that is still being iterated. If any flow-state cannot be read,
+# skip this entire step. If GitHub state cannot be determined, keep the
+# file (fail-safe). MERGED/CLOSED PRs remain eligible for archive/delete.
 # -----------------------------------------------------------------------
 review_dir="$repo_root/.rite/review-results"
 session_dir="$repo_root/.rite/sessions"
@@ -1463,6 +1470,63 @@ fi
 
 if [ "$review_gc_safe" -eq 1 ] && [ -d "$review_dir" ]; then
   archive_dir="$review_dir/archive"
+  # owner/repo for `gh pr view -R` (SSH host alias). Empty is fine: gh then
+  # uses the cwd remote, and a failed view is treated as unknown (keep).
+  _gh_R=""
+  _gh_repo=""
+  if _or_line=$(bash "$SCRIPT_DIR/lib/git-remote.sh" resolve-owner-repo 2>/dev/null); then
+    _gh_owner=${_or_line%%$'\t'*}
+    _gh_name=${_or_line#*$'\t'}
+    if [ -n "$_gh_owner" ] && [ -n "$_gh_name" ]; then
+      _gh_R="-R"
+      _gh_repo="$_gh_owner/$_gh_name"
+    fi
+  fi
+  # bash 3.2 has no associative arrays; newline-delimited caches.
+  _pr_open=$'\n'
+  _pr_closed=$'\n'
+  _pr_unknown=$'\n'
+  _warned_no_gh=0
+  github_pr_lifecycle() {
+    # stdout: open | closed | unknown. WARNINGs on stderr only.
+    local pr="$1" state=""
+    case "$_pr_open" in *$'\n'"$pr"$'\n'*) printf '%s\n' open; return 0 ;; esac
+    case "$_pr_closed" in *$'\n'"$pr"$'\n'*) printf '%s\n' closed; return 0 ;; esac
+    case "$_pr_unknown" in *$'\n'"$pr"$'\n'*) printf '%s\n' unknown; return 0 ;; esac
+
+    if ! command -v gh >/dev/null 2>&1; then
+      if [ "$_warned_no_gh" -eq 0 ]; then
+        echo "WARNING: gh が見つからないため open PR の review JSON を orphan 回収せず保持します" >&2
+        _warned_no_gh=1
+      fi
+      _pr_unknown="${_pr_unknown}${pr}"$'\n'
+      printf '%s\n' unknown
+      return 0
+    fi
+
+    if [ -n "$_gh_R" ]; then
+      state=$(gh pr view "$pr" "$_gh_R" "$_gh_repo" --json state --jq '.state' 2>/dev/null) || state=""
+    else
+      state=$(gh pr view "$pr" --json state --jq '.state' 2>/dev/null) || state=""
+    fi
+    state=$(printf '%s' "$state" | tr -d '[:space:]')
+
+    case "$state" in
+      OPEN)
+        _pr_open="${_pr_open}${pr}"$'\n'
+        printf '%s\n' open
+        ;;
+      MERGED|CLOSED)
+        _pr_closed="${_pr_closed}${pr}"$'\n'
+        printf '%s\n' closed
+        ;;
+      *)
+        echo "WARNING: PR #${pr} の GitHub 状態を取得できないため review JSON を orphan 回収せず保持します" >&2
+        _pr_unknown="${_pr_unknown}${pr}"$'\n'
+        printf '%s\n' unknown
+        ;;
+    esac
+  }
   while IFS= read -r review_file; do
     [ -n "$review_file" ] || continue
     review_name=${review_file##*/}
@@ -1476,6 +1540,15 @@ if [ "$review_gc_safe" -eq 1 ] && [ -d "$review_dir" ]; then
       echo "WARNING: review JSON '$(printf '%s' "$review_file" | neutralize_ctrl)' を解析できないため保持します" >&2
       continue
     fi
+
+    # Why not "active flow-state only": session-end / next session-start
+    # deactivates the holder before the next iterate, so OPEN PRs looked
+    # like orphans. GitHub OPEN is the protection that survives that
+    # boundary. Unknown (gh missing / view failed) keeps the file.
+    _life=$(github_pr_lifecycle "$review_pr")
+    case "$_life" in
+      open|unknown) continue ;;
+    esac
 
     if [ "$DRY_RUN" = "1" ]; then
       if [ "$nb_count" -gt 0 ]; then
