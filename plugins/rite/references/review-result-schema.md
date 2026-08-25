@@ -292,6 +292,8 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 | `repro` | string \| null | ✅ (null 可) | 欠落 / null 許容 (read 側は値を jq 評価しないため型制約なし) | 再現手順。**形式固定**: `<再現コマンド> => <観測される誤動作>` (`=>` 区切り)。例: `bash hooks/foo.sh --bad-arg => ERROR: unbound variable`。`内容` 列に raw `|` (パイプ) を含めない制約は本フィールドにも及ぶ (理由と代替表記は `agents/_reviewer-base.md` の §Verification: runtime 実測の添付 の Rules) |
 | `failing_test` | string \| null | ✅ (null 可) | 同上 | failing test。**形式固定**: `<テストパス> => <失敗出力>` (`=>` 区切り)。例: `hooks/tests/test-foo.sh => TC-03 FAILED: expected 0 got 1`。raw パイプ制約は `repro` と同じ |
 
+**`Measurement-Blocked:` は `verification` を生成しない description 内 marker である。** `findings[].description` の `Measurement-Blocked: <cmd> => <reason>` は [`review-measured-gate.sh`](../scripts/review-measured-gate.sh) が実測アンカーとして読まないため、本表の `verification` オブジェクトを設定せず、実測必須ゲートの 3 値判定 (`true` / `false` / 未判定) に介入しない。表示は統合レポートの `### 実測阻害` section が担う（[severity-levels.md §実測阻害](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)）。
+
 ### severity 別名マッピング表
 
 外部レビューツール (`/verified-review`, `pr-review-toolkit:review-pr`, 手動コメント等) が出力する severity 表記を、本 schema の 5 値 enum (`CRITICAL`/`HIGH`/`MEDIUM`/`LOW-MEDIUM`/`LOW`) に正規化する際の受理可能な別名一覧。**比較は必ず case-insensitive で行うこと** (例: `Critical` / `critical` / `CRITICAL` はいずれも `CRITICAL` にマッチ)。
