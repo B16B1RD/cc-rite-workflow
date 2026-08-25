@@ -243,7 +243,7 @@ okf_version: "0.2"
 | [ドキュメントが提示する解決策は上流ソース（公式ドキュメント・issue tracker）で機能を裏取りする](pages/heuristics/documentation-remedy-upstream-verification.md) | heuristics | ドキュメントのみの変更（コード変更を伴わない reference / skill 定義の修正）であっても、記載する設定・コマンド・回避策が実際に機能するかどうかは、公式ドキュメントだけでなく外部ツールの issue tracker で裏取りする必要がある。 | 2026-07-20T18:16:28+00:00 | high |
 | [複数の独立した制約を1つの共有前提条件に総称すると片方だけの前提差異が握り潰される](pages/anti-patterns/changelog-shared-precondition-overgeneralization.md) | anti-patterns | CHANGELOG 等のドキュメントで、複数の環境制約や事象を1つの共有前提条件（例: 特定のオプション機能が有効であること）でまとめて記述すると、実際にはそのうち一部だけがその前提に依存し、残りは独立して発生しうるという粒度の違いが読者に伝わらなくなる。 | 2026-07-21T16:45:00+09:00 | medium |
 | [verification-only な残作業 Issue は PR パイプラインを経由せず issue-close で直接検証する](pages/heuristics/verification-only-residual-task-direct-close.md) | heuristics | 実装対象のコードが既に別 PR でマージ済みであり、残作業 Issue の役割が実機での動作確認（例: 特定の経路が sandbox 環境で完走することの確認）に限られる場合、`/rite:open` → `/rite:iterate` の PR パイプラインを無理に通すと、コード変更を伴わない trivial な diff のため reviewer が何も指摘せず、fix サイクルも発火せず、検証として不完全になる。 | 2026-07-21T16:45:00+09:00 | medium |
-| [無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する](pages/heuristics/defensive-code-needs-its-own-failure-path-test.md) | heuristics | `2>/dev/null \|\| true` 等で無音化されていた失敗を「WARNING を stderr へ出力する」形に是正する fix は、成功パスのテストだけでは不十分。 | 2026-08-06T02:49:27Z | high |
+| [無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する](pages/heuristics/defensive-code-needs-its-own-failure-path-test.md) | heuristics | `2>/dev/null \|\| true` 等で無音化されていた失敗を「WARNING を stderr へ出力する」形に是正する fix は、成功パスのテストだけでは不十分。 | 2026-08-25T14:36:47Z | high |
 | [SKILL.md 新規セクションでシェル変数を Bash 呼び出し間の値受け渡しに使うと dead code 化する](pages/anti-patterns/skill-md-shell-var-cross-bash-call-dead-code.md) | anti-patterns | SKILL.md（プロンプト実行体）の新規セクションで、別 Bash tool 呼び出しをまたぐ値受け渡しにシェル変数（`$var`）を使うと、Bash ツール呼び出し間でシェル状態が保持されないため常に空文字になり、依存する検出ロジック全体が dead code 化する。 | 2026-07-23T06:38:31Z | high |
 | [複数の異種 signal を集約するロジックは表層パターンではなく共通の構造化された状態を判定基準にする](pages/heuristics/aggregate-heterogeneous-signals-by-structured-state-not-surface-pattern.md) | heuristics | 複数の異種 signal（各ステップが出す `[CONTEXT]` marker、チェックボックスの x/空欄、絵文字 prefix 付き付記文など）を集約する新規ロジックを書く際、一律の仮定（「marker が無ければ異常」）や表層的な文字列パターン一致（「絵文字 prefix で判定する」）を先に決めてしまうと、各 signal の実際の emit 条件を個別確認していないぶんだけ取りこぼしや誤検知を生む。 | 2026-07-23T06:38:31Z | high |
 | [新設した検証機構が、その機構自身の目的を局所的に打ち消す](pages/anti-patterns/self-defeating-guard-local-purpose-negation.md) | anti-patterns | 過去のレビュー事例（macOS/BSD 対応でテストスイートを green 化）の 4 cycle・累積 26 指摘のうち **最多の型が本パターン（5 件）**だった。 | 2026-08-12T18:34:40Z | high |
@@ -436,4 +436,4 @@ okf_version: "0.2"
 
 - 総ページ数: 422
 - ドメイン別: patterns=103, heuristics=183, anti-patterns=136
-- 最終更新: 2026-08-25T21:06:14+09:00
+- 最終更新: 2026-08-25T14:36:47Z

@@ -9,6 +9,10 @@ sources:
   - type: "fixes"
     resource: "raw/fixes/20260806T013904Z-pr-2120.md"
   - type: "reviews"
+    resource: "raw/reviews/20260825T141342Z-pr-2360.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260825T141757Z-pr-2360.md"
+  - type: "reviews"
     resource: "raw/reviews/20260722T102818Z-pr-1970.md"
   - type: "fixes"
     resource: "raw/fixes/20260722T103236Z-pr-1970.md"
@@ -20,7 +24,9 @@ sources:
     resource: "raw/reviews/20260722T122232Z-pr-1970-cycle3.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T02:49:27Z" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T14:36:47Z" }
+verified:
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T14:36:47Z" }
 ---
 
 # 無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する
@@ -54,6 +60,12 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T02:49:27Z" }
 
 なお、部分的に中和した経路の regression test は素朴な形では書けない（隣接する未中和行が混ざる）。詳細は [制御文字中和を通した出力への grep assert はロケールで検出能力を失う](../anti-patterns/locale-dependent-error-message-grep-assertion.md) の「中和の pin は『隣の未中和行』に邪魔される」節を参照。
 
+### WARNING 文面のパスを pin しないと可視化是正が退行する（PR #2360 実測）
+
+終了済み Issue の flow-state / run-queue を回収する経路で、cycle 1 は識別 jq の silent skip と lock 残置を WARNING に是正した。しかし AC が要求する「WARNING に対象パスを明示する」こと自体をテストが pin しておらず、error-handling と test が独立に指摘した。cycle 2 で T-01 が stale WARNING のパスを、T-04 が corrupt JSON の読み取り失敗 WARNING を固定した。
+
+**可視化を足しただけでは、パス欠落や `|| empty` への再退行は成功パスでは検出できない。** WARNING の本文に対象パスが含まれることと、corrupt 入力でその WARNING が出ることを別 fixture で pin する。
+
 ### 副次的な教訓: worktree 環境でのデバッグ時は plugin_root の参照先を要確認
 
 テスト失敗の原因調査中、手動デバッグで `plugin_root` をセッション worktree 内の修正済みコピーではなく main checkout の古いコピー（`/path/to/repo/plugins/rite/...`、md5sum が異なる）に向けてしまい、「fix したはずのコードが動いていない」ように見える偽の失敗を一時的に作り出した。worktree ベースの開発では、デバッグ用の一時スクリプトが参照する `plugin_root` 等のパスが、作業中のブランチが実際にチェックアウトされているディレクトリ（多くの場合セッション worktree）を指しているか、意識的に確認する必要がある。`md5sum` 等でファイル実体を比較するのが最も確実な切り分け方法。
@@ -72,3 +84,5 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T02:49:27Z" }
 - [PR #1970 fix cycle 2](../../raw/fixes/20260722T113522Z-pr-1970-cycle2.md)
 - [PR #1970 review cycle 3 (mergeable, mutation test 実証)](../../raw/reviews/20260722T122232Z-pr-1970-cycle3.md)
 - [PR #2120 fix results (cycle 4) — security 起因の防御に pin が抜けた実例](../../raw/fixes/20260806T013904Z-pr-2120.md)
+- [PR #2360 review cycle 1 — WARNING パス未 pin](../../raw/reviews/20260825T141342Z-pr-2360.md)
+- [PR #2360 fix — T-01 パス pin / T-04 corrupt JSON pin](../../raw/fixes/20260825T141757Z-pr-2360.md)
