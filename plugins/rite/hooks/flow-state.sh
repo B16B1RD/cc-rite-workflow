@@ -554,6 +554,81 @@ cmd_deactivate() {
   _atomic_write "$path" "$updated" || return 1
 }
 
+# reap-issue: 指定 Issue に紐づく全セッションの flow-state / run-queue を非 active 化し、
+# 対応 lock と sibling の無い orphan `.flow-state.lock` を回収する。
+# `/rite:cleanup` が自セッションの flow-state だけ `active=false` にしていたため、
+# 別セッションが残した同一 Issue の state と flock の lock ファイルが残置されていた。
+# `cmd_set` は通らない（WIKICHAIN handoff を default-clear しない）。部分失敗は
+# WARNING + 対象パスを出して続行し、usage error 以外は rc=0（cleanup を止めない）。
+cmd_reap_issue() {
+  local issue=""
+  while [ $# -gt 0 ]; do case "$1" in
+    --issue) issue="$2"; shift 2 ;;
+    *) echo "ERROR: unknown option: $1" >&2; return 1 ;;
+  esac; done
+  case "$issue" in
+    ''|*[!0-9]*) echo "ERROR: --issue requires a positive integer" >&2; return 1 ;;
+  esac
+
+  _reap_lock() {
+    local lock="$1"
+    { [ -e "$lock" ] || [ -L "$lock" ]; } || return 0
+    if rm -f "$lock" 2>/dev/null; then
+      return 0
+    fi
+    echo "WARNING: reap-issue: lock 回収失敗: $(printf '%s' "$lock" | neutralize_ctrl)" >&2
+    return 0
+  }
+
+  local f sid issue_n active q qsid has others now updated
+  if [ -d "$SESSION_DIR" ]; then
+    for f in "$SESSION_DIR"/*.flow-state; do
+      [ -f "$f" ] || continue
+      sid=$(basename "$f" .flow-state)
+      issue_n=$(jq -r '.issue_number // empty' "$f" 2>/dev/null) || issue_n=""
+      [ "$issue_n" = "$issue" ] || continue
+      active=$(jq -r '.active // false' "$f" 2>/dev/null) || active="false"
+      if [ "$active" = "true" ]; then
+        echo "WARNING: reap-issue: stale flow-state (active=true) for issue #${issue}: $(printf '%s' "$f" | neutralize_ctrl)" >&2
+        cmd_deactivate --session "$sid" --next "none" \
+          || echo "WARNING: reap-issue: deactivate failed: $(printf '%s' "$f" | neutralize_ctrl)" >&2
+      fi
+      _reap_lock "${f}.lock"
+    done
+    for f in "$SESSION_DIR"/*.flow-state.lock; do
+      { [ -e "$f" ] || [ -L "$f" ]; } || continue
+      [ -f "${f%.lock}" ] && continue
+      _reap_lock "$f"
+    done
+  fi
+
+  local queue_dir="$STATE_ROOT/.rite/state"
+  if [ -d "$queue_dir" ]; then
+    now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    for q in "$queue_dir"/run-queue-*.json; do
+      [ -f "$q" ] || continue
+      qsid=$(basename "$q" .json)
+      qsid="${qsid#run-queue-}"
+      has=$(jq --argjson n "$issue" '(.issues // []) | index($n) != null' "$q" 2>/dev/null) || has="false"
+      [ "$has" = "true" ] || continue
+      active=$(jq -r '.active // false' "$q" 2>/dev/null) || active="false"
+      [ "$active" = "true" ] || continue
+      others=$(jq --argjson n "$issue" \
+        '((.issues // [])[(.cursor // 0):] | map(select(. != $n)) | length)' "$q" 2>/dev/null) || others=""
+      if [ "$others" != "0" ]; then
+        continue
+      fi
+      updated=$(jq --arg ts "$now" '.active = false | .updated_at = $ts' "$q" 2>/dev/null) || {
+        echo "WARNING: reap-issue: run-queue 非 active 化失敗: $(printf '%s' "$q" | neutralize_ctrl)" >&2
+        continue
+      }
+      _atomic_write "$q" "$updated" \
+        || echo "WARNING: reap-issue: run-queue 非 active 化失敗: $(printf '%s' "$q" | neutralize_ctrl)" >&2
+    done
+  fi
+  return 0
+}
+
 # consume-handoff: review↔fix loop / cleanup wiki チェーンの one-shot 継続マーカーを
 # **読み取り + 削除** する。
 # Stop hook (stop-loop-continuation.sh) が turn 終了時に呼ぶ。`handoff` が非空ならその値を stdout に
@@ -684,13 +759,14 @@ case "${1:-}" in
   set) shift; cmd_set "$@" ;;
   get) shift; cmd_get "$@" ;;
   deactivate) shift; cmd_deactivate "$@" ;;
+  reap-issue) shift; cmd_reap_issue "$@" ;;
   clear-worktree) shift; cmd_clear_worktree "$@" ;;
   consume-handoff) shift; cmd_consume_handoff "$@" ;;
   migrate) shift; cmd_migrate "$@" ;;
   path) shift; cmd_path "$@" ;;
   *)
     cat >&2 <<EOF
-Usage: $0 {set|get|deactivate|clear-worktree|consume-handoff|migrate|path} [options]
+Usage: $0 {set|get|deactivate|reap-issue|clear-worktree|consume-handoff|migrate|path} [options]
   set --phase <P> --next <T> [--issue N] [--branch S] [--pr N] [--parent-issue N]
       [--active true|false] [--handoff CMD] [--session UUID] [--if-exists] [--preserve-error-count]
       [--worktree PATH] [--require-worktree]   # --require-worktree: warn + emit WORKTREE_INVARIANT marker when worktree empty (non-blocking)
@@ -698,6 +774,7 @@ Usage: $0 {set|get|deactivate|clear-worktree|consume-handoff|migrate|path} [opti
   get --field <F> [--default V] [--session UUID]
       | --jq-filter <FILTER> [--default V] [--session UUID]
   deactivate [--next T] [--session UUID]
+  reap-issue --issue N               # cross-session active=false + lock reap for issue N (non-blocking)
   clear-worktree [--session UUID]    # surgically del(.worktree); idempotent, no phase/next needed
   consume-handoff [--session UUID]   # print + clear the one-shot handoff marker
   migrate [--dry-run] [--verbose]

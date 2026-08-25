@@ -1762,6 +1762,98 @@ assert "TC-2121: a newline in --phase cannot forge any column-zero WARNING" "0" 
   "$(LC_ALL=C grep -c '^WARNING: forged$' "$stderr_2115_10b" || true)"
 rm -f "$stderr_2115_10b"
 
-if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del + non-UUID acceptance (Layer 1 format-agnostic contract pin) + phase-transition append log with phase-transition append log"; then
+# --- T-01 / T-02 / T-03: reap-issue cross-session deactivate + lock reap ---
+_write_reap_fs() {
+  local dir="$1" sid="$2" issue="$3" active="$4"
+  mkdir -p "$dir/.rite/sessions"
+  jq -n --arg sid "$sid" --argjson issue "$issue" --argjson active "$active" \
+    '{schema_version:3,active:$active,issue_number:$issue,branch:"b",phase:"review",pr_number:0,parent_issue_number:0,next_action:"review 実行中",updated_at:"2026-01-01T00:00:00Z",session_id:$sid,error_count:0}' \
+    > "$dir/.rite/sessions/${sid}.flow-state"
+}
+_write_reap_q() {
+  local dir="$1" sid="$2" issues_json="$3" cursor="$4" active="$5"
+  mkdir -p "$dir/.rite/state"
+  jq -n --argjson issues "$issues_json" --argjson cursor "$cursor" --argjson active "$active" \
+    --arg now "2026-01-01T00:00:00Z" \
+    '{issues:$issues,cursor:$cursor,mode:"merge",failed:[],outstanding:[],active:$active,updated_at:$now}' \
+    > "$dir/.rite/state/run-queue-${sid}.json"
+}
+
+echo ""
+echo "=== T-01: reap-issue deactivates matching flow-state / run-queue (AC-1) ==="
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+sid_b="bbbbbbbb-1111-2222-3333-444444444444"
+sid_c="cccccccc-1111-2222-3333-444444444444"
+_write_reap_fs "$d" "$sid" 42 true
+_write_reap_fs "$d" "$sid_b" 42 true
+_write_reap_fs "$d" "$sid_c" 99 true
+: > "$d/.rite/sessions/${sid}.flow-state.lock"
+: > "$d/.rite/sessions/${sid_b}.flow-state.lock"
+: > "$d/.rite/sessions/${sid_c}.flow-state.lock"
+_write_reap_q "$d" "$sid" '[42,99]' 0 true
+_write_reap_q "$d" "$sid_b" '[42]' 0 true
+_write_reap_q "$d" "$sid_c" '[99]' 0 true
+stderr_reap01="$(mktemp)"
+set +e
+(cd "$d" && bash "$HOOK" reap-issue --issue 42) 2>"$stderr_reap01"
+rc_reap01=$?
+set -e
+assert "T-01: reap-issue exits 0" "0" "$rc_reap01"
+assert "T-01: current session flow-state active=false" "false" \
+  "$(jq -r .active "$d/.rite/sessions/${sid}.flow-state")"
+assert "T-01: matching other-session run-queue active=false" "false" \
+  "$(jq -r .active "$d/.rite/state/run-queue-${sid_b}.json")"
+assert "T-01: batch run-queue with remaining issues stays active" "true" \
+  "$(jq -r .active "$d/.rite/state/run-queue-${sid}.json")"
+assert "T-01: unrelated issue run-queue stays active" "true" \
+  "$(jq -r .active "$d/.rite/state/run-queue-${sid_c}.json")"
+assert_grep "T-01: stale active flow-state is warned" "$stderr_reap01" \
+  'stale flow-state \(active=true\) for issue #42'
+
+echo ""
+echo "=== T-02: reap-issue reaps another session's flow-state and lock (AC-1) ==="
+assert "T-02: other session flow-state active=false" "false" \
+  "$(jq -r .active "$d/.rite/sessions/${sid_b}.flow-state")"
+assert "T-02: matching other-session lock removed" "absent" \
+  "$([ -e "$d/.rite/sessions/${sid_b}.flow-state.lock" ] && echo present || echo absent)"
+assert "T-02: current session lock removed" "absent" \
+  "$([ -e "$d/.rite/sessions/${sid}.flow-state.lock" ] && echo present || echo absent)"
+assert "T-02: unrelated issue flow-state stays active" "true" \
+  "$(jq -r .active "$d/.rite/sessions/${sid_c}.flow-state")"
+assert "T-02: unrelated issue lock kept" "present" \
+  "$([ -e "$d/.rite/sessions/${sid_c}.flow-state.lock" ] && echo present || echo absent)"
+rm -f "$stderr_reap01"
+
+echo ""
+echo "=== T-03: lock reap failure WARNs with path and continues (AC-3) ==="
+# flock は `9>$lock` で lock path を開くため、lock をディレクトリにすると deactivate 自体が
+# 失敗する。AC-3 が問うのは「lock 削除失敗でも続行」なので、対象 flow-state は既に
+# active=false（deactivate を skip）にして lock だけ rm 失敗させる。
+result=$(new_sandbox); d="${result%|*}"; sid="${result#*|}"
+sid_b="bbbbbbbb-aaaa-bbbb-cccc-dddddddddddd"
+sid_orphan="deaddead-0000-0000-0000-000000000000"
+_write_reap_fs "$d" "$sid" 7 true
+_write_reap_fs "$d" "$sid_b" 7 false
+mkdir "$d/.rite/sessions/${sid_b}.flow-state.lock"
+: > "$d/.rite/sessions/${sid_orphan}.flow-state.lock"
+_write_reap_q "$d" "$sid_b" '[7]' 0 true
+stderr_reap03="$(mktemp)"
+set +e
+(cd "$d" && bash "$HOOK" reap-issue --issue 7) 2>"$stderr_reap03"
+rc_reap03=$?
+set -e
+assert "T-03: reap-issue still exits 0 after lock rm failure" "0" "$rc_reap03"
+assert "T-03: current session flow-state still deactivated" "false" \
+  "$(jq -r .active "$d/.rite/sessions/${sid}.flow-state")"
+assert "T-03: other session run-queue still deactivated" "false" \
+  "$(jq -r .active "$d/.rite/state/run-queue-${sid_b}.json")"
+assert_grep "T-03: WARNING names the failed lock path" "$stderr_reap03" \
+  "lock 回収失敗: .*${sid_b}\\.flow-state\\.lock"
+assert "T-03: orphan lock without sibling flow-state is removed" "absent" \
+  "$([ -e "$d/.rite/sessions/${sid_orphan}.flow-state.lock" ] && echo present || echo absent)"
+rmdir "$d/.rite/sessions/${sid_b}.flow-state.lock" 2>/dev/null || true
+rm -f "$stderr_reap03"
+
+if ! print_summary "$(basename "$0")" "flow-state.sh PR 2a refactor + silent-failure fixes + security/observability hardening + handoff marker + consume-handoff corrupt-read WARNING + jq stderr snippet control-char neutralization + C1 8-bit coverage via shared neutralize_ctrl + --worktree merge-preserve field + clear-worktree surgical del + non-UUID acceptance (Layer 1 format-agnostic contract pin) + phase-transition append log + reap-issue cross-session deactivate"; then
   exit 1
 fi
