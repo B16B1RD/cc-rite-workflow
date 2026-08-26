@@ -1,4 +1,5 @@
 ## 2026-08-26
+* **lint:warning** — contradictions=0, stale=34, orphans=0, missing_concept=1, unregistered_raw=356, broken_refs=0
 * **Update**: [新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する](pages/heuristics/new-test-pins-the-contract-output-it-already-produces.md) — raw/reviews/20260826T125608Z-pr-2383.md を統合
 * **Update**: [新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する](pages/heuristics/new-test-pins-the-contract-output-it-already-produces.md) — raw/fixes/20260826T131353Z-pr-2383.md を統合
 * **Skip**: [20260826T133135Z-pr-2383.md](raw/reviews/20260826T133135Z-pr-2383.md) — 一時的な cycle 2 確認のみ。F-01..F-05 の stub URL/--jq 区別と無投稿経路の pr-comment 否定は new-test-pins-the-contract-output に統合済み。新規経験則なし
