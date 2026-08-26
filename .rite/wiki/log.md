@@ -12,6 +12,7 @@
 * **lint:warning** — contradictions=0, stale=29, orphans=0, missing_concept=1, unregistered_raw=351, broken_refs=0
 * **lint:warning** — contradictions=0, stale=29, orphans=0, missing_concept=1, unregistered_raw=352, broken_refs=0
 * **Skip**: [20260826T102106Z-pr-2380.md](raw/reviews/20260826T102106Z-pr-2380.md) — 一時的なレビュー件数サマリのみ（blocking 0）。AI 独り言 PR コメント廃止は fix スキルに既実装。5.1 字面と 2.4.N 見出し残存は Decision Log 済み。新規経験則なし
+* **lint:warning** — contradictions=0, stale=33, orphans=0, missing_concept=1, unregistered_raw=354, broken_refs=0
 
 ## 2026-08-25
 * **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — raw/reviews/20260825T152548Z-pr-2361.md を統合
