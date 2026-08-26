@@ -20,7 +20,7 @@ PR マージ後のクリーンアップを実行する。やることは以下�
 3. 未完了タスクをチェック (あれば Issue 化を提示)
 4. base ブランチを更新 (fetch + merge --ff-only)
 5. ローカル / リモートブランチを削除
-6. PR-specific state ファイルを削除
+6. 残存非実測指摘の follow-up 起票 + PR-specific state ファイルを削除
 7. transient cycle ブランチを削除
 8. Projects Status を Done に更新
 9. (Wiki が有効なら) `rite:wiki-ingest` で raw source を統合
@@ -872,6 +872,31 @@ rationale: references/rationale.md#remote-delete-markers
 マージ済み PR に紐づく state ファイルを削除する。**他 PR 誤削除防止のため glob は `{pr_number}-` prefix 固定**。
 
 > **Acceptance Criteria anchor (AC-7)**: [review-result-schema.md](../../references/review-result-schema.md#クリーンアップ) と双方向リンク。
+
+### 6.0 残存非実測指摘から follow-up Issue を起票
+
+archive より前に実行する（JSON が元の場所にあるうちに読む）。0 件は起票しない。同定不能は起票せず WARNING。cleanup は止めない。
+rationale: references/rationale.md#follow-up-before-archive
+
+```bash
+_state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+_fu_rc=0
+bash {plugin_root}/hooks/scripts/cleanup-follow-up-issue.sh \
+  --state-root "$_state_root" \
+  --pr "{pr_number}" \
+  --source-issue "{issue_number}" \
+  --owner "{owner}" \
+  --repo "{repo}" \
+  --project-number {project_number} \
+  --project-owner "{owner}" \
+  --projects-enabled {projects_enabled} || _fu_rc=$?
+if [ "$_fu_rc" -ne 0 ]; then
+  echo "WARNING: follow-up Issue 起票 helper が rc=${_fu_rc} で失敗しました。cleanup は続行します" >&2
+  echo "  手動起票: 当該 PR の review-results JSON の non_blocking_findings[] を元に follow-up ラベル付き Issue を作成してください" >&2
+  echo "[CONTEXT] FOLLOW_UP_ISSUE=failed; reason=helper_rc; pr={pr_number}; rc=${_fu_rc}" >&2
+fi
+```
 
 ```bash
 pr_number="{pr_number}"

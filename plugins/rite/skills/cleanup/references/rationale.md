@@ -6,6 +6,13 @@
 ここにあるのは **why** のみ。分岐表・sentinel 一覧・bash ブロックといった実行時に必要な機械
 インターフェースは本体が SoT であり、本ファイルへ複製しない。
 
+## follow-up-before-archive
+
+archive より前に起票するのは、転記元 JSON がまだ元の場所にあるうちに読むため。archive を
+維持する (D-04) のは、follow-up body は共有記録だが JSON は機械可読のローカル保全かつ起票
+失敗時の受け皿だから。同定不能時に起票しないのは、重複 spam が取り返しつかない一方、失敗は
+WARNING から手動復旧できるから (D-03)。
+
 ## pr-merged-default
 
 `{pr_merged}` を全経路で既定するのは、ステップ 4-W の worktree パス manifest 記録とステップ 5 の
