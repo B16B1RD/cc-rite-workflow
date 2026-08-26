@@ -1610,7 +1610,7 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
      - **外部ツール / best-effort**: 登録しない (= 未判定)。External review (blocking)
      rationale: references/design-rationale.md#measured-map-construction
 
-     判定の結果 **`measured_map[file:line] == false`** -> **non-blocking (実測なし)**; skip ステップ 2.1 selection、fix commit 対象外 (記録は `/rite:pr-review` の 4 経路 — 永続 JSON の `non_blocking_findings[]` / ステップ 6.1.d の PR 記録コメント / ステップ 5.4 の「実測なし指摘」section / E2E output line — が担う)
+     判定の結果 **`measured_map[file:line] == false`** -> **non-blocking (実測なし)**; skip ステップ 2.1 selection、fix commit 対象外 (記録は `/rite:pr-review` の 4 経路 — 永続 JSON の `non_blocking_findings[]` / ステップ 6.1.d の関連 Issue 記録コメント / ステップ 5.4 の「実測なし指摘」section / E2E output line — が担う)
 
      > **人間 thread の巻き添え防止 (MUST)**: 同一 file:line の人間 thread は、rite finding 由来と確認できない限り **External review (blocking)**。判定不能も安全側。
      >
