@@ -257,7 +257,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 `/rite:pr-review` ステップ 5.3.0.M の実測必須ゲートで non-blocking に降格した**非実測指摘**、およびステップ 5.3.0.C の帰結クラス降格政策 ([assessment-rules.md §5.3.0.C](../skills/fix/references/assessment-rules.md#530c-帰結クラス降格政策-consequence-class-demotion-gate)) で降格した **class B 指摘** (5.3.0.C の分類対象は実測判定済み — `verification.measured` が boolean — の blocking に限られ、実測未判定の finding は class A 固定で降格されないため、class B 降格分は常に実測付き) を保持するトップレベル配列。要素のスキーマは `findings[]` と**同一** (上記 [findings[] 要素](#json-schema) の表の全フィールド — `pre_existing` を含む。本節では再掲しない)。
 
-**`demotion` オブジェクト (任意、1.1.0+)**: 5.3.0.C 由来の降格要素のみが持つ追加フィールド。形は `{policy: "class-b-demotion", reason: <判定文>}` — `policy` は降格の出所の判別子 (現在は 1 値のみ)、`reason` は class B 認定の判定文 (classification map の `scenario`)。書き手は `scripts/review-class-demotion-gate.sh` のみ。**本キーの有無が実測ゲート降格分 (5.3.0.M、キーなし) と class B 降格分 (5.3.0.C、キーあり) を区別する唯一の監査判別子**であり、6.1.d の PR 記録コメントは本キーを持つ要素に降格理由を併記する。read 側は未知キーを無視するため旧 reader でも壊れない。
+**`demotion` オブジェクト (任意、1.1.0+)**: 5.3.0.C 由来の降格要素のみが持つ追加フィールド。形は `{policy: "class-b-demotion", reason: <判定文>}` — `policy` は降格の出所の判別子 (現在は 1 値のみ)、`reason` は class B 認定の判定文 (classification map の `scenario`)。書き手は `scripts/review-class-demotion-gate.sh` のみ。**本キーの有無が実測ゲート降格分 (5.3.0.M、キーなし) と class B 降格分 (5.3.0.C、キーあり) を区別する唯一の監査判別子**であり、6.1.d の関連 Issue 記録コメントは本キーを持つ要素に降格理由を併記する。read 側は未知キーを無視するため旧 reader でも壊れない。
 
 **設計判断 — なぜ `findings[]` に混ぜないか**: `findings[]` は「merge を止める集合」という単一の意味を持ち、`overall_assessment` / `total_findings` / cross-field invariant #2 のいずれもその前提で書かれている。非実測指摘を同配列に混ぜると invariant #2 (mergeable × open CRITICAL/HIGH 禁止) を read 側 3 経路 + 本 SoT で同時に緩める必要が生じる。独立配列にすれば `findings[]` の契約を一切変えずに記録だけを永続化できる。
 
