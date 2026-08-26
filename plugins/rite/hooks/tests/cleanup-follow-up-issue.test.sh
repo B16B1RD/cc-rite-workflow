@@ -296,6 +296,8 @@ else
   assert_grep "T-08 project-number を引用する" "$CLEANUP_MD" 'project-number "\{project_number\}"'
   assert_grep "T-08 projects-enabled を引用する" "$CLEANUP_MD" 'projects-enabled "\{projects_enabled\}"'
   assert_grep "T-08 pr= の値は直後が ; または行末" "$CLEANUP_MD" 'pr=` の値は直後が `;` または行末であることまで含めて一致させる'
+  assert "T-08 recency 選択は follow-up 側に限定" "1" \
+    "$(grep -cF 'この選択は**follow-up 側**の判定ルールを評価する前に行う' "$CLEANUP_MD" || true)"
 fi
 
 echo "--- T-09: project-number 非数値は Projects skip + WARNING ---"
