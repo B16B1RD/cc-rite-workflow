@@ -1,4 +1,5 @@
 ## 2026-08-26
+* **Skip**: [20260826T000314Z-pr-2373.md](raw/reviews/20260826T000314Z-pr-2373.md) — 一時的なレビュー件数サマリのみ（blocking 0）。number-free 走査面の散文同期は lint/SKILL.md と SPEC に既反映。新規経験則なし
 * **Skip**: [20260825T232501Z-pr-2371.md](raw/reviews/20260825T232501Z-pr-2371.md) — 一時的なレビュー件数サマリのみ（blocking 0）。PR→Issue 番号解決は release スキルに既実装。空 body/mktemp は mktemp-failure-surface-warning に既出。新規経験則なし
 * **Update**: [bilingual CHANGELOG は PR 単位で同期し、バージョン見出しは英語、本文には Issue 番号を書いてよい](pages/patterns/bilingual-changelog-sync-conventions.md) — raw/reviews/20260825T190409Z-pr-2369.md を統合
 * **Update**: [一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える](pages/heuristics/generalized-claim-false-while-implementation-specialized.md) — raw/reviews/20260825T171132Z-pr-2362.md を統合
