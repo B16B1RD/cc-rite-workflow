@@ -1,4 +1,6 @@
 ## 2026-08-26
+* **Skip**: [20260826T111536Z-pr-2382.md](raw/reviews/20260826T111536Z-pr-2382.md) — 一時的な PR レビュー記録。XS 文書 drift 修正の事実のみで新規経験則なし（fix スキルの heading/表同期は plugin 本体へ既に適用済み）
+* **lint:warning** — contradictions=0, stale=33, orphans=0, missing_concept=1, unregistered_raw=358, broken_refs=0
 * **Skip**: [20260826T003727Z-pr-2374.md](raw/reviews/20260826T003727Z-pr-2374.md) — 一時的なレビュー件数サマリのみ（blocking 0）。空 body の gh 成功を keyword なしへ送る契約は release Phase 1.3 に既実装。mktemp / -R 欠落は pre-existing。新規経験則なし
 * **Skip**: [20260826T000314Z-pr-2373.md](raw/reviews/20260826T000314Z-pr-2373.md) — 一時的なレビュー件数サマリのみ（blocking 0）。number-free 走査面の散文同期は lint/SKILL.md と SPEC に既反映。新規経験則なし
 * **Skip**: [20260825T232501Z-pr-2371.md](raw/reviews/20260825T232501Z-pr-2371.md) — 一時的なレビュー件数サマリのみ（blocking 0）。PR→Issue 番号解決は release スキルに既実装。空 body/mktemp は mktemp-failure-surface-warning に既出。新規経験則なし
