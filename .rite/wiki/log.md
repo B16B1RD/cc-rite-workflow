@@ -1,4 +1,5 @@
 ## 2026-08-27
+* **Skip**: [20260826T230714Z-pr-2391.md](raw/reviews/20260826T230714Z-pr-2391.md) — 一時的な 0-finding レビュー記録。reader 先頭行等値 (T-05f) と follow-up 側 recency は plugin へ既反映。新規経験則なし
 * **Skip**: [20260826T192156Z-pr-2389.md](raw/reviews/20260826T192156Z-pr-2389.md) — detector-candidate: recency 適用範囲は導入文の固定文字列を grep -cF で本数 pin する
 * **Skip**: [20260826T192443Z-pr-2389.md](raw/fixes/20260826T192443Z-pr-2389.md) — detector-candidate: recency 適用範囲は導入文の固定文字列を grep -cF で本数 pin する
 * **Skip**: [20260826T193449Z-pr-2389.md](raw/reviews/20260826T193449Z-pr-2389.md) — 一時的な cycle 2 mergeable 判定の一時記録。新規経験則なし
