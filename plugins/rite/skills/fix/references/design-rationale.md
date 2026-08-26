@@ -131,7 +131,7 @@ symbol を壊す silent regression が頻発する。指摘ゼロを目指して
 が新規 finding を出し、fix ループが収束せず (サーキットブレーカー上限まで) reviewer の context を浪費する。
 修正前の影響範囲確認で予防できる。Doc-Heavy PR 以外でも同様。
 
-## nit-noted-reply-notes
+## nit-noted-no-reply-notes
 
 - **nit-noted 経路が commit も PR reply も発生させない理由**: nit-noted は「修正不要の informational 指摘」のため code 変更 (Edit/Write) も commit も PR コメントも発生しない。`acknowledged_nit_count = {nit_noted_count}` で分類件数だけ積む。自律ループでは宛先の人間が不在で、認知返信は独り言になる。
 
