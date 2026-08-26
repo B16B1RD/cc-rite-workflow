@@ -20,7 +20,7 @@ PR マージ後のクリーンアップを実行する。やることは以下�
 3. 未完了タスクをチェック (あれば Issue 化を提示)
 4. base ブランチを更新 (fetch + merge --ff-only)
 5. ローカル / リモートブランチを削除
-6. PR-specific state ファイルを削除
+6. 残存非実測指摘の follow-up 起票 + PR-specific state ファイルを削除
 7. transient cycle ブランチを削除
 8. Projects Status を Done に更新
 9. (Wiki が有効なら) `rite:wiki-ingest` で raw source を統合
@@ -873,6 +873,33 @@ rationale: references/rationale.md#remote-delete-markers
 
 > **Acceptance Criteria anchor (AC-7)**: [review-result-schema.md](../../references/review-result-schema.md#クリーンアップ) と双方向リンク。
 
+### 6.0 残存非実測指摘から follow-up Issue を起票
+
+archive より前に実行する（JSON が元の場所にあるうちに読む）。0 件は起票しない。同定不能は起票せず WARNING。cleanup は止めない。
+rationale: references/rationale.md#follow-up-before-archive
+
+```bash
+_state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+_fu_rc=0
+# --owner/--repo は repo identity ({owner_repo} の slash split)。--project-owner だけ Projects owner ({owner})。
+IFS=/ read -r _gh_owner _gh_repo <<< "{owner_repo}"
+bash {plugin_root}/hooks/scripts/cleanup-follow-up-issue.sh \
+  --state-root "$_state_root" \
+  --pr "{pr_number}" \
+  --source-issue "{issue_number}" \
+  --owner "${_gh_owner}" \
+  --repo "${_gh_repo}" \
+  --project-number "{project_number}" \
+  --project-owner "{owner}" \
+  --projects-enabled "{projects_enabled}" || _fu_rc=$?
+if [ "$_fu_rc" -ne 0 ]; then
+  echo "WARNING: follow-up Issue 起票 helper が rc=${_fu_rc} で失敗しました。cleanup は続行します" >&2
+  echo "  手動起票: 当該 PR の review-results JSON の non_blocking_findings[] を元に follow-up ラベル付き Issue を作成してください" >&2
+  echo "[CONTEXT] FOLLOW_UP_ISSUE=failed; reason=helper_rc; pr={pr_number}; rc=${_fu_rc}" >&2
+fi
+```
+
 ```bash
 pr_number="{pr_number}"
 case "$pr_number" in
@@ -1207,13 +1234,27 @@ rationale: references/rationale.md#marker-data-delimiter
   - ステップ 2 で関連 Issue が識別できなかった（`{issue_number}` 空）とき: `{projects_status_result}` = `（関連 Issue 未識別のためスキップ）`、`{projects_check}` = `x`
   - 上記 2 条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=true` が見つかったとき: `{projects_status_result}` = `Done`、`{projects_check}` = `x`
   - 上記 2 条件のいずれにも該当せず `[CONTEXT] PROJECTS_STATUS_UPDATED=false` または sentinel 自体が見つからない（= ステップ8 が実行されるべきだったのに失敗/skip された）とき: `{projects_status_result}` = `⚠️ 更新失敗（手動確認が必要）`、`{projects_check}` = ` ` + 「GitHub Projects 画面で Issue #{issue_number} の Status を Done に変更」を付記
-- `{review_cleanup_check}`: `REVIEW_CLEANUP_PARTIAL_FAILURE=1` の marker を**上から評価し最初の一致**を採用する（`{wiki_ingest_check}` と同じく各行は presence 検査。marker が 1 本も無ければ `x`）。**照合は `pr={pr_number}` まで含める** — `/rite:batch-run --merge` は同一セッションで Issue ごとに `/rite:cleanup` を invoke するため、先行 Issue の marker が文脈に残る（`{local_branch_check}` が `branch=` でスコープするのと同じ理由。`invalid_pr_number` だけは `pr=` を持たないので marker 名のみで照合する）:
+- `{review_cleanup_check}`: **follow-up 起票（ステップ 6.0 の `FOLLOW_UP_ISSUE`）と state 削除（`REVIEW_CLEANUP_PARTIAL_FAILURE`）を独立に評価し、両方が `x` 相当のときだけ `x`**（`{local_branch_check}` と同型。どちらか一方でも未完了なら ` ` にし、未完了だった側の付記を列挙する）。照合はいずれも `pr={pr_number}` まで含める（`invalid_pr_number` だけは `pr=` を持たないので marker 名のみ）。**`pr=` の値は直後が `;` または行末であることまで含めて一致させる**（`{local_branch_check}` の `branch=` と同文。`pr=9` が `pr=90` に prefix 一致してはならない）。同一 family で複数行があるときは最後の出現（recency）。この選択は**各側の判定ルールを評価する前**に行う。helper は API 失敗でも exit 0 のため、起票失敗の一次信号は `FOLLOW_UP_ISSUE` だけである。
 
-  | 検出 | check | 表示 |
+  **follow-up 側**（**2 段で判定する**: まず `[CONTEXT] ` 行頭一致 + marker family `FOLLOW_UP_ISSUE` + `pr={pr_number}`（直後が `;` または行末）に該当する行を集め、**その中の最後の出現 1 行だけを対象に選ぶ**。次にその 1 行に対して以下のルールを上から評価し最初に一致したものを採用する。段の順序を入れ替えてはならない）:
+
+  | 検出 | 側の判定 | 付記 |
   |---|---|---|
-  | `reason=invalid_pr_number`、または `reason=` が `_rm_failure` / `_archive_mkdir_failure` / `_archive_mv_failure` / `_archive_name_collision` / `_gitignore_failure` / `_helper_failed` のいずれかで終わる marker がある | ` ` | 警告付記 |
-  | `reason=review_results_undecidable; cause=jq_missing` がある | ` ` | `⚠️ jq が見つからず全レビュー結果 JSON を無判定で archive/ へ退避しました。jq を導入してください` |
-  | `reason=review_results_undecidable` がある（`cause=jq_rc_<n>`） | `x` | `ℹ️ 一部のレビュー結果 JSON は中身を判定できず削除せず archive/ へ退避しました (本 cycle での対応は不要)` |
+  | `FOLLOW_UP_ISSUE=failed`（reason 問わず。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました。review-results JSON の non_blocking_findings[] を元に follow-up ラベル付き Issue を手動作成してください` |
+  | `skipped; reason=no_json` | 未完了 | 同上（レビュー結果 JSON 不在） |
+  | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで、残存非実測指摘があれば follow-up Issue を手動作成してください` |
+  | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` | x 相当 | — |
+  | `[CONTEXT] FOLLOW_UP_ISSUE=` かつ `pr={pr_number}` の行が無い | 未完了 | `⚠️ follow-up 起票の実行結果が確認できませんでした。残存非実測指摘があれば follow-up ラベル付き Issue を手動作成してください` |
+
+  **FOLLOW_UP_ISSUE marker 不在を成功と読んではならない。**
+
+  **state 削除側**（`REVIEW_CLEANUP_PARTIAL_FAILURE=1` を上から評価し最初の一致。各行は presence 検査。こちら側に marker が 1 本も無ければ x 相当）:
+
+  | 検出 | 側の判定 | 表示 |
+  |---|---|---|
+  | `reason=invalid_pr_number`、または `reason=` が `_rm_failure` / `_archive_mkdir_failure` / `_archive_mv_failure` / `_archive_name_collision` / `_gitignore_failure` / `_helper_failed` のいずれかで終わる marker がある | 未完了 | 警告付記 |
+  | `reason=review_results_undecidable; cause=jq_missing` がある | 未完了 | `⚠️ jq が見つからず全レビュー結果 JSON を無判定で archive/ へ退避しました。jq を導入してください` |
+  | `reason=review_results_undecidable` がある（`cause=jq_rc_<n>`） | x 相当 | `ℹ️ 一部のレビュー結果 JSON は中身を判定できず削除せず archive/ へ退避しました (本 cycle での対応は不要)` |
 
   行を presence 検査にしてあるので「上から評価し最初の一致」が実際に効く。`_gitignore_failure` は 1 行目の実失敗側に置く。`cause=jq_rc_<n>` を `x` に倒すのは helper が退避成功を `failed` に数えないため。`cause=jq_missing` は環境不備のため実失敗側に置く。
 rationale: references/rationale.md#review-cleanup-reasons
