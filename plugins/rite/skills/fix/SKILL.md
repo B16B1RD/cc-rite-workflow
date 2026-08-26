@@ -1583,7 +1583,7 @@ rite 結果が無いときは空 `severity_map` で続行し、1.3 が GitHub st
 
 ### 1.3 Classify Comments
 
-Perform classification using `severity_map` AND `scope_map`. The scope_map enables `nit-noted` findings to be routed away from the blocking fix loop into the reply-only acknowledge track.
+Perform classification using `severity_map` AND `scope_map`. The scope_map enables `nit-noted` findings to be routed away from the blocking fix loop into the acknowledge track (PR reply しない)。
 
 **Classification table:**
 
@@ -1591,7 +1591,7 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
 |---------------|----------|--------|
 | **Required fix** | severity ∈ {CRITICAL, HIGH} AND scope ∈ {current-pr, follow-up} AND measured ∈ {true, 未判定} | Must fix in this PR |
 | **Needs fix** | severity ∈ {MEDIUM, LOW-MEDIUM, LOW} AND scope ∈ {current-pr, follow-up} AND measured ∈ {true, 未判定} | Must fix in this PR (action required) |
-| **nit (認知のみ)** | scope == "nit-noted" | Reply-only via ステップ 2.4 `nit-noted-reply`; NOT a fix target |
+| **nit (認知のみ)** | scope == "nit-noted" | NOT a fix target。PR reply しない。`acknowledged_nit_count = {nit_noted_count}` |
 | **non-blocking (実測なし)** | scope ∈ {current-pr, follow-up} AND measured == false (`measured_map` に明示的に `false` で登録されたもののみ — 経路別判定は下記 measured lookup 参照) | 表示のみ; NOT a fix target (実測必須ゲート — 記録は `/rite:pr-review` ステップ 5.4 の「実測なし指摘」section が担う) |
 | **External review** | severity_map に登録されていない未対応コメント (人間レビュアーの指摘等)、**および step 4 の出自確認で rite finding 由来と確認できなかった thread** (severity_map 登録済みでも本分類へ振り替える)。実測必須ゲートの**対象外** — `Verification:` アンカーを構造的に持てないため measured 未判定でも non-blocking に落とさない | Action required |
 | **Resolved** | Resolved threads | - |
@@ -1602,7 +1602,7 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
 2. Contains only `LGTM`, `+1`, `👍`, etc. -> Informational (no action needed)
 3. Check if the finding's file:line exists in `severity_map`
 4. If it exists, look up the corresponding entry in `scope_map`:
-   - **`scope == "nit-noted"`** -> **nit (認知のみ)**; route directly to ステップ 2.4 `nit-noted-reply` (skip ステップ 2.1 selection、fix commit 対象外)
+   - **`scope == "nit-noted"`** -> **nit (認知のみ)**; skip ステップ 2.1 / 2.4。PR reply しない。`acknowledged_nit_count` に算入（fix commit 対象外）
    - **measured lookup (実測必須ゲート)**: 判定は **`measured_map[file:line]` の参照に統一**する (母集団は severity_map と同一 — **scope による登録除外なし**。nit-noted は本分岐に到達する前に上の nit 分岐 (正規化後 `scope_map` 参照) が先取するため lookup 対象にならない。key 正規化・tie-break・3 値保持を含む構築共通規則はステップ 1.2.1 step 6 が単一定義。**3 値**: `false` = non-blocking / `true` = blocking / **未登録** = 未判定 (実測の有無を判定する構造が無い) → blocking)。`measured_map` の構築は経路別:
      - **JSON (P0/2/3)**: `verification` が object かつ `verification.measured` が boolean のときだけ登録。**欠落は登録しない (= 未判定 → blocking)**。`(.verification.measured // false)` で畳まない
      - **会話 (P1)**: `### 全指摘事項` → `true`、`### 実測なし指摘 (non-blocking)` → `false`。後者も `severity_map` / `scope_map` へ投入 (1.2.1 step 6)
@@ -1676,8 +1676,8 @@ PR #{number} のレビューコメント
 
 ### nit (認知のみ) ({nit_noted_count}件)
 <!-- scope == "nit-noted" の finding はサマリ表示のみ。
-     ステップ 2.1 auto-select 対象から除外され、ステップ 2.4 nit-noted-reply で「nit、認知済」reply を投稿する。
-     fix commit 対象からも完全除外、ステップ 4.6 サマリで acknowledged_nit_count として独立カウント。 -->
+     ステップ 2.1 auto-select / ステップ 2.4 reply の対象外。PR に reply しない。
+     fix commit 対象からも完全除外、ステップ 4.6 サマリで acknowledged_nit_count (= nit_noted_count) として独立カウント。 -->
 | # | 重要度 | スコープ | ファイル | 行 | 指摘内容 | レビュアー |
 |---|--------|----------|----------|-----|----------|------------|
 | 1 | {severity} | nit-noted | {path} | {line} | {body_preview} | @{user} |
@@ -1855,13 +1855,13 @@ rationale: references/design-rationale.md#simplification-first-rationale
 
 **Entry routing — scope=nit-noted skip**:
 
-**`scope == "nit-noted"` は 2.1 を skip して 2.4 `nit-noted-reply` へ**:
+**`scope == "nit-noted"` は 2.1 / 2.4 を skip**（PR reply しない。カウントは 2.4.N）:
 
 1. scope_map[file:line] を look up
-2. `scope == "nit-noted"` → ステップ 2.1 (本セクション) を skip、ステップ 2.4 `nit-noted-reply` サブステップで「nit、認知済」reply を 1 件投稿
+2. `scope == "nit-noted"` → ステップ 2.1 / 2.4 を skip。ステップ 2.4.N で `acknowledged_nit_count` に算入
 3. **measured lookup (実測必須ゲート)**: ステップ 1.3 で **non-blocking (実測なし)** に分類された finding (`measured_map[file:line] == false`) → ステップ 2.1 (本セクション) を **skip** し、ステップ 2.4 の reply も投稿しない (fix commit 対象外。記録は `/rite:pr-review` ステップ 5.4 の「実測なし指摘」section が担う)
 4. `scope ∈ {current-pr, follow-up}` かつ **measured != false** (= `measured_map` で `true`、または未登録 = **未判定** — ステップ 1.3 step 4 の measured lookup 参照)、または scope 未登録 (legacy / fallback) → 本セクション以降を通常通り実行 (Confidence override で取り込んだ外部ツール finding は severity_map 登録済みのため ステップ 1.3 step 4 でここに合流し、silent skip されない)
-5. skip 経路では選択 UI を **出さない**。nit reply の冪等は 2.4 が comment ID 単位。
+5. skip 経路では選択 UI を **出さない**。
 
 
 ---
@@ -1887,7 +1887,7 @@ Confirm the fix approach for each finding (only for findings whose scope is NOT 
 
 | 選択肢 | finding 終着 | reply | commit trailer | 次 cycle 自動 suppression |
 |--------|------------|-------|----------------|--------------------------|
-| コードを修正する | status: `fixed` | 修正報告 (ステップ 2.4) | （該当なし） | 該当なし (修正済) |
+| コードを修正する | status: `fixed` | 人間由来 thread のみ ステップ 2.4（rite 由来は skip） | （該当なし） | 該当なし (修正済) |
 | accept (認知のみ) | status: **`acknowledged`** (scope を `nit-noted` に override) | "accepted, will not be fixed in this PR." | `Acknowledged-finding: F-NN (file:line) — reason` (ステップ 3.2) | **あり** (fingerprint 永続化) |
 | 説明・返信のみ | status: `replied` | 説明 (修正不要の根拠) | （該当なし） | なし (次 cycle で再出現可) |
 
@@ -1902,7 +1902,7 @@ Confirm the fix approach for each finding (only for findings whose scope is NOT 
 
 Claude は ステップ 1 末尾で skip_file を、`{target_author}` が必要な箇所では author_file を、それぞれ Read tool で読む (パスは Block C の `[CONTEXT] BLOCK_C_COMPLETE` marker の `skip_file=` / `author_file=` / `body_file=` 値をリテラル使用する — Read tool は `${TMPDIR:-/tmp}` を展開できないため、handoff 3 本すべて marker 値経由で読む。specific path 必須、wildcard glob は並列セッション破壊のため絶対禁止)。skip_file が `"true"` の場合は本 phase 以降のすべての mention 生成箇所で `@` prefix を生成しない。
 
-**複数 reviewer 時の `{reviewer_display_N}` 展開ルール** (ステップ 3.2 trailer / ステップ 4.2 PR comment 報告で使用):
+**複数 reviewer 時の `{reviewer_display_N}` 展開ルール** (ステップ 3.2 trailer で使用):
 
 | reviewer 数 | trailer の展開 (日本語) | trailer の展開 (英語) |
 |------------|-------------------------|----------------------|
@@ -1930,7 +1930,7 @@ accept = 本 PR では直さない決着を `acknowledged` にし、fingerprint 
 2. **finding state の override**:
    - `status = "acknowledged"` を設定
    - `scope` を `nit-noted` に override (元 scope は `original_scope` として retain — reply 文言で参照)
-3. **reply 投稿**: ステップ 2.4 既存 reply 機構を再利用し、固定文言で投稿:
+3. **reply 投稿**: ステップ 2.4 の reply 機構を再利用（人間由来ゲート適用。rite 由来なら skip、fingerprint は続行）:
    ```
    accepted, will not be fixed in this PR. (reviewer scope: {original_scope}; user decision: accept{reason_suffix})
    ```
@@ -1973,7 +1973,7 @@ case "$pr_number" in
   ''|*[!0-9]*)
     echo "ERROR: ステップ 2.1.A の pr_number が literal substitute されていません (値: '$pr_number')" >&2
     echo "[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1; reason=pr_number_placeholder_residue" >&2
-    exit 1  # fix.md 内 8 site の placeholder gate と対称化 (ステップ 2.4.N 等と blocking 統一)
+    exit 1  # placeholder gate と対称化 (blocking 統一)
     ;;
 esac
 file_path="{file}"
@@ -2231,6 +2231,18 @@ If `propagated_count == 0` and `already_applied_count == 0`, output a single lin
 
 ### 2.4 Create Reply (Optional)
 
+**人間由来ゲート (MUST, POST 前)**: 対象 thread の root（なければ対象コメント本文）に次のいずれかを含む → 返信しない。
+- `## 📜 rite レビュー結果`
+- `## 📜 rite 非実測指摘の記録`
+- `## レビュー指摘対応完了`
+- `nit、認知済 (scope=nit-noted`
+- `📜 rite 作業メモリ`
+
+判定不能 → 人間由来として返信する。
+skip 時は POST bash を実行せず `[CONTEXT] REPLY_SKIPPED=1; comment_id={comment_id}; reason=rite_origin` を stderr emit。
+2.1.A accept reply も本ゲートを通す。
+rationale: references/design-rationale.md#human-origin-reply-gate
+
 **Reply 本文の SoT**: 返信は `templates/review/reply.md` の Why-only テンプレートに従う。
 本文は **Why の 1〜3 文** で、Issue 番号 / PR 番号 / 修正履歴を記載しない。
 
@@ -2321,136 +2333,9 @@ reply は `mktemp` + HEREDOC → `jq --rawfile`。`$comment_id` は `--argjson`�
 
 ### 2.4.N nit-noted-reply
 
-`scope == "nit-noted"` の全 finding に「nit、認知済」reply を投稿し `acknowledged` にする。Issue 化しない。
+`scope == "nit-noted"` は PR に reply しない。`acknowledged_nit_count = {nit_noted_count}`（ステップ 1.3 / 1.4）。Issue 化しない。commit しない。
 
-**Pre-condition**:
-- ステップ 1.2.0 で `scope_map_json` が構築済 (空 `{}` も含む)
-- ステップ 1.3 Classification で `nit (認知のみ)` セクションに分類された finding 群が `nit_noted_findings` として retain されている
-- ステップ 1.4 Display で `{nit_noted_count}` が決定済
-
-**Loop body** (per nit-noted finding):
-
-各 finding について ステップ 2.4 既存の reply 機構 (上記 bash block) を **再利用** し、`{reply_body}` を以下の固定文言で置き換えて投稿する:
-
-```
-nit、認知済 (scope=nit-noted, 受け流し経路)
-
-
-このご指摘は scope=nit-noted の informational 指摘として認識しました。本 PR での修正は行いません (受け流し経路)。
-```
-
-**冪等性 (Replied-only respect)**:
-
-- 同一 `comment_id` に対する同一 cycle 内での重複 reply は禁止 (Wiki 経験則「Replied-only respect」)
-- 既に「nit、認知済」reply が投稿済みのコメント (本 PR の `gh api repos/{owner}/{repo}/pulls/{pr_number}/comments` レスポンスで `body` に literal `nit、認知済 (scope=nit-noted` を含むものが検出された場合) は **skip**
-- 並列 cycle (review-fix loop の N 回目で同一 nit が再指摘された場合) も同様に skip し、`[CONTEXT] NIT_NOTED_REPLY_SKIPPED=1; reason=already_replied; comment_id=$comment_id` を emit
-
-**Counter accumulation**:
-
-各成功投稿で `acknowledged_nit_count` counter を +1 する (ステップ 4.6 サマリで使用)。本サブステップは **単一 Bash tool invocation** で実行され、`pr_number` placeholder の literal substitution、defense-in-depth truncate、既投稿 ID set 生成、per-finding loop、append までを 1 block に集約する:
-
-```bash
-# ステップ 2.4.N nit-noted-reply 全体
-# 単一 Bash tool invocation で完結させる (shell state は invocation 間で継承されないため)
-
-# Step 1: pr_number placeholder の literal substitution + numeric gate (ステップ 6.1.a 等と対称)
-pr_number="{pr_number}"
-case "$pr_number" in
-  ''|*[!0-9]*)
-    echo "ERROR: ステップ 2.4.N の pr_number が literal substitute されていません (値: '$pr_number')" >&2
-    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=pr_number_placeholder_residue" >&2
-    exit 1
-    ;;
-esac
-
-# Step 2: acknowledged_nit_count tempfile の defense-in-depth truncate (confidence-override tempfile と同型)
-nit_count_file="${TMPDIR:-/tmp}/rite-fix-acknowledged-nit-${pr_number}.txt"
-: > "$nit_count_file" 2>/dev/null || echo "WARNING: nit_count_file の truncate に失敗しました ($nit_count_file)" >&2
-
-# Step 3: 既投稿 reply の comment_id set を生成 (冪等性 — Replied-only respect)
-# 本 PR の既存 review comment から body に literal "nit、認知済 (scope=nit-noted" を含むものを抽出
-# in_reply_to を取って既存 reply 対象の元 comment_id set を作る (gh api PR review comments)
-already_replied_ids=$(gh api "repos/{owner}/{repo}/pulls/${pr_number}/comments" \
-  --jq '[.[] | select(.body | contains("nit、認知済 (scope=nit-noted")) | .in_reply_to_id] | unique | .[]' \
-  2>/dev/null || echo "")
-
-# Step 4: scope_map_json から scope=="nit-noted" の finding を per-finding loop で処理
-# nit_noted_findings は ステップ 1.3 で classified された finding 一覧で、各要素は {comment_id, file, line, body} を持つ
-# Claude が会話コンテキストから iteration する (bash 配列として渡せないため LLM responsibility)
-# 以下は per-finding template (Claude は finding ごとに本 bash block を生成・実行する):
-
-for_each_nit_noted_finding() {
-  local comment_id="$1"
-  local original_body_preview="$2"
-
-  # 既投稿 skip check (Replied-only respect doctrine)
-  if printf '%s\n' "$already_replied_ids" | grep -qx "$comment_id"; then
-    echo "[CONTEXT] NIT_NOTED_REPLY_SKIPPED=1; reason=already_replied; comment_id=$comment_id" >&2
-    return 0
-  fi
-
-  # Step 4a: reply body 構築 (固定文言 + 元コメント preview)
-  local reply_tmpfile
-  reply_tmpfile=$(mktemp "${TMPDIR:-/tmp}/rite-fix-nit-reply-${pr_number}-${comment_id}-XXXXXX.md") || {
-    echo "[CONTEXT] NIT_NOTED_REPLY_FAILED=1; comment_id=$comment_id; reason=mktemp_failed" >&2
-    return 1
-  }
-  cat > "$reply_tmpfile" <<EOF
-nit、認知済 (scope=nit-noted, 受け流し経路)
-
-
-このご指摘は scope=nit-noted の informational 指摘として認識しました。本 PR での修正は行いません (受け流し経路)。
-EOF
-
-  # Step 4b: gh api POST で reply 投稿
-  # pipefail を local scope で有効化 (jq 段の失敗の silent 吸収防止、ステップ 2.4 既存 reply 機構と対称)
-  local _saved_pipefail
-  _saved_pipefail=$(set +o | grep pipefail || echo "set +o pipefail")
-  set -o pipefail
-  if jq -n --rawfile body "$reply_tmpfile" --argjson in_reply_to "$comment_id" \
-       '{"body": $body, "in_reply_to": $in_reply_to}' \
-     | gh api "repos/{owner}/{repo}/pulls/${pr_number}/comments" -X POST --input - >/dev/null 2>&1; then
-    # Step 4c: 成功時のみ comment_id を nit_count_file に append (ステップ 4.6 で wc -l 集計)
-    echo "$comment_id" >> "$nit_count_file"
-    rm -f "$reply_tmpfile"
-    eval "$_saved_pipefail"
-    return 0
-  else
-    echo "[CONTEXT] NIT_NOTED_REPLY_FAILED=1; comment_id=$comment_id; reason=gh_api_post_failure" >&2
-    rm -f "$reply_tmpfile"
-    eval "$_saved_pipefail"
-    return 1
-  fi
-}
-
-# Claude は scope_map_json の nit-noted エントリを iterate して上記関数を呼ぶ:
-# for each (comment_id, body_preview) in nit_noted_findings:
-#   for_each_nit_noted_finding "$comment_id" "$body_preview"
-```
-
-**Loop termination**:
-
-- すべての nit-noted finding を処理し終えたら本サブステップ終了
-- 投稿失敗 (gh api POST 失敗 / rate limit / network error) は `[CONTEXT] NIT_NOTED_REPLY_FAILED=1; comment_id=$comment_id; reason=...` を emit し、当該 finding は skip して次へ進む (non-blocking、`acknowledged_nit_count` 集計対象外)
-- すべての投稿が完了したら次の Phase へ進む:
-  - **fix commit 不要 PR**: 判定と skip の実体は **ステップ 3.1 冒頭の前置ガード**を参照 (working tree 無変更ならステップ 3 全体を skip し 4.2 へ直行。判定は `git-status-filtered.sh` 経由)。前置ガードは 2.4.N を経由しない non-blocking-only 経路でも評価される全経路共通の単一定義であり、本 bullet はその参照のみ (二重定義しない)
-  - **mixed PR** (nit-noted + non-nit findings 混在): non-nit findings は通常通り ステップ 2.2/2.3 経由で ステップ 3 (commit) へ進む。nit-noted reply は parallel に投稿済の状態で commit に embed される
-
-**Why no commit**: [design-rationale.md#nit-noted-reply-notes](references/design-rationale.md#nit-noted-reply-notes)
-
-#### ステップ 2.4.N reasons (NIT_NOTED_REPLY_* retained flags)
-
-ステップ 2.4.N が emit する `[CONTEXT] NIT_NOTED_REPLY_*` retained flag の reason 値 (ステップ 1.2.0 reason 表とは別の observability namespace):
-
-| Flag | reason | Description |
-|------|--------|-------------|
-| `NIT_NOTED_REPLY_SKIPPED` | `already_replied` | 既に `nit、認知済 (scope=nit-noted` を含む reply が当該 comment に投稿済 (冪等性 — Replied-only respect)。`acknowledged_nit_count` 集計対象外 |
-| `NIT_NOTED_REPLY_FAILED` | `mktemp_failed` | reply body 用 tempfile (`${TMPDIR:-/tmp}/rite-fix-nit-reply-${pr_number}-${comment_id}-XXXXXX.md`) の mktemp が失敗 (disk full / inode 枯渇 / permission denied)。non-blocking、当該 finding は skip して次へ進む |
-| `NIT_NOTED_REPLY_FAILED` | `gh_api_post_failure` | `jq -n --rawfile body | gh api POST` の pipe が pipefail で exit 非ゼロ (network / auth / rate-limit / `in_reply_to` 不正値)。non-blocking、当該 finding は skip して次へ進む |
-
-**Eval-order enumeration** (ステップ 2.4.N 独立 namespace、ステップ 1.2.0 enumeration とは別): emit reasons sequence = (`already_replied` / `mktemp_failed` / `gh_api_post_failure`)
-
-本 namespace は iterate ステップ 4 では情報提示のみ。
+rationale: references/design-rationale.md#nit-noted-reply-notes
 
 ---
 
@@ -2460,7 +2345,7 @@ EOF
 
 ### 3.1 Verify Changes
 
-**前置ガード**: working tree 無変更なら **ステップ 3 全体を skip** して 4.2 へ (全経路。2.4.N 非経由も含む)。判定は **`git-status-filtered.sh`** (raw porcelain 禁止)。
+**前置ガード**: working tree 無変更なら **ステップ 3 全体を skip** して 4.5 へ (全経路)。判定は **`git-status-filtered.sh`** (raw porcelain 禁止)。
 
 ```bash
 # helper の rc 非 0 (mktemp 失敗等) は dirty 側 = ガード非発火 = 従来どおりステップ 3 実行 に倒す
@@ -2477,7 +2362,7 @@ else
 fi
 ```
 
-`FIX_COMMIT_GUARD=skip` ならステップ 3 全体を skip して ステップ 4.2 へ、`proceed` なら以下を通常どおり実行する。
+`FIX_COMMIT_GUARD=skip` ならステップ 3 全体を skip して ステップ 4.5 へ、`proceed` なら以下を通常どおり実行する。
 
 `proceed` なら commit 前 HEAD を marker に残し、3.3.1 が `{fix_cycle_base_sha_from_context}` に使う。
 
@@ -2563,13 +2448,15 @@ Before generating the commit message, check the `language` field in `rite-config
 
 **Commit body:**
 
-Use a free-form commit body. Include the reason for the change ("why") in the commit body. For review-fix commits, state the chosen対応方針 and, when a fix addresses a root cause, name that root cause explicitly (the ステップ 3.2.1 Root Cause Gate looks for a `Root cause:` / `根本原因:` paragraph).
+Use a free-form commit body. Review-fix commits **MUST** include both:
+- **対応方針** — 各 finding に対して何をしたか / なぜその方針か
+- **`Root cause:` / `根本原因:` 段落** — ステップ 3.2.1 Root Cause Gate が検査する
 
 - Leave a blank line between the description line and the body
 - Write in free-form — no specific prefix or template required
 - Focus on "why" the change was needed, not "what" was changed (the description line already covers "what")
 - Follow the same language setting as the description line
-- Can be omitted for trivial changes (typo fixes, formatting, etc.)
+- trivial（typo / formatting のみ）は省略可。review-fix の対応方針・根本原因は省略しない
 
 **Trailer**: Generate in the configured language using the unified `{reviewer_display_N}` placeholder (展開ルールは ステップ 2.1 の `{reviewer_display}` 展開ルール表を参照 — Broad Retrieval 経由で `@{user}`、Fast Path 経由 + `target_author_mention_skip == "true"` で `(不明なレビュアー)` / `(unknown reviewer)` に展開される):
 
@@ -2615,7 +2502,7 @@ Addresses review comments from @reviewer1
 
 fix(review): {description}
 
-{free-form body — "why" + Root cause paragraph when applicable}
+{free-form body — 対応方針 + `Root cause:` / `根本原因:` 段落}
 
 {acknowledged_finding_lines (展開ルール: accept finding 0 件 → 完全省略 (前後 blank line も削除、conventional commits lint の連続空行 fail を防ぐ)。1 件以上 → 各 `Acknowledged-finding:` 行を `\n` 区切りで連結、末尾改行なし)}
 
@@ -2813,77 +2700,6 @@ mutation($threadId: ID!) {
 - 手動で解決（GitHub UI で操作）
 - キャンセル
 ```
-
-### 4.2 Report via PR Comment (Optional)
-
-Confirm whether to report completion via PR comment:
-
-```
-レビュー指摘への対応を PR コメントで報告しますか？
-
-報告内容案:
----
-## レビュー指摘対応完了
-
-以下の指摘に対応しました:
-
-| 指摘 | 対応内容 |
-|------|----------|
-| {comment_preview} | {response_summary} |
-
-コミット: {commit_sha}
-
-ご確認をお願いします。
----
-
-オプション:
-- 報告を投稿
-- 報告を編集
-- スキップ
-```
-
-When posting the report:
-
-```bash
-# ✅ SAFE: --body-file for dynamic report content
-# trap + cleanup パターンの canonical 説明は ../../references/bash-trap-patterns.md#signal-specific-trap-template 参照
-tmpfile=""
-_rite_fix_phase42_cleanup() {
-  rm -f "${tmpfile:-}"
-}
-trap 'rc=$?; _rite_fix_phase42_cleanup; exit $rc' EXIT
-trap '_rite_fix_phase42_cleanup; exit 130' INT
-trap '_rite_fix_phase42_cleanup; exit 143' TERM
-trap '_rite_fix_phase42_cleanup; exit 129' HUP
-
-tmpfile=$(mktemp) || {
-  echo "ERROR: report tmpfile mktemp に失敗しました" >&2
-  # mktemp 失敗経路にも retained flag を emit (rationale: references/design-rationale.md#retained-flag-emission)
-  echo "[CONTEXT] REPORT_POST_FAILED=1; pr_number={pr_number}; reason=mktemp_failed_report_tmpfile" >&2
-  exit 1
-}
-
-if ! cat <<'REPORT_EOF' > "$tmpfile"
-{report_body}
-REPORT_EOF
-then
-  echo "ERROR: report body の tmpfile 書き込みに失敗しました: $tmpfile" >&2
-  echo "[CONTEXT] REPORT_POST_FAILED=1; reason=cat_redirection_failed" >&2
-  exit 1
-fi
-
-# gh pr comment の exit code を明示的にチェック (silent failure 防止):
-# 投稿失敗が silent に発生すると、レビュアーには通知されないまま fix loop が完了と判定される
-if ! gh pr comment {pr_number} -R {owner_repo} --body-file "$tmpfile"; then
-  echo "ERROR: gh pr comment による報告投稿に失敗しました" >&2
-  echo "  対処: gh auth status / network 接続 / PR #{pr_number} の存在を確認してください" >&2
-  echo "  影響: 対応完了報告コメントが PR に残らないまま fix loop が完了扱いになる silent regression のリスク" >&2
-  # retained flag emit (ステップ 5.1 で detect され [fix:error] へ昇格)
-  echo "[CONTEXT] REPORT_POST_FAILED=1; pr_number={pr_number}" >&2
-  exit 1
-fi
-```
-
 
 ### 4.5 Automatic Work Memory Update
 
@@ -3223,7 +3039,7 @@ PR #{number} のレビュー指摘対応を完了しました
 対応した指摘: {count}件
 - 修正: {fix_count}件
 - 返信: {reply_count}件
-- nit 認知 (scope=nit-noted、reply-only、本 cycle): {acknowledged_nit_count}件
+- nit 認知 (scope=nit-noted、本 cycle): {acknowledged_nit_count}件
 - non-blocking (実測なし、fix 対象外): {non_blocking_count}件
 - accept 認知 (user decision、Issue 完了まで累計): {accept_count}件{accept_warning_suffix}
 コミット: {commit_sha}
@@ -3256,16 +3072,9 @@ case "$accept_count" in ''|*[!0-9]*) accept_count=0 ;; esac
 
 BSD wc 空白は剥がす (2.1.A Step 7 と対称)。不在/空は `0`。state は Issue 完了まで累積。
 
-`acknowledged_nit_count` (reviewer nit、2.4.N) と `accept_count` (user accept、2.1.A) は独立。
+`acknowledged_nit_count` (reviewer nit、2.4.N = `{nit_noted_count}`) と `accept_count` (user accept、2.1.A) は独立。
 
-**`{acknowledged_nit_count}` の展開ルール**:
-
-| 状況 | `{acknowledged_nit_count}` |
-|------|----------------------------|
-| ステップ 2.4.N nit-noted-reply で 0 件投稿 (scope=nit-noted finding なし、または全件 already_replied skip) | `0` |
-| ステップ 2.4.N nit-noted-reply で N 件投稿成功 | `{N}` |
-
-**読み出し方法**: `nit_count_file="${TMPDIR:-/tmp}/rite-fix-acknowledged-nit-{pr_number}.txt"` の行数を `wc -l < "$nit_count_file"` で取得する (ステップ 2.4.N で各成功投稿で `echo "$comment_id" >> "$nit_count_file"` により append されている)。tempfile 不在の場合は `0` を表示。ステップ 5.1 cleanup で本 tempfile も削除する。
+**`{acknowledged_nit_count}` の展開ルール**: `{nit_noted_count}`（ステップ 1.3 / 1.4）をそのまま使う。0 件でも行は省略しない。
 
 0 件でも行は省略しない。5.3 の mergeable 判定には使わない。nit-only の finalize 条件は 5.1 row 4/5。
 
@@ -3283,7 +3092,7 @@ BSD wc 空白は剥がす (2.1.A Step 7 と対称)。不在/空は `0`。state �
 | Field | Description | Calculation |
 |-------|-------------|-------------|
 | `全指摘: {total_count}件` | Total number of findings | ステップ 1 で取得した finding 数 (**Markdown / 会話経路では `non_blocking_findings` を含む。JSON 経路は pr-review ステップ 6.1.a の除外契約により `findings[]` のみを読むため含まない** — ステップ 1.2.1 step 6 の「経路間で値は一致しない」注記と同一の非対称)。母集団 = **severity_map ∪ ステップ 1.3 fallback (GitHub state ベース) で分類された未対応コメント** — rite レビュー結果を読めた経路では `total_count = |severity_map|`、severity_map が空の fallback 経路 (手動レビューのみ / pr-review 未実行) では fallback 分類の件数を用いる。4.6 の `対応した指摘` 式と同一母集団であることが finalize 条件 `全指摘 == 対応指摘` の前提。なお pr-review 側の `total_findings` (blocking 集合のみの件数 — assessment-rules.md §5.3.3) とは**別概念** |
-| `対応した指摘: {count}件` | Number of findings addressed | `fix_count + reply_count + skip_count + acknowledged_nit_count + non_blocking_count` (nit-noted reply 投稿と non-blocking 分類も「対応」に含めることで、nit-only / non-blocking-only PR でも `全指摘 == 対応指摘` 条件を満たし有限 cycle で収束する — `non_blocking_count` を式に含めないと非実測 finding が「未対応」として残り finalize 分岐が発火せず max_review_cycles まで空転する)。**各項は排他**: `skip_count` は ステップ 2.1 でユーザーが「スキップ」を選んだ finding のみを数え、**non-blocking 分類による ステップ 2.1 skip は含めない** (そちらは `non_blocking_count` が受け持つ)。`acknowledged_nit_count` との排他も同様 (nit-noted は scope による分類で、non-blocking は measured による分類) |
+| `対応した指摘: {count}件` | Number of findings addressed | `fix_count + reply_count + skip_count + acknowledged_nit_count + non_blocking_count` (nit-noted 分類と non-blocking 分類も「対応」に含めることで、nit-only / non-blocking-only PR でも `全指摘 == 対応指摘` 条件を満たし有限 cycle で収束する — `non_blocking_count` を式に含めないと非実測 finding が「未対応」として残り finalize 分岐が発火せず max_review_cycles まで空転する)。**各項は排他**: `skip_count` は ステップ 2.1 でユーザーが「スキップ」を選んだ finding のみを数え、**non-blocking 分類による ステップ 2.1 skip は含めない** (そちらは `non_blocking_count` が受け持つ)。`acknowledged_nit_count` との排他も同様 (nit-noted は scope による分類で、non-blocking は measured による分類) |
 | `non-blocking (実測なし): {non_blocking_count}件` | Number of findings classified as non-blocking by the measured gate | **measured_map の false のうち `scope_map[key] != "nit-noted"` の件数** (単一定義 — ステップ 1.2.1 step 6 / 1.4 表示テンプレートと同一。nit-noted は正規化後 scope_map による参照時除外で含まれず `acknowledged_nit_count` と二重計上しない。ステップ 1.3 の non-blocking 分類条件と同一フィルタ。step 4 の出自確認で振り替えた key は減算する)。fix commit / reply の対象外だが「対応済み」に算入する (記録は `/rite:pr-review` ステップ 5.4 の「実測なし指摘」section が担う)。0 件でも常時表示 |
 | `Confidence override (policy bypass): {N}件` | Number of findings imported via Confidence policy override | ステップ 1.2 best-effort parse で「Confidence 70 のままバイパス」を選択した finding 数 (Confidence 80+ ゲート invariant の policy override 追跡義務)。0 件でも常時表示 |
 | `レビューソース: {review_source} (...)` | Provenance of the review findings consumed by this fix run | ステップ 1.2.0 Priority chain で決定された `review_source` 値 (schema.md Priority 1 emit 義務の provenance 契約を ステップ 4.6 で履行)。展開ルールは ステップ 4.5.3 の `{review_source}` / `{review_source_path_display}` 表を参照 |
@@ -3691,13 +3500,13 @@ Then, based on the ステップ 4.6 completion report content **and the WM_UPDAT
 | 評価順 | Condition | Output Pattern |
 |--------|-----------|---------------|
 | 1 (最優先) | ステップ 1.0.1 / 1.2.0 / 1.2.0.1 で `[CONTEXT] FIX_FALLBACK_FAILED=1` を context に set した (`reason` の値は ステップ 1.0.1 / 1.2.0 / 1.2.0.1 failure reasons table を **唯一の真実の源** として参照する。本セルでの固定列挙は drift 防止のため行わない) | `[fix:error]` (ステップ 1.0.1 / 1.2.0 / 1.2.0.1 のレビューソース解決失敗。fallback 経路が尽きたか、ユーザーが Interactive Fallback で中止を選んだか、ファイルパス指定の再実行でも有効なレビュー結果を取得できなかった状態のため caller は手動介入を促す) |
-| 2 | ステップ 2.4 / 4.2 で `[CONTEXT] REPLY_POST_FAILED=1` / `[CONTEXT] REPORT_POST_FAILED=1` のいずれかを context に set した | `[fix:error]` (reply post / report post のいずれかが失敗。push 済みの可能性はあるが、レビュアー通知 / 完了報告の責務を果たせていないため caller は次の iteration ではなく手動介入を促す) |
+| 2 | ステップ 2.4 で `[CONTEXT] REPLY_POST_FAILED=1` を context に set した | `[fix:error]` (人間由来 thread への reply post が失敗。push 済みの可能性はあるが、レビュアー通知の責務を果たせていないため caller は次の iteration ではなく手動介入を促す) |
 | 3 | ステップ 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`reason` の値は下記 reason 表のいずれか — 固定列挙は行わず、reason 表を唯一の真実の源とする) | `[fix:pushed-wm-stale]` (ステップ 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
 | 4 | (Push completed (`プッシュ: 完了`) または 本 cycle 内で accept 決定が発生 [`[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED=1` または `[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1` が 1 回以上 context に出現]) かつ work memory 更新成功 | `[fix:pushed]` |
 | 5 | Push なし かつ 本 cycle 内で accept 決定なし (上記 2 マーカーがいずれも非出現) かつ All findings replied | `[fix:replied-only]` |
 | 6 | Unexpected state / error | `[fix:error]` |
 
-上から最初にマッチした pattern を採用。fatal 3 旗 → `[fix:error]`。次に `WM_UPDATE_FAILED` → `[fix:pushed-wm-stale]`。その後に通常終了。
+上から最初にマッチした pattern を採用。fatal 旗 (`FIX_FALLBACK_FAILED` / `REPLY_POST_FAILED`) → `[fix:error]`。次に `WM_UPDATE_FAILED` → `[fix:pushed-wm-stale]`。その後に通常終了。
 
 **row 4/5 の accept 条件 — 唯一の真実の源**: iterate ステップ 4 が読む sentinel の決定箇所。Handoff 節と 4.6 Note は参照のみ。
 
@@ -3735,12 +3544,11 @@ bash {plugin_root}/hooks/scripts/fix-reason-coverage-check.sh
 | `git_diff_failed` | ステップ 4.5.2 | changed-files-file 用 mktemp の失敗、または `git diff --name-status origin/{base_branch}...HEAD` の失敗 (shallow clone / 無効な base / git リポジトリ外)。helper を呼ばず work memory comment を不変に保つ (原実装が git diff 失敗時に PATCH 前で exit したのと等価) |
 | `wm_sync_progress_failed` | ステップ 4.5.2 | `issue-comment-wm-sync.sh ... --transform update-progress` が no_comment 以外の skipped/error status を返した (body 取得失敗 / safety check 失敗 / transform 失敗 / PATCH 失敗を helper が内部処理し status= 行で通知) |
 | `wm_sync_history_failed` | ステップ 4.5.2 | `issue-comment-wm-sync.sh ... --transform append-section` (レビュー対応履歴) が no_comment 以外の skipped/error status を返した、または履歴 content-file の mktemp が失敗 |
-| `cat_redirection_failed` | ステップ 2.4 / 4.2 / 4.5.x (heredoc redirection を使う任意箇所) | cat heredoc redirection の exit code が非ゼロ (disk full / write permission denied / IO error)。ステップ 4.5.1 / 4.5.2 の WM 更新経路など、heredoc を使う任意箇所で発火する可能性があるため、Phase 列は exhaustive な実 emit 箇所のリストではなく、典型的に発火する代表 phase の例示 |
+| `cat_redirection_failed` | ステップ 2.4 / 4.5.x (heredoc redirection を使う任意箇所) | cat heredoc redirection の exit code が非ゼロ (disk full / write permission denied / IO error)。ステップ 4.5.1 / 4.5.2 の WM 更新経路など、heredoc を使う任意箇所で発火する可能性があるため、Phase 列は exhaustive な実 emit 箇所のリストではなく、典型的に発火する代表 phase の例示 |
 | `empty_stdout` | ステップ 1.2 | gh api が exit 0 だが stdout が空または null |
 | `missing_issue_url` | ステップ 1.2 | レスポンスに `.issue_url` フィールドが存在しない |
 | `mktemp_failed_override_err` | ステップ 1.3 | confidence override stderr 退避用 tempfile の mktemp が失敗 |
 | `mktemp_failed_reply_tmpfile` | ステップ 2.4 | reply body 用 tempfile の mktemp が失敗 |
-| `mktemp_failed_report_tmpfile` | ステップ 4.2 | report body 用 tempfile の mktemp が失敗 |
 | `paste_io_error` | ステップ 1.2 / 1.3 | printf / ファイル書き出しが IO エラーで失敗 |
 | `pr_number_mismatch` | ステップ 1.2 | コメントの所属 PR と指定 pr_number が一致しない (silent misclassification) |
 | `reply_tmpfile_empty` | ステップ 2.4 | reply body の tmpfile が cat 成功だが空 |
@@ -3773,8 +3581,7 @@ bash {plugin_root}/hooks/scripts/fix-reason-coverage-check.sh
 # ${TMPDIR:-/tmp}/rite-fix-pr-comment-{pr_number}.txt の正常時 cleanup)。Fast Path 経路では存在しないため
 # silent no-op となる。
 rm -f "${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt" \
-      "${TMPDIR:-/tmp}/rite-fix-pr-comment-{pr_number}.txt" \
-      "${TMPDIR:-/tmp}/rite-fix-acknowledged-nit-{pr_number}.txt"
+      "${TMPDIR:-/tmp}/rite-fix-pr-comment-{pr_number}.txt"
 ```
 
 > **Note (work memory backup)**: work memory body の backup (生成・成功時削除・失敗時 preserve) は `issue-comment-wm-sync.sh` が内部で完結させる (helper の Step 3/6 参照)。本コマンドの caller 側では backup を生成・cleanup しないため、ステップ 5.1 の output pattern に応じた手動 backup cleanup も行わない。
@@ -3805,13 +3612,11 @@ Standalone は ステップ 5 を skip するので、4.6 直後に confidence_o
 rationale: references/design-rationale.md#confidence-gate-notes
 
 ```bash
-# ステップ 5.2 Standalone 経路: confidence_override + pr-comment + acknowledged-nit tempfile の明示的 cleanup
+# ステップ 5.2 Standalone 経路: confidence_override + pr-comment tempfile の明示的 cleanup
 # 実行タイミング: ステップ 4.6 の completion report を表示した直後
 # {pr_number} は Claude が ステップ 1.0 の parse 結果で事前置換済み
-# pr-comment tempfile + acknowledged-nit tempfile も追加
 rm -f "${TMPDIR:-/tmp}/rite-fix-confidence-override-{pr_number}.txt" \
-      "${TMPDIR:-/tmp}/rite-fix-pr-comment-{pr_number}.txt" \
-      "${TMPDIR:-/tmp}/rite-fix-acknowledged-nit-{pr_number}.txt"
+      "${TMPDIR:-/tmp}/rite-fix-pr-comment-{pr_number}.txt"
 ```
 
 未作成なら `rm -f` は no-op。
