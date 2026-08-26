@@ -6,12 +6,19 @@
 #
 # Coverage (Issue #2378 T-01..T-06 + D-03 lookup fail + caller coupling):
 #   T-01/T-02 残存指摘ありで 1 件起票され、body に出典・finding 要点・marker が含まれる
+#             Projects status=Todo / enabled=true を args.json に pin
 #   T-03 起票 API 失敗で WARNING + exit 0 (cleanup を止めない)
+#   T-03g 最新が空なら古い nonempty から起票しない
+#   T-03u 最新 parse 不能は json_undecidable（古い nonempty から起票しない）
 #   T-04 0 件で起票なし
 #   T-05 既存 marker があれば重複起票しない
+#   T-05c ラベル一覧に既存が居ない場合は起票する
+#   T-05d 件数=limit かつ marker 不在は lookup_api
 #   T-06 JSON 不在で skip + WARNING
 #   T-07 同定 API 失敗は起票せず WARNING (D-03)
 #   T-08 cleanup SKILL.md が helper を archive より前に呼ぶ
+#   T-09 project-number 非数値は Projects skip + WARNING
+#   T-10 project_registration=skipped は WARNING
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -94,7 +101,8 @@ if [ -n "${CREATE_RC:-}" ] && [ "$CREATE_RC" != "0" ]; then
   echo "create-issue: simulated failure" >&2
   exit "$CREATE_RC"
 fi
-printf '%s\n' '{"issue_url":"https://example.test/issues/99","issue_number":99,"project_id":"PVT_x","item_id":"PVTI_x","project_registration":"ok","warnings":[]}'
+reg="${CREATE_REG:-ok}"
+printf '%s\n' "{\"issue_url\":\"https://example.test/issues/99\",\"issue_number\":99,\"project_id\":\"PVT_x\",\"item_id\":\"PVTI_x\",\"project_registration\":\"${reg}\",\"warnings\":[]}"
 STUB
 chmod +x "$CREATE_STUB"
 
@@ -108,6 +116,7 @@ reset_stubs() {
   export GH_LIST_RC=0
   export GH_COMMENT_RC=0
   unset CREATE_RC
+  unset CREATE_REG
   printf '%s\n' '[]' > "$GH_LIST_JSON"
   : > "$GH_LOG"
   : > "$GH_COMMENT_LOG"
@@ -140,6 +149,10 @@ assert_grep "T-02 file:line" "$STUB_DIR/body.md" 'cleanup/SKILL.md:12'
 assert_grep "T-02 description" "$STUB_DIR/body.md" '実測なしの指摘本文'
 assert_grep "T-02 labels follow-up" "$STUB_DIR/args.json" '"follow-up"'
 assert_grep "T-02 source cleanup" "$STUB_DIR/args.json" '"source": "cleanup"'
+assert_grep "T-01 status Todo" "$STUB_DIR/args.json" '"status": "Todo"'
+assert_grep "T-01 projects enabled true" "$STUB_DIR/args.json" '"enabled": true'
+assert_grep "T-01 gh --label follow-up" "$GH_LOG" 'label follow-up'
+assert_not_grep "T-01 gh は Search API を使わない" "$GH_LOG" 'rite-follow-up-from-pr'
 assert_grep "T-02 元 Issue へコメント" "$GH_COMMENT_LOG" 'issue comment 42'
 
 echo "--- T-03: 起票 API 失敗は WARNING + exit 0 ---"
@@ -152,6 +165,27 @@ assert "T-03 exit 0 (non-blocking)" "0" "$RC"
 assert_grep "T-03 failed marker" "$ERR" 'FOLLOW_UP_ISSUE=failed; reason=create_api; pr=9'
 assert_grep "T-03 WARNING" "$ERR" '起票に失敗'
 unset CREATE_RC
+
+echo "--- T-03g: 最新が空なら古い nonempty から起票しない ---"
+reset_stubs
+r=$(new_root t03g)
+put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[]}'
+run_target "$r"
+assert "T-03g exit 0" "0" "$RC"
+assert_grep "T-03g skipped no_findings" "$ERR" 'reason=no_findings; pr=9'
+assert "T-03g create 0 回" "0" "$(create_count)"
+
+echo "--- T-03u: 最新 parse 不能は json_undecidable ---"
+reset_stubs
+r=$(new_root t03u)
+put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+put_json "$r" "9-20260102120000.json" 'not-json{'
+run_target "$r"
+assert "T-03u exit 0" "0" "$RC"
+assert_grep "T-03u json_undecidable" "$ERR" 'reason=json_undecidable; pr=9'
+assert_grep "T-03u WARNING" "$ERR" '判定できません'
+assert "T-03u create 0 回" "0" "$(create_count)"
 
 echo "--- T-04: 0 件で起票なし ---"
 reset_stubs
@@ -179,6 +213,26 @@ r=$(new_root t05b)
 put_json "$r" "9-a.json" "$FINDING_JSON"
 run_target "$r"
 assert "T-05b prefix 非一致なら起票する" "1" "$(create_count)"
+
+echo "--- T-05c: ラベル一覧に既存 marker が居なければ起票する ---"
+reset_stubs
+printf '%s\n' '[{"number":60,"body":"unrelated follow-up"}]' > "$GH_LIST_JSON"
+r=$(new_root t05c)
+put_json "$r" "9-a.json" "$FINDING_JSON"
+run_target "$r"
+assert "T-05c create 1 回" "1" "$(create_count)"
+assert_grep "T-05c created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+
+echo "--- T-05d: 件数=limit かつ marker 不在は lookup_api ---"
+reset_stubs
+jq -n '[range(100) | {number: (1000+.), body: "no marker"}]' > "$GH_LIST_JSON"
+r=$(new_root t05d)
+put_json "$r" "9-a.json" "$FINDING_JSON"
+run_target "$r"
+assert "T-05d exit 0" "0" "$RC"
+assert_grep "T-05d lookup_api" "$ERR" 'reason=lookup_api; pr=9'
+assert_grep "T-05d limit WARNING" "$ERR" 'limit 100'
+assert "T-05d create 0 回" "0" "$(create_count)"
 
 echo "--- T-06: JSON 不在で skip + WARNING ---"
 reset_stubs
@@ -216,7 +270,43 @@ else
   fi
   assert "T-08 helper の rc を捕捉している" "1" \
     "$(grep -cF '|| _fu_rc=$?' "$CLEANUP_MD" || true)"
+  assert_grep "T-08 owner_repo を slash split する" "$CLEANUP_MD" 'IFS=/ read -r _gh_owner _gh_repo <<< "\{owner_repo\}"'
+  assert_grep "T-08 --owner は repo owner" "$CLEANUP_MD" 'owner "\$\{_gh_owner\}"'
+  assert_grep "T-08 --project-owner は Projects owner" "$CLEANUP_MD" 'project-owner "\{owner\}"'
+  assert_grep "T-08 project-number を引用する" "$CLEANUP_MD" 'project-number "\{project_number\}"'
+  assert_grep "T-08 projects-enabled を引用する" "$CLEANUP_MD" 'projects-enabled "\{projects_enabled\}"'
 fi
+
+echo "--- T-09: project-number 非数値は Projects skip + WARNING ---"
+reset_stubs
+r=$(new_root t09)
+put_json "$r" "9-a.json" "$FINDING_JSON"
+PATH="$TMP_ROOT/bin:$PATH" \
+  bash "$TARGET" \
+    --state-root "$r" \
+    --pr 9 \
+    --owner acme \
+    --repo demo \
+    --project-number null \
+    --projects-enabled true \
+    --create-script "$CREATE_STUB" >"$OUT" 2>"$ERR"
+RC=$?
+assert "T-09 exit 0" "0" "$RC"
+assert_grep "T-09 created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert_grep "T-09 project-number WARNING" "$ERR" '数値ではないため Projects 登録を skip'
+assert_grep "T-09 projects enabled false" "$STUB_DIR/args.json" '"enabled": false'
+assert_not_grep "T-09 enabled true を残さない" "$STUB_DIR/args.json" '"enabled": true'
+
+echo "--- T-10: project_registration=skipped は WARNING ---"
+reset_stubs
+export CREATE_REG=skipped
+r=$(new_root t10)
+put_json "$r" "9-a.json" "$FINDING_JSON"
+run_target "$r"
+assert "T-10 exit 0" "0" "$RC"
+assert_grep "T-10 created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert_grep "T-10 skipped WARNING" "$ERR" 'Projects 登録: skipped'
+unset CREATE_REG
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?

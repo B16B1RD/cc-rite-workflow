@@ -17,7 +17,8 @@
 #   --owner              repo owner (-R 用)。必須
 #   --repo               repo name。必須
 #   --source-issue       元 Issue 番号。空 / 省略可
-#   --project-number     Projects 番号。projects-enabled=true のとき必須
+#   --project-number     Projects 番号。projects-enabled=true のとき必須。
+#                        非数値なら WARNING のうえ Projects を無効化して起票する
 #   --project-owner      Projects owner。省略時は --owner
 #   --projects-enabled   true|false。省略時 false
 #   --create-script      create-issue-with-projects.sh のパス。テスト注入用。省略時は plugin 内の実体
@@ -29,7 +30,7 @@
 # Emitted markers (stderr):
 #   [CONTEXT] FOLLOW_UP_ISSUE=created; issue=<n>; pr=<n>
 #   [CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=no_findings|no_json|already_exists|jq_missing; pr=<n>
-#   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing; pr=<n>
+#   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable; pr=<n>
 #
 # Emitted summary (stdout, 1 行):
 #   [cleanup-follow-up-issue] result=<created|skipped|failed>; ...
@@ -101,7 +102,13 @@ case "$PROJECTS_ENABLED" in
 esac
 [ -n "$PROJECT_OWNER" ] || PROJECT_OWNER="$OWNER"
 case "$PROJECT_NUMBER" in
-  ''|*[!0-9]*) PROJECT_NUMBER=0 ;;
+  ''|*[!0-9]*)
+    if [ "$PROJECTS_JSON" = true ]; then
+      echo "WARNING: --project-number が数値ではないため Projects 登録を skip します (got: '${PROJECT_NUMBER}')。follow-up Issue 自体は起票します" >&2
+      PROJECTS_JSON=false
+    fi
+    PROJECT_NUMBER=0
+    ;;
 esac
 [ -n "$CREATE_SCRIPT" ] || CREATE_SCRIPT="$PLUGIN_ROOT/scripts/create-issue-with-projects.sh"
 
@@ -118,6 +125,7 @@ emit_failed() {
 }
 
 MARKER="${MARKER_PREFIX}${PR_NUMBER}]"
+LOOKUP_LIMIT=100
 results_dir="$STATE_ROOT/.rite/review-results"
 
 rite_tempfile_init || exit 1
@@ -131,9 +139,9 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-# 最新の parseable JSON から nonempty non_blocking_findings[] を取る。
+# 存在確認後の basename 辞書順最大を 1 本だけ判定する (timestamp 名は YYYYMMDDHHMMSS)。
+# nonempty だけから最新を採ると、最終 cycle が 0 件でも古い指摘から起票する。
 # glob 未展開の pattern 文字列は実在検査で弾く (archive-or-rm と同型)。
-# 複数ファイルは basename の辞書順最大を「最新」(timestamp 名は YYYYMMDDHHMMSS)。
 source_json=""
 source_base=""
 findings_json="[]"
@@ -142,12 +150,9 @@ for f in "$results_dir/${PR_NUMBER}"-*.json*; do
   { [ -e "$f" ] || [ -L "$f" ]; } || continue
   matched=1
   base="${f##*/}"
-  if jq -e '(.non_blocking_findings | type == "array") and (.non_blocking_findings | length > 0)' "$f" >/dev/null 2>&1; then
-    if [ -z "$source_base" ] || [ "$base" \> "$source_base" ]; then
-      source_json="$f"
-      source_base="$base"
-      findings_json=$(jq -c '.non_blocking_findings' "$f")
-    fi
+  if [ -z "$source_base" ] || [ "$base" \> "$source_base" ]; then
+    source_json="$f"
+    source_base="$base"
   fi
 done
 
@@ -157,28 +162,71 @@ if [ "$matched" -eq 0 ]; then
   exit 0
 fi
 
-if [ -z "$source_json" ]; then
-  emit_skip no_findings
-  exit 0
-fi
+jq_err=$(jq -e '.non_blocking_findings | type == "array"' "$source_json" 2>&1 >/dev/null)
+jq_rc=$?
+case "$jq_rc" in
+  0)
+    if ! findings_json=$(jq -c '.non_blocking_findings' "$source_json"); then
+      echo "WARNING: 最新レビュー結果 JSON から non_blocking_findings[] を抽出できません (PR #${PR_NUMBER}): $source_json" >&2
+      emit_failed json_undecidable
+      exit 0
+    fi
+    if ! printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; then
+      emit_skip no_findings
+      exit 0
+    fi
+    ;;
+  1)
+    echo "WARNING: 最新レビュー結果 JSON の non_blocking_findings が配列ではありません (PR #${PR_NUMBER}): $source_json" >&2
+    [ -n "$jq_err" ] && printf '%s\n' "$jq_err" | sed 's/^/  /' >&2
+    emit_failed json_undecidable
+    exit 0
+    ;;
+  *)
+    echo "WARNING: 最新レビュー結果 JSON を判定できません (PR #${PR_NUMBER}): $source_json (jq rc=${jq_rc})" >&2
+    [ -n "$jq_err" ] && printf '%s\n' "$jq_err" | sed 's/^/  /' >&2
+    emit_failed json_undecidable
+    exit 0
+    ;;
+esac
 
-# 同定不能は重複起票より起票失敗に倒す (D-03)。検索が緩くても body の marker で確定する。
+# 同定不能は重複起票より起票失敗に倒す (D-03)。Search API は hyphen をトークン分割するため使わない。
+# follow-up ラベルの List API + body の marker で確定する。件数が --limit に達して marker 不在なら lookup_api。
 list_json=$(gh issue list -R "${OWNER}/${REPO}" --state all \
-  --search "rite-follow-up-from-pr:${PR_NUMBER}" --limit 20 \
+  --label follow-up --limit "$LOOKUP_LIMIT" \
   --json number,body 2>"$list_err")
 list_rc=$?
 if [ "$list_rc" -ne 0 ]; then
-  echo "WARNING: 既存 follow-up の検索に失敗したため起票しません (重複起票を避ける)。手動確認: gh issue list -R ${OWNER}/${REPO} --search \"rite-follow-up-from-pr:${PR_NUMBER}\"" >&2
+  echo "WARNING: 既存 follow-up の検索に失敗したため起票しません (重複起票を避ける)。手動確認: gh issue list -R ${OWNER}/${REPO} --label follow-up --state all" >&2
   [ -s "$list_err" ] && tr -d '\r' < "$list_err" | sed 's/^/  /' >&2
   emit_failed lookup_api
   exit 0
 fi
 
 existing_n=$(printf '%s' "$list_json" | jq -r --arg m "$MARKER" \
-  '[.[] | select((.body // "") | contains($m)) | .number] | first // empty')
+  '[.[] | select((.body // "") | contains($m)) | .number] | first // empty') || {
+  echo "WARNING: 既存 follow-up の検索結果を解析できません。起票しません (PR #${PR_NUMBER})" >&2
+  emit_failed lookup_api
+  exit 0
+}
 if [ -n "$existing_n" ]; then
   echo "[CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=already_exists; issue=${existing_n}; pr=${PR_NUMBER}" >&2
   echo "[cleanup-follow-up-issue] result=skipped; reason=already_exists; issue=${existing_n}; pr=${PR_NUMBER}"
+  exit 0
+fi
+
+list_n=$(printf '%s' "$list_json" | jq 'length') || list_n=""
+case "$list_n" in
+  ''|*[!0-9]*)
+    echo "WARNING: 既存 follow-up の件数を確定できません。起票しません (PR #${PR_NUMBER})" >&2
+    emit_failed lookup_api
+    exit 0
+    ;;
+esac
+if [ "$list_n" -ge "$LOOKUP_LIMIT" ]; then
+  echo "WARNING: follow-up ラベルの Issue が --limit ${LOOKUP_LIMIT} に達したため既存の有無を確定できません。重複起票を避けるため起票しません (PR #${PR_NUMBER})" >&2
+  echo "  手動確認: gh issue list -R ${OWNER}/${REPO} --label follow-up --state all" >&2
+  emit_failed lookup_api
   exit 0
 fi
 
@@ -290,6 +338,9 @@ done
 case "$project_reg" in
   partial|failed)
     echo "  ⚠️ Projects 登録: $project_reg (手動登録: gh project item-add ${PROJECT_NUMBER} --owner ${PROJECT_OWNER} --url ${new_url})" >&2
+    ;;
+  skipped)
+    echo "  ⚠️ Projects 登録: skipped (Projects Todo に載っていません。手動で Project に追加してください: ${new_url})" >&2
     ;;
 esac
 

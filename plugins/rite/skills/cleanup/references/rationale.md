@@ -11,7 +11,9 @@
 archive より前に起票するのは、転記元 JSON がまだ元の場所にあるうちに読むため。archive を
 維持する (D-04) のは、follow-up body は共有記録だが JSON は機械可読のローカル保全かつ起票
 失敗時の受け皿だから。同定不能時に起票しないのは、重複 spam が取り返しつかない一方、失敗は
-WARNING から手動復旧できるから (D-03)。
+WARNING から手動復旧できるから (D-03)。helper は API 失敗でも exit 0 のため、失敗の一次信号は
+`FOLLOW_UP_ISSUE` だけである。完了報告がこれを見ず `REVIEW_CLEANUP_PARTIAL_FAILURE` だけを見ると、
+起票失敗が「なし」に倒れる。marker 不在を成功と読まない規約はステップ 5 と同型。
 
 ## pr-merged-default
 
