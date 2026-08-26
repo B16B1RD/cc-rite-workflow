@@ -189,7 +189,7 @@
 <!-- ステップ 5.3.0.M 実測必須ゲート / ステップ 5.3.0.C 帰結クラス降格政策で non-blocking に分類された non_blocking_findings がある場合のみ表示。0件の場合はこのセクション自体を省略。
  blocking ではない (mergeable countdown 対象外)。severity は明示する (非実測 CRITICAL/HIGH の人間可視化)。
  demotion キーを持つ要素 (class B 降格分) は 内容 セルの先頭に [class B 降格: {demotion.reason}] を併記する (列は追加しない — fix 側の 6 列パース保護)。
- 記録先は 4 経路 (永続 JSON の non_blocking_findings[] / ステップ 6.1.d の PR 記録コメント / 本 section / E2E output line の件数 suffix) で破棄経路は存在しない。
+ 記録先は 4 経路 (永続 JSON の non_blocking_findings[] / ステップ 6.1.d の関連 Issue 記録コメント / 本 section / E2E output line の件数 suffix) で破棄経路は存在しない。
  本 section は E2E でも省略禁止 (non_blocking_count > 0 のとき)。
  両 template (full mode / verification mode) で同一内容で同期すること (drift 防止) -->
 
@@ -413,7 +413,7 @@
 <!-- ステップ 5.3.0.M 実測必須ゲート / ステップ 5.3.0.C 帰結クラス降格政策で non-blocking に分類された non_blocking_findings がある場合のみ表示。0件の場合はこのセクション自体を省略。
  blocking ではない (mergeable countdown 対象外)。severity は明示する (非実測 CRITICAL/HIGH の人間可視化)。
  demotion キーを持つ要素 (class B 降格分) は 内容 セルの先頭に [class B 降格: {demotion.reason}] を併記する (列は追加しない — fix 側の 6 列パース保護)。
- 記録先は 4 経路 (永続 JSON の non_blocking_findings[] / ステップ 6.1.d の PR 記録コメント / 本 section / E2E output line の件数 suffix) で破棄経路は存在しない。
+ 記録先は 4 経路 (永続 JSON の non_blocking_findings[] / ステップ 6.1.d の関連 Issue 記録コメント / 本 section / E2E output line の件数 suffix) で破棄経路は存在しない。
  本 section は E2E でも省略禁止 (non_blocking_count > 0 のとき)。
  両 template (full mode / verification mode) で同一内容で同期すること (drift 防止) -->
 
