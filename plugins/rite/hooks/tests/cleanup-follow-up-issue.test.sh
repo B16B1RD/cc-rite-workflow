@@ -141,7 +141,7 @@ run_target "$r"
 assert "T-01 exit 0" "0" "$RC"
 assert_grep "T-01 created marker" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
 assert "T-01 create 1 回" "1" "$(create_count)"
-assert_grep "T-02 marker in body" "$STUB_DIR/body.md" '\[rite-follow-up-from-pr:9\]'
+assert "T-02 body 先頭行は HTML コメント marker" "<!-- [rite-follow-up-from-pr:9] -->" "$(head -1 "$STUB_DIR/body.md")"
 assert_grep "T-02 元 PR" "$STUB_DIR/body.md" '元 PR: #9'
 assert_grep "T-02 元 Issue" "$STUB_DIR/body.md" '元 Issue: #42'
 assert_grep "T-02 reviewer" "$STUB_DIR/body.md" 'code-quality-reviewer'
@@ -295,7 +295,7 @@ else
   assert_grep "T-08 --project-owner は Projects owner" "$CLEANUP_MD" 'project-owner "\{owner\}"'
   assert_grep "T-08 project-number を引用する" "$CLEANUP_MD" 'project-number "\{project_number\}"'
   assert_grep "T-08 projects-enabled を引用する" "$CLEANUP_MD" 'projects-enabled "\{projects_enabled\}"'
-  assert_grep "T-08 pr= の値は直後が ; または行末" "$CLEANUP_MD" 'pr=. の値は直後が'
+  assert_grep "T-08 pr= の値は直後が ; または行末" "$CLEANUP_MD" 'pr=` の値は直後が `;` または行末であることまで含めて一致させる'
 fi
 
 echo "--- T-09: project-number 非数値は Projects skip + WARNING ---"
