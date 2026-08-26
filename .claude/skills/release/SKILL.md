@@ -111,8 +111,7 @@ if [ -n "$latest_tag" ]; then
     n=$(printf '%s\n' "$subj" | grep -oE '#[0-9]+' | tail -1 | tr -d '#')
     [ -n "$n" ] || { echo "- (番号なし) $subj"; continue; }
     : > "$errfile"
-    body=$(gh pr view "$n" --json body --jq '.body' 2>"$errfile") || true
-    if [ -n "$body" ]; then
+    if body=$(gh pr view "$n" --json body --jq '.body' 2>"$errfile"); then
       issue=$(printf '%s\n' "$body" | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]+#[0-9]+' | grep -oE '[0-9]+' | head -1)
       if [ -n "$issue" ]; then
         echo "- PR #$n → Issue #$issue"
