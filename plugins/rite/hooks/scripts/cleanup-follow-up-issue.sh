@@ -191,7 +191,8 @@ case "$jq_rc" in
 esac
 
 # 同定不能は重複起票より起票失敗に倒す (D-03)。Search API は hyphen をトークン分割するため使わない。
-# follow-up ラベルの List API + body の marker で確定する。件数が --limit に達して marker 不在なら lookup_api。
+# follow-up ラベルの List API + 先頭行の HTML コメント (<!-- ${MARKER} -->) で確定する。
+# finding 本文の同一文字列は identity ではない。件数が --limit に達して marker 不在なら lookup_api。
 list_json=$(gh issue list -R "${OWNER}/${REPO}" --state all \
   --label follow-up --limit "$LOOKUP_LIMIT" \
   --json number,body 2>"$list_err")
@@ -204,7 +205,7 @@ if [ "$list_rc" -ne 0 ]; then
 fi
 
 existing_n=$(printf '%s' "$list_json" | jq -r --arg m "$MARKER" \
-  '[.[] | select((.body // "") | contains($m)) | .number] | first // empty') || {
+  '[.[] | select(((.body // "") | split("\n")[0]) == ("<!-- " + $m + " -->")) | .number] | first // empty') || {
   echo "WARNING: 既存 follow-up の検索結果を解析できません。起票しません (PR #${PR_NUMBER})" >&2
   emit_failed lookup_api
   exit 0
