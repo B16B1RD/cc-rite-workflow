@@ -11,6 +11,7 @@
 * **Skip**: [20260826T160527Z-pr-2384.md](raw/fixes/20260826T160527Z-pr-2384.md) — detector-candidate: 完了報告 marker の値境界は直後が ; または行末
 * **lint:warning** — contradictions=0, stale=35, orphans=0, missing_concept=1, unregistered_raw=365, broken_refs=0
 * **lint:warning** — contradictions=0, stale=35, orphans=0, missing_concept=1, unregistered_raw=365, broken_refs=0
+* **lint:warning** — contradictions=0, stale=35, orphans=0, missing_concept=1, unregistered_raw=366, broken_refs=0
 
 ## 2026-08-26
 * **lint:warning** — contradictions=0, stale=34, orphans=0, missing_concept=1, unregistered_raw=356, broken_refs=0
