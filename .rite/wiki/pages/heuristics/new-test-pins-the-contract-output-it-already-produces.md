@@ -16,11 +16,16 @@ sources:
     resource: "raw/reviews/20260825T111042Z-pr-2357.md"
   - type: "fixes"
     resource: "raw/fixes/20260825T112921Z-pr-2357.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260826T125608Z-pr-2383.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260826T131353Z-pr-2383.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T21:06:14+09:00" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-26T22:40:00+09:00" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T21:06:14+09:00" }
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-26T22:40:00+09:00" }
 ---
 
 # 新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する
@@ -66,6 +71,12 @@ end-to-end で対象を走らせる新規テストは契約出力を既に生成
 
 契約テストが「分岐や見出しが存在すること」だけを grep し、成功時の echo 形状と失敗時の WARNING 全文を pin しないと、それらの行を削除してもスイートは green のまま残る。新規テストは対象を走らせた時点でその出力を既に生成している。契約が不変と規定した成功/失敗の文言は、差分側の assert とは別に行まるごと固定する。
 
+### スタブが本番 CLI と同じ入力軸を区別しないと、実行テストも変異を殺さない
+
+helper の投稿先を PR コメントから関連 Issue コメントへ移す変更で、実行テストは「Issue へ `issue comment` した」ことだけを assert していた。`gh` スタブは lookup URL も `--jq` も無視して同じ JSON を返したため、lookup を PR 番号へ戻す変異・closed Issue の state 判定を無効化する変異が、スイート green のまま生存した。無投稿経路では `pr comment` 否定が落ちていても、0 件 skip で PR へ投稿する変異は検出されなかった。
+
+スタブは本番と同じ入力軸（URL・`--jq`）を区別し、契約が不変と規定したコマンド行は肯定と否定の両方を固定する。静的 grep だけでは closed skip や番号取り違えの回帰を止められない。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -79,3 +90,5 @@ end-to-end で対象を走らせる新規テストは契約出力を既に生成
 - [PR #2227 review results (cycle 3, mergeable)](../../raw/reviews/20260810T045310Z-pr-2227.md)
 - [PR #2357 review results](../../raw/reviews/20260825T111042Z-pr-2357.md)
 - [PR #2357 fix results](../../raw/fixes/20260825T112921Z-pr-2357.md)
+- [PR #2383 review results](../../raw/reviews/20260826T125608Z-pr-2383.md)
+- [PR #2383 fix results](../../raw/fixes/20260826T131353Z-pr-2383.md)
