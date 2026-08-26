@@ -1,3 +1,10 @@
+## 2026-08-27
+* **Skip**: [20260826T151837Z-pr-2384.md](raw/reviews/20260826T151837Z-pr-2384.md) — detector-candidate: follow-up JSON は basename 辞書順最大の最新 1 本だけ判定する
+* **Skip**: [20260826T155701Z-pr-2384.md](raw/reviews/20260826T155701Z-pr-2384.md) — detector-candidate: follow-up identity は先頭行 HTML コメント等値であり本文 contains ではない
+* **Skip**: [20260826T162407Z-pr-2384.md](raw/reviews/20260826T162407Z-pr-2384.md) — 一時的な cycle 3 mergeable 判定の一時記録
+* **Skip**: [20260826T153141Z-pr-2384.md](raw/fixes/20260826T153141Z-pr-2384.md) — detector-candidate: 冪等 lookup は Search API ではなく follow-up ラベル List + body marker
+* **Skip**: [20260826T160527Z-pr-2384.md](raw/fixes/20260826T160527Z-pr-2384.md) — detector-candidate: 完了報告 marker の値境界は直後が ; または行末
+
 ## 2026-08-26
 * **lint:warning** — contradictions=0, stale=34, orphans=0, missing_concept=1, unregistered_raw=356, broken_refs=0
 * **Update**: [新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する](pages/heuristics/new-test-pins-the-contract-output-it-already-produces.md) — raw/reviews/20260826T125608Z-pr-2383.md を統合
