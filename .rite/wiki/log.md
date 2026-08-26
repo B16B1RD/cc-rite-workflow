@@ -1,4 +1,5 @@
 ## 2026-08-27
+* **Skip**: [20260826T183948Z-pr-2387.md](raw/reviews/20260826T183948Z-pr-2387.md) — 一時的な docs-only レビュー件数サマリのみ（blocking 0）。記録チャネル契約は plugin 文書へ既反映。新規経験則なし
 * **Skip**: [20260826T151837Z-pr-2384.md](raw/reviews/20260826T151837Z-pr-2384.md) — detector-candidate: follow-up JSON は basename 辞書順最大の最新 1 本だけ判定する
 * **Skip**: [20260826T155701Z-pr-2384.md](raw/reviews/20260826T155701Z-pr-2384.md) — detector-candidate: follow-up identity は先頭行 HTML コメント等値であり本文 contains ではない
 * **Skip**: [20260826T162407Z-pr-2384.md](raw/reviews/20260826T162407Z-pr-2384.md) — 一時的な cycle 3 mergeable 判定の一時記録
