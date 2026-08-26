@@ -50,6 +50,8 @@
 #            content_file_placeholder_residue / content_file_missing の 7 種
 #       (ii) trap 設置**後**の exit 0 + retain_pending_marker=1 (本文検査 4 段) —
 #            body_file_empty / body_marker_missing / body_sentinel_missing / count_body_mismatch
+#     第 3 群: trap 設置後の related_issue_unresolved は exit 1 で表面化するが pending marker は残さない
+#     (同 cycle 内で PR body / branch を直せないため差し戻しても収束しない)。
 #     gh / network / rate-limit / IO 起因 (patch_failed / create_failed / lookup degraded /
 #     body_check_unavailable) と signal 中断 (signal_aborted) は従来どおり無条件削除する (差し戻しても
 #     同 cycle 内で収束しないため)。`body_check_unavailable` は本文検査と同じ位置で起きるが、
@@ -116,6 +118,9 @@
 # Exit codes:
 #   0: 記録成功 / 正当な skip / 非ブロッキングな失敗 (gh・IO)。
 #   1: placeholder residue / content_file 不在 等の caller 契約違反 (skill 定義のバグ)。
+#      加えて related_issue_unresolved (trap 設置後。terminal sentinel は outcome=failed。
+#      pending marker は残さない — 差し戻しても収束しない。caller は rc=1 を skill 全体の
+#      hard fail と読まず sentinel を読んで 6.1.d step 3 / 8.0.3 へ進む)。
 set -uo pipefail
 # shellcheck source=control-char-neutralize.sh
 source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
