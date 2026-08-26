@@ -2331,11 +2331,11 @@ set +o pipefail
 
 reply は `mktemp` + HEREDOC → `jq --rawfile`。`$comment_id` は `--argjson`。
 
-### 2.4.N nit-noted-reply
+### 2.4.N nit-noted-no-reply
 
 `scope == "nit-noted"` は PR に reply しない。`acknowledged_nit_count = {nit_noted_count}`（ステップ 1.3 / 1.4）。Issue 化しない。commit しない。
 
-rationale: references/design-rationale.md#nit-noted-reply-notes
+rationale: references/design-rationale.md#nit-noted-no-reply-notes
 
 ---
 
@@ -3552,6 +3552,7 @@ bash {plugin_root}/hooks/scripts/fix-reason-coverage-check.sh
 | `paste_io_error` | ステップ 1.2 / 1.3 | printf / ファイル書き出しが IO エラーで失敗 |
 | `pr_number_mismatch` | ステップ 1.2 | コメントの所属 PR と指定 pr_number が一致しない (silent misclassification) |
 | `reply_tmpfile_empty` | ステップ 2.4 | reply body の tmpfile が cat 成功だが空 |
+| `rite_origin` | ステップ 2.4 | `REPLY_SKIPPED` — 人間由来ゲートにより rite 由来 thread への reply を skip（POST bash 非実行） |
 | `wc_io_error` | ステップ 1.3 | `wc -l` が IO エラーで失敗 |
 | `raw_json_write_failed` | ステップ 1.2 Fast Path Block A | Block A の raw JSON 中間ファイル (`${TMPDIR:-/tmp}/rite-fix-raw-{pr}-{cid}.json`) への printf 書き出しが IO エラーで失敗 |
 | `jq_author_extract_failed` | ステップ 1.2 Fast Path Block A | Block A の `jq -r '.user.login // empty'` が exit != 0 で失敗 (jq バイナリ異常 / OOM / parse error) |
