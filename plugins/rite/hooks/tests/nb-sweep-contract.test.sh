@@ -205,6 +205,9 @@ assert_grep "T-07 fix 判定文必須" "$FIX" '判定文必須'
 assert_grep "T-07 pr-review rejected_ledger" "$REVIEW" '{rejected_ledger}'
 assert_grep "T-07 pr-review merge-into" "$REVIEW" 'nb-sweep-ledger.sh merge-into'
 assert_grep "T-07 pr-review extract" "$REVIEW" 'nb-sweep-ledger.sh extract'
+assert_grep "T-07 pr-review REJECTED_LEDGER=failed" "$REVIEW" 'REJECTED_LEDGER=failed'
+assert_grep "T-07 pr-review WARNING 却下台帳取得失敗" "$REVIEW" 'WARNING: 却下台帳取得失敗'
+assert_grep "T-07 pr-review failed-path 注記" "$REVIEW" '台帳取得失敗 — 却下済み指摘の再訴訟の可能性'
 assert_grep "T-07 prompt rejected_ledger" "$PROMPT" '{rejected_ledger}'
 
 if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check SKILL.md 5.S / 6.1.d preserve"; then
