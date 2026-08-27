@@ -1305,21 +1305,41 @@ Determine the error type from the Task tool result. Claude analyzes the Task too
 ```bash
 source {plugin_root}/hooks/scripts/lib/context-marker.sh || true
 rejected_ledger=""
+ledger_status=empty
 existing=$(mktemp "${TMPDIR:-/tmp}/rite-rejected-src-XXXXXX") || existing=""
-if [ -n "$existing" ] && [ -n "{issue_number}" ] && [ "{issue_number}" != "0" ]; then
-  if gh api "repos/{owner_repo}/issues/{issue_number}/comments" --paginate \
+if [ -z "$existing" ]; then
+  ledger_status=failed
+  echo "WARNING: 却下台帳取得失敗 (mktemp)。空台帳として再訴訟させない" >&2
+elif [ -n "{issue_number}" ] && [ "{issue_number}" != "0" ]; then
+  if ! gh api "repos/{owner_repo}/issues/{issue_number}/comments" --paginate \
     --jq '.[] | select(.body | startswith("## 📜 rite 非実測指摘の記録")) | .body' \
-    > "$existing" && [ -s "$existing" ]; then
-    rejected_ledger=$(bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh extract --body-file "$existing") || rejected_ledger=""
+    > "$existing"; then
+    ledger_status=failed
+    echo "WARNING: 却下台帳取得失敗 (gh api)。空台帳として再訴訟させない" >&2
+  elif [ -s "$existing" ]; then
+    if rejected_ledger=$(bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh extract --body-file "$existing"); then
+      [ -n "$rejected_ledger" ] && ledger_status=ok
+    else
+      ledger_status=failed
+      rejected_ledger=""
+      echo "WARNING: 却下台帳取得失敗 (extract)。空台帳として再訴訟させない" >&2
+    fi
   fi
 fi
 rm -f -- "$existing"
-if [ -n "$rejected_ledger" ]; then
-  echo "[CONTEXT] REJECTED_LEDGER=ok" >&2
-  printf '%s\n' "$rejected_ledger"
-else
-  echo "[CONTEXT] REJECTED_LEDGER=empty" >&2
-fi
+case "$ledger_status" in
+  ok)
+    echo "[CONTEXT] REJECTED_LEDGER=ok" >&2
+    printf '%s\n' "$rejected_ledger"
+    ;;
+  failed)
+    echo "[CONTEXT] REJECTED_LEDGER=failed" >&2
+    printf '%s\n' "（台帳取得失敗 — 却下済み指摘の再訴訟の可能性）"
+    ;;
+  *)
+    echo "[CONTEXT] REJECTED_LEDGER=empty" >&2
+    ;;
+esac
 ```
 
 **`{diff_content}` by scale:** Small: 全 diff | Medium: `{relevant_files}` | Large: `{change_summary}` + 該当ファイル + Read 指示
