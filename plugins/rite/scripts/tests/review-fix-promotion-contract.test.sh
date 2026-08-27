@@ -44,7 +44,7 @@ assert_grep 'post-breaker full review transition exists' "$iterate" '### ステ�
 assert_grep 'post-breaker run boundary is pinned' "$iterate" 'review-run-since-{pr_number}.txt'
 assert_grep 'post-breaker full pass is single-shot' "$iterate" '同一発火に対し full review を 2 回以上 invoke する'
 assert_grep 'post-breaker preparation runs in shared block' "$iterate" 'post-breaker-full-review-prepare.sh'
-assert_grep 'post-breaker mergeable uses normal completion' "$iterate" 'ステップ 5 の正常終了 routing へ'
+assert_grep 'post-breaker mergeable uses normal completion' "$iterate" 'ステップ 5.S（NB digest sweep。完了通知の前）'
 assert_grep 'post-breaker findings use normal fix routing' "$iterate" 'ステップ 3 の `/rite:fix` へ'
 assert_grep 'post-breaker failure preserves batch sentinel' "$iterate" '<!-- [iterate:max-cycles-reached] -->'
 assert_grep 'post-breaker failure preserves interactive sentinel' "$iterate" '<!-- [iterate:max-cycles-stopped] -->'
