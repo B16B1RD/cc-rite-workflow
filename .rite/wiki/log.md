@@ -17,6 +17,7 @@
 * **Skip**: [20260827T011013Z-pr-2395.md](raw/reviews/20260827T011013Z-pr-2395.md) — 一時的な 0-finding レビュー記録。T-05h（先頭行等値の startswith 緩和 pin）は plugin テストへ既反映。新規経験則なし
 * **lint:warning** — contradictions=0, stale=35, orphans=0, missing_concept=1, unregistered_raw=368, broken_refs=0
 * **Skip**: [20260827T020205Z-pr-2397.md](raw/reviews/20260827T020205Z-pr-2397.md) — detector-candidate: 記録契約同期後に non-target へ残る旧語彙は grep -F で 0 件まで掃ける
+* **lint:warning** — contradictions=0, stale=35, orphans=0, missing_concept=1, unregistered_raw=369, broken_refs=0
 
 ## 2026-08-26
 * **lint:warning** — contradictions=0, stale=34, orphans=0, missing_concept=1, unregistered_raw=356, broken_refs=0
