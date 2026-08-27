@@ -12,6 +12,7 @@
 * **lint:warning** — contradictions=0, stale=35, orphans=0, missing_concept=1, unregistered_raw=365, broken_refs=0
 * **lint:warning** — contradictions=0, stale=35, orphans=0, missing_concept=1, unregistered_raw=365, broken_refs=0
 * **lint:warning** — contradictions=0, stale=35, orphans=0, missing_concept=1, unregistered_raw=366, broken_refs=0
+* **Skip**: [20260827T002634Z-pr-2393.md](raw/reviews/20260827T002634Z-pr-2393.md) — 一時的な 0-finding レビュー記録。T-05g（先頭行裸 marker）と T-08 recency 適用範囲は plugin テストへ既 pin。新規経験則なし
 
 ## 2026-08-26
 * **lint:warning** — contradictions=0, stale=34, orphans=0, missing_concept=1, unregistered_raw=356, broken_refs=0
