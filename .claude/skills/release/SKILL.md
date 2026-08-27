@@ -104,10 +104,37 @@ develop ブランチと最新タグの差分から、CHANGELOG に含めるべ�
 latest_tag=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
 if [ -n "$latest_tag" ]; then
   git log "${latest_tag}..develop" --oneline --no-merges
+  echo ""
+  echo "PR → Issue 番号の対応:"
+  errfile=$(mktemp)
+  git log "${latest_tag}..develop" --format='%s' --no-merges | while IFS= read -r subj; do
+    n=$(printf '%s\n' "$subj" | grep -oE '#[0-9]+' | tail -1 | tr -d '#')
+    [ -n "$n" ] || { echo "- (番号なし) $subj"; continue; }
+    : > "$errfile"
+    if body=$(gh pr view "$n" --json body --jq '.body' 2>"$errfile"); then
+      issue=$(printf '%s\n' "$body" | grep -oiE '(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]+#[0-9]+' | grep -oE '[0-9]+' | head -1)
+      if [ -n "$issue" ]; then
+        echo "- PR #$n → Issue #$issue"
+      else
+        echo "- PR #$n → 解決失敗（closing keyword なし）。Issue 番号を手動確認してください。PR 番号は使いません。"
+      fi
+    else
+      errtxt=$(tr '\n' ' ' < "$errfile")
+      case "$errtxt" in
+        *"Could not resolve to a PullRequest"*)
+          echo "- #$n → Issue #$n（PR として解決できないため Issue 番号として採用）"
+          ;;
+        *)
+          echo "- #$n → 解決不能（gh エラー）。手動で確認してください。"
+          ;;
+      esac
+    fi
+  done
+  rm -f "$errfile"
 fi
 ```
 
-関連する Issue/PR 番号も `gh` で確認し、CHANGELOG エントリの草案を作成して `AskUserQuestion` でユーザーに提示し、リリースを進めてよいか確認する。
+対応表を目視し、CHANGELOG エントリの草案を作成して `AskUserQuestion` でユーザーに提示し、リリースを進めてよいか確認する。「解決失敗」「解決不能」の行は人間が Issue 番号を補う。PR 番号は書かない。
 
 ---
 
@@ -214,6 +241,8 @@ grep -rn "{OLD_VERSION}" .claude-plugin/ plugins/rite/.claude-plugin/ README.md 
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 形式で、英語版と日本語版を更新する。
 
 エントリは機能名レベルで記述し、「従来の挙動」「以前の方式」のような基準点が新規読者に不明な暗黙の歴史依存表現を避ける（修正対象の旧挙動を述べる場合も変更対象のキー・機能名を明示する）。詳細は CHANGELOG.md / CHANGELOG.ja.md 冒頭の「歴史依存表現の取扱方針」注記を参照。
+
+書く番号は Issue 番号である。`git log` の末尾番号（PR 番号）を転記しない。Phase 1.3 の対応表を使う。
 
 #### CHANGELOG.md（英語）
 

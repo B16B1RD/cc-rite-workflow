@@ -422,7 +422,7 @@ fi
 - **Out-of-contract exit codes**（0/1/2/-1 以外）: `error` として warning 記録し続行。
 rationale: references/rationale.md#findings-are-warnings
 
-**Per-check notes**: Number reference — 走査面（CHANGELOG en/ja と本ファイル）へ Issue/PR 番号参照を戻さない。面を広げるなら script の `DEFAULT_TARGETS` へ追加。
+**Per-check notes**: Number reference — 走査面（本ファイル）へ Issue/PR 番号参照を戻さない。面を広げるなら script の `DEFAULT_TARGETS` へ追加。
 
 **Adding a new check**: 表に 1 行（path / label / prefix / count regex）、exit 契約（0/1/2）と count line、根拠を [plugin-checks-rationale.md](references/plugin-checks-rationale.md) へ。新 Phase / appendix / summary 行は不要。
 

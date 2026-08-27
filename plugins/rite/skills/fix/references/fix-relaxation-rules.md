@@ -6,7 +6,7 @@ Defines how fix targets are determined in the `/rite:iterate` review-fix loop.
 
 ## Overview
 
-All findings whose `scope ∈ {current-pr, follow-up}` **and `measured != false`** (= `verification.measured == true` (runtime 実測あり)、**または** 実測の有無を判定する構造が無く `measured_map` **未登録 = 未判定** — 実測必須ゲートの対象外として従来どおり blocking) are always blocking regardless of severity. The review-fix loop continues until all such findings are resolved (**0 blocking findings remaining is the only normal exit**). Findings with `scope == "nit-noted"` are **not blocking** — they are handled via the reply-only path and never participate in `/rite:fix` Phase 2.1 selection nor in mergeable countdown. **`verification.measured == false` (非実測) の findings も not blocking** — 実測必須ゲート ([severity-levels.md §実測必須ゲート](../../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)) により `/rite:pr-review` ステップ 5.4 の記録のみで fix サイクルを起動しない (`/rite:fix` の修正対象・auto-select・fix commit 対象から完全除外)。**別 Issue 化の経路は廃止済み** — current-pr / follow-up 指摘は本 PR で対応するか accept (認知のみ) で受け流すかの 2 択になる。
+All findings whose `scope ∈ {current-pr, follow-up}` **and `measured != false`** (= `verification.measured == true` (runtime 実測あり)、**または** 実測の有無を判定する構造が無く `measured_map` **未登録 = 未判定** — 実測必須ゲートの対象外として従来どおり blocking) are always blocking regardless of severity. The review-fix loop continues until all such findings are resolved (**0 blocking findings remaining is the only normal exit**). Findings with `scope == "nit-noted"` are **not blocking** — they never participate in `/rite:fix` Phase 2.1 selection nor in mergeable countdown (PR reply しない。`acknowledged_nit_count` に算入)。 **`verification.measured == false` (非実測) の findings も not blocking** — 実測必須ゲート ([severity-levels.md §実測必須ゲート](../../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)) により `/rite:pr-review` ステップ 5.4 の記録のみで fix サイクルを起動しない (`/rite:fix` の修正対象・auto-select・fix commit 対象から完全除外)。**別 Issue 化の経路は廃止済み** — current-pr / follow-up 指摘は本 PR で対応するか accept (認知のみ) で受け流すかの 2 択になる。
 
 ## Fix Target Classification
 
@@ -20,19 +20,19 @@ Findings are classified by **severity × scope**. Scope was added in schema 1.1.
 | CRITICAL | nit-noted | **禁止** (schema invariant #4 FAIL) | Reviewer reject + reroll — never reaches fix loop |
 | HIGH | current-pr / follow-up | Blocking | Must fix |
 | HIGH | nit-noted | **禁止** (schema invariant #4 FAIL) | Reviewer reject + reroll — never reaches fix loop |
-| MEDIUM | current-pr / follow-up | Blocking — but auto-demoted to nit-noted when finding has no functional impact (see §Practical Impact Demotion) | Demote then reply-only; functional impact 確認後に blocking 判定 |
-| MEDIUM | nit-noted | **blocking 対象外** (requires `nit_reason`) | Reply-only via Phase 2.4 `nit-noted-reply`, no fix commit |
-| LOW-MEDIUM | current-pr / follow-up | Blocking — but auto-demoted to nit-noted when finding has no functional impact (see §Practical Impact Demotion) | Demote then reply-only; MEDIUM と同様に functional impact 判定で降格 |
-| LOW-MEDIUM | nit-noted | **blocking 対象外** | Reply-only via Phase 2.4 `nit-noted-reply` |
-| LOW | current-pr | Blocking — but auto-demoted to nit-noted when `review.scope_assignment.auto_demote_low: true` (default) | Demote then reply-only; opt-out with `auto_demote_low: false` keeps blocking |
+| MEDIUM | current-pr / follow-up | Blocking — but auto-demoted to nit-noted when finding has no functional impact (see §Practical Impact Demotion) | Demote then acknowledge (no PR reply); functional impact 確認後に blocking 判定 |
+| MEDIUM | nit-noted | **blocking 対象外** (requires `nit_reason`) | no PR reply, no fix commit |
+| LOW-MEDIUM | current-pr / follow-up | Blocking — but auto-demoted to nit-noted when finding has no functional impact (see §Practical Impact Demotion) | Demote then acknowledge (no PR reply); functional impact 確認後に blocking 判定 |
+| LOW-MEDIUM | nit-noted | **blocking 対象外** | no PR reply, no fix commit |
+| LOW | current-pr | Blocking — but auto-demoted to nit-noted when `review.scope_assignment.auto_demote_low: true` (default) | Demote then acknowledge (no PR reply); opt-out with `auto_demote_low: false` keeps blocking |
 | LOW | follow-up | **禁止セル** (SoT: [`severity-levels.md` §Severity × Scope Matrix](../../../references/severity-levels.md#severity--scope-matrix)) | LOW × follow-up は意味論的禁止 (LOW は本 PR で修正するか nit として受け流すかの二択)。reviewer 側で reject される — fix loop には到達しない |
-| LOW | nit-noted | **blocking 対象外** | Reply-only via Phase 2.4 `nit-noted-reply` |
+| LOW | nit-noted | **blocking 対象外** | no PR reply, no fix commit |
 
-> **scope=nit-noted は blocking 対象外**: 上表で「blocking 対象外」の行は (a) `/rite:fix` Phase 1.3 で「nit (認知のみ)」セクションに分類、(b) Phase 1.4 で auto-select 対象から除外、(c) Phase 2.1 を skip して Phase 2.4 へ直行、(d) fix commit 対象からも完全除外、(e) Phase 4.6 サマリで `acknowledged_nit_count` として独立カウントされる。`/rite:pr-review` Phase 5.3 評価では `overall_assessment` に影響せず、mergeable 判定 countdown 対象からも除外される (詳細は [`assessment-rules.md`](./assessment-rules.md) §5.3.1 / §5.3.3 参照)。
+> **scope=nit-noted は blocking 対象外**: 上表で「blocking 対象外」の行は (a) `/rite:fix` Phase 1.3 で「nit (認知のみ)」セクションに分類、(b) Phase 1.4 で auto-select 対象から除外、(c) Phase 2.1 / 2.4 を skip（PR reply しない）、(d) fix commit 対象からも完全除外、(e) Phase 4.6 サマリで `acknowledged_nit_count = {nit_noted_count}` として独立カウントされる。`/rite:pr-review` Phase 5.3 評価では `overall_assessment` に影響せず、mergeable 判定 countdown 対象からも除外される (詳細は [`assessment-rules.md`](./assessment-rules.md) §5.3.1 / §5.3.3 参照)。
 
 ## Practical Impact Demotion
 
-`auto_demote_low` の対象を **「LOW + 実害なし MEDIUM + 実害なし LOW-MEDIUM」** に拡張する。reviewer の指摘が以下のカテゴリに該当する場合、`severity ∈ {MEDIUM, LOW-MEDIUM}` でも `scope=nit-noted` に自動降格して reply-only 経路に流す。LOW × current-pr は config の `auto_demote_low: true` で **無条件**降格 (functional impact 判定なし)、MEDIUM / LOW-MEDIUM は下記カテゴリへの該当性で降格判定する:
+`auto_demote_low` の対象を **「LOW + 実害なし MEDIUM + 実害なし LOW-MEDIUM」** に拡張する。reviewer の指摘が以下のカテゴリに該当する場合、`severity ∈ {MEDIUM, LOW-MEDIUM}` でも `scope=nit-noted` に自動降格する（PR reply しない）。LOW × current-pr は config の `auto_demote_low: true` で **無条件**降格 (functional impact 判定なし)、MEDIUM / LOW-MEDIUM は下記カテゴリへの該当性で降格判定する:
 
 | カテゴリ | 例 | 降格判定 |
 |---------|---|---------|

@@ -3,7 +3,7 @@
 #
 # Behavioral tests for hooks/scripts/review-results-archive-or-rm.sh (/rite:cleanup ステップ 6)。
 #
-# 守っている invariant: 非実測指摘 (non_blocking_findings[]) の **全文の唯一の保存先** である
+# 守っている invariant: 非実測指摘 (non_blocking_findings[]) の **cycle 中の全文の唯一の保存先** である（マージ時は follow-up Issue にも転記）
 # レビュー結果 JSON を、判定できないまま消さないこと。
 # 「判定不能はすべて退避側へ倒す」という宣言は、jq の rc を捨てると容易に破れる — 本 suite は
 # その分岐を rc 値域ごとに固定する。加えて「倒したことが観測できる」ことも固定する (退避 IO の
