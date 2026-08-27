@@ -12,6 +12,7 @@
 - **終了 handoff (FINALIZE, one-shot)**: 終了 sentinel を出す sub-skill が flow-state に `FINALIZE:{result}:{pr}` handoff をセットする。
   - `[review:mergeable]` → pr-review.md Step 8.0 が `--handoff "FINALIZE:review:mergeable:{pr}"`
   - `[fix:replied-only]` → fix.md Step 5.1 が `--handoff "FINALIZE:fix:replied-only:{pr}"`
+  - `[fix:sweep-done]` → fix.md Step 5.1 が `--handoff "FINALIZE:fix:sweep-done:{pr}"`（継続 `/rite:pr-review` ではない）
   - `[fix:cancelled-by-user]` → fix.md Step 1.4 cancel が `--handoff "FINALIZE:fix:cancelled-by-user:{pr}"`
   これらは sub-skill 内の defense-in-depth set で行われるため、**LLM が turn を終える前に確実に実行される**。
 - **Stop hook が consume + prefix 分岐で再注入**: `stop-loop-continuation.sh` が turn 終了時に `flow-state.sh consume-handoff` で handoff を読み取り + 削除する。継続 / WIKICHAIN / 未知 prefix は非空なら `decision:block` で差し戻す。`FINALIZE:...` は transcript 最終 assistant に完了通知（`## /rite:iterate 完了` / `## /rite:iterate 中断`）が既にあれば差し戻さず、未出力または検査不能のときだけ「iterate ステップ5 完了通知を出力してから終えよ」を再注入する。ただし `FINALIZE:review:mergeable` は残件欄欠落 / 判定不能なら通知があっても差し戻す。`/rite:...` は次コマンド (`/rite:fix` / `/rite:pr-review`) を再注入する。

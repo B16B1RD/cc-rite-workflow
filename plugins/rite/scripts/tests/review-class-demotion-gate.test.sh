@@ -89,6 +89,12 @@ mk_entry() {
     '{id:$id, class:$class, scenario:$scenario}'
 }
 
+# class B + 除外判定文。第 4 引数は classification map の exclusion（非空文字列）
+mk_entry_excl() {
+  jq -n --arg id "$1" --arg class "$2" --arg scenario "$3" --arg exclusion "$4" \
+    '{id:$id, class:$class, scenario:$scenario, exclusion:$exclusion}'
+}
+
 echo "=== review-class-demotion-gate.sh tests ==="
 
 # ---- TC-01 (T-01/AC-1): class A 指定の finding は blocking に残る ----
@@ -324,6 +330,75 @@ echo "TC-11: 変換がトップレベルの他キーを保持する"
   && pass "commit_sha preserved" || fail "commit_sha lost"
 [ "$(jq -r 'has("guardrail_audit_log")' "$TEST_DIR/tc10.json")" = "true" ] \
   && pass "guardrail_audit_log preserved" || fail "guardrail_audit_log lost"
+
+# ---- TC-14 (T-01/AC-1, T-04/AC-4): A=0 でも除外付き class B は blocking 維持 ----
+# base 側 README 禁止文の削除は class B（実行時シナリオは書けない）でも降格しない。
+echo "TC-14: A=0 の除外付き class B は blocking 維持 + 除外判定文を記録"
+f1=$(mk_finding "F-01" "HIGH" "current-pr" "base 側 README の禁止文が本 PR で削除された")
+mk_json "$TEST_DIR/tc14.json" "$f1"
+mk_cls "$TEST_DIR/tc14-cls.json" \
+  "$(mk_entry_excl F-01 B "文書整合に留まり実行時シナリオは書けない" "base 側 README の禁止文「X してはならない」が本 PR の diff で削除された")"
+run_gate "$TEST_DIR/tc14.json" "$TEST_DIR/tc14-cls.json"
+[ "$GATE_RC" -eq 0 ] && pass "rc=0" || fail "rc=$GATE_RC (expected 0)"
+grep -q "CLASS_DEMOTION_GATE=not-triggered; class_a=0; class_b=1; demoted=0; assessment=fix-needed" <<<"$GATE_STDERR" \
+  && pass "not-triggered (excluded B remains blocking)" || fail "marker mismatch: $GATE_STDERR"
+[ "$(jq -r '.findings | length' "$TEST_DIR/tc14.json")" = "1" ] \
+  && pass "finding stays blocking" || fail "finding was moved"
+[ "$(jq -r '.non_blocking_findings | length' "$TEST_DIR/tc14.json")" = "0" ] \
+  && pass "not transferred to non_blocking" || fail "unexpected demotion"
+[ "$(jq -r '.findings[0].consequence_class' "$TEST_DIR/tc14.json")" = "B" ] \
+  && pass "stays class B" || fail "class changed"
+[ "$(jq -r '.findings[0].consequence_exclusion' "$TEST_DIR/tc14.json")" = "base 側 README の禁止文「X してはならない」が本 PR の diff で削除された" ] \
+  && pass "consequence_exclusion recorded" || fail "exclusion audit missing"
+[ "$(jq -r '.overall_assessment' "$TEST_DIR/tc14.json")" = "fix-needed" ] \
+  && pass "assessment stays fix-needed" || fail "assessment changed"
+
+# ---- TC-15 (T-02/AC-2): 混在 — 除外なし B は降格、除外付き B は残る ----
+echo "TC-15: A=0 混在 (除外なし B は降格 / 除外付き B は blocking)"
+f1=$(mk_finding "F-01" "HIGH" "current-pr" "base 側禁止文の削除")
+f2=$(mk_finding "F-02" "MEDIUM" "current-pr" "新規追加文の pin 精度")
+mk_json "$TEST_DIR/tc15.json" "$f1" "$f2"
+mk_cls "$TEST_DIR/tc15-cls.json" \
+  "$(mk_entry_excl F-01 B "文書整合に留まる" "base 側の禁止文が本 PR の diff で削除された")" \
+  "$(mk_entry F-02 B "検出網の粒度に留まる")"
+run_gate "$TEST_DIR/tc15.json" "$TEST_DIR/tc15-cls.json"
+[ "$GATE_RC" -eq 0 ] && pass "rc=0" || fail "rc=$GATE_RC (expected 0)"
+grep -q "CLASS_DEMOTION_GATE=applied; class_a=0; class_b=2; demoted=1; assessment=fix-needed" <<<"$GATE_STDERR" \
+  && pass "applied demotes only non-excluded B" || fail "marker mismatch: $GATE_STDERR"
+[ "$(jq -r '.findings | length' "$TEST_DIR/tc15.json")" = "1" ] \
+  && pass "excluded B stays in findings" || fail "findings count wrong"
+[ "$(jq -r '.findings[0].id' "$TEST_DIR/tc15.json")" = "F-01" ] \
+  && pass "remaining finding is excluded B" || fail "wrong finding remained"
+[ "$(jq -r '.non_blocking_findings | length' "$TEST_DIR/tc15.json")" = "1" ] \
+  && pass "non-excluded B demoted" || fail "demote count wrong"
+[ "$(jq -r '.non_blocking_findings[0].id' "$TEST_DIR/tc15.json")" = "F-02" ] \
+  && pass "demoted id is F-02" || fail "wrong finding demoted"
+[ "$(jq -r '.non_blocking_findings[0].demotion.policy' "$TEST_DIR/tc15.json")" = "class-b-demotion" ] \
+  && pass "demotion.policy on wording finding" || fail "demotion missing on wording finding"
+[ "$(jq -r '.findings[0] | has("demotion")' "$TEST_DIR/tc15.json")" = "false" ] \
+  && pass "excluded B has no demotion key" || fail "demotion leaked onto excluded B"
+[ "$(jq -c '.class_demotion' "$TEST_DIR/tc15.json")" = '{"applied":true,"class_a":0,"class_b":2,"demoted":1}' ] \
+  && pass "class_demotion reflects partial demotion" || fail "class_demotion wrong: $(jq -c '.class_demotion' "$TEST_DIR/tc15.json")"
+
+# ---- TC-16 (T-03/AC-3): exclusion 不正 → 判定不能 = class A + WARNING ----
+echo "TC-16: exclusion 不正 (空文字 / 非文字列) は class A 扱い + WARNING"
+f1=$(mk_finding "F-01" "MEDIUM" "current-pr" "exclusion 空文字")
+f2=$(mk_finding "F-02" "MEDIUM" "current-pr" "exclusion が数値")
+mk_json "$TEST_DIR/tc16.json" "$f1" "$f2"
+mk_cls "$TEST_DIR/tc16-cls.json" \
+  "$(jq -n '{id:"F-01", class:"B", scenario:"文書整合に留まる", exclusion:""}')" \
+  "$(jq -n '{id:"F-02", class:"B", scenario:"文書整合に留まる", exclusion:1}')"
+run_gate "$TEST_DIR/tc16.json" "$TEST_DIR/tc16-cls.json"
+[ "$GATE_RC" -eq 0 ] && pass "rc=0 (per-finding fail-safe)" || fail "rc=$GATE_RC"
+grep -q "CLASS_DEMOTION_UNCLASSIFIED=1; count=2" <<<"$GATE_STDERR" \
+  && pass "UNCLASSIFIED marker count=2" || fail "marker mismatch: $GATE_STDERR"
+grep -q "WARNING" <<<"$GATE_STDERR" && pass "WARNING emitted" || fail "no WARNING"
+[ "$(jq -r '[.findings[] | select(.consequence_class == "A")] | length' "$TEST_DIR/tc16.json")" = "2" ] \
+  && pass "both treated as class A" || fail "not all class A"
+[ "$(jq -r '.non_blocking_findings | length' "$TEST_DIR/tc16.json")" = "0" ] \
+  && pass "no silent demotion" || fail "silent demotion occurred"
+[ "$(jq -r '[.findings[] | select(has("consequence_exclusion"))] | length' "$TEST_DIR/tc16.json")" = "0" ] \
+  && pass "no exclusion recorded for unclassified" || fail "unexpected consequence_exclusion"
 
 echo ""
 echo "=== Summary: PASS=$PASS FAIL=$FAIL ==="

@@ -21,6 +21,7 @@ rite workflow のスキル間連携は、各 sub-skill が bash 出力に埋め�
 | `[review:error]` | pr-review | iterate | review 実行中にエラー発生。iterate 内部で処理され batch-run へは bubble しない |
 | `[fix:error]` | fix | iterate, batch-run | fix 実行中にエラー発生 |
 | `[fix:pushed]` | fix | iterate | fix 完了・push 済み、review へ再突入。iterate のループ内部状態のため batch-run へは bubble しない |
+| `[fix:sweep-done]` | fix | iterate | mergeable 後 NB digest sweep 完了。iterate はステップ 5 完了通知へ（ステップ 1 に戻らない） |
 | `[fix:pushed-wm-stale]` | fix | iterate | fix push 完了だが work memory 更新が失敗（non-blocking）。iterate 内部で処理され batch-run へは bubble しない |
 | `[fix:replied-only]` | fix | iterate, batch-run | 対応不要判定のみで push なし（コメント返信のみ） |
 | `[fix:cancelled-by-user]` | fix | iterate, batch-run | ユーザーが fix 実行をキャンセル |
@@ -41,6 +42,7 @@ rite workflow のスキル間連携は、各 sub-skill が bash 出力に埋め�
 | `[pr:created:N]` | pr-create | open, recover, batch-run | PR #N を作成完了 |
 | `[pr-create-failed]` | pr-create | open, batch-run | PR 作成に失敗 |
 | `[iterate:max-cycles-reached]` | iterate | batch-run | review⇄fix ループのサーキットブレーカーが発火（収束トレンドの発散検出、または `safety.max_review_cycles` 到達 = backstop）。**sentinel は発火理由に依らず同一 literal**（batch は理由を問わず failed 記録するため） |
+| `[iterate:nb-sweep-error]` | iterate | batch-run | mergeable 後 NB digest sweep が collect / persist に失敗。失敗即停止（`[fix:error]` と同帰結） |
 | `[iterate:max-cycles-stopped]` | iterate | (iterate 内部完結) | サーキットブレーカー発火（発散検出 または `safety.max_review_cycles` backstop）でループを停止した最終状態表示。理由は停止通知の「理由」行が担う |
 | `[run:all-completed]` | batch-run | (batch-run 内部完結、最終出力) | バッチ処理対象の全 Issue が完了 |
 | `[run:stopped]` | batch-run | (batch-run 内部完結、最終出力) | サーキットブレーカー等でバッチ処理を中断 |
