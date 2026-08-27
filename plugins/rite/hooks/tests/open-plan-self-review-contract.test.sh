@@ -32,6 +32,10 @@ assert_grep "3.3.1 invokes the complexity-lane helper" "$OPEN" \
   'scripts/issue-complexity-lane\.sh --issue \{issue_number\}'
 assert_grep "S+ row spawns Task once then reflects then goes to 3.4" "$OPEN" \
   '`S` / `M` / `L` / `XL` \| 下記 Task を 1 回 spawn → 指摘を計画へ反映 → 3.4 へ'
+assert_grep "Task inlines plan_self_review_prompt and plan_body (child does not Read)" "$OPEN" \
+  '\{plan_self_review_prompt\}.*\{plan_body\}'
+assert_grep "Task sets run_in_background false" "$OPEN" \
+  'run_in_background: false'
 assert_grep "done path emits PLAN_REVIEW=done with findings count as 承認材料" "$OPEN" \
   '\[CONTEXT\] PLAN_REVIEW=done; findings=N.*承認材料として提示して 3.4 へ'
 assert_grep "3.4 includes PLAN_REVIEW in 承認材料" "$OPEN" \
@@ -46,9 +50,9 @@ assert_grep_in_section "3.3.1 XS path does not spawn Task" "$OPEN" \
 
 echo "=== T-03 / AC-3: 指摘は承認前の計画へ反映する ==="
 assert_grep "findings are reflected as plan edits or 要判断ポイント promotion" "$OPEN" \
-  '指摘を計画へ反映（実装ステップ追記 / 変更対象ファイル追記 / 要判断ポイントへ昇格）'
-assert_grep "plan-self-review.md names 反映先 options" "$PROMPT" \
-  '実装ステップ追記、変更対象ファイル追記、要判断ポイントへ昇格'
+  '既存ステップへの文言追加 / 変更対象ファイル追記 / 要判断ポイントへ昇格'
+assert_grep "plan-self-review.md names 反映先 種別 enum" "$PROMPT" \
+  '種別=` は 実装ステップ追記 / 変更対象ファイル追記 / 要判断ポイントへ昇格'
 
 echo "=== T-04 / AC-4: 反映後に再レビューしない ==="
 assert_grep "3.3.1 forbids re-review after reflection" "$OPEN" \
@@ -75,8 +79,10 @@ assert_grep "unavailable path forbids guessing missing output" "$OPEN" \
   '出力の推測補完をしない。`\[CONTEXT\] PLAN_REVIEW=unavailable'
 assert_grep "3.4 presents 未実施 when unavailable" "$OPEN" \
   '`unavailable` = 「計画レビュー未実施」'
-assert_grep "complexity missing is fail-loud and does not proceed to 3.4" "$OPEN" \
-  '欠落（`reason=` のみ / marker 不在 / helper 非ゼロ） \| \*\*ERROR\*\*（fail-loud）。3.4 へ進まない'
+assert_grep "complexity missing is fail-loud and ignores helper full fallback" "$OPEN" \
+  '欠落（`reason=` のみ / marker 不在 / helper 非ゼロ） \| \*\*ERROR\*\*（fail-loud）。helper の `COMPLEXITY_LANE=full`'
+assert_grep "3.4/3.5/3.6 consume the post-3.3.1 plan" "$OPEN" \
+  '3.4 / 3.5 / 3.6 の入力は 3.3.1 反映後の計画（未実施なら 3.3 のまま）'
 
 echo "=== prompt SoT: 4 視点と判定出力形式 ==="
 assert_grep "prompt lists 検証網設計" "$PROMPT" '\*\*検証網設計\*\*'
@@ -84,6 +90,8 @@ assert_grep "prompt lists 文書同期スコープ" "$PROMPT" '\*\*文書同期�
 assert_grep "prompt lists CI・統合配線" "$PROMPT" '\*\*CI・統合配線\*\*'
 assert_grep "prompt lists regression 面" "$PROMPT" '\*\*regression 面\*\*'
 assert_grep "prompt requires 指摘件数 line" "$PROMPT" '指摘件数: \{n\}'
+assert_grep "spawn payload concatenates Prompt + format + constraints" "$PROMPT" \
+  'Prompt 節 \+ 判定出力形式 \+ 本ファイル冒頭の制約'
 assert_grep "SKILL.md points prompt SoT at plan-self-review.md" "$OPEN" \
   '\[plan-self-review.md\]\(references/plan-self-review.md\)'
 assert_grep "rationale records why fail-loud vs WARNING" "$RATIONALE" \

@@ -480,21 +480,24 @@ bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
 |---|---|
 | `XS` | レビューせず 3.4 へ（ユーザー向け追加出力なし。`PLAN_REVIEW=` も出さない） |
 | `S` / `M` / `L` / `XL` | 下記 Task を 1 回 spawn → 指摘を計画へ反映 → 3.4 へ |
-| 欠落（`reason=` のみ / marker 不在 / helper 非ゼロ） | **ERROR**（fail-loud）。3.4 へ進まない |
+| 欠落（`reason=` のみ / marker 不在 / helper 非ゼロ） | **ERROR**（fail-loud）。helper の `COMPLEXITY_LANE=full` と「フル装備で実行します」は無視する。stderr に出して中止し、3.4 へ進まない |
 
-Task（S 以上のみ。1 回。再 spawn しない）:
+Task（S 以上のみ。1 回。再 spawn しない）。orchestrator が [plan-self-review.md](references/plan-self-review.md) の Prompt 節・判定出力形式・制約を `{plan_self_review_prompt}` に、3.3 の `## 実装計画` 全文を `{plan_body}` にインラインする。子に Read させない。Edit/Write/NotebookEdit 禁止:
 
 ```text
 subagent_type: general-purpose
-prompt: references/plan-self-review.md を Read し、ステップ 3.3 の計画を 4 視点でレビューする。出力形式に従う。計画ファイルは編集しない。
-```
+run_in_background: false
+description: 計画セルフレビュー
+prompt: {plan_self_review_prompt}
 
-prompt 本文の SoT は [plan-self-review.md](references/plan-self-review.md)。
+## ステップ 3.3 の計画
+{plan_body}
+```
 
 | 観測 | アクション |
 |---|---|
-| 形式どおり `指摘件数: N`（N≥0） | 指摘を計画へ反映（実装ステップ追記 / 変更対象ファイル追記 / 要判断ポイントへ昇格）。blocking にしない。`[CONTEXT] PLAN_REVIEW=done; findings=N` を出し、指摘件数と反映内容（または指摘なし）を承認材料として提示して 3.4 へ。再 spawn しない |
-| spawn / 回収失敗 / 形式不正 | WARNING `計画レビュー未実施: {reason}`。出力の推測補完をしない。`[CONTEXT] PLAN_REVIEW=unavailable; reason={reason}`。計画は 3.3 のまま 3.4 へ |
+| `## 計画レビュー結果` かつ `指摘件数:` が整数かつ各行の視点が 4 種かつ 反映先 `種別=` が 3 値 | 指摘を計画へ反映（既存ステップへの文言追加 / 変更対象ファイル追記 / 要判断ポイントへ昇格。新規ステップ追加はしない）。blocking にしない。1 行でも外れれば全体を未実施（部分適用しない）。`[CONTEXT] PLAN_REVIEW=done; findings=N` を出し、指摘件数と反映内容（または指摘なし）を承認材料として提示して 3.4 へ。再 spawn しない |
+| spawn / 回収失敗 / 形式不正（`指摘件数:` 欠落 / 視点が 4 種以外 / `種別=` 欠落または 3 値以外 / 追記欠落 / 見出し欠落） | WARNING `計画レビュー未実施: {reason}`。出力の推測補完をしない。`[CONTEXT] PLAN_REVIEW=unavailable; reason={reason}`。計画は 3.3 のまま 3.4 へ |
 
 ### 3.4 計画承認（batch 時は自動承認 / standalone は AskUserQuestion）
 
@@ -526,6 +529,7 @@ echo "[CONTEXT] OPEN_PLAN_MODE=$plan_mode; issue={issue_number}"
 | `interactive` | AskUserQuestion で「この計画で実装開始 / 計画を修正 / 中止」を選択（standalone。従来どおり。AC-4 回帰なし） |
 
 3.3.1 の `PLAN_REVIEW=` を承認材料に含める（`done` = 指摘件数と反映内容、または指摘なし。`unavailable` = 「計画レビュー未実施」。marker なし = XS skip で追加提示しない）。
+3.4 / 3.5 / 3.6 の入力は 3.3.1 反映後の計画（未実施なら 3.3 のまま）。
 
 ### 3.5 Issue Body Checklist 更新
 
