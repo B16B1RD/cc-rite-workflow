@@ -6,9 +6,10 @@
 #
 # なぜ一律削除ではないか:
 #   ステップ 6.1.d の関連 Issue 記録コメントは reviewer / severity / file:line のポインタと降格理由 (判定文) しか載せない。
-#   したがって `description` / `suggestion` の全文を持つのは本 JSON だけで、無条件削除すると
-#   非実測 CRITICAL の詳細が merge 直後にどこにも残らなくなり、「マージ後に人間が拾い直せる」
-#   という担保が偽になる (ポインタ化する前より後退する)。
+#   cycle 中の `description` / `suggestion` の全文を持つのは本 JSON だけである。マージ時は
+#   cleanup-follow-up-issue.sh が本 JSON から follow-up Issue へ全文転記するが、転記は本 helper
+#   の前に走る。無条件削除すると転記失敗時に非実測 CRITICAL の詳細が merge 直後にどこにも
+#   残らなくなり、「マージ後に人間が拾い直せる」という担保が偽になる (ポインタ化する前より後退する)。
 #
 # 判定不能はすべて退避側 (安全側) へ倒し、かつ loud に報告する:
 #   jq 不在 / parse 失敗 / query error / 空ファイル のいずれも「中身を判定できない」状態であり、
@@ -183,8 +184,8 @@ for f in "$results_dir/${PR_NUMBER}"-*.json*; do
     continue
   fi
 
-  # 退避経路。mkdir と mv を分離し、それぞれの stderr を捨てない — 守っている対象が「全文の
-  # 唯一の保存先」である以上、守れなかったときに原因 (既存衝突 / 権限 / ENOSPC / EXDEV) が
+  # 退避経路。mkdir と mv を分離し、それぞれの stderr を捨てない — 守っている対象が「cycle 中の全文の
+  # 唯一の保存先（マージ時は follow-up Issue にも転記）」である以上、守れなかったときに原因 (既存衝突 / 権限 / ENOSPC / EXDEV) が
   # 残らないのは silent failure。reason も分けて切り分け可能にする。
   # stderr の捕捉に tempfile を使わないのは、mktemp 自身が失敗する条件 (ENOSPC / read-only
   # TMPDIR) が mkdir の失敗条件と相関するため — 診断が最も要る場面でだけ診断が消える。
