@@ -183,8 +183,8 @@ for f in "$results_dir/${PR_NUMBER}"-*.json*; do
     continue
   fi
 
-  # 退避経路。mkdir と mv を分離し、それぞれの stderr を捨てない — 守っている対象が「全文の
-  # 唯一の保存先」である以上、守れなかったときに原因 (既存衝突 / 権限 / ENOSPC / EXDEV) が
+  # 退避経路。mkdir と mv を分離し、それぞれの stderr を捨てない — 守っている対象が「cycle 中の全文の
+  # 唯一の保存先（マージ時は follow-up Issue にも転記）」である以上、守れなかったときに原因 (既存衝突 / 権限 / ENOSPC / EXDEV) が
   # 残らないのは silent failure。reason も分けて切り分け可能にする。
   # stderr の捕捉に tempfile を使わないのは、mktemp 自身が失敗する条件 (ENOSPC / read-only
   # TMPDIR) が mkdir の失敗条件と相関するため — 診断が最も要る場面でだけ診断が消える。
