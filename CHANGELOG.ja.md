@@ -40,7 +40,7 @@ marketplace 配布のプラグインファイルではないため、`number-ref
 
 ### 修正
 
-- **`/rite:fix` が対応完了報告・対応済み返信を PR へ投稿しなくなる** — PR thread への返信を人間由来の指摘に限定し、対応内容は fix コミット本文に記録する。`nit-noted` は表示と件数のみを出す。(#2376, #2381)
+- **`/rite:fix` が `## レビュー指摘対応完了` 報告・`nit、認知済` 返信を PR へ投稿しなくなる** — PR thread への返信を人間由来の指摘に限定し、対応内容は fix コミット本文に記録する。`nit-noted` は表示と件数のみを出す。(#2376, #2381)
 - **cleanup follow-up の既存判定を body 先頭行に固定し recency を follow-up 側に限定する** — 既存 Issue の判定は先頭行の HTML コメント等値で行うため、body 2 行目に完全な marker があっても `created` になる。`{review_cleanup_check}` の recency 選択は follow-up 側にのみ適用し、state 削除側は presence 検査を維持する。(#2385, #2390, #2392, #2394)
 - **`/release` Phase 1.3 が空 body の PR を `gh` エラーと誤分類しなくなる** — 分岐を `gh pr view` の exit status 基準に再構成し、成功かつ body が空のケースは「closing keyword なし」として扱う。(#2372)
 - **`lint/SKILL.md` と `docs/SPEC.md` の number-free 走査面の記述を実装に合わせる** — `number-reference-check.sh` の `DEFAULT_TARGETS` から CHANGELOG が外れた後も、両ファイルが CHANGELOG を含む旧列挙のまま残っていた。(#2370)

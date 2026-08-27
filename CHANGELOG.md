@@ -42,7 +42,7 @@ outside the number-free surface guarded by `number-reference-check.sh`. The
 
 ### Fixed
 
-- **`/rite:fix` no longer posts completion reports or "対応済み" replies to the PR** — PR thread replies are limited to human-authored findings and the fix details are recorded in the fix commit message instead. `nit-noted` is surfaced as a display and a count only. (#2376, #2381)
+- **`/rite:fix` no longer posts the `## レビュー指摘対応完了` report or `nit、認知済` replies to the PR** — PR thread replies are limited to human-authored findings and the fix details are recorded in the fix commit message instead. `nit-noted` is surfaced as a display and a count only. (#2376, #2381)
 - **The cleanup follow-up reader anchors on the first body line and scopes recency to the follow-up side** — existing-Issue detection compares the first line's HTML comment for equality, so a complete marker on the second body line still yields `created`. The `{review_cleanup_check}` recency selection applies to the follow-up side only, while the state deletion side keeps its presence check. (#2385, #2390, #2392, #2394)
 - **`/release` Phase 1.3 no longer misclassifies an empty PR body as a `gh` error** — the branch is rebuilt around the `gh pr view` exit status, so a successful call returning an empty body is treated as "no closing keyword". (#2372)
 - **`lint/SKILL.md` and `docs/SPEC.md` describe the actual number-free scan surface** — both still listed CHANGELOG after it was removed from `number-reference-check.sh`'s `DEFAULT_TARGETS`. (#2370)
