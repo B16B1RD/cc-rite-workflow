@@ -253,7 +253,7 @@ else:
 
 **non_blocking_findings への移送**: 5.3.0.M と同じ移送メカニズムを流用する — `total_findings` にカウントしない / `id` は振り直さず和集合で一意 / 記録 4 経路 (永続 JSON・6.1.d 関連 Issue 記録コメント・5.4 統合レポート section・E2E suffix) は 5.3.0.M §non_blocking_findings の扱い と同一。降格分は `demotion` オブジェクト (policy + 判定文) で実測ゲート降格分と区別でき、後から監査できる。
 
-**発散検出 (トレンド) との相互作用**: 本ゲートの降格が発動する cycle は移送後の blocking が 0 になり、iterate ループは `[review:mergeable]` で終了する。したがって per-cycle blocking 数列への影響は**終端 cycle の値が 0 になることのみ**であり、発散検出 (`hooks/scripts/review-trend-divergence.sh`) の入力定義・実装は変更しない。
+**発散検出 (トレンド) との相互作用**: 本ゲートの降格が発動しても、blocking が 0 になるのは exclusion なし class B が全件落ちたときだけ。exclusion 付き B が残れば `applied` かつ `assessment=fix-needed`（部分降格）。除外付き B のみの cycle は not-triggered。全対象 B が落ちた cycle だけ iterate は `[review:mergeable]` で終了する。per-cycle blocking 数列への影響は**終端 cycle の値が 0 になることのみ**であり、発散検出 (`hooks/scripts/review-trend-divergence.sh`) の入力定義・実装は変更しない。
 
 **指摘ゼロの場合**: post-5.3.0.M の blocking が空なら本ゲートは no-op (JSON 無変更・分類判定もスキップ)。mergeable 判定は現行と同一 (AC-7 非退行)。
 

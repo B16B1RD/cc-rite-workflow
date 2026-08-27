@@ -3,8 +3,9 @@
 #
 # Responsibility: 実測必須ゲート (scripts/review-measured-gate.sh) 適用後のレビュー結果 JSON に対し、
 # classification map (LLM が finding 発行者と別コンテキストで書いた class A/B 判定) を機械的に適用する。
-# class A (放置すると今回の成果物の実行時挙動が変わる) が 0 件の cycle で class B (帰結が検出網・
-# 可読性・文書整合に留まる) を全件 non_blocking_findings[] へ移送し、移送後の blocking 件数から
+# class A (放置すると今回の成果物の実行時挙動が変わる) が 0 件の cycle で、除外なし class B
+# (帰結が検出網・可読性・文書整合に留まる) のみ non_blocking_findings[] へ移送し、
+# exclusion 付き class B は blocking のまま残す。移送後の blocking 件数から
 # overall_assessment / verdict を再確定する。ゲート契約の SoT は
 # skills/fix/references/assessment-rules.md §5.3.0.C、語彙定義は
 # references/severity-levels.md §帰結クラス軸「ゲート層の class A/B 降格政策」。
@@ -266,10 +267,11 @@ def has_measured_bool:
 
 # well-formed 判定: 単一エントリ ∧ class が "A"、または class が "B" ∧ scenario が非空文字列
 # ∧ (exclusion キー欠落 ∨ exclusion が非空文字列)。
-# 降格に入る経路は well-formed B かつ exclusion なしのみ — それ以外はすべて class A 扱い
-# (判定不能を降格に丸めない)。$m は id -> エントリ配列の辞書。同 id の重複エントリは
-# 「分類出力の不正」として当該 finding を判定不能 (= class A) に倒す
-# (どちらを採るかの裁量を持たない)。
+# 降格に入る経路は well-formed B かつ exclusion なしのみ。判定不能 (エントリ欠落 / class 不正 /
+# scenario 欠落 / exclusion 不正 / 重複) は class A 扱い (判定不能を降格に丸めない)。
+# well-formed な exclusion 付き B は class B のまま残し、降格しない。
+# $m は id -> エントリ配列の辞書。同 id の重複エントリは「分類出力の不正」として当該 finding
+# を判定不能 (= class A) に倒す (どちらを採るかの裁量を持たない)。
 def parse_exclusion($c):
   if ($c | has("exclusion") | not) then {ok: true, value: null}
   elif ($c.exclusion | type) == "string" and $c.exclusion != "" then {ok: true, value: $c.exclusion}
