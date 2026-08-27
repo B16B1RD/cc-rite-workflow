@@ -6,9 +6,10 @@
 #
 # なぜ一律削除ではないか:
 #   ステップ 6.1.d の関連 Issue 記録コメントは reviewer / severity / file:line のポインタと降格理由 (判定文) しか載せない。
-#   したがって `description` / `suggestion` の全文を持つのは本 JSON だけで、無条件削除すると
-#   非実測 CRITICAL の詳細が merge 直後にどこにも残らなくなり、「マージ後に人間が拾い直せる」
-#   という担保が偽になる (ポインタ化する前より後退する)。
+#   cycle 中の `description` / `suggestion` の全文を持つのは本 JSON だけである。マージ時は
+#   cleanup-follow-up-issue.sh が本 JSON から follow-up Issue へ全文転記するが、転記は本 helper
+#   の前に走る。無条件削除すると転記失敗時に非実測 CRITICAL の詳細が merge 直後にどこにも
+#   残らなくなり、「マージ後に人間が拾い直せる」という担保が偽になる (ポインタ化する前より後退する)。
 #
 # 判定不能はすべて退避側 (安全側) へ倒し、かつ loud に報告する:
 #   jq 不在 / parse 失敗 / query error / 空ファイル のいずれも「中身を判定できない」状態であり、

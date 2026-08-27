@@ -131,8 +131,9 @@ Todo → In Progress → In Review → Done
 |---------|-------------|
 | Reply to a human-authored review thread | PR comment (unchanged) |
 | How a finding was addressed | fix commit message (readable from the PR Commits tab after squash merge; not in develop's git log) |
-| Non-measured findings during the review cycle | related Issue, one update-in-place comment |
-| Non-measured findings still remaining at merge | one follow-up Issue (none if zero) |
+| Non-measured findings full text during the review cycle | local JSON (`.rite/review-results/`; gitignored) |
+| Non-measured findings pointers during the review cycle | related Issue, one update-in-place comment |
+| Non-measured findings still remaining at merge (full text) | one follow-up Issue (none if zero; public on a public repository) |
 | PR body | concise present-tense summary only (no history dump, no machine markers) |
 
 `pr_review.post_comment` scopes **only** the integrated review-report post onto the PR. The non-measured record comment is independent of that key and is posted to the related Issue.

@@ -164,9 +164,11 @@ parallel:
 # demotion label, plus one line naming
 # where the full text lives); a finding's description / suggestion never appears there, so a
 # non-measured CRITICAL is not disclosed in detail on a public PR before it is fixed. Under the
-# default the full text lives only in the local JSON on the machine that ran the review — it is
-# gitignored, so checking out the PR's branch does not produce it. `/rite:cleanup` archives that
-# JSON instead of deleting it when `non_blocking_findings[]` is non-empty.
+# default, during the review cycle the full text lives only in the local JSON on the machine that
+# ran the review — it is gitignored, so checking out the PR's branch does not produce it. At merge,
+# remaining findings are transcribed in full into one follow-up Issue (public on a public
+# repository). `/rite:cleanup` archives that JSON instead of deleting it when
+# `non_blocking_findings[]` is non-empty, as a local fallback if the follow-up Issue is not created.
 pr_review:
   post_comment: false   # true to post the integrated review report as a PR comment (equivalent to --post-comment, default: false; this key does not control the related-Issue non-measured record comment)
 

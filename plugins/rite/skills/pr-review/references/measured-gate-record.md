@@ -8,7 +8,7 @@
 ## なぜ helper を単一 invocation にしたか
 記録経路を「step 0: 既存コメント検索 → step 1: 本文 Write → step 2: 投稿」の 3 bash に分け、実行保証 gate（6.1.d step 3 と 8.0.3）の pass 条件を **step 0 が emit する lookup marker の存在**に置く構成は成立しない。
 
-それは「動作の完了」ではなく「動作の直前」を検証しており、**step 0 だけ実行して step 1-2 を skip しても両 gate が green で通過する**。既定設定 `pr_review.post_comment: false` では、cycle 中、関連 Issue 上の記録コメントが非実測指摘の唯一の共有可能な durable チャネルであるため、この穴は D-01（マージ後に人間が拾い直せる状態を保つ）の無音喪失に直結する。同構成で emit されうる `NONBLOCKING_RECORDED` / `NONBLOCKING_CLEAR_SKIPPED` のような marker も、gate が見ていなければ consumer ゼロで意味を持たない。
+それは「動作の完了」ではなく「動作の直前」を検証しており、**step 0 だけ実行して step 1-2 を skip しても両 gate が green で通過する**。既定設定 `pr_review.post_comment: false` では、cycle 中、関連 Issue 上の記録コメントが非実測指摘の唯一の**共有可能な** durable チャネル（ポインタ + 降格理由）であるため、この穴は cycle 中の共有記録の無音喪失に直結する。D-01（マージ後に人間が拾い直せる状態を保つ）の全文側は経路 (1) の永続 JSON と、マージ時の follow-up Issue 転記が担う。同構成で emit されうる `NONBLOCKING_RECORDED` / `NONBLOCKING_CLEAR_SKIPPED` のような marker も、gate が見ていなければ consumer ゼロで意味を持たない。
 
 本実装は lookup・skip 判定・投稿を `hooks/review-nonblocking-record.sh` の **1 プロセス**に閉じ、terminal sentinel を EXIT trap から emit する。これにより:
 
@@ -67,7 +67,7 @@ gate を足すとき、先行 gate の pass 行が「proceed to ステップ 8.1
 
 **8.0.3 が守る範囲は「ステップ 6 が本 cycle で実行された」ことを前提とする**: 鮮度判定の参照値 `REVIEW_CYCLE_ID` は 6.1.a step 0 で emit される — つまり 8.0.3 が守る 6.1.d と同じ ステップ 6 の内側にある。ステップ 6 を丸ごと skip した cycle では、会話に残る（前 cycle の `REVIEW_CYCLE_ID`, 前 cycle の sentinel）の組が互いに整合するため 8.0.3 は pass する。8.0.2 の anchor である `candidate_count` が ステップ 7.1 で毎 cycle 再計算されるのとはこの点で非対称であり、8.0.3 単独では「6.1.d 単独の skip」しか catch できない。「ステップ 6 全体の skip」は **ステップ 8.0.4** が塞ぐ — 同 gate の anchor はステップ 6 の外側（5.3.0.M step 2）で毎 cycle 再生成されるため自己整合が成立せず、差し戻し先が 6.1.a **step 0** であることにより 8.0.3 の anchor と marker も再生成される。
 
-**8.0.3 の設置根拠**: 6.1.d step 3 の integrity check は 6.1.d サブステップ**内部**にあるため、6.1.d を丸ごと skip すると gate 自身も skip される。その failure mode を 8.0.3 が result-emit boundary の**外側**で catch する（ステップ 7.7 ⇄ 8.0.2 の二層構成と同型）。既定設定 `post_comment: false` では、cycle 中、6.1.d の関連 Issue 記録コメントが非実測指摘の唯一の共有可能な durable 記録（`.rite/review-results/` は gitignore 対象）であり、skip = D-01「マージ後に人間が拾い直せる」の完全な喪失になる。
+**8.0.3 の設置根拠**: 6.1.d step 3 の integrity check は 6.1.d サブステップ**内部**にあるため、6.1.d を丸ごと skip すると gate 自身も skip される。その failure mode を 8.0.3 が result-emit boundary の**外側**で catch する（ステップ 7.7 ⇄ 8.0.2 の二層構成と同型）。既定設定 `post_comment: false` では、cycle 中、6.1.d の関連 Issue 記録コメントが非実測指摘の唯一の**共有可能な** durable 記録（ポインタ + 降格理由。`.rite/review-results/` は gitignore 対象）であり、skip = cycle 中の共有チャネル喪失になる。D-01 の全文側（マージ後の拾い直し）は経路 (1) の永続 JSON とマージ時 follow-up Issue 転記が担うため、6.1.d skip だけではマージ後の完全喪失にはならない。
 
 ステップ 7.7（procedure 内部）⇄ ステップ 8.0.2（全体 skip）と同じ dual placement。**両者は同一の述語**（terminal sentinel の存在 ∧ `iteration_id` が本 cycle と一致）を異なる位置で評価する。片側だけ弱い述語にすると、その位置で「動作前 marker を見る」欠陥が再発する。述語には比較対象の**選択規則**（複数ある `REVIEW_CYCLE_ID` のうち epoch 最大を採る）まで含める — 選択規則が片側にしか無ければ「同一の述語」は成立しない。
 

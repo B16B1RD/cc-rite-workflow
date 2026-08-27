@@ -199,10 +199,10 @@ safety:
 # 記録コメントに載るのは **ポインタ + 降格理由**（reviewer / severity / file:line / 降格の判定文と全文の所在 1 行）で、
 # 各指摘の description / suggestion は載らない。関連 Issue へ投稿される経路のため、
 # 非実測 CRITICAL の詳細（脆弱性の再現手順等）が修正前に public PR へ先行開示されるのを避ける。既定の
-# post_comment: false では全文の保存先は上記ローカル JSON だけで、そこはレビューを実行した環境に
-# しか存在せず gitignore 対象（PR のブランチを checkout しても取得できない）。マージ後も残すため
-# /rite:cleanup は non_blocking_findings[] が非空の JSON を削除せず archive/ へ退避し、残存分は
-# follow-up Issue を 1 件起票する。指摘への対応内容は fix コミットメッセージに書くが、squash merge
+# post_comment: false では cycle 中の全文の保存先は上記ローカル JSON だけで、そこはレビューを実行した環境に
+# しか存在せず gitignore 対象（PR のブランチを checkout しても取得できない）。マージ時の残存分は
+# /rite:cleanup が follow-up Issue 1 件へ全文転記し、non_blocking_findings[] が非空の JSON を
+# 削除せず archive/ へ退避する。指摘への対応内容は fix コミットメッセージに書くが、squash merge
 # のため develop の git log には残らず、PR の Commits タブ経由で参照する。
 # post_comment: true では統合レポート側が全文を PR へ永続化する。
 pr_review:
