@@ -1,5 +1,6 @@
 ## 2026-08-28
 * **Skip**: [20260827T150948Z-pr-2417.md](raw/reviews/20260827T150948Z-pr-2417.md) — detector-candidate: REJECTED_LEDGER の failed と empty の区別は pr-review SKILL.md の ledger_status 分岐を grep で pin できる
+* **lint:warning** — contradictions=0, stale=36, orphans=0, missing_concept=1, unregistered_raw=374, broken_refs=0
 
 ## 2026-08-27
 * **Skip**: [20260827T140250Z-pr-2416.md](raw/reviews/20260827T140250Z-pr-2416.md) — detector-candidate: reviewer は内容へアンカー付き記述、exclusion は consolidation が classification map に書く、という宛先分離は _reviewer-base.md の固定文言を grep で pin する
