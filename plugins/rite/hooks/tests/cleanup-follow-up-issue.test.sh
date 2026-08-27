@@ -16,6 +16,7 @@
 #   T-05d 件数=limit かつ marker 不在は lookup_api
 #   T-05e 説明欄へ他 PR の marker を植えても skip しない
 #   T-05f body 2 行目の完全 HTML コメント marker では already_exists に倒さない
+#   T-05g body 先頭行の裸 marker では already_exists に倒さない
 #   T-06 JSON 不在で skip + WARNING
 #   T-07 同定 API 失敗は起票せず WARNING (D-03)
 #   T-08 cleanup SKILL.md が helper を archive より前に呼ぶ
@@ -274,6 +275,25 @@ assert "T-05f create 1 回" "1" "$(create_count)"
 assert_grep "T-05f created for pr 123" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=123'
 assert_not_grep "T-05f already_exists に倒さない" "$ERR" 'already_exists'
 
+echo "--- T-05g: 先頭行の裸 marker では already_exists に倒さない ---"
+reset_stubs
+printf '%s\n' '[{"number":99,"body":"参照: [rite-follow-up-from-pr:123] を見よ"}]' > "$GH_LIST_JSON"
+r=$(new_root t05g)
+put_json "$r" "123-a.json" "$FINDING_JSON"
+PATH="$TMP_ROOT/bin:$PATH" \
+  bash "$TARGET" \
+    --state-root "$r" \
+    --pr 123 \
+    --owner acme \
+    --repo demo \
+    --projects-enabled false \
+    --create-script "$CREATE_STUB" >"$OUT" 2>"$ERR"
+RC=$?
+assert "T-05g exit 0" "0" "$RC"
+assert "T-05g create 1 回" "1" "$(create_count)"
+assert_grep "T-05g created for pr 123" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=123'
+assert_not_grep "T-05g already_exists に倒さない" "$ERR" 'already_exists'
+
 echo "--- T-06: JSON 不在で skip + WARNING ---"
 reset_stubs
 r=$(new_root t06)
@@ -316,6 +336,7 @@ else
   assert_grep "T-08 project-number を引用する" "$CLEANUP_MD" 'project-number "\{project_number\}"'
   assert_grep "T-08 projects-enabled を引用する" "$CLEANUP_MD" 'projects-enabled "\{projects_enabled\}"'
   assert_grep "T-08 pr= の値は直後が ; または行末" "$CLEANUP_MD" 'pr=` の値は直後が `;` または行末であることまで含めて一致させる'
+  assert_grep "T-08 recency 適用範囲は follow-up 側に限定" "$CLEANUP_MD" 'follow-up 側で同一 marker family の複数行が一致したときは最後の出現（recency）を採る'
   assert "T-08 recency 選択は follow-up 側に限定" "1" \
     "$(grep -cF 'この選択は**follow-up 側**の判定ルールを評価する前に行う' "$CLEANUP_MD" || true)"
 fi
