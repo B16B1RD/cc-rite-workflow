@@ -70,13 +70,13 @@
 #       id_author_mismatch / id_pr_mismatch / id_target_not_record / id_comment_deleted。
 #     **帰結は理由に依らず fallback の
 #     1 種**で、`action=` は常に `fallback` (理由ごとに帰結を分けると周辺状態との交差ごとにガードが
-#     要り、そのガード自体が次の欠陥面になる)。id で解決するには author 一致に加え **所属 PR の
+#     要り、そのガード自体が次の欠陥面になる)。id で解決するには author 一致に加え **所属 Issue の
 #     一致** と **対象が記録コメントであること** (1 行目 marker ∧ 最終非空行 sentinel) も要る —
 #     `issues/comments/{id}` は repo スコープで issue 非依存なので author だけでは別 PR / 別 Issue の
-#     自コメントを掴め、所属 PR まで縛っても同一 PR の別種コメント (レビュー結果コメント等) が残る。
-#     PR body は書き込み権限なしの PR 作成者でも編集できるため、この 3 つ目が最後の防壁になる。
+#     自コメントを掴め、所属 Issue まで縛っても同一 Issue の別種コメント (作業メモリ replica 等) が残る。
+#     関連 Issue body は書き込み権限があれば編集できるため、この 3 つ目が最後の防壁になる。
 #     なお `gh api user` が失敗した cycle は段 1 自体が呼ばれず、本 marker は 1 つも出ないまま
-#     degraded=1 で縮退する (id 側が外れる = 本 marker が出る、ではない)。id が PR body に無い初回 cycle は
+#     degraded=1 で縮退する (id 側が外れる = 本 marker が出る、ではない)。id が関連 Issue body に無い初回 cycle は
 #     正常系のため marker を出さない (fallback がそのまま canonical を見つけ、投稿後に永続化されて
 #     次 cycle から id 経路に乗る)。投稿後の永続化に失敗したときは
 #       [CONTEXT] NONBLOCKING_ID_PERSIST_FAILED=1; pr=N; reason=<...>
@@ -133,7 +133,7 @@ MARKER='## 📜 rite 非実測指摘の記録'
 # 機械専用 sentinel。lookup の第 3 条件であり、caller が生成する本文の **最終非空行が本値と等しい**
 # ことが write 側契約 (SKILL.md ステップ 6.1.d step 1 の variant A / B は最終行に本行を置く)。
 # HTML コメントなので GitHub の rendered view には現れないが、**raw markdown の copy-paste では
-# 同伴する** (Edit view / `gh api` / `gh pr view --comments` 経由)。したがって「人間が書き写す経路が
+# 同伴する** (Edit view / `gh api` / `gh issue view --comments` 経由)。したがって「人間が書き写す経路が
 # 存在しない」とは言えず、位置非依存の `contains` では、人間が記録コメントの raw を一部貼り込んだ
 # メモを PATCH で丸ごと破壊する経路が残る。**最終非空行が本値と等しい**ことを条件にすることで、
 # 本文中に引用として現れた sentinel も、末尾に `> ` 付きで引用された sentinel も構造的に除外する
@@ -150,24 +150,24 @@ RECORD_SENTINEL='<!-- rite:nbr:v1 -->'
 # cross-machine でも効く (`.rite/` は gitignore かつ machine-local のため別マシンからは読めない)。
 ID_MARKER_PREFIX='<!-- rite:nbr:comment-id:'
 ID_MARKER_SUFFIX=' -->'
-# PR body から marker の値部分を取り出す sed 式と、marker 行を除去する sed 式。read/write で
+# 関連 Issue body から marker の値部分を取り出す sed 式と、marker 行を除去する sed 式。read/write で
 # **同一の形状定義**を使う (片方だけ形が違うと、書いた marker を次 cycle が読めない / 除去できずに
 # 重複する)。値は緩く取って shell 側の numeric guard に委ねる — 厳格な regex で抽出すると
-# 「壊れた marker」が「marker 不在」と区別できず、PR body 側の破損が無音になる。
+# 「壊れた marker」が「marker 不在」と区別できず、関連 Issue body 側の破損が無音になる。
 # **行全体を占めることを両式で要求する** (`^` / `$` アンカー)。helper は常に marker を独立行として
-# 書くためこれで取り逃さず、散文中に同形の文字列が現れても (本 PR の説明文がまさにそう)
+# 書くためこれで取り逃さず、散文中に同形の文字列が現れても (この機構を説明する Issue 本文がまさにそう)
 # 抽出で偽の id を拾わず、除去でその一節を無音で消さない。strip は `s///` ではなく行の `d` にして、
 # marker 行の跡に空行が積もるのも同時に断つ。
-# 行頭・行末の `[[:space:]]*` は**必須**で、両式に対称に置く。GitHub の web UI で PR 説明を編集すると
+# 行頭・行末の `[[:space:]]*` は**必須**で、両式に対称に置く。GitHub の web UI で Issue 本文を編集すると
 # 本文が CRLF で返り、人間が marker 行を字下げすることもある。素の `^`/`$` だとその形で抽出も除去も
 # 同時に外れ、(a) 抽出結果が空になって「marker 不在」と区別できなくなり (下の probe が無ければ無音)、
 # (b) 除去も外れて marker 行が cycle ごとに積む。同 helper がコメント本文側で CR を既知ハザードとして
-# `LAST_CONTENT_LINE_JQ` の `sub("\r$"; "")` で正規化しているのと同じ規律を、PR body 側にも適用する。
+# `LAST_CONTENT_LINE_JQ` の `sub("\r$"; "")` で正規化しているのと同じ規律を、関連 Issue body 側にも適用する。
 # `[[:space:]]` は CR を含み、散文中の同形文字列は marker 前に非空白があるため引き続き除外される。
 ID_MARKER_EXTRACT_SED='s/^[[:space:]]*<!-- rite:nbr:comment-id:\([^ ]*\) -->[[:space:]]*$/\1/p'
 # 「行全体が marker 行の形をしている」の定義。**除去 (strip) と破損検出 (probe) はこの 1 本から
 # 導出する** — 別々の literal として並べると、片方だけ触った編集で受理集合の関係が崩れ、
-# 「破損と判定したのに除去できない (= 壊れた行が PR body に恒久残留し、hint の『張り直します』が
+# 「破損と判定したのに除去できない (= 壊れた行が関連 Issue body に恒久残留し、hint の『張り直します』が
 # 偽になる)」状態が生まれる。値部を `.*` にして抽出式 (`[^ ]*` + 区切りの空白を要求) より緩くするのは
 # 意図的で、受理集合の包含関係を **抽出 ⊆ 除去 = 破損検出** に固定する: 読めた marker は必ず消せ、
 # 読めないが marker 行の形をしているものは「破損」として loud に落としたうえで同時に消える。
@@ -299,7 +299,7 @@ lookup_degraded=0
 legacy_orphan_count=0
 canonical_hit_count=0
 gh_err=""
-# 2 段解決の中間状態。`fallback_id` は本文照合 lookup が選んだ候補、`id_resolved` は PR body の
+# 2 段解決の中間状態。`fallback_id` は本文照合 lookup が選んだ候補、`id_resolved` は関連 Issue body の
 # durable id が指す確定値。`existing_id` は両者から決まる最終的な PATCH 先 (段 3)。
 fallback_id=""
 persisted_id=""
@@ -464,7 +464,7 @@ _resolve_persisted_id() {
     case "$_raw" in
       '')
         # 抽出が空になる原因は 2 通りある — 「marker 行が無い」(正常系) と「marker 行はあるが
-        # 抽出述語を満たさない」(PR body 側の破損)。後者を前者に畳むと上の形状定義コメントが
+        # 抽出述語を満たさない」(関連 Issue body 側の破損)。後者を前者に畳むと上の形状定義コメントが
         # 避けると宣言している無音の破損がそのまま成立する。probe で切り分け、破損側は既存の
         # `id_malformed` で loud に落とす (帰結は「値が使えない」で同じなので新 reason は要らない)。
         # 判定は「probe の出力が非空か」で行い、`grep -q` のような**早期 exit する consumer を
@@ -487,11 +487,11 @@ _resolve_persisted_id() {
   fi
 
   if [ -n "$persisted_id" ]; then
-    # author / **所属 PR** / **記録コメントであること** を 1 回の GET で同時に取る。
+    # author / **所属 Issue** / **記録コメントであること** を 1 回の GET で同時に取る。
     # `issues/comments/{id}` は repo スコープで issue 非依存のため、author 一致だけでは
-    # 「同一 author の**別 PR / 別 Issue** のコメント」を PATCH 先にできてしまう。さらに所属 PR まで
-    # 縛っても「同一 PR の**別種のコメント**」(レビュー結果コメント等) は素通りする — PR body は
-    # PR 作成者なら書き込み権限なしでも編集でき、抽出は `tail -1` を採るので marker を 1 行足すだけで
+    # 「同一 author の**別 PR / 別 Issue** のコメント」を PATCH 先にできてしまう。さらに所属 Issue まで
+    # 縛っても「同一 Issue の**別種のコメント**」(作業メモリ replica 等) は素通りする — 関連 Issue body は
+    # 書き込み権限があれば編集でき、抽出は `tail -1` を採るので marker を 1 行足すだけで
     # PATCH 先を任意に指し替えられるためである。置き換えた本文照合は author ∧ 1 行目 marker ∧
     # 最終非空行 sentinel の 3 述語で対象を絞っていた。read 経路の差し替えでそのどれも落とさない。
     # **これは同定手段を本文照合へ戻すものではない** — id で 1 件に絞り込んだ**後**の必要条件として
@@ -520,7 +520,7 @@ _resolve_persisted_id() {
         # (`gh api user` の rc=0 + 空文字を degraded に倒すのと同じ規律)。
         id_reason="id_fetch_unparseable"; id_action="fallback"
       elif [ "$_author" != "$gh_login" ]; then
-        # AC-5: 他人のコメントは PATCH しない。identity 変更 / PR body の手動編集が疑われる。
+        # AC-5: 他人のコメントは PATCH しない。identity 変更 / 関連 Issue body の手動編集が疑われる。
         id_reason="id_author_mismatch"; id_action="fallback"
       elif [ "${_issue_url%/issues/$ISSUE_NUMBER}" = "$_issue_url" ]; then
         # issue_url が `/issues/{ISSUE_NUMBER}` で終わらない = 当該関連 Issue に属さないコメント。

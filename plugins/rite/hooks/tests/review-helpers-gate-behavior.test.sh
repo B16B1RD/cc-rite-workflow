@@ -3193,7 +3193,7 @@ else
   #     持たないとき `実測なし`) の pin。TC-5i の allowlist / 出現回数 pin は 4 列目の**形**しか
   #     固定せず、値則を「一律 実測なし」へ変異させても全 green で通る (実測)。値則が drift すると
   #     class B 降格の判定文が記録コメントから無言で消え、AC-5 の監査チャネル (何がなぜ降格されたか
-  #     を PR 上で監査する唯一の共有経路) が壊れる。variant 別の値種固定 (TC-5g''') と同型の散文 pin。
+  #     を関連 Issue 上で監査する唯一の共有経路) が壊れる。variant 別の値種固定 (TC-5g''') と同型の散文 pin。
   assert "TC-5i' 6.1.d 区間に demotion_label の class B 側値則が 1 箇所" "1" \
     "$(_sec_610d | grep -cF 'class B 降格: {demotion.reason}' || true)"
   assert "TC-5i' 6.1.d 区間に demotion_label の非降格側値則 (実測なし) が 1 箇所" "1" \
