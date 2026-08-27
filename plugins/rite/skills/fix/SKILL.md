@@ -1723,14 +1723,7 @@ else
     echo "[fix:error]"; exit 1
   }
   related={issue_number}
-  comment_id=""  # 直近 [CONTEXT] NONBLOCKING_RECORD_DONE の comment_id= を優先
-  if [ -n "$comment_id" ]; then
-    gh api "repos/{owner_repo}/issues/comments/${comment_id}" --jq .body > "$body" || {
-      echo "ERROR: 6.1.d コメント取得失敗" >&2
-      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_fetch_failed" >&2
-      echo "[fix:error]"; exit 1
-    }
-  elif [ -n "$related" ] && [ "$related" != "0" ]; then
+  if [ -n "$related" ] && [ "$related" != "0" ]; then
     gh api "repos/{owner_repo}/issues/${related}/comments" --paginate \
       --jq '.[] | select(.body | startswith("## 📜 rite 非実測指摘の記録")) | .body' > "$body" || {
       echo "ERROR: 6.1.d コメント取得失敗" >&2
@@ -1751,21 +1744,25 @@ else
     echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_merge_failed" >&2
     echo "[fix:error]"; exit 1
   }
-  if [ -n "$comment_id" ]; then
-    gh api --method PATCH "repos/{owner_repo}/issues/comments/${comment_id}" -F "body=@${body}" || {
-      echo "ERROR: 却下台帳 PATCH 失敗" >&2
-      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_patch_failed" >&2
-      echo "[fix:error]"; exit 1
-    }
-  else
-    bash {plugin_root}/hooks/review-nonblocking-record.sh \
-      --pr {pr_number} --owner-repo {owner_repo} --count 0 \
-      --iteration-id "nb-sweep-{pr_number}" --content-file "$body" || {
-      echo "ERROR: 却下台帳 記録失敗" >&2
-      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_record_failed" >&2
-      echo "[fix:error]"; exit 1
-    }
+  body_count=$(grep -E '^📎 non_blocking_count:' "$body" | tail -1 | awk '{print $2}')
+  case "$body_count" in ''|*[!0-9]*)
+    echo "ERROR: merge-into 後の non_blocking_count が読めない" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_count_unreadable" >&2
+    echo "[fix:error]"; exit 1
+    ;;
+  esac
+  record_err=$(mktemp "${TMPDIR:-/tmp}/rite-nb-record-XXXXXX") || { echo "[fix:error]"; exit 1; }
+  bash {plugin_root}/hooks/review-nonblocking-record.sh \
+    --pr {pr_number} --owner-repo {owner_repo} --count "$body_count" \
+    --iteration-id "nb-sweep-{pr_number}" --content-file "$body" 2>"$record_err"
+  record_rc=$?
+  cat "$record_err" >&2
+  if [ "$record_rc" -ne 0 ] || grep -qE 'NONBLOCKING_RECORD_FAILED=1|outcome=failed' "$record_err"; then
+    echo "ERROR: 却下台帳 記録失敗 (rc=$record_rc)" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_record_failed" >&2
+    echo "[fix:error]"; exit 1
   fi
+  rm -f -- "$record_err"
 fi
 ```
 

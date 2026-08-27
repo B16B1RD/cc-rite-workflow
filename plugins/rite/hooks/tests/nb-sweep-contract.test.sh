@@ -172,17 +172,40 @@ assert_not_grep "T-07 no failed on class A JSON" "$sandbox/t07.err" 'NB_SWEEP_CO
 topt_rc=$?
 assert "unknown option rc=2" "2" "$topt_rc"
 
+# --- --pr は最新 JSON を採る（AC-1 MUST: 最新 review JSON） ---
+pr_dir="$sandbox/state/.rite/review-results"
+mkdir -p "$pr_dir"
+cp "$nb_json" "$pr_dir/1-20260101T000000.json"
+cat > "$pr_dir/1-20260102T000000.json" <<'JSON'
+{"schema_version":"1.1.0","pr_number":1,"overall_assessment":"mergeable","findings":[],"non_blocking_findings":[{"id":"F-NEW","severity":"HIGH","file":"src/n.ts","line":1,"scope":"current-pr","description":"newer"}],"guardrail_audit_log":[]}
+JSON
+pr_out=$("$COLLECT" --pr 1 --state-root "$sandbox/state" 2>"$sandbox/tpr.err") || pr_rc=$?
+pr_rc=${pr_rc:-0}
+assert "T-01 --pr rc=0" "0" "$pr_rc"
+assert "T-01 --pr picks F-NEW" "F-NEW" "$(printf '%s' "$pr_out" | jq -r '.targets[0].id')"
+
 # --- rails pin (SKILL.md 機械レール) ---
 ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
 FIX="$PLUGIN_ROOT/skills/fix/SKILL.md"
 REVIEW="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
+PROMPT="$PLUGIN_ROOT/skills/pr-review/references/reviewer-prompt-generator.md"
 assert_grep "T-07 iterate mergeable→5.S" "$ITERATE" '\[review:mergeable\].*5\.S'
-assert_grep "T-07 iterate sweep-done" "$ITERATE" '\[fix:sweep-done\]'
+assert_grep "T-07 iterate sweep-done no re-review" "$ITERATE" '\[fix:sweep-done\].*ステップ 5'
 assert_grep "T-07 iterate nb-sweep-error" "$ITERATE" '\[iterate:nb-sweep-error\]'
+assert_grep "T-07 iterate --nb-sweep invoke" "$ITERATE" 'args: "--nb-sweep \{pr_number\}"'
+assert_grep "T-07 iterate empty is noop" "$ITERATE" 'marker_emit ITERATE_NB_SWEEP noop'
+assert_grep "T-07 iterate no second sweep" "$ITERATE" '同一 PR で 5\.S を 2 回'
+assert_grep "T-07 iterate sweep-done ステップ1禁止" "$ITERATE" 'ステップ 1 に戻らない'
 assert_grep "T-07 fix --nb-sweep" "$FIX" '\-\-nb-sweep'
 assert_grep "T-07 fix sweep-done sentinel" "$FIX" '\[fix:sweep-done\]'
+assert_grep "T-07 fix persist uses body count" "$FIX" '\-\-count "\$body_count"'
+assert_grep "T-07 fix record failed is error" "$FIX" 'outcome=failed'
+assert_grep "T-07 fix class-B issueize" "$FIX" '新規 class-B'
+assert_grep "T-07 fix 判定文必須" "$FIX" '判定文必須'
 assert_grep "T-07 pr-review rejected_ledger" "$REVIEW" '{rejected_ledger}'
 assert_grep "T-07 pr-review merge-into" "$REVIEW" 'nb-sweep-ledger.sh merge-into'
+assert_grep "T-07 pr-review extract" "$REVIEW" 'nb-sweep-ledger.sh extract'
+assert_grep "T-07 prompt rejected_ledger" "$PROMPT" '{rejected_ledger}'
 
 if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check SKILL.md 5.S / 6.1.d preserve"; then
   exit 1
