@@ -184,7 +184,7 @@
 | `reviewer_timings` | array | (任意、1.1.0+) | 本 cycle で回収できた各 reviewer の起動時刻。要素は `{reviewer, started_at}` で、`reviewer` は `findings[].reviewer` と同じ参照整合性規則 (`agents/*-reviewer.md` の basename)、`started_at` は ISO 8601 UTC の正規形 (`YYYY-MM-DDThh:mm:ssZ`) または `null` (取得不能)。値源は `pr-review.md` ステップ 4.3.1（orchestrator が Task spawn 直前に記録した時刻）。ステップ 4.6 が timings JSON に書く。audit-only で、判定 consumer (`/rite:fix` / merge ゲート / 収束トレンド判定) は無視する。下記 [reviewer_timings と直列化フラグ](#reviewer_timings-と直列化フラグ) 参照 |
 | `reviewer_spawn_serialized` | bool | (任意、1.1.0+) | 起動時刻の拡がり (spawn spread) が閾値を超えたか。書き手は `hooks/scripts/review-spawn-spread-check.sh` のみ。**計測不能のときはキーごと欠落する** — `true` / `false` / 欠落 (= 未判定) の 3 値モデルで、`verification.measured` と同じ (下記参照) |
 | `reviewer_spawn_spread_seconds` | integer | (任意、1.1.0+) | 実測した spawn spread (秒、`max(started_at) - min(started_at)`)。`reviewer_spawn_serialized` と同時に書かれ、同時に欠落する |
-| `class_demotion` | object | (任意、1.1.0+) | 帰結クラス降格政策 ([assessment-rules.md §5.3.0.C](../skills/fix/references/assessment-rules.md#530c-帰結クラス降格政策-consequence-class-demotion-gate)) の監査フラグ。書き手は `scripts/review-class-demotion-gate.sh` のみ。形は `{applied: bool, class_a: int, class_b: int, demoted: int}` — `applied` は降格が発動したか (class A=0 ∧ class B≥1)、`class_a` / `class_b` は effective 分類の件数 (判定不能は class A に計上)、`demoted` は本 cycle で移送した件数。**キー欠落 = 本ゲート未適用の cycle** (blocking 0 件の no-op を含む)。audit-only で判定 consumer は無視する — assessment / verdict への反映は helper が代入済みのため、read 側が本キーから判定を再導出してはならない |
+| `class_demotion` | object | (任意、1.1.0+) | 帰結クラス降格政策 ([assessment-rules.md §5.3.0.C](../skills/fix/references/assessment-rules.md#530c-帰結クラス降格政策-consequence-class-demotion-gate)) の監査フラグ。書き手は `scripts/review-class-demotion-gate.sh` のみ。形は `{applied: bool, class_a: int, class_b: int, demoted: int}` — `applied` は降格が発動したか (class A=0 ∧ 除外なし class B≥1)。部分降格では `demoted` が `class_b` より小さい。除外付き B のみなら not-triggered（`applied=false`）。`class_a` / `class_b` は effective 分類の件数 (判定不能は class A に計上)、`demoted` は本 cycle で移送した件数。**キー欠落 = 本ゲート未適用の cycle** (blocking 0 件の no-op を含む)。audit-only で判定 consumer は無視する — assessment / verdict への反映は helper が代入済みのため、read 側が本キーから判定を再導出してはならない |
 
 ### `findings[]` 要素
 
@@ -206,6 +206,7 @@
 | `status` | **enum** (string) | ✅ | 対応状態。**受理値**: `"open"` / `"fixed"` / `"replied"` / `"deferred"` / `"acknowledged"` の **5 値**。現行実装では `/rite:pr-review` ステップ 6.1.a は常に `"open"` を出力する (将来の state machine 拡張で `/rite:fix` 完了時に `"fixed"` / `"acknowledged"` 等を書き戻す slot を予約)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=status_unknown_value; value=<val>` を stderr 出力する |
 | `consequence_class` | **enum** (string) | (任意、1.1.0+) | 帰結クラス降格政策 (§5.3.0.C) の分類結果。**受理値**: `"A"` / `"B"` の 2 値。**書き手は `scripts/review-class-demotion-gate.sh` のみ** — classification map から算出して無条件に上書きするため、ステップ 5.3.0.M step 1 の Claude が書いても helper の算出結果で必ず置き換わる (分類入力にはならない — 迂回防止)。実測未判定 (verification 欠落) の gated finding は分類対象外だが `"A"` が固定で付く (map 非参照)。**キー欠落** = (a) `scope == "nit-noted"` の finding (本ゲート対象外のため降格発動 cycle でも付かない — nit が 1 件でもある cycle で常態)、(b) blocking 0 件で no-op になった cycle、(c) ゲート導入前の JSON、(d) 5.3.0.M の実測必須ゲートで `non_blocking_findings[]` へ降格した要素 (本ゲートは `findings[]` のみを走査するため)。audit-only で判定 consumer は無視する |
 | `consequence_scenario` | string | (任意、1.1.0+) | 分類の判定文。class A は「放置時にどの操作で何が壊れるか」の実行時シナリオ 1 行、class B は「実行時シナリオを書けない」ことの認定文。`consequence_class` と同時に helper が書く (判定不能で class A に倒した finding は `consequence_class: "A"` のみで本キーは欠落する) |
+| `consequence_exclusion` | string | (任意、1.1.0+) | 帰結クラス降格の除外判定文。**書き手は `scripts/review-class-demotion-gate.sh` のみ**。classification map の `exclusion` (非空文字列) を写す。本キーがある class B は A=0 でも `non_blocking_findings[]` へ移送されない。判定不能 / 実測未判定 / class A / 除外なし class B ではキーごと欠落する |
 
 ### `verdict` と `reviewers`
 
@@ -274,9 +275,37 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 **hard fail は `findings[]` 側の id 欠陥に限る** (`LOCAL_SAVE_FAILED=1; reason=finding_id_format_or_uniqueness_violation`)。また型 check は id 検証より**前**に置く — 後ろに置くと非配列で `length` が非 0 になる値 (`"abc"`→3 / `3`→3 / `{"a":1}`→1) が和集合の件数を水増しし、非ブロッキングと宣言した経路が型によって hard fail に化ける。
 
+### 却下台帳と sweep 消化結果（additive、schema_version 非 bump）
+
+<a id="nb-sweep-ledger"></a>
+
+`/rite:iterate` の `[review:mergeable]` 後 sweep が残存 NB を消化した記録。永続チャネルは 6.1.d の関連 Issue コメント（新チャネルを作らない）。**JSON トップレベルへキーを足さない** — 台帳はコメント本文の `### 却下台帳`、消化内訳は iterate 完了通知と `[CONTEXT] ITERATE_NB_SWEEP=` / `NB_SWEEP_RESULT=` marker。
+
+**台帳エントリ**（コメント本文、`📎 non_blocking_count:` の直前）:
+
+```markdown
+### 却下台帳
+
+| finding_id | file:line | 判定 | 判定文 |
+|------------|-----------|------|--------|
+| F-01 | src/foo.ts:10 | rejected | <必須。空禁止> |
+| F-02 | src/bar.ts:4 | issued | <必須。起票先 #N を含む> |
+```
+
+`判定` の受理値: `rejected` / `issued`。`fixed` はコード側で消化済みのため台帳へは書かない。`guardrail_audit_log[]` 由来は `rejected` として転記し sweep で再判断しない。
+
+**sweep 消化結果 marker**（iterate 完了通知の値源。JSON フィールドではない）:
+
+```
+[CONTEXT] NB_SWEEP_RESULT=done; fixed=N; rejected=M; issued=K
+[CONTEXT] ITERATE_NB_SWEEP=done|noop|failed
+```
+
+`done` のとき完了通知の残件欄は `未処理 non-blocking: 0 件` を維持し、消化内訳 `sweep: fixed=N / rejected=M / issued=K` を併記する。`noop`（対象 0 件）は従来の 0 件通知のまま追加行を出さない。書き込み失敗・JSON 取得失敗は `failed` で iterate を停止する（完了通知へ進まない）。
+
 **`id` は 2 配列の和集合で一意**: 5.3.0.M の降格時に `id` を振り直さず元の `F-NN` を維持する。根拠は **JSON 単体の監査可読性** — 永続 JSON を読む人間が 2 配列を跨いで finding を一意に参照できるようにするため (5.4 統合レポートのテーブルは `id` 列を持たないので、JSON ↔ レポート間の id 相互参照は成立しない。それを目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証で、`findings[]` と `non_blocking_findings[]` の和集合に対して書式 + 一意性を評価する (本配列側に閉じた違反は上記の非ブロッキング marker で報告され、保存は続行する)。
 
-**read 側の扱い**: 現時点で本配列を消費する read 経路は無い (`/rite:fix` は `findings[]` のみを読む)。本配列は **人間がマージ後に拾い直すための監査記録**である。既定構成 (`pr_review.post_comment: false`) では PR 本体のレビュー結果コメントが投稿されないため、非実測指摘の永続チャネルは `.rite/review-results/*.json` と、`post_comment` と独立に投稿される関連 Issue 記録コメント (`## 📜 rite 非実測指摘の記録`、ステップ 6.1.d) の 2 つになる。前者はローカルの永続チャネル (`state-path-resolve.sh` によりセッション worktree 内からでも main checkout と同一パスに解決される。§保存場所 参照)、後者は関連 Issue 上で共有可能な永続チャネルであり、`.rite/review-results/` は gitignore 対象のためレビュアーと共有できるのは後者のみ — **ただし後者が共有するのは reviewer / severity / `file:line` のポインタと降格理由 (判定文) までで、cycle 中の `description` / `suggestion` の全文は本配列にしか存在せず共有経路を持たない**。マージ後もローカル全文を残すため、`/rite:cleanup` ステップ 6 は本配列が非空の結果 JSON を削除せず `.rite/review-results/archive/` へ退避し、残存分の全文を follow-up Issue 1 件へ転記する（public リポジトリでは公開される。詳細: [`severity-levels.md` §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate))。
+**read 側の扱い**: `/rite:iterate` 5.S の `nb-sweep-collect.sh` が本配列（全件）と `findings[]` の `nit-noted` を sweep 対象として読む。`/rite:fix` の通常ループは `findings[]` のみを読む（`--nb-sweep` 時だけ collect 経由で本配列を読む）。本配列は **sweep 消化の入力**であり、消化後も JSON からは消さない（台帳と完了通知が消化結果の SoT）。既定構成 (`pr_review.post_comment: false`) では PR 本体のレビュー結果コメントが投稿されないため、非実測指摘の永続チャネルは `.rite/review-results/*.json` と、`post_comment` と独立に投稿される関連 Issue 記録コメント (`## 📜 rite 非実測指摘の記録`、ステップ 6.1.d) の 2 つになる。前者はローカルの永続チャネル (`state-path-resolve.sh` によりセッション worktree 内からでも main checkout と同一パスに解決される。§保存場所 参照)、後者は関連 Issue 上で共有可能な永続チャネルであり、`.rite/review-results/` は gitignore 対象のためレビュアーと共有できるのは後者のみ — **ただし後者が共有するのは reviewer / severity / `file:line` のポインタと降格理由 (判定文) までで、cycle 中の `description` / `suggestion` の全文は本配列にしか存在せず共有経路を持たない**。マージ後もローカル全文を残すため、`/rite:cleanup` ステップ 6 は本配列が非空の結果 JSON を削除せず `.rite/review-results/archive/` へ退避し、残存分の全文を follow-up Issue 1 件へ転記する（public リポジトリでは公開される。詳細: [`severity-levels.md` §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate))。
 
 ### `verification` サブフィールド
 

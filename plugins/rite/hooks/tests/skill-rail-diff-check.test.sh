@@ -285,17 +285,16 @@ if [ "$rc" -eq 0 ] && echo "$output" | grep -q "(1 rail lines)"; then
 else fail "expected rc=0 + '(1 rail lines)', got rc=$rc: $output"; fi
 
 # --------------------------------------------------------------------------
-# TC-015: The diet target itself — open/SKILL.md keeps its rail against the base
-# branch. This is the standing pin: any future PR that rewrites open's prose
-# must leave every bash block and table row byte-identical.
+# TC-015: open/SKILL.md keeps every *existing* rail against the base branch.
+# A description diet must not alter or delete fenced blocks / table rows.
+# Additive rails (new step, new table) are allowed — subsequence preservation,
+# not byte-identity — so a feature that inserts 3.3.1 does not have to freeze
+# the diet pin. Mutation or deletion of a base rail line still fails.
 #
-# The assertion is two-stage on purpose. exit 0 alone also covers "not
-# applicable", so an exit-code-only check would report "rail identical" for a
-# comparison that never ran. rc=2 is reported as an invocation error rather than
-# drift so the message does not send the reader hunting for a rail change that
-# is not there.
+# Identity remains the fast path: when rails are byte-identical the checker
+# already reports "machine rail identical" and we accept that.
 # --------------------------------------------------------------------------
-echo "TC-015: open/SKILL.md rail unchanged vs origin/develop"
+echo "TC-015: open/SKILL.md existing rails preserved vs origin/develop"
 REPO_ROOT_REAL=$(git -C "$PLUGIN_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "")
 if [ -n "$REPO_ROOT_REAL" ] && git -C "$PLUGIN_ROOT" rev-parse --verify -q origin/develop >/dev/null 2>&1; then
   rc=0
@@ -308,7 +307,30 @@ if [ -n "$REPO_ROOT_REAL" ] && git -C "$PLUGIN_ROOT" rev-parse --verify -q origi
         fail "rc=0 but no 'machine rail identical' — comparison did not run: $output"
       fi
       ;;
-    1) fail "open/SKILL.md rail drifted: $output" ;;
+    1)
+      extract_rail() {
+        awk '/^[[:space:]]*(```|~~~)/ { inb = !inb; print; next } inb { print; next } /^[[:space:]]*\|/ { print }'
+      }
+      head_rail=$(bash "$TARGET" --repo-root "$REPO_ROOT_REAL" --skill "plugins/rite/skills/open/SKILL.md" --extract-only 2>/dev/null) || head_rail=""
+      base_blob=$(git -C "$REPO_ROOT_REAL" show origin/develop:plugins/rite/skills/open/SKILL.md 2>/dev/null) || base_blob=""
+      base_rail=$(printf '%s\n' "$base_blob" | extract_rail)
+      printf '%s\n' "$base_rail" > "$TEST_DIR/base-rail"
+      printf '%s\n' "$head_rail" > "$TEST_DIR/head-rail"
+      if [ -z "$base_rail" ] || [ -z "$head_rail" ]; then
+        fail "open/SKILL.md rail drifted and subsequence check could not extract rails: $output"
+      elif awk '
+          NR==FNR { base[++n]=$0; next }
+          { head[++m]=$0 }
+          END {
+            i=1
+            for (j=1; j<=m && i<=n; j++) if (head[j]==base[i]) i++
+            exit (i>n ? 0 : 1)
+          }' "$TEST_DIR/base-rail" "$TEST_DIR/head-rail"; then
+        pass "open/SKILL.md existing rails preserved (additive rails OK)"
+      else
+        fail "open/SKILL.md existing rail mutated or deleted: $output"
+      fi
+      ;;
     *) fail "invocation error (rc=$rc), not drift: $output" ;;
   esac
 else

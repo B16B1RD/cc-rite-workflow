@@ -93,8 +93,9 @@ review:
     verification_mode: false    # Enable verification mode as supplement to full review (default: false)
     allow_new_findings_in_unchanged_code: false  # Block new findings in unchanged code (default: false)
     # Review-fix loop termination
-    # The loop terminates on (a) 0 blocking findings remaining → [review:mergeable] (normal exit;
-    #     non-blocking findings may still remain),
+    # The loop terminates on (a) 0 blocking findings remaining → [review:mergeable] then
+    #     5.S NB digest sweep (normal exit is undigested 0; non-blocking findings are
+    #     fixed / rejected-with-rationale / issued before the completion notice),
     # (b) manual abort via Ctrl+C → /rite:recover (or fix.md AskUserQuestion "中止" → [fix:cancelled-by-user]), or
     # (c) the circuit breaker → [iterate:max-cycles-stopped] / [iterate:max-cycles-reached]
     #     (fires on convergence-trend divergence, or on safety.max_review_cycles as a backstop;
@@ -453,7 +454,7 @@ The review-fix loop exits via the following paths:
 
 | Exit | Trigger |
 |------|---------|
-| Normal | 0 **blocking** findings remaining → `[review:mergeable]` (non-blocking findings may still remain — see [`safety` § the review⇄fix circuit breaker](#safety)) |
+| Normal | 0 **blocking** findings remaining → `[review:mergeable]` then 5.S NB digest sweep (undigested 0 is the completion-notice exit; see [`safety` § the review⇄fix circuit breaker](#safety)) |
 | Manual abort | User aborts via `Ctrl+C` → `/rite:recover` (or selects "中止" in `fix.md` AskUserQuestion → `[fix:cancelled-by-user]`) |
 | Circuit breaker | Convergence-trend divergence detected, **or** cycle count reaches `safety.max_review_cycles` (backstop) → `[iterate:max-cycles-stopped]` (interactive) / `[iterate:max-cycles-reached]` (batch). The sentinels are the same for both fire reasons; only the stop notice's reason line and its per-cycle blocking trend differ. Both modes stop mechanically without prompting and record a non-convergent **failure** that never reaches a merge — see [`safety` § the review⇄fix circuit breaker](#safety) |
 
@@ -658,7 +659,7 @@ When a limit is exceeded, the workflow presents options (**except the review⇄f
 
 **The review⇄fix circuit breaker (two fire conditions):**
 
-The `/rite:iterate` review⇄fix loop normally exits only on `[review:mergeable]` (0 blocking findings). Non-blocking findings may still remain at that point, by two routes: a `current-pr` / `follow-up` finding the Measured CONFIRMED Gate demoted is moved out to `non_blocking_findings[]`, while a `nit-noted` finding is outside the gate entirely and stays in `findings[]`. Both are recorded, neither drives the fix cycle — see `plugins/rite/references/severity-levels.md` §実測必須ゲート for what counts as blocking. A circuit breaker keeps a non-convergent PR from looping forever. It fires on **either** of two conditions, evaluated at each loop head:
+The `/rite:iterate` review⇄fix loop reaches `[review:mergeable]` on 0 blocking findings, then runs a one-shot 5.S NB digest sweep (`/rite:fix --nb-sweep`) before the completion notice. Non-blocking findings still exist at mergeable, by two routes: a `current-pr` / `follow-up` finding the Measured CONFIRMED Gate demoted is moved out to `non_blocking_findings[]`, while a `nit-noted` finding is outside the gate entirely and stays in `findings[]`. Neither drives the blocking fix cycle — see `plugins/rite/references/severity-levels.md` §実測必須ゲート for what counts as blocking — but 5.S consumes both (fix / reject-with-rationale / issue) so the normal exit is undigested 0. A circuit breaker keeps a non-convergent PR from looping forever. It fires on **either** of two conditions, evaluated at each loop head:
 
 1. **Convergence-trend divergence (primary).** `plugins/rite/hooks/scripts/review-trend-divergence.sh` reconstructs the current run's per-cycle blocking counts from the persisted review-result JSON and reports divergence when the two most recent counts both exceed the run's earlier best *and* are not still descending. The two conditions are independent, so a diverging loop is cut early instead of burning the whole budget — but the rule needs at least three results in the run before "the run's earlier best" is defined, and a loop head carries the count of *completed* reviews, so cycles 1, 2, and 3 always fall through to the backstop; the check is first armed at the head of cycle 4. With the default budget of 15 that leaves twelve loop heads — the heads of cycles 4 through 15 — at which the trend can fire, before the backstop takes over at the head of cycle 16.
 2. **`max_review_cycles` reached (backstop).** Catches the runs the trend check deliberately passes over — a count that keeps shrinking but never reaches 0 (an intentional escape so that a run still descending is never cut), or one that plateaus at the run's best (an intentional boundary, because firing there would kill a loop that is a couple of findings from done). The backstop is an independent condition that never consults the trend verdict, so at the default of 15 it is what stops a *converging* run that needs 16 or more cycles. The default was raised from 5 to 15 after a six-cycle run whose trend check never once reported divergence at a head where a verdict came back — the earliest heads fall through undecided until three results are in — with per-cycle blocking counts of 8, 5, 4, 6, 3, and which was then cut off by the backstop at the head of cycle 6 (`cycle_count == 5`) and recorded as a non-convergent failure, so `/rite:batch-run --merge` never merged it. 15 is a provisional value, not a derived optimum: the run that motivated the change had not converged after 5 cycles, so the new default leaves headroom well past that point without any claim about where the true ceiling lies. Whether the default of 15 is right is a question for operational data; the only thing measured so far is that 5 was too small.

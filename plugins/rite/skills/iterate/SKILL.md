@@ -14,14 +14,15 @@ argument-hint: "<pr_number>"
 >
 > 実行開始時は [Autonomous Execution](../rite-workflow/references/autonomous-execution.md) を適用する。
 
-`/rite:pr-review` ↔ `/rite:fix` を **blocking 指摘ゼロ（mergeable）になるまでループ** する（blocking の定義は [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) が SoT。実測なし（`measured=false`）と判定された指摘は non-blocking として記録されたまま残存し、その状態で正常出口に到達しうる）。ただし **サーキットブレーカー** を備え、reviewer の非決定的な振動や非収束 PR による無限ループを構造的に防ぐ。やることは以下のシーケンシャルなタスク列:
+`/rite:pr-review` ↔ `/rite:fix` を **blocking 指摘ゼロ（mergeable）になるまでループ** する（blocking の定義は [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) が SoT。実測なし（`measured=false`）と判定された指摘は non-blocking として記録されたまま残存し、`[review:mergeable]` に到達しうる。残件は完了通知前の 5.S が消化し、正常出口は未消化 0 件）。ただし **サーキットブレーカー** を備え、reviewer の非決定的な振動や非収束 PR による無限ループを構造的に防ぐ。やることは以下のシーケンシャルなタスク列:
 
 0. flow-state から issue_number / branch_name を復元
 0.6. cycle counter を初期化（fresh は 0 にリセット / resume は継続）+ `safety.max_review_cycles` を読込・検証
 1. lost 修復ゲート（前 cycle JSON 不在なら即時保存 or counter 不前進の再レビュー）→ 発火条件チェック（収束トレンドの発散 / `max_review_cycles` 到達）→ 不成立なら counter を +1 して `/rite:pr-review` を invoke / 成立なら サーキットブレーカー（ステップ 6）へ
-2. review sentinel を判定（`[review:mergeable]` → 終了 / `[review:fix-needed:N]` → ステップ 3 / error・不在 → 1 回自動再試行、再失敗時は停止）
+2. review sentinel を判定（`[review:mergeable]` → ステップ 5.S / `[review:fix-needed:N]` → ステップ 3 / error・不在 → 1 回自動再試行、再失敗時は停止）
 3. `/rite:fix` を invoke
-4. fix sentinel を判定（`[fix:pushed]` → ステップ 1 に戻る / `[fix:replied-only]` `[fix:cancelled-by-user]` → 終了 / error・不在 → 1 回自動再試行、再失敗時は停止）
+4. fix sentinel を判定（`[fix:pushed]` → ステップ 1 に戻る / `[fix:sweep-done]` → ステップ 5 / `[fix:replied-only]` `[fix:cancelled-by-user]` → 終了 / error・不在 → 1 回自動再試行、再失敗時は停止）
+5.S. `[review:mergeable]` 後の NB digest sweep（対象 0 は no-op。同一 PR で 2 回禁止）
 5. 完了通知を出す
 6. （発火時のみ）サーキットブレーカー: run 境界を更新して post-breaker full review を 1 回実行し、結果を通常の review routing へ戻す。full review 自体が完了できない場合のみ、batch は `[iterate:max-cycles-reached]`、対話は `[iterate:max-cycles-stopped]` で従来どおり停止する
 
@@ -40,7 +41,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 ## Contract
 
 **Input**: PR number (required)
-**Output**: 完了通知（`[review:mergeable]` 到達 or `[fix:replied-only]` 終了 or `[fix:cancelled-by-user]` 中断 or サーキットブレーカー後の full review 不成立（`[iterate:max-cycles-reached]` バッチ / `[iterate:max-cycles-stopped]` 対話。非収束による失敗で、マージには進まない）or Ctrl+C 中断）。ブレーカー後の full review が返した mergeable / fix-needed は通常 routing に合流する。
+**Output**: 完了通知（`[review:mergeable]` 到達後 5.S sweep 完了 or `[fix:replied-only]` 終了 or `[fix:cancelled-by-user]` 中断 or サーキットブレーカー後の full review 不成立（`[iterate:max-cycles-reached]` バッチ / `[iterate:max-cycles-stopped]` 対話。非収束による失敗で、マージには進まない）or sweep 失敗 `[iterate:nb-sweep-error]` or Ctrl+C 中断）。ブレーカー後の full review が返した mergeable / fix-needed は通常 routing に合流する。
 
 ## E2E Output Minimization
 
@@ -67,9 +68,10 @@ rationale: references/rationale.md#circuit-breaker-conditions
 | `{cycle_count}` | flow-state `cycle_count` field（review⇄fix cycle の消化数。ステップ 1 で increment、fresh entry で 0 リセット。発火時はステップ 6 の共有前段が、正常終了時はステップ 5.0.1 が 0 にリセットする） |
 | `{state_root}` | ステップ 6 共有前段の `[CONTEXT] STATE_ROOT=` marker の値（`hooks/state-path-resolve.sh` の解決結果。未解決時は sentinel `unresolved`）。ステップ 6.2 注意行 (b) の手動リセットコマンドでのみ使い、値が得られないときは同節の pre-fill 表に従って解決手順へ置き換える |
 | `{session_id}` | ステップ 6 共有前段の `[CONTEXT] SESSION_ID=` marker の値（`flow-state.sh path` の basename）。用途と未解決時の扱いは `{state_root}` と同じ |
-| `{nb_count}` | ステップ 5.0.2 の `ITERATE_NB_REMAINING` marker 値（最新 review JSON の `non_blocking_findings[]` 長。取得失敗時は `failed`） |
+| `{nb_count}` | ステップ 5.0.2 の `ITERATE_NB_REMAINING` marker 値（overlay 後は 0。取得失敗は 5.S で停止しここへ来ない） |
 | `{nb_record}` | 同 marker の `record=`（review JSON パス。失敗時は空） |
 | `{nb_by_severity}` | 同 marker の `by_severity=`（`SEVERITY:count` のカンマ区切り。0 件 / 失敗時は空） |
+| `{sweep_fixed}` / `{sweep_rejected}` / `{sweep_issued}` | ステップ 5.S の `NB_SWEEP_RESULT` / `ITERATE_NB_SWEEP=done` の `fixed=` / `rejected=` / `issued=` |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 
 ---
@@ -578,7 +580,7 @@ args: "{pr_number}"
 
 | Sentinel | アクション |
 |---------|-----------|
-| `[review:mergeable]` | **ループ終了**（完了通知へ） |
+| `[review:mergeable]` | ステップ 5.S（NB digest sweep。完了通知の前） |
 | `[review:fix-needed:N]` | ステップ 3 (fix invoke) へ |
 | `[review:error]` | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
 | sentinel 不在 | 可逆な再試行を推奨として 1 回だけ自動実行し、期待 sentinel と直近出力を既存 work memory へ記録する。再度不在なら停止 |
@@ -607,6 +609,7 @@ args: "{pr_number}"
 | Sentinel | アクション |
 |---------|-----------|
 | `[fix:pushed]` | ステップ 1 (cycle 上限チェック → review 再実行) に戻る — **ループ継続**（上限到達ならステップ 6 サーキットブレーカーへ） |
+| `[fix:sweep-done]` | ステップ 5（完了通知）。**ステップ 1 に戻らない**（再フルレビュー禁止） |
 | `[fix:pushed-wm-stale]` | ステップ 1 に戻る (WM stale 警告は表示するが loop は継続。上限チェックはステップ 1 が実施) |
 | `[fix:replied-only]` | **ループ終了**（reply のみで完結） |
 | `[fix:cancelled-by-user]` | **ループ終了**（ユーザーが fix.md 内 cancel 経路 — ステップ 1.4 Cancel option / Fast Path Cancel handoff 等 — で中止選択。`/rite:recover` で再開可） |
@@ -615,9 +618,73 @@ args: "{pr_number}"
 
 ---
 
+## ステップ 5.S: NB digest sweep
+
+`[review:mergeable]` 到達後・完了通知前に **1 回**。対象 0 件は no-op（fix を invoke しない）。同一 PR の本 run で 2 回 invoke しない。silent skip 禁止。Stop hook が mergeable FINALIZE で完了通知を求めても、5.S 未実施なら先に本ステップを実行する。
+rationale: references/rationale.md#nb-sweep-step
+
+本 run で `[CONTEXT] ITERATE_NB_SWEEP=done|noop` が既出ならステップ 5 へ。
+
+```bash
+source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit できないため中止します" >&2; echo "[iterate:nb-sweep-error]"; exit 1; }
+nb_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || nb_root=""
+if [ -z "$nb_root" ]; then
+  echo "ERROR: state-path-resolve が空を返した。NB sweep 対象を取得できない" >&2
+  marker_emit ITERATE_NB_SWEEP failed "reason=state_root_unresolved"
+  echo "[iterate:nb-sweep-error]"
+  exit 1
+fi
+collect_err=$(mktemp "${TMPDIR:-/tmp}/rite-nb-sweep-collect-XXXXXX") || { echo "ERROR: mktemp failed" >&2; echo "[iterate:nb-sweep-error]"; exit 1; }
+collect_out=$(bash {plugin_root}/hooks/scripts/nb-sweep-collect.sh --pr {pr_number} --state-root "$nb_root" 2>"$collect_err") || collect_rc=$?
+collect_rc=${collect_rc:-0}
+cat "$collect_err" >&2
+rm -f -- "$collect_err"
+status=$(printf '%s' "$collect_out" | jq -r '.status // empty' 2>/dev/null) || status=""
+count=$(printf '%s' "$collect_out" | jq -r '.count // empty' 2>/dev/null) || count=""
+case "$collect_rc:$status" in
+  0:empty)
+    marker_emit ITERATE_NB_SWEEP noop "count=0"
+    ;;
+  0:ok)
+    marker_emit ITERATE_NB_SWEEP pending "count=${count:-}"
+    ;;
+  *)
+    echo "ERROR: NB sweep collect failed (rc=$collect_rc status=${status:-})" >&2
+    marker_emit ITERATE_NB_SWEEP failed "rc=$collect_rc" "status=${status:-}"
+    echo "[iterate:nb-sweep-error]"
+    exit 1
+    ;;
+esac
+```
+
+| `ITERATE_NB_SWEEP` | アクション |
+|---|---|
+| `noop` | ステップ 5（完了通知）。fix を invoke しない |
+| `pending` | `/rite:fix --nb-sweep` を invoke |
+| `failed` | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない |
+
+`pending` のとき:
+
+```bash
+bash {plugin_root}/hooks/flow-state.sh set \
+  --phase fix --issue {issue_number} --branch {branch_name} --pr {pr_number} \
+  --next "NB digest sweep"
+```
+
+```text
+skill: rite:fix
+args: "--nb-sweep {pr_number}"
+```
+
+`[fix:sweep-done]` はステップ 4 表どおりステップ 5 へ（ステップ 1 に戻らない）。`[fix:error]` / sentinel 不在はステップ 4 の既存経路。fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; fixed=N; rejected=M; issued=K` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit してからステップ 5 へ。
+
+MUST NOT: 同一 PR で 5.S を 2 回走らせる。sweep 後の新規 class-B を fix ループへ戻す。
+
+---
+
 ## ステップ 5: 完了通知
 
-> **構造的保証**: 終了 sentinel (`[review:mergeable]` / `[fix:replied-only]` / `[fix:cancelled-by-user]`) 到達時、sub-skill が `FINALIZE:...` handoff をセットしており、`Stop` hook が本ステップの完了通知を出力せず turn を終えようとする停止を **1 回だけ** 差し戻す。詳細は「ループ継続・終了の構造的保証」節を参照。完了通知は必ず出力すること。
+> **構造的保証**: 終了 sentinel (`[fix:sweep-done]` / `[review:mergeable]` 経由 5.S 完了 / `[fix:replied-only]` / `[fix:cancelled-by-user]`) 到達時、sub-skill が `FINALIZE:...` handoff をセットしており、`Stop` hook が本ステップの完了通知を出力せず turn を終えようとする停止を **1 回だけ** 差し戻す。`[review:mergeable]` 単体では完了通知へ進まない（5.S が先）。詳細は「ループ継続・終了の構造的保証」節を参照。完了通知は必ず出力すること。
 
 ### ステップ 5.0: 一時残骸の最終回収 (terminal cleanup)
 
@@ -682,44 +749,27 @@ marker_emit ITERATE_RUN_CLOSE "$run_close" "phase=$close_phase"
 
 ### ステップ 5.0.2: 未処理 non-blocking 件数（`[review:mergeable]` 完了通知用）
 
-完了通知の必須欄を埋める。件数は最新 review JSON から機械取得する（LLM の自発的補足に依存しない）。取得失敗でも通知は止めず、欄に「取得失敗」を出す。
+5.S overlay。残件欄は **0 件固定**（JSON の `non_blocking_findings[]` は消化前の値のまま残るので数えない）。取得失敗は 5.S で `[iterate:nb-sweep-error]` 停止済みでここへ来ない。
 rationale: references/rationale.md#nb-remaining-notice
 
 ```bash
 source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit できないため中止します" >&2; exit 1; }
-nb_status=failed
-nb_count=""
-nb_path=""
-nb_by=""
-nb_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || nb_root=""
-if [ -n "$nb_root" ]; then
-  nb_path=$(find "$nb_root/.rite/review-results" -maxdepth 1 -type f -name "{pr_number}-*.json" 2>/dev/null \
-    | LC_ALL=C sort | tail -1)
-fi
-if [ -n "$nb_path" ]; then
-  nb_count=$(jq -r '(.non_blocking_findings // []) | length' "$nb_path" 2>/dev/null) || nb_count=""
-  case "$nb_count" in
-    ''|*[!0-9]*) nb_count="" ;;
-    *)
-      nb_status=ok
-      nb_by=$(jq -r '[(.non_blocking_findings // [])[] | .severity // "UNKNOWN"] | group_by(.) | map("\(.[0]):\(length)") | join(",")' "$nb_path" 2>/dev/null) || nb_by=""
-      ;;
-  esac
-fi
-marker_emit ITERATE_NB_REMAINING "${nb_count:-failed}" "status=$nb_status" "record=${nb_path:-}" "by_severity=${nb_by:-}"
+marker_emit ITERATE_NB_REMAINING 0 "status=ok" "record=" "by_severity=" "overlay=sweep"
 ```
 
-| `ITERATE_NB_REMAINING` | 完了通知への埋め方 |
+| 5.S marker | 完了通知 |
 |---|---|
-| `status=ok` かつ値が `0` | `- 未処理 non-blocking: 0 件`。内訳・記録先行は出さない（余分な残件セクション禁止） |
-| `status=ok` かつ値が `1` 以上 | 見出しを残件ありに差し替え。`- 未処理 non-blocking: {nb_count} 件（review JSON {nb_record} / 関連 Issue コメント「rite 非実測指摘の記録」）` と `- 内訳: {nb_by_severity}` |
-| `status=failed`（値が `failed`） | `- 未処理 non-blocking: 取得失敗`。通知自体は出す |
+| `ITERATE_NB_SWEEP=noop` | 0 件テンプレ。消化内訳行は出さない（AC-4） |
+| `ITERATE_NB_SWEEP=done`（`NB_SWEEP_RESULT=done`） | 0 件テンプレ + `- sweep: fixed={sweep_fixed} / rejected={sweep_rejected} / issued={sweep_issued}` |
+| `ITERATE_NB_SWEEP=failed` | 到達不能（5.S で停止） |
+
+非 0 件テンプレ / 「取得失敗」テンプレは overlay 後到達不能。
 
 ### 正常終了 (`[review:mergeable]`)
 
-`ITERATE_NB_REMAINING` を読んで下のいずれか 1 つを出す。`[review:mergeable]` sentinel 文字列は変えない。
+`[review:mergeable]` sentinel 文字列は変えない。
 
-**0 件** (`status=ok` かつ `{nb_count}=0`):
+**0 件** (`ITERATE_NB_SWEEP=noop`):
 
 ```
 ## /rite:iterate 完了
@@ -736,25 +786,7 @@ marker_emit ITERATE_NB_REMAINING "${nb_count:-failed}" "status=$nb_status" "reco
 flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に phase=ready に遷移します。
 ```
 
-**非 0 件** (`status=ok` かつ `{nb_count}` ≥ 1):
-
-```
-## /rite:iterate 完了（blocking ゼロ、残件 {nb_count} 件）
-
-- PR: #{pr_number}
-- 終了理由: review:mergeable
-- ブランチ: {branch_name}
-- 未処理 non-blocking: {nb_count} 件（review JSON {nb_record} / 関連 Issue コメント「rite 非実測指摘の記録」）
-- 内訳: {nb_by_severity}
-
-次のステップ:
-- Ready 化: /rite:ready {pr_number}
-- マージ (Ready 後): /rite:merge {pr_number}
-
-flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に phase=ready に遷移します。
-```
-
-**取得失敗** (`status=failed`):
+**0 件 + digest** (`ITERATE_NB_SWEEP=done`):
 
 ```
 ## /rite:iterate 完了
@@ -762,7 +794,8 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 - PR: #{pr_number}
 - 終了理由: review:mergeable
 - ブランチ: {branch_name}
-- 未処理 non-blocking: 取得失敗
+- 未処理 non-blocking: 0 件
+- sweep: fixed={sweep_fixed} / rejected={sweep_rejected} / issued={sweep_issued}
 
 次のステップ:
 - Ready 化: /rite:ready {pr_number}
@@ -919,7 +952,7 @@ marker_emit POST_BREAKER_FULL_REVIEW "$post_breaker_ready" "pr={pr_number}"
 
 | post-breaker review sentinel | アクション |
 |---|---|
-| `[review:mergeable]` | ステップ 5 の正常終了 routing へ。ブレーカー発火から直行するのではなく、full review が blocking 0 を返した結果として扱う |
+| `[review:mergeable]` | ステップ 5.S（NB digest sweep。完了通知の前）。ブレーカー発火から直行するのではなく、full review が blocking 0 を返した結果として扱う |
 | `[review:fix-needed:N]` | ステップ 3 の `/rite:fix` へ。fix 後はステップ 1 の通常ループに戻る |
 | `[review:error]` / sentinel 不在 | `ITERATE_CB_MODE` に応じて 6.1 / 6.2 へ。既存 sentinel と batch / interactive 停止契約を保つ |
 
@@ -1082,7 +1115,7 @@ rationale: [stop-loop-continuation-contract.md#mechanism](../../references/stop-
 
 ## 設計判断
 
-- **blocking 指摘ゼロ（mergeable）到達が正常出口** — blocking の定義式は本ファイルに複製せず [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) を SoT とする。**非実測指摘が N 件残った状態でも `[review:mergeable]` に到達してループが正常終了しうる** — 残存分は draft PR の人間レビューに委ねる
+- **blocking 指摘ゼロ（mergeable）到達が正常出口** — blocking の定義式は本ファイルに複製せず [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) を SoT とする。**非実測指摘が N 件残った状態でも `[review:mergeable]` に到達しうる** — 残存分の消化は完了通知前の 5.S（`/rite:fix --nb-sweep`）が担い、人間の draft レビューに委ねない。正常出口は未消化 0 件
 - **ブレーカーの発火条件は「発散」であって「予算切れ」ではない** — 主経路は収束トレンドの発散検出、`safety.max_review_cycles`（既定 15）は backstop。**窓幅や閾値を config キーにしない**
 - **発火理由は post-breaker routing を変えない** — sentinel（`[iterate:max-cycles-reached]` / `[iterate:max-cycles-stopped]`）は理由に依らず不変
 - **発火後は full review の finding を通常 routing** — mergeable なら正常終了、fix-needed なら fix loop。full review を実行できない場合だけ batch は failed、対話は機械的に停止

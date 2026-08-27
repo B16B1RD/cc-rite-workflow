@@ -3,8 +3,9 @@
 #
 # Responsibility: 実測必須ゲート (scripts/review-measured-gate.sh) 適用後のレビュー結果 JSON に対し、
 # classification map (LLM が finding 発行者と別コンテキストで書いた class A/B 判定) を機械的に適用する。
-# class A (放置すると今回の成果物の実行時挙動が変わる) が 0 件の cycle で class B (帰結が検出網・
-# 可読性・文書整合に留まる) を全件 non_blocking_findings[] へ移送し、移送後の blocking 件数から
+# class A (放置すると今回の成果物の実行時挙動が変わる) が 0 件の cycle で、除外なし class B
+# (帰結が検出網・可読性・文書整合に留まる) のみ non_blocking_findings[] へ移送し、
+# exclusion 付き class B は blocking のまま残す。移送後の blocking 件数から
 # overall_assessment / verdict を再確定する。ゲート契約の SoT は
 # skills/fix/references/assessment-rules.md §5.3.0.C、語彙定義は
 # references/severity-levels.md §帰結クラス軸「ゲート層の class A/B 降格政策」。
@@ -20,6 +21,7 @@
 # 入力 JSON (--input) は書き換え対象そのもの (in-place)。書き込みは tempfile + mv の atomic write。
 # classification map (--classification) は read-only:
 #   {"classifications": [{"id": "F-01", "class": "A", "scenario": "<判定文>"}, ...]}
+#   class B は任意キー exclusion（非空文字列 = 既存記述の削除/弱体化の判定文）を持てる。
 #
 # Gate semantics (assessment-rules.md §5.3.0.C の verbatim 実装):
 #   0. blocking (= findings[] のうち scope ∈ {current-pr, follow-up}) が 0 件なら no-op。
@@ -30,16 +32,21 @@
 #        blocking のまま残した形) の finding は分類対象外**。map を参照せず class A 側へ固定算入し
 #        WARNING + CLASS_DEMOTION_UNDETERMINED_MEASURED を emit する — 「判定不能を降格に丸めない」
 #        3 値モデルの保証を第 2 軸でも保つ (本政策の入力は宣言どおり実測付き blocking に限られる)
-#      - map に同 id の well-formed エントリ (class="A"、または class="B" ∧ scenario 非空) がある
-#        → その class。consequence_class / consequence_scenario を finding へ記録する
+#      - map に同 id の well-formed エントリ (class="A"、または class="B" ∧ scenario 非空 ∧
+#        exclusion キー欠落または exclusion が非空文字列) がある
+#        → その class。consequence_class / consequence_scenario を finding へ記録する。
+#        well-formed な exclusion があれば consequence_exclusion にも判定文を記録する
 #      - それ以外 (エントリ欠落 / class が A・B 以外 / class B なのに scenario 欠落・空 /
-#        同 id の重複エントリ) → **class A 扱い** (blocking 維持) + WARNING。判定不能を降格に
-#        丸めない (AC-6)。consequence_class="A" のみ記録し scenario は書かない
-#      - 降格に入る経路は「well-formed な class B エントリ」のみ — silent 降格は存在しない
-#   2. effective class A が 0 件 ∧ class B が 1 件以上のときのみ、class B 全件を
+#        class B で exclusion キーがあるのに非空文字列でない / 同 id の重複エントリ)
+#        → **class A 扱い** (blocking 維持) + WARNING。判定不能を降格に
+#        丸めない (AC-6)。consequence_class="A" のみ記録し scenario / exclusion は書かない
+#      - 降格に入る経路は「well-formed な class B エントリかつ exclusion なし」のみ —
+#        silent 降格は存在しない
+#   2. effective class A が 0 件 ∧ 除外なし class B が 1 件以上のときのみ、除外なし class B を
 #      non_blocking_findings[] へ append で移送する (severity / scope / id は維持)。
 #      各移送要素に demotion = {policy: "class-b-demotion", reason: <判定文>} を付与する
 #      (実測ゲート降格分との監査判別子 — review-result-schema.md §non_blocking_findings 配列)。
+#      exclusion 付き class B は class B のまま blocking に残す。
 #      class A が 1 件でも残る cycle では class B も blocking のまま (移送しない)
 #   3. 移送後の blocking 件数から overall_assessment / verdict を両方向で確定する
 #      (0 件 → mergeable / 1 件以上 → fix-needed。scripts/review-measured-gate.sh と同一式。
@@ -58,7 +65,7 @@
 #
 # stderr contract:
 #   [CONTEXT] CLASS_DEMOTION_GATE=noop; reason=no_blocking
-#   [CONTEXT] CLASS_DEMOTION_GATE=applied; class_a=0; class_b={n}; demoted={n}; assessment=mergeable
+#   [CONTEXT] CLASS_DEMOTION_GATE=applied; class_a=0; class_b={n}; demoted={n}; assessment={mergeable|fix-needed}
 #   [CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a={n}; class_b={n}; demoted=0; assessment={v}
 #   [CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}
 #   [CONTEXT] CLASS_DEMOTION_UNDETERMINED_MEASURED=1; count={n}
@@ -89,7 +96,9 @@
 #   jq_transform_failed         — ゲート変換 jq が非ゼロ終了 (exit 1)
 #   stats_read_failed           — .stats.* の読み出し失敗、値が数値でない、統計間の不変条件
 #                                 (class_a + class_b == blocking / unclassified <= class_a /
-#                                 undetermined_measured <= class_a / demoted の applied 整合) が
+#                                 undetermined_measured <= class_a / demoted の applied 整合 —
+#                                 applied 時 demoted は除外なし class B 件数、blocking_after は
+#                                 class_a + 除外付き class B) が
 #                                 破れている、または変換前の件数算出 jq (blocking_pre の no-op 判定 /
 #                                 classification map の要素型検査) の失敗 (exit 1)。握り潰すと後続の
 #                                 数値比較が空文字で偽になり fail-open になる (measured-gate と同根)
@@ -123,7 +132,9 @@ Usage: review-class-demotion-gate.sh --input PATH --classification PATH
 Options:
   --input PATH           帰結クラス降格政策を適用する review-result JSON (in-place 書き換え)
   --classification PATH  classification map JSON (read-only):
-                         {"classifications": [{"id": "F-01", "class": "A"|"B", "scenario": "..."}]}
+                         {"classifications": [{"id": "F-01", "class": "A"|"B",
+                           "scenario": "...", "exclusion": "..."}]}
+                         exclusion は class B の任意キー。非空文字列なら降格対象外。
   -h, --help             Show this help
 
 Exit codes:
@@ -254,35 +265,59 @@ def gated: ((.scope // "") as $s | $s == "current-pr" or $s == "follow-up");
 def has_measured_bool:
   ((.verification | type) == "object") and ((.verification.measured | type) == "boolean");
 
-# well-formed 判定: 単一エントリ ∧ class が "A"、または class が "B" ∧ scenario が非空文字列。
-# 降格に入る経路は well-formed B のみ — それ以外はすべて class A 扱い (判定不能を降格に丸めない)。
-# $m は id -> エントリ配列の辞書。同 id の重複エントリは「分類出力の不正」として
-# 当該 finding を判定不能 (= class A) に倒す (どちらを採るかの裁量を持たない)。
+# well-formed 判定: 単一エントリ ∧ class が "A"、または class が "B" ∧ scenario が非空文字列
+# ∧ (exclusion キー欠落 ∨ exclusion が非空文字列)。
+# 降格に入る経路は well-formed B かつ exclusion なしのみ。判定不能 (エントリ欠落 / class 不正 /
+# scenario 欠落 / exclusion 不正 / 重複) は class A 扱い (判定不能を降格に丸めない)。
+# well-formed な exclusion 付き B は class B のまま残し、降格しない。
+# $m は id -> エントリ配列の辞書。同 id の重複エントリは「分類出力の不正」として当該 finding
+# を判定不能 (= class A) に倒す (どちらを採るかの裁量を持たない)。
+def parse_exclusion($c):
+  if ($c | has("exclusion") | not) then {ok: true, value: null}
+  elif ($c.exclusion | type) == "string" and $c.exclusion != "" then {ok: true, value: $c.exclusion}
+  else {ok: false, value: null}
+  end;
+
 def effective_class($m):
   ($m[(.id // null | tostring)] // []) as $e
-  | if ($e | length) != 1 then {class: "A", scenario: null, unclassified: true}
+  | if ($e | length) != 1 then {class: "A", scenario: null, unclassified: true, exclusion: null}
     else $e[0] as $c
     | if $c.class == "A" then
-        {class: "A", scenario: (if ($c.scenario | type) == "string" and $c.scenario != "" then $c.scenario else null end), unclassified: false}
+        {class: "A",
+         scenario: (if ($c.scenario | type) == "string" and $c.scenario != "" then $c.scenario else null end),
+         unclassified: false, exclusion: null}
       elif $c.class == "B" and ($c.scenario | type) == "string" and $c.scenario != "" then
-        {class: "B", scenario: $c.scenario, unclassified: false}
-      else {class: "A", scenario: null, unclassified: true} end
+        parse_exclusion($c) as $ex
+        | if $ex.ok then
+            {class: "B", scenario: $c.scenario, unclassified: false, exclusion: $ex.value}
+          else {class: "A", scenario: null, unclassified: true, exclusion: null} end
+      else {class: "A", scenario: null, unclassified: true, exclusion: null} end
     end;
 
 # 分類の記録: gated finding のみ consequence_class / consequence_scenario を持つ。
 # 既存値は算出結果で無条件に上書きする (map が唯一の入力 — preset は判定を変えられない)。
 # 未判定 (has_measured_bool 偽) の gated finding は map を参照せず class A 固定 (scenario なし)。
+# well-formed な exclusion がある class B は consequence_exclusion に判定文を残す (AC-4)。
 def with_class($m):
   if gated then
     if has_measured_bool then
       effective_class($m) as $ec
       | .consequence_class = $ec.class
       | (if $ec.scenario != null then .consequence_scenario = $ec.scenario else del(.consequence_scenario) end)
+      | (if $ec.exclusion != null then .consequence_exclusion = $ec.exclusion else del(.consequence_exclusion) end)
     else
       .consequence_class = "A"
       | del(.consequence_scenario)
+      | del(.consequence_exclusion)
     end
   else . end;
+
+def is_excluded_b:
+  gated and .consequence_class == "B"
+  and ((.consequence_exclusion | type) == "string") and .consequence_exclusion != "";
+
+def is_demotable_b:
+  gated and .consequence_class == "B" and (is_excluded_b | not);
 
 ($cls[0].classifications | group_by(.id // null) | map({key: ((.[0].id // null) | tostring), value: .})
  | from_entries) as $by_id
@@ -291,12 +326,13 @@ def with_class($m):
 | ($judged | map(select(gated))) as $blocking_set
 | ($blocking_set | map(select(.consequence_class == "A")) | length) as $class_a
 | ($blocking_set | map(select(.consequence_class == "B")) | length) as $class_b
-| ($class_a == 0 and $class_b >= 1) as $applied
+| ($blocking_set | map(select(is_excluded_b)) | length) as $excluded
+| ($class_a == 0 and ($blocking_set | map(select(is_demotable_b)) | length) >= 1) as $applied
 | (if $applied then
-     ($judged | map(select(gated and .consequence_class == "B")
+     ($judged | map(select(is_demotable_b)
        | . + {demotion: {policy: "class-b-demotion", reason: (.consequence_scenario // "")}}))
    else [] end) as $demoted_set
-| (if $applied then ($judged | map(select((gated and .consequence_class == "B") | not))) else $judged end) as $kept
+| (if $applied then ($judged | map(select(is_demotable_b | not))) else $judged end) as $kept
 | ($kept | map(select(gated)) | length) as $blocking_after
 | {
     doc: (
@@ -318,6 +354,7 @@ def with_class($m):
       unclassified: ([$orig[] | select(gated and has_measured_bool) | effective_class($by_id) | select(.unclassified)] | length),
       # 実測未判定のまま class A 固定した gated finding (5.3.0.M の形式崩れアンカー由来)。
       undetermined_measured: ([$orig[] | select(gated and (has_measured_bool | not))] | length),
+      excluded: $excluded,
       applied: (if $applied then "true" else "false" end),
       assessment: (if $blocking_after == 0 then "mergeable" else "fix-needed" end)
     }
@@ -333,13 +370,14 @@ fi
 if ! stats_tsv=$(printf '%s\n' "$result" | jq -r '
   [ .stats.blocking, .stats.class_a, .stats.class_b, .stats.demoted,
     .stats.blocking_after, .stats.unclassified, .stats.undetermined_measured,
+    .stats.excluded,
     .stats.applied, .stats.assessment ]
   | map(tostring) | @tsv' 2>"${diag_file:-/dev/null}"); then
   _fail stats_read_failed "ゲート統計の読み出し jq が失敗しました"
 fi
-IFS=$'\t' read -r blocking class_a class_b demoted blocking_after unclassified undetermined_measured applied assessment \
+IFS=$'\t' read -r blocking class_a class_b demoted blocking_after unclassified undetermined_measured excluded applied assessment \
   <<< "$stats_tsv"
-for _stat_name in blocking class_a class_b demoted blocking_after unclassified undetermined_measured; do
+for _stat_name in blocking class_a class_b demoted blocking_after unclassified undetermined_measured excluded; do
   _stat_val="${!_stat_name-}"
   case "$_stat_val" in
     ''|*[!0-9]*) _fail stats_read_failed "ゲート統計 $_stat_name が数値ではありません: '$_stat_val'" ;;
@@ -365,9 +403,12 @@ fi
 if [ "$undetermined_measured" -gt "$class_a" ]; then
   _fail stats_read_failed "ゲート統計の実測未判定件数が class A 件数を超えています (undetermined_measured=${undetermined_measured} > class_a=${class_a})"
 fi
+if [ "$excluded" -gt "$class_b" ]; then
+  _fail stats_read_failed "ゲート統計の除外件数が class B 件数を超えています (excluded=${excluded} > class_b=${class_b})"
+fi
 if [ "$applied" = "true" ]; then
-  [ "$demoted" -eq "$class_b" ] || _fail stats_read_failed "降格発動なのに移送件数が class B 件数と一致しません (demoted=${demoted} != class_b=${class_b})"
-  [ "$blocking_after" -eq "$class_a" ] || _fail stats_read_failed "降格発動後の blocking 件数が class A 件数と一致しません (blocking_after=${blocking_after} != class_a=${class_a})"
+  [ "$demoted" -eq "$((class_b - excluded))" ] || _fail stats_read_failed "降格発動なのに移送件数が除外なし class B 件数と一致しません (demoted=${demoted} != class_b-excluded=$((class_b - excluded)))"
+  [ "$blocking_after" -eq "$((class_a + excluded))" ] || _fail stats_read_failed "降格発動後の blocking 件数が class A + 除外付き B と一致しません (blocking_after=${blocking_after} != class_a+excluded=$((class_a + excluded)))"
 else
   [ "$demoted" -eq 0 ] || _fail stats_read_failed "非発動なのに移送件数が 0 ではありません (demoted=${demoted})"
   [ "$blocking_after" -eq "$blocking" ] || _fail stats_read_failed "非発動なのに blocking 件数が変化しています (blocking_after=${blocking_after} != blocking=${blocking})"
@@ -387,7 +428,7 @@ fi
 out_tmp=""
 
 if [ "$unclassified" -gt 0 ]; then
-  echo "WARNING: 帰結クラス分類が欠落・不正 (エントリなし / class が A・B 以外 / class B なのに判定文なし / 同 id の重複エントリ) の blocking finding ${unclassified} 件を class A 扱い (blocking 維持) にしました。判定不能を降格に丸めません" >&2
+  echo "WARNING: 帰結クラス分類が欠落・不正 (エントリなし / class が A・B 以外 / class B なのに判定文なし / class B の exclusion が非空文字列でない / 同 id の重複エントリ) の blocking finding ${unclassified} 件を class A 扱い (blocking 維持) にしました。判定不能を降格に丸めません" >&2
   echo "[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count=${unclassified}" >&2
 fi
 
