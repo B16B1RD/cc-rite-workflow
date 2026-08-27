@@ -255,7 +255,7 @@ JSON 本文の書き手を 5.3.0.M step 1 に一本化する理由。
 
 5.3.0.C を 5.3.0.M の後・5.3.1 の前に置く理由。
 
-実測付き blocking を class A（実行時挙動が変わる）/ class B（検出網・可読性・文書整合）に分け、A=0 の cycle で B を全件 non-blocking にして churn 尾部を自然終了させる。実測未判定は分類対象外で class A 固定 — 判定不能を降格に丸めない 3 値モデル。不確実なら class B（攻め側既定）。ファイルパスで機械分類しない。
+実測付き blocking を class A（実行時挙動が変わる）/ class B（検出網・可読性・文書整合）に分け、A=0 の cycle で exclusion なし B を non-blocking にして churn 尾部を自然終了させる。exclusion 付き B（既存記述の削除/弱体化）は blocking 維持。実測未判定は分類対象外で class A 固定 — 判定不能を降格に丸めない 3 値モデル。不確実なら class B（攻め側既定）。ファイルパスで機械分類しない。
 
 classification map のパスに commit SHA を入れる理由: `${TMPDIR}` はセッション内不変で、含めないと前 cycle の map が同一パスに残り、step 1 を飛ばして step 2 だけ実行すると stale map を無音適用する。
 
