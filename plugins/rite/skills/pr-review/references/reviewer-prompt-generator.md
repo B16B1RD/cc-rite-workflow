@@ -45,6 +45,10 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 <!-- wiki.enabled && wiki.auto_query のとき、ステップ 4.0.W で取得した経験則。空の場合はこのセクション自体を省略 -->
 {wiki_context}
 
+## 却下台帳（該当時のみ非空）
+<!-- 関連 Issue の 6.1.d コメントから抽出した ### 却下台帳。空の場合はこのセクション自体を省略。掲載された指摘と同内容を blocking / non-blocking に再報告しない -->
+{rejected_ledger}
+
 ## 出力フォーマット
 以下の形式で評価を出力してください:
 

@@ -253,7 +253,7 @@ iterate の終了 sentinel を `{run_mode}`（ステップ 1 の `mode=` marker�
 | `[fix:replied-only]` + `default` | merge しないため即停止は不要。**「Issue #{current_issue} の draft PR #{pr_number} は未解決指摘あり」を会話に明示** したうえで draft PR を残し、**ステップ 6 の cursor 前進 bash へ直行**してキューを次へ進める |
 | `[iterate:max-cycles-reached]`（両モード） | **サーキットブレーカー発火 = 当該 Issue 非収束**。即停止（ステップ 8）はせず、ステップ 6 の failed 記録 bash で当該 Issue を `failed[]` に追加 → **ready/merge/cleanup をスキップ**して **ステップ 6 の cursor 前進 bash へ直行**（draft/open PR はレビュー待ちで残す。バッチ全体をストールさせず次 Issue へ進める）。停止しない理由: 非収束 1 件でバッチ全体を止めない設計（AC-2） |
 | `[fix:cancelled-by-user]`（両モード） | ユーザー中断 → ステップ 8（段階=iterate） |
-| `[fix:error]` / sentinel 不在（両モード） | **失敗** → ステップ 8（段階=iterate） |
+| `[iterate:nb-sweep-error]` / `[fix:error]` / sentinel 不在（両モード） | **失敗** → ステップ 8（段階=iterate） |
 
 <!-- run orchestration: after iterate returns a terminal sentinel, do NOT stop. merge mode + [review:mergeable] -> ステップ 4. default mode + [review:mergeable] or [fix:replied-only] -> ステップ 6 cursor advance (skip ready/merge/cleanup). [iterate:max-cycles-reached] (both modes) -> ステップ 6 failed-record bash + cursor advance (skip ready/merge/cleanup, do NOT stop). -->
 

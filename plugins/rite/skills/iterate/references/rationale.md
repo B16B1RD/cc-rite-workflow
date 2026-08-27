@@ -230,8 +230,9 @@ blocking の定義式は本ファイルに複製せず severity-levels.md の実
 同節は reviewer finding に閉じた canonical 式と fix loop 全体を対象とする consumer 式の差を
 「適用範囲」で意図的なスコープ差として定義している。本スキルはループ側なので後者に従い、
 実測の有無を判定できない指摘は blocking のまま扱う。実測を伴わない指摘は non-blocking として
-記録されたまま残存するため、非実測指摘が残った状態でも `[review:mergeable]` に到達してループ
-が正常終了しうる — 残存分は draft PR の人間レビューに委ねる。細粒度の安全網（同一 finding
+記録されたまま残存するため、非実測指摘が残った状態でも `[review:mergeable]` に到達する。
+残存分の消化は完了通知前の 5.S（`/rite:fix --nb-sweep`）が担い、人間の draft レビューに委ねない。
+細粒度の安全網（同一 finding
 検出 / quality signal escalation）は持たない（CLAUDE.md「シンプルさを死守」）。
 
 主経路を発散検出にし、cycle 数上限を backstop へ格下げしたのは、cycle 数上限だけでは努力と
@@ -256,8 +257,20 @@ handoff とも独立（handoff は one-shot consume される継続マーカー�
 ## nb-remaining-notice
 
 完了通知の残件欄をテンプレート必須欄にするのは、LLM の自発的補足と Stop hook 差し戻し再出力の
-両方で欄が脱落する実測があるため。件数は最新 review JSON から機械取得し、取得失敗は欄に
-「取得失敗」と書いて通知は止めるな（fail-loud だが完了通知自体は出す）。0 件でも欄は省略しない。
-非 0 件の見出しを「blocking ゼロ、残件 N 件」にするのは、「完了 / マージ可」と読める語彙が
-残件の存在を隠すため。`[review:mergeable]` sentinel は下流 routing が依存するので変えない。
+両方で欄が脱落する実測があるため。5.S overlay 後は残件 0 固定（JSON の配列長は消化前の値）。
+取得失敗は 5.S の fail-loud で停止し、完了通知へ進まない。0 件でも欄は省略しない。
+`done` のときだけ消化内訳行を足し、`noop` は従来の 0 件通知のまま（AC-4）。
+`[review:mergeable]` sentinel は下流 routing が依存するので変えない。
 replied-only / 中断 / サーキットブレーカーのテンプレートは対象外。
+
+## nb-sweep-step
+
+`[review:mergeable]` を完了へ直結しないのは、残存 NB を人間消化に残す運用を構造的に閉じるため。
+consume を `/rite:fix --nb-sweep` に閉じるのは、既存 1.0.1 flag parse と修正実装を再利用し、
+iterate 本体に三択を複製しないため。`[fix:sweep-done]` を `[fix:pushed]` と分けるのは、後者が
+ステップ 1 へ戻ってフルレビューを起こす契約だから（MUST NOT）。JSON 取得失敗を完了通知の
+「取得失敗」欄にしないのは、未消化のまま正常出口へ進む経路そのものが本 Issue の対象だから。
+one-shot は sweep 後の新規 class-B を Issue 化に固定して 2 周目を作らない収束保証。
+6.1.d 本文へ `### 却下台帳` を足すのは新チャネル禁止（既存コメントの拡張）。次 cycle の
+`{rejected_ledger}` 注入は 6.1.d rewrite が台帳を消すと無意味になるため、merge-into helper
+が count 行直前へ機械 splice する。
