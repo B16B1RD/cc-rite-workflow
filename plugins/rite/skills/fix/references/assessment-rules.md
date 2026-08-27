@@ -227,26 +227,29 @@ For each finding in blocking:
   else:
     entry = classification map の同 id エントリ
     if entry が欠落 / class が A・B 以外 / class B なのに scenario (判定文) が欠落・空 /
-       同 id の重複エントリ:
+       class B で exclusion キーがあるのに非空文字列でない / 同 id の重複エントリ:
       effective class = A + WARNING (判定不能を降格に丸めない。CLASS_DEMOTION_UNCLASSIFIED)
     else:
       effective class = entry.class
+      exclusion が非空文字列なら consequence_exclusion に判定文を記録 (降格しない)
   finding に consequence_class / consequence_scenario を記録 (書き手は helper のみ)
 
-if (effective A の件数) == 0 and (effective B の件数) >= 1:
-  class B 全件を non_blocking_findings[] へ移送
+if (effective A の件数) == 0 and (exclusion なし class B の件数) >= 1:
+  exclusion なし class B を non_blocking_findings[] へ移送
   (severity / scope / id は維持。各要素に demotion = {policy: "class-b-demotion", reason: 判定文} を付与)
-  overall_assessment / verdict を移送後の blocking 件数から再確定 (5.3.0.M と同一式 → mergeable)
+  exclusion 付き class B は findings[] に残す (class B のまま blocking)
+  overall_assessment / verdict を移送後の blocking 件数から再確定
+  (残 blocking が 0 → mergeable。除外付き B が残れば fix-needed)
 else:
-  移送しない (class A が 1 件でも残る cycle では class B も blocking のまま — 磨きは実体修正と並走する)
-  assessment / verdict は変更しない (fix-needed のまま)
+  移送しない (class A が 1 件でも残る cycle、または降格対象の B が 0 件)
+  assessment / verdict は blocking 件数式で再代入 (値が変わらなくても冪等)
 
 トップレベル class_demotion = {applied, class_a, class_b, demoted} を記録 (監査フラグ)
 ```
 
-**分類入力 (classification map)**: `/rite:pr-review` ステップ 5.3.0.C step 1 が Write する独立 JSON (`{"classifications": [{"id", "class", "scenario"}]}`)。review-result JSON の `findings[].consequence_class` を分類入力にはしない — 判定の入力と適用結果を同じフィールドに置くと、LLM の先書きがゲートを無音で迂回する (5.3.0.M の verification preset と同じ穴)。helper は map だけを読み、`consequence_class` / `consequence_scenario` は算出結果として無条件に上書きする。
+**分類入力 (classification map)**: `/rite:pr-review` ステップ 5.3.0.C step 1 が Write する独立 JSON (`{"classifications": [{"id", "class", "scenario", "exclusion"?}]}`)。`exclusion` は class B の任意キーで、非空文字列のときだけ「既存 (base 側) に存在した記述・ガード・禁止文を本 PR の diff が削除/弱体化した」判定文として読む。キー欠落 = 除外しない (従来どおり降格対象)。キーがあるのに非空文字列でない (空文字・非文字列) は不正 = class A 扱い + WARNING。review-result JSON の `findings[].consequence_class` を分類入力にはしない — 判定の入力と適用結果を同じフィールドに置くと、LLM の先書きがゲートを無音で迂回する (5.3.0.M の verification preset と同じ穴)。helper は map だけを読み、`consequence_class` / `consequence_scenario` / `consequence_exclusion` は算出結果として無条件に上書きする。
 
-**判定不能の安全側** (AC-6): map エントリの欠落・class 不正・class B の判定文欠落・同 id の重複エントリは、いずれも当該 finding を **class A 扱い (blocking 維持)** にして WARNING + `[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}` を emit する。実測未判定 (verification 欠落) の finding は分類の手前で class A 固定 + `[CONTEXT] CLASS_DEMOTION_UNDETERMINED_MEASURED=1; count={n}` となり、map のエントリは参照されない。silent 降格は存在しない — 降格に入る経路は「実測判定済み ∧ well-formed な class B エントリ」のみ。
+**判定不能の安全側** (AC-6): map エントリの欠落・class 不正・class B の判定文欠落・class B の exclusion 不正・同 id の重複エントリは、いずれも当該 finding を **class A 扱い (blocking 維持)** にして WARNING + `[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}` を emit する。実測未判定 (verification 欠落) の finding は分類の手前で class A 固定 + `[CONTEXT] CLASS_DEMOTION_UNDETERMINED_MEASURED=1; count={n}` となり、map のエントリは参照されない。silent 降格は存在しない — 降格に入る経路は「実測判定済み ∧ well-formed な class B エントリ ∧ exclusion なし」のみ。
 
 **non_blocking_findings への移送**: 5.3.0.M と同じ移送メカニズムを流用する — `total_findings` にカウントしない / `id` は振り直さず和集合で一意 / 記録 4 経路 (永続 JSON・6.1.d 関連 Issue 記録コメント・5.4 統合レポート section・E2E suffix) は 5.3.0.M §non_blocking_findings の扱い と同一。降格分は `demotion` オブジェクト (policy + 判定文) で実測ゲート降格分と区別でき、後から監査できる。
 
