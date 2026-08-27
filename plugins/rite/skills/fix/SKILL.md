@@ -30,7 +30,7 @@ PR レビューコメントを取得・整理し、指摘への対応を効率�
 ## Contract
 
 **Input**: PR number, review findings from `/rite:pr-review`, flow state with `phase: fix` (iterate fix side) or `phase: phase5_fix` (legacy resume)
-**Output**: `[fix:pushed]` | `[fix:pushed-wm-stale]` | `[fix:replied-only]` | `[fix:cancelled-by-user]` | `[fix:error]`
+**Output**: `[fix:pushed]` | `[fix:pushed-wm-stale]` | `[fix:replied-only]` | `[fix:cancelled-by-user]` | `[fix:sweep-done]` | `[fix:error]`
 rationale: references/design-rationale.md#contract-legacy-phase
 
 ## Inline Annotation Convention
@@ -279,6 +279,14 @@ fi
 # remaining_args の前後 whitespace を trim
 remaining_args=$(printf '%s' "$remaining_args" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
 
+# --nb-sweep (値なし)。iterate 5.S 専用。通常ループは非 set のまま。
+nb_sweep=0
+if [[ "$remaining_args" =~ (^|[[:space:]])--nb-sweep([[:space:]]|$) ]]; then
+  nb_sweep=1
+  remaining_args=$(printf '%s' "$remaining_args" | sed -E 's/(^|[[:space:]])--nb-sweep([[:space:]]|$)/\1\2/')
+  remaining_args=$(printf '%s' "$remaining_args" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+fi
+
 # --review-file=<空> を明示エラー化 (fail-fast、ステップ 5.1 評価順 1 で [fix:error] へ昇格)
 # flag_style == "none" のときは sentinel `__RITE_UNSET__` のままなのでこの分岐に来ない
 if [ "$review_file_flag_style" != "none" ] && [ "$review_file_path" = "" ]; then
@@ -297,8 +305,11 @@ fi
 
 # [CONTEXT] emit は本ブロックの成功パス値も含め stderr に統一する (引数解析系の規約、ステップ 1.2.0 Priority 0/2/3・6.1.a・5.1 retained flags と統一。canonical: ../../references/common-error-handling.md#context-emit-stdout-stderr-convention-canonical)
 echo "[CONTEXT] REVIEW_FILE_PATH=$review_file_path" >&2
+echo "[CONTEXT] NB_SWEEP=$nb_sweep" >&2
 echo "[CONTEXT] REMAINING_ARGS=$remaining_args" >&2
 ```
+
+**`--nb-sweep` 入口**: `[CONTEXT] NB_SWEEP=1` のとき、ステップ 1.1 の PR 識別の後に **1.3.S へ進む**（1.2 コメント取得・1.3 分類・ステップ 2–4 は評価しない。AC-7: 通常ループの分類表は不変）。
 
 **Validation**: 本 Phase では **パス存在確認をしない** (Priority 0)。`--review-file=` (値なし) だけは即 fail-fast。
 
@@ -1646,6 +1657,126 @@ When rite review results were not found, use conventional GitHub state-based cla
 | **Unaddressed (suggestion)** | Improvement suggestions or questions without replies |
 | **Resolved** | Resolved threads or replied |
 | **Informational** | FYI, supplementary explanations, no action needed |
+
+### 1.3.S `--nb-sweep` consume（5.S 専用）
+
+`[CONTEXT] NB_SWEEP=1` のときだけ評価する。通常ループでは本節を skip（AC-7）。ステップ 2–4 は評価せず、本節の後に 5.1 へ進む。
+rationale: ../iterate/references/rationale.md#nb-sweep-step
+
+1. **collect**（iterate 5.S と同 helper。冪等）:
+
+```bash
+source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした" >&2; echo "[fix:error]"; exit 1; }
+sweep_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || sweep_root=""
+if [ -z "$sweep_root" ]; then
+  echo "ERROR: state-path-resolve が空。NB sweep 対象を取得できない" >&2
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_state_root_unresolved" >&2
+  echo "[fix:error]"
+  exit 1
+fi
+collect_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-nb-collect-XXXXXX") || { echo "[fix:error]"; exit 1; }
+collect_out=$(bash {plugin_root}/hooks/scripts/nb-sweep-collect.sh --pr {pr_number} --state-root "$sweep_root" 2>"$collect_err") || collect_rc=$?
+collect_rc=${collect_rc:-0}
+cat "$collect_err" >&2
+rm -f -- "$collect_err"
+sweep_status=$(printf '%s' "$collect_out" | jq -r '.status // empty') || sweep_status=""
+case "$collect_rc:$sweep_status" in
+  0:empty)
+    echo "[CONTEXT] NB_SWEEP_RESULT=done; fixed=0; rejected=0; issued=0" >&2
+    ;;
+  0:ok) ;;
+  *)
+    echo "ERROR: NB sweep collect failed (rc=$collect_rc status=${sweep_status:-})" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_collect_failed" >&2
+    echo "[fix:error]"
+    exit 1
+    ;;
+esac
+```
+
+`empty` なら三択・persist・検証を skip して 5.1 へ。
+
+2. **三択**（対象は collect の `targets[]`。`already_rejected[]` は再判断せず `rejected` 転記）:
+
+| 判定 | 条件 | 記録 |
+|------|------|------|
+| **fixed**（既定） | 本 PR で直せる | コード修正 + commit/push。台帳へは書かない |
+| **rejected** | 直さない | 判定文必須（空禁止）。台帳へ `rejected` |
+| **issued** | 本 PR の外 | 根拠必須 + 起票先 `#N` を判定文に含める。`create-issue-with-projects.sh`（`options.source=pr_review`）で自動起票。失敗は `[fix:error]` |
+
+silent skip 禁止。判定文なしの却下 / 根拠なしの Issue 化は禁止。
+
+3. **台帳 persist**（rejected / issued / already_rejected が 1 件以上のときだけ。0 件なら skip）:
+
+Write tool で entries を `{tmp}/rite-nb-entries-{pr_number}.md` に保存（列 0。行形式 `| {id} | {file}:{line} | rejected|issued | {判定文} |`。already_rejected は `filter_reason` を判定文に使い判定=`rejected`）。
+
+```bash
+entries_file="${TMPDIR:-/tmp}/rite-nb-entries-{pr_number}.md"
+if [ ! -s "$entries_file" ]; then
+  echo "[CONTEXT] NB_SWEEP_LEDGER=ok; op=persist; action=skip" >&2
+else
+  ledger=$(mktemp "${TMPDIR:-/tmp}/rite-nb-ledger-XXXXXX") || { echo "[fix:error]"; exit 1; }
+  body=$(mktemp "${TMPDIR:-/tmp}/rite-nb-body-XXXXXX") || { echo "[fix:error]"; exit 1; }
+  bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh append --ledger-file "$ledger" --entries-file "$entries_file" || {
+    echo "ERROR: 却下台帳 append 失敗" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_append_failed" >&2
+    echo "[fix:error]"; exit 1
+  }
+  related={issue_number}
+  if [ -n "$related" ] && [ "$related" != "0" ]; then
+    gh api "repos/{owner_repo}/issues/${related}/comments" --paginate \
+      --jq '.[] | select(.body | startswith("## 📜 rite 非実測指摘の記録")) | .body' > "$body" || {
+      echo "ERROR: 6.1.d コメント取得失敗" >&2
+      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_fetch_failed" >&2
+      echo "[fix:error]"; exit 1
+    }
+  fi
+  if [ ! -s "$body" ]; then
+    printf '%s\n\n%s\n\n%s\n%s\n\n%s\n' \
+      '## 📜 rite 非実測指摘の記録 (non-blocking)' \
+      '本 cycle の非実測指摘: 0 件 (前 cycle の記録内容は本 cycle では再報告されていません)' \
+      '📎 non_blocking_count: 0' \
+      '📎 reviewed_commit: unknown' \
+      '<!-- rite:nbr:v1 -->' > "$body"
+  fi
+  bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh merge-into --body-file "$body" --ledger-file "$ledger" || {
+    echo "ERROR: 却下台帳 merge-into 失敗" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_merge_failed" >&2
+    echo "[fix:error]"; exit 1
+  }
+  body_count=$(grep -E '^📎 non_blocking_count:' "$body" | tail -1 | awk '{print $2}')
+  case "$body_count" in ''|*[!0-9]*)
+    echo "ERROR: merge-into 後の non_blocking_count が読めない" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_count_unreadable" >&2
+    echo "[fix:error]"; exit 1
+    ;;
+  esac
+  record_err=$(mktemp "${TMPDIR:-/tmp}/rite-nb-record-XXXXXX") || { echo "[fix:error]"; exit 1; }
+  bash {plugin_root}/hooks/review-nonblocking-record.sh \
+    --pr {pr_number} --owner-repo {owner_repo} --count "$body_count" \
+    --iteration-id "nb-sweep-{pr_number}" --content-file "$body" 2>"$record_err"
+  record_rc=$?
+  cat "$record_err" >&2
+  if [ "$record_rc" -ne 0 ] || grep -qE 'NONBLOCKING_RECORD_FAILED=1|outcome=failed' "$record_err"; then
+    echo "ERROR: 却下台帳 記録失敗 (rc=$record_rc)" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_record_failed" >&2
+    echo "[fix:error]"; exit 1
+  fi
+  rm -f -- "$record_err"
+fi
+```
+
+4. **scoped 検証**: 直した finding の解消確認のみ。新規指摘を採取しない。
+
+5. **新規 class-B**: Issue 化固定。fix ループへ戻さない（2 周目の sweep 禁止）。
+
+6. **完了**:
+
+```
+[CONTEXT] NB_SWEEP_RESULT=done; fixed=N; rejected=M; issued=K
+```
+
+ステップ 5.1 が `[fix:sweep-done]` を emit する。`N+M+K` は collect `count` + already_rejected 転記を含む消化件数。未消化 0 が正常出口。
 
 ### 1.4 Display Comment List
 
@@ -3400,9 +3531,10 @@ ACTION: Return to ステップ 4.6.W and execute the Wiki Ingest Trigger before 
 
 The `fix` flow-state write below records the v3 phase so a `/rite:recover` started after a fix iteration classifies the resume point correctly (`skills/recover/SKILL.md` Phase 5.3 の `fix` 行で `/rite:iterate {pr_number}` が invoke される):
 
-**Handoff マーカー**: 結果に応じて 3 種類に分岐する (Stop hook による consume・再注入の機構解説: [stop-loop-continuation-contract.md#mechanism](../../references/stop-loop-continuation-contract.md#mechanism))。
+**Handoff マーカー**: 結果に応じて 4 種類に分岐する (Stop hook による consume・再注入の機構解説: [stop-loop-continuation-contract.md#mechanism](../../references/stop-loop-continuation-contract.md#mechanism))。
 - **継続** (`[fix:pushed]` / `[fix:pushed-wm-stale]`): `--handoff "/rite:pr-review {pr_number}"` で**ループ継続マーカー**をセットする。
 - **正常終了** (`[fix:replied-only]`): `--handoff "FINALIZE:fix:replied-only:{pr_number}"` で**終了通知マーカー (FINALIZE handoff)** をセットする。
+- **sweep 完了** (`[fix:sweep-done]`): `--handoff "FINALIZE:fix:sweep-done:{pr_number}"` で**終了通知マーカー**をセットする。**ステップ 1 に戻らない**（再フルレビュー禁止）。
 - **エラー** (`[fix:error]`): `--handoff` を**付けない** (handoff はデフォルトクリア)。`[fix:error]` は clean terminal ではなく caller (`/rite:iterate` ステップ4) で1回自動再試行し、再失敗時に停止するため、完了通知を強制してはならない。
 
 判定入力は本ステップ時点で確定済み。**(push 完了 or 本 cycle accept) かつ fatal 未 set → 継続 handoff**。push 無しかつ accept なしかつ fatal 未 set → FINALIZE。fatal → `--handoff` なし。`WM_UPDATE_FAILED` は継続を打ち消さない。accept 条件の SoT は row 4/5 注記。
@@ -3424,6 +3556,14 @@ bash {plugin_root}/hooks/flow-state.sh set \
   --active true \
   --next "rite:fix completed. Check recent result pattern in context: [fix:pushed]->caller の review-fix loop (/rite:pr-review を起動。範囲は 1.2.4 が cycle に応じて決定し、指摘の採否基準の緩和は禁止). [fix:pushed-wm-stale]->caller の review-fix loop (同上) with WM stale warning (work memory was not updated, manual intervention recommended). [fix:replied-only]->caller の Ready & 完結 step. Do NOT stop." \
   --handoff "FINALIZE:fix:replied-only:{pr_number}" \
+  --if-exists
+
+# sweep 完了 ([fix:sweep-done]: NB_SWEEP=1 かつ NB_SWEEP_RESULT=done) の場合 (FINALIZE。ステップ 1 に戻らない):
+bash {plugin_root}/hooks/flow-state.sh set \
+  --phase "fix" \
+  --active true \
+  --next "rite:fix completed. Check recent result pattern in context: [fix:sweep-done]->caller の iterate ステップ 5 完了通知. Do NOT re-enter /rite:pr-review." \
+  --handoff "FINALIZE:fix:sweep-done:{pr_number}" \
   --if-exists
 
 # エラー ([fix:error]: fatal フラグ有り) の場合 (--handoff 行を省略 = handoff クリア):
@@ -3500,6 +3640,8 @@ Then, based on the ステップ 4.6 completion report content **and the WM_UPDAT
 | 評価順 | Condition | Output Pattern |
 |--------|-----------|---------------|
 | 1 (最優先) | ステップ 1.0.1 / 1.2.0 / 1.2.0.1 で `[CONTEXT] FIX_FALLBACK_FAILED=1` を context に set した (`reason` の値は ステップ 1.0.1 / 1.2.0 / 1.2.0.1 failure reasons table を **唯一の真実の源** として参照する。本セルでの固定列挙は drift 防止のため行わない) | `[fix:error]` (ステップ 1.0.1 / 1.2.0 / 1.2.0.1 のレビューソース解決失敗。fallback 経路が尽きたか、ユーザーが Interactive Fallback で中止を選んだか、ファイルパス指定の再実行でも有効なレビュー結果を取得できなかった状態のため caller は手動介入を促す) |
+| 1.5 | `[CONTEXT] NB_SWEEP=1` かつ `[CONTEXT] NB_SWEEP_RESULT=done` | `[fix:sweep-done]`（ステップ 1 に戻らない） |
+| 1.6 | `[CONTEXT] NB_SWEEP=1` かつ `NB_SWEEP_RESULT=done` 以外 | `[fix:error]` |
 | 2 | ステップ 2.4 で `[CONTEXT] REPLY_POST_FAILED=1` を context に set した | `[fix:error]` (人間由来 thread への reply post が失敗。push 済みの可能性はあるが、レビュアー通知の責務を果たせていないため caller は次の iteration ではなく手動介入を促す) |
 | 3 | ステップ 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`reason` の値は下記 reason 表のいずれか — 固定列挙は行わず、reason 表を唯一の真実の源とする) | `[fix:pushed-wm-stale]` (ステップ 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
 | 4 | (Push completed (`プッシュ: 完了`) または 本 cycle 内で accept 決定が発生 [`[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED=1` または `[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1` が 1 回以上 context に出現]) かつ work memory 更新成功 | `[fix:pushed]` |

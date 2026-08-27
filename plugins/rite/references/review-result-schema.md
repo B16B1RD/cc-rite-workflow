@@ -275,9 +275,37 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 **hard fail は `findings[]` 側の id 欠陥に限る** (`LOCAL_SAVE_FAILED=1; reason=finding_id_format_or_uniqueness_violation`)。また型 check は id 検証より**前**に置く — 後ろに置くと非配列で `length` が非 0 になる値 (`"abc"`→3 / `3`→3 / `{"a":1}`→1) が和集合の件数を水増しし、非ブロッキングと宣言した経路が型によって hard fail に化ける。
 
+### 却下台帳と sweep 消化結果（additive、schema_version 非 bump）
+
+<a id="nb-sweep-ledger"></a>
+
+`/rite:iterate` の `[review:mergeable]` 後 sweep が残存 NB を消化した記録。永続チャネルは 6.1.d の関連 Issue コメント（新チャネルを作らない）。**JSON トップレベルへキーを足さない** — 台帳はコメント本文の `### 却下台帳`、消化内訳は iterate 完了通知と `[CONTEXT] ITERATE_NB_SWEEP=` / `NB_SWEEP_RESULT=` marker。
+
+**台帳エントリ**（コメント本文、`📎 non_blocking_count:` の直前）:
+
+```markdown
+### 却下台帳
+
+| finding_id | file:line | 判定 | 判定文 |
+|------------|-----------|------|--------|
+| F-01 | src/foo.ts:10 | rejected | <必須。空禁止> |
+| F-02 | src/bar.ts:4 | issued | <必須。起票先 #N を含む> |
+```
+
+`判定` の受理値: `rejected` / `issued`。`fixed` はコード側で消化済みのため台帳へは書かない。`guardrail_audit_log[]` 由来は `rejected` として転記し sweep で再判断しない。
+
+**sweep 消化結果 marker**（iterate 完了通知の値源。JSON フィールドではない）:
+
+```
+[CONTEXT] NB_SWEEP_RESULT=done; fixed=N; rejected=M; issued=K
+[CONTEXT] ITERATE_NB_SWEEP=done|noop|failed
+```
+
+`done` のとき完了通知の残件欄は `未処理 non-blocking: 0 件` を維持し、消化内訳 `sweep: fixed=N / rejected=M / issued=K` を併記する。`noop`（対象 0 件）は従来の 0 件通知のまま追加行を出さない。書き込み失敗・JSON 取得失敗は `failed` で iterate を停止する（完了通知へ進まない）。
+
 **`id` は 2 配列の和集合で一意**: 5.3.0.M の降格時に `id` を振り直さず元の `F-NN` を維持する。根拠は **JSON 単体の監査可読性** — 永続 JSON を読む人間が 2 配列を跨いで finding を一意に参照できるようにするため (5.4 統合レポートのテーブルは `id` 列を持たないので、JSON ↔ レポート間の id 相互参照は成立しない。それを目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証で、`findings[]` と `non_blocking_findings[]` の和集合に対して書式 + 一意性を評価する (本配列側に閉じた違反は上記の非ブロッキング marker で報告され、保存は続行する)。
 
-**read 側の扱い**: 現時点で本配列を消費する read 経路は無い (`/rite:fix` は `findings[]` のみを読む)。本配列は **人間がマージ後に拾い直すための監査記録**である。既定構成 (`pr_review.post_comment: false`) では PR 本体のレビュー結果コメントが投稿されないため、非実測指摘の永続チャネルは `.rite/review-results/*.json` と、`post_comment` と独立に投稿される関連 Issue 記録コメント (`## 📜 rite 非実測指摘の記録`、ステップ 6.1.d) の 2 つになる。前者はローカルの永続チャネル (`state-path-resolve.sh` によりセッション worktree 内からでも main checkout と同一パスに解決される。§保存場所 参照)、後者は関連 Issue 上で共有可能な永続チャネルであり、`.rite/review-results/` は gitignore 対象のためレビュアーと共有できるのは後者のみ — **ただし後者が共有するのは reviewer / severity / `file:line` のポインタと降格理由 (判定文) までで、cycle 中の `description` / `suggestion` の全文は本配列にしか存在せず共有経路を持たない**。マージ後もローカル全文を残すため、`/rite:cleanup` ステップ 6 は本配列が非空の結果 JSON を削除せず `.rite/review-results/archive/` へ退避し、残存分の全文を follow-up Issue 1 件へ転記する（public リポジトリでは公開される。詳細: [`severity-levels.md` §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate))。
+**read 側の扱い**: `/rite:iterate` 5.S の `nb-sweep-collect.sh` が本配列（全件）と `findings[]` の `nit-noted` を sweep 対象として読む。`/rite:fix` の通常ループは `findings[]` のみを読む（`--nb-sweep` 時だけ collect 経由で本配列を読む）。本配列は **sweep 消化の入力**であり、消化後も JSON からは消さない（台帳と完了通知が消化結果の SoT）。既定構成 (`pr_review.post_comment: false`) では PR 本体のレビュー結果コメントが投稿されないため、非実測指摘の永続チャネルは `.rite/review-results/*.json` と、`post_comment` と独立に投稿される関連 Issue 記録コメント (`## 📜 rite 非実測指摘の記録`、ステップ 6.1.d) の 2 つになる。前者はローカルの永続チャネル (`state-path-resolve.sh` によりセッション worktree 内からでも main checkout と同一パスに解決される。§保存場所 参照)、後者は関連 Issue 上で共有可能な永続チャネルであり、`.rite/review-results/` は gitignore 対象のためレビュアーと共有できるのは後者のみ — **ただし後者が共有するのは reviewer / severity / `file:line` のポインタと降格理由 (判定文) までで、cycle 中の `description` / `suggestion` の全文は本配列にしか存在せず共有経路を持たない**。マージ後もローカル全文を残すため、`/rite:cleanup` ステップ 6 は本配列が非空の結果 JSON を削除せず `.rite/review-results/archive/` へ退避し、残存分の全文を follow-up Issue 1 件へ転記する（public リポジトリでは公開される。詳細: [`severity-levels.md` §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate))。
 
 ### `verification` サブフィールド
 

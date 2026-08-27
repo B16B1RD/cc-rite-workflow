@@ -1298,6 +1298,29 @@ Determine the error type from the Task tool result. Claude analyzes the Task too
 | `{doc_heavy_pr}` | ステップ 1.2.7 result | Boolean flag (`true` / `false`). Inject only when reviewer is `tech-writer`. If `false` or reviewer != tech-writer, set to empty string |
 | `{doc_heavy_mode_instructions}` | `agents/tech-writer-reviewer.md` `## Doc-Heavy PR Mode (Conditional)` section | **Conditional extraction**: Only populated when `reviewer_type == tech-writer` AND `{doc_heavy_pr} == true`. Extract the entire section from `## Doc-Heavy PR Mode (Conditional)` heading down to (but excluding) the next `##` heading. Otherwise set to empty string |
 | `{wiki_context}` | ステップ 4.0.W Wiki Query result | Non-empty when Wiki is enabled and related experiential knowledge was found. Empty string when Wiki is disabled, `auto_query` is false, or no matches found. One more non-empty shape exists: when the index carries registration rows but Pass 1 extracted no candidate, the value is a single `> ⚠️ …` notice line and carries no heuristics — treat it as "no context" for review purposes and surface the notice as-is |
+| `{rejected_ledger}` | 関連 Issue の 6.1.d コメント `### 却下台帳` | `nb-sweep-ledger.sh extract`。空ならセクションごと省略。同内容の指摘を blocking / non-blocking に再報告しない |
+
+**`{rejected_ledger}` 抽出**（空ならセクション省略。取得失敗は WARNING を placeholder に載せ、空台帳として再訴訟させない）:
+
+```bash
+source {plugin_root}/hooks/scripts/lib/context-marker.sh || true
+rejected_ledger=""
+existing=$(mktemp "${TMPDIR:-/tmp}/rite-rejected-src-XXXXXX") || existing=""
+if [ -n "$existing" ] && [ -n "{issue_number}" ] && [ "{issue_number}" != "0" ]; then
+  if gh api "repos/{owner_repo}/issues/{issue_number}/comments" --paginate \
+    --jq '.[] | select(.body | startswith("## 📜 rite 非実測指摘の記録")) | .body' \
+    > "$existing" && [ -s "$existing" ]; then
+    rejected_ledger=$(bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh extract --body-file "$existing") || rejected_ledger=""
+  fi
+fi
+rm -f -- "$existing"
+if [ -n "$rejected_ledger" ]; then
+  echo "[CONTEXT] REJECTED_LEDGER=ok" >&2
+  printf '%s\n' "$rejected_ledger"
+else
+  echo "[CONTEXT] REJECTED_LEDGER=empty" >&2
+fi
+```
 
 **`{diff_content}` by scale:** Small: 全 diff | Medium: `{relevant_files}` | Large: `{change_summary}` + 該当ファイル + Read 指示
 **`{relevant_files}`:** Activation パターン一致（ステップ 2.2）
@@ -2652,6 +2675,36 @@ rationale: references/design-rationale.md#6.1d-always-eval
    (非空 / 1 行目 marker / 機械専用 sentinel / count 整合) を通過する必要があり、不備があれば
    `outcome=skipped` ではなく `outcome=failed` になる (Write は「投稿されない」という意味での no-op
    であり、検査対象外という意味ではない)。
+
+   **step 1.5 却下台帳保全**: Write 後・helper 前に、既存 6.1.d 本文の `### 却下台帳` を新本文へ splice する。空 ledger は no-op。merge-into 失敗は fail-loud（本文を helper に渡さない）。本文は列 0 から。
+
+   ```bash
+   # ステップ 6.1.d step 1.5: 却下台帳を新本文へ splice（空なら no-op）
+   body_file={review_tmp_dir}/rite-nonblocking-{pr_number}-{review_cycle_id}.md
+   ledger_file={review_tmp_dir}/rite-rejected-ledger-{pr_number}-{review_cycle_id}.md
+   existing_file={review_tmp_dir}/rite-nb-existing-{pr_number}-{review_cycle_id}.md
+   : > "$ledger_file"
+   related={issue_number}
+   if [ -n "$related" ] && [ "$related" != "0" ]; then
+     if gh api "repos/{owner_repo}/issues/${related}/comments" --paginate \
+       --jq '.[] | select(.body | startswith("## 📜 rite 非実測指摘の記録")) | .body' \
+       > "$existing_file"; then
+       if [ -s "$existing_file" ]; then
+         bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh extract --body-file "$existing_file" > "$ledger_file" || true
+       fi
+     else
+       echo "ERROR: 既存 6.1.d コメント取得失敗" >&2
+       echo "[CONTEXT] REJECTED_LEDGER_PRESERVE=failed" >&2
+       exit 1
+     fi
+   fi
+   bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh merge-into --body-file "$body_file" --ledger-file "$ledger_file" || {
+     echo "ERROR: 却下台帳 merge-into 失敗" >&2
+     echo "[CONTEXT] REJECTED_LEDGER_PRESERVE=failed" >&2
+     exit 1
+   }
+   echo "[CONTEXT] REJECTED_LEDGER_PRESERVE=ok" >&2
+   ```
 
 2. **記録 (単一 invocation、update-in-place 冪等 + 非ブロッキング契約)**: 以下の bash を **1 回だけ**実行する。`{non_blocking_count}` は `non_blocking_findings` の件数 (0 件でも `0` を明示置換)、`{owner_repo}` は Placeholder Legend の [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した slash 形式の値、`{review_cycle_id}` は ステップ 6.1.a step 0 の `[CONTEXT] REVIEW_CYCLE_ID=` marker 値、`{review_tmp_dir}` は同 step 0 の `[CONTEXT] REVIEW_TMP_DIR=` marker 値をそれぞれリテラル置換する:
 
