@@ -32,8 +32,10 @@ assert_grep "3.3.1 invokes the complexity-lane helper" "$OPEN" \
   'scripts/issue-complexity-lane\.sh --issue \{issue_number\}'
 assert_grep "S+ row spawns Task once then reflects then goes to 3.4" "$OPEN" \
   '`S` / `M` / `L` / `XL` \| 下記 Task を 1 回 spawn → 指摘を計画へ反映 → 3.4 へ'
-assert_grep "Task inlines plan_self_review_prompt and plan_body (child does not Read)" "$OPEN" \
-  '\{plan_self_review_prompt\}.*\{plan_body\}'
+assert_grep "Task fence prompt is plan_self_review_prompt" "$OPEN" \
+  '^prompt: \{plan_self_review_prompt\}$'
+assert_grep "Task fence includes plan_body on its own line" "$OPEN" \
+  '^\{plan_body\}$'
 assert_grep "Task sets run_in_background false" "$OPEN" \
   'run_in_background: false'
 assert_grep "done path emits PLAN_REVIEW=done with findings count as 承認材料" "$OPEN" \
@@ -50,7 +52,7 @@ assert_grep_in_section "3.3.1 XS path does not spawn Task" "$OPEN" \
 
 echo "=== T-03 / AC-3: 指摘は承認前の計画へ反映する ==="
 assert_grep "findings are reflected as plan edits or 要判断ポイント promotion" "$OPEN" \
-  '既存ステップへの文言追加 / 変更対象ファイル追記 / 要判断ポイントへ昇格'
+  '種別=` が 実装ステップ追記 / 変更対象ファイル追記 / 要判断ポイントへ昇格'
 assert_grep "plan-self-review.md names 反映先 種別 enum" "$PROMPT" \
   '種別=` は 実装ステップ追記 / 変更対象ファイル追記 / 要判断ポイントへ昇格'
 
