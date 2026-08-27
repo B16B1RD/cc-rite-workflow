@@ -102,7 +102,7 @@
 #     (sentinel 導入前の記録コメントの孤児化を silent にしない)。
 #     **本文照合の走査は id 解決の成否に依らず常に実行する** — id で PATCH 先が確定した cycle でも、
 #     孤児 / 重複 (`NONBLOCKING_LEGACY_ORPHAN` / `NONBLOCKING_DUPLICATE_RECORD`) の観測を落とすと
-#     PR 上の残骸が silent になる。
+#     関連 Issue 上の残骸が silent になる。
 #     rationale: ../skills/pr-review/references/measured-gate-record.md#startswith
 #   - **投稿する本文は「非空」→「1 行目が MARKER で始まる」→「最終非空行が機械専用 sentinel」→
 #     「`📎 non_blocking_count:` 行が --count と一致する」の 4 段で投稿前に検査する**。前 3 段の
@@ -396,7 +396,7 @@ _record_id_unresolved_hint() {  # $1=reason
     id_pr_mismatch)
       echo "  対処: 追加操作は不要です。永続化 id が **別の PR / Issue** のコメントを指していますが、本文照合の fallback で同定し直し、次に記録コメントを投稿する cycle で正しい id を張り直します。そのコメントには一切触れません" >&2 ;;
     id_target_not_record)
-      echo "  対処: 追加操作は不要です。永続化 id が **同一 PR の記録コメント以外** を指していますが、本文照合の fallback で同定し直し、次に記録コメントを投稿する cycle で正しい id を張り直します。そのコメントには一切触れません" >&2 ;;
+      echo "  対処: 追加操作は不要です。永続化 id が **同一関連 Issue の記録コメント以外** を指していますが、本文照合の fallback で同定し直し、次に記録コメントを投稿する cycle で正しい id を張り直します。そのコメントには一切触れません" >&2 ;;
     id_comment_deleted)
       echo "  対処: 追加操作は不要です。id が指すコメントは削除済みのため、本文照合の fallback で同定し直します" >&2 ;;
   esac
@@ -576,7 +576,7 @@ _decide_existing_id() {
   lookup_degraded=1
 }
 # degraded skip (既存コメントを特定できず、かつ本 cycle の非実測指摘が 0 件) 専用の案内。
-# 実在する既存コメントを検出できないまま skip するため、前 cycle の「N 件」記録が PR 上に
+# 実在する既存コメントを検出できないまま skip するため、前 cycle の「N 件」記録が関連 Issue 上に
 # stale で残りうる。この 1 経路だけは「投稿されなかった」ことを明示する必要がある。
 _record_degraded_skip_hint() {
   echo "  注意: 既存の記録コメントを特定できないまま 0 件 skip したため、前 cycle の記録コメントが Issue 上に残っている可能性があります" >&2
@@ -585,7 +585,7 @@ _record_degraded_skip_hint() {
 # degraded create (既存コメントを特定できず、かつ本 cycle の非実測指摘が 1 件以上あり新規作成へ
 # 縮退) 専用の案内。_record_degraded_skip_hint と対称: こちらは「投稿されなかった」ではなく
 # 「既存を検出できないまま重複して新規作成した」ことを明示する。実在する記録コメントを検出できない
-# まま新規作成するため、前 cycle の記録コメントは PR 上に孤児として残り、以後の lookup は
+# まま新規作成するため、前 cycle の記録コメントは関連 Issue 上に孤児として残り、以後の lookup は
 # `last` (新しい方) だけを PATCH するので古い方は恒久的に stale で残る (skip 経路と同じ結末)。
 _record_degraded_create_hint() {
   echo "  注意: 既存の記録コメントを特定できないまま新規作成したため、前 cycle の記録コメントが Issue 上に重複して残っている可能性があります" >&2
@@ -662,7 +662,7 @@ fi
 # (さらに最終非空行が sentinel と等しい = 「本 helper が投稿したと確定できるもの」) を別々に数え、差分を
 # **sentinel を持たない候補の件数**として可視化する。差分の正体は (a) sentinel 導入前に投稿された
 # 記録コメント (migration)、または (b) 同一 author が書いた marker 前方一致の手書きコメント の
-# いずれかで、どちらも update-in-place の対象にならず PR 上に孤児として残る。述語変更由来のこの
+# いずれかで、どちらも update-in-place の対象にならず関連 Issue 上に孤児として残る。述語変更由来のこの
 # 縮退だけを無音にすると観測手段が無くなるため (本 helper は他の全 degraded 経路で WARNING を出す)。
 # rc も見る (F-01, cycle 4 review, error-handling-reviewer): `gh api` は HTTP エラー時に
 # `--jq` フィルタを適用せずレスポンス body をそのまま stdout へ書いて rc!=0 で終了する
@@ -685,7 +685,7 @@ fi
 
 # 段 2: 本文照合による fallback。**id 解決の成否に依らず常に走らせる** — id で PATCH 先が確定した
 # cycle でも孤児 / 重複の観測 (NONBLOCKING_LEGACY_ORPHAN / NONBLOCKING_DUPLICATE_RECORD) を
-# 落とすと、PR 上の残骸が silent になる。
+# 落とすと、関連 Issue 上の残骸が silent になる。
 if [ -z "$gh_login" ]; then
   :   # 自 login 不明。上の分岐で degraded 確定済み
 elif lookup_out=$(gh api --paginate --slurp "repos/$OWNER_REPO/issues/$ISSUE_NUMBER/comments" 2>"${gh_err:-/dev/null}" \
