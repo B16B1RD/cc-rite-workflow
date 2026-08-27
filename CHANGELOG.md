@@ -23,9 +23,34 @@ whose baseline a new reader cannot resolve. Each version section is itself the
 comparison anchor, so avoid cross-version "used to / previously" framing that is
 not tied to a named key or feature. Breaking-change notices and migration guides
 that aid upgraders are kept verbatim.
+
+Number-reference policy: Entries MAY include GitHub Issue numbers as
+parenthetical pointers (e.g. `(#NNNN)`). CHANGELOG.md / CHANGELOG.ja.md are
+repository documents, not marketplace-distributed plugin files, so they are
+outside the number-free surface guarded by `number-reference-check.sh`. The
+`/release` skill template writes these pointers; do not strip them.
 -->
 
 ## [Unreleased]
+
+## [0.13.1] - 2026-08-27
+
+### Added
+
+- **Non-measured review findings are recorded on the related Issue instead of the PR** — `review-nonblocking-record.sh` posts the cycle-time record as a related-Issue comment, resolving the Issue through a closing keyword or the `issue-{N}` branch name and failing loud with `related_issue_unresolved` when neither resolves. The update-in-place comment id is persisted in the related Issue body, and `severity-levels.md` / `assessment-rules.md` describe the same channel. Record contract D-01 is unchanged; only the posting channel moves. (#2377, #2379, #2386, #2388, #2396, #2398, #2402)
+- **`/rite:cleanup` opens a `follow-up` Issue for non-measured findings left on a merged PR** — `cleanup-follow-up-issue.sh` creates one Issue per PR, none when the finding count is zero, and stays idempotent across re-runs through a machine marker in the Issue body. The Issue is registered to Projects as `Todo` and opened before the review JSON is moved to `archive/`. (#2378)
+
+### Fixed
+
+- **`/rite:fix` no longer posts the `## レビュー指摘対応完了` report or `nit、認知済` replies to the PR** — PR thread replies are limited to human-authored findings and the fix details are recorded in the fix commit message instead. `nit-noted` is surfaced as a display and a count only. (#2376, #2381)
+- **The cleanup follow-up reader anchors on the first body line and scopes recency to the follow-up side** — existing-Issue detection compares the first line's HTML comment for equality, so a complete marker on the second body line still yields `created`. The `{review_cleanup_check}` recency selection applies to the follow-up side only, while the state deletion side keeps its presence check. (#2385, #2390, #2392, #2394)
+- **`/release` Phase 1.3 no longer misclassifies an empty PR body as a `gh` error** — the branch is rebuilt around the `gh pr view` exit status, so a successful call returning an empty body is treated as "no closing keyword". (#2372)
+- **`lint/SKILL.md` and `docs/SPEC.md` describe the actual number-free scan surface** — both still listed CHANGELOG after it was removed from `number-reference-check.sh`'s `DEFAULT_TARGETS`. (#2370)
+
+### Changed
+
+- **`/release` Phase 1.3 resolves PR numbers to Issue numbers** — the trailing number of each squash-merge subject is resolved through `gh pr view` and printed as a `PR #N → Issue #M` table. A number that cannot be resolved to a PR is taken as an Issue number, and a missing closing keyword is reported as a resolution failure rather than falling back to the PR number. (#2368)
+- **CHANGELOG number references are canonical and outside the number-free scan surface** — `number-reference-check.sh` no longer scans `CHANGELOG.md` / `CHANGELOG.ja.md`, and the header note in both files documents the policy. (#2367)
 
 ## [0.13.0] - 2026-08-26
 
@@ -928,6 +953,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.13.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.1...v0.12.2

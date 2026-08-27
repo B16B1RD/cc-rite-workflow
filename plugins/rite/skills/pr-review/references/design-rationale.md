@@ -309,13 +309,13 @@ local work memory が SoT、Issue comment は backup。どちらかが silent fa
 
 `total_findings == 0` で `[review:fix-needed:0]` に補正しない理由。
 
-iterate は sentinel だけで routing する。fix は対象 0 件で完了し、次 cycle も同じ状態のまま `max_review_cycles` まで空転する。降格分の可視化は 5.4 の実測なし指摘 section と 6.1.d の記録コメント。
+iterate は sentinel だけで routing する。fix は対象 0 件で完了し、次 cycle も同じ状態のまま `max_review_cycles` まで空転する。降格分の可視化は 5.4 の実測なし指摘 section と 6.1.d の関連 Issue 記録コメント。
 
 ## 6.1d-always-eval
 
 6.1.d を `{post_comment_mode}` に依存させない理由。
 
-既定 `post_comment: false` でも非実測指摘を破棄しない記録契約。6.1.b / 6.1.c の完了で 6.1 を終わらせると、この第 3 経路が消える。ケース 2（永続化失敗 hard fail）だけは復旧優先で 6.1.d に進まない。
+既定 `post_comment: false` でも非実測指摘を破棄しない記録契約（D-01）。共有可能な永続チャネルは関連 Issue（cycle 中の update-in-place コメント + マージ時 follow-up Issue）であり、PR コメントではない。6.1.b / 6.1.c の完了で 6.1 を終わらせると、この第 3 経路が消える。ケース 2（永続化失敗 hard fail）だけは復旧優先で 6.1.d に進まない。
 
 ## 6.1c-machine-gate
 

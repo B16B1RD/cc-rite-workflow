@@ -712,7 +712,7 @@ marker_emit ITERATE_NB_REMAINING "${nb_count:-failed}" "status=$nb_status" "reco
 | `ITERATE_NB_REMAINING` | 完了通知への埋め方 |
 |---|---|
 | `status=ok` かつ値が `0` | `- 未処理 non-blocking: 0 件`。内訳・記録先行は出さない（余分な残件セクション禁止） |
-| `status=ok` かつ値が `1` 以上 | 見出しを残件ありに差し替え。`- 未処理 non-blocking: {nb_count} 件（review JSON {nb_record} / PR コメント「rite 非実測指摘の記録」）` と `- 内訳: {nb_by_severity}` |
+| `status=ok` かつ値が `1` 以上 | 見出しを残件ありに差し替え。`- 未処理 non-blocking: {nb_count} 件（review JSON {nb_record} / 関連 Issue コメント「rite 非実測指摘の記録」）` と `- 内訳: {nb_by_severity}` |
 | `status=failed`（値が `failed`） | `- 未処理 non-blocking: 取得失敗`。通知自体は出す |
 
 ### 正常終了 (`[review:mergeable]`)
@@ -744,7 +744,7 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 - PR: #{pr_number}
 - 終了理由: review:mergeable
 - ブランチ: {branch_name}
-- 未処理 non-blocking: {nb_count} 件（review JSON {nb_record} / PR コメント「rite 非実測指摘の記録」）
+- 未処理 non-blocking: {nb_count} 件（review JSON {nb_record} / 関連 Issue コメント「rite 非実測指摘の記録」）
 - 内訳: {nb_by_severity}
 
 次のステップ:

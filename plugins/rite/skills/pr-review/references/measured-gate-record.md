@@ -8,7 +8,7 @@
 ## なぜ helper を単一 invocation にしたか
 記録経路を「step 0: 既存コメント検索 → step 1: 本文 Write → step 2: 投稿」の 3 bash に分け、実行保証 gate（6.1.d step 3 と 8.0.3）の pass 条件を **step 0 が emit する lookup marker の存在**に置く構成は成立しない。
 
-それは「動作の完了」ではなく「動作の直前」を検証しており、**step 0 だけ実行して step 1-2 を skip しても両 gate が green で通過する**。既定設定 `pr_review.post_comment: false` では記録コメントが非実測指摘の唯一の共有可能な durable チャネルであるため、この穴は D-01（マージ後に人間が拾い直せる状態を保つ）の無音喪失に直結する。同構成で emit されうる `NONBLOCKING_RECORDED` / `NONBLOCKING_CLEAR_SKIPPED` のような marker も、gate が見ていなければ consumer ゼロで意味を持たない。
+それは「動作の完了」ではなく「動作の直前」を検証しており、**step 0 だけ実行して step 1-2 を skip しても両 gate が green で通過する**。既定設定 `pr_review.post_comment: false` では、cycle 中、関連 Issue 上の記録コメントが非実測指摘の唯一の**共有可能な** durable チャネル（ポインタ + 降格理由）であるため、この穴は cycle 中の共有記録の無音喪失に直結する。D-01（マージ後に人間が拾い直せる状態を保つ）の全文側は経路 (1) の永続 JSON と、マージ時の follow-up Issue 転記が担う。同構成で emit されうる `NONBLOCKING_RECORDED` / `NONBLOCKING_CLEAR_SKIPPED` のような marker も、gate が見ていなければ consumer ゼロで意味を持たない。
 
 本実装は lookup・skip 判定・投稿を `hooks/review-nonblocking-record.sh` の **1 プロセス**に閉じ、terminal sentinel を EXIT trap から emit する。これにより:
 
@@ -67,7 +67,7 @@ gate を足すとき、先行 gate の pass 行が「proceed to ステップ 8.1
 
 **8.0.3 が守る範囲は「ステップ 6 が本 cycle で実行された」ことを前提とする**: 鮮度判定の参照値 `REVIEW_CYCLE_ID` は 6.1.a step 0 で emit される — つまり 8.0.3 が守る 6.1.d と同じ ステップ 6 の内側にある。ステップ 6 を丸ごと skip した cycle では、会話に残る（前 cycle の `REVIEW_CYCLE_ID`, 前 cycle の sentinel）の組が互いに整合するため 8.0.3 は pass する。8.0.2 の anchor である `candidate_count` が ステップ 7.1 で毎 cycle 再計算されるのとはこの点で非対称であり、8.0.3 単独では「6.1.d 単独の skip」しか catch できない。「ステップ 6 全体の skip」は **ステップ 8.0.4** が塞ぐ — 同 gate の anchor はステップ 6 の外側（5.3.0.M step 2）で毎 cycle 再生成されるため自己整合が成立せず、差し戻し先が 6.1.a **step 0** であることにより 8.0.3 の anchor と marker も再生成される。
 
-**8.0.3 の設置根拠**: 6.1.d step 3 の integrity check は 6.1.d サブステップ**内部**にあるため、6.1.d を丸ごと skip すると gate 自身も skip される。その failure mode を 8.0.3 が result-emit boundary の**外側**で catch する（ステップ 7.7 ⇄ 8.0.2 の二層構成と同型）。既定設定 `post_comment: false` では 6.1.d のコメントが非実測指摘の唯一の共有可能な durable 記録（`.rite/review-results/` は gitignore 対象）であり、skip = D-01「マージ後に人間が拾い直せる」の完全な喪失になる。
+**8.0.3 の設置根拠**: 6.1.d step 3 の integrity check は 6.1.d サブステップ**内部**にあるため、6.1.d を丸ごと skip すると gate 自身も skip される。その failure mode を 8.0.3 が result-emit boundary の**外側**で catch する（ステップ 7.7 ⇄ 8.0.2 の二層構成と同型）。既定設定 `post_comment: false` では、cycle 中、6.1.d の関連 Issue 記録コメントが非実測指摘の唯一の**共有可能な** durable 記録（ポインタ + 降格理由。`.rite/review-results/` は gitignore 対象）であり、skip = cycle 中の共有チャネル喪失になる。D-01 の全文側（マージ後の拾い直し）は経路 (1) の永続 JSON とマージ時 follow-up Issue 転記が担うため、6.1.d skip だけではマージ後の完全喪失にはならない。
 
 ステップ 7.7（procedure 内部）⇄ ステップ 8.0.2（全体 skip）と同じ dual placement。**両者は同一の述語**（terminal sentinel の存在 ∧ `iteration_id` が本 cycle と一致）を異なる位置で評価する。片側だけ弱い述語にすると、その位置で「動作前 marker を見る」欠陥が再発する。述語には比較対象の**選択規則**（複数ある `REVIEW_CYCLE_ID` のうち epoch 最大を採る）まで含める — 選択規則が片側にしか無ければ「同一の述語」は成立しない。
 
@@ -80,7 +80,7 @@ sentinel の grep は **LLM が会話を読む**ことを前提にしている�
 
 1. **消す / 残すの境界は「原因」で引く（exit code ではない）** — 差し戻せば収束するもの（caller 契約違反）は残し、差し戻しても同 cycle 内で収束しないもの（gh / network / rate-limit / IO）は消す。
    - **残す**: 引数 gate 群（placeholder residue 5 種 / `content_file_missing`、trap 設置**前**の `exit 1`）と本文検査 4 段（`body_file_empty` / `body_marker_missing` / `body_sentinel_missing` / `count_body_mismatch`、trap 設置**後**の `retain_pending_marker=1`）。いずれも caller (LLM) が本文 / `--count` を作り直せば 1 iteration で収束する。
-   - **消す**: `patch_failed` / `create_failed` / lookup degraded / `body_check_unavailable`（本文述語の評価自体が失敗した環境起因。発生位置は本文検査と同じだが、本文を作り直しても解消しないため「残す」側ではない）、signal 中断（`signal_aborted`）、および正常終了（`created` / `updated` / `skipped`）。8.0.3 へ伝えるのは「完走した」ことだけで、成否は terminal sentinel の `outcome=` が担う。これにより非ブロッキング契約（AC-3）を gate 側へ持ち込まない。
+   - **消す**: `patch_failed` / `create_failed` / lookup degraded / `body_check_unavailable`（本文述語の評価自体が失敗した環境起因。発生位置は本文検査と同じだが、本文を作り直しても解消しないため「残す」側ではない）、signal 中断（`signal_aborted`）、**第 3 群 `related_issue_unresolved`（trap 設置後の exit 1 で表面化するが pending marker は残さない — 同 cycle 内で PR body / branch を直せないため差し戻しても収束しない）**、および正常終了（`created` / `updated` / `skipped`）。8.0.3 へ伝えるのは「完走した」ことだけで、成否は terminal sentinel の `outcome=` が担う。これにより非ブロッキング契約（AC-3）を gate 側へ持ち込まない。
 
    境界を **exit code**（trap 設置の前後）で引いてはならない。本文検査 4 段は trap 設置**後**に検出されるため、exit code で線を引くと「caller 起因で決定論的に再現する」と定義した契約違反が gh outage と同じ扱いになり、機械強制から外れる。marker 保持は `overall_assessment` を変えず「result pattern を emit してよいか」だけを止めるため、引数 gate 群が既に行っている挙動と構造的に同一である。この分離は AC-3 の改訂で仕様側に明文化されており、AC-3 が保証するのは判定値の不変であって emit 可否ではない — 本 marker 保持は AC-3 の carve-out に該当する経路そのものであり、例外的な逸脱ではない。carve-out の canonical 定義は [common-error-handling.md#non-blocking-contract-canonical-定義](../../../references/common-error-handling.md#non-blocking-contract-canonical-定義) の「判定値と emit 可否の分離」行。
 2. **gate 側で marker を削除しない** — 削除すると 6.1.d を実行せず再評価だけで gate を通せてしまい、機械強制の意味が消える。静的 pin はこの不在（`rm -f "$pending_marker"` が 8.0.3 区間に 0 本）も固定する。
@@ -125,33 +125,33 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 <a id="durable-id"></a>
 ## PATCH 先の同定を本文照合から durable な comment id へ移した理由
 
-`hooks/review-nonblocking-record.sh` の lookup 述語は、 の cycle 1〜5 で 4 度強化された（author 条件 → sentinel の位置非依存 `contains` → 本文全体の `endswith` → 最終非空行の等値）。そのたびに新しい抜け道が見つかり、最後まで消えなかったのが **「記録コメントの raw markdown を copy-paste して作られた、同一 author の人間コメント」** である。機械専用 sentinel は rendered view に現れない HTML コメントだが、Edit view / `gh api` / `gh pr view --comments` から raw ごと複製できるため、「人間が書き写す経路が存在しない」とは言えない。この場合 `-X PATCH` が人間の本文を丸ごと上書きする。
+`hooks/review-nonblocking-record.sh` の lookup 述語は導入時のレビュー cycle 1〜5 で 4 度強化された（author 条件 → sentinel の位置非依存 `contains` → 本文全体の `endswith` → 最終非空行の等値）。そのたびに新しい抜け道が見つかり、最後まで消えなかったのが **「記録コメントの raw markdown を copy-paste して作られた、同一 author の人間コメント」** である。機械専用 sentinel は rendered view に現れない HTML コメントだが、Edit view / `gh api` / `gh issue view --comments` から raw ごと複製できるため、「人間が書き写す経路が存在しない」とは言えない。この場合 `-X PATCH` が人間の本文を丸ごと上書きする。
 
 **本文の文字列で「自分が投稿したもの」を同定する限り、この残余は原理的に消えない。** 述語をさらに厳しくする方向（5 回目の強化）は採らず、同定手段そのものを本文の外へ移した。
 
-**なぜ PR body か**（Open Question の (a)）:
+**なぜ関連 Issue body か**（Open Question の (a)）:
 
 - **記録コメント本文には置けない** — 本文に置いた id は raw の copy-paste で marker ごと複製され、本文照合と同じ誤認経路が再生する。同定子は「複製経路から構造的に隔離された場所」にある必要がある。
-- **marker は行全体を占める形で書き、read/write の両式が `^`/`$` アンカーを要求する** — 行内の任意位置にマッチさせると、PR 本文の散文中に同形の文字列があるとき（この機構を説明する PR 説明はまさにその形になる）抽出が偽の id を拾って毎 cycle `id_malformed` を出し、除去がその一節を PR 説明から無音で消す。除去は `s///` ではなく行の `d` にして、marker 行の跡に空行が積もるのも同時に断つ。**ただしアンカーの内側に `[[:space:]]*` を対称に置く** — GitHub の web UI で PR 説明を編集すると本文が CRLF で返り、人間が字下げや末尾空白を混ぜることもある。素の `^`/`$` だとその形で抽出も除去も同時に外れ、抽出結果の空を「marker 不在」と区別できないまま無音で fallback へ戻り、除去も外れて marker 行が cycle ごとに積む（helper がコメント本文側で行末 CR を正規化しているのと同じ規律を PR body 側にも適用する）。
-- **「marker 行が無い」と「marker 行はあるが述語を満たさない」を分ける** — 抽出が空を返す原因はこの 2 通りで、後者を前者に畳むと PR body 側の破損が無音になる（上のアンカーの目的そのものを裏側から壊す）。緩い probe で切り分け、破損側は既存 reason の `id_malformed` で loud に落とす。**probe と除去式は同一の正規表現から導出する** — 別々の literal として並べると受理集合の関係が編集で崩れ、「破損と判定したのに除去できない」（＝壊れた行が PR body に恒久残留し、hint の「張り直します」が偽になる）状態が生まれる。受理集合は **抽出 ⊆ 除去 = 破損検出** に固定する: 読めた marker は必ず消せ、読めないが行全体が marker の形をしているものは破損として loud に落としたうえで同時に消える。行全体を要求するのは、散文の途中や行末に同形の文字列が現れても破損と誤検出せず、その一節を無音で消しもしないため。
+- **marker は行全体を占める形で書き、read/write の両式が `^`/`$` アンカーを要求する** — 行内の任意位置にマッチさせると、関連 Issue 本文の散文中に同形の文字列があるとき（この機構を説明する Issue 本文はまさにその形になる）抽出が偽の id を拾って毎 cycle `id_malformed` を出し、除去がその一節を Issue 本文から無音で消す。除去は `s///` ではなく行の `d` にして、marker 行の跡に空行が積もるのも同時に断つ。**ただしアンカーの内側に `[[:space:]]*` を対称に置く** — GitHub の web UI で Issue 本文を編集すると本文が CRLF で返り、人間が字下げや末尾空白を混ぜることもある。素の `^`/`$` だとその形で抽出も除去も同時に外れ、抽出結果の空を「marker 不在」と区別できないまま無音で fallback へ戻り、除去も外れて marker 行が cycle ごとに積む（helper がコメント本文側で行末 CR を正規化しているのと同じ規律を関連 Issue body 側にも適用する）。
+- **「marker 行が無い」と「marker 行はあるが述語を満たさない」を分ける** — 抽出が空を返す原因はこの 2 通りで、後者を前者に畳むと関連 Issue body 側の破損が無音になる（上のアンカーの目的そのものを裏側から壊す）。緩い probe で切り分け、破損側は既存 reason の `id_malformed` で loud に落とす。**probe と除去式は同一の正規表現から導出する** — 別々の literal として並べると受理集合の関係が編集で崩れ、「破損と判定したのに除去できない」（＝壊れた行が関連 Issue body に恒久残留し、hint の「張り直します」が偽になる）状態が生まれる。受理集合は **抽出 ⊆ 除去 = 破損検出** に固定する: 読めた marker は必ず消せ、読めないが行全体が marker の形をしているものは破損として loud に落としたうえで同時に消える。行全体を要求するのは、散文の途中や行末に同形の文字列が現れても破損と誤検出せず、その一節を無音で消しもしないため。
 - **真偽判定のパイプ終端に早期 exit する consumer を置かない** — `grep -q` は最初の一致で exit するので上流の `sed` が SIGPIPE を受け、グローバルの `set -o pipefail` がパイプライン rc を 141 にする。すると「一致があった」のに else 側へ落ちて、上で消したはずの無音の破損が復活する。入力が小さいと `sed` が先に書き終わるため発火せず、出力が stdio バッファ境界を超えた地点で挙動が反転する。出力を最後まで読む形（コマンド置換の結果が非空かを見る）なら SIGPIPE 経路自体が存在しない。
 - **`.rite/` 配下には置けない** — gitignore かつ machine-local のため、別マシン / CI から回した cycle では読めず、毎回 fallback に縮退する。
 - **PR label も採らない** — repo 全体に label が増える副作用があり、id ごとに新しい label を作る設計は repo を汚す。
-- PR body は PR に紐づく永続領域で、rite 内で書き換える経路は `pr-create` の PR 作成時と、本 helper の id 永続化（`_persist_comment_id`、hooks 側）の 2 つだけ。人間が消せば fallback へ倒れるだけで、現状より悪くならない — ただし**別の id に書き換えられた場合は「消す」とは帰結が違う**（下の「対象が記録コメントであることまで検証する」を参照）。
+- 関連 Issue body は Issue に紐づく永続領域で、rite 内の書き換え経路は本 helper の id 永続化（`_persist_comment_id`、hooks 側）に限らず、pr-review の Decision Log 追記・親 Issue チェックリスト・`issue-body-safe-update.sh` 経由・`/rite:issue-edit` など複数ある。いずれも read-modify-write の full-body 書き戻しで marker 行は保存され、人間が消せば fallback へ倒れるだけで、現状より悪くならない — ただし**別の id に書き換えられた場合は「消す」とは帰結が違う**（下の「対象が記録コメントであることまで検証する」を参照）。
 
 **2 段解決の順序と帰結**:
 
 | 段 | 条件 | 帰結 |
 |---|---|---|
-| 1 | PR body の id が指すコメントが実在し、**author が自分 ∧ 所属 PR が一致 ∧ 記録コメントである** | それを canonical とする |
-| 1 | 上記以外のすべて（id 不在 / 破損 / PR body 読取失敗 / 取得失敗 / 応答形状の drift / 404 / author 不一致 / 所属 PR 不一致 / 記録コメントでない） | **fallback** へ倒す |
+| 1 | 関連 Issue body の id が指すコメントが実在し、**author が自分 ∧ 所属 Issue が一致 ∧ 記録コメントである** | それを canonical とする |
+| 1 | 上記以外のすべて（id 不在 / 破損 / 関連 Issue body 読取失敗 / 取得失敗 / 応答形状の drift / 404 / author 不一致 / 所属 Issue 不一致 / 記録コメントでない） | **fallback** へ倒す |
 | 2 | 段 1 で確定しなかった場合 | 現行 3 条件（author ∧ 1 行目 marker 前方一致 ∧ 最終非空行 sentinel）で探す |
 
 なお `gh api user` が失敗した cycle は自 login が無く段 1・段 2 の author 条件をどちらも評価できないため、**段 1 自体が呼ばれず `NONBLOCKING_ID_UNRESOLVED` の reason を 1 つも出さないまま**両段が同時に外れて `degraded=1` になる。「id 側が外れた」と「reason marker が出る」は同値ではない。
 
-**author だけでなく所属 PR も検証する**。`repos/{o}/{r}/issues/comments/{id}` は repo スコープで issue 非依存のため、author 一致だけでは同一 author の**別 PR / 別 Issue** のコメントを PATCH 先にできてしまう。置き換えられた本文照合は `issues/{PR}/comments` を列挙するため PR スコープが構造的に保証されていた — read 経路を差し替えるとき、旧経路が明示していなかった不変条件（スコープ）が落ちる典型例である。PR body は書き込み権限を持たない PR 作成者でも編集できるので、これは author 検証だけでは塞げない。
+**author だけでなく所属 Issue も検証する**。`repos/{o}/{r}/issues/comments/{id}` は repo スコープで issue 非依存のため、author 一致だけでは同一 author の**別 PR / 別 Issue** のコメントを PATCH 先にできてしまう。置き換えられた本文照合は `issues/{Issue}/comments` を列挙するため Issue スコープが構造的に保証されていた — read 経路を差し替えるとき、旧経路が明示していなかった不変条件（スコープ）が落ちる典型例である。関連 Issue body は書き込み権限があれば編集できるので、これは author 検証だけでは塞げない。
 
-**さらに「対象が記録コメントであること」まで検証する**。所属 PR まで縛っても、**同一 PR の別種のコメント**（6.1.b が投稿するレビュー結果コメント等）は素通りする。PR body の抽出は `tail -1` を採るので、marker 行を 1 本足すだけで PATCH 先を任意に指し替えられ、そのコメント本文が記録コメント本文で丸ごと上書き破壊される。fallback 側が 3 述語を持つのは正にこの破壊を防ぐためで（[#startswith](#startswith)）、置き換えた id 経路だけがその不変条件を落とすことは許されない。**これは同定手段を本文照合へ戻すものではない** — id で 1 件に絞り込んだ**後**の必要条件として本文を見るだけなので、記録コメントの raw markdown を複製した人間コメントが述語を満たしても id が指す先は 1 件のままで誤認は起きない（AC-1 は保たれる）。旧経路が満たしていた述語を列挙してから新経路で 1 つずつ対応を確認する、が read 経路差し替えの正しい手順であり、「スコープを補えば済んだ」と早期に打ち切ると本件のように 1 件ずつ後から出る。
+**さらに「対象が記録コメントであること」まで検証する**。所属 Issue まで縛っても、**同一 Issue の別種のコメント**（作業メモリ replica 等）は素通りする。関連 Issue body の抽出は `tail -1` を採るので、marker 行を 1 本足すだけで PATCH 先を任意に指し替えられ、そのコメント本文が記録コメント本文で丸ごと上書き破壊される。fallback 側が 3 述語を持つのは正にこの破壊を防ぐためで（[#startswith](#startswith)）、置き換えた id 経路だけがその不変条件を落とすことは許されない。**これは同定手段を本文照合へ戻すものではない** — id で 1 件に絞り込んだ**後**の必要条件として本文を見るだけなので、記録コメントの raw markdown を複製した人間コメントが述語を満たしても id が指す先は 1 件のままで誤認は起きない（AC-1 は保たれる）。旧経路が満たしていた述語を列挙してから新経路で 1 つずつ対応を確認する、が read 経路差し替えの正しい手順であり、「スコープを補えば済んだ」と早期に打ち切ると本件のように 1 件ずつ後から出る。
 
 検証は同じ 1 回の GET で `[login, issue_url, 記録コメント述語の真偽] | @tsv` を取り、3 つすべての AND 条件にする（追加 API 呼び出しなし）。述語は shell 側で再実装せず read/write 共有の jq 定義（`$LAST_CONTENT_LINE_JQ`）をそのまま使う — 「2 言語で並行実装してはならない」の規律。`--arg` が要るため `gh --jq` ではなく実 jq へ繋ぐ（グローバルの `set -o pipefail` により jq 段の失敗も rc に伝播する）。
 
@@ -159,23 +159,23 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 
 **`degraded=1` の意味を「PATCH 先を特定できなかった」に狭めた**。本文照合の lookup が失敗しても durable id で PATCH 先が確定していれば update-in-place は成立するため、そこを degraded に含めると「既存コメントを特定できない」という事実と異なる案内が出るうえ、本 Issue が消そうとしている「degraded 縮退 → 重複記録コメント」を自分で再導入することになる。自 login の取得失敗だけは id 経路の author 検証も不能にするため従来どおり `degraded=1`。
 
-**本文照合の走査は id 解決の成否に依らず常に実行する**。id で PATCH 先が確定した cycle でも、孤児 / 重複（`NONBLOCKING_LEGACY_ORPHAN` / `NONBLOCKING_DUPLICATE_RECORD`）の観測を落とすと PR 上の残骸が silent になる。id 経路が節約するのは「本文で同定すること」であって「PR の状態を見ること」ではない。
+**本文照合の走査は id 解決の成否に依らず常に実行する**。id で PATCH 先が確定した cycle でも、孤児 / 重複（`NONBLOCKING_LEGACY_ORPHAN` / `NONBLOCKING_DUPLICATE_RECORD`）の観測を落とすと関連 Issue 上の残骸が silent になる。id 経路が節約するのは「本文で同定すること」であって「関連 Issue の状態を見ること」ではない。
 
-**永続化のタイミングと失敗時の扱い**: 新規作成した cycle は `gh pr comment` が返す URL（`...#issuecomment-{id}`）から id を取り、PR body へ書く。fallback で canonical を見つけた cycle も書く（durable id を持たない既存 PR の migration 経路）。id 経路で解決できた cycle は PR body に同じ値が既にあるため書き直さない。永続化に失敗しても記録は成功扱いのままで、**pending marker も残さない** — 環境 / IO 起因であり caller が本文を作り直しても解消しないため、`body_check_unavailable` と同じ削除バケットに属する（retain 側へ落とすと 8.0.3 が毎 cycle 差し戻し、result pattern を永久に emit できなくなる）。
+**永続化のタイミングと失敗時の扱い**: 新規作成した cycle は `gh issue comment` が返す URL（`...#issuecomment-{id}`）から id を取り、関連 Issue body へ書く。fallback で canonical を見つけた cycle も書く（durable id を持たない既存関連 Issue の migration 経路）。id 経路で解決できた cycle は関連 Issue body に同じ値が既にあるため書き直さない。永続化に失敗しても記録は成功扱いのままで、**pending marker も残さない** — 環境 / IO 起因であり caller が本文を作り直しても解消しないため、`body_check_unavailable` と同じ削除バケットに属する（retain 側へ落とすと 8.0.3 が毎 cycle 差し戻し、result pattern を永久に emit できなくなる）。
 
-**id 不在では marker を出さない**。永続化前（初回 cycle / 既存 PR）は fallback が正しい経路であり、毎 cycle WARNING を出すと本当の異常（`id_author_mismatch` 等）が埋もれる。fallback で同定できた時点で id が書かれるため、この状態は 1 cycle で解消する。
+**id 不在では marker を出さない**。永続化前（初回 cycle / 既存関連 Issue）は fallback が正しい経路であり、毎 cycle WARNING を出すと本当の異常（`id_author_mismatch` 等）が埋もれる。fallback で同定できた時点で id が書かれるため、この状態は 1 cycle で解消する。
 
 <a id="startswith"></a>
 ## 記録コメント述語の設計理由（fallback の同定手段 / id 経路の必要条件）
 
 `hooks/review-nonblocking-record.sh` は本節を rationale の実体として参照する（helper 側は契約の宣言のみを持つ）。
 
-**述語は「自分が投稿した」∧「1 行目 marker への前方一致（`startswith`）」∧「**最終非空行が**機械専用 sentinel `<!-- rite:nbr:v1 -->` **と等しい**」の連言**で、**消費者は 3 箇所ある**: fallback の lookup（同定手段そのもの）/ durable id 経路の対象検証（[#durable-id](#durable-id)。author 条件を除く 2 述語を、id で 1 件に絞り込んだ後の必要条件として使う）/ write 側の投稿前検査（同じ「最終非空行の等値」）。read/write は同一述語（CR を落とし、空白のみの行を除いた最終行）。**弱めてはならない** — id が使えない環境（PR body から読めない / 別 identity の過去投稿 / 永続化前）では唯一の同定手段であり、かつ id が使える環境でも「PR body の marker を書き換えて別コメントを PATCH 先に指し替える」経路を塞ぐ最後の防壁だからである。**片方の消費者のために緩めると、もう片方も同時に緩む。**
+**述語は「自分が投稿した」∧「1 行目 marker への前方一致（`startswith`）」∧「**最終非空行が**機械専用 sentinel `<!-- rite:nbr:v1 -->` **と等しい**」の連言**で、**消費者は 3 箇所ある**: fallback の lookup（同定手段そのもの）/ durable id 経路の対象検証（[#durable-id](#durable-id)。author 条件を除く 2 述語を、id で 1 件に絞り込んだ後の必要条件として使う）/ write 側の投稿前検査（同じ「最終非空行の等値」）。read/write は同一述語（CR を落とし、空白のみの行を除いた最終行）。**弱めてはならない** — id が使えない環境（関連 Issue body から読めない / 別 identity の過去投稿 / 永続化前）では唯一の同定手段であり、かつ id が使える環境でも「関連 Issue body の marker を書き換えて別コメントを PATCH 先に指し替える」経路を塞ぐ最後の防壁だからである。**片方の消費者のために緩めると、もう片方も同時に緩む。**
 
 - **author 条件が必須な理由**: 前方一致だけでは、marker で始まるコメントを第三者が 1 件投稿するだけで `last` がそれを掴み、PATCH 先が奪われる。書込権限があれば他人のコメントを丸ごと上書き破壊し、権限不足なら 403 で `patch_failed` に落ちて以後の cycle も同じ id を掴み続け、記録が恒久的に失われる。
 - **`contains($MARKER)` を使わない理由**: 人間可視の marker 文字列を本文全体で探すと、marker を引用しただけの別コメント（6.1.b が投稿するレビュー結果コメントの finding 本文、人間の Quote reply）が `last` で選ばれる。
 - **機械専用 sentinel が必須な理由**: author + `startswith` の 2 条件でも、**同一 author が書いた、引用接頭辞を持たない、marker 前方一致の人間コメント**は除外できない。例えば運用者が記録を追跡するために「## 📜 rite 非実測指摘の記録 の対応状況」という見出しでコメントを書くと、次 cycle の 6.1.d がその本文を記録コメントで丸ごと上書きする。「引用返信は先頭に `> ` が付くため構造的に除外される」は GitHub の **Quote reply 経路しか覆っていない**。
-- **sentinel は位置まで固定する（最終非空行の等値）**: `<!-- rite:nbr:v1 -->` は HTML コメントなので rendered view には現れないが、**raw markdown の copy-paste では同伴する**（Edit view / `gh api` / `gh pr view --comments` 経由）。したがって「人間が書き写す経路が存在しない」とは言えず、位置非依存の `contains` では、人間が記録の raw を一部貼り込んだメモを拾ってしまい上記の破壊が残る。**最終非空行が sentinel と等しいこと**を条件にすれば、本文中に引用として現れた sentinel も、末尾に `> ` 付きで引用された sentinel も構造的に除外される（本文全体への `endswith` は行頭の `> ` を吸収するため不十分）。write 側の本文検査も**完全に同じ述語**（CR を落とし、空白のみの行を除いた最終行の等値）にして read == write を保つ — 片側だけ緩いと人間のコメントを掴んで破壊し、片側だけ厳しいと次 cycle の lookup が自分の投稿を miss して増殖する。
+- **sentinel は位置まで固定する（最終非空行の等値）**: `<!-- rite:nbr:v1 -->` は HTML コメントなので rendered view には現れないが、**raw markdown の copy-paste では同伴する**（Edit view / `gh api` / `gh issue view --comments` 経由）。したがって「人間が書き写す経路が存在しない」とは言えず、位置非依存の `contains` では、人間が記録の raw を一部貼り込んだメモを拾ってしまい上記の破壊が残る。**最終非空行が sentinel と等しいこと**を条件にすれば、本文中に引用として現れた sentinel も、末尾に `> ` 付きで引用された sentinel も構造的に除外される（本文全体への `endswith` は行頭の `> ` を吸収するため不十分）。write 側の本文検査も**完全に同じ述語**（CR を落とし、空白のみの行を除いた最終行の等値）にして read == write を保つ — 片側だけ緩いと人間のコメントを掴んで破壊し、片側だけ厳しいと次 cycle の lookup が自分の投稿を miss して増殖する。
 - **述語変更は migration 問題を伴う**: 条件を 1 つ足した瞬間、その条件を持たない既存レコードは検出されなくなる。lookup で「author ∧ marker 前方一致は満たすが最終非空行 sentinel に落ちた件数」を数え、0 件でなければ WARNING + `[CONTEXT] NONBLOCKING_LEGACY_ORPHAN=1` を emit する。あわせて sentinel を持つ自分の記録コメントが 2 件以上（過去の degraded 縮退が生んだ重複）なら `[CONTEXT] NONBLOCKING_DUPLICATE_RECORD=1` を emit する — 原因も復旧手順も違うため合算せず別 marker にする。これを silent にすると、sentinel 導入前に投稿された記録コメントが孤児として残ったことを観測する手段が無くなる（本 helper が他の全 degraded 経路で WARNING を出す規律から外れる）。
 - **前方一致でマッチ能力が損なわれない理由**: write 側（ステップ 6.1.d step 1）が「variant A / B のどちらも 1 行目に marker 見出しを置き、末尾に sentinel を置く」を契約として守るため。
 
@@ -187,10 +187,10 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 
 可視性は 2 経路で非対称であり、これは受容している:
 
-- **gh 失敗による degraded**: WARNING + `degraded=1` が出るため観測できる。`gh api user` の失敗はこの経路の主因で、durable id が正常に読める PR でも発火する（自 login が無いと段 1 の author 検証も評価できないため）。
-- **identity 変更による取りこぼし（durable id が使えない場合、すなわち初回 cycle / 永続化前の既存 PR / 人間が PR body から marker を消した場合に限る）**: lookup 自体は rc=0 で成功し author 条件が空を返すだけなので、`degraded=0` のまま WARNING も出ない。**出力は正当な初回投稿と完全に同一**で、孤児コメント 1 件が残ることを観測する手段が無い。fallback だけを見ている限り identity の変更を helper が知る術が無いため（「自分の過去投稿」の定義自体が identity に依存する）、観測不能な縮退として受け入れる。
+- **gh 失敗による degraded**: WARNING + `degraded=1` が出るため観測できる。`gh api user` の失敗はこの経路の主因で、durable id が正常に読める関連 Issue でも発火する（自 login が無いと段 1 の author 検証も評価できないため）。
+- **identity 変更による取りこぼし（durable id が使えない場合、すなわち初回 cycle / 永続化前の既存関連 Issue / 人間が関連 Issue body から marker を消した場合に限る）**: lookup 自体は rc=0 で成功し author 条件が空を返すだけなので、`degraded=0` のまま WARNING も出ない。**出力は正当な初回投稿と完全に同一**で、孤児コメント 1 件が残ることを観測する手段が無い。fallback だけを見ている限り identity の変更を helper が知る術が無いため（「自分の過去投稿」の定義自体が identity に依存する）、観測不能な縮退として受け入れる。
 
-**durable id が永続化済みの PR では、この取りこぼしが helper の stderr には現れる** — 段 1 が id の指すコメントの author を突合するため、identity が変わっていれば `NONBLOCKING_ID_UNRESOLVED; reason=id_author_mismatch` を WARNING と対で emit する（[#durable-id](#durable-id) 参照）。上記の「知る術が無い」は fallback 単独経路の性質であって、helper 全体の性質ではない。**ただし completion report には現れない** — `NONBLOCKING_ID_UNRESOLVED` は転記条件に含まれず、その除外根拠に挙がっている `NONBLOCKING_DUPLICATE_RECORD` は lookup 述語が自 author 限定のため旧 identity の孤児を構造的に数えられない。観測点が stderr まで前進しただけで、人間の目に届く経路は依然として無い。
+**durable id が永続化済みの関連 Issue では、この取りこぼしが helper の stderr には現れる** — 段 1 が id の指すコメントの author を突合するため、identity が変わっていれば `NONBLOCKING_ID_UNRESOLVED; reason=id_author_mismatch` を WARNING と対で emit する（[#durable-id](#durable-id) 参照）。上記の「知る術が無い」は fallback 単独経路の性質であって、helper 全体の性質ではない。**ただし completion report には現れない** — `NONBLOCKING_ID_UNRESOLVED` は転記条件に含まれず、その除外根拠に挙がっている `NONBLOCKING_DUPLICATE_RECORD` は lookup 述語が自 author 限定のため旧 identity の孤児を構造的に数えられない。観測点が stderr まで前進しただけで、人間の目に届く経路は依然として無い。
 
 ユーザー向け文書が「update-in-place の 1 件」と書くのはこれら縮退を除いた通常時の挙動。
 
@@ -198,11 +198,11 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 ## 記録コメントをポインタ + 降格理由に絞った理由
 6.1.d の記録コメントは `pr_review.post_comment` に依存せず投稿される（D-01 の担保として意図的にそう設計されている）。全文を載せると、既定構成 `post_comment: false` — ユーザーが「レビュー内容を GitHub に出さない」と読む設定 — のままで、security reviewer の非実測 CRITICAL の詳細（脆弱性の再現手順等）が修正前に public PR へ自動公開される。
 
-D-01 が要求するのは「非実測指摘を破棄せず、マージ後に人間が拾い直せる」ことであって「詳細を公開 PR に載せる」ことではない。ポインタ（reviewer / severity / `file:line`）だけでも「どの reviewer がどのファイルの何行目に何 severity の指摘を残したか」は伝わり、全文は経路 (1) の永続 JSON から辿れる。よって記録コメントは**ポインタと降格理由（`demotion.reason` の判定文、class B 降格分のみ — 5.3.0.C 由来）に絞り**、既定構成 `post_comment: false` における全文の保存先を経路 (1) に一本化する。降格理由の掲載が本節の開示縮小と両立するのは、判定文が finding 本文の言い換えではなく降格の帰属を示す認定文であり、class B は「実行時シナリオを書けない」ことが定義のため脆弱性の再現手順が判定文に乗る経路が無いから（何がなぜ降格されたかを PR 上で監査する唯一の共有チャネル — 5.3.0.C AC-5）。
+D-01 が要求するのは「非実測指摘を破棄せず、マージ後に人間が拾い直せる」ことであって「詳細を公開 PR に載せる」ことではない。ポインタ（reviewer / severity / `file:line`）だけでも「どの reviewer がどのファイルの何行目に何 severity の指摘を残したか」は伝わり、**cycle 中の**全文は経路 (1) の永続 JSON から辿れる。マージ時に残存する非実測指摘の全文は `/rite:cleanup` が follow-up Issue 1 件へ転記する（public リポジトリでは公開される）。よって記録コメントは**ポインタと降格理由（`demotion.reason` の判定文、class B 降格分のみ — 5.3.0.C 由来）に絞り**、既定構成 `post_comment: false` における **cycle 中の**全文の保存先を経路 (1) に一本化する。修正前の public PR / 関連 Issue への再現手順掲載を避けるのが本節の開示縮小であり、マージ時の follow-up 全文転記はそのトレードオフとして別経路である。降格理由の掲載が本節の開示縮小と両立するのは、判定文が finding 本文の言い換えではなく降格の帰属を示す認定文であり、class B は「実行時シナリオを書けない」ことが定義のため脆弱性の再現手順が判定文に乗る経路が無いから（何がなぜ降格されたかを関連 Issue 上で監査する唯一の共有チャネル — 5.3.0.C AC-5）。
 
-**「唯一」は既定構成に限った性質である。** `post_comment: true` では経路 (3)（ステップ 5.4 統合レポートの `### 実測なし指摘 (non-blocking)` section）が 6 列のまま全文を保持し、ステップ 6.1.b がそれを PR コメントとして投稿する。したがって本節の開示縮小が効くのは既定構成に限られる。`post_comment: true` 経路にも同方針を広げるかは、経路 (3) のテンプレート（`references/integrated-report-templates.md`）の改訂を伴うため本 Issue の対象外。
+**「唯一」は既定構成かつ cycle 中に限った性質である。** `post_comment: true` では経路 (3)（ステップ 5.4 統合レポートの `### 実測なし指摘 (non-blocking)` section）が 6 列のまま全文を保持し、ステップ 6.1.b がそれを PR コメントとして投稿する。したがって本節の開示縮小が効くのは既定構成に限られる。`post_comment: true` 経路にも同方針を広げるかは、経路 (3) のテンプレート（`references/integrated-report-templates.md`）の改訂を伴うため本 Issue の対象外。
 
-**一本化には cleanup 側の保全が対になっている。** `/rite:cleanup` ステップ 6 は PR-specific state を merge 直後に削除するが、`non_blocking_findings[]` が非空の結果 JSON だけは削除せず `.rite/review-results/archive/` へ退避する。この退避が無いと、記録コメントが全文を持たなくなった結果「cleanup 完了時点で詳細がどこにも残らない」= D-01 が本変更**前より後退する**。判定に jq を要するため、jq 不在 / parse 失敗 / 判定不能はすべて退避側（安全側）に倒す — 消えたことに気付けない失敗を作らないため。
+**一本化には cleanup 側の保全が対になっている。** `/rite:cleanup` ステップ 6 は PR-specific state を merge 直後に削除するが、`non_blocking_findings[]` が非空の結果 JSON だけは削除せず `.rite/review-results/archive/` へ退避する。この退避はローカル保全であり、マージ時の共有経路は follow-up Issue の全文転記である。退避が無いと、follow-up 起票が失敗したときに「cleanup 完了時点で詳細がどこにも残らない」= D-01 が本変更**前より後退する**。判定に jq を要するため、jq 不在 / parse 失敗 / 判定不能はすべて退避側（安全側）に倒す — 消えたことに気付けない失敗を作らないため。
 
 派生する判断:
 

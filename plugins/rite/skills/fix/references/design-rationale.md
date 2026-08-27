@@ -131,10 +131,13 @@ symbol を壊す silent regression が頻発する。指摘ゼロを目指して
 が新規 finding を出し、fix ループが収束せず (サーキットブレーカー上限まで) reviewer の context を浪費する。
 修正前の影響範囲確認で予防できる。Doc-Heavy PR 以外でも同様。
 
-## nit-noted-reply-notes
+## nit-noted-no-reply-notes
 
-- **nit-noted 経路が commit を発生させない理由**: nit-noted は「修正不要の informational 指摘」のため code 変更 (Edit/Write) も commit も発生しない。git working tree への変更ゼロで `acknowledged` 状態のみ更新する受け流し経路。これにより合成 nit-only PR での 2 cycle 即収束・Issue 化 0 が成立する。
-- **acknowledged_nit_count tempfile の defense-in-depth truncate**: confidence-override tempfile と同型 (H-1 修正パターン)。前セッション異常終了で stale データが残った場合、truncate で clean state を保証する。
+- **nit-noted 経路が commit も PR reply も発生させない理由**: nit-noted は「修正不要の informational 指摘」のため code 変更 (Edit/Write) も commit も PR コメントも発生しない。`acknowledged_nit_count = {nit_noted_count}` で分類件数だけ積む。自律ループでは宛先の人間が不在で、認知返信は独り言になる。
+
+## human-origin-reply-gate
+
+login 比較は単一トークン運用で無効。rite 由来は本文 marker で判定する。判定不能は人間扱いに倒す（人間指摘の見過ごしは誤返信より高くつく）。
 
 ## retained-flag-emission
 
@@ -173,7 +176,7 @@ silent に行うと `[ -s "$commit_err" ]` guard が no-op 化し、/tmp が壊�
   - **hard fail-fast**: 即座に exit 1 で fix loop を kill する失敗 (引数 parse 失敗 / mktemp 失敗等)。`exit 1` だけでは Claude のフロー制御にならないため retained flag も併用する。
 - **local-wm-update hook の stderr 退避 + lock/non-lock 分岐の理由**: `2>/dev/null || true` は lock contention だけでなく permission denied / script 不在 / bash syntax error / 内部致命的エラーもすべて silent suppress する。lock 判定の exact phrase pattern (`file is locked|lock contention|resource busy`) は、`lock|contention|busy` の緩い pattern が permission denied / device busy 等まで silent suppress する欠陥を避けるため (canonical: common-error-handling.md#hook-lock-contention-classification-canonical)。mktemp 失敗時も silent skip に戻さず、`2>&1` + `head -5` の簡易 fallback で可視化する。
 - **WM_UPDATE_FAILED 網羅性 DoD 検証スクリプトの設計上の要点** (スクリプト本体は `hooks/scripts/fix-reason-coverage-check.sh`、呼び出しは SKILL.md ステップ 5.1):
-  - `grep` 側は `WM_UPDATE_FAILED=1; reason=` で prefix を絞り、`CONFIDENCE_OVERRIDE_READ_FAILED` / `REPLY_POST_FAILED` / `REPORT_POST_FAILED` / `ISSUE_CREATE_FAILED` の別 context flag を前方一致で自動除外する。
+  - `grep` 側は `WM_UPDATE_FAILED=1; reason=` で prefix を絞り、`CONFIDENCE_OVERRIDE_READ_FAILED` / `REPLY_POST_FAILED` / `ISSUE_CREATE_FAILED` の別 context flag を前方一致で自動除外する。
   - `awk` 側は `| reason | 発生 Phase | 発生条件 |` の table header 行を起点に `in_table=1` を開始し、非 `|` 行で戻すことで reason 表のみを対象とする。他テーブルや周辺段落を起点/終点トリガーにしないため、blockquote が `**` 強調に格上げされても in_table 範囲を壊さない。
   - `sed 's/\$.*//'` は表側 reason に shell 変数展開 suffix が含まれる場合に備えた defensive 正規化 (現状該当なし、将来の drift 誤検出防止のため残置)。
 - **error_count のリセット挙動**: `flow-state.sh set` は phase transition ごとに error_count を 0 にリセットし、`--preserve-error-count` 指定時のみ既存値を保持する。error_count は現在 production reader のない reserved/legacy schema slot で、リセットにより将来の再導入時に stale count を持ち越さない。

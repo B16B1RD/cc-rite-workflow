@@ -12,6 +12,7 @@ Referenced from:
 - `skills/pr-review/SKILL.md` ステップ 7.4.2
 - `skills/pr-create/SKILL.md` Phase 2.5.5
 - `skills/cleanup/SKILL.md` ステップ 3 (未完了タスクのチェック → 残作業 Issue 化)
+- `hooks/scripts/cleanup-follow-up-issue.sh` (cleanup ステップ 6.0 残存非実測指摘の follow-up 起票)
 - `skills/issue-create/SKILL.md` ステップ 4.3 (Single Issue creation)
 - `scripts/decompose-issues.sh` (XL decomposition の decompose path — 親 Issue 作成 + Sub-Issue 一括作成を内包。`skills/issue-create/SKILL.md` の「5.3 + 5.4 + 5.5 Step 1」から単一呼び出しで委譲される)
 - `skills/pr-review/references/finding-cycling.md` (Quality Signal 1/3/4 由来の split → `fingerprint_split` / `quality_signal_3_split` / `quality_signal_4_split`)

@@ -21,9 +21,34 @@ Fixed/Changed/Removed エントリは修正対象の旧挙動を述べてよい�
 なので、名前付きのキー・機能に紐づかないバージョン跨ぎの「従来は / 以前は」表現は
 避けます。アップグレード利用者向けの breaking change 告知・移行ガイドはそのまま
 保持します。
+
+番号参照方針: エントリは GitHub Issue 番号を括弧付きポインタ（例: `(#NNNN)`）
+として書いてよい。CHANGELOG.md / CHANGELOG.ja.md はリポジトリ文書であり、
+marketplace 配布のプラグインファイルではないため、`number-reference-check.sh`
+が守る number-free 面の対象外とする。`/release` スキルのテンプレートはこの
+ポインタを書く。番号を除去しないこと。
 -->
 
 ## [Unreleased]
+
+## [0.13.1] - 2026-08-27
+
+### 追加
+
+- **非実測レビュー指摘の記録先を PR コメントから関連 Issue コメントへ移す** — `review-nonblocking-record.sh` は cycle 中の記録を関連 Issue のコメントとして投稿する。関連 Issue は closing keyword または `issue-{N}` ブランチ名で解決し、いずれでも解決できないときは `related_issue_unresolved` で fail-loud に停止する。update-in-place 用の comment id は関連 Issue の body に永続化し、`severity-levels.md` / `assessment-rules.md` も同じチャネルを記述する。記録契約 D-01 は維持し、投稿チャネルだけを変える。(#2377, #2379, #2386, #2388, #2396, #2398, #2402)
+- **マージ済み PR に残った非実測指摘から `/rite:cleanup` が `follow-up` Issue を起票する** — `cleanup-follow-up-issue.sh` が 1 PR につき 1 件を起票し、指摘が 0 件なら起票しない。再実行時は Issue body 内の機械 marker で冪等になる。起票した Issue は Projects に `Todo` で登録し、review JSON を `archive/` へ退避する前に起票する。(#2378)
+
+### 修正
+
+- **`/rite:fix` が `## レビュー指摘対応完了` 報告・`nit、認知済` 返信を PR へ投稿しなくなる** — PR thread への返信を人間由来の指摘に限定し、対応内容は fix コミット本文に記録する。`nit-noted` は表示と件数のみを出す。(#2376, #2381)
+- **cleanup follow-up の既存判定を body 先頭行に固定し recency を follow-up 側に限定する** — 既存 Issue の判定は先頭行の HTML コメント等値で行うため、body 2 行目に完全な marker があっても `created` になる。`{review_cleanup_check}` の recency 選択は follow-up 側にのみ適用し、state 削除側は presence 検査を維持する。(#2385, #2390, #2392, #2394)
+- **`/release` Phase 1.3 が空 body の PR を `gh` エラーと誤分類しなくなる** — 分岐を `gh pr view` の exit status 基準に再構成し、成功かつ body が空のケースは「closing keyword なし」として扱う。(#2372)
+- **`lint/SKILL.md` と `docs/SPEC.md` の number-free 走査面の記述を実装に合わせる** — `number-reference-check.sh` の `DEFAULT_TARGETS` から CHANGELOG が外れた後も、両ファイルが CHANGELOG を含む旧列挙のまま残っていた。(#2370)
+
+### 変更
+
+- **`/release` Phase 1.3 が PR 番号を Issue 番号に解決する** — squash merge の subject 末尾番号を `gh pr view` で解決し `PR #N → Issue #M` の対応表を出力する。PR として解決できない番号は Issue 番号として採用し、closing keyword が無い場合は PR 番号へ倒さず解決失敗として報告する。(#2368)
+- **CHANGELOG の番号参照を canonical にし number-free 走査面から外す** — `number-reference-check.sh` は `CHANGELOG.md` / `CHANGELOG.ja.md` を走査しなくなり、両ファイルの冒頭注記に方針を明記する。(#2367)
 
 ## [0.13.0] - 2026-08-26
 
@@ -925,6 +950,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.13.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.1...v0.12.2
