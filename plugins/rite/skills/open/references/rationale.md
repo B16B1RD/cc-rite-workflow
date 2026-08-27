@@ -130,3 +130,22 @@ Linux/WSL2 では恒久策として機能しない理由は
 
 本回避策（当該コマンドのみ `dangerouslyDisableSandbox: true`）はメインエージェントが直接実行する
 push にのみ適用でき、Task で spawn した reviewer subagent の Bash には渡せない。
+
+## plan-self-review
+
+ステップ 3.3.1 を 3.3 と 3.4 の間に置くのは、人間承認が方式選定は見られても検証網・文書同期・
+CI 配線の穴は見えないという実測（計画通過後の churn の大半が未設計に起因）に対し、実装より安い
+計画段階で潰すため。人間の役割は要判断ポイントだけに残す。
+
+単一 general-purpose agent + 同梱 prompt にするのは、pr-review のマルチ agent / blocking 判定を
+計画段階に持ち込まないため。指摘はすべて計画へ反映するか要判断ポイントへ昇格し、ループしない。
+
+発火を「S 以上で常時」にするのは、内容条件の判別自体が揺らぎ源になるため。XS はコスト対効果が
+合わないのでスキップし、ユーザー向け追加出力も出さない。
+
+Complexity 未確定は fail-loud で止める。`issue-complexity-lane.sh` はレーン欠落時に `full` へ
+倒すが、本ステップの安全側は「レビューを省略する」ことではない — 確定値なしに skip すると
+silent skip と同型になる。helper の `complexity=` が取れたときだけ分岐し、欠落は ERROR。
+
+agent 失敗 / 形式不正は WARNING + 未実施明記で 3.4 へ進む。計画レビューは承認の前処理であり、
+spawn 失敗で open 全体を止めると batch がストールする。推測補完は形式不正を成功に見せるため禁止。
