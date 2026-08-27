@@ -930,7 +930,7 @@ rite_rm() {
 }
 
 # レビュー結果 JSON は一律削除しない。**非実測指摘 (non_blocking_findings[]) を持つものは
-# 削除せず archive/ へ退避する** — ステップ 6.1.d の PR 記録コメントはポインタ (reviewer /
+# 削除せず archive/ へ退避する** — ステップ 6.1.d の関連 Issue 記録コメントはポインタ (reviewer /
 # severity / file:line) + 降格理由 (判定文) しか載せないため、無条件削除すると非実測 CRITICAL の詳細が
 # merge 直後に失われ、人間が拾い直せなくなる。
 # 判定 (jq rc の値域分岐 / 判定不能は退避側へ倒す) と退避 (mkdir・mv の分離、同名衝突の検出) は
