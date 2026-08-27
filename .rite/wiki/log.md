@@ -23,6 +23,7 @@
 * **Skip**: [20260827T020205Z-pr-2397.md](raw/reviews/20260827T020205Z-pr-2397.md) — detector-candidate: 記録契約同期後に non-target へ残る旧語彙は grep -F で 0 件まで掃ける
 * **lint:warning** — contradictions=0, stale=35, orphans=0, missing_concept=1, unregistered_raw=369, broken_refs=0
 * **lint:warning** — contradictions=0, stale=35, orphans=0, missing_concept=1, unregistered_raw=371, broken_refs=0
+* **Skip**: [20260827T062857Z-pr-2401.md](raw/reviews/20260827T062857Z-pr-2401.md) — 一時的な docs-only レビュー件数サマリのみ（blocking 0）。残存旧表記は Issue 本文の対象外宣言。新規経験則なし
 
 ## 2026-08-26
 * **lint:warning** — contradictions=0, stale=34, orphans=0, missing_concept=1, unregistered_raw=356, broken_refs=0
