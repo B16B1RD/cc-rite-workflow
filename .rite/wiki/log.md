@@ -1,4 +1,5 @@
 ## 2026-08-28
+* **Skip**: [20260827T173015Z-pr-2420.md](raw/reviews/20260827T173015Z-pr-2420.md) — 一時的な 0-finding レビュー記録。T-07 の却下台帳取得失敗経路 pin は plugin テストへ既反映。新規経験則なし
 * **Skip**: [20260827T165922Z-pr-2419.md](raw/reviews/20260827T165922Z-pr-2419.md) — 一時的な 0-finding レビュー記録。契約テストの section pin は plugin テストへ既反映。新規経験則なし
 * **Skip**: [20260827T150948Z-pr-2417.md](raw/reviews/20260827T150948Z-pr-2417.md) — detector-candidate: REJECTED_LEDGER の failed と empty の区別は pr-review SKILL.md の ledger_status 分岐を grep で pin できる
 * **lint:warning** — contradictions=0, stale=36, orphans=0, missing_concept=1, unregistered_raw=374, broken_refs=0
