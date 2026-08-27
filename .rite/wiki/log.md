@@ -1,4 +1,5 @@
 ## 2026-08-27
+* **lint:warning** — contradictions=0, stale=36, orphans=0, missing_concept=1, unregistered_raw=372, broken_refs=0
 * **Skip**: [20260827T054932Z-pr-2400.md](raw/reviews/20260827T054932Z-pr-2400.md) — 一時的な 0-finding レビュー記録。文言同期のみで新規経験則なし
 * **Skip**: [20260827T033216Z-pr-2399.md](raw/reviews/20260827T033216Z-pr-2399.md) — 既存 asymmetric-fix-transcription（同一ファイル内 YAML 例 vs 表）でカバー済み。cycle 2 で解消済みの一時記録
 * **Skip**: [20260827T035434Z-pr-2399.md](raw/reviews/20260827T035434Z-pr-2399.md) — 一時的な 0-finding レビュー記録。新規経験則なし
