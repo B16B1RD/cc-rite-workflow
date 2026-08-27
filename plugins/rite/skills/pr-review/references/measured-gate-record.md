@@ -125,7 +125,7 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 <a id="durable-id"></a>
 ## PATCH 先の同定を本文照合から durable な comment id へ移した理由
 
-`hooks/review-nonblocking-record.sh` の lookup 述語は、 の cycle 1〜5 で 4 度強化された（author 条件 → sentinel の位置非依存 `contains` → 本文全体の `endswith` → 最終非空行の等値）。そのたびに新しい抜け道が見つかり、最後まで消えなかったのが **「記録コメントの raw markdown を copy-paste して作られた、同一 author の人間コメント」** である。機械専用 sentinel は rendered view に現れない HTML コメントだが、Edit view / `gh api` / `gh issue view --comments` から raw ごと複製できるため、「人間が書き写す経路が存在しない」とは言えない。この場合 `-X PATCH` が人間の本文を丸ごと上書きする。
+`hooks/review-nonblocking-record.sh` の lookup 述語は導入時のレビュー cycle 1〜5 で 4 度強化された（author 条件 → sentinel の位置非依存 `contains` → 本文全体の `endswith` → 最終非空行の等値）。そのたびに新しい抜け道が見つかり、最後まで消えなかったのが **「記録コメントの raw markdown を copy-paste して作られた、同一 author の人間コメント」** である。機械専用 sentinel は rendered view に現れない HTML コメントだが、Edit view / `gh api` / `gh issue view --comments` から raw ごと複製できるため、「人間が書き写す経路が存在しない」とは言えない。この場合 `-X PATCH` が人間の本文を丸ごと上書きする。
 
 **本文の文字列で「自分が投稿したもの」を同定する限り、この残余は原理的に消えない。** 述語をさらに厳しくする方向（5 回目の強化）は採らず、同定手段そのものを本文の外へ移した。
 
@@ -137,7 +137,7 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 - **真偽判定のパイプ終端に早期 exit する consumer を置かない** — `grep -q` は最初の一致で exit するので上流の `sed` が SIGPIPE を受け、グローバルの `set -o pipefail` がパイプライン rc を 141 にする。すると「一致があった」のに else 側へ落ちて、上で消したはずの無音の破損が復活する。入力が小さいと `sed` が先に書き終わるため発火せず、出力が stdio バッファ境界を超えた地点で挙動が反転する。出力を最後まで読む形（コマンド置換の結果が非空かを見る）なら SIGPIPE 経路自体が存在しない。
 - **`.rite/` 配下には置けない** — gitignore かつ machine-local のため、別マシン / CI から回した cycle では読めず、毎回 fallback に縮退する。
 - **PR label も採らない** — repo 全体に label が増える副作用があり、id ごとに新しい label を作る設計は repo を汚す。
-- 関連 Issue body は Issue に紐づく永続領域で、rite 内で書き換える経路は本 helper の id 永続化（`_persist_comment_id`、hooks 側）だけ。人間が消せば fallback へ倒れるだけで、現状より悪くならない — ただし**別の id に書き換えられた場合は「消す」とは帰結が違う**（下の「対象が記録コメントであることまで検証する」を参照）。
+- 関連 Issue body は Issue に紐づく永続領域で、rite 内の書き換え経路は本 helper の id 永続化（`_persist_comment_id`、hooks 側）に限らず、pr-review の Decision Log 追記・親 Issue チェックリスト・`issue-body-safe-update.sh` 経由・`/rite:issue-edit` など複数ある。いずれも read-modify-write の full-body 書き戻しで marker 行は保存され、人間が消せば fallback へ倒れるだけで、現状より悪くならない — ただし**別の id に書き換えられた場合は「消す」とは帰結が違う**（下の「対象が記録コメントであることまで検証する」を参照）。
 
 **2 段解決の順序と帰結**:
 
