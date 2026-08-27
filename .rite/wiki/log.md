@@ -1,4 +1,5 @@
 ## 2026-08-27
+* **Skip**: [20260827T054932Z-pr-2400.md](raw/reviews/20260827T054932Z-pr-2400.md) — 一時的な 0-finding レビュー記録。文言同期のみで新規経験則なし
 * **Skip**: [20260827T033216Z-pr-2399.md](raw/reviews/20260827T033216Z-pr-2399.md) — 既存 asymmetric-fix-transcription（同一ファイル内 YAML 例 vs 表）でカバー済み。cycle 2 で解消済みの一時記録
 * **Skip**: [20260827T035434Z-pr-2399.md](raw/reviews/20260827T035434Z-pr-2399.md) — 一時的な 0-finding レビュー記録。新規経験則なし
 * **Skip**: [20260826T230714Z-pr-2391.md](raw/reviews/20260826T230714Z-pr-2391.md) — 一時的な 0-finding レビュー記録。reader 先頭行等値 (T-05f) と follow-up 側 recency は plugin へ既反映。新規経験則なし
