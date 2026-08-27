@@ -467,6 +467,35 @@ Issue body から「What / Why / Where / Acceptance Criteria」を抽出。
 
 **参考実装**: ステップ 3.2 で見つけた既存の参考実装（同ディレクトリの類似ファイル、命名パターン一致）を記録する（`reference_discovery` 原則 — [coding-principles.md](../rite-workflow/references/coding-principles.md)）。見つからない場合はテーブルの代わりに `参考実装: なし（新規ディレクトリまたは初めてのファイルパターン）` の 1 行を出力する。
 
+### 3.3.1 計画レビュー（S 以上、1 回）
+
+確定 Complexity を helper から読む。XS はレビューせず 3.4 へ（ユーザー向け追加出力なし）。S 以上は計画を 1 回レビューし、指摘を承認前の計画へ反映する。batch / standalone とも同一。反映後に再レビューしない。
+rationale: references/rationale.md#plan-self-review
+
+```bash
+bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
+```
+
+| `complexity=` | アクション |
+|---|---|
+| `XS` | レビューせず 3.4 へ（ユーザー向け追加出力なし。`PLAN_REVIEW=` も出さない） |
+| `S` / `M` / `L` / `XL` | 下記 Task を 1 回 spawn → 指摘を計画へ反映 → 3.4 へ |
+| 欠落（`reason=` のみ / marker 不在 / helper 非ゼロ） | **ERROR**（fail-loud）。3.4 へ進まない |
+
+Task（S 以上のみ。1 回。再 spawn しない）:
+
+```text
+subagent_type: general-purpose
+prompt: references/plan-self-review.md を Read し、ステップ 3.3 の計画を 4 視点でレビューする。出力形式に従う。計画ファイルは編集しない。
+```
+
+prompt 本文の SoT は [plan-self-review.md](references/plan-self-review.md)。
+
+| 観測 | アクション |
+|---|---|
+| 形式どおり `指摘件数: N`（N≥0） | 指摘を計画へ反映（実装ステップ追記 / 変更対象ファイル追記 / 要判断ポイントへ昇格）。blocking にしない。`[CONTEXT] PLAN_REVIEW=done; findings=N` を出し、指摘件数と反映内容（または指摘なし）を承認材料として提示して 3.4 へ。再 spawn しない |
+| spawn / 回収失敗 / 形式不正 | WARNING `計画レビュー未実施: {reason}`。出力の推測補完をしない。`[CONTEXT] PLAN_REVIEW=unavailable; reason={reason}`。計画は 3.3 のまま 3.4 へ |
+
 ### 3.4 計画承認（batch 時は自動承認 / standalone は AskUserQuestion）
 
 batch 実行中（run-queue `active=true` かつ cursor が本 Issue を指す）は計画を**自動承認**して停止しない。standalone は AskUserQuestion で確認する。判定は read-only で、helper 失敗 / session_id 解決不可 / キュー不在のときは interactive へ fail-safe する。rationale: references/rationale.md#plan-auto-approval
@@ -495,6 +524,8 @@ echo "[CONTEXT] OPEN_PLAN_MODE=$plan_mode; issue={issue_number}"
 |---|---|
 | `batch` | 計画を**自動承認**（AskUserQuestion を出さない）。3.3 の計画（要判断ポイント含む）は記録として表示済みのまま、ステップ 3.5 へ直行する |
 | `interactive` | AskUserQuestion で「この計画で実装開始 / 計画を修正 / 中止」を選択（standalone。従来どおり。AC-4 回帰なし） |
+
+3.3.1 の `PLAN_REVIEW=` を承認材料に含める（`done` = 指摘件数と反映内容、または指摘なし。`unavailable` = 「計画レビュー未実施」。marker なし = XS skip で追加提示しない）。
 
 ### 3.5 Issue Body Checklist 更新
 
