@@ -17,6 +17,7 @@
 #   T-05e 説明欄へ他 PR の marker を植えても skip しない
 #   T-05f body 2 行目の完全 HTML コメント marker では already_exists に倒さない
 #   T-05g body 先頭行の裸 marker では already_exists に倒さない
+#   T-05h body 先頭行の完全 HTML コメント marker + 後続テキストでは already_exists に倒さない
 #   T-06 JSON 不在で skip + WARNING
 #   T-07 同定 API 失敗は起票せず WARNING (D-03)
 #   T-08 cleanup SKILL.md が helper を archive より前に呼ぶ
@@ -293,6 +294,25 @@ assert "T-05g exit 0" "0" "$RC"
 assert "T-05g create 1 回" "1" "$(create_count)"
 assert_grep "T-05g created for pr 123" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=123'
 assert_not_grep "T-05g already_exists に倒さない" "$ERR" 'already_exists'
+
+echo "--- T-05h: 先頭行の完全 HTML コメント marker + 後続テキストでは already_exists に倒さない ---"
+reset_stubs
+printf '%s\n' '[{"number":99,"body":"<!-- [rite-follow-up-from-pr:123] --> extra"}]' > "$GH_LIST_JSON"
+r=$(new_root t05h)
+put_json "$r" "123-a.json" "$FINDING_JSON"
+PATH="$TMP_ROOT/bin:$PATH" \
+  bash "$TARGET" \
+    --state-root "$r" \
+    --pr 123 \
+    --owner acme \
+    --repo demo \
+    --projects-enabled false \
+    --create-script "$CREATE_STUB" >"$OUT" 2>"$ERR"
+RC=$?
+assert "T-05h exit 0" "0" "$RC"
+assert "T-05h create 1 回" "1" "$(create_count)"
+assert_grep "T-05h created for pr 123" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=123'
+assert_not_grep "T-05h already_exists に倒さない" "$ERR" 'already_exists'
 
 echo "--- T-06: JSON 不在で skip + WARNING ---"
 reset_stubs
