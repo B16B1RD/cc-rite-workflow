@@ -31,6 +31,23 @@ marketplace 配布のプラグインファイルではないため、`number-ref
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-08-28
+
+### 追加
+
+- **`/rite:iterate` が `[review:mergeable]` 到達後に残存 non-blocking 指摘を消化する** — ステップ 5.S で `/rite:fix --nb-sweep` を呼び、各指摘を fix / 判定文必須の却下 / Issue 化の三択で消化し `[fix:sweep-done]` で finalize する。収集と却下台帳は `nb-sweep-collect.sh` / `nb-sweep-ledger.sh` が担い、完了通知は overlay 後 0 件を要求する。(#2409)
+- **`/rite:open` が計画承認の前に実装計画の多視点セルフレビューを行う** — ステップ 3.3.1 は Complexity S 以上で 1 回だけ発火し、`open/references/plan-self-review.md` の 4 視点を計画に当てて指摘を計画へ反映してから承認ゲートへ進む。レビュー失敗は blocking せず WARNING として報告する。(#2411)
+- **既存記述を削除・弱体化する finding を帰結クラス降格の対象外にする** — classification map に任意キー `exclusion` を設け、`review-class-demotion-gate.sh` は除外付き class B を class A が 0 件の cycle でも blocking のまま維持する。新規追加文への文言磨きは従来どおり降格する。(#2410)
+
+### 修正
+
+- **`/rite:pr-review` の `{rejected_ledger}` 取得失敗が空台帳へ縮退しなくなる** — `gh api` / extract / `mktemp` の失敗は `REJECTED_LEDGER=failed` とし、stderr の WARNING と placeholder の 1 行注記で表面化する。取得成功かつ該当コメントなしは従来どおり `empty` で、レビュー自体は停止しない。(#2415)
+- **`nb-sweep` 契約テストが台帳取得失敗経路を pin する** — T-07 が `REJECTED_LEDGER=failed`・stderr の WARNING・placeholder の注記を assert するため、silent empty へ戻す回帰が green のまま通らなくなる。(#2418)
+
+### 変更
+
+- **`_reviewer-base.md` の `exclusion` 判定文の宛先を consolidation 側へ揃える** — reviewer は `内容` にアンカー付きの材料を残し、`exclusion` の判定文は pr-review 5.3.0.C の consolidation が classification map に書く。(#2413)
+
 ## [0.13.1] - 2026-08-27
 
 ### 追加
@@ -950,6 +967,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.13.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.2...v0.12.3

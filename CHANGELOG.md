@@ -33,6 +33,23 @@ outside the number-free surface guarded by `number-reference-check.sh`. The
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-08-28
+
+### Added
+
+- **`/rite:iterate` sweeps remaining non-blocking findings after `[review:mergeable]`** — step 5.S invokes `/rite:fix --nb-sweep`, which consumes each finding as a fix, a rejection with a mandatory judgement statement, or a new Issue, and finalizes with `[fix:sweep-done]`. `nb-sweep-collect.sh` / `nb-sweep-ledger.sh` back the collection and the rejection ledger, and the completion notice requires zero remaining findings after overlay. (#2409)
+- **`/rite:open` runs a multi-perspective self-review of the implementation plan before approval** — step 3.3.1 fires once for Complexity S and above, applying the four perspectives in `open/references/plan-self-review.md` to the plan and folding the findings back into it before the approval gate. A failed review is reported as a WARNING rather than blocking. (#2411)
+- **Findings that delete or weaken existing text are excluded from consequence-class demotion** — the classification map takes an optional `exclusion` key, and `review-class-demotion-gate.sh` keeps an excluded class B finding blocking even in a cycle with zero class A findings. Wording polish on newly added text is demoted as before. (#2410)
+
+### Fixed
+
+- **A `{rejected_ledger}` retrieval failure in `/rite:pr-review` no longer degrades into an empty ledger** — a failing `gh api`, extract, or `mktemp` now yields `REJECTED_LEDGER=failed` with a stderr WARNING and a one-line note in the placeholder. A successful retrieval that finds no matching comment stays `empty`, and the review itself does not stop. (#2415)
+- **The `nb-sweep` contract test pins the ledger retrieval failure path** — T-07 asserts `REJECTED_LEDGER=failed`, the stderr WARNING, and the placeholder note, so a regression back to a silent empty ledger no longer passes green. (#2418)
+
+### Changed
+
+- **The `exclusion` judgement statement in `_reviewer-base.md` is addressed to the consolidation side** — reviewers leave anchored material under `内容`, and pr-review step 5.3.0.C writes the `exclusion` judgement into the classification map. (#2413)
+
 ## [0.13.1] - 2026-08-27
 
 ### Added
@@ -953,6 +970,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.13.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.2...v0.12.3
