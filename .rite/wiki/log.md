@@ -30,6 +30,7 @@
 * **lint:warning** — contradictions=0, stale=36, orphans=0, missing_concept=1, unregistered_raw=373, broken_refs=0
 * **Skip**: [20260827T071313Z-pr-2403.md](raw/reviews/20260827T071313Z-pr-2403.md) — 一時的な docs-only レビュー件数サマリのみ（blocking 0）。文言同期のみで新規経験則なし
 * **lint:warning** — contradictions=0, stale=36, orphans=0, missing_concept=1, unregistered_raw=374, broken_refs=0
+* **lint:warning** — contradictions=0, stale=36, orphans=0, missing_concept=1, unregistered_raw=377, broken_refs=0
 
 ## 2026-08-26
 * **lint:warning** — contradictions=0, stale=34, orphans=0, missing_concept=1, unregistered_raw=356, broken_refs=0
