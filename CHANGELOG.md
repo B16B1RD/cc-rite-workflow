@@ -33,6 +33,10 @@ outside the number-free surface guarded by `number-reference-check.sh`. The
 
 ## [Unreleased]
 
+### Fixed
+
+- **Consumed release-promotion attestations are deleted** — `pr-cycle-cleanup.sh` now removes `.rite/release-promotions/{N}.json` when the corresponding GitHub PR is MERGED or CLOSED. OPEN and undetermined states are kept with an observable reason so the merge gate still works. `.gitignore` in that directory is never deleted. (#2427)
+
 ## [0.13.2] - 2026-08-28
 
 ### Added
