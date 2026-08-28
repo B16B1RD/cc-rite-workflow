@@ -1,4 +1,7 @@
 ## 2026-08-28
+* **Skip**: [20260828T080859Z-pr-2435.md](raw/reviews/20260828T080859Z-pr-2435.md) — detector-candidate: skip 権威ファイルの gitignore sidecar と極性 pin は本 PR で plugin テスト T-01/T-08 へ既反映
+* **Skip**: [20260828T084829Z-pr-2435.md](raw/reviews/20260828T084829Z-pr-2435.md) — 一時的な cycle 2 mergeable 判定の一時記録。知見は plugin へ既反映。新規経験則なし
+* **Skip**: [20260828T082159Z-pr-2435.md](raw/fixes/20260828T082159Z-pr-2435.md) — detector-candidate: sidecar _ensure_dir_gitignore と会話 skip 廃止は iterate/fix SKILL と T-08 で pin 済み
 * **Update**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — raw/reviews/20260828T035444Z-pr-2426.md を統合（同一出力内の「件数 0」検証も片側では足りない軸を追加）
 * **Update**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — raw/fixes/20260828T035827Z-pr-2426.md を統合（正負の対で pin する具体形と先例探索）
 * **Update**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — raw/reviews/20260828T040534Z-pr-2426.md を統合（mutation の独立再現と実バイト列確認）
