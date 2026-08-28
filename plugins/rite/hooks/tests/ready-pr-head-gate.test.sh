@@ -217,6 +217,11 @@ run_rh_st() {
   PATH="$SB/bin:$PATH" bash "$RH" --pr 42 --plugin-root "$SB/plugin" \
     --results-dir "$RH_DIR" --state-root "$ST"
 }
+# Production argv is --plugin-root only. JSON and done-file live under the
+# stubbed state-path-resolve.sh root.
+run_rh_prod() {
+  PATH="$SB/bin:$PATH" bash "$RH" --pr 42 --plugin-root "$SB/plugin"
+}
 REV_A=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 REV_B=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 REV_C=cccccccccccccccccccccccccccccccccccccccc
@@ -326,6 +331,27 @@ run_rh_st >/dev/null 2>"$SB/rh-err" \
   && ! grep -q 'sweep_sha_invalid' "$SB/rh-err" \
   && ! grep -q 'via=sweep' "$SB/rh-err" \
   && ok || bad RH-SW-T-09
+
+# RH-SW-T-10 / AC-1 production argv: --plugin-root only (no --results-dir /
+# --state-root). Pins the elif resolver that production ready actually runs.
+reset_case
+export CURRENT_HEAD=$REV_B
+mkdir -p "$SB/plugin/hooks" "$ST/.rite/review-results"
+cat > "$SB/plugin/hooks/state-path-resolve.sh" <<EOF
+#!/bin/bash
+printf '%s\n' "$ST"
+EOF
+chmod +x "$SB/plugin/hooks/state-path-resolve.sh"
+rm -f "$ST/.rite/review-results"/42-*.json
+jq -n --arg sha "$REV_A" --argjson pr 42 \
+  '{schema_version:"1.1.0", pr_number:$pr, timestamp:"T", commit_sha:$sha, overall_assessment:"approve", findings:[]}' \
+  > "$ST/.rite/review-results/42-20260101000000.json"
+write_done_lines done "$REV_B"
+run_rh_prod >/dev/null 2>"$SB/rh-err" \
+  && grep -q 'READY_REVIEWED_HEAD=match' "$SB/rh-err" \
+  && grep -q 'via=sweep' "$SB/rh-err" \
+  && ! grep -q 'via=json' "$SB/rh-err" \
+  && ok || bad RH-SW-T-10
 
 echo "$pass PASS / $fail FAIL"
 [ "$fail" -eq 0 ]

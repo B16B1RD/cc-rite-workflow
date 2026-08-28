@@ -243,13 +243,20 @@ assert "T-10 rev-parse fail is WARNING + 1-line done" "1,1" "$rev_fail"
 assert_grep_in_section "T-11 empty collect still writes noop" "$FIX" \
   '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
   "printf 'noop"
+# 外側 else（nb_sweep_fixed=0）だけを見る。内側 if/else（rev-parse 成否）は
+# -ge 1 行と同じインデントの else/fi で切り、最初の else に誤ヒットしない。
 zero_one_line=$(awk '
   /### 1.3.S `--nb-sweep` consume/ {sec=1}
   sec && /### 1.4 Display Comment List/ {exit}
-  sec && /-ge 1/ {ge=1}
-  ge && /^[[:space:]]*else$/ {el=1}
+  sec && /nb_sweep_fixed" -ge 1/ {
+    ge=1
+    match($0, /^[[:space:]]*/)
+    indent = substr($0, RSTART, RLENGTH)
+    next
+  }
+  ge && !el && $0 == indent "else" { el=1; next }
   el && /printf .done\\n./ && $0 !~ /%s/ {hit=1}
-  el && /^[[:space:]]*fi$/ {exit}
+  el && $0 == indent "fi" {exit}
   END { print hit+0 }
 ' "$FIX")
 assert "T-11 fixed=0 else writes 1-line done" "1" "$zero_one_line"
