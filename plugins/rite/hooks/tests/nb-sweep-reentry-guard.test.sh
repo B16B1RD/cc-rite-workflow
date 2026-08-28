@@ -258,21 +258,80 @@ assert_grep_in_section "T-11 empty collect still writes noop" "$FIX" \
   "printf 'noop"
 # 外側 else（nb_sweep_fixed=0）だけを見る。内側 if/else（rev-parse 成否）は
 # -ge 1 行と同じインデントの else/fi で切り、最初の else に誤ヒットしない。
-zero_one_line=$(awk '
-  /### 1.3.S `--nb-sweep` consume/ {sec=1}
-  sec && /### 1.4 Display Comment List/ {exit}
-  sec && /nb_sweep_fixed" -ge 1/ {
-    ge=1
-    match($0, /^[[:space:]]*/)
-    indent = substr($0, RSTART, RLENGTH)
-    next
-  }
-  ge && !el && $0 == indent "else" { el=1; next }
-  el && /printf .done\\n./ && $0 !~ /%s/ {hit=1}
-  el && $0 == indent "fi" {exit}
-  END { print hit+0 }
-' "$FIX")
+# first-else に戻すと内側（既に 1 行）で hit し、外側 2 行化を見逃す。
+t11_outer_else_one_line() {
+  awk '
+    /### 1.3.S `--nb-sweep` consume/ {sec=1}
+    sec && /### 1.4 Display Comment List/ {exit}
+    sec && /nb_sweep_fixed" -ge 1/ {
+      ge=1
+      match($0, /^[[:space:]]*/)
+      indent = substr($0, RSTART, RLENGTH)
+      next
+    }
+    ge && !el && $0 == indent "else" { el=1; next }
+    el && /printf .done\\n./ && $0 !~ /%s/ {hit=1}
+    el && $0 == indent "fi" {exit}
+    END { print hit+0 }
+  ' "$1"
+}
+t11_one_line_done_count() {
+  awk '
+    /### 1.3.S `--nb-sweep` consume/ {sec=1}
+    sec && /### 1.4 Display Comment List/ {exit}
+    sec && /printf .done\\n./ && $0 !~ /%s/ {n++}
+    END { print n+0 }
+  ' "$1"
+}
+zero_one_line=$(t11_outer_else_one_line "$FIX")
 assert "T-11 fixed=0 else writes 1-line done" "1" "$zero_one_line"
+
+t11_src="" t11_mut_outer="" t11_mut_inner=""
+t11_src=$(mktemp) || { echo "ERROR: T-11 mktemp src failed" >&2; exit 1; }
+t11_mut_outer=$(mktemp) || { rm -f "$t11_src"; echo "ERROR: T-11 mktemp outer failed" >&2; exit 1; }
+t11_mut_inner=$(mktemp) || { rm -f "$t11_src" "$t11_mut_outer"; echo "ERROR: T-11 mktemp inner failed" >&2; exit 1; }
+cp "$FIX" "$t11_src"
+cp "$t11_src" "$t11_mut_outer"
+cp "$t11_src" "$t11_mut_inner"
+python3 - "$t11_mut_outer" "$t11_mut_inner" <<'PY'
+import pathlib, sys
+outer_path, inner_path = sys.argv[1], sys.argv[2]
+outer = """      else
+        if printf 'done\\n' > "$sweep_done_file"; then sweep_write_ok=1; fi
+      fi"""
+outer_2 = """      else
+        if printf 'done\\n%s\\n' extra > "$sweep_done_file"; then sweep_write_ok=1; fi
+      fi"""
+inner = """          echo "WARNING: git rev-parse HEAD に失敗したため nb-sweep-done の 2 行目を書きません" >&2
+          if printf 'done\\n' > "$sweep_done_file"; then sweep_write_ok=1; fi"""
+inner_2 = """          echo "WARNING: git rev-parse HEAD に失敗したため nb-sweep-done の 2 行目を書きません" >&2
+          if printf 'done\\n%s\\n' extra > "$sweep_done_file"; then sweep_write_ok=1; fi"""
+p = pathlib.Path(outer_path)
+text = p.read_text()
+if outer not in text:
+    raise SystemExit("T-11 outer else block not found")
+p.write_text(text.replace(outer, outer_2, 1))
+p = pathlib.Path(inner_path)
+text = p.read_text()
+if inner not in text:
+    raise SystemExit("T-11 inner else block not found")
+p.write_text(text.replace(inner, inner_2, 1))
+PY
+t11_py_rc=$?
+if [ "$t11_py_rc" -ne 0 ]; then
+  rm -f -- "$t11_src" "$t11_mut_outer" "$t11_mut_inner"
+  echo "ERROR: T-11 mutation copy failed (rc=$t11_py_rc)" >&2
+  exit 1
+fi
+if cmp -s "$t11_src" "$t11_mut_outer"; then t11_outer_changed=0; else t11_outer_changed=1; fi
+assert "T-11 outer mutation changed the copy" "1" "$t11_outer_changed"
+remain_outer=$(t11_one_line_done_count "$t11_mut_outer")
+assert "T-11 outer mutation leaves inner and non-numeric 1-line printf" "2" "$remain_outer"
+assert "T-11 outer 2-line else is hit=0" "0" "$(t11_outer_else_one_line "$t11_mut_outer")"
+if cmp -s "$t11_src" "$t11_mut_inner"; then t11_inner_changed=0; else t11_inner_changed=1; fi
+assert "T-11 inner mutation changed the copy" "1" "$t11_inner_changed"
+assert "T-11 inner 2-line else is still hit=1" "1" "$(t11_outer_else_one_line "$t11_mut_inner")"
+rm -f -- "$t11_src" "$t11_mut_outer" "$t11_mut_inner"
 
 if ! print_summary "$(basename "$0")" "nb-sweep re-entry guard drift — iterate 5.S / fix 1.3.S / cleanup / 0.6"; then
   exit 1
