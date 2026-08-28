@@ -17,6 +17,7 @@
 * **lint:warning** — contradictions=0, stale=37, orphans=0, missing_concept=1, unregistered_raw=375, broken_refs=0
 * **lint:warning** — contradictions=0, stale=38, orphans=0, missing_concept=1, unregistered_raw=380, broken_refs=0
 * **Skip**: [20260828T142301Z-pr-2444.md](raw/reviews/20260828T142301Z-pr-2444.md) — detector-candidate: 非数値 nb_sweep_fixed 枝の WARNING と 1 行 done は本 PR の plugin テスト T-12 へ既反映
+* **lint:warning** — contradictions=0, stale=38, orphans=0, missing_concept=1, unregistered_raw=388, broken_refs=0
 
 ## 2026-08-27
 * **Skip**: [20260827T140250Z-pr-2416.md](raw/reviews/20260827T140250Z-pr-2416.md) — detector-candidate: reviewer は内容へアンカー付き記述、exclusion は consolidation が classification map に書く、という宛先分離は _reviewer-base.md の固定文言を grep で pin する
