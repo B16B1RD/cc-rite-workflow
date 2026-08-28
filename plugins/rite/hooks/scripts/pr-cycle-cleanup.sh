@@ -1441,6 +1441,75 @@ if [ -d "$session_wt_root" ]; then
   fi
 fi
 
+# Shared GitHub PR state gate for Step 6 (orphan reviews) and Step 7
+# (release-promotion attestations). Defined outside the review_gc_safe
+# block so a broken flow-state cannot hide the function from Step 7.
+_gh_R=""
+_gh_repo=""
+if _or_line=$(bash "$SCRIPT_DIR/lib/git-remote.sh" resolve-owner-repo 2>/dev/null); then
+  _gh_owner=${_or_line%%$'\t'*}
+  _gh_name=${_or_line#*$'\t'}
+  if [ -n "$_gh_owner" ] && [ -n "$_gh_name" ]; then
+    _gh_R="-R"
+    _gh_repo="$_gh_owner/$_gh_name"
+  fi
+fi
+_pr_open=$'\n'
+_pr_closed=$'\n'
+_pr_unknown=$'\n'
+_warned_no_gh=0
+github_pr_lifecycle() {
+  # stdout: open | closed | unknown. WARNINGs on stderr only.
+  # $2 = review | promo — warning wording only; keep/delete map is identical.
+  local pr="$1" kind="$2" state="" no_gh_msg="" unknown_msg=""
+  case "$kind" in
+    review)
+      no_gh_msg="open PR の review JSON を orphan 回収せず保持します"
+      unknown_msg="review JSON を orphan 回収せず保持します"
+      ;;
+    *)
+      no_gh_msg="release-promotion attestation を削除せず保持します"
+      unknown_msg="release-promotion attestation を保持します"
+      ;;
+  esac
+  case "$_pr_open" in *$'\n'"$pr"$'\n'*) printf '%s\n' open; return 0 ;; esac
+  case "$_pr_closed" in *$'\n'"$pr"$'\n'*) printf '%s\n' closed; return 0 ;; esac
+  case "$_pr_unknown" in *$'\n'"$pr"$'\n'*) printf '%s\n' unknown; return 0 ;; esac
+
+  if ! command -v gh >/dev/null 2>&1; then
+    if [ "$_warned_no_gh" -eq 0 ]; then
+      echo "WARNING: gh が見つからないため $no_gh_msg" >&2
+      _warned_no_gh=1
+    fi
+    _pr_unknown="${_pr_unknown}${pr}"$'\n'
+    printf '%s\n' unknown
+    return 0
+  fi
+
+  if [ -n "$_gh_R" ]; then
+    state=$(gh pr view "$pr" "$_gh_R" "$_gh_repo" --json state --jq '.state' 2>/dev/null) || state=""
+  else
+    state=$(gh pr view "$pr" --json state --jq '.state' 2>/dev/null) || state=""
+  fi
+  state=$(printf '%s' "$state" | tr -d '[:space:]')
+
+  case "$state" in
+    OPEN)
+      _pr_open="${_pr_open}${pr}"$'\n'
+      printf '%s\n' open
+      ;;
+    MERGED|CLOSED)
+      _pr_closed="${_pr_closed}${pr}"$'\n'
+      printf '%s\n' closed
+      ;;
+    *)
+      echo "WARNING: PR #${pr} の GitHub 状態を取得できないため $unknown_msg" >&2
+      _pr_unknown="${_pr_unknown}${pr}"$'\n'
+      printf '%s\n' unknown
+      ;;
+  esac
+}
+
 # -----------------------------------------------------------------------
 # Step 6: Reap orphaned review results and run-start pins.
 # Active flow-state PRs are protected. OPEN/draft PRs on GitHub are also
@@ -1476,63 +1545,6 @@ fi
 
 if [ "$review_gc_safe" -eq 1 ] && [ -d "$review_dir" ]; then
   archive_dir="$review_dir/archive"
-  # owner/repo for `gh pr view -R` (SSH host alias). Empty is fine: gh then
-  # uses the cwd remote, and a failed view is treated as unknown (keep).
-  _gh_R=""
-  _gh_repo=""
-  if _or_line=$(bash "$SCRIPT_DIR/lib/git-remote.sh" resolve-owner-repo 2>/dev/null); then
-    _gh_owner=${_or_line%%$'\t'*}
-    _gh_name=${_or_line#*$'\t'}
-    if [ -n "$_gh_owner" ] && [ -n "$_gh_name" ]; then
-      _gh_R="-R"
-      _gh_repo="$_gh_owner/$_gh_name"
-    fi
-  fi
-  # bash 3.2 has no associative arrays; newline-delimited caches.
-  _pr_open=$'\n'
-  _pr_closed=$'\n'
-  _pr_unknown=$'\n'
-  _warned_no_gh=0
-  github_pr_lifecycle() {
-    # stdout: open | closed | unknown. WARNINGs on stderr only.
-    local pr="$1" state=""
-    case "$_pr_open" in *$'\n'"$pr"$'\n'*) printf '%s\n' open; return 0 ;; esac
-    case "$_pr_closed" in *$'\n'"$pr"$'\n'*) printf '%s\n' closed; return 0 ;; esac
-    case "$_pr_unknown" in *$'\n'"$pr"$'\n'*) printf '%s\n' unknown; return 0 ;; esac
-
-    if ! command -v gh >/dev/null 2>&1; then
-      if [ "$_warned_no_gh" -eq 0 ]; then
-        echo "WARNING: gh が見つからないため open PR の review JSON を orphan 回収せず保持します" >&2
-        _warned_no_gh=1
-      fi
-      _pr_unknown="${_pr_unknown}${pr}"$'\n'
-      printf '%s\n' unknown
-      return 0
-    fi
-
-    if [ -n "$_gh_R" ]; then
-      state=$(gh pr view "$pr" "$_gh_R" "$_gh_repo" --json state --jq '.state' 2>/dev/null) || state=""
-    else
-      state=$(gh pr view "$pr" --json state --jq '.state' 2>/dev/null) || state=""
-    fi
-    state=$(printf '%s' "$state" | tr -d '[:space:]')
-
-    case "$state" in
-      OPEN)
-        _pr_open="${_pr_open}${pr}"$'\n'
-        printf '%s\n' open
-        ;;
-      MERGED|CLOSED)
-        _pr_closed="${_pr_closed}${pr}"$'\n'
-        printf '%s\n' closed
-        ;;
-      *)
-        echo "WARNING: PR #${pr} の GitHub 状態を取得できないため review JSON を orphan 回収せず保持します" >&2
-        _pr_unknown="${_pr_unknown}${pr}"$'\n'
-        printf '%s\n' unknown
-        ;;
-    esac
-  }
   while IFS= read -r review_file; do
     [ -n "$review_file" ] || continue
     review_name=${review_file##*/}
@@ -1551,7 +1563,7 @@ if [ "$review_gc_safe" -eq 1 ] && [ -d "$review_dir" ]; then
     # deactivates the holder before the next iterate, so OPEN PRs looked
     # like orphans. GitHub OPEN is the protection that survives that
     # boundary. Unknown (gh missing / view failed) keeps the file.
-    _life=$(github_pr_lifecycle "$review_pr")
+    _life=$(github_pr_lifecycle "$review_pr" review)
     case "$_life" in
       open|unknown) continue ;;
     esac
@@ -1615,43 +1627,6 @@ fi
 # -----------------------------------------------------------------------
 promotions_dir="$repo_root/.rite/release-promotions"
 if [ -d "$promotions_dir" ]; then
-  _promo_R=""
-  _promo_repo=""
-  if _promo_line=$(bash "$SCRIPT_DIR/lib/git-remote.sh" resolve-owner-repo 2>/dev/null); then
-    _promo_owner=${_promo_line%%$'\t'*}
-    _promo_name=${_promo_line#*$'\t'}
-    if [ -n "$_promo_owner" ] && [ -n "$_promo_name" ]; then
-      _promo_R="-R"
-      _promo_repo="$_promo_owner/$_promo_name"
-    fi
-  fi
-  _promo_warned_no_gh=0
-  promo_lifecycle() {
-    local pr="$1" state=""
-    if ! command -v gh >/dev/null 2>&1; then
-      if [ "$_promo_warned_no_gh" -eq 0 ]; then
-        echo "WARNING: gh が見つからないため release-promotion attestation を削除せず保持します" >&2
-        _promo_warned_no_gh=1
-      fi
-      printf '%s\n' unknown
-      return 0
-    fi
-    if [ -n "$_promo_R" ]; then
-      state=$(gh pr view "$pr" "$_promo_R" "$_promo_repo" --json state --jq '.state' 2>/dev/null) || state=""
-    else
-      state=$(gh pr view "$pr" --json state --jq '.state' 2>/dev/null) || state=""
-    fi
-    state=$(printf '%s' "$state" | tr -d '[:space:]')
-    case "$state" in
-      OPEN) printf '%s\n' open ;;
-      MERGED|CLOSED) printf '%s\n' closed ;;
-      *)
-        echo "WARNING: PR #${pr} の GitHub 状態を取得できないため release-promotion attestation を保持します" >&2
-        printf '%s\n' unknown
-        ;;
-    esac
-  }
-
   while IFS= read -r promo_file; do
     [ -n "$promo_file" ] || continue
     [ -f "$promo_file" ] || continue
@@ -1676,7 +1651,7 @@ if [ -d "$promotions_dir" ]; then
         ;;
     esac
 
-    _promo_life=$(promo_lifecycle "$promo_pr")
+    _promo_life=$(github_pr_lifecycle "$promo_pr" promo)
     case "$_promo_life" in
       closed)
         if [ "$DRY_RUN" = "1" ]; then

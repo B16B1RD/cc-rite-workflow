@@ -129,6 +129,10 @@ make_temp_repo() {
 write_gh_pr_mock() {
   local dest="$1/bin/gh"
   mkdir -p "$1/bin"
+  # Production Step 6/7 resolve origin and call `gh pr view -R owner/repo`.
+  # Without this remote the helper stays on the no -R branch and AC-1/AC-2
+  # of the production path stay unpinned (Issue #2427 review F-01).
+  git -C "$1" remote add origin git@github.com:example/repo.git
   cat > "$dest" <<'EOF'
 #!/bin/bash
 pr=""
@@ -1356,7 +1360,7 @@ else
 fi
 if [ -e "$TEST_REPO/.rite/release-promotions/802.json" ] \
   && echo "$t49_output" | grep -q 'kept release-promotion attestation: 802.json (OPEN' \
-  && echo "$t49_output" | grep -q 'promotions_kept='; then
+  && echo "$t49_output" | grep -qE 'promotions_kept=5(;|$)'; then
   pass "T-50 AC-2 OPEN {N}.json kept with reason"
 else
   fail "T-50 OPEN attestation not kept observably: $t49_output"
@@ -1438,6 +1442,56 @@ else
   fail "T-56 dry-run: $t56_output"
 fi
 cleanup_temp_repo "$TEST_REPO"
+
+echo "T-57: gh 欠落 PATH は OPEN attestation を保持する"
+TEST_REPO=$(make_temp_repo)
+mkdir -p "$TEST_REPO/.rite/release-promotions"
+printf '*\n' > "$TEST_REPO/.rite/release-promotions/.gitignore"
+write_promo_attestation "$TEST_REPO" 802
+# /usr/bin に gh がある環境でも欠落枝へ入るよう、gh 以外の実バイナリだけを symlink した PATH を使う。
+t57_bin=$(mktemp -d "$HOST_TMPDIR/rite-pr-cleanup-nogh-XXXXXX") || t57_bin=""
+TEST_REPOS+=("$t57_bin")
+if [ -z "$t57_bin" ]; then
+  fail "T-57: no-gh bin の mktemp に失敗"
+else
+  for cmd in git jq find rm mkdir mv chmod cat tr head sed awk mktemp wc date basename uname bash dirname grep sort cut id readlink xargs env pwd; do
+    src=$(command -v "$cmd") || continue
+    ln -s "$src" "$t57_bin/$cmd"
+  done
+  t57_output=$(cd "$TEST_REPO" && PATH="$t57_bin" bash "$CLEANUP" 2>&1) || true
+  if [ -e "$TEST_REPO/.rite/release-promotions/802.json" ] \
+    && echo "$t57_output" | grep -q 'gh が見つからないため release-promotion attestation を削除せず保持' \
+    && echo "$t57_output" | grep -qE 'promotions_kept=1(;|$)'; then
+    pass "T-57 gh missing keeps OPEN attestation with WARNING"
+  else
+    fail "T-57 no-gh keep: $t57_output"
+  fi
+  rm -rf "$t57_bin"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-58: MERGED attestation の rm 失敗は status=failed"
+if [ "$IS_ROOT" = "1" ]; then
+  skip "T-58: root では perms がバイパスされ強制失敗にならないためスキップ"
+else
+  TEST_REPO=$(make_temp_repo)
+  write_gh_pr_mock "$TEST_REPO"
+  mkdir -p "$TEST_REPO/.rite/release-promotions"
+  printf '*\n' > "$TEST_REPO/.rite/release-promotions/.gitignore"
+  write_promo_attestation "$TEST_REPO" 809
+  chmod 0500 "$TEST_REPO/.rite/release-promotions"
+  t58_output=$(cd "$TEST_REPO" && \
+    GH_PR_STATE_809=MERGED PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
+  chmod 0700 "$TEST_REPO/.rite/release-promotions"
+  if [ -e "$TEST_REPO/.rite/release-promotions/809.json" ] \
+    && echo "$t58_output" | grep -q 'の削除に失敗しました' \
+    && echo "$t58_output" | grep -q 'status=failed'; then
+    pass "T-58 MERGED attestation rm failure is status=failed"
+  else
+    fail "T-58 rm failure: exists=$([ -e "$TEST_REPO/.rite/release-promotions/809.json" ] && echo yes || echo no) $t58_output"
+  fi
+  cleanup_temp_repo "$TEST_REPO"
+fi
 
 # -----------------------------------------------------------------------
 # Summary
