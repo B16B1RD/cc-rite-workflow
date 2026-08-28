@@ -457,7 +457,7 @@ if [ -n "$_missing" ]; then
   exit 0
 fi
 
-# guardrail_audit_log[] 要素キー集合 (Issue #2434)。空配列は通す。exact match（順序不問）:
+# guardrail_audit_log[] 要素キー集合。空配列は通す。exact match（順序不問）:
 # reviewer / filter_category / original_severity / file_line / description / filter_reason /
 # verification。欠落・余分（filtered_suggestion / failed_condition 含む）は保存しない。
 # トップレベル欠落・非配列も同 reason。値の空文字は本検査の対象外（キー集合のみ）。
