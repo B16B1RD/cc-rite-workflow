@@ -1,4 +1,6 @@
 ## 2026-08-28
+* **Skip**: [20260828T095256Z-pr-2436.md](raw/fixes/20260828T095256Z-pr-2436.md) — detector-candidate: D-04 exit 0 pin is already enforced by plugin tests
+* **Skip**: [20260828T094316Z-pr-2436.md](raw/reviews/20260828T094316Z-pr-2436.md) — detector-candidate: guardrail_audit_log 7-key exact match is already enforced by plugin tests
 * **Skip**: [20260828T080859Z-pr-2435.md](raw/reviews/20260828T080859Z-pr-2435.md) — detector-candidate: skip 権威ファイルの gitignore sidecar と極性 pin は本 PR で plugin テスト T-01/T-08 へ既反映
 * **Skip**: [20260828T084829Z-pr-2435.md](raw/reviews/20260828T084829Z-pr-2435.md) — 一時的な cycle 2 mergeable 判定の一時記録。知見は plugin へ既反映。新規経験則なし
 * **Skip**: [20260828T082159Z-pr-2435.md](raw/fixes/20260828T082159Z-pr-2435.md) — detector-candidate: sidecar _ensure_dir_gitignore と会話 skip 廃止は iterate/fix SKILL と T-08 で pin 済み
