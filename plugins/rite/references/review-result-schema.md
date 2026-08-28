@@ -279,7 +279,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 <a id="nb-sweep-ledger"></a>
 
-`/rite:iterate` の `[review:mergeable]` 後 sweep が残存 NB を消化した記録。永続チャネルは 6.1.d の関連 Issue コメント（新チャネルを作らない）。**JSON トップレベルへキーを足さない** — 台帳はコメント本文の `### 却下台帳`、消化内訳は iterate 完了通知と `[CONTEXT] ITERATE_NB_SWEEP=` / `NB_SWEEP_RESULT=` marker。再入ガードの権威は `.rite/state/nb-sweep-done-{pr_number}.txt`（1 行 `noop` または `done`。**存在が skip**）。会話 marker は観測用。
+`/rite:iterate` の `[review:mergeable]` 後 sweep が残存 NB を消化した記録。永続チャネルは 6.1.d の関連 Issue コメント（新チャネルを作らない）。**JSON トップレベルへキーを足さない** — 台帳はコメント本文の `### 却下台帳`、消化内訳は iterate 完了通知と `[CONTEXT] ITERATE_NB_SWEEP=` / `NB_SWEEP_RESULT=` marker。再入ガードの権威は `.rite/state/nb-sweep-done-{pr_number}.txt`（1 行目 `noop` または `done`。**存在が skip**。`fixed ≥ 1` で push したときだけ 2 行目に HEAD SHA — ready の reviewed-head ゲートが読む。読取側の skip は 1 行目 / `-f` のみ）。会話 marker は観測用。
 
 **台帳エントリ**（コメント本文、`📎 non_blocking_count:` の直前）:
 

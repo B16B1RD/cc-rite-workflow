@@ -187,5 +187,171 @@ write_review_json aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "42-20260101000000.js
 rc=0; run_rh >/dev/null 2>"$SB/rh-err" || rc=$?
 [ "$rc" -eq 1 ] && grep -q 'READY_REVIEWED_HEAD=rev_parse_failed' "$SB/rh-err" && ok || bad RH-rev-parse
 
+# Restore the PATH git stub used by RH-T-* (the rev-parse-fail stub replaced it).
+cat > "$SB/bin/git" <<'EOF'
+#!/bin/bash
+printf 'git %s\n' "$*" >> "$CALL_LOG"
+case "$1 $2" in
+  'rev-parse HEAD') printf '%s\n' "${CURRENT_HEAD:-head}" ;;
+  'fetch origin') [ "${FETCH_FAIL:-0}" = 1 ] && exit 1; exit 0 ;;
+  'worktree add')
+    [ "${ADD_FAIL:-0}" = 1 ] && exit 1
+    mkdir -p "$4"
+    printf '%s' "$4" > "$TMP_PATH_LOG"
+    ;;
+  'worktree remove')
+    [ "${REMOVE_FAIL:-0}" = 1 ] && exit 1
+    rm -rf "$4"
+    ;;
+esac
+EOF
+chmod +x "$SB/bin/git"
+
+# ----- sweep SHA exception (#2439) ----------------------------------------
+ST="$SB/state"
+mkdir -p "$ST/.rite/state"
+write_done_lines() {
+  printf '%s\n' "$@" > "$ST/.rite/state/nb-sweep-done-42.txt"
+}
+run_rh_st() {
+  PATH="$SB/bin:$PATH" bash "$RH" --pr 42 --plugin-root "$SB/plugin" \
+    --results-dir "$RH_DIR" --state-root "$ST"
+}
+# Production argv is --plugin-root only. JSON and done-file live under the
+# stubbed state-path-resolve.sh root.
+run_rh_prod() {
+  PATH="$SB/bin:$PATH" bash "$RH" --pr 42 --plugin-root "$SB/plugin"
+}
+REV_A=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+REV_B=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+REV_C=cccccccccccccccccccccccccccccccccccccccc
+
+# RH-SW-T-01 / AC-1: JSON=A, line2=B, HEAD=B, JSON≠HEAD → via=sweep (not via=json).
+reset_case
+export CURRENT_HEAD=$REV_B
+rm -f "$RH_DIR"/42-*.json
+write_review_json "$REV_A" "42-20260101000000.json"
+write_done_lines done "$REV_B"
+run_rh_st >/dev/null 2>"$SB/rh-err" \
+  && grep -q 'READY_REVIEWED_HEAD=match' "$SB/rh-err" \
+  && grep -q 'via=sweep' "$SB/rh-err" \
+  && ! grep -q 'via=json' "$SB/rh-err" \
+  && ok || bad RH-SW-T-01
+
+# RH-SW-T-02 / AC-2: JSON=A, line2=B, HEAD=C → rc=1, 3 SHA, not via=sweep pass.
+reset_case
+export CURRENT_HEAD=$REV_C
+rm -f "$RH_DIR"/42-*.json
+write_review_json "$REV_A" "42-20260101000000.json"
+write_done_lines done "$REV_B"
+rc=0; run_rh_st >/dev/null 2>"$SB/rh-err" || rc=$?
+[ "$rc" -eq 1 ] \
+  && grep -q 'READY_REVIEWED_HEAD=mismatch' "$SB/rh-err" \
+  && grep -q "$REV_A" "$SB/rh-err" \
+  && grep -q "$REV_B" "$SB/rh-err" \
+  && grep -q "$REV_C" "$SB/rh-err" \
+  && grep -q 'sweep=' "$SB/rh-err" \
+  && ! grep -q 'via=sweep' "$SB/rh-err" \
+  && ok || bad RH-SW-T-02
+
+# RH-SW-T-03 / AC-3: done-file 不在の mismatch 文言は RH-T-02 と同一（--results-dir のみ）。
+reset_case
+export CURRENT_HEAD=$REV_B
+rm -f "$RH_DIR"/42-*.json "$ST/.rite/state/nb-sweep-done-42.txt"
+write_review_json "$REV_A" "42-20260101000000.json"
+rc=0; run_rh >/dev/null 2>"$SB/rh-err" || rc=$?
+[ "$rc" -eq 1 ] \
+  && grep -q 'READY_REVIEWED_HEAD=mismatch' "$SB/rh-err" \
+  && grep -q "$REV_A" "$SB/rh-err" \
+  && grep -q "$REV_B" "$SB/rh-err" \
+  && grep -q '/rite:iterate 42' "$SB/rh-err" \
+  && ! grep -q 'sweep=' "$SB/rh-err" \
+  && ! grep -q 'sweep_sha_invalid' "$SB/rh-err" \
+  && ok || bad RH-SW-T-03
+
+# RH-SW-T-04 / AC-3: 1 行 done / noop は既存 mismatch。sweep_sha_invalid に倒さない。
+for kind in done noop; do
+  reset_case
+  export CURRENT_HEAD=$REV_B
+  rm -f "$RH_DIR"/42-*.json
+  write_review_json "$REV_A" "42-20260101000000.json"
+  write_done_lines "$kind"
+  rc=0; run_rh_st >/dev/null 2>"$SB/rh-err" || rc=$?
+  [ "$rc" -eq 1 ] \
+    && grep -q 'READY_REVIEWED_HEAD=mismatch' "$SB/rh-err" \
+    && grep -q "$REV_A" "$SB/rh-err" \
+    && grep -q "$REV_B" "$SB/rh-err" \
+    && grep -q '/rite:iterate 42' "$SB/rh-err" \
+    && ! grep -q 'sweep_sha_invalid' "$SB/rh-err" \
+    && ! grep -q 'sweep=' "$SB/rh-err" \
+    && ok || bad "RH-SW-T-04-$kind"
+done
+
+# RH-SW-T-05 / AC-4: 2 行目が空 / 非 hex → sweep_sha_invalid。既存判定へフォールバックしない。
+reset_case
+export CURRENT_HEAD=$REV_B
+rm -f "$RH_DIR"/42-*.json
+write_review_json "$REV_A" "42-20260101000000.json"
+write_done_lines done ""
+rc=0; run_rh_st >/dev/null 2>"$SB/rh-err" || rc=$?
+[ "$rc" -eq 1 ] \
+  && grep -q 'READY_REVIEWED_HEAD=sweep_sha_invalid' "$SB/rh-err" \
+  && ! grep -q 'READY_REVIEWED_HEAD=mismatch' "$SB/rh-err" \
+  && ok || bad RH-SW-T-05-empty
+reset_case
+export CURRENT_HEAD=$REV_B
+rm -f "$RH_DIR"/42-*.json
+write_review_json "$REV_A" "42-20260101000000.json"
+write_done_lines done not-a-sha
+rc=0; run_rh_st >/dev/null 2>"$SB/rh-err" || rc=$?
+[ "$rc" -eq 1 ] \
+  && grep -q 'READY_REVIEWED_HEAD=sweep_sha_invalid' "$SB/rh-err" \
+  && ! grep -q 'READY_REVIEWED_HEAD=mismatch' "$SB/rh-err" \
+  && ok || bad RH-SW-T-05-nonhex
+reset_case
+export CURRENT_HEAD=$REV_B
+rm -f "$RH_DIR"/42-*.json
+write_review_json "$REV_A" "42-20260101000000.json"
+write_done_lines done abc
+rc=0; run_rh_st >/dev/null 2>"$SB/rh-err" || rc=$?
+[ "$rc" -eq 1 ] \
+  && grep -q 'READY_REVIEWED_HEAD=sweep_sha_invalid' "$SB/rh-err" \
+  && ! grep -q 'READY_REVIEWED_HEAD=mismatch' "$SB/rh-err" \
+  && ok || bad RH-SW-T-05-short
+
+# RH-SW-T-09 / AC-3: JSON==HEAD のとき不正 2 行 done-file があっても via=json（非読取の正対照）。
+reset_case
+export CURRENT_HEAD=$REV_A
+rm -f "$RH_DIR"/42-*.json
+write_review_json "$REV_A" "42-20260101000000.json"
+write_done_lines done not-a-sha
+run_rh_st >/dev/null 2>"$SB/rh-err" \
+  && grep -q 'READY_REVIEWED_HEAD=match' "$SB/rh-err" \
+  && grep -q 'via=json' "$SB/rh-err" \
+  && ! grep -q 'sweep_sha_invalid' "$SB/rh-err" \
+  && ! grep -q 'via=sweep' "$SB/rh-err" \
+  && ok || bad RH-SW-T-09
+
+# RH-SW-T-10 / AC-1 production argv: --plugin-root only (no --results-dir /
+# --state-root). Pins the elif resolver that production ready actually runs.
+reset_case
+export CURRENT_HEAD=$REV_B
+mkdir -p "$SB/plugin/hooks" "$ST/.rite/review-results"
+cat > "$SB/plugin/hooks/state-path-resolve.sh" <<EOF
+#!/bin/bash
+printf '%s\n' "$ST"
+EOF
+chmod +x "$SB/plugin/hooks/state-path-resolve.sh"
+rm -f "$ST/.rite/review-results"/42-*.json
+jq -n --arg sha "$REV_A" --argjson pr 42 \
+  '{schema_version:"1.1.0", pr_number:$pr, timestamp:"T", commit_sha:$sha, overall_assessment:"approve", findings:[]}' \
+  > "$ST/.rite/review-results/42-20260101000000.json"
+write_done_lines done "$REV_B"
+run_rh_prod >/dev/null 2>"$SB/rh-err" \
+  && grep -q 'READY_REVIEWED_HEAD=match' "$SB/rh-err" \
+  && grep -q 'via=sweep' "$SB/rh-err" \
+  && ! grep -q 'via=json' "$SB/rh-err" \
+  && ok || bad RH-SW-T-10
+
 echo "$pass PASS / $fail FAIL"
 [ "$fail" -eq 0 ]

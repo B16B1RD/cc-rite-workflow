@@ -184,6 +184,83 @@ git -C "$gi_setup" check-ignore -q "$gi_file" || gi_setup_rc=$?
 assert "T-08 setup dir_entry git check-ignore -q rc=0" "0" "$gi_setup_rc"
 rm -rf -- "$gi_setup"
 
+# --- T-09 / AC-7: 2 行 done-file でも 5.S skip と fix 1.5 は 1 行時と同一 ---
+# 既存 T-06〜T-08 は残す。本 ID は #2439 の 2 行化回帰。
+assert_grep_in_section "T-09 iterate 5.S still uses head -1" "$ITERATE" \
+  '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
+  'head -1 "\$nb_done_file"'
+assert_grep_in_section "T-09 fix 1.5 still uses -f" "$FIX" \
+  '### 5.1 Output Pattern' '### 5.2 Standalone Execution Behavior' \
+  '\[ -f "\$_nb_done_root/.rite/state/nb-sweep-done-'
+two_line_sbx=$(make_sandbox)
+mkdir -p "$two_line_sbx/.rite/state"
+two_line_file="$two_line_sbx/.rite/state/nb-sweep-done-2439.txt"
+printf 'done\n%s\n' 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' > "$two_line_file"
+skipped_kind=$(head -1 "$two_line_file" | tr -d '[:space:]')
+assert "T-09 head -1 of 2-line file is done" "done" "$skipped_kind"
+if [ -f "$two_line_file" ]; then two_line_present=1; else two_line_present=0; fi
+assert "T-09 -f of 2-line file is 1" "1" "$two_line_present"
+rm -rf -- "$two_line_sbx"
+
+# --- T-10 / AC-5: 1.3.S ステップ 6 は {nb_sweep_fixed}>=1 の then に限り 2 行 printf ---
+assert_grep_in_section "T-10 nb_sweep_fixed placeholder" "$FIX" \
+  '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
+  'nb_sweep_fixed="{nb_sweep_fixed}"'
+assert_grep_in_section "T-10 numeric gate -ge 1" "$FIX" \
+  '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
+  '\[ "\$nb_sweep_fixed" -ge 1 \]'
+ge1_has_two_line=$(awk '
+  /### 1.3.S `--nb-sweep` consume/ {sec=1}
+  sec && /### 1.4 Display Comment List/ {exit}
+  sec && /nb_sweep_fixed="-ge 1"|nb_sweep_fixed" -ge 1/ {thenb=1}
+  thenb && /printf .done\\n%s\\n/ {hit=1}
+  thenb && /git rev-parse HEAD/ {rev=1}
+  thenb && /^[[:space:]]*else$/ {if (!hit) miss=1; thenb=0}
+  END { print (hit+0) "," (rev+0) }
+' "$FIX")
+assert "T-10 -ge 1 then has 2-line printf and rev-parse" "1,1" "$ge1_has_two_line"
+nonnum=$(awk '
+  /### 1.3.S `--nb-sweep` consume/ {sec=1}
+  sec && /### 1.4 Display Comment List/ {exit}
+  sec && /nb_sweep_fixed="/ {w=1}
+  w && /\[!0-9\]/ {p=1}
+  p && /printf .done.n/ && $0 !~ /%s/ {hit=1}
+  p && /^[[:space:]]*;;$/ {exit}
+  END { print hit+0 }
+' "$FIX")
+assert "T-10 non-numeric branch writes 1-line done" "1" "$nonnum"
+rev_fail=$(awk '
+  /### 1.3.S `--nb-sweep` consume/ {sec=1}
+  sec && /### 1.4 Display Comment List/ {exit}
+  sec && /git rev-parse HEAD/ {g=1}
+  g && /WARNING: git rev-parse HEAD/ {w=1}
+  g && /printf .done\\n./ && $0 !~ /%s/ {one=1}
+  END { print (w+0) "," (one+0) }
+' "$FIX")
+assert "T-10 rev-parse fail is WARNING + 1-line done" "1,1" "$rev_fail"
+
+# --- T-11 / AC-6: push 無し（empty noop / fixed=0）は 1 行のまま ---
+assert_grep_in_section "T-11 empty collect still writes noop" "$FIX" \
+  '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
+  "printf 'noop"
+# 外側 else（nb_sweep_fixed=0）だけを見る。内側 if/else（rev-parse 成否）は
+# -ge 1 行と同じインデントの else/fi で切り、最初の else に誤ヒットしない。
+zero_one_line=$(awk '
+  /### 1.3.S `--nb-sweep` consume/ {sec=1}
+  sec && /### 1.4 Display Comment List/ {exit}
+  sec && /nb_sweep_fixed" -ge 1/ {
+    ge=1
+    match($0, /^[[:space:]]*/)
+    indent = substr($0, RSTART, RLENGTH)
+    next
+  }
+  ge && !el && $0 == indent "else" { el=1; next }
+  el && /printf .done\\n./ && $0 !~ /%s/ {hit=1}
+  el && $0 == indent "fi" {exit}
+  END { print hit+0 }
+' "$FIX")
+assert "T-11 fixed=0 else writes 1-line done" "1" "$zero_one_line"
+
 if ! print_summary "$(basename "$0")" "nb-sweep re-entry guard drift — iterate 5.S / fix 1.3.S / cleanup / 0.6"; then
   exit 1
 fi

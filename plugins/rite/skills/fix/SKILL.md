@@ -1786,8 +1786,12 @@ fi
 [CONTEXT] NB_SWEEP_RESULT=done; fixed=N; rejected=M; issued=K
 ```
 
+`{nb_sweep_fixed}` は上の `fixed=N` をリテラル置換する。`fixed ≥ 1` かつ push 済みのときだけ 2 行目に push 後 HEAD SHA を書く。非数値 / `0` / push 無しは 1 行 `done`。`git rev-parse HEAD` 失敗は WARNING + 1 行のまま（偽 pass を作らない）。2 行書込失敗は 1 行書込失敗と同じ WARNING + `rm -f`。
+rationale: ../ready/references/rationale.md#reviewed-head-gate
+
 ```bash
 sweep_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || sweep_root=""
+nb_sweep_fixed="{nb_sweep_fixed}"
 if [ -n "$sweep_root" ]; then
   mkdir -p "$sweep_root/.rite/state" || true
   source {plugin_root}/hooks/gitignore-ensure.sh
@@ -1795,9 +1799,28 @@ if [ -n "$sweep_root" ]; then
     echo "WARNING: $sweep_root/.rite/state/.gitignore を作成できませんでした。nb-sweep-done が git の追跡対象になる恐れがあります" >&2
     [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
   fi
-  if ! printf 'done\n' > "$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"; then
+  sweep_done_file="$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"
+  sweep_write_ok=0
+  case "$nb_sweep_fixed" in
+    ''|*[!0-9]*)
+      if printf 'done\n' > "$sweep_done_file"; then sweep_write_ok=1; fi
+      ;;
+    *)
+      if [ "$nb_sweep_fixed" -ge 1 ]; then
+        if sweep_sha=$(git rev-parse HEAD) && [ -n "$sweep_sha" ]; then
+          if printf 'done\n%s\n' "$sweep_sha" > "$sweep_done_file"; then sweep_write_ok=1; fi
+        else
+          echo "WARNING: git rev-parse HEAD に失敗したため nb-sweep-done の 2 行目を書きません" >&2
+          if printf 'done\n' > "$sweep_done_file"; then sweep_write_ok=1; fi
+        fi
+      else
+        if printf 'done\n' > "$sweep_done_file"; then sweep_write_ok=1; fi
+      fi
+      ;;
+  esac
+  if [ "$sweep_write_ok" != 1 ]; then
     echo "WARNING: nb-sweep-done marker を書けませんでした" >&2
-    rm -f "$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"
+    rm -f "$sweep_done_file"
   fi
 fi
 ```
