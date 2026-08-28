@@ -50,19 +50,27 @@ for caller in "${generation_callers[@]}"; do
   extra_args_hits=$(grep -cF "_ensure_dir_gitignore \"\$STATE_ROOT/.rite\" '!wiki/' '!wiki/**'" "$caller" || true)
   assert "$(basename "$caller") .rite/ generation point passes wiki extra-args" "1" "$extra_args_hits"
 done
+mkdir_else=$(grep -c 'nested gitignore not written' "$HOOKS_DIR/session-start.sh" || true)
+assert "session-start warns when .rite mkdir fails" "1" "$mkdir_else"
 raw_writers=$(LC_ALL=C grep -nF "printf '*\\n'" "${star_only_callers[@]}" "${generation_callers[@]}" 2>/dev/null || true)
 assert "production callers contain no private star-only writer" "" "$raw_writers"
 
 # T-01: extra-args write is exactly `*\n!wiki/\n!wiki/**\n` (order + trailing newline)
 rite_dir="$SBX/rite-root"; mkdir -p "$rite_dir"
 _ensure_dir_gitignore "$rite_dir" '!wiki/' '!wiki/**'
+t01_rc=$?
+assert "T-01 extra-args success rc" "0" "$t01_rc"
+assert "T-01 extra-args error is empty" "" "$_RITE_GITIGNORE_ERROR"
 printf '*\n!wiki/\n!wiki/**\n' > "$SBX/expected-rite-gitignore"
 cmp -s "$rite_dir/.gitignore" "$SBX/expected-rite-gitignore"
 assert "T-01 nested gitignore is star then wiki negations with trailing newline" "0" "$?"
 
-# T-05: one-argument call still writes `*` only
+# T-05: one-argument call still writes `*` only and returns success
 one_arg="$SBX/one-arg"; mkdir -p "$one_arg"
 _ensure_dir_gitignore "$one_arg"
+t05_rc=$?
+assert "T-05 one-arg success rc" "0" "$t05_rc"
+assert "T-05 one-arg error is empty" "" "$_RITE_GITIGNORE_ERROR"
 printf '*\n' > "$SBX/expected-star"
 cmp -s "$one_arg/.gitignore" "$SBX/expected-star"
 assert "T-05 one-argument call writes a single star line" "0" "$?"

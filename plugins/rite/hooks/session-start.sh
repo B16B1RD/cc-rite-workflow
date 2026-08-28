@@ -78,11 +78,14 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 # Covers runtime state even when /rite:setup has not listed each subdir in the
 # consumer root .gitignore. mkdir is the caller's job; the helper will not create
 # the directory. Failure is non-blocking (same WARNING form as the logs dir).
-if mkdir -p "$STATE_ROOT/.rite" 2>/dev/null; then
+if mkdir_err=$(mkdir -p "$STATE_ROOT/.rite" 2>&1); then
   if ! _ensure_dir_gitignore "$STATE_ROOT/.rite" '!wiki/' '!wiki/**'; then
     echo "WARNING: session-start.sh: cannot create $(printf '%s' "$STATE_ROOT/.rite" | neutralize_ctrl)/.gitignore; verify by hand that this directory is excluded from git" >&2
     [ -n "$_RITE_GITIGNORE_ERROR" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
   fi
+else
+  echo "WARNING: session-start.sh: cannot create $(printf '%s' "$STATE_ROOT/.rite" | neutralize_ctrl); nested gitignore not written" >&2
+  [ -n "$mkdir_err" ] && printf '%s\n' "$mkdir_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
 fi
 
 # Write plugin root for command-file consumption (version-independent)

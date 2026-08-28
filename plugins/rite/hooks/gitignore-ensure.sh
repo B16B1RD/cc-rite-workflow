@@ -23,7 +23,7 @@ _ensure_dir_gitignore() {
   _RITE_GITIGNORE_ERROR=""
   [ -n "$dir" ] || { _RITE_GITIGNORE_ERROR="empty directory path"; return 1; }
   [ -s "$dir/.gitignore" ] && return 0
-  if ! raw_error=$( { { LC_ALL=C printf '*\n'; [ "$#" -gt 0 ] && printf '%s\n' "$@"; } > "$dir/.gitignore"; } 2>&1 ); then
+  if ! raw_error=$( { LC_ALL=C printf '%s\n' '*' "$@" > "$dir/.gitignore"; } 2>&1 ); then
     _RITE_GITIGNORE_ERROR=$(printf '%s' "$raw_error" | neutralize_ctrl --keep-newline)
     return 1
   fi
