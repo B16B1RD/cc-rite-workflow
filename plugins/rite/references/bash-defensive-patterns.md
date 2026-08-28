@@ -180,7 +180,7 @@ with open(out_path, "w") as f:
 ### Vulnerable Pattern
 
 ```bash
-echo "$content" > .rite-work-memory/issue-123.md
+echo "$content" > .rite/work-memory/issue-123.md
 printf '%s' "$backup" > "${TMPDIR:-/tmp}/rite-backups/wm-backup.md"
 ```
 
@@ -189,8 +189,8 @@ printf '%s' "$backup" > "${TMPDIR:-/tmp}/rite-backups/wm-backup.md"
 ### Defensive Pattern
 
 ```bash
-mkdir -p .rite-work-memory
-echo "$content" > .rite-work-memory/issue-123.md
+mkdir -p .rite/work-memory
+echo "$content" > .rite/work-memory/issue-123.md
 
 mkdir -p "${TMPDIR:-/tmp}/rite-backups"
 printf '%s' "$backup" > "${TMPDIR:-/tmp}/rite-backups/wm-backup.md"
@@ -205,7 +205,7 @@ printf '%s' "$backup" > "${TMPDIR:-/tmp}/rite-backups/wm-backup.md"
 
 | Directory | Purpose |
 |-----------|---------|
-| `.rite-work-memory/` | Local work memory files |
+| `.rite/work-memory/` | Local work memory files |
 | `${TMPDIR:-/tmp}/rite-backups/` | Work memory backup files |
 | `docs/designs/` | Design documents |
 

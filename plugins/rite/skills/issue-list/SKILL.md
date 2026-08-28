@@ -172,7 +172,7 @@ rationale: references/rationale.md#projects-fetch-delegate
 
 ```bash
 # plugin_root 解決 (canonical: references/plugin-path-resolution.md#inline-one-liner-for-command-files)
-plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 
 if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/scripts/projects-items-fetch.sh" ]; then
   # helper 不在も旧実装の失敗契約と同じ sentinel に倒し、Status 列なし表示への fallback を発火させる

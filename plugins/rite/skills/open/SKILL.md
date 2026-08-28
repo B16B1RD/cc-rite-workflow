@@ -296,10 +296,16 @@ fi
 
 ### 2.3-W EnterWorktree 入場（multi_session 有効時）
 
-worktree を作成・再利用したら、`.rite-plugin-root` と（存在する場合のみ）`.claude/settings.local.json` を worktree root へコピーしてから入場する。`.claude/` は gitignore 対象で `git worktree add` が複製しないため、コピーしないとドッグフーディング上書き（`enabledPlugins["rite@rite-marketplace"]: false`）が失われ、古い marketplace 版スキルがロードされる。複製は worktree 作成時点のスナップショットであり、以後の main checkout 側の更新は反映されない:
+worktree を作成・再利用したら、`.rite/plugin-root` と（存在する場合のみ）`.claude/settings.local.json` を worktree root へコピーしてから入場する。`.claude/` は gitignore 対象で `git worktree add` が複製しないため、コピーしないとドッグフーディング上書き（`enabledPlugins["rite@rite-marketplace"]: false`）が失われ、古い marketplace 版スキルがロードされる。複製は worktree 作成時点のスナップショットであり、以後の main checkout 側の更新は反映されない:
 
 ```bash
-[ -f "$repo_root/.rite-plugin-root" ] && cp "$repo_root/.rite-plugin-root" "$wt_path/.rite-plugin-root" 2>/dev/null || true
+if [ -f "$repo_root/.rite/plugin-root" ]; then
+  mkdir -p "$wt_path/.rite"
+  cp "$repo_root/.rite/plugin-root" "$wt_path/.rite/plugin-root" 2>/dev/null || true
+elif [ -f "$repo_root/.rite-plugin-root" ]; then
+  mkdir -p "$wt_path/.rite"
+  cp "$repo_root/.rite-plugin-root" "$wt_path/.rite/plugin-root" 2>/dev/null || true
+fi
 if [ -f "$repo_root/.claude/settings.local.json" ] && ! { mkdir -p "$wt_path/.claude" && cp "$repo_root/.claude/settings.local.json" "$wt_path/.claude/settings.local.json"; } 2>/dev/null; then
   echo "WARNING: .claude/settings.local.json のコピーに失敗しました — ドッグフーディング上書きが worktree に反映されません" >&2
 fi

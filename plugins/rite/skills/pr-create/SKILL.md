@@ -71,7 +71,7 @@ E2E では `[pr:created:{number}]` / `[pr-create-failed]` を出して **caller 
 issue_number=$(git branch --show-current | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
 ```
 
-Read `.rite-work-memory/issue-{issue_number}.md`（SoT）。欠落 / 破損時は Issue comment API:
+Read `.rite/work-memory/issue-{issue_number}.md`（SoT）。欠落 / 破損時は Issue comment API:
 
 ```bash
 # SSH host alias 対応: git-remote.sh 優先 + gh repo view fallback
@@ -113,7 +113,7 @@ Issue 番号が取れなければ Phase 1.4。
 `{plugin_root}` は [inline one-liner](../../references/plugin-path-resolution.md#inline-one-liner-for-command-files) で解決して実行する:
 
 ```bash
-plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 
 if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/bang-backtick-check.sh" ]; then
   echo "[CONTEXT] BANG_BACKTICK_CHECK_INVOCATION_FAILED=1; reason=script_missing; resolved_root=${plugin_root:-<empty>}" >&2

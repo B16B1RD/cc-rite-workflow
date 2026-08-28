@@ -47,6 +47,7 @@
 # hooks.json timeout: 10s — a generous ceiling for a bash-builtins gate, aligned
 # with the other lightweight synchronous gates (Stop=10s, bang-backtick hook=10s).
 set -euo pipefail
+mkdir -p "${STATE_ROOT:-/tmp}/.rite/logs" 2>/dev/null || true
 
 # Double-execution guard (hooks.json + settings.local.json migration)
 [ -z "${_RITE_HOOK_RUNNING_PRETOOL:-}" ] || exit 0
@@ -115,7 +116,7 @@ JQ_OUT=$(echo "$INPUT" | jq -r '[(.transcript_path // ""), (.subagent_type | str
 if [ -n "${RITE_DEBUG:-}" ] && [ -n "$_jq_input_err" ] && [ -s "$_jq_input_err" ]; then
   printf '[%s] pre-tool-bash-guard: jq input parse stderr: %s\n' \
     "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$(head -c 200 "$_jq_input_err" | tr '\n' ' ' | neutralize_ctrl --c0-only)" \
-    >> "${STATE_ROOT:-/tmp}/.rite-flow-debug.log" 2>/dev/null || true
+    >> "${STATE_ROOT:-/tmp}/.rite/logs/flow-debug.log" 2>/dev/null || true
 fi
 [ -n "$_jq_input_err" ] && rm -f "$_jq_input_err"
 TRANSCRIPT_PATH=$(printf '%s' "$JQ_OUT" | cut -f1)
@@ -142,7 +143,7 @@ _rite_btg_pattern13_fail_open() {
   if [ -n "${RITE_DEBUG:-}" ]; then
     printf '[%s] pre-tool-bash-guard: Pattern 1-3 ERR trap fired — command allowed via fail-open\n' \
       "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-      >> "${STATE_ROOT:-/tmp}/.rite-flow-debug.log" 2>/dev/null || true
+      >> "${STATE_ROOT:-/tmp}/.rite/logs/flow-debug.log" 2>/dev/null || true
   fi
   exit 0
 }
@@ -159,7 +160,7 @@ _rite_btg_pattern4_fail_closed() {
   if [ -n "${RITE_DEBUG:-}" ]; then
     printf '[%s] pre-tool-bash-guard: Pattern 4 ERR trap fired (rc=%s) — deny fail-closed\n' \
       "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$_rc" \
-      >> "${STATE_ROOT:-/tmp}/.rite-flow-debug.log" 2>/dev/null || true
+      >> "${STATE_ROOT:-/tmp}/.rite/logs/flow-debug.log" 2>/dev/null || true
   fi
   local _reason="BLOCKED (reviewer-gitdir-write): Pattern 4 security-boundary evaluation crashed; denying fail-closed to avoid bypassing the reviewer .git-write guard. See the bash-guard stderr WARNING for the crash context."
   # Mirror the result-section emit contract: jq for the payload, printf fallback

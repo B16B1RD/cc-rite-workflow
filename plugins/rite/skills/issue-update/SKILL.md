@@ -104,7 +104,7 @@ If the Issue is not found:
 Read the local work memory file with the Read tool:
 
 ```
-Read: .rite-work-memory/issue-{issue_number}.md
+Read: .rite/work-memory/issue-{issue_number}.md
 ```
 
 If the file exists and is valid, use it as the base for updates. Retain the content in context.
@@ -216,7 +216,7 @@ If a memo is provided as an argument, add it to the "決定事項・メモ" sect
 rationale: references/rationale.md#reread-before-write
 
 ```
-Read: .rite-work-memory/issue-{issue_number}.md
+Read: .rite/work-memory/issue-{issue_number}.md
 ```
 
 **Fallback**: If the local file is not available, re-fetch the Issue comment body:

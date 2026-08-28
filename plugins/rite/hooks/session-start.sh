@@ -88,23 +88,40 @@ else
   [ -n "$mkdir_err" ] && printf '%s\n' "$mkdir_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
 fi
 
+# Move root `.rite-*` runtime state under `.rite/` once. Dest already present
+# means a previous run owns it — leave src so dual-read still sees it; never
+# clobber dest (Issue #2430).
+_rite_migrate_relocated() {
+  local src="$1" dest="$2"
+  [ -e "$src" ] || return 0
+  [ -e "$dest" ] && return 0
+  mkdir -p "$(dirname "$dest")" 2>/dev/null || return 0
+  mv "$src" "$dest" 2>/dev/null || true
+}
+_rite_migrate_relocated "$STATE_ROOT/.rite-plugin-root" "$STATE_ROOT/.rite/plugin-root"
+_rite_migrate_relocated "$STATE_ROOT/.rite-session-id" "$STATE_ROOT/.rite/session-id"
+_rite_migrate_relocated "$STATE_ROOT/.rite-initialized-version" "$STATE_ROOT/.rite/initialized-version"
+_rite_migrate_relocated "$STATE_ROOT/.rite-settings-hooks-cleaned" "$STATE_ROOT/.rite/settings-hooks-cleaned"
+_rite_migrate_relocated "$STATE_ROOT/.rite-flow-debug.log" "$STATE_ROOT/.rite/logs/flow-debug.log"
+_rite_migrate_relocated "$STATE_ROOT/.rite-work-memory" "$STATE_ROOT/.rite/work-memory"
+
 # Write plugin root for command-file consumption (version-independent)
 _plugin_root="$(dirname "$SCRIPT_DIR")"
 if [ -d "$_plugin_root/hooks" ]; then
-  printf '%s' "$_plugin_root" > "$STATE_ROOT/.rite-plugin-root" 2>/dev/null || true
+  printf '%s' "$_plugin_root" > "$STATE_ROOT/.rite/plugin-root" 2>/dev/null || true
 fi
 
-# Save session_id to .rite-session-id ONLY as the env-absent fallback channel
-#. When the runtime exposes CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID,
+# Save session_id to `.rite/session-id` ONLY as the env-absent fallback channel.
+# When the runtime exposes CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID,
 # that per-session env var is authoritative for flow-state.sh session_id resolution,
-# so writing the single shared `.rite-session-id` would just let concurrent sessions
+# so writing the single shared file would just let concurrent sessions
 # clobber each other's value — the original flow-state contamination / worktree
 # mis-reap. Skipping the write when env is present stops every session start from
 # overwriting the shared file; env-absent runtimes (CI / headless / non-Code clients)
 # still get the file as their sole resolution channel, preserving backward compat.
 if [ -n "$SESSION_ID" ] && [ -z "${CLAUDE_CODE_SESSION_ID:-}" ] && [ -z "${CLAUDE_SESSION_ID:-}" ]; then
-  (umask 077; printf '%s' "$SESSION_ID" > "$STATE_ROOT/.rite-session-id") 2>/dev/null || {
-    [ -n "${RITE_DEBUG:-}" ] && echo "[rite] WARNING: Failed to write .rite-session-id" >&2
+  (umask 077; printf '%s' "$SESSION_ID" > "$STATE_ROOT/.rite/session-id") 2>/dev/null || {
+    [ -n "${RITE_DEBUG:-}" ] && echo "[rite] WARNING: Failed to write .rite/session-id" >&2
     true
   }
 fi
@@ -243,15 +260,19 @@ fi
 
 # --- Plugin version check + legacy hook cleanup on startup ---
 if [ "$SOURCE" = "startup" ]; then
-  _version_file="$STATE_ROOT/.rite-initialized-version"
-  _hooks_cleaned_marker="$STATE_ROOT/.rite-settings-hooks-cleaned"
+  _version_file="$STATE_ROOT/.rite/initialized-version"
+  _hooks_cleaned_marker="$STATE_ROOT/.rite/settings-hooks-cleaned"
+  _version_read="$_version_file"
+  [ -f "$_version_read" ] || [ ! -f "$STATE_ROOT/.rite-initialized-version" ] || _version_read="$STATE_ROOT/.rite-initialized-version"
+  _hooks_read="$_hooks_cleaned_marker"
+  [ -f "$_hooks_read" ] || [ ! -f "$STATE_ROOT/.rite-settings-hooks-cleaned" ] || _hooks_read="$STATE_ROOT/.rite-settings-hooks-cleaned"
 
   _needs_cleanup=false
   _installed_ver=""
   _current_ver=""
 
-  if [ -f "$_version_file" ]; then
-    _installed_ver=$(tr -d '[:space:]' < "$_version_file" 2>/dev/null)
+  if [ -f "$_version_read" ]; then
+    _installed_ver=$(tr -d '[:space:]' < "$_version_read" 2>/dev/null)
     _plugin_json="$SCRIPT_DIR/../.claude-plugin/plugin.json"
     _current_ver=$(jq -r '.version // empty' "$_plugin_json" 2>/dev/null)
     if [ -n "$_installed_ver" ] && [ -n "$_current_ver" ] && [ "$_installed_ver" != "$_current_ver" ]; then
@@ -260,7 +281,7 @@ if [ "$SOURCE" = "startup" ]; then
   fi
 
   # One-time migration: clean up settings.local.json hooks even if versions match
-  if [ ! -f "$_hooks_cleaned_marker" ]; then
+  if [ ! -f "$_hooks_read" ]; then
     _needs_cleanup=true
   fi
 

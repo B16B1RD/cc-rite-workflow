@@ -388,7 +388,7 @@ mkdir -p "$dir011"
 create_state_file "$dir011" '{"active": true, "phase": "impl", "issue_number": 88, "branch": "feat/issue-88-test"}'
 
 if run_hook "$dir011"; then
-  wm_file="$dir011/.rite-work-memory/issue-88.md"
+  wm_file="$dir011/.rite/work-memory/issue-88.md"
   if [ -f "$wm_file" ]; then
     wm_ok=true
     if ! grep -q "issue_number: 88" "$wm_file"; then
@@ -426,7 +426,7 @@ if run_hook "$dir012"; then
     cs_issue=$(jq -r '.active_issue' "$cs012" 2>/dev/null)
     if [ "$cs_issue" = "null" ]; then
       # Verify no work memory snapshot was created
-      if [ ! -d "$dir012/.rite-work-memory" ]; then
+      if [ ! -d "$dir012/.rite/work-memory" ]; then
         pass "active_issue is null and no work memory snapshot created"
       else
         fail "Work memory directory should not exist when issue_number is null"
@@ -451,7 +451,7 @@ create_state_file "$dir013" '{"active": false, "phase": "completed", "issue_numb
 if run_hook "$dir013"; then
   tc013_ok=true
   # Verify no work memory snapshot
-  wm_file="$dir013/.rite-work-memory/issue-99.md"
+  wm_file="$dir013/.rite/work-memory/issue-99.md"
   if [ -f "$wm_file" ]; then
     fail "Work memory snapshot should NOT be created when active: false"
     tc013_ok=false
@@ -553,7 +553,7 @@ cs016="$(compact_state_path "$dir016")"
 echo '{"compact_state":"resuming","compact_state_set_at":"2026-01-01T00:00:00Z","active_issue":160}' > "$cs016"
 
 if run_hook "$dir016"; then
-  wm_file="$dir016/.rite-work-memory/issue-160.md"
+  wm_file="$dir016/.rite/work-memory/issue-160.md"
   tc016_ok=true
   # compact_state should now be recovering (overwritten from resuming)
   cs_state=$(jq -r '.compact_state' "$cs016" 2>/dev/null)

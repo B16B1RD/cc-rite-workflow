@@ -19,7 +19,7 @@ The plugin root is resolved using a 3-tier priority system:
 
 | Priority | Method | Source | When Available |
 |----------|--------|--------|----------------|
-| 1 (preferred) | `.rite-plugin-root` file | Written by `session-start.sh` at each session start | After first session start in the project |
+| 1 (preferred) | `.rite/plugin-root` file (legacy `.rite-plugin-root` as read fallback) | Written by `session-start.sh` at each session start | After first session start in the project |
 | 2 (local dev) | `plugins/rite` directory check | Local development checkout | Always in local dev |
 | 3 (fallback) | `installed_plugins.json` lookup | Claude Code marketplace metadata | After marketplace install |
 
@@ -34,7 +34,7 @@ Every consumer of `installPath` must derive the hooks/skills/scripts dir as `$IN
 **Use this one-liner directly in command files** instead of referencing this document. This prevents Claude LLM from improvising its own resolution logic:
 
 ```bash
-plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 ```
 
 **Validation** (recommended after resolution):
@@ -51,8 +51,16 @@ fi
 The full multi-step script with structured output (used when detailed error reporting is needed):
 
 ```bash
-# Priority 1: .rite-plugin-root (written by session-start.sh, version-independent)
-if [ -f ".rite-plugin-root" ] && [ -n "$(cat .rite-plugin-root 2>/dev/null)" ]; then
+# Priority 1: .rite/plugin-root (written by session-start.sh, version-independent)
+# Legacy `.rite-plugin-root` is a read fallback only.
+if [ -f ".rite/plugin-root" ] && [ -n "$(cat .rite/plugin-root 2>/dev/null)" ]; then
+  _pr=$(cat .rite/plugin-root)
+  if [ -d "$_pr/hooks" ]; then
+    echo "PLUGIN_ROOT:$_pr"
+  else
+    echo "PLUGIN_ROOT_NOT_FOUND:STALE_MARKER"
+  fi
+elif [ -f ".rite-plugin-root" ] && [ -n "$(cat .rite-plugin-root 2>/dev/null)" ]; then
   _pr=$(cat .rite-plugin-root)
   if [ -d "$_pr/hooks" ]; then
     echo "PLUGIN_ROOT:$_pr"
@@ -79,21 +87,21 @@ fi
 ### Result Handling
 
 - `PLUGIN_ROOT:<path>` → Extract the absolute path after `PLUGIN_ROOT:` and use it as `{plugin_root}` for all subsequent file reads in the current command.
-- `PLUGIN_ROOT_NOT_FOUND:STALE_MARKER` → `.rite-plugin-root` exists but points to a deleted directory. Display warning: `Stale .rite-plugin-root detected. Re-run session or use /rite:setup.` The Full Version script does not auto-fallback to Priority 2/3 in this case; use the inline one-liner (which handles fallback automatically) instead.
+- `PLUGIN_ROOT_NOT_FOUND:STALE_MARKER` → `.rite/plugin-root` (or legacy `.rite-plugin-root`) exists but points to a deleted directory. Display warning: `Stale .rite/plugin-root detected. Re-run session or use /rite:setup.` The Full Version script does not auto-fallback to Priority 2/3 in this case; use the inline one-liner (which handles fallback automatically) instead.
 - `PLUGIN_ROOT_NOT_FOUND:NO_INSTALL` → Display warning: `Plugin installation not found.` Fall back to hardcoded relative paths or inline fallback content.
 
-## How `.rite-plugin-root` Works
+## How `.rite/plugin-root` Works
 
-`session-start.sh` writes the resolved plugin root to `$STATE_ROOT/.rite-plugin-root` at every session start (startup and `/clear`). The path is derived from the hook script's own location (`SCRIPT_DIR`), making it **version-independent** — no hardcoded version numbers or marketplace names.
+`session-start.sh` writes the resolved plugin root to `$STATE_ROOT/.rite/plugin-root` at every session start (startup and `/clear`). The path is derived from the hook script's own location (`SCRIPT_DIR`), making it **version-independent** — no hardcoded version numbers or marketplace names. Readers fall back to the legacy `$STATE_ROOT/.rite-plugin-root` when the new file is absent.
 
 ```
 session-start.sh 実行時:
   SCRIPT_DIR = hooks/ の絶対パス（BASH_SOURCE[0] から自動解決）
   PLUGIN_ROOT = dirname(SCRIPT_DIR)
-  → $STATE_ROOT/.rite-plugin-root に書き出し
+  → $STATE_ROOT/.rite/plugin-root に書き出し
 ```
 
-This is consistent with `hooks.json` using `${CLAUDE_PLUGIN_ROOT}`, an environment variable that Claude Code automatically sets when executing hooks registered in `hooks.json`. The variable points to the plugin's install directory (e.g., `~/.claude/plugins/cache/rite-marketplace/rite/0.3.3/`). Note that `${CLAUDE_PLUGIN_ROOT}` is only available during hook execution — it is NOT set during normal Bash tool calls from command/skill files, which is why `.rite-plugin-root` is needed.
+This is consistent with `hooks.json` using `${CLAUDE_PLUGIN_ROOT}`, an environment variable that Claude Code automatically sets when executing hooks registered in `hooks.json`. The variable points to the plugin's install directory (e.g., `~/.claude/plugins/cache/rite-marketplace/rite/0.3.3/`). Note that `${CLAUDE_PLUGIN_ROOT}` is only available during hook execution — it is NOT set during normal Bash tool calls from command/skill files, which is why `.rite/plugin-root` is needed.
 
 ## Usage Convention
 
@@ -117,7 +125,7 @@ Command files that need plugin path resolution should include the inline one-lin
 ```markdown
 > **Plugin Path**: Resolve `{plugin_root}` using the inline one-liner:
 > ```bash
-> plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c '...')
+> plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c '...')
 > ```
 ```
 

@@ -79,8 +79,8 @@ else
   # Resolver failed (helper deploy regression / path validation rejection).
   # stderr was suppressed above to keep the hook silent in the common case;
   # surface the failure under RITE_DEBUG so deploy regressions are observable.
-  [ -n "${RITE_DEBUG:-}" ] && echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] post-tool-wm-sync: flow-state.sh path resolution failed, skipping wm sync" \
-    >> "$STATE_ROOT/.rite-flow-debug.log" 2>/dev/null || true
+  [ -n "${RITE_DEBUG:-}" ] && mkdir -p "$STATE_ROOT/.rite/logs" 2>/dev/null && echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] post-tool-wm-sync: flow-state.sh path resolution failed, skipping wm sync" \
+    >> "$STATE_ROOT/.rite/logs/flow-debug.log" 2>/dev/null || true
   FLOW_STATE=""
 fi
 [ -f "$FLOW_STATE" ] || exit 0
@@ -109,12 +109,20 @@ _ownership=$(check_session_ownership "$INPUT" "$FLOW_STATE") || _ownership="own"
 [ "$_phase" != "completed" ] || exit 0
 [ "$_phase" != "cleanup" ] || exit 0
 
-LOCAL_WM="$STATE_ROOT/.rite-work-memory/issue-${issue_number}.md"
+_wm_new="$STATE_ROOT/.rite/work-memory/issue-${issue_number}.md"
+_wm_old="$STATE_ROOT/.rite-work-memory/issue-${issue_number}.md"
+if [ -f "$_wm_new" ]; then
+  LOCAL_WM="$_wm_new"
+elif [ -f "$_wm_old" ]; then
+  LOCAL_WM="$_wm_old"
+else
+  LOCAL_WM="$_wm_new"
+fi
 
 # Debug logging (moved before LOCAL_WM check for use in both code paths)
 log_debug() {
-  [ -n "${RITE_DEBUG:-}" ] && echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] post-tool-wm-sync: $1" \
-    >> "$STATE_ROOT/.rite-flow-debug.log" 2>/dev/null || true
+  [ -n "${RITE_DEBUG:-}" ] && mkdir -p "$STATE_ROOT/.rite/logs" 2>/dev/null && echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] post-tool-wm-sync: $1" \
+    >> "$STATE_ROOT/.rite/logs/flow-debug.log" 2>/dev/null || true
 }
 
 if [ ! -f "$LOCAL_WM" ]; then
