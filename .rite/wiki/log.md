@@ -1,4 +1,5 @@
 ## 2026-08-28
+* **Skip**: [20260828T111708Z-pr-2438.md](raw/reviews/20260828T111708Z-pr-2438.md) — detector-candidate: production gh -R pin / promotions_kept exact value / rm-fail chmod / github_pr_lifecycle hoist は本 PR の plugin テストへ既反映
 * **Skip**: [20260828T095256Z-pr-2436.md](raw/fixes/20260828T095256Z-pr-2436.md) — detector-candidate: D-04 exit 0 pin is already enforced by plugin tests
 * **Skip**: [20260828T094316Z-pr-2436.md](raw/reviews/20260828T094316Z-pr-2436.md) — detector-candidate: guardrail_audit_log 7-key exact match is already enforced by plugin tests
 * **Skip**: [20260828T080859Z-pr-2435.md](raw/reviews/20260828T080859Z-pr-2435.md) — detector-candidate: skip 権威ファイルの gitignore sidecar と極性 pin は本 PR で plugin テスト T-01/T-08 へ既反映
