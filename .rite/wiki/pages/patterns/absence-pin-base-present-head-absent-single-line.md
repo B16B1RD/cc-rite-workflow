@@ -11,9 +11,18 @@ sources:
     resource: "raw/fixes/20260721T175931Z-pr-1959.md"
   - type: "fixes"
     resource: "raw/fixes/20260728T093135Z-pr-2038.md"
-tags: ["assert-not-grep", "vacuous-pin", "ere-portability", "test-pin", "fixture-scope"]
+  - type: "reviews"
+    resource: "raw/reviews/20260828T035444Z-pr-2426.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260828T035827Z-pr-2426.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260828T040534Z-pr-2426.md"
+tags: ["assert-not-grep", "vacuous-pin", "ere-portability", "test-pin", "fixture-scope", "count-zero-assertion"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-28T21:30:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-28T13:10:00+09:00" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-08-28T13:10:00+09:00"
 ---
 
 # absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する
@@ -43,9 +52,33 @@ grep -E '<token>' path/to/file.md                       # head 不在 → 空で
 - 複数行に跨る旧文面には、**行を跨がない単一の識別トークン**（旧文面の先頭句など）を使う。「二行形・一行形いずれの regression も検出できる」トークンが理想
 - `{placeholder}` literal を含む pin は `\{placeholder\}` とエスケープする（ERE で `\{` はリテラル中括弧。GNU / BSD / ugrep すべてで well-defined）
 
+### 同一出力内の「件数 0」検証も片側では足りない
+
+同じ非対称は時間軸（base / head）だけでなく**同一出力内**にも現れる。「望ましくない形が 0 件であること」を数える assertion は、**対象が正しい形で在る**場合と**対象が丸ごと無い**場合の両方で 0 を返す。
+
+```bash
+# 「原因行が列 0 に漏れていないこと」だけを見る — 原因行が一切出力されなくても 0 件で pass する
+[ "$(printf '%s\n' "$err" | LC_ALL=C grep -cE '^[^ ].*/\.gitignore: ')" -ne 0 ] && fail
+```
+
+fail-loud 実装（WARNING + 原因の字下げ併記）を pin するつもりでこれだけを置くと、後日 cause 出力行が簡略化リファクタで消えても検出できない。**在ることの正の表明と、誤った位置に無いことの負の表明を対で置く**:
+
+```bash
+printf '%s\n' "$err" | LC_ALL=C grep -qE '^  .*/\.gitignore: ' || fail   # 在る（字下げ済み）
+[ "$(printf '%s\n' "$err" | LC_ALL=C grep -cE '^[^ ].*/\.gitignore: ')" -ne 0 ] && fail  # 列 0 に無い
+```
+
+`LC_ALL=C` は必須。原因文字列は locale 依存の OS メッセージであり、UTF-8 locale の grep はデコードできない行を諦めて ASCII の anchor まで拾えなくなる。
+
+**同じリポジトリに正しい先例があるなら、新規テストはその片側だけを写していないか確認する** — 起点事例では既存の同型 assertion が `indented>=1 && bare==0` を対で表明していたのに、新規テストが負側だけを写していた。先例探索を挟めばレビュー往復を 1 回減らせた。
+
 ### 検証は mutation で
 
 pin の非空虚性は「守っている行をストリーム上で削除（または旧文面を復活）して pin が落ちるか」の mutation で実証できる。pass し続ける pin は theater。
+
+mutation の実施者は**主張する側と独立**であることが望ましい。起点事例では reviewer が orchestrator 側の実測を鵜呑みにせず、修正前後の両方（旧テストで rc=0、新テストで rc=1）を自分で再現した。「直したこと」だけでなく「直す前は本当に検出できなかったこと」の再現が、修正の妥当性主張には要る。
+
+正規表現の pin は**実バイト列**でも突き合わせる。`cat -A` 等で実際の出力を見て、意図した文字列に本当にマッチするかを確認しないと、regex そのものが空振りしていても mutation テストは「検出できた」と誤って報告しうる。
 
 ## 関連ページ
 
@@ -60,3 +93,6 @@ pin の非空虚性は「守っている行をストリーム上で削除（ま�
 - [PR #1959 review cycle 3 (空虚 pin + ERE 未エスケープの runtime 実証)](../../raw/reviews/20260721T175725Z-pr-1959.md)
 - [PR #1959 fix cycle 3 (単一行トークン化 + エスケープ統一)](../../raw/fixes/20260721T175931Z-pr-1959.md)
 - [PR #2038 fix results (cycle 4) — fixture スコープ由来の恒真化](../../raw/fixes/20260728T093135Z-pr-2038.md)
+- [PR #2426 review cycle 1 — 件数 0 検証が「正しく在る」と「丸ごと無い」を区別できない](../../raw/reviews/20260828T035444Z-pr-2426.md)
+- [PR #2426 fix results — 正負の対で pin + ミューテーション実測 + 先例探索](../../raw/fixes/20260828T035827Z-pr-2426.md)
+- [PR #2426 review cycle 2 — 解消検証の独立再現と実バイト列の確認](../../raw/reviews/20260828T040534Z-pr-2426.md)

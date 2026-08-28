@@ -1,4 +1,7 @@
 ## 2026-08-28
+* **Update**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — raw/reviews/20260828T035444Z-pr-2426.md を統合（同一出力内の「件数 0」検証も片側では足りない軸を追加）
+* **Update**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — raw/fixes/20260828T035827Z-pr-2426.md を統合（正負の対で pin する具体形と先例探索）
+* **Update**: [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) — raw/reviews/20260828T040534Z-pr-2426.md を統合（mutation の独立再現と実バイト列確認）
 * **Skip**: [20260827T173015Z-pr-2420.md](raw/reviews/20260827T173015Z-pr-2420.md) — 一時的な 0-finding レビュー記録。T-07 の却下台帳取得失敗経路 pin は plugin テストへ既反映。新規経験則なし
 * **Skip**: [20260827T165922Z-pr-2419.md](raw/reviews/20260827T165922Z-pr-2419.md) — 一時的な 0-finding レビュー記録。契約テストの section pin は plugin テストへ既反映。新規経験則なし
 * **Skip**: [20260827T150948Z-pr-2417.md](raw/reviews/20260827T150948Z-pr-2417.md) — detector-candidate: REJECTED_LEDGER の failed と empty の区別は pr-review SKILL.md の ledger_status 分岐を grep で pin できる
