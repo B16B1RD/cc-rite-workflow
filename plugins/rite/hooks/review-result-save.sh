@@ -41,12 +41,13 @@
 #
 # 契約 (pr-review.md ステップ 6.1.a / D-04 と verbatim 一致):
 #   - 非ブロッキング: 失敗経路では `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を stderr に emit する。
-#     reason 語彙は 15 種で、**うち 14 種は exit 0** (ステップ 6 全体を fail させない)。
+#     reason 語彙は 16 種で、**うち 15 種は exit 0** (ステップ 6 全体を fail させない)。
 #     `signal_aborted` のみ signal trap 由来で rc=130/143/129 を返す (reason emit と marker 削除は
-#     他 14 種と同一。ステップ 6 の exit code は 6.1.c が決める)。
+#     他 15 種と同一。ステップ 6 の exit code は 6.1.c が決める)。
 #   - reason 語彙: pr_number_placeholder_residue / date_command_failure / mkdir_failure /
 #     mktemp_failure / write_failure / timestamp_injection_mv_failure / json_invalid /
-#     schema_required_fields_missing / finding_id_format_or_uniqueness_violation /
+#     schema_required_fields_missing / guardrail_audit_log_keys_violation /
+#     finding_id_format_or_uniqueness_violation /
 #     scope_enum_violation / critical_high_scope_nit_noted_invariant /
 #     collision_resolution_exhausted / mktemp_failure_mv_err / mv_failure / signal_aborted
 #   - 上記とは別 namespace の観測 marker として `[CONTEXT] LOCAL_SAVE_GITIGNORE_FAILED=1; dir=...`
@@ -453,6 +454,23 @@ if [ -n "$_missing" ]; then
       echo "  reviewers: pr-review.md ステップ 5.3.0.M step 1 が実回収 reviewer 名簿 (結果を回収できた reviewer のみ) を重複なく書いているか確認してください" >&2 ;;
   esac
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=schema_required_fields_missing" >&2
+  exit 0
+fi
+
+# guardrail_audit_log[] 要素キー集合 (Issue #2434)。空配列は通す。exact match（順序不問）:
+# reviewer / filter_category / original_severity / file_line / description / filter_reason /
+# verification。欠落・余分（filtered_suggestion / failed_condition 含む）は保存しない。
+# トップレベル欠落・非配列も同 reason。値の空文字は本検査の対象外（キー集合のみ）。
+if ! jq -e '
+  def expected: ["description","file_line","filter_category","filter_reason","original_severity","reviewer","verification"];
+  has("guardrail_audit_log")
+  and (.guardrail_audit_log | type == "array")
+  and (.guardrail_audit_log | all((type == "object") and ((keys | sort) == expected)))
+  ' "$json_tmp" >/dev/null 2>&1; then
+  echo "WARNING: JSON の guardrail_audit_log[] がスキーマ正のキー集合ではありません" >&2
+  echo "  期待: 0 件でも \"guardrail_audit_log\": []。要素キーは reviewer / filter_category / original_severity / file_line / description / filter_reason / verification の exact match（余分・欠落禁止）" >&2
+  echo "  対処: pr-review ステップ 5.1 の Guardrail audit collection と review-result-schema.md を確認してください。列プレースホルダ filtered_suggestion / failed_condition は JSON キーではない" >&2
+  echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=guardrail_audit_log_keys_violation" >&2
   exit 0
 fi
 

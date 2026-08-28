@@ -605,7 +605,8 @@ cat > "$JSON_OK" <<EOF
   "timestamp": "$SENTINEL",
   "verdict": "mergeable",
   "reviewers": ["code-quality-reviewer", "security-reviewer"],
-  "findings": []
+  "findings": [],
+  "guardrail_audit_log": []
 }
 EOF
 run_save --pr 123 --content-file "$JSON_OK" --results-dir "$RESULTS_TC34"
@@ -638,7 +639,7 @@ _save_fixture() {  # $1=path, 残りは JSON 本体に差し込むトップレ�
   {
     printf '{\n  "schema_version": "1.1.0",\n  "pr_number": 123,\n  "timestamp": "%s",\n' "$SENTINEL"
     printf '%s\n' "$@"
-    printf '  "findings": []\n}\n'
+    printf '  "findings": [],\n  "guardrail_audit_log": []\n}\n'
   } > "$_p"
 }
 
@@ -716,7 +717,7 @@ JSON_BAD_PRNUM="$TMP_ROOT/json-bad-prnum.json"
 {
   printf '{\n  "schema_version": "1.1.0",\n  "pr_number": "123",\n  "timestamp": "%s",\n' "$SENTINEL"
   printf '  "verdict": "mergeable",\n  "reviewers": ["code-quality-reviewer", "security-reviewer"],\n'
-  printf '  "findings": []\n}\n'
+  printf '  "findings": [],\n  "guardrail_audit_log": []\n}\n'
 } > "$JSON_BAD_PRNUM"
 run_save --pr 123 --content-file "$JSON_BAD_PRNUM" --results-dir "$TMP_ROOT/results-tc35hint"
 assert "TC-3.5hint pr_number 型違反: exit 0 (非ブロッキング)" "0" "$RC"
@@ -742,7 +743,8 @@ cat > "$JSON_BAD_ID" <<EOF
   "timestamp": "$SENTINEL",
   "verdict": "fix-needed",
   "reviewers": ["code-quality-reviewer", "security-reviewer"],
-  "findings": [{"id": "F-1"}]
+  "findings": [{"id": "F-1"}],
+  "guardrail_audit_log": []
 }
 EOF
 run_save --pr 123 --content-file "$JSON_BAD_ID" --results-dir "$TMP_ROOT/results-tc37"
@@ -758,7 +760,8 @@ cat > "$JSON_DUP_ID" <<EOF
   "timestamp": "$SENTINEL",
   "verdict": "fix-needed",
   "reviewers": ["code-quality-reviewer", "security-reviewer"],
-  "findings": [{"id": "F-01"}, {"id": "F-01"}]
+  "findings": [{"id": "F-01"}, {"id": "F-01"}],
+  "guardrail_audit_log": []
 }
 EOF
 run_save --pr 123 --content-file "$JSON_DUP_ID" --results-dir "$TMP_ROOT/results-tc38"
@@ -774,7 +777,8 @@ cat > "$JSON_BAD_SCOPE" <<EOF
   "timestamp": "$SENTINEL",
   "verdict": "fix-needed",
   "reviewers": ["code-quality-reviewer", "security-reviewer"],
-  "findings": [{"id": "F-01", "scope": "bogus"}]
+  "findings": [{"id": "F-01", "scope": "bogus"}],
+  "guardrail_audit_log": []
 }
 EOF
 run_save --pr 123 --content-file "$JSON_BAD_SCOPE" --results-dir "$TMP_ROOT/results-tc39"
@@ -790,7 +794,8 @@ cat > "$JSON_INV4" <<EOF
   "timestamp": "$SENTINEL",
   "verdict": "fix-needed",
   "reviewers": ["code-quality-reviewer", "security-reviewer"],
-  "findings": [{"id": "F-01", "severity": "CRITICAL", "scope": "nit-noted"}]
+  "findings": [{"id": "F-01", "severity": "CRITICAL", "scope": "nit-noted"}],
+  "guardrail_audit_log": []
 }
 EOF
 run_save --pr 123 --content-file "$JSON_INV4" --results-dir "$TMP_ROOT/results-tc310"
@@ -871,7 +876,8 @@ for _cyc in 1 2 3; do
   "verdict": "mergeable",
   "reviewers": ["code-quality-reviewer", "security-reviewer"],
   "findings": [],
-  "non_blocking_findings": []
+  "non_blocking_findings": [],
+  "guardrail_audit_log": []
 }
 EOF
   run_save --pr 123 --content-file "$TMP_ROOT/json-cycle-$_cyc.json" --results-dir "$RESULTS_CYCLES" --pending-id "$_mid"
@@ -3324,7 +3330,7 @@ else
 
   # (h-2) consume 側: 削除文は helper の EXIT trap 関数**内**に 1 本、関数外に 0 本。
   #       関数外 (末尾 exit 0 の直前) へ移すと、trap 到達前に exit する非ブロッキング失敗経路
-  #       (LOCAL_SAVE_FAILED 全 15 種) で marker が残り、8.0.4 が毎 cycle exit 1 を返して
+  #       (LOCAL_SAVE_FAILED 全 16 種) で marker が残り、8.0.4 が毎 cycle exit 1 を返して
   #       保存失敗が blocking 化する (D-04 / AC-3 の破壊)。件数 pin では移動を検出できないため配置で固定する。
   _sec_p61a_cleanup() {
     awk '
