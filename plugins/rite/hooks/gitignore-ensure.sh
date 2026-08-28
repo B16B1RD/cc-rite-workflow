@@ -1,6 +1,8 @@
 #!/bin/bash
 # Shared primitive for self-contained runtime directories that must carry `*`.
 # Contract: non-empty files are left untouched; missing/empty files are rewritten.
+# Extra arguments after the directory are appended as additional lines after `*`.
+# One-argument callers still write a single `*` line. The helper does not mkdir.
 # On failure, return 1 and expose a control-character-neutralized, C-locale cause in
 # `_RITE_GITIGNORE_ERROR`. Callers own their WARNING/marker policy.
 
@@ -17,10 +19,11 @@ fi
 _RITE_GITIGNORE_ERROR=""
 _ensure_dir_gitignore() {
   local dir="$1" raw_error=""
+  shift || true
   _RITE_GITIGNORE_ERROR=""
   [ -n "$dir" ] || { _RITE_GITIGNORE_ERROR="empty directory path"; return 1; }
   [ -s "$dir/.gitignore" ] && return 0
-  if ! raw_error=$( { LC_ALL=C printf '*\n' > "$dir/.gitignore"; } 2>&1 ); then
+  if ! raw_error=$( { { LC_ALL=C printf '*\n'; [ "$#" -gt 0 ] && printf '%s\n' "$@"; } > "$dir/.gitignore"; } 2>&1 ); then
     _RITE_GITIGNORE_ERROR=$(printf '%s' "$raw_error" | neutralize_ctrl --keep-newline)
     return 1
   fi
