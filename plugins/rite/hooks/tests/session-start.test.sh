@@ -1594,6 +1594,28 @@ else
 fi
 echo ""
 
+echo "nested .rite mkdir failure: file at .rite emits WARNING, hook exits 0"
+dir_rite_file="$TEST_DIR/rite-as-file"
+mkdir -p "$dir_rite_file"
+(cd "$dir_rite_file" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
+# A file named ".rite" at STATE_ROOT blocks `mkdir -p .../.rite`, so the
+# nested gitignore else branch runs without needing a read-only filesystem
+# (same collision pattern as TC-1968-03).
+printf 'not-a-dir\n' > "$dir_rite_file/.rite"
+iso_tmpdir_rite_file="$TEST_DIR/rite-as-file-tmpdir"
+mkdir -p "$iso_tmpdir_rite_file"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+echo "{\"cwd\": \"$dir_rite_file\"}" | TMPDIR="$iso_tmpdir_rite_file" bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE"; rc_rite_file=$?
+if [ "$rc_rite_file" -eq 0 ] \
+  && grep -q 'nested gitignore not written' "$LAST_STDERR_FILE" \
+  && [ -f "$dir_rite_file/.rite" ] \
+  && [ ! -d "$dir_rite_file/.rite" ]; then
+  pass "nested .rite mkdir failure: WARNING emitted and hook exits 0"
+else
+  fail "nested .rite mkdir failure: expected rc=0 + 'nested gitignore not written' with .rite still a file; got rc=$rc_rite_file, .rite is $([ -d "$dir_rite_file/.rite" ] && echo dir || echo file-or-missing), stderr: $(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------

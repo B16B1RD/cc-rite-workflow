@@ -74,6 +74,20 @@ fi
 # SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
+# Nested self-gitignore for the whole `.rite/` tree (`*` plus wiki negations).
+# Covers runtime state even when /rite:setup has not listed each subdir in the
+# consumer root .gitignore. mkdir is the caller's job; the helper will not create
+# the directory. Failure is non-blocking (same WARNING form as the logs dir).
+if mkdir_err=$(mkdir -p "$STATE_ROOT/.rite" 2>&1); then
+  if ! _ensure_dir_gitignore "$STATE_ROOT/.rite" '!wiki/' '!wiki/**'; then
+    echo "WARNING: session-start.sh: cannot create $(printf '%s' "$STATE_ROOT/.rite" | neutralize_ctrl)/.gitignore; verify by hand that this directory is excluded from git" >&2
+    [ -n "$_RITE_GITIGNORE_ERROR" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+  fi
+else
+  echo "WARNING: session-start.sh: cannot create $(printf '%s' "$STATE_ROOT/.rite" | neutralize_ctrl); nested gitignore not written" >&2
+  [ -n "$mkdir_err" ] && printf '%s\n' "$mkdir_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+fi
+
 # Write plugin root for command-file consumption (version-independent)
 _plugin_root="$(dirname "$SCRIPT_DIR")"
 if [ -d "$_plugin_root/hooks" ]; then
@@ -378,10 +392,10 @@ RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" migrate >/dev/nul
 # manifest-bypass WARNINGs) were previously unobservable and slowed diagnosis
 # (#1966's investigation). A self-contained `.gitignore` (`*`) is written into
 # the log dir on first creation so it never leaks into the repo even in
-# downstream consuming repos, where /rite:setup's generated .gitignore covers
-# `.rite/sessions/`, `.rite/worktrees/`, and `.rite/review-results/` (not
-# `.rite/logs/`) and this
-# repo's own root `*.log` rule doesn't apply. If the dir can't be created,
+# downstream consuming repos. Nested `$STATE_ROOT/.rite/.gitignore` (`*` plus
+# wiki negations) also covers `.rite/sessions/`, `.rite/worktrees/`,
+# `.rite/review-results/`, and `.rite/logs/` without a root listing. If the
+# dir can't be created,
 # fall back to discarding output — this hook must never block session start on
 # a log-write failure.
 if [ "$CWD" = "$STATE_ROOT" ]; then
