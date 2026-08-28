@@ -68,7 +68,8 @@ json_body() {
   "overall_assessment": "mergeable",
   "verdict": "mergeable",
   "reviewers": ["code-quality-reviewer", "security-reviewer"],
-  "findings": []
+  "findings": [],
+  "guardrail_audit_log": []
 }
 JSON
 }

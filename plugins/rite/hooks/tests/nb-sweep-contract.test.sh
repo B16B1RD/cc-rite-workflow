@@ -130,7 +130,7 @@ write_json "$mix_json" <<'JSON'
     {"id":"F-22","severity":"MEDIUM","file":"src/f.ts","line":6,"scope":"current-pr","description":"nb"}
   ],
   "guardrail_audit_log": [
-    {"reviewer":"code-quality-reviewer","filter_category":"Category #2","file_line":"src/g.ts:7","description":"filtered","filter_reason":"hypothetical"}
+    {"reviewer":"code-quality-reviewer","filter_category":"Category #2","original_severity":"MEDIUM","file_line":"src/g.ts:7","description":"filtered","filter_reason":"hypothetical","verification":"なし"}
   ]
 }
 JSON
@@ -139,6 +139,13 @@ ids=$(printf '%s' "$t05_out" | jq -r '[.targets[].id] | sort | join(",")')
 assert "T-05 targets F-21,F-22 only" "F-21,F-22" "$ids"
 assert "T-05 class A excluded" "0" "$(printf '%s' "$t05_out" | jq '[.targets[] | select(.id=="F-20")] | length')"
 assert "T-05 already_rejected=1" "1" "$(printf '%s' "$t05_out" | jq '.already_rejected | length')"
+assert "T-03 already_rejected reviewer" "code-quality-reviewer" "$(printf '%s' "$t05_out" | jq -r '.already_rejected[0].reviewer')"
+assert "T-03 already_rejected file_line" "src/g.ts:7" "$(printf '%s' "$t05_out" | jq -r '.already_rejected[0].file_line')"
+assert "T-03 already_rejected original_severity" "MEDIUM" "$(printf '%s' "$t05_out" | jq -r '.already_rejected[0].original_severity')"
+assert "T-03 already_rejected description" "filtered" "$(printf '%s' "$t05_out" | jq -r '.already_rejected[0].description')"
+assert "T-03 already_rejected filter_reason" "hypothetical" "$(printf '%s' "$t05_out" | jq -r '.already_rejected[0].filter_reason')"
+assert_not_grep "collect has no filtered_suggestion fallback" "$COLLECT" 'filtered_suggestion'
+assert_not_grep "collect has no failed_condition fallback" "$COLLECT" 'failed_condition'
 
 # --- T-06 (AC-6): fail-loud ---
 "$COLLECT" --json "$sandbox/missing.json" 2>"$sandbox/t06c.err"
