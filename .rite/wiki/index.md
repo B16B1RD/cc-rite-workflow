@@ -433,8 +433,9 @@ okf_version: "0.2"
 | [値の妥当性ガードは消費する場所ではなく値が入る場所に置く — 空値と未指定が sentinel を共有すると消費側のガードは不発する](pages/heuristics/validity-guard-at-assignment-site-not-consumption-site.md) | heuristics | 「引数を黙って無視しない」ためのガードを、その値を使う分岐に置くと、明示的な空値が「未指定」と同じ sentinel（空文字）に落ちるため不発する。ガードを値が変数に入る地点へ移すと、消費側の複数分岐に開いていた穴が同時に閉じる。 | 2026-08-13T19:20:00+09:00 | high |
 | [散文の主語を広げたら、その主語に係る述語を数え上げて検算する — 数え上げられない粒度は書かずに削る](pages/heuristics/widened-subject-requires-predicate-enumeration.md) | heuristics | 「X は A に依存する」の主語へ B を足すとき、続く述語がそのまま残ると、B について偽の主張になる。主語を広げる編集は述語を検算する編集とセットであり、検算に外延の数え上げが要るなら、その粒度は文書に写さないほうが腐朽が遅い。 | 2026-08-13T19:20:00+09:00 | high |
 | [既存術語の動詞を別意味に流用せず、新しい意味には別語を立てる](pages/heuristics/existing-term-verb-not-repurposed-for-new-meaning.md) | heuristics | 同一ファイル内で既に定義済みの術語が使う動詞を、別の意味の説明に流用すると、読み手はどちらの定義が効いているか判別できず、レビューでは術語衝突として指摘される。 | 2026-08-25T18:26:48Z | medium |
+| [hook の失敗枝はソース grep ではなく実行で検証する](pages/heuristics/hook-failure-branch-needs-execution-test.md) | heuristics | WARNING 文字列がソースに存在するだけでは、mkdir 失敗などの else 枝が実行時に辿られることは保証できない。対象パスをファイルにして hook を走らせ、stderr と終了コードを assert する。 | 2026-08-29T08:20:00Z | high |
 ## 統計
 
-- 総ページ数: 423
-- ドメイン別: patterns=103, heuristics=184, anti-patterns=136
-- 最終更新: 2026-08-28T13:10:00+09:00
+- 総ページ数: 424
+- ドメイン別: patterns=103, heuristics=185, anti-patterns=136
+- 最終更新: 2026-08-29T08:20:00Z

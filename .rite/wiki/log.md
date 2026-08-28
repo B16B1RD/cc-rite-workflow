@@ -1,3 +1,6 @@
+## 2026-08-29
+* **Create**: [hook の失敗枝はソース grep ではなく実行で検証する](pages/heuristics/hook-failure-branch-needs-execution-test.md) — raw/fixes/20260828T170214Z-pr-2446.md を新規ページ化
+
 ## 2026-08-28
 * **Skip**: [20260828T153033Z-pr-2445.md](raw/reviews/20260828T153033Z-pr-2445.md) — 一時的な 0-finding レビュー記録。T-11 外側/内側 mutation pin は本 PR の plugin テストへ既反映。新規経験則なし
 * **Skip**: [20260828T131103Z-pr-2441.md](raw/reviews/20260828T131103Z-pr-2441.md) — detector-candidate: T-11 外側 else インデント pin と RH-SW-T-10 本番 argv pin は本 PR の plugin テストへ既反映
