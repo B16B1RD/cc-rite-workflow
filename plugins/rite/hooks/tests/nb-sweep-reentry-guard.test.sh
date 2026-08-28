@@ -8,6 +8,7 @@
 # T-05 cleanup rite_rm AND pr-cycle-cleanup.sh both name the file
 # T-06 fix 5.1 row 1.5/1.6; regular loop does not consult the file
 # T-07 existing nb-sweep-contract rails remain; 5.0.2 has skipped; 0.6 run-start deletes the file
+# T-08 AC-6 sidecar _ensure_dir_gitignore + setup dir_entry; git check-ignore -q rc=0
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,6 +18,7 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
 FIX="$PLUGIN_ROOT/skills/fix/SKILL.md"
+SETUP="$PLUGIN_ROOT/skills/setup/SKILL.md"
 CLEANUP_SKILL="$PLUGIN_ROOT/skills/cleanup/SKILL.md"
 PR_CYCLE="$PLUGIN_ROOT/hooks/scripts/pr-cycle-cleanup.sh"
 SCHEMA="$PLUGIN_ROOT/references/review-result-schema.md"
@@ -26,6 +28,7 @@ echo "=== nb-sweep re-entry guard (#2433) ==="
 
 assert_file_exists_or_fail "iterate skill" "$ITERATE" || true
 assert_file_exists_or_fail "fix skill" "$FIX" || true
+assert_file_exists_or_fail "setup skill" "$SETUP" || true
 assert_file_exists_or_fail "cleanup skill" "$CLEANUP_SKILL" || true
 assert_file_exists_or_fail "pr-cycle-cleanup.sh" "$PR_CYCLE" || true
 
@@ -40,6 +43,22 @@ assert_grep_in_section "T-01 file-guard precedes collect" "$ITERATE" \
 assert_grep_in_section "T-01 skipped branch skips collect helper" "$ITERATE" \
   '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
   'nb-sweep-collect.sh'
+assert_grep_in_section "T-01 skip predicate polarity is file exists" "$ITERATE" \
+  '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
+  'if \[ -f "\$nb_done_file" \]'
+then_collect=$(awk '
+  /## ステップ 5.S: NB digest sweep/ {sec=1}
+  sec && /## ステップ 5: 完了通知/ {exit}
+  sec && /if \[ -f / && /nb_done_file/ && $0 !~ /! -f/ {thenb=1; next}
+  thenb && /^else$/ {exit}
+  thenb && /nb-sweep-collect\.sh/ {hit=1}
+  END { print hit+0 }
+' "$ITERATE")
+assert "T-01 then branch has no collect helper" "0" "$then_collect"
+assert_not_grep "T-01 no conversation-marker skip" "$ITERATE" '既出ならステップ 5'
+assert_grep_in_section "T-01 skip authority is file only" "$ITERATE" \
+  '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
+  'skip 判定はファイル存在のみ'
 
 # --- T-02: empty → noop ファイル write。失敗時はファイルを残さない（偽 skip 禁止） ---
 assert_grep_in_section "T-02 empty writes noop" "$ITERATE" \
@@ -48,11 +67,24 @@ assert_grep_in_section "T-02 empty writes noop" "$ITERATE" \
 assert_grep_in_section "T-02 write-fail removes skip file" "$ITERATE" \
   '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
   'rm -f "\$nb_done_file"'
+noop_rm=$(awk '
+  /## ステップ 5.S: NB digest sweep/ {sec=1}
+  sec && /## ステップ 5: 完了通知/ {exit}
+  sec && /printf .noop/ {p=1}
+  p && /rm -f / && /nb_done_file/ {hit=1}
+  p && $0 ~ /^[[:space:]]*fi$/ {exit}
+  END { print hit+0 }
+' "$ITERATE")
+assert "T-02 empty-collect write-fail rm is in noop then" "1" "$noop_rm"
 
 # --- T-03: --nb-sweep 戻りはステップ 4 汎用表を使わず、pushed でもステップ 1 に戻らない ---
 assert_grep_in_section "T-03 no generic step-4 table after sweep invoke" "$ITERATE" \
   '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
   'ステップ 4 の汎用表を使わず'
+assert_grep_in_section "T-03 step-4 defers nb-sweep returns" "$ITERATE" \
+  '## ステップ 4: fix sentinel を判定' '## ステップ 5.S: NB digest sweep' \
+  '経由の戻りは本表を使わない'
+assert_grep "T-03 overview defers nb-sweep from step-4" "$ITERATE" '経由は 5.S 専用表'
 assert_grep_in_section "T-03 pushed after sweep goes to step 5" "$ITERATE" \
   '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
   '\[fix:pushed\].*ステップ 5'
@@ -110,6 +142,47 @@ assert_grep_in_section "T-07 5.0.2 skipped row" "$ITERATE" \
 assert_grep_in_section "T-07 0.6 deletes done-file on new run" "$ITERATE" \
   '## ステップ 0.6:' '## ステップ 1:' \
   'nb-sweep-done-{pr_number}.txt'
+
+# --- T-08: AC-6 gitignore — sidecar * + setup dir_entry。git check-ignore -q rc=0 ---
+assert_grep_in_section "T-08 setup dir_entry includes .rite/state/" "$SETUP" \
+  '## Phase 4.6:' '## Phase 4.7:' \
+  'for dir_entry in "\.rite/sessions/" "\.rite/worktrees/" "\.rite/review-results/" "\.rite/state/"'
+iter_ensure=$(awk '/## ステップ 5.S: NB digest sweep/,/## ステップ 5: 完了通知/' "$ITERATE" \
+  | grep -c '_ensure_dir_gitignore' || true)
+assert "T-08 5.S has two _ensure_dir_gitignore calls" "2" "$iter_ensure"
+iter_src=$(awk '/## ステップ 5.S: NB digest sweep/,/## ステップ 5: 完了通知/' "$ITERATE" \
+  | grep -c 'gitignore-ensure.sh' || true)
+assert "T-08 5.S sources gitignore-ensure in each write block" "2" "$iter_src"
+fix_ensure=$(awk '/### 1.3.S `--nb-sweep` consume/,/### 1.4 Display Comment List/' "$FIX" \
+  | grep -c '_ensure_dir_gitignore' || true)
+assert "T-08 fix 1.3.S has two _ensure_dir_gitignore calls" "2" "$fix_ensure"
+fix_src=$(awk '/### 1.3.S `--nb-sweep` consume/,/### 1.4 Display Comment List/' "$FIX" \
+  | grep -c 'gitignore-ensure.sh' || true)
+assert "T-08 fix 1.3.S sources gitignore-ensure in each write block" "2" "$fix_src"
+
+# shellcheck source=../gitignore-ensure.sh
+source "$PLUGIN_ROOT/hooks/gitignore-ensure.sh"
+gi_sbx=$(make_sandbox)
+gi_file=".rite/state/nb-sweep-done-2435.txt"
+mkdir -p "$gi_sbx/.rite/state"
+_ensure_dir_gitignore "$gi_sbx/.rite/state"
+printf 'noop\n' > "$gi_sbx/$gi_file"
+gi_rc=0
+git -C "$gi_sbx" check-ignore -q "$gi_file" || gi_rc=$?
+assert "T-08 sidecar git check-ignore -q rc=0" "0" "$gi_rc"
+git -C "$gi_sbx" add -A
+gi_staged=$(git -C "$gi_sbx" diff --cached --name-only | grep -c 'nb-sweep-done' || true)
+assert "T-08 sidecar git add -A does not stage nb-sweep-done" "0" "$gi_staged"
+rm -rf -- "$gi_sbx"
+
+gi_setup=$(make_sandbox)
+mkdir -p "$gi_setup/.rite/state"
+printf '%s\n' '.rite/sessions/' '.rite/worktrees/' '.rite/review-results/' '.rite/state/' > "$gi_setup/.gitignore"
+printf 'noop\n' > "$gi_setup/$gi_file"
+gi_setup_rc=0
+git -C "$gi_setup" check-ignore -q "$gi_file" || gi_setup_rc=$?
+assert "T-08 setup dir_entry git check-ignore -q rc=0" "0" "$gi_setup_rc"
+rm -rf -- "$gi_setup"
 
 if ! print_summary "$(basename "$0")" "nb-sweep re-entry guard drift — iterate 5.S / fix 1.3.S / cleanup / 0.6"; then
   exit 1

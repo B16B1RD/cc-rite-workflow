@@ -21,7 +21,7 @@ argument-hint: "<pr_number>"
 1. lost 修復ゲート（前 cycle JSON 不在なら即時保存 or counter 不前進の再レビュー）→ 発火条件チェック（収束トレンドの発散 / `max_review_cycles` 到達）→ 不成立なら counter を +1 して `/rite:pr-review` を invoke / 成立なら サーキットブレーカー（ステップ 6）へ
 2. review sentinel を判定（`[review:mergeable]` → ステップ 5.S / `[review:fix-needed:N]` → ステップ 3 / error・不在 → 1 回自動再試行、再失敗時は停止）
 3. `/rite:fix` を invoke
-4. fix sentinel を判定（`[fix:pushed]` → ステップ 1 に戻る / `[fix:sweep-done]` → ステップ 5 / `[fix:replied-only]` `[fix:cancelled-by-user]` → 終了 / error・不在 → 1 回自動再試行、再失敗時は停止）
+4. fix sentinel を判定（通常ループ: `[fix:pushed]` → ステップ 1 に戻る / `[fix:sweep-done]` → ステップ 5 / `[fix:replied-only]` `[fix:cancelled-by-user]` → 終了 / error・不在 → 1 回自動再試行、再失敗時は停止。`--nb-sweep` 経由は 5.S 専用表 — ステップ 1 に戻らない）
 5.S. `[review:mergeable]` 後の NB digest sweep（対象 0 は no-op。同一 PR で 2 回禁止）
 5. 完了通知を出す
 6. （発火時のみ）サーキットブレーカー: run 境界を更新して post-breaker full review を 1 回実行し、結果を通常の review routing へ戻す。full review 自体が完了できない場合のみ、batch は `[iterate:max-cycles-reached]`、対話は `[iterate:max-cycles-stopped]` で従来どおり停止する
@@ -617,6 +617,8 @@ args: "{pr_number}"
 | `[fix:error]` | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
 | sentinel 不在 | 可逆な再試行を推奨として 1 回だけ自動実行し、期待 sentinel・直近の fix 出力 100 行・flow-state phase を既存 work memory へ記録する。再度不在なら停止 |
 
+> `--nb-sweep` 経由の戻りは本表を使わない。5.S 専用表（ステップ 1 に戻らない）だけを使う。
+
 ---
 
 ## ステップ 5.S: NB digest sweep
@@ -624,7 +626,7 @@ args: "{pr_number}"
 `[review:mergeable]` 到達後・完了通知前に **1 回**。対象 0 件は no-op（fix を invoke しない）。同一 PR の本 run で 2 回 invoke しない。silent skip 禁止。Stop hook が mergeable FINALIZE で完了通知を求めても、5.S 未実施なら先に本ステップを実行する。
 rationale: references/rationale.md#nb-sweep-step
 
-本 run で `[CONTEXT] ITERATE_NB_SWEEP=done|noop` が既出ならステップ 5 へ（観測用）。判定の権威は `.rite/state/nb-sweep-done-{pr_number}.txt`。
+会話の `[CONTEXT] ITERATE_NB_SWEEP=done|noop` は観測用。skip 判定はファイル存在のみ（下の bash）。marker 既出でも bash を省略しない。
 
 ```bash
 source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit できないため中止します" >&2; echo "[iterate:nb-sweep-error]"; exit 1; }
@@ -654,6 +656,11 @@ count=$(printf '%s' "$collect_out" | jq -r '.count // empty' 2>/dev/null) || cou
 case "$collect_rc:$status" in
   0:empty)
     mkdir -p "$nb_root/.rite/state" || true
+    source {plugin_root}/hooks/gitignore-ensure.sh
+    if ! _ensure_dir_gitignore "$nb_root/.rite/state"; then
+      echo "WARNING: $nb_root/.rite/state/.gitignore を作成できませんでした。nb-sweep-done が git の追跡対象になる恐れがあります" >&2
+      [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+    fi
     if ! printf 'noop\n' > "$nb_done_file"; then
       echo "WARNING: nb-sweep-done marker を書けませんでした ($nb_done_file)。次回 5.S は再実行されます" >&2
       rm -f "$nb_done_file"
@@ -710,6 +717,11 @@ nb_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || nb_root=""
 nb_done_file="$nb_root/.rite/state/nb-sweep-done-{pr_number}.txt"
 if [ -n "$nb_root" ] && [ ! -f "$nb_done_file" ]; then
   mkdir -p "$nb_root/.rite/state" || true
+  source {plugin_root}/hooks/gitignore-ensure.sh
+  if ! _ensure_dir_gitignore "$nb_root/.rite/state"; then
+    echo "WARNING: $nb_root/.rite/state/.gitignore を作成できませんでした。nb-sweep-done が git の追跡対象になる恐れがあります" >&2
+    [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+  fi
   if ! printf 'done\n' > "$nb_done_file"; then
     echo "WARNING: nb-sweep-done marker を書けませんでした ($nb_done_file)" >&2
     rm -f "$nb_done_file"

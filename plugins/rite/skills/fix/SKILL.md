@@ -1684,6 +1684,11 @@ case "$collect_rc:$sweep_status" in
   0:empty)
     echo "[CONTEXT] NB_SWEEP_RESULT=done; fixed=0; rejected=0; issued=0" >&2
     mkdir -p "$sweep_root/.rite/state" || true
+    source {plugin_root}/hooks/gitignore-ensure.sh
+    if ! _ensure_dir_gitignore "$sweep_root/.rite/state"; then
+      echo "WARNING: $sweep_root/.rite/state/.gitignore を作成できませんでした。nb-sweep-done が git の追跡対象になる恐れがあります" >&2
+      [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+    fi
     if ! printf 'noop\n' > "$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"; then
       echo "WARNING: nb-sweep-done marker を書けませんでした" >&2
       rm -f "$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"
@@ -1785,6 +1790,11 @@ fi
 sweep_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || sweep_root=""
 if [ -n "$sweep_root" ]; then
   mkdir -p "$sweep_root/.rite/state" || true
+  source {plugin_root}/hooks/gitignore-ensure.sh
+  if ! _ensure_dir_gitignore "$sweep_root/.rite/state"; then
+    echo "WARNING: $sweep_root/.rite/state/.gitignore を作成できませんでした。nb-sweep-done が git の追跡対象になる恐れがあります" >&2
+    [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+  fi
   if ! printf 'done\n' > "$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"; then
     echo "WARNING: nb-sweep-done marker を書けませんでした" >&2
     rm -f "$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"

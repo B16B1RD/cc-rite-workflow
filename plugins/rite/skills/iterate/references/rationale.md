@@ -276,8 +276,12 @@ one-shot は sweep 後の新規 class-B を Issue 化に固定して 2 周目を
 が count 行直前へ機械 splice する。
 
 再入の権威を会話 marker に置かないのは、`[fix:pushed]` でステップ 1 に戻ったあとに marker が
-見えなくなり 5.S が再走する実測があるため。`.rite/state/nb-sweep-done-{pr}.txt` の存在が
-skip（中身 1 行は完了通知の noop/done 出し分け）。寿命は本 run — 0.6 の
+見えなくなり 5.S が再走する実測があるため。会話 marker 既出を skip 条件に残すと、0.6 が
+ファイルを消した同一会話の再 iterate で AC-7 の再 sweep が死ぬ。`.rite/state/nb-sweep-done-{pr}.txt` の存在が
+skip（中身 1 行は完了通知の noop/done 出し分け）。書込直前に既存 `_ensure_dir_gitignore` を
+呼ぶのは、setup の dir_entry が `.rite/state/` を含まない消費者が `git add -A` で skip 権威
+ファイルを stage する穴を、setup 再実行に依存せず塞ぐため。新 helper は増やさない。失敗は
+WARNING で続行し、偽 skip はしない。寿命は本 run — 0.6 の
 `fresh || cur_cc == 0`（pin 書換と同条件）で消し、cleanup でも回収する。cleanup まで残すと
 再 iterate と post-breaker 5.S が skip され未消化 0 の再保証が死ぬ。write 失敗時は `rm -f`
 してファイル非存在として本体へ（偽 skip 禁止）。`--nb-sweep` 戻りはステップ 4 汎用表を使わず、
