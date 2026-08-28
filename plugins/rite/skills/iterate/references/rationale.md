@@ -274,3 +274,11 @@ one-shot は sweep 後の新規 class-B を Issue 化に固定して 2 周目を
 6.1.d 本文へ `### 却下台帳` を足すのは新チャネル禁止（既存コメントの拡張）。次 cycle の
 `{rejected_ledger}` 注入は 6.1.d rewrite が台帳を消すと無意味になるため、merge-into helper
 が count 行直前へ機械 splice する。
+
+再入の権威を会話 marker に置かないのは、`[fix:pushed]` でステップ 1 に戻ったあとに marker が
+見えなくなり 5.S が再走する実測があるため。`.rite/state/nb-sweep-done-{pr}.txt` の存在が
+skip（中身 1 行は完了通知の noop/done 出し分け）。寿命は本 run — 0.6 の
+`fresh || cur_cc == 0`（pin 書換と同条件）で消し、cleanup でも回収する。cleanup まで残すと
+再 iterate と post-breaker 5.S が skip され未消化 0 の再保証が死ぬ。write 失敗時は `rm -f`
+してファイル非存在として本体へ（偽 skip 禁止）。`--nb-sweep` 戻りはステップ 4 汎用表を使わず、
+`[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:replied-only]` でもステップ 1 に戻らない。

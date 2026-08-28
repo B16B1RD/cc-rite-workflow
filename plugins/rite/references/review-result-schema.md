@@ -279,7 +279,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 <a id="nb-sweep-ledger"></a>
 
-`/rite:iterate` の `[review:mergeable]` 後 sweep が残存 NB を消化した記録。永続チャネルは 6.1.d の関連 Issue コメント（新チャネルを作らない）。**JSON トップレベルへキーを足さない** — 台帳はコメント本文の `### 却下台帳`、消化内訳は iterate 完了通知と `[CONTEXT] ITERATE_NB_SWEEP=` / `NB_SWEEP_RESULT=` marker。
+`/rite:iterate` の `[review:mergeable]` 後 sweep が残存 NB を消化した記録。永続チャネルは 6.1.d の関連 Issue コメント（新チャネルを作らない）。**JSON トップレベルへキーを足さない** — 台帳はコメント本文の `### 却下台帳`、消化内訳は iterate 完了通知と `[CONTEXT] ITERATE_NB_SWEEP=` / `NB_SWEEP_RESULT=` marker。再入ガードの権威は `.rite/state/nb-sweep-done-{pr_number}.txt`（1 行 `noop` または `done`。**存在が skip**）。会話 marker は観測用。
 
 **台帳エントリ**（コメント本文、`📎 non_blocking_count:` の直前）:
 
@@ -298,10 +298,10 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 ```
 [CONTEXT] NB_SWEEP_RESULT=done; fixed=N; rejected=M; issued=K
-[CONTEXT] ITERATE_NB_SWEEP=done|noop|failed
+[CONTEXT] ITERATE_NB_SWEEP=done|noop|skipped|failed
 ```
 
-`done` のとき完了通知の残件欄は `未処理 non-blocking: 0 件` を維持し、消化内訳 `sweep: fixed=N / rejected=M / issued=K` を併記する。`noop`（対象 0 件）は従来の 0 件通知のまま追加行を出さない。書き込み失敗・JSON 取得失敗は `failed` で iterate を停止する（完了通知へ進まない）。
+`done` のとき完了通知の残件欄は `未処理 non-blocking: 0 件` を維持し、消化内訳 `sweep: fixed=N / rejected=M / issued=K` を併記する。`noop`（対象 0 件）は従来の 0 件通知のまま追加行を出さない。`skipped` は `nb-sweep-done-{pr_number}.txt` 既存（本 run で 5.S 済み）。書き込み失敗・JSON 取得失敗は `failed` で iterate を停止する（完了通知へ進まない）。意図的な再 sweep は当該ファイルを削除する。
 
 **`id` は 2 配列の和集合で一意**: 5.3.0.M の降格時に `id` を振り直さず元の `F-NN` を維持する。根拠は **JSON 単体の監査可読性** — 永続 JSON を読む人間が 2 配列を跨いで finding を一意に参照できるようにするため (5.4 統合レポートのテーブルは `id` 列を持たないので、JSON ↔ レポート間の id 相互参照は成立しない。それを目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証で、`findings[]` と `non_blocking_findings[]` の和集合に対して書式 + 一意性を評価する (本配列側に閉じた違反は上記の非ブロッキング marker で報告され、保存は続行する)。
 
@@ -564,7 +564,7 @@ retained flag: `[CONTEXT] REVIEW_SOURCE_STALE=1; reason={explicit_file|local_fil
 1. **レビュー結果ファイル**: `.rite/review-results/{pr_number}-*.json*` — **`non_blocking_findings[]` が非空なら削除せず `.rite/review-results/archive/` へ退避する**。記録コメント (`pr-review.md` ステップ 6.1.d) がポインタと降格理由 (class B 降格分は `demotion.reason` の判定文、それ以外は「実測なし」) しか載せないため、無条件削除すると非実測指摘の全文が merge 直後にどこにも残らない。中身を判定できない場合 (jq 不在 / parse 失敗 / query error / 空ファイル) もすべて退避側 (安全側) へ倒し、判定不能が起きた事実を `{label}_undecidable` marker で残す。**glob が `.json` ではなく `.json*` なのは `.json.corrupt-*` を同じ経路に載せるため** — corrupt は「中身を判定できない」状態そのものなので、別経路で無条件削除すると同一ステップ内に「判定不能は保全」と「判定不能は削除」の 2 ポリシーが並ぶ (`scripts/review-source-resolve.sh` の corrupt rename 3 経路のうち 2 つは構造的に valid な JSON で、`non_blocking_findings[]` の全文を保持しうる)
 2. **fix retry state file（legacy）**: `.rite/state/fix-fallback-retry-{pr_number}.count` — 旧 retry-counter 機構が生成した orphan の回収。retry-counter 機構の廃止により `fix.md` は現在このファイルを生成しないが、旧版が残した file を掃除するため削除対象に残す
 
-上記のほか、`fix-cycle-state/{pr_number}.json` / legacy `fix-cycle-state.json` / `accepted-fingerprints-{pr_number}.txt` / `review-run-since-{pr_number}.txt` も同ステップで無条件削除される (完全な列挙は `cleanup.md` ステップ 6 の bash block が単一源)。
+上記のほか、`fix-cycle-state/{pr_number}.json` / legacy `fix-cycle-state.json` / `accepted-fingerprints-{pr_number}.txt` / `review-run-since-{pr_number}.txt` / `nb-sweep-done-{pr_number}.txt` も同ステップで無条件削除される (完全な列挙は `cleanup.md` ステップ 6 の bash block が単一源)。
 
 **`archive/` 配下は自動削除されない** — 退避したファイルは PR ごとに蓄積する。掃除機構は実需が出るまで設けない (`no_speculative_structure`)。不要になったら手動削除する。走査系 helper (`review-schema-version-check.sh` / `review-trend-divergence.sh`) はいずれも `-maxdepth 1` のため退避先を拾わない。
 

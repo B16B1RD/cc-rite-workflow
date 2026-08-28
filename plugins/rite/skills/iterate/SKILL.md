@@ -251,6 +251,7 @@ if [ "$cb_mode_init" = fresh ] || [ "$cur_cc" -eq 0 ] 2>/dev/null; then
     echo "WARNING: state-path-resolve.sh を実行できませんでした（プラグインの破損 / 版 skew）。run 開始点 pin を記録できないため、発散判定は前 run の JSON を含んだ列を読んで判定を降ろします" >&2
     run_since_status=unresolved-root
   else
+    rm -f "$pin_root/.rite/state/nb-sweep-done-{pr_number}.txt"
     pin_file="$pin_root/.rite/state/review-run-since-{pr_number}.txt"
     # 現時点で最新の結果ファイル basename（1 件も無ければ空 = pin 無し = 全件が現 run）。
     # ソート順は helper 側の選別と揃える（LC_ALL=C 昇順 = 時系列昇順）。
@@ -623,7 +624,7 @@ args: "{pr_number}"
 `[review:mergeable]` 到達後・完了通知前に **1 回**。対象 0 件は no-op（fix を invoke しない）。同一 PR の本 run で 2 回 invoke しない。silent skip 禁止。Stop hook が mergeable FINALIZE で完了通知を求めても、5.S 未実施なら先に本ステップを実行する。
 rationale: references/rationale.md#nb-sweep-step
 
-本 run で `[CONTEXT] ITERATE_NB_SWEEP=done|noop` が既出ならステップ 5 へ。
+本 run で `[CONTEXT] ITERATE_NB_SWEEP=done|noop` が既出ならステップ 5 へ（観測用）。判定の権威は `.rite/state/nb-sweep-done-{pr_number}.txt`。
 
 ```bash
 source {plugin_root}/hooks/scripts/lib/context-marker.sh || { echo "ERROR: context-marker.sh を読み込めませんでした（プラグインの破損 / 版 skew）。marker を emit できないため中止します" >&2; echo "[iterate:nb-sweep-error]"; exit 1; }
@@ -634,6 +635,15 @@ if [ -z "$nb_root" ]; then
   echo "[iterate:nb-sweep-error]"
   exit 1
 fi
+nb_done_file="$nb_root/.rite/state/nb-sweep-done-{pr_number}.txt"
+if [ -f "$nb_done_file" ]; then
+  skipped_kind=$(head -1 "$nb_done_file" | tr -d '[:space:]')
+  case "$skipped_kind" in
+    done|noop) ;;
+    *) skipped_kind=done ;;
+  esac
+  marker_emit ITERATE_NB_SWEEP skipped "reason=already_done" "kind=$skipped_kind"
+else
 collect_err=$(mktemp "${TMPDIR:-/tmp}/rite-nb-sweep-collect-XXXXXX") || { echo "ERROR: mktemp failed" >&2; echo "[iterate:nb-sweep-error]"; exit 1; }
 collect_out=$(bash {plugin_root}/hooks/scripts/nb-sweep-collect.sh --pr {pr_number} --state-root "$nb_root" 2>"$collect_err") || collect_rc=$?
 collect_rc=${collect_rc:-0}
@@ -643,6 +653,11 @@ status=$(printf '%s' "$collect_out" | jq -r '.status // empty' 2>/dev/null) || s
 count=$(printf '%s' "$collect_out" | jq -r '.count // empty' 2>/dev/null) || count=""
 case "$collect_rc:$status" in
   0:empty)
+    mkdir -p "$nb_root/.rite/state" || true
+    if ! printf 'noop\n' > "$nb_done_file"; then
+      echo "WARNING: nb-sweep-done marker を書けませんでした ($nb_done_file)。次回 5.S は再実行されます" >&2
+      rm -f "$nb_done_file"
+    fi
     marker_emit ITERATE_NB_SWEEP noop "count=0"
     ;;
   0:ok)
@@ -655,10 +670,12 @@ case "$collect_rc:$status" in
     exit 1
     ;;
 esac
+fi
 ```
 
 | `ITERATE_NB_SWEEP` | アクション |
 |---|---|
+| `skipped` | ステップ 5（完了通知）。collect / fix を invoke しない |
 | `noop` | ステップ 5（完了通知）。fix を invoke しない |
 | `pending` | `/rite:fix --nb-sweep` を invoke |
 | `failed` | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない |
@@ -676,7 +693,31 @@ skill: rite:fix
 args: "--nb-sweep {pr_number}"
 ```
 
-`[fix:sweep-done]` はステップ 4 表どおりステップ 5 へ（ステップ 1 に戻らない）。`[fix:error]` / sentinel 不在はステップ 4 の既存経路。fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; fixed=N; rejected=M; issued=K` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit してからステップ 5 へ。
+`--nb-sweep` の戻りはステップ 4 の汎用表を使わず、ステップ 1 に戻らない:
+
+| Sentinel | アクション |
+|---------|-----------|
+| `[fix:sweep-done]` | ステップ 5（完了通知）。ステップ 1 に戻らない |
+| `[fix:pushed]` | ステップ 5（完了通知）。ステップ 1 に戻らない |
+| `[fix:pushed-wm-stale]` | ステップ 5（完了通知）。ステップ 1 に戻らない |
+| `[fix:replied-only]` | ステップ 5（完了通知）。ステップ 1 に戻らない |
+| `[fix:error]` / sentinel 不在 | ステップ 4 の既存失敗経路 |
+
+fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; fixed=N; rejected=M; issued=K` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit する。ファイル未作成なら書く:
+
+```bash
+nb_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || nb_root=""
+nb_done_file="$nb_root/.rite/state/nb-sweep-done-{pr_number}.txt"
+if [ -n "$nb_root" ] && [ ! -f "$nb_done_file" ]; then
+  mkdir -p "$nb_root/.rite/state" || true
+  if ! printf 'done\n' > "$nb_done_file"; then
+    echo "WARNING: nb-sweep-done marker を書けませんでした ($nb_done_file)" >&2
+    rm -f "$nb_done_file"
+  fi
+fi
+```
+
+その後ステップ 5 へ。
 
 MUST NOT: 同一 PR で 5.S を 2 回走らせる。sweep 後の新規 class-B を fix ループへ戻す。
 
@@ -761,6 +802,7 @@ marker_emit ITERATE_NB_REMAINING 0 "status=ok" "record=" "by_severity=" "overlay
 |---|---|
 | `ITERATE_NB_SWEEP=noop` | 0 件テンプレ。消化内訳行は出さない（AC-4） |
 | `ITERATE_NB_SWEEP=done`（`NB_SWEEP_RESULT=done`） | 0 件テンプレ + `- sweep: fixed={sweep_fixed} / rejected={sweep_rejected} / issued={sweep_issued}` |
+| `ITERATE_NB_SWEEP=skipped` | ファイル 1 行目が `noop` なら 0 件テンプレ（digest 行なし）。`done` なら 0 件テンプレ + digest 行（件数が取れなければ 0） |
 | `ITERATE_NB_SWEEP=failed` | 到達不能（5.S で停止） |
 
 非 0 件テンプレ / 「取得失敗」テンプレは overlay 後到達不能。

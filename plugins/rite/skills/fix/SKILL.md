@@ -1683,6 +1683,11 @@ sweep_status=$(printf '%s' "$collect_out" | jq -r '.status // empty') || sweep_s
 case "$collect_rc:$sweep_status" in
   0:empty)
     echo "[CONTEXT] NB_SWEEP_RESULT=done; fixed=0; rejected=0; issued=0" >&2
+    mkdir -p "$sweep_root/.rite/state" || true
+    if ! printf 'noop\n' > "$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"; then
+      echo "WARNING: nb-sweep-done marker を書けませんでした" >&2
+      rm -f "$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"
+    fi
     ;;
   0:ok) ;;
   *)
@@ -1774,6 +1779,17 @@ fi
 
 ```
 [CONTEXT] NB_SWEEP_RESULT=done; fixed=N; rejected=M; issued=K
+```
+
+```bash
+sweep_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || sweep_root=""
+if [ -n "$sweep_root" ]; then
+  mkdir -p "$sweep_root/.rite/state" || true
+  if ! printf 'done\n' > "$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"; then
+    echo "WARNING: nb-sweep-done marker を書けませんでした" >&2
+    rm -f "$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"
+  fi
+fi
 ```
 
 ステップ 5.1 が `[fix:sweep-done]` を emit する。`N+M+K` は collect `count` + already_rejected 転記を含む消化件数。未消化 0 が正常出口。
@@ -3558,7 +3574,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
   --handoff "FINALIZE:fix:replied-only:{pr_number}" \
   --if-exists
 
-# sweep 完了 ([fix:sweep-done]: NB_SWEEP=1 かつ NB_SWEEP_RESULT=done) の場合 (FINALIZE。ステップ 1 に戻らない):
+# sweep 完了 ([fix:sweep-done]: NB_SWEEP=1 かつ (NB_SWEEP_RESULT=done または NB_SWEEP_DONE_FILE=1)) の場合 (FINALIZE。ステップ 1 に戻らない):
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \
@@ -3635,13 +3651,24 @@ fi
 
 lock failure は WARNING で継続。non-lock は WARNING + stderr 5 行で継続。分岐は exact phrase ([common-error-handling.md](../../references/common-error-handling.md#hook-lock-contention-classification-canonical))。
 
+行 1.5/1.6 の `NB_SWEEP_DONE_FILE` は会話 marker 欠落時の代替。評価前に永続ファイルの有無を emit する（通常ループは行 1.5 が `NB_SWEEP=1` を要求するため本 marker だけでは分岐しない）:
+
+```bash
+_nb_done_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || _nb_done_root=""
+if [ -n "$_nb_done_root" ] && [ -f "$_nb_done_root/.rite/state/nb-sweep-done-{pr_number}.txt" ]; then
+  echo "[CONTEXT] NB_SWEEP_DONE_FILE=1" >&2
+else
+  echo "[CONTEXT] NB_SWEEP_DONE_FILE=0" >&2
+fi
+```
+
 Then, based on the ステップ 4.6 completion report content **and the WM_UPDATE_FAILED context flag**, output the corresponding machine-readable pattern:
 
 | 評価順 | Condition | Output Pattern |
 |--------|-----------|---------------|
 | 1 (最優先) | ステップ 1.0.1 / 1.2.0 / 1.2.0.1 で `[CONTEXT] FIX_FALLBACK_FAILED=1` を context に set した (`reason` の値は ステップ 1.0.1 / 1.2.0 / 1.2.0.1 failure reasons table を **唯一の真実の源** として参照する。本セルでの固定列挙は drift 防止のため行わない) | `[fix:error]` (ステップ 1.0.1 / 1.2.0 / 1.2.0.1 のレビューソース解決失敗。fallback 経路が尽きたか、ユーザーが Interactive Fallback で中止を選んだか、ファイルパス指定の再実行でも有効なレビュー結果を取得できなかった状態のため caller は手動介入を促す) |
-| 1.5 | `[CONTEXT] NB_SWEEP=1` かつ `[CONTEXT] NB_SWEEP_RESULT=done` | `[fix:sweep-done]`（ステップ 1 に戻らない） |
-| 1.6 | `[CONTEXT] NB_SWEEP=1` かつ `NB_SWEEP_RESULT=done` 以外 | `[fix:error]` |
+| 1.5 | `[CONTEXT] NB_SWEEP=1` かつ（`[CONTEXT] NB_SWEEP_RESULT=done` または `[CONTEXT] NB_SWEEP_DONE_FILE=1`） | `[fix:sweep-done]`（ステップ 1 に戻らない） |
+| 1.6 | `[CONTEXT] NB_SWEEP=1` かつ `NB_SWEEP_RESULT=done 以外` かつ `NB_SWEEP_DONE_FILE` 非 1 | `[fix:error]` |
 | 2 | ステップ 2.4 で `[CONTEXT] REPLY_POST_FAILED=1` を context に set した | `[fix:error]` (人間由来 thread への reply post が失敗。push 済みの可能性はあるが、レビュアー通知の責務を果たせていないため caller は次の iteration ではなく手動介入を促す) |
 | 3 | ステップ 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`reason` の値は下記 reason 表のいずれか — 固定列挙は行わず、reason 表を唯一の真実の源とする) | `[fix:pushed-wm-stale]` (ステップ 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
 | 4 | (Push completed (`プッシュ: 完了`) または 本 cycle 内で accept 決定が発生 [`[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED=1` または `[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1` が 1 回以上 context に出現]) かつ work memory 更新成功 | `[fix:pushed]` |
