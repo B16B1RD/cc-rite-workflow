@@ -22,8 +22,8 @@ fi
 SESSION_DIR="$STATE_ROOT/.rite/sessions"
 LEGACY_STATE="$STATE_ROOT/.rite-flow-state"
 # New path wins when present, even if invalid — do not fall through to the
-# legacy file in that case (Issue #2430 dual-read). Absent both → canonical new
-# so first-time sessions stay silent on `--if-exists`.
+# legacy file in that case. Absent both → canonical new so first-time
+# sessions stay silent on `--if-exists`.
 if [ -f "$STATE_ROOT/.rite/session-id" ]; then
   SESSION_ID_FILE="$STATE_ROOT/.rite/session-id"
 elif [ -f "$STATE_ROOT/.rite-session-id" ]; then

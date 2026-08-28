@@ -88,7 +88,7 @@ bash "$SCRIPT_DIR/_validate-helpers.sh" "$SCRIPT_DIR" _validate-state-root.sh ||
 bash "$SCRIPT_DIR/_validate-state-root.sh" "$STATE_ROOT" || exit $?
 
 # New path first. If the new file exists it is the sole source — an invalid
-# UUID there must NOT fall through to a valid legacy file (Issue #2430).
+# UUID there must NOT fall through to a valid legacy file.
 if [ -f "$STATE_ROOT/.rite/session-id" ]; then
   sid_file="$STATE_ROOT/.rite/session-id"
 elif [ -f "$STATE_ROOT/.rite-session-id" ]; then

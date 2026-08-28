@@ -90,7 +90,7 @@ fi
 
 # Move root `.rite-*` runtime state under `.rite/` once. Dest already present
 # means a previous run owns it — leave src so dual-read still sees it; never
-# clobber dest (Issue #2430).
+# clobber dest.
 _rite_migrate_relocated() {
   local src="$1" dest="$2"
   [ -e "$src" ] || return 0
