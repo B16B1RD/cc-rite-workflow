@@ -1239,7 +1239,8 @@ done
 # `.rite/review-results/` は非実測指摘の `description` / `suggestion` 全文を持つ。マージ後も
 # `/rite:cleanup` が `archive/` へ退避して残す設計 (記録コメントはポインタと降格理由しか載せないため) なので、
 # ignore されていないと脆弱性の詳細が `git add -A` で公開リポジトリへ恒久 commit されうる。
-for dir_entry in ".rite/sessions/" ".rite/worktrees/" ".rite/review-results/"; do
+# `.rite/state/` は nb-sweep-done / run-since pin 等の skip 権威ファイルを持つ。
+for dir_entry in ".rite/sessions/" ".rite/worktrees/" ".rite/review-results/" ".rite/state/"; do
   if ! git check-ignore -q "${dir_entry}.rite-lint-probe" 2>/dev/null; then
     echo "$dir_entry" >> .gitignore
   fi

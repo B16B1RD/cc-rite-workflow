@@ -1241,12 +1241,14 @@ printf '{"non_blocking_findings":[]}\n' > "$TEST_REPO/.rite/review-results/700-a
 printf 'broken\n' > "$TEST_REPO/.rite/review-results/703-broken.json"
 printf '701-clean.json\n' > "$TEST_REPO/.rite/state/review-run-since-701.txt"
 printf '700-active.json\n' > "$TEST_REPO/.rite/state/review-run-since-700.txt"
+printf 'noop\n' > "$TEST_REPO/.rite/state/nb-sweep-done-701.txt"
+printf 'done\n' > "$TEST_REPO/.rite/state/nb-sweep-done-700.txt"
 t38_output=$(cd "$TEST_REPO" && \
   GH_PR_STATE_701=MERGED GH_PR_STATE_702=MERGED \
   PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
-if [ ! -e "$TEST_REPO/.rite/review-results/701-clean.json" ] && [ ! -e "$TEST_REPO/.rite/state/review-run-since-701.txt" ]; then pass "T-38 orphan nb=0 JSON + pin deleted"; else fail "T-38 orphan nb=0 residue remained"; fi
+if [ ! -e "$TEST_REPO/.rite/review-results/701-clean.json" ] && [ ! -e "$TEST_REPO/.rite/state/review-run-since-701.txt" ] && [ ! -e "$TEST_REPO/.rite/state/nb-sweep-done-701.txt" ]; then pass "T-38 orphan nb=0 JSON + pin + sweep-done deleted"; else fail "T-38 orphan nb=0 residue remained"; fi
 if [ -e "$TEST_REPO/.rite/review-results/archive/702-notes.json" ] && [ ! -e "$TEST_REPO/.rite/review-results/702-notes.json" ]; then pass "T-39 orphan nb>0 JSON archived"; else fail "T-39 nb>0 JSON not archived"; fi
-if [ -e "$TEST_REPO/.rite/review-results/700-active.json" ] && [ -e "$TEST_REPO/.rite/state/review-run-since-700.txt" ]; then pass "T-40 active PR artifacts protected"; else fail "T-40 active PR artifacts changed"; fi
+if [ -e "$TEST_REPO/.rite/review-results/700-active.json" ] && [ -e "$TEST_REPO/.rite/state/review-run-since-700.txt" ] && [ -e "$TEST_REPO/.rite/state/nb-sweep-done-700.txt" ]; then pass "T-40 active PR artifacts protected"; else fail "T-40 active PR artifacts changed"; fi
 if [ -e "$TEST_REPO/.rite/review-results/703-broken.json" ] && echo "$t38_output" | grep -q '解析できない'; then pass "T-41 malformed JSON protected with WARNING"; else fail "T-41 malformed JSON was not safely surfaced"; fi
 if echo "$t38_output" | grep -q 'orphan_reviews_deleted=1' && echo "$t38_output" | grep -q 'orphan_reviews_archived=1' && echo "$t38_output" | grep -q 'orphan_review_pins=1'; then pass "T-42 cleanup counters observable"; else fail "T-42 counters missing: $t38_output"; fi
 cleanup_temp_repo "$TEST_REPO"
@@ -1276,22 +1278,26 @@ printf '{"non_blocking_findings":[{"id":"F-03"}]}\n' > "$TEST_REPO/.rite/review-
 printf '{"non_blocking_findings":[{"id":"F-04"}]}\n' > "$TEST_REPO/.rite/review-results/708-merged.json"
 printf '705-pin\n' > "$TEST_REPO/.rite/state/review-run-since-705.txt"
 printf '706-pin\n' > "$TEST_REPO/.rite/state/review-run-since-706.txt"
+printf 'done\n' > "$TEST_REPO/.rite/state/nb-sweep-done-705.txt"
+printf 'noop\n' > "$TEST_REPO/.rite/state/nb-sweep-done-706.txt"
 t44_output=$(cd "$TEST_REPO" && \
   GH_PR_STATE_705=OPEN GH_PR_STATE_706=OPEN GH_PR_STATE_707=fail GH_PR_STATE_708=MERGED \
   PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
 if [ -e "$TEST_REPO/.rite/review-results/705-20260101000000.json" ] \
   && [ -e "$TEST_REPO/.rite/review-results/705-20260102000000.json" ] \
   && [ ! -e "$TEST_REPO/.rite/review-results/archive/705-20260101000000.json" ] \
-  && [ -e "$TEST_REPO/.rite/state/review-run-since-705.txt" ]; then
-  pass "T-44 OPEN PR nb>0 JSON + pin kept (AC-1)"
+  && [ -e "$TEST_REPO/.rite/state/review-run-since-705.txt" ] \
+  && [ -e "$TEST_REPO/.rite/state/nb-sweep-done-705.txt" ]; then
+  pass "T-44 OPEN PR nb>0 JSON + pin + sweep-done kept (AC-1)"
 else
-  fail "T-44 OPEN PR JSON was archived or pin deleted"
+  fail "T-44 OPEN PR JSON was archived or pin/sweep-done deleted"
 fi
 if [ -e "$TEST_REPO/.rite/review-results/706-clean.json" ] \
-  && [ -e "$TEST_REPO/.rite/state/review-run-since-706.txt" ]; then
-  pass "T-45 OPEN PR nb=0 JSON kept (not deleted)"
+  && [ -e "$TEST_REPO/.rite/state/review-run-since-706.txt" ] \
+  && [ -e "$TEST_REPO/.rite/state/nb-sweep-done-706.txt" ]; then
+  pass "T-45 OPEN PR nb=0 JSON + sweep-done kept (not deleted)"
 else
-  fail "T-45 OPEN PR nb=0 JSON was deleted"
+  fail "T-45 OPEN PR nb=0 JSON or sweep-done was deleted"
 fi
 if [ -e "$TEST_REPO/.rite/review-results/707-notes.json" ] \
   && echo "$t44_output" | grep -q 'GitHub 状態を取得できない'; then

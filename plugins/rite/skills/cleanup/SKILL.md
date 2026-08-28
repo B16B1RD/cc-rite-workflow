@@ -957,10 +957,14 @@ rite_rm fix_cycle_state "$_state_root/.rite/fix-cycle-state/${pr_number}.json"
 rite_rm legacy_fix_cycle_state "$_state_root/.rite/fix-cycle-state.json"
 rite_rm accepted_fingerprints "$_state_root/.rite/state/accepted-fingerprints-${pr_number}.txt"
 rite_rm review_run_since "$_state_root/.rite/state/review-run-since-${pr_number}.txt"
+rite_rm nb_sweep_done "$_state_root/.rite/state/nb-sweep-done-${pr_number}.txt"
 ```
 
 `review-run-since-{pr}.txt` は `/rite:iterate` の収束トレンド判定が現 run の境界に使う pin。直上で削除する `review-results/` と同じライフサイクルのため同列挙で掃除する。
 rationale: references/rationale.md#review-run-since-sweep
+
+`nb-sweep-done-{pr}.txt` は iterate 5.S の再入ガード。cleanup まで残すと再 `/rite:iterate` が skip し、未消化 0 の再保証が死ぬ。
+rationale: references/rationale.md#nb-sweep-done-sweep
 
 `.rite/wiki-worktree/` は永続 worktree のため削除しない。手動削除が必要なら `git worktree remove .rite/wiki-worktree && git worktree prune`。
 rationale: references/rationale.md#wiki-worktree-persist

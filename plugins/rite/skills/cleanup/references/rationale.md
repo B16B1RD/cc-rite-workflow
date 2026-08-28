@@ -104,6 +104,12 @@ dirty な基点ブランチを黙って上書きしないため。破棄・stash
 （iterate ステップ 0.6 が書き、ステップ 1 が `--since` で helper へ渡す）。残しても次 run の
 開始時に上書きされるので害はないが、参照先が消えた孤児を PR ごとに積み上げない。
 
+## nb-sweep-done-sweep
+
+`nb-sweep-done-{pr}.txt` は 5.S 再入の権威（会話 marker は観測用）。寿命は本 run — 0.6 の
+`fresh || cur_cc == 0` で消し、cleanup でも回収する。cleanup まで残すと再 iterate と
+post-breaker 5.S が skip され、未消化 0 の再保証が死ぬ。
+
 ## wiki-worktree-persist
 
 `.rite/wiki-worktree/` は再作成コストが高く各 PR cycle を跨いで保持する永続 worktree。
