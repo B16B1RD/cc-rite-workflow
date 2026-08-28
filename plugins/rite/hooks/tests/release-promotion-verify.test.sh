@@ -85,8 +85,16 @@ if ! printf '%s\n' "$gi_err" | grep -q 'WARNING:.*\.gitignore'; then
   echo "FAIL: no WARNING emitted for the .gitignore write failure" >&2
   exit 1
 fi
-# The cause must stay indented under the WARNING; a cause line at column 0 would read
-# as a separate diagnostic (same shape as review-result-state-root.test.sh TC-8).
+# The cause must be emitted at all, and stay indented under the WARNING. Both halves are
+# needed: the column-0 check alone counts zero whether the cause is correctly indented or
+# missing entirely, so dropping the cause line would slip through it (same pairing as
+# review-result-state-root.test.sh TC-8, which asserts indented>=1 and bare==0 together).
+# LC_ALL=C is required — the cause is a locale-dependent OS message, and a UTF-8 locale
+# gives up on lines it cannot decode, matching nothing.
+if ! printf '%s\n' "$gi_err" | LC_ALL=C grep -qE '^  .*/\.gitignore: '; then
+  echo "FAIL: .gitignore failure cause was not emitted alongside the WARNING" >&2
+  exit 1
+fi
 if [ "$(printf '%s\n' "$gi_err" | LC_ALL=C grep -cE '^[^ ].*/\.gitignore: ')" -ne 0 ]; then
   echo "FAIL: .gitignore failure cause leaked to column 0 instead of staying indented" >&2
   exit 1
