@@ -63,7 +63,8 @@ missing_entry='{"reviewer":"code-quality-reviewer","filter_category":"Category #
 run_save_on() {
   local json=$1 dest=$2
   mkdir -p "$dest"
-  bash "$SAVE" --pr 123 --content-file "$json" --results-dir "$dest" >"$sandbox/save.out" 2>"$sandbox/save.err" || true
+  SAVE_RC=0
+  _timeout 10 bash "$SAVE" --pr 123 --content-file "$json" --results-dir "$dest" >"$sandbox/save.out" 2>"$sandbox/save.err" || SAVE_RC=$?
 }
 
 # T-02 / T-06 / T-01(f) valid: 7 keys + empty array
@@ -79,6 +80,7 @@ jq -e "$KEYS_JQ" "$ok_json" >/dev/null || jq_rc=$?
 assert "T-02/T-01(f) valid 7-key jq predicate rc=0" "0" "$jq_rc"
 
 run_save_on "$ok_json" "$sandbox/results-ok"
+assert "T-02 save helper exit 0" "0" "$SAVE_RC"
 assert_grep "T-02 save JSON_SAVED=true" "$sandbox/save.err" 'JSON_SAVED=true'
 assert_not_grep "T-02 no LOCAL_SAVE_FAILED" "$sandbox/save.err" 'LOCAL_SAVE_FAILED'
 saved=$(find "$sandbox/results-ok" -name '123-*.json' | head -1)
@@ -99,6 +101,7 @@ jq_rc=0
 jq -e "$KEYS_JQ" "$empty_json" >/dev/null || jq_rc=$?
 assert "T-06 empty array jq predicate rc=0" "0" "$jq_rc"
 run_save_on "$empty_json" "$sandbox/results-empty"
+assert "T-06 save helper exit 0" "0" "$SAVE_RC"
 assert_grep "T-06 save JSON_SAVED=true" "$sandbox/save.err" 'JSON_SAVED=true'
 saved=$(find "$sandbox/results-empty" -name '123-*.json' | head -1)
 if [ -n "$saved" ] && [ -f "$saved" ]; then
@@ -119,6 +122,7 @@ jq_rc=0
 jq -e "$KEYS_JQ" "$warped_json" >/dev/null || jq_rc=$?
 assert "T-01 warped jq predicate rc!=0" "1" "$([ "$jq_rc" -ne 0 ] && echo 1 || echo 0)"
 run_save_on "$warped_json" "$sandbox/results-warped"
+assert "T-01 save helper exit 0 (D-04)" "0" "$SAVE_RC"
 assert_grep "T-01 LOCAL_SAVE_FAILED keys_violation" "$sandbox/save.err" 'LOCAL_SAVE_FAILED=1; reason=guardrail_audit_log_keys_violation'
 assert "T-01 warped not saved" "0" "$(find "$sandbox/results-warped" -name '123-*.json' 2>/dev/null | wc -l | tr -d ' ')"
 
@@ -131,6 +135,7 @@ $(base_save_fields),
 }
 EOF
 run_save_on "$miss_json" "$sandbox/results-miss"
+assert "T-05 save helper exit 0 (D-04)" "0" "$SAVE_RC"
 assert_grep "T-05 missing key keys_violation" "$sandbox/save.err" 'LOCAL_SAVE_FAILED=1; reason=guardrail_audit_log_keys_violation'
 assert "T-05 missing key not saved" "0" "$(find "$sandbox/results-miss" -name '123-*.json' 2>/dev/null | wc -l | tr -d ' ')"
 
@@ -142,6 +147,7 @@ $(base_save_fields)
 }
 EOF
 run_save_on "$nokey_json" "$sandbox/results-nokey"
+assert "top-level key missing save helper exit 0 (D-04)" "0" "$SAVE_RC"
 assert_grep "top-level key missing keys_violation" "$sandbox/save.err" 'LOCAL_SAVE_FAILED=1; reason=guardrail_audit_log_keys_violation'
 assert "top-level key missing not saved" "0" "$(find "$sandbox/results-nokey" -name '123-*.json' 2>/dev/null | wc -l | tr -d ' ')"
 
@@ -153,6 +159,7 @@ $(base_save_fields),
 }
 EOF
 run_save_on "$nonarr_json" "$sandbox/results-nonarr"
+assert "non-array save helper exit 0 (D-04)" "0" "$SAVE_RC"
 assert_grep "non-array keys_violation" "$sandbox/save.err" 'LOCAL_SAVE_FAILED=1; reason=guardrail_audit_log_keys_violation'
 assert "non-array not saved" "0" "$(find "$sandbox/results-nonarr" -name '123-*.json' 2>/dev/null | wc -l | tr -d ' ')"
 
