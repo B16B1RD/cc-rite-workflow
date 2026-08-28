@@ -30,6 +30,7 @@ callers=(
   "$HOOKS_DIR/review-result-save.sh"
   "$HOOKS_DIR/scripts/review-results-archive-or-rm.sh"
   "$HOOKS_DIR/flow-state.sh"
+  "$HOOKS_DIR/release-promotion-verify.sh"
 )
 for caller in "${callers[@]}"; do
   assert "$(basename "$caller") uses the shared primitive exactly once" "1" \
