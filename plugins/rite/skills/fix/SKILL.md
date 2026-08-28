@@ -1786,7 +1786,7 @@ fi
 [CONTEXT] NB_SWEEP_RESULT=done; fixed=N; rejected=M; issued=K
 ```
 
-`{nb_sweep_fixed}` は上の `fixed=N` をリテラル置換する。`fixed ≥ 1` かつ push 済みのときだけ 2 行目に push 後 HEAD SHA を書く。非数値 / `0` / push 無しは 1 行 `done`。`git rev-parse HEAD` 失敗は WARNING + 1 行のまま（偽 pass を作らない）。2 行書込失敗は 1 行書込失敗と同じ WARNING + `rm -f`。
+`{nb_sweep_fixed}` は上の `fixed=N` をリテラル置換する。`fixed ≥ 1` かつ push 済みのときだけ 2 行目に push 後 HEAD SHA を書く。非数値は WARNING + 1 行 `done`。`0` / push 無しは 1 行 `done`。`git rev-parse HEAD` 失敗は WARNING + 1 行のまま（偽 pass を作らない）。2 行書込失敗は 1 行書込失敗と同じ WARNING + `rm -f`。
 rationale: ../ready/references/rationale.md#reviewed-head-gate
 
 ```bash
@@ -1803,6 +1803,7 @@ if [ -n "$sweep_root" ]; then
   sweep_write_ok=0
   case "$nb_sweep_fixed" in
     ''|*[!0-9]*)
+      echo "WARNING: nb_sweep_fixed が数値ではありません (received: '$nb_sweep_fixed')。nb-sweep-done の 2 行目を書きません" >&2
       if printf 'done\n' > "$sweep_done_file"; then sweep_write_ok=1; fi
       ;;
     *)
