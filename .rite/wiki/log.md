@@ -1,4 +1,5 @@
 ## 2026-08-28
+* **Skip**: [20260828T153033Z-pr-2445.md](raw/reviews/20260828T153033Z-pr-2445.md) — 一時的な 0-finding レビュー記録。T-11 外側/内側 mutation pin は本 PR の plugin テストへ既反映。新規経験則なし
 * **Skip**: [20260828T131103Z-pr-2441.md](raw/reviews/20260828T131103Z-pr-2441.md) — detector-candidate: T-11 外側 else インデント pin と RH-SW-T-10 本番 argv pin は本 PR の plugin テストへ既反映
 * **Skip**: [20260828T111708Z-pr-2438.md](raw/reviews/20260828T111708Z-pr-2438.md) — detector-candidate: production gh -R pin / promotions_kept exact value / rm-fail chmod / github_pr_lifecycle hoist は本 PR の plugin テストへ既反映
 * **lint:warning** — contradictions=0, stale=38, orphans=0, missing_concept=1, unregistered_raw=390, broken_refs=0
