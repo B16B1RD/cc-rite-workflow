@@ -229,6 +229,19 @@ nonnum=$(awk '
   END { print hit+0 }
 ' "$FIX")
 assert "T-10 non-numeric branch writes 1-line done" "1" "$nonnum"
+nonnum_warn=$(awk '
+  /### 1.3.S `--nb-sweep` consume/ {sec=1}
+  sec && /### 1.4 Display Comment List/ {exit}
+  sec && /nb_sweep_fixed="/ {w=1}
+  w && /\[!0-9\]/ {p=1}
+  p && /WARNING: nb_sweep_fixed/ {hit=1}
+  p && /^[[:space:]]*;;$/ {exit}
+  END { print hit+0 }
+' "$FIX")
+assert "T-12 non-numeric branch emits WARNING" "1" "$nonnum_warn"
+assert_grep_in_section "T-12 non-numeric WARNING names received value" "$FIX" \
+  '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
+  "WARNING: nb_sweep_fixed が数値ではありません \\(received:"
 rev_fail=$(awk '
   /### 1.3.S `--nb-sweep` consume/ {sec=1}
   sec && /### 1.4 Display Comment List/ {exit}
