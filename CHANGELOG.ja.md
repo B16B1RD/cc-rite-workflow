@@ -31,6 +31,10 @@ marketplace 配布のプラグインファイルではないため、`number-ref
 
 ## [Unreleased]
 
+### 修正
+
+- **消費済みの release-promotion attestation が削除される** — `pr-cycle-cleanup.sh` が、対応する GitHub PR が MERGED または CLOSED の `.rite/release-promotions/{N}.json` を削除する。OPEN と状態不明は merge gate が通るよう理由付きで残す。同ディレクトリの `.gitignore` は削除しない。(#2427)
+
 ## [0.13.2] - 2026-08-28
 
 ### 追加
