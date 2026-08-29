@@ -1,4 +1,6 @@
 ## 2026-08-29
+* **Create**: [環境依存の断定を是正する編集が、限定された正しい前提をより広い偽の前提へ置き換える](pages/anti-patterns/corrective-assertion-widens-scope-into-new-falsehood.md) — raw/reviews/20260829T112405Z-pr-2461.md と raw/fixes/20260829T112718Z-pr-2461.md を新規ページ化
+* **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — raw/reviews/20260829T113539Z-pr-2461.md を統合（量化子を強める編集そのものが同じ失敗を起こす型を追記）
 * **Skip**: [20260829T100447Z-pr-2458.md](raw/reviews/20260829T100447Z-pr-2458.md) — detector-candidate: worktree cwd から main nested 3行構成 drift を検出する TC-11 と skip mutant を pin する TC-12 は本 PR の plugin テストへ既反映
 * **Skip**: [20260829T084910Z-pr-2456.md](raw/reviews/20260829T084910Z-pr-2456.md) — detector-candidate: nested gitignore 比較の state_root 揃えと worktree からの main drift 検出（TC-8/9/10/11）は本 PR の plugin テストへ既反映
 * **lint:warning** — contradictions=0, stale=38, orphans=0, missing_concept=1, unregistered_raw=399, broken_refs=0

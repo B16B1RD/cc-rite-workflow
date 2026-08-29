@@ -20,7 +20,7 @@ okf_version: "0.2"
 | [`cmd > file || true` は no-match (rc=1) と書き込み失敗 (rc>=2) を混同する](pages/anti-patterns/cmd-redirect-or-true-conflates-nomatch-and-write-failure.md) | anti-patterns | `grep pattern > file \|\| true` のような best-effort リダイレクトは、grep の「no-match」(rc=1) と「書き込み失敗」(rc>=2、disk full / permission denied 等) をどちらも `\|\| true` で握り潰し区別しない。 | 2026-07-22T13:15:00+09:00 | medium |
 | [mkdir 成功のみの判定漏れと brace group 未使用によるリダイレクト診断メッセージ漏洩](pages/anti-patterns/mkdir-success-only-check-and-redirect-diagnostic-leak.md) | anti-patterns | `if mkdir -p DIR 2>/dev/null; then <実際に書く> else <破棄> fi` のように、フォールバック判定を先頭コマンド (mkdir) の終了コードだけに頼ると、DIR が既存の読み取り専用ディレクトリの場合でも mkdir -p は rc=0 を返すため、後続のファイル open 失敗（権限不一致・パス衝突・ディスクフル）を判定できない。 | 2026-08-06T00:40:00+09:00 | high |
 | [新設 logged ガードの上流に同一判定の silent 経路が残ると支配的入力で可視化が無効化される](pages/anti-patterns/upstream-silent-path-defeats-new-logged-guard.md) | anti-patterns | 「silent skip 禁止 — スキップは WARNING で可視化する」という MUST 要件に対して logged ガードを新設しても、**同じ判定条件（例: 24h age guard）を持つ既存の silent continue が制御フロー上流に残っている**と、実運用で最も起きやすい入力がそちらに先に吸われ、新設ガードは到達不能になる。 | 2026-07-21T18:30:00Z | high |
-| [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) | heuristics | 「本経路に来るのは別 live セッション在席時のみ」「3 gates all pass のときのみ reap」のような**全称主張（排他性・網羅性）を含む散文**は、新しい到達経路やゲート例外が追加されると、**その行自体は未変更のまま偽になる**（comment rot: 周辺コードの変更が未変更行を偽化する）。 | 2026-07-21T18:30:00Z | high |
+| [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) | heuristics | 「本経路に来るのは別 live セッション在席時のみ」「3 gates all pass のときのみ reap」のような**全称主張（排他性・網羅性）を含む散文**は、新しい到達経路やゲート例外が追加されると、**その行自体は未変更のまま偽になる**（comment rot: 周辺コードの変更が未変更行を偽化する）。 | 2026-08-29T11:40:00+09:00 | high |
 | [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](pages/patterns/absence-pin-base-present-head-absent-single-line.md) | patterns | 旧文面の除去を drift ガードとして固定する `assert_not_grep` pin には 2 つの構造的な罠がある。 | 2026-08-28T13:10:00+09:00 | high |
 | [rationale ポインタ形式は bare `rationale:` 形式に統一する](pages/heuristics/rationale-pointer-format-unification.md) | heuristics | 実行パスの設計解説(rationale)を references へ退避する際、元位置に残すポインタの形式が 3 種類(bare `rationale: <path>#<anchor>` / markdown link `[text](path#anchor)` / hybrid `rationale: [text](path#anchor)`)に分裂しやすい。 | 2026-07-17 | medium |
 | [`cmd=$(...) || cmd=""` は非ゼロ終了時に stdout 済みの診断 JSON を空文字列で上書きする](pages/anti-patterns/command-substitution-fallback-discards-diagnostic-json.md) | anti-patterns | `status_json=$(bash script.sh args) \|\| status_json=""` という一見安全な defensive fallback は、`script.sh` が非ゼロ終了したときに **既に stdout へ出力済みの診断 JSON（失敗理由を含む）を空文字列で上書き・破棄する**。 | 2026-07-13T14:30:00+09:00 | high |
@@ -434,8 +434,9 @@ okf_version: "0.2"
 | [散文の主語を広げたら、その主語に係る述語を数え上げて検算する — 数え上げられない粒度は書かずに削る](pages/heuristics/widened-subject-requires-predicate-enumeration.md) | heuristics | 「X は A に依存する」の主語へ B を足すとき、続く述語がそのまま残ると、B について偽の主張になる。主語を広げる編集は述語を検算する編集とセットであり、検算に外延の数え上げが要るなら、その粒度は文書に写さないほうが腐朽が遅い。 | 2026-08-13T19:20:00+09:00 | high |
 | [既存術語の動詞を別意味に流用せず、新しい意味には別語を立てる](pages/heuristics/existing-term-verb-not-repurposed-for-new-meaning.md) | heuristics | 同一ファイル内で既に定義済みの術語が使う動詞を、別の意味の説明に流用すると、読み手はどちらの定義が効いているか判別できず、レビューでは術語衝突として指摘される。 | 2026-08-25T18:26:48Z | medium |
 | [hook の失敗枝はソース grep ではなく実行で検証する](pages/heuristics/hook-failure-branch-needs-execution-test.md) | heuristics | WARNING 文字列がソースに存在するだけでは、mkdir 失敗などの else 枝が実行時に辿られることは保証できない。対象パスをファイルにして hook を走らせ、stderr と終了コードを assert する。 | 2026-08-29T08:20:00Z | high |
+| [環境依存の断定を是正する編集が、限定された正しい前提をより広い偽の前提へ置き換える](pages/anti-patterns/corrective-assertion-widens-scope-into-new-falsehood.md) | anti-patterns | 「この repo の設定に依存した断定を実装機構に基づく記述へ差し替える」是正では、置き換え先の根拠そのもの（適用範囲と生成主体）を実コードで検証しないと、是正対象と同型の誤りを別の形で再生産する。典型は、base が正しく限定していた対象（サブディレクトリ）を親ディレクトリ全体へ広げ、除外規則の否定エントリによって偽になる前提を作ってしまう形。 | 2026-08-29T11:40:00+09:00 | high |
 ## 統計
 
-- 総ページ数: 424
-- ドメイン別: patterns=103, heuristics=185, anti-patterns=136
-- 最終更新: 2026-08-29T08:20:00Z
+- 総ページ数: 425
+- ドメイン別: patterns=103, heuristics=185, anti-patterns=137
+- 最終更新: 2026-08-29T11:40:00+09:00
