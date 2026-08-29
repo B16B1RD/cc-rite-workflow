@@ -207,8 +207,11 @@ esac
 # 除外**後** 0 件だけが all_resolved (再検証で全件が解消済みと判定された)。両者を潰すと
 # 既存の no_findings 契約が回帰する。どちらも gh issue list より前に exit する。
 if [ -n "$EXCLUDE_IDS" ]; then
-  exclude_json=$(printf '%s' "$EXCLUDE_IDS" | jq -Rc '
-    split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)) | unique') || exclude_json=""
+  # `-s` で入力全体を 1 文字列として読む。行単位 (`jq -R` 単体) だと改行入りの入力が
+  # JSON 配列の複数連結になり、非空判定を通過した後で `--argjson` が rc=2 で落ちて
+  # unknown id の WARNING が無言で消える。改行も区切りとして畳めばその経路自体が無くなる。
+  exclude_json=$(printf '%s' "$EXCLUDE_IDS" | jq -Rsc '
+    split("\n") | join(",") | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)) | unique') || exclude_json=""
   if [ -z "$exclude_json" ]; then
     echo "WARNING: --exclude-ids を解析できませんでした ('${EXCLUDE_IDS}')。除外を適用せず全件を転記します (PR #${PR_NUMBER})" >&2
   else

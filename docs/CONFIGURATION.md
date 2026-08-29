@@ -168,8 +168,9 @@ parallel:
 # default, during the review cycle the full text lives only in the local JSON on the machine that
 # ran the review — rite writes a `*` .gitignore alongside it, so it stays untracked regardless of the
 # host repository's root .gitignore, and checking out the PR's branch does not produce it. At merge,
-# remaining findings are transcribed in full into one follow-up Issue (public on a public
-# repository). `/rite:cleanup` archives that JSON instead of deleting it when
+# remaining findings are re-verified against the merged HEAD and the ones already resolved are
+# dropped; whatever remains is transcribed in full into one follow-up Issue (none if nothing
+# remains; public on a public repository). `/rite:cleanup` archives that JSON instead of deleting it when
 # `non_blocking_findings[]` is non-empty, as a local fallback if the follow-up Issue is not created.
 pr_review:
   post_comment: false   # true to post the integrated review report as a PR comment (equivalent to --post-comment, default: false; this key does not control the related-Issue non-measured record comment)
