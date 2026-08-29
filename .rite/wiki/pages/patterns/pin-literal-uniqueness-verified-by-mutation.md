@@ -19,9 +19,16 @@ sources:
     resource: "raw/reviews/20260813T094525Z-pr-2306.md"
   - type: "fixes"
     resource: "raw/fixes/20260813T094616Z-pr-2306.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260829T181603Z-pr-2468.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260829T194742Z-pr-2468.md"
 tags: ["pin", "mutation-testing", "static-assert", "producer-consumer-symmetry", "drift-detection"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-13T10:27:46Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-08-30T05:20:00Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5"
+    at: "2026-08-30T05:20:00Z"
 ---
 
 # pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する
@@ -103,11 +110,54 @@ grep -rn '<特徴的な文字列>' plugins/rite/hooks/tests/
 
 そのとき pin されていた不変条件は新実装でも成立していたので、**直すべきはテストではなく文言側だった**。テスト側の assert を消して緑にするのは、その Issue の charter が無い限り禁じ手。
 
+### 空振りの 2 形: ファイル全体スコープと `grep -c` の行カウント
+
+同一 PR で 2 つの空振り形を実測した。どちらも「pin を張った」実感だけが残り、検出力はゼロ。
+
+| 空振りの形 | 生存する変異 | 対処 |
+|---|---|---|
+| ファイル全体を見る `assert_grep` | 対象ブロックの行を消しても、同一文字列が他ブロックに在れば PASS | `assert_grep_in_section` でブロックへスコープする |
+| `grep -c` で出現回数を数えたつもり | `grep -c` は**行数**しか数えないため、同一行に重複させる変異が生存 | `grep -o ¦ wc -l` で出現回数を数える |
+
+`assert_grep_in_section` へ移すときは **end アンカーの選び方**が新しい罠になる。
+`^#### ` のような見出しパターンを end に使うと **start 行自身が end にも一致**し、
+awk の flip-flop レンジが 1 行で閉じる。end は直後の散文行やコード行にアンカーする。
+
+### pin を「深く」伸ばすときは既存リテラルを残したまま後ろへ継ぎ足す
+
+pin をより深い内容まで伸ばすとき、途中のリテラルを `.*` に吸収させると、**伸ばした先を守る
+代わりに手前を守らなくなる**。実測では件数内訳まで pin を伸ばした結果、ラベル文字列
+（`follow-up 再検証: `）の pin が `.*` に吸われ、ラベルだけを改変する変異が 172 PASS のまま
+生存した。伸ばすときは既存のリテラルを残し、その後ろへ継ぎ足す。
+
+### pin はキーだけでなく極性・帰結まで含める
+
+`「X は必ず Y」` という散文を `X` だけで pin すると、`Y` を反転させる変異が生存する。
+同様に、機構の後半（surface 側）だけを pin すると前半（捕捉側）を切る変異が生存し、
+機構全体が無効化されても緑のまま通る。
+
+### negative assert に GNU 拡張を書くと fail-open する
+
+`assert_not_grep` のパターンで `\s` を使うと GNU 拡張依存になり、BSD の ERE では未定義に落ちて
+**恒常的に不一致 = fail-open** する。positive assert は同じ事故で FAIL して露見するが、
+negative assert は静かに通る。`[[:space:]]` を使う。
+
+### 不在チェックの guard を `elif` で足すと兄弟 assert がまるごと skip される
+
+不在チェックの guard を `elif` で足すとき、後続ブロック全体が `else` 側に入っていると、
+その guard が発火した瞬間に**無関係な兄弟 assert がまるごと skip される**。実測では
+171 PASS が 131 PASS に落ちた。suite は赤になるので gate としては機能するが、診断粒度が失われる。
+ヘルパー側が既に fail-loud に扱う条件（`assert_grep` の file-not-found 分岐など）を、
+呼び出し側で二重に guard しない。
+
 ### チェックリスト
 
 | 段階 | 確認 |
 |---|---|
-| pin literal 選定 | 全編集を適用後、`grep -c` で hit 数 1 |
+| pin literal 選定 | 全編集を適用後、`grep -c` で hit 数 1（出現回数が要るなら `grep -o ¦ wc -l`） |
+| pin のスコープ | ファイル全体ではなく対象ブロックへ。section 版の end は見出しでなく直後の行にアンカー |
+| pin の内容 | キーだけでなく極性・帰結まで。深く伸ばすときは既存リテラルを残して継ぎ足す |
+| negative assert | `\s` ではなく `[[:space:]]`（GNU 拡張は BSD で fail-open） |
 | pin 有効性 | 対象行を消す変異を注入し、自分の assert が 1 件 FAIL |
 | marker 契約 | producer（emit）と consumer（解釈）を対で pin |
 | fixture 種別 | cp fixture と literal fixture を併用、TC 番号を分ける |
@@ -139,3 +189,5 @@ grep -rn '<特徴的な文字列>' plugins/rite/hooks/tests/
 - [PR #2111 fix results (cycle 3)](../../raw/fixes/20260804T145425Z-pr-2111.md)
 - [PR #2306 cycle 2 review (交替を素で書いた消費側 pin が説明文に当たり fire 腕の退行を検出しなかった)](../../raw/reviews/20260813T094525Z-pr-2306.md)
 - [PR #2306 pin fix (消費側 pin の | をエスケープし fire 腕と raw lost 入力を固定)](../../raw/fixes/20260813T094616Z-pr-2306.md)
+- [PR #2468 fix results cycle 2（ファイル全体スコープと `grep -c` の 2 つの空振り形、flip-flop end アンカー）](../../raw/fixes/20260829T181603Z-pr-2468.md)
+- [PR #2468 NB sweep results（pin を伸ばすときのリテラル吸収、`elif` guard による兄弟 assert の skip）](../../raw/fixes/20260829T194742Z-pr-2468.md)

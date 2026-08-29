@@ -10,9 +10,14 @@ sources:
     resource: "raw/reviews/20260810T134712Z-pr-2231.md"
   - type: "fixes"
     resource: "raw/fixes/20260810T135452Z-pr-2231.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260829T194742Z-pr-2468.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-11T01:20:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-08-30T05:20:00Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5"
+    at: "2026-08-30T05:20:00Z"
 ---
 
 # 仕様が「A のとき報告・B のとき併記」を別々に定めている箇所を elif で書くと A ∧ B で B が消える
@@ -72,6 +77,19 @@ fi
 [ -n "$verdict" ] && echo "[CONTEXT] KEY=$verdict; ..." >&2
 ```
 
+### 同型: `elif` guard が兄弟ブロックごと `else` に押し込む
+
+同じ形が**テストコード側**でも起きる。不在チェックの guard を `elif` で足したとき、後続の
+検査ブロック全体が `else` 側に入っていると、その guard が発火した瞬間に**無関係な兄弟 assert が
+まるごと skip される**。実測では 171 PASS が 131 PASS に落ちた。suite は赤になるので gate としては
+機能するが、失われるのは診断粒度で、「どの検査が落ちたか」が見えなくなる。
+
+このケースの根治は分岐の組み替えではなく **guard を消すこと**だった。呼び出す helper
+（`assert_grep`）が既に file-not-found を fail-loud に扱っているなら、呼び出し側の不在チェックは
+重複防御であり、その重複が兄弟 assert を巻き込む唯一の理由になっている。
+
+**ヘルパー側が既に fail-loud に扱う条件を、呼び出し側で二重に guard しない。**
+
 ### テスト側の含意
 
 **帰結を跨ぐ組合せを明示 fixture で固定する。** 3 帰結の各単独ケースを固めただけでは不足で、少なくとも「A ∧ B」と「入力の構造破壊」の 2 つは別 fixture を作る。単独ケースが全部 green であることは、組合せが正しいことの証拠にならない。
@@ -85,3 +103,4 @@ fi
 
 - [PR #2231 review results](../../raw/reviews/20260810T134712Z-pr-2231.md)
 - [PR #2231 fix results](../../raw/fixes/20260810T135452Z-pr-2231.md)
+- [PR #2468 NB sweep results（テスト側の `elif` guard が兄弟 assert 40 件を skip させた同型事例）](../../raw/fixes/20260829T194742Z-pr-2468.md)

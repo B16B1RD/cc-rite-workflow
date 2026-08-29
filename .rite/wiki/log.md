@@ -1,3 +1,10 @@
+## 2026-08-30
+* **Update**: [SKILL.md 新規セクションでシェル変数を Bash 呼び出し間の値受け渡しに使うと dead code 化する](pages/anti-patterns/skill-md-shell-var-cross-bash-call-dead-code.md) — raw/fixes/20260829T175418Z-pr-2468.md を統合（`${var:-}` の既定化が no-op を無言化し完了報告を誤らせる再発型を追記）
+* **Update**: [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — raw/fixes/20260829T181603Z-pr-2468.md / raw/fixes/20260829T194742Z-pr-2468.md を統合（ファイル全体スコープと grep -c の空振り 2 形、flip-flop end アンカー、pin 延伸時のリテラル吸収、negative assert の GNU 拡張 fail-open を追記）
+* **Create**: [不正入力は「落とす」より「無害化して残す」— 落とす設計は件数報告という第 2 の機構を要求する](pages/heuristics/neutralize-invalid-input-instead-of-dropping.md) — raw/fixes/20260829T183751Z-pr-2468.md を新規ページ化
+* **Create**: [機構を畳んだら、その機構のために作った付随物も同時に畳む — 名前を変えて残すと動機を失った構造だけが次の欠陥面になる](pages/heuristics/teardown-mechanism-with-its-accessories.md) — raw/fixes/20260829T185642Z-pr-2468.md を新規ページ化
+* **Skip**: [20260829T191402Z-pr-2468.md](raw/fixes/20260829T191402Z-pr-2468.md) — already encoded in CLAUDE.md no_speculative_structure（投機的構造を足さない・不要になった規約は撤去する）。被覆の行き先を追う論点は teardown-mechanism-with-its-accessories へ統合済み
+* **Update**: [仕様が「A のとき報告・B のとき併記」を別々に定めている箇所を elif で書くと A ∧ B で B が消える](pages/anti-patterns/elif-drops-spec-required-co-reporting.md) — raw/fixes/20260829T194742Z-pr-2468.md を統合（テスト側の elif guard が兄弟 assert 40 件を skip させた同型事例を追記）
 ## 2026-08-29
 * **lint:warning** — contradictions=0, stale=38, orphans=0, missing_concept=1, unregistered_raw=400, broken_refs=0
 * **Create**: [全順序で優先順位を決める設計は逆向きの残存ハザードが必ず残る — 選ばなかった側を文書に残す](pages/heuristics/total-order-precedence-leaves-inverse-hazard.md) — raw/reviews/20260829T135848Z-pr-2464.md / raw/fixes/20260829T140803Z-pr-2464.md / raw/reviews/20260829T142006Z-pr-2464.md を新規ページ化（順序変更はハザードを消さず露出面を移すだけという実測を軸にする）
