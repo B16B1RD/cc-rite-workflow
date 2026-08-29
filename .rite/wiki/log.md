@@ -1,4 +1,5 @@
 ## 2026-08-29
+* **Skip**: [20260829T100447Z-pr-2458.md](raw/reviews/20260829T100447Z-pr-2458.md) — detector-candidate: worktree cwd から main nested 3行構成 drift を検出する TC-11 と skip mutant を pin する TC-12 は本 PR の plugin テストへ既反映
 * **Skip**: [20260829T084910Z-pr-2456.md](raw/reviews/20260829T084910Z-pr-2456.md) — detector-candidate: nested gitignore 比較の state_root 揃えと worktree からの main drift 検出（TC-8/9/10/11）は本 PR の plugin テストへ既反映
 * **lint:warning** — contradictions=0, stale=38, orphans=0, missing_concept=1, unregistered_raw=399, broken_refs=0
 * **Skip**: [20260829T040511Z-pr-2452.md](raw/reviews/20260829T040511Z-pr-2452.md) — 一時的な 0-finding レビュー記録。同一ファイル内の表・見出し残差は既存 asymmetric-fix-transcription でカバー済み。新規経験則なし
