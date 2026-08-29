@@ -107,7 +107,7 @@ Read the local work memory file with the Read tool (new path first, then legacy)
 Read: .rite/work-memory/issue-{issue_number}.md
 ```
 
-不在なら `.rite-work-memory/issue-{issue_number}.md`。存在する側が valid ならそれを更新のベースにする。Retain the content in context.
+不在なら `.rite-work-memory/issue-{issue_number}.md`。新パスが存在すればそれを選ぶ（corrupt でも旧ローカルへは行かない。corrupt の処理は 1.2）。新不在のときだけ旧を読む。Retain the content in context.
 
 ### 1.2 Fallback: Issue Comment (Backup)
 
