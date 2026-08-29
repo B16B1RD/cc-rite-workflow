@@ -920,7 +920,8 @@ else
       | {id: (if ((.id // "") | test("^F-[0-9]{2,}$")) then .id else null end),
          file, line, description, suggestion}' "$_rv_src" 2>"${_rv_errf:-/dev/null}"); then
       # 0 件のとき printf は空行を 1 行出す。空行が finding として読まれないよう非空時だけ出力する。
-      # 成功時は marker を出さない（判定後の `done` が唯一の成功 marker。理由は下記散文）
+      # 成功時は marker を出さない（判定後の `done` が唯一の成功 marker）
+      # rationale: references/rationale.md#reverify-no-extract-marker
       if [ -n "$_rv_out" ]; then printf '%s\n' "$_rv_out"; fi
     else
       echo "WARNING: 再検証用 JSON を解析できません: $_rv_src" >&2

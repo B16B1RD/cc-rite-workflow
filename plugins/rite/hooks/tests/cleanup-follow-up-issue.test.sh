@@ -484,8 +484,11 @@ assert_not_grep "T-14 除外前 0 件を all_resolved にしない" "$ERR" 'reas
 
 echo "--- T-15: cleanup SKILL.md の再検証契約 (AC-5 / AC-6) ---"
 CLEANUP_MD="$SCRIPT_DIR/../../skills/cleanup/SKILL.md"
+CLEANUP_RATIONALE="$SCRIPT_DIR/../../skills/cleanup/references/rationale.md"
 if [ ! -f "$CLEANUP_MD" ]; then
   fail "T-15 cleanup/SKILL.md が見つからない: $CLEANUP_MD"
+elif [ ! -f "$CLEANUP_RATIONALE" ]; then
+  fail "T-15 cleanup/references/rationale.md が見つからない: $CLEANUP_RATIONALE"
 else
   # 判定結果はリテラル置換で helper へ渡す。シェル変数経由は Bash 呼び出し境界で失われるため、
   # `$_fu_exclude_ids` が復活していないことを両方向で pin する。
@@ -532,7 +535,11 @@ else
   assert_grep "T-15 0 件でも done を必ず出す" "$CLEANUP_MD" '抽出結果が 0 件でもこの marker を必ず出す'
   assert_grep "T-15 unavailable 経路では done を出さない" "$CLEANUP_MD" '既に `unavailable` を出した経路では `done` を出さない'
   # 判定表の 3 行を pin する (emit 側の pin だけでは表から行を削る変異が生存する)
-  assert_grep "T-15 判定表の done 行" "$CLEANUP_MD" '`done` のとき: .*follow-up 再検証: 解消済み'
+  # 件数内訳まで pin する (「解消済み」で切ると内訳を削る変異が生存する)
+  assert_grep "T-15 判定表の done 行" "$CLEANUP_MD" '`done` のとき: .*解消済み \{n_resolved\} / 残存 \{n_remains\} / 判定不能 \{n_undecidable\}'
+  # 廃止 marker の設計理由は rationale へ退避し 1 行ポインタを張る
+  assert_grep "T-15 抽出 marker 廃止の rationale ポインタ" "$CLEANUP_MD" 'rationale: references/rationale.md#reverify-no-extract-marker'
+  assert_grep "T-15 rationale 節が実在する" "$CLEANUP_RATIONALE" '^## reverify-no-extract-marker$'
   assert_grep "T-15 判定表の unavailable 行" "$CLEANUP_MD" '`unavailable` のとき: .*follow-up 再検証: 未実施'
   # marker 不在は成功と読まない (兄弟分岐と同じ fail-loud 規約。空文字列に戻す変異を検出する)
   assert_grep "T-15 marker 不在も付記する" "$CLEANUP_MD" 'marker が無いとき: .*実施結果を確認できませんでした'
