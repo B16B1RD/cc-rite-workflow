@@ -269,8 +269,8 @@ assert_grep "complexity-lane.md refuses to add a new floor" "$LANE" \
 assert_grep "complexity-lane.md refuses to auto-detect Complexity" "$LANE" \
   '\*\*Complexity の自動判定はしない\*\*'
 # 3 記法の併存を吸収すること (一部だけ読む実装への退行は「レーンが一度も発動しない」形で現れる)。
-# needle は「全記法受理」と「記法 1 優先」を**同じ 1 行の合成**として pin する — 2 つを別行へ
-# 分解した崩れは、片方だけの単語 pin では素通りする (本 suite header の感度に関する注意を参照)。
+# needle は「全記法受理」と「明示宣言 > 表行の優先」を**同じ 1 行の合成**として pin する — 2 つを
+# 別行へ分解した崩れは、片方だけの単語 pin では素通りする (本 suite header の感度に関する注意を参照)。
 # 優先順が消えると、表記法を説明している Issue が本文中の例から値を解決する経路が復活する。
 assert_grep "complexity-lane.md binds accepting all three notations to declaration precedence" "$LANE" \
   'helper は\*\*3 記法すべてを受理し、明示宣言を表行より優先する\*\*'
