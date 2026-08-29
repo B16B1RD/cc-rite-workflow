@@ -198,7 +198,7 @@ multi_session:
 | `release` | `released` / `skipped` | `0`（冪等。不在でも `released`）/ `1` | 自セッションの claim のみ削除。他セッション保持時は `skipped`（触らない） |
 | `check` | `own` / `free` / `other` / `stale` | `0` | 読み取りのみ。corrupt/空 holder は `stale`（再取得可能） |
 
-- **session_id 解決**: `_resolve-session-id-from-file.sh`（`.rite-session-id` ファイル優先）→ env（`CLAUDE_CODE_SESSION_ID` / `CLAUDE_SESSION_ID`）の順で、`flow-state.sh` の解決順と**一致**させる（claim の session_id が holder の per-session flow-state ファイル名と一致することが liveness 判定の前提）。テスト・明示制御は `--session` override。
+- **session_id 解決**: `_resolve-session-id-from-file.sh`（`.rite/session-id` 優先、不在時のみ legacy `.rite-session-id`。新が不正なら旧 valid へは倒れない）→ env（`CLAUDE_CODE_SESSION_ID` / `CLAUDE_SESSION_ID`）の順で、`flow-state.sh` の解決順と**一致**させる（claim の session_id が holder の per-session flow-state ファイル名と一致することが liveness 判定の前提）。テスト・明示制御は `--session` override。
 - **配線挿入点**: pr:open Step 1.6 = `claim`（rc 10 → AskUserQuestion / rc 0 → 続行、`--worktree {path}` で worktree path も記録）。cleanup Step 11-12 = `release`。sprint execute/team-execute = `check`（`other` のみスキップ、`stale` はスキップせず pr:open の claim に委ねる）。
 
 ### §8 セッション worktree の遅延 reap（pr-cycle-cleanup.sh Step 5 追加）

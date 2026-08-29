@@ -111,7 +111,7 @@ Read: .rite/work-memory/issue-{issue_number}.md
 
 ### 1.2 Fallback: Issue Comment (Backup)
 
-If the local file does not exist or is corrupt, fall back to the Issue comment:
+If neither local file exists, or the file selected in 1.1 is corrupt, fall back to the Issue comment. Do not use the legacy path when the new path exists but is invalid.
 
 ```bash
 gh api repos/{owner}/{repo}/issues/{issue_number}/comments --jq '.[] | {id: .id, body: .body}'
