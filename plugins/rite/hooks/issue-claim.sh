@@ -14,7 +14,10 @@
 #
 # Data contract (`<shared-root>/.rite/state/issue-claims/issue-{N}.json`):
 #   {"schema_version":1,"issue_number":N,"session_id":"...","worktree":"<abs|''>","claimed_at":"ISO8601Z"}
-#   `.rite/state/` is already gitignored, so no new .gitignore entry is needed.
+#   Claims live under `.rite/`, which `/rite:setup` covers with a self-contained
+#   `.rite/.gitignore` (`*`, written by gitignore-ensure.sh). No root `.gitignore`
+#   entry is added for them. Before that setup runs, nothing ignores the directory —
+#   so this is a property of the generated nested file, not of any host repository.
 #
 # Liveness (NO new heartbeat — reuses flow-state `updated_at`): a claim is LIVE
 # when the holder's per-session flow-state has `active=true` AND `updated_at`
