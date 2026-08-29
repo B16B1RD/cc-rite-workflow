@@ -1,0 +1,64 @@
+---
+type: "patterns"
+title: "契約を N 箇所に追記したら pin も N 箇所あるかを数え合わせる"
+domain: "patterns"
+description: "散文駆動スキルの契約変更で複数箇所を追記したとき、追加したアサーションが追記箇所より少ないと、pin されなかった 1 箇所だけを元に戻してもスイートが green のまま受入基準が壊れる。"
+created: "2026-08-29T15:42:53Z"
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-29T15:42:53Z" }
+sources:
+  - type: "reviews"
+    resource: "raw/reviews/20260829T152045Z-pr-2466.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260829T152626Z-pr-2466.md"
+tags: ["static-contract-test", "pin-coverage", "mutation-testing", "prose-driven-skill"]
+confidence: high
+---
+
+# 契約を N 箇所に追記したら pin も N 箇所あるかを数え合わせる
+
+## 概要
+
+散文駆動スキルの契約変更で複数箇所を追記したとき、追加したアサーションが追記箇所より少ないと、pin されなかった 1 箇所だけを元に戻してもスイートが green のまま受入基準が壊れる。「アサーションを追加した」は「契約を守った」を意味しない — 追記箇所とアサーションの対応を数で突き合わせるまでは、どこに穴が開いているか分からない。
+
+## 詳細
+
+### 症状
+
+散文駆動スキル（LLM が SKILL.md を読んで実行する形式）の契約は、`hooks/tests/*.test.sh` の static-contract 方式（literal grep pin）で守られる。ある変更が SKILL.md の 3 箇所を追記したのに対し、追加したアサーションは 2 箇所ぶんしか無かった。
+
+- 追記 1: 検出結果を retain する指示 → pin あり
+- 追記 2: `flow-state.sh set` への条件付きフラグ付与 → pin あり
+- 追記 3: Placeholder Legend の行と Note の substitution 契約 → **pin なし**
+
+3 つ目だけを差し戻すと、1 と 2 の追記は残るのにスイートは 17/17 green で通過する。その状態で執行者が Note の字義（当該 placeholder は本コマンド body で substitute しない）に従うと、追記 2 が渡そうとしている値が literal のまま渡るか、フラグごと省略されるかのどちらかになり、受入基準（子 Issue 着手時に親番号が返る）が成立しない。
+
+### 検査手順
+
+**追記箇所を数え、pin を数え、一致するかを見る**。数が合わないときは、どの追記に pin が無いかを 1 つずつ確認する。
+
+pin の存在だけでなく検出力も要る。それぞれの pin 対象の記述**だけ**を base 版へ戻した隔離コピーでスイートを実行し、対応するアサーションが落ちることを確認する。全部まとめて戻して「落ちた」では、どの pin が効いたのか分からない。
+
+### 3 つ目が落ちやすい理由
+
+追記 1 と 2 は「新しく書いた手順」で、書いた本人にとって pin 対象として見えている。3 つ目は「既存の禁止文から 1 項目を外す」形の追記で、**既存記述の弱体化**として現れる。新規追加した手順に比べて「守るべき契約」としての輪郭が薄く、pin の対象から漏れやすい。
+
+この非対称は帰結クラスの扱いにも現れる。「pin が無い」は帰結が検出網に留まるため通常 class B（non-blocking）だが、**その diff が base 側の既存の記述・ガード・禁止文を削除または弱体化している場合**は、削除に対する番人不在を指す指摘として blocking を維持する。新規追加分の pin 強化と、既存記述の削除に対する pin 不在は、同じ「検出網の穴」でも扱いが分かれる。
+
+### pin の構成
+
+「既存記述の弱体化」を pin するには positive と negative の両方が要る。
+
+- **positive**（section 限定の存在検査）: 新しい契約文が実在すること。これだけだと、契約文が別の文言に書き換わったケースを通す
+- **negative**（`assert_not_grep`）: 弱体化前の literal が再混入していないこと。これだけだと、新しい契約文が丸ごと消えたケースを通す
+
+negative のパターンは file-wide 検査になるため、**base 版にしか存在しない連続 literal** を選ぶ。事前に base 版に対して 1 hit、head に対して 0 hit であることを確認しておくと、誤検出しないことが機械的に言える。
+
+## 関連ページ
+
+- [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](./mutation-testing-test-fidelity.md)
+- [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](./absence-pin-base-present-head-absent-single-line.md)
+
+## ソース
+
+- [PR #2466 review results](../../raw/reviews/20260829T152045Z-pr-2466.md)
+- [PR #2466 fix results](../../raw/fixes/20260829T152626Z-pr-2466.md)

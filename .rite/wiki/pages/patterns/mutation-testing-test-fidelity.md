@@ -6,6 +6,8 @@ promote: rite-plugin
 created: "2026-04-27T23:01:24+00:00"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260829T153702Z-pr-2466.md"
+  - type: "reviews"
     resource: "raw/reviews/20260725T032345Z-pr-2013.md"
   - type: "fixes"
     resource: "raw/fixes/20260725T101401Z-pr-2017-cycle2.md"
@@ -143,7 +145,7 @@ sources:
     resource: "raw/reviews/20260806T120815Z-pr-2124.md"
 tags: ["test", "mutation-testing", "false-positive", "dead-code", "verification", "bytes-exact-pin", "trailing-newline-strip", "self-grep-tautology", "count-threshold-mutation-evasion", "path-filter-coverage-gap", "load-bearing-whitespace-pin", "regex-alternation-per-branch-coverage", "regex-quantifier-semantic-coverage", "symmetry-claim-bidirectional-pin", "negative-assert", "non-blocking-contract-mutation"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T22:40:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-29T15:42:53Z" }
 ---
 
 # Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する
@@ -886,6 +888,24 @@ mutation の生存数をそのまま pin 欠落として報告すると、**契�
 
 **「テストが green である」ことと「テストが守っている」ことを分離して測る**のが mutation の目的なので、生存 mutant は 1 本ずつ「契約挙動を壊しているか」を判定してから数える。equivalent の判定を省くと、次 cycle で「実在しない gap」を修正しようとして時間を使う（cycle 5 では test reviewer が cycle 4 の自分の指摘 7 件のうち 2 件をこの理由で実測撤回している）。
 
+### kill は「落ちた」だけでなく「なぜ落ちたか」まで読む — section 限定 assert の false kill
+
+section 限定の assert（`assert_grep_in_section` 系）を mutation で検証するとき、**assert が落ちたことだけを見て kill と判定してはならない**。この helper は 2 つの異なる理由で fail する:
+
+- `pattern not found in section [...]` — 節は正しく抽出できたが、pin 対象の記述が消えた（= 真の kill）
+- `empty section: start_pattern [...] matched no line` — 節の抽出自体に失敗した（= mutation が見出しを壊しただけで、pin の検出力は何も示していない）
+
+後者を kill と読むと「pin が効いている」という誤った確証を得る。mutation で pin 対象の記述だけを差し替えたつもりでも、見出し行を巻き込んで消していれば全 assert が後者で落ちる。**helper のメッセージ本文を読んで前者であることを確認する**まで kill と数えない。
+
+### 両方向を測って初めて vacuous でないと言える
+
+clean tree での PASS と mutant での FAIL は、**それぞれ別の欠陥を排除する**ので両方要る。
+
+- clean tree の PASS だけ → その assert が「常に green を返す形」（`assert_not_grep` に `^` + bare `|` の ERE が混入して常時 FAIL する形の逆）でないことは示せるが、pin が対象を捉えているかは不明
+- mutant の FAIL だけ → pin が対象を捉えていることは示せるが、正常系で誤検知しないかは不明
+
+片方だけを根拠に「検出力あり」と主張しない。
+
 ### signal handler は mutation でしか穴が見えない
 
 bash は untrapped な INT/TERM/HUP で死ぬときも EXIT trap を実行するため、lib から signal trap 3 行を削除した mutant に対してテストが**全件 green のまま**通った。rc と副作用だけを見る assertion では handler の存在を判別できない。詳細は [bash の signal 挙動は「誰が送るか」「何をしている最中か」で反転する — 条件を揃えない実測は正しい記述を誤りと判定する](../heuristics/bash-signal-verification-requires-matched-conditions.md) を参照。
@@ -967,3 +987,4 @@ bash は untrapped な INT/TERM/HUP で死ぬときも EXIT trap を実行する
 - [PR #2111 review results — 散文→helper 委譲リファクタで 23 変異中 8 生存を実測 (grep 断片照合のみで golden 全文比較なし / ヘッダ補填分岐の fixture ゼロ / 制御文字経路未被覆)。散文から移した仕様の「実行可能仕様」が fixture に揃っているかの機械検証として有効](../../raw/reviews/20260804T135121Z-pr-2111.md)
 - [PR #2124 review results — 隔離 worktree での 24 変異 (kill 15 / survive 9)、生存はすべて契約外の実装内部](../../raw/reviews/20260806T094541Z-pr-2124.md)
 - [PR #2124 review results (cycle 4) — 77 変異中 6 本を equivalent と確定させてから 14 本を pin 欠落として報告](../../raw/reviews/20260806T120815Z-pr-2124.md)
+- [PR #2466 review results (cycle 2) — section 限定 assert の false kill 判別（`empty section` と `pattern not found` の読み分け）と両方向実測](../../raw/reviews/20260829T153702Z-pr-2466.md)

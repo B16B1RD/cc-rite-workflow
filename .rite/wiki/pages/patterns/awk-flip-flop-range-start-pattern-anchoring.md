@@ -9,9 +9,11 @@ created: "2026-07-23T04:14:28Z"
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260723T031622Z-pr-1974-cycle3.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260829T153702Z-pr-2466.md"
 tags: ["awk", "flip-flop-range", "test-helper", "section-scoping", "gawk-escaping", "no-journal-comment"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-23T04:14:28Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-29T15:42:53Z" }
 ---
 
 # テストヘルパーの awk flip-flop レンジは start pattern をコード行に一意なプレフィックスでアンカーする
@@ -55,6 +57,14 @@ assert_grep_in_section "..." "$CLEANUP" \
 - `\[` を渡すと: `-v` 解釈で「不要なエスケープ」として警告付きで `[` に潰され、bracket 式として解釈されて match しなくなる、あるいは過剰マッチの温床になる
 - `\\[` を渡すと: `-v` 解釈で 1 段階消費されて `\[` になり、正規表現エンジンにリテラル bracket として正しく届く
 
+### end pattern の一意性も同格に要る（start とは非対称に、未マッチが検出されない）
+
+start と end で fail-loud 性が非対称である。`assert_grep_in_section` は start がどの行にも一致しないとき抽出結果が空になり `empty section` として fail するが、**end がどの行にも一致しないケースは検出しない** — awk flip-flop レンジがそのまま EOF まで伸び、section 限定のはずの assert が無言で file-wide 判定に劣化する。start だけを一意にしても、end に文書内で多数出現する汎用トークン（Markdown の水平線 `^---$` 等）を使うと、その 1 本が将来の cosmetic cleanup で消えた瞬間に劣化する。
+
+したがって end も **文書内で一意な見出し**にする。start が `^## Placeholder Legend`（一意）でも、end が `^---$`（同一ファイル内に 10 箇所出現）なら degrade 経路は開いたままで、`^## ステップ 0` のような一意見出しに変えて初めて閉じる。「start が一意なら安全」ではない。
+
+この一意性は grep で機械的に検査できる（end pattern の対象ファイル内マッチ数を数えるだけ）ため、検出器化の候補になる。
+
 ### テストコメントにも no_journal_comment 原則が適用される
 
 同 cycle 3 で、テストヘルパーのコメント中に「cycle 2 test reviewer 指摘」「the error-handling reviewer reproduced」等のレビュー経緯・reviewer 言及が残っていることが prompt-engineer reviewer から HIGH 指摘された。no_journal_comment 原則（cycle 番号・reviewer 名の言及禁止）はプロダクションコードだけでなくテストコメントにも同様に適用される。修正は該当箇所を現在形の Why のみに書き換えることで解消した。
@@ -67,3 +77,4 @@ assert_grep_in_section "..." "$CLEANUP" \
 ## ソース
 
 - [PR #1974 fix results (cycle 3, awk flip-flop レンジ過検出の修正)](../../raw/fixes/20260723T031622Z-pr-1974-cycle3.md)
+- [PR #2466 review results (cycle 2, end 境界の一意性と degrade 経路)](../../raw/reviews/20260829T153702Z-pr-2466.md)

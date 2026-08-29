@@ -24,6 +24,10 @@
 * **Skip**: [20260829T071914Z-pr-2454.md](raw/reviews/20260829T071914Z-pr-2454.md) — 一時的な cycle 2 mergeable 判定の一時記録。class B 降格と dual-write は plugin へ既反映。新規経験則なし
 * **lint:warning** — contradictions=0, stale=38, orphans=0, missing_concept=1, unregistered_raw=398, broken_refs=0
 * **lint:warning** — contradictions=0, stale=38, orphans=0, missing_concept=1, unregistered_raw=400, broken_refs=0
+* **Create**: [契約を N 箇所に追記したら pin も N 箇所あるかを数え合わせる](pages/patterns/contract-additions-and-pins-one-to-one.md) — raw/reviews/20260829T152045Z-pr-2466.md / raw/fixes/20260829T152626Z-pr-2466.md を新規ページ化（追記 3 箇所に対し pin 2 箇所という数の不一致が受入基準を壊した実測を軸にする）
+* **Create**: [散文が helper の挙動に新たに依存し始めたら、helper 側にも pin を置く](pages/heuristics/prose-dependency-on-helper-behavior-needs-helper-side-pin.md) — raw/reviews/20260829T152045Z-pr-2466.md を新規ページ化（散文側の pin だけでは層をまたぐ依存の半分しか守れない）
+* **Update**: [テストヘルパーの awk flip-flop レンジは start pattern をコード行に一意なプレフィックスでアンカーする](pages/patterns/awk-flip-flop-range-start-pattern-anchoring.md) — raw/reviews/20260829T153702Z-pr-2466.md を統合（end 未マッチは検出されないという start との非対称、および end 一意性の検出器化候補を追記）
+* **Update**: [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](pages/patterns/mutation-testing-test-fidelity.md) — raw/reviews/20260829T153702Z-pr-2466.md を統合（section 限定 assert の false kill 判別と両方向実測を追記）
 
 ## 2026-08-28
 * **Skip**: [20260828T153033Z-pr-2445.md](raw/reviews/20260828T153033Z-pr-2445.md) — 一時的な 0-finding レビュー記録。T-11 外側/内側 mutation pin は本 PR の plugin テストへ既反映。新規経験則なし
