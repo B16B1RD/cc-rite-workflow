@@ -67,7 +67,7 @@ If determined to be within the end-to-end flow, extract the Issue number from th
 issue_number=$(git branch --show-current | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
 ```
 
-**Local work memory (SoT)**: Read `.rite/work-memory/issue-{issue_number}.md` with the Read tool.
+**Local work memory (SoT)**: Read `.rite/work-memory/issue-{issue_number}.md` with the Read tool. If absent, Read `.rite-work-memory/issue-{issue_number}.md`.
 
 **Fallback (local file missing/corrupt)**:
 

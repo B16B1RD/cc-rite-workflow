@@ -40,6 +40,14 @@ assert_file_exists_or_fail "T-01 plugin-root new path" "$d01/.rite/plugin-root"
 assert "T-01 no legacy session-id at root" "0" "$?"
 [ ! -f "$d01/.rite-plugin-root" ]
 assert "T-01 no legacy plugin-root at root" "0" "$?"
+[ ! -e "$d01/.rite-initialized-version" ]
+assert "T-01 no legacy initialized-version at root" "0" "$?"
+[ ! -e "$d01/.rite-settings-hooks-cleaned" ]
+assert "T-01 no legacy settings-hooks-cleaned at root" "0" "$?"
+[ ! -e "$d01/.rite-flow-debug.log" ]
+assert "T-01 no legacy flow-debug.log at root" "0" "$?"
+[ ! -d "$d01/.rite-work-memory" ]
+assert "T-01 no legacy work-memory at root" "0" "$?"
 
 # T-04 extension: work-memory-update and debug-log writers do not create root files.
 echo "T-04: work-memory-update writes .rite/work-memory not root"
@@ -61,6 +69,11 @@ assert_file_exists_or_fail "T-04 WM new path" "$d04/.rite/work-memory/issue-2430
 assert "T-04 no legacy WM dir" "0" "$?"
 mode=$(stat -c '%a' "$d04/.rite/work-memory" 2>/dev/null || stat -f '%OLp' "$d04/.rite/work-memory")
 assert "T-04 WM dir chmod 700" "700" "$mode"
+assert_file_exists_or_fail "T-04 .rite/.gitignore" "$d04/.rite/.gitignore"
+grep -qx '*' "$d04/.rite/.gitignore"
+assert "T-04 .rite gitignore has star" "0" "$?"
+grep -q '!wiki/' "$d04/.rite/.gitignore"
+assert "T-04 .rite gitignore has wiki negation" "0" "$?"
 
 echo "T-04: debug log path is .rite/logs/flow-debug.log"
 for f in pre-tool-bash-guard.sh pre-tool-edit-guard.sh post-tool-wm-sync.sh; do
@@ -91,12 +104,14 @@ assert "T-02 flow-state path uses legacy sid file" "$d02/.rite/sessions/${uuid02
 
 d02wm="$TEST_DIR/t02wm"
 mkdir -p "$d02wm/.rite-work-memory"
-printf '# old wm\n' > "$d02wm/.rite-work-memory/issue-2430.md"
+printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nschema_version: 1\nissue_number: 2430\nsync_revision: 5\npr_number: 4242\nloop_count: 7\n---\n\nfrom-old\n' \
+  > "$d02wm/.rite-work-memory/issue-2430.md"
 (
   cd "$d02wm"
   WM_SOURCE="test" WM_PHASE="plan" WM_PHASE_DETAIL="d" WM_NEXT_ACTION="n" \
     WM_BODY_TEXT="from-old" WM_PLUGIN_ROOT="$PLUGIN_ROOT" WM_ISSUE_NUMBER="2430" \
     WM_SKIP_LOCK="true"
+  unset WM_PR_NUMBER
   export WM_SOURCE WM_PHASE WM_PHASE_DETAIL WM_NEXT_ACTION WM_BODY_TEXT WM_PLUGIN_ROOT WM_ISSUE_NUMBER WM_SKIP_LOCK
   # shellcheck disable=SC1091
   source "$HOOKS_DIR/work-memory-update.sh"
@@ -104,6 +119,8 @@ printf '# old wm\n' > "$d02wm/.rite-work-memory/issue-2430.md"
 )
 grep -q 'from-old' "$d02wm/.rite/work-memory/issue-2430.md"
 assert "T-02 WM old-read then new-write" "0" "$?"
+grep -q 'pr_number: 4242' "$d02wm/.rite/work-memory/issue-2430.md"
+assert "T-02 WM carries pr_number from legacy frontmatter" "0" "$?"
 
 # T-03: migrate old → new once; second run is no-op; both-exist does not clobber.
 echo "T-03: session-start migrate is idempotent"
@@ -126,6 +143,14 @@ assert "T-03 legacy WM dir removed after mv" "0" "$?"
 assert "T-03 debug log migrated" "oldlog" "$(cat "$d03/.rite/logs/flow-debug.log" 2>/dev/null)"
 [ ! -e "$d03/.rite-flow-debug.log" ]
 assert "T-03 legacy debug log removed after mv" "0" "$?"
+assert_file_exists_or_fail "T-03 initialized-version at new path" "$d03/.rite/initialized-version"
+[ ! -e "$d03/.rite-initialized-version" ]
+assert "T-03 legacy initialized-version removed after mv" "0" "$?"
+assert "T-03 settings-hooks-cleaned migrated" "cleaned" "$(cat "$d03/.rite/settings-hooks-cleaned" 2>/dev/null)"
+[ ! -e "$d03/.rite-settings-hooks-cleaned" ]
+assert "T-03 legacy settings-hooks-cleaned removed after mv" "0" "$?"
+[ ! -e "$d03/.rite-session-id" ]
+assert "T-03 legacy session-id removed after mv" "0" "$?"
 # second run: new remains, old not recreated
 new_sid_before=$(cat "$d03/.rite/session-id" 2>/dev/null || true)
 run_session_start "$d03" "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
@@ -140,6 +165,29 @@ printf 'OLDWM' > "$d03b/.rite-work-memory/issue-1.md"
 run_session_start "$d03b"
 assert "T-03 both-exist keeps new WM" "NEWWM" "$(cat "$d03b/.rite/work-memory/issue-1.md")"
 assert "T-03 both-exist leaves old WM" "OLDWM" "$(cat "$d03b/.rite-work-memory/issue-1.md")"
+
+# T-03 fail branch: mv failure emits WARNING and leaves src (work-memory).
+echo "T-03: migrate mv failure warns and leaves src"
+d03fail="$TEST_DIR/t03fail"
+mkdir -p "$d03fail/.rite-work-memory"
+printf 'keep' > "$d03fail/.rite-work-memory/issue-1.md"
+shim="$TEST_DIR/mv-shim"
+mkdir -p "$shim"
+cat > "$shim/mv" <<'EOF'
+#!/bin/bash
+echo "mv: simulated failure" >&2
+exit 1
+EOF
+chmod +x "$shim/mv"
+err03=$(jq -n --arg cwd "$d03fail" --arg src "startup" --arg sid "ffffffff-ffff-ffff-ffff-ffffffffffff" \
+  '{cwd: $cwd, source: $src, session_id: $sid}' \
+  | env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID PATH="$shim:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
+printf '%s\n' "$err03" | grep -q 'WARNING: session-start.sh: failed to migrate'
+assert "T-03 mv failure emits WARNING" "0" "$?"
+[ -d "$d03fail/.rite-work-memory" ]
+assert "T-03 mv failure leaves legacy WM dir" "0" "$?"
+[ ! -d "$d03fail/.rite/work-memory" ]
+assert "T-03 mv failure does not create dest WM dir" "0" "$?"
 
 # T-05: env priority CLAUDE_CODE_SESSION_ID > CLAUDE_SESSION_ID > new file > old file
 echo "T-05: session_id resolution order"
@@ -209,6 +257,15 @@ grep -q 'cp "$repo_root/.rite/plugin-root" "$wt_path/.rite/plugin-root"' "$open_
 assert "open copies new→new" "0" "$?"
 grep -q 'cp "$repo_root/.rite-plugin-root" "$wt_path/.rite/plugin-root"' "$open_md"
 assert "open copies old→new when only old exists" "0" "$?"
+grep -qF "_ensure_dir_gitignore \"\$wt_path/.rite\" '!wiki/' '!wiki/**'" "$open_md"
+assert "open 2.3-W writes .rite nested gitignore" "0" "$?"
+
+echo "Read dual-path mentions legacy WM"
+for f in skills/issue-update/SKILL.md skills/pr-create/SKILL.md skills/pr-review/SKILL.md \
+         skills/ready/SKILL.md skills/rite-workflow/references/work-memory-format.md; do
+  grep -qF '.rite-work-memory' "$REPO_ROOT/plugins/rite/$f"
+  assert "Read dual-path in $(basename "$(dirname "$f")")/$(basename "$f")" "0" "$?"
+done
 
 # umask 077 on new session-id
 echo "session-id umask 077 on new path"

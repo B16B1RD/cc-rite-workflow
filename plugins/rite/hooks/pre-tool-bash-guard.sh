@@ -47,7 +47,12 @@
 # hooks.json timeout: 10s — a generous ceiling for a bash-builtins gate, aligned
 # with the other lightweight synchronous gates (Stop=10s, bang-backtick hook=10s).
 set -euo pipefail
-mkdir -p "${STATE_ROOT:-/tmp}/.rite/logs" 2>/dev/null || true
+# Create the logs dir only when STATE_ROOT is set. An unset STATE_ROOT used to
+# mkdir /tmp/.rite/, which collides with the `[ -d .rite ]` project-root marker
+# in tests that use STATE_ROOT=/tmp (and in any cwd=/tmp hook run).
+if [ -n "${STATE_ROOT:-}" ]; then
+  mkdir -p "$STATE_ROOT/.rite/logs" 2>/dev/null || true
+fi
 
 # Double-execution guard (hooks.json + settings.local.json migration)
 [ -z "${_RITE_HOOK_RUNNING_PRETOOL:-}" ] || exit 0

@@ -407,8 +407,9 @@ Issue comment is a backup replica, synced at phase transitions:
 All commands that read work memory follow this priority:
 
 1. **Local file** (`.rite/work-memory/issue-{n}.md`) — SoT
-2. **Issue comment API** — fallback when local file missing/corrupt
-3. **Context** — information already loaded in conversation
+2. **Legacy local file** (`.rite-work-memory/issue-{n}.md`) — when the new path is absent
+3. **Issue comment API** — fallback when local file missing/corrupt
+4. **Context** — information already loaded in conversation
 
 Commands that write work memory update the local file first (SoT), then sync to Issue comment (backup) at phase transitions.
 

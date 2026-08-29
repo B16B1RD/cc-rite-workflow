@@ -101,13 +101,13 @@ If the Issue is not found:
 
 ### 1.1 Load Local Work Memory (SoT)
 
-Read the local work memory file with the Read tool:
+Read the local work memory file with the Read tool (new path first, then legacy):
 
 ```
 Read: .rite/work-memory/issue-{issue_number}.md
 ```
 
-If the file exists and is valid, use it as the base for updates. Retain the content in context.
+不在なら `.rite-work-memory/issue-{issue_number}.md`。存在する側が valid ならそれを更新のベースにする。Retain the content in context.
 
 ### 1.2 Fallback: Issue Comment (Backup)
 
@@ -219,7 +219,9 @@ rationale: references/rationale.md#reread-before-write
 Read: .rite/work-memory/issue-{issue_number}.md
 ```
 
-**Fallback**: If the local file is not available, re-fetch the Issue comment body:
+不在なら `.rite-work-memory/issue-{issue_number}.md`。
+
+**Fallback**: If neither local file is available, re-fetch the Issue comment body:
 
 ```bash
 comment_body=$(gh api repos/{owner}/{repo}/issues/comments/{comment_id} --jq '.body')

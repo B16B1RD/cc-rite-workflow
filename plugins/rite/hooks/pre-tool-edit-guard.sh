@@ -41,7 +41,11 @@
 # NotebookEdit) with a 10s timeout — a fast synchronous gate using bash built-ins
 # plus a couple of jq calls, aligned with the sibling lightweight gates.
 set -euo pipefail
-mkdir -p "${STATE_ROOT:-/tmp}/.rite/logs" 2>/dev/null || true
+# Create the logs dir only when STATE_ROOT is set. An unset STATE_ROOT used to
+# mkdir /tmp/.rite/, which collides with the `[ -d .rite ]` project-root marker.
+if [ -n "${STATE_ROOT:-}" ]; then
+  mkdir -p "$STATE_ROOT/.rite/logs" 2>/dev/null || true
+fi
 
 # Double-execution guard (hooks.json + settings.local.json migration parity with
 # pre-tool-bash-guard.sh's _RITE_HOOK_RUNNING_PRETOOL, but a distinct var so the

@@ -82,6 +82,8 @@
 source "$(dirname "${BASH_SOURCE[0]}")/work-memory-lock.sh"
 # shellcheck source=control-char-neutralize.sh
 source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
+# shellcheck source=gitignore-ensure.sh
+source "$(dirname "${BASH_SOURCE[0]}")/gitignore-ensure.sh"
 
 # verified-review F-04 MEDIUM: flow-state.sh 呼び出し boilerplate を helper 関数に抽出。
 # (a) helper executable check と (b) `if cmd; then :; else rc=$?; ...; return 2; fi` 形式の
@@ -171,6 +173,12 @@ update_local_work_memory() {
   # Defensive: ensure parent directory exists before lock acquisition
   mkdir -p "$wm_dir" 2>/dev/null || { echo "rite: ${WM_SOURCE}: failed to create .rite/work-memory directory" >&2; return 2; }
   chmod 700 "$wm_dir" 2>/dev/null || true
+  # Nested self-gitignore on `.rite/` (same extra-args as session-start / flow-state).
+  # mkdir is the caller's job; the helper will not create the directory.
+  if ! _ensure_dir_gitignore ".rite" '!wiki/' '!wiki/**'; then
+    echo "WARNING: work-memory-update.sh: cannot create .rite/.gitignore; verify by hand that this directory is excluded from git" >&2
+    [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+  fi
 
   if [ "${WM_SKIP_LOCK:-false}" = "true" ]; then
     :  # Lock skipping; RETURN trap set later in this function after mktemp (anchor: tmp_wm_mktemp below)

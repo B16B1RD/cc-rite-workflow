@@ -92,11 +92,18 @@ fi
 # means a previous run owns it — leave src so dual-read still sees it; never
 # clobber dest.
 _rite_migrate_relocated() {
-  local src="$1" dest="$2"
+  local src="$1" dest="$2" dest_dir
   [ -e "$src" ] || return 0
   [ -e "$dest" ] && return 0
-  mkdir -p "$(dirname "$dest")" 2>/dev/null || return 0
-  mv "$src" "$dest" 2>/dev/null || true
+  dest_dir=$(dirname "$dest")
+  if ! mkdir -p "$dest_dir"; then
+    echo "WARNING: session-start.sh: cannot create $(printf '%s' "$dest_dir" | neutralize_ctrl) to migrate $(printf '%s' "$src" | neutralize_ctrl)" >&2
+    return 0
+  fi
+  if ! mv "$src" "$dest"; then
+    echo "WARNING: session-start.sh: failed to migrate $(printf '%s' "$src" | neutralize_ctrl) -> $(printf '%s' "$dest" | neutralize_ctrl)" >&2
+    return 0
+  fi
 }
 _rite_migrate_relocated "$STATE_ROOT/.rite-plugin-root" "$STATE_ROOT/.rite/plugin-root"
 _rite_migrate_relocated "$STATE_ROOT/.rite-session-id" "$STATE_ROOT/.rite/session-id"

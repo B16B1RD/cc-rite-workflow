@@ -71,7 +71,7 @@ E2E では `[pr:created:{number}]` / `[pr-create-failed]` を出して **caller 
 issue_number=$(git branch --show-current | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
 ```
 
-Read `.rite/work-memory/issue-{issue_number}.md`（SoT）。欠落 / 破損時は Issue comment API:
+Read `.rite/work-memory/issue-{issue_number}.md`（SoT）。不在なら `.rite-work-memory/issue-{issue_number}.md`。欠落 / 破損時は Issue comment API:
 
 ```bash
 # SSH host alias 対応: git-remote.sh 優先 + gh repo view fallback
