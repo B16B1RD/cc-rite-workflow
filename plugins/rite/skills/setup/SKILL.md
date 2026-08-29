@@ -1234,7 +1234,7 @@ fi
 
 ## Phase 4.6: Work Memory Directory Setup
 
-`.rite/work-memory` と nested self-gitignore（`*` / `!wiki/` / `!wiki/**`）を作る。root `.gitignore` に rite runtime state は追記しない。
+`.rite/work-memory` と nested self-gitignore（star と wiki 否定行の 3 行）を作る。root `.gitignore` に rite runtime state は追記しない。
 
 ```bash
 mkdir -p .rite/work-memory
