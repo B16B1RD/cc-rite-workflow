@@ -41,8 +41,9 @@ Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → 
 | `{owner}` / `{repo}` | ステップ 2.4(A) 専用: `{plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo`（SSH host alias 対応。fallback: `gh repo view --json owner,name`。canonical: [gh-cli-patterns.md](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)） |
 | `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
 | `{project_number}` | ステップ 2.4(A) 専用: `rite-config.yml` → `github.projects.project_number` |
+| `{parent_issue_number}` | ステップ 2.4(B) の親検出で得た親 Issue 番号（未検出時は substitute しない） |
 
-> **Note**: 「ステップ 2.4(A) 専用」と注記した 2 行を除き、`{owner}` / `{repo}` / `{project_number}` / `{parent_issue_number}` は本コマンド body で substitute しない — 下流 sub-skill が `rite-config.yml` / `gh` から個別に取得する。
+> **Note**: 「ステップ 2.4(A) 専用」と注記した 2 行を除き、`{owner}` / `{repo}` / `{project_number}` は本コマンド body で substitute しない — 下流 sub-skill が `rite-config.yml` / `gh` から個別に取得する。`{parent_issue_number}` は例外で、2.4(B) が検出した値を 2.6 の `flow-state.sh set` へ渡すために本コマンド body で substitute する。
 
 ---
 
@@ -398,6 +399,7 @@ esac
 1. **§2.4.7.1 親検出（3-method OR）**: `## 親 Issue` body meta（PRIMARY）→ Sub-Issues API → tasklist search。この 3-method 構造は `../skills/issue-close/SKILL.md` Phase 4.5.1 と同一に保つ（Method 3 の `--state open` は start 側固有の意図的差異）。
 2. 親を検出したら **§2.4.7.2–2.4.7.4**: Status が **Todo または null のときのみ** In Progress にする。既に In Progress / In Review / Done なら上書きしない（sibling child の進捗を保持する）。
 3. 親が無い standalone Issue は `[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: body_meta, sub_issues_api, tasklist_search)` を emit して skip する（silent skip 禁止）。
+4. 親を検出した場合は、その番号を `{parent_issue_number}` として retain し、ステップ 2.6 の `flow-state.sh set` へ渡す（standalone のときは retain しない）。Status 更新の成否とは独立に retain する — (B) は non-blocking だが、flow-state への記録が漏れると `/rite:issue-implement` 5.1.2 の親進捗更新が常に skip される。
 
 (B) はすべて non-blocking。
 
@@ -436,6 +438,8 @@ bash {plugin_root}/hooks/flow-state.sh set \
 ```
 
 2.1-G の `MULTI_SESSION_ENABLED=true` のときは末尾に `--worktree "{wt_path}" --require-worktree` を追加する（`{wt_path}` は 2.2-W の `path=` 値）。`--require-worktree` は worktree path 不在のまま branch phase を記録した場合に `[CONTEXT] WORKTREE_INVARIANT=missing` を emit する（書き込み自体は完了するため work は失われない）。`missing` を観測したら worktree 化が漏れているので 2.2-W へ戻る。
+
+2.4(B) で親 Issue を検出したときは末尾に `--parent-issue {parent_issue_number}` を追加する。これが `parent_issue_number` を flow-state へ書く唯一の経路であり、`/rite:issue-implement` 5.1.2 の親進捗更新はこの値でしか発火しない。**未検出時（standalone）はフラグ自体を付けない** — `0` を明示的に渡す必要はなく、`flow-state.sh` 側が未指定フィールドを merge-preserve するため既存値（新規セッションでは `0`）が保たれる。以降の phase transition（6.3 等）も同じ merge-preserve で値を維持するため、書き込みは本ステップの 1 箇所でよい。
 
 ---
 
