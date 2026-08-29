@@ -47,12 +47,12 @@ echo ""
 # ─── TC-001: TMP_STATE mktemp 失敗時でも Step 2/3 が実行されること ────────
 echo "TC-001: TMP_STATE mktemp failure does not abort Step 2/3 cleanup"
 dir001="$TEST_DIR/tc001"
-mkdir -p "$dir001/.rite-work-memory"
+mkdir -p "$dir001/.rite/work-memory"
 # Seed the per-session flow-state file (schema_v2/v3), compact-state, and a
 # per-issue work memory file
 seed_session_flow_state "$dir001" "tc001-sid" '{"active":true,"issue_number":42,"phase":"completed","branch":"feat/issue-42-test"}'
 echo '{"compact_state":"recovering","active_issue":42}' > "$dir001/.rite-compact-state"
-echo "# work memory for issue 42" > "$dir001/.rite-work-memory/issue-42.md"
+echo "# work memory for issue 42" > "$dir001/.rite/work-memory/issue-42.md"
 
 # Inject a mktemp shim that fails only when the target argument matches the
 # FLOW_STATE.tmp pattern (matches both the legacy .rite-flow-state.tmp.* name
@@ -92,7 +92,7 @@ else
 fi
 
 # Step 3 (per-issue work memory removal) should have succeeded
-if [ ! -f "$dir001/.rite-work-memory/issue-42.md" ]; then
+if [ ! -f "$dir001/.rite/work-memory/issue-42.md" ]; then
   pass "TC-001 Step 3: per-issue work memory removed despite Step 1 mktemp failure"
 else
   fail "TC-001 Step 3 SKIPPED: issue-42.md still present (cleanup aborted on Step 1 failure)"
@@ -102,19 +102,19 @@ echo ""
 # ─── TC-002: 正常路 (negative control) ──────────────────────────
 echo "TC-002: happy path with working mktemp removes all three"
 dir002="$TEST_DIR/tc002"
-mkdir -p "$dir002/.rite-work-memory"
+mkdir -p "$dir002/.rite/work-memory"
 seed_session_flow_state "$dir002" "tc002-sid" '{"active":true,"issue_number":43,"phase":"completed"}'
 echo '{"compact_state":"recovering","active_issue":43}' > "$dir002/.rite-compact-state"
-echo "# wm 43" > "$dir002/.rite-work-memory/issue-43.md"
+echo "# wm 43" > "$dir002/.rite/work-memory/issue-43.md"
 
 ( cd "$dir002" && bash "$HOOK" >/dev/null 2>&1 ) || true
 
 # After successful run: compact-state and per-issue wm file removed.
 if [ ! -f "$dir002/.rite-compact-state" ] \
-   && [ ! -f "$dir002/.rite-work-memory/issue-43.md" ]; then
+   && [ ! -f "$dir002/.rite/work-memory/issue-43.md" ]; then
   pass "TC-002 happy path: Step 2/3 cleanup completed (compact-state + per-issue wm removed)"
 else
-  fail "TC-002 happy path partial: compact-state present=$([ -f "$dir002/.rite-compact-state" ] && echo y || echo n), wm present=$([ -f "$dir002/.rite-work-memory/issue-43.md" ] && echo y || echo n)"
+  fail "TC-002 happy path partial: compact-state present=$([ -f "$dir002/.rite-compact-state" ] && echo y || echo n), wm present=$([ -f "$dir002/.rite/work-memory/issue-43.md" ] && echo y || echo n)"
 fi
 
 # Directly verify the Step 1 reset outcome (the PR's core spec): the per-session
@@ -138,7 +138,7 @@ echo ""
 # WARNING content. PATH-shim mv to force failure with a known rc.
 echo "TC-003: Step 1 mv mutation emits WARNING with real rc"
 dir003="$TEST_DIR/tc003"
-mkdir -p "$dir003/.rite-work-memory"
+mkdir -p "$dir003/.rite/work-memory"
 seed_session_flow_state "$dir003" "tc003-sid" '{"active":true,"issue_number":44,"phase":"completed","branch":"feat/issue-44"}'
 mkdir -p "$dir003/bin"
 cat > "$dir003/bin/mv" <<'MV_SHIM'
@@ -167,15 +167,15 @@ echo ""
 # 他 Issue の wm は残す。逆に他 Issue を巻き込んで消すと進行中作業の状態が失われる。
 echo "TC-004: --issue N close mode removes only the specified issue's wm"
 dir004="$TEST_DIR/tc004"
-mkdir -p "$dir004/.rite-work-memory"
-echo "# wm 50" > "$dir004/.rite-work-memory/issue-50.md"
-echo "# wm 51" > "$dir004/.rite-work-memory/issue-51.md"
+mkdir -p "$dir004/.rite/work-memory"
+echo "# wm 50" > "$dir004/.rite/work-memory/issue-50.md"
+echo "# wm 51" > "$dir004/.rite/work-memory/issue-51.md"
 ( cd "$dir004" && bash "$HOOK" --issue 50 >/dev/null 2>&1 ) || true
-if [ ! -f "$dir004/.rite-work-memory/issue-50.md" ] \
-   && [ -f "$dir004/.rite-work-memory/issue-51.md" ]; then
+if [ ! -f "$dir004/.rite/work-memory/issue-50.md" ] \
+   && [ -f "$dir004/.rite/work-memory/issue-51.md" ]; then
   pass "TC-004 close mode: target removed, other issue preserved"
 else
-  fail "TC-004 close mode side-effects wrong: target removed=$([ ! -f "$dir004/.rite-work-memory/issue-50.md" ] && echo y || echo n), other preserved=$([ -f "$dir004/.rite-work-memory/issue-51.md" ] && echo y || echo n)"
+  fail "TC-004 close mode side-effects wrong: target removed=$([ ! -f "$dir004/.rite/work-memory/issue-50.md" ] && echo y || echo n), other preserved=$([ -f "$dir004/.rite/work-memory/issue-51.md" ] && echo y || echo n)"
 fi
 echo ""
 
@@ -217,12 +217,12 @@ echo ""
 # 含まれることを確認する。
 echo "TC-007: find permission denied surfaces as remaining=unknown"
 dir007="$TEST_DIR/tc007"
-mkdir -p "$dir007/.rite-work-memory"
-echo "wm a" > "$dir007/.rite-work-memory/issue-1.md"
+mkdir -p "$dir007/.rite/work-memory"
+echo "wm a" > "$dir007/.rite/work-memory/issue-1.md"
 mkdir -p "$dir007/bin"
 cat > "$dir007/bin/find" <<'EOF'
 #!/bin/bash
-echo "find: '.rite-work-memory': Permission denied" >&2
+echo "find: '.rite/work-memory': Permission denied" >&2
 exit 1
 EOF
 chmod +x "$dir007/bin/find"
@@ -243,7 +243,7 @@ echo ""
 # issue number was discarded.
 echo "TC-008: corrupt FLOW_STATE surfaces jq rc in WARNING"
 dir008="$TEST_DIR/tc008"
-mkdir -p "$dir008/.rite-work-memory"
+mkdir -p "$dir008/.rite/work-memory"
 mkdir -p "$dir008/.rite/sessions"
 printf '%s' "tc008-sid" > "$dir008/.rite-session-id"
 printf 'not-valid-json{{' > "$dir008/.rite/sessions/tc008-sid.flow-state"
@@ -267,7 +267,7 @@ echo ""
 # succeeds in those paths.
 echo "TC-resolver-fallback: session resolution failure emits WARNING and resets legacy file"
 dir_resolver="$TEST_DIR/tc_resolver_fallback"
-mkdir -p "$dir_resolver/.rite-work-memory"
+mkdir -p "$dir_resolver/.rite/work-memory"
 echo '{"active":true,"issue_number":77,"phase":"cleanup"}' > "$dir_resolver/.rite-flow-state"
 out_resolver="$TEST_DIR/tc_resolver_fallback.out"
 ( cd "$dir_resolver" && bash "$HOOK" >"$out_resolver" 2>&1 ) || true

@@ -45,7 +45,7 @@ argument-hint: ""
 | `{pr_state}` | Phase 3.3: `gh pr view` の `.state` (NONE/OPEN/MERGED/CLOSED) |
 | `{pr_is_draft}` | Phase 3.3: `gh pr view` の `.isDraft` |
 | `{pr_mergeable}` | Phase 3.3: `[CONTEXT] PR_MERGEABLE` marker (`gh pr view` の `.mergeable`: MERGEABLE/CONFLICTING/UNKNOWN)。Phase 3.4.5 で CONFLICTING をコンフリクト状態として扱う |
-| `{wm_next}` | Phase 3.4: work memory (`.rite-work-memory/issue-{n}.md`) の `next_action:` |
+| `{wm_next}` | Phase 3.4: work memory (`.rite/work-memory/issue-{n}.md`) の `next_action:` |
 | `{resolved_phase}` | Phase 3.5: cross-check 確定 phase (`[CONTEXT] RESOLVED_PHASE` marker)。Phase 4.2 で user が phase 変更を選んだ場合は `[CONTEXT] FINAL_PHASE` marker を優先 |
 | `{type}` / `{slug}` | ブランチ名 `{type}/issue-{number}-{slug}` の構成要素 |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
@@ -229,7 +229,8 @@ echo "[CONTEXT] PR_MERGEABLE=$pr_mergeable"
 ### 3.4 Work Memory 状態取得
 
 ```bash
-LOCAL_WM=".rite-work-memory/issue-${issue_arg}.md"
+LOCAL_WM=".rite/work-memory/issue-${issue_arg}.md"
+[ -f "$LOCAL_WM" ] || [ ! -f ".rite-work-memory/issue-${issue_arg}.md" ] || LOCAL_WM=".rite-work-memory/issue-${issue_arg}.md"
 wm_phase=""
 wm_next=""
 if [ -f "$LOCAL_WM" ]; then

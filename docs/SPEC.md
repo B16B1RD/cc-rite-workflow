@@ -1242,7 +1242,7 @@ Registered as a PostToolUse hook. Automatically creates local work memory files 
 
 1. Fires after Bash tool usage (with recursion guard)
 2. Retrieves active workflow and Issue number from the per-session flow state file (`.rite/sessions/{session_id}.flow-state`)
-3. Only creates `.rite-work-memory/issue-{n}.md` if it doesn't exist
+3. Only creates `.rite/work-memory/issue-{n}.md` if it doesn't exist
 
 **Purpose:** Guarantees auto-recovery of local work memory during `/rite:recover` after compact or session restart.
 
@@ -1330,7 +1330,7 @@ See [Experience Wiki](#experience-wiki) for the full Phase X.X.W contract and th
 
 ### Hook Preamble (`hook-preamble.sh`)
 
-Sourced at the top of most hooks to perform shared pre-processing: plugin-root resolution via `.rite-plugin-root`, `RITE_DEBUG` log setup, and double-execution guard bookkeeping. Hooks that need to read stdin must source it *after* capturing stdin to avoid consumption conflicts.
+Sourced at the top of most hooks to perform shared pre-processing: plugin-root resolution via `.rite/plugin-root`, `RITE_DEBUG` log setup, and double-execution guard bookkeeping. Hooks that need to read stdin must source it *after* capturing stdin to avoid consumption conflicts.
 
 ### Helper Scripts (`hooks/scripts/`)
 
@@ -1389,7 +1389,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 
 The flow state for `/rite:*` workflows uses a **per-session file** structure (`.rite/sessions/{session_id}.flow-state`). Each Claude Code session writes only to its own file, so concurrent sessions on the same repository are structurally race-free without lock acquisition.
 
-> **Authority scope — session-scoped continuation hint, not a cross-`/clear` source of truth**: flow state is **session-scoped** and treats `/clear` as its continuation terminus — a session started after a `/clear` resolves a fresh `session_id` and therefore reads a different (structurally empty) state file. Consequently, **discrete commands** invoked standalone across a `/clear` (e.g. `/rite:merge`) **must not** treat flow state as the authoritative cross-`/clear` state. Their authority lives in the persistent SoT — `gh pr view` (`isDraft` / `mergeable` / `mergeStateStatus`), GitHub Projects Status, and `.rite-work-memory/issue-{n}.md`. flow state, when present, is consumed only as a **same-session continuation hint**, and its absence is the normal (un-warned) case for discrete operation. Conversely, the **continuation-loop subsystems** — `/rite:iterate`'s review↔fix loop, the `Stop` hook + `handoff` field, `/rite:pr-review` / `/rite:fix`, compact recovery, and `/rite:recover` — are single-session by nature and are precisely the domain where session-scoped flow state functions correctly; they are left untouched. See [`docs/designs/clear-per-command-flow-state-decoupling.md`](designs/clear-per-command-flow-state-decoupling.md) for the full discrete-command-vs-continuation-loop decoupling analysis and per-command breakdown; `skills/merge/SKILL.md` Step 1 is the first application of this boundary.
+> **Authority scope — session-scoped continuation hint, not a cross-`/clear` source of truth**: flow state is **session-scoped** and treats `/clear` as its continuation terminus — a session started after a `/clear` resolves a fresh `session_id` and therefore reads a different (structurally empty) state file. Consequently, **discrete commands** invoked standalone across a `/clear` (e.g. `/rite:merge`) **must not** treat flow state as the authoritative cross-`/clear` state. Their authority lives in the persistent SoT — `gh pr view` (`isDraft` / `mergeable` / `mergeStateStatus`), GitHub Projects Status, and `.rite/work-memory/issue-{n}.md`. flow state, when present, is consumed only as a **same-session continuation hint**, and its absence is the normal (un-warned) case for discrete operation. Conversely, the **continuation-loop subsystems** — `/rite:iterate`'s review↔fix loop, the `Stop` hook + `handoff` field, `/rite:pr-review` / `/rite:fix`, compact recovery, and `/rite:recover` — are single-session by nature and are precisely the domain where session-scoped flow state functions correctly; they are left untouched. See [`docs/designs/clear-per-command-flow-state-decoupling.md`](designs/clear-per-command-flow-state-decoupling.md) for the full discrete-command-vs-continuation-loop decoupling analysis and per-command breakdown; `skills/merge/SKILL.md` Step 1 is the first application of this boundary.
 
 **File path:**
 
@@ -1401,7 +1401,7 @@ The flow state for `/rite:*` workflows uses a **per-session file** structure (`.
  └── ...
 ```
 
-The `session_id` is the same UUID stored in `.rite-session-id` and propagated to every hook via the JSON stdin payload.
+The `session_id` is the same UUID stored in `.rite/session-id` (legacy `.rite-session-id` is a read fallback) and propagated to every hook via the JSON stdin payload.
 
 **Schema (`schema_version: 3`):**
 
@@ -1415,7 +1415,7 @@ The `session_id` is the same UUID stored in `.rite-session-id` and propagated to
 | Required | `parent_issue_number` | `flow-state.sh set` | `0` when the Issue is standalone |
 | Required | `next_action` | `flow-state.sh set` | Free-text continuation hint surfaced via post-compact recovery |
 | Required | `updated_at` | `flow-state.sh set` (every write) | ISO 8601 UTC with `Z` suffix; generated by `date -u +"%Y-%m-%dT%H:%M:%SZ"` (cross-platform deterministic). Note: human-facing logs elsewhere may be JST; the persisted state field is UTC |
-| Required | `session_id` | `flow-state.sh set` | Mirrors `.rite-session-id`, used as filename |
+| Required | `session_id` | `flow-state.sh set` | Mirrors `.rite/session-id`, used as filename |
 | Required | `last_synced_phase` | `flow-state.sh set` (merge-preserves existing value) / `post-tool-wm-sync.sh` (actual writer on phase diff via `jq '.last_synced_phase = $p'`) | Tracks the last work-memory sync point. `flow-state.sh set` merge-preserves but does not author this field — only the per-tool sync hook does (verify with `grep -n last_synced_phase plugins/rite/hooks/*.sh`) |
 | Optional | `wm_comment_id` | `issue-comment-wm-sync.sh` (cache write) | GitHub comment ID for the work memory backup. Numeric only — never a sentinel string |
 | Optional | `wm_replica` | `issue-comment-wm-sync.sh` on `no_comment` | Negative cache. Value `"absent"` only; written when the work-memory Issue comment is not found. Deleted by `cache_comment_id` / `init` success. Not a numeric sentinel in `wm_comment_id` |
@@ -1486,7 +1486,7 @@ In addition to Issue comment backups, work memory is maintained on the local fil
 
 | Component | Role | Location |
 |-----------|------|----------|
-| Local work memory (SoT) | Source of truth | `.rite-work-memory/issue-{n}.md` |
+| Local work memory (SoT) | Source of truth | `.rite/work-memory/issue-{n}.md` |
 | Issue comment (backup) | Cross-session backup | GitHub Issue comment |
 | Flow state | Workflow control | `.rite/sessions/{session_id}.flow-state` (per-session; see [Multi-Session State Management](#multi-session-state-management)) |
 | Compact state | Post-compact state management | `.rite/sessions/{session_id}.compact-state` (per-session; legacy shared `.rite-compact-state` retained for migration) |
@@ -1859,7 +1859,7 @@ Long-running commands such as the end-to-end flow `/rite:open` → `/rite:iterat
 
 **Why this works:**
 
-- Work memory (Issue comments + the local `.rite-work-memory/issue-{n}.md` file) and git/PR artifacts persist workflow state across sessions. The per-session flow state file is session-scoped (see [Multi-Session State Management](#multi-session-state-management)), so the post-`/clear` session reads a fresh empty file; `/rite:recover` reconstructs the resume point from work memory + git/PR cross-check, using flow state only as the same-session signal when present
+- Work memory (Issue comments + the local `.rite/work-memory/issue-{n}.md` file) and git/PR artifacts persist workflow state across sessions. The per-session flow state file is session-scoped (see [Multi-Session State Management](#multi-session-state-management)), so the post-`/clear` session reads a fresh empty file; `/rite:recover` reconstructs the resume point from work memory + git/PR cross-check, using flow state only as the same-session signal when present
 - All git artifacts (branches, commits, PRs) are preserved — nothing is lost
 - `/rite:recover` reads the persisted state and resumes the appropriate phase
 

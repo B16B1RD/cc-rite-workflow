@@ -27,7 +27,8 @@ source "$SCRIPT_DIR/control-char-neutralize.sh"
 # Resolve repository root
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$(pwd)" 2>/dev/null) || STATE_ROOT="$(pwd)"
 
-WM_DIR="$STATE_ROOT/.rite-work-memory"
+WM_DIR_NEW="$STATE_ROOT/.rite/work-memory"
+WM_DIR_OLD="$STATE_ROOT/.rite-work-memory"
 
 # Parse arguments
 ISSUE_NUMBER=""
@@ -153,52 +154,60 @@ if [ "$CLOSE_MODE" = false ]; then
     rm -rf "$_cwm_compact.lockdir" 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=cleanup_work_memory_per_session" >&2
   fi
 
-  # Step 3: Delete ALL work memory files
-  if [ -d "$WM_DIR" ]; then
-    for f in "$WM_DIR"/issue-*.md; do
-      [ -f "$f" ] || continue
-      if rm -f "$f" 2>/dev/null; then
-        deleted_count=$((deleted_count + 1))
-      else
-        echo "WARNING: 削除失敗: $f" >&2
-        failed_count=$((failed_count + 1))
-      fi
-      rm -rf "${f}.lockdir" 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=cleanup_work_memory_wm_dir" >&2
-    done
-  fi
+  # Step 3: Delete ALL work memory files (new path plus leftover legacy dir)
+  for WM_DIR in "$WM_DIR_NEW" "$WM_DIR_OLD"; do
+    if [ -d "$WM_DIR" ]; then
+      for f in "$WM_DIR"/issue-*.md; do
+        [ -f "$f" ] || continue
+        if rm -f "$f" 2>/dev/null; then
+          deleted_count=$((deleted_count + 1))
+        else
+          echo "WARNING: 削除失敗: $f" >&2
+          failed_count=$((failed_count + 1))
+        fi
+        rm -rf "${f}.lockdir" 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=cleanup_work_memory_wm_dir" >&2
+      done
+    fi
+  done
 
 # --- Close mode (--issue specified) ---
 else
-  # Delete only the specified issue's files
-  target_file="$WM_DIR/issue-${ISSUE_NUMBER}.md"
-  if [ -f "$target_file" ]; then
-    if rm -f "$target_file" 2>/dev/null; then
-      deleted_count=1
-    else
-      echo "WARNING: 削除失敗: $target_file" >&2
-      failed_count=1
+  # Delete only the specified issue's files (new path plus leftover legacy dir)
+  for WM_DIR in "$WM_DIR_NEW" "$WM_DIR_OLD"; do
+    target_file="$WM_DIR/issue-${ISSUE_NUMBER}.md"
+    if [ -f "$target_file" ]; then
+      if rm -f "$target_file" 2>/dev/null; then
+        deleted_count=$((deleted_count + 1))
+      else
+        echo "WARNING: 削除失敗: $target_file" >&2
+        failed_count=$((failed_count + 1))
+      fi
     fi
-  fi
-  rm -rf "$WM_DIR/issue-${ISSUE_NUMBER}.md.lockdir" 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=cleanup_work_memory_issue" >&2
+    rm -rf "$WM_DIR/issue-${ISSUE_NUMBER}.md.lockdir" 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=cleanup_work_memory_issue" >&2
+  done
 fi
 
 # Step 4: Verify and report
 remaining=0
-if [ -d "$WM_DIR" ]; then
-  # find の stderr を捨てると permission denied で 1 件も走査できなかった場合に「残存: 0 件」
-  # と誤報告される。stderr は tempfile に capture し、非空なら WARNING を出して残存件数を
-  # 「unknown」扱いにすることで silent corruption を防ぐ。
-  _find_err=$(mktemp 2>/dev/null) || _find_err=""
-  _find_out=$(find "$WM_DIR" -name 'issue-*.md' -type f 2>"${_find_err:-/dev/null}" | wc -l | tr -d ' ') || _find_out=""
-  if [ -n "$_find_err" ] && [ -s "$_find_err" ]; then
-    echo "WARNING: cleanup-work-memory: find $WM_DIR で stderr を観測 (permission denied / IO error 等)。残存件数は信頼できません。" >&2
-    head -3 "$_find_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
-    remaining="unknown"
-  else
-    remaining="${_find_out:-0}"
+for WM_DIR in "$WM_DIR_NEW" "$WM_DIR_OLD"; do
+  if [ -d "$WM_DIR" ]; then
+    # find の stderr を捨てると permission denied で 1 件も走査できなかった場合に「残存: 0 件」
+    # と誤報告される。stderr は tempfile に capture し、非空なら WARNING を出して残存件数を
+    # 「unknown」扱いにすることで silent corruption を防ぐ。
+    _find_err=$(mktemp 2>/dev/null) || _find_err=""
+    _find_out=$(find "$WM_DIR" -name 'issue-*.md' -type f 2>"${_find_err:-/dev/null}" | wc -l | tr -d ' ') || _find_out=""
+    if [ -n "$_find_err" ] && [ -s "$_find_err" ]; then
+      echo "WARNING: cleanup-work-memory: find $WM_DIR で stderr を観測 (permission denied / IO error 等)。残存件数は信頼できません。" >&2
+      head -3 "$_find_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+      remaining="unknown"
+      [ -n "$_find_err" ] && rm -f "$_find_err"
+      break
+    else
+      remaining=$((remaining + ${_find_out:-0}))
+    fi
+    [ -n "$_find_err" ] && rm -f "$_find_err"
   fi
-  [ -n "$_find_err" ] && rm -f "$_find_err"
-fi
+done
 
 echo "削除: ${deleted_count} 件, 失敗: ${failed_count} 件, 残存: ${remaining} 件"
 exit 0

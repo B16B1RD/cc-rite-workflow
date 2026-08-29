@@ -1,6 +1,6 @@
 #!/bin/bash
 # rite workflow - State Path Resolver
-# Resolves the root directory for rite state files (.rite-compact-state, .rite-work-memory/)
+# Resolves the root directory for rite state files (.rite-compact-state, .rite/work-memory/)
 # Usage: source this script or call resolve_state_root [cwd]
 # Output: Prints the resolved root path to stdout
 set -euo pipefail

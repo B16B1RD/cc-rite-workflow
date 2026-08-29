@@ -729,7 +729,7 @@ trap - EXIT INT TERM HUP
 bash {plugin_root}/hooks/cleanup-work-memory.sh --issue {issue_number}
 ```
 
-`--issue` は番号を直接渡す。`.rite-work-memory/` ディレクトリ自体は残す。
+`--issue` は番号を直接渡す。`.rite/work-memory/` ディレクトリ自体は残す。
 
 **エラーハンドリング**（すべて non-blocking — 失敗時は警告して終了）:
 
@@ -742,7 +742,7 @@ bash {plugin_root}/hooks/cleanup-work-memory.sh --issue {issue_number}
 
 ```
 警告: ローカル作業メモリの削除に失敗しました
-手動削除: rm -f ".rite-work-memory/issue-{issue_number}.md" && rm -rf ".rite-work-memory/issue-{issue_number}.md.lockdir"
+手動削除: rm -f ".rite/work-memory/issue-{issue_number}.md" && rm -rf ".rite/work-memory/issue-{issue_number}.md.lockdir"
 ```
 
 ### 5.1 Deletion Result Display

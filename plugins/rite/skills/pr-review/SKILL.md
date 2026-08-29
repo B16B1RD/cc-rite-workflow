@@ -286,7 +286,8 @@ echo "[CONTEXT] REMAINING_ARGS=$remaining_args" >&2
  ```
 
 2. If the Issue number was obtained, load work memory from local file (SoT):
- - Read `.rite-work-memory/issue-{issue_number}.md` with the Read tool
+ - Read `.rite/work-memory/issue-{issue_number}.md` with the Read tool
+ - If absent, Read `.rite-work-memory/issue-{issue_number}.md`
  - **Fallback** (local file missing/corrupt): Use Issue comment API:
  ```bash
  gh api repos/{owner}/{repo}/issues/{issue_number}/comments \

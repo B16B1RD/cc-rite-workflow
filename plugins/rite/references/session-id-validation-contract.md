@@ -15,7 +15,7 @@
 | 検証内容 | path-traversal (`..` / `/`) と制御文字 (C0 / DEL / C1 8-bit) のみ拒否。**形式は問わない** | 厳格 RFC 4122（`8-4-4-4-12` hex、case-lenient、lowercase 正規化） |
 | 通すもの | 任意の opaque token（例: `session-aaaa-1371`） | canonical UUID のみ |
 | 関心事 | session_id が**ファイルパス構築・ログ出力に流れる chokepoint** を安全に保つこと（path-traversal / log-injection 遮断） | 候補文字列が **canonical UUID かどうか**を判定し、per-session state file と legacy 単一ファイル fallback を切り分けること |
-| 適用経路 | `flow-state.sh` の `_resolve_session_id`（override / `.rite-session-id` / `CLAUDE_CODE_SESSION_ID` / `CLAUDE_SESSION_ID` の 4 source）→ `path` / `set` / `get` 各サブコマンド | `_resolve-session-id-from-file.sh`（file 読込 → strict 検証 → 失敗時 legacy fallback）経由で `issue-claim.sh` / `scripts/wiki-ingest-lock.sh`、および cross-session guard（`_resolve-cross-session-guard.sh` が `_resolve-session-id.sh` を直接呼び legacy sid を UUID 検証） |
+| 適用経路 | `flow-state.sh` の `_resolve_session_id`（override / `.rite/session-id` with legacy `.rite-session-id` read fallback / `CLAUDE_CODE_SESSION_ID` / `CLAUDE_SESSION_ID`）→ `path` / `set` / `get` 各サブコマンド | `_resolve-session-id-from-file.sh`（new then legacy file 読込 → strict 検証 → 失敗時空文字復帰。新ファイルが不正なら旧 valid へは倒れない）経由で `issue-claim.sh` / `scripts/wiki-ingest-lock.sh`、および cross-session guard（`_resolve-cross-session-guard.sh` が `_resolve-session-id.sh` を直接呼び legacy sid を UUID 検証） |
 
 ## なぜ乖離しているか（drift ではなく意図的）
 

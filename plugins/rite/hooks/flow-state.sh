@@ -21,7 +21,16 @@ else
 fi
 SESSION_DIR="$STATE_ROOT/.rite/sessions"
 LEGACY_STATE="$STATE_ROOT/.rite-flow-state"
-SESSION_ID_FILE="$STATE_ROOT/.rite-session-id"
+# New path wins when present, even if invalid — do not fall through to the
+# legacy file in that case. Absent both → canonical new so first-time
+# sessions stay silent on `--if-exists`.
+if [ -f "$STATE_ROOT/.rite/session-id" ]; then
+  SESSION_ID_FILE="$STATE_ROOT/.rite/session-id"
+elif [ -f "$STATE_ROOT/.rite-session-id" ]; then
+  SESSION_ID_FILE="$STATE_ROOT/.rite-session-id"
+else
+  SESSION_ID_FILE="$STATE_ROOT/.rite/session-id"
+fi
 
 # Phase enum SoT (13 values); also referenced from resume.md cross-check.
 PHASE_ENUM_V3="init branch plan implement lint pr review fix ready ready_error cleanup ingest completed"

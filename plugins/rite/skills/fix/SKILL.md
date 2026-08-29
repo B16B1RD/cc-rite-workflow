@@ -3627,7 +3627,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 **Note on `error_count`**: phase transition ごとに 0 リセット (`--preserve-error-count` で保持)。
 rationale: references/design-rationale.md#output-pattern-notes
 
-**Also update local work memory** (`.rite-work-memory/issue-{n}.md`) with phase transition:
+**Also update local work memory** (`.rite/work-memory/issue-{n}.md`) with phase transition:
 
 Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md) for details and marketplace install notes.
 
@@ -3659,7 +3659,7 @@ if [ -n "$hook_err" ]; then
       echo "WARNING: local work memory update hook failed (non-lock failure, rc=$hook_wm_update_rc):" >&2
       head -5 "$hook_err" | sed 's/^/  /' >&2
       echo "  対処: hooks/local-wm-update.sh の存在 / 実行権限 / 内容を確認してください" >&2
-      echo "  影響: local .rite-work-memory/issue-*.md が GitHub comment 側と一時的に不整合になる (E2E flow は続行)" >&2
+      echo "  影響: local .rite/work-memory/issue-*.md が GitHub comment 側と一時的に不整合になる (E2E flow は続行)" >&2
     fi
   fi
   rm -f "$hook_err"
