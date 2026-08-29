@@ -74,6 +74,8 @@ if [ "$CLOSE_MODE" = false ]; then
     RESOLVED_FLOW_STATE=""
   fi
   [ -n "$_fs_err" ] && rm -f "$_fs_err"
+  # This fallback is one of the two paths that can still write `.rite-flow-state`;
+  # see the LEGACY_STATE comment in flow-state.sh for the full picture.
   FLOW_STATE="${RESOLVED_FLOW_STATE:-$STATE_ROOT/.rite-flow-state}"
 
   # Step 1: Reset flow-state to active:false BEFORE deleting files

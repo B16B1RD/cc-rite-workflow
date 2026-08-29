@@ -28,8 +28,9 @@
 #   <type>\t<value>
 #   - <shared-root> is resolved via state-path-resolve.sh so linked worktrees
 #     and the main checkout share ONE manifest (multi-session design §1).
-#   - `.rite/tmp-artifacts.tsv` is gitignored (added with this change) so the
-#     manifest never lands in a diff.
+#   - The manifest sits directly under `.rite/`, which the nested `.rite/.gitignore`
+#     (`*` plus wiki negations) keeps untracked, so it never lands in a diff. No root
+#     `.gitignore` entry is added for it.
 #   - Duplicate entries are harmless: cleanup reaping a gone artifact is a no-op.
 #
 # Exit codes:
