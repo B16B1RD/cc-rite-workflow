@@ -827,6 +827,7 @@ cp "$src_hook_dir/hook-preamble.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/state-path-resolve.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/control-char-neutralize.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/gitignore-ensure.sh" "$sandbox_hook_dir/"
+cp "$src_hook_dir/relocated-state-migrate.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/flow-state.sh" "$sandbox_hook_dir/"
 # Sandbox に canonical mktemp helper を含める (silent suppress 禁止 — sibling cp と同じ fail-fast)
 cp "$src_hook_dir/_mktemp-stderr-guard.sh" "$sandbox_hook_dir/"
@@ -871,6 +872,7 @@ cp "$src_hook_dir_b/hook-preamble.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/state-path-resolve.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/control-char-neutralize.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/gitignore-ensure.sh" "$sandbox_hook_dir_b/"
+cp "$src_hook_dir_b/relocated-state-migrate.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/flow-state.sh" "$sandbox_hook_dir_b/"
 # canonical mktemp helper を sandbox に同期コピーする (silent suppress 禁止 — sibling cp と同じ fail-fast)
 cp "$src_hook_dir_b/_mktemp-stderr-guard.sh" "$sandbox_hook_dir_b/"
@@ -1266,7 +1268,7 @@ _mk_wt_sandbox() {
   mkdir -p "$dir/sandbox/hooks"
   sbx="$dir/sandbox/hooks"
   src="$(cd "$SCRIPT_DIR/.." && pwd)"
-  for f in session-start.sh hook-preamble.sh state-path-resolve.sh control-char-neutralize.sh gitignore-ensure.sh flow-state.sh _mktemp-stderr-guard.sh; do
+  for f in session-start.sh hook-preamble.sh state-path-resolve.sh control-char-neutralize.sh gitignore-ensure.sh relocated-state-migrate.sh flow-state.sh _mktemp-stderr-guard.sh; do
     cp "$src/$f" "$sbx/"
   done
   cat > "$sbx/session-ownership.sh" <<'STUB_EOF'

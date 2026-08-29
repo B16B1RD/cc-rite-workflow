@@ -434,7 +434,7 @@ wiki 無効 / wiki branch 不在 / `gh` 不在 / config 不在は script 内で 
 
 ### 3.9 Gitignore Health Check supplement (internal no-op contract)
 
-wiki 無効 / config 不在は script 内で exit 0・`findings: 0`。
+wiki 無効 / config 不在は script 内で exit 0・`findings: 0`。検証対象は `.rite/.gitignore` の 3 行構成（生成は setup / hook。lint は書き換えない）。
 
 ### 3.15 Orphan Reference Check supplement (detection inputs)
 

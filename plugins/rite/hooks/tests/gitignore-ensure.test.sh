@@ -45,10 +45,10 @@ for caller in "${star_only_callers[@]}"; do
     "$(grep -c '_ensure_dir_gitignore ' "$caller" || true)"
 done
 for caller in "${generation_callers[@]}"; do
-  assert "$(basename "$caller") uses the shared primitive twice (star-only + .rite/ extra-args)" "2" \
+  assert "$(basename "$caller") keeps one star-only _ensure_dir_gitignore (logs sidecar)" "1" \
     "$(grep -c '_ensure_dir_gitignore ' "$caller" || true)"
-  extra_args_hits=$(grep -cF "_ensure_dir_gitignore \"\$STATE_ROOT/.rite\" '!wiki/' '!wiki/**'" "$caller" || true)
-  assert "$(basename "$caller") .rite/ generation point passes wiki extra-args" "1" "$extra_args_hits"
+  extra_args_hits=$(grep -cF '_ensure_rite_nested_gitignore "$STATE_ROOT/.rite"' "$caller" || true)
+  assert "$(basename "$caller") .rite/ generation point uses nested gitignore helper" "1" "$extra_args_hits"
 done
 mkdir_else=$(grep -c 'nested gitignore not written' "$HOOKS_DIR/session-start.sh" || true)
 assert "session-start warns when .rite mkdir fails" "1" "$mkdir_else"
@@ -64,6 +64,12 @@ assert "T-01 extra-args error is empty" "" "$_RITE_GITIGNORE_ERROR"
 printf '*\n!wiki/\n!wiki/**\n' > "$SBX/expected-rite-gitignore"
 cmp -s "$rite_dir/.gitignore" "$SBX/expected-rite-gitignore"
 assert "T-01 nested gitignore is star then wiki negations with trailing newline" "0" "$?"
+
+rite_wrap="$SBX/rite-wrap"; mkdir -p "$rite_wrap"
+_ensure_rite_nested_gitignore "$rite_wrap"
+_rite_nested_gitignore_expected > "$SBX/expected-from-helper"
+cmp -s "$rite_wrap/.gitignore" "$SBX/expected-from-helper"
+assert "T-01 wrapper output matches _rite_nested_gitignore_expected" "0" "$?"
 
 # T-05: one-argument call still writes `*` only and returns success
 one_arg="$SBX/one-arg"; mkdir -p "$one_arg"
