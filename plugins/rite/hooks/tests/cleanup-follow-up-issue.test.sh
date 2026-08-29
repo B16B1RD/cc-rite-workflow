@@ -517,8 +517,20 @@ else
   assert_grep "T-15 reason=no_json" "$CLEANUP_MD" 'FOLLOW_UP_REVERIFY=unavailable; reason=no_json"'
   # 合成 reason の emit を残さない (散文は禁止理由として語に言及するため emit 形で pin)
   assert_not_grep "T-15 合成 reason を emit しない" "$CLEANUP_MD" 'reason=no_json_or_jq'
-  # state root 解決失敗を無言にしない (隣接ブロックと同一の WARNING)
-  assert_grep "T-15 state root 解決失敗を WARNING で surface" "$CLEANUP_MD" 'state-path-resolve.sh の解決に失敗'
+  # state root 解決失敗を無言にしない。同一文字列は既存ブロックにも在るため 6.0.V へスコープする
+  # (ファイル全体を見る assert は、6.0.V の行だけ消しても既存行に一致して PASS する空振りになる)
+  # end は次の見出しではなく直後の散文行にアンカーする (`^#### ` は start 行自身に一致して
+  # flip-flop レンジが即閉じるため。抽出ブロックだけに範囲を絞る効果もある)
+  assert_grep_in_section "T-15 state root 解決失敗を WARNING で surface" "$CLEANUP_MD" \
+    '^#### 6\.0\.V' '^出力の各 finding について' 'state-path-resolve.sh の解決に失敗'
+  # 書式外 id で落とした件数を surface する (黙って減らすと判定不能件数が過少申告になる)
+  assert_grep "T-15 除外件数 marker" "$CLEANUP_MD" 'FOLLOW_UP_REVERIFY=extracted; dropped_id_format='
+  assert_grep "T-15 除外件数を undecidable へ加算する規則" "$CLEANUP_MD" '\{n_undecidable\}` にこの件数を加算する'
+  # 射影フィルタは 1 パス (重複させると片方だけ直す drift 経路になり、出力側が無検査になる)
+  # 件数カウント用の jq は別フィルタなので、射影の形 (`{id, file, ...}`) で数える
+  # grep -c は行数しか数えないため同一行の重複を見逃す。出現回数で数える
+  assert "T-15 射影フィルタは 1 パス" "1" \
+    "$(grep -o '{id, file, line, description, suggestion}' "$CLEANUP_MD" | wc -l | tr -d ' ')"
 fi
 
 echo "--- T-16: 改行入り --exclude-ids でも未知 id WARNING が消えない (AC-3) ---"

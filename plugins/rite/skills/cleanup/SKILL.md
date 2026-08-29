@@ -890,39 +890,46 @@ rationale: references/rationale.md#follow-up-before-archive
 # 合成すると「JSON も jq も実在するのに no_json_or_jq」という誤った原因が完了報告へ転記される。
 _state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
 if [ -z "$_state_root" ]; then
-  echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2
-  _state_root="$(pwd)"
-  _rv_root_unresolved=1
-fi
-_rv_src=""; _rv_base=""
-for f in "$_state_root/.rite/review-results/{pr_number}"-*.json*; do
-  { [ -e "$f" ] || [ -L "$f" ]; } || continue
-  b="${f##*/}"
-  if [ -z "$_rv_base" ] || [ "$b" \> "$_rv_base" ]; then _rv_src="$f"; _rv_base="$b"; fi
-done
-if [ "${_rv_root_unresolved:-0}" = 1 ]; then
+  # cwd へ倒しても再検証には使わない（使わない値を計算しない）。全件転記へ倒して即座に抜ける。
+  echo "WARNING: state-path-resolve.sh の解決に失敗。follow-up 再検証は行わず全件を転記対象とします" >&2
   echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=state_root_unresolved"
 elif ! command -v jq >/dev/null 2>&1; then
   echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=jq_missing"
-elif [ -z "$_rv_src" ]; then
-  echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=no_json"
 else
-  # 1 finding = 1 行の JSON で出す。TSV だと description / suggestion の改行で行が割れ、
-  # 後続行が id を失って id と本文の対応が崩れる（誤対応が resolved 側に振れると指摘の無言 drop）。
-  # `.id` は書式で絞る。save 側は non_blocking_findings[] 側の id 書式違反を非ブロッキングで
-  # 通すため書式外 id が永続化されうる。その値をそのまま提示すると、下段の `{resolved_ids_csv}`
-  # がリテラル置換される二重引用符内でコマンド置換として展開される。
-  _rv_err=$(jq -c '.non_blocking_findings[]?
-    | select((.id // "") | test("^F-[0-9]{2,}$"))
-    | {id, file, line, description, suggestion}' "$_rv_src" 2>&1 >/dev/null)
-  if [ -n "$_rv_err" ]; then
-    echo "WARNING: 再検証用 JSON を解析できません: $_rv_src" >&2
-    printf '%s\n' "$_rv_err" | head -5 | sed 's/^/  /' >&2
-    echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=parse_failed"
+  _rv_src=""; _rv_base=""
+  for f in "$_state_root/.rite/review-results/{pr_number}"-*.json*; do
+    { [ -e "$f" ] || [ -L "$f" ]; } || continue
+    b="${f##*/}"
+    if [ -z "$_rv_base" ] || [ "$b" \> "$_rv_base" ]; then _rv_src="$f"; _rv_base="$b"; fi
+  done
+  if [ -z "$_rv_src" ]; then
+    echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=no_json"
   else
-    jq -c '.non_blocking_findings[]?
+    # 1 finding = 1 行の JSON で出す。TSV だと description / suggestion の改行で行が割れ、
+    # 後続行が id を失って id と本文の対応が崩れる（誤対応が resolved 側に振れると指摘の無言 drop）。
+    # `.id` は書式で絞る。save 側は non_blocking_findings[] 側の id 書式違反を非ブロッキングで
+    # 通すため書式外 id が永続化されうる。その値をそのまま提示すると、下段の `{resolved_ids_csv}`
+    # がリテラル置換される二重引用符内でコマンド置換として展開される。
+    # 絞りは 1 パスで、成否は rc で見る（stderr 非空を失敗条件にすると出力側が無検査になる）。
+    _rv_errf=$(mktemp "${TMPDIR:-/tmp}/rite-fu-reverify-err-XXXXXX") || _rv_errf=""
+    if _rv_out=$(jq -c '.non_blocking_findings[]?
       | select((.id // "") | test("^F-[0-9]{2,}$"))
-      | {id, file, line, description, suggestion}' "$_rv_src"
+      | {id, file, line, description, suggestion}' "$_rv_src" 2>"${_rv_errf:-/dev/null}"); then
+      # 書式外 id で落とした件数を surface する。落ちた finding は LLM の入力に現れないため、
+      # 黙って減らすと `{n_undecidable}` が実際の未検査件数を過少申告する。
+      _rv_dropped=$(jq '[.non_blocking_findings[]? | select(((.id // "") | test("^F-[0-9]{2,}$")) | not)] | length' "$_rv_src" 2>/dev/null) || _rv_dropped=0
+      case "$_rv_dropped" in ''|*[!0-9]*) _rv_dropped=0 ;; esac
+      if [ "$_rv_dropped" -gt 0 ]; then
+        echo "WARNING: id 書式外の finding ${_rv_dropped} 件を再検証対象から除外しました（undecidable として転記されます）" >&2
+      fi
+      printf '%s\n' "$_rv_out"
+      echo "[CONTEXT] FOLLOW_UP_REVERIFY=extracted; dropped_id_format=$_rv_dropped"
+    else
+      echo "WARNING: 再検証用 JSON を解析できません: $_rv_src" >&2
+      [ -n "$_rv_errf" ] && [ -s "$_rv_errf" ] && head -5 "$_rv_errf" | sed 's/^/  /' >&2
+      echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=parse_failed"
+    fi
+    [ -n "$_rv_errf" ] && rm -f "$_rv_errf"
   fi
 fi
 ```
@@ -935,7 +942,9 @@ fi
 | `remains` | 指摘された drift が HEAD に現存する | 転記する |
 | `undecidable` | 断定できない。`file:line` が移動した / 指摘が散文の意図に関わる / 判定材料が足りない / ファイル自体が読めない | **転記する**（`--exclude-ids` へ渡さない）。false negative を避ける安全側 |
 
-`FOLLOW_UP_REVERIFY=unavailable` を観測した場合、および本節を実行できなかった場合は**全件を `undecidable` 扱い**とし、`--exclude-ids` は空文字列のまま helper を呼ぶ（= 除外なし＝従来挙動）。書式で絞った結果 `.id` を持たない finding が出力から落ちた場合も同じく `undecidable` 扱いで転記する（除外できないため）。
+`FOLLOW_UP_REVERIFY=unavailable` を観測した場合、および本節を実行できなかった場合は**全件を `undecidable` 扱い**とし、`--exclude-ids` は空文字列のまま helper を呼ぶ（= 除外なし＝従来挙動）。
+
+書式で絞った結果 `.id` を持たない finding が出力から落ちた場合も同じく `undecidable` 扱いで転記する（除外できないため）。落ちた件数は `FOLLOW_UP_REVERIFY=extracted` の `dropped_id_format=` が示す — その finding は出力に現れず判定できないので、**`{n_undecidable}` にこの件数を加算する**（加算しないと完了報告の判定不能件数が実際の未検査件数より少なくなる）。
 
 判定を終えたら、`resolved` の id を CSV（`"F-01,F-05"`）に組み、内訳 marker を出す:
 
@@ -947,7 +956,7 @@ echo "[CONTEXT] FOLLOW_UP_REVERIFY=done; resolved={n_resolved}; remains={n_remai
 
 内訳はステップ 12 の完了報告に含める。
 
-> **下段の helper 呼び出しは別 Bash 呼び出しである**。Bash tool 呼び出し間でシェル変数は保持されないため、`{resolved_ids_csv}` を実値へ**リテラル置換**してから実行する（`$_fu_exclude_ids` のようなシェル変数経由で渡さない。同型の規約: [recover Phase 5.3](../recover/SKILL.md)）。判定結果を運ぶ経路はリテラル置換のみで、marker の `resolved_ids=` は監査用の記録であって受け渡し経路ではない。
+> **下段の helper 呼び出しは別 Bash 呼び出しである**。Bash tool 呼び出し間でシェル変数は保持されないため、`{resolved_ids_csv}` を実値へ**リテラル置換**してから実行する（`$_fu_exclude_ids` のようなシェル変数経由で渡さない。同型の規約: [recover Phase 5.2 (flow-state の active=true 復元)](../recover/SKILL.md)）。判定結果を運ぶ経路はリテラル置換のみで、marker の `resolved_ids=` は監査用の記録であって受け渡し経路ではない。
 
 ```bash
 _state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
