@@ -529,8 +529,14 @@ else
   # 抽出成功時は marker を出さない。判定後の done が唯一の成功 marker (0 件時に抽出 marker が
   # 最後に残ると判定表が「未完了」と誤報告し、done の前置詞として前方一致でも衝突する)
   assert_not_grep "T-15 抽出成功 marker を残さない" "$CLEANUP_MD" 'FOLLOW_UP_REVERIFY=done_extract'
-  assert_grep "T-15 0 件でも done を必ず出す" "$CLEANUP_MD" '抽出結果が 0 件でもこの marker は必ず出す'
-  assert_grep "T-15 marker 値は完全一致で照合する" "$CLEANUP_MD" '直後が `;` または行末であることまで含めた\*\*完全一致\*\*'
+  assert_grep "T-15 0 件でも done を必ず出す" "$CLEANUP_MD" '抽出結果が 0 件でもこの marker を必ず出す'
+  assert_grep "T-15 unavailable 経路では done を出さない" "$CLEANUP_MD" '既に `unavailable` を出した経路では `done` を出さない'
+  # 判定表の 3 行を pin する (emit 側の pin だけでは表から行を削る変異が生存する)
+  assert_grep "T-15 判定表の done 行" "$CLEANUP_MD" '`done` のとき: .*follow-up 再検証: 解消済み'
+  assert_grep "T-15 判定表の unavailable 行" "$CLEANUP_MD" '`unavailable` のとき: .*follow-up 再検証: 未実施'
+  # marker 不在は成功と読まない (兄弟分岐と同じ fail-loud 規約。空文字列に戻す変異を検出する)
+  assert_grep "T-15 marker 不在も付記する" "$CLEANUP_MD" 'marker が無いとき: .*実施結果を確認できませんでした'
+  assert_grep "T-15 marker 不在を成功と読まない" "$CLEANUP_MD" '\*\*marker 不在を成功と読んではならない\*\*'
   # 新設 stderr 経路の regression proof。捕捉先と surface の両側を pin する
   # (surface 側だけだと、捕捉先を /dev/null へ切る変異が生存して本文が永久に出なくなる)
   assert_grep "T-15 jq の stderr を _rv_errf へ捕捉する" "$CLEANUP_MD" '2>"\$\{_rv_errf:-/dev/null\}"'

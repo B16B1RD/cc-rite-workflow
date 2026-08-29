@@ -920,9 +920,7 @@ else
       | {id: (if ((.id // "") | test("^F-[0-9]{2,}$")) then .id else null end),
          file, line, description, suggestion}' "$_rv_src" 2>"${_rv_errf:-/dev/null}"); then
       # 0 件のとき printf は空行を 1 行出す。空行が finding として読まれないよう非空時だけ出力する。
-      # 成功時は marker を出さない — 判定を終えた後の `done` が唯一の成功 marker であり、
-      # 抽出だけを示す marker を挟むと 0 件時にそれが最後の marker として残り、
-      # ステップ 12 が「判定未完了」と誤報告する（`done` の前置詞にもなり前方一致で衝突する）
+      # 成功時は marker を出さない（判定後の `done` が唯一の成功 marker。理由は下記散文）
       if [ -n "$_rv_out" ]; then printf '%s\n' "$_rv_out"; fi
     else
       echo "WARNING: 再検証用 JSON を解析できません: $_rv_src" >&2
@@ -948,7 +946,7 @@ fi
 
 `"id": null` の finding（書式外 id / id 欠落）は**必ず `undecidable`** とする。除外指定に載せられる id が無く、`{resolved_ids_csv}` へ入れられる値も無いため、判定の余地なく転記側へ倒れる。出力には現れるので `{n_undecidable}` には通常どおり数え上げられる。
 
-判定を終えたら、`resolved` の id を CSV（`"F-01,F-05"`）に組み、内訳 marker を出す。**抽出結果が 0 件でもこの marker は必ず出す**（`resolved=0; remains=0; undecidable=0; resolved_ids=`）— 出さないと成功 marker が 1 本も残らず、ステップ 12 が「marker が無いとき」の分岐に落ちて再検証の実施結果が完了報告から消える:
+判定を終えたら、`resolved` の id を CSV（`"F-01,F-05"`）に組み、内訳 marker を出す。**抽出が成功した経路では、抽出結果が 0 件でもこの marker を必ず出す**（`resolved=0; remains=0; undecidable=0; resolved_ids=`）— 出さないと成功 marker が 1 本も残らず、ステップ 12 が「marker が無いとき」の分岐に落ちる。**既に `unavailable` を出した経路では `done` を出さない**（出すと最後の出現が `done` になり `reason=` が完了報告から消える）:
 
 ```bash
 # `{resolved_ids_csv}` / `{n_*}` は上記判定の結果をリテラル置換する（resolved が 0 件なら空文字列）。
@@ -1348,10 +1346,9 @@ rationale: references/rationale.md#marker-data-delimiter
   行を presence 検査にしてあるので「上から評価し最初の一致」が実際に効く。`_gitignore_failure` は 1 行目の実失敗側に置く。`cause=jq_rc_<n>` を `x` に倒すのは helper が退避成功を `failed` に数えないため。`cause=jq_missing` は環境不備のため実失敗側に置く。
 rationale: references/rationale.md#review-cleanup-reasons
 - `{follow_up_reverify_note}`: ステップ 6.0.V の `[CONTEXT] FOLLOW_UP_REVERIFY=` marker で判定する（`pr={pr_number}` を持たない single-shot marker のため、複数行あれば最後の出現を採る）:
-  値の照合は `FOLLOW_UP_REVERIFY=` の直後が `;` または行末であることまで含めた**完全一致**で行う（前方一致だと将来 `done` を接頭辞に持つ値を足したときに `done` 行へ誤って吸われる）:
   - `done` のとき: ` — follow-up 再検証: 解消済み {n_resolved} / 残存 {n_remains} / 判定不能 {n_undecidable}`（`{n_*}` は marker の同名フィールドをリテラル置換）
   - `unavailable` のとき: ` — follow-up 再検証: 未実施（{reason}。全件を転記対象としました）`（`{reason}` は marker の `reason=` 値）
-  - marker が無いとき: 空文字列（行に何も足さない）。6.0.V は成功時に marker を出さず、判定を終えた `done` が唯一の成功 marker なので、本分岐は「節ごと実行されなかった」場合に落ちる
+  - marker が無いとき: ` — follow-up 再検証: 実施結果を確認できませんでした（全件を転記対象とした可能性があります）`。本分岐は「節ごと実行されなかった」場合と「抽出は成功したが判定 marker `done` に到達しなかった」場合の 2 つに落ちる（6.0.V は成功時に marker を出さないため後者が marker 皆無になる）。**marker 不在を成功と読んではならない** — 兄弟分岐と同じ規約
 - `{wiki_ingest_check}`: 以下の sentinel を上から評価し最初の一致を採用 (`WIKI_INGEST_DONE` + `WIKI_INGEST_PUSH_FAILED` が併存しうるため順序重要):
 
   | Sentinel | check | 表示 |
