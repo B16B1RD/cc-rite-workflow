@@ -498,6 +498,9 @@ tmpfile=$(mktemp)
 trap 'rm -f "$tmpfile"' EXIT
 
 cat <<'BODY_EOF' > "$tmpfile"
+**Type**: fix
+**Complexity**: S
+
 ## 概要
 
 {problem_summary}
