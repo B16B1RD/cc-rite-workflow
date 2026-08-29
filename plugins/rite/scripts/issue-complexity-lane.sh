@@ -28,12 +28,13 @@
 # リポジトリ内に 3 つの記法が併存するため**すべて**を受理する — 一部だけ読むと、他の記法で
 # 書かれた Issue が全て complexity_absent で full へ倒れ、レーンが一度も発動しない:
 #   1. `**Complexity**: X`      — templates/issue/template-structure.md Section 0 Meta (現行 rite 形式)
+#   2. `## 複雑度` セクション    — skills/rite-workflow/references/common-principles.md の記載形式
 #   3. `| **Complexity** | X |` — Section 0 Meta を表で書いた形 (テンプレートを経ず LLM / 人間が
 #                                 書いた実運用 Issue に定常的に現れる。生成する code path は無い)
-#   2. `## 複雑度` セクション    — skills/rite-workflow/references/common-principles.md の記載形式
-# 探索順は 1 → 3 → 2 で、先に見つかった方を採る。1 を最優先にするのは、本 helper が code fence を
-# 剥がさないため、表記法そのものを**説明している** Issue が本文中の例から値を解決してしまうのを
-# 防ぐため (記法 1 の宣言を持つ Issue が例として表を載せる形が実在する)。
+# 探索順は 1 → 2 → 3 で、先に見つかった方を採る。**明示宣言を先に読み、表行を最後に読む**のが
+# 順序の規律 — 本 helper は code fence を剥がさないため、表記法そのものを**説明している** Issue が
+# 本文中の例から値を解決してしまう。記法 1 の Meta 行と記法 2 の `## 複雑度` 節は「そこが宣言で
+# ある」ことを形で示すが、表行は body のどこにでも現れうるので最後に回す。
 # 値は大小文字を問わず XS/S/M/L/XL に正規化する。
 #
 # Output — stderr (observability contract。stdout は使わない):
@@ -177,18 +178,6 @@ _body=${_body//$'\r'/}
 _raw=$(printf '%s\n' "$_body" | sed -n 's/^[[:space:]]*\*\*Complexity\*\*:[[:space:]]*\([A-Za-z][A-Za-z]*\).*$/\1/p' | head -1)
 _source="body_meta"
 
-# 記法 3: `| **Complexity** | X |` (Section 0 Meta を表で書いた形)。記法 1 と同じ装飾規律を敷く —
-# **キーの太字を要求し、値セルの先頭に英字を要求する**。太字を落とすと、`| A | ... | Complexity M |`
-# のように行の途中で Complexity に**言及するだけ**の表 (本リポジトリの散文に実在する) を宣言行と
-# 誤認する。値セル直後に英字を要求すれば `{complexity}` / `<!-- ... -->` は記法 1 と同じく
-# complexity_absent へ合流し、同じ記入漏れが記法によって別 reason へ分裂しない。
-# 記法 1 と同じく英字トークン全体を切り出し、妥当性は下の `case` に委ねる。GNU 拡張は使わない。
-if [ -z "$_raw" ]; then
-  _raw=$(printf '%s\n' "$_body" \
-    | sed -n 's/^[[:space:]]*|[[:space:]]*\*\*Complexity\*\*[[:space:]]*|[[:space:]]*\([A-Za-z][A-Za-z]*\).*/\1/p' | head -1)
-  _source="body_table"
-fi
-
 # 記法 2: `## 複雑度` セクション。見出しの次に現れる最初の非空行から値を取る
 # (`M` 単独行 / `- M` / `**M**` のいずれも許容する。common-principles.md は書式を固定していない)。
 # **行頭側から最初のトークンだけを採る** — 記法 1 と同じ anchor 規律。greedy な `.*` を先頭に置くと
@@ -208,6 +197,24 @@ if [ -z "$_raw" ]; then
     | awk '/^##[[:space:]]+複雑度[[:space:]]*$/{f=1; next} f && /^#/{exit} f && NF {print; exit}' \
     | sed -n 's/^[^A-Za-z{<]*\([A-Za-z][A-Za-z]*\).*/\1/p' | head -1)
   _source="body_section"
+fi
+
+# 記法 3: `| **Complexity** | X |` (Section 0 Meta を表で書いた形)。記法 1 と同じ装飾規律を敷く —
+# **キーの太字を要求し、値セルの先頭に英字を要求する**。太字を落とすと、`| A | ... | Complexity M |`
+# のように行の途中で Complexity に**言及するだけ**の表 (本リポジトリの散文に実在する) を宣言行と
+# 誤認する。値セル直後に英字を要求すれば `{complexity}` / `<!-- ... -->` は記法 1 と同じく
+# complexity_absent へ合流し、同じ記入漏れが記法によって別 reason へ分裂しない。
+# 記法 1 と同じく英字トークン全体を切り出し、妥当性は下の `case` に委ねる。GNU 拡張は使わない。
+# **最後に置く** — 表行は body のどこにでも現れうるのに対し、記法 1 の Meta 行と記法 2 の
+# `## 複雑度` 節はいずれも「そこが宣言である」ことを形で示す。表行を先に読むと、明示宣言を
+# 持つ Issue が本文中の説明用の表から値を解決する (実測: 記法 2 で M を宣言し別節に表の例を
+# 置いた body が XS へ落ちる = M+ が silent に light へ落ちる AC-4 違反。記法 2 宣言 + 文書用の
+# 表ヘッダでは `complexity_invalid` へ落ちる)。`head -1` は同じ理由で必須 — 宣言の表行が
+# 本文中の例より先にある形を保ち、複数行を連結して `complexity_invalid` にしない。
+if [ -z "$_raw" ]; then
+  _raw=$(printf '%s\n' "$_body" \
+    | sed -n 's/^[[:space:]]*|[[:space:]]*\*\*Complexity\*\*[[:space:]]*|[[:space:]]*\([A-Za-z][A-Za-z]*\).*/\1/p' | head -1)
+  _source="body_table"
 fi
 
 if [ -z "$_raw" ]; then

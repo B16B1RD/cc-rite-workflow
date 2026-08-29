@@ -272,8 +272,12 @@ assert_grep "complexity-lane.md refuses to auto-detect Complexity" "$LANE" \
 # needle は「全記法受理」と「記法 1 優先」を**同じ 1 行の合成**として pin する — 2 つを別行へ
 # 分解した崩れは、片方だけの単語 pin では素通りする (本 suite header の感度に関する注意を参照)。
 # 優先順が消えると、表記法を説明している Issue が本文中の例から値を解決する経路が復活する。
-assert_grep "complexity-lane.md binds accepting all three notations to notation-1 precedence" "$LANE" \
-  'helper は\*\*3 記法すべてを受理し、記法 1 を最優先する\*\*'
+assert_grep "complexity-lane.md binds accepting all three notations to declaration precedence" "$LANE" \
+  'helper は\*\*3 記法すべてを受理し、明示宣言を表行より優先する\*\*'
+# 表行を最後に読む根拠 (実測した 2 つの誤判定) が残っていること。消えると次の diet で
+# 探索順が「たまたまそう書いてある」ものに見え、逆順へ戻されうる。
+assert_grep "complexity-lane.md records why the table row is read last" "$LANE" \
+  '\*\*表行を最後に読む理由\*\*'
 # 記法 3 を足した根拠 (実測された failing Issue) が残っていること。消えると
 # no_speculative_structure の観点で「予防的な一般化」に見え、次の diet で削られる。
 assert_grep "complexity-lane.md records the measured demand behind notation 3" "$LANE" \
