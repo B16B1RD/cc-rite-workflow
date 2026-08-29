@@ -293,7 +293,7 @@ The stock `Phase:` / `Branch:` lines at the top of `## Detail` are regenerated w
 ### SoT Rules
 
 - **Local file is always SoT**. Issue comment is backup/replica only.
-- **Restore from API** is allowed only when: (1) local file does not exist, or (2) local file is corrupt.
+- **Restore from API** is allowed only when: (1) neither local file exists, or (2) the file selected by SoT Access Pattern is corrupt. Do not use the legacy path when the new path exists but is invalid.
 - **`source` field** is for provenance tracking only. It is NOT used for SoT determination or conflict resolution.
 
 ### Corruption Detection
@@ -408,7 +408,7 @@ All commands that read work memory follow this priority:
 
 1. **Local file** (`.rite/work-memory/issue-{n}.md`) — SoT
 2. **Legacy local file** (`.rite-work-memory/issue-{n}.md`) — when the new path is absent
-3. **Issue comment API** — fallback when local file missing/corrupt
+3. **Issue comment API** — fallback when neither local file exists, or the file selected above is corrupt. Do not use the legacy path when the new path exists but is invalid.
 4. **Context** — information already loaded in conversation
 
 Commands that write work memory update the local file first (SoT), then sync to Issue comment (backup) at phase transitions.
