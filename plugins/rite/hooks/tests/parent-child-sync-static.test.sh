@@ -78,5 +78,19 @@ assert_grep_in_section "open.md 2.6 の flow-state set が --parent-issue を渡
 assert_grep_in_section "open.md 2.6 が未検出時はフラグを付けないと明記する" "$PR_OPEN_MD" \
   "$S26_START" "$S26_END" \
   '未検出時.*フラグ自体を付けない'
+# substitution 契約: 2.6 が {parent_issue_number} を渡せるのは、Legend と Note が本コマンド body での
+# substitute を許しているからである。この 1 箇所だけが base 版へ戻ると 2.4(B)/2.6 の追記は残るのに
+# 執行者は placeholder を解決できず、上の 3 assert は green のまま AC が壊れる。
+SLEG_START='^## Placeholder Legend'
+SLEG_END='^---$'
+assert_grep_in_section "open.md Legend に {parent_issue_number} 行がある" "$PR_OPEN_MD" \
+  "$SLEG_START" "$SLEG_END" \
+  '^\| `\{parent_issue_number\}` \|'
+assert_grep_in_section "open.md Note が {parent_issue_number} の substitute 例外を明記する" "$PR_OPEN_MD" \
+  "$SLEG_START" "$SLEG_END" \
+  '\{parent_issue_number\}`? は例外'
+# 禁止リストへの再混入を防ぐ (base 版 Note の 4 placeholder 列挙は本ファイル内で一意)
+assert_not_grep "open.md Note の禁止リストに {parent_issue_number} が戻っていない" "$PR_OPEN_MD" \
+  '\{project_number\}` / `\{parent_issue_number\}` は本コマンド body で substitute しない'
 
 print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or pr/open.md ステップ 1.2, regression risk reopens. Re-confirm cross-references before removing methods."
