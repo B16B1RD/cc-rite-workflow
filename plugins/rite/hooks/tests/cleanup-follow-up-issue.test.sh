@@ -517,20 +517,31 @@ else
   assert_grep "T-15 reason=no_json" "$CLEANUP_MD" 'FOLLOW_UP_REVERIFY=unavailable; reason=no_json"'
   # 合成 reason の emit を残さない (散文は禁止理由として語に言及するため emit 形で pin)
   assert_not_grep "T-15 合成 reason を emit しない" "$CLEANUP_MD" 'reason=no_json_or_jq'
-  # state root 解決失敗を無言にしない。同一文字列は既存ブロックにも在るため 6.0.V へスコープする
-  # (ファイル全体を見る assert は、6.0.V の行だけ消しても既存行に一致して PASS する空振りになる)
-  # end は次の見出しではなく直後の散文行にアンカーする (`^#### ` は start 行自身に一致して
-  # flip-flop レンジが即閉じるため。抽出ブロックだけに範囲を絞る効果もある)
-  assert_grep_in_section "T-15 state root 解決失敗を WARNING で surface" "$CLEANUP_MD" \
-    '^#### 6\.0\.V' '^出力の各 finding について' 'state-path-resolve.sh の解決に失敗'
-  # 書式外 id で落とした件数を surface する (黙って減らすと判定不能件数が過少申告になる)
-  assert_grep "T-15 除外件数 marker" "$CLEANUP_MD" 'FOLLOW_UP_REVERIFY=extracted; dropped_id_format='
-  assert_grep "T-15 除外件数を undecidable へ加算する規則" "$CLEANUP_MD" '\{n_undecidable\}` にこの件数を加算する'
-  # 射影フィルタは 1 パス (重複させると片方だけ直す drift 経路になり、出力側が無検査になる)
-  # 件数カウント用の jq は別フィルタなので、射影の形 (`{id, file, ...}`) で数える
-  # grep -c は行数しか数えないため同一行の重複を見逃す。出現回数で数える
+  # state root 解決失敗を無言にしない。文言の後半まで pin する — 接頭辞だけだと隣接ブロックの
+  # 同一文字列に一致するうえ、旧文言 (cwd をフォールバック使用します) へ revert しても通る
+  assert_grep "T-15 state root 解決失敗を WARNING で surface" "$CLEANUP_MD" \
+    'state-path-resolve.sh の解決に失敗。follow-up 再検証は行わず全件を転記対象とします'
+  # 書式外 id は落とさず null へ写す (落とすと件数を数える第 2 の述語が要り drift 経路になる)
+  assert_grep "T-15 書式外 id を null へ写す" "$CLEANUP_MD" 'then \.id else null end'
+  assert_grep "T-15 id null は undecidable 固定" "$CLEANUP_MD" '`"id": null` の finding'
+  assert_not_grep "T-15 件数カウント機構を残さない" "$CLEANUP_MD" 'dropped_id_format'
+  # 抽出成功 marker はステップ 12 の判定表に載っていること (載らないと完了報告行が組み立てられない)
+  assert_grep "T-15 抽出成功 marker" "$CLEANUP_MD" 'FOLLOW_UP_REVERIFY=done_extract'
+  assert_grep "T-15 done_extract を判定表に載せる" "$CLEANUP_MD" '`done_extract` のとき'
+  # 新設 stderr 経路の regression proof (marker だけ残して WARNING を消す変異を検出する)
+  assert_grep "T-15 parse_failed で jq の stderr 本文を surface" "$CLEANUP_MD" 'head -5 "\$_rv_errf"'
+  assert_grep "T-15 mktemp 失敗を surface" "$CLEANUP_MD" '一時ファイルを確保できません'
+  # rc を汚さない形 (`&&` 単独文だと mktemp 失敗時にブロック全体が rc=1 で終わる)
+  assert_grep "T-15 cleanup は if 形で rc を汚さない" "$CLEANUP_MD" 'if \[ -n "\$_rv_errf" \]; then rm -f "\$_rv_errf"; fi'
+  assert_not_grep "T-15 rm を && 単独文にしない" "$CLEANUP_MD" '^\s*\[ -n "\$_rv_errf" \] && rm -f'
+  # 0 件時に空行を出さない (空行が finding として読まれる余地を残さない)
+  assert_grep "T-15 非空時だけ出力する" "$CLEANUP_MD" 'if \[ -n "\$_rv_out" \]; then printf'
+  # 射影フィルタは 1 パス。grep -c は行数しか数えないため出現回数で数える
   assert "T-15 射影フィルタは 1 パス" "1" \
-    "$(grep -o '{id, file, line, description, suggestion}' "$CLEANUP_MD" | wc -l | tr -d ' ')"
+    "$(grep -o 'file, line, description, suggestion}' "$CLEANUP_MD" | wc -l | tr -d ' ')"
+  # id 書式 regex も 1 箇所 (射影用と否定形で分裂すると片方だけ広げた時に乖離する)
+  assert "T-15 id 書式 regex は 1 箇所" "1" \
+    "$(grep -o 'test("\^F-\[0-9\]{2,}\$")' "$CLEANUP_MD" | wc -l | tr -d ' ')"
 fi
 
 echo "--- T-16: 改行入り --exclude-ids でも未知 id WARNING が消えない (AC-3) ---"

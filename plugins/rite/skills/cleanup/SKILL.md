@@ -907,29 +907,29 @@ else
   else
     # 1 finding = 1 行の JSON で出す。TSV だと description / suggestion の改行で行が割れ、
     # 後続行が id を失って id と本文の対応が崩れる（誤対応が resolved 側に振れると指摘の無言 drop）。
-    # `.id` は書式で絞る。save 側は non_blocking_findings[] 側の id 書式違反を非ブロッキングで
-    # 通すため書式外 id が永続化されうる。その値をそのまま提示すると、下段の `{resolved_ids_csv}`
-    # がリテラル置換される二重引用符内でコマンド置換として展開される。
-    # 絞りは 1 パスで、成否は rc で見る（stderr 非空を失敗条件にすると出力側が無検査になる）。
-    _rv_errf=$(mktemp "${TMPDIR:-/tmp}/rite-fu-reverify-err-XXXXXX") || _rv_errf=""
+    # `.id` は**落とさず null へ写す**。save 側は non_blocking_findings[] 側の id 書式違反を
+    # 非ブロッキングで通すため書式外 id が永続化されうる。その値をそのまま提示すると、下段の
+    # `{resolved_ids_csv}` がリテラル置換される二重引用符内でコマンド置換として展開される。
+    # null 化なら書式外の値が LLM へ届かず、finding 自体は出力に残るので黙って消えない
+    # （落とすと件数を数える第 2 の述語が要り、その述語が本体と乖離する drift 経路になる）。
+    _rv_errf=$(mktemp "${TMPDIR:-/tmp}/rite-fu-reverify-err-XXXXXX") || {
+      echo "WARNING: 一時ファイルを確保できません。jq の stderr 本文は出力されません" >&2
+      _rv_errf=""
+    }
     if _rv_out=$(jq -c '.non_blocking_findings[]?
-      | select((.id // "") | test("^F-[0-9]{2,}$"))
-      | {id, file, line, description, suggestion}' "$_rv_src" 2>"${_rv_errf:-/dev/null}"); then
-      # 書式外 id で落とした件数を surface する。落ちた finding は LLM の入力に現れないため、
-      # 黙って減らすと `{n_undecidable}` が実際の未検査件数を過少申告する。
-      _rv_dropped=$(jq '[.non_blocking_findings[]? | select(((.id // "") | test("^F-[0-9]{2,}$")) | not)] | length' "$_rv_src" 2>/dev/null) || _rv_dropped=0
-      case "$_rv_dropped" in ''|*[!0-9]*) _rv_dropped=0 ;; esac
-      if [ "$_rv_dropped" -gt 0 ]; then
-        echo "WARNING: id 書式外の finding ${_rv_dropped} 件を再検証対象から除外しました（undecidable として転記されます）" >&2
-      fi
-      printf '%s\n' "$_rv_out"
-      echo "[CONTEXT] FOLLOW_UP_REVERIFY=extracted; dropped_id_format=$_rv_dropped"
+      | {id: (if ((.id // "") | test("^F-[0-9]{2,}$")) then .id else null end),
+         file, line, description, suggestion}' "$_rv_src" 2>"${_rv_errf:-/dev/null}"); then
+      # 0 件のとき printf は空行を 1 行出す。空行が finding として読まれないよう非空時だけ出力する
+      if [ -n "$_rv_out" ]; then printf '%s\n' "$_rv_out"; fi
+      echo "[CONTEXT] FOLLOW_UP_REVERIFY=done_extract"
     else
       echo "WARNING: 再検証用 JSON を解析できません: $_rv_src" >&2
-      [ -n "$_rv_errf" ] && [ -s "$_rv_errf" ] && head -5 "$_rv_errf" | sed 's/^/  /' >&2
+      if [ -n "$_rv_errf" ] && [ -s "$_rv_errf" ]; then head -5 "$_rv_errf" | sed 's/^/  /' >&2; fi
       echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=parse_failed"
     fi
-    [ -n "$_rv_errf" ] && rm -f "$_rv_errf"
+    # 末尾を `&&` 単独文にすると mktemp 失敗時にブロック全体が rc=1 で終わり、抽出が成功していても
+    # 呼び出し側がステップ失敗と読む
+    if [ -n "$_rv_errf" ]; then rm -f "$_rv_errf"; fi
   fi
 fi
 ```
@@ -944,7 +944,7 @@ fi
 
 `FOLLOW_UP_REVERIFY=unavailable` を観測した場合、および本節を実行できなかった場合は**全件を `undecidable` 扱い**とし、`--exclude-ids` は空文字列のまま helper を呼ぶ（= 除外なし＝従来挙動）。
 
-書式で絞った結果 `.id` を持たない finding が出力から落ちた場合も同じく `undecidable` 扱いで転記する（除外できないため）。落ちた件数は `FOLLOW_UP_REVERIFY=extracted` の `dropped_id_format=` が示す — その finding は出力に現れず判定できないので、**`{n_undecidable}` にこの件数を加算する**（加算しないと完了報告の判定不能件数が実際の未検査件数より少なくなる）。
+`"id": null` の finding（書式外 id / id 欠落）は**必ず `undecidable`** とする。除外指定に載せられる id が無く、`{resolved_ids_csv}` へ入れられる値も無いため、判定の余地なく転記側へ倒れる。出力には現れるので `{n_undecidable}` には通常どおり数え上げられる。
 
 判定を終えたら、`resolved` の id を CSV（`"F-01,F-05"`）に組み、内訳 marker を出す:
 
@@ -1347,6 +1347,7 @@ rationale: references/rationale.md#marker-data-delimiter
 rationale: references/rationale.md#review-cleanup-reasons
 - `{follow_up_reverify_note}`: ステップ 6.0.V の `[CONTEXT] FOLLOW_UP_REVERIFY=` marker で判定する（`pr={pr_number}` を持たない single-shot marker のため、複数行あれば最後の出現を採る）:
   - `done` のとき: ` — follow-up 再検証: 解消済み {n_resolved} / 残存 {n_remains} / 判定不能 {n_undecidable}`（`{n_*}` は marker の同名フィールドをリテラル置換）
+  - `done_extract` のとき（抽出は成功したが判定 marker `done` が続かなかった = 判定ステップ未実行）: ` — follow-up 再検証: 未完了（判定に至らず全件を転記対象としました）`
   - `unavailable` のとき: ` — follow-up 再検証: 未実施（{reason}。全件を転記対象としました）`（`{reason}` は marker の `reason=` 値）
   - marker が無いとき: 空文字列（行に何も足さない）
 - `{wiki_ingest_check}`: 以下の sentinel を上から評価し最初の一致を採用 (`WIKI_INGEST_DONE` + `WIKI_INGEST_PUSH_FAILED` が併存しうるため順序重要):
