@@ -86,5 +86,103 @@ case "$RUN_OUT" in
   *) fail "TC-7 nested composition drift message missing: $RUN_OUT" ;;
 esac
 
+# F-02: nested comparison is $state_root/.rite/.gitignore (main checkout), not
+# the linked worktree's show-toplevel. Invoke without --repo-root (lint Phase 3.5
+# argv). Root .gitignore isolates sessions/worktrees so those later checks do
+# not mix with nested findings. worktree must carry rite-config.yml (config
+# missing skips before nested compare).
+HOOKS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+GI_SESS_WT=$'.rite/sessions/\n.rite/worktrees/\n'
+
+setup_linked_worktree_case() {
+  local wt_nested="$1"
+  d=$(make_sandbox)
+  cleanup_dirs+=("$d")
+  printf '%s' "${WIKI_OK}${MS_ON}" > "$d/rite-config.yml"
+  printf '%s' "$GI_SESS_WT" > "$d/.gitignore"
+  mkdir -p "$d/.rite"
+  printf '%s' "$NESTED_OK" > "$d/.rite/.gitignore"
+  wt=$(mktemp -d)
+  cleanup_dirs+=("$wt")
+  git -C "$d" worktree add --detach "$wt" HEAD >/dev/null
+  printf '%s' "${WIKI_OK}${MS_ON}" > "$wt/rite-config.yml"
+  printf '%s' "$GI_SESS_WT" > "$wt/.gitignore"
+  mkdir -p "$wt/.rite"
+  if [ "$wt_nested" = "NONE" ]; then
+    rm -f "$wt/.rite/.gitignore"
+  else
+    printf '%s' "$wt_nested" > "$wt/.rite/.gitignore"
+  fi
+}
+
+echo "=== TC-8: linked worktree missing nested, main 3-line → findings 0 ==="
+setup_linked_worktree_case NONE
+RUN_RC=0
+RUN_OUT=$(cd "$wt" && bash "$GHC" --quiet 2>&1) || RUN_RC=$?
+assert "TC-8 exit 0" "0" "$RUN_RC"
+case "$RUN_OUT" in
+  *"Total gitignore-health-check findings: 0"*) pass "TC-8 findings 0" ;;
+  *) fail "TC-8 expected findings 0, got: $RUN_OUT" ;;
+esac
+case "$RUN_OUT" in
+  *"DRIFT DETECTED (nested)"*) fail "TC-8 must not nested-drift: $RUN_OUT" ;;
+  *"rite-config.yml not found"*) fail "TC-8 skipped on missing config: $RUN_OUT" ;;
+  *) pass "TC-8 no nested drift / no config skip" ;;
+esac
+git -C "$d" worktree remove --force "$wt" >/dev/null 2>&1 || true
+
+echo "=== TC-9: linked worktree wrong nested, main 3-line → findings 0 ==="
+setup_linked_worktree_case $'*\n'
+RUN_RC=0
+RUN_OUT=$(cd "$wt" && bash "$GHC" --quiet 2>&1) || RUN_RC=$?
+assert "TC-9 exit 0 (does not read worktree nested file)" "0" "$RUN_RC"
+case "$RUN_OUT" in
+  *"Total gitignore-health-check findings: 0"*) pass "TC-9 findings 0" ;;
+  *) fail "TC-9 expected findings 0, got: $RUN_OUT" ;;
+esac
+case "$RUN_OUT" in
+  *"DRIFT DETECTED (nested)"*) fail "TC-9 must not nested-drift on worktree file: $RUN_OUT" ;;
+  *) pass "TC-9 ignores worktree nested composition" ;;
+esac
+git -C "$d" worktree remove --force "$wt" >/dev/null 2>&1 || true
+
+echo "=== TC-10: state-path-resolve failure is rc=2 findings unknown ==="
+stub=$(mktemp -d)
+cleanup_dirs+=("$stub")
+mkdir -p "$stub/scripts"
+cp "$GHC" "$stub/scripts/gitignore-health-check.sh"
+ln -s "$HOOKS_DIR/control-char-neutralize.sh" "$stub/control-char-neutralize.sh"
+ln -s "$HOOKS_DIR/gitignore-ensure.sh" "$stub/gitignore-ensure.sh"
+printf '%s\n' '#!/bin/bash' 'exit 1' > "$stub/state-path-resolve.sh"
+d10=$(make_sandbox)
+cleanup_dirs+=("$d10")
+printf '%s' "${WIKI_OK}${MS_ON}" > "$d10/rite-config.yml"
+printf '%s' "$GI_SESS_WT" > "$d10/.gitignore"
+mkdir -p "$d10/.rite"
+printf '%s' "$NESTED_OK" > "$d10/.rite/.gitignore"
+T10_RC=0
+T10_OUT=$(cd "$d10" && bash "$stub/scripts/gitignore-health-check.sh" --quiet 2>&1) || T10_RC=$?
+assert "TC-10 resolve failure exit 2" "2" "$T10_RC"
+case "$T10_OUT" in
+  *"state-path-resolve.sh failed"*) pass "TC-10 WARNING on resolve failure" ;;
+  *) fail "TC-10 expected resolve WARNING, got: $T10_OUT" ;;
+esac
+case "$T10_OUT" in
+  *"findings: unknown"*) pass "TC-10 findings unknown" ;;
+  *) fail "TC-10 expected findings unknown, got: $T10_OUT" ;;
+esac
+
+echo "=== TC-11: worktree cwd, main nested broken → nested drift ==="
+setup_linked_worktree_case "$NESTED_OK"
+printf '%s' $'*\n' > "$d/.rite/.gitignore"
+RUN_RC=0
+RUN_OUT=$(cd "$wt" && bash "$GHC" --quiet 2>&1) || RUN_RC=$?
+assert "TC-11 exit 1 (detects main nested drift from worktree cwd)" "1" "$RUN_RC"
+case "$RUN_OUT" in
+  *"DRIFT DETECTED (nested)"*) pass "TC-11 nested drift from state_root" ;;
+  *) fail "TC-11 expected nested drift, got: $RUN_OUT" ;;
+esac
+git -C "$d" worktree remove --force "$wt" >/dev/null 2>&1 || true
+
 print_summary "$(basename "$0")" \
   "Drift hint: gitignore-health-check.sh multi_session check (design §2) — runs before the wiki early-exits, opt-in via multi_session.enabled."

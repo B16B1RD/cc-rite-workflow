@@ -372,8 +372,9 @@ Operating rules (important):
     worktree (or rebuilds it from the branch if it was removed) and continues.
 
   • .rite/worktrees/ must be effectively ignored — /rite:setup writes
-    .rite/.gitignore (* / !wiki/ / !wiki/**) and does not add runtime-state
-    lines to the consumer root .gitignore; /rite:lint verifies that nested file.
+    .rite/.gitignore (* / !wiki/ / !wiki/**) at the main checkout (state_root)
+    and does not add runtime-state lines to the consumer root .gitignore;
+    /rite:lint verifies that nested file at state_root.
 
   • Sandboxed environments: after entering a session worktree, state writes to
     the main checkout (.rite/sessions/, etc.) can be rejected as read-only.

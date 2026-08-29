@@ -621,7 +621,7 @@ multi_session:
   worktree_base: ".rite/worktrees"
 ```
 
-**`.gitignore` requirement:** `.rite/worktrees/` must be effectively ignored so session worktrees do not leak into dev-branch diffs. `/rite:setup` writes `.rite/.gitignore` (`*` / `!wiki/` / `!wiki/**`); it does not add runtime-state lines to the consumer root `.gitignore`. `/rite:lint` (via `gitignore-health-check.sh`) verifies that nested file and the effective ignore.
+**`.gitignore` requirement:** `.rite/worktrees/` must be effectively ignored so session worktrees do not leak into dev-branch diffs. `/rite:setup` writes `.rite/.gitignore` (`*` / `!wiki/` / `!wiki/**`) at the main checkout (`state_root`); it does not add runtime-state lines to the consumer root `.gitignore`. `/rite:lint` (via `gitignore-health-check.sh`) verifies that nested file at `state_root` and the effective ignore.
 
 **Disk cost:** each session worktree is a full working-tree clone. Build artifacts (`node_modules`, etc.) may need rebuilding per worktree.
 
@@ -744,7 +744,7 @@ wiki:
   auto_lint: false
 ```
 
-> **Note for `same_branch` users**: `.rite/.gitignore` is `*` / `!wiki/` / `!wiki/**`, which re-includes wiki files so `git add .rite/wiki/raw/*.md` succeeds. `/rite:setup` generates that nested file; `/rite:lint` verifies it without rewriting. Confirm with `mkdir -p .rite/wiki/raw && touch .rite/wiki/raw/.negation-probe && git add --dry-run .rite/wiki/raw/.negation-probe`.
+> **Note for `same_branch` users**: `.rite/.gitignore` at the main checkout (`state_root`) is `*` / `!wiki/` / `!wiki/**`, which re-includes wiki files so `git add .rite/wiki/raw/*.md` succeeds. `/rite:setup` generates that nested file; `/rite:lint` verifies it at `state_root` without rewriting. Confirm with `mkdir -p .rite/wiki/raw && touch .rite/wiki/raw/.negation-probe && git add --dry-run .rite/wiki/raw/.negation-probe`.
 
 **Example (loose growth-check threshold for slow-moving repos):**
 
