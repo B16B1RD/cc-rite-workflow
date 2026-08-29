@@ -145,6 +145,16 @@ assert "T-01 exit 0" "0" "$RC"
 assert_grep "T-01 created marker" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
 assert "T-01 create 1 回" "1" "$(create_count)"
 assert "T-02 body 先頭行は HTML コメント marker" "<!-- [rite-follow-up-from-pr:9] -->" "$(head -1 "$STUB_DIR/body.md")"
+assert "T-02 body 2 行目 Type" "**Type**: fix" "$(sed -n '2p' "$STUB_DIR/body.md")"
+assert "T-02 body 3 行目 Complexity" "**Complexity**: S" "$(sed -n '3p' "$STUB_DIR/body.md")"
+assert "T-02 body 4 行目 空行" "" "$(sed -n '4p' "$STUB_DIR/body.md")"
+assert "T-02 body 5 行目 概要" "## 概要" "$(sed -n '5p' "$STUB_DIR/body.md")"
+_t01_extracted=$(sed -n 's/^[[:space:]]*\*\*Complexity\*\*:[[:space:]]*\([A-Za-z][A-Za-z]*\).*$/\1/p' "$STUB_DIR/body.md" | head -1)
+assert "T-01 記法1 sed 抽出" "S" "$_t01_extracted"
+_t01_args_complexity=$(jq -r '.projects.complexity' "$STUB_DIR/args.json")
+assert "T-01 args.json complexity は抽出値と同一" "$_t01_extracted" "$_t01_args_complexity"
+assert_grep "T-01 --arg complexity は _fu_complexity" "$TARGET" '[[:space:]]--arg complexity "\$_fu_complexity"'
+assert_grep "T-01 --arg priority は _fu_priority" "$TARGET" '[[:space:]]--arg priority "\$_fu_priority"'
 assert_grep "T-02 元 PR" "$STUB_DIR/body.md" '元 PR: #9'
 assert_grep "T-02 元 Issue" "$STUB_DIR/body.md" '元 Issue: #42'
 assert_grep "T-02 reviewer" "$STUB_DIR/body.md" 'code-quality-reviewer'

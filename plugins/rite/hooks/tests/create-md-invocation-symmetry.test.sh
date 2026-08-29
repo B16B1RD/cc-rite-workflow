@@ -235,6 +235,50 @@ check_no_flag_title_proximity "TC-11b no flag-style --title near pr/cleanup.md c
   "$PR_CLEANUP_MD" 'create-issue-with-projects[.]sh'
 
 # ──────────────────────────────────────────────────────────────────────
+# TC-12: pr-create Phase 2.5.5 auto-issue body heredoc starts with Section 0
+#        Meta (Issue #2451). Extract only the BODY_EOF heredoc so a comment
+#        elsewhere in SKILL.md cannot satisfy the pin. `--arg complexity`
+#        lives in the same bash block (outside the heredoc).
+# ──────────────────────────────────────────────────────────────────────
+pr_create_heredoc=$(awk '
+  $0 ~ /cat <<'\''BODY_EOF'\''/ { in_h=1; next }
+  in_h && $0 == "BODY_EOF" { exit }
+  in_h { print }
+' "$PR_CREATE_MD")
+pr_create_h1=$(printf '%s\n' "$pr_create_heredoc" | sed -n '1p')
+pr_create_h2=$(printf '%s\n' "$pr_create_heredoc" | sed -n '2p')
+if [ "$pr_create_h1" = '**Type**: fix' ] && [ "$pr_create_h2" = '**Complexity**: S' ]; then
+  pass "TC-12 Phase 2.5.5 heredoc 先頭 2 行が **Type**: fix / **Complexity**: S"
+else
+  fail "TC-12 Phase 2.5.5 heredoc 先頭 2 行が Meta ではない (line1='$pr_create_h1' line2='$pr_create_h2')"
+fi
+heredoc_summary_line=$(printf '%s\n' "$pr_create_heredoc" | grep -n '^## 概要$' | head -1 | cut -d: -f1)
+if [ -n "$heredoc_summary_line" ] && [ "$heredoc_summary_line" -gt 2 ]; then
+  pass "TC-12 Phase 2.5.5 Meta 2 行が ## 概要 より前 (## 概要 is line $heredoc_summary_line)"
+else
+  fail "TC-12 Phase 2.5.5 ## 概要 が Meta より前、または欠落 (line=${heredoc_summary_line:-none})"
+fi
+heredoc_complexity=$(printf '%s\n' "$pr_create_heredoc" | sed -n 's/^[[:space:]]*\*\*Complexity\*\*:[[:space:]]*\([A-Za-z][A-Za-z]*\).*$/\1/p' | head -1)
+arg_complexity=$(awk '
+  $0 ~ /cat <<'\''BODY_EOF'\''/ { in_block=1 }
+  in_block && /--arg complexity/ {
+    if (match($0, /--arg complexity "[^"]+"/)) {
+      s=substr($0, RSTART, RLENGTH)
+      sub(/^--arg complexity "/, "", s)
+      sub(/"$/, "", s)
+      print s
+      exit
+    }
+  }
+  in_block && /^```/ && NR>1 { exit }
+' "$PR_CREATE_MD")
+if [ -n "$heredoc_complexity" ] && [ "$heredoc_complexity" = "$arg_complexity" ]; then
+  pass "TC-12 Phase 2.5.5 heredoc Complexity ($heredoc_complexity) は --arg complexity と一致"
+else
+  fail "TC-12 Phase 2.5.5 Complexity mismatch (heredoc='$heredoc_complexity' arg='$arg_complexity')"
+fi
+
+# ──────────────────────────────────────────────────────────────────────
 # TC-4: SoT (references/issue-create-with-projects.md) demonstrates the
 #       canonical JSON pattern (args_json constructor + single-arg callsite)。
 # ──────────────────────────────────────────────────────────────────────

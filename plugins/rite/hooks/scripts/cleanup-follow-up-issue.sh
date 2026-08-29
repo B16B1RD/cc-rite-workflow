@@ -243,6 +243,11 @@ rite_tempfile_new comment_file "fu-comment" || exit 1
 source_issue_line=""
 [ -n "$SOURCE_ISSUE" ] && source_issue_line="- 元 Issue: #${SOURCE_ISSUE}"
 
+# body Meta と Projects 引数で同一値を使う（二重定義しない）
+_fu_type="fix"
+_fu_complexity="S"
+_fu_priority="Medium"
+
 findings_md=$(printf '%s' "$findings_json" | jq -r --arg dash "—" --arg empty "" '
   .[] |
   "### \(.id // $dash) (\(.severity // $dash)) — \(.reviewer // $dash)\n\n" +
@@ -258,6 +263,8 @@ fi
 
 {
   printf '%s\n' "<!-- ${MARKER} -->"
+  printf '%s\n' "**Type**: ${_fu_type}"
+  printf '%s\n' "**Complexity**: ${_fu_complexity}"
   printf '%s\n' ""
   printf '%s\n' "## 概要"
   printf '%s\n' ""
@@ -290,8 +297,8 @@ args_json=$(jq -n \
   --argjson projects_enabled "$PROJECTS_JSON" \
   --argjson project_number "$PROJECT_NUMBER" \
   --arg owner "$PROJECT_OWNER" \
-  --arg priority "Medium" \
-  --arg complexity "S" \
+  --arg priority "$_fu_priority" \
+  --arg complexity "$_fu_complexity" \
   --arg iter_mode "none" \
   '{
     issue: { title: $title, body_file: $body_file, labels: ["follow-up"] },
