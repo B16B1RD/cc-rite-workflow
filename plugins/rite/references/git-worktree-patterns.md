@@ -444,8 +444,8 @@ Two helper-driven patterns bracket the session-worktree lifecycle:
 - **Issue claim** (`hooks/issue-claim.sh`, always-on regardless of the flag): `/rite:open`
   Step 1.6 claims the Issue **before** creating the branch/worktree (fail-fast against
   double-starting), and `/rite:cleanup` releases it. Claims live under
-  `.rite/state/issue-claims/`, kept out of diffs by the `.rite/.gitignore` (`*`) that
-  `/rite:setup` generates rather than by any root entry; liveness reuses the flow-state heartbeat
+  `.rite/state/issue-claims/`, kept out of diffs by the nested `.rite/.gitignore`
+  (`*` plus wiki negations) rather than by any root entry; liveness reuses the flow-state heartbeat
   (`active=true` ∧ `updated_at` within 2h) rather than a new heartbeat file. A live
   `other` claim is surfaced via AskUserQuestion — never an unattended steal.
 - **Lazy reap** (`pr-cycle-cleanup.sh` Step 5): normal cleanup removes the worktree

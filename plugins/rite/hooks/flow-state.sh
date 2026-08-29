@@ -26,8 +26,9 @@ SESSION_DIR="$STATE_ROOT/.rite/sessions"
 #   1. cmd_migrate below, which rewrites the schema to v3.
 #   2. issue-comment-wm-sync.sh / cleanup-work-memory.sh, which fall back to this
 #      path when `flow-state.sh path` cannot resolve a session id.
-# Everything else (pre/post-compact, post-tool-wm-sync) resolves to an empty path
-# on resolver failure rather than falling back here, so it cannot resurrect the file.
+# Every other reader (e.g. pre/post-compact, post-tool-wm-sync, session-start,
+# session-end) resolves to an empty path on resolver failure rather than falling back
+# here, so it cannot resurrect the file.
 LEGACY_STATE="$STATE_ROOT/.rite-flow-state"
 # New path wins when present, even if invalid — do not fall through to the
 # legacy file in that case. Absent both → canonical new so first-time
