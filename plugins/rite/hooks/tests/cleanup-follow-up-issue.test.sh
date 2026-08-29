@@ -523,17 +523,23 @@ else
     'state-path-resolve.sh の解決に失敗。follow-up 再検証は行わず全件を転記対象とします'
   # 書式外 id は落とさず null へ写す (落とすと件数を数える第 2 の述語が要り drift 経路になる)
   assert_grep "T-15 書式外 id を null へ写す" "$CLEANUP_MD" 'then \.id else null end'
-  assert_grep "T-15 id null は undecidable 固定" "$CLEANUP_MD" '`"id": null` の finding'
+  # 極性まで pin する (キーだけだと「必ず resolved」への反転が通る)
+  assert_grep "T-15 id null は undecidable 固定" "$CLEANUP_MD" '`"id": null` の finding.*\*\*必ず `undecidable`\*\*'
   assert_not_grep "T-15 件数カウント機構を残さない" "$CLEANUP_MD" 'dropped_id_format'
-  # 抽出成功 marker はステップ 12 の判定表に載っていること (載らないと完了報告行が組み立てられない)
-  assert_grep "T-15 抽出成功 marker" "$CLEANUP_MD" 'FOLLOW_UP_REVERIFY=done_extract'
-  assert_grep "T-15 done_extract を判定表に載せる" "$CLEANUP_MD" '`done_extract` のとき'
-  # 新設 stderr 経路の regression proof (marker だけ残して WARNING を消す変異を検出する)
+  # 抽出成功時は marker を出さない。判定後の done が唯一の成功 marker (0 件時に抽出 marker が
+  # 最後に残ると判定表が「未完了」と誤報告し、done の前置詞として前方一致でも衝突する)
+  assert_not_grep "T-15 抽出成功 marker を残さない" "$CLEANUP_MD" 'FOLLOW_UP_REVERIFY=done_extract'
+  assert_grep "T-15 0 件でも done を必ず出す" "$CLEANUP_MD" '抽出結果が 0 件でもこの marker は必ず出す'
+  assert_grep "T-15 marker 値は完全一致で照合する" "$CLEANUP_MD" '直後が `;` または行末であることまで含めた\*\*完全一致\*\*'
+  # 新設 stderr 経路の regression proof。捕捉先と surface の両側を pin する
+  # (surface 側だけだと、捕捉先を /dev/null へ切る変異が生存して本文が永久に出なくなる)
+  assert_grep "T-15 jq の stderr を _rv_errf へ捕捉する" "$CLEANUP_MD" '2>"\$\{_rv_errf:-/dev/null\}"'
   assert_grep "T-15 parse_failed で jq の stderr 本文を surface" "$CLEANUP_MD" 'head -5 "\$_rv_errf"'
   assert_grep "T-15 mktemp 失敗を surface" "$CLEANUP_MD" '一時ファイルを確保できません'
   # rc を汚さない形 (`&&` 単独文だと mktemp 失敗時にブロック全体が rc=1 で終わる)
   assert_grep "T-15 cleanup は if 形で rc を汚さない" "$CLEANUP_MD" 'if \[ -n "\$_rv_errf" \]; then rm -f "\$_rv_errf"; fi'
-  assert_not_grep "T-15 rm を && 単独文にしない" "$CLEANUP_MD" '^\s*\[ -n "\$_rv_errf" \] && rm -f'
+  # `\s` は GNU 拡張で BSD の ERE では未定義に落ち negative assert が fail-open する
+  assert_not_grep "T-15 rm を && 単独文にしない" "$CLEANUP_MD" '^[[:space:]]*\[ -n "\$_rv_errf" \] && rm -f'
   # 0 件時に空行を出さない (空行が finding として読まれる余地を残さない)
   assert_grep "T-15 非空時だけ出力する" "$CLEANUP_MD" 'if \[ -n "\$_rv_out" \]; then printf'
   # 射影フィルタは 1 パス。grep -c は行数しか数えないため出現回数で数える
