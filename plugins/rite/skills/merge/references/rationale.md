@@ -34,5 +34,17 @@ then-branch に閉じるのは、失敗時 else の head と二重出力にな�
 ## ci-gate-at-merge
 
 Ready 化は CI 完了前にも行う操作なので変更しない。`--force-ci` は緊急時の明示的 override。
-既定経路は unhealthy / pending / 分類不能を fail-closed で停止する。mixed pending+unknown を
-pending に落とすと `--force-ci` で unknown を迂回できるため unknown を先に判定する。
+既定経路は unhealthy / 分類不能を fail-closed で停止する。pending は待ち loop（`ci-wait-bounded`）
+で完了を待ってから同じ分類へ合流し、上限到達でまだ pending なら fail-closed。mixed
+pending+unknown を pending に落とすと `--force-ci` で unknown を迂回できるため unknown を先に判定する。
+
+## ci-wait-bounded
+
+CI 実行待ち（分単位）は mergeable 再計算遅延（秒単位、`rematch-once`）とは別問題。iterate の
+最終 push 直後に ready → merge すると checks が pending のまま来ることが構造的に起きる。
+
+待ちは merge スキルのステップ 1 に 1 bash block として置く。上限 540 秒は Bash ツール最大
+600 秒に収めるため（`timeout: 600000`）。間隔 15 秒。設定キーは追加しない。LLM による
+block 再実行や background 実行は採らない。`gh pr checks --watch` は使わず既存 jq 分類を
+再評価する（checks 0 件・exit code 8 の吸収と分類の二重化を避ける）。混在 pending+FAILURE は
+fail-fast せず `!= pending` まで待つ。unknown は待ちを打ち切る。`--force-ci` では待たない。

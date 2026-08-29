@@ -33,6 +33,7 @@ marketplace 配布のプラグインファイルではないため、`number-ref
 
 ### 修正
 
+- **`/rite:merge` が checks pending で即停止せず CI 完了を待つ** — `--force-ci` なしで `statusCheckRollup` が pending のとき、15 秒間隔・上限 540 秒で再取得し、既存の healthy / unhealthy / unknown 分類へ合流する。上限到達は `[merge:not-ready]` と未完了 check 名で fail-close する。(#2449)
 - **消費済みの release-promotion attestation が削除される** — `pr-cycle-cleanup.sh` が、対応する GitHub PR が MERGED または CLOSED の `.rite/release-promotions/{N}.json` を削除する。OPEN と状態不明は merge gate が通るよう理由付きで残す。同ディレクトリの `.gitignore` は削除しない。(#2427)
 
 ## [0.13.2] - 2026-08-28
