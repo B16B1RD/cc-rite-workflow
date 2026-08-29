@@ -161,7 +161,7 @@ write_per_session "$SBX" "$SID" '{"phase":"phase5_lint","next_action":"continue"
 # extraction の結果 (issue-687.md) を直接 assert し、その dead 分岐への退行を guard する。
 # branch-based extraction の直接検証 (cycle 12 false negative regression guard):
 # `make_sandbox --branch fix/issue-687-test` が指定の branch を作るため、branch parsing が `687`
-# を抽出して `.rite-work-memory/issue-687.md` を生成することを確認する。
+# を抽出して `.rite/work-memory/issue-687.md` を生成することを確認する。
 #
 # F-06 LOW (branch-name coupling 軽減): make_sandbox 呼び出しで渡している
 # `--branch fix/issue-687-test` 引数と本 TC の assertion で参照する issue 番号 (687) を local var
@@ -179,7 +179,7 @@ else
 fi
 assert_eq "TC-1.1: return 0 (per-session resolved via flow-state.sh, branch parsing extracts ${EXPECTED_ISSUE_NUM})" "0" "$rc"
 assert_eq "TC-1.2: WM file created via branch parsing (issue-${EXPECTED_ISSUE_NUM}.md)" "yes" \
-  "$([ -f "$SBX/.rite-work-memory/issue-${EXPECTED_ISSUE_NUM}.md" ] && echo yes || echo no)"
+  "$([ -f "$SBX/.rite/work-memory/issue-${EXPECTED_ISSUE_NUM}.md" ] && echo yes || echo no)"
 
 # --- TC-2: both files absent + WM_REQUIRE_FLOW_STATE=true ---
 echo "TC-2: per-session/legacy 両不在 + WM_REQUIRE_FLOW_STATE=true → return 1 (skip)"
@@ -198,7 +198,7 @@ else
 fi
 assert_eq "TC-2.1: return 1 (両 file 不在で skip)" "1" "$rc"
 assert_eq "TC-2.2: WM file NOT created" "no" \
-  "$([ -f "$SBX/.rite-work-memory/issue-687.md" ] && echo yes || echo no)"
+  "$([ -f "$SBX/.rite/work-memory/issue-687.md" ] && echo yes || echo no)"
 
 # --- TC-3: WM_READ_FROM_FLOW_STATE=true + per-session has pr_number/loop_count ---
 echo "TC-3: per-session pr_number=100 loop_count=3 + WM_READ_FROM_FLOW_STATE=true → frontmatter 反映 (cycle 10 stale residue regression guard)"
@@ -219,7 +219,7 @@ else
   rc=$?
 fi
 assert_eq "TC-3.1: return 0" "0" "$rc"
-WM_FILE="$SBX/.rite-work-memory/issue-687.md"
+WM_FILE="$SBX/.rite/work-memory/issue-687.md"
 if [ -f "$WM_FILE" ]; then
   body=$(cat "$WM_FILE")
   assert_contains "TC-3.2: pr_number=100 (per-session 値、legacy 999 を override)" "pr_number: 100" "$body"
@@ -250,7 +250,7 @@ write_config "$SBX5"
 run_update "$SBX5" \
   WM_SOURCE="implement" WM_PHASE="implement" WM_PHASE_DETAIL="impl" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="First body." WM_ISSUE_NUMBER="687" >/dev/null 2>&1 || true
-WM_FILE5="$SBX5/.rite-work-memory/issue-687.md"
+WM_FILE5="$SBX5/.rite/work-memory/issue-687.md"
 # 蓄積セクションを Detail 以下に追記 (local `## Detail` への自由記述追記を模擬)
 cat >> "$WM_FILE5" <<'ACCUM_EOF'
 
@@ -297,7 +297,7 @@ run_update "$SBX6" \
   WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="123" WM_LOOP_COUNT="3" >/dev/null 2>&1 || true
-WM_FILE6="$SBX6/.rite-work-memory/issue-687.md"
+WM_FILE6="$SBX6/.rite/work-memory/issue-687.md"
 seed6=$(cat "$WM_FILE6" 2>/dev/null || echo "")
 assert_contains "T-01.0: seed で pr_number=123 が書かれる (前提確認)" "pr_number: 123" "$seed6"
 assert_contains "T-02.0: seed で loop_count=3 が書かれる (前提確認)" "loop_count: 3" "$seed6"
@@ -326,7 +326,7 @@ run_update "$SBX7" \
   WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="123" WM_LOOP_COUNT="3" >/dev/null 2>&1 || true
-WM_FILE7="$SBX7/.rite-work-memory/issue-687.md"
+WM_FILE7="$SBX7/.rite/work-memory/issue-687.md"
 # seed を 2 回回して sync_revision: 2 の状態を作ってから壊す。1 回だけだと元ファイルが
 # sync_revision: 1 で、縮退後の「1 から採番し直す」と値が一致してしまい T-03.5 が空虚になる。
 run_update "$SBX7" \
@@ -367,7 +367,7 @@ run_update "$SBX22" \
   WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="123" WM_LOOP_COUNT="3" >/dev/null 2>&1 || true
-WM_FILE22="$SBX22/.rite-work-memory/issue-687.md"
+WM_FILE22="$SBX22/.rite/work-memory/issue-687.md"
 grep -v '^# 📜 rite 作業メモリ$' "$WM_FILE22" > "$WM_FILE22.tmp" && mv "$WM_FILE22.tmp" "$WM_FILE22"
 err22=$(run_update "$SBX22" \
   WM_SOURCE="pre-compact" WM_PHASE="lint" WM_PHASE_DETAIL="compact 前保存" \
@@ -388,7 +388,7 @@ run_update "$SBX26" \
   WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="123" WM_LOOP_COUNT="3" >/dev/null 2>&1 || true
-WM_FILE26="$SBX26/.rite-work-memory/issue-687.md"
+WM_FILE26="$SBX26/.rite/work-memory/issue-687.md"
 grep -v '^# 📜 rite 作業メモリ$' "$WM_FILE26" > "$WM_FILE26.tmp" && mv "$WM_FILE26.tmp" "$WM_FILE26"
 err26=$(run_update "$SBX26" \
   WM_SOURCE="lint" WM_PHASE="lint" WM_PHASE_DETAIL="quality check" \
@@ -409,7 +409,7 @@ run_update "$SBX8" \
   WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="123" WM_LOOP_COUNT="3" >/dev/null 2>&1 || true
-WM_FILE8="$SBX8/.rite-work-memory/issue-687.md"
+WM_FILE8="$SBX8/.rite/work-memory/issue-687.md"
 seed8=$(cat "$WM_FILE8" 2>/dev/null || echo "")
 # seed 前提確認: これが無いと seed 失敗時に 2 回目の env 値がそのまま書かれて
 # 「既存ファイル値を override した」検証が空虚に PASS する
@@ -448,7 +448,7 @@ run_update "$SBX9" \
   WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="123" WM_LOOP_COUNT="4" >/dev/null 2>&1 || true
-WM_FILE9="$SBX9/.rite-work-memory/issue-687.md"
+WM_FILE9="$SBX9/.rite/work-memory/issue-687.md"
 
 # 走行 1: env override 有り
 if run_update "$SBX9" \
@@ -478,7 +478,7 @@ run_update "$SBX9B" \
 # 走行 2 は seed が書けたことに依存する。seed が落ちると carry-forward の材料が消え、flow-state の
 # 値がそのまま書かれて T-05.5 / T-05.6 が vacuous に PASS する (走行 2 が脱出しようとした TC-3 と
 # 同じ状態への silent な縮退)。他群と同形の前提確認で pin する。
-seed9b=$(cat "$SBX9B/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
+seed9b=$(cat "$SBX9B/.rite/work-memory/issue-687.md" 2>/dev/null || echo "")
 assert_contains "T-05.0a: seed で pr_number=123 が書かれる (前提確認)" "pr_number: 123" "$seed9b"
 assert_contains "T-05.0b: seed で loop_count=4 が書かれる (前提確認)" "loop_count: 4" "$seed9b"
 if run_update "$SBX9B" \
@@ -490,7 +490,7 @@ else
   rc9b=$?
 fi
 assert_eq "T-05.4: return 0 (env override 無し)" "0" "$rc9b"
-body9b=$(cat "$SBX9B/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
+body9b=$(cat "$SBX9B/.rite/work-memory/issue-687.md" 2>/dev/null || echo "")
 assert_contains "T-05.5: pr_number=789 (flow-state 値が既存ファイル値 123 に勝つ、AC-5)" "pr_number: 789" "$body9b"
 assert_contains "T-05.6: loop_count=7 (flow-state 値が既存ファイル値 4 に勝つ、AC-5)" "loop_count: 7" "$body9b"
 
@@ -504,7 +504,7 @@ run_update "$SBX10" \
   WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="123" WM_LOOP_COUNT="3" >/dev/null 2>&1 || true
-WM_FILE10="$SBX10/.rite-work-memory/issue-687.md"
+WM_FILE10="$SBX10/.rite/work-memory/issue-687.md"
 # fixture 改竄は awk read→transform→write→mv 形式で行う (GNU 形式の `sed -i '<expr>'` は
 # BSD sed が -i の引数を必須とするため macOS で失敗し、set -e 下でスイート全体が中断する)
 awk '{
@@ -532,10 +532,10 @@ assert_contains "T-06.3: 非数値は loop_count: null へ降格する" "loop_co
 echo "T-07: set -e 下の bare 呼び出しで corrupt WM を読んでも更新が完走する"
 SBX11=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX11")
 write_config "$SBX11"
-mkdir -p "$SBX11/.rite-work-memory"
+mkdir -p "$SBX11/.rite/work-memory"
 # ヘッダマーカー不在 = work-memory-parse.py が exit 2 を返す corrupt fixture
 printf '## Summary\n---\nschema_version: 1\nissue_number: 687\nsync_revision: 1\npr_number: 123\n---\nbody\n' \
-  > "$SBX11/.rite-work-memory/issue-687.md"
+  > "$SBX11/.rite/work-memory/issue-687.md"
 
 if (cd "$SBX11" && env WM_PLUGIN_ROOT="$PLUGIN_ROOT" \
   WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
@@ -546,7 +546,7 @@ else
   rc11=$?
 fi
 assert_eq "T-07.1: set -e + bare 呼び出しで return 0 (errexit で中断しない)" "0" "$rc11"
-body11=$(cat "$SBX11/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
+body11=$(cat "$SBX11/.rite/work-memory/issue-687.md" 2>/dev/null || echo "")
 assert_contains "T-07.2: WM が実際に書き換わる (更新が完走している)" "Post-implementation." "$body11"
 
 # ─── T-08: corrupt 判定でも .data が埋まるファイルは carry-forward される ──
@@ -562,12 +562,12 @@ assert_contains "T-07.2: WM が実際に書き換わる (更新が完走して�
 echo "T-08: corrupt-but-parseable (missing_keys) な WM でも carry-forward と sync_revision 加算が維持される"
 SBX12=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX12")
 write_config "$SBX12"
-mkdir -p "$SBX12/.rite-work-memory"
+mkdir -p "$SBX12/.rite/work-memory"
 printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nissue_number: 687\nsync_revision: 5\npr_number: 123\nloop_count: 4\n---\n\nbody\n' \
-  > "$SBX12/.rite-work-memory/issue-687.md"
+  > "$SBX12/.rite/work-memory/issue-687.md"
 # 前提確認: この fixture が「corrupt 判定 かつ .data 全埋め かつ 種別が missing_keys」であること
 # (この性質が崩れると本 TC は空虚になる)
-parse12=$(python3 "$PLUGIN_ROOT/hooks/work-memory-parse.py" "$SBX12/.rite-work-memory/issue-687.md" 2>/dev/null || true)
+parse12=$(python3 "$PLUGIN_ROOT/hooks/work-memory-parse.py" "$SBX12/.rite/work-memory/issue-687.md" 2>/dev/null || true)
 assert_contains "T-08.0a: fixture が corrupt 判定される (前提確認)" '"status": "corrupt"' "$parse12"
 assert_contains "T-08.0b: corrupt でも .data に sync_revision が埋まる (前提確認)" '"sync_revision": 5' "$parse12"
 assert_contains "T-08.0c: 種別が missing_keys である (前提確認 — mismatch だと carry-forward が止まる)" 'missing_keys' "$parse12"
@@ -580,7 +580,7 @@ else
   rc12=$?
 fi
 assert_eq "T-08.1: return 0 (corrupt 判定でも更新は続行)" "0" "$rc12"
-body12=$(cat "$SBX12/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
+body12=$(cat "$SBX12/.rite/work-memory/issue-687.md" 2>/dev/null || echo "")
 assert_contains "T-08.2: sync_revision が 6 へ加算される (版が逆行しない)" "sync_revision: 6" "$body12"
 assert_contains "T-08.3: pr_number=123 が carry-forward される" "pr_number: 123" "$body12"
 assert_contains "T-08.4: loop_count=4 が carry-forward される" "loop_count: 4" "$body12"
@@ -600,10 +600,10 @@ assert_contains "T-08.6: corrupt 判定からの carry-forward は corrupt 種�
 echo "T-14: issue_number_mismatch の WM からは carry-forward せず既定値へ倒す"
 SBX18=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX18")
 write_config "$SBX18"
-mkdir -p "$SBX18/.rite-work-memory"
+mkdir -p "$SBX18/.rite/work-memory"
 printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nschema_version: 1\nissue_number: 999\nsync_revision: 5\npr_number: 4242\nloop_count: 7\n---\n\nbody\n' \
-  > "$SBX18/.rite-work-memory/issue-687.md"
-parse18=$(python3 "$PLUGIN_ROOT/hooks/work-memory-parse.py" "$SBX18/.rite-work-memory/issue-687.md" 2>/dev/null || true)
+  > "$SBX18/.rite/work-memory/issue-687.md"
+parse18=$(python3 "$PLUGIN_ROOT/hooks/work-memory-parse.py" "$SBX18/.rite/work-memory/issue-687.md" 2>/dev/null || true)
 assert_contains "T-14.0a: fixture が issue_number_mismatch と判定される (前提確認)" 'issue_number_mismatch' "$parse18"
 assert_contains "T-14.0b: mismatch でも .data に pr_number が埋まる (前提確認 — 転写の材料は存在する)" '"pr_number": 4242' "$parse18"
 
@@ -615,7 +615,7 @@ else
   rc18=$?
 fi
 assert_eq "T-14.1: return 0 (mismatch でも更新は続行)" "0" "$rc18"
-body18=$(cat "$SBX18/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
+body18=$(cat "$SBX18/.rite/work-memory/issue-687.md" 2>/dev/null || echo "")
 assert_contains "T-14.2: sync_revision は 6 へ加算される (版の逆行防止は維持)" "sync_revision: 6" "$body18"
 assert_contains "T-14.3: pr_number は転写されず null へ倒れる (AC-1)" "pr_number: null" "$body18"
 assert_contains "T-14.4: loop_count も転写されず 0 へ倒れる (AC-2)" "loop_count: 0" "$body18"
@@ -626,14 +626,14 @@ assert_contains "T-14.5: carry-forward を止めたことが WARNING に出る (
 # 走行で固定する (T-03.7 / T-03.8 と対の関係)。
 SBX23=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX23")
 write_config "$SBX23"
-mkdir -p "$SBX23/.rite-work-memory"
+mkdir -p "$SBX23/.rite/work-memory"
 printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nschema_version: 1\nissue_number: 999\nsync_revision: 5\npr_number: 4242\nloop_count: 7\n---\n\nbody\n' \
-  > "$SBX23/.rite-work-memory/issue-687.md"
+  > "$SBX23/.rite/work-memory/issue-687.md"
 err23=$(run_update "$SBX23" \
   WM_SOURCE="pre-compact" WM_PHASE="lint" WM_PHASE_DETAIL="compact 前保存" \
   WM_NEXT_ACTION="resume" WM_BODY_TEXT="Post." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="456" WM_LOOP_COUNT="9" 2>&1 >/dev/null) || true
-body23=$(cat "$SBX23/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
+body23=$(cat "$SBX23/.rite/work-memory/issue-687.md" 2>/dev/null || echo "")
 assert_contains "T-14.6a: carry-forward 遮断経路に入っている (前提確認)" "carry-forward は行いません" "$err23"
 assert_contains "T-14.6: 遮断時でも env override は握り潰されない (pr_number)" "pr_number: 456" "$body23"
 assert_contains "T-14.7: 同 (loop_count)" "loop_count: 9" "$body23"
@@ -644,14 +644,14 @@ write_config "$SBX27"
 SID27="99999999-9999-9999-9999-999999999927"
 write_session_id "$SBX27" "$SID27"
 write_per_session "$SBX27" "$SID27" '{"phase":"lint","next_action":"continue","pr_number":789,"loop_count":7,"active":true}'
-mkdir -p "$SBX27/.rite-work-memory"
+mkdir -p "$SBX27/.rite/work-memory"
 printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nschema_version: 1\nissue_number: 999\nsync_revision: 5\npr_number: 4242\nloop_count: 7\n---\n\nbody\n' \
-  > "$SBX27/.rite-work-memory/issue-687.md"
+  > "$SBX27/.rite/work-memory/issue-687.md"
 err27=$(run_update "$SBX27" \
   WM_SOURCE="lint" WM_PHASE="lint" WM_PHASE_DETAIL="quality check" \
   WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Lint body." WM_ISSUE_NUMBER="687" \
   WM_READ_FROM_FLOW_STATE="true" 2>&1 >/dev/null) || true
-body27=$(cat "$SBX27/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
+body27=$(cat "$SBX27/.rite/work-memory/issue-687.md" 2>/dev/null || echo "")
 assert_contains "T-14.8a: carry-forward 遮断経路に入っている (前提確認)" "carry-forward は行いません" "$err27"
 assert_contains "T-14.8: 遮断時でも flow-state 読み取りは握り潰されない (pr_number)" "pr_number: 789" "$body27"
 assert_contains "T-14.9: 同 (loop_count)" "loop_count: 7" "$body27"
@@ -663,16 +663,16 @@ assert_contains "T-14.9: 同 (loop_count)" "loop_count: 7" "$body27"
 echo "T-19: issue_number 欠落の corrupt からも carry-forward しない"
 SBX25=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX25")
 write_config "$SBX25"
-mkdir -p "$SBX25/.rite-work-memory"
+mkdir -p "$SBX25/.rite/work-memory"
 printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nschema_version: 1\nsync_revision: 5\npr_number: 4242\nloop_count: 7\n---\n\nbody\n' \
-  > "$SBX25/.rite-work-memory/issue-687.md"
-parse25=$(python3 "$PLUGIN_ROOT/hooks/work-memory-parse.py" "$SBX25/.rite-work-memory/issue-687.md" 2>/dev/null || true)
+  > "$SBX25/.rite/work-memory/issue-687.md"
+parse25=$(python3 "$PLUGIN_ROOT/hooks/work-memory-parse.py" "$SBX25/.rite/work-memory/issue-687.md" 2>/dev/null || true)
 assert_contains "T-19.0a: fixture が missing_keys: issue_number と判定される (前提確認)" 'missing_keys: issue_number' "$parse25"
 assert_contains "T-19.0b: .data に pr_number が埋まる (前提確認 — 転写の材料は存在する)" '"pr_number": 4242' "$parse25"
 err25=$(run_update "$SBX25" \
   WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
   WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" 2>&1 >/dev/null) || true
-body25=$(cat "$SBX25/.rite-work-memory/issue-687.md" 2>/dev/null || echo "")
+body25=$(cat "$SBX25/.rite/work-memory/issue-687.md" 2>/dev/null || echo "")
 assert_contains "T-19.1: sync_revision は 6 へ加算される (版の逆行防止は維持)" "sync_revision: 6" "$body25"
 assert_contains "T-19.2: pr_number は転写されず null へ倒れる" "pr_number: null" "$body25"
 assert_contains "T-19.3: loop_count も転写されず 0 へ倒れる" "loop_count: 0" "$body25"
@@ -687,14 +687,14 @@ assert_contains "T-19.4: 遮断したことが WARNING に出る (silent に転�
 echo "T-15: corrupt WARNING の errors は巨大入力でも clamp される (pipefail 下でも縮退しない)"
 SBX19=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX19")
 write_config "$SBX19"
-mkdir -p "$SBX19/.rite-work-memory"
+mkdir -p "$SBX19/.rite/work-memory"
 # 非数値にする — 数値だと parse.py の int() が Python 3.11+ の桁数上限で ValueError を投げ、
 # stdout 空 = 読み戻し不能経路へ落ちて corrupt WARNING 自体が出ない (本 TC が空虚になる)。
 # 長さは pipe buffer (64 KiB) 超に取る — clamp を pipeline 末尾の head -c へ戻す変異は、
 # この閾値を超えたときだけ SIGPIPE で種別を失うため。
 BIG19=$(python3 -c "print('a'*70000)")
 printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nschema_version: 1\nissue_number: %s\nsync_revision: 5\npr_number: 123\nloop_count: 4\n---\n\nbody\n' "$BIG19" \
-  > "$SBX19/.rite-work-memory/issue-687.md"
+  > "$SBX19/.rite/work-memory/issue-687.md"
 # bare 呼び出し + set -o pipefail で本番 caller (pre-compact.sh / post-tool-wm-sync.sh) と同条件にする
 err19=$( (cd "$SBX19" && env WM_PLUGIN_ROOT="$PLUGIN_ROOT" \
   WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
@@ -716,10 +716,10 @@ if python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>
   echo "T-16: 読み戻し不能 WARNING のスニペットが python3 traceback の根因行を含む"
   SBX20=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX20")
   write_config "$SBX20"
-  mkdir -p "$SBX20/.rite-work-memory"
+  mkdir -p "$SBX20/.rite/work-memory"
   BIG20=$(python3 -c "print('9'*5000)")
   printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nschema_version: 1\nissue_number: %s\nsync_revision: 5\npr_number: 123\nloop_count: 4\n---\n\nbody\n' "$BIG20" \
-    > "$SBX20/.rite-work-memory/issue-687.md"
+    > "$SBX20/.rite/work-memory/issue-687.md"
   err20=$(run_update "$SBX20" \
     WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
     WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" 2>&1 >/dev/null) || true
@@ -764,7 +764,7 @@ write_config "$SBX13"
 err13a=$(run_update "$SBX13" \
   WM_SOURCE="implement" WM_PHASE="implement" WM_PHASE_DETAIL="実装中" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="First." WM_ISSUE_NUMBER="687" 2>&1 >/dev/null) || true
-WM_FILE13="$SBX13/.rite-work-memory/issue-687.md"
+WM_FILE13="$SBX13/.rite/work-memory/issue-687.md"
 seed13=$(cat "$WM_FILE13" 2>/dev/null || echo "")
 assert_contains "T-10.0a: 新規作成で pr_number: null が書かれる (前提確認)" "pr_number: null" "$seed13"
 assert_contains "T-10.0b: 新規作成で loop_count: 0 が書かれる (前提確認)" "loop_count: 0" "$seed13"
@@ -795,7 +795,7 @@ run_update "$SBX14" \
   WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="999" WM_LOOP_COUNT="4" >/dev/null 2>&1 || true
-WM_FILE14="$SBX14/.rite-work-memory/issue-687.md"
+WM_FILE14="$SBX14/.rite/work-memory/issue-687.md"
 seed14=$(cat "$WM_FILE14" 2>/dev/null || echo "")
 assert_contains "T-11.0a: seed で pr_number=999 が書かれる (前提確認)" "pr_number: 999" "$seed14"
 assert_contains "T-11.0b: seed で loop_count=4 が書かれる (前提確認)" "loop_count: 4" "$seed14"
@@ -826,7 +826,7 @@ run_update "$SBX15" \
   WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="123" WM_LOOP_COUNT="4" >/dev/null 2>&1 || true
-WM_FILE15="$SBX15/.rite-work-memory/issue-687.md"
+WM_FILE15="$SBX15/.rite/work-memory/issue-687.md"
 assert_contains "T-12.0: seed で pr_number=123 が書かれる (前提確認)" "pr_number: 123" "$(cat "$WM_FILE15" 2>/dev/null || echo "")"
 mkdir -p "$SBX15/bin"
 REAL_JQ=$(command -v jq)
@@ -872,7 +872,7 @@ run_update "$SBX16" \
   WM_SOURCE="lint" WM_PHASE="lint" WM_PHASE_DETAIL="lint 実行中" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="0" WM_LOOP_COUNT="4" >/dev/null 2>&1 || true
-WM_FILE16="$SBX16/.rite-work-memory/issue-687.md"
+WM_FILE16="$SBX16/.rite/work-memory/issue-687.md"
 seed16=$(cat "$WM_FILE16" 2>/dev/null || echo "")
 assert_contains "T-13.0a: seed で pr_number: 0 が書かれる (前提確認)" "pr_number: 0" "$seed16"
 assert_contains "T-13.0b: seed で loop_count: 4 が書かれる (前提確認)" "loop_count: 4" "$seed16"
@@ -901,7 +901,7 @@ run_update "$SBX17" \
   WM_SOURCE="lint" WM_PHASE="lint" WM_PHASE_DETAIL="lint 実行中" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="4242" WM_LOOP_COUNT="0" >/dev/null 2>&1 || true
-WM_FILE17="$SBX17/.rite-work-memory/issue-687.md"
+WM_FILE17="$SBX17/.rite/work-memory/issue-687.md"
 run_update "$SBX17" \
   WM_SOURCE="implement" WM_PHASE="implement" WM_PHASE_DETAIL="実装中" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Normal update." WM_ISSUE_NUMBER="687" >/dev/null 2>&1 || true
@@ -925,7 +925,7 @@ run_update "$SBX21" \
   WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="123" WM_LOOP_COUNT="7" >/dev/null 2>&1 || true
-WM_FILE21="$SBX21/.rite-work-memory/issue-687.md"
+WM_FILE21="$SBX21/.rite/work-memory/issue-687.md"
 seed21=$(cat "$WM_FILE21" 2>/dev/null || echo "")
 # seed 前提確認: これが無いと seed 失敗時に T-17.1 が「既定値 0 のまま」を掴んで空虚に PASS する
 assert_contains "T-17.0: seed で loop_count=7 が書かれる (前提確認)" "loop_count: 7" "$seed21"
@@ -956,7 +956,7 @@ run_update "$SBX24" \
   WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="PR作成完了" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="123" WM_LOOP_COUNT="7" >/dev/null 2>&1 || true
-WM_FILE24="$SBX24/.rite-work-memory/issue-687.md"
+WM_FILE24="$SBX24/.rite/work-memory/issue-687.md"
 seed24=$(cat "$WM_FILE24" 2>/dev/null || echo "")
 assert_contains "T-18.0a: seed で pr_number=123 が書かれる (前提確認)" "pr_number: 123" "$seed24"
 assert_contains "T-18.0b: seed で loop_count=7 が書かれる (前提確認)" "loop_count: 7" "$seed24"

@@ -341,13 +341,13 @@ LLM が `pages_list` の全ページペアを意味的に比較し、以下の�
 ```bash
 # plugin_root 解決 (ステップ 2.1 の inline one-liner。
 #  canonical: references/plugin-path-resolution.md#inline-one-liner-for-command-files)
-plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 
 if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/wiki-lint-stale.sh" ]; then
   # helper 不在: LLM が手動カウントに fallback すると「走らせたフリ」経路が復活するため、
   # 件数は 0 のまま skipped enum を明示出力し、ステップ 9.1 で skip note を展開する。
   echo "WARNING: wiki-lint-stale.sh が見つからないため陳腐化検出を skip します (plugin_root='${plugin_root:-<empty>}')" >&2
-  echo "  対処: rite プラグインのソースツリーから実行するか、.rite-plugin-root を確認してください" >&2
+  echo "  対処: rite プラグインのソースツリーから実行するか、.rite/plugin-root を確認してください" >&2
   echo "n_stale=0"
   echo "---stale_pages_begin---"
   echo "---stale_pages_end---"
@@ -389,11 +389,11 @@ fi
 ```bash
 # plugin_root 解決 (ステップ 2.1 の inline one-liner。
 #  canonical: references/plugin-path-resolution.md#inline-one-liner-for-command-files)
-plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 
 if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/wiki-lint-orphans.sh" ]; then
   echo "WARNING: wiki-lint-orphans.sh が見つからないため孤児ページ検出を skip します (plugin_root='${plugin_root:-<empty>}')" >&2
-  echo "  対処: rite プラグインのソースツリーから実行するか、.rite-plugin-root を確認してください" >&2
+  echo "  対処: rite プラグインのソースツリーから実行するか、.rite/plugin-root を確認してください" >&2
   echo "n_orphans=0"
   echo "---orphans_begin---"
   echo "---orphans_end---"
@@ -440,14 +440,14 @@ rationale: references/rationale.md#skip-sot-raw-frontmatter
 ```bash
 # plugin_root 解決 (ステップ 2.1 の inline one-liner。
 #  canonical: references/plugin-path-resolution.md#inline-one-liner-for-command-files)
-plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 
 if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/wiki-lint-skipped-refs.sh" ]; then
   # helper 不在: skipped_refs を io_error 扱いにして ステップ 9.1 の false positive note を展開する。
   # silent 空集合だと skip 済み raw が missing_concept に誤計上されるため、
   # 「marker 未受信 → io_error 同等扱い」契約 (ステップ 6.2 末尾) と整合する形で io_error を明示出力する。
   echo "WARNING: wiki-lint-skipped-refs.sh が見つからないため skipped_refs を io_error 扱いにします (plugin_root='${plugin_root:-<empty>}')" >&2
-  echo "  対処: rite プラグインのソースツリーから実行するか、.rite-plugin-root を確認してください" >&2
+  echo "  対処: rite プラグインのソースツリーから実行するか、.rite/plugin-root を確認してください" >&2
   echo "skipped_refs_count=0"
   echo "---skipped_refs_begin---"
   echo "---skipped_refs_end---"
@@ -513,14 +513,14 @@ rationale: references/rationale.md#pages-list-pollution
 ```bash
 # plugin_root 解決 (ステップ 2.1 の inline one-liner。
 #  canonical: references/plugin-path-resolution.md#inline-one-liner-for-command-files)
-plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 
 if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/wiki-lint-source-refs.sh" ]; then
   # helper 不在: all_source_refs を io_error 扱いにして ステップ 9.1 の false positive note を展開する。
   # silent 空集合だと真の欠落 (missing_concept) 判定が false positive になるため、
   # 「marker 未受信 → io_error 同等扱い」契約 (本節末尾) と整合する形で io_error を明示出力する。
   echo "WARNING: wiki-lint-source-refs.sh が見つからないため all_source_refs を io_error 扱いにします (plugin_root='${plugin_root:-<empty>}')" >&2
-  echo "  対処: rite プラグインのソースツリーから実行するか、.rite-plugin-root を確認してください" >&2
+  echo "  対処: rite プラグインのソースツリーから実行するか、.rite/plugin-root を確認してください" >&2
   echo "---all_source_refs_begin---"
   echo "---all_source_refs_end---"
   echo "all_source_refs_read_ok=io_error"
@@ -585,11 +585,11 @@ rationale: references/rationale.md#marker-unreceived-io-error
 ```bash
 # plugin_root 解決 (ステップ 2.1 の inline one-liner。
 #  canonical: references/plugin-path-resolution.md#inline-one-liner-for-command-files)
-plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 
 if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/wiki-lint-broken-refs.sh" ]; then
   echo "WARNING: wiki-lint-broken-refs.sh が見つからないため壊れた相互参照検出を skip します (plugin_root='${plugin_root:-<empty>}')" >&2
-  echo "  対処: rite プラグインのソースツリーから実行するか、.rite-plugin-root を確認してください" >&2
+  echo "  対処: rite プラグインのソースツリーから実行するか、.rite/plugin-root を確認してください" >&2
   echo "n_broken_refs=0"
   echo "---broken_refs_begin---"
   echo "---broken_refs_end---"
@@ -654,7 +654,7 @@ rationale: references/descriptive-refs-rationale.md#exclusions
 ```bash
 # plugin_root 解決 (ステップ 2.1 の inline one-liner。
 #  canonical: references/plugin-path-resolution.md#inline-one-liner-for-command-files)
-plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 
 if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/wiki-lint-descriptive-refs.sh" ]; then
   # helper 不在 (marketplace install で scripts/ を持たない等): informational 指標のため
@@ -797,7 +797,7 @@ set -euo pipefail
 
 # plugin_root の inline 解決 (lint.md には専用解決ステップがないため inline)
 branch_strategy="{branch_strategy}"
-plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi' || true)
+plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi' || true)
 if [ -z "$plugin_root" ] || [ ! -d "$plugin_root/templates/wiki" ]; then
   echo "WARNING: plugin_root resolution failed (resolved: '${plugin_root:-<empty>}'). log.md 追記の commit を skip します (非ブロッキング契約)" >&2
   exit 0

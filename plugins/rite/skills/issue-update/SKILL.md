@@ -101,17 +101,17 @@ If the Issue is not found:
 
 ### 1.1 Load Local Work Memory (SoT)
 
-Read the local work memory file with the Read tool:
+Read the local work memory file with the Read tool (new path first, then legacy):
 
 ```
-Read: .rite-work-memory/issue-{issue_number}.md
+Read: .rite/work-memory/issue-{issue_number}.md
 ```
 
-If the file exists and is valid, use it as the base for updates. Retain the content in context.
+不在なら `.rite-work-memory/issue-{issue_number}.md`。存在する側が valid ならそれを更新のベースにする。Retain the content in context.
 
 ### 1.2 Fallback: Issue Comment (Backup)
 
-If the local file does not exist or is corrupt, fall back to the Issue comment:
+If neither local file exists, or the file selected in 1.1 is corrupt, fall back to the Issue comment. Do not use the legacy path when the new path exists but is invalid.
 
 ```bash
 gh api repos/{owner}/{repo}/issues/{issue_number}/comments --jq '.[] | {id: .id, body: .body}'
@@ -216,10 +216,12 @@ If a memo is provided as an argument, add it to the "決定事項・メモ" sect
 rationale: references/rationale.md#reread-before-write
 
 ```
-Read: .rite-work-memory/issue-{issue_number}.md
+Read: .rite/work-memory/issue-{issue_number}.md
 ```
 
-**Fallback**: If the local file is not available, re-fetch the Issue comment body:
+不在なら `.rite-work-memory/issue-{issue_number}.md`。
+
+**Fallback**: If neither local file is available, re-fetch the Issue comment body:
 
 ```bash
 comment_body=$(gh api repos/{owner}/{repo}/issues/comments/{comment_id} --jq '.body')

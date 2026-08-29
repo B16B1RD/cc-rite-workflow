@@ -96,11 +96,11 @@ common=$(git rev-parse --path-format=absolute --git-common-dir)
 
 | 状態 | 配置 | 根拠 |
 |---|---|---|
-| `.rite/sessions/` / `.rite-work-memory/`（+lockdir） / `.rite/state/`（flock 群 + issue-claims） / `.rite/wiki-worktree` / `.rite-session-id` / `.rite-plugin-root` | **共有 root**（main checkout） | セッション横断の整合・排他に必要。WM の mkdir lock は WM パス由来のため WM が共有なら自動的に共有 |
+| `.rite/sessions/` / `.rite/work-memory/`（+lockdir） / `.rite/state/`（flock 群 + issue-claims） / `.rite/wiki-worktree` / `.rite/session-id` / `.rite/plugin-root` | **共有 root**（main checkout） | セッション横断の整合・排他に必要。WM の mkdir lock は WM パス由来のため WM が共有なら自動的に共有 |
 | `.rite/review-results/` / `.rite/fix-cycle-state/` / `.rite/state/accepted-fingerprints-*` | **共有 root**（state-path-resolve 基準） | 保存 (worktree 内 pr-review) と読取・削除 (main checkout の fix 再開 / cleanup) がセッションを跨ぐため、cwd 相対だと削除 no-op・読取不発になる。書込/読取/削除の 3 者を state-path-resolve.sh で同一パスに解決する |
 | `.rite/tmp/` | **セッション cwd 相対のまま**（= worktree-local） | 同一セッション内で書いて読む一過性アーティファクト。worktree 削除と同時に消え、セッション間の混線を構造的に防ぐ |
 
-`.rite-plugin-root` は cwd 相対 `cat` する command スニペット（8 ファイル）のため、pr:open の worktree 作成時に worktree root へ**コピー配置**する
+`.rite/plugin-root` は cwd 相対 `cat` する command スニペットのため、pr:open の worktree 作成時に worktree の `.rite/plugin-root` へ**コピー配置**する
 （8 ファイル改修より 1 writer 追加を採択。既存スニペットには fallback があるため、コピーは決定論化のための defense-in-depth）。
 
 ### §2 rite-config.yml / flow-state 拡張
@@ -135,7 +135,7 @@ multi_session:
      | branch 存在・worktree なし | `git worktree add {path} {branch}`（`-b` なし） |
      | branch も worktree もなし | `git worktree add --no-track -b {branch} {path} origin/{base}`（`--no-track`: sandbox 環境での tracking 書込拒否回避） |
      | branch が**別の worktree** で checkout 中 | **中止**（他セッション作業中の可能性を表示 — git が構造的に保証する二重着手ガード） |
-  3. `.rite-plugin-root` を worktree root へコピー → `EnterWorktree(path: {path})`
+  3. `.rite/plugin-root` を worktree へコピー → `EnterWorktree(path: {path})`
   4. **EnterWorktree 不在/失敗時**: **silent fallback はしない**。失敗原因を切り分ける — (A) harness の git 誤判定（`.git` 存在 + `git -C {path} rev-parse` 成功 + 起動コンテキスト git=false / 「not in a git repository」）＝推奨。リポジトリ root から Claude Code を再起動し再実行すれば worktree は `WT_CASE=reuse` で継続（worktree は保持され破壊しない）/ (B) worktree 消失等の別要因＝S8 / `/rite:recover` 再構築経路へ委譲 / (C) 従来 `git switch -c` は recommended にせず、worktree 分離を破棄する明示エスケープとしてのみ残す（併走時の危険を警告）。Bash 永続 cwd 駆動は導入しない。
 - Step 2.6 / 6.3 の flow-state set に `--worktree {path}` を追加。
 - Step 3〜6（implement / lint / push / PR create）は cwd 相対で完結するため**無変更**（§1 の state root 統一が前提）。
@@ -198,7 +198,7 @@ multi_session:
 | `release` | `released` / `skipped` | `0`（冪等。不在でも `released`）/ `1` | 自セッションの claim のみ削除。他セッション保持時は `skipped`（触らない） |
 | `check` | `own` / `free` / `other` / `stale` | `0` | 読み取りのみ。corrupt/空 holder は `stale`（再取得可能） |
 
-- **session_id 解決**: `_resolve-session-id-from-file.sh`（`.rite-session-id` ファイル優先）→ env（`CLAUDE_CODE_SESSION_ID` / `CLAUDE_SESSION_ID`）の順で、`flow-state.sh` の解決順と**一致**させる（claim の session_id が holder の per-session flow-state ファイル名と一致することが liveness 判定の前提）。テスト・明示制御は `--session` override。
+- **session_id 解決**: `_resolve-session-id-from-file.sh`（`.rite/session-id` 優先、不在時のみ legacy `.rite-session-id`。新が不正なら旧 valid へは倒れない）→ env（`CLAUDE_CODE_SESSION_ID` / `CLAUDE_SESSION_ID`）の順で、`flow-state.sh` の解決順と**一致**させる（claim の session_id が holder の per-session flow-state ファイル名と一致することが liveness 判定の前提）。テスト・明示制御は `--session` override。
 - **配線挿入点**: pr:open Step 1.6 = `claim`（rc 10 → AskUserQuestion / rc 0 → 続行、`--worktree {path}` で worktree path も記録）。cleanup Step 11-12 = `release`。sprint execute/team-execute = `check`（`other` のみスキップ、`stale` はスキップせず pr:open の claim に委ねる）。
 
 ### §8 セッション worktree の遅延 reap（pr-cycle-cleanup.sh Step 5 追加）

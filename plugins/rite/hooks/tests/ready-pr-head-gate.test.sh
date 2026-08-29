@@ -89,7 +89,7 @@ wm_repo="$SB/wm-repo"; mkdir -p "$wm_repo"; git -C "$wm_repo" init -q
     WM_BRANCH_OVERRIDE='feature/"quoted"' WM_LAST_COMMIT_OVERRIDE=0123456789abcdef \
     bash "$ROOT/hooks/local-wm-update.sh"
 ) >/dev/null 2>"$SB/wm-err" || bad T-06-run
-wm_file="$wm_repo/.rite-work-memory/issue-42.md"
+wm_file="$wm_repo/.rite/work-memory/issue-42.md"
 grep -qF 'branch: "feature/\"quoted\""' "$wm_file" && grep -qF 'last_commit: "0123456789abcdef"' "$wm_file" && ok || bad T-06-values
 
 # Missing option values terminate instead of looping.

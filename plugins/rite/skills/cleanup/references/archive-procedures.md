@@ -529,7 +529,7 @@ Before resetting state, check for residual work memory files. If Phase 3 (Projec
 
 ```bash
 # Phase 4 開始前: 作業メモリファイル残存チェック
-if ls .rite-work-memory/issue-*.md 1>/dev/null 2>&1; then
+if ls .rite/work-memory/issue-*.md 1>/dev/null 2>&1; then
   echo "WARNING: 作業メモリファイルが残存しています。cleanup-work-memory.sh を実行します。"
   bash {plugin_root}/hooks/cleanup-work-memory.sh
 fi
@@ -543,7 +543,7 @@ After the Fail-Closed Gate, run the cleanup-work-memory script. This script perf
 
 1. Resets flow state to `active: false` (prevents `post-tool-wm-sync.sh` from recreating files)
 2. Deletes the per-session compact-state (`.rite/sessions/{session_id}.compact-state`) and its lockdir, plus the legacy shared `.rite-compact-state` and lockdir (retained for migration)
-3. Deletes ALL `.rite-work-memory/issue-*.md` files and their lockdirs (both current Issue and stale leftovers)
+3. Deletes ALL `.rite/work-memory/issue-*.md` files and their lockdirs (both current Issue and stale leftovers)
 4. Reports deletion results (deleted/failed/remaining counts)
 
 Resolve `{plugin_root}` per [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script-full-version) if not already resolved.
@@ -560,19 +560,19 @@ bash {plugin_root}/hooks/cleanup-work-memory.sh
 |-----------|----------|
 | flow state reset fails | Script displays WARNING to stderr and continues with file deletion |
 | File deletion fails | Script displays WARNING to stderr per file and continues |
-| `.rite-work-memory/` does not exist | No error (script handles gracefully) |
+| `.rite/work-memory/` does not exist | No error (script handles gracefully) |
 | Script itself fails | Display warning and proceed to cleanup.md ステップ 12 (non-blocking) |
 
 **Warning message on script failure:**
 
 ```
 警告: 作業メモリクリーンアップスクリプトが失敗しました
-手動でリセットする場合: flow state file を削除するか active を false に変更し、.rite-work-memory/issue-*.md を手動削除してください
+手動でリセットする場合: flow state file を削除するか active を false に変更し、.rite/work-memory/issue-*.md を手動削除してください
 ```
 
 **Note**: Failure does not block the cleanup process. Display a warning and proceed to cleanup.md ステップ 12.
 
-**Do NOT delete** the `.rite-work-memory/` directory itself — the script preserves it.
+**Do NOT delete** the `.rite/work-memory/` directory itself — the script preserves it.
 
 ---
 

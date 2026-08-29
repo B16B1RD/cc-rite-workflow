@@ -92,7 +92,7 @@ echo "wiki_enabled=$wiki_enabled auto_query=$auto_query"
 Step 2: `{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md#inline-one-liner-for-command-files) で解決する。`{keywords}` はユーザーのテーマ・対象ドメイン用語をカンマ区切りで生成する（他コーラー skills/issue-create/SKILL.md 4.0 / skills/fix/SKILL.md 0.5.W / skills/pr-review/SKILL.md 4.0.W / skills/issue-implement/SKILL.md 5.0.W と同形式）:
 
 ```bash
-plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 if [ -n "$plugin_root" ] && [ -f "$plugin_root/hooks/wiki-query-inject.sh" ]; then
   wiki_context=$(bash "$plugin_root/hooks/wiki-query-inject.sh" --keywords "{keywords}" --format compact 2>/dev/null) || wiki_context=""
   [ -n "$wiki_context" ] && echo "$wiki_context"

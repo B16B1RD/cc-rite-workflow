@@ -1356,11 +1356,11 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-1530: .rite-session-id write is conditioned on env-absence
+# TC-1530: .rite/session-id write is conditioned on env-absence
 # --------------------------------------------------------------------------
-echo "TC-1530: .rite-session-id write conditioned on env-absence"
+echo "TC-1530: .rite/session-id write conditioned on env-absence"
 
-# Case A: env absent → session-start writes .rite-session-id (the fallback channel
+# Case A: env absent → session-start writes .rite/session-id (the fallback channel
 # env-absent runtimes rely on for flow-state.sh resolution).
 dir1530a="$TEST_DIR/cond-env-absent"
 mkdir -p "$dir1530a"
@@ -1369,14 +1369,14 @@ LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 jq -n --arg cwd "$dir1530a" --arg src "startup" --arg sid "$sid1530a" \
   '{cwd: $cwd, source: $src, session_id: $sid}' \
   | env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
-if [ "$(cat "$dir1530a/.rite-session-id" 2>/dev/null)" = "$sid1530a" ]; then
-  pass "TC-1530a: env-absent → .rite-session-id written with payload sid (fallback)"
+if [ "$(cat "$dir1530a/.rite/session-id" 2>/dev/null)" = "$sid1530a" ] && [ ! -f "$dir1530a/.rite-session-id" ]; then
+  pass "TC-1530a: env-absent → .rite/session-id written with payload sid (fallback)"
 else
-  fail "TC-1530a: expected .rite-session-id='$sid1530a', got '$(cat "$dir1530a/.rite-session-id" 2>/dev/null)'"
+  fail "TC-1530a: expected .rite/session-id='$sid1530a' and no legacy file, got new='$(cat "$dir1530a/.rite/session-id" 2>/dev/null)' old='$(cat "$dir1530a/.rite-session-id" 2>/dev/null)'"
 fi
 
 # Case B: env present → session-start must NOT write/clobber the shared
-# .rite-session-id; the per-session env var is authoritative, so leaving the
+# session-id file; the per-session env var is authoritative, so leaving the
 # shared file untouched is what prevents concurrent sessions from overwriting it.
 dir1530b="$TEST_DIR/cond-env-present"
 mkdir -p "$dir1530b"
@@ -1386,10 +1386,10 @@ LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 jq -n --arg cwd "$dir1530b" --arg src "startup" --arg sid "$sid1530b" \
   '{cwd: $cwd, source: $src, session_id: $sid}' \
   | env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$env_sid_b" bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
-if [ ! -f "$dir1530b/.rite-session-id" ]; then
-  pass "TC-1530b: env-present → shared .rite-session-id not written (no cross-session clobber)"
+if [ ! -f "$dir1530b/.rite-session-id" ] && [ ! -f "$dir1530b/.rite/session-id" ]; then
+  pass "TC-1530b: env-present → shared session-id not written on new or legacy path"
 else
-  fail "TC-1530b: expected no .rite-session-id when env present, got '$(cat "$dir1530b/.rite-session-id" 2>/dev/null)'"
+  fail "TC-1530b: expected no session-id file when env present, new='$(cat "$dir1530b/.rite/session-id" 2>/dev/null)' old='$(cat "$dir1530b/.rite-session-id" 2>/dev/null)'"
 fi
 echo ""
 

@@ -85,7 +85,7 @@ dir001="$TEST_DIR/tc001"
 mkdir -p "$dir001"
 run_hook "$dir001"
 rc001=$?
-if [ ! -d "$dir001/.rite-work-memory" ]; then
+if [ ! -d "$dir001/.rite/work-memory" ]; then
   pass "No work memory created without state file (exit code: $rc001)"
 else
   fail "Work memory directory should not exist"
@@ -98,7 +98,7 @@ dir002="$TEST_DIR/tc002"
 mkdir -p "$dir002"
 create_state_file "$dir002" '{"active": false, "issue_number": 42, "phase": "completed"}'
 run_hook "$dir002" || true
-if [ ! -d "$dir002/.rite-work-memory" ]; then
+if [ ! -d "$dir002/.rite/work-memory" ]; then
   pass "No work memory created when active: false"
 else
   fail "Work memory should not be created when active: false"
@@ -111,7 +111,7 @@ dir003="$TEST_DIR/tc003"
 mkdir -p "$dir003"
 create_state_file "$dir003" '{"active": true, "issue_number": 42, "phase": "completed"}'
 run_hook "$dir003" || true
-wm_file="$dir003/.rite-work-memory/issue-42.md"
+wm_file="$dir003/.rite/work-memory/issue-42.md"
 if [ ! -f "$wm_file" ]; then
   pass "No work memory created when phase: completed (defense-in-depth)"
 else
@@ -122,11 +122,11 @@ echo ""
 # --- TC-004: active: true, phase: phase5_lint, file exists → no recreation ---
 echo "TC-004: active: true, file already exists → no recreation"
 dir004="$TEST_DIR/tc004"
-mkdir -p "$dir004/.rite-work-memory"
-echo "existing content" > "$dir004/.rite-work-memory/issue-42.md"
+mkdir -p "$dir004/.rite/work-memory"
+echo "existing content" > "$dir004/.rite/work-memory/issue-42.md"
 create_state_file "$dir004" '{"active": true, "issue_number": 42, "phase": "phase5_lint"}'
 run_hook "$dir004" || true
-content=$(cat "$dir004/.rite-work-memory/issue-42.md")
+content=$(cat "$dir004/.rite/work-memory/issue-42.md")
 if [ "$content" = "existing content" ]; then
   pass "Existing work memory file not overwritten"
 else
@@ -140,7 +140,7 @@ dir005="$TEST_DIR/tc005"
 mkdir -p "$dir005"
 create_state_file "$dir005" '{"active": true, "issue_number": 42, "phase": "phase5_implementation", "branch": "feat/issue-42-test"}'
 run_hook "$dir005" || true
-wm_file="$dir005/.rite-work-memory/issue-42.md"
+wm_file="$dir005/.rite/work-memory/issue-42.md"
 if [ -f "$wm_file" ]; then
   # Verify essential fields in created work memory
   wm_ok=true
@@ -163,8 +163,8 @@ echo ""
 # --- TC-006: Phase same as last_synced_phase → no-op (no API call) ---
 echo "TC-006: Phase same as last_synced_phase → no-op"
 dir006="$TEST_DIR/tc006"
-mkdir -p "$dir006/.rite-work-memory"
-echo "existing wm" > "$dir006/.rite-work-memory/issue-42.md"
+mkdir -p "$dir006/.rite/work-memory"
+echo "existing wm" > "$dir006/.rite/work-memory/issue-42.md"
 create_state_file "$dir006" '{"active": true, "issue_number": 42, "phase": "lint", "last_synced_phase": "lint"}'
 rc006=0
 run_hook "$dir006" || rc006=$?
@@ -180,15 +180,15 @@ echo ""
 # --- TC-007: Phase differs from last_synced_phase → sync attempted ---
 echo "TC-007: Phase differs from last_synced_phase → sync attempted"
 dir007="$TEST_DIR/tc007"
-mkdir -p "$dir007/.rite-work-memory"
-echo "existing wm" > "$dir007/.rite-work-memory/issue-42.md"
+mkdir -p "$dir007/.rite/work-memory"
+echo "existing wm" > "$dir007/.rite/work-memory/issue-42.md"
 create_state_file "$dir007" '{"active": true, "issue_number": 42, "phase": "phase5_pr_created", "last_synced_phase": "phase5_lint"}'
 # Enable debug logging to verify phase change was detected
 export RITE_DEBUG=1
 run_hook "$dir007" || true
 unset RITE_DEBUG
 # Verify phase change was detected via debug log (not unconditional pass)
-if [ -f "$dir007/.rite-flow-debug.log" ] && grep -q "phase changed:" "$dir007/.rite-flow-debug.log" 2>/dev/null; then
+if [ -f "$dir007/.rite/logs/flow-debug.log" ] && grep -q "phase changed:" "$dir007/.rite/logs/flow-debug.log" 2>/dev/null; then
   pass "Phase change detected and sync attempted when phase differs"
 else
   fail "Phase change not detected in debug log"
@@ -198,15 +198,15 @@ echo ""
 # --- TC-008: last_synced_phase missing (backward compat) → sync attempted ---
 echo "TC-008: last_synced_phase missing (backward compat) → sync attempted"
 dir008="$TEST_DIR/tc008"
-mkdir -p "$dir008/.rite-work-memory"
-echo "existing wm" > "$dir008/.rite-work-memory/issue-42.md"
+mkdir -p "$dir008/.rite/work-memory"
+echo "existing wm" > "$dir008/.rite/work-memory/issue-42.md"
 create_state_file "$dir008" '{"active": true, "issue_number": 42, "phase": "phase3_plan"}'
 # Enable debug logging to verify phase change was detected
 export RITE_DEBUG=1
 run_hook "$dir008" || true
 unset RITE_DEBUG
 # Verify phase change was detected (last_synced_phase defaults to "" which differs from "phase3_plan")
-if [ -f "$dir008/.rite-flow-debug.log" ] && grep -q "phase changed:" "$dir008/.rite-flow-debug.log" 2>/dev/null; then
+if [ -f "$dir008/.rite/logs/flow-debug.log" ] && grep -q "phase changed:" "$dir008/.rite/logs/flow-debug.log" 2>/dev/null; then
   pass "Phase change detected when last_synced_phase missing (backward compat)"
 else
   fail "Phase change not detected in debug log for backward compat case"
@@ -216,19 +216,19 @@ echo ""
 # --- TC-009: phase5_lint triggers progress update path ---
 echo "TC-009: phase5_lint triggers progress update path (case branch)"
 dir009="$TEST_DIR/tc009"
-mkdir -p "$dir009/.rite-work-memory"
-echo "existing wm" > "$dir009/.rite-work-memory/issue-42.md"
+mkdir -p "$dir009/.rite/work-memory"
+echo "existing wm" > "$dir009/.rite/work-memory/issue-42.md"
 create_state_file "$dir009" '{"active": true, "issue_number": 42, "phase": "phase5_lint", "last_synced_phase": "phase5_implementation"}'
 # Enable debug logging to verify progress sync path is reached
 export RITE_DEBUG=1
 run_hook "$dir009" || true
 unset RITE_DEBUG
-if [ -f "$dir009/.rite-flow-debug.log" ]; then
-  if grep -q "progress sync completed\|update-progress failed" "$dir009/.rite-flow-debug.log" 2>/dev/null; then
+if [ -f "$dir009/.rite/logs/flow-debug.log" ]; then
+  if grep -q "progress sync completed\|update-progress failed" "$dir009/.rite/logs/flow-debug.log" 2>/dev/null; then
     pass "Progress sync path was triggered for phase5_lint"
   else
     # update-phase may also fail in test env, check for phase change detection
-    if grep -q "phase changed:" "$dir009/.rite-flow-debug.log" 2>/dev/null; then
+    if grep -q "phase changed:" "$dir009/.rite/logs/flow-debug.log" 2>/dev/null; then
       pass "Phase change detected for phase5_lint (progress sync attempted)"
     else
       fail "No phase change detection in debug log"
@@ -245,8 +245,8 @@ echo ""
 # (not the legacy `.rite-flow-state`). Phase diff detection must still work end-to-end.
 echo "TC-POST-WM-PER-SESSION-1: per-session state file → phase diff detected"
 dir_ps="$TEST_DIR/tc_per_session"
-mkdir -p "$dir_ps/.rite-work-memory" "$dir_ps/.rite/sessions"
-echo "existing wm" > "$dir_ps/.rite-work-memory/issue-42.md"
+mkdir -p "$dir_ps/.rite/work-memory" "$dir_ps/.rite/sessions"
+echo "existing wm" > "$dir_ps/.rite/work-memory/issue-42.md"
 printf '# rite test sandbox config\n' > "$dir_ps/rite-config.yml"
 sid_ps="00000000-0000-4000-8000-000000000042"
 printf '%s' "$sid_ps" > "$dir_ps/.rite-session-id"
@@ -266,7 +266,7 @@ STATE_EOF
 export RITE_DEBUG=1
 run_hook "$dir_ps" || true
 unset RITE_DEBUG
-if [ -f "$dir_ps/.rite-flow-debug.log" ] && grep -q "phase changed:" "$dir_ps/.rite-flow-debug.log" 2>/dev/null; then
+if [ -f "$dir_ps/.rite/logs/flow-debug.log" ] && grep -q "phase changed:" "$dir_ps/.rite/logs/flow-debug.log" 2>/dev/null; then
   pass "Phase change detected via per-session state file"
 else
   fail "Phase change not detected when reading from per-session state file"
@@ -277,8 +277,8 @@ echo ""
 # wm_replica=absent で gh なしに _phase_sync_ok=1 にする（fetch 空 status は失敗扱い）。
 echo "TC-POST-WM-PER-SESSION-2: per-session state → last_synced_phase atomic write targets per-session path"
 dir_ps2="$TEST_DIR/tc_per_session_2"
-mkdir -p "$dir_ps2/.rite-work-memory" "$dir_ps2/.rite/sessions"
-echo "existing wm" > "$dir_ps2/.rite-work-memory/issue-42.md"
+mkdir -p "$dir_ps2/.rite/work-memory" "$dir_ps2/.rite/sessions"
+echo "existing wm" > "$dir_ps2/.rite/work-memory/issue-42.md"
 printf '# rite test sandbox config\n' > "$dir_ps2/rite-config.yml"
 sid_ps2="00000000-0000-4000-8000-000000000043"
 printf '%s' "$sid_ps2" > "$dir_ps2/.rite-session-id"
@@ -390,14 +390,14 @@ echo ""
 for flat_phase in implement lint pr review fix; do
   echo "TC-FP-${flat_phase}: flat phase=${flat_phase} → phase change detected (case branch coverage)"
   dir_fp="$TEST_DIR/tc_fp_${flat_phase}"
-  mkdir -p "$dir_fp/.rite-work-memory"
-  echo "existing wm" > "$dir_fp/.rite-work-memory/issue-42.md"
+  mkdir -p "$dir_fp/.rite/work-memory"
+  echo "existing wm" > "$dir_fp/.rite/work-memory/issue-42.md"
   # last_synced_phase をあえて違う値にし、phase diff trigger を発火させる。
   create_state_file "$dir_fp" "{\"active\": true, \"issue_number\": 42, \"phase\": \"${flat_phase}\", \"last_synced_phase\": \"init\"}"
   export RITE_DEBUG=1
   run_hook "$dir_fp" || true
   unset RITE_DEBUG
-  if [ -f "$dir_fp/.rite-flow-debug.log" ] && grep -q "phase changed:" "$dir_fp/.rite-flow-debug.log" 2>/dev/null; then
+  if [ -f "$dir_fp/.rite/logs/flow-debug.log" ] && grep -q "phase changed:" "$dir_fp/.rite/logs/flow-debug.log" 2>/dev/null; then
     pass "TC-FP-${flat_phase} phase change detected for flat phase=${flat_phase}"
   else
     fail "TC-FP-${flat_phase} phase change not detected — case branch may have dropped '${flat_phase})'"
@@ -430,8 +430,8 @@ fi
 # WARNING line includes the real rc so the failure cannot hide.
 echo "TC-014: python3 PATH-shim failure surfaces WARNING with rc and falls back"
 dir014="$TEST_DIR/tc014"
-mkdir -p "$dir014/.rite-work-memory"
-echo "# placeholder" > "$dir014/.rite-work-memory/issue-99.md"
+mkdir -p "$dir014/.rite/work-memory"
+echo "# placeholder" > "$dir014/.rite/work-memory/issue-99.md"
 create_state_file "$dir014" '{"active": true, "issue_number": 99, "phase": "phase5_lint", "last_synced_phase": "phase5_implementation", "branch": "feat/issue-99-test"}'
 shim_dir014="$TEST_DIR/tc014-shim"
 mkdir -p "$shim_dir014"
@@ -476,10 +476,10 @@ if [ ! -f "$git_log_ee1" ]; then
 else
   fail "TC-EARLYEXIT-1 git was spawned in non-rite project: $(cat "$git_log_ee1")"
 fi
-if [ "$rc_ee1" -eq 0 ] && [ ! -d "$dir_ee1/.rite-work-memory" ]; then
+if [ "$rc_ee1" -eq 0 ] && [ ! -d "$dir_ee1/.rite/work-memory" ]; then
   pass "TC-EARLYEXIT-1 exit 0 and no work memory created"
 else
-  fail "TC-EARLYEXIT-1 unexpected: rc=$rc_ee1, wm-dir=$([ -d "$dir_ee1/.rite-work-memory" ] && echo present || echo absent)"
+  fail "TC-EARLYEXIT-1 unexpected: rc=$rc_ee1, wm-dir=$([ -d "$dir_ee1/.rite/work-memory" ] && echo present || echo absent)"
 fi
 echo ""
 
@@ -670,10 +670,10 @@ run_hook_cap() {
 
 echo "T-01: 3-transform gated phase → gh log is GET 1 + PATCH 1 exactly"
 dir_n01="$TEST_DIR/n01"
-mkdir -p "$dir_n01/.rite-work-memory"
+mkdir -p "$dir_n01/.rite/work-memory"
 setup_git_repo "$dir_n01" develop
 printf 'branch:\n  base: develop\n' > "$dir_n01/rite-config.yml"
-echo "existing wm" > "$dir_n01/.rite-work-memory/issue-42.md"
+echo "existing wm" > "$dir_n01/.rite/work-memory/issue-42.md"
 create_state_file "$dir_n01" '{"active": true, "issue_number": 42, "phase": "implement", "last_synced_phase": "init", "wm_comment_id": 4242}'
 wm_body_fixture > "$dir_n01/wm-body.md"
 install_gh_shim "$dir_n01"
@@ -711,10 +711,10 @@ echo ""
 
 echo "T-05: ungated phase → still 2 gh calls, PATCH has update-phase only"
 dir_n05="$TEST_DIR/n05"
-mkdir -p "$dir_n05/.rite-work-memory"
+mkdir -p "$dir_n05/.rite/work-memory"
 setup_git_repo "$dir_n05" develop
 printf 'branch:\n  base: develop\n' > "$dir_n05/rite-config.yml"
-echo "existing wm" > "$dir_n05/.rite-work-memory/issue-42.md"
+echo "existing wm" > "$dir_n05/.rite/work-memory/issue-42.md"
 create_state_file "$dir_n05" '{"active": true, "issue_number": 42, "phase": "plan", "last_synced_phase": "init", "wm_comment_id": 4242}'
 wm_body_fixture > "$dir_n05/wm-body.md"
 install_gh_shim "$dir_n05"
@@ -737,9 +737,9 @@ echo ""
 
 echo "T-07: wm_replica=absent already set → 0 gh calls, empty stdout, last_synced_phase advances"
 dir_n07="$TEST_DIR/n07"
-mkdir -p "$dir_n07/.rite-work-memory"
+mkdir -p "$dir_n07/.rite/work-memory"
 printf '# rite\n' > "$dir_n07/rite-config.yml"
-echo "existing wm" > "$dir_n07/.rite-work-memory/issue-42.md"
+echo "existing wm" > "$dir_n07/.rite/work-memory/issue-42.md"
 create_state_file "$dir_n07" '{"active": true, "issue_number": 42, "phase": "implement", "last_synced_phase": "init", "wm_replica": "absent"}'
 install_gh_shim "$dir_n07"
 rc_n07=0
@@ -755,11 +755,11 @@ echo ""
 
 echo "T-09: no branch.base, origin/HEAD=main → git diff uses origin/main...HEAD"
 dir_n09="$TEST_DIR/n09"
-mkdir -p "$dir_n09/.rite-work-memory"
+mkdir -p "$dir_n09/.rite/work-memory"
 setup_git_repo "$dir_n09" main
 ( cd "$dir_n09" && git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main )
 printf '# rite (no branch.base)\n' > "$dir_n09/rite-config.yml"
-echo "existing wm" > "$dir_n09/.rite-work-memory/issue-42.md"
+echo "existing wm" > "$dir_n09/.rite/work-memory/issue-42.md"
 create_state_file "$dir_n09" '{"active": true, "issue_number": 42, "phase": "implement", "last_synced_phase": "init", "wm_comment_id": 4242}'
 wm_body_fixture > "$dir_n09/wm-body.md"
 install_gh_shim "$dir_n09"
@@ -781,11 +781,11 @@ echo ""
 
 echo "T-10: no branch.base and no origin/HEAD → skip progress + systemMessage; update-phase still in PATCH"
 dir_n10="$TEST_DIR/n10"
-mkdir -p "$dir_n10/.rite-work-memory"
+mkdir -p "$dir_n10/.rite/work-memory"
 setup_git_repo "$dir_n10" develop
 # origin/HEAD を作らない (symbolic-ref 失敗させる)
 printf '# rite (no branch.base)\n' > "$dir_n10/rite-config.yml"
-echo "existing wm" > "$dir_n10/.rite-work-memory/issue-42.md"
+echo "existing wm" > "$dir_n10/.rite/work-memory/issue-42.md"
 create_state_file "$dir_n10" '{"active": true, "issue_number": 42, "phase": "implement", "last_synced_phase": "init", "wm_comment_id": 4242}'
 wm_body_fixture > "$dir_n10/wm-body.md"
 install_gh_shim "$dir_n10"
@@ -807,10 +807,10 @@ echo ""
 
 echo "T-11: PATCH non-zero → backup remains, systemMessage, last_synced_phase unchanged"
 dir_n11="$TEST_DIR/n11"
-mkdir -p "$dir_n11/.rite-work-memory"
+mkdir -p "$dir_n11/.rite/work-memory"
 setup_git_repo "$dir_n11" develop
 printf 'branch:\n  base: develop\n' > "$dir_n11/rite-config.yml"
-echo "existing wm" > "$dir_n11/.rite-work-memory/issue-42.md"
+echo "existing wm" > "$dir_n11/.rite/work-memory/issue-42.md"
 create_state_file "$dir_n11" '{"active": true, "issue_number": 42, "phase": "plan", "last_synced_phase": "init", "wm_comment_id": 4242}'
 wm_body_fixture > "$dir_n11/wm-body.md"
 install_gh_shim "$dir_n11"
@@ -859,9 +859,9 @@ echo ""
 echo "T-14: AC-1/4/8/9 paths all exit 0; AC-4 Then (systemMessage JSON, wm_replica, lsp, list GET 1)"
 # AC-1 = T-01 success 2-rt, AC-4 = no_comment first detect, AC-8 = T-10 base skip, AC-9 = T-11 PATCH fail
 dir_n14="$TEST_DIR/n14"
-mkdir -p "$dir_n14/.rite-work-memory"
+mkdir -p "$dir_n14/.rite/work-memory"
 printf '# rite\n' > "$dir_n14/rite-config.yml"
-echo "existing wm" > "$dir_n14/.rite-work-memory/issue-42.md"
+echo "existing wm" > "$dir_n14/.rite/work-memory/issue-42.md"
 create_state_file "$dir_n14" '{"active": true, "issue_number": 42, "phase": "plan", "last_synced_phase": "init"}'
 wm_body_fixture > "$dir_n14/wm-body.md"
 touch "$dir_n14/list-empty.flag"
@@ -894,7 +894,7 @@ echo ""
 
 echo "T-15: fetch empty status (no origin, gh repo view fails) → systemMessage, last_synced_phase unchanged, exit 0"
 dir_n15="$TEST_DIR/n15"
-mkdir -p "$dir_n15/.rite-work-memory" "$dir_n15/bin"
+mkdir -p "$dir_n15/.rite/work-memory" "$dir_n15/bin"
 ( cd "$dir_n15" &&
   git init -q &&
   git checkout -q -b main &&
@@ -903,7 +903,7 @@ mkdir -p "$dir_n15/.rite-work-memory" "$dir_n15/bin"
   git -c user.email=t@t.local -c user.name=t commit -q -m i
 )
 printf '# rite\n' > "$dir_n15/rite-config.yml"
-echo "existing wm" > "$dir_n15/.rite-work-memory/issue-42.md"
+echo "existing wm" > "$dir_n15/.rite/work-memory/issue-42.md"
 create_state_file "$dir_n15" '{"active": true, "issue_number": 42, "phase": "plan", "last_synced_phase": "init"}'
 cat > "$dir_n15/bin/gh" <<'GH_SHIM'
 #!/bin/bash

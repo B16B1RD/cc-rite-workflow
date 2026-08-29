@@ -169,7 +169,8 @@ rationale: references/rationale.md#wm-source-content
 # WM 採用元の選定（候補の存在ではなく内容を検査する）
 # 進捗セクション: 現行 `### 進捗サマリー` と v1 `### 進捗` の両方を認める
 # （incomplete 抽出が両見出しを拾う契約との整合）
-_wm_local=".rite-work-memory/issue-{issue_number}.md"
+_wm_local=".rite/work-memory/issue-{issue_number}.md"
+[ -f "$_wm_local" ] || [ ! -f ".rite-work-memory/issue-{issue_number}.md" ] || _wm_local=".rite-work-memory/issue-{issue_number}.md"
 _wm_source=""
 _wm_body=""
 if [ -f "$_wm_local" ]; then
@@ -1117,7 +1118,7 @@ ingest の成否（skip 含む）に関わらずステップ 10 へ進む。
 詳細は [archive-procedures.md](./references/archive-procedures.md) の以下 2 セクション両方を実行する:
 
 - **Work Memory final update セクション** (= `### 3.5`): Issue comment への完了マーク追記 (gh API PATCH)
-- **State reset セクション** (= `## Phase 4: Reset State and Delete Local Work Memory`): `cleanup-work-memory.sh` 実行による local `.rite-work-memory/issue-*.md` ファイル削除 + flow state `active: false` リセット
+- **State reset セクション** (= `## Phase 4: Reset State and Delete Local Work Memory`): `cleanup-work-memory.sh` 実行による local `.rite/work-memory/issue-*.md` ファイル削除 + flow state `active: false` リセット
 
 両方実行する（片方だけではローカル file が残り `post-tool-wm-sync.sh` が再生成する）。
 rationale: references/rationale.md#wm-dual-finalize
