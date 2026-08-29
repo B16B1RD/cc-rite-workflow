@@ -23,6 +23,13 @@
 #   T-08 cleanup SKILL.md が helper を archive より前に呼ぶ
 #   T-09 project-number 非数値は Projects skip + WARNING
 #   T-10 project_registration=skipped は WARNING
+#
+# Coverage (Issue #2467 T-01..T-05 = 本ファイルの T-11..T-15):
+#   T-11 --exclude-ids で指定した finding だけが body から落ち、残りは全文が載る (AC-1)
+#   T-12 全件除外は all_resolved で起票せず、gh issue list も叩かない (AC-2)
+#   T-13 未知 id は WARNING のうえ既知 id の除外だけ適用して起票を続行する (AC-3)
+#   T-14 --exclude-ids 未指定 / 空文字列は既存挙動と完全一致 (AC-4)
+#   T-15 cleanup SKILL.md が再検証手順・3 値語彙・除外引数を持つ (AC-5 / AC-6)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -401,6 +408,99 @@ assert "T-10 exit 0" "0" "$RC"
 assert_grep "T-10 created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
 assert_grep "T-10 skipped WARNING" "$ERR" 'Projects 登録: skipped'
 unset CREATE_REG
+
+TWO_FINDING_JSON='{"non_blocking_findings":[{"id":"F-01","reviewer":"code-quality-reviewer","severity":"LOW","file":"a.md","line":3,"description":"残存する指摘の本文","suggestion":"残存する提案"},{"id":"F-05","reviewer":"tech-writer-reviewer","severity":"LOW","file":"b.md","line":9,"description":"解消済みの指摘の本文","suggestion":"解消済みの提案"}]}'
+
+echo "--- T-11: 部分除外は除外 id だけを落とし残りは全文を載せる (AC-1) ---"
+reset_stubs
+r=$(new_root t11)
+put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
+run_target "$r" --exclude-ids "F-05"
+assert "T-11 exit 0" "0" "$RC"
+assert_grep "T-11 created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert "T-11 create 1 回" "1" "$(create_count)"
+# 件数一致では除外 id と残存 id の入れ替わりを検出できないため id と本文の present/absent で pin
+assert_grep "T-11 残存 id が body にある" "$STUB_DIR/body.md" 'F-01'
+assert_grep "T-11 残存 description が body にある" "$STUB_DIR/body.md" '残存する指摘の本文'
+assert_grep "T-11 残存 suggestion が body にある" "$STUB_DIR/body.md" '残存する提案'
+assert_not_grep "T-11 除外 id が body に無い" "$STUB_DIR/body.md" 'F-05'
+assert_not_grep "T-11 除外 description が body に無い" "$STUB_DIR/body.md" '解消済みの指摘の本文'
+assert_not_grep "T-11 除外 suggestion が body に無い" "$STUB_DIR/body.md" '解消済みの提案'
+assert_not_grep "T-11 未知 id WARNING は出ない" "$ERR" '一致しない id'
+
+echo "--- T-12: 全件除外は all_resolved で起票せず lookup も叩かない (AC-2) ---"
+reset_stubs
+r=$(new_root t12)
+put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
+run_target "$r" --exclude-ids "F-01,F-05"
+assert "T-12 exit 0" "0" "$RC"
+assert_grep "T-12 all_resolved marker" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_resolved; pr=9'
+assert_grep "T-12 stdout summary も all_resolved" "$OUT" 'result=skipped; reason=all_resolved; pr=9'
+assert "T-12 create 0 回" "0" "$(create_count)"
+# 除外判定が already_exists lookup より前に立つことの観測条件 (全件除外ケース限定)
+assert_not_grep "T-12 gh issue list を叩かない" "$GH_LOG" 'issue list'
+assert_not_grep "T-12 no_findings には倒さない" "$ERR" 'reason=no_findings'
+
+echo "--- T-13: 未知 id は WARNING + 既知分だけ除外して起票継続 (AC-3) ---"
+reset_stubs
+r=$(new_root t13)
+put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
+run_target "$r" --exclude-ids "F-99,F-05"
+assert "T-13 exit 0 (非ブロッキング)" "0" "$RC"
+assert_grep "T-13 未知 id WARNING" "$ERR" '一致しない id が含まれます: F-99'
+# WARNING の有無だけでは「未知 id で起票を止める実装」も通るため起票継続まで pin する
+assert_grep "T-13 起票は継続する" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert "T-13 create 1 回" "1" "$(create_count)"
+assert_grep "T-13 既知 id の除外は効く" "$STUB_DIR/body.md" 'F-01'
+assert_not_grep "T-13 除外した既知 id は body に無い" "$STUB_DIR/body.md" 'F-05'
+
+echo "--- T-14: --exclude-ids 未指定 / 空文字列は既存挙動と一致 (AC-4) ---"
+reset_stubs
+r=$(new_root t14a)
+put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
+run_target "$r"
+assert "T-14 未指定 exit 0" "0" "$RC"
+assert_grep "T-14 未指定は created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert_grep "T-14 未指定は F-01 を転記" "$STUB_DIR/body.md" 'F-01'
+assert_grep "T-14 未指定は F-05 も転記" "$STUB_DIR/body.md" 'F-05'
+_t14_default_body=$(cat "$STUB_DIR/body.md")
+
+reset_stubs
+r=$(new_root t14b)
+put_json "$r" "9-20260101120000.json" "$TWO_FINDING_JSON"
+run_target "$r" --exclude-ids ""
+assert "T-14 空文字列 exit 0 (引数不正にしない)" "0" "$RC"
+assert_grep "T-14 空文字列は created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert "T-14 空文字列の body は未指定と同一" "$_t14_default_body" "$(cat "$STUB_DIR/body.md")"
+assert_not_grep "T-14 空文字列は all_resolved に倒さない" "$ERR" 'reason=all_resolved'
+
+reset_stubs
+r=$(new_root t14c)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[]}'
+run_target "$r" --exclude-ids ""
+assert "T-14 除外前 0 件は no_findings のまま" "0" "$RC"
+assert_grep "T-14 no_findings を維持" "$ERR" 'reason=no_findings; pr=9'
+assert_not_grep "T-14 除外前 0 件を all_resolved にしない" "$ERR" 'reason=all_resolved'
+
+echo "--- T-15: cleanup SKILL.md の再検証契約 (AC-5 / AC-6) ---"
+CLEANUP_MD="$SCRIPT_DIR/../../skills/cleanup/SKILL.md"
+if [ ! -f "$CLEANUP_MD" ]; then
+  fail "T-15 cleanup/SKILL.md が見つからない: $CLEANUP_MD"
+else
+  assert_grep "T-15 helper へ --exclude-ids を渡す" "$CLEANUP_MD" 'exclude-ids "\$_fu_exclude_ids"'
+  assert "T-15 _fu_exclude_ids を既定初期化する" "1" \
+    "$(grep -cF '_fu_exclude_ids="${_fu_exclude_ids:-}"' "$CLEANUP_MD" || true)"
+  assert_grep "T-15 再検証節の見出し" "$CLEANUP_MD" '6\.0\.V helper 呼び出し前の再検証'
+  assert_grep "T-15 3 値 resolved" "$CLEANUP_MD" '^| `resolved` |'
+  assert_grep "T-15 3 値 remains" "$CLEANUP_MD" '^| `remains` |'
+  assert_grep "T-15 3 値 undecidable" "$CLEANUP_MD" '^| `undecidable` |'
+  assert_grep "T-15 undecidable は転記する" "$CLEANUP_MD" '\*\*転記する\*\*（`--exclude-ids` へ渡さない）'
+  assert_grep "T-15 判定内訳 marker" "$CLEANUP_MD" 'FOLLOW_UP_REVERIFY=done; resolved='
+  assert_grep "T-15 再検証不能時は除外なしへ倒す" "$CLEANUP_MD" '全件を `undecidable` 扱い'
+  # AC-6 (#2465 同型: 元 PR のマージコミット自身で修正済み) を resolved に落とす判定材料
+  assert_grep "T-15 resolved の機械的判定材料" "$CLEANUP_MD" '既に修正後の形になっている'
+  assert_grep "T-15 all_resolved を x 相当に置く" "$CLEANUP_MD" 'skipped; reason=all_resolved` | x 相当'
+fi
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?

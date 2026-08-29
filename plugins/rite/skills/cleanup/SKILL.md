@@ -879,10 +879,56 @@ rationale: references/rationale.md#remote-delete-markers
 archive より前に実行する（JSON が元の場所にあるうちに読む）。0 件は起票しない。同定不能は起票せず WARNING。cleanup は止めない。
 rationale: references/rationale.md#follow-up-before-archive
 
+#### 6.0.V helper 呼び出し前の再検証（マージ後 HEAD）
+
+`non_blocking_findings[]` は**指摘が出た cycle** の観測であり、その後の fix cycle で解消されても JSON は更新されない。無条件に転記すると**マージ時点で既に存在しない drift** の follow-up Issue が起票される。helper（bash）は「この指摘は既に解消済みか」という散文の意味判定を持てないため、再検証は本ステップ（LLM 層）で行う。
+
+対象 JSON は helper と同一の選び方（`{state_root}/.rite/review-results/{pr_number}-*.json*` のうち basename 辞書順最大）で 1 本に確定する:
+
+```bash
+_state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+[ -n "$_state_root" ] || _state_root="$(pwd)"
+_rv_src=""; _rv_base=""
+for f in "$_state_root/.rite/review-results/{pr_number}"-*.json*; do
+  { [ -e "$f" ] || [ -L "$f" ]; } || continue
+  b="${f##*/}"
+  if [ -z "$_rv_base" ] || [ "$b" \> "$_rv_base" ]; then _rv_src="$f"; _rv_base="$b"; fi
+done
+if [ -n "$_rv_src" ] && command -v jq >/dev/null 2>&1; then
+  jq -r '.non_blocking_findings[]? | "\(.id)\t\(.file // "-")\t\(.line // "-")\t\(.description // "")\t\(.suggestion // "")"' "$_rv_src" 2>/dev/null \
+    || echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=parse_failed"
+else
+  echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=no_json_or_jq"
+fi
+```
+
+出力の各 finding について、**マージ後 HEAD の実態**を Read / Grep で確認し 3 値で判定する:
+
+| 判定 | 条件 | 帰結 |
+|---|---|---|
+| `resolved` | 指摘された drift が HEAD に**現存しないことを確認できた**。機械的に確認できる手がかりを優先する: `file:line` 周辺を Read して指摘された記述・コードが既に修正後の形になっている / `suggestion` の提案文言が既にファイルに存在する / 指摘対象の行そのものが削除されている | `--exclude-ids` へ渡す（転記しない） |
+| `remains` | 指摘された drift が HEAD に現存する | 転記する |
+| `undecidable` | 断定できない。`file:line` が移動した / 指摘が散文の意図に関わる / 判定材料が足りない / ファイル自体が読めない | **転記する**（`--exclude-ids` へ渡さない）。false negative を避ける安全側 |
+
+`FOLLOW_UP_REVERIFY=unavailable` を観測した場合、および本節を実行できなかった場合は**全件を `undecidable` 扱い**とし、`--exclude-ids` は空文字列のまま helper を呼ぶ（= 除外なし＝従来挙動）。
+
+判定を終えたら、`resolved` の id を CSV（`"F-01,F-05"`）に組み、内訳 marker を出す:
+
+```bash
+# `{resolved_ids_csv}` / `{n_*}` は上記判定の結果をリテラル置換する（resolved が 0 件なら空文字列）
+_fu_exclude_ids="{resolved_ids_csv}"
+echo "[CONTEXT] FOLLOW_UP_REVERIFY=done; resolved={n_resolved}; remains={n_remains}; undecidable={n_undecidable}"
+```
+
+内訳はステップ 12 の完了報告に含める。
+
 ```bash
 _state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
 [ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
 _fu_rc=0
+# 6.0.V が値を入れていても、本ブロック単独実行時に未定義参照へ落ちないよう既定を確定させる。
+# 空文字列 = 除外なし = 従来挙動 (再検証が undecidable / skip のときの安全側)。
+_fu_exclude_ids="${_fu_exclude_ids:-}"
 # --owner/--repo は repo identity ({owner_repo} の slash split)。--project-owner だけ Projects owner ({owner})。
 IFS=/ read -r _gh_owner _gh_repo <<< "{owner_repo}"
 bash {plugin_root}/hooks/scripts/cleanup-follow-up-issue.sh \
@@ -893,7 +939,8 @@ bash {plugin_root}/hooks/scripts/cleanup-follow-up-issue.sh \
   --repo "${_gh_repo}" \
   --project-number "{project_number}" \
   --project-owner "{owner}" \
-  --projects-enabled "{projects_enabled}" || _fu_rc=$?
+  --projects-enabled "{projects_enabled}" \
+  --exclude-ids "$_fu_exclude_ids" || _fu_rc=$?
 if [ "$_fu_rc" -ne 0 ]; then
   echo "WARNING: follow-up Issue 起票 helper が rc=${_fu_rc} で失敗しました。cleanup は続行します" >&2
   echo "  手動起票: 当該 PR の review-results JSON の non_blocking_findings[] を元に follow-up ラベル付き Issue を作成してください" >&2
@@ -1151,7 +1198,7 @@ Status: {projects_status_result}
 - [{base_update_check}] base ブランチを更新 (fetch + merge --ff-only)
 - [{session_worktree_check}] セッション worktree 退出・削除 (multi_session)
 - [{local_branch_check}] ローカル/リモートブランチ削除
-- [{review_cleanup_check}] PR-specific state ファイル削除
+- [{review_cleanup_check}] PR-specific state ファイル削除{follow_up_reverify_note}
 - [{projects_check}] Projects Status を Done に更新
 - [{wiki_ingest_check}] Wiki ingest (pending raw source のページ統合)
 - [x] flow state リセット
@@ -1248,10 +1295,17 @@ rationale: references/rationale.md#marker-data-delimiter
   | `FOLLOW_UP_ISSUE=failed`（reason 問わず。`helper_rc` / `lookup_api` / `create_api` / `create_script_missing` / `json_undecidable` を含む） | 未完了 | `⚠️ follow-up Issue の起票に失敗しました。review-results JSON の non_blocking_findings[] を元に follow-up ラベル付き Issue を手動作成してください` |
   | `skipped; reason=no_json` | 未完了 | 同上（レビュー結果 JSON 不在） |
   | `skipped; reason=jq_missing` | 未完了 | `⚠️ jq が見つからず follow-up 起票を skip しました。jq を導入したうえで、残存非実測指摘があれば follow-up Issue を手動作成してください` |
-  | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` | x 相当 | — |
+  | `created` / `skipped; reason=no_findings` / `skipped; reason=already_exists` / `skipped; reason=all_resolved` | x 相当 | — |
   | `[CONTEXT] FOLLOW_UP_ISSUE=` かつ `pr={pr_number}` の行が無い | 未完了 | `⚠️ follow-up 起票の実行結果が確認できませんでした。残存非実測指摘があれば follow-up ラベル付き Issue を手動作成してください` |
 
   **FOLLOW_UP_ISSUE marker 不在を成功と読んではならない。**
+
+  `skipped; reason=all_resolved` を x 相当に置くのは、ステップ 6.0.V の再検証で残存 0 件が確定した**正常完了**だから（起票すべきものが無い）。`no_findings` と同じ扱いであり「起票に失敗した」ではない。
+
+- `{follow_up_reverify_note}`: ステップ 6.0.V の `[CONTEXT] FOLLOW_UP_REVERIFY=` marker で判定する（`pr={pr_number}` を持たない single-shot marker のため、複数行あれば最後の出現を採る）:
+  - `done` のとき: ` — follow-up 再検証: 解消済み {n_resolved} / 残存 {n_remains} / 判定不能 {n_undecidable}`（`{n_*}` は marker の同名フィールドをリテラル置換）
+  - `unavailable` のとき: ` — follow-up 再検証: 未実施（{reason}。全件を転記対象としました）`（`{reason}` は marker の `reason=` 値）
+  - marker が無いとき: 空文字列（行に何も足さない）
 
   **state 削除側**（`REVIEW_CLEANUP_PARTIAL_FAILURE=1` を上から評価し最初の一致。各行は presence 検査。こちら側に marker が 1 本も無ければ x 相当）:
 
