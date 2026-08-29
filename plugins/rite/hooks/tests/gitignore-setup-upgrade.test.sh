@@ -167,6 +167,9 @@ assert_grep_in_section "T-07 Step 6.5 generates nested gitignore at state_root" 
 assert_grep_in_section "T-07 Phase 4.6 generates nested gitignore at state_root" \
   "$SETUP" '## Phase 4.6:' '## Phase 4.7:' \
   '_ensure_rite_nested_gitignore "\$state_root/\.rite"'
+assert_grep_in_section "T-07 Phase 4.6 also generates nested gitignore at cwd .rite" \
+  "$SETUP" '## Phase 4.6:' '## Phase 4.7:' \
+  '_ensure_rite_nested_gitignore \.rite'
 assert_grep_in_section "T-07 Phase 4.5.5 resolves state_root in the same bash block" \
   "$SETUP" '### 4.5.5 Record Installed Version' '## Phase 4.6:' \
   'state_root=\$\(bash "\{hooks_dir\}/state-path-resolve.sh"\)'

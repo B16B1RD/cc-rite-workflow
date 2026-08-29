@@ -1248,6 +1248,12 @@ if ! _ensure_rite_nested_gitignore "$state_root/.rite"; then
   echo "WARNING: .rite/.gitignore を作成できませんでした。このディレクトリが git から除外されているか手動で確認してください" >&2
   [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
 fi
+# cwd に .rite/ を作るならそのツリーにも書く（state_root と cwd が同じなら上の呼び出しと同一ファイルで no-op）。
+mkdir -p .rite
+if ! _ensure_rite_nested_gitignore .rite; then
+  echo "WARNING: .rite/.gitignore を作成できませんでした。このディレクトリが git から除外されているか手動で確認してください" >&2
+  [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+fi
 ```
 
 Display: `✅ Work memory directory initialized (.rite/work-memory/)`
