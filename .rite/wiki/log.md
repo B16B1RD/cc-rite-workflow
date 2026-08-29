@@ -1,5 +1,6 @@
 ## 2026-08-29
 * **Skip**: [20260829T023837Z-pr-2450.md](raw/reviews/20260829T023837Z-pr-2450.md) — detector-candidate: checks pending 待ち loop（15s/540s, timeout 600000, 分類関数化, rematch-once は mergeable 再判定に限定）は merge SKILL と merge-ci-gate-contract.test.sh へ既反映
+* **lint:warning** — contradictions=0, stale=38, orphans=0, missing_concept=1, unregistered_raw=397, broken_refs=0
 * **Skip**: [20260829T000013Z-pr-2447.md](raw/reviews/20260829T000013Z-pr-2447.md) — detector-candidate: STATE_ROOT 未設定時の mkdir が /tmp/.rite を作り [ -d .rite ] ancestor walk と衝突する。6 パス pin / dual-read WARNING / nested gitignore は本 PR の plugin テストへ既反映
 * **Skip**: [20260829T003909Z-pr-2447.md](raw/reviews/20260829T003909Z-pr-2447.md) — 一時的な cycle 2 mergeable 判定の一時記録。知見は plugin へ既反映。新規経験則なし
 * **Skip**: [20260829T001443Z-pr-2447.md](raw/fixes/20260829T001443Z-pr-2447.md) — detector-candidate: STATE_ROOT 条件付き mkdir / migrate WARNING / 6 パス pin は本 PR の plugin テストへ既反映
