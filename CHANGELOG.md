@@ -35,6 +35,7 @@ outside the number-free surface guarded by `number-reference-check.sh`. The
 
 ### Fixed
 
+- **`/rite:merge` waits for pending CI checks instead of stopping immediately** — when `statusCheckRollup` is pending and `--force-ci` is not set, merge polls every 15 seconds for up to 540 seconds, then rejoins the existing healthy / unhealthy / unknown classification. A timeout still fail-closes with `[merge:not-ready]` and the unfinished check names. (#2449)
 - **Consumed release-promotion attestations are deleted** — `pr-cycle-cleanup.sh` now removes `.rite/release-promotions/{N}.json` when the corresponding GitHub PR is MERGED or CLOSED. OPEN and undetermined states are kept with an observable reason so the merge gate still works. `.gitignore` in that directory is never deleted. (#2427)
 
 ## [0.13.2] - 2026-08-28
