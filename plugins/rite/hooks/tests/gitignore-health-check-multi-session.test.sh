@@ -172,5 +172,17 @@ case "$T10_OUT" in
   *) fail "TC-10 expected findings unknown, got: $T10_OUT" ;;
 esac
 
+echo "=== TC-11: worktree cwd, main nested broken → nested drift ==="
+setup_linked_worktree_case "$NESTED_OK"
+printf '%s' $'*\n' > "$d/.rite/.gitignore"
+RUN_RC=0
+RUN_OUT=$(cd "$wt" && bash "$GHC" --quiet 2>&1) || RUN_RC=$?
+assert "TC-11 exit 1 (detects main nested drift from worktree cwd)" "1" "$RUN_RC"
+case "$RUN_OUT" in
+  *"DRIFT DETECTED (nested)"*) pass "TC-11 nested drift from state_root" ;;
+  *) fail "TC-11 expected nested drift, got: $RUN_OUT" ;;
+esac
+git -C "$d" worktree remove --force "$wt" >/dev/null 2>&1 || true
+
 print_summary "$(basename "$0")" \
   "Drift hint: gitignore-health-check.sh multi_session check (design §2) — runs before the wiki early-exits, opt-in via multi_session.enabled."
