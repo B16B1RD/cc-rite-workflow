@@ -1,4 +1,7 @@
 ## 2026-08-29
+* **Skip**: [20260829T000013Z-pr-2447.md](raw/reviews/20260829T000013Z-pr-2447.md) — detector-candidate: STATE_ROOT 未設定時の mkdir が /tmp/.rite を作り [ -d .rite ] ancestor walk と衝突する。6 パス pin / dual-read WARNING / nested gitignore は本 PR の plugin テストへ既反映
+* **Skip**: [20260829T003909Z-pr-2447.md](raw/reviews/20260829T003909Z-pr-2447.md) — 一時的な cycle 2 mergeable 判定の一時記録。知見は plugin へ既反映。新規経験則なし
+* **Skip**: [20260829T001443Z-pr-2447.md](raw/fixes/20260829T001443Z-pr-2447.md) — detector-candidate: STATE_ROOT 条件付き mkdir / migrate WARNING / 6 パス pin は本 PR の plugin テストへ既反映
 * **Create**: [hook の失敗枝はソース grep ではなく実行で検証する](pages/heuristics/hook-failure-branch-needs-execution-test.md) — raw/fixes/20260828T170214Z-pr-2446.md を新規ページ化
 
 ## 2026-08-28
