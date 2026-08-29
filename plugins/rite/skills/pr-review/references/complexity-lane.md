@@ -73,7 +73,7 @@ cap 適用**後**に落とすフィルタとして実装すると、これらの
 | `gh_missing` | `gh` が PATH 上に無い | Complexity を読む手段が無い |
 | `repo_unresolved` | owner/repo を解決できず `-R` を付けて `gh` を呼べない | 別リポジトリの Issue を誤って読むより読まない方が安全 |
 | `issue_fetch_failed` | `gh issue view` が失敗（認証切れ / rate limit / Issue 不在） | 宣言値が不明 |
-| `complexity_absent` | どちらの記法からも**英字トークンを取り出せない**（宣言行が無い / 崩れた記法 = lowercase key・全角コロン・リスト項目化 / `{complexity}` のような未展開 placeholder と `<!-- ... -->` / 値行を持たない `## 複雑度` 節 — **両記法とも `{` `<` を値の開始と認めず、かつ記法 2 は節探索を次見出しで止めるため、同じ記入漏れが記法や見出し語の言語によって別 reason へ分裂しない**） | rite 外で作られた Issue 等。宣言が無いものを小さいと決めつけない |
+| `complexity_absent` | どの記法からも**英字トークンを取り出せない**（宣言行が無い / 崩れた記法 = lowercase key・全角コロン・リスト項目化・太字なしの表セル / `{complexity}` のような未展開 placeholder と `<!-- ... -->` / 値行を持たない `## 複雑度` 節 — **記法 1 と 3 は値の先頭に英字を要求し、記法 2 は `{` `<` を値の開始と認めず節探索を次見出しで止めるため、同じ記入漏れが記法や見出し語の言語によって別 reason へ分裂しない**） | rite 外で作られた Issue 等。宣言が無いものを小さいと決めつけない |
 | `complexity_invalid` | 英字トークンは取り出せたが XS/S/M/L/XL のいずれでもない（`Medium` / `Small` / `XSmall` / `ZZ` 等） | 誤記を小さい側へ解釈しない |
 | `issue_number_missing` | 関連 Issue を特定できず helper を呼べない（consumer 側） | 対象 Issue が分からなければ宣言値も存在しない |
 | `helper_failed` | helper が marker を出さずに非ゼロ終了した（consumer 側） | 判定結果が得られていない |
@@ -88,7 +88,11 @@ fail-safe 発火時は **全 reason で WARNING を可視化する**（silent fa
 
 flow-state は complexity フィールドを持たず、Projects の Complexity フィールドはフィールド名のローカライズ解決を伴う別経路になる。Issue body は `gh issue view --json body` 1 回で読め、**rite の Issue テンプレート経由で作られた Issue** は Section 0 Meta に宣言値を持つ。テンプレートを経ない生成経路のうち、`/rite:cleanup` ステップ 3 が作る `残作業:` Issue は Complexity を Projects フィールドにしか持たないため body からは読めず、`complexity_absent` で full へ倒れる — レーンが発動する母集団はこの分だけ狭い。follow-up Issue（`cleanup-follow-up-issue.sh`）と `/rite:pr-create` の自動 Issue は body 先頭に記法 1 の Meta を持つ。
 
-リポジトリ内に 2 つの記法が併存する（`**Complexity**: X` = [template-structure.md](../../../templates/issue/template-structure.md) Section 0 Meta / `## 複雑度` セクション = [common-principles.md](../../rite-workflow/references/common-principles.md)）ため helper は**両方を受理する**。片方だけ読むと、もう片方で書かれた Issue が全て `complexity_absent` で full へ倒れ、レーンが一度も発動しない。記法 1 を優先し、どちらで読んだかは marker の `source=` で区別できる。
+リポジトリ内に 3 つの記法が併存する（記法 1 = `**Complexity**: X` = [template-structure.md](../../../templates/issue/template-structure.md) Section 0 Meta / 記法 2 = `## 複雑度` セクション = [common-principles.md](../../rite-workflow/references/common-principles.md) / 記法 3 = `| **Complexity** | X |` = Section 0 Meta を表で書いた形）ため helper は**3 記法すべてを受理し、明示宣言を表行より優先する**。一部だけ読むと、他の記法で書かれた Issue が全て `complexity_absent` で full へ倒れ、レーンが一度も発動しない。探索順は 1 → 2 → 3 で、どれで読んだかは marker の `source=`（`body_meta` / `body_table` / `body_section`）で区別できる。
+
+**表行を最後に読む理由**: helper は code fence を剥がさないため、表記法そのものを**説明している** Issue が本文中の例から値を解決してしまう。記法 1 の Meta 行と記法 2 の `## 複雑度` 節はいずれも「そこが宣言である」ことを形で示すが、表行は body のどこにでも現れうる。実測では、記法 2 で `M` を宣言し別節に表の例を置いた body が表行を先に読むと `XS` へ落ち（**M+ が silent に light へ落ちる = AC-4 違反**）、記法 2 宣言 + 文書用の表ヘッダ（`| **Complexity** | Projects Complexity field |`、issue-edit/SKILL.md に実在）では `complexity_invalid` へ落ちた。同じ理由で記法 3 の抽出は `head -1` で先頭の表行に固定する。
+
+記法 3 を受理するのは speculative な一般化ではなく実測に基づく — 表形式 Meta の Issue が本リポジトリに定常的に存在し（#2429 / #2430 / #2431 / #2433 / #2434）、#2432 では `/rite:batch-run` が open 段（[open ステップ 3.3.1](../../open/SKILL.md) の fail-loud）で停止した。**表形式を生成する code path は無い**（テンプレートは記法 1 が canonical）ため起票経路の是正では直せず、reader 側の受理でしか解けない。マーケットプレイス配布先の Issue は rite のテンプレートに従わないため、reader の堅牢化が配布物として正しい側でもある。記法 1 を最優先するのは、helper が code fence を剥がさないため、表記法そのものを**説明している** Issue が本文中の例から値を解決するのを防ぐため。
 
 **Complexity の自動判定はしない**。宣言値をそのまま使い、誤宣言の是正は既存の issue-create 見積もり手順と、上記 Cross-File Impact Check の安全網に委ねる。判定器の新設は speculative である。
 

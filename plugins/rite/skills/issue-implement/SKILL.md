@@ -173,7 +173,7 @@ Skill ツール呼び出し:
 | Condition | Determination Method |
 |-----------|---------------------|
 | `parallel.enabled: true` | From `rite-config.yml` (default: `true`) |
-| Complexity M or above | 5.0.C の marker が `COMPLEXITY_LANE=full` **かつ `complexity=` を伴う**（= 宣言値が M / L / XL）。**`COMPLEXITY_LANE_FALLBACK=1` を伴う fail-safe 経路は満たさない**（下記）。**helper が両記法（`**Complexity**: X` / `## 複雑度`）を受理するため、ここで body を再解析しない** — 2 箇所で別々に読むと片方だけが片方の記法に対応する drift が生まれる |
+| Complexity M or above | 5.0.C の marker が `COMPLEXITY_LANE=full` **かつ `complexity=` を伴う**（= 宣言値が M / L / XL）。**`COMPLEXITY_LANE_FALLBACK=1` を伴う fail-safe 経路は満たさない**（下記）。**helper が 3 記法（`**Complexity**: X` / `| **Complexity** | X |` / `## 複雑度`）を受理するため、ここで body を再解析しない** — 2 箇所で別々に読むと片方だけが片方の記法に対応する drift が生まれる |
 | 2 or more independent tasks | Determined from implementation plan (see below) |
 
 Complexity を読めなかった Issue（`COMPLEXITY_LANE_FALLBACK=1`）は `full` に含めず**順次実装へ倒す**。判定キーは `COMPLEXITY_LANE=full` 単独ではなく `complexity=` の存在。
