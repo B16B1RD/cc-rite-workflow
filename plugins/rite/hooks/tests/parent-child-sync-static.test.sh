@@ -60,4 +60,23 @@ assert_not_grep "close.md skip_already_closed no longer exits Phase 4.6 before e
 assert_grep "archive-procedures already-CLOSED parent runs 3.7.2.1 only" "$ARCHIVE_MD" "parent is already CLOSED.*3\\.7\\.2\\.1"
 assert_grep "archive-procedures 3.7.2.2 skipped when parent already CLOSED" "$ARCHIVE_MD" "Skip this substep if the parent Issue is already CLOSED"
 
+echo "=== Phase 6: open.md が検出した親番号を flow-state へ書く (#2460) ==="
+# 検出だけして flow-state へ書かないと issue-implement 5.1.2 が常に PARENT_ISSUE=none で skip する。
+# open.md には `flow-state.sh set` が複数箇所あるため、ファイル全体の grep では「どの set に
+# 付いたか」を pin できない。2.6 節に限定して assert する。
+S26_START='^### 2.6 flow-state 更新'
+S26_END='^## ステップ 3'
+S24_START='^### 2.4 GitHub Projects Status 更新'
+S24_END='^### 2.5 Work Memory 初期化'
+assert_grep_in_section "open.md 2.4(B) が親番号を {parent_issue_number} として retain する" "$PR_OPEN_MD" \
+  "$S24_START" "$S24_END" \
+  '\{parent_issue_number\}`? として retain'
+assert_grep_in_section "open.md 2.6 の flow-state set が --parent-issue を渡す" "$PR_OPEN_MD" \
+  "$S26_START" "$S26_END" \
+  '\-\-parent-issue \{parent_issue_number\}'
+# standalone AC: 未検出時に 0 を明示せずフラグ自体を省く (flow-state 側の merge-preserve に載せる)
+assert_grep_in_section "open.md 2.6 が未検出時はフラグを付けないと明記する" "$PR_OPEN_MD" \
+  "$S26_START" "$S26_END" \
+  '未検出時.*フラグ自体を付けない'
+
 print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or pr/open.md ステップ 1.2, regression risk reopens. Re-confirm cross-references before removing methods."
