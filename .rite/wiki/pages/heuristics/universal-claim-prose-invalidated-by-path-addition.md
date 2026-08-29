@@ -15,9 +15,13 @@ sources:
     resource: "raw/reviews/20260721T181434Z-pr-1959.md"
   - type: "reviews"
     resource: "raw/reviews/20260829T113539Z-pr-2461.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260829T142006Z-pr-2464.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260829T142223Z-pr-2464.md"
 tags: ["comment-rot", "cause-neutral", "exclusivity-claim", "doc-sync", "not-grep-pin", "quantifier-strengthening"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-29T11:40:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-29T14:35:49Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-29T11:40:00+09:00"
@@ -44,6 +48,14 @@ verified:
 
 同じ文書内で閉じた列挙と開いた例示を併置するときは、どちらであるかを表記で区別する。網羅性が主張の核（例:「legacy を書きうる経路は 2 つだけ」）なら閉じたまま書き、将来増えうる側（例:「legacy へ倒れない reader の例」）には `e.g.` を付ける。この書き分けがあると、読み手が列挙の性質を取り違えず、後続の編集者も「ここへ足してよいか」を判断できる。
 
+### pin の needle を変えた同一 diff がその pin の説明コメントを偽化する
+
+偽化は「後から経路が増える」形だけでなく、**needle を書き換えた当の diff がその真上の説明コメントを置き去りにする**形でも起きる。`assert_grep` の needle を「記法 1 を最優先する」から「明示宣言を表行より優先する」へ変えた際、2 行上の「needle は『全記法受理』と『**記法 1 優先**』を同じ 1 行の合成として pin する」というコメントが旧 semantics のまま残った。pin literal 自体は contract test が守るが、**pin の意図を説明する散文には守り手がいない**。
+
+この位置のコメントは、次に当該箇所を触る作業者が最初に読む説明であり、そこが実態とずれていると pin の目的そのものが誤って伝わる。**assert の needle・marker 名・enum 値を変える編集では、その識別子を引用している散文を同じ diff の変更対象として最初から数える**（周辺行の grep ではなく、変更した識別子の旧文字列を grep する）。
+
+この形は実測アンカー（repro / failing_test）を構造的に持てないため実測必須ゲートでは non-blocking に降格するが、`[review:mergeable]` 到達後の消化経路（NB digest sweep）で必ず処理する。**アンカーを持てないことは「直さない」理由にならない**。
+
 ### 管轄が別 Issue の Non-Target ドキュメント
 
 drift 先が Issue の Non-Target（別 Issue の管轄と明記）である場合は、本 PR で触らず**管轄 Issue へコメントで申し送りを配線**する。新規起票は重複になる。握り潰しにならないよう、完了報告にも明示する。
@@ -61,3 +73,5 @@ drift 先が Issue の Non-Target（別 Issue の管轄と明記）である場�
 - [PR #1959 review cycle 3 (overview 要約 SPEC.md の absolute 主張 drift)](../../raw/reviews/20260721T175725Z-pr-1959.md)
 - [PR #1959 review cycle 4 (残存 0 確認 + Non-Target doc の管轄 Issue 配線)](../../raw/reviews/20260721T181434Z-pr-1959.md)
 - [PR #2461 review cycle 2 (量化子を強める編集が既存メンバーの再検証を要求する)](../../raw/reviews/20260829T113539Z-pr-2461.md)
+- [PR #2464 review cycle 2 (pin の needle を変えた同一 diff がその説明コメントを置き去りにする)](../../raw/reviews/20260829T142006Z-pr-2464.md)
+- [PR #2464 fix results (NB sweep — アンカーを持てない散文 drift の消化経路)](../../raw/fixes/20260829T142223Z-pr-2464.md)
