@@ -151,8 +151,8 @@ echo "=== T-13: current >= latest short-circuit path runs drift back-add ==="
 # 'current >= latest.*Step 3 Backup' would pass even on the buggy old row, since Backup
 # was always present on the short-circuit row — anchoring Backup *before* Step 4/6 is
 # what gives the assertion its regression-detecting power.)
-assert_grep "init.md 'current >= latest' row backs up first, then routes Step 4 Identify -> Step 6 Apply (AC-6 precondition + routing order)" \
-  "$INIT_MD" 'current >= latest.*Step 3 Backup.*Step 4 Identify.*Step 6 Apply'
+assert_grep "init.md 'current >= latest' row backs up first, then routes Step 4 Identify -> Step 6 Apply -> Step 6.5 nested gitignore migrate (AC-6 precondition + routing order)" \
+  "$INIT_MD" 'current >= latest.*Step 3 Backup.*Step 4 Identify.*Step 6 Apply.*Step 6.5'
 # Step 6 spells out which items the short-circuit path applies (the drift back-add set).
 assert_grep "init.md Step 6 applies only the drift back-add items on the short-circuit path" \
   "$INIT_MD" 'short-circuit path.*only items 3, 4, 6, 7'

@@ -489,8 +489,8 @@ rationale: references/rationale.md#upgrade-branching
 
 | Condition | Execution order (left → right) |
 |-----------|--------------------------------|
-| `current < latest` | (1) Step 3 Backup → (2) Step 4 Identify → (3) Step 5 Preview → (4) Step 6 Apply → (5) Step 7 Phase 4.7 |
-| `current >= latest` | (1) Step 3 Backup → (2) Step 4 Identify（drift のみ）→ (3) Step 6 Apply（multi_session/新規セクション/欠落サブキー/Wiki の back-add。User-customized 保全・冪等・preview なし）→ (4) Step 7 Phase 4.7 |
+| `current < latest` | (1) Step 3 Backup → (2) Step 4 Identify → (3) Step 5 Preview → (4) Step 6 Apply → (5) Step 6.5 nested gitignore migrate → (6) Step 7 Phase 4.7 |
+| `current >= latest` | (1) Step 3 Backup → (2) Step 4 Identify（drift のみ）→ (3) Step 6 Apply（multi_session/新規セクション/欠落サブキー/Wiki の back-add。User-customized 保全・冪等・preview なし）→ (4) Step 6.5 nested gitignore migrate → (5) Step 7 Phase 4.7 |
 
 両経路とも Step 3 Backup を必ず先に実行する (precondition)。`current >= latest` は Step 5 を挟まず、欠落 active セクション/サブキーのみを冪等に back-add する（User-customized 値と明示的な `enabled: false` は保全）。back-add 対象が皆無なら Step 6 は書き換えず `rite-config.yml は最新です (v{current})` を表示する。Phase 4.7 はそのまま実行（Wiki 初期化済みなら Skill は skip）。
 rationale: references/rationale.md#upgrade-branching
@@ -607,6 +607,22 @@ rationale: references/rationale.md#upgrade-apply-ssot
 8. Preserve all user-customized values
 
 Display "rite-config.yml をアップグレードしました (v{current} → v{latest})".
+
+**Step 6.5: Nested gitignore + relocated-state migrate**（両経路。Apply の直後・Phase 4.7 の前）
+
+冪等・非破壊。非空 `.rite/.gitignore` は上書きしない。dest 既存の旧パスは触らない。
+
+```bash
+mkdir -p .rite
+source {plugin_root}/hooks/gitignore-ensure.sh
+source {plugin_root}/hooks/relocated-state-migrate.sh
+if ! _ensure_rite_nested_gitignore .rite; then
+  echo "WARNING: .rite/.gitignore を作成できませんでした" >&2
+  [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+fi
+state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
+_rite_run_relocated_state_migrate "$state_root"
+```
 
 **Step 7: Run Phase 4.7 and display status**
 
@@ -985,7 +1001,8 @@ rationale: references/rationale.md#cleanup-helper-contract
 
 3. Write cleanup marker:
    ```bash
-   echo "cleaned" > ".rite-settings-hooks-cleaned" 2>/dev/null || true
+   mkdir -p .rite
+   echo "cleaned" > ".rite/settings-hooks-cleaned" 2>/dev/null || true
    ```
 
 4. **Skip Phase 4.5.1 and Phase 4.5.2** entirely. Proceed directly to **Phase 4.5.3** (chmod).
@@ -1208,7 +1225,8 @@ Missing or non-executable scripts will be skipped at runtime.
 PLUGIN_JSON="{hooks_dir}/../.claude-plugin/plugin.json"
 VERSION=$(jq -r '.version' "$PLUGIN_JSON" 2>/dev/null)
 if [ -n "$VERSION" ] && [ "$VERSION" != "null" ]; then
-  echo "$VERSION" > "{state_root}/.rite-initialized-version"
+  mkdir -p "{state_root}/.rite"
+  echo "$VERSION" > "{state_root}/.rite/initialized-version"
 fi
 ```
 
@@ -1216,38 +1234,19 @@ fi
 
 ## Phase 4.6: Work Memory Directory Setup
 
-Create the local work memory directory:
+`.rite/work-memory` と nested self-gitignore（`*` / `!wiki/` / `!wiki/**`）を作る。root `.gitignore` に rite runtime state は追記しない。
 
 ```bash
-mkdir -p .rite-work-memory
-chmod 700 .rite-work-memory 2>/dev/null || true
+mkdir -p .rite/work-memory
+chmod 700 .rite/work-memory 2>/dev/null || true
+source {plugin_root}/hooks/gitignore-ensure.sh
+if ! _ensure_rite_nested_gitignore .rite; then
+  echo "WARNING: .rite/.gitignore を作成できませんでした。このディレクトリが git から除外されているか手動で確認してください" >&2
+  [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+fi
 ```
 
-Add `.rite-work-memory/` and `.rite-compact-state*` to `.gitignore` if not already present:
-
-```bash
-# Check and add entries if missing
-for entry in ".rite-work-memory/" ".rite-compact-state" ".rite-compact-state.lockdir/" ".rite-compact-state.tmp.*" ".rite-initialized-version" ".rite-settings-hooks-cleaned"; do
-  if ! grep -qF "$entry" .gitignore 2>/dev/null; then
-    echo "$entry" >> .gitignore
-  fi
-done
-
-# .rite/ 配下のディレクトリエントリは実効判定でゲートする: 既に `.rite/` 広域ルール等で
-# 実効的に ignore されている場合は書かない（親ルールに包含される到達不能な行を作らない）。
-# 未カバーのときのみ追記する（gitignore-health-check.sh の probe と同じ check-ignore 方式）。
-# `.rite/review-results/` は非実測指摘の `description` / `suggestion` 全文を持つ。マージ後も
-# `/rite:cleanup` が `archive/` へ退避して残す設計 (記録コメントはポインタと降格理由しか載せないため) なので、
-# ignore されていないと脆弱性の詳細が `git add -A` で公開リポジトリへ恒久 commit されうる。
-# `.rite/state/` は nb-sweep-done / run-since pin 等の skip 権威ファイルを持つ。
-for dir_entry in ".rite/sessions/" ".rite/worktrees/" ".rite/review-results/" ".rite/state/"; do
-  if ! git check-ignore -q "${dir_entry}.rite-lint-probe" 2>/dev/null; then
-    echo "$dir_entry" >> .gitignore
-  fi
-done
-```
-
-Display: `✅ Work memory directory initialized (.rite-work-memory/)`
+Display: `✅ Work memory directory initialized (.rite/work-memory/)`
 
 ---
 
@@ -1414,7 +1413,7 @@ rationale: references/rationale.md#sandbox-allowlist
 bash {plugin_root}/hooks/state-path-resolve.sh
 ```
 
-その値を `{repo_root}` として、`.claude/settings.local.json`（`.claude/settings.json` は書き換えない）の `sandbox.filesystem.allowWrite` へ idempotent に自動追記する。先に対象リポジトリの `.gitignore` へ `.claude/settings.local.json` を保証してから書く（Phase 4.6 と同形式）。詳細: [git-worktree-patterns.md の Decision Log](../../references/git-worktree-patterns.md#sandbox-write-allowlist-設定の自動化decision-log)。
+その値を `{repo_root}` として、`.claude/settings.local.json`（`.claude/settings.json` は書き換えない）の `sandbox.filesystem.allowWrite` へ idempotent に自動追記する。先に対象リポジトリの `.gitignore` へ `.claude/settings.local.json` を保証してから書く。詳細: [git-worktree-patterns.md の Decision Log](../../references/git-worktree-patterns.md#sandbox-write-allowlist-設定の自動化decision-log)。
 rationale: references/rationale.md#sandbox-allowlist
 
 ```bash

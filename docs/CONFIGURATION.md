@@ -621,7 +621,7 @@ multi_session:
   worktree_base: ".rite/worktrees"
 ```
 
-**`.gitignore` requirement:** `.rite/worktrees/` must be effectively ignored so session worktrees do not leak into dev-branch diffs — a broad `.rite/` rule suffices. `/rite:setup` adds an entry automatically only when the path is not already covered, and `/rite:lint` (via `gitignore-health-check.sh`) probes with `git check-ignore` and emits a non-blocking warning if the path is not ignored while `multi_session.enabled: true`.
+**`.gitignore` requirement:** `.rite/worktrees/` must be effectively ignored so session worktrees do not leak into dev-branch diffs. `/rite:setup` writes `.rite/.gitignore` (`*` / `!wiki/` / `!wiki/**`); it does not add runtime-state lines to the consumer root `.gitignore`. `/rite:lint` (via `gitignore-health-check.sh`) verifies that nested file and the effective ignore.
 
 **Disk cost:** each session worktree is a full working-tree clone. Build artifacts (`node_modules`, etc.) may need rebuilding per worktree.
 
@@ -744,7 +744,7 @@ wiki:
   auto_lint: false
 ```
 
-> **Note for `same_branch` users**: The project's `.gitignore` ships with `.rite/wiki/` excluded as a silent-leak defense line for the default `separate_branch` strategy. If you switch to `same_branch`, you MUST add negation entries so that Wiki files are not ignored. See the `.gitignore` comment block between the `# >>> gitignore-wiki-section-start` and `# <<< gitignore-wiki-section-end` anchor markers (`grep -n 'gitignore-wiki-section-start' .gitignore` to jump there) for the full verification-first setup: required negation entries (`!.rite/wiki/` and `!.rite/wiki/**`), the mandatory `mkdir -p .rite/wiki/raw && touch .rite/wiki/raw/.negation-probe && git add --dry-run .rite/wiki/raw/.negation-probe` sanity check, the idempotency note for already-tracked files, and the rationale for using `git add --dry-run` instead of `git check-ignore -v` as the canonical verification step.
+> **Note for `same_branch` users**: `.rite/.gitignore` is `*` / `!wiki/` / `!wiki/**`, which re-includes wiki files so `git add .rite/wiki/raw/*.md` succeeds. `/rite:setup` generates that nested file; `/rite:lint` verifies it without rewriting. Confirm with `mkdir -p .rite/wiki/raw && touch .rite/wiki/raw/.negation-probe && git add --dry-run .rite/wiki/raw/.negation-probe`.
 
 **Example (loose growth-check threshold for slow-moving repos):**
 

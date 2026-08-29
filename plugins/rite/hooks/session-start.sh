@@ -21,6 +21,8 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 source "$SCRIPT_DIR/control-char-neutralize.sh"
 # shellcheck source=gitignore-ensure.sh
 source "$SCRIPT_DIR/gitignore-ensure.sh"
+# shellcheck source=relocated-state-migrate.sh
+source "$SCRIPT_DIR/relocated-state-migrate.sh"
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
@@ -79,7 +81,7 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 # consumer root .gitignore. mkdir is the caller's job; the helper will not create
 # the directory. Failure is non-blocking (same WARNING form as the logs dir).
 if mkdir_err=$(mkdir -p "$STATE_ROOT/.rite" 2>&1); then
-  if ! _ensure_dir_gitignore "$STATE_ROOT/.rite" '!wiki/' '!wiki/**'; then
+  if ! _ensure_rite_nested_gitignore "$STATE_ROOT/.rite"; then
     echo "WARNING: session-start.sh: cannot create $(printf '%s' "$STATE_ROOT/.rite" | neutralize_ctrl)/.gitignore; verify by hand that this directory is excluded from git" >&2
     [ -n "$_RITE_GITIGNORE_ERROR" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
   fi
@@ -88,29 +90,8 @@ else
   [ -n "$mkdir_err" ] && printf '%s\n' "$mkdir_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
 fi
 
-# Move root `.rite-*` runtime state under `.rite/` once. Dest already present
-# means a previous run owns it — leave src so dual-read still sees it; never
-# clobber dest.
-_rite_migrate_relocated() {
-  local src="$1" dest="$2" dest_dir
-  [ -e "$src" ] || return 0
-  [ -e "$dest" ] && return 0
-  dest_dir=$(dirname "$dest")
-  if ! mkdir -p "$dest_dir"; then
-    echo "WARNING: session-start.sh: cannot create $(printf '%s' "$dest_dir" | neutralize_ctrl) to migrate $(printf '%s' "$src" | neutralize_ctrl)" >&2
-    return 0
-  fi
-  if ! mv "$src" "$dest"; then
-    echo "WARNING: session-start.sh: failed to migrate $(printf '%s' "$src" | neutralize_ctrl) -> $(printf '%s' "$dest" | neutralize_ctrl)" >&2
-    return 0
-  fi
-}
-_rite_migrate_relocated "$STATE_ROOT/.rite-plugin-root" "$STATE_ROOT/.rite/plugin-root"
-_rite_migrate_relocated "$STATE_ROOT/.rite-session-id" "$STATE_ROOT/.rite/session-id"
-_rite_migrate_relocated "$STATE_ROOT/.rite-initialized-version" "$STATE_ROOT/.rite/initialized-version"
-_rite_migrate_relocated "$STATE_ROOT/.rite-settings-hooks-cleaned" "$STATE_ROOT/.rite/settings-hooks-cleaned"
-_rite_migrate_relocated "$STATE_ROOT/.rite-flow-debug.log" "$STATE_ROOT/.rite/logs/flow-debug.log"
-_rite_migrate_relocated "$STATE_ROOT/.rite-work-memory" "$STATE_ROOT/.rite/work-memory"
+# Move root `.rite-*` runtime state under `.rite/` once.
+_rite_run_relocated_state_migrate "$STATE_ROOT"
 
 # Write plugin root for command-file consumption (version-independent)
 _plugin_root="$(dirname "$SCRIPT_DIR")"

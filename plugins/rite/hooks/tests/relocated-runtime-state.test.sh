@@ -182,7 +182,7 @@ chmod +x "$shim/mv"
 err03=$(jq -n --arg cwd "$d03fail" --arg src "startup" --arg sid "ffffffff-ffff-ffff-ffff-ffffffffffff" \
   '{cwd: $cwd, source: $src, session_id: $sid}' \
   | env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID PATH="$shim:$PATH" bash "$HOOK" 2>&1 >/dev/null || true)
-printf '%s\n' "$err03" | grep -q 'WARNING: session-start.sh: failed to migrate'
+printf '%s\n' "$err03" | grep -q 'WARNING: relocated-state-migrate: failed to migrate'
 assert "T-03 mv failure emits WARNING" "0" "$?"
 [ -d "$d03fail/.rite-work-memory" ]
 assert "T-03 mv failure leaves legacy WM dir" "0" "$?"

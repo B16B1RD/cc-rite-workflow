@@ -17,6 +17,18 @@ source "$_rite_gitignore_dir/control-char-neutralize.sh"
 fi
 
 _RITE_GITIGNORE_ERROR=""
+# Extra lines after `*` for `.rite/.gitignore`. Generation and health-check
+# both read this array so verify-without-create cannot drift.
+_RITE_NESTED_GITIGNORE_EXTRAS=('!wiki/' '!wiki/**')
+
+_rite_nested_gitignore_expected() {
+  printf '%s\n' '*' "${_RITE_NESTED_GITIGNORE_EXTRAS[@]}"
+}
+
+_ensure_rite_nested_gitignore() {
+  _ensure_dir_gitignore "$1" "${_RITE_NESTED_GITIGNORE_EXTRAS[@]}"
+}
+
 _ensure_dir_gitignore() {
   local dir="$1" raw_error=""
   shift || true
