@@ -49,6 +49,8 @@ printf 'cln' > "$d02/.rite-settings-hooks-cleaned"
 printf 'log' > "$d02/.rite-flow-debug.log"
 mkdir -p "$d02/.rite-work-memory"
 printf 'wm' > "$d02/.rite-work-memory/issue-1.md"
+mkdir -p "$d02/.rite"
+_ensure_rite_nested_gitignore "$d02/.rite"
 _rite_run_relocated_state_migrate "$d02"
 assert "T-02 plugin-root dest" "pr" "$(cat "$d02/.rite/plugin-root")"
 assert "T-02 session-id dest" "sid" "$(cat "$d02/.rite/session-id")"
@@ -60,6 +62,9 @@ assert "T-02 work-memory dest" "wm" "$(cat "$d02/.rite/work-memory/issue-1.md")"
   && [ ! -e "$d02/.rite-initialized-version" ] && [ ! -e "$d02/.rite-settings-hooks-cleaned" ] \
   && [ ! -e "$d02/.rite-flow-debug.log" ] && [ ! -e "$d02/.rite-work-memory" ]
 assert "T-02 all six src paths gone" "0" "$?"
+printf '*\n!wiki/\n!wiki/**\n' > "$d02/expected-nested-hardcoded"
+cmp -s "$d02/.rite/.gitignore" "$d02/expected-nested-hardcoded"
+assert "T-02 nested gitignore matches hardcoded 3-line composition" "0" "$?"
 
 d02b=$(make_sandbox)
 cleanup_dirs+=("$d02b")
@@ -156,10 +161,40 @@ assert_grep "T-07 Step 6.5 sources relocated-state-migrate.sh" \
   "$SETUP" 'source {plugin_root}/hooks/relocated-state-migrate.sh'
 assert_grep "T-07 Step 6.5 calls _rite_run_relocated_state_migrate" \
   "$SETUP" '_rite_run_relocated_state_migrate'
+assert_grep_in_section "T-07 Step 6.5 generates nested gitignore at state_root" \
+  "$SETUP" '^\*\*Step 6\.5:' '^\*\*Step 7:' \
+  '_ensure_rite_nested_gitignore "\$state_root/\.rite"'
+assert_grep_in_section "T-07 Phase 4.6 generates nested gitignore at state_root" \
+  "$SETUP" '## Phase 4.6:' '## Phase 4.7:' \
+  '_ensure_rite_nested_gitignore "\$state_root/\.rite"'
+assert_grep_in_section "T-07 Phase 4.5.5 resolves state_root in the same bash block" \
+  "$SETUP" '### 4.5.5 Record Installed Version' '## Phase 4.6:' \
+  'state_root=\$\(bash "\{hooks_dir\}/state-path-resolve.sh"\)'
+assert_not_grep "T-07 setup SKILL has no {state_root} placeholder" \
+  "$SETUP" '\{state_root\}'
 assert_not_grep "T-07 setup SKILL does not inline .rite-plugin-root migrate pair" \
   "$SETUP" '\.rite-plugin-root'
 assert_not_grep "T-07 setup Phase 4.6 no longer lists dir_entry runtime dirs" \
   "$SETUP" 'for dir_entry in "\.rite/sessions/"'
+
+echo "=== T-08: nested expected mktemp failure is rc=2 with findings unknown ==="
+d08=$(make_sandbox)
+cleanup_dirs+=("$d08")
+printf 'wiki:\n  enabled: true\n  branch_strategy: separate_branch\n' > "$d08/rite-config.yml"
+printf '\n' > "$d08/.gitignore"
+mkdir -p "$d08/.rite"
+printf '*\n!wiki/\n!wiki/**\n' > "$d08/.rite/.gitignore"
+T08_RC=0
+T08_OUT=$(cd "$d08" && TMPDIR="/no/such/rite-ghc-tmpdir-$$" bash "$GHC" --quiet 2>&1) || T08_RC=$?
+assert "T-08 mktemp failure exit 2" "2" "$T08_RC"
+case "$T08_OUT" in
+  *"WARNING: gitignore-health-check: mktemp failed"*) pass "T-08 WARNING on mktemp failure" ;;
+  *) fail "T-08 expected mktemp WARNING, got: $T08_OUT" ;;
+esac
+case "$T08_OUT" in
+  *"findings: unknown"*) pass "T-08 findings unknown" ;;
+  *) fail "T-08 expected findings unknown, got: $T08_OUT" ;;
+esac
 
 print_summary "$(basename "$0")" \
   "setup nested gitignore generation, --upgrade migrate, health-check 3-line SoT (#2431)"

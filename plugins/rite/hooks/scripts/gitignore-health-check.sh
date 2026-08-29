@@ -236,7 +236,7 @@ if [ ! -f "$nested_gi" ]; then
 fi
 if ! cmp -s "$nested_gi" "$nested_expected"; then
   echo "==> gitignore-health-check: DRIFT DETECTED (nested): '.rite/.gitignore' is not the 3-line composition (* / !wiki/ / !wiki/**)" >&2
-  echo "==> Hint: restore via /rite:setup --upgrade. lint does not rewrite the file." >&2
+  echo "==> Hint: /rite:setup --upgrade writes .rite/.gitignore only when missing or empty. For composition drift, replace the file with the 3-line composition by hand. lint does not rewrite." >&2
   echo "WARNING: gitignore-health-check: .rite/.gitignore composition drift" >&2
   echo "==> Total gitignore-health-check findings: 1"
   exit 1
@@ -278,7 +278,7 @@ else
     echo "==> gitignore-health-check: DRIFT DETECTED (sessions): '.rite/sessions/' rule missing from .gitignore" >&2
   fi
   echo "==> per-session state files (.rite/sessions/{session_id}.flow-state) would leak into dev-branch diffs." >&2
-  echo "==> Hint: restore .rite/.gitignore via /rite:setup --upgrade (lint does not write)." >&2
+  echo "==> Hint: /rite:setup --upgrade writes .rite/.gitignore only when missing or empty. For composition drift, replace the file with the 3-line composition by hand. lint does not rewrite." >&2
   echo "WARNING: gitignore-health-check: .rite/sessions/ not effectively ignored" >&2
   echo "==> Total gitignore-health-check findings: 1"
   exit 1
@@ -326,7 +326,7 @@ if [ "$ms_enabled" = "true" ]; then
       echo "==> gitignore-health-check: DRIFT DETECTED (multi_session): '.rite/worktrees/' rule missing from .gitignore" >&2
     fi
     echo "==> multi_session.enabled=true but session worktrees (.rite/worktrees/issue-{N}) would leak into dev-branch diffs." >&2
-    echo "==> Hint: restore .rite/.gitignore via /rite:setup --upgrade (lint does not write)." >&2
+    echo "==> Hint: /rite:setup --upgrade writes .rite/.gitignore only when missing or empty. For composition drift, replace the file with the 3-line composition by hand. lint does not rewrite." >&2
     echo "WARNING: gitignore-health-check: .rite/worktrees/ not effectively ignored while multi_session.enabled=true" >&2
     echo "==> Total gitignore-health-check findings: 1"
     exit 1

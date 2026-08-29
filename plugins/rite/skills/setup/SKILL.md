@@ -611,16 +611,17 @@ Display "rite-config.yml をアップグレードしました (v{current} → v{
 **Step 6.5: Nested gitignore + relocated-state migrate**（両経路。Apply の直後・Phase 4.7 の前）
 
 冪等・非破壊。非空 `.rite/.gitignore` は上書きしない。dest 既存の旧パスは触らない。
+nested 生成と migrate はどちらも `state-path-resolve.sh` の main checkout 側。cwd 相対の `.rite` に書かない。
 
 ```bash
-mkdir -p .rite
+state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
+mkdir -p "$state_root/.rite"
 source {plugin_root}/hooks/gitignore-ensure.sh
 source {plugin_root}/hooks/relocated-state-migrate.sh
-if ! _ensure_rite_nested_gitignore .rite; then
+if ! _ensure_rite_nested_gitignore "$state_root/.rite"; then
   echo "WARNING: .rite/.gitignore を作成できませんでした" >&2
   [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
 fi
-state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
 _rite_run_relocated_state_migrate "$state_root"
 ```
 
@@ -1225,8 +1226,9 @@ Missing or non-executable scripts will be skipped at runtime.
 PLUGIN_JSON="{hooks_dir}/../.claude-plugin/plugin.json"
 VERSION=$(jq -r '.version' "$PLUGIN_JSON" 2>/dev/null)
 if [ -n "$VERSION" ] && [ "$VERSION" != "null" ]; then
-  mkdir -p "{state_root}/.rite"
-  echo "$VERSION" > "{state_root}/.rite/initialized-version"
+  state_root=$(bash "{hooks_dir}/state-path-resolve.sh")
+  mkdir -p "$state_root/.rite"
+  echo "$VERSION" > "$state_root/.rite/initialized-version"
 fi
 ```
 
@@ -1240,7 +1242,9 @@ fi
 mkdir -p .rite/work-memory
 chmod 700 .rite/work-memory 2>/dev/null || true
 source {plugin_root}/hooks/gitignore-ensure.sh
-if ! _ensure_rite_nested_gitignore .rite; then
+state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
+mkdir -p "$state_root/.rite"
+if ! _ensure_rite_nested_gitignore "$state_root/.rite"; then
   echo "WARNING: .rite/.gitignore を作成できませんでした。このディレクトリが git から除外されているか手動で確認してください" >&2
   [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
 fi
