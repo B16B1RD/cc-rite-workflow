@@ -175,7 +175,7 @@ update_local_work_memory() {
   chmod 700 "$wm_dir" 2>/dev/null || true
   # Nested self-gitignore on `.rite/` (same extra-args as session-start / flow-state).
   # mkdir is the caller's job; the helper will not create the directory.
-  if ! _ensure_dir_gitignore ".rite" '!wiki/' '!wiki/**'; then
+  if ! _ensure_rite_nested_gitignore ".rite"; then
     echo "WARNING: work-memory-update.sh: cannot create .rite/.gitignore; verify by hand that this directory is excluded from git" >&2
     [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
   fi

@@ -131,7 +131,7 @@ _resolve_session_id() {
 
 _state_path() {
   mkdir -p "$SESSION_DIR" 2>/dev/null || true
-  if ! _ensure_dir_gitignore "$STATE_ROOT/.rite" '!wiki/' '!wiki/**'; then
+  if ! _ensure_rite_nested_gitignore "$STATE_ROOT/.rite"; then
     echo "WARNING: flow-state.sh: cannot create $(printf '%s' "$STATE_ROOT/.rite" | neutralize_ctrl)/.gitignore; verify by hand that this directory is excluded from git" >&2
     [ -n "$_RITE_GITIGNORE_ERROR" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
   fi

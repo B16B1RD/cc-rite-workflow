@@ -143,10 +143,10 @@ assert_grep_in_section "T-07 0.6 deletes done-file on new run" "$ITERATE" \
   '## ステップ 0.6:' '## ステップ 1:' \
   'nb-sweep-done-{pr_number}.txt'
 
-# --- T-08: AC-6 gitignore — sidecar * + setup dir_entry。git check-ignore -q rc=0 ---
-assert_grep_in_section "T-08 setup dir_entry includes .rite/state/" "$SETUP" \
+# --- T-08: AC-6 gitignore — sidecar * + setup nested 3-line。git check-ignore -q rc=0 ---
+assert_grep_in_section "T-08 setup Phase 4.6 calls nested gitignore helper" "$SETUP" \
   '## Phase 4.6:' '## Phase 4.7:' \
-  'for dir_entry in "\.rite/sessions/" "\.rite/worktrees/" "\.rite/review-results/" "\.rite/state/"'
+  '_ensure_rite_nested_gitignore'
 iter_ensure=$(awk '/## ステップ 5.S: NB digest sweep/,/## ステップ 5: 完了通知/' "$ITERATE" \
   | grep -c '_ensure_dir_gitignore' || true)
 assert "T-08 5.S has two _ensure_dir_gitignore calls" "2" "$iter_ensure"
@@ -177,11 +177,14 @@ rm -rf -- "$gi_sbx"
 
 gi_setup=$(make_sandbox)
 mkdir -p "$gi_setup/.rite/state"
-printf '%s\n' '.rite/sessions/' '.rite/worktrees/' '.rite/review-results/' '.rite/state/' > "$gi_setup/.gitignore"
+_ensure_rite_nested_gitignore "$gi_setup/.rite"
 printf 'noop\n' > "$gi_setup/$gi_file"
 gi_setup_rc=0
 git -C "$gi_setup" check-ignore -q "$gi_file" || gi_setup_rc=$?
-assert "T-08 setup dir_entry git check-ignore -q rc=0" "0" "$gi_setup_rc"
+assert "T-08 nested 3-line git check-ignore -q rc=0 for nb-sweep-done" "0" "$gi_setup_rc"
+git -C "$gi_setup" add -A
+gi_setup_staged=$(git -C "$gi_setup" diff --cached --name-only | grep -c 'nb-sweep-done' || true)
+assert "T-08 nested 3-line git add -A does not stage nb-sweep-done" "0" "$gi_setup_staged"
 rm -rf -- "$gi_setup"
 
 # --- T-09 / AC-7: 2 行 done-file でも 5.S skip と fix 1.5 は 1 行時と同一 ---

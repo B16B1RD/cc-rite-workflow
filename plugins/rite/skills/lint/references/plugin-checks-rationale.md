@@ -16,7 +16,7 @@ Detects "Phase X.X.W silently skipped" regressions. Warns (non-blocking) when th
 
 ## Gitignore health check (gitignore-health-check.sh)
 
-Detects regressions of the `.rite/wiki/` exclusion rule added as the last line of defense against wiki-ingest-trigger.sh silent leaks on the develop branch. If a future `.gitignore` cleanup PR removes the rule, this check surfaces the drift before the leak reaches production. Strategy-aware detection: `separate_branch` uses `git check-ignore`; `same_branch` uses `git add --dry-run` because negation rules make `git check-ignore` non-deterministic per `.gitignore` spec.
+Verifies `.rite/.gitignore` is the 3-line composition (star plus wiki negations) that setup and hooks generate. Lint never writes that file. `same_branch` additionally checks `git add --dry-run` on a wiki probe so ingest can stage raw sources.
 
 ## Backlink format check (backlink-format-check.sh)
 
