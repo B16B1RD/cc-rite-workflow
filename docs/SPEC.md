@@ -75,7 +75,7 @@ The command prefix `rite` was chosen for:
 | `/rite:wiki-init` | Initialize Experience Wiki (branch, directories, templates) | None |
 | `/rite:wiki-query` | Search Wiki pages for heuristics by keyword and inject into context | `<keywords>` |
 | `/rite:wiki-ingest` | Extract heuristics from raw sources and update Wiki pages | `[source]` |
-| `/rite:wiki-lint` | Lint Wiki pages for contradictions, staleness, orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs | `[--auto] [--stale-days <N>]` |
+| `/rite:wiki-lint` | Lint Wiki pages for contradictions, staleness (informational — not added to `n_warnings`), orphans, missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs | `[--auto] [--stale-days <N>]` |
 | `/rite:recover` | Resume interrupted work | `[issue_number]` |
 | `/rite:skill-suggest` | Analyze context and suggest applicable skills | `[--verbose\|--filter]` |
 
@@ -1718,7 +1718,7 @@ The `.rite/wiki/` bundle is stored as an [Open Knowledge Format (OKF) v0.2](http
 | `/rite:wiki-init` | One-time setup: create the Wiki branch (if `branch_strategy: "separate_branch"`), scaffold directory structure, and install page templates |
 | `/rite:wiki-ingest` | Parse raw sources (review results, fix outcomes, closed Issues) and update or create Wiki pages. Invoked manually or automatically by the `wiki-ingest-trigger.sh` hook |
 | `/rite:wiki-query` | Search Wiki pages by keyword and inject matching heuristics into the conversation context. Invoked manually or automatically by the `wiki-query-inject.sh` hook at Issue start / review / fix / implement phases |
-| `/rite:wiki-lint` | Check Wiki pages for contradictions, staleness, orphans (pages with no cross-refs), missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs. Supports `--auto` mode for CI-style batch runs |
+| `/rite:wiki-lint` | Check Wiki pages for contradictions, staleness (informational — not added to `n_warnings`), orphans (pages with no cross-refs), missing concepts (`missing_concept`), unregistered raw sources (`unregistered_raw`, informational — not added to `n_warnings`), and broken cross-refs. Supports `--auto` mode for CI-style batch runs |
 
 ### Automatic Hook Integration
 
