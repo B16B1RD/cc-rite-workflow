@@ -1025,7 +1025,7 @@ rationale: references/rationale.md#hook-path-absolute
 
 If the file already contains hooks, check each hook command for rite hook patterns:
 
-1. Scan all `.hooks.{EventName}[*].hooks[*].command` values across PreCompact, PostCompact, SessionStart, SessionEnd, PreToolUse, and PostToolUse events
+1. Scan all `.hooks.{EventName}[*].hooks[*].command` values across PreCompact, PostCompact, SessionStart, SessionEnd, Stop, PreToolUse, and PostToolUse events (the same event set as the 4.5.1.2 required-hook table — an event missing here is never checked for a stale path, and 4.5.1.2 only checks presence, so the Decision logic would report "up to date" while the outdated path survives)
 2. Identify **rite hook commands** (per the 判定基準 above — `rite` as a full path segment above the hooks dir; this covers both `plugins/rite/hooks/` relative paths and any previous absolute paths, while excluding look-alikes such as `favorite/hooks/`)
 3. For each matching command, construct the expected full command string `bash {hooks_dir}/{script_name}` (where `{hooks_dir}` is the absolute path resolved in Phase 4.5.0 and `{script_name}` is the filename like `pre-tool-bash-guard.sh`). Compare the existing command string with the expected one
 4. If the existing command does NOT match the expected command, mark it as **needs update**
@@ -1033,7 +1033,7 @@ If the file already contains hooks, check each hook command for rite hook patter
 **Note**: 既存 hook が相対パスなら絶対パスと一致せず更新対象になる（意図どおり）。
 rationale: references/rationale.md#hook-path-absolute
 
-**Display when outdated paths are detected** (where `{event}` is the hook event name such as PreCompact/PostCompact/SessionStart/SessionEnd/PreToolUse, and `{current_cmd}` is the existing command string):
+**Display when outdated paths are detected** (where `{event}` is the hook event name such as PreCompact/PostCompact/SessionStart/SessionEnd/Stop/PreToolUse/PostToolUse, and `{current_cmd}` is the existing command string):
 ```
 ⚠️ Outdated rite hook paths detected:
 | Hook Event | Current Command | Expected Command |

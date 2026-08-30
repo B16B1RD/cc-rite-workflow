@@ -1165,7 +1165,7 @@ iteration:
 
 ### Supported Hook Types
 
-> **Canonical SoT**: The authoritative list of registered hook events lives in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json). This table mirrors that registration; if the two diverge, `hooks.json` wins. The table below is enumerated for reader convenience but MUST be regenerated from `hooks.json` keys (`jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`) whenever the registration changes. One row = one hook **event**, and an event may bundle several scripts under different matchers, so the row count (7 events) is deliberately smaller than the registered entry count (9): `PreToolUse` and `PostToolUse` each register two scripts. Each row's Purpose must name every script registered for that event.
+> **Canonical SoT**: The authoritative list of registered hook events lives in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json). This table mirrors that registration; if the two diverge, `hooks.json` wins. The table below is enumerated for reader convenience but MUST be regenerated from `hooks.json` keys (`jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`) whenever the registration changes. One row = one hook **event**, and an event may bundle several scripts under different matchers, so the row count (7 events) is deliberately smaller than the registered entry count (9): `PreToolUse` and `PostToolUse` each register two scripts. A row whose event bundles more than one script must name every one of them in its Purpose, so that a reader can tell which script does what; single-script rows describe the behaviour without repeating the script name.
 
 | Type | Timing | Purpose |
 |------|--------|---------|
@@ -1328,7 +1328,7 @@ Shared library sourced by the lifecycle hooks for multi-session conflict prevent
 
 ### Issue Comment WM Sync (`issue-comment-wm-sync.sh`)
 
-A helper, **not** a registered hook: it is invoked by the `post-tool-wm-sync.sh` PostToolUse hook on its Path B (phase-change replica sync) and called directly by several skills (`/rite:open` Step 2.5 `init`, `/rite:issue-implement` Phase 5.1.1.2 `update`). Synchronizes work-memory updates into the Issue comment when a phase change is detected. Delegates deterministic JSON/body construction to `issue-comment-wm-update.py` to avoid fragile inline jq + atomic-write patterns.
+A helper, **not** a registered hook: it is invoked by the `post-tool-wm-sync.sh` PostToolUse hook on its Path B (phase-change replica sync) and called directly by several skills (e.g. `/rite:open` Step 2.5 `init`, `/rite:issue-implement` Phase 5.1.1.2 `update`; `pr-create` / `fix` / `ready` / `cleanup` / `lint` call it too). Synchronizes work-memory updates into the Issue comment when a phase change is detected. Delegates deterministic JSON/body construction to `issue-comment-wm-update.py` to avoid fragile inline jq + atomic-write patterns.
 
 ### Wiki Ingest Trigger (`wiki-ingest-trigger.sh`) and Wiki Query Inject (`wiki-query-inject.sh`)
 
