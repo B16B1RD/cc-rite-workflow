@@ -1025,7 +1025,7 @@ rationale: references/rationale.md#hook-path-absolute
 
 If the file already contains hooks, check each hook command for rite hook patterns:
 
-1. Scan all `.hooks.{EventName}[*].hooks[*].command` values across PreCompact, PostCompact, SessionStart, SessionEnd, PreToolUse, and PostToolUse events
+1. Scan all `.hooks.{EventName}[*].hooks[*].command` values across PreCompact, PostCompact, SessionStart, SessionEnd, Stop, PreToolUse, and PostToolUse events (the same event set as the 4.5.1.2 required-hook table — an event missing here is never checked for a stale path, and 4.5.1.2 only checks presence, so the Decision logic would report "up to date" while the outdated path survives)
 2. Identify **rite hook commands** (per the 判定基準 above — `rite` as a full path segment above the hooks dir; this covers both `plugins/rite/hooks/` relative paths and any previous absolute paths, while excluding look-alikes such as `favorite/hooks/`)
 3. For each matching command, construct the expected full command string `bash {hooks_dir}/{script_name}` (where `{hooks_dir}` is the absolute path resolved in Phase 4.5.0 and `{script_name}` is the filename like `pre-tool-bash-guard.sh`). Compare the existing command string with the expected one
 4. If the existing command does NOT match the expected command, mark it as **needs update**
@@ -1033,7 +1033,7 @@ If the file already contains hooks, check each hook command for rite hook patter
 **Note**: 既存 hook が相対パスなら絶対パスと一致せず更新対象になる（意図どおり）。
 rationale: references/rationale.md#hook-path-absolute
 
-**Display when outdated paths are detected** (where `{event}` is the hook event name such as PreCompact/PostCompact/SessionStart/SessionEnd/PreToolUse, and `{current_cmd}` is the existing command string):
+**Display when outdated paths are detected** (where `{event}` is the hook event name such as PreCompact/PostCompact/SessionStart/SessionEnd/Stop/PreToolUse/PostToolUse, and `{current_cmd}` is the existing command string):
 ```
 ⚠️ Outdated rite hook paths detected:
 | Hook Event | Current Command | Expected Command |
@@ -1055,7 +1055,9 @@ rationale: references/rationale.md#hook-path-absolute
 | PostCompact | `post-compact.sh` | `""` | Auto-recover workflow after compaction |
 | SessionStart | `session-start.sh` | `""` | Re-inject state on startup/resume |
 | SessionEnd | `session-end.sh` | `""` | Reset flow state on session end |
+| Stop | `stop-loop-continuation.sh` | `""` | Consume one-shot handoff and re-inject the next review↔fix loop / cleanup chain command |
 | PreToolUse | `pre-tool-bash-guard.sh` | `"Bash"` | Block known-bad Bash command patterns |
+| PreToolUse | `pre-tool-edit-guard.sh` | `"Edit\|Write\|MultiEdit\|NotebookEdit"` | Deny reviewer-subagent writes into a parent working tree |
 | PostToolUse | `post-tool-wm-sync.sh` | `"Bash"` | Auto-create local WM; sync Issue comment replica on phase change |
 | PostToolUse | `scripts/bang-backtick-edit-hook.sh` | `"Edit\|Write\|MultiEdit"` | Block bang-backtick adjacency that bash would interpret as history expansion |
 
@@ -1067,7 +1069,7 @@ rationale: references/rationale.md#hook-path-absolute
 
 **Note**: 欠落がなければ本サブフェーズは無出力。判定は下記 Decision logic。
 
-**Display when missing hooks are detected** (`{total_count}` = number of required hooks, currently 7):
+**Display when missing hooks are detected** (`{total_count}` = number of required hooks, currently 9):
 ```
 ⚠️ Required rite hooks are missing ({missing_count}/{total_count}):
 | Hook Event | Script | Status |
@@ -1092,7 +1094,9 @@ Add the following hooks to `.claude/settings.local.json`:
 | PostCompact | `bash {hooks_dir}/post-compact.sh` | Auto-recover workflow after compaction |
 | SessionStart | `bash {hooks_dir}/session-start.sh` | Re-inject state on startup/resume |
 | PreToolUse (Bash) | `bash {hooks_dir}/pre-tool-bash-guard.sh` | Block known-bad Bash command patterns |
+| PreToolUse (Edit\|Write\|MultiEdit\|NotebookEdit) | `bash {hooks_dir}/pre-tool-edit-guard.sh` | Deny reviewer-subagent writes into a parent working tree |
 | SessionEnd | `bash {hooks_dir}/session-end.sh` | Reset flow state on session end |
+| Stop | `bash {hooks_dir}/stop-loop-continuation.sh` | Consume one-shot handoff and re-inject the next review↔fix loop / cleanup chain command |
 | PostToolUse (Bash) | `bash {hooks_dir}/post-tool-wm-sync.sh` | Auto-create local WM; sync Issue comment replica on phase change |
 | PostToolUse (Edit\|Write\|MultiEdit) | `bash {hooks_dir}/scripts/bang-backtick-edit-hook.sh` | Block bang-backtick adjacency that bash would interpret as history expansion |
 
@@ -1143,6 +1147,26 @@ Add the following hooks to `.claude/settings.local.json`:
             "command": "bash {hooks_dir}/pre-tool-bash-guard.sh"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {hooks_dir}/pre-tool-edit-guard.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {hooks_dir}/stop-loop-continuation.sh"
+          }
+        ]
       }
     ],
     "SessionEnd": [
@@ -1183,9 +1207,9 @@ Add the following hooks to `.claude/settings.local.json`:
 **Important**:
 - **Non-rite hooks**: If `.claude/settings.local.json` already has hooks whose command is NOT a **rite hook command** (per the 判定基準 above — this includes look-alikes such as `favorite/hooks/`), preserve them as-is. Do not overwrite or remove user-defined hooks.
 - **rite hooks (path update)**: outdated **rite hook commands**（4.5.1.1）は `{hooks_dir}` パスへ **replace**。
-- **Missing rite hooks**: 必須 rite hook が無ければ追加。PostToolUse は 2 matcher（`Bash` と `Edit|Write|MultiEdit`）が共存必須。
+- **Missing rite hooks**: 必須 rite hook が無ければ追加。PostToolUse は 2 matcher（`Bash` と `Edit|Write|MultiEdit`）が、PreToolUse も 2 matcher（`Bash` と `Edit|Write|MultiEdit|NotebookEdit`）が共存必須。
 - **Obsolete hooks**: `post-compact-guard.sh` (PreToolUse) または `context-pressure.sh` (PostToolUse) があれば **remove**。
-- **Matcher rules**: `post-tool-wm-sync.sh` / `pre-tool-bash-guard.sh` は `"matcher": "Bash"`。`scripts/bang-backtick-edit-hook.sh` は `"matcher": "Edit|Write|MultiEdit"`。他は `"matcher": ""`。
+- **Matcher rules**: `post-tool-wm-sync.sh` / `pre-tool-bash-guard.sh` は `"matcher": "Bash"`。`scripts/bang-backtick-edit-hook.sh` は `"matcher": "Edit|Write|MultiEdit"`。`pre-tool-edit-guard.sh` は `"matcher": "Edit|Write|MultiEdit|NotebookEdit"`。`stop-loop-continuation.sh` を含む他は `"matcher": ""`。
 - **Permission for WM_SOURCE**: 未設定なら `.permissions.allow` へ `"Bash(WM_SOURCE:*)"` を追加。
 
 ### 4.5.3 Make Scripts Executable
@@ -1193,7 +1217,7 @@ Add the following hooks to `.claude/settings.local.json`:
 Attempt to set executable permissions regardless of source type (LOCAL or MARKETPLACE):
 
 ```bash
-chmod +x {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/scripts/bang-backtick-edit-hook.sh
+chmod +x {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/pre-tool-edit-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/stop-loop-continuation.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/scripts/bang-backtick-edit-hook.sh
 ```
 
 If `chmod` fails (e.g., permission denied, read-only filesystem), display a warning and continue:
@@ -1207,7 +1231,7 @@ If hooks fail to run, manually run: chmod +x {hooks_dir}/*.sh
 Verify the hook scripts exist and are executable:
 
 ```bash
-ls -la {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh
+ls -la {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/pre-tool-edit-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/stop-loop-continuation.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/scripts/bang-backtick-edit-hook.sh
 ```
 
 If any file is missing or lacks execute permission, display a warning and continue to Phase 5:
