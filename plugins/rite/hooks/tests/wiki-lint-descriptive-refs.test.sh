@@ -1129,12 +1129,14 @@ extract_phase81 > "$PHASE81_RAW"
 # テスト側の問題へ誤帰属させる。
 phase81_block_ok=1
 
-# 群 1: 抽出の構造健全性。awk の開始 / 終了パターンと block 冒頭が揃っているかを見る。
-# 終端行は awk の終了条件そのもので、消えれば契約以前に抽出が EOF まで暴走する。
-for _required in '^# ステップ 8.1 canonical lint_action decision logic' '^set -o pipefail$' \
-                 '^echo "\[CONTEXT\] lint_action=\$lint_action"$'; do
+# 群 1: 抽出の構造健全性。block 冒頭と awk の終了パターンが揃っているかを見る。
+# 終端行は awk の終了条件と lint_action emit 契約を兼ねており、抽出結果からは両者を判別
+# できない。文面はどちらの原因も名乗る (片方に決め打つと、残った方の退行がテスト側の
+# 問題として報じられる)。開始アンカーは awk の開始条件と同一文字列で、出力が非空なら必ず
+# 一致するため検査しない — 空出力は set -o pipefail 側が捕捉する。
+for _required in '^set -o pipefail$' '^echo "\[CONTEXT\] lint_action=\$lint_action"$'; do
   if ! grep -q "$_required" "$PHASE81_RAW"; then
-    fail "TC-53 ステップ 8.1 bash の抽出に失敗 ('$_required' 不在。アンカーが変更された可能性)"
+    fail "TC-53 ステップ 8.1 bash の抽出に失敗 ('$_required' 不在。抽出アンカーが変更されたか、SKILL.md 側の該当行が削除された可能性)"
     phase81_block_ok=0
   fi
 done
