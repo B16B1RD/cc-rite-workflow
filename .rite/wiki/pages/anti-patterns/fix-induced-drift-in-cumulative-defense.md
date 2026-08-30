@@ -443,7 +443,7 @@ cycle 4 で初検出された 2 件 (1 HIGH F-01: `flow-state-update-trap-isolat
 
 4 reviewer (code-quality / test / error-handling / security) 全員が独立に「評価: 可」(mandatory findings 0) + healthy self-assessment を出した時点で「累積対策 fractal pattern が収束した」と判定。本 PR では code-quality reviewer の判定文に `Cycle trajectory: 12 → 15 → 3 → 2 → **0** で完全収束を確認` と明記され、empirical reproduction による convergence 確認が成立した (cf. [`empirical-reproduction-over-invariant-reasoning.md`](../heuristics/empirical-reproduction-over-invariant-reasoning.md))。
 
-### PR #2120 — fix 由来の drift が genuine な穴を件数で上回った（5 cycle 定量）
+### 累積対策 PR で、fix 由来の drift が genuine な穴を件数で上回った（5 cycle 定量）
 
 本ページの中心主張に **定量的な裏付け**が取れた事例。5 cycle 収束の指摘を由来別に分類すると次のようになった。
 
@@ -785,7 +785,7 @@ cycle 5 fix では以下 4 軸の一斉対応で 7 件を 1 commit で landing:
 
 cycle 8 の完全収束時には reviewer が **「真に finding がないときに何か挙げないと bias」を抑制し、0 件 = 正常終了を恐れない姿勢が loop 永久化を回避** と明言。詳細は [0 件 finding = 正常終了として受容する (false-positive 回避義務)](../heuristics/reviewer-zero-finding-as-legitimate-convergence.md) を参照。
 
-## marker ライフサイクル gate 新設 (PR #2078, 5 cycle) — 「防御を足す修正が次の指摘面になる」を 2 度の方針転換で抜けた事例
+## marker ライフサイクル gate 新設（5 cycle）— 「防御を足す修正が次の指摘面になる」を 2 度の方針転換で抜けた事例
 
 ### Cycle trajectory (blocking findings 数)
 
@@ -814,7 +814,7 @@ cycle 8 の完全収束時には reviewer が **「真に finding がないと�
 
 ### docs 是正 PR での 5 cycle 観測 — 書き換え単位・カウンタ・marker の 3 型
 
-PR #2052（散文の形式反転）で、fix-induced drift が実装 PR とは異なる 3 つの型で反復した。いずれも「直した箇所の**隣**が旧契約のまま残る」構造を共有する。
+散文の形式を反転させた PR で、fix-induced drift が実装 PR とは異なる 3 つの型で反復した。いずれも「直した箇所の**隣**が旧契約のまま残る」構造を共有する。
 
 **1. 書き換える単位は「文」ではなく「その主張が閉じる範囲」。** bullet の前半だけを新契約へ移し、直後の 2 文が旧契約のまま残る誤りが 4 レビュアーから独立に指摘された。しかもそれが operator 向けの remediation 文だったため、「永続する手当て」を明示的に否定して「非永続な手当て」を勧める状態になっていた。段落・bullet 単位で読み直してから書き換える。
 
@@ -827,7 +827,7 @@ PR #2052（散文の形式反転）で、fix-induced drift が実装 PR とは�
 **5. 過剰反応を避けた対処。** 前サイクルの fix が導入した箇所への指摘 6 件を、分岐・条項の**追加**ではなく emit 点の移設 / gate の削除 / 述語の置換 / 到達不能分岐の畳み込みで解いた。追加パッチを重ねると、その追加自体が次サイクルの新たなレビュー対象面になり指摘を再生産する（本ページ「Simplification-First の実用的な読み替え」の docs 版）。
 
 
-### N 回目のパッチは述語が proxy である信号（PR #2099 / Issue #2088）
+### N 回目のパッチは述語が proxy である信号
 
 5 サイクル回して blocking が `6 → 8 → 7 → 5 → 5` と横ばいのまま `max_review_cycles` の backstop で停止した PR。cycle 5 の blocking 5 件のうち 2 件は **cycle 4 の fix が直接生んだもの**、1 件は **cycle 4 が半分だけ塞いだ穴**だった。
 
@@ -869,9 +869,9 @@ cycle 4 は「pin 書込失敗時に stale pin を残さない」ために `rm -
 - **副次: 逐語引用は書き換えで宙吊りになる。** 別ファイルが当該文言を逐語引用していたため、書き換えで存在しない文言への参照が残った。文言を引用する側は「同じ前提で書かれている」と述べる形にすると、引用元の表現変更で壊れない
 - **副次: Issue 番号を追跡先として名指しした記述は、その Issue のスコープが名指し内容を含まないまま close されると宙吊りになる。** close 前に `#<番号>` の in-repo 参照を grep し、スコープ外の追跡先は別 Issue へ付け替える
 
-### 実測アンカーの無い散文指摘は、修正の複製率が 1 を超えることがある（PR #2126, cycle 3→4）
+### 実測アンカーの無い散文指摘は、修正の複製率が 1 を超えることがある（cycle 3→4）
 
-上記は「同一主張の訂正が 3 サイクル続く」形だったが、PR #2126 では**別々の散文指摘を素直に直した結果、その修正自身が次サイクルの HIGH を 4 件生む**形が観測された。cycle 4 の reviewer の言葉がそのまま因果を示している — 「cycle 3 が追加した mandate 5 が…」「F-07 の修正で追加された例外が…」「Execution condition を拡張した一方で…」。
+上記は「同一主張の訂正が 3 サイクル続く」形だったが、この事例では**別々の散文指摘を素直に直した結果、その修正自身が次サイクルの HIGH を 4 件生む**形が観測された。cycle 4 の reviewer の言葉がそのまま因果を示している — 「cycle 3 が追加した mandate 5 が…」「F-07 の修正で追加された例外が…」「Execution condition を拡張した一方で…」。
 
 **なぜ散文で起きやすいか**: 手順書・仕様書は相互参照の網であり、1 箇所の条件を変えると、それを参照している側の条件・retry 手順・表示条件・テンプレート選択がすべて追随対象になる。そのどれかを漏らすと次サイクルの指摘になる。実測アンカーのある指摘は「壊れた成果物が観測できる」ので直せば終わるが、散文指摘は「2 つの記述が食い違う」ので直すと 3 つ目が食い違う。
 
