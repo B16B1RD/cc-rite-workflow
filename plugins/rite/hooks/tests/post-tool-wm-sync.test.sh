@@ -735,7 +735,10 @@ else
 fi
 echo ""
 
-echo "T-07: wm_replica=absent already set → 0 gh calls, empty stdout, last_synced_phase advances"
+# #2463: この経路はかつて stdout も空にしていたが、`absent` の解除経路が replica 作成成功しか
+# 無いため、init が unverified / gh 失敗で終わると恒久的に沈黙したまま同期が止まっていた。
+# 契約を「gh は呼ばない・ただし劣化は毎回伝える」に変更したので、systemMessage を期待する。
+echo "T-07: wm_replica=absent already set → 0 gh calls, systemMessage emitted, last_synced_phase advances"
 dir_n07="$TEST_DIR/n07"
 mkdir -p "$dir_n07/.rite/work-memory"
 printf '# rite\n' > "$dir_n07/rite-config.yml"
@@ -746,8 +749,10 @@ rc_n07=0
 run_hook_cap "$dir_n07" || rc_n07=$?
 stdout07=$(cat "$dir_n07/hook.stdout" 2>/dev/null)
 lsp07=$(jq -r '.last_synced_phase // empty' "$(state_file_path "$dir_n07")")
-if [ ! -s "$dir_n07/gh.log" ] && [ -z "$stdout07" ] && [ "$lsp07" = "implement" ] && [ "$rc_n07" -eq 0 ]; then
-  pass "T-07: 0 gh calls, empty stdout, last_synced_phase advanced"
+if [ ! -s "$dir_n07/gh.log" ] \
+   && printf '%s' "$stdout07" | jq -e '.systemMessage | type=="string" and length>0' >/dev/null 2>&1 \
+   && [ "$lsp07" = "implement" ] && [ "$rc_n07" -eq 0 ]; then
+  pass "T-07: 0 gh calls, systemMessage emitted, last_synced_phase advanced"
 else
   fail "T-07: log=$(cat "$dir_n07/gh.log" 2>/dev/null) stdout='$stdout07' lsp=$lsp07 rc=$rc_n07"
 fi
@@ -858,6 +863,8 @@ echo ""
 
 echo "T-14: AC-1/4/8/9 paths all exit 0; AC-4 Then (systemMessage JSON, wm_replica, lsp, list GET 1)"
 # AC-1 = T-01 success 2-rt, AC-4 = no_comment first detect, AC-8 = T-10 base skip, AC-9 = T-11 PATCH fail
+# (#2463 で absent 経路の契約が変わった: T-07 は 0 gh + systemMessage、T-20/T-21 が Issue スコープ化
+#  と恒久沈黙の解消を pin する)
 dir_n14="$TEST_DIR/n14"
 mkdir -p "$dir_n14/.rite/work-memory"
 printf '# rite\n' > "$dir_n14/rite-config.yml"
@@ -921,6 +928,63 @@ if [ "$rc_n15" -eq 0 ] \
   pass "T-15: empty-status fetch → systemMessage, last_synced_phase unchanged, exit 0"
 else
   fail "T-15: rc=$rc_n15 lsp=$lsp15 stdout=$stdout15 stderr=$(cat "$dir_n15/hook.stderr" 2>/dev/null)"
+fi
+echo ""
+
+# ─── #2463: negative cache の Issue スコープ化と恒久沈黙の解消 (T-20 / T-21) ───
+
+echo "T-20: another Issue's wm_replica=absent must not suppress this Issue's sync (AC-4)"
+dir_n20="$TEST_DIR/n20"
+mkdir -p "$dir_n20/.rite/work-memory"
+printf '# rite\n' > "$dir_n20/rite-config.yml"
+echo "existing wm" > "$dir_n20/.rite/work-memory/issue-43.md"
+# Issue 42 の処理中に absent が記録され、comment id もキャッシュされている状態を作る
+create_state_file "$dir_n20" '{"active": true, "issue_number": 42, "phase": "plan", "last_synced_phase": "init", "wm_replica": "absent", "wm_comment_id": 4242}'
+# Issue 43 へ切り替える (open ステップ 1.6 相当の phase transition)
+(cd "$dir_n20" && bash "$SCRIPT_DIR/../flow-state.sh" set \
+  --phase implement --issue 43 --branch "fix/issue-43" --pr 0 --next n) >/dev/null 2>&1 || true
+state_n20="$(state_file_path "$dir_n20")"
+carried_rep=$(jq -r 'has("wm_replica")' "$state_n20" 2>/dev/null)
+carried_cid=$(jq -r 'has("wm_comment_id")' "$state_n20" 2>/dev/null)
+if [ "$carried_rep" = "false" ] && [ "$carried_cid" = "false" ]; then
+  pass "T-20a: AC-4 — Issue switch drops both wm_replica and wm_comment_id"
+else
+  fail "T-20a: expected both dropped on Issue switch (wm_replica=$carried_rep wm_comment_id=$carried_cid)"
+fi
+wm_body_fixture > "$dir_n20/wm-body.md"
+install_gh_shim "$dir_n20"
+rc_n20=0
+run_hook_cap "$dir_n20" || rc_n20=$?
+if [ -s "$dir_n20/gh.log" ] && [ "$rc_n20" -eq 0 ]; then
+  pass "T-20b: AC-4 — sync actually runs for the new Issue (gh called, not skipped)"
+else
+  fail "T-20b: expected gh calls for Issue 43. rc=$rc_n20 log=$(cat "$dir_n20/gh.log" 2>/dev/null)"
+fi
+echo ""
+
+echo "T-21: persistent wm_replica=absent notifies on every phase change, never falls permanently silent (AC-5)"
+dir_n21="$TEST_DIR/n21"
+mkdir -p "$dir_n21/.rite/work-memory"
+printf '# rite\n' > "$dir_n21/rite-config.yml"
+echo "existing wm" > "$dir_n21/.rite/work-memory/issue-42.md"
+create_state_file "$dir_n21" '{"active": true, "issue_number": 42, "phase": "implement", "last_synced_phase": "init", "wm_replica": "absent"}'
+install_gh_shim "$dir_n21"
+state_n21="$(state_file_path "$dir_n21")"
+notified_n21=0
+for ph in implement lint pr; do
+  jq --arg p "$ph" '.phase = $p' "$state_n21" > "$state_n21.tmp" && mv "$state_n21.tmp" "$state_n21"
+  run_hook_cap "$dir_n21" || true
+  if printf '%s' "$(cat "$dir_n21/hook.stdout" 2>/dev/null)" \
+     | jq -e '.systemMessage | type=="string" and length>0' >/dev/null 2>&1; then
+    notified_n21=$((notified_n21 + 1))
+  fi
+done
+# 契約は「毎 phase 変化で通知」なので 3/3 を要求する。>=1 では「1 回だけ鳴って以後沈黙」する
+# 退行 (#2463 が塞いだ恒久沈黙の再来) を素通しする。
+if [ "$notified_n21" -eq 3 ] && [ ! -s "$dir_n21/gh.log" ]; then
+  pass "T-21: AC-5 — degradation surfaced 3/3 times with zero gh round trips"
+else
+  fail "T-21: expected 3/3 systemMessage and 0 gh calls (notified=$notified_n21/3 log=$(cat "$dir_n21/gh.log" 2>/dev/null))"
 fi
 echo ""
 

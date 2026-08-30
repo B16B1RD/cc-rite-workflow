@@ -322,6 +322,20 @@ _read_cached_comment_id() {
   printf '%s' "$cached"
 }
 
+# 取得済み replica body が対象 Issue のものかを判定する (rc=0 一致 / rc=1 不一致・判定不能)。
+# 判定材料は init テンプレの `- **Issue**: #N` 行のみ。この行は既に GET 済みの body から読むため、
+# 検証のための gh 往復は増えない。行が無い / 読めない場合は「一致」と主張せず rc=1 に倒し、
+# 呼び出し側を scan 経路へフォールバックさせる (誤 PATCH より往復増を選ぶ)。
+_body_belongs_to_issue() {
+  local body="$1" issue="$2" found
+  # `#246` が `#2463` に前方一致しないよう、番号の直後を行末か非数字に固定する。
+  # `head -1` の早期クローズは pipefail 下で sed を SIGPIPE 失敗させうる。判定不能は rc=1 側
+  # (= scan フォールバック) が正しい挙動なので、抽出失敗は空文字へ縮退させる。
+  found=$(printf '%s\n' "$body" \
+    | sed -n 's/^- \*\*Issue\*\*:[[:space:]]*#\([0-9][0-9]*\)[^0-9]*$/\1/p' | head -1) || found=""
+  [ -n "$found" ] && [ "$found" = "$issue" ]
+}
+
 # fetch: GET body を outfile に書く。キャッシュ検証 GET はしない。
 # stdout: status=success / status=skipped; reason=no_comment / status=skipped; reason=body_fetch_failed
 # 成功時は COMMENT_ID グローバルをセットする (同一プロセスの patch / update 用)。
@@ -335,7 +349,20 @@ do_fetch() {
     _err=$(mktemp 2>/dev/null) || _err=""
     _rc=0
     body=$(gh api "repos/${OWNER_REPO}/issues/comments/${cached}" --jq '.body // empty' 2>"${_err:-/dev/null}") || _rc=$?
-    if [ "$_rc" -eq 0 ] && [ -n "$body" ]; then
+    if [ "$_rc" -eq 0 ] && [ -n "$body" ] && ! _body_belongs_to_issue "$body" "$ISSUE"; then
+      # cache された id は別 Issue の replica (batch 実行で前 Issue の値が残った等) か、
+      # Issue 行を持たない別物。この id では PATCH せず、キャッシュを捨てて scan 経路へ落ちる。
+      # `repos/{owner}/{repo}/issues/comments/{id}` は Issue 非依存のため、GET が成功したこと
+      # 自体は所属の証明にならない (#2463)。
+      [ -n "$_err" ] && rm -f "$_err"
+      # 「不一致」と「判定不能 (Issue 行が無い / 読めない)」は同じ rc=1 に畳まれるため、文言も
+      # 非所属を断定しない。断定すると判定不能ケースで operator の triage が「Issue 跨ぎ汚染」へ
+      # 誤誘導される。
+      echo "[rite] WARNING: issue-comment-wm-sync: cache された wm_comment_id=$cached は Issue #${ISSUE} の replica と確認できなかったため破棄しスキャンし直します (別 Issue の replica か、Issue 行を欠く body)" >&2
+      clear_cached_comment_id
+      cached=""
+      body=""
+    elif [ "$_rc" -eq 0 ] && [ -n "$body" ]; then
       [ -n "$_err" ] && rm -f "$_err"
       COMMENT_ID="$cached"
       if ! printf '%s' "$body" > "$outfile"; then
@@ -345,8 +372,7 @@ do_fetch() {
       fi
       echo "status=success"
       return 0
-    fi
-    if [ "$_rc" -ne 0 ] && [ -n "$_err" ] && [ -s "$_err" ] && grep -qiE 'HTTP[[:space:]]*404' "$_err"; then
+    elif [ "$_rc" -ne 0 ] && [ -n "$_err" ] && [ -s "$_err" ] && grep -qiE 'HTTP[[:space:]]*404' "$_err"; then
       [ -n "$_err" ] && rm -f "$_err"
       clear_cached_comment_id
       cached=""

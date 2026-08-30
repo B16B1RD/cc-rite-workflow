@@ -758,6 +758,211 @@ else
 fi
 echo ""
 
+# ─── #2463: wm_comment_id の Issue 所属検証 (T-20 〜 T-23) ────────────────
+# `repos/{owner}/{repo}/issues/comments/{id}` は Issue 非依存のエンドポイントなので、
+# cache された id で GET が成功しても、それが対象 Issue の replica である保証はない。
+# batch 実行で前 Issue の id が flow-state に残ると、次 Issue の phase が前 Issue の
+# コメントへ PATCH される。以下は「使わない」「拾い直す」「安全側へ倒す」「往復を増やさない」
+# の 4 点を、gh 呼び出しの**順序付き系列**で pin する。
+
+# 対象 Issue 番号を差し替えた WM fixture を作る (前方一致の誤判定検出にも使う)。
+wm_body_fixture_for() {
+  wm_body_fixture | sed "s/^- \*\*Issue\*\*: #42$/- **Issue**: #$1/"
+}
+
+# cache された id を持つ状態で update を 1 回走らせ、gh 呼び出し系列を返す共通 shim。
+# cached id 4242 の body は $2 の Issue に属し、list scan は id 7777 (Issue $1) を返す。
+setup_crossissue_shim() {
+  local dir="$1" target_issue="$2" cached_body_issue="$3" with_scan_hit="$4"
+  mkdir -p "$dir/bin"
+  local seq="$dir/gh.seq"
+  wm_body_fixture_for "$cached_body_issue" > "$dir/cached-body.md"
+  wm_body_fixture_for "$target_issue" > "$dir/scanned-body.md"
+  cat > "$dir/bin/gh" <<GH_SHIM
+#!/bin/bash
+is_patch=0
+prev=""
+for a in "\$@"; do
+  if [ "\$a" = "PATCH" ] && [ "\$prev" = "-X" ]; then is_patch=1; fi
+  prev="\$a"
+done
+if [ "\$is_patch" = 1 ]; then
+  case "\$*" in
+    *"/issues/comments/4242"*) echo "PATCH_CACHED" >> "$seq" ;;
+    *) echo "PATCH_SCANNED" >> "$seq" ;;
+  esac
+  cat >/dev/null
+  exit 0
+fi
+case "\$1 \$2" in
+  "repo view") echo "testowner/testrepo"; exit 0 ;;
+esac
+case "\$*" in
+  *"/issues/comments/4242"*)
+    echo "GET_CACHED" >> "$seq"
+    cat "$dir/cached-body.md"
+    exit 0 ;;
+  *"/issues/$target_issue/comments"*)
+    echo "GET_LIST" >> "$seq"
+    if [ "$with_scan_hit" = "yes" ]; then
+      jq -Rs --argjson id 7777 '{id: \$id, body: .}' < "$dir/scanned-body.md"
+    fi
+    exit 0 ;;
+esac
+echo OTHER >> "$seq"
+exit 0
+GH_SHIM
+  chmod +x "$dir/bin/gh"
+}
+
+# ─── T-20: 他 Issue の cache は使わず、scan した対象 Issue の replica へ PATCH する ───
+echo "T-20: cross-issue cached id → no PATCH on cached id, scan finds target replica (AC-1/AC-2/AC-6)"
+dir_t20="$TEST_DIR/t20"
+mkdir -p "$dir_t20"
+echo '{"active":true,"issue_number":43,"wm_comment_id":4242}' > "$dir_t20/.rite-flow-state"
+setup_crossissue_shim "$dir_t20" 43 42 yes
+out_t20=$(cd "$dir_t20" && PATH="$dir_t20/bin:$PATH" \
+  bash "$HOOK" update --issue 43 --transform update-phase \
+    --phase "implement" --phase-detail "実装中" 2>/dev/null) || true
+seq20=$(tr '\n' ' ' < "$dir_t20/gh.seq" | sed 's/ *$//')
+if [ "$seq20" = "GET_CACHED GET_LIST PATCH_SCANNED" ]; then
+  pass "T-20a: AC-1 — cached comment GET → list scan GET → PATCH on scanned id (no PATCH_CACHED)"
+else
+  fail "T-20a: expected 'GET_CACHED GET_LIST PATCH_SCANNED', got '$seq20' out=$out_t20"
+fi
+if printf '%s' "$out_t20" | grep -qF "status=success"; then
+  pass "T-20b: AC-2 — scan path returns status=success"
+else
+  fail "T-20b: expected status=success. out=$out_t20"
+fi
+cid20=$(jq -r '.wm_comment_id // empty' "$dir_t20/.rite-flow-state" 2>/dev/null)
+if [ "$cid20" = "7777" ]; then
+  pass "T-20c: AC-2 — wm_comment_id updated to the target Issue's replica id"
+else
+  fail "T-20c: expected wm_comment_id=7777, got '$cid20'"
+fi
+echo ""
+
+# ─── T-21: 検証情報 (Issue 行) を欠く cache body → 誤 PATCH せず scan へ ───
+echo "T-21: cached body without an Issue marker → fall back to scan, never PATCH the cached id (AC-3)"
+dir_t21="$TEST_DIR/t21"
+mkdir -p "$dir_t21"
+echo '{"active":true,"issue_number":43,"wm_comment_id":4242}' > "$dir_t21/.rite-flow-state"
+setup_crossissue_shim "$dir_t21" 43 42 yes
+# Issue 行そのものを落とし「判定不能」を作る
+grep -v '^- \*\*Issue\*\*:' "$dir_t21/cached-body.md" > "$dir_t21/cached-body.tmp"
+mv "$dir_t21/cached-body.tmp" "$dir_t21/cached-body.md"
+out_t21=$(cd "$dir_t21" && PATH="$dir_t21/bin:$PATH" \
+  bash "$HOOK" update --issue 43 --transform update-phase \
+    --phase "implement" --phase-detail "実装中" 2>/dev/null) || true
+seq21=$(tr '\n' ' ' < "$dir_t21/gh.seq" | sed 's/ *$//')
+if [ "$seq21" = "GET_CACHED GET_LIST PATCH_SCANNED" ]; then
+  pass "T-21: AC-3 — unverifiable cache falls through to scan, cached id never PATCHed"
+else
+  fail "T-21: expected 'GET_CACHED GET_LIST PATCH_SCANNED', got '$seq21' out=$out_t21"
+fi
+echo ""
+
+# ─── T-22: 前方一致の誤判定を許さない (#246 が #2463 に一致しない) ───
+echo "T-22: cached body for Issue #246 must not satisfy the check for Issue #2463 (AC-1 boundary)"
+dir_t22="$TEST_DIR/t22"
+mkdir -p "$dir_t22"
+echo '{"active":true,"issue_number":2463,"wm_comment_id":4242}' > "$dir_t22/.rite-flow-state"
+setup_crossissue_shim "$dir_t22" 2463 246 yes
+out_t22=$(cd "$dir_t22" && PATH="$dir_t22/bin:$PATH" \
+  bash "$HOOK" update --issue 2463 --transform update-phase \
+    --phase "implement" --phase-detail "実装中" 2>/dev/null) || true
+seq22=$(tr '\n' ' ' < "$dir_t22/gh.seq" | sed 's/ *$//')
+if [ "$seq22" = "GET_CACHED GET_LIST PATCH_SCANNED" ]; then
+  pass "T-22a: AC-1 — #246 does not prefix-match #2463; cache discarded"
+else
+  fail "T-22a: expected 'GET_CACHED GET_LIST PATCH_SCANNED', got '$seq22' out=$out_t22"
+fi
+# 逆方向 (target=246 / cached body=#2463)。T-22a は文字列等価な現行実装では自明に通るため、
+# 部分一致実装への退行を捕まえるのはこちら — grep や前方一致で照合すると cached body の
+# #2463 が target 246 を「含む」と誤判定し、他 Issue の replica を PATCH する。
+dir_t22b="$TEST_DIR/t22b"
+mkdir -p "$dir_t22b"
+echo '{"active":true,"issue_number":246,"wm_comment_id":4242}' > "$dir_t22b/.rite-flow-state"
+setup_crossissue_shim "$dir_t22b" 246 2463 yes
+out_t22b=$(cd "$dir_t22b" && PATH="$dir_t22b/bin:$PATH" \
+  bash "$HOOK" update --issue 246 --transform update-phase \
+    --phase "implement" --phase-detail "実装中" 2>/dev/null) || true
+seq22b=$(tr '\n' ' ' < "$dir_t22b/gh.seq" | sed 's/ *$//')
+if [ "$seq22b" = "GET_CACHED GET_LIST PATCH_SCANNED" ]; then
+  pass "T-22b: AC-1 — cached #2463 does not substring-match target #246; cache discarded"
+else
+  fail "T-22b: expected 'GET_CACHED GET_LIST PATCH_SCANNED', got '$seq22b' out=$out_t22b"
+fi
+echo ""
+
+# ─── T-23: 同一 Issue の有効キャッシュは検証由来の追加 gh を 1 回も出さない ───
+echo "T-23: valid same-Issue cache → GET 1 + PATCH 1, zero extra gh from the ownership check (AC-6)"
+dir_t23="$TEST_DIR/t23"
+mkdir -p "$dir_t23"
+echo '{"active":true,"issue_number":43,"wm_comment_id":4242}' > "$dir_t23/.rite-flow-state"
+setup_crossissue_shim "$dir_t23" 43 43 yes
+out_t23=$(cd "$dir_t23" && PATH="$dir_t23/bin:$PATH" \
+  bash "$HOOK" update --issue 43 --transform update-phase \
+    --phase "implement" --phase-detail "実装中" 2>/dev/null) || true
+seq23=$(tr '\n' ' ' < "$dir_t23/gh.seq" | sed 's/ *$//')
+if [ "$seq23" = "GET_CACHED PATCH_CACHED" ]; then
+  pass "T-23: AC-6 — ordered sequence is GET 1 + PATCH 1 with no verification round trip"
+else
+  fail "T-23: expected 'GET_CACHED PATCH_CACHED', got '$seq23' out=$out_t23"
+fi
+echo ""
+
+# ─── T-24: init テンプレが書く body が parser を満たす（テンプレ↔parser 結合の pin）───
+# 所属判定は init テンプレの Issue 行だけに依存する。テンプレ側が改名・削除されても故障は
+# fail-safe（scan へ縮退）なので、他のテストは手書き fixture を通すため全て緑のまま AC-6 が
+# 無警告で死ぬ。実際に投稿される body を捕まえて parser にかけ、結合をここで pin する。
+echo "T-24: init template body satisfies _body_belongs_to_issue (template↔parser coupling)"
+dir_t24="$TEST_DIR/t24"
+mkdir -p "$dir_t24/bin"
+POSTED_BODY_T24="$dir_t24/posted-body.md"
+cat > "$dir_t24/bin/gh" <<GH_SHIM
+#!/bin/bash
+case "\$1 \$2" in
+  "repo view") echo "testowner/testrepo"; exit 0 ;;
+  "issue comment")
+    # --body-file の値を捕まえて保存する（実際に投稿される body そのもの）
+    prev=""
+    for a in "\$@"; do
+      if [ "\$prev" = "--body-file" ]; then cp "\$a" "$POSTED_BODY_T24"; fi
+      prev="\$a"
+    done
+    echo "https://github.com/testowner/testrepo/issues/2463#issuecomment-9"
+    exit 0 ;;
+esac
+# pre-check は空（未投稿）、verify は id を返す
+if [ -f "$POSTED_BODY_T24" ]; then echo "999"; fi
+exit 0
+GH_SHIM
+chmod +x "$dir_t24/bin/gh"
+(cd "$dir_t24" && PATH="$dir_t24/bin:$PATH" \
+  bash "$HOOK" init --issue 2463 --branch "fix/issue-2463-test" >/dev/null 2>&1) || true
+
+if [ -s "$POSTED_BODY_T24" ]; then
+  pass "T-24a: init が body を投稿した（捕捉できた）"
+  # parser 本体を抽出して、投稿された body に対してそのまま適用する
+  eval "$(awk '/^_body_belongs_to_issue\(\) \{/,/^\}$/' "$HOOK")"
+  t24_body=$(cat "$POSTED_BODY_T24")
+  if _body_belongs_to_issue "$t24_body" 2463; then
+    pass "T-24b: init テンプレの body が Issue 2463 の所属判定を満たす"
+  else
+    fail "T-24b: init テンプレの body が parser を満たさない（テンプレ↔parser の drift。AC-6 が無警告で劣化する）"
+  fi
+  if _body_belongs_to_issue "$t24_body" 246; then
+    fail "T-24c: init テンプレの body が別 Issue 246 にも一致してしまう（境界の退行）"
+  else
+    pass "T-24c: init テンプレの body は別 Issue 246 には一致しない"
+  fi
+else
+  fail "T-24: init が body を投稿しなかった（shim 側の問題か init の退行）"
+fi
+echo ""
+
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then
   exit 1
