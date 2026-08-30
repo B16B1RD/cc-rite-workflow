@@ -59,6 +59,8 @@
 #   TC-51  除外ブロック (コメント / フェンス) の未閉鎖を END で検出失敗へ倒す (部分欠損形も含む)
 #   TC-49  表と箇条書きが混在する index.md でも行単位で形式を判別する (移行期の必然形状)
 #   TC-52  index.md のリンク regex が orphans.sh と literal 一致 (共有定義の drift 検出)
+#   TC-53  陳腐化 (stale) が lint_action / n_warnings の判定要素から外れ続ける
+#          (散文 / bash if / residue gate / ingest 加算式・等式・内訳の 6 箇所を突合)
 #
 # NOT covered (environment-dependent): mktemp failure on a read-only /tmp.
 set -uo pipefail
@@ -1039,6 +1041,174 @@ if assert_mutated "TC-48 MUTATION mutant 生成" "$MUT_ARITY"; then
   assert "TC-48 戻り値が 4 値でなければ検出失敗として計上する" "1" "$(printf '%s' "$arity_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
   assert_grep "TC-48 arity 不一致は WARNING で観測できる" "$arity_err" '検出アクションが 4 値を返しませんでした'
   assert "TC-48 arity 不一致の index.md 分は hits に混ぜない" "1" "$(idx_hits "$arity_out")"
+fi
+
+# ---- TC-53: staleness の informational 降格が判定経路から外れ続けること -------
+# 陳腐化は「経過時間の計上」であって構造的欠陥ではないため lint_action / n_warnings の
+# 判定要素から外した。否定 pin だけでは 8.1 の節ごと消滅で空振りするので、残る 4 変数の集合を
+# 6 箇所 (wiki-lint の散文 / bash if / residue gate、wiki-ingest の加算式 / 等式 / 内訳文言)
+# から抽出して相互一致も測る。片側だけに n_stale が残る drift と、判定ロジックごと消す変異の
+# 両方を弾く。
+INGEST_MD="$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md"
+
+# --- 否定 pin: 判定サイトから n_stale が消えている (件数表示・Lint: 行の n_stale は対象外) ---
+assert_not_grep "TC-53 residue gate ループに n_stale が残っていない" "$LINT_MD" \
+  '^for _n_var in .*n_stale'
+assert_not_grep "TC-53 bash の if 条件に n_stale が残っていない" "$LINT_MD" \
+  '\[ "\$n_stale" -gt 0 \]'
+assert_not_grep "TC-53 判定基準散文が 5 種のままになっていない" "$LINT_MD" \
+  'ブロッキングカテゴリ 5 種'
+assert_not_grep "TC-53 (AC-5) generated.at の手動更新案内が残っていない" "$LINT_MD" \
+  '手動で generated.at フィールドを更新'
+
+# --- positive pin: 除外が意図的であることと 4 種への縮小が明示されている ---
+assert_grep "TC-53 判定基準散文がブロッキング 4 種になっている" "$LINT_MD" \
+  'ブロッキングカテゴリ 4 種'
+assert_grep "TC-53 n_stale は参考コメントとして意図的除外が明示されている" "$LINT_MD" \
+  '# 参考: n_stale=\{n_stale\} — informational のため判定式から意図的に除外'
+
+# --- 6 箇所の変数集合が一致する (片側だけ改変すると落ちる) ---
+# 抽出は開いた regex にする。whitelist の alternation にすると「whitelist ∩ 各サイト」しか
+# 測れず、whitelist 外の名前を 1 箇所にだけ足す変異が全 assert を素通りする (AC-7 が要求する
+# 「3 箇所が同一の変数集合を指す」が成立しなくなる)。
+EXPECT_VARS='n_broken_refs n_contradictions n_missing_concept n_orphans'
+# 左境界を要求して `min_count` のような語からの偽収穫を防ぎ、末尾に数字を許して
+# `n_orphans2` のような数字サフィックス改名が `n_orphans` へ丸まらないようにする。
+extract_sorted() {
+  grep -oE '(^|[^a-z0-9_])n_[a-z0-9_]+' | grep -oE 'n_[a-z0-9_]+' | sort -u | tr '\n' ' ' | sed 's/ $//'
+}
+
+# 散文の「4 種」は数詞なので数字ワイルドカードで受ける。literal を要求すると語が変わったとき
+# capture が空になり、集合不一致ではなく「空 vs 4 種」として落ちて診断が原因を指さない。
+prose_vars=$(sed -n 's/^- `lint:clean`: ブロッキングカテゴリ [0-9] 種 (\(.*\)) \*\*すべてが 0\*\*.*/\1/p' "$LINT_MD" | extract_sorted)
+assert "TC-53 判定基準散文の変数集合が 4 種ちょうど" "$EXPECT_VARS" "$prose_vars"
+
+if_vars=$(sed -n '/^if \[ "\$n_contradictions" -gt 0 \]/,/^  lint_action="lint:warning"$/p' "$LINT_MD" | extract_sorted)
+assert "TC-53 bash if 条件の変数集合が散文と一致" "$EXPECT_VARS" "$if_vars"
+
+gate_vars=$(sed -n 's/^for _n_var in \(.*\); do$/\1/p' "$LINT_MD" | extract_sorted)
+assert "TC-53 residue gate の変数集合が散文と一致" "$EXPECT_VARS" "$gate_vars"
+
+# AC-6 の canonical `Lint:` 6 フィールド行不変は TC-21 (T-07) が pin 済み (重複させない)。
+
+# --- ingest 側: 加算式 / 等式 / 内訳文言の 3 箇所が同じ 4 項集合で一致する ---
+assert_not_grep "TC-53 (AC-4) ingest の n_warnings 加算式に n_stale がない" "$INGEST_MD" \
+  '^n_warnings \+= .*n_stale'
+assert_not_grep "TC-53 (AC-4) ingest の n_warnings 等式に n_stale がない" "$INGEST_MD" \
+  '\*\*等式\*\*: `n_warnings = .*n_stale'
+
+add_vars=$(sed -n 's/^n_warnings += \(.*\)$/\1/p' "$INGEST_MD" | extract_sorted)
+assert "TC-53 ingest 加算式の項集合が 4 種ちょうど" "$EXPECT_VARS" "$add_vars"
+
+# 等式・内訳とも n_lint_anomaly は加算式に無い項なので capture 範囲から落とす。開いた regex に
+# したため、除去しないと集合に混ざる。
+# 非項の除去は**位置ではなく名指し**で行う。位置で範囲を狭めると、狭めた外側に counter が
+# 混入した変異を素通しする (実測: 内訳文言で「（内訳:」以降へ絞ると、その左に n_stale を
+# 挿入した変異が検出されない)。
+eq_vars=$(sed -n 's/^\*\*等式\*\*: `n_warnings = \([^`]*\)`.*/\1/p' "$INGEST_MD" \
+  | sed 's/n_lint_anomaly//' | extract_sorted)
+assert "TC-53 ingest 等式の項集合が加算式と一致" "$EXPECT_VARS" "$eq_vars"
+
+# 内訳文言は `{n_warnings} 件（内訳: ...）` の形。左辺の n_warnings は当該行に 1 回しか
+# 現れないので名指しで落とす。
+breakdown_vars=$(grep -F 'Wiki 品質警告: {n_warnings} 件（内訳:' "$INGEST_MD" \
+  | sed -e 's/{n_warnings}//' -e 's/n_lint_anomaly//' | extract_sorted)
+assert "TC-53 ingest 内訳文言の項集合が加算式と一致" "$EXPECT_VARS" "$breakdown_vars"
+
+# --- ステップ 8.1 bash の実行時挙動 (T-01 / T-02 / T-05) ---
+# 静的 pin だけでは block の構文健全性を測れない。判定は継続行を含む if-chain なので、
+# `; then` を落とすような変異は集合一致 assert を素通りする。抽出して構文検査し実行する。
+extract_phase81() {
+  awk '/^# ステップ 8.1 canonical lint_action decision logic/{f=1} f{print} f && /^echo "\[CONTEXT\] lint_action=\$lint_action"$/{exit}' "$LINT_MD"
+}
+PHASE81_RAW="$SBX/phase81-raw.sh"
+extract_phase81 > "$PHASE81_RAW"
+
+# 抽出結果の検査は 2 群に分け、**診断文面を分ける**。抽出の破損と契約の消失は原因も対処も
+# 別物で、後者を「アンカーが変更された可能性」と報じると、本テストが検出すべき退行そのものを
+# テスト側の問題へ誤帰属させる。
+phase81_block_ok=1
+
+# 群 1: 抽出の構造健全性。block 冒頭と awk の終了パターンが揃っているかを見る。
+# 終端行は awk の終了条件と lint_action emit 契約を兼ねており、抽出結果からは両者を判別
+# できない。文面はどちらの原因も名乗る (片方に決め打つと、残った方の退行がテスト側の
+# 問題として報じられる)。開始アンカーは awk の開始条件と同一文字列で、出力が非空なら必ず
+# 一致するため検査しない — 空出力は set -o pipefail 側が捕捉する。
+for _required in '^set -o pipefail$' '^echo "\[CONTEXT\] lint_action=\$lint_action"$'; do
+  if ! grep -q "$_required" "$PHASE81_RAW"; then
+    fail "TC-53 ステップ 8.1 bash の抽出に失敗 ('$_required' 不在。抽出アンカーが変更されたか、SKILL.md 側の該当行が削除された可能性)"
+    phase81_block_ok=0
+  fi
+done
+
+# 群 2: 契約行の存在。**群 1 が通ったときだけ**評価する — 抽出が壊れていれば契約行も当然
+# 見つからず、「削除された」と名乗るのは偽の主張になる。
+if [ "$phase81_block_ok" = 1 ]; then
+  if ! grep -q '^for _n_var in ' "$PHASE81_RAW"; then
+    fail "TC-53 ステップ 8.1 の契約が消失 (residue gate の for ループが削除された)"
+    phase81_block_ok=0
+  fi
+fi
+
+if [ "$phase81_block_ok" = 1 ]; then
+  # placeholder を実値へ差し替えて実行可能にする。置換対象は placeholder 文字列なので
+  # 集合変数からは組めず counter 名を literal で並べるが、その列挙は phase81_write の 1 箇所に
+  # 集約する (構文検査・実行・residue のどれもここを通す)。gate ループとの一致は上の集合突合
+  # assert が別途担保しており、そちらが落ちればここの列挙ずれも表面化する。
+  phase81_write() {
+    # $1..$4: n_contradictions n_orphans n_missing_concept n_broken_refs の値
+    # $5: n_stale の値 (参考コメント側。判定に影響しないことを測る)
+    # $6: 出力先
+    sed -e "s/{n_contradictions}/$1/g" -e "s/{n_orphans}/$2/g" \
+        -e "s/{n_missing_concept}/$3/g" -e "s/{n_broken_refs}/$4/g" \
+        -e "s/{n_stale}/$5/g" -e "s/{n_unregistered_raw}/0/g" \
+        "$PHASE81_RAW" > "$6"
+  }
+  phase81_run() {
+    phase81_write "$1" "$2" "$3" "$4" "$5" "$SBX/phase81.sh"
+    bash "$SBX/phase81.sh" 2>&1
+  }
+
+  # 構文健全性 (`; then` 落ち等の変異を検出する)
+  phase81_write 0 0 0 0 0 "$SBX/phase81-syntax.sh"
+  if bash -n "$SBX/phase81-syntax.sh" 2>"$SBX/phase81-syntax.err"; then
+    pass "TC-53 ステップ 8.1 bash が構文的に妥当"
+  else
+    fail "TC-53 ステップ 8.1 bash の構文検査に失敗: $(head -1 "$SBX/phase81-syntax.err")"
+  fi
+
+  # T-01: n_stale > 0 かつ他 4 変数 0 → lint:clean (AC-1)
+  assert "TC-53 (T-01/AC-1) n_stale=41・他 4 変数 0 で lint:clean" \
+    "[CONTEXT] lint_action=lint:clean" "$(phase81_run 0 0 0 0 41)"
+
+  # T-02: 4 変数それぞれが > 0 のとき lint:warning (AC-2)
+  assert "TC-53 (T-02/AC-2) n_contradictions=1 で lint:warning" \
+    "[CONTEXT] lint_action=lint:warning" "$(phase81_run 1 0 0 0 0)"
+  assert "TC-53 (T-02/AC-2) n_orphans=1 で lint:warning" \
+    "[CONTEXT] lint_action=lint:warning" "$(phase81_run 0 1 0 0 0)"
+  assert "TC-53 (T-02/AC-2) n_missing_concept=1 で lint:warning" \
+    "[CONTEXT] lint_action=lint:warning" "$(phase81_run 0 0 1 0 0)"
+  assert "TC-53 (T-02/AC-2) n_broken_refs=1 で lint:warning" \
+    "[CONTEXT] lint_action=lint:warning" "$(phase81_run 0 0 0 1 0)"
+
+  # T-05: residue gate は 4 変数それぞれの未置換で exit 1 (AC-7 / 4.5)
+  # 全置換したうえで当該変数の代入行だけ placeholder へ戻す
+  for _name in n_contradictions n_orphans n_missing_concept n_broken_refs; do
+    phase81_write 0 0 0 0 0 "$SBX/phase81-residue-base.sh"
+    sed "s/^${_name}=0\$/${_name}={${_name}}/" "$SBX/phase81-residue-base.sh" > "$SBX/phase81-residue.sh"
+    _residue_out=$(bash "$SBX/phase81-residue.sh" 2>&1); _residue_rc=$?
+    assert "TC-53 (T-05) ${_name} 未置換で exit 1" "1" "$_residue_rc"
+    case "$_residue_out" in
+      *"LINT_PHASE_8_1_PLACEHOLDER_RESIDUE=1; variable=${_name}"*)
+        pass "TC-53 (T-05) ${_name} 未置換で residue marker を emit" ;;
+      *)
+        fail "TC-53 (T-05) ${_name} 未置換で residue marker が出ない: $(printf '%s' "$_residue_out" | head -1)" ;;
+    esac
+  done
+else
+  # 実行 assert 群を丸ごと落とすので計上する。無計上で消すと、baseline との PASS 差だけが
+  # 残り「何が走らなかったか」がサマリから読めない (_test-helpers.sh の skip 規約)。
+  skip "TC-53 ステップ 8.1 の実行 assert 群 (構文検査 / T-01 / T-02 / T-05) を抽出失敗または契約消失により gate"
 fi
 
 if ! print_summary "$(basename "$0")" \

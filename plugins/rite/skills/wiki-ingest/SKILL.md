@@ -233,12 +233,12 @@ fi
 | `n_pages_created` | 0 | ステップ 4 で「新規ページ作成」決定ごとに +1 |
 | `n_pages_updated` | 0 | ステップ 4 で「既存ページ更新」決定ごとに +1 |
 | `n_skipped` | 0 | ステップ 4 で「スキップ」決定ごとに +1 |
-| `n_warnings` | 0 | ステップ 8.5 で Lint の検出件数合計（`n_unregistered_raw` を除く 5 カテゴリ）を加算。加えて ステップ 8.3 の Lint 実行異常検出時 `n_warnings += 1` と `n_lint_anomaly += 1` を並行加算 |
+| `n_warnings` | 0 | ステップ 8.5 で Lint の検出件数合計（`n_stale` / `n_unregistered_raw` を除く 4 カテゴリ）を加算。加えて ステップ 8.3 の Lint 実行異常検出時 `n_warnings += 1` と `n_lint_anomaly += 1` を並行加算 |
 | `n_lint_anomaly` | 0 | ステップ 8.3 step 1/3/4 (ERROR 行検出 / stdout 空 / regex mismatch) でそれぞれ +1。`n_warnings` と並行加算 |
 | `n_dedup_removed` | 0 | ステップ 6 の各 helper 呼び出しが出力する `dedup_removed=` の値を加算 |
 | `n_contradictions` / `n_stale` / `n_orphans` / `n_missing_concept` / `n_unregistered_raw` / `n_broken_refs` | 0 | ステップ 8.3 step 2 (6 フィールド regex match) で Lint stdout から抽出 |
 
-`n_unregistered_raw` と `n_dedup_removed` は informational で `n_warnings` には加算しない。`auto_lint=false` で 8.2-8.5 が skip されても、本ステップの 0 初期化でステップ 9 の placeholder 残留は起きない。
+`n_stale` と `n_unregistered_raw` と `n_dedup_removed` は informational で `n_warnings` には加算しない。`auto_lint=false` で 8.2-8.5 が skip されても、本ステップの 0 初期化でステップ 9 の placeholder 残留は起きない。
 rationale: references/rationale.md#informational-counters
 
 ### 2.2 候補 Raw Source の列挙 (worktree ベース)
@@ -776,7 +776,7 @@ rationale: references/rationale.md#log-human-only
 
 ## ステップ 8: 自動 Lint
 
-Ingest 直後、Wiki 全体の品質チェックを `/rite:wiki-lint --auto` として実行する。**5 ブロッキング観点** (矛盾・陳腐化・孤児ページ・欠落概念・壊れた相互参照) + **1 informational 指標** (未登録 raw、`ingest_status: skipped` 済み) で計 6 フィールドを検査する。
+Ingest 直後、Wiki 全体の品質チェックを `/rite:wiki-lint --auto` として実行する。**4 ブロッキング観点** (矛盾・孤児ページ・欠落概念・壊れた相互参照) + **2 informational 指標** (陳腐化、未登録 raw（`ingest_status: skipped` 済み）) で計 6 フィールドを検査する。
 
 ### 8.1 auto_lint 設定の確認
 
@@ -896,7 +896,7 @@ LLM は Skill 応答テキスト (= `lint.md` ステップ 9.2 の最終 stdout)
 Lint 結果: 矛盾 {n_contradictions} 件 / 陳腐化 {n_stale} 件 / 孤児 {n_orphans} 件 / 欠落 {n_missing_concept} 件（未登録 skip {n_unregistered_raw} 件）/ 壊れた相互参照 {n_broken_refs} 件
 ```
 
-**全カテゴリが 0 件の場合** (`n_contradictions + n_stale + n_orphans + n_missing_concept + n_unregistered_raw + n_broken_refs == 0`): 「Lint 結果: 問題なし」とのみ表示する。1 件以上検出された場合は必ず全カテゴリを表示する (`n_unregistered_raw` は informational だが表示判定には含める)。
+**全カテゴリが 0 件の場合** (`n_contradictions + n_stale + n_orphans + n_missing_concept + n_unregistered_raw + n_broken_refs == 0`): 「Lint 結果: 問題なし」とのみ表示する。1 件以上検出された場合は必ず全カテゴリを表示する (`n_stale` / `n_unregistered_raw` は informational だが表示判定には含める)。
 
 ERROR / stdout 空 / regex mismatch 経路では「Lint 結果: 実行失敗（{原因}）」と表示する。
 
@@ -905,10 +905,10 @@ ERROR / stdout 空 / regex mismatch 経路では「Lint 結果: 実行失敗（{
 **ステップ 8.3 step 2 (6 フィールド regex match 成功) 経路でのみ実行する**。step 1/3/4 は 8.3 内で加算済みのため skip。step 2 経路のみ `n_warnings` に Lint 検出件数合計を加算する:
 
 ```
-n_warnings += n_contradictions + n_stale + n_orphans + n_missing_concept + n_broken_refs
+n_warnings += n_contradictions + n_orphans + n_missing_concept + n_broken_refs
 ```
 
-**`n_unregistered_raw` は加算しない**。informational 指標として完了レポートの内訳にのみ表示する。
+**`n_stale` と `n_unregistered_raw` は加算しない**。informational 指標として `n_warnings` には算入せず、完了レポートに件数のみ表示する — `n_stale` は `Lint 結果:` 行（ステップ 8.4 で定義）に、`n_unregistered_raw` は同行と未登録 raw 専用行に現れる。どちらも `{wiki_warnings_line}` の内訳には含めない。
 rationale: references/rationale.md#n-unregistered-not-warning
 
 **詳細な修正対応**: 検出結果の詳細確認は、Ingest 完了後に `/rite:wiki-lint`（`--auto` なし）で再実行して取得する。
@@ -1007,12 +1007,12 @@ Wiki Ingest が完了しました。
 
 | `auto_lint` | 「Wiki 品質警告:」行の展開 |
 |-------------|-----------------------|
-| `true` (通常経路) | `Wiki 品質警告: {n_warnings} 件（内訳: 矛盾 {n_contradictions} / 陳腐化 {n_stale} / 孤児 {n_orphans} / 欠落 {n_missing_concept} / 壊れた相互参照 {n_broken_refs} / Lint 異常経路 {n_lint_anomaly}）` |
+| `true` (通常経路) | `Wiki 品質警告: {n_warnings} 件（内訳: 矛盾 {n_contradictions} / 孤児 {n_orphans} / 欠落 {n_missing_concept} / 壊れた相互参照 {n_broken_refs} / Lint 異常経路 {n_lint_anomaly}）` |
 | `false` (skip 経路) | `Wiki 品質警告: スキップ (auto_lint disabled)` (内訳は表示しない) |
 
 「未登録 raw」行は `auto_lint=false` の場合も `0` 件として展開する (ステップ 2.1 で 0 初期化済みの値)。
 
-**等式**: `n_warnings = n_contradictions + n_stale + n_orphans + n_missing_concept + n_broken_refs + n_lint_anomaly`。step 2 成功時は `n_lint_anomaly=0`。step 1/3/4 では 5 カテゴリは 0 fallback だが `n_lint_anomaly >= 1` のため `n_warnings >= 1`。
+**等式**: `n_warnings = n_contradictions + n_orphans + n_missing_concept + n_broken_refs + n_lint_anomaly`。step 2 成功時は `n_lint_anomaly=0`。step 1/3/4 では 4 カテゴリは 0 fallback だが `n_lint_anomaly >= 1` のため `n_warnings >= 1`。
 
 `{wiki_push_line}` の展開ルール (ステップ 8.6 の `[CONTEXT] WIKI_INGEST_PUSH=` を上から評価し最初の一致を採用):
 

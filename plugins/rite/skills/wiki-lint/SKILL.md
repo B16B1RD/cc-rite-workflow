@@ -29,7 +29,7 @@ rationale: references/rationale.md#helper-delegation
 | 観点 | 検出対象 | ブロッキング |
 |------|---------|--------------|
 | **矛盾** | 同じトピックで異なる結論を持つページ（タイトル衝突・方針逆転・重複情報） | Yes |
-| **陳腐化** | `generated.at` frontmatter が閾値（デフォルト 90 日）を超えて更新されていないページ | Yes |
+| **陳腐化** | `generated.at` frontmatter が閾値（デフォルト 90 日）を超えて更新されていないページ。経過時間の計上でありページの正しさとは独立なため、件数のみ報告する informational 指標 | **No** (`n_warnings` 不加算) |
 | **孤児ページ** | `pages/` 配下に存在するが `index.md` のページカタログ（`## ページ一覧` の 5 列テーブル。箇条書きテンプレートが配布されていた期間に初期化された bundle の箇条書き `* [title](pages/...) - desc` も登録として扱う）に登録されていないページ | Yes |
 | **欠落概念 (missing_concept)** | `raw/` に `ingested: true` の Raw Source があるが、対応ページも `sources.ref` 登録も `ingest_status: skipped` 記録（raw frontmatter）も存在しない真の欠落 | Yes |
 | **壊れた相互参照** | ページ本文の Markdown リンク `](...)` が `pages/` 配下の実在ファイルを指していない | Yes |
@@ -195,7 +195,7 @@ exit 0
 | 変数 | 初期値 | 確定方法 |
 |------|--------|--------------------|
 | `n_contradictions` | 0 | ステップ 3 で矛盾検出するごとに +1 (LLM セマンティック判定) |
-| `n_stale` | 0 | ステップ 4 の `wiki-lint-stale.sh` が emit する `n_stale=` 値を転記 (LLM 独自カウント禁止) |
+| `n_stale` | 0 | ステップ 4 の `wiki-lint-stale.sh` が emit する `n_stale=` 値を転記 (LLM 独自カウント禁止)。informational 指標で `n_warnings` には加算せず、ステップ 8.1 の `lint_action` 判定にも含めない |
 | `n_orphans` | 0 | ステップ 5 の `wiki-lint-orphans.sh` が emit する `n_orphans=` 値を転記 (LLM 独自カウント禁止) |
 | `n_missing_concept` | 0 | ステップ 6.2 で真の欠落（raw frontmatter の `ingest_status: skipped` 記録も `sources.ref` 登録も無い）を検出するごとに +1。ingest から呼ばれた場合、ingest 側 ステップ 8.5 で `n_warnings` に加算される（ブロッキング相当） |
 | `n_unregistered_raw` | 0 | ステップ 6.2 で raw frontmatter に `ingest_status: skipped` 記録ありの未登録 raw を検出するごとに +1。意図的に経験則化しなかった raw の informational 指標で `n_warnings` には加算しない |
@@ -703,10 +703,10 @@ rationale: references/rationale.md#okf-log-append
 
 `{lint_action}` は `lint:clean` / `lint:warning`（下記判定基準・ステップ 8.1 bash の `[CONTEXT] lint_action=` emit 参照）。既存の日付見出し・bullet は改変しない（append-only）。
 
-**`lint:clean` / `lint:warning` の判定基準** (`n_unregistered_raw` は informational で判定に含めない):
+**`lint:clean` / `lint:warning` の判定基準** (`n_stale` / `n_unregistered_raw` は informational で判定に含めない):
 
-- `lint:clean`: ブロッキングカテゴリ 5 種 (`n_contradictions`, `n_stale`, `n_orphans`, `n_missing_concept`, `n_broken_refs`) **すべてが 0** の場合。`n_unregistered_raw` の値に依存しない (`n_unregistered_raw > 0` でも他 5 カテゴリが全 0 なら `lint:clean`)
-- `lint:warning`: 上記 5 カテゴリのいずれか 1 つ以上が `> 0` の場合。`n_unregistered_raw` は判定から除外する
+- `lint:clean`: ブロッキングカテゴリ 4 種 (`n_contradictions`, `n_orphans`, `n_missing_concept`, `n_broken_refs`) **すべてが 0** の場合。`n_stale` / `n_unregistered_raw` の値に依存しない (`n_stale > 0` / `n_unregistered_raw > 0` でも他 4 カテゴリが全 0 なら `lint:clean`)
+- `lint:warning`: 上記 4 カテゴリのいずれか 1 つ以上が `> 0` の場合。`n_stale` / `n_unregistered_raw` は判定から除外する
 
 **`lint_action` 自動判定** (Pattern 1: `[CONTEXT] key=value` stdout emit): bash block で機械的に決定して stdout に emit する。ステップ 8.3 の `{log_entry}` 組み立てはこの emit 値を **single source of truth** として参照する:
 rationale: references/rationale.md#lint-action-machine
@@ -718,16 +718,16 @@ rationale: references/rationale.md#lint-action-machine
 set -o pipefail
 
 n_contradictions={n_contradictions}
-n_stale={n_stale}
 n_orphans={n_orphans}
 n_missing_concept={n_missing_concept}
 n_broken_refs={n_broken_refs}
+# 参考: n_stale={n_stale} — informational のため判定式から意図的に除外
 # 参考: n_unregistered_raw={n_unregistered_raw} — informational のため判定式から意図的に除外
 
 # Placeholder residue fail-fast gate (同型 gate: ステップ 1.1 / 1.3 / 8.1 / 8.3 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5)): LLM が literal substitute を忘れると
 # `[ "{n_contradictions}" -gt 0 ]` が rc=2 を返し、set -o pipefail のみでは検知できず else 分岐に
 # 流れて `lint_action="lint:clean"` が silent emit される fail-silent regression を防ぐ。
-for _n_var in n_contradictions n_stale n_orphans n_missing_concept n_broken_refs; do
+for _n_var in n_contradictions n_orphans n_missing_concept n_broken_refs; do
   _n_val=$(eval echo \$"$_n_var")
   case "$_n_val" in
     ""|*[!0-9]*|"{"*"}")
@@ -740,7 +740,6 @@ for _n_var in n_contradictions n_stale n_orphans n_missing_concept n_broken_refs
 done
 
 if [ "$n_contradictions" -gt 0 ] \
-   || [ "$n_stale" -gt 0 ] \
    || [ "$n_orphans" -gt 0 ] \
    || [ "$n_missing_concept" -gt 0 ] \
    || [ "$n_broken_refs" -gt 0 ]; then
@@ -934,7 +933,7 @@ Wiki Lint が完了しました。
 
 検出結果:
 - 矛盾: {n_contradictions} 件
-- 陳腐化: {n_stale} 件{stale_check_ok_note}
+- 陳腐化: {n_stale} 件{stale_check_ok_note}（informational、`n_warnings` 不加算）
 - 孤児ページ: {n_orphans} 件{orphan_check_ok_note}
 - 欠落概念: {n_missing_concept} 件{log_read_ok_note}{all_source_refs_read_ok_note}
 - 壊れた相互参照: {n_broken_refs} 件{broken_refs_read_ok_note}
@@ -948,7 +947,7 @@ Wiki Lint が完了しました。
 
 次のステップ:
 - 矛盾は手動で該当ページを統合してください
-- 陳腐化ページは /rite:wiki-ingest で新しい Raw Source を統合するか、手動で generated.at フィールドを更新してください
+- 陳腐化ページは informational です。内容が古いと判断した場合のみ /rite:wiki-ingest で新しい Raw Source を統合してください（`generated.at` は最終内容変更時刻であり、内容を変えずに日付だけ進めてはなりません）
 - 孤児ページは index.md に追加するか、不要なら削除してください
 - 欠落概念は /rite:wiki-ingest で該当 Raw Source を再処理してください
 - 壊れた相互参照は該当ページを手動で修正してください
@@ -1054,7 +1053,7 @@ rationale: references/rationale.md#returned-to-caller
   - `branch_strategy` 未知値 (ステップ 2.2 / 8.2 / 8.3 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5) で同型)
   - `{mode}` placeholder 残留 (ステップ 1.1 / 1.3 / 8.3)
   - helper 委譲ステップ (4 / 5 / 6.0 / 6.2 / 7 / 7.5) の placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{stale_days}` / `{pages_list}` + 6.2 / 7.5 の partial pollution gate。各 helper 内で検知)
-  - ステップ 8.1 の counter placeholder (`n_*` 5 種) 残留 / 非整数検知
+  - ステップ 8.1 の counter placeholder (`n_*` 4 種) 残留 / 非整数検知
   - ステップ 8.3 の placeholder 残留 (`{log_entry}` / `{branch_strategy}` の 2 種)
   - GNU realpath (-m -s) 不在 (ステップ 7 helper 内)
 - 内部 bash 構文エラー等の unrecoverable error のみ非 0 exit となる可能性あり
@@ -1072,7 +1071,7 @@ rationale: references/rationale.md#fail-loud-contract
 | Wiki 未初期化 | `/rite:wiki-init` を案内 (`--auto` モード時は ステップ 9.2 の 3 行出力後 exit 0) | ステップ 1.3 |
 | `{mode}` placeholder 残留 (各 site で同型) | **exit 1 で fail-fast** | ステップ 1.1 / 1.3 / 8.3 |
 | helper 委譲ステップの placeholder 残留 (`{branch_strategy}` / `{wiki_branch}` / `{stale_days}` / `{pages_list}` + 6.2 / 7.5 の partial pollution) | **exit 1 で fail-fast** (silent 誤分類防止、各 helper 内で検知) | ステップ 4 / 5 / 6.0 / 6.2 / 7 / 7.5 |
-| ステップ 8.1 の counter placeholder (`n_*` 5 種) 残留 / 非整数 | **exit 1 で fail-fast** (silent `lint:clean` 誤 emit 防止) | ステップ 8.1 |
+| ステップ 8.1 の counter placeholder (`n_*` 4 種) 残留 / 非整数 | **exit 1 で fail-fast** (silent `lint:clean` 誤 emit 防止) | ステップ 8.1 |
 | ステップ 8.3 の placeholder 残留 (`{log_entry}` / `{branch_strategy}` の 2 種) | **exit 1 で fail-fast** (literal 残留 commit landed 防止) | ステップ 8.3 |
 | `git ls-tree` 失敗 | WARNING + `pages_list=""`/`raw_list=""` で継続（exit 0） | ステップ 2.2 |
 | `branch_strategy` 未知値 (各 site で同型) | **exit 1 で fail-fast** | ステップ 2.2 / 8.2 / 8.3 + helper 内 (4 / 5 / 6.0 / 6.2 / 7 / 7.5) |
