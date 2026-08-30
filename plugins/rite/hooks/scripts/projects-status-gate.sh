@@ -43,9 +43,10 @@
 #            issue node is null — an Issue number or owner/repo that does not resolve);
 #            a WARNING carrying the root cause goes to stderr. Never reported as ok.
 #
-#   The `status=` field carries the board's own Status name, or one of two sentinels the
-#   jq program emits when there is no name to report: `<not-on-board>` (no project item)
-#   and `<no-status>` (item present, Status field empty). Both route to `missing`.
+#   The `status=` field carries the board's own Status name; one of the three sentinels the
+#   jq program emits when there is no name to report (`<not-on-board>` and `<no-status>`
+#   route to `missing`, `<no-issue>` to `unknown` — see the jq program for what each means);
+#   or the empty string, on the paths that end before the board is ever read.
 #
 # Exit code: always 0 (verdict travels in the marker, not the exit status)
 set -euo pipefail
@@ -152,8 +153,6 @@ rite_tempfile_init
 # --- Repo info: git-remote parse first (SSH Host alias origin), gh repo view as fallback ---
 REPO_OWNER=""
 REPO_NAME=""
-git_remote_err=""
-repo_view_err=""
 rite_tempfile_new git_remote_err "status-gate-git-remote-err" || emit unknown ""
 _git_or_line=$(bash "$SCRIPT_DIR/lib/git-remote.sh" resolve-owner-repo 2>"$git_remote_err") || _git_or_line=""
 if [ -n "$_git_or_line" ]; then
@@ -163,10 +162,10 @@ if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
   rite_tempfile_new repo_view_err "status-gate-repo-err" || emit unknown ""
   if ! REPO_INFO=$(gh repo view --json owner,name 2>"$repo_view_err"); then
     warn "gh repo view failed; cannot verify board Status"
-    if [ "$QUIET" != "true" ] && [ -n "$repo_view_err" ] && [ -s "$repo_view_err" ]; then
+    if [ "$QUIET" != "true" ] && [ -s "$repo_view_err" ]; then
       head -3 "$repo_view_err" | neutralize_ctrl --keep-newline | sed 's/^/  gh: /' >&2
     fi
-    if [ "$QUIET" != "true" ] && [ -n "$git_remote_err" ] && [ -s "$git_remote_err" ]; then
+    if [ "$QUIET" != "true" ] && [ -s "$git_remote_err" ]; then
       head -3 "$git_remote_err" | neutralize_ctrl --keep-newline | sed 's/^/  git-remote: /' >&2
     fi
     emit unknown ""
@@ -187,8 +186,6 @@ fi
 #                   not a verdict about the board.
 #   <not-on-board>  the issue exists but has no item for the configured project
 #   <no-status>     item present, Status field carries no value
-gql_err=""
-jq_err=""
 rite_tempfile_new gql_err "status-gate-gql-err" || emit unknown ""
 rite_tempfile_new jq_err "status-gate-jq-err" || emit unknown ""
 if ! CURRENT=$(set -o pipefail; gh api graphql -f query='

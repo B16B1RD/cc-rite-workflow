@@ -399,7 +399,7 @@ echo "[CONTEXT] PROJECTS_STATUS=$status_result; issue={issue_number}"
 
 `auto_add: true` は未登録 Issue を helper 内部で Project へ自動登録する。全 result 分岐は non-blocking で、Status 更新の失敗が open をブロックすることはない。API レベルの詳細は [projects-integration.md §2.4.1–2.4.6](../../references/projects-integration.md#24-github-projects-status-update)。
 
-末尾の `[CONTEXT] PROJECTS_STATUS=` marker は helper の result を機械可読に残す（`case` の表示は人間向けで、後から成否を判定できない）。本 call site は `auto_add: true` を渡すため、helper が返しうるのは `updated` / `failed` の 2 値（`skipped_not_in_project` は `auto_add: false` 専用の戻り値で、ここには来ない）。helper が JSON を返さなかった場合は上記の正規化で `failed` に寄せてあり、marker が空になる経路はない。marker は表示のみで分岐を変えない — 実行の有無を判定するのは 2.6 のゲートであり、marker の欠落そのものはここでは扱わない。
+末尾の `[CONTEXT] PROJECTS_STATUS=` marker は helper の result を機械可読に残す（`case` の表示は人間向けで、後から成否を判定できない）。本 call site は `auto_add: true` を渡すため、実際に返るのは `updated` / `failed` の 2 値になる（`skipped_not_in_project` は `auto_add: false` の経路の戻り値で、上の `case` の当該 arm は helper 契約側の全 result を受ける保険として置いてある）。helper が JSON を返さなかった場合は上記の正規化で `failed` に寄せてあり、marker が空になる経路はない。marker は表示のみで分岐を変えない — 実行の有無を判定するのは 2.6 のゲートであり、marker の欠落そのものはここでは扱わない。
 
 **(B) 親 Issue の Status 更新（Sub-Issue 着手時）** — (A) と独立に必ず実行する。ロジックの SoT は `projects-integration.md` §2.4.7:
 

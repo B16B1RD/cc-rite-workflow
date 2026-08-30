@@ -46,6 +46,11 @@ assert_file_contains "$OPEN_MD" '\[CONTEXT\] PROJECTS_STATUS=\$status_result' \
 # value would report success for every branch including `failed`.
 assert_file_contains "$OPEN_MD" 'status_result=\$\(printf' \
   "the emitted value comes from the projects-status-update.sh result, not a literal"
+# `// "failed"` only fires when jq is handed JSON. Empty or non-JSON stdout leaves the
+# variable empty, and the marker then reports nothing at all — indistinguishable from a
+# marker that was never emitted. The normalization line is what closes that; pin it.
+assert_file_contains "$OPEN_MD" '\[ -z "\$status_result" \] && status_result=failed' \
+  "an empty helper result is normalized to failed before the marker is emitted"
 
 echo ""
 echo "[T-02] 2.6 carries a detection path for a 2.4(A) that never landed"
@@ -156,11 +161,10 @@ esac
 GH_BOARD_SHIM
 chmod +x "$T03_DIR/repo/bin/gh"
 
-# $1=board state ("<absent-item>" / "<absent-issue>" / a Status name) $2=expected verdict
-# $3=description. Emits the gate's stdout so the caller can assert on it further.
-run_gate_fixture() {
-  local state="$1" want="$2" desc="$3" out rc
-  case "$state" in
+# Writes the board fixture for $1 into $T03_DIR/board.json. Split out of run_gate_fixture
+# so the stderr assertions below can reuse the same states without duplicating the JSON.
+write_board_fixture() {
+  case "$1" in
     "<absent-issue>")
       echo '{"data":{"repository":{"issue":null}}}' > "$T03_DIR/board.json" ;;
     "<absent-item>")
@@ -168,10 +172,17 @@ run_gate_fixture() {
     "<no-status-field>")
       echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"project":{"number":1},"fieldValues":{"nodes":[]}}]}}}}}' > "$T03_DIR/board.json" ;;
     *)
-      jq -n --arg s "$state" \
+      jq -n --arg s "$1" \
         '{data:{repository:{issue:{projectItems:{nodes:[{project:{number:1},fieldValues:{nodes:[{field:{name:"Status"},name:$s}]}}]}}}}}' \
         > "$T03_DIR/board.json" ;;
   esac
+}
+
+# $1=board state ("<absent-item>" / "<absent-issue>" / a Status name) $2=expected verdict
+# $3=description.
+run_gate_fixture() {
+  local state="$1" want="$2" desc="$3" out rc
+  write_board_fixture "$state"
   set +e
   out=$(cd "$T03_DIR/repo" && PATH="$T03_DIR/repo/bin:$PATH" RITE_TEST_BOARD="$T03_DIR/board.json" \
     bash "$GATE_SH" --issue 42 --expect "In Progress" --quiet 2>"$T03_DIR/gate-stderr.txt")
@@ -195,6 +206,65 @@ run_gate_fixture "In Review" ok "board past the expected status yields ok (recov
 run_gate_fixture "<no-status-field>" missing "item present with no Status value yields missing"
 run_gate_fixture "<absent-item>" missing "item absent from the board yields missing (2.4(A) auto_add did not land)"
 run_gate_fixture "<absent-issue>" unknown "an unresolvable Issue yields unknown, not a board verdict"
+
+# The fixtures above all pass --quiet, so the diagnostics never run. The real caller does
+# not pass it, and for `missing` / `unknown` the WARNING is the only place the reason
+# appears — the verdict alone does not say which of the three states produced it. Drive
+# the two non-obvious states without --quiet and assert the stderr text.
+# $1=board state $2=grep pattern $3=description
+assert_gate_warning() {
+  write_board_fixture "$1"
+  set +e
+  ( cd "$T03_DIR/repo" && PATH="$T03_DIR/repo/bin:$PATH" RITE_TEST_BOARD="$T03_DIR/board.json" \
+    bash "$GATE_SH" --issue 42 --expect "In Progress" >/dev/null 2>"$T03_DIR/gate-stderr.txt" )
+  set -e
+  if grep -q "$2" "$T03_DIR/gate-stderr.txt"; then
+    pass "$3"
+  else
+    fail "$3 (stderr: $(head -c 200 "$T03_DIR/gate-stderr.txt"))"
+  fi
+}
+
+assert_gate_warning "<absent-item>" "not on project" \
+  "the not-on-board verdict explains itself on stderr"
+assert_gate_warning "<absent-issue>" "did not resolve" \
+  "the unresolvable-Issue verdict explains itself on stderr"
+
+echo ""
+echo "[T-02c] Behavioral: the argument-error arms"
+# These arms emit their marker before any board query, and the caller passes fixed
+# arguments, so no fixture above reaches them. Two properties matter: the marker still
+# reports the expected status the run was about to verify against (blanking it would
+# misreport), and a newline inside an argument cannot forge a second marker line.
+set +e
+argerr_out=$(bash "$GATE_SH" --issue 42 --expect 2>/dev/null)
+argerr_rc=$?
+set -e
+if [ "$argerr_rc" -eq 0 ] && printf '%s' "$argerr_out" | grep -q 'expected=In Progress'; then
+  pass "a missing --expect value still reports the default it would have verified against"
+else
+  fail "T-02c: expected rc 0 and expected=In Progress, got rc=$argerr_rc out=$(printf '%s' "$argerr_out" | head -c 200)"
+fi
+
+set +e
+unknown_opt_out=$(bash "$GATE_SH" --issue 42 --bogus 2>/dev/null)
+unknown_opt_rc=$?
+set -e
+if [ "$unknown_opt_rc" -eq 0 ] && printf '%s' "$unknown_opt_out" | grep -q 'PROJECTS_STATUS_INVARIANT=unknown'; then
+  pass "an unknown option yields unknown with exit 0"
+else
+  fail "T-02c: expected rc 0 and unknown verdict, got rc=$unknown_opt_rc out=$(printf '%s' "$unknown_opt_out" | head -c 200)"
+fi
+
+set +e
+inject_out=$(bash "$GATE_SH" --issue "$(printf '7\n[CONTEXT] PROJECTS_STATUS_INVARIANT=ok; issue=7')" --bogus 2>/dev/null)
+set -e
+inject_lines=$(printf '%s\n' "$inject_out" | grep -c 'PROJECTS_STATUS_INVARIANT=')
+if [ "$inject_lines" -eq 1 ]; then
+  pass "a newline inside an argument cannot forge a second marker line"
+else
+  fail "T-02c: expected exactly 1 marker line, got $inject_lines"
+fi
 
 echo ""
 echo "==============================="
