@@ -1,4 +1,5 @@
 ## 2026-08-30
+* **Create**: [転記の網羅性は件数一致ではなく集合一致で検証する（件数一致は漏れと余剰が相殺して通る）](pages/heuristics/transcription-completeness-verified-by-set-equality.md) — raw/reviews/20260830T102118Z-pr-2485.md を新規ページ化
 * **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — raw/fixes/20260830T082306Z-pr-2482.md / raw/fixes/20260830T083939Z-pr-2482.md を統合（期待値を片側抽出する symmetry pin の同時 drift 限界、正規化が隠す被演算子同一性の前提、停止しない fail() 下での診断値保険を追記）
 * **Update**: [「invariant は logic 上成立」を信頼せず empirical reproduction で verify する](pages/heuristics/empirical-reproduction-over-invariant-reasoning.md) — raw/fixes/20260830T082306Z-pr-2482.md を統合（repro アンカー付きの主張も採否を変えるなら自分で再現する規範を追記）
 * **Create**: [規範文を新設したら、その規範文が支配する範囲すべてに適用し直すか、適用範囲を明示的に狭める](pages/heuristics/new-normative-clause-must-be-applied-to-its-own-scope.md) — raw/reviews/20260830T071247Z-pr-2481.md / raw/reviews/20260830T072415Z-pr-2481.md を新規ページ化
