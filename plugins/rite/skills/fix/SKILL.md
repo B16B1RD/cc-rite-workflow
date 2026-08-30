@@ -1754,7 +1754,11 @@ else
     echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_merge_failed" >&2
     echo "[fix:error]"; exit 1
   }
-  body_count=$(grep -E '^📎 non_blocking_count:' "$body" | tail -1 | awk '{print $2}')
+  # 抽出式は review-nonblocking-record.sh の count/body 整合検査と同一にする。この値は直下で
+  # 同 helper へ `--count` として渡され、helper が同じ行を再検証するため、述語がずれると
+  # producer が通した body を validator が count_body_mismatch で落とす経路が生まれる。
+  # awk のフィールド番号で取ってはならない — 行頭の 📎 が第 1 フィールドを占める。
+  body_count=$(grep -E '^📎 non_blocking_count:[[:space:]]*[0-9]+[[:space:]]*$' "$body" | tail -1 | grep -oE '[0-9]+')
   case "$body_count" in ''|*[!0-9]*)
     echo "ERROR: merge-into 後の non_blocking_count が読めない" >&2
     echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_count_unreadable" >&2
