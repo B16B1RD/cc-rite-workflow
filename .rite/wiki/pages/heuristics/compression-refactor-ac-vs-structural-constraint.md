@@ -62,7 +62,7 @@ review/fix SKILL.md（各 4,040 行）のコンテキストダイエット PR �
 2. **Sole reviewer guard の有効性**: 1 reviewer のみの選定だった場合でも sole reviewer guard で異種 reviewer を追加すると、prompt-engineer (structure 妥当性) + code-quality (cross-file 完全性) のような相補的視点で 0 findings 確信度が向上する。AC 緩和判断の sign-off にも reviewer 多様性が寄与
 3. **Compression による narrative 弱化**: 圧縮された narrative は意味論等価性を保つが、grep target としての rule label 喪失や相対参照の曖昧化を伴う (LOW level 推奨事項として典型的に出現)。AC 緩和を許容しても narrative の grep traceability は維持する方針が必要
 
-### 行数は散文削減の指標として弱い — 主指標は散文バイト数にする（PR #2278 実測）
+### 行数は散文削減の指標として弱い — 主指標は散文バイト数にする（実測）
 
 圧縮 refactor の AC を総行数で決めると、削減の実態を大きく見誤る。SKILL.md の散文ダイエットで実測した内訳:
 

@@ -22,7 +22,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T09:53:11+09:00" }
 
 ## 詳細
 
-**PR #2070 cycle 2 の実測**
+**ある PR の cycle 2 の実測**
 
 テーブル形式に加えて OKF 箇条書き形式の走査経路を新設した。テーブル経路の fixture は既に以下で相互作用を pin していた。
 

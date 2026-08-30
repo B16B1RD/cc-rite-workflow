@@ -22,7 +22,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T07:55:00+09:00" }
 
 ## 詳細
 
-PR #2126 で新規 helper が既存の永続レビュー JSON の `findings[]` を読み、その値を「blocking を出した reviewer」と呼んだ。実際には書込側（実測必須ゲート）のコメントが「`scope == "nit-noted"` はゲート対象外のため非実測でも `findings[]` に残す」と明記しており、実体は blocking 集合と全 nit-noted 集合の**和**だった。cycle 1 で 6 reviewer 中 4 名がこの 1 点を独立に検出している（同 PR で最頻の指摘パターン）。
+ある PR で新規 helper が既存の永続レビュー JSON の `findings[]` を読み、その値を「blocking を出した reviewer」と呼んだ。実際には書込側（実測必須ゲート）のコメントが「`scope == "nit-noted"` はゲート対象外のため非実測でも `findings[]` に残す」と明記しており、実体は blocking 集合と全 nit-noted 集合の**和**だった。cycle 1 で 6 reviewer 中 4 名がこの 1 点を独立に検出している（同 PR で最頻の指摘パターン）。
 
 **なぜ高くつくか**: 抽出式の修正は `select(.scope == "current-pr" or .scope == "follow-up")` を足す 1 行で済む。しかし同じ集合を言い換えた記述が helper docstring・SKILL.md 2 箇所・reference 1 箇所・docs 2 箇所の計 5 箇所にあり、jq だけ直すと記述が腐る。名前からの推測は「1 箇所の誤り」ではなく「N 箇所へ複製された誤り」を作る。
 

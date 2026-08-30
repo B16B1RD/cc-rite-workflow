@@ -22,7 +22,7 @@ gate に「縮退 (degraded、判定不能だが続行)」と「失敗 (fail、�
 
 ## 詳細
 
-PR #2130 cycle 1 で、degraded 境界の不一致を 3 reviewer が独立に検出した。
+ある PR の cycle 1 で、degraded 境界の不一致を 3 reviewer が独立に検出した。
 
 **何が起きたか**: Issue は degraded 条件を「解決できない / 読めない」と定めていたが、実装は「存在しない」を degraded に、「読めない」を fail に振っていた（`find` の rc を検査していなかった）。結果、「results dir は存在するが permission で読めない」が fail に落ちた。**fail の差し戻し先を何度実行しても permission は解消しない**ため、非収束ループになる。
 

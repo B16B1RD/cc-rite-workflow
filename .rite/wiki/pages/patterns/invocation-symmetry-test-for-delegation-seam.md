@@ -26,7 +26,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T09:26:00+09:00" }
 
 ### 失敗の構造
 
-委譲リファクタ（wiki-ingest ステップ 6 → `wiki-index-update.sh`、PR #2111）の cycle 2 レビューで、helper 単体のテストは充実している一方、SKILL.md 側の呼び出し bash が「helper が要求するフラグをすべて渡しているか」を守る機構が無いことが指摘された。委譲リファクタでは**呼び出しの正しさこそが残存リスク**であり、既存先例（`create-md-invocation-symmetry.test.sh`）があるのに未適用だった。
+委譲リファクタ（wiki-ingest ステップ 6 → `wiki-index-update.sh`）の cycle 2 レビューで、helper 単体のテストは充実している一方、SKILL.md 側の呼び出し bash が「helper が要求するフラグをすべて渡しているか」を守る機構が無いことが指摘された。委譲リファクタでは**呼び出しの正しさこそが残存リスク**であり、既存先例（`create-md-invocation-symmetry.test.sh`）があるのに未適用だった。
 
 ### Canonical fix
 

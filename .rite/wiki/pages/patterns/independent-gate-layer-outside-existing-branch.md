@@ -23,7 +23,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T18:40:00+09:00" }
 
 ## 詳細
 
-PR #2130 で cycle 1 の blocking 7 件が出たが、根は 1 つだった — **新設した検査層を既存層の「付録」として設計し、既存層の分岐条件をそのまま継承させた**こと。
+ある PR で cycle 1 の blocking 7 件が出たが、根は 1 つだった — **新設した検査層を既存層の「付録」として設計し、既存層の分岐条件をそのまま継承させた**こと。
 
 **何が起きたか**: 「本 cycle の結果 JSON が実在するか」を確かめる positive 検査を、既存の marker 検査の「marker 不在」arm の内側に置いた。ところが守るべき failure mode（区間ごと skip）では marker 値そのものが空文字 / 未置換になり、marker 層が degraded に降りる。degraded の arm は `*)` ではないので、positive 検査は一度も実行されない。**判定できるのに降ろしていた**。3 reviewer が独立に検出した。
 

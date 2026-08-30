@@ -20,7 +20,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T14:00:41+09:00" }
 
 「情報が欠ければ従来のフル装備へ倒す」型の fail-safe は、倒れた向きが安全側であるがゆえに**壊れていることを誰にも伝えない**。実行時エラーが出ず、出力も従来どおりで、CI も緑のまま通る。結果として、新機能が一度も発動しないまま「実装済み」として扱われる。
 
-PR #2142 では XS/S 軽量レーンの判定 helper が `sed` の GNU 拡張（`\b` 単語境界）に依存しており、BSD/macOS では無警告で不一致になった。倒れた先は `full`（フル装備 = 安全側）で、CI の macOS leg は `continue-on-error`、reason 表示は `complexity_absent` だった。**この 3 つが揃うと「機能が動いていない」ことを示す信号がゼロになる**。
+ある PR では XS/S 軽量レーンの判定 helper が `sed` の GNU 拡張（`\b` 単語境界）に依存しており、BSD/macOS では無警告で不一致になった。倒れた先は `full`（フル装備 = 安全側）で、CI の macOS leg は `continue-on-error`、reason 表示は `complexity_absent` だった。**この 3 つが揃うと「機能が動いていない」ことを示す信号がゼロになる**。
 
 ## 詳細
 

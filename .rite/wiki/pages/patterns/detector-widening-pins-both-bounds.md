@@ -22,7 +22,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T22:40:00+09:00" }
 
 ## 詳細
 
-### 対で置く fixture（PR #2124 cycle 5）
+### 対で置く fixture（cycle 5）
 
 第 3 のハンドル綴り `x=$(bash ".../_mktemp-stderr-guard.sh" ...)` を追跡対象に足した。実装は「**行内に guard 名がある場合に限り** `x=$(bash` 形を拾う」という条件付きにした。この条件を落とすと、ツリー内のあらゆる subprocess capture がハンドル扱いになる。
 

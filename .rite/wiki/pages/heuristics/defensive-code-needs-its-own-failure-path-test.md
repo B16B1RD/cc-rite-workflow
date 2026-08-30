@@ -50,7 +50,7 @@ verified:
 - **失敗パステストの決定論性は「対象環境で確実に失敗する条件」を選ぶことで担保する。** 本ケースでは「mkdir -p の対象パスに既存の非ディレクトリファイルを置く」という POSIX 準拠の確実な失敗条件を使い、chmod・symlink 等の環境依存性が高い手法を避けた。
 - **新設したテストの実効性は mutation testing（意図的な退行 + red 確認）で実証できる。** 「アサーションが通っている」だけでは、そのアサーションが実際に対象コードの振る舞いに依存しているか（トートロジーでないか）は分からない。隔離環境（scratchpad 等、実リポジトリを汚さない場所）で対象コードを意図的に壊し、新設テストが red になることを確認するのが最も直接的な裏付けになる。
 
-### security 起因の防御はとくに pin を忘れやすい（PR #2120 cycle 4 実測）
+### security 起因の防御はとくに pin を忘れやすい（cycle 4 実測）
 
 同じギャップが security 起因の修正で再現し、**なぜ忘れるのかが一般化できる形で観測された**。cycle 3 で security 指摘に応えて 4 つの WARNING に制御文字の中和を追加したが、その中和に回帰テストを付け忘れた。補間 9 箇所を素の変数展開へ戻しても hook 全 114 suite が green のまま通る状態で、test と security の 2 reviewer が独立に同じ mutation で実測した。
 
@@ -60,7 +60,7 @@ verified:
 
 なお、部分的に中和した経路の regression test は素朴な形では書けない（隣接する未中和行が混ざる）。詳細は [制御文字中和を通した出力への grep assert はロケールで検出能力を失う](../anti-patterns/locale-dependent-error-message-grep-assertion.md) の「中和の pin は『隣の未中和行』に邪魔される」節を参照。
 
-### WARNING 文面のパスを pin しないと可視化是正が退行する（PR #2360 実測）
+### WARNING 文面のパスを pin しないと可視化是正が退行する（別の PR での実測）
 
 終了済み Issue の flow-state / run-queue を回収する経路で、cycle 1 は識別 jq の silent skip と lock 残置を WARNING に是正した。しかし AC が要求する「WARNING に対象パスを明示する」こと自体をテストが pin しておらず、error-handling と test が独立に指摘した。cycle 2 で T-01 が stale WARNING のパスを、T-04 が corrupt JSON の読み取り失敗 WARNING を固定した。
 

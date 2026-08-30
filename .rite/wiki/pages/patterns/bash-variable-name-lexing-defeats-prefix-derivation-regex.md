@@ -20,7 +20,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T22:40:00+09:00" }
 
 ## 詳細
 
-### 実測された誤検知（PR #2124 cycle 1）
+### 実測された誤検知（cycle 1）
 
 tempfile ハンドルの派生パスを追跡する検出器で、`$tmp_bak`（`$tmp` の派生を意図した綴り）を派生として扱ったところ、`$pr_view_err` に対して `$pr_view_err_oneline` が誤検知した。後者は bash にとって `pr_view_err_oneline` という独立した変数であり、`$pr_view_err` とは何の関係もない。
 

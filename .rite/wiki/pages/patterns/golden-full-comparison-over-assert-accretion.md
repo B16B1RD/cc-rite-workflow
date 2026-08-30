@@ -23,7 +23,7 @@ mutation testing で「grep 断片照合のみで検出力が無い」と判明�
 
 ### 起点事例
 
-散文手順 → helper 委譲リファクタ（wiki-ingest ステップ 6 の index 操作、PR #2111 cycle 1）で、reviewer が 23 変異を投入し 8 変異が生存した。生存原因は「grep 断片照合のみで golden 全文比較なし」。fix 側は生存変異に個別対応する代わりに、代表 TC（TC-1/TC-7）を `diff -u` の golden 全文比較へ置換した。
+散文手順 → helper 委譲リファクタ（wiki-ingest ステップ 6 の index 操作、cycle 1）で、reviewer が 23 変異を投入し 8 変異が生存した。生存原因は「grep 断片照合のみで golden 全文比較なし」。fix 側は生存変異に個別対応する代わりに、代表 TC（TC-1/TC-7）を `diff -u` の golden 全文比較へ置換した。
 
 ### 効果
 

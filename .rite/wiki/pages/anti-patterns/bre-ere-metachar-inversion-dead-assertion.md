@@ -26,7 +26,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T09:53:11+09:00" }
 
 ## 詳細
 
-**実例（PR #2070 cycle 1 → cycle 2）**
+**実例（cycle 1 → cycle 2）**
 
 cycle 1 で「実在しない見出しへの参照を作らない」ことを pin するため、以下のアサーションを追加した。
 

@@ -20,7 +20,7 @@ gate が「何を基準に判定するか」の anchor（commit SHA、PR 番号�
 
 ## 詳細
 
-PR #2130 で、5 cycle の差分スコープを消化したあとのフルレビューで、security / prompt-engineer が独立に検出した最重要指摘。
+ある PR で、5 cycle の差分スコープを消化したあとのフルレビューで、security / prompt-engineer が独立に検出した最重要指摘。
 
 **何が起きたか**: 8.0.4 positive 層の判定 anchor である `--commit-sha` は、LLM が会話コンテキストの別ステップの出力から選ぶ値だった。helper は**形状検査（桁数）しか行わず、実 HEAD と突き合わせない**。
 

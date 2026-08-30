@@ -432,7 +432,7 @@ pin を「張ったつもり」にする 2 つの具体形。どちらも同 PR 
 
 ## 変種: assert の pattern が「同じチャネルに出る別の行」に当たっている
 
-PR #2114 cycle 1 では、pin が守る対象を検査していない形が 3 件独立に検出された。いずれも「pin はある・mutation matrix も通っている」のに実質の検出力がゼロだった。
+ある PR の cycle 1 では、pin が守る対象を検査していない形が 3 件独立に検出された。いずれも「pin はある・mutation matrix も通っている」のに実質の検出力がゼロだった。
 
 **(1) 部分文字列 match による vacuous assertion（チャネル衝突）**
 
@@ -458,11 +458,11 @@ helper の reason 語彙 4 種のうち 2 種に assertion が 0 本だった。
 
 **(4) replaced pin にも負の対照が要る**
 
-新規 pin だけでなく、**置換した pin** も「旧 pin ではこの mutation が見えなかった」ことを実測する。PR #2114 cycle 4 では、旧 `grep -cF` の caller pin が呼び出しのコメントアウトを素通しすること、旧 `^  mv` pin が BSD 相当の `mv`（rc=0 / 無 stderr）では mutation の有無に関わらず落ちることを、それぞれ shim で実測した。
+新規 pin だけでなく、**置換した pin** も「旧 pin ではこの mutation が見えなかった」ことを実測する。同 PR の cycle 4 では、旧 `grep -cF` の caller pin が呼び出しのコメントアウトを素通しすること、旧 `^  mv` pin が BSD 相当の `mv`（rc=0 / 無 stderr）では mutation の有無に関わらず落ちることを、それぞれ shim で実測した。
 
 ## 変種: 実装の「適用箇所数」と test の「pin 箇所数」は別の数字
 
-PR #2137 cycle 2 では、この gap を 3 reviewer（security / error-handling / application）が独立に最大の指摘として検出した。cycle 1 の指摘は「拒否経路の ERROR 文が生値をエコーする」で、fix は**実数 5 箇所すべてに `_marker_scrub` を適用して実装側は 5/5 で網羅的**だった。ところが追加した test が pin したのは 2 箇所だけで、**残り 3 箇所は scrub を外しても 61/61 green のまま生存した**。
+別の PR の cycle 2 では、この gap を 3 reviewer（security / error-handling / application）が独立に最大の指摘として検出した。cycle 1 の指摘は「拒否経路の ERROR 文が生値をエコーする」で、fix は**実数 5 箇所すべてに `_marker_scrub` を適用して実装側は 5/5 で網羅的**だった。ところが追加した test が pin したのは 2 箇所だけで、**残り 3 箇所は scrub を外しても 61/61 green のまま生存した**。
 
 生存が実害に届いた 1 箇所は `marker_get` の KEY 拒否経路である。interpolation の直後が `')。英数字と…` という日本語文字列だったため、`X<改行>[CONTEXT] ITERATE_CB=fire; x=` を渡すと列 0 に完全な偽 marker 行が立ち、`marker_get ITERATE_CB` が主値を `fire` として読み戻せた。「実装は全部直した」と「守られている」の距離が、そのまま偽 marker の成立余地になっていた。
 

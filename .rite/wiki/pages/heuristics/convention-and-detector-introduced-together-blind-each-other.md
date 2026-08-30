@@ -24,7 +24,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T22:40:00+09:00" }
 
 ## 詳細
 
-### 実測された反転（PR #2124 cycle 1）
+### 実測された反転（cycle 1）
 
 同一 PR が次の 2 つを導入した。
 

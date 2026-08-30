@@ -97,7 +97,7 @@ assert_prose_pin <text> <pattern> <weakened-probe> <label>
 
 ### marker 名の存在ではなく指示語を pin する
 
-散文が実装本体である skill では、pin 対象は **marker 名ではなく指示語そのもの**である。`assert_grep` で `CLEANUP_DELEGATED=1` の存在だけを見るテストは、ガードの削除は検出するが「**実行しない**」→「通常どおり実行する」という**指示の反転**を検出しない（PR #2150 の mutation 実測: 4 サイトの指示を反転させても全 assert green）。
+散文が実装本体である skill では、pin 対象は **marker 名ではなく指示語そのもの**である。`assert_grep` で `CLEANUP_DELEGATED=1` の存在だけを見るテストは、ガードの削除は検出するが「**実行しない**」→「通常どおり実行する」という**指示の反転**を検出しない（mutation 実測: 4 サイトの指示を反転させても全 assert green）。
 
 pin は指示の効力を担う語まで伸ばす:
 

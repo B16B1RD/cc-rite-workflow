@@ -16,7 +16,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T02:49:27Z" }
 
 ## 概要
 
-reviewer が finding を出したとき、helper の header や設計ドキュメントに「これは意図的な trade-off であり accepted」と書かれていることを根拠に却下する経路がある。PR #2120 cycle 2 で、security が `control-char-neutralize.sh` header の Trade-off (accepted) 記述を根拠に非 finding と判断し、error-handling が同じ箇所を MEDIUM finding とした。裏取りの結果、**header の記述自体は事実だったが、その正当化は当該サイトに届いていなかった**。accepted 表記は「その判断が過去に下された」ことの記録であって、目の前のサイトに対する反証ではない。
+reviewer が finding を出したとき、helper の header や設計ドキュメントに「これは意図的な trade-off であり accepted」と書かれていることを根拠に却下する経路がある。ある PR の cycle 2 で、security が `control-char-neutralize.sh` header の Trade-off (accepted) 記述を根拠に非 finding と判断し、error-handling が同じ箇所を MEDIUM finding とした。裏取りの結果、**header の記述自体は事実だったが、その正当化は当該サイトに届いていなかった**。accepted 表記は「その判断が過去に下された」ことの記録であって、目の前のサイトに対する反証ではない。
 
 ## 詳細
 

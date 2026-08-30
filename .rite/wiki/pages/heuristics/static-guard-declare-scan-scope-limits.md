@@ -23,7 +23,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T17:45:00+09:00" }
 
 ## 詳細
 
-- **背景（PR #2080）**: BSD/macOS の `mktemp(1)` が trailing Xs しか置換しない問題で、`-XXXXXX.md` のような suffix 付きテンプレート 2 箇所を修正し、再混入を防ぐ TC-8b-i を追加した。検出器は `find "$PLUGIN_ROOT" -name '*.sh'` で 212 ファイルを走査し、PASS 文言は当初「every mktemp template ends in trailing Xs」だった。これは plugins/rite 全体に対する普遍的主張として読めるが、実際の走査は `*.sh` のみで、rite が実際に実行する skill markdown 内の bash fence を含まない。その盲点に `skills/fix/SKILL.md` の live な `-XXXXXX.md` が残っていた。
+- **背景**: BSD/macOS の `mktemp(1)` が trailing Xs しか置換しない問題で、`-XXXXXX.md` のような suffix 付きテンプレート 2 箇所を修正し、再混入を防ぐ TC-8b-i を追加した。検出器は `find "$PLUGIN_ROOT" -name '*.sh'` で 212 ファイルを走査し、PASS 文言は当初「every mktemp template ends in trailing Xs」だった。これは plugins/rite 全体に対する普遍的主張として読めるが、実際の走査は `*.sh` のみで、rite が実際に実行する skill markdown 内の bash fence を含まない。その盲点に `skills/fix/SKILL.md` の live な `-XXXXXX.md` が残っていた。
 
 - **非対称が指摘の引き金になる**: 直前の類似テスト TC-8b-h は自身のコメントに「Scope limits, stated honestly:」節を持ち、「bash fenced in SKILL.md / references is NOT scanned」と盲点を明示したうえで既知サイト 2 件まで列挙していた。新設ガードがこの慣行を欠いたため、application / test / security の 3 レビュアーが独立に同じ穴を指摘した。**同一 suite に先行例がある場合、そこからの逸脱は外部レビューで検出されやすい**。
 

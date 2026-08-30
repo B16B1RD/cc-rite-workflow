@@ -16,7 +16,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T02:49:27Z" }
 
 ## 概要
 
-「ログの `ts` と state file の `updated_at` が一致すること」だけを見る assert は、**両者が同じ変数由来である限り、書式を何に変えても通り続ける**。PR #2120 cycle 3 で、ログの唯一の想定 consumer が時刻を parse する予定であるにもかかわらず、書式を epoch 秒へ変える mutation が全 assert を素通りした。一致は provenance（同じ供給元から来たこと）を示すが、形式を保証しない。
+「ログの `ts` と state file の `updated_at` が一致すること」だけを見る assert は、**両者が同じ変数由来である限り、書式を何に変えても通り続ける**。ある PR の cycle 3 で、ログの唯一の想定 consumer が時刻を parse する予定であるにもかかわらず、書式を epoch 秒へ変える mutation が全 assert を素通りした。一致は provenance（同じ供給元から来たこと）を示すが、形式を保証しない。
 
 ## 詳細
 

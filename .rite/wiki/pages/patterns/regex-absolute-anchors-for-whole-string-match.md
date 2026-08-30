@@ -20,7 +20,7 @@ jq の `test()` が使う Oniguruma（および Perl / Ruby 系の正規表現�
 
 ## 詳細
 
-PR #2126 の cycle 4 で、`; ` 区切りの単一行 marker へ出す値に形の allowlist `test("^[a-z][a-z0-9-]*[a-z0-9]$")` を導入した。目的は marker 行の分断（値に改行が入ると 2 行目が column 0 に着地し、消費側が別フィールドとして読む）を防ぐことだった。cycle 5 で、その allowlist が**末尾改行 1 個を通す**ことが実測された — `"security-reviewer\n"` が valid と判定され、BAD 経路の fail-loud が発火しない。書込側は当該フィールドを一切検証しないため、この allowlist が唯一の形ゲートだった。結果、閉じたかった欠陥そのものがアンカーの選択で開いていた。
+ある PR の cycle 4 で、`; ` 区切りの単一行 marker へ出す値に形の allowlist `test("^[a-z][a-z0-9-]*[a-z0-9]$")` を導入した。目的は marker 行の分断（値に改行が入ると 2 行目が column 0 に着地し、消費側が別フィールドとして読む）を防ぐことだった。cycle 5 で、その allowlist が**末尾改行 1 個を通す**ことが実測された — `"security-reviewer\n"` が valid と判定され、BAD 経路の fail-loud が発火しない。書込側は当該フィールドを一切検証しないため、この allowlist が唯一の形ゲートだった。結果、閉じたかった欠陥そのものがアンカーの選択で開いていた。
 
 **実測（jq 1.7）**:
 

@@ -76,7 +76,7 @@ exit 0                                    # 全ファイル走査済み・findin
 
 対象が 1 件も無いのは、consumer リポジトリ（rite をマーケットプレイス経由でのみ使い `plugins/rite/` を self-host していない）では正常系である。この場合は `--skip-if-no-target` のような明示フラグで「not applicable」を宣言させ、呼び出し元が 1 行の informational note を出す形にする。**「対象が無い」と「対象を開けなかった」を同じ rc に畳まない**。
 
-### guard 自身が、guard の戒めている欠陥を持っていた（PR #2124 cycle 2）
+### guard 自身が、guard の戒めている欠陥を持っていた（cycle 2）
 
 本ページの教訓を header に明記した検出器で、同じ欠陥が**実装側**に残っていた。ハンドル登録が最初の 1 個で `return` しており、1 論理行が複数の tempfile を作る形（`a=$(mktemp) && b=$(mktemp)`）では 2 個目以降が未登録 = その派生パスが恒久的に silent clean になっていた。しかも走査対象ツリーに該当行が実在した（`lib/git-status-filtered.sh:45`）。
 
@@ -84,9 +84,9 @@ exit 0                                    # 全ファイル走査済み・findin
 
 ### どの先例を写すかで欠陥が決まる
 
-同じ機能の実装がリポジトリに複数あるとき、**どれを写すかで欠陥が決まる**。PR #2124 の新規検出器は、より古い `bash-heaviness-check.sh` の形（`2>/dev/null || true` で失敗を飲む）を写したため、本ページの教訓を持つ `dollar-zero-check.sh` の `SKIPPED` カウンタが伝播しなかった。**レビューを経た最新の実装を写す**。
+同じ機能の実装がリポジトリに複数あるとき、**どれを写すかで欠陥が決まる**。この事例の新規検出器は、より古い `bash-heaviness-check.sh` の形（`2>/dev/null || true` で失敗を飲む）を写したため、本ページの教訓を持つ `dollar-zero-check.sh` の `SKIPPED` カウンタが伝播しなかった。**レビューを経た最新の実装を写す**。
 
-### exit 0 の多義性を潰す 2 つの解法（PR #2278 実測）
+### exit 0 の多義性を潰す 2 つの解法（別の PR での実測）
 
 「一致した」と「対象が無いので skip」を同じ exit code に載せると、呼び出し側の assertion は必ず片肺になる。起点事例では、抽出結果が 0 行でも等値比較が成立して exit 0 を返し、テストの assertion が exit code しか見ていなかったため「一致」と「not applicable」を区別できなかった。
 

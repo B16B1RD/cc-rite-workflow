@@ -107,7 +107,7 @@ mutation を回したうえでの「指摘 0 件」と、回さずに出した�
 
 変異検証それ自体にも「検証したつもり」の失敗モードがある。**検証に使ったコマンドと、アサーション本体が内部で使うコマンドが違えば、観測結果は何も保証しない。**
 
-PR #2070 cycle 1 では、追加した `assert_not_grep` のパターンを素の `grep`（BRE）で手元確認し「修正前の状態でマッチする（= fail する）」と観測して commit した。しかしヘルパー本体は `grep -qE`（ERE）を使っており、BRE で選択子として働く `\|` は ERE では literal のパイプ文字になる。結果、対象ファイルに決して現れないパターンを探す **常時緑の dead assertion** が「検証済み」として着地した（[[bre-ere-metachar-inversion-dead-assertion]]）。
+ある PR の cycle 1 では、追加した `assert_not_grep` のパターンを素の `grep`（BRE）で手元確認し「修正前の状態でマッチする（= fail する）」と観測して commit した。しかしヘルパー本体は `grep -qE`（ERE）を使っており、BRE で選択子として働く `\|` は ERE では literal のパイプ文字になる。結果、対象ファイルに決して現れないパターンを探す **常時緑の dead assertion** が「検証済み」として着地した（[[bre-ere-metachar-inversion-dead-assertion]]）。
 
 したがって検証の合格条件は次の 3 点を満たす形にする。
 

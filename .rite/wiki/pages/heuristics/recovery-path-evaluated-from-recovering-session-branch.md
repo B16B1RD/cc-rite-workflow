@@ -29,7 +29,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T17:40:00+09:00" }
 
 ### 起点事例: 「回復不能」が誤診断だった
 
-PR #2150 の cycle 1 で、3 名の reviewer（prompt-engineer / tech-writer / test）が独立に次の判定へ到達した。
+ある PR の cycle 1 で、3 名の reviewer（prompt-engineer / tech-writer / test）が独立に次の判定へ到達した。
 
 > 「flow-state に worktree 記録が無い」を委譲モードの発火条件にし、回復手段として「main checkout での再実行」を案内している。しかし再実行時も flow-state は空のままなので同じ検出 helper が同じ結論を返し、委譲した項目に到達しない。
 

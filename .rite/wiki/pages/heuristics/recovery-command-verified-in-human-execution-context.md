@@ -67,7 +67,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T17:40:00+09:00" }
 
 ### 実行場所を限定しないと、コマンド連鎖が自分を壊す
 
-実行コンテキストの検証は「対象が正しいか」だけでなく「**連鎖が最後まで走るか**」まで含む。PR #2150 では worktree 削除の手動回復として `git worktree remove --force '{path}' && git worktree prune && git branch -D {branch}` を案内したが、この案内は定義上**その worktree 内にいるセッション**へ出力される。実行すると:
+実行コンテキストの検証は「対象が正しいか」だけでなく「**連鎖が最後まで走るか**」まで含む。ある PR では worktree 削除の手動回復として `git worktree remove --force '{path}' && git worktree prune && git branch -D {branch}` を案内したが、この案内は定義上**その worktree 内にいるセッション**へ出力される。実行すると:
 
 1. `remove --force` が cwd ごと worktree を消す
 2. 次の `git worktree prune` が rc=128（cwd 消失）で止まり、`&&` 連鎖が切れる

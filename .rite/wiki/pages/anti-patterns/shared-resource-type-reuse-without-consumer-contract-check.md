@@ -57,7 +57,7 @@ cycle 1 修正後、cycle 2 レビューで test / prompt-engineer reviewer が�
 
 consumer 契約の確認を怠った結果は、生存中リソースの破壊だけではない。**consumer が一度も受理しない記録**を書き続ける不発コードも同じ原因から生まれる。
 
-PR #2150 では reap manifest へ `session_worktree` type の記録を追加したが、consumer（`pr-cycle-cleanup.sh`）の bypass 条件は `_corpse -eq 1`（削除試行が失敗した痕跡）を要求していた。追加した経路は削除を一度も試行しないため worktree は健全で、記録は**永久に参照されない**。しかも同じ修正が、既に機能していた別経路（ステップ 5 の `branch` type 記録による age guard バイパス）を「機能しない」と案内文で否定していた。
+ある PR では reap manifest へ `session_worktree` type の記録を追加したが、consumer（`pr-cycle-cleanup.sh`）の bypass 条件は `_corpse -eq 1`（削除試行が失敗した痕跡）を要求していた。追加した経路は削除を一度も試行しないため worktree は健全で、記録は**永久に参照されない**。しかも同じ修正が、既に機能していた別経路（ステップ 5 の `branch` type 記録による age guard バイパス）を「機能しない」と案内文で否定していた。
 
 **新しい type / key を既存機構へ流し込む前に、consumer が何を条件にそれを消費するかを読む**。読む対象は type の名前ではなく、consumer 側の受理条件そのもの（if 文・case arm）である。
 

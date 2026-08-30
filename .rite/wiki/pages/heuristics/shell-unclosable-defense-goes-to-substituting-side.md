@@ -22,7 +22,7 @@ LLM が値を literal substitute する bash block では、**防御の層を 1 
 
 ## 詳細
 
-### 失敗の構造（PR #2111 run 2 cycle 3）
+### 失敗の構造（run 2 cycle 3）
 
 1. cycle 2 で 6 値すべてを quoted heredoc 受けに統一し `"` 経由の任意コマンド実行を塞いだ
 2. cycle 3 のレビューで終端子行の脱出口が残っていることが判明: 6 heredoc が同一終端子を共有するため、脱出してもクォート均衡が保たれ、後続の `$(cat <<'WIU_EOF'` が再度開いて構文が通る

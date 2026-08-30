@@ -22,7 +22,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T18:40:00+09:00" }
 
 ## 詳細
 
-PR #2135 で **2 度踏んだ**。
+ある PR で **2 度踏んだ**。
 
 **1 度目 (cycle 2)**: `the default of 15` という表現が 4 箇所にあることを count pin で固定したあと、テストに「T-04n counts the four `the default of 15` phrasings」というコメントを書いた。**その瞬間に注記自身が 5 つ目の出現になり**、期待値 4 の pin が落ちた。対処として literal を書かず「the four spelled-out mentions of the default value」と言い換えた。
 

@@ -22,7 +22,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T22:40:00+09:00" }
 
 ## 概要
 
-signal 経路の cleanup を検証・記述するとき、**条件を揃えないまま計測すると結論が反転する**。bash の EXIT trap は untrapped signal で死ぬときも走るため rc と副作用だけを見る assertion は signal handler の有無を判別できず、`kill -SIG $$` と「foreground child 待ちの親へ外部から」では同じ trap 構成でも挙動が変わる。PR #2124 ではこの 2 つが順に踏まれ、テストは signal handler 削除 mutant を通し、reviewer は正しい記述を誤りと指摘して次 cycle で撤回した。
+signal 経路の cleanup を検証・記述するとき、**条件を揃えないまま計測すると結論が反転する**。bash の EXIT trap は untrapped signal で死ぬときも走るため rc と副作用だけを見る assertion は signal handler の有無を判別できず、`kill -SIG $$` と「foreground child 待ちの親へ外部から」では同じ trap 構成でも挙動が変わる。ある PR ではこの 2 つが順に踏まれ、テストは signal handler 削除 mutant を通し、reviewer は正しい記述を誤りと指摘して次 cycle で撤回した。
 
 ## 詳細
 
@@ -34,7 +34,7 @@ bash は untrapped な INT/TERM/HUP で死ぬときも **EXIT trap を実行し�
 INT を送る → rc=130 であること かつ tempfile が消えていること
 ```
 
-PR #2124 では lib から signal trap 3 行（INT/TERM/HUP）を削除した mutant に対して、テストが**全件 green のまま**通った。
+同 PR では lib から signal trap 3 行（INT/TERM/HUP）を削除した mutant に対して、テストが**全件 green のまま**通った。
 
 **対処**（どちらか、または両方）:
 
@@ -52,7 +52,7 @@ PR #2124 では lib から signal trap 3 行（INT/TERM/HUP）を削除した mu
 
 `kill -INT $$` を**スクリプト自身が実行する**と bash の default disposition が即座に殺すため rc=130 になる。一方、**foreground child でブロック中に外部から SIGINT が届く**形（hook が `gh api` の応答待ちのときの Ctrl-C）では、EXIT-only の trap 構成は rc=0 を返し**後続命令まで継続実行する**。
 
-PR #2124 cycle 3 で error-handling reviewer は前者だけで計測し「EXIT のみの trap でも中断時に成功を返さない」と主張して正しい記述を誤りだと指摘、cycle 4 で計測方法の誤りに気付いて自ら撤回した。同 cycle に security reviewer が逆方向から「TERM/HUP では EXIT-only でも 143/129 を返すので 3 signal 一括の主張は過度な一般化」と指摘し、**2 人の実測は矛盾せず「主張を SIGINT に限定すれば真」**という形で解決した。
+同 PR の cycle 3 で error-handling reviewer は前者だけで計測し「EXIT のみの trap でも中断時に成功を返さない」と主張して正しい記述を誤りだと指摘、cycle 4 で計測方法の誤りに気付いて自ら撤回した。同 cycle に security reviewer が逆方向から「TERM/HUP では EXIT-only でも 143/129 を返すので 3 signal 一括の主張は過度な一般化」と指摘し、**2 人の実測は矛盾せず「主張を SIGINT に限定すれば真」**という形で解決した。
 
 ### 再現できる計測手順
 
