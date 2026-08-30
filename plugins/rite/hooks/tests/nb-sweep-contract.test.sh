@@ -235,6 +235,8 @@ _t08_skill_lines=$(grep -cE '^[[:space:]]*body_count=' "$FIX" || true)
 assert "T-08 helper の body_count= 代入は 1 行 (head -1 による黙殺を防ぐ)" "1" "$_t08_helper_lines"
 assert "T-08 fix/SKILL.md の body_count= 代入は 1 行" "1" "$_t08_skill_lines"
 
+# 上の 2 assert が代入 1 行を保証するため、以下の head -1 は値の選択ではなく、行数が崩れた
+# 実行でも診断値を 1 つに定めるための保険。fail() は加算のみで停止しないので後続まで進む。
 _t08_helper_rhs=$(sed -n 's/^body_count=\(.*\)$/\1/p' "$NBR_SH" | head -1 \
   | sed 's/"\$CONTENT_FILE"/__BODY_FILE__/')
 _t08_skill_rhs=$(sed -n 's/^[[:space:]]*body_count=\(.*\)$/\1/p' "$FIX" | head -1 \
