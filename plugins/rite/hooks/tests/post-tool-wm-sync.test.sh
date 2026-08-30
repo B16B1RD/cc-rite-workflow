@@ -988,6 +988,78 @@ else
 fi
 echo ""
 
+# ─── #2462: open 1.6→2.5 の replica init 過渡窓では no_comment を通知しない (T-22 / T-23) ───
+
+echo "T-22: phase=init (replica init 過渡窓) + no_comment → systemMessage なし、負キャッシュと phase 前進は不変 (AC-1/AC-3)"
+dir_n22="$TEST_DIR/n22"
+mkdir -p "$dir_n22/.rite/work-memory"
+printf '# rite\n' > "$dir_n22/rite-config.yml"
+echo "existing wm" > "$dir_n22/.rite/work-memory/issue-42.md"
+# last_synced_phase を "init" にすると phase diff ゲート (`_phase != _last_synced_phase`) で
+# 早期 exit し、no_comment 経路に入らないまま「systemMessage なし」が成立してしまう
+# (vacuous PASS)。空文字にして必ず経路を通す。
+create_state_file "$dir_n22" '{"active": true, "issue_number": 42, "phase": "init", "last_synced_phase": ""}'
+wm_body_fixture > "$dir_n22/wm-body.md"
+touch "$dir_n22/list-empty.flag"
+install_gh_shim "$dir_n22"
+rc_n22=0
+run_hook_cap "$dir_n22" || rc_n22=$?
+stdout22=$(cat "$dir_n22/hook.stdout" 2>/dev/null)
+lsp22=$(jq -r '.last_synced_phase // empty' "$(state_file_path "$dir_n22")")
+wmrep22=$(jq -r '.wm_replica // empty' "$(state_file_path "$dir_n22")")
+list22=$(grep -c '/issues/42/comments' "$dir_n22/gh.urls" 2>/dev/null || true); : "${list22:=0}"
+# 経路通過の positive pin: list GET が 1 回起きていれば fetch まで到達している。
+if [ "$rc_n22" -eq 0 ] && [ "$list22" = "1" ]; then
+  pass "T-22a: no_comment 経路を実際に通過 (list GET 1, exit 0)"
+else
+  fail "T-22a: rc=$rc_n22 list=$list22 log=$(cat "$dir_n22/gh.log" 2>/dev/null)"
+fi
+# AC-1: 抑止されるのは通知だけ。stdout 全体が空であることを独立に pin する
+# (systemMessage 有無だけを見ると、将来この経路に観測行が足された退行を素通しする)。
+if [ -z "$stdout22" ]; then
+  pass "T-22b: AC-1 — stdout が完全に空 (systemMessage も観測行も出さない)"
+else
+  fail "T-22b: AC-1 — stdout が空でない: $stdout22"
+fi
+# AC-3: 負キャッシュ記録と phase 前進が同一実行で同時成立すること。個別 assert に分けると
+# 片方だけ成立する退行を見逃すため 1 つの if で合成する。
+if [ "$wmrep22" = "absent" ] && [ "$lsp22" = "init" ]; then
+  pass "T-22c: AC-3 — wm_replica=absent と last_synced_phase=init が同時成立"
+else
+  fail "T-22c: AC-3 — wm_replica=$wmrep22 lsp=$lsp22 (both expected)"
+fi
+echo ""
+
+echo "T-23: phase=phase5_post_review (過渡窓外) + no_comment → 従来の systemMessage を維持 (AC-2)"
+dir_n23="$TEST_DIR/n23"
+mkdir -p "$dir_n23/.rite/work-memory"
+printf '# rite\n' > "$dir_n23/rite-config.yml"
+echo "existing wm" > "$dir_n23/.rite/work-memory/issue-42.md"
+create_state_file "$dir_n23" '{"active": true, "issue_number": 42, "phase": "phase5_post_review", "last_synced_phase": ""}'
+wm_body_fixture > "$dir_n23/wm-body.md"
+touch "$dir_n23/list-empty.flag"
+install_gh_shim "$dir_n23"
+rc_n23=0
+run_hook_cap "$dir_n23" || rc_n23=$?
+stdout23=$(cat "$dir_n23/hook.stdout" 2>/dev/null)
+lsp23=$(jq -r '.last_synced_phase // empty' "$(state_file_path "$dir_n23")")
+wmrep23=$(jq -r '.wm_replica // empty' "$(state_file_path "$dir_n23")")
+list23=$(grep -c '/issues/42/comments' "$dir_n23/gh.urls" 2>/dev/null || true); : "${list23:=0}"
+sysmsg23=$(printf '%s' "$stdout23" | jq -r '.systemMessage // empty' 2>/dev/null)
+# 文言まで pin する: 有無だけの assert では、過渡窓判定が常に真へ退化して no_comment 用の文言が
+# 別経路 (fetch 失敗の「取得に失敗しました」等) に置き換わっても検出できない。
+if [ "$rc_n23" -eq 0 ] && printf '%s' "$sysmsg23" | grep -qF 'replica が見つかりません'; then
+  pass "T-23a: AC-2 — 過渡窓外では no_comment 固有の文言が維持される"
+else
+  fail "T-23a: rc=$rc_n23 sysmsg=$sysmsg23 stdout=$stdout23"
+fi
+if [ "$list23" = "1" ] && [ "$wmrep23" = "absent" ] && [ "$lsp23" = "phase5_post_review" ]; then
+  pass "T-23b: AC-2 — list GET 1 / wm_replica=absent / last_synced_phase=phase5_post_review"
+else
+  fail "T-23b: list=$list23 wm_replica=$wmrep23 lsp=$lsp23"
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [ "$FAIL" -gt 0 ]; then

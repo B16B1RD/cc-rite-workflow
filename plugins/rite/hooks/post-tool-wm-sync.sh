@@ -205,6 +205,19 @@ _flush_sysmsg() {
   jq -nc --arg m "$_sysmsg" '{systemMessage:$m}' 2>/dev/null || true
 }
 
+# open 1.6 (--phase init) から 2.5 (replica init) までの過渡窓を判定する。この窓では replica が
+# 未作成であることが正常であり、`no_comment` を異常として通知すると「実行中の /rite:open を
+# 実行してください」という成立しない指示になる。`init` を書くのは skills/open/SKILL.md 1.6 の
+# 1 箇所のみで、そこが過渡窓の入口そのものであるため単一値で判定できる。
+# _gated_progress_phase() とは phase 語彙を共有しない別物 — 一方に phase を足しても他方には
+# 波及させないこと。
+_replica_init_window_phase() {
+  case "$1" in
+    init) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 _gated_progress_phase() {
   case "$1" in
     phase5_lint|phase5_post_lint|phase5_post_execute|phase5_pr*|phase5_post_review|phase5_post_ready|implement|lint|pr|review|fix|completed)
@@ -286,7 +299,12 @@ else
     elif [ "$_fetch_status" = "skipped" ] && [ "$_fetch_reason" = "no_comment" ]; then
       # AC-4: 初回検知。fetch 側が wm_replica=absent を記録済み。legitimate no-op なので phase は進める。
       log_debug "fetch no_comment; round_trips=1 path=fetch"
-      _set_sysmsg "作業メモリの Issue コメント replica が見つかりません。/rite:open が未実行か init に失敗しています。/rite:open を実行して replica を作成してください。"
+      if _replica_init_window_phase "$_phase"; then
+        # 過渡窓では replica 未作成が正常。通知だけ落とし、negative cache も phase 前進も従来どおり。
+        log_debug "no_comment during replica-init window (phase=$_phase); suppressing sysmsg"
+      else
+        _set_sysmsg "作業メモリの Issue コメント replica が見つかりません。/rite:open が未実行か init に失敗しています。/rite:open を実行して replica を作成してください。"
+      fi
       _phase_sync_ok=1
     elif [ "$_fetch_status" = "skipped" ] && [ "$_fetch_reason" = "body_fetch_failed" ]; then
       _set_sysmsg "作業メモリ replica の取得に失敗しました。認証・rate limit・ネットワークを確認してください。次のツール実行時に再試行されます。"
