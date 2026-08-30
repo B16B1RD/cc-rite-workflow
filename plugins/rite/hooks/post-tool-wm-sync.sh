@@ -207,8 +207,10 @@ _flush_sysmsg() {
 
 # open 1.6 (--phase init) から 2.5 (replica init) までの過渡窓を判定する。この窓では replica が
 # 未作成であることが正常であり、`no_comment` を異常として通知すると「実行中の /rite:open を
-# 実行してください」という成立しない指示になる。`init` を書くのは skills/open/SKILL.md 1.6 の
-# 1 箇所のみで、そこが過渡窓の入口そのものであるため単一値で判定できる。
+# 実行してください」という成立しない指示になる。`init` を書くのは open 1.6 と flow-state.sh の
+# legacy migration (_phase_migrate) の 2 経路。前者が過渡窓の入口そのもので、後者は schema v1/v2
+# state の移行時のみ通り、抑止されても次の phase 変化で wm_replica=absent 短絡が通知するため、
+# 単一値で判定できる。
 # _gated_progress_phase() とは phase 語彙を共有しない別物 — 一方に phase を足しても他方には
 # 波及させないこと。
 _replica_init_window_phase() {
