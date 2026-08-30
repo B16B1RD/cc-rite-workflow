@@ -1127,25 +1127,28 @@ extract_phase81 > "$PHASE81_RAW"
 # 抽出結果の検査は 2 群に分け、**診断文面を分ける**。抽出の破損と契約の消失は原因も対処も
 # 別物で、後者を「アンカーが変更された可能性」と報じると、本テストが検出すべき退行そのものを
 # テスト側の問題へ誤帰属させる。
-phase81_extract_ok=1
+phase81_block_ok=1
 
-# 群 1: 抽出の構造健全性のみ。block の開始行と終端行が揃っているかを見る。
-for _required in '^# ステップ 8.1 canonical lint_action decision logic' '^set -o pipefail$'; do
+# 群 1: 抽出の構造健全性。awk の開始 / 終了パターンと block 冒頭が揃っているかを見る。
+# 終端行は awk の終了条件そのもので、消えれば契約以前に抽出が EOF まで暴走する。
+for _required in '^# ステップ 8.1 canonical lint_action decision logic' '^set -o pipefail$' \
+                 '^echo "\[CONTEXT\] lint_action=\$lint_action"$'; do
   if ! grep -q "$_required" "$PHASE81_RAW"; then
     fail "TC-53 ステップ 8.1 bash の抽出に失敗 ('$_required' 不在。アンカーが変更された可能性)"
-    phase81_extract_ok=0
+    phase81_block_ok=0
   fi
 done
 
-# 群 2: 契約行の存在。消失は「gate / emit 契約が消えた」と名指しする (抽出は正常なのだから)。
-for _contract in '^for _n_var in ' '^echo "\[CONTEXT\] lint_action=\$lint_action"$'; do
-  if ! grep -q "$_contract" "$PHASE81_RAW"; then
-    fail "TC-53 ステップ 8.1 の契約が消失 ('$_contract' 不在。residue gate / lint_action emit のいずれかが削除された)"
-    phase81_extract_ok=0
+# 群 2: 契約行の存在。**群 1 が通ったときだけ**評価する — 抽出が壊れていれば契約行も当然
+# 見つからず、「削除された」と名乗るのは偽の主張になる。
+if [ "$phase81_block_ok" = 1 ]; then
+  if ! grep -q '^for _n_var in ' "$PHASE81_RAW"; then
+    fail "TC-53 ステップ 8.1 の契約が消失 (residue gate の for ループが削除された)"
+    phase81_block_ok=0
   fi
-done
+fi
 
-if [ "$phase81_extract_ok" = 1 ]; then
+if [ "$phase81_block_ok" = 1 ]; then
   # placeholder を実値へ差し替えて実行可能にする。置換対象は placeholder 文字列なので
   # 集合変数からは組めず counter 名を literal で並べるが、その列挙は phase81_write の 1 箇所に
   # 集約する (構文検査・実行・residue のどれもここを通す)。gate ループとの一致は上の集合突合
@@ -1203,7 +1206,7 @@ if [ "$phase81_extract_ok" = 1 ]; then
 else
   # 実行 assert 群を丸ごと落とすので計上する。無計上で消すと、baseline との PASS 差だけが
   # 残り「何が走らなかったか」がサマリから読めない (_test-helpers.sh の skip 規約)。
-  skip "TC-53 ステップ 8.1 の実行 assert 群 (構文検査 / T-01 / T-02 / T-05) を抽出失敗により gate"
+  skip "TC-53 ステップ 8.1 の実行 assert 群 (構文検査 / T-01 / T-02 / T-05) を抽出失敗または契約消失により gate"
 fi
 
 if ! print_summary "$(basename "$0")" \

@@ -180,8 +180,8 @@ skip 済み raw を警告に数えると、skip 運用が膨らむほど `n_warn
 ほど古くなる。`generated.at` は最終内容変更時刻なので、内容を変えずに日付だけ進めて解消する
 のは provenance の捏造にあたり、正規の解消手段が存在しない。
 
-どちらも `{wiki_warnings_line}` の内訳には現れない。`n_stale` の表示先はステップ 8.4 の
-`Lint 結果:` 行、`n_unregistered_raw` は同行とステップ 9 完了レポートの専用行。
+どちらも `{wiki_warnings_line}` の内訳には現れない。表示先は完了レポート内で、`n_stale` は
+`Lint 結果:` 行（ステップ 8.4 で定義）、`n_unregistered_raw` は同行と未登録 raw 専用行。
 
 ## lock-release-failsafe
 
