@@ -15,6 +15,17 @@ WARNING から手動復旧できるから (D-03)。helper は API 失敗でも e
 `FOLLOW_UP_ISSUE` だけである。完了報告がこれを見ず `REVIEW_CLEANUP_PARTIAL_FAILURE` だけを見ると、
 起票失敗が「なし」に倒れる。marker 不在を成功と読まない規約はステップ 5 と同型。
 
+## reverify-no-extract-marker
+
+6.0.V の抽出が成功しても marker を出さないのは、抽出だけを示す marker が「判定に到達しなかった」
+経路で最後の marker として残り、ステップ 12 の **marker 不在の fail-loud 分岐を迂回させる**ため。
+判定未到達はその分岐が「実施結果を確認できませんでした」として捕まえる状態であり、抽出 marker が
+あるとそこへ落ちず、判定表のどの行にも一致しない未定義状態になる。0 件のときは finding が
+1 行も出力されないので、抽出 marker があるとそれが必ず終端になる。
+値を `done_extract` にすると `done` の接頭辞にもなり、判定表を前方一致で読む消費者に対して
+`done` 行へ吸われる第 2 の欠陥面を作る。成功の signal は判定を終えた `done` 1 本に絞り、
+marker 皆無は「節ごと未実行 or 判定未到達」として fail-loud に扱う（ステップ 12 の marker 不在分岐）。
+
 ## pr-merged-default
 
 `{pr_merged}` を全経路で既定するのは、ステップ 4-W の worktree パス manifest 記録とステップ 5 の
@@ -103,6 +114,12 @@ dirty な基点ブランチを黙って上書きしないため。破棄・stash
 `review-run-since-{pr}.txt` は `/rite:iterate` の収束トレンド判定が現 run の境界に使う pin
 （iterate ステップ 0.6 が書き、ステップ 1 が `--since` で helper へ渡す）。残しても次 run の
 開始時に上書きされるので害はないが、参照先が消えた孤児を PR ごとに積み上げない。
+
+## nb-sweep-done-sweep
+
+`nb-sweep-done-{pr}.txt` は 5.S 再入の権威（会話 marker は観測用）。寿命は本 run — 0.6 の
+`fresh || cur_cc == 0` で消し、cleanup でも回収する。cleanup まで残すと再 iterate と
+post-breaker 5.S が skip され、未消化 0 の再保証が死ぬ。
 
 ## wiki-worktree-persist
 

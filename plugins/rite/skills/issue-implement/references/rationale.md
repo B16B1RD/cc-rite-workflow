@@ -9,9 +9,10 @@
 
 ## complexity-read-once
 
-Complexity を 5.1.0.1 と 5.1.0.8 で別々に body から読むと、片方だけが片方の記法
-（`**Complexity**: X` / `## 複雑度`）に対応する drift が起きる。5.0.C の helper 1 回が両ゲートへ
-供給する。
+Complexity を 5.1.0.1 と 5.1.0.8 で別々に body から読むと、片方だけが片方の記法に対応する
+drift が起きる（受理する記法と探索順の SoT は `skills/pr-review/references/complexity-lane.md`。
+本節では列挙しない — 記法が増えるたびに 2 箇所を同期する義務が生まれるため）。5.0.C の
+helper 1 回が両ゲートへ供給する。
 
 ## fail-safe-orientation
 

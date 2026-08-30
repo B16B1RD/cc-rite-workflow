@@ -79,8 +79,8 @@ else
   # Resolver failed (helper deploy regression / path validation rejection).
   # stderr was suppressed above to keep the hook silent in the common case;
   # surface the failure under RITE_DEBUG so deploy regressions are observable.
-  [ -n "${RITE_DEBUG:-}" ] && echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] post-tool-wm-sync: flow-state.sh path resolution failed, skipping wm sync" \
-    >> "$STATE_ROOT/.rite-flow-debug.log" 2>/dev/null || true
+  [ -n "${RITE_DEBUG:-}" ] && mkdir -p "$STATE_ROOT/.rite/logs" 2>/dev/null && echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] post-tool-wm-sync: flow-state.sh path resolution failed, skipping wm sync" \
+    >> "$STATE_ROOT/.rite/logs/flow-debug.log" 2>/dev/null || true
   FLOW_STATE=""
 fi
 [ -f "$FLOW_STATE" ] || exit 0
@@ -109,12 +109,20 @@ _ownership=$(check_session_ownership "$INPUT" "$FLOW_STATE") || _ownership="own"
 [ "$_phase" != "completed" ] || exit 0
 [ "$_phase" != "cleanup" ] || exit 0
 
-LOCAL_WM="$STATE_ROOT/.rite-work-memory/issue-${issue_number}.md"
+_wm_new="$STATE_ROOT/.rite/work-memory/issue-${issue_number}.md"
+_wm_old="$STATE_ROOT/.rite-work-memory/issue-${issue_number}.md"
+if [ -f "$_wm_new" ]; then
+  LOCAL_WM="$_wm_new"
+elif [ -f "$_wm_old" ]; then
+  LOCAL_WM="$_wm_old"
+else
+  LOCAL_WM="$_wm_new"
+fi
 
 # Debug logging (moved before LOCAL_WM check for use in both code paths)
 log_debug() {
-  [ -n "${RITE_DEBUG:-}" ] && echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] post-tool-wm-sync: $1" \
-    >> "$STATE_ROOT/.rite-flow-debug.log" 2>/dev/null || true
+  [ -n "${RITE_DEBUG:-}" ] && mkdir -p "$STATE_ROOT/.rite/logs" 2>/dev/null && echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] post-tool-wm-sync: $1" \
+    >> "$STATE_ROOT/.rite/logs/flow-debug.log" 2>/dev/null || true
 }
 
 if [ ! -f "$LOCAL_WM" ]; then
@@ -197,6 +205,21 @@ _flush_sysmsg() {
   jq -nc --arg m "$_sysmsg" '{systemMessage:$m}' 2>/dev/null || true
 }
 
+# open 1.6 (--phase init) から 2.5 (replica init) までの過渡窓を判定する。この窓では replica が
+# 未作成であることが正常であり、`no_comment` を異常として通知すると「実行中の /rite:open を
+# 実行してください」という成立しない指示になる。`init` を書くのは open 1.6 と flow-state.sh の
+# legacy migration (_phase_migrate) の 2 経路。前者が過渡窓の入口そのもので、後者は schema v1/v2
+# state の移行時のみ通り、抑止されても次の phase 変化で wm_replica=absent 短絡が通知するため、
+# 単一値で判定できる。
+# _gated_progress_phase() とは phase 語彙を共有しない別物 — 一方に phase を足しても他方には
+# 波及させないこと。
+_replica_init_window_phase() {
+  case "$1" in
+    init) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 _gated_progress_phase() {
   case "$1" in
     phase5_lint|phase5_post_lint|phase5_post_execute|phase5_pr*|phase5_post_review|phase5_post_ready|implement|lint|pr|review|fix|completed)
@@ -222,8 +245,13 @@ _run_py_transform() {
 }
 
 if [ "$_wm_replica" = "absent" ]; then
-  # AC-5: 負キャッシュ済みなら gh を呼ばず last_synced_phase だけ進める (stdout 空)。
+  # 負キャッシュ済みなら gh を呼ばず last_synced_phase だけ進める (round_trips=0)。
+  # ただし黙って進めない: `absent` の解除経路は replica の作成成功だけなので、init が
+  # unverified / gh 失敗で終わるとこの分岐に永久に留まり、replica 同期が一度も行われないまま
+  # debug ログ以外に何も出ない状態が続く (#2463)。劣化していることが phase 変化のたびに
+  # ユーザーへ届くよう systemMessage を出す (gh 往復は増やさない)。
   log_debug "wm_replica=absent; skip gh; round_trips=0"
+  _set_sysmsg "作業メモリの Issue コメント replica が無いため同期をスキップしています（Issue #${issue_number}）。/rite:open の replica 作成が失敗した可能性があります。同期を再開するには /rite:open を実行してください。"
   _phase_sync_ok=1
 else
   # phase_detail: local WM から。失敗は phase 名に縮退 (既存契約)。
@@ -273,7 +301,12 @@ else
     elif [ "$_fetch_status" = "skipped" ] && [ "$_fetch_reason" = "no_comment" ]; then
       # AC-4: 初回検知。fetch 側が wm_replica=absent を記録済み。legitimate no-op なので phase は進める。
       log_debug "fetch no_comment; round_trips=1 path=fetch"
-      _set_sysmsg "作業メモリの Issue コメント replica が見つかりません。/rite:open が未実行か init に失敗しています。/rite:open を実行して replica を作成してください。"
+      if _replica_init_window_phase "$_phase"; then
+        # 過渡窓では replica 未作成が正常。通知だけ落とし、negative cache も phase 前進も従来どおり。
+        log_debug "no_comment during replica-init window (phase=$_phase); suppressing sysmsg"
+      else
+        _set_sysmsg "作業メモリの Issue コメント replica が見つかりません。/rite:open が未実行か init に失敗しています。/rite:open を実行して replica を作成してください。"
+      fi
       _phase_sync_ok=1
     elif [ "$_fetch_status" = "skipped" ] && [ "$_fetch_reason" = "body_fetch_failed" ]; then
       _set_sysmsg "作業メモリ replica の取得に失敗しました。認証・rate limit・ネットワークを確認してください。次のツール実行時に再試行されます。"

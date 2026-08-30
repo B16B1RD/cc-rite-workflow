@@ -8,6 +8,7 @@
 # T-05 nit-noted in findings[] is a target; new class-B is not a second sweep (AC-5)
 # T-06 ledger write / merge fail-loud (AC-6)
 # T-07 class A findings[] stay out of sweep targets (AC-7)
+# T-08 body_count extraction expression matches between fix/SKILL.md and the record helper (#2480 AC-1..AC-3)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -130,7 +131,7 @@ write_json "$mix_json" <<'JSON'
     {"id":"F-22","severity":"MEDIUM","file":"src/f.ts","line":6,"scope":"current-pr","description":"nb"}
   ],
   "guardrail_audit_log": [
-    {"reviewer":"code-quality-reviewer","filter_category":"Category #2","file_line":"src/g.ts:7","description":"filtered","filter_reason":"hypothetical"}
+    {"reviewer":"code-quality-reviewer","filter_category":"Category #2","original_severity":"MEDIUM","file_line":"src/g.ts:7","description":"filtered","filter_reason":"hypothetical","verification":"なし"}
   ]
 }
 JSON
@@ -139,6 +140,13 @@ ids=$(printf '%s' "$t05_out" | jq -r '[.targets[].id] | sort | join(",")')
 assert "T-05 targets F-21,F-22 only" "F-21,F-22" "$ids"
 assert "T-05 class A excluded" "0" "$(printf '%s' "$t05_out" | jq '[.targets[] | select(.id=="F-20")] | length')"
 assert "T-05 already_rejected=1" "1" "$(printf '%s' "$t05_out" | jq '.already_rejected | length')"
+assert "T-03 already_rejected reviewer" "code-quality-reviewer" "$(printf '%s' "$t05_out" | jq -r '.already_rejected[0].reviewer')"
+assert "T-03 already_rejected file_line" "src/g.ts:7" "$(printf '%s' "$t05_out" | jq -r '.already_rejected[0].file_line')"
+assert "T-03 already_rejected original_severity" "MEDIUM" "$(printf '%s' "$t05_out" | jq -r '.already_rejected[0].original_severity')"
+assert "T-03 already_rejected description" "filtered" "$(printf '%s' "$t05_out" | jq -r '.already_rejected[0].description')"
+assert "T-03 already_rejected filter_reason" "hypothetical" "$(printf '%s' "$t05_out" | jq -r '.already_rejected[0].filter_reason')"
+assert_not_grep "collect has no filtered_suggestion fallback" "$COLLECT" 'filtered_suggestion'
+assert_not_grep "collect has no failed_condition fallback" "$COLLECT" 'failed_condition'
 
 # --- T-06 (AC-6): fail-loud ---
 "$COLLECT" --json "$sandbox/missing.json" 2>"$sandbox/t06c.err"
@@ -209,6 +217,47 @@ assert_grep "T-07 pr-review REJECTED_LEDGER=failed" "$REVIEW" 'REJECTED_LEDGER=f
 assert_grep "T-07 pr-review WARNING 却下台帳取得失敗" "$REVIEW" 'WARNING: 却下台帳取得失敗'
 assert_grep "T-07 pr-review failed-path 注記" "$REVIEW" '台帳取得失敗 — 却下済み指摘の再訴訟の可能性'
 assert_grep "T-07 prompt rejected_ledger" "$PROMPT" '{rejected_ledger}'
+
+# --- T-08 (#2480 AC-1..AC-3): body_count の抽出式が producer (fix/SKILL.md) と validator (helper) で一致する ---
+# fix/SKILL.md ステップ 1.3.S step 3 は抽出した値を helper へ `--count` として渡し、helper は
+# 同じ行を自前の式で再検査する。片側だけを書き換えると producer が通した body を validator が
+# count_body_mismatch で落とす。この不一致は実行時にしか現れないため、両者の式を突き合わせて
+# 固定する。期待値はテスト内にハードコードせず helper 側から抽出する。
+NBR_SH="$PLUGIN_ROOT/hooks/review-nonblocking-record.sh"
+assert_file_exists_or_fail "T-08 nonblocking record helper exists" "$NBR_SH" || true
+
+# 右辺の被演算子はファイル変数名だけが異なる (helper=$CONTENT_FILE / SKILL=$body)。
+# 共通プレースホルダへ正規化してから突合する (TC-5b の __CYCLE__ 正規化と同型)。
+# 被演算子の手前で needle を切り詰めると `| tail -1 | grep -oE '[0-9]+'` が pin から外れ、
+# パイプライン後段の drift を取り逃す空振り経路が残るため、右辺は全体を対象にする。
+_t08_helper_lines=$(grep -cE '^body_count=' "$NBR_SH" || true)
+_t08_skill_lines=$(grep -cE '^[[:space:]]*body_count=' "$FIX" || true)
+assert "T-08 helper の body_count= 代入は 1 行 (head -1 による黙殺を防ぐ)" "1" "$_t08_helper_lines"
+assert "T-08 fix/SKILL.md の body_count= 代入は 1 行" "1" "$_t08_skill_lines"
+
+# 上の 2 assert が代入 1 行を保証するため、以下の head -1 は値の選択ではなく、行数が崩れた
+# 実行でも診断値を 1 つに定めるための保険。fail() は加算のみで停止しないので後続まで進む。
+_t08_helper_rhs=$(sed -n 's/^body_count=\(.*\)$/\1/p' "$NBR_SH" | head -1 \
+  | sed 's/"\$CONTENT_FILE"/__BODY_FILE__/')
+_t08_skill_rhs=$(sed -n 's/^[[:space:]]*body_count=\(.*\)$/\1/p' "$FIX" | head -1 \
+  | sed 's/"\$body"/__BODY_FILE__/')
+
+if [ -z "$_t08_helper_rhs" ] || [ -z "$_t08_skill_rhs" ]; then
+  # 抽出失敗 (代入形の drift) は silent pass させない。空同士の等値で緑になる経路を塞ぐ。
+  fail "T-08 body_count= の右辺を抽出できない (代入形の drift。helper='$_t08_helper_rhs' skill='$_t08_skill_rhs')"
+else
+  # 本 assert は symmetry pin であって value pin ではない。両側を同時に同じ形へ書き換えた
+  # drift は等値が保たれるため検出できない (それを検出するには期待式をテスト内へ
+  # ハードコードする必要があり、helper 側から抽出する方針と衝突する)。
+  assert "T-08 body_count 抽出式が producer (fix/SKILL.md) と validator (helper) で一致" \
+    "$_t08_helper_rhs" "$_t08_skill_rhs"
+fi
+
+# 上の正規化は 2 つの被演算子が同じファイルを指すことを前提に両者を同一視する。その前提自体は
+# 抽出式の比較では確かめられないため、producer が数えた本文をそのまま helper へ渡していることを
+# 別途固定する。ここが外れると producer は $body から数え helper は別ファイルを検査するため、
+# 式が完全に一致していても production では count_body_mismatch が出る。
+assert_grep "T-08 fix が数えた本文をそのまま helper へ渡す" "$FIX" '\-\-content-file "\$body"'
 
 if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check SKILL.md 5.S / 6.1.d preserve"; then
   exit 1

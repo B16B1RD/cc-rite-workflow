@@ -1,18 +1,36 @@
 #!/bin/bash
 # rite workflow - Status Mismatch Watchdog
 #
-# Scans repository Issues that are linked to OPEN, Ready-for-review PRs (isDraft=false)
-# and detects ones whose GitHub Projects Status is still "In Progress" — the symptom
-# of the silent-skip bug. Outputs JSON to stdout and a warning summary to
-# stderr. Optionally attempts reconciliation when --reconcile is passed.
+# Scans Issues linked to OPEN PRs and detects ones whose GitHub Projects Status lags
+# behind where the PR already is. Outputs JSON to stdout and a warning summary to stderr.
+# Optionally attempts reconciliation when --reconcile is passed.
+#
+# Two rules, evaluated per scanned PR:
+#
+#   Todo residue         Status = "Todo" with ANY open PR, draft included → expected
+#                        "In Progress". A draft PR means /rite:open already ran, so a
+#                        board still on Todo means its Status transition never landed.
+#                        Drafts must be in scope: the whole iterate loop happens while
+#                        the PR is a draft, which is exactly the window a ready-only
+#                        scan cannot see.
+#   In Progress residue  Status = "In Progress" with a Ready PR (isDraft=false) →
+#                        expected "In Review". The isDraft=false qualifier belongs to this
+#                        rule alone: "In Progress" during a draft is the correct state,
+#                        not a mismatch.
+#
+# An Issue that is not on the project board is never a mismatch — there is no board
+# Status to reconcile (same on-board policy as hooks/scripts/projects-board-drift-check.sh).
 #
 # Usage:
 #   bash watchdog-status-mismatch.sh [options]
 #
 # Options:
 #   --dry-run         Report only; do not reconcile (default)
-#   --reconcile      Attempt to update mismatched Issue Status → "In Review" via
-#                    projects-status-update.sh. Failures are logged but never block.
+#   --reconcile      Attempt to update each mismatched Issue Status to the status the
+#                    fired rule expects (Todo → "In Progress", In Progress → "In Review")
+#                    via projects-status-update.sh. A single hardcoded target would push
+#                    a Todo residue straight to "In Review", manufacturing the very gap
+#                    this watchdog exists to report. Failures are logged but never block.
 #   --limit N        Maximum PRs to scan (default: 50)
 #   --quiet          Suppress stderr warnings (JSON output still produced)
 #   -h, --help       Show usage
@@ -26,7 +44,7 @@
 #       "reconcile_failures": F
 #     },
 #     "mismatches": [
-#       { "pr_number": 1001, "issue_number": 998, "current_status": "In Progress", "reconcile_result": "updated|failed|skipped|not_attempted" }
+#       { "pr_number": 1001, "issue_number": 998, "current_status": "In Progress", "expected_status": "In Review", "reconcile_result": "updated|failed|skipped|not_attempted" }
 #     ],
 #     "warnings": []
 #   }
@@ -54,17 +72,23 @@ while [ $# -gt 0 ]; do
       cat <<'USAGE_EOF'
 watchdog-status-mismatch.sh - Status Mismatch Watchdog
 
-Scans repository Issues that are linked to OPEN, Ready-for-review PRs (isDraft=false)
-and detects ones whose GitHub Projects Status is still "In Progress" — the symptom
-of the silent-skip bug. Outputs JSON to stdout and a warning summary to
-stderr. Optionally attempts reconciliation when --reconcile is passed.
+Scans Issues linked to OPEN PRs and detects ones whose GitHub Projects Status lags behind
+where the PR already is. Outputs JSON to stdout and a warning summary to stderr.
+Optionally attempts reconciliation when --reconcile is passed.
+
+Rules:
+  Todo residue         Status "Todo" + any open PR (draft included) -> expected "In Progress"
+  In Progress residue  Status "In Progress" + Ready PR (isDraft=false) -> expected "In Review"
+
+Issues that are not on the project board are never reported (no board Status to reconcile).
 
 Usage:
   bash watchdog-status-mismatch.sh [options]
 
 Options:
   --dry-run         Report only; do not reconcile (default)
-  --reconcile      Attempt to update mismatched Issue Status → "In Review" via
+  --reconcile      Attempt to update each mismatched Issue Status to the status the fired
+                   rule expects (Todo -> "In Progress", In Progress -> "In Review") via
                    projects-status-update.sh. Failures are logged but never block.
   --limit N        Maximum PRs to scan (default: 50)
   --quiet          Suppress stderr warnings (JSON output still produced)
@@ -171,7 +195,7 @@ if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
   fi
 fi
 
-# --- Scan OPEN, non-draft PRs ---
+# --- Scan OPEN PRs (drafts included; the Todo-residue rule needs them) ---
 pr_list_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-pr-list-err-XXXXXX") || pr_list_err=""
 if ! PR_LIST=$(gh pr list --repo "$REPO_OWNER/$REPO_NAME" --state open --limit "$LIMIT" --json number,isDraft,body,headRefName 2>"${pr_list_err:-/dev/null}"); then
   echo "ERROR: gh pr list failed" >&2
@@ -212,9 +236,8 @@ while IFS= read -r pr_entry; do
   fi
   PRS_SCANNED=$((PRS_SCANNED + 1))
 
-  if [ "$is_draft" != "false" ]; then
-    continue  # Draft PR — not yet Ready, skip
-  fi
+  # Drafts are in scope here: the Todo-residue rule below needs them. The isDraft
+  # qualifier belongs to the In-Progress rule alone.
 
   # Extract linked Issue number from PR body (Closes #N / Fixes #N / Resolves #N) or branch name (issue-N)
   issue_number=$(printf '%s' "$pr_body" | grep -ioE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' | head -1 | grep -oE '[0-9]+$' || true)
@@ -269,7 +292,20 @@ query($owner: String!, $repo: String!, $number: Int!) {
   gql_err=""
   jq_err=""
 
-  if [ "$current_status" = "In Progress" ]; then
+  # Rule dispatch. expected_status stays empty when no rule fires, which is also what
+  # keeps an Issue that is not on the board out of the report: current_status is empty
+  # there, so neither arm matches.
+  # The arms use `if` rather than `[ ... ] && assign`: under `set -e` a false `[` at the
+  # head of an AND list makes the whole case return non-zero and aborts the scan.
+  expected_status=""
+  case "$current_status" in
+    Todo)
+      expected_status="In Progress" ;;
+    "In Progress")
+      if [ "$is_draft" = "false" ]; then expected_status="In Review"; fi ;;
+  esac
+
+  if [ -n "$expected_status" ]; then
     reconcile_result="not_attempted"
     reconcile_stderr_oneline=""
     if [ "$RECONCILE" = "true" ]; then
@@ -278,7 +314,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
       reconcile_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-reconcile-err-XXXXXX") || reconcile_err=""
       reconcile_json=$(bash "$PLUGIN_ROOT/scripts/projects-status-update.sh" "$(jq -n \
         --argjson issue "$issue_number" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
-        --argjson project_number "$PROJECT_NUMBER" --arg status "In Review" \
+        --argjson project_number "$PROJECT_NUMBER" --arg status "$expected_status" \
         --argjson auto_add false --argjson non_blocking true \
         '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>"${reconcile_err:-/dev/null}") || reconcile_json=""
       reconcile_result=$(printf '%s' "$reconcile_json" | jq -r '.result // "failed"' 2>/dev/null) || reconcile_result="failed"
@@ -297,11 +333,12 @@ query($owner: String!, $repo: String!, $number: Int!) {
       reconcile_err=""
     fi
     MISMATCHES+=("$(jq -n --argjson pr "$pr_number" --argjson issue "$issue_number" \
-      --arg status "$current_status" --arg recon "$reconcile_result" \
+      --arg status "$current_status" --arg expected "$expected_status" \
+      --arg recon "$reconcile_result" \
       --arg recon_stderr "$reconcile_stderr_oneline" \
-      '{pr_number:$pr, issue_number:$issue, current_status:$status, reconcile_result:$recon, reconcile_stderr:$recon_stderr}')")
+      '{pr_number:$pr, issue_number:$issue, current_status:$status, expected_status:$expected, reconcile_result:$recon, reconcile_stderr:$recon_stderr}')")
     if [ "$QUIET" != "true" ]; then
-      echo "[watchdog] ⚠️ mismatch: PR=#$pr_number isDraft=false → Issue #$issue_number Status=\"$current_status\" (expected In Review)" >&2
+      echo "[watchdog] ⚠️ mismatch: PR=#$pr_number isDraft=$is_draft → Issue #$issue_number Status=\"$current_status\" (expected $expected_status)" >&2
     fi
   fi
 done < <(printf '%s' "$PR_LIST" | jq -c '.[]')

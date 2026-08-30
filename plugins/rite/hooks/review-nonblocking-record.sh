@@ -147,7 +147,8 @@ RECORD_SENTINEL='<!-- rite:nbr:v1 -->'
 # **記録コメント本文には置かない** — 本文に置くと raw markdown の copy-paste で marker ごと複製され、
 # 本文照合と同じ「人間コメントを canonical と誤認する」経路が再生する。Issue body はコメント本文の
 # 複製経路から構造的に隔離されており、かつ Issue に紐づく永続領域なので abandoned PR でも残り、
-# cross-machine でも効く (`.rite/` は gitignore かつ machine-local のため別マシンからは読めない)。
+# cross-machine でも効く (`.rite/` は machine-local であり、かつ nested `.rite/.gitignore`
+# (`*` + wiki 否定行) で追跡対象外のため、別マシンからは読めない)。
 ID_MARKER_PREFIX='<!-- rite:nbr:comment-id:'
 ID_MARKER_SUFFIX=' -->'
 # 関連 Issue body から marker の値部分を取り出す sed 式と、marker 行を除去する sed 式。read/write で

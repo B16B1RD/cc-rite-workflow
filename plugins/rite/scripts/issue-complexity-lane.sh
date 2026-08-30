@@ -25,15 +25,21 @@
 #            (省略すると SSH host alias 環境で別リポジトリを引く — references/gh-cli-patterns.md)。
 #
 # Complexity の抽出元は Issue body のみ (flow-state は complexity フィールドを持たない)。
-# リポジトリ内に 2 つの記法が併存するため**両方**を受理する — 片方だけ読むと、もう片方で
+# リポジトリ内に 3 つの記法が併存するため**すべて**を受理する — 一部だけ読むと、他の記法で
 # 書かれた Issue が全て complexity_absent で full へ倒れ、レーンが一度も発動しない:
-#   1. `**Complexity**: X`  — templates/issue/template-structure.md Section 0 Meta (現行 rite 形式)
-#   2. `## 複雑度` セクション — skills/rite-workflow/references/common-principles.md の記載形式
-# 先に見つかった方を採る (1 を優先)。値は大小文字を問わず XS/S/M/L/XL に正規化する。
+#   1. `**Complexity**: X`      — templates/issue/template-structure.md Section 0 Meta (現行 rite 形式)
+#   2. `## 複雑度` セクション    — skills/rite-workflow/references/common-principles.md の記載形式
+#   3. `| **Complexity** | X |` — Section 0 Meta を表で書いた形 (テンプレートを経ず LLM / 人間が
+#                                 書いた実運用 Issue に定常的に現れる。生成する code path は無い)
+# 探索順は 1 → 2 → 3 で、先に見つかった方を採る。**明示宣言を先に読み、表行を最後に読む**のが
+# 順序の規律 — 本 helper は code fence を剥がさないため、表記法そのものを**説明している** Issue が
+# 本文中の例から値を解決してしまう。記法 1 の Meta 行と記法 2 の `## 複雑度` 節は「そこが宣言で
+# ある」ことを形で示すが、表行は body のどこにでも現れうるので最後に回す。
+# 値は大小文字を問わず XS/S/M/L/XL に正規化する。
 #
 # Output — stderr (observability contract。stdout は使わない):
-#   [CONTEXT] COMPLEXITY_LANE=light; complexity=<XS|S>; source=<body_meta|body_section>
-#   [CONTEXT] COMPLEXITY_LANE=full; complexity=<M|L|XL>; source=<body_meta|body_section>
+#   [CONTEXT] COMPLEXITY_LANE=light; complexity=<XS|S>; source=<body_meta|body_table|body_section>
+#   [CONTEXT] COMPLEXITY_LANE=full; complexity=<M|L|XL>; source=<body_meta|body_table|body_section>
 #   [CONTEXT] COMPLEXITY_LANE=full; reason=<reason>                 ← fail-safe 経路
 #   [CONTEXT] COMPLEXITY_LANE_FALLBACK=1; reason=<reason>           ← fail-safe 経路で追加 emit
 #   ⚠️ Complexity レーン判定のフォールバック: ...                    ← 同上 (人間向け)
@@ -47,12 +53,12 @@
 #                           (取得に必要な資源が揃わない点で同じ帰結。sibling の
 #                            review-cycle-scope.sh が mktemp 失敗を run_pin_unreadable へ
 #                            帰属させるのと同型)
-#   complexity_absent     — body に上記 2 記法のいずれも「値を取り出せる形で」現れない
+#   complexity_absent     — body に上記 3 記法のいずれも「値を取り出せる形で」現れない
 #                           (rite 外で作られた Issue、崩れた記法 = lowercase key / 全角コロン /
-#                            リスト項目化、`{complexity}` のような未展開 placeholder と
-#                            `<!-- ... -->`、**および値行を持たない `## 複雑度` 節**。
-#                            両記法とも `{` `<` を値の開始と認めず、かつ記法 2 は節探索を
-#                            次見出しで止めるため、これらはすべて「無い」側に合流する
+#                            リスト項目化 / 太字なしの表セル、`{complexity}` のような未展開
+#                            placeholder と `<!-- ... -->`、**および値行を持たない `## 複雑度` 節**。
+#                            記法 1 と 3 は値の先頭に英字を要求し、記法 2 は `{` `<` を値の開始と
+#                            認めず節探索を次見出しで止めるため、これらはすべて「無い」側に合流する
 #                            — 記法や見出し語の言語で reason が分裂しない)
 #   complexity_invalid    — 英字トークンは取り出せたが XS/S/M/L/XL のいずれでもない
 #                           (`Medium` / `Small` / `XSmall` / `ZZ` 等の綴り誤り・別語彙)
@@ -193,6 +199,24 @@ if [ -z "$_raw" ]; then
   _source="body_section"
 fi
 
+# 記法 3: `| **Complexity** | X |` (Section 0 Meta を表で書いた形)。記法 1 と同じ装飾規律を敷く —
+# **キーの太字を要求し、値セルの先頭に英字を要求する**。太字を落とすと、`| A | ... | Complexity M |`
+# のように行の途中で Complexity に**言及するだけ**の表 (本リポジトリの散文に実在する) を宣言行と
+# 誤認する。値セル直後に英字を要求すれば `{complexity}` / `<!-- ... -->` は記法 1 と同じく
+# complexity_absent へ合流し、同じ記入漏れが記法によって別 reason へ分裂しない。
+# 記法 1 と同じく英字トークン全体を切り出し、妥当性は下の `case` に委ねる。GNU 拡張は使わない。
+# **最後に置く** — 表行は body のどこにでも現れうるのに対し、記法 1 の Meta 行と記法 2 の
+# `## 複雑度` 節はいずれも「そこが宣言である」ことを形で示す。表行を先に読むと、明示宣言を
+# 持つ Issue が本文中の説明用の表から値を解決する (実測: 記法 2 で M を宣言し別節に表の例を
+# 置いた body が XS へ落ちる = M+ が silent に light へ落ちる AC-4 違反。記法 2 宣言 + 文書用の
+# 表ヘッダでは `complexity_invalid` へ落ちる)。`head -1` は同じ理由で必須 — 宣言の表行が
+# 本文中の例より先にある形を保ち、複数行を連結して `complexity_invalid` にしない。
+if [ -z "$_raw" ]; then
+  _raw=$(printf '%s\n' "$_body" \
+    | sed -n 's/^[[:space:]]*|[[:space:]]*\*\*Complexity\*\*[[:space:]]*|[[:space:]]*\([A-Za-z][A-Za-z]*\).*/\1/p' | head -1)
+  _source="body_table"
+fi
+
 if [ -z "$_raw" ]; then
   # 宣言らしき行はあるのに値を取り出せなかった場合だけ対象行の行番号を報告する
   # (sibling の review-cycle-scope.sh は target の値そのものを名指しするが、本 helper は
@@ -203,7 +227,13 @@ if [ -z "$_raw" ]; then
   # 述語は**宣言行の形**に固定する。裸のキーワード検索にすると両方向で外れる —
   # case-sensitive だと lowercase key を落とし (可視化対象の筆頭が無音になる)、行の形を問わないと
   # 散文や表セルの単なる言及を「宣言らしき行」と誤って断定する (定常出力化して目的が消える)。
-  # 行頭 anchor + キー + 区切り記号 (`:` / `：`) を要求し、大小文字は文字クラスで吸収する。
+  # コロン形式は 行頭 anchor + キー + 区切り記号 (`:` / `：`) を要求し、大小文字は文字クラスで吸収する。
+  #
+  # 表形式 (記法 3) の宣言行も同じ規律で拾う。抽出側は太字を要求するので `| Complexity | S |` は
+  # complexity_absent へ落ちるが、述語をコロン形式だけに留めるとその棄却が**無音**になり、崩れた
+  # 記法の可視化という本 WARNING の目的が記法 3 でだけ果たされない。キーが**先頭セル**であることを
+  # 要求して、行の途中で Complexity に言及するだけの表 (下の TC が pin する散文形) と切り分ける。
+  # `|` は ERE の交替演算子なので文字クラス `[|]` で literal 化する (`\|` は移植性がない)。
   #
   # **診断に出すのは行番号だけで、body の中身は出さない。** ${_body} は第三者が書ける外部入力で、
   # 切り分け (崩れた記法 か 宣言不在 か) という本 WARNING の目的は行番号だけで果たせる。
@@ -219,6 +249,7 @@ if [ -z "$_raw" ]; then
   # 記録するだけにすれば、その失敗モードが構造的に起こりえない。
   _decl_line=$(printf '%s\n' "$_body" | awk '
     /^[[:space:]]*([-*+][[:space:]]+)?\**[[:space:]]*([Cc][Oo][Mm][Pp][Ll][Ee][Xx][Ii][Tt][Yy]|複雑度)[[:space:]]*\**[[:space:]]*[:：]/ { n = NR; exit }
+    /^[[:space:]]*[|][[:space:]]*\**[[:space:]]*([Cc][Oo][Mm][Pp][Ll][Ee][Xx][Ii][Tt][Yy]|複雑度)[[:space:]]*\**[[:space:]]*[|]/ { n = NR; exit }
     /^##[[:space:]]+複雑度[[:space:]]*$/ { f = 1; h = NR; next }
     f && /^#/ { n = h; exit }
     f && NF   { n = NR; exit }

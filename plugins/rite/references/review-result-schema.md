@@ -15,7 +15,7 @@
 - `{timestamp}`: `YYYYMMDDHHMMSS` 形式の JST (例: `20260411123456`)
 - 同一 PR の過去レビューは **best-effort で履歴保持** する。1 秒解像度のため、同一 PR に対し同一秒以内に 2 回 `/rite:pr-review` を実行すると file path が衝突する。pr-review.md ステップ 6.1.a は collision 検出時に `~<4桁hex>` suffix (`~$(printf '%04x' "${RANDOM:-0}")` 相当) で衝突回避を試みるが、完全な一意性保証ではない (best-effort tradeoff)。separator には `~` (0x7E) を使用する。ファイル名 `{ts}~{hex}.json` と `{ts}.json` の分岐点で `.` (0x2E) < `~` (0x7E) となるため、collision-resolved 版が lexicographic 大となり `sort -r` で先頭に並ぶ
 - **並列実行は未サポート**: 同一 PR に対する `/rite:pr-review` の同時並列実行 (複数ターミナル / CI 並列 job 等) は未サポート。`mv` の atomicity と `[ -e ]` check の TOCTOU race window により、後勝ちでファイル上書きが発生する可能性がある。POSIX `mv` の標準オプションは `-f`/`-i` のみで、`-n` は POSIX 非標準 (GNU coreutils / BSD 拡張) のため、POSIX 準拠の観点から採用しない ([mv(1p) POSIX](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/mv.html) 参照)。並列実行する場合はユーザー自身が時系列をずらす責務を持つ (verified-review cycle 12 I-2 対応で旧 rationale 「bash 3.2 + POSIX utilities 前提と矛盾」を削除。本 plugin は [bash-compat-guard.md](./bash-compat-guard.md) で `mapfile` builtin 必須 = bash 4.0+ 前提であり、bash 3.2 portable 前提は成立しないため)
-- `.rite/review-results/` は `.gitignore` で除外される
+- `.rite/review-results/` は保存先へ同梱される `*` だけの `.gitignore`（`hooks/review-result-save.sh` が書く）で除外される。root の `.gitignore` エントリには依存しない
 
 ## Schema Version (Single Source of Truth)
 
@@ -180,7 +180,7 @@
 | `reviewers` | array (string) | ✅ (非空) | 本 cycle で **ステップ 5.1 が Task 結果を回収できた** reviewer agent の名簿。`findings` とは独立で、findings 0 件の mergeable cycle でも非空になる。値は `plugins/rite/agents/*-reviewer.md` の basename (拡張子を除く、接尾辞 `-reviewer` を含む) と一致する — `findings[].reviewer` と同じ参照整合性規則。下記 [verdict と reviewers](#verdict-と-reviewers) 参照 |
 | `findings` | array | ✅ | `/rite:pr-review` ステップ 5.3.0.M 通過後の `全指摘事項` (0 件でも空配列として存在)。**blocking 指摘 + `scope == "nit-noted"` 指摘**を含む — nit-noted は本ゲートの対象外 (`assessment-rules.md` §5.3.0.M) のため非実測でも本配列に残る。ゲートで降格した非実測指摘 (scope ∈ {current-pr, follow-up}) のみが下記 `non_blocking_findings` に分離される |
 | `non_blocking_findings` | array | **write 側 ✅ (0 件でも `[]`)** / read 側は欠落許容 | 実測必須ゲート ([severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)) で non-blocking に降格した非実測指摘、および帰結クラス降格政策 (§5.3.0.C) で降格した class B 指摘の配列 (要素の形は `findings[]` と同一。class B 降格分のみ `demotion` オブジェクトを持つ)。下記 [non_blocking_findings 配列](#non_blocking_findings-配列) 参照 |
-| `guardrail_audit_log` | array | **write 側 ✅ (0 件でも `[]`)** / read 側は欠落許容 | Finding Quality Guardrail Category #2 で `指摘事項` から除外した候補の監査記録。audit-only で判定 consumer は無視する。各要素は `reviewer`, `filter_category` (`Category #2`), `original_severity`, `file_line`, `description`, `filter_reason`, `verification` を持つ |
+| `guardrail_audit_log` | array | **write 側 ✅ (0 件でも `[]`)** / read 側は欠落許容 | Finding Quality Guardrail Category #2 で `指摘事項` から除外した候補の監査記録。audit-only で判定 consumer は無視する。各要素は `reviewer`, `filter_category` (`Category #2`), `original_severity`, `file_line`, `description`, `filter_reason`, `verification` を持つ（reviewer 表: 除外した内容→`description`、除外理由→`filter_reason`。write 側のキー集合検証は `hooks/review-result-save.sh`） |
 | `reviewer_timings` | array | (任意、1.1.0+) | 本 cycle で回収できた各 reviewer の起動時刻。要素は `{reviewer, started_at}` で、`reviewer` は `findings[].reviewer` と同じ参照整合性規則 (`agents/*-reviewer.md` の basename)、`started_at` は ISO 8601 UTC の正規形 (`YYYY-MM-DDThh:mm:ssZ`) または `null` (取得不能)。値源は `pr-review.md` ステップ 4.3.1（orchestrator が Task spawn 直前に記録した時刻）。ステップ 4.6 が timings JSON に書く。audit-only で、判定 consumer (`/rite:fix` / merge ゲート / 収束トレンド判定) は無視する。下記 [reviewer_timings と直列化フラグ](#reviewer_timings-と直列化フラグ) 参照 |
 | `reviewer_spawn_serialized` | bool | (任意、1.1.0+) | 起動時刻の拡がり (spawn spread) が閾値を超えたか。書き手は `hooks/scripts/review-spawn-spread-check.sh` のみ。**計測不能のときはキーごと欠落する** — `true` / `false` / 欠落 (= 未判定) の 3 値モデルで、`verification.measured` と同じ (下記参照) |
 | `reviewer_spawn_spread_seconds` | integer | (任意、1.1.0+) | 実測した spawn spread (秒、`max(started_at) - min(started_at)`)。`reviewer_spawn_serialized` と同時に書かれ、同時に欠落する |
@@ -279,7 +279,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 <a id="nb-sweep-ledger"></a>
 
-`/rite:iterate` の `[review:mergeable]` 後 sweep が残存 NB を消化した記録。永続チャネルは 6.1.d の関連 Issue コメント（新チャネルを作らない）。**JSON トップレベルへキーを足さない** — 台帳はコメント本文の `### 却下台帳`、消化内訳は iterate 完了通知と `[CONTEXT] ITERATE_NB_SWEEP=` / `NB_SWEEP_RESULT=` marker。
+`/rite:iterate` の `[review:mergeable]` 後 sweep が残存 NB を消化した記録。永続チャネルは 6.1.d の関連 Issue コメント（新チャネルを作らない）。**JSON トップレベルへキーを足さない** — 台帳はコメント本文の `### 却下台帳`、消化内訳は iterate 完了通知と `[CONTEXT] ITERATE_NB_SWEEP=` / `NB_SWEEP_RESULT=` marker。再入ガードの権威は `.rite/state/nb-sweep-done-{pr_number}.txt`（1 行目 `noop` または `done`。**存在が skip**。`fixed ≥ 1` で push したときだけ 2 行目に HEAD SHA — ready の reviewed-head ゲートが読む。読取側の skip は 1 行目 / `-f` のみ）。会話 marker は観測用。
 
 **台帳エントリ**（コメント本文、`📎 non_blocking_count:` の直前）:
 
@@ -298,14 +298,14 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 ```
 [CONTEXT] NB_SWEEP_RESULT=done; fixed=N; rejected=M; issued=K
-[CONTEXT] ITERATE_NB_SWEEP=done|noop|failed
+[CONTEXT] ITERATE_NB_SWEEP=done|noop|skipped|failed
 ```
 
-`done` のとき完了通知の残件欄は `未処理 non-blocking: 0 件` を維持し、消化内訳 `sweep: fixed=N / rejected=M / issued=K` を併記する。`noop`（対象 0 件）は従来の 0 件通知のまま追加行を出さない。書き込み失敗・JSON 取得失敗は `failed` で iterate を停止する（完了通知へ進まない）。
+`done` のとき完了通知の残件欄は `未処理 non-blocking: 0 件` を維持し、消化内訳 `sweep: fixed=N / rejected=M / issued=K` を併記する。`noop`（対象 0 件）は従来の 0 件通知のまま追加行を出さない。`skipped` は `nb-sweep-done-{pr_number}.txt` 既存（本 run で 5.S 済み）。書き込み失敗・JSON 取得失敗は `failed` で iterate を停止する（完了通知へ進まない）。意図的な再 sweep は当該ファイルを削除する。
 
 **`id` は 2 配列の和集合で一意**: 5.3.0.M の降格時に `id` を振り直さず元の `F-NN` を維持する。根拠は **JSON 単体の監査可読性** — 永続 JSON を読む人間が 2 配列を跨いで finding を一意に参照できるようにするため (5.4 統合レポートのテーブルは `id` 列を持たないので、JSON ↔ レポート間の id 相互参照は成立しない。それを目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証で、`findings[]` と `non_blocking_findings[]` の和集合に対して書式 + 一意性を評価する (本配列側に閉じた違反は上記の非ブロッキング marker で報告され、保存は続行する)。
 
-**read 側の扱い**: `/rite:iterate` 5.S の `nb-sweep-collect.sh` が本配列（全件）と `findings[]` の `nit-noted` を sweep 対象として読む。`/rite:fix` の通常ループは `findings[]` のみを読む（`--nb-sweep` 時だけ collect 経由で本配列を読む）。本配列は **sweep 消化の入力**であり、消化後も JSON からは消さない（台帳と完了通知が消化結果の SoT）。既定構成 (`pr_review.post_comment: false`) では PR 本体のレビュー結果コメントが投稿されないため、非実測指摘の永続チャネルは `.rite/review-results/*.json` と、`post_comment` と独立に投稿される関連 Issue 記録コメント (`## 📜 rite 非実測指摘の記録`、ステップ 6.1.d) の 2 つになる。前者はローカルの永続チャネル (`state-path-resolve.sh` によりセッション worktree 内からでも main checkout と同一パスに解決される。§保存場所 参照)、後者は関連 Issue 上で共有可能な永続チャネルであり、`.rite/review-results/` は gitignore 対象のためレビュアーと共有できるのは後者のみ — **ただし後者が共有するのは reviewer / severity / `file:line` のポインタと降格理由 (判定文) までで、cycle 中の `description` / `suggestion` の全文は本配列にしか存在せず共有経路を持たない**。マージ後もローカル全文を残すため、`/rite:cleanup` ステップ 6 は本配列が非空の結果 JSON を削除せず `.rite/review-results/archive/` へ退避し、残存分の全文を follow-up Issue 1 件へ転記する（public リポジトリでは公開される。詳細: [`severity-levels.md` §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate))。
+**read 側の扱い**: `/rite:iterate` 5.S の `nb-sweep-collect.sh` が本配列（全件）と `findings[]` の `nit-noted` を sweep 対象として読む。`/rite:fix` の通常ループは `findings[]` のみを読む（`--nb-sweep` 時だけ collect 経由で本配列を読む）。本配列は **sweep 消化の入力**であり、消化後も JSON からは消さない（台帳と完了通知が消化結果の SoT）。既定構成 (`pr_review.post_comment: false`) では PR 本体のレビュー結果コメントが投稿されないため、非実測指摘の永続チャネルは `.rite/review-results/*.json` と、`post_comment` と独立に投稿される関連 Issue 記録コメント (`## 📜 rite 非実測指摘の記録`、ステップ 6.1.d) の 2 つになる。前者はローカルの永続チャネル (`state-path-resolve.sh` によりセッション worktree 内からでも main checkout と同一パスに解決される。§保存場所 参照)、後者は関連 Issue 上で共有可能な永続チャネルであり、`.rite/review-results/` は gitignore 対象のためレビュアーと共有できるのは後者のみ — **ただし後者が共有するのは reviewer / severity / `file:line` のポインタと降格理由 (判定文) までで、cycle 中の `description` / `suggestion` の全文は本配列にしか存在せず共有経路を持たない**。マージ後もローカル全文を残すため、`/rite:cleanup` ステップ 6 は本配列が非空の結果 JSON を削除せず `.rite/review-results/archive/` へ退避し、残存分の全文を follow-up Issue 1 件へ転記する。**転記の前にマージ後 HEAD で再検証し、解消済みと判定された指摘は除外する（判定不能は転記側へ倒し、全件解消なら起票しない）** — 本配列は指摘が出た cycle の観測であり、その後の fix cycle の結果を反映しないため（public リポジトリでは公開される。詳細: [`severity-levels.md` §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate))。
 
 ### `verification` サブフィールド
 
@@ -564,7 +564,7 @@ retained flag: `[CONTEXT] REVIEW_SOURCE_STALE=1; reason={explicit_file|local_fil
 1. **レビュー結果ファイル**: `.rite/review-results/{pr_number}-*.json*` — **`non_blocking_findings[]` が非空なら削除せず `.rite/review-results/archive/` へ退避する**。記録コメント (`pr-review.md` ステップ 6.1.d) がポインタと降格理由 (class B 降格分は `demotion.reason` の判定文、それ以外は「実測なし」) しか載せないため、無条件削除すると非実測指摘の全文が merge 直後にどこにも残らない。中身を判定できない場合 (jq 不在 / parse 失敗 / query error / 空ファイル) もすべて退避側 (安全側) へ倒し、判定不能が起きた事実を `{label}_undecidable` marker で残す。**glob が `.json` ではなく `.json*` なのは `.json.corrupt-*` を同じ経路に載せるため** — corrupt は「中身を判定できない」状態そのものなので、別経路で無条件削除すると同一ステップ内に「判定不能は保全」と「判定不能は削除」の 2 ポリシーが並ぶ (`scripts/review-source-resolve.sh` の corrupt rename 3 経路のうち 2 つは構造的に valid な JSON で、`non_blocking_findings[]` の全文を保持しうる)
 2. **fix retry state file（legacy）**: `.rite/state/fix-fallback-retry-{pr_number}.count` — 旧 retry-counter 機構が生成した orphan の回収。retry-counter 機構の廃止により `fix.md` は現在このファイルを生成しないが、旧版が残した file を掃除するため削除対象に残す
 
-上記のほか、`fix-cycle-state/{pr_number}.json` / legacy `fix-cycle-state.json` / `accepted-fingerprints-{pr_number}.txt` / `review-run-since-{pr_number}.txt` も同ステップで無条件削除される (完全な列挙は `cleanup.md` ステップ 6 の bash block が単一源)。
+上記のほか、`fix-cycle-state/{pr_number}.json` / legacy `fix-cycle-state.json` / `accepted-fingerprints-{pr_number}.txt` / `review-run-since-{pr_number}.txt` / `nb-sweep-done-{pr_number}.txt` も同ステップで無条件削除される (完全な列挙は `cleanup.md` ステップ 6 の bash block が単一源)。
 
 **`archive/` 配下は自動削除されない** — 退避したファイルは PR ごとに蓄積する。掃除機構は実需が出るまで設けない (`no_speculative_structure`)。不要になったら手動削除する。走査系 helper (`review-schema-version-check.sh` / `review-trend-divergence.sh`) はいずれも `-maxdepth 1` のため退避先を拾わない。
 
@@ -576,4 +576,4 @@ wildcard は PR 番号 prefix 固定とし、他 PR のファイルを誤って�
 - `plugins/rite/skills/fix/SKILL.md` ステップ 1.2.0: ハイブリッド読取ロジック (AC-3/4 会話/ファイル優先 / AC-5 後方互換 / AC-6 対話式 fallback)
 - `plugins/rite/skills/cleanup/SKILL.md` ステップ 6: 自動削除/退避ロジック (レビュー結果ファイルは `non_blocking_findings[]` 非空 / 判定不能なら `archive/` へ退避、それ以外の state file は無条件削除)。レビュー結果ファイルの reason 語彙は `hooks/scripts/review-results-archive-or-rm.sh` の docstring、それ以外の failure reason と eval-order enumeration は cleanup.md 側を単一源とする。
 - `rite-config.yml` `pr_review.post_comment`: グローバル設定
-- `.gitignore`: `.rite/review-results/` 除外設定
+- `plugins/rite/hooks/review-result-save.sh`: 保存先へ同梱する `*` だけの `.gitignore`（除外機構の実体）

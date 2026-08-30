@@ -67,7 +67,7 @@ If determined to be within the end-to-end flow, extract the Issue number from th
 issue_number=$(git branch --show-current | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
 ```
 
-**Local work memory (SoT)**: Read `.rite-work-memory/issue-{issue_number}.md` with the Read tool.
+**Local work memory (SoT)**: Read `.rite/work-memory/issue-{issue_number}.md` with the Read tool. If absent, Read `.rite-work-memory/issue-{issue_number}.md`.
 
 **Fallback (local file missing/corrupt)**:
 
@@ -114,7 +114,7 @@ Even if the argument is omitted, retrieve and use the PR number from work memory
 Resolve plugin_root with the inline one-liner (per [Plugin Path Resolution](../../references/plugin-path-resolution.md#inline-one-liner-for-command-files)) and run the check:
 
 ```bash
-plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 
 # Optional argument is resolved before the gate so `/rite:ready` without an
 # argument remains deterministic. The helper then owns PR-head resolution,
@@ -140,8 +140,9 @@ esac
 bash "$plugin_root/hooks/scripts/ready-pr-head-gate.sh" \
   --pr "$ready_pr_number" --repo {owner_repo} --plugin-root "$plugin_root" || exit
 
-# HEAD が最終レビュー済み commit と一致すること。JSON 不在 / 不一致 / rev-parse 失敗は
-# fail-loud（Ready 化しない）。フィールドは schema の commit_sha。
+# HEAD が最終レビュー済み commit と一致すること（sweep が push した 1 commit は
+# nb-sweep-done 2 行目 SHA 一致で例外。JSON 不在 / 不一致 / 照合不能 / 2 行目不正は
+# fail-loud）。フィールドは schema の commit_sha。
 bash "$plugin_root/hooks/scripts/ready-reviewed-head-gate.sh" \
   --pr "$ready_pr_number" --plugin-root "$plugin_root" || exit
 ```
@@ -475,7 +476,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 **Note on `error_count`**: `flow-state.sh set` は transition で `error_count` を 0 に戻す（`--preserve-error-count` のときのみ保持）。
 rationale: references/rationale.md#error-count-reset
 
-**Also sync to local work memory** (`.rite-work-memory/issue-{n}.md`) when flow state file exists:
+**Also sync to local work memory** (`.rite/work-memory/issue-{n}.md`) when flow state file exists:
 
 ```bash
 WM_SOURCE="ready" \

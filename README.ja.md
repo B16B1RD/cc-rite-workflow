@@ -2,7 +2,7 @@
 
 > Claude Code のための汎用 Issue ドリブン開発ワークフロー
 
-[![Version](https://img.shields.io/badge/version-0.13.2-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.13.2)
+[![Version](https://img.shields.io/badge/version-0.14.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.14.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [English](README.md) | **日本語**
@@ -75,9 +75,9 @@ Rite Workflow は 3 ステップでインストールします。マーケット
 | 成果物 | 場所 | 残すと害があるか | 削除方法 |
 |--------|------|-------------------|---------|
 | `rite-config.yml` | リポジトリに commit 済み | なし | `git rm rite-config.yml && git commit -m "chore: remove rite-config.yml"` |
-| `.gitignore` の追記行 | commit 済み（`/rite:setup` が追加した `.rite-work-memory/`、`.rite/sessions/` 等の行） | なし | 追加された行を手動削除 |
+| `.gitignore` の追記行 | 古い導入では root に `.rite-work-memory/` や `.rite/sessions/` が残ることがある。現行 `/rite:setup` は `.rite/.gitignore` を書き、root には runtime state を足さない | なし | 残っている root 行があれば手動削除 |
 | リモート `wiki` ブランチ | GitHub リモート（Wiki 自動初期化で作成） | なし | `git push origin --delete <ブランチ名>`（`<ブランチ名>` は `rite-config.yml` の `wiki.branch_name`、デフォルトは `wiki`） |
-| ローカル生成物（gitignore 済み） | `.rite-work-memory/`, `.rite-flow-state*`, `.rite-compact-state*`, `.rite-flow-debug.log`, `.rite-session-id` 等 | なし（未 commit） | `rm -rf .rite-work-memory .rite-flow-state* .rite-compact-state* .rite-flow-debug.log .rite-session-id .rite-guidance-shown .rite-plugin-root .rite-initialized-version .rite-settings-hooks-cleaned` |
+| ローカル生成物（gitignore 済み） | 現行の導入ではいずれも `.rite/` 配下（`work-memory/`, `sessions/`, `state/`, `logs/flow-debug.log`, `session-id`, `plugin-root`, `initialized-version`, `settings-hooks-cleaned`, `tmp-artifacts.tsv`）。`.rite/` の安全な削除方法は次行を参照。移設前の導入では root に `.rite-*` が残っている場合がある | なし（未 commit） | `rm -rf .rite-work-memory .rite-flow-state* .rite-compact-state* .rite-flow-debug.log .rite-session-id .rite-plugin-root .rite-initialized-version .rite-settings-hooks-cleaned` は root の残骸のみを削除する |
 | `.rite/` 配下の内部ディレクトリ（gitignore 済み、live な git worktree を含む場合あり） | `.rite/wiki-worktree/`（Wiki `separate_branch` 戦略）、`.rite/worktrees/issue-*`（`multi_session` 有効時のセッション worktree） | 生の `rm -rf` で削除すると git worktree メタデータが孤立し未コミット差分を失う可能性があり、害あり | まず `git worktree list` で確認し、該当パスが登録されていれば `git worktree remove <path>`（未コミット差分がないか確認の上）→ `git worktree prune` を実行してから、残りの `.rite/` を `rm -rf .rite` で削除する |
 | レガシー hook 登録 | `.claude/settings.local.json`（`hooks.json` によるネイティブ管理以前のインストールのみ） | なし（ただしプラグイン削除後にエラーになる場合あり） | command パスが rite プラグインの `hooks/` ディレクトリを指す hook エントリを削除 |
 

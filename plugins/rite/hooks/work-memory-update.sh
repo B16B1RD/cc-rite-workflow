@@ -1,6 +1,6 @@
 #!/bin/bash
 # rite workflow - Work Memory Update (shared helper)
-# Provides a function to update local work memory files (.rite-work-memory/issue-{n}.md).
+# Provides a function to update local work memory files (.rite/work-memory/issue-{n}.md).
 # Handles: lock acquisition, YAML frontmatter parsing, atomic file write, lock release.
 #
 # Usage (source from another script or inline):
@@ -82,6 +82,8 @@
 source "$(dirname "${BASH_SOURCE[0]}")/work-memory-lock.sh"
 # shellcheck source=control-char-neutralize.sh
 source "$(dirname "${BASH_SOURCE[0]}")/control-char-neutralize.sh"
+# shellcheck source=gitignore-ensure.sh
+source "$(dirname "${BASH_SOURCE[0]}")/gitignore-ensure.sh"
 
 # verified-review F-04 MEDIUM: flow-state.sh 呼び出し boilerplate を helper 関数に抽出。
 # (a) helper executable check と (b) `if cmd; then :; else rc=$?; ...; return 2; fi` 形式の
@@ -159,12 +161,24 @@ update_local_work_memory() {
     fi
   fi
 
-  local local_wm=".rite-work-memory/issue-${issue_number}.md"
+  local wm_dir=".rite/work-memory"
+  local wm_legacy=".rite-work-memory"
+  local local_wm="${wm_dir}/issue-${issue_number}.md"
   local lockdir="${local_wm}.lockdir"
+  local wm_read="$local_wm"
+  if [ ! -f "$local_wm" ] && [ -f "${wm_legacy}/issue-${issue_number}.md" ]; then
+    wm_read="${wm_legacy}/issue-${issue_number}.md"
+  fi
 
   # Defensive: ensure parent directory exists before lock acquisition
-  mkdir -p .rite-work-memory 2>/dev/null || { echo "rite: ${WM_SOURCE}: failed to create .rite-work-memory directory" >&2; return 2; }
-  chmod 700 .rite-work-memory 2>/dev/null || true
+  mkdir -p "$wm_dir" 2>/dev/null || { echo "rite: ${WM_SOURCE}: failed to create .rite/work-memory directory" >&2; return 2; }
+  chmod 700 "$wm_dir" 2>/dev/null || true
+  # Nested self-gitignore on `.rite/` (same extra-args as session-start / flow-state).
+  # mkdir is the caller's job; the helper will not create the directory.
+  if ! _ensure_rite_nested_gitignore ".rite"; then
+    echo "WARNING: work-memory-update.sh: cannot create .rite/.gitignore; verify by hand that this directory is excluded from git" >&2
+    [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+  fi
 
   if [ "${WM_SKIP_LOCK:-false}" = "true" ]; then
     :  # Lock skipping; RETURN trap set later in this function after mktemp (anchor: tmp_wm_mktemp below)
@@ -187,14 +201,14 @@ update_local_work_memory() {
 
   # 既存ファイルからの読み戻し (carry-forward)。読み戻さない限り、env override も flow-state 読み取りも
   # 伴わない更新経路では pr_number / loop_count が更新のたびに既定値へ巻き戻る。
-  if [ -f "$local_wm" ] && [ -f "$parse_script" ]; then
+  if [ -f "$wm_read" ] && [ -f "$parse_script" ]; then
     # parse は corrupt 判定でも .data を埋めて exit 2 を返すため、採否は exit code ではなく stdout の
     # 有無で決める (exit code で捨てると sync_revision が 1 へ巻き戻り版が逆行する)。`|| _parse_rc=$?`
     # は stdout を保持したまま `set -e` 下の中断だけを防ぐ形。stderr は tempfile へ退避して WARNING に
     # 添える (mktemp 失敗時は /dev/null + stderr_capture=disabled タグで縮退)。
     local parse_out="" _parse_rc=0 _parse_err=""
     _parse_err=$(mktemp 2>/dev/null) || _parse_err=""
-    parse_out=$(python3 "$parse_script" "$local_wm" 2>"${_parse_err:-/dev/null}") || _parse_rc=$?
+    parse_out=$(python3 "$parse_script" "$wm_read" 2>"${_parse_err:-/dev/null}") || _parse_rc=$?
     # _jq_rc の "n/a" は「jq 未起動」sentinel (0 初期化だと未起動を成功と誤表示する)。
     local parsed="" _jq_rc="n/a"
     if [ -n "$parse_out" ]; then
@@ -221,7 +235,7 @@ update_local_work_memory() {
     if [ "$existing_keys" -eq 0 ]; then
       local _rb_tag=""
       [ -z "$_parse_err" ] && _rb_tag=" stderr_capture=disabled"
-      echo "WARNING: 既存 WM から値を読み戻せませんでした ($local_wm, parse rc=$_parse_rc, jq rc=$_jq_rc${_rb_tag}) — sync_revision を 1 から採番し直します ${_default_note}" >&2
+      echo "WARNING: 既存 WM から値を読み戻せませんでした ($wm_read, parse rc=$_parse_rc, jq rc=$_jq_rc${_rb_tag}) — sync_revision を 1 から採番し直します ${_default_note}" >&2
       # python3 の未捕捉例外はメッセージが traceback 最終行に載るため tail で出す。
       [ -n "$_parse_err" ] && [ -s "$_parse_err" ] && tail -3 "$_parse_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     else
@@ -241,7 +255,7 @@ update_local_work_memory() {
         [ -n "$_corrupt_reasons" ] || _corrupt_reasons="(種別不明)"
         local _block_tag=""
         [ "$_carry_block" -eq 1 ] && _block_tag=" — identity を確認できない種別 (issue_number の mismatch / 欠落) または判別不能のため carry-forward は行いません ${_default_note}"
-        echo "WARNING: 既存 WM は corrupt 判定 (parse rc=$_parse_rc, errors: $_corrupt_reasons) ですが .data が読めたため処理を継続しました ($local_wm)${_block_tag}" >&2
+        echo "WARNING: 既存 WM は corrupt 判定 (parse rc=$_parse_rc, errors: $_corrupt_reasons) ですが .data が読めたため処理を継続しました ($wm_read)${_block_tag}" >&2
       fi
       if [[ "$existing_rev" =~ ^[0-9]+$ ]]; then sync_rev=$((existing_rev + 1)); fi
       # 未設定判定は `-z` (初期化の `${VAR:-null}` 形式が「空文字 = 未設定」と扱うのと揃える)。
@@ -348,12 +362,12 @@ update_local_work_memory() {
   # stock の先頭 `Phase:` / `Branch:` 行のみ最新値で再生成し、それ以外の自由記述内容を
   # verbatim で引き継ぐ (WM_BODY_TEXT はサマリー領域のみを対象とする契約)。
   local detail_extra="" _detail_awk_rc=0
-  if [ -f "$local_wm" ]; then
+  if [ -f "$wm_read" ]; then
     detail_extra=$(awk '
       /^## Detail$/ {found=1; next}
       found && !body && (/^Phase: / || /^Branch: / || /^[[:space:]]*$/) {next}
       found {body=1; print}
-    ' "$local_wm" 2>/dev/null) || _detail_awk_rc=$?
+    ' "$wm_read" 2>/dev/null) || _detail_awk_rc=$?
     # awk 失敗 (I/O error / 読み取り権限剥奪等) を silent fallback にすると、蓄積 Detail の
     # 消失が「もともと空だった」と区別できない。non-blocking は維持しつつ WARNING で観測性を確保する。
     if [ "$_detail_awk_rc" -ne 0 ]; then

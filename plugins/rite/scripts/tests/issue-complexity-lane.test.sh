@@ -159,7 +159,44 @@ assert_contains "TC-2.9: 小文字 xs は XS に正規化される" "$LANE_STDER
 run_lane_with_body '**Complexity**: XS  <!-- 見積もり -->'
 assert_contains "TC-2.10: 行末の付随テキストは無視される" "$LANE_STDERR" "complexity=XS"
 
-echo "=== 記法 2: ## 複雑度 セクション — 2 記法併存の吸収 ==="
+echo "=== 記法 3: 表形式 Meta — 実運用 Issue の失敗形状 ==="
+
+# #2432 で /rite:batch-run が open 段の fail-loud で停止した実 body の形をそのまま fixture にする
+# (合成 body だけだと、行ラベル型の表・ヘッダ行・**Type** 行が混ざる実入力の形状取り違えを
+#  検出できない)。この TC が修正前 red → 修正後 green に転じることが本 Issue の報告そのもの。
+run_lane_with_body '## 0. Meta
+
+| 項目 | 値 |
+|---|---|
+| **Type** | chore |
+| **Complexity** | S |
+
+## 1. Goal
+
+なにか'
+assert_contains "TC-3.5: 実運用の表形式 Meta から S を読む" "$LANE_STDERR" "COMPLEXITY_LANE=light; complexity=S; source=body_table"
+assert_not_contains "TC-3.5b: 表形式で complexity_absent へ倒さない" "$LANE_STDERR" "complexity_absent"
+
+# レーン境界は表形式でも同じ。M+ が light へ落ちると検証深度が無言で下がる。
+run_lane_with_body '| **Complexity** | M |'
+assert_contains "TC-3.6: 表形式の M は full レーン" "$LANE_STDERR" "COMPLEXITY_LANE=full; complexity=M; source=body_table"
+assert_not_contains "TC-3.6b: 表形式の M で light へ倒さない" "$LANE_STDERR" "COMPLEXITY_LANE=light"
+
+# 妥当性判定は `case` に委ねる (記法 1 と同じ規律)。needle は reason まで書き切る。
+run_lane_with_body '| **Complexity** | Medium |'
+assert_contains "TC-3.7: 表形式の Medium は complexity_invalid" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_invalid"
+
+# 未展開 placeholder は記法 1 と同じ reason へ合流する (記法によって absent / invalid に分裂しない)。
+run_lane_with_body '| **Complexity** | {complexity} |'
+assert_contains "TC-3.8: 表形式の未展開 placeholder は complexity_absent" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
+
+# 太字を落とした表セルは受理しない (記法 1 の「装飾の揺れは受理しない」と同じ規律)。太字を
+# 要求しないと、行の途中で Complexity に言及するだけの表を宣言行と誤認する。
+run_lane_with_body '| Complexity | S |'
+assert_contains "TC-3.9: 太字なしの表セルは complexity_absent" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
+assert_not_contains "TC-3.9b: 太字なしの表セルで light へ倒さない" "$LANE_STDERR" "COMPLEXITY_LANE=light"
+
+echo "=== 記法 2: ## 複雑度 セクション — 3 記法併存の吸収 ==="
 
 # 片方の記法しか読まないと、もう片方で書かれた Issue が全て complexity_absent へ落ちる。
 # **body は実運用の形（複雑度節の前後を別の見出しが挟む）にする** — 先行見出しが無い body だけで
@@ -235,6 +272,56 @@ run_lane_with_body '**Complexity**: M
 XS'
 assert_contains "TC-3.3: 記法 1 が記法 2 より優先される" "$LANE_STDERR" "complexity=M; source=body_meta"
 
+# 記法 1 は記法 3 にも優先する。helper は code fence を剥がさないため、優先順が崩れると
+# **表記法そのものを説明している Issue** (本文中に表形式の例を載せる) が例から値を解決する。
+# 本 Issue (#2459) の body がまさにこの形なので、崩れは実運用で即座に誤判定になる。
+run_lane_with_body '**Complexity**: M
+
+例として次の形が実在する:
+
+| **Complexity** | XS |'
+assert_contains "TC-3.3b: 記法 1 が記法 3 より優先される (本文中の例から解決しない)" "$LANE_STDERR" "complexity=M; source=body_meta"
+assert_not_contains "TC-3.3c: 例の表を採って light へ倒さない" "$LANE_STDERR" "COMPLEXITY_LANE=light"
+
+# 記法 2 も記法 3 に優先する (探索順 1 → 2 → 3)。表行は body のどこにでも現れうるので最後に読む。
+# 順序を 2 と 3 で入れ替えると、`## 複雑度` で M を宣言した Issue が本文中の表の例から XS を採り
+# **M+ が silent に light へ落ちる** (AC-4 / MUST NOT 違反)。not_contains を併記して方向を固定する。
+run_lane_with_body '## 複雑度
+
+M
+
+## 記法の説明
+
+| **Complexity** | XS |'
+assert_contains "TC-3.3d: 記法 2 が記法 3 より優先される (本文中の例から解決しない)" "$LANE_STDERR" "complexity=M; source=body_section"
+assert_not_contains "TC-3.3e: 記法 2 宣言時に例の表を採って light へ倒さない" "$LANE_STDERR" "COMPLEXITY_LANE=light"
+
+# 記法 2 宣言 + 文書用の表ヘッダ (値セルが英語の説明語) でも宣言値を採る。順序が崩れると
+# 説明語 (`Projects`) を値として捕捉し complexity_invalid へ落ちる (倒れる向きは fail-safe だが、
+# 宣言済み Issue でレーンが発動しなくなる)。本形の表は issue-edit/SKILL.md に実在する。
+run_lane_with_body '## 複雑度
+
+M
+
+## フィールド対応
+
+| **Complexity** | Projects Complexity field |'
+assert_contains "TC-3.3f: 記法 2 宣言は文書用の表ヘッダに優先する" "$LANE_STDERR" "complexity=M; source=body_section"
+
+# 記法 3 の `head -1` を pin する。宣言の表行の後ろに例の表行が続く形 (#2432 系 Issue が
+# 表記法を併記する形) で、落とすと _raw が改行込み 2 値になり complexity_invalid へ倒れる。
+run_lane_with_body '## 0. Meta
+
+| 項目 | 値 |
+|---|---|
+| **Complexity** | S |
+
+## 参考
+
+| **Complexity** | XS |'
+assert_contains "TC-3.3g: 記法 3 は先頭の表行を採る (head -1)" "$LANE_STDERR" "COMPLEXITY_LANE=light; complexity=S; source=body_table"
+assert_not_contains "TC-3.3h: 複数の表行を連結して complexity_invalid へ倒さない" "$LANE_STDERR" "complexity_invalid"
+
 echo "=== fail-safe: 情報欠落は全経路で full へ倒れる (AC-2 / T-02) ==="
 
 # reason 語彙は helper docstring が SoT。各 reason が確かに full へ倒れることを個別に pin する
@@ -295,13 +382,29 @@ $_broken"
   assert_contains "TC-4.16: 崩れた記法 ($_broken) は行番号を報告する" "$LANE_STDERR" "body の 2 行目から値を取り出せませんでした"
 done
 
+# 表形式 (記法 3) の崩れも同じ経路で可視化する。抽出側が太字を要求して棄却するだけだと、
+# その棄却が**無音**になり本 WARNING の目的が記法 3 でだけ果たされない (reason だけを見る
+# assert では、診断の述語を表行へ広げる変更を丸ごと削除しても green のまま通る)。
+for _broken_row in '| Complexity | XS |' '| complexity | XS |' '| **Complexity** | {complexity} |' '| **複雑度** | XS |'; do
+  run_lane_with_body "冒頭の散文行
+$_broken_row"
+  assert_contains "TC-4.16b: 崩れた表行 ($_broken_row) は行番号を報告する" "$LANE_STDERR" "body の 2 行目から値を取り出せませんでした"
+done
+
 # 宣言行が無い body では沈黙する。行の形を問わない検索に戻すと散文・表セルの単なる言及を
 # 「宣言らしき記述」と誤って断定し、この WARNING の目的 (定常出力からの切り分け) が消える。
 # 3 形目は**行中に「キー + コロン」を持つ**散文で、述語から行頭 anchor を外す mutant を落とす
 # (前 2 形はキーと区切り記号が連続しないため、区切り記号の腕しか検査していなかった)。
-for _prose in 'この変更の複雑度は低いが影響範囲は広い。' '| A | /rite:issue-create | Complexity M。 |' '判定キーは Complexity: の有無である。'; do
+# 4 形目は**行頭が `|` の表行だがキーが先頭セルでない** mid-row 形。抽出側 (記法 3 の sed) と
+# 診断側 (awk の表行規則) はどちらも行頭 anchor でキーが先頭セルであることを要求しており、
+# その anchor を外す mutant はこの形でしか落ちない (実測: anchor を `.*` に緩めると抽出側は
+# reason を complexity_invalid へ分裂させ、診断側は本 WARNING を定常出力化する)。本 PR が
+# 書いた issue-implement/SKILL.md の表セルがまさにこの形なので、同種の散文が Issue body に
+# 貼られた時点で発火する。reason まで assert して absent/invalid の分裂も同時に pin する。
+for _prose in 'この変更の複雑度は低いが影響範囲は広い。' '| A | /rite:issue-create | Complexity M。 |' '判定キーは Complexity: の有無である。' '| 判定 | helper が 3 記法 (`| **Complexity** | X |`) を受理する | Meta 節 |'; do
   run_lane_with_body "$_prose"
   assert_not_contains "TC-4.17: 宣言行の無い散文 ($_prose) では報告しない" "$LANE_STDERR" "値を取り出せませんでした"
+  assert_contains "TC-4.17b: 宣言行の無い散文 ($_prose) は complexity_absent" "$LANE_STDERR" "COMPLEXITY_LANE=full; reason=complexity_absent"
 done
 
 # 記法 2 では見出しではなく**値を取り出せなかった行**を指す。見出しは解釈できているので、

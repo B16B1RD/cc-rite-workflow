@@ -1683,6 +1683,16 @@ sweep_status=$(printf '%s' "$collect_out" | jq -r '.status // empty') || sweep_s
 case "$collect_rc:$sweep_status" in
   0:empty)
     echo "[CONTEXT] NB_SWEEP_RESULT=done; fixed=0; rejected=0; issued=0" >&2
+    mkdir -p "$sweep_root/.rite/state" || true
+    source {plugin_root}/hooks/gitignore-ensure.sh
+    if ! _ensure_dir_gitignore "$sweep_root/.rite/state"; then
+      echo "WARNING: $sweep_root/.rite/state/.gitignore を作成できませんでした。nb-sweep-done が git の追跡対象になる恐れがあります" >&2
+      [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+    fi
+    if ! printf 'noop\n' > "$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"; then
+      echo "WARNING: nb-sweep-done marker を書けませんでした" >&2
+      rm -f "$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"
+    fi
     ;;
   0:ok) ;;
   *)
@@ -1744,7 +1754,11 @@ else
     echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_merge_failed" >&2
     echo "[fix:error]"; exit 1
   }
-  body_count=$(grep -E '^📎 non_blocking_count:' "$body" | tail -1 | awk '{print $2}')
+  # 抽出式は review-nonblocking-record.sh の count/body 整合検査と同一にする。この値は直下で
+  # 同 helper へ `--count` として渡され、helper が同じ行を再検証するため、述語がずれると
+  # producer が通した body を validator が count_body_mismatch で落とす経路が生まれる。
+  # awk のフィールド番号で取ってはならない — 行頭の 📎 が第 1 フィールドを占める。
+  body_count=$(grep -E '^📎 non_blocking_count:[[:space:]]*[0-9]+[[:space:]]*$' "$body" | tail -1 | grep -oE '[0-9]+')
   case "$body_count" in ''|*[!0-9]*)
     echo "ERROR: merge-into 後の non_blocking_count が読めない" >&2
     echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_count_unreadable" >&2
@@ -1774,6 +1788,46 @@ fi
 
 ```
 [CONTEXT] NB_SWEEP_RESULT=done; fixed=N; rejected=M; issued=K
+```
+
+`{nb_sweep_fixed}` は上の `fixed=N` をリテラル置換する。`fixed ≥ 1` かつ push 済みのときだけ 2 行目に push 後 HEAD SHA を書く。非数値は WARNING + 1 行 `done`。`0` / push 無しは 1 行 `done`。`git rev-parse HEAD` 失敗は WARNING + 1 行のまま（偽 pass を作らない）。2 行書込失敗は 1 行書込失敗と同じ WARNING + `rm -f`。
+rationale: ../ready/references/rationale.md#reviewed-head-gate
+
+```bash
+sweep_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || sweep_root=""
+nb_sweep_fixed="{nb_sweep_fixed}"
+if [ -n "$sweep_root" ]; then
+  mkdir -p "$sweep_root/.rite/state" || true
+  source {plugin_root}/hooks/gitignore-ensure.sh
+  if ! _ensure_dir_gitignore "$sweep_root/.rite/state"; then
+    echo "WARNING: $sweep_root/.rite/state/.gitignore を作成できませんでした。nb-sweep-done が git の追跡対象になる恐れがあります" >&2
+    [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+  fi
+  sweep_done_file="$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"
+  sweep_write_ok=0
+  case "$nb_sweep_fixed" in
+    ''|*[!0-9]*)
+      echo "WARNING: nb_sweep_fixed が数値ではありません (received: '$nb_sweep_fixed')。nb-sweep-done の 2 行目を書きません" >&2
+      if printf 'done\n' > "$sweep_done_file"; then sweep_write_ok=1; fi
+      ;;
+    *)
+      if [ "$nb_sweep_fixed" -ge 1 ]; then
+        if sweep_sha=$(git rev-parse HEAD) && [ -n "$sweep_sha" ]; then
+          if printf 'done\n%s\n' "$sweep_sha" > "$sweep_done_file"; then sweep_write_ok=1; fi
+        else
+          echo "WARNING: git rev-parse HEAD に失敗したため nb-sweep-done の 2 行目を書きません" >&2
+          if printf 'done\n' > "$sweep_done_file"; then sweep_write_ok=1; fi
+        fi
+      else
+        if printf 'done\n' > "$sweep_done_file"; then sweep_write_ok=1; fi
+      fi
+      ;;
+  esac
+  if [ "$sweep_write_ok" != 1 ]; then
+    echo "WARNING: nb-sweep-done marker を書けませんでした" >&2
+    rm -f "$sweep_done_file"
+  fi
+fi
 ```
 
 ステップ 5.1 が `[fix:sweep-done]` を emit する。`N+M+K` は collect `count` + already_rejected 転記を含む消化件数。未消化 0 が正常出口。
@@ -3558,7 +3612,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
   --handoff "FINALIZE:fix:replied-only:{pr_number}" \
   --if-exists
 
-# sweep 完了 ([fix:sweep-done]: NB_SWEEP=1 かつ NB_SWEEP_RESULT=done) の場合 (FINALIZE。ステップ 1 に戻らない):
+# sweep 完了 ([fix:sweep-done]: NB_SWEEP=1 かつ (NB_SWEEP_RESULT=done または NB_SWEEP_DONE_FILE=1)) の場合 (FINALIZE。ステップ 1 に戻らない):
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \
@@ -3577,7 +3631,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 **Note on `error_count`**: phase transition ごとに 0 リセット (`--preserve-error-count` で保持)。
 rationale: references/design-rationale.md#output-pattern-notes
 
-**Also update local work memory** (`.rite-work-memory/issue-{n}.md`) with phase transition:
+**Also update local work memory** (`.rite/work-memory/issue-{n}.md`) with phase transition:
 
 Use the self-resolving wrapper. See [Work Memory Format - Usage in Commands](../../skills/rite-workflow/references/work-memory-format.md) for details and marketplace install notes.
 
@@ -3609,7 +3663,7 @@ if [ -n "$hook_err" ]; then
       echo "WARNING: local work memory update hook failed (non-lock failure, rc=$hook_wm_update_rc):" >&2
       head -5 "$hook_err" | sed 's/^/  /' >&2
       echo "  対処: hooks/local-wm-update.sh の存在 / 実行権限 / 内容を確認してください" >&2
-      echo "  影響: local .rite-work-memory/issue-*.md が GitHub comment 側と一時的に不整合になる (E2E flow は続行)" >&2
+      echo "  影響: local .rite/work-memory/issue-*.md が GitHub comment 側と一時的に不整合になる (E2E flow は続行)" >&2
     fi
   fi
   rm -f "$hook_err"
@@ -3635,13 +3689,24 @@ fi
 
 lock failure は WARNING で継続。non-lock は WARNING + stderr 5 行で継続。分岐は exact phrase ([common-error-handling.md](../../references/common-error-handling.md#hook-lock-contention-classification-canonical))。
 
+行 1.5/1.6 の `NB_SWEEP_DONE_FILE` は会話 marker 欠落時の代替。評価前に永続ファイルの有無を emit する（通常ループは行 1.5 が `NB_SWEEP=1` を要求するため本 marker だけでは分岐しない）:
+
+```bash
+_nb_done_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || _nb_done_root=""
+if [ -n "$_nb_done_root" ] && [ -f "$_nb_done_root/.rite/state/nb-sweep-done-{pr_number}.txt" ]; then
+  echo "[CONTEXT] NB_SWEEP_DONE_FILE=1" >&2
+else
+  echo "[CONTEXT] NB_SWEEP_DONE_FILE=0" >&2
+fi
+```
+
 Then, based on the ステップ 4.6 completion report content **and the WM_UPDATE_FAILED context flag**, output the corresponding machine-readable pattern:
 
 | 評価順 | Condition | Output Pattern |
 |--------|-----------|---------------|
 | 1 (最優先) | ステップ 1.0.1 / 1.2.0 / 1.2.0.1 で `[CONTEXT] FIX_FALLBACK_FAILED=1` を context に set した (`reason` の値は ステップ 1.0.1 / 1.2.0 / 1.2.0.1 failure reasons table を **唯一の真実の源** として参照する。本セルでの固定列挙は drift 防止のため行わない) | `[fix:error]` (ステップ 1.0.1 / 1.2.0 / 1.2.0.1 のレビューソース解決失敗。fallback 経路が尽きたか、ユーザーが Interactive Fallback で中止を選んだか、ファイルパス指定の再実行でも有効なレビュー結果を取得できなかった状態のため caller は手動介入を促す) |
-| 1.5 | `[CONTEXT] NB_SWEEP=1` かつ `[CONTEXT] NB_SWEEP_RESULT=done` | `[fix:sweep-done]`（ステップ 1 に戻らない） |
-| 1.6 | `[CONTEXT] NB_SWEEP=1` かつ `NB_SWEEP_RESULT=done` 以外 | `[fix:error]` |
+| 1.5 | `[CONTEXT] NB_SWEEP=1` かつ（`[CONTEXT] NB_SWEEP_RESULT=done` または `[CONTEXT] NB_SWEEP_DONE_FILE=1`） | `[fix:sweep-done]`（ステップ 1 に戻らない） |
+| 1.6 | `[CONTEXT] NB_SWEEP=1` かつ `NB_SWEEP_RESULT=done 以外` かつ `NB_SWEEP_DONE_FILE` 非 1 | `[fix:error]` |
 | 2 | ステップ 2.4 で `[CONTEXT] REPLY_POST_FAILED=1` を context に set した | `[fix:error]` (人間由来 thread への reply post が失敗。push 済みの可能性はあるが、レビュアー通知の責務を果たせていないため caller は次の iteration ではなく手動介入を促す) |
 | 3 | ステップ 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`reason` の値は下記 reason 表のいずれか — 固定列挙は行わず、reason 表を唯一の真実の源とする) | `[fix:pushed-wm-stale]` (ステップ 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
 | 4 | (Push completed (`プッシュ: 完了`) または 本 cycle 内で accept 決定が発生 [`[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED=1` または `[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1` が 1 回以上 context に出現]) かつ work memory 更新成功 | `[fix:pushed]` |

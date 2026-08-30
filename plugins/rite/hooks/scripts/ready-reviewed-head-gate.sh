@@ -3,8 +3,12 @@
 # Reviewed commit := .commit_sha of the newest .rite/review-results/{pr}-*.json
 # (schema field; PR-comment marker name is reviewed_commit). Archive is not
 # a current result, so this helper never reads it.
+# Sweep exception (#2439): after JSON mismatch, line 2 of
+# nb-sweep-done-{pr}.txt may name the one known sweep commit.
 set -u
-pr_number=""; plugin_root=""; results_dir=""
+pr_number=""; plugin_root=""; results_dir=""; state_root=""
+results_dir_explicit=0
+state_root_explicit=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --pr)
@@ -15,7 +19,10 @@ while [ "$#" -gt 0 ]; do
       plugin_root="$2"; shift 2 ;;
     --results-dir)
       [ "$#" -ge 2 ] || { echo "ERROR: Ready reviewed-head gate: --results-dir requires a value" >&2; exit 2; }
-      results_dir="$2"; shift 2 ;;
+      results_dir="$2"; results_dir_explicit=1; shift 2 ;;
+    --state-root)
+      [ "$#" -ge 2 ] || { echo "ERROR: Ready reviewed-head gate: --state-root requires a value" >&2; exit 2; }
+      state_root="$2"; state_root_explicit=1; shift 2 ;;
     *) echo "ERROR: Ready reviewed-head gate: unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -86,8 +93,61 @@ case "$reviewed" in
 esac
 
 if _sha_matches "$reviewed" "$head_sha"; then
-  echo "[CONTEXT] READY_REVIEWED_HEAD=match; reviewed=$reviewed; head=$head_sha" >&2
+  echo "[CONTEXT] READY_REVIEWED_HEAD=match; reviewed=$reviewed; head=$head_sha; via=json" >&2
   exit 0
+fi
+
+# Sweep exception: only after JSON mismatch. --results-dir without --state-root
+# is the existing test injection and must not require state-path-resolve.sh
+# (done-file absent ≡ existing mismatch wording).
+sweep_file=""
+if [ "$state_root_explicit" = 1 ]; then
+  sweep_file="$state_root/.rite/state/nb-sweep-done-${pr_number}.txt"
+elif [ "$results_dir_explicit" = 0 ] && [ -n "$plugin_root" ]; then
+  if [ -x "$plugin_root/hooks/state-path-resolve.sh" ]; then
+    resolved_root=$(bash "$plugin_root/hooks/state-path-resolve.sh") || resolved_root=""
+    [ -n "$resolved_root" ] && sweep_file="$resolved_root/.rite/state/nb-sweep-done-${pr_number}.txt"
+  fi
+fi
+
+if [ -n "$sweep_file" ] && [ -f "$sweep_file" ]; then
+  if ! sweep_line2=$(sed -n '2p' "$sweep_file"); then
+    echo "ERROR: Ready reviewed-head gate: $sweep_file を読めません。照合不能のため Ready 化を拒否します。" >&2
+    echo "[CONTEXT] READY_REVIEWED_HEAD=done_file_unreadable; pr=$pr_number; file=$sweep_file" >&2
+    exit 1
+  fi
+  sweep_nlines=$(wc -l < "$sweep_file" | tr -d '[:space:]')
+  case "$sweep_nlines" in ''|*[!0-9]*) sweep_nlines=0 ;; esac
+  if [ "$sweep_nlines" -ge 2 ]; then
+    sweep=$(printf '%s' "$sweep_line2" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+    case "$sweep" in
+      ''|*[!0-9a-f]*)
+        echo "ERROR: Ready reviewed-head gate: nb-sweep-done の 2 行目が空または SHA ではありません (received: '$sweep')。照合不能のため Ready 化を拒否します。" >&2
+        echo "  次の行動: /rite:iterate $pr_number" >&2
+        echo "[CONTEXT] READY_REVIEWED_HEAD=sweep_sha_invalid; pr=$pr_number; reviewed=$reviewed; head=$head_sha" >&2
+        exit 1
+        ;;
+    esac
+    if [ "${#sweep}" -lt 7 ]; then
+      echo "ERROR: Ready reviewed-head gate: nb-sweep-done の 2 行目が SHA ではありません (received: '$sweep')。照合不能のため Ready 化を拒否します。" >&2
+      echo "  次の行動: /rite:iterate $pr_number" >&2
+      echo "[CONTEXT] READY_REVIEWED_HEAD=sweep_sha_invalid; pr=$pr_number; reviewed=$reviewed; head=$head_sha" >&2
+      exit 1
+    fi
+    if _sha_matches "$sweep" "$head_sha"; then
+      echo "[CONTEXT] READY_REVIEWED_HEAD=match; reviewed=$reviewed; head=$head_sha; via=sweep" >&2
+      exit 0
+    fi
+    echo "ERROR: Ready reviewed-head gate: 最終レビュー済み commit と HEAD が不一致です" >&2
+    echo "  reviewed_commit (review JSON の commit_sha): $reviewed" >&2
+    echo "  sweep (nb-sweep-done 2 行目): $sweep" >&2
+    echo "  HEAD: $head_sha" >&2
+    echo "  意味: レビュー後に未レビューの commit が積まれているため、Ready 化を拒否します。" >&2
+    echo "  次の行動: /rite:iterate $pr_number" >&2
+    echo "  強行する場合: ユーザーが「未レビューのまま Ready 化を強行」と明示した再実行のみ（既定では拒否）。" >&2
+    echo "[CONTEXT] READY_REVIEWED_HEAD=mismatch; reviewed=$reviewed; sweep=$sweep; head=$head_sha" >&2
+    exit 1
+  fi
 fi
 
 echo "ERROR: Ready reviewed-head gate: 最終レビュー済み commit と HEAD が不一致です" >&2

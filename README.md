@@ -2,7 +2,7 @@
 
 > Universal Issue-Driven Development Workflow for Claude Code
 
-[![Version](https://img.shields.io/badge/version-0.13.2-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.13.2)
+[![Version](https://img.shields.io/badge/version-0.14.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.14.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **English** | [日本語](README.ja.md)
@@ -75,9 +75,9 @@ This removes the plugin code but leaves behind the artifacts it created in your 
 | Artifact | Location | Harmful if left? | Removal |
 |----------|----------|-------------------|---------|
 | `rite-config.yml` | Committed to your repo | No | `git rm rite-config.yml && git commit -m "chore: remove rite-config.yml"` |
-| `.gitignore` entries | Committed (lines added by `/rite:setup`, e.g. `.rite-work-memory/`, `.rite/sessions/`) | No | Manually remove the added lines |
+| `.gitignore` entries | Older installs may have committed root lines such as `.rite-work-memory/` or `.rite/sessions/`; current `/rite:setup` writes `.rite/.gitignore` instead and does not add those root lines | No | Manually remove leftover root lines if present |
 | Remote `wiki` branch | GitHub remote (created by Wiki auto-init) | No | `git push origin --delete <branch>`, where `<branch>` is `wiki.branch_name` in `rite-config.yml` (default `wiki`) |
-| Local generated files (gitignored) | `.rite-work-memory/`, `.rite-flow-state*`, `.rite-compact-state*`, `.rite-flow-debug.log`, `.rite-session-id`, etc. | No (untracked) | `rm -rf .rite-work-memory .rite-flow-state* .rite-compact-state* .rite-flow-debug.log .rite-session-id .rite-guidance-shown .rite-plugin-root .rite-initialized-version .rite-settings-hooks-cleaned` |
+| Local generated files (gitignored) | Current installs keep these under `.rite/` (`work-memory/`, `sessions/`, `state/`, `logs/flow-debug.log`, `session-id`, `plugin-root`, `initialized-version`, `settings-hooks-cleaned`, `tmp-artifacts.tsv`) — see the next row for how to remove `.rite/` safely. Installs predating the move may also leave root `.rite-*` files behind | No (untracked) | `rm -rf .rite-work-memory .rite-flow-state* .rite-compact-state* .rite-flow-debug.log .rite-session-id .rite-plugin-root .rite-initialized-version .rite-settings-hooks-cleaned` removes the root leftovers only |
 | `.rite/` internal directories (gitignored, may hold live git worktrees) | `.rite/wiki-worktree/` (Wiki `separate_branch` strategy), `.rite/worktrees/issue-*` (per-session worktrees when `multi_session` is enabled) | Yes if removed with a plain `rm -rf` — this can orphan git worktree metadata and destroy uncommitted work | Check `git worktree list` first; if either path is registered, run `git worktree remove <path>` (confirming no uncommitted changes) then `git worktree prune`. Only after that, remove the rest of `.rite/` with `rm -rf .rite` |
 | Legacy hook registration | `.claude/settings.local.json` (only from installs predating native `hooks.json` management) | No, but may error if the plugin is gone | Remove hook entries whose command path points into the rite plugin's `hooks/` directory |
 
