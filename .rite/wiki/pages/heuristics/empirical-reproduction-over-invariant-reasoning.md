@@ -27,9 +27,11 @@ sources:
     resource: "raw/fixes/20260602T065355Z-pr-1246.md"
   - type: "reviews"
     resource: "raw/reviews/20260605T045347Z-pr-1277.md"
-tags: ["verification", "empirical-reproduction", "invariant", "reviewer-discipline", "silent-regression"]
+  - type: "fixes"
+    resource: "raw/fixes/20260830T082306Z-pr-2482.md"
+tags: ["verification", "empirical-reproduction", "invariant", "reviewer-discipline", "silent-regression", "repro-anchor-not-proof"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-25T14:18:43Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T08:52:00Z" }
 ---
 
 # 「invariant は logic 上成立」を信頼せず empirical reproduction で verify する
@@ -163,6 +165,17 @@ revert test で新旧を比較するとき、ハーネスの構成ミスで **�
 
 比較を始める前に、**確実に deny になるはずの control 入力で期待どおり deny すること**を確認する。control が期待どおりでないなら、その後の差分測定はすべて無意味。
 
+### `Verification: repro` アンカー付きの指摘も、採否を変えるなら自分で再現する
+
+実測必須ゲートは `Verification: repro => ...` アンカーを持つ指摘だけを blocking にするが、**アンカーの存在は主張の正しさを保証しない**。起点 PR では同一 reviewer から内容の異なる 2 通のレビューが届き、両方に repro アンカーが付いていた。orchestrator が両方の変異を自分で当て直したところ、結果が割れた。
+
+| 主張 | orchestrator の再現 | 採否 |
+|---|---|---|
+| 「被演算子を改名すると pin が素通りする」 | 2 assert が fail — 素通りは**再現せず** | 却下（却下台帳へ記録） |
+| 「両側同時 drift で assert が全部緑になる」 | 4 assert すべて緑 — **再現** | 採用 |
+
+後者は 2 名の reviewer が独立に同じ結論へ到達しており、そちらは信頼度が高かった。**判断を変える指摘は、アンカーの有無ではなく自分の再現結果で採否を決める**。却下する場合は却下台帳（`guardrail_audit_log`）に「どの変異を当ててどう外れたか」を残し、次 cycle の再訴訟を止める。
+
 ## 関連ページ
 
 - [レビューが足場を対象に発散したら finding の基準を prompt で明示して止める](./review-finding-bar-stops-scaffolding-divergence.md)
@@ -184,3 +197,4 @@ revert test で新旧を比較するとき、ハーネスの構成ミスで **�
 - [PR #1246 fix results — 複数 reviewer 評価の割れを実機再現で確証して採否を決める](../../raw/fixes/20260602T065355Z-pr-1246.md)
 - [PR #1277 review results — 全 reviewer の実測検証規律による low-noise 2-cycle 収束](../../raw/reviews/20260605T045347Z-pr-1277.md)
 - [PR #1973 cycle 5 review results (mergeable) — CRITICAL cross-validation 対立を実機 revert test で決着、5 cycle で severity 単調減少しつつ収束](../../raw/reviews/20260722T224239Z-pr-1973.md)
+- [PR #2482 fix (cycle 1) — repro アンカー付きの主張 2 通を再現し、再現しなかった側を却下台帳へ](../../raw/fixes/20260830T082306Z-pr-2482.md)

@@ -56,9 +56,13 @@ sources:
     resource: "raw/fixes/20260825T153842Z-pr-2361.md"
   - type: "fixes"
     resource: "raw/fixes/20260825T162042Z-pr-2361.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260830T082306Z-pr-2482.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260830T083939Z-pr-2482.md"
 tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase, same-file-3-site-sync, subsidiary-claim-empirical-verification, cross-file-cross-site-coverage, multi-axis-mutation-verification, channel-collision, negative-control, twin-site-satisfaction, anchor-uniqueness, occurrence-count-pin]
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T16:50:12Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T08:52:00Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T16:50:12Z" }
 ---
@@ -527,6 +531,29 @@ PR #2137 cycle 2 では、この gap を 3 reviewer（security / error-handling 
 
 対策: 出現回数 pin をやめ、**一意の producer 行 / consumer 行 / ACTION 文**をそれぞれ独立に pin する。decoy（HTML コメント化、cycle 1 ACTION 差し替え）で緑が残る経路を mutation で塞ぐ。ERROR fence を経路ごとに分割したあとは、Routing 表の行数 pin を同時更新する。
 
+## 変種: 期待値を片側から抽出する symmetry pin は「両側同時 drift も固定する」と主張できない
+
+producer と validator が同じ述語を独立に持つとき、両者の一致を固定する pin は、**期待値を片側から抽出する**（テスト内にハードコードしない）方針を採ることが多い。この形は片側だけの drift を確実に殺すが、**両側を同時に同じ形へ書き換えた drift では等値が保たれるため通る**。
+
+起点 PR ではこの限界に気づかないまま「等値だけでは両方が同じ壊れ方をした場合に緑のまま通る。だからこの assert を置く」というコメント付きで 4 本目の assert が追加された。実測（producer と validator の両方で `tail -1` → `tail -n 1`）で **4 assert すべてが緑**になり、その assert は先行 2 assert（代入行数 == 1、右辺の等値）から論理的に含意される dead code だと確認できた。判別が分かれる入力を全ケース追跡しても、乖離が起きるのは実在しない drift 形だけだった。
+
+| 主張 | 実測 |
+|---|---|
+| 「両方が同じ壊れ方をした場合も固定する」 | ❌ 同時 drift で 4 assert すべて緑 |
+| 「先行 assert と別の入力を判別する」 | ❌ 判別が分かれる入力が存在しない（dead code） |
+
+検出力が同じなら削除が正しい。**テストコード中の偽りの能力主張は冗長性より有害で、次に読む人へ誤った安心を渡す**。value pin が本当に要るなら期待式をテスト内へハードコードするしかなく、それは「期待値を片側から抽出する」方針との衝突として明示的に判断すべき論点になる。削除せず残すなら、コメントを「これは symmetry pin であって value pin ではない／同時 drift は検出できない」と実態どおりに書き換える。
+
+### 併発: 正規化で 2 値を同一視したら、同一視の前提そのものを別 assert で固定する
+
+producer と validator で被演算子の変数名だけが違う（`$body` / `$CONTENT_FILE`）とき、共通プレースホルダへ正規化してから式を比較するのは妥当だが、その正規化は「**両者が同じファイルを指す**」という前提を暗黙に置く。式の比較ではその前提を確かめられない。
+
+実測: 呼び出し側の `--content-file "$body"` を別変数へ変えても全 62 assert が緑のまま通った。守ろうとしていた不整合（producer が数えた本文と validator が検査する本文が別物になる）そのものが、正規化の内側に隠れていた。**正規化を導入した変更は、同時にその前提を検証する 1 行を持つ**（起点 PR では呼び出し側リテラルの `assert_grep` 1 行で塞いだ）。
+
+### 併発: 停止しない assert helper の前提は後続コードのコメントに書く
+
+`fail()` が FAIL カウントを加算するだけで停止しない設計だと、先行 assert が落ちた実行でも後続の抽出処理まで到達する。そのため「先行 assert が保証しているから不要」に見える防御（抽出の `head -1` 等）が、実際には診断値を壊さないための保険として必要になる。この前提はコード上に現れないため、読み手が「冗長」と判断して消す余地が残る。
+
 ## ソース（追記分）
 
 - [PR #2094 review results (cycle 2) — 静的 pin が行継続文字を照合せず 1 文字 drift を素通り](../../raw/reviews/20260803T004941Z-pr-2094.md)
@@ -539,3 +566,5 @@ PR #2137 cycle 2 では、この gap を 3 reviewer（security / error-handling 
 - [PR #2361 review (cycle 1) — 8.0.2 ACTION 非対称と producer/fail-safe の pin 欠落](../../raw/reviews/20260825T152548Z-pr-2361.md)
 - [PR #2361 fix (cycle 1) — producer / fail-safe を直接 pin し 8.0.2 ACTION を 7.7 と対称化](../../raw/fixes/20260825T153842Z-pr-2361.md)
 - [PR #2361 fix (cycle 2) — count=2 部分文字列 pin を一意 pin に置換し decoy mutation で緑経路を塞ぐ](../../raw/fixes/20260825T162042Z-pr-2361.md)
+- [PR #2482 fix (cycle 1) — 期待値を片側抽出する symmetry pin の同時 drift 限界、正規化が隠した被演算子同一性の前提](../../raw/fixes/20260830T082306Z-pr-2482.md)
+- [PR #2482 fix (NB sweep) — 停止しない fail() 前提のもとで head -1 が診断値固定の保険として要る](../../raw/fixes/20260830T083939Z-pr-2482.md)
