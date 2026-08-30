@@ -19,12 +19,18 @@ sources:
     resource: "raw/reviews/20260829T142006Z-pr-2464.md"
   - type: "fixes"
     resource: "raw/fixes/20260829T142223Z-pr-2464.md"
-tags: ["comment-rot", "cause-neutral", "exclusivity-claim", "doc-sync", "not-grep-pin", "quantifier-strengthening"]
+  - type: "reviews"
+    resource: "raw/reviews/20260830T043014Z-pr-2475.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260830T044223Z-pr-2475.md"
+tags: ["comment-rot", "cause-neutral", "exclusivity-claim", "doc-sync", "not-grep-pin", "quantifier-strengthening", "birth-defect"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-29T14:35:49Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T04:57:39Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-29T11:40:00+09:00"
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-08-30T04:57:39Z"
 ---
 
 # 全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin
@@ -56,12 +62,21 @@ verified:
 
 この形は実測アンカー（repro / failing_test）を構造的に持てないため実測必須ゲートでは non-blocking に降格するが、`[review:mergeable]` 到達後の消化経路（NB digest sweep）で必ず処理する。**アンカーを持てないことは「直さない」理由にならない**。
 
+### 括弧で列挙を添えた全称量化は、書いた瞬間から偽になりうる
+
+偽化は「後から偽になる」形（comment rot）だけではない。**執筆時点で既に偽**という形もある。`Every failure along this path (fetch failure, transform failure, PATCH failure, unresolved owner/repo) also surfaces as a systemMessage` のように**全称量化に括弧で例示を添える**書き方は、括弧の 4 件を確認しただけで全称が裏取りできたつもりになる。実際には括弧外に通知を出さない失敗枝が存在し、`Every` の部分が最初から偽だった。
+
+**列挙を括弧で添えるなら、量化子のスコープをその括弧に合わせる**（`Each of the four failures listed here — A, B, C, D — surfaces as X`）。全称のまま書くなら、括弧の中身ではなく**その述語を満たす全経路**を grep で数え上げてから書く。前者は数え上げの義務を消す方向の書き換えで、過剰主張が減るため surface area も増えない。
+
+この形は cycle 1 のレビューで両 reviewer が推奨事項として挙げ、blocking fix と同じ文の中で同時に直した。cycle 2 の Over-fix Check は「新しい契約もガードも増えず net-flat、かつ過剰主張が減る方向」として over-fix ではないと判定した。
+
 ### 管轄が別 Issue の Non-Target ドキュメント
 
 drift 先が Issue の Non-Target（別 Issue の管轄と明記）である場合は、本 PR で触らず**管轄 Issue へコメントで申し送りを配線**する。新規起票は重複になる。握り潰しにならないよう、完了報告にも明示する。
 
 ## 関連ページ
 
+- [実装の分岐を散文へ落とす前に、フラグの状態数と観測ラベルの値域を機械的に数える](./count-implementation-states-before-writing-prose.md)
 - [Fix 修正コメント自身が canonical convention を破る self-drift](../anti-patterns/fix-comment-self-drift.md)
 - [Documentation review は対応する実装側の grep verify を必須 step とする](../heuristics/docs-review-implementation-grep-verification.md)
 - [新設 logged ガードの上流に同一判定の silent 経路が残ると支配的入力で可視化が無効化される](../anti-patterns/upstream-silent-path-defeats-new-logged-guard.md)
@@ -75,3 +90,5 @@ drift 先が Issue の Non-Target（別 Issue の管轄と明記）である場�
 - [PR #2461 review cycle 2 (量化子を強める編集が既存メンバーの再検証を要求する)](../../raw/reviews/20260829T113539Z-pr-2461.md)
 - [PR #2464 review cycle 2 (pin の needle を変えた同一 diff がその説明コメントを置き去りにする)](../../raw/reviews/20260829T142006Z-pr-2464.md)
 - [PR #2464 fix results (NB sweep — アンカーを持てない散文 drift の消化経路)](../../raw/fixes/20260829T142223Z-pr-2464.md)
+- [PR #2475 review cycle 1 (括弧で列挙を添えた全称量化が執筆時点から偽だった)](../../raw/reviews/20260830T043014Z-pr-2475.md)
+- [PR #2475 review cycle 2 (同一文への「ついでの限定」は over-fix ではないと判定)](../../raw/reviews/20260830T044223Z-pr-2475.md)

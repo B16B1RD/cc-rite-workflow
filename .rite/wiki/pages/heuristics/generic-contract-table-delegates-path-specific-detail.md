@@ -9,9 +9,16 @@ sources:
     resource: "raw/reviews/20260804T104340Z-pr-2104.md"
   - type: "reviews"
     resource: "raw/reviews/20260804T113022Z-pr-2106.md"
-tags: ["abstraction-level", "delegation", "canonical-contract", "sibling-parity", "defined-term", "spec-implementation-drift", "relative-reference", "causal-attribution"]
+  - type: "reviews"
+    resource: "raw/reviews/20260830T043014Z-pr-2475.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260830T044223Z-pr-2475.md"
+tags: ["abstraction-level", "delegation", "canonical-contract", "sibling-parity", "defined-term", "spec-implementation-drift", "relative-reference", "causal-attribution", "intra-document-duplication"]
 confidence: medium
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-04T20:40:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T04:57:39Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-08-30T04:57:39Z"
 ---
 
 # 汎用契約の表に経路固有の詳細を書かず下位節へ委譲する。ただし委譲は委譲先の網羅性を load-bearing にする
@@ -62,8 +69,17 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-04T20:40:00+09:00" }
 - **「〜されたもの」という原因帰属は、経路が 1 つであることを暗黙に主張する。** 残留する非 blocking 指摘を「ゲートが降格したもの」と書いたが、実体は 2 経路（ゲートが降格して別配列へ移送する分と、ゲート対象外でそのまま残る分）で、正常終了時に実際に残るのは後者だった。存在主張としては偽ではないが、読者が誤った機構に帰属させる。経路が複数あるなら上位概念で述べるほうが短く、実装変更にも強い
 - **N 箇所へ展開する作業では、機構の詳細を全箇所に書くと N 個の drift site ができる。** 詳細は SoT ポインタを持つ 1 箇所へ集約し、他は上位概念で済ませる
 
+### 同一文書内に正典記述があるフィールドは、条件を書き直さず所有を委譲する
+
+同じ文書の中に、あるフィールドの定義表（そのフィールドを誰が書き誰が消すかを列挙した行）が既にある状態で、新しい節がそのフィールドの条件を自前の言葉で断定すると、**同一文書内に同じ契約の記述が 2 つ生まれ、必ず一方が古くなる**。起点事例では新規追記が負キャッシュを「replica の作成成功だけが解除する」と断定したが、同じ文書のフィールド表は「Issue 切替でも落ちる」と明記しており、実装側の解除経路は 3 つあった。追記した側が最初から偽だった。
+
+**先行する正典記述があるなら、条件を再記述せず所有をそこへ委譲する**（「フィールド表が `X` について列挙する経路でのみ解除される」）。インラインで 3 経路を列挙し直す修正は、経路が増えるたびに 2 箇所を同期する義務を新設するため採らない。委譲なら経路の増減が正典側 1 箇所で閉じる。
+
+判定は「その概念の canonical な定義が同じ文書内に既にあるか」で行う。あるなら委譲、無いならその節が正典になるので書き切る。
+
 ## 関連ページ
 
+- [実装の分岐を散文へ落とす前に、フラグの状態数と観測ラベルの値域を機械的に数える](./count-implementation-states-before-writing-prose.md)
 - [SoT-reviewer 表現 drift: pos/neg 方向の差で派生記述が silent drift する](../anti-patterns/sot-reviewer-expression-drift.md)
 - [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](./universal-claim-prose-invalidated-by-path-addition.md)
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md)
@@ -72,3 +88,5 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-04T20:40:00+09:00" }
 
 - [PR #2104 review results](../../raw/reviews/20260804T104340Z-pr-2104.md)
 - [PR #2106 review results](../../raw/reviews/20260804T113022Z-pr-2106.md)
+- [PR #2475 review cycle 1 (同一文書内の定義表と新規追記の断定が矛盾)](../../raw/reviews/20260830T043014Z-pr-2475.md)
+- [PR #2475 review cycle 2 (所有の委譲による解消を確認)](../../raw/reviews/20260830T044223Z-pr-2475.md)
