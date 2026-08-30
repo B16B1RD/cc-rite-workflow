@@ -240,6 +240,7 @@ rite-workflow/
 │ │ ├── reviewer-registry-drift-check.sh # lint Phase 3.5 reviewer registry 3-way 同期検証
 │ │ ├── gitignore-health-check.sh
 │ │ ├── projects-board-drift-check.sh # lint Phase 3.18 CLOSED かつ board≠Done 検出
+│ │ ├── projects-status-gate.sh # open ステップ 2.6 Projects Status 検証ゲート (read-only・常に exit 0)
 │ │ ├── number-reference-check.sh # lint Phase 3.5 Issue/PR 番号参照 (#NNN) 検出 (lint/SKILL.md)
 │ │ ├── sentinel-contract-check.sh # lint Phase 3.5 sentinel SoT / emitter / consumer 同期検証
 │ │ ├── skill-rail-diff-check.sh # SKILL 記述ダイエットの機械レール逐語一致検証 (fenced block + table row を base ref と突合)
@@ -1345,6 +1346,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `reviewer-registry-drift-check.sh` | `/rite:lint` Phase 3.5 — detect reviewer registry drift across `agents/*-reviewer.md` and the 2 tables in `skills/reviewers/SKILL.md` (edit procedure: CONTRIBUTING.md "Adding a New Reviewer") | — |
 | `gitignore-health-check.sh` | Verify `$state_root/.rite/.gitignore` 3-line composition (`*` / `!wiki/` / `!wiki/**`); lint does not write | — |
 | `projects-board-drift-check.sh` | `/rite:lint` Phase 3.18 — detect CLOSED Issues whose Projects board Status is not `Done` (closure reason not consulted), optionally reconcile via `--reconcile` | — |
+| `projects-status-gate.sh` | `/rite:open` ステップ 2.6 — read an Issue's actual Projects board Status and report whether ステップ 2.4(A) (`Status → In Progress`) landed, as `[CONTEXT] PROJECTS_STATUS_INVARIANT=ok\|missing\|skipped\|unknown`. Read-only; always exits 0 so the non-blocking contract of 2.4(A) is preserved | — |
 | `number-reference-check.sh` | `/rite:lint` Phase 3.5 — detect Issue/PR number references (`#NNN` / `Issue #NNN` / `PR #NNN`) that crept back into the number-free documentation surface (`plugins/rite/skills/lint/SKILL.md`) | — |
 | `sentinel-contract-check.sh` | `/rite:lint` Phase 3.5 — verify the sentinel SoT against emitter and consumer skill files, and detect undeclared sentinel-shaped literals | Canonical contract: `references/sentinel-contract.md` |
 | `tmp-hardcode-check.sh` | `/rite:lint` Phase 3.5 — detect sandbox-incompatible patterns (`mktemp` + `/tmp` template, fixed `/tmp` path hardcode, `git push` upstream `-u`) in `plugins/rite/**/*.{md,sh}` + `docs/**/*.md` (test harnesses / error-catalog / self excluded) | — |

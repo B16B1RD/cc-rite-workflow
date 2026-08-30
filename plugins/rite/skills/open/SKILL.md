@@ -390,9 +390,12 @@ case "$status_result" in
     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  /' >&2
     echo "警告: Projects Status の \"In Progress\" への更新に失敗しました。手動更新: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <in_progress_option_id>" >&2 ;;
 esac
+echo "[CONTEXT] PROJECTS_STATUS=$status_result; issue={issue_number}"
 ```
 
 `auto_add: true` は未登録 Issue を helper 内部で Project へ自動登録する。全 result 分岐は non-blocking で、Status 更新の失敗が open をブロックすることはない。API レベルの詳細は [projects-integration.md §2.4.1–2.4.6](../../references/projects-integration.md#24-github-projects-status-update)。
+
+末尾の `[CONTEXT] PROJECTS_STATUS=` marker は `updated` / `skipped_not_in_project` / `failed` のいずれかを機械可読に残す（`case` の表示は人間向けで、後から成否を判定できない）。marker は表示のみで分岐を変えない — 実行の有無を判定するのは 2.6 のゲートであり、marker の欠落そのものはここでは扱わない。
 
 **(B) 親 Issue の Status 更新（Sub-Issue 着手時）** — (A) と独立に必ず実行する。ロジックの SoT は `projects-integration.md` §2.4.7:
 
@@ -429,13 +432,27 @@ echo "[CONTEXT] WM_REPLICA_INIT=$(printf '%s\n' "$init_out" | sed -n 's/^status=
 | `unverified` | 投稿は実行されたが検証 (3 回 retry) で発見できず | WARNING として続行 (以降の update が `no_comment` skip になる可能性を認識) |
 | (status 行なし = gh 失敗等) | 投稿失敗 | WARNING として続行 (non-blocking) |
 
-### 2.6 flow-state 更新
+### 2.6 flow-state 更新 + Projects Status 検証ゲート
+
+ゲートは flow-state の `set` と**同じ bash ブロック**に置く。別ブロックに分けると、2.4(A) を飛ばした実行はゲートのブロックも同じように飛ばせてしまう — 検証したい唯一の failure mode でゲートごと消える。`set` は phase を進める必須手順なので、そこに同乗させれば実行が保証される。
 
 ```bash
+bash {plugin_root}/hooks/scripts/projects-status-gate.sh --issue {issue_number} --expect "In Progress"
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase branch --issue {issue_number} --branch {branch_name} --pr 0 \
   --next "実装計画策定へ進む"
 ```
+
+ゲートは盤面の実 Status を読む（2.4(A) が出した marker ではない）。marker の有無を見るだけでは「実行したと主張したが盤面が変わっていない」を見逃すため。`projects.enabled: false` / Project 未登録は検証対象が無いので `skipped`。ゲートは常に exit 0 で、判定は marker だけに載る（Status 更新の失敗で open をブロックしないため）。
+
+| `PROJECTS_STATUS_INVARIANT` | アクション |
+|---|---|
+| `ok` | 盤面が `In Progress` 以降に到達済み。ステップ 3 へ進む |
+| `skipped` | 検証対象なし（Projects 無効 / `project_number` 未設定 / Issue が Project 未登録）。ステップ 3 へ進む |
+| `unknown` | 検証自体が失敗した（gh / jq エラー。stderr に原因）。**`ok` として扱わない**。警告を表示してステップ 3 へ進む（再実行はしない — 盤面の状態が不明なだけで、更新が失敗したとは限らない） |
+| `missing` | 2.4(A) が盤面に届いていない。**2.4(A) の bash を 1 回だけ再実行**してステップ 3 へ進む |
+
+`missing` の再実行の終端契約: 再実行では `[CONTEXT] PROJECTS_STATUS=` を再度 1 回だけ emit する。**ゲートは再呼び出ししない**（再々実行のループを構造的に作らない）。再実行も失敗した場合は最後の `PROJECTS_STATUS=` 値を残したままステップ 3 へ進む — ブロックも 3 回目の実行もしない。
 
 2.1-G の `MULTI_SESSION_ENABLED=true` のときは末尾に `--worktree "{wt_path}" --require-worktree` を追加する（`{wt_path}` は 2.2-W の `path=` 値）。`--require-worktree` は worktree path 不在のまま branch phase を記録した場合に `[CONTEXT] WORKTREE_INVARIANT=missing` を emit する（書き込み自体は完了するため work は失われない）。`missing` を観測したら worktree 化が漏れているので 2.2-W へ戻る。
 

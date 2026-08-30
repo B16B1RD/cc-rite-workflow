@@ -200,6 +200,123 @@ else
 fi
 
 echo ""
+echo "[T-04..T-07] Behavioral: two-rule detection over a fixture board"
+# The rule fixtures run the watchdog out of a throwaway plugin root so the reconcile
+# target (`$PLUGIN_ROOT/scripts/projects-status-update.sh`, an absolute path that PATH
+# shimming cannot reach) can be replaced by a mock that asserts the status it receives.
+# A single hardcoded "In Review" would push a Todo residue to the wrong column, so the
+# per-rule target is pinned here rather than only in the report JSON.
+RULES_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rite-watchdog-rules-XXXXXX")
+trap 'rm -rf "$T9F_DIR" "$RULES_DIR"' EXIT
+mkdir -p "$RULES_DIR/plugin/scripts" "$RULES_DIR/plugin/hooks/scripts/lib" "$RULES_DIR/repo/bin"
+cp "$WATCHDOG_SH" "$RULES_DIR/plugin/scripts/watchdog-status-mismatch.sh"
+cp "$REPO_ROOT/plugins/rite/hooks/control-char-neutralize.sh" "$RULES_DIR/plugin/hooks/"
+cp "$REPO_ROOT/plugins/rite/hooks/scripts/lib/git-remote.sh" "$RULES_DIR/plugin/hooks/scripts/lib/"
+cat > "$RULES_DIR/plugin/scripts/projects-status-update.sh" <<'RECON_SHIM'
+#!/bin/bash
+# Mock reconciler: records the status_name it was asked for so the caller's per-rule
+# target can be asserted, then reports success.
+printf '%s' "$1" | jq -r '.status_name' >> "$RITE_TEST_RECON_LOG"
+echo '{"result":"updated","warnings":[]}'
+RECON_SHIM
+chmod +x "$RULES_DIR/plugin/scripts/projects-status-update.sh"
+( cd "$RULES_DIR/repo" && git init -q && git remote add origin "git@github.com:o/r.git" ) >/dev/null 2>&1
+cat > "$RULES_DIR/repo/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+YAML
+
+# The gh shim reads its two canned responses from files so each fixture can vary the PR
+# list and the board Status without rewriting the shim.
+cat > "$RULES_DIR/repo/bin/gh" <<'GH_SHIM'
+#!/bin/bash
+case "$1 $2" in
+  "repo view")
+    echo "MOCK ASSERTION FAILED: gh repo view must not be reached (git-remote fast path)" >&2
+    exit 1 ;;
+  "pr list")  cat "$RITE_TEST_PR_LIST" ;;
+  "api graphql") cat "$RITE_TEST_BOARD" ;;
+  *) exit 0 ;;
+esac
+GH_SHIM
+chmod +x "$RULES_DIR/repo/bin/gh"
+
+# $1=label $2=isDraft $3=Status-or-empty(<absent> = not on the board) $4=--reconcile|--dry-run
+# Emits the watchdog's stdout JSON; leaves the reconcile log at $RULES_DIR/recon.log.
+run_rule_fixture() {
+  local is_draft="$1" status="$2" mode="$3"
+  printf '[{"number":1001,"isDraft":%s,"body":"Closes #998","headRefName":"fix/issue-998-x"}]\n' \
+    "$is_draft" > "$RULES_DIR/pr-list.json"
+  if [ "$status" = "<absent>" ]; then
+    echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[]}}}}}' > "$RULES_DIR/board.json"
+  else
+    jq -n --arg s "$status" \
+      '{data:{repository:{issue:{projectItems:{nodes:[{project:{number:1},fieldValues:{nodes:[{field:{name:"Status"},name:$s}]}}]}}}}}' \
+      > "$RULES_DIR/board.json"
+  fi
+  : > "$RULES_DIR/recon.log"
+  ( cd "$RULES_DIR/repo" \
+    && PATH="$RULES_DIR/repo/bin:$PATH" \
+       RITE_TEST_PR_LIST="$RULES_DIR/pr-list.json" \
+       RITE_TEST_BOARD="$RULES_DIR/board.json" \
+       RITE_TEST_RECON_LOG="$RULES_DIR/recon.log" \
+       bash "$RULES_DIR/plugin/scripts/watchdog-status-mismatch.sh" "$mode" --quiet 2>/dev/null ) || true
+}
+
+# $1=json $2=jq filter $3=expected $4=description
+assert_json() {
+  local actual
+  actual=$(printf '%s' "$1" | jq -r "$2" 2>/dev/null) || actual="<jq-failed>"
+  if [ "$actual" = "$3" ]; then
+    PASS=$((PASS + 1)); echo "  ✓ $4"
+  else
+    FAIL=$((FAIL + 1)); FAILURES+=("$4 (expected: $3, got: $actual)")
+    echo "  ✗ $4 (expected: $3, got: $actual)" >&2
+  fi
+}
+
+# Every fixture asserts prs_scanned first. Without it a shim that silently returns an
+# empty PR list would make the mismatch assertions pass by never entering the loop.
+echo "  -- T-04/T-05: Todo + draft PR"
+out=$(run_rule_fixture true Todo --reconcile)
+assert_json "$out" '.scan_summary.prs_scanned' '1' "the scan actually entered the detection loop"
+assert_json "$out" '.scan_summary.mismatches_found' '1' "Todo residue on a draft PR is reported (isDraft is not a reason to exclude)"
+assert_json "$out" '.mismatches[0].current_status' 'Todo' "the record carries the observed status"
+assert_json "$out" '.mismatches[0].expected_status' 'In Progress' "the Todo rule expects In Progress"
+recon_target=$(cat "$RULES_DIR/recon.log" 2>/dev/null | tr -d '\n')
+if [ "$recon_target" = "In Progress" ]; then
+  PASS=$((PASS + 1)); echo "  ✓ --reconcile drove the Todo residue to In Progress"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-04: reconcile target expected 'In Progress', got '$recon_target'")
+  echo "  ✗ reconcile target expected 'In Progress', got '$recon_target'" >&2
+fi
+
+echo "  -- T-06: In Progress + ready PR (non-regression)"
+out=$(run_rule_fixture false "In Progress" --reconcile)
+assert_json "$out" '.scan_summary.prs_scanned' '1' "the scan actually entered the detection loop"
+assert_json "$out" '.scan_summary.mismatches_found' '1' "In Progress residue on a ready PR is still reported"
+assert_json "$out" '.mismatches[0].expected_status' 'In Review' "the In Progress rule expects In Review"
+recon_target=$(cat "$RULES_DIR/recon.log" 2>/dev/null | tr -d '\n')
+if [ "$recon_target" = "In Review" ]; then
+  PASS=$((PASS + 1)); echo "  ✓ --reconcile drove the In Progress residue to In Review"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-06: reconcile target expected 'In Review', got '$recon_target'")
+  echo "  ✗ reconcile target expected 'In Review', got '$recon_target'" >&2
+fi
+
+echo "  -- T-06b: In Progress + draft PR is the correct state, not a mismatch"
+out=$(run_rule_fixture true "In Progress" --dry-run)
+assert_json "$out" '.scan_summary.prs_scanned' '1' "the scan actually entered the detection loop"
+assert_json "$out" '.scan_summary.mismatches_found' '0' "In Progress during a draft is not reported"
+
+echo "  -- T-07: Issue not on the project board"
+out=$(run_rule_fixture true "<absent>" --dry-run)
+assert_json "$out" '.scan_summary.prs_scanned' '1' "the scan actually entered the detection loop"
+assert_json "$out" '.scan_summary.mismatches_found' '0' "an Issue absent from the board is never a mismatch"
+
+echo ""
 echo "==============================="
 echo "Results: $PASS passed, $FAIL failed"
 if [ "$FAIL" -gt 0 ]; then
