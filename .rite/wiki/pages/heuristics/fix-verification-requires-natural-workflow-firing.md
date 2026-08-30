@@ -23,7 +23,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 
 起点となった Issue（Wiki 機能が実ワークフローで発火しない問題）の根本原因調査で、以下の盲点が浮き彫りになった:
 
-- 先行修正 #528/#529（Wiki raw commit の shell script 化）は shell script 単体では正常に動作していた
+- 先行修正（Wiki raw commit の shell script 化）は shell script 単体では正常に動作していた
 - しかし実 commit 履歴を精査すると、自然な PR ワークフローから発火した raw source は**ゼロ件**だった
 - wiki branch に残っていた 7 commits は全て「修正作業中に開発者が検証目的で手動実行した残骸」であり、E2E 発火実績ではなかった
 - 結果、「直ったと報告済み」の機能が実質的には死に体のまま数サイクル放置された

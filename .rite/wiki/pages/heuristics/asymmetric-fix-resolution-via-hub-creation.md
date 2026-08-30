@@ -59,7 +59,7 @@ Option B の hub 化は新しい SoT を作るため、**hub 自身の構造**�
 
 - **Option B 実装 PR** — 1 line 最小差分 doc PR、両 reviewer (prompt-engineer + code-quality) で 0 blocking findings、merge 完了
 - **style 統一 PR**（hub 化 PR が導入した hub 行 prose の style 統一）— `**Output rules** (...):` parenthetical を `**Output rules**:` 独立行スタイルに分解、0 findings
-- **scope 外 LOW 推奨を別 Issue 化** — prompt-engineer reviewer の 3 件の LOW 推奨は scope を超えるため #859/#860/#861 として登録。doc PR でも `rejected(scope-creep)` 判断ではなく followup-issue 化で記録する規律を維持
+- **scope 外 LOW 推奨を別 Issue 化** — prompt-engineer reviewer の 3 件の LOW 推奨は scope を超えるため 3 件の follow-up Issue として登録。doc PR でも `rejected(scope-creep)` 判断ではなく followup-issue 化で記録する規律を維持
 
 ### Sub-pattern — hub 行が 3+ test を参照したら inline 連結から bullet list へ refactor する
 

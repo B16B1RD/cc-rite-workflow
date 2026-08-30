@@ -34,7 +34,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-18T00:00:00+09:00" }
 2. orchestrator (LLM) は完了報告に「**推奨 4 件 (全て scope 外、follow-up 候補 2 件)**」と aggregate で記載
 3. しかし実際には Phase 7 の `AskUserQuestion` を **invoke しなかった** (`/rite:pr:review` workflow 仕様違反)
 4. ユーザー指摘で 4 件の実態を再分類すると:
-   - **2 件は実際に Issue 化すべきもの** (事後起票で #1040 / #1041 として作成)
+   - **2 件は実際に Issue 化すべきもの** (事後起票で 2 件作成)
    - **1 件は境界事案** (user 判断要)
    - **1 件は reviewer 自身が「現状の判断は妥当」と結論しており、そもそも推奨ではなかった**
 5. 「推奨」「follow-up 候補」という曖昧語が「やった方がいいけどやらない」を正当化する言葉遊びになり、責任を曖昧化する経路を生んでいた

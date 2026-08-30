@@ -50,7 +50,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-08T09:10:00+00:00" }
 
 (3) は「`init` という一般語との衝突」の判定が難しく、文脈判断（bash 実行ブロックを持つ実行手順書スキルの列挙、という文脈が明確な場合のみ対象）が必要になる。また、reviewer の指摘に対する修正時は「同一ファイル内の他の類似箇所」への伝播スキャンを徹底すること（cycle 5 の同一ファイル内2箇所見落としが好例）。
 
-このリポジトリでは rite:xxx 基底名衝突回避のリネームシリーズ（#1784 resume→recover、#1785 init→setup、#1786 review→pr-review、#1787 run→batch-run）が並行して進行しており、本パターンは他の兄弟 Issue でも再発しうる汎用的な知見である。
+このリポジトリでは rite:xxx 基底名衝突回避のリネームシリーズ（resume→recover、init→setup、review→pr-review、run→batch-run）が並行して進行しており、本パターンは他の兄弟 Issue でも再発しうる汎用的な知見である。
 
 なお、置換スコープの厳密な線引き（`rite:init` という完全文字列のみを対象とし、裸の "init" という一般語や `init.md` のような pre-existing shorthand 参照はスコープ外、という revert-test 判断）自体は正しい設計判断であり、本ヒューリスティックは「スコープを広げよ」ではなく「意図したスコープ内の3階層を最初から漏れなく洗い出せ」という趣旨である。
 

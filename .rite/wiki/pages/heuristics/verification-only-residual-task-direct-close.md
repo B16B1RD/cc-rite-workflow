@@ -24,7 +24,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-21T16:45:00+09:00" }
 起点となった Issue（「残作業: 検証: sandbox 有効環境で `/rite:pr-review` → `/rite:fix` → wiki ingest 経路が完走することを確認」）は、sandbox 非互換パターンを全域スイープした PR のマージ時点で未完了だった残作業だった。この Issue の性質は「コードは既に実装済み・マージ済みで、あとは実機で動くことを確認するだけ」という verification-only タスクであり、コード変更を伴わないため PR は作成せず、直接 `/rite:issue-close` で処理した（先行の同種 Issue に前例あり）。
 
 検証結果は Issue コメントに以下の形で記録された:
-- 6.5.W（pr-review の wiki raw source trigger）: 別 PR（#1937・#1938）のマージ時に raw source (reviews/) が正常生成されたことを確認
+- 6.5.W（pr-review の wiki raw source trigger）: 別 PR 2 件のマージ時に raw source (reviews/) が正常生成されたことを確認
 - 4.6.W（fix の wiki raw source trigger）: 別 PR で review⇄fix 複数サイクルの raw source (fixes/) が正常生成されたことを確認
 - Phase 4.4.W（issue-close の wiki raw source trigger）: 通常の open→iterate→ready→merge→cleanup パイプラインには含まれない独立スキルであり、この Issue 自体をこのスキルでクローズすることで実地検証した（この retrospective raw source 自体がその証跡）
 

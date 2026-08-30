@@ -55,7 +55,7 @@ HIGH × follow-up の 2 findings に対し、M5 の accept (認知のみ) 経路
 1. **両側同時修正の実装**: `docs/SPEC.md` / `docs/SPEC.ja.md` の 2 箇所 (Session Ownership SoT ノート / flow-state schema table `loop_count` 行) を EN+JA 対称に修正 (+5/-5)。伝播スキャンで検出した `docs/designs/multi-session-state.md` の同一 stale 列挙も同一コミットで修正。
 2. **修正 PR 側の検証も実装突合**: tech-writer (Doc-Heavy mode 5 カテゴリ) / code-quality の両レビュアーが、修正後の loop_count reader 集合 (`pre-compact.sh:233` / `post-compact.sh:128` / `session-start.sh:460` / `work-memory-update.sh:205`) と SPEC 両版列挙の byte-for-byte 一致、`pre-tool-bash-guard.sh` の `hook-preamble.sh` 単独 source を独立に grep verify し、AC 検証コマンド (grep 0 hits) も独立再実行して PASS。
 3. **伝播チェックの境界判断**: 残存する `state-read.sh` 参照は migration-guide (旧 API→新 API 対応表の正当な参照) / 歴史的設計記録 (削除済注記あり) のみで stale-misleading なしと判定 — 「両側同時修正」のスコープは live claim に限定し、歴史的記録は対象外とする境界が機能した。
-4. **収束効率**: 検出 PR (#1263) で accept + fingerprint 永続化したことで修正 PR (#1265) は最小 diff (3 files, +5/-5) に閉じ、cycle 1 で 0 findings mergeable に到達した。
+4. **収束効率**: 検出 PR で accept + fingerprint 永続化したことで修正 PR は最小 diff (3 files, +5/-5) に閉じ、cycle 1 で 0 findings mergeable に到達した。
 
 ## 関連ページ
 
