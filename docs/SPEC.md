@@ -1237,15 +1237,26 @@ To prevent false positives from text in heredocs (commit messages, PR descriptio
 
 ### Post-Tool WM Sync (`post-tool-wm-sync.sh`)
 
-Registered as a PostToolUse hook. Automatically creates local work memory files when they are missing during an active workflow.
+Registered as a PostToolUse hook. Serves two work-memory paths during an active workflow: it recreates the local work memory file when it is missing, and it syncs the Issue comment replica when the workflow phase changes.
 
-**Behavior:**
+**Common preamble:**
 
 1. Fires after Bash tool usage (with recursion guard)
 2. Retrieves active workflow and Issue number from the per-session flow state file (`.rite/sessions/{session_id}.flow-state`)
-3. Only creates `.rite/work-memory/issue-{n}.md` if it doesn't exist
 
-**Purpose:** Guarantees auto-recovery of local work memory during `/rite:recover` after compact or session restart.
+**Path A — local work memory auto-creation:**
+
+3. Only creates `.rite/work-memory/issue-{n}.md` if it doesn't exist, then exits (no replica sync in the same invocation)
+
+**Path B — Issue comment replica sync (taken when the local file already exists):**
+
+4. Compares `phase` against `last_synced_phase` in the flow state. Equal values exit immediately, so the sync fires once per phase transition rather than on every Bash tool call
+5. When `wm_replica` is `absent` (the negative cache written after a `no_comment` fetch), the hook makes **no `gh` call at all** (`round_trips=0`) and instead emits a `systemMessage` telling the user that replica sync is degraded and that `/rite:open` recreates the replica. Without this notice the `absent` state — which only a successful replica creation clears — would silently suppress every sync while leaving nothing but a debug-log trace
+6. Otherwise it fetches the replica comment, applies the local transforms (`update-phase`, and for progress-bearing phases also `update-progress` / `update-plan-status`), and writes them back in a single PATCH (`round_trips=2`). Every failure along this path (fetch failure, transform failure, PATCH failure, unresolved owner/repo) also surfaces as a `systemMessage`, because a PostToolUse hook's stderr never reaches the model
+
+**`last_synced_phase` advancement:** the field advances only when every sync call for the phase succeeded, so a partial failure leaves it un-advanced and the next hook invocation re-attempts the transformers that did not succeed. The `wm_replica=absent` short-circuit counts as success and advances it as well — no `gh` call is made, and the degradation `systemMessage` therefore surfaces once per phase change rather than on every Bash tool call.
+
+**Purpose:** Guarantees auto-recovery of local work memory during `/rite:recover` after compact or session restart, and keeps the Issue comment replica current — or, when it cannot, makes the degradation visible to the user instead of failing silently.
 
 ### Local WM Update (`local-wm-update.sh`)
 
@@ -1532,7 +1543,7 @@ A test framework for ensuring Hook script quality. Located in `plugins/rite/hook
 | `post-compact.sh` | Recovery context emission, per-session compact-state self-healing |
 | `pre-compact.sh` | State capture before compact |
 | `pre-tool-bash-guard.sh` | Dangerous pattern detection, heredoc safety |
-| `post-tool-wm-sync.sh` | Work memory auto-recovery after Bash tool calls |
+| `post-tool-wm-sync.sh` | Work memory auto-recovery after Bash tool calls, phase-diff replica sync, `last_synced_phase` advancement gating |
 | `session-start.sh` / `session-end.sh` | Session lifecycle + ownership transitions |
 | `work-memory-lock.sh` | Lock acquire/release + stale detection |
 | `wiki-ingest-trigger.sh` | Raw-source write contract |
