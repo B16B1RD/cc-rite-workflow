@@ -4,12 +4,17 @@ title: "契約を N 箇所に追記したら pin も N 箇所あるかを数え�
 domain: "patterns"
 description: "散文駆動スキルの契約変更で複数箇所を追記したとき、追加したアサーションが追記箇所より少ないと、pin されなかった 1 箇所だけを元に戻してもスイートが green のまま受入基準が壊れる。"
 created: "2026-08-29T15:42:53Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-29T15:42:53Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T06:15:00Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-08-30T06:15:00Z"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260829T152045Z-pr-2466.md"
   - type: "fixes"
     resource: "raw/fixes/20260829T152626Z-pr-2466.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260830T060338Z-pr-2479.md"
 tags: ["static-contract-test", "pin-coverage", "mutation-testing", "prose-driven-skill"]
 confidence: high
 ---
@@ -53,6 +58,23 @@ pin の存在だけでなく検出力も要る。それぞれの pin 対象の�
 
 negative のパターンは file-wide 検査になるため、**base 版にしか存在しない連続 literal** を選ぶ。事前に base 版に対して 1 hit、head に対して 0 hit であることを確認しておくと、誤検出しないことが機械的に言える。
 
+### 数え合わせの起点は「追記した箇所」だけではない — コメントで宣言した契約も 1 箇所として数える
+
+上の症状は「契約文を N 箇所に追記したのに pin が N-1 個だった」形だった。同じ穴は**契約をコメントとして宣言した場合**にも開く。コメントは仕様書き換えの体裁を取らないため追記箇所として数えられにくいが、後続の変更を縛る力は仕様文と同じである。
+
+観測事例: あるスキルの埋め込み bash で、値を取り出す式を consumer 側 helper の検証式と一字一句同じにし、その一致をコメントで「契約」として明記した。しかし両者の一致を確かめる pin は設置されなかった。既存の pin テスト群は隣接スキルのファイルに限定されており、当該行には届かない。別のテストは同じブロックの**呼び出し側リテラル**（`--count "$body_count"`）だけを固定し、値を作る**代入式そのもの**は検査していなかった。
+
+その穴の帰結は同じ PR が示している: 修正前の抽出式は**正常入力でも必ず失敗する**（行頭の絵文字がフィールドを 1 つずらしていた）にもかかわらず、テストスイートは全 green のまま merge されていた。式が壊れていることを検出できる pin が 1 つも無かったためである。
+
+したがって数え合わせの母数には次の 2 種を必ず含める:
+
+1. **仕様文・分岐表への追記** — 従来どおり
+2. **「この式は別ファイルの当該行と一致する」「この値域はあちらの enum と同じ」といった、コメントで宣言した対応関係** — 宣言した時点で契約であり、pin の対象になる
+
+**契約の宣言と pin の設置は同じ変更で行う。** コメントだけ先に置くと、その契約は「守るべきと書いてあるが、破っても誰も気付かない」状態になり、次にその行を触る者が善意で書き換えたときに沈黙のまま壊れる。
+
+pin を隣接ファイル向けに既に持っている場合でも、対象ファイルの列挙（`REVIEW_MD=` のような変数）にその契約先が入っているかを確認する — 同型の pin が存在することと、その pin が当該行に届くことは別である。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](./mutation-testing-test-fidelity.md)
@@ -62,3 +84,4 @@ negative のパターンは file-wide 検査になるため、**base 版にし�
 
 - [PR #2466 review results](../../raw/reviews/20260829T152045Z-pr-2466.md)
 - [PR #2466 fix results](../../raw/fixes/20260829T152626Z-pr-2466.md)
+- [PR #2479 review results](../../raw/reviews/20260830T060338Z-pr-2479.md)

@@ -436,7 +436,7 @@ okf_version: "0.2"
 | [hook の失敗枝はソース grep ではなく実行で検証する](pages/heuristics/hook-failure-branch-needs-execution-test.md) | heuristics | WARNING 文字列がソースに存在するだけでは、mkdir 失敗などの else 枝が実行時に辿られることは保証できない。対象パスをファイルにして hook を走らせ、stderr と終了コードを assert する。 | 2026-08-29T08:20:00Z | high |
 | [環境依存の断定を是正する編集が、限定された正しい前提をより広い偽の前提へ置き換える](pages/anti-patterns/corrective-assertion-widens-scope-into-new-falsehood.md) | anti-patterns | 「この repo の設定に依存した断定を実装機構に基づく記述へ差し替える」是正では、置き換え先の根拠そのもの（適用範囲と生成主体）を実コードで検証しないと、是正対象と同型の誤りを別の形で再生産する。典型は、base が正しく限定していた対象（サブディレクトリ）を親ディレクトリ全体へ広げ、除外規則の否定エントリによって偽になる前提を作ってしまう形。 | 2026-08-29T11:40:00+09:00 | high |
 | [全順序で優先順位を決める設計は逆向きの残存ハザードが必ず残る — 選ばなかった側を文書に残す](pages/heuristics/total-order-precedence-leaves-inverse-hazard.md) | heuristics | 複数の記法・入力形式・候補を全順序で優先する設計では、順序をどちらに倒しても「先に読む側が後ろの側の宣言を隠す」ハザードが必ず残り、順序変更はハザードを消さず露出面を移すだけである。 | 2026-08-29T14:35:49Z | high |
-| [契約を N 箇所に追記したら pin も N 箇所あるかを数え合わせる](pages/patterns/contract-additions-and-pins-one-to-one.md) | patterns | 散文駆動スキルの契約変更で複数箇所を追記したとき、追加したアサーションが追記箇所より少ないと、pin されなかった 1 箇所だけを元に戻してもスイートが green のまま受入基準が壊れる。 | 2026-08-29T15:42:53Z | high |
+| [契約を N 箇所に追記したら pin も N 箇所あるかを数え合わせる](pages/patterns/contract-additions-and-pins-one-to-one.md) | patterns | 散文駆動スキルの契約変更で複数箇所を追記したとき、追加したアサーションが追記箇所より少ないと、pin されなかった 1 箇所だけを元に戻してもスイートが green のまま受入基準が壊れる。 | 2026-08-30T06:15:00Z | high |
 | [散文が helper の挙動に新たに依存し始めたら、helper 側にも pin を置く](pages/heuristics/prose-dependency-on-helper-behavior-needs-helper-side-pin.md) | heuristics | 手順書が「helper が値を保持するので書き込みは 1 箇所でよい」のような設計上の依存を新設したとき、散文側の pin だけでは受入基準の半分しか守られない。helper の当該挙動を変異させても既存スイートが全件 green なら、単一書き込み設計を成り立たせている側が無防備になっている。 | 2026-08-29T15:42:53Z | high |
 | [不正入力は「落とす」より「無害化して残す」— 落とす設計は件数報告という第 2 の機構を要求する](pages/heuristics/neutralize-invalid-input-instead-of-dropping.md) | heuristics | 抽出した要素のうち不正なものを入力から落とす設計は、落とした件数を数える必要を生み、その件数用の述語が本体の述語と分裂し、件数を運ぶ marker が下流の判定表と食い違う、という連鎖を起こす。不正な部分だけを null へ写して要素自体は残す形にすると、件数カウント・その fallback・数値サニタイザ・専用 marker・下流の加算規則がすべて同時に不要になる。 | 2026-08-30T05:20:00Z | high |
 | [機構を畳んだら、その機構のために作った付随物も同時に畳む — 名前を変えて残すと動機を失った構造だけが次の欠陥面になる](pages/heuristics/teardown-mechanism-with-its-accessories.md) | heuristics | ある機構のために新設した marker・専用 reason・報告文言は、その機構を畳んだ時点で棚卸しの対象になる。運ぶ値が無くなった marker を名前だけ変えて残すと、0 件時に最後の marker となって下流が「未完了」と誤報告し、既存値の前置詞であれば判定表の前方一致で誤った行に吸われる。削除は「消したもの」だけでなく「消したものが受けていた入力の行き先」も設計対象になる。 | 2026-08-30T05:20:00Z | high |
@@ -448,4 +448,4 @@ okf_version: "0.2"
 
 - 総ページ数: 434
 - ドメイン別: patterns=104, heuristics=192, anti-patterns=138
-- 最終更新: 2026-08-30T05:45:00Z
+- 最終更新: 2026-08-30T06:15:00Z
