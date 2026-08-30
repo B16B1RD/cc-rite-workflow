@@ -14,9 +14,16 @@ sources:
     resource: "raw/fixes/20260730T190134Z-pr-2066.md"
   - type: "fixes"
     resource: "raw/fixes/20260730T192847Z-pr-2066.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260830T033236Z-pr-2471.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260830T034210Z-pr-2471.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T12:50:00+09:00" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-08-30T12:50:00+09:00"
 ---
 
 # テンプレート準拠の fixture では、生成器が実データで作る構造的逸脱を検出できない
@@ -37,6 +44,22 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 - **mutation テストは、mutant が到達しない除外を素通りさせる**。差分ガード（sed が no-op なら fail）は機能して vacuous pass を防いだが、mutant がフィルタ本体の一部を残す設計だったため、その除外だけ mutation からも fixture からも到達不能だった。mutation の設計時に「どの除外がその mutant で測れないか」を列挙し、測れないものは fixture 側で pin する。
 
 **適用条件**: 生成器（LLM / スクリプト）が出力するファイルを読むパーサ・除外規則の fixture を設計するとき。テンプレートではなく実データのサンプルを先に見る。
+
+### 手書き fixture は「生成器側のドリフト」も見えなくする
+
+fixture が実データから逸脱する向きは 2 つある。上記は「fixture が正しく、実データが逸脱する」向き。もう 1 つは**生成器が変わっても fixture は変わらない**向きで、こちらは実装が生成器の出力に依存した瞬間に死角になる。
+
+実例: 所属判定 `_body_belongs_to_issue` が、コメント生成テンプレートの書く `- **Issue**: #N` の 1 行だけを入力にする実装を入れた。テストは全て手書き fixture（`- **Issue**: #42` をハードコード）を通すため、**テンプレート側のラベルを改名しても 31 passed / 0 failed のまま**だった。故障は fail-safe（スキャンへ縮退するだけ）なので、性能契約（gh 往復を増やさない）だけが無警告で死ぬ。
+
+対策は fixture を増やすことではなく、**実際に生成される出力を捕まえて実 parser にかける**こと:
+
+- 生成側を shim で走らせ、投稿・書き込みに渡された body をそのまま保存する
+- parser 本体を `awk '/^_fn\(\) \{/,/^\}$/'` 等で抽出して `eval` し、保存した body に直接適用する
+- 対象 ID で真、別 ID で偽、の両方を assert する（片方だけだと部分一致実装が通る）
+
+これで fixture を介さずテンプレートと parser を同じテストで突き合わせられる。実際、部分一致実装へ mutate すると当該 assert だけが落ちる。
+
+**「実装がテンプレートの特定の行に依存し始めた」ことが、この対策を入れる合図である**。依存が生まれた PR でテストを足さないと、依存を知らない後続の変更者がテンプレートを触った時点で無警告で劣化する。
 
 ## 関連ページ
 

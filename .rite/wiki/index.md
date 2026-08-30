@@ -336,7 +336,7 @@ okf_version: "0.2"
 | [一般化した断定は、実装が特殊化されている限り必ず偽になる — 同じ契約を書く複数サイトは最も限定的な表現に揃える](pages/heuristics/generalized-claim-false-while-implementation-specialized.md) | heuristics | 同じ契約が複数箇所に書かれているとき、書き手は場所ごとに違う抽象度で表現しがちである。 | 2026-08-26T02:16:20+09:00 | high |
 | [意図的除外と失敗を同じカウンタに載せると、そのカウンタの存在理由が消える](pages/heuristics/intentional-exclusion-not-counted-as-failure.md) | heuristics | 無音の欠損を可視化するために失敗カウンタを新設したら、そこに何を載せるかが設計判断になる。 | 2026-08-01T00:21:06+09:00 | high |
 | [実測アンカーの repro に書くパイプは U+00A6 へ置換する](pages/patterns/verification-anchor-pipe-substitution.md) | patterns | 実測必須ゲートは、レビュー指摘が blocking であるために `Verification:` アンカー付きの再現手順を要求する。 | 2026-08-01T00:21:06+09:00 | high |
-| [テンプレート準拠の fixture では、生成器が実データで作る構造的逸脱を検出できない](pages/heuristics/template-fixture-misses-generator-real-data-deviation.md) | heuristics | 除外規則やパーサの fixture を「そのファイル種別のテンプレート」に合わせて作ると、テンプレートが持つ偶然の性質（当該見出しが最終節にある、など）によって**誤った実装と正しい実装が同じ結果を返す**。 | 2026-08-01T00:21:06+09:00 | high |
+| [テンプレート準拠の fixture では、生成器が実データで作る構造的逸脱を検出できない](pages/heuristics/template-fixture-misses-generator-real-data-deviation.md) | heuristics | 除外規則やパーサの fixture を「そのファイル種別のテンプレート」に合わせて作ると、テンプレートが持つ偶然の性質（当該見出しが最終節にある、など）によって**誤った実装と正しい実装が同じ結果を返す**。 | 2026-08-30T12:50:00+09:00 | high |
 | [中断されうる処理の完了判定は、完了した処理だけが持つ不可逆な副作用を述語にする](pages/patterns/completion-predicate-uses-irreversible-side-effect.md) | patterns | signal で中断されうる処理について「完了したか」を判定するとき、成果物の**存在**（`[ -e "$dst" ]`）を証拠に使ってはならない。 | 2026-08-01T05:40:00Z | high |
 | [消費側だけに足した allowlist は生成側の値域と食い違い「成功しているのに永久に失敗」の非収束を作る](pages/anti-patterns/consumer-allowlist-wedges-producer-value-range.md) | anti-patterns | 「危険な入力を弾く」allowlist を**消費側だけ**に追加すると、生成側が正当に作れる値まで拒否する。 | 2026-08-13T19:20:00+09:00 | high |
 | [静的ガードを新設したら、走査面の限界と現存する未カバーサイトをテスト本体のコメントに書く](pages/heuristics/static-guard-declare-scan-scope-limits.md) | heuristics | 退行を機械的に止める静的ガード（find + 検出器で全ファイルを走査するテスト等）を追加するとき、**走査面が何を含まないか**と、**その盲点に現時点で違反が残っているか**をテスト本体のコメントと PASS 文言に書く。 | 2026-08-01T17:45:00+09:00 | medium |
@@ -363,7 +363,7 @@ okf_version: "0.2"
 | [恒久規範の理由付けを「今は動かない」という現時点の欠陥への断定に置くと、欠陥が直った時点で規範が静かに誤りになる](pages/anti-patterns/rationale-asserting-current-defect-rots-when-fixed.md) | anti-patterns | 原則ファイルに「運用環境は `CLAUDE.md` に宣言する — **Wiki は reviewer が読まないため** — なぜなら reviewer 側の Guardrail がこの宣言を参照するから」と書いた。 | 2026-08-03T00:55:00+09:00 | high |
 | [列挙・全称主張を持つ記述は書き直しでは収束しない — 撤去だけが指摘面を消す](pages/anti-patterns/enumeration-claim-rewrite-never-converges.md) | anti-patterns | 散文やコメントが「この 2 field を env で渡す caller は X のみ」「以降の caller は番号を持たない」のように call site を数え上げたり、「〜だけが X を持つ」「どの経路でも Y されない」と全称・唯一性を断定すると、対象が 1 つ増えるだけでその文は偽になる。 | 2026-08-08T17:40:00+09:00 | high |
 | [修正に添えるコメントは機構を語るほど次サイクルの検証対象面を広げる — 根拠はテストに置く](pages/heuristics/comment-rationale-widens-review-surface.md) | heuristics | コードの修正そのものより、その修正に添えたコメントのほうが次のレビューサイクルで指摘を生みやすい。 | 2026-08-06T02:49:27Z | high |
-| [診断メッセージの主語と射程は、その文が発火する条件が保証している対象に限る](pages/heuristics/diagnostic-claim-scoped-to-firing-condition.md) | heuristics | 縮退時の診断が誤情報になると、既に degraded な状況でのトリアージを誤らせる。 | 2026-08-10T05:20:00+09:00 | high |
+| [診断メッセージの主語と射程は、その文が発火する条件が保証している対象に限る](pages/heuristics/diagnostic-claim-scoped-to-firing-condition.md) | heuristics | 縮退時の診断が誤情報になると、既に degraded な状況でのトリアージを誤らせる。 | 2026-08-30T12:50:00+09:00 | high |
 | [rc 変数を 0 で初期化すると、未起動の段を「起動して成功した」と断定する](pages/patterns/rc-variable-not-started-sentinel.md) | patterns | 多段 pipeline（例: `python3 ... \| jq ...`）の各段の rc を診断メッセージへ載せる設計で、後段の rc 変数を `0` で初期化すると、**後段が一度も起動しない経路で「起動して成功した」と能動的に断定する**。 | 2026-08-03T07:46:56Z | high |
 | [fail-closed ガードは「異常を検出したら止める」ではなく「正常を確認できなければ止める」で書く](pages/patterns/fail-closed-confirms-normal-not-detects-abnormal.md) | patterns | cross-Issue の値転写を遮断する fail-closed ガードが、「identity が**食い違う**」ときにしか発火しない実装になっていた。 | 2026-08-03T07:46:56Z | high |
 | [特定の 1 バイト・1 条件で書いた防御は、defect class 全体を覆うか修正直後に自問する](pages/heuristics/single-condition-defense-vs-defect-class.md) | heuristics | レビュー指摘は具体的な 1 ケースで届く。 | 2026-08-03T07:46:56Z | high |
@@ -409,7 +409,7 @@ okf_version: "0.2"
 | [pin の説明文に pin 対象の literal を書くと、注記自身が出現数に数えられて count pin が落ちる](pages/anti-patterns/pin-note-containing-pinned-literal.md) | anti-patterns | 「特定の文字列がファイル内にちょうど N 個ある」という count pin を導入したあと、その pin の意図を説明する注記に**対象の literal をそのまま書く**と、注記自身が N+1 個目の出現になり pin が落ちる。 | 2026-08-07T18:40:00+09:00 | high |
 | [安全側へ倒れる fail-safe は、倒れた事実が観測されない限り機能の恒久的不作動を隠す](pages/anti-patterns/safe-side-degradation-hides-permanent-inoperability.md) | anti-patterns | 「情報が欠ければ従来のフル装備へ倒す」型の fail-safe は、倒れた向きが安全側であるがゆえに**壊れていることを誰にも伝えない**。 | 2026-08-08T14:00:41+09:00 | high |
 | [診断を 1 行足す修正は、外部入力・エラー経路・テスト網羅の 3 領域を同時に開く](pages/heuristics/added-diagnostic-opens-three-review-surfaces.md) | heuristics | 診断メッセージの追加は「1 行足すだけ」に見える。 | 2026-08-08T14:00:41+09:00 | high |
-| [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) | anti-patterns | assert のラベル（テスト名・メッセージ）は、その assert が守る契約の宣言である。 | 2026-08-08T14:00:41+09:00 | high |
+| [assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる](pages/anti-patterns/assert-label-overclaims-predicate-scope.md) | anti-patterns | assert のラベル（テスト名・メッセージ）は、その assert が守る契約の宣言である。 | 2026-08-30T12:50:00+09:00 | high |
 | [awk の exit は END 規則を実行する — 早期終了と END フォールバックの併用は二重出力になる](pages/anti-patterns/awk-exit-runs-end-rule-double-output.md) | anti-patterns | POSIX awk の `exit` は**プログラムを即座に終えるのではなく END 規則へ飛ぶ**。 | 2026-08-08T14:00:41+09:00 | high |
 | [awk のデフォルト FS は `\\r` を含まない — CRLF 入力で「空行」判定が壊れる](pages/anti-patterns/awk-default-fs-excludes-cr-breaks-empty-line-test.md) | anti-patterns | awk のデフォルト FS は space / tab / newline であり **`\\r` を含まない**。 | 2026-08-08T14:00:41+09:00 | high |
 | [機構を削除して解くと、pin 面積だけでなく失敗モードの重さ（blast radius）も縮む](pages/heuristics/simplification-shrinks-pin-surface-and-blast-radius.md) | heuristics | 「規律を作って pin で守る」より「規律が要らない構造にする」ほうが安い、という判断は pin の本数だけでは測れない。 | 2026-08-10T11:55:05Z | high |
@@ -442,8 +442,9 @@ okf_version: "0.2"
 | [機構を畳んだら、その機構のために作った付随物も同時に畳む — 名前を変えて残すと動機を失った構造だけが次の欠陥面になる](pages/heuristics/teardown-mechanism-with-its-accessories.md) | heuristics | ある機構のために新設した marker・専用 reason・報告文言は、その機構を畳んだ時点で棚卸しの対象になる。運ぶ値が無くなった marker を名前だけ変えて残すと、0 件時に最後の marker となって下流が「未完了」と誤報告し、既存値の前置詞であれば判定表の前方一致で誤った行に吸われる。削除は「消したもの」だけでなく「消したものが受けていた入力の行き先」も設計対象になる。 | 2026-08-30T05:20:00Z | high |
 | [守るべき失敗モードを「検証対象なし」へ分類する後条件ゲートは、その失敗モードを最初から素通しする](pages/anti-patterns/postcondition-gate-classifies-target-failure-as-not-applicable.md) | anti-patterns | 後条件ゲートの verdict 分類に sibling helper の判断をそのまま写すと、写し元の呼び出し文脈でだけ正しい「検証対象なし」の定義が持ち込まれ、ゲートが塞ぐべき当の状態が clean bill に落ちる。骨格の再利用と判断の再利用は別物である。 | 2026-08-30T11:20:00+09:00 | high |
 | [到達不能に見える分岐の削除は、その分岐が受けていた入力の行き先を確認してから決める](pages/heuristics/branch-deletion-traces-where-the-input-flows.md) | heuristics | 到達不能に見える case arm を消すと、その入力は消えるのではなく catch-all へ流れ込み、失敗ではない値に対して失敗の診断と手動復旧コマンドを出す。デッドコード除去のつもりが診断の劣化になるため、削除前に「その分岐が受けていた入力はどこへ行くか」を確認する。 | 2026-08-30T11:20:00+09:00 | high |
+| [「この経路は X を呼ばない」の根拠は、委譲先ファイルまで含めた grep で取る](pages/heuristics/call-path-survey-must-include-delegated-references.md) | heuristics | 手順を別ファイルへ委譲する構造では、入口ファイルだけを grep して 0 件だったことは「呼ばない」の根拠にならない。委譲先まで含めて数えないと、結論が正しくても根拠が偽になり、次の変更者がその偽の前提の上に判断を積む。 | 2026-08-30T12:50:00+09:00 | high |
 ## 統計
 
-- 総ページ数: 432
-- ドメイン別: patterns=104, heuristics=190, anti-patterns=138
-- 最終更新: 2026-08-30T11:20:00+09:00
+- 総ページ数: 433
+- ドメイン別: patterns=104, heuristics=191, anti-patterns=138
+- 最終更新: 2026-08-30T12:50:00+09:00

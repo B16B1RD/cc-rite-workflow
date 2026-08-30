@@ -9,9 +9,16 @@ sources:
     resource: "raw/reviews/20260808T013358Z-pr-2142.md"
   - type: "fixes"
     resource: "raw/fixes/20260808T014357Z-pr-2142.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260830T033236Z-pr-2471.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260830T034210Z-pr-2471.md"
 tags: ["test", "mutation-testing", "assertion-strength", "contract", "review-fix-loop"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T14:00:41+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T12:50:00+09:00" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-08-30T12:50:00+09:00"
 ---
 
 # assert のラベルが述語より広い範囲を名乗ると「虚偽主張」クラスの欠陥になる
@@ -41,6 +48,16 @@ PR #2142 cycle 3 では、前 cycle で「番人を立てる」ために新設�
 ### 共有ヘルパーの欠陥を主張するときは範囲を数えてから書く
 
 同 cycle では「`assert_grep_in_section` は escape が剥がれて **assert が常に PASS する**」「**全 caller** に同じ縮退がある」と書いたが、実測では (i) start が一致しなければ empty section を検出して FAIL する、(ii) 縮退するのは**終端**パターンに意味を変える escape を含む caller だけで、既存 28 caller 中 0 件だった。**誤った一般化は「28 箇所の一斉修正」か「正常な assert 全体への不信」のどちらかを誘発する**。主張の範囲は grep で数え、数えた結果を主張に書く。手段の判断（この helper を使わない）が正しくても、理由が誤っていれば別の欠陥として残る。
+
+### テスト名が契約を宣言し、述語がそれを守らない 2 形
+
+ラベルと述語の乖離は「範囲」だけでなく「強度」と「方向」でも起きる。どちらもテスト名だけ読むと守られているように見え、mutation でしか露見しない。
+
+**強度の乖離** — テスト名 `notifies on every phase change` に対し assert は `[ "$n" -ge 1 ]`。3 回の phase 変化をループしながら 1 回で通る。実行時は 3/3 で PASS するので pass メッセージ自身が `3/3` と出すが、閾値は 1 のまま。「1 回鳴って以後沈黙」する退行——まさにそのテストが塞いだはずの障害——が緑で通り抜ける。**観測値より弱い閾値を書いた時点で、テスト名の契約は守られていない**。
+
+**方向の乖離** — テスト名 `#246 が #2463 に前方一致しない` に対し、実際に検証していたのは target=2463 / cached=246 の組。文字列等価な現行実装ではこの向きは自明に通る。危険な向きは逆（target=246 / cached=2463）で、部分一致実装なら「含む」と誤判定する。実際に `grep -c "^- \*\*Issue\*\*: #$issue"` へ mutate すると 31 passed / 0 failed で誰も検出しなかった。**境界テストは「壊れた実装が通ってしまう側」を書く**。名前が境界を主張しているなら、その主張を偽にできる向きが検証対象である。
+
+いずれも修正は名前を弱めることではなく述語を強めること（`-eq 3` にする / 逆方向のケースを足す）。名前が正しい契約を述べているなら、直すのは述語のほうである。
 
 ## 関連ページ
 
