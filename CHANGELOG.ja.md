@@ -31,10 +31,40 @@ marketplace 配布のプラグインファイルではないため、`number-ref
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-30
+
 ### 修正
 
 - **`/rite:merge` が checks pending で即停止せず CI 完了を待つ** — `--force-ci` なしで `statusCheckRollup` が pending のとき、15 秒間隔・上限 540 秒で再取得し、既存の healthy / unhealthy / unknown 分類へ合流する。上限到達は `[merge:not-ready]` と未完了 check 名で fail-close する。(#2449)
 - **消費済みの release-promotion attestation が削除される** — `pr-cycle-cleanup.sh` が、対応する GitHub PR が MERGED または CLOSED の `.rite/release-promotions/{N}.json` を削除する。OPEN と状態不明は merge gate が通るよう理由付きで残す。同ディレクトリの `.gitignore` は削除しない。(#2427)
+- **replica init 過渡窓では `post-tool-wm-sync.sh` が work memory replica 不在を通知しない** — `/rite:open` が `phase=init` を記録してから replica を作成するまでの間、「replica が見つかりません。`/rite:open` を実行してください」という systemMessage を抑止する。`wm_replica=absent` の負キャッシュ記録と `last_synced_phase` の前進は不変で、抑止時は debug ログに痕跡を残す。(#2462)
+- **`wm_comment_id` / `wm_replica` が所属 Issue でスコープされる** — `flow-state.sh` は書き込む Issue が既存と一致するときだけ両キーを保持する。`/rite:batch-run` の連続処理で前 Issue の replica コメントへ PATCH することがなくなり、`wm_replica: "absent"` の負キャッシュがその Issue の残り全 phase で replica 同期を無音のまま skip し続けることもなくなる。(#2463)
+- **`.rite/release-promotions/` が自己 gitignore される** — `release-promotion-verify.sh` が attestation ディレクトリの作成直後に `*` のみの `.gitignore` を設置し、attestation ファイルが `git status` に未追跡として溜まらないようにする。設置失敗は WARNING で、exit code・head OID・attestation は保たれる。(#2425)
+- **`/rite:open` が Projects Status → In Progress の遷移を検証する** — 新規の read-only helper `projects-status-gate.sh` が Issue の実 Projects Status を読み `[CONTEXT] PROJECTS_STATUS_INVARIANT=ok|missing|skipped|unknown` を emit する。`watchdog-status-mismatch.sh` は Todo 残留 / In Progress 残留の 2 ルール構成になり、mismatch レコードに `expected_status` を持ち、`--reconcile` の遷移先がルール依存になる。(#2469)
+- **`/rite:open` が検出した親 Issue 番号を flow-state へ記録する** — 親を検出したとき `flow-state.sh set` へ `--parent-issue` を渡すため、`/rite:issue-implement` の親進捗更新が `PARENT_ISSUE=none` で skip されなくなる。親を持たない Issue では `0` を書かずフラグ自体を付けない。(#2460)
+- **`issue-complexity-lane.sh` が表形式の Section 0 Meta を受理する** — `| **Complexity** | S |` を第 3 記法として読むため、その記法で書かれた Issue で `/rite:open` が `complexity_absent` の fail-loud で停止しなくなる。(#2459)
+- **`/rite:cleanup` が follow-up Issue 起票前に非実測指摘をマージ後 HEAD で再検証する** — `cleanup-follow-up-issue.sh` に `--exclude-ids <csv>` を追加し、後続の fix cycle で解消済みの指摘を除外する。全件解消なら `skipped; reason=all_resolved` で起票自体を skip する。未知 id は WARNING のうえ既知分だけ除外して続行する。(#2467)
+- **自動起票の follow-up / `pr-create` Issue が Section 0 Meta を持つ** — body 先頭に `**Type**` / `**Complexity**` を出すため、`/rite:open` が `complexity_absent` で停止しない。(#2451)
+- **`/rite:issue-update` が新パス存在時に旧 work memory へ倒れない** — dual-path の選択条件を「新が存在すればそれを選ぶ（corrupt でも旧へ行かない）」に揃え、neither/corrupt → Issue comment の規則と一致させた。`work-memory-format.md` の Restore from API / SoT Access Pattern も同じ条件へ同期した。(#2448)
+- **`gitignore-health-check.sh` が nested `.rite/.gitignore` を `state_root` で比較する** — linked worktree から `/rite:lint` したとき、main checkout に存在する nested gitignore が欠落扱いになる偽の DRIFT が出なくなる。(#2455)
+- **NB sweep 却下台帳の件数抽出が検証側と同一式になる** — `fix/SKILL.md` が `non_blocking_count` を `review-nonblocking-record.sh` の再検査と同一の式で読むため、却下台帳を持つ NB sweep が `reason=nb_sweep_ledger_count_unreadable` で必ず `[fix:error]` になる状態を解消した。(#2476)
+- **非数値の `nb_sweep_fixed` で WARNING を出す** — `/rite:fix --nb-sweep` が受領値付きの WARNING を stderr へ出す。done-file は従来どおり 1 行 `done` のままで、偽 pass を作らない。(#2443)
+- **NB sweep 再入ガードが永続ファイルになる** — `/rite:iterate` が会話 marker ではなく `.rite/state/nb-sweep-done-{pr}.txt` に記録するため、完了した sweep が full review へ復帰しない。orphan は `pr-cycle-cleanup.sh` が回収する。(#2433)
+- **`/rite:ready` の reviewed-head ゲートが NB sweep の push した commit を受理する** — `fix/SKILL.md` が push 後の HEAD SHA を done-file の 2 行目に書き、`ready-reviewed-head-gate.sh` は review-results JSON の一致を先に評価し（`via=json`）、不一致時だけ 2 行目を照合する（`via=sweep`）。それ以外の未レビュー commit と不正な 2 行目は従来どおり fail-loud で拒否する。(#2439)
+- **`guardrail_audit_log[]` のキー集合を明示列挙し書き込み時に検証する** — `pr-review/SKILL.md` が 7 キーを明示列挙し、`review-result-save.sh` が欠落・余分を `guardrail_audit_log_keys_violation` で拒否する。空配列は受理する。(#2434)
+- **`nb-sweep` 契約テストが producer / validator の件数抽出式の一致を固定する** — `nb-sweep-contract.test.sh` が `fix/SKILL.md` と `review-nonblocking-record.sh` の双方から `body_count=` 代入を抽出し、各側が 1 行であることを assert し、右辺を抽出できないときは空同士の等値で緑になる代わりに fail する。(#2480)
+- **gitignore health-check テストが worktree cwd から見た nested drift を固定する** — `gitignore-health-check-multi-session.test.sh` が、`state_root` がリポジトリ root と異なるときに nested 比較を skip する変異は worktree cwd では drift を隠し main cwd では隠さないことを assert する。(#2457)
+- **NB sweep 再入ガードテストが外側分岐の 1 行 `done` を固定する** — `nb-sweep-reentry-guard.test.sh` が外側と内側の分岐を独立に変異させ、first-else への退行が緑のまま通らないようにする。(#2442)
+
+### 変更
+
+- **リポジトリ root 直下の runtime state を `.rite/` 配下へ移設** — session-id / work-memory / plugin-root / flow-debug.log / initialized-version / settings-hooks-cleaned を `.rite/` 配下へ書く。`session-start.sh` が既存ファイルを一度だけ移送し、読者は新パスが無ければ旧パスを読む。(#2430)
+- **`.rite/` に nested self-gitignore を導入** — `session-start.sh` と `flow-state.sh` が 3 行の `.gitignore`（`*` / `!wiki/` / `!wiki/**`）を置き、利用者の root `.gitignore` に触れずに runtime state を塞ぐ。(#2429)
+- **`/rite:setup` が root `.gitignore` の列挙をやめ nested `.rite/.gitignore` を生成する** — `--upgrade` は同じ生成と旧パス移送を冪等に行い、`/rite:lint` の health-check は同じ 3 行構成を検証するだけでファイルを書き換えない。(#2431)
+- **legacy `.rite-flow-state` の書込経路を確定** — 新規作成される経路は無く、`flow-state.sh migrate` と `issue-comment-wm-sync.sh` / `cleanup-work-memory.sh` の resolver 失敗時フォールバックだけが既存ファイルを in-place 更新する。README のアンインストール手順を現行実装と一致させた。(#2432)
+- **`docs/SPEC.md` の Post-Tool WM Sync 節が hook の 2 経路を記述する** — Path A（local work memory 自動生成）と Path B（phase 差分 → Issue コメント replica 同期）に加え、`wm_replica=absent` が `gh` を一切呼ばず短絡すること、その劣化を systemMessage で通知すること、`last_synced_phase` の前進契約を明記した。(#2472)
+- **`setup/SKILL.md` の hook 登録表が replica 同期経路を明示する** — `post-tool-wm-sync.sh` の Purpose を両表で Path A / Path B の双方を含む記述にした。(#2474)
+- **`docs/SPEC.md` の hook 登録記述を `hooks.json` の実態へ揃える** — PreToolUse 行は v0.7 で除去済みの `Block tool usage after compact` を削除し `pre-tool-bash-guard.sh` / `pre-tool-edit-guard.sh` を記載、PostToolUse 行は `post-tool-wm-sync.sh` の Path B と `scripts/bang-backtick-edit-hook.sh` を記載、`issue-comment-wm-sync.sh` は登録済み PostToolUse hook ではなく Path B と複数スキルから呼ばれる helper として記述する。(#2478)
 
 ## [0.13.2] - 2026-08-28
 
@@ -972,6 +1002,7 @@ v0.4.0 では値は silent に無視されます。機能的な代替はあり�
 - TDD Light モード
 - git worktree による並列実装サポート
 
+[0.14.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.2...v0.14.0
 [0.13.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.3...v0.13.0
