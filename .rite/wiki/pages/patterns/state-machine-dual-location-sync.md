@@ -11,9 +11,14 @@ sources:
     resource: "raw/fixes/20260420T150304Z-pr-624-cycle2.md"
   - type: "reviews"
     resource: "raw/reviews/20260802T025011Z-pr-2084.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260830T013439Z-pr-2470.md"
 tags: [ring-pattern, helper-caller-sync, observability]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T11:59:42+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T11:20:00+09:00" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-08-30T11:20:00+09:00"
 ---
 
 # state machine を 2 箇所で記述する場合は動作の文字列レベルで同期する
@@ -106,6 +111,14 @@ Issue テンプレート (`templates/issue/template-structure.md`) では、` ``
 
 **実務上の優先順位**: 両者がずれた場合、**規則を実際に適用する主体が読む側**（= 生成物側 = fence 内）の欠落のほうが害が大きい。fence 外の Rules が正しくても、追記時点でそれを読む者はいない。fence 内が正典と考えて同期する。
 
+### sub-pattern: 値域を書く箇所が 2 つあると、実装に近い方だけが更新される
+
+同一ファイル内で marker / sentinel の**値域**を書く箇所が 2 つある構造（ファイル冒頭の Output 契約節と、実装直上の jq / case コメント）では、値を 1 つ増やしたときに**実装に近い方だけが更新される**。実測: sentinel を 2 種から 3 種へ増やした際、実装直上の jq コメントは 3 種を正しく列挙したのに、ファイル冒頭の Output 節（marker 契約そのもの）は「two sentinels」のまま残った。4 名の reviewer が独立に検出した。
+
+**対策**: contract を書く節と実装直上のコメントの**どちらが SoT かを決め、片方から片方を導出する形にする**。決めないまま両方に値域を書き続けると、毎回近い方だけが直る。導出できない場合は片方をポインタ（「値域は jq プログラムを参照」）に落とし、実体の重複そのものを消す。
+
+**併走する観測**: 同一コミット内の simplification も片側にだけ適用されやすい。tempfile lib へ移行して 4 つの変数すべてで guard が不要になったが、削除されたのは目に入った 2 つだけだった。**同じ理屈が当たる箇所は grep で洗い出してから消す**。
+
 ## 関連ページ
 
 - [DRIFT-CHECK ANCHOR は semantic name 参照で記述する（line 番号禁止）](./drift-check-anchor-semantic-name.md)
@@ -119,3 +132,4 @@ Issue テンプレート (`templates/issue/template-structure.md`) では、` ``
 - [PR #586 cycle 5 review (state 動作矛盾 F-03 検出)](../../raw/reviews/20260419T034237Z-pr-586-cycle5.md)
 - [PR #624 cycle 2 fix (helper case 拡張 × caller WARN_MSG 連動漏れ G3 HIGH)](../../raw/fixes/20260420T150304Z-pr-624-cycle2.md)
 - [PR #2084 review results (cycle 4, 生成テンプレートの fence 内外 sub-pattern)](../../raw/reviews/20260802T025011Z-pr-2084.md)
+- [PR #2470 review results (cycle 2, 値域 2 箇所記述の sub-pattern)](../../raw/reviews/20260830T013439Z-pr-2470.md)
