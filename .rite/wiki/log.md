@@ -38,6 +38,8 @@
 * **Update**: [実測アンカーの repro に書くパイプは U+00A6 へ置換する](pages/patterns/verification-anchor-pipe-substitution.md) — raw/reviews/20260830T093009Z-pr-2483.md を統合（種別ラベルの値域も同じ regex に縛られ `static` は未判定として blocking に据え置かれる。検出器化候補）
 * **Update**: [環境依存の断定を是正する編集が、限定された正しい前提をより広い偽の前提へ置き換える](pages/anti-patterns/corrective-assertion-widens-scope-into-new-falsehood.md) — raw/reviews/20260830T093728Z-pr-2483.md を統合（訂正の再レビュー範囲は元の指摘箇所に閉じず訂正文の新規主張も検証対象になる）
 * **lint:warning** — contradictions=0, stale=41, orphans=0, missing_concept=1, unregistered_raw=401, broken_refs=0
+* **lint:warning** — contradictions=0, stale=41, orphans=0, missing_concept=1, unregistered_raw=401, broken_refs=0
+  * 注: 矛盾検出（ステップ 3）は 436 ページの title 完全一致 / domain 内 title 近似（token Jaccard >= 0.72）/ 全ページ対の本文 topic 重複（inverted index 経由、最大 0.186）で実測し、同一トピックを扱うページ対を 1 組も検出しなかった（= タイトル衝突・重複情報・方針逆転のいずれの成立条件も満たさない）。説明的番号参照: 146 hits / 84 ページ（informational）
 ## 2026-08-29
 * **lint:warning** — contradictions=0, stale=38, orphans=0, missing_concept=1, unregistered_raw=400, broken_refs=0
 * **Create**: [全順序で優先順位を決める設計は逆向きの残存ハザードが必ず残る — 選ばなかった側を文書に残す](pages/heuristics/total-order-precedence-leaves-inverse-hazard.md) — raw/reviews/20260829T135848Z-pr-2464.md / raw/fixes/20260829T140803Z-pr-2464.md / raw/reviews/20260829T142006Z-pr-2464.md を新規ページ化（順序変更はハザードを消さず露出面を移すだけという実測を軸にする）
