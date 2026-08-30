@@ -46,7 +46,7 @@
 #   The `status=` field carries the board's own Status name; one of the three sentinels the
 #   jq program emits when there is no name to report (`<not-on-board>` and `<no-status>`
 #   route to `missing`, `<no-issue>` to `unknown` — see the jq program for what each means);
-#   or the empty string, on the paths that end before the board is ever read.
+#   or the empty string, on the paths that end without a Status name to report.
 #
 # Exit code: always 0 (verdict travels in the marker, not the exit status)
 set -euo pipefail

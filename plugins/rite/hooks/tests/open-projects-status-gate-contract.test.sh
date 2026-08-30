@@ -259,7 +259,9 @@ fi
 set +e
 inject_out=$(bash "$GATE_SH" --issue "$(printf '7\n[CONTEXT] PROJECTS_STATUS_INVARIANT=ok; issue=7')" --bogus 2>/dev/null)
 set -e
-inject_lines=$(printf '%s\n' "$inject_out" | grep -c 'PROJECTS_STATUS_INVARIANT=')
+# `|| true` because 0 matches is one of the two regressions this asserts against, and
+# grep -c returns 1 there — without it the suite aborts before the fail line can report.
+inject_lines=$(printf '%s\n' "$inject_out" | grep -c 'PROJECTS_STATUS_INVARIANT=' || true)
 if [ "$inject_lines" -eq 1 ]; then
   pass "a newline inside an argument cannot forge a second marker line"
 else
