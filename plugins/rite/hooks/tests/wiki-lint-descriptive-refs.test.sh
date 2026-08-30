@@ -1045,8 +1045,10 @@ fi
 
 # ---- TC-53: staleness の informational 降格が判定経路から外れ続けること -------
 # 陳腐化は「経過時間の計上」であって構造的欠陥ではないため lint_action / n_warnings の
-# 判定要素から外した。否定 pin だけでは 8.1 の節ごと消滅・変数名改名で空振りするので、
-# 残る 4 変数の集合を 3 箇所 (散文 / bash if / residue gate) から抽出して相互一致も測る。
+# 判定要素から外した。否定 pin だけでは 8.1 の節ごと消滅で空振りするので、残る 4 変数の集合を
+# 6 箇所 (wiki-lint の散文 / bash if / residue gate、wiki-ingest の加算式 / 等式 / 内訳文言)
+# から抽出して相互一致も測る。片側だけに n_stale が残る drift と、判定ロジックごと消す変異の
+# 両方を弾く。
 INGEST_MD="$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md"
 
 # --- 否定 pin: 判定サイトから n_stale が消えている (件数表示・Lint: 行の n_stale は対象外) ---
@@ -1065,11 +1067,16 @@ assert_grep "TC-53 判定基準散文がブロッキング 4 種になってい�
 assert_grep "TC-53 n_stale は参考コメントとして意図的除外が明示されている" "$LINT_MD" \
   '# 参考: n_stale=\{n_stale\} — informational のため判定式から意図的に除外'
 
-# --- 3 箇所の 4 変数集合が一致する (片側だけ改変すると落ちる) ---
+# --- 6 箇所の変数集合が一致する (片側だけ改変すると落ちる) ---
+# 抽出は開いた regex にする。whitelist の alternation にすると「whitelist ∩ 各サイト」しか
+# 測れず、whitelist 外の名前を 1 箇所にだけ足す変異が全 assert を素通りする (AC-7 が要求する
+# 「3 箇所が同一の変数集合を指す」が成立しなくなる)。
 EXPECT_VARS='n_broken_refs n_contradictions n_missing_concept n_orphans'
-extract_sorted() { tr ' ' '\n' | grep -oE 'n_(contradictions|orphans|missing_concept|broken_refs|stale|unregistered_raw)' | sort -u | tr '\n' ' ' | sed 's/ $//'; }
+extract_sorted() { grep -oE 'n_[a-z_]+' | sort -u | tr '\n' ' ' | sed 's/ $//'; }
 
-prose_vars=$(sed -n 's/^- `lint:clean`: ブロッキングカテゴリ 4 種 (\(.*\)) \*\*すべてが 0\*\*.*/\1/p' "$LINT_MD" | extract_sorted)
+# 散文の「4 種」は数詞なので数字ワイルドカードで受ける。literal を要求すると語が変わったとき
+# capture が空になり、集合不一致ではなく「空 vs 4 種」として落ちて診断が原因を指さない。
+prose_vars=$(sed -n 's/^- `lint:clean`: ブロッキングカテゴリ [0-9] 種 (\(.*\)) \*\*すべてが 0\*\*.*/\1/p' "$LINT_MD" | extract_sorted)
 assert "TC-53 判定基準散文の変数集合が 4 種ちょうど" "$EXPECT_VARS" "$prose_vars"
 
 if_vars=$(sed -n '/^if \[ "\$n_contradictions" -gt 0 \]/,/^  lint_action="lint:warning"$/p' "$LINT_MD" | extract_sorted)
@@ -1078,9 +1085,7 @@ assert "TC-53 bash if 条件の変数集合が散文と一致" "$EXPECT_VARS" "$
 gate_vars=$(sed -n 's/^for _n_var in \(.*\); do$/\1/p' "$LINT_MD" | extract_sorted)
 assert "TC-53 residue gate の変数集合が散文と一致" "$EXPECT_VARS" "$gate_vars"
 
-# --- AC-6: Lint: 6 フィールド行は不変 (stale= フィールドは残る) ---
-assert_grep "TC-53 (AC-6) canonical Lint: 6 フィールド行が不変" "$LINT_MD" \
-  '^Lint: contradictions=\{n_contradictions\}, stale=\{n_stale\}, orphans=\{n_orphans\}, missing_concept=\{n_missing_concept\}, unregistered_raw=\{n_unregistered_raw\}, broken_refs=\{n_broken_refs\}$'
+# AC-6 の canonical `Lint:` 6 フィールド行不変は TC-21 (T-07) が pin 済み (重複させない)。
 
 # --- ingest 側: 加算式 / 等式 / 内訳文言の 3 箇所が同じ 4 項集合で一致する ---
 assert_not_grep "TC-53 (AC-4) ingest の n_warnings 加算式に n_stale がない" "$INGEST_MD" \
@@ -1091,13 +1096,98 @@ assert_not_grep "TC-53 (AC-4) ingest の n_warnings 等式に n_stale がない"
 add_vars=$(sed -n 's/^n_warnings += \(.*\)$/\1/p' "$INGEST_MD" | extract_sorted)
 assert "TC-53 ingest 加算式の項集合が 4 種ちょうど" "$EXPECT_VARS" "$add_vars"
 
+# 等式・内訳とも n_lint_anomaly は加算式に無い項なので capture 範囲から落とす。開いた regex に
+# したため、除去しないと集合に混ざる。
 eq_vars=$(sed -n 's/^\*\*等式\*\*: `n_warnings = \([^`]*\)`.*/\1/p' "$INGEST_MD" \
   | sed 's/n_lint_anomaly//' | extract_sorted)
 assert "TC-53 ingest 等式の項集合が加算式と一致" "$EXPECT_VARS" "$eq_vars"
 
+# 内訳文言は `{n_warnings} 件（内訳: ...）` の形。行全体を渡すと左辺の n_warnings まで拾うため
+# 「内訳:」以降に絞る。
 breakdown_vars=$(grep -F 'Wiki 品質警告: {n_warnings} 件（内訳:' "$INGEST_MD" \
-  | sed 's/n_lint_anomaly//' | extract_sorted)
+  | sed 's/^.*（内訳://' | sed 's/n_lint_anomaly//' | extract_sorted)
 assert "TC-53 ingest 内訳文言の項集合が加算式と一致" "$EXPECT_VARS" "$breakdown_vars"
+
+# --- ステップ 8.1 bash の実行時挙動 (T-01 / T-02 / T-05) ---
+# 静的 pin だけでは block の構文健全性を測れない。判定は継続行を含む if-chain なので、
+# `; then` を落とすような変異は集合一致 assert を素通りする。抽出して構文検査し実行する。
+extract_phase81() {
+  awk '/^# ステップ 8.1 canonical lint_action decision logic/{f=1} f{print} f && /^echo "\[CONTEXT\] lint_action=\$lint_action"$/{exit}' "$LINT_MD"
+}
+PHASE81_RAW="$SBX/phase81-raw.sh"
+extract_phase81 > "$PHASE81_RAW"
+
+# 群 1: 抽出の構造健全性。契約文字列はここに置かない — 置くと契約の消失を
+# 「アンカーが変更された可能性」と誤帰属させ、群を分けた意味が失われる。
+phase81_extract_ok=1
+for _required in '^set -o pipefail$' '^for _n_var in ' '^echo "\[CONTEXT\] lint_action=\$lint_action"$'; do
+  if ! grep -q "$_required" "$PHASE81_RAW"; then
+    fail "TC-53 ステップ 8.1 bash の抽出に失敗 ('$_required' 不在。アンカーが変更された可能性)"
+    phase81_extract_ok=0
+  fi
+done
+
+if [ "$phase81_extract_ok" = 1 ]; then
+  # placeholder を実値へ差し替えて実行可能にする。counter 名は EXPECT_VARS と独立に
+  # 列挙せず、抽出結果の gate ループから読む (名前を 2 箇所に書くと drift する)。
+  phase81_run() {
+    # $1..$4: n_contradictions n_orphans n_missing_concept n_broken_refs の値
+    # $5: n_stale の値 (参考コメント側。判定に影響しないことを測る)
+    sed -e "s/{n_contradictions}/$1/g" -e "s/{n_orphans}/$2/g" \
+        -e "s/{n_missing_concept}/$3/g" -e "s/{n_broken_refs}/$4/g" \
+        -e "s/{n_stale}/$5/g" -e "s/{n_unregistered_raw}/0/g" \
+        "$PHASE81_RAW" > "$SBX/phase81.sh"
+    bash "$SBX/phase81.sh" 2>&1
+  }
+
+  # 構文健全性 (`; then` 落ち等の変異を検出する)
+  sed -e 's/{n_contradictions}/0/g' -e 's/{n_orphans}/0/g' -e 's/{n_missing_concept}/0/g' \
+      -e 's/{n_broken_refs}/0/g' -e 's/{n_stale}/0/g' -e 's/{n_unregistered_raw}/0/g' \
+      "$PHASE81_RAW" > "$SBX/phase81-syntax.sh"
+  if bash -n "$SBX/phase81-syntax.sh" 2>"$SBX/phase81-syntax.err"; then
+    pass "TC-53 ステップ 8.1 bash が構文的に妥当"
+  else
+    fail "TC-53 ステップ 8.1 bash の構文検査に失敗: $(head -1 "$SBX/phase81-syntax.err")"
+  fi
+
+  # T-01: n_stale > 0 かつ他 4 変数 0 → lint:clean (AC-1)
+  assert "TC-53 (T-01/AC-1) n_stale=41・他 4 変数 0 で lint:clean" \
+    "[CONTEXT] lint_action=lint:clean" "$(phase81_run 0 0 0 0 41)"
+
+  # T-02: 4 変数それぞれが > 0 のとき lint:warning (AC-2)
+  assert "TC-53 (T-02/AC-2) n_contradictions=1 で lint:warning" \
+    "[CONTEXT] lint_action=lint:warning" "$(phase81_run 1 0 0 0 0)"
+  assert "TC-53 (T-02/AC-2) n_orphans=1 で lint:warning" \
+    "[CONTEXT] lint_action=lint:warning" "$(phase81_run 0 1 0 0 0)"
+  assert "TC-53 (T-02/AC-2) n_missing_concept=1 で lint:warning" \
+    "[CONTEXT] lint_action=lint:warning" "$(phase81_run 0 0 1 0 0)"
+  assert "TC-53 (T-02/AC-2) n_broken_refs=1 で lint:warning" \
+    "[CONTEXT] lint_action=lint:warning" "$(phase81_run 0 0 0 1 0)"
+
+  # T-05: residue gate は 4 変数それぞれの未置換で exit 1 (AC-7 / 4.5)
+  # 未置換値は placeholder のまま残すため、当該変数だけ sed で戻す
+  for _idx in 1 2 3 4; do
+    case "$_idx" in
+      1) _v='{n_contradictions}'; _name=n_contradictions; _args='0 0 0 0' ;;
+      2) _v='{n_orphans}';        _name=n_orphans;        _args='0 0 0 0' ;;
+      3) _v='{n_missing_concept}'; _name=n_missing_concept; _args='0 0 0 0' ;;
+      4) _v='{n_broken_refs}';    _name=n_broken_refs;    _args='0 0 0 0' ;;
+    esac
+    # 全置換したうえで当該変数の代入行だけ placeholder へ戻す
+    sed -e 's/{n_contradictions}/0/g' -e 's/{n_orphans}/0/g' -e 's/{n_missing_concept}/0/g' \
+        -e 's/{n_broken_refs}/0/g' -e 's/{n_stale}/0/g' -e 's/{n_unregistered_raw}/0/g' \
+        "$PHASE81_RAW" \
+      | sed "s/^${_name}=0\$/${_name}=${_v}/" > "$SBX/phase81-residue.sh"
+    _residue_out=$(bash "$SBX/phase81-residue.sh" 2>&1); _residue_rc=$?
+    assert "TC-53 (T-05) ${_name} 未置換で exit 1" "1" "$_residue_rc"
+    case "$_residue_out" in
+      *"LINT_PHASE_8_1_PLACEHOLDER_RESIDUE=1; variable=${_name}"*)
+        pass "TC-53 (T-05) ${_name} 未置換で residue marker を emit" ;;
+      *)
+        fail "TC-53 (T-05) ${_name} 未置換で residue marker が出ない: $(printf '%s' "$_residue_out" | head -1)" ;;
+    esac
+  done
+fi
 
 if ! print_summary "$(basename "$0")" \
   "drift: wiki-lint-descriptive-refs.sh の検出 / 除外が変わった可能性。SKILL.md ステップ 7.5 の委譲契約と helper 冒頭の検出 2 規則・除外 E1-E5 の記述を参照。"; then

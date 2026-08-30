@@ -39,7 +39,8 @@ opt-out default で「Wiki 無効」と報告するのは、この Issue が潰�
 ## informational-counters
 
 `n_unregistered_raw` は意図的に経験則化しなかった件数、`n_dedup_removed` は index 自己修復で
-回収した重複行の件数であり、いずれも警告ではない。`auto_lint=false` で 8.2-8.5 が skip されても
+回収した重複行の件数、`n_stale` は経過時間の計上（詳細は [#n-unregistered-not-warning](#n-unregistered-not-warning)）
+であり、いずれも警告ではない。`auto_lint=false` で 8.2-8.5 が skip されても
 ステップ 2.1 で 0 初期化済みなら、ステップ 9 の placeholder 残留は起きない。
 
 ## dev-tree-drift
@@ -173,7 +174,14 @@ Skill ツール呼び出しはシェル exit code を返さない。以降の「
 ## n-unregistered-not-warning
 
 skip 済み raw を警告に数えると、skip 運用が膨らむほど `n_warnings` が無意味に肥大する。
-informational 指標として完了レポートの内訳にのみ表示する。
+
+陳腐化（`n_stale`）も同じ理由で加算しない。ただし肥大の源は運用量ではなく述語の性質にある —
+陳腐化は経過時間の計上であってページの正しさとは独立で、内容が正しく直す必要のなかったページ
+ほど古くなる。`generated.at` は最終内容変更時刻なので、内容を変えずに日付だけ進めて解消する
+のは provenance の捏造にあたり、正規の解消手段が存在しない。
+
+どちらも `{wiki_warnings_line}` の内訳には現れない。`n_stale` はステップ 8.4 の `Lint 結果:` 行、
+`n_unregistered_raw` はステップ 9 完了レポートの専用行が表示先。
 
 ## lock-release-failsafe
 

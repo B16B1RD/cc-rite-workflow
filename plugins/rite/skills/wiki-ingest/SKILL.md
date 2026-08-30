@@ -896,7 +896,7 @@ LLM は Skill 応答テキスト (= `lint.md` ステップ 9.2 の最終 stdout)
 Lint 結果: 矛盾 {n_contradictions} 件 / 陳腐化 {n_stale} 件 / 孤児 {n_orphans} 件 / 欠落 {n_missing_concept} 件（未登録 skip {n_unregistered_raw} 件）/ 壊れた相互参照 {n_broken_refs} 件
 ```
 
-**全カテゴリが 0 件の場合** (`n_contradictions + n_stale + n_orphans + n_missing_concept + n_unregistered_raw + n_broken_refs == 0`): 「Lint 結果: 問題なし」とのみ表示する。1 件以上検出された場合は必ず全カテゴリを表示する (`n_unregistered_raw` は informational だが表示判定には含める)。
+**全カテゴリが 0 件の場合** (`n_contradictions + n_stale + n_orphans + n_missing_concept + n_unregistered_raw + n_broken_refs == 0`): 「Lint 結果: 問題なし」とのみ表示する。1 件以上検出された場合は必ず全カテゴリを表示する (`n_stale` / `n_unregistered_raw` は informational だが表示判定には含める)。
 
 ERROR / stdout 空 / regex mismatch 経路では「Lint 結果: 実行失敗（{原因}）」と表示する。
 
@@ -908,7 +908,7 @@ ERROR / stdout 空 / regex mismatch 経路では「Lint 結果: 実行失敗（{
 n_warnings += n_contradictions + n_orphans + n_missing_concept + n_broken_refs
 ```
 
-**`n_stale` と `n_unregistered_raw` は加算しない**。informational 指標として完了レポートの内訳にのみ表示する。
+**`n_stale` と `n_unregistered_raw` は加算しない**。informational 指標として `n_warnings` には算入せず、`n_stale` はステップ 8.4 の `Lint 結果:` 行に、`n_unregistered_raw` はステップ 9 完了レポートの専用行に件数のみ表示する（どちらも `{wiki_warnings_line}` の内訳には現れない）。
 rationale: references/rationale.md#n-unregistered-not-warning
 
 **詳細な修正対応**: 検出結果の詳細確認は、Ingest 完了後に `/rite:wiki-lint`（`--auto` なし）で再実行して取得する。
