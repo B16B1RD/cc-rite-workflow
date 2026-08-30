@@ -26,6 +26,7 @@
 * **lint:warning** — contradictions=0, stale=40, orphans=0, missing_concept=1, unregistered_raw=400, broken_refs=0
 * **Update**: [契約を N 箇所に追記したら pin も N 箇所あるかを数え合わせる](pages/patterns/contract-additions-and-pins-one-to-one.md) — raw/reviews/20260830T060338Z-pr-2479.md を統合（コメントで宣言した対応関係も数え合わせの母数に含める形と、pin が隣接ファイル限定で当該行に届かない穴を追記）
 * **lint:warning** — contradictions=0, stale=40, orphans=0, missing_concept=1, unregistered_raw=400, broken_refs=0
+* **lint:warning** — contradictions=0, stale=40, orphans=0, missing_concept=1, unregistered_raw=401, broken_refs=0
 ## 2026-08-29
 * **lint:warning** — contradictions=0, stale=38, orphans=0, missing_concept=1, unregistered_raw=400, broken_refs=0
 * **Create**: [全順序で優先順位を決める設計は逆向きの残存ハザードが必ず残る — 選ばなかった側を文書に残す](pages/heuristics/total-order-precedence-leaves-inverse-hazard.md) — raw/reviews/20260829T135848Z-pr-2464.md / raw/fixes/20260829T140803Z-pr-2464.md / raw/reviews/20260829T142006Z-pr-2464.md を新規ページ化（順序変更はハザードを消さず露出面を移すだけという実測を軸にする）
