@@ -8,7 +8,7 @@
 # T-05 nit-noted in findings[] is a target; new class-B is not a second sweep (AC-5)
 # T-06 ledger write / merge fail-loud (AC-6)
 # T-07 class A findings[] stay out of sweep targets (AC-7)
-# T-08 body_count extraction expression matches between fix/SKILL.md and the record helper (#2480)
+# T-08 body_count extraction expression matches between fix/SKILL.md and the record helper (#2480 AC-1..AC-3)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -218,7 +218,7 @@ assert_grep "T-07 pr-review WARNING 却下台帳取得失敗" "$REVIEW" 'WARNING
 assert_grep "T-07 pr-review failed-path 注記" "$REVIEW" '台帳取得失敗 — 却下済み指摘の再訴訟の可能性'
 assert_grep "T-07 prompt rejected_ledger" "$PROMPT" '{rejected_ledger}'
 
-# --- T-08 (AC-8): body_count の抽出式が producer (fix/SKILL.md) と validator (helper) で一致する ---
+# --- T-08 (#2480 AC-1..AC-3): body_count の抽出式が producer (fix/SKILL.md) と validator (helper) で一致する ---
 # fix/SKILL.md ステップ 1.3.S step 3 は抽出した値を helper へ `--count` として渡し、helper は
 # 同じ行を自前の式で再検査する。片側だけを書き換えると producer が通した body を validator が
 # count_body_mismatch で落とす。この不一致は実行時にしか現れないため、両者の式を突き合わせて
@@ -244,17 +244,18 @@ if [ -z "$_t08_helper_rhs" ] || [ -z "$_t08_skill_rhs" ]; then
   # 抽出失敗 (代入形の drift) は silent pass させない。空同士の等値で緑になる経路を塞ぐ。
   fail "T-08 body_count= の右辺を抽出できない (代入形の drift。helper='$_t08_helper_rhs' skill='$_t08_skill_rhs')"
 else
+  # 本 assert は symmetry pin であって value pin ではない。両側を同時に同じ形へ書き換えた
+  # drift は等値が保たれるため検出できない (それを検出するには期待式をテスト内へ
+  # ハードコードする必要があり、helper 側から抽出する方針と衝突する)。
   assert "T-08 body_count 抽出式が producer (fix/SKILL.md) と validator (helper) で一致" \
     "$_t08_helper_rhs" "$_t08_skill_rhs"
-
-  # 等値だけでは「両方が同じ壊れ方をした」場合に緑のまま通る。producer 側に当該式が
-  # 代入形ごと 1 件だけ存在することも固定する (T-07 の呼び出し側リテラル pin が値を作る式まで
-  # 見ていなかった穴を、この回で埋める)。
-  _t08_rhs_re=$(printf '%s' "$_t08_helper_rhs" | sed 's/[][\.*^$(){}?+|/]/\\&/g' \
-    | sed 's/__BODY_FILE__/"\\$body"/')
-  _t08_hits=$(grep -cE "^[[:space:]]*body_count=${_t08_rhs_re}$" "$FIX" || true)
-  assert "T-08 fix/SKILL.md に helper と同一の body_count 代入行が 1 件" "1" "$_t08_hits"
 fi
+
+# 上の正規化は 2 つの被演算子が同じファイルを指すことを前提に両者を同一視する。その前提自体は
+# 抽出式の比較では確かめられないため、producer が数えた本文をそのまま helper へ渡していることを
+# 別途固定する。ここが外れると producer は $body から数え helper は別ファイルを検査するため、
+# 式が完全に一致していても production では count_body_mismatch が出る。
+assert_grep "T-08 fix が数えた本文をそのまま helper へ渡す" "$FIX" '\-\-content-file "\$body"'
 
 if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check SKILL.md 5.S / 6.1.d preserve"; then
   exit 1
