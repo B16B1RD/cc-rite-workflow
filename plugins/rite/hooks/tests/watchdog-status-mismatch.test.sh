@@ -293,6 +293,15 @@ else
   echo "  ✗ reconcile target expected 'In Progress', got '$recon_target'" >&2
 fi
 
+echo "  -- T-04b: Todo + ready PR (the rule says ANY open PR, not just drafts)"
+# Without this the Todo arm can be narrowed to `isDraft=true` and every assertion stays
+# green — the docblock would claim "draft included" while the ready-PR case, which is what
+# a Todo residue looks like after /rite:ready runs, went unchecked.
+out=$(run_rule_fixture false Todo --dry-run)
+assert_json "$out" '.scan_summary.prs_scanned' '1' "the scan actually entered the detection loop"
+assert_json "$out" '.scan_summary.mismatches_found' '1' "Todo residue on a ready PR is reported"
+assert_json "$out" '.mismatches[0].expected_status' 'In Progress' "the Todo rule expects In Progress regardless of draft state"
+
 echo "  -- T-06: In Progress + ready PR (non-regression)"
 out=$(run_rule_fixture false "In Progress" --reconcile)
 assert_json "$out" '.scan_summary.prs_scanned' '1' "the scan actually entered the detection loop"

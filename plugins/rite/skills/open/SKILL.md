@@ -380,6 +380,10 @@ status_json_args=$(jq -n \
 # するため、fallback を付けるとその診断情報を空文字列で上書き・破棄してしまう
 status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args")
 status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+# `// "failed"` は helper が JSON を返したときしか効かない。stdout が空・非 JSON だと jq は
+# 何も出さずに終わるため、正規化しないと marker だけが「値なし」になり、marker 不在と区別
+# できなくなる（成否を残すための marker が、失敗時にだけ消える）
+[ -z "$status_result" ] && status_result=failed
 status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
 case "$status_result" in
   updated)
@@ -395,7 +399,7 @@ echo "[CONTEXT] PROJECTS_STATUS=$status_result; issue={issue_number}"
 
 `auto_add: true` は未登録 Issue を helper 内部で Project へ自動登録する。全 result 分岐は non-blocking で、Status 更新の失敗が open をブロックすることはない。API レベルの詳細は [projects-integration.md §2.4.1–2.4.6](../../references/projects-integration.md#24-github-projects-status-update)。
 
-末尾の `[CONTEXT] PROJECTS_STATUS=` marker は `updated` / `skipped_not_in_project` / `failed` のいずれかを機械可読に残す（`case` の表示は人間向けで、後から成否を判定できない）。marker は表示のみで分岐を変えない — 実行の有無を判定するのは 2.6 のゲートであり、marker の欠落そのものはここでは扱わない。
+末尾の `[CONTEXT] PROJECTS_STATUS=` marker は helper の result を機械可読に残す（`case` の表示は人間向けで、後から成否を判定できない）。本 call site は `auto_add: true` を渡すため、helper が返しうるのは `updated` / `failed` の 2 値（`skipped_not_in_project` は `auto_add: false` 専用の戻り値で、ここには来ない）。helper が JSON を返さなかった場合は上記の正規化で `failed` に寄せてあり、marker が空になる経路はない。marker は表示のみで分岐を変えない — 実行の有無を判定するのは 2.6 のゲートであり、marker の欠落そのものはここでは扱わない。
 
 **(B) 親 Issue の Status 更新（Sub-Issue 着手時）** — (A) と独立に必ず実行する。ロジックの SoT は `projects-integration.md` §2.4.7:
 
@@ -443,14 +447,14 @@ bash {plugin_root}/hooks/flow-state.sh set \
   --next "実装計画策定へ進む"
 ```
 
-ゲートは盤面の実 Status を読む（2.4(A) が出した marker ではない）。marker の有無を見るだけでは「実行したと主張したが盤面が変わっていない」を見逃すため。`projects.enabled: false` / Project 未登録は検証対象が無いので `skipped`。ゲートは常に exit 0 で、判定は marker だけに載る（Status 更新の失敗で open をブロックしないため）。
+ゲートは盤面の実 Status を読む（2.4(A) が出した marker ではない）。marker の有無を見るだけでは「実行したと主張したが盤面が変わっていない」を見逃すため。`projects.enabled: false` / `project_number` 未設定 / `rite-config.yml` 不在は検証対象が無いので `skipped`。**Issue が Project 未登録は `skipped` ではなく `missing`** — 2.4(A) は `auto_add: true` を渡すので、成功していれば盤面に item が必ずある。不在は「検証対象がない」ではなく「2.4(A) が届いていない」証拠であり、ここを `skipped` に落とすとゲートが塞ぐべき当の状態を素通しする。ゲートは常に exit 0 で、判定は marker だけに載る（Status 更新の失敗で open をブロックしないため）。
 
 | `PROJECTS_STATUS_INVARIANT` | アクション |
 |---|---|
 | `ok` | 盤面が `In Progress` 以降に到達済み。ステップ 3 へ進む |
-| `skipped` | 検証対象なし（Projects 無効 / `project_number` 未設定 / Issue が Project 未登録）。ステップ 3 へ進む |
-| `unknown` | 検証自体が失敗した（gh / jq エラー。stderr に原因）。**`ok` として扱わない**。警告を表示してステップ 3 へ進む（再実行はしない — 盤面の状態が不明なだけで、更新が失敗したとは限らない） |
-| `missing` | 2.4(A) が盤面に届いていない。**2.4(A) の bash を 1 回だけ再実行**してステップ 3 へ進む |
+| `skipped` | 検証対象なし（Projects 無効 / `project_number` 未設定 / `rite-config.yml` 不在）。ステップ 3 へ進む |
+| `unknown` | 検証自体が失敗した（gh / jq エラー、または Issue 番号・owner/repo が解決しない。stderr に原因）。**`ok` として扱わない**。警告を表示してステップ 3 へ進む（再実行はしない — 盤面の状態が不明なだけで、更新が失敗したとは限らない） |
+| `missing` | 2.4(A) が盤面に届いていない（Status が期待に達していない / Status 値が空 / Issue が Project 未登録）。**2.4(A) の bash を 1 回だけ再実行**してステップ 3 へ進む |
 
 `missing` の再実行の終端契約: 再実行では `[CONTEXT] PROJECTS_STATUS=` を再度 1 回だけ emit する。**ゲートは再呼び出ししない**（再々実行のループを構造的に作らない）。再実行も失敗した場合は最後の `PROJECTS_STATUS=` 値を残したままステップ 3 へ進む — ブロックも 3 回目の実行もしない。
 

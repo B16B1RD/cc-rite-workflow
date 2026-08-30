@@ -14,9 +14,9 @@
 #                        the PR is a draft, which is exactly the window a ready-only
 #                        scan cannot see.
 #   In Progress residue  Status = "In Progress" with a Ready PR (isDraft=false) →
-#                        expected "In Review". Unchanged from the original rule. The
-#                        isDraft=false qualifier stays: "In Progress" during a draft is
-#                        the correct state, not a mismatch.
+#                        expected "In Review". The isDraft=false qualifier belongs to this
+#                        rule alone: "In Progress" during a draft is the correct state,
+#                        not a mismatch.
 #
 # An Issue that is not on the project board is never a mismatch — there is no board
 # Status to reconcile (same on-board policy as hooks/scripts/projects-board-drift-check.sh).
@@ -195,7 +195,7 @@ if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
   fi
 fi
 
-# --- Scan OPEN, non-draft PRs ---
+# --- Scan OPEN PRs (drafts included; the Todo-residue rule needs them) ---
 pr_list_err=$(mktemp "${TMPDIR:-/tmp}/rite-watchdog-pr-list-err-XXXXXX") || pr_list_err=""
 if ! PR_LIST=$(gh pr list --repo "$REPO_OWNER/$REPO_NAME" --state open --limit "$LIMIT" --json number,isDraft,body,headRefName 2>"${pr_list_err:-/dev/null}"); then
   echo "ERROR: gh pr list failed" >&2
@@ -236,9 +236,8 @@ while IFS= read -r pr_entry; do
   fi
   PRS_SCANNED=$((PRS_SCANNED + 1))
 
-  # Draft PRs are no longer skipped here — the Todo-residue rule below covers them.
-  # The isDraft qualifier now lives on the In-Progress rule alone, which is the only
-  # rule it was ever about.
+  # Drafts are in scope here: the Todo-residue rule below needs them. The isDraft
+  # qualifier belongs to the In-Progress rule alone.
 
   # Extract linked Issue number from PR body (Closes #N / Fixes #N / Resolves #N) or branch name (issue-N)
   issue_number=$(printf '%s' "$pr_body" | grep -ioE '(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+' | head -1 | grep -oE '[0-9]+$' || true)

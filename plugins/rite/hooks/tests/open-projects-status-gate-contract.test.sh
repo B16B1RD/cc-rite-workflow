@@ -132,6 +132,71 @@ else
 fi
 
 echo ""
+echo "[T-02b] Behavioral: the verdict the gate reaches for each board state"
+# The static pins above check what the SKILL.md routing table says; they cannot tell
+# whether the gate arrives at the verdict the table names. Without a board query that
+# succeeds, `missing` — the whole point of this gate — is never executed, and swapping it
+# for `ok` leaves every assertion green (measured by mutation). These fixtures drive the
+# gate through a gh shim that answers the GraphQL query, so each verdict is reached.
+cat > "$T03_DIR/repo/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+YAML
+cat > "$T03_DIR/repo/bin/gh" <<'GH_BOARD_SHIM'
+#!/bin/bash
+case "$1 $2" in
+  "repo view")
+    echo "MOCK ASSERTION FAILED: gh repo view must not be reached (git-remote fast path)" >&2
+    exit 1 ;;
+  "api graphql") cat "$RITE_TEST_BOARD" ;;
+  *) exit 0 ;;
+esac
+GH_BOARD_SHIM
+chmod +x "$T03_DIR/repo/bin/gh"
+
+# $1=board state ("<absent-item>" / "<absent-issue>" / a Status name) $2=expected verdict
+# $3=description. Emits the gate's stdout so the caller can assert on it further.
+run_gate_fixture() {
+  local state="$1" want="$2" desc="$3" out rc
+  case "$state" in
+    "<absent-issue>")
+      echo '{"data":{"repository":{"issue":null}}}' > "$T03_DIR/board.json" ;;
+    "<absent-item>")
+      echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[]}}}}}' > "$T03_DIR/board.json" ;;
+    "<no-status-field>")
+      echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"project":{"number":1},"fieldValues":{"nodes":[]}}]}}}}}' > "$T03_DIR/board.json" ;;
+    *)
+      jq -n --arg s "$state" \
+        '{data:{repository:{issue:{projectItems:{nodes:[{project:{number:1},fieldValues:{nodes:[{field:{name:"Status"},name:$s}]}}]}}}}}' \
+        > "$T03_DIR/board.json" ;;
+  esac
+  set +e
+  out=$(cd "$T03_DIR/repo" && PATH="$T03_DIR/repo/bin:$PATH" RITE_TEST_BOARD="$T03_DIR/board.json" \
+    bash "$GATE_SH" --issue 42 --expect "In Progress" --quiet 2>"$T03_DIR/gate-stderr.txt")
+  rc=$?
+  set -e
+  # Every verdict path must keep the non-blocking contract, not just the error ones.
+  if [ "$rc" -ne 0 ]; then
+    fail "$desc (expected exit 0, got $rc)"
+    return
+  fi
+  if printf '%s' "$out" | grep -q "PROJECTS_STATUS_INVARIANT=$want;"; then
+    pass "$desc"
+  else
+    fail "$desc (expected verdict $want, got: $(printf '%s' "$out" | head -c 200))"
+  fi
+}
+
+run_gate_fixture "In Progress" ok "board at the expected status yields ok"
+run_gate_fixture "Todo" missing "board still on Todo yields missing"
+run_gate_fixture "In Review" ok "board past the expected status yields ok (recover re-entry)"
+run_gate_fixture "<no-status-field>" missing "item present with no Status value yields missing"
+run_gate_fixture "<absent-item>" missing "item absent from the board yields missing (2.4(A) auto_add did not land)"
+run_gate_fixture "<absent-issue>" unknown "an unresolvable Issue yields unknown, not a board verdict"
+
+echo ""
 echo "==============================="
 echo "Results: $PASS passed, $FAIL failed"
 if [ "$FAIL" -gt 0 ]; then

@@ -30,12 +30,22 @@
 #   [CONTEXT] PROJECTS_STATUS_INVARIANT=ok|missing|skipped|unknown; issue=N; status=...; expected=...
 #
 #   ok       board Status has reached (or passed) the expected status
-#   missing  Issue is on the board but Status has not reached it — 2.4(A) did not land
-#   skipped  nothing to verify (Projects disabled / project_number unset /
-#            rite-config.yml absent / Issue not on the board — same on-board policy as
-#            projects-board-drift-check.sh)
-#   unknown  the verification itself could not run (gh / jq failure); a WARNING carrying
-#            the root cause goes to stderr. Never reported as ok.
+#   missing  the transition did not land — the Issue is on the board below the expected
+#            status, its Status field carries no value, or it is not on the board at all.
+#            All three mean the same thing at this call site: 2.4(A) passes auto_add, so a
+#            successful run always leaves an item on the board. Absence is evidence that
+#            2.4(A) never ran or failed, not that there is nothing to check. (The
+#            on-board-is-not-a-drift policy of projects-board-drift-check.sh does not carry
+#            over: that check runs with auto_add off, where an absent item is legitimate.)
+#   skipped  nothing to verify — the project itself is out of the picture (Projects
+#            disabled / project_number unset / rite-config.yml absent)
+#   unknown  the verification itself could not run (gh / jq failure, or a response whose
+#            issue node is null — an Issue number or owner/repo that does not resolve);
+#            a WARNING carrying the root cause goes to stderr. Never reported as ok.
+#
+#   The `status=` field carries the board's own Status name, or one of two sentinels the
+#   jq program emits when there is no name to report: `<not-on-board>` (no project item)
+#   and `<no-status>` (item present, Status field empty). Both route to `missing`.
 #
 # Exit code: always 0 (verdict travels in the marker, not the exit status)
 set -euo pipefail
@@ -44,20 +54,36 @@ ISSUE=""
 EXPECT="In Progress"
 QUIET=false
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../control-char-neutralize.sh
+source "$SCRIPT_DIR/../control-char-neutralize.sh"
+
+# Defined before the argument loop so that every marker in this file — including the ones
+# the loop's own error arms emit — goes out through the same neutralized path. A raw echo
+# there would let a newline inside an argument forge a second marker line.
+emit() {
+  # $1=verdict $2=observed status
+  printf '[CONTEXT] PROJECTS_STATUS_INVARIANT=%s; issue=%s; status=%s; expected=%s\n' \
+    "$1" "$(printf '%s' "$ISSUE" | neutralize_ctrl)" \
+    "$(printf '%s' "$2" | neutralize_ctrl)" \
+    "$(printf '%s' "$EXPECT" | neutralize_ctrl)"
+  exit 0
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --issue)
       if [ "$#" -lt 2 ]; then
         echo "ERROR: --issue requires a value" >&2
-        echo "[CONTEXT] PROJECTS_STATUS_INVARIANT=unknown; issue=; status=; expected=$EXPECT"
-        exit 0
+        emit unknown ""
       fi
       ISSUE="$2"; shift 2 ;;
     --expect)
       if [ "$#" -lt 2 ]; then
         echo "ERROR: --expect requires a value" >&2
-        echo "[CONTEXT] PROJECTS_STATUS_INVARIANT=unknown; issue=$ISSUE; status=; expected="
-        exit 0
+        # EXPECT still holds the default here, and the marker reports it — the run was
+        # about to verify against that value, so blanking the field would misreport it.
+        emit unknown ""
       fi
       EXPECT="$2"; shift 2 ;;
     --quiet) QUIET=true; shift ;;
@@ -84,23 +110,9 @@ USAGE_EOF
       exit 0 ;;
     *)
       echo "ERROR: Unknown option: $1" >&2
-      echo "[CONTEXT] PROJECTS_STATUS_INVARIANT=unknown; issue=$ISSUE; status=; expected=$EXPECT"
-      exit 0 ;;
+      emit unknown "" ;;
   esac
 done
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../control-char-neutralize.sh
-source "$SCRIPT_DIR/../control-char-neutralize.sh"
-
-emit() {
-  # $1=verdict $2=observed status
-  printf '[CONTEXT] PROJECTS_STATUS_INVARIANT=%s; issue=%s; status=%s; expected=%s\n' \
-    "$1" "$(printf '%s' "$ISSUE" | neutralize_ctrl)" \
-    "$(printf '%s' "$2" | neutralize_ctrl)" \
-    "$(printf '%s' "$EXPECT" | neutralize_ctrl)"
-  exit 0
-}
 
 warn() {
   [ "$QUIET" = "true" ] && return 0
@@ -132,30 +144,24 @@ if [ "$PROJECTS_ENABLED" != "true" ] || ! [[ "$PROJECT_NUMBER" =~ ^[0-9]+$ ]]; t
   emit skipped ""
 fi
 
-# --- Trap setup: tempfile orphan 防止 (EXIT/INT/TERM/HUP), same idiom as the sibling checks ---
-repo_view_err=""
-git_remote_err=""
-gql_err=""
-jq_err=""
-_rite_status_gate_cleanup() {
-  rm -f "${repo_view_err:-}" "${git_remote_err:-}" "${gql_err:-}" "${jq_err:-}"
-}
-trap 'rc=$?; _rite_status_gate_cleanup; exit $rc' EXIT
-trap '_rite_status_gate_cleanup; exit 130' INT
-trap '_rite_status_gate_cleanup; exit 143' TERM
-trap '_rite_status_gate_cleanup; exit 129' HUP
+# --- Tempfile lifecycle: owned by lib/tempfile.sh (creation, cleanup registration, signals) ---
+# shellcheck source=lib/tempfile.sh
+source "$SCRIPT_DIR/lib/tempfile.sh"
+rite_tempfile_init
 
 # --- Repo info: git-remote parse first (SSH Host alias origin), gh repo view as fallback ---
 REPO_OWNER=""
 REPO_NAME=""
-git_remote_err=$(mktemp "${TMPDIR:-/tmp}/rite-status-gate-git-remote-err-XXXXXX") || git_remote_err=""
-_git_or_line=$(bash "$SCRIPT_DIR/lib/git-remote.sh" resolve-owner-repo 2>"${git_remote_err:-/dev/null}") || _git_or_line=""
+git_remote_err=""
+repo_view_err=""
+rite_tempfile_new git_remote_err "status-gate-git-remote-err" || emit unknown ""
+_git_or_line=$(bash "$SCRIPT_DIR/lib/git-remote.sh" resolve-owner-repo 2>"$git_remote_err") || _git_or_line=""
 if [ -n "$_git_or_line" ]; then
   IFS=$'\t' read -r REPO_OWNER REPO_NAME <<< "$_git_or_line"
 fi
 if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
-  repo_view_err=$(mktemp "${TMPDIR:-/tmp}/rite-status-gate-repo-err-XXXXXX") || repo_view_err=""
-  if ! REPO_INFO=$(gh repo view --json owner,name 2>"${repo_view_err:-/dev/null}"); then
+  rite_tempfile_new repo_view_err "status-gate-repo-err" || emit unknown ""
+  if ! REPO_INFO=$(gh repo view --json owner,name 2>"$repo_view_err"); then
     warn "gh repo view failed; cannot verify board Status"
     if [ "$QUIET" != "true" ] && [ -n "$repo_view_err" ] && [ -s "$repo_view_err" ]; then
       head -3 "$repo_view_err" | neutralize_ctrl --keep-newline | sed 's/^/  gh: /' >&2
@@ -174,12 +180,17 @@ if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
 fi
 
 # --- Read the Issue's board Status ---
-# The jq program distinguishes three outcomes the caller must not conflate, so it prints a
-# sentinel word rather than an empty string for the two "no Status value" cases:
-#   <not-on-board>  no projectItem for the configured project (AC-7: not a violation)
-#   <no-status>     on the board but the Status field carries no value
-gql_err=$(mktemp "${TMPDIR:-/tmp}/rite-status-gate-gql-err-XXXXXX") || gql_err=""
-jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-status-gate-jq-err-XXXXXX") || jq_err=""
+# The jq program prints a sentinel word rather than an empty string for each case that has
+# no Status name to report, so the caller can tell them apart:
+#   <no-issue>      the response has no issue node — an Issue number or owner/repo that
+#                   does not resolve. The verification could not run, so this is `unknown`,
+#                   not a verdict about the board.
+#   <not-on-board>  the issue exists but has no item for the configured project
+#   <no-status>     item present, Status field carries no value
+gql_err=""
+jq_err=""
+rite_tempfile_new gql_err "status-gate-gql-err" || emit unknown ""
+rite_tempfile_new jq_err "status-gate-jq-err" || emit unknown ""
 if ! CURRENT=$(set -o pipefail; gh api graphql -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
@@ -199,25 +210,25 @@ query($owner: String!, $repo: String!, $number: Int!) {
       }
     }
   }
-}' -f owner="$REPO_OWNER" -f repo="$REPO_NAME" -F number="$ISSUE" 2>"${gql_err:-/dev/null}" \
+}' -f owner="$REPO_OWNER" -f repo="$REPO_NAME" -F number="$ISSUE" 2>"$gql_err" \
   | jq -r --argjson pn "$PROJECT_NUMBER" '
-      (([.data.repository.issue.projectItems.nodes[]? | select(.project.number == $pn)][0]) // null) as $pitem
-      | if $pitem == null then "<not-on-board>"
-        else (([$pitem.fieldValues.nodes[] | select(.field.name == "Status") | .name][0]) // "<no-status>")
-        end
-    ' 2>"${jq_err:-/dev/null}"); then
+      if (.data.repository.issue // null) == null then "<no-issue>"
+      else
+        (([.data.repository.issue.projectItems.nodes[]? | select(.project.number == $pn)][0]) // null) as $pitem
+        | if $pitem == null then "<not-on-board>"
+          else (([$pitem.fieldValues.nodes[] | select(.field.name == "Status") | .name][0]) // "<no-status>")
+          end
+      end
+    ' 2>"$jq_err"); then
   warn "gh api graphql or jq pipeline failed while reading Issue #$ISSUE board Status"
-  if [ "$QUIET" != "true" ] && [ -n "$gql_err" ] && [ -s "$gql_err" ]; then
+  if [ "$QUIET" != "true" ] && [ -s "$gql_err" ]; then
     head -3 "$gql_err" | neutralize_ctrl --keep-newline | sed 's/^/  gh: /' >&2
   fi
-  if [ "$QUIET" != "true" ] && [ -n "$jq_err" ] && [ -s "$jq_err" ]; then
+  if [ "$QUIET" != "true" ] && [ -s "$jq_err" ]; then
     head -3 "$jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  jq: /' >&2
   fi
   emit unknown ""
 fi
-rm -f "${gql_err:-}" "${jq_err:-}"
-gql_err=""
-jq_err=""
 
 # An empty capture means the pipeline produced nothing at all — a malformed response the
 # jq program could not classify. That is a failed verification, not a clean board.
@@ -226,8 +237,19 @@ if [ -z "$CURRENT" ]; then
   emit unknown ""
 fi
 
+# A response with no issue node means the query did not reach the Issue it was asked
+# about — the verification never happened, so it must not be reported as a board verdict.
+if [ "$CURRENT" = "<no-issue>" ]; then
+  warn "Issue #$ISSUE did not resolve in $REPO_OWNER/$REPO_NAME (no issue node in the response) — cannot verify board Status"
+  emit unknown "$CURRENT"
+fi
+
+# Absence from the board is a missed transition here, not "nothing to verify": the caller
+# (2.4(A)) passes auto_add, so a successful run always leaves an item behind. Falling
+# through to `skipped` would hand a clean bill to the one state this gate exists to catch.
 if [ "$CURRENT" = "<not-on-board>" ]; then
-  emit skipped "$CURRENT"
+  warn "Issue #$ISSUE is not on project $PROJECT_NUMBER — 2.4(A) adds the item itself, so its absence means the step did not land"
+  emit missing "$CURRENT"
 fi
 
 # --- Compare against the expected status ---
