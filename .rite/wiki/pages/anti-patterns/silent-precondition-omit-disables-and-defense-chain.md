@@ -34,7 +34,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 
 ## 概要
 
-過去 9 件の Issue (#3 → #651) で導入した 8 種類の防御層 (declarative / sentinel / Pre-check list / whitelist / Pre-flight / Step 0 / 4-site 対称化 / hook case arm) は **AND 論理**で組まれていた。それぞれが `.rite-flow-state.active=true` という単一の前提条件成立に依存していたが、`commands/issue/create.md` などの patch site が **`--active true` を omit** することで前提条件のチェーンが silent に切断され、stop-guard.sh が `EXIT:0 reason=not_active` で early return → 8 種の case arm / WORKFLOW_HINT / RE-ENTRY DETECTED escalation はすべて到達不能になっていた。**`.rite-stop-guard-diag.log` の直近 30 件中 28 件 (93%) が `EXIT:0 reason=not_active`** で、防御層は本番で 9 割以上機能していなかった事実が一次情報で確認された。
+過去 9 件の Issue で導入した 8 種類の防御層 (declarative / sentinel / Pre-check list / whitelist / Pre-flight / Step 0 / 4-site 対称化 / hook case arm) は **AND 論理**で組まれていた。それぞれが `.rite-flow-state.active=true` という単一の前提条件成立に依存していたが、`commands/issue/create.md` などの patch site が **`--active true` を omit** することで前提条件のチェーンが silent に切断され、stop-guard.sh が `EXIT:0 reason=not_active` で early return → 8 種の case arm / WORKFLOW_HINT / RE-ENTRY DETECTED escalation はすべて到達不能になっていた。**`.rite-stop-guard-diag.log` の直近 30 件中 28 件 (93%) が `EXIT:0 reason=not_active`** で、防御層は本番で 9 割以上機能していなかった事実が一次情報で確認された。
 
 ## 詳細
 

@@ -52,7 +52,7 @@ faithful-port 委譲の 1 例目は `archive-procedures.md` §3.5.2 の inline P
 
 2 例目は `wiki/lint.md` §6.2 の `all_source_refs` 集合構築 (~240 行 inline bash) を `wiki-lint-source-refs.sh` へ委譲した (同 umbrella の別ブロック)。この例の特徴は、差分検証の対象がアルゴリズム等価性だけでなく **出力契約そのもの** に及ぶ点: marker block (`---all_source_refs_begin/end---`) と 3 値 enum (`unknown` / `true` / `io_error`) を verbatim 保持することが下流 step の分岐を壊さない hard constraint であり、reviewer は (a) develop inline 実装との byte-level diff、(b) 新規 test 34/34 pass、(c) 実機 injection 検証の 3 点で確認し、5 reviewer 全員 0 blocking / 1 cycle 収束。
 
-- **最も効率的な検証経路**: 「inline 削除版 vs helper 新規版の機械 diff」+「既存テスト実行」+「出力契約 (marker block / enum) の verbatim 一致確認」の 3 点セット。#1204 (#8) に続く同 umbrella 内 2 例目の独立再現で、faithful-port 委譲の検証手法として differential equivalence + 出力契約 verbatim の組み合わせが定着していることを示す。
+- **最も効率的な検証経路**: 「inline 削除版 vs helper 新規版の機械 diff」+「既存テスト実行」+「出力契約 (marker block / enum) の verbatim 一致確認」の 3 点セット。先行事例に続く同 umbrella 内 2 例目の独立再現で、faithful-port 委譲の検証手法として differential equivalence + 出力契約 verbatim の組み合わせが定着していることを示す。
 - **trust boundary を確定してから injection を評価する**: faithful-port の bash injection 評価では入力の trust boundary を明示するのが有効。本 PR の page/branch 入力は LLM 制御下の wiki ページパスで外部ユーザー入力ではなく、防御は double-quote + allowlist gate (placeholder residue / partial pollution) の二層。injection リスクは「入力が誰の制御下にあるか」を確定してから severity を評価する。
 
 ### doc 適用範囲の対称記述 (sub-insight)
@@ -100,7 +100,7 @@ canonical 対策: 委譲リファクタの review checklist に **「新規 help
 
 両者は同じ「観測範囲」軸の両端: 前者は外部観測可能なのに捕捉していなかった穴 (拡張すべき)、後者はそもそも外部観測不能な非契約対象 (要求すべきでない)。canonical 対策として、委譲リファクタの review checklist に「dump/capture helper が外部観測可能な全 channel を捕捉しているか (subject-only のような部分捕捉になっていないか)」を加え、逆に in-process 中間変数の観測可能性要求は demote する。
 
-副次観察: 委譲 refactor で validation gate は片落ちせず純増 (numeric gate / placeholder gate 追加)、silent-failure hole 2 件解消 (projects の `jq -s` 未チェック / create.md の nested jq マスク)。cycle 2 の SoT universal MUST 文 vs 未移行 caller 2 件の矛盾は漸進移行 note (Option B: 責務分離の文書化、#1284 を SoT 本文に明記) で解消 ([[asymmetric-fix-resolution-via-hub-creation]] の SoT-caller 軸適用例)。nit-noted 受け流し経路 (LOW 級 enumeration stale) は countdown 対象外として loop を阻害せず mergeable 到達 ([[respect-reviewer-no-action-recommendation]])。
+副次観察: 委譲 refactor で validation gate は片落ちせず純増 (numeric gate / placeholder gate 追加)、silent-failure hole 2 件解消 (projects の `jq -s` 未チェック / create.md の nested jq マスク)。cycle 2 の SoT universal MUST 文 vs 未移行 caller 2 件の矛盾は漸進移行 note (Option B: 責務分離の文書化を SoT 本文に明記) で解消 ([[asymmetric-fix-resolution-via-hub-creation]] の SoT-caller 軸適用例)。nit-noted 受け流し経路 (LOW 級 enumeration stale) は countdown 対象外として loop を阻害せず mergeable 到達 ([[respect-reviewer-no-action-recommendation]])。
 
 ## 関連ページ
 

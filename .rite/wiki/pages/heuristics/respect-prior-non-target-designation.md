@@ -25,7 +25,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-08T03:06:55+09:00" }
 
 ユーザーへの初回確認では「本 PR で対応」を選択したが、実装に進む前に `git log` で経緯を遡ったところ、以下の先行判断が見つかった:
 
-- 元の resume→recover リネーム Issue（#1784）の「4.2 Non-Target Files」に `plugins/rite/hooks/flow-state.sh: phase enum に resume は含まれず変更不要` と明記されていた。
+- 元の resume→recover リネーム Issue の「4.2 Non-Target Files」に `plugins/rite/hooks/flow-state.sh: phase enum に resume は含まれず変更不要` と明記されていた。
 - 同種の裸ファイル名参照クリーンアップを行った先行 PR のコミットメッセージにも「flow-state.sh（先行 Issue で明示的 non-target）...は意図的に対象外のまま維持する」と明記され、当該ファイルは同種作業でも一貫して除外されてきた。
 
 この矛盾（reviewer 推奨 vs 文書化された先行除外判断）をユーザーに提示し直したところ、ユーザーは「本 PR では修正せず別途確認」に判断を覆した。もし先行判断を確認せずに reviewer 推奨をそのまま実行していれば、複数の先行 Issue が意図的に維持してきた除外境界を無自覚に破ることになっていた。

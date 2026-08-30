@@ -38,7 +38,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-13T08:55:00+00:00" }
 
 1. 新規 `### 4.3 関連ページの特定` セクション (canonical fix のメイン site)
 2. Phase 5.3 placeholder 表の `{related_page_title}` / `{related_page_path}` 行
-3. Phase 5.3 直下の「設計意図 (#941 fix)」blockquote
+3. Phase 5.3 直下の「設計意図」blockquote
 
 cycle 1 review で「fallback 文字列が 2 箇所に literal で存在し drift 源を形成」(MEDIUM)・「循環参照ループ」(LOW) が指摘された。fix 適用時に「4.3 を canonical source」と明示宣言し、Phase 5.3 の placeholder 表と blockquote を summary / cross-reference に位置付け直すことで cycle 2 で 0 blocking findings に収束 (1 cycle convergence)。
 

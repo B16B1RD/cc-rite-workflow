@@ -43,7 +43,7 @@ writer 列などを find/replace で一括 rename すると、従来は dead fil
 
 ### schema drift は別種として切り出す
 
-dead-ref 整理の最中に発見した別種の drift（`schema_version: 2→3` / phase enum 11→13 / `previous_phase` 削除等の schema drift）は、dead reference とは異なる問題種別のため同 PR に混ぜず別 Issue（#1131）に切り出す。スコープを混在させると検証範囲と収束 cycle が膨らむ。
+dead-ref 整理の最中に発見した別種の drift（`schema_version: 2→3` / phase enum 11→13 / `previous_phase` 削除等の schema drift）は、dead reference とは異なる問題種別のため同 PR に混ぜず別 Issue に切り出す。スコープを混在させると検証範囲と収束 cycle が膨らむ。
 
 ### rename PR では active emit site と retired/historical 参照を峻別する
 

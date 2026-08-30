@@ -219,7 +219,7 @@ fi
 
 ### 既存 helper への新規呼び出し追加は helper 自身の呼び出し規約を継承する義務を負う
 
-pr-review の drift 検出で porcelain hash が sandbox ghost-mount 差分により誤警報を出す問題を修正した PR で、既存ヘルパー `lib/git-status-filtered.sh` (#1936 で導入、内部で `mktemp` に依存) を **新規の呼び出し経路** (`post-review-state-verify.sh` の worktree drift axis と `pr-review/SKILL.md` ステップ 4.0.A の snapshot 側) から呼び出す fix が、helper 自身の exit code チェックを行わずに出力をそのまま hash 化していた:
+pr-review の drift 検出で porcelain hash が sandbox ghost-mount 差分により誤警報を出す問題を修正した PR で、既存ヘルパー `lib/git-status-filtered.sh` (先行 PR で導入、内部で `mktemp` に依存) を **新規の呼び出し経路** (`post-review-state-verify.sh` の worktree drift axis と `pr-review/SKILL.md` ステップ 4.0.A の snapshot 側) から呼び出す fix が、helper 自身の exit code チェックを行わずに出力をそのまま hash 化していた:
 
 ```bash
 # ❌ NG: 既存 helper を新規呼び出しするが、helper 自身の失敗を無視する

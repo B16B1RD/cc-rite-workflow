@@ -90,7 +90,7 @@ evidence 義務化 / 新規 sentinel / 新規 prompt 規約を追加する PR �
 
 ### 新 Step 追加 × 既存 MUST NOT 衝突と layer 明示対策（実測）
 
-`commands/wiki/ingest.md` Phase 9.1 に新 Step 3 (`.rite-flow-state` terminal patch、bash 実行) を追加した際、既存の MUST NOT #621 reinforce (「三点セット #2/#3 間に recap 等の追加行を挿入してはならない」) と Step 3 の実行タイミング指示が衝突するように読める F1 CRITICAL が prompt-engineer × code-quality の cross-validation で検出された。
+`commands/wiki/ingest.md` Phase 9.1 に新 Step 3 (`.rite-flow-state` terminal patch、bash 実行) を追加した際、既存の MUST NOT reinforce (「三点セット #2/#3 間に recap 等の追加行を挿入してはならない」) と Step 3 の実行タイミング指示が衝突するように読める F1 CRITICAL が prompt-engineer × code-quality の cross-validation で検出された。
 
 **衝突の構造**:
 

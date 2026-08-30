@@ -25,7 +25,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-21T16:45:00+09:00" }
 
 検証結果は Issue コメントに以下の形で記録された:
 - 6.5.W（pr-review の wiki raw source trigger）: 別 PR（#1937・#1938）のマージ時に raw source (reviews/) が正常生成されたことを確認
-- 4.6.W（fix の wiki raw source trigger）: 別 PR（#1937）で review⇄fix 複数サイクルの raw source (fixes/) が正常生成されたことを確認
+- 4.6.W（fix の wiki raw source trigger）: 別 PR で review⇄fix 複数サイクルの raw source (fixes/) が正常生成されたことを確認
 - Phase 4.4.W（issue-close の wiki raw source trigger）: 通常の open→iterate→ready→merge→cleanup パイプラインには含まれない独立スキルであり、この Issue 自体をこのスキルでクローズすることで実地検証した（この retrospective raw source 自体がその証跡）
 
 **教訓**: 「残作業: 検証」系のタスクを見つけたら、まず「実装対象のコードは既に別 PR でマージ済みか」を確認する。マージ済みであれば、この Issue の役割は実機での動作確認に限られるため、PR 経由の open→iterate パイプラインを force-through してはならない（trivial な diff では reviewer が指摘を生成できず、確認したい経路自体が発火しないため検証として意味をなさない）。代わりに、検証対象の経路を実際に発火させる手段（別 PR のマージ時の実測、当該スキルの直接実行等）で検証し、結果を Issue コメントに記録した上で `/rite:issue-close` で直接クローズする。

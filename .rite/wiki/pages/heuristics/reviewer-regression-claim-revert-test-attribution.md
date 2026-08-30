@@ -72,7 +72,7 @@ CRITICAL / HIGH で「revert で消える regression」と主張された場合�
 
 ### pre-existing 確定後の扱い
 
-pre-existing と判明した潜在バグは rite の scope ルール (revert test 不成立 = 本 PR 由来でない) により blocking finding にせず、別 Issue (#1241) として切り出した。最終的にユーザー escalation で「マージ可 + 別 Issue 化」を選択。これは [Issue body 内 scope 外指摘ハンドリングポリシーで reviewer advisory finding を降格する](./issue-body-scope-out-policy-demotes-advisory-finding.md) の attribution 版 — 「scope 外」判定の根拠が「PR 由来でない (pre-existing)」であるケース。
+pre-existing と判明した潜在バグは rite の scope ルール (revert test 不成立 = 本 PR 由来でない) により blocking finding にせず、別 Issue として切り出した。最終的にユーザー escalation で「マージ可 + 別 Issue 化」を選択。これは [Issue body 内 scope 外指摘ハンドリングポリシーで reviewer advisory finding を降格する](./issue-body-scope-out-policy-demotes-advisory-finding.md) の attribution 版 — 「scope 外」判定の根拠が「PR 由来でない (pre-existing)」であるケース。
 
 ### 適用範囲
 

@@ -104,7 +104,7 @@ severity 拡張のような fundamental change は 1 PR では cross-file invari
 scope expansion が **3 cycle 連続で 5 file 超ずつ広がる** 場合、別 Issue / Epic 化を検討する判断基準:
 
 1. **silent regression vs stylistic 区別**: write/read 経路の silent severity fallback (CRITICAL 級) は本 PR で必修。docstring の 4 値表記、ordering comparison の 4 軸列挙、terminology drift 等の stylistic は別 Issue で扱う
-2. **HIGH のみ scope 内修正、MEDIUM/LOW は別 Issue**: 起点事例の cycle 4 で 12 findings → HIGH 3 件 (silent regression 系) のみ本 PR で修正、残 9 件 (4 MEDIUM + 2 LOW from prompt-engineer/code-quality + 3 MEDIUM from tech-writer) を別 Issue (#709) で追跡する戦略を採用
+2. **HIGH のみ scope 内修正、MEDIUM/LOW は別 Issue**: 起点事例の cycle 4 で 12 findings → HIGH 3 件 (silent regression 系) のみ本 PR で修正、残 9 件 (4 MEDIUM + 2 LOW from prompt-engineer/code-quality + 3 MEDIUM from tech-writer) を別 Issue で追跡する戦略を採用
 3. **別 Issue 化の判断条件 (3 cycle / 5 file/cycle ルール)**: cycle 1 → cycle 2 → cycle 3 で同種 finding が継続検出され、各 cycle で 5 file 超の追加修正が必要な場合、本 PR は「Closed-loop の最低限を ship」+ 残作業を別 Issue という scope split を判断する
 
 詳細な累積対策 PR の cycle escalation pattern は [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md) 参照。

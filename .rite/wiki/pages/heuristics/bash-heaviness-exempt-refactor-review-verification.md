@@ -34,7 +34,7 @@ exempt marker は「意図的に重さを残す」宣言だが、宣言だけで
 
 入れ子 `$()` を `jq -n … | helper.sh` の pipe 形へ refactor する際は、helper が **stdin 入力に対応済み**であることを Read で実機確認してから「可」とする。positional 引数のみ受理する helper を pipe 化すると silent に空入力で動く。
 
-起点事例では `create-issue-with-projects.sh` が L137-141 で `INPUT_JSON="$(cat)"` により stdin を受理することを Read で確認した。pipe 形の先例 (`pr/review.md` §3992、#1193 #5) が存在することも併せて根拠とした。
+起点事例では `create-issue-with-projects.sh` が L137-141 で `INPUT_JSON="$(cat)"` により stdin を受理することを Read で確認した。pipe 形の先例 (`pr/review.md` §3992) が存在することも併せて根拠とした。
 
 ### 3. 「先例との非対称」は revert test で pre-existing 判定し、本 PR diff 由来でなければ finding にしない
 

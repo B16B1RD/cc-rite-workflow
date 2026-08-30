@@ -40,7 +40,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-10T01:03:44Z" }
 | # | failure mode | 具体例 | 修正方針 |
 |---|--------------|--------|---------|
 | 1 | broken whitelist references | Whitelist テーブルの出典 path が現状 repo に存在しない / 撤去済みファイルを指す (3 entries) | (a) 撤去済み: Whitelist から削除し Note で歴史的経緯のみ残す / (b) 存在しない skill: 実体が存在する canonical 文書に出典変更 / (c) canonical でない出典: 真の canonical 文書を採用 |
-| 2 | PR cross-reference fragility | Bad/Good 例が **未マージ PR (#688)** 由来のコードを参照 → 本 PR マージ時点で「実プロジェクト由来」が空になる | 「未マージ branch である事実を脚注で明示し、引用の意図を Bad 例として独立化」 |
+| 2 | PR cross-reference fragility | Bad/Good 例が **未マージ PR** 由来のコードを参照 → 本 PR マージ時点で「実プロジェクト由来」が空になる | 「未マージ branch である事実を脚注で明示し、引用の意図を Bad 例として独立化」 |
 | 3 | identifier 表記揺れ | 原則 ID (`no_line_reference` vs `no_line_or_cycle_reference`) が同ファイル内で揺れ → grep anchor の drift 源 | 「原則一覧テーブル」の表記を canonical として全文中で統一 |
 | 4 | regex character class incompleteness | shell プロジェクトはハイフン含み file 名が一般的 (`_emit-cross-session-incident.sh`) → `[a-z_]` のみは false negative | `[a-zA-Z0-9_./-]` 等で hyphen + Capital + 数字 + path separator を許容 |
 

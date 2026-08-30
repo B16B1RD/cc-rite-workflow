@@ -35,7 +35,7 @@ SoT 集約 PR で declarative invariant note (両者の集合差を 0 にする 
 
 0 findings / 1 cycle の PR で **初回実装時からの preventive 適用 + mutation 検証による test 検出力の実証** を追加:
 
-- Issue 側 AC が「declarative wording / sentinel 命名のみの修正は reject」(#1144 AC-4 継承) と明示し、WIKICHAIN handoff gate の実装と**同時に**静的 parity test (`cleanup-wikichain-handoff-parity.test.sh` TC-1〜5: writer / consumer / terminal set default-clear / チェーン 3 段 return sentinel) + runtime TC-11〜13 を追加。grep anchor 5 件は実装 literal と byte 一致 (anchor / context 分離の canonical 準拠)
+- Issue 側 AC が「declarative wording / sentinel 命名のみの修正は reject」(先行 Issue の AC-4 継承) と明示し、WIKICHAIN handoff gate の実装と**同時に**静的 parity test (`cleanup-wikichain-handoff-parity.test.sh` TC-1〜5: writer / consumer / terminal set default-clear / チェーン 3 段 return sentinel) + runtime TC-11〜13 を追加。grep anchor 5 件は実装 literal と byte 一致 (anchor / context 分離の canonical 準拠)
 - test reviewer が isolated worktree (`git worktree add --detach`) で **6 種の mutation 検証** (case arm 削除 / handoff set 削除 / terminal set への `--handoff` 付与 / reason 補間除去 / WARNING 削除 / reason 文面 copy-paste) を実施し、全 mutation で該当 TC が FAIL することを確認 — 「test が green であること」だけでなく「実装を壊せば red になること」(false positive 不在) を review 段階で実証する手法として記録
 - 「2 cycle 以上 finding 再発後に test 化する」remediation 経路ではなく、**着手時から mechanical test を実装と同梱する** preventive 経路でも本 pattern が成立し、0 findings / 1 cycle 収束に寄与することを実測
 

@@ -33,7 +33,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-19T15:00:00+09:00" }
 
 **変換可否の判別基準**: 生成物が (a) 被テスト対象の path 検証に渡るか、(b) `export TMPDIR` 等で意味が変わる評価タイミングにあるか、(c) 文字列リテラル・コメント内か — いずれかに該当する出現は個別判断する。sed の一括適用前に、対象リテラルの各出現の「読み手」を確認する。
 
-**mock intercept の対称原則**（正しい変換の例）: mock mktemp の intercept pattern は「mock は被テスト hook の**子プロセス**として同一 TMPDIR を継承する」性質により、`/tmp/... | "${TMPDIR:-/tmp}"/...` の両形 arm にすると TMPDIR 設定有無の両環境で正しく発火する（TMPDIR 未設定時は重複 arm となり無害）。本番側が #1902 で TMPDIR 化された後、mock 側の旧 `/tmp` 単一 arm は sandbox で intercept を取り逃し失敗分岐が未検証のまま偽 PASS していた — base で 2 FAIL → 修正後 0 FAIL を runtime 実証。
+**mock intercept の対称原則**（正しい変換の例）: mock mktemp の intercept pattern は「mock は被テスト hook の**子プロセス**として同一 TMPDIR を継承する」性質により、`/tmp/... | "${TMPDIR:-/tmp}"/...` の両形 arm にすると TMPDIR 設定有無の両環境で正しく発火する（TMPDIR 未設定時は重複 arm となり無害）。本番側が先行 PR で TMPDIR 化された後、mock 側の旧 `/tmp` 単一 arm は sandbox で intercept を取り逃し失敗分岐が未検証のまま偽 PASS していた — base で 2 FAIL → 修正後 0 FAIL を runtime 実証。
 
 ## 関連ページ
 
