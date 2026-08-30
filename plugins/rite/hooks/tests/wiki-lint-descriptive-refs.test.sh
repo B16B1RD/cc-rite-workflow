@@ -1072,7 +1072,11 @@ assert_grep "TC-53 n_stale は参考コメントとして意図的除外が明�
 # 測れず、whitelist 外の名前を 1 箇所にだけ足す変異が全 assert を素通りする (AC-7 が要求する
 # 「3 箇所が同一の変数集合を指す」が成立しなくなる)。
 EXPECT_VARS='n_broken_refs n_contradictions n_missing_concept n_orphans'
-extract_sorted() { grep -oE 'n_[a-z_]+' | sort -u | tr '\n' ' ' | sed 's/ $//'; }
+# 左境界を要求して `min_count` のような語からの偽収穫を防ぎ、末尾に数字を許して
+# `n_orphans2` のような数字サフィックス改名が `n_orphans` へ丸まらないようにする。
+extract_sorted() {
+  grep -oE '(^|[^a-z0-9_])n_[a-z0-9_]+' | grep -oE 'n_[a-z0-9_]+' | sort -u | tr '\n' ' ' | sed 's/ $//'
+}
 
 # 散文の「4 種」は数詞なので数字ワイルドカードで受ける。literal を要求すると語が変わったとき
 # capture が空になり、集合不一致ではなく「空 vs 4 種」として落ちて診断が原因を指さない。
@@ -1098,14 +1102,17 @@ assert "TC-53 ingest 加算式の項集合が 4 種ちょうど" "$EXPECT_VARS" 
 
 # 等式・内訳とも n_lint_anomaly は加算式に無い項なので capture 範囲から落とす。開いた regex に
 # したため、除去しないと集合に混ざる。
+# 非項の除去は**位置ではなく名指し**で行う。位置で範囲を狭めると、狭めた外側に counter が
+# 混入した変異を素通しする (実測: 内訳文言で「（内訳:」以降へ絞ると、その左に n_stale を
+# 挿入した変異が検出されない)。
 eq_vars=$(sed -n 's/^\*\*等式\*\*: `n_warnings = \([^`]*\)`.*/\1/p' "$INGEST_MD" \
   | sed 's/n_lint_anomaly//' | extract_sorted)
 assert "TC-53 ingest 等式の項集合が加算式と一致" "$EXPECT_VARS" "$eq_vars"
 
-# 内訳文言は `{n_warnings} 件（内訳: ...）` の形。行全体を渡すと左辺の n_warnings まで拾うため
-# 「内訳:」以降に絞る。
+# 内訳文言は `{n_warnings} 件（内訳: ...）` の形。左辺の n_warnings は当該行に 1 回しか
+# 現れないので名指しで落とす。
 breakdown_vars=$(grep -F 'Wiki 品質警告: {n_warnings} 件（内訳:' "$INGEST_MD" \
-  | sed 's/^.*（内訳://' | sed 's/n_lint_anomaly//' | extract_sorted)
+  | sed -e 's/{n_warnings}//' -e 's/n_lint_anomaly//' | extract_sorted)
 assert "TC-53 ingest 内訳文言の項集合が加算式と一致" "$EXPECT_VARS" "$breakdown_vars"
 
 # --- ステップ 8.1 bash の実行時挙動 (T-01 / T-02 / T-05) ---
@@ -1117,33 +1124,48 @@ extract_phase81() {
 PHASE81_RAW="$SBX/phase81-raw.sh"
 extract_phase81 > "$PHASE81_RAW"
 
-# 群 1: 抽出の構造健全性。契約文字列はここに置かない — 置くと契約の消失を
-# 「アンカーが変更された可能性」と誤帰属させ、群を分けた意味が失われる。
+# 抽出結果の検査は 2 群に分け、**診断文面を分ける**。抽出の破損と契約の消失は原因も対処も
+# 別物で、後者を「アンカーが変更された可能性」と報じると、本テストが検出すべき退行そのものを
+# テスト側の問題へ誤帰属させる。
 phase81_extract_ok=1
-for _required in '^set -o pipefail$' '^for _n_var in ' '^echo "\[CONTEXT\] lint_action=\$lint_action"$'; do
+
+# 群 1: 抽出の構造健全性のみ。block の開始行と終端行が揃っているかを見る。
+for _required in '^# ステップ 8.1 canonical lint_action decision logic' '^set -o pipefail$'; do
   if ! grep -q "$_required" "$PHASE81_RAW"; then
     fail "TC-53 ステップ 8.1 bash の抽出に失敗 ('$_required' 不在。アンカーが変更された可能性)"
     phase81_extract_ok=0
   fi
 done
 
+# 群 2: 契約行の存在。消失は「gate / emit 契約が消えた」と名指しする (抽出は正常なのだから)。
+for _contract in '^for _n_var in ' '^echo "\[CONTEXT\] lint_action=\$lint_action"$'; do
+  if ! grep -q "$_contract" "$PHASE81_RAW"; then
+    fail "TC-53 ステップ 8.1 の契約が消失 ('$_contract' 不在。residue gate / lint_action emit のいずれかが削除された)"
+    phase81_extract_ok=0
+  fi
+done
+
 if [ "$phase81_extract_ok" = 1 ]; then
-  # placeholder を実値へ差し替えて実行可能にする。counter 名は EXPECT_VARS と独立に
-  # 列挙せず、抽出結果の gate ループから読む (名前を 2 箇所に書くと drift する)。
-  phase81_run() {
+  # placeholder を実値へ差し替えて実行可能にする。置換対象は placeholder 文字列なので
+  # 集合変数からは組めず counter 名を literal で並べるが、その列挙は phase81_write の 1 箇所に
+  # 集約する (構文検査・実行・residue のどれもここを通す)。gate ループとの一致は上の集合突合
+  # assert が別途担保しており、そちらが落ちればここの列挙ずれも表面化する。
+  phase81_write() {
     # $1..$4: n_contradictions n_orphans n_missing_concept n_broken_refs の値
     # $5: n_stale の値 (参考コメント側。判定に影響しないことを測る)
+    # $6: 出力先
     sed -e "s/{n_contradictions}/$1/g" -e "s/{n_orphans}/$2/g" \
         -e "s/{n_missing_concept}/$3/g" -e "s/{n_broken_refs}/$4/g" \
         -e "s/{n_stale}/$5/g" -e "s/{n_unregistered_raw}/0/g" \
-        "$PHASE81_RAW" > "$SBX/phase81.sh"
+        "$PHASE81_RAW" > "$6"
+  }
+  phase81_run() {
+    phase81_write "$1" "$2" "$3" "$4" "$5" "$SBX/phase81.sh"
     bash "$SBX/phase81.sh" 2>&1
   }
 
   # 構文健全性 (`; then` 落ち等の変異を検出する)
-  sed -e 's/{n_contradictions}/0/g' -e 's/{n_orphans}/0/g' -e 's/{n_missing_concept}/0/g' \
-      -e 's/{n_broken_refs}/0/g' -e 's/{n_stale}/0/g' -e 's/{n_unregistered_raw}/0/g' \
-      "$PHASE81_RAW" > "$SBX/phase81-syntax.sh"
+  phase81_write 0 0 0 0 0 "$SBX/phase81-syntax.sh"
   if bash -n "$SBX/phase81-syntax.sh" 2>"$SBX/phase81-syntax.err"; then
     pass "TC-53 ステップ 8.1 bash が構文的に妥当"
   else
@@ -1165,19 +1187,10 @@ if [ "$phase81_extract_ok" = 1 ]; then
     "[CONTEXT] lint_action=lint:warning" "$(phase81_run 0 0 0 1 0)"
 
   # T-05: residue gate は 4 変数それぞれの未置換で exit 1 (AC-7 / 4.5)
-  # 未置換値は placeholder のまま残すため、当該変数だけ sed で戻す
-  for _idx in 1 2 3 4; do
-    case "$_idx" in
-      1) _v='{n_contradictions}'; _name=n_contradictions; _args='0 0 0 0' ;;
-      2) _v='{n_orphans}';        _name=n_orphans;        _args='0 0 0 0' ;;
-      3) _v='{n_missing_concept}'; _name=n_missing_concept; _args='0 0 0 0' ;;
-      4) _v='{n_broken_refs}';    _name=n_broken_refs;    _args='0 0 0 0' ;;
-    esac
-    # 全置換したうえで当該変数の代入行だけ placeholder へ戻す
-    sed -e 's/{n_contradictions}/0/g' -e 's/{n_orphans}/0/g' -e 's/{n_missing_concept}/0/g' \
-        -e 's/{n_broken_refs}/0/g' -e 's/{n_stale}/0/g' -e 's/{n_unregistered_raw}/0/g' \
-        "$PHASE81_RAW" \
-      | sed "s/^${_name}=0\$/${_name}=${_v}/" > "$SBX/phase81-residue.sh"
+  # 全置換したうえで当該変数の代入行だけ placeholder へ戻す
+  for _name in n_contradictions n_orphans n_missing_concept n_broken_refs; do
+    phase81_write 0 0 0 0 0 "$SBX/phase81-residue-base.sh"
+    sed "s/^${_name}=0\$/${_name}={${_name}}/" "$SBX/phase81-residue-base.sh" > "$SBX/phase81-residue.sh"
     _residue_out=$(bash "$SBX/phase81-residue.sh" 2>&1); _residue_rc=$?
     assert "TC-53 (T-05) ${_name} 未置換で exit 1" "1" "$_residue_rc"
     case "$_residue_out" in
@@ -1187,6 +1200,10 @@ if [ "$phase81_extract_ok" = 1 ]; then
         fail "TC-53 (T-05) ${_name} 未置換で residue marker が出ない: $(printf '%s' "$_residue_out" | head -1)" ;;
     esac
   done
+else
+  # 実行 assert 群を丸ごと落とすので計上する。無計上で消すと、baseline との PASS 差だけが
+  # 残り「何が走らなかったか」がサマリから読めない (_test-helpers.sh の skip 規約)。
+  skip "TC-53 ステップ 8.1 の実行 assert 群 (構文検査 / T-01 / T-02 / T-05) を抽出失敗により gate"
 fi
 
 if ! print_summary "$(basename "$0")" \

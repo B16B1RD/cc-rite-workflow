@@ -908,7 +908,7 @@ ERROR / stdout 空 / regex mismatch 経路では「Lint 結果: 実行失敗（{
 n_warnings += n_contradictions + n_orphans + n_missing_concept + n_broken_refs
 ```
 
-**`n_stale` と `n_unregistered_raw` は加算しない**。informational 指標として `n_warnings` には算入せず、`n_stale` はステップ 8.4 の `Lint 結果:` 行に、`n_unregistered_raw` はステップ 9 完了レポートの専用行に件数のみ表示する（どちらも `{wiki_warnings_line}` の内訳には現れない）。
+**`n_stale` と `n_unregistered_raw` は加算しない**。informational 指標として `n_warnings` には算入せず、`n_stale` はステップ 8.4 の `Lint 結果:` 行に、`n_unregistered_raw` は同行とステップ 9 完了レポートの専用行に件数のみ表示する（どちらも `{wiki_warnings_line}` の内訳には現れない）。
 rationale: references/rationale.md#n-unregistered-not-warning
 
 **詳細な修正対応**: 検出結果の詳細確認は、Ingest 完了後に `/rite:wiki-lint`（`--auto` なし）で再実行して取得する。
