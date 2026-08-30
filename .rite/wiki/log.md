@@ -45,6 +45,8 @@
 * **Update**: [プラットフォーム skip を増やすなら「緑の意味」を痩せさせない skip 会計をセットで入れる](pages/heuristics/skip-accounting-honest-green.md) — raw/fixes/20260830T142208Z-pr-2489.md を統合（抽出失敗で gate した assert 群も skip 会計の対象 / gate の文言は原因を決め打ちしない / 非項の除去は位置ではなく名指しを追記）
 * **Update**: [診断メッセージの主語と射程は、その文が発火する条件が保証している対象に限る](pages/heuristics/diagnostic-claim-scoped-to-firing-condition.md) — raw/fixes/20260830T144004Z-pr-2489.md を統合（原因別に分けた群は前段が通ったときだけ後段を評価する / 二役の行は両因を併記するを追記）
 * **Create**: [レビューループの打ち切りは severity ではなく、指摘が触れている層（挙動 / 検出力 / 文面）で判断する](pages/heuristics/review-loop-termination-by-finding-layer.md) — raw/reviews/20260830T145537Z-pr-2489.md を新規ページ化
+* **lint:clean** — contradictions=0, stale=42, orphans=0, missing_concept=0, unregistered_raw=402, broken_refs=0
+  * 注: 本実行では矛盾検出（ステップ 3）の全ページ対セマンティック比較を実施していない（438 ページ）。`contradictions=0` は「矛盾なし」ではなく「未実測」を意味する。機械判定カテゴリ（陳腐化 / 孤児 / 欠落概念 / 未登録 raw / 壊れた相互参照 / 説明的番号参照）は helper で実測済み。陳腐化 42 件は informational（Issue #2488 でブロッキング判定から除外済み）。説明的番号参照: 0 hits / 0 ページ（informational）
 ## 2026-08-29
 * **lint:warning** — contradictions=0, stale=38, orphans=0, missing_concept=1, unregistered_raw=400, broken_refs=0
 * **Create**: [全順序で優先順位を決める設計は逆向きの残存ハザードが必ず残る — 選ばなかった側を文書に残す](pages/heuristics/total-order-precedence-leaves-inverse-hazard.md) — raw/reviews/20260829T135848Z-pr-2464.md / raw/fixes/20260829T140803Z-pr-2464.md / raw/reviews/20260829T142006Z-pr-2464.md を新規ページ化（順序変更はハザードを消さず露出面を移すだけという実測を軸にする）
