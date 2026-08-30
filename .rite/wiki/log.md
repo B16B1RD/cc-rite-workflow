@@ -40,6 +40,11 @@
 * **lint:warning** — contradictions=0, stale=41, orphans=0, missing_concept=1, unregistered_raw=401, broken_refs=0
 * **lint:warning** — contradictions=0, stale=41, orphans=0, missing_concept=1, unregistered_raw=401, broken_refs=0
   * 注: 矛盾検出（ステップ 3）は 436 ページの title 完全一致 / domain 内 title 近似（token Jaccard >= 0.72）/ 全ページ対の本文 topic 重複（inverted index 経由、最大 0.186）で実測し、同一トピックを扱うページ対を 1 組も検出しなかった（= タイトル衝突・重複情報・方針逆転のいずれの成立条件も満たさない）。説明的番号参照: 146 hits / 84 ページ（informational）
+* **Update**: [新規 exit 1 経路 / sentinel type 追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する](pages/heuristics/canonical-list-count-claim-drift-anchor.md) — raw/reviews/20260830T135506Z-pr-2489.md を統合（数詞要約は列挙とは別サイトとして pin する / rationale ポインタは本体とアンカー先の両方を直すを追記）
+* **Create**: [集合一致 assert の抽出を固定 whitelist にすると「whitelist ∩ 各サイト」しか測れない](pages/anti-patterns/set-equality-assert-hollowed-by-whitelist-extraction.md) — raw/fixes/20260830T140538Z-pr-2489.md を新規ページ化
+* **Update**: [プラットフォーム skip を増やすなら「緑の意味」を痩せさせない skip 会計をセットで入れる](pages/heuristics/skip-accounting-honest-green.md) — raw/fixes/20260830T142208Z-pr-2489.md を統合（抽出失敗で gate した assert 群も skip 会計の対象 / gate の文言は原因を決め打ちしない / 非項の除去は位置ではなく名指しを追記）
+* **Update**: [診断メッセージの主語と射程は、その文が発火する条件が保証している対象に限る](pages/heuristics/diagnostic-claim-scoped-to-firing-condition.md) — raw/fixes/20260830T144004Z-pr-2489.md を統合（原因別に分けた群は前段が通ったときだけ後段を評価する / 二役の行は両因を併記するを追記）
+* **Create**: [レビューループの打ち切りは severity ではなく、指摘が触れている層（挙動 / 検出力 / 文面）で判断する](pages/heuristics/review-loop-termination-by-finding-layer.md) — raw/reviews/20260830T145537Z-pr-2489.md を新規ページ化
 ## 2026-08-29
 * **lint:warning** — contradictions=0, stale=38, orphans=0, missing_concept=1, unregistered_raw=400, broken_refs=0
 * **Create**: [全順序で優先順位を決める設計は逆向きの残存ハザードが必ず残る — 選ばなかった側を文書に残す](pages/heuristics/total-order-precedence-leaves-inverse-hazard.md) — raw/reviews/20260829T135848Z-pr-2464.md / raw/fixes/20260829T140803Z-pr-2464.md / raw/reviews/20260829T142006Z-pr-2464.md を新規ページ化（順序変更はハザードを消さず露出面を移すだけという実測を軸にする）

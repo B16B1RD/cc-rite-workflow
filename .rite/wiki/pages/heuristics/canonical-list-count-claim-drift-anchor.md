@@ -40,9 +40,13 @@ sources:
     resource: "raw/fixes/20260520T022118Z-pr-1066-cycle1.md"
   - type: "reviews"
     resource: "raw/reviews/20260607T115501Z-pr-1298.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260830T135506Z-pr-2489.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-07T16:06:04Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-08-30T15:15:33Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-08-30T15:15:33Z" }
 ---
 
 # 新規 exit 1 経路追加時は同一ファイル内 canonical 一覧を同期更新し、『N site 対称化』counter 宣言を drift 検出アンカーとして活用する
@@ -173,6 +177,17 @@ narration claim 事例の cycle 11 で 3 reviewer (prompt-engineer + code-qualit
 - **qualitative 表現の残置基準**: 「各 site で同型」のような **数を主張しない qualitative 表現** は、具体的 step 集合の併記があれば drift 源にならないため意図的残置が妥当
 - **本ページ canonical rule との関係**: counter を drift 検出アンカーとして活用する rule は「counter が正確に維持される」前提に立つが、計数規則が曖昧になった counter はアンカー機能自体を失う。**counter 活用 (本ページ原 rule) → enumeration 列挙への転換** は、`drift-check-anchor-semantic-name.md` の「line 番号 literal 禁止 → semantic name 参照」と同型の構造的閉塞であり、counter は line 番号と同じ「書いた時点から陳腐化が始まる」hand-maintained literal の一種として扱う
 
+### 拡張: 集合を数詞で要約した散文は、集合を列挙した散文とは別サイトである
+
+canonical 一覧の同期義務は「列挙している箇所」だけでは閉じない。判定式のループ対象を 5 変数から 4 変数へ縮めた変更で、同一ファイル内の exit code 契約表とエラー処理表に残る「`n_*` 5 種」という**数詞要約**が更新から漏れた。追加してあった静的 pin は「判定基準の散文 / bash の if 条件 / residue gate のループ」の 3 サイトを相互突合していたが、数詞要約はそのどれにも該当せず機械検知されなかった。3 レビュアーが独立に同一箇所を指摘しており、人間には見えるが pin には見えない典型形である。
+
+- **pin 対象のサイト分類に「N 種 / N 件 / N 箇所」の数詞要約を独立の類として加える**。列挙形の集合一致 assert は数詞要約を包含しない
+- 数詞要約は本ページの「counter 宣言を drift 検出アンカーとして活用する」規則の裏面でもある。counter は**アンカーとして使えると同時に、同期漏れの発生源でもある**
+
+### 拡張: rationale ポインタ方式は本体とアンカー先の両方を直す
+
+「rationale は `references/` へ退避し本体に 1 行ポインタを残す」構造では、振る舞いを変えたときに本体だけを直してもポインタ先に同じ主張が残る。実測では本体の「informational 指標として完了レポートの内訳にのみ表示する」を実態へ直した後も、`rationale:` 行が指す先の同じ主張が旧仕様のまま残っていた。**ポインタ方式は記述の重複を消すのではなく 1 レベル下へ移すだけ**なので、canonical 一覧の同期義務も 1 レベル下まで及ぶ。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -199,3 +214,4 @@ narration claim 事例の cycle 11 で 3 reviewer (prompt-engineer + code-qualit
 - [PR #1066 review (3 reviewer cross-validated: '4-site 対称化' narration claim vs 実 3-site 不一致 + watchdog peer 経路含意の漏れ)](../../raw/reviews/20260520T011841Z-pr-1066.md)
 - [PR #1066 cycle 1 fix ('3-site 対称化' + watchdog footnote で peer scope 限定を narration に明示)](../../raw/fixes/20260520T022118Z-pr-1066-cycle1.md)
 - [PR #1298 review (hand-maintained counter 撤廃 → step enumeration 列挙統一の successful application、0 findings 初回 mergeable)](../../raw/reviews/20260607T115501Z-pr-1298.md)
+- [PR #2489 review results (散文カウント drift を 3 レビュアーが独立検出)](../../raw/reviews/20260830T135506Z-pr-2489.md)

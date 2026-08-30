@@ -15,9 +15,13 @@ sources:
     resource: "raw/fixes/20260724T193804Z-pr-2013.md"
   - type: "fixes"
     resource: "raw/fixes/20260724T202517Z-pr-2013.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260830T142208Z-pr-2489.md"
 tags: ["test", "skip", "vacuous-green", "observability", "cross-platform"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-25T07:05:21Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-08-30T15:15:33Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-08-30T15:15:33Z" }
 ---
 
 # プラットフォーム skip を増やすなら「緑の意味」を痩せさせない skip 会計をセットで入れる
@@ -75,6 +79,20 @@ SKIP カウンタを導入して集計行には gated group 数を出したの�
 
 `$(uname -s)` で書くと `uname` 自身も同じ PATH を引くため、**床の判定手段が床の守ろうとしている脅威に汚染される**。`[ -d /proc ]` のようなファイルシステム事実に基づく判定の方が強い。
 
+### 7. 抽出失敗で assert 群を gate する分岐も skip 会計の対象
+
+skip 会計が要るのは「プラットフォーム非対応」だけではない。テストが SKILL.md の fenced bash を抽出して実行する型では、抽出アンカーが壊れたときに後続の assert 群をまとめて gate する分岐が要る。この分岐が `skip()` を呼ばずに素通りすると、**実行 assert 14 件が PASS / FAIL / SKIP のどこにも載らない**。実測では baseline との PASS 差（212 → 197、SKIP 行なし）でしか気付けなかった。gate した件数を数えれば、何が走らなかったかがサマリから読める。
+
+`skip()` を 1 本足しておくと、gate 自体を削除する変異が SKIP=1 の消失として現れるので、gate の存在も同時に pin できる。
+
+### 8. gate の skip 文言は原因を決め打ちしない
+
+複数の原因が同じフラグを落とす設計なら、skip 文言も両方の原因を名乗る形にする。フラグ名も同様で、`*_extract_ok` のように片方の原因だけを含意する名前は、もう片方で落ちたときに読み手を誤らせる。
+
+### 9. 非項の除去は位置ではなく名指しで行う
+
+集合抽出から特定のトークンを除くとき、「この区切り以降」のように**位置で範囲を狭める**と、狭めた範囲の外側が盲点になる。実測では、内訳文言の左側に counter を挿入した変異が検出されなかった（除去は右側だけを見ていた）。除去したいトークンが行内で一意なら、範囲を狭めずに**名指しで落とす**方が盲点を作らない。whitelist の穴を塞ぐために抽出を開いた regex へ移しても、同じサイトで位置 narrowing を入れれば別の穴が空く。
+
 ## 関連ページ
 
 - [新設した検証機構が、その機構自身の目的を局所的に打ち消す](../anti-patterns/self-defeating-guard-local-purpose-negation.md)
@@ -88,3 +106,4 @@ SKIP カウンタを導入して集計行には gated group 数を出したの�
 - [PR #2013 fix results (cycle 2) — skip をカウントして summary に出す / capability probe の床](../../raw/fixes/20260724T184410Z-pr-2013.md)
 - [PR #2013 fix results (cycle 3) — カウンタは per-file で止めず集約点まで通す](../../raw/fixes/20260724T193804Z-pr-2013.md)
 - [PR #2013 fix results (cycle 4) — 集計 parser の anchor / exit 0 skip が PASSED に計上される](../../raw/fixes/20260724T202517Z-pr-2013.md)
+- [PR #2489 fix results (cycle 2) — gate した assert 群の skip 計上 / 位置 narrowing の盲点](../../raw/fixes/20260830T142208Z-pr-2489.md)
