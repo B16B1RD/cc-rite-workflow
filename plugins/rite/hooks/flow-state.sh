@@ -375,9 +375,12 @@ cmd_set() {
   #
   # 判定は「書き込む Issue が既存と一致するときだけ保持」。`--issue` 省略時は直前の
   # `issue=$cur_issue` で一致するため、通常の phase transition は #1810 の merge-preserve 契約を
-  # そのまま満たす。`skills/cleanup/SKILL.md` の `--issue 0` fallback では落ちるが、cleanup は
-  # replica 同期を一切呼ばず post-tool-wm-sync も phase=cleanup で早期 exit するため実害はなく、
-  # むしろ 0 が state に載ったあと次 Issue の set が「切替」を検知できなくなる穴を塞ぐ。
+  # そのまま満たす。`skills/cleanup/SKILL.md` の `--issue 0` fallback では落ちる。cleanup も
+  # replica を同期する (ステップ 11 が `references/archive-procedures.md` の `append-eof` /
+  # `merge-checklist` を実行する) が、その 2 呼び出しは `--issue` を明示するため、キャッシュを
+  # 落としても `scan_wm_comment` が拾い直し gh 往復が 1 増えるだけで誤 PATCH は起きない。
+  # 落とす側を選ぶのは、0 が state に載ったあと次 Issue の set が「切替」を検知できなくなる
+  # 穴を塞ぐため。
   if [ "$issue" != "$cur_issue" ]; then
     cur_wm_comment_id=""
     cur_wm_replica=""

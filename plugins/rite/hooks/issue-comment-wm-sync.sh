@@ -355,7 +355,10 @@ do_fetch() {
       # `repos/{owner}/{repo}/issues/comments/{id}` は Issue 非依存のため、GET が成功したこと
       # 自体は所属の証明にならない (#2463)。
       [ -n "$_err" ] && rm -f "$_err"
-      echo "[rite] WARNING: issue-comment-wm-sync: cache された wm_comment_id=$cached は Issue #${ISSUE} の replica ではないため破棄しスキャンし直します" >&2
+      # 「不一致」と「判定不能 (Issue 行が無い / 読めない)」は同じ rc=1 に畳まれるため、文言も
+      # 非所属を断定しない。断定すると判定不能ケースで operator の triage が「Issue 跨ぎ汚染」へ
+      # 誤誘導される。
+      echo "[rite] WARNING: issue-comment-wm-sync: cache された wm_comment_id=$cached は Issue #${ISSUE} の replica と確認できなかったため破棄しスキャンし直します (別 Issue の replica か、Issue 行を欠く body)" >&2
       clear_cached_comment_id
       cached=""
       body=""

@@ -874,9 +874,25 @@ out_t22=$(cd "$dir_t22" && PATH="$dir_t22/bin:$PATH" \
     --phase "implement" --phase-detail "実装中" 2>/dev/null) || true
 seq22=$(tr '\n' ' ' < "$dir_t22/gh.seq" | sed 's/ *$//')
 if [ "$seq22" = "GET_CACHED GET_LIST PATCH_SCANNED" ]; then
-  pass "T-22: AC-1 — #246 does not prefix-match #2463; cache discarded"
+  pass "T-22a: AC-1 — #246 does not prefix-match #2463; cache discarded"
 else
-  fail "T-22: expected 'GET_CACHED GET_LIST PATCH_SCANNED', got '$seq22' out=$out_t22"
+  fail "T-22a: expected 'GET_CACHED GET_LIST PATCH_SCANNED', got '$seq22' out=$out_t22"
+fi
+# 逆方向 (target=246 / cached body=#2463)。T-22a は文字列等価な現行実装では自明に通るため、
+# 部分一致実装への退行を捕まえるのはこちら — grep や前方一致で照合すると cached body の
+# #2463 が target 246 を「含む」と誤判定し、他 Issue の replica を PATCH する。
+dir_t22b="$TEST_DIR/t22b"
+mkdir -p "$dir_t22b"
+echo '{"active":true,"issue_number":246,"wm_comment_id":4242}' > "$dir_t22b/.rite-flow-state"
+setup_crossissue_shim "$dir_t22b" 246 2463 yes
+out_t22b=$(cd "$dir_t22b" && PATH="$dir_t22b/bin:$PATH" \
+  bash "$HOOK" update --issue 246 --transform update-phase \
+    --phase "implement" --phase-detail "実装中" 2>/dev/null) || true
+seq22b=$(tr '\n' ' ' < "$dir_t22b/gh.seq" | sed 's/ *$//')
+if [ "$seq22b" = "GET_CACHED GET_LIST PATCH_SCANNED" ]; then
+  pass "T-22b: AC-1 — cached #2463 does not substring-match target #246; cache discarded"
+else
+  fail "T-22b: expected 'GET_CACHED GET_LIST PATCH_SCANNED', got '$seq22b' out=$out_t22b"
 fi
 echo ""
 
@@ -894,6 +910,56 @@ if [ "$seq23" = "GET_CACHED PATCH_CACHED" ]; then
   pass "T-23: AC-6 — ordered sequence is GET 1 + PATCH 1 with no verification round trip"
 else
   fail "T-23: expected 'GET_CACHED PATCH_CACHED', got '$seq23' out=$out_t23"
+fi
+echo ""
+
+# ─── T-24: init テンプレが書く body が parser を満たす（テンプレ↔parser 結合の pin）───
+# 所属判定は init テンプレの Issue 行だけに依存する。テンプレ側が改名・削除されても故障は
+# fail-safe（scan へ縮退）なので、他のテストは手書き fixture を通すため全て緑のまま AC-6 が
+# 無警告で死ぬ。実際に投稿される body を捕まえて parser にかけ、結合をここで pin する。
+echo "T-24: init template body satisfies _body_belongs_to_issue (template↔parser coupling)"
+dir_t24="$TEST_DIR/t24"
+mkdir -p "$dir_t24/bin"
+POSTED_BODY_T24="$dir_t24/posted-body.md"
+cat > "$dir_t24/bin/gh" <<GH_SHIM
+#!/bin/bash
+case "\$1 \$2" in
+  "repo view") echo "testowner/testrepo"; exit 0 ;;
+  "issue comment")
+    # --body-file の値を捕まえて保存する（実際に投稿される body そのもの）
+    prev=""
+    for a in "\$@"; do
+      if [ "\$prev" = "--body-file" ]; then cp "\$a" "$POSTED_BODY_T24"; fi
+      prev="\$a"
+    done
+    echo "https://github.com/testowner/testrepo/issues/2463#issuecomment-9"
+    exit 0 ;;
+esac
+# pre-check は空（未投稿）、verify は id を返す
+if [ -f "$POSTED_BODY_T24" ]; then echo "999"; fi
+exit 0
+GH_SHIM
+chmod +x "$dir_t24/bin/gh"
+(cd "$dir_t24" && PATH="$dir_t24/bin:$PATH" \
+  bash "$HOOK" init --issue 2463 --branch "fix/issue-2463-test" >/dev/null 2>&1) || true
+
+if [ -s "$POSTED_BODY_T24" ]; then
+  pass "T-24a: init が body を投稿した（捕捉できた）"
+  # parser 本体を抽出して、投稿された body に対してそのまま適用する
+  eval "$(awk '/^_body_belongs_to_issue\(\) \{/,/^\}$/' "$HOOK")"
+  t24_body=$(cat "$POSTED_BODY_T24")
+  if _body_belongs_to_issue "$t24_body" 2463; then
+    pass "T-24b: init テンプレの body が Issue 2463 の所属判定を満たす"
+  else
+    fail "T-24b: init テンプレの body が parser を満たさない（テンプレ↔parser の drift。AC-6 が無警告で劣化する）"
+  fi
+  if _body_belongs_to_issue "$t24_body" 246; then
+    fail "T-24c: init テンプレの body が別 Issue 246 にも一致してしまう（境界の退行）"
+  else
+    pass "T-24c: init テンプレの body は別 Issue 246 には一致しない"
+  fi
+else
+  fail "T-24: init が body を投稿しなかった（shim 側の問題か init の退行）"
 fi
 echo ""
 

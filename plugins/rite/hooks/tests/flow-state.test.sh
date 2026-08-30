@@ -1413,14 +1413,16 @@ else
   pass "TC-28: corrupt wm_comment_id 由来の write エラー出力の生 ESC が中和されている"
 fi
 
-# --- TC-29: wm_comment_id / wm_replica are Issue-scoped, but `--issue 0` is not an Issue switch (#2463) ---
+# --- TC-29: wm_comment_id / wm_replica are Issue-scoped — preserved only when the written Issue
+# --- equals the stored one, with the cleanup `--issue 0` clear included in the drop (#2463) ---
 # Both fields are session-file resident yet Issue-scoped in meaning, so a set that switches to a
 # different Issue must drop them (otherwise the next Issue PATCHes the previous Issue's replica via
 # the Issue-independent comments endpoint, and the negative cache is inherited too).
 # The rule is "preserve only when the written Issue equals the stored one", so an omitted
 # `--issue` (the ordinary phase transition of TC-28) still preserves, while both an explicit
-# switch and `--issue 0` drop. `--issue 0` dropping is intentional: cleanup — its only caller —
-# never syncs the replica, and keeping 0 in state would hide the *next* Issue's switch.
+# switch and `--issue 0` drop. `--issue 0` dropping is intentional: cleanup does sync the replica,
+# but its calls pass `--issue` explicitly, so a dropped cache only costs one extra scan round trip —
+# whereas keeping 0 in state would hide the *next* Issue's switch entirely.
 echo ""
 echo "=== TC-29: wm_comment_id / wm_replica are Issue-scoped (dropped unless the Issue matches) ==="
 result=$(new_sandbox); d29="${result%|*}"; sid29="${result#*|}"
@@ -1438,8 +1440,9 @@ assert "TC-29: same --issue preserves wm_comment_id" "555111" "$(jq -r '.wm_comm
 (cd "$d29" && bash "$HOOK" set --phase init --issue 2464 --branch "" --pr 0 --next "n") >/dev/null
 assert "TC-29: Issue switch drops wm_comment_id" "false" "$(jq -r 'has("wm_comment_id")' "$sfile29")"
 assert "TC-29: Issue switch drops wm_replica" "false" "$(jq -r 'has("wm_replica")' "$sfile29")"
-# --issue 0 (cleanup fallback) also drops — cleanup performs no replica sync, and leaving the
-# cache behind a 0 would make the following Issue's set unable to see a switch at all
+# --issue 0 (cleanup fallback) also drops — cleanup's own replica sync passes --issue explicitly,
+# so the dropped cache is recovered by a scan (one extra round trip), while leaving the cache
+# behind a 0 would make the following Issue's set unable to see a switch at all
 result=$(new_sandbox); d29b="${result%|*}"; sid29b="${result#*|}"
 sfile29b="$d29b/.rite/sessions/${sid29b}.flow-state"
 (cd "$d29b" && bash "$HOOK" set --phase init --issue 2463 --branch "" --pr 0 --next "n") >/dev/null

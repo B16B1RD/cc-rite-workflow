@@ -979,10 +979,12 @@ for ph in implement lint pr; do
     notified_n21=$((notified_n21 + 1))
   fi
 done
-if [ "$notified_n21" -ge 1 ] && [ ! -s "$dir_n21/gh.log" ]; then
-  pass "T-21: AC-5 — degradation surfaced $notified_n21/3 times with zero gh round trips"
+# 契約は「毎 phase 変化で通知」なので 3/3 を要求する。>=1 では「1 回だけ鳴って以後沈黙」する
+# 退行 (#2463 が塞いだ恒久沈黙の再来) を素通しする。
+if [ "$notified_n21" -eq 3 ] && [ ! -s "$dir_n21/gh.log" ]; then
+  pass "T-21: AC-5 — degradation surfaced 3/3 times with zero gh round trips"
 else
-  fail "T-21: expected >=1 systemMessage and 0 gh calls (notified=$notified_n21 log=$(cat "$dir_n21/gh.log" 2>/dev/null))"
+  fail "T-21: expected 3/3 systemMessage and 0 gh calls (notified=$notified_n21/3 log=$(cat "$dir_n21/gh.log" 2>/dev/null))"
 fi
 echo ""
 

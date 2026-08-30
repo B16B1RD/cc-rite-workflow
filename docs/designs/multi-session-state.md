@@ -73,7 +73,7 @@ Session Ownership 機構（一連の Session Ownership 系 Issue で段階的に
 
 **実行時に追加される optional フィールド (現行 hook 群が後付けで patch する)**:
 
-- `wm_comment_id` (`issue-comment-wm-sync.sh` が cache 用に書込。数値のみ — sentinel 文字列は入れない。Issue スコープ: `flow-state.sh set` は書込先 Issue が切り替わるとき merge-preserve せず破棄し、`do_fetch` は取得した body が対象 Issue のものでないキャッシュを破棄する)
+- `wm_comment_id` (`issue-comment-wm-sync.sh` が cache 用に書込。数値のみ — sentinel 文字列は入れない。Issue スコープ: `flow-state.sh set` は書込先 Issue が切り替わるとき merge-preserve せず破棄し、`do_fetch` は取得した body が対象 Issue のものと確認できないキャッシュを破棄する — 不一致と判定不能 (Issue 行を欠く body) は同じ扱い)
 - `wm_replica` (`issue-comment-wm-sync.sh` が `no_comment` 時に `"absent"` のみ書込。`cache_comment_id` / `init` 成功で削除。`wm_comment_id` に sentinel は入れない。`wm_comment_id` と同じく Issue スコープで、Issue 切替時に破棄されるため他 Issue の `absent` が同期を止めることはない)
 - `error_count` (`flow-state.sh set` が phase transition 時に `0` リセット writer として書込。`--preserve-error-count` 指定時は既存値を保持。**incrementer は撤去済みの stop-guard.sh のみで、現行 production code に incrementer 経路は存在しない** — incrementer 不在の半-legacy field。S3 で schema 維持するか除外するかは後追い検討事項)
 - `loop_count` (現状: production code に `.rite-flow-state` 内 `loop_count` への writer 経路は存在しない。`work-memory-update.sh` は read-only 参照のみ、test fixture (`session-start.test.sh`, `post-compact.test.sh`, `session-end.test.sh`) と read consumer のみが利用する legacy field 状態。S3 で writer 経路の要否を判定し、不要なら schema から除外する後追い検討事項)
