@@ -129,6 +129,10 @@ make_temp_repo() {
 write_gh_pr_mock() {
   local dest="$1/bin/gh"
   mkdir -p "$1/bin"
+  # Production Step 6/7 resolve origin and call `gh pr view -R owner/repo`.
+  # Without this remote the helper stays on the no -R branch and AC-1/AC-2
+  # of the production path stay unpinned (Issue #2427 review F-01).
+  git -C "$1" remote add origin git@github.com:example/repo.git
   cat > "$dest" <<'EOF'
 #!/bin/bash
 pr=""
@@ -1241,12 +1245,14 @@ printf '{"non_blocking_findings":[]}\n' > "$TEST_REPO/.rite/review-results/700-a
 printf 'broken\n' > "$TEST_REPO/.rite/review-results/703-broken.json"
 printf '701-clean.json\n' > "$TEST_REPO/.rite/state/review-run-since-701.txt"
 printf '700-active.json\n' > "$TEST_REPO/.rite/state/review-run-since-700.txt"
+printf 'noop\n' > "$TEST_REPO/.rite/state/nb-sweep-done-701.txt"
+printf 'done\n' > "$TEST_REPO/.rite/state/nb-sweep-done-700.txt"
 t38_output=$(cd "$TEST_REPO" && \
   GH_PR_STATE_701=MERGED GH_PR_STATE_702=MERGED \
   PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
-if [ ! -e "$TEST_REPO/.rite/review-results/701-clean.json" ] && [ ! -e "$TEST_REPO/.rite/state/review-run-since-701.txt" ]; then pass "T-38 orphan nb=0 JSON + pin deleted"; else fail "T-38 orphan nb=0 residue remained"; fi
+if [ ! -e "$TEST_REPO/.rite/review-results/701-clean.json" ] && [ ! -e "$TEST_REPO/.rite/state/review-run-since-701.txt" ] && [ ! -e "$TEST_REPO/.rite/state/nb-sweep-done-701.txt" ]; then pass "T-38 orphan nb=0 JSON + pin + sweep-done deleted"; else fail "T-38 orphan nb=0 residue remained"; fi
 if [ -e "$TEST_REPO/.rite/review-results/archive/702-notes.json" ] && [ ! -e "$TEST_REPO/.rite/review-results/702-notes.json" ]; then pass "T-39 orphan nb>0 JSON archived"; else fail "T-39 nb>0 JSON not archived"; fi
-if [ -e "$TEST_REPO/.rite/review-results/700-active.json" ] && [ -e "$TEST_REPO/.rite/state/review-run-since-700.txt" ]; then pass "T-40 active PR artifacts protected"; else fail "T-40 active PR artifacts changed"; fi
+if [ -e "$TEST_REPO/.rite/review-results/700-active.json" ] && [ -e "$TEST_REPO/.rite/state/review-run-since-700.txt" ] && [ -e "$TEST_REPO/.rite/state/nb-sweep-done-700.txt" ]; then pass "T-40 active PR artifacts protected"; else fail "T-40 active PR artifacts changed"; fi
 if [ -e "$TEST_REPO/.rite/review-results/703-broken.json" ] && echo "$t38_output" | grep -q '解析できない'; then pass "T-41 malformed JSON protected with WARNING"; else fail "T-41 malformed JSON was not safely surfaced"; fi
 if echo "$t38_output" | grep -q 'orphan_reviews_deleted=1' && echo "$t38_output" | grep -q 'orphan_reviews_archived=1' && echo "$t38_output" | grep -q 'orphan_review_pins=1'; then pass "T-42 cleanup counters observable"; else fail "T-42 counters missing: $t38_output"; fi
 cleanup_temp_repo "$TEST_REPO"
@@ -1276,22 +1282,26 @@ printf '{"non_blocking_findings":[{"id":"F-03"}]}\n' > "$TEST_REPO/.rite/review-
 printf '{"non_blocking_findings":[{"id":"F-04"}]}\n' > "$TEST_REPO/.rite/review-results/708-merged.json"
 printf '705-pin\n' > "$TEST_REPO/.rite/state/review-run-since-705.txt"
 printf '706-pin\n' > "$TEST_REPO/.rite/state/review-run-since-706.txt"
+printf 'done\n' > "$TEST_REPO/.rite/state/nb-sweep-done-705.txt"
+printf 'noop\n' > "$TEST_REPO/.rite/state/nb-sweep-done-706.txt"
 t44_output=$(cd "$TEST_REPO" && \
   GH_PR_STATE_705=OPEN GH_PR_STATE_706=OPEN GH_PR_STATE_707=fail GH_PR_STATE_708=MERGED \
   PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
 if [ -e "$TEST_REPO/.rite/review-results/705-20260101000000.json" ] \
   && [ -e "$TEST_REPO/.rite/review-results/705-20260102000000.json" ] \
   && [ ! -e "$TEST_REPO/.rite/review-results/archive/705-20260101000000.json" ] \
-  && [ -e "$TEST_REPO/.rite/state/review-run-since-705.txt" ]; then
-  pass "T-44 OPEN PR nb>0 JSON + pin kept (AC-1)"
+  && [ -e "$TEST_REPO/.rite/state/review-run-since-705.txt" ] \
+  && [ -e "$TEST_REPO/.rite/state/nb-sweep-done-705.txt" ]; then
+  pass "T-44 OPEN PR nb>0 JSON + pin + sweep-done kept (AC-1)"
 else
-  fail "T-44 OPEN PR JSON was archived or pin deleted"
+  fail "T-44 OPEN PR JSON was archived or pin/sweep-done deleted"
 fi
 if [ -e "$TEST_REPO/.rite/review-results/706-clean.json" ] \
-  && [ -e "$TEST_REPO/.rite/state/review-run-since-706.txt" ]; then
-  pass "T-45 OPEN PR nb=0 JSON kept (not deleted)"
+  && [ -e "$TEST_REPO/.rite/state/review-run-since-706.txt" ] \
+  && [ -e "$TEST_REPO/.rite/state/nb-sweep-done-706.txt" ]; then
+  pass "T-45 OPEN PR nb=0 JSON + sweep-done kept (not deleted)"
 else
-  fail "T-45 OPEN PR nb=0 JSON was deleted"
+  fail "T-45 OPEN PR nb=0 JSON or sweep-done was deleted"
 fi
 if [ -e "$TEST_REPO/.rite/review-results/707-notes.json" ] \
   && echo "$t44_output" | grep -q 'GitHub 状態を取得できない'; then
@@ -1313,6 +1323,175 @@ else
   fail "T-48 MERGED PR JSON was not archived"
 fi
 cleanup_temp_repo "$TEST_REPO"
+
+# -----------------------------------------------------------------------
+# T-49..: consumed release-promotion attestation sweep (#2427)
+# Mixed fixture in one invocation: MERGED/CLOSED delete, OPEN/unknown keep,
+# .gitignore stays, non-{N}.json leftovers stay, counters + status.
+# -----------------------------------------------------------------------
+write_promo_attestation() {
+  printf '{"schema_version":"1.0.0","pr_number":%s}\n' "$2" > "$1/.rite/release-promotions/$2.json"
+}
+
+echo "T-49..: release-promotion attestation sweep"
+TEST_REPO=$(make_temp_repo)
+write_gh_pr_mock "$TEST_REPO"
+mkdir -p "$TEST_REPO/.rite/release-promotions" "$TEST_REPO/.rite/sessions"
+printf '*\n' > "$TEST_REPO/.rite/release-promotions/.gitignore"
+write_promo_attestation "$TEST_REPO" 801
+write_promo_attestation "$TEST_REPO" 802
+write_promo_attestation "$TEST_REPO" 803
+write_promo_attestation "$TEST_REPO" 804
+printf 'leftover\n' > "$TEST_REPO/.rite/release-promotions/805.tmp"
+printf '{"schema_version":"1.0.0"}\n' > "$TEST_REPO/.rite/release-promotions/806-extra.json"
+printf 'notes\n' > "$TEST_REPO/.rite/release-promotions/notes.txt"
+t49_output=$(cd "$TEST_REPO" && \
+  GH_PR_STATE_801=MERGED GH_PR_STATE_802=OPEN GH_PR_STATE_804=CLOSED \
+  PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
+t49_gi=$(cat "$TEST_REPO/.rite/release-promotions/.gitignore" 2>/dev/null || true)
+t49_porc=$(cd "$TEST_REPO" && git status --porcelain -uall -- .rite/release-promotions/)
+if [ ! -e "$TEST_REPO/.rite/release-promotions/801.json" ] \
+  && [ ! -e "$TEST_REPO/.rite/release-promotions/804.json" ] \
+  && echo "$t49_output" | grep -q 'promotions_deleted=2' \
+  && echo "$t49_output" | grep -q 'status=cleaned'; then
+  pass "T-49 AC-1 MERGED/CLOSED {N}.json deleted (promotions_deleted=2, status=cleaned)"
+else
+  fail "T-49 consumed attestations not deleted: $t49_output"
+fi
+if [ -e "$TEST_REPO/.rite/release-promotions/802.json" ] \
+  && echo "$t49_output" | grep -q 'kept release-promotion attestation: 802.json (OPEN' \
+  && echo "$t49_output" | grep -qE 'promotions_kept=5(;|$)'; then
+  pass "T-50 AC-2 OPEN {N}.json kept with reason"
+else
+  fail "T-50 OPEN attestation not kept observably: $t49_output"
+fi
+if [ -e "$TEST_REPO/.rite/release-promotions/803.json" ] \
+  && echo "$t49_output" | grep -q 'GitHub 状態を取得できないため release-promotion attestation を保持'; then
+  pass "T-51 unknown GitHub state keeps attestation with WARNING"
+else
+  fail "T-51 unknown state did not keep: $t49_output"
+fi
+if [ "$t49_gi" = "*" ] \
+  && [ -f "$TEST_REPO/.rite/release-promotions/.gitignore" ] \
+  && [ -z "$t49_porc" ]; then
+  pass "T-52 AC-3 .gitignore remains as * and porcelain is empty"
+else
+  fail "T-52 gitignore/porcelain: gi='$t49_gi' porc='$t49_porc'"
+fi
+if [ -e "$TEST_REPO/.rite/release-promotions/805.tmp" ] \
+  && [ -e "$TEST_REPO/.rite/release-promotions/806-extra.json" ] \
+  && [ -e "$TEST_REPO/.rite/release-promotions/notes.txt" ] \
+  && echo "$t49_output" | grep -q 'not {N}.json'; then
+  pass "T-53 non-{N}.json leftovers kept"
+else
+  fail "T-53 leftovers changed: $t49_output"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-54: keep-only OPEN is status=noop with promotions_kept>=1"
+TEST_REPO=$(make_temp_repo)
+write_gh_pr_mock "$TEST_REPO"
+mkdir -p "$TEST_REPO/.rite/release-promotions"
+printf '*\n' > "$TEST_REPO/.rite/release-promotions/.gitignore"
+write_promo_attestation "$TEST_REPO" 802
+t54_output=$(cd "$TEST_REPO" && \
+  GH_PR_STATE_802=OPEN PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
+if [ -e "$TEST_REPO/.rite/release-promotions/802.json" ] \
+  && echo "$t54_output" | grep -q 'status=noop' \
+  && echo "$t54_output" | grep -q 'promotions_kept=1' \
+  && echo "$t54_output" | grep -q 'kept release-promotion attestation: 802.json (OPEN'; then
+  pass "T-54 keep-only OPEN is noop with promotions_kept=1"
+else
+  fail "T-54 keep-only: $t54_output"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-55: broken flow-state does not block MERGED attestation delete"
+TEST_REPO=$(make_temp_repo)
+write_gh_pr_mock "$TEST_REPO"
+mkdir -p "$TEST_REPO/.rite/release-promotions" "$TEST_REPO/.rite/review-results" "$TEST_REPO/.rite/sessions"
+printf 'broken\n' > "$TEST_REPO/.rite/sessions/broken.flow-state"
+printf '{"non_blocking_findings":[]}\n' > "$TEST_REPO/.rite/review-results/704-clean.json"
+printf '*\n' > "$TEST_REPO/.rite/release-promotions/.gitignore"
+write_promo_attestation "$TEST_REPO" 807
+t55_output=$(cd "$TEST_REPO" && \
+  GH_PR_STATE_807=MERGED PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
+if [ ! -e "$TEST_REPO/.rite/release-promotions/807.json" ] \
+  && [ -e "$TEST_REPO/.rite/review-results/704-clean.json" ] \
+  && echo "$t55_output" | grep -q '回収をスキップ' \
+  && echo "$t55_output" | grep -q 'promotions_deleted=1'; then
+  pass "T-55 Step 7 independent of review_gc_safe"
+else
+  fail "T-55 review_gc_safe coupling: $t55_output"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-56: --dry-run does not delete MERGED attestation"
+TEST_REPO=$(make_temp_repo)
+write_gh_pr_mock "$TEST_REPO"
+mkdir -p "$TEST_REPO/.rite/release-promotions"
+printf '*\n' > "$TEST_REPO/.rite/release-promotions/.gitignore"
+write_promo_attestation "$TEST_REPO" 808
+t56_output=$(cd "$TEST_REPO" && \
+  GH_PR_STATE_808=MERGED PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" --dry-run 2>&1)
+if [ -e "$TEST_REPO/.rite/release-promotions/808.json" ] \
+  && [ -f "$TEST_REPO/.rite/release-promotions/.gitignore" ] \
+  && echo "$t56_output" | grep -q '\[dry-run\] would delete consumed release-promotion attestation: 808.json'; then
+  pass "T-56 dry-run lists MERGED attestation and does not delete"
+else
+  fail "T-56 dry-run: $t56_output"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-57: gh 欠落 PATH は OPEN attestation を保持する"
+TEST_REPO=$(make_temp_repo)
+mkdir -p "$TEST_REPO/.rite/release-promotions"
+printf '*\n' > "$TEST_REPO/.rite/release-promotions/.gitignore"
+write_promo_attestation "$TEST_REPO" 802
+# /usr/bin に gh がある環境でも欠落枝へ入るよう、gh 以外の実バイナリだけを symlink した PATH を使う。
+t57_bin=$(mktemp -d "$HOST_TMPDIR/rite-pr-cleanup-nogh-XXXXXX") || t57_bin=""
+TEST_REPOS+=("$t57_bin")
+if [ -z "$t57_bin" ]; then
+  fail "T-57: no-gh bin の mktemp に失敗"
+else
+  for cmd in git jq find rm mkdir mv chmod cat tr head sed awk mktemp wc date basename uname bash dirname grep sort cut id readlink xargs env pwd; do
+    src=$(command -v "$cmd") || continue
+    ln -s "$src" "$t57_bin/$cmd"
+  done
+  t57_output=$(cd "$TEST_REPO" && PATH="$t57_bin" bash "$CLEANUP" 2>&1) || true
+  if [ -e "$TEST_REPO/.rite/release-promotions/802.json" ] \
+    && echo "$t57_output" | grep -q 'gh が見つからないため release-promotion attestation を削除せず保持' \
+    && echo "$t57_output" | grep -qE 'promotions_kept=1(;|$)'; then
+    pass "T-57 gh missing keeps OPEN attestation with WARNING"
+  else
+    fail "T-57 no-gh keep: $t57_output"
+  fi
+  rm -rf "$t57_bin"
+fi
+cleanup_temp_repo "$TEST_REPO"
+
+echo "T-58: MERGED attestation の rm 失敗は status=failed"
+if [ "$IS_ROOT" = "1" ]; then
+  skip "T-58: root では perms がバイパスされ強制失敗にならないためスキップ"
+else
+  TEST_REPO=$(make_temp_repo)
+  write_gh_pr_mock "$TEST_REPO"
+  mkdir -p "$TEST_REPO/.rite/release-promotions"
+  printf '*\n' > "$TEST_REPO/.rite/release-promotions/.gitignore"
+  write_promo_attestation "$TEST_REPO" 809
+  chmod 0500 "$TEST_REPO/.rite/release-promotions"
+  t58_output=$(cd "$TEST_REPO" && \
+    GH_PR_STATE_809=MERGED PATH="$TEST_REPO/bin:$PATH" bash "$CLEANUP" 2>&1)
+  chmod 0700 "$TEST_REPO/.rite/release-promotions"
+  if [ -e "$TEST_REPO/.rite/release-promotions/809.json" ] \
+    && echo "$t58_output" | grep -q 'の削除に失敗しました' \
+    && echo "$t58_output" | grep -q 'status=failed'; then
+    pass "T-58 MERGED attestation rm failure is status=failed"
+  else
+    fail "T-58 rm failure: exists=$([ -e "$TEST_REPO/.rite/release-promotions/809.json" ] && echo yes || echo no) $t58_output"
+  fi
+  cleanup_temp_repo "$TEST_REPO"
+fi
 
 # -----------------------------------------------------------------------
 # Summary

@@ -489,8 +489,8 @@ rationale: references/rationale.md#upgrade-branching
 
 | Condition | Execution order (left → right) |
 |-----------|--------------------------------|
-| `current < latest` | (1) Step 3 Backup → (2) Step 4 Identify → (3) Step 5 Preview → (4) Step 6 Apply → (5) Step 7 Phase 4.7 |
-| `current >= latest` | (1) Step 3 Backup → (2) Step 4 Identify（drift のみ）→ (3) Step 6 Apply（multi_session/新規セクション/欠落サブキー/Wiki の back-add。User-customized 保全・冪等・preview なし）→ (4) Step 7 Phase 4.7 |
+| `current < latest` | (1) Step 3 Backup → (2) Step 4 Identify → (3) Step 5 Preview → (4) Step 6 Apply → (5) Step 6.5 nested gitignore migrate → (6) Step 7 Phase 4.7 |
+| `current >= latest` | (1) Step 3 Backup → (2) Step 4 Identify（drift のみ）→ (3) Step 6 Apply（multi_session/新規セクション/欠落サブキー/Wiki の back-add。User-customized 保全・冪等・preview なし）→ (4) Step 6.5 nested gitignore migrate → (5) Step 7 Phase 4.7 |
 
 両経路とも Step 3 Backup を必ず先に実行する (precondition)。`current >= latest` は Step 5 を挟まず、欠落 active セクション/サブキーのみを冪等に back-add する（User-customized 値と明示的な `enabled: false` は保全）。back-add 対象が皆無なら Step 6 は書き換えず `rite-config.yml は最新です (v{current})` を表示する。Phase 4.7 はそのまま実行（Wiki 初期化済みなら Skill は skip）。
 rationale: references/rationale.md#upgrade-branching
@@ -607,6 +607,23 @@ rationale: references/rationale.md#upgrade-apply-ssot
 8. Preserve all user-customized values
 
 Display "rite-config.yml をアップグレードしました (v{current} → v{latest})".
+
+**Step 6.5: Nested gitignore + relocated-state migrate**（両経路。Apply の直後・Phase 4.7 の前）
+
+冪等・非破壊。非空 `.rite/.gitignore` は上書きしない。dest 既存の旧パスは触らない。
+nested 生成と migrate はどちらも `state-path-resolve.sh` の main checkout 側。cwd 相対の `.rite` に書かない。
+
+```bash
+state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
+mkdir -p "$state_root/.rite"
+source {plugin_root}/hooks/gitignore-ensure.sh
+source {plugin_root}/hooks/relocated-state-migrate.sh
+if ! _ensure_rite_nested_gitignore "$state_root/.rite"; then
+  echo "WARNING: .rite/.gitignore を作成できませんでした" >&2
+  [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+fi
+_rite_run_relocated_state_migrate "$state_root"
+```
 
 **Step 7: Run Phase 4.7 and display status**
 
@@ -985,7 +1002,8 @@ rationale: references/rationale.md#cleanup-helper-contract
 
 3. Write cleanup marker:
    ```bash
-   echo "cleaned" > ".rite-settings-hooks-cleaned" 2>/dev/null || true
+   mkdir -p .rite
+   echo "cleaned" > ".rite/settings-hooks-cleaned" 2>/dev/null || true
    ```
 
 4. **Skip Phase 4.5.1 and Phase 4.5.2** entirely. Proceed directly to **Phase 4.5.3** (chmod).
@@ -1007,7 +1025,7 @@ rationale: references/rationale.md#hook-path-absolute
 
 If the file already contains hooks, check each hook command for rite hook patterns:
 
-1. Scan all `.hooks.{EventName}[*].hooks[*].command` values across PreCompact, PostCompact, SessionStart, SessionEnd, PreToolUse, and PostToolUse events
+1. Scan all `.hooks.{EventName}[*].hooks[*].command` values across PreCompact, PostCompact, SessionStart, SessionEnd, Stop, PreToolUse, and PostToolUse events (the same event set as the 4.5.1.2 required-hook table — an event missing here is never checked for a stale path, and 4.5.1.2 only checks presence, so the Decision logic would report "up to date" while the outdated path survives)
 2. Identify **rite hook commands** (per the 判定基準 above — `rite` as a full path segment above the hooks dir; this covers both `plugins/rite/hooks/` relative paths and any previous absolute paths, while excluding look-alikes such as `favorite/hooks/`)
 3. For each matching command, construct the expected full command string `bash {hooks_dir}/{script_name}` (where `{hooks_dir}` is the absolute path resolved in Phase 4.5.0 and `{script_name}` is the filename like `pre-tool-bash-guard.sh`). Compare the existing command string with the expected one
 4. If the existing command does NOT match the expected command, mark it as **needs update**
@@ -1015,7 +1033,7 @@ If the file already contains hooks, check each hook command for rite hook patter
 **Note**: 既存 hook が相対パスなら絶対パスと一致せず更新対象になる（意図どおり）。
 rationale: references/rationale.md#hook-path-absolute
 
-**Display when outdated paths are detected** (where `{event}` is the hook event name such as PreCompact/PostCompact/SessionStart/SessionEnd/PreToolUse, and `{current_cmd}` is the existing command string):
+**Display when outdated paths are detected** (where `{event}` is the hook event name such as PreCompact/PostCompact/SessionStart/SessionEnd/Stop/PreToolUse/PostToolUse, and `{current_cmd}` is the existing command string):
 ```
 ⚠️ Outdated rite hook paths detected:
 | Hook Event | Current Command | Expected Command |
@@ -1037,8 +1055,10 @@ rationale: references/rationale.md#hook-path-absolute
 | PostCompact | `post-compact.sh` | `""` | Auto-recover workflow after compaction |
 | SessionStart | `session-start.sh` | `""` | Re-inject state on startup/resume |
 | SessionEnd | `session-end.sh` | `""` | Reset flow state on session end |
+| Stop | `stop-loop-continuation.sh` | `""` | Consume one-shot handoff and re-inject the next review↔fix loop / cleanup chain command |
 | PreToolUse | `pre-tool-bash-guard.sh` | `"Bash"` | Block known-bad Bash command patterns |
-| PostToolUse | `post-tool-wm-sync.sh` | `"Bash"` | Auto-create local WM |
+| PreToolUse | `pre-tool-edit-guard.sh` | `"Edit\|Write\|MultiEdit\|NotebookEdit"` | Deny reviewer-subagent writes into a parent working tree |
+| PostToolUse | `post-tool-wm-sync.sh` | `"Bash"` | Auto-create local WM; sync Issue comment replica on phase change |
 | PostToolUse | `scripts/bang-backtick-edit-hook.sh` | `"Edit\|Write\|MultiEdit"` | Block bang-backtick adjacency that bash would interpret as history expansion |
 
 **Check procedure**:
@@ -1049,7 +1069,7 @@ rationale: references/rationale.md#hook-path-absolute
 
 **Note**: 欠落がなければ本サブフェーズは無出力。判定は下記 Decision logic。
 
-**Display when missing hooks are detected** (`{total_count}` = number of required hooks, currently 7):
+**Display when missing hooks are detected** (`{total_count}` = number of required hooks, currently 9):
 ```
 ⚠️ Required rite hooks are missing ({missing_count}/{total_count}):
 | Hook Event | Script | Status |
@@ -1074,8 +1094,10 @@ Add the following hooks to `.claude/settings.local.json`:
 | PostCompact | `bash {hooks_dir}/post-compact.sh` | Auto-recover workflow after compaction |
 | SessionStart | `bash {hooks_dir}/session-start.sh` | Re-inject state on startup/resume |
 | PreToolUse (Bash) | `bash {hooks_dir}/pre-tool-bash-guard.sh` | Block known-bad Bash command patterns |
+| PreToolUse (Edit\|Write\|MultiEdit\|NotebookEdit) | `bash {hooks_dir}/pre-tool-edit-guard.sh` | Deny reviewer-subagent writes into a parent working tree |
 | SessionEnd | `bash {hooks_dir}/session-end.sh` | Reset flow state on session end |
-| PostToolUse (Bash) | `bash {hooks_dir}/post-tool-wm-sync.sh` | Auto-create local WM |
+| Stop | `bash {hooks_dir}/stop-loop-continuation.sh` | Consume one-shot handoff and re-inject the next review↔fix loop / cleanup chain command |
+| PostToolUse (Bash) | `bash {hooks_dir}/post-tool-wm-sync.sh` | Auto-create local WM; sync Issue comment replica on phase change |
 | PostToolUse (Edit\|Write\|MultiEdit) | `bash {hooks_dir}/scripts/bang-backtick-edit-hook.sh` | Block bang-backtick adjacency that bash would interpret as history expansion |
 
 **Hook registration format** (merge into existing settings without overwriting other entries):
@@ -1125,6 +1147,26 @@ Add the following hooks to `.claude/settings.local.json`:
             "command": "bash {hooks_dir}/pre-tool-bash-guard.sh"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {hooks_dir}/pre-tool-edit-guard.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {hooks_dir}/stop-loop-continuation.sh"
+          }
+        ]
       }
     ],
     "SessionEnd": [
@@ -1165,9 +1207,9 @@ Add the following hooks to `.claude/settings.local.json`:
 **Important**:
 - **Non-rite hooks**: If `.claude/settings.local.json` already has hooks whose command is NOT a **rite hook command** (per the 判定基準 above — this includes look-alikes such as `favorite/hooks/`), preserve them as-is. Do not overwrite or remove user-defined hooks.
 - **rite hooks (path update)**: outdated **rite hook commands**（4.5.1.1）は `{hooks_dir}` パスへ **replace**。
-- **Missing rite hooks**: 必須 rite hook が無ければ追加。PostToolUse は 2 matcher（`Bash` と `Edit|Write|MultiEdit`）が共存必須。
+- **Missing rite hooks**: 必須 rite hook が無ければ追加。PostToolUse は 2 matcher（`Bash` と `Edit|Write|MultiEdit`）が、PreToolUse も 2 matcher（`Bash` と `Edit|Write|MultiEdit|NotebookEdit`）が共存必須。
 - **Obsolete hooks**: `post-compact-guard.sh` (PreToolUse) または `context-pressure.sh` (PostToolUse) があれば **remove**。
-- **Matcher rules**: `post-tool-wm-sync.sh` / `pre-tool-bash-guard.sh` は `"matcher": "Bash"`。`scripts/bang-backtick-edit-hook.sh` は `"matcher": "Edit|Write|MultiEdit"`。他は `"matcher": ""`。
+- **Matcher rules**: `post-tool-wm-sync.sh` / `pre-tool-bash-guard.sh` は `"matcher": "Bash"`。`scripts/bang-backtick-edit-hook.sh` は `"matcher": "Edit|Write|MultiEdit"`。`pre-tool-edit-guard.sh` は `"matcher": "Edit|Write|MultiEdit|NotebookEdit"`。`stop-loop-continuation.sh` を含む他は `"matcher": ""`。
 - **Permission for WM_SOURCE**: 未設定なら `.permissions.allow` へ `"Bash(WM_SOURCE:*)"` を追加。
 
 ### 4.5.3 Make Scripts Executable
@@ -1175,7 +1217,7 @@ Add the following hooks to `.claude/settings.local.json`:
 Attempt to set executable permissions regardless of source type (LOCAL or MARKETPLACE):
 
 ```bash
-chmod +x {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/scripts/bang-backtick-edit-hook.sh
+chmod +x {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/pre-tool-edit-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/stop-loop-continuation.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/scripts/bang-backtick-edit-hook.sh
 ```
 
 If `chmod` fails (e.g., permission denied, read-only filesystem), display a warning and continue:
@@ -1189,7 +1231,7 @@ If hooks fail to run, manually run: chmod +x {hooks_dir}/*.sh
 Verify the hook scripts exist and are executable:
 
 ```bash
-ls -la {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/post-tool-wm-sync.sh
+ls -la {hooks_dir}/pre-compact.sh {hooks_dir}/post-compact.sh {hooks_dir}/session-start.sh {hooks_dir}/pre-tool-bash-guard.sh {hooks_dir}/pre-tool-edit-guard.sh {hooks_dir}/session-end.sh {hooks_dir}/stop-loop-continuation.sh {hooks_dir}/post-tool-wm-sync.sh {hooks_dir}/scripts/bang-backtick-edit-hook.sh
 ```
 
 If any file is missing or lacks execute permission, display a warning and continue to Phase 5:
@@ -1208,7 +1250,9 @@ Missing or non-executable scripts will be skipped at runtime.
 PLUGIN_JSON="{hooks_dir}/../.claude-plugin/plugin.json"
 VERSION=$(jq -r '.version' "$PLUGIN_JSON" 2>/dev/null)
 if [ -n "$VERSION" ] && [ "$VERSION" != "null" ]; then
-  echo "$VERSION" > "{state_root}/.rite-initialized-version"
+  state_root=$(bash "{hooks_dir}/state-path-resolve.sh")
+  mkdir -p "$state_root/.rite"
+  echo "$VERSION" > "$state_root/.rite/initialized-version"
 fi
 ```
 
@@ -1216,37 +1260,27 @@ fi
 
 ## Phase 4.6: Work Memory Directory Setup
 
-Create the local work memory directory:
+`.rite/work-memory` と nested self-gitignore（star と wiki 否定行の 3 行）を作る。root `.gitignore` に rite runtime state は追記しない。
 
 ```bash
-mkdir -p .rite-work-memory
-chmod 700 .rite-work-memory 2>/dev/null || true
+mkdir -p .rite/work-memory
+chmod 700 .rite/work-memory 2>/dev/null || true
+source {plugin_root}/hooks/gitignore-ensure.sh
+state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
+mkdir -p "$state_root/.rite"
+if ! _ensure_rite_nested_gitignore "$state_root/.rite"; then
+  echo "WARNING: .rite/.gitignore を作成できませんでした。このディレクトリが git から除外されているか手動で確認してください" >&2
+  [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+fi
+# cwd に .rite/ を作るならそのツリーにも書く（state_root と cwd が同じなら上の呼び出しと同一ファイルで no-op）。
+mkdir -p .rite
+if ! _ensure_rite_nested_gitignore .rite; then
+  echo "WARNING: .rite/.gitignore を作成できませんでした。このディレクトリが git から除外されているか手動で確認してください" >&2
+  [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+fi
 ```
 
-Add `.rite-work-memory/` and `.rite-compact-state*` to `.gitignore` if not already present:
-
-```bash
-# Check and add entries if missing
-for entry in ".rite-work-memory/" ".rite-compact-state" ".rite-compact-state.lockdir/" ".rite-compact-state.tmp.*" ".rite-initialized-version" ".rite-settings-hooks-cleaned"; do
-  if ! grep -qF "$entry" .gitignore 2>/dev/null; then
-    echo "$entry" >> .gitignore
-  fi
-done
-
-# .rite/ 配下のディレクトリエントリは実効判定でゲートする: 既に `.rite/` 広域ルール等で
-# 実効的に ignore されている場合は書かない（親ルールに包含される到達不能な行を作らない）。
-# 未カバーのときのみ追記する（gitignore-health-check.sh の probe と同じ check-ignore 方式）。
-# `.rite/review-results/` は非実測指摘の `description` / `suggestion` 全文を持つ。マージ後も
-# `/rite:cleanup` が `archive/` へ退避して残す設計 (記録コメントはポインタと降格理由しか載せないため) なので、
-# ignore されていないと脆弱性の詳細が `git add -A` で公開リポジトリへ恒久 commit されうる。
-for dir_entry in ".rite/sessions/" ".rite/worktrees/" ".rite/review-results/"; do
-  if ! git check-ignore -q "${dir_entry}.rite-lint-probe" 2>/dev/null; then
-    echo "$dir_entry" >> .gitignore
-  fi
-done
-```
-
-Display: `✅ Work memory directory initialized (.rite-work-memory/)`
+Display: `✅ Work memory directory initialized (.rite/work-memory/)`
 
 ---
 
@@ -1413,7 +1447,7 @@ rationale: references/rationale.md#sandbox-allowlist
 bash {plugin_root}/hooks/state-path-resolve.sh
 ```
 
-その値を `{repo_root}` として、`.claude/settings.local.json`（`.claude/settings.json` は書き換えない）の `sandbox.filesystem.allowWrite` へ idempotent に自動追記する。先に対象リポジトリの `.gitignore` へ `.claude/settings.local.json` を保証してから書く（Phase 4.6 と同形式）。詳細: [git-worktree-patterns.md の Decision Log](../../references/git-worktree-patterns.md#sandbox-write-allowlist-設定の自動化decision-log)。
+その値を `{repo_root}` として、`.claude/settings.local.json`（`.claude/settings.json` は書き換えない）の `sandbox.filesystem.allowWrite` へ idempotent に自動追記する。先に対象リポジトリの `.gitignore` へ `.claude/settings.local.json` を保証してから書く。詳細: [git-worktree-patterns.md の Decision Log](../../references/git-worktree-patterns.md#sandbox-write-allowlist-設定の自動化decision-log)。
 rationale: references/rationale.md#sandbox-allowlist
 
 ```bash

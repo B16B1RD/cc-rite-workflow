@@ -41,8 +41,9 @@ Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → 
 | `{owner}` / `{repo}` | ステップ 2.4(A) 専用: `{plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo`（SSH host alias 対応。fallback: `gh repo view --json owner,name`。canonical: [gh-cli-patterns.md](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)） |
 | `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
 | `{project_number}` | ステップ 2.4(A) 専用: `rite-config.yml` → `github.projects.project_number` |
+| `{parent_issue_number}` | ステップ 2.4(B) の親検出で得た親 Issue 番号（未検出時は substitute しない） |
 
-> **Note**: 「ステップ 2.4(A) 専用」と注記した 2 行を除き、`{owner}` / `{repo}` / `{project_number}` / `{parent_issue_number}` は本コマンド body で substitute しない — 下流 sub-skill が `rite-config.yml` / `gh` から個別に取得する。
+> **Note**: 「ステップ 2.4(A) 専用」と注記した 2 行を除き、`{owner}` / `{repo}` / `{project_number}` は本コマンド body で substitute しない — 下流 sub-skill が `rite-config.yml` / `gh` から個別に取得する。`{parent_issue_number}` は例外で、2.4(B) が検出した値を 2.6 の `flow-state.sh set` へ渡すために本コマンド body で substitute する。
 
 ---
 
@@ -296,10 +297,22 @@ fi
 
 ### 2.3-W EnterWorktree 入場（multi_session 有効時）
 
-worktree を作成・再利用したら、`.rite-plugin-root` と（存在する場合のみ）`.claude/settings.local.json` を worktree root へコピーしてから入場する。`.claude/` は gitignore 対象で `git worktree add` が複製しないため、コピーしないとドッグフーディング上書き（`enabledPlugins["rite@rite-marketplace"]: false`）が失われ、古い marketplace 版スキルがロードされる。複製は worktree 作成時点のスナップショットであり、以後の main checkout 側の更新は反映されない:
+worktree を作成・再利用したら、`.rite/plugin-root` と（存在する場合のみ）`.claude/settings.local.json` を worktree root へコピーしてから入場する。`.claude/` は gitignore 対象で `git worktree add` が複製しないため、コピーしないとドッグフーディング上書き（`enabledPlugins["rite@rite-marketplace"]: false`）が失われ、古い marketplace 版スキルがロードされる。複製は worktree 作成時点のスナップショットであり、以後の main checkout 側の更新は反映されない:
 
 ```bash
-[ -f "$repo_root/.rite-plugin-root" ] && cp "$repo_root/.rite-plugin-root" "$wt_path/.rite-plugin-root" 2>/dev/null || true
+if [ -f "$repo_root/.rite/plugin-root" ] || [ -f "$repo_root/.rite-plugin-root" ]; then
+  mkdir -p "$wt_path/.rite"
+  source {plugin_root}/hooks/gitignore-ensure.sh
+  if ! _ensure_dir_gitignore "$wt_path/.rite" '!wiki/' '!wiki/**'; then
+    echo "WARNING: $wt_path/.rite/.gitignore を作成できませんでした。このディレクトリが git から除外されているか手動で確認してください" >&2
+    [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+  fi
+  if [ -f "$repo_root/.rite/plugin-root" ]; then
+    cp "$repo_root/.rite/plugin-root" "$wt_path/.rite/plugin-root" 2>/dev/null || true
+  else
+    cp "$repo_root/.rite-plugin-root" "$wt_path/.rite/plugin-root" 2>/dev/null || true
+  fi
+fi
 if [ -f "$repo_root/.claude/settings.local.json" ] && ! { mkdir -p "$wt_path/.claude" && cp "$repo_root/.claude/settings.local.json" "$wt_path/.claude/settings.local.json"; } 2>/dev/null; then
   echo "WARNING: .claude/settings.local.json のコピーに失敗しました — ドッグフーディング上書きが worktree に反映されません" >&2
 fi
@@ -367,6 +380,10 @@ status_json_args=$(jq -n \
 # するため、fallback を付けるとその診断情報を空文字列で上書き・破棄してしまう
 status_json=$(bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args")
 status_result=$(printf '%s' "$status_json" | jq -r '.result // "failed"' 2>/dev/null)
+# `// "failed"` は helper が JSON を返したときしか効かない。stdout が空・非 JSON だと jq は
+# 何も出さずに終わるため、正規化しないと marker だけが「値なし」になり、marker 不在と区別
+# できなくなる（成否を残すための marker が、失敗時にだけ消える）
+[ -z "$status_result" ] && status_result=failed
 status_warning_lines=$(printf '%s' "$status_json" | jq -r '.warnings[]?' 2>/dev/null)
 case "$status_result" in
   updated)
@@ -377,15 +394,19 @@ case "$status_result" in
     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  /' >&2
     echo "警告: Projects Status の \"In Progress\" への更新に失敗しました。手動更新: gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <in_progress_option_id>" >&2 ;;
 esac
+echo "[CONTEXT] PROJECTS_STATUS=$status_result; issue={issue_number}"
 ```
 
 `auto_add: true` は未登録 Issue を helper 内部で Project へ自動登録する。全 result 分岐は non-blocking で、Status 更新の失敗が open をブロックすることはない。API レベルの詳細は [projects-integration.md §2.4.1–2.4.6](../../references/projects-integration.md#24-github-projects-status-update)。
+
+末尾の `[CONTEXT] PROJECTS_STATUS=` marker は helper の result を機械可読に残す（`case` の表示は人間向けで、後から成否を判定できない）。本 call site は `auto_add: true` を渡すため、実際に返るのは `updated` / `failed` の 2 値になる（`skipped_not_in_project` は `auto_add: false` の経路の戻り値で、上の `case` の当該 arm は helper 契約側の全 result を受ける保険として置いてある）。helper が JSON を返さなかった場合は上記の正規化で `failed` に寄せてあり、marker が空になる経路はない。marker は表示のみで分岐を変えない — 実行の有無を判定するのは 2.6 のゲートであり、marker の欠落そのものはここでは扱わない。
 
 **(B) 親 Issue の Status 更新（Sub-Issue 着手時）** — (A) と独立に必ず実行する。ロジックの SoT は `projects-integration.md` §2.4.7:
 
 1. **§2.4.7.1 親検出（3-method OR）**: `## 親 Issue` body meta（PRIMARY）→ Sub-Issues API → tasklist search。この 3-method 構造は `../skills/issue-close/SKILL.md` Phase 4.5.1 と同一に保つ（Method 3 の `--state open` は start 側固有の意図的差異）。
 2. 親を検出したら **§2.4.7.2–2.4.7.4**: Status が **Todo または null のときのみ** In Progress にする。既に In Progress / In Review / Done なら上書きしない（sibling child の進捗を保持する）。
 3. 親が無い standalone Issue は `[DEBUG] parent not detected for issue #{issue_number} — processing as standalone (methods tried: body_meta, sub_issues_api, tasklist_search)` を emit して skip する（silent skip 禁止）。
+4. 親を検出した場合は、その番号を `{parent_issue_number}` として retain し、ステップ 2.6 の `flow-state.sh set` へ渡す（standalone のときは retain しない）。Status 更新の成否とは独立に retain する — (B) は non-blocking だが、flow-state への記録が漏れると `/rite:issue-implement` 5.1.2 の親進捗更新が常に skip される。
 
 (B) はすべて non-blocking。
 
@@ -415,15 +436,31 @@ echo "[CONTEXT] WM_REPLICA_INIT=$(printf '%s\n' "$init_out" | sed -n 's/^status=
 | `unverified` | 投稿は実行されたが検証 (3 回 retry) で発見できず | WARNING として続行 (以降の update が `no_comment` skip になる可能性を認識) |
 | (status 行なし = gh 失敗等) | 投稿失敗 | WARNING として続行 (non-blocking) |
 
-### 2.6 flow-state 更新
+### 2.6 flow-state 更新 + Projects Status 検証ゲート
+
+ゲートは flow-state の `set` と**同じ bash ブロック**に置く。別ブロックに分けると、2.4(A) を飛ばした実行はゲートのブロックも同じように飛ばせてしまう — 検証したい唯一の failure mode でゲートごと消える。`set` は phase を進める必須手順なので、そこに同乗させれば実行が保証される。
 
 ```bash
+bash {plugin_root}/hooks/scripts/projects-status-gate.sh --issue {issue_number} --expect "In Progress"
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase branch --issue {issue_number} --branch {branch_name} --pr 0 \
   --next "実装計画策定へ進む"
 ```
 
+ゲートは盤面の実 Status を読む（2.4(A) が出した marker ではない）。marker の有無を見るだけでは「実行したと主張したが盤面が変わっていない」を見逃すため。`projects.enabled: false` / `project_number` 未設定 / `rite-config.yml` 不在は検証対象が無いので `skipped`。**Issue が Project 未登録は `skipped` ではなく `missing`** — 2.4(A) は `auto_add: true` を渡すので、成功していれば盤面に item が必ずある。不在は「検証対象がない」ではなく「2.4(A) が届いていない」証拠であり、ここを `skipped` に落とすとゲートが塞ぐべき当の状態を素通しする。ゲートは常に exit 0 で、判定は marker だけに載る（Status 更新の失敗で open をブロックしないため）。
+
+| `PROJECTS_STATUS_INVARIANT` | アクション |
+|---|---|
+| `ok` | 盤面が `In Progress` 以降に到達済み。ステップ 3 へ進む |
+| `skipped` | 検証対象なし（Projects 無効 / `project_number` 未設定 / `rite-config.yml` 不在）。ステップ 3 へ進む |
+| `unknown` | 検証自体が失敗した（gh / jq エラー、または Issue 番号・owner/repo が解決しない。stderr に原因）。**`ok` として扱わない**。警告を表示してステップ 3 へ進む（再実行はしない — 盤面の状態が不明なだけで、更新が失敗したとは限らない） |
+| `missing` | 2.4(A) が盤面に届いていない（Status が期待に達していない / Status 値が空 / Issue が Project 未登録）。**2.4(A) の bash を 1 回だけ再実行**してステップ 3 へ進む |
+
+`missing` の再実行の終端契約: 再実行では `[CONTEXT] PROJECTS_STATUS=` を再度 1 回だけ emit する。**ゲートは再呼び出ししない**（再々実行のループを構造的に作らない）。再実行も失敗した場合は最後の `PROJECTS_STATUS=` 値を残したままステップ 3 へ進む — ブロックも 3 回目の実行もしない。
+
 2.1-G の `MULTI_SESSION_ENABLED=true` のときは末尾に `--worktree "{wt_path}" --require-worktree` を追加する（`{wt_path}` は 2.2-W の `path=` 値）。`--require-worktree` は worktree path 不在のまま branch phase を記録した場合に `[CONTEXT] WORKTREE_INVARIANT=missing` を emit する（書き込み自体は完了するため work は失われない）。`missing` を観測したら worktree 化が漏れているので 2.2-W へ戻る。
+
+2.4(B) で親 Issue を検出したときは末尾に `--parent-issue {parent_issue_number}` を追加する。これが `parent_issue_number` を flow-state へ書く唯一の経路であり、`/rite:issue-implement` 5.1.2 の親進捗更新はこの値でしか発火しない。**未検出時（standalone）はフラグ自体を付けない** — `0` を明示的に渡す必要はなく、`flow-state.sh` 側が未指定フィールドを merge-preserve するため既存値（新規セッションでは `0`）が保たれる。以降の phase transition（6.3 等）も同じ merge-preserve で値を維持するため、書き込みは本ステップの 1 箇所でよい。
 
 ---
 

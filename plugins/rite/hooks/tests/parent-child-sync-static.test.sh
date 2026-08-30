@@ -60,4 +60,37 @@ assert_not_grep "close.md skip_already_closed no longer exits Phase 4.6 before e
 assert_grep "archive-procedures already-CLOSED parent runs 3.7.2.1 only" "$ARCHIVE_MD" "parent is already CLOSED.*3\\.7\\.2\\.1"
 assert_grep "archive-procedures 3.7.2.2 skipped when parent already CLOSED" "$ARCHIVE_MD" "Skip this substep if the parent Issue is already CLOSED"
 
+echo "=== Phase 6: open.md が検出した親番号を flow-state へ書く (#2460) ==="
+# 検出だけして flow-state へ書かないと issue-implement 5.1.2 が常に PARENT_ISSUE=none で skip する。
+# open.md には `flow-state.sh set` が複数箇所あるため、ファイル全体の grep では「どの set に
+# 付いたか」を pin できない。2.6 節に限定して assert する。
+S26_START='^### 2.6 flow-state 更新'
+S26_END='^## ステップ 3'
+S24_START='^### 2.4 GitHub Projects Status 更新'
+S24_END='^### 2.5 Work Memory 初期化'
+assert_grep_in_section "open.md 2.4(B) が親番号を {parent_issue_number} として retain する" "$PR_OPEN_MD" \
+  "$S24_START" "$S24_END" \
+  '\{parent_issue_number\}`? として retain'
+assert_grep_in_section "open.md 2.6 の flow-state set が --parent-issue を渡す" "$PR_OPEN_MD" \
+  "$S26_START" "$S26_END" \
+  '\-\-parent-issue \{parent_issue_number\}'
+# standalone AC: 未検出時に 0 を明示せずフラグ自体を省く (flow-state 側の merge-preserve に載せる)
+assert_grep_in_section "open.md 2.6 が未検出時はフラグを付けないと明記する" "$PR_OPEN_MD" \
+  "$S26_START" "$S26_END" \
+  '未検出時.*フラグ自体を付けない'
+# substitution 契約: 2.6 が {parent_issue_number} を渡せるのは、Legend と Note が本コマンド body での
+# substitute を許しているからである。この 1 箇所だけが base 版へ戻ると 2.4(B)/2.6 の追記は残るのに
+# 執行者は placeholder を解決できず、上の 3 assert は green のまま AC が壊れる。
+SLEG_START='^## Placeholder Legend'
+SLEG_END='^---$'
+assert_grep_in_section "open.md Legend に {parent_issue_number} 行がある" "$PR_OPEN_MD" \
+  "$SLEG_START" "$SLEG_END" \
+  '^\| `\{parent_issue_number\}` \|'
+assert_grep_in_section "open.md Note が {parent_issue_number} の substitute 例外を明記する" "$PR_OPEN_MD" \
+  "$SLEG_START" "$SLEG_END" \
+  '\{parent_issue_number\}`? は例外'
+# 禁止リストへの再混入を防ぐ (base 版 Note の 4 placeholder 列挙は本ファイル内で一意)
+assert_not_grep "open.md Note の禁止リストに {parent_issue_number} が戻っていない" "$PR_OPEN_MD" \
+  '\{project_number\}` / `\{parent_issue_number\}` は本コマンド body で substitute しない'
+
 print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or pr/open.md ステップ 1.2, regression risk reopens. Re-confirm cross-references before removing methods."

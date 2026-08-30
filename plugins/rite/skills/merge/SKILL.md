@@ -50,15 +50,20 @@ argument-hint: "[--force-ci] <pr_number>"
 Ready/merge 可否の権威判定はここ (`gh pr view`) に一本化する。前提チェックは設けず flow-state 不在を正常系として扱う。
 rationale: references/rationale.md#no-flow-state-prereq
 
+rationale: references/rationale.md#ci-wait-bounded
+本ステップ 1 の bash block は Bash ツール `timeout: 600000` で実行する（既定 120 秒だと待ち上限 540 秒に届く前に打ち切られる）。
 ```bash
 force_ci=false
 case " {arguments} " in *" --force-ci "*) force_ci=true ;; esac
-pr_json=$(gh pr view {pr_number} -R {owner_repo} --json mergeable,mergeStateStatus,isDraft,headRefName,statusCheckRollup) \
-  || { echo "[merge:not-ready]"; echo "ERROR: PR/CI 状態を取得できないためマージしません" >&2; exit 1; }
 
+# 待ち loop からも同じ取得・分類を使う（分類ロジックを複製しない）。
+_rite_fetch_pr_json() {
+  gh pr view {pr_number} -R {owner_repo} --json mergeable,mergeStateStatus,isDraft,headRefName,statusCheckRollup
+}
 # statusCheckRollup を排他的に機械分類する。既知の成功 conclusion 以外を healthy にしない。
 # malformed / 未知値は unknown として fail-closed にする。
-checks_state=$(printf '%s' "$pr_json" | jq -r '
+_rite_classify_checks() {
+  printf '%s' "$1" | jq -r '
   if (.statusCheckRollup | type) != "array" then "unknown"
   elif (.statusCheckRollup | length) == 0 then "none"
   # 集約 precedence は unknown > pending > unhealthy > healthy。
@@ -85,8 +90,42 @@ checks_state=$(printf '%s' "$pr_json" | jq -r '
       (.__typename == "StatusContext" and .state == "SUCCESS")) then "healthy"
   else "unknown"
   end
-') || checks_state=unknown
+'
+}
+
+pr_json=$(_rite_fetch_pr_json) \
+  || { echo "[merge:not-ready]"; echo "ERROR: PR/CI 状態を取得できないためマージしません" >&2; exit 1; }
+
+checks_state=$(_rite_classify_checks "$pr_json") || checks_state=unknown
+[ -n "$checks_state" ] || checks_state=unknown
 echo "[CONTEXT] MERGE_CHECKS_STATE=$checks_state"
+
+# pending + force_ci == false だけ待つ。混在 pending+FAILURE は fail-fast せず != pending まで。
+if [ "$checks_state" = "pending" ] && [ "$force_ci" = "false" ]; then
+  pending_n=$(printf '%s' "$pr_json" | jq '[.statusCheckRollup[] | select(
+      (.__typename == "CheckRun" and .status != "COMPLETED") or
+      (.__typename == "StatusContext" and (.state == "PENDING" or .state == "EXPECTED"))
+    )] | length')
+  echo "[CONTEXT] MERGE_CHECKS_WAIT=started pending=$pending_n"
+  waited=0
+  while [ "$checks_state" = "pending" ] && [ "$waited" -lt 540 ]; do
+    sleep 15
+    waited=$((waited + 15))
+    pr_json=$(_rite_fetch_pr_json) \
+      || { echo "[merge:not-ready]"; echo "ERROR: PR/CI 状態を取得できないためマージしません" >&2; exit 1; }
+    checks_state=$(_rite_classify_checks "$pr_json") || checks_state=unknown
+    [ -n "$checks_state" ] || checks_state=unknown
+  done
+  if [ "$checks_state" = "pending" ]; then
+    pending_names=$(printf '%s' "$pr_json" | jq -r '[.statusCheckRollup[] | select(
+        (.__typename == "CheckRun" and .status != "COMPLETED") or
+        (.__typename == "StatusContext" and (.state == "PENDING" or .state == "EXPECTED"))
+      ) | (.name // .context // "?")] | join(", ")')
+    echo "ERROR: CI checks still pending after 540s: $pending_names" >&2
+    echo "[merge:not-ready]"
+  fi
+  echo "[CONTEXT] MERGE_CHECKS_STATE=$checks_state"
+fi
 ```
 
 `headRefName` の値は完了通知 (ステップ 3) の `{branch_name}` 展開に使うため retain する (flow-state 不在でもブランチ名が空にならない)。
@@ -96,15 +135,16 @@ echo "[CONTEXT] MERGE_CHECKS_STATE=$checks_state"
 | `isDraft == true` | `[merge:not-ready]` emit + 「先に `/rite:ready {pr_number}` を実行してください」案内 + 終了 |
 | `mergeable != "MERGEABLE"` | 再判定は可逆なので、原因 (`mergeStateStatus`) を表示・既存 work memory に記録して 1 回だけ自動再判定する。再度非 MERGEABLE なら `[merge:not-ready]` を emit して終了 |
 | `mergeable == "MERGEABLE"` + checks 0 件 | CI 未設定リポジトリとして従来どおりステップ 2 へ |
-| `mergeable == "MERGEABLE"` + checks が pending + `force_ci == false` | `[merge:not-ready]` emit + 「checks の完了を待って再実行」と表示して終了。待機・自動 retry はしない |
-| checks が pending + `force_ci == true` | 未完了 check の一覧を表示した後、ステップ 2 へ |
+| `mergeable == "MERGEABLE"` + checks が pending + `force_ci == false` | 上の bash が待ち loop を実行済み。`MERGE_CHECKS_STATE` の**最終行**で既存分類へ合流する。最終行がまだ `pending`（上限到達）なら `[merge:not-ready]` emit + 「checks の完了を待って再実行」と表示して終了（未完了 check 名は bash が stderr 済み） |
+| checks が pending + `force_ci == true` | 待ち loop に入らない。未完了 check の一覧を表示した後、ステップ 2 へ |
 | `mergeable == "MERGEABLE"` + `mergeStateStatus == "UNSTABLE"`（checks unhealthy）+ `force_ci == false` | 下記「CI red の分類」を実行して内訳を表示し、`[merge:not-ready]` emit + `/rite:merge --force-ci {pr_number}` を案内して終了。ステップ 2 の `gh pr merge` は実行しない |
 | checks unhealthy + `force_ci == true` | 下記分類と内訳表示を省略せず実行した後、ステップ 2 へ |
 | `mergeable == "MERGEABLE"` + checks が全件 healthy | ステップ 2 へ |
 | `checks_state == "unknown"`（malformed / 未知 status・conclusion / jq 失敗） | `[merge:not-ready]` emit + 生の `statusCheckRollup` を表示して終了。`--force-ci` でも unknown は override しない |
 
-> **「再判定」option の挙動**: 再判定は **1 回のみ**。再判定後も `MERGEABLE` でなければ `[merge:not-ready]` で確定終了する。自動 sleep は提供しない。
+> **「再判定」option の挙動**: 再判定は **1 回のみ**（mergeable 再計算遅延向け。CI 待ち loop の `sleep 15` とは別）。再判定後も `MERGEABLE` でなければ `[merge:not-ready]` で確定終了する。mergeable 再判定に自動 sleep は提供しない。
 > rationale: references/rationale.md#rematch-once
+> rationale: references/rationale.md#ci-wait-bounded
 
 ### CI red の分類
 
@@ -207,3 +247,4 @@ fi
   rationale: references/rationale.md#squash-hardcoded
   rationale: references/rationale.md#stderr-split
   rationale: references/rationale.md#ci-gate-at-merge
+  rationale: references/rationale.md#ci-wait-bounded

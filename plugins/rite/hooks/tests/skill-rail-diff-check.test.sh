@@ -314,6 +314,10 @@ if [ -n "$REPO_ROOT_REAL" ] && git -C "$PLUGIN_ROOT" rev-parse --verify -q origi
       head_rail=$(bash "$TARGET" --repo-root "$REPO_ROOT_REAL" --skill "plugins/rite/skills/open/SKILL.md" --extract-only 2>/dev/null) || head_rail=""
       base_blob=$(git -C "$REPO_ROOT_REAL" show origin/develop:plugins/rite/skills/open/SKILL.md 2>/dev/null) || base_blob=""
       base_rail=$(printf '%s\n' "$base_blob" | extract_rail)
+      # The worktree plugin-root copy rail was relocated (one bash line
+      # replaced by new-path-first dual-read). Drop that superseded line from
+      # the subsequence pin so the rest of the rail still has to survive.
+      base_rail=$(printf '%s\n' "$base_rail" | grep -Fv '.rite-plugin-root' || true)
       printf '%s\n' "$base_rail" > "$TEST_DIR/base-rail"
       printf '%s\n' "$head_rail" > "$TEST_DIR/head-rail"
       if [ -z "$base_rail" ] || [ -z "$head_rail" ]; then

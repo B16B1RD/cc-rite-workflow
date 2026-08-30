@@ -263,7 +263,7 @@ Edit ツールで `.gitignore` の既存 anchor `# <<< gitignore-wiki-section-en
 ```bash
 # plugin_root 解決 (ステップ 2.1 の inline one-liner を前倒し。
 #  canonical: references/plugin-path-resolution.md#inline-one-liner-for-command-files)
-plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 
 if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/gitignore-health-check.sh" ]; then
   # non-blocking: plugin_root 解決失敗時も verification を skip して ステップ 2 へ進行する
@@ -289,7 +289,7 @@ rationale: references/rationale.md#verify-negation-nonblocking
 > **Reference**: [Plugin Path Resolution](../../references/plugin-path-resolution.md#inline-one-liner-for-command-files)
 
 ```bash
-plugin_root=$(cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
+plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 if [ -z "$plugin_root" ] || [ ! -d "$plugin_root/templates/wiki" ]; then
   echo "ERROR: plugin_root resolution failed (resolved: '${plugin_root:-<empty>}')" >&2
   exit 1

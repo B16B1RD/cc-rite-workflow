@@ -27,12 +27,17 @@ trap cleanup EXIT
 # and publish the result via globals RUN_RC / RUN_OUT. Called WITHOUT command
 # substitution so `cleanup_dirs+=` lands in the parent shell (a `$(run_case ...)`
 # wrapper would lose the push in the subshell and leak sandboxes).
+NESTED_OK=$'*\n!wiki/\n!wiki/**\n'
 run_case() {
-  local config="$1" gitignore="$2" d
+  local config="$1" gitignore="$2" nested="${3-$NESTED_OK}" d
   d=$(make_sandbox)
   cleanup_dirs+=("$d")
   printf '%s' "$config" > "$d/rite-config.yml"
   printf '%s' "$gitignore" > "$d/.gitignore"
+  if [ "$nested" != "NONE" ]; then
+    mkdir -p "$d/.rite"
+    printf '%s' "$nested" > "$d/.rite/.gitignore"
+  fi
   RUN_RC=0
   RUN_OUT=$(cd "$d" && bash "$GHC" --quiet 2>&1) || RUN_RC=$?
 }
@@ -44,73 +49,56 @@ MS_OFF=$'multi_session:\n  enabled: false\n'
 GI_WIKI=$'.rite/wiki/\n'
 GI_WIKI_SESS=$'.rite/wiki/\n.rite/sessions/\n'
 
-echo "=== TC-1: sessions NOT ignored (ms off) → drift (exit 1) ==="
-run_case "${WIKI_OK}${MS_OFF}" "$GI_WIKI"
+echo "=== TC-1: nested .rite/.gitignore missing → nested drift (exit 1) ==="
+run_case "${WIKI_OK}${MS_OFF}" "$GI_WIKI" NONE
 assert "TC-1 exit 1" "1" "$RUN_RC"
 case "$RUN_OUT" in
-  *"DRIFT DETECTED (sessions)"*) pass "TC-1 sessions drift message emitted" ;;
-  *) fail "TC-1 sessions drift message missing: $RUN_OUT" ;;
+  *"DRIFT DETECTED (nested)"*) pass "TC-1 nested missing drift emitted" ;;
+  *) fail "TC-1 nested drift message missing: $RUN_OUT" ;;
 esac
 
-echo "=== TC-2: sessions ignored (ms off) → healthy (exit 0) ==="
-run_case "${WIKI_OK}${MS_OFF}" "$GI_WIKI_SESS"
+echo "=== TC-2: nested 3-line (ms off) → healthy (exit 0) ==="
+run_case "${WIKI_OK}${MS_OFF}" $'# no root rite runtime rules\n'
 assert "TC-2 exit 0" "0" "$RUN_RC"
 
-echo "=== TC-3: ms enabled + worktrees ignored + sessions NOT ignored → sessions drift (exit 1) ==="
-# Proves the sessions check is INDEPENDENT of the worktrees check: worktrees is healthy
-# here (ignored), yet the missing sessions rule still drifts. This does NOT exercise
-# ordering — both checks could run in either order and worktrees would still pass. The
-# strict "sessions fires before worktrees" ordering is proven separately by TC-6.
-run_case "${WIKI_OK}${MS_ON}" $'.rite/wiki/\n.rite/worktrees/\n'
+echo "=== TC-3: nested star-only → composition drift (exit 1) ==="
+run_case "${WIKI_OK}${MS_OFF}" $'# none\n' $'*\n'
 assert "TC-3 exit 1" "1" "$RUN_RC"
 case "$RUN_OUT" in
-  *"DRIFT DETECTED (sessions)"*) pass "TC-3 sessions drift (not worktrees) emitted" ;;
-  *) fail "TC-3 sessions drift message missing: $RUN_OUT" ;;
+  *"DRIFT DETECTED (nested)"*) pass "TC-3 star-only composition drift emitted" ;;
+  *) fail "TC-3 composition drift message missing: $RUN_OUT" ;;
 esac
 
-echo "=== TC-4: wiki disabled + sessions NOT ignored → still drift (exit 1) ==="
-# Proves the check runs BEFORE the wiki early-exits (not gated on wiki.enabled).
-run_case "${WIKI_OFF}${MS_OFF}" $'# no rules\n'
+echo "=== TC-4: wiki disabled + nested missing → still nested drift (exit 1) ==="
+run_case "${WIKI_OFF}${MS_OFF}" $'# no rules\n' NONE
 assert "TC-4 exit 1 (check not gated on wiki.enabled)" "1" "$RUN_RC"
 
-echo "=== TC-5: wiki disabled + sessions ignored → healthy (exit 0) ==="
-run_case "${WIKI_OFF}${MS_OFF}" $'.rite/sessions/\n'
+echo "=== TC-5: wiki disabled + nested 3-line → healthy (exit 0) ==="
+run_case "${WIKI_OFF}${MS_OFF}" $'# none\n'
 assert "TC-5 exit 0" "0" "$RUN_RC"
 
-echo "=== TC-7: broad .rite/ rule only (no individual rule) → healthy (exit 0) ==="
-# 実効判定の核: 個別ルール `.rite/sessions/` が無くても親 `.rite/` 広域ルールで probe が
-# ignore されていれば healthy。check-ignore -v はディレクトリ pruning により親ルールを報告
-# するため、特定ルール文字列一致を要求するとこの構成が偽陽性 DRIFT になる — その回帰を防ぐ。
-run_case "${WIKI_OFF}${MS_OFF}" $'.rite/\n'
-assert "TC-7 exit 0 (broad rule effective)" "0" "$RUN_RC"
+echo "=== TC-7: nested 3-line, empty root gitignore → healthy (exit 0) ==="
+run_case "${WIKI_OFF}${MS_OFF}" $'\n'
+assert "TC-7 exit 0 (nested covers sessions)" "0" "$RUN_RC"
 
-echo "=== TC-8: ms enabled + broad .rite/ rule only → sessions/worktrees とも healthy (exit 0) ==="
-run_case "${WIKI_OFF}${MS_ON}" $'.rite/\n'
-assert "TC-8 exit 0 (broad rule covers both probes)" "0" "$RUN_RC"
+echo "=== TC-8: ms enabled + nested 3-line → sessions/worktrees healthy (exit 0) ==="
+run_case "${WIKI_OFF}${MS_ON}" $'\n'
+assert "TC-8 exit 0 (nested covers both probes)" "0" "$RUN_RC"
 
-echo "=== TC-9: sessions negation leak (.rite/sessions/* + !.rite/sessions/**) → drift (exit 1) ==="
-# negation-leak 回帰: git check-ignore -v は negation ルールにマッチした場合も rc=0 を返す
-# (verbose モードは negation マッチも「マッチあり」として数える) ため、rc のみの実効判定だと
-# probe が実際には ignore されず leak する構成を healthy と誤判定する。matched pattern の
-# 先頭 `!` 検査が無いとこのケースが exit 0 になる回帰を防ぐ。
-run_case "${WIKI_OK}${MS_OFF}" $'.rite/sessions/*\n!.rite/sessions/**\n'
-assert "TC-9 exit 1 (negation match is not healthy)" "1" "$RUN_RC"
+echo "=== TC-9: nested line order swapped → composition drift (exit 1) ==="
+run_case "${WIKI_OK}${MS_OFF}" $'\n' $'!wiki/\n*\n!wiki/**\n'
+assert "TC-9 exit 1 (order is part of composition)" "1" "$RUN_RC"
 case "$RUN_OUT" in
-  *"DRIFT DETECTED (sessions)"*) pass "TC-9 sessions negation drift emitted" ;;
-  *) fail "TC-9 sessions negation drift message missing: $RUN_OUT" ;;
+  *"DRIFT DETECTED (nested)"*) pass "TC-9 nested order drift emitted" ;;
+  *) fail "TC-9 nested order drift message missing: $RUN_OUT" ;;
 esac
 
-echo "=== TC-6: ms enabled + BOTH sessions and worktrees NOT ignored → sessions fires first ==="
-# Genuine ordering proof: when BOTH the sessions rule AND the worktrees rule are missing
-# (and multi_session is enabled so the worktrees check is active), the script must emit
-# the sessions drift — NOT the multi_session/worktrees drift — because the sessions block
-# runs before, and exits at, the worktrees block. If a future change moves the sessions
-# block after the worktrees block, this case would emit "(multi_session)" instead and fail.
-run_case "${WIKI_OK}${MS_ON}" "$GI_WIKI"
+echo "=== TC-6: nested missing fires before sessions/worktrees ==="
+run_case "${WIKI_OK}${MS_ON}" "$GI_WIKI" NONE
 assert "TC-6 exit 1" "1" "$RUN_RC"
 case "$RUN_OUT" in
-  *"DRIFT DETECTED (sessions)"*) pass "TC-6 sessions drift fires before worktrees" ;;
-  *) fail "TC-6 expected sessions drift first, got: $RUN_OUT" ;;
+  *"DRIFT DETECTED (nested)"*) pass "TC-6 nested drift fires first" ;;
+  *) fail "TC-6 expected nested drift first, got: $RUN_OUT" ;;
 esac
 
 print_summary "$(basename "$0")" \

@@ -33,6 +33,41 @@ outside the number-free surface guarded by `number-reference-check.sh`. The
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-30
+
+### Fixed
+
+- **`/rite:merge` waits for pending CI checks instead of stopping immediately** — when `statusCheckRollup` is pending and `--force-ci` is not set, merge polls every 15 seconds for up to 540 seconds, then rejoins the existing healthy / unhealthy / unknown classification. A timeout still fail-closes with `[merge:not-ready]` and the unfinished check names. (#2449)
+- **Consumed release-promotion attestations are deleted** — `pr-cycle-cleanup.sh` now removes `.rite/release-promotions/{N}.json` when the corresponding GitHub PR is MERGED or CLOSED. OPEN and undetermined states are kept with an observable reason so the merge gate still works. `.gitignore` in that directory is never deleted. (#2427)
+- **`post-tool-wm-sync.sh` stays silent about a missing work memory replica during the replica init window** — while `/rite:open` has recorded `phase=init` but has not yet created the replica, the hook suppresses the "replica not found, run `/rite:open`" systemMessage. The `wm_replica=absent` negative-cache record and the `last_synced_phase` advance are unchanged, and the suppression leaves a debug-log trace. (#2462)
+- **`wm_comment_id` / `wm_replica` are scoped to the Issue they belong to** — `flow-state.sh` preserves both keys only when the Issue being written matches the stored one. `/rite:batch-run` no longer PATCHes the previous Issue's replica comment, and a `wm_replica: "absent"` negative cache no longer silences replica sync for every remaining phase of that Issue. (#2463)
+- **`.rite/release-promotions/` ignores itself** — `release-promotion-verify.sh` places a `*`-only `.gitignore` in the attestation directory right after creating it, so attestation files no longer accumulate as untracked entries in `git status`. A failure to place it is a WARNING and leaves the exit code, head OID, and attestation intact. (#2425)
+- **`/rite:open` verifies the Projects Status → In Progress transition** — the new read-only `projects-status-gate.sh` reads the Issue's actual Projects Status and emits `[CONTEXT] PROJECTS_STATUS_INVARIANT=ok|missing|skipped|unknown`. `watchdog-status-mismatch.sh` now applies two rules (Todo residue / In Progress residue), records `expected_status` in each mismatch, and makes the `--reconcile` target rule-dependent. (#2469)
+- **`/rite:open` records the detected parent Issue number in flow-state** — `--parent-issue` is passed to `flow-state.sh set` when a parent is detected, so `/rite:issue-implement` updates the parent task list instead of skipping with `PARENT_ISSUE=none`. A standalone Issue omits the flag rather than writing `0`. (#2460)
+- **`issue-complexity-lane.sh` accepts a table-form Section 0 Meta** — `| **Complexity** | S |` is read as a third accepted notation, so `/rite:open` no longer stops at the `complexity_absent` fail-loud for Issues written that way. (#2459)
+- **`/rite:cleanup` re-verifies non-blocking findings against the merged HEAD before filing a follow-up Issue** — `cleanup-follow-up-issue.sh` gained `--exclude-ids <csv>`; findings already resolved by later fix cycles are excluded, and an all-resolved set skips the filing with `skipped; reason=all_resolved`. An unknown id is a WARNING and the known ones are still excluded. (#2467)
+- **Auto-filed follow-up and `pr-create` Issues carry Section 0 Meta** — their bodies open with `**Type**` / `**Complexity**`, so `/rite:open` does not stop with `complexity_absent` on them. (#2451)
+- **`/rite:issue-update` does not fall back to the legacy work memory when the new path exists** — the dual-path selection picks the new path whenever it exists, even when corrupt, matching the neither/corrupt → Issue comment rule. `work-memory-format.md` (Restore from API / SoT Access Pattern) is synced to the same condition. (#2448)
+- **`gitignore-health-check.sh` compares the nested `.rite/.gitignore` at the `state_root`** — running `/rite:lint` from a linked worktree no longer reports a false DRIFT for a nested gitignore that is present in the main checkout. (#2455)
+- **The NB sweep rejection ledger count is extracted with the validator's expression** — `fix/SKILL.md` reads `non_blocking_count` with the same expression `review-nonblocking-record.sh` re-checks it with, so a ledger-bearing NB sweep no longer always ends in `[fix:error]` with `reason=nb_sweep_ledger_count_unreadable`. (#2476)
+- **A non-numeric `nb_sweep_fixed` emits a WARNING** — `/rite:fix --nb-sweep` writes the WARNING and the received value to stderr while the done-file stays a single `done` line, so no false pass is created. (#2443)
+- **The NB sweep re-entry guard is a persistent file** — `/rite:iterate` records it in `.rite/state/nb-sweep-done-{pr}.txt` instead of a conversation marker, so a completed sweep no longer returns to a full review. `pr-cycle-cleanup.sh` reclaims orphaned files. (#2433)
+- **`/rite:ready`'s reviewed-head gate accepts the commit an NB sweep pushed** — `fix/SKILL.md` writes the post-push HEAD SHA on the done-file's second line, and `ready-reviewed-head-gate.sh` matches the review-results JSON first (`via=json`) and the second line only on mismatch (`via=sweep`). Any other unreviewed commit, and a malformed second line, are still fail-loud. (#2439)
+- **`guardrail_audit_log[]` keys are enumerated and validated on write** — `pr-review/SKILL.md` lists the seven keys explicitly and `review-result-save.sh` rejects a missing or extra key with `guardrail_audit_log_keys_violation`. An empty array is accepted. (#2434)
+- **The `nb-sweep` contract test pins that the producer and validator count expressions match** — `nb-sweep-contract.test.sh` extracts the `body_count=` assignment from both `fix/SKILL.md` and `review-nonblocking-record.sh`, asserts a single assignment on each side, and fails loudly when either right-hand side cannot be extracted rather than passing on two empty strings. (#2480)
+- **The gitignore health-check test pins nested drift seen from a worktree cwd** — `gitignore-health-check-multi-session.test.sh` asserts that skipping the nested comparison when `state_root` differs from the repository root hides drift in a worktree cwd but not in the main cwd. (#2457)
+- **The NB sweep re-entry guard test pins the one-line `done` of the outer branch** — `nb-sweep-reentry-guard.test.sh` mutates the outer and inner branches independently so a first-else regression no longer stays green. (#2442)
+
+### Changed
+
+- **Runtime state under the repository root moved into `.rite/`** — session-id, work-memory, plugin-root, flow-debug.log, initialized-version, and settings-hooks-cleaned are written under `.rite/`. `session-start.sh` relocates existing files once, and readers fall back to the old path when the new one is absent. (#2430)
+- **`.rite/` carries a nested self-gitignore** — `session-start.sh` and `flow-state.sh` place a three-line `.gitignore` (`*` / `!wiki/` / `!wiki/**`) so runtime state is ignored without touching the consumer's root `.gitignore`. (#2429)
+- **`/rite:setup` generates the nested `.rite/.gitignore` instead of listing runtime state in the root `.gitignore`** — `--upgrade` performs the same generation and the old-path relocation idempotently, and the `/rite:lint` health-check verifies the same three-line definition without rewriting any file. (#2431)
+- **The legacy `.rite-flow-state` write paths are settled** — no path creates the file anew; only `flow-state.sh migrate` and the resolver-failure fallbacks in `issue-comment-wm-sync.sh` / `cleanup-work-memory.sh` update an existing file in place. README's uninstall steps now match the current implementation. (#2432)
+- **`docs/SPEC.md`'s Post-Tool WM Sync section documents both hook paths** — Path A (local work memory creation) and Path B (Issue comment replica sync on phase change), including the `wm_replica=absent` short circuit that calls no `gh` at all, the systemMessage that reports the degradation, and the `last_synced_phase` advance contract. (#2472)
+- **The hook registration tables in `setup/SKILL.md` name the replica sync path** — `post-tool-wm-sync.sh`'s Purpose covers both Path A and Path B in both tables. (#2474)
+- **`docs/SPEC.md`'s hook registration description matches `hooks.json`** — the PreToolUse row drops the `Block tool usage after compact` entry removed in v0.7 and names `pre-tool-bash-guard.sh` / `pre-tool-edit-guard.sh`; the PostToolUse row names `post-tool-wm-sync.sh`'s Path B and `scripts/bang-backtick-edit-hook.sh`; and `issue-comment-wm-sync.sh` is described as a helper called from Path B and several skills rather than a registered PostToolUse hook. (#2478)
+
 ## [0.13.2] - 2026-08-28
 
 ### Added
@@ -970,6 +1005,7 @@ If you previously relied on `max_review_fix_loops` hitting a hard limit to escap
 - TDD Light mode
 - Parallel implementation with git worktree support
 
+[0.14.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.2...v0.14.0
 [0.13.2]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/B16B1RD/cc-rite-workflow/compare/v0.12.3...v0.13.0

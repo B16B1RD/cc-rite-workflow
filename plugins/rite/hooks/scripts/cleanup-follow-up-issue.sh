@@ -22,6 +22,10 @@
 #   --project-owner      Projects owner。省略時は --owner
 #   --projects-enabled   true|false。省略時 false
 #   --create-script      create-issue-with-projects.sh のパス。テスト注入用。省略時は plugin 内の実体
+#   --exclude-ids        転記から除外する finding id の CSV (例: "F-01,F-05")。cleanup ステップ 6.0 が
+#                        マージ後 HEAD で再検証し `resolved` と判定した id だけを渡す。空文字列 /
+#                        省略は「除外なし」であり引数不正ではない (後方互換)。既知 id と一致しない
+#                        値は WARNING のうえ無視し、残りの除外を適用して続行する
 #
 # Exit codes:
 #   0: 正常終了 (起票 / skip / 非ブロッキング失敗を含む)
@@ -29,7 +33,9 @@
 #
 # Emitted markers (stderr):
 #   [CONTEXT] FOLLOW_UP_ISSUE=created; issue=<n>; pr=<n>
-#   [CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=no_findings|no_json|already_exists|jq_missing; pr=<n>
+#   [CONTEXT] FOLLOW_UP_ISSUE=skipped; reason=no_findings|all_resolved|no_json|already_exists|jq_missing; pr=<n>
+#     no_findings  : 除外を適用する前から non_blocking_findings[] が 0 件
+#     all_resolved : 除外**後**に 0 件になった (再検証で全件が解消済みと判定された)
 #   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable; pr=<n>
 #
 # Emitted summary (stdout, 1 行):
@@ -52,6 +58,7 @@ PROJECT_NUMBER=""
 PROJECT_OWNER=""
 PROJECTS_ENABLED="false"
 CREATE_SCRIPT=""
+EXCLUDE_IDS=""
 
 _require_option_value() {
   if [ -z "${2:-}" ]; then
@@ -71,6 +78,10 @@ while [ $# -gt 0 ]; do
     --project-owner)    PROJECT_OWNER="${2:-}"; shift 2 ;;
     --projects-enabled) PROJECTS_ENABLED="${2:-false}"; shift 2 ;;
     --create-script)    CREATE_SCRIPT="${2:-}"; shift 2 ;;
+    # 空値許容 option。`_require_option_value` を使わないのは、空文字列が「除外なし」という
+    # 正当な入力であり引数不正ではないため (再検証が undecidable / skip の呼び出し側は空で渡す)。
+    # ここを exit 1 にすると呼び出し側が helper_rc 失敗に落ち、完了報告で「未完了」に倒れる。
+    --exclude-ids)      EXCLUDE_IDS="${2:-}"; shift 2 ;;
     *)
       echo "ERROR: cleanup-follow-up-issue: unknown option: $1" >&2
       exit 1 ;;
@@ -190,6 +201,39 @@ case "$jq_rc" in
     ;;
 esac
 
+# 再検証による除外は上の JSON 判定層とは独立の層なので `case` の arm 内に入れない
+# (arm 内へ入れると JSON 判定が degraded に降りた経路で一度も走らない)。
+# 0 件判定は 2 段に分ける: 除外**前** 0 件は従来どおり no_findings (記録時点で指摘が無い)、
+# 除外**後** 0 件だけが all_resolved (再検証で全件が解消済みと判定された)。両者を潰すと
+# 既存の no_findings 契約が回帰する。どちらも gh issue list より前に exit する。
+if [ -n "$EXCLUDE_IDS" ]; then
+  # `-s` で入力全体を 1 文字列として読む。行単位 (`jq -R` 単体) だと改行入りの入力が
+  # JSON 配列の複数連結になり、非空判定を通過した後で `--argjson` が rc=2 で落ちて
+  # unknown id の WARNING が無言で消える。改行も区切りとして畳めばその経路自体が無くなる。
+  exclude_json=$(printf '%s' "$EXCLUDE_IDS" | jq -Rsc '
+    split("\n") | join(",") | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)) | unique') || exclude_json=""
+  if [ -z "$exclude_json" ]; then
+    echo "WARNING: --exclude-ids を解析できませんでした ('${EXCLUDE_IDS}')。除外を適用せず全件を転記します (PR #${PR_NUMBER})" >&2
+  else
+    unknown_ids=$(printf '%s' "$findings_json" | jq -r --argjson ex "$exclude_json" '
+      ([.[] | .id // empty]) as $known | $ex - $known | join(", ")')
+    if [ -n "$unknown_ids" ]; then
+      # fail-loud: 一致しない id を silent に無視しない。転記自体は続行する (非ブロッキング)
+      echo "WARNING: --exclude-ids に non_blocking_findings[] と一致しない id が含まれます: ${unknown_ids} (PR #${PR_NUMBER})。一致した id のみ除外して続行します" >&2
+    fi
+    if filtered_json=$(printf '%s' "$findings_json" | jq -c --argjson ex "$exclude_json" '
+      [.[] | select((.id // "") as $i | ($ex | index($i)) | not)]'); then
+      findings_json="$filtered_json"
+    else
+      echo "WARNING: 除外適用に失敗しました。除外なしで全件を転記します (PR #${PR_NUMBER})" >&2
+    fi
+  fi
+  if ! printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; then
+    emit_skip all_resolved
+    exit 0
+  fi
+fi
+
 # 同定不能は重複起票より起票失敗に倒す (D-03)。Search API は hyphen をトークン分割するため使わない。
 # follow-up ラベルの List API + 先頭行の HTML コメント (<!-- ${MARKER} -->) で確定する。
 # finding 本文の同一文字列は identity ではない。件数が --limit に達して marker 不在なら lookup_api。
@@ -243,6 +287,11 @@ rite_tempfile_new comment_file "fu-comment" || exit 1
 source_issue_line=""
 [ -n "$SOURCE_ISSUE" ] && source_issue_line="- 元 Issue: #${SOURCE_ISSUE}"
 
+# body Meta と Projects 引数で同一値を使う（二重定義しない）
+_fu_type="fix"
+_fu_complexity="S"
+_fu_priority="Medium"
+
 findings_md=$(printf '%s' "$findings_json" | jq -r --arg dash "—" --arg empty "" '
   .[] |
   "### \(.id // $dash) (\(.severity // $dash)) — \(.reviewer // $dash)\n\n" +
@@ -258,6 +307,8 @@ fi
 
 {
   printf '%s\n' "<!-- ${MARKER} -->"
+  printf '%s\n' "**Type**: ${_fu_type}"
+  printf '%s\n' "**Complexity**: ${_fu_complexity}"
   printf '%s\n' ""
   printf '%s\n' "## 概要"
   printf '%s\n' ""
@@ -290,8 +341,8 @@ args_json=$(jq -n \
   --argjson projects_enabled "$PROJECTS_JSON" \
   --argjson project_number "$PROJECT_NUMBER" \
   --arg owner "$PROJECT_OWNER" \
-  --arg priority "Medium" \
-  --arg complexity "S" \
+  --arg priority "$_fu_priority" \
+  --arg complexity "$_fu_complexity" \
   --arg iter_mode "none" \
   '{
     issue: { title: $title, body_file: $body_file, labels: ["follow-up"] },

@@ -45,6 +45,10 @@
 #   - orphan review JSON under `.rite/review-results/` whose GitHub PR is
 #     MERGED/CLOSED (OPEN/draft is kept even without an active flow-state;
 #     undetermined GitHub state is kept).
+#   - consumed release-promotion attestations under
+#     `.rite/release-promotions/{N}.json` (MERGED/CLOSED GitHub PRs; OPEN
+#     and undetermined state are kept with an observable reason;
+#     `.gitignore` is never deleted).
 #
 # Variation history:
 #   - `cycle{N}`: orchestrator-created (`/rite:pr-review` cycle worktrees)
@@ -61,7 +65,7 @@
 #   bash pr-cycle-cleanup.sh [--dry-run]
 #
 # Output (stdout): one structured status line per invocation
-#   [pr-cycle-cleanup] status=<cleaned|noop|failed>; worktrees=<N>; branches=<N>; workdirs=<N>; mutation_worktrees=<N>; session_worktrees=<N>; manifest=<N>
+#   [pr-cycle-cleanup] status=<cleaned|noop|failed>; worktrees=<N>; branches=<N>; workdirs=<N>; mutation_worktrees=<N>; session_worktrees=<N>; manifest=<N>; promotions_deleted=<N>; promotions_kept=<N>
 #
 # Exit codes:
 #   0  cleanup completed (or nothing to clean)
@@ -148,6 +152,8 @@ session_branches_deleted=0
 manifest_reaped=0
 orphan_reviews_deleted=0
 orphan_reviews_archived=0
+promotions_deleted=0
+promotions_kept=0
 orphan_review_pins_deleted=0
 errors=0
 
@@ -1435,6 +1441,75 @@ if [ -d "$session_wt_root" ]; then
   fi
 fi
 
+# Shared GitHub PR state gate for Step 6 (orphan reviews) and Step 7
+# (release-promotion attestations). Defined outside the review_gc_safe
+# block so a broken flow-state cannot hide the function from Step 7.
+_gh_R=""
+_gh_repo=""
+if _or_line=$(bash "$SCRIPT_DIR/lib/git-remote.sh" resolve-owner-repo 2>/dev/null); then
+  _gh_owner=${_or_line%%$'\t'*}
+  _gh_name=${_or_line#*$'\t'}
+  if [ -n "$_gh_owner" ] && [ -n "$_gh_name" ]; then
+    _gh_R="-R"
+    _gh_repo="$_gh_owner/$_gh_name"
+  fi
+fi
+_pr_open=$'\n'
+_pr_closed=$'\n'
+_pr_unknown=$'\n'
+_warned_no_gh=0
+github_pr_lifecycle() {
+  # stdout: open | closed | unknown. WARNINGs on stderr only.
+  # $2 = review | promo — warning wording only; keep/delete map is identical.
+  local pr="$1" kind="$2" state="" no_gh_msg="" unknown_msg=""
+  case "$kind" in
+    review)
+      no_gh_msg="open PR の review JSON を orphan 回収せず保持します"
+      unknown_msg="review JSON を orphan 回収せず保持します"
+      ;;
+    *)
+      no_gh_msg="release-promotion attestation を削除せず保持します"
+      unknown_msg="release-promotion attestation を保持します"
+      ;;
+  esac
+  case "$_pr_open" in *$'\n'"$pr"$'\n'*) printf '%s\n' open; return 0 ;; esac
+  case "$_pr_closed" in *$'\n'"$pr"$'\n'*) printf '%s\n' closed; return 0 ;; esac
+  case "$_pr_unknown" in *$'\n'"$pr"$'\n'*) printf '%s\n' unknown; return 0 ;; esac
+
+  if ! command -v gh >/dev/null 2>&1; then
+    if [ "$_warned_no_gh" -eq 0 ]; then
+      echo "WARNING: gh が見つからないため $no_gh_msg" >&2
+      _warned_no_gh=1
+    fi
+    _pr_unknown="${_pr_unknown}${pr}"$'\n'
+    printf '%s\n' unknown
+    return 0
+  fi
+
+  if [ -n "$_gh_R" ]; then
+    state=$(gh pr view "$pr" "$_gh_R" "$_gh_repo" --json state --jq '.state' 2>/dev/null) || state=""
+  else
+    state=$(gh pr view "$pr" --json state --jq '.state' 2>/dev/null) || state=""
+  fi
+  state=$(printf '%s' "$state" | tr -d '[:space:]')
+
+  case "$state" in
+    OPEN)
+      _pr_open="${_pr_open}${pr}"$'\n'
+      printf '%s\n' open
+      ;;
+    MERGED|CLOSED)
+      _pr_closed="${_pr_closed}${pr}"$'\n'
+      printf '%s\n' closed
+      ;;
+    *)
+      echo "WARNING: PR #${pr} の GitHub 状態を取得できないため $unknown_msg" >&2
+      _pr_unknown="${_pr_unknown}${pr}"$'\n'
+      printf '%s\n' unknown
+      ;;
+  esac
+}
+
 # -----------------------------------------------------------------------
 # Step 6: Reap orphaned review results and run-start pins.
 # Active flow-state PRs are protected. OPEN/draft PRs on GitHub are also
@@ -1470,63 +1545,6 @@ fi
 
 if [ "$review_gc_safe" -eq 1 ] && [ -d "$review_dir" ]; then
   archive_dir="$review_dir/archive"
-  # owner/repo for `gh pr view -R` (SSH host alias). Empty is fine: gh then
-  # uses the cwd remote, and a failed view is treated as unknown (keep).
-  _gh_R=""
-  _gh_repo=""
-  if _or_line=$(bash "$SCRIPT_DIR/lib/git-remote.sh" resolve-owner-repo 2>/dev/null); then
-    _gh_owner=${_or_line%%$'\t'*}
-    _gh_name=${_or_line#*$'\t'}
-    if [ -n "$_gh_owner" ] && [ -n "$_gh_name" ]; then
-      _gh_R="-R"
-      _gh_repo="$_gh_owner/$_gh_name"
-    fi
-  fi
-  # bash 3.2 has no associative arrays; newline-delimited caches.
-  _pr_open=$'\n'
-  _pr_closed=$'\n'
-  _pr_unknown=$'\n'
-  _warned_no_gh=0
-  github_pr_lifecycle() {
-    # stdout: open | closed | unknown. WARNINGs on stderr only.
-    local pr="$1" state=""
-    case "$_pr_open" in *$'\n'"$pr"$'\n'*) printf '%s\n' open; return 0 ;; esac
-    case "$_pr_closed" in *$'\n'"$pr"$'\n'*) printf '%s\n' closed; return 0 ;; esac
-    case "$_pr_unknown" in *$'\n'"$pr"$'\n'*) printf '%s\n' unknown; return 0 ;; esac
-
-    if ! command -v gh >/dev/null 2>&1; then
-      if [ "$_warned_no_gh" -eq 0 ]; then
-        echo "WARNING: gh が見つからないため open PR の review JSON を orphan 回収せず保持します" >&2
-        _warned_no_gh=1
-      fi
-      _pr_unknown="${_pr_unknown}${pr}"$'\n'
-      printf '%s\n' unknown
-      return 0
-    fi
-
-    if [ -n "$_gh_R" ]; then
-      state=$(gh pr view "$pr" "$_gh_R" "$_gh_repo" --json state --jq '.state' 2>/dev/null) || state=""
-    else
-      state=$(gh pr view "$pr" --json state --jq '.state' 2>/dev/null) || state=""
-    fi
-    state=$(printf '%s' "$state" | tr -d '[:space:]')
-
-    case "$state" in
-      OPEN)
-        _pr_open="${_pr_open}${pr}"$'\n'
-        printf '%s\n' open
-        ;;
-      MERGED|CLOSED)
-        _pr_closed="${_pr_closed}${pr}"$'\n'
-        printf '%s\n' closed
-        ;;
-      *)
-        echo "WARNING: PR #${pr} の GitHub 状態を取得できないため review JSON を orphan 回収せず保持します" >&2
-        _pr_unknown="${_pr_unknown}${pr}"$'\n'
-        printf '%s\n' unknown
-        ;;
-    esac
-  }
   while IFS= read -r review_file; do
     [ -n "$review_file" ] || continue
     review_name=${review_file##*/}
@@ -1545,7 +1563,7 @@ if [ "$review_gc_safe" -eq 1 ] && [ -d "$review_dir" ]; then
     # deactivates the holder before the next iterate, so OPEN PRs looked
     # like orphans. GitHub OPEN is the protection that survives that
     # boundary. Unknown (gh missing / view failed) keeps the file.
-    _life=$(github_pr_lifecycle "$review_pr")
+    _life=$(github_pr_lifecycle "$review_pr" review)
     case "$_life" in
       open|unknown) continue ;;
     esac
@@ -1588,7 +1606,74 @@ if [ "$review_gc_safe" -eq 1 ] && [ -d "$review_dir" ]; then
         errors=$((errors + 1))
       fi
     fi
+    sweep_done_file="$repo_root/.rite/state/nb-sweep-done-${review_pr}.txt"
+    if [ -e "$sweep_done_file" ] || [ -L "$sweep_done_file" ]; then
+      if ! rm -f "$sweep_done_file" 2>/dev/null; then
+        echo "WARNING: orphan NB sweep marker '$(printf '%s' "$sweep_done_file" | neutralize_ctrl)' の削除に失敗しました" >&2
+        errors=$((errors + 1))
+      fi
+    fi
   done < <(find "$review_dir" -maxdepth 1 -type f -name '[0-9]*-*.json' -print 2>/dev/null)
+fi
+
+# -----------------------------------------------------------------------
+# Step 7: Reap consumed release-promotion attestations.
+# `{N}.json` under `.rite/release-promotions/` is a merge-gate attestation
+# for a develop→main promotion PR. MERGED/CLOSED = consumed → delete.
+# OPEN and undetermined GitHub state keep the file (merge gate still needs
+# it / fail-safe) with an observable reason. `.gitignore` is never deleted.
+# Independent of Step 6's review_gc_safe: a broken flow-state must not
+# block attestation GC. DRY_RUN lists candidates and does not delete.
+# -----------------------------------------------------------------------
+promotions_dir="$repo_root/.rite/release-promotions"
+if [ -d "$promotions_dir" ]; then
+  while IFS= read -r promo_file; do
+    [ -n "$promo_file" ] || continue
+    [ -f "$promo_file" ] || continue
+    promo_name=${promo_file##*/}
+    [ "$promo_name" = ".gitignore" ] && continue
+    promo_pr=""
+    case "$promo_name" in
+      *.json)
+        promo_pr=${promo_name%.json}
+        case "$promo_pr" in
+          ''|*[!0-9]*)
+            echo "[pr-cycle-cleanup] kept release-promotion file: $(printf '%s' "$promo_name" | neutralize_ctrl) (not {N}.json)" >&2
+            promotions_kept=$((promotions_kept + 1))
+            continue
+            ;;
+        esac
+        ;;
+      *)
+        echo "[pr-cycle-cleanup] kept release-promotion file: $(printf '%s' "$promo_name" | neutralize_ctrl) (not {N}.json)" >&2
+        promotions_kept=$((promotions_kept + 1))
+        continue
+        ;;
+    esac
+
+    _promo_life=$(github_pr_lifecycle "$promo_pr" promo)
+    case "$_promo_life" in
+      closed)
+        if [ "$DRY_RUN" = "1" ]; then
+          echo "[dry-run] would delete consumed release-promotion attestation: $promo_name"
+          continue
+        fi
+        if rm -f "$promo_file" 2>/dev/null; then
+          promotions_deleted=$((promotions_deleted + 1))
+        else
+          echo "WARNING: release-promotion attestation '$(printf '%s' "$promo_name" | neutralize_ctrl)' の削除に失敗しました" >&2
+          errors=$((errors + 1))
+        fi
+        ;;
+      open)
+        echo "[pr-cycle-cleanup] kept release-promotion attestation: $promo_name (OPEN; merge gate still needs it)" >&2
+        promotions_kept=$((promotions_kept + 1))
+        ;;
+      *)
+        promotions_kept=$((promotions_kept + 1))
+        ;;
+    esac
+  done < <(find "$promotions_dir" -maxdepth 1 -type f -print 2>/dev/null)
 fi
 
 # -----------------------------------------------------------------------
@@ -1597,11 +1682,11 @@ fi
 if [ "$DRY_RUN" = "1" ]; then
   echo "[pr-cycle-cleanup] status=dry-run; pattern=$PATTERN"
 elif [ "$errors" -gt 0 ]; then
-  echo "[pr-cycle-cleanup] status=failed; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; session_worktrees=$session_worktrees_reaped; session_branches=$session_branches_deleted; manifest=$manifest_reaped; orphan_reviews_deleted=$orphan_reviews_deleted; orphan_reviews_archived=$orphan_reviews_archived; orphan_review_pins=$orphan_review_pins_deleted; errors=$errors"
-elif [ "$worktrees_removed" -eq 0 ] && [ "$branches_deleted" -eq 0 ] && [ "$workdirs_reaped" -eq 0 ] && [ "$mutation_worktrees_reaped" -eq 0 ] && [ "$session_worktrees_reaped" -eq 0 ] && [ "$session_branches_deleted" -eq 0 ] && [ "$manifest_reaped" -eq 0 ] && [ "$orphan_reviews_deleted" -eq 0 ] && [ "$orphan_reviews_archived" -eq 0 ] && [ "$orphan_review_pins_deleted" -eq 0 ]; then
-  echo "[pr-cycle-cleanup] status=noop; worktrees=0; branches=0; workdirs=0; mutation_worktrees=0; session_worktrees=0; session_branches=0; manifest=0; orphan_reviews_deleted=0; orphan_reviews_archived=0; orphan_review_pins=0"
+  echo "[pr-cycle-cleanup] status=failed; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; session_worktrees=$session_worktrees_reaped; session_branches=$session_branches_deleted; manifest=$manifest_reaped; orphan_reviews_deleted=$orphan_reviews_deleted; orphan_reviews_archived=$orphan_reviews_archived; orphan_review_pins=$orphan_review_pins_deleted; promotions_deleted=$promotions_deleted; promotions_kept=$promotions_kept; errors=$errors"
+elif [ "$worktrees_removed" -eq 0 ] && [ "$branches_deleted" -eq 0 ] && [ "$workdirs_reaped" -eq 0 ] && [ "$mutation_worktrees_reaped" -eq 0 ] && [ "$session_worktrees_reaped" -eq 0 ] && [ "$session_branches_deleted" -eq 0 ] && [ "$manifest_reaped" -eq 0 ] && [ "$orphan_reviews_deleted" -eq 0 ] && [ "$orphan_reviews_archived" -eq 0 ] && [ "$orphan_review_pins_deleted" -eq 0 ] && [ "$promotions_deleted" -eq 0 ]; then
+  echo "[pr-cycle-cleanup] status=noop; worktrees=0; branches=0; workdirs=0; mutation_worktrees=0; session_worktrees=0; session_branches=0; manifest=0; orphan_reviews_deleted=0; orphan_reviews_archived=0; orphan_review_pins=0; promotions_deleted=0; promotions_kept=$promotions_kept"
 else
-  echo "[pr-cycle-cleanup] status=cleaned; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; session_worktrees=$session_worktrees_reaped; session_branches=$session_branches_deleted; manifest=$manifest_reaped; orphan_reviews_deleted=$orphan_reviews_deleted; orphan_reviews_archived=$orphan_reviews_archived; orphan_review_pins=$orphan_review_pins_deleted"
+  echo "[pr-cycle-cleanup] status=cleaned; worktrees=$worktrees_removed; branches=$branches_deleted; workdirs=$workdirs_reaped; mutation_worktrees=$mutation_worktrees_reaped; session_worktrees=$session_worktrees_reaped; session_branches=$session_branches_deleted; manifest=$manifest_reaped; orphan_reviews_deleted=$orphan_reviews_deleted; orphan_reviews_archived=$orphan_reviews_archived; orphan_review_pins=$orphan_review_pins_deleted; promotions_deleted=$promotions_deleted; promotions_kept=$promotions_kept"
 fi
 
 exit 0

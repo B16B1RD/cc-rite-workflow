@@ -28,7 +28,7 @@
 #   - Files matching common static asset patterns (`.gitkeep`, `__init__.py`,
 #     `LICENSE`, `CHANGELOG.md`) are skipped entirely.
 #   - --all mode excludes runtime/local artifact directories (`.git/`,
-#     `.rite/`, `.rite-work-memory/`, `.rite-flow-state*`,
+#     `.rite/`, `.rite-work-memory/`, `.rite/work-memory/`, `.rite-flow-state*`,
 #     `.rite-compact-state*`, `node_modules/`) from the find walk.
 #
 # Usage:
@@ -120,6 +120,7 @@ if [ "$USE_ALL" -eq 1 ]; then
     -not -path "*/.git/*" \
     -not -path "*/.rite/*" \
     -not -path "*/.rite-work-memory/*" \
+    -not -path "*/.rite/work-memory/*" \
     -not -path "*/.rite-flow-state*" \
     -not -path "*/.rite-compact-state*" \
     -not -path "*/node_modules/*" \

@@ -127,7 +127,8 @@ plugins/rite/hooks/
 ├── session-start.sh / session-end.sh        # SessionStart / SessionEnd lifecycle hooks
 ├── pre-compact.sh / post-compact.sh          # PreCompact / PostCompact (context compaction)
 ├── pre-tool-bash-guard.sh                    # PreToolUse (Bash): blocks known-bad command patterns
-├── post-tool-wm-sync.sh                      # PostToolUse (Bash): auto-creates local work memory
+├── pre-tool-edit-guard.sh                    # PreToolUse (Edit|Write|MultiEdit|NotebookEdit): denies reviewer-subagent writes into a parent working tree
+├── post-tool-wm-sync.sh                      # PostToolUse (Bash): auto-creates local work memory; syncs the Issue comment replica on phase change
 ├── stop-loop-continuation.sh                 # Stop: consume one-shot handoff → re-inject next review↔fix loop / cleanup chain / finalize
 ├── flow-state.sh                             # Unified per-session flow-state management
 ├── session-ownership.sh / hook-preamble.sh   # Sourced helper libraries (not registered hooks)

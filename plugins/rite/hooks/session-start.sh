@@ -21,6 +21,8 @@ source "$SCRIPT_DIR/session-ownership.sh" 2>/dev/null || true
 source "$SCRIPT_DIR/control-char-neutralize.sh"
 # shellcheck source=gitignore-ensure.sh
 source "$SCRIPT_DIR/gitignore-ensure.sh"
+# shellcheck source=relocated-state-migrate.sh
+source "$SCRIPT_DIR/relocated-state-migrate.sh"
 
 # jq is a hard dependency: .rite-flow-state is created by jq, so if jq is
 # missing the state file won't exist and the hook exits at the -f check below.
@@ -74,23 +76,40 @@ fi
 # SCRIPT_DIR already set in preamble block above
 STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_ROOT="$CWD"
 
+# Nested self-gitignore for the whole `.rite/` tree (`*` plus wiki negations).
+# Covers runtime state even when /rite:setup has not listed each subdir in the
+# consumer root .gitignore. mkdir is the caller's job; the helper will not create
+# the directory. Failure is non-blocking (same WARNING form as the logs dir).
+if mkdir_err=$(mkdir -p "$STATE_ROOT/.rite" 2>&1); then
+  if ! _ensure_rite_nested_gitignore "$STATE_ROOT/.rite"; then
+    echo "WARNING: session-start.sh: cannot create $(printf '%s' "$STATE_ROOT/.rite" | neutralize_ctrl)/.gitignore; verify by hand that this directory is excluded from git" >&2
+    [ -n "$_RITE_GITIGNORE_ERROR" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+  fi
+else
+  echo "WARNING: session-start.sh: cannot create $(printf '%s' "$STATE_ROOT/.rite" | neutralize_ctrl); nested gitignore not written" >&2
+  [ -n "$mkdir_err" ] && printf '%s\n' "$mkdir_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+fi
+
+# Move root `.rite-*` runtime state under `.rite/` once.
+_rite_run_relocated_state_migrate "$STATE_ROOT"
+
 # Write plugin root for command-file consumption (version-independent)
 _plugin_root="$(dirname "$SCRIPT_DIR")"
 if [ -d "$_plugin_root/hooks" ]; then
-  printf '%s' "$_plugin_root" > "$STATE_ROOT/.rite-plugin-root" 2>/dev/null || true
+  printf '%s' "$_plugin_root" > "$STATE_ROOT/.rite/plugin-root" 2>/dev/null || true
 fi
 
-# Save session_id to .rite-session-id ONLY as the env-absent fallback channel
-#. When the runtime exposes CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID,
+# Save session_id to `.rite/session-id` ONLY as the env-absent fallback channel.
+# When the runtime exposes CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID,
 # that per-session env var is authoritative for flow-state.sh session_id resolution,
-# so writing the single shared `.rite-session-id` would just let concurrent sessions
+# so writing the single shared file would just let concurrent sessions
 # clobber each other's value — the original flow-state contamination / worktree
 # mis-reap. Skipping the write when env is present stops every session start from
 # overwriting the shared file; env-absent runtimes (CI / headless / non-Code clients)
 # still get the file as their sole resolution channel, preserving backward compat.
 if [ -n "$SESSION_ID" ] && [ -z "${CLAUDE_CODE_SESSION_ID:-}" ] && [ -z "${CLAUDE_SESSION_ID:-}" ]; then
-  (umask 077; printf '%s' "$SESSION_ID" > "$STATE_ROOT/.rite-session-id") 2>/dev/null || {
-    [ -n "${RITE_DEBUG:-}" ] && echo "[rite] WARNING: Failed to write .rite-session-id" >&2
+  (umask 077; printf '%s' "$SESSION_ID" > "$STATE_ROOT/.rite/session-id") 2>/dev/null || {
+    [ -n "${RITE_DEBUG:-}" ] && echo "[rite] WARNING: Failed to write .rite/session-id" >&2
     true
   }
 fi
@@ -229,15 +248,19 @@ fi
 
 # --- Plugin version check + legacy hook cleanup on startup ---
 if [ "$SOURCE" = "startup" ]; then
-  _version_file="$STATE_ROOT/.rite-initialized-version"
-  _hooks_cleaned_marker="$STATE_ROOT/.rite-settings-hooks-cleaned"
+  _version_file="$STATE_ROOT/.rite/initialized-version"
+  _hooks_cleaned_marker="$STATE_ROOT/.rite/settings-hooks-cleaned"
+  _version_read="$_version_file"
+  [ -f "$_version_read" ] || [ ! -f "$STATE_ROOT/.rite-initialized-version" ] || _version_read="$STATE_ROOT/.rite-initialized-version"
+  _hooks_read="$_hooks_cleaned_marker"
+  [ -f "$_hooks_read" ] || [ ! -f "$STATE_ROOT/.rite-settings-hooks-cleaned" ] || _hooks_read="$STATE_ROOT/.rite-settings-hooks-cleaned"
 
   _needs_cleanup=false
   _installed_ver=""
   _current_ver=""
 
-  if [ -f "$_version_file" ]; then
-    _installed_ver=$(tr -d '[:space:]' < "$_version_file" 2>/dev/null)
+  if [ -f "$_version_read" ]; then
+    _installed_ver=$(tr -d '[:space:]' < "$_version_read" 2>/dev/null)
     _plugin_json="$SCRIPT_DIR/../.claude-plugin/plugin.json"
     _current_ver=$(jq -r '.version // empty' "$_plugin_json" 2>/dev/null)
     if [ -n "$_installed_ver" ] && [ -n "$_current_ver" ] && [ "$_installed_ver" != "$_current_ver" ]; then
@@ -246,7 +269,7 @@ if [ "$SOURCE" = "startup" ]; then
   fi
 
   # One-time migration: clean up settings.local.json hooks even if versions match
-  if [ ! -f "$_hooks_cleaned_marker" ]; then
+  if [ ! -f "$_hooks_read" ]; then
     _needs_cleanup=true
   fi
 
@@ -378,10 +401,10 @@ RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" migrate >/dev/nul
 # manifest-bypass WARNINGs) were previously unobservable and slowed diagnosis
 # (#1966's investigation). A self-contained `.gitignore` (`*`) is written into
 # the log dir on first creation so it never leaks into the repo even in
-# downstream consuming repos, where /rite:setup's generated .gitignore covers
-# `.rite/sessions/`, `.rite/worktrees/`, and `.rite/review-results/` (not
-# `.rite/logs/`) and this
-# repo's own root `*.log` rule doesn't apply. If the dir can't be created,
+# downstream consuming repos. Nested `$STATE_ROOT/.rite/.gitignore` (`*` plus
+# wiki negations) also covers `.rite/sessions/`, `.rite/worktrees/`,
+# `.rite/review-results/`, and `.rite/logs/` without a root listing. If the
+# dir can't be created,
 # fall back to discarding output — this hook must never block session start on
 # a log-write failure.
 if [ "$CWD" = "$STATE_ROOT" ]; then

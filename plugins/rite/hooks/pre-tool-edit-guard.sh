@@ -41,6 +41,11 @@
 # NotebookEdit) with a 10s timeout — a fast synchronous gate using bash built-ins
 # plus a couple of jq calls, aligned with the sibling lightweight gates.
 set -euo pipefail
+# Create the logs dir only when STATE_ROOT is set. An unset STATE_ROOT used to
+# mkdir /tmp/.rite/, which collides with the `[ -d .rite ]` project-root marker.
+if [ -n "${STATE_ROOT:-}" ]; then
+  mkdir -p "$STATE_ROOT/.rite/logs" 2>/dev/null || true
+fi
 
 # Double-execution guard (hooks.json + settings.local.json migration parity with
 # pre-tool-bash-guard.sh's _RITE_HOOK_RUNNING_PRETOOL, but a distinct var so the
@@ -64,7 +69,7 @@ _rite_teg_fail_open() {
   if [ -n "${RITE_DEBUG:-}" ]; then
     printf '[%s] pre-tool-edit-guard: ERR trap fired before scope confirmed — allowed via fail-open\n' \
       "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-      >> "${STATE_ROOT:-/tmp}/.rite-flow-debug.log" 2>/dev/null || true
+      >> "${STATE_ROOT:-/tmp}/.rite/logs/flow-debug.log" 2>/dev/null || true
   fi
   exit 0
 }
@@ -125,7 +130,7 @@ if [ -n "${RITE_DEBUG:-}" ] && [ -n "$_jq_sa_err" ] && [ -s "$_jq_sa_err" ]; the
   printf '[%s] pre-tool-edit-guard: subagent-detection jq stderr: %s\n' \
     "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
     "$(head -c 200 "$_jq_sa_err" | tr '\n' ' ' | neutralize_ctrl --c0-only)" \
-    >> "${STATE_ROOT:-/tmp}/.rite-flow-debug.log" 2>/dev/null || true
+    >> "${STATE_ROOT:-/tmp}/.rite/logs/flow-debug.log" 2>/dev/null || true
 fi
 [ -n "$_jq_sa_err" ] && rm -f "$_jq_sa_err"
 TRANSCRIPT_PATH=$(printf '%s' "$JQ_SA" | cut -f1)
@@ -256,7 +261,7 @@ if [ -n "${RITE_DEBUG:-}" ] && [ -L "$ABS_PATH" ]; then
   printf '[%s] pre-tool-edit-guard: AC-2 deref gave up after %s hop(s), target still a symlink: %s\n' \
     "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$_hop" \
     "$(printf '%s' "${ABS_PATH:0:120}" | neutralize_ctrl --c0-only)" \
-    >> "${STATE_ROOT:-/tmp}/.rite-flow-debug.log" 2>/dev/null || true
+    >> "${STATE_ROOT:-/tmp}/.rite/logs/flow-debug.log" 2>/dev/null || true
 fi
 
 # --- Resolve the git worktree that OWNS the target ---

@@ -530,7 +530,7 @@ if [ "$SOURCE" = "auto" ]; then
 [rite] Auto-compact recovery: Issue #${ISSUE}, Phase: ${PHASE}, Branch: ${BRANCH}
 Next action: ${NEXT_ACTION}
 Loop: ${LOOP} | PR: #${PR}
-Use \`bash {plugin_root}/hooks/flow-state.sh get --field <field>\` for full state details. Also consult .rite-work-memory/issue-${ISSUE}.md, then continue.
+Use \`bash {plugin_root}/hooks/flow-state.sh get --field <field>\` for full state details. Also consult .rite/work-memory/issue-${ISSUE}.md, then continue.
 EOF
 else
   # Manual compact: state re-injection only, no auto-continue instruction

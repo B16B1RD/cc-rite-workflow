@@ -12,6 +12,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=gitignore-ensure.sh
+source "$SCRIPT_DIR/gitignore-ensure.sh"
 PR_NUMBER="${1:-}"
 case "$PR_NUMBER" in ''|*[!0-9]*) echo "ERROR: release promotion PR number must be numeric" >&2; exit 2 ;; esac
 
@@ -63,6 +65,16 @@ else
 fi
 attestation_dir="$state_root/.rite/release-promotions"
 mkdir -p "$attestation_dir"
+# Carry the exclusion in the directory the attestations live in, not in a .gitignore
+# that setup generates: a generated line depends on when setup last ran, whether the
+# upgrade path reached its append block, and whether the user hand-edited the file.
+# Writing it here means the exclusion exists the moment the directory does.
+# Non-blocking on purpose — a merge gate with no attestation hurts more than an
+# unprotected directory — but never silent (review-result-save.sh uses the same shape).
+if ! _ensure_dir_gitignore "$attestation_dir"; then
+  echo "WARNING: $attestation_dir/.gitignore を作成できませんでした。本ディレクトリが git の追跡対象から除外されているか手動で確認してください" >&2
+  [ -n "$_RITE_GITIGNORE_ERROR" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+fi
 attestation="$attestation_dir/$PR_NUMBER.json"
 now=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
 jq -n --argjson pr "$PR_NUMBER" --arg base "$base" --arg head "$head" \

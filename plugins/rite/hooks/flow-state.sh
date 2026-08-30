@@ -20,8 +20,26 @@ else
   STATE_ROOT=$(resolve_state_root)
 fi
 SESSION_DIR="$STATE_ROOT/.rite/sessions"
+# LEGACY_STATE is never *created* by rite: every remaining reference is guarded by
+# `[ -f ]`, so the file is only ever rewritten in place when a pre-v3 install left
+# one behind. Two paths can still write it, and neither is read-only:
+#   1. cmd_migrate below, which rewrites the schema to v3.
+#   2. issue-comment-wm-sync.sh / cleanup-work-memory.sh, which fall back to this
+#      path when `flow-state.sh path` cannot resolve a session id.
+# Every other reader (e.g. pre/post-compact, post-tool-wm-sync, session-start,
+# session-end) resolves to an empty path on resolver failure rather than falling back
+# here, so it cannot resurrect the file.
 LEGACY_STATE="$STATE_ROOT/.rite-flow-state"
-SESSION_ID_FILE="$STATE_ROOT/.rite-session-id"
+# New path wins when present, even if invalid — do not fall through to the
+# legacy file in that case. Absent both → canonical new so first-time
+# sessions stay silent on `--if-exists`.
+if [ -f "$STATE_ROOT/.rite/session-id" ]; then
+  SESSION_ID_FILE="$STATE_ROOT/.rite/session-id"
+elif [ -f "$STATE_ROOT/.rite-session-id" ]; then
+  SESSION_ID_FILE="$STATE_ROOT/.rite-session-id"
+else
+  SESSION_ID_FILE="$STATE_ROOT/.rite/session-id"
+fi
 
 # Phase enum SoT (13 values); also referenced from resume.md cross-check.
 PHASE_ENUM_V3="init branch plan implement lint pr review fix ready ready_error cleanup ingest completed"
@@ -122,6 +140,10 @@ _resolve_session_id() {
 
 _state_path() {
   mkdir -p "$SESSION_DIR" 2>/dev/null || true
+  if ! _ensure_rite_nested_gitignore "$STATE_ROOT/.rite"; then
+    echo "WARNING: flow-state.sh: cannot create $(printf '%s' "$STATE_ROOT/.rite" | neutralize_ctrl)/.gitignore; verify by hand that this directory is excluded from git" >&2
+    [ -n "$_RITE_GITIGNORE_ERROR" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
+  fi
   printf '%s\n' "$SESSION_DIR/${1}.flow-state"
 }
 
@@ -345,6 +367,24 @@ cmd_set() {
     fi
   fi
   [ -z "$issue" ] && issue=$cur_issue
+  # `wm_comment_id` / `wm_replica` はセッション単位の state に置かれているが、意味的には
+  # **Issue 単位** の値 (前者は当該 Issue の replica comment id、後者はその replica 不在の
+  # negative cache)。Issue を跨いで merge-preserve すると、次 Issue の同期が前 Issue の
+  # comment を Issue 非依存エンドポイント経由で PATCH し、negative cache も解除されないまま
+  # 引き継がれる (#2463)。Issue が実際に切り替わる set でだけ両者を落とす。
+  #
+  # 判定は「書き込む Issue が既存と一致するときだけ保持」。`--issue` 省略時は直前の
+  # `issue=$cur_issue` で一致するため、通常の phase transition は #1810 の merge-preserve 契約を
+  # そのまま満たす。`skills/cleanup/SKILL.md` の `--issue 0` fallback では落ちる。cleanup も
+  # replica を同期する (ステップ 11 が `references/archive-procedures.md` の `append-eof` /
+  # `merge-checklist` を実行する) が、その 2 呼び出しは `--issue` を明示するため、キャッシュを
+  # 落としても `scan_wm_comment` が拾い直し gh 往復が 1 増えるだけで誤 PATCH は起きない。
+  # 落とす側を選ぶのは、0 が state に載ったあと次 Issue の set が「切替」を検知できなくなる
+  # 穴を塞ぐため。
+  if [ "$issue" != "$cur_issue" ]; then
+    cur_wm_comment_id=""
+    cur_wm_replica=""
+  fi
   [ -z "$branch" ] && branch=$cur_branch
   # `worktree` (multi-session §2): merge-preserve like `branch` (NOT default-clear
   # like `handoff`). Unspecified --worktree preserves the existing session

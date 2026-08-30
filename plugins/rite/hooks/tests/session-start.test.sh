@@ -827,6 +827,7 @@ cp "$src_hook_dir/hook-preamble.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/state-path-resolve.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/control-char-neutralize.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/gitignore-ensure.sh" "$sandbox_hook_dir/"
+cp "$src_hook_dir/relocated-state-migrate.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/flow-state.sh" "$sandbox_hook_dir/"
 # Sandbox に canonical mktemp helper を含める (silent suppress 禁止 — sibling cp と同じ fail-fast)
 cp "$src_hook_dir/_mktemp-stderr-guard.sh" "$sandbox_hook_dir/"
@@ -871,6 +872,7 @@ cp "$src_hook_dir_b/hook-preamble.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/state-path-resolve.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/control-char-neutralize.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/gitignore-ensure.sh" "$sandbox_hook_dir_b/"
+cp "$src_hook_dir_b/relocated-state-migrate.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/flow-state.sh" "$sandbox_hook_dir_b/"
 # canonical mktemp helper を sandbox に同期コピーする (silent suppress 禁止 — sibling cp と同じ fail-fast)
 cp "$src_hook_dir_b/_mktemp-stderr-guard.sh" "$sandbox_hook_dir_b/"
@@ -1266,7 +1268,7 @@ _mk_wt_sandbox() {
   mkdir -p "$dir/sandbox/hooks"
   sbx="$dir/sandbox/hooks"
   src="$(cd "$SCRIPT_DIR/.." && pwd)"
-  for f in session-start.sh hook-preamble.sh state-path-resolve.sh control-char-neutralize.sh gitignore-ensure.sh flow-state.sh _mktemp-stderr-guard.sh; do
+  for f in session-start.sh hook-preamble.sh state-path-resolve.sh control-char-neutralize.sh gitignore-ensure.sh relocated-state-migrate.sh flow-state.sh _mktemp-stderr-guard.sh; do
     cp "$src/$f" "$sbx/"
   done
   cat > "$sbx/session-ownership.sh" <<'STUB_EOF'
@@ -1356,11 +1358,11 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-1530: .rite-session-id write is conditioned on env-absence
+# TC-1530: .rite/session-id write is conditioned on env-absence
 # --------------------------------------------------------------------------
-echo "TC-1530: .rite-session-id write conditioned on env-absence"
+echo "TC-1530: .rite/session-id write conditioned on env-absence"
 
-# Case A: env absent → session-start writes .rite-session-id (the fallback channel
+# Case A: env absent → session-start writes .rite/session-id (the fallback channel
 # env-absent runtimes rely on for flow-state.sh resolution).
 dir1530a="$TEST_DIR/cond-env-absent"
 mkdir -p "$dir1530a"
@@ -1369,14 +1371,14 @@ LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 jq -n --arg cwd "$dir1530a" --arg src "startup" --arg sid "$sid1530a" \
   '{cwd: $cwd, source: $src, session_id: $sid}' \
   | env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
-if [ "$(cat "$dir1530a/.rite-session-id" 2>/dev/null)" = "$sid1530a" ]; then
-  pass "TC-1530a: env-absent → .rite-session-id written with payload sid (fallback)"
+if [ "$(cat "$dir1530a/.rite/session-id" 2>/dev/null)" = "$sid1530a" ] && [ ! -f "$dir1530a/.rite-session-id" ]; then
+  pass "TC-1530a: env-absent → .rite/session-id written with payload sid (fallback)"
 else
-  fail "TC-1530a: expected .rite-session-id='$sid1530a', got '$(cat "$dir1530a/.rite-session-id" 2>/dev/null)'"
+  fail "TC-1530a: expected .rite/session-id='$sid1530a' and no legacy file, got new='$(cat "$dir1530a/.rite/session-id" 2>/dev/null)' old='$(cat "$dir1530a/.rite-session-id" 2>/dev/null)'"
 fi
 
 # Case B: env present → session-start must NOT write/clobber the shared
-# .rite-session-id; the per-session env var is authoritative, so leaving the
+# session-id file; the per-session env var is authoritative, so leaving the
 # shared file untouched is what prevents concurrent sessions from overwriting it.
 dir1530b="$TEST_DIR/cond-env-present"
 mkdir -p "$dir1530b"
@@ -1386,10 +1388,10 @@ LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 jq -n --arg cwd "$dir1530b" --arg src "startup" --arg sid "$sid1530b" \
   '{cwd: $cwd, source: $src, session_id: $sid}' \
   | env -u CLAUDE_SESSION_ID CLAUDE_CODE_SESSION_ID="$env_sid_b" bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE" || true
-if [ ! -f "$dir1530b/.rite-session-id" ]; then
-  pass "TC-1530b: env-present → shared .rite-session-id not written (no cross-session clobber)"
+if [ ! -f "$dir1530b/.rite-session-id" ] && [ ! -f "$dir1530b/.rite/session-id" ]; then
+  pass "TC-1530b: env-present → shared session-id not written on new or legacy path"
 else
-  fail "TC-1530b: expected no .rite-session-id when env present, got '$(cat "$dir1530b/.rite-session-id" 2>/dev/null)'"
+  fail "TC-1530b: expected no session-id file when env present, new='$(cat "$dir1530b/.rite/session-id" 2>/dev/null)' old='$(cat "$dir1530b/.rite-session-id" 2>/dev/null)'"
 fi
 echo ""
 
@@ -1591,6 +1593,28 @@ if [ "$rc1968_08" -eq 0 ] && ! grep -qE 'session-start\.sh: (line|行) [0-9]+:' 
   pass "TC-1968-08: .gitignore write failure (path collision) does not leak bash redirect error to stderr"
 else
   fail "TC-1968-08: expected exit 0, no bash redirect error; got rc=$rc1968_08, stderr: $(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+echo "nested .rite mkdir failure: file at .rite emits WARNING, hook exits 0"
+dir_rite_file="$TEST_DIR/rite-as-file"
+mkdir -p "$dir_rite_file"
+(cd "$dir_rite_file" && git init -q && git -c user.name="test" -c user.email="test@test.com" commit --allow-empty -m "init" -q)
+# A file named ".rite" at STATE_ROOT blocks `mkdir -p .../.rite`, so the
+# nested gitignore else branch runs without needing a read-only filesystem
+# (same collision pattern as TC-1968-03).
+printf 'not-a-dir\n' > "$dir_rite_file/.rite"
+iso_tmpdir_rite_file="$TEST_DIR/rite-as-file-tmpdir"
+mkdir -p "$iso_tmpdir_rite_file"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+echo "{\"cwd\": \"$dir_rite_file\"}" | TMPDIR="$iso_tmpdir_rite_file" bash "$HOOK" >/dev/null 2>"$LAST_STDERR_FILE"; rc_rite_file=$?
+if [ "$rc_rite_file" -eq 0 ] \
+  && grep -q 'nested gitignore not written' "$LAST_STDERR_FILE" \
+  && [ -f "$dir_rite_file/.rite" ] \
+  && [ ! -d "$dir_rite_file/.rite" ]; then
+  pass "nested .rite mkdir failure: WARNING emitted and hook exits 0"
+else
+  fail "nested .rite mkdir failure: expected rc=0 + 'nested gitignore not written' with .rite still a file; got rc=$rc_rite_file, .rite is $([ -d "$dir_rite_file/.rite" ] && echo dir || echo file-or-missing), stderr: $(cat "$LAST_STDERR_FILE")"
 fi
 echo ""
 
