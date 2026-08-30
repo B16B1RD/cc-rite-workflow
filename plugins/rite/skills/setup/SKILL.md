@@ -1056,7 +1056,7 @@ rationale: references/rationale.md#hook-path-absolute
 | SessionStart | `session-start.sh` | `""` | Re-inject state on startup/resume |
 | SessionEnd | `session-end.sh` | `""` | Reset flow state on session end |
 | PreToolUse | `pre-tool-bash-guard.sh` | `"Bash"` | Block known-bad Bash command patterns |
-| PostToolUse | `post-tool-wm-sync.sh` | `"Bash"` | Auto-create local WM |
+| PostToolUse | `post-tool-wm-sync.sh` | `"Bash"` | Auto-create local WM; sync Issue comment replica on phase change |
 | PostToolUse | `scripts/bang-backtick-edit-hook.sh` | `"Edit\|Write\|MultiEdit"` | Block bang-backtick adjacency that bash would interpret as history expansion |
 
 **Check procedure**:
@@ -1093,7 +1093,7 @@ Add the following hooks to `.claude/settings.local.json`:
 | SessionStart | `bash {hooks_dir}/session-start.sh` | Re-inject state on startup/resume |
 | PreToolUse (Bash) | `bash {hooks_dir}/pre-tool-bash-guard.sh` | Block known-bad Bash command patterns |
 | SessionEnd | `bash {hooks_dir}/session-end.sh` | Reset flow state on session end |
-| PostToolUse (Bash) | `bash {hooks_dir}/post-tool-wm-sync.sh` | Auto-create local WM |
+| PostToolUse (Bash) | `bash {hooks_dir}/post-tool-wm-sync.sh` | Auto-create local WM; sync Issue comment replica on phase change |
 | PostToolUse (Edit\|Write\|MultiEdit) | `bash {hooks_dir}/scripts/bang-backtick-edit-hook.sh` | Block bang-backtick adjacency that bash would interpret as history expansion |
 
 **Hook registration format** (merge into existing settings without overwriting other entries):
