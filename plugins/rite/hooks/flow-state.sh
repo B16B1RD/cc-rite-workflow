@@ -367,6 +367,24 @@ cmd_set() {
     fi
   fi
   [ -z "$issue" ] && issue=$cur_issue
+  # `wm_comment_id` / `wm_replica` はセッション単位の state に置かれているが、意味的には
+  # **Issue 単位** の値 (前者は当該 Issue の replica comment id、後者はその replica 不在の
+  # negative cache)。Issue を跨いで merge-preserve すると、次 Issue の同期が前 Issue の
+  # comment を Issue 非依存エンドポイント経由で PATCH し、negative cache も解除されないまま
+  # 引き継がれる (#2463)。Issue が実際に切り替わる set でだけ両者を落とす。
+  #
+  # 判定は「書き込む Issue が既存と一致するときだけ保持」。`--issue` 省略時は直前の
+  # `issue=$cur_issue` で一致するため、通常の phase transition は #1810 の merge-preserve 契約を
+  # そのまま満たす。`skills/cleanup/SKILL.md` の `--issue 0` fallback では落ちる。cleanup も
+  # replica を同期する (ステップ 11 が `references/archive-procedures.md` の `append-eof` /
+  # `merge-checklist` を実行する) が、その 2 呼び出しは `--issue` を明示するため、キャッシュを
+  # 落としても `scan_wm_comment` が拾い直し gh 往復が 1 増えるだけで誤 PATCH は起きない。
+  # 落とす側を選ぶのは、0 が state に載ったあと次 Issue の set が「切替」を検知できなくなる
+  # 穴を塞ぐため。
+  if [ "$issue" != "$cur_issue" ]; then
+    cur_wm_comment_id=""
+    cur_wm_replica=""
+  fi
   [ -z "$branch" ] && branch=$cur_branch
   # `worktree` (multi-session §2): merge-preserve like `branch` (NOT default-clear
   # like `handoff`). Unspecified --worktree preserves the existing session
