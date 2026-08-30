@@ -230,8 +230,13 @@ _run_py_transform() {
 }
 
 if [ "$_wm_replica" = "absent" ]; then
-  # AC-5: 負キャッシュ済みなら gh を呼ばず last_synced_phase だけ進める (stdout 空)。
+  # 負キャッシュ済みなら gh を呼ばず last_synced_phase だけ進める (round_trips=0)。
+  # ただし黙って進めない: `absent` の解除経路は replica の作成成功だけなので、init が
+  # unverified / gh 失敗で終わるとこの分岐に永久に留まり、replica 同期が一度も行われないまま
+  # debug ログ以外に何も出ない状態が続く (#2463)。劣化していることが phase 変化のたびに
+  # ユーザーへ届くよう systemMessage を出す (gh 往復は増やさない)。
   log_debug "wm_replica=absent; skip gh; round_trips=0"
+  _set_sysmsg "作業メモリの Issue コメント replica が無いため同期をスキップしています（Issue #${issue_number}）。/rite:open の replica 作成が失敗した可能性があります。同期を再開するには /rite:open を実行してください。"
   _phase_sync_ok=1
 else
   # phase_detail: local WM から。失敗は phase 名に縮退 (既存契約)。

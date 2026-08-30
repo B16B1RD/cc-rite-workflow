@@ -1413,6 +1413,40 @@ else
   pass "TC-28: corrupt wm_comment_id 由来の write エラー出力の生 ESC が中和されている"
 fi
 
+# --- TC-29: wm_comment_id / wm_replica are Issue-scoped, but `--issue 0` is not an Issue switch (#2463) ---
+# Both fields are session-file resident yet Issue-scoped in meaning, so a set that switches to a
+# different Issue must drop them (otherwise the next Issue PATCHes the previous Issue's replica via
+# the Issue-independent comments endpoint, and the negative cache is inherited too).
+# The rule is "preserve only when the written Issue equals the stored one", so an omitted
+# `--issue` (the ordinary phase transition of TC-28) still preserves, while both an explicit
+# switch and `--issue 0` drop. `--issue 0` dropping is intentional: cleanup — its only caller —
+# never syncs the replica, and keeping 0 in state would hide the *next* Issue's switch.
+echo ""
+echo "=== TC-29: wm_comment_id / wm_replica are Issue-scoped (dropped unless the Issue matches) ==="
+result=$(new_sandbox); d29="${result%|*}"; sid29="${result#*|}"
+sfile29="$d29/.rite/sessions/${sid29}.flow-state"
+(cd "$d29" && bash "$HOOK" set --phase init --issue 2463 --branch "" --pr 0 --next "n") >/dev/null
+jq '. + {wm_comment_id: 555111, wm_replica: "absent"}' "$sfile29" > "$sfile29.tmp" && mv "$sfile29.tmp" "$sfile29"
+# omitted --issue (ordinary phase transition): merge-preserved, same as TC-28
+(cd "$d29" && bash "$HOOK" set --phase branch --branch "fix/issue-2463" --pr 0 --next "n") >/dev/null
+assert "TC-29: omitted --issue preserves wm_comment_id" "555111" "$(jq -r '.wm_comment_id // "ABSENT"' "$sfile29")"
+assert "TC-29: omitted --issue preserves wm_replica" "absent" "$(jq -r '.wm_replica // "ABSENT"' "$sfile29")"
+# same Issue passed explicitly: still preserved
+(cd "$d29" && bash "$HOOK" set --phase plan --issue 2463 --branch "fix/issue-2463" --pr 0 --next "n") >/dev/null
+assert "TC-29: same --issue preserves wm_comment_id" "555111" "$(jq -r '.wm_comment_id // "ABSENT"' "$sfile29")"
+# an actual switch to another Issue → both dropped
+(cd "$d29" && bash "$HOOK" set --phase init --issue 2464 --branch "" --pr 0 --next "n") >/dev/null
+assert "TC-29: Issue switch drops wm_comment_id" "false" "$(jq -r 'has("wm_comment_id")' "$sfile29")"
+assert "TC-29: Issue switch drops wm_replica" "false" "$(jq -r 'has("wm_replica")' "$sfile29")"
+# --issue 0 (cleanup fallback) also drops — cleanup performs no replica sync, and leaving the
+# cache behind a 0 would make the following Issue's set unable to see a switch at all
+result=$(new_sandbox); d29b="${result%|*}"; sid29b="${result#*|}"
+sfile29b="$d29b/.rite/sessions/${sid29b}.flow-state"
+(cd "$d29b" && bash "$HOOK" set --phase init --issue 2463 --branch "" --pr 0 --next "n") >/dev/null
+jq '. + {wm_comment_id: 555111}' "$sfile29b" > "$sfile29b.tmp" && mv "$sfile29b.tmp" "$sfile29b"
+(cd "$d29b" && bash "$HOOK" set --phase cleanup --issue 0 --branch "" --pr 0 --next "n") >/dev/null
+assert "TC-29: --issue 0 drops wm_comment_id" "false" "$(jq -r 'has("wm_comment_id")' "$sfile29b")"
+
 # --- T-01: AC-1 — distinct env CLAUDE_CODE_SESSION_ID → distinct per-session state files ---
 echo ""
 echo "=== T-01: AC-1 concurrent sessions sharing one state root stay isolated by env ==="
