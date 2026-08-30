@@ -34,6 +34,7 @@
 * **Update**: [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く](pages/anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md) — raw/reviews/20260830T093009Z-pr-2483.md を統合（恒真化条件は fixture の中身だけでなく上流の早期 exit ゲートにもある。ガード反転 mutation で非 vacuity を実証する手順を追記）
 * **Update**: [実測アンカーの repro に書くパイプは U+00A6 へ置換する](pages/patterns/verification-anchor-pipe-substitution.md) — raw/reviews/20260830T093009Z-pr-2483.md を統合（種別ラベルの値域も同じ regex に縛られ `static` は未判定として blocking に据え置かれる。検出器化候補）
 * **Update**: [環境依存の断定を是正する編集が、限定された正しい前提をより広い偽の前提へ置き換える](pages/anti-patterns/corrective-assertion-widens-scope-into-new-falsehood.md) — raw/reviews/20260830T093728Z-pr-2483.md を統合（訂正の再レビュー範囲は元の指摘箇所に閉じず訂正文の新規主張も検証対象になる）
+* **lint:warning** — contradictions=0, stale=41, orphans=0, missing_concept=1, unregistered_raw=401, broken_refs=0
 ## 2026-08-29
 * **lint:warning** — contradictions=0, stale=38, orphans=0, missing_concept=1, unregistered_raw=400, broken_refs=0
 * **Create**: [全順序で優先順位を決める設計は逆向きの残存ハザードが必ず残る — 選ばなかった側を文書に残す](pages/heuristics/total-order-precedence-leaves-inverse-hazard.md) — raw/reviews/20260829T135848Z-pr-2464.md / raw/fixes/20260829T140803Z-pr-2464.md / raw/reviews/20260829T142006Z-pr-2464.md を新規ページ化（順序変更はハザードを消さず露出面を移すだけという実測を軸にする）
