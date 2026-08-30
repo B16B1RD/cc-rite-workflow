@@ -1165,7 +1165,7 @@ iteration:
 
 ### Supported Hook Types
 
-> **Canonical SoT**: The authoritative list of registered hook events lives in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json). This table mirrors that registration; if the two diverge, `hooks.json` wins. The table below is enumerated for reader convenience but MUST be regenerated from `hooks.json` keys (`jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`) whenever the registration changes.
+> **Canonical SoT**: The authoritative list of registered hook events lives in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json). This table mirrors that registration; if the two diverge, `hooks.json` wins. The table below is enumerated for reader convenience but MUST be regenerated from `hooks.json` keys (`jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`) whenever the registration changes. One row = one hook **event**, and an event may bundle several scripts under different matchers, so the row count (7 events) is deliberately smaller than the registered entry count (9): `PreToolUse` and `PostToolUse` each register two scripts. Each row's Purpose must name every script registered for that event.
 
 | Type | Timing | Purpose |
 |------|--------|---------|
@@ -1173,8 +1173,8 @@ iteration:
 | PreCompact | Before compact | Save work memory, record compact state |
 | PostCompact | After compact | Restore work memory, clean compact state |
 | SessionEnd | Session end | Save final state |
-| PreToolUse | Before tool execution | Block tool usage after compact, detect dangerous command patterns |
-| PostToolUse | After tool execution | Auto-recover local work memory |
+| PreToolUse | Before tool execution | Block known-bad Bash command patterns (`pre-tool-bash-guard.sh`); deny reviewer-subagent Edit/Write/MultiEdit/NotebookEdit writes into a parent working tree (`pre-tool-edit-guard.sh`) |
+| PostToolUse | After tool execution | Auto-recover local work memory and sync the Issue comment replica on phase change (`post-tool-wm-sync.sh`); block bang-backtick adjacency that bash would interpret as history expansion (`scripts/bang-backtick-edit-hook.sh`) |
 | Stop | Turn end | Re-inject the `/rite:iterate` review↔fix loop command or the `/rite:cleanup` wiki-chain continuation (`consume-handoff` → `decision:block`) so the loop / chain continues after a continuation sentinel |
 
 > **Note:** The legacy stop-prevention hook (`stop-guard.sh`) has been removed; workflow stop prevention itself is now handled by the per-session state structure (`.rite/sessions/{session_id}.flow-state`) and the orchestrator-level scaffolding contract (Pre-write + 🚨 Mandatory After). A **distinct** `Stop` hook (`stop-loop-continuation.sh`) is registered for a different purpose: it consumes the one-shot `handoff` marker and re-injects the next review↔fix loop command, or — for the `WIKICHAIN:` prefix set by `/rite:cleanup` Step 9 — the continuation of the cleanup → wiki-ingest → wiki-lint chain. See the [Multi-Session State Management](#multi-session-state-management) section for details.
@@ -1328,7 +1328,7 @@ Shared library sourced by the lifecycle hooks for multi-session conflict prevent
 
 ### Issue Comment WM Sync (`issue-comment-wm-sync.sh`)
 
-Registered as a PostToolUse hook. Synchronizes work-memory updates into the Issue comment when a phase change is detected. Delegates deterministic JSON/body construction to `issue-comment-wm-update.py` to avoid fragile inline jq + atomic-write patterns.
+A helper, **not** a registered hook: it is invoked by the `post-tool-wm-sync.sh` PostToolUse hook on its Path B (phase-change replica sync) and called directly by several skills (`/rite:open` Step 2.5 `init`, `/rite:issue-implement` Phase 5.1.1.2 `update`). Synchronizes work-memory updates into the Issue comment when a phase change is detected. Delegates deterministic JSON/body construction to `issue-comment-wm-update.py` to avoid fragile inline jq + atomic-write patterns.
 
 ### Wiki Ingest Trigger (`wiki-ingest-trigger.sh`) and Wiki Query Inject (`wiki-query-inject.sh`)
 
@@ -1465,7 +1465,7 @@ Legacy state files (flat JSON without `schema_version`, or any file with `schema
 
 This feature uses GitHub's native Sub-Issues API to maintain the parent-child relation. `/rite:open` Step 1.2 (previously `start.md` Phase 0.3 before the decomposition) detects parent Issues via three OR-combined methods (trackedIssues API → body tasklist `- [ ] #N` → label-based `epic`/`parent`/`umbrella`). The child→parent Status promotion (Todo → In Progress) is propagated in the same OR-combined order (`## 親 Issue` body meta → Sub-Issues API `trackedInIssues` → tasklist search) by `/rite:open` Step 2.4 (`### 2.4 GitHub Projects Status 更新`, sub-step 2.4.7 — see [`references/projects-integration.md`](../plugins/rite/references/projects-integration.md) §2.4.7 Parent Issue Status Update for the SoT).
 
-> **Hook list canonical SoT**: The hooks that read or write per-session state are registered in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json) — currently 7 events (`SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse` / `Stop`). To re-enumerate the live registration, run `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`. The `Stop` event is registered to `stop-loop-continuation.sh` for review↔fix loop continuation; the legacy `stop-guard.sh` stop-prevention hook remains removed (see the retired-layers note below). The library script `session-ownership.sh` is sourced (not registered) and therefore does not appear in `hooks.json`.
+> **Hook list canonical SoT**: The hooks that read or write per-session state are registered in [`plugins/rite/hooks/hooks.json`](../plugins/rite/hooks/hooks.json) — currently 7 events (`SessionStart` / `SessionEnd` / `PreCompact` / `PostCompact` / `PreToolUse` / `PostToolUse` / `Stop`) carrying 9 registered entries — `PreToolUse` and `PostToolUse` each register two scripts under different matchers. To re-enumerate the live registration, run `jq '.hooks | keys[]' plugins/rite/hooks/hooks.json`. The `Stop` event is registered to `stop-loop-continuation.sh` for review↔fix loop continuation; the legacy `stop-guard.sh` stop-prevention hook remains removed (see the retired-layers note below). The library script `session-ownership.sh` is sourced (not registered) and therefore does not appear in `hooks.json`.
 
 #### Worktree Mode (session worktree isolation)
 
