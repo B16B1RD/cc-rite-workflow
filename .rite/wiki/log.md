@@ -14,6 +14,7 @@
 * **Update**: [state machine を 2 箇所で記述する場合は動作の文字列レベルで同期する](pages/patterns/state-machine-dual-location-sync.md) — raw/reviews/20260830T013439Z-pr-2470.md を統合（値域を書く箇所が 2 つあると実装に近い方だけが更新される sub-pattern を追記）
 * **Create**: [到達不能に見える分岐の削除は、その分岐が受けていた入力の行き先を確認してから決める](pages/heuristics/branch-deletion-traces-where-the-input-flows.md) — raw/fixes/20260830T014342Z-pr-2470.md / raw/reviews/20260830T015647Z-pr-2470.md を新規ページ化（削除が診断の劣化になる型と、ガード除外リストの前例の性質を確かめる論点）
 * **lint:warning** — contradictions=0, stale=39, orphans=0, missing_concept=1, unregistered_raw=400, broken_refs=0
+* **lint:warning** — contradictions=0, stale=40, orphans=0, missing_concept=1, unregistered_raw=400, broken_refs=0
 ## 2026-08-29
 * **lint:warning** — contradictions=0, stale=38, orphans=0, missing_concept=1, unregistered_raw=400, broken_refs=0
 * **Create**: [全順序で優先順位を決める設計は逆向きの残存ハザードが必ず残る — 選ばなかった側を文書に残す](pages/heuristics/total-order-precedence-leaves-inverse-hazard.md) — raw/reviews/20260829T135848Z-pr-2464.md / raw/fixes/20260829T140803Z-pr-2464.md / raw/reviews/20260829T142006Z-pr-2464.md を新規ページ化（順序変更はハザードを消さず露出面を移すだけという実測を軸にする）
