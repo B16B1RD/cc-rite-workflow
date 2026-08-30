@@ -9,9 +9,14 @@ sources:
     resource: "raw/reviews/20260731T060239Z-pr-2070.md"
   - type: "fixes"
     resource: "raw/fixes/20260731T060927Z-pr-2070.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260830T093009Z-pr-2483.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T09:45:00Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-08-30T09:45:00Z"
 ---
 
 # 実測アンカーの repro に書くパイプは U+00A6 へ置換する
@@ -30,6 +35,16 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 
 **適用条件**: `Verification:` アンカー付きのレビュー指摘を書くとき。repro にパイプ・改行タグを含める必要がある場合は、パイプを `¦` へ、改行を `<br>` のまま（日本語句点へ潰さない）保つ。
 
+### 種別ラベルの値域も同じ regex に縛られる（`static` は受理されない）
+
+パイプ以外に、`Verification:` の**種別ラベル**も検出 regex の値域に縛られる。受理されるのは `repro` / `failing_test` の 2 値のみで、`Verification: static => ...` のように第 3 の語を書くと full regex に match せず「未判定」として blocking に据え置かれる。帰結クラス降格政策（5.3.0.C）も未判定を class A 固定として扱うため、**静的読解で足りる指摘が降格されないまま blocking 枠を占め、余分な fix cycle を 1 周させる**。
+
+実測: reviewer が `Verification: static => <ファイルを Read して確認>` を添えた LOW 指摘に対し、実測必須ゲートは `MEASURED_UNDETERMINED_ON_ANCHOR=1; count=1; cause=anchor_unparseable` を返し `blocking=1` を維持した。降格ゲートも `CLASS_DEMOTION_UNDETERMINED_MEASURED=1` で class A 側へ固定した。
+
+静的検証で足りる指摘には `Likelihood-Evidence: static_verification => ...` だけを付け、`Verification:` は付けない。実行時の再現手順を持たない指摘にアンカーを付けようとすると、値域外のラベルを発明することになる。
+
+**この失敗は機械検出できる**（reviewer 出力の `Verification:` 行に対する種別ラベルの値域検査）。reviewer prompt の規約だけに頼らず検出器へ移す候補として記録する。
+
 ## 関連ページ
 
 - [強制層の機械化は裁量を消すが依存を消さない](../heuristics/mechanization-moves-dependency-not-removes-it.md)
@@ -39,3 +54,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 
 - [PR #2070 review results](../../raw/reviews/20260731T060239Z-pr-2070.md)
 - [PR #2070 fix results](../../raw/fixes/20260731T060927Z-pr-2070.md)
+- [PR #2483 review results — 種別ラベル `static` が未判定に倒れ blocking に残る](../../raw/reviews/20260830T093009Z-pr-2483.md)

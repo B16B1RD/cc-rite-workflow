@@ -9,9 +9,14 @@ sources:
     resource: "raw/fixes/20260728T093135Z-pr-2038.md"
   - type: "reviews"
     resource: "raw/reviews/20260728T081222Z-pr-2038.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260830T093009Z-pr-2483.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-28T21:30:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T09:45:00Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-08-30T09:45:00Z"
 ---
 
 # assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く
@@ -73,6 +78,18 @@ positive control は「除外側が全滅して否定が恒真になる」変異
 - **canonical 完全一致 pin が非対称を正解として固定する**: drift 検出のために置いた完全一致 pin が、片側だけ更新された文言を canonical として固定し、**非対称そのものを検出不能にしていた**
 
 いずれも「pin が謳う保証」と「実際の検査対象」を 1 語ずつ照合すれば見つかる。
+
+### 恒真化させる条件は fixture の中身だけでなく上流の早期 exit ゲートにもある
+
+対象文字列が入力に含まれていても、**実行が検査対象の分岐に到達しなければ**否定 assertion は同じく恒真になる。テスト対象が hook / スクリプトのように上流に早期 exit ゲートを持つ場合、fixture がそのゲートに掛かった時点で以降の分岐は 1 つも走らず、「出力に X が無い」は自動的に成立する。
+
+実測した形: PostToolUse hook の phase diff ゲート（`[ "$_phase" != "$_last_synced_phase" ] || exit 0`）に対し、fixture を `{"phase":"init","last_synced_phase":"init"}` で組むと即 exit し、検査したかった `no_comment` 分岐に一度も入らないまま「警告が出ない」が成立する。fixture を `last_synced_phase: ""` にしてゲートを通し、経路通過を **positive counter**（gh の GET 呼び出し回数が 1）で pin して初めて検査が成立した。
+
+**否定 assertion に positive control を対で置く判断は、fixture に対象が含まれるかだけで決めない。** 検査対象の分岐までに評価される早期 exit 条件をすべて洗い出し、fixture がそのどれにも掛からないことを確認する。
+
+### 非 vacuity は mutation で実証できる
+
+positive control を置いても「その control が本当に検査対象を守っているか」は別問題である。実装側のガードを反転（`if _predicate ...` → `if false ...`）して suite を回し、**狙った assert だけが落ちる**ことを確認すれば非 vacuity が実証できる。実測では 49 件中 1 件だけが FAIL し、落ちたのが意図した absence assert であることを確認できた。mutation は作業ツリーの複製上で行い、確認後に復元する。
 
 ## 関連ページ
 

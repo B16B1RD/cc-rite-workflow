@@ -9,9 +9,16 @@ sources:
     resource: "raw/reviews/20260730T014137Z-pr-2052.md"
   - type: "fixes"
     resource: "raw/fixes/20260730T014656Z-pr-2052.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260830T093009Z-pr-2483.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260830T093245Z-pr-2483.md"
 tags: ["premise", "overclaim", "simplification", "review-loop", "measurement"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T09:45:00Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-08-30T09:45:00Z"
 ---
 
 # 機構の欠陥を潰す前に、その機構を正当化している前提文を実測で検証する
@@ -48,6 +55,14 @@ Issue のエッジケースが「実形式を検出して従う **か** テン�
 
 機構を削る際にテンプレートからテーブルだけ復元し統計節を戻さなかったため、新規リポジトリでは統計同期手順が永久 no-op になった（受け皿が生成されない）。「A を戻す」判断をしたら、**元の状態で A と対になっていた B** も確認する。
 
+### 「この値を書くのは 1 箇所だけ」の裏取りは CLI フラグ検索では足りない
+
+前提文が **単一 writer** を主張する形（「この phase 値を書くのは open 1.6 の 1 箇所のみ」）のとき、裏取りを `grep -rn -- "--phase init"` のような **CLI フラグ検索**で済ませると producer を数え落とす。値を `echo` で生む正規化 / migration 関数は、フラグ文字列を含まないまま同じ値を state に書き込む（実測: `flow-state.sh` の `_phase_migrate` が legacy phase を `init` へ縮退させ、`_migrate_file` が `.phase = $p` として永続化する。フラグ検索の結果は 1 件のままだった）。
+
+単一 writer を判定ロジックの正当化根拠に使うなら、数えるのは**フラグの出現箇所**ではなく「その値を生成して state へ書き込むすべての経路」である。関数が値を返す形（`echo`／`return`）と、その戻り値が書き込みに到達する経路の両方を追う。
+
+**漏れが見つかったときの選択は、漏れた経路の帰結が回復可能かで決まる。** 判定を広げる（単一値を複数値へ）か、主張を実態に合わせる（前提文を訂正する）かの二択で、後者を選べるのは漏れた経路の帰結が自己回復する場合に限る。上記の実測では、migration 経路が抑止されても次の phase 変化で別の短絡が通知を出すため恒久沈黙にならないことを確認したうえで、判定を単一値に保ったままコメントを 2 経路の記述へ訂正した。
+
 ## 関連ページ
 
 - [収束しないレビューループは構造を疑う](./non-converging-review-loop-suspect-structure.md)
@@ -57,3 +72,5 @@ Issue のエッジケースが「実形式を検出して従う **か** テン�
 
 - [PR #2052 review results (cycle 3) — 前提の overclaim が機構全体を不要にする](../../raw/reviews/20260730T014137Z-pr-2052.md)
 - [PR #2052 fix results (cycle 3) — 44 行 → 34 行の純減で 4 指摘が同時消滅](../../raw/fixes/20260730T014656Z-pr-2052.md)
+- [PR #2483 review results — 単一 writer 主張の producer 数え落とし](../../raw/reviews/20260830T093009Z-pr-2483.md)
+- [PR #2483 fix results — フラグ検索では値を echo する経路が母集団から漏れる](../../raw/fixes/20260830T093245Z-pr-2483.md)

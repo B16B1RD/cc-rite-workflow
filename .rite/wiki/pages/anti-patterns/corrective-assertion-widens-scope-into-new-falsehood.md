@@ -9,9 +9,14 @@ sources:
     resource: "raw/reviews/20260829T112405Z-pr-2461.md"
   - type: "fixes"
     resource: "raw/fixes/20260829T112718Z-pr-2461.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260830T093728Z-pr-2483.md"
 tags: ["scope-widening", "corrective-edit", "assertion-grounding", "generator-attribution", "propagation-scan"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-29T11:40:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T09:45:00Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-08-30T09:45:00Z"
 ---
 
 # 環境依存の断定を是正する編集が、限定された正しい前提をより広い偽の前提へ置き換える
@@ -43,6 +48,14 @@ generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-29T11:40:00+
 
 是正の全件が**記述を狭める方向**の変更だった: 広げた前提を base の限定された前提へ戻し、不完全な要約を実装どおりに揃え、成立しない否定断定を削除する。新しい分岐・ガード・例外条項は 1 つも足していない。「断定が偽だった」への対処として条件節や但し書きを**足す**と、その但し書き自体が次の検証対象面になる。狭める方向の修正はその面を増やさない。
 
+### 訂正の再レビューは元の指摘箇所に閉じない — 訂正文が持ち込んだ新しい断定も検証対象になる
+
+本 anti-pattern が指摘の側から発生することの帰結として、**訂正コミットのレビュー範囲は「元の誤りが直ったか」だけでは足りない**。訂正は新しい断定を持ち込むため、その断定自体が実装と一致するかを独立に検証しなければ、同じサイクルの中で誤りを別の形に移し替えただけになる。
+
+差分スコープ（cycle 2+）で前 cycle の finder を mandatory 合流させる設計は、この検証を出し手自身に担わせる点で機能する。実測では、reviewer が FIXED 判定に留まらず、訂正文が新たに主張した内容（「抑止されても次の phase 変化で別経路が通知する」）を producer 側まで追跡し、`no_comment` 経路が負キャッシュを永続化してから別分岐が通知を出すまでの連鎖を実コードで確認した。
+
+差分がコメント文言だけの cycle でも、この確認は省略しない。**変更量の小ささは検証範囲の狭さを意味しない。**
+
 ## 関連ページ
 
 - [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](../heuristics/universal-claim-prose-invalidated-by-path-addition.md)
@@ -53,3 +66,4 @@ generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-29T11:40:00+
 
 - [PR #2461 review cycle 1 (是正先の 2 種の誤断定を検出)](../../raw/reviews/20260829T112405Z-pr-2461.md)
 - [PR #2461 fix (記述を狭める方向での是正 + 伝播スキャン)](../../raw/fixes/20260829T112718Z-pr-2461.md)
+- [PR #2483 review results (cycle 2) — 訂正文の新規主張を producer 側まで追跡して検証](../../raw/reviews/20260830T093728Z-pr-2483.md)
