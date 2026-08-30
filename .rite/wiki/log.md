@@ -1,4 +1,7 @@
 ## 2026-08-30
+* **Create**: [規範文を新設したら、その規範文が支配する範囲すべてに適用し直すか、適用範囲を明示的に狭める](pages/heuristics/new-normative-clause-must-be-applied-to-its-own-scope.md) — raw/reviews/20260830T071247Z-pr-2481.md / raw/reviews/20260830T072415Z-pr-2481.md を新規ページ化
+* **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/fixes/20260830T071825Z-pr-2481.md を統合（判定機構が持つ 2 つの列挙の片側追加が検出ロジックを恒久沈黙させる変種を追記）
+* **Skip**: [20260830T072636Z-pr-2481.md](raw/fixes/20260830T072636Z-pr-2481.md) — rite ワークフロー自体の挙動（NB sweep の既定 fixed 判定、実測アンカーの種別ラベル）で、既にプラグイン本体の機構として組み込み済み（知見のルーティング原則）
 * **Update**: [SKILL.md 新規セクションでシェル変数を Bash 呼び出し間の値受け渡しに使うと dead code 化する](pages/anti-patterns/skill-md-shell-var-cross-bash-call-dead-code.md) — raw/fixes/20260829T175418Z-pr-2468.md を統合（`${var:-}` の既定化が no-op を無言化し完了報告を誤らせる再発型を追記）
 * **Update**: [pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — raw/fixes/20260829T181603Z-pr-2468.md / raw/fixes/20260829T194742Z-pr-2468.md を統合（ファイル全体スコープと grep -c の空振り 2 形、flip-flop end アンカー、pin 延伸時のリテラル吸収、negative assert の GNU 拡張 fail-open を追記）
 * **Create**: [不正入力は「落とす」より「無害化して残す」— 落とす設計は件数報告という第 2 の機構を要求する](pages/heuristics/neutralize-invalid-input-instead-of-dropping.md) — raw/fixes/20260829T183751Z-pr-2468.md を新規ページ化

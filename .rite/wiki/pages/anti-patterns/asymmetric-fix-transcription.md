@@ -11,6 +11,8 @@ sources:
     resource: "raw/reviews/20260807T023931Z-pr-2130.md"
   - type: "reviews"
     resource: "raw/reviews/20260807T032230Z-pr-2130.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260830T071825Z-pr-2481.md"
   - type: "reviews"
     resource: "raw/reviews/20260725T003541Z-pr-2013.md"
   - type: "fixes"
@@ -589,7 +591,7 @@ sources:
     resource: "raw/fixes/20260729T151517Z-pr-2051-c2.md"
 tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration", "archive-doc-tail-residue", "intra-document-contradiction", "reference-path-depth-drift", "grep-at-start-preventive-application", "extension-scope-limited-grep-sweep", "structural-doc-list-sync-on-new-file", "rationale-link-target-stale", "both-sides-claim-unverified"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T18:40:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T16:25:00+09:00" }
 ---
 
 # Asymmetric Fix Transcription (対称位置への伝播漏れ)
@@ -2004,3 +2006,20 @@ inline 実装を helper へ委譲し、元のシンボル名（`extract_yaml_key
 
 - [PR #2130 review results (cycle 3) — 設計主張の 3 重化と、推奨が名指ししなかった 1 箇所の生存](../../raw/reviews/20260807T023931Z-pr-2130.md)
 - [PR #2130 review results (cycle 4) — 同じ drift が 1 clause ずれて再発](../../raw/reviews/20260807T032230Z-pr-2130.md)
+
+## 変種: 判定機構が持つ 2 つの列挙のうち片側だけを更新すると、検出ロジックが恒久的に沈黙する
+
+判定機構が「走査対象の列挙」と「必須集合の列挙」のように **2 つの列挙** を持つとき、片側だけを更新すると、対称化漏れが「表記のずれ」ではなく **検出そのものの恒久停止** として現れる。
+
+観測: setup の LEGACY hook 登録経路は (a) 旧パス検出のために走査する event の列挙と、(b) 必須 hook の集合、の 2 つを持つ。必須集合へ `Stop` を追加したが走査列挙は 6 件のままだったため、`settings.local.json` に旧パスの Stop hook が残っていても (a) は走査対象外で「更新不要」、(b) は script 名の存在だけを見るので「欠落なし」となり、Decision logic が「up to date」と判定して修復フェーズをスキップした。**陳腐化したパスが永久に修復されない**。
+
+通常の伝播漏れは「片方の記述が古い」で済むが、この変種では **不作為が正常系として報告される**。表記の不一致ではなく、機構の一部が黙って無効化される。
+
+対処:
+
+- 列挙を足すときは「この列挙に無いと何が検出されなくなるか」を自問し、**その答えを列挙の直後に 1 文で書き残す**。次に列挙を触る人が同じ問いを踏む。
+- 判定機構の列挙は「同一の集合を参照する」ことを文中で明示する（例: 「4.5.1.2 の必須 hook 表と同じ event 集合」）。集合の同一性を主張しておけば、片側追加が主張の破れとして可視化される。
+
+## ソース（追記分 4）
+
+- [PR #2481 fix results — 必須集合と走査列挙の片側追加が Decision logic を恒久沈黙させた](../../raw/fixes/20260830T071825Z-pr-2481.md)

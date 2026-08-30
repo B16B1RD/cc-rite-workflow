@@ -29,7 +29,7 @@ okf_version: "0.2"
 | [保存パス基準の変更は観測面と全 caller 引数の同時スイープが必要](pages/heuristics/path-basis-change-observation-surface-sweep.md) | heuristics | 状態ファイルの保存パス基準を変更する PR (例: cwd 相対 → 共有 state root) では、実装本体の 3 経路 (save / read / delete) を揃えるだけでは不十分。 | 2026-07-13T07:40:00+00:00 | high |
 | [全域で成功する resolver への委譲が既存 fail-fast ガードを silent success 化する](pages/anti-patterns/total-resolver-delegation-defeats-fail-fast-gate.md) | anti-patterns | 「入力がどうであれ必ず非空値を返す (total な)」helper に値の解決を委譲すると、その値の空チェックに依存していた既存の fail-fast ERROR ガードが到達不能な dead code になり、従来エラーだった状況が silent success に変わる。 | 2026-08-01T23:12:28+09:00 | high |
 | [Fix の完成判定は shell script 単体動作ではなく実ワークフロー発火実績で行う](pages/heuristics/fix-verification-requires-natural-workflow-firing.md) | heuristics | 修正が動いていると主張する前に、shell script 単体のテストデータではなく、自然な workflow 経路を通った commit 履歴上の発火実績を確認する。 | 2028-04-17T00:15:00+00:00 | high |
-| [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | anti-patterns | fix を 1 箇所に適用したとき、同じパターンを持つ「対称位置」（ペア/トリオの兄弟スクリプト、同型 idiom の別 phase、相互参照の Phase 番号等）に同じ fix を伝播させ忘れる failure mode。 | 2026-08-07T18:40:00+09:00 | high |
+| [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | anti-patterns | fix を 1 箇所に適用したとき、同じパターンを持つ「対称位置」（ペア/トリオの兄弟スクリプト、同型 idiom の別 phase、相互参照の Phase 番号等）に同じ fix を伝播させ忘れる failure mode。 | 2026-08-30T16:25:00+09:00 | high |
 | [`if ! cmd; then rc=$?` は常に 0 を捕捉する](pages/anti-patterns/bash-if-bang-rc-capture.md) | anti-patterns | bash の `!` 演算子は直前コマンドの exit status を boolean で反転するため、`if ! cmd; then ...` ブロック内での `$?` は `!` の結果 (= 0) を返す。 | 2026-07-21T18:30:00Z | high |
 | [PIPESTATUS はコマンド置換 `$(...)` のサブシェル境界を越えない](pages/heuristics/pipestatus-subshell-scoping-command-substitution.md) | heuristics | bash の `$(...)` コマンド置換は内部でサブシェルを生成して実行される。 | 2026-07-21T12:40:00+09:00 | high |
 | [stderr ノイズ削減: truncate ではなく selective surface で解く](pages/heuristics/stderr-selective-surface-over-truncate.md) | heuristics | success path で git などのコマンドが出す stderr の「ノイズ」を抑えたい場面で、`2>/dev/null` や無条件 truncate を使うと legitimate な warning（`unable to rmdir` / remote hook advice など）まで silent drop してしまう。 | 2026-07-24T17:00:00+09:00 | high |
@@ -444,8 +444,9 @@ okf_version: "0.2"
 | [到達不能に見える分岐の削除は、その分岐が受けていた入力の行き先を確認してから決める](pages/heuristics/branch-deletion-traces-where-the-input-flows.md) | heuristics | 到達不能に見える case arm を消すと、その入力は消えるのではなく catch-all へ流れ込み、失敗ではない値に対して失敗の診断と手動復旧コマンドを出す。デッドコード除去のつもりが診断の劣化になるため、削除前に「その分岐が受けていた入力はどこへ行くか」を確認する。 | 2026-08-30T11:20:00+09:00 | high |
 | [「この経路は X を呼ばない」の根拠は、委譲先ファイルまで含めた grep で取る](pages/heuristics/call-path-survey-must-include-delegated-references.md) | heuristics | 手順を別ファイルへ委譲する構造では、入口ファイルだけを grep して 0 件だったことは「呼ばない」の根拠にならない。委譲先まで含めて数えないと、結論が正しくても根拠が偽になり、次の変更者がその偽の前提の上に判断を積む。 | 2026-08-30T12:50:00+09:00 | high |
 | [実装の分岐を散文へ落とす前に、フラグの状態数と観測ラベルの値域を機械的に数える](pages/heuristics/count-implementation-states-before-writing-prose.md) | heuristics | hook や helper の挙動を仕様書の散文に書き下ろすとき、boolean に見えるフラグが実は 3 状態を取り、観測ラベルが 3 値を出しているのに「主経路 + 例外 1 つ」の二分岐として書いてしまう。この誤りは経路追加による腐りではなく執筆時点で既に偽であり、書く前にフラグの状態数と観測ラベルの値域を grep で数えれば機械的に防げる。 | 2026-08-30T04:57:39Z | high |
+| [規範文を新設したら、その規範文が支配する範囲すべてに適用し直すか、適用範囲を明示的に狭める](pages/heuristics/new-normative-clause-must-be-applied-to-its-own-scope.md) | heuristics | 「この表は SoT と同期すること」「各行は全 script を名指しすること」のような規範文を文書へ新設すると、その文が支配する既存行のうち条件を満たさないものが即座に契約違反になる。新設の直後に、支配範囲の全行へ適用し直すか、規範文自体の適用範囲を狭めるかを選ばないと、契約を導入した変更そのものが次サイクルの指摘源になる。 | 2026-08-30T16:24:00+09:00 | high |
 ## 統計
 
-- 総ページ数: 434
-- ドメイン別: patterns=104, heuristics=192, anti-patterns=138
-- 最終更新: 2026-08-30T06:15:00Z
+- 総ページ数: 435
+- ドメイン別: patterns=104, heuristics=193, anti-patterns=138
+- 最終更新: 2026-08-30T16:25:00+09:00
