@@ -1237,15 +1237,27 @@ To prevent false positives from text in heredocs (commit messages, PR descriptio
 
 ### Post-Tool WM Sync (`post-tool-wm-sync.sh`)
 
-Registered as a PostToolUse hook. Automatically creates local work memory files when they are missing during an active workflow.
+Registered as a PostToolUse hook. Serves two work-memory paths during an active workflow: it recreates the local work memory file when it is missing, and it syncs the Issue comment replica when the workflow phase changes.
 
-**Behavior:**
+**Common preamble:**
 
 1. Fires after Bash tool usage (with recursion guard)
 2. Retrieves active workflow and Issue number from the per-session flow state file (`.rite/sessions/{session_id}.flow-state`)
-3. Only creates `.rite/work-memory/issue-{n}.md` if it doesn't exist
 
-**Purpose:** Guarantees auto-recovery of local work memory during `/rite:recover` after compact or session restart.
+**Path A — local work memory auto-creation:**
+
+3. Only creates `.rite/work-memory/issue-{n}.md` if it doesn't exist, then exits (no replica sync in the same invocation)
+
+**Path B — Issue comment replica sync (taken when the local file already exists):**
+
+4. Compares `phase` against `last_synced_phase` in the flow state. Equal values exit immediately, so the sync fires once per phase transition rather than on every Bash tool call
+5. When `wm_replica` is `absent` (the negative cache written after a `no_comment` fetch), the hook makes **no `gh` call at all** (`round_trips=0`) and instead emits a `systemMessage` telling the user that replica sync is degraded and that `/rite:open` recreates the replica. Without this notice the `absent` state — cleared only through the paths the flow state field table lists for `wm_replica` — would silently suppress every sync while leaving nothing but a debug-log trace
+6. When the fetch reports `skipped; reason=no_comment` — the replica does not exist yet — no PATCH is issued (`round_trips=1`). The fetch side records the `wm_replica=absent` negative cache that step 5 short-circuits on from the next phase change onward, the hook emits a `systemMessage` pointing at `/rite:open`, and the phase counts as synced
+7. Otherwise it fetches the replica comment, applies the local transforms (`update-phase`, and for progress-bearing phases also `update-progress` / `update-plan-status`), and writes them back in a single PATCH (`round_trips=2`). Each of the four failures listed here — fetch failure, transform failure, PATCH failure, unresolved owner/repo — surfaces as a `systemMessage`, because a PostToolUse hook's stderr never reaches the model
+
+**`last_synced_phase` advancement:** the field advances when the single PATCH succeeds. A transform that *fails* aborts the PATCH and leaves the field un-advanced, so the next invocation re-runs the pipeline for that phase. A transform that is *skipped* rather than failed — the progress table when neither `branch.base` nor `origin/HEAD` resolves, or when `git diff` fails — still lets the PATCH through and advances the field, so that transform is not re-attempted for the phase; the skip surfaces as its own `systemMessage`. The `wm_replica=absent` short-circuit and the `no_comment` first detection above also count as success and advance the field without a PATCH, which is why their degradation notices surface once per phase change rather than on every Bash tool call.
+
+**Purpose:** Guarantees auto-recovery of local work memory during `/rite:recover` after compact or session restart, and keeps the Issue comment replica current — or, when it cannot, makes the degradation visible to the user instead of failing silently.
 
 ### Local WM Update (`local-wm-update.sh`)
 
@@ -1532,7 +1544,7 @@ A test framework for ensuring Hook script quality. Located in `plugins/rite/hook
 | `post-compact.sh` | Recovery context emission, per-session compact-state self-healing |
 | `pre-compact.sh` | State capture before compact |
 | `pre-tool-bash-guard.sh` | Dangerous pattern detection, heredoc safety |
-| `post-tool-wm-sync.sh` | Work memory auto-recovery after Bash tool calls |
+| `post-tool-wm-sync.sh` | Work memory auto-recovery after Bash tool calls, phase-diff replica sync, `last_synced_phase` advancement gating |
 | `session-start.sh` / `session-end.sh` | Session lifecycle + ownership transitions |
 | `work-memory-lock.sh` | Lock acquire/release + stale detection |
 | `wiki-ingest-trigger.sh` | Raw-source write contract |
