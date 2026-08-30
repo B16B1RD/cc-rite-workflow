@@ -114,7 +114,7 @@ okf_version: "0.2"
 | [`grep -oE \| wc -l` が ratchet ideal 値到達時に pipefail で silent abort](pages/anti-patterns/grep-oe-wc-pipefail-silent-abort.md) | anti-patterns | `set -euo pipefail` 配下で `count=$(grep -oE 'pattern' file \| wc -l \| tr -d ' ')` を ratchet test の occurrence count 取得に使うと、grep が 0 マッチ (exit 1) を返した瞬間 pipefail が pipeline 全体を abort させ、test 全体が pass/fail のいずれも emit せず silent terminate する。 | 2026-05-08T17:43:55+00:00 | high |
 | [ratchet test では occurrence 単位 (`grep -oE \| wc -l`) を原則とし line 単位は混在させない](pages/patterns/test-counting-occurrence-vs-line-unit.md) | patterns | charter 違反パターンの上限・下限を機械検証する ratchet test では、measurement unit は **occurrence (`grep -oE pattern \| wc -l`)** に統一すること。 | 2026-08-07T18:40:00+09:00 | high |
 | [bash code block 終端は固定 +N 行 window ではなく awk state machine で動的追跡する](pages/patterns/awk-bash-block-termination-tracking.md) | patterns | ## ソース | 2026-05-08T17:20:17+00:00 | high |
-| [Issue 起票前の grep 棚卸しで「違反あり」前提が既に解消済みか確認する](pages/heuristics/issue-precondition-grep-survey.md) | heuristics | charter 違反 / refactor 残作業を扱う Issue を起票するとき、Issue body に書く「違反あり」「残作業あり」前提は既に過去の関連 PR で解消済みのケースがある。 | 2026-05-08T15:34:21+00:00 | high |
+| [Issue 起票前の grep 棚卸しで「違反あり」前提が既に解消済みか確認する](pages/heuristics/issue-precondition-grep-survey.md) | heuristics | charter 違反 / refactor 残作業を扱う Issue を起票するとき、Issue body に書く「違反あり」「残作業あり」前提は既に過去の関連 PR で解消済みのケースがある。 | 2026-08-30T05:45:00Z | high |
 | [awk negative-class + greedy + literal の組み合わせは backtracking で literal を silent miss する](pages/anti-patterns/awk-regex-backtracking-trap-with-greedy-literal.md) | anti-patterns | awk POSIX ERE で「行頭が `#` 以外で、行内に literal `X` を含む」を表現するつもりで `^[[:space:]]*[^#].*X` や `^[[:space:]]*[^[:space:]#].*X` と書くと、X が行頭から始まる行で `[^...]` 部分が `X` の先頭文字を消費し、続く `.*X` が literal X を再発見できず silent miss する backtracking 経路を作る。 | 2026-05-09T03:50:00+00:00 | high |
 | [Test の env gate 配置と CI workflow 起動コマンドの claim alignment を empirical 検証する](pages/heuristics/test-env-gate-ci-alignment.md) | heuristics | Test 内の特定セクション (例: assertion ブロック / meta-test ブロック) を `STRICT_CHARTER=1` のような env gate でガードしていると、PR description が「CI で常時実行される」と主張していても、CI workflow の起動コマンドが env を未設定で test を呼ぶ場合、gate された assertion は **silent に skip** される。 | 2026-05-09T09:10:00Z | high |
 | [owner/repo 解決テストは ambient な git remote 状態に依存させない (non-hermetic test)](pages/heuristics/test-hermeticity-ambient-git-remote-dependency.md) | heuristics | owner/repo 解決ロジック (`git-remote.sh resolve-owner-repo` / `gh repo view` 等) のテストケースが、テスト実行環境の**実際の** git remote 設定 (origin の存在・URL 形式・SSH host alias 定義の有無) に依存して結果が決まる構造になっていると、CI とローカル、あるいは異なる開発者の環境間で remote 構成が異なるだけでテストの pass/fail が変わる non-hermetic (非決定的) なテストになる。 | 2026-07-20T10:36:25+09:00 | medium |
@@ -448,4 +448,4 @@ okf_version: "0.2"
 
 - 総ページ数: 434
 - ドメイン別: patterns=104, heuristics=192, anti-patterns=138
-- 最終更新: 2026-08-30T04:57:39Z
+- 最終更新: 2026-08-30T05:45:00Z

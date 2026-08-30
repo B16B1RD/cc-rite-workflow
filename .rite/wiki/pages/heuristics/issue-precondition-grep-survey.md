@@ -7,9 +7,14 @@ created: "2026-05-08T15:34:21+00:00"
 sources:
   - type: "retrospectives"
     resource: "raw/retrospectives/20260508T153421Z-issue-892.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260830T053201Z-pr-2477.md"
 tags: ["issue-management", "grep", "precondition-verification", "scope-management", "charter"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T05:45:00Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-08-30T05:45:00Z"
 ---
 
 # Issue 起票前の grep 棚卸しで「違反あり」前提が既に解消済みか確認する
@@ -68,6 +73,25 @@ find plugins/rite/commands/pr/references -name '*.md' | xargs wc -l | tail -1
 
 これにより Issue 履歴に「PR を作らなかった経緯」が残り、後続 reviewer が「なぜこの Issue は PR が無いのか」と疑問に思う回路を排除できる。
 
+### 棚卸しのもう一方の軸 — 前提の解消確認だけでなく「記述箇所の網羅」も測る
+
+上記の起点事例は「前提が既に解消済みか」を測る軸だった。同じ grep 棚卸しには **「その対象を説明している箇所が他にいくつあるか」を測る軸**もあり、こちらを省くと逆向きの失敗、すなわち **1 箇所だけ直して他が古いまま残る部分修正**が生じる。
+
+観測事例: setup スキルの hook 登録表 2 箇所で 1 hook の Purpose が片方の経路しか説明していない欠落を直す Issue を、その 2 表だけをスコープとして起票した。マージ後のレビューで、同じ hook を説明する箇所が他に 4 つ（`docs/SPEC.md` の hook 一覧表 2 行と別節の 1 文、`CONTRIBUTING.md` のディレクトリ構造コメント、setup スキル自身の LEGACY 用登録表）残っていることが判明した。Issue は正しくスコープを守って完遂されたにもかかわらず、リポジトリ全体では同種の drift が残った。
+
+したがって、ドキュメント修正 Issue を起票する前の grep は 2 問を並べて答える:
+
+1. **前提は生きているか** — 直そうとしている記述はまだ古いままか（既に解消済みなら Issue 自体が不要）
+2. **記述箇所は何箇所か** — 同じ対象を説明する箇所を全ファイル横断で列挙し、そのうちどれをスコープに含めるかを明示的に決める
+
+2 番目で列挙した箇所をスコープから外すのは正当な判断だが、**列挙せずに外すのは判断ですらない**。列挙結果を Issue body に残しておけば、スコープ外とした箇所は後続の follow-up として拾える。
+
+### 説明の分散が構造化されている箇所は検出器化を検討する
+
+上記事例で最も確度が高かった指摘は、`docs/SPEC.md` の hook 一覧表が **自身を `hooks.json` の mirror だと明記しながら実際には登録エントリの一部しか反映していなかった**ことだった。片側が機械可読な registry（`hooks.json`）で、もう片側が定型テーブルという構成では、drift は grep 棚卸しではなく専用チェッカで恒常的に検出できる（既存の `reviewer-registry-drift-check.sh` が `agents/` と reviewer 一覧表に対して同じことをしている）。
+
+散文どうしの整合は人間・LLM の判断に残すしかないが、**registry ↔ 定型テーブル**の形をしていると気付いたら、その 1 箇所は heuristic ではなく検出器へ移す。
+
 ### 関連 anti-pattern
 
 - 「すべての Issue は PR を持つべき」と機械的に仮定すると、本ケースのように **着手前の前提検証で破綻している** Issue でも PR を作成して charter 違反を新規導入するリスクがある
@@ -82,3 +106,4 @@ find plugins/rite/commands/pr/references -name '*.md' | xargs wc -l | tail -1
 ## ソース
 
 - [Issue #892 close retrospective](../../raw/retrospectives/20260508T153421Z-issue-892.md)
+- [PR #2477 review results](../../raw/reviews/20260830T053201Z-pr-2477.md)
