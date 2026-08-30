@@ -1028,6 +1028,21 @@ if [ "$wmrep22" = "absent" ] && [ "$lsp22" = "init" ]; then
 else
   fail "T-22c: AC-3 — wm_replica=$wmrep22 lsp=$lsp22 (both expected)"
 fi
+# 抑止が窓限定であることを同一 state 上で pin する。別 fixture で「非 init なら鳴る」を示すだけ
+# では、窓を抜けた後も黙り続ける退行 (#2463 が塞いだ恒久沈黙と同型) を検出できない。
+# なお wm_replica=absent 経路は #2463 の契約 (T-21: phase 変化ごとに通知) なので、
+# ここでは flow-state を open 2.5 の replica 作成成功相当 (absent 解除) に戻して確認する。
+state_n22="$(state_file_path "$dir_n22")"
+jq '.phase = "implement" | del(.wm_replica)' "$state_n22" > "$state_n22.tmp" && mv "$state_n22.tmp" "$state_n22"
+rm -f "$dir_n22/list-empty.flag" "$dir_n22/gh.urls"
+touch "$dir_n22/list-empty.flag"
+run_hook_cap "$dir_n22" || true
+stdout22b=$(cat "$dir_n22/hook.stdout" 2>/dev/null)
+if printf '%s' "$stdout22b" | jq -r '.systemMessage // empty' 2>/dev/null | grep -qF 'replica が見つかりません'; then
+  pass "T-22d: 窓を抜けた次の phase 変化では通知が鳴り直す (抑止は init 窓限定)"
+else
+  fail "T-22d: 窓外で通知が復帰しない: $stdout22b"
+fi
 echo ""
 
 echo "T-23: phase=phase5_post_review (過渡窓外) + no_comment → 従来の systemMessage を維持 (AC-2)"
