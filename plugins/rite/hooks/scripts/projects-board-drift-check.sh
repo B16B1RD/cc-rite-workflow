@@ -2,7 +2,8 @@
 # rite workflow - Projects Board Terminal-Status Drift Check
 #
 # Reconciliation drift-guard for the "CLOSED but board is not on a terminal Status" gap.
-# A terminal transition is only wired into /rite:cleanup and /rite:issue-close, but
+# A Done transition is only wired into /rite:cleanup and /rite:issue-close — Cancelled has
+# no such producer, and this script's --reconcile is the only path that writes it. But
 # GitHub auto-closes Issues via a PR body "Closes #N" the moment the PR merges. When
 # /rite:cleanup is not run afterwards, the board freezes at its last value (In Review
 # for a ready Issue, Todo for an untouched one). No reconciliation picks these back up.
@@ -98,8 +99,9 @@ Usage:
 
 Options:
   --dry-run     Report only; do not reconcile (default)
-  --reconcile   Update each drifted Issue's Status -> Done, or -> Cancelled when the
-                closure reason is NOT_PLANNED, via projects-status-update.sh
+  --reconcile   Update each drifted Issue's Status via projects-status-update.sh:
+                -> Cancelled for a NOT_PLANNED closure, -> Done for a COMPLETED one,
+                -> Done with a WARNING for any other closure reason
   --limit N     Maximum CLOSED Issues to scan, most-recently-updated first (default: 100)
   --quiet       Suppress stderr WARNING lines (stdout report still produced)
   -h, --help    Show usage
@@ -283,11 +285,11 @@ if [ -n "$DRIFT_TSV" ]; then
       COMPLETED)   target_status="$TERMINAL_STATUS_DONE" ;;
       "$NO_CLOSURE_REASON")
         target_status="$TERMINAL_STATUS_DONE"
-        [ "$QUIET" = "true" ] || echo "projects-board-drift: WARNING #$issue_number closure reason is unavailable (stateReason null) — reconciling to $TERMINAL_STATUS_DONE" >&2
+        [ "$QUIET" = "true" ] || echo "projects-board-drift: WARNING #$issue_number closure reason is unavailable (stateReason null) — reconcile target: $TERMINAL_STATUS_DONE" >&2
         ;;
       *)
         target_status="$TERMINAL_STATUS_DONE"
-        [ "$QUIET" = "true" ] || echo "projects-board-drift: WARNING #$issue_number closure reason \"$(printf '%s' "$state_reason" | neutralize_ctrl --c0-only)\" has no mapped terminal Status — reconciling to $TERMINAL_STATUS_DONE" >&2
+        [ "$QUIET" = "true" ] || echo "projects-board-drift: WARNING #$issue_number closure reason \"$(printf '%s' "$state_reason" | neutralize_ctrl --c0-only)\" has no mapped terminal Status — reconcile target: $TERMINAL_STATUS_DONE" >&2
         ;;
     esac
 

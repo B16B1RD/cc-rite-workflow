@@ -176,10 +176,11 @@ assert_file_contains "$DRIFT_SH" '\$i\.stateReason // \$no_reason' "jq が state
 assert_file_contains "$DRIFT_SH" 'NOT_PLANNED\) target_status="\$TERMINAL_STATUS_CANCELLED"' \
   "AC-2: NOT_PLANNED の reconcile 先は Cancelled"
 # COMPLETED gets its own silent arm so the catch-all means "unmapped", not "everything
-# else". Collapsing the two back together is what made an unmapped reason indistinguishable
-# from a correct one, so pin the arm that keeps them apart.
+# else". This pin is static: it sees the arm's existence and destination, not its silence
+# and not its position relative to the catch-all. Both of those are T-13c's job — keep the
+# label narrow so a failure here points at the assignment, not at the WARNING.
 assert_file_contains "$DRIFT_SH" 'COMPLETED\) *target_status="\$TERMINAL_STATUS_DONE"' \
-  "AC-3: COMPLETED は明示アームで無警告 Done"
+  "AC-3: COMPLETED が独立した明示アームを持つ"
 assert_file_contains "$DRIFT_SH" '--arg status "\$target_status"' \
   "reconcile が固定 Done ではなく target_status を渡す"
 assert_file_contains "$DRIFT_SH" 'projectItems' "queries projectItems for board membership"
@@ -692,8 +693,11 @@ else
 fi
 # The WARNING must name the observed value — a generic line would not tell a reader which
 # reason went unmapped, which is the whole point of splitting COMPLETED into its own arm.
+# The name check is scoped to the WARNING line itself: a bare `grep DUPLICATE` over the whole
+# stderr would also be satisfied by some other line mentioning the reason, and would stop
+# distinguishing "the WARNING names it" from "the word appears somewhere".
 t13b_warn_count=$(grep -c 'has no mapped terminal Status' "$T12_DIR/t13b-stderr.txt" || true)
-if [ "$t13b_warn_count" -eq 1 ] && grep -q 'DUPLICATE' "$T12_DIR/t13b-stderr.txt"; then
+if [ "$t13b_warn_count" -eq 1 ] && grep -q 'DUPLICATE.*has no mapped terminal Status' "$T12_DIR/t13b-stderr.txt"; then
   PASS=$((PASS + 1)); echo "  ✓ T-13b: exactly one WARNING names the unmapped reason"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-13b: expected exactly 1 WARNING naming DUPLICATE, got $t13b_warn_count: $(head -c 300 "$T12_DIR/t13b-stderr.txt" | tr '\n' ' ')")
@@ -714,12 +718,20 @@ set +e
 ( cd "$t13c_repo" && PATH="$t13c_repo/bin:$PATH" \
   GH_SCAN_FILE="$T12_DIR/scan-completed.json" GH_ITEM_EDIT_LOG="$T12_DIR/t13c-item-edit.args" \
   bash "$DRIFT_SH" --reconcile >/dev/null 2>"$T12_DIR/t13c-stderr.txt" )
+t13c_rc=$?
 set -e
-if grep -q 'has no mapped terminal Status' "$T12_DIR/t13c-stderr.txt"; then
-  FAIL=$((FAIL + 1)); FAILURES+=("T-13b: COMPLETED wrongly took the unmapped-reason path: $(head -c 300 "$T12_DIR/t13c-stderr.txt" | tr '\n' ' ')")
-  echo "  ✗ T-13b: COMPLETED wrongly warned as unmapped" >&2
+# "no WARNING" alone would also pass when the run never reached the arm at all — a typo in
+# the scan fixture path makes the shim's cat fail, the script exits 2, and stderr is simply
+# missing the string. Pair the absence with a positive control: the run must have found the
+# drift row (exit 1) and reconciled it to Done, so silence means "took the silent arm", not
+# "took no arm".
+if [ "$t13c_rc" -eq 1 ] \
+  && grep -q -- '--single-select-option-id OPT_DONE' "$T12_DIR/t13c-item-edit.args" 2>/dev/null \
+  && ! grep -q 'has no mapped terminal Status' "$T12_DIR/t13c-stderr.txt"; then
+  PASS=$((PASS + 1)); echo "  ✓ T-13b: COMPLETED reconciles to Done and stays on the silent arm"
 else
-  PASS=$((PASS + 1)); echo "  ✓ T-13b: COMPLETED stays on the silent arm (no unmapped WARNING)"
+  FAIL=$((FAIL + 1)); FAILURES+=("T-13b: COMPLETED negative control failed (rc=$t13c_rc; item-edit: $(head -c 200 "$T12_DIR/t13c-item-edit.args" 2>/dev/null); stderr: $(head -c 300 "$T12_DIR/t13c-stderr.txt" | tr '\n' ' '))")
+  echo "  ✗ T-13b: COMPLETED negative control failed (rc=$t13c_rc)" >&2
 fi
 
 # T-14: a board already on Cancelled is not drift, so --reconcile cannot touch it (AC-1).

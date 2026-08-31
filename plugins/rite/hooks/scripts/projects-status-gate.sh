@@ -284,7 +284,7 @@ exp_rank=$(status_rank "$EXPECT")
 # Issue `ok` would smuggle back the ranking status_rank() deliberately omits, by another
 # door.
 if [ "$CURRENT" = "Cancelled" ] && [ "$EXPECT" != "Cancelled" ]; then
-  warn "Issue #$ISSUE board Status is \"Cancelled\" — the Issue was abandoned (wontfix / duplicate / superseded), so \"$(printf '%s' "$EXPECT" | neutralize_ctrl)\" will not be reached. This is a cancelled Issue, not a dropped Status transition; reopen it or drop the work rather than re-running the transition"
+  warn "Issue #$ISSUE board Status is \"Cancelled\" — the Issue was abandoned (closed as not planned: wontfix / superseded), so \"$(printf '%s' "$EXPECT" | neutralize_ctrl)\" will not be reached. This is a cancelled Issue, not a dropped Status transition; reopen it or drop the work rather than re-running the transition"
   emit missing "$CURRENT"
 fi
 
