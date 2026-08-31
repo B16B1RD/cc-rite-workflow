@@ -3,6 +3,8 @@
 * **Create**: [契約が誤った前提の上に書かれていたときは dispatch を契約どおり保ち、前提の訂正と未決判断を別チャネルへ出す](pages/patterns/contract-literalism-false-premise-third-exit.md) — raw/fixes/20260831T072532Z-pr-2494.md を新規ページ化（promote: rite-plugin）
 * **Update**: [prefix 分岐 case の `*)` catch-all は未知の将来 prefix を silent に default 動作へ吸収する](pages/anti-patterns/catch-all-case-arm-absorbs-future-prefix.md) — raw/fixes/20260831T072532Z-pr-2494.md を統合（既知で正しい値を明示アームへ narrow し catch-all を WARNING へ降格する形、沈黙の非対称という検出手がかり、negative control に positive control を対にする要件、静的 grep のラベルに挙動を名乗らせない規範を追記）
 * **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — raw/reviews/20260831T074623Z-pr-2494.md を統合（無条件主張を直した修正文が別の無条件主張になる再生産型、件数断定の列挙は根拠が構造的なら必ず破れること、語彙変更時の全 hit sweep を追記）
+* **lint:clean** — contradictions=0, stale=48, orphans=0, missing_concept=0, unregistered_raw=402, broken_refs=0
+  * 注: 本実行では矛盾検出（ステップ 3）の全ページ対セマンティック比較を実施していない（440 ページ）。`contradictions=0` は「矛盾なし」ではなく「本サイクルで作成・更新した 4 ページと同ドメイン近傍のみ実測」を意味する。機械判定カテゴリ（陳腐化 / 孤児 / 欠落概念 / 未登録 raw / 壊れた相互参照 / 説明的番号参照）は helper で実測済み。説明的番号参照: 0 hits / 0 ページ（informational。前回 146 hits から wiki 側の番号除去 commit により減少）
 ## 2026-08-30
 * **lint:warning** — contradictions=0, stale=41, orphans=0, missing_concept=1, unregistered_raw=401, broken_refs=0
   * 注: 本実行では矛盾検出（ステップ 3）の全ページ対セマンティック比較を実施していない（436 ページ）。`contradictions=0` は「矛盾なし」ではなく「未実測」を意味する。機械判定カテゴリ（陳腐化 / 孤児 / 欠落概念 / 未登録 raw / 壊れた相互参照 / 説明的番号参照）は helper で実測済み。説明的番号参照: 146 hits / 84 ページ（informational）
