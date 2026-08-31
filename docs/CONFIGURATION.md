@@ -28,6 +28,7 @@ github:
           - { name: "In Progress" }
           - { name: "In Review" }
           - { name: "Done" }
+          - { name: "Cancelled" }
       priority:
         enabled: true
         options:

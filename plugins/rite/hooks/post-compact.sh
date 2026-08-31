@@ -468,7 +468,11 @@ query($owner: String!, $repo: String!, $number: Int!) {
           CURRENT_STATUS=""
         fi
 
-        if [ -n "$CURRENT_STATUS" ] && [ "$CURRENT_STATUS" != "In Review" ] && [ "$CURRENT_STATUS" != "Done" ]; then
+        # Done / Cancelled are the terminal Status set (references/projects-integration.md,
+        # "Terminal Status Set"). A terminal row is finished, so pulling it back to
+        # In Review would undo a deliberate decision — Cancelled is excluded for exactly
+        # the same reason Done always has been.
+        if [ -n "$CURRENT_STATUS" ] && [ "$CURRENT_STATUS" != "In Review" ] && [ "$CURRENT_STATUS" != "Done" ] && [ "$CURRENT_STATUS" != "Cancelled" ]; then
           echo "[rite] ⚠️ post-compact mismatch detected: Issue #$ISSUE PR=#$PR isDraft=false Status=\"$CURRENT_STATUS\" (expected In Review)" >&2
           # STATE_ROOT existence is already enforced at the top of the sub-shell
           # (early state_root_inaccessible WARNING + exit 0), so this reconciliation

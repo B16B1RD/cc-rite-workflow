@@ -32,6 +32,9 @@
 #   ok       board Status has reached (or passed) the expected status
 #   missing  the transition did not land — the Issue is on the board below the expected
 #            status, its Status field carries no value, or it is not on the board at all.
+#            A board sitting on the terminal Status `Cancelled` also lands here (the
+#            expected status will never be reached), but carries its own diagnostic
+#            naming the abandonment instead of a dropped transition.
 #            All three mean the same thing at this call site: 2.4(A) passes auto_add, so a
 #            successful run always leaves an item on the board. Absence is evidence that
 #            2.4(A) never ran or failed, not that there is nothing to check. (The
@@ -255,6 +258,11 @@ fi
 # cleanup legitimately observes In Review / Done, and reporting those as a missed
 # In Progress transition would make the gate cry wolf on every resume. An unknown option
 # name (a localized or customized board) has no rank and is compared by equality only.
+#
+# Cancelled is deliberately absent: it is terminal, not a stage
+# (references/projects-integration.md, "Terminal Status Set"). Ranking it anywhere would
+# make an abandoned Issue read as having reached — or skipped past — a progress stage.
+# The branch below the function handles it by name instead.
 status_rank() {
   case "$1" in
     Todo) echo 1 ;;
@@ -266,6 +274,19 @@ status_rank() {
 }
 cur_rank=$(status_rank "$CURRENT")
 exp_rank=$(status_rank "$EXPECT")
+
+# Cancelled is terminal, not a progress stage (references/projects-integration.md,
+# "Terminal Status Set"), so status_rank() leaves it at 0 and the comparison below would
+# report it as a dropped transition. That reading is wrong and sends the reader looking
+# for a failed update: the board is where someone deliberately put it. Say so before the
+# rank comparison gets a chance to phrase it as a missing transition. The verdict stays
+# `missing` — the expected status genuinely has not been reached, and calling an abandoned
+# Issue `ok` would smuggle back the ranking status_rank() deliberately omits, by another
+# door.
+if [ "$CURRENT" = "Cancelled" ] && [ "$EXPECT" != "Cancelled" ]; then
+  warn "Issue #$ISSUE board Status is \"Cancelled\" — the Issue was abandoned (wontfix / duplicate / superseded), so \"$(printf '%s' "$EXPECT" | neutralize_ctrl)\" will not be reached. This is a cancelled Issue, not a dropped Status transition; reopen it or drop the work rather than re-running the transition"
+  emit missing "$CURRENT"
+fi
 
 if [ "$CURRENT" = "$EXPECT" ]; then
   emit ok "$CURRENT"

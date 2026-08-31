@@ -21,6 +21,7 @@ github:
           - { name: "In Progress" }
           - { name: "In Review" }
           - { name: "Done" }
+          - { name: "Cancelled" }
       priority:
         enabled: true
         # name: "優先度"       # optional: actual Priority field name in the Project

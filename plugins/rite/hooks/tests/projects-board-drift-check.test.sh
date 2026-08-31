@@ -10,15 +10,28 @@
 #   T-6: config-aware no-op (projects disabled / rite-config absent) exits 0 with a
 #        0-findings summary line — exercised offline, no gh required (AC-4)
 #   T-7: behavioral fixture — the jq detection pipeline (extracted from source, not a
-#        copy) classifies all six cases correctly (COMPLETED drift / NOT_PLANNED drift /
-#        Done / not-on-board / other-project / <no-status>), catching semantic breaks
-#        that preserve jq literals but flip scoping (offline, jq-only, no gh)
+#        copy) classifies all eight cases correctly (COMPLETED drift / NOT_PLANNED drift /
+#        Done / Cancelled / not-on-board / other-project / <no-status> / null reason),
+#        catching semantic breaks that preserve jq literals but flip scoping
+#        (offline, jq-only, no gh)
 #   T-9: behavioral — --reconcile drives the Status update helper to "Done" for a
-#        closure reason that used to be excluded (offline, gh shim records the item-edit)
+#        COMPLETED closure (offline, gh shim records the item-edit)
 #  T-10: behavioral — a failing GraphQL scan exits 2 with a diagnostic, so lint never
 #        misreads an invocation/API error as "drift detected" (exit 1)
 #  T-11: behavioral — a failed reconcile surfaces the Status-update helper's warnings on
 #        stderr (the helper puts them only in its stdout JSON), exercising the non-quiet path
+#  T-12: behavioral — a NOT_PLANNED closure on a non-terminal board reconciles to
+#        "Cancelled", not "Done" (the terminal-status split, end to end)
+#  T-13: behavioral — an unclassified closure reason reconciles to "Done" AND emits
+#        exactly one WARNING, so the fallback is never silent
+#  T-14: behavioral — a board already on "Cancelled" is not drift at all (0 findings,
+#        exit 0), so --reconcile can never overwrite a deliberate cancellation
+#  T-15: static — every consumer of the terminal Status set points at its source of truth
+#        by section name, with no line-number anchor
+#
+# This suite is named for projects-board-drift-check.sh but also pins the cross-file
+# terminal-status contract (T-15), because that contract is what the drift check's
+# reconcile destinations are derived from.
 #
 # Usage: bash plugins/rite/hooks/tests/projects-board-drift-check.test.sh
 set -euo pipefail
@@ -26,6 +39,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 DRIFT_SH="$REPO_ROOT/plugins/rite/hooks/scripts/projects-board-drift-check.sh"
+
+# Terminal Status names and the unclassified-reason sentinel are read back out of the
+# script rather than restated here, so a rename in the source travels into the fixtures
+# instead of leaving the suite asserting against values nothing produces any more.
+TERM_DONE=$(sed -n 's/^TERMINAL_STATUS_DONE="\(.*\)"$/\1/p' "$DRIFT_SH" | head -1)
+TERM_CANCELLED=$(sed -n 's/^TERMINAL_STATUS_CANCELLED="\(.*\)"$/\1/p' "$DRIFT_SH" | head -1)
+NO_REASON=$(sed -n 's/^NO_CLOSURE_REASON="\(.*\)"$/\1/p' "$DRIFT_SH" | head -1)
 
 PASS=0
 FAIL=0
@@ -135,14 +155,26 @@ assert_file_contains "$DRIFT_SH" '\-\-reconcile\)' "case clause handles --reconc
 assert_file_contains "$DRIFT_SH" '\-\-limit\)' "case clause handles --limit flag"
 assert_file_contains "$DRIFT_SH" '\-\-quiet\)' "case clause handles --quiet flag"
 assert_file_contains "$DRIFT_SH" 'Reconciliation drift-guard' "header documents drift-guard purpose"
-# Detection: anchor asserts to the load-bearing jq predicates (with quotes), NOT to the header
-# comments (which spell Done without the jq quoting), so deleting the detection logic actually
-# fails the suite. Board membership is the only remaining inclusion gate, so pin its exact form;
-# the companion absence assert keeps a closure-reason filter from creeping back into the source
-# (the board has no terminal Status other than Done, so no closure reason may be filtered out).
-assert_file_contains "$DRIFT_SH" 'select\(\$pitem != null\)' "board 掲載のみで絞る (closure reason 非依存)"
-assert_file_lacks "$DRIFT_SH" 'stateReason' "closure reason への依存が残っていない"
-assert_file_contains "$DRIFT_SH" 'select.*\$st.*!= "Done"' "AC-1: drift when board Status != Done"
+# Detection: anchor asserts to the load-bearing shell constants and jq predicates, NOT to the
+# header comments (which spell the status names as prose), so deleting the detection logic
+# actually fails the suite. Board membership is the inclusion gate, so pin its exact form.
+assert_file_contains "$DRIFT_SH" 'select\(\$pitem != null\)' "board 掲載のみで絞る"
+# The terminal Status set is the whole point of the filter, so pin both members at their
+# definitions. A drift back to a Done-only filter deletes one of these and fails here.
+assert_file_contains "$DRIFT_SH" '^TERMINAL_STATUS_DONE="Done"$' "終端 Status 集合に Done を持つ"
+assert_file_contains "$DRIFT_SH" '^TERMINAL_STATUS_CANCELLED="Cancelled"$' "終端 Status 集合に Cancelled を持つ"
+# Pin the predicate by its exact two-member form. A one-sided `!= $terminal_done` would still
+# match a looser pattern while silently reporting every Cancelled row as drift again.
+assert_file_contains "$DRIFT_SH" 'select\(\$st != \$terminal_done and \$st != \$terminal_cancelled\)' \
+  "AC-1: drift は終端 Status 集合のいずれでもない行に限る"
+# The closure reason is now load-bearing on both ends: selected by the query, carried by jq.
+assert_file_contains "$DRIFT_SH" '^ *stateReason$' "GraphQL query が stateReason を取得する"
+assert_file_contains "$DRIFT_SH" '\$i\.stateReason // \$no_reason' "jq が stateReason を TSV へ載せる"
+# AC-2/AC-3: the reconcile destination is chosen from the closure reason, not fixed to Done.
+assert_file_contains "$DRIFT_SH" 'NOT_PLANNED\) target_status="\$TERMINAL_STATUS_CANCELLED"' \
+  "AC-2: NOT_PLANNED の reconcile 先は Cancelled"
+assert_file_contains "$DRIFT_SH" '--arg status "\$target_status"' \
+  "reconcile が固定 Done ではなく target_status を渡す"
 assert_file_contains "$DRIFT_SH" 'projectItems' "queries projectItems for board membership"
 # AC-4: projects-enabled gate
 assert_file_contains "$DRIFT_SH" 'PROJECTS_ENABLED' "gates on github.projects.enabled (AC-4)"
@@ -182,15 +214,16 @@ else
 fi
 
 echo ""
-echo "[T-7] Behavioral fixture: jq detection pipeline classifies all six cases (semantic-break guard)"
+echo "[T-7] Behavioral fixture: jq detection pipeline classifies all eight cases (semantic-break guard)"
 # Extract the EXACT jq detection program from the source so this exercises the real
 # pipeline, not a copy. A semantic break that T-5's literal grep cannot see — e.g.
-# $pitem != null -> == null, select($st != "Done") -> == "Done", or dropping the
-# `.project.number == $pn` board scoping — changes the classification below and fails
-# here. Capture the lines between the `jq -r --argjson pn` invocation and its
-# `2>"${jq_err...}"` redirect (the only post-marker line containing `jq_err`).
+# $pitem != null -> == null, dropping one member of the terminal Status set, or dropping
+# the `.project.number == $pn` board scoping — changes the classification below and fails
+# here. The invocation spans several lines (`jq -r --argjson pn` plus the --arg
+# continuations), so capture from the LAST continuation, which is the line that opens the
+# program's quote, through its `2>"${jq_err...}"` redirect.
 jq_prog=$(awk '
-  /jq -r --argjson pn/ { capturing=1; next }
+  /--arg no_reason/ { capturing=1; next }
   capturing && /jq_err/ { capturing=0; next }
   capturing { print }
 ' "$DRIFT_SH")
@@ -200,13 +233,12 @@ if [ -z "$jq_prog" ]; then
   echo "  ✗ could not extract jq detection program from source" >&2
 else
   PASS=$((PASS + 1)); echo "  ✓ extracted jq detection program from source"
-  # GraphQL-shaped fixture (models `gh api graphql` output) covering all six cases.
+  # GraphQL-shaped fixture (models `gh api graphql` output) covering all eight cases.
   # project_number ($pn) = 6. Titles are unique so present/absent asserts key on them.
-  # #101 / #103 / #106 are drift; #102 / #104 / #105 must be excluded. The stateReason
-  # values are retained (the query no longer selects the field) so the two closure reasons
-  # sit side by side and a reintroduced closure-reason filter drops #103 and fails here.
+  # #101 / #103 / #106 / #108 are drift; #102 / #104 / #105 / #107 must be excluded.
   # The bare {} node in #101 mirrors GraphQL emitting non-single-select fieldValues as
-  # empty objects.
+  # empty objects. #108 omits stateReason entirely, which is how a null closure reason
+  # reaches jq — the row must still be emitted, carrying the sentinel.
   fixture=$(cat <<'JSON'
 { "data": { "repository": { "issues": { "nodes": [
   { "number": 101, "title": "drift case", "stateReason": "COMPLETED",
@@ -225,38 +257,55 @@ else
       "fieldValues": { "nodes": [ { "field": { "name": "Status" }, "name": "Todo" } ] } } ] } },
   { "number": 106, "title": "no-status boundary", "stateReason": "COMPLETED",
     "projectItems": { "nodes": [ { "project": { "number": 6 },
-      "fieldValues": { "nodes": [ { "field": { "name": "Iteration" }, "name": "Sprint 1" } ] } } ] } }
+      "fieldValues": { "nodes": [ { "field": { "name": "Iteration" }, "name": "Sprint 1" } ] } } ] } },
+  { "number": 107, "title": "cancelled excluded", "stateReason": "NOT_PLANNED",
+    "projectItems": { "nodes": [ { "project": { "number": 6 },
+      "fieldValues": { "nodes": [ { "field": { "name": "Status" }, "name": "Cancelled" } ] } } ] } },
+  { "number": 108, "title": "null reason drift",
+    "projectItems": { "nodes": [ { "project": { "number": 6 },
+      "fieldValues": { "nodes": [ { "field": { "name": "Status" }, "name": "Todo" } ] } } ] } }
 ] } } } }
 JSON
 )
   set +e
-  actual=$(printf '%s' "$fixture" | jq -r --argjson pn 6 "$jq_prog" 2>/dev/null); jq_rc=$?
+  actual=$(printf '%s' "$fixture" | jq -r --argjson pn 6 \
+    --arg terminal_done "$TERM_DONE" --arg terminal_cancelled "$TERM_CANCELLED" \
+    --arg no_reason "$NO_REASON" "$jq_prog" 2>/dev/null); jq_rc=$?
   set -e
   if [ "$jq_rc" -eq 0 ]; then
     PASS=$((PASS + 1)); echo "  ✓ jq pipeline runs without error"
   else
     FAIL=$((FAIL + 1)); FAILURES+=("jq pipeline errored (rc=$jq_rc)"); echo "  ✗ jq pipeline errored (rc=$jq_rc)" >&2
   fi
-  # Exactly three drift rows — guards over-detection (e.g. a broken on-board scope letting
-  # not-on-board / other-project issues through). Count lines carrying a TAB separator.
+  # Exactly four drift rows — guards over-detection (e.g. a broken on-board scope letting
+  # not-on-board / other-project issues through, or a Done-only filter re-admitting the
+  # Cancelled row). Count lines carrying a TAB separator.
   line_count=$(printf '%s\n' "$actual" | grep -c $'\t' || true)
-  if [ "$line_count" -eq 3 ]; then
-    PASS=$((PASS + 1)); echo "  ✓ exactly 3 drift rows emitted"
+  if [ "$line_count" -eq 4 ]; then
+    PASS=$((PASS + 1)); echo "  ✓ exactly 4 drift rows emitted"
   else
-    FAIL=$((FAIL + 1)); FAILURES+=("expected 3 drift rows, got $line_count"); echo "  ✗ expected 3 drift rows, got $line_count" >&2
+    FAIL=$((FAIL + 1)); FAILURES+=("expected 4 drift rows, got $line_count"); echo "  ✗ expected 4 drift rows, got $line_count" >&2
   fi
+  # Each present-assert pins the WHOLE row, so the four-column order
+  # (number / status / stateReason / title) is fixed here and not just the field values —
+  # a transposition that keeps every value would still fail.
   # Case 1: COMPLETED + on-board(6) + Status="In Review" -> drift, status carried through.
-  assert_present "$actual" "$(printf '101\tIn Review\tdrift case')" "case1: COMPLETED on-board non-Done -> drift row"
+  assert_present "$actual" "$(printf '101\tIn Review\tCOMPLETED\tdrift case')" "case1: COMPLETED on-board 非終端 -> drift row"
   # Case 6: COMPLETED + on-board(6) + no Status field -> drift as <no-status> (boundary).
-  assert_present "$actual" "$(printf '106\t<no-status>\tno-status boundary')" "case6: on-board without Status field -> <no-status> drift"
+  assert_present "$actual" "$(printf '106\t<no-status>\tCOMPLETED\tno-status boundary')" "case6: on-board without Status field -> <no-status> drift"
   # Case 2: Status already Done -> excluded.
   assert_absent "$actual" "done excluded" "case2: Status=Done excluded (AC-1)"
-  # Case 3: NOT_PLANNED closure on a non-Done board row -> drift, same as COMPLETED.
-  assert_present "$actual" "$(printf '103\tTodo\tnot_planned drift')" "case3: NOT_PLANNED on-board non-Done -> drift row"
+  # Case 3: NOT_PLANNED closure on a non-terminal board row -> drift, same as COMPLETED.
+  assert_present "$actual" "$(printf '103\tTodo\tNOT_PLANNED\tnot_planned drift')" "case3: NOT_PLANNED on-board 非終端 -> drift row"
   # Case 4: not on the board (empty projectItems) -> excluded.
   assert_absent "$actual" "not on board" "case4: not-on-board excluded"
   # Case 5: on a different project (number != pn) -> excluded.
   assert_absent "$actual" "other project" "case5: other-project excluded"
+  # Case 7: Status already Cancelled -> excluded, the other half of the terminal set (AC-1).
+  assert_absent "$actual" "cancelled excluded" "case7: Status=Cancelled excluded (AC-1)"
+  # Case 8: absent stateReason -> still drift, and the sentinel (not a bare `null` string
+  # or an empty field) is what crosses the TSV boundary into the reconcile branch (AC-4).
+  assert_present "$actual" "$(printf '108\tTodo\t%s\tnull reason drift' "$NO_REASON")" "case8: stateReason null -> sentinel を載せた drift row"
 fi
 
 # GraphQL-level board-membership scope: the projectItems page size must be positive. The
@@ -316,7 +365,7 @@ else
 fi
 
 echo ""
-echo "[T-9] Behavioral: --reconcile drives Status -> Done for a wontfix/duplicate closure"
+echo "[T-9] Behavioral: --reconcile drives Status -> Done for a COMPLETED closure"
 # The reconcile path hands off to scripts/projects-status-update.sh, which is invoked by
 # absolute path and cannot be shimmed — so the assertion is made at the gh boundary that
 # helper drives. The shim answers both graphql shapes (the drift scan is the one carrying
@@ -338,7 +387,7 @@ case "$1 $2" in
     if printf '%s\n' "$*" | grep -q 'states: CLOSED'; then
       cat <<'SCAN'
 {"data":{"repository":{"issues":{"nodes":[
-  {"number":103,"title":"closed as duplicate",
+  {"number":103,"title":"closed as completed","stateReason":"COMPLETED",
    "projectItems":{"nodes":[{"project":{"number":1},
      "fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}
 ]}}}}
@@ -373,7 +422,7 @@ fi
 # findings 行は行まるごと固定する。部分一致だけだと script の findings 行を emit する echo
 # (`[projects-board-drift] #N ...`) の書式が壊れても通ってしまい、契約が「現行のまま維持する」と
 # 規定した唯一の出力を誰も守らなくなる。
-assert_present "$t9_out" "$(printf '[projects-board-drift] #103 "closed as duplicate" status="Todo" (expected Done) -> reconciled to Done')" \
+assert_present "$t9_out" "$(printf '[projects-board-drift] #103 "closed as completed" status="Todo" (expected Done) -> reconciled to Done')" \
   "T-9: findings 行形式が維持されている"
 # lint Phase 3.18 が機械読みする件数 sentinel。0 固定などの退行は exit 1 と矛盾したまま
 # 「drift なし」と読ませるため、実件数まで含めて固定する。
@@ -450,7 +499,7 @@ case "$1 $2" in
     if printf '%s\n' "$*" | grep -q 'states: CLOSED'; then
       cat <<'SCAN'
 {"data":{"repository":{"issues":{"nodes":[
-  {"number":103,"title":"closed as duplicate",
+  {"number":103,"title":"closed as completed","stateReason":"COMPLETED",
    "projectItems":{"nodes":[{"project":{"number":1},
      "fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}
 ]}}}}
@@ -487,6 +536,172 @@ else
   FAIL=$((FAIL + 1)); FAILURES+=("T-11: helper warnings missing from stderr: $(head -c 300 "$T11_DIR/stderr.txt" | tr '\n' ' ')")
   echo "  ✗ helper warnings did not reach stderr" >&2
 fi
+
+echo ""
+echo "[T-12/T-13/T-14] Behavioral: the terminal-status split end to end"
+# The three cases differ only in the CLOSED-scan payload, so the repo, config and gh shim
+# are built once and the scan JSON is injected through a file the shim cats. The shim's
+# Status field carries a Cancelled option, which is what lets the reconcile destination be
+# read back from the recorded item-edit rather than inferred from the summary line.
+T12_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rite-board-drift-t12-XXXXXX")
+trap 'rm -rf "${tmpd:-}" "$T8_DIR" "$T9_DIR" "$T10_DIR" "$T11_DIR" "$T12_DIR"' EXIT
+
+_setup_terminal_repo() {
+  local dir="$1"
+  mkdir -p "$dir/bin"
+  ( cd "$dir" && git init -q && git remote add origin "git@github.com:o/r.git" ) >/dev/null 2>&1
+  cat > "$dir/rite-config.yml" <<'YAML'
+github:
+  projects:
+    enabled: true
+    project_number: 1
+YAML
+  cat > "$dir/bin/gh" <<'GH_SHIM'
+#!/bin/bash
+case "$1 $2" in
+  "api graphql")
+    if printf '%s\n' "$*" | grep -q 'states: CLOSED'; then
+      cat "$GH_SCAN_FILE"
+    else
+      cat <<'ITEM'
+{"data":{"repository":{"issue":{"url":"https://github.com/o/r/issues/203",
+  "projectItems":{"nodes":[{"id":"ITEM_203","project":{"id":"PROJ_1","number":1}}]}}}}}
+ITEM
+    fi ;;
+  "project field-list")
+    echo '{"fields":[{"id":"FIELD_STATUS","name":"Status","options":[{"id":"OPT_TODO","name":"Todo"},{"id":"OPT_DONE","name":"Done"},{"id":"OPT_CANCELLED","name":"Cancelled"}]}]}' ;;
+  "project item-edit")
+    printf '%s\n' "$*" > "$GH_ITEM_EDIT_LOG" ;;
+  *) exit 0 ;;
+esac
+GH_SHIM
+  chmod +x "$dir/bin/gh"
+}
+
+# T-12: NOT_PLANNED on a non-terminal board row -> Cancelled (AC-2).
+t12_repo="$T12_DIR/not-planned"; _setup_terminal_repo "$t12_repo"
+cat > "$T12_DIR/scan-not-planned.json" <<'SCAN'
+{"data":{"repository":{"issues":{"nodes":[
+  {"number":203,"title":"closed as not planned","stateReason":"NOT_PLANNED",
+   "projectItems":{"nodes":[{"project":{"number":1},
+     "fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}
+]}}}}
+SCAN
+set +e
+t12_out=$(cd "$t12_repo" && PATH="$t12_repo/bin:$PATH" \
+  GH_SCAN_FILE="$T12_DIR/scan-not-planned.json" GH_ITEM_EDIT_LOG="$T12_DIR/t12-item-edit.args" \
+  bash "$DRIFT_SH" --reconcile --quiet 2>"$T12_DIR/t12-stderr.txt")
+t12_rc=$?
+set -e
+if [ "$t12_rc" -eq 1 ] && printf '%s' "$t12_out" | grep -q 'reconcile summary: 1 updated, 0 failed'; then
+  PASS=$((PASS + 1)); echo "  ✓ T-12: NOT_PLANNED row reconciles successfully (exit 1 = drift detected)"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-12: expected exit 1 + '1 updated, 0 failed', got rc=$t12_rc; stdout: $(printf '%s' "$t12_out" | tr '\n' ' ' | head -c 300)")
+  echo "  ✗ T-12: reconcile summary wrong (exit $t12_rc)" >&2
+fi
+# The destination is asserted at the gh boundary, not from the summary line: only the
+# recorded option id distinguishes a real Cancelled update from a Done update mislabelled
+# in the report text.
+if [ -f "$T12_DIR/t12-item-edit.args" ] && grep -q -- '--single-select-option-id OPT_CANCELLED' "$T12_DIR/t12-item-edit.args"; then
+  PASS=$((PASS + 1)); echo "  ✓ T-12 (AC-2): item-edit called with the Cancelled option id"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-12: item-edit not called with Cancelled option id (args: $(head -c 300 "$T12_DIR/t12-item-edit.args" 2>/dev/null))")
+  echo "  ✗ T-12: item-edit not called with the Cancelled option id" >&2
+fi
+# The report line and the count sentinel are pinned whole: the destination now varies, so
+# the one place a reader sees it must keep saying which terminal Status was chosen.
+assert_present "$t12_out" "$(printf '[projects-board-drift] #203 "closed as not planned" status="Todo" (expected Cancelled) -> reconciled to Cancelled')" \
+  "T-12: findings 行が reconcile 先 Cancelled を示す"
+assert_present "$t12_out" '==> Total projects-board-drift findings: 1' \
+  "T-12: 件数 sentinel が実件数を報告する"
+
+# T-13: an unclassified closure reason -> Done, with exactly one WARNING (AC-4).
+# Run WITHOUT --quiet: the WARNING is the whole point, and --quiet suppresses it.
+t13_repo="$T12_DIR/null-reason"; _setup_terminal_repo "$t13_repo"
+cat > "$T12_DIR/scan-null-reason.json" <<'SCAN'
+{"data":{"repository":{"issues":{"nodes":[
+  {"number":203,"title":"closed without a reason","stateReason":null,
+   "projectItems":{"nodes":[{"project":{"number":1},
+     "fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}
+]}}}}
+SCAN
+set +e
+t13_out=$(cd "$t13_repo" && PATH="$t13_repo/bin:$PATH" \
+  GH_SCAN_FILE="$T12_DIR/scan-null-reason.json" GH_ITEM_EDIT_LOG="$T12_DIR/t13-item-edit.args" \
+  bash "$DRIFT_SH" --reconcile 2>"$T12_DIR/t13-stderr.txt")
+t13_rc=$?
+set -e
+if [ "$t13_rc" -eq 1 ] && printf '%s' "$t13_out" | grep -q 'reconcile summary: 1 updated, 0 failed'; then
+  PASS=$((PASS + 1)); echo "  ✓ T-13: unclassified reason still reconciles (not left behind)"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-13: expected exit 1 + '1 updated, 0 failed', got rc=$t13_rc; stdout: $(printf '%s' "$t13_out" | tr '\n' ' ' | head -c 300)")
+  echo "  ✗ T-13: reconcile summary wrong (exit $t13_rc)" >&2
+fi
+if [ -f "$T12_DIR/t13-item-edit.args" ] && grep -q -- '--single-select-option-id OPT_DONE' "$T12_DIR/t13-item-edit.args"; then
+  PASS=$((PASS + 1)); echo "  ✓ T-13 (AC-4): item-edit called with the Done option id"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-13: item-edit not called with Done option id (args: $(head -c 300 "$T12_DIR/t13-item-edit.args" 2>/dev/null))")
+  echo "  ✗ T-13: item-edit not called with the Done option id" >&2
+fi
+# Exactly one: a silent fallback (0) and a per-retry storm (>1) are both regressions.
+t13_warn_count=$(grep -c 'closure reason is unavailable' "$T12_DIR/t13-stderr.txt" || true)
+if [ "$t13_warn_count" -eq 1 ]; then
+  PASS=$((PASS + 1)); echo "  ✓ T-13 (AC-4): exactly one WARNING names the unclassified reason"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-13: expected exactly 1 unclassified-reason WARNING, got $t13_warn_count: $(head -c 300 "$T12_DIR/t13-stderr.txt" | tr '\n' ' ')")
+  echo "  ✗ T-13: expected exactly 1 unclassified-reason WARNING, got $t13_warn_count" >&2
+fi
+
+# T-14: a board already on Cancelled is not drift, so --reconcile cannot touch it (AC-1).
+# Run with --reconcile (not --dry-run): the stronger claim is that the destructive mode
+# leaves the row alone, which a dry run could not show.
+t14_repo="$T12_DIR/already-cancelled"; _setup_terminal_repo "$t14_repo"
+cat > "$T12_DIR/scan-cancelled.json" <<'SCAN'
+{"data":{"repository":{"issues":{"nodes":[
+  {"number":203,"title":"already cancelled","stateReason":"NOT_PLANNED",
+   "projectItems":{"nodes":[{"project":{"number":1},
+     "fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Cancelled"}]}}]}}
+]}}}}
+SCAN
+set +e
+t14_out=$(cd "$t14_repo" && PATH="$t14_repo/bin:$PATH" \
+  GH_SCAN_FILE="$T12_DIR/scan-cancelled.json" GH_ITEM_EDIT_LOG="$T12_DIR/t14-item-edit.args" \
+  bash "$DRIFT_SH" --reconcile --quiet 2>"$T12_DIR/t14-stderr.txt")
+t14_rc=$?
+set -e
+if [ "$t14_rc" -eq 0 ] && printf '%s' "$t14_out" | grep -q '==> Total projects-board-drift findings: 0'; then
+  PASS=$((PASS + 1)); echo "  ✓ T-14 (AC-1): Cancelled row reports 0 findings and exits 0"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-14: expected exit 0 + 0 findings, got rc=$t14_rc; stdout: $(printf '%s' "$t14_out" | tr '\n' ' ' | head -c 300)")
+  echo "  ✗ T-14: expected exit 0 + 0 findings (exit $t14_rc)" >&2
+fi
+if [ -f "$T12_DIR/t14-item-edit.args" ]; then
+  FAIL=$((FAIL + 1)); FAILURES+=("T-14: item-edit was called on an already-terminal row (args: $(head -c 300 "$T12_DIR/t14-item-edit.args"))")
+  echo "  ✗ T-14: item-edit was called on an already-terminal row" >&2
+else
+  PASS=$((PASS + 1)); echo "  ✓ T-14 (AC-1): no item-edit issued — the cancellation is left intact"
+fi
+
+echo ""
+echo "[T-15] Static: terminal Status consumers cite the SoT by section name, never by line"
+# AC-7. Each consumer must reach the definition through a name that survives edits to the
+# reference file. A line-number anchor (`#L225`, `:225`) is the failure this pins against:
+# it silently rots into pointing at unrelated prose. The pattern is deliberately narrow —
+# a section anchor like `#248-terminal-status-set` also begins with digits, and it is the
+# repo's normal link form, so a looser pattern would reject the very convention AC-7 asks
+# for.
+TERMINAL_SOT="$REPO_ROOT/plugins/rite/references/projects-integration.md"
+assert_file_contains "$TERMINAL_SOT" '^### 2\.4\.8 Terminal Status Set$' "SoT 節が projects-integration.md に存在する"
+for consumer in \
+  "plugins/rite/hooks/scripts/projects-board-drift-check.sh" \
+  "plugins/rite/hooks/post-compact.sh" \
+  "plugins/rite/hooks/scripts/projects-status-gate.sh" \
+  "plugins/rite/skills/lint/references/plugin-checks-rationale.md" ; do
+  assert_file_contains "$REPO_ROOT/$consumer" 'Terminal Status Set' \
+    "$consumer が終端 Status 集合を semantic name で参照する"
+  assert_file_lacks "$REPO_ROOT/$consumer" 'projects-integration\.md(:[0-9]+|#L[0-9]+)' \
+    "$consumer が SoT を行番号で参照していない"
+done
 
 echo ""
 echo "==============================="
