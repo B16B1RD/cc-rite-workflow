@@ -299,19 +299,19 @@ Parent Issue Status update failure does **not** block the start of work. Each st
 
 ### 2.4.8 Terminal Status Set
 
-**Single source of truth** for which board Status values mean "this Issue is finished and no reconciler may move it again". Every automated path that decides whether a board row still needs reconciling reads this set from here — none of them define their own.
+**Single source of truth** for which board Status values mean "this Issue is finished and no reconciler may move it again". The consumers listed below copy these two names from here and cite this section when they do; none of them define their own set.
 
-| Status | Meaning | Closure reason it corresponds to (`stateReason`) |
-|--------|---------|--------------------------------------------------|
+| Status | Meaning | Closure reason it maps from (`stateReason`) |
+|--------|---------|----------------------------------------------|
 | `Done` | Work completed | `COMPLETED` |
-| `Cancelled` | Work abandoned — wontfix, duplicate, superseded | `NOT_PLANNED` |
+| `Cancelled` | Work abandoned — closed as not planned (wontfix, superseded) | `NOT_PLANNED` |
 
 Two rules follow from this set, and both are load-bearing:
 
-1. **A row already on a terminal Status is never drift.** Reconcilers skip it entirely. An Issue deliberately parked at `Cancelled` must not be dragged to `Done`, and vice versa — the operator's choice between the two carries information that the automation cannot reconstruct.
-2. **A CLOSED Issue on a non-terminal Status is drift, and its destination comes from `stateReason`.** `NOT_PLANNED` lands on `Cancelled`; every other value — including a `stateReason` the API does not classify — lands on `Done`. Leaving such a row alone is not an option: a CLOSED Issue stranded in `Todo` or `In Review` is exactly the stall this reconciliation exists to clear.
+1. **A row already on a terminal Status is never drift.** The consumers below skip it entirely. An Issue deliberately parked at `Cancelled` must not be dragged to `Done`, and vice versa — the operator's choice between the two carries information that the automation cannot reconstruct.
+2. **A CLOSED Issue on a non-terminal Status is drift, and its destination comes from `stateReason`.** `NOT_PLANNED` lands on `Cancelled`, `COMPLETED` on `Done`. Every other value lands on `Done` **with a WARNING** — that includes both a reason the API leaves unset and `DUPLICATE`, which GitHub's `IssueStateReason` carries but this mapping does not claim. Leaving such a row alone is not an option: a CLOSED Issue stranded in `Todo` or `In Review` is exactly the stall this reconciliation exists to clear. Whether `DUPLICATE` should map to `Cancelled` instead is an open question — the WARNING is what keeps it from being answered by silence.
 
-`Cancelled` is an English literal. Status option names have no localization alias mechanism (unlike field names, which resolve through the Status/ステータス alias table in §2.4.4), so a board whose Status field lacks a `Cancelled` option simply fails the option-ID lookup in `projects-status-update.sh` and surfaces through that helper's normal failure path.
+`Cancelled` is an English literal. `projects-status-update.sh` matches the board's Status option names literally (it has no alias table of its own — the field-name aliases live in `scripts/create-issue-with-projects.sh`), so a board whose Status field lacks a `Cancelled` option fails the option-ID lookup and surfaces through that helper's normal failure path. **rite has no path that creates the option**: `/rite:setup` provisions `Todo` / `In Progress` / `In Review` / `Done` only, and the `fields.status.options` key in `rite-config.yml` is descriptive — no consumer reads it. On such a board, a `NOT_PLANNED` row therefore stays non-terminal and is reported as drift on every lint run until someone adds the option to the board by hand.
 
 **Consumers** (each references this section by name, never by line number):
 
@@ -321,6 +321,8 @@ Two rules follow from this set, and both are load-bearing:
 | `hooks/post-compact.sh` | Excludes terminal rows from the PR Status reconciliation mismatch check |
 | `hooks/scripts/projects-status-gate.sh` | Reports a terminal `Cancelled` as an abandoned Issue rather than a dropped transition |
 | `skills/lint/references/plugin-checks-rationale.md` | Documents why the drift check consults the closure reason |
+
+**Known non-conforming paths.** Rule 1 binds the consumers above, not every write to the board. Two documented paths set `Done` unconditionally without reading the current value, so they will overwrite a `Cancelled` row: `/rite:issue-close` Phase 1.3 (syncing an Issue closed outside rite) and `/rite:cleanup`'s parent-Issue Done update. Both delegate to `projects-status-update.sh`, which does not query `fieldValues` and so cannot guard on the current Status. Bringing them under rule 1 is out of scope here and needs its own Issue.
 
 Progress ordering (`Todo` → `In Progress` → `In Review` → `Done`) is a separate concept. `Cancelled` has no position in it and must not be given one — an Issue that was abandoned has not "reached" any progress stage, and ranking it would let a stage check read a cancelled Issue as having advanced.
 

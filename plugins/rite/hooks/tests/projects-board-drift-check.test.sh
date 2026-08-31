@@ -24,6 +24,8 @@
 #        "Cancelled", not "Done" (the terminal-status split, end to end)
 #  T-13: behavioral — an unclassified closure reason reconciles to "Done" AND emits
 #        exactly one WARNING, so the fallback is never silent
+# T-13b: behavioral — a reason GitHub returns but this check does not map (DUPLICATE)
+#        reconciles to "Done" and names itself in a WARNING, while COMPLETED stays silent
 #  T-14: behavioral — a board already on "Cancelled" is not drift at all (0 findings,
 #        exit 0), so --reconcile can never overwrite a deliberate cancellation
 #  T-15: static — every consumer of the terminal Status set points at its source of truth
@@ -173,6 +175,11 @@ assert_file_contains "$DRIFT_SH" '\$i\.stateReason // \$no_reason' "jq が state
 # AC-2/AC-3: the reconcile destination is chosen from the closure reason, not fixed to Done.
 assert_file_contains "$DRIFT_SH" 'NOT_PLANNED\) target_status="\$TERMINAL_STATUS_CANCELLED"' \
   "AC-2: NOT_PLANNED の reconcile 先は Cancelled"
+# COMPLETED gets its own silent arm so the catch-all means "unmapped", not "everything
+# else". Collapsing the two back together is what made an unmapped reason indistinguishable
+# from a correct one, so pin the arm that keeps them apart.
+assert_file_contains "$DRIFT_SH" 'COMPLETED\) *target_status="\$TERMINAL_STATUS_DONE"' \
+  "AC-3: COMPLETED は明示アームで無警告 Done"
 assert_file_contains "$DRIFT_SH" '--arg status "\$target_status"' \
   "reconcile が固定 Done ではなく target_status を渡す"
 assert_file_contains "$DRIFT_SH" 'projectItems' "queries projectItems for board membership"
@@ -650,6 +657,69 @@ if [ "$t13_warn_count" -eq 1 ]; then
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-13: expected exactly 1 unclassified-reason WARNING, got $t13_warn_count: $(head -c 300 "$T12_DIR/t13-stderr.txt" | tr '\n' ' ')")
   echo "  ✗ T-13: expected exactly 1 unclassified-reason WARNING, got $t13_warn_count" >&2
+fi
+
+# T-13b: a reason GitHub returns but this check does not map (DUPLICATE) reaches the
+# catch-all. It still reconciles to Done, but must say so — otherwise an unmapped reason is
+# indistinguishable from COMPLETED, and the mapping's blind spot never surfaces. The enum is
+# live: gh api graphql __type(name: "IssueStateReason") returns DUPLICATE alongside the two
+# reasons mapped here.
+t13b_repo="$T12_DIR/duplicate-reason"; _setup_terminal_repo "$t13b_repo"
+cat > "$T12_DIR/scan-duplicate.json" <<'SCAN'
+{"data":{"repository":{"issues":{"nodes":[
+  {"number":203,"title":"closed as duplicate","stateReason":"DUPLICATE",
+   "projectItems":{"nodes":[{"project":{"number":1},
+     "fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}
+]}}}}
+SCAN
+set +e
+t13b_out=$(cd "$t13b_repo" && PATH="$t13b_repo/bin:$PATH" \
+  GH_SCAN_FILE="$T12_DIR/scan-duplicate.json" GH_ITEM_EDIT_LOG="$T12_DIR/t13b-item-edit.args" \
+  bash "$DRIFT_SH" --reconcile 2>"$T12_DIR/t13b-stderr.txt")
+t13b_rc=$?
+set -e
+if [ "$t13b_rc" -eq 1 ] && printf '%s' "$t13b_out" | grep -q 'reconcile summary: 1 updated, 0 failed'; then
+  PASS=$((PASS + 1)); echo "  ✓ T-13b: unmapped reason still reconciles (not left behind)"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-13b: expected exit 1 + '1 updated, 0 failed', got rc=$t13b_rc; stdout: $(printf '%s' "$t13b_out" | tr '\n' ' ' | head -c 300)")
+  echo "  ✗ T-13b: reconcile summary wrong (exit $t13b_rc)" >&2
+fi
+if [ -f "$T12_DIR/t13b-item-edit.args" ] && grep -q -- '--single-select-option-id OPT_DONE' "$T12_DIR/t13b-item-edit.args"; then
+  PASS=$((PASS + 1)); echo "  ✓ T-13b: item-edit called with the Done option id"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-13b: item-edit not called with Done option id (args: $(head -c 300 "$T12_DIR/t13b-item-edit.args" 2>/dev/null))")
+  echo "  ✗ T-13b: item-edit not called with the Done option id" >&2
+fi
+# The WARNING must name the observed value — a generic line would not tell a reader which
+# reason went unmapped, which is the whole point of splitting COMPLETED into its own arm.
+t13b_warn_count=$(grep -c 'has no mapped terminal Status' "$T12_DIR/t13b-stderr.txt" || true)
+if [ "$t13b_warn_count" -eq 1 ] && grep -q 'DUPLICATE' "$T12_DIR/t13b-stderr.txt"; then
+  PASS=$((PASS + 1)); echo "  ✓ T-13b: exactly one WARNING names the unmapped reason"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-13b: expected exactly 1 WARNING naming DUPLICATE, got $t13b_warn_count: $(head -c 300 "$T12_DIR/t13b-stderr.txt" | tr '\n' ' ')")
+  echo "  ✗ T-13b: expected exactly 1 WARNING naming DUPLICATE, got $t13b_warn_count" >&2
+fi
+# COMPLETED must NOT take that path — otherwise the catch-all warns on every normal row and
+# the signal is worthless. T-9 pins COMPLETED's destination but runs --quiet, so it cannot
+# observe stderr; this runs the same reason without --quiet to pin its silence.
+t13c_repo="$T12_DIR/completed-reason"; _setup_terminal_repo "$t13c_repo"
+cat > "$T12_DIR/scan-completed.json" <<'SCAN'
+{"data":{"repository":{"issues":{"nodes":[
+  {"number":203,"title":"closed as completed","stateReason":"COMPLETED",
+   "projectItems":{"nodes":[{"project":{"number":1},
+     "fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}
+]}}}}
+SCAN
+set +e
+( cd "$t13c_repo" && PATH="$t13c_repo/bin:$PATH" \
+  GH_SCAN_FILE="$T12_DIR/scan-completed.json" GH_ITEM_EDIT_LOG="$T12_DIR/t13c-item-edit.args" \
+  bash "$DRIFT_SH" --reconcile >/dev/null 2>"$T12_DIR/t13c-stderr.txt" )
+set -e
+if grep -q 'has no mapped terminal Status' "$T12_DIR/t13c-stderr.txt"; then
+  FAIL=$((FAIL + 1)); FAILURES+=("T-13b: COMPLETED wrongly took the unmapped-reason path: $(head -c 300 "$T12_DIR/t13c-stderr.txt" | tr '\n' ' ')")
+  echo "  ✗ T-13b: COMPLETED wrongly warned as unmapped" >&2
+else
+  PASS=$((PASS + 1)); echo "  ✓ T-13b: COMPLETED stays on the silent arm (no unmapped WARNING)"
 fi
 
 # T-14: a board already on Cancelled is not drift, so --reconcile cannot touch it (AC-1).

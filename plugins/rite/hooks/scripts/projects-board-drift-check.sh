@@ -13,12 +13,14 @@
 # drives scripts/projects-status-update.sh to set the appropriate terminal Status.
 #
 # Closure-reason policy: the closure reason picks the destination. The terminal Status
-# set (Done for a completed closure, Cancelled for a NOT_PLANNED one) is defined in
+# set (Done for a COMPLETED closure, Cancelled for a NOT_PLANNED one) is defined in
 # references/projects-integration.md, section "Terminal Status Set" — a row already on
 # either value is finished and is never reported as drift, and a CLOSED row on any other
-# Status is reconciled to the terminal Status its stateReason names. A closure reason the
-# API leaves unclassified goes to Done with a WARNING rather than being left behind: an
-# unreconciled CLOSED Issue is the stall this check exists to clear.
+# Status is reconciled to the terminal Status its stateReason names. Any reason outside
+# those two — an unclassified one, or a value like DUPLICATE that GitHub returns but this
+# check does not map — goes to Done with a WARNING rather than being left behind: an
+# unreconciled CLOSED Issue is the stall this check exists to clear, and the WARNING is
+# what keeps the unmapped destination from being a silent choice.
 #
 # On-board policy: an Issue that is not on the project board (no projectItem for the
 # configured project_number) is NOT a drift — there is no board Status to reconcile.
@@ -271,15 +273,22 @@ if [ -n "$DRIFT_TSV" ]; then
     DRIFT_COUNT=$((DRIFT_COUNT + 1))
 
     # Destination comes from the closure reason (references/projects-integration.md,
-    # "Terminal Status Set"). An unclassified reason goes to Done rather than being left
-    # on a non-terminal Status — the WARNING is what makes that choice observable.
+    # "Terminal Status Set"). Only the two reasons this check maps get a silent arm; every
+    # other value still goes to Done rather than being left on a non-terminal Status, but
+    # says so, because a reason that reaches the catch-all is one nobody has decided a
+    # destination for. GitHub's IssueStateReason carries values beyond the two mapped here
+    # (DUPLICATE among them), so the catch-all is a live path, not a defensive stub.
     case "$state_reason" in
       NOT_PLANNED) target_status="$TERMINAL_STATUS_CANCELLED" ;;
+      COMPLETED)   target_status="$TERMINAL_STATUS_DONE" ;;
       "$NO_CLOSURE_REASON")
         target_status="$TERMINAL_STATUS_DONE"
         [ "$QUIET" = "true" ] || echo "projects-board-drift: WARNING #$issue_number closure reason is unavailable (stateReason null) — reconciling to $TERMINAL_STATUS_DONE" >&2
         ;;
-      *) target_status="$TERMINAL_STATUS_DONE" ;;
+      *)
+        target_status="$TERMINAL_STATUS_DONE"
+        [ "$QUIET" = "true" ] || echo "projects-board-drift: WARNING #$issue_number closure reason \"$(printf '%s' "$state_reason" | neutralize_ctrl --c0-only)\" has no mapped terminal Status — reconciling to $TERMINAL_STATUS_DONE" >&2
+        ;;
     esac
 
     reconcile_suffix=""
