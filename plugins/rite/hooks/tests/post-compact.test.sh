@@ -410,6 +410,21 @@ case "$1 $2" in
 esac
 EOF
       ;;
+    cancelled_terminal)
+      # Board sits on Cancelled — a terminal Status
+      # (references/projects-integration.md, "Terminal Status Set"). The PR is Ready, so
+      # every other condition for the mismatch branch holds; only the terminal exclusion
+      # keeps this row from being dragged back to In Review.
+      cat > "$dir/bin/gh" <<'EOF'
+#!/bin/bash
+case "$1 $2" in
+  "pr view") echo "false" ;;
+  "repo view") echo '{"owner":{"login":"o"},"name":"r"}' ;;
+  "api graphql") echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[{"project":{"number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Cancelled"}]}}]}}}}}' ;;
+  *) exit 0 ;;
+esac
+EOF
+      ;;
   esac
   chmod +x "$dir/bin/gh"
 
@@ -501,6 +516,26 @@ if grep -qE '(post_compact_[a-z_]+|state_root_(inaccessible|toctou_race)|pr_dele
   fail "happy path wrongly surfaced a reconciliation-failure WARNING (false positive): $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
 else
   pass "happy path surfaces no reconciliation-failure WARNING (negative control)"
+fi
+
+# TC-RECON-05b: board on the terminal Status Cancelled → no mismatch, no reconciliation.
+# The positive control is TC-RECON-06 below, which reaches the same code path from Todo
+# and does emit the mismatch line — so a failure here means the terminal exclusion was
+# dropped, not that the fixture never entered the block.
+echo "TC-RECON-05b: board Status=Cancelled → no mismatch, no reconciliation"
+recon_dir=$(_setup_recon_env "cancelled" "cancelled_terminal")
+recon_stderr="$(mktemp "$TEST_DIR/recon-cancelled-stderr.XXXXXX")"
+echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
+  | env PATH="$recon_dir/bin:$PATH" bash "$HOOK" >/dev/null 2>"$recon_stderr" || true
+if grep -qE 'post-compact mismatch detected' "$recon_stderr"; then
+  fail "Cancelled board wrongly treated as a Status mismatch: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+else
+  pass "Cancelled board is not reported as a mismatch"
+fi
+if grep -qE 'post-compact reconciliation (succeeded|jq payload build failed)|post_compact_reconciliation_failed' "$recon_stderr"; then
+  fail "reconciliation ran against a terminal Cancelled board: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
+else
+  pass "no reconciliation attempted for a terminal Cancelled board"
 fi
 
 # TC-RECON-06: reconcile failed → post_compact_reconciliation_failed hint

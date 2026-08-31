@@ -58,7 +58,7 @@ Variables use the following formats:
 
 | Variable | Description | Source | Example |
 |----------|-------------|--------|---------|
-| `{status}` | GitHub Projects status | Projects API | `Todo`, `In Progress`, `In Review`, `Done` |
+| `{status}` | GitHub Projects status | Projects API | `Todo`, `In Progress`, `In Review`, `Done`, `Cancelled` |
 | `{project_number}` | GitHub Projects project number | `rite-config.yml` or Projects API | `1` |
 | `{project_url}` | GitHub Projects URL | Projects API | `https://github.com/users/owner/projects/1` |
 | `{iteration_title}` | Iteration/Sprint title | Projects API iteration field | `Sprint 2026-02` |

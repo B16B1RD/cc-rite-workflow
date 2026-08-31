@@ -1,32 +1,38 @@
 #!/bin/bash
-# rite workflow - Projects Board "Done" Drift Check
+# rite workflow - Projects Board Terminal-Status Drift Check
 #
-# Reconciliation drift-guard for the "CLOSED but board != Done" gap.
-# A Done transition is only wired into /rite:cleanup and /rite:issue-close, but
+# Reconciliation drift-guard for the "CLOSED but board is not on a terminal Status" gap.
+# A Done transition is only wired into /rite:cleanup and /rite:issue-close — Cancelled has
+# no such producer, and this script's --reconcile is the only path that writes it. But
 # GitHub auto-closes Issues via a PR body "Closes #N" the moment the PR merges. When
 # /rite:cleanup is not run afterwards, the board freezes at its last value (In Review
 # for a ready Issue, Todo for an untouched one). No reconciliation picks these back up.
 #
 # This script scans recently-updated CLOSED Issues and reports the ones whose GitHub
-# Projects board Status is not "Done". It is a read-only detector by default (matching
-# the other hooks/scripts/*-check.sh lint checks); with --reconcile it drives
-# scripts/projects-status-update.sh to set Status to Done.
+# Projects board Status is not in the terminal Status set. It is a read-only detector by
+# default (matching the other hooks/scripts/*-check.sh lint checks); with --reconcile it
+# drives scripts/projects-status-update.sh to set the appropriate terminal Status.
 #
-# Closure-reason policy: the closure reason is not consulted. The board's Status field
-# has no Cancelled-equivalent terminal option, so a wontfix / duplicate closure has
-# nowhere to land other than Done — leaving it filtered out only strands it in a
-# non-terminal column that no reconciler ever revisits.
+# Closure-reason policy: the closure reason picks the destination. The terminal Status
+# set (Done for a COMPLETED closure, Cancelled for a NOT_PLANNED one) is defined in
+# references/projects-integration.md, section "Terminal Status Set" — a row already on
+# either value is finished and is never reported as drift, and a CLOSED row on any other
+# Status is reconciled to the terminal Status its stateReason names. Any reason outside
+# those two — an unclassified one, or a value like DUPLICATE that GitHub returns but this
+# check does not map — goes to Done with a WARNING rather than being left behind: an
+# unreconciled CLOSED Issue is the stall this check exists to clear, and the WARNING is
+# what keeps the unmapped destination from being a silent choice.
 #
 # On-board policy: an Issue that is not on the project board (no projectItem for the
 # configured project_number) is NOT a drift — there is no board Status to reconcile.
-# Only Issues that ARE on the board with Status != "Done" are reported.
+# Only Issues that ARE on the board with a non-terminal Status are reported.
 #
 # Usage:
 #   bash projects-board-drift-check.sh [options]
 #
 # Options:
 #   --dry-run     Report only; do not reconcile (default)
-#   --reconcile   Update each drifted Issue's Status -> "Done" via
+#   --reconcile   Update each drifted Issue's Status -> its terminal Status via
 #                 projects-status-update.sh (auto_add false / non_blocking true / 冪等).
 #                 Failures are logged but never block.
 #   --limit N     Maximum CLOSED Issues to scan, most-recently-updated first
@@ -46,6 +52,18 @@
 #   1  drift detected (warning, non-blocking in lint)
 #   2  invocation error (bad args, gh/network failure, malformed API response)
 set -euo pipefail
+
+# --- Terminal Status set ---
+# Source of truth: references/projects-integration.md, section "Terminal Status Set".
+# Hardcoded here on purpose: rite-config.yml's fields.status.options is not read by any
+# consumer, and making this check the first reader would turn a descriptive key into a
+# load-bearing one. Keep these two names in step with that section.
+TERMINAL_STATUS_DONE="Done"
+TERMINAL_STATUS_CANCELLED="Cancelled"
+# Sentinel the jq program emits for an unclassified closure reason (GraphQL stateReason
+# null). A literal empty TSV field would be indistinguishable from a parse slip, so the
+# absence gets a name the bash side can match on.
+NO_CLOSURE_REASON="<no-reason>"
 
 # --- Arg parse ---
 RECONCILE=false
@@ -69,18 +87,21 @@ while [ $# -gt 0 ]; do
     --quiet)     QUIET=true; shift ;;
     -h|--help)
       cat <<'USAGE_EOF'
-projects-board-drift-check.sh - Projects Board "Done" Drift Check
+projects-board-drift-check.sh - Projects Board Terminal-Status Drift Check
 
 Scans recently-updated CLOSED Issues and reports the ones whose GitHub Projects board
-Status is not "Done" — the symptom of a closure that never reached the board, such as a
-merge that auto-closed an Issue without /rite:cleanup running to set Done.
+Status is not in the terminal Status set (Done / Cancelled) — the symptom of a closure
+that never reached the board, such as a merge that auto-closed an Issue without
+/rite:cleanup running.
 
 Usage:
   bash projects-board-drift-check.sh [options]
 
 Options:
   --dry-run     Report only; do not reconcile (default)
-  --reconcile   Update each drifted Issue's Status -> "Done" via projects-status-update.sh
+  --reconcile   Update each drifted Issue's Status via projects-status-update.sh:
+                -> Cancelled for a NOT_PLANNED closure, -> Done for a COMPLETED one,
+                -> Done with a WARNING for any other closure reason
   --limit N     Maximum CLOSED Issues to scan, most-recently-updated first (default: 100)
   --quiet       Suppress stderr WARNING lines (stdout report still produced)
   -h, --help    Show usage
@@ -190,8 +211,11 @@ fi
 gql_err=$(mktemp "${TMPDIR:-/tmp}/rite-board-drift-gql-err-XXXXXX") || gql_err=""
 jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-board-drift-jq-err-XXXXXX") || jq_err=""
 
-# jq emits one TSV line per drifted Issue: number<TAB>status<TAB>title
-# Drift = on board (projectItem for $pn) AND Status != "Done".
+# jq emits one TSV line per drifted Issue:
+#   number<TAB>status<TAB>stateReason<TAB>title
+# Drift = on board (projectItem for $pn) AND Status is not in the terminal Status set.
+# stateReason rides along so the reconcile step below can pick the destination without a
+# second round trip; an unclassified reason arrives as $NO_CLOSURE_REASON.
 if ! DRIFT_TSV=$(set -o pipefail; gh api graphql -f query='
 query($owner: String!, $repo: String!, $first: Int!) {
   repository(owner: $owner, name: $repo) {
@@ -199,6 +223,7 @@ query($owner: String!, $repo: String!, $first: Int!) {
       nodes {
         number
         title
+        stateReason
         projectItems(first: 10) {
           nodes {
             project { number }
@@ -216,14 +241,18 @@ query($owner: String!, $repo: String!, $first: Int!) {
     }
   }
 }' -f owner="$REPO_OWNER" -f repo="$REPO_NAME" -F first="$LIMIT" 2>"${gql_err:-/dev/null}" \
-  | jq -r --argjson pn "$PROJECT_NUMBER" '
+  | jq -r --argjson pn "$PROJECT_NUMBER" \
+      --arg terminal_done "$TERMINAL_STATUS_DONE" \
+      --arg terminal_cancelled "$TERMINAL_STATUS_CANCELLED" \
+      --arg no_reason "$NO_CLOSURE_REASON" '
       .data.repository.issues.nodes[]
       | . as $i
       | (([$i.projectItems.nodes[] | select(.project.number == $pn)][0]) // null) as $pitem
       | select($pitem != null)
       | (([$pitem.fieldValues.nodes[] | select(.field.name == "Status") | .name][0]) // "<no-status>") as $st
-      | select($st != "Done")
-      | "\($i.number)\t\($st)\t\($i.title)"
+      | select($st != $terminal_done and $st != $terminal_cancelled)
+      | (($i.stateReason // $no_reason)) as $sr
+      | "\($i.number)\t\($st)\t\($sr)\t\($i.title)"
     ' 2>"${jq_err:-/dev/null}"); then
   echo "ERROR: gh api graphql or jq pipeline failed while scanning CLOSED Issues" >&2
   if [ -n "$gql_err" ] && [ -s "$gql_err" ]; then head -5 "$gql_err" | neutralize_ctrl --keep-newline | sed 's/^/  gh: /' >&2; fi
@@ -241,22 +270,41 @@ RECONCILED=0
 RECONCILE_FAILURES=0
 
 if [ -n "$DRIFT_TSV" ]; then
-  while IFS=$'\t' read -r issue_number status title; do
+  while IFS=$'\t' read -r issue_number status state_reason title; do
     [ -n "$issue_number" ] || continue
     DRIFT_COUNT=$((DRIFT_COUNT + 1))
+
+    # Destination comes from the closure reason (references/projects-integration.md,
+    # "Terminal Status Set"). Only the two reasons this check maps get a silent arm; every
+    # other value still goes to Done rather than being left on a non-terminal Status, but
+    # says so, because a reason that reaches the catch-all is one nobody has decided a
+    # destination for. GitHub's IssueStateReason carries values beyond the two mapped here
+    # (DUPLICATE among them), so the catch-all is a live path, not a defensive stub.
+    case "$state_reason" in
+      NOT_PLANNED) target_status="$TERMINAL_STATUS_CANCELLED" ;;
+      COMPLETED)   target_status="$TERMINAL_STATUS_DONE" ;;
+      "$NO_CLOSURE_REASON")
+        target_status="$TERMINAL_STATUS_DONE"
+        [ "$QUIET" = "true" ] || echo "projects-board-drift: WARNING #$issue_number closure reason is unavailable (stateReason null) — reconcile target: $TERMINAL_STATUS_DONE" >&2
+        ;;
+      *)
+        target_status="$TERMINAL_STATUS_DONE"
+        [ "$QUIET" = "true" ] || echo "projects-board-drift: WARNING #$issue_number closure reason \"$(printf '%s' "$state_reason" | neutralize_ctrl --c0-only)\" has no mapped terminal Status — reconcile target: $TERMINAL_STATUS_DONE" >&2
+        ;;
+    esac
 
     reconcile_suffix=""
     if [ "$RECONCILE" = "true" ]; then
       reconcile_err=$(mktemp "${TMPDIR:-/tmp}/rite-board-drift-reconcile-err-XXXXXX") || reconcile_err=""
       reconcile_json=$(bash "$PLUGIN_ROOT/scripts/projects-status-update.sh" "$(jq -n \
         --argjson issue "$issue_number" --arg owner "$REPO_OWNER" --arg repo "$REPO_NAME" \
-        --argjson project_number "$PROJECT_NUMBER" --arg status "Done" \
+        --argjson project_number "$PROJECT_NUMBER" --arg status "$target_status" \
         --argjson auto_add false --argjson non_blocking true \
         '{issue_number:$issue, owner:$owner, repo:$repo, project_number:$project_number, status_name:$status, auto_add:$auto_add, non_blocking:$non_blocking}')" 2>"${reconcile_err:-/dev/null}") || reconcile_json=""
       reconcile_result=$(printf '%s' "$reconcile_json" | jq -r '.result // "failed"' 2>/dev/null) || reconcile_result="failed"
       if [ "$reconcile_result" = "updated" ]; then
         RECONCILED=$((RECONCILED + 1))
-        reconcile_suffix=" -> reconciled to Done"
+        reconcile_suffix=" -> reconciled to $target_status"
       else
         RECONCILE_FAILURES=$((RECONCILE_FAILURES + 1))
         reconcile_suffix=" -> reconcile FAILED ($reconcile_result)"
@@ -280,13 +328,13 @@ if [ -n "$DRIFT_TSV" ]; then
       [ -n "$reconcile_err" ] && rm -f "$reconcile_err"; reconcile_err=""
     fi
 
-    echo "[projects-board-drift] #$issue_number \"$title\" status=\"$status\" (expected Done)$reconcile_suffix"
-    [ "$QUIET" = "true" ] || echo "projects-board-drift: WARNING #$issue_number CLOSED but board Status=\"$status\" (expected Done)" >&2
+    echo "[projects-board-drift] #$issue_number \"$title\" status=\"$status\" (expected $target_status)$reconcile_suffix"
+    [ "$QUIET" = "true" ] || echo "projects-board-drift: WARNING #$issue_number CLOSED but board Status=\"$status\" (expected $target_status)" >&2
   done <<< "$DRIFT_TSV"
 fi
 
 if [ "$DRIFT_COUNT" -gt 0 ] && [ "$RECONCILE" != "true" ]; then
-  echo "対処: 'bash $PLUGIN_ROOT/hooks/scripts/projects-board-drift-check.sh --reconcile' で Status を Done へ是正できます (または /rite:issue-close / /rite:cleanup を当該 Issue に対して実行)"
+  echo "対処: 'bash $PLUGIN_ROOT/hooks/scripts/projects-board-drift-check.sh --reconcile' で各行の (expected ...) が示す終端 Status へ是正できます (または /rite:issue-close / /rite:cleanup を当該 Issue に対して実行)"
 fi
 if [ "$RECONCILE" = "true" ]; then
   echo "reconcile summary: $RECONCILED updated, $RECONCILE_FAILURES failed"

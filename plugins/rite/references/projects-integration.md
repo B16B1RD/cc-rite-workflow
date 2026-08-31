@@ -297,6 +297,35 @@ Parent Issue Status update failure does **not** block the start of work. Each st
 | 2.4.7.4 | field-list fails | Display `警告: Status フィールド情報の取得に失敗しました` and skip |
 | 2.4.7.4 | item-edit fails | Display `警告: 親 Issue #{parent_issue_number} の Status 更新に失敗しました` and continue |
 
+### 2.4.8 Terminal Status Set
+
+**Single source of truth** for which board Status values mean "this Issue is finished and no reconciler may move it again". The consumers listed below copy these two names from here and cite this section when they do; none of them define their own set.
+
+| Status | Meaning | Closure reason it maps from (`stateReason`) |
+|--------|---------|----------------------------------------------|
+| `Done` | Work completed | `COMPLETED` |
+| `Cancelled` | Work abandoned — closed as not planned (wontfix, superseded) | `NOT_PLANNED` |
+
+Two rules follow from this set, and both are load-bearing:
+
+1. **A row already on a terminal Status is never drift.** The consumers below skip it entirely. An Issue deliberately parked at `Cancelled` must not be dragged to `Done`, and vice versa — the operator's choice between the two carries information that the automation cannot reconstruct.
+2. **A CLOSED Issue on a non-terminal Status is drift, and its destination comes from `stateReason`.** `NOT_PLANNED` lands on `Cancelled`, `COMPLETED` on `Done`. Every other value lands on `Done` **with a WARNING** — that includes both a reason the API leaves unset and `DUPLICATE`, which GitHub's `IssueStateReason` carries but this mapping does not claim. Leaving such a row alone is not an option: a CLOSED Issue stranded in `Todo` or `In Review` is exactly the stall this reconciliation exists to clear. Whether `DUPLICATE` should map to `Cancelled` instead is an open question — the WARNING is what keeps it from being answered by silence.
+
+`Cancelled` is an English literal. `projects-status-update.sh` matches the board's Status option names literally (it has no alias table of its own — the field-name aliases live in `scripts/create-issue-with-projects.sh`), so a board whose Status field lacks a `Cancelled` option fails the option-ID lookup and surfaces through that helper's normal failure path. **rite has no path that creates the option**: `/rite:setup` provisions `Todo` / `In Progress` / `In Review` / `Done` only, and the `fields.status.options` key in `rite-config.yml` is descriptive — no consumer reads it. On such a board a `NOT_PLANNED` row therefore stays non-terminal, and the next drift check reports it again.
+
+**Consumers** (each references this section by name, never by line number):
+
+| Consumer | How it uses the set |
+|----------|---------------------|
+| `hooks/scripts/projects-board-drift-check.sh` | Excludes terminal rows from drift detection; picks the reconcile destination from `stateReason` |
+| `hooks/post-compact.sh` | Excludes terminal rows from the PR Status reconciliation mismatch check |
+| `hooks/scripts/projects-status-gate.sh` | Reports a terminal `Cancelled` as an abandoned Issue rather than a dropped transition |
+| `skills/lint/references/plugin-checks-rationale.md` | Documents why the drift check consults the closure reason |
+
+**Known non-conforming paths.** Rule 1 binds the consumers above, not every write to the board. `projects-status-update.sh` does not query `fieldValues`, so it cannot guard on the current Status — and every path that writes `Done` through it inherits that, and will overwrite a `Cancelled` row. `/rite:issue-close` and `/rite:cleanup` both do (each names its own call sites in its skill). Bringing them under rule 1 needs a read-before-write in the helper and is out of scope here; it needs its own Issue.
+
+Progress ordering (`Todo` → `In Progress` → `In Review` → `Done`) is a separate concept. `Cancelled` has no position in it and must not be given one — an Issue that was abandoned has not "reached" any progress stage, and ranking it would let a stage check read a cancelled Issue as having advanced.
+
 ## 2.5 Iteration Assignment (Optional)
 
 Execute only when `iteration.enabled` is `true` and `iteration.auto_assign` is `true` in `rite-config.yml`:
