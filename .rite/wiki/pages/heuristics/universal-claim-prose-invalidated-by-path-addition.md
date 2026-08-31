@@ -23,14 +23,18 @@ sources:
     resource: "raw/reviews/20260830T043014Z-pr-2475.md"
   - type: "reviews"
     resource: "raw/reviews/20260830T044223Z-pr-2475.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260831T074623Z-pr-2494.md"
 tags: ["comment-rot", "cause-neutral", "exclusivity-claim", "doc-sync", "not-grep-pin", "quantifier-strengthening", "birth-defect"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T04:57:39Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-08-31T14:09:34Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-29T11:40:00+09:00"
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T04:57:39Z"
+  - by: "rite-wiki-ingest/claude-opus-5"
+    at: "2026-08-31T14:09:34Z"
 ---
 
 # 全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin
@@ -70,6 +74,22 @@ verified:
 
 この形は cycle 1 のレビューで両 reviewer が推奨事項として挙げ、blocking fix と同じ文の中で同時に直した。cycle 2 の Over-fix Check は「新しい契約もガードも増えず net-flat、かつ過剰主張が減る方向」として over-fix ではないと判定した。
 
+### 無条件主張を直した修正文が、別の無条件主張になる
+
+もっとも見落としやすい形は、**限定を求められた修正そのものが新しい全称主張を持ち込む**ケースである。「両方の終端値に到達可能」という無条件性を直した文の末尾が「誰かが手で option を足すまで報告され続ける」という別の無条件主張になっていた。実際の走査は `--limit` 既定 100 の単一ページで、reconcile 失敗時は当該 Issue の `updatedAt` が進まないため、他の CLOSED Issue が 100 件更新された時点で窓から静かに外れて報告が止まる。**終了条件を人手操作だけに固定した時点で、有界窓の存在が反例になっていた**。
+
+同じ PR の姉妹文（派生 rationale 側）は「次回の実行で再び報告される」と正しく弱く書かれており、SoT 側だけが過剰主張していた。**限定句を足す修正では、置き換え後の文にも同じ検査をかける**。cycle 1 で潰した欠陥クラスが cycle 2 の修正文で再生産されるのは、検査対象が「元の文」で止まっているためである。
+
+### 件数を断定する列挙は、根拠が構造的なら必ず破れる
+
+「N 個の経路が無条件に X を書く」と件数で閉じる列挙は、その**根拠が構造的**であるとき必ず破れる。起点事例では「Two documented paths が無条件 Done を書く」と数えたが、段落自身が挙げる根拠（委譲先 helper が現在値を読まない）は**helper の性質**であり、その helper を呼ぶ全 caller が継承する。実数は 6 だった。4 reviewer が独立に到達。
+
+対処は列挙を長くすることではなく、**根拠の帰属先で書くこと**: 「`X.sh` は現在値を問い合わせないため、同 helper 経由で書く全経路がこの規則の外にある」と述べれば列挙自体が不要になり、caller が増えても文は真のまま残る。件数で閉じるのは、根拠が**その N 個に固有**であることを確認できたときだけにする（[「網羅」を主張する列挙は grep 全数棚卸し + scope note で構造的に収束させる](./exhaustiveness-claims-require-mechanical-inventory.md)）。
+
+### 語彙を変えたら同じ語彙の全 hit を sweep する
+
+SoT の定義から 1 語（`duplicate`）を外したが、同じ SoT の Consumers 表に載っている consumer script の user-facing WARNING に旧語彙が残り、**新旧 2 版を同時に配布する状態**になった。3 reviewer が独立到達。一般化を戻す方向も同型で、`A terminal transition` → `A Done transition` の差し戻しを派生 rationale だけに適用し、同文を持つ script header を取り残した。**1 箇所を直した時点で `git grep` を引き、同じ文・同じ列挙の全コピーを当たる**。
+
 ### 管轄が別 Issue の Non-Target ドキュメント
 
 drift 先が Issue の Non-Target（別 Issue の管轄と明記）である場合は、本 PR で触らず**管轄 Issue へコメントで申し送りを配線**する。新規起票は重複になる。握り潰しにならないよう、完了報告にも明示する。
@@ -92,3 +112,4 @@ drift 先が Issue の Non-Target（別 Issue の管轄と明記）である場�
 - [PR #2464 fix results (NB sweep — アンカーを持てない散文 drift の消化経路)](../../raw/fixes/20260829T142223Z-pr-2464.md)
 - [PR #2475 review cycle 1 (括弧で列挙を添えた全称量化が執筆時点から偽だった)](../../raw/reviews/20260830T043014Z-pr-2475.md)
 - [PR #2475 review cycle 2 (同一文への「ついでの限定」は over-fix ではないと判定)](../../raw/reviews/20260830T044223Z-pr-2475.md)
+- [PR #2494 review cycle 2 (無条件主張を直した修正文が別の無条件主張になる / 件数断定の列挙は構造的根拠で破れる)](../../raw/reviews/20260831T074623Z-pr-2494.md)
