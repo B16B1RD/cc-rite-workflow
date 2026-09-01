@@ -19,9 +19,15 @@ sources:
     resource: "raw/fixes/20260805T025341Z-pr-2112.md"
   - type: "reviews"
     resource: "raw/reviews/20260813T090426Z-pr-2304.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260901T225105Z-pr-2503.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260901T230359Z-pr-2503.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-13T19:20:00+09:00" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
 ---
 
 # エラーを 1 つの reason へ畳むときは「原因の類型」が同じかを確かめる — 復旧手順が違うなら分ける
@@ -97,6 +103,10 @@ id が指す先を取得できない理由のうち、404（削除済み）だ�
 
 分岐を 1 本足したら、**既存の観測 marker の発火条件マトリクスに新分岐の行を足して空欄が無いか確認する**。埋められない空欄が出たら、それはガードを足すサインではなく分岐を畳むサインである。
 
+### jq 失敗をファイル不在へ畳むと recover 誘導になる
+
+state ファイルの読み取りで jq 失敗とファイル不在を同じ空値へ畳むと、復旧案内が `/rite:recover` へ倒れる。ファイルは存在するがパースできない状態は recover では直らず、案内が誤りになる。jq 失敗とファイル不在は復旧手順が違うので reason を分ける。破損時は recover 文を出さず「稼働判定ができません」と止める。
+
 ### 畳んだ else が「事実に反する原因」を名乗る
 
 同じ穴は、新設した契約ケースの診断でも開く。日英 2 系統のレンダリング先を検証するケースで、
@@ -127,3 +137,5 @@ id が指す先を取得できない理由のうち、404（削除済み）だ�
 - [PR #2112 review results（新分岐 recreate が既存の観測機構と交差して 3 つの無音縮退を生んだことを検出）](../../raw/reviews/20260805T022816Z-pr-2112.md)
 - [PR #2112 fix results（ガードを 3 本足さず分岐を 1 本削除し、reason 8 種に対し action を 1 種へ畳んだ）](../../raw/fixes/20260805T025341Z-pr-2112.md)
 - [PR #2304 review results (cycle 3 で新設した契約ケースが「非ゼロ終了」と「完了診断なし」を同じ else へ畳んだ)](../../raw/reviews/20260813T090426Z-pr-2304.md)
+- [PR #2503 review results](../../raw/reviews/20260901T225105Z-pr-2503.md)
+- [PR #2503 fix results](../../raw/fixes/20260901T230359Z-pr-2503.md)

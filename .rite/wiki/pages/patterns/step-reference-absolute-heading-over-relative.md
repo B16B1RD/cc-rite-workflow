@@ -10,9 +10,13 @@ sources:
     resource: "raw/reviews/20260712T133608Z-pr-1835.md"
   - type: "fixes"
     resource: "raw/fixes/20260712T133936Z-pr-1835.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260901T140807Z-pr-2500.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-12T22:55:00+09:00" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
 ---
 
 # Step 番号参照は relative (Step N + 1) ではなく absolute (heading title 名 + Step 番号) で書く
@@ -38,6 +42,7 @@ prompt / 文書内で「Step 2/3 を skip」「次の Step」のような relati
 ### 適用範囲
 
 - prompt 内の「次の Step」「上記 Step」「直前 Step」等の relative 表現
+- 判定表の行に序数で隣接行を参照する形（`in_worktree` 行にステップを 1 つ挿入したら、それを「1〜2 をスキップ」と参照していた `in_main` 行の意味が黙って変わる）。ステップ参照は序数ではなく手順名で書く。全経路が通るべきガードは判定表の行に置かず、表の外の無条件前段に置く
 - review feedback の Step 参照 (例: 「F-03 で fix したように」ではなく「F-03 'XYZ 集約' で fix したように」)
 - commit message / Issue body 内の Step 参照
 
@@ -63,3 +68,4 @@ canonical fix と検証手順:
 ## ソース
 
 - [PR #688 review 記録 (cycle 49 H-1 Self-defeating defense Step number off-by-one drift)](../../raw/reviews/20260430T005759Z-pr-688.md)
+- [PR #2500 review results (cycle 2)](../../raw/reviews/20260901T140807Z-pr-2500.md)

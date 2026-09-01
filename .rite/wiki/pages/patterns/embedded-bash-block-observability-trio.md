@@ -16,9 +16,15 @@ sources:
     resource: "raw/reviews/20260517T004634Z-pr-1004.md"
   - type: "fixes"
     resource: "raw/fixes/20260517T020335Z-pr-1004.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260901T160818Z-pr-2500.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260901T162955Z-pr-2500.md"
 tags: ["embedded-bash", "pipefail", "stderr-attribution", "observability", "root-cause-attribution", "silent-suppression"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-22T22:54:19Z" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
 ---
 
 # Embedded markdown bash block の observability 三要素 (pipefail 宣言 + stderr stage 分離 + cd 失敗可視化)
@@ -44,6 +50,10 @@ fi
 `set -o pipefail` を宣言していない場合、最終 stage (`jq`) の exit code が pipeline 全体の exit code となり、`cmd` (例: `gh repo view`) が失敗しても pipeline は exit 0 で「成功」扱いになる。累積 32 回目の cycle 2 で start.md / start-finalize.md / post-compact.sh の embedded bash が同型の `if gh ... | jq` を持ち、gh failure が silent に jq 出力 (null) で吸収される経路を 3 reviewer 独立検出。
 
 **canonical 対策**: bash block 冒頭で `set -euo pipefail` を宣言する。`set -e` 単独では pipeline の中間段失敗を捕捉しないため、`-o pipefail` の併用が必須。
+
+埋め込み bash block は Bash tool 呼び出しごとに `pipefail` OFF の fresh shell で起動するため、この経路は既定で開いている。`var=$(cmd | sort) || rc=$?` の rc は最終段のもので、`sort` は空入力でも 0 を返す。直後の fail-loud `exit 1` が dead code 化し、「取得失敗」が「0 件 = 該当なし」へ畳まれる。同 block の 1 行下に「0 件と取得失敗を同じ値へ畳まない」と自己宣言があっても、bash 側がそうなっていなければ意味を持たない。
+
+修正は rc を持つコマンドをパイプから外す capture-first（`raw=$(cmd)` → `rc=$?` → 整形は後段）。`set -o pipefail` を block 冒頭へ置く形でも rc は伝播するが、capture-first なら pipefail の有無に依存しない。
 
 #### 2. Stderr stage 分離 (pipe 各段の attribution)
 
@@ -159,3 +169,5 @@ Projects Status In Review 遷移漏れを修正した PR の review-fix loop で
 - [PR #1004 cycle 3 fix (stderr stage separation / sub-shell scope-internal retrieval / state_root_inaccessible emit)](../../raw/fixes/20260517T020335Z-pr-1004.md)
 - [PR #1973 cycle 3 review — 5 reviewer 独立検出: 明示的な `if [ $? -ne 0 ]` チェックが Bash tool の per-invocation pipefail-off により dead code 化)](../../raw/reviews/20260722T221143Z-pr-1973.md)
 - [PR #1973 cycle 3 fix (capture-first pattern で pipefail 非依存の exit code チェックに修正)](../../raw/fixes/20260722T221542Z-pr-1973.md)
+- [PR #2500 review results](../../raw/reviews/20260901T160818Z-pr-2500.md)
+- [PR #2500 fix results](../../raw/fixes/20260901T162955Z-pr-2500.md)

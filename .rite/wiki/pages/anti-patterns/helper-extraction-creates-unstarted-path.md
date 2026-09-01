@@ -4,14 +4,20 @@ title: "インライン処理の helper 抽出は「helper が起動しない」
 domain: "anti-patterns"
 description: "インライン bash を helper へ切り出すと、抽出前には存在しなかった「呼び出しに到達したが helper が走らなかった」経路（rc=127 の欠落・rc=126 の非可読・usage error・path placeholder の未解決置換）が新たに生まれる。呼び出し側が rc を捨てると marker が 1 本も出ず、消費側が marker 不在を成功と読む設計なら未実行が完了として報告される。"
 created: "2026-09-01T20:25:00+09:00"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-01T20:25:00+09:00" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260901T053153Z-pr-2498.md"
   - type: "fixes"
     resource: "raw/fixes/20260901T055639Z-pr-2498.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260901T160818Z-pr-2500.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260901T162955Z-pr-2500.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
 ---
 
 # インライン処理の helper 抽出は「helper が起動しない」経路を新設し、marker 不在＝成功の消費規則を破る
@@ -48,6 +54,8 @@ fi
 
 **fail-loud の追加は消費規則とセットで設計する**: 抽出のついでに helper へ引数の必須検証（usage error）を足すと、抽出前は正常に処理していた入力（呼び出し側が公式にサポートする状態、例: Issue 番号が未識別で空を渡す経路）が marker なしで落ちる。fail-loud それ自体は正しい方向だが、呼び出し側の「その入力は正常系」という契約と衝突すれば挙動退行になる。検証を足すなら、その入力が正常系かどうかを呼び出し側の契約で先に確定させる。
 
+**非ブロッキング helper を rc だけで判定すると残置が完了として報告される。** 「全運用経路で rc=0、部分失敗は marker のみ」契約の helper（`cleanup-pr-state-purge.sh` / `flow-state.sh reap-issue`）は `REVIEW_CLEANUP_PARTIAL_FAILURE=1` や専用 WARNING 行でしか失敗を通知しない。新しい呼び出し側を書くときは、同じ helper を呼ぶ hardened sibling の判定表を必ず突き合わせる。marker 判定を持たない caller が増えると、sibling が持つ検出がその caller でだけ失われる。helper が弾いた入力クラスに対して呼び出し側が直接破壊的操作へ進むのも同型で、marker family の一部だけを見て残りを無視すると helper の fail-fast が無効化される。marker 不在を「成功」と読まない。
+
 ## 関連ページ
 
 - [Exit code semantic preservation: caller は case で語彙を保持する](../patterns/exit-code-semantic-preservation.md)
@@ -58,3 +66,5 @@ fi
 
 - [PR #2498 review results](../../raw/reviews/20260901T053153Z-pr-2498.md)
 - [PR #2498 fix results](../../raw/fixes/20260901T055639Z-pr-2498.md)
+- [PR #2500 review results](../../raw/reviews/20260901T160818Z-pr-2500.md)
+- [PR #2500 fix results](../../raw/fixes/20260901T162955Z-pr-2500.md)

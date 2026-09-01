@@ -10,6 +10,10 @@ sources:
   - type: "fixes"
     resource: "raw/fixes/20260722T213801Z-pr-1973.md"
   - type: "reviews"
+    resource: "raw/reviews/20260901T165319Z-pr-2500.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260901T170748Z-pr-2500.md"
+  - type: "reviews"
     resource: "raw/reviews/20260706T175107Z-pr-1771.md"
   - type: "fixes"
     resource: "raw/fixes/20260706T175443Z-pr-1771.md"
@@ -33,7 +37,9 @@ sources:
     resource: "raw/fixes/20260526T183041Z-pr-1155-cycle2-fix.md"
 tags: ["bash", "mktemp", "disk-full", "inode-exhaustion", "observability", "silent-fallback", "awk", "test-helper", "flatten-refactor-regression"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-22T22:54:19Z" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
 ---
 
 # mktemp 失敗は silent 握り潰さず WARNING を可視化する
@@ -73,6 +79,12 @@ fi
 - 操作者に root cause を伝える（inode / FS / permission の 3 候補）
 - `[CONTEXT]` sentinel で機械可読な failure flag を emit する
 - `git_err=""` で後続の fallback 経路は維持（best-effort continuation）
+
+### 縮退が「成功」を宣言する経路
+
+WARNING を出しただけでは足りない形がある。`_err=$(mktemp) || _err=""` → `2>"${_err:-/dev/null}"` → `elif [ -n "$_err" ] && grep -q ...` の形は、mktemp 失敗時に (a) helper stderr を破棄し (b) 判定を短絡し (c) `else` の「成功」へ落ちる。塞ごうとした当の欠陥を観測層自身が再生産する。同じ diff 内の別ブロックが同一の mktemp 失敗を `exit 1` で fail-loud にしているなら、非対称は設計判断ではなく取り残しである。
+
+捕捉層を持たなければこの縮退は存在しない。sibling が stderr を素通しして判定を読み手に委ねているのは、この理由で正しい。捕捉を書いたら「この経路で何が観測できなくなるか」を 1 行で言えるかを検算する。
 
 ### `exec 9>...` の hard fail との区別
 
@@ -266,3 +278,5 @@ fi
 - [PR #1771 cycle 1 fix (grep rc を明示 capture し rc>1 で exit 2、I1/I2 と対称なガードに修正)](../../raw/fixes/20260706T175443Z-pr-1771.md)
 - [PR #1973 cycle 1 review — 既存 helper `git-status-filtered.sh` への新規呼び出し経路が exit code チェックを欠落、error-handling reviewer が CRITICAL / 他 3 reviewer が non-blocking の cross-validation 対立](../../raw/reviews/20260722T212955Z-pr-1973.md)
 - [PR #1973 cycle 1 fix (実機 revert test で TMPDIR 書込制限下の mktemp 失敗を再現し error-handling の主張を実証、exit code チェック + WARNING + 空文字列 fallback で修正)](../../raw/fixes/20260722T213801Z-pr-1973.md)
+- [PR #2500 review results (cycle 2)](../../raw/reviews/20260901T165319Z-pr-2500.md)
+- [PR #2500 fix results (cycle 2)](../../raw/fixes/20260901T170748Z-pr-2500.md)

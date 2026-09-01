@@ -1,3 +1,18 @@
+## 2026-09-02
+* **Create**: [gh のフィルタオプションは絞り込めていないのに成功して見える](pages/anti-patterns/gh-filter-succeeds-without-filtering.md) — raw/reviews/20260901T133013Z-pr-2500.md, raw/reviews/20260901T140807Z-pr-2500.md, raw/fixes/20260901T134035Z-pr-2500.md を新規ページ化
+* **Create**: [二重引用符と -- は argv 分割にしか効かず、展開はパース時に終わっている](pages/anti-patterns/quotes-do-not-stop-expansion.md) — raw/reviews/20260901T180132Z-pr-2500.md, raw/reviews/20260901T140807Z-pr-2500.md, raw/fixes/20260901T180942Z-pr-2500.md を新規ページ化
+* **Create**: [成功経路にも出る prefix を失敗の判別子にしてはならない](pages/anti-patterns/success-path-prefix-as-failure-detector.md) — raw/reviews/20260901T165319Z-pr-2500.md, raw/fixes/20260901T170748Z-pr-2500.md を新規ページ化
+* **Create**: [Issue 番号を引数で受ける入口は、対象の同定をセッション前提からやり直す](pages/heuristics/entry-taking-issue-number-must-reidentify.md) — raw/reviews/20260901T133013Z-pr-2500.md, raw/reviews/20260901T225105Z-pr-2503.md, raw/fixes/20260901T134035Z-pr-2500.md, raw/fixes/20260901T230359Z-pr-2503.md を新規ページ化（promote: rite-plugin）
+* **Create**: [レビュアー選定は毎 cycle 回す — 前 cycle の cap 除外を次へ持ち越さない](pages/heuristics/rerun-reviewer-selection-every-cycle.md) — raw/reviews/20260901T180132Z-pr-2500.md を新規ページ化（promote: rite-plugin）
+* **Update**: [機構を畳んだら、その機構のために作った付随物も同時に畳む — 名前を変えて残すと動機を失った構造だけが次の欠陥面になる](pages/heuristics/teardown-mechanism-with-its-accessories.md) — raw/reviews/20260901T173133Z-pr-2500.md, raw/fixes/20260901T173714Z-pr-2500.md を統合（bash から prose へ畳むときも入力の行き先を数える裏返しを追記）
+* **Update**: [mktemp 失敗は silent 握り潰さず WARNING を可視化する](pages/patterns/mktemp-failure-surface-warning.md) — raw/reviews/20260901T165319Z-pr-2500.md, raw/fixes/20260901T170748Z-pr-2500.md を統合（mktemp 失敗が判定を短絡して成功へ落ちる縮退を追記）
+* **Update**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — raw/reviews/20260901T140807Z-pr-2500.md, raw/reviews/20260901T165319Z-pr-2500.md, raw/reviews/20260901T173133Z-pr-2500.md, raw/reviews/20260901T225105Z-pr-2503.md を統合（部分文字列関係の空振り、negative control の行スコープ盲点、positive pin を追記）
+* **Update**: [インライン処理の helper 抽出は「helper が起動しない」経路を新設し、marker 不在＝成功の消費規則を破る](pages/anti-patterns/helper-extraction-creates-unstarted-path.md) — raw/reviews/20260901T160818Z-pr-2500.md, raw/fixes/20260901T162955Z-pr-2500.md を統合（非ブロッキング helper を rc だけで判定すると残置が完了として報告される形を追記）
+* **Update**: [Embedded markdown bash block の observability 三要素 (pipefail 宣言 + stderr stage 分離 + cd 失敗可視化)](pages/patterns/embedded-bash-block-observability-trio.md) — raw/reviews/20260901T160818Z-pr-2500.md, raw/fixes/20260901T162955Z-pr-2500.md を統合（pipefail OFF 既定の skill bash で capture-first が要る形を追記）
+* **Update**: [エラーを 1 つの reason へ畳むときは「原因の類型」が同じかを確かめる — 復旧手順が違うなら分ける](pages/heuristics/error-classification-by-cause-not-detection-site.md) — raw/reviews/20260901T225105Z-pr-2503.md, raw/fixes/20260901T230359Z-pr-2503.md を統合（jq 失敗をファイル不在へ畳むと recover 誘導になる形を追記）
+* **Update**: [Step 番号参照は relative (Step N + 1) ではなく absolute (heading title 名 + Step 番号) で書く](pages/patterns/step-reference-absolute-heading-over-relative.md) — raw/reviews/20260901T140807Z-pr-2500.md を統合（判定表の行に序数で隣接行を参照する形を追記）
+* **Skip**: [20260901T233050Z-pr-2503.md](raw/reviews/20260901T233050Z-pr-2503.md) — 一時的な 0-finding レビュー記録。blocking 解消の確認のみで新規経験則なし
+
 ## 2026-09-01
 * **Create**: [インライン処理の helper 抽出は「helper が起動しない」経路を新設し、marker 不在＝成功の消費規則を破る](pages/anti-patterns/helper-extraction-creates-unstarted-path.md) — raw/reviews/20260901T053153Z-pr-2498.md, raw/fixes/20260901T055639Z-pr-2498.md を新規ページ化
 * **Create**: [実装が Issue の MUST と原則の両方に挟まれたら、実装を戻さず契約側（Decision Log と AC の例外）を更新する](pages/heuristics/contract-update-over-revert-on-must-conflict.md) — raw/reviews/20260901T092252Z-pr-2498.md, raw/fixes/20260901T092936Z-pr-2498.md, raw/reviews/20260901T095150Z-pr-2498.md を新規ページ化

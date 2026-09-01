@@ -10,9 +10,15 @@ sources:
     resource: "raw/fixes/20260829T185642Z-pr-2468.md"
   - type: "fixes"
     resource: "raw/fixes/20260829T191402Z-pr-2468.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260901T173133Z-pr-2500.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260901T173714Z-pr-2500.md"
 tags: ["mechanism-teardown", "marker-contract", "dead-structure", "coverage-migration", "simplification-first"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-08-30T05:20:00Z" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
 ---
 
 # 機構を畳んだら、その機構のために作った付随物も同時に畳む — 名前を変えて残すと動機を失った構造だけが次の欠陥面になる
@@ -72,6 +78,12 @@ marker を廃止したとき、その marker が拾っていた経路は「marke
 | 照合規約 | marker 値の照合は区切り文字まで含めた完全一致。前方一致を既定にしない |
 | 兄弟分岐 | 同型の兄弟分岐と扱いを突き合わせ、新設・改変分岐だけが非対称にならないようにする |
 
+### 判定を bash から prose へ移すときも、入力の行き先を数える
+
+機構を足して直すのではなく畳んで直す cycle でも、同じ穴が開く。旧 bash が持っていた `rc≠0 → failed → 完了報告へ列挙` という写像を prose 化した規則が、判定母集団を `WARNING: reap-issue:` 接頭辞行に限定したため、helper が起動せず接頭辞行を 1 本も出さない経路（rc=127 級）だけが規則の外へ抜けた。
+
+**「機構を畳んだら付随物も畳む」の裏返し** — 畳むときは「消したものが受けていた入力の行き先」も設計対象になる。畳む前の bash が持っていた分岐（rc / marker / 正常）を表に書き出し、畳んだ後の prose がその全行に行き先を与えているかを突き合わせる。同一コミット内の sibling 節が同じ選言を持っているのに当該節だけ持たない非対称は、設計判断ではなく取り残しである証拠になる。
+
 ## 関連ページ
 
 - [不正入力は「落とす」より「無害化して残す」— 落とす設計は件数報告という第 2 の機構を要求する](./neutralize-invalid-input-instead-of-dropping.md)
@@ -81,3 +93,5 @@ marker を廃止したとき、その marker が拾っていた経路は「marke
 
 - [PR #2468 fix results (cycle 4)](../../raw/fixes/20260829T185642Z-pr-2468.md)
 - [PR #2468 fix results (cycle 5)](../../raw/fixes/20260829T191402Z-pr-2468.md)
+- [PR #2500 review results (cycle 3)](../../raw/reviews/20260901T173133Z-pr-2500.md)
+- [PR #2500 fix results (cycle 3)](../../raw/fixes/20260901T173714Z-pr-2500.md)

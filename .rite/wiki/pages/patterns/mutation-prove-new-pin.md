@@ -4,7 +4,6 @@ title: "追加した pin は、その pin が守ると主張する変異を 1 �
 domain: "patterns"
 description: "非回帰 pin を足した直後に、当の欠陥へ戻す変異を一時コピーへ当てて当該 assert だけが赤くなることを確かめる。prefix 一致の pin や、守るべき値ではなく行の存在だけを見る pin は、変異を当てるまで無害に見え、当てた瞬間に無力だと分かる。"
 created: "2026-09-01T20:27:00+09:00"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-01T20:27:00+09:00" }
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260901T092936Z-pr-2498.md"
@@ -12,8 +11,19 @@ sources:
     resource: "raw/reviews/20260901T095150Z-pr-2498.md"
   - type: "reviews"
     resource: "raw/reviews/20260901T110702Z-pr-2498.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260901T140807Z-pr-2500.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260901T165319Z-pr-2500.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260901T173133Z-pr-2500.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260901T225105Z-pr-2503.md"
 tags: []
 confidence: high
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
 ---
 
 # 追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない
@@ -43,6 +53,12 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 
 **「件数だけの pin」は配線を守らない**: 抽出の完了ゲートを helper 呼び出しの**件数**で pin すると、呼び出しの引数を literal へ潰す変異が素通りする。引数がガードを駆動する入力である場合、件数の pin は「配線は検査済み」という false confidence を生む。観測された事例の mutation では 3 変異すべてがスイート全体 green だった。
 
+**部分文字列関係（`X` ⊂ `REMOTE_X`）は pin の空振り源**: `BRANCH_CHECK_FAILED` は同一セクションの `REMOTE_BRANCH_CHECK_FAILED` に部分文字列一致し、規則を削除しても反転しても緑。pin は規則の述語まで含めた 1 行 literal にアンカーする。golden / byte-identical を主張する fixture を部分文字列で自己参照する形も同じ穴で、期待値そのものが pin 対象に含まれる。
+
+**negative control は行スコープの盲点を持つ**: `grep` は行単位なので、`<helper>.*2>"$` の形は helper 名とリダイレクトが同一物理行にある場合しか赤くしない。長い helper 呼び出しを `\` で折るのが家風のリポジトリでは、退行が取る自然な形がちょうど死角に入る。negative control の積み増しではなく、呼び出し行そのものを固定する positive pin（`^bash <helper> ... 2>&1`）を置く。cycle 2 で同じ欠陥クラスを潰した修正が、その修正で導入した control に同じ盲点を持っていた。
+
+禁止したい退行を**別名で**隔離コピーへ再投入し、それでも赤くなることを確認する。名前を変えただけで緑になるなら、その assertion は名前に束縛されている。赤くならなければその assertion は削除するのが正しい。
+
 ## 関連ページ
 
 - [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](./absence-pin-base-present-head-absent-single-line.md)
@@ -53,3 +69,7 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 - [PR #2498 fix results](../../raw/fixes/20260901T092936Z-pr-2498.md)
 - [PR #2498 review results (cycle 2)](../../raw/reviews/20260901T095150Z-pr-2498.md)
 - [PR #2498 review results (cycle 5)](../../raw/reviews/20260901T110702Z-pr-2498.md)
+- [PR #2500 review results (cycle 2)](../../raw/reviews/20260901T140807Z-pr-2500.md)
+- [PR #2500 review results (cycle 2)](../../raw/reviews/20260901T165319Z-pr-2500.md)
+- [PR #2500 review results (cycle 3)](../../raw/reviews/20260901T173133Z-pr-2500.md)
+- [PR #2503 review results](../../raw/reviews/20260901T225105Z-pr-2503.md)
