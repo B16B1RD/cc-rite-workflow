@@ -8,6 +8,7 @@
 * **Update**: [`if ! cmd; then rc=$?` は常に 0 を捕捉する](pages/anti-patterns/bash-if-bang-rc-capture.md) — raw/reviews/20260901T092252Z-pr-2498.md, raw/fixes/20260901T092936Z-pr-2498.md を統合（repo 走査時の判別子は「then 節で `$?` を読んでいるか」で候補 30 件超が 1 件に落ちること、直し方は変数追加ではなく `!` の削除で sibling の形へ寄せること、テスト側 pin を prefix ではなく値で置くことを追記）
 * **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/reviews/20260901T110702Z-pr-2498.md, raw/reviews/20260901T092252Z-pr-2498.md を統合（鏡像の失敗として「兄弟を統一する」修正が非対称な site まで塗る over-fix、既存の対称性そのものが漏れの検出手掛かりになること、移設時は旧位置を指す表現で逆向きに grep することを追記）
 * **Update**: [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md) — raw/reviews/20260901T053153Z-pr-2498.md, raw/fixes/20260901T055639Z-pr-2498.md を統合（marker 名前空間での同型として、消費側が glob で family を絞るなら prefix 共有時点で分離は成立せず未定義状態を作ることを追記）
+* **lint:clean** — contradictions=0, stale=49, orphans=0, missing_concept=0, unregistered_raw=402, broken_refs=0
 
 ## 2026-08-31
 * **Create**: [外部 API の enum を散文へ写す前に値域を introspection で実測する](pages/heuristics/external-api-enum-domain-introspect-before-prose.md) — raw/reviews/20260831T071720Z-pr-2494.md を新規ページ化
