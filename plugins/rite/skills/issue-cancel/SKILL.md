@@ -43,9 +43,11 @@ rationale: references/rationale.md#no-reconfirm
 | `{cancel_reason}` | Phase 1 で確定した中止理由 |
 | `{reason_file}` | Phase 1 で理由本文を書き出した一時ファイルの path |
 | `{pr_number}` | Phase 2 で検出した open PR の番号（未検出時は substitute しない） |
-| `{branch_name}` | Phase 2 で確定したブランチ名（PR の `headRefName`、または flow-state / claim 由来） |
+| `{branch_name}` | Phase 2 で確定したブランチ名（PR の `headRefName`（`issue-{issue_number}-` を含む場合のみ）、flow-state（対象 Issue 一致時）、またはローカルブランチ検索の一意候補） |
 | `{branch_identity_verified}` | Phase 2 の identity 検証結果（`true` / `false`） |
-| `{flow_wt}` / `{main_root}` | Phase 4.1 の `CLEANUP_WT` marker の `worktree=` / `main_root=` 値 |
+| `{flow_wt}` | Phase 4.1 の `CLEANUP_WT` marker の `worktree=` 値 |
+| `{issue_title}` | Phase 2.1 の `gh issue view --json title` |
+| `{state_reason}` | Phase 2.1 の `gh issue view --json stateReason` |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 | `{owner}` / `{repo}` / `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した値を literal substitute |
 | `{project_number}` | `rite-config.yml` → `github.projects.project_number` |
@@ -65,8 +67,17 @@ rationale: references/rationale.md#order-invariant
 
 引数の残り（数値を除いた部分）が非空ならそれを `{cancel_reason}` とする。空のときは **AskUserQuestion で理由を尋ねる**。理由を取得できない環境（応答が得られない）では、**Issue をクローズせず停止する** — 理由の残らない中止は後から判断を追えない。
 
-確定した理由は Write ツールで **`{reason_file}` = `${TMPDIR:-/tmp}/rite-issue-cancel-reason-{issue_number}.txt`** へ書き出す（Phase 3 / Phase 6 が変数経由で `--comment` へ渡す。特殊文字を含む理由をコマンドラインへ literal 展開しないため）。**書き出し先をセッション worktree 配下にしてはならない** — Phase 4.2 の worktree 削除が Phase 1 と Phase 6 の間でファイルごと消し、理由の無いクローズが成立する。
+確定した理由は Write ツールでファイルへ書き出し `{reason_file}` として retain する（Phase 3 / Phase 6 が変数経由で `--comment` へ渡す。特殊文字を含む理由をコマンドラインへ literal 展開しないため）。**書き出し先をセッション worktree 配下にしてはならない** — Phase 4.2 の worktree 削除が Phase 1 と Phase 6 の間でファイルごと消し、理由の無いクローズが成立する。
 rationale: references/rationale.md#reason-file-outside-worktree
+
+**書き出し先は bash が解決した実パスをリテラル置換する**。Write ツールはシェルのパラメータ展開を行わないため、`${TMPDIR:-/tmp}` を含む文字列をそのまま file_path に渡してはならない（未展開のリテラルパスへ書き、bash 側で展開される Phase 3 / Phase 6 の `cat` が別の場所を読む）。先に marker を出し、その値を使う:
+rationale: references/rationale.md#write-vs-bash-path
+
+```bash
+echo "[CONTEXT] CANCEL_TMP_DIR=${TMPDIR:-/tmp}"
+```
+
+`{reason_file}` = `CANCEL_TMP_DIR` marker の値 + `/rite-issue-cancel-reason-{issue_number}.txt` のリテラル置換。素の `/tmp` を再ハードコードしない（sandbox 有効環境では書き込みが拒否される）。
 
 | 観測 | アクション |
 |---|---|
@@ -132,13 +143,18 @@ gh pr list -R {owner_repo} --state all --limit 100 --json number,state,isDraft,h
 
 取得結果から、`body` が `Closes/Fixes/Resolves #{issue_number}`（大文字小文字を問わない、`#{issue_number}` の直後が数字でない）にマッチする PR、または `headRefName` が `issue-{issue_number}-` を含む PR **だけ**を残す。**絞り込み前の集合を下記の判定表に載せてはならない** — 無関係な merged PR で第 1 行が誤発火する。
 
+**取得窓の飽和は「PR 無し」と読まない**: 上記 `gh pr list` は最新 100 件を返す取得**窓**であり Issue でスコープされない。**返却件数が `--limit` の値と等しいときは集合が切り詰められている可能性がある**ため、絞り込み結果が 0 件でも下表の「該当 PR が 1 件も無い」へ落とさず、WARNING を出して**停止する**（窓外にマージ済み PR がある Issue を NOT_PLANNED で葬らないため）。`--limit` の引き上げは閾値の先へ同じ欠陥を移すだけなので採らない。
+rationale: references/rationale.md#limit-window-fail-loud
+
 | 観測（絞り込み後） | アクション |
 |---|---|
 | `mergedAt` が非 null の PR がある | **中止ではなく完了済み**。`/rite:cleanup {pr_number}` を案内して**停止する**（マージ済みの作業を NOT_PLANNED で葬らない） |
-| `state == "OPEN"` の PR がある | `{pr_number}` と `headRefName` を retain。`headRefName` を `{branch_name}`、`{branch_identity_verified}=true` として Phase 3 へ（2.2 の値より PR の実 head を優先する） |
-| 該当 PR が 1 件も無い | `{pr_number}` は未確定。2.2 で解決したブランチのまま Phase 4 へ（Phase 3 はスキップ） |
+| `state == "OPEN"` の PR がある | `{pr_number}` と `headRefName` を retain して Phase 3 へ。**identity 昇格は `headRefName` が `issue-{issue_number}-` を含む場合に限る** — その場合だけ `headRefName` を `{branch_name}`、`{branch_identity_verified}=true` にする。body の closing keyword だけで一致した PR は `{branch_name}` / `{branch_identity_verified}` を **2.2 で解決した値のまま据え置く**（この flag は helper のリモート ref 削除の唯一のゲートであり、無関係な PR の head をリモートごと消させないため） |
+| `state == "CLOSED"` かつ `mergedAt` が null の PR がある | 既にクローズ済み（手動 close / 本スキルの再実行）。`{pr_number}` を retain し **Phase 3 はスキップ**して Phase 4 へ（4.4 の state purge を発火させる）。`{branch_name}` / `{branch_identity_verified}` の扱いは上の OPEN 行と同一 |
+| 該当 PR が 1 件も無い（かつ取得窓が飽和していない） | `{pr_number}` は未確定。2.2 で解決したブランチのまま Phase 4 へ（Phase 3 はスキップ） |
 
-`headRefName` を経由せずにブランチ名を推測しない。PR がある経路の `{branch_identity_verified}` は `headRefName` の実値をそのまま使うため常に `true` になる。
+`headRefName` を経由せずにブランチ名を推測しない。
+rationale: references/rationale.md#identity-promotion-headref-only
 
 ---
 
@@ -191,19 +207,46 @@ fi
 
 ### 4.2 worktree の退出と削除
 
-**順序制約**: `detect` と `remove` の間には必ず `ExitWorktree` が入る。cwd がセッション worktree 内のまま `remove` を呼ぶと自分の足元を削除することになるため、1 本の直列 helper に畳めない。
+**順序制約**: `detect` → Issue 束縛ガード → `ExitWorktree` → `remove` の順に、**それぞれ独立したサブセクション**として実行する。cwd がセッション worktree 内のまま `remove` を呼ぶと自分の足元を削除することになるため 1 本の直列 helper に畳めず、また判定表の 1 セル内に手順を並べると順序が本文の書き換えだけで壊れる（序数で隣接行を参照する形も同じ理由で使わない）。
+rationale: references/rationale.md#step-order-as-sections
 
-**Issue 束縛ガード（remove の前に必ず評価する）**: detect の内側 (`cleanup-worktree-detect.sh`) は `in_worktree` を「flow-state の worktree == 現 cwd」だけで判定し `--issue` を見ない。marker の `worktree=` のパス末尾が **`issue-{issue_number}`** でないときは、別 Issue のセッション worktree を指しているので `ExitWorktree` も remove も行わず、WARNING を出して 4.3 のブランチ削除ごとスキップし Phase 7 に未処理として列挙する。
+#### 4.2.0 Issue 束縛ガード（4.2.1 / 4.2.2 へ到達する全経路の前段）
+
+`CLEANUP_WT` の値に依らず**無条件に評価する**。detect の内側 (`cleanup-worktree-detect.sh`) は `in_worktree` を「flow-state の worktree == 現 cwd」だけで、`in_main` を「flow-state に worktree 記録があり cwd がその外」だけで判定し、いずれも `--issue` を見ない。したがって marker の `worktree=` は別 Issue のセッション worktree を指しうる。
 rationale: references/rationale.md#issue-scoped-identity
+
+```bash
+wt_path="{flow_wt}"
+if [ -z "$wt_path" ]; then
+  echo "[CONTEXT] CANCEL_WT_BOUND=none; reason=no_worktree_path"
+elif [ "$(basename "$wt_path")" = "issue-{issue_number}" ]; then
+  echo "[CONTEXT] CANCEL_WT_BOUND=ok; path=$wt_path"
+else
+  echo "WARNING: detect が返した worktree は対象 Issue のものではありません: $wt_path（期待する末尾セグメント: issue-{issue_number}）" >&2
+  echo "[CONTEXT] CANCEL_WT_BOUND=mismatch; path=$wt_path" >&2
+fi
+```
+
+照合は**末尾セグメントの完全一致**にする（`issue-24931` を `issue-2493` に一致させる suffix 照合にしない）。
+
+| `CANCEL_WT_BOUND` | アクション |
+|---|---|
+| `ok` | 4.2.1 へ |
+| `none` | worktree 記録なし。4.2.1 / 4.2.2 をスキップして 4.3 へ |
+| `mismatch` | 別 Issue の worktree。**4.2.1 / 4.2.2 と 4.3 のブランチ削除を試行せず**、Phase 7 に未処理として列挙する |
+
+#### 4.2.1 ExitWorktree（main checkout への復帰）
+
+`CANCEL_WT_BOUND=ok` のときだけ実行する。
 
 | `CLEANUP_WT` | アクション |
 |---|---|
-| `in_worktree` | 1. 上の Issue 束縛ガードを評価する。2. `dirty=yes` なら生パス一覧を表示した上で**そのまま続行**（中止は破棄経路であり、破棄予定の変更に stash 確認を挟まない）。3. `ExitWorktree` を `action: "keep"` で呼び main checkout へ復帰する。4. 4.2.1 の remove を実行する |
-| `in_main` | 1〜2 をスキップし 4.2.1 の remove のみ実行する（既削除なら no-op = 冪等） |
-| `in_worktree_unrecorded` / `unknown` | `ExitWorktree` が main checkout へ戻せない（または分類不能）。**worktree 削除とブランチ削除（4.3）を試行せず**、Phase 7 の報告で未完了として列挙し、main checkout での `/rite:issue-cancel {issue_number}` 再実行へ委譲する。worktree 内で完結する 4.4〜4.6・Phase 5・Phase 6 は通常どおり実行する |
+| `in_worktree` | `dirty=yes` なら生パス一覧を表示した上で**そのまま続行**（中止は破棄経路であり、破棄予定の変更に stash 確認を挟まない）。そのうえで `ExitWorktree` を `action: "keep"` で呼び main checkout へ復帰し、4.2.2 へ |
+| `in_main` | 既に main checkout にいるため `ExitWorktree` は呼ばない。dirty 表示もしない。4.2.2 へ |
+| `in_worktree_unrecorded` / `unknown` | `ExitWorktree` が main checkout へ戻せない（または分類不能）。**4.2.2 とブランチ削除（4.3）を試行せず**、Phase 7 の報告で未完了として列挙し、main checkout での `/rite:issue-cancel {issue_number}` 再実行へ委譲する。worktree 内で完結する 4.4〜4.6・Phase 5・Phase 6 は通常どおり実行する |
 | `none` | worktree 無し。4.3 へ |
 
-#### 4.2.1 remove の実行
+#### 4.2.2 remove の実行
 
 ```bash
 _wt_rc=0
@@ -236,7 +279,7 @@ helper が emit する marker で分岐する。**marker 不在は「削除成�
 | `BRANCH_CHECK_FAILED=1` / `BRANCH_DELETE_FAILED=1` / `BRANCH_DELETE_DEFERRED*=1` | **強制削除しない**。helper が「判定できない / 削除できない」と結論した状態であり、迂回して消すと helper の fail-fast を無効化する。WARNING を出し Phase 7 に残置として列挙する |
 | marker 不在 | 削除結果を確認できていない。強制削除せず Phase 7 に残置として列挙する |
 
-`BRANCH_DELETE_UNMERGED=1` は `git branch -d` が not fully merged で失敗したときに限り出る（`--pr-merged "false"` を渡せば必ず出るわけではない）。強制削除は helper と同じ形（quote + `--` 終端子）で行う:
+`BRANCH_DELETE_UNMERGED=1` は `git branch -d` が not fully merged で失敗したときに限り出る（`--pr-merged "false"` を渡せば必ず出るわけではない）。強制削除は quote + `--` 終端子を伴う形で行う（helper と同一の安全性ではない点は rationale を参照）:
 rationale: references/rationale.md#force-delete-no-ask
 
 ```bash
@@ -347,7 +390,7 @@ fi
 | marker | アクション |
 |---|---|
 | `CANCEL_ISSUE_CLOSED=1` | Phase 7 へ |
-| `CANCEL_ISSUE_CLOSE_FAILED=1` / marker 不在 | **停止する**。board が `Cancelled` で Issue が OPEN という state 不整合を Phase 7 の報告に明示し、手動復旧コマンド `gh issue close {issue_number} -R {owner_repo} --reason "not planned"` を表示する |
+| `CANCEL_ISSUE_CLOSE_FAILED=1` / marker 不在 | **停止する**。board が `Cancelled` で Issue が OPEN という state 不整合を Phase 7 の報告に明示し、**理由を伴う**手動復旧コマンド `gh issue close {issue_number} -R {owner_repo} --reason "not planned" --comment "<中止理由>"` を表示する。`--comment` を省いた形を案内してはならない — 直前のガードが守った「理由なしでクローズしない」を人手で破らせることになる |
 
 **親 Issue には伝播しない**。子 Issue を中止しても親の Tasklist 更新・親の board Status 更新・親の auto-close を行わない。`Cancelled` の子を含む親を完了扱いにしないため、および親を中止しても子は各自の明示指示で中止するため。
 rationale: references/rationale.md#no-parent-propagation

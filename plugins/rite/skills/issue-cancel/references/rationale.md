@@ -53,7 +53,58 @@ live-cwd guard・sandbox マスク検知・squash 残渣の扱い・remote ref �
 
 確実なのは実ブランチ名を先に確定させて exact `--head` で引く経路だけなので、ブランチ解決を PR 検索の前に
 置く。ブランチが確定しない場合は `--state all` で取得してから body の closing keyword で client-side に
-絞る（`/rite:issue-close` が持つ経路と同じ）。絞り込み前の集合を判定に使わないことが要点。
+絞る。絞り込み前の集合を判定に使わないことが要点。
+
+client-side を closing keyword で絞る点は `/rite:issue-close` にも同じ経路がある。ただし**同 skill の
+取得側は本節が退けた `--search "linked:issue:{N}"` と glob `--head` をいまも使っており、そこは踏襲しない**
+（取得側まで含めて先例として引くと、誤った形へ読者を誘導する）。
+
+## limit-window-fail-loud
+
+`--search` を退けた代わりに置いた `--state all --limit 100` は、**同じ「絞り込めていないのに成功して
+見える」欠陥を窓の形で持ち込む**。`--limit` は Issue でスコープする手段ではなく取得件数の上限で、返るのは
+作成日降順の最新 N 件。実測すると、100 件の窓が遡れるのは直近の数週間分にとどまり、それ以前にマージされた PR は窓の外へ落ちる。
+
+この fallback が発火するのはブランチを解決できないとき、つまりマージ後にブランチが消えている典型状況で、
+窓外に落ちる確率が最も高い条件と一致する。絞り込み結果 0 件を「PR が無い」と読むと、マージ済みの作業を
+持つ Issue を `NOT_PLANNED` で葬る。
+
+対処は件数の引き上げでも問い合わせの差し替えでもなく、**窓の飽和を検出して止めること**にした。上限に
+張り付いた集合から「無い」を結論しない、という 1 条件で足りる。引き上げは閾値の先へ欠陥を移すだけで、
+問い合わせの差し替えは検証されていない新しい機構をループの途中で導入することになる。
+
+## identity-promotion-headref-only
+
+`{branch_identity_verified}` は `cleanup-branch-delete.sh` が**リモート ref を消してよいか**を決める唯一の
+ゲートである。body の `Closes #{N}` だけで一致した PR の `headRefName` をこの flag ごと採ると、本文に
+たまたま当該 Issue を引いた無関係な PR のブランチがリモートごと消える。ローカルと違い checkout 状態にも
+守られず、不可逆。
+
+identity の昇格は `headRefName` 自身が `issue-{issue_number}-` を含むときに限る。body-only 一致の PR は
+`{pr_number}` としては採用してよい（PR クローズと state purge の対象にはなる）が、ブランチの同定には
+使わない。
+
+## step-order-as-sections
+
+手順の順序を「判定表 1 セル内の番号付きリスト」で表すと、2 つの壊れ方をする。セル内で順番を入れ替えても
+行番号が動かないので**テストの順序 pin が効かない**。そして隣接行が「1〜2 をスキップ」のように序数で
+参照していると、片方の行にステップを 1 つ挿入しただけで**参照先が黙ってずれる**。実際、Issue 束縛ガードを
+`in_worktree` 行の手順 1 に挿入したことで `in_main` 行の「1〜2 をスキップ」がガードごと飛ばす意味になり、
+ガードが最も必要な経路から外れた。
+
+そこで `detect` → ガード → `ExitWorktree` → `remove` をそれぞれ独立したサブセクションにした。順序は
+見出し行の並びで表れるので行番号で pin でき、全経路が通るべきガードは判定表の外の無条件前段に置ける。
+隣接行への序数参照は使わず、スキップ対象は手順名で書く。
+
+## write-vs-bash-path
+
+skill に新しくパスを書くときは「**Bash がこれを展開するのか、Write が literal に消費するのか**」を毎回
+問う。`${TMPDIR:-/tmp}/...` を Write ツールの書き出し先に渡すと展開されず、bash 側で展開される読み出しと
+別の場所を指す。逆に `git branch -D -- "{branch_name}"` の `{branch_name}` は placeholder の literal
+substitute なので、二重引用符の中でも `$(...)` が展開される。
+
+同じ問いを反対方向に間違えた 2 件が 1 つの cycle で同時に入った。パスは bash で marker として実パスを
+出し、その値をリテラル置換して Write へ渡す（`pr-review` の `{review_tmp_dir}` と同型）。
 
 ## issue-scoped-identity
 
@@ -94,8 +145,15 @@ worktree は detect が返したパス末尾が `issue-{N}` であることを�
 呼び出し側が helper の防御を無効化する。`BRANCH_DELETE_DEFERRED`（別セッションが作業ツリーを使用中 /
 sandbox マスク）も同様に、削除が Git 構造上できない状態なので強制しても壊すだけ。
 
-強制削除そのものも helper と同じ形（`-D -- "$branch"`）で書く。`--` は `pr-cycle-cleanup.sh` が
-defense-in-depth の不変条件として明文化しており、quote と併せて 1 トークンで済む。
+強制削除そのものも quote + `--` の形で書く。`--` は `pr-cycle-cleanup.sh` が defense-in-depth の
+不変条件として明文化しており、1 トークンで word splitting・glob・option injection を塞げる。
+
+**ただしこれは helper と「同じ形」ではない**。helper の `-D -- "$branch"` は**変数参照**なので値の
+再展開が起きないが、本体の `-D -- "{branch_name}"` は placeholder の **literal substitute** であり、
+二重引用符の中でも `$(...)` は展開される。安全性の水準は helper と同一ではなく、埋め込む値が
+`git check-ref-format` を通る範囲に限られることに依存している。helper へ force モードを足して値を引数で
+渡せばこの差は消えるが、`cleanup-branch-delete.sh` は本 Issue の Non-Target Files であり、変更は
+`/rite:cleanup` 側へ波及する。
 
 ## keep-wm-replica
 

@@ -80,11 +80,33 @@ assert_grep "T-02 (b) ExitWorktree is called with keep (path 入場した worktr
 # (c) 中止経路は常に未マージ。reap manifest へ記録させない。ファイル全体の grep では
 # cleanup-branch-delete.sh 側の同一リテラルが一致してしまうため、4.2.1 セクションに限定する。
 assert_grep_in_section "T-02 (c) the worktree teardown receives --pr-merged false" "$SKILL" \
-  '^#### 4\\.2\\.1 remove の実行' '^### 4\\.3' '\-\-worktree "\{flow_wt\}" \-\-pr-merged "false"'
+  '^#### 4\\.2\\.2 remove の実行' '^### 4\\.3' '\-\-worktree "\{flow_wt\}" \-\-pr-merged "false"'
 # (d) worktree の削除対象が対象 Issue のものであることを確認してから remove へ進む
-#     (detect の内側は --issue を見ないため、呼び出し側で束縛しないと別 Issue の worktree が消える)
-assert_grep_in_section "T-02 (d) the worktree path is bound to the target Issue before remove" "$SKILL" \
-  '^### 4\\.2 worktree の退出と削除' '^#### 4\\.2\\.1' 'Issue 束縛ガード'
+#     (detect の内側は --issue を見ないため、呼び出し側で束縛しないと別 Issue の worktree が消える)。
+#     見出し語 'Issue 束縛ガード' の在否では pin にならない (節を残したまま照合式を緩めても緑)。
+#     照合式そのもの — 末尾セグメントの完全一致 — にアンカーする。suffix 照合や部分一致へ
+#     書き換えると赤くなる。
+assert_grep_in_section "T-02 (d) the guard compares the path's last segment for exact identity" "$SKILL" \
+  '^#### 4\\.2\\.0 Issue 束縛ガード' '^#### 4\\.2\\.1' \
+  '^elif \[ "\$\(basename "\$wt_path"\)" = "issue-\{issue_number\}" \]; then'
+# ガードが判定表の内側ではなく、ExitWorktree / remove の**前段**に独立した節として置かれていること。
+# 節の順序を入れ替える / ガード節を消すと赤くなる (4.2.1 の表セルへ畳み戻す変更も同様)。
+_guard_line=$(_first_line "$SKILL" '^#### 4\.2\.0 Issue 束縛ガード')
+_exitwt_head_line=$(_first_line "$SKILL" '^#### 4\.2\.1 ExitWorktree')
+_remove_head_line=$(_first_line "$SKILL" '^#### 4\.2\.2 remove の実行')
+if [ -n "$_guard_line" ] && [ -n "$_exitwt_head_line" ] && [ -n "$_remove_head_line" ]; then
+  if [ "$_guard_line" -lt "$_exitwt_head_line" ] && [ "$_exitwt_head_line" -lt "$_remove_head_line" ]; then
+    pass "T-02 (d) the Issue-binding guard is a standalone step ahead of ExitWorktree and remove"
+  else
+    fail "T-02 (d) guard must precede ExitWorktree and remove as its own section (guard=$_guard_line exit=$_exitwt_head_line remove=$_remove_head_line)"
+  fi
+else
+  fail "T-02 (d) could not locate the 4.2.0 / 4.2.1 / 4.2.2 headings (guard=${_guard_line:-none} exit=${_exitwt_head_line:-none} remove=${_remove_head_line:-none})"
+fi
+# 不一致は「消さない」で終わらせる (ブランチ削除まで止める)。'mismatch' 行の存在ではなく
+# その行の帰結にアンカーする。
+assert_grep "T-02 (d) a mismatching worktree stops the removal and the branch delete" "$SKILL" \
+  '^\| `mismatch` \|.*\*\*4\.2\.1 / 4\.2\.2 と 4\.3 のブランチ削除を試行せず\*\*'
 
 echo "=== T-03: gh pr close が Projects Status 更新より先に呼ばれる (AC-3) ==="
 # 順序 pin は**実行行**を見る。冒頭の「実行順序の不変条件」節は同じコマンド名を散文で引用するため、
@@ -132,7 +154,13 @@ assert_grep_in_section "T-05 Phase 1 states the Issue is not closed in that case
 # 理由の消失経路を塞ぐ 2 点。(a) 書き出し先が worktree 削除の影響外に固定されていること
 # (worktree 配下だと Phase 4.2 が Phase 1 と Phase 6 の間でファイルごと消す)。
 assert_grep_in_section "T-05 the reason file lives outside the session worktree" "$SKILL" \
-  '^## Phase 1: 引数と中止理由の確定' '^## Phase 2:' 'TMPDIR:-/tmp\}/rite-issue-cancel-reason-'
+  '^## Phase 1: 引数と中止理由の確定' '^## Phase 2:' \
+  '^echo "\[CONTEXT\] CANCEL_TMP_DIR=\$\{TMPDIR:-/tmp\}"'
+# Write ツールはシェル展開をしないため、書き出し先は marker が返した実パスのリテラル置換であること。
+# `${TMPDIR:-/tmp}/...` をそのまま file_path に渡す形へ戻すと赤くなる。
+assert_grep_in_section "T-05 the write target is the resolved marker value, not an unexpanded string" "$SKILL" \
+  '^## Phase 1: 引数と中止理由の確定' '^## Phase 2:' \
+  '^`\{reason_file\}` = `CANCEL_TMP_DIR` marker の値 \+ `/rite-issue-cancel-reason-\{issue_number\}\.txt` のリテラル置換'
 # (b) 読み出し側が rc と空値の両方を fail-loud にすること (片方だけでは理由なしクローズが成立する)。
 assert_grep_in_section "T-05 Phase 6 refuses to close when the reason cannot be read" "$SKILL" \
   '^## Phase 6: Issue を NOT_PLANNED でクローズ' '^## Phase 7:' 'if ! cancel_reason=\$\(cat'
@@ -186,7 +214,25 @@ else
 fi
 # flow-state の branch を対象 Issue に束縛すること (cmd_get は --issue を取らない)
 assert_grep_in_section "T-08 binds the flow-state branch to the target Issue" "$SKILL" \
-  '^### 2\.2 作業ブランチの解決' '^### 2\.3' 'get --field issue_number'
+  '^### 2\\.2 作業ブランチの解決' '^### 2\\.3' 'get --field issue_number'
+# 取得するだけでは束縛にならない。判定表の第 1 行が「対象 Issue と等値のときだけ採用」であること
+# にアンカーする (条件を落として state_branch を無条件採用へ戻すと赤くなる)。
+assert_grep "T-08 the flow-state branch is adopted only on an Issue-number match" "$SKILL" \
+  '^\| `state_issue == \{issue_number\}` かつ `state_branch` が非空 \| `state_branch` / `true`'
+# 取得窓 (--limit) の飽和を「PR 無し」と読まない。fail-loud の帰結 (停止する) にアンカーする。
+assert_grep_in_section "T-08 a saturated fetch window is not read as no-PR" "$SKILL" \
+  '^### 2\\.3 関連 PR の検索' '^## Phase 3:' \
+  '\*\*返却件数が `--limit` の値と等しいときは集合が切り詰められている可能性がある\*\*'
+assert_grep_in_section "T-08 the saturated-window path stops instead of falling through" "$SKILL" \
+  '^### 2\\.3 関連 PR の検索' '^## Phase 3:' \
+  '該当 PR が 1 件も無い」へ落とさず、WARNING を出して\*\*停止する\*\*'
+# identity 昇格は headRefName が Issue スコープを満たす場合に限る (body の closing keyword だけで
+# 一致した PR の head をリモートごと消させない)。
+assert_grep "T-08 identity promotion is restricted to a matching headRefName" "$SKILL" \
+  '\*\*identity 昇格は `headRefName` が `issue-\{issue_number\}-` を含む場合に限る\*\*'
+# CLOSED-unmerged の PR は Phase 3 を飛ばして Phase 4 (state purge) へ回す。
+assert_grep "T-08 a closed-unmerged PR still reaches the state purge" "$SKILL" \
+  '^\| `state == "CLOSED"` かつ `mergedAt` が null の PR がある \|.*\*\*Phase 3 はスキップ\*\*して Phase 4 へ'
 
 echo "=== T-09: 後片付けが helper 委譲で、削除 bash が複製されていない (AC-9) ==="
 # worktree の削除・prune・再帰削除は helper 内部の判断 (live-cwd guard / sandbox マスク検知) と
@@ -214,10 +260,15 @@ fi
 assert_grep "T-09 the force delete is quoted and uses the end-of-options separator" "$SKILL" \
   'git branch -D -- "\{branch_name\}"'
 # helper が削除を試行しなかった marker では強制削除へ進まないこと (fail-fast の迂回防止)。
-assert_grep_in_section "T-09 the force delete is gated on BRANCH_DELETE_UNMERGED" "$SKILL" \
-  '^### 4\.3 ブランチの削除' '^### 4\.4' 'BRANCH_CHECK_FAILED'
-assert_grep_in_section "T-09 marker 不在 is not read as deletion success" "$SKILL" \
-  '^### 4\.3 ブランチの削除' '^### 4\.4' 'marker 不在'
+# marker 名の在否では pin にならない ('BRANCH_CHECK_FAILED' は同節の 'REMOTE_BRANCH_CHECK_FAILED'
+# に部分文字列一致するため、行ごと消しても緑になる)。行頭 '|' + 帰結にアンカーする。
+assert_grep "T-09 an unverifiable branch state never reaches the force delete" "$SKILL" \
+  '^\| `BRANCH_CHECK_FAILED=1` /.*\*\*強制削除しない\*\*'
+assert_grep "T-09 marker 不在 is not read as deletion success" "$SKILL" \
+  '^\| marker 不在 \| 削除結果を確認できていない。強制削除せず'
+# 強制削除は BRANCH_DELETE_UNMERGED の行だけが入口であること。
+assert_grep "T-09 the force delete is gated on BRANCH_DELETE_UNMERGED" "$SKILL" \
+  '^\| `BRANCH_DELETE_UNMERGED=1` \| \*\*確認を挟まず強制削除する\*\*'
 assert_grep "T-09 states the delegation rule explicitly" "$SKILL" \
   '削除処理の bash を本スキルへ複製しない'
 
