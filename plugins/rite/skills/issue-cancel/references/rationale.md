@@ -147,6 +147,19 @@ identity の昇格は `headRefName` 自身が `issue-{issue_number}-` を含む�
 `{pr_number}` としては採用してよい（PR クローズと state purge の対象にはなる）が、ブランチの同定には
 使わない。
 
+## headref-charset-binding
+
+`headRefName` は fork の第三者が任意に決められる値であり、identity 昇格を通ると Phase 4.3 の fenced bash に
+`--branch "{branch_name}"` / `git branch -D -- "{branch_name}"` として literal substitute される。二重引用符と
+`--` は **argv 分割にしか効かない** — `$(...)` とバッククォートはシェルがその引用符の内側でも展開するため、
+`feat/issue-2493-$(...)` の形の head を持つ PR を開くだけで開発者セッションで任意コマンドが走る。
+`git check-ref-format` は防波堤にならない（実測: `refs/heads/feat/issue-2493-$(id)` は rc=0。rc=1 になるのは
+空白を含む場合など ref 名として不正なときだけ）。helper 側のデリミタ検査・値検査はすべて**展開後の値**にしか
+走らないので、束縛は昇格の側で行うほかない。
+
+非一致を `{branch_identity_verified}=false` へ倒すのは、既存の「body-only 一致は据え置く」経路と同じ帰結
+（PR クローズと state purge は行い、ブランチには触れない）へ合流させるため。新しい停止経路を足さない。
+
 ## step-order-as-sections
 
 手順の順序を「判定表 1 セル内の番号付きリスト」で表すと、2 つの壊れ方をする。セル内で順番を入れ替えても

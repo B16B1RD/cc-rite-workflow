@@ -115,6 +115,21 @@ fi
 # その行の帰結にアンカーする。
 assert_grep "T-02 (d) a mismatching worktree stops the removal and the branch delete" "$SKILL" \
   '^\| `mismatch` \|.*\*\*4\.2\.1 / 4\.2\.2 と 4\.3 のブランチ削除を試行せず\*\*'
+# detect が分類できなかった経路も同じ帰結へ倒す。detect 失敗時は marker の `worktree=` ごと
+# 出ないため、空パス判定だけのガードでは `none` (= 削除続行) へ落ちてブランチが消える。
+# 分類値を先に見ていることを、ガードの分岐そのものへアンカーして固定する。
+assert_grep_in_section "T-02 (d) the guard inspects the detect classification before the path" "$SKILL" \
+  '^#### 4\.2\.0 Issue 束縛ガード' '^#### 4\.2\.1' \
+  '^if \[ "\{cleanup_wt\}" = "unknown" \] \|\| \[ "\{cleanup_wt\}" = "in_worktree_unrecorded" \]; then'
+# 空パス判定が先頭 `if` へ戻る (= 分類不能が再び `none` に化ける) 変更を赤くする。
+assert_grep_in_section "T-02 (d) the empty-path case is reached only after the classification check" "$SKILL" \
+  '^#### 4\.2\.0 Issue 束縛ガード' '^#### 4\.2\.1' \
+  '^elif \[ -z "\$wt_path" \]; then'
+assert_grep "T-02 (d) an unclassified worktree also stops the removal and the branch delete" "$SKILL" \
+  '^\| `undetermined` \|.*\*\*4\.2\.1 / 4\.2\.2 と 4\.3 のブランチ削除を試行せず\*\*'
+# 4.2.0 が逸らす分類を 4.2.1 の判定表にも残さない (到達しない行は読み手に二重の規則を見せる)。
+assert_not_grep "T-02 (d) 4.2.1 carries no rows the binding guard already diverts" "$SKILL" \
+  '^\| `in_worktree_unrecorded` / `unknown` \|'
 # (e) state purge は「全運用経路で rc=0、部分失敗は marker のみ」契約の helper なので、rc だけを見ると
 # 残置が完了として報告される。marker を判定に使うことと、その帰結（残置として列挙する）を pin する。
 # 判定は bash の捕捉層に持たせない — 捕捉に失敗すると marker ごと消えて「観測できていない」が
@@ -157,7 +172,7 @@ assert_grep_in_section "T-02 (e) the reap residue consequence is pinned" "$SKILL
   '^### 4\.6 claim 解放と cross-session state の回収' '^### 4\.7' \
   'Phase 7 に「cross-session state: 残置」として列挙する'
 # 呼び出し行そのものを固定する positive pin。negative control は grep が行単位のため、
-# 行継続で書かれた捕捉層を素通しする（F-18 と同じ盲点）。4.6 側と対称に 4.4 へも置く。
+# 行継続で書かれた捕捉層を素通しする。4.6 側と対称に 4.4 へも置く。
 assert_grep_in_section "T-02 (e) the state purge call passes its output through" "$SKILL" \
   '^### 4\.4 PR-specific state ファイルの削除' '^### 4\.5' \
   '^bash \{plugin_root\}/hooks/scripts/cleanup-pr-state-purge\.sh --pr "\{pr_number\}" 2>&1'
@@ -312,9 +327,19 @@ assert_grep_in_section "T-08 the timeline candidates are still filtered before t
   '^### 2\\.3 関連 PR の検索' '^## Phase 3:' \
   '\*\*絞り込み前の集合を下記の判定表に載せてはならない\*\*'
 # identity 昇格は headRefName が Issue スコープを満たす場合に限る (body の closing keyword だけで
-# 一致した PR の head をリモートごと消させない)。
+# 一致した PR の head をリモートごと消させない)。加えて head 名全体を安全な charset へ束縛する:
+# 昇格した値は Phase 4.3 の fenced bash へ literal substitute され、引用符は `$(...)` の展開を
+# 止めないため、fork の第三者が決めた head 名がそのままコマンドとして走りうる。
 assert_grep "T-08 identity promotion is restricted to a matching headRefName" "$SKILL" \
-  '\*\*identity 昇格は `headRefName` が `issue-\{issue_number\}-` を含む場合に限る\*\*'
+  '\*\*identity 昇格は `headRefName` が `issue-\{issue_number\}-` を含み、かつ `headRefName` 全体が `\^\[A-Za-z0-9\._/-\]\+\$` に一致する場合に限る\*\*'
+# 束縛を落として部分一致だけの条件へ戻す変更を赤くする (上の positive pin は文言全体を見るため、
+# 条件が緩む方向の書き換えでも「文が変わった」としか言えない。禁止形そのものにもアンカーする)。
+assert_not_grep "T-08 the promotion condition is never the unbound substring test alone" "$SKILL" \
+  'identity 昇格は `headRefName` が `issue-\{issue_number\}-` を含む場合に限る'
+# 非一致は停止ではなく既存の据え置き経路へ合流し、Phase 7 に残置として現れる。
+assert_grep_in_section "T-08 a charset-violating head name is surfaced as branch residue" "$SKILL" \
+  '^### 2\.3 関連 PR の検索' '^## Phase 3:' \
+  'Phase 7 に「ブランチ: 残置（head 名が'
 # CLOSED-unmerged の PR は Phase 3 を飛ばして Phase 4 (state purge) へ回す。
 assert_grep "T-08 a closed-unmerged PR still reaches the state purge" "$SKILL" \
   '^\| `state == "CLOSED"` かつ `mergedAt` が null の PR がある \|.*\*\*Phase 3 はスキップ\*\*して Phase 4 へ'

@@ -44,9 +44,10 @@ rationale: references/rationale.md#no-reconfirm
 | `{reason_file}` | Phase 1 で理由本文を書き出した一時ファイルの path |
 | `{pr_number}` | Phase 2 で検出した open PR の番号（未検出時は substitute しない） |
 | `{candidate_pr_number}` | Phase 2.3 の `CANCEL_PR_CANDIDATES` marker が並べた候補 PR 番号（1 件ずつ substitute する） |
-| `{branch_name}` | Phase 2 で確定したブランチ名（PR の `headRefName`（`issue-{issue_number}-` を含む場合のみ）、flow-state（対象 Issue 一致時）、またはローカルブランチ検索の一意候補） |
+| `{branch_name}` | Phase 2 で確定したブランチ名（PR の `headRefName`（`issue-{issue_number}-` を含み、かつ `^[A-Za-z0-9._/-]+$` に一致する場合のみ）、flow-state（対象 Issue 一致時）、またはローカルブランチ検索の一意候補） |
 | `{branch_identity_verified}` | Phase 2 の identity 検証結果（`true` / `false`） |
 | `{flow_wt}` | Phase 4.1 の `CLEANUP_WT` marker の `worktree=` 値 |
+| `{cleanup_wt}` | Phase 4.1 の `CLEANUP_WT` marker の分類値（`in_worktree` / `in_main` / `in_worktree_unrecorded` / `unknown` / `none`） |
 | `{issue_title}` | Phase 2.1 の `gh issue view --json title` |
 | `{state_reason}` | Phase 2.1 の `gh issue view --json stateReason` |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
@@ -175,12 +176,13 @@ timeline は closing keyword を伴わない単なる言及（cross-reference）
 | 観測（絞り込み後） | アクション |
 |---|---|
 | `mergedAt` が非 null の PR がある | **中止ではなく完了済み**。`/rite:cleanup {pr_number}` を案内して**停止する**（マージ済みの作業を NOT_PLANNED で葬らない） |
-| `state == "OPEN"` の PR がある | `{pr_number}` と `headRefName` を retain して Phase 3 へ。**identity 昇格は `headRefName` が `issue-{issue_number}-` を含む場合に限る** — その場合だけ `headRefName` を `{branch_name}`、`{branch_identity_verified}=true` にする。body の closing keyword だけで一致した PR は `{branch_name}` / `{branch_identity_verified}` を **2.2 で解決した値のまま据え置く**（この flag は helper のリモート ref 削除の唯一のゲートであり、無関係な PR の head をリモートごと消させないため） |
+| `state == "OPEN"` の PR がある | `{pr_number}` と `headRefName` を retain して Phase 3 へ。**identity 昇格は `headRefName` が `issue-{issue_number}-` を含み、かつ `headRefName` 全体が `^[A-Za-z0-9._/-]+$` に一致する場合に限る** — その場合だけ `headRefName` を `{branch_name}`、`{branch_identity_verified}=true` にする。body の closing keyword だけで一致した PR、および charset に非一致の PR は `{branch_name}` / `{branch_identity_verified}` を **2.2 で解決した値のまま据え置く**（この flag は helper のリモート ref 削除の唯一のゲートであり、無関係な PR の head をリモートごと消させないため） |
 | `state == "CLOSED"` かつ `mergedAt` が null の PR がある | 既にクローズ済み（手動 close / 本スキルの再実行）。`{pr_number}` を retain し **Phase 3 はスキップ**して Phase 4 へ（4.4 の state purge を発火させる）。`{branch_name}` / `{branch_identity_verified}` の扱いは上の OPEN 行と同一 |
 | 該当 PR が 1 件も無い | `{pr_number}` は未確定。2.2 で解決したブランチのまま Phase 4 へ（Phase 3 はスキップ） |
 
-`headRefName` を経由せずにブランチ名を推測しない。
+`headRefName` を経由せずにブランチ名を推測しない。charset に非一致だったときは WARNING を出し、Phase 7 に「ブランチ: 残置（head 名が `^[A-Za-z0-9._/-]+$` に非一致）」として列挙する。
 rationale: references/rationale.md#identity-promotion-headref-only
+rationale: references/rationale.md#headref-charset-binding
 
 ---
 
@@ -243,7 +245,10 @@ rationale: references/rationale.md#issue-scoped-identity
 
 ```bash
 wt_path="{flow_wt}"
-if [ -z "$wt_path" ]; then
+if [ "{cleanup_wt}" = "unknown" ] || [ "{cleanup_wt}" = "in_worktree_unrecorded" ]; then
+  echo "WARNING: 作業ツリーの分類が確定していません（CLEANUP_WT={cleanup_wt}）。worktree とブランチは削除しません" >&2
+  echo "[CONTEXT] CANCEL_WT_BOUND=undetermined; cleanup_wt={cleanup_wt}" >&2
+elif [ -z "$wt_path" ]; then
   echo "[CONTEXT] CANCEL_WT_BOUND=none; reason=no_worktree_path"
 elif [ "$(basename "$wt_path")" = "issue-{issue_number}" ]; then
   echo "[CONTEXT] CANCEL_WT_BOUND=ok; path=$wt_path"
@@ -260,6 +265,7 @@ fi
 | `ok` | 4.2.1 へ |
 | `none` | worktree 記録なし。4.2.1 / 4.2.2 をスキップして 4.3 へ |
 | `mismatch` | 別 Issue の worktree。**4.2.1 / 4.2.2 と 4.3 のブランチ削除を試行せず**、Phase 7 に未処理として列挙する |
+| `undetermined` | detect が分類できていない（`CLEANUP_WT=unknown` / `in_worktree_unrecorded`）。**4.2.1 / 4.2.2 と 4.3 のブランチ削除を試行せず**、Phase 7 に未処理として列挙し、main checkout での `/rite:issue-cancel {issue_number}` 再実行へ委譲する。worktree 内で完結する 4.4〜4.6・Phase 5・Phase 6 は通常どおり実行する |
 
 #### 4.2.1 ExitWorktree（main checkout への復帰）
 
@@ -269,8 +275,6 @@ fi
 |---|---|
 | `in_worktree` | `dirty=yes` なら生パス一覧を表示した上で**そのまま続行**（中止は破棄経路であり、破棄予定の変更に stash 確認を挟まない）。そのうえで `ExitWorktree` を `action: "keep"` で呼び main checkout へ復帰し、4.2.2 へ |
 | `in_main` | 既に main checkout にいるため `ExitWorktree` は呼ばない。dirty 表示もしない。4.2.2 へ |
-| `in_worktree_unrecorded` / `unknown` | `ExitWorktree` が main checkout へ戻せない（または分類不能）。**4.2.2 とブランチ削除（4.3）を試行せず**、Phase 7 の報告で未完了として列挙し、main checkout での `/rite:issue-cancel {issue_number}` 再実行へ委譲する。worktree 内で完結する 4.4〜4.6・Phase 5・Phase 6 は通常どおり実行する |
-| `none` | worktree 無し。4.3 へ |
 
 #### 4.2.2 remove の実行
 
