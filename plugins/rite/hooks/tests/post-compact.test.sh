@@ -664,5 +664,86 @@ fi
 # $lf_err lives under $TEST_DIR and is reclaimed by the file-level `trap cleanup EXIT`,
 # matching the other stderr-tempfile sites in this file (no per-TC rm).
 
+write_batch_queue() {
+  local dir="$1"
+  local sid="${2:-test-sid-$(basename "$dir")}"
+  local active="${3:-true}"
+  local cursor="${4:-0}"
+  mkdir -p "$dir/.rite/state"
+  jq -n --argjson active "$active" --argjson cursor "$cursor" \
+    '{issues:[2502], cursor:$cursor, mode:"merge", failed:[], outstanding:[], active:$active, updated_at:"2026-09-02T00:00:00Z"}' \
+    > "$dir/.rite/state/run-queue-${sid}.json"
+}
+
+echo "T-08: recovering + active queue appends Batch frame (auto and manual)"
+TC_DIR=$(setup_test "tc-batch-08-auto")
+write_per_session_state "$TC_DIR" \
+  '{"active": true, "issue_number": 2502, "phase": "review", "next_action": "iterate", "loop_count": 1, "pr_number": 99, "branch": "fix/issue-2502-x"}'
+jq -n '{compact_state: "recovering", compact_state_set_at: "2026-09-02T00:00:00Z", active_issue: 2502}' > "$(compact_state_path "$TC_DIR")"
+write_batch_queue "$TC_DIR"
+OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
+if echo "$OUTPUT" | grep -q "Auto-compact recovery" \
+  && echo "$OUTPUT" | grep -q "Batch: run-queue active" \
+  && echo "$OUTPUT" | grep -q "mode=merge" \
+  && echo "$OUTPUT" | grep -q "cursor=0/1" \
+  && echo "$OUTPUT" | grep -q "current_issue=#2502" \
+  && echo "$OUTPUT" | grep -q "pr=#99" \
+  && echo "$OUTPUT" | grep -q "queue_file=" \
+  && echo "$OUTPUT" | grep -q "Continue /rite:batch-run" \
+  && ! echo "$OUTPUT" | grep -q "/rite:recover"; then
+  pass "T-08 auto: Batch frame fields present, no /rite:recover"
+else
+  fail "T-08 auto: unexpected stdout: $OUTPUT"
+fi
+
+TC_DIR=$(setup_test "tc-batch-08-manual")
+write_per_session_state "$TC_DIR" \
+  '{"active": true, "issue_number": 2502, "phase": "review", "next_action": "iterate", "loop_count": 1, "pr_number": 99, "branch": "fix/issue-2502-x"}'
+jq -n '{compact_state: "recovering", compact_state_set_at: "2026-09-02T00:00:00Z", active_issue: 2502}' > "$(compact_state_path "$TC_DIR")"
+write_batch_queue "$TC_DIR"
+OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "manual"}' | bash "$HOOK" 2>/dev/null) || true
+if echo "$OUTPUT" | grep -q "Compact recovery" \
+  && echo "$OUTPUT" | grep -q "Batch: run-queue active" \
+  && echo "$OUTPUT" | grep -q "mode=merge" \
+  && ! echo "$OUTPUT" | grep -q "Auto-compact recovery" \
+  && ! echo "$OUTPUT" | grep -q "/rite:recover"; then
+  pass "T-08 manual: Batch frame appended to manual heredoc"
+else
+  fail "T-08 manual: unexpected stdout: $OUTPUT"
+fi
+
+echo "T-08b: compact_state!=recovering does not emit Batch even with active queue"
+TC_DIR=$(setup_test "tc-batch-08-normal")
+write_per_session_state "$TC_DIR" \
+  '{"active": true, "issue_number": 2502, "phase": "review", "pr_number": 99, "branch": "fix/issue-2502-x"}'
+jq -n '{compact_state: "normal"}' > "$(compact_state_path "$TC_DIR")"
+write_batch_queue "$TC_DIR"
+OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
+if echo "$OUTPUT" | grep -q "Batch: run-queue active"; then
+  fail "T-08b: Batch line leaked on compact_state=normal: $OUTPUT"
+else
+  pass "T-08b: no Batch line when not recovering"
+fi
+
+echo "T-10: inactive queue variants keep pre-change compact stdout (no Batch)"
+for variant in absent false done othersid; do
+  TC_DIR=$(setup_test "tc-batch-10-$variant")
+  write_per_session_state "$TC_DIR" \
+    '{"active": true, "issue_number": 42, "phase": "implement", "next_action": "Continue coding", "loop_count": 1, "pr_number": 10, "branch": "feat/issue-42-test"}'
+  jq -n '{compact_state: "recovering", compact_state_set_at: "2026-03-14T12:00:00Z", active_issue: 42}' > "$(compact_state_path "$TC_DIR")"
+  case "$variant" in
+    absent) ;;
+    false) write_batch_queue "$TC_DIR" "test-sid-$(basename "$TC_DIR")" false 0 ;;
+    done) write_batch_queue "$TC_DIR" "test-sid-$(basename "$TC_DIR")" true 1 ;;
+    othersid) write_batch_queue "$TC_DIR" "other-session" true 0 ;;
+  esac
+  OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
+  if echo "$OUTPUT" | grep -q "Auto-compact recovery" && ! echo "$OUTPUT" | grep -q "Batch: run-queue active"; then
+    pass "T-10 $variant: recovery stdout without Batch"
+  else
+    fail "T-10 $variant: $OUTPUT"
+  fi
+done
+
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1

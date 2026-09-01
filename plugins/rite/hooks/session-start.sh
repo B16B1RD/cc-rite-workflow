@@ -693,7 +693,21 @@ fi
 # inform the user ... Use bash {plugin_root}/...") was removed in v0.7 because it
 # contaminated unrelated /goal turns whenever a session started in a rite-active cwd.
 STOP_PHRASE=$(_rite_stop_reason_phrase "$STOP_REASON")
-if [ -n "$STOP_PHRASE" ]; then
+# batch 稼働中は recover 誘導を出さず /rite:batch-run 継続を案内する（非稼働時は現行 1 行を無変更）。
+_ss_sid=$(basename "$STATE_FILE" .flow-state)
+_ss_qf="$STATE_ROOT/.rite/state/run-queue-${_ss_sid}.json"
+_ss_batch=false
+if [ -n "$_ss_sid" ] && [ -f "$_ss_qf" ] && jq -e . "$_ss_qf" >/dev/null 2>&1; then
+  _ss_ba=$(jq -r '.active // false' "$_ss_qf")
+  _ss_bc=$(jq -r '.cursor // 0' "$_ss_qf")
+  _ss_bt=$(jq -r '.issues | length' "$_ss_qf")
+  if [ "$_ss_ba" = "true" ] && [ "${_ss_bc:-0}" -lt "${_ss_bt:-0}" ] 2>/dev/null; then
+    _ss_batch=true
+  fi
+fi
+if [ "$_ss_batch" = "true" ]; then
+  echo "rite: /rite:batch-run が稼働中です (Issue #${ISSUE}, phase: ${PHASE})。停止せず /rite:batch-run を該当ステップから続行してください。Do not run /rite:recover while the batch is active."
+elif [ -n "$STOP_PHRASE" ]; then
   echo "rite: 失敗停止した rite workflow を検出しました (Issue #${ISSUE}, phase: ${PHASE}, 理由: ${STOP_PHRASE})。再開前に状態を確認するには /rite:recover を実行してください。"
 else
   echo "rite: 中断した rite workflow を検出しました (Issue #${ISSUE}, phase: ${PHASE})。再開するには /rite:recover を実行してください。"
