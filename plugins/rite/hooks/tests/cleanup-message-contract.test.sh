@@ -335,7 +335,8 @@ assert "unknown is wired into the delegation gates" "3" \
 # Wiki ingest が x に倒れ、{outstanding_items_block} からも落ちる。兄弟 5 check は不在行を持つ。
 # 行キーと警告文言だけでは足りない。行が存在しても check 列が `x` に倒れれば「未実行の Wiki ingest を
 # 完了として描画する」という当の欠陥が復活し、空欄/`x` を判定軸とする {outstanding_items_block} からも
-# 落ちる。sibling の wiki-config-delegation-parity.test.sh:118 と同型に check 列まで固定する。
+# 落ちる。sibling の wiki-config-delegation-parity.test.sh が reason 行に対して行っているのと
+# 同型に、行キーと check 列を 1 本で同時に固定する。
 assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
   "$(grep -F '`WIKI_INGEST_*` の行がいずれも無いとき' "$CLEANUP" | grep -cF '| ` ` |')"
 assert_grep "Step 12 wiki_ingest_check forbids reading absence as success" "$CLEANUP" \
