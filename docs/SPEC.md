@@ -1178,9 +1178,9 @@ iteration:
 | SessionEnd | Session end | Save final state |
 | PreToolUse | Before tool execution | Block known-bad Bash command patterns (`pre-tool-bash-guard.sh`); deny reviewer-subagent Edit/Write/MultiEdit/NotebookEdit writes into a parent working tree (`pre-tool-edit-guard.sh`) |
 | PostToolUse | After tool execution | Auto-recover local work memory and sync the Issue comment replica on phase change (`post-tool-wm-sync.sh`); block bang-backtick adjacency that bash would interpret as history expansion (`scripts/bang-backtick-edit-hook.sh`) |
-| Stop | Turn end | Re-inject the `/rite:iterate` review↔fix loop command or the `/rite:cleanup` wiki-chain continuation (`consume-handoff` → `decision:block`) so the loop / chain continues after a continuation sentinel |
+| Stop | Turn end | Re-inject the `/rite:iterate` review↔fix loop command or the `/rite:cleanup` wiki-chain continuation (`consume-handoff` → `decision:block`) so the loop / chain continues after a continuation sentinel; when handoff is empty, a session-scoped run-queue watchdog blocks stop if `/rite:batch-run` is still active |
 
-> **Note:** The legacy stop-prevention hook (`stop-guard.sh`) has been removed; workflow stop prevention itself is now handled by the per-session state structure (`.rite/sessions/{session_id}.flow-state`) and the orchestrator-level scaffolding contract (Pre-write + 🚨 Mandatory After). A **distinct** `Stop` hook (`stop-loop-continuation.sh`) is registered for a different purpose: it consumes the one-shot `handoff` marker and re-injects the next review↔fix loop command, or — for the `WIKICHAIN:` prefix set by `/rite:cleanup` Step 9 — the continuation of the cleanup → wiki-ingest → wiki-lint chain. See the [Multi-Session State Management](#multi-session-state-management) section for details.
+> **Note:** The legacy stop-prevention hook (`stop-guard.sh`) has been removed; workflow stop prevention itself is now handled by the per-session state structure (`.rite/sessions/{session_id}.flow-state`) and the orchestrator-level scaffolding contract (Pre-write + 🚨 Mandatory After). A **distinct** `Stop` hook (`stop-loop-continuation.sh`) is registered for a different purpose: it consumes the one-shot `handoff` marker and re-injects the next review↔fix loop command, or — for the `WIKICHAIN:` prefix set by `/rite:cleanup` Step 9 — the continuation of the cleanup → wiki-ingest → wiki-lint chain. When handoff is empty, the same hook reads this session's `run-queue-{session_id}.json` and blocks stop while `/rite:batch-run` is active (`active:true` and `cursor < issues.length`). See the [Multi-Session State Management](#multi-session-state-management) section for details.
 
 ### Hook Execution Order
 
@@ -1189,14 +1189,14 @@ SessionStart
  ↓
 PreToolUse → Tool Execution → PostToolUse
  ↓
-Stop (on turn end — review↔fix loop / cleanup wiki-chain handoff continuation)
+Stop (on turn end — review↔fix loop / cleanup wiki-chain handoff continuation / batch-run watchdog)
  ↓
 PreCompact (on compact)
  ↓
 SessionEnd
 ```
 
-> **Note:** PreToolUse and PostToolUse fire on every Claude Code tool invocation. PreCommand/PostCommand have been deprecated and are not used by rite. (The former `preflight-check.sh` compact-blocking gate was removed in v0.7 along with `commands/`; compact recovery is now handled entirely by the SessionStart interruption notice + `/rite:recover` — see Post-Compact Recovery below.)
+> **Note:** PreToolUse and PostToolUse fire on every Claude Code tool invocation. PreCommand/PostCommand have been deprecated and are not used by rite. (The former `preflight-check.sh` compact-blocking gate was removed in v0.7 along with `commands/`; compact recovery is handled by the SessionStart interruption notice + `/rite:recover`, except while `/rite:batch-run` is active — then PostCompact / SessionStart inject a batch frame and do not steer to `/rite:recover`. See Post-Compact Recovery below.)
 
 ### Post-Compact Recovery (`post-compact.sh`)
 
@@ -1206,7 +1206,7 @@ Registered as a PostCompact hook. After a compact event, restores workflow conte
 
 1. Reads the per-session compact-state (`.rite/sessions/{session_id}.compact-state`, derived from the resolved per-session flow-state path) and the per-session flow state file under the resolved state root (delegates resolution to `state-path-resolve.sh`; see [Multi-Session State Management](#multi-session-state-management))
 2. If no flow state exists, cleans the per-session compact-state and exits 0 (self-healing for orphaned compact markers)
-3. Otherwise, emits a recovery block to stdout containing Issue number, phase, and next-action hints so the orchestrator can resume from the compact boundary
+3. Otherwise, emits a recovery block to stdout containing Issue number, phase, and next-action hints so the orchestrator can resume from the compact boundary. When this session's run-queue is active and unfinished, appends a `Batch:` frame (mode / cursor / current issue / PR / queue path) and a `/rite:batch-run` continuation line
 4. Double-execution is guarded via `_RITE_HOOK_RUNNING_POSTCOMPACT` (hooks.json + legacy `settings.local.json` migration safety)
 
 **Self-Healing Mechanism:**

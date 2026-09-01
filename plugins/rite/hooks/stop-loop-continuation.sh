@@ -30,15 +30,16 @@
 #     /rite:iterate ステップ5 完了通知の出力を要求、"WIKICHAIN:..." は cleanup チェーンの
 #     残り step (ingest 残処理 → cleanup ステップ 10-12) の継続を要求する。
 #   - 削除済みのため、進捗 (次コマンド実行 / 完了通知出力) の後に再度停止すれば handoff は空
-#     → block しない (無限 block ループ防止)。
+#     → block しない (無限 block ループ防止)。handoff が空でも、自セッションの
+#     run-queue が active で未完了なら batch watchdog が停止を差し戻す（handoff は読まない）。
 #   - 各継続点で継続 handoff が再セットされるため複数サイクル継続する。
 #     終了点では、同一ターンの最終 assistant に完了通知が既にあれば block せず、未出力 /
 #     検査不能のときだけ 1 回 block する。WIKICHAIN handoff も 1 回だけ block する one-shot で、
-#     チェーン再開後の再停止は許可される。
+#     チェーン再開後の再停止は許可される（ただし batch 稼働中は watchdog が別軸で差し戻す）。
 #
 # Exit behavior:
-#   exit 0 (no stdout)        — allow stop (handoff 不在 / loop 外 / 解決失敗 = fail-open)
-#   stdout {"decision":"block"} — block stop and re-inject the continuation command or finalize directive
+#   exit 0 (no stdout)        — allow stop (handoff 不在かつ batch 非稼働 / loop 外 / 解決失敗 = fail-open)
+#   stdout {"decision":"block"} — block stop and re-inject the continuation command, finalize directive, or batch-run 続行先
 set -euo pipefail
 
 # Double-execution guard (hooks.json + settings.local.json migration 由来の二重登録対策)
@@ -81,8 +82,162 @@ else
   HANDOFF=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" consume-handoff --session "$SESSION_ID" 2>/dev/null) || HANDOFF=""
 fi
 
-# handoff 不在 → 継続待ちでも終了通知待ちでもない → 停止許可。
-[ -n "$HANDOFF" ] || exit 0
+# handoff 非空 → 既存の prefix 分岐。空のときだけ batch watchdog を評価する。
+# watchdog は handoff フィールドを読み書きしない（consume 済みの空を前提にする）。
+_RITE_BATCH_WATCHDOG_K=3
+
+_rite_emit_block() {
+  local _reason="$1"
+  if ! jq -n --arg r "$_reason" '{decision:"block", reason:$r}'; then
+    local _r_esc
+    _r_esc="${_reason//\\/\\\\}"
+    _r_esc="${_r_esc//\"/\\\"}"
+    _r_esc="${_r_esc//$'\n'/\\n}"
+    _r_esc=$(printf '%s' "$_r_esc" | neutralize_ctrl --c0-only) \
+      || _r_esc="rite batch-run continuation pending (reason neutralization failed). Re-run /rite:batch-run."
+    printf '{"decision":"block","reason":"%s"}\n' "$_r_esc"
+  fi
+}
+
+_rite_batch_watchdog() {
+  local queue_file sidecar_file
+  local q_active q_cursor q_total q_mode q_updated q_issue
+  local fs_file fs_phase fs_pr fs_branch fs_active fs_stop fs_issue
+  local hint count prev_cursor prev_updated prev_phase prev_pr
+  local sidecar_ok _pr_state
+
+  queue_file="$STATE_ROOT/.rite/state/run-queue-${SESSION_ID}.json"
+  sidecar_file="$STATE_ROOT/.rite/state/run-queue-${SESSION_ID}.watchdog"
+
+  [ -f "$queue_file" ] || return 0
+
+  if ! jq -e . "$queue_file" >/dev/null 2>&1; then
+    echo "WARNING: run-queue が破損しています ($queue_file)" >&2
+    return 0
+  fi
+
+  q_active=$(jq -r '.active // false' "$queue_file" 2>/dev/null) || q_active="false"
+  q_cursor=$(jq -r '.cursor // 0' "$queue_file" 2>/dev/null) || q_cursor="0"
+  q_total=$(jq -r '.issues | length' "$queue_file" 2>/dev/null) || q_total="0"
+  q_mode=$(jq -r '.mode // "default"' "$queue_file" 2>/dev/null) || q_mode="default"
+  q_updated=$(jq -r '.updated_at // ""' "$queue_file" 2>/dev/null) || q_updated=""
+  q_issue=$(jq -r --argjson c "${q_cursor:-0}" '.issues[$c] // empty' "$queue_file" 2>/dev/null) || q_issue=""
+
+  [ "$q_active" = "true" ] || return 0
+  if [ "${q_cursor:-0}" -ge "${q_total:-0}" ] 2>/dev/null; then
+    return 0
+  fi
+
+  fs_file="$STATE_ROOT/.rite/sessions/${SESSION_ID}.flow-state"
+  fs_phase=""
+  fs_pr="0"
+  fs_branch=""
+  fs_active=""
+  fs_stop=""
+  fs_issue=""
+  if [ -f "$fs_file" ]; then
+    fs_phase=$(jq -r '.phase // ""' "$fs_file" 2>/dev/null) || fs_phase=""
+    fs_pr=$(jq -r '.pr_number // 0 | tostring' "$fs_file" 2>/dev/null) || fs_pr="0"
+    fs_branch=$(jq -r '.branch // ""' "$fs_file" 2>/dev/null) || fs_branch=""
+    fs_active=$(jq -r '.active // false' "$fs_file" 2>/dev/null) || fs_active=""
+    fs_stop=$(jq -r '.stop_reason // ""' "$fs_file" 2>/dev/null) || fs_stop=""
+    fs_issue=$(jq -r '.issue_number // "" | tostring' "$fs_file" 2>/dev/null) || fs_issue=""
+    [ -n "$q_issue" ] || q_issue="$fs_issue"
+  fi
+
+  hint="batch-run ステップ 1 から再判定"
+  # leftover flow-state of a previous queue item must not drive step-6 / CB routing.
+  if [ -n "$q_issue" ] && [ -n "$fs_issue" ] && [ "$q_issue" != "$fs_issue" ]; then
+    :
+  else
+    case "$fs_stop" in
+      circuit-breaker:*)
+        hint="batch-run ステップ 6（failed 記録 + cursor 前進）"
+        ;;
+      *)
+        case "$fs_phase" in
+          pr|review|fix) hint="/rite:iterate ${fs_pr}" ;;
+          ready)
+            hint="/rite:merge ${fs_pr}"
+            if [ -n "$fs_pr" ] && [ "$fs_pr" != "0" ]; then
+              _pr_state=""
+              if _pr_state=$(gh pr view "$fs_pr" --json state --jq '.state' 2>/dev/null); then
+                if [ "$_pr_state" = "MERGED" ]; then
+                  hint="/rite:cleanup ${fs_branch}"
+                fi
+              else
+                echo "WARNING: gh pr view ${fs_pr} に失敗したため ready を /rite:merge に倒します" >&2
+              fi
+            fi
+            ;;
+          ready_error)
+            hint="batch-run ステップ 8（失敗記録）"
+            ;;
+          merge) hint="/rite:cleanup ${fs_branch}" ;;
+          cleanup|ingest|completed)
+            if [ "$fs_active" = "false" ]; then
+              hint="batch-run ステップ 6（cursor 前進）"
+            else
+              hint="batch-run の cleanup 未実行ステップを継続（/rite:cleanup をステップ 0 から呼び直さない。cursor は進めない）"
+            fi
+            ;;
+          init|branch|plan|implement|lint)
+            hint="/rite:open ${q_issue}"
+            ;;
+          *)
+            hint="batch-run ステップ 1 から再判定"
+            ;;
+        esac
+        ;;
+    esac
+  fi
+
+  count=1
+  if [ -f "$sidecar_file" ] && jq -e . "$sidecar_file" >/dev/null 2>&1; then
+    prev_cursor=$(jq -r '.cursor // ""' "$sidecar_file")
+    prev_updated=$(jq -r '.updated_at // ""' "$sidecar_file")
+    prev_phase=$(jq -r '.phase // ""' "$sidecar_file")
+    prev_pr=$(jq -r '.pr_number // "" | tostring' "$sidecar_file")
+    if [ "$prev_cursor" = "$q_cursor" ] && [ "$prev_updated" = "$q_updated" ] && \
+       [ "$prev_phase" = "$fs_phase" ] && [ "$prev_pr" = "$fs_pr" ]; then
+      count=$(jq -r '.count // 0' "$sidecar_file")
+      count=$((count + 1))
+    fi
+  fi
+
+  sidecar_ok=0
+  if jq -n \
+      --argjson cursor "${q_cursor:-0}" \
+      --arg updated "$q_updated" \
+      --arg phase "$fs_phase" \
+      --arg pr "$fs_pr" \
+      --argjson n "$count" \
+      '{cursor:$cursor, updated_at:$updated, phase:$phase, pr_number:$pr, count:$n}' \
+      > "${sidecar_file}.tmp" 2>/dev/null && mv "${sidecar_file}.tmp" "$sidecar_file" 2>/dev/null; then
+    sidecar_ok=1
+  else
+    rm -f "${sidecar_file}.tmp"
+    echo "WARNING: batch watchdog sidecar の書込に失敗しました ($sidecar_file)。回数を数えられないため上限 K=${_RITE_BATCH_WATCHDOG_K} で止まらないリスクがあります" >&2
+  fi
+
+  if [ -n "${RITE_DEBUG:-}" ]; then
+    echo "DEBUG: batch watchdog queue=$queue_file active=$q_active cursor=$q_cursor/$q_total count=$count phase=$fs_phase sidecar_ok=$sidecar_ok" >&2
+  fi
+
+  if [ "$count" -gt "$_RITE_BATCH_WATCHDOG_K" ]; then
+    echo "WARNING: batch-run が ${_RITE_BATCH_WATCHDOG_K} 回連続で進捗なく停止しました。引数省略の /rite:batch-run で再開してください" >&2
+    return 0
+  fi
+
+  _rite_emit_block "rite の /rite:batch-run が稼働中です（mode=${q_mode}, cursor=${q_cursor}/${q_total}, 処理中 Issue #${q_issue}, PR #${fs_pr}, flow-state phase=${fs_phase}）。
+停止せず batch-run の該当ステップから続行してください: ${hint}
+queue_file=${queue_file}"
+}
+
+if [ -z "$HANDOFF" ]; then
+  _rite_batch_watchdog
+  exit 0
+fi
 
 # handoff pending: 停止を差し戻す。handoff の prefix で reason を分岐する。
 # 継続 / WIKICHAIN / 未知 prefix の block 可否は「handoff 非空」の軸のみ。FINALIZE は
