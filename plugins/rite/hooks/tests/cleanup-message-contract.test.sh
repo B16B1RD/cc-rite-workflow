@@ -238,16 +238,39 @@ _s6=$(awk '/^## ステップ 6: /{f=1} f && /^## ステップ 7: /{exit} f' "$CL
 assert "T-09 section 4-W extraction is non-empty" "yes" "$([ -n "$_s4w" ] && echo yes || echo no)"
 assert "T-09 section 5 extraction is non-empty" "yes" "$([ -n "$_s5" ] && echo yes || echo no)"
 assert "T-09 section 6 extraction is non-empty" "yes" "$([ -n "$_s6" ] && echo yes || echo no)"
+# 削除本体の検出は行頭アンカーに依存させない。実行行は `if cmd; then` / `|| cmd` / `elif x=$(cmd)`
+# の位置にも現れるため、`^[[:space:]]*git ...` だけでは抽出前のコード形にすら一致せず
+# (実測: 抽出前の 4-W 節に当てると prune の 1 行しか拾わない)、AC-9 のゲートが検査したつもりの
+# 対象を最初から見ていないことになる。コメント行を除いてからコマンド境界で照合する。
+# 検査対象は bash フェンス内のコード行のみ。散文には marker 名や手動復旧コマンドが
+# 引用として現れるため (例: BRANCH_DELETE_UNMERGED 時にユーザーが強制削除を選ぶ手順の説明)、
+# 節全体に当てると AC-9 が禁じていない散文で赤くなる。
+_bash_fenced() { awk '/^[[:space:]]*```bash$/{f=1;next} f && /^[[:space:]]*```$/{f=0;next} f'; }
+_strip_comments() { grep -v '^[[:space:]]*#'; }
 # 4-W: worktree の削除・prune の実行行が無く、teardown helper を呼んでいる。
 assert "T-09 4-W has no inline worktree removal" "0" \
-  "$(printf '%s\n' "$_s4w" | grep -cE '^[[:space:]]*(LC_ALL=C )?git worktree (remove|prune)')"
+  "$(printf '%s\n' "$_s4w" | _bash_fenced | _strip_comments | grep -cE '(^|[;&|[:space:]])git worktree (remove|prune)')"
 assert "T-09 4-W delegates to the teardown helper" "2" \
   "$(printf '%s\n' "$_s4w" | grep -cE '^[[:space:]]*bash \{plugin_root\}/hooks/scripts/cleanup-session-worktree-teardown\.sh')"
 # 5: ブランチ削除の実行行が無く、branch delete helper を呼んでいる。
 assert "T-09 step 5 has no inline branch deletion" "0" \
-  "$(printf '%s\n' "$_s5" | grep -cE '^[[:space:]]*(LC_ALL=C )?git (branch -[dD]|push origin --delete|ls-remote)')"
+  "$(printf '%s\n' "$_s5" | _bash_fenced | _strip_comments | grep -cE '(^|[;&|[:space:]])git (branch -[dD]|push origin --delete|ls-remote)')"
 assert "T-09 step 5 delegates to the branch delete helper" "1" \
   "$(printf '%s\n' "$_s5" | grep -cE '^[[:space:]]*bash \{plugin_root\}/hooks/scripts/cleanup-branch-delete\.sh')"
+# 呼び出しの **引数** を pin する。件数だけの pin は、ガードを駆動する 2 引数を literal へ潰す
+# 変異 (identity→true / pr-merged→true) をスイート全体で素通しする (実測: 3 変異とも 150/150 green)。
+assert "T-09 step 5 threads the identity flag" "1" \
+  "$(printf '%s\n' "$_s5" | grep -cF -- '--branch-identity-verified "{branch_identity_verified}"')"
+assert "T-09 step 5 threads the pr-merged flag" "1" \
+  "$(printf '%s\n' "$_s5" | grep -cF -- '--pr-merged "{pr_merged}"')"
+assert "T-09 4-W threads the pr-merged flag" "1" \
+  "$(printf '%s\n' "$_s4w" | grep -cF -- '--pr-merged "{pr_merged}"')"
+# helper の rc を捨てないこと。marker 不在を「削除成功」と読む消費側の規約は、helper が
+# 起動しなかった場合に marker が 1 本も出ないことで破れる。
+assert "T-09 4-W captures the teardown helper rc" "1" \
+  "$(printf '%s\n' "$_s4w" | grep -cF -- '|| _wt_rc=$?')"
+assert "T-09 step 6 captures the state purge helper rc" "1" \
+  "$(printf '%s\n' "$_s6" | grep -cF -- '|| _sp_rc=$?')"
 # 6: state 削除の実行行 (rite_rm の定義・呼び出し、rm -f) が無く、purge helper を呼んでいる。
 # ステップ 6.0 (follow-up 起票) は抽出対象外なので、その helper 呼び出しはここでは数えない。
 assert "T-09 step 6 has no inline rite_rm" "0" \

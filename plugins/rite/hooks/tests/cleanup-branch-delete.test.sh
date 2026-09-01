@@ -30,7 +30,10 @@ make_repo(){
   local merged="$1"
   local d origin
   d=$(mktemp -d "$TMP_ROOT/repo.XXXXXX")
-  origin="$d/origin.git"
+  # origin は作業ツリーの**外**に置く。中に置くと `git add .` がリモートの管理ファイル
+  # (HEAD / config / hooks/*.sample など) を tree に取り込み、fixture に switch / merge を
+  # 足した瞬間にリモート自身の HEAD / config が working tree 復元で書き換わりうる。
+  origin=$(mktemp -d "$TMP_ROOT/origin.XXXXXX")/bare.git
   git init -q --bare "$origin"
   git -C "$d" init -q -b develop
   git -C "$d" config user.email test@example.com
@@ -57,7 +60,10 @@ echo "=== cleanup-branch-delete: マージ済み（AC-3）==="
 r=$(make_repo merged)
 out=$(cd "$r" && bash "$HELPER" --branch "$BR" --pr-merged true --branch-identity-verified true 2>&1); rc=$?
 assert_eq "merged: exit 0" "$rc" "0"
+# `via=` が続かないことまで見る。付けないと squash 残渣の強制削除経路
+# (`...; branch=$BR; via=squash-merged`) の部分文字列にも一致し、通常削除と区別できない。
 assert_contains "merged: ローカル削除の marker を出す" "$out" "[CONTEXT] BRANCH_DELETED=1; branch=$BR"
+assert_not_contains "merged: 通常削除は via= を付けない" "$out" "branch=$BR; via="
 assert_contains "merged: リモート削除の marker を出す" "$out" "[CONTEXT] REMOTE_BRANCH_DELETED=1; branch=$BR"
 local_exists "$r" && bad "merged: ローカルブランチが残っている" || ok "merged: ローカルブランチが消える"
 remote_exists "$r" && bad "merged: リモートブランチが残っている" || ok "merged: リモートブランチが消える"
@@ -105,11 +111,15 @@ r=$(make_repo merged)
 out=$(cd "$r" && bash "$HELPER" --branch "$BR" --pr-merged true --branch-identity-verified true --dry-run 2>/dev/null); rc=$?
 assert_eq "dry-run: exit 0" "$rc" "0"
 assert_contains "dry-run: ローカル対象を stdout の marker で報告する" "$out" \
-  "[CONTEXT] BRANCH_DELETE_DRY_RUN=1; branch=$BR"
+  "[CONTEXT] DRY_RUN_BRANCH_DELETE=1; branch=$BR"
 assert_contains "dry-run: リモート対象を stdout の marker で報告する" "$out" \
-  "[CONTEXT] REMOTE_BRANCH_DELETE_DRY_RUN=1; branch=$BR"
+  "[CONTEXT] DRY_RUN_REMOTE_BRANCH_DELETE=1; branch=$BR"
 assert_not_contains "dry-run: ローカル削除済み marker を出さない" "$out" "[CONTEXT] BRANCH_DELETED=1"
 assert_not_contains "dry-run: リモート削除済み marker を出さない" "$out" "[CONTEXT] REMOTE_BRANCH_DELETED=1"
+# dry-run marker は消費側 (SKILL.md ステップ 12) が scope する 2 つの glob の外に居ること。
+# family 内だと判定表のどの行にも一致せず fallback にも落ちない未定義状態を作る。
+assert_not_contains "dry-run: ローカル marker family に入らない" "$out" "[CONTEXT] BRANCH_DELETE_"
+assert_not_contains "dry-run: リモート marker family に入らない" "$out" "[CONTEXT] REMOTE_BRANCH_"
 local_exists "$r" && ok "dry-run: ローカルブランチを削除しない" || bad "dry-run がローカルブランチを削除した"
 remote_exists "$r" && ok "dry-run: リモートブランチを削除しない" || bad "dry-run がリモートブランチを削除した"
 

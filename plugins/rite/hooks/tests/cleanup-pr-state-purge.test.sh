@@ -68,7 +68,10 @@ assert_contains "dry-run: 対象を stdout に列挙する" "$out" \
   "[DRY-RUN] nb_sweep_done を削除対象として検出: $r/.rite/state/nb-sweep-done-42.txt"
 assert_contains "dry-run: review-results も列挙する" "$out" \
   "[DRY-RUN] review_results を退避/削除対象として検出: $r/.rite/review-results/42-cycle1.json"
-assert_not_contains "dry-run: 削除したと報告しない" "$out" "を削除: "
+# `✅ … を削除:` は helper が **stderr** にしか出さない。stdout だけを見る assert は
+# どんな実装でも落ちない false positive になるため、両ストリームを結合して照合する。
+out_all=$(bash "$HELPER" --pr 42 --state-root "$r" --dry-run 2>&1)
+assert_not_contains "dry-run: 削除したと報告しない (stdout+stderr)" "$out_all" "を削除: "
 
 echo "=== cleanup-pr-state-purge: 不正な PR 番号 ==="
 
@@ -86,6 +89,35 @@ out=$(bash "$HELPER" --pr "" --state-root "$r" 2>&1); rc=$?
 assert_eq "空 PR: exit 0" "$rc" "0"
 assert_contains "空 PR: marker を出す" "$out" "reason=invalid_pr_number"
 assert_present "空 PR: 何も削除しない" "$r/.rite/state/nb-sweep-done-42.txt"
+
+echo "=== cleanup-pr-state-purge: 既定の state-root 解決（本番経路）==="
+
+# 本番 caller (cleanup/SKILL.md ステップ 6) は `--pr` だけを渡し `--state-root` を渡さない。
+# 全 TC が `--state-root` を明示すると、helper の既定解決 (state-path-resolve.sh → 失敗時
+# cwd fallback) がスイート全体で 1 度も実行されず、本番が通る唯一の経路が未検査になる。
+# state-path-resolve.sh は git の toplevel (linked worktree なら main checkout) を返すため、
+# 既定解決を通すには temp repo を git repo にして cwd をその中に置く。
+r=$(mktemp -d "$TMP_ROOT/root.XXXXXX"); seed "$r"
+git -C "$r" init -q
+git -C "$r" config user.email test@example.com
+git -C "$r" config user.name test
+out=$(cd "$r" && bash "$HELPER" --pr 42 2>&1); rc=$?
+assert_eq "既定解決: exit 0" "$rc" "0"
+assert_absent "既定解決: 解決された root 配下の state を削除する" "$r/.rite/state/nb-sweep-done-42.txt"
+assert_present "既定解決: 別 PR の state は残る" "$r/.rite/state/nb-sweep-done-4.txt"
+
+# state root を解決できない環境では WARNING を出して cwd へ倒す（silent に no-op しない）。
+# state-path-resolve.sh を欠いた stub plugin root から helper を呼んで再現する。
+r=$(mktemp -d "$TMP_ROOT/root.XXXXXX"); seed "$r"
+stub_root=$(mktemp -d "$TMP_ROOT/stubroot.XXXXXX")
+mkdir -p "$stub_root/hooks/scripts"
+cp "$HELPER" "$stub_root/hooks/scripts/"
+cp "$SCRIPT_DIR/../scripts/review-results-archive-or-rm.sh" "$stub_root/hooks/scripts/" 2>/dev/null || true
+# state-path-resolve.sh は意図的に置かない → 解決失敗 → cwd fallback
+out=$(cd "$r" && bash "$stub_root/hooks/scripts/cleanup-pr-state-purge.sh" --pr 42 2>&1); rc=$?
+assert_eq "state root 解決失敗: exit 0（非ブロッキング）" "$rc" "0"
+assert_contains "state root 解決失敗: WARNING を出す" "$out" "state-path-resolve.sh の解決に失敗"
+assert_absent "state root 解決失敗: cwd を root として削除する" "$r/.rite/state/nb-sweep-done-42.txt"
 
 echo "=== cleanup-pr-state-purge: 対象なし / helper 失敗 ==="
 

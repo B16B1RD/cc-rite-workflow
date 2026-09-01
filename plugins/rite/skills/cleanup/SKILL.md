@@ -383,8 +383,18 @@ rationale: references/rationale.md#exitworktree-delegation
      # 意味は helper docstring が SoT。
      # `--self-root` には**この Bash 呼び出しの `$PPID`**（= claude ハーネス）を渡す。helper 内で
      # `$PPID` を取ると helper を起動したシェルを指し、self-exclusion が意味を失う。
+     # helper の rc は捨てない。**marker 不在を「削除成功」と読んではならない**というステップ 12 の
+     # {session_worktree_check} 規約は、helper が起動すらしなかった場合（{plugin_root} の未解決置換 /
+     # helper 欠落で rc=127、引数不正で rc=2）に marker が 1 本も出ないことで破れる。rc を見て
+     # 失敗を marker に変換する（ステップ 6.0 の `_fu_rc` と同型）。
+     _wt_rc=0
      bash {plugin_root}/hooks/scripts/cleanup-session-worktree-teardown.sh remove \
-       --worktree "{flow_wt}" --pr-merged "{pr_merged}" --self-root "$PPID"
+       --worktree "{flow_wt}" --pr-merged "{pr_merged}" --self-root "$PPID" || _wt_rc=$?
+     if [ "$_wt_rc" -ne 0 ]; then
+       echo "WARNING: worktree teardown helper が rc=${_wt_rc} で失敗しました。作業ツリーは未処理のまま残っています" >&2
+       echo "  原因候補: {plugin_root} の未解決置換 / helper 欠落・非可読 (rc=127) / 引数不正 (rc=2)" >&2
+       echo "[CONTEXT] WORKTREE_REMOVE_FAILED=1; path={flow_wt}; rc=${_wt_rc}" >&2
+     fi
      ```
      > 通常の `in_worktree` 経路ではステップ 2 の `ExitWorktree(keep)` で自セッションの harness cwd が main に退避済みのため、`worktree-foreign-cwd.sh` は rc=1（削除）を返す。`ExitWorktree(keep)` が no-op / 失敗でも、残る live cwd は自セッションだけなので self-exclusion により rc=1。rc=0（遅延）は別セッションのハーネスがこの worktree 内に cwd を持つ場合のみ。`/proc` の無い環境では rc=2 となり従来どおり削除を実行する（後方互換）。
 rationale: references/rationale.md#live-cwd-self-exclusion
@@ -632,7 +642,19 @@ fi
 # 書かれて main checkout の削除が no-op になる不整合を防ぐ（解決失敗時は cwd fallback）。
 # 他 PR 誤削除防止の `{pr_number}-` prefix 固定 glob、review-results の退避/削除委譲、
 # rite_rm 6 種、marker の emit はすべて helper が持つ（契約は helper docstring が SoT）。
-bash {plugin_root}/hooks/scripts/cleanup-pr-state-purge.sh --pr "{pr_number}"
+#
+# helper の rc は捨てない。**marker 不在を「削除成功」と読んではならない**という
+# {review_cleanup_check} state 削除側の規約は、helper が起動すらしなかった場合
+# （{plugin_root} の未解決置換 / helper 欠落で rc=127、引数不正で rc=2）に marker が 1 本も
+# 出ないことで破れる。rc を見て失敗を marker に変換する（helper が内側の archive helper に
+# 対して採っているのと同じ形を、外側の境界にも適用する）。
+_sp_rc=0
+bash {plugin_root}/hooks/scripts/cleanup-pr-state-purge.sh --pr "{pr_number}" || _sp_rc=$?
+if [ "$_sp_rc" -ne 0 ]; then
+  echo "WARNING: state purge helper が rc=${_sp_rc} で失敗しました。PR-specific state ファイルは未処理のまま残っています" >&2
+  echo "  原因候補: {plugin_root} の未解決置換 / helper 欠落・非可読 (rc=127) / 引数不正 (rc=2)" >&2
+  echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=state_purge_helper_failed; pr={pr_number}; rc=${_sp_rc}" >&2
+fi
 ```
 
 `review-run-since-{pr}.txt` は `/rite:iterate` の収束トレンド判定が現 run の境界に使う pin。直上で削除する `review-results/` と同じライフサイクルのため同列挙で掃除する。

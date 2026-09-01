@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # cleanup-pr-state-purge.sh — PR-specific state ファイルの削除。
-# cleanup/SKILL.md ステップ 6 から抽出した後片付けロジックで、`/rite:cleanup` と
-# `/rite:issue-cancel` の双方から呼ばれる。振る舞いは抽出前と同一。
+# cleanup/SKILL.md ステップ 6 から抽出した後片付けロジック。振る舞いは抽出前と同一。
+# 引数はすべて名前付きオプションで受けるため、cleanup 以外の経路からも呼べる。
 #
 # 他 PR 誤削除防止のため glob は `<pr>-` prefix 固定。
 #

@@ -11,6 +11,7 @@
 set -u
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 HELPER="$SCRIPT_DIR/../scripts/cleanup-session-worktree-teardown.sh"
+PLUGIN_HOOKS="$SCRIPT_DIR/.."
 pass=0 fail=0
 TMP_ROOT=$(mktemp -d)
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -24,6 +25,10 @@ assert_eq(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (expected='$3' actua
 # worktree パスは helper が物理判定に使う `<worktree_base leaf>/issue-{N}` の形にする。
 make_repo(){
   d=$(mktemp -d "$TMP_ROOT/repo.XXXXXX")
+  # run-tests.sh は suite 実行時に CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID を unset し、
+  # 各 sandbox の `.rite-session-id` へフォールバックさせる。これを置かないと flow-state の
+  # set と get が別の session_id を解決しうる（単体では env 由来で一致するため suite でだけ落ちる）。
+  echo "550e8400-e29b-41d4-a716-446655440000" > "$d/.rite-session-id"
   git -C "$d" init -q -b develop
   git -C "$d" config user.email test@example.com
   git -C "$d" config user.name test
@@ -42,7 +47,7 @@ echo "=== cleanup-session-worktree-teardown: detect ==="
 # flow-state に記録が無くても物理 cwd から導出する（in_worktree_unrecorded）。
 r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
 main_root=$(git -C "$r" rev-parse --show-toplevel)
-out=$(cd "$wt" && RITE_STATE_ROOT="$r" bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+out=$(cd "$wt" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
 assert_contains "detect: worktree 内は in_worktree_unrecorded に分類する" "$out" \
   "[CONTEXT] CLEANUP_WT=in_worktree_unrecorded; worktree=$wt; main_root=$main_root"
 assert_contains "detect: 退出不能な入場は委譲 marker を出す" "$out" \
@@ -50,7 +55,7 @@ assert_contains "detect: 退出不能な入場は委譲 marker を出す" "$out"
 
 # AC-2: 対象外の cwd（main checkout）では worktree を触らず none を返して exit 0。
 r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
-out=$(cd "$r" && RITE_STATE_ROOT="$r" bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null); rc=$?
+out=$(cd "$r" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null); rc=$?
 assert_eq "detect: 対象外 cwd でも exit 0" "$rc" "0"
 assert_contains "detect: 対象外 cwd は none" "$out" "[CONTEXT] CLEANUP_WT=none;"
 assert_not_contains "detect: none では委譲 marker を出さない" "$out" "CLEANUP_DELEGATED"
@@ -59,13 +64,57 @@ assert_not_contains "detect: none では委譲 marker を出さない" "$out" "C
 # multi_session 無効な config では分類自体が none（4-W 全体 no-op）。
 r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
 printf 'multi_session:\n  enabled: false\n' > "$r/rite-config.yml"
-out=$(cd "$wt" && RITE_STATE_ROOT="$r" bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+out=$(cd "$wt" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
 assert_contains "detect: multi_session 無効は none" "$out" "[CONTEXT] CLEANUP_WT=none;"
+
+# flow-state が worktree を記録している状態 = in_worktree arm（/rite:batch-run 経由の主経路）。
+# この arm だけが dirty フィールドと --- dirty files begin/end --- ブロックを組み立て、
+# SKILL.md 4-W 手順 1 の AskUserQuestion（dirty なら stash か中止）を駆動する。
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+main_root=$(git -C "$r" rev-parse --show-toplevel)
+# flow-state は state-path-resolve.sh（git toplevel、linked worktree は main checkout へ unify）
+# が決める場所に書かれる。set を temp repo の中で実行しないと、このセッションの実 state を
+# 書き換えたうえ suite 実行順に依存する non-hermetic なテストになる。
+( cd "$r" && bash "$PLUGIN_HOOKS/flow-state.sh" set \
+  --phase branch --issue 1 --branch feat/test --pr 0 --worktree "$wt" --next "test" ) >/dev/null 2>&1
+out=$(cd "$wt" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_contains "detect: flow-state 記録ありは in_worktree（主経路）" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_worktree; worktree=$wt; dirty=no; main_root=$main_root"
+assert_not_contains "detect: clean な in_worktree は dirty ブロックを出さない" "$out" "--- dirty files begin ---"
+
+# 未追跡ファイルがあれば dirty=yes になり、生パス一覧がデリミタ内に出る
+# （AskUserQuestion の説明文はこの一覧を引用する契約）。
+printf 'x\n' > "$wt/untracked-probe.txt"
+out=$(cd "$wt" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_contains "detect: 未追跡ファイルで dirty=yes" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_worktree; worktree=$wt; dirty=yes; main_root=$main_root"
+assert_contains "detect: dirty 一覧をデリミタで囲んで出す" "$out" "--- dirty files begin ---"
+assert_contains "detect: dirty 一覧に当該パスが載る" "$out" "?? untracked-probe.txt"
+assert_contains "detect: dirty 一覧の終端デリミタ" "$out" "--- dirty files end ---"
+
+# `--issue` の空値・省略は usage error にしない（関連 Issue 未識別は cleanup の正規経路）。
+# 落とすと marker が 1 本も出ず、消費側が marker 不在を「削除成功」と読む。
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+out=$(cd "$wt" && bash "$HELPER" detect --issue --config "$r/rite-config.yml" 2>/dev/null); rc=$?
+assert_eq "detect: --issue の値欠落でも exit 0" "$rc" "0"
+assert_contains "detect: --issue 値欠落でも CLEANUP_WT marker を必ず出す" "$out" "[CONTEXT] CLEANUP_WT="
+out=$(cd "$wt" && bash "$HELPER" detect --config "$r/rite-config.yml" 2>/dev/null); rc=$?
+assert_eq "detect: --issue 省略でも exit 0" "$rc" "0"
+assert_contains "detect: --issue 省略でも CLEANUP_WT marker を必ず出す" "$out" "[CONTEXT] CLEANUP_WT="
+# 明示的な空文字列トークン。値として消費しないと次の周回で "unknown option" の usage error に
+# 落ち、marker なしで exit 2 する（トークンの形を変えた同じ欠陥）。
+out=$(cd "$wt" && bash "$HELPER" detect --issue "" --config "$r/rite-config.yml" 2>/dev/null); rc=$?
+assert_eq "detect: --issue \"\" (明示的な空文字列) でも exit 0" "$rc" "0"
+assert_contains "detect: --issue \"\" でも CLEANUP_WT marker を必ず出す" "$out" "[CONTEXT] CLEANUP_WT="
+# 引数順を入れ替えた形（末尾が空文字列）でも同じ。
+out=$(cd "$wt" && bash "$HELPER" detect --config "$r/rite-config.yml" --issue "" 2>/dev/null); rc=$?
+assert_eq "detect: 末尾 --issue \"\" でも exit 0" "$rc" "0"
+assert_contains "detect: 末尾 --issue \"\" でも CLEANUP_WT marker を必ず出す" "$out" "[CONTEXT] CLEANUP_WT="
 
 # detect は read-only なので --dry-run を受理して no-op（AC-6 の「各 helper」を満たす）。
 r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
-out_plain=$(cd "$wt" && RITE_STATE_ROOT="$r" bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
-out_dry=$(cd "$wt" && RITE_STATE_ROOT="$r" bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" --dry-run 2>/dev/null); rc=$?
+out_plain=$(cd "$wt" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+out_dry=$(cd "$wt" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" --dry-run 2>/dev/null); rc=$?
 assert_eq "detect --dry-run: exit 0" "$rc" "0"
 assert_eq "detect --dry-run: 出力が通常実行と同一（no-op）" "$out_dry" "$out_plain"
 
@@ -85,13 +134,26 @@ out=$(cd "$r" && bash "$HELPER" remove --worktree "$wt" --pr-merged true --self-
 assert_eq "remove --dry-run: exit 0" "$rc" "0"
 [ -d "$wt" ] && ok "remove --dry-run: worktree を削除しない" || bad "remove --dry-run が worktree を削除した"
 assert_eq "remove --dry-run: 対象を stdout の marker で報告する" "$out" \
-  "[CONTEXT] WORKTREE_REMOVE_DRY_RUN=1; path=$wt; action=remove_worktree"
+  "[CONTEXT] DRY_RUN_WORKTREE_REMOVE=1; path=$wt; action=remove_worktree"
+# dry-run marker は消費側 (SKILL.md ステップ 12 の {session_worktree_check}) が scope する
+# glob `WORKTREE_REMOVE_*` の外に居ること。family 内だと「marker 不在 = 削除成功」の判定を
+# dry-run の 1 行が壊す。
+assert_not_contains "remove --dry-run: 本番 marker family に入らない" "$out" "WORKTREE_REMOVE_"
 
-# 既に消えている worktree に対しても非ブロッキング（cleanup 再実行の冪等性）。
+# 既に消えている worktree への再実行は非ブロッキングで続行するが、**成功ではない** —
+# helper は WORKTREE_REMOVE_FAILED を出し、ステップ 12 はそれを「削除に失敗」として報告する。
+# 名乗る性質・検証内容・実挙動を一致させる（rc だけを見ると 3 者がずれる）。
 r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
 git -C "$r" worktree remove "$wt" >/dev/null 2>&1
 out=$(cd "$r" && bash "$HELPER" remove --worktree "$wt" --pr-merged true --self-root "$$" 2>&1); rc=$?
-assert_eq "remove: 既に不在でも exit 0" "$rc" "0"
+assert_eq "remove: 既に不在でも exit 0（非ブロッキング）" "$rc" "0"
+assert_contains "remove: 既に不在の再実行は失敗 marker を出す" "$out" \
+  "[CONTEXT] WORKTREE_REMOVE_FAILED=1; path=$wt"
+if grep -qxF "session_worktree	$wt" "$r/.rite/tmp-artifacts.tsv" 2>/dev/null; then
+  ok "remove: 既に不在の再実行は reap manifest へ記録する（--pr-merged true）"
+else
+  bad "remove: reap manifest に session_worktree エントリが無い"
+fi
 
 echo "=== cleanup-session-worktree-teardown: usage ==="
 
@@ -101,8 +163,6 @@ out=$(bash "$HELPER" remove --worktree /nonexistent --self-root "$$" 2>&1); rc=$
 assert_eq "remove: --pr-merged 欠落は usage error" "$rc" "2"
 out=$(bash "$HELPER" remove --worktree /nonexistent --pr-merged true 2>&1); rc=$?
 assert_eq "remove: --self-root 欠落は usage error" "$rc" "2"
-out=$(bash "$HELPER" detect 2>&1); rc=$?
-assert_eq "detect: --issue 欠落は usage error" "$rc" "2"
 out=$(bash "$HELPER" bogus 2>&1); rc=$?
 assert_eq "未知の subcommand は usage error" "$rc" "2"
 

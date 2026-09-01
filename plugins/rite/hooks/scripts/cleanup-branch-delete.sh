@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # cleanup-branch-delete.sh — ローカル / リモートブランチの削除。
-# cleanup/SKILL.md ステップ 5 から抽出した後片付けロジックで、`/rite:cleanup` と
-# `/rite:issue-cancel` の双方から呼ばれる。振る舞いは抽出前と同一。
+# cleanup/SKILL.md ステップ 5 から抽出した後片付けロジック。振る舞いは抽出前と同一。
+# 引数はすべて名前付きオプションで受けるため、cleanup 以外の経路からも呼べる。
 #
 # 順序: branch 削除は **worktree 削除後にのみ成功する**（Git 制約: worktree で checkout 中の
 # branch は削除不可）。multi_session 時は cleanup-session-worktree-teardown.sh remove の後に呼ぶ。
@@ -10,13 +10,22 @@
 #   cleanup-branch-delete.sh --branch <name> --pr-merged <true|false> \
 #     --branch-identity-verified <true|false> [--dry-run]
 #
-# 出力: ローカル 6 marker + リモート 4 marker。成功系（BRANCH_DELETED /
-#   BRANCH_ALREADY_ABSENT / REMOTE_BRANCH_DELETED / REMOTE_BRANCH_ALREADY_ABSENT）は stdout、
-#   失敗・未試行系（*_CHECK_FAILED / *_DELETE_FAILED / BRANCH_DELETE_UNMERGED）は stderr。
-#   全 marker に `; branch=<name>` を付ける（呼び出し側は branch= までスコープして照合する）。
-#   fail-fast 経路のみ sentinel `branch=<unsupported branch name>` でどのルールにも一致させない。
+# 出力 marker（全 marker に `; branch=<name>` を付ける。呼び出し側は branch= までスコープして
+# 照合する。fail-fast 経路のみ sentinel `branch=<unsupported branch name>` でどのルールにも
+# 一致させない）:
+#   ローカル 5 種 + dry-run 1 種
+#     stdout: BRANCH_DELETED / BRANCH_ALREADY_ABSENT / DRY_RUN_BRANCH_DELETE
+#     stderr: BRANCH_CHECK_FAILED / BRANCH_DELETE_FAILED / BRANCH_DELETE_UNMERGED
+#     委譲先 cleanup-deferred-branch-recovery.sh が stderr に出す 2 種:
+#            BRANCH_DELETE_DEFERRED / BRANCH_DELETE_DEFERRED_WORKTREE
+#   リモート 4 種 + dry-run 1 種
+#     stdout: REMOTE_BRANCH_DELETED / REMOTE_BRANCH_ALREADY_ABSENT / DRY_RUN_REMOTE_BRANCH_DELETE
+#     stderr: REMOTE_BRANCH_CHECK_FAILED / REMOTE_BRANCH_DELETE_FAILED
 #   **どの経路も必ず marker を emit する** — marker 不在は「削除成功」ではなく
 #   「実行結果を確認できていない」を意味する契約。
+#   dry-run marker に `DRY_RUN_` を前置するのは、呼び出し側 (SKILL.md ステップ 12) が
+#   `BRANCH_DELETE_*` / `REMOTE_BRANCH_*` の glob で marker family を scope するため。
+#   family 内の名前にすると、判定表のどの行にも一致せず fallback にも落ちない未定義状態を作る。
 #
 # --branch-identity-verified を必須にする理由:
 #   削除対象が PR head と一致することの確認は呼び出し側（Step 1.3 の headRefName 完全一致）の
@@ -139,9 +148,10 @@ elif [ "$_sr_rc" -ne 0 ]; then
   printf '%s\n' "${_sr_err}" | tr -d '\r' | sed 's/^/  /' >&2
   echo "--- show-ref stderr end ---" >&2
 elif [ "$dry_run" = "true" ]; then
-  # 存在確認済みで削除対象。削除は行わず対象のみ報告する。marker family は本番経路と分離し、
-  # 呼び出し側の {local_branch_check} 判定を dry-run が汚染しないようにする。
-  echo "[CONTEXT] BRANCH_DELETE_DRY_RUN=1; branch=$branch"
+  # 存在確認済みで削除対象。削除は行わず対象のみ報告する。marker 名は `DRY_RUN_` 前置にして
+  # 呼び出し側 ({local_branch_check}) が scope する glob `BRANCH_DELETE_*` の外へ出す
+  # （family 内だと判定表のどの行にも一致せず fallback にも落ちない未定義状態になる）。
+  echo "[CONTEXT] DRY_RUN_BRANCH_DELETE=1; branch=$branch"
 elif del_err=$(LC_ALL=C git branch -d -- "$branch" 2>&1); then
   echo "[CONTEXT] BRANCH_DELETED=1; branch=$branch"
 else
@@ -287,7 +297,8 @@ case "$_ls_rc" in
     # （実測確認済み。共有リモートのタグ削除は不可逆でリリース/CI を壊す）。存在確認した ref 集合と
     # 削除する ref 集合を定義上一致させる。
     if [ "$dry_run" = "true" ]; then
-      echo "[CONTEXT] REMOTE_BRANCH_DELETE_DRY_RUN=1; branch=$branch"
+      # `DRY_RUN_` 前置の理由はローカル側と同じ（消費側 glob `REMOTE_BRANCH_*` の外へ出す）。
+      echo "[CONTEXT] DRY_RUN_REMOTE_BRANCH_DELETE=1; branch=$branch"
     elif _push_err=$(LC_ALL=C git push origin --delete "refs/heads/$branch" 2>&1); then
       echo "[CONTEXT] REMOTE_BRANCH_DELETED=1; branch=$branch"
     else

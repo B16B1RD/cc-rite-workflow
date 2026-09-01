@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # cleanup-session-worktree-teardown.sh — session worktree の検出と削除。
-# cleanup/SKILL.md ステップ 4-W から抽出した後片付けロジックで、`/rite:cleanup` と
-# `/rite:issue-cancel` の双方から呼ばれる。振る舞いは抽出前と同一。
+# cleanup/SKILL.md ステップ 4-W から抽出した後片付けロジック。振る舞いは抽出前と同一。
+# 引数はすべて名前付きオプションで受けるため、cleanup 以外の経路からも呼べる。
 #
 # なぜ 2 subcommand に分かれているか:
 #   検出と削除の**間**に `ExitWorktree`（LLM ツール）が必ず入る。cwd が worktree 内のまま
@@ -10,9 +10,12 @@
 #   dirty 時の AskUserQuestion も同じ理由で呼び出し側に残る（本 helper は marker を出すのみ）。
 #
 # Usage:
-#   cleanup-session-worktree-teardown.sh detect --issue <N> [--config <path>]
+#   cleanup-session-worktree-teardown.sh detect [--issue <N>] [--config <path>]
 #   cleanup-session-worktree-teardown.sh remove --worktree <path> --pr-merged <true|false> \
 #     --self-root <pid> [--dry-run]
+#
+# detect の `--issue` は空値・省略を許容する（関連 Issue 未識別は cleanup の正規経路で、
+# 分類は物理 cwd からも導出できるため）。remove の 3 引数は既定値を持たず未指定で exit 2。
 #
 # detect の出力 (stdout):
 #   [CONTEXT] CLEANUP_WT=<none|in_main|in_worktree|in_worktree_unrecorded>; worktree=<path>; \
@@ -25,8 +28,11 @@
 #   [CONTEXT] WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1; path=<path>
 #   [CONTEXT] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1; path=<path>
 #   [CONTEXT] WORKTREE_REMOVE_FAILED=1; path=<path>
-#   --dry-run では削除せず [CONTEXT] WORKTREE_REMOVE_DRY_RUN=1; path=<path>; action=<...> を
-#   **stdout** に出す（対象の報告であって失敗診断ではないため）。
+#   --dry-run では削除せず [CONTEXT] DRY_RUN_WORKTREE_REMOVE=1; path=<path>; action=<...> を
+#   **stdout** に出す（対象の報告であって失敗診断ではないため）。marker 名を `DRY_RUN_` 前置に
+#   するのは、呼び出し側 (SKILL.md ステップ 12 の {session_worktree_check}) が
+#   `WORKTREE_REMOVE_*` の glob で marker family を scope するため。family 内の名前にすると
+#   判定表のどの行にも一致せず fallback にも落ちない未定義状態を作る。
 #   detect は read-only なので --dry-run を受理して no-op にする。
 #
 # --self-root を呼び出し側から受け取る理由:
@@ -44,7 +50,7 @@ PLUGIN_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 
 usage() {
   echo "ERROR: $1" >&2
-  echo "Usage: cleanup-session-worktree-teardown.sh detect --issue <N> [--config <path>]" >&2
+  echo "Usage: cleanup-session-worktree-teardown.sh detect [--issue <N>] [--config <path>]" >&2
   echo "       cleanup-session-worktree-teardown.sh remove --worktree <path> --pr-merged <true|false> --self-root <pid> [--dry-run]" >&2
   exit 2
 }
@@ -58,7 +64,23 @@ cmd_detect() {
   local issue="" config="rite-config.yml"
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --issue)  shift; require_value --issue "$#";  issue=$1; shift ;;
+      # `--issue` は値の欠落も空値として受ける（SKILL.md が `--issue {issue_number}` を
+      # literal substitute するため、Issue 未識別のときトークンごと消えて `detect --issue` になる。
+      # ここで落とすと marker が 1 本も出ず、消費側が marker 不在を削除成功と読む）。
+      --issue)
+        shift
+        # 引数が尽きた（`detect --issue` で終端）ならそのまま空 issue。
+        # 残っていれば、別のフラグ（`--config` 等）でない限り値として消費する。
+        # **空文字列も値として shift する** — `--issue ""` を消費せずに抜けると、次の周回で
+        # 空トークンが `*)` に落ちて "unknown option" の usage error になり、marker を 1 本も
+        # 出さないまま exit 2 する（本 helper が閉じたはずの経路がトークンの形を変えて再発する）。
+        if [ "$#" -gt 0 ]; then
+          case "$1" in
+            --*) ;;
+            *) issue=$1; shift ;;
+          esac
+        fi
+        ;;
       --config) shift; require_value --config "$#"; config=$1; shift ;;
       # detect は read-only（分類と marker の出力だけで、削除も書き込みもしない）。
       # --dry-run は受理して no-op にする — 全 helper が --dry-run を受けるという契約を
@@ -67,7 +89,11 @@ cmd_detect() {
       *) usage "unknown option: $1" ;;
     esac
   done
-  [ -n "$issue" ] || usage "--issue is required"
+  # `--issue` の空値・省略は usage error にしない。呼び出し側 (cleanup/SKILL.md ステップ 3) は
+  # 「関連 Issue が識別できなければステップ 4 へ進む」を正規経路として持ち、抽出前の
+  # cleanup-worktree-detect.sh は空 issue でも rc=0 で分類を返していた。ここで落とすと
+  # marker が 1 本も出ず、{session_worktree_check} が marker 不在を「削除成功」と読むため
+  # 未削除の worktree が削除済みと報告される。
 
   local ms_section ms_enabled ms_base flow_wt cur_top main_root detect cleanup_wt dirty
   ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' "$config" 2>/dev/null) || ms_section=""
@@ -170,15 +196,16 @@ cmd_remove() {
     # 保護ゲートを経ずに生存中の worktree を reap しうる。
     if [ "$pr_merged" = "true" ]; then
       if [ "$dry_run" = "true" ]; then
-        echo "[CONTEXT] WORKTREE_REMOVE_DRY_RUN=1; path=$flow_wt; action=record_session_worktree"
+        echo "[CONTEXT] DRY_RUN_WORKTREE_REMOVE=1; path=$flow_wt; action=record_session_worktree"
       else
         bash "$SCRIPT_DIR/rite-tmp-artifact.sh" record --type session_worktree --id "$flow_wt" 2>/dev/null || true
       fi
     fi
   elif [ "$dry_run" = "true" ]; then
-    # 削除対象を報告するだけで remove / prune を実行しない。marker family は本番経路と分離し、
-    # 呼び出し側の {session_worktree_check}（marker 不在 = 削除成功）を dry-run が汚染しないようにする。
-    echo "[CONTEXT] WORKTREE_REMOVE_DRY_RUN=1; path=$flow_wt; action=remove_worktree"
+    # 削除対象を報告するだけで remove / prune を実行しない。marker 名を `DRY_RUN_` 前置にして
+    # 呼び出し側 ({session_worktree_check}) が scope する glob `WORKTREE_REMOVE_*` の外へ出す
+    # （family 内だと「marker 不在 = 削除成功」の判定を dry-run の 1 行が壊す）。
+    echo "[CONTEXT] DRY_RUN_WORKTREE_REMOVE=1; path=$flow_wt; action=remove_worktree"
   else
     # git 診断メッセージは locale 翻訳で揺れるため LC_ALL=C で固定し、busy 検出の substring
     # マッチを安定させる。stderr を一時ファイルに退避するのは、通常 fallback（remove →
