@@ -233,7 +233,7 @@ assert_grep "4-W states which command shape the guard rejects" "$CLEANUP" \
 assert_not_grep "over-general 'structurally rejected' claim removed" "$CLEANUP" \
   'worktree 隔離ガードに構造的に拒否されるため'
 
-echo "=== ステップ 4-W / 5 / 6: 削除処理の bash が SKILL.md に残っていない (Issue #2492 T-09 / AC-9) ==="
+echo "=== ステップ 4-W / 5 / 6: 削除処理の bash が SKILL.md に残っていない (T-09 / AC-9) ==="
 # 抽出の完了条件は「helper が存在する」ではなく「SKILL.md 側に実行本体が残っていない」。
 # 両方に存在する状態 (コピーしただけ) は drift 源そのもので、helper 側の pin だけでは検出できない。
 # 検査はセクション単位で行う — ファイル全体を grep すると、ステップ 4 (base 更新) や

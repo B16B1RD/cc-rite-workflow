@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cleanup-branch-delete.sh の単体テスト（Issue #2492 T-03 / T-04 / T-06）。
+# cleanup-branch-delete.sh の単体テスト（T-03 マージ済み削除 / T-04 未マージ保護 / T-06 dry-run）。
 #
 # 対応 AC:
 #   AC-3 ローカル / リモート双方を削除する

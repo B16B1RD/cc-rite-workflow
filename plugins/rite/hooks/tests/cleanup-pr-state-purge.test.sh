@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cleanup-pr-state-purge.sh の単体テスト（Issue #2492 T-05 / T-06）。
+# cleanup-pr-state-purge.sh の単体テスト（T-05 prefix 固定削除 / T-06 dry-run）。
 #
 # 対応 AC:
 #   AC-5 `<pr>-` prefix 固定で削除し、別 PR の state を巻き込まない

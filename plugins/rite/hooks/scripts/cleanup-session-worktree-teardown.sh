@@ -129,10 +129,14 @@ cmd_detect() {
   # 「行ごと省略」に routing するため、live で dirty な worktree が報告から完全に消える。
   # 呼び出し側が helper 起動失敗に対して使うのと同じ `unknown` へ寄せて未確認扱いにする
   # （消費側の判定は値 unknown のみで一致し reason 非依存なので、判定表の追加は不要）。
-  if ! detect=$(bash "$SCRIPT_DIR/cleanup-worktree-detect.sh" \
+  # rc は `var=0; cmd || var=$?` で捕捉する。`if ! var=$(cmd); then rc=$?` は bash が `!` で
+  # パイプラインの終了ステータスを反転するため then 節の rc が常に 0 になり、下の原因候補
+  # （127 / 126 / 2）を切り分ける唯一の情報が失われる。sibling の pr-cycle-cleanup.sh と同形。
+  local _cwd_rc=0
+  detect=$(bash "$SCRIPT_DIR/cleanup-worktree-detect.sh" \
     --ms-enabled "$ms_enabled" --flow-wt "$flow_wt" --cur-top "$cur_top" \
-    --issue "$issue" --worktree-base "$ms_base"); then
-    _cwd_rc=$?
+    --issue "$issue" --worktree-base "$ms_base") || _cwd_rc=$?
+  if [ "$_cwd_rc" -ne 0 ]; then
     echo "WARNING: 分類 helper (cleanup-worktree-detect.sh) が rc=${_cwd_rc} で失敗しました。作業ツリーの分類ができていません" >&2
     echo "  原因候補: helper 欠落 (rc=127) / helper 非可読 (rc=126) / 引数不正 (rc=2)" >&2
     echo "[CONTEXT] CLEANUP_WT=unknown; reason=detect_classify_failed; rc=${_cwd_rc}"

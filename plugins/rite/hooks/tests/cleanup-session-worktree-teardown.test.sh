@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cleanup-session-worktree-teardown.sh の単体テスト（Issue #2492 T-01 / T-02 / T-06）。
+# cleanup-session-worktree-teardown.sh の単体テスト（T-01 worktree 削除 / T-02 対象外 cwd で no-op / T-06 dry-run）。
 #
 # 対応 AC:
 #   AC-1 worktree teardown helper が単独で動作する（削除 + main checkout パスの marker）
@@ -149,9 +149,16 @@ cp "$PLUGIN_HOOKS/scripts/lib/git-status-filtered.sh" "$stub/hooks/scripts/lib/"
 out=$(cd "$wt" && bash "$stub/hooks/scripts/cleanup-session-worktree-teardown.sh" \
   detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null); rc=$?
 assert_eq "detect: 内側 helper 不在でも exit 0（非ブロッキング）" "$rc" "0"
-assert_contains "detect: 分類失敗は unknown へ寄せる（none へ落とさない）" "$out" \
-  "[CONTEXT] CLEANUP_WT=unknown; reason=detect_classify_failed; rc="
-assert_not_contains "detect: 分類失敗を none として報告しない" "$out" "[CONTEXT] CLEANUP_WT=none"
+# rc は prefix ではなく値で pin する。prefix 一致だと `if ! var=$(cmd); then rc=$?` のように
+# 実 rc を取り落とす実装（常に rc=0）を素通しし、原因候補 127 / 126 / 2 の切り分けが壊れても
+# 赤くならない。sibling の cleanup-pr-state-purge.test.sh が rc=127 を値で pin しているのと同形。
+# 分類値は契約で決まる。Issue の Decision Log D-07 が「分類 helper を起動できなかったときは
+# `none` ではなく `unknown`」を §3.3 / AC-8 の振る舞い不変の例外として定めており、`none` は
+# 消費側が唯一「行ごと省略」に routing する値なので、そこへ落とすと live で dirty な worktree が
+# 完了報告から消える。以下 2 本はその契約の非回帰 pin。
+assert_contains "detect: 分類失敗時の分類値は契約どおり unknown になる（D-07）" "$out" \
+  "[CONTEXT] CLEANUP_WT=unknown; reason=detect_classify_failed; rc=127"
+assert_not_contains "detect: 分類失敗を none へ落とさない（D-07 が禁じる silent fallback）" "$out" "[CONTEXT] CLEANUP_WT=none"
 
 echo "=== cleanup-session-worktree-teardown: remove ==="
 
