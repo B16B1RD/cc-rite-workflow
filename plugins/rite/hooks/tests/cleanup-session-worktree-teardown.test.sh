@@ -14,6 +14,10 @@ HELPER="$SCRIPT_DIR/../scripts/cleanup-session-worktree-teardown.sh"
 PLUGIN_HOOKS="$SCRIPT_DIR/.."
 pass=0 fail=0
 TMP_ROOT=$(mktemp -d)
+# 物理パスへ正規化する。macOS の $TMPDIR は /var/folders/... の symlink で、git は
+# rev-parse --show-toplevel / worktree list のいずれでも実体側 (/private/var/folders/...) を
+# 返すため、mktemp の値をそのまま assert すると helper の出力と一致しない。
+TMP_ROOT=$(CDPATH= cd -- "$TMP_ROOT" && pwd -P)
 trap 'rm -rf "$TMP_ROOT"' EXIT
 ok(){ pass=$((pass+1)); echo "  ✅ $1"; }
 bad(){ fail=$((fail+1)); echo "  ❌ $1"; }
