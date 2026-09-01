@@ -96,7 +96,7 @@ assert_grep_in_section "T-02 (c) the worktree teardown receives --pr-merged fals
 #     書き換えると赤くなる。
 assert_grep_in_section "T-02 (d) the guard compares the path's last segment for exact identity" "$SKILL" \
   '^#### 4\\.2\\.0 Issue 束縛ガード' '^#### 4\\.2\\.1' \
-  '^elif \[ "\$\(basename "\$wt_path"\)" = "issue-\{issue_number\}" \]; then'
+  '^ *elif \[ "\$\(basename "\$wt_path"\)" = "issue-\{issue_number\}" \]; then'
 # ガードが判定表の内側ではなく、ExitWorktree / remove の**前段**に独立した節として置かれていること。
 # 節の順序を入れ替える / ガード節を消すと赤くなる (4.2.1 の表セルへ畳み戻す変更も同様)。
 _guard_line=$(_first_line "$SKILL" '^#### 4\.2\.0 Issue 束縛ガード')
@@ -115,21 +115,49 @@ fi
 # その行の帰結にアンカーする。
 assert_grep "T-02 (d) a mismatching worktree stops the removal and the branch delete" "$SKILL" \
   '^\| `mismatch` \|.*\*\*4\.2\.1 / 4\.2\.2 と 4\.3 のブランチ削除を試行せず\*\*'
-# detect が分類できなかった経路も同じ帰結へ倒す。detect 失敗時は marker の `worktree=` ごと
-# 出ないため、空パス判定だけのガードでは `none` (= 削除続行) へ落ちてブランチが消える。
-# 分類値を先に見ていることを、ガードの分岐そのものへアンカーして固定する。
-assert_grep_in_section "T-02 (d) the guard inspects the detect classification before the path" "$SKILL" \
+# 分類不能な入力を削除続行へ抜けさせない。ここは**端点の文字列**ではなく**経路**として pin する:
+# ガードの分岐形 → 発火する marker 値 → 判定表の routing 行 → その帰結、の 4 点を繋ぐ。
+# 端点だけを見る pin は、間の 1 行 (例: marker 値を undetermined から none へ) を書き換える退行を
+# 素通しする — 本 PR で 2 度出た欠陥クラス (cycle 2: tempfile 名 / cycle 3: 行スコープ) の第 3 形。
+#
+# (1) 分岐は「証明された正常値の列挙」で書く。危険値を名指しする否定形へ戻すと、名指しの外側
+#     (marker 不在で空文字に倒れる経路) が再び削除続行へ抜ける。
+assert_grep_in_section "T-02 (d) the guard enumerates the proven-good classifications, not the dangerous ones" "$SKILL" \
   '^#### 4\.2\.0 Issue 束縛ガード' '^#### 4\.2\.1' \
-  '^if \[ "\{cleanup_wt\}" = "unknown" \] \|\| \[ "\{cleanup_wt\}" = "in_worktree_unrecorded" \]; then'
-# 空パス判定が先頭 `if` へ戻る (= 分類不能が再び `none` に化ける) 変更を赤くする。
-assert_grep_in_section "T-02 (d) the empty-path case is reached only after the classification check" "$SKILL" \
+  '^case "\{cleanup_wt\}" in$'
+assert_grep_in_section "T-02 (d) in_worktree / in_main are the only arms that reach the path checks" "$SKILL" \
   '^#### 4\.2\.0 Issue 束縛ガード' '^#### 4\.2\.1' \
-  '^elif \[ -z "\$wt_path" \]; then'
-assert_grep "T-02 (d) an unclassified worktree also stops the removal and the branch delete" "$SKILL" \
+  '^  in_worktree\|in_main\)$'
+assert_grep_in_section "T-02 (d) every other classification falls through to the catch-all arm" "$SKILL" \
+  '^#### 4\.2\.0 Issue 束縛ガード' '^#### 4\.2\.1' \
+  '^  \*\)$'
+# (2) catch-all が実際に発火させる marker 値を pin する。ここを `none` へ書き換えるだけで
+#     判定表の `none` 行が削除続行へ routing し、修正前の挙動に戻る (テストは他がすべて緑のまま)。
+assert_grep_in_section "T-02 (d) the catch-all arm emits undetermined, never a value that routes to deletion" "$SKILL" \
+  '^#### 4\.2\.0 Issue 束縛ガード' '^#### 4\.2\.1' \
+  '^    echo "\[CONTEXT\] CANCEL_WT_BOUND=undetermined; cleanup_wt=\{cleanup_wt\}" >&2$'
+# (3) 判定表の行は 4.2.0 節の内側にあること (4.2.1 へ移設すると BOUND=ok のときしか読まれず
+#     到達不能になるが、file スコープの pin では緑のまま通る)。
+assert_grep_in_section "T-02 (d) the undetermined routing row lives in the 4.2.0 table that produces it" "$SKILL" \
+  '^#### 4\.2\.0 Issue 束縛ガード' '^#### 4\.2\.1' \
   '^\| `undetermined` \|.*\*\*4\.2\.1 / 4\.2\.2 と 4\.3 のブランチ削除を試行せず\*\*'
-# 4.2.0 が逸らす分類を 4.2.1 の判定表にも残さない (到達しない行は読み手に二重の規則を見せる)。
-assert_not_grep "T-02 (d) 4.2.1 carries no rows the binding guard already diverts" "$SKILL" \
-  '^\| `in_worktree_unrecorded` / `unknown` \|'
+# (4) 4.2.0 の判定表は BOUND の 4 値を漏れなく持つ。行数で縛るので、値の追加・削除・改名の
+#     どれでも赤くなる (表記形を 1 つずつ deny する形は並べ替えや行分割を素通しする)。
+# 行数はヘッダ行 (`| `CANCEL_WT_BOUND` | アクション |`) を含む: 1 + 4 値 = 5。
+assert "T-02 (d) the 4.2.0 routing table covers every CANCEL_WT_BOUND value (header + 4)" "5" \
+  "$(awk -v start='^\\| `CANCEL_WT_BOUND` \\|' -v end='^#### 4\\.2\\.1 ' '$0 ~ start, $0 ~ end' "$SKILL" | grep -c '^| `')"
+# (5) 4.2.1 の判定表は 4.2.0 が `ok` を出す 2 分類だけを持つ。`none` を巻き添えで消すと
+#     到達可能な値の行が消え、`in_worktree_unrecorded` / `unknown` を戻すと二重規則になる。
+#     どちらの方向にも赤くなるよう行数で縛る。
+# 同じくヘッダ行を含む: 1 + 2 分類 = 3。
+assert "T-02 (d) the 4.2.1 table carries exactly the two classifications that reach it (header + 2)" "3" \
+  "$(awk -v start='^\\| `CLEANUP_WT` \\|' -v end='^#### 4\\.2\\.2 ' '$0 ~ start, $0 ~ end' "$SKILL" | grep -c '^| `')"
+# (6) `undetermined` は 2 事由を包む値であり「分類できていない」だけではない。
+#     `in_worktree_unrecorded` は detect が確定させた分類で、畳む理由は帰結の同一性
+#     (ExitWorktree で退出できない) にある。ここを取り違えると将来の編集者が値を条件から外す。
+assert_grep_in_section "T-02 (d) the undetermined row names both reasons, not just the unclassified one" "$SKILL" \
+  '^#### 4\.2\.0 Issue 束縛ガード' '^#### 4\.2\.1' \
+  '`ExitWorktree` で main checkout へ退出できない（`in_worktree_unrecorded`）か、分類そのものが取れていない'
 # (e) state purge は「全運用経路で rc=0、部分失敗は marker のみ」契約の helper なので、rc だけを見ると
 # 残置が完了として報告される。marker を判定に使うことと、その帰結（残置として列挙する）を pin する。
 # 判定は bash の捕捉層に持たせない — 捕捉に失敗すると marker ごと消えて「観測できていない」が
@@ -327,19 +355,25 @@ assert_grep_in_section "T-08 the timeline candidates are still filtered before t
   '^### 2\\.3 関連 PR の検索' '^## Phase 3:' \
   '\*\*絞り込み前の集合を下記の判定表に載せてはならない\*\*'
 # identity 昇格は headRefName が Issue スコープを満たす場合に限る (body の closing keyword だけで
-# 一致した PR の head をリモートごと消させない)。加えて head 名全体を安全な charset へ束縛する:
-# 昇格した値は Phase 4.3 の fenced bash へ literal substitute され、引用符は `$(...)` の展開を
-# 止めないため、fork の第三者が決めた head 名がそのままコマンドとして走りうる。
+# 一致した PR の head をリモートごと消させない)。
 assert_grep "T-08 identity promotion is restricted to a matching headRefName" "$SKILL" \
-  '\*\*identity 昇格は `headRefName` が `issue-\{issue_number\}-` を含み、かつ `headRefName` 全体が `\^\[A-Za-z0-9\._/-\]\+\$` に一致する場合に限る\*\*'
-# 束縛を落として部分一致だけの条件へ戻す変更を赤くする (上の positive pin は文言全体を見るため、
-# 条件が緩む方向の書き換えでも「文が変わった」としか言えない。禁止形そのものにもアンカーする)。
-assert_not_grep "T-08 the promotion condition is never the unbound substring test alone" "$SKILL" \
-  'identity 昇格は `headRefName` が `issue-\{issue_number\}-` を含む場合に限る'
-# 非一致は停止ではなく既存の据え置き経路へ合流し、Phase 7 に残置として現れる。
-assert_grep_in_section "T-08 a charset-violating head name is surfaced as branch residue" "$SKILL" \
+  '\*\*identity 昇格は `headRefName` が `issue-\{issue_number\}-` を含む場合に限る\*\*'
+# charset 束縛は producer ごとではなく Phase 2 の後置条件に 1 本置く。`{branch_name}` は 4.3 の
+# fenced bash へ literal substitute され、引用符は `$(...)` の展開を止めないため、3 producer の
+# どれか 1 つにだけ検査を置く形は経路が増えるたびに漏れる (fork の head 名は `gh pr checkout` 等で
+# ローカル branch としても実在しうるので、2.2 のローカル検索経路も同じ値を同じ consumer へ届ける)。
+# 「3 経路すべてに掛かる」ことを、経路の名指しごと pin する。
+assert_grep_in_section "T-08 the charset predicate binds every {branch_name} producer, not just the promotion" "$SKILL" \
   '^### 2\.3 関連 PR の検索' '^## Phase 3:' \
-  'Phase 7 に「ブランチ: 残置（head 名が'
+  '2\.2 の flow-state / 2\.2 のローカルブランチ検索 / 2\.3 の `headRefName` 昇格のどの経路で得た値でも、`\^\[A-Za-z0-9\._/-\]\+\$` に全体一致しないものは確定として扱わない'
+# 束縛の帰結は「identity を倒す」= 既存の 4.3 ゲートに合流すること。新しい停止経路を足さない。
+assert_grep_in_section "T-08 a charset violation falls into the existing identity-unverified path" "$SKILL" \
+  '^### 2\.3 関連 PR の検索' '^## Phase 3:' \
+  '`\{branch_identity_verified\}=false` に倒す'
+# 4.3 のゲートが後置条件を参照していること (参照が切れると LLM が 4.3 で再評価しなくなる)。
+assert_grep_in_section "T-08 the 4.3 gate names the Phase 2 post-condition it depends on" "$SKILL" \
+  '^### 4\.3 ブランチの削除' '^### 4\.4' \
+  'Phase 2 の charset 後置条件で倒れた場合を含む'
 # CLOSED-unmerged の PR は Phase 3 を飛ばして Phase 4 (state purge) へ回す。
 assert_grep "T-08 a closed-unmerged PR still reaches the state purge" "$SKILL" \
   '^\| `state == "CLOSED"` かつ `mergedAt` が null の PR がある \|.*\*\*Phase 3 はスキップ\*\*して Phase 4 へ'

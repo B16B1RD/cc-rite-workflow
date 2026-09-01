@@ -149,16 +149,38 @@ identity の昇格は `headRefName` 自身が `issue-{issue_number}-` を含む�
 
 ## headref-charset-binding
 
-`headRefName` は fork の第三者が任意に決められる値であり、identity 昇格を通ると Phase 4.3 の fenced bash に
-`--branch "{branch_name}"` / `git branch -D -- "{branch_name}"` として literal substitute される。二重引用符と
-`--` は **argv 分割にしか効かない** — `$(...)` とバッククォートはシェルがその引用符の内側でも展開するため、
-`feat/issue-2493-$(...)` の形の head を持つ PR を開くだけで開発者セッションで任意コマンドが走る。
-`git check-ref-format` は防波堤にならない（実測: `refs/heads/feat/issue-2493-$(id)` は rc=0。rc=1 になるのは
-空白を含む場合など ref 名として不正なときだけ）。helper 側のデリミタ検査・値検査はすべて**展開後の値**にしか
-走らないので、束縛は昇格の側で行うほかない。
+`{branch_name}` は Phase 4.3 の fenced bash に `--branch "{branch_name}"` / `git branch -D -- "{branch_name}"`
+として literal substitute される。二重引用符と `--` は **argv 分割にしか効かない** — `$(...)` とバッククォートは
+シェルがその引用符の内側でも展開するため、`feat/issue-2493-$(...)` の形の名前が入るだけで開発者セッションで
+任意コマンドが走る。`git check-ref-format` は防波堤にならない（実測: `refs/heads/feat/issue-2493-$(id)` は rc=0。
+rc=1 になるのは空白を含む場合など ref 名として不正なときだけ）。helper 側のデリミタ検査・値検査はすべて
+**展開後の値**にしか走らないので、束縛は値がテンプレートへ入る前に置くほかない。
 
-非一致を `{branch_identity_verified}=false` へ倒すのは、既存の「body-only 一致は据え置く」経路と同じ帰結
-（PR クローズと state purge は行い、ブランチには触れない）へ合流させるため。新しい停止経路を足さない。
+束縛を producer ごとではなく **Phase 2 の後置条件**（3 経路の合流点）に 1 本置くのは、危険が値の出どころ
+ではなく consumer の側にあるため。fork の `headRefName` だけが第三者制御だと考えるのは誤りで、2.2 の
+ローカルブランチ検索も `git branch --list "*issue-N-*"` の一意候補をそのまま採るので、`gh pr checkout` 等で
+fork の head 名がローカル branch として実在すれば同じ値が同じ consumer へ届く（実測で再現済み）。producer 側に
+個別検査を並べる形は、経路が 1 本増えるたびに検査が漏れる。
+
+非一致を `{branch_identity_verified}=false` へ倒すのは、既存の「identity 未確定ならブランチに触れない」経路と
+同じ帰結へ合流させるため。新しい停止経路も新しい報告スロットも足さない。
+
+## classification-class-predicate
+
+4.2.0 のガードは当初 `unknown` / `in_worktree_unrecorded` の 2 値を名指しする否定形で書いていたが、これは
+**危険な値を列挙する**形であり、列挙の外側に抜ける入力が必ず残る。実際、4.1 の marker がそもそも出ない経路
+（helper 起動自体の失敗、harness による Bash 拒否）では `{cleanup_wt}` も `{flow_wt}` も substitute 元を失って
+空文字になり、2 つの等値比較のどちらにも一致せず「path が空 = worktree 記録なし」へ落ちて、**ブランチ削除まで
+続行する**（実測: 空文字 2 つを渡すと `CANCEL_WT_BOUND=none`）。塞いだはずの穴が別の入力で開いていた。
+
+そこで**証明された正常値の列挙**（`in_worktree` / `in_main` / `none`）に反転させ、残りをすべて `undetermined`
+へ落とす。未知の分類値が helper 側に増えたときも、空文字でも、既定の帰結が「削除しない」になる。
+
+`in_worktree_unrecorded` は分類**できている**値である（detect が cwd の物理導出で確定させる）。畳む理由は
+帰結が同じ——`ExitWorktree` で main checkout へ退出できないため worktree も branch も消せない——ことであって、
+分類不能だからではない。判定表と WARNING はこの 2 事由を書き分ける。canonical な分岐基準は sibling の
+`skills/cleanup/SKILL.md`（「分岐の基準は「worktree 内か」ではなく「`ExitWorktree` で main checkout へ
+退出できるか」」）。
 
 ## step-order-as-sections
 
