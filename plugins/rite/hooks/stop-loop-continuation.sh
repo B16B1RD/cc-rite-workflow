@@ -102,9 +102,9 @@ _rite_emit_block() {
 _rite_batch_watchdog() {
   local queue_file sidecar_file
   local q_active q_cursor q_total q_mode q_updated q_issue
-  local fs_file fs_phase fs_pr fs_branch fs_active fs_stop
+  local fs_file fs_phase fs_pr fs_branch fs_active fs_stop fs_issue
   local hint count prev_cursor prev_updated prev_phase prev_pr
-  local sidecar_ok
+  local sidecar_ok _pr_state
 
   queue_file="$STATE_ROOT/.rite/state/run-queue-${SESSION_ID}.json"
   sidecar_file="$STATE_ROOT/.rite/state/run-queue-${SESSION_ID}.watchdog"
@@ -134,41 +134,63 @@ _rite_batch_watchdog() {
   fs_branch=""
   fs_active=""
   fs_stop=""
+  fs_issue=""
   if [ -f "$fs_file" ]; then
     fs_phase=$(jq -r '.phase // ""' "$fs_file" 2>/dev/null) || fs_phase=""
     fs_pr=$(jq -r '.pr_number // 0 | tostring' "$fs_file" 2>/dev/null) || fs_pr="0"
     fs_branch=$(jq -r '.branch // ""' "$fs_file" 2>/dev/null) || fs_branch=""
     fs_active=$(jq -r '.active // false' "$fs_file" 2>/dev/null) || fs_active=""
     fs_stop=$(jq -r '.stop_reason // ""' "$fs_file" 2>/dev/null) || fs_stop=""
-    [ -n "$q_issue" ] || q_issue=$(jq -r '.issue_number // "" | tostring' "$fs_file" 2>/dev/null) || q_issue=""
+    fs_issue=$(jq -r '.issue_number // "" | tostring' "$fs_file" 2>/dev/null) || fs_issue=""
+    [ -n "$q_issue" ] || q_issue="$fs_issue"
   fi
 
   hint="batch-run ステップ 1 から再判定"
-  case "$fs_stop" in
-    circuit-breaker:*)
-      hint="batch-run ステップ 6（failed 記録 + cursor 前進）"
-      ;;
-    *)
-      case "$fs_phase" in
-        pr|review|fix) hint="/rite:iterate ${fs_pr}" ;;
-        ready) hint="/rite:merge ${fs_pr}" ;;
-        merge) hint="/rite:cleanup ${fs_branch}" ;;
-        cleanup|ingest|completed)
-          if [ "$fs_active" = "false" ]; then
-            hint="batch-run ステップ 6（cursor 前進）"
-          else
-            hint="/rite:cleanup の残りステップ"
-          fi
-          ;;
-        init|branch|plan|implement|lint)
-          hint="/rite:open ${q_issue}"
-          ;;
-        *)
-          hint="batch-run ステップ 1 から再判定"
-          ;;
-      esac
-      ;;
-  esac
+  # leftover flow-state of a previous queue item must not drive step-6 / CB routing.
+  if [ -n "$q_issue" ] && [ -n "$fs_issue" ] && [ "$q_issue" != "$fs_issue" ]; then
+    :
+  else
+    case "$fs_stop" in
+      circuit-breaker:*)
+        hint="batch-run ステップ 6（failed 記録 + cursor 前進）"
+        ;;
+      *)
+        case "$fs_phase" in
+          pr|review|fix) hint="/rite:iterate ${fs_pr}" ;;
+          ready)
+            hint="/rite:merge ${fs_pr}"
+            if [ -n "$fs_pr" ] && [ "$fs_pr" != "0" ]; then
+              _pr_state=""
+              if _pr_state=$(gh pr view "$fs_pr" --json state --jq '.state' 2>/dev/null); then
+                if [ "$_pr_state" = "MERGED" ]; then
+                  hint="/rite:cleanup ${fs_branch}"
+                fi
+              else
+                echo "WARNING: gh pr view ${fs_pr} に失敗したため ready を /rite:merge に倒します" >&2
+              fi
+            fi
+            ;;
+          ready_error)
+            hint="batch-run ステップ 8（失敗記録）"
+            ;;
+          merge) hint="/rite:cleanup ${fs_branch}" ;;
+          cleanup|ingest|completed)
+            if [ "$fs_active" = "false" ]; then
+              hint="batch-run ステップ 6（cursor 前進）"
+            else
+              hint="batch-run の cleanup 未実行ステップを継続（/rite:cleanup をステップ 0 から呼び直さない。cursor は進めない）"
+            fi
+            ;;
+          init|branch|plan|implement|lint)
+            hint="/rite:open ${q_issue}"
+            ;;
+          *)
+            hint="batch-run ステップ 1 から再判定"
+            ;;
+        esac
+        ;;
+    esac
+  fi
 
   count=1
   if [ -f "$sidecar_file" ] && jq -e . "$sidecar_file" >/dev/null 2>&1; then

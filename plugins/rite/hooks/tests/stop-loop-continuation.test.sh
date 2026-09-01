@@ -700,7 +700,29 @@ queue_for() { echo "$1/.rite/state/run-queue-${SID}.json"; }
 
 run_stop() {
   local dir="$1" errf="${2:-/dev/null}"
-  stop_payload "$dir" | bash "$HOOK" 2>"$errf"
+  if [ -n "${GH_STUB_BIN:-}" ]; then
+    stop_payload "$dir" | PATH="$GH_STUB_BIN:$PATH" bash "$HOOK" 2>"$errf"
+  else
+    stop_payload "$dir" | bash "$HOOK" 2>"$errf"
+  fi
+}
+
+make_gh_stub() {
+  local dest="$1" mode="$2"
+  mkdir -p "$dest"
+  case "$mode" in
+    MERGED|OPEN)
+      printf '%s\n' '#!/bin/bash' "echo '$mode'" > "$dest/gh"
+      ;;
+    fail)
+      printf '%s\n' '#!/bin/bash' 'echo gh-fail >&2' 'exit 1' > "$dest/gh"
+      ;;
+    *)
+      echo "make_gh_stub: unknown mode $mode" >&2
+      return 1
+      ;;
+  esac
+  chmod +x "$dest/gh"
 }
 
 setup_watchdog_fs() {
@@ -902,11 +924,21 @@ assert_hint() {
     [ -n "$not_want" ] && pass "T-routing $label: does not contain $not_want"
   fi
 }
-assert_hint "ready" ready "" "/rite:merge 99" "/rite:iterate"
+CLEANUP_IN_PROGRESS='batch-run の cleanup 未実行ステップを継続（/rite:cleanup をステップ 0 から呼び直さない。cursor は進めない）'
+gh_open=$(mktemp -d)
+gh_merged=$(mktemp -d)
+gh_fail=$(mktemp -d)
+make_gh_stub "$gh_open" OPEN
+make_gh_stub "$gh_merged" MERGED
+make_gh_stub "$gh_fail" fail
+GH_STUB_BIN="$gh_open" assert_hint "ready" ready "" "/rite:merge 99" "/rite:iterate"
+GH_STUB_BIN="$gh_merged" assert_hint "ready-merged" ready "" "/rite:cleanup fix/issue-2502-x" "/rite:merge"
+GH_STUB_BIN="$gh_fail" assert_hint "ready-gh-fail" ready "" "/rite:merge 99" "/rite:cleanup"
+assert_hint "ready_error" ready_error "" "batch-run ステップ 8（失敗記録）" "/rite:merge"
 assert_hint "merge" merge "" "/rite:cleanup fix/issue-2502-x" "/rite:iterate"
 assert_hint "init" init "" "/rite:open 2502" "/rite:iterate"
 assert_hint "lint" lint "" "/rite:open 2502" "ステップ 6"
-assert_hint "ingest-active" ingest "" "/rite:cleanup の残りステップ" "ステップ 6"
+assert_hint "ingest-active" ingest "" "$CLEANUP_IN_PROGRESS" "ステップ 6"
 assert_hint "completed-inactive" completed ".active=false" "batch-run ステップ 6（cursor 前進）" "/rite:iterate"
 assert_hint "unknown-phase" unknown_phase "" "batch-run ステップ 1 から再判定" "/rite:iterate"
 assert_hint "cb-fire" review '.stop_reason="circuit-breaker:max-cycles"' "batch-run ステップ 6（failed 記録 + cursor 前進）" "/rite:iterate"
@@ -936,7 +968,7 @@ if printf '%s' "$_r" | grep -q "batch-run ステップ 6（cursor 前進）"; th
 else
   fail "T-11: $out"
 fi
-if printf '%s' "$_r" | grep -q "/rite:cleanup の残りステップ"; then
+if printf '%s' "$_r" | grep -qF "$CLEANUP_IN_PROGRESS"; then
   fail "T-11: inactive cleanup used in-progress hint: $out"
 else
   pass "T-11: inactive cleanup does not use in-progress hint"
@@ -953,7 +985,7 @@ out=$(run_stop "$d")
 assert "T-wikichain-1st: handoff blocks" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 out=$(run_stop "$d")
 _r=$(printf '%s' "$out" | jq -r '.reason // ""')
-if printf '%s' "$_r" | grep -q "/rite:cleanup の残りステップ"; then
+if printf '%s' "$_r" | grep -qF "$CLEANUP_IN_PROGRESS"; then
   pass "T-wikichain-2nd: continues cleanup remaining steps"
 else
   fail "T-wikichain-2nd: $out"
@@ -962,6 +994,42 @@ if printf '%s' "$_r" | grep -q "ステップ 6（cursor 前進）"; then
   fail "T-wikichain-2nd: replaced wiki chain with cursor advance: $out"
 else
   pass "T-wikichain-2nd: does not jump to cursor advance"
+fi
+
+# leftover flow-state of the previous queue item must not inject step 6 for the next Issue
+echo ""
+echo "=== T-identity: leftover FS of previous issue does not inject step 6 ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" cleanup 99
+jq '.active=false | .issue_number=2502' "$(state_file_for "$d")" > "$(state_file_for "$d").tmp" \
+  && mv "$(state_file_for "$d").tmp" "$(state_file_for "$d")"
+jq '.issues=[2502,2503] | .cursor=1' "$(queue_for "$d")" > "$(queue_for "$d").tmp" \
+  && mv "$(queue_for "$d").tmp" "$(queue_for "$d")"
+out=$(run_stop "$d")
+_r=$(printf '%s' "$out" | jq -r '.reason // ""')
+assert "T-identity cleanup: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+if printf '%s' "$_r" | grep -q "Issue #2503" \
+  && printf '%s' "$_r" | grep -q "batch-run ステップ 1 から再判定" \
+  && ! printf '%s' "$_r" | grep -q "ステップ 6"; then
+  pass "T-identity leftover cleanup: step 1 re-eval for next issue"
+else
+  fail "T-identity leftover cleanup: $out"
+fi
+
+d=$(new_sandbox)
+setup_watchdog_fs "$d" review 99
+jq '.stop_reason="circuit-breaker:max-cycles" | .issue_number=2502' "$(state_file_for "$d")" \
+  > "$(state_file_for "$d").tmp" && mv "$(state_file_for "$d").tmp" "$(state_file_for "$d")"
+jq '.issues=[2502,2503] | .cursor=1' "$(queue_for "$d")" > "$(queue_for "$d").tmp" \
+  && mv "$(queue_for "$d").tmp" "$(queue_for "$d")"
+out=$(run_stop "$d")
+_r=$(printf '%s' "$out" | jq -r '.reason // ""')
+if printf '%s' "$_r" | grep -q "Issue #2503" \
+  && printf '%s' "$_r" | grep -q "batch-run ステップ 1 から再判定" \
+  && ! printf '%s' "$_r" | grep -q "ステップ 6"; then
+  pass "T-identity leftover CB: step 1 re-eval for next issue"
+else
+  fail "T-identity leftover CB: $out"
 fi
 
 # --- T-12: sidecar unwritable still blocks; 2nd call also blocks ---

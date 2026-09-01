@@ -546,17 +546,23 @@ EOF
 fi
 
 # batch 稼働中だけ Batch 行を足す。非稼働時は上の heredoc を無変更のまま出す（AC-10）。
+# jq 失敗はファイル不在に畳まない（破損時は判定不能を 1 行出す。AC-10 の byte-identical は不在 / active:false）。
 _pc_sid=$(basename "$FLOW_STATE" .flow-state)
 _pc_qf="$STATE_ROOT/.rite/state/run-queue-${_pc_sid}.json"
-if [ -n "$_pc_sid" ] && [ -f "$_pc_qf" ] && jq -e . "$_pc_qf" >/dev/null 2>&1; then
-  _pc_ba=$(jq -r '.active // false' "$_pc_qf")
-  _pc_bc=$(jq -r '.cursor // 0' "$_pc_qf")
-  _pc_bt=$(jq -r '.issues | length' "$_pc_qf")
-  if [ "$_pc_ba" = "true" ] && [ "${_pc_bc:-0}" -lt "${_pc_bt:-0}" ] 2>/dev/null; then
-    _pc_mode=$(jq -r '.mode // "default"' "$_pc_qf")
-    _pc_issue=$(jq -r --argjson c "${_pc_bc:-0}" '.issues[$c] // empty' "$_pc_qf" 2>/dev/null) || _pc_issue=""
-    [ -n "$_pc_issue" ] || _pc_issue="$ISSUE"
-    echo "[rite] Batch: run-queue active — mode=${_pc_mode} cursor=${_pc_bc}/${_pc_bt} current_issue=#${_pc_issue} pr=#${PR} queue_file=${_pc_qf}"
-    echo "Continue /rite:batch-run from the step matching Phase above."
+if [ -n "$_pc_sid" ] && [ -f "$_pc_qf" ]; then
+  if jq -e . "$_pc_qf" >/dev/null 2>&1; then
+    _pc_ba=$(jq -r '.active // false' "$_pc_qf")
+    _pc_bc=$(jq -r '.cursor // 0' "$_pc_qf")
+    _pc_bt=$(jq -r '.issues | length' "$_pc_qf")
+    if [ "$_pc_ba" = "true" ] && [ "${_pc_bc:-0}" -lt "${_pc_bt:-0}" ] 2>/dev/null; then
+      _pc_mode=$(jq -r '.mode // "default"' "$_pc_qf")
+      _pc_issue=$(jq -r --argjson c "${_pc_bc:-0}" '.issues[$c] // empty' "$_pc_qf" 2>/dev/null) || _pc_issue=""
+      [ -n "$_pc_issue" ] || _pc_issue="$ISSUE"
+      echo "[rite] Batch: run-queue active — mode=${_pc_mode} cursor=${_pc_bc}/${_pc_bt} current_issue=#${_pc_issue} pr=#${PR} queue_file=${_pc_qf}"
+      echo "Continue /rite:batch-run from the step matching Phase above."
+    fi
+  else
+    echo "WARNING: run-queue が破損しています ($_pc_qf)" >&2
+    echo "[rite] Batch: run-queue unreadable — cannot decide batch continuation. queue_file=${_pc_qf}"
   fi
 fi

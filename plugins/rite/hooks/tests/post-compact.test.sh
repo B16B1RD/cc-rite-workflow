@@ -725,7 +725,10 @@ else
   pass "T-08b: no Batch line when not recovering"
 fi
 
-echo "T-10: inactive queue variants keep pre-change compact stdout (no Batch)"
+echo "T-10: inactive queue variants keep pre-change compact stdout (byte-identical fixture)"
+# develop-era auto-compact stdout (no Batch). HEAD hook is compared against this
+# fixture — do not re-run HEAD as the oracle.
+T10_EXPECTED=$'[rite] Auto-compact recovery: Issue #42, Phase: implement, Branch: feat/issue-42-test\nNext action: Continue coding\nLoop: 1 | PR: #10\nUse `bash {plugin_root}/hooks/flow-state.sh get --field <field>` for full state details. Also consult .rite/work-memory/issue-42.md, then continue.'
 for variant in absent false done othersid; do
   TC_DIR=$(setup_test "tc-batch-10-$variant")
   write_per_session_state "$TC_DIR" \
@@ -738,12 +741,33 @@ for variant in absent false done othersid; do
     othersid) write_batch_queue "$TC_DIR" "other-session" true 0 ;;
   esac
   OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
-  if echo "$OUTPUT" | grep -q "Auto-compact recovery" && ! echo "$OUTPUT" | grep -q "Batch: run-queue active"; then
-    pass "T-10 $variant: recovery stdout without Batch"
+  if [ "$OUTPUT" = "$T10_EXPECTED" ]; then
+    pass "T-10 $variant: stdout byte-identical to develop-era fixture"
   else
-    fail "T-10 $variant: $OUTPUT"
+    fail "T-10 $variant: stdout drifted from fixture: $OUTPUT"
   fi
 done
+
+echo "T-11: corrupt queue JSON warns and does not invent Batch fields"
+TC_DIR=$(setup_test "tc-batch-11-corrupt")
+write_per_session_state "$TC_DIR" \
+  '{"active": true, "issue_number": 42, "phase": "implement", "next_action": "Continue coding", "loop_count": 1, "pr_number": 10, "branch": "feat/issue-42-test"}'
+jq -n '{compact_state: "recovering", compact_state_set_at: "2026-03-14T12:00:00Z", active_issue: 42}' > "$(compact_state_path "$TC_DIR")"
+sid11="test-sid-$(basename "$TC_DIR")"
+mkdir -p "$TC_DIR/.rite/state"
+printf 'not-json{{' > "$TC_DIR/.rite/state/run-queue-${sid11}.json"
+T11_ERR=$(mktemp "$TEST_DIR/stderr.XXXXXX")
+OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>"$T11_ERR") || true
+if echo "$OUTPUT" | grep -q "Auto-compact recovery" \
+  && echo "$OUTPUT" | grep -q "Batch: run-queue unreadable" \
+  && echo "$OUTPUT" | grep -q "queue_file=" \
+  && ! echo "$OUTPUT" | grep -q "Batch: run-queue active" \
+  && ! echo "$OUTPUT" | grep -q "mode=" \
+  && grep -q "WARNING: run-queue が破損しています" "$T11_ERR"; then
+  pass "T-11 corrupt: unreadable Batch line + WARNING, no invented fields"
+else
+  fail "T-11 corrupt: stdout=$OUTPUT stderr=$(cat "$T11_ERR")"
+fi
 
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
