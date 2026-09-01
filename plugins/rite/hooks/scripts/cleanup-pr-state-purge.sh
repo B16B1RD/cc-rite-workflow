@@ -13,8 +13,9 @@
 #   [CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=<...>; pr=<N>
 #   --dry-run では削除せず `[DRY-RUN] <label> を削除対象として検出: <path>` を **stdout** に出す。
 #
-# ステップ 6.0（残存非実測指摘からの follow-up Issue 起票）は本 helper の対象外 — 中止経路では
-# 不要であり、既に cleanup-follow-up-issue.sh へ委譲済みで再抽出の実益がない（Issue #2492 D-01）。
+# ステップ 6.0（残存非実測指摘からの follow-up Issue 起票）は本 helper の対象外。起票は既に
+# cleanup-follow-up-issue.sh が担っており、Issue 中止の経路では起票自体が不要なため、
+# ここへ引き込む理由がない。
 #
 # exit code: 全運用経路 0（非ブロッキング。invalid pr_number も 0）。usage error のみ 2。
 #
