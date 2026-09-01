@@ -115,17 +115,37 @@ fi
 # その行の帰結にアンカーする。
 assert_grep "T-02 (d) a mismatching worktree stops the removal and the branch delete" "$SKILL" \
   '^\| `mismatch` \|.*\*\*4\.2\.1 / 4\.2\.2 と 4\.3 のブランチ削除を試行せず\*\*'
-# (e) state purge / reap は「全運用経路で rc=0、部分失敗は marker のみ」契約の helper なので、
-# rc だけを見ると残置が完了として報告される。marker / WARNING 行で判定していることを pin する。
+# (e) state purge は「全運用経路で rc=0、部分失敗は marker のみ」契約の helper なので、rc だけを見ると
+# 残置が完了として報告される。marker を判定に使うことと、その帰結（残置として列挙する）を pin する。
+# 判定は bash の捕捉層に持たせない — 捕捉に失敗すると marker ごと消えて「観測できていない」が
+# 「成功」に化けるため、sibling (cleanup/SKILL.md) と同じく出力を読む形であることも固定する。
 assert_grep_in_section "T-02 (e) state purge is judged by its partial-failure marker, not rc alone" "$SKILL" \
   '^### 4\.4 PR-specific state ファイルの削除' '^### 4\.5' \
-  "grep -q 'REVIEW_CLEANUP_PARTIAL_FAILURE=1'"
+  'REVIEW_CLEANUP_PARTIAL_FAILURE=1'
 assert_grep_in_section "T-02 (e) a partial state purge is surfaced as residue" "$SKILL" \
   '^### 4\.4 PR-specific state ファイルの削除' '^### 4\.5' \
-  'CANCEL_STATE_PURGE=partial'
-assert_grep_in_section "T-02 (e) reap-issue is judged by its WARNING lines, not rc alone" "$SKILL" \
+  'Phase 7 に「PR-specific state ファイル: 残置」として列挙する'
+# 禁止したいのは「helper の stderr を変数保持のファイルへ退避する」構造そのもの。tempfile 名で
+# pin すると別名の退避層を素通しする（それ自体が本 PR で消した欠陥クラス）ため、リダイレクト形で pin する。
+assert_not_grep "T-02 (e) the state purge stderr is not diverted into a capture file" "$SKILL" \
+  'cleanup-pr-state-purge\.sh.*2>"\$'
+assert_not_grep "T-02 (e) the reap stderr is not diverted into a capture file" "$SKILL" \
+  'flow-state\.sh reap-issue.*2>"\$'
+# reap-issue には失敗専用 marker が無い (`WARNING: reap-issue:` は成功経路の告知にも使われる) ため、
+# 接頭辞を bash の判別子にしてはならない。sibling と同じ素通し形であることを両側から pin する。
+assert_grep_in_section "T-02 (e) reap-issue passes its output through instead of predicating on the prefix" "$SKILL" \
   '^### 4\.6 claim 解放と cross-session state の回収' '^### 4\.7' \
-  "grep -q '\^WARNING: reap-issue:'"
+  '^bash \{plugin_root\}/hooks/flow-state\.sh reap-issue --issue \{issue_number\} 2>&1'
+assert_not_grep "T-02 (e) no bash predicate treats the reap-issue WARNING prefix as failure-only" "$SKILL" \
+  "grep -q.*WARNING: reap-issue:"
+assert_grep_in_section "T-02 (e) the reap WARNING prefix is documented as not failure-only" "$SKILL" \
+  '^### 4\.6 claim 解放と cross-session state の回収' '^### 4\.7' \
+  '成功経路の告知にも使われる'
+# 判定は除外形（告知行以外はすべて残置）で書く。失敗語彙の列挙形は helper に 5 種目が増えた時点で
+# 静かに「残置なし」へ倒れるため、その形へ戻す変更を赤くする。
+assert_grep_in_section "T-02 (e) the reap residue rule is written as an exclusion, not an enumeration" "$SKILL" \
+  '^### 4\.6 claim 解放と cross-session state の回収' '^### 4\.7' \
+  '\*\*失敗語彙を列挙して判定しない\*\*'
 
 echo "=== T-03: gh pr close が Projects Status 更新より先に呼ばれる (AC-3) ==="
 # 順序 pin は**実行行**を見る。冒頭の「実行順序の不変条件」節は同じコマンド名を散文で引用するため、
@@ -257,8 +277,6 @@ assert_not_grep "T-08 no unscoped fetch window is used for the fallback" "$SKILL
 assert_grep_in_section "T-08 the timeline rc is captured from a single command, not a pipeline" "$SKILL" \
   '^### 2\\.3 関連 PR の検索' '^## Phase 3:' \
   '^  2>"\$_tl_err"\) \|\| _tl_rc=\$\?$'
-assert_not_grep "T-08 the timeline fetch is not piped before its rc is captured" "$SKILL" \
-  '^pr_candidates=\$\(gh api .*\| sort'
 # jq フィルタが PreToolUse ガード (jq-not-equal-null) に deny されない形であること。
 # `!= null` を含む Bash 呼び出しは実行前に拒否されるため、書いたとおりには一度も走らない。
 assert_grep_in_section "T-08 the timeline jq filter uses truthiness, not != null" "$SKILL" \

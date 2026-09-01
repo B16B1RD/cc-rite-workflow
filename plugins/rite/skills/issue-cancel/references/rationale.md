@@ -106,15 +106,35 @@ Bash tool 呼び出しごとに fresh shell（`pipefail` OFF）で起動する�
 
 ## helper-marker-not-rc
 
-`cleanup-pr-state-purge.sh` と `flow-state.sh reap-issue` はどちらも「全運用経路で rc=0」の非ブロッキング
-契約を持ち、部分失敗は marker（`REVIEW_CLEANUP_PARTIAL_FAILURE=1`）や `WARNING: reap-issue:` 行でのみ
-通知する。呼び出し側が rc だけを見ると、その通知経路が丸ごと落ちて残置が完了として報告される — 「後片付け
-helper の失敗は non-blocking。WARNING を出して続行し、Phase 7 に未完了として列挙する」という本スキル自身の
-宣言が、この 2 経路について空文になる。
+`cleanup-pr-state-purge.sh` は「全運用経路で rc=0」の非ブロッキング契約を持ち、部分失敗（rm 失敗・内側
+helper 起動失敗）を `REVIEW_CLEANUP_PARTIAL_FAILURE=1` marker でのみ通知する。呼び出し側が rc だけを見ると
+その通知経路が丸ごと落ちて残置が完了として報告される — 「後片付け helper の失敗は non-blocking。WARNING を
+出して続行し、Phase 7 に未完了として列挙する」という本スキル自身の宣言が、この経路について空文になる。
 
-判定を出力側へ移すのは新しい機構ではなく、同じ helper を呼ぶ `skills/cleanup/SKILL.md` の
-`{review_cleanup_check}` が既に採っている形の継承である。marker を見ずに rc だけを見る呼び出し側が
-新しく増えると、hardened sibling が持つ判定がその呼び出し側でだけ失われる。
+判定を marker へ移すのは新しい機構ではなく、同じ helper を呼ぶ `skills/cleanup/SKILL.md` の
+`{review_cleanup_check}` が既に採っている形の継承である。
+
+**判定を bash の捕捉層に持たせない**のが要点。`err=$(mktemp) || err=""` → `2>"${err:-/dev/null}"` →
+`[ -n "$err" ] && grep -q ...` の形は、mktemp が失敗した瞬間に (a) helper の stderr を marker ごと捨て、
+(b) 判定を短絡し、(c) `else` の「成功」へ落ちる。塞ごうとした当の欠陥——観測できていない状態を成功として
+報告する——を、観測手段を確保するはずの層が再生産する。4.3 が「marker 不在は削除成功ではなく実行結果を
+確認できていないことを意味する」と書いた規約は、捕捉に失敗した経路でこそ効かねばならない。sibling が
+stderr を素通しして判定を読み手に委ねているのは、捕捉層を持たなければこの縮退が存在しないためである。
+
+## reap-has-no-failure-marker
+
+`flow-state.sh reap-issue` は同じ非ブロッキング契約を持つが、**失敗専用の通知チャネルを持たない**。
+`WARNING: reap-issue:` は「stale flow-state (active=true) を見つけた」という成功経路の告知にも使われ、
+直後の非 active 化が成功しても出力に残る。`/rite:issue-cancel` は 4.6 より前に flow-state を非 active 化
+しない（4.5 の `cleanup-work-memory.sh` は close mode で flow-state を触らない）ため、着手後の中止では
+この告知行が必ず出る。接頭辞の有無を部分失敗の判別子に採ると、成功した回収を毎回「残置」と報告し、
+真の部分失敗が常時 ON の告知に埋もれる。
+
+失敗語彙（`lock 回収失敗` / `読み取り失敗` / `deactivate failed` / `非 active 化失敗`）を列挙して一致させる
+形は採らない。helper 側に 5 種目が増えた時点で一致しなくなり、静かに「成功」へ戻る — 4.4 で塞いだのと
+同じ欠陥クラスの再導入になる。`skills/cleanup/SKILL.md` の同じ呼び出しが出力判定を採らず rc のみに留めて
+いるのは、この非対称を踏まえた選択とみなせる。恒久策は helper 側に失敗専用 marker を持たせることだが、
+`flow-state.sh` は他スキルからも呼ばれる共有 helper であり本スキルの守備範囲ではない。
 
 ## identity-promotion-headref-only
 

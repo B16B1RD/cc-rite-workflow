@@ -158,11 +158,7 @@ if [ "$_tl_rc" -ne 0 ]; then
   exit 1
 fi
 rm -f "$_tl_err"
-if [ -n "$_tl_raw" ]; then
-  pr_candidates=$(printf '%s\n' "$_tl_raw" | sort -un)
-else
-  pr_candidates=""
-fi
+pr_candidates=$(printf '%s\n' "$_tl_raw" | sort -un)
 echo "[CONTEXT] CANCEL_PR_CANDIDATES=$(printf '%s' "$pr_candidates" | tr '\n' ',')"
 ```
 
@@ -322,30 +318,20 @@ LC_ALL=C git branch -D -- "{branch_name}" && echo "[CONTEXT] BRANCH_DELETED=1; b
 
 > **`{pr_number}` が未確定（PR 無し）のときは本ステップをスキップする**（削除対象の glob が確定しない）。
 
-helper は全運用経路で rc=0 を返し、部分失敗（rm 失敗・内側 helper 起動失敗）は `REVIEW_CLEANUP_PARTIAL_FAILURE=1` marker でのみ通知する。rc だけを見ると残置が完了として報告されるため、**marker の有無で判定する**（`skills/cleanup/SKILL.md` の `{review_cleanup_check}` と同じ family 照合）。
+helper は全運用経路で rc=0 を返し、部分失敗（rm 失敗・内側 helper 起動失敗）は `REVIEW_CLEANUP_PARTIAL_FAILURE=1` marker でのみ通知する。rc だけを見ると残置が完了として報告されるため、**marker を判定に使う**。判定は bash に持たせず `skills/cleanup/SKILL.md` の `{review_cleanup_check}` と同じく**出力に現れた marker を読んで**行う — 捕捉層を挟むと、その捕捉に失敗したときに marker ごと消えて「観測できていない」が「成功」に化ける。
 rationale: references/rationale.md#helper-marker-not-rc
 
 ```bash
-_sp_rc=0
-_sp_err=$(mktemp "${TMPDIR:-/tmp}/rite-cancel-state-purge-err-XXXXXX") || _sp_err=""
-bash {plugin_root}/hooks/scripts/cleanup-pr-state-purge.sh --pr "{pr_number}" 2>"${_sp_err:-/dev/null}" || _sp_rc=$?
-[ -n "$_sp_err" ] && [ -s "$_sp_err" ] && cat "$_sp_err" >&2
-if [ "$_sp_rc" -ne 0 ]; then
-  echo "WARNING: state purge helper が rc=${_sp_rc} で失敗しました。PR-specific state ファイルが残っています" >&2
-  echo "[CONTEXT] CANCEL_STATE_PURGE=failed; reason=helper_rc; rc=${_sp_rc}" >&2
-elif [ -n "$_sp_err" ] && grep -q 'REVIEW_CLEANUP_PARTIAL_FAILURE=1' "$_sp_err"; then
-  echo "WARNING: state purge が部分失敗しました。PR-specific state ファイルが残っています" >&2
-  echo "[CONTEXT] CANCEL_STATE_PURGE=partial" >&2
-else
-  echo "[CONTEXT] CANCEL_STATE_PURGE=ok" >&2
-fi
-[ -n "$_sp_err" ] && rm -f "$_sp_err"
+bash {plugin_root}/hooks/scripts/cleanup-pr-state-purge.sh --pr "{pr_number}" 2>&1 \
+  || echo "WARNING: state purge helper が失敗しました。PR-specific state ファイルが残っています" >&2
 ```
 
-| `CANCEL_STATE_PURGE` | アクション |
+上記の出力を読んで分岐する（marker は本呼び出しの出力に限って照合すればよく、`{review_cleanup_check}` のような `pr=` 境界一致は不要 — 他 PR 分の marker が混ざらないため）:
+
+| 観測 | アクション |
 |---|---|
-| `ok` | 4.5 へ |
-| `partial` / `failed` | 4.5 へ進み、Phase 7 に「PR-specific state ファイル: 残置」として列挙する |
+| `REVIEW_CLEANUP_PARTIAL_FAILURE=1` を含む、または上記 WARNING が出た | 4.5 へ進み、Phase 7 に「PR-specific state ファイル: 残置」として列挙する |
+| いずれも無い | 4.5 へ |
 
 ### 4.5 作業メモリの削除
 
@@ -364,25 +350,15 @@ bash {plugin_root}/hooks/issue-claim.sh release --issue {issue_number} 2>&1 \
   || echo "WARNING: issue-claim release が失敗しました（claim は stale 判定 + reap で回収されます）" >&2
 ```
 
-`reap-issue` も部分失敗で rc=0 を返し `WARNING: reap-issue:` 行でのみ通知するため、4.4 と同じく**出力で判定する**:
+`reap-issue` には 4.4 のような**失敗専用 marker が無い**。`WARNING: reap-issue:` は「stale を見つけて非 active 化する」という成功経路の告知にも使われるため、接頭辞の有無を部分失敗の判別子にできない（着手後の中止では告知行が必ず出る）。`skills/cleanup/SKILL.md` の同じ呼び出しと同型に、出力を素通しして人間が読む形に留める:
+rationale: references/rationale.md#reap-has-no-failure-marker
 
 ```bash
-_ri_rc=0
-_ri_err=$(mktemp "${TMPDIR:-/tmp}/rite-cancel-reap-err-XXXXXX") || _ri_err=""
-bash {plugin_root}/hooks/flow-state.sh reap-issue --issue {issue_number} 2>"${_ri_err:-/dev/null}" || _ri_rc=$?
-[ -n "$_ri_err" ] && [ -s "$_ri_err" ] && cat "$_ri_err" >&2
-if [ "$_ri_rc" -ne 0 ]; then
-  echo "WARNING: reap-issue が失敗しました（stale flow-state / run-queue / lock が残る可能性）" >&2
-  echo "[CONTEXT] CANCEL_REAP=failed; rc=${_ri_rc}" >&2
-elif [ -n "$_ri_err" ] && grep -q '^WARNING: reap-issue:' "$_ri_err"; then
-  echo "[CONTEXT] CANCEL_REAP=partial" >&2
-else
-  echo "[CONTEXT] CANCEL_REAP=ok" >&2
-fi
-[ -n "$_ri_err" ] && rm -f "$_ri_err"
+bash {plugin_root}/hooks/flow-state.sh reap-issue --issue {issue_number} 2>&1 \
+  || echo "WARNING: reap-issue が失敗しました（stale flow-state / run-queue / lock が残る可能性）" >&2
 ```
 
-`partial` / `failed` は Phase 7 に「cross-session state: 残置」として列挙する。
+`WARNING: reap-issue:` 行のうち `stale flow-state (active=true)` の告知**以外**が 1 行でもあれば、Phase 7 に「cross-session state: 残置」として列挙する。告知行だけのときは残置ではない。**失敗語彙を列挙して判定しない** — helper に新しい失敗メッセージが増えたとき、列挙形は静かに「残置なし」へ倒れる。
 
 ### 4.7 Wiki ingest は実行しない
 
