@@ -27,6 +27,11 @@ flow-state の `handoff` は単一フィールド + default-clear で、iterate 
 （`flow-state.sh set`）が default-clear し、最後の Issue 分のみステップ 7 の `consume-handoff` で
 消費する。
 
+Stop hook の batch watchdog は handoff フィールドではなく自セッションの run-queue を読む別軸
+である。handoff が非空なら既存の prefix 分岐が先に block し、watchdog は評価しない。handoff が
+空で run-queue が `active:true` かつ未完了のときだけ停止を差し戻す。batch-run は handoff を
+set しない契約のまま。
+
 ## session-scoped-queue
 
 run-queue はファイル名に `session_id` を含めてセッションごとに物理分離する。候補比較: (A)

@@ -1618,6 +1618,148 @@ else
 fi
 echo ""
 
+write_batch_queue() {
+  local dir="$1"
+  local sid="${2:-test-sid-$(basename "$dir")}"
+  local active="${3:-true}"
+  local cursor="${4:-0}"
+  mkdir -p "$dir/.rite/state"
+  jq -n --argjson active "$active" --argjson cursor "$cursor" \
+    '{issues:[2502], cursor:$cursor, mode:"merge", failed:[], outstanding:[], active:$active, updated_at:"2026-09-02T00:00:00Z"}' \
+    > "$dir/.rite/state/run-queue-${sid}.json"
+}
+
+echo "T-09: compact + active queue replaces recover notice"
+dir_t09="$TEST_DIR/tc-batch-09"
+mkdir -p "$dir_t09"
+create_state_file "$dir_t09" '{
+  "active": true,
+  "issue_number": 2502,
+  "phase": "review",
+  "next_action": "iterate",
+  "loop_count": 1
+}'
+write_batch_queue "$dir_t09"
+output=$(run_hook_with_source "$dir_t09" "compact")
+if echo "$output" | grep -q "/rite:batch-run" \
+  && echo "$output" | grep -q "$(issue_text 2502)" \
+  && ! echo "$output" | grep -q "再開するには /rite:recover" \
+  && ! echo "$output" | grep -q "中断した rite workflow"; then
+  pass "T-09: compact batch continuation without recover resume phrase"
+else
+  fail "T-09: unexpected output: $output"
+fi
+echo ""
+
+echo "T-09b: compact + stop_reason + active queue still avoids recover resume phrase"
+dir_t09b="$TEST_DIR/tc-batch-09b"
+mkdir -p "$dir_t09b"
+create_state_file "$dir_t09b" '{
+  "active": true,
+  "issue_number": 2502,
+  "phase": "review",
+  "stop_reason": "circuit-breaker:max-cycles",
+  "next_action": "stopped"
+}'
+write_batch_queue "$dir_t09b"
+output=$(run_hook_with_source "$dir_t09b" "compact")
+if echo "$output" | grep -q "/rite:batch-run" \
+  && ! echo "$output" | grep -q "再開するには /rite:recover" \
+  && ! echo "$output" | grep -q "失敗停止した rite workflow"; then
+  pass "T-09b: failure-stop compact notice replaced by batch continuation"
+else
+  fail "T-09b: unexpected output: $output"
+fi
+echo ""
+
+echo "T-10: compact without active queue keeps recover notice (byte-identical fixture)"
+T10_EXPECTED='rite: 中断した rite workflow を検出しました (Issue #42, phase: implementing)。再開するには /rite:recover を実行してください。'
+dir_t10="$TEST_DIR/tc-batch-10"
+mkdir -p "$dir_t10"
+create_state_file "$dir_t10" '{
+  "active": true,
+  "issue_number": 42,
+  "phase": "implementing",
+  "next_action": "continue work",
+  "loop_count": 3
+}'
+output=$(run_hook_with_source "$dir_t10" "compact")
+if [ "$output" = "$T10_EXPECTED" ]; then
+  pass "T-10 absent queue: stdout byte-identical to develop-era fixture"
+else
+  fail "T-10 absent queue: $output"
+fi
+echo ""
+
+echo "T-10b: active:false / cursor>=total / other sid keep recover notice (byte-identical)"
+for variant in false done othersid; do
+  dir_v="$TEST_DIR/tc-batch-10-$variant"
+  mkdir -p "$dir_v"
+  create_state_file "$dir_v" '{
+    "active": true,
+    "issue_number": 42,
+    "phase": "implementing",
+    "next_action": "continue work"
+  }'
+  case "$variant" in
+    false) write_batch_queue "$dir_v" "test-sid-$(basename "$dir_v")" false 0 ;;
+    done) write_batch_queue "$dir_v" "test-sid-$(basename "$dir_v")" true 1 ;;
+    othersid) write_batch_queue "$dir_v" "other-session" true 0 ;;
+  esac
+  output=$(run_hook_with_source "$dir_v" "compact")
+  if [ "$output" = "$T10_EXPECTED" ]; then
+    pass "T-10 $variant: stdout byte-identical to develop-era fixture"
+  else
+    fail "T-10 $variant: $output"
+  fi
+done
+echo ""
+
+echo "T-11: compact + corrupt queue warns and does not emit recover resume phrase"
+dir_t11="$TEST_DIR/tc-batch-11-corrupt"
+mkdir -p "$dir_t11"
+create_state_file "$dir_t11" '{
+  "active": true,
+  "issue_number": 42,
+  "phase": "implementing",
+  "next_action": "continue work"
+}'
+sid_t11="test-sid-$(basename "$dir_t11")"
+mkdir -p "$dir_t11/.rite/state"
+printf 'not-json{{' > "$dir_t11/.rite/state/run-queue-${sid_t11}.json"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(echo "{\"cwd\": \"$dir_t11\", \"source\": \"compact\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if echo "$output" | grep -q "run-queue が破損しているため batch 稼働判定ができません" \
+  && echo "$output" | grep -q "$(issue_text 42)" \
+  && ! echo "$output" | grep -q "/rite:recover" \
+  && grep -q "WARNING: run-queue が破損しています" "$LAST_STDERR_FILE"; then
+  pass "T-11 corrupt: no recover phrase, WARNING on stderr"
+else
+  fail "T-11 corrupt: stdout=$output stderr=$(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+echo "T-10c: startup + active queue still defensive-resets (does not switch to batch notice)"
+dir_t10c="$TEST_DIR/tc-batch-10-startup"
+mkdir -p "$dir_t10c"
+create_state_file "$dir_t10c" '{
+  "active": true,
+  "issue_number": 42,
+  "phase": "implementing",
+  "branch": "feat/issue-42",
+  "next_action": "continue work"
+}'
+write_batch_queue "$dir_t10c"
+output=$(run_hook_with_source "$dir_t10c" "startup")
+if echo "$output" | grep -q "前回のセッション状態が残っていたためリセットしました" \
+  && echo "$output" | grep -q "/rite:recover" \
+  && ! echo "$output" | grep -q "/rite:batch-run"; then
+  pass "T-10c: startup reset wording unchanged with active queue"
+else
+  fail "T-10c: $output"
+fi
+echo ""
+
 # --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------

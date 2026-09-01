@@ -688,6 +688,372 @@ out=$(jq -nc --arg c "$d29" --arg s "$SID" --arg tp "$tp29" \
 assert "TC-29: large heading-at-start allows stop (no output)" "" "$out"
 rm -f "$tp29"
 
-if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (review↔fix loop continuation + FINALIZE terminal backstop + skip bounce when iterate notice already present + remaining-field inspect on mergeable + WIKICHAIN cleanup-chain gate + C1 8-bit coverage via shared neutralize_ctrl + JSON emit fallback C0 neutralization + neutralize-failure placeholder degradation + notice missing/inspect-fail isolation + SIGPIPE-safe heading scan)"; then
+write_queue() {
+  local dir="$1" sid="${2:-$SID}"
+  mkdir -p "$dir/.rite/state"
+  jq -n '{issues:[2502], cursor:0, mode:"merge", failed:[], outstanding:[], active:true, updated_at:"2026-09-02T00:00:00Z"}' \
+    > "$dir/.rite/state/run-queue-${sid}.json"
+}
+
+sidecar_for() { echo "$1/.rite/state/run-queue-${SID}.watchdog"; }
+queue_for() { echo "$1/.rite/state/run-queue-${SID}.json"; }
+
+run_stop() {
+  local dir="$1" errf="${2:-/dev/null}"
+  if [ -n "${GH_STUB_BIN:-}" ]; then
+    stop_payload "$dir" | PATH="$GH_STUB_BIN:$PATH" bash "$HOOK" 2>"$errf"
+  else
+    stop_payload "$dir" | bash "$HOOK" 2>"$errf"
+  fi
+}
+
+make_gh_stub() {
+  local dest="$1" mode="$2"
+  mkdir -p "$dest"
+  case "$mode" in
+    MERGED|OPEN)
+      printf '%s\n' '#!/bin/bash' "echo '$mode'" > "$dest/gh"
+      ;;
+    fail)
+      printf '%s\n' '#!/bin/bash' 'echo gh-fail >&2' 'exit 1' > "$dest/gh"
+      ;;
+    *)
+      echo "make_gh_stub: unknown mode $mode" >&2
+      return 1
+      ;;
+  esac
+  chmod +x "$dest/gh"
+}
+
+setup_watchdog_fs() {
+  local dir="$1" phase="$2" pr="${3:-99}"
+  RITE_STATE_ROOT="$dir" bash "$FS" set --phase "$phase" --issue 2502 \
+    --branch "fix/issue-2502-x" --pr "$pr" --next n --session "$SID" >/dev/null
+  write_queue "$dir"
+}
+
+# --- T-01: handoff empty + active queue → block with batch frame ---
+echo ""
+echo "=== T-01: handoff empty + active queue → decision:block with batch frame ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" review 99
+out=$(run_stop "$d")
+assert "T-01: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+_r=$(printf '%s' "$out" | jq -r '.reason // ""')
+for needle in "mode=merge" "cursor=0/1" "Issue #2502" "PR #99" "phase=review" "/rite:iterate 99" "queue_file="; do
+  if printf '%s' "$_r" | grep -qF "$needle"; then
+    pass "T-01: reason contains $needle"
+  else
+    fail "T-01: reason missing $needle: $out"
+  fi
+done
+if printf '%s' "$_r" | grep -q "review↔fix ループ"; then
+  fail "T-01: watchdog reason used handoff continuation phrasing: $out"
+else
+  pass "T-01: watchdog reason is distinct from handoff continuation"
+fi
+
+# --- T-02: handoff non-empty wins; sidecar not created ---
+echo ""
+echo "=== T-02: handoff non-empty keeps existing reason; no sidecar ==="
+d=$(new_sandbox)
+RITE_STATE_ROOT="$d" bash "$FS" set --phase review --issue 2502 --branch b --pr 99 \
+  --next n --handoff "/rite:fix 99" --session "$SID" >/dev/null
+write_queue "$d"
+out=$(run_stop "$d")
+assert "T-02: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+_r=$(printf '%s' "$out" | jq -r '.reason // ""')
+if printf '%s' "$_r" | grep -q "/rite:fix 99"; then
+  pass "T-02: reason is existing continuation"
+else
+  fail "T-02: reason lost handoff command: $out"
+fi
+if printf '%s' "$_r" | grep -qE 'queue_file=|Batch:'; then
+  fail "T-02: handoff reason leaked batch frame: $out"
+else
+  pass "T-02: handoff reason has no batch frame"
+fi
+if [ -e "$(sidecar_for "$d")" ]; then
+  fail "T-02: sidecar should not be created on handoff path"
+else
+  pass "T-02: sidecar absent"
+fi
+
+# --- T-03: queue absent / active:false / cursor>=total → allow ---
+echo ""
+echo "=== T-03: non-active queue variants allow stop ==="
+d=$(new_sandbox)
+RITE_STATE_ROOT="$d" bash "$FS" set --phase review --issue 2502 --branch b --pr 99 \
+  --next n --session "$SID" >/dev/null
+out=$(run_stop "$d")
+assert "T-03a: no queue allows stop" "" "$out"
+
+write_queue "$d"
+jq '.active=false' "$(queue_for "$d")" > "$(queue_for "$d").tmp" && mv "$(queue_for "$d").tmp" "$(queue_for "$d")"
+out=$(run_stop "$d")
+assert "T-03b: active:false allows stop" "" "$out"
+
+jq '.active=true | .cursor=1' "$(queue_for "$d")" > "$(queue_for "$d").tmp" && mv "$(queue_for "$d").tmp" "$(queue_for "$d")"
+out=$(run_stop "$d")
+assert "T-03c: cursor>=total allows stop" "" "$out"
+
+# --- T-04: 3 blocks then 4th allows; active stays true; 4 keys unchanged ---
+echo ""
+echo "=== T-04: progress-less K=3 then 4th allows; active remains true ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" review 99
+i=1
+while [ "$i" -le 3 ]; do
+  out=$(run_stop "$d")
+  assert "T-04: stop $i blocks" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+  i=$((i + 1))
+done
+err=$(mktemp)
+out=$(run_stop "$d" "$err")
+assert "T-04: 4th stop allows (no stdout)" "" "$out"
+if grep -q "WARNING: batch-run が 3 回連続で進捗なく停止しました" "$err" && grep -q "/rite:batch-run" "$err"; then
+  pass "T-04: 4th stop WARNING includes resume command"
+else
+  fail "T-04: 4th stop stderr missing WARNING: $(cat "$err")"
+fi
+assert "T-04: queue active remains true" "true" "$(jq -r '.active' "$(queue_for "$d")")"
+rm -f "$err"
+
+# --- T-05: each of 4 progress keys resets count; unchanged keys increment ---
+echo ""
+echo "=== T-05: progress keys reset count; unchanged keys increment ==="
+reset_and_check() {
+  local dir="$1" label="$2"
+  jq '.count=2 | .cursor=0 | .updated_at="2026-09-02T00:00:00Z" | .phase="review" | .pr_number="99"' \
+    "$(sidecar_for "$dir")" > "$(sidecar_for "$dir").tmp" && mv "$(sidecar_for "$dir").tmp" "$(sidecar_for "$dir")"
+  # first after reset should block as count=1 (not trip K)
+  out=$(run_stop "$dir")
+  assert "T-05 $label: first after change blocks" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+  assert "T-05 $label: sidecar count is 1" "1" "$(jq -r '.count' "$(sidecar_for "$dir")")"
+}
+
+d=$(new_sandbox)
+setup_watchdog_fs "$d" review 99
+run_stop "$d" >/dev/null
+run_stop "$d" >/dev/null
+assert "T-05 setup: count=2" "2" "$(jq -r '.count' "$(sidecar_for "$d")")"
+
+jq '.updated_at="2026-09-02T00:00:01Z"' "$(queue_for "$d")" > "$(queue_for "$d").tmp" && mv "$(queue_for "$d").tmp" "$(queue_for "$d")"
+reset_and_check "$d" "updated_at"
+
+jq '.cursor=0 | .updated_at="2026-09-02T00:00:01Z"' "$(queue_for "$d")" > "$(queue_for "$d").tmp" && mv "$(queue_for "$d").tmp" "$(queue_for "$d")"
+# cursor change: bump issues so cursor=0 still active? change cursor to 0 is no-op.
+# Use a two-issue queue and cursor 0 → keep, then we'll set sidecar to cursor 0 and change queue cursor? 
+# Simpler: rewrite queue with cursor still 0 but we already tested updated_at.
+# For cursor: set sidecar cursor to 1 (mismatch) while queue cursor is 0.
+jq '.count=2 | .cursor=1 | .updated_at="2026-09-02T00:00:01Z" | .phase="review" | .pr_number="99"' \
+  "$(sidecar_for "$d")" > "$(sidecar_for "$d").tmp" && mv "$(sidecar_for "$d").tmp" "$(sidecar_for "$d")"
+out=$(run_stop "$d")
+assert "T-05 cursor: first after change blocks" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+assert "T-05 cursor: sidecar count is 1" "1" "$(jq -r '.count' "$(sidecar_for "$d")")"
+
+sf=$(state_file_for "$d")
+jq '.phase="fix"' "$sf" > "$sf.tmp" && mv "$sf.tmp" "$sf"
+jq '.count=2 | .cursor=0 | .updated_at="2026-09-02T00:00:01Z" | .phase="review" | .pr_number="99"' \
+  "$(sidecar_for "$d")" > "$(sidecar_for "$d").tmp" && mv "$(sidecar_for "$d").tmp" "$(sidecar_for "$d")"
+out=$(run_stop "$d")
+assert "T-05 phase: first after change blocks" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+assert "T-05 phase: sidecar count is 1" "1" "$(jq -r '.count' "$(sidecar_for "$d")")"
+
+jq '.pr_number=77' "$sf" > "$sf.tmp" && mv "$sf.tmp" "$sf"
+jq '.count=2 | .cursor=0 | .updated_at="2026-09-02T00:00:01Z" | .phase="fix" | .pr_number="99"' \
+  "$(sidecar_for "$d")" > "$(sidecar_for "$d").tmp" && mv "$(sidecar_for "$d").tmp" "$(sidecar_for "$d")"
+out=$(run_stop "$d")
+assert "T-05 pr_number: first after change blocks" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+assert "T-05 pr_number: sidecar count is 1" "1" "$(jq -r '.count' "$(sidecar_for "$d")")"
+
+# unchanged 4 keys increment
+run_stop "$d" >/dev/null
+assert "T-05 unchanged: count increments to 2" "2" "$(jq -r '.count' "$(sidecar_for "$d")")"
+
+# --- T-06: corrupt queue JSON ---
+echo ""
+echo "=== T-06: corrupt run-queue JSON allows stop with WARNING ==="
+d=$(new_sandbox)
+RITE_STATE_ROOT="$d" bash "$FS" set --phase review --issue 2502 --branch b --pr 99 \
+  --next n --session "$SID" >/dev/null
+mkdir -p "$d/.rite/state"
+printf 'not-json{{' > "$(queue_for "$d")"
+err=$(mktemp)
+out=$(run_stop "$d" "$err")
+assert "T-06: stdout empty" "" "$out"
+if grep -q "WARNING: run-queue が破損しています" "$err" && grep -q "$(queue_for "$d")" "$err"; then
+  pass "T-06: WARNING includes queue path"
+else
+  fail "T-06: stderr missing WARNING+path: $(cat "$err")"
+fi
+rm -f "$err"
+
+# --- T-07: other session_id queue ignored ---
+echo ""
+echo "=== T-07: other session_id active queue is ignored ==="
+d=$(new_sandbox)
+RITE_STATE_ROOT="$d" bash "$FS" set --phase review --issue 2502 --branch b --pr 99 \
+  --next n --session "$SID" >/dev/null
+write_queue "$d" "other-session-id"
+out=$(run_stop "$d")
+assert "T-07: other session queue allows stop" "" "$out"
+
+# --- routing buckets ---
+echo ""
+echo "=== T-routing: phase buckets pin hint literals ==="
+assert_hint() {
+  local label="$1" phase="$2" extra="$3" want="$4" not_want="$5"
+  local dir out r
+  dir=$(new_sandbox)
+  setup_watchdog_fs "$dir" "$phase" 99
+  if [ -n "$extra" ]; then
+    jq "$extra" "$(state_file_for "$dir")" > "$(state_file_for "$dir").tmp" \
+      && mv "$(state_file_for "$dir").tmp" "$(state_file_for "$dir")"
+  fi
+  out=$(run_stop "$dir")
+  r=$(printf '%s' "$out" | jq -r '.reason // ""')
+  if printf '%s' "$r" | grep -qF "$want"; then
+    pass "T-routing $label: hint contains $want"
+  else
+    fail "T-routing $label: missing $want in $r"
+  fi
+  if [ -n "$not_want" ] && printf '%s' "$r" | grep -qF "$not_want"; then
+    fail "T-routing $label: leaked $not_want in $r"
+  else
+    [ -n "$not_want" ] && pass "T-routing $label: does not contain $not_want"
+  fi
+}
+CLEANUP_IN_PROGRESS='batch-run の cleanup 未実行ステップを継続（/rite:cleanup をステップ 0 から呼び直さない。cursor は進めない）'
+gh_open=$(mktemp -d)
+gh_merged=$(mktemp -d)
+gh_fail=$(mktemp -d)
+make_gh_stub "$gh_open" OPEN
+make_gh_stub "$gh_merged" MERGED
+make_gh_stub "$gh_fail" fail
+GH_STUB_BIN="$gh_open" assert_hint "ready" ready "" "/rite:merge 99" "/rite:iterate"
+GH_STUB_BIN="$gh_merged" assert_hint "ready-merged" ready "" "/rite:cleanup fix/issue-2502-x" "/rite:merge"
+GH_STUB_BIN="$gh_fail" assert_hint "ready-gh-fail" ready "" "/rite:merge 99" "/rite:cleanup"
+assert_hint "ready_error" ready_error "" "batch-run ステップ 8（失敗記録）" "/rite:merge"
+assert_hint "merge" merge "" "/rite:cleanup fix/issue-2502-x" "/rite:iterate"
+assert_hint "init" init "" "/rite:open 2502" "/rite:iterate"
+assert_hint "lint" lint "" "/rite:open 2502" "ステップ 6"
+assert_hint "ingest-active" ingest "" "$CLEANUP_IN_PROGRESS" "ステップ 6"
+assert_hint "completed-inactive" completed ".active=false" "batch-run ステップ 6（cursor 前進）" "/rite:iterate"
+assert_hint "unknown-phase" unknown_phase "" "batch-run ステップ 1 から再判定" "/rite:iterate"
+assert_hint "cb-fire" review '.stop_reason="circuit-breaker:max-cycles"' "batch-run ステップ 6（failed 記録 + cursor 前進）" "/rite:iterate"
+
+# flow-state absent → ステップ 1
+d=$(new_sandbox)
+write_queue "$d"
+out=$(run_stop "$d")
+_r=$(printf '%s' "$out" | jq -r '.reason // ""')
+if printf '%s' "$_r" | grep -q "batch-run ステップ 1 から再判定"; then
+  pass "T-routing fs-absent: ステップ 1 再判定"
+else
+  fail "T-routing fs-absent: $out"
+fi
+
+# --- T-11: cleanup + flow-state active=false → step 6 ---
+echo ""
+echo "=== T-11: phase=cleanup and flow-state active=false routes to step 6 ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" cleanup 99
+jq '.active=false' "$(state_file_for "$d")" > "$(state_file_for "$d").tmp" \
+  && mv "$(state_file_for "$d").tmp" "$(state_file_for "$d")"
+out=$(run_stop "$d")
+_r=$(printf '%s' "$out" | jq -r '.reason // ""')
+if printf '%s' "$_r" | grep -q "batch-run ステップ 6（cursor 前進）"; then
+  pass "T-11: reason routes to cursor advance"
+else
+  fail "T-11: $out"
+fi
+if printf '%s' "$_r" | grep -qF "$CLEANUP_IN_PROGRESS"; then
+  fail "T-11: inactive cleanup used in-progress hint: $out"
+else
+  pass "T-11: inactive cleanup does not use in-progress hint"
+fi
+
+# WIKICHAIN consumed + 2nd stop with active cleanup must not jump to cursor advance
+echo ""
+echo "=== T-wikichain-2nd: active cleanup after WIKICHAIN consume continues cleanup ==="
+d=$(new_sandbox)
+RITE_STATE_ROOT="$d" bash "$FS" set --phase cleanup --issue 2502 --branch b --pr 99 \
+  --next n --handoff "WIKICHAIN:cleanup:99" --session "$SID" >/dev/null
+write_queue "$d"
+out=$(run_stop "$d")
+assert "T-wikichain-1st: handoff blocks" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+out=$(run_stop "$d")
+_r=$(printf '%s' "$out" | jq -r '.reason // ""')
+if printf '%s' "$_r" | grep -qF "$CLEANUP_IN_PROGRESS"; then
+  pass "T-wikichain-2nd: continues cleanup remaining steps"
+else
+  fail "T-wikichain-2nd: $out"
+fi
+if printf '%s' "$_r" | grep -q "ステップ 6（cursor 前進）"; then
+  fail "T-wikichain-2nd: replaced wiki chain with cursor advance: $out"
+else
+  pass "T-wikichain-2nd: does not jump to cursor advance"
+fi
+
+# leftover flow-state of the previous queue item must not inject step 6 for the next Issue
+echo ""
+echo "=== T-identity: leftover FS of previous issue does not inject step 6 ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" cleanup 99
+jq '.active=false | .issue_number=2502' "$(state_file_for "$d")" > "$(state_file_for "$d").tmp" \
+  && mv "$(state_file_for "$d").tmp" "$(state_file_for "$d")"
+jq '.issues=[2502,2503] | .cursor=1' "$(queue_for "$d")" > "$(queue_for "$d").tmp" \
+  && mv "$(queue_for "$d").tmp" "$(queue_for "$d")"
+out=$(run_stop "$d")
+_r=$(printf '%s' "$out" | jq -r '.reason // ""')
+assert "T-identity cleanup: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+if printf '%s' "$_r" | grep -q "Issue #2503" \
+  && printf '%s' "$_r" | grep -q "batch-run ステップ 1 から再判定" \
+  && ! printf '%s' "$_r" | grep -q "ステップ 6"; then
+  pass "T-identity leftover cleanup: step 1 re-eval for next issue"
+else
+  fail "T-identity leftover cleanup: $out"
+fi
+
+d=$(new_sandbox)
+setup_watchdog_fs "$d" review 99
+jq '.stop_reason="circuit-breaker:max-cycles" | .issue_number=2502' "$(state_file_for "$d")" \
+  > "$(state_file_for "$d").tmp" && mv "$(state_file_for "$d").tmp" "$(state_file_for "$d")"
+jq '.issues=[2502,2503] | .cursor=1' "$(queue_for "$d")" > "$(queue_for "$d").tmp" \
+  && mv "$(queue_for "$d").tmp" "$(queue_for "$d")"
+out=$(run_stop "$d")
+_r=$(printf '%s' "$out" | jq -r '.reason // ""')
+if printf '%s' "$_r" | grep -q "Issue #2503" \
+  && printf '%s' "$_r" | grep -q "batch-run ステップ 1 から再判定" \
+  && ! printf '%s' "$_r" | grep -q "ステップ 6"; then
+  pass "T-identity leftover CB: step 1 re-eval for next issue"
+else
+  fail "T-identity leftover CB: $out"
+fi
+
+# --- T-12: sidecar unwritable still blocks; 2nd call also blocks ---
+echo ""
+echo "=== T-12: sidecar write failure still blocks (and 2nd call still blocks) ==="
+d=$(new_sandbox)
+setup_watchdog_fs "$d" review 99
+chmod a-w "$d/.rite/state"
+err=$(mktemp)
+out=$(run_stop "$d" "$err") || true
+chmod u+w "$d/.rite/state"
+assert "T-12: 1st still blocks" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+if grep -q "sidecar の書込に失敗" "$err"; then
+  pass "T-12: WARNING on sidecar write failure"
+else
+  fail "T-12: missing sidecar WARNING: $(cat "$err")"
+fi
+chmod a-w "$d/.rite/state"
+err2=$(mktemp)
+out=$(run_stop "$d" "$err2") || true
+chmod u+w "$d/.rite/state"
+assert "T-12: 2nd still blocks (K cannot fire)" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
+rm -f "$err" "$err2"
+
+if ! print_summary "$(basename "$0")" "stop-loop-continuation.sh (review↔fix loop continuation + FINALIZE terminal backstop + skip bounce when iterate notice already present + remaining-field inspect on mergeable + WIKICHAIN cleanup-chain gate + C1 8-bit coverage via shared neutralize_ctrl + JSON emit fallback C0 neutralization + neutralize-failure placeholder degradation + notice missing/inspect-fail isolation + SIGPIPE-safe heading scan + batch run-queue watchdog)"; then
   exit 1
 fi
