@@ -29,8 +29,10 @@ assert_file_exists_or_fail "issue-cancel/SKILL.md exists" "$SKILL" || {
 assert_file_exists_or_fail "issue-cancel/references/rationale.md exists" "$RATIONALE" || true
 
 echo "=== T-01: 着手前中止で NOT_PLANNED と Cancelled が両方適用される (AC-1) ==="
+# 実行行にアンカーする。コマンド名だけで拾うと「実行順序の不変条件」節の散文引用と手動復旧ヒントの
+# 表セルにも一致し、Phase 6 の実行行から --reason を落としても緑のまま通る (T-03 と同じ規則)。
 assert_grep "T-01 closes the Issue with --reason \"not planned\"" "$SKILL" \
-  'gh issue close .*--reason "not planned"'
+  '^if gh issue close .*--reason "not planned"'
 assert_grep "T-01 writes Cancelled as the board Status" "$SKILL" \
   '\-\-arg status "Cancelled"'
 # 理由コメントは close と同一コールに載る (理由なしクローズの窓を作らない)。
@@ -60,8 +62,10 @@ else
 fi
 # (b) detect と remove の間に ExitWorktree が入る。helper のヘッダが構造的前提として明記している
 #     ステップで、抜けると cwd が worktree 内のまま自己削除を試みる。
+# 指示行 (`ExitWorktree` を `action: "keep"` で呼ぶ行) にアンカーする。素の `ExitWorktree` だと
+# 順序制約を説明する散文行を拾い、指示行を逆順に書き換えても行番号比較が成立してしまう。
 _detect_line=$(_first_line "$SKILL" 'cleanup-session-worktree-teardown\.sh detect')
-_exit_wt_line=$(_first_line "$SKILL" 'ExitWorktree')
+_exit_wt_line=$(_first_line "$SKILL" 'ExitWorktree.*action: "keep"')
 if [ -n "$_detect_line" ] && [ -n "$_exit_wt_line" ] && [ -n "$_wt_remove_line" ]; then
   if [ "$_detect_line" -lt "$_exit_wt_line" ] && [ "$_exit_wt_line" -lt "$_wt_remove_line" ]; then
     pass "T-02 (b) ExitWorktree sits between detect and remove"
@@ -73,11 +77,14 @@ else
 fi
 assert_grep "T-02 (b) ExitWorktree is called with keep (path 入場した worktree は remove で消えない)" "$SKILL" \
   'ExitWorktree.*action: "keep"'
-# 中止経路は常に未マージ。reap manifest へ記録させない。
-assert_grep "T-02 passes --pr-merged false to the worktree teardown" "$SKILL" \
-  'cleanup-session-worktree-teardown\.sh remove'
-assert_grep "T-02 passes --pr-merged \"false\" (cancel is never a merged path)" "$SKILL" \
-  '\-\-pr-merged "false"'
+# (c) 中止経路は常に未マージ。reap manifest へ記録させない。ファイル全体の grep では
+# cleanup-branch-delete.sh 側の同一リテラルが一致してしまうため、4.2.1 セクションに限定する。
+assert_grep_in_section "T-02 (c) the worktree teardown receives --pr-merged false" "$SKILL" \
+  '^#### 4\\.2\\.1 remove の実行' '^### 4\\.3' '\-\-worktree "\{flow_wt\}" \-\-pr-merged "false"'
+# (d) worktree の削除対象が対象 Issue のものであることを確認してから remove へ進む
+#     (detect の内側は --issue を見ないため、呼び出し側で束縛しないと別 Issue の worktree が消える)
+assert_grep_in_section "T-02 (d) the worktree path is bound to the target Issue before remove" "$SKILL" \
+  '^### 4\\.2 worktree の退出と削除' '^#### 4\\.2\\.1' 'Issue 束縛ガード'
 
 echo "=== T-03: gh pr close が Projects Status 更新より先に呼ばれる (AC-3) ==="
 # 順序 pin は**実行行**を見る。冒頭の「実行順序の不変条件」節は同じコマンド名を散文で引用するため、
@@ -122,6 +129,17 @@ assert_grep_in_section "T-05 Phase 1 refuses to close without a reason" "$SKILL"
   '^## Phase 1: 引数と中止理由の確定' '^## Phase 2:' '理由を取得できない'
 assert_grep_in_section "T-05 Phase 1 states the Issue is not closed in that case" "$SKILL" \
   '^## Phase 1: 引数と中止理由の確定' '^## Phase 2:' 'Issue はクローズしない'
+# 理由の消失経路を塞ぐ 2 点。(a) 書き出し先が worktree 削除の影響外に固定されていること
+# (worktree 配下だと Phase 4.2 が Phase 1 と Phase 6 の間でファイルごと消す)。
+assert_grep_in_section "T-05 the reason file lives outside the session worktree" "$SKILL" \
+  '^## Phase 1: 引数と中止理由の確定' '^## Phase 2:' 'TMPDIR:-/tmp\}/rite-issue-cancel-reason-'
+# (b) 読み出し側が rc と空値の両方を fail-loud にすること (片方だけでは理由なしクローズが成立する)。
+assert_grep_in_section "T-05 Phase 6 refuses to close when the reason cannot be read" "$SKILL" \
+  '^## Phase 6: Issue を NOT_PLANNED でクローズ' '^## Phase 7:' 'if ! cancel_reason=\$\(cat'
+assert_grep_in_section "T-05 Phase 6 refuses to close on an empty reason" "$SKILL" \
+  '^## Phase 6: Issue を NOT_PLANNED でクローズ' '^## Phase 7:' '理由なしで Issue をクローズしません'
+assert_grep_in_section "T-05 Phase 3 applies the same guard before the PR close" "$SKILL" \
+  '^## Phase 3: PR クローズ' '^## Phase 4:' '理由なしで PR をクローズしません'
 
 echo "=== T-06: 既に CLOSED な Issue では Status 同期のみ (AC-6) ==="
 assert_grep_in_section "T-06 Phase 2.1 routes CLOSED to a Status-sync-only path" "$SKILL" \
@@ -145,9 +163,30 @@ assert_grep_in_section "T-07 the Status write is non-blocking (failure does not 
 
 echo "=== T-08: MERGED PR を持つ Issue では中止せず /rite:cleanup を案内 (AC-8) ==="
 assert_grep_in_section "T-08 a merged PR routes to /rite:cleanup instead of cancelling" "$SKILL" \
-  '^### 2\.2 関連 PR の検索と identity 検証' '^### 2\.3' '/rite:cleanup'
+  '^### 2\.3 関連 PR の検索と identity 検証' '^## Phase 3' '/rite:cleanup'
 assert_grep_in_section "T-08 the merged-PR branch stops" "$SKILL" \
-  '^### 2\.2 関連 PR の検索と identity 検証' '^### 2\.3' '停止する'
+  '^### 2\.3 関連 PR の検索と identity 検証' '^## Phase 3' '停止する'
+# PR 検索が Issue 番号でスコープされること。--search "linked:issue:N" は :N を無視し、
+# --head の glob は exact-match のため常に空を返す。どちらも「絞り込めていないのに成功して見える」。
+assert_not_grep "T-08 does not use the unscoped linked:issue search" "$SKILL" \
+  'gh pr list.*--search "linked:issue:'
+assert_not_grep "T-08 does not pass a glob to --head (exact-match only)" "$SKILL" \
+  '\-\-head "\*issue-'
+assert_grep_in_section "T-08 looks the PR up by the resolved branch with an exact --head" "$SKILL" \
+  '^### 2\.3 関連 PR の検索と identity 検証' '^## Phase 3' 'gh pr list .*\-\-head "\{branch_name\}"'
+assert_grep_in_section "T-08 filters the fallback set by closing keyword / headRefName before the routing table" "$SKILL" \
+  '^### 2\.3 関連 PR の検索と identity 検証' '^## Phase 3' 'Closes/Fixes/Resolves #\{issue_number\}'
+# ブランチ解決が PR 検索より前にあること (順序が逆だと exact --head に渡す値が無い)
+_branch_sec_line=$(_first_line "$SKILL" '^### 2\.2 作業ブランチの解決')
+_pr_sec_line=$(_first_line "$SKILL" '^### 2\.3 関連 PR の検索と identity 検証')
+if [ -n "$_branch_sec_line" ] && [ -n "$_pr_sec_line" ] && [ "$_branch_sec_line" -lt "$_pr_sec_line" ]; then
+  pass "T-08 branch resolution precedes the PR lookup"
+else
+  fail "T-08 branch resolution must precede the PR lookup (branch=${_branch_sec_line:-none} pr=${_pr_sec_line:-none})"
+fi
+# flow-state の branch を対象 Issue に束縛すること (cmd_get は --issue を取らない)
+assert_grep_in_section "T-08 binds the flow-state branch to the target Issue" "$SKILL" \
+  '^### 2\.2 作業ブランチの解決' '^### 2\.3' 'get --field issue_number'
 
 echo "=== T-09: 後片付けが helper 委譲で、削除 bash が複製されていない (AC-9) ==="
 # worktree の削除・prune・再帰削除は helper 内部の判断 (live-cwd guard / sandbox マスク検知) と
@@ -170,6 +209,15 @@ if [ -n "$_force_del_line" ] && [ -n "$_branch_del_line" ]; then
 else
   fail "T-09 could not locate the helper call and the marker-driven force delete"
 fi
+# その 1 行が helper と同じ安全形であること。unquoted / `--` なしだと refname 中の `;` 以降が
+# 別コマンドとして実行され、helper (-D -- "$branch") が守っている不変条件が呼び出し側で破れる。
+assert_grep "T-09 the force delete is quoted and uses the end-of-options separator" "$SKILL" \
+  'git branch -D -- "\{branch_name\}"'
+# helper が削除を試行しなかった marker では強制削除へ進まないこと (fail-fast の迂回防止)。
+assert_grep_in_section "T-09 the force delete is gated on BRANCH_DELETE_UNMERGED" "$SKILL" \
+  '^### 4\.3 ブランチの削除' '^### 4\.4' 'BRANCH_CHECK_FAILED'
+assert_grep_in_section "T-09 marker 不在 is not read as deletion success" "$SKILL" \
+  '^### 4\.3 ブランチの削除' '^### 4\.4' 'marker 不在'
 assert_grep "T-09 states the delegation rule explicitly" "$SKILL" \
   '削除処理の bash を本スキルへ複製しない'
 

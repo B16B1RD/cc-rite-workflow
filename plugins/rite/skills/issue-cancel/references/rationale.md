@@ -43,15 +43,59 @@ live-cwd guard・sandbox マスク検知・squash 残渣の扱い・remote ref �
 内側に持っている。中止経路へ bash を複製すると、これらの判断が片方だけ更新される drift 源になる。
 中止側は helper の呼び出しと marker の解釈だけを持つ。
 
+## branch-first-pr-lookup
+
+`gh pr list` には「この Issue に紐づく PR」を引く手段が無い。`--search "linked:issue:{N}"` の
+`linked:issue` は GitHub 検索の boolean qualifier で「Issue をリンクしているか」しか意味せず、`:{N}` は
+黙って捨てられる。存在しない Issue 番号を渡しても同じ集合が返る。`--head` は exact-match フィルタで
+ワイルドカードを解釈しないため、`"*issue-{N}*"` は常に空を返す。どちらも「絞り込めていないのに
+成功して見える」ため、返り値を判定表にそのまま載せると無関係な merged PR で「完了済み」と誤判定する。
+
+確実なのは実ブランチ名を先に確定させて exact `--head` で引く経路だけなので、ブランチ解決を PR 検索の前に
+置く。ブランチが確定しない場合は `--state all` で取得してから body の closing keyword で client-side に
+絞る（`/rite:issue-close` が持つ経路と同じ）。絞り込み前の集合を判定に使わないことが要点。
+
+## issue-scoped-identity
+
+`/rite:cleanup` は「対象 Issue == 現在のセッション」を前提にでき、`flow-state.sh get` も
+`cleanup-worktree-detect.sh` の `in_worktree` 判定もその前提の上で正しい。どちらも `--issue` を取らず、
+現セッションの記録／現 cwd だけを見る。
+
+`/rite:issue-cancel` は Issue 番号を**引数で**受ける最初の入口なので、その前提が崩れる。Issue A の
+worktree に居るセッションから Issue B を中止すると、identity 検証を挟まない限り Issue A のブランチと
+worktree が削除対象になる。しかも `cleanup-branch-delete.sh` はリモート削除の可否を
+`--branch-identity-verified` 一本で決めるため、誤った `true` はリモート ref まで消す。
+
+そこで 2 箇所で Issue 番号に束縛する: flow-state は `issue_number` を併せて読んで一致時のみ採用し、
+worktree は detect が返したパス末尾が `issue-{N}` であることを確認してから remove へ進む。どちらも
+不一致なら「削除しない」側へ倒す — 削除は不可逆で、判定不能のまま進む理由が無い。
+
+## reason-file-outside-worktree
+
+中止理由は不可逆な破棄操作の唯一の監査記録なので、書いた場所が消える経路を残せない。Phase 4.2 は
+セッション worktree を削除するため、理由ファイルを worktree 配下に置くと Phase 1 と Phase 6 の間で
+ファイルごと消える。`cat` の rc を捨てていれば空文字のままクローズが成立し、「理由の無い中止」が
+成功として記録される。
+
+置き場所を `${TMPDIR:-/tmp}` に固定し、読み出し側で rc と空値の両方を fail-loud にする。前者だけでは
+0 バイトのファイルを通し、後者だけでは読めなかったことと空だったことを区別できない。
+
 ## force-delete-no-ask
 
-`cleanup-branch-delete.sh` は `--pr-merged false` に対し `BRANCH_DELETE_UNMERGED=1` を emit し、
-`/rite:cleanup` 側はこれを「未マージの作業を誤って消さない」ための確認に接続している。中止経路では前提が
-逆で、未マージであることは異常ではなく中止の定義そのもの。ここで確認を挟むと「ブランチが残らない」という
-中止の完了条件をユーザーの再応答に依存させることになるため、marker を受けて強制削除へ直行する。
+`cleanup-branch-delete.sh` が `BRANCH_DELETE_UNMERGED=1` を emit したとき、`/rite:cleanup` 側はこれを
+「未マージの作業を誤って消さない」ための確認に接続している。中止経路では前提が逆で、未マージであることは
+異常ではなく中止の定義そのもの。ここで確認を挟むと「ブランチが残らない」という中止の完了条件を
+ユーザーの再応答に依存させることになるため、marker を受けて強制削除へ直行する。
 
-`BRANCH_DELETE_DEFERRED=1`（別セッションが作業ツリーを使用中 / sandbox マスク）は別で、これは削除が
-Git 構造上できない状態を指す。強制しても壊すだけなので残置として報告する。
+ただし強制削除するのは **`BRANCH_DELETE_UNMERGED=1` を実際に観測したときだけ**。同 helper は
+`BRANCH_CHECK_FAILED`（refname 不正 / marker デリミタ混入 / ref-store エラー）や `BRANCH_DELETE_FAILED`
+も emit し、これらは「helper が判定できずに削除を試行しなかった」状態を指す。marker を見ずに
+`git branch -D` へ直行すると、helper が fail-fast で弾いた入力クラスをそのままシェルへ渡すことになり、
+呼び出し側が helper の防御を無効化する。`BRANCH_DELETE_DEFERRED`（別セッションが作業ツリーを使用中 /
+sandbox マスク）も同様に、削除が Git 構造上できない状態なので強制しても壊すだけ。
+
+強制削除そのものも helper と同じ形（`-D -- "$branch"`）で書く。`--` は `pr-cycle-cleanup.sh` が
+defense-in-depth の不変条件として明文化しており、quote と併せて 1 トークンで済む。
 
 ## keep-wm-replica
 

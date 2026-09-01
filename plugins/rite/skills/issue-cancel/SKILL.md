@@ -65,7 +65,8 @@ rationale: references/rationale.md#order-invariant
 
 引数の残り（数値を除いた部分）が非空ならそれを `{cancel_reason}` とする。空のときは **AskUserQuestion で理由を尋ねる**。理由を取得できない環境（応答が得られない）では、**Issue をクローズせず停止する** — 理由の残らない中止は後から判断を追えない。
 
-確定した理由は Write ツールで一時ファイルへ書き出し、`{reason_file}` として retain する（Phase 6 が変数経由で `gh issue close --comment` へ渡す。特殊文字を含む理由をコマンドラインへ literal 展開しないため）。
+確定した理由は Write ツールで **`{reason_file}` = `${TMPDIR:-/tmp}/rite-issue-cancel-reason-{issue_number}.txt`** へ書き出す（Phase 3 / Phase 6 が変数経由で `--comment` へ渡す。特殊文字を含む理由をコマンドラインへ literal 展開しないため）。**書き出し先をセッション worktree 配下にしてはならない** — Phase 4.2 の worktree 削除が Phase 1 と Phase 6 の間でファイルごと消し、理由の無いクローズが成立する。
+rationale: references/rationale.md#reason-file-outside-worktree
 
 | 観測 | アクション |
 |---|---|
@@ -88,35 +89,21 @@ gh issue view {issue_number} -R {owner_repo} --json number,title,state,stateReas
 | `CLOSED` | 既に終了済み。**Phase 3 / Phase 4 / Phase 6 をすべてスキップ**し、Phase 5（board Status の同期）だけを実行して Phase 7 へ（冪等経路） |
 | `OPEN` | 2.2 へ |
 
-### 2.2 関連 PR の検索と identity 検証
+### 2.2 作業ブランチの解決（PR 検索より先）
+
+**ブランチの解決を PR 検索より先に行う**。`gh pr list` の `--search` / `--head` はどちらも Issue 番号でスコープできないため、実ブランチ名を確定させてから exact `--head` で引くのが唯一の確実な経路になる。
+rationale: references/rationale.md#branch-first-pr-lookup
+
+flow-state の記録は**現在のセッション**のものであり `--issue` を取らない。対象 Issue と一致するときだけ採用する（一致検証なしで採用すると、別 Issue のセッションから中止したときにそのセッションのブランチを削除対象にしてしまう）:
+rationale: references/rationale.md#issue-scoped-identity
 
 ```bash
-gh pr list -R {owner_repo} --state all --search "linked:issue:{issue_number}" --json number,state,isDraft,headRefName,mergedAt,url
+state_issue=$(bash {plugin_root}/hooks/flow-state.sh get --field issue_number --default "")
+state_branch=$(bash {plugin_root}/hooks/flow-state.sh get --field branch --default "")
+echo "[CONTEXT] CANCEL_STATE_ISSUE=$state_issue; CANCEL_STATE_BRANCH=$state_branch"
 ```
 
-見つからなければブランチ名から再検索する:
-
-```bash
-gh pr list -R {owner_repo} --state all --head "*issue-{issue_number}*" --json number,state,isDraft,headRefName,mergedAt,url
-```
-
-| 観測 | アクション |
-|---|---|
-| `mergedAt` が非 null の PR がある | **中止ではなく完了済み**。`/rite:cleanup {pr_number}` を案内して**停止する**（マージ済みの作業を NOT_PLANNED で葬らない） |
-| `state == "OPEN"` の PR がある | `{pr_number}` と `headRefName` を retain。`headRefName` を `{branch_name}`、`{branch_identity_verified}=true` として Phase 3 へ |
-| PR が無い（着手前、またはブランチのみ） | `{pr_number}` は未確定。2.3 でブランチを解決して Phase 4 へ（Phase 3 はスキップ） |
-
-`headRefName` を経由せずにブランチ名を推測しない。PR がある経路の `{branch_identity_verified}` は `headRefName` の実値をそのまま使うため常に `true` になる。
-
-### 2.3 PR が無い場合のブランチ解決
-
-flow-state と claim に記録されたブランチを読む:
-
-```bash
-bash {plugin_root}/hooks/flow-state.sh get --field branch --default ""
-```
-
-空ならローカルブランチを探す:
+`state_issue` が `{issue_number}` と**一致しない、または空**なら flow-state 由来の値は捨て、Issue 番号でスコープされたローカルブランチ検索だけを使う:
 
 ```bash
 git branch --list "*issue-{issue_number}-*" --format '%(refname:short)'
@@ -124,10 +111,34 @@ git branch --list "*issue-{issue_number}-*" --format '%(refname:short)'
 
 | 観測 | `{branch_name}` / `{branch_identity_verified}` |
 |---|---|
-| flow-state に記録あり | その値 / `true`（rite が作ったブランチとして記録済み） |
-| ローカル候補が **ちょうど 1 件** | その値 / `true` |
-| 候補が 0 件 | 未確定 / `false`。Phase 4 のブランチ削除をスキップする（削除対象が無い） |
-| 候補が 2 件以上 | 未確定 / `false`。候補を表示し、ブランチ削除をスキップして残りの中止処理を続行する（identity 未確定のまま削除しない） |
+| `state_issue == {issue_number}` かつ `state_branch` が非空 | `state_branch` / `true`（対象 Issue の作業ブランチとして flow-state が記録済み） |
+| 上記に該当せず、ローカル候補が **ちょうど 1 件** | その値 / `true` |
+| 上記に該当せず、候補が 0 件 | 未確定 / `false`。Phase 4.3 のブランチ削除をスキップする（削除対象が無い） |
+| 上記に該当せず、候補が 2 件以上 | 未確定 / `false`。候補を表示し、ブランチ削除をスキップして残りの中止処理を続行する（identity 未確定のまま削除しない） |
+
+### 2.3 関連 PR の検索と identity 検証
+
+`{branch_identity_verified}=true` のときは実ブランチ名で **exact match** の `--head` を使う。`--head` はワイルドカードを解釈しないため glob を渡してはならない:
+
+```bash
+gh pr list -R {owner_repo} --head "{branch_name}" --state all --json number,state,isDraft,headRefName,mergedAt,url
+```
+
+ブランチが未確定（`{branch_identity_verified}=false`）、または上記が 0 件のときは PR body の closing keyword で client-side に絞る。**`--search "linked:issue:{issue_number}"` は使わない** — GitHub は `linked:issue` を boolean qualifier として解釈し `:{N}` を無視するため、どの Issue 番号でも同じ集合（Issue をリンクした全 PR）が返る:
+
+```bash
+gh pr list -R {owner_repo} --state all --limit 100 --json number,state,isDraft,headRefName,mergedAt,url,body
+```
+
+取得結果から、`body` が `Closes/Fixes/Resolves #{issue_number}`（大文字小文字を問わない、`#{issue_number}` の直後が数字でない）にマッチする PR、または `headRefName` が `issue-{issue_number}-` を含む PR **だけ**を残す。**絞り込み前の集合を下記の判定表に載せてはならない** — 無関係な merged PR で第 1 行が誤発火する。
+
+| 観測（絞り込み後） | アクション |
+|---|---|
+| `mergedAt` が非 null の PR がある | **中止ではなく完了済み**。`/rite:cleanup {pr_number}` を案内して**停止する**（マージ済みの作業を NOT_PLANNED で葬らない） |
+| `state == "OPEN"` の PR がある | `{pr_number}` と `headRefName` を retain。`headRefName` を `{branch_name}`、`{branch_identity_verified}=true` として Phase 3 へ（2.2 の値より PR の実 head を優先する） |
+| 該当 PR が 1 件も無い | `{pr_number}` は未確定。2.2 で解決したブランチのまま Phase 4 へ（Phase 3 はスキップ） |
+
+`headRefName` を経由せずにブランチ名を推測しない。PR がある経路の `{branch_identity_verified}` は `headRefName` の実値をそのまま使うため常に `true` になる。
 
 ---
 
@@ -136,7 +147,14 @@ git branch --list "*issue-{issue_number}-*" --format '%(refname:short)'
 > **`{pr_number}` が未確定（PR 無し）のときは本 Phase をスキップして Phase 4 へ進む。**
 
 ```bash
-pr_close_reason=$(cat "{reason_file}")
+if ! pr_close_reason=$(cat "{reason_file}"); then
+  echo "ERROR: 中止理由ファイルを読み出せません: {reason_file}" >&2
+  exit 1
+fi
+if [ -z "$pr_close_reason" ]; then
+  echo "ERROR: 中止理由が空です。理由なしで PR をクローズしません" >&2
+  exit 1
+fi
 if gh pr close {pr_number} -R {owner_repo} --comment "Issue #{issue_number} の中止に伴いクローズします。理由: $pr_close_reason"; then
   echo "[CONTEXT] CANCEL_PR_CLOSED=1; pr={pr_number}"
 else
@@ -175,9 +193,12 @@ fi
 
 **順序制約**: `detect` と `remove` の間には必ず `ExitWorktree` が入る。cwd がセッション worktree 内のまま `remove` を呼ぶと自分の足元を削除することになるため、1 本の直列 helper に畳めない。
 
+**Issue 束縛ガード（remove の前に必ず評価する）**: detect の内側 (`cleanup-worktree-detect.sh`) は `in_worktree` を「flow-state の worktree == 現 cwd」だけで判定し `--issue` を見ない。marker の `worktree=` のパス末尾が **`issue-{issue_number}`** でないときは、別 Issue のセッション worktree を指しているので `ExitWorktree` も remove も行わず、WARNING を出して 4.3 のブランチ削除ごとスキップし Phase 7 に未処理として列挙する。
+rationale: references/rationale.md#issue-scoped-identity
+
 | `CLEANUP_WT` | アクション |
 |---|---|
-| `in_worktree` | 1. `dirty=yes` なら生パス一覧を表示した上で**そのまま続行**（中止は破棄経路であり、破棄予定の変更に stash 確認を挟まない）。2. `ExitWorktree` を `action: "keep"` で呼び main checkout へ復帰する。3. 4.2.1 の remove を実行する |
+| `in_worktree` | 1. 上の Issue 束縛ガードを評価する。2. `dirty=yes` なら生パス一覧を表示した上で**そのまま続行**（中止は破棄経路であり、破棄予定の変更に stash 確認を挟まない）。3. `ExitWorktree` を `action: "keep"` で呼び main checkout へ復帰する。4. 4.2.1 の remove を実行する |
 | `in_main` | 1〜2 をスキップし 4.2.1 の remove のみ実行する（既削除なら no-op = 冪等） |
 | `in_worktree_unrecorded` / `unknown` | `ExitWorktree` が main checkout へ戻せない（または分類不能）。**worktree 削除とブランチ削除（4.3）を試行せず**、Phase 7 の報告で未完了として列挙し、main checkout での `/rite:issue-cancel {issue_number}` 再実行へ委譲する。worktree 内で完結する 4.4〜4.6・Phase 5・Phase 6 は通常どおり実行する |
 | `none` | worktree 無し。4.3 へ |
@@ -206,14 +227,23 @@ bash {plugin_root}/hooks/scripts/cleanup-branch-delete.sh \
   --branch-identity-verified "{branch_identity_verified}"
 ```
 
-中止経路は `--pr-merged "false"` を渡すため、helper は `BRANCH_DELETE_UNMERGED=1` を emit する。**この marker に対して確認を挟まず強制削除する** — 中止は破棄すると決めた後の経路であり、破棄の再確認は AC「ブランチが残らない」に反する:
+helper が emit する marker で分岐する。**marker 不在は「削除成功」ではなく「実行結果を確認できていない」** を意味する（helper 契約）:
+
+| marker | アクション |
+|---|---|
+| `BRANCH_DELETED=1` / `BRANCH_ALREADY_ABSENT=1` | 完了。Phase 7 へ（強制削除しない） |
+| `BRANCH_DELETE_UNMERGED=1` | **確認を挟まず強制削除する**（下記）。中止は破棄すると決めた後の経路であり、破棄の再確認は AC「ブランチが残らない」に反する |
+| `BRANCH_CHECK_FAILED=1` / `BRANCH_DELETE_FAILED=1` / `BRANCH_DELETE_DEFERRED*=1` | **強制削除しない**。helper が「判定できない / 削除できない」と結論した状態であり、迂回して消すと helper の fail-fast を無効化する。WARNING を出し Phase 7 に残置として列挙する |
+| marker 不在 | 削除結果を確認できていない。強制削除せず Phase 7 に残置として列挙する |
+
+`BRANCH_DELETE_UNMERGED=1` は `git branch -d` が not fully merged で失敗したときに限り出る（`--pr-merged "false"` を渡せば必ず出るわけではない）。強制削除は helper と同じ形（quote + `--` 終端子）で行う:
 rationale: references/rationale.md#force-delete-no-ask
 
 ```bash
-LC_ALL=C git branch -D {branch_name} && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=cancel-force"
+LC_ALL=C git branch -D -- "{branch_name}" && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=cancel-force"
 ```
 
-`BRANCH_DELETE_DEFERRED=1`（作業ツリーが残り削除を遅延）のときは強制削除しない。Phase 7 に残置として列挙する。リモートブランチの削除は同 helper が `REMOTE_BRANCH_*` marker 群で扱う。
+リモートブランチの削除は同 helper が `REMOTE_BRANCH_*` marker 群で扱う。`REMOTE_BRANCH_DELETE_FAILED` / `REMOTE_BRANCH_CHECK_FAILED` も Phase 7 に残置として列挙する。
 
 ### 4.4 PR-specific state ファイルの削除
 
@@ -292,7 +322,14 @@ board に `Cancelled` option が存在しないプロジェクトでは option-I
 理由コメントとクローズを 1 コールで行い、「理由の無いクローズ」が成立する窓を作らない:
 
 ```bash
-cancel_reason=$(cat "{reason_file}")
+if ! cancel_reason=$(cat "{reason_file}"); then
+  echo "ERROR: 中止理由ファイルを読み出せません: {reason_file}。Issue をクローズしません" >&2
+  exit 1
+fi
+if [ -z "$cancel_reason" ]; then
+  echo "ERROR: 中止理由が空です。理由なしで Issue をクローズしません" >&2
+  exit 1
+fi
 if gh issue close {issue_number} -R {owner_repo} --reason "not planned" \
      --comment "🚫 この Issue を中止しました。
 
