@@ -40,7 +40,7 @@ mkdir -p /path/real && ln -s /path/real /path/link
 TMPDIR=/path/link bash hooks/tests/<suite>.test.sh
 ```
 
-**この欠陥が生き延びる理由**: レビュアーは全員ローカル（Linux）でテストを走らせる。PR #2498 では 2 cycle × 6 reviewer の全員がスイート緑を報告し、merge 直前の CI gate（`tests (macos-latest)`）が初めて捕まえた。「N 名がテストを実行して緑」は、その N 名が同じ OS なら 1 名分の情報しかない。
+**この欠陥が生き延びる理由**: レビュアーは全員ローカル（Linux）でテストを走らせる。観測された事例では 2 cycle × 6 reviewer の全員がスイート緑を報告し、merge 直前の CI gate（`tests (macos-latest)`）が初めて捕まえた。「N 名がテストを実行して緑」は、その N 名が同じ OS なら 1 名分の情報しかない。
 
 ## 関連ページ
 

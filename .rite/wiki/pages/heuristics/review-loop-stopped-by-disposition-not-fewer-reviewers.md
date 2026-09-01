@@ -21,7 +21,7 @@ confidence: high
 
 ## 詳細
 
-**観測された形**: PR #2498 の cycle 3 と cycle 4 の指摘は、いずれも「直前 cycle の修正が触った行のコメント文言」に対するものだった。パッチの重ね掛けが 2 cycle 続き、cycle 4 では前 cycle の修正そのものが over-fix と判定されて差し戻された。
+**観測された形**: ある PR の cycle 3 と cycle 4 の指摘は、いずれも「直前 cycle の修正が触った行のコメント文言」に対するものだった。パッチの重ね掛けが 2 cycle 続き、cycle 4 では前 cycle の修正そのものが over-fix と判定されて差し戻された。
 
 **なぜ先回り修正が燃料になるか**: 非実測指摘には designated home がある（記録コメントと、cleanup が作る follow-up Issue）。sweep で消化すべき実質的な doc-sync gap と、cycle ごとに湧く文言の推敲は別物で、後者を先回りで直すと次 cycle のレビュー対象を自分で作ることになる。
 
