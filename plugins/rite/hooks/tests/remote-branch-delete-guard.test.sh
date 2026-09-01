@@ -48,6 +48,9 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CLEANUP_MD="$SCRIPT_DIR/../../skills/cleanup/SKILL.md"
+# ステップ 5 のガード本体は helper へ抽出済み。SKILL.md は consumer 側 (ステップ 12 の判定表) の
+# 静的 pin にのみ使う。
+BRANCH_DELETE_SH="$SCRIPT_DIR/../scripts/cleanup-branch-delete.sh"
 MERGE_MD="$SCRIPT_DIR/../../skills/merge/SKILL.md"
 # cleanup/trap を mktemp より前に設置する (直後の cd / command -v の exit 1 経路で temp dir が
 # leak しないようにする)。TEST_DIR は先行宣言して set -u 下でも参照可能にする。
@@ -69,31 +72,44 @@ fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
 
 BRANCH="fix/issue-2016-sample"
 
-# --- SKILL.md からリモート削除ガードを抽出 ({branch_name} はテスト用ブランチ名に置換) ---
-# アンカー: 導入コメント行 `# リモートブランチ削除` 〜 bash fence の終端。
+# --- helper からリモート削除ガードを抽出 ---
+# ガードは cleanup/SKILL.md のインライン bash から cleanup-branch-delete.sh へ抽出済み。
+# 抽出元は helper に移ったが、抽出して sandbox 実行する方式そのものは維持する — helper 全体を
+# 起動するとローカル削除も同時に走り、リモート側 TC の前提 (リモート ref の状態だけを組む) が
+# 崩れるため。ローカル / リモートを独立に実行できるのは抽出方式だけ。
+# アンカー: 導入コメント行 `# リモートブランチ削除` 〜 helper 末尾の `exit 0`。
 # 閉じアンカーに `^esac$` を使わないこと — ガードは case を入れ子にしており (ブランチ名の
 # デリミタ検査 → 存在確認 → rc 分岐)、最初の `^esac$` で切ると内側の case までしか取れず
-# `fi ;; esac` が落ちて構文エラーになる。fence 終端なら入れ子の深さに依存しない。
+# `fi ;; esac` が落ちて構文エラーになる。`exit 0` なら入れ子の深さに依存しない。
+#
+# helper 化で placeholder 置換 (`{branch_name}` の sed) は不要になった。代わりに helper の
+# 引数パースが設定する変数を prelude で与える — sed 置換より堅牢で、ブランチ名の
+# エスケープ処理も要らない。
+_guard_prelude() {
+  printf 'branch=%q\npr_merged=%q\nbranch_identity_verified=%q\ndry_run=false\nSCRIPT_DIR=%q\n' \
+    "$1" "${2:-true}" "${3:-true}" "$TEST_DIR/no-plugin"
+}
+extract_guard_body() {
+  awk '/^# リモートブランチ削除/{f=1} f && /^exit 0$/{exit} f{print}' "$BRANCH_DELETE_SH"
+}
 extract_guard_as() {
-  local _replacement
-  _replacement=$(printf '%s' "$1" | sed 's/[&|\\]/\\&/g')
-  awk '/^# リモートブランチ削除/{f=1} f && /^```$/{exit} f{print}' "$CLEANUP_MD" \
-    | sed -e "s|{branch_name}|$_replacement|g" -e 's|{branch_identity_verified}|true|g'
+  _guard_prelude "$1" "${2:-true}" "${3:-true}"
+  extract_guard_body
 }
 extract_guard() { extract_guard_as "$BRANCH"; }
 # ローカル削除ブロックの抽出。リモート側と別アンカーが要る — `# リモートブランチ削除` を開始
 # アンカーにする extract_guard はローカル側を範囲外にするため、ローカルの契約 (事前検証 case /
 # 存在確認 rc の 3 分岐) がどの検査にも掛からない状態だった (#2016 cycle 3 で実測)。
-# 終端はリモートブロックの開始コメント。{pr_merged} / {plugin_root} もこのブロックで展開される。
-# raw 版は placeholder を残す (静的 pin は `{branch_name}` を含む literal を要求するため)。
+# 終端はリモートブロックの開始コメント。
+# raw 版は prelude を付けない (静的 pin はガード本体の literal だけを対象にする)。
 extract_local_guard_raw() {
-  awk '/^## ステップ 5: ローカル \/ リモートブランチを削除/{s=1} s && /^```bash$/{f=1; next} f && /^# リモートブランチ削除/{exit} f{print}' "$CLEANUP_MD"
+  awk '/^# ローカルブランチ削除$/{s=1} s && /^# リモートブランチ削除/{exit} s{print}' "$BRANCH_DELETE_SH"
 }
 extract_local_guard_as() {
-  local _replacement
-  _replacement=$(printf '%s' "$1" | sed 's/[&|\\]/\\&/g')
-  extract_local_guard_raw \
-    | sed -e "s|{branch_name}|$_replacement|g" -e "s|{pr_merged}|true|g" -e 's|{branch_identity_verified}|true|g' -e "s|{plugin_root}|$TEST_DIR/no-plugin|g"
+  # SCRIPT_DIR は存在しないパスにして cleanup-deferred-branch-recovery.sh を解決不能にする
+  # (deferred 経路を helper 内で完結させず、marker だけを観測するため)。
+  _guard_prelude "$1" "${2:-true}" "${3:-true}"
+  extract_local_guard_raw
 }
 GUARD_SNIPPET="$TEST_DIR/guard.sh"
 extract_guard > "$GUARD_SNIPPET"
@@ -168,8 +184,8 @@ extract_local_guard_raw > "$LOCAL_SNIPPET"
 # 抽出の健全性 (リモート側の群 1 と同形)。ファイル全体を grep する形にしてはならない —
 # 判定表 (ステップ 12) に同一 literal が存在するため、emitter を消しても充足されて vacuous になる
 # (テスト側で同じ穴を逆向きに開けたのが #2016 cycle 3)。
-if [ ! -s "$LOCAL_SNIPPET" ] || ! grep -q '^case "{branch_name}" in' "$LOCAL_SNIPPET"; then
-  echo "FAIL: cleanup/SKILL.md からローカル削除ブロックを抽出できません (アンカーが変更された可能性)"
+if [ ! -s "$LOCAL_SNIPPET" ] || ! grep -q '^case "\$branch" in' "$LOCAL_SNIPPET"; then
+  echo "FAIL: cleanup-branch-delete.sh からローカル削除ブロックを抽出できません (アンカーが変更された可能性)"
   echo "  抽出結果: $(wc -l < "$LOCAL_SNIPPET") 行"
   exit 1
 fi
@@ -187,11 +203,11 @@ fi
 for required in '--- branch delete stderr begin ---' '--- branch delete stderr end ---' \
                 '"\$del_err" | tr -d ' '"\${_sr_err}" | tr -d ' \
                 'git check-ref-format "refs/heads/' \
-                'BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=invalid-refname' \
-                'git show-ref --verify --quiet "refs/heads/{branch_name}" 2>&1 >/dev/null); _sr_rc=\$?' \
+                'BRANCH_CHECK_FAILED=1; branch=\$branch; rc=invalid-refname' \
+                'git show-ref --verify --quiet "refs/heads/\$branch" 2>&1 >/dev/null); _sr_rc=\$?' \
                 'if \[ "\$_sr_rc" -eq 1 \]; then' 'elif \[ "\$_sr_rc" -ne 0 \]; then' \
-                'BRANCH_ALREADY_ABSENT=1; branch={branch_name}' \
-                'BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=\${_sr_rc}' \
+                'BRANCH_ALREADY_ABSENT=1; branch=\$branch' \
+                'BRANCH_CHECK_FAILED=1; branch=\$branch; rc=\${_sr_rc}' \
                 'branch=<unsupported branch name>; rc=empty-branch-name' \
                 'branch=<unsupported branch name>; rc=marker-delimiter-in-branch-name'; do
   if ! grep -q -e "$required" "$LOCAL_SNIPPET"; then
@@ -588,8 +604,10 @@ if [ -z "$tc7b_fail" ]; then
   [ -z "$tc7b_fail" ] && push_delete_called && tc7b_fail="mktemp 失敗時に push delete が呼ばれた"
 fi
 if [ -z "$tc7b_fail" ]; then
+  # helper では identity は引数由来の変数なので、prelude で false を与えて未確認入力を作る
+  # (抽出前は `{branch_identity_verified}` を true に置換した後の literal を sed で反転していた)。
   _unverified="$TEST_DIR/guard-unverified.sh"
-  sed 's/\[ "true" != "true" \]/[ "false" != "true" ]/' "$GUARD_SNIPPET" > "$_unverified"
+  extract_guard_as "$BRANCH" true false > "$_unverified"
   out=$(run_guard "$_unverified")
   printf '%s' "$out" | grep -q 'rc=branch-identity-unverified' || tc7b_fail="identity 未確認が拒否されない"
   [ -z "$tc7b_fail" ] && push_delete_called && tc7b_fail="identity 未確認で push delete が呼ばれた"
@@ -665,7 +683,7 @@ if [ -z "$tc8_fail" ]; then
 fi
 # (d) identity 未確認は名前の形に依存せず拒否
 if [ -z "$tc8_fail" ]; then
-  extract_local_guard_as "upstream/foo" | sed 's/\[ "true" != "true" \]/[ "false" != "true" ]/' > "$LOCAL_RUN"
+  extract_local_guard_as "upstream/foo" true false > "$LOCAL_RUN"
   : > "$CALL_LOG"; out=$(PATH="$BIN_DIR:$PATH" bash "$LOCAL_RUN" 2>&1)
   printf '%s' "$out" | grep -q 'rc=branch-identity-unverified' \
     || tc8_fail="identity 未確認入力が拒否されていない (出力: '$out')"

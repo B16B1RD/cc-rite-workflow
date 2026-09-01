@@ -34,6 +34,10 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 CLEANUP_MD="$PLUGIN_ROOT/skills/cleanup/SKILL.md"
+# Step 4-W の dirty 判定は cleanup-session-worktree-teardown.sh detect へ抽出済み。
+# 抽出元は helper だが、SKILL.md 側にも Step 4 (base 更新) の `_bu_dirty=` 行が残っており
+# そちらは従来どおり CLEANUP_MD から取る。
+TEARDOWN_SH="$PLUGIN_ROOT/hooks/scripts/cleanup-session-worktree-teardown.sh"
 RECOVER_MD="$PLUGIN_ROOT/skills/recover/SKILL.md"
 ISSUE_UPDATE_MD="$PLUGIN_ROOT/skills/issue-update/SKILL.md"
 
@@ -50,12 +54,13 @@ trap cleanup EXIT
 
 # --- Extract the exact dirty-detection line from each SKILL.md, literally,
 #     so drift in the source file (not just this test) is caught -----------
-CLEANUP_LINE=$(grep -m1 '^\s*dirty=\$(bash {plugin_root}' "$CLEANUP_MD")
+CLEANUP_LINE=$(grep -m1 '^\s*dirty=\$(bash "\$SCRIPT_DIR/lib/git-status-filtered\.sh")' "$TEARDOWN_SH")
 if [ -z "$CLEANUP_LINE" ]; then
-  echo "ERROR: cleanup/SKILL.md からの dirty= 行抽出に失敗しました（アンカーが変更された可能性）" >&2
+  echo "ERROR: cleanup-session-worktree-teardown.sh からの dirty= 行抽出に失敗しました（アンカーが変更された可能性）" >&2
   exit 1
 fi
-CLEANUP_LINE=${CLEANUP_LINE//\{plugin_root\}/$PLUGIN_ROOT}
+# helper 内の `$SCRIPT_DIR` は hooks/scripts を指す。抽出行を単体実行するため実パスへ展開する。
+CLEANUP_LINE=${CLEANUP_LINE//\$SCRIPT_DIR/$PLUGIN_ROOT/hooks/scripts}
 
 RECOVER_LINE=$(grep -m1 'git_has_uncommitted=\$(bash {plugin_root}' "$RECOVER_MD")
 if [ -z "$RECOVER_LINE" ]; then
@@ -109,8 +114,8 @@ echo "WARNING: git-status-filtered: simulated failure (test stub)" >&2
 exit 1
 STUB_EOF
 
-CLEANUP_LINE_FAIL=$(grep -m1 '^\s*dirty=\$(bash {plugin_root}' "$CLEANUP_MD")
-CLEANUP_LINE_FAIL=${CLEANUP_LINE_FAIL//\{plugin_root\}/$stub_root}
+CLEANUP_LINE_FAIL=$(grep -m1 '^\s*dirty=\$(bash "\$SCRIPT_DIR/lib/git-status-filtered\.sh")' "$TEARDOWN_SH")
+CLEANUP_LINE_FAIL=${CLEANUP_LINE_FAIL//\$SCRIPT_DIR/$stub_root/hooks/scripts}
 BU_DIRTY_LINE_FAIL=$(grep -m1 '_bu_dirty=\$(bash {plugin_root}' "$CLEANUP_MD")
 if [ -z "$BU_DIRTY_LINE_FAIL" ]; then
   echo "ERROR: cleanup/SKILL.md からの _bu_dirty= 行抽出に失敗しました（アンカーが変更された可能性）" >&2

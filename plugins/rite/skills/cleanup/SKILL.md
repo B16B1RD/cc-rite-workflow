@@ -361,56 +361,9 @@ rationale: references/rationale.md#cleanup-source-label
 まず multi_session の有効性と、現在 cwd がこの Issue のセッション worktree かどうかを判定する:
 
 ```bash
-ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' rite-config.yml 2>/dev/null) || ms_section=""
-ms_enabled=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+enabled:/ {print; exit}' \
-  | sed 's/[[:space:]]#.*//' | sed 's/.*enabled:[[:space:]]*//' | tr -d '[:space:]"'"'"'' | tr '[:upper:]' '[:lower:]')
-case "$ms_enabled" in true|yes|1) ms_enabled=true ;; *) ms_enabled=false ;; esac
-# worktree_base も読む（物理 cwd 検出時に worktree dir の親 leaf を照合する。#1622）
-ms_base=$(printf '%s\n' "$ms_section" | awk '/^[[:space:]]+worktree_base:/ {print; exit}' \
-  | sed 's/[[:space:]]#.*//' | sed 's/.*worktree_base:[[:space:]]*//' | tr -d '[:space:]"'"'"'')
-[ -n "$ms_base" ] || ms_base=".rite/worktrees"
-flow_wt=$(bash {plugin_root}/hooks/flow-state.sh get --field worktree --default "") || flow_wt=""
-cur_top=$(git rev-parse --show-toplevel 2>/dev/null) || cur_top=""
-# main checkout の絶対パスを削除前に確保する（自己削除後も main checkout を参照できるようにするため）。worktree 自己削除後は
-# harness の cwd 追跡のみが main へ移り、この Bash 永続シェルの cwd は削除済み
-# worktree に残るため、ステップ 4 の base 更新はこの main_root へ明示的に cd して
-# 実行する必要がある。`git worktree list --porcelain` の先頭 worktree entry は
-# 常に main checkout（git の仕様上保証）なので、削除がまだ起きていないこの時点で
-# 取得すれば cwd の状態に関わらず正しい値が取れる。
-main_root=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}') || main_root=""
-# 検出は helper に委譲する（#1622）。flow-state 未記録（flow_wt 空）でも、物理 cwd が当該
-# Issue の rite セッション worktree（<worktree_base leaf>/issue-{issue_number}）なら
-# in_worktree_unrecorded を返し worktree= に cur_top を導出する。これにより「物理的に
-# worktree 内にいるのに flow-state 未記録 → none で全スキップ → worktree/ブランチ残置」の
-# エアポケットを塞ぐ。
-detect=$(bash {plugin_root}/hooks/scripts/cleanup-worktree-detect.sh \
-  --ms-enabled "$ms_enabled" --flow-wt "$flow_wt" --cur-top "$cur_top" \
-  --issue "{issue_number}" --worktree-base "$ms_base") || detect="CLEANUP_WT=none; worktree=$flow_wt"
-cleanup_wt=${detect#CLEANUP_WT=}; cleanup_wt=${cleanup_wt%%;*}
-flow_wt=${detect##*worktree=}
-case "$cleanup_wt" in
-  in_worktree)
-    dirty=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh) || dirty="?? (dirty-check failed — assume dirty for safety)"
-    echo "[CONTEXT] CLEANUP_WT=$cleanup_wt; worktree=$flow_wt; dirty=$([ -n "$dirty" ] && echo yes || echo no); main_root=$main_root"
-    # dirty 一覧は marker と区別できるようデリミタで囲んで表示する（ファイル名由来の偽 marker 混入防止。Step 4 と同一パターン）
-    if [ -n "$dirty" ]; then
-      echo "--- dirty files begin ---"
-      printf '%s\n' "$dirty"
-      echo "--- dirty files end ---"
-    fi
-    ;;
-  in_worktree_unrecorded)
-    # EnterWorktree を経由しない path 入場のため ExitWorktree が no-op（#2133）。main checkout へ
-    # 退出できないまま base 更新・worktree 削除・ブランチ削除・wiki ingest を試行すると、harness の
-    # worktree 隔離ガードが拒否する（実測。正確な条件は下記 routing 節を参照）。試行せず委譲する。
-    # dirty チェックは worktree を削除しないため不要（未コミット変更は worktree に残り、失われない）。
-    echo "[CONTEXT] CLEANUP_WT=$cleanup_wt; worktree=$flow_wt; main_root=$main_root"
-    echo "[CONTEXT] CLEANUP_DELEGATED=1; reason=exit_worktree_unavailable"
-    ;;
-  *)
-    echo "[CONTEXT] CLEANUP_WT=$cleanup_wt; worktree=$flow_wt; main_root=$main_root"
-    ;;
-esac
+# multi_session の有効性判定・worktree 状態の分類・main checkout の絶対パス確保・dirty チェックは
+# helper に委譲する。marker の意味と分岐は helper docstring が SoT。
+bash {plugin_root}/hooks/scripts/cleanup-session-worktree-teardown.sh detect --issue {issue_number}
 ```
 
 **分岐の基準は「worktree 内か」ではなく「`ExitWorktree` で main checkout へ退出できるか」**（#2133）。`in_worktree` は EnterWorktree 管理下で退出でき、`in_worktree_unrecorded` は path 入場で `ExitWorktree` が no-op になる — 後者では main checkout 操作が harness の worktree 隔離ガードに拒否されるため、実行せず委譲する。
@@ -423,75 +376,15 @@ rationale: references/rationale.md#exitworktree-delegation
 - `CLEANUP_WT=in_worktree`（EnterWorktree 管理下 = `/rite:batch-run` 経由の通常経路。`ExitWorktree` で退出できる）:
   1. `dirty=yes` なら **AskUserQuestion**（「`git stash push` して続行 / 中止」）。説明文は上記 `--- dirty files begin/end ---` デリミタ内に出力された生パス一覧を**引用**する（要約・創作しない）。stash は common git dir に格納されるため worktree 削除後も `git stash pop` 可能（完了報告の stash 案内は従来文面を流用）。
   2. `ExitWorktree` ツールを `action: "keep"` で呼び出し、main checkout に復帰する（path 入場した worktree は remove でも消えない仕様のため**常に keep**）。
-  3. main から worktree を削除する。**削除前に self-exclusion 付き live-cwd guardを通す**: **別の**セッションの harness cwd がまだこの worktree に立っている場合に削除すると、そのセッションの `/clear` が `Path does not exist` で失敗するため、削除せず遅延回収へ委譲する。cleanup を実行している**自セッション自身**（ハーネス = この Bash の親 `$PPID` の process subtree）は除外する。判定は self-exclusion を内蔵した `worktree-foreign-cwd.sh` に委譲する（全プロセスを列挙する `worktree-live-cwd.sh` 自体は変更しない）:
+  3. main から worktree を削除する。**削除は helper に委譲する** — helper が self-exclusion 付き live-cwd guard（**別の**セッションの harness cwd がまだこの worktree に立っている場合、削除するとそのセッションの `/clear` が `Path does not exist` で失敗するため、削除せず遅延回収へ委譲する。cleanup を実行している**自セッション自身**は `--self-root` で除外する）と sandbox マスク検知（マスク下の `git worktree remove` は admin dir を半壊させるため試行しない）を順に通し、通過したときだけ remove → prune を実行する:
      ```bash
-     # rc 0 = 別の live セッションが cwd を置く → 削除を遅延 / rc 1 = 自セッションだけ or 不在
-     #        → 削除 / rc 2 = 判定不能（/proc 無し）→ 削除（従来 worktree-live-cwd.sh rc=2 と同じ後方互換）。
-     # --self-root "$PPID" でこの Bash の親（claude ハーネス）の process subtree を self として除外する。
-     _fc_rc=0
-     bash {plugin_root}/hooks/scripts/worktree-foreign-cwd.sh "{flow_wt}" --self-root "$PPID" >/dev/null 2>&1 || _fc_rc=$?
-     # sandbox マスク検知: sandbox が admin dir の config.worktree に
-     # /dev/null マスクマウントを張っている（= character device に見える）状態で
-     # `git worktree remove`（--force 含む）を実行すると、working tree 削除失敗後の
-     # admin dir 再帰削除が HEAD を unlink した直後にマスクの EBUSY で中断し、HEAD のみ
-     # 欠けた半壊 admin dir（corpse）が残る。削除試行自体が半壊を作るため、busy 失敗後の
-     # 対処では防げない — 検知したら remove を一切実行せず遅延 reap（corpse 回収経路を持つ
-     # pr-cycle-cleanup.sh Step 5）へ委譲する。admin dir は worktree 側 .git ファイルの
-     # gitdir: 行から解決する（解決不能・マスク無しなら従来どおり remove を試行 = 非 sandbox
-     # 環境で挙動不変の後方互換）。
-     _wt_admin=$(sed -n 's/^gitdir: //p' "{flow_wt}/.git" 2>/dev/null | head -1) || _wt_admin=""
-     if [ "$_fc_rc" -eq 0 ]; then
-       echo "WARNING: 別のセッションがこの作業ツリー（{flow_wt}）を使用中のため、削除を見送りました。そのセッションが終了したあと、次回のセッション開始時に作業ツリーとローカルブランチが自動で回収されます。" >&2
-       echo "[CONTEXT] WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1; path={flow_wt}" >&2
-     elif [ -n "$_wt_admin" ] && [ -c "$_wt_admin/config.worktree" ]; then
-       echo "WARNING: sandbox が作業ツリーの管理ディレクトリ（$_wt_admin/config.worktree）にマスクマウントを張っているため、削除を見送りました。この状態で git worktree remove を実行すると管理ディレクトリが半壊するため、削除自体を試行しません。次回のセッション開始時（sandbox 外）に作業ツリーとローカルブランチが自動で回収されます。実行エージェントはこの場で sandbox を無効化して remove を再試行しないこと。" >&2
-       echo "[CONTEXT] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1; path={flow_wt}" >&2
-       # admin dir 半壊では、このマスク検知は次に control が渡る側（corpse）の
-       # 直接の前兆であり、corpse は checkout 中 branch を git で解決できないため
-       # pr-cycle-cleanup.sh Step 5 のブランチ名 manifest bypass（#1966）が構造的に効かない。パス自体を
-       # 事前に記録しておけば、pr-cycle-cleanup.sh の corpse age guard がこの記録を見て
-       # 24h 待ちをバイパスできる（{pr_merged}=true のときのみ — AC-4: 未マージ PR の
-       # 強制 cleanup では記録しない）。record 自体は non-blocking 契約（rite-tmp-artifact.sh）。
-       # `--type session_worktree`（`worktree` ではない）: `worktree` type は Step 4.5 の
-       # ungated reap（dirty チェックのみ、claim/self-exclusion/live-cwd ガード無し）が
-       # 消費する EPHEMERAL tmp artifact 専用の契約を持つ。session worktree のパスをそこに
-       # 混ぜると、Step 4.5 が Step 5 の保護ゲートを経ずに生存中の worktree を reap しうる
-       # （"session worktrees go through Step 5's gated reap, never here" 契約違反）。
-       # `session_worktree` type は Step 4.5 の専用 case arm が扱うが、この arm は reap を
-       # 一切行わず、パスが既に消滅している場合のみ stale 参照を drop（self-heal）し、
-       # 存在する場合は verbatim 保持して Step 5 に委ねる。実 reap の消費は
-       # Step 5 の gated bypass（下記）のみが行う。
-       if [ "{pr_merged}" = "true" ]; then
-         bash {plugin_root}/hooks/scripts/rite-tmp-artifact.sh record --type session_worktree --id "{flow_wt}" 2>/dev/null || true
-       fi
-     else
-       # git 診断メッセージは locale 翻訳で揺れるため LC_ALL=C で固定し、busy 検出の
-       # substring マッチを安定させる（repo 既存の LC_ALL=C 規約と統一）。stderr を
-       # 一時ファイルに退避するのは、通常 fallback（remove → remove --force）の
-       # どちらで失敗しても最後の失敗理由を busy 判定に使うため。
-       _wt_rm_err=$(mktemp 2>/dev/null) || _wt_rm_err=""
-       if LC_ALL=C git worktree remove "{flow_wt}" 2>"${_wt_rm_err:-/dev/null}" \
-          || LC_ALL=C git worktree remove --force "{flow_wt}" 2>"${_wt_rm_err:-/dev/null}"; then
-         :
-       else
-         echo "[CONTEXT] WORKTREE_REMOVE_FAILED=1; path={flow_wt}" >&2
-         if [ -n "$_wt_rm_err" ] && grep -qi "busy" "$_wt_rm_err" 2>/dev/null; then
-           echo "WARNING: worktree 削除が「Device or resource busy」で失敗しました。Claude Code の sandbox が worktree の .git/worktrees/*/config.worktree・commondir に read-only bind mount を張っている環境では、sandbox 内からの git worktree remove（--force 含む）は構造的に失敗します。この失敗は意図的に non-blocking として遅延 reap（pr-cycle-cleanup.sh）へ委譲するため、実行エージェントはこの場で sandbox を無効化して同コマンドを再試行しないこと。復旧: ユーザーが sandbox 外のシェルで次を実行してください: git worktree remove --force '{flow_wt}' && git worktree prune" >&2
-         fi
-         # remove --force 自体がこの busy 失敗の過程で admin dir を
-         # 部分破壊し corpse 化した場合、上記マスク検知分岐と同じ理由でブランチ名
-         # bypass（#1966）が効かなくなる。パスを reap manifest に記録し、
-         # pr-cycle-cleanup.sh の corpse age guard バイパスに委ねる
-         # （{pr_merged}=true のときのみ — AC-4）。`--type session_worktree` を使う理由は
-         # 上記マスク検知分岐のコメントを参照（Step 4.5 の ungated ephemeral-worktree reap
-         # と混ぜず、Step 5 の gated bypass のみに消費させるため）。
-         if [ "{pr_merged}" = "true" ]; then
-           bash {plugin_root}/hooks/scripts/rite-tmp-artifact.sh record --type session_worktree --id "{flow_wt}" 2>/dev/null || true
-         fi
-       fi
-       [ -n "$_wt_rm_err" ] && rm -f "$_wt_rm_err"
-       git worktree prune 2>/dev/null || true
-     fi
+     # 判定と削除（self-exclusion 付き live-cwd guard → sandbox マスク検知 → remove →
+     # --force fallback → prune → reap manifest 記録）はすべて helper が持つ。契約と marker の
+     # 意味は helper docstring が SoT。
+     # `--self-root` には**この Bash 呼び出しの `$PPID`**（= claude ハーネス）を渡す。helper 内で
+     # `$PPID` を取ると helper を起動したシェルを指し、self-exclusion が意味を失う。
+     bash {plugin_root}/hooks/scripts/cleanup-session-worktree-teardown.sh remove \
+       --worktree "{flow_wt}" --pr-merged "{pr_merged}" --self-root "$PPID"
      ```
      > 通常の `in_worktree` 経路ではステップ 2 の `ExitWorktree(keep)` で自セッションの harness cwd が main に退避済みのため、`worktree-foreign-cwd.sh` は rc=1（削除）を返す。`ExitWorktree(keep)` が no-op / 失敗でも、残る live cwd は自セッションだけなので self-exclusion により rc=1。rc=0（遅延）は別セッションのハーネスがこの worktree 内に cwd を持つ場合のみ。`/proc` の無い環境では rc=2 となり従来どおり削除を実行する（後方互換）。
 rationale: references/rationale.md#live-cwd-self-exclusion
@@ -601,264 +494,15 @@ rationale: references/rationale.md#base-update-classify
 > **委譲モード（#2133）**: 4-W が `[CONTEXT] CLEANUP_DELEGATED=1` を emit している場合、本ステップの bash ブロックを**いずれも実行しない**（worktree を削除していないため checkout 中の branch は構造的に削除できない。リモート削除は本ステップ内でローカル削除と 1 ステップで扱うため同時に委譲する — `git push origin --delete` 自体はガードに抵触せず worktree 内からも実行できる）。ステップ 12 が未完了として列挙し、main checkout での `/rite:cleanup {pr_number}` 再実行へ委譲する。再実行では本ステップが通常実行され、リモート削除は直接完了し、ローカル削除は `used by worktree` で見送られた上で `branch` エントリを reap manifest に記録して次回セッション開始時の自動回収を arm する（`{pr_merged}=true`、共有 manifest のエントリを verify 済み、かつ対象 worktree が reaper と同じ filtered dirty gate を通過したときだけ `recovery=auto` になる。未マージ PR の強制 cleanup・記録漏れ・dirty または判定不能な worktree は `recovery=manual` に倒れ手動回復が必要 — 出し分けは本ステップの `recovery=` 判定が持つ）。
 
 ```bash
-# worktree 削除が遅延した場合（ステップ 4-W が WORKTREE_REMOVE_SKIPPED_LIVE_CWD = 別 live
-# セッションが worktree 使用中、または WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK = sandbox マスク
-# 検知で自セッション worktree の削除を試行しなかった（sandbox マスク）、のいずれかを残した場合）、
-# branch は worktree で checkout 中のため削除できない。その場合は強制削除せず reap manifest に
-# 記録しし、worktree が解放（遅延 reap の corpse 回収含む）されたあと
-# pr-cycle-cleanup.sh Step 5 が次セッションで branch・worktree の双方を回収する（dead-letter 解消）。
-# manifest 記録は Step 5 の free-claim 24h age guard 自体もバイパスさせる（#1966 — ハーネスが
-# worktree root の mtime をセッション毎に更新するため、記録なしでは回収が永遠に始まらない）。
-# 自セッションの worktree は通常 4-W の self-exclusion 後に即時削除されるが、sandbox マスク
-# 検知時は削除を試行しないため自セッション由来でも本経路に入る（「別セッション在席時のみ」では
-# ない）。git 診断メッセージは locale 翻訳で揺れるため LC_ALL=C で固定して
-# substring マッチを安定させる（repo 既存の wiki-lint-*.sh と同規約）。
-# `{pr_merged}` はステップ 1.3 の PR 状態（`mergedAt` 非 null なら `true`、それ以外すべて
-# `false`。Step 1.3 と同一定義）を Claude が literal substitute する。squash merge では feature の
-# コミットが base の祖先にならないため、worktree 解放後でも `git branch -d` が "not fully merged" で
-# 拒否する。PR が merged 済み（{pr_merged}=true）ならこれは squash の残渣であり強制削除して安全
-# （ユニークな未マージ作業は無い）。
-# ブランチ名の事前検証。空値と marker のデリミタ文字（`;` `=`）はいずれも本ステップの契約を
-# 満たせない: 空値は `git show-ref --verify "refs/heads/"` が rc=1（不在）を返すため
-# 「既削除 = 正常系」に倒れ、**削除していないのに完了と報告**する。`;` `=` はどちらも合法な
-# refname 文字で、`branch=` フィールドの右端境界を騙って別ブランチの判定ルールに一致しうる。
-# エンコード規約を emitter/consumer の両側へ増やすより、契約を満たせない入力を fail-fast で弾く
-# （Fail-Fast First）。sentinel は空白を含めて refname として非合法にし、実在ブランチとの衝突を
-# 構造的に排除する。リモート削除ブロックも同じ検査を独立に持つ（各ブロックが単体で抽出・実行
-# されうるため、ガードもブロック単位で自己完結させる）。
-if [ "{branch_identity_verified}" != "true" ]; then
-  echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=branch-identity-unverified" >&2
-  echo "WARNING: 削除対象が PR head と一致すると確認できないためローカル削除を試行していません。" >&2
-else
-case "{branch_name}" in
-  '')
-    # 空値は処方を出さない。存在しないブランチに対する `git branch -D ""` は必ず失敗するため、
-    # 本 Issue が塞いだ「必ず失敗する処方」と同じものを新設することになる。
-    echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=empty-branch-name" >&2
-    echo "WARNING: 削除対象のブランチ名が空のため、ローカルブランチの削除を試行していません。対象ブランチを特定してから再実行してください。" >&2 ;;
-  *[\;=]*)
-    echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=marker-delimiter-in-branch-name" >&2
-    echo "WARNING: ブランチ名に marker のデリミタ文字 (=) が含まれるため、ローカルブランチの削除を試行していません。手動で削除してください: git branch -D \"{branch_name}\"" >&2 ;;
-  *)
-# rc を捕捉して **rc=1（不在）だけ**を「既削除」に倒す。否定付き if の短絡形だと rc=128（リポジトリ外での
-# 実行等）まで「不在」に丸め、ローカルブランチが残ったまま完了と報告される（リモート側が rc=0/2
-# 以外を REMOTE_BRANCH_CHECK_FAILED に倒すのと同じ扱いにする — #2016）。
-# ただし rc=1 は「本当に不在」だけを意味しない — refname として非合法な値（末尾空白 / `:` 混入 /
-# `..` や制御文字の混入等）でも rc=1 になり、同じく「既削除 = 正常系」へ倒れて削除していないのに
-# 完了と報告する。そこで **refname 構文に起因する rc=1 を分離する**ために先に合法性を検査する。
-# 構文的に合法だが対象と別物の値は、ステップ 1.3 の `headRefName` 完全一致で排除する。
-# ref store 側の障害は show-ref rc=1 後の for-each-ref positive control で、非 0 rc または stderr warning
-# のどちらも `ref-store-*` として判定不能へ倒す。
-# stderr は退避して WARNING に載せる（rc=128 の原因が消えると認証失敗・リポジトリ外・破損が
-# 区別できない。リモート側が $_ls_err で原因を surface するのと対称）。
-LC_ALL=C git check-ref-format "refs/heads/{branch_name}" >/dev/null 2>&1; _cf_rc=$?
-_sr_err=$(LC_ALL=C git show-ref --verify --quiet "refs/heads/{branch_name}" 2>&1 >/dev/null); _sr_rc=$?
-if [ "$_cf_rc" -ne 0 ]; then
-  echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=invalid-refname" >&2
-  echo "WARNING: ブランチ名が refname として非合法なため、ローカルブランチの存在を判定できず削除を試行していません (git check-ref-format rc=${_cf_rc})。" >&2
-elif [ "$_sr_rc" -eq 1 ]; then
-  # show-ref の rc=1 は不在だけでなく ref store 障害でも返りうる。全 local heads の走査が正常完了
-  # した場合だけ不在と確定し、走査不能は CHECK_FAILED へ倒す。
-  _fr_err=$(LC_ALL=C git for-each-ref --format='%(refname)' refs/heads 2>&1 >/dev/null); _fr_rc=$?
-  if [ "$_fr_rc" -ne 0 ] || [ -n "$_fr_err" ]; then
-    echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=ref-store-${_fr_rc}" >&2
-    echo "WARNING: ローカル ref store を走査できないため削除を試行していません:" >&2
-    printf '%s\n' "$_fr_err" | tr -d '\r' | sed 's/^/  /' >&2
-  else
-  # 既に不在（cleanup の再実行 / 別セッションで削除済み）は正常系。存在確認せず `git branch -d` に
-  # 渡すと "branch not found" で失敗して下の `*)` に落ち、BRANCH_DELETE_FAILED として
-  # 「削除に失敗。`git branch -D` で手動削除」という**必ず失敗する処方**を出す。これはリモート側で
-  # REMOTE_BRANCH_ALREADY_ABSENT として正常系に倒した症状と同型で、ローカル側だけ残っていた
-  # （#2016）。git の診断メッセージ文字列に依存しないよう show-ref で判定する。
-  echo "[CONTEXT] BRANCH_ALREADY_ABSENT=1; branch={branch_name}"
-  fi
-elif [ "$_sr_rc" -ne 0 ]; then
-  # 存在有無が不明。削除を試行せず未完了として surface する（安全側）。
-  echo "[CONTEXT] BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=${_sr_rc}" >&2
-  echo "WARNING: ローカルブランチ {branch_name} の存在確認に失敗したため削除を試行していません (git show-ref rc=${_sr_rc}):" >&2
-  echo "--- show-ref stderr begin ---" >&2
-  printf '%s\n' "${_sr_err}" | tr -d '\r' | sed 's/^/  /' >&2
-  echo "--- show-ref stderr end ---" >&2
-elif del_err=$(LC_ALL=C git branch -d -- "{branch_name}" 2>&1); then
-  echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}"
-else
-  case "$del_err" in
-    *"used by worktree"*|*"checked out"*)
-      # Why: 遅延ブランチを次セッション回収へ配線する（dead-letter 解消）。PR が merged 済み
-      # （{pr_merged}=true）のときのみ reap manifest に記録し、worktree が解放（別セッション終了
-      # または遅延 reap での回収 — 原因は断定しない）されたあと pr-cycle-cleanup.sh Step 5 が
-      # 安全に回収できるようにする。未マージ PR の強制
-      # cleanup 時（{pr_merged}=false）は記録しない（作業損失防止 — AC-4）。
-      # **recovery= の意味（AC-6）**: rite-tmp-artifact.sh は非ブロッキング契約で、append 失敗でも
-      # WARNING を出して exit 0 を返す（非 0 は usage error のみ）。したがって record の exit code では
-      # 記録成否を判定できない。共有 manifest を直接 verify し、エントリが実在するときだけ
-      # recovery=auto を emit する（記録できていない経路で「自動で回収されます」と偽らない）。
-      # {pr_merged}=false / 記録漏れ / shared-root 解決不能 / reaper dirty gate を
-      # 通過できない worktree はすべて recovery=manual に倒す。
-      bash {plugin_root}/hooks/scripts/cleanup-deferred-branch-recovery.sh \
-        --branch "{branch_name}" --pr-merged "{pr_merged}" ;;
-    *"not fully merged"*)
-      if [ "{pr_merged}" = "true" ]; then
-        # squash merge の残渣 — PR は merged 済みなので強制削除して安全。
-        LC_ALL=C git branch -D -- "{branch_name}" >/dev/null 2>&1 \
-          && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=squash-merged" \
-          || echo "[CONTEXT] BRANCH_DELETE_FAILED=1; branch={branch_name}" >&2
-      else
-        echo "[CONTEXT] BRANCH_DELETE_UNMERGED=1; branch={branch_name}" >&2
-      fi ;;
-    *)
-      echo "[CONTEXT] BRANCH_DELETE_FAILED=1; branch={branch_name}" >&2
-      echo "WARNING: ローカルブランチ {branch_name} の削除に失敗しました:" >&2
-      echo "--- branch delete stderr begin ---" >&2
-      # 外部由来テキストの CR を除去してからインデントする。`sed 's/^/  /'` は `\n` 区切りの行頭
-      # にしか空白を付けないため、`\r` が残ると CR 以降が表示上は列 0 に着地し、marker を騙る
-      # 経路が開く（security boundary はインデント側にあるという規約の穴になる）。
-      printf '%s\n' "$del_err" | tr -d '\r' | sed 's/^/  /' >&2
-      echo "--- branch delete stderr end ---" >&2 ;;
-  esac
-fi
-    ;;
-esac
-fi
-# ⚠ 下行はテスト hooks/tests/remote-branch-delete-guard.test.sh が awk 抽出アンカーとして参照する。変更時はテスト側の awk パターンも同時更新すること
-# リモートブランチ削除（#2016）。`git ls-remote --heads` は ref 不在でも rc=0（空 stdout）を返すため、
-# `&&` では「存在するときだけ削除する」ガードにならない。--exit-code で ref 不在を rc=2 として
-# 判別する。リポジトリ設定 delete_branch_on_merge: true では merge 時にサーバサイドで head が
-# 削除済みのため、この経路は通常 rc=2 に落ちる。
-# rc=2（不在）だけを「既削除」とみなし、それ以外の非 0（ネットワーク断・認証失敗の 128 等）は
-# 存在有無が不明なため削除を試行せず未完了として surface する（不明を「既削除」に丸めると、
-# delete_branch_on_merge: false のリポジトリでリモートブランチが黙って残る）。
-# ただし rc=128 は sandbox の HTTPS プロキシ断など **transient** で再現することがある
-# （初回 128 の後に状態が確定して 2 へ変わる実測がある）。1 回目が 128 のときだけ
-# **1 回再試行**し、2 回目の結果を採用する。2 回とも 128 なら従来どおり CHECK_FAILED で
-# 削除を処方しない（確認できていない状態での偽処方は #2016 と同型）。rc=0/2 の即返しは
-# 再試行せず 1 回で確定する（正常系の遅延を増やさない）。
-# stderr は捨てず退避して WARNING に載せる（rc だけでは認証失敗・DNS 解決失敗・proxy 遮断がすべて
-# 128 に潰れて切り分けられない。直上のローカル削除が $del_err で原因を surface するのと対称）。
-# stdout は完全一致検証に使うため別ファイルへ分離する（`2>&1 >/dev/null` で捨てない）。
-# pattern は full refname で渡すが、**それだけでは完全一致にならない**。`git ls-remote <pattern>` は
-# ref の先頭または任意の slash 境界からの tail 一致であり、`refs/heads/` を前置しても anchor されない
-# （実測: origin に `refs/heads/wip/refs/heads/X` があると pattern `refs/heads/X` が rc=0 で一致する）。
-# そのため rc=0 のあとに stdout の ref 名が `refs/heads/{branch_name}` と完全一致することを検証し、
-# 一致しなければ不在（rc=2 相当）に落とす。この検証がないと、対象が不在でも rc=0 で削除経路へ入り、
-# 存在しないブランチに対する偽の残作業と必ず失敗する処方を報告することになる（#2016）。
-# ブランチ名が marker のデリミタ文字（`;` `=`）を含む場合は、`branch=` フィールドの右端境界を騙って
-# 別ブランチの判定ルールに一致しうる（`;` `=` はいずれも合法な refname 文字）。エンコード規約を
-# emitter/consumer の両側に増やすより、契約を満たせない入力を fail-fast で弾く（Fail-Fast First）。
-if [ "{branch_identity_verified}" != "true" ]; then
-  echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=branch-identity-unverified" >&2
-  echo "WARNING: 削除対象が PR head と一致すると確認できないためリモート削除を試行していません。" >&2
-else
-case "{branch_name}" in
-  '')
-    echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=empty-branch-name" >&2
-    echo "WARNING: 削除対象のブランチ名が空のため、リモート削除を試行していません。対象ブランチを特定してから再実行してください。" >&2 ;;
-  *[\;=]*)
-    # sentinel 値を使い、実ブランチ名を marker へ載せない（載せると誤帰属そのものを再現する）。
-    # 値に空白を含めて refname として非合法にし、実在ブランチとの衝突を構造的に排除する。
-    # consumer 側は `branch={branch_name}` に一致しないため fallback（未確認）に落ちる。
-    # 空値も弾く — 空だと完全一致検証が決して一致せず「既削除 = 正常系」に倒れ、削除していない
-    # のに完了と報告する。
-    echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch=<unsupported branch name>; rc=marker-delimiter-in-branch-name" >&2
-    echo "WARNING: ブランチ名に marker のデリミタ文字 (=) が含まれるため、リモート削除の自動判定を行いません。手動で削除してください: git push origin --delete \"refs/heads/{branch_name}\"" >&2
-    ;;
-  *)
-# refname 非合法な値は ls-remote の完全一致検証が決して一致せず「既削除 = 正常系」へ倒れるため、
-# ローカル側と対称に先に弾く（削除していないのに完了と報告するのを防ぐ）。
-if ! LC_ALL=C git check-ref-format "refs/heads/{branch_name}" >/dev/null 2>&1; then
-  echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=invalid-refname" >&2
-  echo "WARNING: ブランチ名が refname として非合法なため、リモートブランチの存在を判定できず削除を試行していません。" >&2
-else
-# `_ls_out` は先行宣言 → cleanup 関数 → 4 行 trap → mktemp の順で確保する
-# （rationale: ../../references/bash-trap-patterns.md#signal-specific-trap-template）。`git ls-remote` は本ブロック唯一のネットワーク
-# 操作で最も長くブロックしうるため、Ctrl-C の着弾点になりやすい。
-_ls_out=""
-_check_reason=""
-_rite_cleanup_phase5_cleanup() { [ -n "${_ls_out:-}" ] && rm -f "$_ls_out"; return 0; }
-trap 'rc=$?; _rite_cleanup_phase5_cleanup; exit $rc' EXIT
-trap '_rite_cleanup_phase5_cleanup; exit 130' INT
-trap '_rite_cleanup_phase5_cleanup; exit 143' TERM
-trap '_rite_cleanup_phase5_cleanup; exit 129' HUP
-_ls_out=$(mktemp "${TMPDIR:-/tmp}/rite-cleanup-lsremote-XXXXXX") || _ls_out=""
-if [ -z "$_ls_out" ]; then
-  # stdout を分離できない = 完全一致検証ができない。検証なしで削除経路へ入ると tail 一致の
-  # 誤ヒットで別 ref を削除しうるため、削除を試行せず未確認として surface する（安全側）。
-  echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=mktemp-failed" >&2
-  echo "WARNING: 一時ファイルを作成できずリモートブランチの存在確認ができないため、削除を試行していません。" >&2
-else
-_ls_err=$(LC_ALL=C git ls-remote --exit-code --heads origin "refs/heads/{branch_name}" 2>&1 >"$_ls_out"); _ls_rc=$?
-# transient 失敗 (rc=128: ネットワーク断・proxy 遮断等) は一過性たり得るため 1 回だけ再試行する。
-# 2 回目の結果を採用する。rc=0/2 の即返しは従来どおり 1 回で確定。2 回とも 128 なら
-# 下の `*)` が CHECK_FAILED を emit し、削除は処方しない（確認できていない状態での偽処方を防ぐ — #2016）。
-if [ "$_ls_rc" -eq 128 ]; then
-  _ls_err=$(LC_ALL=C git ls-remote --exit-code --heads origin "refs/heads/{branch_name}" 2>&1 >"$_ls_out"); _ls_rc=$?
-fi
-# rc=0 でも完全一致でなければ不在扱いに落とす（tail 一致による誤ヒットの排除）。ls-remote の出力は
-# `<sha>\t<refname>` 形式。ブランチ名は `.` 等の正規表現メタ文字を含みうるため、regex ではなく
-# awk のフィールド完全一致で比較する。
-# awk の rc は 0（一致）/ 1（不一致）/ その他（awk 自体の異常終了）の 3 値に分ける。否定付き awk 呼び出しの
-# 短絡形だと 1 とその他を融合し、awk が異常終了しただけで「既削除 = 正常系」に倒れてリモート
-# ブランチが黙って残る（直上の mktemp 失敗経路が「判定不能は削除を試行せず surface する」と
-# している契約に反する — #2016）。
-if [ "$_ls_rc" -eq 0 ]; then
-  awk -F'\t' -v r="refs/heads/{branch_name}" '$2 == r { found = 1 } END { exit !found }' "$_ls_out"
-  _match_rc=$?
-  case "$_match_rc" in
-    0) : ;;                       # 完全一致 = 存在
-    1) _ls_rc=2 ;;                # 不一致 = 不在
-    # 判定不能 → 下の `*)` が CHECK_FAILED を emit。`_ls_rc` は数値のまま保ち、原因は別変数へ
-    # 分ける（文字列を代入すると後続で数値比較を足した瞬間に壊れ、診断も ls-remote に誤帰属する）。
-    *) _ls_rc=3; _check_reason="ref-match-awk-${_match_rc}" ;;
-  esac
-fi
-rm -f "$_ls_out"; _ls_out=""
-case "$_ls_rc" in
-  0)
-    # リモート状態を実際に変更する唯一の分岐。push は protected branch / 権限不足 /
-    # ls-remote 〜 push 間の race で失敗しうるため、成否の**両方**を marker で surface する。
-    # 成功側も positive marker を出すのは、marker 不在を「削除成功」の符号化に使わないため
-    # （#2016）。不在を成功と読むと、本ブロックがそもそも実行されなかった経路・出力が
-    # compact で失われた経路と削除成功が区別できず、consumer が不在を根拠に完了と断定する。
-    # 全経路が marker を持てば、marker 不在は「実行結果を確認できていない」という
-    # 別の意味だけを持つ（同ファイルの {base_update_check} が採る規約と同形）。
-    # 削除先も namespace 修飾する。非修飾の <dst> は remote の**全 namespace** に対して解決されるため、
-    # `refs/heads/{branch_name}` が不在で `refs/tags/{branch_name}` が存在する状態では**タグを削除する**
-    # （実測確認済み。共有リモートのタグ削除は不可逆でリリース/CI を壊す）。存在確認した ref 集合と
-    # 削除する ref 集合を定義上一致させる（#2016）。
-    if _push_err=$(LC_ALL=C git push origin --delete "refs/heads/{branch_name}" 2>&1); then
-      echo "[CONTEXT] REMOTE_BRANCH_DELETED=1; branch={branch_name}"
-    else
-      echo "[CONTEXT] REMOTE_BRANCH_DELETE_FAILED=1; branch={branch_name}" >&2
-      # 外部由来テキストはデリミタで囲む。行頭一致だけでは複数行 stderr の 2 行目以降が列 0 に
-      # 着地して marker として読まれうる（ステップ 4 の dirty ファイル一覧と同じ data/marker 分離）。
-      echo "WARNING: リモートブランチ {branch_name} の削除に失敗しました:" >&2
-      echo "--- push stderr begin ---" >&2
-      printf '%s\n' "$_push_err" | tr -d '\r' | sed 's/^/  /' >&2
-      echo "--- push stderr end ---" >&2
-    fi ;;
-  2) echo "[CONTEXT] REMOTE_BRANCH_ALREADY_ABSENT=1; branch={branch_name}" ;;
-  *)
-    echo "[CONTEXT] REMOTE_BRANCH_CHECK_FAILED=1; branch={branch_name}; rc=${_ls_rc}${_check_reason:+; reason=${_check_reason}}" >&2
-    # 多バイト文字に隣接する変数展開は必ず brace で閉じる。日本語文中で `$_ls_err。` と書くと
-    # bash が `。` の先頭バイト (0xE3) を変数名に取り込み、非 UTF-8 ロケール (macOS CI 等) で
-    # 変数が未定義化して原因テキストが消える。残った不正バイトは下流の BSD sed 等も落とす
-    # （同 invariant: hooks/tests/flow-state.test.sh TC-8b-h）。
-    # 捕捉した stderr は文末に置く。ls-remote の stderr は空行を含む複数行が常態のため、文中に
-    # 挿入すると operative な日本語（削除を試行していない旨）が英文パラグラフの末尾に孤立する。
-    # 直上のローカル削除が $del_err を文末に置いているのと同じ配置。
-    # 原因は ls-remote とは限らない（完全一致検証の異常終了も本分岐へ落ちる）ため、コマンドを
-    # 名指しせず rc と reason で示す。
-    echo "WARNING: リモートブランチ {branch_name} の存在確認に失敗したため削除を試行していません (rc=${_ls_rc}${_check_reason:+, ${_check_reason}}):" >&2
-    echo "--- ls-remote stderr begin ---" >&2
-    printf '%s\n' "${_ls_err}" | tr -d '\r' | sed 's/^/  /' >&2
-    echo "--- ls-remote stderr end ---" >&2 ;;
-esac
-trap - EXIT INT TERM HUP
-fi
-fi
-  ;;
-esac
-fi
+# ローカル / リモートの存在確認・削除・遅延判定と marker の emit はすべて helper が持つ
+# （契約・marker 名・出力ストリーム・reason 語彙は helper docstring が SoT）。
+# `{branch_identity_verified}` はステップ 1.3 の headRefName 完全一致の結果、`{pr_merged}` は
+# 同ステップの PR 状態（`mergedAt` 非 null なら `true`、それ以外すべて `false`）を Claude が
+# literal substitute する。どちらも bash からは導出できないため helper は既定値を持たず、
+# 未指定なら usage error で落ちる（検証していないのに削除する経路を作らないため）。
+bash {plugin_root}/hooks/scripts/cleanup-branch-delete.sh \
+  --branch "{branch_name}" --pr-merged "{pr_merged}" \
+  --branch-identity-verified "{branch_identity_verified}"
 ```
 
 `BRANCH_DELETED=1; via=squash-merged`（PR が merged 済みで `git branch -d` が squash 残渣により拒否したケース）は通常削除と同様にステップ 12 で `x` に分岐する。`BRANCH_DELETE_UNMERGED=1`（未マージ PR の強制 cleanup で `{pr_merged}=false` のとき）は「強制削除 (`-D`) / スキップ」を確認する。**強制削除を選んだ場合**は `LC_ALL=C git branch -D {branch_name} && echo "[CONTEXT] BRANCH_DELETED=1; branch={branch_name}; via=force"` を実行し、削除完了を marker で示す（ステップ 12 が `x` に分岐する）。スキップ時は marker を追加しない（残置のまま）。`BRANCH_DELETE_DEFERRED=1`（作業ツリーが未削除のまま残り削除を遅延したケース — 別セッション使用中別セッション使用中 または sandbox マスク skipsandbox マスク。原因は断定しない）のときは**強制削除しない**。marker の `recovery=` で次セッション回収の可否が決まる: `recovery=auto`（{pr_merged}=true、reap manifest の記録を verify 済み、かつ対象 worktree が reaper と同じ filtered dirty gate を通過）は worktree 解放後に `pr-cycle-cleanup.sh` Step 5 が自動回収する。`recovery=manual`（未マージ PR の強制 cleanup、記録漏れ、dirty または判定不能な worktree）は自動回収されない。実パスを解決できた場合は `BRANCH_DELETE_DEFERRED_WORKTREE` marker の shell-escaped `path_q=` を用いて status を確認し、変更を commit / stash / copy して clean にした後だけ、非 force の `git worktree remove` → prune → branch delete を実行する。解決不能時は `git worktree list --porcelain` で先に実パスを特定する。ステップ 12 はこの `recovery=` 値で残置メッセージを出し分ける。
@@ -983,63 +627,12 @@ fi
 ```
 
 ```bash
-pr_number="{pr_number}"
-case "$pr_number" in
-  ''|*[!0-9]*)
-    echo "ERROR: invalid pr_number: '$pr_number'" >&2
-    echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=invalid_pr_number" >&2
-    exit 0 ;;
-esac
-
-# 削除対象はリポジトリ共通の state ルート基準 (state-path-resolve.sh)。書込側
-# (review-result-save.sh / fix.md 2.1.A / fix.md 3.3.1) と同一解決のため、セッション worktree に
-# 書かれて main checkout の削除が no-op になる不整合を防ぐ (解決失敗時は cwd fallback)
-_state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
-[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
-
-rite_rm() {
-  local label="$1"; shift
-  local f
-  for f in "$@"; do
-    { [ -e "$f" ] || [ -L "$f" ]; } || continue
-    if rm -f "$f"; then
-      echo "✅ ${label} を削除: $f" >&2
-    else
-      echo "WARNING: ${label} 削除失敗 (PR #${pr_number}): $f" >&2
-      echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=${label}_rm_failure; pr=${pr_number}" >&2
-    fi
-  done
-}
-
-# レビュー結果 JSON は一律削除しない。**非実測指摘 (non_blocking_findings[]) を持つものは
-# 削除せず archive/ へ退避する** — ステップ 6.1.d の関連 Issue 記録コメントはポインタ (reviewer /
-# severity / file:line) + 降格理由 (判定文) しか載せないため、無条件削除すると非実測 CRITICAL の詳細が
-# merge 直後に失われ、人間が拾い直せなくなる。
-# 判定 (jq rc の値域分岐 / 判定不能は退避側へ倒す) と退避 (mkdir・mv の分離、同名衝突の検出) は
-# helper へ委譲済み。契約と reason 語彙の SoT は helper docstring、挙動は
-# hooks/tests/review-results-archive-or-rm.test.sh が behavioral に固定する。
-# `.json.corrupt-*` も同 helper の glob (`{pr}-*.json*`) が拾う。corrupt は「中身を判定できない」
-# 状態そのものなので、別経路で無条件削除すると同一ブロック内に「判定不能は保全」と「判定不能は
-# 削除」の 2 ポリシーが並ぶ (corrupt rename の 3 経路のうち 2 つは構造的に valid な JSON で、
-# non_blocking_findings[] の全文を保持しうる)。
-#
-# helper の rc は捨てない。**marker 不在を「削除成功」と読んではならない**という本ステップの規約
-# (下記 ステップ 12 の判定表) は、helper が起動すらしなかった場合 ({plugin_root} の未解決置換 /
-# helper 欠落で rc=127) に marker が 1 本も出ないことで破れる。rc を見て失敗を marker に変換する。
-_rrar_rc=0
-bash {plugin_root}/hooks/scripts/review-results-archive-or-rm.sh \
-  --state-root "$_state_root" --pr "$pr_number" || _rrar_rc=$?
-if [ "$_rrar_rc" -ne 0 ]; then
-  echo "WARNING: review-results の退避/削除 helper が rc=${_rrar_rc} で失敗しました。レビュー結果 JSON は未処理のまま残っています" >&2
-  echo "  原因候補: {plugin_root} の未解決置換 / helper 欠落・非可読 (rc=127) / 引数不正 (rc=1)" >&2
-  echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=review_results_helper_failed; pr=${pr_number}; rc=${_rrar_rc}" >&2
-fi
-rite_rm fix_retry_state "$_state_root/.rite/state/fix-fallback-retry-${pr_number}.count"
-rite_rm fix_cycle_state "$_state_root/.rite/fix-cycle-state/${pr_number}.json"
-rite_rm legacy_fix_cycle_state "$_state_root/.rite/fix-cycle-state.json"
-rite_rm accepted_fingerprints "$_state_root/.rite/state/accepted-fingerprints-${pr_number}.txt"
-rite_rm review_run_since "$_state_root/.rite/state/review-run-since-${pr_number}.txt"
-rite_rm nb_sweep_done "$_state_root/.rite/state/nb-sweep-done-${pr_number}.txt"
+# 削除対象はリポジトリ共通の state ルート基準（state-path-resolve.sh）。書込側
+# （review-result-save.sh / fix.md 2.1.A / fix.md 3.3.1）と同一解決のため、セッション worktree に
+# 書かれて main checkout の削除が no-op になる不整合を防ぐ（解決失敗時は cwd fallback）。
+# 他 PR 誤削除防止の `{pr_number}-` prefix 固定 glob、review-results の退避/削除委譲、
+# rite_rm 6 種、marker の emit はすべて helper が持つ（契約は helper docstring が SoT）。
+bash {plugin_root}/hooks/scripts/cleanup-pr-state-purge.sh --pr "{pr_number}"
 ```
 
 `review-run-since-{pr}.txt` は `/rite:iterate` の収束トレンド判定が現 run の境界に使う pin。直上で削除する `review-results/` と同じライフサイクルのため同列挙で掃除する。

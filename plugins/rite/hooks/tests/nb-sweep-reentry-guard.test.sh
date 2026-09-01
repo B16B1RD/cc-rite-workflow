@@ -20,6 +20,8 @@ ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
 FIX="$PLUGIN_ROOT/skills/fix/SKILL.md"
 SETUP="$PLUGIN_ROOT/skills/setup/SKILL.md"
 CLEANUP_SKILL="$PLUGIN_ROOT/skills/cleanup/SKILL.md"
+# cleanup ステップ 6 の state 削除は helper へ抽出済み。sweep 行の pin はそちらを見る。
+STATE_PURGE="$PLUGIN_ROOT/hooks/scripts/cleanup-pr-state-purge.sh"
 PR_CYCLE="$PLUGIN_ROOT/hooks/scripts/pr-cycle-cleanup.sh"
 SCHEMA="$PLUGIN_ROOT/references/review-result-schema.md"
 CONTRACT="$PLUGIN_ROOT/hooks/tests/nb-sweep-contract.test.sh"
@@ -111,7 +113,10 @@ assert_grep_in_section "T-04 fix digest writes done" "$FIX" \
 assert_grep "T-04 fix 1.3.S done-file path" "$FIX" 'nb-sweep-done-\{pr_number\}\.txt'
 
 # --- T-05: cleanup と pr-cycle-cleanup の両方 ---
-assert_grep "T-05 cleanup rite_rm" "$CLEANUP_SKILL" 'nb-sweep-done-\$\{pr_number\}\.txt'
+assert_grep "T-05 cleanup rite_rm" "$STATE_PURGE" 'nb-sweep-done-\$\{pr_number\}\.txt'
+# cleanup ステップ 6 が state purge helper を呼んでいること（sweep 行が helper 側に移ったため、
+# 呼び出しが外れると T-05 が helper 内の行だけを見て通り続ける空振りになる）
+assert_grep "T-05 cleanup invokes the state purge helper" "$CLEANUP_SKILL" 'hooks/scripts/cleanup-pr-state-purge\.sh'
 assert_grep "T-05 pr-cycle-cleanup deletes marker" "$PR_CYCLE" 'nb-sweep-done-'
 assert_grep "T-05 schema lists the file" "$SCHEMA" 'nb-sweep-done-\{pr_number\}\.txt'
 

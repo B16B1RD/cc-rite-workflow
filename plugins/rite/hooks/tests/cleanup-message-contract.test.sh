@@ -14,10 +14,19 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 
 CLEANUP="$SCRIPT_DIR/../../skills/cleanup/SKILL.md"
 DEFERRED_HELPER="$SCRIPT_DIR/../scripts/cleanup-deferred-branch-recovery.sh"
+# ステップ 4-W / 5 の bash 本体は helper へ抽出済み。SKILL.md 側に残るのは routing の指示語と
+# ステップ 12 の判定表なので、コード行を対象にする pin は helper を、指示語・報告文面を対象に
+# する pin は SKILL.md を見る。
+TEARDOWN_HELPER="$SCRIPT_DIR/../scripts/cleanup-session-worktree-teardown.sh"
+BRANCH_DELETE_HELPER="$SCRIPT_DIR/../scripts/cleanup-branch-delete.sh"
 
 echo "=== ステップ 4-W: self-exclusion 付き live-cwd guard の配線 ==="
-assert_grep "4-W uses worktree-foreign-cwd.sh (not the bare live-cwd probe)" "$CLEANUP" "worktree-foreign-cwd\.sh"
-assert_grep "4-W passes --self-root \$PPID (excludes the cleanup session's harness)" "$CLEANUP" 'worktree-foreign-cwd\.sh.*--self-root'
+assert_grep "4-W uses worktree-foreign-cwd.sh (not the bare live-cwd probe)" "$TEARDOWN_HELPER" "worktree-foreign-cwd\.sh"
+assert_grep "4-W passes --self-root (excludes the cleanup session's harness)" "$TEARDOWN_HELPER" 'worktree-foreign-cwd\.sh.*--self-root'
+# helper 内の $PPID は helper を起動したシェルを指すため、ハーネスの pid は呼び出し側が渡す。
+# 呼び出しから --self-root が落ちると helper は usage error で落ちるが、SKILL.md 側でも pin する
+# (helper が既定値を持つ方向へ緩められたときに、この行の消失として検出できるようにする)。
+assert_grep "4-W call site passes the harness \$PPID as --self-root" "$CLEANUP" '\-\-self-root "\$PPID"'
 
 echo "=== ステップ 4-W: session_worktree manifest 記録が {pr_merged}=true ガード配下にあること (AC-4) ==="
 # 未マージ PR の強制 cleanup で corpse worktree のパスが記録され、Step 5 の corpse age-guard
@@ -37,17 +46,17 @@ echo "=== ステップ 4-W: session_worktree manifest 記録が {pr_merged}=true
 ## 解釈で 1 段階消費される分を見越して `\\[`/`\\]`（バックスラッシュ2つ）を渡す必要がある
 ## （1つだけだと `[CONTEXT]` が bracket 式として解釈され match しなくなる／過剰マッチの温床にもなる）。
 assert_grep_in_section "4-W sandbox-mask branch: session_worktree record call present" \
-  "$CLEANUP" 'echo "\\[CONTEXT\\] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1' '^     else$' \
+  "$TEARDOWN_HELPER" 'echo "\\[CONTEXT\\] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1' '^  elif \\[ "\\$dry_run" = "true" \\]; then$' \
   'record --type session_worktree'
-assert_grep_in_section "4-W sandbox-mask branch: record is inside the {pr_merged}=true guard" \
-  "$CLEANUP" 'echo "\\[CONTEXT\\] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1' '^     else$' \
-  '\{pr_merged\}" = "true"'
+assert_grep_in_section "4-W sandbox-mask branch: record is inside the --pr-merged=true guard" \
+  "$TEARDOWN_HELPER" 'echo "\\[CONTEXT\\] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1' '^  elif \\[ "\\$dry_run" = "true" \\]; then$' \
+  '\$pr_merged" = "true"'
 assert_grep_in_section "4-W busy-failed branch: session_worktree record call present" \
-  "$CLEANUP" 'echo "\\[CONTEXT\\] WORKTREE_REMOVE_FAILED=1' '\\[ -n "\\$_wt_rm_err" \\] && rm -f' \
+  "$TEARDOWN_HELPER" 'echo "\\[CONTEXT\\] WORKTREE_REMOVE_FAILED=1' '\\[ -n "\\$_wt_rm_err" \\] && rm -f' \
   'record --type session_worktree'
-assert_grep_in_section "4-W busy-failed branch: record is inside the {pr_merged}=true guard" \
-  "$CLEANUP" 'echo "\\[CONTEXT\\] WORKTREE_REMOVE_FAILED=1' '\\[ -n "\\$_wt_rm_err" \\] && rm -f' \
-  '\{pr_merged\}" = "true"'
+assert_grep_in_section "4-W busy-failed branch: record is inside the --pr-merged=true guard" \
+  "$TEARDOWN_HELPER" 'echo "\\[CONTEXT\\] WORKTREE_REMOVE_FAILED=1' '\\[ -n "\\$_wt_rm_err" \\] && rm -f' \
+  '\$pr_merged" = "true"'
 
 echo "=== ステップ 5: squash-merge 確認済みブランチの強制削除 + 遅延ブランチの manifest 記録 ==="
 assert_grep "Step 5 reads the {pr_merged} signal" "$CLEANUP" "pr_merged"
@@ -55,7 +64,7 @@ assert_grep "Step 5 emits via=squash-merged on confirmed-merged force delete" "$
 assert_grep "Step 5 records the deferred branch to the reap manifest" "$DEFERRED_HELPER" "rite-tmp-artifact\.sh.*record --type branch"
 # Deferred branch only auto-recovers when the manifest record succeeds and the
 # target worktree passes the same filtered dirty gate as the reaper (#2048).
-assert_grep "Step 5 delegates recovery classification to the executable helper" "$CLEANUP" "cleanup-deferred-branch-recovery\.sh"
+assert_grep "Step 5 delegates recovery classification to the executable helper" "$BRANCH_DELETE_HELPER" "cleanup-deferred-branch-recovery\.sh"
 assert_grep "Step 5 emits recovery=auto only after its guards" "$CLEANUP" "recovery=auto"
 assert_grep "Step 5 emits recovery=manual for unsafe worktrees" "$CLEANUP" "recovery=manual"
 assert_not_grep "Step 5 never prescribes force-removing a dirty worktree" "$DEFERRED_HELPER" 'git worktree remove --force'
@@ -67,34 +76,34 @@ assert_grep "deferred-branch message states automatic recovery (no manual step)"
 assert_grep "worktree-skip message states next-session automatic recovery" "$CLEANUP" "次回のセッション開始時に"
 
 echo "=== ステップ 4-W: busy (EBUSY) 失敗時の sandbox 干渉 WARNING (AC-5) ==="
-assert_grep "4-W detects busy git-worktree-remove stderr" "$CLEANUP" 'grep -qi "busy"'
-assert_grep "4-W busy WARNING names sandbox ro-mount interference" "$CLEANUP" "config\.worktree・commondir に read-only bind mount"
-assert_grep "4-W busy WARNING gives the sandbox-outside manual recovery command" "$CLEANUP" "sandbox 外のシェルで次を実行してください"
+assert_grep "4-W detects busy git-worktree-remove stderr" "$TEARDOWN_HELPER" 'grep -qi "busy"'
+assert_grep "4-W busy WARNING names sandbox ro-mount interference" "$TEARDOWN_HELPER" "config\.worktree・commondir に read-only bind mount"
+assert_grep "4-W busy WARNING gives the sandbox-outside manual recovery command" "$TEARDOWN_HELPER" "sandbox 外のシェルで次を実行してください"
 # busy WARNING は sandbox 起因を明示するため、harness の「sandbox 起因の失敗は
 # dangerouslyDisableSandbox で即再試行」ルールの発火条件を自ら満たしてしまう。
 # この WARNING を読む実行エージェント自身への「この場での再試行はしない」明示が必要
 # (non-blocking で遅延 reap へ委譲する設計を守るため)。
-assert_grep "4-W busy WARNING tells the executing agent not to auto-retry" "$CLEANUP" "実行エージェントはこの場で sandbox を無効化して同コマンドを再試行しないこと"
+assert_grep "4-W busy WARNING tells the executing agent not to auto-retry" "$TEARDOWN_HELPER" "実行エージェントはこの場で sandbox を無効化して同コマンドを再試行しないこと"
 
 echo "=== ステップ 4-W: sandbox マスク検知による remove 抑止 (AC-1/AC-2) ==="
 # AC-1: 検知は remove 試行の前 — 削除試行自体が admin dir を半壊させるため、検知時は
 # remove (--force 含む) を一切実行せず遅延 reap (pr-cycle-cleanup.sh Step 5 corpse 回収) へ
 # 委譲する。behavioral 検証 (corpse 回収側) は pr-cycle-cleanup-session-reap.test.sh C-01..C-04。
-assert_grep "4-W resolves the admin dir from the worktree's .git file" "$CLEANUP" '_wt_admin=\$\(sed -n .s/.gitdir: //p. "\{flow_wt\}/\.git"'
-assert_grep "4-W detects the mask as a character device on config.worktree" "$CLEANUP" '\-c "\$_wt_admin/config\.worktree"'
-assert_grep "4-W emits the sandbox-mask skip marker" "$CLEANUP" "WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1"
-assert_grep "4-W mask WARNING states removal is not attempted at all" "$CLEANUP" "削除自体を試行しません"
-assert_grep "4-W mask WARNING forbids in-place sandbox-disable retry" "$CLEANUP" "実行エージェントはこの場で sandbox を無効化して remove を再試行しないこと"
+assert_grep "4-W resolves the admin dir from the worktree's .git file" "$TEARDOWN_HELPER" '_wt_admin=\$\(sed -n .s/.gitdir: //p. "\$flow_wt/\.git"'
+assert_grep "4-W detects the mask as a character device on config.worktree" "$TEARDOWN_HELPER" '\-c "\$_wt_admin/config\.worktree"'
+assert_grep "4-W emits the sandbox-mask skip marker" "$TEARDOWN_HELPER" "WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1"
+assert_grep "4-W mask WARNING states removal is not attempted at all" "$TEARDOWN_HELPER" "削除自体を試行しません"
+assert_grep "4-W mask WARNING forbids in-place sandbox-disable retry" "$TEARDOWN_HELPER" "実行エージェントはこの場で sandbox を無効化して remove を再試行しないこと"
 # AC-2 (非回帰): マスク非検知時の従来 remove 経路 (LC_ALL=C 固定の remove → --force fallback)
 # が残存している — 検知ガードが常時抑止に化けたらこの pin ごと落ちる。
-assert_grep "4-W keeps the conventional remove path for unmasked worktrees" "$CLEANUP" 'LC_ALL=C git worktree remove "\{flow_wt\}"'
+assert_grep "4-W keeps the conventional remove path for unmasked worktrees" "$TEARDOWN_HELPER" 'LC_ALL=C git worktree remove "\$flow_wt"'
 # ステップ 12 報告: SANDBOX_MASK skip の分岐が存在し、sandbox 外での手動回収コマンドを示す。
 assert_grep "Step 12 has a SANDBOX_MASK branch in {session_worktree_check}" "$CLEANUP" 'WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1. のとき'
 assert_grep "Step 12 mask message points to a sandbox-outside manual removal" "$CLEANUP" "sandbox 外のシェルで git worktree remove --force"
 # Step 5 deferral 経路: mask skip が自セッション由来の第 2 ルートを作るため、旧「別 live セッション
 # 在席時のみ」の排他性主張と「別のセッションの作業ツリーで使用中」の原因断定 WARNING は不正確。
 # コメントは mask ルートに言及し、branch-deferral 系 WARNING は原因中立の文面を使う。
-assert_grep "Step 5 comment names the SANDBOX_MASK deferral route" "$CLEANUP" 'WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK = sandbox マスク'
+assert_grep "Step 5 comment names the SANDBOX_MASK deferral route" "$BRANCH_DELETE_HELPER" 'WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK = sandbox マスク'
 assert_grep "Step 5 deferred WARNING is cause-neutral" "$DEFERRED_HELPER" "まだ削除されていない作業ツリーで使用中のため、削除を見送りました"
 assert_not_grep "old exclusive-cause claim removed from Step 5 comment" "$CLEANUP" "本経路に来るのは"
 assert_not_grep "old other-session attribution removed from deferred WARNINGs" "$CLEANUP" "はまだ別のセッションの作業ツリーで使用中のため"
@@ -111,8 +120,10 @@ assert_not_grep "old branch-deferred residue wording removed" "$CLEANUP" "worktr
 echo "=== ステップ 4-W: in_worktree_unrecorded の委譲 routing (T-01/T-03) ==="
 # T-01: ExitWorktree が no-op な path 入場を独立 arm に分離し、委譲 marker を emit する。
 # 分岐の基準は「worktree 内か」ではなく「ExitWorktree で main checkout へ退出できるか」。
-assert_grep "4-W splits in_worktree_unrecorded into its own case arm" "$CLEANUP" '^  in_worktree_unrecorded\)$'
-assert_grep "4-W emits the delegation marker" "$CLEANUP" 'CLEANUP_DELEGATED=1; reason=exit_worktree_unavailable'
+# case arm は helper の cmd_detect 内にあるためインデントが 2 → 4 スペースになった。
+# ラベルと隣接構造そのものは抽出前のまま保持している（排他性 pin が依存する）。
+assert_grep "4-W splits in_worktree_unrecorded into its own case arm" "$TEARDOWN_HELPER" '^    in_worktree_unrecorded\)$'
+assert_grep "4-W emits the delegation marker" "$TEARDOWN_HELPER" 'CLEANUP_DELEGATED=1; reason=exit_worktree_unavailable'
 assert_grep "4-W states the branch criterion is ExitWorktree availability" "$CLEANUP" 'ExitWorktree` で main checkout へ退出できるか'
 # ガード迂回の禁止を明記する (MUST NOT — 実測で拒否済みの複合コマンドを再試行させない)。
 assert_grep "4-W forbids bypassing the harness guard" "$CLEANUP" "ガードを迂回する複合コマンド"
@@ -122,8 +133,8 @@ assert_grep "4-W forbids bypassing the harness guard" "$CLEANUP" "ガードを�
 # single backslash だと gawk が「不要なエスケープ」として潰し警告を出す（本ファイル冒頭の
 # `echo "\\[CONTEXT\\] WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1` を start に使う assert 群に付した
 # エスケープ規約コメントと同型。`\*` の場合は量化子へ潰れてレンジが EOF まで伸びる）。
-assert_grep_in_section "in_worktree arm keeps the dirty check" "$CLEANUP" \
-  '^  in_worktree\\)$' '^  in_worktree_unrecorded\\)$' 'git-status-filtered\.sh'
+assert_grep_in_section "in_worktree arm keeps the dirty check" "$TEARDOWN_HELPER" \
+  '^    in_worktree\\)$' '^    in_worktree_unrecorded\\)$' 'git-status-filtered\.sh'
 assert_grep "in_worktree arm still routes through ExitWorktree(keep)" "$CLEANUP" 'action: "keep"'
 
 echo "=== ステップ 4/5/9: 委譲モードのスキップガード (T-01) ==="
@@ -148,7 +159,7 @@ echo "=== 委譲配線の排他性 (T-01/T-03 negative control) ==="
 # ガードの混入 (state 系ステップへの誤挿入) を検出できない。前者は AC-3 を、後者は AC-1 前半
 # 「state 系項目は成功し」を丸ごと無効化するため、件数を固定して排他性そのものを pin する。
 assert "delegation marker is emitted exactly once" "1" \
-  "$(grep -c 'echo "\[CONTEXT\] CLEANUP_DELEGATED=1' "$CLEANUP")"
+  "$(grep -c 'echo "\[CONTEXT\] CLEANUP_DELEGATED=1' "$TEARDOWN_HELPER")"
 assert "delegation skip guard exists in exactly three steps" "3" \
   "$(grep -c '委譲モード（#2133）' "$CLEANUP")"
 # 件数固定は marker の **追加** を捕まえるが **移設** は捕まえない（総数が変わらないため）。
@@ -161,9 +172,9 @@ assert "delegation skip guard exists in exactly three steps" "3" \
 # 内側 grep は emit の **実行行** へアンカーする — 素の部分文字列一致だと、コメントアウトされた
 # emit を live として数え、arm 内に marker 名を含むコメントを 1 行足すだけで赤くなる。
 assert "delegation marker is emitted only from the in_worktree_unrecorded arm" "1" \
-  "$(awk -v start='^  in_worktree_unrecorded\\)$' -v end='^  \\*\\)$' '$0 ~ start, $0 ~ end' "$CLEANUP" | grep -c '^ *echo "\[CONTEXT\] CLEANUP_DELEGATED=1')"
+  "$(awk -v start='^    in_worktree_unrecorded\\)$' -v end='^    \\*\\)$' '$0 ~ start, $0 ~ end' "$TEARDOWN_HELPER" | grep -c '^ *echo "\[CONTEXT\] CLEANUP_DELEGATED=1')"
 assert "in_worktree arm never emits the delegation marker" "0" \
-  "$(awk -v start='^  in_worktree\\)$' -v end='^  in_worktree_unrecorded\\)$' '$0 ~ start, $0 ~ end' "$CLEANUP" | grep -c '^ *echo "\[CONTEXT\] CLEANUP_DELEGATED=1')"
+  "$(awk -v start='^    in_worktree\\)$' -v end='^    in_worktree_unrecorded\\)$' '$0 ~ start, $0 ~ end' "$TEARDOWN_HELPER" | grep -c '^ *echo "\[CONTEXT\] CLEANUP_DELEGATED=1')"
 
 echo "=== ステップ 12: 委譲モードの定型報告 (T-01/T-02) ==="
 # fail-loud: 委譲 4 項目は x に丸めず未完了として列挙する。固定対象は委譲 4 項目に限り、
@@ -204,7 +215,7 @@ assert_grep "Step 12 manual fallback is scoped to the main checkout with its exa
 # ため発火せず、ブランチの force-delete arm も `branch` エントリしか受け付けない = 不発コードになる。
 # 出現数を #1945 の 2 分岐（sandbox マスク検知 / busy 失敗）に固定して 3 箇所目の追加を検出する。
 assert "session_worktree record stays confined to the two #1945 branches" "2" \
-  "$(grep -c 'record --type session_worktree' "$CLEANUP")"
+  "$(grep -c 'record --type session_worktree' "$TEARDOWN_HELPER")"
 
 echo "=== ガード拒否条件の正確化 ==="
 # 「構造的に拒否」の一般化は誤り — helper スクリプト内部の cd は拒否されない (実測)。
@@ -214,6 +225,36 @@ assert_grep "4-W states which command shape the guard rejects" "$CLEANUP" \
 assert_not_grep "over-general 'structurally rejected' claim removed" "$CLEANUP" \
   'worktree 隔離ガードに構造的に拒否されるため'
 
-if ! print_summary "$(basename "$0")" "cleanup.md ステップ 4-W/5/12 の self-exclusion 配線・branch 回収・平易メッセージ contract (T-06) + in_worktree_unrecorded 委譲 routing"; then
+echo "=== ステップ 4-W / 5 / 6: 削除処理の bash が SKILL.md に残っていない (Issue #2492 T-09 / AC-9) ==="
+# 抽出の完了条件は「helper が存在する」ではなく「SKILL.md 側に実行本体が残っていない」。
+# 両方に存在する状態 (コピーしただけ) は drift 源そのもので、helper 側の pin だけでは検出できない。
+# 検査はセクション単位で行う — ファイル全体を grep すると、ステップ 4 (base 更新) や
+# ステップ 7 (transient branch) の抽出対象外 bash に一致して vacuous になる。
+_s4w=$(awk '/^### 4-W /{f=1} f && /^### 4 base/{exit} f' "$CLEANUP")
+_s5=$(awk '/^## ステップ 5: /{f=1} f && /^## ステップ 6: /{exit} f' "$CLEANUP")
+_s6=$(awk '/^## ステップ 6: /{f=1} f && /^## ステップ 7: /{exit} f' "$CLEANUP")
+# セクション抽出そのものが空振りしていないことを先に固定する (空文字列は下の -c 検査を全て 0 にし、
+# 「削除処理が残っていない」を無条件で満たしてしまう)。
+assert "T-09 section 4-W extraction is non-empty" "yes" "$([ -n "$_s4w" ] && echo yes || echo no)"
+assert "T-09 section 5 extraction is non-empty" "yes" "$([ -n "$_s5" ] && echo yes || echo no)"
+assert "T-09 section 6 extraction is non-empty" "yes" "$([ -n "$_s6" ] && echo yes || echo no)"
+# 4-W: worktree の削除・prune の実行行が無く、teardown helper を呼んでいる。
+assert "T-09 4-W has no inline worktree removal" "0" \
+  "$(printf '%s\n' "$_s4w" | grep -cE '^[[:space:]]*(LC_ALL=C )?git worktree (remove|prune)')"
+assert "T-09 4-W delegates to the teardown helper" "2" \
+  "$(printf '%s\n' "$_s4w" | grep -cE '^[[:space:]]*bash \{plugin_root\}/hooks/scripts/cleanup-session-worktree-teardown\.sh')"
+# 5: ブランチ削除の実行行が無く、branch delete helper を呼んでいる。
+assert "T-09 step 5 has no inline branch deletion" "0" \
+  "$(printf '%s\n' "$_s5" | grep -cE '^[[:space:]]*(LC_ALL=C )?git (branch -[dD]|push origin --delete|ls-remote)')"
+assert "T-09 step 5 delegates to the branch delete helper" "1" \
+  "$(printf '%s\n' "$_s5" | grep -cE '^[[:space:]]*bash \{plugin_root\}/hooks/scripts/cleanup-branch-delete\.sh')"
+# 6: state 削除の実行行 (rite_rm の定義・呼び出し、rm -f) が無く、purge helper を呼んでいる。
+# ステップ 6.0 (follow-up 起票) は抽出対象外なので、その helper 呼び出しはここでは数えない。
+assert "T-09 step 6 has no inline rite_rm" "0" \
+  "$(printf '%s\n' "$_s6" | grep -cE '^[[:space:]]*(rite_rm[[:space:]]|rite_rm\(\))')"
+assert "T-09 step 6 delegates to the state purge helper" "1" \
+  "$(printf '%s\n' "$_s6" | grep -cE '^[[:space:]]*bash \{plugin_root\}/hooks/scripts/cleanup-pr-state-purge\.sh')"
+
+if ! print_summary "$(basename "$0")" "cleanup.md ステップ 4-W/5/12 の self-exclusion 配線・branch 回収・平易メッセージ contract (T-06) + in_worktree_unrecorded 委譲 routing + helper 抽出の完了 (T-09)"; then
   exit 1
 fi
