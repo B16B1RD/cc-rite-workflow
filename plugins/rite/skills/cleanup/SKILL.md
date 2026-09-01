@@ -981,6 +981,9 @@ rationale: references/rationale.md#review-cleanup-reasons
   | `WIKI_INGEST_SKIPPED=1; reason=concurrent_ingest` | `x` | `ℹ️ Wiki ingest スキップ (別セッションが ingest 中。pending raw は次回回収)` |
   | `WIKI_INGEST_SKIPPED=1; reason=config_helper_unavailable` | ` ` | `⚠️ Wiki ingest スキップ (hooks/scripts/lib/wiki-config.sh を読み込めず設定値を判定できませんでした)。pending raw source があれば /rite:wiki-ingest を手動実行してください。` |
   | `WIKI_INGEST_FAILED=1` | ` ` | `⚠️ Wiki ingest が失敗しました。raw source は wiki branch に保持されています。` |
+  | `WIKI_INGEST_*` の行がいずれも無いとき | ` ` | `⚠️ Wiki ingest の実行結果を確認できませんでした。pending raw source は wiki branch に保持されています。main checkout で /rite:wiki-ingest を手動実行してください。` |
+
+  最終行は marker 不在一般の受け皿。`CLEANUP_WT=unknown` はステップ 9 全体を実行させず sentinel を 1 本も出さないが、ステップ 12 の委譲モード定型ブロックの対象外でもあるため、この行が無いと適用される規則が存在しない。**marker 不在を成功と読んではならない** — 不在は「ステップ 9 が実行されなかった」等、実行結果を確認できていない状態である。照合は `WIKI_INGEST_` の marker family でスコープする。
 
   push 失敗警告 (`{wiki_branch}` はステップ 9 で解決済):
   ```

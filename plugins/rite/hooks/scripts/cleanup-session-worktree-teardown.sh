@@ -138,7 +138,10 @@ cmd_detect() {
     --issue "$issue" --worktree-base "$ms_base") || _cwd_rc=$?
   if [ "$_cwd_rc" -ne 0 ]; then
     echo "WARNING: 分類 helper (cleanup-worktree-detect.sh) が rc=${_cwd_rc} で失敗しました。作業ツリーの分類ができていません" >&2
-    echo "  原因候補: helper 欠落 (rc=127) / helper 非可読 (rc=126) / 引数不正 (rc=2)" >&2
+    # 候補はこの call site から到達可能なものだけを挙げる。呼び先の cleanup-worktree-detect.sh は
+    # exit 文を持たず未知オプションを握り潰して 0 を返すため、引数不正では非 0 にならない。
+    # 本 helper は 5 オプションすべてを値付きで渡すので、rc=2 に至るのは呼び先自身の構文エラーだけ。
+    echo "  原因候補: helper 欠落 (rc=127) / helper 非可読 (rc=126) / helper 破損・構文エラー (rc=2)" >&2
     echo "[CONTEXT] CLEANUP_WT=unknown; reason=detect_classify_failed; rc=${_cwd_rc}"
     return 0
   fi

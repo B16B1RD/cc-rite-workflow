@@ -330,6 +330,13 @@ assert_grep "4-W unknown routing forbids running steps 1-4" "$CLEANUP" \
 # 配線されていること。CLEANUP_DELEGATED だけを見る形に戻ると、宣言だけがあって実効が無くなる。
 assert "unknown is wired into the delegation gates" "3" \
   "$(grep -cF -- 'または `[CONTEXT] CLEANUP_WT=unknown`' "$CLEANUP")"
+# unknown はステップ 9 を丸ごと skip させるため WIKI_INGEST_* sentinel が 1 本も出ない。
+# {wiki_ingest_check} が marker 不在の受け皿を持たないと、適用される規則が存在せず未実行の
+# Wiki ingest が x に倒れ、{outstanding_items_block} からも落ちる。兄弟 5 check は不在行を持つ。
+assert_grep "Step 12 wiki_ingest_check has a marker-absence row" "$CLEANUP" \
+  '`WIKI_INGEST_\*` の行がいずれも無いとき'
+assert_grep "Step 12 wiki_ingest_check forbids reading absence as success" "$CLEANUP" \
+  "Wiki ingest の実行結果を確認できませんでした"
 # 6: state 削除の実行行 (rite_rm の定義・呼び出し、rm -f) が無く、purge helper を呼んでいる。
 # ステップ 6.0 (follow-up 起票) は抽出対象外なので、その helper 呼び出しはここでは数えない。
 assert "T-09 step 6 has no inline rite_rm" "0" \

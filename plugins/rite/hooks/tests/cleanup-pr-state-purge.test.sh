@@ -68,6 +68,13 @@ assert_contains "dry-run: 対象を stdout に列挙する" "$out" \
   "[DRY-RUN] nb_sweep_done を削除対象として検出: $r/.rite/state/nb-sweep-done-42.txt"
 assert_contains "dry-run: review-results も列挙する" "$out" \
   "[DRY-RUN] review_results を退避/削除対象として検出: $r/.rite/review-results/42-cycle1.json"
+# positive assert だけでは列挙 glob の prefix 固定を外す変異が生存する（実削除側の
+# negative control は AC-5 が持つが、dry-run の報告内容は別に固定しないと守れない）。
+# 先頭スラッシュでアンカーし、部分一致 PR (4) と prefix が伸びた PR (420) の両境界を塞ぐ。
+assert_not_contains "dry-run: 別 PR の review-results を列挙しない" "$out" \
+  "/4-cycle1.json"
+assert_not_contains "dry-run: prefix が伸びた PR の review-results を列挙しない" "$out" \
+  "/420-cycle1.json"
 # `✅ … を削除:` は helper が **stderr** にしか出さない。stdout だけを見る assert は
 # どんな実装でも落ちない false positive になるため、両ストリームを結合して照合する。
 out_all=$(bash "$HELPER" --pr 42 --state-root "$r" --dry-run 2>&1)
