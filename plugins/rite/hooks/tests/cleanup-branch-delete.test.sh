@@ -108,7 +108,10 @@ remote_exists "$r" && ok "identity 未確認: リモートを削除しない" ||
 echo "=== cleanup-branch-delete: --dry-run（AC-6）==="
 
 r=$(make_repo merged)
-out=$(cd "$r" && bash "$HELPER" --branch "$BR" --pr-merged true --branch-identity-verified true --dry-run 2>/dev/null); rc=$?
+# family 検査は stdout だけでは足りない — ローカル family の BRANCH_DELETE_FAILED /
+# BRANCH_DELETE_UNMERGED は stderr 側 marker なので、stderr を捨てると dry-run がそれらを
+# 漏らす回帰を検出できない。両ストリームを結合して照合する。
+out=$(cd "$r" && bash "$HELPER" --branch "$BR" --pr-merged true --branch-identity-verified true --dry-run 2>&1); rc=$?
 assert_eq "dry-run: exit 0" "$rc" "0"
 assert_contains "dry-run: ローカル対象を stdout の marker で報告する" "$out" \
   "[CONTEXT] DRY_RUN_BRANCH_DELETE=1; branch=$BR"
@@ -116,10 +119,13 @@ assert_contains "dry-run: リモート対象を stdout の marker で報告す�
   "[CONTEXT] DRY_RUN_REMOTE_BRANCH_DELETE=1; branch=$BR"
 assert_not_contains "dry-run: ローカル削除済み marker を出さない" "$out" "[CONTEXT] BRANCH_DELETED=1"
 assert_not_contains "dry-run: リモート削除済み marker を出さない" "$out" "[CONTEXT] REMOTE_BRANCH_DELETED=1"
-# dry-run marker は消費側 (SKILL.md ステップ 12) が scope する 2 つの glob の外に居ること。
+# dry-run marker は消費側 (cleanup/SKILL.md ステップ 12) が scope する family の外に居ること。
 # family 内だと判定表のどの行にも一致せず fallback にも落ちない未定義状態を作る。
-assert_not_contains "dry-run: ローカル marker family に入らない" "$out" "[CONTEXT] BRANCH_DELETE_"
-assert_not_contains "dry-run: リモート marker family に入らない" "$out" "[CONTEXT] REMOTE_BRANCH_"
+# ローカル側は 4 パターン列挙、リモート側は単一 glob（helper docstring の marker 台帳を参照）。
+assert_not_contains "dry-run: ローカル family (BRANCH_DELETE_*) に入らない" "$out" "[CONTEXT] BRANCH_DELETE_"
+assert_not_contains "dry-run: ローカル family (BRANCH_ALREADY_ABSENT) に入らない" "$out" "[CONTEXT] BRANCH_ALREADY_ABSENT"
+assert_not_contains "dry-run: ローカル family (BRANCH_CHECK_FAILED) に入らない" "$out" "[CONTEXT] BRANCH_CHECK_FAILED"
+assert_not_contains "dry-run: リモート family (REMOTE_BRANCH_*) に入らない" "$out" "[CONTEXT] REMOTE_BRANCH_"
 local_exists "$r" && ok "dry-run: ローカルブランチを削除しない" || bad "dry-run がローカルブランチを削除した"
 remote_exists "$r" && ok "dry-run: リモートブランチを削除しない" || bad "dry-run がリモートブランチを削除した"
 

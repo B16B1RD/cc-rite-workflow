@@ -14,8 +14,12 @@
 #   cleanup-session-worktree-teardown.sh remove --worktree <path> --pr-merged <true|false> \
 #     --self-root <pid> [--dry-run]
 #
-# detect の `--issue` は空値・省略を許容する（関連 Issue 未識別は cleanup の正規経路で、
-# 分類は物理 cwd からも導出できるため）。remove の 3 引数は既定値を持たず未指定で exit 2。
+# detect の `--issue` は空値・省略を許容する（関連 Issue 未識別は cleanup の正規経路で、ここで
+# 落とすと marker が 1 本も出ず、呼び出し側が marker 不在を「削除成功」と読むため）。ただし空 issue
+# では物理 cwd からの `in_worktree_unrecorded` 導出（cleanup-worktree-detect.sh の physical
+# derivation。issue 番号でパス末尾を照合するため `[ -n "$issue" ]` を要求する）が働かず `none` に
+# 落ちる — 空 issue で分類できるのは flow-state に worktree 記録がある経路だけ。
+# remove の 3 引数は既定値を持たず未指定で exit 2。
 #
 # detect の出力 (stdout):
 #   [CONTEXT] CLEANUP_WT=<none|in_main|in_worktree|in_worktree_unrecorded>; worktree=<path>; \
@@ -89,11 +93,12 @@ cmd_detect() {
       *) usage "unknown option: $1" ;;
     esac
   done
-  # `--issue` の空値・省略は usage error にしない。呼び出し側 (cleanup/SKILL.md ステップ 3) は
-  # 「関連 Issue が識別できなければステップ 4 へ進む」を正規経路として持ち、抽出前の
-  # cleanup-worktree-detect.sh は空 issue でも rc=0 で分類を返していた。ここで落とすと
-  # marker が 1 本も出ず、{session_worktree_check} が marker 不在を「削除成功」と読むため
-  # 未削除の worktree が削除済みと報告される。
+  # `--issue` の空値・省略は usage error にしない。呼び出し側は cleanup/SKILL.md 4-W で、その
+  # cleanup/SKILL.md ステップ 3 が「関連 Issue が識別できなければステップ 4 へ進む」を正規経路と
+  # して宣言している。抽出前の cleanup-worktree-detect.sh は空 issue でも rc=0 で分類を返していた。
+  # ここで落とすと marker が 1 本も出ず、{session_worktree_check} が marker 不在を「削除成功」と
+  # 読むため未削除の worktree が削除済みと報告される。
+  # なお空 issue では physical derivation が働かず `none` に落ちる（docstring 冒頭を参照）。
 
   local ms_section ms_enabled ms_base flow_wt cur_top main_root detect cleanup_wt dirty
   ms_section=$(sed -n '/^multi_session:/,/^[a-zA-Z]/p' "$config" 2>/dev/null) || ms_section=""

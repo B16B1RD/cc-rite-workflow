@@ -363,7 +363,16 @@ rationale: references/rationale.md#cleanup-source-label
 ```bash
 # multi_session の有効性判定・worktree 状態の分類・main checkout の絶対パス確保・dirty チェックは
 # helper に委譲する。marker の意味と分岐は helper docstring が SoT。
-bash {plugin_root}/hooks/scripts/cleanup-session-worktree-teardown.sh detect --issue {issue_number}
+# `{issue_number}` は他の helper 引数と同じく quote する。unquoted のまま値が複数トークンに割れると
+# helper が unknown option で exit 2 し、marker を 1 本も出さない。
+# helper の rc は捨てない。rationale: references/rationale.md#helper-rc-capture
+_dt_rc=0
+bash {plugin_root}/hooks/scripts/cleanup-session-worktree-teardown.sh detect --issue "{issue_number}" || _dt_rc=$?
+if [ "$_dt_rc" -ne 0 ]; then
+  echo "WARNING: worktree detect helper が rc=${_dt_rc} で失敗しました。作業ツリーの分類ができていません" >&2
+  echo "  原因候補: {plugin_root} の未解決置換・helper 欠落 (rc=127) / helper 非可読 (rc=126) / 引数不正 (rc=2)" >&2
+  echo "[CONTEXT] CLEANUP_WT=unknown; reason=detect_helper_failed; rc=${_dt_rc}" >&2
+fi
 ```
 
 **分岐の基準は「worktree 内か」ではなく「`ExitWorktree` で main checkout へ退出できるか」**（#2133）。`in_worktree` は EnterWorktree 管理下で退出でき、`in_worktree_unrecorded` は path 入場で `ExitWorktree` が no-op になる — 後者では main checkout 操作が harness の worktree 隔離ガードに拒否されるため、実行せず委譲する。
@@ -383,16 +392,13 @@ rationale: references/rationale.md#exitworktree-delegation
      # 意味は helper docstring が SoT。
      # `--self-root` には**この Bash 呼び出しの `$PPID`**（= claude ハーネス）を渡す。helper 内で
      # `$PPID` を取ると helper を起動したシェルを指し、self-exclusion が意味を失う。
-     # helper の rc は捨てない。**marker 不在を「削除成功」と読んではならない**というステップ 12 の
-     # {session_worktree_check} 規約は、helper が起動すらしなかった場合（{plugin_root} の未解決置換 /
-     # helper 欠落で rc=127、引数不正で rc=2）に marker が 1 本も出ないことで破れる。rc を見て
-     # 失敗を marker に変換する（ステップ 6.0 の `_fu_rc` と同型）。
+     # helper の rc は捨てない。rationale: references/rationale.md#helper-rc-capture
      _wt_rc=0
      bash {plugin_root}/hooks/scripts/cleanup-session-worktree-teardown.sh remove \
        --worktree "{flow_wt}" --pr-merged "{pr_merged}" --self-root "$PPID" || _wt_rc=$?
      if [ "$_wt_rc" -ne 0 ]; then
-       echo "WARNING: worktree teardown helper が rc=${_wt_rc} で失敗しました。作業ツリーは未処理のまま残っています" >&2
-       echo "  原因候補: {plugin_root} の未解決置換 / helper 欠落・非可読 (rc=127) / 引数不正 (rc=2)" >&2
+       echo "WARNING: worktree teardown helper が rc=${_wt_rc} で失敗しました。作業ツリーは未処理のまま残り、reap manifest も arm されていないため自動回収は claim の stale 化と age guard を待ちます" >&2
+       echo "  原因候補: {plugin_root} の未解決置換・helper 欠落 (rc=127) / helper 非可読 (rc=126) / 引数不正 (rc=2)" >&2
        echo "[CONTEXT] WORKTREE_REMOVE_FAILED=1; path={flow_wt}; rc=${_wt_rc}" >&2
      fi
      ```
@@ -401,7 +407,8 @@ rationale: references/rationale.md#live-cwd-self-exclusion
   4. 削除失敗（`WORKTREE_REMOVE_FAILED`）、live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）、または sandbox マスク skip（`WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` — remove 試行自体が admin dir を半壊させるため試行せず委譲）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。busy 失敗時は上記の sandbox 干渉 WARNING も追加表示される（AC-5）。`WORKTREE_REMOVE_FAILED` / `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` は `{pr_merged}=true` のときのみ reap manifest（`.rite/tmp-artifacts.tsv`）へ `session_worktree` type でパスを記録する（`worktree` type ではない）。corpse 化した場合、パス記録で `pr-cycle-cleanup.sh` Step 5 の corpse age guard（24h 待ち）をバイパスさせ、mount 解放後の次回セッションで即座に回収できるようにする。
 rationale: references/rationale.md#session-worktree-reap
 - `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 上記 1〜2 をスキップ。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の self-exclusion 付き live-cwd guard が特に重要（live-cwd guard による遅延は別セッション在席時。これに加え sandbox マスク検知時（sandbox マスク）も削除を試行せず遅延する）。
-- `CLEANUP_WT=none`（multi_session 無効、または worktree 関連なし = 物理 cwd も当該 Issue の worktree でない）: 4-W 全体を no-op でスキップ。**注**: flow-state 未記録でも物理 cwd が当該 Issue の worktree なら `in_worktree_unrecorded` に分類されここには落ちない（#1622）。
+- `CLEANUP_WT=none`（multi_session 無効、または worktree 関連なし = 物理 cwd も当該 Issue の worktree でない）: 4-W 全体を no-op でスキップ。**注**: flow-state 未記録でも物理 cwd が当該 Issue の worktree なら `in_worktree_unrecorded` に分類されここには落ちない（#1622）。**ただし関連 Issue が未識別（`{issue_number}` 空）のときは物理 cwd 導出が働かず `none` に落ちる** — 導出が issue 番号でパス末尾を照合するため。この場合の worktree は次回セッション開始時の遅延 reap に委ねられる。
+- `CLEANUP_WT=unknown`（detect helper が起動できず分類を返せなかった）: 分類不能なので**上記の手順 1〜4 を実行しない**。`{main_root}` も `{flow_wt}` も未確定のため、ステップ 4 の base 更新（main checkout への `cd` を要する）へも進まない。ステップ 12 が未確認として列挙する。
 
 > **復旧: `/clear` が `Path does not exist` で失敗する場合**
 > セッション worktree（`.rite/worktrees/issue-{N}`）が遅延 reap または手動削除で消えた後、所有セッションをハーネスが resume すると cwd 復元先が無く `/clear` が `Error: Path "...worktrees/issue-{N}" does not exist` で失敗することがある。ハーネスの cwd レコード自体は rite から intercept できないため、万一発生した場合は次のいずれかで復旧する:
@@ -643,16 +650,12 @@ fi
 # 他 PR 誤削除防止の `{pr_number}-` prefix 固定 glob、review-results の退避/削除委譲、
 # rite_rm 6 種、marker の emit はすべて helper が持つ（契約は helper docstring が SoT）。
 #
-# helper の rc は捨てない。**marker 不在を「削除成功」と読んではならない**という
-# {review_cleanup_check} state 削除側の規約は、helper が起動すらしなかった場合
-# （{plugin_root} の未解決置換 / helper 欠落で rc=127、引数不正で rc=2）に marker が 1 本も
-# 出ないことで破れる。rc を見て失敗を marker に変換する（helper が内側の archive helper に
-# 対して採っているのと同じ形を、外側の境界にも適用する）。
+# helper の rc は捨てない。rationale: references/rationale.md#helper-rc-capture
 _sp_rc=0
 bash {plugin_root}/hooks/scripts/cleanup-pr-state-purge.sh --pr "{pr_number}" || _sp_rc=$?
 if [ "$_sp_rc" -ne 0 ]; then
   echo "WARNING: state purge helper が rc=${_sp_rc} で失敗しました。PR-specific state ファイルは未処理のまま残っています" >&2
-  echo "  原因候補: {plugin_root} の未解決置換 / helper 欠落・非可読 (rc=127) / 引数不正 (rc=2)" >&2
+  echo "  原因候補: {plugin_root} の未解決置換・helper 欠落 (rc=127) / helper 非可読 (rc=126) / 引数不正 (rc=2)" >&2
   echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=state_purge_helper_failed; pr={pr_number}; rc=${_sp_rc}" >&2
 fi
 ```
@@ -879,7 +882,7 @@ Status: {projects_status_result}
   - `main_root_unresolved` のとき（main checkout の絶対パスが未解決、またはそこへの `cd` に失敗）: ` ` + 「⚠️ main checkout ルートが解決できず base 更新を skip しました。`git fetch origin {base_branch} && git merge --ff-only origin/{base_branch}` を手動実行してください」を付記
   - `ff_failed_clean` / `ff_failed_divergent` / `ff_failed_discardable` のいずれかのとき（fast-forward 失敗。未コミット変更の有無・内容は marker ごとに異なるが、いずれも base 更新自体は未完了）: ` ` + 「⚠️ base ブランチの fast-forward 更新に失敗しました。`git status` で状態を確認し、`git fetch origin {base_branch} && git merge --ff-only origin/{base_branch}` を手動実行してください」を付記
   - いずれの `[CONTEXT] BASE_UPDATE=` 行も見つからないとき（ステップ 4 の bash block が実行されなかった等の想定外経路）: ` ` + 「⚠️ base 更新の実行結果が確認できませんでした。`git status` / `git log` で状態を確認してください」を付記
-- `{session_worktree_check}`: multi_session 無効 or worktree 未使用なら行ごと省略。以下を**上から評価し最初に一致したもの**を採用する（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD` / `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` / `WORKTREE_REMOVE_FAILED` は Step 4-W guard の if/elif/else で排他だが、複数の `[CONTEXT]` 行が文脈に残る可能性に備えて評価順序を固定する）:
+- `{session_worktree_check}`: `[CONTEXT] CLEANUP_WT=unknown` のとき、または `[CONTEXT] CLEANUP_WT=` 行が 1 本も無いとき（ステップ 4-W の detect が実行されなかった／helper が起動できなかった）は**行を省略せず** ` ` + 「⚠️ 作業ツリーの検出自体が実行できませんでした。`git worktree list` で残存を確認し、あれば `git worktree remove --force <path> && git worktree prune` を手動実行してください」を付記する。分類が `none`（multi_session 無効 or worktree 未使用）のときだけ行ごと省略する。分類が取れている場合は以下を**上から評価し最初に一致したもの**を採用する（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD` / `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` / `WORKTREE_REMOVE_FAILED` は Step 4-W guard の if/elif/else で排他だが、複数の `[CONTEXT]` 行が文脈に残る可能性に備えて評価順序を固定する）:
   - `WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1` のとき（別のセッションが作業ツリーを使用中のため削除を見送った）: ` ` + 以下を付記
     ```
     ℹ️ この作業ツリーは別のセッションが使用中のため、削除を見送りました。そのセッションが終了したあと、次回のセッション開始時に作業ツリーとローカルブランチが自動で回収されます。
@@ -896,7 +899,7 @@ Status: {projects_status_result}
       すぐに消したい場合: git worktree remove --force '{flow_wt}' && git worktree prune
       （上記コマンドが「Device or resource busy」で失敗する場合、Step 4-W の sandbox 干渉 WARNING を参照し、sandbox 外のシェルで実行してください）
     ```
-  - `[CONTEXT] WORKTREE_REMOVE_*` のいずれの行も無い（削除成功）とき: `x`。**marker family でスコープすること**。ステップ 4-W は削除成功時に marker を出さないため、本 check に限り marker 不在は削除成功を意味してよい
+  - `[CONTEXT] WORKTREE_REMOVE_*` のいずれの行も無い（削除成功）とき: `x`。**marker family でスコープすること**。ステップ 4-W は削除成功時に marker を出さないため、本 check に限り marker 不在は削除成功を意味してよい。**ただしこの読み替えが許されるのは削除側（`WORKTREE_REMOVE_*`）family に限る** — 検出側（`CLEANUP_WT=`）の marker 不在は上記の先頭ルールが未確認として扱う
 - `{local_branch_check}`: ステップ 5 の `[CONTEXT]` 行で判定する。本チェックはローカルとリモートの 2 つの削除を 1 行で表すため、**ローカル側判定とリモート側判定を独立に評価し、両方が `x` 相当のときだけ `x`** とする（どちらか一方でも未完了なら ` ` にし、未完了だった側の付記をすべて列挙する）。ローカル成功をリモート失敗より先に評価して `x` に丸めると、リモート側の残作業が silent に消える（#2016）。
 
   **marker 名は `[CONTEXT] ` prefix 込みで一致させる（部分文字列一致させない）**: リモート側 marker `REMOTE_BRANCH_DELETE_FAILED` はローカル側 marker `BRANCH_DELETE_FAILED` を部分文字列として含むため、非アンカーで照合すると `[CONTEXT] REMOTE_BRANCH_DELETE_FAILED=1` の行にローカル側ルールが先に一致し、リモートの残渣に対してローカル削除コマンドを案内する誤処方になる。`[CONTEXT] ` の直後から一致させれば `REMOTE_` が間に入るため衝突しない。

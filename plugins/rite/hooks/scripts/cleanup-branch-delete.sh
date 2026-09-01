@@ -23,9 +23,12 @@
 #     stderr: REMOTE_BRANCH_CHECK_FAILED / REMOTE_BRANCH_DELETE_FAILED
 #   **どの経路も必ず marker を emit する** — marker 不在は「削除成功」ではなく
 #   「実行結果を確認できていない」を意味する契約。
-#   dry-run marker に `DRY_RUN_` を前置するのは、呼び出し側 (SKILL.md ステップ 12) が
-#   `BRANCH_DELETE_*` / `REMOTE_BRANCH_*` の glob で marker family を scope するため。
-#   family 内の名前にすると、判定表のどの行にも一致せず fallback にも落ちない未定義状態を作る。
+#   dry-run marker に `DRY_RUN_` を前置するのは、呼び出し側 (cleanup/SKILL.md ステップ 12) が
+#   marker family を scope して照合するため — ローカル側は `BRANCH_DELETED` / `BRANCH_DELETE_*` /
+#   `BRANCH_ALREADY_ABSENT` / `BRANCH_CHECK_FAILED` の 4 パターン列挙、リモート側は
+#   `REMOTE_BRANCH_*` の単一 glob（ローカルは単一 glob ではない点に注意。`BRANCH_DELETE_*` の
+#   外なら安全、とは言えない）。いずれかの family に入る名前にすると、判定表のどの行にも一致せず
+#   fallback にも落ちない未定義状態を作る。
 #
 # --branch-identity-verified を必須にする理由:
 #   削除対象が PR head と一致することの確認は呼び出し側（Step 1.3 の headRefName 完全一致）の

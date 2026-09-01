@@ -26,9 +26,12 @@ assert_eq(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (expected='$3' actua
 make_repo(){
   d=$(mktemp -d "$TMP_ROOT/repo.XXXXXX")
   # run-tests.sh は suite 実行時に CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID を unset し、
-  # 各 sandbox の `.rite-session-id` へフォールバックさせる。これを置かないと flow-state の
+  # 各 sandbox の session-id ファイルへフォールバックさせる。これを置かないと flow-state の
   # set と get が別の session_id を解決しうる（単体では env 由来で一致するため suite でだけ落ちる）。
-  echo "550e8400-e29b-41d4-a716-446655440000" > "$d/.rite-session-id"
+  # 書き込み先は canonical な `.rite/session-id`（legacy の `.rite-session-id` は relocated-state
+  # -migrate.sh の移送元）。fixture の .gitignore が `.rite/` を無視するので追跡もされない。
+  mkdir -p "$d/.rite"
+  echo "550e8400-e29b-41d4-a716-446655440000" > "$d/.rite/session-id"
   git -C "$d" init -q -b develop
   git -C "$d" config user.email test@example.com
   git -C "$d" config user.name test
@@ -94,22 +97,32 @@ assert_contains "detect: dirty 一覧の終端デリミタ" "$out" "--- dirty fi
 
 # `--issue` の空値・省略は usage error にしない（関連 Issue 未識別は cleanup の正規経路）。
 # 落とすと marker が 1 本も出ず、消費側が marker 不在を「削除成功」と読む。
+# marker の **値** まで固定する。prefix だけの pin は「空 issue では physical derivation が
+# 働かず none に落ちる」という実挙動を隠し、docstring の過大な主張を素通しする。
+# 対照として、同じ fixture で issue 番号を渡せば in_worktree_unrecorded に分類される。
 r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+out=$(cd "$wt" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null)
+assert_contains "detect: 対照 — issue 番号ありは physical derivation が効く" "$out" \
+  "[CONTEXT] CLEANUP_WT=in_worktree_unrecorded; worktree=$wt"
 out=$(cd "$wt" && bash "$HELPER" detect --issue --config "$r/rite-config.yml" 2>/dev/null); rc=$?
 assert_eq "detect: --issue の値欠落でも exit 0" "$rc" "0"
-assert_contains "detect: --issue 値欠落でも CLEANUP_WT marker を必ず出す" "$out" "[CONTEXT] CLEANUP_WT="
+assert_contains "detect: --issue 値欠落でも CLEANUP_WT marker を必ず出す（値は none）" "$out" \
+  "[CONTEXT] CLEANUP_WT=none;"
 out=$(cd "$wt" && bash "$HELPER" detect --config "$r/rite-config.yml" 2>/dev/null); rc=$?
 assert_eq "detect: --issue 省略でも exit 0" "$rc" "0"
-assert_contains "detect: --issue 省略でも CLEANUP_WT marker を必ず出す" "$out" "[CONTEXT] CLEANUP_WT="
+assert_contains "detect: --issue 省略でも CLEANUP_WT marker を必ず出す（値は none）" "$out" \
+  "[CONTEXT] CLEANUP_WT=none;"
 # 明示的な空文字列トークン。値として消費しないと次の周回で "unknown option" の usage error に
 # 落ち、marker なしで exit 2 する（トークンの形を変えた同じ欠陥）。
 out=$(cd "$wt" && bash "$HELPER" detect --issue "" --config "$r/rite-config.yml" 2>/dev/null); rc=$?
 assert_eq "detect: --issue \"\" (明示的な空文字列) でも exit 0" "$rc" "0"
-assert_contains "detect: --issue \"\" でも CLEANUP_WT marker を必ず出す" "$out" "[CONTEXT] CLEANUP_WT="
+assert_contains "detect: --issue \"\" でも CLEANUP_WT marker を必ず出す（値は none）" "$out" \
+  "[CONTEXT] CLEANUP_WT=none;"
 # 引数順を入れ替えた形（末尾が空文字列）でも同じ。
 out=$(cd "$wt" && bash "$HELPER" detect --config "$r/rite-config.yml" --issue "" 2>/dev/null); rc=$?
 assert_eq "detect: 末尾 --issue \"\" でも exit 0" "$rc" "0"
-assert_contains "detect: 末尾 --issue \"\" でも CLEANUP_WT marker を必ず出す" "$out" "[CONTEXT] CLEANUP_WT="
+assert_contains "detect: 末尾 --issue \"\" でも CLEANUP_WT marker を必ず出す（値は none）" "$out" \
+  "[CONTEXT] CLEANUP_WT=none;"
 
 # detect は read-only なので --dry-run を受理して no-op（AC-6 の「各 helper」を満たす）。
 r=$(make_repo); wt="$r/.rite/worktrees/issue-1"

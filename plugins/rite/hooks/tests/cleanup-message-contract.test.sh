@@ -245,8 +245,20 @@ assert "T-09 section 6 extraction is non-empty" "yes" "$([ -n "$_s6" ] && echo y
 # 検査対象は bash フェンス内のコード行のみ。散文には marker 名や手動復旧コマンドが
 # 引用として現れるため (例: BRANCH_DELETE_UNMERGED 時にユーザーが強制削除を選ぶ手順の説明)、
 # 節全体に当てると AC-9 が禁じていない散文で赤くなる。
-_bash_fenced() { awk '/^[[:space:]]*```bash$/{f=1;next} f && /^[[:space:]]*```$/{f=0;next} f'; }
+# フェンスは info string を見ずにトグルする。`” ```bash ”` の完全一致で開始判定すると、
+# フェンス言語を `sh` に変える・`title=` を付ける等の無害に見える Markdown 編集だけで抽出が
+# 0 行になり、下の 3 ゲートが揃って vacuous 0 で pass する (実測: step 5 のフェンスを ```sh に
+# 変えると削除コマンドを再注入してもスイート green)。タグ無しフェンス内の削除本体も同時に覆う。
+_bash_fenced() { awk '/^[[:space:]]*```/{f=!f;next} f'; }
 _strip_comments() { grep -v '^[[:space:]]*#'; }
+# フェンス抽出そのものの空振りも固定する (セクション抽出と同じ理由。こちらは節が非空でも
+# フェンス判定が外れた瞬間に 0 行になるため、上の section 非空 assert では守れない)。
+assert "T-09 4-W bash-fence extraction is non-empty" "yes" \
+  "$(printf '%s\n' "$_s4w" | _bash_fenced | grep -q . && echo yes || echo no)"
+assert "T-09 step 5 bash-fence extraction is non-empty" "yes" \
+  "$(printf '%s\n' "$_s5" | _bash_fenced | grep -q . && echo yes || echo no)"
+assert "T-09 step 6 bash-fence extraction is non-empty" "yes" \
+  "$(printf '%s\n' "$_s6" | _bash_fenced | grep -q . && echo yes || echo no)"
 # 4-W: worktree の削除・prune の実行行が無く、teardown helper を呼んでいる。
 assert "T-09 4-W has no inline worktree removal" "0" \
   "$(printf '%s\n' "$_s4w" | _bash_fenced | _strip_comments | grep -cE '(^|[;&|[:space:]])git worktree (remove|prune)')"
@@ -258,19 +270,34 @@ assert "T-09 step 5 has no inline branch deletion" "0" \
 assert "T-09 step 5 delegates to the branch delete helper" "1" \
   "$(printf '%s\n' "$_s5" | grep -cE '^[[:space:]]*bash \{plugin_root\}/hooks/scripts/cleanup-branch-delete\.sh')"
 # 呼び出しの **引数** を pin する。件数だけの pin は、ガードを駆動する 2 引数を literal へ潰す
-# 変異 (identity→true / pr-merged→true) をスイート全体で素通しする (実測: 3 変異とも 150/150 green)。
+# 変異 (identity→true / pr-merged→true) をスイート全体で素通しする (実測済み)。
 assert "T-09 step 5 threads the identity flag" "1" \
   "$(printf '%s\n' "$_s5" | grep -cF -- '--branch-identity-verified "{branch_identity_verified}"')"
 assert "T-09 step 5 threads the pr-merged flag" "1" \
   "$(printf '%s\n' "$_s5" | grep -cF -- '--pr-merged "{pr_merged}"')"
 assert "T-09 4-W threads the pr-merged flag" "1" \
   "$(printf '%s\n' "$_s4w" | grep -cF -- '--pr-merged "{pr_merged}"')"
+# detect の --issue も quote する。unquoted だと値が複数トークンに割れたとき helper が
+# unknown option で exit 2 し、marker を 1 本も出さない。
+assert "T-09 4-W quotes the issue argument" "1" \
+  "$(printf '%s\n' "$_s4w" | grep -cF -- 'detect --issue "{issue_number}"')"
 # helper の rc を捨てないこと。marker 不在を「削除成功」と読む消費側の規約は、helper が
 # 起動しなかった場合に marker が 1 本も出ないことで破れる。
+assert "T-09 4-W captures the detect helper rc" "1" \
+  "$(printf '%s\n' "$_s4w" | grep -cF -- '|| _dt_rc=$?')"
 assert "T-09 4-W captures the teardown helper rc" "1" \
   "$(printf '%s\n' "$_s4w" | grep -cF -- '|| _wt_rc=$?')"
 assert "T-09 step 6 captures the state purge helper rc" "1" \
   "$(printf '%s\n' "$_s6" | grep -cF -- '|| _sp_rc=$?')"
+# rc 捕捉だけでは修正の本体を守れない。rc を捕捉しても marker を出さなければ消費側の
+# 「marker 不在 = 削除成功」は閉じないため、marker emit 行そのものを pin する
+# (実測: marker 2 行だけを削除した変異はスイート全体で差分ゼロだった)。
+assert "T-09 4-W emits the detect failure marker" "1" \
+  "$(printf '%s\n' "$_s4w" | grep -cF -- '[CONTEXT] CLEANUP_WT=unknown; reason=detect_helper_failed; rc=')"
+assert "T-09 4-W emits the removal failure marker" "1" \
+  "$(printf '%s\n' "$_s4w" | grep -cF -- '[CONTEXT] WORKTREE_REMOVE_FAILED=1; path={flow_wt}; rc=')"
+assert "T-09 step 6 emits the state purge failure marker" "1" \
+  "$(printf '%s\n' "$_s6" | grep -cF -- '[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=state_purge_helper_failed')"
 # 6: state 削除の実行行 (rite_rm の定義・呼び出し、rm -f) が無く、purge helper を呼んでいる。
 # ステップ 6.0 (follow-up 起票) は抽出対象外なので、その helper 呼び出しはここでは数えない。
 assert "T-09 step 6 has no inline rite_rm" "0" \

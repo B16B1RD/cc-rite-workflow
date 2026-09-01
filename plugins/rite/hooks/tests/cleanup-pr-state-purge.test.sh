@@ -106,18 +106,44 @@ assert_eq "既定解決: exit 0" "$rc" "0"
 assert_absent "既定解決: 解決された root 配下の state を削除する" "$r/.rite/state/nb-sweep-done-42.txt"
 assert_present "既定解決: 別 PR の state は残る" "$r/.rite/state/nb-sweep-done-4.txt"
 
+# 上の TC は cwd == 解決先なので「resolver の結果を使っている」ことを判別できない
+# (resolver を呼びつつ戻り値を捨てて cwd に倒す変異が素通りする)。linked worktree から呼んで
+# cwd ≠ 解決先を作り、main checkout 側の state が消えることまで固定する。これは helper 自身が
+# 「セッション worktree に書かれて main checkout の削除が no-op になる不整合を防ぐ」と名指しする
+# 本番欠陥そのもの。
+r=$(mktemp -d "$TMP_ROOT/root.XXXXXX")
+git -C "$r" init -q -b main
+git -C "$r" config user.email test@example.com
+git -C "$r" config user.name test
+echo x > "$r/README.md"
+git -C "$r" add README.md
+git -C "$r" commit -qm init
+git -C "$r" worktree add -q "$r/.rite/worktrees/issue-99" -b feat/x
+seed "$r"   # state は main checkout 側にだけ置く
+out=$(cd "$r/.rite/worktrees/issue-99" && bash "$HELPER" --pr 42 2>&1); rc=$?
+assert_eq "linked worktree: exit 0" "$rc" "0"
+assert_absent "linked worktree から呼んでも main checkout 側の state を削除する" \
+  "$r/.rite/state/nb-sweep-done-42.txt"
+assert_present "linked worktree: 別 PR の state は残る" "$r/.rite/state/nb-sweep-done-4.txt"
+
 # state root を解決できない環境では WARNING を出して cwd へ倒す（silent に no-op しない）。
 # state-path-resolve.sh を欠いた stub plugin root から helper を呼んで再現する。
 r=$(mktemp -d "$TMP_ROOT/root.XXXXXX"); seed "$r"
 stub_root=$(mktemp -d "$TMP_ROOT/stubroot.XXXXXX")
 mkdir -p "$stub_root/hooks/scripts"
 cp "$HELPER" "$stub_root/hooks/scripts/"
-cp "$SCRIPT_DIR/../scripts/review-results-archive-or-rm.sh" "$stub_root/hooks/scripts/" 2>/dev/null || true
+# archive helper は依存ごと持ち込む。gitignore-ensure.sh を欠くと source 失敗のまま続行し
+# (helper は -e を張らない)、review-results を 1 件も処理しないまま exit 0 する — この
+# レッグを「検証したつもり」で素通りさせる。コピー元は常在するので失敗は fail-loud にする。
+cp "$SCRIPT_DIR/../scripts/review-results-archive-or-rm.sh" "$stub_root/hooks/scripts/"
+cp "$SCRIPT_DIR/../gitignore-ensure.sh" "$stub_root/hooks/"
 # state-path-resolve.sh は意図的に置かない → 解決失敗 → cwd fallback
 out=$(cd "$r" && bash "$stub_root/hooks/scripts/cleanup-pr-state-purge.sh" --pr 42 2>&1); rc=$?
 assert_eq "state root 解決失敗: exit 0（非ブロッキング）" "$rc" "0"
 assert_contains "state root 解決失敗: WARNING を出す" "$out" "state-path-resolve.sh の解決に失敗"
 assert_absent "state root 解決失敗: cwd を root として削除する" "$r/.rite/state/nb-sweep-done-42.txt"
+assert_absent "state root 解決失敗: cwd 配下の review-results も処理される" \
+  "$r/.rite/review-results/42-cycle1.json"
 
 echo "=== cleanup-pr-state-purge: 対象なし / helper 失敗 ==="
 
