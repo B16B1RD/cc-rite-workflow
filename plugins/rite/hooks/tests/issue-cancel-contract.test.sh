@@ -119,9 +119,11 @@ assert_grep "T-02 (d) a mismatching worktree stops the removal and the branch de
 # 残置が完了として報告される。marker を判定に使うことと、その帰結（残置として列挙する）を pin する。
 # 判定は bash の捕捉層に持たせない — 捕捉に失敗すると marker ごと消えて「観測できていない」が
 # 「成功」に化けるため、sibling (cleanup/SKILL.md) と同じく出力を読む形であることも固定する。
+# marker 名は helper 契約を説明する散文にも出るため、判定表の行そのものへアンカーする
+# （散文の言及だけを pin すると、判定表の左辺を rc 単独へ書き換えても緑のまま通る）。
 assert_grep_in_section "T-02 (e) state purge is judged by its partial-failure marker, not rc alone" "$SKILL" \
   '^### 4\.4 PR-specific state ファイルの削除' '^### 4\.5' \
-  'REVIEW_CLEANUP_PARTIAL_FAILURE=1'
+  '^\| `REVIEW_CLEANUP_PARTIAL_FAILURE=1` を含む'
 assert_grep_in_section "T-02 (e) a partial state purge is surfaced as residue" "$SKILL" \
   '^### 4\.4 PR-specific state ファイルの削除' '^### 4\.5' \
   'Phase 7 に「PR-specific state ファイル: 残置」として列挙する'
@@ -145,7 +147,20 @@ assert_grep_in_section "T-02 (e) the reap WARNING prefix is documented as not fa
 # 静かに「残置なし」へ倒れるため、その形へ戻す変更を赤くする。
 assert_grep_in_section "T-02 (e) the reap residue rule is written as an exclusion, not an enumeration" "$SKILL" \
   '^### 4\.6 claim 解放と cross-session state の回収' '^### 4\.7' \
-  '\*\*失敗語彙を列挙して判定しない\*\*'
+  'の告知\*\*以外\*\*が 1 行でもある'
+# helper が起動せず接頭辞行を 1 本も出さない rc≠0 経路も残置へ落とす（4.4 の判定表と対称）。
+# 除外形だけだと母集団が空になり「残置なし」へ倒れる。
+assert_grep_in_section "T-02 (e) a failed reap invocation is surfaced as residue too" "$SKILL" \
+  '^### 4\.6 claim 解放と cross-session state の回収' '^### 4\.7' \
+  '\*\*または上記 WARNING が出た\*\*'
+assert_grep_in_section "T-02 (e) the reap residue consequence is pinned" "$SKILL" \
+  '^### 4\.6 claim 解放と cross-session state の回収' '^### 4\.7' \
+  'Phase 7 に「cross-session state: 残置」として列挙する'
+# 呼び出し行そのものを固定する positive pin。negative control は grep が行単位のため、
+# 行継続で書かれた捕捉層を素通しする（F-18 と同じ盲点）。4.6 側と対称に 4.4 へも置く。
+assert_grep_in_section "T-02 (e) the state purge call passes its output through" "$SKILL" \
+  '^### 4\.4 PR-specific state ファイルの削除' '^### 4\.5' \
+  '^bash \{plugin_root\}/hooks/scripts/cleanup-pr-state-purge\.sh --pr "\{pr_number\}" 2>&1'
 
 echo "=== T-03: gh pr close が Projects Status 更新より先に呼ばれる (AC-3) ==="
 # 順序 pin は**実行行**を見る。冒頭の「実行順序の不変条件」節は同じコマンド名を散文で引用するため、

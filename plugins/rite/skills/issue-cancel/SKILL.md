@@ -358,7 +358,7 @@ bash {plugin_root}/hooks/flow-state.sh reap-issue --issue {issue_number} 2>&1 \
   || echo "WARNING: reap-issue が失敗しました（stale flow-state / run-queue / lock が残る可能性）" >&2
 ```
 
-`WARNING: reap-issue:` 行のうち `stale flow-state (active=true)` の告知**以外**が 1 行でもあれば、Phase 7 に「cross-session state: 残置」として列挙する。告知行だけのときは残置ではない。**失敗語彙を列挙して判定しない** — helper に新しい失敗メッセージが増えたとき、列挙形は静かに「残置なし」へ倒れる。
+`WARNING: reap-issue:` 行のうち `stale flow-state (active=true)` の告知**以外**が 1 行でもある、**または上記 WARNING が出た**（helper が起動せず接頭辞行が 1 本も出ない rc≠0 経路）ときは、Phase 7 に「cross-session state: 残置」として列挙する。告知行だけのときは残置ではない。**失敗語彙を列挙して判定しない** — helper に新しい失敗メッセージが増えたとき、列挙形は静かに「残置なし」へ倒れる。
 
 ### 4.7 Wiki ingest は実行しない
 
