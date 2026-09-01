@@ -60,6 +60,7 @@ The command prefix `rite` was chosen for:
 | `/rite:issue-create` | Create new Issue | `<title or description>` |
 | `/rite:issue-update` | Update work memory | `[memo]` |
 | `/rite:issue-close` | Check Issue completion | `<Issue number>` |
+| `/rite:issue-cancel` | Cancel an Issue (close as not planned, board Status → Cancelled, clean up PR / branch / worktree / state) | `<Issue number> [reason]` |
 | `/rite:issue-edit` | Interactively edit existing Issue | `<Issue number>` |
 | `/rite:open` | Start work end-to-end (branch → plan → implement → lint → draft PR) | `<Issue number>` |
 | `/rite:iterate` | Loop review ⇄ fix until mergeable | `<PR number>` |
@@ -175,6 +176,7 @@ rite-workflow/
 │ ├── issue-list/ # /rite:issue-list (+ references/rationale.md)
 │ ├── issue-update/ # /rite:issue-update (+ references/rationale.md)
 │ ├── issue-close/ # /rite:issue-close (+ references/rationale.md)
+│ ├── issue-cancel/ # /rite:issue-cancel (Issue 中止: NOT_PLANNED クローズ + Status Cancelled + 後片付け; + references/rationale.md)
 │ ├── issue-edit/ # /rite:issue-edit (+ references/rationale.md)
 │ ├── issue-implement/ # /rite:issue-implement (sub-skill, /rite:open から呼出; + references/rationale.md)
 │ # --- Wiki ---

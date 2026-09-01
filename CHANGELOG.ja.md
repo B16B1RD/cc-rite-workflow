@@ -31,6 +31,10 @@ marketplace 配布のプラグインファイルではないため、`number-ref
 
 ## [Unreleased]
 
+### 追加
+
+- **`/rite:issue-cancel` で「やらないと決めた Issue」を中止できる** — `--reason "not planned"` でクローズし、board Status を終端の `Cancelled` にして、必須の中止理由をクローズコメントに残す。PR・ブランチ・セッション worktree・作業メモリを持つ着手後の Issue は既存の cleanup helper 経由で片付ける（PR をマージせずクローズし、worktree・ブランチ・PR-specific state・ローカル作業メモリを削除）。「PR クローズ → Status → Issue クローズ」の順序は機構として効いており（PR を先に閉じることで `post-compact.sh` が Status を `In Review` へ引き戻す窓が消える）、PR クローズが失敗した場合は board を進めずフロー全体を止める。子 Issue を中止しても親へ `Done` は伝播しない。起動は人間の明示指示に限る。(#2493)
+
 ## [0.14.0] - 2026-08-30
 
 ### 修正
