@@ -139,14 +139,29 @@ gh pr list -R {owner_repo} --head "{branch_name}" --state all --json number,stat
 ブランチが未確定（`{branch_identity_verified}=false`）、または上記が 0 件のときは **Issue の timeline から候補 PR を引く**。`gh pr list` には Issue でスコープする手段が無い — `--search "linked:issue:{issue_number}"` は GitHub が `linked:issue` を boolean qualifier として解釈して `:{N}` を無視するため任意の Issue で同じ集合を返し、`--state all --limit N` は最新 N 件の取得**窓**でしかない（活発なリポジトリでは常に飽和し、窓外のマージ済み PR を「PR 無し」と読ませる）:
 rationale: references/rationale.md#issue-scoped-pr-lookup
 
+`gh api` は**単体コマンドとして rc を確定させてから**整形へ渡す。パイプの末尾に置くと `$?` は最終段（`sort`）のものになり、取得失敗の rc が消えて直下の fail-loud ガードが到達不能になる。`select` は truthiness で書く — `!= null` は `hooks/pre-tool-bash-guard.sh` が実行前に deny するため、記述どおりに走らない。
+rationale: references/rationale.md#timeline-rc-capture-first
+
 ```bash
 _tl_rc=0
-pr_candidates=$(gh api "repos/{owner}/{repo}/issues/{issue_number}/timeline" --paginate \
-  --jq '.[] | select(.event=="cross-referenced" or .event=="connected") | .source.issue | select(.pull_request != null) | .number' \
-  | sort -un) || _tl_rc=$?
+_tl_err=$(mktemp "${TMPDIR:-/tmp}/rite-cancel-timeline-err-XXXXXX") || {
+  echo "ERROR: timeline 取得用の stderr 退避ファイルを作成できません。関連 PR の有無を確認できないため中止します" >&2
+  exit 1
+}
+_tl_raw=$(gh api "repos/{owner}/{repo}/issues/{issue_number}/timeline" --paginate \
+  --jq '.[] | select(.event=="cross-referenced" or .event=="connected") | .source.issue | select(.pull_request) | .number' \
+  2>"$_tl_err") || _tl_rc=$?
 if [ "$_tl_rc" -ne 0 ]; then
   echo "ERROR: Issue timeline を取得できません (rc=${_tl_rc})。関連 PR の有無を確認できないため中止します" >&2
+  head -5 "$_tl_err" | sed 's/^/  /' >&2
+  rm -f "$_tl_err"
   exit 1
+fi
+rm -f "$_tl_err"
+if [ -n "$_tl_raw" ]; then
+  pr_candidates=$(printf '%s\n' "$_tl_raw" | sort -un)
+else
+  pr_candidates=""
 fi
 echo "[CONTEXT] CANCEL_PR_CANDIDATES=$(printf '%s' "$pr_candidates" | tr '\n' ',')"
 ```
@@ -307,13 +322,30 @@ LC_ALL=C git branch -D -- "{branch_name}" && echo "[CONTEXT] BRANCH_DELETED=1; b
 
 > **`{pr_number}` が未確定（PR 無し）のときは本ステップをスキップする**（削除対象の glob が確定しない）。
 
+helper は全運用経路で rc=0 を返し、部分失敗（rm 失敗・内側 helper 起動失敗）は `REVIEW_CLEANUP_PARTIAL_FAILURE=1` marker でのみ通知する。rc だけを見ると残置が完了として報告されるため、**marker の有無で判定する**（`skills/cleanup/SKILL.md` の `{review_cleanup_check}` と同じ family 照合）。
+rationale: references/rationale.md#helper-marker-not-rc
+
 ```bash
 _sp_rc=0
-bash {plugin_root}/hooks/scripts/cleanup-pr-state-purge.sh --pr "{pr_number}" || _sp_rc=$?
+_sp_err=$(mktemp "${TMPDIR:-/tmp}/rite-cancel-state-purge-err-XXXXXX") || _sp_err=""
+bash {plugin_root}/hooks/scripts/cleanup-pr-state-purge.sh --pr "{pr_number}" 2>"${_sp_err:-/dev/null}" || _sp_rc=$?
+[ -n "$_sp_err" ] && [ -s "$_sp_err" ] && cat "$_sp_err" >&2
 if [ "$_sp_rc" -ne 0 ]; then
   echo "WARNING: state purge helper が rc=${_sp_rc} で失敗しました。PR-specific state ファイルが残っています" >&2
+  echo "[CONTEXT] CANCEL_STATE_PURGE=failed; reason=helper_rc; rc=${_sp_rc}" >&2
+elif [ -n "$_sp_err" ] && grep -q 'REVIEW_CLEANUP_PARTIAL_FAILURE=1' "$_sp_err"; then
+  echo "WARNING: state purge が部分失敗しました。PR-specific state ファイルが残っています" >&2
+  echo "[CONTEXT] CANCEL_STATE_PURGE=partial" >&2
+else
+  echo "[CONTEXT] CANCEL_STATE_PURGE=ok" >&2
 fi
+[ -n "$_sp_err" ] && rm -f "$_sp_err"
 ```
+
+| `CANCEL_STATE_PURGE` | アクション |
+|---|---|
+| `ok` | 4.5 へ |
+| `partial` / `failed` | 4.5 へ進み、Phase 7 に「PR-specific state ファイル: 残置」として列挙する |
 
 ### 4.5 作業メモリの削除
 
@@ -332,10 +364,25 @@ bash {plugin_root}/hooks/issue-claim.sh release --issue {issue_number} 2>&1 \
   || echo "WARNING: issue-claim release が失敗しました（claim は stale 判定 + reap で回収されます）" >&2
 ```
 
+`reap-issue` も部分失敗で rc=0 を返し `WARNING: reap-issue:` 行でのみ通知するため、4.4 と同じく**出力で判定する**:
+
 ```bash
-bash {plugin_root}/hooks/flow-state.sh reap-issue --issue {issue_number} 2>&1 \
-  || echo "WARNING: reap-issue が失敗しました（stale flow-state / run-queue / lock が残る可能性）" >&2
+_ri_rc=0
+_ri_err=$(mktemp "${TMPDIR:-/tmp}/rite-cancel-reap-err-XXXXXX") || _ri_err=""
+bash {plugin_root}/hooks/flow-state.sh reap-issue --issue {issue_number} 2>"${_ri_err:-/dev/null}" || _ri_rc=$?
+[ -n "$_ri_err" ] && [ -s "$_ri_err" ] && cat "$_ri_err" >&2
+if [ "$_ri_rc" -ne 0 ]; then
+  echo "WARNING: reap-issue が失敗しました（stale flow-state / run-queue / lock が残る可能性）" >&2
+  echo "[CONTEXT] CANCEL_REAP=failed; rc=${_ri_rc}" >&2
+elif [ -n "$_ri_err" ] && grep -q '^WARNING: reap-issue:' "$_ri_err"; then
+  echo "[CONTEXT] CANCEL_REAP=partial" >&2
+else
+  echo "[CONTEXT] CANCEL_REAP=ok" >&2
+fi
+[ -n "$_ri_err" ] && rm -f "$_ri_err"
 ```
+
+`partial` / `failed` は Phase 7 に「cross-session state: 残置」として列挙する。
 
 ### 4.7 Wiki ingest は実行しない
 

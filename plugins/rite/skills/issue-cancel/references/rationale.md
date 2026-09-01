@@ -85,6 +85,37 @@ client-side を closing keyword で絞る点は `/rite:issue-close` にも同じ
 できる（0 件と取得失敗を同じ値へ畳まない）。GraphQL の `closedByPullRequestsReferences` も検討したが、
 closing keyword でリンク済みの open PR を持つ Issue に対して実測で空配列を返したため採らない。
 
+## timeline-rc-capture-first
+
+上の fail-loud は「`gh api` の取得失敗だけを条件にする」ことで成立するが、`gh api ... | sort -un` の形で
+書くとその条件が構造的に成立しない。command substitution の rc はパイプ**最終段**のもので、`sort` は空入力
+でも 0 を返すため、`gh api` が 404 / 認証失敗 / レート制限で落ちても rc は 0 になる。埋め込み bash block は
+Bash tool 呼び出しごとに fresh shell（`pipefail` OFF）で起動するので、この経路は既定で開いている。結果、
+取得失敗が候補 0 件へ畳まれ、まさに `#issue-scoped-pr-lookup` が塞いだはずの「マージ済みの作業を
+`NOT_PLANNED` で葬る」に戻る。
+
+そこで rc を持つコマンドをパイプから外し、`_tl_raw=$(gh api ...)` で先に rc を確定させてから整形する
+（capture-first）。`set -o pipefail` を block 冒頭に置く形でも rc は伝播するが、rc 保持コマンドを単体に
+する形なら pipefail の有無に依存しない。stderr を退避して ERROR 行へ載せるのは、取得失敗の**理由**が
+`gh` の stderr にしか無いため。
+
+`select(.pull_request != null)` を truthiness へ替えるのは可読性の問題ではない。`hooks/pre-tool-bash-guard.sh`
+の `jq-not-equal-null` パターンが `!= null` を含む Bash 呼び出しを**実行前に deny** するため、書いたとおりに
+一度も走らない。`.pull_request` は object なので `select(.pull_request)` と等価で、`references/gh-cli-patterns.md`
+も同形を推奨形として規定している。
+
+## helper-marker-not-rc
+
+`cleanup-pr-state-purge.sh` と `flow-state.sh reap-issue` はどちらも「全運用経路で rc=0」の非ブロッキング
+契約を持ち、部分失敗は marker（`REVIEW_CLEANUP_PARTIAL_FAILURE=1`）や `WARNING: reap-issue:` 行でのみ
+通知する。呼び出し側が rc だけを見ると、その通知経路が丸ごと落ちて残置が完了として報告される — 「後片付け
+helper の失敗は non-blocking。WARNING を出して続行し、Phase 7 に未完了として列挙する」という本スキル自身の
+宣言が、この 2 経路について空文になる。
+
+判定を出力側へ移すのは新しい機構ではなく、同じ helper を呼ぶ `skills/cleanup/SKILL.md` の
+`{review_cleanup_check}` が既に採っている形の継承である。marker を見ずに rc だけを見る呼び出し側が
+新しく増えると、hardened sibling が持つ判定がその呼び出し側でだけ失われる。
+
 ## identity-promotion-headref-only
 
 `{branch_identity_verified}` は `cleanup-branch-delete.sh` が**リモート ref を消してよいか**を決める唯一の

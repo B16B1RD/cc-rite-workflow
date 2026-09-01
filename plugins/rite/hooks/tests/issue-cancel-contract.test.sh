@@ -38,6 +38,14 @@ assert_grep "T-01 writes Cancelled as the board Status" "$SKILL" \
 # 理由コメントは close と同一コールに載る (理由なしクローズの窓を作らない)。
 assert_grep "T-01 the close call carries the reason as a comment" "$SKILL" \
   '\-\-comment "🚫 この Issue を中止しました'
+# コメント冒頭リテラルだけを見ると、本文から理由の差し込みを落としても緑のまま通る。
+# AC-1 Then「理由がコメントとして残る」を守るのは差し込み行そのものなので、そこへ直接アンカーする。
+assert_grep_in_section "T-01 the Issue-close comment interpolates the cancel reason" "$SKILL" \
+  '^## Phase 6: Issue を NOT_PLANNED でクローズ' '^## Phase 7:' \
+  '^理由: \$cancel_reason$'
+assert_grep_in_section "T-01 the PR-close comment interpolates the cancel reason" "$SKILL" \
+  '^## Phase 3: PR クローズ' '^## Phase 4:' \
+  '\-\-comment "Issue #\{issue_number\} の中止に伴いクローズします。理由: \$pr_close_reason"'
 
 echo "=== T-02: 着手後中止で 4 helper が揃い、順序と ExitWorktree が保たれる (AC-2) ==="
 for h in \
@@ -107,6 +115,17 @@ fi
 # その行の帰結にアンカーする。
 assert_grep "T-02 (d) a mismatching worktree stops the removal and the branch delete" "$SKILL" \
   '^\| `mismatch` \|.*\*\*4\.2\.1 / 4\.2\.2 と 4\.3 のブランチ削除を試行せず\*\*'
+# (e) state purge / reap は「全運用経路で rc=0、部分失敗は marker のみ」契約の helper なので、
+# rc だけを見ると残置が完了として報告される。marker / WARNING 行で判定していることを pin する。
+assert_grep_in_section "T-02 (e) state purge is judged by its partial-failure marker, not rc alone" "$SKILL" \
+  '^### 4\.4 PR-specific state ファイルの削除' '^### 4\.5' \
+  "grep -q 'REVIEW_CLEANUP_PARTIAL_FAILURE=1'"
+assert_grep_in_section "T-02 (e) a partial state purge is surfaced as residue" "$SKILL" \
+  '^### 4\.4 PR-specific state ファイルの削除' '^### 4\.5' \
+  'CANCEL_STATE_PURGE=partial'
+assert_grep_in_section "T-02 (e) reap-issue is judged by its WARNING lines, not rc alone" "$SKILL" \
+  '^### 4\.6 claim 解放と cross-session state の回収' '^### 4\.7' \
+  "grep -q '\^WARNING: reap-issue:'"
 
 echo "=== T-03: gh pr close が Projects Status 更新より先に呼ばれる (AC-3) ==="
 # 順序 pin は**実行行**を見る。冒頭の「実行順序の不変条件」節は同じコマンド名を散文で引用するため、
@@ -176,8 +195,11 @@ assert_grep_in_section "T-06 Phase 2.1 skips PR close / teardown / re-close for 
   '^### 2\.1 Issue の状態' '^### 2\.2' 'Phase 3 / Phase 4 / Phase 6 をすべてスキップ'
 
 echo "=== T-07: projects.enabled false で Status skip、後片付けは走る (AC-7) ==="
+# 設定キーの言及だけを見ると、キーを読む第 1 文を残したまま「false でも実行する」へ反転させても
+# 緑のまま通る。AC-7 Then の前半 (Status 更新をスキップする) は帰結の側へアンカーする。
 assert_grep_in_section "T-07 Phase 5 skips when projects are disabled" "$SKILL" \
-  '^## Phase 5: Projects Status を Cancelled に更新' '^## Phase 6:' 'github\.projects\.enabled'
+  '^## Phase 5: Projects Status を Cancelled に更新' '^## Phase 6:' \
+  '`false`（または `rite-config\.yml` 不在）なら本 Phase を\*\*スキップ\*\*'
 assert_grep_in_section "T-07 the skip does not take Issue close / teardown with it" "$SKILL" \
   '^## Phase 5: Projects Status を Cancelled に更新' '^## Phase 6:' 'Issue クローズと後片付けは Projects の有無に依存しない'
 # skip 側だけ書いて、有効時の書き込み失敗を素通しにしないこと。issue-close Shared 節と同型の
@@ -192,8 +214,11 @@ assert_grep_in_section "T-07 the Status write is non-blocking (failure does not 
 echo "=== T-08: MERGED PR を持つ Issue では中止せず /rite:cleanup を案内 (AC-8) ==="
 assert_grep_in_section "T-08 a merged PR routes to /rite:cleanup instead of cancelling" "$SKILL" \
   '^### 2\.3 関連 PR の検索と identity 検証' '^## Phase 3' '/rite:cleanup'
-assert_grep_in_section "T-08 the merged-PR branch stops" "$SKILL" \
-  '^### 2\.3 関連 PR の検索と identity 検証' '^## Phase 3' '停止する'
+# 素の「停止する」は同節の取得失敗ガードの散文 (「停止するのは取得自体が失敗したときだけで」) にも
+# 一致するため、merged 行を「Phase 3 へ進む」へ書き換えても緑のまま通る。判定表の当該行へ直接
+# アンカーする (T-02 (d) / T-09 と同じ「行頭のテーブル区切り + 帰結」形)。
+assert_grep "T-08 the merged-PR branch stops" "$SKILL" \
+  '^\| `mergedAt` が非 null の PR がある \|.*\*\*停止する\*\*'
 # PR 検索が Issue 番号でスコープされること。--search "linked:issue:N" は :N を無視し、
 # --head の glob は exact-match のため常に空を返す。どちらも「絞り込めていないのに成功して見える」。
 assert_not_grep "T-08 does not use the unscoped linked:issue search" "$SKILL" \
@@ -224,9 +249,25 @@ assert_grep "T-08 the flow-state branch is adopted only on an Issue-number match
 # 恒真で殺す。timeline 経路へ戻さない pin。
 assert_grep_in_section "T-08 the fallback lookup is Issue-scoped via the timeline API" "$SKILL" \
   '^### 2\\.3 関連 PR の検索' '^## Phase 3:' \
-  '^pr_candidates=\$\(gh api "repos/\{owner\}/\{repo\}/issues/\{issue_number\}/timeline" --paginate'
+  '^_tl_raw=\$\(gh api "repos/\{owner\}/\{repo\}/issues/\{issue_number\}/timeline" --paginate'
 assert_not_grep "T-08 no unscoped fetch window is used for the fallback" "$SKILL" \
   '^gh pr list.*--limit'
+# 取得失敗の rc がガードへ届くこと。`gh api ... | sort -un` の形だと rc は最終段 sort のものになり、
+# 直下の fail-loud が到達不能になる (0 件と取得失敗が畳まれる)。rc 保持コマンドを単体に保つ pin。
+assert_grep_in_section "T-08 the timeline rc is captured from a single command, not a pipeline" "$SKILL" \
+  '^### 2\\.3 関連 PR の検索' '^## Phase 3:' \
+  '^  2>"\$_tl_err"\) \|\| _tl_rc=\$\?$'
+assert_not_grep "T-08 the timeline fetch is not piped before its rc is captured" "$SKILL" \
+  '^pr_candidates=\$\(gh api .*\| sort'
+# jq フィルタが PreToolUse ガード (jq-not-equal-null) に deny されない形であること。
+# `!= null` を含む Bash 呼び出しは実行前に拒否されるため、書いたとおりには一度も走らない。
+assert_grep_in_section "T-08 the timeline jq filter uses truthiness, not != null" "$SKILL" \
+  '^### 2\\.3 関連 PR の検索' '^## Phase 3:' \
+  'select\(\.pull_request\) \| \.number'
+# 禁止するのは jq の `select(... != null)` そのもの。散文で禁止事実に言及する行まで赤くしない
+# (pattern を `!= null` 一般へ広げると、この禁止を説明する記述自体が anti-pattern 判定される)。
+assert_not_grep "T-08 SKILL.md contains no jq select(... != null) (denied by pre-tool-bash-guard)" "$SKILL" \
+  'select\(.*!= *null'
 # 0 件 (関連 PR が無い) と 取得失敗 を同じ値へ畳まない。停止するのは取得が失敗したときだけ。
 assert_grep_in_section "T-08 an empty result is a real observation, not a window artifact" "$SKILL" \
   '^### 2\\.3 関連 PR の検索' '^## Phase 3:' \
