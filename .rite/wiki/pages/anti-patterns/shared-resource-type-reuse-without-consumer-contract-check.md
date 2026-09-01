@@ -7,14 +7,18 @@ description: "新機能実装で既存の共有リソース（reap manifest の 
 created: "2026-07-23T04:14:28Z"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260901T053153Z-pr-2498.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260901T055639Z-pr-2498.md"
+  - type: "reviews"
     resource: "raw/reviews/20260723T005459Z-pr-1974.md"
   - type: "fixes"
     resource: "raw/fixes/20260723T010449Z-pr-1974.md"
   - type: "reviews"
     resource: "raw/reviews/20260723T020925Z-pr-1974-cycle2.md"
-tags: ["shared-resource-contract", "namespace-reuse", "reap-manifest", "existing-consumer-verification", "mutation-testing", "cross-validation"]
+tags: ["shared-resource-contract", "namespace-reuse", "reap-manifest", "existing-consumer-verification", "mutation-testing", "cross-validation", "marker-prefix-glob-scope"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T17:40:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-01T20:33:00+09:00" }
 ---
 
 # 共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる
@@ -61,6 +65,14 @@ consumer 契約の確認を怠った結果は、生存中リソースの破壊�
 
 **新しい type / key を既存機構へ流し込む前に、consumer が何を条件にそれを消費するかを読む**。読む対象は type の名前ではなく、consumer 側の受理条件そのもの（if 文・case arm）である。
 
+### 消費側が glob で family を絞っているなら、prefix を共有した時点で分離は成立しない
+
+同じ構造が marker の名前空間でも起きる。消費側が `PREFIX_*` の glob で marker family を scope している設計に対し、**同じ prefix を持つ新 marker**（`--dry-run` 用など）を足すと、その marker は判定表のどの行にも一致せず、しかし family には取り込まれるため fallback（「marker が無いとき」の行）にも落ちない。結果は未定義状態——実行していないのに完了とも未確認とも判定されない。
+
+コード内コメントに「この marker は family を分離している」と書いても分離は成立しない。**消費側の scope 規則が glob である以上、分離できるのは prefix そのものを変えることだけ**である（`DRY_RUN_` のように別 prefix にする）。
+
+自問は type 名前空間の場合と同一: 新しい名前を既存機構へ流し込む前に、**consumer が何を条件にそれを拾うか**（glob か完全一致か、どの範囲を family と見なすか）を読む。
+
 ## 関連ページ
 
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
@@ -72,3 +84,4 @@ consumer 契約の確認を怠った結果は、生存中リソースの破壊�
 - [PR #1974 fix results (cycle 1, 専用 type 新設による修正)](../../raw/fixes/20260723T010449Z-pr-1974.md)
 - [PR #1974 review results (cycle 2, コメント drift 追加検出)](../../raw/reviews/20260723T020925Z-pr-1974-cycle2.md)
 - [PR #2150 fix results (cycle 2: consumer の corpse 条件を読まず不発記録を追加)](../../raw/fixes/20260808T070139Z-pr-2150-cycle2.md)
+- [PR #2498 review results / fix results (同 prefix の新 marker が消費側 glob に取り込まれ未定義状態を作る)](../../raw/reviews/20260901T053153Z-pr-2498.md)

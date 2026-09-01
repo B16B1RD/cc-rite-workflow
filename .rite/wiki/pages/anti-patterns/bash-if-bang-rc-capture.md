@@ -6,6 +6,10 @@ promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260901T092252Z-pr-2498.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260901T092936Z-pr-2498.md"
+  - type: "reviews"
     resource: "raw/reviews/20260721T171603Z-pr-1959.md"
   - type: "reviews"
     resource: "raw/reviews/20260517T221249Z-pr-1032.md"
@@ -23,9 +27,9 @@ sources:
     resource: "raw/reviews/20260416T173035Z-pr-548.md"
   - type: "reviews"
     resource: "raw/reviews/20260427T154519Z-pr-688.md"
-tags: ["bash", "rc-capture", "silent-failure"]
+tags: ["bash", "rc-capture", "silent-failure", "grep-discriminator", "fix-by-removal"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-21T18:30:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-01T20:32:00+09:00" }
 ---
 
 # `if ! cmd; then rc=$?` は常に 0 を捕捉する
@@ -123,6 +127,28 @@ var=$(cmd) || rc=$?
 
 `if !` 型（rc が常に 0 になる）と裸 `$?` 型（rc 行に到達せず abort する）は症状が異なるが、いずれも「`rc=0; var=$(cmd) || rc=$?` 形式」が共通の canonical fix である。
 
+### 検出時の判別子は「then 節で `$?` を読んでいるか」— grep だけでは過検出になる
+
+repo 全体から同型の欠陥を探すとき、`if ! var=$(cmd)` の grep だけでは候補が過剰に出る。**判別子は then 節で `$?` を読んでいるかどうか**であり、読んでいない site（エラーを出して `exit` するだけ、あるいは分岐の真偽しか使わない）は欠陥ではない。PR #2498 でこの絞り込みを掛けたところ、候補 30 件超が実際の欠陥 1 件に落ちた。
+
+### 直し方は「追加」ではなく「削除」— `!` を外して sibling の形へ寄せる
+
+rc を保存するための新変数や分岐を足すのではなく、`!` を外して sibling helper が既に使っている形へ寄せる。PR #2498 の修正 diff は 4 行で、新しい機構は 1 つも増えていない。
+
+```bash
+# Before: then 節の rc が常に 0
+if ! detect=$(bash "$SCRIPT_DIR/helper.sh" --args); then
+  rc=$?   # ← 常に 0。下で列挙する原因候補 (127/126/2) を切り分けられない
+fi
+
+# After: sibling と同形
+local _rc=0
+detect=$(bash "$SCRIPT_DIR/helper.sh" --args) || _rc=$?
+if [ "$_rc" -ne 0 ]; then
+```
+
+同一 PR 内で呼び出し側の 3 境界は正しい形を使い、helper 内部の 1 境界だけが否定形だった。診断が「rc=0 で失敗しました」と自己矛盾して初めて露見する。**テスト側の pin も `rc=` prefix までしか見ていない**と変異が生存するので、値で pin する（[追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](../patterns/mutation-prove-new-pin.md)）。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -140,3 +166,4 @@ var=$(cmd) || rc=$?
 - [PR #688 cycle 36 review — self-referential 4 site 同時播種 (累積 13 回目)](../../raw/reviews/20260427T154519Z-pr-688.md)
 - [PR #1032 cycle 1 review (format 同期 refactor で `if ! cmd; then rc=$?` 形式を新規導入、累積 34 回目 Asymmetric Fix Transcription の起点、三層対称化義務 doctrine 確立)](../../raw/reviews/20260517T221249Z-pr-1032.md)
 - [PR #1959 review cycle 1 (set -e 下の裸 `$?` 読みが Gate 3 conservative skip を dead code 化)](../../raw/reviews/20260721T171603Z-pr-1959.md)
+- [PR #2498 review results / fix results (rc 捕捉 idiom の非対称と判別子による絞り込み)](../../raw/reviews/20260901T092252Z-pr-2498.md)

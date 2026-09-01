@@ -6,6 +6,10 @@ promote: rite-plugin
 created: "2026-04-16T19:37:16Z"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260901T110702Z-pr-2498.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260901T092252Z-pr-2498.md"
+  - type: "reviews"
     resource: "raw/reviews/20260804T060209Z-pr-2099.md"
   - type: "reviews"
     resource: "raw/reviews/20260807T023931Z-pr-2130.md"
@@ -589,9 +593,9 @@ sources:
     resource: "raw/fixes/20260729T144345Z-pr-2051.md"
   - type: "fixes"
     resource: "raw/fixes/20260729T151517Z-pr-2051-c2.md"
-tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration", "archive-doc-tail-residue", "intra-document-contradiction", "reference-path-depth-drift", "grep-at-start-preventive-application", "extension-scope-limited-grep-sweep", "structural-doc-list-sync-on-new-file", "rationale-link-target-stale", "both-sides-claim-unverified"]
+tags: ["fix-cycle", "review-loop", "convergence", "propagation", "symmetric-error-handling", "contract-path-symmetry", "pipeline-step-addition", "three-site-symmetry", "propagation-scan-pattern-coverage", "split-config-drift", "enumeration-multi-location-drift", "writer-reader-fallback-symmetry", "severity-extension-cross-file", "same-file-adjacent-line-drift", "caller-side-strictness-drift", "sibling-issue-symmetric-application", "caller-context-difference", "inverse-failure-defect-transcription", "self-referential-prevention-violation", "anchor-scope-limit", "frontmatter-body-sync-drift", "caller-template-mirror-symmetry", "multi-stub-marker-prefix-symmetry", "helper-docstring-caller-extension-drift", "prose-first-paragraph-stale", "sentinel-sub-discriminator-suffix", "placeholder-pair-value-source-symmetry", "canonical-source-declaration", "archive-doc-tail-residue", "intra-document-contradiction", "reference-path-depth-drift", "grep-at-start-preventive-application", "extension-scope-limited-grep-sweep", "structural-doc-list-sync-on-new-file", "rationale-link-target-stale", "both-sides-claim-unverified", "over-propagation-boundary-unverified", "relocation-old-site-reference-drift"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T16:25:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-01T20:31:00+09:00" }
 ---
 
 # Asymmetric Fix Transcription (対称位置への伝播漏れ)
@@ -2023,3 +2027,28 @@ inline 実装を helper へ委譲し、元のシンボル名（`extract_yaml_key
 ## ソース（追記分 4）
 
 - [PR #2481 fix results — 必須集合と走査列挙の片側追加が Decision logic を恒久沈黙させた](../../raw/fixes/20260830T071825Z-pr-2481.md)
+
+## 変種: 逆向きの失敗 — 「兄弟を統一する」修正が、実は非対称な site まで同じ語彙で塗る
+
+伝播漏れの鏡像として、**統一すべき集合の境界を確かめずに伝播させる** over-fix がある。3 箇所を「兄弟」と数えたが、実際には性質の異なる 2 種類の境界が混ざっていた、という形で出る。
+
+観測: 診断ラベル「原因候補: … / 引数不正 (rc=2)」を 3 箇所で揃えようとした。しかし 3 箇所のうち 2 箇所は **呼び出し側が全引数を確定させてから渡す script → script 境界**（引数不正は到達不能）で、1 箇所は **literal substitution が引数を壊しうる skill body → script 境界**（引数不正は実際に到達する）だった。同じ語彙で塗った結果、到達可能な原因を候補から落とす退行になり、次 cycle で差し戻された。
+
+対処:
+
+- 「N 兄弟」と数える前に、その N 個を**実在する site として名指しできるか**を確認する。数えられるが名指しできないなら、まだ集合が確定していない。
+- 各 site について「この境界で実際に起きうる失敗は何か」を**測ってから**文言を決める。sibling から文言をコピーするときは、呼び先の終了コード規約まで一緒に確認する。
+- 逆に、既存の兄弟がすべて同じ受け皿（marker 不在行・reason 行・check 列）を持つという **対称性そのものが漏れの検出手掛かり**になる。「6 本の判定表のうち 1 本だけ marker 不在の受け皿を持たない」は、対称性を先に確認していれば機械的に見つかる。
+
+## 変種: 実体の移設は、その実体を名指ししていた別ファイルの記述を置き去りにする
+
+helper へ実体を移設したとき、**移設先の新シンボル名で grep する**影響調査は、「旧実体を名指ししていた記述」を構造的に拾えない。trap 採用 site の一覧、reason 語彙の emitter 帰属、「ステップ N に実体がある」という散文などが古いまま残る。
+
+観測: PR #2498 では同一 PR が一部のファイルでは正しく更新していたため、漏れは「気づいていない」ではなく「網羅していない」形で出た。
+
+対処: 移設のとき、**旧位置を指す表現**（旧ファイルパス、旧ステップ番号、旧関数名）で逆向きに grep する。新シンボルの grep と旧位置の grep は別の集合を返す。
+
+## ソース（追記分 5）
+
+- [PR #2498 review results (cycle 5) — 兄弟統一の境界未確認による over-fix](../../raw/reviews/20260901T110702Z-pr-2498.md)
+- [PR #2498 review results — 移設に伴うドキュメント所有権の伝播漏れ](../../raw/reviews/20260901T092252Z-pr-2498.md)

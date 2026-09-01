@@ -1,3 +1,14 @@
+## 2026-09-01
+* **Create**: [インライン処理の helper 抽出は「helper が起動しない」経路を新設し、marker 不在＝成功の消費規則を破る](pages/anti-patterns/helper-extraction-creates-unstarted-path.md) — raw/reviews/20260901T053153Z-pr-2498.md, raw/fixes/20260901T055639Z-pr-2498.md を新規ページ化
+* **Create**: [実装が Issue の MUST と原則の両方に挟まれたら、実装を戻さず契約側（Decision Log と AC の例外）を更新する](pages/heuristics/contract-update-over-revert-on-must-conflict.md) — raw/reviews/20260901T092252Z-pr-2498.md, raw/fixes/20260901T092936Z-pr-2498.md, raw/reviews/20260901T095150Z-pr-2498.md を新規ページ化
+* **Create**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — raw/fixes/20260901T092936Z-pr-2498.md, raw/reviews/20260901T095150Z-pr-2498.md, raw/reviews/20260901T110702Z-pr-2498.md を新規ページ化
+* **Create**: [静的検査 regex の行頭アンカーは `if` / `||` / 代入位置にある実行行を見落とす](pages/anti-patterns/line-anchored-regex-misses-inline-execution.md) — raw/reviews/20260901T053153Z-pr-2498.md, raw/fixes/20260901T055639Z-pr-2498.md を新規ページ化
+* **Create**: [git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する](pages/patterns/normalize-tmpdir-symlink-in-path-asserting-tests.md) — raw/reviews/20260901T110702Z-pr-2498.md を新規ページ化
+* **Create**: [レビューループを止めるのは reviewer を減らすことではなく disposition 規則を変えること](pages/heuristics/review-loop-stopped-by-disposition-not-fewer-reviewers.md) — raw/reviews/20260901T110702Z-pr-2498.md を新規ページ化（promote: rite-plugin）
+* **Update**: [`if ! cmd; then rc=$?` は常に 0 を捕捉する](pages/anti-patterns/bash-if-bang-rc-capture.md) — raw/reviews/20260901T092252Z-pr-2498.md, raw/fixes/20260901T092936Z-pr-2498.md を統合（repo 走査時の判別子は「then 節で `$?` を読んでいるか」で候補 30 件超が 1 件に落ちること、直し方は変数追加ではなく `!` の削除で sibling の形へ寄せること、テスト側 pin を prefix ではなく値で置くことを追記）
+* **Update**: [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) — raw/reviews/20260901T110702Z-pr-2498.md, raw/reviews/20260901T092252Z-pr-2498.md を統合（鏡像の失敗として「兄弟を統一する」修正が非対称な site まで塗る over-fix、既存の対称性そのものが漏れの検出手掛かりになること、移設時は旧位置を指す表現で逆向きに grep することを追記）
+* **Update**: [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md) — raw/reviews/20260901T053153Z-pr-2498.md, raw/fixes/20260901T055639Z-pr-2498.md を統合（marker 名前空間での同型として、消費側が glob で family を絞るなら prefix 共有時点で分離は成立せず未定義状態を作ることを追記）
+
 ## 2026-08-31
 * **Create**: [外部 API の enum を散文へ写す前に値域を introspection で実測する](pages/heuristics/external-api-enum-domain-introspect-before-prose.md) — raw/reviews/20260831T071720Z-pr-2494.md を新規ページ化
 * **Create**: [契約が誤った前提の上に書かれていたときは dispatch を契約どおり保ち、前提の訂正と未決判断を別チャネルへ出す](pages/patterns/contract-literalism-false-premise-third-exit.md) — raw/fixes/20260831T072532Z-pr-2494.md を新規ページ化（promote: rite-plugin）
