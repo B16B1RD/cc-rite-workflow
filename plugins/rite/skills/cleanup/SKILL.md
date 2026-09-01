@@ -408,7 +408,7 @@ rationale: references/rationale.md#live-cwd-self-exclusion
 rationale: references/rationale.md#session-worktree-reap
 - `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 上記 1〜2 をスキップ。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の self-exclusion 付き live-cwd guard が特に重要（live-cwd guard による遅延は別セッション在席時。これに加え sandbox マスク検知時（sandbox マスク）も削除を試行せず遅延する）。
 - `CLEANUP_WT=none`（multi_session 無効、または worktree 関連なし = 物理 cwd も当該 Issue の worktree でない）: 4-W 全体を no-op でスキップ。**注**: flow-state 未記録でも物理 cwd が当該 Issue の worktree なら `in_worktree_unrecorded` に分類されここには落ちない（#1622）。**ただし関連 Issue が未識別（`{issue_number}` 空）のときは物理 cwd 導出が働かず `none` に落ちる** — 導出が issue 番号でパス末尾を照合するため。この場合の worktree は次回セッション開始時の遅延 reap に委ねられる。
-- `CLEANUP_WT=unknown`（detect helper が起動できず分類を返せなかった）: 分類不能なので**上記の手順 1〜4 を実行しない**。`{main_root}` も `{flow_wt}` も未確定のため、ステップ 4 の base 更新（main checkout への `cd` を要する）へも進まない。ステップ 12 が未確認として列挙する。
+- `CLEANUP_WT=unknown`（detect helper が起動できず分類を返せなかった）: 分類不能なので**上記の手順 1〜4 を実行しない**。`{main_root}` も `{flow_wt}` も未確定で、worktree 内にいるか判定できない以上 `in_worktree_unrecorded` と同じ扱いにする — main checkout 操作を要する 4 項目（base 更新 = ステップ 4 / worktree 削除 = 本 4-W / ブランチ削除 = ステップ 5 / wiki ingest = ステップ 9）を**試行せず**、ステップ 12 が未確認として列挙する。worktree 内で完結する項目（PR-specific state 削除・Projects Status 更新・Issue クローズ・作業メモリ更新・flow state リセット）は通常どおり実行する。`CLEANUP_DELEGATED=1` は emit しない — 委譲モードの定型案内は「main checkout で再実行すれば冪等に完了する」を前提にするが、helper が起動できない原因（`{plugin_root}` の未解決置換・helper 欠落）は再実行では解消しないため。
 
 > **復旧: `/clear` が `Path does not exist` で失敗する場合**
 > セッション worktree（`.rite/worktrees/issue-{N}`）が遅延 reap または手動削除で消えた後、所有セッションをハーネスが resume すると cwd 復元先が無く `/clear` が `Error: Path "...worktrees/issue-{N}" does not exist` で失敗することがある。ハーネスの cwd レコード自体は rite から intercept できないため、万一発生した場合は次のいずれかで復旧する:
@@ -419,7 +419,7 @@ rationale: references/rationale.md#session-worktree-reap
 
 ### 4 base ブランチの更新（安全化）
 
-> **委譲モード（#2133）**: 4-W が `[CONTEXT] CLEANUP_DELEGATED=1` を emit している場合、本ステップの bash を**実行しない**（本ステップは main checkout への `cd` を Bash 呼び出しに直書きする形のため harness の worktree 隔離ガードが拒否する）。ステップ 12 が未完了として列挙し、main checkout での `/rite:cleanup {pr_number}` 再実行へ委譲する（本項目は再実行で冪等に完了する）。
+> **委譲モード（#2133）**: 4-W が `[CONTEXT] CLEANUP_DELEGATED=1` **または `[CONTEXT] CLEANUP_WT=unknown`** を emit している場合、本ステップの bash を**実行しない**（本ステップは main checkout への `cd` を Bash 呼び出しに直書きする形のため harness の worktree 隔離ガードが拒否する。`unknown` では worktree 内にいるか判定できず、`{main_root}` も未確定）。ステップ 12 が未完了として列挙し、`CLEANUP_DELEGATED=1` なら main checkout での `/rite:cleanup {pr_number}` 再実行へ委譲する（本項目は再実行で冪等に完了する）。`unknown` の案内はステップ 12 の `{session_worktree_check}` が出す。
 
 main checkout の不可侵規約（[git-worktree-patterns.md](../../references/git-worktree-patterns.md#main-checkout-不可侵-inviolability-convention)）に従い、**main checkout が `{base_branch}` 上にある場合のみ** base を更新する。別 branch 上では切り替えず WARNING + skip する:
 
@@ -508,7 +508,7 @@ rationale: references/rationale.md#base-update-classify
 
 > **順序**: branch 削除は **worktree 削除後にのみ成功する**（Git 制約: worktree で checkout 中の branch は削除不可）。multi_session 時は必ずステップ 4-W → 本ステップの順で実行する。
 >
-> **委譲モード（#2133）**: 4-W が `[CONTEXT] CLEANUP_DELEGATED=1` を emit している場合、本ステップの bash ブロックを**いずれも実行しない**（worktree を削除していないため checkout 中の branch は構造的に削除できない。リモート削除は本ステップ内でローカル削除と 1 ステップで扱うため同時に委譲する — `git push origin --delete` 自体はガードに抵触せず worktree 内からも実行できる）。ステップ 12 が未完了として列挙し、main checkout での `/rite:cleanup {pr_number}` 再実行へ委譲する。再実行では本ステップが通常実行され、リモート削除は直接完了し、ローカル削除は `used by worktree` で見送られた上で `branch` エントリを reap manifest に記録して次回セッション開始時の自動回収を arm する（`{pr_merged}=true`、共有 manifest のエントリを verify 済み、かつ対象 worktree が reaper と同じ filtered dirty gate を通過したときだけ `recovery=auto` になる。未マージ PR の強制 cleanup・記録漏れ・dirty または判定不能な worktree は `recovery=manual` に倒れ手動回復が必要 — 出し分けは本ステップの `recovery=` 判定が持つ）。
+> **委譲モード（#2133）**: 4-W が `[CONTEXT] CLEANUP_DELEGATED=1` **または `[CONTEXT] CLEANUP_WT=unknown`** を emit している場合、本ステップの bash ブロックを**いずれも実行しない**（worktree を削除していないため checkout 中の branch は構造的に削除できない。`unknown` では worktree の有無すら判定できていないため同様に試行しない。リモート削除は本ステップ内でローカル削除と 1 ステップで扱うため同時に委譲する — `git push origin --delete` 自体はガードに抵触せず worktree 内からも実行できる）。ステップ 12 が未完了として列挙し、main checkout での `/rite:cleanup {pr_number}` 再実行へ委譲する。再実行では本ステップが通常実行され、リモート削除は直接完了し、ローカル削除は `used by worktree` で見送られた上で `branch` エントリを reap manifest に記録して次回セッション開始時の自動回収を arm する（`{pr_merged}=true`、共有 manifest のエントリを verify 済み、かつ対象 worktree が reaper と同じ filtered dirty gate を通過したときだけ `recovery=auto` になる。未マージ PR の強制 cleanup・記録漏れ・dirty または判定不能な worktree は `recovery=manual` に倒れ手動回復が必要 — 出し分けは本ステップの `recovery=` 判定が持つ）。
 
 ```bash
 # ローカル / リモートの存在確認・削除・遅延判定と marker の emit はすべて helper が持つ
@@ -725,7 +725,7 @@ echo "[CONTEXT] PROJECTS_STATUS_UPDATED=$projects_status_updated"
 
 ## ステップ 9: Wiki Ingest (条件付き)
 
-> **委譲モード（#2133）**: 4-W が `[CONTEXT] CLEANUP_DELEGATED=1` を emit している場合、**本ステップ全体を実行しない**（config 読み取り bash・`WIKICHAIN` handoff の set・`Skill: rite:wiki-ingest` の invoke をいずれも行わない）。ガードの対象は config 読み取り bash 単体ではない — 実際に wiki-worktree へ commit するのは skill invoke であり、検出ブロックだけを skip すると `reason` が未計算のまま handoff set と invoke に到達しうる。pending raw source は wiki branch に保持されるため、ステップ 12 が未完了として列挙し、main checkout での `/rite:cleanup {pr_number}` 再実行へ委譲する（本項目は再実行で冪等に完了する）。
+> **委譲モード（#2133）**: 4-W が `[CONTEXT] CLEANUP_DELEGATED=1` **または `[CONTEXT] CLEANUP_WT=unknown`** を emit している場合、**本ステップ全体を実行しない**（config 読み取り bash・`WIKICHAIN` handoff の set・`Skill: rite:wiki-ingest` の invoke をいずれも行わない）。ガードの対象は config 読み取り bash 単体ではない — 実際に wiki-worktree へ commit するのは skill invoke であり、検出ブロックだけを skip すると `reason` が未計算のまま handoff set と invoke に到達しうる。pending raw source は wiki branch に保持されるため、ステップ 12 が未完了として列挙し、main checkout での `/rite:cleanup {pr_number}` 再実行へ委譲する（本項目は再実行で冪等に完了する）。
 
 `wiki.enabled` (default true) かつ `wiki.auto_ingest` (default false) で、pending raw source があれば実行。
 
@@ -863,7 +863,7 @@ Status: {projects_status_result}
 {outstanding_items_block}
 ```
 
-**委譲モード（#2133。4-W が `[CONTEXT] CLEANUP_DELEGATED=1` を emit した場合）**: **委譲した 4 項目に限り**下記の個別判定を行わず、`{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{wiki_ingest_check}` を ` `（未完了）に固定し、それぞれの check 直下の付記も出力しない（委譲は 1 回の明確な案内に収め、診断の羅列に戻さない）。**委譲モードでも実行される項目**（`{review_cleanup_check}` = ステップ 6 / `{projects_check}` = ステップ 8 / 冒頭の `Status: {projects_status_result}`）は**従来どおり個別判定する** — 実行した項目の実失敗を握り潰さないため。`{outstanding_items_block}` は下記の定型ブロックを先頭に置き、個別判定で空欄になった check があればその付記を定型ブロックの後ろに続ける。`{n}` は **`4` + 個別判定で空欄になった check の件数**:
+**委譲モード（#2133。4-W が `[CONTEXT] CLEANUP_DELEGATED=1` を emit した場合）**: **委譲した 4 項目に限り**下記の個別判定を行わず、`{base_update_check}` / `{session_worktree_check}` / `{local_branch_check}` / `{wiki_ingest_check}` を ` `（未完了）に固定し、それぞれの check 直下の付記も出力しない（委譲は 1 回の明確な案内に収め、診断の羅列に戻さない）。**`CLEANUP_WT=unknown` は本定型ブロックの対象外**（再実行で冪等に完了しないため定型の案内が当たらない）。同じ 4 項目が未実行である点は共通だが、判定は下記の個別判定に任せ、案内は `{session_worktree_check}` の未確認付記が担う。**委譲モードでも実行される項目**（`{review_cleanup_check}` = ステップ 6 / `{projects_check}` = ステップ 8 / 冒頭の `Status: {projects_status_result}`）は**従来どおり個別判定する** — 実行した項目の実失敗を握り潰さないため。`{outstanding_items_block}` は下記の定型ブロックを先頭に置き、個別判定で空欄になった check があればその付記を定型ブロックの後ろに続ける。`{n}` は **`4` + 個別判定で空欄になった check の件数**:
 
 ```
 - base ブランチの更新（fetch + merge --ff-only）
@@ -882,7 +882,7 @@ Status: {projects_status_result}
   - `main_root_unresolved` のとき（main checkout の絶対パスが未解決、またはそこへの `cd` に失敗）: ` ` + 「⚠️ main checkout ルートが解決できず base 更新を skip しました。`git fetch origin {base_branch} && git merge --ff-only origin/{base_branch}` を手動実行してください」を付記
   - `ff_failed_clean` / `ff_failed_divergent` / `ff_failed_discardable` のいずれかのとき（fast-forward 失敗。未コミット変更の有無・内容は marker ごとに異なるが、いずれも base 更新自体は未完了）: ` ` + 「⚠️ base ブランチの fast-forward 更新に失敗しました。`git status` で状態を確認し、`git fetch origin {base_branch} && git merge --ff-only origin/{base_branch}` を手動実行してください」を付記
   - いずれの `[CONTEXT] BASE_UPDATE=` 行も見つからないとき（ステップ 4 の bash block が実行されなかった等の想定外経路）: ` ` + 「⚠️ base 更新の実行結果が確認できませんでした。`git status` / `git log` で状態を確認してください」を付記
-- `{session_worktree_check}`: `[CONTEXT] CLEANUP_WT=unknown` のとき、または `[CONTEXT] CLEANUP_WT=` 行が 1 本も無いとき（ステップ 4-W の detect が実行されなかった／helper が起動できなかった）は**行を省略せず** ` ` + 「⚠️ 作業ツリーの検出自体が実行できませんでした。`git worktree list` で残存を確認し、あれば `git worktree remove --force <path> && git worktree prune` を手動実行してください」を付記する。分類が `none`（multi_session 無効 or worktree 未使用）のときだけ行ごと省略する。分類が取れている場合は以下を**上から評価し最初に一致したもの**を採用する（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD` / `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` / `WORKTREE_REMOVE_FAILED` は Step 4-W guard の if/elif/else で排他だが、複数の `[CONTEXT]` 行が文脈に残る可能性に備えて評価順序を固定する）:
+- `{session_worktree_check}`: まず `[CONTEXT] ` 行頭一致で `CLEANUP_WT=` family に該当する行を集め、**複数あれば最後の出現 1 行だけ**を分類の判定対象に選ぶ（recency。`/rite:batch-run --merge` は同一セッション内で Issue ごとに `/rite:cleanup` をループ invoke するため先行 Issue の marker が文脈に残る。`{local_branch_check}` が同じ理由で採る規律と同一）。選んだ 1 行が `CLEANUP_WT=unknown` のとき、または `CLEANUP_WT=` 行が 1 本も無いとき（ステップ 4-W の detect が実行されなかった／helper が起動できなかった）は**行を省略せず** ` ` + 「⚠️ 作業ツリーの検出自体が実行できませんでした。`git worktree list` で残存を確認し、あれば `git worktree remove --force <path> && git worktree prune` を手動実行してください」を付記する。**行ごと省略してよいのは `none` かつ `{issue_number}` が非空のときだけ**（= multi_session 無効、または当該 Issue の worktree でない）。`none` かつ `{issue_number}` 空のときは物理 cwd 導出が働かず worktree が実在しうるため（4-W の `none` 分岐を参照）、省略せず上記と同じ未確認の付記を出す。分類が取れている場合は以下を**上から評価し最初に一致したもの**を採用する（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD` / `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` / `WORKTREE_REMOVE_FAILED` は Step 4-W guard の if/elif/else で排他だが、複数の `[CONTEXT]` 行が文脈に残る可能性に備えて評価順序を固定する）:
   - `WORKTREE_REMOVE_SKIPPED_LIVE_CWD=1` のとき（別のセッションが作業ツリーを使用中のため削除を見送った）: ` ` + 以下を付記
     ```
     ℹ️ この作業ツリーは別のセッションが使用中のため、削除を見送りました。そのセッションが終了したあと、次回のセッション開始時に作業ツリーとローカルブランチが自動で回収されます。

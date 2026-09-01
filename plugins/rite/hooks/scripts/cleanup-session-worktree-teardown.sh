@@ -25,7 +25,15 @@
 #   [CONTEXT] CLEANUP_WT=<none|in_main|in_worktree|in_worktree_unrecorded>; worktree=<path>; \
 #     [dirty=<yes|no>; ]main_root=<path>
 #   [CONTEXT] CLEANUP_DELEGATED=1; reason=exit_worktree_unavailable   (in_worktree_unrecorded のみ)
+#   [CONTEXT] CLEANUP_WT=unknown; reason=detect_classify_failed; rc=<n>
+#     (内側の分類 helper cleanup-worktree-detect.sh が起動できない / 失敗したとき)
 #   in_worktree のとき dirty が非空なら `--- dirty files begin/end ---` で囲んだ生パス一覧を続けて出す。
+#
+#   `CLEANUP_WT=unknown` は **呼び出し側 (cleanup/SKILL.md 4-W) も emit する** —— 本 helper 自体が
+#   起動できなかった場合に `reason=detect_helper_failed` で出す。helper 自身は emit しないが、
+#   marker family が同一で consumer の判定表 (cleanup/SKILL.md ステップ 12 の
+#   {session_worktree_check}) は両者を同じ「未確認」として扱うため、値を追う人がここで
+#   行き止まらないよう併記しておく。
 #
 # remove の出力 (stderr。削除成功時は marker を出さない — 呼び出し側の
 #   {session_worktree_check} は「marker family が無い = 削除成功」で判定する):
@@ -34,7 +42,7 @@
 #   [CONTEXT] WORKTREE_REMOVE_FAILED=1; path=<path>
 #   --dry-run では削除せず [CONTEXT] DRY_RUN_WORKTREE_REMOVE=1; path=<path>; action=<...> を
 #   **stdout** に出す（対象の報告であって失敗診断ではないため）。marker 名を `DRY_RUN_` 前置に
-#   するのは、呼び出し側 (SKILL.md ステップ 12 の {session_worktree_check}) が
+#   するのは、呼び出し側 (cleanup/SKILL.md ステップ 12 の {session_worktree_check}) が
 #   `WORKTREE_REMOVE_*` の glob で marker family を scope するため。family 内の名前にすると
 #   判定表のどの行にも一致せず fallback にも落ちない未定義状態を作る。
 #   detect は read-only なので --dry-run を受理して no-op にする。
@@ -117,9 +125,19 @@ cmd_detect() {
   main_root=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}') || main_root=""
   # 検出は既存 helper に委譲する。flow-state 未記録（flow_wt 空）でも、物理 cwd が当該 Issue の
   # rite セッション worktree なら in_worktree_unrecorded を返し worktree= に cur_top を導出する。
-  detect=$(bash "$SCRIPT_DIR/cleanup-worktree-detect.sh" \
+  # 分類 helper が起動できない / 失敗したときに `none` へ落とすと、消費側は `none` を
+  # 「行ごと省略」に routing するため、live で dirty な worktree が報告から完全に消える。
+  # 呼び出し側が helper 起動失敗に対して使うのと同じ `unknown` へ寄せて未確認扱いにする
+  # （消費側の判定は値 unknown のみで一致し reason 非依存なので、判定表の追加は不要）。
+  if ! detect=$(bash "$SCRIPT_DIR/cleanup-worktree-detect.sh" \
     --ms-enabled "$ms_enabled" --flow-wt "$flow_wt" --cur-top "$cur_top" \
-    --issue "$issue" --worktree-base "$ms_base") || detect="CLEANUP_WT=none; worktree=$flow_wt"
+    --issue "$issue" --worktree-base "$ms_base"); then
+    _cwd_rc=$?
+    echo "WARNING: 分類 helper (cleanup-worktree-detect.sh) が rc=${_cwd_rc} で失敗しました。作業ツリーの分類ができていません" >&2
+    echo "  原因候補: helper 欠落 (rc=127) / helper 非可読 (rc=126) / 引数不正 (rc=2)" >&2
+    echo "[CONTEXT] CLEANUP_WT=unknown; reason=detect_classify_failed; rc=${_cwd_rc}"
+    return 0
+  fi
   cleanup_wt=${detect#CLEANUP_WT=}; cleanup_wt=${cleanup_wt%%;*}
   flow_wt=${detect##*worktree=}
   case "$cleanup_wt" in

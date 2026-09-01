@@ -11,6 +11,11 @@
 # 出力 (stderr):
 #   ✅ <label> を削除: <path>                                    (削除成功ごと)
 #   [CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=<...>; pr=<N>
+#     reason ∈ { invalid_pr_number,          --pr が空 / 非数値（削除は一切行わない）
+#                <label>_rm_failure,         rite_rm の削除失敗（<label> は下記 rite_rm 呼び出しの第 1 引数）
+#                review_results_helper_failed }  内側 review-results-archive-or-rm.sh の起動失敗（rc 付き）
+#     レビュー結果ファイル自体の reason 語彙は review-results-archive-or-rm.sh の docstring が SoT。
+#     削除対象の完全な列挙は本ファイルの `rite_rm` 呼び出し列が SoT。
 #   --dry-run では削除せず `[DRY-RUN] <label> を削除対象として検出: <path>` を **stdout** に出す。
 #
 # ステップ 6.0（残存非実測指摘からの follow-up Issue 起票）は本 helper の対象外。起票は既に
@@ -105,7 +110,7 @@ else
     --state-root "$state_root" --pr "$pr_number" || _rrar_rc=$?
   if [ "$_rrar_rc" -ne 0 ]; then
     echo "WARNING: review-results の退避/削除 helper が rc=${_rrar_rc} で失敗しました。レビュー結果 JSON は未処理のまま残っています" >&2
-    echo "  原因候補: helper 欠落・非可読 (rc=127) / 引数不正 (rc=1)" >&2
+    echo "  原因候補: helper 欠落 (rc=127) / helper 非可読 (rc=126) / 引数不正 (rc=1)" >&2
     echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=review_results_helper_failed; pr=${pr_number}; rc=${_rrar_rc}" >&2
   fi
 fi

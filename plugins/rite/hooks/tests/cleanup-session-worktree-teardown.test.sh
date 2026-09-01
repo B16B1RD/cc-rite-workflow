@@ -131,6 +131,28 @@ out_dry=$(cd "$wt" && bash "$HELPER" detect --issue 1 --config "$r/rite-config.y
 assert_eq "detect --dry-run: exit 0" "$rc" "0"
 assert_eq "detect --dry-run: 出力が通常実行と同一（no-op）" "$out_dry" "$out_plain"
 
+# 内側の分類 helper が起動できないとき、`none` へ落とすと消費側が「行ごと省略」に routing し、
+# live で dirty な worktree が報告から完全に消える。`unknown` へ寄せて未確認扱いにすること。
+# stub plugin root から呼び、cleanup-worktree-detect.sh だけを欠いて再現する。
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+( cd "$r" && bash "$PLUGIN_HOOKS/flow-state.sh" set \
+  --phase branch --issue 1 --branch feat/test --pr 0 --worktree "$wt" --next "test" ) >/dev/null 2>&1
+stub=$(mktemp -d "$TMP_ROOT/stub.XXXXXX")
+mkdir -p "$stub/hooks/scripts/lib"
+cp "$HELPER" "$stub/hooks/scripts/"
+cp "$PLUGIN_HOOKS/flow-state.sh" "$stub/hooks/"
+cp "$PLUGIN_HOOKS/_resolve-session-id.sh" "$stub/hooks/" 2>/dev/null || true
+cp "$PLUGIN_HOOKS/_resolve-session-id-from-file.sh" "$stub/hooks/" 2>/dev/null || true
+cp "$PLUGIN_HOOKS/state-path-resolve.sh" "$stub/hooks/"
+cp "$PLUGIN_HOOKS/scripts/lib/git-status-filtered.sh" "$stub/hooks/scripts/lib/"
+# cleanup-worktree-detect.sh は意図的に置かない → 内側 rc=127
+out=$(cd "$wt" && bash "$stub/hooks/scripts/cleanup-session-worktree-teardown.sh" \
+  detect --issue 1 --config "$r/rite-config.yml" 2>/dev/null); rc=$?
+assert_eq "detect: 内側 helper 不在でも exit 0（非ブロッキング）" "$rc" "0"
+assert_contains "detect: 分類失敗は unknown へ寄せる（none へ落とさない）" "$out" \
+  "[CONTEXT] CLEANUP_WT=unknown; reason=detect_classify_failed; rc="
+assert_not_contains "detect: 分類失敗を none として報告しない" "$out" "[CONTEXT] CLEANUP_WT=none"
+
 echo "=== cleanup-session-worktree-teardown: remove ==="
 
 # AC-1 後半: worktree を削除する。cwd は main checkout に置く（自己削除を避ける実運用と同じ）。

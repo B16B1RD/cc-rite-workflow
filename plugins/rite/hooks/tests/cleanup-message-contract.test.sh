@@ -144,11 +144,19 @@ echo "=== ステップ 4/5/9: 委譲モードのスキップガード (T-01) ===
 # 指示語そのものが実装本体で、marker だけを見る assert は指示の反転 (「実行しない」→「通常どおり
 # 実行する」) を素通しする (mutation 実測で 4 サイト反転しても全 assert green だった)。
 assert_grep_in_section "Step 4 (base update) pins the do-not-execute directive" "$CLEANUP" \
-  '^### 4 base ブランチの更新' '^## ステップ 5:' 'CLEANUP_DELEGATED=1` を emit している場合、本ステップの bash を\*\*実行しない\*\*'
+  '^### 4 base ブランチの更新' '^## ステップ 5:' 'を emit している場合、本ステップの bash を\*\*実行しない\*\*'
 assert_grep_in_section "Step 5 (branch delete) pins the do-not-execute directive" "$CLEANUP" \
-  '^## ステップ 5:' '^## ステップ 6:' 'CLEANUP_DELEGATED=1` を emit している場合、本ステップの bash ブロックを\*\*いずれも実行しない\*\*'
+  '^## ステップ 5:' '^## ステップ 6:' 'を emit している場合、本ステップの bash ブロックを\*\*いずれも実行しない\*\*'
 assert_grep_in_section "Step 9 (wiki ingest) pins the whole-step do-not-execute directive" "$CLEANUP" \
-  '^## ステップ 9:' '^## ステップ 10:' 'CLEANUP_DELEGATED=1` を emit している場合、\*\*本ステップ全体を実行しない\*\*'
+  '^## ステップ 9:' '^## ステップ 10:' 'を emit している場合、\*\*本ステップ全体を実行しない\*\*'
+# 3 ガードとも発火条件に CLEANUP_DELEGATED と CLEANUP_WT=unknown の **両方** を持つこと。
+# unknown 側が落ちると、detect 不能のまま main checkout 操作へ進む経路が復活する。
+assert_grep_in_section "Step 4 gate keys on both delegation markers" "$CLEANUP" \
+  '^### 4 base ブランチの更新' '^## ステップ 5:' 'CLEANUP_DELEGATED=1` \*\*または `\[CONTEXT\] CLEANUP_WT=unknown`\*\*'
+assert_grep_in_section "Step 5 gate keys on both delegation markers" "$CLEANUP" \
+  '^## ステップ 5:' '^## ステップ 6:' 'CLEANUP_DELEGATED=1` \*\*または `\[CONTEXT\] CLEANUP_WT=unknown`\*\*'
+assert_grep_in_section "Step 9 gate keys on both delegation markers" "$CLEANUP" \
+  '^## ステップ 9:' '^## ステップ 10:' 'CLEANUP_DELEGATED=1` \*\*または `\[CONTEXT\] CLEANUP_WT=unknown`\*\*'
 # 4-W routing 文の指示語も同様に pin する (ガード 3 箇所と同じ理由)。
 assert_grep "4-W routing pins the do-not-execute directive" "$CLEANUP" \
   '\*\*下記の手順 1〜4 を実行しない\*\*'
@@ -242,31 +250,33 @@ assert "T-09 section 6 extraction is non-empty" "yes" "$([ -n "$_s6" ] && echo y
 # の位置にも現れるため、`^[[:space:]]*git ...` だけでは抽出前のコード形にすら一致せず
 # (実測: 抽出前の 4-W 節に当てると prune の 1 行しか拾わない)、AC-9 のゲートが検査したつもりの
 # 対象を最初から見ていないことになる。コメント行を除いてからコマンド境界で照合する。
-# 検査対象は bash フェンス内のコード行のみ。散文には marker 名や手動復旧コマンドが
-# 引用として現れるため (例: BRANCH_DELETE_UNMERGED 時にユーザーが強制削除を選ぶ手順の説明)、
-# 節全体に当てると AC-9 が禁じていない散文で赤くなる。
+# 検査対象はフェンス内の行のみ (言語タグは見ない。素フェンスに置かれた削除本体も覆うため)。
+# 散文には marker 名や手動復旧コマンドが引用として現れるため (例: BRANCH_DELETE_UNMERGED 時に
+# ユーザーが強制削除を選ぶ手順の説明)、節全体に当てると AC-9 が禁じていない散文で赤くなる。
+# 逆に、手動復旧コマンドを **素フェンスで** 4-W / ステップ 5 / ステップ 6 に置くと本ゲートが
+# false positive で赤くなる (ステップ 12 の素フェンスは検査対象外の節にあるので現状は無害)。
 # フェンスは info string を見ずにトグルする。`” ```bash ”` の完全一致で開始判定すると、
 # フェンス言語を `sh` に変える・`title=` を付ける等の無害に見える Markdown 編集だけで抽出が
 # 0 行になり、下の 3 ゲートが揃って vacuous 0 で pass する (実測: step 5 のフェンスを ```sh に
 # 変えると削除コマンドを再注入してもスイート green)。タグ無しフェンス内の削除本体も同時に覆う。
-_bash_fenced() { awk '/^[[:space:]]*```/{f=!f;next} f'; }
+_fenced() { awk '/^[[:space:]]*```/{f=!f;next} f'; }
 _strip_comments() { grep -v '^[[:space:]]*#'; }
 # フェンス抽出そのものの空振りも固定する (セクション抽出と同じ理由。こちらは節が非空でも
 # フェンス判定が外れた瞬間に 0 行になるため、上の section 非空 assert では守れない)。
 assert "T-09 4-W bash-fence extraction is non-empty" "yes" \
-  "$(printf '%s\n' "$_s4w" | _bash_fenced | grep -q . && echo yes || echo no)"
+  "$(printf '%s\n' "$_s4w" | _fenced | grep -q . && echo yes || echo no)"
 assert "T-09 step 5 bash-fence extraction is non-empty" "yes" \
-  "$(printf '%s\n' "$_s5" | _bash_fenced | grep -q . && echo yes || echo no)"
+  "$(printf '%s\n' "$_s5" | _fenced | grep -q . && echo yes || echo no)"
 assert "T-09 step 6 bash-fence extraction is non-empty" "yes" \
-  "$(printf '%s\n' "$_s6" | _bash_fenced | grep -q . && echo yes || echo no)"
+  "$(printf '%s\n' "$_s6" | _fenced | grep -q . && echo yes || echo no)"
 # 4-W: worktree の削除・prune の実行行が無く、teardown helper を呼んでいる。
 assert "T-09 4-W has no inline worktree removal" "0" \
-  "$(printf '%s\n' "$_s4w" | _bash_fenced | _strip_comments | grep -cE '(^|[;&|[:space:]])git worktree (remove|prune)')"
+  "$(printf '%s\n' "$_s4w" | _fenced | _strip_comments | grep -cE '(^|[;&|[:space:]])git worktree (remove|prune)')"
 assert "T-09 4-W delegates to the teardown helper" "2" \
   "$(printf '%s\n' "$_s4w" | grep -cE '^[[:space:]]*bash \{plugin_root\}/hooks/scripts/cleanup-session-worktree-teardown\.sh')"
 # 5: ブランチ削除の実行行が無く、branch delete helper を呼んでいる。
 assert "T-09 step 5 has no inline branch deletion" "0" \
-  "$(printf '%s\n' "$_s5" | _bash_fenced | _strip_comments | grep -cE '(^|[;&|[:space:]])git (branch -[dD]|push origin --delete|ls-remote)')"
+  "$(printf '%s\n' "$_s5" | _fenced | _strip_comments | grep -cE '(^|[;&|[:space:]])git (branch -[dD]|push origin --delete|ls-remote)')"
 assert "T-09 step 5 delegates to the branch delete helper" "1" \
   "$(printf '%s\n' "$_s5" | grep -cE '^[[:space:]]*bash \{plugin_root\}/hooks/scripts/cleanup-branch-delete\.sh')"
 # 呼び出しの **引数** を pin する。件数だけの pin は、ガードを駆動する 2 引数を literal へ潰す
@@ -277,27 +287,49 @@ assert "T-09 step 5 threads the pr-merged flag" "1" \
   "$(printf '%s\n' "$_s5" | grep -cF -- '--pr-merged "{pr_merged}"')"
 assert "T-09 4-W threads the pr-merged flag" "1" \
   "$(printf '%s\n' "$_s4w" | grep -cF -- '--pr-merged "{pr_merged}"')"
+# 以下 5 本は **実行行であること** まで固定する。生セクションへの grep だと、対象行をコメント
+# アウトする / フェンス外の散文へ移設する変異を素通しし、「散文は言っているが bash はやっていない」
+# drift をそのまま通す (実測: 5 pin とも SURVIVED)。上の否定 assert 群と同じ filter を通す。
 # detect の --issue も quote する。unquoted だと値が複数トークンに割れたとき helper が
 # unknown option で exit 2 し、marker を 1 本も出さない。
 assert "T-09 4-W quotes the issue argument" "1" \
-  "$(printf '%s\n' "$_s4w" | grep -cF -- 'detect --issue "{issue_number}"')"
+  "$(printf '%s\n' "$_s4w" | _fenced | _strip_comments | grep -cF -- 'detect --issue "{issue_number}"')"
 # helper の rc を捨てないこと。marker 不在を「削除成功」と読む消費側の規約は、helper が
 # 起動しなかった場合に marker が 1 本も出ないことで破れる。
 assert "T-09 4-W captures the detect helper rc" "1" \
-  "$(printf '%s\n' "$_s4w" | grep -cF -- '|| _dt_rc=$?')"
+  "$(printf '%s\n' "$_s4w" | _fenced | _strip_comments | grep -cF -- '|| _dt_rc=$?')"
 assert "T-09 4-W captures the teardown helper rc" "1" \
-  "$(printf '%s\n' "$_s4w" | grep -cF -- '|| _wt_rc=$?')"
+  "$(printf '%s\n' "$_s4w" | _fenced | _strip_comments | grep -cF -- '|| _wt_rc=$?')"
 assert "T-09 step 6 captures the state purge helper rc" "1" \
-  "$(printf '%s\n' "$_s6" | grep -cF -- '|| _sp_rc=$?')"
+  "$(printf '%s\n' "$_s6" | _fenced | _strip_comments | grep -cF -- '|| _sp_rc=$?')"
 # rc 捕捉だけでは修正の本体を守れない。rc を捕捉しても marker を出さなければ消費側の
 # 「marker 不在 = 削除成功」は閉じないため、marker emit 行そのものを pin する
-# (実測: marker 2 行だけを削除した変異はスイート全体で差分ゼロだった)。
+# (実測: marker 行だけを削除した変異はスイート全体で差分ゼロだった)。
 assert "T-09 4-W emits the detect failure marker" "1" \
-  "$(printf '%s\n' "$_s4w" | grep -cF -- '[CONTEXT] CLEANUP_WT=unknown; reason=detect_helper_failed; rc=')"
+  "$(printf '%s\n' "$_s4w" | _fenced | _strip_comments | grep -cF -- '[CONTEXT] CLEANUP_WT=unknown; reason=detect_helper_failed; rc=')"
 assert "T-09 4-W emits the removal failure marker" "1" \
-  "$(printf '%s\n' "$_s4w" | grep -cF -- '[CONTEXT] WORKTREE_REMOVE_FAILED=1; path={flow_wt}; rc=')"
+  "$(printf '%s\n' "$_s4w" | _fenced | _strip_comments | grep -cF -- '[CONTEXT] WORKTREE_REMOVE_FAILED=1; path={flow_wt}; rc=')"
 assert "T-09 step 6 emits the state purge failure marker" "1" \
-  "$(printf '%s\n' "$_s6" | grep -cF -- '[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=state_purge_helper_failed')"
+  "$(printf '%s\n' "$_s6" | _fenced | _strip_comments | grep -cF -- '[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=state_purge_helper_failed')"
+# marker の **消費側** も pin する。producer だけを守っても、ステップ 12 の routing 規則や 4-W の
+# 分岐指示が失われれば unknown は末尾ルール (WORKTREE_REMOVE_* 不在 = 削除成功) に落ち、detect が
+# 一度も走っていないのに完了報告に x が立つ。散文の指示は marker 名の grep では守れない
+# (実測: 指示を反転させる変異がスイート全体で差分ゼロだった)。
+# SoT: references/wiki-promotions/patterns/prose-pin-requires-positive-control.md
+assert_grep "Step 12 treats an unknown or absent CLEANUP_WT as unverified" "$CLEANUP" \
+  "作業ツリーの検出自体が実行できませんでした"
+assert_grep "Step 12 scopes the marker-absence read to the removal family" "$CLEANUP" \
+  "この読み替えが許されるのは削除側"
+assert_grep "Step 12 picks the last CLEANUP_WT occurrence (batch-run recency)" "$CLEANUP" \
+  "複数あれば最後の出現 1 行だけ"
+assert_grep "Step 12 omits the row only for a scoped none" "$CLEANUP" \
+  "行ごと省略してよいのは .none. かつ"
+assert_grep "4-W unknown routing forbids running steps 1-4" "$CLEANUP" \
+  "分類不能なので\*\*上記の手順 1〜4 を実行しない\*\*"
+# unknown は既存 4 gate (base 更新 / ブランチ削除 / wiki ingest / ステップ 12 委譲段落) に
+# 配線されていること。CLEANUP_DELEGATED だけを見る形に戻ると、宣言だけがあって実効が無くなる。
+assert "unknown is wired into the delegation gates" "3" \
+  "$(grep -cF -- 'または `[CONTEXT] CLEANUP_WT=unknown`' "$CLEANUP")"
 # 6: state 削除の実行行 (rite_rm の定義・呼び出し、rm -f) が無く、purge helper を呼んでいる。
 # ステップ 6.0 (follow-up 起票) は抽出対象外なので、その helper 呼び出しはここでは数えない。
 assert "T-09 step 6 has no inline rite_rm" "0" \
