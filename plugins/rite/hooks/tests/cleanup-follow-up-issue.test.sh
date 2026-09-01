@@ -358,12 +358,15 @@ if [ ! -f "$CLEANUP_MD" ]; then
 else
   assert "T-08 helper 呼び出しが実行位置に 1 本" "1" \
     "$(grep -cE '^[[:space:]]*bash [^[:space:]]*hooks/scripts/cleanup-follow-up-issue\.sh' "$CLEANUP_MD" || true)"
+  # archive 呼び出しは cleanup-pr-state-purge.sh へ抽出済み。SKILL.md 上の順序 pin は
+  # 「follow-up 起票 → state purge helper」の並びで見る（archive は purge helper の中で走る）。
+  # JSON が元の場所にあるうちに読む、という 6.0 の前提はこの並びが保つ。
   fu_line=$(grep -nE 'hooks/scripts/cleanup-follow-up-issue\.sh' "$CLEANUP_MD" | head -1 | cut -d: -f1)
-  ar_line=$(grep -nE 'hooks/scripts/review-results-archive-or-rm\.sh' "$CLEANUP_MD" | head -1 | cut -d: -f1)
+  ar_line=$(grep -nE 'hooks/scripts/cleanup-pr-state-purge\.sh' "$CLEANUP_MD" | head -1 | cut -d: -f1)
   if [ -n "$fu_line" ] && [ -n "$ar_line" ] && [ "$fu_line" -lt "$ar_line" ]; then
-    pass "T-08 follow-up 呼び出しが archive より前"
+    pass "T-08 follow-up 呼び出しが state purge (archive を含む) より前"
   else
-    fail "T-08 follow-up ($fu_line) が archive ($ar_line) より前に無い"
+    fail "T-08 follow-up ($fu_line) が state purge ($ar_line) より前に無い"
   fi
   assert "T-08 helper の rc を捕捉している" "1" \
     "$(grep -cF '|| _fu_rc=$?' "$CLEANUP_MD" || true)"
