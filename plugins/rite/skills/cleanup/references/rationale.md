@@ -60,6 +60,25 @@ worktree 隔離ガードに拒否される（実測）。ガードが拒否す�
 できる余地は残るが、それは「worktree 内から全項目を完走させる」という現行設計の Non-goal。
 ガード迂回は設計違反 — ガードは正当に機能している。
 
+## helper-rc-capture
+
+ステップ 4-W の 2 呼び出し（detect / remove）とステップ 6 の state purge —— 計 3 つの helper
+境界は、いずれも「marker が出なければ完了扱い」に倒れる消費側と対になっている（ステップ 12 の `{session_worktree_check}` は
+`WORKTREE_REMOVE_*` 不在を削除成功と読み、`{review_cleanup_check}` の state 削除側も同様）。この
+規約は helper が**起動すらしなかった**場合に破れる — `{plugin_root}` の未解決置換・helper 欠落
+（rc=127）、helper 非可読（rc=126）、引数不正（rc=2）ではプロセスが marker を 1 本も出さない。
+抽出前はインライン bash だったためこの経路自体が存在せず、必ず marker を出すか実際に処理するかの
+どちらかだった。よって呼び出し側で rc を捕捉し、既存の失敗 marker へ変換する。helper が内側の
+archive helper に対して既に採っている形を、抽出で新設した外側の境界にも適用しているだけで、
+判定表そのものは変えない。
+
+ステップ 6.0（follow-up Issue 起票、`_fu_rc`）も同じ rc → marker の形を採るが、本 anchor の
+対象には数えない。消費側が marker 不在を「完了」と読まないため、上記の規約破れが起きないため。
+なお `cleanup-session-worktree-teardown.sh` 内で内側の分類 helper を呼ぶ境界も同型の扱いにして
+あり（失敗を `none` ではなく `CLEANUP_WT=unknown` へ寄せる）、外側と内側で「分類不能」の表現を
+揃えている — `none` は消費側が唯一「行ごと省略」に routing する値なので、そこへ落とすと検出失敗が
+報告から消える。
+
 ## live-cwd-self-exclusion
 
 自セッションを live-cwd から除外しないと、ステップ 2 の `ExitWorktree(keep)` が no-op / 失敗に

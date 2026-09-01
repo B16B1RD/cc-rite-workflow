@@ -559,12 +559,12 @@ retained flag: `[CONTEXT] REVIEW_SOURCE_STALE=1; reason={explicit_file|local_fil
 
 ## クリーンアップ
 
-`/rite:cleanup` は PR マージ後のブランチ削除時に、該当 PR 番号のローカル artifact を **削除または退避** する。レビュー結果ファイルだけが条件付き退避で、それ以外は無条件削除。reason 語彙の単一の真実の源は artifact ごとに異なる — レビュー結果ファイルは helper (`hooks/scripts/review-results-archive-or-rm.sh`) の docstring、それ以外は `cleanup.md` ステップ 6 (双方向リンク。旧 Phase 2.5 から ステップ 6 へ flat 化済):
+`/rite:cleanup` は PR マージ後のブランチ削除時に、該当 PR 番号のローカル artifact を **削除または退避** する。レビュー結果ファイルだけが条件付き退避で、それ以外は無条件削除。reason 語彙の単一の真実の源は artifact ごとに異なる — レビュー結果ファイルは helper (`hooks/scripts/review-results-archive-or-rm.sh`) の docstring、それ以外は helper (`hooks/scripts/cleanup-pr-state-purge.sh`) の docstring (`cleanup.md` ステップ 6 が呼び出す。ステップ 6 自体が持つのは helper 起動失敗時の `state_purge_helper_failed` のみ):
 
 1. **レビュー結果ファイル**: `.rite/review-results/{pr_number}-*.json*` — **`non_blocking_findings[]` が非空なら削除せず `.rite/review-results/archive/` へ退避する**。記録コメント (`pr-review.md` ステップ 6.1.d) がポインタと降格理由 (class B 降格分は `demotion.reason` の判定文、それ以外は「実測なし」) しか載せないため、無条件削除すると非実測指摘の全文が merge 直後にどこにも残らない。中身を判定できない場合 (jq 不在 / parse 失敗 / query error / 空ファイル) もすべて退避側 (安全側) へ倒し、判定不能が起きた事実を `{label}_undecidable` marker で残す。**glob が `.json` ではなく `.json*` なのは `.json.corrupt-*` を同じ経路に載せるため** — corrupt は「中身を判定できない」状態そのものなので、別経路で無条件削除すると同一ステップ内に「判定不能は保全」と「判定不能は削除」の 2 ポリシーが並ぶ (`scripts/review-source-resolve.sh` の corrupt rename 3 経路のうち 2 つは構造的に valid な JSON で、`non_blocking_findings[]` の全文を保持しうる)
 2. **fix retry state file（legacy）**: `.rite/state/fix-fallback-retry-{pr_number}.count` — 旧 retry-counter 機構が生成した orphan の回収。retry-counter 機構の廃止により `fix.md` は現在このファイルを生成しないが、旧版が残した file を掃除するため削除対象に残す
 
-上記のほか、`fix-cycle-state/{pr_number}.json` / legacy `fix-cycle-state.json` / `accepted-fingerprints-{pr_number}.txt` / `review-run-since-{pr_number}.txt` / `nb-sweep-done-{pr_number}.txt` も同ステップで無条件削除される (完全な列挙は `cleanup.md` ステップ 6 の bash block が単一源)。
+上記のほか、`fix-cycle-state/{pr_number}.json` / legacy `fix-cycle-state.json` / `accepted-fingerprints-{pr_number}.txt` / `review-run-since-{pr_number}.txt` / `nb-sweep-done-{pr_number}.txt` も同ステップで無条件削除される (完全な列挙は `hooks/scripts/cleanup-pr-state-purge.sh` の `rite_rm` 呼び出し列が単一源)。
 
 **`archive/` 配下は自動削除されない** — 退避したファイルは PR ごとに蓄積する。掃除機構は実需が出るまで設けない (`no_speculative_structure`)。不要になったら手動削除する。走査系 helper (`review-schema-version-check.sh` / `review-trend-divergence.sh`) はいずれも `-maxdepth 1` のため退避先を拾わない。
 
@@ -574,6 +574,6 @@ wildcard は PR 番号 prefix 固定とし、他 PR のファイルを誤って�
 
 - `plugins/rite/skills/pr-review/SKILL.md` ステップ 6.1: JSON 生成と保存ロジック (AC-1 default stop / AC-2 opt-in posting / D-04 non-blocking contract)
 - `plugins/rite/skills/fix/SKILL.md` ステップ 1.2.0: ハイブリッド読取ロジック (AC-3/4 会話/ファイル優先 / AC-5 後方互換 / AC-6 対話式 fallback)
-- `plugins/rite/skills/cleanup/SKILL.md` ステップ 6: 自動削除/退避ロジック (レビュー結果ファイルは `non_blocking_findings[]` 非空 / 判定不能なら `archive/` へ退避、それ以外の state file は無条件削除)。レビュー結果ファイルの reason 語彙は `hooks/scripts/review-results-archive-or-rm.sh` の docstring、それ以外の failure reason と eval-order enumeration は cleanup.md 側を単一源とする。
+- `plugins/rite/skills/cleanup/SKILL.md` ステップ 6: 自動削除/退避ロジック (レビュー結果ファイルは `non_blocking_findings[]` 非空 / 判定不能なら `archive/` へ退避、それ以外の state file は無条件削除)。レビュー結果ファイルの reason 語彙は `hooks/scripts/review-results-archive-or-rm.sh` の docstring、それ以外の failure reason と eval-order enumeration は `hooks/scripts/cleanup-pr-state-purge.sh` 側を単一源とする (ステップ 6 が持つのは helper 起動失敗時の `state_purge_helper_failed` のみ)。
 - `rite-config.yml` `pr_review.post_comment`: グローバル設定
 - `plugins/rite/hooks/review-result-save.sh`: 保存先へ同梱する `*` だけの `.gitignore`（除外機構の実体）

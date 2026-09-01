@@ -4,7 +4,9 @@
 
 採用 site は `skills/fix/SKILL.md` / `skills/pr-review/SKILL.md` / `skills/open/SKILL.md` /
 `skills/merge/SKILL.md` / `skills/wiki-lint/SKILL.md` / `skills/wiki-ingest/SKILL.md` /
-`skills/cleanup/SKILL.md` ステップ 5。旧 `commands/` 時代の path は対象外。
+`skills/cleanup/SKILL.md` ステップ 3。ステップ 5 の trap/cleanup 関数実体は
+`hooks/scripts/cleanup-branch-delete.sh` へ移設済みで、SKILL.md 側は helper を呼び出すだけ。
+旧 `commands/` 時代の path は対象外。
 本ファイルは **signal-specific trap + cleanup function パターン**の canonical 定義と根拠を集約する。
 各 bash block の冒頭では本ファイルへの anchor 参照を pointer コメントとして置く。
 
