@@ -197,7 +197,7 @@ assert_grep_in_section "T-08 the merged-PR branch stops" "$SKILL" \
 # PR 検索が Issue 番号でスコープされること。--search "linked:issue:N" は :N を無視し、
 # --head の glob は exact-match のため常に空を返す。どちらも「絞り込めていないのに成功して見える」。
 assert_not_grep "T-08 does not use the unscoped linked:issue search" "$SKILL" \
-  'gh pr list.*--search "linked:issue:'
+  '^gh pr list.*--search "linked:issue:'
 assert_not_grep "T-08 does not pass a glob to --head (exact-match only)" "$SKILL" \
   '\-\-head "\*issue-'
 assert_grep_in_section "T-08 looks the PR up by the resolved branch with an exact --head" "$SKILL" \
@@ -219,13 +219,24 @@ assert_grep_in_section "T-08 binds the flow-state branch to the target Issue" "$
 # にアンカーする (条件を落として state_branch を無条件採用へ戻すと赤くなる)。
 assert_grep "T-08 the flow-state branch is adopted only on an Issue-number match" "$SKILL" \
   '^\| `state_issue == \{issue_number\}` かつ `state_branch` が非空 \| `state_branch` / `true`'
-# 取得窓 (--limit) の飽和を「PR 無し」と読まない。fail-loud の帰結 (停止する) にアンカーする。
-assert_grep_in_section "T-08 a saturated fetch window is not read as no-PR" "$SKILL" \
+# ブランチ未確定時の取得は Issue スコープで、取得窓を持たないこと。`--limit N` の窓は Issue で
+# スコープできず、本リポジトリでは常に飽和するため「飽和したら止める」は主経路 (着手前の Issue) を
+# 恒真で殺す。timeline 経路へ戻さない pin。
+assert_grep_in_section "T-08 the fallback lookup is Issue-scoped via the timeline API" "$SKILL" \
   '^### 2\\.3 関連 PR の検索' '^## Phase 3:' \
-  '\*\*返却件数が `--limit` の値と等しいときは集合が切り詰められている可能性がある\*\*'
-assert_grep_in_section "T-08 the saturated-window path stops instead of falling through" "$SKILL" \
+  '^pr_candidates=\$\(gh api "repos/\{owner\}/\{repo\}/issues/\{issue_number\}/timeline" --paginate'
+assert_not_grep "T-08 no unscoped fetch window is used for the fallback" "$SKILL" \
+  '^gh pr list.*--limit'
+# 0 件 (関連 PR が無い) と 取得失敗 を同じ値へ畳まない。停止するのは取得が失敗したときだけ。
+assert_grep_in_section "T-08 an empty result is a real observation, not a window artifact" "$SKILL" \
   '^### 2\\.3 関連 PR の検索' '^## Phase 3:' \
-  '該当 PR が 1 件も無い」へ落とさず、WARNING を出して\*\*停止する\*\*'
+  '\*\*絞り込み結果 0 件は「関連 PR が無い」と読んでよい\*\*'
+assert_grep_in_section "T-08 a failed timeline fetch stops instead of reading as no-PR" "$SKILL" \
+  '^### 2\\.3 関連 PR の検索' '^## Phase 3:' \
+  '^  echo "ERROR: Issue timeline を取得できません'
+assert_grep_in_section "T-08 the timeline candidates are still filtered before the routing table" "$SKILL" \
+  '^### 2\\.3 関連 PR の検索' '^## Phase 3:' \
+  '\*\*絞り込み前の集合を下記の判定表に載せてはならない\*\*'
 # identity 昇格は headRefName が Issue スコープを満たす場合に限る (body の closing keyword だけで
 # 一致した PR の head をリモートごと消させない)。
 assert_grep "T-08 identity promotion is restricted to a matching headRefName" "$SKILL" \

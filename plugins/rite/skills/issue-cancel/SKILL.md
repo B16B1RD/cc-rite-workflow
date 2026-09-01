@@ -43,6 +43,7 @@ rationale: references/rationale.md#no-reconfirm
 | `{cancel_reason}` | Phase 1 で確定した中止理由 |
 | `{reason_file}` | Phase 1 で理由本文を書き出した一時ファイルの path |
 | `{pr_number}` | Phase 2 で検出した open PR の番号（未検出時は substitute しない） |
+| `{candidate_pr_number}` | Phase 2.3 の `CANCEL_PR_CANDIDATES` marker が並べた候補 PR 番号（1 件ずつ substitute する） |
 | `{branch_name}` | Phase 2 で確定したブランチ名（PR の `headRefName`（`issue-{issue_number}-` を含む場合のみ）、flow-state（対象 Issue 一致時）、またはローカルブランチ検索の一意候補） |
 | `{branch_identity_verified}` | Phase 2 の identity 検証結果（`true` / `false`） |
 | `{flow_wt}` | Phase 4.1 の `CLEANUP_WT` marker の `worktree=` 値 |
@@ -135,23 +136,37 @@ git branch --list "*issue-{issue_number}-*" --format '%(refname:short)'
 gh pr list -R {owner_repo} --head "{branch_name}" --state all --json number,state,isDraft,headRefName,mergedAt,url
 ```
 
-ブランチが未確定（`{branch_identity_verified}=false`）、または上記が 0 件のときは PR body の closing keyword で client-side に絞る。**`--search "linked:issue:{issue_number}"` は使わない** — GitHub は `linked:issue` を boolean qualifier として解釈し `:{N}` を無視するため、どの Issue 番号でも同じ集合（Issue をリンクした全 PR）が返る:
+ブランチが未確定（`{branch_identity_verified}=false`）、または上記が 0 件のときは **Issue の timeline から候補 PR を引く**。`gh pr list` には Issue でスコープする手段が無い — `--search "linked:issue:{issue_number}"` は GitHub が `linked:issue` を boolean qualifier として解釈して `:{N}` を無視するため任意の Issue で同じ集合を返し、`--state all --limit N` は最新 N 件の取得**窓**でしかない（活発なリポジトリでは常に飽和し、窓外のマージ済み PR を「PR 無し」と読ませる）:
+rationale: references/rationale.md#issue-scoped-pr-lookup
 
 ```bash
-gh pr list -R {owner_repo} --state all --limit 100 --json number,state,isDraft,headRefName,mergedAt,url,body
+_tl_rc=0
+pr_candidates=$(gh api "repos/{owner}/{repo}/issues/{issue_number}/timeline" --paginate \
+  --jq '.[] | select(.event=="cross-referenced" or .event=="connected") | .source.issue | select(.pull_request != null) | .number' \
+  | sort -un) || _tl_rc=$?
+if [ "$_tl_rc" -ne 0 ]; then
+  echo "ERROR: Issue timeline を取得できません (rc=${_tl_rc})。関連 PR の有無を確認できないため中止します" >&2
+  exit 1
+fi
+echo "[CONTEXT] CANCEL_PR_CANDIDATES=$(printf '%s' "$pr_candidates" | tr '\n' ',')"
 ```
 
-取得結果から、`body` が `Closes/Fixes/Resolves #{issue_number}`（大文字小文字を問わない、`#{issue_number}` の直後が数字でない）にマッチする PR、または `headRefName` が `issue-{issue_number}-` を含む PR **だけ**を残す。**絞り込み前の集合を下記の判定表に載せてはならない** — 無関係な merged PR で第 1 行が誤発火する。
+timeline は Issue にスコープされ取得窓を持たないため、**絞り込み結果 0 件は「関連 PR が無い」と読んでよい**。停止するのは取得自体が失敗したときだけで、0 件と取得失敗を同じ値へ畳まない。
 
-**取得窓の飽和は「PR 無し」と読まない**: 上記 `gh pr list` は最新 100 件を返す取得**窓**であり Issue でスコープされない。**返却件数が `--limit` の値と等しいときは集合が切り詰められている可能性がある**ため、絞り込み結果が 0 件でも下表の「該当 PR が 1 件も無い」へ落とさず、WARNING を出して**停止する**（窓外にマージ済み PR がある Issue を NOT_PLANNED で葬らないため）。`--limit` の引き上げは閾値の先へ同じ欠陥を移すだけなので採らない。
-rationale: references/rationale.md#limit-window-fail-loud
+候補ごとに詳細を引く（候補は通常 0〜3 件）:
+
+```bash
+gh pr view {candidate_pr_number} -R {owner_repo} --json number,state,isDraft,headRefName,mergedAt,url,body
+```
+
+timeline は closing keyword を伴わない単なる言及（cross-reference）も返すため、`body` が `Closes/Fixes/Resolves #{issue_number}`（大文字小文字を問わない、`#{issue_number}` の直後が数字でない）にマッチする PR、または `headRefName` が `issue-{issue_number}-` を含む PR **だけ**を残す。**絞り込み前の集合を下記の判定表に載せてはならない** — 無関係な merged PR で第 1 行が誤発火する。
 
 | 観測（絞り込み後） | アクション |
 |---|---|
 | `mergedAt` が非 null の PR がある | **中止ではなく完了済み**。`/rite:cleanup {pr_number}` を案内して**停止する**（マージ済みの作業を NOT_PLANNED で葬らない） |
 | `state == "OPEN"` の PR がある | `{pr_number}` と `headRefName` を retain して Phase 3 へ。**identity 昇格は `headRefName` が `issue-{issue_number}-` を含む場合に限る** — その場合だけ `headRefName` を `{branch_name}`、`{branch_identity_verified}=true` にする。body の closing keyword だけで一致した PR は `{branch_name}` / `{branch_identity_verified}` を **2.2 で解決した値のまま据え置く**（この flag は helper のリモート ref 削除の唯一のゲートであり、無関係な PR の head をリモートごと消させないため） |
 | `state == "CLOSED"` かつ `mergedAt` が null の PR がある | 既にクローズ済み（手動 close / 本スキルの再実行）。`{pr_number}` を retain し **Phase 3 はスキップ**して Phase 4 へ（4.4 の state purge を発火させる）。`{branch_name}` / `{branch_identity_verified}` の扱いは上の OPEN 行と同一 |
-| 該当 PR が 1 件も無い（かつ取得窓が飽和していない） | `{pr_number}` は未確定。2.2 で解決したブランチのまま Phase 4 へ（Phase 3 はスキップ） |
+| 該当 PR が 1 件も無い | `{pr_number}` は未確定。2.2 で解決したブランチのまま Phase 4 へ（Phase 3 はスキップ） |
 
 `headRefName` を経由せずにブランチ名を推測しない。
 rationale: references/rationale.md#identity-promotion-headref-only
