@@ -655,7 +655,10 @@ _sp_rc=0
 bash {plugin_root}/hooks/scripts/cleanup-pr-state-purge.sh --pr "{pr_number}" || _sp_rc=$?
 if [ "$_sp_rc" -ne 0 ]; then
   echo "WARNING: state purge helper が rc=${_sp_rc} で失敗しました。PR-specific state ファイルは未処理のまま残っています" >&2
-  echo "  原因候補: {plugin_root} の未解決置換・helper 欠落 (rc=127) / helper 非可読 (rc=126) / 引数不正 (rc=2)" >&2
+  # 候補は到達可能なものだけを挙げる。本 call site は --pr しか渡さず、purge helper は非数値の
+  # --pr を exit 0 + invalid_pr_number marker で返すため usage error (rc=2) には到達しない。
+  # rc=2 を生むのは purge helper 自身の構文エラー (破損)。teardown 側 3 境界と語彙を揃える。
+  echo "  原因候補: {plugin_root} の未解決置換・helper 欠落 (rc=127) / helper 非可読 (rc=126) / helper 破損・構文エラー (rc=2)" >&2
   echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=state_purge_helper_failed; pr={pr_number}; rc=${_sp_rc}" >&2
 fi
 ```

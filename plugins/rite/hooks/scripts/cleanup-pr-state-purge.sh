@@ -110,7 +110,10 @@ else
     --state-root "$state_root" --pr "$pr_number" || _rrar_rc=$?
   if [ "$_rrar_rc" -ne 0 ]; then
     echo "WARNING: review-results の退避/削除 helper が rc=${_rrar_rc} で失敗しました。レビュー結果 JSON は未処理のまま残っています" >&2
-    echo "  原因候補: helper 欠落 (rc=127) / helper 非可読 (rc=126) / 引数不正 (rc=1)" >&2
+    # 候補はこの call site から到達可能なものだけを挙げる。呼び先の exit 1 は 4 箇所とも引数検証
+    # だが、本 helper は --pr を数値検証済み・--state-root を非空に確定させてから渡すため rc=1 は
+    # 到達不能。逆に呼び先の構文エラー (破損) は rc=2 として実際に観測される。
+    echo "  原因候補: helper 欠落 (rc=127) / helper 非可読 (rc=126) / helper 破損・構文エラー (rc=2)" >&2
     echo "[CONTEXT] REVIEW_CLEANUP_PARTIAL_FAILURE=1; reason=review_results_helper_failed; pr=${pr_number}; rc=${_rrar_rc}" >&2
   fi
 fi

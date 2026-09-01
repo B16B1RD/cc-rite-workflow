@@ -22,12 +22,13 @@ assert_eq(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (expected='$3' actua
 assert_absent(){ if [ -e "$2" ]; then bad "$1 ($2 が残っている)"; else ok "$1"; fi; }
 assert_present(){ if [ -e "$2" ]; then ok "$1"; else bad "$1 ($2 が消えた)"; fi; }
 
-# 対象 PR (42) と別 PR (4) / prefix が伸びた PR (420) の state を同居させる。
-# 4 と 420 は `42` への部分一致・prefix 一致で巻き込まれうる境界値。
+# 対象 PR (42) と別 PR (4) / prefix が伸びた PR (420) / suffix 一致 PR (142) の state を同居させる。
+# 4 と 420 は `42` への部分一致・prefix 伸長、142 は末尾一致で巻き込まれうる境界値。
+# 142 は glob の**先頭**アンカーを検証する（`*42-*` のように頭を緩める変異はこれでしか死なない）。
 seed(){
   local root="$1"
   mkdir -p "$root/.rite/state" "$root/.rite/fix-cycle-state" "$root/.rite/review-results"
-  for pr in 42 4 420; do
+  for pr in 42 4 420 142; do
     printf 'x\n' > "$root/.rite/state/fix-fallback-retry-${pr}.count"
     printf 'x\n' > "$root/.rite/fix-cycle-state/${pr}.json"
     printf 'x\n' > "$root/.rite/state/accepted-fingerprints-${pr}.txt"
@@ -54,6 +55,7 @@ assert_present "別 PR (4) の state を巻き込まない" "$r/.rite/state/nb-s
 assert_present "prefix が伸びた PR (420) の state を巻き込まない" "$r/.rite/state/nb-sweep-done-420.txt"
 assert_present "別 PR (4) の review-results を巻き込まない" "$r/.rite/review-results/4-cycle1.json"
 assert_present "prefix が伸びた PR (420) の review-results を巻き込まない" "$r/.rite/review-results/420-cycle1.json"
+assert_present "suffix 一致 PR (142) の review-results を巻き込まない" "$r/.rite/review-results/142-cycle1.json"
 # 削除の実行報告は stderr（marker と同じストリーム。抽出前と同一）。
 assert_contains "削除ごとに ✅ 行を出す" "$out" "✅ nb_sweep_done を削除:"
 
@@ -75,6 +77,8 @@ assert_not_contains "dry-run: 別 PR の review-results を列挙しない" "$ou
   "/4-cycle1.json"
 assert_not_contains "dry-run: prefix が伸びた PR の review-results を列挙しない" "$out" \
   "/420-cycle1.json"
+assert_not_contains "dry-run: suffix 一致 PR の review-results を列挙しない" "$out" \
+  "/142-cycle1.json"
 # `✅ … を削除:` は helper が **stderr** にしか出さない。stdout だけを見る assert は
 # どんな実装でも落ちない false positive になるため、両ストリームを結合して照合する。
 out_all=$(bash "$HELPER" --pr 42 --state-root "$r" --dry-run 2>&1)
