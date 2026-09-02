@@ -21,8 +21,9 @@ CLOSE_MD="$PLUGIN_ROOT/skills/issue-close/SKILL.md"
 PR_OPEN_MD="$PLUGIN_ROOT/skills/open/SKILL.md"
 PROJECTS_REF="$PLUGIN_ROOT/references/projects-integration.md"
 ARCHIVE_MD="$PLUGIN_ROOT/skills/cleanup/references/archive-procedures.md"
+CLEANUP_MD="$PLUGIN_ROOT/skills/cleanup/SKILL.md"
 
-for f in "$CLOSE_MD" "$PR_OPEN_MD" "$PROJECTS_REF" "$ARCHIVE_MD"; do
+for f in "$CLOSE_MD" "$PR_OPEN_MD" "$PROJECTS_REF" "$ARCHIVE_MD" "$CLEANUP_MD"; do
   [ -f "$f" ] || { echo "ERROR: required file not found: $f" >&2; exit 1; }
 done
 
@@ -93,4 +94,113 @@ assert_grep_in_section "open.md Note が {parent_issue_number} の substitute �
 assert_not_grep "open.md Note の禁止リストに {parent_issue_number} が戻っていない" "$PR_OPEN_MD" \
   '\{project_number\}` / `\{parent_issue_number\}` は本コマンド body で substitute しない'
 
-print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or pr/open.md ステップ 1.2, regression risk reopens. Re-confirm cross-references before removing methods."
+echo "=== Phase 7: parent auto-close uses stateReason (NOT_PLANNED 子は Done にしない) ==="
+S371_START='^#### 3\.7\.1'
+S371_END='^#### 3\.7\.2'
+S373_START='^#### 3\.7\.3'
+S373_END='^#### 3\.7\.4'
+S461_START='^### 4\.6\.0'
+S461_END='^### 4\.6\.2'
+S10_START='^## ステップ 10:'
+S10_END='^## ステップ 11:'
+S12_START='^## ステップ 12:'
+S12_END='^## Error Handling'
+
+# T-01: 両クエリが stateReason を取得する（形: GraphQL nodes / --jq 投影 / Method B --json）
+assert_grep_in_section "archive 3.7.1 query nodes include stateReason" "$ARCHIVE_MD" \
+  "$S371_START" "$S371_END" \
+  'stateReason'
+assert_grep_in_section "close.md 4.6.1 GraphQL nodes include stateReason" "$CLOSE_MD" \
+  "$S461_START" "$S461_END" \
+  'nodes \{ number state stateReason \}'
+assert_grep_in_section "close.md 4.6.1 jq projection includes stateReason" "$CLOSE_MD" \
+  "$S461_START" "$S461_END" \
+  '\{number, state, stateReason\}'
+assert_grep_in_section "close.md Method B gh issue view fetches state,stateReason" "$CLOSE_MD" \
+  "$S461_START" "$S461_END" \
+  'json state,stateReason'
+assert_not_grep "close.md Method B no longer fetches --json state alone for children" "$CLOSE_MD" \
+  'issue view "\$n".*--json state --jq'
+assert_not_grep "close.md jq projection is not state-only" "$CLOSE_MD" \
+  '\{number, state\}\]'
+
+# T-02: NOT_PLANNED / skip_cancelled_children は Done / proceed_to_confirmation へ進まない
+assert_grep_in_section "archive Assessment has NOT_PLANNED row that skips Done" "$ARCHIVE_MD" \
+  "$S371_START" "$S371_END" \
+  'stateReason == NOT_PLANNED'
+assert_grep_in_section "archive NOT_PLANNED row does not update parent Status to Done" "$ARCHIVE_MD" \
+  "$S371_START" "$S371_END" \
+  'NOT_PLANNED.*Do not update parent Status to Done|Do not update parent Status to Done.*NOT_PLANNED'
+assert_not_grep "archive NOT_PLANNED row does not proceed to 3.7.2" "$ARCHIVE_MD" \
+  'NOT_PLANNED` \| Proceed to Phase 3\.7\.2'
+assert_grep_in_section "close.md P461 skip_cancelled_children exists" "$CLOSE_MD" \
+  "$S461_START" "$S461_END" \
+  'P461_DECISION=skip_cancelled_children'
+assert_not_grep "skip_cancelled_children is not the same routing cell as proceed_to_confirmation" "$CLOSE_MD" \
+  'skip_cancelled_children.*proceed_to_confirmation'
+assert_not_grep "skip_cancelled_children is not the same routing cell as Shared Status→Done" "$CLOSE_MD" \
+  'skip_cancelled_children.*Shared: Status'
+
+# T-02b: skip_reason_unavailable fail-loud は proceed / Done と同一セルに無い
+assert_grep_in_section "close.md P461 skip_reason_unavailable exists" "$CLOSE_MD" \
+  "$S461_START" "$S461_END" \
+  'P461_DECISION=skip_reason_unavailable'
+assert_not_grep "skip_reason_unavailable is not the same routing cell as proceed_to_confirmation" "$CLOSE_MD" \
+  'skip_reason_unavailable.*proceed_to_confirmation'
+assert_not_grep "skip_reason_unavailable is not the same routing cell as Shared Status→Done" "$CLOSE_MD" \
+  'skip_reason_unavailable.*Shared: Status'
+assert_grep_in_section "cleanup ステップ 12 値域 has stateReason 判定不能行" "$CLEANUP_MD" \
+  "$S12_START" "$S12_END" \
+  'stateReason 判定不能'
+
+# T-03: 全 COMPLETED（NOT_PLANNED なし）の既存行が残る。generic 行は skip 行と互いに素
+assert_grep_in_section "archive all-CLOSED parent OPEN still goes to 3.7.2" "$ARCHIVE_MD" \
+  "$S371_START" "$S371_END" \
+  'none `NOT_PLANNED`'
+assert_grep_in_section "archive generic CLOSED+OPEN row excludes unavailable stateReason" "$ARCHIVE_MD" \
+  "$S371_START" "$S371_END" \
+  'no unavailable `stateReason`, and parent is OPEN'
+assert_grep_in_section "close.md P461 proceed_to_confirmation remains" "$CLOSE_MD" \
+  "$S461_START" "$S461_END" \
+  'P461_DECISION=proceed_to_confirmation'
+# T-02 pin の実体: bash elif cancelled が proceed else より前（routing 表の文字列存在だけでは不足）
+assert_grep_in_section "close.md cancelled elif precedes proceed else" "$CLOSE_MD" \
+  "$S461_START" "$S461_END" \
+  'elif \[ "\$cancelled_count" -gt 0'
+assert_grep_in_section "close.md cancelled elif emit includes numbers=" "$CLOSE_MD" \
+  "$S461_START" "$S461_END" \
+  'P461_DECISION=skip_cancelled_children; numbers='
+
+# T-01/AC-1 報告: Cancelled 子番号明示
+assert_grep_in_section "archive 3.7.3 Cancelled 通知 names Cancelled children" "$ARCHIVE_MD" \
+  "$S373_START" "$S373_END" \
+  'Cancelled の子'
+assert_grep_in_section "archive 3.7.3 Cancelled 通知 includes NOT_PLANNED" "$ARCHIVE_MD" \
+  "$S373_START" "$S373_END" \
+  'Cancelled \(NOT_PLANNED\)'
+assert_grep "close.md user-facing report names Cancelled children and unfinished parent" "$CLOSE_MD" \
+  'Cancelled の子 .*親 .*は未完了扱い'
+assert_grep_in_section "cleanup ステップ 12 値域 has Cancelled 未完了扱い" "$CLEANUP_MD" \
+  "$S12_START" "$S12_END" \
+  'Cancelled の子を含むため親は未完了扱い'
+
+# 文書同期: ステップ 10 の「全子完了→auto-close」旧要約が残っていない
+assert_grep_in_section "cleanup ステップ 10 auto-close requires stateReason != NOT_PLANNED" "$CLEANUP_MD" \
+  "$S10_START" "$S10_END" \
+  'stateReason != NOT_PLANNED'
+assert_not_grep "cleanup ステップ 10 no longer says 全子 Issue が完了していれば parent も auto-close" "$CLEANUP_MD" \
+  '全子 Issue が完了していれば parent も auto-close'
+
+# regression: Method B state 失敗→OPEN 保全 / OPEN+null は欠落にしない
+assert_grep_in_section "Method B state fetch failure still fail-closed as OPEN" "$CLOSE_MD" \
+  "$S461_START" "$S461_END" \
+  'state 取得失敗は fail-closed \(OPEN 扱い\)'
+assert_grep_in_section "OPEN child null stateReason is not treated as unavailable" "$CLOSE_MD" \
+  "$S461_START" "$S461_END" \
+  'OPEN 子の stateReason null は正常'
+assert_not_grep "OPEN fail-closed is not folded into skip_reason_unavailable" "$CLOSE_MD" \
+  'state 取得失敗は fail-closed.*skip_reason_unavailable'
+
+if ! print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or pr/open.md ステップ 1.2, or drop stateReason from parent auto-close, regression risk reopens. Re-confirm cross-references before removing methods."; then
+  exit 1
+fi
