@@ -1,4 +1,10 @@
 ## 2026-09-02
+* **Skip**: [20260902T033550Z-pr-2500.md](raw/reviews/20260902T033550Z-pr-2500.md) — durable fail-loud contract is already in issue-cancel SKILL.md; cycle-3 0-finding confirmation only
+* **Skip**: [20260902T031852Z-pr-2500.md](raw/reviews/20260902T031852Z-pr-2500.md) — durable fail-loud contract is already in issue-cancel SKILL.md; cycle-2 blocking finding confirmation only
+* **Skip**: [20260902T024536Z-pr-2500.md](raw/reviews/20260902T024536Z-pr-2500.md) — durable fail-loud contract is already in issue-cancel SKILL.md; review cycle without new domain heuristic
+* **Skip**: [20260902T005112Z-pr-2500.md](raw/reviews/20260902T005112Z-pr-2500.md) — durable fail-loud contract is already in issue-cancel SKILL.md; review cycle without new domain heuristic
+* **Skip**: [20260902T025832Z-pr-2500.md](raw/fixes/20260902T025832Z-pr-2500.md) — durable fail-loud contract is already in issue-cancel SKILL.md; fix cycle without new domain heuristic
+* **Skip**: [20260902T010336Z-pr-2500.md](raw/fixes/20260902T010336Z-pr-2500.md) — durable fail-loud contract is already in issue-cancel SKILL.md; fix cycle without new domain heuristic
 * **Create**: [gh のフィルタオプションは絞り込めていないのに成功して見える](pages/anti-patterns/gh-filter-succeeds-without-filtering.md) — raw/reviews/20260901T133013Z-pr-2500.md, raw/reviews/20260901T140807Z-pr-2500.md, raw/fixes/20260901T134035Z-pr-2500.md を新規ページ化
 * **Create**: [二重引用符と -- は argv 分割にしか効かず、展開はパース時に終わっている](pages/anti-patterns/quotes-do-not-stop-expansion.md) — raw/reviews/20260901T180132Z-pr-2500.md, raw/reviews/20260901T140807Z-pr-2500.md, raw/fixes/20260901T180942Z-pr-2500.md を新規ページ化
 * **Create**: [成功経路にも出る prefix を失敗の判別子にしてはならない](pages/anti-patterns/success-path-prefix-as-failure-detector.md) — raw/reviews/20260901T165319Z-pr-2500.md, raw/fixes/20260901T170748Z-pr-2500.md を新規ページ化
