@@ -69,7 +69,7 @@ pin() {
   local before=$FAIL
   assert_grep_in_section "$@"
   if [ "$FAIL" -gt "$before" ]; then
-    if SEC_START="$3" SEC_END="$4" awk '$0 ~ ENVIRON["SEC_START"], $0 ~ ENVIRON["SEC_END"]' "$2" | grep -q .; then
+    if [ -n "$(SEC_START="$3" SEC_END="$4" awk '$0 ~ ENVIRON["SEC_START"], $0 ~ ENVIRON["SEC_END"]' "$2")" ]; then
       echo "MISSING RULE: $1 — pattern: $5" >&2
     else
       echo "SECTION NOT FOUND: $1 — heading drift? [$3 .. $4]" >&2

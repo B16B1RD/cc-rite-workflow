@@ -2030,7 +2030,7 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
 
 対象は**機構の追加**。テスト追加・複製同期は対象外。[coding-principles.md](../../skills/rite-workflow/references/coding-principles.md) の `no_speculative_structure` と対。
 
-**Escalation trigger（パッチの重ね掛け停止）**: 対応中の finding が**同一 PR の前 cycle の fix が導入・変更した箇所**への指摘である場合（description が「cycle N で導入した」「前 cycle で追加した」等で当該 fix を名指しする場合を含む）、同じ機構への追加パッチを既定選択にしないこと。まず「当該機構ごと削除・単純化して指摘群を根から消せないか」を検討し、修正案の提示（ステップ 2.3）の前にその判断を chat へ 1 行明示する（例: `simplification-first: 分岐機構を削除し行全体再生成へ単純化` / `simplification-first: 追加パッチを選択 — 理由: {reason}`）。
+**Escalation trigger（パッチの重ね掛け停止）**: 対応中の finding が**同一 PR の前 cycle の fix が導入・変更した箇所**への指摘である場合（description が「cycle N で導入した」「前 cycle で追加した」等で当該 fix を名指しする場合を含む）、同じ機構への追加パッチを既定選択にしないこと。まず「当該機構ごと削除・単純化して指摘群を根から消せないか」を検討し、修正案の提示（ステップ 2.3）の前にその判断を chat へ 1 行明示する（例: `simplification-first: 削除 — 分岐機構を削除し行全体再生成へ単純化` / `simplification-first: 追加 — 理由: {なぜ削除ではないか}`。書式はステップ 3.2 の必須段落と同一）。
 
 Escalation trigger 成立時は、この判断を commit body の `simplification-first:` 段落（ステップ 3.2）として書く。ステップ 3.2.1 Root Cause Gate が段落の有無を検査する。
 
@@ -2636,7 +2636,7 @@ Before generating the commit message, check the `language` field in `rite-config
 
 **Commit body:**
 
-Use a free-form commit body. Review-fix commits **MUST** include both:
+Use a free-form commit body. Review-fix commits **MUST** include:
 - **対応方針** — 各 finding に対して何をしたか / なぜその方針か
 - **`Root cause:` / `根本原因:` 段落** — ステップ 3.2.1 Root Cause Gate が検査する
 - **`simplification-first:` 段落（Escalation trigger 成立時のみ）** — `simplification-first: 削除 — {何を削ったか}` または `simplification-first: 追加 — 理由: {なぜ削除ではないか}` の 1 段落。ステップ 3.2.1 Root Cause Gate が検査する。trigger 不成立の cycle では書かない
@@ -2691,7 +2691,7 @@ Addresses review comments from @reviewer1
 
 fix(review): {description}
 
-{free-form body — 対応方針 + `Root cause:` / `根本原因:` 段落}
+{free-form body — 対応方針 + `Root cause:` / `根本原因:` 段落 + (Escalation trigger 成立時) `simplification-first:` 段落}
 
 {acknowledged_finding_lines (展開ルール: accept finding 0 件 → 完全省略 (前後 blank line も削除、conventional commits lint の連続空行 fail を防ぐ)。1 件以上 → 各 `Acknowledged-finding:` 行を `\n` 区切りで連結、末尾改行なし)}
 
