@@ -206,6 +206,14 @@ assert_grep "close.md user-facing report names Cancelled children and unfinished
 assert_grep_in_section "cleanup ステップ 12 値域 has Cancelled 未完了扱い" "$CLEANUP_MD" \
   "$S12_START" "$S12_END" \
   'Cancelled の子を含むため親は未完了扱い'
+assert_grep_in_section "cleanup ステップ 12 値域 has Cancelled のため Done 上書きをスキップ" "$CLEANUP_MD" \
+  "$S12_START" "$S12_END" \
+  'Cancelled のため Done 上書きをスキップ'
+assert_grep_in_section "cleanup ステップ 12 値域 is 7 kinds" "$CLEANUP_MD" \
+  "$S12_START" "$S12_END" \
+  '7 種類'
+assert_not_grep "cleanup ステップ 12 値域 no longer says 6 種類" "$CLEANUP_MD" \
+  '6 種類'
 
 # 文書同期: ステップ 10 の「全子完了→auto-close」旧要約が残っていない
 assert_grep_in_section "cleanup ステップ 10 auto-close requires stateReason != NOT_PLANNED" "$CLEANUP_MD" \
@@ -213,6 +221,12 @@ assert_grep_in_section "cleanup ステップ 10 auto-close requires stateReason 
   'stateReason != NOT_PLANNED'
 assert_not_grep "cleanup ステップ 10 no longer says 全子 Issue が完了していれば parent も auto-close" "$CLEANUP_MD" \
   '全子 Issue が完了していれば parent も auto-close'
+assert_grep_in_section "cleanup ステップ 10 maps skipped_terminal_conflict to parent_close_result" "$CLEANUP_MD" \
+  "$S10_START" "$S10_END" \
+  'skipped_terminal_conflict'
+assert_grep_in_section "cleanup ステップ 10 skipped_terminal_conflict sets parent_close_result" "$CLEANUP_MD" \
+  "$S10_START" "$S10_END" \
+  'parent_close_result'
 
 # regression: Method B state 失敗→OPEN 保全 / OPEN+null は欠落にしない
 assert_grep_in_section "Method B state fetch failure still fail-closed as OPEN" "$CLOSE_MD" \
