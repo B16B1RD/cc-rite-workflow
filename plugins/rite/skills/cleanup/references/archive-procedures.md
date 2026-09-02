@@ -478,13 +478,22 @@ Generated from `trackedIssues.nodes` retrieved in Phase 3.7.1:
 
 ##### 3.7.2.3 Close Completion Message
 
-親が既 CLOSED で 3.7.2.2 を skip した場合:
+3.7.2.1 が retain した `.result` で分岐する。Done 同期成功は `updated` のときだけ出す。3.7.2.1 を skip した（`projects.enabled: false`）ときは Done 同期を主張しない。
+
+| 3.7.2.1 `.result` | 既 CLOSED（3.7.2.2 skip）の末尾 | close 時の Status 行 |
+|-------------------|--------------------------------|----------------------|
+| `updated` | Projects Status を Done に同期しました | `Status: Done に更新` |
+| `skipped_terminal_conflict` | Cancelled のため Done 上書きをスキップしました | `Status: Cancelled のため Done 上書きをスキップ` |
+| `failed` | Projects Status の更新に失敗しました | `Status: 更新失敗` |
+| `skipped_not_in_project` | Project 未登録のため Status は未更新です | `Status: Project 未登録のため未更新` |
+
+`.result=updated`（親が既 CLOSED、3.7.2.2 skip）:
 
 ```
 親 Issue #{parent_issue_number} は既に CLOSED です。Projects Status を Done に同期しました
 ```
 
-それ以外（3.7.2.2 で close した場合）:
+`.result=updated`（3.7.2.2 で close）:
 
 ```
 親 Issue #{parent_issue_number} を自動クローズしました
@@ -492,6 +501,57 @@ Generated from `trackedIssues.nodes` retrieved in Phase 3.7.1:
 完了サマリ:
 - 親 Issue: #{parent_issue_number} - {parent_issue_title}
 - Status: Done に更新
+- 完了した子 Issue: {completed_count} 件
+```
+
+`.result=skipped_terminal_conflict`（親が既 CLOSED、3.7.2.2 skip）:
+
+```
+親 Issue #{parent_issue_number} は既に CLOSED です。Cancelled のため Done 上書きをスキップしました
+```
+
+`.result=skipped_terminal_conflict`（3.7.2.2 で close）:
+
+```
+親 Issue #{parent_issue_number} を自動クローズしました
+
+完了サマリ:
+- 親 Issue: #{parent_issue_number} - {parent_issue_title}
+- Status: Cancelled のため Done 上書きをスキップ
+- 完了した子 Issue: {completed_count} 件
+```
+
+`.result=failed`（親が既 CLOSED、3.7.2.2 skip）:
+
+```
+親 Issue #{parent_issue_number} は既に CLOSED です。Projects Status の更新に失敗しました
+```
+
+`.result=failed`（3.7.2.2 で close）:
+
+```
+親 Issue #{parent_issue_number} を自動クローズしました
+
+完了サマリ:
+- 親 Issue: #{parent_issue_number} - {parent_issue_title}
+- Status: 更新失敗
+- 完了した子 Issue: {completed_count} 件
+```
+
+`.result=skipped_not_in_project`（親が既 CLOSED、3.7.2.2 skip）:
+
+```
+親 Issue #{parent_issue_number} は既に CLOSED です。Project 未登録のため Status は未更新です
+```
+
+`.result=skipped_not_in_project`（3.7.2.2 で close）:
+
+```
+親 Issue #{parent_issue_number} を自動クローズしました
+
+完了サマリ:
+- 親 Issue: #{parent_issue_number} - {parent_issue_title}
+- Status: Project 未登録のため未更新
 - 完了した子 Issue: {completed_count} 件
 ```
 

@@ -224,6 +224,100 @@ assert_grep_in_section "OPEN child null stateReason is not treated as unavailabl
 assert_not_grep "OPEN fail-closed is not folded into skip_reason_unavailable" "$CLOSE_MD" \
   'state 取得失敗は fail-closed.*skip_reason_unavailable'
 
+echo "=== Phase 2c: 4.4 / 3.7.2.3 completion reports branch on .result (no hardcoded Done after skip) ==="
+S44_START='^### 4\.4 Completion Report'
+S44_END='^### 4\.4\.W'
+S3723_START='^##### 3\.7\.2\.3'
+S3723_END='^#### 3\.7\.3'
+
+# 同一枝の合成: `.result=<name>` から次の別 `.result=` までを 1 枝として観測する。
+# 同名が 2 回（既 CLOSED / close）続く場合は両方を同一枝に含める。
+_result_block() {
+  local file="$1" start="$2" end="$3" result="$4"
+  awk -v start="$start" -v end="$end" -v r="$result" '
+    $0 ~ start {insec=1}
+    insec && $0 ~ end && $0 !~ start {insec=0}
+    insec {
+      if (index($0, ".result=" r) > 0) p=1
+      else if (p && index($0, ".result=") > 0 && index($0, ".result=" r) == 0) p=0
+      if (p) print
+    }
+  ' "$file"
+}
+_assert_block_grep() {
+  local label="$1" block="$2" pattern="$3"
+  if printf '%s\n' "$block" | grep -qE "$pattern"; then
+    pass "$label"
+  else
+    fail "$label (pattern not in .result block: $pattern)"
+  fi
+}
+_assert_block_not_grep() {
+  local label="$1" block="$2" pattern="$3"
+  if printf '%s\n' "$block" | grep -qE "$pattern"; then
+    fail "$label (forbidden pattern in .result block: $pattern)"
+  else
+    pass "$label"
+  fi
+}
+
+# 4.4: Shared 4 値で分岐し、未分岐テンプレの単独 Status: Done に戻っていない
+assert_grep_in_section "close.md 4.4 table updated → Status: Done" "$CLOSE_MD" \
+  "$S44_START" "$S44_END" \
+  '`updated`[[:space:]]*\|[[:space:]]*`Status: Done`'
+assert_grep_in_section "close.md 4.4 table skipped_terminal_conflict → Status: Cancelled" "$CLOSE_MD" \
+  "$S44_START" "$S44_END" \
+  '`skipped_terminal_conflict`[[:space:]]*\|[[:space:]]*`Status: Cancelled`'
+assert_grep_in_section "close.md 4.4 table failed → 更新失敗" "$CLOSE_MD" \
+  "$S44_START" "$S44_END" \
+  '`failed`[[:space:]]*\|[[:space:]]*`Status: 更新失敗`'
+assert_grep_in_section "close.md 4.4 table skipped_not_in_project omits Status" "$CLOSE_MD" \
+  "$S44_START" "$S44_END" \
+  '`skipped_not_in_project`[[:space:]]*\|[[:space:]]*Status 行なし'
+
+_close_updated=$(_result_block "$CLOSE_MD" "$S44_START" "$S44_END" "updated")
+_close_skip=$(_result_block "$CLOSE_MD" "$S44_START" "$S44_END" "skipped_terminal_conflict")
+_close_failed=$(_result_block "$CLOSE_MD" "$S44_START" "$S44_END" "failed")
+_close_nip=$(_result_block "$CLOSE_MD" "$S44_START" "$S44_END" "skipped_not_in_project")
+_assert_block_grep "close.md 4.4 updated branch has Status: Done" "$_close_updated" 'Status: Done'
+_assert_block_grep "close.md 4.4 skipped_terminal_conflict branch has Status: Cancelled" "$_close_skip" 'Status: Cancelled'
+_assert_block_not_grep "close.md 4.4 skipped_terminal_conflict branch has no Status: Done" "$_close_skip" 'Status: Done'
+_assert_block_grep "close.md 4.4 failed branch has 更新失敗" "$_close_failed" 'Status: 更新失敗'
+_assert_block_not_grep "close.md 4.4 failed branch has no Status: Done" "$_close_failed" 'Status: Done'
+_assert_block_not_grep "close.md 4.4 skipped_not_in_project branch has no Status: Done" "$_close_nip" 'Status: Done'
+
+# 4.4.W / 4.4.W.2 見出しは wiki-push-sandbox-retry-contract の抽出起点。改稿で落とさない
+assert_grep "close.md retains ### 4.4.W heading" "$CLOSE_MD" '^### 4\.4\.W Wiki Ingest'
+assert_grep "close.md retains ### 4.4.W.2 heading" "$CLOSE_MD" '^### 4\.4\.W\.2'
+
+# 3.7.2.3: 4 値分岐。Done 同期成功は updated だけ。skip 3 枝には既 CLOSED / close 両方の成功文言が無い
+assert_grep_in_section "archive 3.7.2.3 table has updated" "$ARCHIVE_MD" \
+  "$S3723_START" "$S3723_END" \
+  '`updated`'
+assert_grep_in_section "archive 3.7.2.3 table has skipped_terminal_conflict" "$ARCHIVE_MD" \
+  "$S3723_START" "$S3723_END" \
+  '`skipped_terminal_conflict`'
+assert_grep_in_section "archive 3.7.2.3 table has failed" "$ARCHIVE_MD" \
+  "$S3723_START" "$S3723_END" \
+  '`failed`'
+assert_grep_in_section "archive 3.7.2.3 table has skipped_not_in_project" "$ARCHIVE_MD" \
+  "$S3723_START" "$S3723_END" \
+  '`skipped_not_in_project`'
+
+_arch_updated=$(_result_block "$ARCHIVE_MD" "$S3723_START" "$S3723_END" "updated")
+_arch_skip=$(_result_block "$ARCHIVE_MD" "$S3723_START" "$S3723_END" "skipped_terminal_conflict")
+_arch_failed=$(_result_block "$ARCHIVE_MD" "$S3723_START" "$S3723_END" "failed")
+_arch_nip=$(_result_block "$ARCHIVE_MD" "$S3723_START" "$S3723_END" "skipped_not_in_project")
+_assert_block_grep "archive 3.7.2.3 updated branch keeps Done に同期しました" "$_arch_updated" 'Done に同期しました'
+_assert_block_grep "archive 3.7.2.3 updated branch keeps Status: Done に更新" "$_arch_updated" 'Status: Done に更新'
+_assert_block_not_grep "archive 3.7.2.3 skipped_terminal_conflict has no Done に同期しました" "$_arch_skip" 'Done に同期しました'
+_assert_block_not_grep "archive 3.7.2.3 skipped_terminal_conflict has no Status: Done" "$_arch_skip" 'Status: Done'
+_assert_block_grep "archive 3.7.2.3 skipped_terminal_conflict has Cancelled skip" "$_arch_skip" 'Cancelled のため Done 上書きをスキップ'
+_assert_block_not_grep "archive 3.7.2.3 failed has no Done に同期しました" "$_arch_failed" 'Done に同期しました'
+_assert_block_not_grep "archive 3.7.2.3 failed has no Status: Done" "$_arch_failed" 'Status: Done'
+_assert_block_not_grep "archive 3.7.2.3 skipped_not_in_project has no Done に同期しました" "$_arch_nip" 'Done に同期しました'
+_assert_block_not_grep "archive 3.7.2.3 skipped_not_in_project has no Status: Done" "$_arch_nip" 'Status: Done'
+
 if ! print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or pr/open.md ステップ 1.2, or drop stateReason from parent auto-close, regression risk reopens. Re-confirm cross-references before removing methods."; then
   exit 1
 fi

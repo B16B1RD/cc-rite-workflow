@@ -229,11 +229,50 @@ lock 失敗は WARNING して続行（best-effort）。Issue comment backup は�
 
 ### 4.4 Completion Report
 
+Phase 4.2 が retain した Shared `.result` で Status 行を分岐する。`projects.enabled: false` で 4.2 を skip したときは Status 行を省略する。
+
+| 4.2 `.result` | Status 行 |
+|---------------|-----------|
+| `updated` | `Status: Done` |
+| `skipped_terminal_conflict` | `Status: Cancelled` |
+| `failed` | `Status: 更新失敗` |
+| `skipped_not_in_project` | Status 行なし（Done を主張しない） |
+
+`.result=updated`:
 ```
 Issue #{number} をクローズしました
 
 タイトル: {title}
 Status: Done
+
+関連 PR: #{pr_number} (Merged)
+```
+
+`.result=skipped_terminal_conflict`:
+```
+Issue #{number} をクローズしました
+
+タイトル: {title}
+Status: Cancelled
+
+関連 PR: #{pr_number} (Merged)
+```
+
+`.result=failed`:
+```
+Issue #{number} をクローズしました
+
+タイトル: {title}
+Status: 更新失敗
+
+関連 PR: #{pr_number} (Merged)
+```
+
+`.result=skipped_not_in_project`:
+```
+Issue #{number} をクローズしました
+
+タイトル: {title}
 
 関連 PR: #{pr_number} (Merged)
 ```
