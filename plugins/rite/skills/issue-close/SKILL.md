@@ -25,7 +25,7 @@ Check the completion status of an Issue and guide necessary actions.
 
 ## Shared: Projects Status → Done (delegate pattern)
 
-Phase 1.3.2 / 4.2 / 4.6.3 / `skip_already_closed`（全子 CLOSED）は Projects Status を **Done** に更新する。`projects-status-update.sh` に委譲する（`skills/open/SKILL.md` ステップ 2.4 / `skills/ready/SKILL.md` Phase 4 と同一）。冪等。API 詳細は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update)。
+Phase 1.3.2 / 4.2 / 4.6.3 / `skip_already_closed` + `proceed_to_confirmation`（全子 CLOSED かつ `NOT_PLANNED` なし）は Projects Status を **Done** に更新する。`projects-status-update.sh` に委譲する（`skills/open/SKILL.md` ステップ 2.4 / `skills/ready/SKILL.md` Phase 4 と同一）。冪等。API 詳細は [projects-integration.md §2.4](../../references/projects-integration.md#24-github-projects-status-update)。
 rationale: references/rationale.md#projects-status-delegate
 
 **委譲呼び出し**（`{issue}` は対象 Issue 番号、`auto_add false`・`non_blocking true`）:
@@ -487,7 +487,7 @@ exit 0 で成功（`--diff-check` で変更不要時は skip）。非 0 なら�
 
 ## Phase 4.6: Parent Auto-Close (All Children Completed)
 
-親の全子が closed なら auto-close を提案する。
+親の全子が CLOSED かつ `stateReason != NOT_PLANNED` なら auto-close を提案する。Cancelled（NOT_PLANNED）の子が居る、または CLOSED 子の `stateReason` が判定不能なら提案しない。
 
 **実行条件**: Phase 4.5.1 で `{parent_number}` が検出された場合のみ。未検出なら Phase 4.6 全体をスキップして Phase 5 へ。**直接の親のみ処理**し、祖父母には再帰しない。
 rationale: references/rationale.md#parent-direct-only
@@ -546,10 +546,10 @@ children_json=""
 if children_json=$(gh api graphql -f query='
 query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
-    issue(number: $number) { trackedIssues(first: 100) { nodes { number state } } }
+    issue(number: $number) { trackedIssues(first: 100) { nodes { number state stateReason } } }
   }
 }' -f owner="$owner" -f repo="$repo" -F number="$parent_number" \
-  --jq '[.data.repository.issue.trackedIssues.nodes[]? | {number, state}]' 2>"${p46_err:-/dev/null}"); then
+  --jq '[.data.repository.issue.trackedIssues.nodes[]? | {number, state, stateReason}]' 2>"${p46_err:-/dev/null}"); then
   echo "[DEBUG] method_a: $(printf '%s' "$children_json" | jq 'length' 2>/dev/null || echo 0) children via trackedIssues"
 else
   echo "[DEBUG] method_a failed (rc=$?) — trying Method B" >&2
@@ -567,17 +567,29 @@ if [ -z "$children_json" ] || [ "$(printf '%s' "$children_json" | jq 'length' 2>
   else
     children_json="["; first=1
     for n in $child_numbers; do
-      # state 取得失敗は fail-closed (OPEN 扱い) で auto-close を抑止する
-      child_state=$(gh issue view "$n" -R "$owner_repo_slash" --json state --jq '.state' 2>/dev/null || echo "OPEN")
-      [ -z "$child_state" ] && child_state="OPEN"
+      # state 取得失敗は fail-closed (OPEN 扱い) で auto-close を抑止する。
+      # stateReason は CLOSED 子に限って fail-loud（欠落を非 NOT_PLANNED とみなさない）。
+      # OPEN 子の stateReason null は正常で欠落扱いしない。
+      child_view=$(gh issue view "$n" -R "$owner_repo_slash" --json state,stateReason 2>/dev/null || echo "")
+      if [ -z "$child_view" ]; then
+        child_state="OPEN"
+        child_reason="null"
+      else
+        child_state=$(printf '%s' "$child_view" | jq -r '.state // "OPEN"' 2>/dev/null || echo "OPEN")
+        [ -z "$child_state" ] && child_state="OPEN"
+        child_reason=$(printf '%s' "$child_view" | jq -c '.stateReason' 2>/dev/null || echo "null")
+        [ -n "$child_reason" ] || child_reason="null"
+      fi
       [ "$first" -eq 1 ] && first=0 || children_json+=","
-      children_json+="{\"number\":$n,\"state\":\"$child_state\"}"
+      children_json+="{\"number\":$n,\"state\":\"$child_state\",\"stateReason\":$child_reason}"
     done
     children_json+="]"
   fi
 fi
 
 # --- all_closed 判定 (空配列は「判定不能」= auto-close 不可の safe default) ---
+# CLOSED 子の stateReason 欠落は fail-loud（非 NOT_PLANNED とみなして proceed しない）。
+# OPEN 子の stateReason null は正常なので欠落カウントに入れない。
 final_length=$(printf '%s' "$children_json" | jq 'length' 2>/dev/null || echo 0)
 if [ "$final_length" -eq 0 ]; then
   echo "all_closed=false open_count=0 children_total=0"
@@ -585,11 +597,18 @@ if [ "$final_length" -eq 0 ]; then
 else
   all_closed=$(printf '%s' "$children_json" | jq -r 'all(.[]; .state == "CLOSED") | tostring' 2>/dev/null || echo "false")
   open_count=$(printf '%s' "$children_json" | jq -r '[.[] | select(.state != "CLOSED")] | length' 2>/dev/null || echo 0)
-  echo "all_closed=$all_closed open_count=$open_count children_total=$final_length"
-  if [ "$all_closed" = "true" ]; then
-    echo "[CONTEXT] P461_DECISION=proceed_to_confirmation"
-  else
+  cancelled_count=$(printf '%s' "$children_json" | jq -r '[.[] | select(.stateReason == "NOT_PLANNED")] | length' 2>/dev/null || echo 0)
+  cancelled_nums=$(printf '%s' "$children_json" | jq -r '[.[] | select(.stateReason == "NOT_PLANNED") | .number] | map(tostring) | join(",")' 2>/dev/null || echo "")
+  reason_unavailable_count=$(printf '%s' "$children_json" | jq -r '[.[] | select(.state == "CLOSED" and (.stateReason == null or .stateReason == ""))] | length' 2>/dev/null || echo 0)
+  echo "all_closed=$all_closed open_count=$open_count cancelled_count=$cancelled_count reason_unavailable_count=$reason_unavailable_count children_total=$final_length"
+  if [ "$all_closed" != "true" ]; then
     echo "[CONTEXT] P461_DECISION=skip_open_children; open_count=$open_count"
+  elif [ "$reason_unavailable_count" -gt 0 ] 2>/dev/null; then
+    echo "[CONTEXT] P461_DECISION=skip_reason_unavailable; count=$reason_unavailable_count"
+  elif [ "$cancelled_count" -gt 0 ] 2>/dev/null; then
+    echo "[CONTEXT] P461_DECISION=skip_cancelled_children; numbers=$cancelled_nums"
+  else
+    echo "[CONTEXT] P461_DECISION=proceed_to_confirmation"
   fi
 fi
 ```
@@ -602,9 +621,13 @@ fi
 | `P460_DECISION=skip_retrieval_failed` | 親 state 取得失敗。Phase 4.6 を抜けて Phase 5 へ（non-blocking） |
 | `P460_DECISION=skip_already_closed` + `P461_DECISION=proceed_to_confirmation` | close は skip。Shared: Status → Done（`{issue}` = `{parent_number}`）。4.6.2 / 4.6.3 は実行しない。Phase 5 へ |
 | `P460_DECISION=skip_already_closed` + `P461_DECISION=skip_open_children` | Phase 5 へ（Status も Done にしない） |
+| `P460_DECISION=skip_already_closed` + `P461_DECISION=skip_cancelled_children` | Phase 5 へ（Status も Done にしない）。`Cancelled の子 #{numbers} を含むため親 #{parent_number} は未完了扱いです（Status → Done / auto-close しません）。親の中止は /rite:issue-cancel の明示指示。` を表示 |
+| `P460_DECISION=skip_already_closed` + `P461_DECISION=skip_reason_unavailable` | Phase 5 へ（Status も Done にしない）。`親 Issue #{parent_number} は子の stateReason を判定できないため auto-close をスキップしました。` を表示 |
 | `P460_DECISION=skip_already_closed` + `P461_DECISION=skip_empty_children` | 子一覧取得不可。`親 Issue #{parent_number} の子 Issue 一覧が取得できませんでした。自動クローズをスキップします。` を表示し Phase 5 へ |
 | `P461_DECISION=skip_empty_children`（`P460=proceed_to_enumeration`） | 子一覧取得不可。`親 Issue #{parent_number} の子 Issue 一覧が取得できませんでした。自動クローズをスキップします。` を表示し Phase 5 へ |
 | `P461_DECISION=skip_open_children; open_count=N`（`P460=proceed_to_enumeration`） | `親 Issue #{parent_number} にはまだ N 件の未完了子 Issue があります。自動クローズはスキップします。` を表示し Phase 5 へ |
+| `P461_DECISION=skip_cancelled_children; numbers=...`（`P460=proceed_to_enumeration`） | `Cancelled の子 #{numbers} を含むため親 #{parent_number} は未完了扱いです（Status → Done / auto-close しません）。親の中止は /rite:issue-cancel の明示指示。` を表示し Phase 5 へ |
+| `P461_DECISION=skip_reason_unavailable`（`P460=proceed_to_enumeration`） | `親 Issue #{parent_number} は子の stateReason を判定できないため auto-close をスキップしました。` を表示し Phase 5 へ |
 | `P461_DECISION=proceed_to_confirmation`（`P460=proceed_to_enumeration`） | 4.6.2 へ |
 
 ### 4.6.2 User Confirmation
