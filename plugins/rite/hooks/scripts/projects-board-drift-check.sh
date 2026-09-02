@@ -2,8 +2,9 @@
 # rite workflow - Projects Board Terminal-Status Drift Check
 #
 # Reconciliation drift-guard for the "CLOSED but board is not on a terminal Status" gap.
-# A Done transition is only wired into /rite:cleanup and /rite:issue-close — Cancelled has
-# no such producer, and this script's --reconcile is the only path that writes it. But
+# A Done transition is only wired into /rite:cleanup and /rite:issue-close — Cancelled is
+# written by /rite:issue-cancel (Phase 5, on a deliberate NOT_PLANNED closure) and by this
+# script's --reconcile, which picks up rows nobody cancelled through rite. But
 # GitHub auto-closes Issues via a PR body "Closes #N" the moment the PR merges. When
 # /rite:cleanup is not run afterwards, the board freezes at its last value (In Review
 # for a ready Issue, Todo for an untouched one). No reconciliation picks these back up.
