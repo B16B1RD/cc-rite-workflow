@@ -5,6 +5,7 @@
 * **Create**: [ゲートの判定文を新しい欠落種別へ広げたら、同じ marker を消費する option 表・テンプレート・例示 literal を同じ commit で一般化する](pages/heuristics/gate-predicate-widening-generalizes-consumer-literals.md) — raw/reviews/20260902T175856Z-pr-2529.md を新規ページ化
 * **Update**: [ゲートの判定文を新しい欠落種別へ広げたら、同じ marker を消費する option 表・テンプレート・例示 literal を同じ commit で一般化する](pages/heuristics/gate-predicate-widening-generalizes-consumer-literals.md) — raw/fixes/20260902T180431Z-pr-2529.md を統合
 * **Update**: [ゲートの判定文を新しい欠落種別へ広げたら、同じ marker を消費する option 表・テンプレート・例示 literal を同じ commit で一般化する](pages/heuristics/gate-predicate-widening-generalizes-consumer-literals.md) — raw/reviews/20260902T181813Z-pr-2529.md を統合
+* **lint:clean** — contradictions=0, stale=50, orphans=0, missing_concept=0, unregistered_raw=416, broken_refs=0
 
 ## 2026-09-02
 * **Skip**: [20260902T123456Z-pr-2525.md](raw/reviews/20260902T123456Z-pr-2525.md) — detector-candidate: テスト自己 grep は対象関数固有断片にし、heading 抽出は NOEND と行数上限、result 抽出は skip 見出しで打ち切る
