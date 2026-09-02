@@ -122,7 +122,11 @@ caller の `exit 1` 直前に emit が必要になる。
 
 新しいモデル世代（Opus 4.5 以降）には頼まれていない抽象・柔軟性を足す overengineering 傾向が公式に文書化されており（[Claude prompting best practices §Overeagerness](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-4-best-practices)）、追加型 fix はこの傾向と毎 cycle の全力 re-review の相互作用で発散する。
 
-Escalation trigger が「前 cycle fix への指摘」を名指しする理由: 同分析で cycle 3 以降の指摘はほぼ全てこの型であり、パッチ重ね掛けスパイラルの最も確度の高い観測シグナルであるため。Root Cause Gate（ステップ 3.2.1）とは直交する — あちらは commit body に根本原因の**記名**を求め、本原則は修正の**形**（追加 vs 削除・単純化）を問う。
+Escalation trigger が「前 cycle fix への指摘」を名指しする理由: 同分析で cycle 3 以降の指摘はほぼ全てこの型であり、パッチ重ね掛けスパイラルの最も確度の高い観測シグナルであるため。Root Cause Gate（ステップ 3.2.1）は根本原因の**記名**に加え、Escalation trigger 成立時は本原則の判断記録（`simplification-first:` 段落）も検査する。問う対象は別で、あちらは記名、本原則は修正の**形**（追加 vs 削除・単純化）を問う。
+
+「規則の一般化」を機械が評価する規則に限る理由: 分岐・ガード・述語の一般化は評価器がその述語を保証するため、統合すれば検証面が減る。文書の主張（契約文・確認手順など人が読む記述）を一般化すると、真である範囲の証明責任が広がる方向に働く。「限定した一文」を「経路を限定しない一般契約」に書き換えると、次 cycle の reviewer はその一般契約を全経路に対して検証し、取りこぼした経路を新規 blocking として出す。列挙を述語に置き換える推奨も同型で、述語が名指しする集合と実装出力の集合を誰も検査しないまま採用すると、次 cycle で同じ reviewer が述語の取りこぼしを指摘する。文書の主張では削除・限定が最小差分であり、広げる場合だけ列挙による一致確認を前提条件にするのはこのため。reviewer の推奨対応に検証契約が無いこと（実測が求められるのは finding 本体のみ）も、fix 側で突き合わせを要求する理由になる。
+
+判断の記録を Root Cause Gate に畳んだ理由: chat への 1 行明示は事後検証できない（PR コメント・phase ログ・commit body のいずれにも残らない）。新 marker や helper を足さず、既存ゲートが検査する段落を 1 つ増やすだけで、trigger 成立時の削除／追加判断が commit body に残り、欠落は既存の `missing` 経路で止まる。
 
 ## impact-scan-rationale
 
