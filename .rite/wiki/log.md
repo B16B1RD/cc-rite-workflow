@@ -1,4 +1,9 @@
 ## 2026-09-02
+* **Create**: [jq の has("key") は値が null でも true を返す](pages/anti-patterns/jq-has-true-for-null.md) — raw/reviews/20260902T080744Z-pr-2507.md を新規ページ化
+* **Update**: [gh api graphql は HTTP 200 + .errors[] で partial failure を返す (exit code では検知できない)](pages/anti-patterns/gh-api-graphql-http200-partial-errors.md) — raw/reviews/20260902T080744Z-pr-2507.md を統合
+* **Update**: [gh api graphql は HTTP 200 + .errors[] で partial failure を返す (exit code では検知できない)](pages/anti-patterns/gh-api-graphql-http200-partial-errors.md) — raw/fixes/20260902T081227Z-pr-2507.md を統合
+* **Update**: [jq の has("key") は値が null でも true を返す](pages/anti-patterns/jq-has-true-for-null.md) — raw/fixes/20260902T081227Z-pr-2507.md を統合
+* **Skip**: [20260902T083616Z-pr-2507.md](raw/reviews/20260902T083616Z-pr-2507.md) — cycle-2 confirmation; remaining Status: Done report literals already tracked as follow-up; AC-4 unreadable path already in helper
 * **Update**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — raw/reviews/20260902T063926Z-pr-2506.md を統合
 * **Update**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — raw/fixes/20260902T064343Z-pr-2506.md を統合
 * **Update**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — raw/reviews/20260902T044110Z-pr-2505.md を統合

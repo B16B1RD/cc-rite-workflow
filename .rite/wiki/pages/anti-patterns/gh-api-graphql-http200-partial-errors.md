@@ -9,9 +9,15 @@ sources:
     resource: "raw/reviews/20260529T040843Z-pr-1185.md"
   - type: "fixes"
     resource: "raw/fixes/20260529T041436Z-pr-1185.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260902T080744Z-pr-2507.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260902T081227Z-pr-2507.md"
 tags: ["gh-cli", "graphql", "silent-failure", "error-handling"]
 confidence: medium
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-29T04:21:34+00:00" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T09:04:13Z" }
+verified:
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T09:04:13Z" }
 ---
 
 # gh api graphql は HTTP 200 + .errors[] で partial failure を返す (exit code では検知できない)
@@ -43,6 +49,8 @@ echo "$page" | jq -e '.data.node.items' >/dev/null 2>&1 || { ok=0; fail_reason="
 
 同一 codebase の `link-sub-issue.sh` は HTTP 200 + `.errors[]` の contract を承知して `.errors` を明示検査する確立慣習を持つ。`gh api graphql` を新規に書く際は exit code だけに頼らず sibling スクリプトの errors 検査慣習に揃える。
 
+helper が query 結果を jq で分解する経路でも、フィールド型検査より**先**に `.errors[]` を fail-loud する。errors を無視して `fieldValues` 等の部分データへ進むと、partial failure を「現在 Status が読めた」と誤認する。空 `.errors[].message` でも配列が非空なら失敗として止める。
+
 ### 落とし穴 2: opaque string 変数への `-F` (typed coercion) 誤用 (LOW-MEDIUM)
 
 `gh api graphql` の field flag は 2 種類ある:
@@ -60,8 +68,11 @@ GraphQL の `ID!` (node id = `PVT_...` 等の base64 opaque 文字列) や `Stri
 ## 関連ページ
 
 - [stderr ノイズ削減: truncate ではなく selective surface で解く](../heuristics/stderr-selective-surface-over-truncate.md)
+- [jq の has("key") は値が null でも true を返す](./jq-has-true-for-null.md)
 
 ## ソース
 
 - [PR #1185 review results](../../raw/reviews/20260529T040843Z-pr-1185.md)
 - [PR #1185 fix results](../../raw/fixes/20260529T041436Z-pr-1185.md)
+- [PR #2507 review results](../../raw/reviews/20260902T080744Z-pr-2507.md)
+- [PR #2507 fix results](../../raw/fixes/20260902T081227Z-pr-2507.md)
