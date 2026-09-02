@@ -28,13 +28,15 @@ worktree 削除）で個別に確認を挟むと、人間の品質判断を工�
 
 ## order-invariant
 
-`post-compact.sh` の PR Status reconciliation は「open かつ `isDraft=false` の PR」に発火し、対応する
-Issue の board Status を `In Review` へ寄せる。Status を `Cancelled` にしてから PR を閉じる順序では、
-その間に compact が走ると Status が `In Review` へ引き戻される窓が開く。PR を先に閉じればこの発火条件が
-消えるため、順序そのものが窓を塞ぐ機構になる。
+順序を固定する理由は AC-4 である。PR クローズが失敗したまま Status を `Cancelled` へ進めると、
+board は終端・PR は open の不整合が残る。フォールバックせずエラーで止めるのは、この不整合を
+見過ごさないため。PR クローズを先に置き、失敗したら Status も Issue クローズも後片付けも行わない。
 
-PR クローズが失敗した場合に Status だけ進めると、同じ窓が開いたまま「board は Cancelled、PR は open」
-という不整合が残る。フォールバックせずエラーで止めるのは、この不整合を見過ごさないため。
+`post-compact.sh` の PR Status reconciliation は `gh pr view --json isDraft` が `false` であること
+だけを見る。GitHub の OPEN/CLOSED は見ない。CLOSED かつ未マージでも `isDraft=false` のまま
+view できる。終端 Status（`Done` / `Cancelled`）は `In Review` へ引き戻さない。したがって
+「PR を先に閉じれば発火条件が消える」「Status を先に `Cancelled` にすると compact が引き戻す」
+はいずれも実装と一致しない。順序の why をその窓に載せない。
 
 ## helper-delegation
 
@@ -191,20 +193,20 @@ Issue の受入基準が「既に CLOSED の Issue に対しては board Status 
 
 ## classification-class-predicate
 
-4.2.0 のガードは当初 `unknown` / `in_worktree_unrecorded` の 2 値を名指しする否定形で書いていたが、これは
-**危険な値を列挙する**形であり、列挙の外側に抜ける入力が必ず残る。実際、4.1 の marker がそもそも出ない経路
-（helper 起動自体の失敗、harness による Bash 拒否）では `{cleanup_wt}` も `{flow_wt}` も substitute 元を失って
-空文字になり、2 つの等値比較のどちらにも一致せず「path が空 = worktree 記録なし」へ落ちて、**ブランチ削除まで
-続行する**（実測: 空文字 2 つを渡すと `CANCEL_WT_BOUND=none`）。塞いだはずの穴が別の入力で開いていた。
+4.2.0 のガードは当初 detect の分類値を見て、危険値（`unknown` / `in_worktree_unrecorded`）を名指しする
+否定形で書いていた。名指しの外側（marker 不在で空文字に倒れる経路）が「path が空 = 記録なし」へ落ち、
+ブランチ削除まで続行した。証明された正常値の列挙へ反転しても、detect が見えない対象 worktree は
+`none` のままスキップされ、`undetermined` は teardown を止めたまま Phase 5 / Phase 6 を通常実行した。
 
-そこで**証明された正常値の列挙**（`in_worktree` / `in_main` / `none`）に反転させ、残りをすべて `undetermined`
-へ落とす。未知の分類値が helper 側に増えたときも、空文字でも、既定の帰結が「削除しない」になる。
+閉じたあとの再実行は `CLOSED` + `NOT_PLANNED` が Phase 4 をスキップするので、復旧経路として使えない。
+そこで確認できない入力は残らず `blocked` へ落とし、**Phase 5 / Phase 6 の前に fail-loud で止める**。
+Issue が OPEN のまま残るので、main checkout からの再実行が Phase 4 に届く。
 
-`in_worktree_unrecorded` は分類**できている**値である（detect が cwd の物理導出で確定させる）。畳む理由は
-帰結が同じ——`ExitWorktree` で main checkout へ退出できないため worktree も branch も消せない——ことであって、
-分類不能だからではない。判定表と WARNING はこの 2 事由を書き分ける。canonical な分岐基準は sibling の
-`skills/cleanup/SKILL.md`（「分岐の基準は「worktree 内か」ではなく「`ExitWorktree` で main checkout へ
-退出できるか」」）。
+`in_worktree_unrecorded` は分類できている値である。畳む理由は帰結が同じ——`ExitWorktree` で
+main checkout へ退出できない——ことであって、分類不能だからではない。canonical な分岐基準は
+sibling の `skills/cleanup/SKILL.md`（「分岐の基準は「worktree 内か」ではなく「`ExitWorktree` で
+main checkout へ退出できるか」」）。cleanup 側は委譲後も Issue を閉じるが、中止側は閉じると
+再実行が届かないため、同じ不能を fail-loud に倒す。
 
 ## step-order-as-sections
 
@@ -240,8 +242,27 @@ worktree が削除対象になる。しかも `cleanup-branch-delete.sh` はリ�
 `--branch-identity-verified` 一本で決めるため、誤った `true` はリモート ref まで消す。
 
 そこで 2 箇所で Issue 番号に束縛する: flow-state は `issue_number` を併せて読んで一致時のみ採用し、
-worktree は detect が返したパス末尾が `issue-{N}` であることを確認してから remove へ進む。どちらも
-不一致なら「削除しない」側へ倒す — 削除は不可逆で、判定不能のまま進む理由が無い。
+worktree は `git worktree list --porcelain` の末尾セグメントが `issue-{N}` である path だけを
+remove 対象にする。detect の戻り値は「cwd が対象の中にいるか / `ExitWorktree` で退出できるか」
+の判定にだけ使う。現セッションの path が別 Issue なら、その path は消さない — 削除は不可逆で、
+判定不能のまま進む理由が無い。
+
+## target-worktree-discovery
+
+detect helper は現セッションの flow-state と cwd だけを見る。`/rite:cleanup` は「対象 == 現セッション」
+を前提にできるが、`/rite:issue-cancel` は Issue 番号を引数で受ける。main の新規セッションから
+着手後の Issue を中止すると detect は `none` を返し、規約パス `{worktree_base}/issue-{N}` に
+残っている worktree を見逃す。ブランチは `git branch --list` で Issue に束縛して探すのに、
+worktree だけがカレントセッションの拒否で終わる非対称になる。
+
+発見は `git worktree list --porcelain` の末尾セグメント完全一致に置く。登録済み worktree だけが
+`git worktree remove` の対象であり、未登録の残骸ディレクトリを規約パスで拾っても helper は
+消せない。suffix 照合にしないのは `issue-24931` を `issue-2493` に一致させないため。
+
+cwd がその path の中にいて `CLEANUP_WT` が `in_worktree` でないときは `ExitWorktree` が no-op
+になる（path 入場。cleanup と同じ観測）。ここで teardown をスキップして Issue を閉じると、
+再実行は AC-6 の冪等経路（Phase 4 skip）に落ち、worktree もブランチも残る。不能なら
+Phase 5 / Phase 6 の前に止めて Issue を OPEN のまま残すほかない。
 
 ## reason-file-outside-worktree
 

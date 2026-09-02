@@ -88,76 +88,75 @@ assert_grep "T-02 (b) ExitWorktree is called with keep (path 入場した worktr
 # (c) 中止経路は常に未マージ。reap manifest へ記録させない。ファイル全体の grep では
 # cleanup-branch-delete.sh 側の同一リテラルが一致してしまうため、4.2.1 セクションに限定する。
 assert_grep_in_section "T-02 (c) the worktree teardown receives --pr-merged false" "$SKILL" \
-  '^#### 4\\.2\\.2 remove の実行' '^### 4\\.3' '\-\-worktree "\{flow_wt\}" \-\-pr-merged "false"'
-# (d) worktree の削除対象が対象 Issue のものであることを確認してから remove へ進む
-#     (detect の内側は --issue を見ないため、呼び出し側で束縛しないと別 Issue の worktree が消える)。
-#     見出し語 'Issue 束縛ガード' の在否では pin にならない (節を残したまま照合式を緩めても緑)。
-#     照合式そのもの — 末尾セグメントの完全一致 — にアンカーする。suffix 照合や部分一致へ
-#     書き換えると赤くなる。
-assert_grep_in_section "T-02 (d) the guard compares the path's last segment for exact identity" "$SKILL" \
-  '^#### 4\\.2\\.0 Issue 束縛ガード' '^#### 4\\.2\\.1' \
-  '^ *elif \[ "\$\(basename "\$wt_path"\)" = "issue-\{issue_number\}" \]; then'
+  '^#### 4\\.2\\.2 remove の実行' '^### 4\\.3' '\-\-worktree "\{cancel_wt_target\}" \-\-pr-merged "false"'
+# (d) 削除対象は detect の戻り値ではなく、対象 Issue に束縛して発見した path。detect は
+#     現セッションの flow-state / cwd しか見ないため、main の新規セッションから中止すると
+#     none に落ちて worktree が残る。発見 → 末尾セグメント完全一致 → cwd が対象の中なら
+#     ExitWorktree 不能時は fail-loud、の経路を pin する。
+assert_grep_in_section "T-02 (d) discovery lists registered worktrees" "$SKILL" \
+  '^### 4\\.1\\.1 対象 Issue の worktree を発見する' '^### 4\\.2 ' \
+  '^_wt_list=\$\(git worktree list --porcelain\) \|\| _list_rc=\$\?$'
+assert_grep_in_section "T-02 (d) discovery matches the last path segment exactly" "$SKILL" \
+  '^### 4\\.1\\.1 対象 Issue の worktree を発見する' '^### 4\\.2 ' \
+  'basename "\$_p"\)" = "issue-\{issue_number\}"'
+# 発見失敗は「記録なし」へ畳まず fail-loud。list 失敗を none に倒すと AC-2 が確認不能のまま
+# Issue を閉じ、再実行が Phase 4 に届かなくなる。
+_disc_fail_block=$(awk '/^  echo .*CANCEL_WT_TARGET=undetermined; reason=worktree_list_failed/{f=1} f{print} f&&/^  exit 1$/{exit}' "$SKILL")
+if printf '%s\n' "$_disc_fail_block" | grep -qE '^  exit 1$'; then
+  pass "T-02 (d) a failed worktree list exits non-zero (machine-enforced stop)"
+else
+  fail "T-02 (d) git worktree list failure must exit non-zero before closing the Issue"
+fi
 # ガードが判定表の内側ではなく、ExitWorktree / remove の**前段**に独立した節として置かれていること。
-# 節の順序を入れ替える / ガード節を消すと赤くなる (4.2.1 の表セルへ畳み戻す変更も同様)。
+# 発見はガードより前（detect の直後）。節の順序を入れ替えると赤くなる。
+_discover_line=$(_first_line "$SKILL" '^### 4\.1\.1 対象 Issue の worktree を発見する')
 _guard_line=$(_first_line "$SKILL" '^#### 4\.2\.0 Issue 束縛ガード')
 _exitwt_head_line=$(_first_line "$SKILL" '^#### 4\.2\.1 ExitWorktree')
 _remove_head_line=$(_first_line "$SKILL" '^#### 4\.2\.2 remove の実行')
-if [ -n "$_guard_line" ] && [ -n "$_exitwt_head_line" ] && [ -n "$_remove_head_line" ]; then
-  if [ "$_guard_line" -lt "$_exitwt_head_line" ] && [ "$_exitwt_head_line" -lt "$_remove_head_line" ]; then
-    pass "T-02 (d) the Issue-binding guard is a standalone step ahead of ExitWorktree and remove"
+if [ -n "$_discover_line" ] && [ -n "$_guard_line" ] && [ -n "$_exitwt_head_line" ] && [ -n "$_remove_head_line" ]; then
+  if [ "$_discover_line" -lt "$_guard_line" ] && [ "$_guard_line" -lt "$_exitwt_head_line" ] && [ "$_exitwt_head_line" -lt "$_remove_head_line" ]; then
+    pass "T-02 (d) discovery then the Issue-binding guard sit ahead of ExitWorktree and remove"
   else
-    fail "T-02 (d) guard must precede ExitWorktree and remove as its own section (guard=$_guard_line exit=$_exitwt_head_line remove=$_remove_head_line)"
+    fail "T-02 (d) discovery/guard must precede ExitWorktree and remove (discover=$_discover_line guard=$_guard_line exit=$_exitwt_head_line remove=$_remove_head_line)"
   fi
 else
-  fail "T-02 (d) could not locate the 4.2.0 / 4.2.1 / 4.2.2 headings (guard=${_guard_line:-none} exit=${_exitwt_head_line:-none} remove=${_remove_head_line:-none})"
+  fail "T-02 (d) could not locate the 4.1.1 / 4.2.0 / 4.2.1 / 4.2.2 headings (discover=${_discover_line:-none} guard=${_guard_line:-none} exit=${_exitwt_head_line:-none} remove=${_remove_head_line:-none})"
 fi
-# 不一致は「消さない」で終わらせる (ブランチ削除まで止める)。'mismatch' 行の存在ではなく
-# その行の帰結にアンカーする。
-assert_grep "T-02 (d) a mismatching worktree stops the removal and the branch delete" "$SKILL" \
-  '^\| `mismatch` \|.*\*\*4\.2\.1 / 4\.2\.2 と 4\.3 のブランチ削除を試行せず\*\*'
-# 分類不能な入力を削除続行へ抜けさせない。ここは**端点の文字列**ではなく**経路**として pin する:
-# ガードの分岐形 → 発火する marker 値 → 判定表の routing 行 → その帰結、の 4 点を繋ぐ。
-# 端点だけを見る pin は、間の 1 行 (例: marker 値を undetermined から none へ) を書き換える退行を
-# 素通しする — 本 PR で 2 度出た欠陥クラス (cycle 2: tempfile 名 / cycle 3: 行スコープ) の第 3 形。
-#
-# (1) 分岐は「証明された正常値の列挙」で書く。危険値を名指しする否定形へ戻すと、名指しの外側
-#     (marker 不在で空文字に倒れる経路) が再び削除続行へ抜ける。
-assert_grep_in_section "T-02 (d) the guard enumerates the proven-good classifications, not the dangerous ones" "$SKILL" \
+# 現セッションの path が別 Issue ならその path は消さない。削除対象は発見した対象 path だけ。
+assert_grep_in_section "T-02 (d) a foreign session worktree is never the remove target" "$SKILL" \
+  '^#### 4\\.2\\.0 Issue 束縛ガード' '^#### 4\\.2\\.1' \
+  '別 Issue のセッション worktree を remove 対象にしてはならない'
+assert_grep_in_section "T-02 (d) a basename mismatch is not adopted as the target" "$SKILL" \
+  '^#### 4\\.2\\.0 Issue 束縛ガード' '^#### 4\\.2\\.1' \
+  'basename "\$target"\)" != "issue-\{issue_number\}"'
+# cwd が対象の中で ExitWorktree 不能なら Phase 5/6 の前に止める。閉じてから再実行する行は
+# AC-6 で Phase 4 がスキップされるため復旧にならない。
+assert_grep_in_section "T-02 (d) sitting in the target without ExitWorktree emits blocked" "$SKILL" \
+  '^#### 4\\.2\\.0 Issue 束縛ガード' '^#### 4\\.2\\.1' \
+  'CANCEL_WT_BOUND=blocked; reason=exit_worktree_unavailable'
+_blocked_fail_block=$(awk '/CANCEL_WT_BOUND=blocked; reason=exit_worktree_unavailable/{f=1} f{print} f&&/^            exit 1$/{exit}' "$SKILL")
+if printf '%s\n' "$_blocked_fail_block" | grep -qE '^            exit 1$'; then
+  pass "T-02 (d) the blocked branch exits non-zero (machine-enforced stop)"
+else
+  fail "T-02 (d) exit_worktree_unavailable must exit non-zero before Status / Issue close"
+fi
+assert_grep_in_section "T-02 (d) blocked stops before Status and Issue close" "$SKILL" \
   '^#### 4\.2\.0 Issue 束縛ガード' '^#### 4\.2\.1' \
-  '^case "\{cleanup_wt\}" in$'
-assert_grep_in_section "T-02 (d) in_worktree / in_main are the only arms that reach the path checks" "$SKILL" \
-  '^#### 4\.2\.0 Issue 束縛ガード' '^#### 4\.2\.1' \
-  '^  in_worktree\|in_main\)$'
-assert_grep_in_section "T-02 (d) every other classification falls through to the catch-all arm" "$SKILL" \
-  '^#### 4\.2\.0 Issue 束縛ガード' '^#### 4\.2\.1' \
-  '^  \*\)$'
-# (2) catch-all が実際に発火させる marker 値を pin する。ここを `none` へ書き換えるだけで
-#     判定表の `none` 行が削除続行へ routing し、修正前の挙動に戻る (テストは他がすべて緑のまま)。
-assert_grep_in_section "T-02 (d) the catch-all arm emits undetermined, never a value that routes to deletion" "$SKILL" \
-  '^#### 4\.2\.0 Issue 束縛ガード' '^#### 4\.2\.1' \
-  '^    echo "\[CONTEXT\] CANCEL_WT_BOUND=undetermined; cleanup_wt=\{cleanup_wt\}" >&2$'
-# (3) 判定表の行は 4.2.0 節の内側にあること (4.2.1 へ移設すると BOUND=ok のときしか読まれず
-#     到達不能になるが、file スコープの pin では緑のまま通る)。
-assert_grep_in_section "T-02 (d) the undetermined routing row lives in the 4.2.0 table that produces it" "$SKILL" \
-  '^#### 4\.2\.0 Issue 束縛ガード' '^#### 4\.2\.1' \
-  '^\| `undetermined` \|.*\*\*4\.2\.1 / 4\.2\.2 と 4\.3 のブランチ削除を試行せず\*\*'
-# (4) 4.2.0 の判定表は BOUND の 4 値を漏れなく持つ。行数で縛るので、値の追加・削除・改名の
-#     どれでも赤くなる (表記形を 1 つずつ deny する形は並べ替えや行分割を素通しする)。
-# 行数はヘッダ行 (`| `CANCEL_WT_BOUND` | アクション |`) を含む: 1 + 4 値 = 5。
-assert "T-02 (d) the 4.2.0 routing table covers every CANCEL_WT_BOUND value (header + 4)" "5" \
+  '^\| `blocked` / marker 不在 \|.*\*\*fail-loud で停止する\*\*.*Phase 5 / Phase 6 を実行しない'
+assert_not_grep "T-02 (d) does not close the Issue and ask for a re-run" "$SKILL" \
+  'Phase 5・Phase 6 は通常どおり実行する'
+# 判定表の行は 4.2.0 節の内側にあること (4.2.1 へ移設すると BOUND=ok のときしか読まれず
+# 到達不能になるが、file スコープの pin では緑のまま通る)。
+# 行数はヘッダ行 (`| `CANCEL_WT_BOUND` | アクション |`) を含む: 1 + 3 値 = 4。
+assert "T-02 (d) the 4.2.0 routing table covers every CANCEL_WT_BOUND value (header + 3)" "4" \
   "$(awk -v start='^\\| `CANCEL_WT_BOUND` \\|' -v end='^#### 4\\.2\\.1 ' '$0 ~ start, $0 ~ end' "$SKILL" | grep -c '^| `')"
-# (5) 4.2.1 の判定表は 4.2.0 が `ok` を出す 2 分類だけを持つ。`none` を巻き添えで消すと
-#     到達可能な値の行が消え、`in_worktree_unrecorded` / `unknown` を戻すと二重規則になる。
-#     どちらの方向にも赤くなるよう行数で縛る。
-# 同じくヘッダ行を含む: 1 + 2 分類 = 3。
-assert "T-02 (d) the 4.2.1 table carries exactly the two classifications that reach it (header + 2)" "3" \
-  "$(awk -v start='^\\| `CLEANUP_WT` \\|' -v end='^#### 4\\.2\\.2 ' '$0 ~ start, $0 ~ end' "$SKILL" | grep -c '^| `')"
-# (6) `undetermined` は 2 事由を包む値であり「分類できていない」だけではない。
-#     `in_worktree_unrecorded` は detect が確定させた分類で、畳む理由は帰結の同一性
-#     (ExitWorktree で退出できない) にある。ここを取り違えると将来の編集者が値を条件から外す。
-assert_grep_in_section "T-02 (d) the undetermined row names both reasons, not just the unclassified one" "$SKILL" \
-  '^#### 4\.2\.0 Issue 束縛ガード' '^#### 4\.2\.1' \
-  '`ExitWorktree` で main checkout へ退出できない（`in_worktree_unrecorded`）か、分類そのものが取れていない'
+# 4.2.1 は ExitWorktree の keep 呼び出しだけ。CLEANUP_WT 表を戻すと in_main / unrecorded の
+# 二重規則が復活する。
+assert "T-02 (d) 4.2.1 has no CLEANUP_WT routing table" "0" \
+  "$(awk -v start='^#### 4\\.2\\.1 ' -v end='^#### 4\\.2\\.2 ' '$0 ~ start, $0 ~ end' "$SKILL" | grep -c '^| `CLEANUP_WT`')"
+assert_grep_in_section "T-02 (d) 4.2.1 runs only when exit is required" "$SKILL" \
+  '^#### 4\\.2\\.1 ExitWorktree' '^#### 4\\.2\\.2' \
+  '`CANCEL_WT_BOUND=ok` かつ `exit=required` のときだけ実行する'
 # (e) state purge は「全運用経路で rc=0、部分失敗は marker のみ」契約の helper なので、rc だけを見ると
 # 残置が完了として報告される。marker を判定に使うことと、その帰結（残置として列挙する）を pin する。
 # 判定は bash の捕捉層に持たせない — 捕捉に失敗すると marker ごと消えて「観測できていない」が
@@ -231,8 +230,8 @@ if [ -n "$_status_line" ] && [ -n "$_issue_close_line" ]; then
 else
   fail "T-03 could not locate the Issue close call"
 fi
-assert_grep "T-03 records why the order is load-bearing (post-compact reconciliation window)" "$SKILL" \
-  'post-compact\.sh'
+assert_grep "T-03 records why the order is load-bearing (failed PR close must not advance the board)" "$SKILL" \
+  'PR クローズが失敗した状態で Status を `Cancelled` へ進めてはならない'
 
 echo "=== T-04: PR クローズ失敗時に Status も Issue クローズも進めない (AC-4) ==="
 # marker の「生産側」（else 分岐の emit 行）を実行行アンカーで pin する。file-wide の grep だと

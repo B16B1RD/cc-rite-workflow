@@ -46,8 +46,8 @@ rationale: references/rationale.md#no-reconfirm
 | `{candidate_pr_number}` | Phase 2.3 の `CANCEL_PR_CANDIDATES` marker が並べた候補 PR 番号（1 件ずつ substitute する） |
 | `{branch_name}` | Phase 2 で確定したブランチ名（PR の `headRefName`（`issue-{issue_number}-` を含む場合のみ）、flow-state（対象 Issue 一致時）、またはローカルブランチ検索の一意候補）。いずれの経路でも 2.2 の charset 述語（代入時点で適用）を満たしたものだけが確定値になる |
 | `{branch_identity_verified}` | Phase 2 の identity 検証結果（`true` / `false`） |
-| `{flow_wt}` | Phase 4.1 の `CLEANUP_WT` marker の `worktree=` 値 |
 | `{cleanup_wt}` | Phase 4.1 の `CLEANUP_WT` marker の分類値（`in_worktree` / `in_main` / `in_worktree_unrecorded` / `unknown` / `none`） |
+| `{cancel_wt_target}` | Phase 4.1.1 の `CANCEL_WT_TARGET` marker の値（対象 Issue の worktree 絶対パス / `none`） |
 | `{issue_title}` | Phase 2.1 の `gh issue view --json title` |
 | `{state_reason}` | Phase 2.1 の `gh issue view --json stateReason` |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
@@ -58,7 +58,7 @@ rationale: references/rationale.md#no-reconfirm
 
 ## 実行順序の不変条件
 
-**PR クローズ → Projects Status → `Cancelled` → `gh issue close --reason "not planned"`** の相対順序は崩さない。Status を PR クローズより先に書くと、`post-compact.sh` の PR Status reconciliation（open かつ `isDraft=false` の PR に発火）が Status を `In Review` へ引き戻す窓が開く。PR クローズが失敗した状態で Status を `Cancelled` へ進めてはならない。
+**PR クローズ → Projects Status → `Cancelled` → `gh issue close --reason "not planned"`** の相対順序は崩さない。PR クローズが失敗した状態で Status を `Cancelled` へ進めてはならない。
 rationale: references/rationale.md#order-invariant
 
 ---
@@ -245,70 +245,127 @@ if [ "$_dt_rc" -ne 0 ]; then
 fi
 ```
 
+detect は現セッションの flow-state / cwd だけを見る。返った `worktree=` を削除対象にしてはならない。
+
+### 4.1.1 対象 Issue の worktree を発見する
+
+ブランチが `git branch --list "*issue-{issue_number}-*"` で Issue に束縛されるのと同じ粒度で、登録済み worktree を末尾セグメントの完全一致で探す。照合は suffix にしない（`issue-24931` を `issue-2493` に一致させない）。
+rationale: references/rationale.md#target-worktree-discovery
+
+```bash
+_list_rc=0
+_wt_list=$(git worktree list --porcelain) || _list_rc=$?
+if [ "$_list_rc" -ne 0 ]; then
+  echo "ERROR: git worktree list に失敗しました (rc=${_list_rc})。対象 worktree の有無を確認できないため中止します" >&2
+  echo "[CONTEXT] CANCEL_WT_TARGET=undetermined; reason=worktree_list_failed; rc=${_list_rc}" >&2
+  exit 1
+fi
+_target_wt=""
+_target_count=0
+while IFS= read -r _line; do
+  case "$_line" in
+    worktree\ *)
+      _p=${_line#worktree }
+      if [ "$(basename "$_p")" = "issue-{issue_number}" ]; then
+        _target_count=$((_target_count + 1))
+        _target_wt="$_p"
+      fi
+      ;;
+  esac
+done <<WT_LIST_EOF
+$_wt_list
+WT_LIST_EOF
+if [ "$_target_count" -gt 1 ]; then
+  echo "ERROR: 末尾セグメント issue-{issue_number} の worktree が ${_target_count} 件あります。対象を特定できないため中止します" >&2
+  echo "[CONTEXT] CANCEL_WT_TARGET=undetermined; reason=multiple_matches; count=${_target_count}" >&2
+  exit 1
+fi
+if [ "$_target_count" -eq 1 ]; then
+  echo "[CONTEXT] CANCEL_WT_TARGET=$_target_wt"
+else
+  echo "[CONTEXT] CANCEL_WT_TARGET=none"
+fi
+```
+
+| marker | アクション |
+|---|---|
+| `CANCEL_WT_TARGET=` 絶対パス | `{cancel_wt_target}` として retain し 4.2.0 へ |
+| `CANCEL_WT_TARGET=none` | `{cancel_wt_target}=none`。4.2.0 へ |
+| `CANCEL_WT_TARGET=undetermined` / marker 不在 | **fail-loud で停止する**。Phase 5 / Phase 6 を実行しない |
+
 ### 4.2 worktree の退出と削除
 
-**順序制約**: `detect` → Issue 束縛ガード → `ExitWorktree` → `remove` の順に、**それぞれ独立したサブセクション**として実行する。cwd がセッション worktree 内のまま `remove` を呼ぶと自分の足元を削除することになるため 1 本の直列 helper に畳めず、また判定表の 1 セル内に手順を並べると順序が本文の書き換えだけで壊れる（序数で隣接行を参照する形も同じ理由で使わない）。
+**順序制約**: `detect` → 対象の発見 → Issue 束縛ガード → `ExitWorktree` → `remove` の順に、**それぞれ独立したサブセクション**として実行する。cwd が対象 worktree 内のまま `remove` を呼ぶと自分の足元を削除することになるため 1 本の直列 helper に畳めず、また判定表の 1 セル内に手順を並べると順序が本文の書き換えだけで壊れる（序数で隣接行を参照する形も同じ理由で使わない）。
 rationale: references/rationale.md#step-order-as-sections
 
 #### 4.2.0 Issue 束縛ガード（4.2.1 / 4.2.2 へ到達する全経路の前段）
 
-本ガード節は `CLEANUP_WT` の値に依らず**必ず実行する**（分岐そのものは分類値を先に見る）。detect の内側 (`cleanup-worktree-detect.sh`) は `in_worktree` を「flow-state の worktree == 現 cwd」だけで、`in_main` を「flow-state に worktree 記録があり cwd がその外」だけで判定し、いずれも `--issue` を見ない。したがって marker の `worktree=` は別 Issue のセッション worktree を指しうる。
+削除対象は 4.1.1 が発見した path だけである。detect が返した現セッションの path は、末尾セグメントが `issue-{issue_number}` でも「cwd が対象の中にいるか / `ExitWorktree` で退出できるか」の判定にしか使わない。別 Issue のセッション worktree を remove 対象にしてはならない。
 rationale: references/rationale.md#issue-scoped-identity
 
 ```bash
-wt_path="{flow_wt}"
-case "{cleanup_wt}" in
-  in_worktree|in_main)
-    if [ -z "$wt_path" ]; then
-      echo "WARNING: 分類は付いているのに worktree path がありません（CLEANUP_WT={cleanup_wt}）。worktree もブランチも削除しません" >&2
-      echo "[CONTEXT] CANCEL_WT_BOUND=undetermined; reason=classified_without_path" >&2
-    elif [ "$(basename "$wt_path")" = "issue-{issue_number}" ]; then
-      echo "[CONTEXT] CANCEL_WT_BOUND=ok; path=$wt_path"
-    else
-      echo "WARNING: detect が返した worktree は対象 Issue のものではありません: $wt_path（期待する末尾セグメント: issue-{issue_number}）" >&2
-      echo "[CONTEXT] CANCEL_WT_BOUND=mismatch; path=$wt_path" >&2
-    fi
+target="{cancel_wt_target}"
+case "$target" in
+  *'{'*)
+    echo "ERROR: 対象 worktree path が確定していません（placeholder 残留）。Issue をクローズせず停止します" >&2
+    echo "[CONTEXT] CANCEL_WT_BOUND=blocked; reason=target_placeholder_residue" >&2
+    exit 1
     ;;
-  none)
+  none|"")
     echo "[CONTEXT] CANCEL_WT_BOUND=none; reason=no_session_worktree"
     ;;
   *)
-    echo "WARNING: 作業ツリーを安全に処理できません（CLEANUP_WT='{cleanup_wt}'）。worktree もブランチも削除しません" >&2
-    echo "[CONTEXT] CANCEL_WT_BOUND=undetermined; cleanup_wt={cleanup_wt}" >&2
+    if [ "$(basename "$target")" != "issue-{issue_number}" ]; then
+      echo "WARNING: 発見した path の末尾セグメントが対象 Issue ではありません: $target。この path は削除しません" >&2
+      echo "[CONTEXT] CANCEL_WT_BOUND=none; reason=basename_mismatch; path=$target" >&2
+    else
+      cur_top=$(git rev-parse --show-toplevel) || cur_top=""
+      if [ -z "$cur_top" ]; then
+        echo "ERROR: cwd の toplevel を取得できません。対象 worktree 内にいるか確認できないため中止します" >&2
+        echo "[CONTEXT] CANCEL_WT_BOUND=blocked; reason=cwd_unresolved; path=$target" >&2
+        exit 1
+      fi
+      if [ "$cur_top" = "$target" ]; then
+        case "{cleanup_wt}" in
+          in_worktree)
+            echo "[CONTEXT] CANCEL_WT_BOUND=ok; path=$target; exit=required"
+            ;;
+          *)
+            echo "ERROR: 対象 Issue のセッション worktree 内にいるため ExitWorktree で退出できません。Issue をクローズせず停止します。main checkout で /rite:issue-cancel {issue_number} を再実行してください" >&2
+            echo "[CONTEXT] CANCEL_WT_BOUND=blocked; reason=exit_worktree_unavailable; path=$target; cleanup_wt={cleanup_wt}" >&2
+            exit 1
+            ;;
+        esac
+      else
+        echo "[CONTEXT] CANCEL_WT_BOUND=ok; path=$target; exit=skip"
+      fi
+    fi
     ;;
 esac
 ```
 
-照合は**末尾セグメントの完全一致**にする（`issue-24931` を `issue-2493` に一致させる suffix 照合にしない）。
-
-分岐は**証明された正常値の列挙**で書き、それ以外を残らず `undetermined` へ落とす（`unknown` / `in_worktree_unrecorded` の 2 値を名指しする否定形にしない）。marker 不在で `{cleanup_wt}` / `{flow_wt}` が空文字に倒れる経路が、名指しの外側を通って削除続行へ抜けるため。
+分岐は**証明された正常値の列挙**で書き、確認できない入力は残らず `blocked` へ落とす。`blocked` は Phase 5 / Phase 6 の前に止める — 閉じてから再実行しても `CLOSED` + `NOT_PLANNED` が Phase 4 をスキップするため、復旧経路が死ぬ。
 rationale: references/rationale.md#classification-class-predicate
 
 | `CANCEL_WT_BOUND` | アクション |
 |---|---|
-| `ok` | 4.2.1 へ |
-| `none` | worktree 記録なし。4.2.1 / 4.2.2 をスキップして 4.3 へ |
-| `mismatch` | 別 Issue の worktree。**4.2.1 / 4.2.2 と 4.3 のブランチ削除を試行せず**、Phase 7 に未処理として列挙する |
-| `undetermined` | `ExitWorktree` で main checkout へ退出できない（`in_worktree_unrecorded`）か、分類そのものが取れていない（`unknown` / marker 不在 / 空値 / 未知の値）。**4.2.1 / 4.2.2 と 4.3 のブランチ削除を試行せず**、Phase 7 に未処理として列挙し、main checkout での `/rite:issue-cancel {issue_number}` 再実行へ委譲する。worktree 内で完結する 4.4〜4.6・Phase 5・Phase 6 は通常どおり実行する |
+| `ok` | `exit=required` なら 4.2.1 へ、`exit=skip` なら 4.2.1 をスキップして 4.2.2 へ |
+| `none` | 対象 worktree なし。4.2.1 / 4.2.2 をスキップして 4.3 へ |
+| `blocked` / marker 不在 | **fail-loud で停止する**。Phase 5 / Phase 6 を実行しない。Issue は OPEN のまま。復旧は main checkout での `/rite:issue-cancel {issue_number}` 再実行 |
 
 #### 4.2.1 ExitWorktree（main checkout への復帰）
 
-`CANCEL_WT_BOUND=ok` のときだけ実行する。
-
-| `CLEANUP_WT` | アクション |
-|---|---|
-| `in_worktree` | `dirty=yes` なら生パス一覧を表示した上で**そのまま続行**（中止は破棄経路であり、破棄予定の変更に stash 確認を挟まない）。そのうえで `ExitWorktree` を `action: "keep"` で呼び main checkout へ復帰し、4.2.2 へ |
-| `in_main` | 既に main checkout にいるため `ExitWorktree` は呼ばない。dirty 表示もしない。4.2.2 へ |
+`CANCEL_WT_BOUND=ok` かつ `exit=required` のときだけ実行する。`dirty=yes` なら生パス一覧を表示した上で**そのまま続行**（中止は破棄経路であり、破棄予定の変更に stash 確認を挟まない）。そのうえで `ExitWorktree` を `action: "keep"` で呼び main checkout へ復帰し、4.2.2 へ。
 
 #### 4.2.2 remove の実行
 
 ```bash
 _wt_rc=0
 bash {plugin_root}/hooks/scripts/cleanup-session-worktree-teardown.sh remove \
-  --worktree "{flow_wt}" --pr-merged "false" --self-root "$PPID" || _wt_rc=$?
+  --worktree "{cancel_wt_target}" --pr-merged "false" --self-root "$PPID" || _wt_rc=$?
 if [ "$_wt_rc" -ne 0 ]; then
   echo "WARNING: worktree teardown helper が rc=${_wt_rc} で失敗しました。作業ツリーは未処理のまま残ります" >&2
-  echo "[CONTEXT] WORKTREE_REMOVE_FAILED=1; path={flow_wt}; rc=${_wt_rc}" >&2
+  echo "[CONTEXT] WORKTREE_REMOVE_FAILED=1; path={cancel_wt_target}; rc=${_wt_rc}" >&2
 fi
 ```
 
@@ -496,7 +553,8 @@ PR クローズ・後片付け・再クローズは実行していません。
 
 ## エラー時の方針
 
-- **PR クローズ失敗は fail-loud で停止**。Status も Issue クローズも後片付けも行わない（順序制約を守れないまま先へ進むと `post-compact.sh` が Status を `In Review` へ戻す窓が開く）
+- **PR クローズ失敗は fail-loud で停止**。Status も Issue クローズも後片付けも行わない
+- **対象 worktree 内で ExitWorktree 不能、または対象 worktree の有無を確認できないときは fail-loud で停止**。Issue はクローズしない
 - **Projects Status 更新の失敗は non-blocking**。WARNING と手動更新コマンドを出して Issue クローズへ進む
 - **Issue クローズ失敗は停止**。board と Issue の state 不整合を完了報告に明示する
 - **後片付け helper の失敗は non-blocking**。WARNING を出して続行し、Phase 7 に未完了として列挙する

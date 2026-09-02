@@ -35,7 +35,7 @@ outside the number-free surface guarded by `number-reference-check.sh`. The
 
 ### Added
 
-- **`/rite:issue-cancel` cancels an Issue you decided not to do** — closes it with `--reason "not planned"`, moves the board Status to the terminal `Cancelled`, and records the mandatory reason in the closing comment. An Issue already carrying a PR, a branch, a session worktree, or work memory is torn down through the existing cleanup helpers: the PR is closed unmerged, then the worktree, branch, PR-specific state, and local work memory are removed. The order PR close → Status → Issue close is load-bearing (closing the PR first removes the `post-compact.sh` reconciliation window that would drag the Status back to `In Review`), and a failed PR close stops the whole flow rather than advancing the board. Cancelling a child Issue never propagates `Done` to its parent. The skill runs only on an explicit human invocation. (#2493)
+- **`/rite:issue-cancel` cancels an Issue you decided not to do** — closes it with `--reason "not planned"`, moves the board Status to the terminal `Cancelled`, and records the mandatory reason in the closing comment. An Issue already carrying a PR, a branch, a session worktree, or work memory is torn down through the existing cleanup helpers: the PR is closed unmerged, then the worktree, branch, PR-specific state, and local work memory are removed. The order PR close → Status → Issue close is load-bearing: a failed PR close stops the whole flow rather than advancing the board. Cancelling a child Issue never propagates `Done` to its parent. The skill runs only on an explicit human invocation. (#2493)
 
 ## [0.14.0] - 2026-08-30
 
