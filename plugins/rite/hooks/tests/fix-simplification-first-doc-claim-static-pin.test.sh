@@ -60,14 +60,20 @@ PIN_BODY_PARA='`simplification-first:` 段落（Escalation trigger 成立時の�
 PIN_GATE_CHECK='Escalation trigger 成立時は `simplification-first:` 段落の有無も判定し、いずれかの欠落を `missing` とする'
 PIN_GATE_NOT_REQUIRED='trigger 不成立の cycle では `simplification-first:` 段落を要求しない'
 PIN_OPTION1='or \(Escalation trigger 成立時\) a `simplification-first: \{paragraph\}` paragraph'
+PIN_OPTION2='or \(Escalation trigger 成立時\) `simplification-first \(bypass\): \{理由\}`'
 
-# pin: assert_grep_in_section, plus the missing rule name on stderr so a red run
-# says which literal disappeared without scrolling the stdout stream.
+# pin: assert_grep_in_section, plus a stderr line naming the cause so a red run says
+# whether a rule literal disappeared or the section heading drifted (the helper's
+# stdout FAIL line carries the same distinction; stderr repeats it for AC-6).
 pin() {
   local before=$FAIL
   assert_grep_in_section "$@"
   if [ "$FAIL" -gt "$before" ]; then
-    echo "MISSING RULE: $1 — pattern: $5" >&2
+    if SEC_START="$3" SEC_END="$4" awk '$0 ~ ENVIRON["SEC_START"], $0 ~ ENVIRON["SEC_END"]' "$2" | grep -q .; then
+      echo "MISSING RULE: $1 — pattern: $5" >&2
+    else
+      echo "SECTION NOT FOUND: $1 — heading drift? [$3 .. $4]" >&2
+    fi
   fi
 }
 
@@ -100,6 +106,8 @@ pin "T-03: 3.2.1 Step 1 treats missing simplification-first paragraph as missing
   "$FIX_MD" "$S321_START" "$S321_END" "$PIN_GATE_CHECK"
 pin "T-03: 3.2.1 Step 2 option 1 can add the simplification-first paragraph" \
   "$FIX_MD" "$S321_START" "$S321_END" "$PIN_OPTION1"
+pin "T-03: 3.2.1 Step 2 option 2 bypass paragraph follows whichever kind is missing" \
+  "$FIX_MD" "$S321_START" "$S321_END" "$PIN_OPTION2"
 
 # --- T-05 (AC-4 / AC-5): the paragraph is required only when the trigger holds ---
 pin "T-05: 3.2.1 does not require the paragraph when the trigger does not hold" \
@@ -113,7 +121,7 @@ assert_not_grep "T-05: no rule requires simplification-first paragraph unconditi
 negative_control() {
   local label="$1" start="$2" end="$3" pattern="$4"
   local mutant
-  if ! mutant=$(mktemp -p "${TMPDIR:-/tmp}"); then
+  if ! mutant=$(mktemp "${TMPDIR:-/tmp}/rite-sf-pin-mutant-XXXXXX"); then
     fail "$label (mktemp failed)"
     return
   fi
