@@ -1,4 +1,5 @@
 ## 2026-09-03
+* **Skip**: [20260902T154648Z-pr-2527.md](raw/reviews/20260902T154648Z-pr-2527.md) — 0-finding confirmation; Cancelled producer vs leftover reconciler is already in projects-board-drift-check.sh header; exclusivity-claim rot already in universal-claim-prose-invalidated-by-path-addition
 * **Skip**: [20260902T151519Z-pr-2526.md](raw/reviews/20260902T151519Z-pr-2526.md) — 0-finding confirmation; DUPLICATE→Cancelled mapping already in SoT; parent auto-close Non-Target already in Decision Log
 
 ## 2026-09-02
