@@ -486,6 +486,7 @@ Generated from `trackedIssues.nodes` retrieved in Phase 3.7.1:
 | `skipped_terminal_conflict` | Cancelled のため Done 上書きをスキップしました | `Status: Cancelled のため Done 上書きをスキップ` |
 | `failed` | Projects Status の更新に失敗しました | `Status: 更新失敗` |
 | `skipped_not_in_project` | Project 未登録のため Status は未更新です | `Status: Project 未登録のため未更新` |
+| 3.7.2.1 skip（`projects.enabled: false`） | Status 行なし | Status 行なし |
 
 `.result=updated`（親が既 CLOSED、3.7.2.2 skip）:
 
@@ -552,6 +553,22 @@ Generated from `trackedIssues.nodes` retrieved in Phase 3.7.1:
 完了サマリ:
 - 親 Issue: #{parent_issue_number} - {parent_issue_title}
 - Status: Project 未登録のため未更新
+- 完了した子 Issue: {completed_count} 件
+```
+
+3.7.2.1 skip（`projects.enabled: false`）（親が既 CLOSED、3.7.2.2 skip）:
+
+```
+親 Issue #{parent_issue_number} は既に CLOSED です。
+```
+
+3.7.2.1 skip（`projects.enabled: false`）（3.7.2.2 で close）:
+
+```
+親 Issue #{parent_issue_number} を自動クローズしました
+
+完了サマリ:
+- 親 Issue: #{parent_issue_number} - {parent_issue_title}
 - 完了した子 Issue: {completed_count} 件
 ```
 
