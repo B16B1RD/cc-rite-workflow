@@ -21,6 +21,7 @@
 * **Update**: [Step 番号参照は relative (Step N + 1) ではなく absolute (heading title 名 + Step 番号) で書く](pages/patterns/step-reference-absolute-heading-over-relative.md) — raw/reviews/20260901T140807Z-pr-2500.md を統合（判定表の行に序数で隣接行を参照する形を追記）
 * **Skip**: [20260901T233050Z-pr-2503.md](raw/reviews/20260901T233050Z-pr-2503.md) — 一時的な 0-finding レビュー記録。blocking 解消の確認のみで新規経験則なし
 * **lint:clean** — contradictions=0, stale=50, orphans=0, missing_concept=0, unregistered_raw=409, broken_refs=0
+* **lint:clean** — contradictions=0, stale=50, orphans=0, missing_concept=0, unregistered_raw=409, broken_refs=0
 
 ## 2026-09-01
 * **Create**: [インライン処理の helper 抽出は「helper が起動しない」経路を新設し、marker 不在＝成功の消費規則を破る](pages/anti-patterns/helper-extraction-creates-unstarted-path.md) — raw/reviews/20260901T053153Z-pr-2498.md, raw/fixes/20260901T055639Z-pr-2498.md を新規ページ化
