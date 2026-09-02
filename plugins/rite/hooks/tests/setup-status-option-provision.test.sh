@@ -143,7 +143,17 @@ assert_not_grep "T-no-replace-fallback no Todo GRAY GraphQL literal" "$SKILL" \
 assert_not_grep "T-no-replace-fallback no In Review gating heading" "$SKILL" \
   'If the Status field does not have "In Review"'
 
-echo "=== T-read-fail: options query 非0 / JSON 不正 / Status field 不在 → mutation 0 かつ 非0 ==="
+echo "=== T-read-fail: field-list 非0 / options query 非0 / JSON 不正 / Status field 不在 → mutation 0 かつ 非0 ==="
+# field-list fail
+d_flfail="$WORKDIR/flfail"
+mkdir -p "$d_flfail"
+printf '%s\n' "$status_field_list" > "$d_flfail/field-list.json"
+printf '%s\n' "$opt4" > "$d_flfail/options.json"
+rc=$(MOCK_GH_DIR="$d_flfail" MOCK_GH_FIELD_LIST_FAIL=1 PATH="$MOCKBIN:$PATH" \
+  bash "$SNIPPET" >"$d_flfail/stdout" 2>"$d_flfail/stderr" && echo 0 || echo $?)
+assert "T-read-fail field-list exits non-zero" "1" "$rc"
+assert "T-read-fail field-list issues no mutation" "0" "$(mutation_count "$d_flfail")"
+
 # query fail
 d_qfail="$WORKDIR/qfail"
 mkdir -p "$d_qfail"
@@ -234,7 +244,7 @@ else
   fail "T-in-review-missing In Review/Cancelled must be id-less: $opts"
 fi
 
-echo "=== T-union-custom: Blocked の id が mutation payload に残る ==="
+echo "=== T-union-custom: Blocked の id が mutation payload に残り、Cancelled を id 無しで足す ==="
 d_custom="$WORKDIR/custom"
 mkdir -p "$d_custom"
 printf '%s\n' "$status_field_list" > "$d_custom/field-list.json"
@@ -243,10 +253,16 @@ rc=$(MOCK_GH_DIR="$d_custom" PATH="$MOCKBIN:$PATH" \
   bash "$SNIPPET" >"$d_custom/stdout" 2>"$d_custom/stderr" && echo 0 || echo $?)
 assert "T-union-custom exits 0" "0" "$rc"
 opts=$(jq '.variables.input.singleSelectOptions' "$d_custom/mutation.json")
+assert "T-union-custom six options" "6" "$(printf '%s' "$opts" | jq 'length')"
 if printf '%s' "$opts" | jq -e '.[] | select(.id=="ID_BLOCKED" and .name=="Blocked" and .color=="RED" and .description=="Waiting")' >/dev/null; then
   pass "T-union-custom Blocked kept as same object"
 else
   fail "T-union-custom Blocked not preserved: $opts"
+fi
+if printf '%s' "$opts" | jq -e '.[] | select(.name=="Cancelled" and .color=="GRAY" and .description=="Cancelled (not planned)" and (has("id")|not))' >/dev/null; then
+  pass "T-union-custom Cancelled added without id"
+else
+  fail "T-union-custom Cancelled must be id-less object: $opts"
 fi
 
 echo "=== T-idempotent: 既存 5 option → mutation 0 かつ exit 0 ==="
