@@ -1,6 +1,7 @@
 ## 2026-09-03
 * **Skip**: [20260902T154648Z-pr-2527.md](raw/reviews/20260902T154648Z-pr-2527.md) — 0-finding confirmation; Cancelled producer vs leftover reconciler is already in projects-board-drift-check.sh header; exclusivity-claim rot already in universal-claim-prose-invalidated-by-path-addition
 * **Skip**: [20260902T151519Z-pr-2526.md](raw/reviews/20260902T151519Z-pr-2526.md) — 0-finding confirmation; DUPLICATE→Cancelled mapping already in SoT; parent auto-close Non-Target already in Decision Log
+* **lint:clean** — contradictions=0, stale=49, orphans=0, missing_concept=0, unregistered_raw=421, broken_refs=0
 
 ## 2026-09-02
 * **Skip**: [20260902T123456Z-pr-2525.md](raw/reviews/20260902T123456Z-pr-2525.md) — detector-candidate: テスト自己 grep は対象関数固有断片にし、heading 抽出は NOEND と行数上限、result 抽出は skip 見出しで打ち切る
