@@ -19,11 +19,16 @@ sources:
     resource: "raw/reviews/20260901T173133Z-pr-2500.md"
   - type: "reviews"
     resource: "raw/reviews/20260901T225105Z-pr-2503.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260902T044110Z-pr-2505.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260902T044502Z-pr-2505.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T04:58:47Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T04:58:47Z" }
 ---
 
 # 追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない
@@ -53,6 +58,8 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 
 **「件数だけの pin」は配線を守らない**: 抽出の完了ゲートを helper 呼び出しの**件数**で pin すると、呼び出しの引数を literal へ潰す変異が素通りする。引数がガードを駆動する入力である場合、件数の pin は「配線は検査済み」という false confidence を生む。観測された事例の mutation では 3 変異すべてがスイート全体 green だった。
 
+**routing 表のリテラルは bash elif の削除を検出しない**: 分岐表に `P461_DECISION=skip_cancelled_children` があることと、同一行に `proceed_to_confirmation` が無いことだけを pin すると、routing 表を残したまま bash の `elif cancelled_count` を消してもスイートは green のままになる。LLM が読むのは stdout の marker なので、実行経路の elif 形（`elif [ "$cancelled_count" -gt 0` と続く `P461_DECISION=skip_cancelled_children; numbers=` が proceed の else より前）を pin する。判定表の generic 行も同じ穴で、skip 行と互いに素な条件（`none NOT_PLANNED` / `no unavailable stateReason`）を generic 行自身に書かないと、上から評価しても両行が同時マッチする。
+
 **部分文字列関係（`X` ⊂ `REMOTE_X`）は pin の空振り源**: `BRANCH_CHECK_FAILED` は同一セクションの `REMOTE_BRANCH_CHECK_FAILED` に部分文字列一致し、規則を削除しても反転しても緑。pin は規則の述語まで含めた 1 行 literal にアンカーする。golden / byte-identical を主張する fixture を部分文字列で自己参照する形も同じ穴で、期待値そのものが pin 対象に含まれる。
 
 **negative control は行スコープの盲点を持つ**: `grep` は行単位なので、`<helper>.*2>"$` の形は helper 名とリダイレクトが同一物理行にある場合しか赤くしない。長い helper 呼び出しを `\` で折るのが家風のリポジトリでは、退行が取る自然な形がちょうど死角に入る。negative control の積み増しではなく、呼び出し行そのものを固定する positive pin（`^bash <helper> ... 2>&1`）を置く。cycle 2 で同じ欠陥クラスを潰した修正が、その修正で導入した control に同じ盲点を持っていた。
@@ -73,3 +80,5 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 - [PR #2500 review results (cycle 2)](../../raw/reviews/20260901T165319Z-pr-2500.md)
 - [PR #2500 review results (cycle 3)](../../raw/reviews/20260901T173133Z-pr-2500.md)
 - [PR #2503 review results](../../raw/reviews/20260901T225105Z-pr-2503.md)
+- [PR #2505 review results](../../raw/reviews/20260902T044110Z-pr-2505.md)
+- [PR #2505 fix results](../../raw/fixes/20260902T044502Z-pr-2505.md)
