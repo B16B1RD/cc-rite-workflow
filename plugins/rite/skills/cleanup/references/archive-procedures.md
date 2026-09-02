@@ -334,7 +334,7 @@ Replace `{tmpfile_read}`, `{tmpfile_write}`, `{original_length}` with the values
 
 **Execution condition**: Only executed when a parent Issue was detected in `cleanup.md` ステップ 2.
 
-If all child Issues are complete, automatically close the parent Issue.
+If assessment in 3.7.1 routes here (all children CLOSED, none `NOT_PLANNED`, no unavailable `stateReason`), automatically close the parent Issue.
 
 #### 3.7.1 Check Completion of All Child Issues
 
@@ -351,6 +351,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
           number
           title
           state
+          stateReason
         }
       }
     }
@@ -360,15 +361,19 @@ query($owner: String!, $repo: String!, $number: Int!) {
 
 **Assessment logic:**
 
+`stateReason` は GraphQL `IssueStateReason`（実測: `COMPLETED` / `NOT_PLANNED` / `REOPENED` / `DUPLICATE`）。OPEN 子の `stateReason` が null なのは正常で欠落扱いしない。CLOSED 子の `stateReason` が null / 取得不能なら非 NOT_PLANNED とみなさず fail-loud する。
+
 | Condition | Processing |
 |-----------|-----------|
 | Some child Issues are OPEN | Proceed to Phase 3.7.3 (notify about remaining child Issues). Do not update parent Status to Done. Do not close |
-| All child Issues are CLOSED and parent is OPEN | Proceed to Phase 3.7.2 (Status → Done then close) |
-| All child Issues are CLOSED and parent is already CLOSED | Proceed to 3.7.2.1 (Status → Done) only. Skip 3.7.2.2 (do not run `gh issue close`) |
+| All child Issues are CLOSED and at least one has `stateReason == NOT_PLANNED` | Proceed to Phase 3.7.3 (notify about Cancelled child Issues). Do not update parent Status to Done. Do not close |
+| All child Issues are CLOSED and at least one CLOSED child has unavailable `stateReason` | Proceed to Phase 3.7.3 (notify that auto-close was skipped as undetermined). Do not update parent Status to Done. Do not close |
+| All child Issues are CLOSED, none `NOT_PLANNED`, no unavailable `stateReason`, and parent is OPEN | Proceed to Phase 3.7.2 (Status → Done then close) |
+| All child Issues are CLOSED, none `NOT_PLANNED`, no unavailable `stateReason`, and parent is already CLOSED | Proceed to 3.7.2.1 (Status → Done) only. Skip 3.7.2.2 (do not run `gh issue close`) |
 
 #### 3.7.2 Auto-Close Parent Issue
 
-If all child Issues are complete, auto-close the parent Issue without user confirmation. If the parent is already CLOSED, skip 3.7.2.2 (close) but still run 3.7.2.1 (Status → Done).
+Reached only after 3.7.1 assessment (all CLOSED, no `NOT_PLANNED`, no unavailable `stateReason`). Auto-close the parent Issue without user confirmation. If the parent is already CLOSED, skip 3.7.2.2 (close) but still run 3.7.2.1 (Status → Done).
 
 ##### 3.7.2.1 Update Parent Issue's Projects Status to "Done"
 
@@ -482,9 +487,9 @@ Generated from `trackedIssues.nodes` retrieved in Phase 3.7.1:
 - 完了した子 Issue: {completed_count} 件
 ```
 
-#### 3.7.3 Notification When Remaining Child Issues Exist
+#### 3.7.3 Notification When Parent Auto-Close Is Skipped
 
-If some child Issues are still OPEN:
+**OPEN remaining** (Assessment: some child Issues are OPEN):
 
 ```
 親 Issue #{parent_issue_number} には残りの子 Issue があります:
@@ -496,6 +501,30 @@ If some child Issues are still OPEN:
 | ... | ... | ... |
 
 残りの子 Issue が完了すると、親 Issue は自動的にクローズされます。
+```
+
+**Cancelled children** (Assessment: all CLOSED, at least one `stateReason == NOT_PLANNED`). Do not use the OPEN-remaining closing sentence — Cancelled 残存では親は自動クローズしない:
+
+```
+Cancelled の子 #{cancelled_child_numbers} を含むため親 #{parent_issue_number} は未完了扱いです（Status → Done / auto-close しません）:
+
+| # | タイトル | 状態 |
+|---|---------|------|
+| #{cancelled_sub_number_1} | {cancelled_sub_title_1} | Cancelled (NOT_PLANNED) |
+| ... | ... | ... |
+
+親をどう扱うかは人間の判断です。親の中止は `/rite:issue-cancel` の明示指示。
+```
+
+**stateReason unavailable** (Assessment: all CLOSED, at least one CLOSED child has unavailable `stateReason`):
+
+```
+親 Issue #{parent_issue_number} は子の stateReason を判定できないため auto-close をスキップしました:
+
+| # | タイトル | 状態 |
+|---|---------|------|
+| #{undetermined_sub_number_1} | {undetermined_sub_title_1} | stateReason 判定不能 |
+| ... | ... | ... |
 ```
 
 #### 3.7.4 Error Handling
