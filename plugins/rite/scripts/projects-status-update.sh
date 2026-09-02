@@ -38,7 +38,10 @@
 #   skipped_not_in_project      — Issue is not on the Project and auto_add is false
 #   skipped_terminal_conflict   — current Status is Cancelled and the request was Done
 #                                 (one-way guard; SoT: references/projects-integration.md §2.4.8)
-#   failed                      — API / parse / unreadable current Status (does not write)
+#   failed                      — API / parse / GraphQL errors[] / unreadable current Status
+#                                 (does not write). Unreadable includes fieldValues key missing,
+#                                 fieldValues == null, or nodes not an array. Empty nodes / no
+#                                 Status entry remain unset and may write.
 #
 # Exit codes:
 #   0 = success OR non-blocking failure (caller must inspect .result)
@@ -195,10 +198,25 @@ query($owner: String!, $repo: String!, $number: Int!) {
 }' -f owner="$OWNER" -f repo="$REPO" -F number="$ISSUE_NUMBER" 2>"$GH_ERR_FILE"
 }
 
+# GraphQL may return HTTP 200 with .data and .errors[] together. gh exits 0
+# in that case; sibling projects-items-fetch.sh / link-sub-issue.sh fail-loud.
+reject_gql_errors() {
+  local gqe
+  if ! gqe=$(printf '%s\n' "$GQL_RESULT" | jq -r '.errors // [] | map(.message) | join("; ")'); then
+    add_warning "Could not parse GraphQL errors array from projectItems response"
+    fail_nb "failed"
+  fi
+  if [ -n "$gqe" ]; then
+    add_warning "GraphQL projectItems query returned errors: $gqe"
+    fail_nb "failed"
+  fi
+}
+
 GQL_RESULT=$(query_project_items) || {
   add_warning "GraphQL projectItems query failed: $(gh_err_msg)"
   fail_nb "failed"
 }
+reject_gql_errors
 
 # Check that the issue node exists (null means issue not found in repo).
 ISSUE_EXISTS=$(printf '%s\n' "$GQL_RESULT" | jq -r '.data.repository.issue // empty')
@@ -242,6 +260,7 @@ if [ -z "$NODE_LINE" ]; then
     add_warning "GraphQL re-query after auto-add failed: $(gh_err_msg)"
     fail_nb "failed"
   }
+  reject_gql_errors
   NODE_LINE=$(find_matching_node)
   if [ -z "$NODE_LINE" ]; then
     add_warning "Auto-add succeeded but project item not found in re-query"
@@ -258,13 +277,18 @@ fi
 
 # Current Status. Terminal names (Done / Cancelled) are copied from
 # references/projects-integration.md §2.4.8 — do not add a third here.
-# fieldValues key missing or jq failure → unreadable → fail, do not write.
-# empty nodes / no Status entry → unset (non-terminal; write allowed).
+# Unreadable (fail, do not write): fieldValues key missing, fieldValues == null,
+# nodes not an array, or jq failure. has("fieldValues") is true for null, so
+# null must be typed as unreadable rather than treated as unset.
+# Unset (write allowed): empty nodes / no Status entry.
 CURRENT_EXTRACT=$(printf '%s\n' "$GQL_RESULT" | jq -c --argjson pn "$PROJECT_NUMBER" '
   [.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn)][0] as $n
   | if $n == null then {ok:false, reason:"no_item"}
     elif ($n | has("fieldValues") | not) then {ok:false, reason:"fieldValues_missing"}
-    else {ok:true, status: ([ $n.fieldValues.nodes[]? | select(.field.name == "Status") | .name ][0] // "")}
+    elif ($n.fieldValues | type) != "object" then {ok:false, reason:"fieldValues_unreadable"}
+    elif ($n.fieldValues | has("nodes") | not) then {ok:false, reason:"fieldValues_unreadable"}
+    elif ($n.fieldValues.nodes | type) != "array" then {ok:false, reason:"fieldValues_unreadable"}
+    else {ok:true, status: ([ $n.fieldValues.nodes[] | select(.field.name == "Status") | .name ][0] // "")}
     end
 ') || CURRENT_EXTRACT=""
 if [ -z "$CURRENT_EXTRACT" ] || [ "$(printf '%s' "$CURRENT_EXTRACT" | jq -r '.ok // false')" != "true" ]; then

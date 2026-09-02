@@ -44,6 +44,8 @@
 #   "psu_current_cancelled"    - item Status is Cancelled
 #   "psu_current_done"         - item Status is Done
 #   "psu_fieldvalues_missing"  - item has no fieldValues key (unreadable)
+#   "psu_fieldvalues_null"     - item has fieldValues: null (unreadable)
+#   "psu_graphql_errors"       - HTTP 200 + data + errors[] (unreadable; no write)
 #   "psu_fieldvalues_empty"    - fieldValues.nodes is empty (unset)
 #   "psu_fieldvalues_nostatus" - fieldValues has no Status entry (unset)
 #
@@ -450,6 +452,9 @@ EOJSON
               missing)
                 printf '{"id":"%s","project":{"id":"%s","number":6}}' "$MOCK_ITEM_ID" "$MOCK_PROJECT_ID"
                 ;;
+              null)
+                printf '{"id":"%s","project":{"id":"%s","number":6},"fieldValues":null}' "$MOCK_ITEM_ID" "$MOCK_PROJECT_ID"
+                ;;
               empty)
                 printf '{"id":"%s","project":{"id":"%s","number":6},"fieldValues":{"nodes":[]}}' "$MOCK_ITEM_ID" "$MOCK_PROJECT_ID"
                 ;;
@@ -514,6 +519,16 @@ EOJSON
               ;;
             psu_fieldvalues_missing)
               _psu_issue "$(_psu_node missing)"
+              exit 0
+              ;;
+            psu_fieldvalues_null)
+              _psu_issue "$(_psu_node null)"
+              exit 0
+              ;;
+            psu_graphql_errors)
+              # HTTP 200 + data (Cancelled item) + errors[]. gh exits 0; helper must not write.
+              printf '{"data":{"repository":{"issue":{"url":"https://github.com/test-owner/test-repo/issues/%s","projectItems":{"nodes":[%s]}}}},"errors":[{"message":"Field values unavailable"}]}\n' \
+                "$MOCK_ISSUE_NUMBER" "$(_psu_node Cancelled)"
               exit 0
               ;;
             psu_fieldvalues_empty)

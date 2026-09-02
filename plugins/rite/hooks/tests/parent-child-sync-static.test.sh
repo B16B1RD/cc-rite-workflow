@@ -36,9 +36,27 @@ echo "=== Phase 2: close.md Phase 4.6 auto-close decision skeleton ==="
 assert_grep "close.md retains P460_DECISION skip_already_closed branch" "$CLOSE_MD" "P460_DECISION|skip_already_closed|Phase 4\.6"
 
 echo "=== Phase 2b: close.md 4.6.3 skipped_terminal_conflict is a legitimate skip ==="
-assert_grep "close.md Shared table dispatches skipped_terminal_conflict" "$CLOSE_MD" 'skipped_terminal_conflict'
-assert_grep "close.md 4.6.3 case arm sets skipped_terminal" "$CLOSE_MD" 'status_update_result="skipped_terminal"'
-assert_grep "close.md 4.6.3 Step 3 treats skipped_terminal as 整合性 OK" "$CLOSE_MD" 'success:skipped_terminal'
+SHARED_START='^## Shared: Projects Status'
+SHARED_END='^## Phase 1:'
+S463_START='^### 4\.6\.3'
+S463_END='^## Phase 5:'
+S3721_START='^##### 3\.7\.2\.1'
+S3721_END='^##### 3\.7\.2\.2'
+assert_grep_in_section "close.md Shared table dispatches skipped_terminal_conflict" "$CLOSE_MD" \
+  "$SHARED_START" "$SHARED_END" \
+  '"skipped_terminal_conflict"'
+assert_grep_in_section "close.md 4.6.3 case arm sets skipped_terminal" "$CLOSE_MD" \
+  "$S463_START" "$S463_END" \
+  'status_update_result="skipped_terminal"'
+assert_grep_in_section "close.md 4.6.3 Step 3 treats skipped_terminal as 整合性 OK" "$CLOSE_MD" \
+  "$S463_START" "$S463_END" \
+  'success:skipped_terminal'
+assert_grep_in_section "archive 3.7.2.1 table has skipped_terminal_conflict" "$ARCHIVE_MD" \
+  "$S3721_START" "$S3721_END" \
+  '"skipped_terminal_conflict"'
+assert_grep_in_section "archive 3.7.2.1 case arm skipped_terminal_conflict" "$ARCHIVE_MD" \
+  "$S3721_START" "$S3721_END" \
+  'skipped_terminal_conflict\)'
 
 echo "=== Phase 3: pr/open.md ステップ 1.2 trackedIssues query (no inline simplification) ==="
 assert_grep "pr/open.md ステップ 1.2 uses trackedIssues GraphQL (not bare trackedInIssues)" "$PR_OPEN_MD" "trackedIssues"

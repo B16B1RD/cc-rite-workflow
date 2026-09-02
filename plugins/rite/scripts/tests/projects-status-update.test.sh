@@ -453,6 +453,34 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# TC-028: fieldValues: null × Done → failed, no item-edit (AC-4; has() is true for null)
+# --------------------------------------------------------------------------
+echo "TC-028: fieldValues null × Done → failed"
+run_script "$(build_json 42 'Done')" psu_fieldvalues_null
+if [ "$LAST_RC" = "0" ] \
+   && [ "$(json_field '.result')" = "failed" ] \
+   && printf '%s\n' "$LAST_OUTPUT" | jq -e '.warnings | map(select(. | test("Could not read current Status"))) | length >= 1' >/dev/null \
+   && assert_item_edit_absent "TC-028"; then
+  pass "fieldValues null is unreadable, no write"
+else
+  fail "TC-028 unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+
+# --------------------------------------------------------------------------
+# TC-029: HTTP 200 + errors[] × Done → failed, no item-edit (AC-4 partial failure)
+# --------------------------------------------------------------------------
+echo "TC-029: GraphQL errors[] × Done → failed"
+run_script "$(build_json 42 'Done')" psu_graphql_errors
+if [ "$LAST_RC" = "0" ] \
+   && [ "$(json_field '.result')" = "failed" ] \
+   && printf '%s\n' "$LAST_OUTPUT" | jq -e '.warnings | map(select(. | test("GraphQL projectItems query returned errors"))) | length >= 1' >/dev/null \
+   && assert_item_edit_absent "TC-029"; then
+  pass "GraphQL errors[] fails without write"
+else
+  fail "TC-029 unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+
+# --------------------------------------------------------------------------
 # TC-026: fieldValues.nodes empty × Done → updated + item-edit (unset ≠ unreadable)
 # --------------------------------------------------------------------------
 echo "TC-026: fieldValues empty × Done → updated + item-edit"

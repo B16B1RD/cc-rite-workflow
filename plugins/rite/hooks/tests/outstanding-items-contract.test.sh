@@ -41,8 +41,10 @@ assert_grep "outstanding_items_block selects by unchecked checkbox, not emoji pr
 echo "=== cleanup.md ステップ 8/12: skipped_terminal_conflict は outstanding に倒さない ==="
 assert_grep "step 8 case arm for skipped_terminal_conflict" "$CLEANUP" 'skipped_terminal_conflict'
 assert_grep "step 8 emits PROJECTS_STATUS_UPDATED=skipped_terminal" "$CLEANUP" 'projects_status_updated="skipped_terminal"'
-assert_grep "step 12 maps skipped_terminal to projects_check=x" "$CLEANUP" 'PROJECTS_STATUS_UPDATED=skipped_terminal'
-assert_grep "step 12 skipped_terminal is not outstanding Done-manual" "$CLEANUP" 'Cancelled のため Done 上書きをスキップ'
+assert_grep "step 12 maps skipped_terminal to projects_check=x on the same rule" "$CLEANUP" \
+  'PROJECTS_STATUS_UPDATED=skipped_terminal` が見つかったとき: `\{projects_status_result\}` = `Cancelled のため Done 上書きをスキップ`、`\{projects_check\}` = `x`'
+assert_not_grep "skipped_terminal rule does not set empty checkbox (outstanding)" "$CLEANUP" \
+  'PROJECTS_STATUS_UPDATED=skipped_terminal.*\{projects_check\}` = ` `'
 assert_not_grep "outstanding_items_block no longer relies on an emoji-prefix allowlist" "$CLEANUP" '`⚠️` で始まる付記'
 
 echo "=== cleanup.md ステップ 12: 失敗ゼロ件時の明示 (T-03, AC-3) ==="
