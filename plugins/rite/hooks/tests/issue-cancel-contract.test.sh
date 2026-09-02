@@ -330,8 +330,8 @@ assert_grep_in_section "T-07 Phase 5 skips when projects are disabled" "$SKILL" 
 assert_grep_in_section "T-07 the skip does not take Issue close / teardown with it" "$SKILL" \
   '^## Phase 5: Projects Status を Cancelled に更新' '^## Phase 6:' 'Issue クローズと後片付けは Projects の有無に依存しない'
 # skip 側だけ書いて、有効時の書き込み失敗を素通しにしないこと。issue-close Shared 節と同型の
-# .result 分岐 (updated / skipped_not_in_project / failed) を持つ。
-for r in 'updated' 'skipped_not_in_project' 'failed'; do
+# .result 分岐 (updated / skipped_not_in_project / skipped_terminal_conflict / failed) を持つ。
+for r in 'updated' 'skipped_not_in_project' 'skipped_terminal_conflict' 'failed'; do
   assert_grep_in_section "T-07 Phase 5 dispatches on .result=$r" "$SKILL" \
     '^## Phase 5: Projects Status を Cancelled に更新' '^## Phase 6:' "\"$r\""
 done

@@ -37,6 +37,12 @@ assert_grep "outstanding_items_block enumeration lists all 6 checks in order (T-
 # bare-text 付記）を取りこぼし、まさに T-02 が守るべきシナリオ（ブランチ削除失敗）で
 # AC-1/AC-2 を破っていた。チェックボックス基準ならこの取りこぼしが構造的に起きない。
 assert_grep "outstanding_items_block selects by unchecked checkbox, not emoji prefix" "$CLEANUP" 'チェックボックスが `x` ではなく空欄（未チェック）として描画されたもの'
+
+echo "=== cleanup.md ステップ 8/12: skipped_terminal_conflict は outstanding に倒さない ==="
+assert_grep "step 8 case arm for skipped_terminal_conflict" "$CLEANUP" 'skipped_terminal_conflict'
+assert_grep "step 8 emits PROJECTS_STATUS_UPDATED=skipped_terminal" "$CLEANUP" 'projects_status_updated="skipped_terminal"'
+assert_grep "step 12 maps skipped_terminal to projects_check=x" "$CLEANUP" 'PROJECTS_STATUS_UPDATED=skipped_terminal'
+assert_grep "step 12 skipped_terminal is not outstanding Done-manual" "$CLEANUP" 'Cancelled のため Done 上書きをスキップ'
 assert_not_grep "outstanding_items_block no longer relies on an emoji-prefix allowlist" "$CLEANUP" '`⚠️` で始まる付記'
 
 echo "=== cleanup.md ステップ 12: 失敗ゼロ件時の明示 (T-03, AC-3) ==="

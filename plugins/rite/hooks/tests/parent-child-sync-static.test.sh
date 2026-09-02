@@ -35,6 +35,11 @@ assert_grep "close.md retains tasklist search method" "$CLOSE_MD" "in:body|taskl
 echo "=== Phase 2: close.md Phase 4.6 auto-close decision skeleton ==="
 assert_grep "close.md retains P460_DECISION skip_already_closed branch" "$CLOSE_MD" "P460_DECISION|skip_already_closed|Phase 4\.6"
 
+echo "=== Phase 2b: close.md 4.6.3 skipped_terminal_conflict is a legitimate skip ==="
+assert_grep "close.md Shared table dispatches skipped_terminal_conflict" "$CLOSE_MD" 'skipped_terminal_conflict'
+assert_grep "close.md 4.6.3 case arm sets skipped_terminal" "$CLOSE_MD" 'status_update_result="skipped_terminal"'
+assert_grep "close.md 4.6.3 Step 3 treats skipped_terminal as 整合性 OK" "$CLOSE_MD" 'success:skipped_terminal'
+
 echo "=== Phase 3: pr/open.md ステップ 1.2 trackedIssues query (no inline simplification) ==="
 assert_grep "pr/open.md ステップ 1.2 uses trackedIssues GraphQL (not bare trackedInIssues)" "$PR_OPEN_MD" "trackedIssues"
 # Negative: regression guard. Old simplification used `trackedInIssues` which is not the canonical name.
