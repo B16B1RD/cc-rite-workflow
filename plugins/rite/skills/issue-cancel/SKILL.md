@@ -44,7 +44,7 @@ rationale: references/rationale.md#no-reconfirm
 | `{reason_file}` | Phase 1 で理由本文を書き出した一時ファイルの path |
 | `{pr_number}` | Phase 2 で検出した open PR の番号（未検出時は substitute しない） |
 | `{candidate_pr_number}` | Phase 2.3 の `CANCEL_PR_CANDIDATES` marker が並べた候補 PR 番号（1 件ずつ substitute する） |
-| `{branch_name}` | Phase 2 で確定したブランチ名（PR の `headRefName`（`issue-{issue_number}-` を含む場合のみ）、flow-state（対象 Issue 一致時）、またはローカルブランチ検索の一意候補）。いずれの経路でも Phase 2 末尾の charset 後置条件を満たしたものだけが確定値になる |
+| `{branch_name}` | Phase 2 で確定したブランチ名（PR の `headRefName`（`issue-{issue_number}-` を含む場合のみ）、flow-state（対象 Issue 一致時）、またはローカルブランチ検索の一意候補）。いずれの経路でも 2.2 の charset 述語（代入時点で適用）を満たしたものだけが確定値になる |
 | `{branch_identity_verified}` | Phase 2 の identity 検証結果（`true` / `false`） |
 | `{flow_wt}` | Phase 4.1 の `CLEANUP_WT` marker の `worktree=` 値 |
 | `{cleanup_wt}` | Phase 4.1 の `CLEANUP_WT` marker の分類値（`in_worktree` / `in_main` / `in_worktree_unrecorded` / `unknown` / `none`） |
@@ -102,7 +102,7 @@ rationale: references/rationale.md#closed-state-reason-branch
 
 | `state` / `stateReason` | アクション |
 |---|---|
-| `CLOSED` + `NOT_PLANNED` | 本スキルが中止済み。**Phase 3 と Phase 6 をスキップ**する冪等経路として 2.2 へ進む（2.3 の CLOSED 行が Phase 3 をスキップし、Phase 4 の後片付け再試行と Phase 5 の Status 同期を経て Phase 7 へ） |
+| `CLOSED` + `NOT_PLANNED` | 既に中止済み。**Phase 3 / Phase 4 / Phase 6 をすべてスキップ**し、Phase 5（board Status の同期）だけを実行して Phase 7 へ（冪等経路） |
 | `CLOSED` + `NOT_PLANNED` 以外（`COMPLETED` / 空 / 未知値） | **中止ではなく完了扱いでクローズ済み**。board Status を書かず**停止し**、`/rite:cleanup` を案内する（`Done` の行を `Cancelled` へ引きずらない） |
 | `OPEN` | 2.2 へ |
 
@@ -133,7 +133,7 @@ git branch --list "*issue-{issue_number}-*" --format '%(refname:short)'
 | 上記に該当せず、候補が 0 件 | 未確定 / `false`。Phase 4.3 のブランチ削除をスキップする（削除対象が無い） |
 | 上記に該当せず、候補が 2 件以上 | 未確定 / `false`。候補を表示し、ブランチ削除をスキップして残りの中止処理を続行する（identity 未確定のまま削除しない） |
 
-**charset 述語（値を `{branch_name}` に代入する時点で適用する）**: 上表の採用行と 2.3 の `headRefName` 昇格の**いずれも**、採用しようとする値が `^[A-Za-z0-9._/-]+$` に全体一致しないときは採用せず、WARNING を出して `{branch_name}` を未確定・`{branch_identity_verified}=false` に倒す（4.3 の既存ゲートがブランチ削除ごとスキップし、Phase 7 に「ブランチ: 残置（charset 非一致）」として現れる）。二重引用符と `--` は argv 分割にしか効かず `$(...)` は引用符の内側でも展開されるため、束縛は consumer より前になければならない。**consumer は 2.3 の `--head "{branch_name}"` と Phase 4.3 の fenced bash の 2 つ**で、どちらも Phase 2 の内側または直後にあるため後置条件では守れない（後置条件は定義上それより前の置換を遡って守れない）。producer ごとの個別検査にせず「代入時点」という単一の適用点に置くのは、経路を 1 本増やすたびに検査が漏れる形を作らないため。
+**charset 述語（値を `{branch_name}` に代入する時点で適用する）**: 上表の採用行と 2.3 の `headRefName` 昇格の**いずれも**、採用しようとする値が `^[A-Za-z0-9._/-]+$` に全体一致しないときは採用せず、WARNING を出して `{branch_name}` を未確定・`{branch_identity_verified}=false` に倒す（4.3 の既存ゲートがブランチ削除ごとスキップし、Phase 7 に「ブランチ: 残置（charset 非一致）」として現れる）。二重引用符と `--` は argv 分割にしか効かず `$(...)` は引用符の内側でも展開されるため、束縛は consumer より前になければならない。**consumer は 2.3 の `--head "{branch_name}"` と Phase 4.3 の fenced bash の 2 つ**で、うち 2.3 は Phase 2 の内側にあるため節末の後置条件では守れない。
 rationale: references/rationale.md#headref-charset-binding
 
 ### 2.3 関連 PR の検索と identity 検証
@@ -316,7 +316,7 @@ fi
 
 ### 4.3 ブランチの削除
 
-> **順序制約**: ブランチ削除は **worktree 削除が完了した後にのみ成功する**（Git 制約: worktree で checkout 中の branch は削除できない）。必ず 4.2 の後に実行する。`{branch_identity_verified}` が `false` のとき（Phase 2 の charset 後置条件で倒れた場合を含む）は本ステップ全体をスキップする。
+> **順序制約**: ブランチ削除は **worktree 削除が完了した後にのみ成功する**（Git 制約: worktree で checkout 中の branch は削除できない）。必ず 4.2 の後に実行する。`{branch_identity_verified}` が `false` のとき（2.2 の charset 述語で倒れた場合を含む）は本ステップ全体をスキップする。
 
 ```bash
 bash {plugin_root}/hooks/scripts/cleanup-branch-delete.sh \
@@ -481,18 +481,15 @@ rationale: references/rationale.md#no-parent-propagation
 - {項目}: {理由と手動復旧コマンド}
 ```
 
-`CLOSED` + `NOT_PLANNED` な Issue に対する冪等実行では、報告を後片付けと Status 同期の結果だけに絞る:
+`CLOSED` + `NOT_PLANNED` な Issue に対する冪等実行では、報告を board Status の同期結果だけに絞る:
 
 ```
-## /rite:issue-cancel 完了（冪等経路）
+## /rite:issue-cancel 完了（Status 同期のみ）
 
 Issue #{issue_number} は既に中止済みです（stateReason: {state_reason}）。
+board Status: Cancelled へ同期 ／ 更新失敗（手動対応が必要）／ Projects 無効のためスキップ
 
-- ブランチ: {branch_name}（削除済み）／ 残置（理由）／ なし
-- セッション worktree: 削除済み ／ 残置（理由）／ なし
-- board Status: Cancelled へ同期 ／ 更新失敗（手動対応が必要）／ Projects 無効のためスキップ
-
-PR クローズ・Issue の再クローズは実行していません。
+PR クローズ・後片付け・再クローズは実行していません。
 ```
 
 ---

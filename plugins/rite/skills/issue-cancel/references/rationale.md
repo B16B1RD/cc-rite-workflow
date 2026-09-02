@@ -182,11 +182,9 @@ Issue が、中止用の経路へ系統的に流れ込む。2.3 が持つ「マ�
 除外するので、この誤記録は rite 側の reconciler では二度と戻らない。`references/projects-integration.md` の
 Rule 1（終端 Status の行を反対側へ引きずらない）の vice-versa 側そのものになる。
 
-`NOT_PLANNED` 側を「Phase 5 だけ実行」にせず 2.2 へ進める（Phase 3 と Phase 6 だけをスキップする）のは、
-Phase 4.2.0 の `undetermined` 行が復旧手段として指す「main checkout での再実行」を実際に到達可能にするため。
-Phase 4 ごとスキップすると、その再実行が同じ `CLOSED` 分岐に吸われ、worktree / ブランチの残置を解消する経路が
-どこにも無くなる（AC-2 の「着手後の中止でブランチ・セッション worktree が残らない」を満たす経路がその分岐に
-一つも存在しない状態になる）。
+`NOT_PLANNED` 側の帰結（Phase 3 / Phase 4 / Phase 6 をスキップし Phase 5 だけを実行する）は変えない。
+Issue の受入基準が「既に CLOSED の Issue に対しては board Status の同期のみを行う」と定めているため、
+分岐の追加は `stateReason` による行き先の判別に限る。
 
 `NOT_PLANNED` 以外を停止に倒し「警告して続行」にしないのは、`Done` の上書きが operator の判断を復元不能に
 潰すため。fail-loud が可能な場所で fallback を選ぶ理由が無い。

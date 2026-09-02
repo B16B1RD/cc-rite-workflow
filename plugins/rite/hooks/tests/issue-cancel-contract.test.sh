@@ -244,10 +244,9 @@ assert_grep_in_section "T-04 the failure branch emits the failure marker" "$SKIL
 # 停止は散文だけでなく bash の非ゼロ exit で機械的に遮断されること（echo の rc は成功側・失敗側とも
 # 0 のため、exit が無いと block 全体が rc=0 で終わり停止が判定表の読解に依存する）。
 # 節スコープの `^  exit 1$` では pin にならない — 同節の理由ファイル検査 2 本が同じ行を持つため、
-# 追加した exit だけを消す変異を素通しする（T-04 の元の恒真化と同型）。marker emit 行から
-# ブロック終端 `fi` までの「隣接範囲」に限って exit を要求する。
-# awk の正規表現では `\[` が `[` へ潰れて文字クラス開始になるため、marker 名だけで
-# アンカーする（判定表の行は `|` 始まりなので `^  echo ` とは衝突しない）。
+# else 経路の exit だけを消す変異を素通しする（直上の marker pin と同じ恒真化の機序）。marker
+# emit 行からブロック終端 `fi` までの「隣接範囲」に限って exit を要求する。
+# 判定表の行は `|` 始まりなので `^  echo ` とは衝突しない。marker 名アンカーで一意に決まる。
 _pr_fail_block=$(awk '/^  echo .*CANCEL_PR_CLOSE_FAILED=1/{f=1} f{print} f&&/^fi$/{exit}' "$SKILL")
 if printf '%s\n' "$_pr_fail_block" | grep -qE '^  exit 1$'; then
   pass "T-04 the failure branch exits non-zero (machine-enforced stop)"
@@ -292,15 +291,17 @@ assert_grep_in_section "T-05 Phase 3 applies the same guard before the PR close"
   '^## Phase 3: PR クローズ' '^## Phase 4:' '理由なしで PR をクローズしません'
 
 echo "=== T-06: 既に CLOSED な Issue では Status 同期のみ (AC-6) ==="
-# 冪等経路は stateReason で割る。NOT_PLANNED だけが Cancelled 同期へ進む。
-assert_grep_in_section "T-06 Phase 2.1 admits only NOT_PLANNED to the idempotent path" "$SKILL" \
-  '^### 2\.1 Issue の状態' '^### 2\.2' '^\| `CLOSED` \+ `NOT_PLANNED` \|'
-assert_grep_in_section "T-06 Phase 2.1 skips PR close / re-close on that path" "$SKILL" \
-  '^### 2\.1 Issue の状態' '^### 2\.2' 'Phase 3 と Phase 6 をスキップ'
+# 行キーとアクションを 1 本の regex で同時に固定する。リテラル単独の存在チェックだと、2 行の
+# アクションセルを入れ替える変異 (NOT_PLANNED を停止へ / それ以外を Cancelled 同期へ) で
+# すべて緑のまま通り、AC-6 の Then と F-02 が塞いだ board 上書きの両方を素通しする。
+assert_grep_in_section "T-06 the NOT_PLANNED row keeps AC-6 (Status sync only)" "$SKILL" \
+  '^### 2\.1 Issue の状態' '^### 2\.2' \
+  '^\| `CLOSED` \+ `NOT_PLANNED` \|.*Phase 3 / Phase 4 / Phase 6 をすべてスキップ.*Phase 5（board Status の同期）だけを実行'
 # COMPLETED (および未知値) では board へ何も書かずに停止する。ここが緩むと Done 行が Cancelled で
 # 上書きされ、drift-check が終端行を母集団から外すため二度と戻らない (projects-integration.md Rule 1)。
-assert_grep_in_section "T-06 Phase 2.1 stops without writing Status for non-NOT_PLANNED closures" "$SKILL" \
-  '^### 2\.1 Issue の状態' '^### 2\.2' 'board Status を書かず\*\*停止し\*\*'
+assert_grep_in_section "T-06 the non-NOT_PLANNED row stops without writing Status" "$SKILL" \
+  '^### 2\.1 Issue の状態' '^### 2\.2' \
+  '^\| `CLOSED` \+ `NOT_PLANNED` 以外.*board Status を書かず\*\*停止し\*\*'
 assert_grep_in_section "T-06 Phase 2.1 states the terminal-Status rule it protects" "$SKILL" \
   '^### 2\.1 Issue の状態' '^### 2\.2' '`Done` の行を `Cancelled` へ引きずらない'
 
@@ -415,9 +416,13 @@ assert_grep_in_section "T-08 the 2.3 promotion re-applies the same predicate" "$
   '^### 2\.3 関連 PR の検索' '^## Phase 3:' \
   '代入の直前に 2\.2 の charset 述語を再適用する'
 # 4.3 のゲートが述語を参照していること (参照が切れると LLM が 4.3 で再評価しなくなる)。
+# bare 'charset' へ緩めると、参照先の語が旧称のまま取り残されても緑になる。exact literal で pin する。
 assert_grep_in_section "T-08 the 4.3 gate names the charset predicate it depends on" "$SKILL" \
   '^### 4\.3 ブランチの削除' '^### 4\.4' \
-  'charset'
+  '2\.2 の charset 述語で倒れた場合を含む'
+# Legend の {branch_name} 定義も同じ語彙を指すこと (実行者が Phase 2 に入る前に読む最初の指示行)。
+assert_grep "T-08 the placeholder legend names the same predicate" "$SKILL" \
+  '2\.2 の charset 述語（代入時点で適用）を満たしたものだけが確定値になる'
 # CLOSED-unmerged の PR は Phase 3 を飛ばして Phase 4 (state purge) へ回す。
 assert_grep "T-08 a closed-unmerged PR still reaches the state purge" "$SKILL" \
   '^\| `state == "CLOSED"` かつ `mergedAt` が null の PR がある \|.*\*\*Phase 3 はスキップ\*\*して Phase 4 へ'
@@ -428,13 +433,18 @@ echo "=== T-09: 後片付けが helper 委譲で、削除 bash が複製され�
 # find -delete) をインライン化する退行が 4 pin すべてを素通りし、AC-9 の Then を否定したまま緑になる
 # (_reviewer-base.md Defense Mechanism Integrity Gate #3: one-off deny の追加より class 述語を優先)。
 # 走査対象は fenced bash 行に限定する (散文中の言及は委譲の破れではない)。
-_destructive_re='(^|[[:space:]])(rm|rmdir|unlink)[[:space:]]|find[[:space:]].*-delete|git[[:space:]]+worktree[[:space:]]+(remove|prune)|git[[:space:]]+push[[:space:]].*--delete|gh[[:space:]]+api[[:space:]].*(-X|--method)[[:space:]]+DELETE'
-# 既知の例外は 2 class のみ:
+# 削除動詞は「ローカル ref / リモート ref / ファイル」を等しく含める。branch 削除を落とすと
+# 例外 (b) が一度も発火しない dead 定義になり、その漏れを例外の存在が覆い隠す。
+# 前置は空白ではなく「非識別子文字」で境界を取る。空白限定だと `out=$(rm -rf ...)` の `(` 直後が
+# 漏れる。素の `rm[[:space:]]` へ広げると `warm ` 等が誤検出になるため境界指定は外さない。
+_destructive_re='(^|[^A-Za-z0-9_-])(rm|rmdir|unlink|truncate)[[:space:]]|find[[:space:]].*-delete|git[[:space:]]+worktree[[:space:]]+(remove|prune)|git[[:space:]]+branch[[:space:]]+.*(-d|-D|--delete)|git[[:space:]]+push[[:space:]].*(--delete|[[:space:]]:)|gh[[:space:]]+api[[:space:]].*(-X|--method)[[:space:]=]*DELETE'
+# 既知の例外は 2 class のみ。**いずれも行全体にアンカーする** — 部分文字列で許可すると、許可された
+# 動詞と同じ行に別の破壊的操作を同居させるだけで行ごと除外され、検出力が列挙形より下がる。
 #  (a) 自ブロックが mktemp した一時ファイルの後始末 — 削除対象が shell 変数のみ (`rm -f "$var"`)。
 #      ワークフロー資産 (リテラルパス / `{placeholder}` を含むパス) の削除はこの形にならない。
 #  (b) helper の BRANCH_DELETE_UNMERGED marker への応答 (helper 呼び出しより後にあることは下の
-#      行番号比較が別途 pin する)。
-_destructive_exception_re='^[[:space:]]*rm -f "\$[A-Za-z_][A-Za-z0-9_]*"[[:space:]]*$|git branch -D -- '
+#      行番号比較が別途 pin する)。marker emit まで含めて 1 行として固定する。
+_destructive_exception_re='^[[:space:]]*rm -f "\$[A-Za-z_][A-Za-z0-9_]*"[[:space:]]*$|^LC_ALL=C git branch -D -- "\{branch_name\}" && echo "\[CONTEXT\] BRANCH_DELETED=1;[^"]*"$'
 # grep -n は付けない。行番号 prefix が付くと例外側の行頭アンカーが外れ、例外が例外として効かなくなる
 # (抽出後の行番号は SKILL.md の行番号とも一致しないので、付けても診断の役に立たない)。
 _destructive_hits=$(awk '/^```bash$/{f=1;next} /^```$/{f=0} f' "$SKILL" \
