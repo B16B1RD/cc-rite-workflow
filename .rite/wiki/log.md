@@ -1,4 +1,5 @@
 ## 2026-09-02
+* **Skip**: [20260902T102915Z-pr-2522.md](raw/reviews/20260902T102915Z-pr-2522.md) — durable contract is already in issue-close 4.4 / archive 3.7.2.3; 0-finding confirmation only
 * **Create**: [jq の has("key") は値が null でも true を返す](pages/anti-patterns/jq-has-true-for-null.md) — raw/reviews/20260902T080744Z-pr-2507.md を新規ページ化
 * **Update**: [gh api graphql は HTTP 200 + .errors[] で partial failure を返す (exit code では検知できない)](pages/anti-patterns/gh-api-graphql-http200-partial-errors.md) — raw/reviews/20260902T080744Z-pr-2507.md を統合
 * **Update**: [gh api graphql は HTTP 200 + .errors[] で partial failure を返す (exit code では検知できない)](pages/anti-patterns/gh-api-graphql-http200-partial-errors.md) — raw/fixes/20260902T081227Z-pr-2507.md を統合
