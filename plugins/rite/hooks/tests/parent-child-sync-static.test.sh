@@ -208,10 +208,48 @@ assert_grep_in_section "cleanup ステップ 12 値域 has Cancelled 未完了�
   'Cancelled の子を含むため親は未完了扱い'
 assert_grep_in_section "cleanup ステップ 12 値域 has Cancelled のため Done 上書きをスキップ" "$CLEANUP_MD" \
   "$S12_START" "$S12_END" \
-  'Cancelled のため Done 上書きをスキップ'
-assert_grep_in_section "cleanup ステップ 12 値域 is 7 kinds" "$CLEANUP_MD" \
-  "$S12_START" "$S12_END" \
-  '7 種類'
+  '^- `⚠️ Cancelled のため Done 上書きをスキップ`'
+# 件数は値域ブロック内の行頭 `- `` 行だけを数える（任意の `- ` ではない）。
+# 終端空行が無いときは NOEND で fail し、0 件を pass と読まない。
+_value_domain_count() {
+  local file="$1"
+  start_re='`{parent_close_result}` の値域' awk '
+    $0 ~ ENVIRON["start_re"] { inblk=1; next }
+    inblk && /^$/ { ended=1; exit }
+    inblk && index($0, "- `") == 1 { n++ }
+    END {
+      if (!ended) { print "NOEND"; exit 1 }
+      print n+0
+    }
+  ' "$file"
+}
+_value_domain_heading_n() {
+  local file="$1"
+  start_re='`{parent_close_result}` の値域' awk '
+    $0 ~ ENVIRON["start_re"] {
+      if (match($0, /[0-9]+ 種類/)) {
+        s = substr($0, RSTART, RLENGTH)
+        sub(/ 種類/, "", s)
+        print s
+      }
+      exit
+    }
+  ' "$file"
+}
+_vd_count=$(_value_domain_count "$CLEANUP_MD") || true
+if [ "$_vd_count" = "NOEND" ] || [ -z "$_vd_count" ]; then
+  fail "cleanup ステップ 12 値域ブロック終端（空行）が見つからない（0 件を pass と読まない）"
+elif [ "$_vd_count" = "7" ]; then
+  pass "cleanup ステップ 12 値域 - \` 行数が 7"
+else
+  fail "cleanup ステップ 12 値域 - \` 行数が ${_vd_count}（expected 7）"
+fi
+_vd_heading=$(_value_domain_heading_n "$CLEANUP_MD")
+if [ -n "$_vd_heading" ] && [ "$_vd_heading" = "$_vd_count" ]; then
+  pass "cleanup ステップ 12 値域見出し数詞と - \` 件数が一致 ($_vd_heading)"
+else
+  fail "cleanup ステップ 12 値域見出し数詞 (${_vd_heading:-empty}) と件数 (${_vd_count:-empty}) が不一致"
+fi
 assert_not_grep "cleanup ステップ 12 値域 no longer says 6 種類" "$CLEANUP_MD" \
   '6 種類'
 
@@ -248,14 +286,24 @@ S3723_END='^#### 3\.7\.3'
 # 同名が 2 回（既 CLOSED / close）続く場合は両方を同一枝に含める。
 _result_block() {
   local file="$1" start="$2" end="$3" result="$4"
-  awk -v start="$start" -v end="$end" -v r="$result" '
-    $0 ~ start {insec=1}
-    insec && $0 ~ end && $0 !~ start {insec=0}
+  # start/end は ERE。awk -v は代入時に \. を解釈して警告を出すため ENVIRON 経由。
+  # r は .result= 名の文字列照合であり正規表現ではないので -v のまま。
+  start_re="$start" end_re="$end" awk -v r="$result" '
+    $0 ~ ENVIRON["start_re"] {insec=1}
+    insec && $0 ~ ENVIRON["end_re"] && $0 !~ ENVIRON["start_re"] {insec=0}
     insec {
       if (index($0, ".result=" r) > 0) p=1
       else if (p && index($0, ".result=") > 0 && index($0, ".result=" r) == 0) p=0
       if (p) print
     }
+  ' "$file"
+}
+_heading_block() {
+  local file="$1"
+  start_re="$2" end_re="$3" awk '
+    $0 ~ ENVIRON["start_re"] { p=1 }
+    p && $0 ~ ENVIRON["end_re"] && $0 !~ ENVIRON["start_re"] { exit }
+    p { print }
   ' "$file"
 }
 _assert_block_grep() {
@@ -331,6 +379,39 @@ _assert_block_not_grep "archive 3.7.2.3 failed has no Done に同期しました
 _assert_block_not_grep "archive 3.7.2.3 failed has no Status: Done" "$_arch_failed" 'Status: Done'
 _assert_block_not_grep "archive 3.7.2.3 skipped_not_in_project has no Done に同期しました" "$_arch_nip" 'Done に同期しました'
 _assert_block_not_grep "archive 3.7.2.3 skipped_not_in_project has no Status: Done" "$_arch_nip" 'Status: Done'
+
+# 3.7.2.3 projects.enabled: false skip 枝。表行はパイプ列まで同一行で pin し、
+# 節リードの `projects.enabled: false` 散文だけでは表行削除を pass にしない。
+# skip テンプレは `.result=` ではないので固有見出しから次枝まで切る。
+assert_grep_in_section "archive 3.7.2.3 table has projects.enabled: false skip row" "$ARCHIVE_MD" \
+  "$S3723_START" "$S3723_END" \
+  '3\.7\.2\.1 skip（`projects\.enabled: false`）[[:space:]]*\|[[:space:]]*Status 行なし[[:space:]]*\|[[:space:]]*Status 行なし'
+
+_SKIP_CLOSED_RE='3\.7\.2\.1 skip（`projects\.enabled: false`）（親が既 CLOSED'
+_SKIP_CLOSE_RE='3\.7\.2\.1 skip（`projects\.enabled: false`）（3\.7\.2\.2 で close）'
+_arch_skip_closed=$(_heading_block "$ARCHIVE_MD" "$_SKIP_CLOSED_RE" "$_SKIP_CLOSE_RE")
+_arch_skip_close=$(_heading_block "$ARCHIVE_MD" "$_SKIP_CLOSE_RE" "$S3723_END")
+_assert_block_grep "archive 3.7.2.3 skip already-CLOSED template exists" "$_arch_skip_closed" '既に CLOSED'
+_assert_block_not_grep "archive 3.7.2.3 skip already-CLOSED has no Done に同期しました" "$_arch_skip_closed" 'Done に同期しました'
+_assert_block_not_grep "archive 3.7.2.3 skip already-CLOSED has no Status: Done" "$_arch_skip_closed" 'Status: Done'
+_assert_block_grep "archive 3.7.2.3 skip close template exists" "$_arch_skip_close" '完了した子 Issue'
+_assert_block_not_grep "archive 3.7.2.3 skip close has no Done に同期しました" "$_arch_skip_close" 'Done に同期しました'
+_assert_block_not_grep "archive 3.7.2.3 skip close has no Status: Done" "$_arch_skip_close" 'Status: Done'
+_assert_block_not_grep "archive 3.7.2.3 skip close has no Status: line" "$_arch_skip_close" 'Status:'
+
+# T-05: _result_block の start/end が ENVIRON。mawk でも revert を fail-loud にする。
+# awk stderr の escape 警告も 1 回分観測する（gawk では警告、mawk では空で pass）。
+SELF="$SCRIPT_DIR/$(basename "$0")"
+assert_grep "_result_block reads start via ENVIRON" "$SELF" 'ENVIRON\["start_re"\]'
+assert_grep "_result_block reads end via ENVIRON" "$SELF" 'ENVIRON\["end_re"\]'
+_rb_err=$(mktemp)
+_result_block "$CLOSE_MD" "$S44_START" "$S44_END" "updated" >/dev/null 2>"$_rb_err"
+if grep -qE 'エスケープシーケンス|escape sequence' "$_rb_err"; then
+  fail "T-05 _result_block awk stderr has escape-sequence warning"
+else
+  pass "T-05 _result_block awk stderr has no escape-sequence warning"
+fi
+rm -f "$_rb_err"
 
 if ! print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or pr/open.md ステップ 1.2, or drop stateReason from parent auto-close, regression risk reopens. Re-confirm cross-references before removing methods."; then
   exit 1
