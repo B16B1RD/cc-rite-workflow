@@ -119,6 +119,7 @@ Display the following list:
   /rite:open            Issue の作業を開始（実装 → draft PR）
   /rite:issue-update    作業メモリを更新
   /rite:issue-close     Issue の完了状態を確認
+  /rite:issue-cancel    Issue を中止（not planned でクローズ・後片付け）
 
 【PR 管理】
   /rite:iterate         レビュー/修正ループ（review ⇄ fix を自律実行）
