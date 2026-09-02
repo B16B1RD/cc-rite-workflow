@@ -1966,7 +1966,7 @@ When authoring Japanese documentation or UI wording, the following terms are **k
 | `finding` / `fingerprint` / `severity` / `confidence` | レビュー概念。「指摘」(UI の行為表現) とは概念的に別物 |
 | `blocking` / `non-blocking` | finding の merge gate 効果 |
 | `review-fix loop` | 一語のみ片仮名化可 (慣用) |
-| GitHub Projects フィールド名 (`Status`, `Todo`, `In Progress`, `In Review`, `Done` 等) | GitHub UI と一致させる |
+| GitHub Projects フィールド名 (`Status`, `Todo`, `In Progress`, `In Review`, `Done`, `Cancelled` 等) | GitHub UI と一致させる |
 | `rite-config.yml` キー名 / コマンド名 (`/rite:open` 等) | 原文ママ |
 
 `worktree` / `hook` / `sentinel` / `marker` 等の英語固有概念も、意味を保つ必要があれば英語のまま使用してよい。文体は常体 (である調)、半角英数字と日本語の間は半角スペース、YAML キー名・コマンド名・Projects フィールド名は翻訳しない。
