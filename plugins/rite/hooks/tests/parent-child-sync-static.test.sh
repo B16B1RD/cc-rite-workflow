@@ -153,13 +153,23 @@ assert_grep_in_section "cleanup ステップ 12 値域 has stateReason 判定不
   "$S12_START" "$S12_END" \
   'stateReason 判定不能'
 
-# T-03: 全 COMPLETED（NOT_PLANNED なし）の既存行が残る
+# T-03: 全 COMPLETED（NOT_PLANNED なし）の既存行が残る。generic 行は skip 行と互いに素
 assert_grep_in_section "archive all-CLOSED parent OPEN still goes to 3.7.2" "$ARCHIVE_MD" \
   "$S371_START" "$S371_END" \
-  'All child Issues are CLOSED and parent is OPEN'
+  'none `NOT_PLANNED`'
+assert_grep_in_section "archive generic CLOSED+OPEN row excludes unavailable stateReason" "$ARCHIVE_MD" \
+  "$S371_START" "$S371_END" \
+  'no unavailable `stateReason`, and parent is OPEN'
 assert_grep_in_section "close.md P461 proceed_to_confirmation remains" "$CLOSE_MD" \
   "$S461_START" "$S461_END" \
   'P461_DECISION=proceed_to_confirmation'
+# T-02 pin の実体: bash elif cancelled が proceed else より前（routing 表の文字列存在だけでは不足）
+assert_grep_in_section "close.md cancelled elif precedes proceed else" "$CLOSE_MD" \
+  "$S461_START" "$S461_END" \
+  'elif \[ "\$cancelled_count" -gt 0'
+assert_grep_in_section "close.md cancelled elif emit includes numbers=" "$CLOSE_MD" \
+  "$S461_START" "$S461_END" \
+  'P461_DECISION=skip_cancelled_children; numbers='
 
 # T-01/AC-1 報告: Cancelled 子番号明示
 assert_grep_in_section "archive 3.7.3 Cancelled 通知 names Cancelled children" "$ARCHIVE_MD" \

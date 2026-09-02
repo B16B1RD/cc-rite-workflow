@@ -368,8 +368,8 @@ query($owner: String!, $repo: String!, $number: Int!) {
 | Some child Issues are OPEN | Proceed to Phase 3.7.3 (notify about remaining child Issues). Do not update parent Status to Done. Do not close |
 | All child Issues are CLOSED and at least one has `stateReason == NOT_PLANNED` | Proceed to Phase 3.7.3 (notify about Cancelled child Issues). Do not update parent Status to Done. Do not close |
 | All child Issues are CLOSED and at least one CLOSED child has unavailable `stateReason` | Proceed to Phase 3.7.3 (notify that auto-close was skipped as undetermined). Do not update parent Status to Done. Do not close |
-| All child Issues are CLOSED and parent is OPEN | Proceed to Phase 3.7.2 (Status → Done then close) |
-| All child Issues are CLOSED and parent is already CLOSED | Proceed to 3.7.2.1 (Status → Done) only. Skip 3.7.2.2 (do not run `gh issue close`) |
+| All child Issues are CLOSED, none `NOT_PLANNED`, no unavailable `stateReason`, and parent is OPEN | Proceed to Phase 3.7.2 (Status → Done then close) |
+| All child Issues are CLOSED, none `NOT_PLANNED`, no unavailable `stateReason`, and parent is already CLOSED | Proceed to 3.7.2.1 (Status → Done) only. Skip 3.7.2.2 (do not run `gh issue close`) |
 
 #### 3.7.2 Auto-Close Parent Issue
 
