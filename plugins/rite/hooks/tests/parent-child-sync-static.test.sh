@@ -294,6 +294,7 @@ _result_block() {
     insec {
       if (index($0, ".result=" r) > 0) p=1
       else if (p && index($0, ".result=") > 0 && index($0, ".result=" r) == 0) p=0
+      else if (p && index($0, "3.7.2.1 skip") > 0) p=0
       if (p) print
     }
   ' "$file"
@@ -302,8 +303,12 @@ _heading_block() {
   local file="$1"
   start_re="$2" end_re="$3" awk '
     $0 ~ ENVIRON["start_re"] { p=1 }
-    p && $0 ~ ENVIRON["end_re"] && $0 !~ ENVIRON["start_re"] { exit }
-    p { print }
+    p && $0 ~ ENVIRON["end_re"] && $0 !~ ENVIRON["start_re"] { ended=1; exit }
+    p { buf = buf $0 ORS; n++ }
+    END {
+      if (!ended) { print "NOEND"; exit 1 }
+      printf "%s", buf
+    }
   ' "$file"
 }
 _assert_block_grep() {
@@ -311,13 +316,13 @@ _assert_block_grep() {
   if printf '%s\n' "$block" | grep -qE "$pattern"; then
     pass "$label"
   else
-    fail "$label (pattern not in .result block: $pattern)"
+    fail "$label (pattern not in extracted block: $pattern)"
   fi
 }
 _assert_block_not_grep() {
   local label="$1" block="$2" pattern="$3"
   if printf '%s\n' "$block" | grep -qE "$pattern"; then
-    fail "$label (forbidden pattern in .result block: $pattern)"
+    fail "$label (forbidden pattern in extracted block: $pattern)"
   else
     pass "$label"
   fi
@@ -389,8 +394,24 @@ assert_grep_in_section "archive 3.7.2.3 table has projects.enabled: false skip r
 
 _SKIP_CLOSED_RE='3\.7\.2\.1 skip（`projects\.enabled: false`）（親が既 CLOSED'
 _SKIP_CLOSE_RE='3\.7\.2\.1 skip（`projects\.enabled: false`）（3\.7\.2\.2 で close）'
-_arch_skip_closed=$(_heading_block "$ARCHIVE_MD" "$_SKIP_CLOSED_RE" "$_SKIP_CLOSE_RE")
-_arch_skip_close=$(_heading_block "$ARCHIVE_MD" "$_SKIP_CLOSE_RE" "$S3723_END")
+_arch_skip_closed=$(_heading_block "$ARCHIVE_MD" "$_SKIP_CLOSED_RE" "$_SKIP_CLOSE_RE") || true
+_arch_skip_close=$(_heading_block "$ARCHIVE_MD" "$_SKIP_CLOSE_RE" "$S3723_END") || true
+if [ "$_arch_skip_closed" = "NOEND" ] || [ -z "$_arch_skip_closed" ]; then
+  fail "archive 3.7.2.3 skip already-CLOSED heading 終端が見つからない"
+else
+  _n_closed=$(printf '%s\n' "$_arch_skip_closed" | grep -c . || true)
+  if [ "$_n_closed" -lt 3 ] || [ "$_n_closed" -gt 20 ]; then
+    fail "archive 3.7.2.3 skip already-CLOSED heading 行数が ${_n_closed}（expected 3..20）"
+  fi
+fi
+if [ "$_arch_skip_close" = "NOEND" ] || [ -z "$_arch_skip_close" ]; then
+  fail "archive 3.7.2.3 skip close heading 終端が見つからない"
+else
+  _n_close=$(printf '%s\n' "$_arch_skip_close" | grep -c . || true)
+  if [ "$_n_close" -lt 3 ] || [ "$_n_close" -gt 20 ]; then
+    fail "archive 3.7.2.3 skip close heading 行数が ${_n_close}（expected 3..20）"
+  fi
+fi
 _assert_block_grep "archive 3.7.2.3 skip already-CLOSED template exists" "$_arch_skip_closed" '既に CLOSED'
 _assert_block_not_grep "archive 3.7.2.3 skip already-CLOSED has no Done に同期しました" "$_arch_skip_closed" 'Done に同期しました'
 _assert_block_not_grep "archive 3.7.2.3 skip already-CLOSED has no Status: Done" "$_arch_skip_closed" 'Status: Done'
@@ -402,8 +423,8 @@ _assert_block_not_grep "archive 3.7.2.3 skip close has no Status: line" "$_arch_
 # T-05: _result_block の start/end が ENVIRON。mawk でも revert を fail-loud にする。
 # awk stderr の escape 警告も 1 回分観測する（gawk では警告、mawk では空で pass）。
 SELF="$SCRIPT_DIR/$(basename "$0")"
-assert_grep "_result_block reads start via ENVIRON" "$SELF" 'ENVIRON\["start_re"\]'
-assert_grep "_result_block reads end via ENVIRON" "$SELF" 'ENVIRON\["end_re"\]'
+assert_grep "_result_block reads start via ENVIRON" "$SELF" '\$0 ~ ENVIRON\["start_re"\] \{insec=1\}'
+assert_grep "_result_block reads end via ENVIRON" "$SELF" 'insec && \$0 ~ ENVIRON\["end_re"\]'
 _rb_err=$(mktemp)
 _result_block "$CLOSE_MD" "$S44_START" "$S44_END" "updated" >/dev/null 2>"$_rb_err"
 if grep -qE 'エスケープシーケンス|escape sequence' "$_rb_err"; then
