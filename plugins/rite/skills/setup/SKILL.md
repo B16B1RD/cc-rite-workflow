@@ -299,24 +299,95 @@ gh project field-create {project-number} --owner {owner} --name "Priority" --dat
 gh project field-create {project-number} --owner {owner} --name "Complexity" --data-type "SINGLE_SELECT" --single-select-options "XS,S,M,L,XL"
 ```
 
-If the Status field does not have "In Review", add it via GraphQL:
+Status field に rite 管理 5 option（`Todo` / `In Progress` / `In Review` / `Done` / `Cancelled`）を和集合で provisioning する。既存 option を GraphQL で読み、不足分だけ足して `updateProjectV2Field` に送る（既存は `id` 付きで保持）。読み取り失敗時は mutation を発行せず fail-loud。既に 5 つ揃っていれば noop。
+rationale: references/rationale.md#status-option-union-provision
 
 ```bash
-gh api graphql -f query='
-mutation {
-  updateProjectV2Field(input: {
-    fieldId: "{status-field-id}"
-    singleSelectOptions: [
-      {name: "Todo", color: GRAY, description: "Not started"}
-      {name: "In Progress", color: YELLOW, description: "Work in progress"}
-      {name: "In Review", color: BLUE, description: "Under review"}
-      {name: "Done", color: GREEN, description: "Completed"}
-    ]
-  }) {
-    projectV2Field { ... on ProjectV2SingleSelectField { name } }
+# STATUS_OPTION_UNION_PROVISION
+owner="{owner}"
+project_number="{project-number}"
+
+field_list_json=$(gh project field-list "$project_number" --owner "$owner" --format json) || {
+  echo "ERROR: Status field-list failed; refusing to mutate options" >&2
+  echo "[CONTEXT] STATUS_OPTIONS_PROVISION=error; reason=field_list_failed"
+  exit 1
+}
+status_field_id=$(printf '%s' "$field_list_json" | jq -r '.fields[]? | select(.name=="Status") | .id' | head -1)
+if [ -z "$status_field_id" ] || [ "$status_field_id" = "null" ]; then
+  echo "ERROR: Status field not found; refusing to mutate options" >&2
+  echo "[CONTEXT] STATUS_OPTIONS_PROVISION=error; reason=status_field_missing"
+  exit 1
+fi
+
+options_json=$(gh api graphql -f query='
+query($id: ID!) {
+  node(id: $id) {
+    ... on ProjectV2SingleSelectField {
+      options { id name color description }
+    }
   }
-}'
+}' -f id="$status_field_id") || {
+  echo "ERROR: Status options query failed; refusing to mutate options" >&2
+  echo "[CONTEXT] STATUS_OPTIONS_PROVISION=error; reason=options_query_failed"
+  exit 1
+}
+
+existing=$(printf '%s' "$options_json" | jq -c '.data.node.options // empty')
+if [ -z "$existing" ] || [ "$existing" = "null" ] || ! printf '%s' "$existing" | jq -e 'type=="array"' >/dev/null 2>&1; then
+  echo "ERROR: Status options JSON invalid or missing; refusing to mutate options" >&2
+  echo "[CONTEXT] STATUS_OPTIONS_PROVISION=error; reason=options_json_invalid"
+  exit 1
+fi
+if printf '%s' "$existing" | jq -e '.[] | select((.name|type)!="string" or .name=="" or (.color|type)!="string" or .color=="")' >/dev/null 2>&1; then
+  echo "ERROR: Status option missing name or color; refusing to mutate options" >&2
+  echo "[CONTEXT] STATUS_OPTIONS_PROVISION=error; reason=option_fields_incomplete"
+  exit 1
+fi
+
+required='[
+  {"name":"Todo","color":"GRAY","description":"Not started"},
+  {"name":"In Progress","color":"YELLOW","description":"Work in progress"},
+  {"name":"In Review","color":"BLUE","description":"Under review"},
+  {"name":"Done","color":"GREEN","description":"Completed"},
+  {"name":"Cancelled","color":"GRAY","description":"Cancelled (not planned)"}
+]'
+
+missing=$(jq -n --argjson existing "$existing" --argjson required "$required" \
+  '($existing | map(.name)) as $names | [$required[] | select(.name as $n | ($names | index($n) | not)) | .name]')
+if [ "$(printf '%s' "$missing" | jq 'length')" -eq 0 ]; then
+  echo "[CONTEXT] STATUS_OPTIONS_PROVISION=noop; reason=already_complete"
+  exit 0
+fi
+
+union_input=$(jq -n --argjson existing "$existing" --argjson required "$required" '
+  ($existing | map({id, name, color, description: (.description // "")})) as $keep
+  | ($keep | map(.name)) as $names
+  | $keep + [$required[] | select(.name as $n | ($names | index($n) | not))]
+  | map(if .id then {id, name, color, description} else {name, color, description} end)
+')
+
+payload=$(jq -n --arg fieldId "$status_field_id" --argjson opts "$union_input" '{
+  query: "mutation($input: UpdateProjectV2FieldInput!) { updateProjectV2Field(input: $input) { projectV2Field { ... on ProjectV2SingleSelectField { name options { id name } } } } }",
+  variables: { input: { fieldId: $fieldId, singleSelectOptions: $opts } }
+}')
+
+if ! printf '%s' "$payload" | gh api graphql --input -; then
+  echo "ERROR: updateProjectV2Field failed; Status options not provisioned" >&2
+  echo "[CONTEXT] STATUS_OPTIONS_PROVISION=error; reason=mutation_failed"
+  exit 1
+fi
+echo "[CONTEXT] STATUS_OPTIONS_PROVISION=updated; added=$(printf '%s' "$missing" | jq -c '.')"
 ```
+
+| `STATUS_OPTIONS_PROVISION` | アクション |
+|---|---|
+| `updated` / `noop` | Phase 3.5 へ |
+| `error` / marker 不在 / bash 非 0 | setup を完了扱いにせず停止。option が揃っていない状態で完了報告しない |
+
+検証（本ブロック実行後）:
+1. `gh project field-list` の Status options に `Cancelled` がある
+2. setup 実行前からあった rite 管理外 option が残っている
+3. 既に 5 option がある board への再実行は `STATUS_OPTIONS_PROVISION=noop`（mutation なし）
 
 ---
 
