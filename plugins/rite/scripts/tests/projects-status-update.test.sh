@@ -38,18 +38,47 @@ run_script() {
   local issue_number="${3:-42}"
   local state_dir
   state_dir=$(mktemp -d "$TEST_DIR/mockstate.XXXXXX")
+  LAST_GH_LOG="$state_dir/gh.log"
   local rc=0
   local output
   output=$(
     MOCK_GH_SCENARIO="$scenario" \
     MOCK_ISSUE_NUMBER="$issue_number" \
     MOCK_GH_STATE_DIR="$state_dir" \
+    MOCK_GH_LOG="$LAST_GH_LOG" \
     PATH="$MOCK_BIN_DIR:$PATH" \
     bash "$TARGET" "$json_args" 2>"$TEST_DIR/last_stderr"
   ) || rc=$?
   LAST_OUTPUT="$output"
   LAST_RC=$rc
   return 0
+}
+
+gh_log_has() {
+  grep -qE "$1" "${LAST_GH_LOG:-/dev/null}" 2>/dev/null
+}
+
+# Skip/no-op must not treat an unwired empty log as "item-edit absent".
+assert_item_edit_absent() {
+  local label="$1"
+  if gh_log_has 'item-edit'; then
+    fail "$label: expected no item-edit, log=$(cat "$LAST_GH_LOG" 2>/dev/null)"
+    return 1
+  fi
+  if ! gh_log_has 'graphql|field-list'; then
+    fail "$label: MOCK_GH_LOG missing graphql/field-list (cannot treat as item-edit absent)"
+    return 1
+  fi
+  return 0
+}
+
+assert_item_edit_present() {
+  local label="$1"
+  if gh_log_has 'item-edit'; then
+    return 0
+  fi
+  fail "$label: expected item-edit in MOCK_GH_LOG, log=$(cat "$LAST_GH_LOG" 2>/dev/null)"
+  return 1
 }
 
 # Validation helper: run script with no scenario / mock setup (validation
@@ -155,8 +184,9 @@ fi
 # --------------------------------------------------------------------------
 echo "TC-004: Basic success → updated"
 run_script "$(build_json 42 'In Progress')" psu_success
-if [ "$LAST_RC" = "0" ] && [ "$(json_field '.result')" = "updated" ] && [ "$(json_field '.item_id')" = "PVTI_mock456" ] && [ "$(json_field '.option_id')" = "OPT_INPROGRESS" ]; then
-  pass "Basic success: result=updated, item_id+option_id set"
+if [ "$LAST_RC" = "0" ] && [ "$(json_field '.result')" = "updated" ] && [ "$(json_field '.item_id')" = "PVTI_mock456" ] && [ "$(json_field '.option_id')" = "OPT_INPROGRESS" ] \
+   && assert_item_edit_present "TC-004"; then
+  pass "Basic success: result=updated, item_id+option_id set, item-edit issued"
 else
   fail "TC-004 unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
 fi
@@ -330,6 +360,150 @@ if [ "$LAST_RC" = "0" ] \
   pass "issue URL null captured"
 else
   fail "TC-018 unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+
+# --------------------------------------------------------------------------
+# TC-019: query shape pin — fieldValues + ProjectV2ItemFieldSingleSelectValue
+# --------------------------------------------------------------------------
+echo "TC-019: helper query includes fieldValues fragment"
+if grep -q 'fieldValues' "$TARGET" && grep -q 'ProjectV2ItemFieldSingleSelectValue' "$TARGET"; then
+  pass "query_project_items reads fieldValues via ProjectV2ItemFieldSingleSelectValue"
+else
+  fail "TC-019: helper query missing fieldValues / ProjectV2ItemFieldSingleSelectValue"
+fi
+
+# --------------------------------------------------------------------------
+# TC-020: Cancelled × Done → skipped_terminal_conflict, no item-edit (AC-1)
+# --------------------------------------------------------------------------
+echo "TC-020: Cancelled × Done → skipped_terminal_conflict"
+run_script "$(build_json 42 'Done')" psu_current_cancelled
+if [ "$LAST_RC" = "0" ] \
+   && [ "$(json_field '.result')" = "skipped_terminal_conflict" ] \
+   && [ "$(json_field '.warnings | length')" -ge 1 ] \
+   && assert_item_edit_absent "TC-020"; then
+  pass "Cancelled→Done skipped, WARNING present, no item-edit"
+else
+  fail "TC-020 unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+
+# --------------------------------------------------------------------------
+# TC-021: Done × Cancelled → updated + item-edit (one-way guard; issue-cancel)
+# --------------------------------------------------------------------------
+echo "TC-021: Done × Cancelled → updated + item-edit"
+run_script "$(build_json 42 'Cancelled')" psu_current_done
+if [ "$LAST_RC" = "0" ] \
+   && [ "$(json_field '.result')" = "updated" ] \
+   && assert_item_edit_present "TC-021"; then
+  pass "Done→Cancelled writes (issue-cancel resync preserved)"
+else
+  fail "TC-021 unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+
+# --------------------------------------------------------------------------
+# TC-022: Done × Done → updated, no item-edit (AC-2 same-terminal no-op)
+# --------------------------------------------------------------------------
+echo "TC-022: Done × Done → updated no-op"
+run_script "$(build_json 42 'Done')" psu_current_done
+if [ "$LAST_RC" = "0" ] \
+   && [ "$(json_field '.result')" = "updated" ] \
+   && assert_item_edit_absent "TC-022"; then
+  pass "Done→Done idempotent no-op, no item-edit"
+else
+  fail "TC-022 unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+
+# --------------------------------------------------------------------------
+# TC-023: non-terminal × Done → updated + item-edit (AC-2)
+# --------------------------------------------------------------------------
+echo "TC-023: Todo × Done → updated + item-edit"
+run_script "$(build_json 42 'Done')" psu_success
+if [ "$LAST_RC" = "0" ] \
+   && [ "$(json_field '.result')" = "updated" ] \
+   && assert_item_edit_present "TC-023"; then
+  pass "non-terminal→Done writes"
+else
+  fail "TC-023 unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+
+# --------------------------------------------------------------------------
+# TC-024: Cancelled × Cancelled → updated, no item-edit (AC-3)
+# --------------------------------------------------------------------------
+echo "TC-024: Cancelled × Cancelled → updated no-op"
+run_script "$(build_json 42 'Cancelled')" psu_current_cancelled
+if [ "$LAST_RC" = "0" ] \
+   && [ "$(json_field '.result')" = "updated" ] \
+   && assert_item_edit_absent "TC-024"; then
+  pass "Cancelled→Cancelled idempotent no-op"
+else
+  fail "TC-024 unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+
+# --------------------------------------------------------------------------
+# TC-025: fieldValues key missing × Done → failed, no item-edit (AC-4)
+# --------------------------------------------------------------------------
+echo "TC-025: fieldValues missing × Done → failed"
+run_script "$(build_json 42 'Done')" psu_fieldvalues_missing
+if [ "$LAST_RC" = "0" ] \
+   && [ "$(json_field '.result')" = "failed" ] \
+   && printf '%s\n' "$LAST_OUTPUT" | jq -e '.warnings | map(select(. | test("Could not read current Status"))) | length >= 1' >/dev/null \
+   && assert_item_edit_absent "TC-025"; then
+  pass "unreadable current Status fails without write"
+else
+  fail "TC-025 unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+
+# --------------------------------------------------------------------------
+# TC-028: fieldValues: null × Done → failed, no item-edit (AC-4; has() is true for null)
+# --------------------------------------------------------------------------
+echo "TC-028: fieldValues null × Done → failed"
+run_script "$(build_json 42 'Done')" psu_fieldvalues_null
+if [ "$LAST_RC" = "0" ] \
+   && [ "$(json_field '.result')" = "failed" ] \
+   && printf '%s\n' "$LAST_OUTPUT" | jq -e '.warnings | map(select(. | test("Could not read current Status"))) | length >= 1' >/dev/null \
+   && assert_item_edit_absent "TC-028"; then
+  pass "fieldValues null is unreadable, no write"
+else
+  fail "TC-028 unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+
+# --------------------------------------------------------------------------
+# TC-029: HTTP 200 + errors[] × Done → failed, no item-edit (AC-4 partial failure)
+# --------------------------------------------------------------------------
+echo "TC-029: GraphQL errors[] × Done → failed"
+run_script "$(build_json 42 'Done')" psu_graphql_errors
+if [ "$LAST_RC" = "0" ] \
+   && [ "$(json_field '.result')" = "failed" ] \
+   && printf '%s\n' "$LAST_OUTPUT" | jq -e '.warnings | map(select(. | test("GraphQL projectItems query returned errors"))) | length >= 1' >/dev/null \
+   && assert_item_edit_absent "TC-029"; then
+  pass "GraphQL errors[] fails without write"
+else
+  fail "TC-029 unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+
+# --------------------------------------------------------------------------
+# TC-026: fieldValues.nodes empty × Done → updated + item-edit (unset ≠ unreadable)
+# --------------------------------------------------------------------------
+echo "TC-026: fieldValues empty × Done → updated + item-edit"
+run_script "$(build_json 42 'Done')" psu_fieldvalues_empty
+if [ "$LAST_RC" = "0" ] \
+   && [ "$(json_field '.result')" = "updated" ] \
+   && assert_item_edit_present "TC-026"; then
+  pass "empty fieldValues is unset, write allowed"
+else
+  fail "TC-026 unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
+fi
+
+# --------------------------------------------------------------------------
+# TC-027: no Status entry × Done → updated + item-edit (unset ≠ unreadable)
+# --------------------------------------------------------------------------
+echo "TC-027: no Status entry × Done → updated + item-edit"
+run_script "$(build_json 42 'Done')" psu_fieldvalues_nostatus
+if [ "$LAST_RC" = "0" ] \
+   && [ "$(json_field '.result')" = "updated" ] \
+   && assert_item_edit_present "TC-027"; then
+  pass "Status-less fieldValues is unset, write allowed"
+else
+  fail "TC-027 unexpected: rc=$LAST_RC output=$LAST_OUTPUT"
 fi
 
 echo ""

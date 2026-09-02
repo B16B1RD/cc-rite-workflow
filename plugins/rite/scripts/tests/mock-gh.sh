@@ -41,6 +41,13 @@
 #   "psu_no_status_field"      - field-list returns no Status field
 #   "psu_no_status_option"     - Status field exists but requested option name missing
 #   "psu_item_edit_fail"       - gh project item-edit fails
+#   "psu_current_cancelled"    - item Status is Cancelled
+#   "psu_current_done"         - item Status is Done
+#   "psu_fieldvalues_missing"  - item has no fieldValues key (unreadable)
+#   "psu_fieldvalues_null"     - item has fieldValues: null (unreadable)
+#   "psu_graphql_errors"       - HTTP 200 + data + errors[] (unreadable; no write)
+#   "psu_fieldvalues_empty"    - fieldValues.nodes is empty (unset)
+#   "psu_fieldvalues_nostatus" - fieldValues has no Status entry (unset)
 #
 # Scenarios (projects-items-fetch.sh):
 #   "pif_success"              - project view + 1-page items query succeed
@@ -133,7 +140,8 @@ FLJSON
       {"id": "OPT_TODO", "name": "Todo"},
       {"id": "OPT_INPROGRESS", "name": "In Progress"},
       {"id": "OPT_INREVIEW", "name": "In Review"},
-      {"id": "OPT_DONE", "name": "Done"}
+      {"id": "OPT_DONE", "name": "Done"},
+      {"id": "OPT_CANCELLED", "name": "Cancelled"}
     ]}
   ]
 }
@@ -437,6 +445,31 @@ EOJSON
 
         # --- projects-status-update.sh path ---
         if [ "$is_repository_query" = true ]; then
+          # $1 = Status name, or missing / empty / nostatus for unreadable / unset.
+          _psu_node() {
+            local kind="${1:-Todo}"
+            case "$kind" in
+              missing)
+                printf '{"id":"%s","project":{"id":"%s","number":6}}' "$MOCK_ITEM_ID" "$MOCK_PROJECT_ID"
+                ;;
+              null)
+                printf '{"id":"%s","project":{"id":"%s","number":6},"fieldValues":null}' "$MOCK_ITEM_ID" "$MOCK_PROJECT_ID"
+                ;;
+              empty)
+                printf '{"id":"%s","project":{"id":"%s","number":6},"fieldValues":{"nodes":[]}}' "$MOCK_ITEM_ID" "$MOCK_PROJECT_ID"
+                ;;
+              nostatus)
+                printf '{"id":"%s","project":{"id":"%s","number":6},"fieldValues":{"nodes":[{"name":"High","field":{"name":"Priority"}}]}}' "$MOCK_ITEM_ID" "$MOCK_PROJECT_ID"
+                ;;
+              *)
+                printf '{"id":"%s","project":{"id":"%s","number":6},"fieldValues":{"nodes":[{"name":"%s","field":{"name":"Status"}}]}}' "$MOCK_ITEM_ID" "$MOCK_PROJECT_ID" "$kind"
+                ;;
+            esac
+          }
+          _psu_issue() {
+            printf '{"data":{"repository":{"issue":{"url":"https://github.com/test-owner/test-repo/issues/%s","projectItems":{"nodes":[%s]}}}}}\n' "$MOCK_ISSUE_NUMBER" "$1"
+          }
+
           # Determine scenario-dependent response shape.
           case "$SCENARIO" in
             psu_graphql_fail)
@@ -464,22 +497,54 @@ EOJSON
               # State machine: first call returns empty, subsequent calls return item.
               # Use a fixed-name file in MOCK_GH_STATE_DIR (do NOT include $$ —
               # mock-gh.sh's own PID differs between the two gh invocations).
+              # Second response must include non-terminal fieldValues or the
+              # unreadable-current-Status path fails TC-005.
               state_dir="${MOCK_GH_STATE_DIR:-/tmp}"
               state_file="$state_dir/psu_autoadd_count"
               if [ -f "$state_file" ]; then
-                printf '{"data":{"repository":{"issue":{"url":"https://github.com/test-owner/test-repo/issues/%s","projectItems":{"nodes":[{"id":"%s","project":{"id":"%s","number":6}}]}}}}}\n' "$MOCK_ISSUE_NUMBER" "$MOCK_ITEM_ID" "$MOCK_PROJECT_ID"
+                _psu_issue "$(_psu_node Todo)"
               else
                 echo "1" > "$state_file"
                 printf '{"data":{"repository":{"issue":{"url":"https://github.com/test-owner/test-repo/issues/%s","projectItems":{"nodes":[]}}}}}\n' "$MOCK_ISSUE_NUMBER"
               fi
               exit 0
               ;;
+            psu_current_cancelled)
+              _psu_issue "$(_psu_node Cancelled)"
+              exit 0
+              ;;
+            psu_current_done)
+              _psu_issue "$(_psu_node Done)"
+              exit 0
+              ;;
+            psu_fieldvalues_missing)
+              _psu_issue "$(_psu_node missing)"
+              exit 0
+              ;;
+            psu_fieldvalues_null)
+              _psu_issue "$(_psu_node null)"
+              exit 0
+              ;;
+            psu_graphql_errors)
+              # HTTP 200 + data (Cancelled item) + errors[]. gh exits 0; helper must not write.
+              printf '{"data":{"repository":{"issue":{"url":"https://github.com/test-owner/test-repo/issues/%s","projectItems":{"nodes":[%s]}}}},"errors":[{"message":"Field values unavailable"}]}\n' \
+                "$MOCK_ISSUE_NUMBER" "$(_psu_node Cancelled)"
+              exit 0
+              ;;
+            psu_fieldvalues_empty)
+              _psu_issue "$(_psu_node empty)"
+              exit 0
+              ;;
+            psu_fieldvalues_nostatus)
+              _psu_issue "$(_psu_node nostatus)"
+              exit 0
+              ;;
             psu_success|psu_field_list_fail|psu_no_status_field|psu_no_status_option|psu_item_edit_fail)
-              printf '{"data":{"repository":{"issue":{"url":"https://github.com/test-owner/test-repo/issues/%s","projectItems":{"nodes":[{"id":"%s","project":{"id":"%s","number":6}}]}}}}}\n' "$MOCK_ISSUE_NUMBER" "$MOCK_ITEM_ID" "$MOCK_PROJECT_ID"
+              _psu_issue "$(_psu_node Todo)"
               exit 0
               ;;
             *)
-              printf '{"data":{"repository":{"issue":{"url":"https://github.com/test-owner/test-repo/issues/%s","projectItems":{"nodes":[{"id":"%s","project":{"id":"%s","number":6}}]}}}}}\n' "$MOCK_ISSUE_NUMBER" "$MOCK_ITEM_ID" "$MOCK_PROJECT_ID"
+              _psu_issue "$(_psu_node Todo)"
               exit 0
               ;;
           esac

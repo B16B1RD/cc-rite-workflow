@@ -179,10 +179,12 @@ consumer の位置に依存しなくなる。
 Issue が、中止用の経路へ系統的に流れ込む。2.3 が持つ「マージ済みの作業を NOT_PLANNED で葬らない」ガードは
 2.2 / 2.3 の内側にあるため、`CLOSED` で短絡するとその**ガードが本来狙うケースこそ**素通りする。
 
-`projects-status-update.sh` は `fieldValues` を読まない（read-before-write ガードが無い）ため、board の `Done`
-行はそのまま `Cancelled` へ落ちる。さらに `projects-board-drift-check.sh` は終端 Status の行を drift 母集団から
-除外するので、この誤記録は rite 側の reconciler では二度と戻らない。`references/projects-integration.md` の
-Rule 1（終端 Status の行を反対側へ引きずらない）の vice-versa 側そのものになる。
+`projects-status-update.sh` は `fieldValues` を読み、`Cancelled` → `Done` を `skipped_terminal_conflict` で
+拒否する（片方向。`Done` → `Cancelled` は書く）。Phase 5 の再同期が `Cancelled` を書けるのはその片方向の
+おかげである。`CLOSED` + `COMPLETED` を Phase 5 へ流すと、helper が `Done` を `Cancelled` へ上書きして
+operator の完了判断を潰す。`projects-board-drift-check.sh` は終端行を drift 母集団から除外するので、
+その誤記録は reconciler では戻らない。`references/projects-integration.md` の Rule 1 の vice-versa 側を
+Phase 2.1 が止める。
 
 `NOT_PLANNED` 側の帰結（Phase 3 / Phase 4 / Phase 6 をスキップし Phase 5 だけを実行する）は変えない。
 Issue の受入基準が「既に CLOSED の Issue に対しては board Status の同期のみを行う」と定めているため、

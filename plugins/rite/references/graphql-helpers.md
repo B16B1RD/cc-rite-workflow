@@ -73,6 +73,18 @@ query($owner: String!, $repo: String!, $number: Int!) {
             id
             number
           }
+          fieldValues(first: 20) {
+            nodes {
+              ... on ProjectV2ItemFieldSingleSelectValue {
+                name
+                field {
+                  ... on ProjectV2SingleSelectField {
+                    name
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -80,7 +92,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
 }
 ```
 
-This is the shape used by `scripts/projects-status-update.sh` to find the Issue's item before editing its Status field.
+This is the shape used by `scripts/projects-status-update.sh` to find the Issue's item and read its current Status before editing the field.
 
 ---
 
