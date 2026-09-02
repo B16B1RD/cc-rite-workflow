@@ -24,8 +24,9 @@
 #        "Cancelled", not "Done" (the terminal-status split, end to end)
 #  T-13: behavioral — an unclassified closure reason reconciles to "Done" AND emits
 #        exactly one WARNING, so the fallback is never silent
-# T-13b: behavioral — a reason GitHub returns but this check does not map (DUPLICATE)
-#        reconciles to "Done" and names itself in a WARNING, while COMPLETED stays silent
+# T-13b: behavioral — DUPLICATE reconciles to "Cancelled" with no unmapped-reason WARNING
+# T-13d: behavioral — a fictional enum reaches the catch-all (Done + WARNING naming it)
+# T-13c: behavioral — COMPLETED stays on the silent Done arm (negative control for T-13b/d)
 #  T-14: behavioral — a board already on "Cancelled" is not drift at all (0 findings,
 #        exit 0), so --reconcile can never overwrite a deliberate cancellation
 #  T-15: static — every consumer of the terminal Status set points at its source of truth
@@ -122,6 +123,17 @@ if printf '%s' "$help_output" | grep -q 'projects-board-drift-check.sh'; then
 else
   FAIL=$((FAIL + 1)); FAILURES+=("--help output missing script name"); echo "  ✗ --help output missing script name" >&2
 fi
+if printf '%s' "$help_output" | grep -q 'NOT_PLANNED or DUPLICATE' \
+  && printf '%s' "$help_output" | grep -q 'Cancelled'; then
+  PASS=$((PASS + 1)); echo "  ✓ --help maps DUPLICATE to Cancelled"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("--help does not map DUPLICATE to Cancelled"); echo "  ✗ --help does not map DUPLICATE to Cancelled" >&2
+fi
+if printf '%s' "$help_output" | grep -qi 'unmapped'; then
+  FAIL=$((FAIL + 1)); FAILURES+=("--help still calls a mapped reason unmapped"); echo "  ✗ --help still says unmapped" >&2
+else
+  PASS=$((PASS + 1)); echo "  ✓ --help does not call a mapped reason unmapped"
+fi
 
 echo ""
 echo "[T-4] --limit input validation (must exit exactly 2 = invocation error)"
@@ -175,6 +187,8 @@ assert_file_contains "$DRIFT_SH" '\$i\.stateReason // \$no_reason' "jq が state
 # AC-2/AC-3: the reconcile destination is chosen from the closure reason, not fixed to Done.
 assert_file_contains "$DRIFT_SH" 'NOT_PLANNED\) target_status="\$TERMINAL_STATUS_CANCELLED"' \
   "AC-2: NOT_PLANNED の reconcile 先は Cancelled"
+assert_file_contains "$DRIFT_SH" 'DUPLICATE\) *target_status="\$TERMINAL_STATUS_CANCELLED"' \
+  "AC-2: DUPLICATE の reconcile 先は Cancelled"
 # COMPLETED gets its own silent arm so the catch-all means "unmapped", not "everything
 # else". This pin is static: it sees the arm's existence and destination, not its silence
 # and not its position relative to the catch-all. Both of those are T-13c's job — keep the
@@ -659,11 +673,9 @@ else
   echo "  ✗ T-13: expected exactly 1 unclassified-reason WARNING, got $t13_warn_count" >&2
 fi
 
-# T-13b: a reason GitHub returns but this check does not map (DUPLICATE) reaches the
-# catch-all. It still reconciles to Done, but must say so — otherwise an unmapped reason is
-# indistinguishable from COMPLETED, and the mapping's blind spot never surfaces. The enum is
-# live: gh api graphql __type(name: "IssueStateReason") returns DUPLICATE alongside the two
-# reasons mapped here.
+# T-13b: DUPLICATE is a mapped reason. Without --quiet, one run must show destination,
+# silence of the unmapped-reason WARNING, and the findings line together — --quiet would
+# make "no WARNING" a vacuous pass.
 t13b_repo="$T12_DIR/duplicate-reason"; _setup_terminal_repo "$t13b_repo"
 cat > "$T12_DIR/scan-duplicate.json" <<'SCAN'
 {"data":{"repository":{"issues":{"nodes":[
@@ -679,28 +691,69 @@ t13b_out=$(cd "$t13b_repo" && PATH="$t13b_repo/bin:$PATH" \
 t13b_rc=$?
 set -e
 if [ "$t13b_rc" -eq 1 ] && printf '%s' "$t13b_out" | grep -q 'reconcile summary: 1 updated, 0 failed'; then
-  PASS=$((PASS + 1)); echo "  ✓ T-13b: unmapped reason still reconciles (not left behind)"
+  PASS=$((PASS + 1)); echo "  ✓ T-13b: DUPLICATE still reconciles (not left behind)"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-13b: expected exit 1 + '1 updated, 0 failed', got rc=$t13b_rc; stdout: $(printf '%s' "$t13b_out" | tr '\n' ' ' | head -c 300)")
   echo "  ✗ T-13b: reconcile summary wrong (exit $t13b_rc)" >&2
 fi
-if [ -f "$T12_DIR/t13b-item-edit.args" ] && grep -q -- '--single-select-option-id OPT_DONE' "$T12_DIR/t13b-item-edit.args"; then
-  PASS=$((PASS + 1)); echo "  ✓ T-13b: item-edit called with the Done option id"
+if [ -f "$T12_DIR/t13b-item-edit.args" ] && grep -q -- '--single-select-option-id OPT_CANCELLED' "$T12_DIR/t13b-item-edit.args"; then
+  PASS=$((PASS + 1)); echo "  ✓ T-13b: item-edit called with the Cancelled option id"
 else
-  FAIL=$((FAIL + 1)); FAILURES+=("T-13b: item-edit not called with Done option id (args: $(head -c 300 "$T12_DIR/t13b-item-edit.args" 2>/dev/null))")
-  echo "  ✗ T-13b: item-edit not called with the Done option id" >&2
+  FAIL=$((FAIL + 1)); FAILURES+=("T-13b: item-edit not called with Cancelled option id (args: $(head -c 300 "$T12_DIR/t13b-item-edit.args" 2>/dev/null))")
+  echo "  ✗ T-13b: item-edit not called with the Cancelled option id" >&2
 fi
-# The WARNING must name the observed value — a generic line would not tell a reader which
-# reason went unmapped, which is the whole point of splitting COMPLETED into its own arm.
-# The name check is scoped to the WARNING line itself: a bare `grep DUPLICATE` over the whole
-# stderr would also be satisfied by some other line mentioning the reason, and would stop
-# distinguishing "the WARNING names it" from "the word appears somewhere".
-t13b_warn_count=$(grep -c 'has no mapped terminal Status' "$T12_DIR/t13b-stderr.txt" || true)
-if [ "$t13b_warn_count" -eq 1 ] && grep -q 'DUPLICATE.*has no mapped terminal Status' "$T12_DIR/t13b-stderr.txt"; then
-  PASS=$((PASS + 1)); echo "  ✓ T-13b: exactly one WARNING names the unmapped reason"
+assert_present "$t13b_out" "$(printf '[projects-board-drift] #203 "closed as duplicate" status="Todo" (expected Cancelled) -> reconciled to Cancelled')" \
+  "T-13b: findings 行が reconcile 先 Cancelled を示す"
+t13b_unmapped_count=$(grep -c 'has no mapped terminal Status' "$T12_DIR/t13b-stderr.txt" || true)
+if [ "$t13b_unmapped_count" -eq 0 ]; then
+  PASS=$((PASS + 1)); echo "  ✓ T-13b: no unmapped-reason WARNING on DUPLICATE"
 else
-  FAIL=$((FAIL + 1)); FAILURES+=("T-13b: expected exactly 1 WARNING naming DUPLICATE, got $t13b_warn_count: $(head -c 300 "$T12_DIR/t13b-stderr.txt" | tr '\n' ' ')")
-  echo "  ✗ T-13b: expected exactly 1 WARNING naming DUPLICATE, got $t13b_warn_count" >&2
+  FAIL=$((FAIL + 1)); FAILURES+=("T-13b: expected 0 unmapped-reason WARNING, got $t13b_unmapped_count: $(head -c 300 "$T12_DIR/t13b-stderr.txt" | tr '\n' ' ')")
+  echo "  ✗ T-13b: expected 0 unmapped-reason WARNING, got $t13b_unmapped_count" >&2
+fi
+
+# T-13d: a fictional enum keeps the catch-all alive, separate from T-13's null path
+# (`closure reason is unavailable`). WARNING must name the observed value on that line.
+t13d_repo="$T12_DIR/future-reason"; _setup_terminal_repo "$t13d_repo"
+cat > "$T12_DIR/scan-future.json" <<'SCAN'
+{"data":{"repository":{"issues":{"nodes":[
+  {"number":203,"title":"closed for a future reason","stateReason":"SOME_FUTURE_REASON",
+   "projectItems":{"nodes":[{"project":{"number":1},
+     "fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}
+]}}}}
+SCAN
+set +e
+t13d_out=$(cd "$t13d_repo" && PATH="$t13d_repo/bin:$PATH" \
+  GH_SCAN_FILE="$T12_DIR/scan-future.json" GH_ITEM_EDIT_LOG="$T12_DIR/t13d-item-edit.args" \
+  bash "$DRIFT_SH" --reconcile 2>"$T12_DIR/t13d-stderr.txt")
+t13d_rc=$?
+set -e
+if [ "$t13d_rc" -eq 1 ] && printf '%s' "$t13d_out" | grep -q 'reconcile summary: 1 updated, 0 failed'; then
+  PASS=$((PASS + 1)); echo "  ✓ T-13d: unknown enum still reconciles (not left behind)"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-13d: expected exit 1 + '1 updated, 0 failed', got rc=$t13d_rc; stdout: $(printf '%s' "$t13d_out" | tr '\n' ' ' | head -c 300)")
+  echo "  ✗ T-13d: reconcile summary wrong (exit $t13d_rc)" >&2
+fi
+if [ -f "$T12_DIR/t13d-item-edit.args" ] && grep -q -- '--single-select-option-id OPT_DONE' "$T12_DIR/t13d-item-edit.args"; then
+  PASS=$((PASS + 1)); echo "  ✓ T-13d: item-edit called with the Done option id"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-13d: item-edit not called with Done option id (args: $(head -c 300 "$T12_DIR/t13d-item-edit.args" 2>/dev/null))")
+  echo "  ✗ T-13d: item-edit not called with the Done option id" >&2
+fi
+assert_present "$t13d_out" "$(printf '[projects-board-drift] #203 "closed for a future reason" status="Todo" (expected Done) -> reconciled to Done')" \
+  "T-13d: findings 行が reconcile 先 Done を示す"
+t13d_warn_count=$(grep -c 'has no mapped terminal Status' "$T12_DIR/t13d-stderr.txt" || true)
+if [ "$t13d_warn_count" -eq 1 ] && grep -q 'SOME_FUTURE_REASON.*has no mapped terminal Status' "$T12_DIR/t13d-stderr.txt"; then
+  PASS=$((PASS + 1)); echo "  ✓ T-13d: exactly one WARNING names the unknown enum"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("T-13d: expected exactly 1 WARNING naming SOME_FUTURE_REASON, got $t13d_warn_count: $(head -c 300 "$T12_DIR/t13d-stderr.txt" | tr '\n' ' ')")
+  echo "  ✗ T-13d: expected exactly 1 WARNING naming SOME_FUTURE_REASON, got $t13d_warn_count" >&2
+fi
+if grep -q 'closure reason is unavailable' "$T12_DIR/t13d-stderr.txt"; then
+  FAIL=$((FAIL + 1)); FAILURES+=("T-13d: unknown enum took the null-reason WARNING path")
+  echo "  ✗ T-13d: unknown enum must not use the null-reason WARNING" >&2
+else
+  PASS=$((PASS + 1)); echo "  ✓ T-13d: unknown enum is not the null-reason path"
 fi
 # COMPLETED must NOT take that path — otherwise the catch-all warns on every normal row and
 # the signal is worthless. T-9 pins COMPLETED's destination but runs --quiet, so it cannot
@@ -783,6 +836,20 @@ for consumer in \
   assert_file_lacks "$REPO_ROOT/$consumer" 'projects-integration\.md(:[0-9]+|#L[0-9]+)' \
     "$consumer が SoT を行番号で参照していない"
 done
+# Mapping contents, not just the heading: a "未決" / open-question leftover in rule 2
+# would still cite the section name and pass the loop above.
+sot_248=$(awk '/^### 2\.4\.8 Terminal Status Set$/,/^## 2\.5 /' "$TERMINAL_SOT")
+assert_present "$sot_248" "$(printf '| `Cancelled` | Work abandoned — closed as not planned (wontfix, superseded) or as duplicate | `NOT_PLANNED`, `DUPLICATE` |')" \
+  "§2.4.8 Cancelled 行の closure reason 列に DUPLICATE が載る"
+assert_absent "$sot_248" "open question" \
+  "§2.4.8 rule 2 から open question が消えている"
+assert_absent "$sot_248" "this mapping does not claim" \
+  "§2.4.8 rule 2 から this mapping does not claim が消えている"
+RATIONALE="$REPO_ROOT/plugins/rite/skills/lint/references/plugin-checks-rationale.md"
+assert_file_contains "$RATIONALE" '`NOT_PLANNED` / `DUPLICATE` → `Cancelled`' \
+  "plugin-checks-rationale が NOT_PLANNED/DUPLICATE → Cancelled 無警告を述べる"
+assert_file_contains "$RATIONALE" '`COMPLETED` → `Done`' \
+  "plugin-checks-rationale が COMPLETED → Done 無警告を述べる"
 
 echo ""
 echo "==============================="
