@@ -378,6 +378,8 @@ echo "[T-9] Behavioral: --reconcile drives Status -> Done for a COMPLETED closur
 # absolute path and cannot be shimmed — so the assertion is made at the gh boundary that
 # helper drives. The shim answers both graphql shapes (the drift scan is the one carrying
 # `states: CLOSED`), serves the Status field options, and records the item-edit arguments.
+# Helper re-query ITEM must include fieldValues (object + nodes array): a missing key is
+# unreadable and the helper refuses to write (AC-4). Empty / Status-less nodes stay unset.
 T9_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rite-board-drift-t9-XXXXXX")
 trap 'rm -rf "${tmpd:-}" "$T8_DIR" "$T9_DIR"' EXIT
 mkdir -p "$T9_DIR/repo/bin"
@@ -402,8 +404,7 @@ case "$1 $2" in
 SCAN
     else
       cat <<'ITEM'
-{"data":{"repository":{"issue":{"url":"https://github.com/o/r/issues/103",
-  "projectItems":{"nodes":[{"id":"ITEM_103","project":{"id":"PROJ_1","number":1}}]}}}}}
+{"data":{"repository":{"issue":{"url":"https://github.com/o/r/issues/103","projectItems":{"nodes":[{"id":"ITEM_103","project":{"id":"PROJ_1","number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}
 ITEM
     fi ;;
   "project field-list")
@@ -514,8 +515,7 @@ case "$1 $2" in
 SCAN
     else
       cat <<'ITEM'
-{"data":{"repository":{"issue":{"url":"https://github.com/o/r/issues/103",
-  "projectItems":{"nodes":[{"id":"ITEM_103","project":{"id":"PROJ_1","number":1}}]}}}}}
+{"data":{"repository":{"issue":{"url":"https://github.com/o/r/issues/103","projectItems":{"nodes":[{"id":"ITEM_103","project":{"id":"PROJ_1","number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}
 ITEM
     fi ;;
   "project field-list")
@@ -572,8 +572,7 @@ case "$1 $2" in
       cat "$GH_SCAN_FILE"
     else
       cat <<'ITEM'
-{"data":{"repository":{"issue":{"url":"https://github.com/o/r/issues/203",
-  "projectItems":{"nodes":[{"id":"ITEM_203","project":{"id":"PROJ_1","number":1}}]}}}}}
+{"data":{"repository":{"issue":{"url":"https://github.com/o/r/issues/203","projectItems":{"nodes":[{"id":"ITEM_203","project":{"id":"PROJ_1","number":1},"fieldValues":{"nodes":[{"field":{"name":"Status"},"name":"Todo"}]}}]}}}}}
 ITEM
     fi ;;
   "project field-list")
