@@ -1,4 +1,6 @@
 ## 2026-09-02
+* **Update**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — raw/reviews/20260902T063926Z-pr-2506.md を統合
+* **Update**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — raw/fixes/20260902T064343Z-pr-2506.md を統合
 * **Update**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — raw/reviews/20260902T044110Z-pr-2505.md を統合
 * **Update**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — raw/fixes/20260902T044502Z-pr-2505.md を統合
 * **Skip**: [20260902T033550Z-pr-2500.md](raw/reviews/20260902T033550Z-pr-2500.md) — durable fail-loud contract is already in issue-cancel SKILL.md; cycle-3 0-finding confirmation only

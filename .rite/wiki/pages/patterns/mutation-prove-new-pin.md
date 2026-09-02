@@ -23,12 +23,17 @@ sources:
     resource: "raw/reviews/20260902T044110Z-pr-2505.md"
   - type: "fixes"
     resource: "raw/fixes/20260902T044502Z-pr-2505.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260902T063926Z-pr-2506.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260902T064343Z-pr-2506.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T04:58:47Z" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T06:56:34Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T04:58:47Z" }
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T06:56:34Z" }
 ---
 
 # 追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない
@@ -66,6 +71,8 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 
 禁止したい退行を**別名で**隔離コピーへ再投入し、それでも赤くなることを確認する。名前を変えただけで緑になるなら、その assertion は名前に束縛されている。赤くならなければその assertion は削除するのが正しい。
 
+**mock に失敗フラグを置いても、テストが立てなければ死んだ mock になる**: SKILL.md から抽出して mock gh で回す契約テストでは、mock 側に `MOCK_GH_FIELD_LIST_FAIL=1` のような失敗経路があっても、ケースが一度もそのフラグを立てなければ field-list 失敗時の全置換フォールバックは緑のまま生存する。和集合テストも同じ穴で、カスタム option の id 保持だけを assert して required option の追加を見ないと、「不足分を足さない union」が素通りする。**mock が実装した失敗フラグはケースが立てること、union は keep と add の両軸を assert すること**を、変異を当てて当該 assert が赤くなるまで確認する。
+
 ## 関連ページ
 
 - [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](./absence-pin-base-present-head-absent-single-line.md)
@@ -82,3 +89,5 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 - [PR #2503 review results](../../raw/reviews/20260901T225105Z-pr-2503.md)
 - [PR #2505 review results](../../raw/reviews/20260902T044110Z-pr-2505.md)
 - [PR #2505 fix results](../../raw/fixes/20260902T044502Z-pr-2505.md)
+- [PR #2506 review results](../../raw/reviews/20260902T063926Z-pr-2506.md)
+- [PR #2506 fix results](../../raw/fixes/20260902T064343Z-pr-2506.md)
