@@ -811,6 +811,7 @@ ingest の成否（skip 含む）に関わらずステップ 10 へ進む。
 - 関連 Issue (`{issue_number}`) を close
 - 親 Issue (`{parent_issue_number}`) の Tasklist を更新
 - 親 Issue の全子が CLOSED かついずれも `stateReason != NOT_PLANNED`（= COMPLETED）なら parent も auto-close。Cancelled（NOT_PLANNED）の子が 1 件でも居る、または CLOSED 子の `stateReason` が判定不能なら親は未完了扱い（Done / auto-close しない）
+- 3.7.2.1 `.result=skipped_terminal_conflict`（親が既に終端 Status (Cancelled)）のとき、close 成否に関わらず `{parent_close_result}` = `⚠️ Cancelled のため Done 上書きをスキップ`。`✅ 自動クローズ完了` で Done 同期を主張しない。Cancelled **子**の未完了扱いとは別値
 
 結果を context に保持し、ステップ 12 の表示で参照する。
 
@@ -1022,10 +1023,11 @@ rationale: references/rationale.md#outstanding-checkbox
 - 結果: {parent_close_result}
 ```
 
-`{parent_close_result}` の値域 (ステップ 10 で決定された 6 種類のいずれか):
+`{parent_close_result}` の値域 (ステップ 10 で決定された 7 種類のいずれか):
 - `✅ 自動クローズ完了 (全 sub-issue clear)` — 親 Issue が全 sub-issue 完了で自動 close
 - `🟡 sub-issue 残あり (close 保留)` — 残 sub-issue があり親は open のまま
 - `⚠️ Cancelled の子を含むため親は未完了扱い` — Cancelled（NOT_PLANNED）の子が居る。Done / auto-close しない
+- `⚠️ Cancelled のため Done 上書きをスキップ` — 親が既に終端 Status (Cancelled) のため Done 同期を主張しない（3.7.2.1 `.result=skipped_terminal_conflict`。Cancelled **子**の未完了扱いとは別）
 - `⚠️ 子の stateReason 判定不能のため auto-close スキップ` — CLOSED 子の `stateReason` 取得失敗（fail-loud）
 - `⚠️ 手動確認推奨` — 親 Issue 状態が判定不能で manual triage 推奨
 - `(該当なし)` — 親 Issue が識別されなかった (ステップ 2 で見つからず)
