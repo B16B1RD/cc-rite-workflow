@@ -321,8 +321,9 @@ Two rules follow from this set, and both are load-bearing:
 | `hooks/post-compact.sh` | Excludes terminal rows from the PR Status reconciliation mismatch check |
 | `hooks/scripts/projects-status-gate.sh` | Reports a terminal `Cancelled` as an abandoned Issue rather than a dropped transition |
 | `skills/lint/references/plugin-checks-rationale.md` | Documents why the drift check consults the closure reason |
+| `skills/issue-cancel/SKILL.md` | Writes `Cancelled` as the destination for the `NOT_PLANNED` closure it performs — the deliberate-cancellation counterpart to the drift check's `--reconcile` |
 
-**Known non-conforming paths.** Rule 1 binds the consumers above, not every write to the board. `projects-status-update.sh` does not query `fieldValues`, so it cannot guard on the current Status — and every path that writes `Done` through it inherits that, and will overwrite a `Cancelled` row. `/rite:issue-close` and `/rite:cleanup` both do (each names its own call sites in its skill). Bringing them under rule 1 needs a read-before-write in the helper and is out of scope here; it needs its own Issue.
+**Known non-conforming paths.** Rule 1 binds the consumers above, not every write to the board. `projects-status-update.sh` does not query `fieldValues`, so it cannot guard on the current Status — and every path that writes `Done` through it inherits that, and will overwrite a `Cancelled` row. `/rite:issue-close` and `/rite:cleanup` both do (each names its own call sites in its skill). Bringing them under rule 1 needs a read-before-write in the helper and is out of scope here; it needs its own Issue. The row those paths can overwrite is the one `/rite:issue-cancel` writes, so the gap is reachable in ordinary operation and not only through a `--reconcile` run.
 
 Progress ordering (`Todo` → `In Progress` → `In Review` → `Done`) is a separate concept. `Cancelled` has no position in it and must not be given one — an Issue that was abandoned has not "reached" any progress stage, and ranking it would let a stage check read a cancelled Issue as having advanced.
 

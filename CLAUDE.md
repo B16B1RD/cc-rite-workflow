@@ -11,7 +11,7 @@ plugins/rite/
 ├── skills/           # Claude Code が自動検出するスキル定義（SKILL.md）。/rite:<name> で起動
 │   │                 #   各スキル = 薄い SKILL.md + 同梱 references/（行数原則は下記）
 │   ├── PR lifecycle  #   open, iterate, pr-review, fix, ready, merge, cleanup, run, pr-create
-│   ├── issue 管理     #   issue-create, issue-list, issue-update, issue-close, issue-edit, issue-implement
+│   ├── issue 管理     #   issue-create, issue-list, issue-update, issue-close, issue-cancel, issue-edit, issue-implement
 │   ├── wiki          #   wiki-init, wiki-query, wiki-ingest, wiki-lint
 │   ├── meta/top      #   setup, getting-started, workflow, investigate, learn, lint, recover, skill-suggest, template-reset
 │   ├── rite-workflow/  # orchestration context（状態検出・phase routing）+ references/（コーディング原則 等）

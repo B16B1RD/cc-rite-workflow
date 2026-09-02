@@ -442,7 +442,7 @@ orphan は inbound（`plugins/rite/` / `docs/` / `.github/`、自己参照除く
 
 ### 3.18 Projects Board Drift Check supplement (detect-and-enumerate only)
 
-lint は auto-reconcile しない。`Done` 遷移は `/rite:cleanup` / `/rite:issue-close`。on-demand は `--reconcile`。no-op（projects 無効 / config 不在 → exit 0）は 3.8 / 3.9 と同じ。
+lint は auto-reconcile しない。`Done` 遷移は `/rite:cleanup` / `/rite:issue-close`、`Cancelled` 遷移は `/rite:issue-cancel`。on-demand は `--reconcile`。no-op（projects 無効 / config 不在 → exit 0）は 3.8 / 3.9 と同じ。
 
 ---
 

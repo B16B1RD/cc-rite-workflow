@@ -108,6 +108,7 @@ This will:
 | `/rite:issue-create` | Create new Issue |
 | `/rite:issue-update` | Update work memory |
 | `/rite:issue-close` | Check Issue completion |
+| `/rite:issue-cancel` | Cancel an Issue (close as not planned, board Status → Cancelled, clean up any PR/branch/worktree) |
 | `/rite:issue-edit` | Edit existing Issue interactively |
 | `/rite:open` | Start work end-to-end (branch → plan → implement → lint → draft PR) |
 | `/rite:iterate` | Loop review ⇄ fix until mergeable |
