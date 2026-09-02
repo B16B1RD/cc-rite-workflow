@@ -156,14 +156,40 @@ identity の昇格は `headRefName` 自身が `issue-{issue_number}-` を含む�
 rc=1 になるのは空白を含む場合など ref 名として不正なときだけ）。helper 側のデリミタ検査・値検査はすべて
 **展開後の値**にしか走らないので、束縛は値がテンプレートへ入る前に置くほかない。
 
-束縛を producer ごとではなく **Phase 2 の後置条件**（3 経路の合流点）に 1 本置くのは、危険が値の出どころ
-ではなく consumer の側にあるため。fork の `headRefName` だけが第三者制御だと考えるのは誤りで、2.2 の
-ローカルブランチ検索も `git branch --list "*issue-N-*"` の一意候補をそのまま採るので、`gh pr checkout` 等で
-fork の head 名がローカル branch として実在すれば同じ値が同じ consumer へ届く（実測で再現済み）。producer 側に
-個別検査を並べる形は、経路が 1 本増えるたびに検査が漏れる。
+束縛を producer ごとに並べないのは、危険が値の出どころではなく consumer の側にあるため。fork の
+`headRefName` だけが第三者制御だと考えるのは誤りで、2.2 のローカルブランチ検索も
+`git branch --list "*issue-N-*"` の一意候補をそのまま採るので、`gh pr checkout` 等で fork の head 名が
+ローカル branch として実在すれば同じ値が同じ consumer へ届く（実測で再現済み）。producer 側に個別検査を
+並べる形は、経路が 1 本増えるたびに検査が漏れる。
+
+**適用点は「Phase 2 の後置条件」ではなく「値を `{branch_name}` に代入する時点」**。consumer は Phase 4.3 の
+fenced bash だけではなく **2.3 の `gh pr list --head "{branch_name}"` も含み、後者は Phase 2 の内側にある**。
+後置条件は定義上それより前の置換を遡って守れないため、節末に 1 本置く形では 2.3 の consumer が未検査の値を
+受け取る。代入時点に置けば、合流点の 1 本という利点（producer 追加のたびに検査が漏れない）を保ったまま、
+consumer の位置に依存しなくなる。
 
 非一致を `{branch_identity_verified}=false` へ倒すのは、既存の「identity 未確定ならブランチに触れない」経路と
 同じ帰結へ合流させるため。新しい停止経路も新しい報告スロットも足さない。
+
+## closed-state-reason-branch
+
+`CLOSED` を単一の分岐にすると、`Closes #N` のマージで GitHub が自動クローズした `stateReason: COMPLETED` の
+Issue が、中止用の経路へ系統的に流れ込む。2.3 が持つ「マージ済みの作業を NOT_PLANNED で葬らない」ガードは
+2.2 / 2.3 の内側にあるため、`CLOSED` で短絡するとその**ガードが本来狙うケースこそ**素通りする。
+
+`projects-status-update.sh` は `fieldValues` を読まない（read-before-write ガードが無い）ため、board の `Done`
+行はそのまま `Cancelled` へ落ちる。さらに `projects-board-drift-check.sh` は終端 Status の行を drift 母集団から
+除外するので、この誤記録は rite 側の reconciler では二度と戻らない。`references/projects-integration.md` の
+Rule 1（終端 Status の行を反対側へ引きずらない）の vice-versa 側そのものになる。
+
+`NOT_PLANNED` 側を「Phase 5 だけ実行」にせず 2.2 へ進める（Phase 3 と Phase 6 だけをスキップする）のは、
+Phase 4.2.0 の `undetermined` 行が復旧手段として指す「main checkout での再実行」を実際に到達可能にするため。
+Phase 4 ごとスキップすると、その再実行が同じ `CLOSED` 分岐に吸われ、worktree / ブランチの残置を解消する経路が
+どこにも無くなる（AC-2 の「着手後の中止でブランチ・セッション worktree が残らない」を満たす経路がその分岐に
+一つも存在しない状態になる）。
+
+`NOT_PLANNED` 以外を停止に倒し「警告して続行」にしないのは、`Done` の上書きが operator の判断を復元不能に
+潰すため。fail-loud が可能な場所で fallback を選ぶ理由が無い。
 
 ## classification-class-predicate
 

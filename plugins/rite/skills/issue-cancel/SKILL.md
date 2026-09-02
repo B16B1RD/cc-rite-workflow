@@ -97,9 +97,13 @@ echo "[CONTEXT] CANCEL_TMP_DIR=${TMPDIR:-/tmp}"
 gh issue view {issue_number} -R {owner_repo} --json number,title,state,stateReason,url
 ```
 
-| `state` | アクション |
+`state` だけで分岐しない。`stateReason` は終端 Status の行き先を決める値であり、`Cancelled` を書いてよいのは中止でクローズされた Issue だけである（`references/projects-integration.md` の Rule 1 — 終端 Status の行を反対側へ引きずらない）。
+rationale: references/rationale.md#closed-state-reason-branch
+
+| `state` / `stateReason` | アクション |
 |---|---|
-| `CLOSED` | 既に終了済み。**Phase 3 / Phase 4 / Phase 6 をすべてスキップ**し、Phase 5（board Status の同期）だけを実行して Phase 7 へ（冪等経路） |
+| `CLOSED` + `NOT_PLANNED` | 本スキルが中止済み。**Phase 3 と Phase 6 をスキップ**する冪等経路として 2.2 へ進む（2.3 の CLOSED 行が Phase 3 をスキップし、Phase 4 の後片付け再試行と Phase 5 の Status 同期を経て Phase 7 へ） |
+| `CLOSED` + `NOT_PLANNED` 以外（`COMPLETED` / 空 / 未知値） | **中止ではなく完了扱いでクローズ済み**。board Status を書かず**停止し**、`/rite:cleanup` を案内する（`Done` の行を `Cancelled` へ引きずらない） |
 | `OPEN` | 2.2 へ |
 
 ### 2.2 作業ブランチの解決（PR 検索より先）
@@ -124,10 +128,13 @@ git branch --list "*issue-{issue_number}-*" --format '%(refname:short)'
 
 | 観測 | `{branch_name}` / `{branch_identity_verified}` |
 |---|---|
-| `state_issue == {issue_number}` かつ `state_branch` が非空 | `state_branch` / `true`（対象 Issue の作業ブランチとして flow-state が記録済み） |
-| 上記に該当せず、ローカル候補が **ちょうど 1 件** | その値 / `true` |
+| `state_issue == {issue_number}` かつ `state_branch` が非空 | `state_branch` / `true`（対象 Issue の作業ブランチとして flow-state が記録済み）。**代入の直前に下記 charset 述語を適用する** |
+| 上記に該当せず、ローカル候補が **ちょうど 1 件** | その値 / `true`。**代入の直前に下記 charset 述語を適用する** |
 | 上記に該当せず、候補が 0 件 | 未確定 / `false`。Phase 4.3 のブランチ削除をスキップする（削除対象が無い） |
 | 上記に該当せず、候補が 2 件以上 | 未確定 / `false`。候補を表示し、ブランチ削除をスキップして残りの中止処理を続行する（identity 未確定のまま削除しない） |
+
+**charset 述語（値を `{branch_name}` に代入する時点で適用する）**: 上表の採用行と 2.3 の `headRefName` 昇格の**いずれも**、採用しようとする値が `^[A-Za-z0-9._/-]+$` に全体一致しないときは採用せず、WARNING を出して `{branch_name}` を未確定・`{branch_identity_verified}=false` に倒す（4.3 の既存ゲートがブランチ削除ごとスキップし、Phase 7 に「ブランチ: 残置（charset 非一致）」として現れる）。二重引用符と `--` は argv 分割にしか効かず `$(...)` は引用符の内側でも展開されるため、束縛は consumer より前になければならない。**consumer は 2.3 の `--head "{branch_name}"` と Phase 4.3 の fenced bash の 2 つ**で、どちらも Phase 2 の内側または直後にあるため後置条件では守れない（後置条件は定義上それより前の置換を遡って守れない）。producer ごとの個別検査にせず「代入時点」という単一の適用点に置くのは、経路を 1 本増やすたびに検査が漏れる形を作らないため。
+rationale: references/rationale.md#headref-charset-binding
 
 ### 2.3 関連 PR の検索と identity 検証
 
@@ -183,8 +190,7 @@ timeline は closing keyword を伴わない単なる言及（cross-reference）
 `headRefName` を経由せずにブランチ名を推測しない。
 rationale: references/rationale.md#identity-promotion-headref-only
 
-**Phase 2 の後置条件（charset 束縛）**: `{branch_name}` は Phase 4.3 の fenced bash へ literal substitute される。二重引用符と `--` は argv 分割にしか効かず `$(...)` は引用符の内側でも展開されるため、**2.2 の flow-state / 2.2 のローカルブランチ検索 / 2.3 の `headRefName` 昇格のどの経路で得た値でも、`^[A-Za-z0-9._/-]+$` に全体一致しないものは確定として扱わない** — WARNING を出し `{branch_name}` を未確定・`{branch_identity_verified}=false` に倒す（4.3 の既存ゲートがブランチ削除ごとスキップし、Phase 7 に「ブランチ: 残置（charset 非一致）」として現れる）。producer ごとの個別検査にしないのは、束縛が要るのは値の出どころではなく consumer だからで、経路を 1 本増やすたびに検査が漏れる形を作らないため。
-rationale: references/rationale.md#headref-charset-binding
+`headRefName` を `{branch_name}` へ昇格する行でも、代入の直前に 2.2 の charset 述語を再適用する（適用点は 2.2 の定義が単一の SoT で、ここに複製しない）。
 
 ---
 
@@ -207,6 +213,10 @@ else
   pr_close_rc=$?
   echo "[CONTEXT] CANCEL_PR_CLOSE_FAILED=1; pr={pr_number}; rc=$pr_close_rc" >&2
   echo "ERROR: PR #{pr_number} のクローズに失敗しました (rc=$pr_close_rc)" >&2
+  # 停止を散文の判定表だけに載せない。echo の rc は成功側と失敗側でともに 0 になり block 全体も
+  # rc=0 で終わるため、非ゼロ exit で機械的に遮断する（skills/open/SKILL.md の WORKTREE_INVARIANT
+  # gate と同型。同ファイルの前置条件ガードも同じ形をとる）。
+  exit 1
 fi
 ```
 
@@ -440,6 +450,8 @@ else
   issue_close_rc=$?
   echo "[CONTEXT] CANCEL_ISSUE_CLOSE_FAILED=1; issue={issue_number}; rc=$issue_close_rc" >&2
   echo "ERROR: Issue #{issue_number} のクローズに失敗しました (rc=$issue_close_rc)" >&2
+  # Phase 3 の fail-loud gate と同型に非ゼロ exit で遮断する（散文の判定表だけに停止を委ねない）。
+  exit 1
 fi
 ```
 
@@ -469,15 +481,18 @@ rationale: references/rationale.md#no-parent-propagation
 - {項目}: {理由と手動復旧コマンド}
 ```
 
-`CLOSED` な Issue に対する冪等実行では、報告を board Status の同期結果だけに絞る:
+`CLOSED` + `NOT_PLANNED` な Issue に対する冪等実行では、報告を後片付けと Status 同期の結果だけに絞る:
 
 ```
-## /rite:issue-cancel 完了（Status 同期のみ）
+## /rite:issue-cancel 完了（冪等経路）
 
-Issue #{issue_number} は既にクローズ済みです（stateReason: {state_reason}）。
-board Status のみ同期しました: Cancelled
+Issue #{issue_number} は既に中止済みです（stateReason: {state_reason}）。
 
-PR クローズ・後片付け・再クローズは実行していません。
+- ブランチ: {branch_name}（削除済み）／ 残置（理由）／ なし
+- セッション worktree: 削除済み ／ 残置（理由）／ なし
+- board Status: Cancelled へ同期 ／ 更新失敗（手動対応が必要）／ Projects 無効のためスキップ
+
+PR クローズ・Issue の再クローズは実行していません。
 ```
 
 ---
