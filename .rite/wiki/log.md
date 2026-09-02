@@ -1,4 +1,6 @@
 ## 2026-09-02
+* **Skip**: [20260902T123456Z-pr-2525.md](raw/reviews/20260902T123456Z-pr-2525.md) — detector-candidate: テスト自己 grep は対象関数固有断片にし、heading 抽出は NOEND と行数上限、result 抽出は skip 見出しで打ち切る
+* **Skip**: [20260902T124037Z-pr-2525.md](raw/fixes/20260902T124037Z-pr-2525.md) — detector-candidate: テスト自己 grep は対象関数固有断片にし、heading 抽出は NOEND と行数上限、result 抽出は skip 見出しで打ち切る
 * **Skip**: [20260902T110309Z-pr-2523.md](raw/reviews/20260902T110309Z-pr-2523.md) — durable parent_close_result mapping is already in cleanup SKILL.md; 0-finding confirmation only
 * **Skip**: [20260902T102915Z-pr-2522.md](raw/reviews/20260902T102915Z-pr-2522.md) — durable contract is already in issue-close 4.4 / archive 3.7.2.3; 0-finding confirmation only
 * **Create**: [jq の has("key") は値が null でも true を返す](pages/anti-patterns/jq-has-true-for-null.md) — raw/reviews/20260902T080744Z-pr-2507.md を新規ページ化
