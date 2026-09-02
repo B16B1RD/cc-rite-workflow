@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Issue #2495: setup Phase 3.4 Status option union provisioning.
+# setup Phase 3.4 Status option union provisioning.
 # SKILL.md から bash を抽出して mock gh で実行する（コピーは SKILL.md との drift を生む）。
 # 抽出失敗は skip せず exit 1（CI が緑のまま残らないようにする）。
 set -uo pipefail
@@ -264,7 +264,7 @@ else
   fail "T-idempotent missing noop marker: $(cat "$d_noop/stdout")"
 fi
 
-if ! print_summary "$(basename "$0")" "setup Status option union provision (#2495)"; then
+if ! print_summary "$(basename "$0")" "setup Status option union provision"; then
   exit 1
 fi
 exit 0
