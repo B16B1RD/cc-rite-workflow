@@ -45,6 +45,7 @@ bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"
 |-----------|------|
 | `"updated"` | `Projects Status を "Done" に更新しました`（冪等のため既 Done も updated になる） |
 | `"skipped_not_in_project"` | `警告: Issue #{issue} は Project に登録されていません` |
+| `"skipped_terminal_conflict"` | `警告: Issue #{issue} は既に終端 Status (Cancelled) のため Done への上書きをスキップしました`（`.warnings[]` も stderr に出す。item-edit 復旧は案内しない） |
 | `"failed"` | `.warnings[]` を stderr に出し、`警告: Projects Status の "Done" 更新に失敗。手動: GitHub Projects 画面で Status を Done に変更、または gh project item-edit ...` |
 
 ---
@@ -664,7 +665,7 @@ projects_enabled="{projects_enabled}"
 project_number="{project_number}"
 issue_number="{issue_number}"
 
-status_update_result="projects_disabled"   # success | not_registered | update_failed | projects_disabled
+status_update_result="projects_disabled"   # success | not_registered | update_failed | projects_disabled | skipped_terminal
 status_warning_lines=""
 issue_close_result="pending"                # success | failed | pending
 script_item_id=""; script_project_id=""; script_status_field_id=""; script_option_id=""
@@ -698,6 +699,10 @@ if [ "$projects_enabled" = "true" ]; then
   case "$status_result" in
     updated) status_update_result="success"; echo "親 Issue #${parent_number} の Status を 'Done' に更新しました" ;;
     skipped_not_in_project) status_update_result="not_registered"; echo "警告: 親 Issue #${parent_number} は Project #${project_number} に未登録。Status 更新をスキップします。" >&2 ;;
+    skipped_terminal_conflict)
+      status_update_result="skipped_terminal"
+      echo "警告: 親 Issue #${parent_number} は既に終端 Status (Cancelled) のため Done への上書きをスキップしました。" >&2
+      [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  p463 Step 1 warning: /' >&2 ;;
     *) status_update_result="update_failed"
        [ "$status_result" != "failed" ] && echo "[DEBUG] 未知の .result='$status_result' — update_failed 扱い" >&2
        echo "警告: 親 Issue #${parent_number} の Status 更新に失敗。後続の gh issue close は続行します。" >&2
@@ -721,7 +726,7 @@ echo "=== 親 Issue #${parent_number} 処理結果 ==="
 echo "  Issue close: $issue_close_result"
 echo "  Status update: $status_update_result"
 case "${issue_close_result}:${status_update_result}" in
-  "success:success"|"success:projects_disabled"|"success:not_registered") echo "  状態: 整合性 OK" ;;
+  "success:success"|"success:projects_disabled"|"success:not_registered"|"success:skipped_terminal") echo "  状態: 整合性 OK" ;;
   "success:update_failed")
     echo ""; echo "⚠️ state 不整合: 親 Issue は CLOSED ですが Projects Status が Done に更新されていません。"
     if [ -n "${script_item_id:-}" ] && [ -n "${script_project_id:-}" ] && [ -n "${script_status_field_id:-}" ] && [ -n "${script_option_id:-}" ]; then
@@ -733,6 +738,7 @@ case "${issue_close_result}:${status_update_result}" in
   "failed:success") echo ""; echo "⚠️ state 不整合: Projects Status は Done ですが親 Issue が OPEN のままです。"; echo "  復旧コマンド: gh issue close ${parent_number} -R ${owner_repo_slash}" >&2 ;;
   "failed:projects_disabled") echo ""; echo "⚠️ 親 Issue のクローズに失敗 (Projects は config で無効)。手動: gh issue close ${parent_number} -R ${owner_repo_slash}" >&2 ;;
   "failed:not_registered") echo ""; echo "⚠️ 親 Issue のクローズに失敗 (Project 未登録)。手動: gh issue close ${parent_number} -R ${owner_repo_slash}" >&2 ;;
+  "failed:skipped_terminal") echo ""; echo "⚠️ 親 Issue のクローズに失敗 (board Status は Cancelled のまま Done へ上書きしていない)。手動: gh issue close ${parent_number} -R ${owner_repo_slash}" >&2 ;;
   "failed:"*) echo ""; echo "⚠️ 親 Issue の処理が両方失敗 (close / status)。手動対応: gh issue close ${parent_number} -R ${owner_repo_slash}" >&2 ;;
 esac
 trap - EXIT INT TERM HUP

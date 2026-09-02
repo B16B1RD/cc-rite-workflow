@@ -481,6 +481,7 @@ bash {plugin_root}/scripts/projects-status-update.sh "$status_json_args"
 |-----------|------|
 | `"updated"` | `Projects Status を "Cancelled" に更新しました` |
 | `"skipped_not_in_project"` | `警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします` |
+| `"skipped_terminal_conflict"` | `警告: Issue #{issue_number} は既に終端 Status のため Cancelled への上書きをスキップしました`（`.warnings[]` も stderr に出す。Done 行を Cancelled へ手動 item-edit する案内は出さない。片方向ガードでは Cancelled 書き込みに通常届かない） |
 | `"failed"` / 上記以外の未知値 | `.warnings[]` を stderr に出し、`警告: Projects Status の "Cancelled" 更新に失敗しました。手動: GitHub Projects 画面で Status を Cancelled に変更、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <cancelled_option_id>` を表示 |
 
 board に `Cancelled` option が存在しないプロジェクトでは option-ID 解決に失敗し `failed` に落ちる（helper の通常の失敗経路で loud に出る）。option の provisioning は本スキルの責務ではない。

@@ -46,6 +46,7 @@ Inspect the script's stdout JSON and route by `.result`:
 |-----------|---------------------------|--------------------|
 | `"updated"` | Set to `true` | Display `Projects Status を "Done" に更新しました` |
 | `"skipped_not_in_project"` | Stays `false` (default) | Display `警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします。` and proceed |
+| `"skipped_terminal_conflict"` | Set to `skipped_terminal` | Display `警告: Issue #{issue_number} は既に終端 Status (Cancelled) のため Done への上書きをスキップしました。` and proceed (not a failure; cleanup ステップ 12 は `{projects_check}=x`) |
 | `"failed"` | Stays `false` (default) | Display each `.warnings[]` entry to stderr, then display `警告: Projects Status の "Done" への更新に失敗しました。手動で更新する場合: GitHub Projects 画面で Issue #{issue_number} の Status を "Done" に変更するか、または gh project item-edit --project-id <project_id> --id <item_id> --field-id <status_field_id> --single-select-option-id <done_option_id> を実行してください。` and proceed |
 
 **All result branches are non-blocking** — display the appropriate message and proceed to Phase 3.5 (work memory update). The cleanup process MUST NOT fail due to a Projects Status update issue.
@@ -57,7 +58,7 @@ Inspect the script's stdout JSON and route by `.result`:
 Track the final success/failure of the Projects Status update for inclusion in the cleanup.md ステップ 12 (完了報告):
 
 **Result variable:**
-- `projects_status_updated` = `false` (default). Set to `true` only when Phase 3.2 returns `.result == "updated"`.
+- `projects_status_updated` = `false` (default). Set to `true` only when Phase 3.2 returns `.result == "updated"`. Set to `skipped_terminal` when `.result == "skipped_terminal_conflict"` (legitimate skip — cleanup ステップ 12 は `{projects_check}=x`).
 
 When Phase 3.2 returns `.result == "skipped_not_in_project"` or `"failed"`, `projects_status_updated` retains its default `false` value and the failure has already been surfaced via the `.warnings[]` lines + manual recovery hint above.
 
@@ -81,6 +82,11 @@ case "$status_result" in
     ;;
   skipped_not_in_project)
     echo "警告: Issue #{issue_number} は Project に登録されていません。Status 更新をスキップします。" >&2
+    ;;
+  skipped_terminal_conflict)
+    projects_status_updated="skipped_terminal"
+    echo "警告: Issue #{issue_number} は既に終端 Status (Cancelled) のため Done への上書きをスキップしました。" >&2
+    [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  /' >&2
     ;;
   failed|*)
     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  /' >&2
@@ -398,6 +404,7 @@ Inspect the script's stdout JSON:
 |-----------|--------|
 | `"updated"` | Display `親 Issue #{parent_issue_number} の Projects Status を "Done" に更新しました` and proceed to 3.7.2.2 |
 | `"skipped_not_in_project"` | Display `警告: 親 Issue #{parent_issue_number} は Project に登録されていません。Status 更新をスキップしてクローズ処理を続行します` and proceed to 3.7.2.2 |
+| `"skipped_terminal_conflict"` | Display `警告: 親 Issue #{parent_issue_number} は既に終端 Status (Cancelled) のため Done への上書きをスキップしました` and proceed to 3.7.2.2（item-edit 復旧は案内しない） |
 | `"failed"` | Display each `.warnings[]` entry to stderr, then display `警告: 親 Issue #{parent_issue_number} の Projects Status 更新に失敗しました。手動更新が必要な場合があります。クローズ処理は続行します` and proceed to 3.7.2.2 |
 
 **All result branches are non-blocking** — the parent Issue close (3.7.2.2) MUST proceed regardless of Status update outcome.
@@ -413,6 +420,7 @@ Inspect the script's stdout JSON:
 > case "$status_result" in
 >   updated) echo "親 Issue #${parent_issue_number} の Projects Status を \"Done\" に更新しました" ;;
 >   skipped_not_in_project) echo "警告: 親 Issue #${parent_issue_number} は Project に登録されていません。Status 更新をスキップしてクローズ処理を続行します" >&2 ;;
+>   skipped_terminal_conflict) echo "警告: 親 Issue #${parent_issue_number} は既に終端 Status (Cancelled) のため Done への上書きをスキップしました" >&2 ;;
 >   failed|*)
 >     [ -n "$status_warning_lines" ] && printf '%s\n' "$status_warning_lines" | sed 's/^/  warning: /' >&2
 >     echo "警告: 親 Issue #${parent_issue_number} の Projects Status 更新に失敗しました。クローズ処理は続行します" >&2 ;;
