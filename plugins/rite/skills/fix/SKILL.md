@@ -2024,19 +2024,21 @@ rm -f "${TMPDIR:-/tmp}/rite-fix-target-body-{pr_number}-{target_comment_id}.txt"
 
 指摘に対する修正方針を決定する前に、以下のチェックリストを必ず通過させること（Fail-Fast Response Principle と同様、config での opt-out は不可）:
 
-- [ ] 機構の**追加**（新しい分岐・ガード・規約・注記・例外条項）ではなく、既存機構の**削除・単純化**（分岐の統合、規則の一般化、複製の一本化）で指摘を解消できないか検討したか
+- [ ] 機構の**追加**（新しい分岐・ガード・規約・注記・例外条項）ではなく、既存機構の**削除・単純化**（分岐の統合、規則の一般化、複製の一本化）で指摘を解消できないか検討したか。「規則の一般化」は機械が評価する規則（分岐・ガード・述語）に限る。文書の主張（契約文・確認手順など人が読む記述）の最小差分は削除・限定を先に取る。主張を広げる／述語化するなら、主張が名指しする集合を実装で列挙し一致を確認した上で書く
 - [ ] 追加しようとしている分岐 / ガード / 規約は、指摘された 1 ケース専用になっていないか（1 ケース対応の追加は、次 cycle でその追加自体が新たなレビュー対象面となり指摘を再生産する）
 - [ ] 修正 diff は指摘の解消に必要な最小か。指摘されていない「ついで」の防御・柔軟性・将来対応を含んでいないか
 
 対象は**機構の追加**。テスト追加・複製同期は対象外。[coding-principles.md](../../skills/rite-workflow/references/coding-principles.md) の `no_speculative_structure` と対。
 
-**Escalation trigger（パッチの重ね掛け停止）**: 対応中の finding が**同一 PR の前 cycle の fix が導入・変更した箇所**への指摘である場合（description が「cycle N で導入した」「前 cycle で追加した」等で当該 fix を名指しする場合を含む）、同じ機構への追加パッチを既定選択にしないこと。まず「当該機構ごと削除・単純化して指摘群を根から消せないか」を検討し、修正案の提示（ステップ 2.3）の前にその判断を chat へ 1 行明示する（例: `simplification-first: 分岐機構を削除し行全体再生成へ単純化` / `simplification-first: 追加パッチを選択 — 理由: {reason}`）。
+**Escalation trigger（パッチの重ね掛け停止）**: 対応中の finding が**同一 PR の前 cycle の fix が導入・変更した箇所**への指摘である場合（description が「cycle N で導入した」「前 cycle で追加した」等で当該 fix を名指しする場合を含む）、同じ機構への追加パッチを既定選択にしないこと。まず「当該機構ごと削除・単純化して指摘群を根から消せないか」を検討し、修正案の提示（ステップ 2.3）の前にその判断を chat へ 1 行明示する（例: `simplification-first: 削除 — 分岐機構を削除し行全体再生成へ単純化` / `simplification-first: 追加 — 理由: {なぜ削除ではないか}`。書式はステップ 3.2 の必須段落と同一）。
 
-追加で直すなら commit に「なぜ削除ではないか」を書く。
+Escalation trigger 成立時は、この判断を commit body の `simplification-first:` 段落（ステップ 3.2）として書く。ステップ 3.2.1 Root Cause Gate が段落の有無を検査する。
 
 rationale: references/design-rationale.md#simplification-first-rationale
 
 ### 2.1 Confirm Fix Approach
+
+reviewer の推奨対応（`recommendation` 列）は候補であって設計ではない。文書の主張を書く／広げる修正案は、適用前に実装と突き合わせる（ステップ 2.3）。
 
 **Entry routing — scope=nit-noted skip**:
 
@@ -2353,6 +2355,7 @@ When "コードを修正する" is selected:
 
 ### 2.3 Apply the Fix
 
+修正案が文書の主張を書く／広げる／述語化するものなら、適用前に主張が名指しする集合（実装の経路・出力・判定値）を実装で列挙し、主張と一致するか確認する。列挙結果は修正案の提示に併記する。不一致なら修正案を適用せず、主張を限定するか削除する案に差し替える。
 
 Present the proposed fix and apply with Edit tool after confirmation:
 
@@ -2633,9 +2636,10 @@ Before generating the commit message, check the `language` field in `rite-config
 
 **Commit body:**
 
-Use a free-form commit body. Review-fix commits **MUST** include both:
+Use a free-form commit body. Review-fix commits **MUST** include:
 - **対応方針** — 各 finding に対して何をしたか / なぜその方針か
 - **`Root cause:` / `根本原因:` 段落** — ステップ 3.2.1 Root Cause Gate が検査する
+- **`simplification-first:` 段落（Escalation trigger 成立時のみ）** — `simplification-first: 削除 — {何を削ったか}` または `simplification-first: 追加 — 理由: {なぜ削除ではないか}` の 1 段落。ステップ 3.2.1 Root Cause Gate が検査する。trigger 不成立の cycle では書かない
 
 - Leave a blank line between the description line and the body
 - Write in free-form — no specific prefix or template required
@@ -2687,7 +2691,7 @@ Addresses review comments from @reviewer1
 
 fix(review): {description}
 
-{free-form body — 対応方針 + `Root cause:` / `根本原因:` 段落}
+{free-form body — 対応方針 + `Root cause:` / `根本原因:` 段落 + (Escalation trigger 成立時) `simplification-first:` 段落}
 
 {acknowledged_finding_lines (展開ルール: accept finding 0 件 → 完全省略 (前後 blank line も削除、conventional commits lint の連続空行 fail を防ぐ)。1 件以上 → 各 `Acknowledged-finding:` 行を `\n` 区切りで連結、末尾改行なし)}
 
@@ -2705,7 +2709,7 @@ fix(review): {description}
 
 Before committing a fix, the commit body **MUST** include a root-cause explanation. This gate implements Quality Signal 2 (root-cause-missing fix detection) — see the Quality Signal 1-4 table in `skills/pr-review/references/finding-cycling.md`.
 
-**Step 1**: 3.2 の commit body に `Root cause:` / `根本原因:` 段落があるか LLM が判定する (Bash 状態非依存)。
+**Step 1**: 3.2 の commit body に `Root cause:` / `根本原因:` 段落があるか LLM が判定する (Bash 状態非依存)。Escalation trigger 成立時は `simplification-first:` 段落の有無も判定し、いずれかの欠落を `missing` とする。trigger 不成立の cycle では `simplification-first:` 段落を要求しない。
 
 Emit one of the two context markers so downstream logic can route:
 
@@ -2720,8 +2724,8 @@ echo "[CONTEXT] ROOT_CAUSE_GATE=missing"
 
 | Option | Action |
 |--------|--------|
-| Root cause を追記して再コミット（推奨） | Ask the user for a short root-cause paragraph; prepend a `Root cause: {paragraph}` / `根本原因: {paragraph}` paragraph to the commit body; re-invoke Step 1. The retry count is tracked in conversation context by the LLM — after one retry the LLM falls through to the second option to avoid an infinite prompt loop |
-| 意図的な補足コミットとして通過 | Prepend a `Root cause (bypass): {理由}` paragraph to the commit body (the bypass rationale recorded alongside the commit for machine-traceability) AND append the same rationale to work memory `決定事項・メモ`. The bypass is still recorded |
+| 不足段落を追記して再コミット（推奨） | Ask the user for a short paragraph for whichever Step 1 found missing: prepend a `Root cause: {paragraph}` / `根本原因: {paragraph}` paragraph, or (Escalation trigger 成立時) a `simplification-first: {paragraph}` paragraph, to the commit body; re-invoke Step 1. The retry count is tracked in conversation context by the LLM — after one retry the LLM falls through to the second option to avoid an infinite prompt loop |
+| 意図的な補足コミットとして通過 | Prepend a bypass paragraph for whichever Step 1 found missing — `Root cause (bypass): {理由}`, or (Escalation trigger 成立時) `simplification-first (bypass): {理由}` — to the commit body (the bypass rationale recorded alongside the commit for machine-traceability) AND append the same rationale to work memory `決定事項・メモ`. The bypass is still recorded |
 | Abort | Skip this fix cycle; emit `[fix:error]` and return control to the caller |
 
 cosmetic は option 2 可。bypass は記録必須。
