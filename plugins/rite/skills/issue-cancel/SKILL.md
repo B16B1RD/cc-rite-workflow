@@ -311,13 +311,19 @@ case "$target" in
     echo "[CONTEXT] CANCEL_WT_BOUND=blocked; reason=target_placeholder_residue" >&2
     exit 1
     ;;
-  none|"")
+  none)
     echo "[CONTEXT] CANCEL_WT_BOUND=none; reason=no_session_worktree"
+    ;;
+  ""|undetermined)
+    echo "ERROR: 対象 worktree path が確定していません（value='$target'）。Issue をクローズせず停止します" >&2
+    echo "[CONTEXT] CANCEL_WT_BOUND=blocked; reason=target_unconfirmed; value=$target" >&2
+    exit 1
     ;;
   *)
     if [ "$(basename "$target")" != "issue-{issue_number}" ]; then
-      echo "WARNING: 発見した path の末尾セグメントが対象 Issue ではありません: $target。この path は削除しません" >&2
-      echo "[CONTEXT] CANCEL_WT_BOUND=none; reason=basename_mismatch; path=$target" >&2
+      echo "ERROR: 発見した path の末尾セグメントが対象 Issue ではありません: $target。Issue をクローズせず停止します" >&2
+      echo "[CONTEXT] CANCEL_WT_BOUND=blocked; reason=basename_mismatch; path=$target" >&2
+      exit 1
     else
       cur_top=$(git rev-parse --show-toplevel) || cur_top=""
       if [ -z "$cur_top" ]; then

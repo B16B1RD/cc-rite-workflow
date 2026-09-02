@@ -129,6 +129,23 @@ assert_grep_in_section "T-02 (d) a foreign session worktree is never the remove 
 assert_grep_in_section "T-02 (d) a basename mismatch is not adopted as the target" "$SKILL" \
   '^#### 4\\.2\\.0 Issue 束縛ガード' '^#### 4\\.2\\.1' \
   'basename "\$target"\)" != "issue-\{issue_number\}"'
+# 確認済み不在はリテラル none だけ。空文字 / undetermined / basename 不一致は blocked で
+# Phase 5/6 の前に止める（空を none に畳むと F-01 と同型の復旧不能になる）。
+assert_grep_in_section "T-02 (d) the none arm is the literal none token only" "$SKILL" \
+  '^#### 4\\.2\\.0 Issue 束縛ガード' '^#### 4\\.2\\.1' \
+  '^  none)$'
+_empty_fail_block=$(awk '/CANCEL_WT_BOUND=blocked; reason=target_unconfirmed/{f=1} f{print} f&&/^    exit 1$/{exit}' "$SKILL")
+if printf '%s\n' "$_empty_fail_block" | grep -qE '^    exit 1$'; then
+  pass "T-02 (d) an empty or undetermined target exits non-zero"
+else
+  fail "T-02 (d) empty/undetermined target must exit non-zero before Status / Issue close"
+fi
+_mismatch_fail_block=$(awk '/CANCEL_WT_BOUND=blocked; reason=basename_mismatch/{f=1} f{print} f&&/^      exit 1$/{exit}' "$SKILL")
+if printf '%s\n' "$_mismatch_fail_block" | grep -qE '^      exit 1$'; then
+  pass "T-02 (d) a basename mismatch exits non-zero"
+else
+  fail "T-02 (d) basename mismatch must exit non-zero before Status / Issue close"
+fi
 # cwd が対象の中で ExitWorktree 不能なら Phase 5/6 の前に止める。閉じてから再実行する行は
 # AC-6 で Phase 4 がスキップされるため復旧にならない。
 assert_grep_in_section "T-02 (d) sitting in the target without ExitWorktree emits blocked" "$SKILL" \
