@@ -15,6 +15,8 @@ assert_grep "SoT permits reversible in-scope action without confirmation" "$PREA
   '依頼範囲内で可逆な行動は確認なしで進め'
 assert_grep "SoT limits end-turn to completion or user-only input" "$PREAMBLE" \
   'タスク完了またはユーザーにしか出せない入力でブロックされたときだけ turn を終える'
+assert_grep "SoT pins reviewer effort high in frontmatter" "$PREAMBLE" \
+  'reviewer agent は frontmatter の `effort: high` で固定する'
 assert_grep "SoT gives host-independent routine effort guidance" "$PREAMBLE" \
   'ルーチン作業を effort 調整可能なモデルで実行する場合は、過剰な熟考・検証を避けるため低めの effort を選ぶ（ホスト固有設定として強制しない）'
 assert_grep "SoT forbids self-stop for context-budget concern" "$PREAMBLE" \

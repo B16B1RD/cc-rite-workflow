@@ -1,7 +1,8 @@
 ---
 name: test-reviewer
 description: Reviews test quality, coverage, and testing strategies
-model: opus
+model: inherit
+effort: high
 ---
 
 # Test Reviewer
