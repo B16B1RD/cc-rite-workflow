@@ -1123,8 +1123,8 @@ rationale: references/rationale.md#hook-path-absolute
 | Hook Event | Script | Matcher | Purpose |
 |------------|--------|---------|---------|
 | PreCompact | `pre-compact.sh` | `""` | Save state before compaction |
-| PostCompact | `post-compact.sh` | `""` | Auto-recover workflow after compaction |
-| SessionStart | `session-start.sh` | `""` | Re-inject state on startup/resume |
+| PostCompact | `post-compact.sh` | `""` | Normalize compact-state and reconcile PR/Projects Status after compaction |
+| SessionStart | `session-start.sh` | `""` | Re-inject state on startup/resume; on compact, emit recovery text |
 | SessionEnd | `session-end.sh` | `""` | Reset flow state on session end |
 | Stop | `stop-loop-continuation.sh` | `""` | Consume one-shot handoff and re-inject the next review↔fix loop / cleanup chain command |
 | PreToolUse | `pre-tool-bash-guard.sh` | `"Bash"` | Block known-bad Bash command patterns |
@@ -1162,8 +1162,8 @@ Add the following hooks to `.claude/settings.local.json`:
 | Hook Event | Script | Purpose |
 |------------|--------|---------|
 | PreCompact | `bash {hooks_dir}/pre-compact.sh` | Save state before compaction |
-| PostCompact | `bash {hooks_dir}/post-compact.sh` | Auto-recover workflow after compaction |
-| SessionStart | `bash {hooks_dir}/session-start.sh` | Re-inject state on startup/resume |
+| PostCompact | `bash {hooks_dir}/post-compact.sh` | Normalize compact-state and reconcile PR/Projects Status after compaction |
+| SessionStart | `bash {hooks_dir}/session-start.sh` | Re-inject state on startup/resume; on compact, emit recovery text |
 | PreToolUse (Bash) | `bash {hooks_dir}/pre-tool-bash-guard.sh` | Block known-bad Bash command patterns |
 | PreToolUse (Edit\|Write\|MultiEdit\|NotebookEdit) | `bash {hooks_dir}/pre-tool-edit-guard.sh` | Deny reviewer-subagent writes into a parent working tree |
 | SessionEnd | `bash {hooks_dir}/session-end.sh` | Reset flow state on session end |
