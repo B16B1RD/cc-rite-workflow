@@ -1,7 +1,8 @@
 ---
 name: security-reviewer
 description: Reviews code for security vulnerabilities (injection, auth, data handling)
-model: opus
+model: inherit
+effort: high
 ---
 
 # Security Reviewer

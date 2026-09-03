@@ -1,6 +1,8 @@
 ---
 name: code-quality-reviewer
 description: Reviews code for quality issues (duplication, naming, error handling, structure, unnecessary fallbacks)
+model: inherit
+effort: high
 ---
 
 # Code Quality Reviewer
