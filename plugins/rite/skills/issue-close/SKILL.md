@@ -94,27 +94,88 @@ rationale: references/rationale.md#auto-add-false-closed
 
 ## Phase 2: Search for Linked PRs
 
-### 2.1 Search for Related PRs
+### 2.1 作業ブランチの解決（PR 検索より先）
+
+**ブランチの解決を PR 検索より先に行う**。`gh pr list` の `--search` / `--head` はどちらも Issue 番号でスコープできないため、実ブランチ名を確定させてから exact `--head` で引くのが唯一の確実な経路になる。
+rationale: references/rationale.md#branch-first-pr-lookup
+
+flow-state の記録は**現在のセッション**のものであり `--issue` を取らない。対象 Issue と一致するときだけ採用する:
 
 ```bash
-gh pr list -R {owner_repo} --state all --search "linked:issue:{issue_number}" --json number,title,state,mergedAt,url
+state_issue=$(bash {plugin_root}/hooks/flow-state.sh get --field issue_number --default "")
+state_branch=$(bash {plugin_root}/hooks/flow-state.sh get --field branch --default "")
+echo "[CONTEXT] CLOSE_STATE_ISSUE=$state_issue; CLOSE_STATE_BRANCH=$state_branch"
 ```
 
-見つからなければ PR body の close キーワードを検索する:
+`state_issue` が `{issue_number}` と**一致しない、または空**なら flow-state 由来の値は捨て、Issue 番号でスコープされたローカルブランチ検索だけを使う:
 
 ```bash
-gh pr list -R {owner_repo} --state all --json number,title,state,body,mergedAt,url
+git branch --list "*issue-{issue_number}-*" --format '%(refname:short)'
 ```
 
-body が `Closes/Fixes/Resolves #{issue_number}`（大文字小文字とも）を含むか確認する。
+| 観測 | `{branch_name}` |
+|---|---|
+| `state_issue == {issue_number}` かつ `state_branch` が非空 | `state_branch`（対象 Issue の作業ブランチとして flow-state が記録済み）。**代入の直前に下記 charset 述語を適用する** |
+| 上記に該当せず、ローカル候補が **ちょうど 1 件** | その値。**代入の直前に下記 charset 述語を適用する** |
+| 上記に該当せず、候補が 0 件 | 未確定。2.2 は timeline へ倒す |
+| 上記に該当せず、候補が 2 件以上 | 未確定。候補を表示し、2.2 は timeline へ倒す |
 
-### 2.2 Search PRs by Branch Name
+**charset 述語（値を `{branch_name}` に代入する時点で適用する）**: 上表の採用行で、採用しようとする値が `^[A-Za-z0-9._/-]+$` に全体一致しないときは採用せず、WARNING を出して `{branch_name}` を未確定に倒す（2.2 は `--head` を使わず timeline へ倒す）。二重引用符と `--` は argv 分割にしか効かず `$(...)` は引用符の内側でも展開されるため、束縛は consumer より前になければならない。**consumer は 2.2 の `--head "{branch_name}"` のみ**。
+rationale: references/rationale.md#headref-charset-binding
+
+### 2.2 関連 PR の検索
+
+`{branch_name}` が確定しているときは実ブランチ名で **exact match** の `--head` を使う。`--head` はワイルドカードを解釈しないため glob を渡してはならない:
 
 ```bash
-gh pr list -R {owner_repo} --state all --head "*issue-{issue_number}*" --json number,title,state,mergedAt,url
+gh pr list -R {owner_repo} --head "{branch_name}" --state all --json number,title,state,headRefName,mergedAt,url,body
 ```
+
+ブランチが未確定、または上記が 0 件のときは **Issue の timeline から候補 PR を引く**。`gh pr list` には Issue でスコープする手段が無い — `--search "linked:issue:{issue_number}"` は GitHub が `linked:issue` を boolean qualifier として解釈して `:{N}` を無視するため任意の Issue で同じ集合を返し、`--state all --limit N` は最新 N 件の取得**窓**でしかない。
+rationale: references/rationale.md#issue-scoped-pr-lookup
+
+`gh api` は**単体コマンドとして rc を確定させてから**整形へ渡す。パイプの末尾に置くと `$?` は最終段のものになり、取得失敗の rc が消えて直下の fail-loud ガードが到達不能になる。`select` は truthiness で書く — `!= null` は `hooks/pre-tool-bash-guard.sh` が実行前に deny するため、記述どおりに走らない。
+rationale: references/rationale.md#timeline-rc-capture-first
+
+```bash
+_tl_rc=0
+_tl_err=$(mktemp "${TMPDIR:-/tmp}/rite-close-timeline-err-XXXXXX") || {
+  echo "ERROR: timeline 取得用の stderr 退避ファイルを作成できません。関連 PR の有無を確認できないため停止します" >&2
+  exit 1
+}
+_tl_raw=$(gh api "repos/{owner}/{repo}/issues/{issue_number}/timeline" --paginate \
+  --jq '.[] | select(.event=="cross-referenced" or .event=="connected") | .source.issue | select(.pull_request) | .number' \
+  2>"$_tl_err") || _tl_rc=$?
+if [ "$_tl_rc" -ne 0 ]; then
+  echo "ERROR: Issue timeline を取得できません (rc=${_tl_rc})。関連 PR の有無を確認できないため停止します" >&2
+  head -5 "$_tl_err" | sed 's/^/  /' >&2
+  rm -f "$_tl_err"
+  exit 1
+fi
+rm -f "$_tl_err"
+pr_candidates=$(printf '%s\n' "$_tl_raw" | sort -un)
+echo "[CONTEXT] CLOSE_PR_CANDIDATES=$(printf '%s' "$pr_candidates" | tr '\n' ',')"
+```
+
+timeline は Issue にスコープされ取得窓を持たないため、**絞り込み結果 0 件は「関連 PR が無い」と読んでよい**。停止するのは取得自体が失敗したときだけで、0 件と取得失敗を同じ値へ畳まない。取得失敗を Phase 3 の Pattern D に倒さない。
+
+候補ごとに詳細を引く（候補は通常 0〜3 件）:
+
+```bash
+gh pr view {candidate_pr_number} -R {owner_repo} --json number,title,state,headRefName,mergedAt,url,body
+```
+
+timeline は closing keyword を伴わない単なる言及（cross-reference）も返すため、`body` が `Closes/Fixes/Resolves #{issue_number}`（大文字小文字を問わない、`#{issue_number}` の直後が数字でない）にマッチする PR、または `headRefName` が `issue-{issue_number}-` を含む PR **だけ**を残す。exact `--head` で得た集合にも同じ絞り込みを適用する。**絞り込み前の集合を 2.3 の集約表に載せてはならない** — 無関係な MERGED PR が Phase 3 Pattern A を誤誘導する。絞り込み後集合だけを 2.3 と Phase 3 の Pattern A/B/C/D に渡す。
+
+| 観測 | アクション |
+|---|---|
+| timeline 取得失敗（上の ERROR） | **fail-loud で停止する**。Phase 3 の Pattern D に倒さない |
+| 絞り込み後 0 件 | 2.3 は空表。Phase 3 Pattern D（AskUserQuestion） |
+| 絞り込み後 1 件以上 | 2.3 に載せて Phase 3 へ（Pattern A / B / C） |
 
 ### 2.3 Aggregate Search Results
+
+絞り込み後の集合だけを載せる。
 
 | # | タイトル | 状態 | マージ日時 |
 |---|---------|------|----------|
