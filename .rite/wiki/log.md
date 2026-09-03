@@ -1,4 +1,5 @@
 ## 2026-09-03
+* **Skip**: [20260903T081916Z-pr-2537.md](raw/reviews/20260903T081916Z-pr-2537.md) — 既存ページ prose-pin-requires-positive-control が同一欠陥クラスをカバー済み。SoT 追記時の pin 未延長は同ページの vacuous pin 項の再演
 * **Skip**: [20260903T074100Z-pr-2536.md](raw/reviews/20260903T074100Z-pr-2536.md) — transient review metrics only; no extractable experiential rule (0 findings, principle already in plugin coding-principles.md)
 * **lint:clean** — contradictions=0, stale=50, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
 * **Update**: [PIPESTATUS はコマンド置換 `$(...)` のサブシェル境界を越えない](pages/heuristics/pipestatus-subshell-scoping-command-substitution.md) — raw/reviews/20260903T063546Z-pr-2535.md を統合
