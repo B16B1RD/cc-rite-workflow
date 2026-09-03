@@ -7,6 +7,9 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 PREAMBLE="$SCRIPT_DIR/../../skills/rite-workflow/references/autonomous-execution.md"
 BATCH="$SCRIPT_DIR/../../skills/batch-run/SKILL.md"
 ITERATE="$SCRIPT_DIR/../../skills/iterate/SKILL.md"
+OPEN="$SCRIPT_DIR/../../skills/open/SKILL.md"
+PR_CREATE="$SCRIPT_DIR/../../skills/pr-create/SKILL.md"
+PRINCIPLES="$SCRIPT_DIR/../../skills/rite-workflow/references/coding-principles.md"
 
 assert_file_exists_or_fail "autonomous execution SoT exists" "$PREAMBLE"
 assert_grep "SoT requires execution instead of ending with a plan" "$PREAMBLE" \
@@ -69,6 +72,57 @@ for r in "${reviewers[@]}"; do
 done
 effort_uniq=$(printf '%s' "$effort_lines" | sed -n 's/^effort:[[:space:]]*//p' | sort -u | wc -l | tr -d '[:space:]')
 assert "all reviewer agents share a single effort value" "1" "$effort_uniq"
+
+# T-01 / T-04: 正規確認ゲート表（5 種 + standalone/batch + 破壊的操作）
+assert_grep "T-01 gate table names 計画承認" "$PREAMBLE" '計画承認'
+assert_grep "T-01 gate table names Issue 状態確認" "$PREAMBLE" 'Issue 状態確認'
+assert_grep "T-01 gate table names dirty 衝突" "$PREAMBLE" 'dirty 衝突'
+assert_grep "T-01 gate table names 強制取得" "$PREAMBLE" '強制取得'
+assert_grep "T-01 gate table names 破壊的操作" "$PREAMBLE" '破壊的操作'
+assert_grep "T-01 gate table has standalone column" "$PREAMBLE" '\| standalone \|'
+assert_grep "T-01 plan approval is batch auto-approved" "$PREAMBLE" 'batch では自動承認'
+assert_grep "T-01 out-of-table is one auto-retry then recover" "$PREAMBLE" \
+  '1 回自動再試行し、再失敗で停止して `/rite:recover` を案内する'
+assert_grep "T-04 destructive rm -rf remains in table" "$PREAMBLE" '`rm -rf`'
+assert_grep "T-04 force-claim remains in table" "$PREAMBLE" '他セッションからの強制取得'
+
+# T-02: coding-principles 前提文
+assert_grep "T-02 preamble uses assume-and-proceed wording" "$PRINCIPLES" \
+  '仮定を述べて進め、答えに依存しない部分を先に終える'
+assert_not_grep "T-02 preamble no longer says stop-on-contradiction" "$PRINCIPLES" \
+  '矛盾検出時の停止'
+
+# T-03: open / pr-create 再試行型は 1 回自動再試行。品質ゲートの AskUserQuestion は残す
+assert_grep "T-03 open pr-create-failed auto-retries once" "$OPEN" \
+  '`rite:pr-create` を \*\*1 回だけ\*\* 再 invoke'
+assert_grep "T-03 open pr-create-failed does not AskUserQuestion" "$OPEN" \
+  '再失敗なら停止し、失敗理由と `/rite:recover` を案内する。AskUserQuestion は出さない'
+assert_grep "T-03 open lint-error auto-retries once" "$OPEN" \
+  '`rite:lint` を \*\*1 回だけ\*\* 再 invoke'
+assert_grep "T-03 open lint-error forbids 強制続行" "$OPEN" \
+  'AskUserQuestion は出さない（強制続行はしない）'
+assert_grep "T-03 open missing sentinel auto-retries lint once" "$OPEN" \
+  '`rite:lint` を \*\*1 回だけ\*\* invoke'
+assert_grep "T-03 open error-policy auto-retries then recover" "$OPEN" \
+  '不在なら当該 sub-skill を 1 回だけ再 invoke。再失敗なら停止し `/rite:recover` を案内する'
+assert_grep "T-03 pr-create bang-backtick retries once" "$PR_CREATE" \
+  'default は stderr `WARNING` \+ \*\*1 回だけ再実行\*\*'
+assert_grep "T-03 pr-create PR creation failure retries once" "$PR_CREATE" \
+  'retry once; on second failure stop and `/rite:recover`'
+assert_grep "T-03 open keeps closed-issue AskUserQuestion" "$OPEN" \
+  '再オープンして作業 / 中止'
+assert_grep "T-03 open keeps parent-issue AskUserQuestion" "$OPEN" \
+  '子 Issue を選んで作業'
+assert_grep "T-03 open keeps quality C/D AskUserQuestion" "$OPEN" \
+  '既存情報で開始'
+assert_grep "T-03 open keeps force-claim AskUserQuestion" "$OPEN" \
+  '強制取得して続行'
+assert_grep "T-03 open keeps stale_residue AskUserQuestion" "$OPEN" \
+  '削除して再作成'
+assert_grep "T-03 open keeps dirty-overlap AskUserQuestion" "$OPEN" \
+  '搬送して続行'
+assert_grep "T-03 open keeps plan-approval AskUserQuestion" "$OPEN" \
+  'この計画で実装開始'
 
 if ! print_summary "$(basename "$0")"; then
   exit 1
