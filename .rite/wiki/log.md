@@ -7,6 +7,7 @@
 * **Update**: [ゲートの判定文を新しい欠落種別へ広げたら、同じ marker を消費する option 表・テンプレート・例示 literal を同じ commit で一般化する](pages/heuristics/gate-predicate-widening-generalizes-consumer-literals.md) — raw/reviews/20260902T181813Z-pr-2529.md を統合
 * **lint:clean** — contradictions=0, stale=50, orphans=0, missing_concept=0, unregistered_raw=416, broken_refs=0
 * **Update**: [gh のフィルタオプションは絞り込めていないのに成功して見える](pages/anti-patterns/gh-filter-succeeds-without-filtering.md) — raw/reviews/20260903T003746Z-pr-2531.md を統合
+* **lint:clean** — contradictions=0, stale=50, orphans=0, missing_concept=0, unregistered_raw=416, broken_refs=0
 
 ## 2026-09-02
 * **Skip**: [20260902T123456Z-pr-2525.md](raw/reviews/20260902T123456Z-pr-2525.md) — detector-candidate: テスト自己 grep は対象関数固有断片にし、heading 抽出は NOEND と行数上限、result 抽出は skip 見出しで打ち切る
