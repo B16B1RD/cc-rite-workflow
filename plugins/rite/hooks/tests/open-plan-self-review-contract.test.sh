@@ -181,10 +181,10 @@ assert_grep_in_section "5.1 waits for all notifications then forbids guessing (a
 echo "=== T-05 / AC-5: wait-work is limited and excludes 5.x ==="
 assert_grep_in_section "wait-work allows only REVIEW_TMP_DIR emit and timings path" "$PR_REVIEW" \
   "$S431_START" "$S431_END" \
-  '5.x 以降は禁止.*REVIEW_TMP_DIR` emit と `\{spawn_timings_file\}` パス組み立て'
+  '5.x 以降は禁止）: `REVIEW_TMP_DIR` emit と `\{spawn_timings_file\}` パス組み立て'
 assert_grep_in_section "wait-work forbids 4.6 helper / 5.0.A / 5.1+" "$PR_REVIEW" \
   "$S431_START" "$S431_END" \
-  '4.6 helper.*5.0.A / 5.1 以降'
+  '\*\*待ち中に禁止\*\*: 4.6 helper（回収済み reviewer 名簿が要る）/ 5.0.A / 5.1 以降。起動確認だけでは次へ進まない'
 
 echo "=== T-06 / AC-6: parallel spawn in one message is unchanged ==="
 assert_grep_in_section "4.3.1 still issues multiple Tasks in one message" "$PR_REVIEW" \
