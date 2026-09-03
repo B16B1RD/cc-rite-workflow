@@ -670,14 +670,16 @@ find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite
 # partial write). It is not reachable by normal unit tests.
 _tsv_err=$(mktemp 2>/dev/null) || _tsv_err=""
 _tsv_rc=0
+# gsub collapses newline / CR / unit-separator so `read` cannot split the
+# recovery record. next_action is SPEC free-text and may contain a newline.
 _tsv_output=$(jq -r '[
-  (.issue_number // "" | tostring),
-  (.phase // "unknown"),
-  (.stop_reason // ""),
-  (.next_action // ""),
-  (.loop_count // 0 | tostring),
-  (.pr_number // 0 | tostring),
-  (.branch // "")
+  (.issue_number // "" | tostring | gsub("[\n\r\u001f]"; " ")),
+  (.phase // "unknown" | tostring | gsub("[\n\r\u001f]"; " ")),
+  (.stop_reason // "" | tostring | gsub("[\n\r\u001f]"; " ")),
+  (.next_action // "" | tostring | gsub("[\n\r\u001f]"; " ")),
+  (.loop_count // 0 | tostring | gsub("[\n\r\u001f]"; " ")),
+  (.pr_number // 0 | tostring | gsub("[\n\r\u001f]"; " ")),
+  (.branch // "" | tostring | gsub("[\n\r\u001f]"; " "))
 ] | join("\u001f")' "$STATE_FILE" 2>"${_tsv_err:-/dev/null}") || _tsv_rc=$?
 if [ "$_tsv_rc" -ne 0 ]; then
   echo "rite: Warning - state file contains invalid JSON. Use /rite:recover to recover." >&2
@@ -686,6 +688,12 @@ if [ "$_tsv_rc" -ne 0 ]; then
   exit 0
 fi
 [ -n "$_tsv_err" ] && rm -f "$_tsv_err"
+_na_check=$(jq -r '.next_action // empty' "$STATE_FILE" 2>/dev/null) || _na_check=""
+case "$_na_check" in
+  *$'\n'*|*$'\r'*)
+    echo "[rite] WARNING: session-start: next_action contained a newline; collapsed to a single recovery line" >&2
+    ;;
+esac
 IFS=$'\x1f' read -r ISSUE PHASE STOP_REASON NEXT_ACTION LOOP PR BRANCH <<< "$_tsv_output"
 
 # Validate that critical fields are not null/empty
@@ -725,7 +733,20 @@ if [ "$SOURCE" = "compact" ]; then
   _ss_cs="${STATE_FILE%.flow-state}.compact-state"
   _ss_trigger="auto"
   if [ -f "$_ss_cs" ]; then
-    _ss_trigger=$(jq -r '.trigger // "auto"' "$_ss_cs" 2>/dev/null) || _ss_trigger="auto"
+    # Missing .trigger is expected absence → auto (`// "auto"`). jq failure
+    # (corrupt file) is not absence: warn like post-compact.sh .compact_state
+    # parse, then keep auto so SessionStart still injects recovery.
+    _ss_trig_err=$(mktemp 2>/dev/null) || _ss_trig_err=""
+    _ss_trig_rc=0
+    _ss_trigger=$(jq -r '.trigger // "auto"' "$_ss_cs" 2>"${_ss_trig_err:-/dev/null}") || _ss_trig_rc=$?
+    if [ "$_ss_trig_rc" -ne 0 ]; then
+      _ss_trig_tag=""
+      [ -z "$_ss_trig_err" ] && _ss_trig_tag=" stderr_capture=disabled"
+      echo "[rite] WARNING: session-start: jq parse of compact-state.trigger failed (rc=$_ss_trig_rc${_ss_trig_tag})" >&2
+      [ -n "$_ss_trig_err" ] && [ -s "$_ss_trig_err" ] && head -3 "$_ss_trig_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+      _ss_trigger="auto"
+    fi
+    [ -n "$_ss_trig_err" ] && rm -f "$_ss_trig_err"
   fi
   case "$_ss_trigger" in
     manual) ;;

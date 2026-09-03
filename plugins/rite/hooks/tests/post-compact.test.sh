@@ -142,6 +142,46 @@ else
   fail "trigger is '$TRIGGER_VAL', expected 'manual'"
 fi
 
+# --- TC-002b: seeded trigger=manual survives PostCompact source=auto ---
+echo "TC-002b: seeded trigger=manual preserved when PostCompact source=auto"
+TC_DIR=$(setup_test "tc002b")
+write_per_session_state "$TC_DIR" \
+  '{"active": true, "issue_number": 42, "phase": "review", "next_action": "Review PR", "loop_count": 0, "pr_number": 5, "branch": "feat/issue-42-test"}'
+jq -n '{compact_state: "recovering", compact_state_set_at: "2026-03-14T12:00:00Z", active_issue: 42, trigger: "manual"}' \
+  > "$(compact_state_path "$TC_DIR")"
+OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
+if [ -z "$OUTPUT" ]; then
+  pass "TC-002b stdout empty"
+else
+  fail "TC-002b stdout should be empty, got: $OUTPUT"
+fi
+TRIGGER_VAL=$(jq -r '.trigger' "$(compact_state_path "$TC_DIR")" 2>/dev/null) || TRIGGER_VAL=""
+if [ "$TRIGGER_VAL" = "manual" ]; then
+  pass "TC-002b: source=auto did not overwrite seeded trigger=manual"
+else
+  fail "TC-002b: trigger is '$TRIGGER_VAL', expected 'manual'"
+fi
+
+# --- TC-002c: seeded trigger=manual survives stdin trigger=manual without source ---
+echo "TC-002c: seeded trigger=manual preserved when stdin has trigger=manual and no source"
+TC_DIR=$(setup_test "tc002c")
+write_per_session_state "$TC_DIR" \
+  '{"active": true, "issue_number": 42, "phase": "review", "next_action": "Review PR", "loop_count": 0, "pr_number": 5, "branch": "feat/issue-42-test"}'
+jq -n '{compact_state: "recovering", compact_state_set_at: "2026-03-14T12:00:00Z", active_issue: 42, trigger: "manual"}' \
+  > "$(compact_state_path "$TC_DIR")"
+OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "trigger": "manual"}' | bash "$HOOK" 2>/dev/null) || true
+if [ -z "$OUTPUT" ]; then
+  pass "TC-002c stdout empty"
+else
+  fail "TC-002c stdout should be empty, got: $OUTPUT"
+fi
+TRIGGER_VAL=$(jq -r '.trigger' "$(compact_state_path "$TC_DIR")" 2>/dev/null) || TRIGGER_VAL=""
+if [ "$TRIGGER_VAL" = "manual" ]; then
+  pass "TC-002c: production-shaped stdin without source kept trigger=manual"
+else
+  fail "TC-002c: trigger is '$TRIGGER_VAL', expected 'manual'"
+fi
+
 # --- TC-003: no flow state → cleanup + no stdout ---
 echo "TC-003: No flow state → cleanup, no output"
 TC_DIR=$(setup_test "tc003")

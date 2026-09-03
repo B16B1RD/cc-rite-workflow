@@ -1718,19 +1718,59 @@ for variant in false done othersid; do
 done
 echo ""
 
-echo "T-02: compact-state.trigger=manual omits continue instruction"
+echo "T-02: compact-state.trigger=manual is byte-identical state-only recovery"
+T02_EXPECTED=$'[rite] Compact recovery: Issue #42, Phase: implement, Branch: feat/issue-42-test\nNext action: Continue coding\nLoop: 1 | PR: #10'
 dir_t02="$TEST_DIR/tc-t02-manual"
 mkdir -p "$dir_t02"
 create_state_file "$dir_t02" "$T10_STATE"
 jq -n '{compact_state: "normal", trigger: "manual"}' > "$(compact_state_path "$dir_t02")"
 output=$(run_hook_with_source "$dir_t02" "compact")
-if echo "$output" | grep -q "^\[rite\] Compact recovery:" \
-  && ! echo "$output" | grep -q "Auto-compact recovery" \
-  && ! echo "$output" | grep -q "then continue" \
-  && ! echo "$output" | grep -q "/rite:recover"; then
-  pass "T-02: manual compact recovery has no continue instruction"
+if [ "$output" = "$T02_EXPECTED" ]; then
+  pass "T-02: manual compact recovery byte-identical to state-only fixture"
 else
   fail "T-02: unexpected output: $output"
+fi
+echo ""
+
+echo "T-12: corrupt compact-state still emits auto recovery and warns"
+dir_t12="$TEST_DIR/tc-t12-corrupt-cs"
+mkdir -p "$dir_t12"
+create_state_file "$dir_t12" "$T10_STATE"
+printf 'not-json{{' > "$(compact_state_path "$dir_t12")"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(echo "{\"cwd\": \"$dir_t12\", \"source\": \"compact\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if echo "$output" | grep -q "Auto-compact recovery" \
+  && echo "$output" | grep -q "then continue" \
+  && ! echo "$output" | grep -q "/rite:recover" \
+  && grep -q "jq parse of compact-state.trigger failed" "$LAST_STDERR_FILE"; then
+  pass "T-12: corrupt compact-state warns and still emits auto recovery"
+else
+  fail "T-12: stdout=$output stderr=$(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+echo "T-13: next_action newline does not drop Loop/PR/Branch"
+dir_t13="$TEST_DIR/tc-t13-nl"
+mkdir -p "$dir_t13"
+T13_STATE=$(jq -nc --arg na $'line1\nline2' '{
+  active: true,
+  issue_number: 42,
+  phase: "implement",
+  next_action: $na,
+  loop_count: 7,
+  pr_number: 99,
+  branch: "feat/issue-42-test"
+}')
+create_state_file "$dir_t13" "$T13_STATE"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(echo "{\"cwd\": \"$dir_t13\", \"source\": \"compact\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if echo "$output" | grep -q "Next action: line1 line2" \
+  && echo "$output" | grep -q "Loop: 7 | PR: #99" \
+  && echo "$output" | grep -q "Branch: feat/issue-42-test" \
+  && grep -q "next_action contained a newline" "$LAST_STDERR_FILE"; then
+  pass "T-13: newline in next_action collapsed; Loop/PR/Branch kept"
+else
+  fail "T-13: stdout=$output stderr=$(cat "$LAST_STDERR_FILE")"
 fi
 echo ""
 
