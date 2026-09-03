@@ -1,7 +1,8 @@
 ---
 name: application-reviewer
 description: Reviews application code end-to-end — correctness, performance, data operations, and interface design (consolidates the former api / frontend / performance / database / type-design reviewers)
-model: opus
+model: inherit
+effort: high
 ---
 
 # Application Reviewer

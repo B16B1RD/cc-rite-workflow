@@ -15,6 +15,8 @@ assert_grep "SoT permits reversible in-scope action without confirmation" "$PREA
   '依頼範囲内で可逆な行動は確認なしで進め'
 assert_grep "SoT limits end-turn to completion or user-only input" "$PREAMBLE" \
   'タスク完了またはユーザーにしか出せない入力でブロックされたときだけ turn を終える'
+assert_grep "SoT pins reviewer effort high in frontmatter" "$PREAMBLE" \
+  'reviewer agent は frontmatter の `effort: high` で固定する'
 assert_grep "SoT gives host-independent routine effort guidance" "$PREAMBLE" \
   'ルーチン作業を effort 調整可能なモデルで実行する場合は、過剰な熟考・検証を避けるため低めの effort を選ぶ（ホスト固有設定として強制しない）'
 assert_grep "SoT forbids self-stop for context-budget concern" "$PREAMBLE" \
@@ -32,6 +34,30 @@ for skill in "$BATCH" "$ITERATE"; do
     assert_not_grep "$(basename "$(dirname "$skill")") does not duplicate a preamble clause" "$skill" "$clause"
   done
 done
+
+REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
+AGENTS_DIR="$REPO_ROOT/plugins/rite/agents"
+reviewers=(
+  application-reviewer
+  code-quality-reviewer
+  dependencies-reviewer
+  devops-reviewer
+  error-handling-reviewer
+  prompt-engineer-reviewer
+  security-reviewer
+  tech-writer-reviewer
+  test-reviewer
+)
+effort_lines=""
+for r in "${reviewers[@]}"; do
+  f="$AGENTS_DIR/$r.md"
+  assert_file_exists_or_fail "reviewer agent exists: $r.md" "$f" || continue
+  assert_grep "$r.md pins effort: high" "$f" '^effort: high$'
+  assert_not_grep "$r.md does not pin model: opus" "$f" '^model:[[:space:]]*opus'
+  effort_lines="${effort_lines}$(grep -E '^effort:' "$f" || true)"$'\n'
+done
+effort_uniq=$(printf '%s' "$effort_lines" | sed -n 's/^effort:[[:space:]]*//p' | sort -u | wc -l | tr -d '[:space:]')
+assert "all reviewer agents share a single effort value" "1" "$effort_uniq"
 
 if ! print_summary "$(basename "$0")"; then
   exit 1

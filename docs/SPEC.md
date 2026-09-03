@@ -391,7 +391,8 @@ Agent files (`agents/*.md`) define subagents for specialized tasks:
 ---
 name: agent-name
 description: Short purpose description
-model: opus # opus | sonnet | haiku (optional; omit to inherit from parent session)
+model: inherit # inherit | opus | sonnet | haiku (optional; omit to inherit from parent session)
+effort: high # optional; reviewer agents pin high so session effort does not thin the merge gate
 ---
 
 # Agent Name
@@ -404,23 +405,24 @@ Agent documentation...
 | `name` | Yes | Unique agent identifier |
 | `description` | Yes | Short description for Task tool |
 | `model` | No | Model selection (default: inherit from parent session) |
+| `effort` | No | Effort override for the agent turn. All 9 reviewers pin `high` |
 | `tools` | No | List of available tools (default: inherit all tools from parent; omit to enable all tools) |
 
-**Note on `tools`**: Reviewer agents are invoked via named subagents (`rite:{reviewer_type}-reviewer`, e.g. `rite:security-reviewer`), introduced in v0.3. The previous `subagent_type: general-purpose` invocation is no longer used. Under named subagent invocation, both `model` and `tools` frontmatter are honored by the runtime. The `tools` field is optional — reviewer agents omit it to inherit all parent-session tools by default. 7 of the 9 reviewers are pinned to `model: opus`; users can override per-agent frontmatter to opt out.
+**Note on `tools`**: Reviewer agents are invoked via named subagents (`rite:{reviewer_type}-reviewer`, e.g. `rite:security-reviewer`), introduced in v0.3. The previous `subagent_type: general-purpose` invocation is no longer used. Under named subagent invocation, `model`, `effort`, and `tools` frontmatter are honored by the runtime. The `tools` field is optional — reviewer agents omit it to inherit all parent-session tools by default. All 9 reviewers use `model: inherit` and `effort: high`. Task calls in `/rite:pr-review` 4.3.1 must not set `model`; frontmatter is the SoT. Users can override per-agent frontmatter to opt out.
 
 **Current Agents:**
 
-| Agent | Model | Purpose |
-|-------|-------|---------|
-| `security-reviewer` | opus | Security vulnerabilities, authentication, data handling |
-| `application-reviewer` | opus | Application code end-to-end: API/type contracts, performance (N+1, indexes), data operations/migrations, UI safety (XSS, accessibility) |
-| `code-quality-reviewer` | inherit | Duplication, naming, error handling, structure |
-| `devops-reviewer` | opus | Infrastructure, CI/CD pipelines, deployment configurations |
-| `test-reviewer` | opus | Test quality, coverage, testing strategies |
-| `dependencies-reviewer` | opus | Package dependencies, versions, supply chain security |
-| `prompt-engineer-reviewer` | opus | Claude Code skill, command, and agent definitions |
-| `tech-writer-reviewer` | opus | Documentation clarity, accuracy, completeness |
-| `error-handling-reviewer` | inherit | Error handling patterns, silent failures, recovery logic |
+| Agent | Model | Effort | Purpose |
+|-------|-------|--------|---------|
+| `security-reviewer` | inherit | high | Security vulnerabilities, authentication, data handling |
+| `application-reviewer` | inherit | high | Application code end-to-end: API/type contracts, performance (N+1, indexes), data operations/migrations, UI safety (XSS, accessibility) |
+| `code-quality-reviewer` | inherit | high | Duplication, naming, error handling, structure |
+| `devops-reviewer` | inherit | high | Infrastructure, CI/CD pipelines, deployment configurations |
+| `test-reviewer` | inherit | high | Test quality, coverage, testing strategies |
+| `dependencies-reviewer` | inherit | high | Package dependencies, versions, supply chain security |
+| `prompt-engineer-reviewer` | inherit | high | Claude Code skill, command, and agent definitions |
+| `tech-writer-reviewer` | inherit | high | Documentation clarity, accuracy, completeness |
+| `error-handling-reviewer` | inherit | high | Error handling patterns, silent failures, recovery logic |
 
 ---
 

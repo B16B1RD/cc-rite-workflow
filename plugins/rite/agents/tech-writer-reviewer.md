@@ -1,7 +1,8 @@
 ---
 name: tech-writer-reviewer
 description: Reviews documentation for clarity, accuracy, and completeness
-model: opus
+model: inherit
+effort: high
 ---
 
 # Tech Writer Reviewer
