@@ -456,7 +456,7 @@ rationale: references/rationale.md#defense-in-depth-state
 | Result | Phase | Phase Detail | Next Action |
 |--------|-------|-------------|-------------|
 | `[lint:success]` / `[lint:skipped]` | `lint` | `品質チェック完了` | `rite:lint completed successfully. Proceed to /rite:open ステップ 6 (PR 作成). Do NOT stop.` |
-| `[lint:error]` | `lint` | `lint エラー検出` | `rite:lint found errors. Fix the errors and re-invoke rite:lint, or AskUserQuestion で 修正再実行 / 強制続行 / 中止 を選択. Do NOT stop.` |
+| `[lint:error]` | `lint` | `lint エラー検出` | `rite:lint found errors. Caller retries rite:lint once; on second failure stop and /rite:recover. Do NOT stop on first error.` |
 | `[lint:aborted]` | `lint` | `品質チェック中断` | `rite:lint was aborted by user. Proceed to caller 完了レポート (orchestrator 経由なら caller へ復帰 / standalone なら開発者復帰 — abort 時は PR 作成スキップ). Do NOT stop.` |
 
 ```bash
@@ -766,7 +766,7 @@ go vet {files}
 |-------------|---------------------------|
 | `[lint:success]` | `/rite:lint` execution completes, and the caller `/rite:open` consumes the sentinel at ステップ 5.1 then proceeds to ステップ 6 (PR creation) |
 | `[lint:skipped]` | `/rite:lint` execution completes, and the caller `/rite:open` consumes the sentinel at ステップ 5.1 then proceeds to ステップ 6 (PR creation) |
-| `[lint:error]` | After fixing errors, run lint again (return to Phase 3) |
+| `[lint:error]` | Emit sentinel and return to caller. Caller retries rite:lint once; on second failure stop and /rite:recover. Do not return to Phase 3. |
 | `[lint:aborted]` | Flow ends (execution of `/rite:open` also ends) |
 
 standalone では ステップ 5.1 の sentinel 消費も ステップ 6 の PR 作成も **実行しない**。

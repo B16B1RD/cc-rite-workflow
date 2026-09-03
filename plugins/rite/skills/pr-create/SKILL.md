@@ -148,7 +148,7 @@ case "$bang_rc" in
 esac
 ```
 
-> exit 1 のとき結果パターンは出ない。orchestrator は missing-result-pattern として扱う（**NOT** `[pr-create-failed]`）。default は stderr `WARNING` + AskUserQuestion「手動作成 / 再試行 / 中止」。`BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` は script 不在 / rc=2 のみ（rc=1 の検出はフラグなし）。
+> exit 1 のとき結果パターンは出ない。orchestrator は missing-result-pattern として扱う（**NOT** `[pr-create-failed]`）。default は stderr `WARNING` + **1 回だけ再実行**。再失敗なら停止し `/rite:recover` を案内する。AskUserQuestion は出さない。`BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` は script 不在 / rc=2 のみ（rc=1 の検出はフラグなし）。
 > rationale: references/rationale.md#bang-backtick-gate
 
 ### 1.1 Retrieve Base Branch
@@ -882,8 +882,8 @@ URL: {pr_url}
 
 | Error | Resolution |
 |--------|------|
-| Push failure | Check network -> `gh auth status` -> `git pull --rebase origin {branch_name}` -> retry |
-| PR creation failure | Check existing PRs with `gh pr list -R {owner_repo}` -> verify permissions -> retry |
+| Push failure | Check network -> `gh auth status` -> `git pull --rebase origin {branch_name}` -> retry once; on second failure stop and `/rite:recover` |
+| PR creation failure | Check existing PRs with `gh pr list -R {owner_repo}` -> verify permissions -> retry once; on second failure stop and `/rite:recover` |
 | Issue not found | Choose: create without Issue / specify different Issue / cancel |
 ## Language Support
 
