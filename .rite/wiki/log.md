@@ -1,5 +1,6 @@
 ## 2026-09-03
 * **Skip**: [20260903T091731Z-pr-2538.md](raw/reviews/20260903T091731Z-pr-2538.md) — 既存ページ prose-pin-requires-positive-control / mutation-prove-new-pin が同一欠陥クラスをカバー済み。sibling 節の共有フレーズによる pin 感度低下は vacuous pin の再演（0 findings）
+* **lint:clean** — contradictions=0, stale=50, orphans=0, missing_concept=0, unregistered_raw=425, broken_refs=0
 * **Skip**: [20260903T081916Z-pr-2537.md](raw/reviews/20260903T081916Z-pr-2537.md) — 既存ページ prose-pin-requires-positive-control が同一欠陥クラスをカバー済み。SoT 追記時の pin 未延長は同ページの vacuous pin 項の再演
 * **Skip**: [20260903T074100Z-pr-2536.md](raw/reviews/20260903T074100Z-pr-2536.md) — transient review metrics only; no extractable experiential rule (0 findings, principle already in plugin coding-principles.md)
 * **lint:clean** — contradictions=0, stale=50, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
