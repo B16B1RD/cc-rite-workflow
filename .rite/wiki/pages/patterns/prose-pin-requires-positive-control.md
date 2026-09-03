@@ -29,9 +29,13 @@ sources:
     resource: "raw/fixes/20260808T064117Z-pr-2150.md"
   - type: "reviews"
     resource: "raw/reviews/20260810T160134Z-pr-2231.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260903T031026Z-pr-2532.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-11T01:20:00+09:00" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-03T03:31:36Z" }
+verified:
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-03T03:31:36Z" }
 ---
 
 # 散文契約の静的 pin には weakened probe による positive control を課す
@@ -58,6 +62,8 @@ assert_prose_pin <text> <pattern> <weakened-probe> <label>
 3. **禁止表現の不在だけを検査する。** 「保証する」という literal の不在のみを検査していたため、「必ず残ることを保証します」への書き換えで通った。**禁止表現の不在ではなく、要求される性質（できないことの明示）を肯定形で assert する。** さらに命題 pin は **肯定の存在と否定の不在を両方** 要求する — 「既に削除済みの場合がある」の存在だけでは、同じ語彙で意味を反転した文（「設定に関わらず必ず残る」）が通る。
 
 4. **AC が「A と B を区別して記述」を要求するとき、片側だけの pin では半分が無防備。** 否定表現（できない側）だけを検査していたため、「できる側」を丸ごと削る整理で緑のまま通った。両側を独立に pin する。
+
+5. **ERE の `.*` は極性反転と中間挿入に盲目。** `assert_grep` / `assert_contains` のパターンに `.*` を置くと、挟まれた区間の意味が反転しても（`禁止` → `禁止ではない`）、間に別フレーズが入っても一致する。見出しラベルへの `prefix.*行頭.*一致` と同じ穴で、対象がテストヘルパーの正規表現になった形。**隣接固定する。** 守らせたい語の左右に、意味を担う隣接トークンを置く。`.*` で飛ばしてよいのは、意味に関与しない空白・マークアップだけ。
 
 ### scope と単位の規律
 
@@ -125,3 +131,4 @@ assert_grep "$SKILL" 'CLEANUP_DELEGATED=1` を emit している場合、本ス�
 - [PR #2022 fix results (cycle 4)](../../raw/fixes/20260726T014448Z-pr-2022.md)
 - [PR #2150 review results (cycle 1: marker 名 pin では指示反転が素通し)](../../raw/reviews/20260808T063447Z-pr-2150.md)
 - [PR #2150 fix results (cycle 1: pin を指示語まで伸ばす)](../../raw/fixes/20260808T064117Z-pr-2150.md)
+- [PR #2532 review results](../../raw/reviews/20260903T031026Z-pr-2532.md)

@@ -8,6 +8,7 @@
 * **lint:clean** — contradictions=0, stale=50, orphans=0, missing_concept=0, unregistered_raw=416, broken_refs=0
 * **Update**: [gh のフィルタオプションは絞り込めていないのに成功して見える](pages/anti-patterns/gh-filter-succeeds-without-filtering.md) — raw/reviews/20260903T003746Z-pr-2531.md を統合
 * **lint:clean** — contradictions=0, stale=50, orphans=0, missing_concept=0, unregistered_raw=416, broken_refs=0
+* **Update**: [散文契約の静的 pin には weakened probe による positive control を課す（見出しラベルで充足する pin を構造的に排除する）](pages/patterns/prose-pin-requires-positive-control.md) — raw/reviews/20260903T031026Z-pr-2532.md を統合
 
 ## 2026-09-02
 * **Skip**: [20260902T123456Z-pr-2525.md](raw/reviews/20260902T123456Z-pr-2525.md) — detector-candidate: テスト自己 grep は対象関数固有断片にし、heading 抽出は NOEND と行数上限、result 抽出は skip 見出しで打ち切る
