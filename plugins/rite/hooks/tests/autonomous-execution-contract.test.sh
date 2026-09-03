@@ -35,6 +35,30 @@ for skill in "$BATCH" "$ITERATE"; do
   done
 done
 
+REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
+AGENTS_DIR="$REPO_ROOT/plugins/rite/agents"
+reviewers=(
+  application-reviewer
+  code-quality-reviewer
+  dependencies-reviewer
+  devops-reviewer
+  error-handling-reviewer
+  prompt-engineer-reviewer
+  security-reviewer
+  tech-writer-reviewer
+  test-reviewer
+)
+effort_lines=""
+for r in "${reviewers[@]}"; do
+  f="$AGENTS_DIR/$r.md"
+  assert_file_exists_or_fail "reviewer agent exists: $r.md" "$f" || continue
+  assert_grep "$r.md pins effort: high" "$f" '^effort: high$'
+  assert_not_grep "$r.md does not pin model: opus" "$f" '^model:[[:space:]]*opus'
+  effort_lines="${effort_lines}$(grep -E '^effort:' "$f" || true)"$'\n'
+done
+effort_uniq=$(printf '%s' "$effort_lines" | sed -n 's/^effort:[[:space:]]*//p' | sort -u | wc -l | tr -d '[:space:]')
+assert "all reviewer agents share a single effort value" "1" "$effort_uniq"
+
 if ! print_summary "$(basename "$0")"; then
   exit 1
 fi
