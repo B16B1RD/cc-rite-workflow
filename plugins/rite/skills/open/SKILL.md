@@ -600,15 +600,15 @@ args: "{issue_number}"
 
 ## ステップ 5: 品質チェック (Step 4 の autonomous lint 結果検証)
 
-Step 4 の autonomous lint が emit した sentinel を会話 context から読む。**`rite:lint` を再 invoke しない**（二重実行防止）:
+Step 4 の autonomous lint が emit した sentinel を会話 context から読む。**`[lint:success]` / `[lint:skipped]` では `rite:lint` を再 invoke しない**（二重実行防止）。`[lint:error]` と sentinel 不在は下表:
 
 | Sentinel | 次のアクション |
 |---------|--------------|
 | `[lint:success]` | ステップ 6 へ進む |
 | `[lint:skipped]` | ステップ 6 へ進む (lint 未設定) |
-| `[lint:error]` | AskUserQuestion で「修正再実行 / 強制続行 / 中止」を提示 |
+| `[lint:error]` | `rite:lint` を **1 回だけ** 再 invoke。成功 / skipped ならステップ 6 へ。再失敗なら停止し、失敗理由と `/rite:recover` を案内する。AskUserQuestion は出さない（強制続行はしない） |
 | `[lint:aborted]` | エラー終了。ユーザーに復旧手順を案内 |
-| sentinel 不在 | Step 4 で `/rite:issue-implement` が autonomous lint まで到達できなかった可能性。AskUserQuestion で「手動で `/rite:lint` 実行 / 中止」を提示 |
+| sentinel 不在 | `rite:lint` を **1 回だけ** invoke。sentinel が得られたら上表で分岐。再失敗（sentinel 不在）なら停止し `/rite:recover` を案内する。AskUserQuestion は出さない |
 
 `phase=lint` は Step 4 が既に書いているため上書きしない（二重 write を避ける契約）。
 
@@ -635,13 +635,13 @@ skill: rite:pr-create
 | Sentinel | 次のアクション |
 |---------|--------------|
 | `[pr:created:N]` | PR 番号 `N` を `{pr_number}` として retain → ステップ 6.3 へ |
-| `[pr-create-failed]` | AskUserQuestion で「再試行 / 中止」を提示 |
+| `[pr-create-failed]` | `rite:pr-create` を **1 回だけ** 再 invoke。成功（`[pr:created:N]`）ならステップ 6.3 へ。再失敗なら停止し、失敗理由と `/rite:recover` を案内する。AskUserQuestion は出さない |
 | **sentinel 不在 (missing-sentinel)** | `[pr:created:N]` / `[pr-create-failed]` のいずれも context に無い。Phase 3.4 の `gh pr create` が malformed tool-call で無言終了した可能性 (Cause A: harness/transport 側ゆらぎ、rite では除去不能 — 詳細は下記「malformed tool-call 回復契約」)。下記手順で回復する |
 
 **malformed tool-call 回復契約** — sub-skill が sentinel を 1 つも emit せず無言終了した場合:
 
 1. **既存 draft PR の検出**: `gh pr list -R {owner_repo} --head {branch_name} --json number,url,isDraft`。存在すれば `[pr:created:N]` 相当として `{pr_number}` を再構成し、ステップ 6.3 へ進む（push/PR は冪等に再開可能）
-2. **未作成の場合**: AskUserQuestion で「PR 作成を再試行 / 中止」。中止時は `/rite:recover` で本ステップから再開できる旨を案内する
+2. **未作成の場合**: `rite:pr-create` を **1 回だけ** 再 invoke。成功ならステップ 6.3 へ。再失敗なら停止し `/rite:recover` を案内する。AskUserQuestion は出さない
 
 rationale: references/rationale.md#missing-sentinel-recovery
 
@@ -682,5 +682,5 @@ draft PR の作成が完了したら、ユーザーに以下を案内する:
 ## エラー時の方針
 
 - どこで止まっても flow-state に phase が残るため、`/rite:recover` が該当ステップから再開する
-- sub-skill invoke 後は必ず sentinel の有無を確認する。不在なら AskUserQuestion で「再試行 / 中止」
+- sub-skill invoke 後は必ず sentinel の有無を確認する。不在なら当該 sub-skill を 1 回だけ再 invoke。再失敗なら停止し `/rite:recover` を案内する。AskUserQuestion は出さない
 - 無言終了（sentinel を 1 つも emit せずターン終了）も missing-sentinel として同じ扱い。PR 作成段の回復手順はステップ 6.2 の「malformed tool-call 回復契約」

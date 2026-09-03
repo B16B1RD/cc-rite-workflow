@@ -4,7 +4,7 @@ A collection of principles to avoid common failure patterns in AI coding agents.
 Structured for rite workflow based on Andrej Karpathy's "Issues with AI Coding".
 The `knowledge_routing` principle additionally draws on t-wada's four quadrants of where knowledge lives: code = How, test code = What, commit log = Why, code comments = Why not.
 
-> **前提**: 標準的な clean-code / エージェント規律（YAGNI、DRY、dead code の削除、仮定の表明と確認、矛盾検出時の停止、技術的懸念の表明、スコープ規律など）はモデルの既知として本ファイルでは再教育しない。詳細節を持つのは rite workflow 固有の運用（手順・helper・phase との接続、実測 incident 由来の規約）が絡む原則のみで、それ以外の原則は下記 Principle List の 1 行が全てであり、標準的な規律をそのまま適用する。
+> **前提**: 標準的な clean-code / エージェント規律（YAGNI、DRY、dead code の削除、仮定の表明と確認、仮定を述べて進め、答えに依存しない部分を先に終える、技術的懸念の表明、スコープ規律など）はモデルの既知として本ファイルでは再教育しない。詳細節を持つのは rite workflow 固有の運用（手順・helper・phase との接続、実測 incident 由来の規約）が絡む原則のみで、それ以外の原則は下記 Principle List の 1 行が全てであり、標準的な規律をそのまま適用する。
 
 ## Principle List
 
