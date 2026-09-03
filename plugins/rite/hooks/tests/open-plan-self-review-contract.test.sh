@@ -14,11 +14,15 @@ OPEN="$SCRIPT_DIR/../../skills/open/SKILL.md"
 PROMPT="$SCRIPT_DIR/../../skills/open/references/plan-self-review.md"
 RATIONALE="$SCRIPT_DIR/../../skills/open/references/rationale.md"
 HELPER="$SCRIPT_DIR/../../scripts/issue-complexity-lane.sh"
+PR_REVIEW="$SCRIPT_DIR/../../skills/pr-review/SKILL.md"
+PR_RATIONALE="$SCRIPT_DIR/../../skills/pr-review/references/design-rationale.md"
 
 assert_file_exists_or_fail "open/SKILL.md exists" "$OPEN" || true
 assert_file_exists_or_fail "plan-self-review.md exists" "$PROMPT" || true
 assert_file_exists_or_fail "open rationale.md exists" "$RATIONALE" || true
 assert_file_exists_or_fail "issue-complexity-lane.sh exists" "$HELPER" || true
+assert_file_exists_or_fail "pr-review/SKILL.md exists" "$PR_REVIEW" || true
+assert_file_exists_or_fail "pr-review design-rationale.md exists" "$PR_RATIONALE" || true
 
 # AC-1 / AC-4 の helper・S+ 行・PLAN_REVIEW=done は 3.3.1 セクション内に無いと
 # 別節の同語で vacuous PASS する。start/end は見出し行そのもの（ドットは既存 caller と同じ未エスケープ）。
@@ -47,9 +51,10 @@ assert_grep_in_section "Task fence prompt is plan_self_review_prompt" "$OPEN" \
 assert_grep_in_section "Task fence includes plan_body on its own line" "$OPEN" \
   "$S331_START" "$S331_END" \
   '^\{plan_body\}$'
-assert_grep_in_section "Task sets run_in_background false" "$OPEN" \
+assert_grep_in_section "Task recovers via completion notification and does not proceed on spawn ack" "$OPEN" \
   "$S331_START" "$S331_END" \
-  'run_in_background: false'
+  '結果は completion notification で回収する。spawn 直後の起動確認だけでは 3.4 に進まない'
+assert_not_grep "open/SKILL.md has zero run_in_background (AC-2)" "$OPEN" 'run_in_background'
 assert_grep_in_section "done path emits PLAN_REVIEW=done with findings count as 承認材料" "$OPEN" \
   "$S331_START" "$S331_END" \
   '\[CONTEXT\] PLAN_REVIEW=done; findings=N.*承認材料として提示して 3.4 へ'
@@ -60,6 +65,8 @@ assert_grep_in_section "3.4 includes PLAN_REVIEW in 承認材料" "$OPEN" \
 _sec331=$(awk -v start="$S331_START" -v end="$S331_END" '$0 ~ start, $0 ~ end' "$OPEN")
 _st_count=$(printf '%s\n' "$_sec331" | grep -cE '^subagent_type:' || true)
 assert "3.3.1 has exactly one subagent_type" "1" "$_st_count"
+_rib_count=$(printf '%s\n' "$_sec331" | grep -cE 'run_in_background' || true)
+assert "3.3.1 section has zero run_in_background" "0" "$_rib_count"
 assert_grep_in_section "3.3.1 Task is general-purpose" "$OPEN" \
   "$S331_START" "$S331_END" \
   '^subagent_type: general-purpose$'
@@ -132,8 +139,9 @@ assert_grep "prompt lists CI・統合配線" "$PROMPT" '\*\*CI・統合配線\*\
 assert_grep "prompt lists regression 面" "$PROMPT" '\*\*regression 面\*\*'
 assert_grep "prompt limits review to the four listed perspectives" "$PROMPT" \
   '視点は上記 4 つのみ。予約枠を足さない'
-assert_grep "prompt SoT names general-purpose Task with foreground" "$PROMPT" \
-  'subagent_type: general-purpose`、`run_in_background: false'
+assert_grep "prompt SoT names general-purpose Task with notification recovery" "$PROMPT" \
+  'subagent_type: general-purpose`.*結果は completion notification で回収する'
+assert_not_grep "plan-self-review.md has zero run_in_background (AC-2)" "$PROMPT" 'run_in_background'
 assert_grep "prompt requires 指摘件数 line" "$PROMPT" '指摘件数: \{n\}'
 assert_grep "spawn payload concatenates Prompt + format + constraints" "$PROMPT" \
   'Prompt 節 \+ 判定出力形式 \+ 本ファイル冒頭の制約'
@@ -143,5 +151,45 @@ assert_grep_in_section "SKILL.md points prompt SoT at plan-self-review.md" "$OPE
 assert_grep "rationale records why fail-loud vs WARNING" "$RATIONALE" \
   'Complexity 未確定は fail-loud で止める'
 
+S431_START='^### 4.3.1 Task Tool Sub-Agent Invocation'
+S431_END='^### 4.4 Retry Logic'
+S51_START='^### 5.1 Result Collection'
+S51_END='^##### 5.1.0.L'
+NSF_START='^## named-subagent-and-foreground'
+NSF_END='^## shared-principles-hybrid'
+
+echo "=== T-01 / AC-1: pr-review has no run_in_background and pins notification recovery ==="
+assert_not_grep "pr-review/SKILL.md has zero run_in_background (AC-1)" "$PR_REVIEW" 'run_in_background'
+assert_grep_in_section "4.3.1 recovers via completion notification" "$PR_REVIEW" \
+  "$S431_START" "$S431_END" \
+  '結果は completion notification で回収する'
+
+echo "=== T-03 / AC-3: rationale explains background default; no 結果回収が壊れる ==="
+assert_grep_in_section "named-subagent-and-foreground explains fork-mode background default" "$PR_RATIONALE" \
+  "$NSF_START" "$NSF_END" \
+  'fork mode 既定 on'
+assert_grep_in_section "named-subagent-and-foreground recovers via completion notification" "$PR_RATIONALE" \
+  "$NSF_START" "$NSF_END" \
+  '結果は completion notification として後続 turn に届く'
+assert_not_grep "design-rationale has no 結果回収が壊れる" "$PR_RATIONALE" '結果回収が壊れる'
+
+echo "=== T-04 / AC-4: 5.1 waits for all notifications and forbids guessing ==="
+assert_grep_in_section "5.1 waits for all notifications then forbids guessing (adjacent)" "$PR_REVIEW" \
+  "$S51_START" "$S51_END" \
+  '全 reviewer の completion notification が揃うまで 5.1 を開始しない。未着の結果を推測・補完しない'
+
+echo "=== T-05 / AC-5: wait-work is limited and excludes 5.x ==="
+assert_grep_in_section "wait-work allows only REVIEW_TMP_DIR emit and timings path" "$PR_REVIEW" \
+  "$S431_START" "$S431_END" \
+  '5.x 以降は禁止）: `REVIEW_TMP_DIR` emit と `\{spawn_timings_file\}` パス組み立て'
+assert_grep_in_section "wait-work forbids 4.6 helper / 5.0.A / 5.1+" "$PR_REVIEW" \
+  "$S431_START" "$S431_END" \
+  '\*\*待ち中に禁止\*\*: 4.6 helper（回収済み reviewer 名簿が要る）/ 5.0.A / 5.1 以降。起動確認だけでは次へ進まない'
+
+echo "=== T-06 / AC-6: parallel spawn in one message is unchanged ==="
+assert_grep_in_section "4.3.1 still issues multiple Tasks in one message" "$PR_REVIEW" \
+  "$S431_START" "$S431_END" \
+  '1 メッセージで複数 Task'
+
 print_summary "$(basename "$0")" \
-  "If 3.3.1 placement, XS skip, one-shot, batch sameness, or fail-loud/WARNING split drifts, AC-1..AC-6 no longer hold. Re-read skills/open/SKILL.md ステップ 3.3.1 before relaxing a pin."
+  "If 3.3.1 placement, XS skip, one-shot, batch sameness, fail-loud/WARNING split, or the fork-mode notification-recovery contract drifts, AC-1..AC-6 no longer hold. Re-read skills/open/SKILL.md ステップ 3.3.1 and skills/pr-review/SKILL.md 4.3.1 / 5.1 before relaxing a pin."

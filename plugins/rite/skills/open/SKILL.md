@@ -519,11 +519,10 @@ bash {plugin_root}/scripts/issue-complexity-lane.sh --issue {issue_number}
 | `S` / `M` / `L` / `XL` | 下記 Task を 1 回 spawn → 指摘を計画へ反映 → 3.4 へ |
 | 欠落（`reason=` のみ / marker 不在 / helper 非ゼロ） | **ERROR**（fail-loud）。helper の `COMPLEXITY_LANE=full` と「フル装備で実行します」は無視する。stderr に出して中止し、3.4 へ進まない |
 
-Task（S 以上のみ。1 回。再 spawn しない）。orchestrator が [plan-self-review.md](references/plan-self-review.md) の Prompt 節・判定出力形式・制約を `{plan_self_review_prompt}` に、3.3 の `## 実装計画` 全文を `{plan_body}` にインラインする。子に Read させない。Edit/Write/NotebookEdit 禁止:
+Task（S 以上のみ。1 回。再 spawn しない）。orchestrator が [plan-self-review.md](references/plan-self-review.md) の Prompt 節・判定出力形式・制約を `{plan_self_review_prompt}` に、3.3 の `## 実装計画` 全文を `{plan_body}` にインラインする。子に Read させない。Edit/Write/NotebookEdit 禁止。結果は completion notification で回収する。spawn 直後の起動確認だけでは 3.4 に進まない。未着出力は推測補完しない:
 
 ```text
 subagent_type: general-purpose
-run_in_background: false
 description: 計画セルフレビュー
 prompt: {plan_self_review_prompt}
 

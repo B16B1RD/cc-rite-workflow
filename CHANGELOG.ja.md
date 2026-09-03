@@ -35,6 +35,10 @@ marketplace 配布のプラグインファイルではないため、`number-ref
 
 - **`/rite:issue-cancel` で「やらないと決めた Issue」を中止できる** — `--reason "not planned"` でクローズし、board Status を終端の `Cancelled` にして、必須の中止理由をクローズコメントに残す。PR・ブランチ・セッション worktree・作業メモリを持つ着手後の Issue は既存の cleanup helper 経由で片付ける（PR をマージせずクローズし、worktree・ブランチ・PR-specific state・ローカル作業メモリを削除）。「PR クローズ → Status → Issue クローズ」の順序は機構として効いており、PR クローズが失敗した場合は board を進めずフロー全体を止める。子 Issue を中止しても親へ `Done` は伝播しない。起動は人間の明示指示に限る。(#2493)
 
+### 修正
+
+- **`/rite:pr-review` が reviewer Task の結果を `run_in_background: false` 必須ではなく completion notification で回収する** — fork mode 既定では spawn した subagent は background で走り、Agent tool に `run_in_background` 引数が無い。orchestrator は全 reviewer の通知が揃うまで結果収集を開始せず、未着結果を推測せず、待ち中に進めてよいのは `REVIEW_TMP_DIR` emit と spawn-timings パス組み立てだけ。`/rite:open` ステップ 3.3.1 も同じ回収契約。(#2510)
+
 ## [0.14.0] - 2026-08-30
 
 ### 修正
