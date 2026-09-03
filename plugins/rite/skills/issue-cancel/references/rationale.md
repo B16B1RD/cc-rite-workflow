@@ -57,9 +57,9 @@ live-cwd guard・sandbox マスク検知・squash 残渣の扱い・remote ref �
 置く。ブランチが確定しない場合の取得経路は [issue-scoped-pr-lookup](#issue-scoped-pr-lookup) が扱う。
 どちらの経路でも、絞り込み前の集合を判定に使わないことが要点。
 
-client-side を closing keyword で絞る点は `/rite:issue-close` にも同じ経路がある。ただし**同 skill の
-取得側は本節が退けた `--search "linked:issue:{N}"` と glob `--head` をいまも使っており、そこは踏襲しない**
-（取得側まで含めて先例として引くと、誤った形へ読者を誘導する）。
+client-side を closing keyword で絞る点は `/rite:issue-close` にも同じ経路がある。取得側
+（branch-first + exact `--head` + timeline）も同 skill の Phase 2 が本節と同じ形に揃えた。
+判定表は close 固有（Pattern A/B/C/D）で、本節の merged→停止は中止専用のまま。
 
 ## issue-scoped-pr-lookup
 
