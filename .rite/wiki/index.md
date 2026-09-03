@@ -456,7 +456,7 @@ okf_version: "0.2"
 | [静的検査 regex の行頭アンカーは `if` / `\|\|` / 代入位置にある実行行を見落とす](pages/anti-patterns/line-anchored-regex-misses-inline-execution.md) | anti-patterns | `^[[:space:]]*git branch -d` のように行頭からアンカーした検査パターンは、`if cmd; then` / `\|\| cmd` / `elif x=$(cmd)` の位置にある実行行に一致しない。ゲートは通るが、検査したつもりの対象を最初から見ていない。 | 2026-09-01T20:28:00+09:00 | high |
 | [git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する](pages/patterns/normalize-tmpdir-symlink-in-path-asserting-tests.md) | patterns | macOS の `$TMPDIR` は `/var/folders/...` という symlink で、git は `rev-parse --show-toplevel` でも `worktree list` でも実体側 `/private/var/folders/...` を返す。mktemp の値をそのまま期待値に使うと Linux では緑・macOS CI だけ赤になる。 | 2026-09-01T20:29:00+09:00 | high |
 | [レビューループを止めるのは reviewer を減らすことではなく disposition 規則を変えること](pages/heuristics/review-loop-stopped-by-disposition-not-fewer-reviewers.md) | heuristics | 非実測の文言指摘を毎 cycle 先回りで直すと、その修正が次 cycle のレビュー対象になりループの燃料になる。止める操作は reviewer 数の削減ではなく、「本 PR が既に複数回書き換えた行の文言推敲はスコープ外」と disposition を宣言し、指摘を designated home へ流すこと。 | 2026-09-01T20:30:00+09:00 | high |
-| [gh のフィルタオプションは絞り込めていないのに成功して見える](pages/anti-patterns/gh-filter-succeeds-without-filtering.md) | anti-patterns | gh の検索・一覧オプションは exit 0 と JSON を返す一方で、呼び出し側が期待した絞り込みを静かに捨てる。boolean qualifier への番号付与、exact-match オプションへの glob、件数 limit の窓いっぱいは、いずれも「絞り込めていないのに成功して見える」同じ欠陥クラスである。 | 2026-09-02T00:50:00Z | high |
+| [gh のフィルタオプションは絞り込めていないのに成功して見える](pages/anti-patterns/gh-filter-succeeds-without-filtering.md) | anti-patterns | gh の検索・一覧オプションは exit 0 と JSON を返す一方で、呼び出し側が期待した絞り込みを静かに捨てる。boolean qualifier への番号付与、exact-match オプションへの glob、件数 limit の窓いっぱいは、いずれも「絞り込めていないのに成功して見える」同じ欠陥クラスである。 | 2026-09-03T01:10:00Z | high |
 | [二重引用符と -- は argv 分割にしか効かず、展開はパース時に終わっている](pages/anti-patterns/quotes-do-not-stop-expansion.md) | anti-patterns | テンプレートへ値を埋める設計では、二重引用符は単語分割とグロブを止めるだけで、コマンド置換とバッククォートはその内側でも展開される。`--` も argv 分割にしか効かない。git check-ref-format はシェルメタ文字を弾かないため、上流バリデータを防波堤と見なせない。 | 2026-09-02T00:50:00Z | high |
 | [成功経路にも出る prefix を失敗の判別子にしてはならない](pages/anti-patterns/success-path-prefix-as-failure-detector.md) | anti-patterns | ある helper で成立した「失敗専用 marker で判定する」形を、出力語彙を確認せずに別 helper へ複製すると、その prefix が成功側の告知にも使われていた場合、主経路で常時誤報告する機構になる。 | 2026-09-02T00:50:00Z | high |
 | [Issue 番号を引数で受ける入口は、対象の同定をセッション前提からやり直す](pages/heuristics/entry-taking-issue-number-must-reidentify.md) | heuristics | 対象 Issue が現在のセッションと一致する前提で書かれた参照実装を、Issue 番号を引数で受ける入口へ写すと、PR 検索・flow-state・worktree detect がいずれも対象を同定できていないまま破壊的操作へ進む。leftover の state も identity を突き合わせずに消費してはならない。 | 2026-09-02T00:50:00Z | high |
@@ -467,4 +467,4 @@ okf_version: "0.2"
 
 - 総ページ数: 453
 - ドメイン別: patterns=107, heuristics=201, anti-patterns=145
-- 最終更新: 2026-09-02T18:40:00Z
+- 最終更新: 2026-09-03T01:10:00Z
