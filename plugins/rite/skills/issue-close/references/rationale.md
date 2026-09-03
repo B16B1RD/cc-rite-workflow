@@ -66,6 +66,38 @@ network 許可リスト制約は解けない。別 Bash call + `dangerouslyDisab
 `children_json` が空になる。`2>/dev/null` は silent-skip の温床なので stderr は tempfile へ
 退避して surface する。空配列は「子ゼロ = 全部終わった」ではなく判定不能。
 
+## branch-first-pr-lookup
+
+`gh pr list` には「この Issue に紐づく PR」を引く手段が無い。`--search "linked:issue:{N}"` の
+`linked:issue` は GitHub 検索の boolean qualifier で `:{N}` は捨てられる。`--head` は exact-match
+でワイルドカードを解釈しないため `"*issue-{N}*"` は常に空。どちらも「絞り込めていないのに成功して
+見える」。close ではその集合が 2.3 の集約表に載り、Phase 3 Pattern A（MERGED + closing keyword）へ
+誤誘導する。実ブランチ名を先に確定させて exact `--head` で引く。未確定時の取得は
+[issue-scoped-pr-lookup](#issue-scoped-pr-lookup)。
+
+## issue-scoped-pr-lookup
+
+ブランチ未確定時の取得を `gh pr list --state all --limit N` に置くと、同じ「絞り込めていないのに
+成功して見える」欠陥を窓の形で持ち込む。本リポジトリでは `--limit 100` は常に飽和し、窓外の
+マージ済み PR を「PR 無し」（Pattern D）と読ませる。Issue timeline の `cross-referenced` /
+`connected` は当該 Issue を参照した PR を件数上限なしで返す。closing keyword を伴わない言及も含む
+ため、client-side の closing keyword / `headRefName` 絞り込みは残す。0 件は「関連 PR が無い」という
+観測になり、fail-loud は `gh api` の取得失敗だけを条件にできる。
+
+## timeline-rc-capture-first
+
+`gh api ... | sort -un` だと rc は最終段 `sort` のものになり、取得失敗が候補 0 件へ畳まれて
+Pattern D に倒れる。rc を持つコマンドをパイプから外し、`_tl_raw=$(gh api ...)` で先に rc を確定
+させる。`select(.pull_request != null)` は `pre-tool-bash-guard.sh` の `jq-not-equal-null` が
+実行前に deny するため、`select(.pull_request)` の truthiness で書く。
+
+## headref-charset-binding
+
+`{branch_name}` は 2.2 の `gh pr list --head "{branch_name}"` に literal substitute される。
+二重引用符は argv 分割にしか効かず、`$(...)` は引用符の内側でも展開される。束縛は値を
+`{branch_name}` に代入する時点。close はブランチを消さないので、非一致は未確定へ倒して
+timeline へ合流させる（新しい停止経路を足さない）。
+
 ## step3-inconsistency-summary
 
 Status 更新と `gh issue close` を別 block にすると、片方成功・片方失敗が観測されず board と

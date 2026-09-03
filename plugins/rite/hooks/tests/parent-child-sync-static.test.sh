@@ -434,6 +434,88 @@ else
 fi
 rm -f "$_rb_err"
 
-if ! print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or pr/open.md ステップ 1.2, or drop stateReason from parent auto-close, regression risk reopens. Re-confirm cross-references before removing methods."; then
+echo "=== Phase 8: close.md Phase 2 PR lookup is Issue-scoped (#2501) ==="
+# linked:issue / glob --head は絞り込めていないのに成功して見える。コマンド行だけを
+# 禁じ、禁止を説明する散文は残してよい。
+assert_not_grep "T-01 close.md does not use the unscoped linked:issue search" "$CLOSE_MD" \
+  '^gh pr list.*--search "linked:issue:'
+assert_not_grep "T-02 close.md does not pass a glob to --head" "$CLOSE_MD" \
+  '\-\-head "\*issue-'
+# 現行 2.1 fallback だった無制限 body 検索（--search / --head / --limit なし）の残存を落とす。
+assert_not_grep "T-01b close.md Phase 2 has no unscoped gh pr list --state all --json body fetch" "$CLOSE_MD" \
+  '^gh pr list -R \{owner_repo\} --state all --json'
+assert_grep_in_section "T-03 close.md looks the PR up by the resolved branch with an exact --head" "$CLOSE_MD" \
+  '^### 2\.2 関連 PR の検索' '^### 2\.3' \
+  'gh pr list .*\-\-head "\{branch_name\}"'
+_first_line() { grep -nE "$2" "$1" 2>/dev/null | head -1 | cut -d: -f1; }
+_branch_sec_line=$(_first_line "$CLOSE_MD" '^### 2\.1 作業ブランチの解決')
+_pr_sec_line=$(_first_line "$CLOSE_MD" '^### 2\.2 関連 PR の検索')
+if [ -n "$_branch_sec_line" ] && [ -n "$_pr_sec_line" ] && [ "$_branch_sec_line" -lt "$_pr_sec_line" ]; then
+  pass "T-04 close.md branch resolution precedes the PR lookup"
+else
+  fail "T-04 close.md branch resolution must precede the PR lookup (branch=${_branch_sec_line:-none} pr=${_pr_sec_line:-none})"
+fi
+assert_grep_in_section "T-05 close.md binds the flow-state branch to the target Issue" "$CLOSE_MD" \
+  '^### 2\.1 作業ブランチの解決' '^### 2\.2' 'get --field issue_number'
+assert_grep "T-05 close.md adopts the flow-state branch only on an Issue-number match" "$CLOSE_MD" \
+  '^\| `state_issue == \{issue_number\}` かつ `state_branch` が非空 \|'
+assert_grep_in_section "T-06 close.md fallback lookup is Issue-scoped via the timeline API" "$CLOSE_MD" \
+  '^### 2\.2 関連 PR の検索' '^### 2\.3' \
+  '^_tl_raw=\$\(gh api "repos/\{owner\}/\{repo\}/issues/\{issue_number\}/timeline" --paginate'
+assert_grep_in_section "T-06 close.md routes unresolved or empty --head to timeline" "$CLOSE_MD" \
+  '^### 2\.2 関連 PR の検索' '^### 2\.3' \
+  'ブランチが未確定、または上記が 0 件のときは'
+assert_not_grep "T-06 close.md uses no unscoped gh pr list --limit window" "$CLOSE_MD" \
+  '^gh pr list.*--limit'
+assert_grep_in_section "T-07 close.md captures timeline rc from a single command, not a pipeline" "$CLOSE_MD" \
+  '^### 2\.2 関連 PR の検索' '^### 2\.3' \
+  '^  2>"\$_tl_err"\) \|\| _tl_rc=\$\?$'
+assert_grep_in_section "T-08 close.md timeline jq filter uses truthiness, not != null" "$CLOSE_MD" \
+  '^### 2\.2 関連 PR の検索' '^### 2\.3' \
+  'select\(\.pull_request\) \| \.number'
+assert_not_grep "T-08 close.md contains no jq select(... != null)" "$CLOSE_MD" \
+  'select\(.*!= *null'
+assert_grep_in_section "T-09 close.md filters by closing keyword before the aggregate table" "$CLOSE_MD" \
+  '^### 2\.2 関連 PR の検索' '^### 2\.3' \
+  'Closes/Fixes/Resolves #\{issue_number\}'
+assert_grep_in_section "T-09 close.md also filters by headRefName before the aggregate table" "$CLOSE_MD" \
+  '^### 2\.2 関連 PR の検索' '^### 2\.3' \
+  'headRefName` が `issue-\{issue_number\}-'
+assert_grep_in_section "T-09 close.md does not put the unfiltered set on the 2.3 table" "$CLOSE_MD" \
+  '^### 2\.2 関連 PR の検索' '^### 2\.3' \
+  '\*\*絞り込み前の集合を 2\.3 の集約表に載せてはならない\*\*'
+assert_grep_in_section "T-09 close.md passes only the filtered set to Phase 3 Pattern A/B/C/D" "$CLOSE_MD" \
+  '^### 2\.2 関連 PR の検索' '^### 2\.3' \
+  '絞り込み後集合だけを 2\.3 と Phase 3 の Pattern A/B/C/D に渡す'
+assert_grep_in_section "T-10 close.md treats empty filter results as no related PR" "$CLOSE_MD" \
+  '^### 2\.2 関連 PR の検索' '^### 2\.3' \
+  '\*\*絞り込み結果 0 件は「関連 PR が無い」と読んでよい\*\*'
+assert_grep_in_section "T-10 close.md stops on a failed timeline fetch" "$CLOSE_MD" \
+  '^### 2\.2 関連 PR の検索' '^### 2\.3' \
+  '^  echo "ERROR: Issue timeline を取得できません'
+assert_grep_in_section "T-10 close.md does not fold a fetch failure into Pattern D" "$CLOSE_MD" \
+  '^### 2\.2 関連 PR の検索' '^### 2\.3' \
+  'Pattern D に倒さない'
+assert_grep_in_section "T-11 close.md applies the charset predicate at assignment time" "$CLOSE_MD" \
+  '^### 2\.1 作業ブランチの解決' '^### 2\.2' \
+  '\*\*charset 述語（値を `\{branch_name\}` に代入する時点で適用する）\*\*'
+assert_grep_in_section "T-11 close.md charset mismatch falls through to unresolved then timeline" "$CLOSE_MD" \
+  '^### 2\.1 作業ブランチの解決' '^### 2\.2' \
+  '2\.2 は `--head` を使わず timeline へ倒す'
+assert_grep "T-12 close.md retains Pattern A (MERGED + closing keyword → auto-closed)" "$CLOSE_MD" \
+  '^#### Pattern A: Already Auto-Closed'
+assert_grep "T-12 close.md retains Pattern B (PR exists but no auto-close)" "$CLOSE_MD" \
+  '^#### Pattern B: PR Exists but No Auto-Close'
+assert_grep "T-12 close.md retains Pattern C (PR awaiting merge)" "$CLOSE_MD" \
+  '^#### Pattern C: PR Awaiting Merge'
+assert_grep "T-12 close.md retains Pattern D (no PR → AskUserQuestion)" "$CLOSE_MD" \
+  '^#### Pattern D: No PR Found'
+assert_grep_in_section "T-12 close.md Pattern D still uses AskUserQuestion" "$CLOSE_MD" \
+  '^#### Pattern D: No PR Found' '^## Phase 4' \
+  'AskUserQuestion'
+assert_not_grep "T-12 close.md Phase 2 does not stop on mergedAt like issue-cancel" "$CLOSE_MD" \
+  '^\| `mergedAt` が非 null の PR がある \|'
+
+if ! print_summary "$(basename "$0")" "If you remove any of the 3 parent-detection methods (body meta / GraphQL trackedIssues / tasklist) from close.md or pr/open.md ステップ 1.2, or drop stateReason from parent auto-close, or restore unscoped linked:issue / glob --head PR lookup in close.md Phase 2, regression risk reopens. Re-confirm cross-references before removing methods."; then
   exit 1
 fi
