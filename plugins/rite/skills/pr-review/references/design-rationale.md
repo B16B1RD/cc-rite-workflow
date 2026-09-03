@@ -207,11 +207,11 @@ iterate は mergeable まで自律的に回す設計で、cycle ごとに構成�
 
 ## named-subagent-and-foreground
 
-named subagent (`rite:{type}-reviewer`) と `run_in_background: false` 必須の理由。
+named subagent (`rite:{type}-reviewer`) を使う理由と、結果回収を completion notification に置く理由。
 
 Phase B 以降、agent body を system prompt として載せる方が reviewer discipline の強制が強い。bare `{type}-reviewer` は plugin 配布で解決に失敗する。
 
-harness は省略時 default で background 起動する。background は起動確認だけ返して caller が turn を終え、結果回収と `error_count` が壊れる。同一メッセージ内の foreground Task は既に並列で、Claude は全結果を待ってから次へ進む。
+現行 harness（fork mode 既定 on）は spawn した subagent を background で走らせ、foreground 要求を受け付けない。`run_in_background` は Agent tool に引数が無く、指定しても無効。結果は completion notification として後続 turn に届く。orchestrator は起動確認だけでは 5.1 に進まず、全 reviewer の通知が揃うまで待ち、未着の結果を推測・補完しない。同一メッセージ内の複数 Task は並列発行のまま（4.6 の spawn 時刻は Task 発行時刻）。
 
 inline / 手動 verification は Detection Process・Confidence・Cross-File を迂回する rubber-stamp になるため禁止。
 
