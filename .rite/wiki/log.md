@@ -1,5 +1,6 @@
 ## 2026-09-03
 * **Skip**: [20260903T074100Z-pr-2536.md](raw/reviews/20260903T074100Z-pr-2536.md) — transient review metrics only; no extractable experiential rule (0 findings, principle already in plugin coding-principles.md)
+* **lint:clean** — contradictions=0, stale=50, orphans=0, missing_concept=0, unregistered_raw=0, broken_refs=0
 * **Update**: [PIPESTATUS はコマンド置換 `$(...)` のサブシェル境界を越えない](pages/heuristics/pipestatus-subshell-scoping-command-substitution.md) — raw/reviews/20260903T063546Z-pr-2535.md を統合
 * **Update**: [PIPESTATUS はコマンド置換 `$(...)` のサブシェル境界を越えない](pages/heuristics/pipestatus-subshell-scoping-command-substitution.md) — raw/fixes/20260903T064201Z-pr-2535.md を統合
 * **Skip**: [20260903T065626Z-pr-2535.md](raw/reviews/20260903T065626Z-pr-2535.md) — 0-finding confirmation; LAST_STDERR_FILE のサブシェル消失は pipestatus-subshell-scoping-command-substitution へ統合済み
