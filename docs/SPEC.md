@@ -1176,9 +1176,9 @@ iteration:
 
 | Type | Timing | Purpose |
 |------|--------|---------|
-| SessionStart | Session start | Load work memory, detect interrupted work |
-| PreCompact | Before compact | Save work memory, record compact state |
-| PostCompact | After compact | Restore work memory, clean compact state |
+| SessionStart | Session start | Load work memory, detect interrupted work; on `source=compact` re-inject recovery text into model context (Issue / Phase / Branch / Next action / Loop / PR, auto-continue, batch frame) |
+| PreCompact | Before compact | Save work memory, record compact state (`trigger` for auto vs manual) |
+| PostCompact | After compact | Normalize compact-state, PR/Projects Status reconciliation (recovery text is SessionStart; PostCompact stdout is not injected) |
 | SessionEnd | Session end | Save final state |
 | PreToolUse | Before tool execution | Block known-bad Bash command patterns (`pre-tool-bash-guard.sh`); deny reviewer-subagent Edit/Write/MultiEdit/NotebookEdit writes into a parent working tree (`pre-tool-edit-guard.sh`) |
 | PostToolUse | After tool execution | Auto-recover local work memory and sync the Issue comment replica on phase change (`post-tool-wm-sync.sh`); block bang-backtick adjacency that bash would interpret as history expansion (`scripts/bang-backtick-edit-hook.sh`) |
@@ -1200,22 +1200,28 @@ PreCompact (on compact)
 SessionEnd
 ```
 
-> **Note:** PreToolUse and PostToolUse fire on every Claude Code tool invocation. PreCommand/PostCommand have been deprecated and are not used by rite. (The former `preflight-check.sh` compact-blocking gate was removed in v0.7 along with `commands/`; compact recovery is handled by the SessionStart interruption notice + `/rite:recover`, except while `/rite:batch-run` is active — then PostCompact / SessionStart inject a batch frame and do not steer to `/rite:recover`. See Post-Compact Recovery below.)
+> **Note:** PreToolUse and PostToolUse fire on every Claude Code tool invocation. PreCommand/PostCommand have been deprecated and are not used by rite. (The former `preflight-check.sh` compact-blocking gate was removed in v0.7 along with `commands/`; compact recovery text is injected by SessionStart (`source=compact`). PostCompact keeps compact-state normalize and PR/Projects reconciliation only — its stdout is not injected into model context. While `/rite:batch-run` is active, SessionStart appends a batch frame and does not steer to `/rite:recover`. See Post-Compact Recovery below.)
 
-### Post-Compact Recovery (`post-compact.sh`)
+### Post-Compact Recovery (`session-start.sh` source=compact)
 
-Registered as a PostCompact hook. After a compact event, restores workflow context by outputting the current per-session flow state (`.rite/sessions/{session_id}.flow-state`) and work-memory state to stdout, which Claude Code injects into the model's context so the workflow can auto-continue without user intervention.
+Claude Code injects SessionStart plain stdout into the model's context. After compaction the harness fires PreCompact → PostCompact → SessionStart(`source=compact`). Recovery text therefore lives on SessionStart, not PostCompact.
 
-**Behavior:**
+**SessionStart (`source=compact`) behavior:**
 
-1. Reads the per-session compact-state (`.rite/sessions/{session_id}.compact-state`, derived from the resolved per-session flow-state path) and the per-session flow state file under the resolved state root (delegates resolution to `state-path-resolve.sh`; see [Multi-Session State Management](#multi-session-state-management))
-2. If no flow state exists, cleans the per-session compact-state and exits 0 (self-healing for orphaned compact markers)
-3. Otherwise, emits a recovery block to stdout containing Issue number, phase, and next-action hints so the orchestrator can resume from the compact boundary. When this session's run-queue is active and unfinished, appends a `Batch:` frame (mode / cursor / current issue / PR / queue path) and a `/rite:batch-run` continuation line
+1. Reads the per-session flow state (`.rite/sessions/{session_id}.flow-state`) under the resolved state root (delegates resolution to `state-path-resolve.sh`; see [Multi-Session State Management](#multi-session-state-management))
+2. If flow is active, emits a recovery block: Issue / Phase / Branch / Next action / Loop / PR. Auto compact (`compact-state.trigger=auto`, default when the field is missing) appends a continue instruction; manual compact (`trigger=manual`) emits state only
+3. When this session's run-queue is active and unfinished, appends a `Batch:` frame (mode / cursor / current issue / PR / queue path) and a `/rite:batch-run` continuation line. Other SessionStart sources (`startup` / `resume` / `clear`) keep the interruption / recover notice and do not emit this recovery block
+
+**PostCompact (`post-compact.sh`) behavior:**
+
+1. Reads the per-session compact-state (`.rite/sessions/{session_id}.compact-state`) and flow state
+2. If no flow state exists or flow is inactive, cleans compact-state and exits 0 (self-healing for orphaned compact markers)
+3. If compact-state is `recovering`, normalizes it to `normal` while preserving `trigger`, then runs PR/Projects Status reconciliation. Does not emit recovery text
 4. Double-execution is guarded via `_RITE_HOOK_RUNNING_POSTCOMPACT` (hooks.json + legacy `settings.local.json` migration safety)
 
 **Self-Healing Mechanism:**
 
-If the workflow has ended but a per-session compact-state remains (e.g., due to crash), the hook cleans it up and exits silently so that a fresh session is not blocked. `session-start.sh` additionally reaps the legacy shared `.rite-compact-state` as a migration path for pre-per-session residue.
+If the workflow has ended but a per-session compact-state remains (e.g., due to crash), PostCompact cleans it up and exits silently so that a fresh session is not blocked. `session-start.sh` additionally reaps the legacy shared `.rite-compact-state` as a migration path for pre-per-session residue.
 
 ### Pre-Tool Bash Guard (`pre-tool-bash-guard.sh`)
 
@@ -1434,7 +1440,7 @@ The `session_id` is the same UUID stored in `.rite/session-id` (legacy `.rite-se
 | Required | `phase` | `flow-state.sh set` | Current orchestrator phase (flat enum: `init` / `branch` / `plan` / `implement` / `lint` / `pr` / `review` / `fix` / `ready` / `ready_error` / `cleanup` / `ingest` / `completed`) |
 | Required | `pr_number` | `flow-state.sh set` | `0` until the PR is opened |
 | Required | `parent_issue_number` | `flow-state.sh set` (written by `skills/open/SKILL.md` ステップ 2.6 via `--parent-issue`, from the ステップ 2.4(B) detection) | `0` when the Issue is standalone, and also when parent detection never ran — 2.4(B) sits behind the `github.projects.enabled` gate, so projects-disabled repositories keep `0` even for child Issues |
-| Required | `next_action` | `flow-state.sh set` | Free-text continuation hint surfaced via post-compact recovery |
+| Required | `next_action` | `flow-state.sh set` | Free-text continuation hint surfaced via SessionStart(`source=compact`) recovery |
 | Required | `updated_at` | `flow-state.sh set` (every write) | ISO 8601 UTC with `Z` suffix; generated by `date -u +"%Y-%m-%dT%H:%M:%SZ"` (cross-platform deterministic). Note: human-facing logs elsewhere may be JST; the persisted state field is UTC |
 | Required | `session_id` | `flow-state.sh set` | Mirrors `.rite/session-id`, used as filename |
 | Required | `last_synced_phase` | `flow-state.sh set` (merge-preserves existing value) / `post-tool-wm-sync.sh` (actual writer on phase diff via `jq '.last_synced_phase = $p'`) | Tracks the last work-memory sync point. `flow-state.sh set` merge-preserves but does not author this field — only the per-tool sync hook does (verify with `grep -n last_synced_phase plugins/rite/hooks/*.sh`) |
@@ -1548,11 +1554,11 @@ A test framework for ensuring Hook script quality. Located in `plugins/rite/hook
 
 | Script | Test Content |
 |--------|-------------|
-| `post-compact.sh` | Recovery context emission, per-session compact-state self-healing |
-| `pre-compact.sh` | State capture before compact |
+| `post-compact.sh` | compact-state normalize + reconciliation; stdout empty of recovery text |
+| `pre-compact.sh` | State capture before compact; stdout empty |
 | `pre-tool-bash-guard.sh` | Dangerous pattern detection, heredoc safety |
 | `post-tool-wm-sync.sh` | Work memory auto-recovery after Bash tool calls, phase-diff replica sync, `last_synced_phase` advancement gating |
-| `session-start.sh` / `session-end.sh` | Session lifecycle + ownership transitions |
+| `session-start.sh` / `session-end.sh` | Session lifecycle + ownership transitions; SessionStart(`source=compact`) recovery context emission |
 | `work-memory-lock.sh` | Lock acquire/release + stale detection |
 | `wiki-ingest-trigger.sh` | Raw-source write contract |
 | `parent-child-sync-static` | Parent/child Issue state synchronization |

@@ -1,7 +1,9 @@
 #!/bin/bash
 # rite workflow - Post-Compact Hook
-# Restores workflow context after compaction by outputting state to stdout.
-# stdout is injected into the model's context, enabling automatic workflow continuation.
+# Side effects after compaction: compact-state normalize (recovering→normal),
+# PR/Projects Status reconciliation. Recovery text for the model is emitted by
+# session-start.sh (source=compact); PostCompact plain stdout is not injected
+# into model context (Claude Code docs).
 set -euo pipefail
 
 # Double-execution guard (hooks.json + settings.local.json migration)
@@ -172,15 +174,25 @@ trap cleanup EXIT TERM INT
 
 if acquire_wm_lock "$LOCKDIR"; then
   TMP_COMPACT=$(mktemp "${COMPACT_STATE}.XXXXXX" 2>/dev/null) || TMP_COMPACT="${COMPACT_STATE}.tmp.$$"
+  # Preserve trigger so SessionStart(compact) can distinguish auto vs manual
+  # after this normalize. Missing field (old compact-state) falls back to this
+  # hook's SOURCE (auto|manual), then to auto.
+  _pc_trigger=$(jq -r '.trigger // empty' "$COMPACT_STATE" 2>/dev/null) || _pc_trigger=""
+  [ -n "$_pc_trigger" ] || _pc_trigger="$SOURCE"
+  case "$_pc_trigger" in
+    manual) ;;
+    *) _pc_trigger="auto" ;;
+  esac
   # jq stderr is captured so a binary-missing / locale-broken date / disk-full
   # failure surfaces as a diagnosable WARNING. Silent fall-through here would
   # leave compact_state stuck at "recovering" forever and trigger an infinite
-  # auto-recovery loop on every subsequent PostCompact.
+  # PostCompact side-effect loop on every subsequent compact.
   _jq_norm_err=$(mktemp 2>/dev/null) || _jq_norm_err=""
   if jq -n \
     --arg state "normal" \
     --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-    '{compact_state: $state, compact_state_set_at: $ts}' \
+    --arg trigger "$_pc_trigger" \
+    '{compact_state: $state, compact_state_set_at: $ts, trigger: $trigger}' \
     > "$TMP_COMPACT" 2>"${_jq_norm_err:-/dev/null}"; then
     _mv_err=$(mktemp 2>/dev/null) || _mv_err=""
     if mv "$TMP_COMPACT" "$COMPACT_STATE" 2>"${_mv_err:-/dev/null}"; then
@@ -525,44 +537,6 @@ query($owner: String!, $repo: String!, $number: Int!) {
   )
 fi
 
-# --- stderr: user-facing notification ---
+# --- stderr: user-facing notification (not injected into model context) ---
 echo "[rite] compact 後の自動復帰を実行中 (Issue #${ISSUE}, Phase: ${PHASE})" >&2
-
-# --- stdout: injected into model context ---
-if [ "$SOURCE" = "auto" ]; then
-  cat <<EOF
-[rite] Auto-compact recovery: Issue #${ISSUE}, Phase: ${PHASE}, Branch: ${BRANCH}
-Next action: ${NEXT_ACTION}
-Loop: ${LOOP} | PR: #${PR}
-Use \`bash {plugin_root}/hooks/flow-state.sh get --field <field>\` for full state details. Also consult .rite/work-memory/issue-${ISSUE}.md, then continue.
-EOF
-else
-  # Manual compact: state re-injection only, no auto-continue instruction
-  cat <<EOF
-[rite] Compact recovery: Issue #${ISSUE}, Phase: ${PHASE}, Branch: ${BRANCH}
-Next action: ${NEXT_ACTION}
-Loop: ${LOOP} | PR: #${PR}
-EOF
-fi
-
-# batch 稼働中だけ Batch 行を足す。非稼働時は上の heredoc を無変更のまま出す（AC-10）。
-# jq 失敗はファイル不在に畳まない（破損時は判定不能を 1 行出す。AC-10 の byte-identical は不在 / active:false）。
-_pc_sid=$(basename "$FLOW_STATE" .flow-state)
-_pc_qf="$STATE_ROOT/.rite/state/run-queue-${_pc_sid}.json"
-if [ -n "$_pc_sid" ] && [ -f "$_pc_qf" ]; then
-  if jq -e . "$_pc_qf" >/dev/null 2>&1; then
-    _pc_ba=$(jq -r '.active // false' "$_pc_qf")
-    _pc_bc=$(jq -r '.cursor // 0' "$_pc_qf")
-    _pc_bt=$(jq -r '.issues | length' "$_pc_qf")
-    if [ "$_pc_ba" = "true" ] && [ "${_pc_bc:-0}" -lt "${_pc_bt:-0}" ] 2>/dev/null; then
-      _pc_mode=$(jq -r '.mode // "default"' "$_pc_qf")
-      _pc_issue=$(jq -r --argjson c "${_pc_bc:-0}" '.issues[$c] // empty' "$_pc_qf" 2>/dev/null) || _pc_issue=""
-      [ -n "$_pc_issue" ] || _pc_issue="$ISSUE"
-      echo "[rite] Batch: run-queue active — mode=${_pc_mode} cursor=${_pc_bc}/${_pc_bt} current_issue=#${_pc_issue} pr=#${PR} queue_file=${_pc_qf}"
-      echo "Continue /rite:batch-run from the step matching Phase above."
-    fi
-  else
-    echo "WARNING: run-queue が破損しています ($_pc_qf)" >&2
-    echo "[rite] Batch: run-queue unreadable — cannot decide batch continuation. queue_file=${_pc_qf}"
-  fi
-fi
+# Recovery text and batch frame are emitted by session-start.sh (source=compact).

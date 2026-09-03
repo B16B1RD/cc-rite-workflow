@@ -4,6 +4,6 @@
 
 reviewer agent は frontmatter の `effort: high` で固定する。orchestrator のルーチン作業を effort 調整可能なモデルで実行する場合は、過剰な熟考・検証を避けるため低めの effort を選ぶ（ホスト固有設定として強制しない）。
 
-コンテキストは十分残っているので、コンテキスト制限を理由に停止・要約・新セッション提案・作業の切り詰めをしない。枯渇時の再開は機構（flow-state・marker・compact hook・recover）が保証している。
+コンテキストは十分残っているので、コンテキスト制限を理由に停止・要約・新セッション提案・作業の切り詰めをしない。枯渇時の再開は機構（flow-state・marker・SessionStart(compact) の復帰文・recover）が保証している。
 
 報告は outcome と次の一手のみ。欠陥の詳細・自己評価・経緯の釈明は review record と commit が家であり、報告文へ複製しない。

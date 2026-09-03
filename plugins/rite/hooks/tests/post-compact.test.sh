@@ -104,21 +104,22 @@ CS_TC001="$(compact_state_path "$TC_DIR")"
 jq -n '{compact_state: "recovering", compact_state_set_at: "2026-03-14T12:00:00Z", active_issue: 42}' > "$CS_TC001"
 
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
-if echo "$OUTPUT" | grep -q "Auto-compact recovery"; then
-  pass "stdout contains auto-recovery message"
+if [ -z "$OUTPUT" ]; then
+  pass "stdout is empty (recovery moved to SessionStart)"
 else
-  fail "stdout missing auto-recovery message: $OUTPUT"
-fi
-if echo "$OUTPUT" | grep -q "$(issue_text 42)"; then
-  pass "stdout contains issue number"
-else
-  fail "stdout missing issue number"
+  fail "stdout should be empty after recovery move, got: $OUTPUT"
 fi
 COMPACT_VAL=$(jq -r '.compact_state' "$CS_TC001" 2>/dev/null) || COMPACT_VAL=""
 if [ "$COMPACT_VAL" = "normal" ]; then
   pass "compact_state transitioned to normal"
 else
   fail "compact_state is '$COMPACT_VAL', expected 'normal'"
+fi
+TRIGGER_VAL=$(jq -r '.trigger' "$CS_TC001" 2>/dev/null) || TRIGGER_VAL=""
+if [ "$TRIGGER_VAL" = "auto" ]; then
+  pass "trigger preserved as auto from PostCompact source"
+else
+  fail "trigger is '$TRIGGER_VAL', expected 'auto'"
 fi
 
 # --- TC-002: manual compact → state re-injection only ---
@@ -129,15 +130,56 @@ write_per_session_state "$TC_DIR" \
 jq -n '{compact_state: "recovering", compact_state_set_at: "2026-03-14T12:00:00Z", active_issue: 42}' > "$(compact_state_path "$TC_DIR")"
 
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "manual"}' | bash "$HOOK" 2>/dev/null) || true
-if echo "$OUTPUT" | grep -q "Compact recovery"; then
-  pass "stdout contains recovery message for manual"
+if [ -z "$OUTPUT" ]; then
+  pass "manual compact stdout is empty"
 else
-  fail "stdout missing recovery message: $OUTPUT"
+  fail "manual compact stdout should be empty, got: $OUTPUT"
 fi
-if echo "$OUTPUT" | grep -q "Auto-compact recovery"; then
-  fail "manual should not contain auto-compact recovery"
+TRIGGER_VAL=$(jq -r '.trigger' "$(compact_state_path "$TC_DIR")" 2>/dev/null) || TRIGGER_VAL=""
+if [ "$TRIGGER_VAL" = "manual" ]; then
+  pass "trigger preserved as manual from PostCompact source"
 else
-  pass "manual does not contain auto-compact recovery"
+  fail "trigger is '$TRIGGER_VAL', expected 'manual'"
+fi
+
+# --- TC-002b: seeded trigger=manual survives PostCompact source=auto ---
+echo "TC-002b: seeded trigger=manual preserved when PostCompact source=auto"
+TC_DIR=$(setup_test "tc002b")
+write_per_session_state "$TC_DIR" \
+  '{"active": true, "issue_number": 42, "phase": "review", "next_action": "Review PR", "loop_count": 0, "pr_number": 5, "branch": "feat/issue-42-test"}'
+jq -n '{compact_state: "recovering", compact_state_set_at: "2026-03-14T12:00:00Z", active_issue: 42, trigger: "manual"}' \
+  > "$(compact_state_path "$TC_DIR")"
+OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
+if [ -z "$OUTPUT" ]; then
+  pass "TC-002b stdout empty"
+else
+  fail "TC-002b stdout should be empty, got: $OUTPUT"
+fi
+TRIGGER_VAL=$(jq -r '.trigger' "$(compact_state_path "$TC_DIR")" 2>/dev/null) || TRIGGER_VAL=""
+if [ "$TRIGGER_VAL" = "manual" ]; then
+  pass "TC-002b: source=auto did not overwrite seeded trigger=manual"
+else
+  fail "TC-002b: trigger is '$TRIGGER_VAL', expected 'manual'"
+fi
+
+# --- TC-002c: seeded trigger=manual survives stdin trigger=manual without source ---
+echo "TC-002c: seeded trigger=manual preserved when stdin has trigger=manual and no source"
+TC_DIR=$(setup_test "tc002c")
+write_per_session_state "$TC_DIR" \
+  '{"active": true, "issue_number": 42, "phase": "review", "next_action": "Review PR", "loop_count": 0, "pr_number": 5, "branch": "feat/issue-42-test"}'
+jq -n '{compact_state: "recovering", compact_state_set_at: "2026-03-14T12:00:00Z", active_issue: 42, trigger: "manual"}' \
+  > "$(compact_state_path "$TC_DIR")"
+OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "trigger": "manual"}' | bash "$HOOK" 2>/dev/null) || true
+if [ -z "$OUTPUT" ]; then
+  pass "TC-002c stdout empty"
+else
+  fail "TC-002c stdout should be empty, got: $OUTPUT"
+fi
+TRIGGER_VAL=$(jq -r '.trigger' "$(compact_state_path "$TC_DIR")" 2>/dev/null) || TRIGGER_VAL=""
+if [ "$TRIGGER_VAL" = "manual" ]; then
+  pass "TC-002c: production-shaped stdin without source kept trigger=manual"
+else
+  fail "TC-002c: trigger is '$TRIGGER_VAL', expected 'manual'"
 fi
 
 # --- TC-003: no flow state → cleanup + no stdout ---
@@ -209,10 +251,10 @@ cs680a="$(compact_state_path "$TC_DIR" "$sid680a")"
 jq -n '{compact_state: "recovering", compact_state_set_at: "2026-04-30T12:00:00Z", active_issue: 680}' > "$cs680a"
 
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
-if echo "$OUTPUT" | grep -q "Auto-compact recovery" && echo "$OUTPUT" | grep -q "$(issue_text 680)"; then
-  pass "TC-per-session-detect-A: recovery output read from per-session file (.active=true preserved)"
+if [ -z "$OUTPUT" ]; then
+  pass "TC-per-session-detect-A: stdout empty; per-session recovering path still ran"
 else
-  fail "TC-per-session-detect-A: expected Auto-compact recovery for $(issue_text 680) from per-session, got: $OUTPUT"
+  fail "TC-per-session-detect-A: expected empty stdout from per-session recovering path, got: $OUTPUT"
 fi
 # Counter-assertion: compact_state transitioned to normal
 cs_state=$(jq -r '.compact_state' "$cs680a" 2>/dev/null)
@@ -675,23 +717,17 @@ write_batch_queue() {
     > "$dir/.rite/state/run-queue-${sid}.json"
 }
 
-echo "T-08: recovering + active queue appends Batch frame (auto and manual)"
+echo "T-08: recovering + active queue does not emit Batch or recovery on stdout"
 TC_DIR=$(setup_test "tc-batch-08-auto")
 write_per_session_state "$TC_DIR" \
   '{"active": true, "issue_number": 2502, "phase": "review", "next_action": "iterate", "loop_count": 1, "pr_number": 99, "branch": "fix/issue-2502-x"}'
 jq -n '{compact_state: "recovering", compact_state_set_at: "2026-09-02T00:00:00Z", active_issue: 2502}' > "$(compact_state_path "$TC_DIR")"
 write_batch_queue "$TC_DIR"
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
-if echo "$OUTPUT" | grep -q "Auto-compact recovery" \
-  && echo "$OUTPUT" | grep -q "Batch: run-queue active" \
-  && echo "$OUTPUT" | grep -q "mode=merge" \
-  && echo "$OUTPUT" | grep -q "cursor=0/1" \
-  && echo "$OUTPUT" | grep -q "current_issue=#2502" \
-  && echo "$OUTPUT" | grep -q "pr=#99" \
-  && echo "$OUTPUT" | grep -q "queue_file=" \
-  && echo "$OUTPUT" | grep -q "Continue /rite:batch-run" \
-  && ! echo "$OUTPUT" | grep -q "/rite:recover"; then
-  pass "T-08 auto: Batch frame fields present, no /rite:recover"
+if [ -z "$OUTPUT" ] \
+  && ! echo "$OUTPUT" | grep -q "Auto-compact recovery" \
+  && ! echo "$OUTPUT" | grep -q "Batch: run-queue active"; then
+  pass "T-08 auto: no recovery/Batch on PostCompact stdout"
 else
   fail "T-08 auto: unexpected stdout: $OUTPUT"
 fi
@@ -702,12 +738,10 @@ write_per_session_state "$TC_DIR" \
 jq -n '{compact_state: "recovering", compact_state_set_at: "2026-09-02T00:00:00Z", active_issue: 2502}' > "$(compact_state_path "$TC_DIR")"
 write_batch_queue "$TC_DIR"
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "manual"}' | bash "$HOOK" 2>/dev/null) || true
-if echo "$OUTPUT" | grep -q "Compact recovery" \
-  && echo "$OUTPUT" | grep -q "Batch: run-queue active" \
-  && echo "$OUTPUT" | grep -q "mode=merge" \
-  && ! echo "$OUTPUT" | grep -q "Auto-compact recovery" \
-  && ! echo "$OUTPUT" | grep -q "/rite:recover"; then
-  pass "T-08 manual: Batch frame appended to manual heredoc"
+if [ -z "$OUTPUT" ] \
+  && ! echo "$OUTPUT" | grep -q "Compact recovery" \
+  && ! echo "$OUTPUT" | grep -q "Batch: run-queue active"; then
+  pass "T-08 manual: no recovery/Batch on PostCompact stdout"
 else
   fail "T-08 manual: unexpected stdout: $OUTPUT"
 fi
@@ -725,10 +759,7 @@ else
   pass "T-08b: no Batch line when not recovering"
 fi
 
-echo "T-10: inactive queue variants keep pre-change compact stdout (byte-identical fixture)"
-# develop-era auto-compact stdout (no Batch). HEAD hook is compared against this
-# fixture — do not re-run HEAD as the oracle.
-T10_EXPECTED=$'[rite] Auto-compact recovery: Issue #42, Phase: implement, Branch: feat/issue-42-test\nNext action: Continue coding\nLoop: 1 | PR: #10\nUse `bash {plugin_root}/hooks/flow-state.sh get --field <field>` for full state details. Also consult .rite/work-memory/issue-42.md, then continue.'
+echo "T-10: PostCompact stdout is empty for inactive-queue variants (recovery moved)"
 for variant in absent false done othersid; do
   TC_DIR=$(setup_test "tc-batch-10-$variant")
   write_per_session_state "$TC_DIR" \
@@ -741,10 +772,10 @@ for variant in absent false done othersid; do
     othersid) write_batch_queue "$TC_DIR" "other-session" true 0 ;;
   esac
   OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>/dev/null) || true
-  if [ "$OUTPUT" = "$T10_EXPECTED" ]; then
-    pass "T-10 $variant: stdout byte-identical to develop-era fixture"
+  if [ -z "$OUTPUT" ]; then
+    pass "T-10 $variant: PostCompact stdout empty"
   else
-    fail "T-10 $variant: stdout drifted from fixture: $OUTPUT"
+    fail "T-10 $variant: unexpected stdout: $OUTPUT"
   fi
 done
 
@@ -758,13 +789,10 @@ mkdir -p "$TC_DIR/.rite/state"
 printf 'not-json{{' > "$TC_DIR/.rite/state/run-queue-${sid11}.json"
 T11_ERR=$(mktemp "$TEST_DIR/stderr.XXXXXX")
 OUTPUT=$(echo '{"cwd": "'"$TC_DIR"'", "source": "auto"}' | bash "$HOOK" 2>"$T11_ERR") || true
-if echo "$OUTPUT" | grep -q "Auto-compact recovery" \
-  && echo "$OUTPUT" | grep -q "Batch: run-queue unreadable" \
-  && echo "$OUTPUT" | grep -q "queue_file=" \
-  && ! echo "$OUTPUT" | grep -q "Batch: run-queue active" \
-  && ! echo "$OUTPUT" | grep -q "mode=" \
-  && grep -q "WARNING: run-queue が破損しています" "$T11_ERR"; then
-  pass "T-11 corrupt: unreadable Batch line + WARNING, no invented fields"
+if [ -z "$OUTPUT" ] \
+  && ! echo "$OUTPUT" | grep -q "Auto-compact recovery" \
+  && ! echo "$OUTPUT" | grep -q "Batch:"; then
+  pass "T-11 corrupt: PostCompact stdout empty (Batch moved to SessionStart)"
 else
   fail "T-11 corrupt: stdout=$OUTPUT stderr=$(cat "$T11_ERR")"
 fi

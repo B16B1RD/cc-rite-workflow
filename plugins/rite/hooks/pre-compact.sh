@@ -1,7 +1,10 @@
 #!/bin/bash
 # rite workflow - Pre-Compact Hook
-# Sets blocked state and saves work memory snapshot before context compaction.
-# compact itself cannot be prevented; this hook records state for safe resumption.
+# Sets recovering compact-state and saves work memory snapshot before context
+# compaction. compact itself cannot be prevented; this hook records state for
+# SessionStart(compact) resumption. PreCompact stdout is not injected into
+# model context (Claude Code docs: only SessionStart / UserPromptSubmit /
+# UserPromptExpansion / PostModelSwitch plain stdout is).
 set -euo pipefail
 
 # Double-execution guard (hooks.json + settings.local.json migration)
@@ -20,6 +23,14 @@ source "$SCRIPT_DIR/control-char-neutralize.sh"
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
+# PreCompact payload uses `trigger` (auto|manual). `.source` is a fallback for
+# harnesses that reuse the PostCompact field name. Missing/unknown → auto
+# (expected absence; SessionStart treats the same default).
+TRIGGER=$(echo "$INPUT" | jq -r '.trigger // .source // "auto"' 2>/dev/null) || TRIGGER="auto"
+case "$TRIGGER" in
+  manual) ;;
+  *) TRIGGER="auto" ;;
+esac
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
 fi
@@ -173,8 +184,11 @@ if acquire_wm_lock "$LOCKDIR"; then
   # The previous "skip if resuming" guard was insufficient: when
   # post-compact-guard transitioned blocked→resuming on first denial, a second
   # compact would see "resuming" and skip, leaving all guards permissive.
-  # Now PostCompact hook handles auto-recovery (recovering→normal), and pre-compact
-  # always sets "recovering" to ensure every compact triggers PostCompact processing.
+  # PostCompact still normalizes recovering→normal (side effects); SessionStart
+  # (source=compact) emits the recovery text. pre-compact always sets
+  # "recovering" so every compact still triggers PostCompact processing.
+  # `trigger` is read by SessionStart to distinguish auto (continue) vs manual
+  # (state only). SessionStart input has only source=compact.
   TMP_COMPACT=$(mktemp "${COMPACT_STATE}.XXXXXX" 2>/dev/null) || TMP_COMPACT="${COMPACT_STATE}.tmp.$$"
   # Capture jq stderr so a write failure (broken ACTIVE_ISSUE value, locale,
   # disk full) is diagnosable instead of being collapsed to the generic
@@ -184,7 +198,8 @@ if acquire_wm_lock "$LOCKDIR"; then
     --arg state "recovering" \
     --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
     --argjson issue "$ACTIVE_ISSUE" \
-    '{compact_state: $state, compact_state_set_at: $ts, active_issue: $issue}' \
+    --arg trigger "$TRIGGER" \
+    '{compact_state: $state, compact_state_set_at: $ts, active_issue: $issue, trigger: $trigger}' \
     > "$TMP_COMPACT" 2>"${_jq_compact_err:-/dev/null}"; then
     _cs_mv_err=$(mktemp 2>/dev/null) || _cs_mv_err=""
     if mv "$TMP_COMPACT" "$COMPACT_STATE" 2>"${_cs_mv_err:-/dev/null}"; then
@@ -272,7 +287,7 @@ if acquire_wm_lock "$LOCKDIR"; then
       WM_PHASE="$PHASE" \
       WM_PHASE_DETAIL="compact 前 snapshot" \
       WM_NEXT_ACTION="$NEXT_ACT" \
-      WM_BODY_TEXT="Pre-compact snapshot. PostCompact will auto-recover." \
+      WM_BODY_TEXT="Pre-compact snapshot. SessionStart(compact) will auto-recover." \
       WM_PLUGIN_ROOT="$(dirname "$SCRIPT_DIR")" \
       WM_PR_NUMBER="$PR_NUM" \
       WM_LOOP_COUNT="$LOOP_CNT" \
@@ -289,19 +304,13 @@ if acquire_wm_lock "$LOCKDIR"; then
   release_wm_lock "$LOCKDIR"
 fi
 
-# Output advisory message only when workflow is active
+# stderr advisory only when workflow is active. PreCompact stdout is not
+# injected into model context — SessionStart(source=compact) emits recovery.
 # FLOW_ACTIVE is set inside the lock block; defaults to "false" if lock was not acquired.
 if [ "${FLOW_ACTIVE:-false}" = "true" ]; then
   # Provide defaults: PHASE may be unset when ACTIVE_ISSUE is null (line 96 guard)
   _ISSUE="${ACTIVE_ISSUE:-unknown}"
   _PHASE="${PHASE:-unknown}"
 
-  # stderr: displayed directly to user's terminal (guaranteed visibility)
-  echo "[rite] ⚠️ compact detected (Issue #${_ISSUE}, Phase: ${_PHASE}). Auto-recovery will proceed via PostCompact." >&2
-
-  # stdout: fed to model as hook output
-  # Minimal message to reduce post-compaction token overhead.
-  # System prompt alone is ~200K tokens; every token saved here helps stay under API limit.
-  # PostCompact hook will restore full context after compaction completes.
-  echo "STOP. Compact detected. Issue #${_ISSUE}. PostCompact will restore context. STOP."
+  echo "[rite] ⚠️ compact detected (Issue #${_ISSUE}, Phase: ${_PHASE}). Auto-recovery will proceed via SessionStart." >&2
 fi
