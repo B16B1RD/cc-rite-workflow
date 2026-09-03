@@ -1,6 +1,9 @@
 #!/bin/bash
 # rite workflow - Session Start Hook
-# Re-injects flow state after compact or resume
+# Re-injects flow state after compact or resume.
+# source=compact: recovery text (Issue/Phase/Branch/Next/Loop/PR + auto continue)
+# is emitted here because SessionStart stdout is injected into model context.
+# startup/resume/clear keep the interruption / recover notice.
 set -euo pipefail
 
 # Double-execution guard (hooks.json + settings.local.json migration)
@@ -667,10 +670,16 @@ find "$STATE_ROOT" -maxdepth 1 \( -name ".rite-flow-state.tmp.*" -o -name ".rite
 # partial write). It is not reachable by normal unit tests.
 _tsv_err=$(mktemp 2>/dev/null) || _tsv_err=""
 _tsv_rc=0
+# gsub collapses newline / CR / unit-separator so `read` cannot split the
+# recovery record. next_action is SPEC free-text and may contain a newline.
 _tsv_output=$(jq -r '[
-  (.issue_number // "" | tostring),
-  (.phase // "unknown"),
-  (.stop_reason // "")
+  (.issue_number // "" | tostring | gsub("[\n\r\u001f]"; " ")),
+  (.phase // "unknown" | tostring | gsub("[\n\r\u001f]"; " ")),
+  (.stop_reason // "" | tostring | gsub("[\n\r\u001f]"; " ")),
+  (.next_action // "" | tostring | gsub("[\n\r\u001f]"; " ")),
+  (.loop_count // 0 | tostring | gsub("[\n\r\u001f]"; " ")),
+  (.pr_number // 0 | tostring | gsub("[\n\r\u001f]"; " ")),
+  (.branch // "" | tostring | gsub("[\n\r\u001f]"; " "))
 ] | join("\u001f")' "$STATE_FILE" 2>"${_tsv_err:-/dev/null}") || _tsv_rc=$?
 if [ "$_tsv_rc" -ne 0 ]; then
   echo "rite: Warning - state file contains invalid JSON. Use /rite:recover to recover." >&2
@@ -679,7 +688,13 @@ if [ "$_tsv_rc" -ne 0 ]; then
   exit 0
 fi
 [ -n "$_tsv_err" ] && rm -f "$_tsv_err"
-IFS=$'\x1f' read -r ISSUE PHASE STOP_REASON <<< "$_tsv_output"
+_na_check=$(jq -r '.next_action // empty' "$STATE_FILE" 2>/dev/null) || _na_check=""
+case "$_na_check" in
+  *$'\n'*|*$'\r'*)
+    echo "[rite] WARNING: session-start: next_action contained a newline; collapsed to a single recovery line" >&2
+    ;;
+esac
+IFS=$'\x1f' read -r ISSUE PHASE STOP_REASON NEXT_ACTION LOOP PR BRANCH <<< "$_tsv_output"
 
 # Validate that critical fields are not null/empty
 if [ -z "$ISSUE" ]; then
@@ -711,7 +726,56 @@ if [ -n "$_ss_sid" ] && [ -f "$_ss_qf" ]; then
     _ss_queue_unreadable=true
   fi
 fi
-if [ "$_ss_batch" = "true" ]; then
+if [ "$SOURCE" = "compact" ]; then
+  # SessionStart stdout is injected into model context. Auto vs manual comes from
+  # compact-state.trigger (written by pre-compact, preserved by post-compact).
+  # Missing field (old compact-state) is expected absence → auto.
+  _ss_cs="${STATE_FILE%.flow-state}.compact-state"
+  _ss_trigger="auto"
+  if [ -f "$_ss_cs" ]; then
+    # Missing .trigger is expected absence → auto (`// "auto"`). jq failure
+    # (corrupt file) is not absence: warn like post-compact.sh .compact_state
+    # parse, then keep auto so SessionStart still injects recovery.
+    _ss_trig_err=$(mktemp 2>/dev/null) || _ss_trig_err=""
+    _ss_trig_rc=0
+    _ss_trigger=$(jq -r '.trigger // "auto"' "$_ss_cs" 2>"${_ss_trig_err:-/dev/null}") || _ss_trig_rc=$?
+    if [ "$_ss_trig_rc" -ne 0 ]; then
+      _ss_trig_tag=""
+      [ -z "$_ss_trig_err" ] && _ss_trig_tag=" stderr_capture=disabled"
+      echo "[rite] WARNING: session-start: jq parse of compact-state.trigger failed (rc=$_ss_trig_rc${_ss_trig_tag})" >&2
+      [ -n "$_ss_trig_err" ] && [ -s "$_ss_trig_err" ] && head -3 "$_ss_trig_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+      _ss_trigger="auto"
+    fi
+    [ -n "$_ss_trig_err" ] && rm -f "$_ss_trig_err"
+  fi
+  case "$_ss_trigger" in
+    manual) ;;
+    *) _ss_trigger="auto" ;;
+  esac
+  if [ "$_ss_trigger" = "auto" ]; then
+    cat <<EOF
+[rite] Auto-compact recovery: Issue #${ISSUE}, Phase: ${PHASE}, Branch: ${BRANCH}
+Next action: ${NEXT_ACTION}
+Loop: ${LOOP} | PR: #${PR}
+Use \`bash {plugin_root}/hooks/flow-state.sh get --field <field>\` for full state details. Also consult .rite/work-memory/issue-${ISSUE}.md, then continue.
+EOF
+  else
+    cat <<EOF
+[rite] Compact recovery: Issue #${ISSUE}, Phase: ${PHASE}, Branch: ${BRANCH}
+Next action: ${NEXT_ACTION}
+Loop: ${LOOP} | PR: #${PR}
+EOF
+  fi
+  if [ "$_ss_batch" = "true" ]; then
+    _ss_mode=$(jq -r '.mode // "default"' "$_ss_qf")
+    _ss_issue=$(jq -r --argjson c "${_ss_bc:-0}" '.issues[$c] // empty' "$_ss_qf" 2>/dev/null) || _ss_issue=""
+    [ -n "$_ss_issue" ] || _ss_issue="$ISSUE"
+    echo "[rite] Batch: run-queue active — mode=${_ss_mode} cursor=${_ss_bc}/${_ss_bt} current_issue=#${_ss_issue} pr=#${PR} queue_file=${_ss_qf}"
+    echo "Continue /rite:batch-run from the step matching Phase above."
+  elif [ "$_ss_queue_unreadable" = "true" ]; then
+    echo "[rite] Batch: run-queue unreadable — cannot decide batch continuation. queue_file=${_ss_qf}"
+  fi
+elif [ "$_ss_batch" = "true" ]; then
   echo "rite: /rite:batch-run が稼働中です (Issue #${ISSUE}, phase: ${PHASE})。停止せず /rite:batch-run を該当ステップから続行してください。Do not run /rite:recover while the batch is active."
 elif [ "$_ss_queue_unreadable" = "true" ]; then
   echo "rite: run-queue が破損しているため batch 稼働判定ができません (Issue #${ISSUE}, phase: ${PHASE})。queue を直すまで batch を再開しないでください。"

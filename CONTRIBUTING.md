@@ -173,10 +173,10 @@ Available hook events:
 
 | Event | Trigger | Input |
 |-------|---------|-------|
-| `SessionStart` | Session begins or resumes | JSON via stdin (`cwd`, `source`) |
+| `SessionStart` | Session begins, resumes, or follows compact (`source=compact` re-injects recovery text) | JSON via stdin (`cwd`, `source`) |
 | `SessionEnd` | Session ends | JSON via stdin |
-| `PreCompact` | Before context compaction | JSON via stdin |
-| `PostCompact` | After context compaction | JSON via stdin |
+| `PreCompact` | Before context compaction | JSON via stdin (`cwd`, `trigger`) |
+| `PostCompact` | After context compaction (side effects only; recovery text is SessionStart) | JSON via stdin |
 | `PreToolUse` | Before a tool is executed | JSON via stdin (tool name via `matcher`) |
 | `PostToolUse` | After a tool is executed | JSON via stdin |
 | `Stop` | The agent finishes responding (turn end) | JSON via stdin (`stop_hook_active`) |

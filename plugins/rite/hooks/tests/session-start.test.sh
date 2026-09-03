@@ -180,7 +180,7 @@ echo ""
 # --------------------------------------------------------------------------
 # TC-006b: circuit-breaker stop reason is distinct from an ordinary interruption
 # --------------------------------------------------------------------------
-echo "TC-006b: stop_reason changes compact interruption notice to failure stop"
+echo "TC-006b: compact + stop_reason still emits recovery (not recover notice)"
 dir006b="$TEST_DIR/tc006b"
 mkdir -p "$dir006b"
 create_state_file "$dir006b" '{
@@ -190,12 +190,14 @@ create_state_file "$dir006b" '{
   "stop_reason": "circuit-breaker:max-cycles"
 }'
 output=$(run_hook_with_source "$dir006b" "compact")
-if echo "$output" | grep -q "失敗停止した rite workflow" && \
-   echo "$output" | grep -q "cycle が上限に到達" && \
-   ! echo "$output" | grep -q "中断した rite workflow"; then
-  pass "stop_reason produces a failure-specific compact notice"
+if echo "$output" | grep -q "Auto-compact recovery" && \
+   echo "$output" | grep -q "$(issue_text 2045)" && \
+   ! echo "$output" | grep -q "失敗停止した rite workflow" && \
+   ! echo "$output" | grep -q "中断した rite workflow" && \
+   ! echo "$output" | grep -q "/rite:recover"; then
+  pass "compact + stop_reason emits recovery, not recover/failure notice"
 else
-  fail "Expected failure-specific stop notice, got: $output"
+  fail "Expected compact recovery without recover notice, got: $output"
 fi
 echo ""
 
@@ -285,7 +287,7 @@ echo ""
 # --------------------------------------------------------------------------
 # TC-006: State file with active=true + source=compact → re-inject message
 # --------------------------------------------------------------------------
-echo "TC-006: State file with active=true + source=compact → re-inject message"
+echo "TC-006: State file with active=true + source=compact → recovery text"
 dir006="$TEST_DIR/tc006"
 mkdir -p "$dir006"
 create_state_file "$dir006" '{
@@ -297,13 +299,14 @@ create_state_file "$dir006" '{
 }'
 
 output=$(run_hook_with_source "$dir006" "compact")
-if echo "$output" | grep -q "中断した rite workflow を検出" && \
+if echo "$output" | grep -q "Auto-compact recovery" && \
    echo "$output" | grep -q "$(issue_text 42)" && \
-   echo "$output" | grep -q "phase: implementing" && \
-   echo "$output" | grep -q "/rite:recover"; then
-  pass "Interruption notice contains issue + phase + resume hint"
+   echo "$output" | grep -q "Phase: implementing" && \
+   echo "$output" | grep -q "then continue" && \
+   ! echo "$output" | grep -q "/rite:recover"; then
+  pass "compact recovery contains issue + phase + continue, no recover notice"
 else
-  fail "Interruption notice missing expected fields, got: $output"
+  fail "compact recovery missing expected fields, got: $output"
 fi
 echo ""
 
@@ -339,7 +342,7 @@ create_state_file "$dir008" '{"active": true, "issue_number": 99}'
 
 output=$(run_hook_with_source "$dir008" "compact")
 if echo "$output" | grep -q "$(issue_text 99)" && \
-   echo "$output" | grep -q "phase: unknown"; then
+   echo "$output" | grep -q "Phase: unknown"; then
   pass "Missing optional fields → phase defaults to unknown"
 else
   fail "Expected phase default (unknown), got: $output"
@@ -421,7 +424,7 @@ create_state_file "$dir011" '{
 
 output=$(run_hook_with_source "$dir011" "compact")
 if echo "$output" | grep -q "$(issue_text 77)" && \
-   echo "$output" | grep -q "phase: Phase with spaces"; then
+   echo "$output" | grep -q "Phase: Phase with spaces"; then
   pass "Unit-separator-delimited field extraction handles spaces in phase"
 else
   fail "Field extraction failed with spaces, got: $output"
@@ -429,56 +432,59 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-012: source=compact + compact_state=recovering → interruption notice
-# PostCompact hook now handles recovery; SessionStart(compact) falls through to the notice.
+# TC-012: source=compact + compact_state=recovering → recovery text
 # --------------------------------------------------------------------------
-echo "TC-012: source=compact + compact_state=recovering → interruption notice"
+echo "TC-012: source=compact + compact_state=recovering → recovery text"
 dir012="$TEST_DIR/tc012"
 mkdir -p "$dir012"
 create_state_file "$dir012" '{"active": true, "issue_number": 55, "phase": "implementing"}'
 echo '{"compact_state": "recovering", "active_issue": 55}' > "$dir012/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir012" "compact")
-if echo "$output" | grep -q "中断した rite workflow を検出" && \
-   echo "$output" | grep -q "$(issue_text 55)"; then
-  pass "source=compact + recovering → interruption notice (PostCompact handles recovery)"
+if echo "$output" | grep -q "Auto-compact recovery" && \
+   echo "$output" | grep -q "$(issue_text 55)" && \
+   ! echo "$output" | grep -q "/rite:recover"; then
+  pass "source=compact + recovering → recovery text"
 else
-  fail "Expected interruption notice with issue 55, got: $output"
+  fail "Expected recovery text with issue 55, got: $output"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-013: source=compact + compact_state=normal → fall through to interruption notice
+# TC-013: source=compact + compact_state=normal → recovery text (active flow)
 # --------------------------------------------------------------------------
-echo "TC-013: source=compact + compact_state=normal → fall through to interruption notice"
+echo "TC-013: source=compact + compact_state=normal → recovery text"
 dir013="$TEST_DIR/tc013"
 mkdir -p "$dir013"
 create_state_file "$dir013" '{"active": true, "issue_number": 56, "phase": "reviewing"}'
 echo '{"compact_state": "normal"}' > "$dir013/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir013" "compact")
-if echo "$output" | grep -q "中断した rite workflow を検出" && \
-   echo "$output" | grep -q "$(issue_text 56)"; then
-  pass "source=compact + normal → interruption notice"
+if echo "$output" | grep -q "Auto-compact recovery" && \
+   echo "$output" | grep -q "$(issue_text 56)" && \
+   ! echo "$output" | grep -q "/rite:recover"; then
+  pass "source=compact + normal → recovery text"
 else
-  fail "Expected interruption notice, got: $output"
+  fail "Expected recovery text, got: $output"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-014: source=compact + no .rite-compact-state → fall through to interruption notice
+# TC-014: source=compact + no compact-state → recovery text (trigger default auto)
 # --------------------------------------------------------------------------
-echo "TC-014: source=compact + no .rite-compact-state → fall through to interruption notice"
+echo "TC-014: source=compact + no compact-state → recovery text (auto default)"
 dir014="$TEST_DIR/tc014"
 mkdir -p "$dir014"
 create_state_file "$dir014" '{"active": true, "issue_number": 57, "phase": "testing"}'
 
 output=$(run_hook_with_source "$dir014" "compact")
-if echo "$output" | grep -q "中断した rite workflow を検出" && \
-   echo "$output" | grep -q "$(issue_text 57)"; then
-  pass "source=compact + no compact state file → interruption notice"
+if echo "$output" | grep -q "Auto-compact recovery" && \
+   echo "$output" | grep -q "$(issue_text 57)" && \
+   echo "$output" | grep -q "then continue" && \
+   ! echo "$output" | grep -q "/rite:recover"; then
+  pass "source=compact + no compact state file → auto recovery (missing trigger)"
 else
-  fail "Expected interruption notice, got: $output"
+  fail "Expected auto recovery text, got: $output"
 fi
 echo ""
 
@@ -1629,7 +1635,7 @@ write_batch_queue() {
     > "$dir/.rite/state/run-queue-${sid}.json"
 }
 
-echo "T-09: compact + active queue replaces recover notice"
+echo "T-09: compact + active queue appends Batch frame (T-03)"
 dir_t09="$TEST_DIR/tc-batch-09"
 mkdir -p "$dir_t09"
 create_state_file "$dir_t09" '{
@@ -1637,15 +1643,22 @@ create_state_file "$dir_t09" '{
   "issue_number": 2502,
   "phase": "review",
   "next_action": "iterate",
-  "loop_count": 1
+  "loop_count": 1,
+  "pr_number": 99,
+  "branch": "fix/issue-2502-x"
 }'
 write_batch_queue "$dir_t09"
 output=$(run_hook_with_source "$dir_t09" "compact")
-if echo "$output" | grep -q "/rite:batch-run" \
-  && echo "$output" | grep -q "$(issue_text 2502)" \
-  && ! echo "$output" | grep -q "再開するには /rite:recover" \
-  && ! echo "$output" | grep -q "中断した rite workflow"; then
-  pass "T-09: compact batch continuation without recover resume phrase"
+if echo "$output" | grep -q "Auto-compact recovery" \
+  && echo "$output" | grep -q "Batch: run-queue active" \
+  && echo "$output" | grep -q "mode=merge" \
+  && echo "$output" | grep -q "cursor=0/1" \
+  && echo "$output" | grep -q "current_issue=#2502" \
+  && echo "$output" | grep -q "pr=#99" \
+  && echo "$output" | grep -q "queue_file=" \
+  && echo "$output" | grep -q "Continue /rite:batch-run" \
+  && ! echo "$output" | grep -q "/rite:recover"; then
+  pass "T-09: compact Batch frame fields present, no /rite:recover"
 else
   fail "T-09: unexpected output: $output"
 fi
@@ -1672,35 +1685,25 @@ else
 fi
 echo ""
 
-echo "T-10: compact without active queue keeps recover notice (byte-identical fixture)"
-T10_EXPECTED='rite: 中断した rite workflow を検出しました (Issue #42, phase: implementing)。再開するには /rite:recover を実行してください。'
+echo "T-10 / T-01: compact without active queue is byte-identical auto recovery"
+T10_EXPECTED=$'[rite] Auto-compact recovery: Issue #42, Phase: implement, Branch: feat/issue-42-test\nNext action: Continue coding\nLoop: 1 | PR: #10\nUse `bash {plugin_root}/hooks/flow-state.sh get --field <field>` for full state details. Also consult .rite/work-memory/issue-42.md, then continue.'
+T10_STATE='{"active": true, "issue_number": 42, "phase": "implement", "next_action": "Continue coding", "loop_count": 1, "pr_number": 10, "branch": "feat/issue-42-test"}'
 dir_t10="$TEST_DIR/tc-batch-10"
 mkdir -p "$dir_t10"
-create_state_file "$dir_t10" '{
-  "active": true,
-  "issue_number": 42,
-  "phase": "implementing",
-  "next_action": "continue work",
-  "loop_count": 3
-}'
+create_state_file "$dir_t10" "$T10_STATE"
 output=$(run_hook_with_source "$dir_t10" "compact")
 if [ "$output" = "$T10_EXPECTED" ]; then
-  pass "T-10 absent queue: stdout byte-identical to develop-era fixture"
+  pass "T-10 absent queue: stdout byte-identical to compact recovery fixture"
 else
   fail "T-10 absent queue: $output"
 fi
 echo ""
 
-echo "T-10b: active:false / cursor>=total / other sid keep recover notice (byte-identical)"
+echo "T-10b: active:false / cursor>=total / other sid keep recovery fixture (no Batch)"
 for variant in false done othersid; do
   dir_v="$TEST_DIR/tc-batch-10-$variant"
   mkdir -p "$dir_v"
-  create_state_file "$dir_v" '{
-    "active": true,
-    "issue_number": 42,
-    "phase": "implementing",
-    "next_action": "continue work"
-  }'
+  create_state_file "$dir_v" "$T10_STATE"
   case "$variant" in
     false) write_batch_queue "$dir_v" "test-sid-$(basename "$dir_v")" false 0 ;;
     done) write_batch_queue "$dir_v" "test-sid-$(basename "$dir_v")" true 1 ;;
@@ -1708,32 +1711,86 @@ for variant in false done othersid; do
   esac
   output=$(run_hook_with_source "$dir_v" "compact")
   if [ "$output" = "$T10_EXPECTED" ]; then
-    pass "T-10 $variant: stdout byte-identical to develop-era fixture"
+    pass "T-10 $variant: stdout byte-identical to compact recovery fixture"
   else
     fail "T-10 $variant: $output"
   fi
 done
 echo ""
 
-echo "T-11: compact + corrupt queue warns and does not emit recover resume phrase"
+echo "T-02: compact-state.trigger=manual is byte-identical state-only recovery"
+T02_EXPECTED=$'[rite] Compact recovery: Issue #42, Phase: implement, Branch: feat/issue-42-test\nNext action: Continue coding\nLoop: 1 | PR: #10'
+dir_t02="$TEST_DIR/tc-t02-manual"
+mkdir -p "$dir_t02"
+create_state_file "$dir_t02" "$T10_STATE"
+jq -n '{compact_state: "normal", trigger: "manual"}' > "$(compact_state_path "$dir_t02")"
+output=$(run_hook_with_source "$dir_t02" "compact")
+if [ "$output" = "$T02_EXPECTED" ]; then
+  pass "T-02: manual compact recovery byte-identical to state-only fixture"
+else
+  fail "T-02: unexpected output: $output"
+fi
+echo ""
+
+echo "T-12: corrupt compact-state still emits auto recovery and warns"
+dir_t12="$TEST_DIR/tc-t12-corrupt-cs"
+mkdir -p "$dir_t12"
+create_state_file "$dir_t12" "$T10_STATE"
+printf 'not-json{{' > "$(compact_state_path "$dir_t12")"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(echo "{\"cwd\": \"$dir_t12\", \"source\": \"compact\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if echo "$output" | grep -q "Auto-compact recovery" \
+  && echo "$output" | grep -q "then continue" \
+  && ! echo "$output" | grep -q "/rite:recover" \
+  && grep -q "jq parse of compact-state.trigger failed" "$LAST_STDERR_FILE"; then
+  pass "T-12: corrupt compact-state warns and still emits auto recovery"
+else
+  fail "T-12: stdout=$output stderr=$(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+echo "T-13: next_action newline does not drop Loop/PR/Branch"
+dir_t13="$TEST_DIR/tc-t13-nl"
+mkdir -p "$dir_t13"
+T13_STATE=$(jq -nc --arg na $'line1\nline2' '{
+  active: true,
+  issue_number: 42,
+  phase: "implement",
+  next_action: $na,
+  loop_count: 7,
+  pr_number: 99,
+  branch: "feat/issue-42-test"
+}')
+create_state_file "$dir_t13" "$T13_STATE"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(echo "{\"cwd\": \"$dir_t13\", \"source\": \"compact\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if echo "$output" | grep -q "Next action: line1 line2" \
+  && echo "$output" | grep -q "Loop: 7 | PR: #99" \
+  && echo "$output" | grep -q "Branch: feat/issue-42-test" \
+  && grep -q "next_action contained a newline" "$LAST_STDERR_FILE"; then
+  pass "T-13: newline in next_action collapsed; Loop/PR/Branch kept"
+else
+  fail "T-13: stdout=$output stderr=$(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+echo "T-11: compact + corrupt queue emits unreadable Batch line"
 dir_t11="$TEST_DIR/tc-batch-11-corrupt"
 mkdir -p "$dir_t11"
-create_state_file "$dir_t11" '{
-  "active": true,
-  "issue_number": 42,
-  "phase": "implementing",
-  "next_action": "continue work"
-}'
+create_state_file "$dir_t11" "$T10_STATE"
 sid_t11="test-sid-$(basename "$dir_t11")"
 mkdir -p "$dir_t11/.rite/state"
 printf 'not-json{{' > "$dir_t11/.rite/state/run-queue-${sid_t11}.json"
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 output=$(echo "{\"cwd\": \"$dir_t11\", \"source\": \"compact\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
-if echo "$output" | grep -q "run-queue が破損しているため batch 稼働判定ができません" \
-  && echo "$output" | grep -q "$(issue_text 42)" \
+if echo "$output" | grep -q "Auto-compact recovery" \
+  && echo "$output" | grep -q "Batch: run-queue unreadable" \
+  && echo "$output" | grep -q "queue_file=" \
+  && ! echo "$output" | grep -q "Batch: run-queue active" \
+  && ! echo "$output" | grep -q "mode=" \
   && ! echo "$output" | grep -q "/rite:recover" \
   && grep -q "WARNING: run-queue が破損しています" "$LAST_STDERR_FILE"; then
-  pass "T-11 corrupt: no recover phrase, WARNING on stderr"
+  pass "T-11 corrupt: unreadable Batch line + WARNING, no invented fields"
 else
   fail "T-11 corrupt: stdout=$output stderr=$(cat "$LAST_STDERR_FILE")"
 fi
@@ -1757,6 +1814,23 @@ if echo "$output" | grep -q "前回のセッション状態が残っていたた
   pass "T-10c: startup reset wording unchanged with active queue"
 else
   fail "T-10c: $output"
+fi
+echo ""
+
+echo "T-06: docs describe SessionStart compact injection, not PostCompact stdout injection"
+SPEC_MD="$SCRIPT_DIR/../../../../docs/SPEC.md"
+AUTO_MD="$SCRIPT_DIR/../../skills/rite-workflow/references/autonomous-execution.md"
+# SCRIPT_DIR is plugins/rite/hooks/tests → repo root is 4 levels up from tests? 
+# tests -> hooks -> rite -> plugins -> repo. That's 4. ../../../../docs/SPEC.md is correct.
+if [ -f "$SPEC_MD" ] && [ -f "$AUTO_MD" ] \
+  && grep -q "SessionStart" "$SPEC_MD" \
+  && grep -qi "source=compact\|source: compact\|SessionStart(compact)" "$SPEC_MD" \
+  && ! grep -qi "stdout, which Claude Code injects" "$SPEC_MD" \
+  && grep -q "SessionStart" "$AUTO_MD" \
+  && ! grep -q "compact hook が保証" "$AUTO_MD"; then
+  pass "T-06: SPEC.md and autonomous-execution.md pin SessionStart path, no PostCompact stdout injection"
+else
+  fail "T-06: docs still describe PostCompact stdout injection or lack SessionStart compact path (spec=$( [ -f "$SPEC_MD" ] && echo yes || echo missing ), auto=$( [ -f "$AUTO_MD" ] && echo yes || echo missing ))"
 fi
 echo ""
 
