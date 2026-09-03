@@ -624,7 +624,7 @@ fi
 
 ## ステップ 7.5: 説明的番号参照検出 (informational)
 
-Wiki ページ本文と `index.md` のエントリサマリーに残った**説明目的の Issue/PR 番号参照**を検出する。本文に「PR #N は…」「Issue #N」「詳細は #N 参照」「(refs #N)」等が残っていれば finding として surface する。裸の `PR #N` / `Issue #N` も対象。[廃止判定ルール](../../skills/rite-workflow/references/comment-best-practices.md#廃止判定ルール-説明的参照-vs-前方ポインタ)に従い、TODO/FIXME 追跡番号は検出除外する。
+Wiki ページ本文と `index.md` のエントリサマリーに残った Issue/PR 番号参照を検出する。本文に「PR #N は…」「Issue #N」「詳細は #N 参照」「(refs #N)」等が残っていれば finding として surface する。裸の `PR #N` / `Issue #N` も対象。helper は TODO/FIXME 行を既存どおり除外する（helper は変更しない）。comment-journal の P5/P6 は廃止済みで、Wiki ページの番号参照カウンタは本 helper。
 rationale: references/rationale.md#descriptive-refs-surface
 
 **検出対象と除外**:
@@ -685,7 +685,7 @@ marker block（`page=...; hits=...`）と `descriptive_refs_pages` は sibling h
 
 **扱い**: `n_descriptive_refs` は **informational 指標**（`unregistered_raw` と同様に `n_warnings` に加算しない）。canonical な `Lint: contradictions=...` summary 行（ステップ 9）の形式は **変更しない**。検出結果はステップ 9 完了レポートの専用行で別途 surface する。
 
-> **検出機構との関係**: `/rite:lint` Phase 3.5 の `comment-journal-check.sh` は `same_branch` のときだけ `.rite/wiki` に届く。本ステップは `git show` で wiki ブランチを読むため、`separate_branch` では Wiki ページの番号参照を見る唯一の経路である。
+> **検出機構との関係**: comment-journal の P5/P6 は廃止済み。Wiki ページの番号参照カウンタは本 helper（`git show` で wiki ブランチを読む）。
 rationale: references/descriptive-refs-rationale.md#scan-scope
 
 ---

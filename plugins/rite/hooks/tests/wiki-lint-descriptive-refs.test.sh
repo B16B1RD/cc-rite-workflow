@@ -29,7 +29,7 @@
 #   TC-20  `## ソース` 除外が節スコープ (見出し以降 EOF まで打ち切らない)
 #   TC-21  informational 契約の非回帰 (T-06 / T-07: n_warnings 不加算 / canonical Lint: 行不変)
 #   TC-19b separate_branch の読出に cat fallback が無い (ブランチ分離の pin)
-#   TC-22  2 検出器の R1 regex が literal 一致 (語彙 drift の検出)
+#   TC-22  helper 単独 pin（comment-journal P5 退役後）
 #   TC-23  検出器の破損が read_errors / io_error へ伝播する (0 件を実測済みと名乗らない)
 #   TC-24  traversal gate / 読出・検出失敗の WARNING / E1 ブロック終端
 #   TC-11b 部分読出失敗は read_ok=true のまま read_errors だけ立つ
@@ -815,29 +815,25 @@ else
   pass "TC-35 (T-09) same_branch の pages_list は pages/ 配下のみ (他カテゴリの入力が不変)"
 fi
 
-# ---- TC-22: 2 検出器の検出 regex が literal 一致すること -------------------
-# 同じ規則を 2 実装に持つため、語彙を 1 語足すたび両方の同期が要る。実装の共通化は
-# しない (読出元も計数単位も違う) 代わりに、literal のバイト一致を pin して drift を検出する。
-CJC="$PLUGIN_ROOT/hooks/scripts/comment-journal-check.sh"
-# 語彙の alternation (`[Ii]ssues?|…|[Rr]esolves`) だけを両ファイルから抜き、一致を見る。
-# regex 全体を突き合わせるとエスケープが複雑になり、抽出側の破損と drift を混同しやすい。
-# 語彙 alternation だけを抜くと両端 (先頭への挿入・末尾への追記) の drift を取り逃がす。
-# R1 全体 (左境界 + 語彙 + 番号規則 + 右境界) を 1 単位として比較する。
+# ---- TC-22: helper 単独 pin（comment-journal P5 退役後） -------------------
+# R1 を helper の live コードから抽出し、空でないことと `_RITE_DESCRIPTIVE_RE`
+# 代入に含まれることを pin する。comment-journal との一致は要求しない
+# （P5 退役後、comment-journal は R1 を持たない）。
 # コメント行を落としてから抽出する。ヘッダコメントは語彙を `…` で省略した同形を持つため、
-# 素で grep すると 2 ファイルの**コメント同士**を比較して drift を 1 クラスも検出しなくなる。
+# 素で grep するとコメント側の省略形を live regex と取り違える。
 vocab_of() { grep -v '^[[:space:]]*#' "$1" | grep -oE '\(\^\|\[\^A-Za-z\]\)\([^)]*\) \*#\[0-9\]\+\(\[\^0-9\]\|\$\)' | head -1; }
 helper_vocab=$(vocab_of "$SCRIPT")
-cjc_vocab=$(vocab_of "$CJC")
+helper_assign=$(grep -v '^[[:space:]]*#' "$SCRIPT" | grep '_RITE_DESCRIPTIVE_RE=' | head -1)
 if [ -z "$helper_vocab" ]; then
   fail "TC-22 helper から R1 regex を抽出できなかった (実装構造が変わった可能性)"
-elif [ -z "$cjc_vocab" ]; then
-  fail "TC-22 comment-journal-check.sh から R1 regex を抽出できなかった"
-elif [ "$helper_vocab" = "$cjc_vocab" ]; then
-  pass "TC-22 2 検出器の R1 regex が一致 (drift なし)"
+elif [ -z "$helper_assign" ]; then
+  fail "TC-22 helper から _RITE_DESCRIPTIVE_RE 代入を抽出できなかった"
+elif printf '%s' "$helper_assign" | grep -F -q -- "$helper_vocab"; then
+  pass "TC-22 helper の R1 regex が _RITE_DESCRIPTIVE_RE 代入に含まれる"
 else
-  fail "TC-22 2 検出器の R1 regex が drift している
-    helper: $helper_vocab
-    cjc   : $cjc_vocab"
+  fail "TC-22 helper の R1 regex が _RITE_DESCRIPTIVE_RE 代入と一致しない
+    R1    : $helper_vocab
+    assign: $helper_assign"
 fi
 
 # ---- TC-52: index.md のリンク regex が orphans.sh と literal 一致すること ----

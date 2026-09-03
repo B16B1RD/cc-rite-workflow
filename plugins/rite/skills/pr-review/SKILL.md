@@ -2104,6 +2104,44 @@ If reviewers have written items in the "仕様への疑問" section, prompt the 
 5.3.0 / 5.3.0.M / 5.3.0.C を 5.3.1 の前に飛ばすことは **禁止**。
 rationale: references/design-rationale.md#5.3-execution-order-why
 
+#### Number-reference `--diff` (every cycle)
+
+5.3.0.M step 1 の `findings[]` へ載せる機械レール。毎 cycle 実行。incremental / light でも skip しない。
+`<base>` は lint Phase 2.2 と同じ origin-first（`origin/{base_branch}` → `{base_branch}`）。`--target` も `A...HEAD` も渡さない。
+
+```bash
+if git rev-parse --verify "origin/{base_branch}^{commit}" >/dev/null 2>&1; then
+  number_ref_base="origin/{base_branch}"
+else
+  number_ref_base="{base_branch}"
+fi
+number_ref_output=$(bash {plugin_root}/hooks/scripts/number-reference-check.sh --diff "$number_ref_base")
+number_ref_rc=$?
+case "$number_ref_rc" in
+  0) ;;
+  1) ;; # findings: 下記
+  *)
+    echo "ERROR: number-reference-check.sh --diff failed rc=$number_ref_rc" >&2
+    echo "[review:error]"
+    exit 1
+    ;;
+esac
+```
+
+| rc | Action |
+|----|--------|
+| 0 | 指摘なし |
+| 2 / その他 | 指摘を作らず `[review:error]` で停止 |
+| 1 | stdout の各 `file:line: matched line` を 5.3.0.M step 1 の `findings[]` へ append |
+
+rc=1 の finding（`findings[].verification` は書かない）:
+- `reviewer: "pr-review"`（orchestrator。agents/ は追加しない）
+- `severity: HIGH` / `scope: current-pr` / `category: number_reference`
+- `description` に同一セグメントの `Verification:`（marker と `=>` の間に句点・改行を入れない）:
+  `Verification: repro => number-reference-check.sh --diff {base} exit 1; {file}:{line}: {matched line} => Total number-ref findings: N`
+
+ゲート後も `findings[]` に残す（`non_blocking_findings[]` へ送らない）。
+
 #### 5.3.0.M 実測必須ゲート実行手順 (helper 委譲)
 
 # rationale: references/design-rationale.md#measured-gate-helper-notes
@@ -3087,7 +3125,7 @@ else
   --source-ref "pr-{pr_number}" \
   --content-file "$tmpfile" \
   --pr-number {pr_number} \
-  --title "PR #{pr_number} review results" \
+  --title "{title}（レビュー結果）" \
   2>"$trigger_stderr"
  trigger_exit=$?
  echo "trigger_exit=$trigger_exit"

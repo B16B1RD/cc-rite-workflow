@@ -1,223 +1,329 @@
 #!/bin/bash
 # Tests for number-reference-check.sh
-# Guards the Issue/PR number-free surface (lint.md) against recurrence.
 # Usage: bash plugins/rite/hooks/tests/number-reference-check.test.sh
-set -euo pipefail
+set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-TARGET="$SCRIPT_DIR/../scripts/number-reference-check.sh"
-TEST_DIR="$(mktemp -d)"
-PASS=0
-FAIL=0
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_test-helpers.sh
+source "$SCRIPT_DIR/_test-helpers.sh"
+PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
+REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
+TARGET="$PLUGIN_ROOT/hooks/scripts/number-reference-check.sh"
+LINT_SKILL="$PLUGIN_ROOT/skills/lint/SKILL.md"
+PR_REVIEW_SKILL="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
+FIX_SKILL="$PLUGIN_ROOT/skills/fix/SKILL.md"
+IMPLEMENT_SKILL="$PLUGIN_ROOT/skills/issue-implement/SKILL.md"
+ISSUE_CLOSE_SKILL="$PLUGIN_ROOT/skills/issue-close/SKILL.md"
 
-cleanup() { rm -rf "$TEST_DIR"; }
-trap 'rc=$?; cleanup; exit $rc' EXIT
-trap 'cleanup; exit 130' INT
-trap 'cleanup; exit 143' TERM
-trap 'cleanup; exit 129' HUP
+if [ ! -x "$TARGET" ] && [ ! -f "$TARGET" ]; then
+  echo "ERROR: helper not found: $TARGET" >&2
+  exit 1
+fi
 
-pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
-fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
+cleanup_dirs=()
+cleanup() {
+  local p
+  for p in "${cleanup_dirs[@]:-}"; do [ -n "$p" ] && rm -rf "$p"; done
+}
+trap cleanup EXIT
 
-echo "=== number-reference-check.sh tests ==="
-echo ""
+init_git_sb() {
+  local sb="$1"
+  git -C "$sb" init -q
+  git -C "$sb" config user.email test@example.com
+  git -C "$sb" config user.name test
+}
 
-mkdir -p "$TEST_DIR/plugins/rite/skills/lint"
-mkdir -p "$TEST_DIR/plugins/rite/hooks/tests"
-(cd "$TEST_DIR" && git init -q 2>/dev/null || true)
+commit_all() {
+  local sb="$1" msg="$2"
+  git -C "$sb" add -A
+  git -C "$sb" commit -qm "$msg"
+}
 
-run() { bash "$TARGET" --repo-root "$TEST_DIR" --target "$1" 2>&1; }
-SAMPLE="plugins/rite/skills/sample.md"
-SAMPLE_PATH="$TEST_DIR/$SAMPLE"
+run_all() {
+  local sb="$1"
+  shift
+  bash "$TARGET" --all --repo-root "$sb" "$@"
+}
 
-# --------------------------------------------------------------------------
-# TC-001: No targets → exit 2 (usage error)
-# --------------------------------------------------------------------------
-echo "TC-001: no targets → exit 2"
-rc=0; bash "$TARGET" --repo-root "$TEST_DIR" >/dev/null 2>&1 || rc=$?
-if [ "$rc" -eq 2 ]; then pass "no targets → exit 2"
-else fail "expected rc=2, got rc=$rc"; fi
+run_diff() {
+  local sb="$1" base="$2"
+  shift 2
+  bash "$TARGET" --diff "$base" --repo-root "$sb" "$@"
+}
 
-# --------------------------------------------------------------------------
-# TC-002 (T-02): a comment containing #1234 → warning (exit 1, reported)
-# --------------------------------------------------------------------------
-echo "TC-002 (T-02): #1234 in a comment → finding"
-cat > "$SAMPLE_PATH" <<'MD'
-# Fix the loader (#1234)
-plain text
-MD
-rc=0; output=$(run "$SAMPLE") || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q '#1234'; then
-  pass "#1234 detected as finding → exit 1"
-else fail "expected rc=1 with #1234, got rc=$rc: $output"; fi
-
-# --------------------------------------------------------------------------
-# TC-003 (T-03): functional code / headings → no finding
-# --------------------------------------------------------------------------
-echo "TC-003 (T-03): functional code not detected"
-cat > "$SAMPLE_PATH" <<'MD'
-The {issue_number} placeholder is substituted at runtime.
-Branch slug from grep -oE 'issue-[0-9]+' extraction.
-API path /issues/123/comments stays intact.
-## 3.19 Plugin-specific Checks (Number Reference Detection)
-A short task-list pointer without a number stays below the threshold.
-MD
-rc=0; output=$(run "$SAMPLE") || rc=$?
-if [ "$rc" -eq 0 ]; then pass "functional code / heading → exit 0"
-else fail "expected rc=0 (no false positive), got rc=$rc: $output"; fi
+echo "=== number-reference-check.sh ==="
 
 # --------------------------------------------------------------------------
-# TC-004 (T-04): drift-check-ignore line excluded
+# CLI contract
 # --------------------------------------------------------------------------
-echo "TC-004 (T-04): drift-check-ignore excluded"
-cat > "$SAMPLE_PATH" <<'MD'
-historical note (#999 silent-corruption visualization) drift-check-ignore
-MD
-rc=0; output=$(run "$SAMPLE") || rc=$?
-if [ "$rc" -eq 0 ]; then pass "drift-check-ignore line excluded → exit 0"
-else fail "expected rc=0, got rc=$rc: $output"; fi
+sb=$(make_plain_sandbox) && cleanup_dirs+=("$sb") || { echo "ERROR: sandbox" >&2; exit 1; }
+init_git_sb "$sb"
+
+rc=0; bash "$TARGET" --repo-root "$sb" >/dev/null 2>&1 || rc=$?
+assert "no mode → exit 2" "2" "$rc"
+
+rc=0; bash "$TARGET" --target foo.md --repo-root "$sb" >/dev/null 2>&1 || rc=$?
+assert "unknown --target → exit 2" "2" "$rc"
+
+rc=0; bash "$TARGET" --bogus --repo-root "$sb" >/dev/null 2>&1 || rc=$?
+assert "unknown argument → exit 2" "2" "$rc"
+
+rc=0; bash "$TARGET" --diff --repo-root "$sb" >/dev/null 2>&1 || rc=$?
+assert "--diff without base → exit 2" "2" "$rc"
+
+rc=0; bash "$TARGET" --stdin >/dev/null 2>&1 || rc=$?
+assert "--stdin without --label → exit 2" "2" "$rc"
+
+rc=0; bash "$TARGET" --all --label x --repo-root "$sb" >/dev/null 2>&1 || rc=$?
+assert "--label without --stdin → exit 2" "2" "$rc"
+
+rc=0; bash "$TARGET" --all --diff HEAD --repo-root "$sb" >/dev/null 2>&1 || rc=$?
+assert "exclusive --all and --diff → exit 2" "2" "$rc"
+
+rc=0; out=$(bash "$TARGET" --repo-root /nonexistent/rite-xyz --all 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q 'repo-root not a directory'; then
+  pass "bad --repo-root → exit 2"
+else
+  fail "bad --repo-root expected rc=2 with ERROR, got rc=$rc: $out"
+fi
 
 # --------------------------------------------------------------------------
-# TC-005: 5-digit and 2-digit numbers are outside the 3-4 digit band
+# T-12: unresolved --diff base
 # --------------------------------------------------------------------------
-echo "TC-005: 5-digit / 2-digit boundary → no finding"
-cat > "$SAMPLE_PATH" <<'MD'
-A five-digit token #12345 is not an Issue ref.
-A two-digit token #42 is not matched either.
-MD
-rc=0; output=$(run "$SAMPLE") || rc=$?
-if [ "$rc" -eq 0 ]; then pass "boundary digit-counts → exit 0"
-else fail "expected rc=0, got rc=$rc: $output"; fi
+printf 'clean\n' > "$sb/README.md"
+commit_all "$sb" init
+rc=0; out=$(run_diff "$sb" does-not-exist 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q 'ERROR'; then
+  pass "T-12 unresolved base → exit 2 + ERROR"
+else
+  fail "T-12 expected rc=2 + ERROR, got rc=$rc: $out"
+fi
 
 # --------------------------------------------------------------------------
-# TC-006 (T-05): a finding reports a summary line and exits 1 (warning, not
-#                a hard abort) so the lint wiring can treat it as non-blocking.
+# T-01 --diff: pre-existing / added / uncommitted / deletion
 # --------------------------------------------------------------------------
-echo "TC-006 (T-05): finding → exit 1 + summary (non-aborting)"
-cat > "$SAMPLE_PATH" <<'MD'
-note (#1500)
-MD
-rc=0; output=$(run "$SAMPLE") || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q 'Total number-ref findings: 1'; then
-  pass "finding reported with summary, exit 1 (warning)"
-else fail "expected rc=1 + summary, got rc=$rc: $output"; fi
+mkdir -p "$sb/plugins/rite/skills/x"
+printf 'pre-existing token (#1500)\n' > "$sb/plugins/rite/skills/x/SKILL.md"
+commit_all "$sb" base
+base=$(git -C "$sb" rev-parse HEAD)
+
+printf 'clean addition\n' >> "$sb/plugins/rite/skills/x/SKILL.md"
+commit_all "$sb" clean
+rc=0; out=$(run_diff "$sb" "$base" --quiet 2>&1) || rc=$?
+assert "T-01(a) pre-existing on base is not prosecuted" "0" "$rc"
+
+printf 'added token (#1600)\n' >> "$sb/plugins/rite/skills/x/SKILL.md"
+commit_all "$sb" added
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] \
+   && printf '%s' "$out" | grep -qE '^plugins/rite/skills/x/SKILL.md:[0-9]+: added token \(#1600\)$' \
+   && printf '%s' "$out" | grep -q 'Total number-ref findings: 1'; then
+  pass "T-01(b) added + line → exit 1 + file:line: matched line + summary"
+else
+  fail "T-01(b) expected rc=1 with stdout format, got rc=$rc: $out"
+fi
+
+printf 'uncommitted token (#1700)\n' >> "$sb/plugins/rite/skills/x/SKILL.md"
+rc=0; out=$(run_diff "$sb" HEAD --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q '#1700' \
+   && printf '%s' "$out" | grep -q 'Total number-ref findings:'; then
+  pass "T-01(c) uncommitted + line is detected"
+else
+  fail "T-01(c) expected rc=1 with uncommitted hit, got rc=$rc: $out"
+fi
+git -C "$sb" checkout -- plugins/rite/skills/x/SKILL.md
+
+# deletion of a numbered line must not hit
+printf 'keep\nnumbered (#1800)\n' > "$sb/plugins/rite/skills/x/SKILL.md"
+commit_all "$sb" before-del
+printf 'keep\n' > "$sb/plugins/rite/skills/x/SKILL.md"
+commit_all "$sb" after-del
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+assert "T-01(d) deleted numbered line is not a hit" "0" "$rc"
 
 # --------------------------------------------------------------------------
-# TC-007: hooks/tests/ fixtures are never reported (they embed bad refs by
-#         design) even when targeted explicitly.
+# T-02 Issue #N / PR #N share the same grammar
 # --------------------------------------------------------------------------
-echo "TC-007: hooks/tests/ fixture excluded"
-cat > "$TEST_DIR/plugins/rite/hooks/tests/bad-fixture.md" <<'MD'
-fixture line (#1700)
-MD
-rc=0; output=$(run "plugins/rite/hooks/tests/bad-fixture.md") || rc=$?
-if [ "$rc" -eq 0 ] && ! echo "$output" | grep -q '#1700'; then
-  pass "tests/ fixture excluded → exit 0"
-else fail "expected rc=0 with no finding, got rc=$rc: $output"; fi
-
-# --------------------------------------------------------------------------
-# TC-008: --all scans the number-free surface (lint/SKILL.md) and reports a
-#         re-introduced number.
-# --------------------------------------------------------------------------
-echo "TC-008: --all scans lint/SKILL.md surface"
-mkdir -p "$TEST_DIR/plugins/rite/skills/lint"
-cat > "$TEST_DIR/plugins/rite/skills/lint/SKILL.md" <<'MD'
-## Notes
-- A re-introduced PR number (#1600) sneaks in here.
-MD
-rc=0; output=$(bash "$TARGET" --all --repo-root "$TEST_DIR" 2>&1) || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q '#1600'; then
-  pass "--all detects re-introduced number in lint/SKILL.md"
-else fail "expected rc=1 with #1600, got rc=$rc: $output"; fi
-
-# --------------------------------------------------------------------------
-# TC-008b: --all does not report CHANGELOG even when it contains a number
-#          (CHANGELOG is a repository document, not the number-free surface).
-# --------------------------------------------------------------------------
-echo "TC-008b: --all ignores CHANGELOG numbers"
-cat > "$TEST_DIR/CHANGELOG.md" <<'MD'
-## [0.6.0]
-- A changelog pointer (#1700) is allowed here.
-MD
-cat > "$TEST_DIR/CHANGELOG.ja.md" <<'MD'
-## [0.6.0]
-- 番号付きポインタ (#1701) はここにあってよい。
-MD
-cat > "$TEST_DIR/plugins/rite/skills/lint/SKILL.md" <<'MD'
-## Notes
-- clean surface with no issue numbers.
-MD
-rc=0; output=$(bash "$TARGET" --all --repo-root "$TEST_DIR" 2>&1) || rc=$?
-if [ "$rc" -eq 0 ] \
-   && ! echo "$output" | grep -q 'CHANGELOG.md' \
-   && ! echo "$output" | grep -q 'CHANGELOG.ja.md' \
-   && ! echo "$output" | grep -q '#1700' \
-   && ! echo "$output" | grep -q '#1701'; then
-  pass "--all ignores CHANGELOG numbers"
-else fail "expected rc=0 with no CHANGELOG findings, got rc=$rc: $output"; fi
-
-# --------------------------------------------------------------------------
-# TC-009 (T-06): a clean surface file → 0 findings
-# --------------------------------------------------------------------------
-echo "TC-009 (T-06): clean file → exit 0"
-cat > "$TEST_DIR/CHANGELOG.ja.md" <<'MD'
-## [0.6.0]
-- 番号のないクリーンなエントリ。
-MD
-rc=0; output=$(run "CHANGELOG.ja.md") || rc=$?
-if [ "$rc" -eq 0 ]; then pass "clean file → exit 0"
-else fail "expected rc=0, got rc=$rc: $output"; fi
-
-# --------------------------------------------------------------------------
-# TC-010: the `Issue #NNN` / `PR #NNN` prose forms are subsumed by the bare
-#         `#NNN` pattern (regression guard for the headline feature — the
-#         script header claims these forms are detected).
-# --------------------------------------------------------------------------
-echo "TC-010: Issue #NNN / PR #NNN prose forms detected"
 issue_label=Issue
 pr_label=PR
 number_mark='#'
-cat > "$SAMPLE_PATH" <<MD
-See ${issue_label} ${number_mark}1234 for the rationale.
-Per ${pr_label} ${number_mark}367, the loader was fixed.
-MD
-rc=0; output=$(run "$SAMPLE") || rc=$?
-if [ "$rc" -eq 1 ] && echo "$output" | grep -q '#1234' && echo "$output" | grep -q '#367'; then
-  pass "Issue #NNN / PR #NNN prose forms detected → exit 1"
-else fail "expected rc=1 with #1234 and #367, got rc=$rc: $output"; fi
+printf '%s %s1234 rationale\n%s %s367 loader\n' \
+  "$issue_label" "$number_mark" "$pr_label" "$number_mark" \
+  > "$sb/plugins/rite/skills/x/SKILL.md"
+commit_all "$sb" prose-forms
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q '#1234' && printf '%s' "$out" | grep -q '#367'; then
+  pass "T-02 Issue/PR prose forms detected"
+else
+  fail "T-02 expected both prose forms, got rc=$rc: $out"
+fi
 
 # --------------------------------------------------------------------------
-# TC-011: exact 3-4 digit band boundaries (#100 / #9999 detected, #99 not).
+# T-03 anchors / placeholder / ignore
 # --------------------------------------------------------------------------
-echo "TC-011: band boundary #100 / #9999 / #99"
-cat > "$SAMPLE_PATH" <<'MD'
-Lower bound (#100) is detected.
-Upper bound (#9999) is detected.
-Below band #99 is not detected.
-MD
-rc=0; output=$(run "$SAMPLE") || rc=$?
+printf '#100-letter heading\nplaceholder #123 stays\nhistorical (#1900) drift-check-ignore\n' \
+  > "$sb/plugins/rite/skills/x/SKILL.md"
+commit_all "$sb" exclusions
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+assert "T-03 anchor / #123 / ignore → hit 0" "0" "$rc"
+
+# adjacent pin: #123 excluded, #1234 detected
+printf 'skip #123 and catch #1234 here\n' > "$sb/plugins/rite/skills/x/SKILL.md"
+commit_all "$sb" adjacent
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q '#1234' \
+   && [ "$(printf '%s' "$out" | grep -c 'Total number-ref findings: 1' || true)" -eq 1 ]; then
+  pass "T-03 adjacent #123 skip / #1234 hit"
+else
+  fail "T-03 adjacent pin failed rc=$rc: $out"
+fi
+
+# hyphen + digit is not an anchor
+printf 'not-anchor (#200-1)\n' > "$sb/plugins/rite/skills/x/SKILL.md"
+commit_all "$sb" hyphen-digit
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+assert "T-03 hyphen+digit is not an anchor" "1" "$rc"
+
+# --------------------------------------------------------------------------
+# Band: #100 / #9999 hit, #99 / #12345 miss
+# --------------------------------------------------------------------------
+printf 'lower (#100)\nupper (#9999)\nbelow #99\nabove #12345\n' > "$sb/plugins/rite/skills/x/SKILL.md"
+commit_all "$sb" band
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
 if [ "$rc" -eq 1 ] \
-   && echo "$output" | grep -q '#100' \
-   && echo "$output" | grep -q '#9999' \
-   && ! echo "$output" | grep -q '#99\b'; then
-  pass "band boundaries: #100/#9999 detected, #99 excluded"
-else fail "expected #100 and #9999 detected without #99, got rc=$rc: $output"; fi
+   && printf '%s' "$out" | grep -qE '\(#100\)' \
+   && printf '%s' "$out" | grep -qE '\(#9999\)' \
+   && ! printf '%s' "$out" | grep -qE 'below #99' \
+   && ! printf '%s' "$out" | grep -qE 'above #12345'; then
+  pass "band #100/#9999 hit, #99/#12345 miss"
+else
+  fail "band boundaries failed rc=$rc: $out"
+fi
 
 # --------------------------------------------------------------------------
-# TC-012: a non-existent repo-root is an invocation error (exit 2), not a
-#         finding — keeps the exit-2 contract distinct from the exit-1 warning.
+# T-04 path exclusions — only the three contracted paths
 # --------------------------------------------------------------------------
-echo "TC-012: bad --repo-root → exit 2"
-rc=0; output=$(bash "$TARGET" --repo-root /nonexistent/rite-xyz --target foo.md 2>&1) || rc=$?
-if [ "$rc" -eq 2 ] && echo "$output" | grep -q 'repo-root not a directory'; then
-  pass "bad --repo-root → exit 2 (invocation error)"
-else fail "expected rc=2 with repo-root error, got rc=$rc: $output"; fi
+mkdir -p "$sb/.rite/wiki/raw" \
+  "$sb/plugins/rite/scripts/tests/fixtures" \
+  "$sb/plugins/rite/hooks/tests"
+printf 'raw (#2100)\n' > "$sb/.rite/wiki/raw/note.md"
+printf 'fixture (#2101)\n' > "$sb/plugins/rite/scripts/tests/fixtures/x.md"
+printf 'self (#2102)\n' > "$sb/plugins/rite/hooks/tests/number-reference-check.test.sh"
+printf 'cjc (#2103)\n' > "$sb/plugins/rite/hooks/tests/comment-journal-check.test.sh"
+printf 'wiki (#2104)\n' > "$sb/plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh"
+printf 'other (#2105)\n' > "$sb/plugins/rite/hooks/tests/other.test.sh"
+printf 'clean surface\n' > "$sb/plugins/rite/skills/x/SKILL.md"
+commit_all "$sb" path-excl
+
+rc=0; out=$(run_all "$sb" --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] \
+   && printf '%s' "$out" | grep -q 'hooks/tests/other.test.sh' \
+   && ! printf '%s' "$out" | grep -q 'wiki/raw/' \
+   && ! printf '%s' "$out" | grep -q 'scripts/tests/fixtures/' \
+   && ! printf '%s' "$out" | grep -q 'number-reference-check.test.sh' \
+   && ! printf '%s' "$out" | grep -q 'comment-journal-check.test.sh' \
+   && ! printf '%s' "$out" | grep -q 'wiki-lint-descriptive-refs.test.sh'; then
+  pass "T-04 excluded 3 paths miss; other hooks/tests hit"
+else
+  fail "T-04 path exclusions failed rc=$rc: $out"
+fi
 
 # --------------------------------------------------------------------------
-# TC-013: rationale rewrites must not replace numbered journals with another
-#         undefined placeholder. These tokens previously produced broken prose
-#         such as malformed possessives and unnamed review runs.
+# T-05 --all detects newly tracked files without a target list
+# --------------------------------------------------------------------------
+mkdir -p "$sb/docs"
+printf 'new tracked (#2200)\n' > "$sb/docs/new.md"
+commit_all "$sb" new-tracked
+rc=0; out=$(run_all "$sb" --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'docs/new.md' && printf '%s' "$out" | grep -q '#2200'; then
+  pass "T-05 --all detects newly tracked file"
+else
+  fail "T-05 expected docs/new.md hit, got rc=$rc: $out"
+fi
+
+# CHANGELOG is in scope for --all
+printf 'history (#2300)\n' > "$sb/CHANGELOG.md"
+commit_all "$sb" changelog
+rc=0; out=$(run_all "$sb" --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'CHANGELOG.md'; then
+  pass "--all scans CHANGELOG"
+else
+  fail "--all should scan CHANGELOG, got rc=$rc: $out"
+fi
+
+# --quiet suppresses Scanning but not the summary
+rc=0; err=$(run_all "$sb" --quiet 2>&1 >/dev/null) || rc=$?
+if printf '%s' "$err" | grep -q 'Total number-ref findings:' \
+   && ! printf '%s' "$err" | grep -q 'Scanning'; then
+  pass "--quiet suppresses Scanning, keeps summary"
+else
+  fail "--quiet contract failed: $err"
+fi
+
+# --------------------------------------------------------------------------
+# --stdin --label
+# --------------------------------------------------------------------------
+rc=0; out=$(printf 'stdin token (#2400)\n' | bash "$TARGET" --stdin --label docs/in.md --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] \
+   && printf '%s' "$out" | grep -qE '^docs/in.md:1: stdin token \(#2400\)$' \
+   && printf '%s' "$out" | grep -q 'Total number-ref findings: 1'; then
+  pass "--stdin --label reports with label"
+else
+  fail "--stdin expected labeled finding, got rc=$rc: $out"
+fi
+
+rc=0; out=$(printf 'raw (#2500)\n' | bash "$TARGET" --stdin --label .rite/wiki/raw/x.md --quiet 2>&1) || rc=$?
+assert "--stdin excluded label is not scanned" "0" "$rc"
+
+rc=0; out=$(printf 'placeholder #123 only\n' | bash "$TARGET" --stdin --label docs/p.md --quiet 2>&1) || rc=$?
+assert "--stdin #123 placeholder is excluded" "0" "$rc"
+
+# --------------------------------------------------------------------------
+# T-06 / T-09 / T-11 static pins (SKILL wiring)
+# --------------------------------------------------------------------------
+assert_grep "T-06 lint Phase 3.5 preamble calls --diff" "$LINT_SKILL" \
+  'number-reference-check\.sh --diff'
+assert_grep "T-06 lint rc 1|2 routes through error_count" "$LINT_SKILL" \
+  'error_count=\$\(\(error_count \+ 1\)\)'
+assert_not_grep "T-06 lint no longer invokes retired gate" "$LINT_SKILL" \
+  'descriptive-number-diff-gate\.sh'
+assert_grep "T-06 pr-review rail calls --diff" "$PR_REVIEW_SKILL" \
+  'number-reference-check\.sh --diff'
+assert_grep "T-06 pr-review finding uses Verification: canonical form" "$PR_REVIEW_SKILL" \
+  'Verification:'
+assert_grep "T-06 pr-review orchestrator reviewer id" "$PR_REVIEW_SKILL" \
+  'reviewer: "pr-review"'
+assert_not_grep "T-06 pr-review does not skip on cycle-scope" "$PR_REVIEW_SKILL" \
+  'number-reference-check.*cycle-scope'
+assert_grep "T-06 fix 3.1 self-check calls --diff" "$FIX_SKILL" \
+  'number-reference-check\.sh --diff'
+assert_grep "T-11 issue-implement forbids number/AC tokens in generated prose" "$IMPLEMENT_SKILL" \
+  '番号・AC番号を書かない'
+assert_grep "T-11 issue-implement commit body Why is required" "$IMPLEMENT_SKILL" \
+  'body は why を自由形式'
+assert_not_grep "T-11 issue-implement trivial body omit withdrawn" "$IMPLEMENT_SKILL" \
+  'trivial は省略可'
+
+# T-09: --title arguments must not contain #{
+title_hits=$(grep -nE -- '--title[[:space:]]+"[^"]*#\{' \
+  "$PR_REVIEW_SKILL" "$FIX_SKILL" "$ISSUE_CLOSE_SKILL" 2>/dev/null || true)
+if [ -z "$title_hits" ]; then
+  pass "T-09 --title arguments contain no #{ }"
+else
+  fail "T-09 --title still contains #{ }: $title_hits"
+fi
+
+# T-10: retired gate name gone from the tree (tests/ of this detector excluded by design)
+if ! git -C "$REPO_ROOT" grep -l 'descriptive-number-diff-gate' -- \
+  ':!plugins/rite/hooks/tests/number-reference-check.test.sh' >/dev/null 2>&1; then
+  pass "T-10 descriptive-number-diff-gate grep is 0"
+else
+  fail "T-10 descriptive-number-diff-gate still referenced"
+fi
+
+# --------------------------------------------------------------------------
+# TC-013 / TC-014 preserved
 # --------------------------------------------------------------------------
 echo "TC-013: generic rationale placeholders are absent"
 placeholder_pattern='the governing'' rationale|The observed'' review run|the contract''[.]s'
@@ -301,21 +407,24 @@ deletion_residue_samples=(
 )
 deletion_residue_pattern=$(IFS='|'; printf '%s' "${deletion_residue_patterns[*]}")
 scan_deletion_residue() {
-  local manifest="$TEST_DIR/deletion-residue-files"
+  local manifest
+  manifest=$(mktemp)
   local file grep_rc grep_bin="${DELETION_GREP_BIN:-grep}"
   if ! find "$@" -type f ! -path '*/fixtures/*' \
     ! -name 'number-reference-check.test.sh' -print0 > "$manifest"; then
+    rm -f "$manifest"
     return 2
   fi
   while IFS= read -r -d '' file; do
     grep_rc=0
     "$grep_bin" -En "$deletion_residue_pattern" "$file" >/dev/null || grep_rc=$?
     case "$grep_rc" in
-      0) return 0 ;;
+      0) rm -f "$manifest"; return 0 ;;
       1) ;;
-      *) return 2 ;;
+      *) rm -f "$manifest"; return 2 ;;
     esac
   done < "$manifest"
+  rm -f "$manifest"
   return 1
 }
 for i in "${!deletion_residue_patterns[@]}"; do
@@ -338,13 +447,13 @@ case "$scan_rc" in
   *) fail "deletion-damage residue scan failed operationally" ;;
 esac
 scan_rc=0
-scan_deletion_residue "$TEST_DIR/definitely-missing-root" 2>/dev/null || scan_rc=$?
+scan_deletion_residue "$sb/definitely-missing-root" 2>/dev/null || scan_rc=$?
 if [ "$scan_rc" -eq 2 ]; then
   pass "deletion-damage scan fails closed when a scan root is unavailable"
 else
   fail "deletion-damage scan did not distinguish an unavailable root (rc=$scan_rc)"
 fi
-scan_fixture="$TEST_DIR/deletion-scan-fixture"
+scan_fixture="$sb/deletion-scan-fixture"
 mkdir -p "$scan_fixture"
 printf '%s\n' "${deletion_residue_samples[0]}" > "$scan_fixture/residue.md"
 scan_rc=0
@@ -354,7 +463,7 @@ if [ "$scan_rc" -eq 0 ]; then
 else
   fail "deletion-damage scan missed helper-level residue (rc=$scan_rc)"
 fi
-grep_fail_shim="$TEST_DIR/grep-fail"
+grep_fail_shim="$sb/grep-fail"
 printf '%s\n' '#!/bin/bash' 'exit 2' > "$grep_fail_shim"
 chmod +x "$grep_fail_shim"
 scan_rc=0
@@ -365,13 +474,7 @@ else
   fail "deletion-damage scan misclassified a grep operational error (rc=$scan_rc)"
 fi
 
-# --------------------------------------------------------------------------
-# Summary
-# --------------------------------------------------------------------------
-echo ""
-echo "=== Test Summary ==="
-echo "PASS: $PASS"
-echo "FAIL: $FAIL"
-echo "TOTAL: $((PASS + FAIL))"
-[ "$FAIL" -gt 0 ] && exit 1
-exit 0
+if ! print_summary "$(basename "$0")" \
+  "drift: number-reference-check.sh CLI / grammar / path exclusions / SKILL wiring"; then
+  exit 1
+fi
