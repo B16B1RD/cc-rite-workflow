@@ -97,9 +97,10 @@ batch 判定と同型で read-only。helper 失敗 / session_id 解決不可 / �
 ## autonomous-lint
 
 `/rite:issue-implement` は全 step 完了後に `rite:lint` を自身で invoke する（旧 `start.md` の flat
-設計を継承した内蔵動作）。そのため本コマンドのステップ 5 は sentinel を読むだけの no-op であり、
-`rite:lint` を再 invoke しない（二重実行防止）。`phase=lint` も implement が既に書いているため、
-本コマンドから上書きしない（二重 write を避ける契約）。
+設計を継承した内蔵動作）。そのため本コマンドのステップ 5 は `[lint:success]` / `[lint:skipped]` では sentinel を読むだけの
+no-op であり、`rite:lint` を再 invoke しない（二重実行防止）。`[lint:error]` と sentinel 不在は
+1 回だけ invoke する。`phase=lint` も implement が既に書いているため、本コマンドから上書きしない
+（二重 write を避ける契約）。
 
 `/rite:issue-implement` 自体は固有 sentinel（`[implement:*]`）を emit しない設計のため、ステップ 4
 では `[lint:*]` の context 投入のみを期待し、判定はステップ 5 に委譲する。

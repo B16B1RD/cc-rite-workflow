@@ -85,6 +85,7 @@ assert_grep "T-01 out-of-table is one auto-retry then recover" "$PREAMBLE" \
   '1 回自動再試行し、再失敗で停止して `/rite:recover` を案内する'
 assert_grep "T-04 destructive rm -rf remains in table" "$PREAMBLE" '`rm -rf`'
 assert_grep "T-04 force-claim remains in table" "$PREAMBLE" '他セッションからの強制取得'
+assert_grep "T-04 dirty discard remains in table" "$PREAMBLE" 'dirty の破棄'
 
 # T-02: coding-principles 前提文
 assert_grep "T-02 preamble uses assume-and-proceed wording" "$PRINCIPLES" \

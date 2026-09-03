@@ -600,7 +600,7 @@ args: "{issue_number}"
 
 ## ステップ 5: 品質チェック (Step 4 の autonomous lint 結果検証)
 
-Step 4 の autonomous lint が emit した sentinel を会話 context から読む。**`rite:lint` を再 invoke しない**（二重実行防止）:
+Step 4 の autonomous lint が emit した sentinel を会話 context から読む。**`[lint:success]` / `[lint:skipped]` では `rite:lint` を再 invoke しない**（二重実行防止）。`[lint:error]` と sentinel 不在は下表:
 
 | Sentinel | 次のアクション |
 |---------|--------------|

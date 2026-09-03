@@ -766,7 +766,7 @@ go vet {files}
 |-------------|---------------------------|
 | `[lint:success]` | `/rite:lint` execution completes, and the caller `/rite:open` consumes the sentinel at ステップ 5.1 then proceeds to ステップ 6 (PR creation) |
 | `[lint:skipped]` | `/rite:lint` execution completes, and the caller `/rite:open` consumes the sentinel at ステップ 5.1 then proceeds to ステップ 6 (PR creation) |
-| `[lint:error]` | After fixing errors, run lint again (return to Phase 3) |
+| `[lint:error]` | Emit sentinel and return to caller. Caller retries rite:lint once; on second failure stop and /rite:recover. Do not return to Phase 3. |
 | `[lint:aborted]` | Flow ends (execution of `/rite:open` also ends) |
 
 standalone では ステップ 5.1 の sentinel 消費も ステップ 6 の PR 作成も **実行しない**。
