@@ -447,7 +447,8 @@ assert_not_grep "T-01b close.md Phase 2 has no unscoped gh pr list --state all -
 assert_grep_in_section "T-03 close.md looks the PR up by the resolved branch with an exact --head" "$CLOSE_MD" \
   '^### 2\.2 関連 PR の検索' '^### 2\.3' \
   'gh pr list .*\-\-head "\{branch_name\}"'
-_first_line() { grep -nE "$2" "$1" 2>/dev/null | head -1 | cut -d: -f1; }
+# no-match は空（set -euo pipefail でも T-04 の else へ届ける）
+_first_line() { grep -nE "$2" "$1" 2>/dev/null | head -1 | cut -d: -f1 || true; }
 _branch_sec_line=$(_first_line "$CLOSE_MD" '^### 2\.1 作業ブランチの解決')
 _pr_sec_line=$(_first_line "$CLOSE_MD" '^### 2\.2 関連 PR の検索')
 if [ -n "$_branch_sec_line" ] && [ -n "$_pr_sec_line" ] && [ "$_branch_sec_line" -lt "$_pr_sec_line" ]; then
