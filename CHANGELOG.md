@@ -37,6 +37,10 @@ outside the number-free surface guarded by `number-reference-check.sh`. The
 
 - **`/rite:issue-cancel` cancels an Issue you decided not to do** — closes it with `--reason "not planned"`, moves the board Status to the terminal `Cancelled`, and records the mandatory reason in the closing comment. An Issue already carrying a PR, a branch, a session worktree, or work memory is torn down through the existing cleanup helpers: the PR is closed unmerged, then the worktree, branch, PR-specific state, and local work memory are removed. The order PR close → Status → Issue close is load-bearing: a failed PR close stops the whole flow rather than advancing the board. Cancelling a child Issue never propagates `Done` to its parent. The skill runs only on an explicit human invocation. (#2493)
 
+### Fixed
+
+- **`/rite:pr-review` recovers reviewer Task results from completion notifications instead of requiring `run_in_background: false`** — fork mode is the harness default, so spawned subagents run in the background and the Agent tool has no `run_in_background` argument. The orchestrator waits until every reviewer's notification has arrived before starting result collection, does not invent missing results, and while waiting may only emit `REVIEW_TMP_DIR` and assemble the spawn-timings path. `/rite:open` step 3.3.1 uses the same recovery contract. (#2510)
+
 ## [0.14.0] - 2026-08-30
 
 ### Fixed

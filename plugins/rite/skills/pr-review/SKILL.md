@@ -1153,7 +1153,7 @@ rationale: references/design-rationale.md#verification-inline-ban
 - `full`: ステップ 4.5
 - `verification`: 4.5.1 + 4.5 を 1 prompt に載せる
 
-起動前に `{count} 人のレビュアーで並列レビューを実行中です。1-2分お待ちください。` を出す。ステップ 2 で選んだ sub-agent を並列実行する。
+起動前に `{count} 人のレビュアーで並列レビューを実行中です。` を出す。ステップ 2 で選んだ sub-agent を並列実行する。起動確認だけでは次へ進まない。
 
 **Available reviewer agents:**
 
@@ -1187,7 +1187,7 @@ rationale: references/design-rationale.md#shared-principles-hybrid
 
 If the following issues occur with the sub-agent approach:
 - All sub-agent definition files cannot be loaded -> Display error message and terminate
-- Some Task tool calls fail -> Integrate only successful review results
+- Some completion notifications fail or are missing -> Integrate only successful review results（起動確認だけでは進めない。待ち中は 4.3.1 の列挙のみ）
 
 **See "Task Tool Sub-Agent Invocation" below for details on the sub-agent approach.**
 
@@ -1200,10 +1200,13 @@ rationale: references/design-rationale.md#named-subagent-and-foreground
 **並列:** 1 メッセージで複数 Task。各 Task:
 - `description`: "セキュリティ専門家 PR レビュー" (short description)
 - `subagent_type`: `rite:{reviewer_type}-reviewer` — scoped name derived from the reviewer selected in ステップ 2 (see table below)
-- `run_in_background`: `false` — foreground 起動を強制する。省略すると harness default で background 起動となり結果回収が不完全になる (下記 CRITICAL 注記参照)
 - `prompt`:
  - `review_mode == "full"`: ステップ 4.5 format (diff, spec, shared reviewer principles)
  - `review_mode == "verification"`: ステップ 4.5.1 verification template + ステップ 4.5 full template, concatenated in a single prompt. Include previous findings table and incremental diff (from ステップ 1.2.4.1) in addition to the standard inputs.
+
+Task 呼び出しに background フラグを付けない（Agent tool に当該引数が無い）。結果は completion notification で回収する。
+**通知待ち中に進めてよい作業**（reviewer 結果に依存しないもののみ。5.x 以降は禁止）: `REVIEW_TMP_DIR` emit と `{spawn_timings_file}` パス組み立て。
+**待ち中に禁止**: 4.6 helper（回収済み reviewer 名簿が要る）/ 5.0.A / 5.1 以降。起動確認だけでは次へ進まない。全 reviewer の completion notification が揃うまで 5.1 を開始しない。未着の結果を推測・補完しない。
 
 **`reviewer_type` → `subagent_type` mapping:**
 
@@ -1221,9 +1224,8 @@ rationale: references/design-rationale.md#named-subagent-and-foreground
 
 **Formula**: `subagent_type = "rite:" + reviewer_type + "-reviewer"`（`rite:` prefix 必須）。
 **Legacy type fallback**: 旧 type（`api` / `frontend` / `performance` / `database` / `type-design`）は WARNING 付きで `application` に代替（silent skip 禁止。`skills/reviewers/SKILL.md` Legacy Reviewer Type Aliases）。
-**⚠️ CRITICAL**: 各 Task は **`run_in_background: false` を明示**。省略でも harness default は background。
 
-**Spawn 時刻（4.6 の値源）**: Task を発行する**直前**に 1 回だけ記録する。同一メッセージの全 reviewer がこの 1 値を共有する。後続の初回 wave（別メッセージで新たに起動する reviewer 群）では再実行して新しい値を取る。4.4 / 5.1.1.1 の retry では本 block を再実行せず、初回の値を保持する。
+**Spawn 時刻（4.6 の値源）**: Task を発行する**直前**に 1 回だけ記録する。同一メッセージの全 reviewer がこの 1 値を共有する。後続の初回 wave（別メッセージで新たに起動する reviewer 群）では再実行して新しい値を取る。4.4 / 5.1.1.1 の retry では本 block を再実行せず、初回の値を保持する。通知回収でも値源は Task 発行時刻のまま。
 
 ```bash
 orchestrator_spawn_at=$(date -u +%Y-%m-%dT%H:%M:%SZ) || orchestrator_spawn_at=""
@@ -1236,7 +1238,7 @@ fi
 
 ### 4.4 Retry Logic
 
-Retry procedure when a Task tool returns an error:
+Retry procedure when a completion notification fails or is missing. 4.4 と 5.1.1.1 の再 spawn も completion notification で回収する。再 spawn の起動確認だけでは 5.1 を開始しない。
 
 **Retry criteria:**
 
@@ -1250,7 +1252,7 @@ Retry procedure when a Task tool returns an error:
 
 **Error type determination method:**
 
-Determine the error type from the Task tool result. Claude analyzes the Task tool response content and determines the type by the following patterns:
+Determine the error type from the completion notification (failure payload or absence). Claude analyzes the notification content and determines the type by the following patterns:
 
 | Error Type | Detection Pattern |
 |-----------|-------------|
@@ -1258,7 +1260,7 @@ Determine the error type from the Task tool result. Claude analyzes the Task too
 | Network error | Response contains "network", "connection", "ECONNREFUSED", "unreachable", etc. |
 | Invalid output format | Does not match the above and does not contain expected output format (e.g., `### 評価:` section) |
 | Skill file load failure | Read tool returned an error (occurs before Task execution) |
-| subagent resolution failure | Task tool returns an error message like `Agent type 'rite:{reviewer_type}-reviewer' not found. Available agents: ...`. This indicates the named subagent is not registered in the current Claude Code installation (plugin not installed, version mismatch, or agent file moved) |
+| subagent resolution failure | completion notification の失敗メッセージ / 欠落が `Agent type 'rite:{reviewer_type}-reviewer' not found. Available agents: ...` を含む。This indicates the named subagent is not registered in the current Claude Code installation (plugin not installed, version mismatch, or agent file moved) |
 
 **Retry procedure:**
 
@@ -1378,7 +1380,7 @@ Verification テンプレート本文は [references/reviewer-prompt-verificatio
 
 ### 4.6 Spawn Spread Check (並列起動の直列化検出、non-blocking)
 
-全 Task 結果の直後に ステップ 4.3.1 の `{orchestrator_spawn_at}` から spawn spread を機械判定する。並列は強制せず観測のみ。
+全 reviewer の completion notification が揃った後に ステップ 4.3.1 の `{orchestrator_spawn_at}` から spawn spread を機械判定する。spawn 発行直後の起動確認では 4.6 helper を走らせない。並列は強制せず観測のみ。
 
 # rationale: references/design-rationale.md#spawn-spread-threshold-notes
 
@@ -1481,6 +1483,7 @@ WARNING は stderr、JSON line は stdout。drift は **non-blocking** で ス�
 
 ### 5.1 Result Collection
 
+**回収契約**: 全 reviewer の completion notification が揃うまで 5.1 を開始しない。未着の結果を推測・補完しない。
 **⚠️ Scope**: 今回新たに検出した指摘だけを集める。diff 外の修正済みは除外。未対応は再検出。
 **Recommendation classification extraction**:
 「### 推奨事項」の **全** item から `分類: <actionable|design_confirmation|boundary>` を抜き、`recommendation_items` として保持する:
@@ -1559,7 +1562,7 @@ rationale: references/design-rationale.md#verification-post-condition-notes
 | retry 実行後も欠落（2 回目以降の検出） | `error` | `verification_post_condition: error` を set、下記 Failure Procedure を実行 |
 
 **Retry counter**: `verification_post_condition_retry_count` は per-reviewer dict。各 reviewer は 0→1 を最大 1 回。
-**Retry Procedure** (`warning`、該当 reviewer ごと最大 1 回)。ステップ 4.3.1 で verification テンプレートを再送する:
+**Retry Procedure** (`warning`、該当 reviewer ごと最大 1 回)。ステップ 4.3.1 で verification テンプレートを再送する。再 spawn も completion notification で回収する。再 spawn の起動確認だけでは判定を再開しない:
 
 - `subagent_type`: `rite:{reviewer_type}-reviewer` (ステップ 4.3.1 の mapping table を参照。Phase B 以降、reviewer は named subagent として呼び出される)
 - `prompt` 内容: ステップ 4.5.1 verification テンプレート + ステップ 4.5 full テンプレート（元レビューと同じ 2 テンプレート concat）に、以下の strict 要件を追加:
