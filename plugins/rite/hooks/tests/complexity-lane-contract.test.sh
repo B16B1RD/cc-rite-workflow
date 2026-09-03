@@ -189,6 +189,23 @@ assert_grep "contract literalism returns out-of-contract needs to the Issue inst
   '契約外の必要性に気付いた場合は実装せず、既存の Issue コメントへ必要性と根拠を記録して差し戻す'
 assert_grep "contract literalism applies to every declared Complexity" "$IMPLEMENT" \
   'XS / S / M / L / XL の全 Complexity に適用する'
+assert_grep "5.0.F test-file discipline heading" "$IMPLEMENT" \
+  '^### 5\.0\.F テスト規律（全 Complexity 共通）$'
+# 4 点が同一段落に同居。分割すると部分適用（1 点だけ残る）が素通りする。
+assert_grep "5.0.F binds the four scale rules on one line" "$IMPLEMENT" \
+  '挙動 1 つにテスト 1 つ。隣接するテストファイルと同規模。scratch の検証スクリプトを permanent test にしない。既存 suite がある種別は新規ファイルより追記する'
+assert_grep "5.0.F allows new files only when no suite exists" "$IMPLEMENT" \
+  '既存 suite が無い種別は新規テストファイルを認め'
+assert_grep "5.0.F defers to 5.1.0.8 on the light lane" "$IMPLEMENT" \
+  'XS/S では 5\.1\.0\.8 の新規テストファイル禁止が優先'
+assert_grep "5.0.F records scratch deletion in work memory" "$IMPLEMENT" \
+  '削った scratch と残したテストの判断は work memory の決定事項に記録する'
+assert_grep "5.0.F applies to every declared Complexity" "$IMPLEMENT" \
+  '本規律は \*\*XS / S / M / L / XL の全 Complexity に適用する\*\*'
+assert_grep "5.0.F does not cap test count" "$IMPLEMENT" \
+  'テスト数の上限は設けない'
+assert_grep "complexity-lane distinguishes scale discipline from lane suppression" "$LANE" \
+  '全 Complexity 共通のテスト規模規律.*レーンの生産量制約ではなく、M\+ の新規ファイル許可を取り消さない'
 assert_grep "complexity-lane references the mandate without redefining it" "$LANE" \
   '全 Complexity 共通 mandate の定義は .*issue-implement/SKILL\.md §5\.0\.L.*唯一の所有位置'
 assert_not_grep "complexity-lane does not duplicate the mandate's normative definition" "$LANE" \

@@ -28,6 +28,15 @@ user-invocable: false
 
 本 mandate は **XS / S / M / L / XL の全 Complexity に適用する**。Complexity レーンは儀式コストと生産量制約だけを変え、本 mandate の適用有無を変えない。
 
+### 5.0.F テスト規律（全 Complexity 共通）
+
+task が求める挙動 1 つにテスト 1 つ。隣接するテストファイルと同規模。scratch の検証スクリプトを permanent test にしない。既存 suite がある種別は新規ファイルより追記する。テスト数の上限は設けない。
+rationale: references/rationale.md#test-file-discipline
+
+既存 suite が無い種別は新規テストファイルを認め、規模は隣接テストファイルに合わせる。**XS/S では 5.1.0.8 の新規テストファイル禁止が優先**し、既存 suite が無くても新規ファイルは作らない。
+
+削った scratch と残したテストの判断は work memory の決定事項に記録する（silent 削除禁止）。本規律は **XS / S / M / L / XL の全 Complexity に適用する**。レーンは 5.1.0.8 の抑制表だけを変え、本規律の適用有無を変えない。
+
 ### 5.0.C Complexity Lane Determination (XS/S 軽量レーン)
 
 対象 Issue の**宣言 Complexity** からレーンを決める。同じ helper が 5.1.0.1 と 5.1.0.8 の両方に供給する。
