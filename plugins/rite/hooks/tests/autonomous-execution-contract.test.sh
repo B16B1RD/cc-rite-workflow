@@ -23,6 +23,8 @@ assert_grep "SoT forbids self-stop for context-budget concern" "$PREAMBLE" \
   'コンテキスト制限を理由に停止・要約・新セッション提案・作業の切り詰めをしない'
 assert_grep "SoT limits reports to outcome and next action" "$PREAMBLE" \
   '報告は outcome と次の一手のみ'
+assert_grep "SoT pins parallel tool-call nudge" "$PREAMBLE" \
+  '次に必要なものを先に列挙し、他の結果に依存しないものは同じ応答で全部要求する。'
 
 for skill in "$BATCH" "$ITERATE"; do
   assert_grep "$(basename "$(dirname "$skill")") references the autonomous execution SoT" "$skill" \
@@ -37,6 +39,15 @@ done
 
 REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 AGENTS_DIR="$REPO_ROOT/plugins/rite/agents"
+REVIEWER_BASE="$AGENTS_DIR/_reviewer-base.md"
+assert_file_exists_or_fail "reviewer base exists" "$REVIEWER_BASE"
+nudge_line=$(grep -nF '次に必要なものを先に列挙し、他の結果に依存しないものは同じ応答で全部要求する。' "$REVIEWER_BASE" | head -1 | cut -d: -f1)
+input_line=$(awk '/^## Input$/ { print NR; exit }' "$REVIEWER_BASE")
+if [ -n "$nudge_line" ] && [ -n "$input_line" ] && [ "$nudge_line" -lt "$input_line" ]; then
+  pass "reviewer-base pins parallel tool-call nudge before ## Input"
+else
+  fail "reviewer-base pins parallel tool-call nudge before ## Input (nudge_line=${nudge_line:-missing} input_line=${input_line:-missing})"
+fi
 reviewers=(
   application-reviewer
   code-quality-reviewer
