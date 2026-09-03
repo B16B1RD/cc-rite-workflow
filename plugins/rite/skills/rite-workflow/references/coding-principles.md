@@ -25,6 +25,7 @@ The `knowledge_routing` principle additionally draws on t-wada's four quadrants 
 | `question_resolution` | Resolve Recommended Reversible Decisions Autonomously | All Phases |
 | `documentation_consistency` | Sync Documentation with Specification Changes | Phase 5.1 |
 | `knowledge_routing` | Route Knowledge to Its Durable Medium | Phase 5.1, PR Review |
+| `prefer_partial_edit` | Prefer Partial Edit | Phase 5.1, Fix |
 
 ## Principle Details
 
@@ -136,6 +137,12 @@ The `knowledge_routing` principle additionally draws on t-wada's four quadrants 
 2. Defer each channel's detailed rules to its SoT — do not duplicate them here: comments → [comment-best-practices.md](./comment-best-practices.md), tests → [test-reviewer.md](../../../agents/test-reviewer.md). For commits, record the "why" in the commit message body (free-form prose).
 3. Transport misplaced knowledge to its correct medium rather than leaving it: change history found in a comment → move it to the commit; How found in a comment → promote it to naming and delete the comment.
 
+### prefer_partial_edit (Prefer Partial Edit)
+**Summary**: Prefer a targeted edit over rewriting the whole file when the result would be the same.
+**Rules**:
+1. If the outcome is unchanged, edit only the affected span — do not rewrite the file.
+2. Spend as few tokens on the edit as possible.
+
 ---
 
 ## Markdown Authoring Conventions
@@ -235,8 +242,9 @@ OK patterns:
 |-------|---------------------------|
 | All Phases (Common) | `issue_accountability` / `question_self_check` |
 | Phase 3 (Implementation Plan) | `assumption_surfacing` / `confusion_management` / `inline_planning` / `reference_discovery` |
-| Phase 5.1 (Implementation) | `simplicity_enforcement` / `scope_discipline` / `dead_code_hygiene` / `no_unnecessary_fallback` / `no_speculative_structure` / `issue_accountability` / `documentation_consistency` / `knowledge_routing` |
+| Phase 5.1 (Implementation) | `simplicity_enforcement` / `scope_discipline` / `dead_code_hygiene` / `no_unnecessary_fallback` / `no_speculative_structure` / `issue_accountability` / `documentation_consistency` / `knowledge_routing` / `prefer_partial_edit` |
 | PR Review | `push_back_when_warranted` / `simplicity_enforcement` / `scope_discipline` / `no_unnecessary_fallback` / `no_speculative_structure` / `issue_accountability` / `knowledge_routing` |
+| Fix | `prefer_partial_edit` |
 | Before PR Creation | `issue_accountability`（未対応の問題・レビュー指摘がないか / スコープ外の問題が別 Issue として追跡されているか） |
 
 **Reference**: The `/rite:pr-create` Phase 2.5 ([create.md](../../../skills/pr-create/SKILL.md), "2.5 Unaddressed Issues Check" section) implements the unaddressed issues check.
