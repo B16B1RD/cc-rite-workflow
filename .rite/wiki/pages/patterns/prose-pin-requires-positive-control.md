@@ -31,11 +31,16 @@ sources:
     resource: "raw/reviews/20260810T160134Z-pr-2231.md"
   - type: "reviews"
     resource: "raw/reviews/20260903T031026Z-pr-2532.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260903T045300Z-pr-2533.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260903T050155Z-pr-2533.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-03T03:31:36Z" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-03T05:14:01Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-03T03:31:36Z" }
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-03T05:14:01Z" }
 ---
 
 # 散文契約の静的 pin には weakened probe による positive control を課す
@@ -117,6 +122,8 @@ assert_grep "$SKILL" 'CLEANUP_DELEGATED=1` を emit している場合、本ス�
 
 判定の目安は「この文字列が残ったまま、指示の意味を逆にできるか」。できるなら pin が短すぎる。
 
+- **SoT の日本語 1 文だけを grep し、その文が名指しする実ファイルを走査しない pin は vacuous である。** `effort: high` を preamble に書いて contract テストがそこだけを見る設計は、agent frontmatter を `effort: low` / `model: opus` に変異させても緑のまま通る。**契約が「N 本の YAML が同一値」なら、その N 本をループで読む。**
+
 ## 関連ページ
 
 - [否定アサーションには positive control を添える — `|| true` は唯一の crash signal を消す](./negative-assertion-positive-control.md)
@@ -132,3 +139,5 @@ assert_grep "$SKILL" 'CLEANUP_DELEGATED=1` を emit している場合、本ス�
 - [PR #2150 review results (cycle 1: marker 名 pin では指示反転が素通し)](../../raw/reviews/20260808T063447Z-pr-2150.md)
 - [PR #2150 fix results (cycle 1: pin を指示語まで伸ばす)](../../raw/fixes/20260808T064117Z-pr-2150.md)
 - [PR #2532 review results](../../raw/reviews/20260903T031026Z-pr-2532.md)
+- [PR #2533 review results](../../raw/reviews/20260903T045300Z-pr-2533.md)
+- [PR #2533 fix results](../../raw/fixes/20260903T050155Z-pr-2533.md)

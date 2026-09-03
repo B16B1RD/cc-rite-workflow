@@ -263,7 +263,7 @@ okf_version: "0.2"
 | [`set -euo pipefail` 下の `var=$(cmd \| jq ... 2>/dev/null)` は不正入力でテストを無言 abort させる](pages/anti-patterns/pipefail-jq-assignment-silent-abort.md) | anti-patterns | 被テスト対象の stdout を jq でパースして変数に代入する形は、`set -euo pipefail` 下では **jq の非ゼロ終了がそのまま代入コマンドの終了ステータス**になる。 | 2026-07-26T01:35:00+09:00 | high |
 | [コメントの主語は「変更イベント」ではなく「コードの現在の性質」に置く — lint が緑でも規約違反は成立する](pages/heuristics/comment-subject-present-tense-not-change-event.md) | heuristics | 判定形式を変えたとき、その理由を「旧形式は X を受け入れていた」と書くと、コメントの**主語が変更イベント（過去の行為）**になる。 | 2026-07-26T01:35:00+09:00 | high |
 | [LLM が読む出力ストリームで marker を契約にするには prefix・行頭・デリミタ・識別子スコープの 4 条件すべてが要る](pages/patterns/llm-read-marker-contract-four-conditions.md) | patterns | SKILL.md の bash ブロックが `[CONTEXT] X=1` 形式の marker を stdout/stderr に出し、同ファイルの散文（完了報告の判定ルール）を LLM が読んで分岐する設計は rite の基本構造である。 | 2026-07-26T19:05:51+09:00 | high |
-| [散文契約の静的 pin には weakened probe による positive control を課す（見出しラベルで充足する pin を構造的に排除する）](pages/patterns/prose-pin-requires-positive-control.md) | patterns | SKILL.md の散文（判定ルール・設計宣言）を契約として静的 grep で pin する設計は、pin 自体が容易に vacuous 化する。 | 2026-09-03T03:31:36Z | high |
+| [散文契約の静的 pin には weakened probe による positive control を課す（見出しラベルで充足する pin を構造的に排除する）](pages/patterns/prose-pin-requires-positive-control.md) | patterns | SKILL.md の散文（判定ルール・設計宣言）を契約として静的 grep で pin する設計は、pin 自体が容易に vacuous 化する。 | 2026-09-03T05:14:01Z | high |
 | [存在確認と破壊的操作で ref 解決規則が異なると、検証した ref 集合と破壊する ref 集合がずれる](pages/anti-patterns/ref-verify-delete-resolution-asymmetry.md) | anti-patterns | 「存在するなら削除する」型のガードは、存在確認と削除で ref 解決規則が違うと成立しない。 | 2026-07-26T19:05:51+09:00 | high |
 | [散文を契約とする設計では規約を強化するたび「まだ塞げていない入力クラス」が出るため、review-fix ループに終端がない](pages/heuristics/convention-escalation-has-no-terminus.md) | heuristics | 過去のレビュー事例の指摘推移は 5→5→6→6→1→1→4→6→4→7 で収束しなかった。 | 2026-07-29T02:10:00+09:00 | high |
 | [リポジトリ owner rename の一括置換はリポジトリ外成果物に届かない](pages/heuristics/repo-rename-sweep-misses-external-artifacts.md) | heuristics | owner 名・URL の一括置換 PR は、git grep で走査できるツリー内の参照しか更新できない。 | 2026-07-26T20:51:40+09:00 | medium |
@@ -467,4 +467,4 @@ okf_version: "0.2"
 
 - 総ページ数: 453
 - ドメイン別: patterns=107, heuristics=201, anti-patterns=145
-- 最終更新: 2026-09-03T03:31:36Z
+- 最終更新: 2026-09-03T05:14:01Z
