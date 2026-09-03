@@ -2,14 +2,20 @@
 type: "heuristics"
 title: "PIPESTATUS はコマンド置換 `$(...)` のサブシェル境界を越えない"
 domain: "heuristics"
-description: "bash の `$(...)` コマンド置換は内部でサブシェルを生成して実行される。"
+description: "bash の `$(...)` コマンド置換は内部でサブシェルを生成して実行される。PIPESTATUS だけでなく、sourced スクリプトが親シェルへ残す変数（LAST_STDERR_FILE 等）も境界を越えない。"
 created: "2026-07-21T12:40:00+09:00"
 sources:
   - type: "fixes"
     resource: "raw/fixes/20260721T005522Z-pr-1937.md"
-tags: ["bash", "pipestatus", "subshell", "command-substitution", "exit-code"]
+  - type: "reviews"
+    resource: "raw/reviews/20260903T063546Z-pr-2535.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260903T064201Z-pr-2535.md"
+tags: ["bash", "pipestatus", "subshell", "command-substitution", "exit-code", "stderr"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-21T12:40:00+09:00" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-03T07:05:00Z" }
+verified:
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-03T07:05:00Z" }
 ---
 
 # PIPESTATUS はコマンド置換 `$(...)` のサブシェル境界を越えない
@@ -48,9 +54,13 @@ git_has_uncommitted="${git_has_uncommitted%%$'\n'*}"  # 先頭行のみ使う場
 
 `var=$(cmd)` の直後の `||` は `cmd` 自身（コマンド置換全体）の exit code を正しく参照できる（サブシェル境界を越える必要がない — コマンド置換自体の exit code はサブシェルの終了時に親シェルへ返される）。複数行出力から先頭行だけ使いたい場合は `head -1` へパイプせず、`"${var%%$'\n'*}"` のようなパラメータ展開で切り出せば、exit code チェックとパイプを同時に使わずに済む。
 
+### sourced スクリプトが親へ残す変数も同じ境界で消える
+
+`output=$(run_hook_with_source …)` のように、hook を `source` して stdout を capture すると、hook が親シェルへ残すはずの `LAST_STDERR_FILE` はサブシェル内で消える。stderr を pin するテストが stale な marketplace / mkdir 診断を拾うのは、この境界の実測である。stderr を assert するなら `bash "$HOOK" 2>"$LAST_STDERR_FILE"` のようにフックを直接起動し、`$()` で包まない。
+
 ### 一般化した教訓
 
-**コマンド置換 `$(...)` の内側で終了コードを見たいパイプラインを組んではならない**。パイプの exit code (`PIPESTATUS`) が必要な処理と、コマンド置換で出力を capture したい処理は分離する:
+**コマンド置換 `$(...)` の内側で終了コードを見たいパイプラインを組んではならない**。パイプの exit code (`PIPESTATUS`) が必要な処理と、コマンド置換で出力を capture したい処理は分離する。sourced スクリプトが親へ残す変数も同じ境界で消える:
 
 - 出力の capture だけが目的なら `var=$(cmd1 | cmd2)` で構わない（内部パイプの中間失敗を検出する必要がない場合）
 - 最終コマンドの exit code を検査する必要があるなら、コマンド置換全体を単一コマンドの実行に留め（パイプを含めない）、`|| fallback` で直接チェックする
@@ -63,3 +73,5 @@ git_has_uncommitted="${git_has_uncommitted%%$'\n'*}"  # 先頭行のみ使う場
 ## ソース
 
 - [PR #1937 fix cycle 1 (PIPESTATUS がサブシェル境界を越えないバグを実測発見・修正)](../../raw/fixes/20260721T005522Z-pr-1937.md)
+- [compact recovery review (sourced hook を `$()` で包むと LAST_STDERR_FILE が消える)](../../raw/reviews/20260903T063546Z-pr-2535.md)
+- [compact recovery fix (stderr pin はフック直接起動)](../../raw/fixes/20260903T064201Z-pr-2535.md)

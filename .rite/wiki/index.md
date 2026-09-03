@@ -31,7 +31,7 @@ okf_version: "0.2"
 | [Fix の完成判定は shell script 単体動作ではなく実ワークフロー発火実績で行う](pages/heuristics/fix-verification-requires-natural-workflow-firing.md) | heuristics | 修正が動いていると主張する前に、shell script 単体のテストデータではなく、自然な workflow 経路を通った commit 履歴上の発火実績を確認する。 | 2028-04-17T00:15:00+00:00 | high |
 | [Asymmetric Fix Transcription (対称位置への伝播漏れ)](pages/anti-patterns/asymmetric-fix-transcription.md) | anti-patterns | fix を 1 箇所に適用したとき、同じパターンを持つ「対称位置」（ペア/トリオの兄弟スクリプト、同型 idiom の別 phase、相互参照の Phase 番号等）に同じ fix を伝播させ忘れる failure mode。 | 2026-09-01T20:31:00+09:00 | high |
 | [`if ! cmd; then rc=$?` は常に 0 を捕捉する](pages/anti-patterns/bash-if-bang-rc-capture.md) | anti-patterns | bash の `!` 演算子は直前コマンドの exit status を boolean で反転するため、`if ! cmd; then ...` ブロック内での `$?` は `!` の結果 (= 0) を返す。 | 2026-09-01T20:32:00+09:00 | high |
-| [PIPESTATUS はコマンド置換 `$(...)` のサブシェル境界を越えない](pages/heuristics/pipestatus-subshell-scoping-command-substitution.md) | heuristics | bash の `$(...)` コマンド置換は内部でサブシェルを生成して実行される。 | 2026-07-21T12:40:00+09:00 | high |
+| [PIPESTATUS はコマンド置換 `$(...)` のサブシェル境界を越えない](pages/heuristics/pipestatus-subshell-scoping-command-substitution.md) | heuristics | bash の `$(...)` コマンド置換は内部でサブシェルを生成して実行される。PIPESTATUS だけでなく、sourced スクリプトが親シェルへ残す変数（LAST_STDERR_FILE 等）も境界を越えない。 | 2026-09-03T07:05:00Z | high |
 | [stderr ノイズ削減: truncate ではなく selective surface で解く](pages/heuristics/stderr-selective-surface-over-truncate.md) | heuristics | success path で git などのコマンドが出す stderr の「ノイズ」を抑えたい場面で、`2>/dev/null` や無条件 truncate を使うと legitimate な warning（`unable to rmdir` / remote hook advice など）まで silent drop してしまう。 | 2026-07-24T17:00:00+09:00 | high |
 | [trap 登録 → mktemp の順序で tempfile lifecycle を守る](pages/patterns/trap-register-before-mktemp.md) | patterns | `mktemp` で tempfile を作った直後に `trap 'rm -f "$f"' EXIT ...` を登録するのでは、signal (INT/TERM/HUP) が `mktemp` 成功直後〜`trap` 登録前の窓で届いた場合に orphan tempfile が残る。 | 2026-04-16T19:37:16Z | high |
 | [Embedded markdown bash block の observability 三要素 (pipefail 宣言 + stderr stage 分離 + cd 失敗可視化)](pages/patterns/embedded-bash-block-observability-trio.md) | patterns | command / skill ファイル (`.md`) に埋め込まれた bash block は、(1) `set -o pipefail` 宣言、(2) pipeline 各 stage の stderr を独立 tempfile に退避、(3) `cd` / `[ -d ]` 失敗の明示可視化、の 3 要素を揃えないと、上流コマンド (gh / jq / git) の失敗が pipefail dominant exit や stderr 握り潰しで silent suppression される。 | 2026-09-02T00:50:00Z | high |
@@ -467,4 +467,4 @@ okf_version: "0.2"
 
 - 総ページ数: 453
 - ドメイン別: patterns=107, heuristics=201, anti-patterns=145
-- 最終更新: 2026-09-03T05:14:01Z
+- 最終更新: 2026-09-03T07:05:00Z
