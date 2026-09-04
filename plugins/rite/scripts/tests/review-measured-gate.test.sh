@@ -23,6 +23,12 @@ trap cleanup EXIT
 pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
 
+# measured_gate は「当該適用」の統計なので、再適用では applied_at に加えて demoted も変わり得る。
+# 従来からの document 変換の冪等性比較では provenance object 全体を除外する。
+json_equal_except_measured_gate() {
+  cmp -s <(jq -S 'del(.measured_gate)' "$1") <(jq -S 'del(.measured_gate)' "$2")
+}
+
 if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq is required but not installed" >&2
   exit 1
@@ -69,6 +75,54 @@ extract_re_arg() {
 }
 
 echo "=== review-measured-gate.sh tests ==="
+# ---------------------------------------------------------------------------
+# TC-metadata: measured gate の適用 provenance / 統計スナップショット
+# ---------------------------------------------------------------------------
+echo "--- TC-metadata: measured_gate provenance と再適用 ---"
+
+f="$TEST_DIR/tc_metadata_gated.json"
+mk_json "$f" \
+  "$(mk_finding F-01 HIGH current-pr 'Verification: repro bash x.sh => failed')" \
+  "$(mk_finding F-02 HIGH current-pr '形式崩れ<br>Verification: repro printf x | jq . => false')" \
+  "$(mk_finding F-03 MEDIUM follow-up 'アンカーなし')"
+run_gate "$f"
+if jq -e '.measured_gate
+  | .commit_sha == "0123456789abcdef0123456789abcdef01234567"
+    and (.applied_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]+Z$"))
+    and .blocking == 2 and .demoted == 1 and .anchor_undetermined == 1' "$f" >/dev/null; then
+  pass "gated findings の commit / 適用時刻 / 統計を記録"
+else fail "gated measured_gate が不正: $(jq -c '.measured_gate' "$f")"; fi
+
+f="$TEST_DIR/tc_metadata_zero.json"
+mk_json "$f"
+run_gate "$f"
+if jq -e '.measured_gate.blocking == 0 and .measured_gate.demoted == 0
+  and .measured_gate.anchor_undetermined == 0' "$f" >/dev/null; then
+  pass "findings 0 件でもゼロ統計を記録"
+else fail "zero-findings measured_gate が不正: $(jq -c '.measured_gate' "$f")"; fi
+
+f="$TEST_DIR/tc_metadata_ungated.json"
+mk_json "$f" "$(mk_finding F-01 LOW nit-noted 'アンカーなしの ungated finding')"
+run_gate "$f"
+if jq -e '.measured_gate.blocking == 0 and .measured_gate.demoted == 0
+  and .measured_gate.anchor_undetermined == 0' "$f" >/dev/null; then
+  pass "ungated finding を measured_gate 統計へ誤算入しない"
+else fail "ungated measured_gate が不正: $(jq -c '.measured_gate' "$f")"; fi
+
+f="$TEST_DIR/tc_metadata_reapply.json"
+mk_json "$f" "$(mk_finding F-01 HIGH current-pr 'アンカーなし')"
+jq '.measured_gate = {commit_sha:"stale", applied_at:"2000-01-01T00:00:00Z",
+  blocking:99, demoted:99, anchor_undetermined:99, stale:true}' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+run_gate "$f"
+if jq -e '(.measured_gate | keys | sort) ==
+    (["anchor_undetermined","applied_at","blocking","commit_sha","demoted"] | sort)
+  and .measured_gate.commit_sha == .commit_sha
+  and .measured_gate.applied_at != "2000-01-01T00:00:00Z"
+  and .measured_gate.blocking == 0 and .measured_gate.demoted == 1
+  and .measured_gate.anchor_undetermined == 0' "$f" >/dev/null; then
+  pass "再適用で measured_gate object を coherent に全置換"
+else fail "再適用後 measured_gate が不正: $(jq -c '.measured_gate' "$f")"; fi
+
 echo ""
 
 # ---------------------------------------------------------------------------
@@ -186,7 +240,7 @@ else pass "降格 0 件では MEASURED_DEMOTED_ON_ANCHOR を出さない (2 mark
 # 未判定は verification を持たないため、フラグ指定下でも再実行でバイト一致する
 cp "$f" "$f.once"
 run_gate "$f" --reject-preset-verification
-if [ "$GATE_RC" -eq 0 ] && cmp -s "$f" "$f.once"; then
+if [ "$GATE_RC" -eq 0 ] && json_equal_except_measured_gate "$f" "$f.once"; then
   pass "未判定を含む JSON もフラグ指定下で冪等 (verification_conflict に計上されない)"
 else fail "未判定の冪等性が壊れた: rc=$GATE_RC / $(diff "$f.once" "$f" | head -5)"; fi
 
@@ -377,7 +431,7 @@ mk_json "$f" \
 run_gate "$f"
 cp "$f" "$f.once"
 run_gate "$f"
-if cmp -s "$f" "$f.once"; then pass "再実行で出力がバイト一致 (冪等)"; else fail "再実行で出力が変化した: $(diff "$f.once" "$f" | head -5)"; fi
+if json_equal_except_measured_gate "$f" "$f.once"; then pass "再実行で measured_gate 以外の出力が一致 (冪等)"; else fail "再実行で意味論的出力が変化した: $(diff "$f.once" "$f" | head -5)"; fi
 if grep -q 'MEASURED_GATE=applied; blocking=1; demoted=0;' <<<"$GATE_STDERR"; then
   pass "再実行時は demoted=0 (既に移送済み)"
 else fail "再実行の marker が不正: $GATE_STDERR"; fi
@@ -566,7 +620,7 @@ mk_json "$f" \
 run_gate "$f" --reject-preset-verification
 cp "$f" "$f.once"
 run_gate "$f" --reject-preset-verification
-if [ "$GATE_RC" -eq 0 ] && cmp -s "$f" "$f.once"; then
+if [ "$GATE_RC" -eq 0 ] && json_equal_except_measured_gate "$f" "$f.once"; then
   pass "フラグ指定下でも再実行が rc=0 かつバイト一致 (冪等性を壊さない)"
 else fail "フラグ指定下で冪等性が壊れた: rc=$GATE_RC"; fi
 
@@ -751,7 +805,7 @@ else fail "nit-noted が未判定化された: $(jq -c '.findings[0].verificatio
 # 本 assert が単独の保護層になる。
 cp "$f" "$f.again"
 run_gate "$f.again" --reject-preset-verification
-if [ "$GATE_RC" -eq 0 ] && cmp -s "$f" "$f.again"; then
+if [ "$GATE_RC" -eq 0 ] && json_equal_except_measured_gate "$f" "$f.again"; then
   pass "nit-noted を含むゲート出力の再適用が rc=0 かつバイト一致 (冪等)"
 else fail "再適用が冪等でない: rc=$GATE_RC"; fi
 

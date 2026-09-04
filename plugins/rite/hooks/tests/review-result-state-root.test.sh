@@ -65,6 +65,7 @@ json_body() {
   "pr_number": 99,
   "timestamp": "__RITE_TS_PLACEHOLDER_7f3a9b2c__",
   "commit_sha": "$REPO_HEAD",
+  "measured_gate": {"commit_sha":"$REPO_HEAD","applied_at":"2026-01-01T00:00:00.000000000Z","blocking":0,"demoted":0,"anchor_undetermined":0},
   "overall_assessment": "mergeable",
   "verdict": "mergeable",
   "reviewers": ["code-quality-reviewer", "security-reviewer"],

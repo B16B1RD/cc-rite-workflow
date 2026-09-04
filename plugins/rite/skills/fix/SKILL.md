@@ -452,6 +452,30 @@ bash {plugin_root}/scripts/review-source-resolve.sh \
 }
 ```
 
+**Gate application receipt (Priority 0 / 2 JSON)**: file-based JSON は実測必須ゲートの
+適用記録を必須とする。選択直後、findings map を構築する前に次を実行する。記録欠落を
+旧形式として読み進めてはならない。既存アーカイブの復旧経路は `/rite:pr-review` の再実行のみ。
+
+```bash
+review_source="{review_source}"
+review_source_path="{review_source_path}"
+case "$review_source" in
+  explicit_file|local_file)
+    if ! jq -e '
+      (.measured_gate | type) == "object"
+      and (.measured_gate.commit_sha | type) == "string"
+      and (.measured_gate.commit_sha | length) > 0
+      and .measured_gate.commit_sha == .commit_sha
+    ' "$review_source_path" >/dev/null 2>&1; then
+      echo "ERROR: review-result JSON に実測必須ゲートの適用記録が無いか、commit_sha と一致しません。/rite:pr-review を再実行してください" >&2
+      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=gate_not_applied" >&2
+      echo "[fix:error] reason=gate_not_applied"
+      exit 1
+    fi
+    ;;
+esac
+```
+
 **On Priority 0 failure**: `review_source="fallback"` → 1.2.0.1。`--review-file` 明示時に P1–P3 へ silent fallthrough しない。
 
 **On Priority 2 success**: Skip "Target Comment Fast Path" and "Broad Comment Retrieval"。map 構築は `scripts/review-findings-maps.sh` へ委譲 (reason は下記 bullet。file-based 以外は no-op exit 0)。
@@ -559,6 +583,16 @@ elif ! printf '%s' "$raw_json" | jq -e '
   # 明示型ガード (jq truthiness は false/null のみ falsy — 空文字列や型違反を silent pass させない)
   echo "WARNING: PR コメント内の Raw JSON が必須フィールドを欠いています。legacy parser に fallthrough します。" >&2
   echo "[CONTEXT] REVIEW_SOURCE_PARSE_FAILED=1; reason=pr_comment_schema_required_fields_missing" >&2
+elif ! printf '%s' "$raw_json" | jq -e '
+  (.measured_gate | type) == "object"
+  and (.measured_gate.commit_sha | type) == "string"
+  and (.measured_gate.commit_sha | length) > 0
+  and .measured_gate.commit_sha == .commit_sha
+' >/dev/null 2>&1; then
+  echo "ERROR: PR コメント内 Raw JSON に実測必須ゲートの適用記録が無いか、commit_sha と一致しません。/rite:pr-review を再実行してください" >&2
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=gate_not_applied" >&2
+  echo "[fix:error] reason=gate_not_applied"
+  exit 1
 elif ! printf '%s' "$raw_json" | jq -e '
   (.overall_assessment != "mergeable")
   or (all(.findings[]?; (.severity != "CRITICAL" and .severity != "HIGH") or (.status != "open")))

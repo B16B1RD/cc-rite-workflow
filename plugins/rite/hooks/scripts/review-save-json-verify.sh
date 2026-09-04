@@ -1,8 +1,8 @@
 #!/bin/bash
 # rite workflow - ステップ 8.0.4 positive 検査 (本 cycle のレビュー結果 JSON の実在確認)
 #
-# Responsibility: 「現 run の results dir に、本 cycle の commit SHA を持つレビュー結果 JSON が
-# 実在するか」を決定論的に判定する。ステップ 8.0.4 の save-pending marker 検査 (negative) が
+# Responsibility: 「現 run の results dir に、本 cycle の commit SHA と同じ
+# measured_gate.commit_sha を持つレビュー結果 JSON が実在するか」を決定論的に判定する。
 # 構造的に検出できない failure mode — ステップ 5.3.0.M〜6.1.a を**区間ごと** skip した cycle —
 # を塞ぐための独立した観測点。
 #
@@ -19,6 +19,7 @@
 #   [CONTEXT] REVIEW_SAVE_JSON_OK=1; pr=<n>; result_json=<basename>            (exit 0)
 #   [CONTEXT] REVIEW_SAVE_GATE=degraded; reason=save_result_json_undecidable   (exit 0)
 #   [CONTEXT] REVIEW_SAVE_GATE_FAILED=1; reason=save_result_json_absent; expected_sha=<sha> (exit 1)
+#   [CONTEXT] REVIEW_SAVE_GATE_FAILED=1; reason=gate_record_mismatch; expected_sha=<sha> (exit 1)
 #
 #   成功時に `REVIEW_SAVE_GATE=pass` を名乗らないのは、本 helper が marker 層の 3 arm すべてから
 #   呼ばれるため — degraded に降りた marker 層の直後に pass を重ねると、caller の「degraded を
@@ -66,7 +67,7 @@
 #
 # Exit codes:
 #   0  pass または degraded (どちらも caller は先へ進む)
-#   1  gate 失敗 (本 cycle の JSON が現 run に実在しない)
+#   1  gate 失敗 (本 cycle の receipt 付き JSON が現 run に実在しない)
 #   2  caller 契約違反 (未知オプション。skill 定義のバグ)
 
 set -u
@@ -190,6 +191,7 @@ fi
 
 # ---- 現 run の JSON を走査し、本 cycle の commit SHA を持つものを探す ---------------
 found=""
+payload_sha_found=0
 seen=""
 seen_count=0
 
@@ -254,8 +256,11 @@ if [ -d "$results_dir" ]; then
     # 「JSON が壊れて読めない」「commit_sha キーが無い / 空」の 2 状態を融合しない。融合すると
     # 破損が旧形式互換の顔をして運用者に無視され、SHOULD (保存失敗と区間 skip の切り分け) が
     # 成立しない (sibling scripts/review-cycle-scope.sh が同じ融合を明示的に禁じている)。
-    if sha=$(jq -r '.commit_sha // ""' "$f" 2>"${jq_err:-/dev/null}"); then
+    if record=$(jq -r '[.commit_sha // "", .measured_gate.commit_sha // ""] | @tsv' "$f" 2>"${jq_err:-/dev/null}"); then
+      sha=${record%%$'\t'*}
+      gate_sha=${record#*$'\t'}
       sha=$(_scrub "$sha" | tr '[:upper:]' '[:lower:]')
+      gate_sha=$(_scrub "$gate_sha" | tr '[:upper:]' '[:lower:]')
       if [ -z "$sha" ]; then
         sha_display="commit_sha=<キー欠落または空>"
       elif [ "${#sha}" -lt 7 ]; then
@@ -263,6 +268,11 @@ if [ -d "$results_dir" ]; then
         sha_display="commit_sha=$sha <7 桁未満のため判定に使えません>"
       else
         sha_display="commit_sha=$sha"
+      fi
+      if [ -z "$gate_sha" ]; then
+        sha_display="$sha_display, measured_gate.commit_sha=<キー欠落または空>"
+      else
+        sha_display="$sha_display, measured_gate.commit_sha=$gate_sha"
       fi
     else
       jq_rc=$?
@@ -275,7 +285,10 @@ if [ -d "$results_dir" ]; then
 "
     seen_count=$((seen_count + 1))
     if [ -n "$sha" ] && _sha_matches "$sha" "$commit_sha"; then
-      found="$bn"
+      payload_sha_found=1
+      if [ -n "${gate_sha:-}" ] && _sha_matches "$gate_sha" "$commit_sha"; then
+        found="$bn"
+      fi
     fi
   done <<< "$(printf '%s\n' "$find_raw" | LC_ALL=C sort)"
 fi
@@ -297,5 +310,9 @@ echo "  ACTION: ステップ 6.1.a を **step 0 から** 実行してくださ�
 echo "    会話に本 cycle の REVIEW_SAVE_PENDING_MARKER / REVIEW_SAVE_PENDING_ID が 1 つも無い場合は、marker と id の生成元である ステップ 5.3.0.M step 2 から実行してください。" >&2
 echo "    続けて {post_comment_mode} に応じて 6.1.b または 6.1.c も再実行してから ステップ 8.0 を再評価してください。" >&2
 echo "  ⚠️ 本 gate を pass せずに ステップ 8.1 の result pattern を emit してはなりません。" >&2
-echo "[CONTEXT] REVIEW_SAVE_GATE_FAILED=1; reason=save_result_json_absent; expected_sha=$commit_sha" >&2
+if [ "$payload_sha_found" -eq 1 ]; then
+  echo "[CONTEXT] REVIEW_SAVE_GATE_FAILED=1; reason=gate_record_mismatch; expected_sha=$commit_sha" >&2
+else
+  echo "[CONTEXT] REVIEW_SAVE_GATE_FAILED=1; reason=save_result_json_absent; expected_sha=$commit_sha" >&2
+fi
 exit 1
