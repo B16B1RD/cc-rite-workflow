@@ -463,6 +463,127 @@ assert_not_grep "T-06 pr-review does not skip on cycle-scope" "$PR_REVIEW_SKILL"
   'number-reference-check.*cycle-scope'
 assert_grep "T-06 fix 3.1 self-check calls --diff" "$FIX_SKILL" \
   'number-reference-check\.sh --diff'
+assert_grep "T-06 fix 3.1 self-check intent-to-add uses {changed_files}" "$FIX_SKILL" \
+  'for f in \{changed_files\}'
+assert_grep "T-06 fix 3.1 add -N uses existing-path subset" "$FIX_SKILL" \
+  'git add -N -- \$nref_addn'
+assert_grep "T-06 fix 3.1 empty {changed_files} skips intent-to-add" "$FIX_SKILL" \
+  'if \[ -n "\{changed_files\}" \]'
+assert_grep "T-06 fix 3.1 skips missing paths before add -N" "$FIX_SKILL" \
+  '\[ -e "\$f" \] && nref_addn='
+assert_grep "T-06 fix 3.1 intent-to-add fail-loud ERROR" "$FIX_SKILL" \
+  'ERROR: intent-to-add に失敗しました'
+assert_not_grep "T-06 fix 3.1 does not use add -N ." "$FIX_SKILL" \
+  'add -N[[:space:]]+(\.[[:space:]]|$)'
+assert_not_grep "T-06 fix 3.1 does not use add -N -- ." "$FIX_SKILL" \
+  'add -N[[:space:]]+--[[:space:]]+\.'
+assert_not_grep "T-06 fix 3.1 does not use add -A" "$FIX_SKILL" \
+  'add -A'
+
+# AC-4 / T-04: add -N 行 < --diff 行。AC-2 / T-02: その区間に固有 ERROR と [fix:error]
+# （既存 --diff rc 分岐の [fix:error] 一致では FAIL）。
+fix_skip_line=$(awk '
+  /^### 3\.1 Verify Changes/ { s=1 }
+  s && /^### 3\.1\.1 / { exit }
+  s && /^[[:space:]]*if \[ -n "\{changed_files\}" \]/ { print NR; exit }
+' "$FIX_SKILL")
+fix_addn_line=$(awk '
+  /^### 3\.1 Verify Changes/ { s=1 }
+  s && /^### 3\.1\.1 / { exit }
+  s && /^[[:space:]]*git add -N -- \$nref_addn/ { print NR; exit }
+' "$FIX_SKILL")
+fix_diff_line=$(awk '
+  /^### 3\.1 Verify Changes/ { s=1 }
+  s && /^### 3\.1\.1 / { exit }
+  s && /^[[:space:]]*bash \{plugin_root\}\/hooks\/scripts\/number-reference-check\.sh --diff/ { print NR; exit }
+' "$FIX_SKILL")
+if [ -n "$fix_addn_line" ] && [ -n "$fix_diff_line" ] \
+   && [ "$fix_addn_line" -lt "$fix_diff_line" ]; then
+  pass "T-06 fix 3.1 add -N precedes --diff"
+else
+  fail "T-06 expected add -N line < --diff line, got add_n=$fix_addn_line diff=$fix_diff_line"
+fi
+if [ -n "$fix_skip_line" ] && [ -n "$fix_addn_line" ] \
+   && [ "$fix_skip_line" -lt "$fix_addn_line" ]; then
+  pass "T-06 fix 3.1 empty-set skip precedes add -N"
+else
+  fail "T-06 expected empty-set skip before add -N, got skip=$fix_skip_line add_n=$fix_addn_line"
+fi
+fix_intent_arm=""
+if [ -n "$fix_addn_line" ] && [ -n "$fix_diff_line" ]; then
+  fix_intent_arm=$(awk -v a="$fix_addn_line" -v d="$fix_diff_line" 'NR > a && NR < d' "$FIX_SKILL")
+fi
+if printf '%s' "$fix_intent_arm" | grep -q 'ERROR: intent-to-add に失敗しました' \
+   && printf '%s' "$fix_intent_arm" | grep -q '\[fix:error\]'; then
+  pass "T-06 fix 3.1 intent-to-add arm has unique ERROR and [fix:error]"
+else
+  fail "T-06 expected intent-to-add ERROR + [fix:error] between add -N and --diff"
+fi
+
+# --------------------------------------------------------------------------
+# Helper: intent-to-add で未追跡が --diff に載る（既存 $sb は汚さない）
+# --------------------------------------------------------------------------
+nref_sb=$(make_plain_sandbox) && cleanup_dirs+=("$nref_sb") || { echo "ERROR: nref sandbox" >&2; exit 1; }
+init_git_sb "$nref_sb"
+mkdir -p "$nref_sb/plugins/rite/skills/x"
+printf 'clean surface\n' > "$nref_sb/plugins/rite/skills/x/SKILL.md"
+commit_all "$nref_sb" nref-init
+printf 'untracked token (#2700)\n' > "$nref_sb/plugins/rite/skills/x/new.md"
+rc=0; out=$(run_diff "$nref_sb" HEAD --quiet 2>&1) || rc=$?
+assert "T-01 untracked without intent-to-add is not scanned" "0" "$rc"
+git -C "$nref_sb" add -N -- plugins/rite/skills/x/new.md
+rc=0; out=$(run_diff "$nref_sb" HEAD --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] \
+   && printf '%s' "$out" | grep -qE '^plugins/rite/skills/x/new.md:[0-9]+: untracked token \(#2700\)$'; then
+  pass "T-01 untracked after add -N → rc=1 + file:line"
+else
+  fail "T-01 expected rc=1 with file:line after add -N, got rc=$rc: $out"
+fi
+
+nref_tracked=$(make_plain_sandbox) && cleanup_dirs+=("$nref_tracked") || { echo "ERROR: nref tracked sandbox" >&2; exit 1; }
+init_git_sb "$nref_tracked"
+mkdir -p "$nref_tracked/plugins/rite/skills/x"
+printf 'clean surface\n' > "$nref_tracked/plugins/rite/skills/x/SKILL.md"
+commit_all "$nref_tracked" nref-tracked-init
+printf 'still clean\n' >> "$nref_tracked/plugins/rite/skills/x/SKILL.md"
+git -C "$nref_tracked" add -N -- plugins/rite/skills/x/SKILL.md
+rc=0; out=$(run_diff "$nref_tracked" HEAD --quiet 2>&1) || rc=$?
+porcelain=$(git -C "$nref_tracked" status --porcelain)
+if [ "$rc" -eq 0 ] \
+   && ! printf '%s' "$porcelain" | grep -qE '^A|^\?\?'; then
+  pass "T-03 tracked-only add -N → rc=0 and no new intent-to-add entry"
+else
+  fail "T-03 expected rc=0 with no new porcelain entry, got rc=$rc porcelain=$porcelain out=$out"
+fi
+
+# 削除パスを含む集合へ add -N すると 3.3 の git add が pathspec 失敗する。
+# worktree に残っているパスだけ -N すれば 3.3 相当の git add は rc=0 で全パスを stage する。
+nref_del=$(make_plain_sandbox) && cleanup_dirs+=("$nref_del") || { echo "ERROR: nref del sandbox" >&2; exit 1; }
+init_git_sb "$nref_del"
+printf 'keep\n' > "$nref_del/keep.md"
+printf 'gone\n' > "$nref_del/gone.md"
+commit_all "$nref_del" nref-del-init
+printf 'keep2\n' >> "$nref_del/keep.md"
+printf 'untracked token (#2701)\n' > "$nref_del/new.md"
+rm -f "$nref_del/gone.md"
+nref_addn=""
+for f in keep.md new.md gone.md; do
+  [ -e "$nref_del/$f" ] && nref_addn="$nref_addn $f"
+done
+nref_stage_rc=0
+git -C "$nref_del" add -N -- $nref_addn || nref_stage_rc=$?
+add_rc=0
+git -C "$nref_del" add keep.md new.md gone.md >/dev/null 2>&1 || add_rc=$?
+staged=$(git -C "$nref_del" diff --cached --name-only)
+if [ "$nref_stage_rc" -eq 0 ] && [ "$add_rc" -eq 0 ] \
+   && printf '%s\n' "$staged" | grep -qx 'keep.md' \
+   && printf '%s\n' "$staged" | grep -qx 'new.md' \
+   && printf '%s\n' "$staged" | grep -qx 'gone.md'; then
+  pass "T-03b existence-filtered add -N leaves 3.3 git add able to stage all paths"
+else
+  fail "T-03b expected add -N rc=0 and git add rc=0 staging keep/new/gone, got stage_rc=$nref_stage_rc add_rc=$add_rc staged=$staged"
+fi
+
 assert_grep "T-11 issue-implement forbids number/AC tokens in generated prose" "$IMPLEMENT_SKILL" \
   '番号・AC番号を書かない'
 assert_grep "T-11 issue-implement commit body Why is required" "$IMPLEMENT_SKILL" \
