@@ -36,21 +36,22 @@ run_gate() {
   return 0
 }
 
-# finding 1 件を組み立てる: id severity scope description [file] [measured]
+# finding 1 件を組み立てる: id severity scope description [file] [measured] [category]
 # file: 省略時 plugins/rite/hooks/foo.sh。TC-01 は tests/ 配下パスを渡す (パス分類禁止の回帰ガード)
 # measured: "true" (default) = verification.measured=true 付与 (分類対象) /
 #           "none" = verification キーなし (実測未判定 — 分類対象外で class A 固定)
 mk_finding() {
   local file="${5:-plugins/rite/hooks/foo.sh}"
   local measured="${6:-true}"
+  local category="${7:-code_quality}"
   if [ "$measured" = "none" ]; then
-    jq -n --arg id "$1" --arg sev "$2" --arg scope "$3" --arg desc "$4" --arg file "$file" \
-      '{id:$id, reviewer:"code-quality-reviewer", category:"code_quality", severity:$sev,
+    jq -n --arg id "$1" --arg sev "$2" --arg scope "$3" --arg desc "$4" --arg file "$file" --arg category "$category" \
+      '{id:$id, reviewer:"code-quality-reviewer", category:$category, severity:$sev,
         file:$file, line:1, description:$desc, suggestion:"s",
         status:"open", scope:$scope}'
   else
-    jq -n --arg id "$1" --arg sev "$2" --arg scope "$3" --arg desc "$4" --arg file "$file" \
-      '{id:$id, reviewer:"code-quality-reviewer", category:"code_quality", severity:$sev,
+    jq -n --arg id "$1" --arg sev "$2" --arg scope "$3" --arg desc "$4" --arg file "$file" --arg category "$category" \
+      '{id:$id, reviewer:"code-quality-reviewer", category:$category, severity:$sev,
         file:$file, line:1, description:$desc, suggestion:"s",
         status:"open", scope:$scope,
         verification:{measured:true, repro:"bash t.sh => observed failure", failing_test:null}}'
@@ -399,6 +400,58 @@ grep -q "WARNING" <<<"$GATE_STDERR" && pass "WARNING emitted" || fail "no WARNIN
   && pass "no silent demotion" || fail "silent demotion occurred"
 [ "$(jq -r '[.findings[] | select(has("consequence_exclusion"))] | length' "$TEST_DIR/tc16.json")" = "0" ] \
   && pass "no exclusion recorded for unclassified" || fail "unexpected consequence_exclusion"
+
+# ---- TC-17: number_reference は map B でも class A 固定 ----
+echo "TC-17: number_reference の map B を class A に固定"
+f1=$(mk_finding "F-01" "MEDIUM" "current-pr" "番号入り追加行" "plugins/rite/skills/pr-review/SKILL.md" "true" "number_reference")
+mk_json "$TEST_DIR/tc17.json" "$f1"
+mk_cls "$TEST_DIR/tc17-cls.json" "$(mk_entry F-01 B "文書整合に留まる")"
+run_gate "$TEST_DIR/tc17.json" "$TEST_DIR/tc17-cls.json"
+[ "$GATE_RC" -eq 0 ] && pass "rc=0" || fail "rc=$GATE_RC"
+grep -q "CLASS_DEMOTION_GATE=not-triggered; class_a=1; class_b=0; demoted=0; assessment=fix-needed" <<<"$GATE_STDERR" \
+  && pass "number_reference stays blocking" || fail "marker mismatch: $GATE_STDERR"
+grep -q "CLASS_DEMOTION_CATEGORY_PINNED=1; count=1" <<<"$GATE_STDERR" \
+  && pass "CATEGORY_PINNED marker" || fail "marker missing: $GATE_STDERR"
+grep -q "WARNING" <<<"$GATE_STDERR" && pass "WARNING emitted" || fail "WARNING missing"
+[ "$(jq -r '.findings | length' "$TEST_DIR/tc17.json")" = "1" ] && pass "finding remains" || fail "finding moved"
+[ "$(jq -r '.non_blocking_findings | length' "$TEST_DIR/tc17.json")" = "0" ] && pass "not demoted" || fail "finding demoted"
+[ "$(jq -r '.findings[0].consequence_class' "$TEST_DIR/tc17.json")" = "A" ] && pass "consequence_class=A" || fail "class not pinned"
+
+# 固定 A が同一 cycle の通常 B の降格も阻止する。
+f2=$(mk_finding "F-02" "LOW" "current-pr" "通常の文書整合")
+mk_json "$TEST_DIR/tc17-mixed.json" "$f1" "$f2"
+mk_cls "$TEST_DIR/tc17-mixed-cls.json" "$(mk_entry F-01 B "文書整合に留まる")" "$(mk_entry F-02 B "文書整合に留まる")"
+run_gate "$TEST_DIR/tc17-mixed.json" "$TEST_DIR/tc17-mixed-cls.json"
+grep -q "CLASS_DEMOTION_GATE=not-triggered; class_a=1; class_b=1; demoted=0; assessment=fix-needed" <<<"$GATE_STDERR" \
+  && pass "pinned A blocks ordinary B demotion" || fail "mixed marker mismatch: $GATE_STDERR"
+[ "$(jq -r '.findings | length' "$TEST_DIR/tc17-mixed.json")" = "2" ] && pass "mixed findings remain" || fail "mixed finding moved"
+
+# ---- TC-18: number_reference の map A は従来どおり ----
+echo "TC-18: number_reference の map A で marker なし"
+mk_json "$TEST_DIR/tc18.json" "$f1"
+mk_cls "$TEST_DIR/tc18-cls.json" "$(mk_entry F-01 A "番号参照ゲートが見逃す")"
+run_gate "$TEST_DIR/tc18.json" "$TEST_DIR/tc18-cls.json"
+grep -q "CLASS_DEMOTION_GATE=not-triggered; class_a=1; class_b=0; demoted=0; assessment=fix-needed" <<<"$GATE_STDERR" \
+  && pass "map A unchanged" || fail "marker mismatch: $GATE_STDERR"
+! grep -q "CLASS_DEMOTION_CATEGORY_PINNED" <<<"$GATE_STDERR" && pass "no PINNED marker" || fail "unexpected PINNED marker"
+
+# ---- TC-19: 他 category の class B は従来どおり降格 ----
+echo "TC-19: code_quality の map B は降格"
+f2=$(mk_finding "F-02" "LOW" "current-pr" "通常の文書整合")
+mk_json "$TEST_DIR/tc19.json" "$f2"
+mk_cls "$TEST_DIR/tc19-cls.json" "$(mk_entry F-02 B "文書整合に留まる")"
+run_gate "$TEST_DIR/tc19.json" "$TEST_DIR/tc19-cls.json"
+grep -q "CLASS_DEMOTION_GATE=applied; class_a=0; class_b=1; demoted=1; assessment=mergeable" <<<"$GATE_STDERR" \
+  && pass "other category still demoted" || fail "marker mismatch: $GATE_STDERR"
+
+# ---- TC-20: map 欠落は UNCLASSIFIED のみ ----
+echo "TC-20: number_reference の map 欠落は UNCLASSIFIED のみ"
+mk_json "$TEST_DIR/tc20.json" "$f1"
+mk_cls "$TEST_DIR/tc20-cls.json"
+run_gate "$TEST_DIR/tc20.json" "$TEST_DIR/tc20-cls.json"
+grep -q "CLASS_DEMOTION_UNCLASSIFIED=1; count=1" <<<"$GATE_STDERR" && pass "UNCLASSIFIED marker" || fail "UNCLASSIFIED missing"
+! grep -q "CLASS_DEMOTION_CATEGORY_PINNED" <<<"$GATE_STDERR" && pass "no PINNED marker" || fail "unexpected PINNED marker"
+[ "$(jq -r '.findings[0].consequence_class' "$TEST_DIR/tc20.json")" = "A" ] && pass "missing map stays A" || fail "missing map class changed"
 
 echo ""
 echo "=== Summary: PASS=$PASS FAIL=$FAIL ==="
