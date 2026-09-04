@@ -414,7 +414,7 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 |-----------|-------------|
 | `title` | 経験則を 1 行で表現（30-60 字推奨） |
 | `domain` | `patterns` / `heuristics` / `anti-patterns` |
-| `summary` | 1-2 文の Why 要約（page frontmatter `description` と index.md のサマリー列へ同一文言を掲載する）。Issue / PR 番号は出典の識別子であって概念の理由を説明しないため、`Issue #NNN` / `PR #NNN` / `refs #NNN` 等の説明的番号参照を書かず、番号が担っていた観測事実・条件・因果を自己完結した散文で記述する。provenance は `sources` に分離して保持する |
+| `summary` | 1-2 文の Why 要約（page frontmatter `description` と index.md のサマリー列へ同一文言を掲載する）。Issue / PR 番号は出典の識別子であって概念の理由を説明しないため、`Issue #NNN` / `PR #NNN` / `refs #NNN` 等の番号参照を書かず、番号が担っていた観測事実・条件・因果を自己完結した散文で記述する。provenance は `sources` に分離して保持する |
 | `details` | 背景・具体例・根拠を含む詳細 |
 | `confidence` | `high` / `medium` / `low`（根拠の強さ） |
 | `promote` | ステップ 4 の昇格分類で rite 挙動・スキル記述法かつ環境非依存（または一般化済み）と判定した場合のみ `rite-plugin`。それ以外はフィールド自体を付けない |
@@ -528,7 +528,7 @@ rationale: references/rationale.md#numref-precommit
 
 **検査対象は `.rite/wiki` 配下の未 commit 差分**。ページだけでなく `index.md` のエントリ行も `log.md` の bullet も同じ 1 回で通る（`{skip_reason}` や Update の説明文に載る番号を素通りさせないため）。**対象の列挙もラベルも LLM が選ばない** — `git diff` が未 commit の追加行を渡し、パスは git が返す実体をそのまま使う。
 
-走査範囲は commit 範囲と一致させる。`--path .rite/wiki` を付けないと `same_branch` では dev ツリー全体が母数になり、Wiki と無関係な未 commit 変更の番号で `hit` が出て、書き直しようのない停止になる。新規ページは Write した時点では untracked で `git diff` に現れないため、走査の直前に `git add -N`（intent-to-add）で差分へ載せる。**この 2 つを外すと、ingest が新規作成したページ — 番号混入の主経路 — が 1 行も検査されないまま `clean` になる**。
+走査範囲は commit 範囲（`.rite/wiki`）と一致させ、新規ページは走査直前に `git add -N` で差分へ載せる。この 2 つを外すと新規ページが検査されないまま `clean` になる。`raw/**` は委譲先が除外する（raw は出典なので番号を持つ）。
 
 `{numref_tree}` は `separate_branch` では `{wiki_worktree_abs}`（ステップ 1.3 の絶対パス）、`same_branch` では dev ツリーの repo root を literal substitute する。
 
@@ -552,15 +552,29 @@ if [ ! -f "$check" ]; then
   echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=helper_missing" >&2
   exit 1
 fi
-# 新規ページ (untracked) を差分へ載せる。index を汚さない intent-to-add で、
-# ステップ 5.1 / 5.2 がどのみち同じ範囲を stage し直すので後段への影響はない。
-# `.rite/wiki` が gitignore されたままだとここが非 0 で落ちる (ステップ 5.2 の
-# `!.rite/wiki/` negation 案内が対処。無言で 0 件 clean にはしない)。
+# 新規ページ (untracked) を差分へ載せる。内容は stage しない intent-to-add で、
+# index にはエントリだけが載り `git diff --cached` は空のまま。commit まで進んだ回は
+# ステップ 5.1 / 5.2 が同じ範囲を stage し直すので後段への影響はない。hit / error で
+# 停止した回はエントリが index に残るが、次回実行の add -N が冪等に上書きする。
 numref_stage_rc=0
 git -C "$numref_tree" add -N -- .rite/wiki || numref_stage_rc=$?
 if [ "$numref_stage_rc" -ne 0 ]; then
   echo "ERROR: .rite/wiki の intent-to-add に失敗しました (rc=$numref_stage_rc)。新規ページが検査されないため commit しません" >&2
+  echo "  原因候補: same_branch 戦略で .gitignore に '!.rite/wiki/' negation が未設定の可能性" >&2
+  echo "  確認: grep -n 'gitignore-wiki-section-start' .gitignore で anchor 位置を特定し negation を追加する" >&2
   echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=stage_failed; rc=$numref_stage_rc" >&2
+  exit 1
+fi
+# rc だけでは足りない。ディレクトリ自体は非 ignore で**配下ファイルだけ**が ignore された
+# ドリフト (`.rite/.gitignore` が '*' + '!wiki/' を持ち '!wiki/**' を欠く形) では、
+# add -N は rc=0 で何も stage せず、続く git diff が空 = 無言の 0 件 clean になる。
+# rc ではなく実体 (ignore されたまま残っているファイル) を見て fail-loud にする。
+numref_ignored=$(git -C "$numref_tree" ls-files --others --ignored --exclude-standard -- .rite/wiki)
+if [ -n "$numref_ignored" ]; then
+  echo "ERROR: .rite/wiki 配下に gitignore されたままのファイルがあります。検査にも commit にも載らないため中止します" >&2
+  printf '%s\n' "$numref_ignored" | head -5 | sed 's/^/    /' >&2
+  echo "  確認: grep -n 'gitignore-wiki-section-start' .gitignore で anchor 位置を特定し '!.rite/wiki/**' を追加する" >&2
+  echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=ignored_paths" >&2
   exit 1
 fi
 numref_rc=0
@@ -580,7 +594,8 @@ esac
 |---|---|
 | `clean` | ステップ 5.1 / 5.2 へ進む |
 | `hit` | stdout の `file:line: 内容` が指す行を書き直してから**本ステップを再実行**する。書き直しは番号を落として現在形の Why にすること — 番号を消した跡に経緯文を置き換えない。ソース bullet は説明だけを表示テキストにし、説明が無ければ種別語（「レビュー結果」「fix 結果」「close retrospective」）にする（リンク先パスは変えない）。**`index.md` の行は Edit しない** — ステップ 6 の `wiki-index-update.sh` を修正した `--description` で呼び直す（index.md への書き換えは helper が atomic に行う契約のため）。この禁止は ingest 実行中（helper を呼べる文脈）の話で、lint 指摘の事後手当ては `/rite:wiki-lint` の手順に従う。再実行で `clean` にできなければ commit せず停止し、残った行と `/rite:recover` を案内する |
-| `error` | bash が `exit 1` で停止済み。commit しない |
+| `error` (`reason=stage_failed` / `ignored_paths`) | bash が `exit 1` で停止済み。`.gitignore` に `!.rite/wiki/` と `!.rite/wiki/**` の negation を追加してから**本ステップを再実行**する（anchor は `grep -n 'gitignore-wiki-section-start' .gitignore`） |
+| `error` (その他の `reason`) | bash が `exit 1` で停止済み。commit しない |
 
 > 番号の定義は `number-reference-check.sh` が持つ（3-4 桁の番号トークン）。本ステップは文法を書き下さない。1-2 桁 / 5 桁以上（上流トラッカ id 等）は**本検査の検出対象外**であり、検出されないことは規則上書いてよいことを意味しない（規則の SoT は `SCHEMA.md` の「番号ではなく Why 散文」）。
 
@@ -608,7 +623,7 @@ esac
 
 ### 5.1 separate_branch 戦略 (worktree ベース)
 
-ステップ 5.0 手順 1-7 を Write/Edit し、ステップ 5.0.n の検査を通した後、以下で worktree 内の変更を commit する。**下の bash 冒頭のゲートが `{numref_verdict}` を読む** — 値はステップ 5.0.n の `[CONTEXT] WIKI_INGEST_NUMREF=` の最新値（`clean` / `hit`）を literal substitute する。散文で 5.0.n を名指しするだけでは、5.0.n を飛ばしても commit が成功してしまう。**push はここでは行わない**。commit は `wiki-worktree-commit.sh --commit-only` に委譲する:
+ステップ 5.0 手順 1-7 を Write/Edit し、ステップ 5.0.n の検査を通した後、以下で worktree 内の変更を commit する。**下の bash 冒頭のゲートは canonical numref_verdict gate 節の literal 複製**で、変更時は同節の 3 箇所同時更新規約に従う。値はステップ 5.0.n の `[CONTEXT] WIKI_INGEST_NUMREF=` の最新値（`clean` / `hit`）を literal substitute する。散文で 5.0.n を名指しするだけでは、5.0.n を飛ばしても commit が成功してしまう。**push はここでは行わない**。commit は `wiki-worktree-commit.sh --commit-only` に委譲する:
 rationale: references/rationale.md#push-defer-1941
 
 ```bash
@@ -691,12 +706,12 @@ fi
 
 ### 5.2 same_branch 戦略
 
-`same_branch` では Raw Source / ページ / index.md / log.md はすべて dev ブランチ上。ステップ 5.0 手順 1-7 とステップ 5.0.n の検査の後、以下で一括 commit する（ブランチ切り替え・worktree 不要）。**5.1 と同じ `{numref_verdict}` ゲートを bash 冒頭に置く**:
+`same_branch` では Raw Source / ページ / index.md / log.md はすべて dev ブランチ上。ステップ 5.0 手順 1-7 とステップ 5.0.n の検査の後、以下で一括 commit する（ブランチ切り替え・worktree 不要）。**canonical numref_verdict gate 節の literal 複製を bash 冒頭に置く**（変更時は同節の 3 箇所同時更新規約に従う）:
 
 ```bash
 set -euo pipefail
 
-# ステップ 5.0.n の判定を機械的に受ける（5.1 と同一）。`{numref_verdict}` は同ステップの
+# ステップ 5.0.n の判定を機械的に受ける。`{numref_verdict}` は同ステップの
 # [CONTEXT] WIKI_INGEST_NUMREF= の最新値を literal substitute する。
 # 未置換 / 未知値 / hit のいずれも commit しない（検査を飛ばした実行を素通しさせないため）。
 numref_verdict="{numref_verdict}"

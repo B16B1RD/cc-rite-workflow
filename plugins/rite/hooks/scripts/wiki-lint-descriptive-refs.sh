@@ -577,7 +577,7 @@ while IFS= read -r page; do
     page_disp=$(printf '%s' "$page" | neutralize_ctrl)
     echo "WARNING: ページ ${page_disp} の本文抽出 awk が失敗しました (rc=$awk_rc)" >&2
     hits_rc=1
-  elif [ "${check_rc:-2}" -ne 0 ] && [ "${check_rc:-2}" -ne 1 ]; then
+  elif [ "$check_rc" -ne 0 ] && [ "$check_rc" -ne 1 ]; then
     # 委譲先の rc は 0=clean / 1=hit / 2=実行エラー。2 だけが失敗で、1 は正常な検出結果。
     page_disp=$(printf '%s' "$page" | neutralize_ctrl)
     echo "WARNING: ページ ${page_disp} の検出委譲が失敗しました (number-reference-check.sh rc=$check_rc)" >&2

@@ -8,6 +8,7 @@
 #   --all                 git ls-files 全件 − 除外パス
 #   --diff <base_ref>     git diff <base_ref> の追加行（未 commit を含む）
 #                         --path DIR で走査範囲を DIR 配下へ限定できる
+#                         (DIR が repo 内のどこにも一致しなければ invocation error)
 #   --stdin --label NAME  stdin を NAME として走査（除外パスなら走査しない）
 #
 # Detected: a 3-4 digit hash-number token. This subsumes `Issue #NNN` /
@@ -280,6 +281,14 @@ scan_all() {
 
 scan_diff() {
   local base="$1"
+  # pathspec が何にもマッチしないと git diff は rc=0 + 空を返し、「検査済みの clean」に
+  # 化ける。走査母数が空になった事実を verdict に出せないので、ここで invocation error に
+  # 倒す。tracked かどうかの両面を見る (worktree 上で削除済みでも tracked なら正当)。
+  if [ -n "$DIFF_PATH" ] && [ ! -d "$DIFF_PATH" ] \
+     && [ -z "$(git ls-files -- "$DIFF_PATH")" ]; then
+    echo "ERROR: --path が repo 内のどのパスにも一致しません: $DIFF_PATH" >&2
+    exit 2
+  fi
   if ! git rev-parse --verify "${base}^{commit}" >/dev/null 2>&1; then
     echo "ERROR: diff base could not be resolved: $base" >&2
     exit 2

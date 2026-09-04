@@ -218,8 +218,14 @@ Raw Source は出典なので番号を持ち、そこから読解して書く過
 ただし `git diff` は追跡済みパスしか比較しない。新規ページは Write した時点では untracked で
 差分に現れず、`git add` は commit ステップまで走らない。そのままだと **新規ページ — Raw Source
 から読解して書く量が最も多く、番号混入の主経路 — が 1 行も検査されないまま `clean` になる**。
-だから走査の直前に intent-to-add (`git add -N`) を挟む。index を汚さず、commit ステップが
-どのみち同じ範囲を stage し直すので後段への影響もない。
+だから走査の直前に intent-to-add (`git add -N`) を挟む。index にはエントリだけが載り
+`git diff --cached` は空のままで、commit まで進んだ回は commit ステップが同じ範囲を stage し
+直すため後段への影響もない。hit / error で停止した回はエントリが残るが、次回実行の
+`add -N` が冪等に上書きする。
+
+rc だけでは足りない。ディレクトリ自体は非 ignore で配下ファイルだけが ignore された
+ドリフトでは `add -N` が rc=0 で何も stage せず、続く差分が空 = 無言の 0 件 clean になる。
+だから rc に加えて「ignore されたまま残っているファイル」を実体で見て止める。
 
 走査範囲を `--path .rite/wiki` で絞るのは、走査範囲と commit 範囲を一致させるため。
 `same_branch` では走査ツリーが dev repo root になるので、絞らないと Wiki と無関係な未 commit

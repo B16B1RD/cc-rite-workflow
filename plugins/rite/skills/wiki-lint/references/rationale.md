@@ -4,7 +4,7 @@
 `rationale: references/rationale.md#<anchor>` の 1 行ポインタだけを残す。
 
 ここにあるのは **why** のみ。分岐表・sentinel 一覧・bash ブロックといった実行時に必要な機械
-インターフェースは本体が SoT であり、本ファイルへ複製しない。説明的番号参照の検出設計（走査範囲・
+インターフェースは本体が SoT であり、本ファイルへ複製しない。番号参照の検出設計（走査範囲・
 除外・正規化）は既存の `descriptive-refs-rationale.md` が SoT。
 
 ## helper-delegation
