@@ -246,7 +246,7 @@ rite-workflow/
 │ │ ├── gitignore-health-check.sh
 │ │ ├── projects-board-drift-check.sh # lint Phase 3.18 CLOSED かつ board≠終端 Status 検出
 │ │ ├── projects-status-gate.sh # open ステップ 2.6 Projects Status 検証ゲート (read-only・常に exit 0)
-│ │ ├── number-reference-check.sh # lint Phase 3.5 Issue/PR 番号参照 (#NNN) 検出 (lint/SKILL.md)
+│ │ ├── number-reference-check.sh # --all/--diff/--stdin 裸番号検出。lint blocking --diff / pr-review finding / fix 自己検査
 │ │ ├── sentinel-contract-check.sh # lint Phase 3.5 sentinel SoT / emitter / consumer 同期検証
 │ │ ├── skill-rail-diff-check.sh # SKILL 記述ダイエットの機械レール逐語一致検証 (fenced block + table row を base ref と突合)
 │ │ ├── tmp-hardcode-check.sh # lint Phase 3.5 sandbox 非互換パターン (mktemp+/tmp テンプレート・/tmp 直書き・push の upstream -u) 検出
@@ -1372,7 +1372,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `gitignore-health-check.sh` | Verify `$state_root/.rite/.gitignore` 3-line composition (`*` / `!wiki/` / `!wiki/**`); lint does not write | — |
 | `projects-board-drift-check.sh` | `/rite:lint` Phase 3.18 — detect CLOSED Issues whose Projects board Status is outside the terminal Status set (`Done` / `Cancelled`), optionally reconcile via `--reconcile` to the terminal Status the closure reason maps to (`NOT_PLANNED` / `DUPLICATE` → `Cancelled`, `COMPLETED` → `Done`, その他は WARNING 付きで `Done`) | — |
 | `projects-status-gate.sh` | `/rite:open` ステップ 2.6 — read an Issue's actual Projects board Status and report whether ステップ 2.4(A) (`Status → In Progress`) landed, as `[CONTEXT] PROJECTS_STATUS_INVARIANT=ok\|missing\|skipped\|unknown`. Read-only; always exits 0 so the non-blocking contract of 2.4(A) is preserved | — |
-| `number-reference-check.sh` | `/rite:lint` Phase 3.5 — detect Issue/PR number references (`#NNN` / `Issue #NNN` / `PR #NNN`) that crept back into the number-free documentation surface (`plugins/rite/skills/lint/SKILL.md`) | — |
+| `number-reference-check.sh` | Grammar SoT for bare Issue/PR number tokens. Modes: `--all` (git-tracked minus exclusions), `--diff <base>` (added lines, including uncommitted), `--stdin --label`. `/rite:lint` runs `--diff` as blocking and `--all` as informational. `/rite:pr-review` and `/rite:fix` call `--diff` (`plugins/rite/skills/lint/SKILL.md`) | — |
 | `sentinel-contract-check.sh` | `/rite:lint` Phase 3.5 — verify the sentinel SoT against emitter and consumer skill files, and detect undeclared sentinel-shaped literals | Canonical contract: `references/sentinel-contract.md` |
 | `tmp-hardcode-check.sh` | `/rite:lint` Phase 3.5 — detect sandbox-incompatible patterns (`mktemp` + `/tmp` template, fixed `/tmp` path hardcode, `git push` upstream `-u`) in `plugins/rite/**/*.{md,sh}` + `docs/**/*.md` (test harnesses / error-catalog / self excluded) | — |
 | `dollar-zero-check.sh` | `/rite:lint` Phase 3.5 — detect positional-parameter-zero references inside fenced code blocks in `skills/**/*.md`. The Skill loader expands them to the invocation argument string, silently corrupting the embedded awk/shell program; real `hooks/**/*.sh` are immune and excluded | — |

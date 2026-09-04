@@ -420,7 +420,7 @@ else
   bash {plugin_root}/hooks/wiki-ingest-trigger.sh \
     --type retrospectives --source-ref "issue-{issue_number}" \
     --content-file "$tmpfile" --issue-number {issue_number} \
-    --title "Issue #{issue_number} close retrospective" \
+    --title "{title}（close retrospective）" \
     2>"$trigger_stderr"
   trigger_exit=$?
   echo "trigger_exit=$trigger_exit"
