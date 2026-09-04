@@ -26,6 +26,8 @@
 * **Update**: [LLM substitute placeholder は bash residue gate で fail-fast 化する](pages/patterns/placeholder-residue-gate-bash-fail-fast.md) — raw/fixes/20260904T092650Z-pr-2549.md を統合
 * **Update**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — raw/fixes/20260904T092650Z-pr-2549.md を統合
 * **lint:clean** — contradictions=0, stale=53, orphans=0, missing_concept=0, unregistered_raw=433, broken_refs=0
+* **Skip**: [20260904T152815Z-pr-2560.md](raw/fixes/20260904T152815Z-pr-2560.md) — detector-candidate: intent-to-add は残存パスだけにする。削除パスへ git add -N すると削除が stage され直後の git add が pathspec 失敗する。配線とテストで強制済み
+* **Skip**: [20260904T160105Z-pr-2560.md](raw/reviews/20260904T160105Z-pr-2560.md) — 0-finding confirmation; existence-filter はスキル配線とテストで強制済み
 
 ## 2026-09-03
 * **Skip**: [20260903T111103Z-pr-2539.md](raw/reviews/20260903T111103Z-pr-2539.md) — 既存ページ asymmetric-fix-transcription / state-machine-dual-location-sync / mutation-prove-new-pin が同一欠陥クラスをカバー済み。sentinel 契約の同一ファイル内三重指示と MUST 未 pin は同クラスの再演（nb-sweep で plugin へ適用済み）
