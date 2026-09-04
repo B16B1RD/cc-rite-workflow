@@ -165,21 +165,17 @@ if [ "$MODE" != "stdin" ]; then
 fi
 
 # Path exclusion data. Grammar SoT is this list only.
-EXCLUDED_PATHS='.rite/wiki/raw/
-plugins/rite/scripts/tests/fixtures/
-plugins/rite/hooks/tests/number-reference-check.test.sh
-plugins/rite/hooks/tests/comment-journal-check.test.sh
-plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh'
+EXCLUDED_PATHS='.rite/wiki/raw/ plugins/rite/scripts/tests/fixtures/ plugins/rite/hooks/tests/number-reference-check.test.sh plugins/rite/hooks/tests/comment-journal-check.test.sh plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh'
 
 is_excluded_path() {
   local p="$1" excluded
   p="${p#./}"
-  while IFS= read -r excluded; do
+  for excluded in $EXCLUDED_PATHS; do
     case "$excluded" in
       */) [ "$p" = "${excluded%/}" ] || [ "${p#"$excluded"}" != "$p" ] ;;
       *) [ "$p" = "$excluded" ] ;;
     esac && return 0
-  done <<< "$EXCLUDED_PATHS"
+  done
   return 1
 }
 
@@ -324,7 +320,7 @@ scan_diff() {
   local hits
   hits=$(printf '%s\n' "$diff_out" | awk -v excluded_paths="$EXCLUDED_PATHS" "$AWK_HAS_HIT"'
     function excluded(p,    paths, count, i, candidate) {
-      count = split(excluded_paths, paths, "\n")
+      count = split(excluded_paths, paths, " ")
       for (i = 1; i <= count; i++) {
         candidate = paths[i]
         if (candidate ~ /\/$/) {
