@@ -64,16 +64,55 @@ caller の `exit 1` 直前に emit が必要になる。
 
 ## schema-normalization-mirror
 
-ステップ 1.2.0 Priority 3 の schema 1.1.0 後方互換 normalization の動作契約。Priority 0/2 (file-based) は
-`scripts/review-findings-maps.sh` へ委譲済みで、本 block はその string-based 鏡像。
+<a id="schema-normalization-mirror"></a>
+
+ステップ 1.2.0 の schema 1.1.0 後方互換 normalization の動作契約。**鏡像実装は持たない** — Priority 0/2
+(file-based) も Priority 3 (pr_comment) も `scripts/review-findings-maps.sh` に委譲する。Priority 3 は
+raw_json が文字列なので tempfile へ書き出して helper に渡し、書き戻された結果を読み戻す。
 
 - (a) schema_version == "1.0"|"1.0.0" の場合、findings[] に欠落している scope を severity から default mapping (CRITICAL/HIGH/MEDIUM → current-pr、LOW-MEDIUM/LOW → nit-noted) で補完。1 件以上補完したら `[CONTEXT] REVIEW_SOURCE_SCOPE_DEFAULTED=1` を emit。
 - (b) invariant #5: pre_existing == false ∧ scope == "nit-noted" の finding を検出。1 件以上あれば WARNING + `[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1` を emit し、scope を current-pr に自動書き換え。
-- (c) (a) または (b) または (e) で mutation が発生した場合のみ raw_json を mutated 版に差し替える。
+- (c) (a) または (b) で mutation が発生した場合のみ normalized tempfile を作り、以降の jq がそれを参照する。
 - (d) 後方互換: invariant #5 は pre_existing フィールドが存在する 1.1.0 JSON のみで発火する (1.0/1.0.0 では default mapping は scope を補完するのみで pre_existing は補完しない)。
-- (e) auto_demote_low (default true) で severity == "LOW" ∧ scope == "current-pr" の finding scope を "nit-noted" に降格。`auto_demote_low: false` で opt-out 可。
 
 **commit_sha stale detection で mismatch 時に WARNING のみで continue する理由**: PR コメントは最新の push 後に投稿される可能性が高く、legacy Markdown parser への fallthrough はむしろ情報損失になるため。
+
+## fatal-triage
+
+<a id="fatal-triage"></a>
+
+ステップ 1.2.0 の致命性仕分けの設計理由。
+
+**なぜ reviewer ではなく fix 側で絞るか**: blocking 閾値を reviewer に持たせると「指摘を隠すほうが後出し
+より悪い」という探索方針そのものの書き換えになる。reviewer の努力は絞らず、fix loop を起動するかの
+判定だけを絞ることで釣り合いを取る。移送された指摘は破棄されず `non_blocking_findings[]` に全文が残り、
+`/rite:iterate` 5.S の nb-sweep が消化する。
+
+**なぜ severity を書き換えないか**: severity は Impact 軸で、致命性は「本 PR の fix cycle を起動するか」の
+軸。直交する 2 軸を 1 つのフィールドに畳むと、移送された指摘の Impact が後から読めなくなる。
+
+**なぜ閾値を config キーにしないか**: 実需の Issue が無い段階で調整点を作らない
+(`no_speculative_structure`)。CRITICAL/HIGH と実測必須は本仕分けの定義そのもので、緩めれば仕分けの
+意味が消える。
+
+**なぜ未判定を error にするか**: 既定値へ畳むと、実測済みの指摘が書式ミスだけで修正対象から消えるか、
+非実測が修正対象に紛れ込むかのどちらかが silent に起きる。どちらの向きにも倒さず止めるのが
+fail-loud (`no_unnecessary_fallback`)。**上流の `review-measured-gate.sh` は形式崩れアンカーに対して
+意図的に `verification` を設定しない**ため、この停止は実運用でも起きうる。その場合の復旧は
+`/rite:pr-review` の再実行で、アンカー形式の是正は別 Issue の担当。
+
+**なぜ `demotion` オブジェクトに policy 値を足さないか**: `demotion` の有無は pr-review 6.1.d が
+「降格理由を併記する要素」を選ぶ判別子として使われている。3 つ目の出所を同キーに畳むと併記が
+非致命移送にも誤って広がる。`demotion_reason` を別キーにすることで 3 出所がキーの有無だけで判別できる。
+
+**なぜ永続 JSON へ書き戻すか**: `non_blocking_findings[]` は移送分の全文の唯一の保存先であり、
+`hooks/scripts/nb-sweep-collect.sh` が**永続 JSON から**同配列を読む。working tempfile に留めると
+移送分が sweep 母集団から silent に脱落する。`measured_gate` receipt は pr-review がゲートを適用した
+時点の統計なので再計算しない (receipt の意味を後から書き換えない)。書き戻し経路は
+`hooks/review-result-save.sh` を通らないため、id の書式・和集合の一意性は helper 内で自己検証する。
+
+**再入冪等性**: 移送済み finding は `findings[]` に残らないため、同一 JSON への再実行は `moved=0` になり
+移送ブロックへ入らない。`/rite:fix --nb-sweep` がステップ 1.2.0 を再通過しても二重移送しない。
 
 ## fast-path-block-design
 

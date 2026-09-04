@@ -227,10 +227,13 @@ fire 分岐でも `--handoff` なしの `flow-state.sh set` を呼ぶのは、�
 ## design-decisions
 
 blocking の定義式は本ファイルに複製せず severity-levels.md の実測必須ゲートを SoT とする。
-同節は reviewer finding に閉じた canonical 式と fix loop 全体を対象とする consumer 式の差を
+同節は reviewer finding に閉じた producer 式と fix loop 全体を対象とする consumer 式の差を
 「適用範囲」で意図的なスコープ差として定義している。本スキルはループ側なので後者に従い、
-実測の有無を判定できない指摘は blocking のまま扱う。実測を伴わない指摘は non-blocking として
-記録されたまま残存するため、非実測指摘が残った状態でも `[review:mergeable]` に到達する。
+**致命（実測あり × CRITICAL/HIGH × gated）だけを blocking として数える**。実測を伴わない指摘と
+非致命として移送された指摘は `non_blocking_findings[]` に記録されたまま残存するため、
+それらが残った状態でも `[review:mergeable]` に到達する。rite reviewer finding のうち実測の有無を
+判定できないものは blocking へ倒さず fix ステップ 1.2.0 が error で停止する（外部ツール / 人間
+レビュー由来は従来どおり External review = blocking）。
 残存分の消化は完了通知前の 5.S（`/rite:fix --nb-sweep`）が担い、人間の draft レビューに委ねない。
 細粒度の安全網（同一 finding
 検出 / quality signal escalation）は持たない（CLAUDE.md「シンプルさを死守」）。
