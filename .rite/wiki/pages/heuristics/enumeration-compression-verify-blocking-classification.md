@@ -41,4 +41,4 @@ README の仕様詳細を docs 正本へ委譲する圧縮 PR で、`/rite:wiki-
 
 ## ソース
 
-- [PR #1980 review results](../../raw/reviews/20260723T094207Z-pr-1980.md)
+- [レビュー結果](../../raw/reviews/20260723T094207Z-pr-1980.md)

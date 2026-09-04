@@ -62,5 +62,5 @@ fi
 
 ## ソース
 
-- [PR #784 review results](../../raw/reviews/20260502T171105Z-pr-784.md)
-- [PR #784 fix results](../../raw/fixes/20260502T171352Z-pr-784.md)
+- [レビュー結果](../../raw/reviews/20260502T171105Z-pr-784.md)
+- [fix 結果](../../raw/fixes/20260502T171352Z-pr-784.md)

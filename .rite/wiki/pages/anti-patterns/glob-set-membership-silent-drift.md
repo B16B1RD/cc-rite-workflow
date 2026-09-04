@@ -94,7 +94,7 @@ glob が問題になるのは**判定述語**として使う場合であり、gr
 
 ## ソース
 
-- [PR #2038 fix results (cycle 6, final)](../../raw/fixes/20260728T122258Z-pr-2038.md)
-- [PR #2038 review results (cycle 2)](../../raw/reviews/20260728T081222Z-pr-2038.md)
-- [PR #2304 review results (新設 `scenes-en/` が決定論スイープ glob の外に落ちた)](../../raw/reviews/20260813T081206Z-pr-2304.md)
-- [PR #2304 fix results (スイープ glob を明示列挙して sibling ディレクトリを取り込んだ)](../../raw/fixes/20260813T081923Z-pr-2304.md)
+- [fix 結果](../../raw/fixes/20260728T122258Z-pr-2038.md)
+- [レビュー結果](../../raw/reviews/20260728T081222Z-pr-2038.md)
+- [新設 `scenes-en/` が決定論スイープ glob の外に落ちた](../../raw/reviews/20260813T081206Z-pr-2304.md)
+- [スイープ glob を明示列挙して sibling ディレクトリを取り込んだ](../../raw/fixes/20260813T081923Z-pr-2304.md)

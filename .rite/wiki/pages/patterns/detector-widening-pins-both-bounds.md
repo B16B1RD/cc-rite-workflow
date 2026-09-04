@@ -62,5 +62,5 @@ cycle 2 で「1 行の 2 個目以降のハンドル」を拾えるようにし�
 
 ## ソース
 
-- [PR #2124 fix results (cycle 2)](../../raw/fixes/20260806T103316Z-pr-2124.md)
-- [PR #2124 fix results (cycle 5, final)](../../raw/fixes/20260806T124959Z-pr-2124.md)
+- [fix 結果](../../raw/fixes/20260806T103316Z-pr-2124.md)
+- [fix 結果](../../raw/fixes/20260806T124959Z-pr-2124.md)

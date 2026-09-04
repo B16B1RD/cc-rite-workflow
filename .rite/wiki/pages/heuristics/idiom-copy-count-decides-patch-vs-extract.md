@@ -67,4 +67,4 @@ reviewer はこれを**指摘ではなく計測として報告**した。既存�
 
 ## ソース
 
-- [PR #2120 review results (cycle 4)](../../raw/reviews/20260806T013318Z-pr-2120.md)
+- [レビュー結果](../../raw/reviews/20260806T013318Z-pr-2120.md)

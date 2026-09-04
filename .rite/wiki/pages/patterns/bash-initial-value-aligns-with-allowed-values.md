@@ -132,7 +132,7 @@ silent fall-through 系の bash defensive programming gap は、本 pattern と�
 
 ## ソース
 
-- [PR #659 cycle 2 review (initial value silent fall-through risk、HIGH 1 件)](../../raw/reviews/20260425T081422Z-pr-659-cycle2.md)
+- [initial value silent fall-through risk、HIGH 1 件](../../raw/reviews/20260425T081422Z-pr-659-cycle2.md)
 
 ## 補強: marker / placeholder で値を運ぶ経路も同じ設計を要る
 
@@ -158,5 +158,5 @@ silent fall-through 系の bash defensive programming gap は、本 pattern と�
 
 ## ソース（追記分）
 
-- [PR #2044 review results (cycle 3) — 空値の mis-route とリテラル置換の quote](../../raw/reviews/20260729T070922Z-pr-2044.md)
-- [PR #2044 fix results (cycle 3) — 空値 sentinel 化](../../raw/fixes/20260729T071243Z-pr-2044.md)
+- [空値の mis-route とリテラル置換の quote](../../raw/reviews/20260729T070922Z-pr-2044.md)
+- [空値 sentinel 化](../../raw/fixes/20260729T071243Z-pr-2044.md)

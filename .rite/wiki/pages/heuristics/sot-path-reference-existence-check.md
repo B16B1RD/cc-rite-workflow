@@ -142,11 +142,11 @@ helper 委譲後に stale 化した cross-ref を更新する 1 行 docs PR で�
 
 ## ソース
 
-- [PR #705 cycle 1 review (6 findings: broken-ref / 表記揺れ / regex incompleteness)](../../raw/reviews/20260428T171940Z-pr-705.md)
-- [PR #705 cycle 2 review (内部矛盾: 適用フェーズ vs Where to Apply)](../../raw/reviews/20260428T173005Z-pr-705-cycle2.md)
-- [PR #705 cycle 1 fix (broken-ref 3 件 / cross-PR fragility / identifier / regex 全 6 解消)](../../raw/fixes/20260428T172314Z-pr-705.md)
-- [PR #801 review (新規 reference の inter-file anchor `./complexity-gate.md#complexity-gate-section-inclusion` が target ファイルに存在せず、両 reviewer (prompt-engineer + code-quality) で cross-validated。経験則: 新規 anchor 記述前に `grep -E '^##+ ' <target>` で実在 heading slug を検証してから書く)](../../raw/reviews/20260504T040112Z-pr-801.md)
-- [PR #801 fix (broken anchor 解消、grep ベースの heading slug 検証を anchor 記述前 pre-flight check として明示化)](../../raw/fixes/20260504T040558Z-pr-801.md)
-- [PR #1102 review (phase-mapping.md の broken cross-reference 修正 doc PR、0 blocking findings / 1 cycle 着地。修正後参照先 (resume.md Phase 3.5 / Phase 5.3) の実在を両 reviewer が Read で independently verify。同型 broken ref が sub-skill-return-protocol.md / docs/SPEC.md / docs/SPEC.ja.md に pre-existing 残存)](../../raw/reviews/20260523T144332Z-pr-1102.md)
-- [PR #1190 review (commands/pr/open.md ステップ3.5 の dangling reference 差し替え doc PR、0 blocking / 1 cycle 着地。relative reference の depth-aware path 解決検証 (`../../references/` depth-2 / `../../../references/` depth-3) + anchor slug 実在 + codebase 一貫性の 4 点機械検証。pre-existing 同型不整合 2 件を follow-up Issue #1191 に切り出し)](../../raw/reviews/20260529T072948Z-pr-1190.md)
-- [PR #1342 review results — 委譲後 cross-ref drift 修正を 3 点検証 (実在性 / stale 性 / 同型残存 grep) で 1 cycle mergeable 判定](../../raw/reviews/20260610T010210Z-pr-1342.md)
+- [6 findings: broken-ref / 表記揺れ / regex incompleteness](../../raw/reviews/20260428T171940Z-pr-705.md)
+- [内部矛盾: 適用フェーズ vs Where to Apply](../../raw/reviews/20260428T173005Z-pr-705-cycle2.md)
+- [broken-ref 3 件 / cross-PR fragility / identifier / regex 全 6 解消](../../raw/fixes/20260428T172314Z-pr-705.md)
+- [新規 reference の inter-file anchor `./complexity-gate.md#complexity-gate-section-inclusion` が target ファイルに存在せず、両 reviewer (prompt-engineer + code-quality) で cross-validated。経験則: 新規 anchor 記述前に `grep -E '^##+ ' <target>` で実在 heading slug を検証してから書く](../../raw/reviews/20260504T040112Z-pr-801.md)
+- [broken anchor 解消、grep ベースの heading slug 検証を anchor 記述前 pre-flight check として明示化](../../raw/fixes/20260504T040558Z-pr-801.md)
+- [phase-mapping.md の broken cross-reference 修正 doc PR、0 blocking findings / 1 cycle 着地。修正後参照先 (resume.md Phase 3.5 / Phase 5.3) の実在を両 reviewer が Read で independently verify。同型 broken ref が sub-skill-return-protocol.md / docs/SPEC.md / docs/SPEC.ja.md に pre-existing 残存](../../raw/reviews/20260523T144332Z-pr-1102.md)
+- [commands/pr/open.md ステップ3.5 の dangling reference 差し替え doc PR、0 blocking / 1 cycle 着地。relative reference の depth-aware path 解決検証 (`../../references/` depth-2 / `../../../references/` depth-3) + anchor slug 実在 + codebase 一貫性の 4 点機械検証。pre-existing 同型不整合 2 件を follow-up Issue に切り出し](../../raw/reviews/20260529T072948Z-pr-1190.md)
+- [委譲後 cross-ref drift 修正を 3 点検証 (実在性 / stale 性 / 同型残存 grep) で 1 cycle mergeable 判定](../../raw/reviews/20260610T010210Z-pr-1342.md)

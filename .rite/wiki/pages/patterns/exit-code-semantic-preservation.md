@@ -124,9 +124,9 @@ caller 側の case routing だけでなく、**script 自身のすべての内�
 
 ## ソース
 
-- [PR #529 fix cycle 1 (exit 2 semantic preservation)](../../raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md)
-- [PR #529 review (6-reviewer による exit code mismatch 検出)](../../raw/reviews/20260415T094007Z-pr-529.md)
-- [PR #1306 review cycle 1 (peer copy-paste の exit-code 契約非対称 + shift 2/set -e abort)](../../raw/reviews/20260608T112156Z-pr-1306.md)
-- [PR #1306 fix cycle 1 (`[ "$#" -lt 2 ]` gate で欠落時 exit 2 へ統一)](../../raw/fixes/20260608T112705Z-pr-1306.md)
-- [PR #1847 review cycle 2 (markdown 表示ロジックでの legitimate-skip/failure 混同を cross-validation で検出)](../../raw/reviews/20260713T045650Z-pr-1847-cycle2.md)
-- [PR #1847 fix cycle 2 (`{wiki_ingest_check}` パターンを参照した多分岐への再設計)](../../raw/fixes/20260713T045756Z-pr-1847-cycle2.md)
+- [exit 2 semantic preservation](../../raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md)
+- [6-reviewer による exit code mismatch 検出](../../raw/reviews/20260415T094007Z-pr-529.md)
+- [peer copy-paste の exit-code 契約非対称 + shift 2/set -e abort](../../raw/reviews/20260608T112156Z-pr-1306.md)
+- [`[ "$#" -lt 2 ]` gate で欠落時 exit 2 へ統一](../../raw/fixes/20260608T112705Z-pr-1306.md)
+- [markdown 表示ロジックでの legitimate-skip/failure 混同を cross-validation で検出](../../raw/reviews/20260713T045650Z-pr-1847-cycle2.md)
+- [`{wiki_ingest_check}` パターンを参照した多分岐への再設計](../../raw/fixes/20260713T045756Z-pr-1847-cycle2.md)

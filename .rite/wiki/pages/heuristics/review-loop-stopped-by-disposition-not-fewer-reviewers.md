@@ -45,4 +45,4 @@ reviewer の人数と審査の深さは維持したまま、出た指摘の**行
 
 ## ソース
 
-- [PR #2498 review results (cycle 5)](../../raw/reviews/20260901T110702Z-pr-2498.md)
+- [レビュー結果](../../raw/reviews/20260901T110702Z-pr-2498.md)

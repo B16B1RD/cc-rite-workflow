@@ -58,7 +58,7 @@ commands/ → skills/ 移行に伴う stale 参照一掃で実測した線引き
 
 ## ソース
 
-- [PR #1722 review results (cycle 1: AC-1 残照ゼロ型 AC の境界判定が boundary 分類でユーザー判断へ回された実測)](../../raw/reviews/20260702T015417Z-pr-1722.md)
-- [PR #1722 fix results (過去形 incident 記述の意図的残置判断 + 実在確認済みパターン名への言い換え)](../../raw/fixes/20260702T020209Z-pr-1722.md)
-- [PR #1722 review results cycle 2 (pre-existing ドリフトの revert test による boundary/調査推奨への正分流)](../../raw/reviews/20260702T032816Z-pr-1722.md)
-- [PR #1726 review results — reviewer agent 定義の inert 記述掃除。空 Detailed Checklist 削除 + 未実装スキャフォルディング prose の削除/reword、0 findings で 1 cycle mergeable)](../../raw/reviews/20260702T100548Z-pr-1726.md)
+- [AC-1 残照ゼロ型 AC の境界判定が boundary 分類でユーザー判断へ回された実測](../../raw/reviews/20260702T015417Z-pr-1722.md)
+- [過去形 incident 記述の意図的残置判断 + 実在確認済みパターン名への言い換え](../../raw/fixes/20260702T020209Z-pr-1722.md)
+- [pre-existing ドリフトの revert test による boundary/調査推奨への正分流](../../raw/reviews/20260702T032816Z-pr-1722.md)
+- [reviewer agent 定義の inert 記述掃除。空 Detailed Checklist 削除 + 未実装スキャフォルディング prose の削除/reword、0 findings で 1 cycle mergeable](../../raw/reviews/20260702T100548Z-pr-1726.md)

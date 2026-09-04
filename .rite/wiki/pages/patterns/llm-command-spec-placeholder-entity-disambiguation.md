@@ -54,5 +54,5 @@ LLM-facing command spec のレビューでは「placeholder の解決元 (issue 
 
 ## ソース
 
-- [PR #1244 review results](../../raw/reviews/20260602T025347Z-pr-1244.md)
-- [PR #1244 fix results](../../raw/fixes/20260602T025909Z-pr-1244.md)
+- [レビュー結果](../../raw/reviews/20260602T025347Z-pr-1244.md)
+- [fix 結果](../../raw/fixes/20260602T025909Z-pr-1244.md)

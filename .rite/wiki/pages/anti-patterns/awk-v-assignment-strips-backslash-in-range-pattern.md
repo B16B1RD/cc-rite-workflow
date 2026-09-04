@@ -64,6 +64,6 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T17:40:00+09:00" }
 
 ## ソース
 
-- [PR #2142 fix results (cycle 2)](../../raw/fixes/20260808T010121Z-pr-2142.md)
-- [PR #2142 review results (cycle 3)](../../raw/reviews/20260808T013358Z-pr-2142.md)
-- [PR #2150 fix results (cycle 2: 単一エスケープでレンジが EOF まで伸びた再現)](../../raw/fixes/20260808T070139Z-pr-2150-cycle2.md)
+- [fix 結果](../../raw/fixes/20260808T010121Z-pr-2142.md)
+- [レビュー結果](../../raw/reviews/20260808T013358Z-pr-2142.md)
+- [単一エスケープでレンジが EOF まで伸びた再現](../../raw/fixes/20260808T070139Z-pr-2150-cycle2.md)

@@ -93,9 +93,9 @@ cycle 5 で「次サイクルはサーキットブレーカーが発火する」
 
 ## ソース
 
-- [PR #2022 review results (cycle 10)](../../raw/reviews/20260726T044237Z-pr-2022.md)
-- [PR #2022 review results (cycle 8)](../../raw/reviews/20260726T035338Z-pr-2022.md)
-- [PR #2022 review results (cycle 5)](../../raw/reviews/20260726T020559Z-pr-2022.md)
-- [PR #2043 review results](../../raw/reviews/20260728T160636Z-pr-2043.md)
-- [PR #2043 review results (cycle 2)](../../raw/reviews/20260728T163233Z-pr-2043.md)
-- [PR #2043 review results (cycle 3)](../../raw/reviews/20260728T165431Z-pr-2043.md)
+- [レビュー結果](../../raw/reviews/20260726T044237Z-pr-2022.md)
+- [レビュー結果](../../raw/reviews/20260726T035338Z-pr-2022.md)
+- [レビュー結果](../../raw/reviews/20260726T020559Z-pr-2022.md)
+- [レビュー結果](../../raw/reviews/20260728T160636Z-pr-2043.md)
+- [レビュー結果](../../raw/reviews/20260728T163233Z-pr-2043.md)
+- [レビュー結果](../../raw/reviews/20260728T165431Z-pr-2043.md)

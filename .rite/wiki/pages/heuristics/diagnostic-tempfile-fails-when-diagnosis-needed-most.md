@@ -74,4 +74,4 @@ command substitution は stdout も飲み込むため、無条件には置き換
 
 ## ソース
 
-- [PR #2114 fix results](../../raw/fixes/20260805T101044Z-pr-2114.md)
+- [fix 結果](../../raw/fixes/20260805T101044Z-pr-2114.md)

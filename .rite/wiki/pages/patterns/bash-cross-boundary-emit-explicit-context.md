@@ -69,8 +69,8 @@ cross-Bash-call shell var の構造的回避策には [CONTEXT] sentinel emit (c
 
 ## ソース
 
-- [PR #688 fix 記録 (cycle 49 H-1 self-defeating defense 修正)](../../raw/fixes/20260429T141610Z-pr-688.md)
-- [PR #688 fix 記録 (4 件 fix + 17 件 umbrella issue 化)](../../raw/fixes/20260430T014425Z-pr-688.md)
-- [PR #953 review 記録 (sub-skill 内 bash 変数 guard が常に false の CRITICAL 検出)](../../raw/reviews/20260514T082816Z-pr-953.md)
-- [PR #1062 cycle 1 review (per-finding loop 内で Step 2/Step 3 が独立 Bash invocation だった結果 shell var cross-call 消失 + 重複 emit が CRITICAL として検出)](../../raw/reviews/20260519T114404Z-pr-1062.md)
-- [PR #1062 cycle 4 mergeable (cycle 4 で Step 2/3 物理統合により cross-call boundary を消去、per-finding loop の単一 invocation invariant 依拠で重複 emit も構造的解消、4 cycle (18→6→3→3→0) 構造的収束)](../../raw/reviews/20260519T122133Z-pr-1062.md)
+- [H-1 self-defeating defense 修正](../../raw/fixes/20260429T141610Z-pr-688.md)
+- [4 件 fix + 17 件 umbrella issue 化](../../raw/fixes/20260430T014425Z-pr-688.md)
+- [sub-skill 内 bash 変数 guard が常に false の CRITICAL 検出](../../raw/reviews/20260514T082816Z-pr-953.md)
+- [per-finding loop 内で Step 2/Step 3 が独立 Bash invocation だった結果 shell var cross-call 消失 + 重複 emit が CRITICAL として検出](../../raw/reviews/20260519T114404Z-pr-1062.md)
+- [mergeable (cycle 4 で Step 2/3 物理統合により cross-call boundary を消去、per-finding loop の単一 invocation invariant 依拠で重複 emit も構造的解消、4 cycle (18→6→3→3→0) 構造的収束)](../../raw/reviews/20260519T122133Z-pr-1062.md)

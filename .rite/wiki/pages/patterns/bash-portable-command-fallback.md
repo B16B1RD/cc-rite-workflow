@@ -80,6 +80,6 @@ readlink 事例の `gitignore-health-check.sh` 新規追加で、複数 reviewer
 
 ## ソース
 
-- [PR #559 review results](../../raw/reviews/20260417T035556Z-pr-559.md)
-- [PR #585 review results](../../raw/reviews/20260419T004413Z-pr-585.md)
-- [PR #585 fix results](../../raw/fixes/20260419T004921Z-pr-585.md)
+- [レビュー結果](../../raw/reviews/20260417T035556Z-pr-559.md)
+- [レビュー結果](../../raw/reviews/20260419T004413Z-pr-585.md)
+- [fix 結果](../../raw/fixes/20260419T004921Z-pr-585.md)

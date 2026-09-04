@@ -54,4 +54,4 @@ embedded backtick を含む inline code は double-backtick で囲むのが cano
 
 ## ソース
 
-- [PR #688 review 記録 (cycle 13 F-01 / F-02 検出)](../../raw/reviews/20260430T013507Z-pr-688.md)
+- [F-01 / F-02 検出](../../raw/reviews/20260430T013507Z-pr-688.md)

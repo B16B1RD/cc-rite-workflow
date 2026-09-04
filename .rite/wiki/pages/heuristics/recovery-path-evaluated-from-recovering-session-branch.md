@@ -73,7 +73,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T17:40:00+09:00" }
 
 ## ソース
 
-- [PR #2150 review results](../../raw/reviews/20260808T063447Z-pr-2150.md)
-- [PR #2150 fix results](../../raw/fixes/20260808T064117Z-pr-2150.md)
-- [PR #2150 fix results (cycle 2 correction)](../../raw/fixes/20260808T070139Z-pr-2150-cycle2.md)
-- [PR #2150 fix results (cycle 4)](../../raw/fixes/20260808T074827Z-pr-2150-cycle4.md)
+- [レビュー結果](../../raw/reviews/20260808T063447Z-pr-2150.md)
+- [fix 結果](../../raw/fixes/20260808T064117Z-pr-2150.md)
+- [correction](../../raw/fixes/20260808T070139Z-pr-2150-cycle2.md)
+- [fix 結果](../../raw/fixes/20260808T074827Z-pr-2150-cycle4.md)

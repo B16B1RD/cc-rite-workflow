@@ -99,5 +99,5 @@ grep -A 2 "key:" wiki-config.sh | grep -E "tr|sed" | sort -u
 
 ## ソース
 
-- [PR #1155 review cycle 1 (extract_yaml_key helper の一律 lowercase 適用が key 別挙動 silent 抹消、3 reviewer 独立 HIGH 検出)](../../raw/reviews/20260526T175307Z-pr-1155.md)
-- [PR #1155 fix cycle 1 (helper 化前後の behavior preservation verify ルール確立)](../../raw/fixes/20260526T180309Z-pr-1155.md)
+- [extract_yaml_key helper の一律 lowercase 適用が key 別挙動 silent 抹消、3 reviewer 独立 HIGH 検出](../../raw/reviews/20260526T175307Z-pr-1155.md)
+- [helper 化前後の behavior preservation verify ルール確立](../../raw/fixes/20260526T180309Z-pr-1155.md)

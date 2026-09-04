@@ -219,6 +219,6 @@ fi
 
 ## ソース
 
-- [PR #759 review — SIGKILL race window probe identification power 不足の HIGH×2 cross-validation](../../raw/reviews/20260501T140844Z-pr-759.md)
-- [PR #761 cycle 1 review — sleep 過大による M_mid dilute MEDIUM + invariant pattern 不一致 MEDIUM](../../raw/reviews/20260502T000523Z-pr-761.md)
-- [PR #761 cycle 2 re-review — post-condition 再定義の有効性 empirical 実証 (5 → 0 finding 収束)](../../raw/reviews/20260502T001651Z-pr-761.md)
+- [SIGKILL race window probe identification power 不足の HIGH×2 cross-validation](../../raw/reviews/20260501T140844Z-pr-759.md)
+- [sleep 過大による M_mid dilute MEDIUM + invariant pattern 不一致 MEDIUM](../../raw/reviews/20260502T000523Z-pr-761.md)
+- [post-condition 再定義の有効性 empirical 実証 (5 → 0 finding 収束)](../../raw/reviews/20260502T001651Z-pr-761.md)

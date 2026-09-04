@@ -63,6 +63,6 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 
 ## ソース
 
-- [PR #2056 review results — 指示の配置と実行地点の乖離](../../raw/reviews/20260730T045358Z-pr-2056.md)
-- [PR #2056 review results (cycle 2) — 実行地点側の導線](../../raw/reviews/20260730T052429Z-pr-2056.md)
-- [PR #2056 fix results (cycle 2) — フローの制御構造との突合 3 類型](../../raw/fixes/20260730T053611Z-pr-2056.md)
+- [指示の配置と実行地点の乖離](../../raw/reviews/20260730T045358Z-pr-2056.md)
+- [実行地点側の導線](../../raw/reviews/20260730T052429Z-pr-2056.md)
+- [フローの制御構造との突合 3 類型](../../raw/fixes/20260730T053611Z-pr-2056.md)

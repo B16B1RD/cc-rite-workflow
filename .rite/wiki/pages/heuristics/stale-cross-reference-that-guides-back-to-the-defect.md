@@ -74,5 +74,5 @@ skill loader の引数展開を受けず、委譲しなくても壊れない。
 
 ## ソース
 
-- [PR #2051 review results (cycle 3)](../../raw/reviews/20260729T153523Z-pr-2051-c3.md)
-- [PR #2051 fix results (cycle 3)](../../raw/fixes/20260729T153947Z-pr-2051-c3.md)
+- [レビュー結果](../../raw/reviews/20260729T153523Z-pr-2051-c3.md)
+- [fix 結果](../../raw/fixes/20260729T153947Z-pr-2051-c3.md)

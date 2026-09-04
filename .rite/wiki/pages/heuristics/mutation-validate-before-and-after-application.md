@@ -89,4 +89,4 @@ mutation で生存した防御コードに対して不要な TC を増やす前�
 
 ## ソース
 
-- [PR #2094 review results (cycle 3)](../../raw/reviews/20260802T173849Z-pr-2094.md)
+- [レビュー結果](../../raw/reviews/20260802T173849Z-pr-2094.md)

@@ -85,10 +85,10 @@ helper の投稿先を PR コメントから関連 Issue コメントへ移す�
 
 ## ソース
 
-- [PR #2227 fix results](../../raw/fixes/20260810T040721Z-pr-2227.md)
-- [PR #2227 review results](../../raw/reviews/20260810T035844Z-pr-2227.md)
-- [PR #2227 review results (cycle 3, mergeable)](../../raw/reviews/20260810T045310Z-pr-2227.md)
-- [PR #2357 review results](../../raw/reviews/20260825T111042Z-pr-2357.md)
-- [PR #2357 fix results](../../raw/fixes/20260825T112921Z-pr-2357.md)
-- [PR #2383 review results](../../raw/reviews/20260826T125608Z-pr-2383.md)
-- [PR #2383 fix results](../../raw/fixes/20260826T131353Z-pr-2383.md)
+- [fix 結果](../../raw/fixes/20260810T040721Z-pr-2227.md)
+- [レビュー結果](../../raw/reviews/20260810T035844Z-pr-2227.md)
+- [レビュー結果](../../raw/reviews/20260810T045310Z-pr-2227.md)
+- [レビュー結果](../../raw/reviews/20260825T111042Z-pr-2357.md)
+- [fix 結果](../../raw/fixes/20260825T112921Z-pr-2357.md)
+- [レビュー結果](../../raw/reviews/20260826T125608Z-pr-2383.md)
+- [fix 結果](../../raw/fixes/20260826T131353Z-pr-2383.md)

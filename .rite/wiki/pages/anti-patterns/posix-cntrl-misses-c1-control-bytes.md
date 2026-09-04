@@ -70,5 +70,5 @@ neutralize (置換) 側を共通ヘルパー化しても、検出 (reject) 用�
 
 ## ソース
 
-- [PR #1277 review results](../../raw/reviews/20260605T045347Z-pr-1277.md)
-- [PR #1280 review results — 検出側 contains_ctrl() 統一の設計判断検証 (tr vs grep / pure-bash 棄却 / fail-closed / mutation 2 段階)](../../raw/reviews/20260605T163454Z-pr-1280.md)
+- [レビュー結果](../../raw/reviews/20260605T045347Z-pr-1277.md)
+- [検出側 contains_ctrl() 統一の設計判断検証 (tr vs grep / pure-bash 棄却 / fail-closed / mutation 2 段階)](../../raw/reviews/20260605T163454Z-pr-1280.md)

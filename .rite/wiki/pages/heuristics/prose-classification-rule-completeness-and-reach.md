@@ -89,6 +89,6 @@ rite の reviewer 規則は散文の契約であり、LLM がそれを読んで�
 
 ## ソース
 
-- [PR #2122 review results](../../raw/reviews/20260806T040205Z-pr-2122.md)
-- [PR #2229 fix results — 散文の根拠が実装上到達不能（3 件）](../../raw/fixes/20260810T070440Z-pr-2229.md)
-- [PR #2229 review results (cycle 4) — 「A または B」の B が到達しない](../../raw/reviews/20260810T095742Z-pr-2229.md)
+- [レビュー結果](../../raw/reviews/20260806T040205Z-pr-2122.md)
+- [散文の根拠が実装上到達不能（3 件）](../../raw/fixes/20260810T070440Z-pr-2229.md)
+- [「A または B」の B が到達しない](../../raw/reviews/20260810T095742Z-pr-2229.md)

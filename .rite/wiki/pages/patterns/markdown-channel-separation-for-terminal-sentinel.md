@@ -99,8 +99,8 @@ cleanup.md と ingest.md はこの双対に対して **意図的に異なる構�
 
 ## ソース
 
-- [PR #655 cycle 6 review — markdown channel separation E-4 経験則](../../raw/reviews/20260424T095915Z-pr-655-cycle6.md)
-- [PR #655 cycle 4 review — markdown channel separation factual model 初提示](../../raw/reviews/20260424T085837Z-pr-655.md)
-- [PR #655 cycle 3 review — #652 Root Cause 散文モデル](../../raw/reviews/20260424T080338Z-pr-655.md)
-- [PR #655 cycle 3 fix — inline HTML sentinel 適用実装](../../raw/fixes/20260424T081225Z-pr-655.md)
-- [PR #655 cycle 5 fix — factual correction と anti-pattern doc 整合](../../raw/fixes/20260424T090428Z-pr-655.md)
+- [markdown channel separation E-4 経験則](../../raw/reviews/20260424T095915Z-pr-655-cycle6.md)
+- [markdown channel separation factual model 初提示](../../raw/reviews/20260424T085837Z-pr-655.md)
+- [Root Cause 散文モデル](../../raw/reviews/20260424T080338Z-pr-655.md)
+- [inline HTML sentinel 適用実装](../../raw/fixes/20260424T081225Z-pr-655.md)
+- [factual correction と anti-pattern doc 整合](../../raw/fixes/20260424T090428Z-pr-655.md)

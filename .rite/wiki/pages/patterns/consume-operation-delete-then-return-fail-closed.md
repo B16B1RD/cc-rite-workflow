@@ -85,5 +85,5 @@ correctness path を導入したら同 PR 内で「invariant を壊す mutation 
 
 ## ソース
 
-- [PR #1169 fix results (cycle 2) — consume-handoff を delete-then-return で fail-closed 化 + 診断 emit で cmd_set と対称化](../../raw/fixes/20260528T142118Z-pr-1169.md)
-- [PR #1169 review results (cycle 2) — 表層の診断欠落の奥に潜む ordering バグ (AC-3 break) を runtime 再現で HIGH 昇格](../../raw/reviews/20260528T141817Z-pr-1169.md)
+- [consume-handoff を delete-then-return で fail-closed 化 + 診断 emit で cmd_set と対称化](../../raw/fixes/20260528T142118Z-pr-1169.md)
+- [表層の診断欠落の奥に潜む ordering バグ (AC-3 break) を runtime 再現で HIGH 昇格](../../raw/reviews/20260528T141817Z-pr-1169.md)

@@ -42,4 +42,4 @@ fix cycle 1 で修正を適用し、cycle 2（フルレビュー、スコープ�
 
 ## ソース
 
-- [PR #1948 fix results](../../raw/fixes/20260721T063551Z-pr-1948.md)
+- [fix 結果](../../raw/fixes/20260721T063551Z-pr-1948.md)

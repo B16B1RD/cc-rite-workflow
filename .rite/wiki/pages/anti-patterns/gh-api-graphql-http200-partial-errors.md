@@ -72,7 +72,7 @@ GraphQL の `ID!` (node id = `PVT_...` 等の base64 opaque 文字列) や `Stri
 
 ## ソース
 
-- [PR #1185 review results](../../raw/reviews/20260529T040843Z-pr-1185.md)
-- [PR #1185 fix results](../../raw/fixes/20260529T041436Z-pr-1185.md)
-- [PR #2507 review results](../../raw/reviews/20260902T080744Z-pr-2507.md)
-- [PR #2507 fix results](../../raw/fixes/20260902T081227Z-pr-2507.md)
+- [レビュー結果](../../raw/reviews/20260529T040843Z-pr-1185.md)
+- [fix 結果](../../raw/fixes/20260529T041436Z-pr-1185.md)
+- [レビュー結果](../../raw/reviews/20260902T080744Z-pr-2507.md)
+- [fix 結果](../../raw/fixes/20260902T081227Z-pr-2507.md)

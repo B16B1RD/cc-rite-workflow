@@ -78,4 +78,4 @@ count delta 方式では逆方向 mutation が FAIL する (false-fail) ため�
 
 ## ソース
 
-- [PR #1295 review results](../../raw/reviews/20260606T171726Z-pr-1295.md)
+- [レビュー結果](../../raw/reviews/20260606T171726Z-pr-1295.md)

@@ -45,4 +45,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-08T03:06:55+09:00" }
 
 ## ソース
 
-- [PR #1794 review results（0 findings / マージ可、推奨事項として flow-state.sh:24 を検出。先行 Issue #1784 / PR #1790 の Non-Target 宣言確認によりユーザーがスコープ拡大を見送った）](../../raw/reviews/20260707T175542Z-pr-1794.md)
+- [0 findings / マージ可、推奨事項として flow-state.sh:24 を検出。先行 Issue / PR の Non-Target 宣言確認によりユーザーがスコープ拡大を見送った](../../raw/reviews/20260707T175542Z-pr-1794.md)

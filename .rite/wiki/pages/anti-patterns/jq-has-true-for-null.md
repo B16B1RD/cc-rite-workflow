@@ -51,5 +51,5 @@ jq -e '.fieldValues | type == "object" and (.nodes | type == "array")'
 
 ## ソース
 
-- [PR #2507 review results](../../raw/reviews/20260902T080744Z-pr-2507.md)
-- [PR #2507 fix results](../../raw/fixes/20260902T081227Z-pr-2507.md)
+- [レビュー結果](../../raw/reviews/20260902T080744Z-pr-2507.md)
+- [fix 結果](../../raw/fixes/20260902T081227Z-pr-2507.md)

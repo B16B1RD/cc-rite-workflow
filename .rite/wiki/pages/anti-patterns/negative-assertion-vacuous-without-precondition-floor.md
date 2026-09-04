@@ -97,4 +97,4 @@ out=$(cd / && run_edit_guard "Write" "$target" ...)   # 兄弟ディレクトリ
 
 ## ソース
 
-- [PR #2017 fix results (cycle 3)](../../raw/fixes/20260725T103734Z-pr-2017-cycle3.md)
+- [fix 結果](../../raw/fixes/20260725T103734Z-pr-2017-cycle3.md)

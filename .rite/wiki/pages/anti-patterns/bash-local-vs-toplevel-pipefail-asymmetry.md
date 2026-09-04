@@ -125,7 +125,7 @@ if [ -z "$LOCKED_BASE" ]; then fail ...; else ...; fi
 
 ## ソース
 
-- [PR #688 review results (cycle 1)](../../raw/reviews/20260426T231807Z-pr-688.md)
-- [PR #688 fix results (cycle 1)](../../raw/fixes/20260426T232316Z-pr-688.md)
-- [PR #688 fix results (cycle 3 — user scope expansion)](../../raw/fixes/20260426T233931Z-pr-688.md)
-- [PR #1318 review results (cycle 3 — guard dead-code 発現形)](../../raw/reviews/20260609T071104Z-pr-1318.md)
+- [レビュー結果](../../raw/reviews/20260426T231807Z-pr-688.md)
+- [fix 結果](../../raw/fixes/20260426T232316Z-pr-688.md)
+- [user scope expansion](../../raw/fixes/20260426T233931Z-pr-688.md)
+- [guard dead-code 発現形](../../raw/reviews/20260609T071104Z-pr-1318.md)

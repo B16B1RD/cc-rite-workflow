@@ -100,13 +100,13 @@ Issue が具体的な 1 件だけを挙げていても、それは「この 1 �
 
 ## ソース
 
-- [PR #1332 fix cycle 1 (復旧手順 pointer 追加)](../../raw/fixes/20260609T230419Z-pr-1332.md)
-- [PR #1332 fix cycle 2 (runtime consumer 追加)](../../raw/fixes/20260609T230945Z-pr-1332-c2.md)
-- [PR #1332 fix cycle 3 (sibling test 追加 + scope note 導入)](../../raw/fixes/20260609T231510Z-pr-1332-c3.md)
-- [PR #1332 fix cycle 4 (grep 全数棚卸しで収束)](../../raw/fixes/20260609T232051Z-pr-1332-c4.md)
-- [PR #1332 review cycle 5 mergeable (3 reviewer 独立検証で過不足ゼロ)](../../raw/reviews/20260609T232442Z-pr-1332-c5.md)
-- [PR #1334 review mergeable (派生事例: doc 追記の Issue 番号帰属を git log で裏取りし、番号を付ける対象を裏付けの取れた側のみに限定して誤帰属を回避 — reviewer の独立検証と一致して 1 cycle 0 findings 収束)](../../raw/reviews/20260609T233431Z-pr-1334.md)
-- [PR #2013 review cycle 4 — 規約の適用漏れは「構文」でなく「概念」で grep する](../../raw/reviews/20260725T041328Z-pr-2013.md)
-- [PR #2013 fix results (cycle 3) — 原則は立てた箇所でなく当てはまる全箇所に適用する](../../raw/fixes/20260724T193804Z-pr-2013.md)
-- [PR #2013 fix results (cycle 4) — フィルタ済みストリームへの grep -n が行番号を壊す](../../raw/fixes/20260724T202517Z-pr-2013.md)
-- [PR #2108 review results — 「1 件の記載漏れ」の報告を全サイト走査要求として読む / 走査範囲と修正範囲の分離](../../raw/reviews/20260804T120832Z-pr-2108.md)
+- [復旧手順 pointer 追加](../../raw/fixes/20260609T230419Z-pr-1332.md)
+- [runtime consumer 追加](../../raw/fixes/20260609T230945Z-pr-1332-c2.md)
+- [sibling test 追加 + scope note 導入](../../raw/fixes/20260609T231510Z-pr-1332-c3.md)
+- [grep 全数棚卸しで収束](../../raw/fixes/20260609T232051Z-pr-1332-c4.md)
+- [mergeable (3 reviewer 独立検証で過不足ゼロ)](../../raw/reviews/20260609T232442Z-pr-1332-c5.md)
+- [mergeable (派生事例: doc 追記の Issue 番号帰属を git log で裏取りし、番号を付ける対象を裏付けの取れた側のみに限定して誤帰属を回避 — reviewer の独立検証と一致して 1 cycle 0 findings 収束)](../../raw/reviews/20260609T233431Z-pr-1334.md)
+- [規約の適用漏れは「構文」でなく「概念」で grep する](../../raw/reviews/20260725T041328Z-pr-2013.md)
+- [原則は立てた箇所でなく当てはまる全箇所に適用する](../../raw/fixes/20260724T193804Z-pr-2013.md)
+- [フィルタ済みストリームへの grep -n が行番号を壊す](../../raw/fixes/20260724T202517Z-pr-2013.md)
+- [「1 件の記載漏れ」の報告を全サイト走査要求として読む / 走査範囲と修正範囲の分離](../../raw/reviews/20260804T120832Z-pr-2108.md)

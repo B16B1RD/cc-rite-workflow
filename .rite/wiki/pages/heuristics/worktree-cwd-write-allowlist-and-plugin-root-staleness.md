@@ -57,5 +57,5 @@ sandbox の書き込み許可リストは cwd（`.`）を基準に解決され�
 
 ## ソース
 
-- [PR #1902 review results](../../raw/reviews/20260718T194343Z-pr-1902.md)
-- [PR #1925 fix results (cycle 2)](../../raw/fixes/20260720T070808Z-pr-1925.md)
+- [レビュー結果](../../raw/reviews/20260718T194343Z-pr-1902.md)
+- [fix 結果](../../raw/fixes/20260720T070808Z-pr-1925.md)

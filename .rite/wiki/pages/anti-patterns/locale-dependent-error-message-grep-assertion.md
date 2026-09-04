@@ -55,8 +55,8 @@ flock 不在環境の degrade 分岐（`command -v flock` ガード）を検証�
 
 ## ソース
 
-- [PR #2003 review cycle 1 (TC-9 false-positive を 2 レビュアーが mutation 実験で独立実証)](../../raw/reviews/20260724T070805Z-pr-2003.md)
-- [PR #2003 fix cycle 1 (locale 非依存 discriminator への置換 + probe sid 分離 + LC_ALL=C)](../../raw/fixes/20260724T071409Z-pr-2003.md)
+- [TC-9 false-positive を 2 レビュアーが mutation 実験で独立実証](../../raw/reviews/20260724T070805Z-pr-2003.md)
+- [locale 非依存 discriminator への置換 + probe sid 分離 + LC_ALL=C](../../raw/fixes/20260724T071409Z-pr-2003.md)
 
 ## 変種: 表示経路（assert ではなく診断そのもの）に locale 依存が漏れる
 
@@ -97,6 +97,6 @@ assert は**自分が中和した行に限定**する必要がある（メッセ
 
 ## ソース（追記分）
 
-- [PR #2044 review results — フィルタ経路の locale 依存](../../raw/reviews/20260729T061547Z-pr-2044.md)
-- [PR #2044 fix results — LC_ALL=C による stream 固定](../../raw/fixes/20260729T062345Z-pr-2044.md)
-- [PR #2120 fix results — 中和済み出力への assert が不正 UTF-8 で vacuous pass](../../raw/fixes/20260805T234810Z-pr-2120.md)
+- [フィルタ経路の locale 依存](../../raw/reviews/20260729T061547Z-pr-2044.md)
+- [LC_ALL=C による stream 固定](../../raw/fixes/20260729T062345Z-pr-2044.md)
+- [中和済み出力への assert が不正 UTF-8 で vacuous pass](../../raw/fixes/20260805T234810Z-pr-2120.md)

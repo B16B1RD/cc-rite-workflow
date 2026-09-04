@@ -79,7 +79,7 @@ mutation の生存件数を報告するときは等価変異を分けて数え�
 
 ## ソース
 
-- [PR #2142 review results (cycle 7, mergeable)](../../raw/reviews/20260808T035533Z-pr-2142.md)
-- [PR #2142 fix results (cycle 6)](../../raw/fixes/20260808T032734Z-pr-2142.md)
-- [PR #2229 fix results (cycle 2) — 同期ではなく複製の削除で解いた](../../raw/fixes/20260810T074515Z-pr-2229.md)
-- [PR #2229 review results (cycle 4) — 削除の理由づけが新しい不整合を作った](../../raw/reviews/20260810T095742Z-pr-2229.md)
+- [レビュー結果](../../raw/reviews/20260808T035533Z-pr-2142.md)
+- [fix 結果](../../raw/fixes/20260808T032734Z-pr-2142.md)
+- [同期ではなく複製の削除で解いた](../../raw/fixes/20260810T074515Z-pr-2229.md)
+- [削除の理由づけが新しい不整合を作った](../../raw/reviews/20260810T095742Z-pr-2229.md)

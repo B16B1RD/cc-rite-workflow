@@ -46,4 +46,4 @@ jq の `test()` が使う Oniguruma（および Perl / Ruby 系の正規表現�
 
 ## ソース
 
-- [PR #2126 fix results (cycle 5)](../../raw/fixes/20260806T181047Z-pr-2126-c5.md)
+- [fix 結果](../../raw/fixes/20260806T181047Z-pr-2126-c5.md)

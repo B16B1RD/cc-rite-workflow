@@ -57,7 +57,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 
 ## ソース
 
-- [PR #1959 review cycle 1 (free-claim fresh corpse の silent skip 検出)](../../raw/reviews/20260721T171603Z-pr-1959.md)
-- [PR #1959 fix cycle 1 (silent continue の非 corpse 限定化)](../../raw/fixes/20260721T172102Z-pr-1959.md)
-- [PR #1959 fix cycle 2 (Gate 2 全 arm の可視化完遂)](../../raw/fixes/20260721T173955Z-pr-1959.md)
-- [PR #2070 fix results — ガードに到達しない 3 経路](../../raw/fixes/20260731T021333Z-pr-2070.md)
+- [free-claim fresh corpse の silent skip 検出](../../raw/reviews/20260721T171603Z-pr-1959.md)
+- [silent continue の非 corpse 限定化](../../raw/fixes/20260721T172102Z-pr-1959.md)
+- [Gate 2 全 arm の可視化完遂](../../raw/fixes/20260721T173955Z-pr-1959.md)
+- [ガードに到達しない 3 経路](../../raw/fixes/20260731T021333Z-pr-2070.md)

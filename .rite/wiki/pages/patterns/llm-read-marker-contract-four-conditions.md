@@ -74,6 +74,6 @@ marker に外部由来の値（ブランチ名）を載せる設計では、値�
 
 ## ソース
 
-- [PR #2022 fix results (cycle 10)](../../raw/fixes/20260726T055002Z-pr-2022.md)
-- [PR #2022 fix results (cycle 7)](../../raw/fixes/20260726T033136Z-pr-2022.md)
-- [PR #2022 review results (cycle 7)](../../raw/reviews/20260726T031335Z-pr-2022.md)
+- [fix 結果](../../raw/fixes/20260726T055002Z-pr-2022.md)
+- [fix 結果](../../raw/fixes/20260726T033136Z-pr-2022.md)
+- [レビュー結果](../../raw/reviews/20260726T031335Z-pr-2022.md)

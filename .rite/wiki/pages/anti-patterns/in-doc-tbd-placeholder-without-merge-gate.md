@@ -102,5 +102,5 @@ doc 本体は「期待値 + 設計意図」までで完結させ、observation p
 
 ## ソース
 
-- [PR #1065 review results](../../raw/reviews/20260519T195007Z-pr-1065.md)
-- [PR #1065 fix results](../../raw/fixes/20260519T195351Z-pr-1065.md)
+- [レビュー結果](../../raw/reviews/20260519T195007Z-pr-1065.md)
+- [fix 結果](../../raw/fixes/20260519T195351Z-pr-1065.md)

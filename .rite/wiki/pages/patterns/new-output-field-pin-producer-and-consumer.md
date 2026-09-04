@@ -83,8 +83,8 @@ producer/consumer の pin を対で置く前に、**consumer が新しい値を�
 
 ## ソース
 
-- [PR #2070 review results (cycle 3)](../../raw/reviews/20260801T202243Z-pr-2070.md)
-- [PR #2070 fix results (cycle 3)](../../raw/fixes/20260801T211356Z-pr-2070.md)
-- [PR #2070 review results (cycle 4)](../../raw/reviews/20260801T223635Z-pr-2070.md)
-- [PR #2070 fix results (cycle 4)](../../raw/fixes/20260801T224211Z-pr-2070.md)
-- [PR #2114 review results (cycle 2) — 新 reason と consumer 分岐表の同時更新](../../raw/reviews/20260805T104742Z-pr-2114.md)
+- [レビュー結果](../../raw/reviews/20260801T202243Z-pr-2070.md)
+- [fix 結果](../../raw/fixes/20260801T211356Z-pr-2070.md)
+- [レビュー結果](../../raw/reviews/20260801T223635Z-pr-2070.md)
+- [fix 結果](../../raw/fixes/20260801T224211Z-pr-2070.md)
+- [新 reason と consumer 分岐表の同時更新](../../raw/reviews/20260805T104742Z-pr-2114.md)

@@ -100,9 +100,9 @@ SoT 新設事例の cycle 1 で `wiki-patterns.md` に新規 SoT セクション
 
 ## ソース
 
-- [PR #936 review results](../../raw/reviews/20260512T134356Z-pr-936.md)
-- [PR #936 fix cycle 1 results](../../raw/fixes/20260512T134908Z-pr-936.md)
-- [PR #1062 cycle 1 review (SoT prose 要約に依存した「同方式」claim が bash literal bit-exact 一致を満たさず CRITICAL × 2 として 2 reviewer 独立検出。`fingerprint-cycling.md` の normalize 4 ステップ仕様を新規 site で 2 ステップに simplify した silent failure)](../../raw/reviews/20260519T114404Z-pr-1062.md)
-- [PR #1062 cycle 4 mergeable (cycle 3 で bash literal を SoT から copy-paste することで document/code 両層 symmetric に到達、2 段階契約 (document formula 一致 + bash bit-exact 一致) doctrine を確立)](../../raw/reviews/20260519T122133Z-pr-1062.md)
-- [PR #1155 cycle 2 review (SoT 新設時に forward-pointer link 直後の inline 要約が SoT 誤記を 3 site = wiki-patterns.md + ingest.md + lint.md に拡散、3 reviewer 独立検出の cluster 形成)](../../raw/reviews/20260526T182658Z-pr-1155-cycle2.md)
-- [PR #1155 cycle 2 fix (SoT 化方針なら inline 性質再宣言は「削除」が drift-free、forward-pointer link のみが canonical 経路の経験則化)](../../raw/fixes/20260526T183041Z-pr-1155-cycle2-fix.md)
+- [レビュー結果](../../raw/reviews/20260512T134356Z-pr-936.md)
+- [fix 結果](../../raw/fixes/20260512T134908Z-pr-936.md)
+- [SoT prose 要約に依存した「同方式」claim が bash literal bit-exact 一致を満たさず CRITICAL × 2 として 2 reviewer 独立検出。`fingerprint-cycling.md` の normalize 4 ステップ仕様を新規 site で 2 ステップに simplify した silent failure](../../raw/reviews/20260519T114404Z-pr-1062.md)
+- [mergeable (cycle 3 で bash literal を SoT から copy-paste することで document/code 両層 symmetric に到達、2 段階契約 (document formula 一致 + bash bit-exact 一致) doctrine を確立)](../../raw/reviews/20260519T122133Z-pr-1062.md)
+- [SoT 新設時に forward-pointer link 直後の inline 要約が SoT 誤記を 3 site = wiki-patterns.md + ingest.md + lint.md に拡散、3 reviewer 独立検出の cluster 形成](../../raw/reviews/20260526T182658Z-pr-1155-cycle2.md)
+- [SoT 化方針なら inline 性質再宣言は「削除」が drift-free、forward-pointer link のみが canonical 経路の経験則化](../../raw/fixes/20260526T183041Z-pr-1155-cycle2-fix.md)

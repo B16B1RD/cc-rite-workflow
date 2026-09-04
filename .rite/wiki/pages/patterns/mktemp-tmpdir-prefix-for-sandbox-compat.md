@@ -54,4 +54,4 @@ rite リポジトリでは既存の canonical helper（`_mktemp-stderr-guard.sh`
 
 ## ソース
 
-- [PR #1902 review results](../../raw/reviews/20260718T194343Z-pr-1902.md)
+- [レビュー結果](../../raw/reviews/20260718T194343Z-pr-1902.md)

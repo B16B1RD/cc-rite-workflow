@@ -58,4 +58,4 @@ few-shot 例に実測アンカーを追加するとき:
 
 ## ソース
 
-- [PR #2035 fix results (cycle 4)](../../raw/fixes/20260727T011853Z-pr-2035.md)
+- [fix 結果](../../raw/fixes/20260727T011853Z-pr-2035.md)

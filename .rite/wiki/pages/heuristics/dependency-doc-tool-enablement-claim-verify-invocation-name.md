@@ -38,6 +38,6 @@ homebrew の coreutils formula は `g` 接頭辞付きツール（`gdate` 等）
 
 ## ソース
 
-- [PR #2004 review results](../../raw/reviews/20260724T083434Z-pr-2004.md)
-- [PR #2004 fix results](../../raw/fixes/20260724T083743Z-pr-2004.md)
-- [PR #2004 review results (cycle 2)](../../raw/reviews/20260724T084754Z-pr-2004.md)
+- [レビュー結果](../../raw/reviews/20260724T083434Z-pr-2004.md)
+- [fix 結果](../../raw/fixes/20260724T083743Z-pr-2004.md)
+- [レビュー結果](../../raw/reviews/20260724T084754Z-pr-2004.md)

@@ -80,8 +80,8 @@ consumer 契約の確認を怠った結果は、生存中リソースの破壊�
 
 ## ソース
 
-- [PR #1974 review results (cycle 1, CRITICAL 検出)](../../raw/reviews/20260723T005459Z-pr-1974.md)
-- [PR #1974 fix results (cycle 1, 専用 type 新設による修正)](../../raw/fixes/20260723T010449Z-pr-1974.md)
-- [PR #1974 review results (cycle 2, コメント drift 追加検出)](../../raw/reviews/20260723T020925Z-pr-1974-cycle2.md)
-- [PR #2150 fix results (cycle 2: consumer の corpse 条件を読まず不発記録を追加)](../../raw/fixes/20260808T070139Z-pr-2150-cycle2.md)
-- [PR #2498 review results / fix results (同 prefix の新 marker が消費側 glob に取り込まれ未定義状態を作る)](../../raw/reviews/20260901T053153Z-pr-2498.md)
+- [CRITICAL 検出](../../raw/reviews/20260723T005459Z-pr-1974.md)
+- [専用 type 新設による修正](../../raw/fixes/20260723T010449Z-pr-1974.md)
+- [コメント drift 追加検出](../../raw/reviews/20260723T020925Z-pr-1974-cycle2.md)
+- [consumer の corpse 条件を読まず不発記録を追加](../../raw/fixes/20260808T070139Z-pr-2150-cycle2.md)
+- [/ fix results (同 prefix の新 marker が消費側 glob に取り込まれ未定義状態を作る)](../../raw/reviews/20260901T053153Z-pr-2498.md)

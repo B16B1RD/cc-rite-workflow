@@ -96,6 +96,6 @@ bell_count=$({ grep -oE '🚨' "$start_md" || true; } | wc -l | tr -d ' ')
 
 ## ソース
 
-- [PR #906 review results](../../raw/reviews/20260508T171533Z-pr-906.md)
-- [PR #906 fix results (cycle 1)](../../raw/fixes/20260508T172017Z-pr-906.md)
-- [PR #2135 fix results (cycle 2: 長い 1 行段落での grep -c 過小評価)](../../raw/fixes/20260807T082131Z-pr-2135.md)
+- [レビュー結果](../../raw/reviews/20260508T171533Z-pr-906.md)
+- [fix 結果](../../raw/fixes/20260508T172017Z-pr-906.md)
+- [長い 1 行段落での grep -c 過小評価](../../raw/fixes/20260807T082131Z-pr-2135.md)

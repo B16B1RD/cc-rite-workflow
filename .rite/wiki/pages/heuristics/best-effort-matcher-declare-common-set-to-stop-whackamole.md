@@ -68,11 +68,11 @@ whack-a-mole を止める宣言があっても、**すべての指摘を非 bloc
 
 ## ソース
 
-- [PR #1865 fix results (cycle1) — reviewer bash/symlink 経由 .git 書き込み遮断の初回対応](../../raw/fixes/20260715T160953Z-pr-1865.md)
-- [PR #1865 fix cycle2 — value-quoted `dd of=` 難読化 bypass を塞ぐ（whack-a-mole 1）](../../raw/fixes/20260715T163038Z-pr-1865.md)
-- [PR #1865 fix cycle3 — interior/nested quote 難読化 bypass を塞ぐ（whack-a-mole 2）](../../raw/fixes/20260715T164655Z-pr-1865.md)
-- [PR #1865 fix cycle4 — backslash-escaped path component 難読化 bypass を塞ぐ（whack-a-mole 3）](../../raw/fixes/20260715T171255Z-pr-1865.md)
-- [PR #1865 fix cycle5 — 難読化 verb 名 dequote + sponge/patch 追加、allowlist を COMMON-SET（非網羅）と宣言（whack-a-mole 収束）](../../raw/fixes/20260715T173545Z-pr-1865.md)
-- [PR #1865 review results (follow-up cycle1) — 検出機構の構造欠陥（unquote for-loop の glob 汚染）を列挙完全性とは別クラスの blocking HIGH として切り分け](../../raw/reviews/20260715T194532Z-pr-1865.md)
-- [PR #1865 fix results (follow-up cycle1) — noglob 化 + scope discipline（pre-existing 兄弟ループは follow-up へ）](../../raw/fixes/20260715T195606Z-pr-1865.md)
-- [PR #1865 review results (follow-up cycle3) — 全 reviewer「可」で mergeable 収束、out-of-scope doc-note は網羅不能につき polish 無限ループに入らない判断](../../raw/reviews/20260715T203920Z-pr-1865.md)
+- [reviewer bash/symlink 経由 .git 書き込み遮断の初回対応](../../raw/fixes/20260715T160953Z-pr-1865.md)
+- [value-quoted `dd of=` 難読化 bypass を塞ぐ（whack-a-mole 1）](../../raw/fixes/20260715T163038Z-pr-1865.md)
+- [interior/nested quote 難読化 bypass を塞ぐ（whack-a-mole 2）](../../raw/fixes/20260715T164655Z-pr-1865.md)
+- [backslash-escaped path component 難読化 bypass を塞ぐ（whack-a-mole 3）](../../raw/fixes/20260715T171255Z-pr-1865.md)
+- [難読化 verb 名 dequote + sponge/patch 追加、allowlist を COMMON-SET（非網羅）と宣言（whack-a-mole 収束）](../../raw/fixes/20260715T173545Z-pr-1865.md)
+- [(follow-up cycle1) — 検出機構の構造欠陥（unquote for-loop の glob 汚染）を列挙完全性とは別クラスの blocking HIGH として切り分け](../../raw/reviews/20260715T194532Z-pr-1865.md)
+- [(follow-up cycle1) — noglob 化 + scope discipline（pre-existing 兄弟ループは follow-up へ）](../../raw/fixes/20260715T195606Z-pr-1865.md)
+- [(follow-up cycle3) — 全 reviewer「可」で mergeable 収束、out-of-scope doc-note は網羅不能につき polish 無限ループに入らない判断](../../raw/reviews/20260715T203920Z-pr-1865.md)

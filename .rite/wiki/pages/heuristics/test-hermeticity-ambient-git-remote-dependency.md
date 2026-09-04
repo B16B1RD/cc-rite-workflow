@@ -51,4 +51,4 @@ test_owner_repo_resolution() {
 
 ## ソース
 
-- [PR #1921 review results (cycle 2) — TC-15b/TC-30b が ambient origin remote に依存する非 hermetic テストであることを 3 reviewer が独立指摘](../../raw/reviews/20260720T013625Z-pr-1921.md)
+- [TC-15b/TC-30b が ambient origin remote に依存する非 hermetic テストであることを 3 reviewer が独立指摘](../../raw/reviews/20260720T013625Z-pr-1921.md)

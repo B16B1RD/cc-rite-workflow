@@ -67,5 +67,5 @@ canonical fix と検証手順:
 
 ## ソース
 
-- [PR #688 review 記録 (cycle 49 H-1 Self-defeating defense Step number off-by-one drift)](../../raw/reviews/20260430T005759Z-pr-688.md)
-- [PR #2500 review results (cycle 2)](../../raw/reviews/20260901T140807Z-pr-2500.md)
+- [H-1 Self-defeating defense Step number off-by-one drift](../../raw/reviews/20260430T005759Z-pr-688.md)
+- [レビュー結果](../../raw/reviews/20260901T140807Z-pr-2500.md)

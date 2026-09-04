@@ -68,5 +68,5 @@ assert のラベル（テスト名・メッセージ）は、その assert が�
 
 ## ソース
 
-- [PR #2142 review results (cycle 3)](../../raw/reviews/20260808T013358Z-pr-2142.md)
-- [PR #2142 fix results (cycle 3)](../../raw/fixes/20260808T014357Z-pr-2142.md)
+- [レビュー結果](../../raw/reviews/20260808T013358Z-pr-2142.md)
+- [fix 結果](../../raw/fixes/20260808T014357Z-pr-2142.md)

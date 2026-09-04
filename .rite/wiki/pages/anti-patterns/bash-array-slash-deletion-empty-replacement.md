@@ -87,4 +87,4 @@ _remove_from_array() {
 
 ## ソース
 
-- [PR #991 review results](../../raw/reviews/20260516T041304Z-pr-991.md)
+- [レビュー結果](../../raw/reviews/20260516T041304Z-pr-991.md)

@@ -109,5 +109,5 @@ reap manifest からの branch エントリ消費処理を追加した PR で、
 
 ## ソース
 
-- [PR #1967 fix results cycle 5 (pre-existing 行が本 PR の意味論変更で活性化、revert test が PR 由来と判定)](../../raw/fixes/20260722T025804Z-pr-1967.md)
-- [PR #1240 review results](../../raw/reviews/20260602T012648Z-pr-1240.md)
+- [pre-existing 行が本 PR の意味論変更で活性化、revert test が PR 由来と判定](../../raw/fixes/20260722T025804Z-pr-1967.md)
+- [レビュー結果](../../raw/reviews/20260602T012648Z-pr-1240.md)

@@ -61,5 +61,5 @@ bullet 数はむしろ減る（分離時 2 bullet + 曖昧さ → 統合後 1 bu
 
 ## ソース
 
-- [PR #2084 review results](../../raw/reviews/20260802T014423Z-pr-2084.md)
-- [PR #2084 fix results](../../raw/fixes/20260802T014756Z-pr-2084.md)
+- [レビュー結果](../../raw/reviews/20260802T014423Z-pr-2084.md)
+- [fix 結果](../../raw/fixes/20260802T014756Z-pr-2084.md)

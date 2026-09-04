@@ -86,7 +86,7 @@ verified:
 
 ## ソース
 
-- [PR #2104 review results](../../raw/reviews/20260804T104340Z-pr-2104.md)
-- [PR #2106 review results](../../raw/reviews/20260804T113022Z-pr-2106.md)
-- [PR #2475 review cycle 1 (同一文書内の定義表と新規追記の断定が矛盾)](../../raw/reviews/20260830T043014Z-pr-2475.md)
-- [PR #2475 review cycle 2 (所有の委譲による解消を確認)](../../raw/reviews/20260830T044223Z-pr-2475.md)
+- [レビュー結果](../../raw/reviews/20260804T104340Z-pr-2104.md)
+- [レビュー結果](../../raw/reviews/20260804T113022Z-pr-2106.md)
+- [同一文書内の定義表と新規追記の断定が矛盾](../../raw/reviews/20260830T043014Z-pr-2475.md)
+- [所有の委譲による解消を確認](../../raw/reviews/20260830T044223Z-pr-2475.md)

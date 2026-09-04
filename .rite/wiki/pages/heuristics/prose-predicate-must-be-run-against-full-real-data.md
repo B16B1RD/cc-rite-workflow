@@ -92,5 +92,5 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T22:05:00+09:00" }
 
 ## ソース
 
-- [PR #2052 review results](../../raw/reviews/20260802T054612Z-pr-2052.md)
-- [PR #2052 fix results](../../raw/fixes/20260802T055750Z-pr-2052.md)
+- [レビュー結果](../../raw/reviews/20260802T054612Z-pr-2052.md)
+- [fix 結果](../../raw/fixes/20260802T055750Z-pr-2052.md)

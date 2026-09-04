@@ -37,4 +37,4 @@ worktree liveness guard へ TTL を導入した際、`RITE_SESSION_LIVENESS_TTL_
 
 ## ソース
 
-- [PR #1924 fix results (cycle 3)](../../raw/fixes/20260720T051441Z-pr-1924.md)
+- [fix 結果](../../raw/fixes/20260720T051441Z-pr-1924.md)

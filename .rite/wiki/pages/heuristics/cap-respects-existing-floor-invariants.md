@@ -68,4 +68,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-02T23:12:48Z" }
 
 ## ソース
 
-- [PR #1729 fix results](../../raw/fixes/20260702T223143Z-pr-1729.md)
+- [fix 結果](../../raw/fixes/20260702T223143Z-pr-1729.md)

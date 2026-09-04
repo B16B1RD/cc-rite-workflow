@@ -71,4 +71,4 @@ Sub-Issue でデータ契約だけを先に切る PR では、SoT ドキュメ�
 
 ## ソース
 
-- [PR #2035 review results](../../raw/reviews/20260727T001018Z-pr-2035.md)
+- [レビュー結果](../../raw/reviews/20260727T001018Z-pr-2035.md)

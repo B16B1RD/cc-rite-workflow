@@ -77,7 +77,7 @@ substring over-match による「ユーザー hook の silent 除去」は user-
 
 ## ソース
 
-- [PR #1236 review results](../../raw/reviews/20260601T180203Z-pr-1236.md)
-- [PR #1238 review results (init.md 散文側の substring over-match 完結)](../../raw/reviews/20260601T185616Z-pr-1238.md)
-- [PR #1238 review results (cycle 2 — behavioral test 8 ケースで散文-実装整合検証)](../../raw/reviews/20260601T191319Z-pr-1238.md)
-- [PR #1238 fix results (SoT 散文の regex 共有元帰属修正)](../../raw/fixes/20260601T190814Z-pr-1238.md)
+- [レビュー結果](../../raw/reviews/20260601T180203Z-pr-1236.md)
+- [init.md 散文側の substring over-match 完結](../../raw/reviews/20260601T185616Z-pr-1238.md)
+- [behavioral test 8 ケースで散文-実装整合検証](../../raw/reviews/20260601T191319Z-pr-1238.md)
+- [SoT 散文の regex 共有元帰属修正](../../raw/fixes/20260601T190814Z-pr-1238.md)

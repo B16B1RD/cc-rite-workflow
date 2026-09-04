@@ -75,6 +75,6 @@ bash literal 内で iteration が必要だが LLM 側で繰り返し実行する
 
 ## ソース
 
-- [PR #1149 review cycle 6 (bash control-flow regression 初検出)](../../raw/reviews/20260526T121902Z-pr-1149-cycle6.md)
-- [PR #1149 fix cycle 6 (continue → exit 1 fail-fast 置換)](../../raw/fixes/20260526T125406Z-pr-1149-cycle6.md)
-- [PR #1149 review cycle 2 (inline rewrite で continue 3 site 新規導入)](../../raw/reviews/20260526T105538Z-pr-1149-cycle2.md)
+- [bash control-flow regression 初検出](../../raw/reviews/20260526T121902Z-pr-1149-cycle6.md)
+- [continue → exit 1 fail-fast 置換](../../raw/fixes/20260526T125406Z-pr-1149-cycle6.md)
+- [inline rewrite で continue 3 site 新規導入](../../raw/reviews/20260526T105538Z-pr-1149-cycle2.md)

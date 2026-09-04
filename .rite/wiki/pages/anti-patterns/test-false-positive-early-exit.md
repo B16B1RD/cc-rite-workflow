@@ -114,9 +114,9 @@ test fixture コメントで `file.sh L247-250` 形式の行番号参照を埋�
 
 ## ソース
 
-- [PR #608 review cycle 5 (Test coverage gap 3/9 findings)](../../raw/reviews/20260419T230924Z-pr-608-cycle5-review.md)
-- [PR #608 fix cycle 6 (false-positive 早期露呈パターン)](../../raw/fixes/20260419T231616Z-pr-608-cycle6.md)
-- [PR #608 review cycle 7 (TC-608-E/F/G false-positive 発見)](../../raw/reviews/20260419T232356Z-pr-608-cycle7.md)
-- [PR #608 fix cycle 8 (same-cycle 横展開契約)](../../raw/fixes/20260419T232739Z-pr-608-cycle8.md)
-- [PR #636 cycle 5 review (silent-false-pass 3 条件 + line-number reference convention)](../../raw/reviews/20260421T045816Z-pr-636.md)
-- [PR #636 cycle 5 fix (silent-false-pass + PATH override fault injection + set -e subshell rc capture)](../../raw/fixes/20260421T050914Z-pr-636.md)
+- [Test coverage gap 3/9 findings](../../raw/reviews/20260419T230924Z-pr-608-cycle5-review.md)
+- [false-positive 早期露呈パターン](../../raw/fixes/20260419T231616Z-pr-608-cycle6.md)
+- [TC-608-E/F/G false-positive 発見](../../raw/reviews/20260419T232356Z-pr-608-cycle7.md)
+- [same-cycle 横展開契約](../../raw/fixes/20260419T232739Z-pr-608-cycle8.md)
+- [silent-false-pass 3 条件 + line-number reference convention](../../raw/reviews/20260421T045816Z-pr-636.md)
+- [silent-false-pass + PATH override fault injection + set -e subshell rc capture](../../raw/fixes/20260421T050914Z-pr-636.md)

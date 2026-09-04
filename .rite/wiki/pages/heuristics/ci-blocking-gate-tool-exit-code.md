@@ -41,5 +41,5 @@ lint / 静的解析ジョブを informational（常時 exit 0）から blocking 
 
 ## ソース
 
-- [PR #2009 review results](../../raw/reviews/20260724T133654Z-pr-2009.md)
-- [PR #2080 review results (cycle 3)](../../raw/reviews/20260801T083836Z-pr-2080.md)
+- [レビュー結果](../../raw/reviews/20260724T133654Z-pr-2009.md)
+- [レビュー結果](../../raw/reviews/20260801T083836Z-pr-2080.md)

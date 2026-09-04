@@ -59,5 +59,5 @@ Issue テンプレート Section 9 の禁止規則 `an open work item` につい
 
 ## ソース
 
-- [PR #2084 fix results (cycle 3)](../../raw/fixes/20260802T023626Z-pr-2084.md)
-- [PR #2084 review results (cycle 4, converged)](../../raw/reviews/20260802T025011Z-pr-2084.md)
+- [fix 結果](../../raw/fixes/20260802T023626Z-pr-2084.md)
+- [レビュー結果](../../raw/reviews/20260802T025011Z-pr-2084.md)

@@ -156,13 +156,13 @@ control-flow 分類を変える refactor (hard-fail-fast → soft-failure、Pyth
 
 ## ソース
 
-- [PR #1065 review results](../../raw/reviews/20260519T195007Z-pr-1065.md)
-- [PR #1065 review cycle 2](../../raw/reviews/20260519T195734Z-pr-1065-cycle2.md)
-- [PR #1065 fix results](../../raw/fixes/20260519T195351Z-pr-1065.md)
-- [PR #1201 review cycle 1 (comment rot 検出)](../../raw/reviews/20260529T145515Z-pr-1201.md)
-- [PR #1201 review cycle 3 (用語定義表 stale 検出)](../../raw/reviews/20260529T152911Z-pr-1201.md)
-- [PR #1201 fix cycle 1 (comment rot 修正 — helper 実挙動 runtime 検証)](../../raw/fixes/20260529T150155Z-pr-1201.md)
-- [PR #1201 fix cycle 3 (用語定義表 stale 同期)](../../raw/fixes/20260529T153627Z-pr-1201.md)
-- [PR #2304 review results (恒久記録簿へ未了工程を完了形で書いた形を検出)](../../raw/reviews/20260813T081206Z-pr-2304.md)
-- [PR #2304 fix results (来歴記述を範囲宣言へ書き換え、公開手順を 5 ステップで明示)](../../raw/fixes/20260813T081923Z-pr-2304.md)
-- [PR #2308 review results (差し替え後も出典ファイルの冒頭宣言が旧実態のまま残っていた形)](../../raw/reviews/20260813T102011Z-pr-2308.md)
+- [レビュー結果](../../raw/reviews/20260519T195007Z-pr-1065.md)
+- [レビュー結果](../../raw/reviews/20260519T195734Z-pr-1065-cycle2.md)
+- [fix 結果](../../raw/fixes/20260519T195351Z-pr-1065.md)
+- [comment rot 検出](../../raw/reviews/20260529T145515Z-pr-1201.md)
+- [用語定義表 stale 検出](../../raw/reviews/20260529T152911Z-pr-1201.md)
+- [comment rot 修正 — helper 実挙動 runtime 検証](../../raw/fixes/20260529T150155Z-pr-1201.md)
+- [用語定義表 stale 同期](../../raw/fixes/20260529T153627Z-pr-1201.md)
+- [恒久記録簿へ未了工程を完了形で書いた形を検出](../../raw/reviews/20260813T081206Z-pr-2304.md)
+- [来歴記述を範囲宣言へ書き換え、公開手順を 5 ステップで明示](../../raw/fixes/20260813T081923Z-pr-2304.md)
+- [差し替え後も出典ファイルの冒頭宣言が旧実態のまま残っていた形](../../raw/reviews/20260813T102011Z-pr-2308.md)

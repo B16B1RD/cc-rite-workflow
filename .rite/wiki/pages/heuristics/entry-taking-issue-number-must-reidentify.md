@@ -42,7 +42,7 @@ phase 列挙に無い終端（例: merge 後も phase が ready のまま）は�
 
 ## ソース
 
-- [PR #2500 review results](../../raw/reviews/20260901T133013Z-pr-2500.md)
-- [PR #2503 review results](../../raw/reviews/20260901T225105Z-pr-2503.md)
-- [PR #2500 fix results](../../raw/fixes/20260901T134035Z-pr-2500.md)
-- [PR #2503 fix results](../../raw/fixes/20260901T230359Z-pr-2503.md)
+- [レビュー結果](../../raw/reviews/20260901T133013Z-pr-2500.md)
+- [レビュー結果](../../raw/reviews/20260901T225105Z-pr-2503.md)
+- [fix 結果](../../raw/fixes/20260901T134035Z-pr-2500.md)
+- [fix 結果](../../raw/fixes/20260901T230359Z-pr-2503.md)

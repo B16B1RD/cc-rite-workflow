@@ -84,11 +84,11 @@ review-comment-post.sh の post-condition awk sentinel を置換側と同じ `-v
 
 ## ソース
 
-- [PR #1294 review results cycle 2 (locale pair 拡張: en↔ja token 集合 diff で i18n parity fix を機械検証し blocking 0 で mergeable。表 intro scope 宣言整合の検査観点 + nit-noted 受け流し経路の実運用実証)](../../raw/reviews/20260606T143925Z-pr-1294.md)
-- [PR #1294 fix results (TREE_SYNC_OK / TABLE_SYNC_OK の機械的対称検証で locale 同期 fix を短時間・高確信に完了)](../../raw/fixes/20260606T135607Z-pr-1294.md)
-- [PR #592 review results](../../raw/reviews/20260419T062330Z-pr-592.md)
-- [PR #963 review results](../../raw/reviews/20260514T182616Z-pr-963.md)
-- [PR #967 fix results](../../raw/fixes/20260514T223534Z-pr-967.md)
-- [PR #967 review results (cycle 2 mergeable)](../../raw/reviews/20260514T224021Z-pr-967.md)
-- [PR #1151 fix cycle 2 (cross-product grep hint)](../../raw/fixes/20260526T154013Z-pr-1151.md)
-- [PR #1341 review results — 置換側↔検証側 sentinel 参照対称化を 3 reviewer が sibling 照合 + 等価性実機比較 + mutation で 1 cycle mergeable 判定](../../raw/reviews/20260610T005202Z-pr-1341.md)
+- [locale pair 拡張: en↔ja token 集合 diff で i18n parity fix を機械検証し blocking 0 で mergeable。表 intro scope 宣言整合の検査観点 + nit-noted 受け流し経路の実運用実証](../../raw/reviews/20260606T143925Z-pr-1294.md)
+- [TREE_SYNC_OK / TABLE_SYNC_OK の機械的対称検証で locale 同期 fix を短時間・高確信に完了](../../raw/fixes/20260606T135607Z-pr-1294.md)
+- [レビュー結果](../../raw/reviews/20260419T062330Z-pr-592.md)
+- [レビュー結果](../../raw/reviews/20260514T182616Z-pr-963.md)
+- [fix 結果](../../raw/fixes/20260514T223534Z-pr-967.md)
+- [レビュー結果](../../raw/reviews/20260514T224021Z-pr-967.md)
+- [cross-product grep hint](../../raw/fixes/20260526T154013Z-pr-1151.md)
+- [置換側↔検証側 sentinel 参照対称化を 3 reviewer が sibling 照合 + 等価性実機比較 + mutation で 1 cycle mergeable 判定](../../raw/reviews/20260610T005202Z-pr-1341.md)

@@ -56,5 +56,5 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-07T22:03:17+00:00" }
 
 ## ソース
 
-- [PR #1773 review cycle 1 (rm -rf .rite が live worktree を破壊する HIGH finding を tech-writer/code-quality 両者が独立検出)](../../raw/reviews/20260706T213530Z-pr-1773.md)
-- [PR #1773 fix cycle 1 (2段階削除手順への修正: git worktree remove/prune → rm -rf .rite)](../../raw/fixes/20260706T213921Z-pr-1773.md)
+- [rm -rf .rite が live worktree を破壊する HIGH finding を tech-writer/code-quality 両者が独立検出](../../raw/reviews/20260706T213530Z-pr-1773.md)
+- [2段階削除手順への修正: git worktree remove/prune → rm -rf .rite](../../raw/fixes/20260706T213921Z-pr-1773.md)

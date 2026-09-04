@@ -45,5 +45,5 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-26T00:30:00Z" }
 
 ## ソース
 
-- [PR #1143 cycle 1 review (Self-contradicting rule declaration 初検出)](../../raw/reviews/20260525T162232Z-pr-1143.md)
-- [PR #1143 cycle 1 fix (semantic anchor 置換)](../../raw/fixes/20260525T162704Z-pr-1143.md)
+- [Self-contradicting rule declaration 初検出](../../raw/reviews/20260525T162232Z-pr-1143.md)
+- [semantic anchor 置換](../../raw/fixes/20260525T162704Z-pr-1143.md)

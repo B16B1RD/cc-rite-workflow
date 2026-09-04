@@ -52,4 +52,4 @@ cycle 2 以降で 2 つの状況が同時に起きると:
 
 ## ソース
 
-- [PR #2130 review results (full pass)](../../raw/reviews/20260807T043149Z-pr-2130.md)
+- [レビュー結果](../../raw/reviews/20260807T043149Z-pr-2130.md)

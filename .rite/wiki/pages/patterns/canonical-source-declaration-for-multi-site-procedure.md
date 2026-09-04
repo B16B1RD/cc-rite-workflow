@@ -123,10 +123,10 @@ canonical 参照を 1 文に詰め込まず NOTE を意味的に分離するこ�
 
 ## ソース
 
-- [PR #946 cycle 2 re-review (1 cycle convergence + canonical source 宣言の効力実証)](../../raw/reviews/20260513T063128Z-pr-946-cycle2.md)
-- [PR #946 fix (Canonical source 宣言の明示 fix pattern)](../../raw/fixes/20260513T060844Z-pr-946.md)
-- [PR #947 review cycle 1 (canonical source mismatch cross-validate)](../../raw/reviews/20260513T080326Z-pr-947.md)
-- [PR #947 review cycle 2 (citation 行番号誤り + 宣言場所/実体行 概念混同)](../../raw/reviews/20260513T081242Z-pr-947-cycle-2.md)
-- [PR #947 review cycle 3 (0 findings 着地 + 3 cycle convergence pattern)](../../raw/reviews/20260513T082018Z-pr-947-cycle-3.md)
-- [PR #947 fix cycle 1 (multi-canonical-per-file 認識)](../../raw/fixes/20260513T080706Z-pr-947-fix-cycle-1.md)
-- [PR #947 fix cycle 2 (citation 3 段階分離による構造化解決)](../../raw/fixes/20260513T081626Z-pr-947-fix-cycle-2.md)
+- [1 cycle convergence + canonical source 宣言の効力実証](../../raw/reviews/20260513T063128Z-pr-946-cycle2.md)
+- [Canonical source 宣言の明示 fix pattern](../../raw/fixes/20260513T060844Z-pr-946.md)
+- [canonical source mismatch cross-validate](../../raw/reviews/20260513T080326Z-pr-947.md)
+- [citation 行番号誤り + 宣言場所/実体行 概念混同](../../raw/reviews/20260513T081242Z-pr-947-cycle-2.md)
+- [0 findings 着地 + 3 cycle convergence pattern](../../raw/reviews/20260513T082018Z-pr-947-cycle-3.md)
+- [multi-canonical-per-file 認識](../../raw/fixes/20260513T080706Z-pr-947-fix-cycle-1.md)
+- [citation 3 段階分離による構造化解決](../../raw/fixes/20260513T081626Z-pr-947-fix-cycle-2.md)

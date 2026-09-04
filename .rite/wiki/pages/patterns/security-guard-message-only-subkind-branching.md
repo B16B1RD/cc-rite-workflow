@@ -40,4 +40,4 @@ security hook の over-broad block 体験 (中身が無害でも一律 block さ
 
 ## ソース
 
-- [PR #1323 review results](../../raw/reviews/20260609T182954Z-pr-1323.md)
+- [レビュー結果](../../raw/reviews/20260609T182954Z-pr-1323.md)

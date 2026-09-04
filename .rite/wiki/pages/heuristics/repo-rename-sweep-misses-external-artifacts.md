@@ -35,5 +35,5 @@ owner 名・URL の一括置換 PR は、git grep で走査できるツリー内
 
 ## ソース
 
-- [PR #2029 review results (cycle 1)](../../raw/reviews/20260726T110848Z-pr-2029.md)
-- [PR #2029 fix results (cycle 1)](../../raw/fixes/20260726T111323Z-pr-2029.md)
+- [レビュー結果](../../raw/reviews/20260726T110848Z-pr-2029.md)
+- [fix 結果](../../raw/fixes/20260726T111323Z-pr-2029.md)

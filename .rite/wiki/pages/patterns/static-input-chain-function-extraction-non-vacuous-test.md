@@ -84,6 +84,6 @@ cycle 2 の test reviewer は fix 側の mutation claim を鵜呑みにせず、
 
 ## ソース
 
-- [PR #1281 fix results (関数抽出 + awk 境界行 extract + 実 C0 入力直接注入で vacuous assertion を非 vacuous 化、mutation 検証で runtime 実証してから commit)](../../raw/fixes/20260605T181146Z-pr-1281.md)
-- [PR #1281 review results (cycle 1 — 静的 reason のみで fallback を発火させた TC-116 の 2 assertion が vacuous false positive、mutation 実験で実証)](../../raw/reviews/20260605T180128Z-pr-1281.md)
-- [PR #1281 review results (cycle 2 — 独立 mutation 4 種で非 vacuous を再実証し 0 findings 収束)](../../raw/reviews/20260605T182035Z-pr-1281-cycle2.md)
+- [関数抽出 + awk 境界行 extract + 実 C0 入力直接注入で vacuous assertion を非 vacuous 化、mutation 検証で runtime 実証してから commit](../../raw/fixes/20260605T181146Z-pr-1281.md)
+- [静的 reason のみで fallback を発火させた TC-116 の 2 assertion が vacuous false positive、mutation 実験で実証](../../raw/reviews/20260605T180128Z-pr-1281.md)
+- [独立 mutation 4 種で非 vacuous を再実証し 0 findings 収束](../../raw/reviews/20260605T182035Z-pr-1281-cycle2.md)

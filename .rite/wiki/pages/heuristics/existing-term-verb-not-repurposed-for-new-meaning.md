@@ -35,4 +35,4 @@ confidence: medium
 
 ## ソース
 
-- [Issue #2354 close retrospective](../../raw/retrospectives/20260825T171831Z-issue-2354.md)
+- [close retrospective](../../raw/retrospectives/20260825T171831Z-issue-2354.md)

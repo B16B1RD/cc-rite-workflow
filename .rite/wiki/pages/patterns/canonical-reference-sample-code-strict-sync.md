@@ -129,12 +129,12 @@ precondition 契約事例で新規 canonical reference (`broken-ref-resolution.m
 
 ## ソース
 
-- [PR #564 re-review (11th cycle)](../../raw/reviews/20260418T072254Z-pr-564-rerun.md)
-- [PR #564 fix results (11th cycle)](../../raw/fixes/20260418T071459Z-pr-564.md)
-- [PR #578 cycle 1 review (F-ID 衝突 / iteration 非対称)](../../raw/reviews/20260418T113250Z-pr-578.md)
-- [PR #578 cycle 1 fix (F-ID 全件 grep + 最大値 +1)](../../raw/fixes/20260418T113520Z-pr-578.md)
-- [PR #586 cycle 7 review (一字一句同期 3 観点の実測)](../../raw/reviews/20260419T035346Z-pr-586-cycle7.md)
-- [PR #596 review (観点 (b) `-- ` 引数区切り残留を別 Issue #587 → minimal PR で解消した成功例)](../../raw/reviews/20260419T094545Z-pr-596.md)
-- [PR #598 review (観点 (c) `dry_run_out=""` / `dry_run_rc=0` 事前宣言残留を別 Issue #588 → minimal PR で解消した成功例)](../../raw/reviews/20260419T104043Z-pr-598.md)
-- [PR #799 review (cycle 1 — reference precondition 契約乖離 CRITICAL)](../../raw/reviews/20260503T181256Z-pr-799.md)
-- [PR #799 fix (cycle 1 — reference 単独修正、cycle 2 で PARTIAL 指摘)](../../raw/fixes/20260503T181755Z-pr-799.md)
+- [レビュー結果](../../raw/reviews/20260418T072254Z-pr-564-rerun.md)
+- [fix 結果](../../raw/fixes/20260418T071459Z-pr-564.md)
+- [F-ID 衝突 / iteration 非対称](../../raw/reviews/20260418T113250Z-pr-578.md)
+- [F-ID 全件 grep + 最大値 +1](../../raw/fixes/20260418T113520Z-pr-578.md)
+- [一字一句同期 3 観点の実測](../../raw/reviews/20260419T035346Z-pr-586-cycle7.md)
+- [観点 (b) `-- ` 引数区切り残留を別 Issue → minimal PR で解消した成功例](../../raw/reviews/20260419T094545Z-pr-596.md)
+- [観点 (c) `dry_run_out=""` / `dry_run_rc=0` 事前宣言残留を別 Issue → minimal PR で解消した成功例](../../raw/reviews/20260419T104043Z-pr-598.md)
+- [reference precondition 契約乖離 CRITICAL](../../raw/reviews/20260503T181256Z-pr-799.md)
+- [reference 単独修正、cycle 2 で PARTIAL 指摘](../../raw/fixes/20260503T181755Z-pr-799.md)

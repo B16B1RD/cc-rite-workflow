@@ -55,5 +55,5 @@ grep -E '既定(値)? 5'
 
 ## ソース
 
-- [PR #2135 review results](../../raw/reviews/20260807T073304Z-pr-2135.md)
-- [PR #2135 fix results](../../raw/fixes/20260807T074604Z-pr-2135.md)
+- [レビュー結果](../../raw/reviews/20260807T073304Z-pr-2135.md)
+- [fix 結果](../../raw/fixes/20260807T074604Z-pr-2135.md)

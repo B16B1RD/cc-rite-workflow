@@ -56,4 +56,4 @@ consumer 側の文書が SoT の N 要素のうち M 個（M < N）しか列挙�
 
 ## ソース
 
-- [PR #2043 review results (cycle 3)](../../raw/reviews/20260728T165431Z-pr-2043.md)
+- [レビュー結果](../../raw/reviews/20260728T165431Z-pr-2043.md)

@@ -61,9 +61,9 @@ verified:
 
 ## ソース
 
-- [PR #1267 review results — 0 findings の successful application: WIKICHAIN prefix 追加と同時に既知 prefix 明示列挙 + 未知 prefix fail-loud 化を実装、3 reviewer 独立検証 + TC-13 機械検証で 1 cycle mergeable)](../../raw/reviews/20260604T061732Z-pr-1267.md)
-- [PR #1177 review results](../../raw/reviews/20260528T232433Z-pr-1177.md)
-- [PR #1177 fix results](../../raw/fixes/20260528T232834Z-pr-1177.md)
+- [0 findings の successful application: WIKICHAIN prefix 追加と同時に既知 prefix 明示列挙 + 未知 prefix fail-loud 化を実装、3 reviewer 独立検証 + TC-13 機械検証で 1 cycle mergeable](../../raw/reviews/20260604T061732Z-pr-1267.md)
+- [レビュー結果](../../raw/reviews/20260528T232433Z-pr-1177.md)
+- [fix 結果](../../raw/fixes/20260528T232834Z-pr-1177.md)
 
 ## 補強: enum の設計は「消費側の分岐数」と「相互非接頭辞」の 2 条件で決める
 
@@ -93,9 +93,9 @@ prefix 関係が `case` の catch-all を騙る問題は、**enum を設計す�
 
 ## ソース（追記分）
 
-- [PR #2044 review results — enum 値の意味の過負荷（3 レビュアーが独立検出）](../../raw/reviews/20260728T234725Z-pr-2044.md)
-- [PR #2044 fix results — marker 値は消費側の分岐数と 1:1 に対応させる](../../raw/fixes/20260728T235426Z-pr-2044.md)
-- [PR #2044 fix results (cycle 3) — enum の値集合を相互に非接頭辞に保つ](../../raw/fixes/20260729T004628Z-pr-2044.md)
+- [enum 値の意味の過負荷（3 レビュアーが独立検出）](../../raw/reviews/20260728T234725Z-pr-2044.md)
+- [marker 値は消費側の分岐数と 1:1 に対応させる](../../raw/fixes/20260728T235426Z-pr-2044.md)
+- [enum の値集合を相互に非接頭辞に保つ](../../raw/fixes/20260729T004628Z-pr-2044.md)
 
 ## 補強: 既知で正しい値を明示アームへ narrow してから catch-all を WARNING へ降格する
 
@@ -121,4 +121,4 @@ catch-all に WARNING を足したら、「**正常値がその枝に落ちて�
 
 ## ソース（追記分 2）
 
-- [PR #2494 fix results — catch-all は「既知で正しい値」と「未知の値」を分けてから使う](../../raw/fixes/20260831T072532Z-pr-2494.md)
+- [catch-all は「既知で正しい値」と「未知の値」を分けてから使う](../../raw/fixes/20260831T072532Z-pr-2494.md)

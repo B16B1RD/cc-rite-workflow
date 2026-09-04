@@ -51,5 +51,5 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T11:55:05Z" }
 
 ## ソース
 
-- [PR #2229 review results](../../raw/reviews/20260810T065257Z-pr-2229.md)
-- [PR #2229 fix results](../../raw/fixes/20260810T070440Z-pr-2229.md)
+- [レビュー結果](../../raw/reviews/20260810T065257Z-pr-2229.md)
+- [fix 結果](../../raw/fixes/20260810T070440Z-pr-2229.md)

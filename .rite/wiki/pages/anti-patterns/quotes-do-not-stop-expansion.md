@@ -39,6 +39,6 @@ confidence: high
 
 ## ソース
 
-- [PR #2500 review results (cycle 4)](../../raw/reviews/20260901T180132Z-pr-2500.md)
-- [PR #2500 review results (cycle 2)](../../raw/reviews/20260901T140807Z-pr-2500.md)
-- [PR #2500 fix results (cycle 4)](../../raw/fixes/20260901T180942Z-pr-2500.md)
+- [レビュー結果](../../raw/reviews/20260901T180132Z-pr-2500.md)
+- [レビュー結果](../../raw/reviews/20260901T140807Z-pr-2500.md)
+- [fix 結果](../../raw/fixes/20260901T180942Z-pr-2500.md)

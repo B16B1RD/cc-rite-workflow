@@ -44,4 +44,4 @@ error-handling reviewer の許容条件は「explicit comment + 期待エラー�
 
 ## ソース
 
-- [PR #1837 review results](../../raw/reviews/20260712T155421Z-pr-1837.md)
+- [レビュー結果](../../raw/reviews/20260712T155421Z-pr-1837.md)

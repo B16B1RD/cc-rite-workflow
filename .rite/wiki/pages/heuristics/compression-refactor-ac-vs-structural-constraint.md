@@ -86,6 +86,6 @@ review/fix SKILL.md（各 4,040 行）のコンテキストダイエット PR �
 
 ## ソース
 
-- [PR #809 review findings: 0 findings, 5 recommendations (-35% slimdown)](../../raw/reviews/20260504T090515Z-pr-809.md)
-- [PR #1774 review results](../../raw/reviews/20260707T005014Z-pr-1774.md)
-- [PR #2278 review results (cycle 5) — 行数 vs 散文バイトの実測と退避/圧縮の hunk 別内訳](../../raw/reviews/20260812T180508Z-pr-2278.md)
+- [0 findings, 5 recommendations (-35% slimdown)](../../raw/reviews/20260504T090515Z-pr-809.md)
+- [レビュー結果](../../raw/reviews/20260707T005014Z-pr-1774.md)
+- [行数 vs 散文バイトの実測と退避/圧縮の hunk 別内訳](../../raw/reviews/20260812T180508Z-pr-2278.md)

@@ -103,13 +103,13 @@ drift 先が Issue の Non-Target（別 Issue の管轄と明記）である場�
 
 ## ソース
 
-- [PR #1959 review cycle 2 (説明散文の排他性残存を検出)](../../raw/reviews/20260721T173620Z-pr-1959.md)
-- [PR #1959 fix cycle 2 (中立化 + not_grep pin)](../../raw/fixes/20260721T173955Z-pr-1959.md)
-- [PR #1959 review cycle 3 (overview 要約 SPEC.md の absolute 主張 drift)](../../raw/reviews/20260721T175725Z-pr-1959.md)
-- [PR #1959 review cycle 4 (残存 0 確認 + Non-Target doc の管轄 Issue 配線)](../../raw/reviews/20260721T181434Z-pr-1959.md)
-- [PR #2461 review cycle 2 (量化子を強める編集が既存メンバーの再検証を要求する)](../../raw/reviews/20260829T113539Z-pr-2461.md)
-- [PR #2464 review cycle 2 (pin の needle を変えた同一 diff がその説明コメントを置き去りにする)](../../raw/reviews/20260829T142006Z-pr-2464.md)
-- [PR #2464 fix results (NB sweep — アンカーを持てない散文 drift の消化経路)](../../raw/fixes/20260829T142223Z-pr-2464.md)
-- [PR #2475 review cycle 1 (括弧で列挙を添えた全称量化が執筆時点から偽だった)](../../raw/reviews/20260830T043014Z-pr-2475.md)
-- [PR #2475 review cycle 2 (同一文への「ついでの限定」は over-fix ではないと判定)](../../raw/reviews/20260830T044223Z-pr-2475.md)
-- [PR #2494 review cycle 2 (無条件主張を直した修正文が別の無条件主張になる / 件数断定の列挙は構造的根拠で破れる)](../../raw/reviews/20260831T074623Z-pr-2494.md)
+- [説明散文の排他性残存を検出](../../raw/reviews/20260721T173620Z-pr-1959.md)
+- [中立化 + not_grep pin](../../raw/fixes/20260721T173955Z-pr-1959.md)
+- [overview 要約 SPEC.md の absolute 主張 drift](../../raw/reviews/20260721T175725Z-pr-1959.md)
+- [残存 0 確認 + Non-Target doc の管轄 Issue 配線](../../raw/reviews/20260721T181434Z-pr-1959.md)
+- [量化子を強める編集が既存メンバーの再検証を要求する](../../raw/reviews/20260829T113539Z-pr-2461.md)
+- [pin の needle を変えた同一 diff がその説明コメントを置き去りにする](../../raw/reviews/20260829T142006Z-pr-2464.md)
+- [NB sweep — アンカーを持てない散文 drift の消化経路](../../raw/fixes/20260829T142223Z-pr-2464.md)
+- [括弧で列挙を添えた全称量化が執筆時点から偽だった](../../raw/reviews/20260830T043014Z-pr-2475.md)
+- [同一文への「ついでの限定」は over-fix ではないと判定](../../raw/reviews/20260830T044223Z-pr-2475.md)
+- [無条件主張を直した修正文が別の無条件主張になる / 件数断定の列挙は構造的根拠で破れる](../../raw/reviews/20260831T074623Z-pr-2494.md)

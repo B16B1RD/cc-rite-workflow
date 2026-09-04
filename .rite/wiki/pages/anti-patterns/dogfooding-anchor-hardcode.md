@@ -58,7 +58,7 @@ command 指示書 (`commands/**/*.md`) が Edit ツールの `old_string` に「
 
 ## ソース
 
-- [PR #586 initial review (dogfooding bias 検出)](../../raw/reviews/20260419T032159Z-pr-586.md)
-- [PR #586 cycle 4 fix (anchor 存在 check 追加)](../../raw/fixes/20260419T032801Z-pr-586.md)
-- [PR #1969 cycle 4 review (プラグイン自身の repo ではコメントの gitignore 保証が成立するが、downstream consuming repo では `/rite:setup` が生成する narrower gitignore しか無く保証が崩れる dogfooding bias の別バリアント)](../../raw/reviews/20260722T063747Z-pr-1969.md)
-- [PR #1969 cycle 4 fix (ランタイム作成ディレクトリに専用 `.gitignore` を書き込み、リポジトリの ambient 状態に依存しない self-contained な保証へ是正)](../../raw/fixes/20260722T064426Z-pr-1969.md)
+- [dogfooding bias 検出](../../raw/reviews/20260419T032159Z-pr-586.md)
+- [anchor 存在 check 追加](../../raw/fixes/20260419T032801Z-pr-586.md)
+- [プラグイン自身の repo ではコメントの gitignore 保証が成立するが、downstream consuming repo では `/rite:setup` が生成する narrower gitignore しか無く保証が崩れる dogfooding bias の別バリアント](../../raw/reviews/20260722T063747Z-pr-1969.md)
+- [ランタイム作成ディレクトリに専用 `.gitignore` を書き込み、リポジトリの ambient 状態に依存しない self-contained な保証へ是正](../../raw/fixes/20260722T064426Z-pr-1969.md)

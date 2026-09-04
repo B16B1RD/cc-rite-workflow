@@ -58,4 +58,4 @@ pipe refactor 先が先例と invocation 形は対称でも、先例側が後か
 
 ## ソース
 
-- [PR #1233 review results](../../raw/reviews/20260601T111247Z-pr-1233.md)
+- [レビュー結果](../../raw/reviews/20260601T111247Z-pr-1233.md)

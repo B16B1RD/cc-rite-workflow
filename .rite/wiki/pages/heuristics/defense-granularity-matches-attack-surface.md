@@ -57,5 +57,5 @@ title 内のリンク構文 `](pages/…)` による同定キー詐称への対�
 
 - [Review cycle 4: residue gate over-generalization and marker contract mismatch](../../raw/reviews/20260804T151916Z-pr-2111-cycle4.md)
 - [Fix cycle 4: exact-match residue gate, honest markers, precondition checks](../../raw/fixes/20260804T152800Z-pr-2111-cycle4.md)
-- [PR #2111 review results (cycle 2)](../../raw/reviews/20260804T182250Z-pr-2111.md)
-- [PR #2111 fix results (cycle 2)](../../raw/fixes/20260804T183250Z-pr-2111.md)
+- [レビュー結果](../../raw/reviews/20260804T182250Z-pr-2111.md)
+- [fix 結果](../../raw/fixes/20260804T183250Z-pr-2111.md)

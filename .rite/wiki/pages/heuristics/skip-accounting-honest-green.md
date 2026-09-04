@@ -101,9 +101,9 @@ skip 会計が要るのは「プラットフォーム非対応」だけではな
 
 ## ソース
 
-- [PR #2013 review cycle 1 — skip 件数が集計されないと green の意味が痩せる](../../raw/reviews/20260724T175144Z-pr-2013.md)
-- [PR #2013 review cycle 1 (後半) — 緑化の正直さを最終行が打ち消す](../../raw/reviews/20260725T003541Z-pr-2013.md)
-- [PR #2013 fix results (cycle 2) — skip をカウントして summary に出す / capability probe の床](../../raw/fixes/20260724T184410Z-pr-2013.md)
-- [PR #2013 fix results (cycle 3) — カウンタは per-file で止めず集約点まで通す](../../raw/fixes/20260724T193804Z-pr-2013.md)
-- [PR #2013 fix results (cycle 4) — 集計 parser の anchor / exit 0 skip が PASSED に計上される](../../raw/fixes/20260724T202517Z-pr-2013.md)
-- [PR #2489 fix results (cycle 2) — gate した assert 群の skip 計上 / 位置 narrowing の盲点](../../raw/fixes/20260830T142208Z-pr-2489.md)
+- [skip 件数が集計されないと green の意味が痩せる](../../raw/reviews/20260724T175144Z-pr-2013.md)
+- [(後半) — 緑化の正直さを最終行が打ち消す](../../raw/reviews/20260725T003541Z-pr-2013.md)
+- [skip をカウントして summary に出す / capability probe の床](../../raw/fixes/20260724T184410Z-pr-2013.md)
+- [カウンタは per-file で止めず集約点まで通す](../../raw/fixes/20260724T193804Z-pr-2013.md)
+- [集計 parser の anchor / exit 0 skip が PASSED に計上される](../../raw/fixes/20260724T202517Z-pr-2013.md)
+- [gate した assert 群の skip 計上 / 位置 narrowing の盲点](../../raw/fixes/20260830T142208Z-pr-2489.md)

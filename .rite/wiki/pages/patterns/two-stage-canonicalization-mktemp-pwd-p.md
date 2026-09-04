@@ -81,7 +81,7 @@ canonicalization を pin する TC を「`$TMPDIR` を symlink に向ける」�
 
 ## ソース
 
-- [PR #2013 review cycle 1 — canonical 化イディオムが fail-fast を反転させる](../../raw/reviews/20260724T175144Z-pr-2013.md)
-- [PR #2013 fix results — 環境差異の吸収は fail-open の温床](../../raw/fixes/20260724T180733Z-pr-2013.md)
-- [PR #2013 fix results (cycle 3) — fixture が検証したい差異自身を踏む問題](../../raw/fixes/20260724T193804Z-pr-2013.md)
-- [PR #2013 fix results — ひな形（CONTRIBUTING）の同時更新漏れ](../../raw/fixes/20260725T004542Z-pr-2013.md)
+- [canonical 化イディオムが fail-fast を反転させる](../../raw/reviews/20260724T175144Z-pr-2013.md)
+- [環境差異の吸収は fail-open の温床](../../raw/fixes/20260724T180733Z-pr-2013.md)
+- [fixture が検証したい差異自身を踏む問題](../../raw/fixes/20260724T193804Z-pr-2013.md)
+- [ひな形（CONTRIBUTING）の同時更新漏れ](../../raw/fixes/20260725T004542Z-pr-2013.md)

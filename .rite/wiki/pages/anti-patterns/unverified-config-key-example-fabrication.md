@@ -38,4 +38,4 @@ sandbox 有効環境かつ multi_session 環境向けの案内メッセージに
 
 ## ソース
 
-- [PR #1925 fix results (cycle 1)](../../raw/fixes/20260720T065752Z-pr-1925.md)
+- [fix 結果](../../raw/fixes/20260720T065752Z-pr-1925.md)

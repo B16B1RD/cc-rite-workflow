@@ -76,5 +76,5 @@ start と end で fail-loud 性が非対称である。`assert_grep_in_section` 
 
 ## ソース
 
-- [PR #1974 fix results (cycle 3, awk flip-flop レンジ過検出の修正)](../../raw/fixes/20260723T031622Z-pr-1974-cycle3.md)
-- [PR #2466 review results (cycle 2, end 境界の一意性と degrade 経路)](../../raw/reviews/20260829T153702Z-pr-2466.md)
+- [awk flip-flop レンジ過検出の修正](../../raw/fixes/20260723T031622Z-pr-1974-cycle3.md)
+- [end 境界の一意性と degrade 経路](../../raw/reviews/20260829T153702Z-pr-2466.md)

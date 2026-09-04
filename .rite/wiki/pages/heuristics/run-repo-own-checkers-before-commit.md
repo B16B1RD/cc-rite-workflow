@@ -96,6 +96,6 @@ lint check #18 を新設する PR が、その fix で追加したテストコ�
 
 ## ソース
 
-- [PR #2038 fix results (cycle 5)](../../raw/fixes/20260728T100957Z-pr-2038.md)
-- [PR #2038 fix results (cycle 6, final)](../../raw/fixes/20260728T122258Z-pr-2038.md)
-- [PR #2124 review results (cycle 3)](../../raw/reviews/20260806T110520Z-pr-2124.md)
+- [fix 結果](../../raw/fixes/20260728T100957Z-pr-2038.md)
+- [fix 結果](../../raw/fixes/20260728T122258Z-pr-2038.md)
+- [レビュー結果](../../raw/reviews/20260806T110520Z-pr-2124.md)

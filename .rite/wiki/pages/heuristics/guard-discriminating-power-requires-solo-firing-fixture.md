@@ -54,5 +54,5 @@ cycle 1 で TC-13b（読み取り不能）にガード固有文言 assert の ra
 
 ## ソース
 
-- [PR #2111 review results](../../raw/reviews/20260804T173728Z-pr-2111.md)
-- [PR #2111 fix results](../../raw/fixes/20260804T175004Z-pr-2111.md)
+- [レビュー結果](../../raw/reviews/20260804T173728Z-pr-2111.md)
+- [fix 結果](../../raw/fixes/20260804T175004Z-pr-2111.md)

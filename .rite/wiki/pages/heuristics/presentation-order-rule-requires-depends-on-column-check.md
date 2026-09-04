@@ -39,5 +39,5 @@ cycle 1 レビューで、code-quality-reviewer が以下の構造的な結合�
 
 ## ソース
 
-- [PR #1752 review results](../../raw/reviews/20260706T020946Z-pr-1752.md)
-- [PR #1752 fix results](../../raw/fixes/20260706T021735Z-pr-1752.md)
+- [レビュー結果](../../raw/reviews/20260706T020946Z-pr-1752.md)
+- [fix 結果](../../raw/fixes/20260706T021735Z-pr-1752.md)

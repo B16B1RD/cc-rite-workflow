@@ -79,5 +79,5 @@ guard を付けると assertion helper は file 存在を前提にできるた�
 
 ## ソース
 
-- [PR #1050 review results (0 findings, 経験則記録のみ)](../../raw/reviews/20260518T203629Z-pr-1050.md)
-- [PR #1052 review results (0 findings、helper 抽出の実装 PR、Silent guard contract + Excluded-with-rationale 経験則)](../../raw/reviews/20260519T023807Z-pr-1052.md)
+- [0 findings, 経験則記録のみ](../../raw/reviews/20260518T203629Z-pr-1050.md)
+- [0 findings、helper 抽出の実装 PR、Silent guard contract + Excluded-with-rationale 経験則](../../raw/reviews/20260519T023807Z-pr-1052.md)

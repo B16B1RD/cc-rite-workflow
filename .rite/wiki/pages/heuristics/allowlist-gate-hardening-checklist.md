@@ -48,9 +48,9 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-19T23:01:00+09:00" }
 
 ## ソース
 
-- [PR #1330 fix cycle 1 (複数行 bypass の [[ =~ ]] 閉塞 + SENTINEL dead variable 解消)](../../raw/fixes/20260609T223122Z-pr-1330.md)
-- [PR #1330 fix cycle 2 (テストコメントの journal token 除去)](../../raw/fixes/20260609T223943Z-pr-1330-c2.md)
-- [PR #1330 fix cycle 3 (degraded 値 unknown の専用診断 + stale gsub コメント是正)](../../raw/fixes/20260609T224734Z-pr-1330-c3.md)
-- [PR #1330 review cycle 4 mergeable (5 reviewer 0 件、mutation 検証で non-vacuity 実証)](../../raw/reviews/20260609T225247Z-pr-1330-c4.md)
-- [PR #1909 review results (resume cycle — allowlist 新 arm の per-arm pin 欠落指摘)](../../raw/reviews/20260719T120555Z-pr-1909.md)
-- [PR #1909 fix results (per-arm 3 点セット pin の追加)](../../raw/fixes/20260719T121530Z-pr-1909.md)
+- [複数行 bypass の [[ =~ ]] 閉塞 + SENTINEL dead variable 解消](../../raw/fixes/20260609T223122Z-pr-1330.md)
+- [テストコメントの journal token 除去](../../raw/fixes/20260609T223943Z-pr-1330-c2.md)
+- [degraded 値 unknown の専用診断 + stale gsub コメント是正](../../raw/fixes/20260609T224734Z-pr-1330-c3.md)
+- [mergeable (5 reviewer 0 件、mutation 検証で non-vacuity 実証)](../../raw/reviews/20260609T225247Z-pr-1330-c4.md)
+- [resume cycle — allowlist 新 arm の per-arm pin 欠落指摘](../../raw/reviews/20260719T120555Z-pr-1909.md)
+- [per-arm 3 点セット pin の追加](../../raw/fixes/20260719T121530Z-pr-1909.md)

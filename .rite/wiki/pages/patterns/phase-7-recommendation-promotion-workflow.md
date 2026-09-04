@@ -75,9 +75,9 @@ PR review で `[review:mergeable]` 到達後も reviewer recommendation (actiona
 
 ## ソース
 
-- [PR #1164 review cycle 4 (mergeable → Phase 7 escalation)](../../raw/reviews/20260527T172656Z-pr-1164.md)
-- [PR #1164 review cycle 6 (mergeable + Phase 7 bundled escalation)](../../raw/reviews/20260527T174107Z-pr-1164.md)
-- [PR #1164 review cycle 8 (FINAL CONVERGENCE)](../../raw/reviews/20260527T174507Z-pr-1164.md)
-- [PR #1164 fix cycle 2 (user-escalated F-07/F-08)](../../raw/fixes/20260527T170259Z-pr-1164.md)
-- [PR #1164 fix cycle 5 (F-10/F-11 bundled fix)](../../raw/fixes/20260527T172902Z-pr-1164.md)
-- [PR #1164 fix cycle 7 (F-12 quotation symbol unification)](../../raw/fixes/20260527T174222Z-pr-1164.md)
+- [mergeable → Phase 7 escalation](../../raw/reviews/20260527T172656Z-pr-1164.md)
+- [mergeable + Phase 7 bundled escalation](../../raw/reviews/20260527T174107Z-pr-1164.md)
+- [FINAL CONVERGENCE](../../raw/reviews/20260527T174507Z-pr-1164.md)
+- [user-escalated F-07/F-08](../../raw/fixes/20260527T170259Z-pr-1164.md)
+- [F-10/F-11 bundled fix](../../raw/fixes/20260527T172902Z-pr-1164.md)
+- [F-12 quotation symbol unification](../../raw/fixes/20260527T174222Z-pr-1164.md)

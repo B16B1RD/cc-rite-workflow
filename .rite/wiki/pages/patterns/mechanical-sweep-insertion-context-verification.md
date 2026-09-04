@@ -38,7 +38,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T01:15:00+09:00" }
 
 ## ソース
 
-- [PR #1919 review results](../../raw/reviews/20260719T151010Z-pr-1919.md)
-- [PR #1919 fix results](../../raw/fixes/20260719T151513Z-pr-1919.md)
-- [PR #1919 review cycle 2 results](../../raw/reviews/20260719T153208Z-pr-1919-c2.md)
-- [PR #1919 fix cycle 2 results](../../raw/fixes/20260719T153443Z-pr-1919-c2.md)
+- [レビュー結果](../../raw/reviews/20260719T151010Z-pr-1919.md)
+- [fix 結果](../../raw/fixes/20260719T151513Z-pr-1919.md)
+- [レビュー結果](../../raw/reviews/20260719T153208Z-pr-1919-c2.md)
+- [fix 結果](../../raw/fixes/20260719T153443Z-pr-1919-c2.md)

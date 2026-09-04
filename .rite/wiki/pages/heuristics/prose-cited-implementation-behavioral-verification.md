@@ -71,6 +71,6 @@ canonical: helper を散文参照するときは「regex 実体ファイル (`.p
 
 ## ソース
 
-- [PR #1238 review results](../../raw/reviews/20260601T185616Z-pr-1238.md)
-- [PR #1238 review results (cycle 2)](../../raw/reviews/20260601T191319Z-pr-1238.md)
-- [PR #1238 fix results](../../raw/fixes/20260601T190814Z-pr-1238.md)
+- [レビュー結果](../../raw/reviews/20260601T185616Z-pr-1238.md)
+- [レビュー結果](../../raw/reviews/20260601T191319Z-pr-1238.md)
+- [fix 結果](../../raw/fixes/20260601T190814Z-pr-1238.md)

@@ -120,11 +120,11 @@ Issue 起票時に提示された修正案が実装の出力契約と噛み合�
 
 ## ソース
 
-- [PR #2013 review cycle 1 — 否定アサーションに `|| true` を足すと signal がゼロになる](../../raw/reviews/20260724T175144Z-pr-2013.md)
-- [PR #2013 fix results — 失敗の表面化で解く（exit code を assert する）](../../raw/fixes/20260724T180733Z-pr-2013.md)
-- [PR #2013 fix results (cycle 2) — positive control / fixture の `|| continue` 禁止](../../raw/fixes/20260724T184410Z-pr-2013.md)
-- [PR #2020 review cycle 1 — control の派生元 / hook 出力契約の読み違い](../../raw/reviews/20260725T151649Z-pr-2020.md)
-- [PR #2020 fix results — 出力形状優先の判定順序と stderr 診断](../../raw/fixes/20260725T152249Z-pr-2020.md)
-- [PR #2020 review cycle 2 — mutation testing による control の非重複性実証](../../raw/reviews/20260725T154346Z-pr-2020.md)
-- [PR #2020 fix results (cycle 2) — load-bearing な派生元をコメントに明記](../../raw/fixes/20260725T154630Z-pr-2020.md)
-- [PR #2020 review cycle 4 — 旧新対比と蒸し返さない規律](../../raw/reviews/20260725T162025Z-pr-2020.md)
+- [否定アサーションに `|| true` を足すと signal がゼロになる](../../raw/reviews/20260724T175144Z-pr-2013.md)
+- [失敗の表面化で解く（exit code を assert する）](../../raw/fixes/20260724T180733Z-pr-2013.md)
+- [positive control / fixture の `|| continue` 禁止](../../raw/fixes/20260724T184410Z-pr-2013.md)
+- [control の派生元 / hook 出力契約の読み違い](../../raw/reviews/20260725T151649Z-pr-2020.md)
+- [出力形状優先の判定順序と stderr 診断](../../raw/fixes/20260725T152249Z-pr-2020.md)
+- [mutation testing による control の非重複性実証](../../raw/reviews/20260725T154346Z-pr-2020.md)
+- [load-bearing な派生元をコメントに明記](../../raw/fixes/20260725T154630Z-pr-2020.md)
+- [旧新対比と蒸し返さない規律](../../raw/reviews/20260725T162025Z-pr-2020.md)

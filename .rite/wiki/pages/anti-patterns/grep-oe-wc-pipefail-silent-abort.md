@@ -125,8 +125,8 @@ line=$({ printf '%s\n' "$OUT" | grep -F "$needle" || true; } | tail -1)
 
 ## ソース
 
-- [PR #906 fix results (cycle 3)](../../raw/fixes/20260508T174355Z-pr-906.md)
-- [PR #906 review results (cycle 4 final)](../../raw/reviews/20260508T175233Z-pr-906.md)
-- [PR #2013 review cycle 3 — `$(cmd | grep)` の no-match が直後の空判定を dead branch にする](../../raw/reviews/20260725T032345Z-pr-2013.md)
-- [PR #2013 fix results (cycle 3) — grep だけを局所無害化する canonical fix](../../raw/fixes/20260725T033607Z-pr-2013.md)
-- [PR #2066 fix results (cycle 3) — 終端 `grep -c` が検出器破損を 0 件に畳む](../../raw/fixes/20260730T195300Z-pr-2066.md)
+- [fix 結果](../../raw/fixes/20260508T174355Z-pr-906.md)
+- [レビュー結果](../../raw/reviews/20260508T175233Z-pr-906.md)
+- [`$(cmd | grep)` の no-match が直後の空判定を dead branch にする](../../raw/reviews/20260725T032345Z-pr-2013.md)
+- [grep だけを局所無害化する canonical fix](../../raw/fixes/20260725T033607Z-pr-2013.md)
+- [終端 `grep -c` が検出器破損を 0 件に畳む](../../raw/fixes/20260730T195300Z-pr-2066.md)

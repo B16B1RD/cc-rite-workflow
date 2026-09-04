@@ -70,7 +70,7 @@ Issue のエッジケースが「実形式を検出して従う **か** テン�
 
 ## ソース
 
-- [PR #2052 review results (cycle 3) — 前提の overclaim が機構全体を不要にする](../../raw/reviews/20260730T014137Z-pr-2052.md)
-- [PR #2052 fix results (cycle 3) — 44 行 → 34 行の純減で 4 指摘が同時消滅](../../raw/fixes/20260730T014656Z-pr-2052.md)
-- [PR #2483 review results — 単一 writer 主張の producer 数え落とし](../../raw/reviews/20260830T093009Z-pr-2483.md)
-- [PR #2483 fix results — フラグ検索では値を echo する経路が母集団から漏れる](../../raw/fixes/20260830T093245Z-pr-2483.md)
+- [前提の overclaim が機構全体を不要にする](../../raw/reviews/20260730T014137Z-pr-2052.md)
+- [44 行 → 34 行の純減で 4 指摘が同時消滅](../../raw/fixes/20260730T014656Z-pr-2052.md)
+- [単一 writer 主張の producer 数え落とし](../../raw/reviews/20260830T093009Z-pr-2483.md)
+- [フラグ検索では値を echo する経路が母集団から漏れる](../../raw/fixes/20260830T093245Z-pr-2483.md)

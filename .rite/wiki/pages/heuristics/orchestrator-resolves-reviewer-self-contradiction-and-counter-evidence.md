@@ -111,13 +111,13 @@ application reviewer が `_timeout` の perl シムについて「GNU timeout 2s
 
 ## ソース
 
-- [PR #2013 review cycle 3 — reviewer の数値主張を再現し、数値の誤りと中核欠陥の実在を切り分けた記録](../../raw/reviews/20260725T032345Z-pr-2013.md)
-- [PR #2013 review cycle 4 — 「0 件は正当な結論」をプロンプトに明示して 6 名全員 0 件で収束](../../raw/reviews/20260725T041328Z-pr-2013.md)
-- [PR #1756 review results](../../raw/reviews/20260706T033041Z-pr-1756.md)
-- [PR #1757 review results](../../raw/reviews/20260706T043448Z-pr-1757.md)
-- [PR #1758 review results](../../raw/reviews/20260706T050235Z-pr-1758.md)
-- [PR #2070 review results (cycle 4) — 上流実装の読みが 2 名で割れ、一次ソースで決着](../../raw/reviews/20260801T223635Z-pr-2070.md)
-- [PR #2070 fix results (cycle 4)](../../raw/fixes/20260801T224211Z-pr-2070.md)
-- [PR #2070 review results (cycle 5, mergeable)](../../raw/reviews/20260802T000641Z-pr-2070.md)
-- [PR #2142 review results (cycle 5) — 反対意見の却下と、その却下根拠の差し戻し](../../raw/reviews/20260808T031704Z-pr-2142.md)
-- [PR #2142 review results (cycle 7, mergeable) — 提案者自身による撤回と軸の明示](../../raw/reviews/20260808T035533Z-pr-2142.md)
+- [reviewer の数値主張を再現し、数値の誤りと中核欠陥の実在を切り分けた記録](../../raw/reviews/20260725T032345Z-pr-2013.md)
+- [「0 件は正当な結論」をプロンプトに明示して 6 名全員 0 件で収束](../../raw/reviews/20260725T041328Z-pr-2013.md)
+- [レビュー結果](../../raw/reviews/20260706T033041Z-pr-1756.md)
+- [レビュー結果](../../raw/reviews/20260706T043448Z-pr-1757.md)
+- [レビュー結果](../../raw/reviews/20260706T050235Z-pr-1758.md)
+- [上流実装の読みが 2 名で割れ、一次ソースで決着](../../raw/reviews/20260801T223635Z-pr-2070.md)
+- [fix 結果](../../raw/fixes/20260801T224211Z-pr-2070.md)
+- [レビュー結果](../../raw/reviews/20260802T000641Z-pr-2070.md)
+- [反対意見の却下と、その却下根拠の差し戻し](../../raw/reviews/20260808T031704Z-pr-2142.md)
+- [提案者自身による撤回と軸の明示](../../raw/reviews/20260808T035533Z-pr-2142.md)

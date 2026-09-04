@@ -68,7 +68,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 
 ## ソース
 
-- [PR #2052 review results (cycle 3) — 位置ベース操作は崩れたデータに対して未定義](../../raw/reviews/20260730T014137Z-pr-2052.md)
-- [PR #2052 fix results (cycle 3) — 再生成に置き換えると列の解決が消える](../../raw/fixes/20260730T014656Z-pr-2052.md)
-- [PR #2052 fix results (cycle 5) — 同定述語の anchor と optional フィールド](../../raw/fixes/20260730T024604Z-pr-2052.md)
-- [PR #2052 fix results (cycle 4) — 述語の対象集合統一と写しの SoT 固定](../../raw/fixes/20260730T021430Z-pr-2052.md)
+- [位置ベース操作は崩れたデータに対して未定義](../../raw/reviews/20260730T014137Z-pr-2052.md)
+- [再生成に置き換えると列の解決が消える](../../raw/fixes/20260730T014656Z-pr-2052.md)
+- [同定述語の anchor と optional フィールド](../../raw/fixes/20260730T024604Z-pr-2052.md)
+- [述語の対象集合統一と写しの SoT 固定](../../raw/fixes/20260730T021430Z-pr-2052.md)

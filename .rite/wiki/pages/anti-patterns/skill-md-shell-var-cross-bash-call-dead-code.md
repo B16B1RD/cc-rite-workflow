@@ -69,6 +69,6 @@ SKILL.md に新規セクションを追加する際は、同一ファイル内�
 
 ## ソース
 
-- [PR #1975 review results](../../raw/reviews/20260723T052236Z-pr-1975.md)
-- [PR #1975 fix results](../../raw/fixes/20260723T052849Z-pr-1975.md)
-- [PR #2468 fix results（`${var:-}` の既定化が no-op を無言化し完了報告を誤らせた再発事例）](../../raw/fixes/20260829T175418Z-pr-2468.md)
+- [レビュー結果](../../raw/reviews/20260723T052236Z-pr-1975.md)
+- [fix 結果](../../raw/fixes/20260723T052849Z-pr-1975.md)
+- [`${var:-}` の既定化が no-op を無言化し完了報告を誤らせた再発事例](../../raw/fixes/20260829T175418Z-pr-2468.md)

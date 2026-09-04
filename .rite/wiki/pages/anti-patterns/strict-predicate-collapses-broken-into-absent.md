@@ -64,5 +64,5 @@ cycle 3 で、この 2 本立て自体が次の欠陥を出した。probe の受
 
 ## ソース
 
-- [PR #2112 review results (cycle 2)（行アンカーで正規 marker が全不一致になり無音縮退することを検出）](../../raw/reviews/20260805T033632Z-pr-2112.md)
-- [PR #2112 fix results (cycle 2)（厳格な式 + 緩い probe の 2 本立てを適用）](../../raw/fixes/20260805T040711Z-pr-2112.md)
+- [行アンカーで正規 marker が全不一致になり無音縮退することを検出](../../raw/reviews/20260805T033632Z-pr-2112.md)
+- [厳格な式 + 緩い probe の 2 本立てを適用](../../raw/fixes/20260805T040711Z-pr-2112.md)

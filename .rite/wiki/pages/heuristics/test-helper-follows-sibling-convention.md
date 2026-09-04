@@ -62,5 +62,5 @@ SSH host alias 対応 PR のテストでも、前提条件不成立時の skip �
 
 ## ソース
 
-- [PR #1318 review results (cycle 1)](../../raw/reviews/20260609T064947Z-pr-1318.md)
-- [PR #1921 review results — 前提不成立時 skip の echo 実装によるカウンタ観測不能パターンを再確認、skip 自体の不要化 (前提確定) を代替対策として提示](../../raw/reviews/20260719T235117Z-pr-1921.md)
+- [レビュー結果](../../raw/reviews/20260609T064947Z-pr-1318.md)
+- [前提不成立時 skip の echo 実装によるカウンタ観測不能パターンを再確認、skip 自体の不要化 (前提確定) を代替対策として提示](../../raw/reviews/20260719T235117Z-pr-1921.md)

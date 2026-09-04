@@ -92,6 +92,6 @@ follow-up 適用 PR の review で 2 reviewer (prompt-engineer / code-quality) �
 
 ## ソース
 
-- [PR #1039 review results](../../raw/reviews/20260518T062827Z-pr-1039.md)
-- [PR #1056 review results](../../raw/reviews/20260519T065513Z-pr-1056.md)
-- [PR #1059 review results](../../raw/reviews/20260519T073950Z-pr-1059.md)
+- [レビュー結果](../../raw/reviews/20260518T062827Z-pr-1039.md)
+- [レビュー結果](../../raw/reviews/20260519T065513Z-pr-1056.md)
+- [レビュー結果](../../raw/reviews/20260519T073950Z-pr-1059.md)

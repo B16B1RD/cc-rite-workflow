@@ -64,4 +64,4 @@ reviewer が finding を出したとき、helper の header や設計ドキュ�
 
 ## ソース
 
-- [PR #2120 review results (cycle 2)](../../raw/reviews/20260806T001717Z-pr-2120.md)
+- [レビュー結果](../../raw/reviews/20260806T001717Z-pr-2120.md)

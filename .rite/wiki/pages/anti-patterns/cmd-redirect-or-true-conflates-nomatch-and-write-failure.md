@@ -65,5 +65,5 @@ fi
 
 ## ソース
 
-- [PR #1967 review results (cycle 2) — rc 混同の finding](../../raw/reviews/20260722T022920Z-pr-1967.md)
-- [PR #1967 fix results (cycle 3) — rc>=2 分岐での修正](../../raw/fixes/20260722T023104Z-pr-1967.md)
+- [rc 混同の finding](../../raw/reviews/20260722T022920Z-pr-1967.md)
+- [rc>=2 分岐での修正](../../raw/fixes/20260722T023104Z-pr-1967.md)

@@ -64,7 +64,7 @@ fi
 
 ## ソース
 
-- [PR #2498 review results](../../raw/reviews/20260901T053153Z-pr-2498.md)
-- [PR #2498 fix results](../../raw/fixes/20260901T055639Z-pr-2498.md)
-- [PR #2500 review results](../../raw/reviews/20260901T160818Z-pr-2500.md)
-- [PR #2500 fix results](../../raw/fixes/20260901T162955Z-pr-2500.md)
+- [レビュー結果](../../raw/reviews/20260901T053153Z-pr-2498.md)
+- [fix 結果](../../raw/fixes/20260901T055639Z-pr-2498.md)
+- [レビュー結果](../../raw/reviews/20260901T160818Z-pr-2500.md)
+- [fix 結果](../../raw/fixes/20260901T162955Z-pr-2500.md)

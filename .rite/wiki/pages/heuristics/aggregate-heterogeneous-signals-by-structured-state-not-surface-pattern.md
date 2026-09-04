@@ -51,6 +51,6 @@ cleanup 完了報告に非ブロッキング失敗を集約 surface する機能
 
 ## ソース
 
-- [PR #1975 review results (cycle 4, mergeable)](../../raw/reviews/20260723T062652Z-pr-1975.md)
-- [PR #1975 fix results (cycle 3)](../../raw/fixes/20260723T055411Z-pr-1975.md)
-- [PR #1975 fix results (cycle 4)](../../raw/fixes/20260723T061352Z-pr-1975.md)
+- [レビュー結果](../../raw/reviews/20260723T062652Z-pr-1975.md)
+- [fix 結果](../../raw/fixes/20260723T055411Z-pr-1975.md)
+- [fix 結果](../../raw/fixes/20260723T061352Z-pr-1975.md)

@@ -58,5 +58,5 @@ LLM が prompt / skill / command 定義を実装する際、numbered list は各
 
 ## ソース
 
-- [PR #564 fix results (11th cycle)](../../raw/fixes/20260418T071459Z-pr-564.md)
-- [PR #564 re-review (11th cycle)](../../raw/reviews/20260418T072254Z-pr-564-rerun.md)
+- [fix 結果](../../raw/fixes/20260418T071459Z-pr-564.md)
+- [レビュー結果](../../raw/reviews/20260418T072254Z-pr-564-rerun.md)

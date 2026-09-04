@@ -68,4 +68,4 @@ Test 内に env gate (`STRICT_*=1` / `RUN_FULL=1` 等) を配置する PR で「
 
 ## ソース
 
-- [PR #915 review results — meta-test の env gate 配置と CI workflow 自動実行の意図/現実 non-alignment 検出](../../raw/reviews/20260509T071343Z-pr-915.md)
+- [meta-test の env gate 配置と CI workflow 自動実行の意図/現実 non-alignment 検出](../../raw/reviews/20260509T071343Z-pr-915.md)

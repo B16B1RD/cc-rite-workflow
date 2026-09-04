@@ -92,11 +92,11 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T17:40:00+09:00" }
 
 ## ソース
 
-- [PR #2044 review results (cycle 2)](../../raw/reviews/20260729T064538Z-pr-2044.md)
-- [PR #2044 review results (cycle 3)](../../raw/reviews/20260729T070922Z-pr-2044.md)
-- [PR #2044 review results](../../raw/reviews/20260729T085226Z-pr-2044.md)
-- [PR #2044 fix results (cycle 4)](../../raw/fixes/20260729T051956Z-pr-2044.md)
-- [PR #2044 fix results (cycle 4)](../../raw/fixes/20260729T073316Z-pr-2044.md)
-- [PR #2044 fix results (cycle 5)](../../raw/fixes/20260729T075214Z-pr-2044.md)
-- [PR #2150 review results (cycle 3: 自己破壊する回復コマンド連鎖)](../../raw/reviews/20260808T072312Z-pr-2150-cycle3.md)
-- [PR #2150 fix results (cycle 3: 既存 sibling の限定句を先に読む)](../../raw/fixes/20260808T072610Z-pr-2150-cycle3-fix.md)
+- [レビュー結果](../../raw/reviews/20260729T064538Z-pr-2044.md)
+- [レビュー結果](../../raw/reviews/20260729T070922Z-pr-2044.md)
+- [レビュー結果](../../raw/reviews/20260729T085226Z-pr-2044.md)
+- [fix 結果](../../raw/fixes/20260729T051956Z-pr-2044.md)
+- [fix 結果](../../raw/fixes/20260729T073316Z-pr-2044.md)
+- [fix 結果](../../raw/fixes/20260729T075214Z-pr-2044.md)
+- [自己破壊する回復コマンド連鎖](../../raw/reviews/20260808T072312Z-pr-2150-cycle3.md)
+- [既存 sibling の限定句を先に読む](../../raw/fixes/20260808T072610Z-pr-2150-cycle3-fix.md)

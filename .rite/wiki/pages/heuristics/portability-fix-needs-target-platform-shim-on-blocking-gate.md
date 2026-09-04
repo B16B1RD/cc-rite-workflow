@@ -84,5 +84,5 @@ shim は対象挙動を再現する薄いラッパにとどめ、それ以外は
 
 ## ソース
 
-- [PR #2017 review results (cycle 2)](../../raw/reviews/20260725T100748Z-pr-2017-cycle2.md)
-- [PR #2278 fix results — GNU 専用 sed -i が macOS で 6 ケースを未実行のまま中断させた](../../raw/fixes/20260812T133631Z-pr-2278.md)
+- [レビュー結果](../../raw/reviews/20260725T100748Z-pr-2017-cycle2.md)
+- [GNU 専用 sed -i が macOS で 6 ケースを未実行のまま中断させた](../../raw/fixes/20260812T133631Z-pr-2278.md)

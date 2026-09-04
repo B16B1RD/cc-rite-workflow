@@ -72,5 +72,5 @@ severity 軸新設事例の cycle 1 で `severity-levels.md` に COMMENT_QUALITY
 
 ## ソース
 
-- [PR #586 cycle 3 fix (hallucinated L1586-L1591 の修正)](../../raw/fixes/20260419T025335Z-pr-586.md)
-- [PR #708 cycle 1 fix (architectural false reference: SECURITY 軸 / CORRECTNESS 軸 不実在)](../../raw/fixes/20260428T195448Z-pr-708-cycle-1.md)
+- [hallucinated L1586-L1591 の修正](../../raw/fixes/20260419T025335Z-pr-586.md)
+- [architectural false reference: SECURITY 軸 / CORRECTNESS 軸 不実在](../../raw/fixes/20260428T195448Z-pr-708-cycle-1.md)

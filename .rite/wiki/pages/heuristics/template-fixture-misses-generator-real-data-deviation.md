@@ -69,7 +69,7 @@ fixture が実データから逸脱する向きは 2 つある。上記は「fix
 
 ## ソース
 
-- [PR #2066 review results](../../raw/reviews/20260730T184559Z-pr-2066.md)
-- [PR #2066 review results (cycle 2)](../../raw/reviews/20260730T192125Z-pr-2066.md)
-- [PR #2066 fix results](../../raw/fixes/20260730T190134Z-pr-2066.md)
-- [PR #2066 fix results (cycle 2)](../../raw/fixes/20260730T192847Z-pr-2066.md)
+- [レビュー結果](../../raw/reviews/20260730T184559Z-pr-2066.md)
+- [レビュー結果](../../raw/reviews/20260730T192125Z-pr-2066.md)
+- [fix 結果](../../raw/fixes/20260730T190134Z-pr-2066.md)
+- [fix 結果](../../raw/fixes/20260730T192847Z-pr-2066.md)

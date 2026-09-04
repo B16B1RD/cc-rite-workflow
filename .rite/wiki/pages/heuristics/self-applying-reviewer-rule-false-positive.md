@@ -76,7 +76,7 @@ self-application false positive は以下の構造で発生する:
 
 ## ソース
 
-- [PR #706 cycle 4 final review](../../raw/reviews/20260428T185933Z-pr-706.md)
-- [PR #706 fix results (cycle 2/3)](../../raw/fixes/20260428T185144Z-pr-706.md)
-- [PR #800 cycle 3 fix (CRITICAL revert: 履歴解説 wording を SoT-aligned に戻し)](../../raw/fixes/20260504T030513Z-pr-800-cycle3.md)
-- [PR #800 cycle 4 review (mergeable, revert で 0 findings 達成)](../../raw/reviews/20260504T030800Z-pr-800-cycle4.md)
+- [final review](../../raw/reviews/20260428T185933Z-pr-706.md)
+- [fix 結果](../../raw/fixes/20260428T185144Z-pr-706.md)
+- [CRITICAL revert: 履歴解説 wording を SoT-aligned に戻し](../../raw/fixes/20260504T030513Z-pr-800-cycle3.md)
+- [mergeable, revert で 0 findings 達成](../../raw/reviews/20260504T030800Z-pr-800-cycle4.md)

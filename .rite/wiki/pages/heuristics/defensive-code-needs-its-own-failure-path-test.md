@@ -78,11 +78,11 @@ verified:
 
 ## ソース
 
-- [PR #1970 review cycle 1](../../raw/reviews/20260722T102818Z-pr-1970.md)
-- [PR #1970 fix cycle 1](../../raw/fixes/20260722T103236Z-pr-1970.md)
-- [PR #1970 review cycle 2](../../raw/reviews/20260722T112806Z-pr-1970-cycle2.md)
-- [PR #1970 fix cycle 2](../../raw/fixes/20260722T113522Z-pr-1970-cycle2.md)
-- [PR #1970 review cycle 3 (mergeable, mutation test 実証)](../../raw/reviews/20260722T122232Z-pr-1970-cycle3.md)
-- [PR #2120 fix results (cycle 4) — security 起因の防御に pin が抜けた実例](../../raw/fixes/20260806T013904Z-pr-2120.md)
-- [PR #2360 review cycle 1 — WARNING パス未 pin](../../raw/reviews/20260825T141342Z-pr-2360.md)
-- [PR #2360 fix — T-01 パス pin / T-04 corrupt JSON pin](../../raw/fixes/20260825T141757Z-pr-2360.md)
+- [レビュー結果](../../raw/reviews/20260722T102818Z-pr-1970.md)
+- [fix 結果](../../raw/fixes/20260722T103236Z-pr-1970.md)
+- [レビュー結果](../../raw/reviews/20260722T112806Z-pr-1970-cycle2.md)
+- [fix 結果](../../raw/fixes/20260722T113522Z-pr-1970-cycle2.md)
+- [mergeable, mutation test 実証](../../raw/reviews/20260722T122232Z-pr-1970-cycle3.md)
+- [security 起因の防御に pin が抜けた実例](../../raw/fixes/20260806T013904Z-pr-2120.md)
+- [WARNING パス未 pin](../../raw/reviews/20260825T141342Z-pr-2360.md)
+- [T-01 パス pin / T-04 corrupt JSON pin](../../raw/fixes/20260825T141757Z-pr-2360.md)

@@ -51,4 +51,4 @@ PR シリーズ 8/8 の cycle 2 で LOW 1 cosmetic 指摘として検出され�
 
 ## ソース
 
-- [PR #802 cycle 2 cosmetic fix](../../raw/fixes/20260504T051358Z-pr-802-cycle2.md)
+- [cosmetic fix](../../raw/fixes/20260504T051358Z-pr-802-cycle2.md)

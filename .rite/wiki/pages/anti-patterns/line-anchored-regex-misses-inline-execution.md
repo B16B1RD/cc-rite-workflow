@@ -52,5 +52,5 @@ grep -nE '(^|[;&|[:space:]])git worktree remove' "$file"
 
 ## ソース
 
-- [PR #2498 review results](../../raw/reviews/20260901T053153Z-pr-2498.md)
-- [PR #2498 fix results](../../raw/fixes/20260901T055639Z-pr-2498.md)
+- [レビュー結果](../../raw/reviews/20260901T053153Z-pr-2498.md)
+- [fix 結果](../../raw/fixes/20260901T055639Z-pr-2498.md)

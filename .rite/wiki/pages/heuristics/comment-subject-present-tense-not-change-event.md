@@ -85,6 +85,6 @@ done
 
 ## ソース
 
-- [PR #2020 review cycle 3 — 旧版表現の検出と lint 緑の非証拠性](../../raw/reviews/20260725T160402Z-pr-2020.md)
-- [PR #2020 fix results (cycle 3) — 現在形の制約文への書き換え](../../raw/fixes/20260725T160545Z-pr-2020.md)
-- [PR #2020 fix results (cycle 2) — 到達不能な例示の置換と md5 機械証明](../../raw/fixes/20260725T154630Z-pr-2020.md)
+- [旧版表現の検出と lint 緑の非証拠性](../../raw/reviews/20260725T160402Z-pr-2020.md)
+- [現在形の制約文への書き換え](../../raw/fixes/20260725T160545Z-pr-2020.md)
+- [到達不能な例示の置換と md5 機械証明](../../raw/fixes/20260725T154630Z-pr-2020.md)

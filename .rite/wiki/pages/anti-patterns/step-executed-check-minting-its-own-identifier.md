@@ -59,4 +59,4 @@ commit SHA を識別子にすると、粒度が cycle ではなく commit にな
 
 ## ソース
 
-- [PR #2231 fix results (cycle 3)](../../raw/fixes/20260810T150514Z-pr-2231.md)
+- [fix 結果](../../raw/fixes/20260810T150514Z-pr-2231.md)

@@ -71,5 +71,5 @@ HTML コメントだけでなく、**テーブルセル内の code span に含�
 
 ## ソース
 
-- [PR #792 cycle 3 fix results (GFM table 構造破壊 + Asymmetric Fix Transcription 再発)](../../raw/fixes/20260503T110855Z-pr-792-fix-cycle3.md)
-- [PR #2124 fix results (cycle 3)（code span 内 raw pipe のセル境界破壊を /markdown API の td 数で実測）](../../raw/fixes/20260806T111135Z-pr-2124.md)
+- [GFM table 構造破壊 + Asymmetric Fix Transcription 再発](../../raw/fixes/20260503T110855Z-pr-792-fix-cycle3.md)
+- [code span 内 raw pipe のセル境界破壊を /markdown API の td 数で実測](../../raw/fixes/20260806T111135Z-pr-2124.md)

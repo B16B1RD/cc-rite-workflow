@@ -90,9 +90,9 @@ mutation の実施者は**主張する側と独立**であることが望まし�
 
 ## ソース
 
-- [PR #1959 review cycle 3 (空虚 pin + ERE 未エスケープの runtime 実証)](../../raw/reviews/20260721T175725Z-pr-1959.md)
-- [PR #1959 fix cycle 3 (単一行トークン化 + エスケープ統一)](../../raw/fixes/20260721T175931Z-pr-1959.md)
-- [PR #2038 fix results (cycle 4) — fixture スコープ由来の恒真化](../../raw/fixes/20260728T093135Z-pr-2038.md)
-- [PR #2426 review cycle 1 — 件数 0 検証が「正しく在る」と「丸ごと無い」を区別できない](../../raw/reviews/20260828T035444Z-pr-2426.md)
-- [PR #2426 fix results — 正負の対で pin + ミューテーション実測 + 先例探索](../../raw/fixes/20260828T035827Z-pr-2426.md)
-- [PR #2426 review cycle 2 — 解消検証の独立再現と実バイト列の確認](../../raw/reviews/20260828T040534Z-pr-2426.md)
+- [空虚 pin + ERE 未エスケープの runtime 実証](../../raw/reviews/20260721T175725Z-pr-1959.md)
+- [単一行トークン化 + エスケープ統一](../../raw/fixes/20260721T175931Z-pr-1959.md)
+- [fixture スコープ由来の恒真化](../../raw/fixes/20260728T093135Z-pr-2038.md)
+- [件数 0 検証が「正しく在る」と「丸ごと無い」を区別できない](../../raw/reviews/20260828T035444Z-pr-2426.md)
+- [正負の対で pin + ミューテーション実測 + 先例探索](../../raw/fixes/20260828T035827Z-pr-2426.md)
+- [解消検証の独立再現と実バイト列の確認](../../raw/reviews/20260828T040534Z-pr-2426.md)

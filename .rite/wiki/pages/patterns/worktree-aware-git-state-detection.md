@@ -45,4 +45,4 @@ code-quality / error-handling reviewer が worktree ルート・サブディレ�
 
 ## ソース
 
-- [PR #1734 review results](../../raw/reviews/20260703T042604Z-pr-1734.md)
+- [レビュー結果](../../raw/reviews/20260703T042604Z-pr-1734.md)

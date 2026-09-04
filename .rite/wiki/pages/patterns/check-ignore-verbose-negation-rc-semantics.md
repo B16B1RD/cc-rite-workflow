@@ -68,5 +68,5 @@ gitignore-health-check の判定を「特定ルール表記への文字列一致
 
 ## ソース
 
-- [PR #1836 fix results](../../raw/fixes/20260712T145139Z-pr-1836.md)
-- [PR #1836 review results](../../raw/reviews/20260712T151954Z-pr-1836.md)
+- [fix 結果](../../raw/fixes/20260712T145139Z-pr-1836.md)
+- [レビュー結果](../../raw/reviews/20260712T151954Z-pr-1836.md)

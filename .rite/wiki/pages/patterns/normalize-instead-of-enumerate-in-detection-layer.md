@@ -51,7 +51,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-29T21:32:36+09:00" }
 
 ## ソース
 
-- [PR #2036 review results (cycle 5, mergeable)](../../raw/reviews/20260727T084223Z-pr-2036.md)
+- [レビュー結果](../../raw/reviews/20260727T084223Z-pr-2036.md)
 
 ## 補強: 散文の場合分けも「列挙」ではなく「畳み込み」で吸収する
 
@@ -75,7 +75,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-29T21:32:36+09:00" }
 
 ## ソース（追記分）
 
-- [PR #2044 review results (cycle 2) — 2 軸の成否の組み合わせを散文で列挙すると象限を取りこぼす](../../raw/reviews/20260729T064538Z-pr-2044.md)
-- [PR #2044 fix results (cycle 2) — 「失敗」と「未到達」は 2x2 になる](../../raw/fixes/20260729T064931Z-pr-2044.md)
-- [PR #2044 fix results (cycle 3) — 劣化軸が増えても分岐ラベルは増やさない](../../raw/fixes/20260729T071243Z-pr-2044.md)
-- [PR #2044 fix results (cycle 5) — 1 テンプレート + 軸ごとの pre-fill への畳み込み](../../raw/fixes/20260729T075214Z-pr-2044.md)
+- [2 軸の成否の組み合わせを散文で列挙すると象限を取りこぼす](../../raw/reviews/20260729T064538Z-pr-2044.md)
+- [「失敗」と「未到達」は 2x2 になる](../../raw/fixes/20260729T064931Z-pr-2044.md)
+- [劣化軸が増えても分岐ラベルは増やさない](../../raw/fixes/20260729T071243Z-pr-2044.md)
+- [1 テンプレート + 軸ごとの pre-fill への畳み込み](../../raw/fixes/20260729T075214Z-pr-2044.md)

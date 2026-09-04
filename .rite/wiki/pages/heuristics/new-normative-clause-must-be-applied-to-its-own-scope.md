@@ -58,5 +58,5 @@ hook 登録表と `hooks.json` の乖離を直す変更で、表の直前の SoT
 
 ## ソース
 
-- [PR #2481 review results](../../raw/reviews/20260830T071247Z-pr-2481.md)
-- [PR #2481 review results (cycle 2)](../../raw/reviews/20260830T072415Z-pr-2481.md)
+- [レビュー結果](../../raw/reviews/20260830T071247Z-pr-2481.md)
+- [レビュー結果](../../raw/reviews/20260830T072415Z-pr-2481.md)

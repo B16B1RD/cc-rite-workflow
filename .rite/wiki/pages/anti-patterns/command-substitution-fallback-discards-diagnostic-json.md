@@ -82,6 +82,6 @@ esac
 
 ## ソース
 
-- [PR #1847 review (rite workflow 全体で繰り返される `|| status_json=""` パターンの系統的検出)](../../raw/reviews/20260713T043138Z-pr-1847.md)
-- [PR #1847 fix (open.md / cleanup.md の2箇所を修正、command substitution の exit-code非依存挙動を根拠に説明)](../../raw/fixes/20260713T043947Z-pr-1847.md)
-- [PR #1851 review (残存 4 箇所の一掃 — 被委譲 script 契約の実確認による除去正当性検証、issue-close の -z check 誤発火の実害特定)](../../raw/reviews/20260713T123348Z-pr-1851.md)
+- [rite workflow 全体で繰り返される `|| status_json=""` パターンの系統的検出](../../raw/reviews/20260713T043138Z-pr-1847.md)
+- [open.md / cleanup.md の2箇所を修正、command substitution の exit-code非依存挙動を根拠に説明](../../raw/fixes/20260713T043947Z-pr-1847.md)
+- [残存 4 箇所の一掃 — 被委譲 script 契約の実確認による除去正当性検証、issue-close の -z check 誤発火の実害特定](../../raw/reviews/20260713T123348Z-pr-1851.md)

@@ -53,4 +53,4 @@ accept 済みの指摘と前サイクルで nit-noted と判定した指摘を�
 
 ## ソース
 
-- [PR #2489 review results (cycle 4, mergeable) — 4 サイクルの収束の形](../../raw/reviews/20260830T145537Z-pr-2489.md)
+- [4 サイクルの収束の形](../../raw/reviews/20260830T145537Z-pr-2489.md)

@@ -59,5 +59,5 @@ pin の文面は正しく、意図も正しかった。誤っていたのは、�
 
 ## ソース
 
-- [PR #2112 review results (cycle 3)（`declare` / `typeset` で pin を素通りできることを検出）](../../raw/reviews/20260805T043752Z-pr-2112.md)
-- [PR #2112 fix results (cycle 3)（静的 pin を allowlist へ反転）](../../raw/fixes/20260805T050456Z-pr-2112.md)
+- [`declare` / `typeset` で pin を素通りできることを検出](../../raw/reviews/20260805T043752Z-pr-2112.md)
+- [静的 pin を allowlist へ反転](../../raw/fixes/20260805T050456Z-pr-2112.md)

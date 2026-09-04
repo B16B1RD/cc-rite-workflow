@@ -76,11 +76,11 @@ start.md Phase 5.5.2 / 5.2.1 / 2.4 を 3 references へ抽出した PR (シリ�
 
 ## ソース
 
-- [PR #802 review (cycle 1)](../../raw/reviews/20260504T050342Z-pr-802.md)
-- [PR #802 fix (cycle 1)](../../raw/fixes/20260504T050654Z-pr-802.md)
-- [PR #868 review (cycle 1)](../../raw/reviews/20260506T162735Z-pr-868.md)
-- [PR #868 fix](../../raw/fixes/20260506T163131Z-pr-868.md)
-- [PR #947 review (cycle 1)](../../raw/reviews/20260513T080326Z-pr-947.md)
-- [PR #947 fix (cycle 1)](../../raw/fixes/20260513T080706Z-pr-947-fix-cycle-1.md)
-- [PR #950 review (inherited mismatch "Use Python" 文言を SoT 抽出時の cross-reference verify で検出)](../../raw/reviews/20260514T010100Z-pr-950.md)
-- [PR #950 cycle 1 fix (inherited mismatch を canonical gh-cli-patterns.md に整合化、SoT 抽出と同 cycle で対応)](../../raw/fixes/20260514T010559Z-pr-950.md)
+- [レビュー結果](../../raw/reviews/20260504T050342Z-pr-802.md)
+- [fix 結果](../../raw/fixes/20260504T050654Z-pr-802.md)
+- [レビュー結果](../../raw/reviews/20260506T162735Z-pr-868.md)
+- [fix 結果](../../raw/fixes/20260506T163131Z-pr-868.md)
+- [レビュー結果](../../raw/reviews/20260513T080326Z-pr-947.md)
+- [fix 結果](../../raw/fixes/20260513T080706Z-pr-947-fix-cycle-1.md)
+- [inherited mismatch "Use Python" 文言を SoT 抽出時の cross-reference verify で検出](../../raw/reviews/20260514T010100Z-pr-950.md)
+- [inherited mismatch を canonical gh-cli-patterns.md に整合化、SoT 抽出と同 cycle で対応](../../raw/fixes/20260514T010559Z-pr-950.md)

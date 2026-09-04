@@ -37,4 +37,4 @@ docstring / SPEC / コメントの「例示」(e.g. 〜等) に使う語彙が�
 
 ## ソース
 
-- [PR #1838 review results — F-05: 「決定事項・メモ」(replica 節) を local ## Detail の例として誤帰属。writer grep 0 件で demonstrable に確定](../../raw/reviews/20260712T174329Z-pr-1838.md)
+- [F-05: 「決定事項・メモ」(replica 節) を local ## Detail の例として誤帰属。writer grep 0 件で demonstrable に確定](../../raw/reviews/20260712T174329Z-pr-1838.md)

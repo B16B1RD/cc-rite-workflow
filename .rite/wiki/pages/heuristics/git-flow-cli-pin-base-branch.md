@@ -38,4 +38,4 @@ gh issue develop {issue_number} --name "{branch_name}" --base "{base_branch}"
 
 ## ソース
 
-- [PR #1097 review results](../../raw/reviews/20260523T112739Z-pr-1097.md)
+- [レビュー結果](../../raw/reviews/20260523T112739Z-pr-1097.md)

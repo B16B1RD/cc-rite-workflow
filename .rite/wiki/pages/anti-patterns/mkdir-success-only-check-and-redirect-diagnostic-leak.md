@@ -64,9 +64,9 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T00:40:00+09:00" }
 
 ## ソース
 
-- [PR #1969 cycle 1 review (対称フォールバック実装の落とし穴)](../../raw/reviews/20260722T050800Z-pr-1969.md)
-- [PR #1969 cycle 1 fix (mkdir 成功のみ判定の是正)](../../raw/fixes/20260722T051500Z-pr-1969.md)
-- [PR #1969 cycle 3 fix (chmod probe への brace group 適用)](../../raw/fixes/20260722T060230Z-pr-1969-cycle3.md)
-- [PR #1969 cycle 5 review (brace group 未使用のリダイレクト評価順序回帰)](../../raw/reviews/20260722T070904Z-pr-1969-cycle5.md)
-- [PR #1969 cycle 5 fix (brace group への統一)](../../raw/fixes/20260722T070928Z-pr-1969-cycle5.md)
-- [PR #2114 fix results (cycle 4) — 捨てられる側の非対称と列位置 pin](../../raw/fixes/20260805T124633Z-pr-2114.md)
+- [対称フォールバック実装の落とし穴](../../raw/reviews/20260722T050800Z-pr-1969.md)
+- [mkdir 成功のみ判定の是正](../../raw/fixes/20260722T051500Z-pr-1969.md)
+- [chmod probe への brace group 適用](../../raw/fixes/20260722T060230Z-pr-1969-cycle3.md)
+- [brace group 未使用のリダイレクト評価順序回帰](../../raw/reviews/20260722T070904Z-pr-1969-cycle5.md)
+- [brace group への統一](../../raw/fixes/20260722T070928Z-pr-1969-cycle5.md)
+- [捨てられる側の非対称と列位置 pin](../../raw/fixes/20260805T124633Z-pr-2114.md)

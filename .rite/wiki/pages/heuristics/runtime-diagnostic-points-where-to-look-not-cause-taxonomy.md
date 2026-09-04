@@ -53,5 +53,5 @@ runtime 側の列挙を撤去すると、外部入力を診断へ埋め込む必
 
 ## ソース
 
-- [PR #2142 fix results (cycle 6)](../../raw/fixes/20260808T032734Z-pr-2142.md)
-- [PR #2142 review results (cycle 5)](../../raw/reviews/20260808T031704Z-pr-2142.md)
+- [fix 結果](../../raw/fixes/20260808T032734Z-pr-2142.md)
+- [レビュー結果](../../raw/reviews/20260808T031704Z-pr-2142.md)

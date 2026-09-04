@@ -82,6 +82,6 @@ pin を隣接ファイル向けに既に持っている場合でも、対象フ�
 
 ## ソース
 
-- [PR #2466 review results](../../raw/reviews/20260829T152045Z-pr-2466.md)
-- [PR #2466 fix results](../../raw/fixes/20260829T152626Z-pr-2466.md)
-- [PR #2479 review results](../../raw/reviews/20260830T060338Z-pr-2479.md)
+- [レビュー結果](../../raw/reviews/20260829T152045Z-pr-2466.md)
+- [fix 結果](../../raw/fixes/20260829T152626Z-pr-2466.md)
+- [レビュー結果](../../raw/reviews/20260830T060338Z-pr-2479.md)

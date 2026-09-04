@@ -64,4 +64,4 @@ live dead ref の消滅は grep で検証する（SPEC / skills reference / desi
 
 ## ソース
 
-- [PR #1132 review results](../../raw/reviews/20260524T175056Z-pr-1132.md)
+- [レビュー結果](../../raw/reviews/20260524T175056Z-pr-1132.md)

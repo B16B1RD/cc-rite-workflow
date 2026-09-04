@@ -73,5 +73,5 @@ grep -rn 'mkdir -p' plugins/rite/hooks/scripts/ \
 
 ## ソース
 
-- [PR #585 review results](../../raw/reviews/20260419T004413Z-pr-585.md)
-- [PR #585 fix results](../../raw/fixes/20260419T004921Z-pr-585.md)
+- [レビュー結果](../../raw/reviews/20260419T004413Z-pr-585.md)
+- [fix 結果](../../raw/fixes/20260419T004921Z-pr-585.md)

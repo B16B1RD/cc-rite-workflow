@@ -87,7 +87,7 @@ clean な解は negative grep 単独に頼らず、**positive check (新形式 `
 
 ## ソース
 
-- [PR #1151 fix cycle 1 (18 fixes)](../../raw/fixes/20260526T152327Z-pr-1151.md)
-- [PR #1151 review cycle 0](../../raw/reviews/20260526T151003Z-pr-1151.md)
-- [PR #1166 review cycle 12 (固定文字列 grep の suffix under-match MEDIUM)](../../raw/reviews/20260528T043041Z-pr-1166.md)
-- [PR #1166 fix cycle 12 (suffix 許容 regex への切替)](../../raw/fixes/20260528T050131Z-pr-1166.md)
+- [18 fixes](../../raw/fixes/20260526T152327Z-pr-1151.md)
+- [レビュー結果](../../raw/reviews/20260526T151003Z-pr-1151.md)
+- [固定文字列 grep の suffix under-match MEDIUM](../../raw/reviews/20260528T043041Z-pr-1166.md)
+- [suffix 許容 regex への切替](../../raw/fixes/20260528T050131Z-pr-1166.md)

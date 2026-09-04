@@ -61,4 +61,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
 
 ## ソース
 
-- [Issue #532 close retrospective](../../raw/retrospectives/20260416T094137Z-issue-532.md)
+- [close retrospective](../../raw/retrospectives/20260416T094137Z-issue-532.md)

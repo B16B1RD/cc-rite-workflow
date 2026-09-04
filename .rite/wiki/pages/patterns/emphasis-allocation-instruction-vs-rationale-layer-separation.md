@@ -70,8 +70,8 @@ bullet (numbered list / unordered list) 内で MUST-DO 命令と META / rational
 
 ## ソース
 
-- [PR #1044 cycle 1 review](../../raw/reviews/20260518T095947Z-pr-1044.md)
-- [PR #1044 cycle 1 fix](../../raw/fixes/20260518T100632Z-pr-1044.md)
-- [PR #1044 cycle 2 review](../../raw/reviews/20260518T101307Z-pr-1044.md)
-- [PR #1044 cycle 3 fix](../../raw/fixes/20260518T101701Z-pr-1044.md)
-- [PR #1044 cycle 3 final review](../../raw/reviews/20260518T102416Z-pr-1044.md)
+- [レビュー結果](../../raw/reviews/20260518T095947Z-pr-1044.md)
+- [fix 結果](../../raw/fixes/20260518T100632Z-pr-1044.md)
+- [レビュー結果](../../raw/reviews/20260518T101307Z-pr-1044.md)
+- [fix 結果](../../raw/fixes/20260518T101701Z-pr-1044.md)
+- [final review](../../raw/reviews/20260518T102416Z-pr-1044.md)

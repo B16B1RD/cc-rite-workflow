@@ -105,5 +105,5 @@ cycle 2 review で発見された design flaw: `in_create` flag が一度立つ�
 
 ## ソース
 
-- [PR #906 fix results (cycle 1)](../../raw/fixes/20260508T172017Z-pr-906.md)
-- [PR #906 review results](../../raw/reviews/20260508T171533Z-pr-906.md)
+- [fix 結果](../../raw/fixes/20260508T172017Z-pr-906.md)
+- [レビュー結果](../../raw/reviews/20260508T171533Z-pr-906.md)

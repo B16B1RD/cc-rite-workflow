@@ -90,10 +90,10 @@ guard・不変量の TC を追加したら、worktree-only mutation（当該 gua
 
 ## ソース
 
-- [PR #1743 review cycle 1（一方向差し替えの不変量誤帰属 + reverse 未 pin を検出）](../../raw/reviews/20260703T164934Z-pr-1743.md)
-- [PR #1743 fix cycle 1（均衡入替 TC-6 + reverse pin TC-9 を適用）](../../raw/fixes/20260703T165654Z-pr-1743.md)
-- [PR #1743 review cycle 2（pipe-filter decoy 配置の coverage gap を推奨事項として検出）](../../raw/reviews/20260703T180609Z-pr-1743.md)
-- [PR #2112 review results (cycle 2)（行アンカー `^` / `$` の片側 mutant が 4 件生存）](../../raw/reviews/20260805T033632Z-pr-2112.md)
-- [PR #2112 fix results (cycle 2)（項ごとの fixture と read/write 両経路の pin を適用）](../../raw/fixes/20260805T040711Z-pr-2112.md)
-- [PR #2112 review results (cycle 3)（連言 2 項の同時 false による識別力ゼロと、到達しない negative control を検出）](../../raw/reviews/20260805T043752Z-pr-2112.md)
-- [PR #2112 fix results (cycle 3)（項ごとの pin 分割と mutation 軸の取り直しを適用）](../../raw/fixes/20260805T050456Z-pr-2112.md)
+- [一方向差し替えの不変量誤帰属 + reverse 未 pin を検出](../../raw/reviews/20260703T164934Z-pr-1743.md)
+- [均衡入替 TC-6 + reverse pin TC-9 を適用](../../raw/fixes/20260703T165654Z-pr-1743.md)
+- [pipe-filter decoy 配置の coverage gap を推奨事項として検出](../../raw/reviews/20260703T180609Z-pr-1743.md)
+- [行アンカー `^` / `$` の片側 mutant が 4 件生存](../../raw/reviews/20260805T033632Z-pr-2112.md)
+- [項ごとの fixture と read/write 両経路の pin を適用](../../raw/fixes/20260805T040711Z-pr-2112.md)
+- [連言 2 項の同時 false による識別力ゼロと、到達しない negative control を検出](../../raw/reviews/20260805T043752Z-pr-2112.md)
+- [項ごとの pin 分割と mutation 軸の取り直しを適用](../../raw/fixes/20260805T050456Z-pr-2112.md)

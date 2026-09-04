@@ -55,5 +55,5 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
 
 ## ソース
 
-- [PR #837 cycle 1 review (前方参照欠落 LOW 検出)](../../raw/reviews/20260505T105152Z-pr-837.md)
-- [PR #837 fix (前方参照契約の canonical 化)](../../raw/fixes/20260505T105459Z-pr-837.md)
+- [前方参照欠落 LOW 検出](../../raw/reviews/20260505T105152Z-pr-837.md)
+- [前方参照契約の canonical 化](../../raw/fixes/20260505T105459Z-pr-837.md)

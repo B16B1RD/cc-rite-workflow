@@ -86,6 +86,6 @@ cycle 2 のフルレビューは 0 findings / mergeable。fix が新規 regressi
 
 ## ソース
 
-- [PR #1315 review results](../../raw/reviews/20260609T040553Z-pr-1315.md)
-- [PR #1315 fix results](../../raw/fixes/20260609T041117Z-pr-1315.md)
-- [PR #1315 review results (cycle 2)](../../raw/reviews/20260609T042259Z-pr-1315.md)
+- [レビュー結果](../../raw/reviews/20260609T040553Z-pr-1315.md)
+- [fix 結果](../../raw/fixes/20260609T041117Z-pr-1315.md)
+- [レビュー結果](../../raw/reviews/20260609T042259Z-pr-1315.md)

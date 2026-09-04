@@ -38,5 +38,5 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 
 ## ソース
 
-- [PR #2066 fix results (cycle 4)](../../raw/fixes/20260730T202223Z-pr-2066.md)
-- [PR #2066 fix results (cycle 5)](../../raw/fixes/20260730T205113Z-pr-2066.md)
+- [fix 結果](../../raw/fixes/20260730T202223Z-pr-2066.md)
+- [fix 結果](../../raw/fixes/20260730T205113Z-pr-2066.md)

@@ -92,5 +92,5 @@ PR review 時に以下を必須化:
 
 ## ソース
 
-- [PR #688 cycle 12 fix (集約 overstate 訂正 + migration 取り残し解消, 7 findings)](../../raw/fixes/20260428T111028Z-pr-688.md)
-- [PR #688 cycle 12 review (MEDIUM × 2 で集約 overstate / migration 取り残し検出)](../../raw/reviews/20260428T105854Z-pr-688.md)
+- [集約 overstate 訂正 + migration 取り残し解消, 7 findings](../../raw/fixes/20260428T111028Z-pr-688.md)
+- [MEDIUM × 2 で集約 overstate / migration 取り残し検出](../../raw/reviews/20260428T105854Z-pr-688.md)

@@ -70,14 +70,14 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 
 ## ソース
 
-- [PR #1244 review results (cycle 5)](../../raw/reviews/20260602T033014Z-pr-1244.md)
-- [PR #1244 fix results (cycle 5)](../../raw/fixes/20260602T033213Z-pr-1244.md)
+- [レビュー結果](../../raw/reviews/20260602T033014Z-pr-1244.md)
+- [fix 結果](../../raw/fixes/20260602T033213Z-pr-1244.md)
 
 ## ソース（追記分 4）
 
-- [PR #2056 review results (cycle 1) — 部分文字列マッチの過剰範囲](../../raw/reviews/20260730T073356Z-pr-2056.md)
-- [PR #2056 fix results (cycle 1) — 実測 3 文言への分解](../../raw/fixes/20260730T073832Z-pr-2056.md)
-- [PR #2056 review results (cycle 2) — 片側修正の非対称残存](../../raw/reviews/20260730T075618Z-pr-2056.md)
-- [PR #2056 fix results (cycle 2) — 権威性を分類軸に引き上げる](../../raw/fixes/20260730T075954Z-pr-2056.md)
-- [PR #2056 review results (cycle 3) — 行の分離 / 文言の狭窄 / 意味論の分離の 3 操作](../../raw/reviews/20260730T081603Z-pr-2056.md)
-- [PR #2056 fix results (cycle 3) — 元 catch-all 行の全要件を新行へ明示転記](../../raw/fixes/20260730T081940Z-pr-2056.md)
+- [部分文字列マッチの過剰範囲](../../raw/reviews/20260730T073356Z-pr-2056.md)
+- [実測 3 文言への分解](../../raw/fixes/20260730T073832Z-pr-2056.md)
+- [片側修正の非対称残存](../../raw/reviews/20260730T075618Z-pr-2056.md)
+- [権威性を分類軸に引き上げる](../../raw/fixes/20260730T075954Z-pr-2056.md)
+- [行の分離 / 文言の狭窄 / 意味論の分離の 3 操作](../../raw/reviews/20260730T081603Z-pr-2056.md)
+- [元 catch-all 行の全要件を新行へ明示転記](../../raw/fixes/20260730T081940Z-pr-2056.md)

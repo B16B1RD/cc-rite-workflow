@@ -95,5 +95,5 @@ sentinel を 2 のままにしていると、この probe が sentinel の arm �
 
 ## ソース
 
-- [PR #2051 review results](../../raw/reviews/20260729T142410Z-pr-2051.md)
-- [PR #2051 fix results](../../raw/fixes/20260729T144345Z-pr-2051.md)
+- [レビュー結果](../../raw/reviews/20260729T142410Z-pr-2051.md)
+- [fix 結果](../../raw/fixes/20260729T144345Z-pr-2051.md)

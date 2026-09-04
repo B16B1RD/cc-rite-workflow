@@ -96,6 +96,6 @@ helper 抽出（bash を実ファイルに切り出して hermetic にテスト�
 
 ## ソース
 
-- [PR #2030 review results (cycle 5)](../../raw/reviews/20260726T150008Z-pr-2030-cycle5.md)
-- [PR #2070 review results](../../raw/reviews/20260801T170512Z-pr-2070.md)
-- [PR #2070 fix results](../../raw/fixes/20260801T171512Z-pr-2070.md)
+- [レビュー結果](../../raw/reviews/20260726T150008Z-pr-2030-cycle5.md)
+- [レビュー結果](../../raw/reviews/20260801T170512Z-pr-2070.md)
+- [fix 結果](../../raw/fixes/20260801T171512Z-pr-2070.md)

@@ -48,4 +48,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T11:55:05Z" }
 
 ## ソース
 
-- [PR #2229 review results (cycle 3)](../../raw/reviews/20260810T080754Z-pr-2229.md)
+- [レビュー結果](../../raw/reviews/20260810T080754Z-pr-2229.md)

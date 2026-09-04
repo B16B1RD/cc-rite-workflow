@@ -45,4 +45,4 @@ cycle 1 でこの配列を読む新規 consumer が「blocking 集合」と誤�
 
 ## ソース
 
-- [PR #2126 fix results (cycle 2)](../../raw/fixes/20260806T160550Z-pr-2126.md)
+- [fix 結果](../../raw/fixes/20260806T160550Z-pr-2126.md)

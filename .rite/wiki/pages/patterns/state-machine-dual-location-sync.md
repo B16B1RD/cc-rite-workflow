@@ -129,7 +129,7 @@ Issue テンプレート (`templates/issue/template-structure.md`) では、` ``
 
 ## ソース
 
-- [PR #586 cycle 5 review (state 動作矛盾 F-03 検出)](../../raw/reviews/20260419T034237Z-pr-586-cycle5.md)
-- [PR #624 cycle 2 fix (helper case 拡張 × caller WARN_MSG 連動漏れ G3 HIGH)](../../raw/fixes/20260420T150304Z-pr-624-cycle2.md)
-- [PR #2084 review results (cycle 4, 生成テンプレートの fence 内外 sub-pattern)](../../raw/reviews/20260802T025011Z-pr-2084.md)
-- [PR #2470 review results (cycle 2, 値域 2 箇所記述の sub-pattern)](../../raw/reviews/20260830T013439Z-pr-2470.md)
+- [state 動作矛盾 F-03 検出](../../raw/reviews/20260419T034237Z-pr-586-cycle5.md)
+- [helper case 拡張 × caller WARN_MSG 連動漏れ G3 HIGH](../../raw/fixes/20260420T150304Z-pr-624-cycle2.md)
+- [生成テンプレートの fence 内外 sub-pattern](../../raw/reviews/20260802T025011Z-pr-2084.md)
+- [値域 2 箇所記述の sub-pattern](../../raw/reviews/20260830T013439Z-pr-2470.md)

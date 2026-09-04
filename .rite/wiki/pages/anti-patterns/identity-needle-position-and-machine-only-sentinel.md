@@ -80,6 +80,6 @@ needle が人間可視の文字列（見出しやラベル）だと、手書き�
 
 ## ソース
 
-- [PR #2038 fix results (cycle 3)](../../raw/fixes/20260728T090203Z-pr-2038.md)
-- [PR #2038 fix results (cycle 2)](../../raw/fixes/20260728T082625Z-pr-2038.md)
-- [PR #2038 fix results](../../raw/fixes/20260728T070208Z-pr-2038.md)
+- [fix 結果](../../raw/fixes/20260728T090203Z-pr-2038.md)
+- [fix 結果](../../raw/fixes/20260728T082625Z-pr-2038.md)
+- [fix 結果](../../raw/fixes/20260728T070208Z-pr-2038.md)

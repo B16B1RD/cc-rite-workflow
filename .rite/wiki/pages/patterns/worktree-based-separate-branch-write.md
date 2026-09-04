@@ -115,8 +115,8 @@ canonical 対策 (commit / setup 両経路の自己回復):
 
 ## ソース
 
-- [PR #548 cycle 1 fix (21 findings 解消 — plugin_root 前置、mktemp silent 禁止、wiki worktree 永続化)](../../raw/fixes/20260416T165559Z-pr-548.md)
-- [PR #548 cycle 2 fix (worktree fast path 追加、prunable auto recovery)](../../raw/fixes/20260416T172110Z-pr-548.md)
-- [PR #548 cycle 2 review (worktree collision CRITICAL、asymmetric transcription)](../../raw/reviews/20260416T171008Z-pr-548.md)
-- [PR #548 cycle 6 mergeable (worktree redesign の完成レビュー)](../../raw/reviews/20260416T182704Z-pr-548-cycle6.md)
-- [PR #1663 review results — corrupt/orphaned worktree (stale gitdir、リポジトリ移動由来) からの自己回復: rc-aware fast-path 検証 + setup.sh 委譲 + legacy fallthrough、silent exit 1 廃止と WARNING surface、fallthrough コメントの実 rc 遷移正確化](../../raw/reviews/20260626T031814Z-pr-1663.md)
+- [21 findings 解消 — plugin_root 前置、mktemp silent 禁止、wiki worktree 永続化](../../raw/fixes/20260416T165559Z-pr-548.md)
+- [worktree fast path 追加、prunable auto recovery](../../raw/fixes/20260416T172110Z-pr-548.md)
+- [worktree collision CRITICAL、asymmetric transcription](../../raw/reviews/20260416T171008Z-pr-548.md)
+- [mergeable (worktree redesign の完成レビュー)](../../raw/reviews/20260416T182704Z-pr-548-cycle6.md)
+- [corrupt/orphaned worktree (stale gitdir、リポジトリ移動由来) からの自己回復: rc-aware fast-path 検証 + setup.sh 委譲 + legacy fallthrough、silent exit 1 廃止と WARNING surface、fallthrough コメントの実 rc 遷移正確化](../../raw/reviews/20260626T031814Z-pr-1663.md)

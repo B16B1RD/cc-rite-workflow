@@ -101,7 +101,7 @@ my_helper() {
 
 ## ソース
 
-- [PR #550 cycle 1 review findings](../../raw/reviews/20260416T201615Z-pr-550.md)
-- [PR #550 cycle 2 re-review findings](../../raw/reviews/20260416T214545Z-pr-550.md)
-- [PR #550 cycle 1 fix results](../../raw/fixes/20260416T202213Z-pr-550.md)
-- [PR #550 cycle 3 fix results (LOW docstring improvements)](../../raw/fixes/20260416T214823Z-pr-550.md)
+- [レビュー結果](../../raw/reviews/20260416T201615Z-pr-550.md)
+- [レビュー結果](../../raw/reviews/20260416T214545Z-pr-550.md)
+- [fix 結果](../../raw/fixes/20260416T202213Z-pr-550.md)
+- [LOW docstring improvements](../../raw/fixes/20260416T214823Z-pr-550.md)

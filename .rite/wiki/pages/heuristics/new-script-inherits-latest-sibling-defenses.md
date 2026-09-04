@@ -87,8 +87,8 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-12T18:34:40Z" }
 
 ## ソース
 
-- [PR #1909 review results (cycle 1)](../../raw/reviews/20260719T022247Z-pr-1909.md)
-- [PR #1909 fix results (cycle 1)](../../raw/fixes/20260719T022630Z-pr-1909.md)
-- [PR #2120 review results (cycle 1)](../../raw/reviews/20260805T233057Z-pr-2120.md)
-- [PR #2137 fix results — ファイル名列挙型の hardening test が新規 lib を死角に入れる](../../raw/fixes/20260807T134638Z-pr-2137.md)
-- [PR #2278 fix results — 抽出述語を sibling helper と揃えず新規 checker だけが後退した](../../raw/fixes/20260812T133631Z-pr-2278.md)
+- [レビュー結果](../../raw/reviews/20260719T022247Z-pr-1909.md)
+- [fix 結果](../../raw/fixes/20260719T022630Z-pr-1909.md)
+- [レビュー結果](../../raw/reviews/20260805T233057Z-pr-2120.md)
+- [ファイル名列挙型の hardening test が新規 lib を死角に入れる](../../raw/fixes/20260807T134638Z-pr-2137.md)
+- [抽出述語を sibling helper と揃えず新規 checker だけが後退した](../../raw/fixes/20260812T133631Z-pr-2278.md)

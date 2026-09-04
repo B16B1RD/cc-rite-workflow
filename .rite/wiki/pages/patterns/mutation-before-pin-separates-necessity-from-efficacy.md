@@ -83,5 +83,5 @@ mutation は必ず**隔離コピー**で当て、無害な変更で落ちない�
 
 ## ソース
 
-- [PR #2038 fix results (cycle 5)](../../raw/fixes/20260728T100957Z-pr-2038.md)
-- [PR #2038 fix results (cycle 6, final)](../../raw/fixes/20260728T122258Z-pr-2038.md)
+- [fix 結果](../../raw/fixes/20260728T100957Z-pr-2038.md)
+- [fix 結果](../../raw/fixes/20260728T122258Z-pr-2038.md)

@@ -58,5 +58,5 @@ confidence: high
 
 ## ソース
 
-- [PR #2494 review results — 5 reviewer が独立に enum 値域の誤りへ到達](../../raw/reviews/20260831T071720Z-pr-2494.md)
-- [PR #2494 fix results — 値域の誤りを認めて散文を正し、catch-all を沈黙させない](../../raw/fixes/20260831T072532Z-pr-2494.md)
+- [5 reviewer が独立に enum 値域の誤りへ到達](../../raw/reviews/20260831T071720Z-pr-2494.md)
+- [値域の誤りを認めて散文を正し、catch-all を沈黙させない](../../raw/fixes/20260831T072532Z-pr-2494.md)

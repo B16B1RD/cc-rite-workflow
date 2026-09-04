@@ -48,7 +48,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T23:41:26+09:00" }
 
 ## ソース
 
-- [PR #2081 review results](../../raw/reviews/20260801T124341Z-pr-2081.md)
-- [PR #2081 fix results](../../raw/fixes/20260801T124925Z-pr-2081.md)
-- [PR #2081 fix results](../../raw/fixes/20260801T115711Z-pr-2081.md)
-- [PR #2095 fix results (cycle 5: 規則の外延が検出 regex より狭かった)](../../raw/fixes/20260803T131002Z-pr-2095.md)
+- [レビュー結果](../../raw/reviews/20260801T124341Z-pr-2081.md)
+- [fix 結果](../../raw/fixes/20260801T124925Z-pr-2081.md)
+- [fix 結果](../../raw/fixes/20260801T115711Z-pr-2081.md)
+- [規則の外延が検出 regex より狭かった](../../raw/fixes/20260803T131002Z-pr-2095.md)

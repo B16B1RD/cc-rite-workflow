@@ -95,10 +95,10 @@ drift gate の P5/P2 noise が信頼できない場合でも、reason 表の完�
 
 ## ソース
 
-- [PR #1201 fix cycle 1 (comment rot 修正 + 64=64 実測)](../../raw/fixes/20260529T150155Z-pr-1201.md)
-- [PR #1201 fix cycle 2 (stderr capture 追加 + 64=64 実測)](../../raw/fixes/20260529T151834Z-pr-1201.md)
-- [PR #1201 fix cycle 3 (用語定義表 stale 同期 + 64=64 実測)](../../raw/fixes/20260529T153627Z-pr-1201.md)
-- [PR #1201 review cycle 1 (drift-check pre-existing noise + DoD comm -23)](../../raw/reviews/20260529T145515Z-pr-1201.md)
-- [PR #1201 review cycle 2 (P2/P5 64 件 pre-existing 判定)](../../raw/reviews/20260529T151325Z-pr-1201.md)
-- [PR #1201 review cycle 3 (revert test で pre-existing 切り分け)](../../raw/reviews/20260529T152911Z-pr-1201.md)
-- [PR #1201 review cycle 4 (git-stash before/after 戦略の収束記録)](../../raw/reviews/20260529T154822Z-pr-1201.md)
+- [comment rot 修正 + 64=64 実測](../../raw/fixes/20260529T150155Z-pr-1201.md)
+- [stderr capture 追加 + 64=64 実測](../../raw/fixes/20260529T151834Z-pr-1201.md)
+- [用語定義表 stale 同期 + 64=64 実測](../../raw/fixes/20260529T153627Z-pr-1201.md)
+- [drift-check pre-existing noise + DoD comm -23](../../raw/reviews/20260529T145515Z-pr-1201.md)
+- [P2/P5 64 件 pre-existing 判定](../../raw/reviews/20260529T151325Z-pr-1201.md)
+- [revert test で pre-existing 切り分け](../../raw/reviews/20260529T152911Z-pr-1201.md)
+- [git-stash before/after 戦略の収束記録](../../raw/reviews/20260529T154822Z-pr-1201.md)

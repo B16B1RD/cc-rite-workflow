@@ -75,4 +75,4 @@ awk '/^### /{sec=$2} /\(#[0-9]+\)/{ match($0,/\(#[0-9]+\)/); print sec, substr($
 
 ## ソース
 
-- [PR #2485 review results](../../raw/reviews/20260830T102118Z-pr-2485.md)
+- [レビュー結果](../../raw/reviews/20260830T102118Z-pr-2485.md)

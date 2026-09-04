@@ -33,4 +33,4 @@ session-start が `STATE_ROOT/.rite` の mkdir に失敗したとき、nested gi
 
 ## ソース
 
-- [PR #2446 fix results](../../raw/fixes/20260828T170214Z-pr-2446.md)
+- [fix 結果](../../raw/fixes/20260828T170214Z-pr-2446.md)

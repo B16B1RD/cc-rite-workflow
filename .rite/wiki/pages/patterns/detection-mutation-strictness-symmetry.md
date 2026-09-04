@@ -55,4 +55,4 @@ consumer が anchor の suffix 部分 (`(anchor / F-09 対応)` の文言) を�
 
 ## ソース
 
-- [PR #586 cycle 5 review (F-04 strictness 非対称検出)](../../raw/reviews/20260419T034237Z-pr-586-cycle5.md)
+- [F-04 strictness 非対称検出](../../raw/reviews/20260419T034237Z-pr-586-cycle5.md)

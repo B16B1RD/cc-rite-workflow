@@ -105,7 +105,7 @@ exit 0                                    # 全ファイル走査済み・findin
 
 ## ソース
 
-- [PR #2051 review results](../../raw/reviews/20260729T142410Z-pr-2051.md)
-- [PR #2051 fix results](../../raw/fixes/20260729T144345Z-pr-2051.md)
-- [PR #2124 review results (cycle 2)](../../raw/reviews/20260806T103116Z-pr-2124.md)
-- [PR #2278 fix results — exit 0 の多義性を exit 2 と 2 段判定で潰した cycle](../../raw/fixes/20260812T133631Z-pr-2278.md)
+- [レビュー結果](../../raw/reviews/20260729T142410Z-pr-2051.md)
+- [fix 結果](../../raw/fixes/20260729T144345Z-pr-2051.md)
+- [レビュー結果](../../raw/reviews/20260806T103116Z-pr-2124.md)
+- [exit 0 の多義性を exit 2 と 2 段判定で潰した cycle](../../raw/fixes/20260812T133631Z-pr-2278.md)

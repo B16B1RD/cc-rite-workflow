@@ -55,5 +55,5 @@ reviewer 指摘に応じてマッチング条件・記述範囲を「より厳�
 
 ## ソース
 
-- [PR #1773 review cycle 2 (cycle 1 修正の副作用として under-match 新規導入を検出、MEDIUM)](../../raw/reviews/20260706T214706Z-pr-1773-cycle2.md)
-- [PR #1773 fix cycle 2 (実装の正規表現を再導出しバージョンセグメント許容の記述へ修正)](../../raw/fixes/20260706T214905Z-pr-1773-cycle2.md)
+- [修正の副作用として under-match 新規導入を検出、MEDIUM](../../raw/reviews/20260706T214706Z-pr-1773-cycle2.md)
+- [実装の正規表現を再導出しバージョンセグメント許容の記述へ修正](../../raw/fixes/20260706T214905Z-pr-1773-cycle2.md)

@@ -37,5 +37,5 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-20T01:15:00+09:00" }
 
 ## ソース
 
-- [PR #1919 review cycle 3 results](../../raw/reviews/20260719T154814Z-pr-1919-c3.md)
-- [PR #1919 fix cycle 3 results](../../raw/fixes/20260719T154952Z-pr-1919-c3.md)
+- [レビュー結果](../../raw/reviews/20260719T154814Z-pr-1919-c3.md)
+- [fix 結果](../../raw/fixes/20260719T154952Z-pr-1919-c3.md)

@@ -87,6 +87,6 @@ fi
 
 ## ソース
 
-- [PR #1812 review cycle 2 (MEDIUM: 未中和 error() 検出)](../../raw/reviews/20260709T102352Z-pr-1812.md)
-- [PR #1812 fix cycle 2 (中和経路への統一)](../../raw/fixes/20260709T103432Z-pr-1812.md)
-- [PR #2137 review results (cycle 1) — 拒否経路の ERROR 文が未検証値を無加工でエコーし列 0 の偽 marker を成立させる](../../raw/reviews/20260807T133323Z-pr-2137.md)
+- [MEDIUM: 未中和 error() 検出](../../raw/reviews/20260709T102352Z-pr-1812.md)
+- [中和経路への統一](../../raw/fixes/20260709T103432Z-pr-1812.md)
+- [拒否経路の ERROR 文が未検証値を無加工でエコーし列 0 の偽 marker を成立させる](../../raw/reviews/20260807T133323Z-pr-2137.md)

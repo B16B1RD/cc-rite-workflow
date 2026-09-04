@@ -105,5 +105,5 @@ find plugins/rite/commands/pr/references -name '*.md' | xargs wc -l | tail -1
 
 ## ソース
 
-- [Issue #892 close retrospective](../../raw/retrospectives/20260508T153421Z-issue-892.md)
-- [PR #2477 review results](../../raw/reviews/20260830T053201Z-pr-2477.md)
+- [close retrospective](../../raw/retrospectives/20260508T153421Z-issue-892.md)
+- [レビュー結果](../../raw/reviews/20260830T053201Z-pr-2477.md)

@@ -73,4 +73,4 @@ advisory finding が umbrella Issue spec **自身の語法問題**に由来す�
 
 ## ソース
 
-- [PR #885 review results](../../raw/reviews/20260507T103117Z-pr-885.md)
+- [レビュー結果](../../raw/reviews/20260507T103117Z-pr-885.md)

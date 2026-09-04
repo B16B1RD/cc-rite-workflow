@@ -76,9 +76,9 @@ scope を限定する fix を書く際の語彙選択:
 
 ## ソース
 
-- [PR #969 cycle 1 review](../../raw/reviews/20260515T005613Z-pr-969.md)
-- [PR #969 fix results](../../raw/fixes/20260515T005734Z-pr-969.md)
-- [PR #969 cycle 2 review (mergeable convergence)](../../raw/reviews/20260515T010126Z-pr-969.md)
+- [レビュー結果](../../raw/reviews/20260515T005613Z-pr-969.md)
+- [fix 結果](../../raw/fixes/20260515T005734Z-pr-969.md)
+- [mergeable convergence](../../raw/reviews/20260515T010126Z-pr-969.md)
 
 ## 変種: 「窓を狭めた」を「窓を閉じた」と書く
 
@@ -102,7 +102,7 @@ scope を限定する fix を書く際の語彙選択:
 
 ## ソース（追記分）
 
-- [PR #2044 review results (cycle 3) — 縮小を消滅として書く / per-callsite default](../../raw/reviews/20260729T045143Z-pr-2044.md)
-- [PR #2044 fix results (cycle 3) — コード変更ゼロ・散文のみ 24 行の修正](../../raw/fixes/20260729T045549Z-pr-2044.md)
-- [PR #2044 fix results — 宣言の適用範囲、概要節と詳細節の両方を補正](../../raw/fixes/20260729T085910Z-pr-2044.md)
-- [PR #2044 fix results (cycle 2) — 部分的な留保は無留保より誤解を生む](../../raw/fixes/20260729T064931Z-pr-2044.md)
+- [縮小を消滅として書く / per-callsite default](../../raw/reviews/20260729T045143Z-pr-2044.md)
+- [コード変更ゼロ・散文のみ 24 行の修正](../../raw/fixes/20260729T045549Z-pr-2044.md)
+- [宣言の適用範囲、概要節と詳細節の両方を補正](../../raw/fixes/20260729T085910Z-pr-2044.md)
+- [部分的な留保は無留保より誤解を生む](../../raw/fixes/20260729T064931Z-pr-2044.md)

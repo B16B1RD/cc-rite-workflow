@@ -74,5 +74,5 @@ CLEANED 経路 + 内側 mktemp 失敗の exit 0 を pin する test (S-7) を追
 
 ## ソース
 
-- [PR #1246 review results (cycle 1) — A && B 短絡が script 末尾文で exit code を leak する HIGH finding](../../raw/reviews/20260602T064758Z-pr-1246.md)
-- [PR #1246 fix results — 末尾 exit 0 明示で非ブロッキング契約を構造的保証 + S-7 mutation test](../../raw/fixes/20260602T065355Z-pr-1246.md)
+- [A && B 短絡が script 末尾文で exit code を leak する HIGH finding](../../raw/reviews/20260602T064758Z-pr-1246.md)
+- [末尾 exit 0 明示で非ブロッキング契約を構造的保証 + S-7 mutation test](../../raw/fixes/20260602T065355Z-pr-1246.md)

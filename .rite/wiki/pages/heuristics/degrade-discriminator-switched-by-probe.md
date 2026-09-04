@@ -76,6 +76,6 @@ skip ガードを入れる際は、**期待値が degrade 時の出力と一致�
 
 ## ソース
 
-- [PR #2013 review cycle 1 — 環境依存 skip の台帳は degrade 経路と同じ出力を返す TC を取りこぼす](../../raw/reviews/20260724T175144Z-pr-2013.md)
-- [PR #2013 fix results (cycle 2) — 判別子を片側で固定すると degrade 環境を壊す](../../raw/fixes/20260724T184410Z-pr-2013.md)
-- [PR #2013 fix results (cycle 3) — probe と連動させる canonical 形](../../raw/fixes/20260724T193804Z-pr-2013.md)
+- [環境依存 skip の台帳は degrade 経路と同じ出力を返す TC を取りこぼす](../../raw/reviews/20260724T175144Z-pr-2013.md)
+- [判別子を片側で固定すると degrade 環境を壊す](../../raw/fixes/20260724T184410Z-pr-2013.md)
+- [probe と連動させる canonical 形](../../raw/fixes/20260724T193804Z-pr-2013.md)

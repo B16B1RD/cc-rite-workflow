@@ -101,6 +101,6 @@ fi
 
 ## ソース
 
-- [PR #2231 review results](../../raw/reviews/20260810T134712Z-pr-2231.md)
-- [PR #2231 fix results](../../raw/fixes/20260810T135452Z-pr-2231.md)
-- [PR #2468 NB sweep results（テスト側の `elif` guard が兄弟 assert 40 件を skip させた同型事例）](../../raw/fixes/20260829T194742Z-pr-2468.md)
+- [レビュー結果](../../raw/reviews/20260810T134712Z-pr-2231.md)
+- [fix 結果](../../raw/fixes/20260810T135452Z-pr-2231.md)
+- [NB sweep results（テスト側の `elif` guard が兄弟 assert 40 件を skip させた同型事例）](../../raw/fixes/20260829T194742Z-pr-2468.md)

@@ -83,7 +83,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-13T19:20:00+09:00" }
 
 ## ソース
 
-- [PR #2078 review results (cycle 2)](../../raw/reviews/20260801T012055Z-pr-2078.md)
-- [PR #2078 fix results (cycle 2)](../../raw/fixes/20260801T013839Z-pr-2078.md)
-- [PR #2306 review results (消費側ゲートの値域が helper 契約と食い違い主シナリオで発火しなかった)](../../raw/reviews/20260813T093122Z-pr-2306.md)
-- [PR #2306 fix results (判定を helper 契約の値域へ揃え、保存観測を成功時 marker に限定)](../../raw/fixes/20260813T093419Z-pr-2306.md)
+- [レビュー結果](../../raw/reviews/20260801T012055Z-pr-2078.md)
+- [fix 結果](../../raw/fixes/20260801T013839Z-pr-2078.md)
+- [消費側ゲートの値域が helper 契約と食い違い主シナリオで発火しなかった](../../raw/reviews/20260813T093122Z-pr-2306.md)
+- [判定を helper 契約の値域へ揃え、保存観測を成功時 marker に限定](../../raw/fixes/20260813T093419Z-pr-2306.md)

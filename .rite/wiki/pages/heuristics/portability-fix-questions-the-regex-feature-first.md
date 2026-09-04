@@ -54,5 +54,5 @@ GNU 拡張の再混入を止めるために静的 denylist probe を書いたが
 
 ## ソース
 
-- [PR #2142 review results](../../raw/reviews/20260807T235335Z-pr-2142.md)
-- [PR #2142 fix results](../../raw/fixes/20260808T001157Z-pr-2142.md)
+- [レビュー結果](../../raw/reviews/20260807T235335Z-pr-2142.md)
+- [fix 結果](../../raw/fixes/20260808T001157Z-pr-2142.md)

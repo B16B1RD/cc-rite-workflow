@@ -99,5 +99,5 @@ sources:
 
 ## ソース
 
-- [PR #939 review results](../../raw/reviews/20260512T235812Z-pr-939.md)
-- [PR #942 review results](../../raw/reviews/20260513T004127Z-pr-942.md)
+- [レビュー結果](../../raw/reviews/20260512T235812Z-pr-939.md)
+- [レビュー結果](../../raw/reviews/20260513T004127Z-pr-942.md)

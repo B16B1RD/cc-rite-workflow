@@ -63,6 +63,6 @@ assert_not_grep "$FILE" 'ステップ 3-7\.4\|ステップ 7\.4'
 
 ## ソース
 
-- [PR #2070 review results (cycle 2)](../../raw/reviews/20260801T184452Z-pr-2070.md)
-- [PR #2070 fix results (cycle 2)](../../raw/fixes/20260801T185220Z-pr-2070.md)
-- [PR #2070 review results (cycle 5, mergeable)](../../raw/reviews/20260802T000641Z-pr-2070.md)
+- [レビュー結果](../../raw/reviews/20260801T184452Z-pr-2070.md)
+- [fix 結果](../../raw/fixes/20260801T185220Z-pr-2070.md)
+- [レビュー結果](../../raw/reviews/20260802T000641Z-pr-2070.md)

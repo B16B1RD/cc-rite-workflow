@@ -49,4 +49,4 @@ fi
 
 ## ソース
 
-- [PR #1888 review results](../../raw/reviews/20260717T094246Z-pr-1888.md)
+- [レビュー結果](../../raw/reviews/20260717T094246Z-pr-1888.md)

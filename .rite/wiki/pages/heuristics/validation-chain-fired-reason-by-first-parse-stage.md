@@ -53,4 +53,4 @@ syntactically invalid JSON（literal substitute 漏れを含む）は **step 2 �
 
 ## ソース
 
-- [PR #1226 review results](../../raw/reviews/20260601T054111Z-pr-1226.md)
+- [レビュー結果](../../raw/reviews/20260601T054111Z-pr-1226.md)

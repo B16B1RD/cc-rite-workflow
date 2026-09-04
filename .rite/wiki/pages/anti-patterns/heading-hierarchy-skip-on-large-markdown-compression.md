@@ -73,5 +73,5 @@ Markdown 文書を大幅圧縮 (例: 734 → 334 行、-55%) する refactor で
 
 ## ソース
 
-- [PR #808 cycle 1 review findings](../../raw/reviews/20260504T062954Z-pr-808.md)
-- [PR #809 review findings (self-application)](../../raw/reviews/20260504T090515Z-pr-809.md)
+- [レビュー結果](../../raw/reviews/20260504T062954Z-pr-808.md)
+- [self-application](../../raw/reviews/20260504T090515Z-pr-809.md)

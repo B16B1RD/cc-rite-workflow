@@ -72,4 +72,4 @@ SoT（assessment-rules.md）の条件を広げても、実際に LLM が読む�
 
 ## ソース
 
-- [PR #2030 review results](../../raw/reviews/20260726T160331Z-pr-2030.md)
+- [レビュー結果](../../raw/reviews/20260726T160331Z-pr-2030.md)

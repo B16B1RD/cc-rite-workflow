@@ -218,20 +218,20 @@ mass batch fix 事例 (`migrate-review-state-to-1.1.sh` + `review-schema-version
 
 ## ソース
 
-- [PR #1011 3-cycle convergence retrospective](../../raw/retrospectives/20260517T133937Z-pr-1011-retro.md)
-- [PR #1011 cycle 1 review (1 HIGH cross-validated)](../../raw/reviews/20260517T133901Z-pr-1011-cycle-1.md)
-- [PR #1011 cycle 2 review (1 LOW + 1 informational)](../../raw/reviews/20260517T133937Z-pr-1011-cycle-2.md)
-- [PR #1032 cycle 4 review (mergeable — bash semantics 版 3-cycle 連鎖収束、cycle 4 で両 reviewer 0 findings 合意、drift class 横断 (bash 言語仕様 → documentation pointer → numeric counter) でも 4 cycle で収束する 2 連続再現事例)](../../raw/reviews/20260517T223309Z-pr-1032.md)
-- [PR #1049 cycle 2 re-review (mergeable — 1-cycle convergence の下限事例、3 reviewer 並列レビューで HIGH cross-validated → cycle 1 fix で structural resolution → cycle 2 で 0 finding mergeable。3-cycle 連鎖の対極として 1-cycle 収束が成立する 3 条件 (structural clarity / cycle 1 fix semantic 完全性 / reviewer cross-validation depth) を実測)](../../raw/reviews/20260518T165729Z-pr-1049-cycle2.md)
-- [PR #1064 cycle 2 re-review (mergeable — 14-finding mass batch fix の 1-cycle convergence 上限事例、4 reviewer 並列で 14 findings → cycle 1 一括 structural fix → cycle 2 で 1-nit-noted（M5 受け流し経路） + 2 recommendations のみ。`spec-vs-spec-canonical-priority` heuristic の origin 事例と連動)](../../raw/reviews/20260519T164439Z-pr-1064-cycle2.md)
-- [PR #1078 cycle 5 mergeable (5-cycle shrinking convergence、13 findings を 8→3→2→1→0 で収束、cycle 4 reviewer disagreement (Quality Signal 3) を実装による合意形成で解消、Wiki 経験則 4 件の self-reinforcing 実測再現)](../../raw/reviews/20260521T083746Z-pr-1078.md)
-- [PR #1078 cycle 1 fix patterns (累積 13 findings の 7 件 batch fix、cycle 1 で Simplification Charter cross-validated 違反検出、printf vs echo 同一 SoT 内 style consistency、Step 0 → AskUserQuestion silent fall-through 防止 MUST 句強化、Phase 5.4.4.1 detector 不在主張の prose 誤記訂正の 4 fix pattern)](../../raw/fixes/20260521T073426Z-pr-1078.md)
-- [PR #1151 cycle 4 mergeable (大規模 rename PR の 4-cycle 累積収束、18→3→2→0 trajectory、archive doc tail residue pattern + intra-document contradiction の実測)](../../raw/reviews/20260526T161411Z-pr-1151.md)
-- [PR #1151 cycle 3 fix (archive doc 2 箇所最終 revert、front-matter policy preservation 軸の cycle 1↔2↔3 往復解消)](../../raw/fixes/20260526T160217Z-pr-1151.md)
-- [PR #1969 cycle 4 review (5-cycle 収束の中間、findings が実装ロジックからテスト scaffolding/文書精度へシフトする finding-cycling を観測)](../../raw/reviews/20260722T063747Z-pr-1969.md)
-- [PR #1969 cycle 4 fix (pass-message narrowing + gitignore 保証の self-contained 化、収束後半典型の surgical fix 2 件)](../../raw/fixes/20260722T064426Z-pr-1969.md)
-- [PR #1969 cycle 6/mergeable review (5-cycle shrinking 4→4→1→2→1→0 で 0 findings 到達、cycle 5 の brace group finding が正しく解消されたことを確認)](../../raw/reviews/20260722T080039Z-pr-1969-mergeable.md)
-- [PR #1974 cycle 4 review (5 reviewer 全員 0 findings、CRITICAL 1 → MEDIUM/HIGH 7 の 4-cycle 収束、boundary 推奨事項 6 件は Decision Log 記録のみ)](../../raw/reviews/20260723T040300Z-pr-1974-cycle4-final.md)
+- [3-cycle convergence retrospective](../../raw/retrospectives/20260517T133937Z-pr-1011-retro.md)
+- [1 HIGH cross-validated](../../raw/reviews/20260517T133901Z-pr-1011-cycle-1.md)
+- [1 LOW + 1 informational](../../raw/reviews/20260517T133937Z-pr-1011-cycle-2.md)
+- [mergeable — bash semantics 版 3-cycle 連鎖収束、cycle 4 で両 reviewer 0 findings 合意、drift class 横断 (bash 言語仕様 → documentation pointer → numeric counter) でも 4 cycle で収束する 2 連続再現事例](../../raw/reviews/20260517T223309Z-pr-1032.md)
+- [mergeable — 1-cycle convergence の下限事例、3 reviewer 並列レビューで HIGH cross-validated → cycle 1 fix で structural resolution → cycle 2 で 0 finding mergeable。3-cycle 連鎖の対極として 1-cycle 収束が成立する 3 条件 (structural clarity / cycle 1 fix semantic 完全性 / reviewer cross-validation depth) を実測](../../raw/reviews/20260518T165729Z-pr-1049-cycle2.md)
+- [mergeable — 14-finding mass batch fix の 1-cycle convergence 上限事例、4 reviewer 並列で 14 findings → cycle 1 一括 structural fix → cycle 2 で 1-nit-noted（M5 受け流し経路） + 2 recommendations のみ。`spec-vs-spec-canonical-priority` heuristic の origin 事例と連動](../../raw/reviews/20260519T164439Z-pr-1064-cycle2.md)
+- [mergeable (5-cycle shrinking convergence、13 findings を 8→3→2→1→0 で収束、cycle 4 reviewer disagreement (Quality Signal 3) を実装による合意形成で解消、Wiki 経験則 4 件の self-reinforcing 実測再現)](../../raw/reviews/20260521T083746Z-pr-1078.md)
+- [patterns (累積 13 findings の 7 件 batch fix、cycle 1 で Simplification Charter cross-validated 違反検出、printf vs echo 同一 SoT 内 style consistency、Step 0 → AskUserQuestion silent fall-through 防止 MUST 句強化、Phase 5.4.4.1 detector 不在主張の prose 誤記訂正の 4 fix pattern)](../../raw/fixes/20260521T073426Z-pr-1078.md)
+- [mergeable (大規模 rename PR の 4-cycle 累積収束、18→3→2→0 trajectory、archive doc tail residue pattern + intra-document contradiction の実測)](../../raw/reviews/20260526T161411Z-pr-1151.md)
+- [archive doc 2 箇所最終 revert、front-matter policy preservation 軸の cycle 1↔2↔3 往復解消](../../raw/fixes/20260526T160217Z-pr-1151.md)
+- [5-cycle 収束の中間、findings が実装ロジックからテスト scaffolding/文書精度へシフトする finding-cycling を観測](../../raw/reviews/20260722T063747Z-pr-1969.md)
+- [pass-message narrowing + gitignore 保証の self-contained 化、収束後半典型の surgical fix 2 件](../../raw/fixes/20260722T064426Z-pr-1969.md)
+- [/mergeable review (5-cycle shrinking 4→4→1→2→1→0 で 0 findings 到達、cycle 5 の brace group finding が正しく解消されたことを確認)](../../raw/reviews/20260722T080039Z-pr-1969-mergeable.md)
+- [5 reviewer 全員 0 findings、CRITICAL 1 → MEDIUM/HIGH 7 の 4-cycle 収束、boundary 推奨事項 6 件は Decision Log 記録のみ](../../raw/reviews/20260723T040300Z-pr-1974-cycle4-final.md)
 
 ## 補強: 収束は「件数」ではなく「指摘が移った層」で読む
 
@@ -267,9 +267,9 @@ cycle 3 で 2 名のレビュアーが自分の前 cycle 指摘を**実測に基
 
 ## ソース（追記分）
 
-- [PR #2044 review results (cycle 3) — 収束は層で読む / cross-validation boost](../../raw/reviews/20260729T045143Z-pr-2044.md)
-- [PR #2044 review results (cycle 3, mergeable 到達) — レビュアーの自己撤回](../../raw/reviews/20260729T094749Z-pr-2044.md)
-- [PR #2044 fix results (cycle 3) — Convergence Signal](../../raw/fixes/20260729T045549Z-pr-2044.md)
+- [収束は層で読む / cross-validation boost](../../raw/reviews/20260729T045143Z-pr-2044.md)
+- [(cycle 3, mergeable 到達) — レビュアーの自己撤回](../../raw/reviews/20260729T094749Z-pr-2044.md)
+- [Convergence Signal](../../raw/fixes/20260729T045549Z-pr-2044.md)
 
 ## 補強: 4 cycle 収束と「0 件の質」
 
@@ -311,15 +311,15 @@ cycle 4 の reviewer は揃って「これは Finding Quality Guardrail によ�
 
 ## ソース（追記分 2）
 
-- [PR #2051 review results (cycle 4, mergeable 到達) — 0 件の質と reviewer の自己抑制](../../raw/reviews/20260729T155350Z-pr-2051-c4.md)
-- [PR #2051 review results (cycle 3) — 実測必須ゲートが記述の不整合と実行を壊す欠陥を分離した](../../raw/reviews/20260729T153523Z-pr-2051-c3.md)
-- [PR #2051 review results (cycle 2) — cycle 1 の修正自体が持っていた検証の穴](../../raw/reviews/20260729T150808Z-pr-2051-c2.md)
-- [PR #2051 fix results (cycle 3) — 修正が効いていることと効果が固定されていることは別](../../raw/fixes/20260729T153947Z-pr-2051-c3.md)
+- [(cycle 4, mergeable 到達) — 0 件の質と reviewer の自己抑制](../../raw/reviews/20260729T155350Z-pr-2051-c4.md)
+- [実測必須ゲートが記述の不整合と実行を壊す欠陥を分離した](../../raw/reviews/20260729T153523Z-pr-2051-c3.md)
+- [の修正自体が持っていた検証の穴](../../raw/reviews/20260729T150808Z-pr-2051-c2.md)
+- [修正が効いていることと効果が固定されていることは別](../../raw/fixes/20260729T153947Z-pr-2051-c3.md)
 
 ## ソース（追記分 3）
 
-- [PR #2070 review results (cycle 5, mergeable) — 5 サイクル / のべ 30 レビュアーで 0 件へ収束、抽象度の階段](../../raw/reviews/20260802T000641Z-pr-2070.md)
-- [PR #2070 review results (cycle 3) — fix が新指摘を生む率が 2 サイクル連続](../../raw/reviews/20260801T202243Z-pr-2070.md)
+- [5 サイクル / のべ 30 レビュアーで 0 件へ収束、抽象度の階段](../../raw/reviews/20260802T000641Z-pr-2070.md)
+- [が新指摘を生む率が 2 サイクル連続](../../raw/reviews/20260801T202243Z-pr-2070.md)
 
 ### 収束しない軌跡の記録 — blocking が 2 → 3 → 6 と増えた docs 是正 PR
 
@@ -341,4 +341,4 @@ cycle 4 の reviewer は揃って「これは Finding Quality Guardrail によ�
 
 ## ソース（追記分 4）
 
-- [PR #2052 review results (cycle 3, loop exit) — 収束しない軌跡と離脱判断](../../raw/reviews/20260802T114732Z-pr-2052.md)
+- [(cycle 3, loop exit) — 収束しない軌跡と離脱判断](../../raw/reviews/20260802T114732Z-pr-2052.md)

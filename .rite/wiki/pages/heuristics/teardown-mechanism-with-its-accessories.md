@@ -91,7 +91,7 @@ marker を廃止したとき、その marker が拾っていた経路は「marke
 
 ## ソース
 
-- [PR #2468 fix results (cycle 4)](../../raw/fixes/20260829T185642Z-pr-2468.md)
-- [PR #2468 fix results (cycle 5)](../../raw/fixes/20260829T191402Z-pr-2468.md)
-- [PR #2500 review results (cycle 3)](../../raw/reviews/20260901T173133Z-pr-2500.md)
-- [PR #2500 fix results (cycle 3)](../../raw/fixes/20260901T173714Z-pr-2500.md)
+- [fix 結果](../../raw/fixes/20260829T185642Z-pr-2468.md)
+- [fix 結果](../../raw/fixes/20260829T191402Z-pr-2468.md)
+- [レビュー結果](../../raw/reviews/20260901T173133Z-pr-2500.md)
+- [fix 結果](../../raw/fixes/20260901T173714Z-pr-2500.md)

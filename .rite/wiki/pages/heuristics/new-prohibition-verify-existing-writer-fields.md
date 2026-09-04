@@ -53,4 +53,4 @@ Issue テンプレート Section 9 に「作業項目を載せるな」を追加
 
 ## ソース
 
-- [PR #2084 review results (cycle 2)](../../raw/reviews/20260802T020939Z-pr-2084.md)
+- [レビュー結果](../../raw/reviews/20260802T020939Z-pr-2084.md)

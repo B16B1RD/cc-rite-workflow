@@ -39,5 +39,5 @@ flow-state.test.sh TC-H7 へ corrupt state_file の sandbox 隔離留意コメ�
 
 ## ソース
 
-- [PR #1326 review results](../../raw/reviews/20260609T193647Z-pr-1326.md)
-- [Issue #1211 close retrospective](../../raw/retrospectives/20260609T195524Z-issue-1211.md)
+- [レビュー結果](../../raw/reviews/20260609T193647Z-pr-1326.md)
+- [close retrospective](../../raw/retrospectives/20260609T195524Z-issue-1211.md)

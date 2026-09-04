@@ -94,5 +94,5 @@ cycle 4: 2 件 → cycle 5: 1 件
 
 ## ソース
 
-- [PR #2094 review results (cycle 3)](../../raw/reviews/20260803T051521Z-pr-2094.md)
-- [PR #2120 review results (cycle 3) — 削減の効果を 5 cycle で定量観測](../../raw/reviews/20260806T005558Z-pr-2120.md)
+- [レビュー結果](../../raw/reviews/20260803T051521Z-pr-2094.md)
+- [削減の効果を 5 cycle で定量観測](../../raw/reviews/20260806T005558Z-pr-2120.md)

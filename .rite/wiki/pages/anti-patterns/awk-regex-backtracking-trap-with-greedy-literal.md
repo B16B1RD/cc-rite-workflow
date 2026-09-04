@@ -90,6 +90,6 @@ in_block && !/^[[:space:]]*#/ && /flow-state-update\.sh create/ { ... }
 
 ## ソース
 
-- [PR #911 review cycle 1](../../raw/reviews/20260509T031148Z-pr-911.md)
-- [PR #911 review cycle 2](../../raw/reviews/20260509T032936Z-pr-911-cycle2.md)
-- [PR #911 cycle 2 fix](../../raw/fixes/20260509T033229Z-pr-911-cycle2-fix.md)
+- [レビュー結果](../../raw/reviews/20260509T031148Z-pr-911.md)
+- [レビュー結果](../../raw/reviews/20260509T032936Z-pr-911-cycle2.md)
+- [fix 結果](../../raw/fixes/20260509T033229Z-pr-911-cycle2-fix.md)

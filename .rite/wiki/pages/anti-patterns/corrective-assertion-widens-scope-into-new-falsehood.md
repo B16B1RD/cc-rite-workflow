@@ -64,6 +64,6 @@ verified:
 
 ## ソース
 
-- [PR #2461 review cycle 1 (是正先の 2 種の誤断定を検出)](../../raw/reviews/20260829T112405Z-pr-2461.md)
-- [PR #2461 fix (記述を狭める方向での是正 + 伝播スキャン)](../../raw/fixes/20260829T112718Z-pr-2461.md)
-- [PR #2483 review results (cycle 2) — 訂正文の新規主張を producer 側まで追跡して検証](../../raw/reviews/20260830T093728Z-pr-2483.md)
+- [是正先の 2 種の誤断定を検出](../../raw/reviews/20260829T112405Z-pr-2461.md)
+- [記述を狭める方向での是正 + 伝播スキャン](../../raw/fixes/20260829T112718Z-pr-2461.md)
+- [訂正文の新規主張を producer 側まで追跡して検証](../../raw/reviews/20260830T093728Z-pr-2483.md)

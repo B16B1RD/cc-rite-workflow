@@ -63,5 +63,5 @@ sibling helper からの流用は、防御規約（trap の順序・制御文字
 
 ## ソース
 
-- [PR #2470 review results](../../raw/reviews/20260830T011225Z-pr-2470.md)
-- [PR #2470 fix results](../../raw/fixes/20260830T012124Z-pr-2470.md)
+- [レビュー結果](../../raw/reviews/20260830T011225Z-pr-2470.md)
+- [fix 結果](../../raw/fixes/20260830T012124Z-pr-2470.md)

@@ -43,7 +43,7 @@ gh の検索・一覧オプションは exit 0 と JSON を返す一方で、呼
 
 ## ソース
 
-- [PR #2500 review results](../../raw/reviews/20260901T133013Z-pr-2500.md)
-- [PR #2500 review results (cycle 2)](../../raw/reviews/20260901T140807Z-pr-2500.md)
-- [PR #2500 fix results](../../raw/fixes/20260901T134035Z-pr-2500.md)
-- [PR #2531 review results](../../raw/reviews/20260903T003746Z-pr-2531.md)
+- [レビュー結果](../../raw/reviews/20260901T133013Z-pr-2500.md)
+- [レビュー結果](../../raw/reviews/20260901T140807Z-pr-2500.md)
+- [fix 結果](../../raw/fixes/20260901T134035Z-pr-2500.md)
+- [レビュー結果](../../raw/reviews/20260903T003746Z-pr-2531.md)

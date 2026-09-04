@@ -55,6 +55,6 @@ frontmatter ポリシー表のような分類ルールを新設・改訂する P
 
 ## ソース
 
-- [PR #1694 review results](../../raw/reviews/20260701T051115Z-pr-1694.md)
-- [PR #1694 fix results](../../raw/fixes/20260701T060350Z-pr-1694.md)
-- [PR #1724 review results](../../raw/reviews/20260702T091438Z-pr-1724.md)
+- [レビュー結果](../../raw/reviews/20260701T051115Z-pr-1694.md)
+- [fix 結果](../../raw/fixes/20260701T060350Z-pr-1694.md)
+- [レビュー結果](../../raw/reviews/20260702T091438Z-pr-1724.md)

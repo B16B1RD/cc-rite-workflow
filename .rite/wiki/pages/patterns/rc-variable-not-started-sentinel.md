@@ -76,4 +76,4 @@ sentinel は数値比較へ流れないよう、診断の表示専用に留め�
 
 ## ソース
 
-- [PR #2094 fix results (cycle 3)](../../raw/fixes/20260803T013513Z-pr-2094.md)
+- [fix 結果](../../raw/fixes/20260803T013513Z-pr-2094.md)

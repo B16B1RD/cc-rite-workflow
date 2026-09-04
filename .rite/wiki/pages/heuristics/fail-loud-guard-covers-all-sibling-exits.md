@@ -64,4 +64,4 @@ wiki-index-update helper の cycle 4 で「行末区切り欠落 = 捨てフラ�
 
 - [Review cycle 5: sibling-exit coverage for fail-loud guards and safety-net verification](../../raw/reviews/20260804T155148Z-pr-2111-cycle5.md)
 - [Fix cycle 5: exit-exhaustive fail-loud guards, canonical trap, honest safety-net docs](../../raw/fixes/20260804T155921Z-pr-2111-cycle5.md)
-- [PR #2114 fix results (cycle 2) — pin が守る対象の兄弟を数える](../../raw/fixes/20260805T110153Z-pr-2114.md)
+- [pin が守る対象の兄弟を数える](../../raw/fixes/20260805T110153Z-pr-2114.md)

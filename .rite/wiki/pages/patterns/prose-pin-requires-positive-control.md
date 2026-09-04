@@ -133,11 +133,11 @@ assert_grep "$SKILL" 'CLEANUP_DELEGATED=1` を emit している場合、本ス�
 
 ## ソース
 
-- [PR #2022 fix results (cycle 11)](../../raw/fixes/20260726T062935Z-pr-2022.md)
-- [PR #2022 fix results (cycle 6)](../../raw/fixes/20260726T025351Z-pr-2022.md)
-- [PR #2022 fix results (cycle 4)](../../raw/fixes/20260726T014448Z-pr-2022.md)
-- [PR #2150 review results (cycle 1: marker 名 pin では指示反転が素通し)](../../raw/reviews/20260808T063447Z-pr-2150.md)
-- [PR #2150 fix results (cycle 1: pin を指示語まで伸ばす)](../../raw/fixes/20260808T064117Z-pr-2150.md)
-- [PR #2532 review results](../../raw/reviews/20260903T031026Z-pr-2532.md)
-- [PR #2533 review results](../../raw/reviews/20260903T045300Z-pr-2533.md)
-- [PR #2533 fix results](../../raw/fixes/20260903T050155Z-pr-2533.md)
+- [fix 結果](../../raw/fixes/20260726T062935Z-pr-2022.md)
+- [fix 結果](../../raw/fixes/20260726T025351Z-pr-2022.md)
+- [fix 結果](../../raw/fixes/20260726T014448Z-pr-2022.md)
+- [marker 名 pin では指示反転が素通し](../../raw/reviews/20260808T063447Z-pr-2150.md)
+- [pin を指示語まで伸ばす](../../raw/fixes/20260808T064117Z-pr-2150.md)
+- [レビュー結果](../../raw/reviews/20260903T031026Z-pr-2532.md)
+- [レビュー結果](../../raw/reviews/20260903T045300Z-pr-2533.md)
+- [fix 結果](../../raw/fixes/20260903T050155Z-pr-2533.md)

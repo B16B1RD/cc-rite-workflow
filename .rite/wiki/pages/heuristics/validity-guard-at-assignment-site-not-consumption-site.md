@@ -72,6 +72,6 @@ d) [ -n "$OPTARG" ] || { echo "assemble: -d に空のディレクトリは指定
 
 ## ソース
 
-- [PR #2304 review results (cycle 1: `-d ""` でガードが不発する経路を検出)](../../raw/reviews/20260813T081206Z-pr-2304.md)
-- [PR #2304 fix results (getopts 解析時点へガードを移して両分岐の穴を同時に閉じた)](../../raw/fixes/20260813T081923Z-pr-2304.md)
-- [PR #2304 review results (cycle 4: 「新設 guard が defect class の隣接メンバーを取りこぼす」反復形の総括)](../../raw/reviews/20260813T090426Z-pr-2304.md)
+- [`-d ""` でガードが不発する経路を検出](../../raw/reviews/20260813T081206Z-pr-2304.md)
+- [getopts 解析時点へガードを移して両分岐の穴を同時に閉じた](../../raw/fixes/20260813T081923Z-pr-2304.md)
+- [「新設 guard が defect class の隣接メンバーを取りこぼす」反復形の総括](../../raw/reviews/20260813T090426Z-pr-2304.md)

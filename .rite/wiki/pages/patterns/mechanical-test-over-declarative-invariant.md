@@ -76,7 +76,7 @@ mechanical test 化自体も新たな declarative 層を生む経路を持つ（
 
 ## ソース
 
-- [PR #1143 cycle 6 fix (mechanical parity test 追加 + 3 列 column schema 拡張)](../../raw/fixes/20260525T221902Z-pr-1143.md)
-- [PR #1143 cycle 7 fix (declarative mapping を mechanical test に委譲、wording 層 self-meta-conflict 構造解消)](../../raw/fixes/20260525T233957Z-pr-1143.md)
-- [PR #1267 review results — 0 findings: WIKICHAIN handoff gate を静的 parity test TC-1〜5 + runtime TC-11〜13 と同梱実装、mutation 検証 6 種で全 TC の検出力を実証した preventive 適用)](../../raw/reviews/20260604T061732Z-pr-1267.md)
-- [PR #1270 review results — 0 findings: prose「制約」note のみで守られていた intervening set 回帰を TC-6 へ昇格、sandbox negative test Case A/B で検出力と false positive 不在を実証した follow-up 適用)](../../raw/reviews/20260604T160823Z-pr-1270.md)
+- [mechanical parity test 追加 + 3 列 column schema 拡張](../../raw/fixes/20260525T221902Z-pr-1143.md)
+- [declarative mapping を mechanical test に委譲、wording 層 self-meta-conflict 構造解消](../../raw/fixes/20260525T233957Z-pr-1143.md)
+- [0 findings: WIKICHAIN handoff gate を静的 parity test TC-1〜5 + runtime TC-11〜13 と同梱実装、mutation 検証 6 種で全 TC の検出力を実証した preventive 適用](../../raw/reviews/20260604T061732Z-pr-1267.md)
+- [0 findings: prose「制約」note のみで守られていた intervening set 回帰を TC-6 へ昇格、sandbox negative test Case A/B で検出力と false positive 不在を実証した follow-up 適用](../../raw/reviews/20260604T160823Z-pr-1270.md)

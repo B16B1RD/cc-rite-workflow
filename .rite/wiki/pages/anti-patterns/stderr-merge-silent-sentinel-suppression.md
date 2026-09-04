@@ -116,6 +116,6 @@ esac
 
 ## ソース
 
-- [PR #688 cycle 7 review results (`2>&1 | head -N` masking)](../../raw/reviews/20260427T033904Z-pr-688.md)
-- [PR #688 cycle 8 fix results (canonical tempfile pattern)](../../raw/fixes/20260427T035029Z-pr-688.md)
-- [PR #688 review results (cycle 35 — `2>&1` sentinel suppression CRITICAL × 2)](../../raw/reviews/20260427T151741Z-pr-688.md)
+- [`2>&1 | head -N` masking](../../raw/reviews/20260427T033904Z-pr-688.md)
+- [canonical tempfile pattern](../../raw/fixes/20260427T035029Z-pr-688.md)
+- [`2>&1` sentinel suppression CRITICAL × 2](../../raw/reviews/20260427T151741Z-pr-688.md)

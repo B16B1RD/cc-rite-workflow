@@ -65,5 +65,5 @@ Issue テンプレート Section 9（Decision Log）に「作業項目を載せ�
 
 ## ソース
 
-- [PR #2084 review results (cycle 2)](../../raw/reviews/20260802T020939Z-pr-2084.md)
-- [PR #2084 fix results (cycle 2)](../../raw/fixes/20260802T021249Z-pr-2084.md)
+- [レビュー結果](../../raw/reviews/20260802T020939Z-pr-2084.md)
+- [fix 結果](../../raw/fixes/20260802T021249Z-pr-2084.md)

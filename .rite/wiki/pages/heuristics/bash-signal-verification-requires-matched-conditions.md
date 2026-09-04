@@ -78,7 +78,7 @@ signal の挙動を主張する散文は、3 signal を一括で述べたくな�
 
 ## ソース
 
-- [PR #2124 review results](../../raw/reviews/20260806T053845Z-pr-2124.md)
-- [PR #2124 fix results](../../raw/fixes/20260806T055534Z-pr-2124.md)
-- [PR #2124 review results (cycle 4)](../../raw/reviews/20260806T120815Z-pr-2124.md)
-- [PR #2124 fix results (cycle 4)](../../raw/fixes/20260806T121439Z-pr-2124.md)
+- [レビュー結果](../../raw/reviews/20260806T053845Z-pr-2124.md)
+- [fix 結果](../../raw/fixes/20260806T055534Z-pr-2124.md)
+- [レビュー結果](../../raw/reviews/20260806T120815Z-pr-2124.md)
+- [fix 結果](../../raw/fixes/20260806T121439Z-pr-2124.md)

@@ -83,6 +83,6 @@ cycle 1 fix で「呼び出し側責務」「caller 側で対応」「同様の�
 
 ## ソース
 
-- [PR #799 review (cycle 1 — reference precondition 乖離 CRITICAL 指摘)](../../raw/reviews/20260503T181256Z-pr-799.md)
-- [PR #799 fix (cycle 1 — reference のみ修正、caller 側未完成)](../../raw/fixes/20260503T181755Z-pr-799.md)
-- [PR #799 fix (cycle 3 — cycle 2 PARTIAL 指摘を受け caller + reference 両側完成)](../../raw/fixes/20260503T182831Z-pr-799-cycle3.md)
+- [reference precondition 乖離 CRITICAL 指摘](../../raw/reviews/20260503T181256Z-pr-799.md)
+- [reference のみ修正、caller 側未完成](../../raw/fixes/20260503T181755Z-pr-799.md)
+- [PARTIAL 指摘を受け caller + reference 両側完成](../../raw/fixes/20260503T182831Z-pr-799-cycle3.md)

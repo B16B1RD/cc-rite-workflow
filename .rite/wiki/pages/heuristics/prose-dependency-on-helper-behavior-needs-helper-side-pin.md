@@ -60,4 +60,4 @@ set --field N を指定して書く → フラグ無しで別の set を打つ �
 
 ## ソース
 
-- [PR #2466 review results](../../raw/reviews/20260829T152045Z-pr-2466.md)
+- [レビュー結果](../../raw/reviews/20260829T152045Z-pr-2466.md)

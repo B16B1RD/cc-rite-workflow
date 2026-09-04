@@ -65,7 +65,7 @@ findings 本体は stdout のまま維持し、summary / progress のみ `log()`
 
 ## ソース
 
-- [PR #1222 review results](../../raw/reviews/20260601T002552Z-pr-1222.md)
-- [PR #1222 fix results](../../raw/fixes/20260601T010229Z-pr-1222.md)
+- [レビュー結果](../../raw/reviews/20260601T002552Z-pr-1222.md)
+- [fix 結果](../../raw/fixes/20260601T010229Z-pr-1222.md)
 - [裸番号検出の cycle 1 レビュー結果](../../raw/reviews/20260904T004239Z-pr-2544.md)
 - [裸番号検出の修正結果](../../raw/fixes/20260904T005810Z-pr-2544.md)

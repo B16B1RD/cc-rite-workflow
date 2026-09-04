@@ -43,4 +43,4 @@ sole reviewer guard で追加された co-reviewer が、他 reviewer 管轄の 
 
 ## ソース
 
-- [PR #1294 review results](../../raw/reviews/20260606T134627Z-pr-1294.md)
+- [レビュー結果](../../raw/reviews/20260606T134627Z-pr-1294.md)

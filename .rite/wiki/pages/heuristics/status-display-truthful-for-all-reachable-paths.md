@@ -68,9 +68,9 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-13T05:55:07Z" }
 
 ## ソース
 
-- [PR #1733 review results (cycle 2)](../../raw/reviews/20260703T021717Z-pr-1733.md)
-- [PR #1733 fix results (cycle 2)](../../raw/fixes/20260703T021912Z-pr-1733.md)
-- [PR #2081 review results](../../raw/reviews/20260801T103500Z-pr-2081.md)
-- [PR #2081 fix results](../../raw/fixes/20260801T104510Z-pr-2081.md)
-- [PR #2081 fix results (cycle 2)](../../raw/fixes/20260801T112516Z-pr-2081.md)
-- [PR #2300 review results](../../raw/reviews/20260813T054655Z-pr-2300.md)
+- [レビュー結果](../../raw/reviews/20260703T021717Z-pr-1733.md)
+- [fix 結果](../../raw/fixes/20260703T021912Z-pr-1733.md)
+- [レビュー結果](../../raw/reviews/20260801T103500Z-pr-2081.md)
+- [fix 結果](../../raw/fixes/20260801T104510Z-pr-2081.md)
+- [fix 結果](../../raw/fixes/20260801T112516Z-pr-2081.md)
+- [レビュー結果](../../raw/reviews/20260813T054655Z-pr-2300.md)

@@ -83,6 +83,6 @@ survivor が「機械経路は pin されているが**人間向け経路が未 
 
 ## ソース
 
-- [PR #2035 review results (cycle 5, converged)](../../raw/reviews/20260727T014642Z-pr-2035.md)
-- [PR #2081 review results (cycle 5)](../../raw/reviews/20260801T131235Z-pr-2081.md)
-- [PR #2081 fix results](../../raw/fixes/20260801T124925Z-pr-2081.md)
+- [レビュー結果](../../raw/reviews/20260727T014642Z-pr-2035.md)
+- [レビュー結果](../../raw/reviews/20260801T131235Z-pr-2081.md)
+- [fix 結果](../../raw/fixes/20260801T124925Z-pr-2081.md)

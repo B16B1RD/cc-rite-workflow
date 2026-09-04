@@ -89,5 +89,5 @@ diff <(echo '{"sid":"foreign-uuid",...}') <(cat legacy_state.json)
 
 ## ソース
 
-- [PR #688 cycle 31 review results — `rejected(scope-creep)` の empirical revert test で CRITICAL 認定](../../raw/reviews/20260427T121800Z-pr-688.md)
-- [PR #688 cycle 32 fix results — cross-session takeover guard pattern + empirical 検証 gate 規範化](../../raw/fixes/20260427T122511Z-pr-688.md)
+- [`rejected(scope-creep)` の empirical revert test で CRITICAL 認定](../../raw/reviews/20260427T121800Z-pr-688.md)
+- [cross-session takeover guard pattern + empirical 検証 gate 規範化](../../raw/fixes/20260427T122511Z-pr-688.md)

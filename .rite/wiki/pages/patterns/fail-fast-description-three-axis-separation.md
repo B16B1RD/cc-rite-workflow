@@ -33,4 +33,4 @@ wiki-patterns.md の ingest.md branch_strategy fail-fast 記述を修正した�
 
 ## ソース
 
-- [PR #1327 review results](../../raw/reviews/20260609T195111Z-pr-1327.md)
+- [レビュー結果](../../raw/reviews/20260609T195111Z-pr-1327.md)

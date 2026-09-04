@@ -69,6 +69,6 @@ bash tool 呼び出し境界を跨いで shell 変数は保持されない。Pha
 
 ## ソース
 
-- [PR #579 review results (cycle 1)](../../raw/reviews/20260418T122454Z-pr-579.md)
-- [PR #579 fix results (cycle 1)](../../raw/fixes/20260418T122707Z-pr-579.md)
-- [PR #2111 review results (cycle 3)](../../raw/reviews/20260804T145133Z-pr-2111.md)
+- [レビュー結果](../../raw/reviews/20260418T122454Z-pr-579.md)
+- [fix 結果](../../raw/fixes/20260418T122707Z-pr-579.md)
+- [レビュー結果](../../raw/reviews/20260804T145133Z-pr-2111.md)

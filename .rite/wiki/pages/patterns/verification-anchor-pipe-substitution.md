@@ -66,8 +66,8 @@ verified:
 
 ## ソース
 
-- [PR #2070 review results](../../raw/reviews/20260731T060239Z-pr-2070.md)
-- [PR #2070 fix results](../../raw/fixes/20260731T060927Z-pr-2070.md)
-- [PR #2483 review results — 種別ラベル `static` が未判定に倒れ blocking に残る](../../raw/reviews/20260830T093009Z-pr-2483.md)
+- [レビュー結果](../../raw/reviews/20260731T060239Z-pr-2070.md)
+- [fix 結果](../../raw/fixes/20260731T060927Z-pr-2070.md)
+- [種別ラベル `static` が未判定に倒れ blocking に残る](../../raw/reviews/20260830T093009Z-pr-2483.md)
 - [裸番号検出の cycle 1 レビュー結果](../../raw/reviews/20260904T004239Z-pr-2544.md)
 - [裸番号検出の修正結果](../../raw/fixes/20260904T005810Z-pr-2544.md)

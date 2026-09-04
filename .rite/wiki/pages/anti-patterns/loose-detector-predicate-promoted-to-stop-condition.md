@@ -36,4 +36,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 
 ## ソース
 
-- [PR #2074 fix results (5 cycle 総括)](../../raw/fixes/20260731T135712Z-pr-2074.md)
+- [fix 結果](../../raw/fixes/20260731T135712Z-pr-2074.md)

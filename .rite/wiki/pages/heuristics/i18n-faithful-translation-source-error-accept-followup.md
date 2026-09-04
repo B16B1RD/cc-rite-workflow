@@ -64,6 +64,6 @@ HIGH × follow-up の 2 findings に対し、M5 の accept (認知のみ) 経路
 
 ## ソース
 
-- [PR #1263 review results](../../raw/reviews/20260603T174323Z-pr-1263.md)
-- [PR #1263 fix results](../../raw/fixes/20260603T175332Z-pr-1263.md)
-- [PR #1265 review results (EN+JA 両側同時修正 PR の cycle 1 / 0 findings 収束 — フロー完結 evidence)](../../raw/reviews/20260604T000828Z-pr-1265.md)
+- [レビュー結果](../../raw/reviews/20260603T174323Z-pr-1263.md)
+- [fix 結果](../../raw/fixes/20260603T175332Z-pr-1263.md)
+- [EN+JA 両側同時修正 PR の cycle 1 / 0 findings 収束 — フロー完結 evidence](../../raw/reviews/20260604T000828Z-pr-1265.md)

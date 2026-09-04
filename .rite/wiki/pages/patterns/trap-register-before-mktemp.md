@@ -170,11 +170,11 @@ trap を先に張っていても、**新しい tempfile をその cleanup 関数
 
 ## ソース
 
-- [PR #529 cycle 3 fix (tempfile lifecycle 契約)](../../raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md)
-- [PR #548 cycle 1 fix (trap action リセット最小化)](../../raw/fixes/20260416T165559Z-pr-548.md)
-- [PR #548 cycle 4 fix (mktemp → trap race の複数箇所修正)](../../raw/fixes/20260416T180658Z-pr-548.md)
-- [PR #548 cycle 4 review (wiki-ingest-commit.sh worktree fast path で race 残存検出)](../../raw/reviews/20260416T180001Z-pr-548.md)
-- [PR #1033 review (hand-off registry pattern で `/tmp/rite-fix-normalized-*` orphan 解消)](../../raw/reviews/20260517T231929Z-pr-1033.md)
-- [PR #1850 fix (jq gate を mktemp より前へ移動する最小 reorder — gate-exit variant)](../../raw/fixes/20260713T093252Z-pr-1850.md)
-- [PR #1850 review (2 reviewer 独立検出 + sibling 間の gate 位置非対称の実測)](../../raw/reviews/20260713T104006Z-pr-1850.md)
-- [PR #2038 fix results (cycle 6, final) — 回収変数への代入が遅れて signal 窓が開く](../../raw/fixes/20260728T122258Z-pr-2038.md)
+- [tempfile lifecycle 契約](../../raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md)
+- [trap action リセット最小化](../../raw/fixes/20260416T165559Z-pr-548.md)
+- [mktemp → trap race の複数箇所修正](../../raw/fixes/20260416T180658Z-pr-548.md)
+- [wiki-ingest-commit.sh worktree fast path で race 残存検出](../../raw/reviews/20260416T180001Z-pr-548.md)
+- [hand-off registry pattern で `/tmp/rite-fix-normalized-*` orphan 解消](../../raw/reviews/20260517T231929Z-pr-1033.md)
+- [jq gate を mktemp より前へ移動する最小 reorder — gate-exit variant](../../raw/fixes/20260713T093252Z-pr-1850.md)
+- [2 reviewer 独立検出 + sibling 間の gate 位置非対称の実測](../../raw/reviews/20260713T104006Z-pr-1850.md)
+- [回収変数への代入が遅れて signal 窓が開く](../../raw/fixes/20260728T122258Z-pr-2038.md)

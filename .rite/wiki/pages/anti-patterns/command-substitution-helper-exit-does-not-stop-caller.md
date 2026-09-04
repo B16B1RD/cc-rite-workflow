@@ -93,5 +93,5 @@ grep -rn '\$(\s*helper_name' path/to/callers/
 
 ## ソース
 
-- [PR #2051 review results (cycle 2)](../../raw/reviews/20260729T150808Z-pr-2051-c2.md)
-- [PR #2051 fix results (cycle 2)](../../raw/fixes/20260729T151517Z-pr-2051-c2.md)
+- [レビュー結果](../../raw/reviews/20260729T150808Z-pr-2051-c2.md)
+- [fix 結果](../../raw/fixes/20260729T151517Z-pr-2051-c2.md)

@@ -81,8 +81,8 @@ shim を書くときに必要なのは以下の 3 点で、どれが欠けても
 
 ## ソース
 
-- [PR #2013 review cycle 1 — shim の exit code 契約が呼び出し側の fail-open と結合する構造](../../raw/reviews/20260724T175144Z-pr-2013.md)
-- [PR #2013 review cycle 3 — deadline がプロセスグループに及ばない問題を実測](../../raw/reviews/20260725T032345Z-pr-2013.md)
-- [PR #2013 fix results — shim 3 点セットと複製 drift テスト](../../raw/fixes/20260724T180733Z-pr-2013.md)
-- [PR #2013 fix results (cycle 3) — perl alarm の整数切り捨て](../../raw/fixes/20260724T193804Z-pr-2013.md)
-- [PR #2013 fix results (cycle 3, 後半) — setpgrp + グループ kill で GNU と同じ範囲にする](../../raw/fixes/20260725T033607Z-pr-2013.md)
+- [shim の exit code 契約が呼び出し側の fail-open と結合する構造](../../raw/reviews/20260724T175144Z-pr-2013.md)
+- [deadline がプロセスグループに及ばない問題を実測](../../raw/reviews/20260725T032345Z-pr-2013.md)
+- [shim 3 点セットと複製 drift テスト](../../raw/fixes/20260724T180733Z-pr-2013.md)
+- [perl alarm の整数切り捨て](../../raw/fixes/20260724T193804Z-pr-2013.md)
+- [(cycle 3, 後半) — setpgrp + グループ kill で GNU と同じ範囲にする](../../raw/fixes/20260725T033607Z-pr-2013.md)

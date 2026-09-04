@@ -99,5 +99,5 @@ positive control を置いても「その control が本当に検査対象を守
 
 ## ソース
 
-- [PR #2038 fix results (cycle 4)](../../raw/fixes/20260728T093135Z-pr-2038.md)
-- [PR #2038 review results (cycle 2)](../../raw/reviews/20260728T081222Z-pr-2038.md)
+- [fix 結果](../../raw/fixes/20260728T093135Z-pr-2038.md)
+- [レビュー結果](../../raw/reviews/20260728T081222Z-pr-2038.md)

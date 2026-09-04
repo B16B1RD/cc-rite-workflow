@@ -58,5 +58,5 @@ disabled_repo="$(new_repo false)"; SANDBOXES+=("$disabled_repo")
 
 ## ソース
 
-- [PR #1735 fix results](../../raw/fixes/20260703T054500Z-pr-1735.md)
-- [PR #1735 review results](../../raw/reviews/20260703T055450Z-pr-1735.md)
+- [fix 結果](../../raw/fixes/20260703T054500Z-pr-1735.md)
+- [レビュー結果](../../raw/reviews/20260703T055450Z-pr-1735.md)

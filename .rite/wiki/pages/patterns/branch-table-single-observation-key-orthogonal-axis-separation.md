@@ -65,8 +65,8 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 
 ## ソース
 
-- [PR #2052 review results (cycle 2) — 分岐条件のキー不統一](../../raw/reviews/20260730T010615Z-pr-2052.md)
-- [PR #2052 fix results (cycle 2) — 1 観測量への統一と 3 分岐表](../../raw/fixes/20260730T011723Z-pr-2052.md)
-- [PR #2056 review results (cycle 3) — 直交軸の同時成立](../../raw/reviews/20260730T055209Z-pr-2056.md)
-- [PR #2056 fix results (cycle 3) — 独立段落への退避と 1:1 の畳み込み](../../raw/fixes/20260730T055555Z-pr-2056.md)
-- [PR #2056 review results (cycle 5) — 判定表の key を 1 軸に揃える](../../raw/reviews/20260730T063315Z-pr-2056.md)
+- [分岐条件のキー不統一](../../raw/reviews/20260730T010615Z-pr-2052.md)
+- [1 観測量への統一と 3 分岐表](../../raw/fixes/20260730T011723Z-pr-2052.md)
+- [直交軸の同時成立](../../raw/reviews/20260730T055209Z-pr-2056.md)
+- [独立段落への退避と 1:1 の畳み込み](../../raw/fixes/20260730T055555Z-pr-2056.md)
+- [判定表の key を 1 軸に揃える](../../raw/reviews/20260730T063315Z-pr-2056.md)

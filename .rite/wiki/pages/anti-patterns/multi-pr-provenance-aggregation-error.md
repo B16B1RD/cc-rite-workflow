@@ -58,6 +58,6 @@ cycle 2 の再レビューで両 reviewer (prompt-engineer / code-quality) が g
 
 ## ソース
 
-- [PR #1255 review results](../../raw/reviews/20260603T041655Z-pr-1255.md)
-- [PR #1255 review results (cycle 2)](../../raw/reviews/20260603T042748Z-pr-1255.md)
-- [PR #1255 fix results](../../raw/fixes/20260603T042218Z-pr-1255.md)
+- [レビュー結果](../../raw/reviews/20260603T041655Z-pr-1255.md)
+- [レビュー結果](../../raw/reviews/20260603T042748Z-pr-1255.md)
+- [fix 結果](../../raw/fixes/20260603T042218Z-pr-1255.md)

@@ -50,4 +50,4 @@ spec の「冪等」MUST を実装するときは Reading B を wrapper 構造�
 
 ## ソース
 
-- [PR #1835 review results (cycle 2)](../../raw/reviews/20260712T134842Z-pr-1835.md)
+- [レビュー結果](../../raw/reviews/20260712T134842Z-pr-1835.md)

@@ -60,5 +60,5 @@ helper が失敗理由を stdout の構造化戻り値にだけ載せ自身の s
 
 ## ソース
 
-- [PR #2227 review results](../../raw/reviews/20260810T035844Z-pr-2227.md)
-- [PR #2227 fix results](../../raw/fixes/20260810T040721Z-pr-2227.md)
+- [レビュー結果](../../raw/reviews/20260810T035844Z-pr-2227.md)
+- [fix 結果](../../raw/fixes/20260810T040721Z-pr-2227.md)

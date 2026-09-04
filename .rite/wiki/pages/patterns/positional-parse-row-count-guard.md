@@ -67,5 +67,5 @@ fi
 
 ## ソース
 
-- [PR #1743 review cycle 1（位置依存 awk 列パースの silent no-op 化を MEDIUM 検出）](../../raw/reviews/20260703T164934Z-pr-1743.md)
-- [PR #1743 fix cycle 1（検査行数ガード + TC-10 回帰 pin を適用）](../../raw/fixes/20260703T165654Z-pr-1743.md)
+- [位置依存 awk 列パースの silent no-op 化を MEDIUM 検出](../../raw/reviews/20260703T164934Z-pr-1743.md)
+- [検査行数ガード + TC-10 回帰 pin を適用](../../raw/fixes/20260703T165654Z-pr-1743.md)

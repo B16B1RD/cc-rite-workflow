@@ -150,11 +150,11 @@ Simplification-First の Escalation trigger は「前 cycle の fix が導入し
 
 ## ソース
 
-- [PR #2094 review results (cycle 5, non-converged)](../../raw/reviews/20260803T030207Z-pr-2094.md)
-- [PR #2095 fix results (cycle 1: 同一命題の 3 ファイル複製)](../../raw/fixes/20260803T110020Z-pr-2095.md)
-- [PR #2095 fix results (cycle 2: 多ケース記述を 1 規則へ畳む / net-negative な simplification)](../../raw/fixes/20260803T114017Z-pr-2095.md)
-- [PR #2135 review results (cycle 3: 具体化が不正確さを増やす / 実測が割れたときの回避)](../../raw/reviews/20260807T084736Z-pr-2135.md)
-- [PR #2135 fix results (cycle 3: 列挙をやめて抽象へ戻す)](../../raw/fixes/20260807T085227Z-pr-2135.md)
-- [PR #2150 review results (cycle 5: 条件列挙による膨張 3.6 倍)](../../raw/reviews/20260808T080812Z-pr-2150-cycle5.md)
-- [PR #2150 fix results (cycle 5: 条件ではなく案内先を書く)](../../raw/fixes/20260808T081026Z-pr-2150-cycle5-fix.md)
-- [PR #2150 review results (cycle 6: 案内先も列挙できないなら書かない)](../../raw/reviews/20260808T082654Z-pr-2150-cycle6.md)
+- [non-converged](../../raw/reviews/20260803T030207Z-pr-2094.md)
+- [同一命題の 3 ファイル複製](../../raw/fixes/20260803T110020Z-pr-2095.md)
+- [多ケース記述を 1 規則へ畳む / net-negative な simplification](../../raw/fixes/20260803T114017Z-pr-2095.md)
+- [具体化が不正確さを増やす / 実測が割れたときの回避](../../raw/reviews/20260807T084736Z-pr-2135.md)
+- [列挙をやめて抽象へ戻す](../../raw/fixes/20260807T085227Z-pr-2135.md)
+- [条件列挙による膨張 3.6 倍](../../raw/reviews/20260808T080812Z-pr-2150-cycle5.md)
+- [条件ではなく案内先を書く](../../raw/fixes/20260808T081026Z-pr-2150-cycle5-fix.md)
+- [案内先も列挙できないなら書かない](../../raw/reviews/20260808T082654Z-pr-2150-cycle6.md)

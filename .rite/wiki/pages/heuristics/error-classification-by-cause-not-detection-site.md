@@ -130,12 +130,12 @@ state ファイルの読み取りで jq 失敗とファイル不在を同じ空�
 
 ## ソース
 
-- [PR #2038 fix results (cycle 5)](../../raw/fixes/20260728T100957Z-pr-2038.md)
-- [PR #2038 fix results (cycle 6, final)](../../raw/fixes/20260728T122258Z-pr-2038.md)
-- [PR #2038 fix results](../../raw/fixes/20260728T070208Z-pr-2038.md)
-- [PR #2038 review results](../../raw/reviews/20260727T103843Z-pr-2038.md)
-- [PR #2112 review results（新分岐 recreate が既存の観測機構と交差して 3 つの無音縮退を生んだことを検出）](../../raw/reviews/20260805T022816Z-pr-2112.md)
-- [PR #2112 fix results（ガードを 3 本足さず分岐を 1 本削除し、reason 8 種に対し action を 1 種へ畳んだ）](../../raw/fixes/20260805T025341Z-pr-2112.md)
-- [PR #2304 review results (cycle 3 で新設した契約ケースが「非ゼロ終了」と「完了診断なし」を同じ else へ畳んだ)](../../raw/reviews/20260813T090426Z-pr-2304.md)
-- [PR #2503 review results](../../raw/reviews/20260901T225105Z-pr-2503.md)
-- [PR #2503 fix results](../../raw/fixes/20260901T230359Z-pr-2503.md)
+- [fix 結果](../../raw/fixes/20260728T100957Z-pr-2038.md)
+- [fix 結果](../../raw/fixes/20260728T122258Z-pr-2038.md)
+- [fix 結果](../../raw/fixes/20260728T070208Z-pr-2038.md)
+- [レビュー結果](../../raw/reviews/20260727T103843Z-pr-2038.md)
+- [新分岐 recreate が既存の観測機構と交差して 3 つの無音縮退を生んだことを検出](../../raw/reviews/20260805T022816Z-pr-2112.md)
+- [ガードを 3 本足さず分岐を 1 本削除し、reason 8 種に対し action を 1 種へ畳んだ](../../raw/fixes/20260805T025341Z-pr-2112.md)
+- [で新設した契約ケースが「非ゼロ終了」と「完了診断なし」を同じ else へ畳んだ](../../raw/reviews/20260813T090426Z-pr-2304.md)
+- [レビュー結果](../../raw/reviews/20260901T225105Z-pr-2503.md)
+- [fix 結果](../../raw/fixes/20260901T230359Z-pr-2503.md)

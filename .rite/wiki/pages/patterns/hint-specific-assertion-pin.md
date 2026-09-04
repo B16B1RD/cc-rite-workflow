@@ -102,9 +102,9 @@ cycle 2 re-review は本修正の identification power を mutation testing で�
 
 ## ソース
 
-- [PR #623 review results (cycle 1)](../../raw/reviews/20260420T104328Z-pr-623.md)
-- [PR #623 fix results (cycle 1)](../../raw/fixes/20260420T105116Z-pr-623.md)
-- [PR #636 cycle 3 fix (twin site contract verification + --preserve-error-count flag)](../../raw/fixes/20260421T033138Z-pr-636-cycle-3.md)
-- [PR #1223 cycle 1 review — TC-12 が exit 2 のみ assert し 4 経路を区別しない LOW/follow-up](../../raw/reviews/20260601T023442Z-pr-1223.md)
-- [PR #1223 fix — TC-10/TC-11 対称の assert_grep "branch-strategy は必須" を追加し特定 exit-2 経路を pin](../../raw/fixes/20260601T023854Z-pr-1223.md)
-- [PR #1223 cycle 2 review — mutation testing で経路 pin の identification power を実証、0 findings / 2 cycle 収束](../../raw/reviews/20260601T024546Z-pr-1223.md)
+- [レビュー結果](../../raw/reviews/20260420T104328Z-pr-623.md)
+- [fix 結果](../../raw/fixes/20260420T105116Z-pr-623.md)
+- [twin site contract verification + --preserve-error-count flag](../../raw/fixes/20260421T033138Z-pr-636-cycle-3.md)
+- [TC-12 が exit 2 のみ assert し 4 経路を区別しない LOW/follow-up](../../raw/reviews/20260601T023442Z-pr-1223.md)
+- [TC-10/TC-11 対称の assert_grep "branch-strategy は必須" を追加し特定 exit-2 経路を pin](../../raw/fixes/20260601T023854Z-pr-1223.md)
+- [mutation testing で経路 pin の identification power を実証、0 findings / 2 cycle 収束](../../raw/reviews/20260601T024546Z-pr-1223.md)

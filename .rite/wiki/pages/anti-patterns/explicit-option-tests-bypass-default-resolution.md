@@ -51,6 +51,6 @@ helper のテストがすべての TC でオプションを明示すると、pro
 
 ## ソース
 
-- [PR #2126 fix results](../../raw/fixes/20260806T153014Z-pr-2126.md)
-- [PR #2126 fix results (cycle 5)](../../raw/fixes/20260806T181047Z-pr-2126-c5.md)
-- [PR #2130 review results (同一 helper で 3 度目の再発)](../../raw/reviews/20260807T011214Z-pr-2130.md)
+- [fix 結果](../../raw/fixes/20260806T153014Z-pr-2126.md)
+- [fix 結果](../../raw/fixes/20260806T181047Z-pr-2126-c5.md)
+- [同一 helper で 3 度目の再発](../../raw/reviews/20260807T011214Z-pr-2130.md)

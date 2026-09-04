@@ -159,11 +159,11 @@ self-declared 不要性の実測 (cycle 3) で観測した sub-pattern: reviewer
 
 ## ソース
 
-- [PR #540 review (Observed Likelihood Gate 実装例、2 件降格)](../../raw/reviews/20260416T031452Z-pr-540.md)
-- [PR #548 cycle 3 review (triple cross-validation boost)](../../raw/reviews/20260416T173035Z-pr-548.md)
-- [PR #589 review (Hypothetical 降格軸の追加実証 — HIGH x2 → 推奨事項降格)](../../raw/reviews/20260419T043538Z-pr-589.md)
-- [PR #779 review (literal anchor 欠落で MEDIUM → 推奨事項降格、reviewer literal output contract の重要性実証)](../../raw/reviews/20260502T155859Z-pr-779.md)
-- [PR #834 review (11 findings 全降格 — cross-validation 合意でも literal anchor 欠落は補えない実証)](../../raw/reviews/20260505T095516Z-pr-834.md)
-- [PR #1812 review cycle 3 (推奨文の self-declared 不要性による第3の orthogonal 降格軸)](../../raw/reviews/20260709T104501Z-pr-1812.md)
-- [PR #1847 review cycle 3 (独立レビュアーの明示的非裏付け + non-blocking worst-case の不整合による第4の orthogonal 降格軸)](../../raw/reviews/20260713T051932Z-pr-1847-cycle3.md)
-- [PR #1852 review cycle 2 (再検証サイクルでの重複降格 — 既 Issue 化済み finding は Decision Log 記録に留める)](../../raw/reviews/20260713T223454Z-pr-1852.md)
+- [Observed Likelihood Gate 実装例、2 件降格](../../raw/reviews/20260416T031452Z-pr-540.md)
+- [triple cross-validation boost](../../raw/reviews/20260416T173035Z-pr-548.md)
+- [Hypothetical 降格軸の追加実証 — HIGH x2 → 推奨事項降格](../../raw/reviews/20260419T043538Z-pr-589.md)
+- [literal anchor 欠落で MEDIUM → 推奨事項降格、reviewer literal output contract の重要性実証](../../raw/reviews/20260502T155859Z-pr-779.md)
+- [11 findings 全降格 — cross-validation 合意でも literal anchor 欠落は補えない実証](../../raw/reviews/20260505T095516Z-pr-834.md)
+- [推奨文の self-declared 不要性による第3の orthogonal 降格軸](../../raw/reviews/20260709T104501Z-pr-1812.md)
+- [独立レビュアーの明示的非裏付け + non-blocking worst-case の不整合による第4の orthogonal 降格軸](../../raw/reviews/20260713T051932Z-pr-1847-cycle3.md)
+- [再検証サイクルでの重複降格 — 既 Issue 化済み finding は Decision Log 記録に留める](../../raw/reviews/20260713T223454Z-pr-1852.md)

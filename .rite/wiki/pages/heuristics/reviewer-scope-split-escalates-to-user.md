@@ -94,6 +94,6 @@ fingerprint を永続化して次サイクルの再報告を抑止するのは�
 
 ## ソース
 
-- [PR #2052 review results (cycle 2)](../../raw/reviews/20260802T110823Z-pr-2052.md)
-- [PR #2095 fix results (cycle 4: cycle 間で判断が逆転した項目の扱い)](../../raw/fixes/20260803T124230Z-pr-2095.md)
-- [PR #2095 fix results (cycle 2: repro の食い違いから規則の曖昧さを特定)](../../raw/fixes/20260803T114017Z-pr-2095.md)
+- [レビュー結果](../../raw/reviews/20260802T110823Z-pr-2052.md)
+- [cycle 間で判断が逆転した項目の扱い](../../raw/fixes/20260803T124230Z-pr-2095.md)
+- [repro の食い違いから規則の曖昧さを特定](../../raw/fixes/20260803T114017Z-pr-2095.md)

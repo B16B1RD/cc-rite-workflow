@@ -66,4 +66,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T02:49:27Z" }
 
 ## ソース
 
-- [PR #2120 fix results (cycle 3)](../../raw/fixes/20260806T010533Z-pr-2120.md)
+- [fix 結果](../../raw/fixes/20260806T010533Z-pr-2120.md)

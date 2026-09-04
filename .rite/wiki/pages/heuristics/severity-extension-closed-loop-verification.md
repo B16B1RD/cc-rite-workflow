@@ -125,5 +125,5 @@ scope expansion が **3 cycle 連続で 5 file 超ずつ広がる** 場合、別
 
 ## ソース
 
-- [PR #708 cycle 3 fix (closed-loop 6 段階 + regex alternative ordering)](../../raw/fixes/20260428T201715Z-pr-708-cycle-3.md)
-- [PR #708 cycle 4 fix (progressive scope expansion 制御 + 別 Issue 化判断)](../../raw/fixes/20260428T202946Z-pr-708-cycle-4.md)
+- [closed-loop 6 段階 + regex alternative ordering](../../raw/fixes/20260428T201715Z-pr-708-cycle-3.md)
+- [progressive scope expansion 制御 + 別 Issue 化判断](../../raw/fixes/20260428T202946Z-pr-708-cycle-4.md)

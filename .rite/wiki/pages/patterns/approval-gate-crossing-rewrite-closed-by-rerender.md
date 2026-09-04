@@ -58,7 +58,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 
 ## ソース
 
-- [PR #2056 review results — 承認と適用の内容一致](../../raw/reviews/20260730T045358Z-pr-2056.md)
-- [PR #2056 fix results (cycle 2) — 承認ゲートを跨ぐ書き換え](../../raw/fixes/20260730T053611Z-pr-2056.md)
-- [PR #2056 review results (cycle 4) — 両立しない不変条件は後段を歪める](../../raw/reviews/20260730T061343Z-pr-2056.md)
-- [PR #2056 fix results (cycle 4) — 再描画で閉じる / fold-in 撤去で 4 指摘が同時消滅](../../raw/fixes/20260730T061745Z-pr-2056.md)
+- [承認と適用の内容一致](../../raw/reviews/20260730T045358Z-pr-2056.md)
+- [承認ゲートを跨ぐ書き換え](../../raw/fixes/20260730T053611Z-pr-2056.md)
+- [両立しない不変条件は後段を歪める](../../raw/reviews/20260730T061343Z-pr-2056.md)
+- [再描画で閉じる / fold-in 撤去で 4 指摘が同時消滅](../../raw/fixes/20260730T061745Z-pr-2056.md)

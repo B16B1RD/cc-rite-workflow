@@ -109,9 +109,9 @@ grep -nE "'\\^WARNING:|filter.*pass-through" plugins/rite/hooks/state-read.sh
 
 ## ソース
 
-- [PR #756 cycle 1 review (3 reviewer 独立合意 HIGH cross-validation)](../../raw/reviews/20260430T204843Z-pr-756.md)
-- [PR #989 cycle 1 review (test helper bypass: TC-10 inline jq vs build_stop_payload helper、code-quality MEDIUM)](../../raw/reviews/20260516T030954Z-pr-989.md)
-- [PR #989 cycle 2 review (修正検証: build_stop_payload 経由化で sibling symmetry 復元、blocking 0 件)](../../raw/reviews/20260516T032759Z-pr-989.md)
+- [3 reviewer 独立合意 HIGH cross-validation](../../raw/reviews/20260430T204843Z-pr-756.md)
+- [test helper bypass: TC-10 inline jq vs build_stop_payload helper、code-quality MEDIUM](../../raw/reviews/20260516T030954Z-pr-989.md)
+- [修正検証: build_stop_payload 経由化で sibling symmetry 復元、blocking 0 件](../../raw/reviews/20260516T032759Z-pr-989.md)
 
 ## 変種: canonical パターンを「参照した」が、参照先の失敗経路まで写していない
 
@@ -132,7 +132,7 @@ helper の呼び出しを bypass する形だけでなく、**canonical パタ�
 
 ## ソース（追記分）
 
-- [PR #2044 review results (cycle 3) — canonical パターンの分岐落ち](../../raw/reviews/20260729T004127Z-pr-2044.md)
-- [PR #2044 fix results (cycle 3) — 参照先の失敗経路まで写す](../../raw/fixes/20260729T004628Z-pr-2044.md)
-- [PR #2044 fix results — 新設 capture が canonical idiom を参照しない](../../raw/fixes/20260729T035608Z-pr-2044.md)
-- [PR #2044 fix results (cycle 4) — SoT helper を同等品に置き換えない](../../raw/fixes/20260729T073316Z-pr-2044.md)
+- [canonical パターンの分岐落ち](../../raw/reviews/20260729T004127Z-pr-2044.md)
+- [参照先の失敗経路まで写す](../../raw/fixes/20260729T004628Z-pr-2044.md)
+- [新設 capture が canonical idiom を参照しない](../../raw/fixes/20260729T035608Z-pr-2044.md)
+- [SoT helper を同等品に置き換えない](../../raw/fixes/20260729T073316Z-pr-2044.md)

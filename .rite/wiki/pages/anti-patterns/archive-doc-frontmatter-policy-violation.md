@@ -91,7 +91,7 @@ L35 の `ステップ 8` は同 doc L114 の `Phase 8` と intra-document contra
 
 ## ソース
 
-- [PR #1151 review cycle 2 (3 findings, F-21)](../../raw/reviews/20260526T153732Z-pr-1151.md)
-- [PR #1151 review cycle 3 (2 tail residue)](../../raw/reviews/20260526T155823Z-pr-1151.md)
-- [PR #1151 fix cycle 2 (F-21 revert)](../../raw/fixes/20260526T154013Z-pr-1151.md)
-- [PR #1151 fix cycle 3 (tail residue fix)](../../raw/fixes/20260526T160217Z-pr-1151.md)
+- [3 findings, F-21](../../raw/reviews/20260526T153732Z-pr-1151.md)
+- [2 tail residue](../../raw/reviews/20260526T155823Z-pr-1151.md)
+- [F-21 revert](../../raw/fixes/20260526T154013Z-pr-1151.md)
+- [tail residue fix](../../raw/fixes/20260526T160217Z-pr-1151.md)

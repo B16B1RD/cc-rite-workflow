@@ -53,5 +53,5 @@ rail の subsequence 保存ガードには既存の除外前例があったが�
 
 ## ソース
 
-- [PR #2470 fix results (cycle 2)](../../raw/fixes/20260830T014342Z-pr-2470.md)
-- [PR #2470 review results (cycle 3)](../../raw/reviews/20260830T015647Z-pr-2470.md)
+- [fix 結果](../../raw/fixes/20260830T014342Z-pr-2470.md)
+- [レビュー結果](../../raw/reviews/20260830T015647Z-pr-2470.md)

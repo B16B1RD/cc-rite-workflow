@@ -62,6 +62,6 @@ cycle 2 で「1 行の 2 個目以降」を塞いでも、**綴りの種類の�
 
 ## ソース
 
-- [PR #2124 review results](../../raw/reviews/20260806T053845Z-pr-2124.md)
-- [PR #2124 fix results](../../raw/fixes/20260806T055534Z-pr-2124.md)
-- [PR #2124 review results (cycle 5, final)](../../raw/reviews/20260806T124223Z-pr-2124.md)
+- [レビュー結果](../../raw/reviews/20260806T053845Z-pr-2124.md)
+- [fix 結果](../../raw/fixes/20260806T055534Z-pr-2124.md)
+- [レビュー結果](../../raw/reviews/20260806T124223Z-pr-2124.md)

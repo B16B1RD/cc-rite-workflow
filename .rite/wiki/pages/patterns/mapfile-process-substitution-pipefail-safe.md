@@ -84,5 +84,5 @@ v=$(grep -E '^\s+schema_version:' rite-config.yml | head -1 || true) || v=""
 
 ## ソース
 
-- [PR #868 review (cycle 1)](../../raw/reviews/20260506T162735Z-pr-868.md)
-- [PR #868 fix](../../raw/fixes/20260506T163131Z-pr-868.md)
+- [レビュー結果](../../raw/reviews/20260506T162735Z-pr-868.md)
+- [fix 結果](../../raw/fixes/20260506T163131Z-pr-868.md)

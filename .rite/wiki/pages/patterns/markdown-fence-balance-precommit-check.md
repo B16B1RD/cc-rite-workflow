@@ -79,4 +79,4 @@ grep -c '^```bash' path/to/file.md
 
 ## ソース
 
-- [PR #608 fix cycle 2 (CRITICAL × 3 fence balance)](../../raw/fixes/20260419T162557Z-pr-608-cycle2.md)
+- [CRITICAL × 3 fence balance](../../raw/fixes/20260419T162557Z-pr-608-cycle2.md)

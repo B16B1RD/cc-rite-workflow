@@ -68,4 +68,4 @@ family を識別する手順:
 
 ## ソース
 
-- [PR #1035 fix cycle 2 (canonical sentinel schema sep_count=3 invariant の peer cross-check)](../../raw/fixes/20260518T031424Z-pr-1035.md)
+- [canonical sentinel schema sep_count=3 invariant の peer cross-check](../../raw/fixes/20260518T031424Z-pr-1035.md)

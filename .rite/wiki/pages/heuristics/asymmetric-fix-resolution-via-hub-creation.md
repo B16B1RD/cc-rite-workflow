@@ -122,7 +122,7 @@ Option B の「hub 化」は、test references の SoT 化だけでなく **comm
 
 ## ソース
 
-- [Issue #851 close retrospective (Option B hub 化採用の判断記録)](../../raw/retrospectives/20260506T040636Z-issue-851.md)
-- [PR #858 review (1-line minimal-diff doc PR で SoT 化を実装、0 blocking findings)](../../raw/reviews/20260506T035708Z-pr-858.md)
-- [PR #867 review — hub 行が 3+ test 参照に成長した時点で inline 連結から bullet list 化、両 reviewer 0 findings](../../raw/reviews/20260506T135719Z-pr-867.md)
-- [PR #1203 review — wiki/init.md §1.3.4 の inline copy を `gitignore-health-check.sh --verify-negation` 委譲へ縮約、cross-file 同期を同一ファイル sibling 同期化、全 5 reviewer 0 findings](../../raw/reviews/20260530T024611Z-pr-1203.md)
+- [Option B hub 化採用の判断記録](../../raw/retrospectives/20260506T040636Z-issue-851.md)
+- [1-line minimal-diff doc PR で SoT 化を実装、0 blocking findings](../../raw/reviews/20260506T035708Z-pr-858.md)
+- [hub 行が 3+ test 参照に成長した時点で inline 連結から bullet list 化、両 reviewer 0 findings](../../raw/reviews/20260506T135719Z-pr-867.md)
+- [wiki/init.md §1.3.4 の inline copy を `gitignore-health-check.sh --verify-negation` 委譲へ縮約、cross-file 同期を同一ファイル sibling 同期化、全 5 reviewer 0 findings](../../raw/reviews/20260530T024611Z-pr-1203.md)

@@ -59,5 +59,5 @@ consumer 側の文に**断定形の述語**（「残る」「必ず記録され�
 
 ## ソース
 
-- [PR #2043 review results](../../raw/reviews/20260728T160636Z-pr-2043.md)
-- [PR #2043 review results (cycle 2)](../../raw/reviews/20260728T163233Z-pr-2043.md)
+- [レビュー結果](../../raw/reviews/20260728T160636Z-pr-2043.md)
+- [レビュー結果](../../raw/reviews/20260728T163233Z-pr-2043.md)

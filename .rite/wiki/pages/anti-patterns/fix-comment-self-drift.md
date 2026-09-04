@@ -183,17 +183,17 @@ cycle 7 で同種違反 3 件 → cycle 9 で 2 件 → cycle 11 で 0 件と単
 
 ## ソース
 
-- [PR #578 cycle 2 review (self-drift detection)](../../raw/reviews/20260418T114056Z-pr-578.md)
-- [PR #578 cycle 2 fix (2 段階修正)](../../raw/fixes/20260418T114231Z-pr-578.md)
-- [PR #617 fix (prose 内行番号 literal scope 拡張)](../../raw/fixes/20260420T043015Z-pr-617-fix1.md)
-- [PR #671 fix (新規 lint rule 自身の self-meta drift)](../../raw/fixes/20260426T015356Z-pr-671.md)
-- [PR #756 cycle 3 review (journal marker 二重検出 HIGH × 2)](../../raw/reviews/20260501T012144Z-pr-756.md)
-- [PR #756 cycle 4 fix (全置換 claim の機械検証必須化)](../../raw/fixes/20260501T020145Z-pr-756.md)
-- [PR #1161 cycle 9 review (`旧 X は Y していた` journal phrase の同 PR 別箇所残存 HIGH × 2)](../../raw/reviews/20260527T082452Z-pr-1161.md)
-- [PR #1161 cycle 11 review (3 → 2 → 0 単調収束で mergeable)](../../raw/reviews/20260527T083107Z-pr-1161.md)
-- [PR #1169 fix results (cycle 5) — TC-H6 のコメントに混入した `cycle-2 fix` review cycle 番号参照を削除し observability 目的のみの恒久記述へ。テストコードのコメントも no_journal / no_cycle_reference MUST、新規 diff 行の違反は scope 内修正](../../raw/fixes/20260528T144526Z-pr-1169.md)
-- [PR #1836 fix results (cycle 2) — 回帰テストのケースコメント 2 件の「旧実装は…だった」履歴フレームを現在形の技術的 WHY へ書き換え。同一 PR 内に正しい現在形記述と誤った履歴フレームが混在した事例](../../raw/fixes/20260712T150908Z-pr-1836.md)
-- [PR #1838 review results (4 cycles) — F-01 修正文言が F-03 帰属 category error を誘発した連鎖。決定主体を主語にした帰属への書き直しで収束](../../raw/reviews/20260712T174329Z-pr-1838.md)
+- [self-drift detection](../../raw/reviews/20260418T114056Z-pr-578.md)
+- [2 段階修正](../../raw/fixes/20260418T114231Z-pr-578.md)
+- [prose 内行番号 literal scope 拡張](../../raw/fixes/20260420T043015Z-pr-617-fix1.md)
+- [新規 lint rule 自身の self-meta drift](../../raw/fixes/20260426T015356Z-pr-671.md)
+- [journal marker 二重検出 HIGH × 2](../../raw/reviews/20260501T012144Z-pr-756.md)
+- [全置換 claim の機械検証必須化](../../raw/fixes/20260501T020145Z-pr-756.md)
+- [`旧 X は Y していた` journal phrase の同 PR 別箇所残存 HIGH × 2](../../raw/reviews/20260527T082452Z-pr-1161.md)
+- [3 → 2 → 0 単調収束で mergeable](../../raw/reviews/20260527T083107Z-pr-1161.md)
+- [TC-H6 のコメントに混入した `cycle-2 fix` review cycle 番号参照を削除し observability 目的のみの恒久記述へ。テストコードのコメントも no_journal / no_cycle_reference MUST、新規 diff 行の違反は scope 内修正](../../raw/fixes/20260528T144526Z-pr-1169.md)
+- [回帰テストのケースコメント 2 件の「旧実装は…だった」履歴フレームを現在形の技術的 WHY へ書き換え。同一 PR 内に正しい現在形記述と誤った履歴フレームが混在した事例](../../raw/fixes/20260712T150908Z-pr-1836.md)
+- [(4 cycles) — F-01 修正文言が F-03 帰属 category error を誘発した連鎖。決定主体を主語にした帰属への書き直しで収束](../../raw/reviews/20260712T174329Z-pr-1838.md)
 
 ## 変種: 行番号アンカーは「導入コミット内で自壊する」
 
@@ -213,5 +213,5 @@ cycle 7 で同種違反 3 件 → cycle 9 で 2 件 → cycle 11 で 0 件と単
 
 ## ソース（追記分）
 
-- [PR #2094 review results (cycle 4) — 行番号コメントが同一コミット内で自己矛盾](../../raw/reviews/20260803T020301Z-pr-2094.md)
-- [PR #2094 review results (cycle 3) — 6 件中 4 件が前 cycle の fix で追加したコメント由来](../../raw/reviews/20260803T051521Z-pr-2094.md)
+- [行番号コメントが同一コミット内で自己矛盾](../../raw/reviews/20260803T020301Z-pr-2094.md)
+- [6 件中 4 件が前 cycle の fix で追加したコメント由来](../../raw/reviews/20260803T051521Z-pr-2094.md)

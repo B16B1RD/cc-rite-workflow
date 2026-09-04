@@ -70,8 +70,8 @@ SoT に判別子を足した cycle で、同じ規則を転記していた consu
 
 ## ソース
 
-- [PR #2056 review results (cycle 4) — SoT を consumer 依存にすると seam が増える](../../raw/reviews/20260730T061343Z-pr-2056.md)
-- [PR #2056 fix results (cycle 4) — 単一 default への回帰](../../raw/fixes/20260730T061745Z-pr-2056.md)
-- [PR #2056 review results (cycle 5) — 転記先の同期漏れ](../../raw/reviews/20260730T063315Z-pr-2056.md)
-- [PR #2056 fix results (cycle 5) — 要約は必ず lossy](../../raw/fixes/20260730T063609Z-pr-2056.md)
-- [PR #2056 review results — 共有 SoT の責務分割ミス](../../raw/reviews/20260730T093514Z-pr-2056.md)
+- [SoT を consumer 依存にすると seam が増える](../../raw/reviews/20260730T061343Z-pr-2056.md)
+- [単一 default への回帰](../../raw/fixes/20260730T061745Z-pr-2056.md)
+- [転記先の同期漏れ](../../raw/reviews/20260730T063315Z-pr-2056.md)
+- [要約は必ず lossy](../../raw/fixes/20260730T063609Z-pr-2056.md)
+- [共有 SoT の責務分割ミス](../../raw/reviews/20260730T093514Z-pr-2056.md)

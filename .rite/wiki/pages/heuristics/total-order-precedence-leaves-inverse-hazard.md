@@ -57,6 +57,6 @@ confidence: high
 
 ## ソース
 
-- [PR #2464 review results](../../raw/reviews/20260829T135848Z-pr-2464.md)
-- [PR #2464 fix results](../../raw/fixes/20260829T140803Z-pr-2464.md)
-- [PR #2464 review results (cycle 2)](../../raw/reviews/20260829T142006Z-pr-2464.md)
+- [レビュー結果](../../raw/reviews/20260829T135848Z-pr-2464.md)
+- [fix 結果](../../raw/fixes/20260829T140803Z-pr-2464.md)
+- [レビュー結果](../../raw/reviews/20260829T142006Z-pr-2464.md)

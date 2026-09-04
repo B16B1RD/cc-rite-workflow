@@ -77,9 +77,9 @@ reviewer 推奨を尊重する fix-loop ルールは、以下 2 経験則と組�
 
 ## ソース
 
-- [PR #800 cycle 1 fix (F-03 を replied-only として処理)](../../raw/fixes/20260504T012717Z-pr-800.md)
-- [PR #800 cycle 2 fix (replied-only 経路の機能確認)](../../raw/fixes/20260504T025959Z-pr-800-cycle2.md)
-- [PR #800 cycle 1 review (F-03 reviewer 「対応不要」明記)](../../raw/reviews/20260504T012358Z-pr-800.md)
-- [PR #800 cycle 4 review (mergeable, replied-only 経路で同 finding 再発なし)](../../raw/reviews/20260504T030800Z-pr-800-cycle4.md)
-- [PR #1059 fix (LOW × nit-noted intentional duplication を replied-only 尊重)](../../raw/fixes/20260519T074133Z-pr-1059.md)
-- [PR #1063 cycle 2 review (scope=nit-noted 受け流し経路の実運用初回発火、Epic #1015 M2 dogfooding 検証)](../../raw/reviews/20260519T132229Z-pr-1063-cycle2.md)
+- [F-03 を replied-only として処理](../../raw/fixes/20260504T012717Z-pr-800.md)
+- [replied-only 経路の機能確認](../../raw/fixes/20260504T025959Z-pr-800-cycle2.md)
+- [F-03 reviewer 「対応不要」明記](../../raw/reviews/20260504T012358Z-pr-800.md)
+- [mergeable, replied-only 経路で同 finding 再発なし](../../raw/reviews/20260504T030800Z-pr-800-cycle4.md)
+- [LOW × nit-noted intentional duplication を replied-only 尊重](../../raw/fixes/20260519T074133Z-pr-1059.md)
+- [scope=nit-noted 受け流し経路の実運用初回発火、Epic M2 dogfooding 検証](../../raw/reviews/20260519T132229Z-pr-1063-cycle2.md)

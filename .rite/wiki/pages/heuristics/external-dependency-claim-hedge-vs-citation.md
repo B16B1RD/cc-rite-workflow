@@ -65,7 +65,7 @@ cycle 4 のケースでは、**同じ節の 4 行下**が同種の上流主張�
 
 ## ソース
 
-- [PR #2070 review results (cycle 3)](../../raw/reviews/20260801T202243Z-pr-2070.md)
-- [PR #2070 fix results (cycle 3)](../../raw/fixes/20260801T211356Z-pr-2070.md)
-- [PR #2070 review results (cycle 4)](../../raw/reviews/20260801T223635Z-pr-2070.md)
-- [PR #2070 fix results (cycle 4)](../../raw/fixes/20260801T224211Z-pr-2070.md)
+- [レビュー結果](../../raw/reviews/20260801T202243Z-pr-2070.md)
+- [fix 結果](../../raw/fixes/20260801T211356Z-pr-2070.md)
+- [レビュー結果](../../raw/reviews/20260801T223635Z-pr-2070.md)
+- [fix 結果](../../raw/fixes/20260801T224211Z-pr-2070.md)

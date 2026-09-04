@@ -71,9 +71,9 @@ prefix 衝突は「短い番号が長い番号に食われる」偽同一性だ�
 
 ## ソース
 
-- [PR #2056 review results (cycle 5) — 語境界欠如の逆説的構造](../../raw/reviews/20260730T085655Z-pr-2056.md)
-- [PR #2056 fix results (cycle 5) — 複数 --grep の OR 結合で pipe なし語境界](../../raw/fixes/20260730T090005Z-pr-2056.md)
-- [PR #2056 review results — 行頭アンカー案を全件実測で棄却](../../raw/reviews/20260730T101445Z-pr-2056.md)
-- [PR #2056 fix results — 機械ステップと読解ステップの分離](../../raw/fixes/20260730T101445Z-pr-2056.md)
+- [語境界欠如の逆説的構造](../../raw/reviews/20260730T085655Z-pr-2056.md)
+- [複数 --grep の OR 結合で pipe なし語境界](../../raw/fixes/20260730T090005Z-pr-2056.md)
+- [行頭アンカー案を全件実測で棄却](../../raw/reviews/20260730T101445Z-pr-2056.md)
+- [機械ステップと読解ステップの分離](../../raw/fixes/20260730T101445Z-pr-2056.md)
 - [裸番号検出の cycle 1 レビュー結果](../../raw/reviews/20260904T004239Z-pr-2544.md)
 - [裸番号検出の修正結果](../../raw/fixes/20260904T005810Z-pr-2544.md)

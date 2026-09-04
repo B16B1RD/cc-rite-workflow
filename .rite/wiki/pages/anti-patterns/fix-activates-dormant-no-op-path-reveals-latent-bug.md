@@ -56,5 +56,5 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-09T09:29:35Z" }
 
 ## ソース
 
-- [PR #1809 review results (cycle 2)](../../raw/reviews/20260709T090623Z-pr-1809-cycle2.md)
-- [PR #1809 fix results (cycle 2, accept)](../../raw/fixes/20260709T090806Z-pr-1809-cycle2.md)
+- [レビュー結果](../../raw/reviews/20260709T090623Z-pr-1809-cycle2.md)
+- [accept](../../raw/fixes/20260709T090806Z-pr-1809-cycle2.md)

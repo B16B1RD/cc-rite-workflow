@@ -67,5 +67,5 @@ mkdir -p "$archive_dir"
 
 ## ソース
 
-- [PR #2114 review results (cycle 3)](../../raw/reviews/20260805T112936Z-pr-2114.md)
-- [PR #2114 fix results (cycle 3)](../../raw/fixes/20260805T114122Z-pr-2114.md)
+- [レビュー結果](../../raw/reviews/20260805T112936Z-pr-2114.md)
+- [fix 結果](../../raw/fixes/20260805T114122Z-pr-2114.md)

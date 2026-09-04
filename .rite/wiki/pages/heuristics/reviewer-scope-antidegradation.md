@@ -108,8 +108,8 @@ cycle 1-3 で発生していた以下のリスクを cycle 4 で decisive に回
 
 ## ソース
 
-- [PR #586 initial review (dogfooding bias 検出)](../../raw/reviews/20260419T032159Z-pr-586.md)
-- [PR #586 cycle 4 fix (cycle 1-3 で見落とされた latent issue の修正)](../../raw/fixes/20260419T032801Z-pr-586.md)
-- [PR #617 cycle 2 verification review (grep + bash -n evidence gate canonical 確立)](../../raw/reviews/20260420T043312Z-pr-617-cycle2.md)
-- [PR #747 cycle 7 review (mergeable, 7-cycle 自然収束 + Quality Signal 1 unfired)](../../raw/reviews/20260430T033635Z-pr-747.md)
-- [PR #800 cycle 4 review (mergeable, Severity 厳格化 3 条件で 4-cycle 収束)](../../raw/reviews/20260504T030800Z-pr-800-cycle4.md)
+- [dogfooding bias 検出](../../raw/reviews/20260419T032159Z-pr-586.md)
+- [-3 で見落とされた latent issue の修正](../../raw/fixes/20260419T032801Z-pr-586.md)
+- [verification review (grep + bash -n evidence gate canonical 確立)](../../raw/reviews/20260420T043312Z-pr-617-cycle2.md)
+- [mergeable, 7-cycle 自然収束 + Quality Signal 1 unfired](../../raw/reviews/20260430T033635Z-pr-747.md)
+- [mergeable, Severity 厳格化 3 条件で 4-cycle 収束](../../raw/reviews/20260504T030800Z-pr-800-cycle4.md)

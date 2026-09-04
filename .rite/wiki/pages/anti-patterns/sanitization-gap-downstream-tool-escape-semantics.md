@@ -45,4 +45,4 @@ quoted heredoc は「シェルの」展開・置換を防ぐスコープに限�
 
 ## ソース
 
-- [PR #1802 review results](../../raw/reviews/20260708T153610Z-pr-1802.md)
+- [レビュー結果](../../raw/reviews/20260708T153610Z-pr-1802.md)

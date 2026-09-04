@@ -74,5 +74,5 @@ cycle 1 で fact-check を見落としたケースは、cycle 2 reviewer が必�
 
 ## ソース
 
-- [PR #761 cycle 1 fix — AC-3 解消 statement の数値解釈事実誤認 (HIGH)](../../raw/fixes/20260502T001118Z-pr-761.md)
-- [PR #761 cycle 2 re-review — 5 → 0 finding 収束 + AC fact-check 教訓の formalization](../../raw/reviews/20260502T001651Z-pr-761.md)
+- [AC-3 解消 statement の数値解釈事実誤認 (HIGH)](../../raw/fixes/20260502T001118Z-pr-761.md)
+- [5 → 0 finding 収束 + AC fact-check 教訓の formalization](../../raw/reviews/20260502T001651Z-pr-761.md)

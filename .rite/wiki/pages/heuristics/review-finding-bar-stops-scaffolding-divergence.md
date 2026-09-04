@@ -66,4 +66,4 @@ cycle 5 の reviewer prompt に次を追加した:
 
 ## ソース
 
-- [PR #2017 review results (cycle 5, mergeable)](../../raw/reviews/20260725T112757Z-pr-2017-cycle5.md)
+- [レビュー結果](../../raw/reviews/20260725T112757Z-pr-2017-cycle5.md)

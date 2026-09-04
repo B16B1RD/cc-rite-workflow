@@ -44,6 +44,6 @@ command spec (`.md`) 内で gh CLI に渡す title / body をインライン展�
 
 ## ソース
 
-- [PR #1310 fix results (cycle 1)](../../raw/fixes/20260608T145054Z-pr-1310.md)
-- [PR #1310 review results (cycle 1)](../../raw/reviews/20260608T144010Z-pr-1310.md)
-- [PR #1310 review results (cycle 4)](../../raw/reviews/20260608T154358Z-pr-1310.md)
+- [fix 結果](../../raw/fixes/20260608T145054Z-pr-1310.md)
+- [レビュー結果](../../raw/reviews/20260608T144010Z-pr-1310.md)
+- [レビュー結果](../../raw/reviews/20260608T154358Z-pr-1310.md)

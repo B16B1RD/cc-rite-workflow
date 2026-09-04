@@ -69,4 +69,4 @@ if ! [[ "$x" =~ ^[0-9]+$ ]] || [ "$x" -eq 0 ]; then use_default; else carry_forw
 
 ## ソース
 
-- [PR #2094 review results](../../raw/reviews/20260803T035738Z-pr-2094.md)
+- [レビュー結果](../../raw/reviews/20260803T035738Z-pr-2094.md)

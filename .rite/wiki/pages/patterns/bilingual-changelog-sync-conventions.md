@@ -41,8 +41,8 @@ CHANGELOG の英日ペアは同一 PR で同時更新し、バージョン見出
 
 ## ソース
 
-- [PR #1891 review results (cycle 3)](../../raw/reviews/20260717T114250Z-pr-1891.md)
-- [PR #1891 fix results](../../raw/fixes/20260717T110651Z-pr-1891.md)
-- [PR #1891 fix results (cycle 2)](../../raw/fixes/20260717T112606Z-pr-1891.md)
-- [PR #2364 review results](../../raw/reviews/20260825T182043Z-pr-2364.md)
-- [PR #2369 review results](../../raw/reviews/20260825T190409Z-pr-2369.md)
+- [レビュー結果](../../raw/reviews/20260717T114250Z-pr-1891.md)
+- [fix 結果](../../raw/fixes/20260717T110651Z-pr-1891.md)
+- [fix 結果](../../raw/fixes/20260717T112606Z-pr-1891.md)
+- [レビュー結果](../../raw/reviews/20260825T182043Z-pr-2364.md)
+- [レビュー結果](../../raw/reviews/20260825T190409Z-pr-2369.md)

@@ -83,4 +83,4 @@ cycle 4 では「the only consumer of this log parses timestamps」というコ�
 
 ## ソース
 
-- [PR #2120 review results (cycle 5, mergeable)](../../raw/reviews/20260806T020412Z-pr-2120.md)
+- [レビュー結果](../../raw/reviews/20260806T020412Z-pr-2120.md)

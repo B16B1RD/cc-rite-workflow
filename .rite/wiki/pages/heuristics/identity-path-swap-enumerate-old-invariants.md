@@ -69,7 +69,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T05:30:00+00:00" }
 
 ## ソース
 
-- [PR #2112 review results（PR スコープの喪失を application + security が独立検出、HIGH）](../../raw/reviews/20260805T022816Z-pr-2112.md)
-- [PR #2112 fix results（旧経路の暗黙保証を列挙する再発防止策を記録）](../../raw/fixes/20260805T025341Z-pr-2112.md)
-- [PR #2112 review results (cycle 2)（落ちた述語が 1 つではなかったことを検出）](../../raw/reviews/20260805T033632Z-pr-2112.md)
-- [PR #2112 fix results (cycle 2)（記録コメント述語を必要条件として追加）](../../raw/fixes/20260805T040711Z-pr-2112.md)
+- [PR スコープの喪失を application + security が独立検出、HIGH](../../raw/reviews/20260805T022816Z-pr-2112.md)
+- [旧経路の暗黙保証を列挙する再発防止策を記録](../../raw/fixes/20260805T025341Z-pr-2112.md)
+- [落ちた述語が 1 つではなかったことを検出](../../raw/reviews/20260805T033632Z-pr-2112.md)
+- [コメント述語を必要条件として追加](../../raw/fixes/20260805T040711Z-pr-2112.md)

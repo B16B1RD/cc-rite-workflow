@@ -49,7 +49,7 @@ revert を選んだ根拠は 3 つ:
 
 ## ソース
 
-- [PR #2036 fix results](../../raw/fixes/20260727T042311Z-pr-2036.md)
+- [fix 結果](../../raw/fixes/20260727T042311Z-pr-2036.md)
 
 ## 補強: 「同じ箇所が N cycle 連続で壊れた」は記述精度ではなく重複そのものを疑う signal
 
@@ -65,5 +65,5 @@ revert を選んだ根拠は 3 つ:
 
 ## ソース（追記分）
 
-- [PR #2044 fix results (cycle 4) — 同じ条件を 2 箇所で書き下し 3 cycle 連続で壊す](../../raw/fixes/20260729T051956Z-pr-2044.md)
-- [PR #2044 fix results (cycle 4) — SoT 委譲チェーンの終端ノード](../../raw/fixes/20260729T073316Z-pr-2044.md)
+- [同じ条件を 2 箇所で書き下し 3 cycle 連続で壊す](../../raw/fixes/20260729T051956Z-pr-2044.md)
+- [SoT 委譲チェーンの終端ノード](../../raw/fixes/20260729T073316Z-pr-2044.md)

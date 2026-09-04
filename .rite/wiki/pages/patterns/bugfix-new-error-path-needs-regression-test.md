@@ -63,5 +63,5 @@ fi
 
 ## ソース
 
-- [PR #1808 review results (cycle 2)](../../raw/reviews/20260709T061246Z-pr-1808-cycle2.md)
-- [PR #1808 fix results (cycle 2)](../../raw/fixes/20260709T061632Z-pr-1808-cycle2.md)
+- [レビュー結果](../../raw/reviews/20260709T061246Z-pr-1808-cycle2.md)
+- [fix 結果](../../raw/fixes/20260709T061632Z-pr-1808-cycle2.md)

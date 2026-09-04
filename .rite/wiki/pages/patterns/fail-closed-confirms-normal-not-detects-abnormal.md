@@ -57,4 +57,4 @@ cross-Issue の値転写を遮断する fail-closed ガードが、「identity �
 
 ## ソース
 
-- [PR #2094 fix results (cycle 2)](../../raw/fixes/20260803T045324Z-pr-2094.md)
+- [fix 結果](../../raw/fixes/20260803T045324Z-pr-2094.md)

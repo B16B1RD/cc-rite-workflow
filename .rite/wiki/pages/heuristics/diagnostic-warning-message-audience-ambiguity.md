@@ -34,4 +34,4 @@ worktree/branch 遅延回収の dead-lock を解消した PR で追加された 
 
 ## ソース
 
-- [PR #1924 fix results (cycle 4)](../../raw/fixes/20260720T052902Z-pr-1924.md)
+- [fix 結果](../../raw/fixes/20260720T052902Z-pr-1924.md)

@@ -65,7 +65,7 @@ cycle 2 の修正が「条件式の中の定数・演算子」に留まったと
 
 ## ソース
 
-- [PR #2044 review results (cycle 2)](../../raw/reviews/20260729T001538Z-pr-2044.md)
-- [PR #2044 review results (cycle 3)](../../raw/reviews/20260729T004127Z-pr-2044.md)
-- [PR #2044 fix results (cycle 2)](../../raw/fixes/20260729T002139Z-pr-2044.md)
-- [PR #2044 fix results (cycle 3)](../../raw/fixes/20260729T004628Z-pr-2044.md)
+- [レビュー結果](../../raw/reviews/20260729T001538Z-pr-2044.md)
+- [レビュー結果](../../raw/reviews/20260729T004127Z-pr-2044.md)
+- [fix 結果](../../raw/fixes/20260729T002139Z-pr-2044.md)
+- [fix 結果](../../raw/fixes/20260729T004628Z-pr-2044.md)

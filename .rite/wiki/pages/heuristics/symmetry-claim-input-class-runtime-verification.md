@@ -59,6 +59,6 @@ cycle 2 review で security reviewer が訂正後コメントの事実性を同�
 
 ## ソース
 
-- [PR #1279 review results](../../raw/reviews/20260605T085618Z-pr-1279.md)
-- [PR #1279 fix results](../../raw/fixes/20260605T090238Z-pr-1279.md)
-- [PR #1279 review results (cycle 2)](../../raw/reviews/20260605T091117Z-pr-1279.md)
+- [レビュー結果](../../raw/reviews/20260605T085618Z-pr-1279.md)
+- [fix 結果](../../raw/fixes/20260605T090238Z-pr-1279.md)
+- [レビュー結果](../../raw/reviews/20260605T091117Z-pr-1279.md)

@@ -48,5 +48,5 @@ SoT (Single Source of Truth) 側で「期待値 X 以上」(pos 表現)、review
 
 ## ソース
 
-- [PR #706 review results (cycle 1)](../../raw/reviews/20260428T183538Z-pr-706.md)
-- [PR #706 fix results (cycle 1)](../../raw/fixes/20260428T184201Z-pr-706.md)
+- [レビュー結果](../../raw/reviews/20260428T183538Z-pr-706.md)
+- [fix 結果](../../raw/fixes/20260428T184201Z-pr-706.md)

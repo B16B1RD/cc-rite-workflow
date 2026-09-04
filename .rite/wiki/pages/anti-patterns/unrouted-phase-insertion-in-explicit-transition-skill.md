@@ -37,4 +37,4 @@ reviewer は grep + 実行フロー追跡（「新規 Phase への参照が見�
 
 ## ソース
 
-- [PR #1925 fix results (cycle 3)](../../raw/fixes/20260720T071821Z-pr-1925.md)
+- [fix 結果](../../raw/fixes/20260720T071821Z-pr-1925.md)

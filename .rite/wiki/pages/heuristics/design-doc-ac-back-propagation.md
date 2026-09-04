@@ -65,5 +65,5 @@ grep -nE "目標.*[0-9]+.*行|≤[0-9]+" docs/designs/<topic>.md
 
 ## ソース
 
-- [PR #813 review results (3 reviewer 一致 — design doc goal-setting stale, MEDIUM)](../../raw/reviews/20260504T105615Z-pr-813.md)
-- [PR #813 fix cycle 2 (AC 段階的緩和 ≤300 → ≤500 → ≤510 の累積実測、design doc 側 back-propagation を canonical 対策として確立)](../../raw/fixes/20260504T110207Z-pr-813-cycle2.md)
+- [3 reviewer 一致 — design doc goal-setting stale, MEDIUM](../../raw/reviews/20260504T105615Z-pr-813.md)
+- [AC 段階的緩和 ≤300 → ≤500 → ≤510 の累積実測、design doc 側 back-propagation を canonical 対策として確立](../../raw/fixes/20260504T110207Z-pr-813-cycle2.md)

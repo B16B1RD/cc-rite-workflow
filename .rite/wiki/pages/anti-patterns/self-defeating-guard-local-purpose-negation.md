@@ -86,9 +86,9 @@ SKIP カウンタを導入して集計行には gated group 数を出したの�
 
 ## ソース
 
-- [PR #2013 review cycle 1 — fail-closed ガードが診断を先食い / 新診断行の CI grep 未登録](../../raw/reviews/20260725T003541Z-pr-2013.md)
-- [PR #2013 review cycle 2 — parser が同 PR の診断文に食われる反例を実測再現](../../raw/reviews/20260725T024207Z-pr-2013.md)
-- [PR #2013 review cycle 4 — 累積 26 指摘の型別集計で本型が最多（5 件）と確定](../../raw/reviews/20260725T041328Z-pr-2013.md)
-- [PR #2013 fix results — 4 件すべてが本型に収まった cycle](../../raw/fixes/20260725T004542Z-pr-2013.md)
-- [PR #2013 fix results (cycle 2) — 検証機構の周辺に同型の穴が残る構造](../../raw/fixes/20260725T025323Z-pr-2013.md)
-- [PR #2278 fix results — 証明機構の新設で「緑だが何も検証していない」経路が 14 件中 7 件](../../raw/fixes/20260812T133631Z-pr-2278.md)
+- [fail-closed ガードが診断を先食い / 新診断行の CI grep 未登録](../../raw/reviews/20260725T003541Z-pr-2013.md)
+- [parser が同 PR の診断文に食われる反例を実測再現](../../raw/reviews/20260725T024207Z-pr-2013.md)
+- [累積 26 指摘の型別集計で本型が最多（5 件）と確定](../../raw/reviews/20260725T041328Z-pr-2013.md)
+- [4 件すべてが本型に収まった cycle](../../raw/fixes/20260725T004542Z-pr-2013.md)
+- [検証機構の周辺に同型の穴が残る構造](../../raw/fixes/20260725T025323Z-pr-2013.md)
+- [証明機構の新設で「緑だが何も検証していない」経路が 14 件中 7 件](../../raw/fixes/20260812T133631Z-pr-2278.md)

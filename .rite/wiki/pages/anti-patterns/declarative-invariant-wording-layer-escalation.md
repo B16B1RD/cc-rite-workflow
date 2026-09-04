@@ -76,10 +76,10 @@ declarative gate の "防御の最終層" や "post-hoc gate がある" 等の�
 
 ## ソース
 
-- [PR #1143 cycle 2 review (gate-self-misrepresentation 検出)](../../raw/reviews/20260525T164503Z-pr-1143.md)
-- [PR #1143 cycle 2 fix](../../raw/fixes/20260525T164714Z-pr-1143.md)
-- [PR #1143 cycle 5 review (fractal escalation, 6 件連鎖)](../../raw/reviews/20260525T182553Z-pr-1143.md)
-- [PR #1143 cycle 5 fix](../../raw/fixes/20260525T191243Z-pr-1143.md)
-- [PR #1143 cycle 6 review (mergeable + 5 件 scope 外吸収)](../../raw/reviews/20260525T221531Z-pr-1143.md)
-- [PR #1143 cycle 9 fix (boundary 推奨吸収)](../../raw/fixes/20260526T000611Z-pr-1143.md)
-- [PR #1143 cycle 10 fix (portability factual claim layer の fractal recurrence)](../../raw/fixes/20260526T001800Z-pr-1143.md)
+- [gate-self-misrepresentation 検出](../../raw/reviews/20260525T164503Z-pr-1143.md)
+- [fix 結果](../../raw/fixes/20260525T164714Z-pr-1143.md)
+- [fractal escalation, 6 件連鎖](../../raw/reviews/20260525T182553Z-pr-1143.md)
+- [fix 結果](../../raw/fixes/20260525T191243Z-pr-1143.md)
+- [mergeable + 5 件 scope 外吸収](../../raw/reviews/20260525T221531Z-pr-1143.md)
+- [boundary 推奨吸収](../../raw/fixes/20260526T000611Z-pr-1143.md)
+- [portability factual claim layer の fractal recurrence](../../raw/fixes/20260526T001800Z-pr-1143.md)

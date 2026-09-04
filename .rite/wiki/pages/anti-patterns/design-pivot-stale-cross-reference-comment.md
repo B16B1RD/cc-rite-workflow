@@ -68,6 +68,6 @@ bash 実体を helper script へ委譲した後、その実体を説明する離
 
 ## ソース
 
-- [PR #1337 review results (cycle 1) — TC-1 コメントと TC-3 実装の矛盾を code-quality reviewer が MEDIUM で検出](../../raw/reviews/20260610T001830Z-pr-1337.md)
-- [PR #1337 fix results — コメント 4 行の書き換えで解消、root cause は設計 pivot 後の cross-reference コメント追随漏れ](../../raw/fixes/20260610T002120Z-pr-1337.md)
-- [PR #1343 review results — helper 委譲後の canonical 参照注記追記。reviewer の Cross-File Impact Check が同型 drift (L236↔L144) を横断検出し別 Issue #1344 化](../../raw/reviews/20260610T011729Z-pr-1343.md)
+- [TC-1 コメントと TC-3 実装の矛盾を code-quality reviewer が MEDIUM で検出](../../raw/reviews/20260610T001830Z-pr-1337.md)
+- [コメント 4 行の書き換えで解消、root cause は設計 pivot 後の cross-reference コメント追随漏れ](../../raw/fixes/20260610T002120Z-pr-1337.md)
+- [helper 委譲後の canonical 参照注記追記。reviewer の Cross-File Impact Check が同型 drift (L236↔L144) を横断検出し別 Issue 化](../../raw/reviews/20260610T011729Z-pr-1343.md)

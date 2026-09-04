@@ -51,10 +51,10 @@ lint / recurrence-guard 系スクリプトのレビューでは「docstring が�
 
 ## ソース
 
-- [PR #1909 review results (cycle 3)](../../raw/reviews/20260719T030534Z-pr-1909-c3.md)
-- [PR #1909 fix results (cycle 3)](../../raw/fixes/20260719T030743Z-pr-1909-c3.md)
-- [PR #1909 review results (cycle 4)](../../raw/reviews/20260719T031816Z-pr-1909-c4.md)
-- [PR #1909 fix results (cycle 4)](../../raw/fixes/20260719T031957Z-pr-1909-c4.md)
-- [PR #1909 review results (resume cycle)](../../raw/reviews/20260719T120555Z-pr-1909.md)
-- [PR #1909 fix results (test coverage)](../../raw/fixes/20260719T121530Z-pr-1909.md)
-- [PR #1909 review results (cycle 2)](../../raw/reviews/20260719T122934Z-pr-1909.md)
+- [レビュー結果](../../raw/reviews/20260719T030534Z-pr-1909-c3.md)
+- [fix 結果](../../raw/fixes/20260719T030743Z-pr-1909-c3.md)
+- [レビュー結果](../../raw/reviews/20260719T031816Z-pr-1909-c4.md)
+- [fix 結果](../../raw/fixes/20260719T031957Z-pr-1909-c4.md)
+- [resume cycle](../../raw/reviews/20260719T120555Z-pr-1909.md)
+- [test coverage](../../raw/fixes/20260719T121530Z-pr-1909.md)
+- [レビュー結果](../../raw/reviews/20260719T122934Z-pr-1909.md)

@@ -54,5 +54,5 @@ LLM が値を literal substitute する bash block では、**防御の層を 1 
 
 ## ソース
 
-- [PR #2111 review results (cycle 3)](../../raw/reviews/20260804T235430Z-pr-2111.md)
-- [PR #2111 fix results (cycle 4)](../../raw/fixes/20260805T000150Z-pr-2111.md)
+- [レビュー結果](../../raw/reviews/20260804T235430Z-pr-2111.md)
+- [fix 結果](../../raw/fixes/20260805T000150Z-pr-2111.md)

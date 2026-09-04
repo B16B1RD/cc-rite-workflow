@@ -39,7 +39,7 @@ reviewer registry 統合（13→9 種）の PR は 4 cycle で収束し、各 cy
 
 ## ソース
 
-- [PR #1891 review results](../../raw/reviews/20260717T110218Z-pr-1891.md)
-- [PR #1891 review results (cycle 2)](../../raw/reviews/20260717T112303Z-pr-1891.md)
-- [PR #1891 review results (cycle 4, mergeable)](../../raw/reviews/20260717T115736Z-pr-1891.md)
-- [PR #1891 fix results](../../raw/fixes/20260717T110651Z-pr-1891.md)
+- [レビュー結果](../../raw/reviews/20260717T110218Z-pr-1891.md)
+- [レビュー結果](../../raw/reviews/20260717T112303Z-pr-1891.md)
+- [レビュー結果](../../raw/reviews/20260717T115736Z-pr-1891.md)
+- [fix 結果](../../raw/fixes/20260717T110651Z-pr-1891.md)

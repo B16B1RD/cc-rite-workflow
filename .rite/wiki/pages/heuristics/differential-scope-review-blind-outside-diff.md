@@ -49,4 +49,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T18:40:00+09:00" }
 
 ## ソース
 
-- [PR #2130 review results (full pass)](../../raw/reviews/20260807T043149Z-pr-2130.md)
+- [レビュー結果](../../raw/reviews/20260807T043149Z-pr-2130.md)

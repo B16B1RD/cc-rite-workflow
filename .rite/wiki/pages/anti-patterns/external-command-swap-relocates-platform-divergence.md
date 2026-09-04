@@ -61,5 +61,5 @@ target 自身の末尾 LF を食い、解決結果が存在しないパスに着
 
 ## ソース
 
-- [PR #2017 review results](../../raw/reviews/20260725T093800Z-pr-2017.md)
-- [PR #2017 macOS readlink fix](../../raw/fixes/20260725T121640Z-pr-2017-macos.md)
+- [レビュー結果](../../raw/reviews/20260725T093800Z-pr-2017.md)
+- [macOS readlink fix](../../raw/fixes/20260725T121640Z-pr-2017-macos.md)

@@ -59,4 +59,4 @@ gate 追加前から存在する differential-equivalence test (TC-D — リフ�
 
 ## ソース
 
-- [PR #1299 review results](../../raw/reviews/20260607T185308Z-pr-1299.md)
+- [レビュー結果](../../raw/reviews/20260607T185308Z-pr-1299.md)

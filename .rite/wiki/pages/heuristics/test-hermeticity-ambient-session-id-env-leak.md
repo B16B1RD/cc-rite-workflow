@@ -61,5 +61,5 @@ bash "$HOOK" ...   # だが CLAUDE_CODE_SESSION_ID が親から継承され、�
 
 ## ソース
 
-- [PR #1928 review results — post-compact.test.sh の ambient session-id 環境変数漏洩を遮断](../../raw/reviews/20260720T094042Z-pr-1928.md)
-- [PR #1932 review results — hooks/tests 全体の悉皆監査で7ファイルを修正](../../raw/reviews/20260720T142626Z-pr-1932.md)
+- [post-compact.test.sh の ambient session-id 環境変数漏洩を遮断](../../raw/reviews/20260720T094042Z-pr-1928.md)
+- [hooks/tests 全体の悉皆監査で7ファイルを修正](../../raw/reviews/20260720T142626Z-pr-1932.md)

@@ -64,8 +64,8 @@ review/fix SKILL.md（各 4,040 行）の rationale を references へ退避す�
 
 ## ソース
 
-- [PR #1774 review results](../../raw/reviews/20260707T005014Z-pr-1774.md)
-- [PR #1774 fix results](../../raw/fixes/20260707T005536Z-pr-1774.md)
-- [PR #1774 review results (cycle 2)](../../raw/reviews/20260707T011246Z-pr-1774.md)
-- [PR #1774 fix results (cycle 2)](../../raw/fixes/20260707T011502Z-pr-1774.md)
-- [PR #1774 review results (cycle 3 mergeable)](../../raw/reviews/20260707T012957Z-pr-1774.md)
+- [レビュー結果](../../raw/reviews/20260707T005014Z-pr-1774.md)
+- [fix 結果](../../raw/fixes/20260707T005536Z-pr-1774.md)
+- [レビュー結果](../../raw/reviews/20260707T011246Z-pr-1774.md)
+- [fix 結果](../../raw/fixes/20260707T011502Z-pr-1774.md)
+- [レビュー結果](../../raw/reviews/20260707T012957Z-pr-1774.md)

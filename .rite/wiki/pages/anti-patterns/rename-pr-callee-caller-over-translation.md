@@ -76,4 +76,4 @@ cycle N で 1 件の callee→caller drift を発見したら、同 PR 内の **
 
 ## ソース
 
-- [PR #1151 review cycle 0 (18 findings)](../../raw/reviews/20260526T151003Z-pr-1151.md)
+- [18 findings](../../raw/reviews/20260526T151003Z-pr-1151.md)

@@ -72,6 +72,6 @@ git_has_uncommitted="${git_has_uncommitted%%$'\n'*}"  # 先頭行のみ使う場
 
 ## ソース
 
-- [PR #1937 fix cycle 1 (PIPESTATUS がサブシェル境界を越えないバグを実測発見・修正)](../../raw/fixes/20260721T005522Z-pr-1937.md)
+- [PIPESTATUS がサブシェル境界を越えないバグを実測発見・修正](../../raw/fixes/20260721T005522Z-pr-1937.md)
 - [compact recovery review (sourced hook を `$()` で包むと LAST_STDERR_FILE が消える)](../../raw/reviews/20260903T063546Z-pr-2535.md)
 - [compact recovery fix (stderr pin はフック直接起動)](../../raw/fixes/20260903T064201Z-pr-2535.md)

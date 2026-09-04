@@ -136,12 +136,12 @@ bash tool output と response text の **layer 境界** を prose で明示す�
 
 ## ソース
 
-- [PR #623 review results (cycle 1)](../../raw/reviews/20260420T104328Z-pr-623.md)
-- [PR #623 fix results (cycle 1)](../../raw/fixes/20260420T105116Z-pr-623.md)
-- [PR #624 review results (新 Step × 既存 MUST NOT 衝突、bash tool output 境界)](../../raw/reviews/20260420T143336Z-pr-624.md)
-- [PR #624 fix results (layer 明示対策の確立)](../../raw/fixes/20260420T144134Z-pr-624.md)
-- [PR #1272 review results (remediation guidance 間 no-win 矛盾の「禁止 + escape hatch」収束)](../../raw/reviews/20260604T233350Z-pr-1272.md)
-- [PR #2095 fix results (cycle 4: 新設分類クラス × 既存の無条件 Rule 衝突)](../../raw/fixes/20260803T124230Z-pr-2095.md)
+- [レビュー結果](../../raw/reviews/20260420T104328Z-pr-623.md)
+- [fix 結果](../../raw/fixes/20260420T105116Z-pr-623.md)
+- [新 Step × 既存 MUST NOT 衝突、bash tool output 境界](../../raw/reviews/20260420T143336Z-pr-624.md)
+- [layer 明示対策の確立](../../raw/fixes/20260420T144134Z-pr-624.md)
+- [remediation guidance 間 no-win 矛盾の「禁止 + escape hatch」収束](../../raw/reviews/20260604T233350Z-pr-1272.md)
+- [新設分類クラス × 既存の無条件 Rule 衝突](../../raw/fixes/20260803T124230Z-pr-2095.md)
 
 ## 変種: 新設した分類クラスが既存の無条件 Rule と衝突する
 

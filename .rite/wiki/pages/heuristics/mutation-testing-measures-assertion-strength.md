@@ -129,11 +129,11 @@ mutation を回したうえでの「指摘 0 件」と、回さずに出した�
 
 ## ソース
 
-- [PR #2051 review results (cycle 2)](../../raw/reviews/20260729T150808Z-pr-2051-c2.md)
-- [PR #2051 review results (cycle 3)](../../raw/reviews/20260729T153523Z-pr-2051-c3.md)
-- [PR #2051 review results (cycle 4, mergeable)](../../raw/reviews/20260729T155350Z-pr-2051-c4.md)
-- [PR #2051 fix results (cycle 2)](../../raw/fixes/20260729T151517Z-pr-2051-c2.md)
-- [PR #2051 fix results (cycle 3)](../../raw/fixes/20260729T153947Z-pr-2051-c3.md)
-- [PR #2070 review results (cycle 2)](../../raw/reviews/20260801T184452Z-pr-2070.md)
-- [PR #2070 fix results (cycle 2)](../../raw/fixes/20260801T185220Z-pr-2070.md)
-- [PR #2070 review results (cycle 5, mergeable)](../../raw/reviews/20260802T000641Z-pr-2070.md)
+- [レビュー結果](../../raw/reviews/20260729T150808Z-pr-2051-c2.md)
+- [レビュー結果](../../raw/reviews/20260729T153523Z-pr-2051-c3.md)
+- [レビュー結果](../../raw/reviews/20260729T155350Z-pr-2051-c4.md)
+- [fix 結果](../../raw/fixes/20260729T151517Z-pr-2051-c2.md)
+- [fix 結果](../../raw/fixes/20260729T153947Z-pr-2051-c3.md)
+- [レビュー結果](../../raw/reviews/20260801T184452Z-pr-2070.md)
+- [fix 結果](../../raw/fixes/20260801T185220Z-pr-2070.md)
+- [レビュー結果](../../raw/reviews/20260802T000641Z-pr-2070.md)

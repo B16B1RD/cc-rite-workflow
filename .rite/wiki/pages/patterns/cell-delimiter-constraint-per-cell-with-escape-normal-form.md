@@ -55,6 +55,6 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 
 ## ソース
 
-- [PR #2052 review results — placeholder 単位の規約がセルに及ばない](../../raw/reviews/20260730T002941Z-pr-2052.md)
-- [PR #2052 fix results — エスケープを正規形として固定](../../raw/fixes/20260730T003940Z-pr-2052.md)
-- [PR #2052 fix results (cycle 2) — 共通規約を全経路の親へ引き上げる](../../raw/fixes/20260730T011723Z-pr-2052.md)
+- [placeholder 単位の規約がセルに及ばない](../../raw/reviews/20260730T002941Z-pr-2052.md)
+- [エスケープを正規形として固定](../../raw/fixes/20260730T003940Z-pr-2052.md)
+- [共通規約を全経路の親へ引き上げる](../../raw/fixes/20260730T011723Z-pr-2052.md)

@@ -90,4 +90,4 @@ assert_file_exists_or_fail "$r.md" "$f" || continue
 
 ## ソース
 
-- [PR #1052 review results (0 findings、Silent guard contract / Excluded-with-rationale の経験則記録)](../../raw/reviews/20260519T023807Z-pr-1052.md)
+- [0 findings、Silent guard contract / Excluded-with-rationale の経験則記録](../../raw/reviews/20260519T023807Z-pr-1052.md)

@@ -67,8 +67,8 @@ separate-arg global flag の列挙は git バージョン依存で本質的に�
 
 ## ソース
 
-- [PR #1892 review (verb 列挙撤去に伴う native .git-write verb 巻き添え撤去の CRITICAL / bilingual parity HIGP)](../../raw/reviews/20260717T142837Z-pr-1892.md)
-- [PR #1892 fix cycle 1 (native .git-write subcommand 検出 (N) の復元 + global-flag 正規化必須性)](../../raw/fixes/20260717T145126Z-pr-1892.md)
-- [PR #1892 fix cycle 2-3 (invocation/global-flag/dequote の 3 点漏れなし復元、revert test)](../../raw/fixes/20260717T212804Z-pr-1892.md)
-- [PR #1892 fix cycle 4 (撤去前 covered set の superset 化・列挙非収束の honest residual・脅威モデル諮問)](../../raw/fixes/20260718T000447Z-pr-1892.md)
-- [PR #1892 fix cycle 5 (flatten-substring masking の per-occurrence FSM 化・deny-by-default・fail-closed 対称・収束判断の訂正)](../../raw/fixes/20260718T004618Z-pr-1892.md)
+- [verb 列挙撤去に伴う native .git-write verb 巻き添え撤去の CRITICAL / bilingual parity HIGP](../../raw/reviews/20260717T142837Z-pr-1892.md)
+- [native .git-write subcommand 検出 (N) の復元 + global-flag 正規化必須性](../../raw/fixes/20260717T145126Z-pr-1892.md)
+- [-3 (invocation/global-flag/dequote の 3 点漏れなし復元、revert test)](../../raw/fixes/20260717T212804Z-pr-1892.md)
+- [撤去前 covered set の superset 化・列挙非収束の honest residual・脅威モデル諮問](../../raw/fixes/20260718T000447Z-pr-1892.md)
+- [flatten-substring masking の per-occurrence FSM 化・deny-by-default・fail-closed 対称・収束判断の訂正](../../raw/fixes/20260718T004618Z-pr-1892.md)

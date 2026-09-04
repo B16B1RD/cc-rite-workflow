@@ -63,6 +63,6 @@ pin が壊れたとき、次を順に問う。
 
 ## ソース
 
-- [PR #2304 review results (cycle 1: preset 配列変更で順序 pin が破壊された)](../../raw/reviews/20260813T081206Z-pr-2304.md)
-- [PR #2304 fix results (basename 比較へ寄せて接頭辞依存を外した)](../../raw/fixes/20260813T081923Z-pr-2304.md)
-- [PR #2304 review results (cycle 4: 「pin の対象と pin の表現を分離できていない」という 3 cycle 通底の総括)](../../raw/reviews/20260813T090426Z-pr-2304.md)
+- [preset 配列変更で順序 pin が破壊された](../../raw/reviews/20260813T081206Z-pr-2304.md)
+- [basename 比較へ寄せて接頭辞依存を外した](../../raw/fixes/20260813T081923Z-pr-2304.md)
+- [「pin の対象と pin の表現を分離できていない」という 3 cycle 通底の総括](../../raw/reviews/20260813T090426Z-pr-2304.md)

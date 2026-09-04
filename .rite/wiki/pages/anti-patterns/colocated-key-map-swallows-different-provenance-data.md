@@ -44,4 +44,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-27T17:54:54+09:00" }
 
 ## ソース
 
-- [PR #2036 fix results (cycle 2)](../../raw/fixes/20260727T053017Z-pr-2036.md)
+- [fix 結果](../../raw/fixes/20260727T053017Z-pr-2036.md)

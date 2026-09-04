@@ -54,7 +54,7 @@ cycle 2 で code-quality reviewer は問題の glob を `close.md:103` の house
 
 ## ソース
 
-- [PR #1244 review results (cycle 2)](../../raw/reviews/20260602T030609Z-pr-1244.md)
-- [PR #1244 fix results (cycle 2)](../../raw/fixes/20260602T030809Z-pr-1244.md)
-- [PR #1244 review results (cycle 3)](../../raw/reviews/20260602T031333Z-pr-1244.md)
-- [PR #1244 fix results (cycle 3)](../../raw/fixes/20260602T031509Z-pr-1244.md)
+- [レビュー結果](../../raw/reviews/20260602T030609Z-pr-1244.md)
+- [fix 結果](../../raw/fixes/20260602T030809Z-pr-1244.md)
+- [レビュー結果](../../raw/reviews/20260602T031333Z-pr-1244.md)
+- [fix 結果](../../raw/fixes/20260602T031509Z-pr-1244.md)

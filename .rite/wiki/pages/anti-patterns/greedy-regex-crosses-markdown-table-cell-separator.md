@@ -63,4 +63,4 @@ markdown テーブルに対する regex は、テストデータを 1 行だけ�
 
 ## ソース
 
-- [PR #2030 review results (cycle 5)](../../raw/reviews/20260726T150008Z-pr-2030-cycle5.md)
+- [レビュー結果](../../raw/reviews/20260726T150008Z-pr-2030-cycle5.md)

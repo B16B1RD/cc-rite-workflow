@@ -49,5 +49,5 @@ heading 重複は単独で発生せず、計画変更時の前方参照欠落 (s
 
 ## ソース
 
-- [PR #837 cycle 1 review (heading 重複 HIGH 検出)](../../raw/reviews/20260505T105152Z-pr-837.md)
-- [PR #837 fix (Section 集約による解消)](../../raw/fixes/20260505T105459Z-pr-837.md)
+- [heading 重複 HIGH 検出](../../raw/reviews/20260505T105152Z-pr-837.md)
+- [Section 集約による解消](../../raw/fixes/20260505T105459Z-pr-837.md)

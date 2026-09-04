@@ -46,4 +46,4 @@ tempfile ハンドルの派生パスを追跡する検出器で、`$tmp_bak`（`
 
 ## ソース
 
-- [PR #2124 fix results](../../raw/fixes/20260806T055534Z-pr-2124.md)
+- [fix 結果](../../raw/fixes/20260806T055534Z-pr-2124.md)

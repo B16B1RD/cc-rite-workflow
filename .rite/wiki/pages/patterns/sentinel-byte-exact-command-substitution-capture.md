@@ -79,4 +79,4 @@ esac
 
 ## ソース
 
-- [PR #2017 fix results](../../raw/fixes/20260725T094630Z-pr-2017.md)
+- [fix 結果](../../raw/fixes/20260725T094630Z-pr-2017.md)

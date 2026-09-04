@@ -56,5 +56,5 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-12T18:32:43Z" }
 
 ## ソース
 
-- [PR #2278 review results (cycle 5) — 契約コメントの過大主張が 3 cycle 連続で言い換え修正に失敗した記録](../../raw/reviews/20260812T180508Z-pr-2278.md)
-- [PR #2278 fix results — 削除で直せる指摘を削除で直した cycle](../../raw/fixes/20260812T133631Z-pr-2278.md)
+- [契約コメントの過大主張が 3 cycle 連続で言い換え修正に失敗した記録](../../raw/reviews/20260812T180508Z-pr-2278.md)
+- [削除で直せる指摘を削除で直した cycle](../../raw/fixes/20260812T133631Z-pr-2278.md)

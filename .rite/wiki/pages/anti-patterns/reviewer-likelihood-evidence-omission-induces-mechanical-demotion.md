@@ -75,4 +75,4 @@ Hypothetical Exception Categories は `security` / `database` / `devops` / `depe
 
 ## ソース
 
-- [PR #1045 review results](../../raw/reviews/20260518T112318Z-pr-1045.md)
+- [レビュー結果](../../raw/reviews/20260518T112318Z-pr-1045.md)

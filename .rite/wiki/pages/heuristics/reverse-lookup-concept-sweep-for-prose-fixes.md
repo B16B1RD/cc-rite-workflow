@@ -47,6 +47,6 @@ cycle 4 では概念で `git grep -l` して各サイトを**読む**方式に�
 
 ## ソース
 
-- [PR #2070 review results (cycle 4)](../../raw/reviews/20260731T083326Z-pr-2070.md)
-- [PR #2070 review results (cycle 5)](../../raw/reviews/20260731T090329Z-pr-2070.md)
-- [PR #2070 fix results (cycle 4)](../../raw/fixes/20260731T083919Z-pr-2070.md)
+- [レビュー結果](../../raw/reviews/20260731T083326Z-pr-2070.md)
+- [レビュー結果](../../raw/reviews/20260731T090329Z-pr-2070.md)
+- [fix 結果](../../raw/fixes/20260731T083919Z-pr-2070.md)

@@ -86,5 +86,5 @@ mv_attempted = true   ∧   [ -e "$dst" ]   ∧   [ ! -e "$src" ]
 
 ## ソース
 
-- [PR #2078 review results (cycle 4)](../../raw/reviews/20260801T030530Z-pr-2078.md)
-- [PR #2078 fix results (cycle 4)](../../raw/fixes/20260801T032503Z-pr-2078.md)
+- [レビュー結果](../../raw/reviews/20260801T030530Z-pr-2078.md)
+- [fix 結果](../../raw/fixes/20260801T032503Z-pr-2078.md)

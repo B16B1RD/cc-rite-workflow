@@ -53,5 +53,5 @@ Issue の契約が事実誤認の上に建っていると分かったとき、�
 
 ## ソース
 
-- [PR #2494 fix results — contract literalism と仕様の前提崩壊の切り分け](../../raw/fixes/20260831T072532Z-pr-2494.md)
-- [PR #2494 review results — 前提の誤りを 5 reviewer が独立に検出](../../raw/reviews/20260831T071720Z-pr-2494.md)
+- [contract literalism と仕様の前提崩壊の切り分け](../../raw/fixes/20260831T072532Z-pr-2494.md)
+- [前提の誤りを 5 reviewer が独立に検出](../../raw/reviews/20260831T071720Z-pr-2494.md)

@@ -34,4 +34,4 @@ security reviewer は cycle 1 で候補数が cap を超えたため正当に除
 
 ## ソース
 
-- [PR #2500 review results (cycle 4)](../../raw/reviews/20260901T180132Z-pr-2500.md)
+- [レビュー結果](../../raw/reviews/20260901T180132Z-pr-2500.md)

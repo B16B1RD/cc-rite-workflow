@@ -45,4 +45,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-07T07:58:00+09:00" }
 
 ## ソース
 
-- [PR #2126 fix results (cycle 3)](../../raw/fixes/20260806T165050Z-pr-2126-c3.md)
+- [fix 結果](../../raw/fixes/20260806T165050Z-pr-2126-c3.md)

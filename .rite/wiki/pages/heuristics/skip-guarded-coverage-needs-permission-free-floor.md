@@ -72,5 +72,5 @@ skip ガード自体は正しい（効かない環境で FAIL させても意味
 
 ## ソース
 
-- [PR #2120 fix results (cycle 3) — 2 本目を EISDIR 方式へ移し床を 2 本確保](../../raw/fixes/20260806T010533Z-pr-2120.md)
-- [PR #2120 fix results (cycle 2) — ENOTDIR 方式の導入と未 pin 分岐の発見](../../raw/fixes/20260806T002741Z-pr-2120.md)
+- [2 本目を EISDIR 方式へ移し床を 2 本確保](../../raw/fixes/20260806T010533Z-pr-2120.md)
+- [ENOTDIR 方式の導入と未 pin 分岐の発見](../../raw/fixes/20260806T002741Z-pr-2120.md)

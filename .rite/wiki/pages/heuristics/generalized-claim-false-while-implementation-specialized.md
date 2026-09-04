@@ -62,6 +62,6 @@ verified:
 
 ## ソース
 
-- [PR #2070 review results (cycle 5)](../../raw/reviews/20260731T090329Z-pr-2070.md)
-- [PR #2081 review results (cycle 5)](../../raw/reviews/20260801T131235Z-pr-2081.md)
-- [PR #2081 fix results (cycle 5)](../../raw/fixes/20260801T131540Z-pr-2081.md)
+- [レビュー結果](../../raw/reviews/20260731T090329Z-pr-2070.md)
+- [レビュー結果](../../raw/reviews/20260801T131235Z-pr-2081.md)
+- [fix 結果](../../raw/fixes/20260801T131540Z-pr-2081.md)

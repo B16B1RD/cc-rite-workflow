@@ -76,5 +76,5 @@ develop 時点で全 4 テンプレートが **0 件** だったことを確認�
 
 ## ソース
 
-- [PR #2052 review results](../../raw/reviews/20260802T102657Z-pr-2052.md)
-- [PR #2052 fix results](../../raw/fixes/20260802T103655Z-pr-2052.md)
+- [レビュー結果](../../raw/reviews/20260802T102657Z-pr-2052.md)
+- [fix 結果](../../raw/fixes/20260802T103655Z-pr-2052.md)

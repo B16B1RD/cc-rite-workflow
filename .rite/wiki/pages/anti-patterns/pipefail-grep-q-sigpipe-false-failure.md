@@ -116,8 +116,8 @@ if [ -n "$hit" ]; then ...
 
 ## ソース
 
-- [PR #2094 fix results (cycle 3)](../../raw/fixes/20260803T052647Z-pr-2094.md)
-- [PR #2112 review results (cycle 3)（`sed -n | grep -q` でバッファ境界を超えた地点の挙動反転を検出）](../../raw/reviews/20260805T043752Z-pr-2112.md)
-- [PR #2112 fix results (cycle 3)（真偽判定をコマンド置換の非空判定へ置換）](../../raw/fixes/20260805T050456Z-pr-2112.md)
-- [PR #2124 review results（免除規則の根拠と実際の判定軸のずれ）](../../raw/reviews/20260806T053845Z-pr-2124.md)
-- [PR #2124 fix results（payload 70000B で rc=141 を実測、判定軸を consumer の直前段へ）](../../raw/fixes/20260806T055534Z-pr-2124.md)
+- [fix 結果](../../raw/fixes/20260803T052647Z-pr-2094.md)
+- [`sed -n | grep -q` でバッファ境界を超えた地点の挙動反転を検出](../../raw/reviews/20260805T043752Z-pr-2112.md)
+- [真偽判定をコマンド置換の非空判定へ置換](../../raw/fixes/20260805T050456Z-pr-2112.md)
+- [免除規則の根拠と実際の判定軸のずれ](../../raw/reviews/20260806T053845Z-pr-2124.md)
+- [payload 70000B で rc=141 を実測、判定軸を consumer の直前段へ](../../raw/fixes/20260806T055534Z-pr-2124.md)

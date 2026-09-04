@@ -183,11 +183,11 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 
 ## ソース
 
-- [PR #2052 fix results (cycle 4)](../../raw/fixes/20260802T074021Z-pr-2052.md)
+- [fix 結果](../../raw/fixes/20260802T074021Z-pr-2052.md)
 - [PR 2052 review cycle 5: pin uniqueness, marker producer/consumer symmetry, guard-induced dead code](../../raw/reviews/20260802T080828Z-pr-2052.md)
 - [PR 2052 fix cycle 5: pin selection after edits, producer/consumer marker pins, emit-point relocation](../../raw/fixes/20260802T082508Z-pr-2052.md)
-- [PR #2111 fix results (cycle 3)](../../raw/fixes/20260804T145425Z-pr-2111.md)
-- [PR #2306 cycle 2 review (交替を素で書いた消費側 pin が説明文に当たり fire 腕の退行を検出しなかった)](../../raw/reviews/20260813T094525Z-pr-2306.md)
-- [PR #2306 pin fix (消費側 pin の | をエスケープし fire 腕と raw lost 入力を固定)](../../raw/fixes/20260813T094616Z-pr-2306.md)
-- [PR #2468 fix results cycle 2（ファイル全体スコープと `grep -c` の 2 つの空振り形、flip-flop end アンカー）](../../raw/fixes/20260829T181603Z-pr-2468.md)
-- [PR #2468 NB sweep results（pin を伸ばすときのリテラル吸収、`elif` guard による兄弟 assert の skip）](../../raw/fixes/20260829T194742Z-pr-2468.md)
+- [fix 結果](../../raw/fixes/20260804T145425Z-pr-2111.md)
+- [交替を素で書いた消費側 pin が説明文に当たり fire 腕の退行を検出しなかった](../../raw/reviews/20260813T094525Z-pr-2306.md)
+- [pin fix (消費側 pin の | をエスケープし fire 腕と raw lost 入力を固定)](../../raw/fixes/20260813T094616Z-pr-2306.md)
+- [ファイル全体スコープと `grep -c` の 2 つの空振り形、flip-flop end アンカー](../../raw/fixes/20260829T181603Z-pr-2468.md)
+- [NB sweep results（pin を伸ばすときのリテラル吸収、`elif` guard による兄弟 assert の skip）](../../raw/fixes/20260829T194742Z-pr-2468.md)

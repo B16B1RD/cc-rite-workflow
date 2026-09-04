@@ -80,12 +80,12 @@ PreToolUse 等の hook の timeout は **fail-open**（timeout に達すると C
 
 ## ソース
 
-- [PR #1736 review results (cycle 1) — timeout→fail-open bypass の HIGH 指摘 (super-linear 正規化 + fail-open timeout) と fault-injection の allow-all バックドア指摘](../../raw/reviews/20260703T070536Z-pr-1736.md)
-- [PR #1736 fix results (cycle 1) — 反復上限で塞ごうとした初回対応 (後に不十分と判明)](../../raw/fixes/20260703T071412Z-pr-1736.md)
-- [PR #1736 review results (cycle 2) — 反復上限では各反復 O(入力長) を縛れず bypass 未解消、O(1) 総バイト長ガードを正規化前に置くべきとの再指摘 (HIGH)](../../raw/reviews/20260703T073719Z-pr-1736.md)
-- [PR #1736 fix results (cycle 2) — 全検査の前に ${#COMMAND} の O(1) ガードを追加し O(n²) heredoc 除去 (${COMMAND%%<<*}=45s) と Pattern 2 regex (>2min) を一括短絡](../../raw/fixes/20260703T075749Z-pr-1736.md)
-- [PR #1736 review results (cycle 4) — 全 4 reviewer 指摘ゼロで収束。O(1) 総バイト長ガードで全経路封鎖を実機検証](../../raw/reviews/20260703T082154Z-pr-1736.md)
-- [PR #1865 review results (follow-up cycle1) — 未クォート `for x in $var` の glob 展開が length-guard 後にトークン数を膨らませ入力サイズ bound を破る HIGH（+ CWD 依存 over-DENY 誤検出）](../../raw/reviews/20260715T194532Z-pr-1865.md)
-- [PR #1865 fix results (follow-up cycle1) — 検出ループを `set -f`/`set +f` で noglob 化し over-DENY と timeout 無制限反復を同時封鎖、noglob 状態を save/restore](../../raw/fixes/20260715T195606Z-pr-1865.md)
-- [PR #1865 review results (follow-up cycle3) — noglob 修正を全 reviewer が実機検証（fail-on-revert / glob-target が Layer-1 落ちする net-positive）し mergeable 収束](../../raw/reviews/20260715T203920Z-pr-1865.md)
-- [PR #1867 review results — #1865 が残した兄弟 `for tok in $WT_ARGS`（:608 worktree-add 引数走査）を同型 noglob スコープで水平展開。全 4 reviewer（security/code-quality/error-handling/test）が sibling grep 照合 + fail-on-revert 実機検証で指摘ゼロ収束](../../raw/reviews/20260715T230852Z-pr-1867.md)
+- [timeout→fail-open bypass の HIGH 指摘 (super-linear 正規化 + fail-open timeout) と fault-injection の allow-all バックドア指摘](../../raw/reviews/20260703T070536Z-pr-1736.md)
+- [反復上限で塞ごうとした初回対応 (後に不十分と判明)](../../raw/fixes/20260703T071412Z-pr-1736.md)
+- [反復上限では各反復 O(入力長) を縛れず bypass 未解消、O(1) 総バイト長ガードを正規化前に置くべきとの再指摘 (HIGH)](../../raw/reviews/20260703T073719Z-pr-1736.md)
+- [全検査の前に ${#COMMAND} の O(1) ガードを追加し O(n²) heredoc 除去 (${COMMAND%%<<*}=45s) と Pattern 2 regex (>2min) を一括短絡](../../raw/fixes/20260703T075749Z-pr-1736.md)
+- [全 4 reviewer 指摘ゼロで収束。O(1) 総バイト長ガードで全経路封鎖を実機検証](../../raw/reviews/20260703T082154Z-pr-1736.md)
+- [(follow-up cycle1) — 未クォート `for x in $var` の glob 展開が length-guard 後にトークン数を膨らませ入力サイズ bound を破る HIGH（+ CWD 依存 over-DENY 誤検出）](../../raw/reviews/20260715T194532Z-pr-1865.md)
+- [(follow-up cycle1) — 検出ループを `set -f`/`set +f` で noglob 化し over-DENY と timeout 無制限反復を同時封鎖、noglob 状態を save/restore](../../raw/fixes/20260715T195606Z-pr-1865.md)
+- [(follow-up cycle3) — noglob 修正を全 reviewer が実機検証（fail-on-revert / glob-target が Layer-1 落ちする net-positive）し mergeable 収束](../../raw/reviews/20260715T203920Z-pr-1865.md)
+- [が残した兄弟 `for tok in $WT_ARGS`（:608 worktree-add 引数走査）を同型 noglob スコープで水平展開。全 4 reviewer（security/code-quality/error-handling/test）が sibling grep 照合 + fail-on-revert 実機検証で指摘ゼロ収束](../../raw/reviews/20260715T230852Z-pr-1867.md)

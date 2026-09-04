@@ -37,4 +37,4 @@ review-fix ループで実測。cycle 1 で getting-started.md の `## Phase 4.5
 
 ## ソース
 
-- [PR #1387 review results](../../raw/reviews/20260610T123423Z-pr-1387.md)
+- [レビュー結果](../../raw/reviews/20260610T123423Z-pr-1387.md)

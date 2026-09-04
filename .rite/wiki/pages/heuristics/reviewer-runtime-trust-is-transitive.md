@@ -45,4 +45,4 @@ reviewer prompt が「自然な entrypoint を実行して検証する」と要�
 
 ## ソース
 
-- [PR #2187 review](../../raw/reviews/20260808T233606Z-pr-2187.md)
+- [レビュー結果](../../raw/reviews/20260808T233606Z-pr-2187.md)

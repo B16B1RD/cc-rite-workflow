@@ -157,13 +157,13 @@ if [ "$_rc" -ne 0 ]; then
 
 ## ソース
 
-- [PR #529 fix cycle 1 (rollback safety)](../../raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md)
-- [PR #529 cycle 3 fix (git diff --quiet 3 値区別)](../../raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md)
-- [PR #548 cycle 2 fix (if ! bash gotcha 網羅検出)](../../raw/fixes/20260416T172110Z-pr-548.md)
-- [PR #548 cycle 3 fix (init.md 対称位置検出)](../../raw/fixes/20260416T173607Z-pr-548-cycle3.md)
-- [PR #548 cycle 2 review (17 findings)](../../raw/reviews/20260416T171008Z-pr-548.md)
-- [PR #548 cycle 3 review (triple cross-validation)](../../raw/reviews/20260416T173035Z-pr-548.md)
-- [PR #688 cycle 36 review — self-referential 4 site 同時播種 (累積 13 回目)](../../raw/reviews/20260427T154519Z-pr-688.md)
-- [PR #1032 cycle 1 review (format 同期 refactor で `if ! cmd; then rc=$?` 形式を新規導入、累積 34 回目 Asymmetric Fix Transcription の起点、三層対称化義務 doctrine 確立)](../../raw/reviews/20260517T221249Z-pr-1032.md)
-- [PR #1959 review cycle 1 (set -e 下の裸 `$?` 読みが Gate 3 conservative skip を dead code 化)](../../raw/reviews/20260721T171603Z-pr-1959.md)
-- [PR #2498 review results / fix results (rc 捕捉 idiom の非対称と判別子による絞り込み)](../../raw/reviews/20260901T092252Z-pr-2498.md)
+- [rollback safety](../../raw/fixes/20260415T095818Z-pr-529-fix-cycle-1.md)
+- [git diff --quiet 3 値区別](../../raw/fixes/20260415T124218Z-pr-529-cycle-3-fix.md)
+- [if ! bash gotcha 網羅検出](../../raw/fixes/20260416T172110Z-pr-548.md)
+- [init.md 対称位置検出](../../raw/fixes/20260416T173607Z-pr-548-cycle3.md)
+- [17 findings](../../raw/reviews/20260416T171008Z-pr-548.md)
+- [triple cross-validation](../../raw/reviews/20260416T173035Z-pr-548.md)
+- [self-referential 4 site 同時播種 (累積 13 回目)](../../raw/reviews/20260427T154519Z-pr-688.md)
+- [format 同期 refactor で `if ! cmd; then rc=$?` 形式を新規導入、累積 34 回目 Asymmetric Fix Transcription の起点、三層対称化義務 doctrine 確立](../../raw/reviews/20260517T221249Z-pr-1032.md)
+- [set -e 下の裸 `$?` 読みが Gate 3 conservative skip を dead code 化](../../raw/reviews/20260721T171603Z-pr-1959.md)
+- [/ fix results (rc 捕捉 idiom の非対称と判別子による絞り込み)](../../raw/reviews/20260901T092252Z-pr-2498.md)

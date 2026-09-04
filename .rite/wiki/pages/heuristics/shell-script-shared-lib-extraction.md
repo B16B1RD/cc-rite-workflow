@@ -91,8 +91,8 @@ SSH host alias 対応 PR の review で、 owner/repo 解決パターン (`git-r
 
 ## ソース
 
-- [PR #1921 review results (cycle 2) — get_owner_repo 型 helper が 6 ファイルに重複、共通化は別 Issue 候補として scope 外化](../../raw/reviews/20260720T013625Z-pr-1921.md)
-- [PR #544 fix (git ls-tree duplication の DRY 解消)](../../raw/fixes/20260416T092207Z-pr-544.md)
-- [PR #548 cycle 4 fix (shared lib 抽出は Issue #549 で分離)](../../raw/fixes/20260416T180658Z-pr-548.md)
-- [PR #544 review (DRY violation 検出)](../../raw/reviews/20260416T091926Z-pr-544.md)
-- [PR #548 cycle 4 review (cross-script duplication 検出)](../../raw/reviews/20260416T180001Z-pr-548.md)
+- [get_owner_repo 型 helper が 6 ファイルに重複、共通化は別 Issue 候補として scope 外化](../../raw/reviews/20260720T013625Z-pr-1921.md)
+- [git ls-tree duplication の DRY 解消](../../raw/fixes/20260416T092207Z-pr-544.md)
+- [shared lib 抽出は Issue で分離](../../raw/fixes/20260416T180658Z-pr-548.md)
+- [DRY violation 検出](../../raw/reviews/20260416T091926Z-pr-544.md)
+- [cross-script duplication 検出](../../raw/reviews/20260416T180001Z-pr-548.md)

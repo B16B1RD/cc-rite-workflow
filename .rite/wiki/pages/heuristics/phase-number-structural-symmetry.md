@@ -70,5 +70,5 @@ Phase 番号と併せて「この sub-phase は stop-guard hook によって enf
 
 ## ソース
 
-- [PR #541 fix (### 8.0 欠落 + enforcement note 事実不正確)](../../raw/fixes/20260416T040604Z-pr-541.md)
-- [PR #541 review (2 HIGH 指摘)](../../raw/reviews/20260416T040322Z-pr-541.md)
+- [### 8.0 欠落 + enforcement note 事実不正確](../../raw/fixes/20260416T040604Z-pr-541.md)
+- [2 HIGH 指摘](../../raw/reviews/20260416T040322Z-pr-541.md)

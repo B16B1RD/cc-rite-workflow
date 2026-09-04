@@ -64,5 +64,5 @@ cross-validation: prompt-engineer reviewer (confidence 75) と code-quality revi
 
 ## ソース
 
-- [PR #946 review (HIGH 合意: Markdown list 分断の構造的 anti-pattern)](../../raw/reviews/20260513T060555Z-pr-946.md)
-- [PR #946 fix (canonical fix 2 通りの確立)](../../raw/fixes/20260513T060844Z-pr-946.md)
+- [HIGH 合意: Markdown list 分断の構造的 anti-pattern](../../raw/reviews/20260513T060555Z-pr-946.md)
+- [canonical fix 2 通りの確立](../../raw/fixes/20260513T060844Z-pr-946.md)

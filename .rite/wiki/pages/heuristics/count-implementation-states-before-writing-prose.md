@@ -61,6 +61,6 @@ cycle 1 で両 reviewer が推奨事項として挙げた全称量化の限定�
 
 ## ソース
 
-- [PR #2475 review cycle 1 (前進契約の skip 経路取りこぼしと round_trips の値域欠落)](../../raw/reviews/20260830T043014Z-pr-2475.md)
-- [PR #2475 fix results (状態数を数える / ラベル値域を grep で列挙する / 参照の宙吊りを検出する)](../../raw/fixes/20260830T043310Z-pr-2475.md)
-- [PR #2475 review cycle 2 (ついでの限定は over-fix ではない / 番号繰り下げは列挙変更)](../../raw/reviews/20260830T044223Z-pr-2475.md)
+- [前進契約の skip 経路取りこぼしと round_trips の値域欠落](../../raw/reviews/20260830T043014Z-pr-2475.md)
+- [状態数を数える / ラベル値域を grep で列挙する / 参照の宙吊りを検出する](../../raw/fixes/20260830T043310Z-pr-2475.md)
+- [ついでの限定は over-fix ではない / 番号繰り下げは列挙変更](../../raw/reviews/20260830T044223Z-pr-2475.md)

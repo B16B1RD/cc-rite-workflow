@@ -80,8 +80,8 @@ flatten refactor PR では、削除前に以下の 3 ステップで分類する
 
 ## ソース
 
-- [PR #1155 review cycle 1 (3 reviewer 独立検出の HIGH x 3 — 削除対象 3 軸 classification 違反の同時混入)](../../raw/reviews/20260526T175307Z-pr-1155.md)
-- [PR #1155 fix cycle 1 (フラット化 PR スコープの誤適用回収、削除前検証ルール確立)](../../raw/fixes/20260526T180309Z-pr-1155.md)
-- [PR #1886 review cycle 1 (孤児スクリプト統合削除で CHANGELOG 記録済み知見の吸収漏れ、MEDIUM 1件)](../../raw/reviews/20260717T053018Z-pr-1886.md)
-- [PR #1886 review cycle 2 (verbatim 移設で解消、3 reviewer 0 findings mergeable)](../../raw/reviews/20260717T054058Z-pr-1886.md)
-- [PR #1886 fix results (CHANGELOG 突合による吸収漏れ 1 件の verbatim 移設)](../../raw/fixes/20260717T053143Z-pr-1886.md)
+- [3 reviewer 独立検出の HIGH x 3 — 削除対象 3 軸 classification 違反の同時混入](../../raw/reviews/20260526T175307Z-pr-1155.md)
+- [フラット化 PR スコープの誤適用回収、削除前検証ルール確立](../../raw/fixes/20260526T180309Z-pr-1155.md)
+- [孤児スクリプト統合削除で CHANGELOG 記録済み知見の吸収漏れ、MEDIUM 1件](../../raw/reviews/20260717T053018Z-pr-1886.md)
+- [verbatim 移設で解消、3 reviewer 0 findings mergeable](../../raw/reviews/20260717T054058Z-pr-1886.md)
+- [CHANGELOG 突合による吸収漏れ 1 件の verbatim 移設](../../raw/fixes/20260717T053143Z-pr-1886.md)

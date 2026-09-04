@@ -53,4 +53,4 @@ confidence: high
 
 ## ソース
 
-- [PR #2489 fix results (cycle 1) — whitelist 抽出が集合一致 assert を空洞化する](../../raw/fixes/20260830T140538Z-pr-2489.md)
+- [whitelist 抽出が集合一致 assert を空洞化する](../../raw/fixes/20260830T140538Z-pr-2489.md)

@@ -43,5 +43,5 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T00:21:06+09:00" }
 
 ## ソース
 
-- [PR #2070 fix results](../../raw/fixes/20260731T023545Z-pr-2070.md)
-- [PR #2070 fix results](../../raw/fixes/20260731T030122Z-pr-2070.md)
+- [fix 結果](../../raw/fixes/20260731T023545Z-pr-2070.md)
+- [fix 結果](../../raw/fixes/20260731T030122Z-pr-2070.md)

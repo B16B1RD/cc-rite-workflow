@@ -101,6 +101,6 @@ grep -nE '^\s*(python3|jq|grep|awk|sed|[a-zA-Z0-9_./-]+)\s+.*$' --include='*.sh'
 
 ## ソース
 
-- [PR #1242 review results](../../raw/reviews/20260602T045929Z-pr-1242.md)
-- [PR #1306 review cycle 1 (T-6 の `out=$(...); rc=$?` が set-e 下で failure attribution 破壊)](../../raw/reviews/20260608T112156Z-pr-1306.md)
-- [PR #1306 fix cycle 1 (`set +e; out=$(...); rc=$?; set -e` 囲み + mutation test 確認)](../../raw/fixes/20260608T112705Z-pr-1306.md)
+- [レビュー結果](../../raw/reviews/20260602T045929Z-pr-1242.md)
+- [T-6 の `out=$(...); rc=$?` が set-e 下で failure attribution 破壊](../../raw/reviews/20260608T112156Z-pr-1306.md)
+- [`set +e; out=$(...); rc=$?; set -e` 囲み + mutation test 確認](../../raw/fixes/20260608T112705Z-pr-1306.md)

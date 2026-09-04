@@ -110,4 +110,4 @@ done
 
 ## ソース
 
-- [PR #2052 fix results (cycle 2)](../../raw/fixes/20260802T111323Z-pr-2052.md)
+- [fix 結果](../../raw/fixes/20260802T111323Z-pr-2052.md)

@@ -60,5 +60,5 @@ cycle 1 fix で migration script の `pre_existing` 関連処理は除去され�
 
 ## ソース
 
-- [PR #1064 review cycle 1 — spec-vs-spec contradiction 検出 (3 reviewer 独立、CRITICAL × 2 / HIGH × 4 / MEDIUM × 6)](../../raw/reviews/20260519T153513Z-pr-1064.md)
-- [PR #1064 fix cycle 1 — spec-vs-spec resolution (schema doc canonical 優先で pre_existing 削除、14 findings 全件 fix)](../../raw/fixes/20260519T154330Z-pr-1064-cycle1.md)
+- [spec-vs-spec contradiction 検出 (3 reviewer 独立、CRITICAL × 2 / HIGH × 4 / MEDIUM × 6)](../../raw/reviews/20260519T153513Z-pr-1064.md)
+- [spec-vs-spec resolution (schema doc canonical 優先で pre_existing 削除、14 findings 全件 fix)](../../raw/fixes/20260519T154330Z-pr-1064-cycle1.md)

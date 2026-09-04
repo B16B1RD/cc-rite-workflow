@@ -68,6 +68,6 @@ assert "in_worktree arm never emits the delegation marker" "0" \
 
 ## ソース
 
-- [PR #2150 review results (cycle 3)](../../raw/reviews/20260808T072312Z-pr-2150-cycle3.md)
-- [PR #2150 fix results (cycle 3)](../../raw/fixes/20260808T072610Z-pr-2150-cycle3-fix.md)
-- [PR #2150 fix results (cycle 4)](../../raw/fixes/20260808T074827Z-pr-2150-cycle4.md)
+- [レビュー結果](../../raw/reviews/20260808T072312Z-pr-2150-cycle3.md)
+- [fix 結果](../../raw/fixes/20260808T072610Z-pr-2150-cycle3-fix.md)
+- [fix 結果](../../raw/fixes/20260808T074827Z-pr-2150-cycle4.md)

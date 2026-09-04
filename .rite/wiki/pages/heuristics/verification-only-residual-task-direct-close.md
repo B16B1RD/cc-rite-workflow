@@ -36,4 +36,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-21T16:45:00+09:00" }
 
 ## ソース
 
-- [Issue #1918 close retrospective](../../raw/retrospectives/20260721T045336Z-issue-1918.md)
+- [close retrospective](../../raw/retrospectives/20260721T045336Z-issue-1918.md)

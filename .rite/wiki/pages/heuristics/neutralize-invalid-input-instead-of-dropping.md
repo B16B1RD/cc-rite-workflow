@@ -87,5 +87,5 @@ JSON から要素を抽出するとき、`id` が想定書式に合わない要�
 
 ## ソース
 
-- [PR #2468 fix results (cycle 3)](../../raw/fixes/20260829T183751Z-pr-2468.md)
-- [PR #2468 fix results (cycle 1)](../../raw/fixes/20260829T175418Z-pr-2468.md)
+- [fix 結果](../../raw/fixes/20260829T183751Z-pr-2468.md)
+- [fix 結果](../../raw/fixes/20260829T175418Z-pr-2468.md)

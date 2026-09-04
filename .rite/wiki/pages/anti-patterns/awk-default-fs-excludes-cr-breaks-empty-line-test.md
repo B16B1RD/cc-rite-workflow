@@ -48,5 +48,5 @@ CRLF は「空行判定」だけでなく、行末アンカーを持つ正規表
 
 ## ソース
 
-- [PR #2142 review results (cycle 4)](../../raw/reviews/20260808T022209Z-pr-2142.md)
-- [PR #2142 fix results (cycle 4)](../../raw/fixes/20260808T024257Z-pr-2142.md)
+- [レビュー結果](../../raw/reviews/20260808T022209Z-pr-2142.md)
+- [fix 結果](../../raw/fixes/20260808T024257Z-pr-2142.md)

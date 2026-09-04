@@ -119,8 +119,8 @@ grep -rnE 'jq -n' --include='*.sh' --include='*.md' .
 
 ## ソース
 
-- [PR #545 fix (jq -n create mode リセット問題)](../../raw/fixes/20260416T122803Z-pr-545.md)
-- [PR #545 review (CRITICAL: parent_issue_number 上書き検出)](../../raw/reviews/20260416T122506Z-pr-545.md)
-- [PR #1812 review cycle 1 (wm_comment_id 追加、型変換フィールドの指摘)](../../raw/reviews/20260709T100928Z-pr-1812.md)
-- [PR #1812 review cycle 3 (mergeable 到達)](../../raw/reviews/20260709T104501Z-pr-1812.md)
-- [PR #1812 fix cycle 1 (エラーメッセージ文脈追加)](../../raw/fixes/20260709T101456Z-pr-1812.md)
+- [jq -n create mode リセット問題](../../raw/fixes/20260416T122803Z-pr-545.md)
+- [CRITICAL: parent_issue_number 上書き検出](../../raw/reviews/20260416T122506Z-pr-545.md)
+- [wm_comment_id 追加、型変換フィールドの指摘](../../raw/reviews/20260709T100928Z-pr-1812.md)
+- [mergeable 到達](../../raw/reviews/20260709T104501Z-pr-1812.md)
+- [エラーメッセージ文脈追加](../../raw/fixes/20260709T101456Z-pr-1812.md)

@@ -65,6 +65,6 @@ strip_code_fences "$target_md" | grep -E '^#{1,6}[[:space:]]'
 
 ## ソース
 
-- [PR #1167 cycle 1 review — cross-ref 検証スクリプトの `grep -E '^#{1,6}'` が code fence 内 shell コメントを見出し誤認し dangling 検証が false-negative (MEDIUM, code-quality)](../../raw/reviews/20260528T112627Z-pr-1167.md)
-- [PR #1167 fix (F-02) — strip_code_fences ヘルパー (awk in_fence toggle) でフェンス内行を除外してから heading 抽出することで解消](../../raw/fixes/20260528T121938Z-pr-1167.md)
-- [PR #1167 cycle 2 review — strip_code_fences の 4-backtick/3-backtick nesting 誤トグル弱点 (Hypothetical, revert test 中立で non-blocking 降格)](../../raw/reviews/20260528T122742Z-pr-1167.md)
+- [cross-ref 検証スクリプトの `grep -E '^#{1,6}'` が code fence 内 shell コメントを見出し誤認し dangling 検証が false-negative (MEDIUM, code-quality)](../../raw/reviews/20260528T112627Z-pr-1167.md)
+- [(F-02) — strip_code_fences ヘルパー (awk in_fence toggle) でフェンス内行を除外してから heading 抽出することで解消](../../raw/fixes/20260528T121938Z-pr-1167.md)
+- [strip_code_fences の 4-backtick/3-backtick nesting 誤トグル弱点 (Hypothetical, revert test 中立で non-blocking 降格)](../../raw/reviews/20260528T122742Z-pr-1167.md)

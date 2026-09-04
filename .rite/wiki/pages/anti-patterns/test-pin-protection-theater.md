@@ -398,18 +398,18 @@ pin を「張ったつもり」にする 2 つの具体形。どちらも同 PR 
 
 ## ソース
 
-- [PR #655 cycle 6 review — F-C6-03 protection theater 初明文化 + E-2 経験則](../../raw/reviews/20260424T095915Z-pr-655-cycle6.md)
-- [PR #655 cycle 4 review — canonical phrase partial unification の blind spot 指摘](../../raw/reviews/20260424T085837Z-pr-655.md)
-- [PR #848 review — WARNING 文言改訂時の test pin asymmetric drift (CRITICAL test regression cross-validated)](../../raw/reviews/20260505T185107Z-pr-848.md)
-- [PR #848 fix — 修正戦略 3 択比較と docstring への test 同期義務 codify](../../raw/fixes/20260505T185354Z-pr-848.md)
-- [PR #909 review (cycle 1) — same-file 3-site sync drift / regex 副次的主張ファクト誤認 / 暗黙メンテナンスルール](../../raw/reviews/20260509T014302Z-pr-909.md)
-- [PR #909 fix (cycle 1) — wording-revision drift 修正 + regex 対称性 (`After [A-Za-z]`)](../../raw/fixes/20260509T014534Z-pr-909.md)
-- [PR #909 fix (cycle 2) — same-file 3-site dead reference 解消 + 副次的主張削除 + 暗黙メンテナンスルール明文化](../../raw/fixes/20260509T015613Z-pr-909.md)
-- [PR #1066 review — cross-file 3-site 対称化 fix の test pin が 1-site only で cross-file coverage gap (3 reviewer cross-validated HIGH)](../../raw/reviews/20260520T011841Z-pr-1066.md)
-- [PR #1066 cycle 1 fix — test を 3-site 拡張 (4-case → 18-case = 3 sites × 2 literal pin + positive 6 + negative 6) し cross-file 対称化を test 層で担保](../../raw/fixes/20260520T022118Z-pr-1066-cycle1.md)
-- [PR #1069 review — T-04e anchor 化 + ready.md 対称 coverage + 3-axis mutation verification (正方向 2 軸 + 逆方向 docstring 擬似挿入 1 軸) で canonical fix model を別 context に再適用 (test-reviewer + code-quality-reviewer)](../../raw/reviews/20260520T061355Z-pr-1069.md)
-- [PR #1973 cycle 4 review — test-reviewer が snapshot_hash() の全 fixture が clean tree のみで capture-first/direct-pipe の実装差分を observable にしていないと検出、実機検証で direct-pipe に戻しても既存 11 assertion が全 PASS することを実証](../../raw/reviews/20260722T222828Z-pr-1973.md)
-- [PR #1973 cycle 4 fix (T-04: dirty tree snapshot fixture を追加し capture-first の実装差分を observable にする regression test を確立)](../../raw/fixes/20260722T223211Z-pr-1973.md)
+- [F-C6-03 protection theater 初明文化 + E-2 経験則](../../raw/reviews/20260424T095915Z-pr-655-cycle6.md)
+- [canonical phrase partial unification の blind spot 指摘](../../raw/reviews/20260424T085837Z-pr-655.md)
+- [WARNING 文言改訂時の test pin asymmetric drift (CRITICAL test regression cross-validated)](../../raw/reviews/20260505T185107Z-pr-848.md)
+- [修正戦略 3 択比較と docstring への test 同期義務 codify](../../raw/fixes/20260505T185354Z-pr-848.md)
+- [same-file 3-site sync drift / regex 副次的主張ファクト誤認 / 暗黙メンテナンスルール](../../raw/reviews/20260509T014302Z-pr-909.md)
+- [wording-revision drift 修正 + regex 対称性 (`After [A-Za-z]`)](../../raw/fixes/20260509T014534Z-pr-909.md)
+- [same-file 3-site dead reference 解消 + 副次的主張削除 + 暗黙メンテナンスルール明文化](../../raw/fixes/20260509T015613Z-pr-909.md)
+- [cross-file 3-site 対称化 fix の test pin が 1-site only で cross-file coverage gap (3 reviewer cross-validated HIGH)](../../raw/reviews/20260520T011841Z-pr-1066.md)
+- [test を 3-site 拡張 (4-case → 18-case = 3 sites × 2 literal pin + positive 6 + negative 6) し cross-file 対称化を test 層で担保](../../raw/fixes/20260520T022118Z-pr-1066-cycle1.md)
+- [T-04e anchor 化 + ready.md 対称 coverage + 3-axis mutation verification (正方向 2 軸 + 逆方向 docstring 擬似挿入 1 軸) で canonical fix model を別 context に再適用 (test-reviewer + code-quality-reviewer)](../../raw/reviews/20260520T061355Z-pr-1069.md)
+- [test-reviewer が snapshot_hash() の全 fixture が clean tree のみで capture-first/direct-pipe の実装差分を observable にしていないと検出、実機検証で direct-pipe に戻しても既存 11 assertion が全 PASS することを実証](../../raw/reviews/20260722T222828Z-pr-1973.md)
+- [T-04: dirty tree snapshot fixture を追加し capture-first の実装差分を observable にする regression test を確立](../../raw/fixes/20260722T223211Z-pr-1973.md)
 
 ## 変種: 静的 pin は「その行があるか」ではなく「その行が意図した構造で機能するか」を照合する
 
@@ -556,15 +556,15 @@ producer と validator で被演算子の変数名だけが違う（`$body` / `$
 
 ## ソース（追記分）
 
-- [PR #2094 review results (cycle 2) — 静的 pin が行継続文字を照合せず 1 文字 drift を素通り](../../raw/reviews/20260803T004941Z-pr-2094.md)
-- [PR #2094 review results — load-bearing なコードコメントに対応するテストが無い](../../raw/reviews/20260802T163111Z-pr-2094.md)
-- [PR #2114 review results — チャネル衝突による vacuous assertion と抽出 regex の外に落ちる反例](../../raw/reviews/20260805T095118Z-pr-2114.md)
-- [PR #2137 review results (cycle 2) — 実装 5/5 適用に対し pin は 2/5、counting assertion 自身の空振り経路](../../raw/reviews/20260807T141527Z-pr-2137.md)
-- [PR #2229 review results (cycle 2) — 述語の複製で pin が代替成立、否定 assert の空振り](../../raw/reviews/20260810T073435Z-pr-2229.md)
-- [PR #2229 review results (cycle 3) — 双子サイトが doc 側へ移動、「契約テストが検出する」宣言が 5 条件中 1 条件](../../raw/reviews/20260810T080754Z-pr-2229.md)
-- [PR #2229 fix results (cycle 4) — 前置リテラル錨が同リテラルの別行で代替成立](../../raw/fixes/20260810T100637Z-pr-2229.md)
-- [PR #2361 review (cycle 1) — 8.0.2 ACTION 非対称と producer/fail-safe の pin 欠落](../../raw/reviews/20260825T152548Z-pr-2361.md)
-- [PR #2361 fix (cycle 1) — producer / fail-safe を直接 pin し 8.0.2 ACTION を 7.7 と対称化](../../raw/fixes/20260825T153842Z-pr-2361.md)
-- [PR #2361 fix (cycle 2) — count=2 部分文字列 pin を一意 pin に置換し decoy mutation で緑経路を塞ぐ](../../raw/fixes/20260825T162042Z-pr-2361.md)
-- [PR #2482 fix (cycle 1) — 期待値を片側抽出する symmetry pin の同時 drift 限界、正規化が隠した被演算子同一性の前提](../../raw/fixes/20260830T082306Z-pr-2482.md)
-- [PR #2482 fix (NB sweep) — 停止しない fail() 前提のもとで head -1 が診断値固定の保険として要る](../../raw/fixes/20260830T083939Z-pr-2482.md)
+- [静的 pin が行継続文字を照合せず 1 文字 drift を素通り](../../raw/reviews/20260803T004941Z-pr-2094.md)
+- [load-bearing なコードコメントに対応するテストが無い](../../raw/reviews/20260802T163111Z-pr-2094.md)
+- [チャネル衝突による vacuous assertion と抽出 regex の外に落ちる反例](../../raw/reviews/20260805T095118Z-pr-2114.md)
+- [実装 5/5 適用に対し pin は 2/5、counting assertion 自身の空振り経路](../../raw/reviews/20260807T141527Z-pr-2137.md)
+- [述語の複製で pin が代替成立、否定 assert の空振り](../../raw/reviews/20260810T073435Z-pr-2229.md)
+- [双子サイトが doc 側へ移動、「契約テストが検出する」宣言が 5 条件中 1 条件](../../raw/reviews/20260810T080754Z-pr-2229.md)
+- [前置リテラル錨が同リテラルの別行で代替成立](../../raw/fixes/20260810T100637Z-pr-2229.md)
+- [8.0.2 ACTION 非対称と producer/fail-safe の pin 欠落](../../raw/reviews/20260825T152548Z-pr-2361.md)
+- [producer / fail-safe を直接 pin し 8.0.2 ACTION を 7.7 と対称化](../../raw/fixes/20260825T153842Z-pr-2361.md)
+- [count=2 部分文字列 pin を一意 pin に置換し decoy mutation で緑経路を塞ぐ](../../raw/fixes/20260825T162042Z-pr-2361.md)
+- [期待値を片側抽出する symmetry pin の同時 drift 限界、正規化が隠した被演算子同一性の前提](../../raw/fixes/20260830T082306Z-pr-2482.md)
+- [(NB sweep) — 停止しない fail() 前提のもとで head -1 が診断値固定の保険として要る](../../raw/fixes/20260830T083939Z-pr-2482.md)

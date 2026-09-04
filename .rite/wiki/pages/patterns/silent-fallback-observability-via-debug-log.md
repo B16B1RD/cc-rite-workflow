@@ -96,5 +96,5 @@ fi
 
 ## ソース
 
-- [PR #750 fix cycle 1 results](../../raw/fixes/20260430T074655Z-pr-750-cycle-1.md)
-- [PR #750 review results](../../raw/reviews/20260430T074221Z-pr-750.md)
+- [fix 結果](../../raw/fixes/20260430T074655Z-pr-750-cycle-1.md)
+- [レビュー結果](../../raw/reviews/20260430T074221Z-pr-750.md)

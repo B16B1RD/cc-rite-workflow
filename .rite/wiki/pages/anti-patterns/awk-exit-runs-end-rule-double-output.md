@@ -56,6 +56,6 @@ print 点の一本化により awk の stdout が「空か 1 行の数値」だ�
 
 ## ソース
 
-- [PR #2142 review results (cycle 4)](../../raw/reviews/20260808T022209Z-pr-2142.md)
-- [PR #2142 fix results (cycle 4)](../../raw/fixes/20260808T024257Z-pr-2142.md)
-- [PR #2142 fix results (cycle 6)](../../raw/fixes/20260808T032734Z-pr-2142.md)
+- [レビュー結果](../../raw/reviews/20260808T022209Z-pr-2142.md)
+- [fix 結果](../../raw/fixes/20260808T024257Z-pr-2142.md)
+- [fix 結果](../../raw/fixes/20260808T032734Z-pr-2142.md)

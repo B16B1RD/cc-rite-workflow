@@ -66,7 +66,7 @@ exit code semantic 事例では `projects-board-drift-check.sh` の検出ロジ�
 
 ## ソース
 
-- [PR #936 review results](../../raw/reviews/20260512T134356Z-pr-936.md)
-- [PR #936 fix cycle 1 results](../../raw/fixes/20260512T134908Z-pr-936.md)
-- [PR #1306 review cycle 2 (静的 grep が header comment にマッチする弱点 / exit 2 明示 assert)](../../raw/reviews/20260608T113726Z-pr-1306.md)
-- [PR #1306 fix cycle 2 (quoted jq 述語への anchor + T-4 exit 2 明示化 + mutation 確認)](../../raw/fixes/20260608T121039Z-pr-1306.md)
+- [レビュー結果](../../raw/reviews/20260512T134356Z-pr-936.md)
+- [fix 結果](../../raw/fixes/20260512T134908Z-pr-936.md)
+- [静的 grep が header comment にマッチする弱点 / exit 2 明示 assert](../../raw/reviews/20260608T113726Z-pr-1306.md)
+- [quoted jq 述語への anchor + T-4 exit 2 明示化 + mutation 確認](../../raw/fixes/20260608T121039Z-pr-1306.md)

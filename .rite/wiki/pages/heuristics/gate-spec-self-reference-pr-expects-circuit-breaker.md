@@ -61,7 +61,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-03T23:41:26+09:00" }
 
 ## ソース
 
-- [PR #2095 fix results (cycle 5, サーキットブレーカー発火)](../../raw/fixes/20260803T131002Z-pr-2095.md)
-- [PR #2095 fix results (cycle 4)](../../raw/fixes/20260803T124230Z-pr-2095.md)
-- [PR #2095 review results (cycle 1)](../../raw/reviews/20260803T104952Z-pr-2095.md)
-- [PR #2095 review results (final cycle, blocking=0)](../../raw/reviews/20260803T140734Z-pr-2095.md)
+- [サーキットブレーカー発火](../../raw/fixes/20260803T131002Z-pr-2095.md)
+- [fix 結果](../../raw/fixes/20260803T124230Z-pr-2095.md)
+- [レビュー結果](../../raw/reviews/20260803T104952Z-pr-2095.md)
+- [final cycle, blocking=0](../../raw/reviews/20260803T140734Z-pr-2095.md)

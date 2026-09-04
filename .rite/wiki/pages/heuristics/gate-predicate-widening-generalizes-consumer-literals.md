@@ -57,6 +57,6 @@ cycle 1 のレビューで 5 名中 2 名（prompt-engineer / application）が 
 
 ## ソース
 
-- [PR #2529 review results (cycle 1)](../../raw/reviews/20260902T175856Z-pr-2529.md)
-- [PR #2529 fix results](../../raw/fixes/20260902T180431Z-pr-2529.md)
-- [PR #2529 review results (cycle 2)](../../raw/reviews/20260902T181813Z-pr-2529.md)
+- [レビュー結果](../../raw/reviews/20260902T175856Z-pr-2529.md)
+- [fix 結果](../../raw/fixes/20260902T180431Z-pr-2529.md)
+- [レビュー結果](../../raw/reviews/20260902T181813Z-pr-2529.md)

@@ -55,5 +55,5 @@ rite の skills は手順を references へ切り出す構造を多用するた�
 
 ## ソース
 
-- [PR #2471 review results](../../raw/reviews/20260830T033236Z-pr-2471.md)
-- [PR #2471 fix results](../../raw/fixes/20260830T034210Z-pr-2471.md)
+- [レビュー結果](../../raw/reviews/20260830T033236Z-pr-2471.md)
+- [fix 結果](../../raw/fixes/20260830T034210Z-pr-2471.md)

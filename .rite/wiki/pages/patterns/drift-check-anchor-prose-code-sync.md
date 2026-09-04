@@ -116,11 +116,11 @@ drift-check-anchor lint pattern (Pattern-2 / Pattern-5) が現状 (a)(c) の lit
 
 ## ソース
 
-- [PR #553 cycle 1 review (mktemp drift + Pattern-2/5 実証)](../../raw/reviews/20260417T002317Z-pr-553.md)
-- [PR #553 cycle 2 review (pre-existing drift 昇格)](../../raw/reviews/20260417T003119Z-pr-553-cycle-2.md)
-- [PR #553 cycle 3 review (AC anchor 5 categories ↔ 4 mktemp blocks)](../../raw/reviews/20260417T003737Z-pr-553-cycle-3.md)
-- [PR #661 cycle 1 review (DRIFT-CHECK ANCHOR の bash 引数 enumeration sync drift)](../../raw/reviews/20260425T153740Z-pr-661.md)
-- [PR #661 cycle 1 fix (4-arg ANCHOR comment 統一)](../../raw/fixes/20260425T154517Z-pr-661-cycle-1.md)
-- [PR #661 cycle 2 review (ANCHOR comment prose 内 enumeration 同期漏れ実測)](../../raw/reviews/20260425T161137Z-pr-661.md)
-- [PR #661 cycle 2 fix (prose 側 4-arg 拡張完了)](../../raw/fixes/20260425T161635Z-pr-661.md)
-- [PR #799 cycle 4 fix (prose-implementation drift 訂正 + reference Edge Case / 既知の限界表 factual error 訂正)](../../raw/fixes/20260503T183643Z-pr-799-cycle4.md)
+- [mktemp drift + Pattern-2/5 実証](../../raw/reviews/20260417T002317Z-pr-553.md)
+- [pre-existing drift 昇格](../../raw/reviews/20260417T003119Z-pr-553-cycle-2.md)
+- [AC anchor 5 categories ↔ 4 mktemp blocks](../../raw/reviews/20260417T003737Z-pr-553-cycle-3.md)
+- [DRIFT-CHECK ANCHOR の bash 引数 enumeration sync drift](../../raw/reviews/20260425T153740Z-pr-661.md)
+- [4-arg ANCHOR comment 統一](../../raw/fixes/20260425T154517Z-pr-661-cycle-1.md)
+- [ANCHOR comment prose 内 enumeration 同期漏れ実測](../../raw/reviews/20260425T161137Z-pr-661.md)
+- [prose 側 4-arg 拡張完了](../../raw/fixes/20260425T161635Z-pr-661.md)
+- [prose-implementation drift 訂正 + reference Edge Case / 既知の限界表 factual error 訂正](../../raw/fixes/20260503T183643Z-pr-799-cycle4.md)

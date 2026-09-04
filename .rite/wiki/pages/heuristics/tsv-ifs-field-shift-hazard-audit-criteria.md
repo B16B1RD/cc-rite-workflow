@@ -57,4 +57,4 @@ hazard ありと判定した箇所のみ、`jq` 側を `@tsv` → `join("")`、
 
 ## ソース
 
-- [PR #1767 review results](../../raw/reviews/20260706T141300Z-pr-1767.md)
+- [レビュー結果](../../raw/reviews/20260706T141300Z-pr-1767.md)
