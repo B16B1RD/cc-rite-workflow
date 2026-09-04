@@ -1,29 +1,32 @@
 #!/bin/bash
 # rite workflow - Review Findings Maps Build (severity_map / scope_map + schema 1.1.0 normalization)
 #
-# Responsibility: file-based review source (Priority 0/2: local_file / explicit_file) の
-# findings[] から severity_map_json / scope_map_json を構築・検証する。構築に先立ち
-# schema 1.1.0 後方互換 normalization を適用する:
+# Responsibility: file-based review source (local_file / explicit_file) の findings[] から
+# severity_map_json / scope_map_json を構築・検証する。構築に先立ち schema 1.1.0 後方互換
+# normalization と致命性仕分けを適用する:
 #   (a) schema 1.0/1.0.0 の scope 欠落を severity-based default mapping で補完
 #   (b) cross-field invariant #5 (pre_existing=false × scope=nit-noted) の auto-correct
 #   (e) 致命性仕分け — gated finding (scope ∈ {current-pr, follow-up}) のうち
 #       `verification.measured == true ∧ severity ∈ {CRITICAL, HIGH}` だけを findings[] に残し、
 #       残りを non_blocking_findings[] へ `demotion_reason: "non_fatal"` 付きで移送する
-# mutation 発生時のみ normalized tempfile に書き出して以降の jq が参照し、本 script 終了時に
-# trap で削除する (caller への file hand-off はしない。normalization の発生は
-# [CONTEXT] REVIEW_SOURCE_* retained flag で LLM コンテキストに伝達される)。
+# (a)/(b) の mutation は normalized tempfile に書き出して以降の jq が参照し、本 script 終了時に
+# trap で削除する (caller への file hand-off はしない)。(e) の移送が 1 件以上あるときだけ、
+# 正規化と移送を適用した文書を --review-source-path のファイルへ tempfile + mv で書き戻す
+# (non_blocking_findings[] は移送分の全文の唯一の保存先で、iterate 5.S の nb-sweep が
+# 永続 JSON から読むため)。発生は [CONTEXT] REVIEW_SOURCE_* / FIX_FATAL_TRIAGE で伝達される。
 #
 # Called from:
-#   - skills/fix/SKILL.md ステップ 1.2.0 "On Priority 2 success" (旧 ~154 行 inline block を委譲)。
-#     Priority 3 (pr_comment) の string-based 鏡像は
-#     fix.md 内の 1.2.0.s 節に inline のまま残る (同 logic の鏡像。jq filter を変更する際は両方を同期すること)
+#   - skills/fix/SKILL.md ステップ 1.2.0 "On Priority 2 success" (Priority 0/2、旧 inline block の委譲先)
+#   - skills/fix/SKILL.md ステップ 1.2.0 Priority 3 (pr_comment)。raw_json を tempfile へ書き出して
+#     本 helper に渡し、書き戻された結果を読み戻す。鏡像 inline 実装は持たない —
+#     致命判定を 2 実装に分けると片方が LLM 裁量へ戻り、経路によって契約が破れるため
 #
 # Usage:
 #   bash review-findings-maps.sh --review-source <local_file|explicit_file|...> \
-#     --review-source-path <path> [--repo-root DIR]
+#     --review-source-path <path>
 #
 # Behavior by --review-source:
-#   local_file / explicit_file : normalization + maps build を実行
+#   local_file / explicit_file : normalization + 致命性仕分け + maps build を実行
 #   その他 (pr_comment 等)      : no-op で exit 0 (旧 inline block の外側 if guard と同一)
 #
 # stdout contract: なし (severity_map_json / scope_map_json は構築検証のみ、値は emit しない。
@@ -49,6 +52,7 @@
 #                                       caller が [fix:error] に昇格。未判定を blocking / non-blocking の
 #                                       どちらにも倒さない — fail-loud)
 #   severity_enum_violation           — findings[].severity が enum 外 (exit 1、既存 scope enum 違反と同形)
+#   json_invalid                      — --review-source-path が jq parse 不能 (exit 1)
 #   fatal_triage_jq_failed            — 致命性仕分けの検査 / 移送 jq が失敗 (exit 1、部分適用を残さない)
 #   fatal_triage_mktemp_failed        — 移送出力用 tempfile の mktemp が失敗 (exit 1)
 #   fatal_triage_id_union_violation   — 移送後 JSON の自己検証違反 (non_blocking_findings が非配列、または
@@ -61,13 +65,13 @@
 #   scope_map_build_failed            — scope_map 構築用 jq が失敗、scope_map_json="{}" で続行 (非ブロッキング)
 #
 # Eval-order enumeration (reason 表と併せて参照する emit reasons の documented set):
-# emit reasons sequence = (`scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `mktemp_failure_norm_tmp` / `fatal_triage_jq_failed` / `severity_enum_violation` / `measured_undetermined` / `fatal_triage_mktemp_failed` / `fatal_triage_id_union_violation` / `fatal_triage_mv_failed` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `scope_map_build_failed`)
+# emit reasons sequence = (`scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `mktemp_failure_norm_tmp` / `json_invalid` / `fatal_triage_jq_failed` / `severity_enum_violation` / `measured_undetermined` / `fatal_triage_mktemp_failed` / `fatal_triage_id_union_violation` / `fatal_triage_mv_failed` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `scope_map_build_failed`)
 #
 # Exit codes:
 #   0  正常 (no-op source / maps build 成功 / 非ブロッキング WARNING のみ)
 #   1  severity_map 構築失敗、または致命性仕分けの失敗 (FIX_FALLBACK_FAILED emit 済み。caller が
 #      [fix:error] を stdout 出力する — [fix:error] stdout 分離契約のため本 helper は emit しない)
-#   2  invocation error (引数欠落 / repo-root cd 失敗)
+#   2  invocation error (引数欠落 / 未知フラグ)
 #
 # NOTE on shell flags: 旧 inline block は jq / mktemp の rc を明示ハンドリングするため
 # global `set -e` を使わない。verbatim 移植のため本 helper も同様。
@@ -206,6 +210,16 @@ if [ "${norm_defaulted_count:-0}" -gt 0 ] || [ "${norm_corrected_count:-0}" -gt 
 fi
 
 # ---- 致命性仕分け (fatal triage) ----
+# 仕分けは JSON 全体を読むため、parse 不能を先に切り分ける。ここで弾かないと後続の jq が
+# 一律 fatal_triage_jq_failed になり「JSON が壊れている」という一次原因が診断から消える
+# (sibling の review-class-demotion-gate.sh と同じ json_invalid 語彙に揃える)。
+if ! jq empty "$review_source_path" 2>/dev/null; then
+  echo "ERROR: review-result JSON が parse できません: $review_source_path" >&2
+  echo "  対処: ファイルの内容と jq バイナリを確認し、必要なら /rite:pr-review を再実行してください" >&2
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=json_invalid" >&2
+  exit 1
+fi
+
 # gated finding (scope ∈ {current-pr, follow-up}) を 2 つに割る。判定は本 helper の決定論で行い、
 # LLM は下の [CONTEXT] FIX_FATAL_TRIAGE= marker を読むだけにする (fix.md ステップ 1.2.0)。
 #

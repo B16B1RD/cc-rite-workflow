@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.1.0",
+  "pr_number": 1,
+  "commit_sha": "0000000000000000000000000000000000000000",
+  "overall_assessment": "fix-needed",
+  "findings": [
+    {
+      "id": "F-01",
+      "file": "src/mod2.ts",
+      "line": 7,
+      "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": true,
+      "verification": {
+        "measured": true
+      }
+    },
+    {
+      "id": "F-02",
+      "file": "src/mod3.ts",
+      "line": 14,
+      "severity": "LOW-MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": true,
+      "verification": {
+        "measured": true
+      }
+    }
+  ],
+  "non_blocking_findings": []
+}

@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.1.0",
+  "pr_number": 1,
+  "commit_sha": "0000000000000000000000000000000000000000",
+  "overall_assessment": "fix-needed",
+  "findings": [
+    {
+      "id": "F-01",
+      "file": "src/mod2.ts",
+      "line": 7,
+      "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": true,
+      "verification": {
+        "measured": true
+      }
+    },
+    {
+      "id": "F-02",
+      "file": "src/mod3.ts",
+      "line": 14,
+      "severity": "MEDIUM",
+      "scope": "current-pr",
+      "pre_existing": true,
+      "verification": {
+        "measured": true
+      }
+    },
+    {
+      "id": "F-03",
+      "file": "src/mod4.ts",
+      "line": 21,
+      "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": true,
+      "verification": {
+        "measured": true
+      }
+    },
+    {
+      "id": "F-04",
+      "file": "src/mod1.ts",
+      "line": 28,
+      "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": true,
+      "verification": {
+        "measured": true
+      }
+    },
+    {
+      "id": "F-05",
+      "file": "src/mod2.ts",
+      "line": 35,
+      "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": true,
+      "verification": {
+        "measured": true
+      }
+    },
+    {
+      "id": "F-06",
+      "file": "src/mod3.ts",
+      "line": 42,
+      "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": true,
+      "verification": {
+        "measured": true
+      }
+    },
+    {
+      "id": "F-07",
+      "file": "src/mod4.ts",
+      "line": 49,
+      "severity": "HIGH",
+      "scope": "current-pr",
+      "pre_existing": true,
+      "verification": {
+        "measured": true
+      }
+    },
+    {
+      "id": "F-08",
+      "file": "src/mod1.ts",
+      "line": 56,
+      "severity": "LOW",
+      "scope": "nit-noted",
+      "pre_existing": true,
+      "verification": {
+        "measured": false
+      }
+    }
+  ],
+  "non_blocking_findings": []
+}
