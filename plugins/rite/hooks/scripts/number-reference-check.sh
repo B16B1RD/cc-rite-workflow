@@ -15,6 +15,7 @@
 #
 # Line-level exclusions:
 #   - token is the literal placeholder #123
+#   - next character is [A-Za-z_] (not a bare number; heading ids / hex colors)
 #   - token is immediately followed by -[A-Za-z] (markdown heading anchors)
 #   - line contains the marker drift-check-ignore
 #
@@ -55,8 +56,8 @@ Options:
   -h, --help         Show this help
 
 Detected: #[0-9]{3,4} tokens (Issue/PR number references).
-Exclusions: placeholder #123, markdown anchors (#NNN-letter), drift-check-ignore,
-            wiki raw, script fixtures, detector test files.
+Exclusions: placeholder #123, word-char after digits, markdown anchors (#NNN-letter),
+            drift-check-ignore, wiki raw, script fixtures, detector test files.
 
 Exit codes:
   0  No reference detected
@@ -170,10 +171,8 @@ is_binary_file() {
   esac
 }
 
-# Grammar SoT: this awk function only (duplicated in scan_diff, not copied to other files).
-awk_has_hit_and_emit() {
-  local file="$1"
-  awk -v file="$file" '
+# Grammar SoT: this awk function only. --all / --stdin / --diff all call it.
+AWK_HAS_HIT='
     function has_hit(s,    i, j, n, tok, nxt, nxt2) {
       i = 1
       while (i <= length(s)) {
@@ -190,6 +189,7 @@ awk_has_hit_and_emit() {
           if (tok == "#123") { i = j; continue }
           nxt = (j <= length(s)) ? substr(s, j, 1) : ""
           nxt2 = (j + 1 <= length(s)) ? substr(s, j + 1, 1) : ""
+          if (nxt ~ /[A-Za-z_]/) { i = j; continue }
           if (nxt == "-" && nxt2 ~ /[A-Za-z]/) { i = j; continue }
           return 1
         }
@@ -197,6 +197,11 @@ awk_has_hit_and_emit() {
       }
       return 0
     }
+'
+
+awk_has_hit_and_emit() {
+  local file="$1"
+  awk -v file="$file" "$AWK_HAS_HIT"'
     {
       if (index($0, "drift-check-ignore") > 0) next
       if (has_hit($0)) printf "%s:%d: %s\n", file, NR, $0
@@ -268,36 +273,13 @@ scan_diff() {
     exit 2
   fi
   local hits
-  hits=$(printf '%s\n' "$diff_out" | awk '
+  hits=$(printf '%s\n' "$diff_out" | awk "$AWK_HAS_HIT"'
     function excluded(p) {
       if (p == ".rite/wiki/raw" || index(p, ".rite/wiki/raw/") == 1) return 1
       if (p == "plugins/rite/scripts/tests/fixtures" || index(p, "plugins/rite/scripts/tests/fixtures/") == 1) return 1
       if (p == "plugins/rite/hooks/tests/number-reference-check.test.sh") return 1
       if (p == "plugins/rite/hooks/tests/comment-journal-check.test.sh") return 1
       if (p == "plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh") return 1
-      return 0
-    }
-    function has_hit(s,    i, j, n, tok, nxt, nxt2) {
-      i = 1
-      while (i <= length(s)) {
-        if (substr(s, i, 1) != "#") { i++; continue }
-        j = i + 1
-        n = 0
-        while (j <= length(s) && substr(s, j, 1) ~ /[0-9]/) {
-          n++
-          j++
-        }
-        if (n >= 5) { i = j; continue }
-        if (n >= 3 && n <= 4) {
-          tok = substr(s, i, n + 1)
-          if (tok == "#123") { i = j; continue }
-          nxt = (j <= length(s)) ? substr(s, j, 1) : ""
-          nxt2 = (j + 1 <= length(s)) ? substr(s, j + 1, 1) : ""
-          if (nxt == "-" && nxt2 ~ /[A-Za-z]/) { i = j; continue }
-          return 1
-        }
-        i++
-      }
       return 0
     }
     function unquote(p) {

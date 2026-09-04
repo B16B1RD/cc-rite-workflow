@@ -185,6 +185,36 @@ commit_all "$sb" hyphen-digit
 rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
 assert "T-03 hyphen+digit is not an anchor" "1" "$rc"
 
+# word-char after 3-4 digits is not a bare number (heading id / hex color)
+hex_color='161B22'
+heading_id='530c'
+bare_token='2045'
+printf 'link to assessment-rules.md#%s-class\ncolor #%s\nreal token (#%s)\n' \
+  "$heading_id" "$hex_color" "$bare_token" \
+  > "$sb/plugins/rite/skills/x/SKILL.md"
+commit_all "$sb" word-char
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] \
+   && printf '%s' "$out" | grep -qE "real token \\(#${bare_token}\\)" \
+   && ! printf '%s' "$out" | grep -q "${heading_id}-class" \
+   && ! printf '%s' "$out" | grep -q "$hex_color"; then
+  pass "word-char after digits miss; bare token hit (--diff)"
+else
+  fail "word-char skip failed rc=$rc: $out"
+fi
+
+rc=0; out=$(printf 'link to assessment-rules.md#%s-class\ncolor #%s\nreal token (#%s)\n' \
+  "$heading_id" "$hex_color" "$bare_token" \
+  | bash "$TARGET" --stdin --label probe.md --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] \
+   && printf '%s' "$out" | grep -qE "^probe.md:3: real token \\(#${bare_token}\\)$" \
+   && ! printf '%s' "$out" | grep -q 'probe.md:1:' \
+   && ! printf '%s' "$out" | grep -q 'probe.md:2:'; then
+  pass "word-char after digits miss; bare token hit (--stdin)"
+else
+  fail "word-char --stdin failed rc=$rc: $out"
+fi
+
 # --------------------------------------------------------------------------
 # Band: #100 / #9999 hit, #99 / #12345 miss
 # --------------------------------------------------------------------------
@@ -227,6 +257,19 @@ if [ "$rc" -eq 1 ] \
   pass "T-04 excluded 3 paths miss; other hooks/tests hit"
 else
   fail "T-04 path exclusions failed rc=$rc: $out"
+fi
+
+rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] \
+   && printf '%s' "$out" | grep -q 'hooks/tests/other.test.sh' \
+   && ! printf '%s' "$out" | grep -q 'wiki/raw/' \
+   && ! printf '%s' "$out" | grep -q 'scripts/tests/fixtures/' \
+   && ! printf '%s' "$out" | grep -q 'number-reference-check.test.sh' \
+   && ! printf '%s' "$out" | grep -q 'comment-journal-check.test.sh' \
+   && ! printf '%s' "$out" | grep -q 'wiki-lint-descriptive-refs.test.sh'; then
+  pass "T-04 --diff excluded 3 paths miss; other hooks/tests hit"
+else
+  fail "T-04 --diff path exclusions failed rc=$rc: $out"
 fi
 
 # --------------------------------------------------------------------------

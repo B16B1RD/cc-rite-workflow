@@ -2115,11 +2115,12 @@ if git rev-parse --verify "origin/{base_branch}^{commit}" >/dev/null 2>&1; then
 else
   number_ref_base="{base_branch}"
 fi
-number_ref_output=$(bash {plugin_root}/hooks/scripts/number-reference-check.sh --diff "$number_ref_base")
+# findings は stdout。捕捉すると Bash tool 結果から消え rc=1 腕が空振りする。
+bash {plugin_root}/hooks/scripts/number-reference-check.sh --diff "$number_ref_base"
 number_ref_rc=$?
 case "$number_ref_rc" in
   0) ;;
-  1) ;; # findings: 下記
+  1) ;; # stdout の各 file:line: matched line を 5.3.0.M step 1 の findings[] へ append
   *)
     echo "ERROR: number-reference-check.sh --diff failed rc=$number_ref_rc" >&2
     echo "[review:error]"
@@ -2137,10 +2138,10 @@ esac
 rc=1 の finding（`findings[].verification` は書かない）:
 - `reviewer: "pr-review"`（orchestrator。agents/ は追加しない）
 - `severity: HIGH` / `scope: current-pr` / `category: number_reference`
-- `description` に同一セグメントの `Verification:`（marker と `=>` の間に句点・改行を入れない）:
-  `Verification: repro => number-reference-check.sh --diff {base} exit 1; {file}:{line}: {matched line} => Total number-ref findings: N`
+- `description` に同一セグメントの `Verification:`（marker と `=>` の間に句点・改行を入れない。LHS 非空・`=>` は 1 つ）:
+  `Verification: repro bash {plugin_root}/hooks/scripts/number-reference-check.sh --diff $number_ref_base => exit 1; {file}:{line}: {matched line}`
 
-ゲート後も `findings[]` に残す（`non_blocking_findings[]` へ送らない）。
+ゲート後も `findings[]` に残す（`non_blocking_findings[]` へ送らない）。5.3.0.C では `category == "number_reference"` を class A 固定とする（exclusion なし class B に倒さない）。
 
 #### 5.3.0.M 実測必須ゲート実行手順 (helper 委譲)
 
@@ -2277,6 +2278,7 @@ rationale: references/design-rationale.md#class-demotion-policy
 - **ファイルパスで機械分類しない** — テストへの指摘でも「clean fixture のため本番バグを検出できない」類は実行時帰結を持つ class A である
 - **`scenario` (判定文) は 1 行で書き、raw `|` (パイプ) と改行を含めない** (パイプを含む表記は `¦` U+00A6 で代替)。判定文は helper が `demotion.reason` へそのまま写し、5.4 の `### 実測なし指摘 (non-blocking)` section の `内容` セル先頭と 6.1.d 記録コメントの降格理由列へ verbatim で差し込まれる — raw パイプは `/rite:fix` ステップ 1.2.1 の 6 列パースを列ズレさせる (`_reviewer-base.md` の `内容` 列規約と同じ理由)
 - 分類は本 consolidation コンテキストが行う (finding を発行した reviewer の自己申告は入力にしない)
+- **`category == "number_reference"` は class A 固定** — Number-reference `--diff` 節の「ゲート後も findings[] に残す」を拘束する。class B に倒さない
 - **実測未判定 (verification 欠落) の finding にもエントリを書いてよい**が、helper は参照しない (class A 固定 + `CLASS_DEMOTION_UNDETERMINED_MEASURED` marker)。全 gated finding を列挙する規約は維持する (欠落との区別を保つため)
 
 判定結果を **Write tool** で `{review_tmp_dir}/rite-review-class-{pr_number}-{current_commit_sha}.json` に保存する (`{current_commit_sha}` は ステップ 1.2.5 で記録した本 cycle の commit SHA を**リテラル置換する**。**パスに cycle 識別子を含めるのは必須** — `${TMPDIR}` はセッション内不変のため、含めないと前 cycle の map が同一パスに残り、step 1 を飛ばして step 2 だけ実行した場合に helper が stale map を well-formed 入力として受理して**別 cycle の判定を無音で適用する**。識別子があれば同じ状況は `classification_missing` の loud fail として現れる — **ただし HEAD 不変で再入する cycle では前 cycle の map が同一パスに残る。識別上の制約は 5.3.0.M step 1 の「既知の残余」を SoT とする**。4.6 の timings ファイルと同一の規約):
