@@ -482,21 +482,43 @@ esac
 
 **On Priority 0 failure**: `review_source="fallback"` → 1.2.0.1。`--review-file` 明示時に P1–P3 へ silent fallthrough しない。
 
-**On Priority 2 success**: Skip "Target Comment Fast Path" and "Broad Comment Retrieval"。map 構築は `scripts/review-findings-maps.sh` へ委譲 (reason は下記 bullet。file-based 以外は no-op exit 0)。
+**On Priority 2 success**: Skip "Target Comment Fast Path" and "Broad Comment Retrieval"。**致命性仕分けと** map 構築は `scripts/review-findings-maps.sh` へ委譲 (reason は helper docstring の Reason SoT。file-based 以外は no-op exit 0)。
 rationale: references/design-rationale.md#priority2-helper-delegation
+rationale: references/design-rationale.md#fatal-triage
 
-`{review_source}` / `{review_source_path}` は ステップ 1.2.0 の最終 marker `[CONTEXT] REVIEW_SOURCE=...` から literal substitute する。severity_map 構築失敗時のみ helper が非ゼロ exit し、caller が `[fix:error]` を stdout 出力する (**[fix:error] stdout 分離** — 上記 review-source-resolve.sh caller と同型):
+`{review_source}` / `{review_source_path}` は ステップ 1.2.0 の最終 marker `[CONTEXT] REVIEW_SOURCE=...` から literal substitute する。helper が非ゼロ exit したときのみ caller が `[fix:error]` を stdout 出力する (**[fix:error] stdout 分離** — 上記 review-source-resolve.sh caller と同型)。停止理由は helper の stderr の `reason=` を写して `[fix:error] reason=...` として出す (`measured_undetermined` は対処が異なるため理由の判別が要る):
 
 ```bash
-# ステップ 1.2.0 severity_map/scope_map build — scripts/review-findings-maps.sh へ委譲
+# ステップ 1.2.0 致命性仕分け + severity_map/scope_map build — scripts/review-findings-maps.sh へ委譲
+maps_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-maps-err-XXXXXX" 2>/dev/null) || maps_err=""
+maps_rc=0
 bash {plugin_root}/scripts/review-findings-maps.sh \
   --review-source "{review_source}" \
-  --review-source-path "{review_source_path}" || {
-  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=findings_maps_build_failed" >&2
-  echo "[fix:error]"
+  --review-source-path "{review_source_path}" 2>"${maps_err:-/dev/stderr}" || maps_rc=$?
+[ -n "$maps_err" ] && [ -s "$maps_err" ] && cat "$maps_err" >&2
+if [ "$maps_rc" -ne 0 ]; then
+  # reason / findings は helper が emit した最後の FIX_FALLBACK_FAILED 行から写す
+  # (helper stderr を読めなかった場合のみ generic な reason に倒す)
+  maps_reason=""
+  maps_findings=""
+  if [ -n "$maps_err" ] && [ -s "$maps_err" ]; then
+    maps_reason=$(sed -n 's/.*FIX_FALLBACK_FAILED=1; reason=\([A-Za-z_]*\).*/\1/p' "$maps_err" | tail -1)
+    maps_findings=$(sed -n 's/.*FIX_FALLBACK_FAILED=1; reason=[A-Za-z_]*; findings=\([^;]*\).*/\1/p' "$maps_err" | tail -1)
+  fi
+  [ -n "$maps_reason" ] || maps_reason=findings_maps_build_failed
+  rm -f "$maps_err"
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=$maps_reason" >&2
+  if [ -n "$maps_findings" ]; then
+    echo "[fix:error] reason=$maps_reason; findings=$maps_findings"
+  else
+    echo "[fix:error] reason=$maps_reason"
+  fi
   exit 1
-}
+fi
+rm -f "$maps_err"
 ```
+
+helper は `[CONTEXT] FIX_FATAL_TRIAGE=applied; fatal={n}; moved={m}` を必ず 1 回 emit する。`{n}` / `{m}` を `{fatal_count}` / `{moved_count}` として retain し、ステップ 1.4 の表示・ステップ 4.5.3 の記録・ステップ 4.6 の完了報告・ステップ 5.1 の E2E 出力で使う。**marker 不在は helper が仕分けまで到達していない**ことを意味するので、`fatal_count` / `moved_count` を推測で補わない。
 
 **On Priority 3**: Broad Retrieval 後に `### 📄 Raw JSON` fence を読む。parser は当該 section 以降にスコープする。
 
@@ -668,55 +690,59 @@ else
         echo "  対処: /rite:pr-review を再実行して PR コメントを更新してください。" >&2
         echo "[CONTEXT] REVIEW_SOURCE_STALE=1; reason=pr_comment_commit_sha_mismatch; json_sha=$json_commit_sha; head_sha=$head_sha" >&2
       fi
-      # schema 1.1.0 後方互換 normalization (scope default mapping + invariant #5 auto-correct + auto_demote_low)。
-      # 本 step は Priority 3 (pr_comment) 用で、Priority 0/2 (file-based) の scripts/review-findings-maps.sh と
-      # 同 logic の鏡像。jq filter / normalization 動作を変更する際は helper と本 block の両方を同期すること。
-      # 動作 (a)-(e) の詳細: references/design-rationale.md#schema-normalization-mirror
-      norm_defaulted_count_p3=0
-      norm_corrected_count_p3=0
-      norm_demoted_low_count_p3=0
-      # auto_demote_low config 読込 (Priority 0/2 経路と対称)
-      auto_demote_low_p3=$(awk '/^review:/{r=1;next} r && /^  scope_assignment:/{s=1;next} s && /^    auto_demote_low:/{print $2; exit}' rite-config.yml 2>/dev/null | tr -d '"' | tr -d "'" | tr '[:upper:]' '[:lower:]')
-      case "$auto_demote_low_p3" in false|no|0) auto_demote_low_p3=false ;; *) auto_demote_low_p3=true ;; esac
-      case "$schema_version" in
-        "1.0.0"|"1.0")
-          norm_defaulted_count_p3=$(printf '%s' "$raw_json" | jq '[.findings[]? | select(has("scope") | not)] | length' 2>/dev/null || echo 0)
-          ;;
-      esac
-      norm_corrected_count_p3=$(printf '%s' "$raw_json" | jq '[.findings[]? | select(.pre_existing == false and .scope == "nit-noted")] | length' 2>/dev/null || echo 0)
-      if [ "$auto_demote_low_p3" = "true" ]; then
-        norm_demoted_low_count_p3=$(printf '%s' "$raw_json" | jq '[.findings[]? | select(.severity == "LOW" and .scope == "current-pr")] | length' 2>/dev/null || echo 0)
+      # schema 1.1.0 後方互換 normalization + 致命性仕分けは Priority 0/2 と**同一の helper** に委譲する。
+      # 鏡像 inline 実装は持たない — 致命判定を 2 箇所に分けると片方が LLM 裁量に戻り、
+      # 「致命判定を helper で決定論的に行う」契約が経路によって破れるため。
+      # raw_json は文字列なので tempfile へ書き出して helper に渡し、書き戻された結果を読み直す。
+      # rationale: references/design-rationale.md#fatal-triage
+      p3_triage_file=$(mktemp "${TMPDIR:-/tmp}/rite-fix-p3-triage-XXXXXX.json" 2>/dev/null) || p3_triage_file=""
+      if [ -z "$p3_triage_file" ]; then
+        echo "ERROR: Priority 3 致命性仕分け用 tempfile の mktemp が失敗しました" >&2
+        echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=p3_triage_mktemp_failed" >&2
+        echo "[fix:error] reason=p3_triage_mktemp_failed"
+        exit 1
       fi
-      if [ "${norm_defaulted_count_p3:-0}" -gt 0 ] || [ "${norm_corrected_count_p3:-0}" -gt 0 ] || [ "${norm_demoted_low_count_p3:-0}" -gt 0 ]; then
-        if normalized_raw_json=$(printf '%s' "$raw_json" | jq --arg demote_low "$auto_demote_low_p3" -c '
-          .findings |= map(
-            (if has("scope") then . else .scope = (
-              if .severity == "CRITICAL" or .severity == "HIGH" or .severity == "MEDIUM" then "current-pr"
-              else "nit-noted"
-              end
-            ) end)
-            | (if .pre_existing == false and .scope == "nit-noted" then .scope = "current-pr" else . end)
-            | (if $demote_low == "true" and .severity == "LOW" and .scope == "current-pr" then .scope = "nit-noted" else . end)
-          )
-        ' 2>/dev/null); then
-          if [ "${norm_defaulted_count_p3:-0}" -gt 0 ]; then
-            echo "WARNING: $norm_defaulted_count_p3 findings の scope を schema 1.0 後方互換で severity-based default mapping により補完しました" >&2
-            echo "[CONTEXT] REVIEW_SOURCE_SCOPE_DEFAULTED=1; reason=scope_omitted_in_v1_0; count=$norm_defaulted_count_p3; schema_version=$schema_version" >&2
-          fi
-          if [ "${norm_corrected_count_p3:-0}" -gt 0 ]; then
-            echo "WARNING: $norm_corrected_count_p3 findings が invariant #5 違反 (pre_existing=false × scope=nit-noted) のため scope を current-pr に auto-correct しました" >&2
-            echo "[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1; reason=pre_existing_false_scope_nit_noted; count=$norm_corrected_count_p3" >&2
-          fi
-          if [ "${norm_demoted_low_count_p3:-0}" -gt 0 ]; then
-            echo "WARNING: $norm_demoted_low_count_p3 findings (LOW × current-pr) を auto_demote_low により scope=nit-noted に降格しました" >&2
-            echo "[CONTEXT] REVIEW_SOURCE_AUTO_DEMOTED_LOW=1; reason=low_current_pr_demoted_to_nit_noted; count=$norm_demoted_low_count_p3" >&2
-          fi
-          raw_json="$normalized_raw_json"
-        else
-          echo "WARNING: schema 1.1.0 normalization jq が失敗 — 原 Raw JSON のまま続行します" >&2
-          echo "[CONTEXT] REVIEW_SOURCE_NORMALIZATION_FAILED=1; reason=jq_mutation_failed" >&2
+      if ! printf '%s' "$raw_json" > "$p3_triage_file"; then
+        rm -f "$p3_triage_file"
+        echo "ERROR: Priority 3 Raw JSON の tempfile 書き出しが失敗しました" >&2
+        echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=p3_triage_write_failed" >&2
+        echo "[fix:error] reason=p3_triage_write_failed"
+        exit 1
+      fi
+      p3_maps_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-p3-maps-err-XXXXXX" 2>/dev/null) || p3_maps_err=""
+      p3_maps_rc=0
+      bash {plugin_root}/scripts/review-findings-maps.sh \
+        --review-source explicit_file \
+        --review-source-path "$p3_triage_file" 2>"${p3_maps_err:-/dev/stderr}" || p3_maps_rc=$?
+      [ -n "$p3_maps_err" ] && [ -s "$p3_maps_err" ] && cat "$p3_maps_err" >&2
+      if [ "$p3_maps_rc" -ne 0 ]; then
+        p3_reason=""
+        p3_findings=""
+        if [ -n "$p3_maps_err" ] && [ -s "$p3_maps_err" ]; then
+          p3_reason=$(sed -n 's/.*FIX_FALLBACK_FAILED=1; reason=\([A-Za-z_]*\).*/\1/p' "$p3_maps_err" | tail -1)
+          p3_findings=$(sed -n 's/.*FIX_FALLBACK_FAILED=1; reason=[A-Za-z_]*; findings=\([^;]*\).*/\1/p' "$p3_maps_err" | tail -1)
         fi
+        [ -n "$p3_reason" ] || p3_reason=findings_maps_build_failed
+        rm -f "$p3_maps_err" "$p3_triage_file"
+        echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=$p3_reason" >&2
+        if [ -n "$p3_findings" ]; then
+          echo "[fix:error] reason=$p3_reason; findings=$p3_findings"
+        else
+          echo "[fix:error] reason=$p3_reason"
+        fi
+        exit 1
       fi
+      rm -f "$p3_maps_err"
+      # helper が書き戻した結果を raw_json へ読み戻す (読み戻し失敗は原 raw_json のまま続行しない —
+      # 仕分け後の findings[] を前提に下流が動くため、silent に仕分け前へ戻さない)
+      if ! raw_json=$(cat "$p3_triage_file" 2>/dev/null); then
+        rm -f "$p3_triage_file"
+        echo "ERROR: Priority 3 仕分け結果の読み戻しが失敗しました" >&2
+        echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=p3_triage_readback_failed" >&2
+        echo "[fix:error] reason=p3_triage_readback_failed"
+        exit 1
+      fi
+      rm -f "$p3_triage_file"
 
       # jq exit code を if-else で明示捕捉 (失敗時は legacy Markdown parser へ明示 fallthrough)
       p3_jq_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-p3-smap-err-XXXXXX" 2>/dev/null) || p3_jq_err=""
