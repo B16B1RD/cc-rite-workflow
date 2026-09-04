@@ -53,7 +53,7 @@
 #   status=skipped; reason=body_fetch_failed gh api での body 取得失敗 (auth/rate/network/404)
 #   status=skipped; reason=safety_check_failed body 空 / header 欠落 / <50% で PATCH 拒否
 #   status=skipped; reason=section_absent   merge-checklist: 対象 ### section 不在で新規 items を置けず
-#                                           (Python exit 10。items は破棄せず PATCH もしない —)
+#                                           (Python exit 10。items は破棄せず PATCH もしない)
 #   status=error; reason=transform_failed   Python transform が非ゼロ exit (exit 10 以外)
 #   status=error; reason=patch_failed       jq | gh api PATCH が失敗
 #   skills/fix/SKILL.md ステップ 4.5.2 はこの行を read し、no_comment 以外の skipped/error を
@@ -112,8 +112,8 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 # (flow-state.sh path — schema_v2/v3 per-session file under .rite/sessions/).
 # The legacy shared file (.rite-flow-state) does not exist in schema_v2/v3-only
 # environments, so caching against it always misses and forces a full gh api
-# comments scan on every call ( same root cause as 's
-# cleanup-work-memory.sh). Fall back to the legacy shared file only when
+# comments scan on every call (the same root cause the resolver-based path
+# in cleanup-work-memory.sh addresses). Fall back to the legacy shared file only when
 # session resolution itself fails (no .rite-session-id / session env var
 # available) — surface that fallback with a WARNING for diagnosability.
 _fs_err=$(mktemp 2>/dev/null) || _fs_err=""

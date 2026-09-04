@@ -24,9 +24,10 @@ comparison anchor, so avoid cross-version "used to / previously" framing that is
 not tied to a named key or feature. Breaking-change notices and migration guides
 that aid upgraders are kept verbatim.
 
-Number-reference policy: New entries must not include Issue/PR number
-tokens. Historical entries in past version sections are left as-is
-(non-target). `/release` no longer writes pointers.
+Number-reference policy: Entries must not include Issue/PR number tokens.
+Past version sections carry none either — they have already been stripped.
+`/release` does not write pointers. Both CHANGELOG files are in scope for
+`number-reference-check.sh --all`, which CI runs as a blocking gate.
 -->
 
 ## [Unreleased]

@@ -174,7 +174,7 @@ temp/
 # separate_branch 戦略 (デフォルト) ユーザーは本 .gitignore でそのまま動作します。
 .rite/wiki/
 # <<< gitignore-wiki-section-end (anchor / F-09 対応)
-# Wiki branch を checkout した永続 git worktree (で導入)。
+# Wiki branch を checkout した永続 git worktree。
 # wiki-worktree-setup.sh が冪等に作成し、cleanup.md ステップ 6 で意図的に
 # 残置する設計。ここを ignore しないと dev branch 側 diff に worktree 内の
 # wiki page が漏出する。

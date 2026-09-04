@@ -642,7 +642,7 @@ jq -n --rawfile body "$updated_tmp" '{"body": $body}' \
 SSH host alias（例: `git@github.com-work:owner/repo.git`）のとき
 `none of the git remotes configured for this repository point to a known GitHub host` で失敗する。
 `{owner}` / `{repo}` プレースホルダの解決には、remote URL を直接パースする
-`hooks/scripts/lib/git-remote.sh`（ で導入。host 名に依存しない）を優先し、
+`hooks/scripts/lib/git-remote.sh`（host 名に依存しない）を優先し、
 `gh repo view` は fallback に回すこと。
 
 ```bash

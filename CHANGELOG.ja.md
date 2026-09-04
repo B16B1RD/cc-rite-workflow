@@ -22,9 +22,10 @@ Fixed/Changed/Removed エントリは修正対象の旧挙動を述べてよい�
 避けます。アップグレード利用者向けの breaking change 告知・移行ガイドはそのまま
 保持します。
 
-番号参照方針: 新規エントリに Issue/PR 番号トークンを書いてはならない。
-過去バージョン節の既存エントリはそのまま残す（対象外）。`/release` は
-ポインタを書かない。
+番号参照方針: エントリに Issue/PR 番号トークンを書いてはならない。過去
+バージョン節も除去済みで、番号は残っていない。`/release` はポインタを書かない。
+両 CHANGELOG は `number-reference-check.sh --all` の走査対象であり、CI が
+blocking gate として実行する。
 -->
 
 ## [Unreleased]

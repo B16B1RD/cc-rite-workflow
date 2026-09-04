@@ -7,7 +7,7 @@
 # - wiki-worktree-commit.sh (pages/index/log commits on wiki branch)
 # - wiki-ingest-commit.sh (worktree fast path for raw-source ingest)
 #
-# Responsibility 2 ( source OR standalone): provide
+# Responsibility 2 (source OR standalone): provide
 # `ensure_session_worktree`, the single bash-side SoT for the
 # "branch exists ∧ session worktree absent → reconstruct" gate used by
 # the flow ENTRY paths (resume / review / iterate / fix) so a
@@ -358,7 +358,7 @@ worktree_commit_push() {
 # worktree_push_branch: push WORKTREE's local BRANCH to origin, retrying
 # on non-fast-forward rejection (fetch + rebase) up to 3 attempts.
 #
-# Responsibility ( wiki push batch/defer): hold the push-with-retry
+# Responsibility (wiki push batch/defer): hold the push-with-retry
 # logic extracted from worktree_commit_push's Step 4, so a caller that has
 # accumulated several WTGP_COMMIT_ONLY=1 commits (wiki-ingest processing
 # multiple raw sources) can push them all with a single call instead of
@@ -529,8 +529,7 @@ worktree_push_branch() {
 # worktree for an Issue at a flow ENTRY path.
 #
 # This is the single bash-side SoT for the "branch exists ∧ worktree
-# absent → reconstruct" gate that first introduced inline in
-# recover.md. It performs detection AND reconstruction (git worktree add);
+# absent → reconstruct" gate. It performs detection AND reconstruction (git worktree add);
 # the EnterWorktree tool call and any AskUserQuestion routing stay with the
 # LLM caller, driven by the emitted [CONTEXT] WT_ENSURE marker. The
 # canonical marker→action routing table lives in skills/recover/SKILL.md

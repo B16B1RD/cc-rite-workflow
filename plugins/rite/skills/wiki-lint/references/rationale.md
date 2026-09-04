@@ -21,7 +21,7 @@ source 失敗が対象。
 
 ## wiki-config-opt-out
 
-本ファイルは ingest と対称な `parse_wiki_scalar` 委譲の lenient 2-arm 経路（ opt-out
+本ファイルは ingest と対称な `parse_wiki_scalar` 委譲の lenient 2-arm 経路（opt-out
 default）。helper 不在で設定を判定できていないときに無効扱いへ倒すのは silent default そのもの。
 
 ## empty-lists-keep-7-5

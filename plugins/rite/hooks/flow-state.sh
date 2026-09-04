@@ -406,7 +406,7 @@ cmd_set() {
   # caller (open.md の hard gate) 側に委ねる (flow-state は state 記録の SoT であり制御層ではない)。
   if [ "$require_worktree" -eq 1 ]; then
     if [ -z "$worktree" ]; then
-      echo "WARNING: flow-state.sh cmd_set: --require-worktree set but worktree path is empty (phase=$phase; multi_session worktree 化漏れの可能性 —)" >&2
+      echo "WARNING: flow-state.sh cmd_set: --require-worktree set but worktree path is empty (phase=$phase; multi_session worktree 化漏れの可能性)" >&2
       echo "[CONTEXT] WORKTREE_INVARIANT=missing; phase=$phase" >&2
     else
       echo "[CONTEXT] WORKTREE_INVARIANT=ok; phase=$phase; worktree=$worktree" >&2
