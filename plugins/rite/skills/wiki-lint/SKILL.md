@@ -656,11 +656,14 @@ rationale: references/descriptive-refs-rationale.md#exclusions
 #  canonical: references/plugin-path-resolution.md#inline-one-liner-for-command-files)
 plugin_root=$(cat .rite/plugin-root 2>/dev/null || cat .rite-plugin-root 2>/dev/null || bash -c 'if [ -d "plugins/rite" ]; then cd plugins/rite && pwd; elif command -v jq &>/dev/null && [ -f "$HOME/.claude/plugins/installed_plugins.json" ]; then jq -r "limit(1; .plugins | to_entries[] | select(.key | startswith(\"rite@\"))) | .value[0].installPath // empty" "$HOME/.claude/plugins/installed_plugins.json"; fi')
 
-if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/wiki-lint-descriptive-refs.sh" ]; then
-  # helper 不在 (marketplace install で scripts/ を持たない等): informational 指標のため
+if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/wiki-lint-descriptive-refs.sh" ] \
+   || [ ! -f "$plugin_root/hooks/scripts/number-reference-check.sh" ]; then
+  # helper 不在 (marketplace install で scripts/ を持たない等): informational 指標のため。
+  # 委譲先 (number-reference-check.sh) の不在も同じ縮退で扱う — helper 側は委譲先が無いと
+  # marker block を 1 行も出さずに exit 2 するので、ここで決定的に畳んでおく。
   # 0 件で縮退し lint 本体は継続する。ステップ 6.0 / 6.2 の集合構築と違い、本指標は
   # 他の判定の入力にならないため io_error 扱いにする必要がない。
-  echo "WARNING: wiki-lint-descriptive-refs.sh が見つからないため番号参照検出をスキップします (plugin_root='${plugin_root:-<empty>}')" >&2
+  echo "WARNING: wiki-lint-descriptive-refs.sh または委譲先の number-reference-check.sh が見つからないため番号参照検出をスキップします (plugin_root='${plugin_root:-<empty>}')" >&2
   echo "---descriptive_refs_begin---"
   echo "---descriptive_refs_end---"
   echo "descriptive_refs_pages=0"

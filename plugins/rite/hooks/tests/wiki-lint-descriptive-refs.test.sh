@@ -627,13 +627,6 @@ else
       # check-ignore が自前で unquote するため、一覧行の quoting を識別できない
       assert_grep "TC-18b (AC-6) 残存一覧が非 ASCII のページ名を生のまま出す (quotePath=false)" \
         "$p18b_dir/ignored.out" '^    \.rite/wiki/pages/日本語ページ\.md$'
-      assert_not_grep "TC-18b (AC-6) 原因の見出しだけが出て中身が空にならない" \
-        "$p18b_dir/ignored.out" '原因を特定できませんでした'
-      # 原因欄に git の診断が並ぶのは stderr を causes へ混ぜた形の再導入を意味する。
-      # 健全な fixture では check-ignore が stderr を出さないのでこの出力側 assert だけでは
-      # 恒真になる — 決定的なキラーは下の source 側 pin と経路 (9) の shim が担う
-      assert_not_grep "TC-18b (AC-6) 原因欄に git の警告 / エラーを原因として載せない" \
-        "$p18b_dir/ignored.out" '^    (warning|fatal|error):'
       # 原因行の path 欄も生のまま出ること (check-ignore 側の quotePath=false を測る)
       assert_grep "TC-18b (AC-6) 原因行の path 欄も非 ASCII を生で出す" \
         "$p18b_dir/ignored.out" '\.gitignore:[0-9]+:.*[[:space:]]\.rite/wiki/pages/日本語ページ\.md$'
@@ -647,46 +640,51 @@ else
         "$p18b_ig_shown" "$p18b_ig_causes"
       assert_not_grep "TC-18b (AC-6) ignored_paths は stage_failed 用の root anchor 案内へ戻っていない" \
         "$p18b_dir/ignored.out" 'gitignore-wiki-section-end'
+      # (9) check-ignore が失敗した回。git の PATH shim で check-ignore だけを rc=128 + stderr に
+      #     差し替える。健全な fixture では check-ignore が必ず一致を返すため、else arm と
+      #     「stderr を混ぜない」性質はこの経路でしか実行で測れない。
+      #     経路 (8) と同じ drift ツリーを使うので、その準備成否のガード内に置く
+      p18b_shim="$p18b_dir/shim"
+      mkdir -p "$p18b_shim"
+      {
+        printf '#!/usr/bin/env bash\n'
+        printf '# 経路 (9) 専用の shim。サブコマンド位置を見ないので、check-ignore を含む\n'
+        printf '# 任意の引数 (commit -m のメッセージ等) でも発火する点に注意\n'
+        printf 'for a in "$@"; do\n'
+        printf '  if [ "$a" = "check-ignore" ]; then\n'
+        printf '    echo "fatal: shimmed check-ignore failure" >&2\n'
+        printf '    exit 128\n'
+        printf '  fi\n'
+        printf 'done\n'
+        printf 'exec %s "$@"\n' "$(command -v git)"
+      } > "$p18b_shim/git"
+      chmod +x "$p18b_shim/git"
+      if [ ! -x "$p18b_shim/git" ]; then
+        fail "TC-18b (AC-6) git shim を作成できなかった"
+        skip "TC-18b (AC-6) check-ignore 失敗経路の assert を shim 作成失敗により gate"
+      else
+        tmp_files+=("$p18b_dir/block9.sh")
+        p18b_render "$p18b_drift" "$PLUGIN_ROOT" > "$p18b_dir/block9.sh"
+        PATH="$p18b_shim:$PATH" bash "$p18b_dir/block9.sh" > "$p18b_dir/shim.out" 2>&1
+        # 失敗しても verdict は変わらない (ignore 残存は ls-files が確定済み)
+        assert_grep "TC-18b (AC-6) check-ignore が落ちても ignored_paths で止まる" \
+          "$p18b_dir/shim.out" 'reason=ignored_paths'
+        # else arm へ入り、rc を添えて「一致を返しませんでした」と報告する
+        assert_grep "TC-18b (AC-6) check-ignore 失敗時は rc を添えて報告する" \
+          "$p18b_dir/shim.out" '一致を返しませんでした \(rc=128\)'
+        assert_grep "TC-18b (AC-6) check-ignore 失敗時は手動再現コマンドを案内する" \
+          "$p18b_dir/shim.out" '手動: git -C .* check-ignore -v'
+        # git の診断は素通しされ、原因としてラベル (4 スペース字下げ) されない。
+        # 出力側で stderr 併合を殺せる唯一の経路 (健全 fixture では stderr が空で恒真になる)
+        assert_grep "TC-18b (AC-6) git の診断自体は surface される" \
+          "$p18b_dir/shim.out" 'fatal: shimmed check-ignore failure'
+        assert_not_grep "TC-18b (AC-6) git の診断を原因欄へ字下げして載せない" \
+          "$p18b_dir/shim.out" '^    fatal: shimmed check-ignore failure'
+        # 名指しできた件数が表示件数に満たないことを明示する
+        assert_grep "TC-18b (AC-6) 名指しできた件数が表示件数に満たないことを明示する" \
+          "$p18b_dir/shim.out" '注意: 表示 [0-9]+ 件のうち 0 件しか原因を名指しできていません'
+      fi
     fi
-  # (9) check-ignore が失敗した回。git の PATH shim で check-ignore だけを rc=128 + stderr に
-  #     差し替える。健全な fixture では check-ignore が必ず一致を返すため、else arm と
-  #     「stderr を混ぜない」性質はこの経路でしか実行で測れない
-  p18b_shim="$p18b_dir/shim"
-  mkdir -p "$p18b_shim"
-  {
-    printf '#!/usr/bin/env bash\n'
-    printf 'for a in "$@"; do\n'
-    printf '  if [ "$a" = "check-ignore" ]; then\n'
-    printf '    echo "fatal: shimmed check-ignore failure" >&2\n'
-    printf '    exit 128\n'
-    printf '  fi\n'
-    printf 'done\n'
-    printf 'exec %s "$@"\n' "$(command -v git)"
-  } > "$p18b_shim/git"
-  chmod +x "$p18b_shim/git"
-  if [ ! -x "$p18b_shim/git" ]; then
-    fail "TC-18b (AC-6) git shim を作成できなかった"
-    skip "TC-18b (AC-6) check-ignore 失敗経路の assert を shim 作成失敗により gate"
-  else
-    p18b_render "$p18b_drift" "$PLUGIN_ROOT" > "$p18b_dir/block9.sh"
-    PATH="$p18b_shim:$PATH" bash "$p18b_dir/block9.sh" > "$p18b_dir/shim.out" 2>&1
-    # 失敗しても verdict は変わらない (ignore 残存は ls-files が確定済み)
-    assert_grep "TC-18b (AC-6) check-ignore が落ちても ignored_paths で止まる" \
-      "$p18b_dir/shim.out" 'reason=ignored_paths'
-    # else arm へ入り、rc を添えて「一致を返しませんでした」と報告する
-    assert_grep "TC-18b (AC-6) check-ignore 失敗時は rc を添えて報告する" \
-      "$p18b_dir/shim.out" '一致を返しませんでした \(rc=128\)'
-    assert_grep "TC-18b (AC-6) check-ignore 失敗時は手動再現コマンドを案内する" \
-      "$p18b_dir/shim.out" '手動: git -C .* check-ignore -v'
-    # git の診断は素通しされ、原因としてラベル (4 スペース字下げ) されない
-    assert_grep "TC-18b (AC-6) git の診断自体は surface される" \
-      "$p18b_dir/shim.out" 'fatal: shimmed check-ignore failure'
-    assert_not_grep "TC-18b (AC-6) git の診断を原因欄へ字下げして載せない" \
-      "$p18b_dir/shim.out" '^    fatal: shimmed check-ignore failure'
-    # 名指しできた件数が表示件数に満たないことを明示する
-    assert_grep "TC-18b (AC-6) 名指しできた件数が表示件数に満たないことを明示する" \
-      "$p18b_dir/shim.out" '注意: 表示 [0-9]+ 件のうち 0 件しか原因を名指しできていません'
-  fi
   fi
 fi
 # --- TC-18c (AC-6): commit ステップの numref_verdict ゲートを実行で pin する ---
@@ -1425,6 +1423,22 @@ assert "TC-51 (a) 落ちた index.md 分は hits に混ぜない (本文側の 1
 # としては、その診断連鎖の後半も pin する必要がある。
 assert_grep "TC-51 (a) 検出失敗ガードの WARNING まで到達する (END の exit を pin)" "$unc_err" 'エントリ行を 1 件も認識できませんでした'
 assert_not_grep "TC-51 (a) arity 契約違反として誤診されない" "$unc_err" '3 値を返しませんでした'
+
+# TC-51d: ページ本文側の未閉鎖フェンス。index.md と同じくラッチが立ったまま EOF に達すると
+# 以降の全行が委譲先へ渡らず、実在する参照が「実測済みの 0 件」として通る。END ガードが
+# 無いとこの fixture は hits=0 / read_errors=0 / read_ok=true で緑になる
+uncp_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-tc51d-XXXXXX")
+cleanup_dirs+=("$uncp_dir")
+uncp_err="$uncp_dir/uncp.err"; tmp_files+=("$uncp_err")
+mkdir -p "$uncp_dir/.rite/wiki/pages/x"
+printf '# t\n\n```bash\n未閉鎖のフェンス\n\nPR #1301 を参照\n' > "$uncp_dir/.rite/wiki/pages/x/p.md"
+uncp_out=$(printf '%s\n' ".rite/wiki/pages/x/p.md" \
+  | ( cd "$uncp_dir" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$uncp_dir" ) 2>"$uncp_err")
+assert "TC-51d 未閉鎖フェンスのページは検出失敗として read_errors に計上する" "1" \
+  "$(printf '%s' "$uncp_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
+assert "TC-51d 未閉鎖フェンスのページを実測済みの 0 件として通さない" "io_error" \
+  "$(printf '%s' "$uncp_out" | sed -n 's/^descriptive_refs_read_ok=//p')"
+
 
 # (b) 対照: 閉じていれば通常どおり数える (ラッチ検査が過剰発火していないこと)
 unc_b=$(unc_run '# Wiki Index

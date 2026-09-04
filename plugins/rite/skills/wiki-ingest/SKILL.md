@@ -523,14 +523,14 @@ esac
 
 ### 5.0.n commit 前の番号参照検査 (両戦略共通)
 
-ステップ 5.0 手順 1-7 の Write/Edit を終えたら、**commit の前に**書いた分を検査する。Raw Source の本文には番号が載っており（raw は出典なので正しい）、そこから読解して書く過程で番号が Wiki 側へ転記される。ここで止めないと混入は ingest のたびに増える。
+ステップ 5.0 手順 1-7（`index.md` の helper 呼び出しと `log.md` 追記を含む。実行順序の SoT はステップ 5.0 手順 6/7 であって、後方の `## ステップ 6` / `## ステップ 7` 見出しではない）を終えたら、**commit の前に**書いた分を検査する。Raw Source の本文には番号が載っており（raw は出典なので正しい）、そこから読解して書く過程で番号が Wiki 側へ転記される。ここで止めないと混入は ingest のたびに増える。
 rationale: references/rationale.md#numref-precommit
 
 **検査対象は `.rite/wiki` 配下の未 commit 差分**。ページだけでなく `index.md` のエントリ行も `log.md` の bullet も同じ 1 回で通る（`{skip_reason}` や Update の説明文に載る番号を素通りさせないため）。**対象の列挙もラベルも LLM が選ばない** — `git diff` が未 commit の追加行を渡し、パスは git が返す実体をそのまま使う。
 
 走査範囲は commit 範囲（`.rite/wiki`）と一致させ、新規ページは走査直前に `git add -N` で差分へ載せる。この 2 つを外すと新規ページが検査されないまま `clean` になる。`raw/**` は委譲先が除外する（raw は出典なので番号を持つ）。
 
-`{numref_tree}` は `separate_branch` では `{wiki_worktree_abs}`（ステップ 1.3 の絶対パス）、`same_branch` では dev ツリーの repo root を literal substitute する。
+`{numref_tree}` は `separate_branch` では `{wiki_worktree_abs}`（ステップ 1.3 の絶対パス。空なら 5.1 と同じく `.rite/wiki-worktree` へ縮退する）、`same_branch` では `.`（本ステップは dev ツリー root を cwd とする）を literal substitute する。別の木を掴むと検査は素通りして `clean` を返すので、値は必ずこの 2 つのどちらかにする。
 
 ```bash
 plugin_root="{plugin_root}"
@@ -638,7 +638,7 @@ esac
 | `WIKI_INGEST_NUMREF` | アクション |
 |---|---|
 | `clean` | ステップ 5.1 / 5.2 へ進む |
-| `hit` | stdout の `file:line: 内容` が指す行を書き直してから**本ステップを再実行**する。書き直しは番号を落として現在形の Why にすること — 番号を消した跡に経緯文を置き換えない。ソース bullet は説明だけを表示テキストにし、説明が無ければ種別語（「レビュー結果」「fix 結果」「close retrospective」）にする（リンク先パスは変えない）。**`index.md` の行は Edit しない** — ステップ 6 の `wiki-index-update.sh` を修正した `--description` で呼び直す（index.md への書き換えは helper が atomic に行う契約のため）。この禁止は ingest 実行中（helper を呼べる文脈）の話で、lint 指摘の事後手当ては `/rite:wiki-lint` の手順に従う。再実行で `clean` にできなければ commit せず停止し、残った行と `/rite:recover` を案内する |
+| `hit` | stdout の `file:line: 内容` が指す行を書き直してから**本ステップを再実行**する。書き直しは番号を落として現在形の Why にすること — 番号を消した跡に経緯文を置き換えない。ソース bullet は説明だけを表示テキストにし、説明が無ければ種別語（「レビュー結果」「fix 結果」「close retrospective」）にする（リンク先パスは変えない）。**`index.md` の行は Edit しない** — ステップ 6 の `wiki-index-update.sh` を修正した `--description` で呼び直す（index.md への書き換えは helper が atomic に行う契約のため）。この禁止は ingest 実行中（helper を呼べる文脈）の話で、lint 指摘の事後手当ては `/rite:wiki-lint` の手順に従う。 `log.md` の bullet は該当行の散文から番号を落とす（出典は同じ行の raw パスが持つ）。`{skip_reason}` は raw frontmatter 側の値を変えず、log bullet の表示分だけを書き直す。再実行で `clean` にできなければ commit せず停止し、残った行と `/rite:recover` を案内する |
 | `error` (`reason=stage_failed`) | bash が `exit 1` で停止済み。`same_branch` では root `.gitignore` に `!.rite/wiki/` と `!.rite/wiki/**` を**`.rite/wiki/` 除外行より後ろ**へ追記してから**本ステップを再実行**する（`# <<< gitignore-wiki-section-end` anchor があればその直後、無ければ末尾。前に置くと後勝ちで効かない）。`separate_branch` では root `.gitignore` を持たないので、`{numref_tree}` が wiki worktree の絶対パスに substitute されているか（ステップ 1.3）を先に疑う |
 | `error` (`reason=ignored_paths`) | bash が `exit 1` で停止済み。stderr が `check-ignore -v` で名指しした `.gitignore` を直してから**本ステップを再実行**する。nested `.rite/.gitignore` なら 3 行構成 '*' / '!wiki/' / '!wiki/**' へ戻す（root への negation では nested の '*' は解除できない）。source は `.gitignore` とは限らない（`.git/info/exclude` / `core.excludesFile` も同じ欄に出る）ので、名指しされた source をそのまま直す。「一致を返しませんでした」が出た場合は stderr の git 診断を確認し、stderr にも何も無ければ `check-ignore` を手動実行して原因を特定してから対処する |
 | `error` (`reason=placeholder_residue`) | bash が `exit 1` で停止済み。`{plugin_root}` / `{numref_tree}` を literal substitute して**本ステップを再実行**する |

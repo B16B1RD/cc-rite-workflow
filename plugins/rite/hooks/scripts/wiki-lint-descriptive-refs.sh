@@ -362,7 +362,10 @@ infence                     { next }
 # 数えるのは委譲先 (number-reference-check.sh) であり、本アクションは検出文法を持たない。
 # 「落とす行の規則」と「終端アクション」を 2 変数に分ける。読み分けができるほか、
 # mutation test が本文フィルタだけを差し替える seam にもなっている。
-_RITE_EMIT_ACTION='/(TODO|FIXME)/ { next } { gsub(/`[^`]*`/, "_"); print }'
+# END ガードは index.md 側と同型。未閉鎖フェンスでラッチが立ったまま EOF に達すると
+# 以降の全行が落ち、hits=0 が「実測済みの clean」として計上される — 本 helper が塞ぐ
+# 対象の silent-0 そのもの。exit 3 は既存の awk_rc アームが WARNING + read_errors へ倒す。
+_RITE_EMIT_ACTION='/(TODO|FIXME)/ { next } { gsub(/`[^`]*`/, "_"); print } END { if (infence) exit 3 }'
 
 # index.md 専用の終端アクション。index.md は散文ページではなくページ一覧のカタログで、
 # 検出対象は **エントリ 1 件あたりのサマリー (説明文) だけ**。リンクテキスト・ドメイン・更新日・
