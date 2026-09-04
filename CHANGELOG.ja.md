@@ -31,227 +31,227 @@ Fixed/Changed/Removed エントリは修正対象の旧挙動を述べてよい�
 
 ### 追加
 
-- **`/rite:issue-cancel` で「やらないと決めた Issue」を中止できる** — `--reason "not planned"` でクローズし、board Status を終端の `Cancelled` にして、必須の中止理由をクローズコメントに残す。PR・ブランチ・セッション worktree・作業メモリを持つ着手後の Issue は既存の cleanup helper 経由で片付ける（PR をマージせずクローズし、worktree・ブランチ・PR-specific state・ローカル作業メモリを削除）。「PR クローズ → Status → Issue クローズ」の順序は機構として効いており、PR クローズが失敗した場合は board を進めずフロー全体を止める。子 Issue を中止しても親へ `Done` は伝播しない。起動は人間の明示指示に限る。(#2493)
+- **`/rite:issue-cancel` で「やらないと決めた Issue」を中止できる** — `--reason "not planned"` でクローズし、board Status を終端の `Cancelled` にして、必須の中止理由をクローズコメントに残す。PR・ブランチ・セッション worktree・作業メモリを持つ着手後の Issue は既存の cleanup helper 経由で片付ける（PR をマージせずクローズし、worktree・ブランチ・PR-specific state・ローカル作業メモリを削除）。「PR クローズ → Status → Issue クローズ」の順序は機構として効いており、PR クローズが失敗した場合は board を進めずフロー全体を止める。子 Issue を中止しても親へ `Done` は伝播しない。起動は人間の明示指示に限る。
 
 ### 修正
 
-- **`/rite:pr-review` が reviewer Task の結果を `run_in_background: false` 必須ではなく completion notification で回収する** — fork mode 既定では spawn した subagent は background で走り、Agent tool に `run_in_background` 引数が無い。orchestrator は全 reviewer の通知が揃うまで結果収集を開始せず、未着結果を推測せず、待ち中に進めてよいのは `REVIEW_TMP_DIR` emit と spawn-timings パス組み立てだけ。`/rite:open` ステップ 3.3.1 も同じ回収契約。(#2510)
+- **`/rite:pr-review` が reviewer Task の結果を `run_in_background: false` 必須ではなく completion notification で回収する** — fork mode 既定では spawn した subagent は background で走り、Agent tool に `run_in_background` 引数が無い。orchestrator は全 reviewer の通知が揃うまで結果収集を開始せず、未着結果を推測せず、待ち中に進めてよいのは `REVIEW_TMP_DIR` emit と spawn-timings パス組み立てだけ。`/rite:open` ステップ 3.3.1 も同じ回収契約。
 
 ## [0.14.0] - 2026-08-30
 
 ### 修正
 
-- **`/rite:merge` が checks pending で即停止せず CI 完了を待つ** — `--force-ci` なしで `statusCheckRollup` が pending のとき、15 秒間隔・上限 540 秒で再取得し、既存の healthy / unhealthy / unknown 分類へ合流する。上限到達は `[merge:not-ready]` と未完了 check 名で fail-close する。(#2449)
-- **消費済みの release-promotion attestation が削除される** — `pr-cycle-cleanup.sh` が、対応する GitHub PR が MERGED または CLOSED の `.rite/release-promotions/{N}.json` を削除する。OPEN と状態不明は merge gate が通るよう理由付きで残す。同ディレクトリの `.gitignore` は削除しない。(#2427)
-- **replica init 過渡窓では `post-tool-wm-sync.sh` が work memory replica 不在を通知しない** — `/rite:open` が `phase=init` を記録してから replica を作成するまでの間、「replica が見つかりません。`/rite:open` を実行してください」という systemMessage を抑止する。`wm_replica=absent` の負キャッシュ記録と `last_synced_phase` の前進は不変で、抑止時は debug ログに痕跡を残す。(#2462)
-- **`wm_comment_id` / `wm_replica` が所属 Issue でスコープされる** — `flow-state.sh` は書き込む Issue が既存と一致するときだけ両キーを保持する。`/rite:batch-run` の連続処理で前 Issue の replica コメントへ PATCH することがなくなり、`wm_replica: "absent"` の負キャッシュがその Issue の残り全 phase で replica 同期を無音のまま skip し続けることもなくなる。(#2463)
-- **`.rite/release-promotions/` が自己 gitignore される** — `release-promotion-verify.sh` が attestation ディレクトリの作成直後に `*` のみの `.gitignore` を設置し、attestation ファイルが `git status` に未追跡として溜まらないようにする。設置失敗は WARNING で、exit code・head OID・attestation は保たれる。(#2425)
-- **`/rite:open` が Projects Status → In Progress の遷移を検証する** — 新規の read-only helper `projects-status-gate.sh` が Issue の実 Projects Status を読み `[CONTEXT] PROJECTS_STATUS_INVARIANT=ok|missing|skipped|unknown` を emit する。`watchdog-status-mismatch.sh` は Todo 残留 / In Progress 残留の 2 ルール構成になり、mismatch レコードに `expected_status` を持ち、`--reconcile` の遷移先がルール依存になる。(#2469)
-- **`/rite:open` が検出した親 Issue 番号を flow-state へ記録する** — 親を検出したとき `flow-state.sh set` へ `--parent-issue` を渡すため、`/rite:issue-implement` の親進捗更新が `PARENT_ISSUE=none` で skip されなくなる。親を持たない Issue では `0` を書かずフラグ自体を付けない。(#2460)
-- **`issue-complexity-lane.sh` が表形式の Section 0 Meta を受理する** — `| **Complexity** | S |` を第 3 記法として読むため、その記法で書かれた Issue で `/rite:open` が `complexity_absent` の fail-loud で停止しなくなる。(#2459)
-- **`/rite:cleanup` が follow-up Issue 起票前に非実測指摘をマージ後 HEAD で再検証する** — `cleanup-follow-up-issue.sh` に `--exclude-ids <csv>` を追加し、後続の fix cycle で解消済みの指摘を除外する。全件解消なら `skipped; reason=all_resolved` で起票自体を skip する。未知 id は WARNING のうえ既知分だけ除外して続行する。(#2467)
-- **自動起票の follow-up / `pr-create` Issue が Section 0 Meta を持つ** — body 先頭に `**Type**` / `**Complexity**` を出すため、`/rite:open` が `complexity_absent` で停止しない。(#2451)
-- **`/rite:issue-update` が新パス存在時に旧 work memory へ倒れない** — dual-path の選択条件を「新が存在すればそれを選ぶ（corrupt でも旧へ行かない）」に揃え、neither/corrupt → Issue comment の規則と一致させた。`work-memory-format.md` の Restore from API / SoT Access Pattern も同じ条件へ同期した。(#2448)
-- **`gitignore-health-check.sh` が nested `.rite/.gitignore` を `state_root` で比較する** — linked worktree から `/rite:lint` したとき、main checkout に存在する nested gitignore が欠落扱いになる偽の DRIFT が出なくなる。(#2455)
-- **NB sweep 却下台帳の件数抽出が検証側と同一式になる** — `fix/SKILL.md` が `non_blocking_count` を `review-nonblocking-record.sh` の再検査と同一の式で読むため、却下台帳を持つ NB sweep が `reason=nb_sweep_ledger_count_unreadable` で必ず `[fix:error]` になる状態を解消した。(#2476)
-- **非数値の `nb_sweep_fixed` で WARNING を出す** — `/rite:fix --nb-sweep` が受領値付きの WARNING を stderr へ出す。done-file は従来どおり 1 行 `done` のままで、偽 pass を作らない。(#2443)
-- **NB sweep 再入ガードが永続ファイルになる** — `/rite:iterate` が会話 marker ではなく `.rite/state/nb-sweep-done-{pr}.txt` に記録するため、完了した sweep が full review へ復帰しない。orphan は `pr-cycle-cleanup.sh` が回収する。(#2433)
-- **`/rite:ready` の reviewed-head ゲートが NB sweep の push した commit を受理する** — `fix/SKILL.md` が push 後の HEAD SHA を done-file の 2 行目に書き、`ready-reviewed-head-gate.sh` は review-results JSON の一致を先に評価し（`via=json`）、不一致時だけ 2 行目を照合する（`via=sweep`）。それ以外の未レビュー commit と不正な 2 行目は従来どおり fail-loud で拒否する。(#2439)
-- **`guardrail_audit_log[]` のキー集合を明示列挙し書き込み時に検証する** — `pr-review/SKILL.md` が 7 キーを明示列挙し、`review-result-save.sh` が欠落・余分を `guardrail_audit_log_keys_violation` で拒否する。空配列は受理する。(#2434)
-- **`nb-sweep` 契約テストが producer / validator の件数抽出式の一致を固定する** — `nb-sweep-contract.test.sh` が `fix/SKILL.md` と `review-nonblocking-record.sh` の双方から `body_count=` 代入を抽出し、各側が 1 行であることを assert し、右辺を抽出できないときは空同士の等値で緑になる代わりに fail する。(#2480)
-- **gitignore health-check テストが worktree cwd から見た nested drift を固定する** — `gitignore-health-check-multi-session.test.sh` が、`state_root` がリポジトリ root と異なるときに nested 比較を skip する変異は worktree cwd では drift を隠し main cwd では隠さないことを assert する。(#2457)
-- **NB sweep 再入ガードテストが外側分岐の 1 行 `done` を固定する** — `nb-sweep-reentry-guard.test.sh` が外側と内側の分岐を独立に変異させ、first-else への退行が緑のまま通らないようにする。(#2442)
+- **`/rite:merge` が checks pending で即停止せず CI 完了を待つ** — `--force-ci` なしで `statusCheckRollup` が pending のとき、15 秒間隔・上限 540 秒で再取得し、既存の healthy / unhealthy / unknown 分類へ合流する。上限到達は `[merge:not-ready]` と未完了 check 名で fail-close する。
+- **消費済みの release-promotion attestation が削除される** — `pr-cycle-cleanup.sh` が、対応する GitHub PR が MERGED または CLOSED の `.rite/release-promotions/{N}.json` を削除する。OPEN と状態不明は merge gate が通るよう理由付きで残す。同ディレクトリの `.gitignore` は削除しない。
+- **replica init 過渡窓では `post-tool-wm-sync.sh` が work memory replica 不在を通知しない** — `/rite:open` が `phase=init` を記録してから replica を作成するまでの間、「replica が見つかりません。`/rite:open` を実行してください」という systemMessage を抑止する。`wm_replica=absent` の負キャッシュ記録と `last_synced_phase` の前進は不変で、抑止時は debug ログに痕跡を残す。
+- **`wm_comment_id` / `wm_replica` が所属 Issue でスコープされる** — `flow-state.sh` は書き込む Issue が既存と一致するときだけ両キーを保持する。`/rite:batch-run` の連続処理で前 Issue の replica コメントへ PATCH することがなくなり、`wm_replica: "absent"` の負キャッシュがその Issue の残り全 phase で replica 同期を無音のまま skip し続けることもなくなる。
+- **`.rite/release-promotions/` が自己 gitignore される** — `release-promotion-verify.sh` が attestation ディレクトリの作成直後に `*` のみの `.gitignore` を設置し、attestation ファイルが `git status` に未追跡として溜まらないようにする。設置失敗は WARNING で、exit code・head OID・attestation は保たれる。
+- **`/rite:open` が Projects Status → In Progress の遷移を検証する** — 新規の read-only helper `projects-status-gate.sh` が Issue の実 Projects Status を読み `[CONTEXT] PROJECTS_STATUS_INVARIANT=ok|missing|skipped|unknown` を emit する。`watchdog-status-mismatch.sh` は Todo 残留 / In Progress 残留の 2 ルール構成になり、mismatch レコードに `expected_status` を持ち、`--reconcile` の遷移先がルール依存になる。
+- **`/rite:open` が検出した親 Issue 番号を flow-state へ記録する** — 親を検出したとき `flow-state.sh set` へ `--parent-issue` を渡すため、`/rite:issue-implement` の親進捗更新が `PARENT_ISSUE=none` で skip されなくなる。親を持たない Issue では `0` を書かずフラグ自体を付けない。
+- **`issue-complexity-lane.sh` が表形式の Section 0 Meta を受理する** — `| **Complexity** | S |` を第 3 記法として読むため、その記法で書かれた Issue で `/rite:open` が `complexity_absent` の fail-loud で停止しなくなる。
+- **`/rite:cleanup` が follow-up Issue 起票前に非実測指摘をマージ後 HEAD で再検証する** — `cleanup-follow-up-issue.sh` に `--exclude-ids <csv>` を追加し、後続の fix cycle で解消済みの指摘を除外する。全件解消なら `skipped; reason=all_resolved` で起票自体を skip する。未知 id は WARNING のうえ既知分だけ除外して続行する。
+- **自動起票の follow-up / `pr-create` Issue が Section 0 Meta を持つ** — body 先頭に `**Type**` / `**Complexity**` を出すため、`/rite:open` が `complexity_absent` で停止しない。
+- **`/rite:issue-update` が新パス存在時に旧 work memory へ倒れない** — dual-path の選択条件を「新が存在すればそれを選ぶ（corrupt でも旧へ行かない）」に揃え、neither/corrupt → Issue comment の規則と一致させた。`work-memory-format.md` の Restore from API / SoT Access Pattern も同じ条件へ同期した。
+- **`gitignore-health-check.sh` が nested `.rite/.gitignore` を `state_root` で比較する** — linked worktree から `/rite:lint` したとき、main checkout に存在する nested gitignore が欠落扱いになる偽の DRIFT が出なくなる。
+- **NB sweep 却下台帳の件数抽出が検証側と同一式になる** — `fix/SKILL.md` が `non_blocking_count` を `review-nonblocking-record.sh` の再検査と同一の式で読むため、却下台帳を持つ NB sweep が `reason=nb_sweep_ledger_count_unreadable` で必ず `[fix:error]` になる状態を解消した。
+- **非数値の `nb_sweep_fixed` で WARNING を出す** — `/rite:fix --nb-sweep` が受領値付きの WARNING を stderr へ出す。done-file は従来どおり 1 行 `done` のままで、偽 pass を作らない。
+- **NB sweep 再入ガードが永続ファイルになる** — `/rite:iterate` が会話 marker ではなく `.rite/state/nb-sweep-done-{pr}.txt` に記録するため、完了した sweep が full review へ復帰しない。orphan は `pr-cycle-cleanup.sh` が回収する。
+- **`/rite:ready` の reviewed-head ゲートが NB sweep の push した commit を受理する** — `fix/SKILL.md` が push 後の HEAD SHA を done-file の 2 行目に書き、`ready-reviewed-head-gate.sh` は review-results JSON の一致を先に評価し（`via=json`）、不一致時だけ 2 行目を照合する（`via=sweep`）。それ以外の未レビュー commit と不正な 2 行目は従来どおり fail-loud で拒否する。
+- **`guardrail_audit_log[]` のキー集合を明示列挙し書き込み時に検証する** — `pr-review/SKILL.md` が 7 キーを明示列挙し、`review-result-save.sh` が欠落・余分を `guardrail_audit_log_keys_violation` で拒否する。空配列は受理する。
+- **`nb-sweep` 契約テストが producer / validator の件数抽出式の一致を固定する** — `nb-sweep-contract.test.sh` が `fix/SKILL.md` と `review-nonblocking-record.sh` の双方から `body_count=` 代入を抽出し、各側が 1 行であることを assert し、右辺を抽出できないときは空同士の等値で緑になる代わりに fail する。
+- **gitignore health-check テストが worktree cwd から見た nested drift を固定する** — `gitignore-health-check-multi-session.test.sh` が、`state_root` がリポジトリ root と異なるときに nested 比較を skip する変異は worktree cwd では drift を隠し main cwd では隠さないことを assert する。
+- **NB sweep 再入ガードテストが外側分岐の 1 行 `done` を固定する** — `nb-sweep-reentry-guard.test.sh` が外側と内側の分岐を独立に変異させ、first-else への退行が緑のまま通らないようにする。
 
 ### 変更
 
-- **リポジトリ root 直下の runtime state を `.rite/` 配下へ移設** — session-id / work-memory / plugin-root / flow-debug.log / initialized-version / settings-hooks-cleaned を `.rite/` 配下へ書く。`session-start.sh` が既存ファイルを一度だけ移送し、読者は新パスが無ければ旧パスを読む。(#2430)
-- **`.rite/` に nested self-gitignore を導入** — `session-start.sh` と `flow-state.sh` が 3 行の `.gitignore`（`*` / `!wiki/` / `!wiki/**`）を置き、利用者の root `.gitignore` に触れずに runtime state を塞ぐ。(#2429)
-- **`/rite:setup` が root `.gitignore` の列挙をやめ nested `.rite/.gitignore` を生成する** — `--upgrade` は同じ生成と旧パス移送を冪等に行い、`/rite:lint` の health-check は同じ 3 行構成を検証するだけでファイルを書き換えない。(#2431)
-- **legacy `.rite-flow-state` の書込経路を確定** — 新規作成される経路は無く、`flow-state.sh migrate` と `issue-comment-wm-sync.sh` / `cleanup-work-memory.sh` の resolver 失敗時フォールバックだけが既存ファイルを in-place 更新する。README のアンインストール手順を現行実装と一致させた。(#2432)
-- **`docs/SPEC.md` の Post-Tool WM Sync 節が hook の 2 経路を記述する** — Path A（local work memory 自動生成）と Path B（phase 差分 → Issue コメント replica 同期）に加え、`wm_replica=absent` が `gh` を一切呼ばず短絡すること、その劣化を systemMessage で通知すること、`last_synced_phase` の前進契約を明記した。(#2472)
-- **`setup/SKILL.md` の hook 登録表が replica 同期経路を明示する** — `post-tool-wm-sync.sh` の Purpose を両表で Path A / Path B の双方を含む記述にした。(#2474)
-- **`docs/SPEC.md` の hook 登録記述を `hooks.json` の実態へ揃える** — PreToolUse 行は v0.7 で除去済みの `Block tool usage after compact` を削除し `pre-tool-bash-guard.sh` / `pre-tool-edit-guard.sh` を記載、PostToolUse 行は `post-tool-wm-sync.sh` の Path B と `scripts/bang-backtick-edit-hook.sh` を記載、`issue-comment-wm-sync.sh` は登録済み PostToolUse hook ではなく Path B と複数スキルから呼ばれる helper として記述する。(#2478)
+- **リポジトリ root 直下の runtime state を `.rite/` 配下へ移設** — session-id / work-memory / plugin-root / flow-debug.log / initialized-version / settings-hooks-cleaned を `.rite/` 配下へ書く。`session-start.sh` が既存ファイルを一度だけ移送し、読者は新パスが無ければ旧パスを読む。
+- **`.rite/` に nested self-gitignore を導入** — `session-start.sh` と `flow-state.sh` が 3 行の `.gitignore`（`*` / `!wiki/` / `!wiki/**`）を置き、利用者の root `.gitignore` に触れずに runtime state を塞ぐ。
+- **`/rite:setup` が root `.gitignore` の列挙をやめ nested `.rite/.gitignore` を生成する** — `--upgrade` は同じ生成と旧パス移送を冪等に行い、`/rite:lint` の health-check は同じ 3 行構成を検証するだけでファイルを書き換えない。
+- **legacy `.rite-flow-state` の書込経路を確定** — 新規作成される経路は無く、`flow-state.sh migrate` と `issue-comment-wm-sync.sh` / `cleanup-work-memory.sh` の resolver 失敗時フォールバックだけが既存ファイルを in-place 更新する。README のアンインストール手順を現行実装と一致させた。
+- **`docs/SPEC.md` の Post-Tool WM Sync 節が hook の 2 経路を記述する** — Path A（local work memory 自動生成）と Path B（phase 差分 → Issue コメント replica 同期）に加え、`wm_replica=absent` が `gh` を一切呼ばず短絡すること、その劣化を systemMessage で通知すること、`last_synced_phase` の前進契約を明記した。
+- **`setup/SKILL.md` の hook 登録表が replica 同期経路を明示する** — `post-tool-wm-sync.sh` の Purpose を両表で Path A / Path B の双方を含む記述にした。
+- **`docs/SPEC.md` の hook 登録記述を `hooks.json` の実態へ揃える** — PreToolUse 行は v0.7 で除去済みの `Block tool usage after compact` を削除し `pre-tool-bash-guard.sh` / `pre-tool-edit-guard.sh` を記載、PostToolUse 行は `post-tool-wm-sync.sh` の Path B と `scripts/bang-backtick-edit-hook.sh` を記載、`issue-comment-wm-sync.sh` は登録済み PostToolUse hook ではなく Path B と複数スキルから呼ばれる helper として記述する。
 
 ## [0.13.2] - 2026-08-28
 
 ### 追加
 
-- **`/rite:iterate` が `[review:mergeable]` 到達後に残存 non-blocking 指摘を消化する** — `iterate` の mergeable 後 sweep が `/rite:fix --nb-sweep` を呼び、各指摘を fix / 判定文必須の却下 / Issue 化の三択で消化し `[fix:sweep-done]` で finalize する。収集と却下台帳は `nb-sweep-collect.sh` / `nb-sweep-ledger.sh` が担い、完了通知は overlay 後 0 件を要求する。(#2409)
-- **`/rite:open` が計画承認の前に実装計画の多視点セルフレビューを行う** — `open` は Complexity S 以上で 1 回だけセルフレビューを実行し、`open/references/plan-self-review.md` の 4 視点を計画に当てて指摘を計画へ反映してから承認ゲートへ進む。レビュー失敗は blocking せず WARNING として報告する。(#2411)
-- **既存記述を削除・弱体化する finding を帰結クラス降格の対象外にする** — classification map に任意キー `exclusion` を設け、`review-class-demotion-gate.sh` は除外付き class B を class A が 0 件の cycle でも blocking のまま維持する。新規追加文への文言磨きは従来どおり降格する。(#2410)
+- **`/rite:iterate` が `[review:mergeable]` 到達後に残存 non-blocking 指摘を消化する** — `iterate` の mergeable 後 sweep が `/rite:fix --nb-sweep` を呼び、各指摘を fix / 判定文必須の却下 / Issue 化の三択で消化し `[fix:sweep-done]` で finalize する。収集と却下台帳は `nb-sweep-collect.sh` / `nb-sweep-ledger.sh` が担い、完了通知は overlay 後 0 件を要求する。
+- **`/rite:open` が計画承認の前に実装計画の多視点セルフレビューを行う** — `open` は Complexity S 以上で 1 回だけセルフレビューを実行し、`open/references/plan-self-review.md` の 4 視点を計画に当てて指摘を計画へ反映してから承認ゲートへ進む。レビュー失敗は blocking せず WARNING として報告する。
+- **既存記述を削除・弱体化する finding を帰結クラス降格の対象外にする** — classification map に任意キー `exclusion` を設け、`review-class-demotion-gate.sh` は除外付き class B を class A が 0 件の cycle でも blocking のまま維持する。新規追加文への文言磨きは従来どおり降格する。
 
 ### 修正
 
-- **`/rite:pr-review` の `{rejected_ledger}` 取得失敗が空台帳へ縮退しなくなる** — `gh api` / extract / `mktemp` の失敗は `REJECTED_LEDGER=failed` とし、stderr の WARNING と placeholder の 1 行注記で表面化する。取得成功かつ該当コメントなしは従来どおり `empty` で、レビュー自体は停止しない。(#2415)
-- **`nb-sweep` 契約テストが台帳取得失敗経路を pin する** — T-07 が `REJECTED_LEDGER=failed`・stderr の WARNING・placeholder の注記を assert するため、silent empty へ戻す回帰が green のまま通らなくなる。(#2418)
+- **`/rite:pr-review` の `{rejected_ledger}` 取得失敗が空台帳へ縮退しなくなる** — `gh api` / extract / `mktemp` の失敗は `REJECTED_LEDGER=failed` とし、stderr の WARNING と placeholder の 1 行注記で表面化する。取得成功かつ該当コメントなしは従来どおり `empty` で、レビュー自体は停止しない。
+- **`nb-sweep` 契約テストが台帳取得失敗経路を pin する** — T-07 が `REJECTED_LEDGER=failed`・stderr の WARNING・placeholder の注記を assert するため、silent empty へ戻す回帰が green のまま通らなくなる。
 
 ### 変更
 
-- **`_reviewer-base.md` の `exclusion` 判定文の宛先を consolidation 側へ揃える** — reviewer は `内容` にアンカー付きの材料を残し、`exclusion` の判定文は `pr-review` の consolidation 側が classification map に書く。(#2413)
+- **`_reviewer-base.md` の `exclusion` 判定文の宛先を consolidation 側へ揃える** — reviewer は `内容` にアンカー付きの材料を残し、`exclusion` の判定文は `pr-review` の consolidation 側が classification map に書く。
 
 ## [0.13.1] - 2026-08-27
 
 ### 追加
 
-- **非実測レビュー指摘の記録先を PR コメントから関連 Issue コメントへ移す** — `review-nonblocking-record.sh` は cycle 中の記録を関連 Issue のコメントとして投稿する。関連 Issue は closing keyword または `issue-{N}` ブランチ名で解決し、いずれでも解決できないときは `related_issue_unresolved` で fail-loud に停止する。update-in-place 用の comment id は関連 Issue の body に永続化し、`severity-levels.md` / `assessment-rules.md` も同じチャネルを記述する。記録契約 D-01 は維持し、投稿チャネルだけを変える。(#2377, #2379, #2386, #2388, #2396, #2398, #2402)
-- **マージ済み PR に残った非実測指摘から `/rite:cleanup` が `follow-up` Issue を起票する** — `cleanup-follow-up-issue.sh` が 1 PR につき 1 件を起票し、指摘が 0 件なら起票しない。再実行時は Issue body 内の機械 marker で冪等になる。起票した Issue は Projects に `Todo` で登録し、review JSON を `archive/` へ退避する前に起票する。(#2378)
+- **非実測レビュー指摘の記録先を PR コメントから関連 Issue コメントへ移す** — `review-nonblocking-record.sh` は cycle 中の記録を関連 Issue のコメントとして投稿する。関連 Issue は closing keyword または `issue-{N}` ブランチ名で解決し、いずれでも解決できないときは `related_issue_unresolved` で fail-loud に停止する。update-in-place 用の comment id は関連 Issue の body に永続化し、`severity-levels.md` / `assessment-rules.md` も同じチャネルを記述する。記録契約 D-01 は維持し、投稿チャネルだけを変える。
+- **マージ済み PR に残った非実測指摘から `/rite:cleanup` が `follow-up` Issue を起票する** — `cleanup-follow-up-issue.sh` が 1 PR につき 1 件を起票し、指摘が 0 件なら起票しない。再実行時は Issue body 内の機械 marker で冪等になる。起票した Issue は Projects に `Todo` で登録し、review JSON を `archive/` へ退避する前に起票する。
 
 ### 修正
 
-- **`/rite:fix` が `## レビュー指摘対応完了` 報告・`nit、認知済` 返信を PR へ投稿しなくなる** — PR thread への返信を人間由来の指摘に限定し、対応内容は fix コミット本文に記録する。`nit-noted` は表示と件数のみを出す。(#2376, #2381)
-- **cleanup follow-up の既存判定を body 先頭行に固定し recency を follow-up 側に限定する** — 既存 Issue の判定は先頭行の HTML コメント等値で行うため、body 2 行目に完全な marker があっても `created` になる。`{review_cleanup_check}` の recency 選択は follow-up 側にのみ適用し、state 削除側は presence 検査を維持する。(#2385, #2390, #2392, #2394)
-- **`/release` Phase 1.3 が空 body の PR を `gh` エラーと誤分類しなくなる** — 分岐を `gh pr view` の exit status 基準に再構成し、成功かつ body が空のケースは「closing keyword なし」として扱う。(#2372)
-- **`lint/SKILL.md` と `docs/SPEC.md` の number-free 走査面の記述を実装に合わせる** — `number-reference-check.sh` の `DEFAULT_TARGETS` から CHANGELOG が外れた後も、両ファイルが CHANGELOG を含む旧列挙のまま残っていた。(#2370)
+- **`/rite:fix` が `## レビュー指摘対応完了` 報告・`nit、認知済` 返信を PR へ投稿しなくなる** — PR thread への返信を人間由来の指摘に限定し、対応内容は fix コミット本文に記録する。`nit-noted` は表示と件数のみを出す。
+- **cleanup follow-up の既存判定を body 先頭行に固定し recency を follow-up 側に限定する** — 既存 Issue の判定は先頭行の HTML コメント等値で行うため、body 2 行目に完全な marker があっても `created` になる。`{review_cleanup_check}` の recency 選択は follow-up 側にのみ適用し、state 削除側は presence 検査を維持する。
+- **`/release` Phase 1.3 が空 body の PR を `gh` エラーと誤分類しなくなる** — 分岐を `gh pr view` の exit status 基準に再構成し、成功かつ body が空のケースは「closing keyword なし」として扱う。
+- **`lint/SKILL.md` と `docs/SPEC.md` の number-free 走査面の記述を実装に合わせる** — `number-reference-check.sh` の `DEFAULT_TARGETS` から CHANGELOG が外れた後も、両ファイルが CHANGELOG を含む旧列挙のまま残っていた。
 
 ### 変更
 
-- **`/release` Phase 1.3 が PR 番号を Issue 番号に解決する** — squash merge の subject 末尾番号を `gh pr view` で解決し `PR #N → Issue #M` の対応表を出力する。PR として解決できない番号は Issue 番号として採用し、closing keyword が無い場合は PR 番号へ倒さず解決失敗として報告する。(#2368)
-- **CHANGELOG の番号参照を canonical にし number-free 走査面から外す** — `number-reference-check.sh` は `CHANGELOG.md` / `CHANGELOG.ja.md` を走査しなくなり、両ファイルの冒頭注記に方針を明記する。(#2367)
+- **`/release` Phase 1.3 が PR 番号を Issue 番号に解決する** — squash merge の subject 末尾番号を `gh pr view` で解決し `PR #N → Issue #M` の対応表を出力する。PR として解決できない番号は Issue 番号として採用し、closing keyword が無い場合は PR 番号へ倒さず解決失敗として報告する。
+- **CHANGELOG の番号参照を canonical にし number-free 走査面から外す** — `number-reference-check.sh` は `CHANGELOG.md` / `CHANGELOG.ja.md` を走査しなくなり、両ファイルの冒頭注記に方針を明記する。
 
 ## [0.13.0] - 2026-08-26
 
 ### 追加
 
-- **静的検証済みのレビュー指摘に `Verification:` アンカーの添付を必須化する** — reviewer が grep・ファイル対照・配布物読解・コマンド実行で確認した指摘は `Verification:` アンカーを必ず添える。環境制約で検証がブロックされた場合は `Measurement-Blocked:` で構造化して記録し、統合レポートの `### 実測阻害` section と E2E 行の `| measurement-blocked: {n}` suffix に件数を出す。実測必須ゲートの 3 値判定（true / false / 未判定）は変えない。`review-result-schema.md` に、`Measurement-Blocked:` は `verification` を生成せずこの 3 値判定に介入しない旨を明記する。(#2345, #2354)
-- **`/rite:iterate` の mergeable 完了通知に未処理 non-blocking 件数の必須欄を設ける** — 通知を 0 件 / 非 0 件 / 取得失敗に分け、件数は最新 review JSON から機械取得するため、残件の有無が LLM の自発的補足に依存しない。`stop-loop-continuation.sh` は欄欠落・検査不能を 1 回差し戻す。`[review:mergeable]` sentinel は変えない。(#2346)
-- **HEAD が最終レビュー済み commit と不一致なら `/rite:ready` が Ready 化を拒否する** — `ready-reviewed-head-gate.sh` が最新 review JSON の `commit_sha` と `git rev-parse HEAD` を照合する。不一致・JSON 不在（archive 済みを含む）・`rev-parse` 失敗は Ready 化せず fail-loud に停止し、`/rite:iterate {pr}` を案内する。(#2347)
-- **スコープ外トリアージで引き受け先 Issue への申し送りコメント投稿を必須アクションにする** — `pr-review` が指摘を既存 Issue へ引き渡すとき、Decision Log への記録だけでは足りず、当該 Issue への申し送りコメントを必ず投稿する。引き受け先が CLOSED の場合は投稿せず引き受け先の選び直しへ差し戻す。(#2348)
+- **静的検証済みのレビュー指摘に `Verification:` アンカーの添付を必須化する** — reviewer が grep・ファイル対照・配布物読解・コマンド実行で確認した指摘は `Verification:` アンカーを必ず添える。環境制約で検証がブロックされた場合は `Measurement-Blocked:` で構造化して記録し、統合レポートの `### 実測阻害` section と E2E 行の `| measurement-blocked: {n}` suffix に件数を出す。実測必須ゲートの 3 値判定（true / false / 未判定）は変えない。`review-result-schema.md` に、`Measurement-Blocked:` は `verification` を生成せずこの 3 値判定に介入しない旨を明記する。
+- **`/rite:iterate` の mergeable 完了通知に未処理 non-blocking 件数の必須欄を設ける** — 通知を 0 件 / 非 0 件 / 取得失敗に分け、件数は最新 review JSON から機械取得するため、残件の有無が LLM の自発的補足に依存しない。`stop-loop-continuation.sh` は欄欠落・検査不能を 1 回差し戻す。`[review:mergeable]` sentinel は変えない。
+- **HEAD が最終レビュー済み commit と不一致なら `/rite:ready` が Ready 化を拒否する** — `ready-reviewed-head-gate.sh` が最新 review JSON の `commit_sha` と `git rev-parse HEAD` を照合する。不一致・JSON 不在（archive 済みを含む）・`rev-parse` 失敗は Ready 化せず fail-loud に停止し、`/rite:iterate {pr}` を案内する。
+- **スコープ外トリアージで引き受け先 Issue への申し送りコメント投稿を必須アクションにする** — `pr-review` が指摘を既存 Issue へ引き渡すとき、Decision Log への記録だけでは足りず、当該 Issue への申し送りコメントを必ず投稿する。引き受け先が CLOSED の場合は投稿せず引き受け先の選び直しへ差し戻す。
 
 ### 修正
 
-- **`stop-loop-continuation.sh` が出力済みの完了通知を再要求しない** — FINALIZE 経路で直近 assistant 出力の `## /rite:iterate 完了` / `## /rite:iterate 中断` マーカーを検査し、通知が未出力・検査不能のときだけ 1 回差し戻す。mergeable 通知の未処理 non-blocking 欄が欠落している場合は通知があっても差し戻す。(#2349)
-- **`pr-cycle-cleanup.sh` が OPEN の PR の review JSON を保持する** — orphan 回収に GitHub PR 状態ゲートを追加し、`archive/` へ移すのは MERGED / CLOSED の PR だけにする。OPEN（draft を含む）と状態を判定できない場合は保持する。(#2350)
-- **`/rite:cleanup` が別セッションの残した flow-state と run-queue を回収する** — `flow-state.sh reap-issue --issue N` が当該 Issue の全 flow-state を非 active 化し、残作業のない run-queue を非 active 化して、対応する lock と orphan lock を回収する。失敗は対象パス付きの WARNING で続行し、他の Issue が残っている batch run-queue は触らない。(#2351)
-- **`PHASE_7_ASKUSER_INVOKED` を確認完了後にのみ emit する** — 対話モードのスコープ外トリアージで marker に `mode` / `choice` / `reason` を持たせ、ユーザーの回答後に出す。これにより確認前に Decision Log へ短絡できた経路を塞ぐ。E2E / batch モードの自動 Decision Log は変えない。(#2352)
+- **`stop-loop-continuation.sh` が出力済みの完了通知を再要求しない** — FINALIZE 経路で直近 assistant 出力の `## /rite:iterate 完了` / `## /rite:iterate 中断` マーカーを検査し、通知が未出力・検査不能のときだけ 1 回差し戻す。mergeable 通知の未処理 non-blocking 欄が欠落している場合は通知があっても差し戻す。
+- **`pr-cycle-cleanup.sh` が OPEN の PR の review JSON を保持する** — orphan 回収に GitHub PR 状態ゲートを追加し、`archive/` へ移すのは MERGED / CLOSED の PR だけにする。OPEN（draft を含む）と状態を判定できない場合は保持する。
+- **`/rite:cleanup` が別セッションの残した flow-state と run-queue を回収する** — `flow-state.sh reap-issue --issue N` が当該 Issue の全 flow-state を非 active 化し、残作業のない run-queue を非 active 化して、対応する lock と orphan lock を回収する。失敗は対象パス付きの WARNING で続行し、他の Issue が残っている batch run-queue は触らない。
+- **`PHASE_7_ASKUSER_INVOKED` を確認完了後にのみ emit する** — 対話モードのスコープ外トリアージで marker に `mode` / `choice` / `reason` を持たせ、ユーザーの回答後に出す。これにより確認前に Decision Log へ短絡できた経路を塞ぐ。E2E / batch モードの自動 Decision Log は変えない。
 
 ## [0.12.3] - 2026-08-23
 
 ### 修正
 
-- **`post-tool-wm-sync` の phase 遷移同期を GitHub API 9 往復から 2 往復にする** — `issue-comment-wm-sync.sh` に `fetch` / `patch` を追加し、`update` は fetch → transform → patch の wrapper。replica 不在の初回検出（`no_comment`）は PostToolUse `systemMessage` で fail-loud。2 回目以降の `wm_replica: "absent"` は負キャッシュ（gh なし・stdout 空）。`branch.base` 未解決は `develop` 固定縮退ではなく `update-progress` を skip して `systemMessage` で通知する。(#2336)
-- **`issue-comment-wm-sync.sh` の update mode が `COMMENT_ID` をサブシェル外で保持する** — `do_fetch` の stdout を一時ファイル経由で読むため、flow-state 不在でも PATCH が成功する。T-11 は `TMPDIR` を復元し、hook 成功経路は `status=success round_trips=2` を出す。(#2338)
+- **`post-tool-wm-sync` の phase 遷移同期を GitHub API 9 往復から 2 往復にする** — `issue-comment-wm-sync.sh` に `fetch` / `patch` を追加し、`update` は fetch → transform → patch の wrapper。replica 不在の初回検出（`no_comment`）は PostToolUse `systemMessage` で fail-loud。2 回目以降の `wm_replica: "absent"` は負キャッシュ（gh なし・stdout 空）。`branch.base` 未解決は `develop` 固定縮退ではなく `update-progress` を skip して `systemMessage` で通知する。
+- **`issue-comment-wm-sync.sh` の update mode が `COMMENT_ID` をサブシェル外で保持する** — `do_fetch` の stdout を一時ファイル経由で読むため、flow-state 不在でも PATCH が成功する。T-11 は `TMPDIR` を復元し、hook 成功経路は `status=success round_trips=2` を出す。
 
 ## [0.12.2] - 2026-08-21
 
 ### 変更
 
-- **散文の「正本」を用法別に「採用元 / 基準 / 原本」へ置き換える** — `cleanup` の WM 選定は「採用元 / 採用する」、`pr-review` の retained flag と intro-video provenance は「判断基準 / 従う」、動画の所在は「原本」。実行時の値（`WM_SOURCE`・sentinel・WARNING 文言）は変えない。(#2328)
-- **awk 抽出アンカーの結合をソース側コメントで可視化する** — `iterate` / `cleanup` の SKILL.md と `issue-comment-wm-sync.sh` で、テストが awk 抽出開始に使うコメントの直前に 1 行注記を置く。抽出方式・fail-loud・テスト側の awk パターンは変えない。(#2330)
+- **散文の「正本」を用法別に「採用元 / 基準 / 原本」へ置き換える** — `cleanup` の WM 選定は「採用元 / 採用する」、`pr-review` の retained flag と intro-video provenance は「判断基準 / 従う」、動画の所在は「原本」。実行時の値（`WM_SOURCE`・sentinel・WARNING 文言）は変えない。
+- **awk 抽出アンカーの結合をソース側コメントで可視化する** — `iterate` / `cleanup` の SKILL.md と `issue-comment-wm-sync.sh` で、テストが awk 抽出開始に使うコメントの直前に 1 行注記を置く。抽出方式・fail-loud・テスト側の awk パターンは変えない。
 
 ## [0.12.1] - 2026-08-15
 
 ### 修正
 
-- **`/release` Phase 2.5 が準備 PR を `--squash` でマージする** — `release-promotion-verify.sh` は前回リリース以降の develop の全 commit が squash commit であること（その SHA 自身を `merge_commit_sha` とする merged PR を持つこと）を要求する。Phase 2.5 は `gh pr merge {PREP_PR_NUMBER} --squash` を使うため、次の develop→main 昇格がこの不変条件を通る。ブランチ削除は `/rite:cleanup` に委ねる。(#2323)
+- **`/release` Phase 2.5 が準備 PR を `--squash` でマージする** — `release-promotion-verify.sh` は前回リリース以降の develop の全 commit が squash commit であること（その SHA 自身を `merge_commit_sha` とする merged PR を持つこと）を要求する。Phase 2.5 は `gh pr merge {PREP_PR_NUMBER} --squash` を使うため、次の develop→main 昇格がこの不変条件を通る。ブランチ削除は `/rite:cleanup` に委ねる。
 
 ## [0.12.0] - 2026-08-14
 
 ### 変更
 
-- **Wiki bundle を Open Knowledge Format (OKF) v0.2 準拠へ移行** — ページ frontmatter の `sources[].ref` を v0.2 予約形状 `sources[].resource` へ rename し、`updated` を trust ファミリー `generated: {by, at}` へ一本化。補強のみの ingest サイクルは `verified` を 1 件追記し（改訂サイクルは `verified` 不変）、`status: deprecated` / `stale_after` は該当イベント発生時のみ書く。既存の v0.1 形状 bundle は初回接触時に `wiki-okf-migrate.sh`（wiki-ingest から呼び出し・冪等・fail-loud・両 branch_strategy 対応）で一括移行し、`index.md` に `okf_version: "0.2"` を宣言。consumer 3 script（`wiki-lint-source-refs.sh` / `wiki-query-inject.sh` / `wiki-index-update.sh`）は移行後の単一形状のみを読む。(#2315)
+- **Wiki bundle を Open Knowledge Format (OKF) v0.2 準拠へ移行** — ページ frontmatter の `sources[].ref` を v0.2 予約形状 `sources[].resource` へ rename し、`updated` を trust ファミリー `generated: {by, at}` へ一本化。補強のみの ingest サイクルは `verified` を 1 件追記し（改訂サイクルは `verified` 不変）、`status: deprecated` / `stale_after` は該当イベント発生時のみ書く。既存の v0.1 形状 bundle は初回接触時に `wiki-okf-migrate.sh`（wiki-ingest から呼び出し・冪等・fail-loud・両 branch_strategy 対応）で一括移行し、`index.md` に `okf_version: "0.2"` を宣言。consumer 3 script（`wiki-lint-source-refs.sh` / `wiki-query-inject.sh` / `wiki-index-update.sh`）は移行後の単一形状のみを読む。
 
 ## [0.11.0] - 2026-08-13
 
 ### 変更
 
-- **SKILL 記述ダイエット: outcome + 検証 + 機械ステップへ再構成し、rationale を同梱 references へ退避** — 散文（`bytes_prose`）だけを圧縮・退避し、機械レール（fenced bash・分岐表・sentinel）はバイト一致のまま残す。手法は `plugins/rite/references/skill-diet-method.md`（線引きチェックリスト・pin 移送手順・測定テンプレート）に記録し、`open` パイロットで約 −36% を確認した (#2278)。第 1 波は `iterate`（−33.3%）/ `fix`（−32.3%）/ `pr-review`（−25.5%）(#2285, #2286, #2287)。第 2 波は残り全数: 大型 4 本（`setup` / `cleanup` / `wiki-lint` / `wiki-ingest`）(#2292)、中型 4 本（`pr-create` / `lint` / `issue-implement` / `issue-close`）(#2293)、小型残り 19 本 (#2294)。CLAUDE.md のスキル行数原則も diet 世代基準へ改訂し、主指標を `bytes_prose` とし、4,000 行上限を「書いてよい量」としては使わない (#2295)。
-- **README Demo が v0.11.0 日英 v2 紹介動画を指すようになった**（`media/intro-video-v2` の約 55 秒フルカット）。退役した HyperFrames 版 `PROVENANCE.md` の冒頭宣言も、README が今もそのカットを参照しているという主張を外すよう更新した。(#2297, #2307)
-- **自律実行前文が、コンテキスト制限を理由にした停止を禁じ、報告を outcome / 次の一手に限る** — 枯渇時の再開は既存の compact / recovery 経路のまま。(#2279)
+- **SKILL 記述ダイエット: outcome + 検証 + 機械ステップへ再構成し、rationale を同梱 references へ退避** — 散文（`bytes_prose`）だけを圧縮・退避し、機械レール（fenced bash・分岐表・sentinel）はバイト一致のまま残す。手法は `plugins/rite/references/skill-diet-method.md`（線引きチェックリスト・pin 移送手順・測定テンプレート）に記録し、`open` パイロットで約 −36% を確認した。第 1 波は `iterate`（−33.3%）/ `fix`（−32.3%）/ `pr-review`（−25.5%）。第 2 波は残り全数: 大型 4 本（`setup` / `cleanup` / `wiki-lint` / `wiki-ingest`）、中型 4 本（`pr-create` / `lint` / `issue-implement` / `issue-close`）、小型残り 19 本。CLAUDE.md のスキル行数原則も diet 世代基準へ改訂し、主指標を `bytes_prose` とし、4,000 行上限を「書いてよい量」としては使わない。
+- **README Demo が v0.11.0 日英 v2 紹介動画を指すようになった**（`media/intro-video-v2` の約 55 秒フルカット）。退役した HyperFrames 版 `PROVENANCE.md` の冒頭宣言も、README が今もそのカットを参照しているという主張を外すよう更新した。
+- **自律実行前文が、コンテキスト制限を理由にした停止を禁じ、報告を outcome / 次の一手に限る** — 枯渇時の再開は既存の compact / recovery 経路のまま。
 
 ### 修正
 
-- **`iterate` が、cycle 境界で前 cycle の review-result JSON が無いとき修復ゲートへ昇格する** — コンテキストに結果が残っていれば既存 save helper で即時保存し、残っていなければ cycle counter を進めず（`INC=held`）再レビューする。LOST 注記とトレンド計算は変えない。(#2305)
-- **`/rite:cleanup` / `/rite:issue-close` が、親 Issue が既に CLOSED でも Projects Status を Done に同期する** — close の冪等 skip と board 同期を分離し、全子 CLOSED の already-closed 親も Done に到達する。(#2301)
-- **reviewer の spawn spread 計測を orchestrator の spawn 時刻から取る** — レポート執筆時刻に寄ると長時間の並列レビューが直列化と誤判定されていた。同一メッセージの reviewer は同じ値を共有する。(#2281)
-- **`/rite:batch-run --merge` の完了文が、`failed=[]` のとき「failed 扱いを除き」を出さない** — 非空のときは専用行で列挙する。(#2299)
-- **プロジェクトローカルの `/release` スキルが develop→main 昇格を安全に完走できるようになった** — リリース準備 PR に `/rite:iterate` を組み込み、昇格コミットは既マージ PR 経由であること（`release-promotion-verify.sh`）を検証し、検証済み head SHA を `--match-head-commit` で固定する。Phase 2.5 の staging は更新対象 7 ファイルに限定（sandbox 安全）。`multi_session.enabled` 時は準備ブランチを issue session worktree に置き、Phase 3 は `main` を触る前にその worktree から退出する（`action: keep`）。(#2269, #2268, #2270, #2271)
+- **`iterate` が、cycle 境界で前 cycle の review-result JSON が無いとき修復ゲートへ昇格する** — コンテキストに結果が残っていれば既存 save helper で即時保存し、残っていなければ cycle counter を進めず（`INC=held`）再レビューする。LOST 注記とトレンド計算は変えない。
+- **`/rite:cleanup` / `/rite:issue-close` が、親 Issue が既に CLOSED でも Projects Status を Done に同期する** — close の冪等 skip と board 同期を分離し、全子 CLOSED の already-closed 親も Done に到達する。
+- **reviewer の spawn spread 計測を orchestrator の spawn 時刻から取る** — レポート執筆時刻に寄ると長時間の並列レビューが直列化と誤判定されていた。同一メッセージの reviewer は同じ値を共有する。
+- **`/rite:batch-run --merge` の完了文が、`failed=[]` のとき「failed 扱いを除き」を出さない** — 非空のときは専用行で列挙する。
+- **プロジェクトローカルの `/release` スキルが develop→main 昇格を安全に完走できるようになった** — リリース準備 PR に `/rite:iterate` を組み込み、昇格コミットは既マージ PR 経由であること（`release-promotion-verify.sh`）を検証し、検証済み head SHA を `--match-head-commit` で固定する。Phase 2.5 の staging は更新対象 7 ファイルに限定（sandbox 安全）。`multi_session.enabled` 時は準備ブランチを issue session worktree に置き、Phase 3 は `main` を触る前にその worktree から退出する（`action: keep`）。
 
 ## [0.10.0] - 2026-08-12
 
 ### 追加
 
-- **XS/S レーンにより、工程ごとの儀式コストが Issue の宣言 Complexity に比例するようになった** — 従来はどの工程も変更の大きさを知らず、1 行の設定変更でもフル装備の reviewer 群がフルの検証 mandate 付きで起動していた。Issue の宣言 Complexity（自動判定はしない。rite が作る全 Issue の Section 0 Meta に必ず存在する）から二値のレーンを決める — XS/S は `light`、M/L/XL と fail-safe の全経路は `full`（従来と完全に同一。Complexity が欠落・読み取り不能な場合は WARNING を出して常に `full` へ倒す。安全側は儀式を減らさない方であるため）。`light` が `pr-review` で変えるのは 2 点だけ: reviewers Phase 5 の `effective_max` 解決へ `complexity_max=3` を渡すこと（cap を別フィルタにすると `mandatory` 保護と reviewer floor を再実装することになるため解決の中に合流させた。final clamp より前に適用するので「常に 3 名以下」ではない）、および検証 mandate を touched テストまでに軽量化すること（全スイートの sandbox 複製と mutation 実験は M 以上の装備とする）。`issue-implement` 側では XS/S が新規テストファイルの新設を抑制して既存 suite への assert 追加を優先し、XS はさらに説明的な派生散文の新設を禁じる。採否基準・帰結クラス・Cross-File Impact Check は不変（後者は Complexity の過小宣言を吸収する安全網でもある）。(#2142)
-- **`merge` が `mergeable` だけに頼らず、CI が不健全な状態ではマージを停止するようになった** — マージ直前の安全判定に `mergeStateStatus` と jobs の実行実績を加え、未知の CI 状態は最優先で停止する（fail-closed）。pending check の schema は評価前に正規化する。PR トークンが解決不能な変数形のまま merge ゲートへ届いた場合は、推測せず deny する。(#2194, #2176)
-- **`/rite:setup` が環境セットアップを一気通貫でカバーするようになった** — 依存検査（`bash` 4 以上 / `jq` / `flock`）と環境別インストール案内 (#2005)、GitHub 認証フロー (#2236)、リポジトリ作成フロー (#2237)、GitHub テンプレート（`ISSUE_TEMPLATE` / `PULL_REQUEST_TEMPLATE`）の自動生成 (#2238)。`getting-started` は前提条件の記述を重複させず `setup` へ委譲する。(#2239)
-- **ubuntu + macos マトリクスの GitHub Actions CI** — マトリクスワークフロー (#2007) が hook / script のテストスイートを両プラットフォームで実行し、`shellcheck` を blocking 化して error backlog を解消 (#2009)、BSD/GNU 差異を吸収して macOS スイートを green 化 (#2013)、`rite-dev` テストも CI へ配線した (#2182)。
-- **レビュー結果スキーマへ `findings[].verification` を追加** — additive 追加であり、read 側に型ガードを入れて旧形式の結果 JSON も読めるようにした (#2035)。canonical write version は 1.1.0 へ同期した (#2211)。
-- **`issue-create` が生成した Issue 本文の断定をファクトチェックしてから Issue を作成するようになった** — 既存挙動についての生成断定を、主張のままにせずコードに照らして検証する。(#2056)
-- **コーディング原則 `no_speculative_structure` を新設** — 将来の拡張に備えた構造・予約フィールド・拡張点・設定キーは、実需の Issue が無い限り採らない。Guardrail には加えて運用環境到達性と fail-loud 既定を課す。(#2092)
-- **修正側の方針ゲート: `fix` に Simplification-First 原則を追加** (#2071)、**`issue-implement` に契約字義性 mandate を全 Complexity で導入**（Issue 契約の字義を実装上限とし、拡張要求は Issue へ差し戻す）(#2254)、**finding 対応を最小差分に限定** (#2255)。
-- **hook の判断を機械可読な監査ログとして永続化** — `pre-tool-bash-guard` の deny 判定 (#2180) と reviewer guardrail の監査 (#2222) を、セッション出力に留めず永続ログへ書き出す。
-- **`flow-state` が phase 遷移を append ログへ記録するようになった** — run をまたいで工程別の実時間が自動収集される。(#2120)
-- **`wiki-ingest` が機械検出可能な経験則を検出器化候補へ routing するようになった** — 散文のみの Wiki エントリとして寝かせず検出器化へ回す。昇格分類はエントリごとに 1 行で記録し、`promote` フィールドの指針を明文化した。(#2170, #2169)
-- **lint 検出器の追加** — `pipefail` 下の `grep -q` パイプライン (#2218)、plugin 配布境界を跨ぐ symlink (#2199)、配布ファイルへの環境固有トークン混入 (#2189)、および説明的な Issue/PR 番号参照（検出範囲を裸の `PR #N` / `Issue #N` 形式・`index.md`・追加行ゲートへ拡張）(#2066, #2070, #2224, #2225, #2257)。
-- **ホスト共通の開発ランチャー `scripts/rite-dev`（plugin root 配下ではなくリポジトリルート直下）** — 専用テストスイートと CONTRIBUTING の記載を伴う。(#2178)
-- **内製の frame-step 動画レンダリングパイプライン** — HTML → mp4 の生成を外部動画フレームワークに依存させず、リポジトリが所有する renderer + シーン契約で行う。実時間録画ではなく仮想時計の seek で駆動するため、同一シーンから md5 まで一致する mp4 が得られる。(#2242) 紹介動画はこの上で v2 として再制作し (#2243)、さらに rite 固有の差別化（実装前の探索・実測必須ゲート・Wiki に残る経験則の複利）を主役に据えた絵コンテで作り直した。実例も opt-in の `--merge` ではなく既定挙動（draft PR で停止する）を反映している。(#2260)
+- **XS/S レーンにより、工程ごとの儀式コストが Issue の宣言 Complexity に比例するようになった** — 従来はどの工程も変更の大きさを知らず、1 行の設定変更でもフル装備の reviewer 群がフルの検証 mandate 付きで起動していた。Issue の宣言 Complexity（自動判定はしない。rite が作る全 Issue の Section 0 Meta に必ず存在する）から二値のレーンを決める — XS/S は `light`、M/L/XL と fail-safe の全経路は `full`（従来と完全に同一。Complexity が欠落・読み取り不能な場合は WARNING を出して常に `full` へ倒す。安全側は儀式を減らさない方であるため）。`light` が `pr-review` で変えるのは 2 点だけ: reviewers Phase 5 の `effective_max` 解決へ `complexity_max=3` を渡すこと（cap を別フィルタにすると `mandatory` 保護と reviewer floor を再実装することになるため解決の中に合流させた。final clamp より前に適用するので「常に 3 名以下」ではない）、および検証 mandate を touched テストまでに軽量化すること（全スイートの sandbox 複製と mutation 実験は M 以上の装備とする）。`issue-implement` 側では XS/S が新規テストファイルの新設を抑制して既存 suite への assert 追加を優先し、XS はさらに説明的な派生散文の新設を禁じる。採否基準・帰結クラス・Cross-File Impact Check は不変（後者は Complexity の過小宣言を吸収する安全網でもある）。
+- **`merge` が `mergeable` だけに頼らず、CI が不健全な状態ではマージを停止するようになった** — マージ直前の安全判定に `mergeStateStatus` と jobs の実行実績を加え、未知の CI 状態は最優先で停止する（fail-closed）。pending check の schema は評価前に正規化する。PR トークンが解決不能な変数形のまま merge ゲートへ届いた場合は、推測せず deny する。
+- **`/rite:setup` が環境セットアップを一気通貫でカバーするようになった** — 依存検査（`bash` 4 以上 / `jq` / `flock`）と環境別インストール案内、GitHub 認証フロー、リポジトリ作成フロー、GitHub テンプレート（`ISSUE_TEMPLATE` / `PULL_REQUEST_TEMPLATE`）の自動生成。`getting-started` は前提条件の記述を重複させず `setup` へ委譲する。
+- **ubuntu + macos マトリクスの GitHub Actions CI** — マトリクスワークフロー が hook / script のテストスイートを両プラットフォームで実行し、`shellcheck` を blocking 化して error backlog を解消、BSD/GNU 差異を吸収して macOS スイートを green 化、`rite-dev` テストも CI へ配線した。
+- **レビュー結果スキーマへ `findings[].verification` を追加** — additive 追加であり、read 側に型ガードを入れて旧形式の結果 JSON も読めるようにした。canonical write version は 1.1.0 へ同期した。
+- **`issue-create` が生成した Issue 本文の断定をファクトチェックしてから Issue を作成するようになった** — 既存挙動についての生成断定を、主張のままにせずコードに照らして検証する。
+- **コーディング原則 `no_speculative_structure` を新設** — 将来の拡張に備えた構造・予約フィールド・拡張点・設定キーは、実需の Issue が無い限り採らない。Guardrail には加えて運用環境到達性と fail-loud 既定を課す。
+- **修正側の方針ゲート: `fix` に Simplification-First 原則を追加**、**`issue-implement` に契約字義性 mandate を全 Complexity で導入**（Issue 契約の字義を実装上限とし、拡張要求は Issue へ差し戻す）、**finding 対応を最小差分に限定**。
+- **hook の判断を機械可読な監査ログとして永続化** — `pre-tool-bash-guard` の deny 判定 と reviewer guardrail の監査 を、セッション出力に留めず永続ログへ書き出す。
+- **`flow-state` が phase 遷移を append ログへ記録するようになった** — run をまたいで工程別の実時間が自動収集される。
+- **`wiki-ingest` が機械検出可能な経験則を検出器化候補へ routing するようになった** — 散文のみの Wiki エントリとして寝かせず検出器化へ回す。昇格分類はエントリごとに 1 行で記録し、`promote` フィールドの指針を明文化した。
+- **lint 検出器の追加** — `pipefail` 下の `grep -q` パイプライン、plugin 配布境界を跨ぐ symlink、配布ファイルへの環境固有トークン混入、および説明的な Issue/PR 番号参照（検出範囲を裸の `PR #N` / `Issue #N` 形式・`index.md`・追加行ゲートへ拡張）。
+- **ホスト共通の開発ランチャー `scripts/rite-dev`（plugin root 配下ではなくリポジトリルート直下）** — 専用テストスイートと CONTRIBUTING の記載を伴う。
+- **内製の frame-step 動画レンダリングパイプライン** — HTML → mp4 の生成を外部動画フレームワークに依存させず、リポジトリが所有する renderer + シーン契約で行う。実時間録画ではなく仮想時計の seek で駆動するため、同一シーンから md5 まで一致する mp4 が得られる。 紹介動画はこの上で v2 として再制作し、さらに rite 固有の差別化（実装前の探索・実測必須ゲート・Wiki に残る経験則の複利）を主役に据えた絵コンテで作り直した。実例も opt-in の `--merge` ではなく既定挙動（draft PR で停止する）を反映している。
 
 ### 変更
 
-- **レビュー/修正ループに到達可能な終了条件ができた: `blocking` を実測必須で再定義** — finding が blocking と数えられるのは CONFIRMED かつ `verification.measured == true` かつ `scope ∈ {current-pr, follow-up}` のときのみとし、非実測の指摘は `total_findings` から外して統合レポートの「実測なし指摘」section に記録する (#2036)。分類自体も LLM の裁量から `scripts/review-measured-gate.sh` へ移し、mergeable 判定より前に必ず走る配置にした — 「自分の指摘を non-blocking 化して mergeable を宣言する」判断は reviewer 群の thoroughness 指示と正面衝突するため、裁量に置く限り構造的に実行されない（実測では、ある PR の全 9 サイクルで一度も降格が実行されず、契約上 merge を止めてはならない散文精度の指摘だけでループが 8 時間超継続した）。`mergeable` は `findings[]` 配列全体の空ではなく `scope ∈ {current-pr, follow-up}` の blocking 部分集合が空であることで決める（`nit-noted` は設計上 `findings[]` に残るため）。(#2074)
-- **帰結クラスによる第 2 の降格軸が、churn の尾部を手動 freeze なしで終端する** — blocking finding を class A（放置すると成果物の実行時挙動が変わる）と class B（帰結が検出網・可読性・文書整合に留まる）に 2 分し、class A が 0 の cycle では class B を全件 non-blocking へ降格して既存の mergeable 経路で自然終了させる。分類は finding 発行者とは別の consolidation コンテキストでの LLM 判定、適用は `scripts/review-class-demotion-gate.sh` による機械強制とし、判定不能（エントリ欠落・class 不正・判定文なし・重複）は降格に丸めず class A 扱い + WARNING とする。(#2248)
-- **サーキットブレーカーが cycle 数上限ではなく収束トレンドからの発散を検出するようになった** — cycle 数上限は努力と無駄を区別できず、健全に収束中のループが残り数件で切られる一方、発散しているループは上限まで燃える。永続レビュー JSON から現 run の per-cycle blocking 列を復元し、「直近 2 値がともに過去の最良水準を超え、かつ下降中でもない」を発散の機械判定とする（判定式は窓幅ベースではなく、実測トラジェクトリで backtest して確定した）。`safety.max_review_cycles` は発散判定をすり抜ける遅い非収束を受け止める遠い backstop へ格下げし、既定値を 5 から 15 へ引き上げた (#2099, #2135)。ブレーカー発火は batch / 対話のいずれでも機械的停止に統一し (#2044)、ブレーカー起因の失敗停止を通常の中断と区別して停止した run が完了として誤報告されないようにし (#2220)、差分スコープ外の盲点を残さないようブレーカー後はフルレビューを強制する (#2195)。
-- **cycle 2 以降はレビューを fix の差分へスコープし、reviewer を動的選抜するようになった** — 指摘は fix が触った面に集中するにもかかわらず、全 reviewer が毎サイクル未変更部を含むフル diff とコードベースを再調査していた。終了意味論は健全なまま変わらない（blocking 0 = fix 面クリーン + 前回指摘全解消、未変更部は cycle 1 で審査済み）。判定入力は永続レビュー JSON のみとした（既定の `pr_review.post_comment: false` では PR コメントが存在しないため）。reviewer の絞り込みは cap 適用後のフィルタではなくパターンマッチの入力ファイル一覧を fix diff へ差し替える形で行い、sole-reviewer guard / `min_reviewers` / `mandatory` という Phase 5 の既存不変条件を一箇所に保つ。(#2126)
-- **散文指摘の blocking を挙動的帰結クラスへ限定** (#2095)、**test-pin 指摘の blocking を Issue 契約の MUST/AC 対応に限定** (#2122)、**指摘の発生源に Likelihood-Evidence producer gate を適用** (#2198)。
-- **記録コメントの同定を本文照合から durable な comment id へ移し、全文ではなくポインタのみを載せるようにした** (#2112, #2114)。記録経路は helper 化し、実行保証 gate を完了 sentinel に付け替えた (#2038)。
-- **アカウント移管 asakaguchi → B16B1RD** — `marketplace.json` / `plugin.json` の owner・author、README のバッジ URL と `marketplace add` 例、`docs/SPEC.md`・テンプレート・skills・scripts・テストフィクスチャの例示値を更新した。(#2029)
-- **スキル横断の実行規約を共有契約へ集約** — 自律実行前文と effort 指針を共有契約化し (#2256)、可逆な推奨レベルの判断はエスカレーションせず自律処理し (#2250)、環境起因の迂回対処は成功時無言・失敗時 1 行に統一した (#2162)。
-- **rite 自身の挙動に関する Wiki 知見を、plugin 本体の references / gate へ昇格** — Wiki は「思い出させる」だけで「強制しない」ため、レビュー・修正ループの知見 (#2183)、防御機構の完全性 (#2187)、文書検証 (#2191)、契約・履歴の知見 (#2192)、残る rite 固有エントリ (#2193) を機構として組み込んだ。`pr-create` にはインライン content 委譲の昇格監査を記録した (#2186)。
-- **`pr-review` の SKILL.md から rationale を同梱 references へ退避** — 本体には 1 行ポインタを残し、実行手順書としての行数余白を回復した。(#2155)
-- **インストール手順とテンプレートのドキュメント** — インストール手順に `/reload-plugins` ステップを追加し (#1992)、README の依存要件を英日両版で拡充して `.gitattributes` を同梱し (#2004)、Issue テンプレート Section 9 に Decision Log の受け入れ基準を明文化した (#2084)。
-- **繰り返し現れる内部機構をテスト付き helper へ集約** — `wiki-ingest` の index 操作 (#2111)、`iterate` 経路の marker emit・照合（共有関数 + fixture テスト化）(#2137)、`[CONTEXT]` marker の値側照合規約の所有者付け (#2151)、`.gitignore` 同梱処理 (#2219)。完了済みの Wiki 一時 backfill helper は削除した (#2215)。
-- **ドキュメントを実装へ再同期** — CONTRIBUTING の guard 判定契約 (#2208)、`max_review_cycles` の既定値記載 (#2209)、config テンプレートの `review.loop` コメント (#2210)、schema invariant 6 と gate 配線 (#2212)、test coverage gate と判断点の接続 (#2213)、SPEC の active guard / sentinel ファイル列挙 (#2214)、実測必須ゲート導入後に残った未修飾の「0 findings」記述 (#2043, #2106)、gate 配線で前提が変わった `fix` / SPEC AC-3 の括弧書き (#2102, #2104)、`wiki-ingest` の index 更新指示を実体の 5 列テーブル形式へ是正 (#2052)、SPEC の Plugin Structure 節における reference 列挙の記載漏れ 2 件 (#2108)。
+- **レビュー/修正ループに到達可能な終了条件ができた: `blocking` を実測必須で再定義** — finding が blocking と数えられるのは CONFIRMED かつ `verification.measured == true` かつ `scope ∈ {current-pr, follow-up}` のときのみとし、非実測の指摘は `total_findings` から外して統合レポートの「実測なし指摘」section に記録する。分類自体も LLM の裁量から `scripts/review-measured-gate.sh` へ移し、mergeable 判定より前に必ず走る配置にした — 「自分の指摘を non-blocking 化して mergeable を宣言する」判断は reviewer 群の thoroughness 指示と正面衝突するため、裁量に置く限り構造的に実行されない（実測では、ある PR の全 9 サイクルで一度も降格が実行されず、契約上 merge を止めてはならない散文精度の指摘だけでループが 8 時間超継続した）。`mergeable` は `findings[]` 配列全体の空ではなく `scope ∈ {current-pr, follow-up}` の blocking 部分集合が空であることで決める（`nit-noted` は設計上 `findings[]` に残るため）。
+- **帰結クラスによる第 2 の降格軸が、churn の尾部を手動 freeze なしで終端する** — blocking finding を class A（放置すると成果物の実行時挙動が変わる）と class B（帰結が検出網・可読性・文書整合に留まる）に 2 分し、class A が 0 の cycle では class B を全件 non-blocking へ降格して既存の mergeable 経路で自然終了させる。分類は finding 発行者とは別の consolidation コンテキストでの LLM 判定、適用は `scripts/review-class-demotion-gate.sh` による機械強制とし、判定不能（エントリ欠落・class 不正・判定文なし・重複）は降格に丸めず class A 扱い + WARNING とする。
+- **サーキットブレーカーが cycle 数上限ではなく収束トレンドからの発散を検出するようになった** — cycle 数上限は努力と無駄を区別できず、健全に収束中のループが残り数件で切られる一方、発散しているループは上限まで燃える。永続レビュー JSON から現 run の per-cycle blocking 列を復元し、「直近 2 値がともに過去の最良水準を超え、かつ下降中でもない」を発散の機械判定とする（判定式は窓幅ベースではなく、実測トラジェクトリで backtest して確定した）。`safety.max_review_cycles` は発散判定をすり抜ける遅い非収束を受け止める遠い backstop へ格下げし、既定値を 5 から 15 へ引き上げた。ブレーカー発火は batch / 対話のいずれでも機械的停止に統一し、ブレーカー起因の失敗停止を通常の中断と区別して停止した run が完了として誤報告されないようにし、差分スコープ外の盲点を残さないようブレーカー後はフルレビューを強制する。
+- **cycle 2 以降はレビューを fix の差分へスコープし、reviewer を動的選抜するようになった** — 指摘は fix が触った面に集中するにもかかわらず、全 reviewer が毎サイクル未変更部を含むフル diff とコードベースを再調査していた。終了意味論は健全なまま変わらない（blocking 0 = fix 面クリーン + 前回指摘全解消、未変更部は cycle 1 で審査済み）。判定入力は永続レビュー JSON のみとした（既定の `pr_review.post_comment: false` では PR コメントが存在しないため）。reviewer の絞り込みは cap 適用後のフィルタではなくパターンマッチの入力ファイル一覧を fix diff へ差し替える形で行い、sole-reviewer guard / `min_reviewers` / `mandatory` という Phase 5 の既存不変条件を一箇所に保つ。
+- **散文指摘の blocking を挙動的帰結クラスへ限定**、**test-pin 指摘の blocking を Issue 契約の MUST/AC 対応に限定**、**指摘の発生源に Likelihood-Evidence producer gate を適用**。
+- **記録コメントの同定を本文照合から durable な comment id へ移し、全文ではなくポインタのみを載せるようにした**。記録経路は helper 化し、実行保証 gate を完了 sentinel に付け替えた。
+- **アカウント移管 asakaguchi → B16B1RD** — `marketplace.json` / `plugin.json` の owner・author、README のバッジ URL と `marketplace add` 例、`docs/SPEC.md`・テンプレート・skills・scripts・テストフィクスチャの例示値を更新した。
+- **スキル横断の実行規約を共有契約へ集約** — 自律実行前文と effort 指針を共有契約化し、可逆な推奨レベルの判断はエスカレーションせず自律処理し、環境起因の迂回対処は成功時無言・失敗時 1 行に統一した。
+- **rite 自身の挙動に関する Wiki 知見を、plugin 本体の references / gate へ昇格** — Wiki は「思い出させる」だけで「強制しない」ため、レビュー・修正ループの知見、防御機構の完全性、文書検証、契約・履歴の知見、残る rite 固有エントリ を機構として組み込んだ。`pr-create` にはインライン content 委譲の昇格監査を記録した。
+- **`pr-review` の SKILL.md から rationale を同梱 references へ退避** — 本体には 1 行ポインタを残し、実行手順書としての行数余白を回復した。
+- **インストール手順とテンプレートのドキュメント** — インストール手順に `/reload-plugins` ステップを追加し、README の依存要件を英日両版で拡充して `.gitattributes` を同梱し、Issue テンプレート Section 9 に Decision Log の受け入れ基準を明文化した。
+- **繰り返し現れる内部機構をテスト付き helper へ集約** — `wiki-ingest` の index 操作、`iterate` 経路の marker emit・照合（共有関数 + fixture テスト化）、`[CONTEXT]` marker の値側照合規約の所有者付け、`.gitignore` 同梱処理。完了済みの Wiki 一時 backfill helper は削除した。
+- **ドキュメントを実装へ再同期** — CONTRIBUTING の guard 判定契約、`max_review_cycles` の既定値記載、config テンプレートの `review.loop` コメント、schema invariant 6 と gate 配線、test coverage gate と判断点の接続、SPEC の active guard / sentinel ファイル列挙、実測必須ゲート導入後に残った未修飾の「0 findings」記述、gate 配線で前提が変わった `fix` / SPEC AC-3 の括弧書き、`wiki-ingest` の index 更新指示を実体の 5 列テーブル形式へ是正、SPEC の Plugin Structure 節における reference 列挙の記載漏れ 2 件。
 
 ### 修正
 
-- **merge ゲートが、正しくフルレビューを経た PR ほどブロックする状態になっていた** — ゲートはレビュー結果 JSON に `schema_version` / `verdict` / `reviewers`（長さ 2 以上）を必須要求していたが、後 2 者はスキーマ SoT に定義が無く、どちらの正典 writer も書いていなかった。それまでマージが通っていたのは手書き JSON がたまたま要求形に適合していたためで、writer 側を拡張してゲートの要求を正しい仕様にした。(#2229)
-- **レビュー結果の完全性ゲートが、不在ではなく成果物そのものを検査するようになった** — レビュー結果 JSON 保存へのサイクル単位の実行保証 gate (#2078)、マージ前ゲートへの本 cycle 結果 JSON の positive 検査 (#2130) と実 HEAD への固定 (#2197)、孤児 review JSON と run-start pin の機械回収 (#2181)、形式崩れ Verification アンカーの未判定（blocking のまま）扱い (#2081)、`ready` の事前ゲートを PR head に一致させる修正 (#2196)、merge 実行点への review 実在 positive ゲートの追加 (#2161)。
-- **reviewer の並列起動を機械検証するようになった** — spawn 時刻の機械記録から直列化を検出し (#2231)、spawn spread の記述精度と静的 pin を硬化した (#2234)。
-- **hooks の sandbox / macOS・BSD 移植性** — `pr-cycle-cleanup.sh` の `TMPDIR` 判定を symlink の物理パスで解決 (#2172)、`mktemp` テンプレートの `X` 連を末尾へ移して BSD/macOS の tempfile 名一意性を回復 (#2080)、tempfile ライフサイクルを lib 化し残る 2 種に lint 検出器を追加 (#2124)、`pr-cycle-cleanup` が `TMPDIR` 配下の detached mutation worktree を回収（見送り条件を「working tree が dirty」から「どの named ref からも到達不能な commit」へ置換。mutation worktree は本質的に dirty であり旧条件では主回収対象が全件弾かれていた。判定不能時は WARNING 付きで見送る）(#2156, #2160)、stale な issue claim の奪取を macOS 対応 (#2201)、`flow-state` の `_atomic_write` の `flock` 呼び出しに `command -v` ガードを追加 (#2003)、診断中和の parity sweep を `scripts/` へ拡張 (#2206)。
-- **guard のパス処理を正規化** — `pre-tool-edit-guard` の AC-2 symlink 解決を `realpath` 非依存にし (#2017)、edit path と audit の正規化を揃え (#2204)、cwd content guard の入力を canonicalize し (#2203)、live な cwd を `lsof` 出力から検出する (#2202)。
-- **hooks の silent failure を loud 化** — pending marker の削除失敗を握り潰さず報告し (#2205)、作業メモリの checklist 統合が no-op success を返さないようにした (#2152)。
-- **作業メモリが従来落ちていた経路でも保持されるようになった** — `pr_number` / `loop_count` を通常更新経路で carry-forward し (#2094)、正本の選定を存在検査ではなく内容検査で決める (#2154)。
-- **`cleanup` が停止・過剰削除しなくなった** — worktree 内起点のセッションは項目を分割実行して main checkout 操作を委譲し (#2150)、ブランチ削除ガードを硬化 (#2223)、リモートブランチ削除ガードを `--exit-code` 化して `merge` の保証主張を実態に合わせ (#2022)、transient な `ls-remote` rc=128 に 1 リトライを足し (#2153)、`recovery=auto` を reaper の dirty gate に同期した (#2200)。
-- **`wiki-query` / `wiki`** — Pass 1 の候補抽出をテーブル形式 index に対応させ (#2097)、候補 0 件の経路を fail-loud にし (#2098)、macOS CI が不正 UTF-8 に破壊していた em-dash を診断文言から ASCII 化し (#2100)、日本語タイトルの C1 誤検出を修正し (#2235)、sandbox 外で wiki push を再試行するようにした (#2221)。
-- **`lint` とスキル定義のパース** — board drift 検出から closure reason の限定を外し (#2227)、fenced bash 内の位置パラメータ展開で YAML パーサが全キー空を返す経路を塞いだ (#2051)。
-- **テストスイートの vacuous pass を排除** — TC-036a の floor 条件を Linux 判定ではなく blocking gate 判定から導き (#2096)、TC-124 (d) に positive control を付け (#2020)、comment journal の mutation survivor を潰し (#2217)、`jq` 抽出失敗でも bash guard スイートが run を打ち切らず継続し (#2207)、backlink checker を worktree 横断で除外し (#2216)、grep 系 assert helper の docstring に ERE 裸パイプのハザードを明記した (#2157)。
-- **紹介動画のアセット** — v2 の BGM 可聴性とループ位相を修正 (#2245)、Pixabay BGM の provenance を復元 (#2262)、`assemble.sh` の `-P` を現行シーン構成へ追随させた (#2263)。
+- **merge ゲートが、正しくフルレビューを経た PR ほどブロックする状態になっていた** — ゲートはレビュー結果 JSON に `schema_version` / `verdict` / `reviewers`（長さ 2 以上）を必須要求していたが、後 2 者はスキーマ SoT に定義が無く、どちらの正典 writer も書いていなかった。それまでマージが通っていたのは手書き JSON がたまたま要求形に適合していたためで、writer 側を拡張してゲートの要求を正しい仕様にした。
+- **レビュー結果の完全性ゲートが、不在ではなく成果物そのものを検査するようになった** — レビュー結果 JSON 保存へのサイクル単位の実行保証 gate、マージ前ゲートへの本 cycle 結果 JSON の positive 検査 と実 HEAD への固定、孤児 review JSON と run-start pin の機械回収、形式崩れ Verification アンカーの未判定（blocking のまま）扱い、`ready` の事前ゲートを PR head に一致させる修正、merge 実行点への review 実在 positive ゲートの追加。
+- **reviewer の並列起動を機械検証するようになった** — spawn 時刻の機械記録から直列化を検出し、spawn spread の記述精度と静的 pin を硬化した。
+- **hooks の sandbox / macOS・BSD 移植性** — `pr-cycle-cleanup.sh` の `TMPDIR` 判定を symlink の物理パスで解決、`mktemp` テンプレートの `X` 連を末尾へ移して BSD/macOS の tempfile 名一意性を回復、tempfile ライフサイクルを lib 化し残る 2 種に lint 検出器を追加、`pr-cycle-cleanup` が `TMPDIR` 配下の detached mutation worktree を回収（見送り条件を「working tree が dirty」から「どの named ref からも到達不能な commit」へ置換。mutation worktree は本質的に dirty であり旧条件では主回収対象が全件弾かれていた。判定不能時は WARNING 付きで見送る）、stale な issue claim の奪取を macOS 対応、`flow-state` の `_atomic_write` の `flock` 呼び出しに `command -v` ガードを追加、診断中和の parity sweep を `scripts/` へ拡張。
+- **guard のパス処理を正規化** — `pre-tool-edit-guard` の AC-2 symlink 解決を `realpath` 非依存にし、edit path と audit の正規化を揃え、cwd content guard の入力を canonicalize し、live な cwd を `lsof` 出力から検出する。
+- **hooks の silent failure を loud 化** — pending marker の削除失敗を握り潰さず報告し、作業メモリの checklist 統合が no-op success を返さないようにした。
+- **作業メモリが従来落ちていた経路でも保持されるようになった** — `pr_number` / `loop_count` を通常更新経路で carry-forward し、正本の選定を存在検査ではなく内容検査で決める。
+- **`cleanup` が停止・過剰削除しなくなった** — worktree 内起点のセッションは項目を分割実行して main checkout 操作を委譲し、ブランチ削除ガードを硬化、リモートブランチ削除ガードを `--exit-code` 化して `merge` の保証主張を実態に合わせ、transient な `ls-remote` rc=128 に 1 リトライを足し、`recovery=auto` を reaper の dirty gate に同期した。
+- **`wiki-query` / `wiki`** — Pass 1 の候補抽出をテーブル形式 index に対応させ、候補 0 件の経路を fail-loud にし、macOS CI が不正 UTF-8 に破壊していた em-dash を診断文言から ASCII 化し、日本語タイトルの C1 誤検出を修正し、sandbox 外で wiki push を再試行するようにした。
+- **`lint` とスキル定義のパース** — board drift 検出から closure reason の限定を外し、fenced bash 内の位置パラメータ展開で YAML パーサが全キー空を返す経路を塞いだ。
+- **テストスイートの vacuous pass を排除** — TC-036a の floor 条件を Linux 判定ではなく blocking gate 判定から導き、TC-124 (d) に positive control を付け、comment journal の mutation survivor を潰し、`jq` 抽出失敗でも bash guard スイートが run を打ち切らず継続し、backlink checker を worktree 横断で除外し、grep 系 assert helper の docstring に ERE 裸パイプのハザードを明記した。
+- **紹介動画のアセット** — v2 の BGM 可聴性とループ位相を修正、Pixabay BGM の provenance を復元、`assemble.sh` の `-P` を現行シーン構成へ追随させた。
 
 ## [0.9.2] - 2026-07-24
 
 ### 変更
 
-- 紹介動画（日英）のバッジ・エンディングメタのバージョン表記を `v0.8.0` から `v0.9.1` へ更新し、README の Demo 節の動画リンクを BGM 合成済みの最終版へ差し替えた。シーン構成・尺（約125秒）は変更していない。(#1985, #1986)
+- 紹介動画（日英）のバッジ・エンディングメタのバージョン表記を `v0.8.0` から `v0.9.1` へ更新し、README の Demo 節の動画リンクを BGM 合成済みの最終版へ差し替えた。シーン構成・尺（約125秒）は変更していない。
 
 ## [0.9.1] - 2026-07-23
 
 ### 追加
 
-- **`cleanup`/`wiki-ingest`/`batch-run`/`recover` の完了報告に「未完了事項」集約セクションを追加** — 非ブロッキングな失敗（wiki push のスキップ・ブランチ削除の見送り等）がチェックリスト各項目の付記としてのみ散在し見落とされやすかった問題を解消する。集約セクションは未完了事項がゼロ件のとき明示的に「なし」と表示する。`cleanup` は `[cleanup:outstanding:N]` sentinel を emit し、`batch-run` が `--merge` モードの完了通知でバッチ全体をロールアップ表示する。`recover` には `resolved_phase` が `cleanup`/`completed` のときのみ、未 push の wiki commit・残存ローカルブランチを git 実態から検出する informational な追加チェックが加わった。(#1946, #1975)
+- **`cleanup`/`wiki-ingest`/`batch-run`/`recover` の完了報告に「未完了事項」集約セクションを追加** — 非ブロッキングな失敗（wiki push のスキップ・ブランチ削除の見送り等）がチェックリスト各項目の付記としてのみ散在し見落とされやすかった問題を解消する。集約セクションは未完了事項がゼロ件のとき明示的に「なし」と表示する。`cleanup` は `[cleanup:outstanding:N]` sentinel を emit し、`batch-run` が `--merge` モードの完了通知でバッチ全体をロールアップ表示する。`recover` には `resolved_phase` が `cleanup`/`completed` のときのみ、未 push の wiki commit・残存ローカルブランチを git 実態から検出する informational な追加チェックが加わった。
 
 ### 修正
 
-- **`setup` Phase 4.8/4.9 の案内メッセージが、実行エージェントによる要約・言い換えを経ずテンプレート通り逐語出力されるようになった** — 各メッセージブロック直前に、テンプレート本文を要約せず逐語出力する旨の明示的な指示を追加した。(#1976, #1978)
-- **corpse 化した worktree（admin dir 半壊で git がツリーを認識できない状態）が、24h の age guard を待たずに即座に回収されるようになった** — `cleanup` の Step 4-W は、worktree の削除がスキップされ（busy 失敗または sandbox マスク）かつ PR マージが確認済みの場合、worktree のパスを reap manifest（`.rite/tmp-artifacts.tsv`）へ記録するようになった。corpse 化した worktree は checkout 中の branch を解決できず、既存のブランチ名ベースの manifest bypass（#1966）が適用できないため。(#1945, #1974)
-- **`pr-review` の drift 検出（worktree axis）が、sandbox ghost-mount 由来の untracked エントリで誤発火しなくなった** — snapshot 側と verify 側で異なる sandbox 実行コンテキストを跨ぐと、ghost-mount 由来のエントリが片側にのみ現れて実変更が無いのに worktree drift が誤検出されていた。`post-review-state-verify.sh` の `current_worktree_hash` と `pr-review` Step 4.0.A の `ORIG_WTH` の両方を、生の `git status --porcelain` ではなく既存の ghost-mount フィルタ（`lib/git-status-filtered.sh`、#1936）経由で算出するようにした。(#1944, #1973)
-- **セッション worktree 作成時に `.claude/settings.local.json` を複製するようになった** — `git worktree add` は gitignore 対象の `.claude/` を複製しないため、ドッグフーディング上書き（`enabledPlugins["rite@rite-marketplace"]: false`）がセッション worktree で失われ、キャッシュされた古い marketplace 版のスキルがロードされてしまっていた。`open` の Step 2.3-W と `ensure_session_worktree` の branch_local/branch_remote 両経路が、ファイル存在時に複製するようになった。(#1943, #1970)
-- **セッション開始時の lazy reap（`pr-cycle-cleanup.sh`）の出力が `.rite/logs/pr-cycle-cleanup.log` へ退避されるようになった** — 破棄されていた出力をログファイルへ残すことで、reap が無言でスキップした理由（dirty skip・liveness skip・corpse age guard 等の WARNING）を事後診断できるようにする。(#1968, #1969)
-- **マージ済み PR のセッション worktree とローカルブランチが永久にリークしなくなった** — claim 解放後、worktree root の mtime がハーネスの `.claude/.cc-writes` churn によりセッション毎に更新され続けるため、free-claim 経路が「mtime 24h 未満なら無言スキップ」に永遠に吸われていた。manifest 記録済みの free-claim 経路がこの age guard をバイパスするようになり、次回セッションの reap で実際に回収できるようになった。(#1966, #1967)
-- **sandbox マスクマウントされた worktree が、`cleanup` の `git worktree remove --force` で半壊しなくなった** — sandbox が admin dir の `config.worktree` に character device をマスクマウントしている場合、Step 4-W は事前にマスクを検知して remove の試行自体をスキップし（`WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` marker + WARNING を出し遅延 reap へ委譲）、admin dir が半壊（`HEAD` 欠落）して「not a git repository」化する回収不能な状態を予防する。遅延 reap の Step 5 にも corpse 判定（admin `HEAD` 欠落 AND git 非認識）を追加し、従来 Gate 3 で永久スキップされていたケースを回収できるようにした。(#1957, #1959)
+- **`setup` Phase 4.8/4.9 の案内メッセージが、実行エージェントによる要約・言い換えを経ずテンプレート通り逐語出力されるようになった** — 各メッセージブロック直前に、テンプレート本文を要約せず逐語出力する旨の明示的な指示を追加した。
+- **corpse 化した worktree（admin dir 半壊で git がツリーを認識できない状態）が、24h の age guard を待たずに即座に回収されるようになった** — `cleanup` の Step 4-W は、worktree の削除がスキップされ（busy 失敗または sandbox マスク）かつ PR マージが確認済みの場合、worktree のパスを reap manifest（`.rite/tmp-artifacts.tsv`）へ記録するようになった。corpse 化した worktree は checkout 中の branch を解決できず、既存のブランチ名ベースの manifest bypassが適用できないため。
+- **`pr-review` の drift 検出（worktree axis）が、sandbox ghost-mount 由来の untracked エントリで誤発火しなくなった** — snapshot 側と verify 側で異なる sandbox 実行コンテキストを跨ぐと、ghost-mount 由来のエントリが片側にのみ現れて実変更が無いのに worktree drift が誤検出されていた。`post-review-state-verify.sh` の `current_worktree_hash` と `pr-review` Step 4.0.A の `ORIG_WTH` の両方を、生の `git status --porcelain` ではなく既存の ghost-mount フィルタ（`lib/git-status-filtered.sh`、）経由で算出するようにした。
+- **セッション worktree 作成時に `.claude/settings.local.json` を複製するようになった** — `git worktree add` は gitignore 対象の `.claude/` を複製しないため、ドッグフーディング上書き（`enabledPlugins["rite@rite-marketplace"]: false`）がセッション worktree で失われ、キャッシュされた古い marketplace 版のスキルがロードされてしまっていた。`open` の Step 2.3-W と `ensure_session_worktree` の branch_local/branch_remote 両経路が、ファイル存在時に複製するようになった。
+- **セッション開始時の lazy reap（`pr-cycle-cleanup.sh`）の出力が `.rite/logs/pr-cycle-cleanup.log` へ退避されるようになった** — 破棄されていた出力をログファイルへ残すことで、reap が無言でスキップした理由（dirty skip・liveness skip・corpse age guard 等の WARNING）を事後診断できるようにする。
+- **マージ済み PR のセッション worktree とローカルブランチが永久にリークしなくなった** — claim 解放後、worktree root の mtime がハーネスの `.claude/.cc-writes` churn によりセッション毎に更新され続けるため、free-claim 経路が「mtime 24h 未満なら無言スキップ」に永遠に吸われていた。manifest 記録済みの free-claim 経路がこの age guard をバイパスするようになり、次回セッションの reap で実際に回収できるようになった。
+- **sandbox マスクマウントされた worktree が、`cleanup` の `git worktree remove --force` で半壊しなくなった** — sandbox が admin dir の `config.worktree` に character device をマスクマウントしている場合、Step 4-W は事前にマスクを検知して remove の試行自体をスキップし（`WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` marker + WARNING を出し遅延 reap へ委譲）、admin dir が半壊（`HEAD` 欠落）して「not a git repository」化する回収不能な状態を予防する。遅延 reap の Step 5 にも corpse 判定（admin `HEAD` 欠落 AND git 非認識）を追加し、従来 Gate 3 で永久スキップされていたケースを回収できるようにした。
 
 ### 変更
 
-- **`setup` Phase 4.8 が、sandbox write 許可リストの設定をユーザーへの案内のみから自動設定に変更** — `multi_session` が有効かつ filesystem write 制限のある sandbox を検出した場合、`/rite:setup` は `.claude/settings.local.json` がリポジトリの `.gitignore` でカバーされていることを保証し（未カバーなら追記 — 開発者個人のグローバル gitignore だけでは他の contributor を守れないため）、main checkout root の絶対パスを同ファイル（コミットされる `.claude/settings.json` は変更しない）の `sandbox.filesystem.allowWrite` へ idempotent に自動追記する。0.9.0 の「既知の制約」に記載された手動設定の負担を解消する。sandbox 起因の書き込み失敗は sandbox 無効化つきで一度だけ再試行し、再試行後も失敗した場合のみ従来の手動案内メッセージにフォールバックする。(#1942, #1965)
-- **`wiki-ingest` が `wiki` ブランチへの push を、raw source の commit や lint 追記のたびではなくフロー末尾で 1 回にまとめるようになった** — SSH host alias remote 環境での sandbox バイパス反復を削減する（従来は 1 セッションで最大 8 回の push が発生し、うち一部は 11 秒差で重複実行されていた）。各 raw source の commit は新設の `--commit-only` モードを使い、新設のステップ 8.6 で `auto_lint` の値に関わらず `--push-only` を 1 回だけ実行する。`wiki-lint` の standalone 実行は影響を受けない（引き続き即座に commit+push する）。`--auto`（ingest から呼ばれた場合）の経路のみ push を ingest 側に委ねる。(#1941, #1955)
+- **`setup` Phase 4.8 が、sandbox write 許可リストの設定をユーザーへの案内のみから自動設定に変更** — `multi_session` が有効かつ filesystem write 制限のある sandbox を検出した場合、`/rite:setup` は `.claude/settings.local.json` がリポジトリの `.gitignore` でカバーされていることを保証し（未カバーなら追記 — 開発者個人のグローバル gitignore だけでは他の contributor を守れないため）、main checkout root の絶対パスを同ファイル（コミットされる `.claude/settings.json` は変更しない）の `sandbox.filesystem.allowWrite` へ idempotent に自動追記する。0.9.0 の「既知の制約」に記載された手動設定の負担を解消する。sandbox 起因の書き込み失敗は sandbox 無効化つきで一度だけ再試行し、再試行後も失敗した場合のみ従来の手動案内メッセージにフォールバックする。
+- **`wiki-ingest` が `wiki` ブランチへの push を、raw source の commit や lint 追記のたびではなくフロー末尾で 1 回にまとめるようになった** — SSH host alias remote 環境での sandbox バイパス反復を削減する（従来は 1 セッションで最大 8 回の push が発生し、うち一部は 11 秒差で重複実行されていた）。各 raw source の commit は新設の `--commit-only` モードを使い、新設のステップ 8.6 で `auto_lint` の値に関わらず `--push-only` を 1 回だけ実行する。`wiki-lint` の standalone 実行は影響を受けない（引き続き即座に commit+push する）。`--auto`（ingest から呼ばれた場合）の経路のみ push を ingest 側に委ねる。
 
 ## [0.9.0] - 2026-07-21
 
 ### 追加
 
-- **`setup` が sandbox 関連の 2 つの既知環境制約を、失敗発生後ではなく `/rite:setup` 実行時点で事前検出・案内するようになった** — (1) Phase 4.8（`multi_session` 有効時のみ該当）: `EnterWorktree` 後、セッション worktree の cwd から main checkout 配下への state 書込（`flow-state.sh` / `issue-claim.sh` 等）が拒否される制約、(2) Phase 4.9（`multi_session` の有無には非依存）: sandbox 有効セッションが SSH host alias remote（例: `git@github.com-work:owner/repo.git`）を持つ場合に `git push`/`fetch` が Bad Gateway で失敗する制約。sandbox の有効判定は bash から検出不能なため、両 Phase とも同じ方式（Claude 自身の実行コンテキスト判定）を採る。(#1907, #1925, #1938)
+- **`setup` が sandbox 関連の 2 つの既知環境制約を、失敗発生後ではなく `/rite:setup` 実行時点で事前検出・案内するようになった** — (1) Phase 4.8（`multi_session` 有効時のみ該当）: `EnterWorktree` 後、セッション worktree の cwd から main checkout 配下への state 書込（`flow-state.sh` / `issue-claim.sh` 等）が拒否される制約、(2) Phase 4.9（`multi_session` の有無には非依存）: sandbox 有効セッションが SSH host alias remote（例: `git@github.com-work:owner/repo.git`）を持つ場合に `git push`/`fetch` が Bad Gateway で失敗する制約。sandbox の有効判定は bash から検出不能なため、両 Phase とも同じ方式（Claude 自身の実行コンテキスト判定）を採る。
 
 ### 変更
 
-- **BREAKING: reviewer read-only 保証の防御層を再配分した — `pre-tool-bash-guard.sh` は working-tree git verb を機械ブロックしなくなり、`.git` 書き込みゲートのみを機械ゲートに残す** — 静的 verb denylist（sub-block (A)–(G)：`checkout`/`reset`/`add`/`commit`/`branch`/`stash`/`fetch` フラグ/`worktree` サブアクションほか 20 超、加えて **その denylist のためのコマンド全体 git グローバルフラグ正規化**・worktree-add 引数走査）を PreToolUse hook から撤去し（約 3 分の 1 削減、922 → 600 行未満、存続する `.git` 書き込みゲート sub-block (N) は 4 サブコマンドに限定した global-flag 正規化を保持する）、繰り返される bypass 穴塞ぎ（3 ヶ月で 11 コミット）を止めて誤検出クラスを構造的に消した。working-tree 変更は `git status` で可視・回復可能なため、その保証は Layer 1（`_reviewer-base.md` の READ-ONLY 契約、不変更）+ Layer 3（各レビュー後の `post-review-state-verify.sh` による branch/stash/branch-list/worktree drift 検出 — 検出ロジックは不変、ヘッダと drift WARNING の案内メッセージは新レイヤリング向けに更新）へ移した。機械ゲートに残すのは、これらの層がカバーできないもののみ（いずれも fail-closed）：redirect / ファイル変更 verb 経由の `.git` ディレクトリ書き込み（`git status` に不可視・不可逆・RCE 級 — sub-block (H)）、redirect/file-verb 検出では見えない native な `.git` 書き込み git サブコマンド — `git config` の書き込み形（`core.hooksPath` / `core.fsmonitor` / `alias.*=!cmd` が RCE ベクタ）・変更を伴う `git remote`・`git update-ref`・`git symbolic-ref` — を 4 サブコマンド固定集合として（sub-block (N)；`git config --list/--get` 等の read 形は許可）、shell-wrapper ブロック（`eval`/`sh -c`/… は `.git` 書き込みを容易に隠せる）、oversized-command 長さガード（timeout→fail-open bypass 防止）。deny pattern 名も変わる：`reviewer-state-mutating-git` は廃止し、存続ゲートは `reviewer-gitdir-write`（(H) と (N) の両方）/ `reviewer-shell-wrapper` / `reviewer-oversized-command` を emit する。回帰が出た場合はハーネス全体を復活させずに個別 verb を再追加できる。(#1879)
+- **BREAKING: reviewer read-only 保証の防御層を再配分した — `pre-tool-bash-guard.sh` は working-tree git verb を機械ブロックしなくなり、`.git` 書き込みゲートのみを機械ゲートに残す** — 静的 verb denylist（sub-block (A)–(G)：`checkout`/`reset`/`add`/`commit`/`branch`/`stash`/`fetch` フラグ/`worktree` サブアクションほか 20 超、加えて **その denylist のためのコマンド全体 git グローバルフラグ正規化**・worktree-add 引数走査）を PreToolUse hook から撤去し（約 3 分の 1 削減、922 → 600 行未満、存続する `.git` 書き込みゲート sub-block (N) は 4 サブコマンドに限定した global-flag 正規化を保持する）、繰り返される bypass 穴塞ぎ（3 ヶ月で 11 コミット）を止めて誤検出クラスを構造的に消した。working-tree 変更は `git status` で可視・回復可能なため、その保証は Layer 1（`_reviewer-base.md` の READ-ONLY 契約、不変更）+ Layer 3（各レビュー後の `post-review-state-verify.sh` による branch/stash/branch-list/worktree drift 検出 — 検出ロジックは不変、ヘッダと drift WARNING の案内メッセージは新レイヤリング向けに更新）へ移した。機械ゲートに残すのは、これらの層がカバーできないもののみ（いずれも fail-closed）：redirect / ファイル変更 verb 経由の `.git` ディレクトリ書き込み（`git status` に不可視・不可逆・RCE 級 — sub-block (H)）、redirect/file-verb 検出では見えない native な `.git` 書き込み git サブコマンド — `git config` の書き込み形（`core.hooksPath` / `core.fsmonitor` / `alias.*=!cmd` が RCE ベクタ）・変更を伴う `git remote`・`git update-ref`・`git symbolic-ref` — を 4 サブコマンド固定集合として（sub-block (N)；`git config --list/--get` 等の read 形は許可）、shell-wrapper ブロック（`eval`/`sh -c`/… は `.git` 書き込みを容易に隠せる）、oversized-command 長さガード（timeout→fail-open bypass 防止）。deny pattern 名も変わる：`reviewer-state-mutating-git` は廃止し、存続ゲートは `reviewer-gitdir-write`（(H) と (N) の両方）/ `reviewer-shell-wrapper` / `reviewer-oversized-command` を emit する。回帰が出た場合はハーネス全体を復活させずに個別 verb を再追加できる。
 - **BREAKING: 観点が相互重複していた 5 つの専門 reviewer（`api` / `frontend` / `performance` / `database` / `type-design`）を単一の `application-reviewer` へ統合した** — 5 体の checklist は相互侵食しており（N+1 は performance / database の両方が、XSS は security / frontend の両方が見る等）、spawn される reviewer ごとに共有原則 `_reviewer-base.md`（約 430 行）が再注入されるため、5 体全選定の混在 PR では base×5 の冗長注入が発生していた。統合後の `application` reviewer は目的（アプリケーションコードの正確性・性能・データ操作・インターフェース設計）をペルソナ + first-suspect lens として持ち、細目チェックポイントの選択はモデル判断に委ねる。Database migration の Hypothetical 例外は migration 関連 finding に限り継承する（`severity-levels.md` は不変更）。reviewer registry は 13 → 9 種に縮小。旧 type 名が入力に現れた場合（rite-config の設定値・保存済みレビュー結果 JSON・手動指定）は WARNING を表示して `application` で代替実行し、silent skip はしない。
 
   **移行表（旧 reviewer type → 新 type）:**
@@ -266,11 +266,11 @@ Fixed/Changed/Removed エントリは修正対象の旧挙動を述べてよい�
 
 ### 修正
 
-- **sandbox 有効環境（bubblewrap ベース）での `.git/config` 書き込み拒否に対応した** — worktree 作成時の upstream tracking 設定（`branch.autoSetupMerge`）と `git push -u` の upstream 設定がこの拒否に該当し、open→implement→pr-create のフローがブランチ作成済み・未 push の中途半端な状態で停止していた。worktree 作成に `--no-track` を追加して tracking 書き込みを回避し、`git push -u` / bare `git push` は `git push origin {branch}` に統一（flow-state がブランチ名を常時保持するため upstream 依存が不要）、`gh pr create` に `--head` を明示して upstream 未設定でも正しい head を解決するようにした。(#1898)
-- **origin remote が SSH host alias（例: `git@github.com-work:owner/repo.git`）のとき `gh repo view` 等の shorthand コマンドが host を解決できず失敗する問題を修正した** — gh の host allowlist はエイリアスを認識できないため、owner/repo を `git remote` の URL から直接パースする `resolve_owner_repo()`（`hooks/scripts/lib/git-remote.sh`）を新設し `gh repo view` への依存を除去した。内部スクリプト・SKILL.md 手順書内のスニペット・repo コンテキストに依存する復旧手順のコマンドにも `-R`/`--repo` の明示指定を伝播した。(#1913, #1917, #1919, #1921)
-- **sandbox 有効環境（書込先が `$TMPDIR` に限定され `/tmp` 直下は読み込み専用）向けに `mktemp` の `/tmp` 直下ハードコードを全域解消した** — 本番コード・テストハーネス双方の `mktemp` テンプレートを `${TMPDIR:-/tmp}/rite-*` 形式に統一し、再発防止のため lint に `tmp-hardcode-check.sh`（check table #16）を追加した。(#1902, #1909, #1910)
-- **sandbox の書き込みブロック用マウント（character device による `/dev/null` bind mount）が `git status` の untracked（`??`）として誤検出され、`cleanup`/`recover`/`issue-update`/`pr-create` の dirty チェックが実変更なしでも dirty と誤判定していた問題を修正した** — untracked かつ character device のエントリのみを除外する共有フィルタ `lib/git-status-filtered.sh` を新設し、対象 4 スキルの dirty チェックをこれ経由に置換した。(#1936, #1937)
-- **`issue-implement` の `git add .` を明示パス指定（`git add {changed_files}`）に置き換えた** — sandbox の read-deny 対象 dotfile（`~/.ssh`・`.bashrc`・`.gitconfig` 等）がキャラクタデバイスとして untracked 出現し、`git add .` がこれを「regular file でない」として拾おうとし exit 1 で hard fail して実装フェーズのコミットが止まっていた。(#1926)
+- **sandbox 有効環境（bubblewrap ベース）での `.git/config` 書き込み拒否に対応した** — worktree 作成時の upstream tracking 設定（`branch.autoSetupMerge`）と `git push -u` の upstream 設定がこの拒否に該当し、open→implement→pr-create のフローがブランチ作成済み・未 push の中途半端な状態で停止していた。worktree 作成に `--no-track` を追加して tracking 書き込みを回避し、`git push -u` / bare `git push` は `git push origin {branch}` に統一（flow-state がブランチ名を常時保持するため upstream 依存が不要）、`gh pr create` に `--head` を明示して upstream 未設定でも正しい head を解決するようにした。
+- **origin remote が SSH host alias（例: `git@github.com-work:owner/repo.git`）のとき `gh repo view` 等の shorthand コマンドが host を解決できず失敗する問題を修正した** — gh の host allowlist はエイリアスを認識できないため、owner/repo を `git remote` の URL から直接パースする `resolve_owner_repo()`（`hooks/scripts/lib/git-remote.sh`）を新設し `gh repo view` への依存を除去した。内部スクリプト・SKILL.md 手順書内のスニペット・repo コンテキストに依存する復旧手順のコマンドにも `-R`/`--repo` の明示指定を伝播した。
+- **sandbox 有効環境（書込先が `$TMPDIR` に限定され `/tmp` 直下は読み込み専用）向けに `mktemp` の `/tmp` 直下ハードコードを全域解消した** — 本番コード・テストハーネス双方の `mktemp` テンプレートを `${TMPDIR:-/tmp}/rite-*` 形式に統一し、再発防止のため lint に `tmp-hardcode-check.sh`（check table #16）を追加した。
+- **sandbox の書き込みブロック用マウント（character device による `/dev/null` bind mount）が `git status` の untracked（`??`）として誤検出され、`cleanup`/`recover`/`issue-update`/`pr-create` の dirty チェックが実変更なしでも dirty と誤判定していた問題を修正した** — untracked かつ character device のエントリのみを除外する共有フィルタ `lib/git-status-filtered.sh` を新設し、対象 4 スキルの dirty チェックをこれ経由に置換した。
+- **`issue-implement` の `git add .` を明示パス指定（`git add {changed_files}`）に置き換えた** — sandbox の read-deny 対象 dotfile（`~/.ssh`・`.bashrc`・`.gitconfig` 等）がキャラクタデバイスとして untracked 出現し、`git add .` がこれを「regular file でない」として拾おうとし exit 1 で hard fail して実装フェーズのコミットが止まっていた。
 
 ### 既知の制約
 
@@ -283,86 +283,86 @@ Fixed/Changed/Removed エントリは修正対象の旧挙動を述べてよい�
 ### 修正
 
 - **`/rite:batch-run` の `run-queue.json` をセッションスコープ化し、並行 batch-run の相互破壊を防いだ** — キューファイルを `run-queue-{session_id}.json`（session_id は `flow-state.sh path` から導出、正典 `_resolve_session_id` を再利用）にリネームし、`multi_session` worktree 下で複数セッションが `/rite:batch-run` を並走させても各セッションが独立したキューを持つようにした（従来は repo-global 単一 `run-queue.json` を相互に上書き・削除し、完了通知の誤報告と再開不能を招いていた）。読み書きの全箇所を追従: `batch-run/SKILL.md` ステップ0-8（session_id 解決不可時は global 名へフォールバックせず fail-loud）、`iterate/SKILL.md` ステップ6 のサーキットブレーカー batch 判定、`recover/SKILL.md` Phase 5.5（read-only の2箇所は解決不可時に interactive / 継続なしへ安全側デフォルト）。バッチ再開は同一セッション内に厳格化されるが、単一セッション運用（compact 跨ぎの永続化・引数省略再開・Phase 5.5 検出）は session_id が compact / turn を跨いで安定なため回帰しない。
-- **reviewer subagent が parent working tree・`.git` を Edit/Write で書き換える経路を機械的に遮断した** — 新規 `pre-tool-edit-guard.sh`（PreToolUse、matcher `Edit|Write|MultiEdit|NotebookEdit`）が、reviewer subagent の Edit/Write を「対象が repo 内かつ隔離 worktree 外」のとき deny する。隔離判定はパス文字列の substring マッチではなく対象の所属 git worktree root（dirname walk-up + `git -C`）で行うため、`..` 再侵入・token-in-filename の bypass を塞ぎ、worktree 限定の mutation testing（`rite-review-mutation-*` / `rite-revert-test-*`）は誤検出しない。parent `.git` 配下（`.git/hooks/pre-commit`・`.git/config` 等）への書き込みも deny する（非サンドボックスの main session での任意コード実行を招くため）。`post-review-state-verify.sh` に worktree hash 軸（第4軸、advisory）を追加し、`_reviewer-base.md` に Edit/Write/MultiEdit/NotebookEdit の隔離 worktree 限定制約を明記した。(#1860, #1863)
-- **reviewer subagent が Bash・symlink 経由で parent `.git` を書き換える残存経路を遮断した** — Edit/Write ガード（#1863）が残したギャップを塞ぐ。`pre-tool-bash-guard.sh` に sub-block (H) を追加し、リダイレクト（`> .git/…`）と位置引数 file-writer（`tee`/`cp`/`mv`/`ln`/`install`/`rsync`/`truncate`/`dd of=`/`sponge`/`patch`）による `.git` 配下書き込みを deny する一方、`.git` 読み取り（`cat`/`ls`/`grep`・`dd if=`）と隔離 worktree 作成は誤検出しない。`.git` パス検査は正規化前スナップショットに対し path・verb 両トークンを full quote/backslash dequote（POSIX quote-removal をミラー）して static obfuscation bypass を閉じ、tokenizer は `set -f`/`set +f` で noglob 化して hook CWD の glob 汚染と timeout→fail-open を防ぎ、verb allowlist は非網羅（COMMON-SET）と宣言した。`pre-tool-edit-guard.sh` も対象パス最終要素が symlink の場合は isolation 判定前に realpath で物理解決する。(#1864, #1865)
-- **`pre-tool-bash-guard.sh` の `git worktree add` 引数走査を glob-safe 化した** — `for tok in $WT_ARGS` ループを `set -f`/`set +f` の noglob スコープ（(H) tokenizer と同型）で囲い、2 つの exposure を塞いだ: hook CWD にフラグ名ファイル（`-b` 等）があると `*` が展開され正当な `git worktree add <path> <ref>` が new-branch 形式に誤検出される over-DENY と、大ディレクトリ glob でループが無制限反復し PreToolUse hook が timeout→fail-open して worktree-add branch-leak チェックを bypass する経路。(#1866, #1867)
-- **`/rite:batch-run` が `open` の計画承認・`pr-review` の構成確認で停止しなくなった** — batch-run が宣言する「完全自律（無確認）」と実挙動を一致させる。`open` ステップ 3.4 は batch 実行中（run-queue 判定、`iterate` ステップ6 と同型）に実装計画を自動承認し、standalone は従来どおり `AskUserQuestion`。`pr-review` ステップ 3.3 は E2E（iterate 経由）経路では flow-state phase-whitelist 判定（`ready` Phase 2.1 と同型）で reviewer 構成確認の `AskUserQuestion` を skip し、起動/省略 reviewer サマリ行は両経路で維持する。いずれも helper 失敗時は interactive / standalone に fail-safe する。(#1861, #1868)
+- **reviewer subagent が parent working tree・`.git` を Edit/Write で書き換える経路を機械的に遮断した** — 新規 `pre-tool-edit-guard.sh`（PreToolUse、matcher `Edit|Write|MultiEdit|NotebookEdit`）が、reviewer subagent の Edit/Write を「対象が repo 内かつ隔離 worktree 外」のとき deny する。隔離判定はパス文字列の substring マッチではなく対象の所属 git worktree root（dirname walk-up + `git -C`）で行うため、`..` 再侵入・token-in-filename の bypass を塞ぎ、worktree 限定の mutation testing（`rite-review-mutation-*` / `rite-revert-test-*`）は誤検出しない。parent `.git` 配下（`.git/hooks/pre-commit`・`.git/config` 等）への書き込みも deny する（非サンドボックスの main session での任意コード実行を招くため）。`post-review-state-verify.sh` に worktree hash 軸（第4軸、advisory）を追加し、`_reviewer-base.md` に Edit/Write/MultiEdit/NotebookEdit の隔離 worktree 限定制約を明記した。
+- **reviewer subagent が Bash・symlink 経由で parent `.git` を書き換える残存経路を遮断した** — Edit/Write ガードが残したギャップを塞ぐ。`pre-tool-bash-guard.sh` に sub-block (H) を追加し、リダイレクト（`> .git/…`）と位置引数 file-writer（`tee`/`cp`/`mv`/`ln`/`install`/`rsync`/`truncate`/`dd of=`/`sponge`/`patch`）による `.git` 配下書き込みを deny する一方、`.git` 読み取り（`cat`/`ls`/`grep`・`dd if=`）と隔離 worktree 作成は誤検出しない。`.git` パス検査は正規化前スナップショットに対し path・verb 両トークンを full quote/backslash dequote（POSIX quote-removal をミラー）して static obfuscation bypass を閉じ、tokenizer は `set -f`/`set +f` で noglob 化して hook CWD の glob 汚染と timeout→fail-open を防ぎ、verb allowlist は非網羅（COMMON-SET）と宣言した。`pre-tool-edit-guard.sh` も対象パス最終要素が symlink の場合は isolation 判定前に realpath で物理解決する。
+- **`pre-tool-bash-guard.sh` の `git worktree add` 引数走査を glob-safe 化した** — `for tok in $WT_ARGS` ループを `set -f`/`set +f` の noglob スコープ（(H) tokenizer と同型）で囲い、2 つの exposure を塞いだ: hook CWD にフラグ名ファイル（`-b` 等）があると `*` が展開され正当な `git worktree add <path> <ref>` が new-branch 形式に誤検出される over-DENY と、大ディレクトリ glob でループが無制限反復し PreToolUse hook が timeout→fail-open して worktree-add branch-leak チェックを bypass する経路。
+- **`/rite:batch-run` が `open` の計画承認・`pr-review` の構成確認で停止しなくなった** — batch-run が宣言する「完全自律（無確認）」と実挙動を一致させる。`open` ステップ 3.4 は batch 実行中（run-queue 判定、`iterate` ステップ6 と同型）に実装計画を自動承認し、standalone は従来どおり `AskUserQuestion`。`pr-review` ステップ 3.3 は E2E（iterate 経由）経路では flow-state phase-whitelist 判定（`ready` Phase 2.1 と同型）で reviewer 構成確認の `AskUserQuestion` を skip し、起動/省略 reviewer サマリ行は両経路で維持する。いずれも helper 失敗時は interactive / standalone に fail-safe する。
 
 ## [0.8.2] - 2026-07-15
 
 ### 追加
 
-- **`setup` が `plugin-path-resolution.md` の2つの解決方式間のバージョン不一致を検出し警告するようになった** — step 4.5.0 の marketplace 分岐に direct key lookup と正準 one-liner の照合を追加し、不一致時は両パス・不一致内容・対処法を WARNING 表示する（non-blocking、一致時の解決結果は変わらない）。`plugin-path-resolution.md` には3つ目の解決方式を追加することを明示的に禁止する記述を追加した。(#1833, #1841)
+- **`setup` が `plugin-path-resolution.md` の2つの解決方式間のバージョン不一致を検出し警告するようになった** — step 4.5.0 の marketplace 分岐に direct key lookup と正準 one-liner の照合を追加し、不一致時は両パス・不一致内容・対処法を WARNING 表示する（non-blocking、一致時の解決結果は変わらない）。`plugin-path-resolution.md` には3つ目の解決方式を追加することを明示的に禁止する記述を追加した。
 
 ### 修正
 
-- **`installPath` セマンティクスの consumer 間不整合を修正した** — `rite@rite-marketplace` v0.8.1 に対する実環境検証により、`installPath` はプラグインルートそのものを指す（`hooks/`・`skills/`・`scripts/`・`references/` が直下に存在し、`plugins/rite/` という中間ディレクトリは存在しない）ことを確定した。`hook-preamble.sh` の誤ったパス参照（version-redirect ロジックがサイレントに dead code 化していた）を修正し、`plugin-path-resolution.md` に検証済みのセマンティクスを明記した。(#1842, #1852, #1854)
-- **Work Memory (WM) 同期経路を修復した** — `open/SKILL.md` ステップ 2.5 の初回 WM 投稿に `issue-comment-wm-sync.sh init` 呼び出しをステータス分岐表付きの bash block として明示配線した（従来は prose 指示のみで実際の呼び出しが行われていなかった）。また `work-memory-update.sh` がフェーズ遷移更新のたびに `## Detail` 以下の蓄積セクションを消失させていた問題を解消し、既存 stock から蓄積部分を抽出して verbatim に保持するようにした（`Phase:`/`Branch:` 行のみ最新値で再生成する）。(#1830, #1838)
-- **WM 同期経路の follow-up を強化した** — `work-memory-update.sh` は `detail_extra` の awk 抽出に失敗した際、silent fallback ではなく rc 付き WARNING を出すようになった。`issue-comment-wm-sync.sh` の init pre-check には non-blocking degrade 契約を pin する回帰テストを追加した。親シェルが直接 mktemp する tempfile 10 個を file-wide cleanup 関数 + EXIT/INT/TERM/HUP trap で一括保護し、WM 同期のアーキテクチャ図も実装に合わせて更新した。(#1844, #1849)
-- **レビュー結果と PR-state の保存先を `state-path-resolve.sh` 基準へ統一した** — `review-result-save.sh` の `REVIEW_RESULTS_DIR` 既定値と `review-source-resolve.sh` のローカル JSON 読取優先度を、`wiki-ingest-trigger.sh` が既に使っていたのと同一の state-root anchor で解決するようにし、`multi_session` でセッション worktree が保存したレビュー結果・PR-state（accepted-fingerprints・fix-cycle-state）を main checkout 側の cwd-relative パスから読めない不整合を解消した（`--results-dir`/`--repo-root` の明示指定は従来どおり優先、解決失敗時は cwd-relative フォールバック + WARNING）。(#1831, #1839)
-- **state-path-resolve 統一で挙動が変わった観測面 4 種に回帰テストを追加した**（`state-root-observers.test.sh`、11 assertion）。`review-schema-version-check.sh --all` の worktree cwd からの drift 検出、`review-skip-notification.sh` の state-root パス表示、`distributed-fix-drift-check.sh` Pattern 6 の `--repo-root` 非伝搬契約をカバーし、従来 sandbox での手動実測にのみ依存していた検証をテストで pin した。(#1845, #1850)
-- **`open`/`cleanup` の GitHub Projects Status 更新を inline 化し silent skip を防止した** — `open/SKILL.md` ステップ 2.4(A)（Status→In Progress）と `cleanup/SKILL.md` ステップ 8（Status→Done）は従来、`projects-status-update.sh` への委譲を prose 記述のみで済ませており実際の bash 呼び出しがなかった。`/rite:batch-run` のような長い自律実行チェーンの中でこの参照のみのステップが読み飛ばされ、Status が最終状態（In Progress / Done）まで進まず Todo 等に残留する不具合があった。(#1846, #1847)
-- **`projects-status-update.sh` 呼び出しの `|| status_json=""` フォールバックを残存 4 箇所で除去した** — `ready/SKILL.md`・`issue-close/SKILL.md`・`cleanup/references/archive-procedures.md` で使われていたこのパターンは、script が非ゼロ終了した際に既に出力済みの失敗理由入り JSON（`.warnings[]` 含む）を空文字列で上書き・破棄していた。command substitution は終了ステータスに関わらず stdout を capture するためこの fallback は不要であり、残り 4 箇所から除去した。(#1848, #1851)
-- **`multi_session` の dirty main checkout ガードを `open`/`cleanup` に追加した** — `open` ステップ 2.2-W は、セッション worktree 作成前に main checkout の未コミット変更を検出し、それが Issue の Target Files に重なる場合のみ `AskUserQuestion` で搬送・続行・中止を確認する。`cleanup` ステップ 4 は `git merge --ff-only` の 3 回リトライ全滅後に成否を検証し、無確認の破棄や競合状態の放置ではなく、diff 確認済みの破棄提案または stash 案内での終了を行う。(#1832, #1840)
-- **`pr-review` ステップ 4.3.1 で reviewer Task 起動時の `run_in_background: false` 明示指定を必須化した** — 従来の禁止表現（「`true` を使うな」）だけではパラメータのデフォルト値が未規定のままで、harness のデフォルトがバックグラウンド実行であるためパラメータ省略時にサイレントに background 起動していた。根拠とともに明示指定を MUST 化した。(#1834, #1843)
-- **`issue-create` がラベルを冪等に事前作成し helper 失敗時に result を surface するようになった** — ラベルが既に存在する場合の失敗を防ぎ、helper の失敗を握りつぶさず結果として表面化する。(#1829, #1837)
-- **`lint` の `gitignore-health-check` の偽陽性を修正した** — 単純なパターンマッチではなく実効的な ignore 判定を行うようになり、`setup` が生成する到達不能エントリをスキャン対象から除外した。(#1836)
-- **`setup` が Project 作成後に `gh project link` を冪等実行するようになった** — 新規作成した Project がリポジトリにまだリンクされていないことに起因する、初回 Issue 作成時の Projects 登録失敗を解消した。(#1835)
+- **`installPath` セマンティクスの consumer 間不整合を修正した** — `rite@rite-marketplace` v0.8.1 に対する実環境検証により、`installPath` はプラグインルートそのものを指す（`hooks/`・`skills/`・`scripts/`・`references/` が直下に存在し、`plugins/rite/` という中間ディレクトリは存在しない）ことを確定した。`hook-preamble.sh` の誤ったパス参照（version-redirect ロジックがサイレントに dead code 化していた）を修正し、`plugin-path-resolution.md` に検証済みのセマンティクスを明記した。
+- **Work Memory (WM) 同期経路を修復した** — `open/SKILL.md` ステップ 2.5 の初回 WM 投稿に `issue-comment-wm-sync.sh init` 呼び出しをステータス分岐表付きの bash block として明示配線した（従来は prose 指示のみで実際の呼び出しが行われていなかった）。また `work-memory-update.sh` がフェーズ遷移更新のたびに `## Detail` 以下の蓄積セクションを消失させていた問題を解消し、既存 stock から蓄積部分を抽出して verbatim に保持するようにした（`Phase:`/`Branch:` 行のみ最新値で再生成する）。
+- **WM 同期経路の follow-up を強化した** — `work-memory-update.sh` は `detail_extra` の awk 抽出に失敗した際、silent fallback ではなく rc 付き WARNING を出すようになった。`issue-comment-wm-sync.sh` の init pre-check には non-blocking degrade 契約を pin する回帰テストを追加した。親シェルが直接 mktemp する tempfile 10 個を file-wide cleanup 関数 + EXIT/INT/TERM/HUP trap で一括保護し、WM 同期のアーキテクチャ図も実装に合わせて更新した。
+- **レビュー結果と PR-state の保存先を `state-path-resolve.sh` 基準へ統一した** — `review-result-save.sh` の `REVIEW_RESULTS_DIR` 既定値と `review-source-resolve.sh` のローカル JSON 読取優先度を、`wiki-ingest-trigger.sh` が既に使っていたのと同一の state-root anchor で解決するようにし、`multi_session` でセッション worktree が保存したレビュー結果・PR-state（accepted-fingerprints・fix-cycle-state）を main checkout 側の cwd-relative パスから読めない不整合を解消した（`--results-dir`/`--repo-root` の明示指定は従来どおり優先、解決失敗時は cwd-relative フォールバック + WARNING）。
+- **state-path-resolve 統一で挙動が変わった観測面 4 種に回帰テストを追加した**（`state-root-observers.test.sh`、11 assertion）。`review-schema-version-check.sh --all` の worktree cwd からの drift 検出、`review-skip-notification.sh` の state-root パス表示、`distributed-fix-drift-check.sh` Pattern 6 の `--repo-root` 非伝搬契約をカバーし、従来 sandbox での手動実測にのみ依存していた検証をテストで pin した。
+- **`open`/`cleanup` の GitHub Projects Status 更新を inline 化し silent skip を防止した** — `open/SKILL.md` ステップ 2.4(A)（Status→In Progress）と `cleanup/SKILL.md` ステップ 8（Status→Done）は従来、`projects-status-update.sh` への委譲を prose 記述のみで済ませており実際の bash 呼び出しがなかった。`/rite:batch-run` のような長い自律実行チェーンの中でこの参照のみのステップが読み飛ばされ、Status が最終状態（In Progress / Done）まで進まず Todo 等に残留する不具合があった。
+- **`projects-status-update.sh` 呼び出しの `|| status_json=""` フォールバックを残存 4 箇所で除去した** — `ready/SKILL.md`・`issue-close/SKILL.md`・`cleanup/references/archive-procedures.md` で使われていたこのパターンは、script が非ゼロ終了した際に既に出力済みの失敗理由入り JSON（`.warnings[]` 含む）を空文字列で上書き・破棄していた。command substitution は終了ステータスに関わらず stdout を capture するためこの fallback は不要であり、残り 4 箇所から除去した。
+- **`multi_session` の dirty main checkout ガードを `open`/`cleanup` に追加した** — `open` ステップ 2.2-W は、セッション worktree 作成前に main checkout の未コミット変更を検出し、それが Issue の Target Files に重なる場合のみ `AskUserQuestion` で搬送・続行・中止を確認する。`cleanup` ステップ 4 は `git merge --ff-only` の 3 回リトライ全滅後に成否を検証し、無確認の破棄や競合状態の放置ではなく、diff 確認済みの破棄提案または stash 案内での終了を行う。
+- **`pr-review` ステップ 4.3.1 で reviewer Task 起動時の `run_in_background: false` 明示指定を必須化した** — 従来の禁止表現（「`true` を使うな」）だけではパラメータのデフォルト値が未規定のままで、harness のデフォルトがバックグラウンド実行であるためパラメータ省略時にサイレントに background 起動していた。根拠とともに明示指定を MUST 化した。
+- **`issue-create` がラベルを冪等に事前作成し helper 失敗時に result を surface するようになった** — ラベルが既に存在する場合の失敗を防ぎ、helper の失敗を握りつぶさず結果として表面化する。
+- **`lint` の `gitignore-health-check` の偽陽性を修正した** — 単純なパターンマッチではなく実効的な ignore 判定を行うようになり、`setup` が生成する到達不能エントリをスキャン対象から除外した。
+- **`setup` が Project 作成後に `gh project link` を冪等実行するようになった** — 新規作成した Project がリポジトリにまだリンクされていないことに起因する、初回 Issue 作成時の Projects 登録失敗を解消した。
 
 ## [0.8.1] - 2026-07-11
 
 ### 修正
 
-- **`/rite:recover` が中断からの個別スキル復帰後、`/rite:batch-run` 実行中の active batch 中断かを自律判定し、該当時は残りキューの処理を自動継続するようになった** — `recover/SKILL.md` に新設した Phase 5.5 が `run-queue.json` の `active` フラグ・cursor 一致・鮮度（2時間、`session-ownership.sh` の `parse_iso8601_to_epoch` を再利用）で判定し、該当時は `batch-run/SKILL.md` 既存のステップ3-8分岐表を参照して継続する（複製しない）。stale な `run-queue.json` の残骸では誤って継続しない。`run-queue.json` に `updated_at`（ISO 8601）フィールドを追加し、cursor 前進 / active 設定の各書き込みで更新するようにした。(#1820, #1821)
+- **`/rite:recover` が中断からの個別スキル復帰後、`/rite:batch-run` 実行中の active batch 中断かを自律判定し、該当時は残りキューの処理を自動継続するようになった** — `recover/SKILL.md` に新設した Phase 5.5 が `run-queue.json` の `active` フラグ・cursor 一致・鮮度（2時間、`session-ownership.sh` の `parse_iso8601_to_epoch` を再利用）で判定し、該当時は `batch-run/SKILL.md` 既存のステップ3-8分岐表を参照して継続する（複製しない）。stale な `run-queue.json` の残骸では誤って継続しない。`run-queue.json` に `updated_at`（ISO 8601）フィールドを追加し、cursor 前進 / active 設定の各書き込みで更新するようにした。
 
 ## [0.8.0] - 2026-07-10
 
 ### 変更
 
-- **Claude Code 組み込みスラッシュコマンドとの基底名衝突を解消するため、4件のスキルをリネーム** — `run` → `batch-run`、`review` → `pr-review`、`init` → `setup`、`resume` → `recover`。**破壊的変更 — 新しい名前で起動する:** `/rite:run` → `/rite:batch-run`、`/rite:review` → `/rite:pr-review`、`/rite:init` → `/rite:setup`、`/rite:resume` → `/rite:recover`。リポジトリ内の全参照・相互リンク・sentinel contract の識別子も追随して更新した。挙動変更のない純粋なリネームである。(#1788, #1790, #1793, #1794, #1795, #1796, #1800, #1803, #1804)
-- **reviewer registry の3-way同期（`agents/*-reviewer.md` ⇔ `pr-review/SKILL.md` の Available Reviewers 表 ⇔ Reviewer Type Identifiers 表）を単一の機械チェックで検証するようにした** — 従来は tech-writer 行の2ファイル等価性しか監視しておらず、agent ファイルのみの追加・表の片側更新・slug 不整合を検出できず素通りしていた。(#1743)
-- **非 rite プロジェクトにおける per-call hook に前段 early-exit と `jq` 呼び出しの集約を追加した** — rite プロジェクト内の入出力・副作用は不変のまま、rite を使っていないプロジェクトでの Bash / Edit 1 コールごとのサブプロセスコストを削減する。(#1737)
-- **`pr-review/SKILL.md` と `fix/SKILL.md` のコンテキストダイエットを実施** — 設計理由・歴史的経緯・外部仕様解説をスキル本体から `references/` へ退避し、`fix/SKILL.md` を8.2%（4,040→3,709行）、`pr-review/SKILL.md` を13.1%（4,040→3,510行）削減した。「SKILL.md < 500行」原則は、この2層構造の実態に合わせて改定した（入口スキルは500行未満を維持、実行手順書スキルは4,000行を上限とする）。(#1774)
+- **Claude Code 組み込みスラッシュコマンドとの基底名衝突を解消するため、4件のスキルをリネーム** — `run` → `batch-run`、`review` → `pr-review`、`init` → `setup`、`resume` → `recover`。**破壊的変更 — 新しい名前で起動する:** `/rite:run` → `/rite:batch-run`、`/rite:review` → `/rite:pr-review`、`/rite:init` → `/rite:setup`、`/rite:resume` → `/rite:recover`。リポジトリ内の全参照・相互リンク・sentinel contract の識別子も追随して更新した。挙動変更のない純粋なリネームである。
+- **reviewer registry の3-way同期（`agents/*-reviewer.md` ⇔ `pr-review/SKILL.md` の Available Reviewers 表 ⇔ Reviewer Type Identifiers 表）を単一の機械チェックで検証するようにした** — 従来は tech-writer 行の2ファイル等価性しか監視しておらず、agent ファイルのみの追加・表の片側更新・slug 不整合を検出できず素通りしていた。
+- **非 rite プロジェクトにおける per-call hook に前段 early-exit と `jq` 呼び出しの集約を追加した** — rite プロジェクト内の入出力・副作用は不変のまま、rite を使っていないプロジェクトでの Bash / Edit 1 コールごとのサブプロセスコストを削減する。
+- **`pr-review/SKILL.md` と `fix/SKILL.md` のコンテキストダイエットを実施** — 設計理由・歴史的経緯・外部仕様解説をスキル本体から `references/` へ退避し、`fix/SKILL.md` を8.2%（4,040→3,709行）、`pr-review/SKILL.md` を13.1%（4,040→3,510行）削減した。「SKILL.md < 500行」原則は、この2層構造の実態に合わせて改定した（入口スキルは500行未満を維持、実行手順書スキルは4,000行を上限とする）。
 
 ### 追加
 
-- **`/rite:unknowns` スキルを新設** — 明示起動限定の実装前探索セッション（盲点洗い出し・複数アプローチのブレインストーミング・使い捨て HTML プロトタイプ・要件インタビュー）を提供し、最後に探索サマリを出力して `issue-create` 等の後続スキルへ渡す。`wiki-query-inject.sh` を配線し、Wiki に蓄積済みの経験則を盲点洗い出しの材料として活用できるようにした。(#1805)
-- **`issue-create` が `/rite:unknowns` の探索サマリを検出し、仮定表面化を軽量化するようにした** — 探索で既に解決済みの問い・発見した盲点は再質問・列挙をスキップし、未解決の問いは既存の3分類へ直接合流させる。(#1806)
-- **`issue-create` ステップ4.0に「盲点チェック（unknown unknowns）」サブステップを追加**（見込み Complexity M以上で発動） — 発見項目は既存の derive/ask/defer 3分類へそのまま合流させ、新しい処理経路は作らない。(#1755)
-- **`open` ステップ3.3の実装計画テンプレートに volatile-first 提示順ルールを追加** — ユーザーの判断で変わりやすい項目（データモデル変更・型/インターフェース定義・ユーザー可視挙動/UX）を先頭に、機械的なリファクタ・定型作業を末尾に置き、計画承認レビューの注意を本質的判断に集中させる。(#1752)
-- **`pr-review` ステップ7を「自動 Issue 化」から「スコープ外指摘のトリアージ」へ再設計** — AskUserQuestion の推奨オプションをエージェント裁量から規則表による機械決定へ移し、「Decision Log に記録」選択肢を新設。承認された記録は元 Issue の Section 9 Decision Log（無ければ作業メモリ）へ追記される。(#1802)
-- **`pr-review` に `max_reviewers` 上限と起動前のコスト見積りサマリを導入** — reviewer 選定は既存の下限保証・必須 Security reviewer ガードの後に上限を適用し、絞り込んだ reviewer とその理由を常に提示する（silent cap は禁止）。既定値 `max_reviewers: 6` により、上限以内のマッチでは従来と同一の選定結果を維持する。(#1729)
-- **`pr-create` の PR body に Decision Log / 計画逸脱ログの要約を還流するようにした** — Phase 3.2.2 が Issue の Section 9 Decision Log と作業メモリの計画逸脱ログを読み取り、diff だけでは分からない実装中の判断をレビュアーに提示する。両ソースとも0件の場合はセクション自体を省略する。(#1756)
-- **`iterate` の review⇄fix ループにサーキットブレーカーを導入** — `safety.max_review_cycles`（既定5）を上限とし、非収束 PR による無限ループを構造的に防ぐ。`batch-run` では上限到達した PR を failed として記録しカーソルを前進させ、バッチ全体のストールを防ぐ。(#1728)
-- **`recover` にマージコンフリクト / rebase 中断状態の検出を追加** — unmerged マーカー・`MERGE_HEAD`・`rebase-merge`/`rebase-apply`（worktree でも正しく解決する `git rev-parse --git-path` 経由）をフェーズ推定より優先して提示し、コンフリクト解消をスキップして汎用の「実装途中」復帰へ誘導しないようにした。(#1734)
-- **`batch-run` が着手前に処理サマリを表示するようにした** — キュー確定直後に対象件数・実行モード・件数ベースの目安時間・中断/再開方法を1回提示し、各 Issue 完了時に「N/M件完了」の進捗行を表示する。(#1733)
-- **`setup` が `safety` セクションを `rite-config.yml` に書き出すようにした** — 従来 `--- Advanced ---` マーカーより下にコメントアウトされていた `safety`（`max_implementation_rounds`・`max_review_cycles` 等）を、`wiki`/`multi_session`/`tdd` と同じく active ブロックへ昇格し、新規生成される config で安全上限が発見できるようにした。(#1732)
-- **sentinel contract（約29種の `[skill:action]` 文字列）を SoT 化し CI 常時検証へ引き上げた** — `sentinel-contract.md` に emitter/consumer 対応表を集約し、`sentinel-contract-check.sh` で双方向一致を機械検証する。`lint` Phase 3.20 として統合し、専用の GitHub Actions workflow で push/PR 時にも常時実行する。(#1771)
+- **`/rite:unknowns` スキルを新設** — 明示起動限定の実装前探索セッション（盲点洗い出し・複数アプローチのブレインストーミング・使い捨て HTML プロトタイプ・要件インタビュー）を提供し、最後に探索サマリを出力して `issue-create` 等の後続スキルへ渡す。`wiki-query-inject.sh` を配線し、Wiki に蓄積済みの経験則を盲点洗い出しの材料として活用できるようにした。
+- **`issue-create` が `/rite:unknowns` の探索サマリを検出し、仮定表面化を軽量化するようにした** — 探索で既に解決済みの問い・発見した盲点は再質問・列挙をスキップし、未解決の問いは既存の3分類へ直接合流させる。
+- **`issue-create` ステップ4.0に「盲点チェック（unknown unknowns）」サブステップを追加**（見込み Complexity M以上で発動） — 発見項目は既存の derive/ask/defer 3分類へそのまま合流させ、新しい処理経路は作らない。
+- **`open` ステップ3.3の実装計画テンプレートに volatile-first 提示順ルールを追加** — ユーザーの判断で変わりやすい項目（データモデル変更・型/インターフェース定義・ユーザー可視挙動/UX）を先頭に、機械的なリファクタ・定型作業を末尾に置き、計画承認レビューの注意を本質的判断に集中させる。
+- **`pr-review` ステップ7を「自動 Issue 化」から「スコープ外指摘のトリアージ」へ再設計** — AskUserQuestion の推奨オプションをエージェント裁量から規則表による機械決定へ移し、「Decision Log に記録」選択肢を新設。承認された記録は元 Issue の Section 9 Decision Log（無ければ作業メモリ）へ追記される。
+- **`pr-review` に `max_reviewers` 上限と起動前のコスト見積りサマリを導入** — reviewer 選定は既存の下限保証・必須 Security reviewer ガードの後に上限を適用し、絞り込んだ reviewer とその理由を常に提示する（silent cap は禁止）。既定値 `max_reviewers: 6` により、上限以内のマッチでは従来と同一の選定結果を維持する。
+- **`pr-create` の PR body に Decision Log / 計画逸脱ログの要約を還流するようにした** — Phase 3.2.2 が Issue の Section 9 Decision Log と作業メモリの計画逸脱ログを読み取り、diff だけでは分からない実装中の判断をレビュアーに提示する。両ソースとも0件の場合はセクション自体を省略する。
+- **`iterate` の review⇄fix ループにサーキットブレーカーを導入** — `safety.max_review_cycles`（既定5）を上限とし、非収束 PR による無限ループを構造的に防ぐ。`batch-run` では上限到達した PR を failed として記録しカーソルを前進させ、バッチ全体のストールを防ぐ。
+- **`recover` にマージコンフリクト / rebase 中断状態の検出を追加** — unmerged マーカー・`MERGE_HEAD`・`rebase-merge`/`rebase-apply`（worktree でも正しく解決する `git rev-parse --git-path` 経由）をフェーズ推定より優先して提示し、コンフリクト解消をスキップして汎用の「実装途中」復帰へ誘導しないようにした。
+- **`batch-run` が着手前に処理サマリを表示するようにした** — キュー確定直後に対象件数・実行モード・件数ベースの目安時間・中断/再開方法を1回提示し、各 Issue 完了時に「N/M件完了」の進捗行を表示する。
+- **`setup` が `safety` セクションを `rite-config.yml` に書き出すようにした** — 従来 `--- Advanced ---` マーカーより下にコメントアウトされていた `safety`（`max_implementation_rounds`・`max_review_cycles` 等）を、`wiki`/`multi_session`/`tdd` と同じく active ブロックへ昇格し、新規生成される config で安全上限が発見できるようにした。
+- **sentinel contract（約29種の `[skill:action]` 文字列）を SoT 化し CI 常時検証へ引き上げた** — `sentinel-contract.md` に emitter/consumer 対応表を集約し、`sentinel-contract-check.sh` で双方向一致を機械検証する。`lint` Phase 3.20 として統合し、専用の GitHub Actions workflow で push/PR 時にも常時実行する。
 
 ### 修正
 
-- **`fix.md` ステップ5.1 の sentinel 判定が `accept` 決定を正しく継続分岐できるようにした** — 従来のロジックはコミット `0dee5b22` で削除済みの旧ポリシーに由来する実在しない「別Issue作成件数」を条件にしていた。ステップ2.1.A が既に emit している `ACCEPT_FINGERPRINT_PERSISTED` マーカーを判定シグナルとすることで、accept 決定が suppression の実効性を確認しないまま無条件の正常終了へ落ちることを防ぐ。(#1813)
-- **`flow-state.sh` の `cmd_set` が `wm_comment_id` を無警告で消失させないようにした** — `issue-comment-wm-sync.sh` の `cache_comment_id()` が直接書き込む `wm_comment_id` フィールドが、`cmd_set` の JSON 再構築時に使う merge-preserve whitelist から漏れており、直後の無関係な phase-transition set で消えていた。(#1812)
-- **`issue-comment-wm-sync.sh` と `cleanup-work-memory.sh` を schema_v2/v3 multi-state aware に対応** — 両スクリプトとも `FLOW_STATE` の解決が legacy 共有ファイル（`.rite-flow-state`）への直書きになっており、セッション別 flow-state ファイル（`.rite/sessions/{sid}.flow-state`）を考慮していなかったため、`wm_comment_id` キャッシュの常時ミス（余分な `gh api` スキャン）や、`/rite:cleanup` 完了後も `active:true`/`phase:cleanup` のまま残存するセッションファイルが `/rite:recover` や Stop hook の誤判定を招いていた。両スクリプトとも `flow-state.sh path`（canonical resolver）経由に変更し、解決失敗時のみ legacy ファイルへ warning 付きでフォールバックする。(#1808, #1809)
-- **`pre-tool-bash-guard` の Pattern 4（reviewer subagent の状態変更 git コマンドブロック）を fail-closed化しtimeoutを設定** — Pattern 4 は便宜パターン1-3と fail-open な ERR trap を共有しており、予期せぬ入力によるパースクラッシュが `exit 0`（allow）に収束してしまい、クラッシュ1つで reviewer の read-only ガードが bypass され得た。Pattern 4 を独立した fail-closed 構成に再編し、他の hook にはすべて設定済みだった timeout を `PreToolUse:Bash` にも追加した。(#1736)
-- **`test-distributed-fix-drift-check.sh` が shallow clone 環境で失敗しないようにした** — `git fetch --depth=1 origin <full-sha>` によるフォールバックで到達不能な baseline commit（フル SHA 参照に変更）を解決し、フォールバック後も到達不能な場合は silent pass や偽陽性の CI 失敗ではなく明示的な skip メッセージを出すようにした。(#1741)
-- **ロック機構の既知の穴3点を堅牢化** — `issue-claim.sh` の stale-steal を、ロック取得後に holder を再読取して検証する compare-and-swap 方式に変更（2セッションが同一 stale claim を両方奪取できる TOCTOU の窓を解消）、PID だけに頼らない PID再利用検出、姉妹スクリプトと対称な eval前検証を追加した。(#1742)
-- **`reviewer-registry-drift-check.sh` の診断精度を改善し slug regex の盲点を解消した** — `agents/` 由来のエラーメッセージが `find` の stderr（`EACCES` 等）を握り潰していた問題をソース別分岐で解消し、識別子 regex を拡張して数字入り slug（例: `web3-reviewer.md`）が3つの追跡集合すべてから除外され silent pass する盲点を塞いだ。(#1762)
-- **残りの per-call hook にあった `@tsv`+`IFS` read の field-shift hazard を統一** — #1737 での `bang-backtick-edit-hook.sh` 修正に続き、`session-start.sh` の `_reset_active_state()` 等でも unit separator（`\x1f`）による join/read に統一し、空の中間 TSV フィールドが後続フィールドを左シフトしてしまう問題を解消した。(#1767)
+- **`fix.md` ステップ5.1 の sentinel 判定が `accept` 決定を正しく継続分岐できるようにした** — 従来のロジックはコミット `0dee5b22` で削除済みの旧ポリシーに由来する実在しない「別Issue作成件数」を条件にしていた。ステップ2.1.A が既に emit している `ACCEPT_FINGERPRINT_PERSISTED` マーカーを判定シグナルとすることで、accept 決定が suppression の実効性を確認しないまま無条件の正常終了へ落ちることを防ぐ。
+- **`flow-state.sh` の `cmd_set` が `wm_comment_id` を無警告で消失させないようにした** — `issue-comment-wm-sync.sh` の `cache_comment_id()` が直接書き込む `wm_comment_id` フィールドが、`cmd_set` の JSON 再構築時に使う merge-preserve whitelist から漏れており、直後の無関係な phase-transition set で消えていた。
+- **`issue-comment-wm-sync.sh` と `cleanup-work-memory.sh` を schema_v2/v3 multi-state aware に対応** — 両スクリプトとも `FLOW_STATE` の解決が legacy 共有ファイル（`.rite-flow-state`）への直書きになっており、セッション別 flow-state ファイル（`.rite/sessions/{sid}.flow-state`）を考慮していなかったため、`wm_comment_id` キャッシュの常時ミス（余分な `gh api` スキャン）や、`/rite:cleanup` 完了後も `active:true`/`phase:cleanup` のまま残存するセッションファイルが `/rite:recover` や Stop hook の誤判定を招いていた。両スクリプトとも `flow-state.sh path`（canonical resolver）経由に変更し、解決失敗時のみ legacy ファイルへ warning 付きでフォールバックする。
+- **`pre-tool-bash-guard` の Pattern 4（reviewer subagent の状態変更 git コマンドブロック）を fail-closed化しtimeoutを設定** — Pattern 4 は便宜パターン1-3と fail-open な ERR trap を共有しており、予期せぬ入力によるパースクラッシュが `exit 0`（allow）に収束してしまい、クラッシュ1つで reviewer の read-only ガードが bypass され得た。Pattern 4 を独立した fail-closed 構成に再編し、他の hook にはすべて設定済みだった timeout を `PreToolUse:Bash` にも追加した。
+- **`test-distributed-fix-drift-check.sh` が shallow clone 環境で失敗しないようにした** — `git fetch --depth=1 origin <full-sha>` によるフォールバックで到達不能な baseline commit（フル SHA 参照に変更）を解決し、フォールバック後も到達不能な場合は silent pass や偽陽性の CI 失敗ではなく明示的な skip メッセージを出すようにした。
+- **ロック機構の既知の穴3点を堅牢化** — `issue-claim.sh` の stale-steal を、ロック取得後に holder を再読取して検証する compare-and-swap 方式に変更（2セッションが同一 stale claim を両方奪取できる TOCTOU の窓を解消）、PID だけに頼らない PID再利用検出、姉妹スクリプトと対称な eval前検証を追加した。
+- **`reviewer-registry-drift-check.sh` の診断精度を改善し slug regex の盲点を解消した** — `agents/` 由来のエラーメッセージが `find` の stderr（`EACCES` 等）を握り潰していた問題をソース別分岐で解消し、識別子 regex を拡張して数字入り slug（例: `web3-reviewer.md`）が3つの追跡集合すべてから除外され silent pass する盲点を塞いだ。
+- **残りの per-call hook にあった `@tsv`+`IFS` read の field-shift hazard を統一** — `bang-backtick-edit-hook.sh` 修正に続き、`session-start.sh` の `_reset_active_state()` 等でも unit separator（`\x1f`）による join/read に統一し、空の中間 TSV フィールドが後続フィールドを左シフトしてしまう問題を解消した。
 
 ### 削除
 
-- **実挙動に一切効果のなかった設定項目2件を削除**: `fix.fail_fast_response`（消費側で一度も参照されず、テンプレート自身が「効かない」と自認していた）、`review.scope_assignment.enabled`（消費側は `auto_demote_low` を直接読み取り `enabled` を一度も参照しておらず、ドキュメント上の opt-out は機能していなかった）。`auto_demote_low` 自体は配線済みのまま影響を受けない。(#1727)
+- **実挙動に一切効果のなかった設定項目2件を削除**: `fix.fail_fast_response`（消費側で一度も参照されず、テンプレート自身が「効かない」と自認していた）、`review.scope_assignment.enabled`（消費側は `auto_demote_low` を直接読み取り `enabled` を一度も参照しておらず、ドキュメント上の opt-out は機能していなかった）。`auto_demote_low` 自体は配線済みのまま影響を受けない。
 
 ## [0.7.2] - 2026-07-01
 
 ### 修正
 
-- `disable-model-invocation: true` を user-invocable スキル14件（`issue-create`・`issue-update`・`issue-close`・`issue-edit`・`wiki-init`・`wiki-query`・`learn`・`skill-suggest`・`template-reset`・`getting-started`・`workflow`・`investigate`・`resume`・`run`）から削除。Claude Code CLI はユーザーが明示的に入力したスラッシュコマンドとモデル自身の Skill ツール呼び出しを同一経路で扱うため、画像添付時などネイティブなスラッシュコマンド dispatch と認識されない場合にモデル側の Skill ツールフォールバックが同フラグに阻まれ、ユーザー自身の直接起動が失敗する不具合があった（[anthropics/claude-code#43660](https://github.com/anthropics/claude-code/issues/43660) 参照）。`workflow`・`investigate` の description には同フラグが担っていた非 auto-activate 文言を補強した。(#1694)
+- `disable-model-invocation: true` を user-invocable スキル14件（`issue-create`・`issue-update`・`issue-close`・`issue-edit`・`wiki-init`・`wiki-query`・`learn`・`skill-suggest`・`template-reset`・`getting-started`・`workflow`・`investigate`・`resume`・`run`）から削除。Claude Code CLI はユーザーが明示的に入力したスラッシュコマンドとモデル自身の Skill ツール呼び出しを同一経路で扱うため、画像添付時などネイティブなスラッシュコマンド dispatch と認識されない場合にモデル側の Skill ツールフォールバックが同フラグに阻まれ、ユーザー自身の直接起動が失敗する不具合があった（[anthropics/claude-code#43660](https://github.com/anthropics/claude-code/issues/43660) 参照）。`workflow`・`investigate` の description には同フラグが担っていた非 auto-activate 文言を補強した。
 
 ### 変更
 
-- `reviewers/SKILL.md` の frontmatter に `user-invocable: false` を追加し、`docs/SPEC.md` の frontmatter ポリシー表第3区分の記述を実態に合わせて是正した：`user-invocable: false` が `/rite:<name>` 不在を担保し、`disable-model-invocation` は broad description を持つスキルの auto-activate 抑止に使う、という役割分担を明記した。(#1696)
+- `reviewers/SKILL.md` の frontmatter に `user-invocable: false` を追加し、`docs/SPEC.md` の frontmatter ポリシー表第3区分の記述を実態に合わせて是正した：`user-invocable: false` が `/rite:<name>` 不在を担保し、`disable-model-invocation` は broad description を持つスキルの auto-activate 抑止に使う、という役割分担を明記した。
 
 ## [0.7.1] - 2026-06-30
 
@@ -371,7 +371,7 @@ Fixed/Changed/Removed エントリは修正対象の旧挙動を述べてよい�
 - 紹介動画の HyperFrames ソースを本リポジトリ管理下（`media/intro-video/`〔日本語〕・
   `media/intro-video-en/`〔英語〕）に取り込み、リポ外ディレクトリではなく当リポ内で
   動画更新が完結するようにした。各プロジェクトにビルド手順・BGM の出所/ライセンスを
-  記載した `PROVENANCE.md` を同梱。(#1688)
+  記載した `PROVENANCE.md` を同梱。
 
 ### 変更
 
@@ -379,126 +379,126 @@ Fixed/Changed/Removed エントリは修正対象の旧挙動を述べてよい�
   フラットなハイフン記法（`open`・`iterate`・`ready`・`merge`・`cleanup`・
   `issue-create`）に統一し、`scene-goal` を `/rite:run --merge` の自走デモへ差し替え、
   Doc-Heavy PR Mode を扱う `scene-docheavy` シーンを新規追加、README の動画尺記述を
-  約115秒へ変更した。(#1688)
+  約115秒へ変更した。
 
 ## [0.7.0] - 2026-06-30
 
 ### 変更
 
-- **ワークフローのエントリポイントを `commands/` からネイティブな Claude Code スキル（`skills/`）へ移行** — 旧 `commands/<group>/<name>.md` は Claude Code が自動検出する `skills/<name>/SKILL.md` に統合され、orchestrator スキル（`open`・`iterate`・`run` 等）が sub-skill（`review`・`fix`・`pr-create`・`issue-implement` 等）を Skill ツール経由で呼び出す構造になった。**破壊的変更 — 起動名前空間がフラット化**：旧グループコロン形式は廃止し、フラットなスキル名で起動する。移行: `/rite:pr:open` → `/rite:open`、`/rite:pr:review` → `/rite:review`、`/rite:pr:create` → `/rite:pr-create`、`/rite:issue:create` → `/rite:issue-create`、`/rite:wiki:ingest` → `/rite:wiki-ingest`（残りの `pr:` / `issue:` / `wiki:` コマンドも同様）。(#1682)
-- **SessionStart フックの CRITICAL バナーを `/rite:resume` 案内へ降格** — preflight 機構の削除に伴い、compact 後の回復を無条件の CRITICAL セッション開始ブロックではなく `/rite:resume` に一本化した。(#1682)
+- **ワークフローのエントリポイントを `commands/` からネイティブな Claude Code スキル（`skills/`）へ移行** — 旧 `commands/<group>/<name>.md` は Claude Code が自動検出する `skills/<name>/SKILL.md` に統合され、orchestrator スキル（`open`・`iterate`・`run` 等）が sub-skill（`review`・`fix`・`pr-create`・`issue-implement` 等）を Skill ツール経由で呼び出す構造になった。**破壊的変更 — 起動名前空間がフラット化**：旧グループコロン形式は廃止し、フラットなスキル名で起動する。移行: `/rite:pr:open` → `/rite:open`、`/rite:pr:review` → `/rite:review`、`/rite:pr:create` → `/rite:pr-create`、`/rite:issue:create` → `/rite:issue-create`、`/rite:wiki:ingest` → `/rite:wiki-ingest`（残りの `pr:` / `issue:` / `wiki:` コマンドも同様）。
+- **SessionStart フックの CRITICAL バナーを `/rite:resume` 案内へ降格** — preflight 機構の削除に伴い、compact 後の回復を無条件の CRITICAL セッション開始ブロックではなく `/rite:resume` に一本化した。
 
 ### 削除
 
-- **`commands/` ディレクトリを全廃（42 ファイル）** し旧グループ命名を一掃。`skills/` がエントリポイントと実行手順書の単一ソースとなり、`lint` scanner は `commands/` から `skills/` へ repoint した。(#1682)
-- **`preflight-check.sh` 機構を削除** — 責務を `/rite:resume` へ統合し、アーキ図と README から Preflight Check の記述を削除した。(#1682)
+- **`commands/` ディレクトリを全廃（42 ファイル）** し旧グループ命名を一掃。`skills/` がエントリポイントと実行手順書の単一ソースとなり、`lint` scanner は `commands/` から `skills/` へ repoint した。
+- **`preflight-check.sh` 機構を削除** — 責務を `/rite:resume` へ統合し、アーキ図と README から Preflight Check の記述を削除した。
 
 ## [0.6.12] - 2026-06-29
 
 ### 修正
 
-- **`multi_session.enabled: true` で作業ブランチが実在するのに session worktree が不在な状態を、フロー入場経路が検出・再構築するようになった** — 作業ブランチがローカルに実在しても session worktree（`.rite/worktrees/issue-{N}`）が不在だと、`/rite:resume`・`/rite:pr:review`・`/rite:pr:iterate`・`/rite:pr:fix` が当該ブランチを存在しない扱いにして `develop` へ silent fallback し、PR 変更を作業ツリーから読めない degraded 動作に陥っていた。`lib/worktree-git.sh` に追加した `ensure_session_worktree` ヘルパーが「ブランチ実在 ∧ session worktree 不在」を検出し worktree を再構築する（local: `git worktree add` / remote: fetch + `--track`）。(#1676, #1677)
+- **`multi_session.enabled: true` で作業ブランチが実在するのに session worktree が不在な状態を、フロー入場経路が検出・再構築するようになった** — 作業ブランチがローカルに実在しても session worktree（`.rite/worktrees/issue-{N}`）が不在だと、`/rite:resume`・`/rite:pr:review`・`/rite:pr:iterate`・`/rite:pr:fix` が当該ブランチを存在しない扱いにして `develop` へ silent fallback し、PR 変更を作業ツリーから読めない degraded 動作に陥っていた。`lib/worktree-git.sh` に追加した `ensure_session_worktree` ヘルパーが「ブランチ実在 ∧ session worktree 不在」を検出し worktree を再構築する（local: `git worktree add` / remote: fetch + `--track`）。
 
 ## [0.6.11] - 2026-06-28
 
 ### 修正
 
-- **`/rite:pr:cleanup` がクリーンアップ対象 Issue の worktree・ブランチ削除を自己ブロッキングする問題を修正** — cleanup の live-cwd guard (`worktree-live-cwd.sh`) は cleanup 実行セッション自身の作業ディレクトリと他セッションを区別できず、自セッションを「live」と検出して削除を遅延させていた。self プロセス木を除外する新しい probe (`worktree-foreign-cwd.sh`, `--self-root`) を導入し、削除遅延は別の live セッションが実際に在席する場合のみに限定した。真に遅延したブランチ（従来は回収経路を持たず永久残置）は reap manifest に記録して次セッションで回収するようにし、未マージ/dirty なブランチは保護を維持する。(#1670, #1671)
+- **`/rite:pr:cleanup` がクリーンアップ対象 Issue の worktree・ブランチ削除を自己ブロッキングする問題を修正** — cleanup の live-cwd guard (`worktree-live-cwd.sh`) は cleanup 実行セッション自身の作業ディレクトリと他セッションを区別できず、自セッションを「live」と検出して削除を遅延させていた。self プロセス木を除外する新しい probe (`worktree-foreign-cwd.sh`, `--self-root`) を導入し、削除遅延は別の live セッションが実際に在席する場合のみに限定した。真に遅延したブランチ（従来は回収経路を持たず永久残置）は reap manifest に記録して次セッションで回収するようにし、未マージ/dirty なブランチは保護を維持する。
 
 ## [0.6.10] - 2026-06-26
 
 ### 修正
 
-- **multi-session worktree モードで `/rite:wiki:ingest` の raw source 書込先を commit の scan ルートに統一** — `multi_session.enabled: true` のとき、`wiki-ingest-trigger.sh` が raw を `$PWD` 相対の `.rite/wiki/raw/`（セッション worktree 側）へ書き込む一方、`wiki-ingest-commit.sh` は main checkout の `.rite/wiki/raw/` を scan していたため、セッション worktree から収集した raw source が wiki ブランチに commit されず silent に取りこぼされていた。両者が同一の scan ルートを解決するようにした。(#1664, #1665)
-- **corrupt/orphaned な `.rite/wiki-worktree` から raw source 蓄積が自己回復** — リポジトリ移動などで gitdir ポインタが stale 化した孤児 `.rite/wiki-worktree` が `[ -d ]` fast-path を通過しつつ `git rev-parse` に失敗し、raw source 蓄積を silent に停止させていた。silent 停止を廃止し自己回復するようにした。(#1662, #1663)
-- **罫線 box がヘッダーに全角文字を含むとき右罫線がずれる問題を修正** — 右罫線のパディングをコードポイント数で詰めていたため、全角（East Asian Width `W`/`F`）文字で内側幅が広くなっていた。全角を 2 桁として上罫線の `─` 本数に内側幅を一致させるようにし、ルールを `references/box-display-width.md` に SoT 化した。(#1660, #1661)
+- **multi-session worktree モードで `/rite:wiki:ingest` の raw source 書込先を commit の scan ルートに統一** — `multi_session.enabled: true` のとき、`wiki-ingest-trigger.sh` が raw を `$PWD` 相対の `.rite/wiki/raw/`（セッション worktree 側）へ書き込む一方、`wiki-ingest-commit.sh` は main checkout の `.rite/wiki/raw/` を scan していたため、セッション worktree から収集した raw source が wiki ブランチに commit されず silent に取りこぼされていた。両者が同一の scan ルートを解決するようにした。
+- **corrupt/orphaned な `.rite/wiki-worktree` から raw source 蓄積が自己回復** — リポジトリ移動などで gitdir ポインタが stale 化した孤児 `.rite/wiki-worktree` が `[ -d ]` fast-path を通過しつつ `git rev-parse` に失敗し、raw source 蓄積を silent に停止させていた。silent 停止を廃止し自己回復するようにした。
+- **罫線 box がヘッダーに全角文字を含むとき右罫線がずれる問題を修正** — 右罫線のパディングをコードポイント数で詰めていたため、全角（East Asian Width `W`/`F`）文字で内側幅が広くなっていた。全角を 2 桁として上罫線の `─` 本数に内側幅を一致させるようにし、ルールを `references/box-display-width.md` に SoT 化した。
 
 ## [0.6.9] - 2026-06-25
 
 ### 修正
 
-- **`.claude/scheduled_tasks.lock` を gitignore して untrack した** — Claude Code ハーネスがセッションごとに上書きするこのセッション固有 lock ファイルが tracked のままだと working tree が常に dirty になり、`pull.rebase=true` 環境で `git pull` が abort していた。`.claude/skills/release/SKILL.md` は意図的に commit しているため、`.claude/` 全体ではなくファイル単位で除外する。(#1654, #1655)
+- **`.claude/scheduled_tasks.lock` を gitignore して untrack した** — Claude Code ハーネスがセッションごとに上書きするこのセッション固有 lock ファイルが tracked のままだと working tree が常に dirty になり、`pull.rebase=true` 環境で `git pull` が abort していた。`.claude/skills/release/SKILL.md` は意図的に commit しているため、`.claude/` 全体ではなくファイル単位で除外する。
 
 ## [0.6.8] - 2026-06-24
 
 ### 修正
 
-- **release skill の Phase 1 最新タグ判定を到達可能性非依存にし、リリースタグ形式 `vX.Y.Z` に限定した** — `git describe --tags --abbrev=0` の代わりに `git tag --sort=-v:refname` を `grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$'` でフィルタし（事前に `git fetch --tags --force` を実行）、最新リリースタグが `develop` から到達できない `main` マージコミット上にあっても正しく取得でき、非リリースタグはバージョンソートから除外される。(#1643, #1647)
-- **release skill の Phase 1 タグ同期が silent に失敗しなくなった** — `git fetch --tags --force` が失敗した場合、エラーを握り潰さずログを 1 行出力してローカルのタグで続行する。(#1648)
+- **release skill の Phase 1 最新タグ判定を到達可能性非依存にし、リリースタグ形式 `vX.Y.Z` に限定した** — `git describe --tags --abbrev=0` の代わりに `git tag --sort=-v:refname` を `grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$'` でフィルタし（事前に `git fetch --tags --force` を実行）、最新リリースタグが `develop` から到達できない `main` マージコミット上にあっても正しく取得でき、非リリースタグはバージョンソートから除外される。
+- **release skill の Phase 1 タグ同期が silent に失敗しなくなった** — `git fetch --tags --force` が失敗した場合、エラーを握り潰さずログを 1 行出力してローカルのタグで続行する。
 
 ### ドキュメント
 
-- **release skill で `git tag … | head -1` の SIGPIPE が benign である旨を明記した** — 末尾の `head -1` が pipe を早期に閉じ得るが、`latest_tag` は `[ -n "$latest_tag" ]` でガードされ pipeline の終了コードは参照されない。この点を注記し、将来 `set -o pipefail` を導入する際の注意点も明示した。(#1649)
+- **release skill で `git tag … | head -1` の SIGPIPE が benign である旨を明記した** — 末尾の `head -1` が pipe を早期に閉じ得るが、`latest_tag` は `[ -n "$latest_tag" ]` でガードされ pipeline の終了コードは参照されない。この点を注記し、将来 `set -o pipefail` を導入する際の注意点も明示した。
 
 ## [0.6.7] - 2026-06-24
 
 ### 修正
 
-- **`cleanup.md` の親 Issue 検出が、クローズ対象 Issue 自身や無関係な Issue を親と誤検出しなくなった** — Tasklist fallback が複数候補を取得し、自己マッチを除外し、各候補の body に実際の `- [ ] #N` / `- [x] #N` tasklist 行が存在するか再検証するようになり、GitHub code search の先頭ヒットを盲目採用しなくなった。(#1637)
-- **`projects-integration.md` と `close.md` の tasklist search による親 Issue 検出が、自己マッチや無関係な Issue を親と誤検出しなくなった** — 複数候補を取得し、自己マッチを除外し、候補 body を検証してから親を採用するようになった。(#1634)
-- **`/rite:pr:open` が `open.md` で親 Issue の GitHub Projects ステータス更新を表面化** — Sub-Issue に着手すると親 Issue のステータスが Todo のままにならず In Progress へ遷移する。(#1630)
-- **`projects-integration.md` の standalone 時の親未検出ハンドリングの内部矛盾を解消** — silent skip を禁止するルールに合わせ、skip 前に必ず `[DEBUG] parent not detected` ログを emit するよう統一した。(#1636)
-- **standalone 時の親未検出 DEBUG 文言を `close.md`・`projects-integration.md`・`open.md` の 3 サイトで `methods tried:` に統一** — 3 サイトが逐語一致する診断を emit するようになった。(#1635)
+- **`cleanup.md` の親 Issue 検出が、クローズ対象 Issue 自身や無関係な Issue を親と誤検出しなくなった** — Tasklist fallback が複数候補を取得し、自己マッチを除外し、各候補の body に実際の `- [ ] #N` / `- [x] #N` tasklist 行が存在するか再検証するようになり、GitHub code search の先頭ヒットを盲目採用しなくなった。
+- **`projects-integration.md` と `close.md` の tasklist search による親 Issue 検出が、自己マッチや無関係な Issue を親と誤検出しなくなった** — 複数候補を取得し、自己マッチを除外し、候補 body を検証してから親を採用するようになった。
+- **`/rite:pr:open` が `open.md` で親 Issue の GitHub Projects ステータス更新を表面化** — Sub-Issue に着手すると親 Issue のステータスが Todo のままにならず In Progress へ遷移する。
+- **`projects-integration.md` の standalone 時の親未検出ハンドリングの内部矛盾を解消** — silent skip を禁止するルールに合わせ、skip 前に必ず `[DEBUG] parent not detected` ログを emit するよう統一した。
+- **standalone 時の親未検出 DEBUG 文言を `close.md`・`projects-integration.md`・`open.md` の 3 サイトで `methods tried:` に統一** — 3 サイトが逐語一致する診断を emit するようになった。
 
 ## [0.6.6] - 2026-06-24
 
 ### 修正
 
-- **GitHub Projects 登録の owner type 判定を撤廃し、Organization 所有の Project に対応** — owner type の事前判定が Organization 所有 Project で失敗していたため、判定を撤廃し user 所有・organization 所有の双方が登録できるようにした。(#1612)
-- **GitHub Projects のフィールド名を英日エイリアス + config 上書きで解決し、日本語名 Project に対応** — `Status`/`ステータス` などのフィールド検索が、日本語フィールド名の Project でも追加設定なしで成功する。(#1614)
-- **PR cleanup の worktree 検出を物理 cwd ベースに頑健化** — flow state に未記録の worktree が残置していた問題を解消。(#1623)
-- **`cleanup.md` のアンカーリンクを main-checkout に修正。**(#1611)
+- **GitHub Projects 登録の owner type 判定を撤廃し、Organization 所有の Project に対応** — owner type の事前判定が Organization 所有 Project で失敗していたため、判定を撤廃し user 所有・organization 所有の双方が登録できるようにした。
+- **GitHub Projects のフィールド名を英日エイリアス + config 上書きで解決し、日本語名 Project に対応** — `Status`/`ステータス` などのフィールド検索が、日本語フィールド名の Project でも追加設定なしで成功する。
+- **PR cleanup の worktree 検出を物理 cwd ベースに頑健化** — flow state に未記録の worktree が残置していた問題を解消。
+- **`cleanup.md` のアンカーリンクを main-checkout に修正。**
 
 ### 変更
 
-- **graphql-helpers の owner type 判定ドキュメントを repository() 非依存の経路に更新** — `repository()` に依存しなくなった登録ロジックにドキュメントを整合させた。(#1615)
+- **graphql-helpers の owner type 判定ドキュメントを repository() 非依存の経路に更新** — `repository()` に依存しなくなった登録ロジックにドキュメントを整合させた。
 
 ## [0.6.5] - 2026-06-22
 
 ### 修正
 
-- **`/rite:pr:cleanup` と `/rite:pr:open` の base ブランチ更新を `git pull --ff-only` から `git fetch` + `git merge --ff-only` 方式へ変更** — `pull.rebase=true` かつ作業ツリーが dirty な consumer 環境では、`git pull --ff-only` でも `git pull` が rebase 経路の前処理（clean working tree を要求）に入るため `cannot pull with rebase: You have unstaged changes` で early-abort していた。更新を `git fetch origin {base}` + `git merge --ff-only origin/{base}` に分離することで rebase 経路を一切通らず、fast-forward 可能なら `pull.rebase` 設定や作業ツリーの状態に関係なく base ブランチが確実に更新される。`cleanup.md` の `multi_session` / legacy 両パス、`open.md` のブランチ作成チェーン（`git switch -c` までの `&&` チェーンを維持）、`getting-started.md` / `docs/SPEC.md` の説明に適用。(#1602)
+- **`/rite:pr:cleanup` と `/rite:pr:open` の base ブランチ更新を `git pull --ff-only` から `git fetch` + `git merge --ff-only` 方式へ変更** — `pull.rebase=true` かつ作業ツリーが dirty な consumer 環境では、`git pull --ff-only` でも `git pull` が rebase 経路の前処理（clean working tree を要求）に入るため `cannot pull with rebase: You have unstaged changes` で early-abort していた。更新を `git fetch origin {base}` + `git merge --ff-only origin/{base}` に分離することで rebase 経路を一切通らず、fast-forward 可能なら `pull.rebase` 設定や作業ツリーの状態に関係なく base ブランチが確実に更新される。`cleanup.md` の `multi_session` / legacy 両パス、`open.md` のブランチ作成チェーン（`git switch -c` までの `&&` チェーンを維持）、`getting-started.md` / `docs/SPEC.md` の説明に適用。
 
 ## [0.6.4] - 2026-06-20
 
 ### 修正
 
-- **`multi_session.enabled: true` でのブランチ作成 worktree 隔離を hard invariant 化** — `/rite:pr:open` のブランチ作成直前に `multi_session` を `rite-config.yml` から再パースし（resume / context 圧縮 / フロー途中入場で失われうる `[CONTEXT]` marker への依存を排除）、legacy の `git switch -c` 経路は `multi_session.enabled: false` のときのみ到達可能にした。`EnterWorktree` 後にリポジトリ top-level が worktree path と一致するか検証し、不一致なら main ツリー上で silent 続行せず停止する。`flow-state.sh set --require-worktree` は worktree 不在で branch/PR phase を記録しようとした場合に loud warning を emit する。(#1596)
+- **`multi_session.enabled: true` でのブランチ作成 worktree 隔離を hard invariant 化** — `/rite:pr:open` のブランチ作成直前に `multi_session` を `rite-config.yml` から再パースし（resume / context 圧縮 / フロー途中入場で失われうる `[CONTEXT]` marker への依存を排除）、legacy の `git switch -c` 経路は `multi_session.enabled: false` のときのみ到達可能にした。`EnterWorktree` 後にリポジトリ top-level が worktree path と一致するか検証し、不一致なら main ツリー上で silent 続行せず停止する。`flow-state.sh set --require-worktree` は worktree 不在で branch/PR phase を記録しようとした場合に loud warning を emit する。
 
 ## [0.6.3] - 2026-06-19
 
 ### ドキュメント
 
-- README を二言語構成に再編: `README.md`（英語・英語版紹介動画）と新設の `README.ja.md`（日本語・日本語版紹介動画）を、各冒頭の言語切替リンクで相互リンク (#1585, #1587)
+- README を二言語構成に再編: `README.md`（英語・英語版紹介動画）と新設の `README.ja.md`（日本語・日本語版紹介動画）を、各冒頭の言語切替リンクで相互リンク
 
 ## [0.6.2] - 2026-06-19
 
 ### ドキュメント
 
-- README 冒頭に紹介動画（日本語字幕）の Demo セクションを追加 (#1580)
+- README 冒頭に紹介動画（日本語字幕）の Demo セクションを追加
 
 ## [0.6.1] - 2026-06-18
 
 ### 修正
 
-- **`EnterWorktree` の harness git 誤判定失敗時に再起動 remedy を案内** — `multi_session.enabled: true`（デフォルト）で `/rite:pr:open` Step 2.3-W および `/rite:resume` 再入場が harness の git リポジトリ誤判定（`.git` 存在 + `git` CLI 正常だが起動時判定が false）を検出し、リポジトリ root から Claude Code を再起動して作成済み worktree を `WT_CASE=reuse` で継続するよう推奨するようにした。従来の「中止 / `git switch -c`」二択のみだった fallback を改善。`getting-started.md` / `git-worktree-patterns.md` に記載。(#1574)
+- **`EnterWorktree` の harness git 誤判定失敗時に再起動 remedy を案内** — `multi_session.enabled: true`（デフォルト）で `/rite:pr:open` Step 2.3-W および `/rite:resume` 再入場が harness の git リポジトリ誤判定（`.git` 存在 + `git` CLI 正常だが起動時判定が false）を検出し、リポジトリ root から Claude Code を再起動して作成済み worktree を `WT_CASE=reuse` で継続するよう推奨するようにした。従来の「中止 / `git switch -c`」二択のみだった fallback を改善。`getting-started.md` / `git-worktree-patterns.md` に記載。
 
 ## [0.6.0] - 2026-06-18
 
 ### 追加
 
-- **実装フェーズの Canon TDD サイクル** — `tdd.enabled: true`（デフォルト ON）のとき、`/rite:issue:implement` は実装を Canon TDD ループで進める: テストリストから 1 つ選ぶ → Red を確認 → 最小実装で Green → Refactor → リストが空になるまで繰り返す。graceful degrade に対応し、`commands.test: null` では「Degraded TDD」モード（テストリスト規律は維持・自動実行は警告付きで skip）、`tdd.enabled: false` では従来の非 TDD フローに戻る。(#1567)
-- **`tdd:` 設定セクション（デフォルト ON / opt-out）** — 配布版 `rite-config.yml` に `enabled: true` の `tdd:` セクションを追加。`/rite:init --upgrade` は `wiki` / `multi_session` と同じ active-section 方式で既存プロジェクトにも back-add する。(#1566)
-- **Canon TDD のドキュメント整備とテストリスト framing** — Issue テンプレートの Section 6「Test Specification」を Canon TDD のテストリスト（T-xx 1 行 = 1 サイクル Red→Green→Refactor）として位置づけ、`skills/rite-workflow`・`docs/SPEC.md`・getting-started・`pr/open.md` に TDD サイクルを反映。(#1568)
+- **実装フェーズの Canon TDD サイクル** — `tdd.enabled: true`（デフォルト ON）のとき、`/rite:issue:implement` は実装を Canon TDD ループで進める: テストリストから 1 つ選ぶ → Red を確認 → 最小実装で Green → Refactor → リストが空になるまで繰り返す。graceful degrade に対応し、`commands.test: null` では「Degraded TDD」モード（テストリスト規律は維持・自動実行は警告付きで skip）、`tdd.enabled: false` では従来の非 TDD フローに戻る。
+- **`tdd:` 設定セクション（デフォルト ON / opt-out）** — 配布版 `rite-config.yml` に `enabled: true` の `tdd:` セクションを追加。`/rite:init --upgrade` は `wiki` / `multi_session` と同じ active-section 方式で既存プロジェクトにも back-add する。
+- **Canon TDD のドキュメント整備とテストリスト framing** — Issue テンプレートの Section 6「Test Specification」を Canon TDD のテストリスト（T-xx 1 行 = 1 サイクル Red→Green→Refactor）として位置づけ、`skills/rite-workflow`・`docs/SPEC.md`・getting-started・`pr/open.md` に TDD サイクルを反映。
 
 ## [0.5.5] - 2026-06-17
 
 ### 修正
 
-- **`bang-backtick-check.sh` が消費側 repo をハードブロックしなくなった** — `--skip-if-no-target` フラグを追加し、`--all` で走査対象の `plugins/rite/` markdown が無いとき（マーケットプレイス参照のみの消費側 repo）に `rc=2`（invocation error）ではなく clean skip（rc=0）を返すようにした。これにより `/rite:pr:ready` / `/rite:pr:create` での強制手動バイパスを解消。self-host repo では従来の `rc=2` 誤設定診断を維持。(#1551)
-- **active-but-idle なセッション worktree を lazy reap から保護** — `pr-cycle-cleanup.sh` が、claim heartbeat が stale 化（`CLAIM_STALE_SECONDS` 超のアイドル）していても claim holder が `active=true` の worktree を reap しないようにし、resume 時の `/clear` "Path does not exist" 再発を防止。(#1553)
-- **read-only コマンドが実出力を再びリレーするようにした** — `/rite:issue:list` / `/rite:investigate` / `/rite:workflow` / `/rite:skill:suggest` から `context: fork` を除去し、ハーネスの制御ラッパー文ではなくコマンド本来の出力を inline 表示するようにした。(#1556)
-- **`orphan-reference-check.sh --all` がセッション worktree 内で動作するようにした** — `--all` の走査を `REPO_ROOT` 相対にし、`.rite/worktrees/issue-N` worktree から実行しても全ファイルが除外され `exit 2` になる問題を解消。デフォルト構成（`multi_session.enabled: true`）で orphan 検出を復活。(#1557)
+- **`bang-backtick-check.sh` が消費側 repo をハードブロックしなくなった** — `--skip-if-no-target` フラグを追加し、`--all` で走査対象の `plugins/rite/` markdown が無いとき（マーケットプレイス参照のみの消費側 repo）に `rc=2`（invocation error）ではなく clean skip（rc=0）を返すようにした。これにより `/rite:pr:ready` / `/rite:pr:create` での強制手動バイパスを解消。self-host repo では従来の `rc=2` 誤設定診断を維持。
+- **active-but-idle なセッション worktree を lazy reap から保護** — `pr-cycle-cleanup.sh` が、claim heartbeat が stale 化（`CLAIM_STALE_SECONDS` 超のアイドル）していても claim holder が `active=true` の worktree を reap しないようにし、resume 時の `/clear` "Path does not exist" 再発を防止。
+- **read-only コマンドが実出力を再びリレーするようにした** — `/rite:issue:list` / `/rite:investigate` / `/rite:workflow` / `/rite:skill:suggest` から `context: fork` を除去し、ハーネスの制御ラッパー文ではなくコマンド本来の出力を inline 表示するようにした。
+- **`orphan-reference-check.sh --all` がセッション worktree 内で動作するようにした** — `--all` の走査を `REPO_ROOT` 相対にし、`.rite/worktrees/issue-N` worktree から実行しても全ファイルが除外され `exit 2` になる問題を解消。デフォルト構成（`multi_session.enabled: true`）で orphan 検出を復活。
 
 ## [0.5.4] - 2026-06-16
 

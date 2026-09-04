@@ -1,5 +1,5 @@
 #!/bin/bash
-# Contract tests for persistent NB sweep re-entry guard (#2433).
+# Contract tests for persistent NB sweep re-entry guard.
 #
 # T-01 5.S entry: file exists → skipped, no collect / no --nb-sweep invoke in that branch
 # T-02 empty collect writes noop; write-failure must not leave a skip file
@@ -26,7 +26,7 @@ PR_CYCLE="$PLUGIN_ROOT/hooks/scripts/pr-cycle-cleanup.sh"
 SCHEMA="$PLUGIN_ROOT/references/review-result-schema.md"
 CONTRACT="$PLUGIN_ROOT/hooks/tests/nb-sweep-contract.test.sh"
 
-echo "=== nb-sweep re-entry guard (#2433) ==="
+echo "=== nb-sweep re-entry guard ==="
 
 assert_file_exists_or_fail "iterate skill" "$ITERATE" || true
 assert_file_exists_or_fail "fix skill" "$FIX" || true
@@ -193,7 +193,7 @@ assert "T-08 nested 3-line git add -A does not stage nb-sweep-done" "0" "$gi_set
 rm -rf -- "$gi_setup"
 
 # --- T-09 / AC-7: 2 行 done-file でも 5.S skip と fix 1.5 は 1 行時と同一 ---
-# 既存 T-06〜T-08 は残す。本 ID は #2439 の 2 行化回帰。
+# 既存 T-06〜T-08 は残す。本 ID は の 2 行化回帰。
 assert_grep_in_section "T-09 iterate 5.S still uses head -1" "$ITERATE" \
   '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
   'head -1 "\$nb_done_file"'

@@ -1,4 +1,4 @@
-# Wiki Promotion Audit #2091 — Inline Content Delegation
+# Wiki Promotion Audit — Inline Content Delegation
 
 The `promote: rite-plugin` page
 `inline-content-delegation-avoids-malformed-toolcall` is shelved because

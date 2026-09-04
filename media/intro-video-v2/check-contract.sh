@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # シーン契約のガードが実際に発火することを確かめる。
 # fixture を置くだけでは、ガードを消しても決定論チェックは green のまま通る（実測: 契約ガードを
-# 「既定尺 2000ms で続行」へ変異させても check-determinism.sh は成功した）。Issue #2240 の
+# 「既定尺 2000ms で続行」へ変異させても check-determinism.sh は成功した）。 の
 # AC-3 / T-03 に対応する自動検証で、各 fail-loud ガードに 1 ケースずつ対応させる。
 set -euo pipefail
 

@@ -92,7 +92,7 @@ flow-state は complexity フィールドを持たず、Projects の Complexity 
 
 **表行を最後に読む理由**: helper は code fence を剥がさないため、表記法そのものを**説明している** Issue が本文中の例から値を解決してしまう。記法 1 の Meta 行と記法 2 の `## 複雑度` 節はいずれも「そこが宣言である」ことを形で示すが、表行は body のどこにでも現れうる。実測では、記法 2 で `M` を宣言し別節に表の例を置いた body が表行を先に読むと `XS` へ落ち（**M+ が silent に light へ落ちる = AC-4 違反**）、記法 2 宣言 + 文書用の表ヘッダ（`| **Complexity** | Projects Complexity field |`、issue-edit/SKILL.md に実在）では `complexity_invalid` へ落ちた。同じ理由で記法 3 の抽出は `head -1` で先頭の表行に固定する。
 
-記法 3 を受理するのは speculative な一般化ではなく実測に基づく — 表形式 Meta の Issue が本リポジトリに定常的に存在し（#2429 / #2430 / #2431 / #2433 / #2434）、#2432 では `/rite:batch-run` が open 段（[open ステップ 3.3.1](../../open/SKILL.md) の fail-loud）で停止した。**表形式を生成する code path は無い**（テンプレートは記法 1 が canonical）ため起票経路の是正では直せず、reader 側の受理でしか解けない。マーケットプレイス配布先の Issue は rite のテンプレートに従わないため、reader の堅牢化が配布物として正しい側でもある。記法 1 を最優先するのは、helper が code fence を剥がさないため、表記法そのものを**説明している** Issue が本文中の例から値を解決するのを防ぐため。
+記法 3 を受理するのは speculative な一般化ではなく実測に基づく — 表形式 Meta の Issue が本リポジトリに定常的に存在し（ / / / / ）、 では `/rite:batch-run` が open 段（[open ステップ 3.3.1](../../open/SKILL.md) の fail-loud）で停止した。**表形式を生成する code path は無い**（テンプレートは記法 1 が canonical）ため起票経路の是正では直せず、reader 側の受理でしか解けない。マーケットプレイス配布先の Issue は rite のテンプレートに従わないため、reader の堅牢化が配布物として正しい側でもある。記法 1 を最優先するのは、helper が code fence を剥がさないため、表記法そのものを**説明している** Issue が本文中の例から値を解決するのを防ぐため。
 
 **Complexity の自動判定はしない**。宣言値をそのまま使い、誤宣言の是正は既存の issue-create 見積もり手順と、上記 Cross-File Impact Check の安全網に委ねる。判定器の新設は speculative である。
 

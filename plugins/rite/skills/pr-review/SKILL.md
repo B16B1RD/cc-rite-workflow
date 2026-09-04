@@ -45,7 +45,7 @@ rationale: references/design-rationale.md#argument-parsing-notes
 
 `/rite:iterate` E2E ではステップ 4 は **full execution**、ステップ 5-7 の **人間向け出力** のみ minimize する。sub-agent 省略 / parallel 直列化 は identity 違反。
 rationale: references/design-rationale.md#e2e-minimization-scope
-**AskUserQuestion の扱いは 2 種を区別する（#1861）**: ステップ 7 の recommendations トリアージは E2E でも処理自体の **skip 禁止**。Decision Log への可逆な記録は自動処理し、ユーザー固有・不可逆な disposition だけ質問する。ステップ 3.3 の pre-flight レビュアー構成確認は E2E で **skip 可**（詳細はステップ 3.3）。いずれの場合も `起動 reviewer {count} 名` サマリ行・省略された reviewer 表示・ステップ 4 のフルレビュー実行は省略しない。
+**AskUserQuestion の扱いは 2 種を区別する**: ステップ 7 の recommendations トリアージは E2E でも処理自体の **skip 禁止**。Decision Log への可逆な記録は自動処理し、ユーザー固有・不可逆な disposition だけ質問する。ステップ 3.3 の pre-flight レビュアー構成確認は E2E で **skip 可**（詳細はステップ 3.3）。いずれの場合も `起動 reviewer {count} 名` サマリ行・省略された reviewer 表示・ステップ 4 のフルレビュー実行は省略しない。
 rationale: references/design-rationale.md#e2e-askuser-split
 
 | Phase | Standalone | E2E Flow |
@@ -345,7 +345,7 @@ Terminate processing.
 
 Terminate processing.
 
-### 1.1.5 セッション worktree 健全性の保証（multi_session 有効時 / AC-1 #1676）
+### 1.1.5 セッション worktree 健全性の保証（multi_session 有効時 / AC-1 ）
 
 ステップ 1.2 以降は **作業ツリーから PR の変更ファイルを読む**。その前に対象 PR の作業ブランチに対応する session worktree を保証する。
 rationale: references/design-rationale.md#worktree-ensure-preamble
@@ -927,7 +927,7 @@ Security / co-reviewer / sole-reviewer-guard のあと `max_reviewers` を適用
 
 ### 3.3 Confirm Reviewers
 
-**E2E flow detection（#1861）**: `/rite:iterate` 経由の E2E では本ステップの pre-flight レビュアー構成確認 `AskUserQuestion`（末尾「オプション」の選択）を skip する。判定は `skills/ready/SKILL.md` Phase 2.1 と同型の flow-state。helper 失敗時は standalone（確認を出す）に fail-safe する:
+**E2E flow detection**: `/rite:iterate` 経由の E2E では本ステップの pre-flight レビュアー構成確認 `AskUserQuestion`（末尾「オプション」の選択）を skip する。判定は `skills/ready/SKILL.md` Phase 2.1 と同型の flow-state。helper 失敗時は standalone（確認を出す）に fail-safe する:
 rationale: references/design-rationale.md#e2e-confirm-skip
 
 ```bash

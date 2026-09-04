@@ -9,7 +9,7 @@
 # snapshot but visible from inside the Bash tool, so they show up as
 # spurious `??` entries in every `git status --porcelain` call made from a
 # sandboxed Bash command even though nothing in the working tree actually
-# changed (#1936). Detection is mechanism-based (`test -c`), never a
+# changed. Detection is mechanism-based (`test -c`), never a
 # filename allowlist, so it survives whatever set of paths a given sandbox
 # config happens to block.
 #

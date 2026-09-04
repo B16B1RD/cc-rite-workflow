@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)
-audit="$ROOT/plugins/rite/skills/pr-create/references/promotion-audit-2091.md"
+audit="$ROOT/plugins/rite/skills/pr-create/references/promotion-audit-review-fix-loop.md"
 create="$ROOT/plugins/rite/skills/pr-create/SKILL.md"
 heaviness="$ROOT/plugins/rite/hooks/scripts/bash-heaviness-check.sh"
 cleanup="$ROOT/plugins/rite/hooks/scripts/pr-cycle-cleanup.sh"

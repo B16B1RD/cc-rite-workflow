@@ -26,7 +26,7 @@ GitHub Projects (V2) is resolved through `repository(owner, name).projectV2(numb
 
 > **⚠️ Deprecated — do not reintroduce owner-type detection**
 >
-> Earlier revisions detected the owner type (`gh api users/{owner} --jq '.type'`) and switched between `user(login:)` and `organization(login:)` root queries. This branch was removed in #1612 (resolving #1609) because:
+> Earlier revisions detected the owner type (`gh api users/{owner} --jq '.type'`) and switched between `user(login:)` and `organization(login:)` root queries. This branch was removed in (resolving) because:
 >
 > - The real `gh` CLI does not return a usable type discriminator on the owner object, so the branch always fell back to the user-rooted query and **failed for Organization-owned projects**.
 > - It inspected the current repository's owner rather than the project owner.
@@ -521,7 +521,7 @@ esac
  "status": "ok | already-linked | failed",
  "parent": 514,
  "child": 600,
- "message": "linked #600 as sub-issue of #514",
+ "message": "linked as sub-issue of ",
  "warnings": []
 }
 ```

@@ -6,7 +6,7 @@
 # restricted to $TMPDIR (e.g. /tmp/claude-<uid>/...) and /tmp itself is mounted
 # read-only, while `.git/config` writes are always denied (harness built-in
 # protection). Three pattern families regressed repeatedly across sweeps
-# (#1894 -> #1900 -> #1902 -> #1904), so this check pins all of them:
+# (-> -> ->), so this check pins all of them:
 #
 #   P1: mktemp with a /tmp-prefixed template
 #       regex: mktemp + optional flags (-d 等) + optional quote + /tmp/
@@ -37,7 +37,7 @@
 #
 # Scan scope: plugins/rite/**/*.{md,sh} plus docs/**/*.md when present.
 # Exclusions:
-#   - */tests/* : test harnesses run outside the sandbox (tracked as #1903)
+# - */tests/*: test harnesses run outside the sandbox (tracked as)
 #   - references/gh-cli-error-catalog.md : intentional error-illustration examples
 #   - this script itself (pattern definitions would self-match)
 #

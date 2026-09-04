@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)
-audit="$ROOT/plugins/rite/skills/pr-review/references/promotion-audit-2091.md"
+audit="$ROOT/plugins/rite/skills/pr-review/references/promotion-audit-review-fix-loop.md"
 review="$ROOT/plugins/rite/skills/pr-review/SKILL.md"
 fix="$ROOT/plugins/rite/skills/fix/SKILL.md"
 iterate="$ROOT/plugins/rite/skills/iterate/SKILL.md"

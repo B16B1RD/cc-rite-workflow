@@ -4,7 +4,7 @@ HyperFrames source for the former Demo (replaced in v0.11.0 by the v2 full cut u
 
 ## Provenance
 
-- Originally produced in the standalone directory `~/Projects/work/rite-intro-video-en/`; imported under repository management (`media/intro-video-en/`) in Issue #1687.
+- Originally produced in the standalone directory `~/Projects/work/rite-intro-video-en/`; imported under repository management (`media/intro-video-en/`) in.
 - Imported as-is without altering the source, then updated to the v0.7 spec in a separate commit.
 
 ## Build / preview

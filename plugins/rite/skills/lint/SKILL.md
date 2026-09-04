@@ -424,7 +424,7 @@ fi
 - **Out-of-contract exit codes**（0/1/2/-1 以外）: `error` として warning 記録し続行。
 rationale: references/rationale.md#findings-are-warnings
 
-**Per-check notes**: Number reference `--all` は git-tracked 全件 − helper の path 除外（wiki raw、script fixtures、検出器テスト 3 本）。CHANGELOG は対象。履歴ヒットは warning ノイズとして許容。
+**Per-check notes**: Number reference `--all` は git-tracked 全件 − helper の path 除外（wiki raw、script fixtures、検出器テスト 3 本）。CHANGELOG は対象。`/rite:lint` では warning。CI の `shellcheck` job は同じ `--all` を blocking にする。
 
 **Adding a new check**: 表に 1 行（path / label / prefix / count regex）、exit 契約（0/1/2）と count line、根拠を [plugin-checks-rationale.md](references/plugin-checks-rationale.md) へ。新 Phase / appendix / summary 行は不要。
 

@@ -398,7 +398,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
       # search over git's own source (`grep -rn 'git config' plugins/`) tokenizes
       # to a bare ` git config `, so it over-DENYs (fail-closed, rare, recoverable
       # — break the adjacency: `grep -rn git plugins/ | grep config`). Precise
-      # narrowing would need the separator tracking #1879 deliberately removed.
+      # narrowing would need the separator tracking deliberately removed.
       _gn_t="${_gn_tok//[\"\']/}"; _gn_t="${_gn_t//\\/}"
       if [ "$_gn_skip_arg" = "1" ]; then _gn_skip_arg=0; continue; fi
       case "$_gn_state" in
@@ -555,7 +555,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
       # Resolve the verb to its bare form the SAME way the shell does: strip
       # quotes/backslashes, then basename — otherwise an obfuscated verb
       # (`'tee'`, `t\ee`) evades the latch while the shell still runs it (Issue
-      # #1864 cycle-5 fix). The basename catches `/usr/bin/tee`; `command cp` /
+      # cycle-5 fix). The basename catches `/usr/bin/tee`; `command cp` /
       # `exec cp` already reach here as a bare `cp` token.
       _gd_verb="${_gd_tok//[\"\']/}"; _gd_verb="${_gd_verb//\\/}"; _gd_verb="${_gd_verb##*/}"
       case "$_gd_verb" in
@@ -658,7 +658,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     fi
     # 3) flow-state pr_number — only when the merge argv has no unresolved
     # non-flag token. Number-less `gh pr merge --squash` (merge skill on the PR
-    # branch) still falls back; `"$PR"` / `$PR` must deny fail-loud (#2173).
+    # branch) still falls back; `"$PR"` / `$PR` must deny fail-loud.
     if [ -z "$_mrg_pr" ] && [ "$_mrg_nonflag_unresolved" != "1" ]; then
       _mrg_pr=$(bash "$SCRIPT_DIR/flow-state.sh" get --field pr_number --default "" 2>/dev/null) || _mrg_pr=""
       # treat unset / 0 / non-numeric as unresolved

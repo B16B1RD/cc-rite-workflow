@@ -802,7 +802,7 @@ if [ -z "$plugin_root" ] || [ ! -d "$plugin_root/templates/wiki" ]; then
   exit 0
 fi
 
-# Claude placeholder {mode} 残留 fail-fast gate (同型 gate: ステップ 1.1 / 1.3)。#1941 wiki push
+# Claude placeholder {mode} 残留 fail-fast gate (同型 gate: ステップ 1.1 / 1.3)。 wiki push
 # batch/defer: --auto (ingest から呼ばれた) なら push を ingest 側の集約 push (ingest.md ステップ 8.6)
 # に委ね、ここでは --commit-only で commit のみ行う。standalone 実行 (mode 空) は従来どおり commit + push
 # を即座に行う (standalone lint はそれ自身で完結した 1 フローのため、集約する相手が存在しない)。
@@ -843,7 +843,7 @@ case "$branch_strategy" in
     set +e
     if [ "$auto_mode" = "true" ]; then
       # --auto: ingest から呼ばれている。push は ingest.md ステップ 8.6 の集約 push に委ね、
-      # ここでは commit のみ行う (#1941 AC-1)。
+      # ここでは commit のみ行う (AC-1)。
       commit_out=$(bash "$plugin_root/hooks/scripts/wiki-worktree-commit.sh" --commit-only --message "$commit_msg")
     else
       # standalone: この lint 実行自身が唯一のフローのため、従来どおり即座に commit + push する。

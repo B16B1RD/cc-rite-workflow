@@ -20,7 +20,7 @@ Initial setup wizard for rite workflow
 |----------|-------------|
 | `--upgrade` | Upgrade existing rite-config.yml to the latest schema version |
 
-When `--upgrade` is specified, skip to [Phase 4.1.3 (Upgrade)](#413-upgrade-existing-configuration). Otherwise, run the following phases in order.
+When `--upgrade` is specified, skip to [Phase 4.1.3 (Upgrade)](-upgrade-existing-configuration). Otherwise, run the following phases in order.
 
 ## Phase 1: Environment Check
 
@@ -1505,7 +1505,7 @@ Then:
 
 ---
 
-## Phase 4.8: Sandbox Write-Allowlist 自動設定（multi_session 有効時、#1896 / #1942）
+## Phase 4.8: Sandbox Write-Allowlist 自動設定（multi_session 有効時、 / ）
 
 `multi_session.enabled: true`（Phase 4.1 で決定済み。新規生成・back-add いずれでも既定 ON）**かつ** Claude 自身の Bash tool 定義（sandbox セクション）が filesystem write 制限付き sandbox で動作している場合のみ実行する。いずれか一方でも該当しない場合は本節を完全に silent skip する（案内・warning 共に一切出さない — AC-3）。
 
@@ -1575,7 +1575,7 @@ rationale: references/rationale.md#sandbox-allowlist
    sandbox.filesystem.allowWrite へ自動追加しました。
    反映は次回セッションからになる場合があります（現在のセッションで反映されない場合は
    Claude Code を再起動してください）。
-   詳細: git-worktree-patterns.md の #1896 対処節を参照
+   詳細: git-worktree-patterns.md の 対処節を参照
 ```
 
 **フォールバック時のメッセージ**（自動設定に失敗した場合のみ、従来どおり手動設定を案内）。以下のテンプレートをそのまま出力し、要約・言い換え（「〜旨を案内」等の間接話法を含む）をしないこと:
@@ -1587,12 +1587,12 @@ rationale: references/rationale.md#sandbox-allowlist
    .claude/settings.local.json への自動設定に失敗したため、手動で以下を追加してください:
    恒久対処: /sandbox コマンド、または settings の sandbox 設定で、write 許可リストへ
      main checkout root の絶対パス（{repo_root}）を追加してください
-   詳細: git-worktree-patterns.md の #1896 対処節を参照
+   詳細: git-worktree-patterns.md の 対処節を参照
 ```
 
 **→ Proceed to Phase 4.9 (both new-install and `--upgrade` reach Phase 4.9 the same way they reach this Phase).**
 
-## Phase 4.9: SSH Host Alias Remote の Sandbox 事前案内（#1907）
+## Phase 4.9: SSH Host Alias Remote の Sandbox 事前案内
 
 `origin` が SSH host alias 経由（例: `git@github.com-work:owner/repo.git`）**かつ** Claude 自身の Bash tool 定義がネットワーク制限付き sandbox のときのみ表示する。いずれか一方でも該当しない場合は本節を完全に silent skip する（案内・warning 共に一切出さない）。`multi_session` の有無には依存しない。
 

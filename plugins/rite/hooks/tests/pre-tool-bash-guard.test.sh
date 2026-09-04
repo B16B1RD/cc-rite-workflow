@@ -578,7 +578,7 @@ echo ""
 # TC-203: past false-positive commands → allow (AC-4)
 # Commands that historically required bypass/false-positive patches against the
 # removed verb denylist (quote-boundary echoes, grep pattern args, branch names
-# embedding flag substrings, worktree-add arg-loop noglob #1866). With the verb
+# embedding flag substrings, worktree-add arg-loop noglob). With the verb
 # machinery gone these must all pass with zero mis-detection.
 # --------------------------------------------------------------------------
 echo "TC-203: past false-positive command set → allow (no mis-detection)"
@@ -1506,7 +1506,7 @@ rm -rf "$tc125_noglob_dir"
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-127: reviewer native .git-writing git subcommands (sub-block (N), #1879)
+# TC-127: reviewer native.git-writing git subcommands (sub-block (N))
 # `git config <key> <value>` / mutating `git remote` / `git update-ref` /
 # `git symbolic-ref` write .git/config or .git refs directly — no redirect and
 # no file verb, so (H) cannot see them. `git config core.hooksPath` is the exact
@@ -1986,7 +1986,7 @@ echo ""
 # Why: variable-form PR token must not fall back to flow-state
 # --------------------------------------------------------------------------
 
-echo "TC-138 / T-01 (#2173): variable-form \"\$PR\" denies even when flow-state has qualifying other PR"
+echo "TC-138 / T-01: variable-form \"\$PR\" denies even when flow-state has qualifying other PR"
 _mrg_tmp=$(mktemp -d)
 _mrg_setup_state "$_mrg_tmp"
 _mrg_set_flow_pr "$_mrg_tmp" 77
@@ -2015,7 +2015,7 @@ fi
 rm -rf "$_mrg_tmp"
 echo ""
 
-echo "TC-139 / T-02 (#2173): literal numeric form still allowed (non-regression of TC-128 path)"
+echo "TC-139 / T-02: literal numeric form still allowed (non-regression of TC-128 path)"
 _mrg_tmp=$(mktemp -d)
 _mrg_setup_state "$_mrg_tmp"
 _mrg_write_json "$_mrg_tmp" "99-good.json" "$(_mrg_qualifying_json)"
@@ -2037,7 +2037,7 @@ fi
 rm -rf "$_mrg_tmp"
 echo ""
 
-echo "TC-140 / T-03 (#2173): flag-only tail still uses flow-state fallback (pin limited retention)"
+echo "TC-140 / T-03: flag-only tail still uses flow-state fallback (pin limited retention)"
 _mrg_tmp=$(mktemp -d)
 _mrg_setup_state "$_mrg_tmp"
 _mrg_set_flow_pr "$_mrg_tmp" 77
@@ -2060,7 +2060,7 @@ fi
 rm -rf "$_mrg_tmp"
 echo ""
 
-echo "TC-140a / T-04 (#2269): verified develop -> main promotion with pinned head is allowed"
+echo "TC-140a / T-04: verified develop -> main promotion with pinned head is allowed"
 _mrg_tmp=$(mktemp -d)
 _mrg_setup_state "$_mrg_tmp"
 mkdir -p "$_mrg_tmp/.rite/release-promotions"
@@ -2078,7 +2078,7 @@ fi
 rm -rf "$_mrg_tmp"
 echo ""
 
-echo "TC-140b / T-05 (#2269): stale or unpinned promotion attestation denies fail-loud"
+echo "TC-140b / T-05: stale or unpinned promotion attestation denies fail-loud"
 _mrg_tmp=$(mktemp -d)
 _mrg_setup_state "$_mrg_tmp"
 mkdir -p "$_mrg_tmp/.rite/release-promotions"
@@ -2099,7 +2099,7 @@ fi
 rm -rf "$_mrg_tmp"
 echo ""
 
-echo "TC-140c / T-06 (#2269): pin in a later shell command cannot authenticate the merge"
+echo "TC-140c / T-06: pin in a later shell command cannot authenticate the merge"
 _mrg_tmp=$(mktemp -d)
 _mrg_setup_state "$_mrg_tmp"
 mkdir -p "$_mrg_tmp/.rite/release-promotions"
@@ -2123,7 +2123,7 @@ echo ""
 # Why: persist deny-only audit records
 # --------------------------------------------------------------------------
 
-echo "TC-141 / T-01 (#2174): deny appends the stderr event to bash-guard.log"
+echo "TC-141 / T-01: deny appends the stderr event to bash-guard.log"
 _audit_tmp=$(mktemp -d)
 rc=0
 RITE_STATE_ROOT="$_audit_tmp" jq -n --arg cmd "gh pr diff 99 --stat" \
@@ -2157,7 +2157,7 @@ fi
 rm -rf "$_audit_tmp"
 echo ""
 
-echo "TC-142 / T-02 (#2174): audit write failure preserves deny JSON and warns"
+echo "TC-142 / T-02: audit write failure preserves deny JSON and warns"
 _audit_tmp=$(mktemp -d)
 mkdir -p "$_audit_tmp/.rite"
 printf 'not-a-directory\n' > "$_audit_tmp/.rite/logs"
@@ -2174,7 +2174,7 @@ fi
 rm -rf "$_audit_tmp"
 echo ""
 
-echo "TC-143 / T-03 (#2174): allow does not create an audit log"
+echo "TC-143 / T-03: allow does not create an audit log"
 _audit_tmp=$(mktemp -d)
 jq -n --arg cmd "printf safe" '{tool_name:"Bash",tool_input:{command:$cmd}}' \
   | RITE_STATE_ROOT="$_audit_tmp" bash "$HOOK" >/dev/null 2>"$_audit_tmp/stderr" || true

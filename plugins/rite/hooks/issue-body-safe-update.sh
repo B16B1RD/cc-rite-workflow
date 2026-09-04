@@ -60,7 +60,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # (e.g. git@github.com-work:owner/repo.git). gh expands such aliases by reading
 # ~/.ssh/config, so the failure surfaces specifically where that read is denied —
 # notably the sandboxed workflow environment, where every body update degraded to
-# fetch_failure_reason=gh_view_failed (#1914). Resolving owner/repo ourselves and
+# fetch_failure_reason=gh_view_failed. Resolving owner/repo ourselves and
 # passing it explicitly bypasses gh's host inference entirely.
 #
 # Both paths are best-effort: when neither yields an owner/repo the caller keeps
@@ -71,7 +71,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 get_owner_repo() {
   local _err _rc=0 _out _git_err _git_or_line _git_owner _git_repo
   # git-remote parse first: works even when `origin` is an SSH Host alias that
-  # gh's host allowlist rejects (#1899). Falls through to `gh repo view` when the
+  # gh's host allowlist rejects. Falls through to `gh repo view` when the
   # parse fails (no origin remote, unparseable URL).
   _git_err=$(mktemp "${TMPDIR:-/tmp}/rite-issue-body-remote-err-XXXXXX" 2>/dev/null) || _git_err=""
   _git_or_line=$(bash "$SCRIPT_DIR/scripts/lib/git-remote.sh" resolve-owner-repo 2>"${_git_err:-/dev/null}") || _git_or_line=""
@@ -139,7 +139,7 @@ err_level="WARNING"
 
 # Resolved once ahead of the mode dispatch: fetch and apply each issue exactly one
 # gh call needing the flag, and resolution is identical for either mode. Empty
-# array = pre-#1914 behaviour, so an unresolvable repo degrades instead of failing.
+# array = pre- behaviour, so an unresolvable repo degrades instead of failing.
 GH_REPO_ARGS=()
 OWNER_REPO=$(get_owner_repo)
 if [ -n "$OWNER_REPO" ]; then

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Contract tests for post-mergeable NB digest sweep helpers (#2409).
+# Contract tests for post-mergeable NB digest sweep helpers.
 #
 # T-01 collect NB targets (AC-1)
 # T-02 ledger append with rationale (AC-2)
@@ -8,7 +8,7 @@
 # T-05 nit-noted in findings[] is a target; new class-B is not a second sweep (AC-5)
 # T-06 ledger write / merge fail-loud (AC-6)
 # T-07 class A findings[] stay out of sweep targets (AC-7)
-# T-08 body_count extraction expression matches between fix/SKILL.md and the record helper (#2480 AC-1..AC-3)
+# T-08 body_count extraction expression matches between fix/SKILL.md and the record helper (AC-1..AC-3)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -218,7 +218,7 @@ assert_grep "T-07 pr-review WARNING 却下台帳取得失敗" "$REVIEW" 'WARNING
 assert_grep "T-07 pr-review failed-path 注記" "$REVIEW" '台帳取得失敗 — 却下済み指摘の再訴訟の可能性'
 assert_grep "T-07 prompt rejected_ledger" "$PROMPT" '{rejected_ledger}'
 
-# --- T-08 (#2480 AC-1..AC-3): body_count の抽出式が producer (fix/SKILL.md) と validator (helper) で一致する ---
+# --- T-08 (AC-1..AC-3): body_count の抽出式が producer (fix/SKILL.md) と validator (helper) で一致する ---
 # fix/SKILL.md ステップ 1.3.S step 3 は抽出した値を helper へ `--count` として渡し、helper は
 # 同じ行を自前の式で再検査する。片側だけを書き換えると producer が通した body を validator が
 # count_body_mismatch で落とす。この不一致は実行時にしか現れないため、両者の式を突き合わせて

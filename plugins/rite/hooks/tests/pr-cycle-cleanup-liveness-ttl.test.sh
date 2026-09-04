@@ -13,9 +13,9 @@
 # while its flow-state `updated_at` is within the TTL.
 #
 #   AC-1: TTL-exceeded active=true holder (signal A) -> worktree is reaped
-#   AC-2: TTL-within active=true holder -> protected (non-regression of #1524/#1552)
+# AC-2: TTL-within active=true holder -> protected (non-regression of /)
 #   AC-3: after a TTL-exceeded holder's worktree is reaped, its manifest-recorded
-#         (merge-confirmed) branch is force-recovered in the same run (#1670 wiring)
+# (merge-confirmed) branch is force-recovered in the same run (wiring)
 #   AC-4: updated_at missing / malformed (non-ISO-8601) -> protected, fail-safe,
 #         no date-incompatible WARNING (that WARNING is reserved for a
 #         well-formed-but-unparseable timestamp — see the 4.5 case below)
@@ -81,7 +81,7 @@ ts_seconds_ago() {
 
 # Build a main checkout with multi_session config + a session worktree for issue
 # N. Holder SID_A gets BOTH signal (A) (flow-state.worktree recorded) and signal
-# (B) (a matching claim) so either alone would protect pre-#1923 — TTL must gate
+# (B) (a matching claim) so either alone would protect pre- — TTL must gate
 # both. `.rite-session-id`=SID_B makes the reaping session distinct from the
 # holder. Echoes the repo root.
 make_repo() {
@@ -134,7 +134,7 @@ assert "TC-2 TTL-within worktree survives" "1" "$( [ -d "$R/.rite/worktrees/issu
 assert_grep "TC-2 worktree-liveness WARNING on stderr" "$R/pcc.err" "worktree liveness"
 case "$out" in *"session_worktrees=0"*) pass "TC-2 status reports session_worktrees=0" ;; *) fail "TC-2 status: $out" ;; esac
 
-echo "=== TC-3 (AC-3, #1670 wiring): TTL 超過 holder の manifest 記録ブランチが worktree reap 後に回収される ==="
+echo "=== TC-3 (AC-3, wiring): TTL 超過 holder の manifest 記録ブランチが worktree reap 後に回収される ==="
 R=$(make_repo 202); cleanup_dirs+=("$R")
 set_updated_at "$R" "$(ts_hours_ago 25)"
 echo "wip" > "$R/.rite/worktrees/issue-202/wip.txt"

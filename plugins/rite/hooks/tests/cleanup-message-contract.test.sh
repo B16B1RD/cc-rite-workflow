@@ -63,7 +63,7 @@ assert_grep "Step 5 reads the {pr_merged} signal" "$CLEANUP" "pr_merged"
 assert_grep "Step 5 emits via=squash-merged on confirmed-merged force delete" "$CLEANUP" "via=squash-merged"
 assert_grep "Step 5 records the deferred branch to the reap manifest" "$DEFERRED_HELPER" "rite-tmp-artifact\.sh.*record --type branch"
 # Deferred branch only auto-recovers when the manifest record succeeds and the
-# target worktree passes the same filtered dirty gate as the reaper (#2048).
+# target worktree passes the same filtered dirty gate as the reaper.
 assert_grep "Step 5 delegates recovery classification to the executable helper" "$BRANCH_DELETE_HELPER" "cleanup-deferred-branch-recovery\.sh"
 assert_grep "Step 5 emits recovery=auto only after its guards" "$CLEANUP" "recovery=auto"
 assert_grep "Step 5 emits recovery=manual for unsafe worktrees" "$CLEANUP" "recovery=manual"
@@ -169,7 +169,7 @@ echo "=== 委譲配線の排他性 (T-01/T-03 negative control) ==="
 assert "delegation marker is emitted exactly once" "1" \
   "$(grep -c 'echo "\[CONTEXT\] CLEANUP_DELEGATED=1' "$TEARDOWN_HELPER")"
 assert "delegation skip guard exists in exactly three steps" "3" \
-  "$(grep -c '委譲モード（#2133）' "$CLEANUP")"
+  "$(grep -c '> \*\*委譲モード\*\*:' "$CLEANUP")"
 # 件数固定は marker の **追加** を捕まえるが **移設** は捕まえない（総数が変わらないため）。
 # 住所は positive / negative の両方向で固定する — 片方だけでは変異が生存することを実測済み:
 #   `*)` arm への移設 / case 文の前への持ち上げ → negative control（下段）を素通りし positive（上段）が捕まえる
@@ -221,8 +221,8 @@ assert_grep "Step 12 manual fallback is scoped to the main checkout with its exa
 # 委譲 arm は記録を行わない（記録するのは再実行時のステップ 5 の `--type branch`）。arm に
 # `--type session_worktree` の record を足しても consumer 側の bypass は `_corpse -eq 1` を要求する
 # ため発火せず、ブランチの force-delete arm も `branch` エントリしか受け付けない = 不発コードになる。
-# 出現数を #1945 の 2 分岐（sandbox マスク検知 / busy 失敗）に固定して 3 箇所目の追加を検出する。
-assert "session_worktree record stays confined to the two #1945 branches" "2" \
+# 出現数を の 2 分岐（sandbox マスク検知 / busy 失敗）に固定して 3 箇所目の追加を検出する。
+assert "session_worktree record stays confined to the two branches" "2" \
   "$(grep -c 'record --type session_worktree' "$TEARDOWN_HELPER")"
 
 echo "=== ガード拒否条件の正確化 ==="

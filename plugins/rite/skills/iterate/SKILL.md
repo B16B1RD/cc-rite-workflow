@@ -96,7 +96,7 @@ marker_emit ITERATE_ISSUE "$iterate_issue" "ITERATE_BRANCH=$iterate_branch"
 
 LLM は `[CONTEXT] ITERATE_ISSUE` / `ITERATE_BRANCH` から値を読み、後続の flow-state.sh set 呼び出しで `--issue` / `--branch` に literal substitute する。値が空の場合は AskUserQuestion で「Issue 番号 / ブランチ名を入力 / 中止」を提示。
 
-### ステップ 0.5: セッション worktree 健全性の保証（multi_session 有効時 / AC-2 #1676）
+### ステップ 0.5: セッション worktree 健全性の保証（multi_session 有効時 / AC-2 ）
 
 ループに入る前に、対象作業ブランチの session worktree を保証する。共通ヘルパー `ensure_session_worktree`（[`lib/worktree-git.sh`](../../hooks/scripts/lib/worktree-git.sh)）で検出・再構築する（`{issue_number}` / `{branch_name}` は ステップ 0 の `ITERATE_ISSUE` / `ITERATE_BRANCH` marker の値）:
 rationale: references/rationale.md#worktree-ensure-preamble
@@ -948,7 +948,7 @@ fi
 # 成否は FIRE_RESET marker に載せる。失敗すると counter が上限のまま残り再実行が即再発火する
 # （= 停止通知が約束する「再実行すれば新しい run として cycle 1 から回る」が偽になる）ため、
 # ステップ 6.2 がこれを読んで注意行 (b) を出し分ける。
-# `--stop-reason`（#2045）は「発火した」という事実の durable な記録で、次セッションの
+# `--stop-reason`は「発火した」という事実の durable な記録で、次セッションの
 # `session-start.sh` がブレーカー失敗停止と Ctrl+C 中断を区別するために読む。**counter reset と同じ
 # set に載せる**のが要点で、ステップ 1 の fire 分岐に書いても本 set（`--stop-reason` なし）が
 # default-clear で消してしまう。ここに置くことで、上のコメントが言う「前段〜sentinel 間で turn が

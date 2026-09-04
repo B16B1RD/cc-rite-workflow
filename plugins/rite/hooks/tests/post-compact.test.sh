@@ -614,7 +614,7 @@ else
 fi
 
 # TC-RECON-09: SSH Host alias origin → git-remote fast path bypasses a broken
-# gh repo view (the actual #1899 scenario). Every fixture above uses a fake
+# gh repo view (the actual scenario). Every fixture above uses a fake
 # `mkdir -p .git` non-repo, so all of them fail to parse via git-remote and
 # fall through to (and exercise) the gh repo view fallback — none exercises
 # the git-remote fast path's *success* case at the caller level.
@@ -626,7 +626,7 @@ echo "{\"cwd\": \"$recon_dir\", \"source\": \"auto\"}" \
 if grep -qE 'post_compact_gh_repo_view_failed' "$recon_stderr"; then
   fail "git-remote fast path did not bypass the broken gh repo view fallback: $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
 else
-  pass "git-remote fast path bypasses broken gh repo view (real #1899 scenario, caller-level)"
+  pass "git-remote fast path bypasses broken gh repo view (real scenario, caller-level)"
 fi
 if grep -qE 'MOCK ASSERTION FAILED' "$recon_stderr"; then
   fail "git-remote fast path resolved the WRONG repo (not o/r from the alias origin): $(head -c 500 "$recon_stderr" | tr '\n' ' ')"
