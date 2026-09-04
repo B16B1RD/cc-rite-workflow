@@ -12,9 +12,15 @@ sources:
     resource: "raw/fixes/20260418T122707Z-pr-579.md"
   - type: "reviews"
     resource: "raw/reviews/20260804T145133Z-pr-2111.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260904T091303Z-pr-2549.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260904T092650Z-pr-2549.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-05T09:26:00+09:00" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T13:54:13Z" }
+verified:
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T13:54:13Z" }
 ---
 
 # LLM substitute placeholder は bash residue gate で fail-fast 化する
@@ -57,6 +63,10 @@ LLM substitute シームを持つ helper を新設するとき、SKILL.md 側（
 
 なお、gate の検出条件を「brace 囲み」の形状ヒューリスティックとして free text（title/description）へ転用すると正当値を棄却する（同 PR cycle 4 で実測）。residue 検出は呼び出し側が渡す literal（`{title}` 等）との exact 突合で行う — 詳細は関連ページの「防御は攻撃面と同じ粒度で張る」を参照。
 
+### 残留検査のパターンは placeholder 名ではなくブレースの形状で書く
+
+検査対象の値ではなく、**検査パターン自身**が substitute されると、gate は自分を無効化する。パターンに `*"{plugin_root}"*` のように placeholder 名を書くと、literal substitute がパターン側まで書き換え、実行時には常に既に埋まっている値と照合して residual を見逃す。sibling が使っているのはブレースの形状（`"{"*"}"`）であり、名前をパターンに埋め込まない。この欠陥は静的 grep からは見えず、実行可能ブロックを 1 回走らせた pin が捕まえた。
+
 ### LLM 内部状態 vs shell 変数の境界
 
 bash tool 呼び出し境界を跨いで shell 変数は保持されない。Phase A で `count=5` を定義しても Phase B からは参照不能で、LLM は自身の内部状態 (会話コンテキスト) から literal 値を substitute する責務を負う。この契約は bash コメントで明示することで、将来の読者が「なぜ placeholder が多いのか」を理解できる。
@@ -72,3 +82,5 @@ bash tool 呼び出し境界を跨いで shell 変数は保持されない。Pha
 - [レビュー結果](../../raw/reviews/20260418T122454Z-pr-579.md)
 - [fix 結果](../../raw/fixes/20260418T122707Z-pr-579.md)
 - [レビュー結果](../../raw/reviews/20260804T145133Z-pr-2111.md)
+- [レビュー結果](../../raw/reviews/20260904T091303Z-pr-2549.md)
+- [fix 結果](../../raw/fixes/20260904T092650Z-pr-2549.md)

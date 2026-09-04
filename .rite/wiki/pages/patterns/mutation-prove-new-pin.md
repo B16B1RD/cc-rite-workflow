@@ -31,14 +31,19 @@ sources:
     resource: "raw/reviews/20260904T004239Z-pr-2544.md"
   - type: "fixes"
     resource: "raw/fixes/20260904T005810Z-pr-2544.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260904T091303Z-pr-2549.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260904T092650Z-pr-2549.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T01:26:01Z" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T13:54:13Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T04:58:47Z" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T06:56:34Z" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T01:26:01Z" }
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T13:54:13Z" }
 ---
 
 # 追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない
@@ -78,6 +83,10 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 
 **mock に失敗フラグを置いても、テストが立てなければ死んだ mock になる**: SKILL.md から抽出して mock gh で回す契約テストでは、mock 側に `MOCK_GH_FIELD_LIST_FAIL=1` のような失敗経路があっても、ケースが一度もそのフラグを立てなければ field-list 失敗時の全置換フォールバックは緑のまま生存する。和集合テストも同じ穴で、カスタム option の id 保持だけを assert して required option の追加を見ないと、「不足分を足さない union」が素通りする。**mock が実装した失敗フラグはケースが立てること、union は keep と add の両軸を assert すること**を、変異を当てて当該 assert が赤くなるまで確認する。
 
+**mutation の共通後処理は vacuity ガードの後に置く**: mutant に共通の後処理（委譲先の絶対パス固定など）を `assert_mutant_changed` より前に適用すると、本来の変異が 1 文字も適用されなくても mutant は原本と異なる。vacuity ガードは「セレクタが何にも一致しなかった」を検出できなくなる。共通後処理は「変異が入った」ことを確認したあとへ移す。
+
+**到達不能になった否定文字列を pin したままにすると常時緑になる**: 診断値の arity を 4 から 3 に変えたあと、肯定 assertion は追随しても `assert_not_grep '4 値を返しませんでした'` が残ると、実装が何を出してもその文字列は現れず pin は永久に緑になる。否定 assertion は「今の実装が出し得る退行」だけを残し、到達不能になった文言は削除する。
+
 **単一 CLI モードの pin は兄弟モードを守らない**: 除外パスや文法を `--all` だけで pin すると、`--diff` / `--stdin` が別実装のまま緑で生存する。モードが 3 系統ある検出器は、同じ除外・同じ偽陽性を各モードへ 1 回ずつ当てて赤くなるまで完成していない。`--all` の成功を `--diff` の保証に読み替えてはならない。
 
 ## 関連ページ
@@ -100,3 +109,5 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 - [fix 結果](../../raw/fixes/20260902T064343Z-pr-2506.md)
 - [裸番号検出の cycle 1 レビュー結果](../../raw/reviews/20260904T004239Z-pr-2544.md)
 - [裸番号検出の修正結果](../../raw/fixes/20260904T005810Z-pr-2544.md)
+- [レビュー結果](../../raw/reviews/20260904T091303Z-pr-2549.md)
+- [fix 結果](../../raw/fixes/20260904T092650Z-pr-2549.md)

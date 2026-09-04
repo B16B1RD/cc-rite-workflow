@@ -15,6 +15,16 @@
 * **Create**: [検出文法が一部の表記だけを見るとき、同じ画面の別表記が検査外に残って整合が壊れたままゲートは通る](pages/anti-patterns/partial-format-detector-leaves-sibling-tokens-inconsistent.md) — raw/fixes/20260904T064911Z-pr-2548.md を新規ページ化
 * **Create**: [可変長を受ける側に対して、呼び出し側の診断が要素を書き下すと増減のたびに嘘になる](pages/patterns/vararg-callee-forbids-caller-side-enumeration.md) — raw/reviews/20260904T070318Z-pr-2548.md を新規ページ化
 * **lint:clean** — contradictions=0, stale=53, orphans=0, missing_concept=0, unregistered_raw=427, broken_refs=0
+* **Skip**: [20260904T134455Z-pr-2556.md](raw/reviews/20260904T134455Z-pr-2556.md) — detector-candidate: 番号参照 finding の description 先頭 Verification: は SKILL テンプレと既存 suite で機械 pin 済み
+* **Create**: [ゲートに検査を足すより、実行者が選べる自由度を削る](pages/heuristics/reduce-gate-degrees-of-freedom.md) — raw/reviews/20260904T091303Z-pr-2549.md を新規ページ化
+* **Create**: [ゲートの判定基準を被検査側が選べると検査は自己無効化する](pages/anti-patterns/gate-subject-chooses-anchor-self-invalidates.md) — raw/reviews/20260904T091303Z-pr-2549.md を新規ページ化
+* **Update**: [LLM substitute placeholder は bash residue gate で fail-fast 化する](pages/patterns/placeholder-residue-gate-bash-fail-fast.md) — raw/reviews/20260904T091303Z-pr-2549.md を統合
+* **Update**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — raw/reviews/20260904T091303Z-pr-2549.md を統合
+* **Create**: [awk の close() は追記のつもりだったリダイレクトを再 truncate する](pages/anti-patterns/awk-close-reopens-and-truncates.md) — raw/fixes/20260904T092650Z-pr-2549.md を新規ページ化
+* **Update**: [ゲートに検査を足すより、実行者が選べる自由度を削る](pages/heuristics/reduce-gate-degrees-of-freedom.md) — raw/fixes/20260904T092650Z-pr-2549.md を統合
+* **Update**: [ゲートの判定基準を被検査側が選べると検査は自己無効化する](pages/anti-patterns/gate-subject-chooses-anchor-self-invalidates.md) — raw/fixes/20260904T092650Z-pr-2549.md を統合
+* **Update**: [LLM substitute placeholder は bash residue gate で fail-fast 化する](pages/patterns/placeholder-residue-gate-bash-fail-fast.md) — raw/fixes/20260904T092650Z-pr-2549.md を統合
+* **Update**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — raw/fixes/20260904T092650Z-pr-2549.md を統合
 
 ## 2026-09-03
 * **Skip**: [20260903T111103Z-pr-2539.md](raw/reviews/20260903T111103Z-pr-2539.md) — 既存ページ asymmetric-fix-transcription / state-machine-dual-location-sync / mutation-prove-new-pin が同一欠陥クラスをカバー済み。sentinel 契約の同一ファイル内三重指示と MUST 未 pin は同クラスの再演（nb-sweep で plugin へ適用済み）
