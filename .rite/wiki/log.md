@@ -2369,3 +2369,9 @@
 - decision: each canonical summary is derived from the first complete sentence of the page overview, keeping detailed history and provenance in the body and sources instead of the catalog
 - result: 409 non-empty descriptions; semantic description/index equality 409/409; maximum summary size 617 bytes; row separators normalized to one contiguous five-column GFM table
 - validation: YAML parsing succeeds for 408/409 pages; the one remaining failure is an unchanged pre-existing concatenated entry inside `sources` and is preserved because sources are outside this change scope
+
+## 2026-09-05T02:22:43+09:00 — review ingest (skip pages)
+
+- source: `raw/reviews/20260904T172243Z-pr-2569.md`
+- action: skip (no changed-code defects and no transferable heuristic beyond existing review-gate guidance)
+- pages: none
