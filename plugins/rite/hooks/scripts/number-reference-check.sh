@@ -292,7 +292,8 @@ scan_diff() {
   # 逆に worktree 上で削除済みでも tracked なら母数は空でないので通す。
   if [ -n "$DIFF_PATH" ]; then
     # ls-files は既定で index を列挙するので、intent-to-add も staged 追加もここに出る。
-    # 別途 `git diff --cached` を引く必要はない。
+    # 逆に staged deletion だけの pathspec は index から消えて空になるが、その場合 diff の
+    # 追加行も 0 件なので走査母数は空であり、exit 2 で止めるのが正しい向き。
     local ls_rc=0 ls_out
     ls_out=$(git ls-files -- "$DIFF_PATH") || ls_rc=$?
     if [ "$ls_rc" -ne 0 ]; then

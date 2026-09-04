@@ -530,7 +530,7 @@ else
     if [ "$p18b_bare_rc" -ne 0 ]; then
       # 非 repo のまま走らせると add -N が落ちて stage_failed に化け、check_failed を測れない
       fail "TC-18b (AC-6) commit 無しツリーのセットアップに失敗 (rc=$p18b_bare_rc)"
-        head -5 "$p18b_dir/bare.out" | sed 's/^/    /' >&2
+      head -5 "$p18b_dir/bare.out" | sed 's/^/    /' >&2
       skip "TC-18b (AC-6) check_failed 経路の assert を sandbox 準備失敗により gate"
     else
       p18b_render "$p18b_bare" "$PLUGIN_ROOT" | bash > "$p18b_dir/failed.out" 2>&1
@@ -555,7 +555,7 @@ else
     ) > "$p18b_dir/ign.out" 2>&1 || p18b_ign_rc=$?
     if [ "$p18b_ign_rc" -ne 0 ]; then
       fail "TC-18b (AC-6) gitignore ツリーのセットアップに失敗 (rc=$p18b_ign_rc)"
-        head -5 "$p18b_dir/ign.out" | sed 's/^/    /' >&2
+      head -5 "$p18b_dir/ign.out" | sed 's/^/    /' >&2
       skip "TC-18b (AC-6) stage_failed 経路の assert を sandbox 準備失敗により gate"
     else
       p18b_render "$p18b_ign" "$PLUGIN_ROOT" | bash > "$p18b_dir/stage.out" 2>&1
@@ -592,10 +592,16 @@ else
       git add -A || exit 1
       git commit -qm init || exit 1
       printf '# t\n\nPR #1304 を参照\n' > .rite/wiki/pages/p.md || exit 1
+      # 非 ASCII ページ名を含める。core.quotePath 既定では ls-files がクォート済み literal を
+      # 返し、それを check-ignore へ渡しても原因を名指しできない (見出しだけ出て中身が空)
+      printf '# t\n\nPR #1306 を参照\n' > .rite/wiki/pages/日本語ページ.md || exit 1
+      # 2 ファイル目。先頭 1 件しか名指ししない実装だと原因行が 1 本しか出ない
+      mkdir -p .rite/wiki/other || exit 1
+      printf '# t\n\nPR #1307 を参照\n' > .rite/wiki/other/q.md || exit 1
     ) > "$p18b_dir/drift.out" 2>&1 || p18b_drift_rc=$?
     if [ "$p18b_drift_rc" -ne 0 ]; then
       fail "TC-18b (AC-6) nested drift ツリーのセットアップに失敗 (rc=$p18b_drift_rc)"
-        head -5 "$p18b_dir/drift.out" | sed 's/^/    /' >&2
+      head -5 "$p18b_dir/drift.out" | sed 's/^/    /' >&2
       skip "TC-18b (AC-6) ignored_paths 経路の assert を sandbox 準備失敗により gate"
     else
       p18b_render "$p18b_drift" "$PLUGIN_ROOT" | bash > "$p18b_dir/ignored.out" 2>&1
@@ -607,6 +613,20 @@ else
       # (否定側の文字列は stage.out に実在する = 恒真ではない)
       assert_grep "TC-18b (AC-6) ignored_paths は効いている .gitignore を check-ignore で名指しする" \
         "$p18b_dir/ignored.out" '\.gitignore:[0-9]+:'
+      # 非 ASCII ページ名がクォート済み literal のまま check-ignore へ渡ると出力が空になり、
+      # 見出しだけが残る。生の名前で出ることを pin する
+      # 残存ファイルの一覧行 (先頭 4 スペース + パス) に限定して測る。原因行側は
+      # check-ignore が自前で unquote するため、一覧行の quoting を識別できない
+      assert_grep "TC-18b (AC-6) 残存一覧が非 ASCII のページ名を生のまま出す (quotePath=false)" \
+        "$p18b_dir/ignored.out" '^    \.rite/wiki/pages/日本語ページ\.md$'
+      assert_not_grep "TC-18b (AC-6) 原因の見出しだけが出て中身が空にならない" \
+        "$p18b_dir/ignored.out" '原因を特定できませんでした'
+      # 残存が複数ある回に先頭 1 件しか名指ししないと、直して再実行しても同じ reason で止まる。
+      # 表示件数 (head -5) と原因行数が一致することで「全件に対して引いた」ことを測る
+      p18b_ig_shown=$(grep -cE '^    \.rite/wiki/' "$p18b_dir/ignored.out")
+      p18b_ig_causes=$(grep -cE '^    [^ ]*\.gitignore:[0-9]+:' "$p18b_dir/ignored.out")
+      assert "TC-18b (AC-6) 表示した残存ファイル全件について原因を名指しする" \
+        "$p18b_ig_shown" "$p18b_ig_causes"
       assert_not_grep "TC-18b (AC-6) ignored_paths は stage_failed 用の root anchor 案内へ戻っていない" \
         "$p18b_dir/ignored.out" 'gitignore-wiki-section-end'
       assert_grep "TC-18b (AC-6) positive control: stage_failed 側には root anchor 案内が出る" \
