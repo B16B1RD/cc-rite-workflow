@@ -2634,7 +2634,8 @@ bash {plugin_root}/hooks/review-result-save.sh \
   --pr {pr_number} \
   --content-file {review_tmp_dir}/rite-review-result-{pr_number}.json \
   --pending-id "{save_pending_id}" || {
-  echo "[review:error] review-result の provenance 検証に失敗しました" >&2
+  echo "ERROR: review-result の provenance 検証に失敗しました" >&2
+  echo "[review:error]"
   exit 1
 }
 ```
