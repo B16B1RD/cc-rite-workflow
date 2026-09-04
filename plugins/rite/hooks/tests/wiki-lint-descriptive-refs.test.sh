@@ -429,6 +429,7 @@ assert_grep "TC-18b (AC-6) hit は書き直してから再検査する (直せ�
 assert_grep "TC-18b (AC-6) index.md の行は Edit せず helper を呼び直す" "$INGEST_MD_RAIL" '`index\.md` の行は Edit しない'
 assert_grep "TC-18b (AC-6) helper 不在は fail-loud で停止する" "$INGEST_MD_RAIL" 'WIKI_INGEST_NUMREF=error; reason=helper_missing'
 assert_grep "TC-18b (AC-6) placeholder 残留は fail-loud で停止する" "$INGEST_MD_RAIL" 'WIKI_INGEST_NUMREF=error; reason=placeholder_residue'
+assert_grep "TC-18b (AC-6) ignore 残存検査の rc 失敗は fail-loud で停止する" "$INGEST_MD_RAIL" 'WIKI_INGEST_NUMREF=error; reason=ignored_check_failed'
 # commit ステップ側が marker を機械的に読むゲートを持つこと
 # (散文で名指しするだけでは 5.0.n を飛ばしても commit が成功してしまう)
 assert "TC-18b (AC-6) ゲートは hit を commit させない (canonical + 5.1 + 5.2 の 3 箇所)" "3" \
@@ -529,8 +530,8 @@ else
     if [ "$p18b_bare_rc" -ne 0 ]; then
       # 非 repo のまま走らせると add -N が落ちて stage_failed に化け、check_failed を測れない
       fail "TC-18b (AC-6) commit 無しツリーのセットアップに失敗 (rc=$p18b_bare_rc)"
-    skip "TC-18b (AC-6) check_failed 経路の assert を sandbox 準備失敗により gate"
-      head -5 "$p18b_dir/bare.out" | sed 's/^/    /' >&2
+        head -5 "$p18b_dir/bare.out" | sed 's/^/    /' >&2
+      skip "TC-18b (AC-6) check_failed 経路の assert を sandbox 準備失敗により gate"
     else
       p18b_render "$p18b_bare" "$PLUGIN_ROOT" | bash > "$p18b_dir/failed.out" 2>&1
       assert_not_grep "TC-18b (AC-6) HEAD 不在で clean を名乗らない" "$p18b_dir/failed.out" 'WIKI_INGEST_NUMREF=clean'
@@ -554,8 +555,8 @@ else
     ) > "$p18b_dir/ign.out" 2>&1 || p18b_ign_rc=$?
     if [ "$p18b_ign_rc" -ne 0 ]; then
       fail "TC-18b (AC-6) gitignore ツリーのセットアップに失敗 (rc=$p18b_ign_rc)"
-    skip "TC-18b (AC-6) stage_failed 経路の assert を sandbox 準備失敗により gate"
-      head -5 "$p18b_dir/ign.out" | sed 's/^/    /' >&2
+        head -5 "$p18b_dir/ign.out" | sed 's/^/    /' >&2
+      skip "TC-18b (AC-6) stage_failed 経路の assert を sandbox 準備失敗により gate"
     else
       p18b_render "$p18b_ign" "$PLUGIN_ROOT" | bash > "$p18b_dir/stage.out" 2>&1
       assert_not_grep "TC-18b (AC-6) gitignore された Wiki で clean を名乗らない" "$p18b_dir/stage.out" 'WIKI_INGEST_NUMREF=clean'
@@ -594,18 +595,22 @@ else
     ) > "$p18b_dir/drift.out" 2>&1 || p18b_drift_rc=$?
     if [ "$p18b_drift_rc" -ne 0 ]; then
       fail "TC-18b (AC-6) nested drift ツリーのセットアップに失敗 (rc=$p18b_drift_rc)"
-    skip "TC-18b (AC-6) ignored_paths 経路の assert を sandbox 準備失敗により gate"
-      head -5 "$p18b_dir/drift.out" | sed 's/^/    /' >&2
+        head -5 "$p18b_dir/drift.out" | sed 's/^/    /' >&2
+      skip "TC-18b (AC-6) ignored_paths 経路の assert を sandbox 準備失敗により gate"
     else
       p18b_render "$p18b_drift" "$PLUGIN_ROOT" | bash > "$p18b_dir/ignored.out" 2>&1
       assert_not_grep "TC-18b (AC-6) 配下だけ ignore のドリフトで clean を名乗らない" "$p18b_dir/ignored.out" 'WIKI_INGEST_NUMREF=clean'
       assert_grep "TC-18b (AC-6) ignore 残存は ignored_paths で止まる (rc は 0 なので実体で見る)" \
         "$p18b_dir/ignored.out" 'reason=ignored_paths'
-      # nested drift は root への negation では解けない。案内先を SoT の helper に固定する
-      assert_grep "TC-18b (AC-6) ignored_paths は gitignore-health-check へ案内する" \
-        "$p18b_dir/ignored.out" 'gitignore-health-check\.sh'
-      assert_not_grep "TC-18b (AC-6) ignored_paths は root .gitignore の anchor を案内しない (nested では解けない)" \
-        "$p18b_dir/ignored.out" 'anchor 位置を特定'
+      # nested drift は root への negation では解けない。原因を check-ignore で名指しすること、
+      # および stage_failed 用の root anchor 案内へ逆戻りしていないことを対で pin する
+      # (否定側の文字列は stage.out に実在する = 恒真ではない)
+      assert_grep "TC-18b (AC-6) ignored_paths は効いている .gitignore を check-ignore で名指しする" \
+        "$p18b_dir/ignored.out" '\.gitignore:[0-9]+:'
+      assert_not_grep "TC-18b (AC-6) ignored_paths は stage_failed 用の root anchor 案内へ戻っていない" \
+        "$p18b_dir/ignored.out" 'gitignore-wiki-section-end'
+      assert_grep "TC-18b (AC-6) positive control: stage_failed 側には root anchor 案内が出る" \
+        "$p18b_dir/stage.out" 'gitignore-wiki-section-end'
     fi
   fi
 fi
@@ -644,29 +649,26 @@ fi
 # macOS leg では pin ごと失われる。境界 sentinel も不要になる。
 # 比較範囲は canonical 節が「literal 一致させる」と宣言する fenced block 全体に合わせ、
 # ゲート冒頭のコメント行から `esac` までを取る (コメントだけ片側で乖離する変更も弾く)。
-awk -v outdir="$p18c_dir" '
+p18c_gate_count=$(awk -v outdir="$p18c_dir" '
   BEGIN { n = 0 }
   /^# ステップ 5\.0\.n の判定を機械的に受ける/ { ing=1; f=outdir "/gate-" n ".txt" }
   ing { print > f }
   ing && /^esac$/ { ing=0; n++; close(f) }
   END { print n }
-' "$INGEST_MD_RAIL" > "$p18c_dir/gate-count.txt"
-p18c_gate_count=$(cat "$p18c_dir/gate-count.txt")
+' "$INGEST_MD_RAIL")
 assert "TC-18c (AC-6) canonical + 5.1 + 5.2 の 3 箇所にゲート case ブロックがある" "3" "$p18c_gate_count"
+# count を印字する awk 自身が gate-N.txt を書くので、count=3 は 3 ファイルの存在を含意する
+# (出力ファイルを開けなければ awk は fatal 終了し END に到達せず count が出ない = 上の assert が赤)
 if [ "$p18c_gate_count" = "3" ]; then
-  if [ -f "$p18c_dir/gate-0.txt" ] && [ -f "$p18c_dir/gate-1.txt" ] && [ -f "$p18c_dir/gate-2.txt" ]; then
-    if cmp -s "$p18c_dir/gate-0.txt" "$p18c_dir/gate-1.txt"; then
-      pass "TC-18c (AC-6) 5.1 のゲートが canonical と byte 一致"
-    else
-      fail "TC-18c (AC-6) 5.1 のゲートが canonical と一致しない"
-    fi
-    if cmp -s "$p18c_dir/gate-0.txt" "$p18c_dir/gate-2.txt"; then
-      pass "TC-18c (AC-6) 5.2 のゲートが canonical と byte 一致"
-    else
-      fail "TC-18c (AC-6) 5.2 のゲートが canonical と一致しない"
-    fi
+  if cmp -s "$p18c_dir/gate-0.txt" "$p18c_dir/gate-1.txt"; then
+    pass "TC-18c (AC-6) 5.1 のゲートが canonical と byte 一致"
   else
-    fail "TC-18c (AC-6) ゲートブロックの分割に失敗した"
+    fail "TC-18c (AC-6) 5.1 のゲートが canonical と一致しない"
+  fi
+  if cmp -s "$p18c_dir/gate-0.txt" "$p18c_dir/gate-2.txt"; then
+    pass "TC-18c (AC-6) 5.2 のゲートが canonical と byte 一致"
+  else
+    fail "TC-18c (AC-6) 5.2 のゲートが canonical と一致しない"
   fi
 fi
 # ゲートは commit 呼び出しより**前**になければ意味を持たない。存在数は順序を測らないので、

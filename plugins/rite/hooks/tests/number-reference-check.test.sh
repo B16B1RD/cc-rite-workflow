@@ -353,7 +353,7 @@ fi
 # untracked ファイルだけを含むディレクトリも母数 0 なので同じ扱い
 printf 'PR #1305 を参照\n' > "$sb/empty_dir/u.md"
 rc=0; out=$(run_diff "$sb" HEAD --path empty_dir --quiet 2>&1) || rc=$?
-if [ "$rc" -eq 2 ]; then
+if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q -- '--path が repo 内のどのパスにも一致しません'; then
   pass "T-04b --path with untracked-only content is an invocation error"
 else
   fail "T-04b --path untracked-only dir not rejected rc=$rc: $out"

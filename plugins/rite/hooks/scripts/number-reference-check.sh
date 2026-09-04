@@ -291,18 +291,15 @@ scan_diff() {
   # 実在しても tracked が 0 件なら diff の母数は空で、silent-0 の主要形はそちらにある。
   # 逆に worktree 上で削除済みでも tracked なら母数は空でないので通す。
   if [ -n "$DIFF_PATH" ]; then
-    local ls_rc=0 ls_out cached_rc=0 cached_out
+    # ls-files は既定で index を列挙するので、intent-to-add も staged 追加もここに出る。
+    # 別途 `git diff --cached` を引く必要はない。
+    local ls_rc=0 ls_out
     ls_out=$(git ls-files -- "$DIFF_PATH") || ls_rc=$?
     if [ "$ls_rc" -ne 0 ]; then
       echo "ERROR: git ls-files failed for pathspec: $DIFF_PATH" >&2
       exit 2
     fi
-    cached_out=$(git diff --cached --name-only -- "$DIFF_PATH") || cached_rc=$?
-    if [ "$cached_rc" -ne 0 ]; then
-      echo "ERROR: git diff --cached failed for pathspec: $DIFF_PATH" >&2
-      exit 2
-    fi
-    if [ -z "$ls_out" ] && [ -z "$cached_out" ]; then
+    if [ -z "$ls_out" ]; then
       echo "ERROR: --path が repo 内のどのパスにも一致しません: $DIFF_PATH" >&2
       exit 2
     fi

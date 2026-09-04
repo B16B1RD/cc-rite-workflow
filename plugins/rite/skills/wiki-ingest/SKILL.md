@@ -562,7 +562,8 @@ if [ "$numref_stage_rc" -ne 0 ]; then
   echo "ERROR: .rite/wiki の intent-to-add に失敗しました (rc=$numref_stage_rc)。新規ページが検査されないため commit しません" >&2
   echo "  原因候補: same_branch 戦略で .gitignore に '!.rite/wiki/' negation が未設定の可能性" >&2
   echo "  対処: root .gitignore に '!.rite/wiki/' と '!.rite/wiki/**' を追記する" >&2
-  echo "    (anchor '# >>> gitignore-wiki-section-start' があればその直後。配布先には無いことがあるので末尾でよい)" >&2
+  echo "    (置く位置は '.rite/wiki/' 除外行より後ろ。anchor '# <<< gitignore-wiki-section-end'" >&2
+  echo "     があればその直後、無ければ末尾。前に置くと後勝ちで negation が効かない)" >&2
   echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=stage_failed; rc=$numref_stage_rc" >&2
   exit 1
 fi
@@ -582,9 +583,15 @@ fi
 if [ -n "$numref_ignored" ]; then
   echo "ERROR: .rite/wiki 配下に gitignore されたままのファイルがあります。検査にも commit にも載らないため中止します" >&2
   printf '%s\n' "$numref_ignored" | head -5 | sed 's/^/    /' >&2
-  echo "  確認: bash \"$plugin_root/hooks/scripts/gitignore-health-check.sh\" を実行し、その Hint に従う" >&2
-  echo "    (root .gitignore への negation では nested .rite/.gitignore の '*' を解除できない。" >&2
-  echo "     どちらが原因かは health-check が判定する)" >&2
+  # どの .gitignore のどのパターンが効いているかは手元で確定できる。委譲先の health-check は
+  # rite-config.yml と state_root を前提に別ツリーを見るため、$numref_tree の原因を名指しできない。
+  # ここでは ignore 済みが確定しているので、check-ignore の negation 非決定性の caveat も効かない。
+  numref_first=$(printf '%s\n' "$numref_ignored" | head -1)
+  echo "  原因: 以下の .gitignore のパターンが効いています" >&2
+  git -C "$numref_tree" check-ignore -v -- "$numref_first" 2>/dev/null | sed 's/^/    /' >&2
+  echo "  対処: そのファイルを直す。nested .rite/.gitignore なら 3 行構成 '*' / '!wiki/' / '!wiki/**'" >&2
+  echo "        へ戻す。root .gitignore なら '.rite/wiki/' 除外行より後ろに negation を追記する" >&2
+  echo "        (root への追記では nested の '*' は解除できない)" >&2
   echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=ignored_paths" >&2
   exit 1
 fi
@@ -605,8 +612,8 @@ esac
 |---|---|
 | `clean` | ステップ 5.1 / 5.2 へ進む |
 | `hit` | stdout の `file:line: 内容` が指す行を書き直してから**本ステップを再実行**する。書き直しは番号を落として現在形の Why にすること — 番号を消した跡に経緯文を置き換えない。ソース bullet は説明だけを表示テキストにし、説明が無ければ種別語（「レビュー結果」「fix 結果」「close retrospective」）にする（リンク先パスは変えない）。**`index.md` の行は Edit しない** — ステップ 6 の `wiki-index-update.sh` を修正した `--description` で呼び直す（index.md への書き換えは helper が atomic に行う契約のため）。この禁止は ingest 実行中（helper を呼べる文脈）の話で、lint 指摘の事後手当ては `/rite:wiki-lint` の手順に従う。再実行で `clean` にできなければ commit せず停止し、残った行と `/rite:recover` を案内する |
-| `error` (`reason=stage_failed`) | bash が `exit 1` で停止済み。`same_branch` では root `.gitignore` に `!.rite/wiki/` と `!.rite/wiki/**` を追記してから**本ステップを再実行**する（`# >>> gitignore-wiki-section-start` anchor があればその直後。無い場合は末尾でよい）。`separate_branch` では root `.gitignore` を持たないので、`{numref_tree}` が wiki worktree の絶対パスに substitute されているか（ステップ 1.3）を先に疑う |
-| `error` (`reason=ignored_paths`) | bash が `exit 1` で停止済み。`gitignore-health-check.sh` を実行し、その Hint に従って原因ファイルを直してから**本ステップを再実行**する。nested `.rite/.gitignore` の composition drift（3 行構成 '*' / '!wiki/' / '!wiki/**' の崩れ）は root への negation では解除できない |
+| `error` (`reason=stage_failed`) | bash が `exit 1` で停止済み。`same_branch` では root `.gitignore` に `!.rite/wiki/` と `!.rite/wiki/**` を**`.rite/wiki/` 除外行より後ろ**へ追記してから**本ステップを再実行**する（`# <<< gitignore-wiki-section-end` anchor があればその直後、無ければ末尾。前に置くと後勝ちで効かない）。`separate_branch` では root `.gitignore` を持たないので、`{numref_tree}` が wiki worktree の絶対パスに substitute されているか（ステップ 1.3）を先に疑う |
+| `error` (`reason=ignored_paths`) | bash が `exit 1` で停止済み。stderr が `check-ignore -v` で名指しした `.gitignore` を直してから**本ステップを再実行**する。nested `.rite/.gitignore` なら 3 行構成 '*' / '!wiki/' / '!wiki/**' へ戻す（root への negation では nested の '*' は解除できない） |
 | `error` (`reason=placeholder_residue`) | bash が `exit 1` で停止済み。`{plugin_root}` / `{numref_tree}` を literal substitute して**本ステップを再実行**する |
 | `error` (`reason=helper_missing` / `check_failed` / `ignored_check_failed`) | bash が `exit 1` で停止済み。commit せず停止し、stderr の原因と `/rite:recover` を案内する |
 
@@ -763,7 +770,7 @@ if [ "$branch_strategy" = "same_branch" ]; then
     fi
     echo "  原因候補: same_branch 戦略で .gitignore に '!.rite/wiki/' negation が未設定の可能性" >&2
     echo "  対処:" >&2
-    echo "    1. grep -n 'gitignore-wiki-section-start' .gitignore で anchor 位置を特定" >&2
+    echo "    1. grep -n 'gitignore-wiki-section-end' .gitignore で anchor 位置を特定 (配布先には anchor が無いことがある。その場合は '.rite/wiki/' 除外行より後ろ、無ければ末尾へ追記する)" >&2
     echo "    2. 同ブロック内の手順に従い '!.rite/wiki/' negation を追加し、git add --dry-run で verification してから再実行" >&2
     echo "    3. それ以外の原因 (permission / disk full / corrupt index 等) は上記 stderr の詳細を確認" >&2
     [ -n "$add_err" ] && rm -f "$add_err"
