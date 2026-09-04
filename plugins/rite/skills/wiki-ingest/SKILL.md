@@ -913,7 +913,7 @@ rationale: references/rationale.md#n-unregistered-not-warning
 
 **詳細な修正対応**: 検出結果の詳細確認は、Ingest 完了後に `/rite:wiki-lint`（`--auto` なし）で再実行して取得する。
 
-### 8.6 Wiki push の集約（ wiki push batch/defer）
+### 8.6 Wiki push の集約（wiki push batch/defer）
 
 **`auto_lint` の値に関わらず必ず実行する**（ステップ 8.1 参照）。蓄積されたローカル commit（0 件のこともある）をまとめて 1 回だけ push する。`same_branch` では本ステップは no-op:
 rationale: references/rationale.md#push-defer-1941

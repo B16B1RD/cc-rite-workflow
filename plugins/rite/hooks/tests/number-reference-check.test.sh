@@ -412,6 +412,11 @@ deletion_residue_patterns=(
   '、[[:space:]]+がまさに'
   '、[[:space:]]+と同じ'
   '、[[:space:]]+が消した'
+  '（[[:space:]]'
+  '[^[:space:]　][[:space:]]）'
+  '—[[:space:]]?[)）]'
+  '[[:alnum:]][[:space:]]\([[:space:]][a-z][^)]*[[:alnum:]/][)]'
+  '[(（]で導入'
 )
 deletion_residue_samples=(
   'context (で rationale'
@@ -447,6 +452,11 @@ deletion_residue_samples=(
   '完了してしまい、 がまさに'
   '環境制約、 と同じ扱い'
   '拒否され、 が消した'
+  'WM 採用元選定ブロックを抽出できません（ の契約消失）'
+  'stub fallback 時の WARNING が無い（silent 切替禁止 ）'
+  'multi_session worktree 化漏れの可能性 —)'
+  '# Responsibility 2 ( source OR standalone): provide'
+  '# Wiki branch を checkout した永続 git worktree (で導入)。'
 )
 deletion_residue_pattern=$(IFS='|'; printf '%s' "${deletion_residue_patterns[*]}")
 scan_deletion_residue() {
@@ -481,6 +491,18 @@ if ! printf '%s\n' 'context with durable rationale' | grep -Eq "$deletion_residu
   pass "deletion-damage matcher accepts valid prose"
 else
   fail "deletion-damage matcher rejected valid prose"
+fi
+# The open-paren arm is deliberately narrower than "`( ` followed by a lowercase
+# word": bash subshells share that shape, so a broad arm flags working code as
+# residue. Pin the narrowing so a later widening fails here rather than turning
+# the whole-tree scan below into a wall of false residue.
+if ! printf '%s\n' 'if ( set -C; printf "%s" "$json" > "$file" ) 2>/dev/null; then' \
+  'if ( exec 8>.rite/state/wiki-worktree-setup.lock ) 2>/dev/null; then' \
+  'else ( if ($f.severity == "CRITICAL" or $f.severity == "MEDIUM")' \
+  | grep -Eq "$deletion_residue_pattern"; then
+  pass "deletion-damage matcher accepts bash subshells"
+else
+  fail "deletion-damage matcher rejected a bash subshell"
 fi
 scan_rc=0
 scan_deletion_residue "$REPO_ROOT/plugins/rite" "$REPO_ROOT/docs" || scan_rc=$?
