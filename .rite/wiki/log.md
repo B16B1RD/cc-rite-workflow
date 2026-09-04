@@ -14,6 +14,7 @@
 * **Create**: [検出器に arm を足したら、走査根の中で実際に発火するかを実測で確かめる](pages/patterns/detector-arm-must-fire-inside-scan-roots.md) — raw/reviews/20260904T064259Z-pr-2548.md を新規ページ化
 * **Create**: [検出文法が一部の表記だけを見るとき、同じ画面の別表記が検査外に残って整合が壊れたままゲートは通る](pages/anti-patterns/partial-format-detector-leaves-sibling-tokens-inconsistent.md) — raw/fixes/20260904T064911Z-pr-2548.md を新規ページ化
 * **Create**: [可変長を受ける側に対して、呼び出し側の診断が要素を書き下すと増減のたびに嘘になる](pages/patterns/vararg-callee-forbids-caller-side-enumeration.md) — raw/reviews/20260904T070318Z-pr-2548.md を新規ページ化
+* **lint:clean** — contradictions=0, stale=53, orphans=0, missing_concept=0, unregistered_raw=427, broken_refs=0
 
 ## 2026-09-03
 * **Skip**: [20260903T111103Z-pr-2539.md](raw/reviews/20260903T111103Z-pr-2539.md) — 既存ページ asymmetric-fix-transcription / state-machine-dual-location-sync / mutation-prove-new-pin が同一欠陥クラスをカバー済み。sentinel 契約の同一ファイル内三重指示と MUST 未 pin は同クラスの再演（nb-sweep で plugin へ適用済み）
