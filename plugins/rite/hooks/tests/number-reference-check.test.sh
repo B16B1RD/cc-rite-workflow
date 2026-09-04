@@ -446,7 +446,17 @@ assert_not_grep "T-06 lint no longer invokes retired gate" "$LINT_SKILL" \
 assert_grep "T-06 pr-review rail calls --diff" "$PR_REVIEW_SKILL" \
   'number-reference-check\.sh --diff'
 assert_grep "T-06 pr-review finding uses Verification: canonical form" "$PR_REVIEW_SKILL" \
-  'Verification:'
+  '`description` は `Verification:` で始める'
+assert_grep "T-06 pr-review finding template starts with Verification: repro bash --diff" "$PR_REVIEW_SKILL" \
+  'Verification: repro bash \{plugin_root\}/hooks/scripts/number-reference-check.sh --diff'
+assert_grep "T-06 pr-review finding explanation follows the anchor" "$PR_REVIEW_SKILL" \
+  '。永続成果物に Issue/PR 番号が追加されている'
+assert_grep "T-06 pr-review finding substitutes raw pipe in matched line" "$PR_REVIEW_SKILL" \
+  '生のパイプが含まれる場合は `¦` に置換する'
+assert_not_grep "T-06 pr-review finding no longer uses same-segment trailing Verification:" "$PR_REVIEW_SKILL" \
+  'に同一セグメントの `Verification:`'
+assert_not_grep "T-06 pr-review finding does not place explanation before the anchor" "$PR_REVIEW_SKILL" \
+  '説明文の後にアンカー'
 assert_grep "T-06 pr-review orchestrator reviewer id" "$PR_REVIEW_SKILL" \
   'reviewer: "pr-review"'
 assert_not_grep "T-06 pr-review does not skip on cycle-scope" "$PR_REVIEW_SKILL" \
