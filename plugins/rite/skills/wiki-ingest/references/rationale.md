@@ -201,3 +201,43 @@ caller skill（cleanup / open 等）の次 step を skip して turn が暗黙�
 した。`returned-to-caller` は「caller に return した = caller の次 step に進む」というネスト
 構造を semantic に内包し、terminal vocabulary を構造的に排除する。bare bracket は同じ heuristic
 誤発火のため禁止で、HTML コメント形式のみ許容する。
+
+<a id="numref-precommit"></a>
+
+## numref-precommit
+
+Raw Source は出典なので番号を持ち、そこから読解して書く過程で番号が Wiki 側へ転記される。
+ステップ 8 の wiki-lint は読み取り専用の informational 指標で書き込みを止めないため、
+混入を止められるのは書き込み側だけである。だから検査は commit の直前に置く。
+
+対象を `.rite/wiki` 配下の未 commit 差分にし、列挙もラベルも git に決めさせるのは、
+ゲートの判定基準をゲートされる側が選べる形にしないため。対象・ラベル・本文のどれか一つでも
+実行者が選べると、選び損ねた回だけ検査が素通りし、しかもその回が「検査済み」として commit へ進む。
+差分から取れば渡る対象は git が返す実体になる。
+
+ただし `git diff` は追跡済みパスしか比較しない。新規ページは Write した時点では untracked で
+差分に現れず、`git add` は commit ステップまで走らない。そのままだと **新規ページ — Raw Source
+から読解して書く量が最も多く、番号混入の主経路 — が 1 行も検査されないまま `clean` になる**。
+だから走査の直前に intent-to-add (`git add -N`) を挟む。index にはエントリだけが載り
+`git diff --cached` は空のままで、commit まで進んだ回は commit ステップが同じ範囲を stage し
+直すため後段への影響もない。hit / error で停止した回はエントリが残るが、次回実行の
+`add -N` が冪等に上書きする。
+
+残存の**列挙**に `ls-files --others --ignored` を使うのは、これが「実際に走査へ載らなかった
+ファイル」を直接返すのに対し、`check-ignore` はパターンの照合結果しか返さず、negation の
+重ね合わせでは「ignore されているか」の判定が一意にならないため。
+
+一方、列挙で ignore 済みが確定した後の**原因の名指し**には `check-ignore -v` を使う。この
+時点では判定は済んでおり、必要なのは「どの .gitignore のどの行が効いたか」だけなので、
+上記の非決定性の caveat は効かない。`gitignore-health-check.sh` へ委譲しないのは、同 helper が
+`rite-config.yml` と state_root を前提に別ツリーを見るため、`separate_branch` では走査対象の
+worktree を一度も見ずに終わる（返るのは別ツリーの findings）。止めた人に Hint が渡らない。
+
+走査範囲を `--path .rite/wiki` で絞るのは、走査範囲と commit 範囲を一致させるため。
+`same_branch` では走査ツリーが dev repo root になるので、絞らないと Wiki と無関係な未 commit
+変更の番号で `hit` が出る。その `hit` は Wiki の書き直しでは消せないため、手当ての手順を持たない
+停止になる。
+
+ページだけでなく `index.md` のエントリ行と `log.md` の bullet も同じ 1 回で通す。
+`log.md` の番号はほとんどが skip 理由や更新説明の散文由来で、ページだけを見ると素通りする。
+
