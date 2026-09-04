@@ -33,7 +33,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-27T01:30:00Z" }
    ```yaml
    ---
    status: structurally_resolved
-   note: "本文中の Phase 番号は PR #1149 以前の旧構造の歴史的記述として保持"
+   note: "本文中の Phase 番号は旧構造の歴史的記述として保持"
    ---
    ```
 

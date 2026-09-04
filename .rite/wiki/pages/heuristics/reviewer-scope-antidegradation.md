@@ -58,7 +58,7 @@ re-review / verification mode (前回 review comment の検証モード) では�
 
 ### Verification mode FIXED 判定の evidence gate（cycle 2 で追加）
 
-verification mode で「前回指摘 N 件が解消されたか」を判定する際、目視確認や PR description 上の self-claim だけで FIXED と認定する経路は false-positive リスクが高い。`PR #617 cycle 2` で確立された canonical evidence gate は **「実ファイルの grep 確認 + bash -n syntax 検証」** の 2 段:
+verification mode で「前回指摘 N 件が解消されたか」を判定する際、目視確認や PR description 上の self-claim だけで FIXED と認定する経路は false-positive リスクが高い。canonical evidence gate は **「実ファイルの grep 確認 + bash -n syntax 検証」** の 2 段:
 
 1. **実ファイル grep 確認**: 前回指摘の対象 anti-pattern (例: `L[0-9]+` literal / `2>&1` 混入 / inner/outer END crossing) を fix 後 commit に対して直接 grep し、count=0 を verify する。reviewer の前回コメントに記載された file:line を信頼せず、現 HEAD でのファイル状態を再 scan する
 2. **bash -n syntax 検証**: bash code block を含む変更ファイル (commands/*.md / hooks/*.sh) は `bash -n {file}` で syntax error がないことを verify する。指摘された修正が新たな syntax error を導入していないかを decisive に検証する

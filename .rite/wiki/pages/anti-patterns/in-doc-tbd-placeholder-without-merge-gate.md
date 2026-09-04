@@ -18,7 +18,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-19T20:10:23Z" }
 
 ## 概要
 
-検証結果 doc / 設計書に `_TBD_` / `（追記予定）` / `<!-- TODO: post-hoc 観測 -->` のような placeholder を埋め込み「merge 後に観測値を追記する」設計は、merge 前 enforcement (CI check / pre-commit / required reviewer 等) なしでは長期残留し、後続 reader が「ここに何が来るはずだったか」を context 喪失した状態で読む drift を生む。PR #1065 で `docs/verification-results/middle-refactor-2026-05-20.md` の Section 4 (検証項目 1-3 の live dogfooding 結果欄) が `_TBD_` placeholder のまま commit され、cycle 1 review で MEDIUM finding として検出された事例。
+検証結果 doc / 設計書に `_TBD_` / `（追記予定）` / `<!-- TODO: post-hoc 観測 -->` のような placeholder を埋め込み「merge 後に観測値を追記する」設計は、merge 前 enforcement (CI check / pre-commit / required reviewer 等) なしでは長期残留し、後続 reader が「ここに何が来るはずだったか」を context 喪失した状態で読む drift を生む。検証結果 doc の Section 4 (live dogfooding の結果欄) が `_TBD_` placeholder のまま commit され、レビューで MEDIUM finding として検出された事例がある。
 
 ## 詳細
 

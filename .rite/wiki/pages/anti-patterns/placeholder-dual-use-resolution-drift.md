@@ -45,7 +45,7 @@ sources:
   - ref: "{source_ref}"          # ← line 8: 識別子、bare path で OK
 - [{source_description}]({source_ref})  # ← line 29: URL、bare path だと broken
 
-# After (fixed in PR #939)
+# After (修正後)
 sources:
   - ref: "{source_ref}"          # ← 不変、識別子のまま
 - [{source_description}](../../{source_ref})  # ← prefix を template literal 側に追加

@@ -31,7 +31,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-17T05:40:58Z" }
 
 cleanup.md スタイルへの「フラット化」のような flatten refactor PR では、blockquote / コメント / 注釈の物理削除がスコープになるが、削除対象には混在した複数性質のテキストが含まれる:
 
-1. **歴史注釈** (削除可): `# F-05/F-06 fix: ...` / `# Issue #547: ...` / `# cycle 6 fix: ...` のような git blame で追える過去 fix の自己弁護コメント
+1. **歴史注釈** (削除可): `# F-05/F-06 fix: ...` / `# Issue #N: ...` / `# cycle 6 fix: ...` のような git blame で追える過去 fix の自己弁護コメント
 2. **現役の同期保守情報** (Keep): SoT への分散実装一覧、`Reference: bash-trap-patterns.md#signal-specific-trap-template` のような Pattern 規範への link
 3. **機能を持つ statement** (Keep): Pattern 3 規範に基づく `if ! mktemp ...; then echo "WARNING: ..."; var=""; fi` のような mktemp 失敗時 WARNING emit (silent fallback への格下げは [[mktemp-failure-surface-warning]] 違反)
 

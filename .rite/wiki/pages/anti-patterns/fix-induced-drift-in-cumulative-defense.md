@@ -354,7 +354,7 @@ cycle 5 で「軽微 (URL fix / typo) + 中規模 (edge case) + 大規模 (write
 
 | cycle | learned 節で警告 | 同 commit で再演 (HIGH 検出) |
 |-------|----------------|---------------------------|
-| 14 fix (`c0fae09 fix(review): #688 cycle 14`) | Self-referential learned 節 chain を防ぐ目的で `[CONTEXT] METRICS_SKIPPED=1` sentinel と Claude 指示を導入 | その指示自体に「Phase 5.5.3 へ進む」(存在しない phase) を埋め込んでいた → cycle 15 F-01 (HIGH) として検出 |
+| 14 fix (`c0fae09`) | Self-referential learned 節 chain を防ぐ目的で `[CONTEXT] METRICS_SKIPPED=1` sentinel と Claude 指示を導入 | その指示自体に「Phase 5.5.3 へ進む」(存在しない phase) を埋め込んでいた → cycle 15 F-01 (HIGH) として検出 |
 | 14 fix | bash-trap-patterns.md の対象ファイルリストを 5 ファイルに拡張する fix を実施 | 同 doctrine 内 line 374 の「対象 3 ファイル」古い列挙 (`fix.md + review.md + start.md` の旧 3-file 列挙) を見落としたまま残存 → cycle 15 F-02 (HIGH, Asymmetric Fix Transcription 再演) として検出 |
 
 これらの 2 件は本ページの「Failure mode 2: Self-referential learned 節 chain」(累積 35+ cycle 越えで初観測) を **HIGH 級で再実証** し、「**累積対策追加 PR が新たな drift / bug を生む self-exemplar**」が 4 PR 連続で観測された。
@@ -688,7 +688,7 @@ cycle 3 で 11 findings 検出された内訳:
 
 **Cycle 3 fix で確立した 3 件別 Issue 化 (scope-creep gate)**:
 
-cycle 3 fix で 11 件中 8 件を本 PR で fix、refactor scope の 3 件 (`#1005` / `#1006` / `#1007`) を別 Issue 化。これは [`rejected(scope-creep)` judgment は cross-validation + empirical revert test で gate する](../heuristics/scope-creep-rejection-empirical-gate.md) を適用した実例で、4 軸混在の高密度修正でも scope-creep gate が機能した。
+cycle 3 fix で 11 件中 8 件を本 PR で fix、refactor scope の 3 件を別 Issue 化。これは [`rejected(scope-creep)` judgment は cross-validation + empirical revert test で gate する](../heuristics/scope-creep-rejection-empirical-gate.md) を適用した実例で、4 軸混在の高密度修正でも scope-creep gate が機能した。
 
 #### Failure mode 5 (新規記録): Self-violation cascade × N-site × observability の 4 軸高密度混在
 

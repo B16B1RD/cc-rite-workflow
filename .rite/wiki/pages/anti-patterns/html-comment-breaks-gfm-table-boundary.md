@@ -46,7 +46,7 @@ GFM の table 解析は「`|` を含む連続行ブロック」を table とみ�
 
 行を一時的に「論理的削除」したい場合の代替:
 
-1. **Table 直前または直後の独立段落へ配置**: コメントは table boundary の外に置く。table の上に `<!-- 旧 Phase 2 は #793 で廃止 -->` を独立段落として記述する
+1. **Table 直前または直後の独立段落へ配置**: コメントは table boundary の外に置く。table の上に `<!-- 旧 Phase 2 は廃止済み -->` を独立段落として記述する
 2. **Footnote / 別セクションへの move**: 廃止理由を別セクション (例: `## 履歴`) に移し、table からは行ごと削除
 3. **Strikethrough テキスト**: 残したい場合は `| ~~Phase 2~~ | 廃止 |` で render される取り消し線セル
 4. **Comment column 追加**: 廃止 status を別 column として明示 (`| Phase | 説明 | Status |`)

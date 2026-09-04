@@ -149,14 +149,14 @@ WM sync 委譲事例で確立した本拡張は、**直後の sibling 委譲 PR 
 起点事例以降の evidence はいずれも「既存 helper の委譲 shim」文脈だったが、後続の実測では **委譲 shim ではない、テストスクリプト内の素の `git fetch` フォールバック**が新規実装され、そこでも同一 anti-pattern (全 truncate) が再演された:
 
 ```bash
-# ❌ NG: PR #1741 cycle 1 の初期実装
+# ❌ NG: 初期実装
 git fetch --quiet --depth=1 origin "${BASELINE_COMMIT}" 2>/dev/null || true
 ```
 
 `2>/dev/null` により fetch 失敗の根本原因 (DNS 不通 / 認証エラー / `couldn't find remote ref` 等) が完全に握り潰され、後続の SKIP メッセージは「到達不能だった」という結果のみを報告していた。error-handling reviewer が「同リポジトリの `wiki-ingest-commit.sh` / `worktree-git.sh` に既に確立された stderr capture 規約に新規コードが従っていない」と HIGH で指摘し、cycle 1 fix で以下の canonical 形へ修正した:
 
 ```bash
-# ✅ OK: PR #1741 cycle 1 fix (canonical selective-surface パターンへ整合)
+# ✅ OK: canonical selective-surface パターンへ整合
 FETCH_ERR=$(mktemp)
 TMPFILES+=("$FETCH_ERR")
 git fetch --quiet --depth=1 origin "${BASELINE_COMMIT}" 2>"$FETCH_ERR" || true

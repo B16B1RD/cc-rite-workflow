@@ -58,7 +58,7 @@ Documentation の prose が言及する実装側 (commands/, scripts/, templates
 具体的な失敗形態:
 
 1. **CHANGELOG `removed in #N` claim の `ls` 未 verify** (cycle 2 F-01 CRITICAL): CHANGELOG が `plugins/rite/i18n/ja/` を「remain on disk but are no longer referenced at runtime」と書いたが、ディレクトリ自体は先行 PR で完全削除されており `ls` は ENOENT を返す。`removed in #N` 系の claim は対応する path に対して `ls` / `git show {sha}:{path}` で actual state を verify せず prose を書いた結果、CHANGELOG 自身が factually false。
-2. **CHANGELOG の `# wave` で削除された複数 keys の DEPRECATED 化漏れ** (cycle 1 F-04/F-05, cycle 2 F-02 HIGH): `#1118` で 3 keys が同時削除されたが PR は `separate_issue_creation.*` のみ DEPRECATED 化し、`observed_likelihood_gate.*` / `fail_fast_first.*` / `fix.severity_gating` / `project.type` の他 4 keys を docs 側に live として残置。`# wave` を unit of consistency と認識せず個別 key として処理した結果。canonical 対策: CHANGELOG に `removed in #N` を追記する PR は、その # で削除された全 keys を CHANGELOG 自体から再抽出し、各 key について `grep -rn '<key>' docs/` で残存する live citation を機械検出し、同じ DEPRECATED 化パターンで一括更新する。
+2. **CHANGELOG の `# wave` で削除された複数 keys の DEPRECATED 化漏れ** (cycle 1 F-04/F-05, cycle 2 F-02 HIGH): 1 つの wave で 3 keys が同時削除されたが PR は `separate_issue_creation.*` のみ DEPRECATED 化し、`observed_likelihood_gate.*` / `fail_fast_first.*` / `fix.severity_gating` / `project.type` の他 4 keys を docs 側に live として残置。`# wave` を unit of consistency と認識せず個別 key として処理した結果。canonical 対策: CHANGELOG に `removed in #N` を追記する PR は、その # で削除された全 keys を CHANGELOG 自体から再抽出し、各 key について `grep -rn '<key>' docs/` で残存する live citation を機械検出し、同じ DEPRECATED 化パターンで一括更新する。
 3. **Sentinel / Terminal marker の implementation 未 verify** (cycle 1 F-02/F-03 HIGH): docs/SPEC.md Terminal marker 表に新コマンド (`iterate.md` / `ready.md`) の sentinel を書く際、`grep -n '\[iterate:completed\]' plugins/rite/commands/pr/iterate.md` で実装側に存在するかを verify せず、旧 orchestrator の用語 (`Workflow Termination block`) を流用。`iterate.md` の実 sentinel は `[review:mergeable]` / `[fix:replied-only]` / `[fix:cancelled-by-user]` で、phantom sentinel が docs に landed していた。
 4. **Documentation が言及する live phase の implementation grep 欠落** (cycle 5 F-01 CRITICAL 4 箇所): documentation が「review 出力からの自動 Issue 作成は発生しない」と factually false な主張をしていたが、`review.md` Phase 7 を grep すると `source: pr_review` 経路で live。当該 PR で削除されたのは `fix.md` Phase 4.3 のみ。documentation の「fully removed」claim が cycle 5 まで implementation grep されなかった結果、5 cycle 通じて生き残った。cycle 5 で tech-writer が新規 hunt で実装側 grep を実施した結果として初めて発見。
 5. **Self-Defeating Fix の連続再発** (cycle 4/5/8/11/12): fix 自体が新たな dead reference / fact error を導入する pattern が 5 cycle 連続で発火。cycle 4 で「self-defeating fix」が learned に記録されたが、cycle 5/8/11/12 でも同根 (新規導入する説明文の事実確認 step が verification protocol に組み込まれていない) で再発。learned 単発記録では足りず verification protocol レベルでの強制が必要。
@@ -86,7 +86,7 @@ documentation review の verification protocol が **「内的整合 (CHANGELOG 
 ### 適用範囲
 
 - リリース直前の大規模 docs 整備 PR (起点事例のような pre-release docs review)
-- 大型 retire/decompose 系 PR (`#1117` i18n 廃止、`#1118` scaffolding 削除、`#1136` /rite:issue:start 4 分解 など) の事後 docs 整備
+- 大型 retire/decompose 系 PR (i18n 廃止、scaffolding 削除、/rite:issue:start の 4 分解 など) の事後 docs 整備
 - migration-guide 更新 PR (旧 → 新 phase mapping を含むため特に implementation grep が critical)
 - CONFIGURATION.md / SPEC.md / CHANGELOG.md / README.md の cross-doc 整合 PR
 

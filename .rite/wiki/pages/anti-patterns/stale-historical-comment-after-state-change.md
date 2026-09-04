@@ -44,10 +44,10 @@ config 値の bump (例: `enabled: false → true`) や AC の完了マーク (`
 
 ```yaml
 # Before bump (旧 HEAD)
-enabled: false           # scope-based routing 全体の opt-in/out (default: false、Issue #1020 で初期導入)
+enabled: false           # scope-based routing 全体の opt-in/out (default: false、初期導入時のまま)
 
 # After bump (新 HEAD) — drift 状態
-enabled: true            # scope-based routing 全体の opt-in/out (default: false、Issue #1020 で初期導入)
+enabled: true            # scope-based routing 全体の opt-in/out (default: false、初期導入時のまま)
                          #                                       ^^^^^^^^^^^^^^^^
                          #                                       現値 true に対して非対称
 ```
@@ -93,7 +93,7 @@ reader は commit SHA から `git show 7412b2f9` で実物を確認でき、comp
 
 ```diff
 - # ロールアウト戦略: 初期 false で導入 → 動作検証後に develop merge 時点で同一 PR 内の別 commit で true へ bump
-+ # ロールアウト履歴: 初期 false で導入 → #1022 検証 pass 後 (commit 7412b2f9) に true へ bump
++ # ロールアウト履歴: 初期 false で導入 → 検証 pass 後 (commit 7412b2f9) に true へ bump
 ```
 
 「予定」「予定」を「履歴」「実施」に置き換えることで、PR cycle 完了後も時制が drift しない。

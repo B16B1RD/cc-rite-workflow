@@ -70,7 +70,7 @@ TC-13.1 で `PASS=0` を pin することで、`pass()` が誤って追加され
 inline guard を helper 呼び出しに置換する際、過去 Issue の経緯コメントを保持しつつ helper 化したことを表記する:
 
 ```bash
-# Issue #1048 → Issue #1051: missing-file inflation guard → helper 化
+# missing-file inflation guard → helper 化
 assert_file_exists_or_fail "$r.md" "$f" || continue
 ```
 

@@ -28,7 +28,7 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-05-15T15:05:00+09:00" }
 
 2 reviewers (prompt-engineer + code-quality) は以下の根拠で本 PR を blocking とせず**推奨事項に降格**:
 
-1. **Issue 本文の明示的目的**: `PR #969 と同じパターンで統一する` (Issue 本文の verbatim 引用) が宣言されている
+1. **Issue 本文の明示的目的**: 「先行 PR と同じパターンで統一する」ことが Issue 本文で宣言されている
 2. **SoT との byte-level 同型**: 修正後文言が start-finalize.md（先行 PR で merge 済）と完全一致
 3. **test SCOPE 自身の declaration**: `4-site-symmetry.test.sh` header に「create-interview workflow 専用」と明示されており、test 自身の scope 宣言と一致する事実記述である
 4. **trade-off の scope 外性**: overclaim 一括書き換えは当該先行 PR を含む複数 PR の同期書き換えを要し、本 PR scope を超える
