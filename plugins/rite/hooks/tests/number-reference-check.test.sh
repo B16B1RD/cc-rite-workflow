@@ -464,9 +464,13 @@ assert_not_grep "T-06 pr-review does not skip on cycle-scope" "$PR_REVIEW_SKILL"
 assert_grep "T-06 fix 3.1 self-check calls --diff" "$FIX_SKILL" \
   'number-reference-check\.sh --diff'
 assert_grep "T-06 fix 3.1 self-check intent-to-add uses {changed_files}" "$FIX_SKILL" \
-  'git add -N -- \{changed_files\}'
+  'for f in \{changed_files\}'
+assert_grep "T-06 fix 3.1 add -N uses existing-path subset" "$FIX_SKILL" \
+  'git add -N -- \$nref_addn'
 assert_grep "T-06 fix 3.1 empty {changed_files} skips intent-to-add" "$FIX_SKILL" \
   'if \[ -n "\{changed_files\}" \]'
+assert_grep "T-06 fix 3.1 skips missing paths before add -N" "$FIX_SKILL" \
+  '\[ -e "\$f" \] && nref_addn='
 assert_grep "T-06 fix 3.1 intent-to-add fail-loud ERROR" "$FIX_SKILL" \
   'ERROR: intent-to-add に失敗しました'
 assert_not_grep "T-06 fix 3.1 does not use add -N ." "$FIX_SKILL" \
@@ -486,7 +490,7 @@ fix_skip_line=$(awk '
 fix_addn_line=$(awk '
   /^### 3\.1 Verify Changes/ { s=1 }
   s && /^### 3\.1\.1 / { exit }
-  s && /^[[:space:]]*git add -N -- \{changed_files\}/ { print NR; exit }
+  s && /^[[:space:]]*git add -N -- \$nref_addn/ { print NR; exit }
 ' "$FIX_SKILL")
 fix_diff_line=$(awk '
   /^### 3\.1 Verify Changes/ { s=1 }
@@ -550,6 +554,34 @@ if [ "$rc" -eq 0 ] \
   pass "T-03 tracked-only add -N → rc=0 and no new intent-to-add entry"
 else
   fail "T-03 expected rc=0 with no new porcelain entry, got rc=$rc porcelain=$porcelain out=$out"
+fi
+
+# 削除パスを含む集合へ add -N すると 3.3 の git add が pathspec 失敗する。
+# worktree に残っているパスだけ -N すれば 3.3 相当の git add は rc=0 で全パスを stage する。
+nref_del=$(make_plain_sandbox) && cleanup_dirs+=("$nref_del") || { echo "ERROR: nref del sandbox" >&2; exit 1; }
+init_git_sb "$nref_del"
+printf 'keep\n' > "$nref_del/keep.md"
+printf 'gone\n' > "$nref_del/gone.md"
+commit_all "$nref_del" nref-del-init
+printf 'keep2\n' >> "$nref_del/keep.md"
+printf 'untracked token (#2701)\n' > "$nref_del/new.md"
+rm -f "$nref_del/gone.md"
+nref_addn=""
+for f in keep.md new.md gone.md; do
+  [ -e "$nref_del/$f" ] && nref_addn="$nref_addn $f"
+done
+nref_stage_rc=0
+git -C "$nref_del" add -N -- $nref_addn || nref_stage_rc=$?
+add_rc=0
+git -C "$nref_del" add keep.md new.md gone.md >/dev/null 2>&1 || add_rc=$?
+staged=$(git -C "$nref_del" diff --cached --name-only)
+if [ "$nref_stage_rc" -eq 0 ] && [ "$add_rc" -eq 0 ] \
+   && printf '%s\n' "$staged" | grep -qx 'keep.md' \
+   && printf '%s\n' "$staged" | grep -qx 'new.md' \
+   && printf '%s\n' "$staged" | grep -qx 'gone.md'; then
+  pass "T-03b existence-filtered add -N leaves 3.3 git add able to stage all paths"
+else
+  fail "T-03b expected add -N rc=0 and git add rc=0 staging keep/new/gone, got stage_rc=$nref_stage_rc add_rc=$add_rc staged=$staged"
 fi
 
 assert_grep "T-11 issue-implement forbids number/AC tokens in generated prose" "$IMPLEMENT_SKILL" \
