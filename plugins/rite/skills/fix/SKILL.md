@@ -591,6 +591,10 @@ elif ! printf '%s' "$raw_json" | jq -e '
   (.measured_gate | type) == "object"
   and (.measured_gate.commit_sha | type) == "string"
   and (.measured_gate.commit_sha | length) > 0
+  and (.measured_gate.applied_at | type) == "string"
+  and (.measured_gate.applied_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"))
+  and ([.measured_gate.blocking, .measured_gate.demoted, .measured_gate.anchor_undetermined]
+       | all(type == "number" and . >= 0 and . == floor))
   and .measured_gate.commit_sha == .commit_sha
 ' >/dev/null 2>&1; then
   echo "ERROR: PR コメント内 Raw JSON に実測必須ゲートの適用記録が無いか、commit_sha と一致しません。/rite:pr-review を再実行してください" >&2

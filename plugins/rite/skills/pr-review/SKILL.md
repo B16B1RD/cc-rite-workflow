@@ -2633,7 +2633,10 @@ fi
 bash {plugin_root}/hooks/review-result-save.sh \
   --pr {pr_number} \
   --content-file {review_tmp_dir}/rite-review-result-{pr_number}.json \
-  --pending-id "{save_pending_id}"
+  --pending-id "{save_pending_id}" || {
+  echo "[review:error] review-result の provenance 検証に失敗しました" >&2
+  exit 1
+}
 ```
 
 **Persistence contract** (D-04): 従来の環境・永続化失敗は `[CONTEXT] LOCAL_SAVE_FAILED=1; reason=...` を出して WARNING 継続する。ただし provenance 契約違反 (`timestamp_not_injected` / `gate_not_applied` / `gate_record_mismatch`) は helper の rc=1 を受けて直ちに `[review:error]` を出し、ステップ 6 を停止する。6.1.b / 6.1.c へ進んではならない。

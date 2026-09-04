@@ -3251,7 +3251,7 @@ else
   #        配線 drift が構造的に起こり得ないが、本 helper は id を受け取るのでここが単一障害点。
   _sec_610a() { _section_of '^bash \{plugin_root\}/hooks/review-result-save\.sh' '^```$'; }
   assert "TC-5h 6.1.a の helper 呼び出しが --pending-id を渡す (配線 drift の検出)" "1" \
-    "$(_sec_610a | grep -cE '^[[:space:]]*--pending-id "\{save_pending_id\}"$' || true)"
+    "$(_sec_610a | grep -cE '^[[:space:]]*--pending-id "\{save_pending_id\}" \|\| \{$' || true)"
   # 生成側の変数名と caller placeholder 名が一致すること (片側改名で silent に空文字が渡る)
   assert "TC-5h 6.1.a が渡す placeholder 名が 5.3.0.M step 2 の変数名と一致する" "1" \
     "$(_sec_530m_step2 | grep -cE '^[[:space:]]*save_pending_id="' || true)"
