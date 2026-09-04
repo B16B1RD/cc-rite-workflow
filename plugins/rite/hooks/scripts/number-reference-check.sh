@@ -8,7 +8,7 @@
 #   --all                 git ls-files 全件 − 除外パス
 #   --diff <base_ref>     git diff <base_ref> の追加行（未 commit を含む）
 #                         --path DIR で走査範囲を DIR 配下へ限定できる
-#                         (DIR が repo 内のどこにも一致しなければ invocation error)
+#                         (DIR に tracked も staged も 0 件なら invocation error)
 #   --stdin --label NAME  stdin を NAME として走査（除外パスなら走査しない）
 #
 # Detected: a 3-4 digit hash-number token. This subsumes `Issue #NNN` /
@@ -281,17 +281,31 @@ scan_all() {
 
 scan_diff() {
   local base="$1"
-  # pathspec が何にもマッチしないと git diff は rc=0 + 空を返し、「検査済みの clean」に
-  # 化ける。走査母数が空になった事実を verdict に出せないので、ここで invocation error に
-  # 倒す。tracked かどうかの両面を見る (worktree 上で削除済みでも tracked なら正当)。
-  if [ -n "$DIFF_PATH" ] && [ ! -d "$DIFF_PATH" ] \
-     && [ -z "$(git ls-files -- "$DIFF_PATH")" ]; then
-    echo "ERROR: --path が repo 内のどのパスにも一致しません: $DIFF_PATH" >&2
-    exit 2
-  fi
   if ! git rev-parse --verify "${base}^{commit}" >/dev/null 2>&1; then
     echo "ERROR: diff base could not be resolved: $base" >&2
     exit 2
+  fi
+  # pathspec が何も掴まないと git diff は rc=0 + 空を返し、「検査済みの clean」に化ける。
+  # 走査母数が空になった事実を verdict に出せないので invocation error へ倒す。
+  # 判定は tracked / staged の有無で行う。ディレクトリが実在するかどうかは基準にしない —
+  # 実在しても tracked が 0 件なら diff の母数は空で、silent-0 の主要形はそちらにある。
+  # 逆に worktree 上で削除済みでも tracked なら母数は空でないので通す。
+  if [ -n "$DIFF_PATH" ]; then
+    local ls_rc=0 ls_out cached_rc=0 cached_out
+    ls_out=$(git ls-files -- "$DIFF_PATH") || ls_rc=$?
+    if [ "$ls_rc" -ne 0 ]; then
+      echo "ERROR: git ls-files failed for pathspec: $DIFF_PATH" >&2
+      exit 2
+    fi
+    cached_out=$(git diff --cached --name-only -- "$DIFF_PATH") || cached_rc=$?
+    if [ "$cached_rc" -ne 0 ]; then
+      echo "ERROR: git diff --cached failed for pathspec: $DIFF_PATH" >&2
+      exit 2
+    fi
+    if [ -z "$ls_out" ] && [ -z "$cached_out" ]; then
+      echo "ERROR: --path が repo 内のどのパスにも一致しません: $DIFF_PATH" >&2
+      exit 2
+    fi
   fi
   local diff_out diff_rc=0
   # pathspec は `--` の後ろへ置く（ref と紛れないため）。DIFF_PATH が空ならツリー全体。

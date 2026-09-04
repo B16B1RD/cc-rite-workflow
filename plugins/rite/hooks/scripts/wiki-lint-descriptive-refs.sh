@@ -75,7 +75,7 @@
 #
 #   NOT scanned — a deliberate exclusion, not an unfinished area:
 #     `.rite/wiki/raw/**`   レビュー / fix の生ログ = provenance 資料。番号は出典そのもので
-#                           あって説明的参照ではない (実測 1,400 ファイル超。review / fix
+#                           あって Why の代替ではない (実測 1,400 ファイル超。review / fix
 #                           サイクルごとに増えるため厳密値は持たない)。stdin にこのパスが
 #                           現れた場合は下の partial pollution gate が exit 1 で弾く
 #                           (取り違えの検出)。委譲先も同じパスを除外するため、仮に到達しても
@@ -573,7 +573,7 @@ while IFS= read -r page; do
       < "$body_file" 2>"${page_err:-/dev/null}"); check_rc=$?
   fi
   hits_rc=0
-  if [ "${awk_rc:-1}" -ne 0 ]; then
+  if [ "$awk_rc" -ne 0 ]; then
     page_disp=$(printf '%s' "$page" | neutralize_ctrl)
     echo "WARNING: ページ ${page_disp} の本文抽出 awk が失敗しました (rc=$awk_rc)" >&2
     hits_rc=1

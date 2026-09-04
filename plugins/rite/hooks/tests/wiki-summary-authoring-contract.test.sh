@@ -18,7 +18,7 @@ check_literal() {
 }
 
 echo "=== wiki summary authoring contract ==="
-check_literal "summary forbids descriptive number references" '番号参照を書かず、番号が担っていた観測事実・条件・因果を自己完結した散文で記述する'
+check_literal "summary forbids number references" '`refs #NNN` 等の番号参照を書かず、番号が担っていた観測事実・条件・因果を自己完結した散文で記述する'
 check_literal "summary is shared by description and index" 'page frontmatter `description` と index.md のサマリー列へ同一文言を掲載する'
 check_literal "description uses the summary without rewording" '値は上表の番号なし Why 要約をそのまま使い、独自の短縮・言い換えをしない'
 check_literal "step 6 passes the literal description" 'index 用の別要約を生成しない'

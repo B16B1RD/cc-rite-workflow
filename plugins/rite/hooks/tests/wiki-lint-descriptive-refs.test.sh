@@ -448,13 +448,14 @@ awk '
 ' "$INGEST_MD_RAIL" > "$p18b_dir/block.sh"
 if [ ! -s "$p18b_dir/block.sh" ]; then
   fail "TC-18b (AC-6) 5.0.n の bash ブロックを抽出できなかった (見出し / fence の drift)"
+  skip "TC-18b (AC-6) 5.0.n 実行 assert 群 (8 経路) をブロック抽出失敗により gate"
 else
   if bash -n "$p18b_dir/block.sh" 2>/dev/null; then
     pass "TC-18b (AC-6) 5.0.n の bash ブロックが構文的に妥当"
   else
     fail "TC-18b (AC-6) 5.0.n の bash ブロックが bash -n を通らない"
   fi
-  # placeholder を実値へ置換して 6 経路を実行する。走査対象は使い捨ての git リポジトリで、
+  # placeholder を実値へ置換して 8 経路を実行する。走査対象は使い捨ての git リポジトリで、
   # 番号を含む / 含まない未 commit 差分と、まだ追跡されていない新規ページを作って与える。
   p18b_render() {
     # $1 = numref_tree の実値、$2 = plugin_root の実値。空文字ならその placeholder を残す
@@ -485,111 +486,131 @@ else
     # 無計上で落とすと baseline との PASS 差だけが残り「何が走らなかったか」がサマリから読めない
     skip "TC-18b (AC-6) 5.0.n 実行 assert 群 (8 経路) を sandbox 準備失敗により gate"
   else
-  # (1) clean: 未 commit 差分に番号が無い
-  (cd "$p18b_tree" && printf '# t\n\n番号なしの本文\n追記した番号なし行\n' > .rite/wiki/pages/x/p.md)
-  p18b_render "$p18b_tree" "$PLUGIN_ROOT" | bash > "$p18b_dir/clean.out" 2>&1
-  assert_grep "TC-18b (AC-6) 番号なしの差分は clean を返す" "$p18b_dir/clean.out" 'WIKI_INGEST_NUMREF=clean'
-  # (2) hit: 未 commit 差分に 3-4 桁の番号がある
-  (cd "$p18b_tree" && printf '# t\n\n番号なしの本文\nPR #1300 を参照\n' > .rite/wiki/pages/x/p.md)
-  p18b_render "$p18b_tree" "$PLUGIN_ROOT" | bash > "$p18b_dir/hit.out" 2>&1
-  assert_grep "TC-18b (AC-6) 番号を含む差分は hit を返す" "$p18b_dir/hit.out" 'WIKI_INGEST_NUMREF=hit'
-  # hit テーブルのアクションは「stdout の file:line が指す行を書き直す」ことに依存する。
-  # verdict だけを測ると、委譲先の findings 出力が失われても緑のままになる。
-  assert_grep "TC-18b (AC-6) hit は書き直し対象を file:line で名指しする" "$p18b_dir/hit.out" \
-    '\.rite/wiki/pages/x/p\.md:[0-9]+:'
-  # (3) 新規ページ (untracked): ingest が Write した直後の状態。git diff は untracked を含まないため、
-  #     intent-to-add を外すとここが clean に落ちる (混入の主経路が素通りする)。
-  (cd "$p18b_tree" && git checkout -q -- .rite/wiki/pages/x/p.md && mkdir -p .rite/wiki/pages/new \
-     && printf '# new\n\nPR #1301 を参照\n' > .rite/wiki/pages/new/n.md)
-  p18b_render "$p18b_tree" "$PLUGIN_ROOT" | bash > "$p18b_dir/untracked.out" 2>&1
-  assert_grep "TC-18b (AC-6) 未追跡の新規ページに番号があれば hit を返す" "$p18b_dir/untracked.out" 'WIKI_INGEST_NUMREF=hit'
-  assert_grep "TC-18b (AC-6) 新規ページの hit も file:line で名指しする" "$p18b_dir/untracked.out" \
-    '\.rite/wiki/pages/new/n\.md:[0-9]+:'
-  # (4) 走査範囲は .rite/wiki 配下に限定される (same_branch で dev ツリー全体を母数にしない)
-  (cd "$p18b_tree" && rm -rf .rite/wiki/pages/new && printf '番号なしのコード側ファイル\nPR #1302 を参照\n' > outside.md)
-  p18b_render "$p18b_tree" "$PLUGIN_ROOT" | bash > "$p18b_dir/outside.out" 2>&1
-  assert_grep "TC-18b (AC-6) .rite/wiki 外の番号は hit にしない (走査範囲 = commit 範囲)" \
-    "$p18b_dir/outside.out" 'WIKI_INGEST_NUMREF=clean'
-  (cd "$p18b_tree" && git checkout -q -- outside.md)
-  # (5) placeholder 残留: 未置換のまま走らせても clean にならず fail-loud で止まる。
-  #     ゲートは 2 変数を守るので、片方ずつ残して両方が測られていることを示す。
-  p18b_render "" "$PLUGIN_ROOT" | bash > "$p18b_dir/residue-tree.out" 2>&1
-  assert_not_grep "TC-18b (AC-6) numref_tree 未置換は clean を名乗らない" "$p18b_dir/residue-tree.out" 'WIKI_INGEST_NUMREF=clean'
-  assert_grep "TC-18b (AC-6) numref_tree 未置換は placeholder_residue で止まる" "$p18b_dir/residue-tree.out" 'reason=placeholder_residue'
-  p18b_render "$p18b_tree" "" | bash > "$p18b_dir/residue-root.out" 2>&1
-  assert_grep "TC-18b (AC-6) plugin_root 未置換も placeholder_residue で止まる (helper_missing に誤診しない)" \
-    "$p18b_dir/residue-root.out" 'reason=placeholder_residue'
-  # (6) check_failed: commit が 1 つも無いツリー (初回 ingest 直後の wiki ブランチ) では
-  #     委譲先が base ref を解決できず rc=2 を返す。`*)` が fail-loud で受けること。
-  p18b_bare=$(mktemp -d "${TMPDIR:-/tmp}/rite-tc18b-bare-XXXXXX")
-  cleanup_dirs+=("$p18b_bare")
-  p18b_bare_rc=0
-  ( cd "$p18b_bare" && git init -q . && mkdir -p .rite/wiki/pages ) > "$p18b_dir/bare.out" 2>&1 || p18b_bare_rc=$?
-  if [ "$p18b_bare_rc" -ne 0 ]; then
-    # 非 repo のまま走らせると add -N が落ちて stage_failed に化け、check_failed を測れない
-    fail "TC-18b (AC-6) commit 無しツリーのセットアップに失敗 (rc=$p18b_bare_rc)"
-    head -5 "$p18b_dir/bare.out" | sed 's/^/    /' >&2
-  else
-    p18b_render "$p18b_bare" "$PLUGIN_ROOT" | bash > "$p18b_dir/failed.out" 2>&1
-    assert_not_grep "TC-18b (AC-6) HEAD 不在で clean を名乗らない" "$p18b_dir/failed.out" 'WIKI_INGEST_NUMREF=clean'
-    assert_grep "TC-18b (AC-6) 委譲先の実行失敗は check_failed で止まる" "$p18b_dir/failed.out" 'reason=check_failed'
-  fi
-  # (7) stage_failed: .rite ごと gitignore されたツリーでは add -N が非 0 を返す。
-  #     guard を外すと差分が空 = 無言の clean になるので、rc を見るゲートを実行で pin する。
-  p18b_ign=$(mktemp -d "${TMPDIR:-/tmp}/rite-tc18b-ign-XXXXXX")
-  cleanup_dirs+=("$p18b_ign")
-  p18b_ign_rc=0
-  (
-    cd "$p18b_ign" || exit 1
-    git init -q . || exit 1
-    git config user.email t@e.st || exit 1
-    git config user.name t || exit 1
-    printf '.rite/\n' > .gitignore || exit 1
-    git add -A || exit 1
-    git commit -qm init || exit 1
-    mkdir -p .rite/wiki/pages || exit 1
-    printf '# t\n\nPR #1303 を参照\n' > .rite/wiki/pages/p.md || exit 1
-  ) > "$p18b_dir/ign.out" 2>&1 || p18b_ign_rc=$?
-  if [ "$p18b_ign_rc" -ne 0 ]; then
-    fail "TC-18b (AC-6) gitignore ツリーのセットアップに失敗 (rc=$p18b_ign_rc)"
-    head -5 "$p18b_dir/ign.out" | sed 's/^/    /' >&2
-  else
-    p18b_render "$p18b_ign" "$PLUGIN_ROOT" | bash > "$p18b_dir/stage.out" 2>&1
-    assert_not_grep "TC-18b (AC-6) gitignore された Wiki で clean を名乗らない" "$p18b_dir/stage.out" 'WIKI_INGEST_NUMREF=clean'
-    assert_grep "TC-18b (AC-6) intent-to-add の失敗は stage_failed で止まる" "$p18b_dir/stage.out" 'reason=stage_failed'
-    assert_grep "TC-18b (AC-6) stage_failed は gitignore negation の手当てを案内する" "$p18b_dir/stage.out" 'gitignore-wiki-section-start'
-  fi
-  # (8) ignored_paths: ディレクトリは非 ignore・配下ファイルだけ ignore のドリフト。
-  #     add -N は rc=0 で何も stage しないため、rc だけを見るゲートでは silent clean になる。
-  p18b_drift=$(mktemp -d "${TMPDIR:-/tmp}/rite-tc18b-drift-XXXXXX")
-  cleanup_dirs+=("$p18b_drift")
-  p18b_drift_rc=0
-  (
-    cd "$p18b_drift" || exit 1
-    git init -q . || exit 1
-    git config user.email t@e.st || exit 1
-    git config user.name t || exit 1
-    mkdir -p .rite/wiki/pages || exit 1
-    # `*` + `!wiki/` で `!wiki/**` を欠く形 = gitignore-health-check が検出する nested drift
-    printf '*\n!wiki/\n' > .rite/.gitignore || exit 1
-    printf 'seed\n' > seed.md || exit 1
-    git add -A || exit 1
-    git commit -qm init || exit 1
-    printf '# t\n\nPR #1304 を参照\n' > .rite/wiki/pages/p.md || exit 1
-  ) > "$p18b_dir/drift.out" 2>&1 || p18b_drift_rc=$?
-  if [ "$p18b_drift_rc" -ne 0 ]; then
-    fail "TC-18b (AC-6) nested drift ツリーのセットアップに失敗 (rc=$p18b_drift_rc)"
-    head -5 "$p18b_dir/drift.out" | sed 's/^/    /' >&2
-  else
-    p18b_render "$p18b_drift" "$PLUGIN_ROOT" | bash > "$p18b_dir/ignored.out" 2>&1
-    assert_not_grep "TC-18b (AC-6) 配下だけ ignore のドリフトで clean を名乗らない" "$p18b_dir/ignored.out" 'WIKI_INGEST_NUMREF=clean'
-    assert_grep "TC-18b (AC-6) ignore 残存は ignored_paths で止まる (rc は 0 なので実体で見る)" \
-      "$p18b_dir/ignored.out" 'reason=ignored_paths'
-  fi
+    # (1) clean: 未 commit 差分に番号が無い
+    (cd "$p18b_tree" && printf '# t\n\n番号なしの本文\n追記した番号なし行\n' > .rite/wiki/pages/x/p.md)
+    p18b_render "$p18b_tree" "$PLUGIN_ROOT" | bash > "$p18b_dir/clean.out" 2>&1
+    assert_grep "TC-18b (AC-6) 番号なしの差分は clean を返す" "$p18b_dir/clean.out" 'WIKI_INGEST_NUMREF=clean'
+    # (2) hit: 未 commit 差分に 3-4 桁の番号がある
+    (cd "$p18b_tree" && printf '# t\n\n番号なしの本文\nPR #1300 を参照\n' > .rite/wiki/pages/x/p.md)
+    p18b_render "$p18b_tree" "$PLUGIN_ROOT" | bash > "$p18b_dir/hit.out" 2>&1
+    assert_grep "TC-18b (AC-6) 番号を含む差分は hit を返す" "$p18b_dir/hit.out" 'WIKI_INGEST_NUMREF=hit'
+    # hit テーブルのアクションは「stdout の file:line が指す行を書き直す」ことに依存する。
+    # verdict だけを測ると、委譲先の findings 出力が失われても緑のままになる。
+    assert_grep "TC-18b (AC-6) hit は書き直し対象を file:line で名指しする" "$p18b_dir/hit.out" \
+      '\.rite/wiki/pages/x/p\.md:[0-9]+:'
+    # (3) 新規ページ (untracked): ingest が Write した直後の状態。git diff は untracked を含まないため、
+    #     intent-to-add を外すとここが clean に落ちる (混入の主経路が素通りする)。
+    (cd "$p18b_tree" && git checkout -q -- .rite/wiki/pages/x/p.md && mkdir -p .rite/wiki/pages/new \
+       && printf '# new\n\nPR #1301 を参照\n' > .rite/wiki/pages/new/n.md)
+    p18b_render "$p18b_tree" "$PLUGIN_ROOT" | bash > "$p18b_dir/untracked.out" 2>&1
+    assert_grep "TC-18b (AC-6) 未追跡の新規ページに番号があれば hit を返す" "$p18b_dir/untracked.out" 'WIKI_INGEST_NUMREF=hit'
+    assert_grep "TC-18b (AC-6) 新規ページの hit も file:line で名指しする" "$p18b_dir/untracked.out" \
+      '\.rite/wiki/pages/new/n\.md:[0-9]+:'
+    # (4) 走査範囲は .rite/wiki 配下に限定される (same_branch で dev ツリー全体を母数にしない)
+    (cd "$p18b_tree" && rm -rf .rite/wiki/pages/new && printf '番号なしのコード側ファイル\nPR #1302 を参照\n' > outside.md)
+    p18b_render "$p18b_tree" "$PLUGIN_ROOT" | bash > "$p18b_dir/outside.out" 2>&1
+    assert_grep "TC-18b (AC-6) .rite/wiki 外の番号は hit にしない (走査範囲 = commit 範囲)" \
+      "$p18b_dir/outside.out" 'WIKI_INGEST_NUMREF=clean'
+    (cd "$p18b_tree" && git checkout -q -- outside.md)
+    # (5) placeholder 残留: 未置換のまま走らせても clean にならず fail-loud で止まる。
+    #     ゲートは 2 変数を守るので、片方ずつ残して両方が測られていることを示す。
+    p18b_render "" "$PLUGIN_ROOT" | bash > "$p18b_dir/residue-tree.out" 2>&1
+    assert_not_grep "TC-18b (AC-6) numref_tree 未置換は clean を名乗らない" "$p18b_dir/residue-tree.out" 'WIKI_INGEST_NUMREF=clean'
+    assert_grep "TC-18b (AC-6) numref_tree 未置換は placeholder_residue で止まる" "$p18b_dir/residue-tree.out" 'reason=placeholder_residue'
+    p18b_render "$p18b_tree" "" | bash > "$p18b_dir/residue-root.out" 2>&1
+    assert_grep "TC-18b (AC-6) plugin_root 未置換も placeholder_residue で止まる (helper_missing に誤診しない)" \
+      "$p18b_dir/residue-root.out" 'reason=placeholder_residue'
+    # (6) check_failed: commit が 1 つも無いツリー (初回 ingest 直後の wiki ブランチ) では
+    #     委譲先が base ref を解決できず rc=2 を返す。`*)` が fail-loud で受けること。
+    p18b_bare=$(mktemp -d "${TMPDIR:-/tmp}/rite-tc18b-bare-XXXXXX")
+    cleanup_dirs+=("$p18b_bare")
+    p18b_bare_rc=0
+    ( cd "$p18b_bare" && git init -q . && mkdir -p .rite/wiki/pages ) > "$p18b_dir/bare.out" 2>&1 || p18b_bare_rc=$?
+    if [ "$p18b_bare_rc" -ne 0 ]; then
+      # 非 repo のまま走らせると add -N が落ちて stage_failed に化け、check_failed を測れない
+      fail "TC-18b (AC-6) commit 無しツリーのセットアップに失敗 (rc=$p18b_bare_rc)"
+    skip "TC-18b (AC-6) check_failed 経路の assert を sandbox 準備失敗により gate"
+      head -5 "$p18b_dir/bare.out" | sed 's/^/    /' >&2
+    else
+      p18b_render "$p18b_bare" "$PLUGIN_ROOT" | bash > "$p18b_dir/failed.out" 2>&1
+      assert_not_grep "TC-18b (AC-6) HEAD 不在で clean を名乗らない" "$p18b_dir/failed.out" 'WIKI_INGEST_NUMREF=clean'
+      assert_grep "TC-18b (AC-6) 委譲先の実行失敗は check_failed で止まる" "$p18b_dir/failed.out" 'reason=check_failed'
+    fi
+    # (7) stage_failed: .rite ごと gitignore されたツリーでは add -N が非 0 を返す。
+    #     guard を外すと差分が空 = 無言の clean になるので、rc を見るゲートを実行で pin する。
+    p18b_ign=$(mktemp -d "${TMPDIR:-/tmp}/rite-tc18b-ign-XXXXXX")
+    cleanup_dirs+=("$p18b_ign")
+    p18b_ign_rc=0
+    (
+      cd "$p18b_ign" || exit 1
+      git init -q . || exit 1
+      git config user.email t@e.st || exit 1
+      git config user.name t || exit 1
+      printf '.rite/wiki/\n' > .gitignore || exit 1
+      git add -A || exit 1
+      git commit -qm init || exit 1
+      mkdir -p .rite/wiki/pages || exit 1
+      printf '# t\n\nPR #1303 を参照\n' > .rite/wiki/pages/p.md || exit 1
+    ) > "$p18b_dir/ign.out" 2>&1 || p18b_ign_rc=$?
+    if [ "$p18b_ign_rc" -ne 0 ]; then
+      fail "TC-18b (AC-6) gitignore ツリーのセットアップに失敗 (rc=$p18b_ign_rc)"
+    skip "TC-18b (AC-6) stage_failed 経路の assert を sandbox 準備失敗により gate"
+      head -5 "$p18b_dir/ign.out" | sed 's/^/    /' >&2
+    else
+      p18b_render "$p18b_ign" "$PLUGIN_ROOT" | bash > "$p18b_dir/stage.out" 2>&1
+      assert_not_grep "TC-18b (AC-6) gitignore された Wiki で clean を名乗らない" "$p18b_dir/stage.out" 'WIKI_INGEST_NUMREF=clean'
+      assert_grep "TC-18b (AC-6) intent-to-add の失敗は stage_failed で止まる" "$p18b_dir/stage.out" 'reason=stage_failed'
+      # stage_failed 固有の文言まで見る。案内文字列だけだと ignored_paths 側でも同じ語が出るため、
+      # rc ゲートを弱めて別分岐へ落ちた変異を識別できない
+      assert_grep "TC-18b (AC-6) stage_failed は intent-to-add の失敗として報告する" \
+        "$p18b_dir/stage.out" 'intent-to-add に失敗しました'
+      assert_grep "TC-18b (AC-6) stage_failed は root .gitignore への negation 追加を案内する" \
+        "$p18b_dir/stage.out" "root .gitignore に '!\.rite/wiki/' と '!\.rite/wiki/\*\*' を追記"
+      # 案内どおり negation を足すと解消すること (手当てが実効性を持つことの pin)
+      (cd "$p18b_ign" && printf '.rite/wiki/\n!.rite/wiki/\n!.rite/wiki/**\n' > .gitignore)
+      p18b_render "$p18b_ign" "$PLUGIN_ROOT" | bash > "$p18b_dir/stage-fixed.out" 2>&1
+      assert_not_grep "TC-18b (AC-6) 案内どおり直すと stage_failed が消える" \
+        "$p18b_dir/stage-fixed.out" 'reason=stage_failed'
+      assert_grep "TC-18b (AC-6) 案内どおり直すと番号を検出できる (母数が空にならない)" \
+        "$p18b_dir/stage-fixed.out" 'WIKI_INGEST_NUMREF=hit'
+    fi
+    # (8) ignored_paths: ディレクトリは非 ignore・配下ファイルだけ ignore のドリフト。
+    #     add -N は rc=0 で何も stage しないため、rc だけを見るゲートでは silent clean になる。
+    p18b_drift=$(mktemp -d "${TMPDIR:-/tmp}/rite-tc18b-drift-XXXXXX")
+    cleanup_dirs+=("$p18b_drift")
+    p18b_drift_rc=0
+    (
+      cd "$p18b_drift" || exit 1
+      git init -q . || exit 1
+      git config user.email t@e.st || exit 1
+      git config user.name t || exit 1
+      mkdir -p .rite/wiki/pages || exit 1
+      # `*` + `!wiki/` で `!wiki/**` を欠く形 = gitignore-health-check が検出する nested drift
+      printf '*\n!wiki/\n' > .rite/.gitignore || exit 1
+      printf 'seed\n' > seed.md || exit 1
+      git add -A || exit 1
+      git commit -qm init || exit 1
+      printf '# t\n\nPR #1304 を参照\n' > .rite/wiki/pages/p.md || exit 1
+    ) > "$p18b_dir/drift.out" 2>&1 || p18b_drift_rc=$?
+    if [ "$p18b_drift_rc" -ne 0 ]; then
+      fail "TC-18b (AC-6) nested drift ツリーのセットアップに失敗 (rc=$p18b_drift_rc)"
+    skip "TC-18b (AC-6) ignored_paths 経路の assert を sandbox 準備失敗により gate"
+      head -5 "$p18b_dir/drift.out" | sed 's/^/    /' >&2
+    else
+      p18b_render "$p18b_drift" "$PLUGIN_ROOT" | bash > "$p18b_dir/ignored.out" 2>&1
+      assert_not_grep "TC-18b (AC-6) 配下だけ ignore のドリフトで clean を名乗らない" "$p18b_dir/ignored.out" 'WIKI_INGEST_NUMREF=clean'
+      assert_grep "TC-18b (AC-6) ignore 残存は ignored_paths で止まる (rc は 0 なので実体で見る)" \
+        "$p18b_dir/ignored.out" 'reason=ignored_paths'
+      # nested drift は root への negation では解けない。案内先を SoT の helper に固定する
+      assert_grep "TC-18b (AC-6) ignored_paths は gitignore-health-check へ案内する" \
+        "$p18b_dir/ignored.out" 'gitignore-health-check\.sh'
+      assert_not_grep "TC-18b (AC-6) ignored_paths は root .gitignore の anchor を案内しない (nested では解けない)" \
+        "$p18b_dir/ignored.out" 'anchor 位置を特定'
+    fi
   fi
 fi
 # --- TC-18c (AC-6): commit ステップの numref_verdict ゲートを実行で pin する ---
-# 出現回数 (grep -c = 2) は順序も意味論も測らない。`clean) exit 1` や、ゲートを commit 呼び出しの
+# 出現回数 (grep -c = 3) は順序も意味論も測らない。`clean) exit 1` や、ゲートを commit 呼び出しの
 # 後ろへ移す変異はカウントを変えないため、抽出して実際に走らせる。
 p18c_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-tc18c-XXXXXX")
 cleanup_dirs+=("$p18c_dir")
@@ -619,20 +640,20 @@ else
 fi
 # canonical / 5.1 / 5.2 の 3 ブロックを byte 一致で比較する。件数 (grep -c) は意味論を測らず、
 # 片側の case arm を弱める変異 (`clean|hit) ;;` 等) を素通しする。
-p18c_extract_gate() {
-  # $1 = 出力先。ファイル中の `numref_verdict="{numref_verdict}"` で始まる case ブロックを
-  # 3 つとも取り出す (先頭行から `esac` まで)。
-  awk '
-    /^numref_verdict="\{numref_verdict\}"$/ { ing=1 }
-    ing { print }
-    ing && /^esac$/ { ing=0; print "---GATE-BOUNDARY---" }
-  ' "$INGEST_MD_RAIL" > "$1"
-}
-p18c_extract_gate "$p18c_dir/gates.txt"
-p18c_gate_count=$(grep -c '^---GATE-BOUNDARY---$' "$p18c_dir/gates.txt")
+# ブロックごとに awk が直接ファイルへ書き出す。csplit -z は GNU 固有で、coreutils を入れない
+# macOS leg では pin ごと失われる。境界 sentinel も不要になる。
+# 比較範囲は canonical 節が「literal 一致させる」と宣言する fenced block 全体に合わせ、
+# ゲート冒頭のコメント行から `esac` までを取る (コメントだけ片側で乖離する変更も弾く)。
+awk -v outdir="$p18c_dir" '
+  BEGIN { n = 0 }
+  /^# ステップ 5\.0\.n の判定を機械的に受ける/ { ing=1; f=outdir "/gate-" n ".txt" }
+  ing { print > f }
+  ing && /^esac$/ { ing=0; n++; close(f) }
+  END { print n }
+' "$INGEST_MD_RAIL" > "$p18c_dir/gate-count.txt"
+p18c_gate_count=$(cat "$p18c_dir/gate-count.txt")
 assert "TC-18c (AC-6) canonical + 5.1 + 5.2 の 3 箇所にゲート case ブロックがある" "3" "$p18c_gate_count"
 if [ "$p18c_gate_count" = "3" ]; then
-  csplit -s -z -f "$p18c_dir/gate-" -b '%d.txt' "$p18c_dir/gates.txt" '/^---GATE-BOUNDARY---$/+1' '{*}' 2>/dev/null || true
   if [ -f "$p18c_dir/gate-0.txt" ] && [ -f "$p18c_dir/gate-1.txt" ] && [ -f "$p18c_dir/gate-2.txt" ]; then
     if cmp -s "$p18c_dir/gate-0.txt" "$p18c_dir/gate-1.txt"; then
       pass "TC-18c (AC-6) 5.1 のゲートが canonical と byte 一致"

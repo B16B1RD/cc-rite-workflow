@@ -561,7 +561,8 @@ git -C "$numref_tree" add -N -- .rite/wiki || numref_stage_rc=$?
 if [ "$numref_stage_rc" -ne 0 ]; then
   echo "ERROR: .rite/wiki の intent-to-add に失敗しました (rc=$numref_stage_rc)。新規ページが検査されないため commit しません" >&2
   echo "  原因候補: same_branch 戦略で .gitignore に '!.rite/wiki/' negation が未設定の可能性" >&2
-  echo "  確認: grep -n 'gitignore-wiki-section-start' .gitignore で anchor 位置を特定し negation を追加する" >&2
+  echo "  対処: root .gitignore に '!.rite/wiki/' と '!.rite/wiki/**' を追記する" >&2
+  echo "    (anchor '# >>> gitignore-wiki-section-start' があればその直後。配布先には無いことがあるので末尾でよい)" >&2
   echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=stage_failed; rc=$numref_stage_rc" >&2
   exit 1
 fi
@@ -569,11 +570,21 @@ fi
 # ドリフト (`.rite/.gitignore` が '*' + '!wiki/' を持ち '!wiki/**' を欠く形) では、
 # add -N は rc=0 で何も stage せず、続く git diff が空 = 無言の 0 件 clean になる。
 # rc ではなく実体 (ignore されたまま残っているファイル) を見て fail-loud にする。
-numref_ignored=$(git -C "$numref_tree" ls-files --others --ignored --exclude-standard -- .rite/wiki)
+# rc は直前の add -N と同型に捕捉する。この arm は 2 つの呼び出しの間に git が壊れた場合しか
+# 踏まないため専用 fixture を持たない (非 repo / パス不在はどちらも add -N が先に落ちる)。
+numref_ig_rc=0
+numref_ignored=$(git -C "$numref_tree" ls-files --others --ignored --exclude-standard -- .rite/wiki) || numref_ig_rc=$?
+if [ "$numref_ig_rc" -ne 0 ]; then
+  echo "ERROR: ignore 残存の検査に失敗しました (git ls-files rc=$numref_ig_rc)。検査結果が不明なまま commit しません" >&2
+  echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=ignored_check_failed; rc=$numref_ig_rc" >&2
+  exit 1
+fi
 if [ -n "$numref_ignored" ]; then
   echo "ERROR: .rite/wiki 配下に gitignore されたままのファイルがあります。検査にも commit にも載らないため中止します" >&2
   printf '%s\n' "$numref_ignored" | head -5 | sed 's/^/    /' >&2
-  echo "  確認: grep -n 'gitignore-wiki-section-start' .gitignore で anchor 位置を特定し '!.rite/wiki/**' を追加する" >&2
+  echo "  確認: bash \"$plugin_root/hooks/scripts/gitignore-health-check.sh\" を実行し、その Hint に従う" >&2
+  echo "    (root .gitignore への negation では nested .rite/.gitignore の '*' を解除できない。" >&2
+  echo "     どちらが原因かは health-check が判定する)" >&2
   echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=ignored_paths" >&2
   exit 1
 fi
@@ -594,8 +605,10 @@ esac
 |---|---|
 | `clean` | ステップ 5.1 / 5.2 へ進む |
 | `hit` | stdout の `file:line: 内容` が指す行を書き直してから**本ステップを再実行**する。書き直しは番号を落として現在形の Why にすること — 番号を消した跡に経緯文を置き換えない。ソース bullet は説明だけを表示テキストにし、説明が無ければ種別語（「レビュー結果」「fix 結果」「close retrospective」）にする（リンク先パスは変えない）。**`index.md` の行は Edit しない** — ステップ 6 の `wiki-index-update.sh` を修正した `--description` で呼び直す（index.md への書き換えは helper が atomic に行う契約のため）。この禁止は ingest 実行中（helper を呼べる文脈）の話で、lint 指摘の事後手当ては `/rite:wiki-lint` の手順に従う。再実行で `clean` にできなければ commit せず停止し、残った行と `/rite:recover` を案内する |
-| `error` (`reason=stage_failed` / `ignored_paths`) | bash が `exit 1` で停止済み。`.gitignore` に `!.rite/wiki/` と `!.rite/wiki/**` の negation を追加してから**本ステップを再実行**する（anchor は `grep -n 'gitignore-wiki-section-start' .gitignore`） |
-| `error` (その他の `reason`) | bash が `exit 1` で停止済み。commit しない |
+| `error` (`reason=stage_failed`) | bash が `exit 1` で停止済み。`same_branch` では root `.gitignore` に `!.rite/wiki/` と `!.rite/wiki/**` を追記してから**本ステップを再実行**する（`# >>> gitignore-wiki-section-start` anchor があればその直後。無い場合は末尾でよい）。`separate_branch` では root `.gitignore` を持たないので、`{numref_tree}` が wiki worktree の絶対パスに substitute されているか（ステップ 1.3）を先に疑う |
+| `error` (`reason=ignored_paths`) | bash が `exit 1` で停止済み。`gitignore-health-check.sh` を実行し、その Hint に従って原因ファイルを直してから**本ステップを再実行**する。nested `.rite/.gitignore` の composition drift（3 行構成 '*' / '!wiki/' / '!wiki/**' の崩れ）は root への negation では解除できない |
+| `error` (`reason=placeholder_residue`) | bash が `exit 1` で停止済み。`{plugin_root}` / `{numref_tree}` を literal substitute して**本ステップを再実行**する |
+| `error` (`reason=helper_missing` / `check_failed` / `ignored_check_failed`) | bash が `exit 1` で停止済み。commit せず停止し、stderr の原因と `/rite:recover` を案内する |
 
 > 番号の定義は `number-reference-check.sh` が持つ（3-4 桁の番号トークン）。本ステップは文法を書き下さない。1-2 桁 / 5 桁以上（上流トラッカ id 等）は**本検査の検出対象外**であり、検出されないことは規則上書いてよいことを意味しない（規則の SoT は `SCHEMA.md` の「番号ではなく Why 散文」）。
 

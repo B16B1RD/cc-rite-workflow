@@ -341,6 +341,25 @@ else
   fail "T-04b --path non-matching pathspec not rejected rc=$rc: $out"
 fi
 
+# 実在するが tracked も staged も 0 件のディレクトリ — 本番呼び出し (--path .rite/wiki) と
+# 同じ shape。ディレクトリの実在を免除条件にすると、この silent-0 の主要形が素通りする
+mkdir -p "$sb/empty_dir"
+rc=0; out=$(run_diff "$sb" HEAD --path empty_dir --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q -- '--path が repo 内のどのパスにも一致しません'; then
+  pass "T-04b --path with an existing but untracked directory is an invocation error"
+else
+  fail "T-04b --path empty-but-existing dir not rejected rc=$rc: $out"
+fi
+# untracked ファイルだけを含むディレクトリも母数 0 なので同じ扱い
+printf 'PR #1305 を参照\n' > "$sb/empty_dir/u.md"
+rc=0; out=$(run_diff "$sb" HEAD --path empty_dir --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 2 ]; then
+  pass "T-04b --path with untracked-only content is an invocation error"
+else
+  fail "T-04b --path untracked-only dir not rejected rc=$rc: $out"
+fi
+rm -rf "$sb/empty_dir"
+
 # restore the tree for the following cases (失敗を握り潰すと後続 T-05+ が汚染ツリーで走り、
 # 原因が「T-04b の片付け失敗」ではなく無関係な assert の赤として現れる)
 git -C "$sb" checkout -q -- . || fail "T-04b 後片付けの checkout に失敗（以降のケースが汚染されたツリーで走る）"

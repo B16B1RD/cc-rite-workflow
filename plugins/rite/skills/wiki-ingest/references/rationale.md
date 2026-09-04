@@ -223,9 +223,11 @@ Raw Source は出典なので番号を持ち、そこから読解して書く過
 直すため後段への影響もない。hit / error で停止した回はエントリが残るが、次回実行の
 `add -N` が冪等に上書きする。
 
-rc だけでは足りない。ディレクトリ自体は非 ignore で配下ファイルだけが ignore された
-ドリフトでは `add -N` が rc=0 で何も stage せず、続く差分が空 = 無言の 0 件 clean になる。
-だから rc に加えて「ignore されたまま残っているファイル」を実体で見て止める。
+ignore 残存の検査に `ls-files --others --ignored` を使い `check-ignore` を使わないのは、
+前者が「実際に走査へ載らなかったファイル」を直接列挙するのに対し、後者はパターンの
+照合結果しか返さず negation の重ね合わせでは判定が一意にならないため。止めた後の
+手当てはこのステップでは判別せず `gitignore-health-check.sh` へ委譲する — root と nested の
+どちらが原因かの判定は既にその helper が所有しており、ここで二重に持つと片方が腐る。
 
 走査範囲を `--path .rite/wiki` で絞るのは、走査範囲と commit 範囲を一致させるため。
 `same_branch` では走査ツリーが dev repo root になるので、絞らないと Wiki と無関係な未 commit
