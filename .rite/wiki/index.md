@@ -463,8 +463,11 @@ okf_version: "0.2"
 | [レビュアー選定は毎 cycle 回す — 前 cycle の cap 除外を次へ持ち越さない](pages/heuristics/rerun-reviewer-selection-every-cycle.md) | heuristics | 候補数が cap を超えたための除外は、その cycle の正当な間引きであって次 cycle の除外理由にならない。選定判定を回さないと、差分スコープの cycle で候補が cap 以内に戻っても除外が恒久化し、初回起動の reviewer が CRITICAL をまとめて検出する。 | 2026-09-02T00:50:00Z | high |
 | [jq の has("key") は値が null でも true を返す](pages/anti-patterns/jq-has-true-for-null.md) | anti-patterns | jq の `has("key")` はキーの有無だけを見る。値が JSON null でも true になるため、GraphQL の欠落フィールドと「型付きで読めるオブジェクト」を同じ条件で扱うと、読めない応答を unset と誤認して書き込みへ進む。 | 2026-09-02T09:04:13Z | high |
 | [ゲートの判定文を新しい欠落種別へ広げたら、同じ marker を消費する option 表・テンプレート・例示 literal を同じ commit で一般化する](pages/heuristics/gate-predicate-widening-generalizes-consumer-literals.md) | heuristics | ワークフロー定義のゲート（例: commit body の段落有無を検査する Root Cause Gate）の判定文を新しい欠落種別へ広げるとき、同じ missing marker で分岐する option 表の bypass literal・commit メッセージ案テンプレート・chat 例示の 3 消費者を同じ commit で一般化しないと、新種別の欠落が bypass 経路で記録されずに通過し、次 cycle の reviewer が消費者ごとの取りこぼしを 1 件ずつ blocking として出す。 | 2026-09-02T18:40:00Z | high |
+| [検出器に arm を足したら、走査根の中で実際に発火するかを実測で確かめる](pages/patterns/detector-arm-must-fire-inside-scan-roots.md) | patterns | positive control は arm 単体との照合なので、走査根の外にしか実例が無い arm でも通る。arm を足したら修復前 tree に対する per-arm ヒット数を測り、0 なら arm を削るか走査根を届かせるかを決める。 | 2026-09-04T16:20:00+09:00 | high |
+| [検出文法が一部の表記だけを見るとき、同じ画面の別表記が検査外に残って整合が壊れたままゲートは通る](pages/anti-patterns/partial-format-detector-leaves-sibling-tokens-inconsistent.md) | anti-patterns | `#NNNN` だけを検出する文法の下で番号を直すと、同じカードにある `#` なしの裸番号が検査外に残り、修復後のプレースホルダと食い違う。表示テキストの番号は同一表示単位の全表記を一度に見る。 | 2026-09-04T16:20:00+09:00 | high |
+| [可変長を受ける側に対して、呼び出し側の診断が要素を書き下すと増減のたびに嘘になる](pages/patterns/vararg-callee-forbids-caller-side-enumeration.md) | patterns | `"$@"` で可変長を受ける helper に対し、呼び出し側の失敗メッセージが要素を名指しすると、要素を 1 つ足した瞬間その 1 行だけが嘘になる。修正は不足分の追記ではなく列挙の撤廃を採る。 | 2026-09-04T16:20:00+09:00 | high |
 ## 統計
 
-- 総ページ数: 453
-- ドメイン別: patterns=107, heuristics=201, anti-patterns=145
-- 最終更新: 2026-09-04T01:26:01Z
+- 総ページ数: 456
+- ドメイン別: patterns=109, heuristics=201, anti-patterns=146
+- 最終更新: 2026-09-04T16:20:00+09:00
