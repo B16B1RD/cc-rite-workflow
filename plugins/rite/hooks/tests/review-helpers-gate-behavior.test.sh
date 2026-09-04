@@ -551,6 +551,8 @@ Markdown 本文の literal sentinel は保存される: $SENTINEL
   "schema_version": "1.1.0",
   "pr_number": 123,
   "timestamp": "$SENTINEL",
+  "commit_sha": "abc1234",
+  "measured_gate": {"commit_sha":"abc1234","applied_at":"2026-01-01T00:00:00.000000000Z","blocking":0,"demoted":0,"anchor_undetermined":0},
   "findings": []
 }
 \`\`\`
@@ -603,6 +605,8 @@ cat > "$JSON_OK" <<EOF
   "schema_version": "1.1.0",
   "pr_number": 123,
   "timestamp": "$SENTINEL",
+  "commit_sha": "abc1234",
+  "measured_gate": {"commit_sha":"abc1234","applied_at":"2026-01-01T00:00:00.000000000Z","blocking":0,"demoted":0,"anchor_undetermined":0},
   "verdict": "mergeable",
   "reviewers": ["code-quality-reviewer", "security-reviewer"],
   "findings": [],
@@ -637,7 +641,7 @@ assert_grep "TC-3.5 reason=schema_required_fields_missing emit" "$ERR" 'LOCAL_SA
 _save_fixture() {  # $1=path, 残りは JSON 本体に差し込むトップレベル行
   local _p="$1"; shift
   {
-    printf '{\n  "schema_version": "1.1.0",\n  "pr_number": 123,\n  "timestamp": "%s",\n' "$SENTINEL"
+    printf '{\n  "schema_version": "1.1.0",\n  "pr_number": 123,\n  "timestamp": "%s",\n  "commit_sha": "abc1234",\n  "measured_gate": {"commit_sha":"abc1234","applied_at":"2026-01-01T00:00:00.000000000Z","blocking":0,"demoted":0,"anchor_undetermined":0},\n' "$SENTINEL"
     printf '%s\n' "$@"
     printf '  "findings": [],\n  "guardrail_audit_log": []\n}\n'
   } > "$_p"
@@ -873,6 +877,7 @@ for _cyc in 1 2 3; do
   "pr_number": 123,
   "timestamp": "$SENTINEL",
   "commit_sha": "sha-cycle-$_cyc",
+  "measured_gate": {"commit_sha":"sha-cycle-$_cyc","applied_at":"2026-01-01T00:00:00.000000000Z","blocking":0,"demoted":0,"anchor_undetermined":0},
   "verdict": "mergeable",
   "reviewers": ["code-quality-reviewer", "security-reviewer"],
   "findings": [],
@@ -896,7 +901,7 @@ EOF
 done
 _cycle_files=$(find "$RESULTS_CYCLES" -name '123-*.json' 2>/dev/null | grep -c . || true)
 assert "TC-3.11e 3 サイクル実行で 3 本の JSON が永続化される (1 cycle = 1 JSON)" "3" "$_cycle_files"
-_cycle_shas=$(cat "$RESULTS_CYCLES"/123-*.json 2>/dev/null | grep -c 'sha-cycle-' || true)
+_cycle_shas=$(cat "$RESULTS_CYCLES"/123-*.json 2>/dev/null | grep -c '^  "commit_sha": "sha-cycle-' || true)
 assert "TC-3.11e 各 JSON が自 cycle の commit_sha を保持する (上書きされていない)" "3" "$_cycle_shas"
 
 # TC-3.11f signal 中断 (TERM) でも LOCAL_SAVE_FAILED を emit する。
@@ -3246,7 +3251,7 @@ else
   #        配線 drift が構造的に起こり得ないが、本 helper は id を受け取るのでここが単一障害点。
   _sec_610a() { _section_of '^bash \{plugin_root\}/hooks/review-result-save\.sh' '^```$'; }
   assert "TC-5h 6.1.a の helper 呼び出しが --pending-id を渡す (配線 drift の検出)" "1" \
-    "$(_sec_610a | grep -cE '^[[:space:]]*--pending-id "\{save_pending_id\}"$' || true)"
+    "$(_sec_610a | grep -cE '^[[:space:]]*--pending-id "\{save_pending_id\}" \|\| \{$' || true)"
   # 生成側の変数名と caller placeholder 名が一致すること (片側改名で silent に空文字が渡る)
   assert "TC-5h 6.1.a が渡す placeholder 名が 5.3.0.M step 2 の変数名と一致する" "1" \
     "$(_sec_530m_step2 | grep -cE '^[[:space:]]*save_pending_id="' || true)"
@@ -3413,7 +3418,7 @@ EOF
   # 本 cycle の commit SHA を持つ JSON が実在する state root (正常系の arm 用)
   _804_json_ok=$(mktemp -d "$TMP_ROOT/gate804ok-XXXXXX")
   mkdir -p "$_804_json_ok/.rite/review-results"
-  printf '%s\n' "{\"schema_version\":\"1.1.0\",\"pr_number\":$_804_pr,\"timestamp\":\"2026-01-01T00:00:00+09:00\",\"commit_sha\":\"$_804_sha\",\"overall_assessment\":\"mergeable\",\"findings\":[],\"non_blocking_findings\":[]}" \
+  printf '%s\n' "{\"schema_version\":\"1.1.0\",\"pr_number\":$_804_pr,\"timestamp\":\"2026-01-01T00:00:00+09:00\",\"commit_sha\":\"$_804_sha\",\"measured_gate\":{\"commit_sha\":\"$_804_sha\",\"applied_at\":\"2026-01-01T00:00:00.000000000Z\",\"blocking\":0,\"demoted\":0,\"anchor_undetermined\":0},\"overall_assessment\":\"mergeable\",\"findings\":[],\"non_blocking_findings\":[]}" \
     > "$_804_json_ok/.rite/review-results/$_804_pr-20260101000001.json"
   # 区間ごと skip の再現: results dir はあるが本 cycle の JSON が無い state root
   _804_json_missing=$(mktemp -d "$TMP_ROOT/gate804miss-XXXXXX")

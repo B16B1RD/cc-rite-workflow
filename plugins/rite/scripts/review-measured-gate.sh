@@ -358,6 +358,16 @@ def with_verification:
       # verification の preset 尊重 (--reject-preset-verification が存在する理由) とは向きが逆で、
       # verdict 側に preset を弾くフラグは要らない。
       | .verdict = (if $blocking == 0 then "mergeable" else "fix-needed" end)
+      # provenance は毎回 object 全体を置換し、前回の commit / 統計との混在を防ぐ。
+      | .measured_gate = {
+          commit_sha: .commit_sha,
+          applied_at: $applied_at,
+          blocking: $blocking,
+          demoted: ($demoted | length),
+          anchor_undetermined: (
+            [$orig[] | select(gated and (has_measured_bool | not) and undetermined_on_anchor)] | length
+          )
+        }
     ),
     stats: {
       blocking: $blocking,
@@ -414,7 +424,16 @@ def with_verification:
   }
 JQEOF
 
+# POSIX/BSD date does not support GNU %N. Seconds resolution is sufficient for
+# an execution receipt and remains valid RFC 3339 on every supported runner.
+applied_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ") || _fail timestamp_generation_failed "measured_gate.applied_at を生成できませんでした"
+case "$applied_at" in
+  ????-??-??T??:??:??Z) ;;
+  *) _fail timestamp_generation_failed "measured_gate.applied_at が RFC 3339 UTC 形式ではありません: $applied_at" ;;
+esac
+
 if ! result=$(jq \
+  --arg applied_at "$applied_at" \
   --arg re_stage1 '(?i)verification[*_`[:space:]]*[:：]' \
   --arg re_detect '(?m)(?:^|<br\s*/?>|[\s|>(])[-[:space:]]*Verification:[[:space:]]*(repro|failing_test)[[:space:]]+(?:(?!=>|<br)[^|])+=>[ \t]*(?!<br)[^|[:space:]]' \
   --arg re_extract '(?m)(?:^|<br\s*/?>|[\s|>(])[-[:space:]]*Verification:[[:space:]]*(?<label>repro|failing_test)[[:space:]]+(?<lhs>(?:(?!=>|<br)[^|])+)=>[ \t]*(?<rhs>(?!<br)[^|[:space:]](?:(?!<br)[^|])*)' \

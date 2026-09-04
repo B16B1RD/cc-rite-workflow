@@ -50,6 +50,8 @@ base_save_fields() {
   "schema_version": "1.1.0",
   "pr_number": 123,
   "timestamp": "$SENTINEL",
+  "commit_sha": "abc1234",
+  "measured_gate": {"commit_sha":"abc1234","applied_at":"2026-01-01T00:00:00.000000000Z","blocking":0,"demoted":0,"anchor_undetermined":0},
   "verdict": "mergeable",
   "reviewers": ["code-quality-reviewer", "security-reviewer"],
   "findings": []
