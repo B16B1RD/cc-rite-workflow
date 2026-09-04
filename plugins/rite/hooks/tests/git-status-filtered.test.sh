@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for lib/git-status-filtered.sh (#1936)
+# Tests for lib/git-status-filtered.sh
 #
 # The Bash tool sandbox blocks writes to certain paths (.bashrc,
 # .claude/agents, .gitconfig, etc.) by bind-mounting /dev/null over them.

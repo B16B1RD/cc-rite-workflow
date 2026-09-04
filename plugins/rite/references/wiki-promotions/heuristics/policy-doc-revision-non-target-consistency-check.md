@@ -47,7 +47,7 @@ frontmatter ポリシー表のような分類ルールを新設・改訂する P
 
 - **frontmatter-body scope 不一致**: `reviewers` の frontmatter `description` をトリガー語列挙（broad）から否定形規約（narrow）へ書き換えたが、本文の見出し `## Auto-Activation` +「This skill is activated during /rite:review」を残したため frontmatter と本文が矛盾した（prompt-engineer Sub-check 6c 抵触、cycle 1 MEDIUM）。frontmatter description を編集する PR は、その broad/narrow 性に依存する **本文見出し** の整合も同時に確認する。→ 本文を `## Invocation`「loaded via Read ... does not auto-activate」へ改めて解消。
 - **同 PR 内 SPEC 自己矛盾**: 同 PR の別コミットで書いた SPEC ポリシー記述が「reviewers は **broad description** のため disable-model-invocation を併用」と説明したが、その broad description は同一 PR の cycle 1 で narrow 化済みだった。「自分が同 PR 内で変更した状態」を織り込まずにポリシー文を書くと、SPEC が実態を誤記述する（cycle 2 LOW）。ポリシー文は過去の状態でなく **同 PR 適用後の状態** を前提に書く。
-- **Non-Target 実態確認の再実証**: #1694 で見落とされた「`reviewers` の frontmatter に `user-invocable: false` があるか」の確認漏れと同型の欠陥が、#1713 では `rite-workflow`（`user-invocable: false` を持たず default true = 実際は user-invocable）で再発。「default が off」の思い込みを避け、`user-invocable` 未指定時 default true を踏まえて frontmatter 実値 + スキル一覧の `/rite:<name>` 存在を実機確認する。
+- **Non-Target 実態確認の再実証**: で見落とされた「`reviewers` の frontmatter に `user-invocable: false` があるか」の確認漏れと同型の欠陥が、 では `rite-workflow`（`user-invocable: false` を持たず default true = 実際は user-invocable）で再発。「default が off」の思い込みを避け、`user-invocable` 未指定時 default true を踏まえて frontmatter 実値 + スキル一覧の `/rite:<name>` 存在を実機確認する。
 
 ## 関連ページ
 

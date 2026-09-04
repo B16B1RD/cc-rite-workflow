@@ -735,7 +735,7 @@ else
 fi
 echo ""
 
-# #2463: この経路はかつて stdout も空にしていたが、`absent` の解除経路が replica 作成成功しか
+#: この経路はかつて stdout も空にしていたが、`absent` の解除経路が replica 作成成功しか
 # 無いため、init が unverified / gh 失敗で終わると恒久的に沈黙したまま同期が止まっていた。
 # 契約を「gh は呼ばない・ただし劣化は毎回伝える」に変更したので、systemMessage を期待する。
 echo "T-07: wm_replica=absent already set → 0 gh calls, systemMessage emitted, last_synced_phase advances"
@@ -863,7 +863,7 @@ echo ""
 
 echo "T-14: AC-1/4/8/9 paths all exit 0; AC-4 Then (systemMessage JSON, wm_replica, lsp, list GET 1)"
 # AC-1 = T-01 success 2-rt, AC-4 = no_comment first detect, AC-8 = T-10 base skip, AC-9 = T-11 PATCH fail
-# (#2463 で absent 経路の契約が変わった: T-07 は 0 gh + systemMessage、T-20/T-21 が Issue スコープ化
+# (absent 経路の契約: T-07 は 0 gh + systemMessage、T-20/T-21 が Issue スコープ化
 #  と恒久沈黙の解消を pin する)
 dir_n14="$TEST_DIR/n14"
 mkdir -p "$dir_n14/.rite/work-memory"
@@ -931,7 +931,7 @@ else
 fi
 echo ""
 
-# ─── #2463: negative cache の Issue スコープ化と恒久沈黙の解消 (T-20 / T-21) ───
+# ───: negative cache の Issue スコープ化と恒久沈黙の解消 (T-20 / T-21) ───
 
 echo "T-20: another Issue's wm_replica=absent must not suppress this Issue's sync (AC-4)"
 dir_n20="$TEST_DIR/n20"
@@ -980,7 +980,7 @@ for ph in implement lint pr; do
   fi
 done
 # 契約は「毎 phase 変化で通知」なので 3/3 を要求する。>=1 では「1 回だけ鳴って以後沈黙」する
-# 退行 (#2463 が塞いだ恒久沈黙の再来) を素通しする。
+# 退行 (が塞いだ恒久沈黙の再来) を素通しする。
 if [ "$notified_n21" -eq 3 ] && [ ! -s "$dir_n21/gh.log" ]; then
   pass "T-21: AC-5 — degradation surfaced 3/3 times with zero gh round trips"
 else
@@ -988,7 +988,7 @@ else
 fi
 echo ""
 
-# ─── #2462: open 1.6→2.5 の replica init 過渡窓では no_comment を通知しない (T-22 / T-23) ───
+# ───: open 1.6→2.5 の replica init 過渡窓では no_comment を通知しない (T-22 / T-23) ───
 
 echo "T-22: phase=init (replica init 過渡窓) + no_comment → systemMessage なし、負キャッシュと phase 前進は不変 (AC-1/AC-3)"
 dir_n22="$TEST_DIR/n22"
@@ -1029,8 +1029,8 @@ else
   fail "T-22c: AC-3 — wm_replica=$wmrep22 lsp=$lsp22 (both expected)"
 fi
 # 抑止が窓限定であることを同一 state 上で pin する。別 fixture で「非 init なら鳴る」を示すだけ
-# では、窓を抜けた後も黙り続ける退行 (#2463 が塞いだ恒久沈黙と同型) を検出できない。
-# なお wm_replica=absent 経路は #2463 の契約 (T-21: phase 変化ごとに通知) なので、
+# では、窓を抜けた後も黙り続ける退行 (が塞いだ恒久沈黙と同型) を検出できない。
+# なお wm_replica=absent 経路は replica 契約 (T-21: phase 変化ごとに通知) なので、
 # ここでは flow-state を open 2.5 の replica 作成成功相当 (absent 解除) に戻して確認する。
 state_n22="$(state_file_path "$dir_n22")"
 jq '.phase = "implement" | del(.wm_replica)' "$state_n22" > "$state_n22.tmp" && mv "$state_n22.tmp" "$state_n22"

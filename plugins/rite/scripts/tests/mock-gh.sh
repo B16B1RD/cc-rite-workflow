@@ -290,8 +290,8 @@ ITEMJSON
               exit 0
               ;;
             pif_multi_page)
-              # Page 1 (no cursor arg): hasNextPage=true + item #101.
-              # Page 2 (cursor arg present): hasNextPage=false + item #102.
+              # Page 1 (no cursor arg): hasNextPage=true + item.
+              # Page 2 (cursor arg present): hasNextPage=false + item.
               if [ "$has_cursor_arg" = true ]; then
                 printf '{"data":{"node":{"items":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"content":{"number":102},"fieldValues":{"nodes":[{"name":"Done","field":{"name":"Status"}}]}}]}}}}\n'
               else
@@ -365,7 +365,7 @@ ITEMJSON
           # Field names default to canonical English. Localized / custom / missing-field
           # scenarios override them so the helper's alias + input-override
           # resolution is exercised. Option *values* stay English (option localization
-          # is out of scope for #1610).
+          # is out of scope for).
           STATUS_FIELD_NAME="Status"
           PRIORITY_FIELD_NAME="Priority"
           COMPLEXITY_FIELD_NAME="Complexity"

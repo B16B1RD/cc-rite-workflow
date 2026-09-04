@@ -4,7 +4,7 @@
 
 ## 来歴
 
-- もとは独立ディレクトリ `~/Projects/work/rite-intro-video/` で制作していたものを、Issue #1687 で本リポジトリ管理下（`media/intro-video/`）へ取り込んだ。
+- もとは独立ディレクトリ `~/Projects/work/rite-intro-video/` で制作していたものを、本リポジトリ管理下（`media/intro-video/`）へ取り込んだ。
 - 取り込み時点ではソース内容を改変せず as-is でインポートし、別コミットで v0.7 仕様へ更新した。
 
 ## ビルド / プレビュー

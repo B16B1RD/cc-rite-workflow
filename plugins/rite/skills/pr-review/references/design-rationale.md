@@ -163,7 +163,7 @@ E2E で削るのはステップ 5–7 の人間向け表示だけ。ステップ
 
 ## e2e-askuser-split
 
-AskUserQuestion を 2 種に分ける理由（#1861）。
+AskUserQuestion を 2 種に分ける理由。
 
 ステップ 7 のトリアージは未解決指摘・スコープ外指摘の握り潰し防止なので E2E でも処理自体は skip 禁止。Decision Log への可逆記録は question_resolution の推奨自律処理。ステップ 3.3 の構成確認は iterate の自律ループと矛盾するため E2E で skip 可。サマリ行と省略 reviewer 表示は両経路で残す（silent capping 禁止）。
 

@@ -40,7 +40,7 @@ For each test in the diff:
 For each tested function:
 - Are boundary values tested (empty arrays, zero, null, max values)?
 - Are error paths tested (network failures, invalid input, permission denied)?
-- If the fix adds a fallback, WARNING, catch/else branch, or other error path, require a regression test that enters that exact new branch and asserts the observable outcome. Require a non-vacuity check: reverting the fix (or applying an equivalent mutation) must make the new test fail. See `skills/pr-review/references/promotion-audit-2091.md#new-error-path-regression-gate`.
+- If the fix adds a fallback, WARNING, catch/else branch, or other error path, require a regression test that enters that exact new branch and asserts the observable outcome. Require a non-vacuity check: reverting the fix (or applying an equivalent mutation) must make the new test fail. See `skills/pr-review/references/promotion-audit-review-fix-loop.md#new-error-path-regression-gate`.
 - `Grep` for similar test patterns in the codebase to verify consistency of edge case coverage
 
 ### Step 4: Test Isolation and Reliability

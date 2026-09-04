@@ -272,7 +272,7 @@ assert_grep "5.4 forbids silent narrowing" "$PR_REVIEW" \
 # E2E 例外は 3 番目として E2E Output Minimization 表に登録されていること。
 assert_grep "E2E Output Minimization registers the lane section as 例外 3" "$PR_REVIEW" \
   '例外 3: ステップ 5\.4 の `### レビューレーン（XS/S 軽量レーン）` section'
-# 例外の根拠は #2118 の複製ではなく Scenario 1 (自律マージ) に基づくこと。
+# 例外の根拠は他テストの複製ではなく Scenario 1 (自律マージ) に基づくこと。
 assert_grep "the E2E exemption is justified by the autonomous-merge scenario" "$LANE" \
   '「XS が 1 サイクル収束して\*\*自律マージ\*\*される」経路は'
 

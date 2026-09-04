@@ -4,7 +4,7 @@
 # Behavioral tests for hooks/scripts/cleanup-follow-up-issue.sh
 # (/rite:cleanup ステップ 6.0)。
 #
-# Coverage (Issue #2378 T-01..T-06 + D-03 lookup fail + caller coupling):
+# Coverage (T-01..T-06 + D-03 lookup fail + caller coupling):
 #   T-01/T-02 残存指摘ありで 1 件起票され、body に出典・finding 要点・marker が含まれる
 #             Projects status=Todo / enabled=true を args.json に pin
 #   T-03 起票 API 失敗で WARNING + exit 0 (cleanup を止めない)
@@ -24,7 +24,7 @@
 #   T-09 project-number 非数値は Projects skip + WARNING
 #   T-10 project_registration=skipped は WARNING
 #
-# Coverage (Issue #2467 T-01..T-05 = 本ファイルの T-11..T-15):
+# Coverage (T-01..T-05 = 本ファイルの T-11..T-15):
 #   T-11 --exclude-ids で指定した finding だけが body から落ち、残りは全文が載る (AC-1)
 #   T-12 全件除外は all_resolved で起票せず、gh issue list も叩かない (AC-2)
 #   T-13 未知 id は WARNING のうえ既知 id の除外だけ適用して起票を続行する (AC-3)
@@ -511,7 +511,7 @@ else
   assert_grep "T-15 判定内訳 marker" "$CLEANUP_MD" 'FOLLOW_UP_REVERIFY=done; resolved='
   assert_grep "T-15 marker に resolved_ids を載せる" "$CLEANUP_MD" 'resolved_ids=\{resolved_ids_csv\}'
   assert_grep "T-15 再検証不能時は除外なしへ倒す" "$CLEANUP_MD" '全件を `undecidable` 扱い'
-  # AC-6 (#2465 同型: 元 PR のマージコミット自身で修正済み) を resolved に落とす判定材料
+  # AC-6 (同型: 元 PR のマージコミット自身で修正済み) を resolved に落とす判定材料
   assert_grep "T-15 resolved の機械的判定材料" "$CLEANUP_MD" '既に修正後の形になっている'
   assert_grep "T-15 all_resolved を x 相当に置く" "$CLEANUP_MD" 'skipped; reason=all_resolved` \| x 相当'
   # 抽出は id 書式で絞る (書式外 id がリテラル置換先でコマンド置換として展開されるのを防ぐ)

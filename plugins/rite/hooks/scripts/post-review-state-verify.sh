@@ -28,7 +28,7 @@
 #   --original-stash-count <N>         Review 開始時の `git stash list` 行数 (optional)
 #   --original-branch-list-hash <hash> Review 開始時の `git branch --list | sort | md5sum` (optional)
 #   --original-worktree-hash <hash>    Review 開始時の `lib/git-status-filtered.sh | md5sum` (optional).
-#                                      #1944 で raw `git status --porcelain` から sandbox ghost-mount
+# で raw `git status --porcelain` から sandbox ghost-mount
 #                                      フィルタ経由に変更 — snapshot 側もこのコマンドで計算すること)
 #   --auto-recover                     drift 検出時に automatic recovery を行う (default: true)
 #
@@ -143,7 +143,7 @@ fi
 # Routed through git-status-filtered.sh rather than raw `git status --porcelain`:
 # the snapshot side (pr-review SKILL.md ステップ 4.0.A) and this verify side can run in
 # different sandbox contexts, and a bwrap sandbox overlays ghost-mount `??` entries
-# (#1936) that vary by context — comparing raw porcelain hashes false-positives on
+# that vary by context — comparing raw porcelain hashes false-positives on
 # those ghost entries alone. The filter drops them on both sides so the hash reflects
 # only real working-tree changes.
 # Unlike raw `git status --porcelain`, the filter depends on `mktemp` (sandbox TMPDIR

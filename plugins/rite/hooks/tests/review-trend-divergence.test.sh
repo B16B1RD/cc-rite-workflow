@@ -13,13 +13,13 @@
 #
 #   - `3,6,5,3,0` / `3,7,7,4` / `2,3,6` : 受入基準が Given 節に literal に書いた契約値。
 #     受入基準はこの数列に束縛されるため契約 fixture として扱う
-#   - `10,8,8`                          : 起票時の Open Question に記載された観測値 (#2081)
-#   - `12,5,3,2,2`                      : scripts/tests/fixtures/pr-2070 の実測 JSON から復元した
+#   - `10,8,8`                          : 起票時の Open Question に記載された観測値
+#   - `12,5,3,2,2`                      : scripts/tests/fixtures/review-measured-gate-sample の実測 JSON から復元した
 #                                         補助 fixture。契約値 `3,6,5,3,0` とは一致しないが、
 #                                         当該 cycle の実行時期は中間サイクル JSON の無音欠落を
 #                                         塞いだ修正より前で、保存済み 9 件が連続 9 cycle である
 #                                         保証がない。どちらも他方を反証できないため両方を pin する
-#   - `10,11,11,13`                     : ループ打ち切り時に記録された 3 run 目の実測 (#2052)
+#   - `10,11,11,13`                     : ループ打ち切り時に記録された 3 run 目の実測
 #   - `10,9,8,7,6`                      : 漸減非収束の合成列。AC-3 の escape 節 (下降中なら見逃す) を
 #                                         非空虚に保つために作成したもので、実 run 由来ではない
 #
@@ -121,10 +121,10 @@ assert_grep "T-01a: トレンドが通知用に出力される" "$OUT" "trend=3,
 assert_grep "T-01a: 判定が下りた ok の reason を固定する" "$OUT" "reason=converging_or_descending"
 
 run_trend 101 10 8 8
-assert_grep "T-01b: #2081 実測の 10,8,8 は発火しない" "$OUT" "TREND_DIVERGENCE=ok"
+assert_grep "T-01b: 実測の 10,8,8 は発火しない" "$OUT" "TREND_DIVERGENCE=ok"
 
 run_trend 102 12 5 3 2 2
-assert_grep "T-01c: #2070 実測の 12,5,3,2,2 は発火しない (残 2 件で予算切れの保護対象)" "$OUT" "TREND_DIVERGENCE=ok"
+assert_grep "T-01c: 実測の 12,5,3,2,2 は発火しない (残 2 件で予算切れの保護対象)" "$OUT" "TREND_DIVERGENCE=ok"
 
 # AC-1 は「どの時点でも発火しない」を要求する。各 prefix を独立に評価する。
 run_trend 103 3 6 5
@@ -138,15 +138,15 @@ assert_grep "T-01e: 先頭 4 cycle 時点でも発火しない" "$OUT" "TREND_DI
 echo "--- T-02: 発散 run の早期検出 (AC-2) ---"
 
 run_trend 200 3 7 7 4
-assert_grep "T-02a: #2052 run1 の 3,7,7,4 は発火する" "$OUT" "TREND_DIVERGENCE=fire"
+assert_grep "T-02a: run1 の 3,7,7,4 は発火する" "$OUT" "TREND_DIVERGENCE=fire"
 assert_grep "T-02a: 既定上限 15 より早い cycle 3 で発火する" "$OUT" "fire_at=3"
 
 run_trend 201 2 3 6
-assert_grep "T-02b: #2052 run3 の 2,3,6 は発火する" "$OUT" "TREND_DIVERGENCE=fire"
+assert_grep "T-02b: run3 の 2,3,6 は発火する" "$OUT" "TREND_DIVERGENCE=fire"
 assert_grep "T-02b: cycle 3 で発火する" "$OUT" "fire_at=3"
 
 run_trend 202 10 11 11 13
-assert_grep "T-02c: #2052 run2 の 10,11,11,13 は発火する" "$OUT" "TREND_DIVERGENCE=fire"
+assert_grep "T-02c: run2 の 10,11,11,13 は発火する" "$OUT" "TREND_DIVERGENCE=fire"
 assert_grep "T-02c: cycle 3 で発火する" "$OUT" "fire_at=3"
 
 # escape 節 (直近 2 値が狭義単調減少なら見逃す) が「永久に見逃す」形へ退行していないこと。
@@ -803,11 +803,11 @@ assert "正常終了: EXIT trap が診断 tempfile を回収する (EXIT trap �
   "$(find "$exit_tmp" -maxdepth 1 -name 'rite-trend-diag-*' | wc -l | tr -d '[:space:]')"
 
 # ---------------------------------------------------------------------------
-# 実 fixture (scripts/tests/fixtures/pr-2070) に対する回帰
+# 実 fixture (scripts/tests/fixtures/review-measured-gate-sample) に対する回帰
 # ---------------------------------------------------------------------------
-echo "--- 実 fixture 回帰 (pr-2070) ---"
+echo "--- 実 fixture 回帰 (review-measured-gate-sample) ---"
 
-REAL_FIXTURE="$SCRIPT_DIR/../../scripts/tests/fixtures/pr-2070"
+REAL_FIXTURE="$SCRIPT_DIR/../../scripts/tests/fixtures/review-measured-gate-sample"
 if [ -d "$REAL_FIXTURE" ]; then
   # pin = 4 件目。それより新しい 5 件が「現 run」に相当する。
   bash "$SCRIPT" --pr 2070 --cycle-count 5 --since "2070-20260731150058.json" --results-dir "$REAL_FIXTURE" > "$OUT" 2>/dev/null
@@ -818,15 +818,15 @@ if [ -d "$REAL_FIXTURE" ]; then
   assert_grep "実 fixture: 全 9 件の blocking 列を実 JSON から復元できる" "$OUT" "trend=12,5,3,2,2,4,6,7,4"
   assert_grep "実 fixture: 全 9 件の列に対する判定結果を固定する" "$OUT" "fire_at=7"
 else
-  # fixture は同一リポジトリの tracked ファイル (#2074 で commit 済) のため、不在 = 削除された
+  # fixture は同一リポジトリの tracked ファイル (commit 済) のため、不在 = 削除された
   # ことを意味する。skip すると唯一の実データ回帰 2 件が消えてもスイートは緑のまま通るため、
   # 上部の jq floor と同じ形で Linux では hard fail させる。
   if [ -d /proc ]; then
-    echo "  ❌ FAIL: 実 fixture pr-2070 が存在しない ($REAL_FIXTURE) — tracked fixture の欠落は実データ回帰の消失を意味するため skip しない"
+    echo "  ❌ FAIL: 実 fixture review-measured-gate-sample が存在しない ($REAL_FIXTURE) — tracked fixture の欠落は実データ回帰の消失を意味するため skip しない"
     echo "Results: 0 passed, 1 failed"
     exit 1
   fi
-  skip "実 fixture pr-2070 が存在しない"
+  skip "実 fixture review-measured-gate-sample が存在しない"
 fi
 
 # ---------------------------------------------------------------------------

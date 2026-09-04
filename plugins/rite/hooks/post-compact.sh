@@ -287,7 +287,7 @@ if [ "${PR:-0}" != "0" ] && [ "${PR:-0}" != "null" ] && [ -n "${PR:-}" ]; then
     # pass `--repo` explicitly. `gh pr view` is a shorthand command that
     # resolves the target repo from `origin` the same way `gh repo view`
     # does — under an SSH Host alias origin this fails with the exact error
-    # #1899 fixes elsewhere, gating this whole reconciliation block shut
+    # fixes elsewhere, gating this whole reconciliation block shut
     # before PR_IS_DRAFT can even be determined.
     #
     # git-remote parse first: works even when `origin` is an SSH Host alias

@@ -81,7 +81,7 @@ LLM は会話コンテキストから `log_read_ok=XXX` を grep し、後続ス
 - `plugins/rite/skills/pr-review/SKILL.md` ステップ 6.1.a — `JSON_SAVED=true|false`、`FILE_TIMESTAMP=<ts>` の
  `[CONTEXT]` prefix 版。prefix を付けることで ステップ 6.1.c が grep 可能になる
 
-### 共有関数 (`[CONTEXT]` prefix 版の emit / 照合、#2025)
+### 共有関数 (`[CONTEXT]` prefix 版の emit / 照合、)
 
 `[CONTEXT] KEY=value; FIELD=value` 形式の emit と、captured output からの読み取りは
 [`hooks/scripts/lib/context-marker.sh`](../../../hooks/scripts/lib/context-marker.sh) の
@@ -92,7 +92,7 @@ LLM は会話コンテキストから `log_read_ok=XXX` を grep し、後続ス
 混入への耐性・`branch=` スコープ・同一 KEY の recency・キーと field 名のトークン完全一致——は
 関数の契約であり、SoT は `hooks/tests/context-marker.test.sh`。**これらを散文で書き直さないこと**:
 規約を散文で持つ限り「その規約はこの場合も適用されるのか」を無限に問えてしまい、それが本
-関数を作った動機である（#2023）。適用範囲への疑義は failing test として提出する。
+関数を作った動機である。適用範囲への疑義は failing test として提出する。
 
 新しい `[CONTEXT]` marker を書くときは `sed -n 's/.*KEY=.../p'` を手書きせず本関数を使う。
 移行は段階的で、直接 `echo` された既存 marker も `marker_get` で同じに読める（後方互換）。

@@ -22,7 +22,7 @@
 #   pr-review ステップ 5.3.0.M step 1 の生成規約は「Claude は verification を書かない」を課すが、
 #   それは散文の指示にすぎず、本 Issue が置き換えようとしている強制手段そのものである。実際
 #   archived review fixture の cycle 2-9 では、そう指示されていないにもかかわらず LLM が
-#   `verification.measured: true` を実 repro 付きで JSON へ直接書いていた (fixtures/pr-2070/ で確認可能)。
+#   `verification.measured: true` を実 repro 付きで JSON へ直接書いていた (fixtures/review-measured-gate-sample/ で確認可能)。
 #   その形が来ると §4.5「既存値を正とする」によりアンカー検出を経ない値がそのまま blocking 判定に
 #   入り、ゲートが無音で迂回される。本フラグは「既存 boolean が本ゲートの算出結果と食い違う」=
 #   迂回の形だけを hard fail させ、caller (pr-review step 2) から常に指定する。

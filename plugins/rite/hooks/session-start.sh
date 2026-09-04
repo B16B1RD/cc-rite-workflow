@@ -402,7 +402,7 @@ RITE_STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/flow-state.sh" migrate >/dev/nul
 # Output is redirected to a log file (overwritten each run — no rotation) rather
 # than discarded, since silent skip reasons (dirty/liveness/corpse-age-guard/
 # manifest-bypass WARNINGs) were previously unobservable and slowed diagnosis
-# (#1966's investigation). A self-contained `.gitignore` (`*`) is written into
+# ('s investigation). A self-contained `.gitignore` (`*`) is written into
 # the log dir on first creation so it never leaks into the repo even in
 # downstream consuming repos. Nested `$STATE_ROOT/.rite/.gitignore` (`*` plus
 # wiki negations) also covers `.rite/sessions/`, `.rite/worktrees/`,
@@ -515,7 +515,7 @@ if [ "$ACTIVE" != "true" ]; then
   exit 0
 fi
 
-# --- Stop-reason phrasing (#2045) ---
+# --- Stop-reason phrasing ---
 # flow-state の `stop_reason` は「ワークフローが失敗として止まった」ことの durable な記録
 # (`skills/iterate/SKILL.md` ステップ 6 共有前段が書く)。キーが無い state は「単なる中断」
 # (Ctrl+C / セッション終了) を意味する。両者はキー不在のとき phase=review / active=true という

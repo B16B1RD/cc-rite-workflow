@@ -1,7 +1,7 @@
-# Wiki Promotion Audit #2166 — Documentation Fidelity
+# Wiki Promotion Audit — Documentation Fidelity
 
  audited four `promote: rite-plugin` pages from promotion audit
-#2091. All four are mechanized by the shared Documentation Fidelity Gate in the
+. All four are mechanized by the shared Documentation Fidelity Gate in the
 reviewer base, so every specialist can catch the defect at the diff where it is
 introduced rather than relying on local Wiki injection.
 

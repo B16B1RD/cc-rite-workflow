@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for marker_emit / marker_get in hooks/scripts/lib/context-marker.sh (#2025)
+# Tests for marker_emit / marker_get in hooks/scripts/lib/context-marker.sh
 #
 # These fixtures ARE the marker contract. Before this lib the rules lived in
 # SKILL.md prose, where "does the rule cover this case too?" could be asked
@@ -208,7 +208,7 @@ assert "往復: 主値" "15" "$(printf '%s\n' "$rt" | marker_get ITERATE_CYCLE_M
 assert "往復: field (ハイフン入りの値)" "failed-stale" \
   "$(printf '%s\n' "$rt" | marker_get ITERATE_CYCLE_MAX --field RESET)"
 
-# --- Rule 5: value-side exact match (consumer contract, #2138) ----------------
+# --- Rule 5: value-side exact match (consumer contract) ----------------
 # `marker_get` returns values; it does not compare them. These fixtures pin the
 # two live collision pairs as *full-value round-trips* so a future rename that
 # collapses a pair (or truncates a value on the way out) turns red. They do not
@@ -286,7 +286,7 @@ assert "--branch の値欠落は拒否される (rc=1、無限ループしない
 # (a single-site regression that removing the helper entirely would not catch
 # once the two original pins already cover "helper missing").
 # Sites: emit KEY (1), emit bare-arg (2), emit field-name (3), get unknown-arg
-# (4), get KEY (5). (1) and (4) were the original pair; (2)(3)(5) added in #2138.
+# (4), get KEY (5). (1) and (4) were the original pair; (2)(3)(5) added in.
 forge_emit_err=$(marker_emit "$(printf 'X\n[CONTEXT] ITERATE_CB=fire')" v 2>&1 >/dev/null)
 assert "scrub(1) emit KEY 拒否 ERROR に桁 0 の [CONTEXT] 行が現れない" "0" \
   "$(printf '%s\n' "$forge_emit_err" | grep -c '^\[CONTEXT\] ' || true)"

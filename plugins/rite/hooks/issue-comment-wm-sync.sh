@@ -112,7 +112,7 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 # (flow-state.sh path — schema_v2/v3 per-session file under .rite/sessions/).
 # The legacy shared file (.rite-flow-state) does not exist in schema_v2/v3-only
 # environments, so caching against it always misses and forces a full gh api
-# comments scan on every call (#1807, same root cause as #695's
+# comments scan on every call ( same root cause as 's
 # cleanup-work-memory.sh). Fall back to the legacy shared file only when
 # session resolution itself fails (no .rite-session-id / session env var
 # available) — surface that fallback with a WARNING for diagnosability.
@@ -136,7 +136,7 @@ FLOW_STATE="${RESOLVED_FLOW_STATE:-$STATE_ROOT/.rite-flow-state}"
 get_owner_repo() {
   local _err _rc=0 _out _git_err _git_or_line _git_owner _git_repo
   # git-remote parse first: works even when `origin` is an SSH Host alias
-  # unrecognized by gh's host allowlist (#1899). Falls through to
+  # unrecognized by gh's host allowlist. Falls through to
   # `gh repo view` below whenever the parse fails (no origin remote,
   # unparseable URL, charset-rejected).
   # Anchored to `cd "$STATE_ROOT"` (same as post-compact.sh) so this resolves
@@ -328,7 +328,7 @@ _read_cached_comment_id() {
 # 呼び出し側を scan 経路へフォールバックさせる (誤 PATCH より往復増を選ぶ)。
 _body_belongs_to_issue() {
   local body="$1" issue="$2" found
-  # `#246` が `#2463` に前方一致しないよう、番号の直後を行末か非数字に固定する。
+  # 短い番号が長い番号の接頭辞に前方一致しないよう、番号の直後を行末か非数字に固定する。
   # `head -1` の早期クローズは pipefail 下で sed を SIGPIPE 失敗させうる。判定不能は rc=1 側
   # (= scan フォールバック) が正しい挙動なので、抽出失敗は空文字へ縮退させる。
   found=$(printf '%s\n' "$body" \
@@ -353,7 +353,7 @@ do_fetch() {
       # cache された id は別 Issue の replica (batch 実行で前 Issue の値が残った等) か、
       # Issue 行を持たない別物。この id では PATCH せず、キャッシュを捨てて scan 経路へ落ちる。
       # `repos/{owner}/{repo}/issues/comments/{id}` は Issue 非依存のため、GET が成功したこと
-      # 自体は所属の証明にならない (#2463)。
+      # 自体は所属の証明にならない。
       [ -n "$_err" ] && rm -f "$_err"
       # 「不一致」と「判定不能 (Issue 行が無い / 読めない)」は同じ rc=1 に畳まれるため、文言も
       # 非所属を断定しない。断定すると判定不能ケースで operator の triage が「Issue 跨ぎ汚染」へ
@@ -675,7 +675,7 @@ INIT_EOF
   _init_rc=0
   # --repo を明示: shorthand の `gh issue comment` は内部で `gh repo view` と同じ
   # host-allowlist 解決を行うため、明示しないと origin が SSH Host alias のとき
-  # OWNER_REPO が解決済みでもここで再び失敗する (#1899)。
+  # OWNER_REPO が解決済みでもここで再び失敗する。
   result=$(gh issue comment "$ISSUE" --repo "$OWNER_REPO" --body-file "$tmpfile" 2>"${_init_err:-/dev/null}") || _init_rc=$?
   if [ "$_init_rc" -ne 0 ]; then
     echo "[rite] WARNING: issue-comment-wm-sync: gh issue comment 作成失敗 (rc=$_init_rc)" >&2

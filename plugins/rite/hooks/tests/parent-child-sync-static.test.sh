@@ -84,7 +84,7 @@ assert_not_grep "close.md skip_already_closed no longer exits Phase 4.6 before e
 assert_grep "archive-procedures already-CLOSED parent runs 3.7.2.1 only" "$ARCHIVE_MD" "parent is already CLOSED.*3\\.7\\.2\\.1"
 assert_grep "archive-procedures 3.7.2.2 skipped when parent already CLOSED" "$ARCHIVE_MD" "Skip this substep if the parent Issue is already CLOSED"
 
-echo "=== Phase 6: open.md が検出した親番号を flow-state へ書く (#2460) ==="
+echo "=== Phase 6: open.md が検出した親番号を flow-state へ書く ==="
 # 検出だけして flow-state へ書かないと issue-implement 5.1.2 が常に PARENT_ISSUE=none で skip する。
 # open.md には `flow-state.sh set` が複数箇所あるため、ファイル全体の grep では「どの set に
 # 付いたか」を pin できない。2.6 節に限定して assert する。
@@ -434,7 +434,7 @@ else
 fi
 rm -f "$_rb_err"
 
-echo "=== Phase 8: close.md Phase 2 PR lookup is Issue-scoped (#2501) ==="
+echo "=== Phase 8: close.md Phase 2 PR lookup is Issue-scoped ==="
 # linked:issue / glob --head は絞り込めていないのに成功して見える。コマンド行だけを
 # 禁じ、禁止を説明する散文は残してよい。
 assert_not_grep "T-01 close.md does not use the unscoped linked:issue search" "$CLOSE_MD" \

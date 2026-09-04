@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for ensure_session_worktree (lib/worktree-git.sh, #1676) — the shared
+# Tests for ensure_session_worktree (lib/worktree-git.sh) — the shared
 # bash-side gate that detects + reconstructs a missing session worktree at a
 # flow ENTRY path so review/iterate/fix never silently degrade onto develop.
 #
@@ -169,8 +169,8 @@ setup_repo; M="$REPO_MAIN"
 stdout_lines=$( ( cd "$M" && bash "$HELPER" ensure-session-worktree --issue 42 2>/dev/null ) | grep -c .)
 assert "TC-11 single stdout line" "1" "$stdout_lines"
 
-# --- TC-12 (T-01/AC-1, #1943): settings.local.json present → copied into reconstructed worktree ---
-echo "=== TC-12 (T-01/AC-1, #1943): settings.local.json present → copied to worktree ==="
+# --- TC-12 (T-01/AC-1): settings.local.json present → copied into reconstructed worktree ---
+echo "=== TC-12 (T-01/AC-1): settings.local.json present → copied to worktree ==="
 setup_repo; M="$REPO_MAIN"
 mkdir -p "$M/.claude"; echo '{"enabledPlugins":{"rite@rite-marketplace":false}}' > "$M/.claude/settings.local.json"
 ens_case "$M" --issue 42 >/dev/null
@@ -179,8 +179,8 @@ assert "TC-12 settings.local.json copied" "yes" \
 assert "TC-12 copied content matches" "yes" \
   "$(diff -q "$M/.claude/settings.local.json" "$M/.rite/worktrees/issue-42/.claude/settings.local.json" >/dev/null 2>&1 && echo yes || echo no)"
 
-# --- TC-13 (T-02/AC-2, #1943): settings.local.json absent → nothing extra created ---
-echo "=== TC-13 (T-02/AC-2, #1943): settings.local.json absent → no file/dir created in worktree ==="
+# --- TC-13 (T-02/AC-2): settings.local.json absent → nothing extra created ---
+echo "=== TC-13 (T-02/AC-2): settings.local.json absent → no file/dir created in worktree ==="
 setup_repo; M="$REPO_MAIN"
 ens_case "$M" --issue 42 >/dev/null
 assert "TC-13 no settings.local.json created" "no" \
@@ -188,8 +188,8 @@ assert "TC-13 no settings.local.json created" "no" \
 assert "TC-13 no .claude dir created" "no" \
   "$([ -e "$M/.rite/worktrees/issue-42/.claude" ] && echo yes || echo no)"
 
-# --- TC-14 (T-01/AC-1, #1943, review F-02): settings.local.json present → copied via branch_remote reconstruction ---
-echo "=== TC-14 (T-01/AC-1, #1943): settings.local.json present → copied to worktree (branch_remote path) ==="
+# --- TC-14 (T-01/AC-1, review F-02): settings.local.json present → copied via branch_remote reconstruction ---
+echo "=== TC-14 (T-01/AC-1): settings.local.json present → copied to worktree (branch_remote path) ==="
 setup_repo; M="$REPO_MAIN"
 mkdir -p "$M/.claude"; echo '{"enabledPlugins":{"rite@rite-marketplace":false}}' > "$M/.claude/settings.local.json"
 ens_case "$M" --issue 77 >/dev/null
@@ -222,12 +222,12 @@ assert "TC-15 still reconstructed (non-fatal)" "reconstructed" "$case_token"
 assert "TC-15 rc=0 (non-fatal)" "0" "$rc"
 rm -f "$out_tmp" "$err_tmp"
 
-# --- TC-16 (#1971, follow-up to #1970 cycle3 test-reviewer): copy failure on the
+# --- TC-16 ( follow-up to cycle3 test-reviewer): copy failure on the
 #     branch_remote reconstruction path → WARNING emitted, non-fatal ---
 # TC-15 covers the branch_local WARNING path (695/696行目); this covers the
 # verbatim-duplicate branch_remote WARNING path (723/724行目) so a future
 # regression to `|| true` on either copy is independently caught.
-echo "=== TC-16 (#1971): copy failure (mkdir blocked by existing file) → WARNING + non-fatal (branch_remote path) ==="
+echo "=== TC-16: copy failure (mkdir blocked by existing file) → WARNING + non-fatal (branch_remote path) ==="
 setup_repo; M="$REPO_MAIN"
 # feat/issue-77-bar is already remote-only from setup_repo(). Re-check it out,
 # add a blocker ".claude" regular file, and push the update — same technique as

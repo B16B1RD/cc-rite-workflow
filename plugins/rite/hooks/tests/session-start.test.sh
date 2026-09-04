@@ -1440,7 +1440,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-1968: lazy reap output redirected to log file instead of discarded (#1968)
+# TC-1968: lazy reap output redirected to log file instead of discarded
 # --------------------------------------------------------------------------
 echo "TC-1968-01 (AC-1): reap output is captured to .rite/logs/pr-cycle-cleanup.log"
 dir_reap_ac1="$TEST_DIR/reap-ac1"
@@ -1649,11 +1649,12 @@ create_state_file "$dir_t09" '{
 }'
 write_batch_queue "$dir_t09"
 output=$(run_hook_with_source "$dir_t09" "compact")
+_ci_needle="current_issue=#2502" # drift-check-ignore
 if echo "$output" | grep -q "Auto-compact recovery" \
   && echo "$output" | grep -q "Batch: run-queue active" \
   && echo "$output" | grep -q "mode=merge" \
   && echo "$output" | grep -q "cursor=0/1" \
-  && echo "$output" | grep -q "current_issue=#2502" \
+  && echo "$output" | grep -q "$_ci_needle" \
   && echo "$output" | grep -q "pr=#99" \
   && echo "$output" | grep -q "queue_file=" \
   && echo "$output" | grep -q "Continue /rite:batch-run" \

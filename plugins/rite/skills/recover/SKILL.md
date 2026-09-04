@@ -178,7 +178,7 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 
 > **caller-local marker `skip` について**: `review` / `fix` の入場ゲートは PR の `headRefName` が issue ブランチ（`issue-N` 命名）でないとき、helper を呼ばず caller 自身が `[CONTEXT] WT_ENSURE=skip` を emit する（session worktree の対象外＝従来どおり単一ツリーで続行する no-op）。`skip` は helper の出力 case ではなく **caller 固有拡張**であり、`disabled` / `already_in` と同じく no-op として扱う。recover は引数 / branch / 候補列挙で issue を確定してから本 helper を呼ぶため、recover 経路で `skip` は emit されない。
 
-> **sandbox 有効環境での state 書込拒否（#1896）**: `reenter` / `reconstructed` で worktree に入場した直後、後続フェーズの `flow-state.sh set` 等 main checkout 配下への state 書込が「読み込み専用ファイルシステムです」で失敗することがある（sandbox の write 許可リストが cwd 依存の相対パスのため）。対処は [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる) を参照。
+> **sandbox 有効環境での state 書込拒否**: `reenter` / `reconstructed` で worktree に入場した直後、後続フェーズの `flow-state.sh set` 等 main checkout 配下への state 書込が「読み込み専用ファイルシステムです」で失敗することがある（sandbox の write 許可リストが cwd 依存の相対パスのため）。対処は [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる) を参照。
 
 **EnterWorktree が失敗した場合**（`reenter` / `reconstructed` 経路の `EnterWorktree(path)` がエラー）: open Step 2.3-W と同じ切り分けを行い、**silent に新規セッション扱いしない**。
 
@@ -197,7 +197,7 @@ git fetch origin "$base_branch" >/dev/null 2>&1 || true
 git_commit_count=$(git rev-list --count "origin/${base_branch}..HEAD" 2>/dev/null || echo "0")
 git_has_uncommitted=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh) || git_has_uncommitted="?? (dirty-check failed — assume uncommitted for safety)"; git_has_uncommitted="${git_has_uncommitted%%$'\n'*}"
 
-# コンフリクト / rebase 状態検出 (#1705): Phase 3.4.5 が phase 推定より優先させる signal。
+# コンフリクト / rebase 状態検出: Phase 3.4.5 が phase 推定より優先させる signal。
 # worktree 運用でも正しい作業ツリーを判定するため .git/... を直書きせず git rev-parse --git-path で
 # 解決する (worktree の MERGE_HEAD / rebase 状態は .git/worktrees/<name>/ 配下にあり、直書きは常に
 # 不在扱いとなって merge/rebase 中断を取りこぼす)。
@@ -239,7 +239,7 @@ if [ -f "$LOCAL_WM" ]; then
 fi
 ```
 
-### 3.4.5 コンフリクト / rebase 状態の優先判定 (#1705)
+### 3.4.5 コンフリクト / rebase 状態の優先判定
 
 Phase 3.2 / 3.3 の marker を読み、**いずれかがコンフリクト / rebase 中断なら Phase 3.5 より本判定を優先する**。
 rationale: references/rationale.md#conflict-priority

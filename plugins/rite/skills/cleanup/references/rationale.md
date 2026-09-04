@@ -37,13 +37,13 @@ marker 皆無は「節ごと未実行 or 判定未到達」として fail-loud �
 
 GitHub code search は `[` / `]` を無視しほぼ全 Issue を返す。`--jq '.[0]'` で先頭を盲目採用すると
 standalone closing Issue が自分自身や無関係 Issue を親と誤検出する。複数候補 + 自己除外 + body
-再検証は #1629 で close.md / projects-integration.md §2.4.7.1 に入ったループと同じ方針。
+再検証は close.md / projects-integration.md §2.4.7.1 に入ったループと同じ方針。
 
 ## wm-source-content
 
 PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし）はファイルとして存在する。
 存在検査だけだと stub を採用してしまい Issue コメント側 fallback が発火しない（存在と成功を同一視
-しないため）。#2141。
+しないため）。
 
 ## cleanup-source-label
 
@@ -52,7 +52,7 @@ PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし
 
 ## exitworktree-delegation
 
-分岐の基準を「worktree 内か」ではなく ExitWorktree 可否にしたのは #2133。path 入場
+分岐の基準を「worktree 内か」ではなく ExitWorktree 可否にしたのは、path 入場
 （`in_worktree_unrecorded`）では ExitWorktree が no-op になり、main checkout 操作が harness の
 worktree 隔離ガードに拒否される（実測）。ガードが拒否するのは Bash ツール呼び出しのコマンド文字列
 に直接 `cd` / `git -C` を書く形であり、helper 内部の `cd` は拒否されない（ステップ 7 の
@@ -96,7 +96,7 @@ reap せず、消滅済みなら stale 参照を drop し、存在すれば verb
 実 reap の消費は Step 5 の gated bypass のみ。
 
 admin dir 半壊（corpse）では checkout 中 branch を git で解決できず、pr-cycle-cleanup.sh Step 5
-のブランチ名 manifest bypass（#1966）が構造的に効かない。パス自体を事前記録すれば corpse age
+のブランチ名 manifest bypassが構造的に効かない。パス自体を事前記録すれば corpse age
 guard が 24h 待ちをバイパスできる。記録は `{pr_merged}=true` のときのみ（AC-4: 未マージ PR の
 強制 cleanup では記録しない）。record 自体は non-blocking 契約（rite-tmp-artifact.sh）。
 
@@ -116,7 +116,7 @@ dirty な基点ブランチを黙って上書きしないため。破棄・stash
 
 ## remote-delete-markers
 
-成功側も positive marker を出すのは、marker 不在を「削除成功」の符号化に使わないため（#2016）。
+成功側も positive marker を出すのは、marker 不在を「削除成功」の符号化に使わないため。
 不在を成功と読むと、本ブロックがそもそも実行されなかった経路・出力が compact で失われた経路と
 削除成功が区別できず、consumer が不在を根拠に完了と断定する。全経路が marker を持てば、marker
 不在は「実行結果を確認できていない」という別の意味だけを持つ（`{base_update_check}` と同形）。
@@ -153,7 +153,7 @@ silent skip する事象が確認されている（`skills/ready/SKILL.md` Phase
 ## wiki-push-batch
 
 ingest.md はページ更新のたびに push していた旧挙動を、raw source ごとに commit のみ行い ingest
-フロー末尾で 1 回だけ push する方式に変更した（#1941 / AC-1）。`push=failed` 部分文字列検出は
+フロー末尾で 1 回だけ push する方式に変更した（AC-1）。`push=failed` 部分文字列検出は
 そのまま機能する — 集約 push が失敗した場合も、その 1 回の push 結果として ingest の stdout に
 同じ文字列が現れるため、本ステップの検出ロジック自体の変更は不要（ローカル commit は保持され、
 次回 ingest が自動で flush を試みる — AC-2 / SHOULD）。

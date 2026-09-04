@@ -1,5 +1,5 @@
 #!/bin/bash
-# sandbox-ghost-dirty-integration.test.sh (#1936, T-04 / T-06)
+# sandbox-ghost-dirty-integration.test.sh ( T-04 / T-06)
 #
 # Pins that the exact dirty-detection lines embedded in cleanup/SKILL.md
 # Step 4-W and recover/SKILL.md Phase 3.2 — extracted literally from the

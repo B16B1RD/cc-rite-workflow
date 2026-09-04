@@ -257,9 +257,9 @@ else
   PASS=$((PASS + 1)); echo "  ✓ extracted jq detection program from source"
   # GraphQL-shaped fixture (models `gh api graphql` output) covering all eight cases.
   # project_number ($pn) = 6. Titles are unique so present/absent asserts key on them.
-  # #101 / #103 / #106 / #108 are drift; #102 / #104 / #105 / #107 must be excluded.
-  # The bare {} node in #101 mirrors GraphQL emitting non-single-select fieldValues as
-  # empty objects. #108 omits stateReason entirely, which is how a null closure reason
+  # / / / are drift; / / / must be excluded.
+  # The bare {} node in mirrors GraphQL emitting non-single-select fieldValues as
+  # empty objects. omits stateReason entirely, which is how a null closure reason
   # reaches jq — the row must still be emitted, carrying the sentinel.
   fixture=$(cat <<'JSON'
 { "data": { "repository": { "issues": { "nodes": [
@@ -336,7 +336,7 @@ fi
 assert_file_contains "$DRIFT_SH" 'projectItems\(first: [1-9]' "GraphQL projectItems page size is positive (guards first: 0 break)"
 
 echo ""
-echo "[T-8] Behavioral: git-remote fast path resolves SSH alias origin, owner/repo threaded into graphql (#1899)"
+echo "[T-8] Behavioral: git-remote fast path resolves SSH alias origin, owner/repo threaded into graphql"
 # Real git repo + SSH Host alias origin + deliberately-broken `gh repo view` +
 # enabled:true config (bypassing the T-6 no-op gates so the repo-resolution
 # block is actually reached). The graphql shim requires the exact resolved
@@ -445,8 +445,7 @@ fi
 # findings 行は行まるごと固定する。部分一致だけだと script の findings 行を emit する echo
 # (`[projects-board-drift] #N ...`) の書式が壊れても通ってしまい、契約が「現行のまま維持する」と
 # 規定した唯一の出力を誰も守らなくなる。
-assert_present "$t9_out" "$(printf '[projects-board-drift] #103 "closed as completed" status="Todo" (expected Done) -> reconciled to Done')" \
-  "T-9: findings 行形式が維持されている"
+assert_present "$t9_out" "$(printf '[projects-board-drift] #103 "closed as completed" status="Todo" (expected Done) -> reconciled to Done')" "T-9: findings 行形式が維持されている" # drift-check-ignore
 # lint Phase 3.18 が機械読みする件数 sentinel。0 固定などの退行は exit 1 と矛盾したまま
 # 「drift なし」と読ませるため、実件数まで含めて固定する。
 assert_present "$t9_out" '==> Total projects-board-drift findings: 1' \
@@ -551,8 +550,7 @@ else
   FAIL=$((FAIL + 1)); FAILURES+=("T-11: expected exit 1 + '0 updated, 1 failed', got rc=$t11_rc; stdout: $(printf '%s' "$t11_out" | tr '\n' ' ' | head -c 300)")
   echo "  ✗ reconcile failure summary wrong (exit $t11_rc)" >&2
 fi
-if grep -q 'projects-board-drift: reconcile #103:' "$T11_DIR/stderr.txt" && \
-   grep -q 'HTTP 403' "$T11_DIR/stderr.txt"; then
+if grep -q 'projects-board-drift: reconcile #103:' "$T11_DIR/stderr.txt" && grep -q 'HTTP 403' "$T11_DIR/stderr.txt"; then # drift-check-ignore
   PASS=$((PASS + 1)); echo "  ✓ helper warnings (with the underlying gh error) reach stderr"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("T-11: helper warnings missing from stderr: $(head -c 300 "$T11_DIR/stderr.txt" | tr '\n' ' ')")
@@ -631,8 +629,7 @@ else
 fi
 # The report line and the count sentinel are pinned whole: the destination now varies, so
 # the one place a reader sees it must keep saying which terminal Status was chosen.
-assert_present "$t12_out" "$(printf '[projects-board-drift] #203 "closed as not planned" status="Todo" (expected Cancelled) -> reconciled to Cancelled')" \
-  "T-12: findings 行が reconcile 先 Cancelled を示す"
+assert_present "$t12_out" "$(printf '[projects-board-drift] #203 "closed as not planned" status="Todo" (expected Cancelled) -> reconciled to Cancelled')" "T-12: findings 行が reconcile 先 Cancelled を示す" # drift-check-ignore
 assert_present "$t12_out" '==> Total projects-board-drift findings: 1' \
   "T-12: 件数 sentinel が実件数を報告する"
 
@@ -702,8 +699,7 @@ else
   FAIL=$((FAIL + 1)); FAILURES+=("T-13b: item-edit not called with Cancelled option id (args: $(head -c 300 "$T12_DIR/t13b-item-edit.args" 2>/dev/null))")
   echo "  ✗ T-13b: item-edit not called with the Cancelled option id" >&2
 fi
-assert_present "$t13b_out" "$(printf '[projects-board-drift] #203 "closed as duplicate" status="Todo" (expected Cancelled) -> reconciled to Cancelled')" \
-  "T-13b: findings 行が reconcile 先 Cancelled を示す"
+assert_present "$t13b_out" "$(printf '[projects-board-drift] #203 "closed as duplicate" status="Todo" (expected Cancelled) -> reconciled to Cancelled')" "T-13b: findings 行が reconcile 先 Cancelled を示す" # drift-check-ignore
 t13b_unmapped_count=$(grep -c 'has no mapped terminal Status' "$T12_DIR/t13b-stderr.txt" || true)
 if [ "$t13b_unmapped_count" -eq 0 ]; then
   PASS=$((PASS + 1)); echo "  ✓ T-13b: no unmapped-reason WARNING on DUPLICATE"
@@ -740,8 +736,7 @@ else
   FAIL=$((FAIL + 1)); FAILURES+=("T-13d: item-edit not called with Done option id (args: $(head -c 300 "$T12_DIR/t13d-item-edit.args" 2>/dev/null))")
   echo "  ✗ T-13d: item-edit not called with the Done option id" >&2
 fi
-assert_present "$t13d_out" "$(printf '[projects-board-drift] #203 "closed for a future reason" status="Todo" (expected Done) -> reconciled to Done')" \
-  "T-13d: findings 行が reconcile 先 Done を示す"
+assert_present "$t13d_out" "$(printf '[projects-board-drift] #203 "closed for a future reason" status="Todo" (expected Done) -> reconciled to Done')" "T-13d: findings 行が reconcile 先 Done を示す" # drift-check-ignore
 t13d_warn_count=$(grep -c 'has no mapped terminal Status' "$T12_DIR/t13d-stderr.txt" || true)
 if [ "$t13d_warn_count" -eq 1 ] && grep -q 'SOME_FUTURE_REASON.*has no mapped terminal Status' "$T12_DIR/t13d-stderr.txt"; then
   PASS=$((PASS + 1)); echo "  ✓ T-13d: exactly one WARNING names the unknown enum"

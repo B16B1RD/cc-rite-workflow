@@ -75,7 +75,7 @@ session_id=$(basename "$fs_path" .flow-state)
 queue_file="$state_root/.rite/state/run-queue-$session_id.json"
 mkdir -p "$(dirname "$queue_file")"
 
-# 引数パース（"#1527, 1528" のような記号混在も許容して数値のみ抽出。--merge は位置非依存で検出）
+# 引数パース（"#12, 34" のような記号混在も許容して数値のみ抽出。--merge は位置非依存で検出）
 arg_str="{issue_numbers}"
 case "$arg_str" in *--merge*) arg_mode=merge ;; *) arg_mode=default ;; esac
 arg_issues_json=$(printf '%s' "$arg_str" | grep -oE '[0-9]+' | jq -R 'tonumber' | jq -s '.' 2>/dev/null || echo '[]')

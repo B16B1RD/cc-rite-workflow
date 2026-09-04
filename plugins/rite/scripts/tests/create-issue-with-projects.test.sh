@@ -932,7 +932,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-032 (#1610 AC-1 / T-01 / T-05): Japanese-named Project fields are resolved
+# TC-032 (AC-1 / T-01 / T-05): Japanese-named Project fields are resolved
 # by the built-in EN<->JA aliases with zero config (no field_names input).
 # --------------------------------------------------------------------------
 echo "TC-032: Japanese field names resolved via built-in aliases (AC-1, zero config)"
@@ -964,7 +964,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-033 (#1610 AC-3 / T-03): input field_names mapping takes precedence over
+# TC-033 (AC-3 / T-03): input field_names mapping takes precedence over
 # the built-in alias — Priority field "重要度" is resolved via the override.
 # --------------------------------------------------------------------------
 echo "TC-033: input field_names mapping overrides built-in alias (AC-3)"
@@ -994,7 +994,7 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-034 (#1610 AC-4 / T-04): when no candidate field name matches, registration
+# TC-034 (AC-4 / T-04): when no candidate field name matches, registration
 # is partial and the warning lists the tried candidate names (alias + canonical).
 # --------------------------------------------------------------------------
 echo "TC-034: unresolvable field → partial + warning lists tried candidates (AC-4)"

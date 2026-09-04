@@ -240,7 +240,7 @@ blocking の定義式は本ファイルに複製せず severity-levels.md の実
 トラジェクトリで backtest して確定した定数であり、窓幅や閾値を config キーにしない — 調整の
 実需が観測されてから Issue を切って設定化する（`no_speculative_structure`）。較正根拠と意図
 した境界（最良水準での平坦は発火させない = false positive 回避）は helper の header が SoT。
-既定 15 の根拠は #2129 D-02。
+既定 15 の根拠は D-02。
 
 発火理由は post-breaker routing を変えない。sentinel は理由に依らず不変で、`/rite:batch-run`
 の failed 記録契約を保つ。

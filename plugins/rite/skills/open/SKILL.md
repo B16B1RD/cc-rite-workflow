@@ -211,7 +211,7 @@ echo "[CONTEXT] MULTI_SESSION_ENABLED=$ms_enabled; WORKTREE_BASE=$ms_base; SOURC
 > **Hard gate**: 2.1-G で再確定した `MULTI_SESSION_ENABLED=false` のときのみ実行する。`true` のときは実行禁止（cwd を main checkout に置いたままブランチを切るため）— 2.2-W へ戻る。rationale: references/rationale.md#branch-gate
 
 ```bash
-# GUARD (#1595): multi_session 有効時に本経路へ来てはならない。
+# GUARD: multi_session 有効時に本経路へ来てはならない。
 # 2.1-G で false を再確定済の場合のみ実行する（true なら 2.2-W/2.3-W が正路）。
 git switch {base_branch} && git fetch origin {base_branch} && git merge --ff-only origin/{base_branch} && git switch -c {branch_name}
 ```

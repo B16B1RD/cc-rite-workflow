@@ -740,7 +740,7 @@ setup_watchdog_fs "$d" review 99
 out=$(run_stop "$d")
 assert "T-01: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
 _r=$(printf '%s' "$out" | jq -r '.reason // ""')
-for needle in "mode=merge" "cursor=0/1" "Issue #2502" "PR #99" "phase=review" "/rite:iterate 99" "queue_file="; do
+for needle in "mode=merge" "cursor=0/1" "Issue #2502" "PR #99" "phase=review" "/rite:iterate 99" "queue_file="; do # drift-check-ignore
   if printf '%s' "$_r" | grep -qF "$needle"; then
     pass "T-01: reason contains $needle"
   else
@@ -1008,7 +1008,8 @@ jq '.issues=[2502,2503] | .cursor=1' "$(queue_for "$d")" > "$(queue_for "$d").tm
 out=$(run_stop "$d")
 _r=$(printf '%s' "$out" | jq -r '.reason // ""')
 assert "T-identity cleanup: decision=block" "block" "$(printf '%s' "$out" | jq -r '.decision // "NONE"')"
-if printf '%s' "$_r" | grep -q "Issue #2503" \
+_n2503="Issue #2503" # drift-check-ignore
+if printf '%s' "$_r" | grep -q "$_n2503" \
   && printf '%s' "$_r" | grep -q "batch-run ステップ 1 から再判定" \
   && ! printf '%s' "$_r" | grep -q "ステップ 6"; then
   pass "T-identity leftover cleanup: step 1 re-eval for next issue"
@@ -1024,7 +1025,8 @@ jq '.issues=[2502,2503] | .cursor=1' "$(queue_for "$d")" > "$(queue_for "$d").tm
   && mv "$(queue_for "$d").tmp" "$(queue_for "$d")"
 out=$(run_stop "$d")
 _r=$(printf '%s' "$out" | jq -r '.reason // ""')
-if printf '%s' "$_r" | grep -q "Issue #2503" \
+_n2503b="Issue #2503" # drift-check-ignore
+if printf '%s' "$_r" | grep -q "$_n2503b" \
   && printf '%s' "$_r" | grep -q "batch-run ステップ 1 から再判定" \
   && ! printf '%s' "$_r" | grep -q "ステップ 6"; then
   pass "T-identity leftover CB: step 1 re-eval for next issue"

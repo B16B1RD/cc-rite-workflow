@@ -6,7 +6,7 @@
 # to origin. Used by skills/wiki-ingest/SKILL.md ステップ 5 after the LLM has
 # written raw-source `ingested: true` updates, new pages under
 # `.rite/wiki/pages/**`, index.md updates, and log.md appendices
-# directly into the worktree tree. `--commit-only` / `--push-only` (#1941
+# directly into the worktree tree. `--commit-only` / `--push-only` (
 # wiki push batch/defer) split this into two calls so a caller looping over
 # several raw sources (wiki-ingest) or delegating to wiki-lint mid-flow can
 # commit each one locally and push ONCE at the end of the flow, instead of
@@ -39,7 +39,7 @@
 # git operations. Always exits 0. Not valid with --push-only
 # (push-only has no "pending changes" to report — it pushes
 # whatever is already committed).
-# --commit-only Stage + commit pending changes but do NOT push (#1941 wiki
+# --commit-only Stage + commit pending changes but do NOT push (wiki
 # push batch/defer). Intended for a caller processing several
 # raw sources in a loop: commit each one locally, then push
 # ONCE via --push-only after the loop. Mutually exclusive with
@@ -239,7 +239,7 @@ verify_worktree_branch "$worktree_path" "$wiki_branch" "wwc" "" || exit 1
 # -----------------------------------------------------------------------
 # --push-only: push whatever is already committed and return. No staging,
 # no commit, no "pending changes" detection — that concept does not apply
-# here (#1941 wiki push batch/defer).
+# here (wiki push batch/defer).
 # -----------------------------------------------------------------------
 if [[ "$PUSH_ONLY" == "true" ]]; then
  set +e

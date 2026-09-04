@@ -38,7 +38,7 @@ check_caller() {
     "$(( $(printf '%s\n' "$section" | grep -cF 'その attempt に `WIKI_INGEST_PUSH_RETRY=ok` が無い場合だけ' || true) == 1 ))"
 }
 
-echo "=== wiki push sandbox retry caller parity (#2049) ==="
+echo "=== wiki push sandbox retry caller parity ==="
 check_caller review "$PLUGIN_ROOT/skills/pr-review/SKILL.md" '#### 6.5.W.2 Wiki Raw Commit' '`commit_rc=4` を観測した場合'
 check_caller fix "$PLUGIN_ROOT/skills/fix/SKILL.md" '### 4.6.W.2 Wiki Raw Commit' '`wiki_ingest_commit_rc=4` を観測した場合'
 check_caller issue-close "$PLUGIN_ROOT/skills/issue-close/SKILL.md" '### 4.4.W.2 Wiki Raw Commit' '`commit_rc=4` を観測した場合'
@@ -103,6 +103,6 @@ assert "push-only retry preserves exit 4 on repeated failure" "4" "$rc"
 assert "failed retry remains visibly push=failed" "1" \
   "$(printf '%s\n' "$failed_retry_out" | grep -cF 'push=failed; mode=push-only' || true)"
 
-if ! print_summary "$(basename "$0")" "sandbox-disabled wiki push retry + completion visibility parity (#2049)"; then
+if ! print_summary "$(basename "$0")" "sandbox-disabled wiki push retry + completion visibility parity"; then
   exit 1
 fi

@@ -609,20 +609,20 @@ blocking か否かは「**その mutation が無効化するのは Issue 契約�
 
 **例 4 — 過去データでの再分類 (AC-4)**: 凍結クローズに至った PR の churn テールを本規則で再分類すると、主燃料は non-blocking 側へ落ちる。
 
-| PR | finding | 契約対応 | 本規則での分類 |
-|---|---|---|---|
-| #2114 | F-04 rc→marker 変換の pin 不足 | 実装内部の変換 | 網羅的 pin 強化 → non-blocking |
-| #2114 | F-05 consumer 判定表のテスト不在 | 実装内部の判定表 | 網羅的 pin 強化 → non-blocking |
-| #2114 | F-06 gitignore ブロック配置の pin 不足 | 実装内部の配置 | 網羅的 pin 強化 → non-blocking |
-| #2112 | F-18 行アンカー片側 mutant 4 本生存 | 契約挙動は既存 pin が保護 | 網羅的 pin 強化 → non-blocking |
-| #2112 | F-21 tempfile グローバル化の未 pin | fix が導入した内部変更 | 網羅的 pin 強化 → non-blocking |
-| #2112 | F-29 `_is_record` 連言の片側弱化 3 mutant 生存 | 契約挙動は既存 negative control が保護 | 網羅的 pin 強化 → non-blocking |
-| #2112 | F-30 probe 2 要素の未 pin (空振り側を除く) | 実装内部の probe | 網羅的 pin 強化 → non-blocking |
-| #2112 | F-31 静的 pin の denylist が `declare` を素通り | fix 自身の pin の強化要求 | 網羅的 pin 強化 → non-blocking |
-| #2114 | F-01 marker field 順の非対称で helper 失敗が成功と報告される | — | 挙動の欠陥 (テスト網羅性指摘ではない) → blocking 維持 |
-| #2112 | F-30 TC-4.16o''' の空振り | — | テストの誤り → blocking 維持 |
+| finding | 契約対応 | 本規則での分類 |
+|---|---|---|
+| F-04 rc→marker 変換の pin 不足 | 実装内部の変換 | 網羅的 pin 強化 → non-blocking |
+| F-05 consumer 判定表のテスト不在 | 実装内部の判定表 | 網羅的 pin 強化 → non-blocking |
+| F-06 gitignore ブロック配置の pin 不足 | 実装内部の配置 | 網羅的 pin 強化 → non-blocking |
+| F-18 行アンカー片側 mutant 4 本生存 | 契約挙動は既存 pin が保護 | 網羅的 pin 強化 → non-blocking |
+| F-21 tempfile グローバル化の未 pin | fix が導入した内部変更 | 網羅的 pin 強化 → non-blocking |
+| F-29 `_is_record` 連言の片側弱化 3 mutant 生存 | 契約挙動は既存 negative control が保護 | 網羅的 pin 強化 → non-blocking |
+| F-30 probe 2 要素の未 pin (空振り側を除く) | 実装内部の probe | 網羅的 pin 強化 → non-blocking |
+| F-31 静的 pin の denylist が `declare` を素通り | fix 自身の pin の強化要求 | 網羅的 pin 強化 → non-blocking |
+| F-01 marker field 順の非対称で helper 失敗が成功と報告される | — | 挙動の欠陥 (テスト網羅性指摘ではない) → blocking 維持 |
+| F-30 TC-4.16o''' の空振り | — | テストの誤り → blocking 維持 |
 
-後半サイクルの pin 要求 8 件がすべて non-blocking へ落ち、実バグ (#2114 F-01 型) とテストの誤り (#2112 F-30 空振り側) は blocking に残る。
+後半サイクルの pin 要求 8 件がすべて non-blocking へ落ち、実バグ (F-01 型) とテストの誤り (F-30 空振り側) は blocking に残る。
 
 ## Fail-Fast First
 

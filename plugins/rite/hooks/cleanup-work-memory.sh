@@ -59,7 +59,7 @@ if [ "$CLOSE_MODE" = false ]; then
   # (flow-state.sh path — schema_v2/v3 per-session file under .rite/sessions/).
   # Resetting the legacy shared file directly (as this script previously did)
   # left the real per-session file behind with stale active:true/phase:cleanup
-  # state after /rite:cleanup completed (#695). Fall back to the legacy shared
+  # state after /rite:cleanup completed. Fall back to the legacy shared
   # file only when session resolution itself fails (no .rite-session-id /
   # session env var available) — surface that fallback with a WARNING so a
   # corrupt/invalid session_id doesn't silently reproduce the same stale-state

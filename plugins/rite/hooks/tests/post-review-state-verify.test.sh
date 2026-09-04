@@ -1,11 +1,11 @@
 #!/bin/bash
-# Tests for hooks/scripts/post-review-state-verify.sh worktree drift axis (#1944)
+# Tests for hooks/scripts/post-review-state-verify.sh worktree drift axis
 #
 # post-review-state-verify.sh compares an ORIG_WTH snapshot (taken by
 # pr-review SKILL.md ステップ 4.0.A) against a current worktree hash computed
 # at verify time. Both sides now route through lib/git-status-filtered.sh
 # instead of raw `git status --porcelain` so that sandbox write-block ghost
-# mounts (#1936 — untracked character-device entries a bwrap sandbox overlays
+# mounts (— untracked character-device entries a bwrap sandbox overlays
 # over paths it blocks writes to) are stripped from the hash on both sides.
 # Without this, a ghost mount present at snapshot time but not at verify
 # time (or vice versa, e.g. a different sandbox context between the two
