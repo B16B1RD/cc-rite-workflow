@@ -222,7 +222,7 @@ assert "TC-15 still reconstructed (non-fatal)" "reconstructed" "$case_token"
 assert "TC-15 rc=0 (non-fatal)" "0" "$rc"
 rm -f "$out_tmp" "$err_tmp"
 
-# --- TC-16 ( follow-up to cycle3 test-reviewer): copy failure on the
+# --- TC-16 (follow-up to cycle3 test-reviewer): copy failure on the
 #     branch_remote reconstruction path → WARNING emitted, non-fatal ---
 # TC-15 covers the branch_local WARNING path (695/696行目); this covers the
 # verbatim-duplicate branch_remote WARNING path (723/724行目) so a future

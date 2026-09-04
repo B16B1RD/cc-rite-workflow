@@ -157,7 +157,7 @@ The progress section update in Phase 3.5.2 follows this logic（`merge-checklist
 1. Retrieve the existing progress section (`### 進捗サマリー` — 現行 WM テンプレの見出し。SoT: `work-memory-format.md` / init テンプレ)
 2. Preserve all existing content (table rows / checklist items)
 3. Append new items (`- [x] レビュー完了`, `- [x] マージ完了`, `- [x] クリーンアップ完了`) at the end of the section (do not duplicate if already present anywhere in the body — full-line exact match, 冪等)
-4. When the target section is absent **and** new items remain, helper returns `status=skipped; reason=section_absent` (items are **not** dropped silently, and the caller does **not** report success —)
+4. When the target section is absent **and** new items remain, helper returns `status=skipped; reason=section_absent` (items are **not** dropped silently, and the caller does **not** report success)
 
 **Example:**
 

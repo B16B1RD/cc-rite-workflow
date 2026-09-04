@@ -725,7 +725,7 @@ printf 'session_worktree\t%s\n' "$R/.rite/worktrees/issue-999-gone" > "$R/.rite/
 run_pcc "$R" >/dev/null
 assert "C-05d stale already-gone entry is dropped" "0" "$( [ -f "$R/.rite/tmp-artifacts.tsv" ] && grep -qxF "session_worktree$(printf '\t')$R/.rite/worktrees/issue-999-gone" "$R/.rite/tmp-artifacts.tsv" && echo 1 || echo 0 )"
 
-echo "=== C-06 ( mirrors D-04): multi-entry session_worktree manifest → only the reaped entry is consumed ==="
+echo "=== C-06 (mirrors D-04): multi-entry session_worktree manifest → only the reaped entry is consumed ==="
 R=$(make_repo 150); cleanup_dirs+=("$R")
 # Two recorded session_worktree entries: issue-150 (reap target — fresh
 # corpse, claim-free) and a co-pending decoy path that must survive the

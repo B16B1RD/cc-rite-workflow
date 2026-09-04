@@ -1320,7 +1320,7 @@ if [ -d "$session_wt_root" ]; then
       _rite_null_worktree_refs "$wt_path" "$_wt_canon"
 
       # Manifest entry consumption (symmetric with the branch
-      # consumption below —): a lingering `session_worktree\t<path>`
+      # consumption below): a lingering `session_worktree\t<path>`
       # entry is not inert — the corpse age-guard bypass above is keyed on it,
       # so a DIFFERENT worktree later created at this same path (e.g. the
       # issue reopened) would inherit the bypass and skip the 24h protection
