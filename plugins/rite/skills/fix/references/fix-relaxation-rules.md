@@ -10,6 +10,9 @@ Defines how fix targets are determined in the `/rite:iterate` review-fix loop.
 `verification.measured == true` ∧ `severity ∈ {CRITICAL, HIGH}` ∧ `scope ∈ {current-pr, follow-up}`
 （consumer 式の SoT: [severity-levels.md §実測必須ゲート](../../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)）。
 判定は `scripts/review-findings-maps.sh` が決定論で行い、LLM は `[CONTEXT] FIX_FATAL_TRIAGE=` marker を読むだけにする。
+**適用範囲は file-based review source（Priority 0/2、および P3 が tempfile 経由で通す Raw JSON）に限る** —
+会話 / legacy Markdown 経路では helper が no-op になり移送も記録も起きないため、その経路では
+consumer 式を適用せず従来どおり全 severity 帯を修正対象に残す（絞ると指摘が無記録のまま消える）。
 
 致命でない gated finding は**捨てず**に `non_blocking_findings[]` へ `demotion_reason: "non_fatal"` 付きで
 移送し、severity は元のまま残す。移送分は fix の修正・reply・auto-select・mergeable countdown の
@@ -28,7 +31,8 @@ findings は **致命性**で 1 度だけ振り分けられる。severity × sco
 | 分類 | 条件 | Action |
 |------|------|--------|
 | **致命 (修正対象)** | `measured == true` ∧ `severity ∈ {CRITICAL, HIGH}` ∧ `scope ∈ {current-pr, follow-up}` | Must fix in this PR |
-| **移送済み (非致命)** | 上記以外の gated finding（`measured == true` かつ MEDIUM / LOW-MEDIUM / LOW） | `non_blocking_findings[]` へ移送。修正・reply・auto-select の対象外。件数のみ表示 |
+| **移送済み (非致命)** | 上記以外の gated finding（`measured == true` かつ MEDIUM / LOW-MEDIUM / LOW）。**file-based source でのみ発生** | `non_blocking_findings[]` へ移送。修正・reply・auto-select の対象外。件数のみ表示 |
+| **仕分け未適用 (会話 / legacy Markdown)** | 上記と同条件だが helper が no-op だった経路 | 移送も記録も起きていない。**従来どおり修正対象**（「移送済み」として数えない） |
 | **nit (認知のみ)** | `scope == "nit-noted"` | 仕分け対象外。no PR reply, no fix commit。`acknowledged_nit_count` に算入 |
 | **non-blocking (実測なし)** | `measured == false` | 実測必須ゲートで pr-review 側が既に `non_blocking_findings[]` へ降格済み。fix 対象外 |
 | **External review** | severity_map 未登録の未対応コメント（人間レビュアー等） | 実測必須ゲートの対象外。従来どおり blocking |
@@ -54,7 +58,7 @@ The review-fix loop exits via:
 | **Manual abort** | ユーザーが Ctrl+C で中断 | `flow-state` に現 phase が残るので `/rite:recover` で復帰 |
 | **Circuit breaker** | 収束トレンドが発散と判定される、または cycle が `safety.max_review_cycles`（既定 15）に到達 | batch は `[iterate:max-cycles-reached]`、対話は `[iterate:max-cycles-stopped]`（**sentinel は発火理由に依らず同一**）。**両モードとも人間に問わず機械的に停止**し非収束の失敗として記録する（マージには進まない）— 詳細は下記散文 |
 
-`/rite:iterate` は「**blocking 指摘ゼロ**（mergeable）までループする」契約を基本とし（blocking = 致命 = `measured == true` かつ `severity ∈ {CRITICAL, HIGH}` かつ `scope ∈ {current-pr, follow-up}` の CONFIRMED 指摘 — SoT は [severity-levels.md §実測必須ゲート](../../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) の consumer 式。非実測指摘と非致命移送分は `non_blocking_findings[]` に記録されたまま残存して正常出口に到達しうる）、加えてサーキットブレーカーを唯一の自動安全網として持つ。発火条件は 2 つで、**主経路は収束トレンドの発散検出**（`hooks/scripts/review-trend-divergence.sh` が永続レビュー JSON の per-cycle blocking 件数から機械判定する）、`safety.max_review_cycles`（既定 15）はそれをすり抜ける非収束を受け止める backstop である（既定 15 では 16 cycle 以上を要する収束中の run にも上限として働く。15 は、従来の 5 cycle 上限が収束中の run を停止した実測に基づいて余裕を持たせた暫定値であり、実運用データで再評価する）。cycle 数上限だけでは努力と無駄を区別できないため格下げした（詳細は [iterate/SKILL.md](../../iterate/SKILL.md) が SoT）。quality-signal escalation / 同一 finding 検出といった細粒度の安全網は持たない。発火時は batch / 対話とも人間に問わず機械的に停止する（発火＝非収束による失敗の記録であり、マージには進まない）: `/rite:batch-run` バッチ実行では当該 Issue を failed 扱いにして次へ進み、対話実行では停止通知を出して終了する。ループの再開は人間が `/rite:iterate {pr}` を明示的に再実行する経路のみ。Ctrl+C による手動中断も従来どおり可能。
+`/rite:iterate` は「**blocking 指摘ゼロ**（mergeable）までループする」契約を基本とし（mergeable を決める blocking は **producer 式** = `measured != false` かつ `scope ∈ {current-pr, follow-up}` の CONFIRMED 指摘で、severity では絞らない。fix が修正対象にするのは **consumer 式** = 致命（実測あり × CRITICAL/HIGH × gated）だけで、非致命の gated 指摘は移送されて修正対象から外れる。両式の SoT は [severity-levels.md §実測必須ゲート](../../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)。非実測指摘と非致命移送分は `non_blocking_findings[]` に記録されたまま残存し、次 cycle 以降に正常出口へ到達しうる）、加えてサーキットブレーカーを唯一の自動安全網として持つ。発火条件は 2 つで、**主経路は収束トレンドの発散検出**（`hooks/scripts/review-trend-divergence.sh` が永続レビュー JSON の per-cycle blocking 件数から機械判定する）、`safety.max_review_cycles`（既定 15）はそれをすり抜ける非収束を受け止める backstop である（既定 15 では 16 cycle 以上を要する収束中の run にも上限として働く。15 は、従来の 5 cycle 上限が収束中の run を停止した実測に基づいて余裕を持たせた暫定値であり、実運用データで再評価する）。cycle 数上限だけでは努力と無駄を区別できないため格下げした（詳細は [iterate/SKILL.md](../../iterate/SKILL.md) が SoT）。quality-signal escalation / 同一 finding 検出といった細粒度の安全網は持たない。発火時は batch / 対話とも人間に問わず機械的に停止する（発火＝非収束による失敗の記録であり、マージには進まない）: `/rite:batch-run` バッチ実行では当該 Issue を failed 扱いにして次へ進み、対話実行では停止通知を出して終了する。ループの再開は人間が `/rite:iterate {pr}` を明示的に再実行する経路のみ。Ctrl+C による手動中断も従来どおり可能。
 
 `fix.md` ステップ 3 の Root Cause Gate は引き続き **fix commit 側の品質ゲート**として機能する (root-cause-missing fix を reject)。loop 制御とは別経路。
 

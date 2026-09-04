@@ -349,9 +349,13 @@ elif [ "$_run_total" -gt "$cycle_count" ] 2>/dev/null; then
 fi
 
 # ---- 各 cycle の blocking 件数を数える ----------------------------------------
-# blocking の定義 (consumer 式) の SoT は references/severity-levels.md §実測必須ゲート:
+# 本 script が数えるのは **producer 側 blocking 集合** (SoT: references/severity-levels.md
+# §実測必須ゲート の producer 式) であり、severity では絞らない:
 #   blocking = scope ∈ {current-pr, follow-up} かつ measured != false
 #              (verification 欠落 / null = 未判定 = blocking のまま)
+# 同節の consumer 式 (fix の致命性仕分け: 実測あり × CRITICAL/HIGH × gated) とは別軸で、
+# ここでそれを適用してはならない — 収束トレンドは reviewer が出した指摘の推移を見るものであり、
+# fix が何を修正対象にしたかの推移ではない。
 # schema 1.0 / 1.0.0 は scope 欠落のため severity ベース default mapping を適用する
 # (SoT: references/review-result-schema.md §scope の default mapping)。
 #

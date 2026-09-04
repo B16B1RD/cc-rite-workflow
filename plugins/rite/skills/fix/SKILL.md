@@ -518,7 +518,9 @@ fi
 rm -f "$maps_err"
 ```
 
-helper は `[CONTEXT] FIX_FATAL_TRIAGE=applied; fatal={n}; moved={m}` を必ず 1 回 emit する。`{n}` / `{m}` を `{fatal_count}` / `{moved_count}` として retain し、ステップ 1.4 の表示・ステップ 4.5.3 の記録・ステップ 4.6 の完了報告・ステップ 5.1 の E2E 出力で使う。**marker 不在は helper が仕分けまで到達していない**ことを意味するので、`fatal_count` / `moved_count` を推測で補わない。
+helper は `[CONTEXT] FIX_FATAL_TRIAGE=applied; fatal={n}; moved={m}` を必ず 1 回 emit する。`{m}` を `{moved_count}` として retain し、ステップ 1.4 の表示・ステップ 4.5.3 の記録・ステップ 4.6 の完了報告・ステップ 5.1 の E2E 出力で使う。`{n}` は `{fatal_count}` として retain し、ステップ 1.4 の `### 致命` セクション見出しの件数に使う。**marker 不在は helper が仕分けまで到達していない**ことを意味するので、どちらも推測で補わない。
+
+**仕分けが走るのは file-based source (Priority 0/2) だけ**である。helper は `--review-source` が `local_file` / `explicit_file` 以外なら no-op exit 0 になる。Priority 1 (会話) と Priority 3 の legacy Markdown 経路では仕分けが走らないため、**それらの経路では consumer 式を適用してはならない** — 非致命 gated finding も従来どおり修正対象に残す (ステップ 1.3 / 2.1 の該当行を参照)。仕分けを適用したことにして修正対象から外すと、移送も記録もされないまま指摘が消える。
 
 **On Priority 3**: Broad Retrieval 後に `### 📄 Raw JSON` fence を読む。parser は当該 section 以降にスコープする。
 
@@ -666,7 +668,7 @@ else
     "1.0.0"|"1.0"|"1.1.0")
       # accept list 3 値は Priority 0/2/3 + hooks/scripts/review-trend-divergence.sh の 4 sites で完全同期 (review-result-schema.md Schema Version SoT 契約)
       # commit_sha stale detection: mismatch は WARNING のみで continue
-      # rationale: references/design-rationale.md#schema-normalization-mirror
+      # rationale: references/design-rationale.md#schema-normalization
       json_commit_sha_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-p3-commit-sha-err-XXXXXX" 2>/dev/null) || json_commit_sha_err=""
       if json_commit_sha=$(printf '%s' "$raw_json" | jq -r '.commit_sha // empty' 2>"${json_commit_sha_err:-/dev/null}"); then
         :
@@ -695,7 +697,7 @@ else
       # 「致命判定を helper で決定論的に行う」契約が経路によって破れるため。
       # raw_json は文字列なので tempfile へ書き出して helper に渡し、書き戻された結果を読み直す。
       # rationale: references/design-rationale.md#fatal-triage
-      p3_triage_file=$(mktemp "${TMPDIR:-/tmp}/rite-fix-p3-triage-XXXXXX.json" 2>/dev/null) || p3_triage_file=""
+      p3_triage_file=$(mktemp "${TMPDIR:-/tmp}/rite-fix-p3-triage-XXXXXX" 2>/dev/null) || p3_triage_file=""
       if [ -z "$p3_triage_file" ]; then
         echo "ERROR: Priority 3 致命性仕分け用 tempfile の mktemp が失敗しました" >&2
         echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=p3_triage_mktemp_failed" >&2
@@ -733,8 +735,31 @@ else
         exit 1
       fi
       rm -f "$p3_maps_err"
+      # P3 の書き戻し先は本 block が作った tempfile であり、永続 review-result JSON ではない。
+      # 移送が 1 件でも起きたら non_blocking_findings[] の全文がこの tempfile 以外のどこにも残らず、
+      # iterate 5.S の nb-sweep (永続 JSON を読む) の母集団から silent に脱落する。
+      # 記録できないまま指摘を修正対象から外すのは「移送分を捨てない」契約に反するので fail-loud で止める。
+      p3_moved=$(jq '[.non_blocking_findings[]? | select(.demotion_reason == "non_fatal")] | length' "$p3_triage_file" 2>/dev/null) || p3_moved=""
+      case "$p3_moved" in ''|*[!0-9]*) p3_moved=0 ;; esac
+      if [ "$p3_moved" -gt 0 ]; then
+        rm -f "$p3_triage_file"
+        echo "ERROR: Priority 3 経路で $p3_moved 件の非致命移送が発生しましたが、この経路には永続 review-result JSON がありません" >&2
+        echo "  影響: 移送分の全文がどこにも残らず nb-sweep の母集団から脱落するため停止します" >&2
+        echo "  対処: /rite:pr-review を再実行してローカル JSON を生成し (Priority 2)、再度 /rite:fix を実行してください" >&2
+        echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=p3_triage_not_persistable; moved=$p3_moved" >&2
+        echo "[fix:error] reason=p3_triage_not_persistable"
+        exit 1
+      fi
       # helper が書き戻した結果を raw_json へ読み戻す (読み戻し失敗は原 raw_json のまま続行しない —
-      # 仕分け後の findings[] を前提に下流が動くため、silent に仕分け前へ戻さない)
+      # 仕分け後の findings[] を前提に下流が動くため、silent に仕分け前へ戻さない)。
+      # `cat` は 0 バイトでも rc=0 を返すため、非空検査を読み戻しの前に置く。
+      if [ ! -s "$p3_triage_file" ]; then
+        rm -f "$p3_triage_file"
+        echo "ERROR: Priority 3 仕分け結果が空です" >&2
+        echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=p3_triage_readback_failed" >&2
+        echo "[fix:error] reason=p3_triage_readback_failed"
+        exit 1
+      fi
       if ! raw_json=$(cat "$p3_triage_file" 2>/dev/null); then
         rm -f "$p3_triage_file"
         echo "ERROR: Priority 3 仕分け結果の読み戻しが失敗しました" >&2
@@ -868,6 +893,7 @@ exit 1
 - `scope_omitted_in_v1_0`: schema 1.0/1.0.0 受信時に findings[].scope が欠落しているため severity ベースの default mapping で補完した (`REVIEW_SOURCE_SCOPE_DEFAULTED` flag、非ブロッキング、observability のみ)
 - `pre_existing_false_scope_nit_noted`: cross-field invariant #5 違反 — `pre_existing == false` × `scope == "nit-noted"` を検出し scope を `current-pr` に auto-correct した (`REVIEW_SOURCE_AUTO_CORRECTED` flag、非ブロッキング)
 - `jq_mutation_failed`: schema 1.1.0 normalization の jq mutation が失敗 (`REVIEW_SOURCE_NORMALIZATION_FAILED` flag、非ブロッキング、原 JSON のまま続行)
+- `json_invalid`: `--review-source-path` が jq parse 不能 (helper exit 1 → caller が `[fix:error]` に昇格)。仕分けが JSON 全体を読むため、parse 不能を先に切り分けて一次原因を残す
 - `mktemp_failure_norm_tmp`: schema 1.1.0 normalization 用 tempfile (`${TMPDIR:-/tmp}/rite-fix-normalized-XXXXXX`) の mktemp が失敗 (disk full / inode 枯渇 / read-only filesystem / permission denied、`REVIEW_SOURCE_NORMALIZATION_FAILED` flag、非ブロッキング、原 JSON のまま続行)。silent skip 防止のため WARNING + retained flag を必ず emit する
 - `measured_undetermined`: gated finding に `verification.measured` (boolean) が無い (未判定を blocking / non-blocking のどちらにも倒さず helper exit 1 → caller が `[fix:error] reason=measured_undetermined; findings=...` に昇格)
 - `severity_enum_violation`: `findings[].severity` が enum 外 (helper exit 1 → `[fix:error]` 昇格。`review-measured-gate.sh` の `scope_enum_violation` と同型の語彙)
@@ -1678,7 +1704,7 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
 |---------------|----------|--------|
 | **致命 (修正対象)** | severity ∈ {CRITICAL, HIGH} AND scope ∈ {current-pr, follow-up} AND measured == true | Must fix in this PR。ステップ 1.2.0 の仕分けを通過して `findings[]` に残った唯一の分類 |
 | **nit (認知のみ)** | scope == "nit-noted" | NOT a fix target。PR reply しない。`acknowledged_nit_count = {nit_noted_count}` |
-| **移送済み (非致命)** | ステップ 1.2.0 で `non_blocking_findings[]` へ移送された gated finding (`demotion_reason: "non_fatal"`) | **`findings[]` に存在しないため本分類ロジックには到達しない**。件数 `{moved_count}` のみ ステップ 1.4 / 4.6 / 5.1 に表示する。修正・reply・auto-select の対象外 |
+| **移送済み (非致命)** | ステップ 1.2.0 で `non_blocking_findings[]` へ移送された gated finding (`demotion_reason: "non_fatal"`)。**file-based source (Priority 0/2、および P3 の Raw JSON) でのみ発生する** | **`findings[]` に存在しないため本分類ロジックには到達しない**。件数 `{moved_count}` のみ ステップ 1.4 / 4.6 / 5.1 に表示する。修正・reply・auto-select の対象外 |
 | **non-blocking (実測なし)** | scope ∈ {current-pr, follow-up} AND measured == false (`measured_map` に明示的に `false` で登録されたもののみ — 経路別判定は下記 measured lookup 参照) | 表示のみ; NOT a fix target (実測必須ゲート — 記録は `/rite:pr-review` ステップ 5.4 の「実測なし指摘」section が担う) |
 | **External review** | severity_map に登録されていない未対応コメント (人間レビュアーの指摘等)、**および step 4 の出自確認で rite finding 由来と確認できなかった thread** (severity_map 登録済みでも本分類へ振り替える)。実測必須ゲートの**対象外** — `Verification:` アンカーを構造的に持てないため measured 未判定でも non-blocking に落とさない | Action required |
 | **Resolved** | Resolved threads | - |
@@ -1708,7 +1734,8 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
      > echo "[CONTEXT] MEASURED_RECLASSIFIED_TO_EXTERNAL=1; count={n}; cause=provenance_unconfirmed" >&2
      > ```
    - `scope ∈ {current-pr, follow-up}` AND measured == true AND severity ∈ {CRITICAL, HIGH} -> **致命 (修正対象)**
-   - JSON 経路では非致命の gated finding は ステップ 1.2.0 が `findings[]` から除いているため、本分岐に MEDIUM / LOW-MEDIUM / LOW の gated finding は現れない。Markdown / 会話経路 (severity_map が JSON 由来でない fallback) で現れた場合も **致命ではないので修正対象にしない** — 「移送済み (非致命)」として件数に数える
+   - JSON 経路 (file-based source) では非致命の gated finding は ステップ 1.2.0 が `findings[]` から除いているため、本分岐に MEDIUM / LOW-MEDIUM / LOW の gated finding は現れない
+   - **Markdown / 会話経路では仕分けが走らない** (helper が no-op)。この経路で MEDIUM / LOW-MEDIUM / LOW の gated finding が現れたら **従来どおり修正対象にする**。移送も記録も起きていないため「移送済み」として数えてはならない — 数えると、どこにも記録されないまま指摘が修正対象から消える
 
    **step 4 は severity_map 登録済みの終端 (1 例外)**: 分類確定分を step 5 へ落とさない。**例外は出自確認** (`measured_map[key] == false` かつ rite 由来未確認 → step 5)。step 5 は未登録コメント + 振り替え thread。
 5. Unresolved comments not in `severity_map`、**または step 4 の出自確認で振り替えられた thread** -> External review (Action required = blocking)
@@ -1925,7 +1952,7 @@ PR #{number} のレビューコメント
 
 ## 未対応の指摘 ({count}件)
 
-### 致命（CRITICAL/HIGH・実測あり）({count}件)
+### 致命（CRITICAL/HIGH・実測あり）({fatal_count}件)
 | # | 重要度 | ファイル | 行 | 指摘内容 | レビュアー |
 |---|--------|----------|-----|----------|------------|
 | 1 | {severity} | {path} | {line} | {body_preview} | @{user} |
@@ -1935,6 +1962,8 @@ PR #{number} のレビューコメント
      一覧は出さず件数のみ表示する (全文は移送先 JSON にあり、iterate 5.S の nb-sweep が消化する)。
      {moved_count} は ステップ 1.2.0 の [CONTEXT] FIX_FATAL_TRIAGE=applied; moved= から literal substitute する。
      0 件でも行は省略しない (移送が起きなかったことも観測できるようにする)。
+     **marker 不在 (仕分けが走らない会話 / legacy Markdown 経路) では見出しごと省略する** —
+     移送も記録も起きていないのに「記録済み・sweep 対象」と表示すると事実に反する。
      修正・reply・auto-select の対象外。 -->
 
 ### nit (認知のみ) ({nit_noted_count}件)
@@ -2125,8 +2154,9 @@ reviewer の推奨対応（`recommendation` 列）は候補であって設計で
 1. scope_map[file:line] を look up
 2. `scope == "nit-noted"` → ステップ 2.1 / 2.4 を skip。ステップ 2.4.N で `acknowledged_nit_count` に算入
 3. **measured lookup (実測必須ゲート)**: ステップ 1.3 で **non-blocking (実測なし)** に分類された finding (`measured_map[file:line] == false`) → ステップ 2.1 (本セクション) を **skip** し、ステップ 2.4 の reply も投稿しない (fix commit 対象外。記録は `/rite:pr-review` ステップ 5.4 の「実測なし指摘」section が担う)
-4. `scope ∈ {current-pr, follow-up}` かつ **measured != false** (= `measured_map` で `true`、または未登録 = **未判定** — ステップ 1.3 step 4 の measured lookup 参照)、または scope 未登録 (legacy / fallback) → 本セクション以降を通常通り実行 (Confidence override で取り込んだ外部ツール finding は severity_map 登録済みのため ステップ 1.3 step 4 でここに合流し、silent skip されない)
-5. skip 経路では選択 UI を **出さない**。
+4. **仕分けが走った経路 (file-based source。`FIX_FATAL_TRIAGE` marker あり)**: `scope ∈ {current-pr, follow-up}` かつ `measured == true` かつ `severity ∈ {CRITICAL, HIGH}` (= 致命) → 本セクション以降を通常通り実行。非致命は helper が `findings[]` から外しているため本分岐に現れない
+5. **仕分けが走らなかった経路 (会話 / legacy Markdown。marker なし)**: `scope ∈ {current-pr, follow-up}` かつ **measured != false** → severity に依らず本セクション以降を通常通り実行する。consumer 式で絞ると移送も記録もされないまま指摘が消えるため、この経路では従来どおり全 severity 帯を修正対象にする (Confidence override で取り込んだ外部ツール finding も severity_map 登録済みのためここに合流し、silent skip されない)
+6. skip 経路では選択 UI を **出さない**。
 
 
 ---
@@ -3362,8 +3392,9 @@ PR #{number} のレビュー指摘対応を完了しました
 - 返信: {reply_count}件
 - nit 認知 (scope=nit-noted、本 cycle): {acknowledged_nit_count}件
 - non-blocking (実測なし、fix 対象外): {non_blocking_count}件
-非致命移送 (fix 対象外、記録済み): {moved_count}件
 - accept 認知 (user decision、Issue 完了まで累計): {accept_count}件{accept_warning_suffix}
+非致命移送 (fix 対象外、記録済み): {moved_count}件
+
 コミット: {commit_sha}
 プッシュ: 完了 / 未実行
 レビューソース: {review_source} ({review_source_path_display})

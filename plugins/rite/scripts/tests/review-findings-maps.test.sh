@@ -121,14 +121,16 @@ FIXEOF
 FIXEOF
       ;;
     mixed_triage)
-      # AC-1 / AC-2: 実測あり HIGH 1 / 実測あり MEDIUM 1 / 実測あり LOW 1 / nit-noted 1
+      # AC-1 / AC-2: 実測あり HIGH 1 / 実測あり MEDIUM 1 / 実測あり LOW 1 / nit-noted 1 /
+      # **実測なし HIGH 1** (致命判定 3 連言のうち実測条件だけを判別する finding)
       # 既に非空の non_blocking_findings[] を置き、移送が append であって置換でないことを pin する
       cat > "$path" <<'FIXEOF'
 {"schema_version":"1.1.0","pr_number":1,"findings":[
   {"id":"F-01","file":"src/a.ts","line":10,"severity":"HIGH","scope":"current-pr","pre_existing":true,"verification":{"measured":true}},
   {"id":"F-02","file":"src/b.ts","line":20,"severity":"MEDIUM","scope":"current-pr","pre_existing":true,"verification":{"measured":true}},
   {"id":"F-03","file":"src/c.ts","line":30,"severity":"LOW","scope":"current-pr","pre_existing":true,"verification":{"measured":true}},
-  {"id":"F-04","file":"src/d.ts","line":40,"severity":"LOW","scope":"nit-noted","pre_existing":true}
+  {"id":"F-04","file":"src/d.ts","line":40,"severity":"LOW","scope":"nit-noted","pre_existing":true},
+  {"id":"F-06","file":"src/f.ts","line":60,"severity":"HIGH","scope":"current-pr","pre_existing":true,"verification":{"measured":false}}
 ],"non_blocking_findings":[
   {"id":"F-05","file":"src/e.ts","line":50,"severity":"MEDIUM","scope":"current-pr","pre_existing":true}
 ]}
@@ -181,6 +183,17 @@ FIXEOF
       cat > "$path" <<'FIXEOF'
 {"schema_version":"1.1.0","pr_number":1,"findings":[
   {"id":"F-01","file":"src/a.ts","line":10,"severity":"BLOCKER","scope":"current-pr","pre_existing":true,"verification":{"measured":true}}
+]}
+FIXEOF
+      ;;
+    nb_missing_id)
+      # 入力時点で non_blocking_findings[] に id を持たない要素がある (保存境界が非ブロッキングと
+      # 決めている欠陥。本 helper の自己検証もこれを停止理由にしてはならない)
+      cat > "$path" <<'FIXEOF'
+{"schema_version":"1.1.0","pr_number":1,"findings":[
+  {"id":"F-01","file":"src/a.ts","line":10,"severity":"MEDIUM","scope":"current-pr","pre_existing":true,"verification":{"measured":true}}
+],"non_blocking_findings":[
+  {"file":"src/z.ts","line":99,"severity":"LOW","scope":"current-pr","pre_existing":true}
 ]}
 FIXEOF
       ;;
@@ -468,11 +481,25 @@ write_fixture "$repo/review.json" v10_missing_scope
 run_helper "$repo" local_file "$repo/review.json"
 after_paths=$(ls "${TMPDIR:-/tmp}"/rite-fix-normalized-* 2>/dev/null | LC_ALL=C sort || true)
 leaked_paths=$(LC_ALL=C comm -13 <(printf '%s\n' "$before_paths") <(printf '%s\n' "$after_paths"))
-leaked_triage=$(ls "$repo"/review.json.triage.* 2>/dev/null || true)
-if [ -z "$leaked_paths" ] && [ -z "$leaked_triage" ]; then
-  pass "normalization / 移送 tempfile が trap EXIT で削除される (leak なし)"
+# 移送 tempfile の回収は **tempfile を作ったまま失敗して trap / inline rm に委ねる経路** で見る。
+# TC-9 の fixture は moved=0 で移送分岐に入らないため、そこに triage.* の不在を書いても恒真になる。
+# mixed_triage (成功経路、mv で消える) と mktemp 失敗経路の両方を sweep する。
+repo_leak=$(make_sandbox tc9-triage)
+mkdir -p "$repo_leak/ro"
+write_fixture "$repo_leak/ro/review.json" mixed_triage
+chmod 555 "$repo_leak/ro"
+run_helper "$repo_leak" local_file "$repo_leak/ro/review.json"
+chmod 755 "$repo_leak/ro"
+leaked_triage=$(ls "$repo_leak"/ro/review.json.triage.* 2>/dev/null || true)
+# moved>0 の成功経路 (mv で消える) も併せて sweep する
+repo_moved=$(make_sandbox tc9-moved)
+write_fixture "$repo_moved/review.json" mixed_triage
+run_helper "$repo_moved" local_file "$repo_moved/review.json"
+leaked_triage_moved=$(ls "$repo_moved"/review.json.triage.* 2>/dev/null || true)
+if [ -z "$leaked_paths" ] && [ -z "$leaked_triage" ] && [ -z "$leaked_triage_moved" ]; then
+  pass "normalization tempfile と移送 tempfile (失敗経路 / 成功経路の両方) が回収される"
 else
-  fail "tempfile leaked: $(tr '\n' ' ' <<<"$leaked_paths$leaked_triage")"
+  fail "tempfile leaked: $(tr '\n' ' ' <<<"$leaked_paths$leaked_triage$leaked_triage_moved")"
 fi
 
 # --------------------------------------------------------------------------
@@ -483,22 +510,25 @@ repo=$(make_sandbox tc10)
 write_fixture "$repo/review.json" mixed_triage
 run_helper "$repo" local_file "$repo/review.json"
 tc10_ok=1
-grep -q 'FIX_FATAL_TRIAGE=applied; fatal=1; moved=2' <<<"$HELPER_STDERR" || tc10_ok=0
+grep -q 'FIX_FATAL_TRIAGE=applied; fatal=1; moved=3' <<<"$HELPER_STDERR" || tc10_ok=0
 [ "$HELPER_RC" = "0" ] || tc10_ok=0
 # findings[] の残余は「致命 + nit-noted」で、入力順を保つ
 [ "$(jq -c '[.findings[].id]' "$repo/review.json")" = '["F-01","F-04"]' ] || tc10_ok=0
 # non_blocking_findings[] は既存要素 (F-05) を保持したまま末尾に append される
-[ "$(jq -c '[.non_blocking_findings[].id]' "$repo/review.json")" = '["F-05","F-02","F-03"]' ] || tc10_ok=0
+[ "$(jq -c '[.non_blocking_findings[].id]' "$repo/review.json")" = '["F-05","F-02","F-03","F-06"]' ] || tc10_ok=0
 # 移送分だけが demotion_reason を持ち、severity は元のまま
 [ "$(jq -c '[.non_blocking_findings[] | {id, d: (.demotion_reason // null), s: .severity}]' "$repo/review.json")" \
-  = '[{"id":"F-05","d":null,"s":"MEDIUM"},{"id":"F-02","d":"non_fatal","s":"MEDIUM"},{"id":"F-03","d":"non_fatal","s":"LOW"}]' ] || tc10_ok=0
+  = '[{"id":"F-05","d":null,"s":"MEDIUM"},{"id":"F-02","d":"non_fatal","s":"MEDIUM"},{"id":"F-03","d":"non_fatal","s":"LOW"},{"id":"F-06","d":"non_fatal","s":"HIGH"}]' ] || tc10_ok=0
+# 実測条件の判別: 実測なし HIGH は severity が CRITICAL/HIGH でも致命にならず移送される
+# (この 1 行が無いと `def fatal` から実測条件を落とした mutant がスイート全 green を通過する)
+[ "$(jq -r '.non_blocking_findings[] | select(.id == "F-06") | .verification.measured' "$repo/review.json")" = "false" ] || tc10_ok=0
 # 既存の非移送要素 (F-05) は一切書き換わらない
 [ "$(jq -c '.non_blocking_findings[0]' "$repo/review.json")" \
   = '{"id":"F-05","file":"src/e.ts","line":50,"severity":"MEDIUM","scope":"current-pr","pre_existing":true}' ] || tc10_ok=0
 # id は 2 配列の和集合で一意
 [ "$(jq '[.findings[].id, .non_blocking_findings[].id] | (unique | length) == length' "$repo/review.json")" = "true" ] || tc10_ok=0
 if [ "$tc10_ok" = "1" ]; then
-  pass "fatal=1/moved=2、append 保持、demotion_reason=non_fatal、severity 不変、id 和集合一意"
+  pass "fatal=1/moved=3、実測なし HIGH の移送、append 保持、demotion_reason=non_fatal、severity 不変、id 和集合一意"
 else
   fail "unexpected (rc=$HELPER_RC): err='$HELPER_STDERR' json=$(jq -c . "$repo/review.json")"
 fi
@@ -569,19 +599,75 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-14: 移送後 id 和集合の自己検証 → mv せず exit 1 (入力無変更)
+# TC-14: 移送後の自己検証は **本 transport が生成した差分だけ** を見る
+# 入力時点で既に存在した和集合欠陥 (id 欠落 / 独立採番による重複) は検査母集団に入れない。
+# 保存境界 (hooks/review-result-save.sh) が同じ条件を意図的に非ブロッキングと決めているため、
+# ここで hard fail にすると同一条件の enforcement level が経路によって逆になる。
 # --------------------------------------------------------------------------
-echo "TC-14: id 和集合の自己検証"
-repo=$(make_sandbox tc14)
+echo "TC-14: 自己検証のスコープ (transport が生成した差分に限定)"
+repo=$(make_sandbox tc14-dup)
 write_fixture "$repo/review.json" dup_id_union
-before=$(jq -S . "$repo/review.json")
 run_helper "$repo" local_file "$repo/review.json"
-if [ "$HELPER_RC" = "1" ] \
-   && grep -q 'FIX_FALLBACK_FAILED=1; reason=fatal_triage_id_union_violation' <<<"$HELPER_STDERR" \
-   && [ "$(jq -S . "$repo/review.json")" = "$before" ]; then
-  pass "id 衝突は mv せず exit 1、入力ファイルは無変更"
+tc14_ok=1
+[ "$HELPER_RC" = "0" ] || tc14_ok=0
+grep -q 'FIX_FATAL_TRIAGE=applied; fatal=0; moved=1' <<<"$HELPER_STDERR" || tc14_ok=0
+grep -q 'fatal_triage_id_union_violation' <<<"$HELPER_STDERR" && tc14_ok=0
+# 移送要素の id は入力時のまま保存される
+[ "$(jq -r '[.non_blocking_findings[] | select(.demotion_reason == "non_fatal") | .id] | join(",")' "$repo/review.json")" = "F-01" ] || tc14_ok=0
+if [ "$tc14_ok" = "1" ]; then
+  pass "入力時点の和集合重複では停止せず移送を完了する (保存境界と同じ非ブロッキング扱い)"
 else
   fail "unexpected (rc=$HELPER_RC): err='$HELPER_STDERR'"
+fi
+
+# id 欠落 (nb 側) も同様に停止させない
+repo=$(make_sandbox tc14-noid)
+write_fixture "$repo/review.json" nb_missing_id
+run_helper "$repo" local_file "$repo/review.json"
+if [ "$HELPER_RC" = "0" ] \
+   && grep -q 'FIX_FATAL_TRIAGE=applied; fatal=0; moved=1' <<<"$HELPER_STDERR" \
+   && ! grep -q 'fatal_triage_id_union_violation' <<<"$HELPER_STDERR"; then
+  pass "入力時点の nb 側 id 欠落でも移送は完了する"
+else
+  fail "unexpected (rc=$HELPER_RC): err='$HELPER_STDERR'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-14b: 書き込み失敗分岐 — mktemp 失敗 / mv 失敗のいずれも非ゼロ rc を報告し入力を変えない
+# (Issue §4.5 MUST「書き込み失敗は非ゼロ終了、部分適用を残さない」の直接 pin)
+# --------------------------------------------------------------------------
+echo "TC-14b: 書き込み失敗分岐"
+repo=$(make_sandbox tc14b-mktemp)
+mkdir -p "$repo/ro"
+write_fixture "$repo/ro/review.json" mixed_triage
+before=$(jq -S . "$repo/ro/review.json")
+chmod 555 "$repo/ro"
+run_helper "$repo" local_file "$repo/ro/review.json"
+chmod 755 "$repo/ro"
+if [ "$HELPER_RC" = "1" ] \
+   && grep -q 'FIX_FALLBACK_FAILED=1; reason=fatal_triage_mktemp_failed' <<<"$HELPER_STDERR" \
+   && ! grep -qE 'reason=fatal_triage_mktemp_failed; rc=0(;|$)' <<<"$HELPER_STDERR" \
+   && [ "$(jq -S . "$repo/ro/review.json")" = "$before" ]; then
+  pass "mktemp 失敗で exit 1 / rc は非ゼロ / 入力は無変更"
+else
+  fail "mktemp 失敗分岐が期待どおりでない (rc=$HELPER_RC): $HELPER_STDERR"
+fi
+
+# mv 失敗: 入力ファイルを read-only ディレクトリ配下に置けないため、mv 先を
+# ディレクトリにして rename を失敗させる (mktemp は同ディレクトリなので成功する)
+repo=$(make_sandbox tc14b-mv)
+write_fixture "$repo/src.json" mixed_triage
+mkdir -p "$repo/review.json"
+cp "$repo/src.json" "$repo/review.json/inner.json"
+run_helper "$repo" local_file "$repo/review.json/inner.json"
+# inner.json は通常ファイルなので mv は成功する。mv 失敗の直接再現は環境依存のため、
+# ここでは「mv 失敗 reason が語彙として登録され、rc=0 を報告しない形になっている」ことを pin する
+if grep -qE 'if mv "\$triage_tmp" "\$orig_source_path"' "$TARGET" \
+   && grep -qE 'triage_mv_rc=\$\?' "$TARGET" \
+   && ! grep -qE 'if ! mv "\$triage_tmp"' "$TARGET"; then
+  pass "mv 失敗の rc 捕捉が else 節形式 (否定パイプラインの rc=0 を拾わない)"
+else
+  fail "mv の rc 捕捉が if-! 形式のままです (失敗時 rc=0 になる)"
 fi
 
 # --------------------------------------------------------------------------
@@ -603,9 +689,10 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-16 (T-07): Priority 3 等価性 — 文字列経路が file 経路と同一結果になる
+# TC-16: explicit_file が local_file と同じ経路を通ることの pin
+# (T-07 / AC-6 は fix/SKILL.md の選択 UI 規定と E2E が担保する。本スイートの対象外)
 # --------------------------------------------------------------------------
-echo "TC-16 (T-07): Priority 3 経路の等価性"
+echo "TC-16: explicit_file / local_file の経路一致"
 repo=$(make_sandbox tc16)
 write_fixture "$repo/p0.json" mixed_triage
 run_helper "$repo" local_file "$repo/p0.json"
@@ -620,9 +707,9 @@ run_helper "$repo" explicit_file "$p3_file"
 p3_json=$(cat "$p3_file")
 p3_err=$(normalize <<<"$HELPER_STDERR")
 if [ "$HELPER_RC" = "0" ] && [ "$p0_json" = "$p3_json" ] && [ "$p0_err" = "$p3_err" ]; then
-  pass "P3 (文字列 → tempfile) が P0/P2 (file) と JSON / stderr ともに一致"
+  pass "explicit_file が local_file と同じ guard 分岐を通り JSON / stderr が一致"
 else
-  fail "P3 diverged: err0='$p0_err' err3='$p3_err'"
+  fail "explicit_file diverged: err0='$p0_err' err3='$p3_err'"
 fi
 
 # --------------------------------------------------------------------------

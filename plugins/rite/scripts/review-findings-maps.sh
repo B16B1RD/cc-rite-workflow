@@ -55,8 +55,10 @@
 #   json_invalid                      — --review-source-path が jq parse 不能 (exit 1)
 #   fatal_triage_jq_failed            — 致命性仕分けの検査 / 移送 jq が失敗 (exit 1、部分適用を残さない)
 #   fatal_triage_mktemp_failed        — 移送出力用 tempfile の mktemp が失敗 (exit 1)
-#   fatal_triage_id_union_violation   — 移送後 JSON の自己検証違反 (non_blocking_findings が非配列、または
-#                                       id が書式違反 / 和集合で重複)。mv せず exit 1 (入力は無変更)
+#   fatal_triage_id_union_violation   — 移送後 JSON の自己検証違反 (配列の型 / 移送要素 id の保存 /
+#                                       本移送が新規に作った和集合重複)。mv せず exit 1 (入力は無変更)。
+#                                       入力時点で既にあった和集合欠陥は検査母集団に入れない
+#                                       (hooks/review-result-save.sh が非ブロッキングと決めた領域)
 #   fatal_triage_mv_failed            — 移送後 JSON の atomic mv が失敗 (exit 1、入力は無変更)
 #   jq_mutation_failed                — normalization jq mutation が失敗、原 JSON のまま続行 (非ブロッキング)
 #   mktemp_failure_norm_tmp           — normalization 用 tempfile の mktemp が失敗、原 JSON のまま続行 (非ブロッキング)
@@ -95,7 +97,7 @@ Options:
 
 Exit codes:
   0  Normal (no-op / success / non-blocking warnings)
-  1  severity_map build failed (caller must emit [fix:error])
+  1  severity_map build failed or fatal triage failed (caller must emit [fix:error])
   2  Invocation error
 EOF
 }
@@ -241,10 +243,15 @@ fi
 # 未判定 (verification.measured が boolean でない) は blocking にも non-blocking にも倒さず exit 1。
 fatal_triage_undetermined=""
 fatal_triage_bad_severity=""
+# id は reviewer agent 出力由来の外部入力なので、diagnostic 行へ通す前に書式で allowlist する。
+# 素通しすると id に改行 / `;` を仕込まれた JSON で marker 行が分断され、caller の reason 抽出が
+# 攻撃者指定の値を拾う (sibling の review-cycle-scope.sh が同じ id 列 emit で実装済みの hardening)。
+# jq の `$` は改行の直前にもマッチするため `\A` / `\z` を使う。
 fatal_triage_bad_severity=$(jq -r '
+  def safe_id: (.id | if (type == "string" and test("\\AF-[0-9]{2,}\\z")) then . else "(不正 id)" end);
   [.findings[]? | select(
     (.severity | IN("CRITICAL","HIGH","MEDIUM","LOW-MEDIUM","LOW")) | not
-  ) | (.id // "F-?")] | join(",")
+  ) | safe_id] | join(",")
 ' "$review_source_path" 2>/dev/null || echo "__JQ_FAILED__")
 if [ "$fatal_triage_bad_severity" = "__JQ_FAILED__" ]; then
   echo "ERROR: severity enum 検査用 jq が失敗しました" >&2
@@ -260,9 +267,10 @@ if [ -n "$fatal_triage_bad_severity" ]; then
 fi
 
 fatal_triage_undetermined=$(jq -r '
+  def safe_id: (.id | if (type == "string" and test("\\AF-[0-9]{2,}\\z")) then . else "(不正 id)" end);
   [.findings[]? | select((.scope == "current-pr") or (.scope == "follow-up"))
    | select(((.verification | type) != "object") or ((.verification.measured | type) != "boolean"))
-   | (.id // "F-?")] | join(",")
+   | safe_id] | join(",")
 ' "$review_source_path" 2>/dev/null || echo "__JQ_FAILED__")
 if [ "$fatal_triage_undetermined" = "__JQ_FAILED__" ]; then
   echo "ERROR: 実測判定の検査用 jq が失敗しました" >&2
@@ -294,7 +302,13 @@ moved_count=$(printf '%s' "$fatal_triage_counts" | cut -f2)
 
 if [ "${moved_count:-0}" -gt 0 ]; then
   # 書き出し先は入力ファイルと同一ディレクトリに取る (mv を跨デバイスにせず atomic に保つ)
-  if ! triage_tmp=$(mktemp "${orig_source_path}.triage.XXXXXX" 2>/dev/null); then
+  # rc は `if cmd; then :; else rc=$?; fi` で捕捉する。`if ! cmd; then rc=$?` は否定で反転した
+  # パイプラインの rc (常に 0) を拾い、失敗時に `rc=0` という自己矛盾した診断を残す
+  # (規約: review-source-resolve.sh。同ファイル内の既存 mktemp / jq 捕捉も同形式)。
+  triage_mktemp_rc=0
+  if triage_tmp=$(mktemp "${orig_source_path}.triage.XXXXXX" 2>/dev/null); then
+    :
+  else
     triage_mktemp_rc=$?
     echo "ERROR: 致命性仕分け用 tempfile の mktemp が失敗しました (rc=$triage_mktemp_rc)" >&2
     echo "  対処: $(dirname "$orig_source_path") の容量 / inode 枯渇 / read-only filesystem / permission denied を確認してください" >&2
@@ -326,24 +340,57 @@ if [ "${moved_count:-0}" -gt 0 ]; then
     exit 1
   fi
 
-  # 書き戻し前の自己検証: 本経路は hooks/review-result-save.sh を通らない書き込み経路のため、
-  # 同 helper が保存境界で見ている不変条件 (non_blocking_findings が配列 / id が 2 配列の和集合で
-  # 一意かつ ^F-[0-9]{2,}$) をここで確認する。違反時は mv せず非ゼロ終了し、壊れた JSON を永続化しない。
-  if ! jq -e '
-    ((.non_blocking_findings | type) == "array")
-    and ((.findings | type) == "array")
-    and (([.findings[]?, .non_blocking_findings[]? | .id // ""] ) as $ids
-         | ($ids | all(test("^F-[0-9]{2,}$"))) and (($ids | unique | length) == ($ids | length)))
-  ' "$triage_tmp" >/dev/null 2>&1; then
+  # 書き戻し前の自己検証: 検査対象は **本 transport が生成した差分だけ** に限る。
+  # (1) 両配列が配列であること (2) 移送した要素の id が入力時のまま保存されていること
+  # (3) 本 transport が **新規に** 和集合重複を作っていないこと。
+  # 入力時点で既に存在した和集合欠陥 (id 欠落 / 独立採番による重複) は検査母集団から外す —
+  # 同じ不変条件を保存境界で見る hooks/review-result-save.sh は、そこを落とすと advisory な
+  # 記録の欠陥を理由に blocking findings まで失う fail-unsafe になるとして **意図的に非ブロッキング**
+  # と決めている。ここで hard fail にすると同じ条件の enforcement level が経路によって逆になる。
+  moved_ids=$(jq -r '
+    def gated: (.scope == "current-pr") or (.scope == "follow-up");
+    def fatal: gated and (.verification.measured == true)
+               and ((.severity == "CRITICAL") or (.severity == "HIGH"));
+    [.findings[]? | select(gated and (fatal | not)) | (.id // "")] | join("\n")
+  ' "$review_source_path" 2>/dev/null || echo "__JQ_FAILED__")
+  if [ "$moved_ids" = "__JQ_FAILED__" ]; then
     rm -f "$triage_tmp"
     triage_tmp=""
-    echo "ERROR: 移送後 JSON の自己検証に失敗しました (non_blocking_findings の型、または id の書式 / 和集合の一意性)" >&2
+    echo "ERROR: 移送対象 id の抽出 jq が失敗しました" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=fatal_triage_jq_failed" >&2
+    exit 1
+  fi
+  triage_violation=$(jq -e -n \
+    --slurpfile before "$review_source_path" \
+    --slurpfile after "$triage_tmp" \
+    --arg moved "$moved_ids" '
+    def ids($doc): [$doc.findings[]?, $doc.non_blocking_findings[]? | .id // ""];
+    ($before[0]) as $b | ($after[0]) as $a
+    | ($moved | split("\n") | map(select(length > 0))) as $moved_list
+    # (1) 型
+    | (($a.non_blocking_findings | type) == "array" and ($a.findings | type) == "array")
+    # (2) 移送要素の id が入力時のまま保存されている
+    and ($moved_list | all(. as $id | ($a.non_blocking_findings | any(.id == $id))))
+    # (3) 本 transport が新規に和集合重複を作っていない
+    #     (入力時点で既にあった重複件数を超えていないことを見る)
+    and ((ids($a) | length) - (ids($a) | unique | length)
+         <= (ids($b) | length) - (ids($b) | unique | length))
+  ' >/dev/null 2>&1 && echo ok || echo violation)
+  if [ "$triage_violation" != "ok" ]; then
+    rm -f "$triage_tmp"
+    triage_tmp=""
+    echo "ERROR: 移送後 JSON の自己検証に失敗しました (配列の型、移送要素 id の保存、または本移送が新規に作った和集合重複)" >&2
+    echo "  移送対象 id: $(printf '%s' "$moved_ids" | tr '\n' ',')" >&2
     echo "  影響: 壊れた JSON を永続化しないため書き戻しを中止します (入力ファイルは無変更)" >&2
-    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=fatal_triage_id_union_violation" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=fatal_triage_id_union_violation; findings=$(printf '%s' "$moved_ids" | tr '\n' ',')" >&2
     exit 1
   fi
 
-  if ! mv "$triage_tmp" "$orig_source_path" 2>/dev/null; then
+  # mktemp 側と同じ理由で `if cmd; then :; else rc=$?; fi` 形式を使う
+  triage_mv_rc=0
+  if mv "$triage_tmp" "$orig_source_path" 2>/dev/null; then
+    :
+  else
     triage_mv_rc=$?
     rm -f "$triage_tmp"
     triage_tmp=""

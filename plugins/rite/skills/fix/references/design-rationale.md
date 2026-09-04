@@ -62,9 +62,7 @@ caller の `exit 1` 直前に emit が必要になる。
 - **awk exit code を明示検査する理由**: awk OOM / binary 異常の空出力が「Raw JSON section なし (legacy format)」と区別不能になり、legacy parser が新形式コメントを garble する silent regression を防ぐ。
 - **3 つの失敗ケースを else の no-op に融合させない理由**: `raw_json=""` だけが legitimate な legacy fallthrough であり、「jq empty 失敗」「必須 fields 欠落」は壊れた新形式 JSON として WARNING + reason emit してから legacy parser に流すべき。
 
-## schema-normalization-mirror
-
-<a id="schema-normalization-mirror"></a>
+## schema-normalization
 
 ステップ 1.2.0 の schema 1.1.0 後方互換 normalization の動作契約。**鏡像実装は持たない** — Priority 0/2
 (file-based) も Priority 3 (pr_comment) も `scripts/review-findings-maps.sh` に委譲する。Priority 3 は
@@ -78,8 +76,6 @@ raw_json が文字列なので tempfile へ書き出して helper に渡し、�
 **commit_sha stale detection で mismatch 時に WARNING のみで continue する理由**: PR コメントは最新の push 後に投稿される可能性が高く、legacy Markdown parser への fallthrough はむしろ情報損失になるため。
 
 ## fatal-triage
-
-<a id="fatal-triage"></a>
 
 ステップ 1.2.0 の致命性仕分けの設計理由。
 
@@ -98,8 +94,10 @@ raw_json が文字列なので tempfile へ書き出して helper に渡し、�
 **なぜ未判定を error にするか**: 既定値へ畳むと、実測済みの指摘が書式ミスだけで修正対象から消えるか、
 非実測が修正対象に紛れ込むかのどちらかが silent に起きる。どちらの向きにも倒さず止めるのが
 fail-loud (`no_unnecessary_fallback`)。**上流の `review-measured-gate.sh` は形式崩れアンカーに対して
-意図的に `verification` を設定しない**ため、この停止は実運用でも起きうる。その場合の復旧は
-`/rite:pr-review` の再実行で、アンカー形式の是正は別 Issue の担当。
+意図的に `verification` を設定しない**ため、この停止は実運用でも起きうる。その場合 helper の rc=1 は `[fix:error]` に昇格し、iterate は同一 JSON に対する `/rite:fix` を
+1 回だけ自動再試行して同じ error で停止する（`/rite:pr-review` は自動では再実行されない）。
+**復旧は人間が `/rite:pr-review {pr}` を再実行してレビュー結果 JSON を作り直す経路のみ**で、
+アンカー形式の是正は別 Issue の担当。
 
 **なぜ `demotion` オブジェクトに policy 値を足さないか**: `demotion` の有無は pr-review 6.1.d が
 「降格理由を併記する要素」を選ぶ判別子として使われている。3 つ目の出所を同キーに畳むと併記が
