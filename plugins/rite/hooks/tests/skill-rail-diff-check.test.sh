@@ -318,6 +318,9 @@ if [ -n "$REPO_ROOT_REAL" ] && git -C "$PLUGIN_ROOT" rev-parse --verify -q origi
       # replaced by new-path-first dual-read). Drop that superseded line from
       # the subsequence pin so the rest of the rail still has to survive.
       base_rail=$(printf '%s\n' "$base_rail" | grep -Fv '.rite-plugin-root' || true)
+      # number-citation comments removed from the number-free surface; drop the
+      # superseded GUARD line from the subsequence pin (same pattern as above).
+      base_rail=$(printf '%s\n' "$base_rail" | grep -Fv 'GUARD (#1595)' || true) # drift-check-ignore
       printf '%s\n' "$base_rail" > "$TEST_DIR/base-rail"
       printf '%s\n' "$head_rail" > "$TEST_DIR/head-rail"
       if [ -z "$base_rail" ] || [ -z "$head_rail" ]; then

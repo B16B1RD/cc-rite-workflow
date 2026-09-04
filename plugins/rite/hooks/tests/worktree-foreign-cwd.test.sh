@@ -20,7 +20,7 @@
 #   TC-10: after the foreign holder exits, dir is free     → rc 1
 #
 # This is the self-exclusion layer cleanup.md needs WITHOUT modifying
-# worktree-live-cwd.sh (#1670 Non-Target): the cleanup session's own harness
+# worktree-live-cwd.sh (Non-Target): the cleanup session's own harness
 # (--self-root = the cleanup Bash's $PPID) must never block removal of the very
 # worktree it just finished, while a genuine OTHER session standing in the tree
 # still defers it (AC-1/AC-2/AC-3).

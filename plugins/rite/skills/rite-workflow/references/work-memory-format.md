@@ -104,7 +104,7 @@ Fields: `コマンド` (next command), `状態` (待機中/実行中/完了), `�
 |-----------|--------------|------|
 | `/rite:lint` (ok) | `/rite:pr-create` | `lint 完了、PR 作成準備完了` |
 | `/rite:lint` (error) | `/rite:lint` | `lint エラー修正後、再度 lint を実行` |
-| `/rite:pr-create` | `/rite:pr-review #123` | `PR 作成完了、レビュー準備完了` |
+| `/rite:pr-create` | `/rite:pr-review ` | `PR 作成完了、レビュー準備完了` |
 | `/rite:pr-review` (ok) | `/rite:ready` | `指摘なし、Ready for review に変更可能` |
 | `/rite:pr-review` (issues) | `/rite:fix` | `要修正の指摘あり、修正が必要` |
 
@@ -225,7 +225,7 @@ Fields: `総合評価` (overall result), `レビュアー` (agent name), `評価
 
 Added to `セッション情報` when `/rite:pr-create` succeeds:
 ```markdown
-- **PR 番号**: #538
+- **PR 番号**:
 ```
 
 Timing: Immediately after PR creation, during Phase 4 update. If creation fails, field is omitted and error details go in `備考`.
@@ -405,7 +405,7 @@ Issue comment is a backup replica, synced at phase transitions:
 
 The replica's `セッション情報` carries one line the local file does not: `- **Issue**: #{n}`, written by `issue-comment-wm-sync.sh init` (shown in Basic Structure above). It is load-bearing, not decorative — `do_fetch` reads it out of the body it already fetched to confirm a cached `wm_comment_id` really belongs to the Issue being synced (`repos/{owner}/{repo}/issues/comments/{id}` is Issue-independent, so a successful GET proves nothing on its own).
 
-The parser accepts only the exact shape: the line starts at column 0 as `- **Issue**: #{n}`, and **anything appended after the number must contain no digits** (so `- **Issue**: #2463 — fix hook` still parses, while `- **Issue**: #2463 — fix v2 hook` does not). Removing the line, or reformatting it outside that shape, does not fail loudly — it degrades every cache hit into a full comment scan, with one `[rite] WARNING` per sync.
+The parser accepts only the exact shape: the line starts at column 0 as `- **Issue**: #{n}`, and **anything appended after the number must contain no digits** (so `- **Issue**: #{n} — fix hook` still parses, while `- **Issue**: #{n} — fix v2 hook` does not). Removing the line, or reformatting it outside that shape, does not fail loudly — it degrades every cache hit into a full comment scan, with one `[rite] WARNING` per sync.
 
 ## SoT Access Pattern
 

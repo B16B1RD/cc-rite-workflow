@@ -183,7 +183,7 @@ run_decompose "$spec3"
 assert_rc 0 "exit 0 on non-blocking link failure"
 assert_out_contains "[CONTEXT] SUB_ISSUE_RESULT created=1 failed=0 link_failures=1" "link_failures=1, created unaffected"
 assert_out_contains "[CONTEXT] SUB_ISSUE_NUMBERS=301" "sub still created despite link failure"
-assert_err_contains "linkage failed for #301" "link failure WARNING on stderr"
+assert_err_contains "linkage failed for #301" "link failure WARNING on stderr" # drift-check-ignore
 assert_err_contains "mock link warning" "link warnings surfaced on stderr"
 unset STUB_LINK_FAIL_CHILD
 

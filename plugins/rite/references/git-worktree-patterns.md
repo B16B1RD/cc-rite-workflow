@@ -386,13 +386,13 @@ isolation) or to a Bash-persisted-cwd path (which would leave the harness cwd on
 main checkout and risk relative-path edits hitting the main tree); the workflow
 surfaces the diagnosis and the restart guidance instead. Failures from other causes
 (e.g. the worktree path vanished) follow the normal `ensure_session_worktree` rebuild
-path (`WT_ENSURE=reconstructed`, #1676), not the restart guidance.
+path (`WT_ENSURE=reconstructed`), not the restart guidance.
 
 ### Branch-creation worktree invariant (marker 再確定・silent fallback 排除)
 
 In `multi_session` mode the feature branch **must** be created on the session worktree
 (`{worktree_base}/issue-{N}`), regardless of the flow entry path (fresh / `/rite:recover` /
-post-compaction mid-flow entry). The earlier failure mode (#1595) was that `/rite:open`
+post-compaction mid-flow entry). The earlier failure mode was that `/rite:open`
 gated the worktree-vs-main-tree branch decision **only on the in-context
 `[CONTEXT] MULTI_SESSION_ENABLED=` marker** emitted at Step 1.4. When that marker was lost
 from context (resume / compaction / mid-flow re-entry), routing fell back to the legacy
@@ -590,7 +590,7 @@ flock 排他の前提）ため、worktree cwd からの state 書込は構造的
   保証される（開発者個人のグローバル gitignore への依存は他の contributor 環境では効かず、機械固有の
   絶対パスがコミットされる経路が残る）。Phase 4.8 は書込前に対象リポジトリの `.gitignore` へ
   `.claude/settings.local.json` エントリを保証してから追記する（詳細は
-  [Phase 4.8 本体](../skills/setup/SKILL.md#phase-48-sandbox-write-allowlist-自動設定multi_session-有効時1896--1942)）。
+  [Phase 4.8 本体](../skills/setup/SKILL.md#phase-48-sandbox-write-allowlist-自動設定multi_session-有効時)）。
   書き込みが sandbox の write 制限で失敗しても bash 呼び出し自体は正常終了しうる（`else` 節に落ちて
   marker のみ `failed` になる）ため、再試行の要否は「コマンド自体の失敗」ではなく marker の値で判定する
   — `failed` であれば理由を問わず `dangerouslyDisableSandbox: true` で一度だけ再試行し、それでも
@@ -648,7 +648,7 @@ sandbox 設定が変わっても追随できる。
 汚染」として報告しない。削除・`git add`・コミットを試みない。dirty 判定が必要な箇所では `git status`
 を直接パースせず `git-status-filtered.sh` を使う。
 
-**関連 Issue**: #1936（`git-status-filtered.sh` 導入元）/ #1944（drift-hash 経路の sandbox 内外
+**関連 Issue**: （`git-status-filtered.sh` 導入元）/ （drift-hash 経路の sandbox 内外
 コンテキスト混在による誤警報の残件、本節の対象外）
 
 > **Canonical spec**: This file documents the operational *patterns*; the canonical

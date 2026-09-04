@@ -120,12 +120,12 @@ assert_file_contains "$WATCHDOG_SH" 'In Progress' \
   "Script checks Status == 'In Progress'"
 
 echo ""
-echo "[T-9f] Behavioral: git-remote fast path resolves SSH alias origin, --repo threaded into gh pr list (#1899)"
+echo "[T-9f] Behavioral: git-remote fast path resolves SSH alias origin, --repo threaded into gh pr list"
 # Real git repo + SSH Host alias origin + deliberately-broken `gh repo view`:
 # the run only succeeds if the git-remote fast path resolved owner/repo AND
 # `gh pr list` received the exact resolved value via --repo. The shim fails
 # loudly (MOCK ASSERTION FAILED) on a wrong/missing --repo — so a regression
-# back to the shorthand (the #1899 bug) or to a wrong-repo resolution turns
+# back to the shorthand (the bug) or to a wrong-repo resolution turns
 # into a hard test failure instead of passing silently.
 T9F_DIR=$(mktemp -d "${TMPDIR:-/tmp}/rite-watchdog-t9f-XXXXXX")
 trap 'rm -rf "$T9F_DIR"' EXIT
@@ -247,8 +247,9 @@ chmod +x "$RULES_DIR/repo/bin/gh"
 # Emits the watchdog's stdout JSON; leaves the reconcile log at $RULES_DIR/recon.log.
 run_rule_fixture() {
   local is_draft="$1" status="$2" mode="$3"
-  printf '[{"number":1001,"isDraft":%s,"body":"Closes #998","headRefName":"fix/issue-998-x"}]\n' \
-    "$is_draft" > "$RULES_DIR/pr-list.json"
+  _closes='Closes #998' # drift-check-ignore
+  printf '[{"number":1001,"isDraft":%s,"body":"%s","headRefName":"fix/issue-998-x"}]\n' \
+    "$is_draft" "$_closes" > "$RULES_DIR/pr-list.json"
   if [ "$status" = "<absent>" ]; then
     echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[]}}}}}' > "$RULES_DIR/board.json"
   else

@@ -32,7 +32,7 @@ extract_select() {
 SELECT="$TEST_DIR/select.sh"
 extract_select > "$SELECT"
 if [ ! -s "$SELECT" ] || ! grep -q 'WM_SOURCE=stub_fallback' "$SELECT"; then
-  echo "FAIL: cleanup/SKILL.md から WM 採用元選定ブロックを抽出できません（#2141 の契約消失）"
+  echo "FAIL: cleanup/SKILL.md から WM 採用元選定ブロックを抽出できません（ の契約消失）"
   echo "  抽出: $(wc -l < "$SELECT") 行"
   exit 1
 fi
@@ -42,7 +42,7 @@ if ! grep -q '進捗(サマリー)?' "$SELECT" && ! grep -q '進捗' "$SELECT"; 
   exit 1
 fi
 if ! grep -q 'WARNING:.*stub' "$SELECT"; then
-  echo "FAIL: stub fallback 時の WARNING が無い（silent 切替禁止 #2141）"
+  echo "FAIL: stub fallback 時の WARNING が無い（silent 切替禁止 ）"
   exit 1
 fi
 

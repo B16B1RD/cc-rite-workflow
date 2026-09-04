@@ -118,7 +118,7 @@ pass() {
 # Skips are counted, not just printed. A platform-gated suite that prints
 # "PASS: 8, FAIL: 0" tells the reader nothing about what never ran; on the macOS
 # leg roughly 30 assertions are gated away, several of them guarding known
-# production bugs (#2010 / #2011). Counting keeps "green" honest and
+# production bugs (/). Counting keeps "green" honest and
 # makes a growing skip set visible.
 #
 # The unit is one skip CALL, not one assertion — a single call can gate a whole

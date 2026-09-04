@@ -1,7 +1,7 @@
-# Wiki Promotion Audit #2091 — Review/Fix Loop
+# Wiki Promotion Audit — Review/Fix Loop
 
  audited the eight `promote: rite-plugin` pages from promotion audit
-#2091. This table is the durable routing log. A page is shelved when an existing
+. This table is the durable routing log. A page is shelved when an existing
 mechanical contract already enforces it; otherwise the named gate is the
 mechanization target.
 

@@ -288,7 +288,7 @@ When a child Issue's PR is merged and cleanup runs, update the parent Issue's Ta
 
 #### 3.6.4.1 Replace Checkbox
 
-Replace `- [ ] #{issue_number}` with `- [x] #{issue_number}` in the parent Issue body. The pattern matches any text after the Issue number on the same line (e.g., `- [ ] #661 - description text`).
+Replace `- [ ] #{issue_number}` with `- [x] #{issue_number}` in the parent Issue body. The pattern matches any text after the Issue number on the same line (e.g., `- [ ] - description text`).
 
 **Implementation**: Use the 3-step pattern (Bash → Read+Write → Bash) per [gh-cli-patterns.md](../../../references/gh-cli-patterns.md).
 
@@ -471,9 +471,9 @@ gh issue close {parent_issue_number} -R {owner_repo} --comment "すべての子 
 Generated from `trackedIssues.nodes` retrieved in Phase 3.7.1:
 
 ```markdown
-- #123 子 Issue タイトル 1
-- #124 子 Issue タイトル 2
-- #125 子 Issue タイトル 3
+- 子 Issue タイトル 1
+- 子 Issue タイトル 2
+- 子 Issue タイトル 3
 ```
 
 ##### 3.7.2.3 Close Completion Message

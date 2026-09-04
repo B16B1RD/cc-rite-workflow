@@ -154,7 +154,7 @@ npm run check
 各 2 回レンダして 30 回、合わせて 34 回起動する。**sandbox 外**で実行する（`./check-contract.sh`
 単体も Chrome を要する。下記「環境前提」参照）。
 リポジトリ root の `rite-config.yml` の `commands.test` には登録しない — 本リポジトリは
-markdown 中心で、全 PR の lint 経路に Chrome 実行を持ち込むのは Issue #2240 の Non-goal
+markdown 中心で、全 PR の lint 経路に Chrome 実行を持ち込むのは本パイプラインの Non-goal
 （CI での動画レンダリング）に反するため。
 
 ## 環境前提
@@ -172,7 +172,7 @@ markdown 中心で、全 PR の lint 経路に Chrome 実行を持ち込むの�
 
 ## エラー時の挙動（fail-loud）
 
-検査は**契約違反と環境不足**に絞る（Issue #2240 §4.5 のエラー表）。下表は実際に検査を書いた
+検査は**契約違反と環境不足**に絞る（本 DESIGN のエラー表）。下表は実際に検査を書いた
 条件の一覧であり、「これ以外の異常が起きない」という主張ではない（未検査の経路は下記
 「検査していないこと」を参照）。
 
@@ -222,7 +222,7 @@ fixture を置くだけではガードを消しても決定論チェックが gr
 （CLAUDE.md `no_speculative_structure`）。
 
 - **シーン契約表のうち renderer が検査しないもの**: `transition` 禁止 / `animation-fill-mode: both` 必須 / 非決定的な値（`Math.random()` 等）の不使用。いずれも著者側の遵守事項で、破っても診断ゼロで完走する。`Math.random()` を使ったシーンは 2 回レンダで md5 が割れるため、破れは `check-determinism.sh` でのみ検出できる
-- レンダー出力 mp4 のフレーム数が宣言尺と一致するか。実測照合は Issue #2240 の T-01（手動テスト）が担う（連結側 `assemble.sh` は出力を実測照合する）
+- レンダー出力 mp4 のフレーム数が宣言尺と一致するか。実測照合は T-01（手動テスト）が担う（連結側 `assemble.sh` は出力を実測照合する）
 - シーン間でフレームレートが揃っているか。xfade は揃っていない入力に対し ffmpeg 側のフィルタ構成エラーで落ちる（実測: 30fps + 15fps は exit 234）
 
 **レンダーの失敗は出力パスに成果物を残さない**（`render.mjs` は catch で出力を削除する）。シーン内例外の検出は ffmpeg の完了後になるため、削除しないと「exit 1 なのに宣言尺どおり完結した mp4」が残り、正常レンダーの成果物と区別できないまま `assemble.sh` へ入る。`check-contract.sh` はこの不変条件を全ケースで assert する。

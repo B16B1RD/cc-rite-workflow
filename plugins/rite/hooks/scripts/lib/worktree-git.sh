@@ -7,7 +7,7 @@
 # - wiki-worktree-commit.sh (pages/index/log commits on wiki branch)
 # - wiki-ingest-commit.sh (worktree fast path for raw-source ingest)
 #
-# Responsibility 2 (#1676, source OR standalone): provide
+# Responsibility 2 ( source OR standalone): provide
 # `ensure_session_worktree`, the single bash-side SoT for the
 # "branch exists ∧ session worktree absent → reconstruct" gate used by
 # the flow ENTRY paths (resume / review / iterate / fix) so a
@@ -37,7 +37,7 @@
 # 5) ;; # no staged diff — caller decides policy (stdout is silent)
 # esac
 #
-# Batch/defer push (#1941): a caller processing several commits in a loop
+# Batch/defer push: a caller processing several commits in a loop
 # (e.g. wiki-ingest, one commit per raw source) can defer the push to a
 # single call at the end of the loop instead of pushing after every commit:
 # WTGP_COMMIT_ONLY=1 worktree_commit_push "$worktree_path" "$wiki_branch" "$commit_msg" "$wiki_rel"
@@ -321,7 +321,7 @@ worktree_commit_push() {
  fi
  [ -n "$head_err" ] && rm -f "$head_err"
 
- # #1941 (wiki push batch/defer): a caller processing several commits in a
+ # (wiki push batch/defer): a caller processing several commits in a
  # loop (wiki-ingest per raw source) sets WTGP_COMMIT_ONLY=1 to stage+commit
  # here WITHOUT pushing, then pushes once at the end of the loop via
  # worktree_push_branch directly. A plain env var (not a new positional
@@ -336,7 +336,7 @@ worktree_commit_push() {
  fi
 
  # Step 4: push using the caller-supplied branch. The NFF-retry push logic
- # lives in worktree_push_branch (#1941) so a batch caller can invoke it
+ # lives in worktree_push_branch so a batch caller can invoke it
  # standalone (push-only, after N commit-only commits) without duplicating
  # the retry loop here — this call is that same function used inline for
  # the traditional commit-then-push-immediately path.
@@ -358,7 +358,7 @@ worktree_commit_push() {
 # worktree_push_branch: push WORKTREE's local BRANCH to origin, retrying
 # on non-fast-forward rejection (fetch + rebase) up to 3 attempts.
 #
-# Responsibility (#1941, wiki push batch/defer): hold the push-with-retry
+# Responsibility ( wiki push batch/defer): hold the push-with-retry
 # logic extracted from worktree_commit_push's Step 4, so a caller that has
 # accumulated several WTGP_COMMIT_ONLY=1 commits (wiki-ingest processing
 # multiple raw sources) can push them all with a single call instead of
@@ -384,7 +384,7 @@ worktree_commit_push() {
 # lacks (`git rev-list origin/BRANCH..BRANCH --count`, no fetch — a pure
 # local ref comparison), no push is attempted at all (`push=no-op`). This
 # costs nothing extra on the commit-then-push-immediately path (a just-made
-# commit is always "ahead"), and lets a batch caller (#1941) invoke this
+# commit is always "ahead"), and lets a batch caller invoke this
 # function unconditionally after a commit-only loop — without tracking its
 # own commit count, and without the network call this Issue is reducing
 # when there is genuinely nothing new to push (including a stale
@@ -473,7 +473,7 @@ worktree_push_branch() {
  # new pages / log appends) so the rebase is almost always conflict-free;
  # a rebase conflict aborts and falls through to the existing rc=4.
  # Non-NFF failures (auth / network) do NOT retry — they fail
- # immediately (#1941 AC-3: a deferred push that fails is surfaced and
+ # immediately (AC-3: a deferred push that fails is surfaced and
  # left for manual/next-session recovery, not auto-retried within the
  # same flow).
  local push_status="failed" _push_max=3 _push_i=0
@@ -526,10 +526,10 @@ worktree_push_branch() {
 
 # -----------------------------------------------------------------------
 # ensure_session_worktree: detect + reconstruct a multi_session session
-# worktree for an Issue at a flow ENTRY path (#1676).
+# worktree for an Issue at a flow ENTRY path.
 #
 # This is the single bash-side SoT for the "branch exists ∧ worktree
-# absent → reconstruct" gate that #1368 first introduced inline in
+# absent → reconstruct" gate that first introduced inline in
 # recover.md. It performs detection AND reconstruction (git worktree add);
 # the EnterWorktree tool call and any AskUserQuestion routing stay with the
 # LLM caller, driven by the emitted [CONTEXT] WT_ENSURE marker. The
@@ -689,7 +689,7 @@ ensure_session_worktree() {
 
   if [ "$branch_local" = yes ]; then
     if git worktree add "$wt_path" "$branch" 1>&2; then
-      # Dogfooding override (#1943): .claude/ is gitignored so `git worktree
+      # Dogfooding override: .claude/ is gitignored so `git worktree
       # add` never copies it. Without this, a reconstructed session worktree
       # loses enabledPlugins["rite@rite-marketplace"]:false and the stale
       # marketplace-cached skill definitions load instead of local plugins/rite.
@@ -719,7 +719,7 @@ ensure_session_worktree() {
       echo "WARNING: ensure_session_worktree: git fetch origin '$branch' が 3 回失敗しました — 既存の origin/${branch}（stale の可能性）から再構築します (issue #$issue)" >&2
     fi
     if git worktree add --track -b "$branch" "$wt_path" "origin/$branch" 1>&2; then
-      # Dogfooding override (#1943): see the branch_local reconstruction
+      # Dogfooding override: see the branch_local reconstruction
       # branch above for why this copy is needed.
       if [ -f "$main_root/.claude/settings.local.json" ] && ! { mkdir -p "$wt_path/.claude" && cp "$main_root/.claude/settings.local.json" "$wt_path/.claude/settings.local.json"; } 2>/dev/null; then
         echo "WARNING: ensure_session_worktree: .claude/settings.local.json のコピーに失敗しました（issue #${issue}）— ドッグフーディング上書きが worktree に反映されません" >&2

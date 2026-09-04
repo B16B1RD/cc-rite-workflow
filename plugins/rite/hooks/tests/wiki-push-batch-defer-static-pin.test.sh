@@ -1,5 +1,5 @@
 #!/bin/bash
-# wiki-push-batch-defer-static-pin.test.sh (#1941)
+# wiki-push-batch-defer-static-pin.test.sh
 #
 # Static-pin meta-test for the wiki push batch/defer contract: within one
 # /rite:wiki-ingest flow, `git push origin {wiki_branch}` must land at most
@@ -15,7 +15,7 @@
 #
 # When this test fails:
 #   One of ingest.md ステップ 5.1 / 8.6 or lint.md ステップ 8.3 no longer
-#   matches the batch/defer contract. Re-read #1941's Before/After Contract
+# matches the batch/defer contract. Re-read 's Before/After Contract
 #   and restore --commit-only (5.1, lint 8.3 --auto branch) / --push-only
 #   (8.6), or update this test if the contract has legitimately changed.
 
@@ -37,7 +37,7 @@ if [ ! -f "$LINT_MD" ]; then
   exit 1
 fi
 
-echo "=== wiki-push-batch-defer-static-pin.test.sh (#1941) ==="
+echo "=== wiki-push-batch-defer-static-pin.test.sh ==="
 
 # --- ingest.md ステップ 5.1: per-raw-source commit is --commit-only (no push) ---
 assert_grep_in_section "ingest.md 5.1: wiki-worktree-commit.sh invoked with --commit-only" \

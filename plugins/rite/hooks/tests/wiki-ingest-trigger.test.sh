@@ -13,7 +13,7 @@ HOOK="$SCRIPT_DIR/../wiki-ingest-trigger.sh"
 # `cd "$TEST_DIR/tcN" && ... --content-file body.md` case fail the $PWD-arm match
 # ("must be under $PWD"). pwd -P aligns the fixture with the canonical form the
 # guard resolves to; the guard's own $PWD-arm symlink handling is
-# tracked separately in #2012).
+# tracked separately in).
 #
 # Two steps, not `$(cd "$(mktemp -d)" && pwd -P)`: bash `cd ""` returns 0 without
 # changing directory, so a failed mktemp inside that nesting would yield the
@@ -473,15 +473,16 @@ echo "TC-013: Special characters in --source-ref are slugified"
 dir13="$TEST_DIR/tc13"
 mkdir -p "$dir13"
 echo "x" > "$dir13/body.md"
+_src_ref="PR #123/:: Review" # drift-check-ignore
 ( cd "$dir13" && bash "$HOOK" \
   --type reviews \
-  --source-ref "PR/#123 :: Review" \
+  --source-ref "$_src_ref" \
   --content-file body.md > out.log 2>err.log ) && rc=0 || rc=$?
 target_path="$(cat "$dir13/out.log" 2>/dev/null || true)"
 filename="$(basename "$target_path" 2>/dev/null || true)"
 # Filename should have only [a-z0-9-] after the timestamp prefix
 if [ $rc -eq 0 ] && echo "$filename" | grep -qE '^[0-9]+T[0-9]+Z-pr-123-review\.md$'; then
-  pass "Slug sanitization works (PR/#123 :: Review → pr-123-review)"
+  pass "Slug sanitization works (PR/:: Review → pr-123-review)"
 else
   fail "Slug sanitization failed: filename='$filename'"
 fi
@@ -671,7 +672,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-034b: symlink component in $PWD + regular content-file → exit 0 (#2012)
+# TC-034b: symlink component in $PWD + regular content-file → exit 0
 # --------------------------------------------------------------------------
 echo "TC-034b: symlink component in \$PWD + regular content-file → exit 0"
 dir34b_real="$TEST_DIR/tc34b-real"

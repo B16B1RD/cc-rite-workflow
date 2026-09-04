@@ -21,7 +21,7 @@ stderr は WARNING channel として残し `2>/dev/null` で握りつぶさな�
 旧版はステップ 2.2 / 2.3 の分岐を、ステップ 1.4 が emit した `[CONTEXT] MULTI_SESSION_ENABLED=`
 marker の**会話 context 残存**に依存させていた。resume / context 圧縮 / フロー途中入場で marker が
 失われると「marker 欠落 → 従来 2.2/2.3」に倒れ、`multi_session.enabled: true` でも main ツリーへ
-`git switch -c` する silent fallback が起きた（#1595）。
+`git switch -c` する silent fallback が起きた。
 
 対策がステップ 2.1-G で、ブランチ作成という副作用の直前に `multi_session` を rate-config.yml から
 Bash で再取得する。パースはステップ 1.4 と同一のものを再利用するだけで、変更していない。
@@ -86,7 +86,7 @@ exit 0 を返す。status 行の有無は投稿・検証段が決める — 投�
 ## plan-auto-approval
 
 旧仕様はステップ 3.4 を無条件 AskUserQuestion にしていたため、`/rite:batch-run` が宣言する
-「完全自律（無確認）」に反して Issue ごとに必ず 1 回停止していた（#1861）。batch 時の自動承認で
+「完全自律（無確認）」に反して Issue ごとに必ず 1 回停止していた。batch 時の自動承認で
 宣言と実挙動を一致させる。
 
 安全側の担保は batch-run のデフォルトモードが draft PR をレビュー待ちで残すこと・`--merge` が明示
