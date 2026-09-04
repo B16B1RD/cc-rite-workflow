@@ -2,7 +2,7 @@
 type: "patterns"
 title: "追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない"
 domain: "patterns"
-description: "非回帰 pin を足した直後に、当の欠陥へ戻す変異を一時コピーへ当てて当該 assert だけが赤くなることを確かめる。prefix 一致の pin や、守るべき値ではなく行の存在だけを見る pin は、変異を当てるまで無害に見え、当てた瞬間に無力だと分かる。"
+description: "非回帰 pin を足した直後に、当の欠陥へ戻す変異を一時コピーへ当てて当該 assert だけが赤くなることを確かめる。prefix 一致・行の存在だけ・単一 CLI モードだけの pin は、変異を当てるまで無害に見え、当てた瞬間に無力だと分かる。"
 created: "2026-09-01T20:27:00+09:00"
 sources:
   - type: "fixes"
@@ -27,20 +27,25 @@ sources:
     resource: "raw/reviews/20260902T063926Z-pr-2506.md"
   - type: "fixes"
     resource: "raw/fixes/20260902T064343Z-pr-2506.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260904T004239Z-pr-2544.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260904T005810Z-pr-2544.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T06:56:34Z" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T01:26:01Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T04:58:47Z" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T06:56:34Z" }
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T01:26:01Z" }
 ---
 
 # 追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない
 
 ## 概要
 
-非回帰 pin を足した直後に、当の欠陥へ戻す変異を一時コピーへ当てて当該 assert だけが赤くなることを確かめる。prefix 一致の pin や、守るべき値ではなく行の存在だけを見る pin は、変異を当てるまで無害に見え、当てた瞬間に無力だと分かる。
+非回帰 pin を足した直後に、当の欠陥へ戻す変異を一時コピーへ当てて当該 assert だけが赤くなることを確かめる。prefix 一致・行の存在だけ・単一 CLI モードだけの pin は、変異を当てるまで無害に見え、当てた瞬間に無力だと分かる。
 
 ## 詳細
 
@@ -73,6 +78,8 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 
 **mock に失敗フラグを置いても、テストが立てなければ死んだ mock になる**: SKILL.md から抽出して mock gh で回す契約テストでは、mock 側に `MOCK_GH_FIELD_LIST_FAIL=1` のような失敗経路があっても、ケースが一度もそのフラグを立てなければ field-list 失敗時の全置換フォールバックは緑のまま生存する。和集合テストも同じ穴で、カスタム option の id 保持だけを assert して required option の追加を見ないと、「不足分を足さない union」が素通りする。**mock が実装した失敗フラグはケースが立てること、union は keep と add の両軸を assert すること**を、変異を当てて当該 assert が赤くなるまで確認する。
 
+**単一 CLI モードの pin は兄弟モードを守らない**: 除外パスや文法を `--all` だけで pin すると、`--diff` / `--stdin` が別実装のまま緑で生存する。モードが 3 系統ある検出器は、同じ除外・同じ偽陽性を各モードへ 1 回ずつ当てて赤くなるまで完成していない。`--all` の成功を `--diff` の保証に読み替えてはならない。
+
 ## 関連ページ
 
 - [absence pin (assert_not_grep) は「base に存在・head に不在」の両側を単一行トークンで検証する](./absence-pin-base-present-head-absent-single-line.md)
@@ -91,3 +98,5 @@ assert "Step 12 wiki_ingest_check has an unchecked marker-absence row" "1" \
 - [PR #2505 fix results](../../raw/fixes/20260902T044502Z-pr-2505.md)
 - [PR #2506 review results](../../raw/reviews/20260902T063926Z-pr-2506.md)
 - [PR #2506 fix results](../../raw/fixes/20260902T064343Z-pr-2506.md)
+- [裸番号検出の cycle 1 レビュー結果](../../raw/reviews/20260904T004239Z-pr-2544.md)
+- [裸番号検出の修正結果](../../raw/fixes/20260904T005810Z-pr-2544.md)

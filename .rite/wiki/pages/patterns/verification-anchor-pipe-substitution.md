@@ -2,7 +2,7 @@
 type: "patterns"
 title: "実測アンカーの repro に書くパイプは U+00A6 へ置換する"
 domain: "patterns"
-description: "実測必須ゲートは、レビュー指摘が blocking であるために `Verification:` アンカー付きの再現手順を要求する。"
+description: "実測必須ゲートは `Verification:` アンカーの full match に blocking を委ねる。パイプや空の左辺、値域外の種別ラベルは match を壊すか空振りさせ、機械カテゴリまで exclusion なし class B へ倒すと blocking が落ちる。"
 created: "2026-08-01T00:21:06+09:00"
 sources:
   - type: "reviews"
@@ -11,19 +11,25 @@ sources:
     resource: "raw/fixes/20260731T060927Z-pr-2070.md"
   - type: "reviews"
     resource: "raw/reviews/20260830T093009Z-pr-2483.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260904T004239Z-pr-2544.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260904T005810Z-pr-2544.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T09:45:00Z" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T01:26:01Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-30T09:45:00Z"
+  - by: "rite-wiki-ingest/grok-4.6"
+    at: "2026-09-04T01:26:01Z"
 ---
 
 # 実測アンカーの repro に書くパイプは U+00A6 へ置換する
 
 ## 概要
 
-実測必須ゲートは、レビュー指摘が blocking であるために `Verification:` アンカー付きの再現手順を要求する。このアンカーは Markdown テーブルのセル内に置かれるため、検出側の正規表現はセル境界を守る `[^|]` を含む。repro に raw pipe（`|`）を書くと full match が成立せず、**実測を伴う指摘が「非実測」として non-blocking へ無音で降格する**。
+実測必須ゲートは `Verification:` アンカーの full match に blocking を委ねる。パイプや空の左辺、値域外の種別ラベルは match を壊すか空振りさせ、機械カテゴリまで exclusion なし class B へ倒すと blocking が落ちる。アンカーは Markdown テーブルのセル内に置かれるため、検出側はセル境界を守る `[^|]` を含む。repro に raw pipe（`|`）を書くと full match が成立せず、実測を伴う指摘が「非実測」として non-blocking へ無音で降格する。
 
 ## 詳細
 
@@ -45,6 +51,14 @@ verified:
 
 **この失敗は機械検出できる**（reviewer 出力の `Verification:` 行に対する種別ラベルの値域検査）。reviewer prompt の規約だけに頼らず検出器へ移す候補として記録する。
 
+### 左辺が空のアンカーは「書いた」ことにならない
+
+`Verification: repro  => observed` のように矢印の左辺（再現コマンド）が空白だけの形は、見た目はアンカーだが実測手順が無い。検出 regex が `[^|]+` を左辺に許すと、空白だけの左辺でも full match し、未実測の指摘が実測済みとして通る。正規形は左辺が非空で、矢印は 1 つ、右辺も非空。空左辺を reject する検査は機械化できる。
+
+### exclusion なし class B 降格は機械カテゴリを class A 固定する
+
+実測ゲートのあと、除外条件を持たない class B を non-blocking へ倒す政策は、番号参照のような機械検出カテゴリまで飲み込む。機械カテゴリは「除外が無い」こと自体が欠陥の本体なので、category を class A 固定しないと blocking が落ち、検出器があるのに指摘が消える。降格述語は機械カテゴリを先に除外してから exclusion なし class B を見る。
+
 ## 関連ページ
 
 - [強制層の機械化は裁量を消すが依存を消さない](../heuristics/mechanization-moves-dependency-not-removes-it.md)
@@ -55,3 +69,5 @@ verified:
 - [PR #2070 review results](../../raw/reviews/20260731T060239Z-pr-2070.md)
 - [PR #2070 fix results](../../raw/fixes/20260731T060927Z-pr-2070.md)
 - [PR #2483 review results — 種別ラベル `static` が未判定に倒れ blocking に残る](../../raw/reviews/20260830T093009Z-pr-2483.md)
+- [裸番号検出の cycle 1 レビュー結果](../../raw/reviews/20260904T004239Z-pr-2544.md)
+- [裸番号検出の修正結果](../../raw/fixes/20260904T005810Z-pr-2544.md)

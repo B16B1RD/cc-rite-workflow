@@ -2,7 +2,7 @@
 type: "anti-patterns"
 title: "番号・識別子の grep に語境界を付けないと短い番号が長い番号の prefix として衝突する"
 domain: "anti-patterns"
-description: "commit を番号で解決する手順に `git log --grep \"refs #N\"` のような**語境界を持たない部分一致**を書くと、短い番号が長い番号の prefix として一致する（`関連する設計記録` が `関連する設計記録` に一致する）。"
+description: "番号・識別子の検出に語境界が無いと、短い番号が長い番号の prefix として衝突するだけでなく、直後が英字の見出し ID や CSS 色も番号として誤検出する。"
 created: "2026-07-30T15:40:55Z"
 sources:
   - type: "reviews"
@@ -13,16 +13,22 @@ sources:
     resource: "raw/reviews/20260730T101445Z-pr-2056.md"
   - type: "fixes"
     resource: "raw/fixes/20260730T101445Z-pr-2056.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260904T004239Z-pr-2544.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260904T005810Z-pr-2544.md"
 tags: ["grep", "regex", "word-boundary", "identifier", "verification"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T01:26:01Z" }
+verified:
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-04T01:26:01Z" }
 ---
 
 # 番号・識別子の grep に語境界を付けないと短い番号が長い番号の prefix として衝突する
 
 ## 概要
 
-commit を番号で解決する手順に `git log --grep "refs #N"` のような**語境界を持たない部分一致**を書くと、短い番号が長い番号の prefix として一致する（`refs #204` が `refs #2047` に一致する）。「候補 0 件 / 複数件なら UNVERIFIED」という guard を置いていても、prefix 衝突は**ちょうど 1 件**を作るため guard を素通りし、誤った commit を掴んだまま突合へ進んで偽 `VERIFIED` / 偽 `CONTRADICTED` が無言で成立する。
+番号・識別子の検出に語境界が無いと、短い番号が長い番号の prefix として衝突するだけでなく、直後が英字の見出し ID や CSS 色も番号として誤検出する。commit 解決では `git log --grep` の部分一致が短い番号を長い番号へ食わせ、ちょうど 1 件の偽ヒットで guard を素通りする。検出器では次文字クラスが無いと見出し ID / hex 色が偽陽性になる。
 
 ## 詳細
 
@@ -48,6 +54,12 @@ reviewer が「行頭アンカー化で散文衝突を消せる」と提案し�
 
 区別できないことが確定したら、その事実を規定として書き残す（「正規表現では区別できない。位置ベースの分岐を追加してはならない」）。理由を添えないと次 cycle で同じアンカー案が再提案され、再測定のコストが繰り返される。
 
+### 直後が英字なら番号ではない（偽陽性）
+
+prefix 衝突は「短い番号が長い番号に食われる」偽同一性だが、語境界の欠如は逆向きの偽陽性も生む。数字の直後が `[A-Za-z_]` なら、それは見出し ID や CSS 色の一部であり番号参照ではない。検出文法は「3〜4 桁の数字」だけでなく、次文字が語構成文字でないことを条件に含める。Markdown アンカー `#NNN-slug` はハイフンで既に切れるが、`#NNNabc` と hex 色は次文字クラスが無いとヒットする。
+
+この失敗は機械検出できる（検出器のテストに、英字が続く偽陽性と `--diff` / `--stdin` の両経路を置く）。
+
 ### 機械的判別が不可能な箇所は全文読解へ委ねる
 
 `refs #N` の散文引用と実装 commit は正規表現で区別できないが、commit message 全文を読めば「その commit 自身が #N の実装か」は判断できる。手順書では**「候補を出す機械的ステップ」と「絞り込む読解ステップ」を分け**、後者の判断基準を具体例の形（無関係であることを述べている 等）で示す。
@@ -63,3 +75,5 @@ reviewer が「行頭アンカー化で散文衝突を消せる」と提案し�
 - [PR #2056 fix results (cycle 5) — 複数 --grep の OR 結合で pipe なし語境界](../../raw/fixes/20260730T090005Z-pr-2056.md)
 - [PR #2056 review results — 行頭アンカー案を全件実測で棄却](../../raw/reviews/20260730T101445Z-pr-2056.md)
 - [PR #2056 fix results — 機械ステップと読解ステップの分離](../../raw/fixes/20260730T101445Z-pr-2056.md)
+- [裸番号検出の cycle 1 レビュー結果](../../raw/reviews/20260904T004239Z-pr-2544.md)
+- [裸番号検出の修正結果](../../raw/fixes/20260904T005810Z-pr-2544.md)
