@@ -360,6 +360,23 @@ else
 fi
 rm -rf "$sb/empty_dir"
 
+# staged deletion のみの pathspec — ls-files は空だが git diff HEAD は削除 hunk を返す。
+# 「diff が空のときだけ error にする」変異はこの shape でしか死なない
+mkdir -p "$sb/deldir"
+printf 'clean\n' > "$sb/deldir/a.md"
+commit_all "$sb" del-base
+git -C "$sb" rm -q --cached deldir/a.md
+printf 'number here (#1500)\n' > "$sb/deldir/a.md"
+rc=0; out=$(run_diff "$sb" HEAD --path deldir --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q -- '--path が repo 内のどのパスにも一致しません'; then
+  pass "T-04b --path with only staged deletions is an invocation error"
+else
+  fail "T-04b --path staged-deletion-only not rejected rc=$rc: $out"
+fi
+# index を HEAD へ戻す (checkout -q -- . では index の削除が残り後続へ漏れる)
+git -C "$sb" reset -q
+rm -rf "$sb/deldir"
+
 # restore the tree for the following cases (失敗を握り潰すと後続 T-05+ が汚染ツリーで走り、
 # 原因が「T-04b の片付け失敗」ではなく無関係な assert の赤として現れる)
 git -C "$sb" checkout -q -- . || fail "T-04b 後片付けの checkout に失敗（以降のケースが汚染されたツリーで走る）"

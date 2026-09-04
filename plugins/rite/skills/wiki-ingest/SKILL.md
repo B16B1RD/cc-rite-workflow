@@ -574,8 +574,9 @@ fi
 # rc は直前の add -N と同型に捕捉する。この arm は 2 つの呼び出しの間に git が壊れた場合しか
 # 踏まないため専用 fixture を持たない (非 repo / パス不在はどちらも add -N が先に落ちる)。
 numref_ig_rc=0
-# core.quotePath 既定 (true) だと非 ASCII パスが C クォート済み literal で返り、それを
-# check-ignore へ渡しても実パスに一致せず原因を名指しできない。既存の同型呼び出しと揃える。
+# core.quotePath 既定 (true) だと非 ASCII パスが octal escape で表示され、下の残存一覧が
+# 読めなくなる。check-ignore --stdin は入力を自前で unquote するので照合は既定でも成立する
+# — ここで落とすのは表示のため。既存の同型呼び出し (number-reference-check.sh) と揃える。
 numref_ignored=$(git -C "$numref_tree" -c core.quotePath=false ls-files --others --ignored --exclude-standard -- .rite/wiki) || numref_ig_rc=$?
 if [ "$numref_ig_rc" -ne 0 ]; then
   echo "ERROR: ignore 残存の検査に失敗しました (git ls-files rc=$numref_ig_rc)。検査結果が不明なまま commit しません" >&2
@@ -584,21 +585,23 @@ if [ "$numref_ig_rc" -ne 0 ]; then
 fi
 if [ -n "$numref_ignored" ]; then
   echo "ERROR: .rite/wiki 配下に gitignore されたままのファイルがあります。検査にも commit にも載らないため中止します" >&2
-  printf '%s\n' "$numref_ignored" | head -5 | sed 's/^/    /' >&2
-  # どの .gitignore のどのパターンが効いているかは手元で確定できる。委譲先の health-check は
-  # rite-config.yml と state_root を前提に別ツリーを見るため、$numref_tree の原因を名指しできない。
-  # ここでは ignore 済みが確定しているので、check-ignore の negation 非決定性の caveat も効かない。
-  # 表示した全件を渡す。先頭 1 件だけを名指しすると、原因が複数ある回は直して再実行しても
-  # 同じ reason で止まり、委譲をやめてまで削ろうとした往復がそのまま残る。
-  # 出力が空なら見出しを出さない（「以下」と言って中身が無い形にしない）。
-  numref_causes=$(printf '%s\n' "$numref_ignored" | head -5 \
-    | git -C "$numref_tree" -c core.quotePath=false check-ignore -v --stdin 2>&1) || true
+  # 表示と照会で同じ集合を使う。上限を 2 箇所に書くと片方だけ動いたときに件数が食い違う。
+  numref_shown=$(printf '%s\n' "$numref_ignored" | head -5)
+  printf '%s\n' "$numref_shown" | sed 's/^/    /' >&2
+  # ignore 済みが ls-files で確定しているので、check-ignore の negation 非決定性は効かない。
+  # 全件に対して引く。1 件だけだと原因が複数ある回に往復が残る。
+  # rc は兄弟の guard と同型に捕捉し、stderr は混ぜない — 混ぜると git の fatal が
+  # 「効いているパターン」として見出しの下に並ぶ。
+  numref_ci_rc=0
+  numref_causes=$(printf '%s\n' "$numref_shown" \
+    | git -C "$numref_tree" -c core.quotePath=false check-ignore -v --stdin) || numref_ci_rc=$?
   if [ -n "$numref_causes" ]; then
     echo "  原因: 以下の .gitignore のパターンが効いています" >&2
     printf '%s\n' "$numref_causes" | sed 's/^/    /' >&2
   else
-    echo "  原因: check-ignore が原因を特定できませんでした。$numref_tree で" >&2
-    echo "        git check-ignore -v -- <上記のファイル> を手動実行してください" >&2
+    echo "  原因: check-ignore が原因を特定できませんでした (rc=$numref_ci_rc)。ignore 元が" >&2
+    echo "        .gitignore 以外 (.git/info/exclude / core.excludesFile) の可能性があります" >&2
+    echo "        (git の診断は上の stderr に出ています)" >&2
   fi
   echo "  対処: そのファイルを直す。nested .rite/.gitignore なら 3 行構成 '*' / '!wiki/' / '!wiki/**'" >&2
   echo "        へ戻す。root .gitignore なら '.rite/wiki/' 除外行より後ろに negation を追記する" >&2
@@ -624,7 +627,7 @@ esac
 | `clean` | ステップ 5.1 / 5.2 へ進む |
 | `hit` | stdout の `file:line: 内容` が指す行を書き直してから**本ステップを再実行**する。書き直しは番号を落として現在形の Why にすること — 番号を消した跡に経緯文を置き換えない。ソース bullet は説明だけを表示テキストにし、説明が無ければ種別語（「レビュー結果」「fix 結果」「close retrospective」）にする（リンク先パスは変えない）。**`index.md` の行は Edit しない** — ステップ 6 の `wiki-index-update.sh` を修正した `--description` で呼び直す（index.md への書き換えは helper が atomic に行う契約のため）。この禁止は ingest 実行中（helper を呼べる文脈）の話で、lint 指摘の事後手当ては `/rite:wiki-lint` の手順に従う。再実行で `clean` にできなければ commit せず停止し、残った行と `/rite:recover` を案内する |
 | `error` (`reason=stage_failed`) | bash が `exit 1` で停止済み。`same_branch` では root `.gitignore` に `!.rite/wiki/` と `!.rite/wiki/**` を**`.rite/wiki/` 除外行より後ろ**へ追記してから**本ステップを再実行**する（`# <<< gitignore-wiki-section-end` anchor があればその直後、無ければ末尾。前に置くと後勝ちで効かない）。`separate_branch` では root `.gitignore` を持たないので、`{numref_tree}` が wiki worktree の絶対パスに substitute されているか（ステップ 1.3）を先に疑う |
-| `error` (`reason=ignored_paths`) | bash が `exit 1` で停止済み。stderr が `check-ignore -v` で名指しした `.gitignore` を直してから**本ステップを再実行**する。nested `.rite/.gitignore` なら 3 行構成 '*' / '!wiki/' / '!wiki/**' へ戻す（root への negation では nested の '*' は解除できない） |
+| `error` (`reason=ignored_paths`) | bash が `exit 1` で停止済み。stderr が `check-ignore -v` で名指しした `.gitignore` を直してから**本ステップを再実行**する。nested `.rite/.gitignore` なら 3 行構成 '*' / '!wiki/' / '!wiki/**' へ戻す（root への negation では nested の '*' は解除できない）。名指しが出ず「原因を特定できませんでした」が表示された場合は、stderr の git 診断と `.git/info/exclude` / `core.excludesFile` を確認して ignore 元を特定してから同じ 2 形の対処へ進む |
 | `error` (`reason=placeholder_residue`) | bash が `exit 1` で停止済み。`{plugin_root}` / `{numref_tree}` を literal substitute して**本ステップを再実行**する |
 | `error` (`reason=helper_missing` / `check_failed` / `ignored_check_failed`) | bash が `exit 1` で停止済み。commit せず停止し、stderr の原因と `/rite:recover` を案内する |
 
@@ -782,7 +785,7 @@ if [ "$branch_strategy" = "same_branch" ]; then
     echo "  原因候補: same_branch 戦略で .gitignore に '!.rite/wiki/' negation が未設定の可能性" >&2
     echo "  対処:" >&2
     echo "    1. grep -n 'gitignore-wiki-section-end' .gitignore で anchor 位置を特定 (配布先には anchor が無いことがある。その場合は '.rite/wiki/' 除外行より後ろ、無ければ末尾へ追記する)" >&2
-    echo "    2. 同ブロック内の手順に従い '!.rite/wiki/' negation を追加し (追記位置は上記 1 に従う。'.rite/wiki/' 除外行より前に置くと後勝ちで効かない)、git add --dry-run で verification してから再実行" >&2
+    echo "    2. 上記 1 の位置へ '!.rite/wiki/' negation を追加し、git add --dry-run で verification してから再実行" >&2
     echo "    3. それ以外の原因 (permission / disk full / corrupt index 等) は上記 stderr の詳細を確認" >&2
     [ -n "$add_err" ] && rm -f "$add_err"
     exit 1

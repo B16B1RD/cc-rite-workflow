@@ -567,6 +567,10 @@ else
         "$p18b_dir/stage.out" 'intent-to-add に失敗しました'
       assert_grep "TC-18b (AC-6) stage_failed は root .gitignore への negation 追加を案内する" \
         "$p18b_dir/stage.out" "root .gitignore に '!\.rite/wiki/' と '!\.rite/wiki/\*\*' を追記"
+      # 経路 (8) の assert_not_grep 'gitignore-wiki-section-end' が恒真でないことの positive control。
+      # 生成元と同じブロックに置く (別ブロックから読むと、この経路が gate された回に偽 FAIL 化する)
+      assert_grep "TC-18b (AC-6) positive control: stage_failed 側には root anchor 案内が出る" \
+        "$p18b_dir/stage.out" 'gitignore-wiki-section-end'
       # 案内どおり negation を足すと解消すること (手当てが実効性を持つことの pin)
       (cd "$p18b_ign" && printf '.rite/wiki/\n!.rite/wiki/\n!.rite/wiki/**\n' > .gitignore)
       p18b_render "$p18b_ign" "$PLUGIN_ROOT" | bash > "$p18b_dir/stage-fixed.out" 2>&1
@@ -592,8 +596,8 @@ else
       git add -A || exit 1
       git commit -qm init || exit 1
       printf '# t\n\nPR #1304 を参照\n' > .rite/wiki/pages/p.md || exit 1
-      # 非 ASCII ページ名を含める。core.quotePath 既定では ls-files がクォート済み literal を
-      # 返し、それを check-ignore へ渡しても原因を名指しできない (見出しだけ出て中身が空)
+      # 非 ASCII ページ名を含める。core.quotePath 既定では ls-files が octal escape で返すため
+      # 残存一覧が読めなくなる (check-ignore --stdin は入力を自前で unquote するので照合は通る)
       printf '# t\n\nPR #1306 を参照\n' > .rite/wiki/pages/日本語ページ.md || exit 1
       # 2 ファイル目。先頭 1 件しか名指ししない実装だと原因行が 1 本しか出ない
       mkdir -p .rite/wiki/other || exit 1
@@ -610,27 +614,31 @@ else
         "$p18b_dir/ignored.out" 'reason=ignored_paths'
       # nested drift は root への negation では解けない。原因を check-ignore で名指しすること、
       # および stage_failed 用の root anchor 案内へ逆戻りしていないことを対で pin する
-      # (否定側の文字列は stage.out に実在する = 恒真ではない)
+      # (否定側の文字列は経路 (7) の stage.out に実在する = 恒真ではない。その positive control は
+      #  生成元と同じブロックに置く — ここから読むと (7) が gate された回に file-not-found で落ちる)
       assert_grep "TC-18b (AC-6) ignored_paths は効いている .gitignore を check-ignore で名指しする" \
         "$p18b_dir/ignored.out" '\.gitignore:[0-9]+:'
-      # 非 ASCII ページ名がクォート済み literal のまま check-ignore へ渡ると出力が空になり、
-      # 見出しだけが残る。生の名前で出ることを pin する
       # 残存ファイルの一覧行 (先頭 4 スペース + パス) に限定して測る。原因行側は
       # check-ignore が自前で unquote するため、一覧行の quoting を識別できない
       assert_grep "TC-18b (AC-6) 残存一覧が非 ASCII のページ名を生のまま出す (quotePath=false)" \
         "$p18b_dir/ignored.out" '^    \.rite/wiki/pages/日本語ページ\.md$'
       assert_not_grep "TC-18b (AC-6) 原因の見出しだけが出て中身が空にならない" \
         "$p18b_dir/ignored.out" '原因を特定できませんでした'
+      # 4 スペースの字下げは「原因としてラベルした」印。git の診断がここに並ぶのは
+      # stderr を causes へ混ぜた形の再導入を意味する。健全な fixture では check-ignore の
+      # stderr が空になるため専用の変異 fixture を持てず、構造ガードとして置く
+      assert_not_grep "TC-18b (AC-6) 原因欄に git の警告 / エラーを原因として載せない" \
+        "$p18b_dir/ignored.out" '^    (warning|fatal|error):'
       # 残存が複数ある回に先頭 1 件しか名指ししないと、直して再実行しても同じ reason で止まる。
       # 表示件数 (head -5) と原因行数が一致することで「全件に対して引いた」ことを測る
-      p18b_ig_shown=$(grep -cE '^    \.rite/wiki/' "$p18b_dir/ignored.out")
+      # 原因行 (`<source>:<line>:<pattern>\t<path>`) も `    .rite/wiki/...` で始まりうるので、
+      # 一覧行だけを数えるためコロンを含まない行に限定する
+      p18b_ig_shown=$(grep -cE '^    \.rite/wiki/[^:]+$' "$p18b_dir/ignored.out")
       p18b_ig_causes=$(grep -cE '^    [^ ]*\.gitignore:[0-9]+:' "$p18b_dir/ignored.out")
       assert "TC-18b (AC-6) 表示した残存ファイル全件について原因を名指しする" \
         "$p18b_ig_shown" "$p18b_ig_causes"
       assert_not_grep "TC-18b (AC-6) ignored_paths は stage_failed 用の root anchor 案内へ戻っていない" \
         "$p18b_dir/ignored.out" 'gitignore-wiki-section-end'
-      assert_grep "TC-18b (AC-6) positive control: stage_failed 側には root anchor 案内が出る" \
-        "$p18b_dir/stage.out" 'gitignore-wiki-section-end'
     fi
   fi
 fi

@@ -223,11 +223,15 @@ Raw Source は出典なので番号を持ち、そこから読解して書く過
 直すため後段への影響もない。hit / error で停止した回はエントリが残るが、次回実行の
 `add -N` が冪等に上書きする。
 
-ignore 残存の検査に `ls-files --others --ignored` を使い `check-ignore` を使わないのは、
-前者が「実際に走査へ載らなかったファイル」を直接列挙するのに対し、後者はパターンの
-照合結果しか返さず negation の重ね合わせでは判定が一意にならないため。止めた後の
-手当てはこのステップでは判別せず `gitignore-health-check.sh` へ委譲する — root と nested の
-どちらが原因かの判定は既にその helper が所有しており、ここで二重に持つと片方が腐る。
+残存の**列挙**に `ls-files --others --ignored` を使うのは、前者が「実際に走査へ載らなかった
+ファイル」を直接返すのに対し、`check-ignore` はパターンの照合結果しか返さず、negation の
+重ね合わせでは「ignore されているか」の判定が一意にならないため。
+
+一方、列挙で ignore 済みが確定した後の**原因の名指し**には `check-ignore -v` を使う。この
+時点では判定は済んでおり、必要なのは「どの .gitignore のどの行が効いたか」だけなので、
+上記の非決定性の caveat は効かない。`gitignore-health-check.sh` へ委譲しないのは、同 helper が
+`rite-config.yml` と state_root を前提に別ツリーを見るため、`separate_branch` では走査対象の
+worktree を一度も見ないまま findings 0 で終わるから。止めた人に Hint が渡らない。
 
 走査範囲を `--path .rite/wiki` で絞るのは、走査範囲と commit 範囲を一致させるため。
 `same_branch` では走査ツリーが dev repo root になるので、絞らないと Wiki と無関係な未 commit
