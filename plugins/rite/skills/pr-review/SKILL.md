@@ -2138,8 +2138,8 @@ esac
 rc=1 の finding（`findings[].verification` は書かない）:
 - `reviewer: "pr-review"`（orchestrator。agents/ は追加しない）
 - `severity: HIGH` / `scope: current-pr` / `category: number_reference`
-- `description` に同一セグメントの `Verification:`（marker と `=>` の間に句点・改行を入れない。LHS 非空・`=>` は 1 つ）:
-  `Verification: repro bash {plugin_root}/hooks/scripts/number-reference-check.sh --diff $number_ref_base => exit 1; {file}:{line}: {matched line}`
+- `description` は `Verification:` で始める（Number-reference finding は先頭アンカー例外。一般 reviewer の Placement へ合わせて説明文をアンカー前へ戻さない）。同一セグメント。LHS 非空。`=>` は 1 つ。marker と `=>` の間に句点・改行を入れない。`{matched line}` に生のパイプが含まれる場合は `¦` に置換する。説明文はアンカーの後:
+  `Verification: repro bash {plugin_root}/hooks/scripts/number-reference-check.sh --diff $number_ref_base => exit 1; {file}:{line}: {matched line}。永続成果物に Issue/PR 番号が追加されている。番号を消し、残す背景があれば現在形の制約文で書く`
 
 ゲート後も `findings[]` に残す（`non_blocking_findings[]` へ送らない）。5.3.0.C では `category == "number_reference"` を class A 固定とする（exclusion なし class B に倒さない）。
 
