@@ -6,30 +6,32 @@
 # bodies and emits a marker block + WIKI_DESCRIPTIVE_REFS total + read_ok enum.
 #
 # Coverage:
-#   TC-1   裸の `PR #N` / `Issue #N` が hit する (拡張の本体)
-#   TC-2   `## ソース` 節の provenance ラベルが hit しない
+#   TC-1   裸の番号トークンが hit する (委譲文法はキーワードを要求しない)
+#   TC-2   (AC-3) `## ソース` 節の bullet も hit する (E2 撤廃)
 #   TC-3   TODO / FIXME 行が hit しない
 #   TC-4   インラインコードスパン内の literal 引用が hit しない
 #   TC-5   コードフェンス内が hit しない / フェンス閉じ後は再び検出される
-#   TC-6   語境界が文字クラスで表現されている (静的 pin。件数では測れないため)
+#   TC-6   委譲文法のスコープ (3-4 桁のみ / プレースホルダ・アンカー・opt-out の除外)
 #   TC-7   旧 4 形 (括弧付き / see PR / #N で対応 / 詳細は #N) の検出が保たれる
 #   TC-8   frontmatter は `sources:` ブロックのみ除外 (description 散文は hit する)
 #   TC-9   marker block / WIKI_DESCRIPTIVE_REFS / read_ok の stdout 契約
 #   TC-10  空 pages_list → hits 0, read_ok=true (Wiki 初期化直後の legitimate no-op)
 #   TC-11  全ページ読出失敗 → read_ok=io_error (偽の 0 件を「解消済み」と読ませない)
 #   TC-12  placeholder residue ({branch_strategy} / {wiki_branch} / {pages_list}) → exit 1
-#   TC-13  partial pollution (.rite/wiki/raw/ 行混入) → exit 1
+#   TC-13  partial pollution (.rite/wiki/raw/ 行混入) → exit 1 / log.md は完全一致で受理
+#   TC-13b (AC-4) log.md を自力 discovery して走査する
+#   TC-13c (AC-5) raw は gate と委譲先の二重で走査対象外
 #   TC-14  unknown branch_strategy → exit 1 / separate_branch + 空 --wiki-branch → exit 2
-#   TC-15  MUTATION 拡張 regex を旧 4 形へ戻すと TC-1 が落ちる (拡張の識別力)
+#   TC-15  MUTATION 委譲先を無出力 stub にすると hits が 0 になる (計数の出どころ)
+#          + 1 ページの複数 hit を行数として数える (rc の二値へ潰さない)
 #   TC-16  MUTATION 本文フィルタを外すと TC-2 / TC-5 が落ちる (除外の識別力。E1 は TC-8、
-#          E4 / E5 は終端アクション側にあり本 mutant の到達範囲外で TC-3 / TC-4 / TC-17 が pin)
-#   TC-17  MUTATION 語境界を `\b` にすると gawk では never-match になる (silent 沈黙の実証)
+#          E4 / E5 は終端アクション側にあり本 mutant の到達範囲外で TC-3 / TC-4 が pin)
 #   TC-18  SKILL.md ステップ 7.5 が helper 委譲 + helper 不在 fallback を持つ (静的回帰)
 #   TC-19  separate_branch (本番既定経路、git show) の positive path
-#   TC-20  `## ソース` 除外が節スコープ (見出し以降 EOF まで打ち切らない)
+#   TC-20  (AC-3) `## ソース` 節に除外が残っていない / (AC-2) リンク先パスは hit しない
 #   TC-21  informational 契約の非回帰 (T-06 / T-07: n_warnings 不加算 / canonical Lint: 行不変)
 #   TC-19b separate_branch の読出に cat fallback が無い (ブランチ分離の pin)
-#   TC-22  helper 単独 pin（comment-journal P5 退役後）
+#   TC-22  helper が検出文法のコピーを持たず委譲先を名指しで呼ぶ
 #   TC-23  検出器の破損が read_errors / io_error へ伝播する (0 件を実測済みと名乗らない)
 #   TC-24  traversal gate / 読出・検出失敗の WARNING / E1 ブロック終端
 #   TC-11b 部分読出失敗は read_ok=true のまま read_errors だけ立つ
@@ -52,7 +54,7 @@
 #   TC-45  本文フィルタ (E3 コードフェンス等) が index.md にも適用される
 #   TC-46  index.md が読めれば pages 全件失敗でも io_error ではなく部分失敗になる
 #   TC-47  リンク行はあるが entries 0 件の index.md は検出失敗として計上する (stdin に依存しない)
-#   TC-48  index.md 終端アクションの戻り値 arity (4 値) を pin する (フィールドを減らす変異を弾く)
+#   TC-48  index.md 終端アクションの診断 arity (3 値) を pin する (フィールドを減らす変異を弾く)
 #   TC-19c separate_branch (既定) でも index.md 不在は read_errors に数えない (#2069 T-06)
 #   TC-50  index-template.md 前文を entries に数えず、テーブル行は列解釈まで通る (配布テンプレート回帰)
 #   TC-50b 記法例コメントを持つ index.md でコメント除去規則そのものを pin する (literal fixture)
@@ -162,12 +164,13 @@ assert "TC-9 該当ページ数=2 (定数でも全件数でもない)" "2" "$(pr
 assert "TC-9 marker block の page= 行数=2" "2" "$(printf '%s' "$out9b" | grep -c '^page=')"
 rm -f "$SBX/.rite/wiki/pages/anti-patterns/fixture2.md" "$SBX/.rite/wiki/pages/anti-patterns/clean.md"
 
-# fixture の本文で hit すべき行は 8 行:
+# fixture で hit すべき行は 10 行 — 本文 8 行:
 #   PR #1300 / Issue #1284 / (refs #1150) / See PR #1149 / 詳細は #1151 /
 #   #1152 で別途対応 / PR #2047 / PR #1301
+# と `## ソース` 節の bullet 2 行 (E2 撤廃後は表示テキストも走査対象)。
 # 除外が 1 つでも外れるとこの数を超える (TODO/FIXME 2 行・コードスパン 1 行・
-# フェンス 1 行・ソース節 2 行が混入するため)。
-assert "TC-1/2/3/4/5 hits=8 (対象のみ)" "8" "$hits"
+# フェンス 1 行が混入するため)。
+assert "TC-1/2/3/4/5 hits=10 (対象のみ)" "10" "$hits"
 
 # ---- MUTATION の前提: mutant が実際に元と違うことを先に確かめる ---------------
 # 生成が no-op のまま「差が出なかった」と読むと mutation test が無言で vacuous になる。
@@ -175,17 +178,32 @@ assert_mutated() {
   assert_mutant_changed "$1" "$SCRIPT" "$2"
 }
 
+# mutant は sandbox へ置かれるため、helper が `dirname "$BASH_SOURCE"` で解決する委譲先
+# (number-reference-check.sh) が引けず fail-fast の exit 2 で死ぬ。委譲そのものを変異させる
+# mutant 以外は、生成後に委譲先を実体の絶対パスへ固定してから走らせる。
+# 固定しないと mutant が「出力なし」で終わり、mutation test が測るべき差分ではなく
+# 起動失敗を見ることになる (無言で vacuous になる)。
+REAL_NUMREF="$PLUGIN_ROOT/hooks/scripts/number-reference-check.sh"
+pin_delegate() {
+  # $1 = mutant path
+  local m="$1" tmp="$1.pinned"
+  awk -v real="$REAL_NUMREF" '
+    /^_RITE_NUMREF_CHECK=/ { print "_RITE_NUMREF_CHECK=\"" real "\""; next }
+    { print }
+  ' "$m" > "$tmp" && mv "$tmp" "$m"
+}
+
 # ---- 除外の識別力を「フィルタを外した版」との差で測る (TC-16 の測定基盤) -------
 # helper 内のフィルタを外した mutant を作り、除外が無いと hits が跳ね上がることを実証する。
 # **本 mutant で到達不能な除外**: E1 (frontmatter 除去) は mutant が残す設計のため測れず、TC-8 の
 # fixture (description 散文 / sources ブロックの両方) が担う。E4 (コードスパン) と E5 (TODO/FIXME) は
 # 終端アクション側にあり本 mutant が差し替える本文フィルタに含まれないため測れず、E4 は TC-4、
-# E5 は TC-3 / TC-17 が pin する。mutant を拡張する際は「どの除外がその mutant で到達不能か」を
+# E5 は TC-3 が pin する。mutant を拡張する際は「どの除外がその mutant で到達不能か」を
 # 先に列挙すること。
 MUT_NOFILTER="$SBX/mutant-nofilter.sh"
 # フィルタ本体 (_RITE_BODY_FILTER) を「frontmatter 除去のみ」に差し替える。
-# 終端アクション (マスク + 計数) は _RITE_COUNT_ACTION が別に持つため、ここでは
-# 落とす行の規則だけを置く (末尾に print を足すと計数用 awk の出力に混ざる)。
+# 終端アクション (マスク + 出力) は _RITE_EMIT_ACTION が別に持つため、ここでは
+# 落とす行の規則だけを置く (末尾に print を足すと抽出結果に二重出力が混ざる)。
 awk '
   /^_RITE_BODY_FILTER=.$/ { print "_RITE_BODY_FILTER='"'"'"; infilter=1; next }
   infilter && /^.$/ { print "NR==1 && /^---[[:space:]]*$/ { infm=1; next }"
@@ -195,6 +213,7 @@ awk '
   infilter { next }
   { print }
 ' "$SCRIPT" > "$MUT_NOFILTER"
+pin_delegate "$MUT_NOFILTER"
 if assert_mutated "TC-16 MUTATION mutant 生成" "$MUT_NOFILTER"; then
   mut_hits=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$MUT_NOFILTER" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
   if [ "${mut_hits:-0}" -gt "$hits" ] 2>/dev/null; then
@@ -204,20 +223,23 @@ if assert_mutated "TC-16 MUTATION mutant 生成" "$MUT_NOFILTER"; then
   fi
 fi
 
-# ---- 拡張 regex の識別力 (TC-15) -------------------------------------------
-# 検出 regex を旧 4 形へ戻した mutant では、裸の PR #N / Issue #N が落ちて hits が減る。
-MUT_OLDRE="$SBX/mutant-oldre.sh"
-OLD_RE='[（(](Issue|PR|refs|Refs)[^)）]*#[0-9]+|(refs|Refs|see PR|See PR) #[0-9]+|(PR )?#[0-9]+ ?で(別途)?対応|詳細は ?#[0-9]+'
-awk -v old_re="$OLD_RE" '
-  /^_RITE_DESCRIPTIVE_RE=/ { print "_RITE_DESCRIPTIVE_RE='"'"'" old_re "'"'"'"; next }
+# ---- 委譲が実体であることの識別力 (TC-15) -----------------------------------
+# hits は委譲先が emit した findings 行数であって、本 helper 内の判定ではない。
+# 委譲先を「何も出さない stub」へ差し替えた mutant で hits が 0 へ落ちることで、
+# 計数の出どころが委譲先であることを実証する。落ちなければ helper 内に判定が残っている。
+MUT_NODELEG="$SBX/mutant-nodelegate.sh"
+STUB_CHECK="$SBX/stub-numref.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB_CHECK"
+awk -v stub="$STUB_CHECK" '
+  /^_RITE_NUMREF_CHECK=/ { print "_RITE_NUMREF_CHECK=\"" stub "\""; next }
   { print }
-' "$SCRIPT" > "$MUT_OLDRE"
-if assert_mutated "TC-15 MUTATION mutant 生成" "$MUT_OLDRE"; then
-  old_hits=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$MUT_OLDRE" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
-  if [ "${old_hits:-0}" -lt "$hits" ] 2>/dev/null; then
-    pass "TC-15 MUTATION 旧 4 形へ戻すと hits が減る (${hits} → ${old_hits}; 拡張に識別力あり)"
+' "$SCRIPT" > "$MUT_NODELEG"
+if assert_mutated "TC-15 MUTATION mutant 生成" "$MUT_NODELEG"; then
+  stub_hits=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$MUT_NODELEG" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
+  if [ "${stub_hits:-99}" -eq 0 ] 2>/dev/null && [ "$hits" -gt 0 ]; then
+    pass "TC-15 MUTATION 委譲先を無出力 stub にすると hits が 0 になる (${hits} → ${stub_hits}; 計数は委譲先由来)"
   else
-    fail "TC-15 MUTATION 旧 4 形へ戻しても hits が変わらない (${hits} → ${old_hits}) — 拡張が何も広げていない"
+    fail "TC-15 MUTATION 委譲先を stub にしても hits が残る (${hits} → ${stub_hits}) — helper 内に判定のコピーがある"
   fi
 fi
 
@@ -229,6 +251,11 @@ single_hits() {
   printf '%s\n' "$rel" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null \
     | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p'
 }
+# 1 ページに 2 hit 以上を数えられること。委譲先の exit code (0/1 の二値) を件数として
+# 使う実装では、どのページも hits が最大 1 に潰れ、WIKI_DESCRIPTIVE_REFS の意味が
+# 「hit 行数の合計」から「hit を持つページ数」へ無言で変わる。
+multi=$(printf '# t\n\nPR #1300 の一行目\nIssue #1284 の二行目\n詳細は #1151 の三行目\n')
+assert "TC-15 1 ページの複数 hit を行数として数える (rc の二値へ潰さない)" "3" "$(single_hits "$multi")"
 assert "TC-1 裸の PR #N が hit"            "1" "$(single_hits 'PR #1300 は フォーマットを統一した')"
 assert "TC-1 裸の Issue #N が hit"         "1" "$(single_hits 'Issue #1284 系譜の継続')"
 assert "TC-7 括弧付き (refs #N) が hit"     "1" "$(single_hits '(refs #1150) の括弧形')"
@@ -238,13 +265,12 @@ assert "TC-7 #N で別途対応 が hit"          "1" "$(single_hits '#1152 で�
 assert "TC-3 TODO 行は hit しない"          "0" "$(single_hits 'TODO: #9999 で対応予定')"
 assert "TC-3 FIXME 行は hit しない"         "0" "$(single_hits 'FIXME PR #9998 を追う')"
 assert "TC-4 コードスパン内は hit しない"    "0" "$(single_hits '`refs #204` が `refs #2047` に一致する')"
-# span マスクは削除ではなく `_` 置換。削除するとキーワードと番号が隣接して**誤検出を製造する**
-# 方向に倒れる (comment-journal-check.test.sh TC-4 と対称)。
-assert "TC-4 span マスクがキーワードと番号を連結しない" "0" "$(single_hits 'PR `x` #1234')"
-# 左語境界 (^|[^A-Za-z]): `refs` を語尾に持つ別語を弾く。cjc TC-16 と対称。
-assert "TC-6 prefs #N は hit しない (左語境界)" "0" "$(single_hits 'prefs #12 を設定')"
-assert "TC-6 hrefs #N は hit しない (左語境界)" "0" "$(single_hits 'hrefs #13 を確認')"
-assert "TC-1 キーワードなし裸 #N は hit しない" "0" "$(single_hits '#1234 の単独形は対象外')"
+# span マスクは削除ではなく `_` 置換。削除するとスパンの前後が隣接して行の意味が変わる
+# (comment-journal-check.test.sh TC-4 と対称)。委譲文法は番号トークン単独を見るため、
+# `PR `x` #1234` はマスク後も番号が残って hit する — マスクの識別力はスパン**内側**の
+# 番号 (上の assert) が測る。
+assert "TC-4 span の外にある番号はマスク後も残る" "1" "$(single_hits 'PR `x` #1234')"
+assert "TC-1 キーワードなし裸 #N も hit する (委譲文法はトークンを見る)" "1" "$(single_hits '#1234 の単独形')"
 # E1 は frontmatter 全体ではなく `sources:` ブロックのみを落とす。ref 値はファイルパスで
 # 番号規則に一致しないため除外は防御的だが、`description:` / `title:` の散文は本物の
 # 説明的参照を含む (実 wiki で 22 件)。両方を 1 つの fixture で測る。
@@ -255,9 +281,14 @@ assert "TC-8 frontmatter description の番号参照は hit する" "1" "$(singl
 tc8_src=$(printf -- '---\ntitle: "t"\nsources:\n  - type: "reviews"\n    resource: "raw/reviews/PR #1300.md"\n---\n\n# t\n\n本文に番号なし\n')
 assert "TC-8 frontmatter sources ブロックは hit しない" "0" "$(single_hits "$tc8_src")"
 
-# TC-2: `## ソース` 節のみを持つページ (本文に対象なし) は 0 件
+# TC-2 (AC-3): `## ソース` 節の bullet も走査対象 (E2 撤廃)。表示テキストは読者が読む散文で、
+# 番号の受け皿は隣のリンク先である。
 src_only=$(printf '# t\n\n## ソース\n\n- [PR #1300 review results](../../raw/reviews/a.md)\n- [Issue #1284 fix results](../../raw/fixes/b.md)\n')
-assert "TC-2 ソース節配下のラベル 2 行も hit しない" "0" "$(single_hits "$src_only")"
+assert "TC-2 (AC-3) ソース節配下のラベル 2 行が hit する" "2" "$(single_hits "$src_only")"
+# 番号を落とした bullet は hit しない — retrofit 後の形が clean であることを対にして測る
+# (「節を丸ごと数えている」実装と「番号を数えている」実装を分ける)。
+src_clean=$(printf '# t\n\n## ソース\n\n- [レビュー結果](../../raw/reviews/a.md)\n- [fix 結果](../../raw/fixes/b.md)\n')
+assert "TC-2 (AC-3) 番号を落としたソース bullet は hit しない" "0" "$(single_hits "$src_clean")"
 
 # TC-5: フェンス内は 0、フェンス閉じ後の行は検出される
 fence_only=$(printf '# t\n\n```bash\ngrep -E "PR #7777" f.md\n```\n')
@@ -265,32 +296,25 @@ assert "TC-5 コードフェンス内は hit しない" "0" "$(single_hits "$fen
 fence_then=$(printf '# t\n\n```bash\ngrep -E "PR #7777" f.md\n```\n\nPR #1301 フェンス後\n')
 assert "TC-5 フェンス閉じ後は再び検出される" "1" "$(single_hits "$fence_then")"
 
-# TC-6: 語境界。貪欲な `[0-9]+` により語境界の有無は件数メトリクスに現れないため、件数ベースでは
-# 原理的に検出できない (実装から `([^0-9]|$)` を消しても hits は不変)。よって helper の regex 定義を
-# 静的に pin する。行内容ベースの識別力は comment-journal-check.test.sh の TC-6 が担う。
-# R1 側と R2 の `詳細は` 側にそれぞれ `([^0-9]|$)` があるため、単一の assert では片方だけで
-# 充足してしまう。守りたい R1 側を語彙の末尾 (`[Rr]esolves`) から続く文脈込みで pin する。
-assert_grep "TC-6 R1 の語境界が文字クラスで表現される" \
-  "$SCRIPT" '_RITE_DESCRIPTIVE_RE=.*\[Rr\]esolves\) \*#\[0-9\]\+\(\[\^0-9\]\|\$\)'
-assert_grep "TC-6 R2 詳細は 側の語境界も文字クラス" \
-  "$SCRIPT" '_RITE_DESCRIPTIVE_RE=.*詳細は \?#\[0-9\]\+\(\[\^0-9\]\|\$\)'
-assert_not_grep "TC-6 検出 regex に \\b を使っていない" "$SCRIPT" '_RITE_DESCRIPTIVE_RE=.*\[0-9\]\+.b'
+# TC-6: 委譲文法のスコープ。番号トークンは 3-4 桁のみが対象で、その外は Wiki 散文の
+# 正当な用途 (上流トラッカ id・列挙条件・箇条番号) として残る。helper 側にコピーを置かず
+# 委譲先の文法をそのまま受けていることを、境界の両側で測る。
+assert "TC-6 2 桁の番号は対象外" "0" "$(single_hits '発生条件 #12 を満たす')"
+assert "TC-6 1 桁の番号は対象外" "0" "$(single_hits 'CFIC #6 の系列')"
+assert "TC-6 5 桁の番号は対象外 (上流トラッカ id)" "0" "$(single_hits 'upstream bug #10412 を追う')"
+assert "TC-6 3 桁の番号は対象" "1" "$(single_hits 'PR #939 で導入')"
+assert "TC-6 4 桁の番号は対象" "1" "$(single_hits 'PR #1939 で導入')"
+# 委譲先の行レベル除外がそのまま効く。プレースホルダと見出しアンカーは番号参照ではない。
+assert "TC-6 プレースホルダ #123 は対象外" "0" "$(single_hits 'Issue #123 はプレースホルダ')"
+assert "TC-6 見出しアンカー (#NNN-letter) は対象外" "0" "$(single_hits '[節](doc.md#1234-heading) を参照')"
+# 委譲先の opt-out マーカーは Wiki 本文にも効いてしまう。意図した挙動として pin し、
+# Wiki ページで使ってはならない旨は helper header と rationale に書く。
+assert "TC-6 drift-check-ignore 行は Wiki 本文でも免除される (Wiki では使わない)" \
+  "0" "$(single_hits 'PR #1300 は統一した  drift-check-ignore')"
 
-# TC-17: 終端アクション (_RITE_COUNT_ACTION / _RITE_INDEX_COUNT_ACTION) は awk で走るため、
-# そこに `\b` を持ち込むと gawk がバックスペースとして読んで永久に一致しなくなる。
-# 終端アクションの TODO/FIXME 除外を `\b` 付きに変異させ (sed が 2 箇所を同時に叩く)、
-# 除外が沈黙する (= hits が増える) ことで危険を実証する。
-# awk 経路を実際に変異させるので、被テスト対象を実行しない always-pass にはならない。
-MUT_AWKB="$SBX/mutant-awk-backslash-b.sh"
-sed 's%/(TODO|FIXME)%/(TODO\\b|FIXME\\b)%' "$SCRIPT" > "$MUT_AWKB"
-if assert_mutated "TC-17 MUTATION mutant 生成" "$MUT_AWKB"; then
-  awkb_hits=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$MUT_AWKB" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
-  if [ "${awkb_hits:-0}" -gt "$hits" ] 2>/dev/null; then
-    pass "TC-17 MUTATION awk フィルタに \\b を持ち込むと除外が沈黙する (${hits} → ${awkb_hits}; 文字クラス必須の実証)"
-  else
-    fail "TC-17 MUTATION awk フィルタの \\b 変異で hits が変わらない (${hits} → ${awkb_hits})"
-  fi
-fi
+# TC-22 (旧 TC-6 静的 pin / 旧 TC-17 の `\b` 変異) は本 helper が regex を持たなくなったため
+# 廃止した。文法の健全性は委譲先の number-reference-check.test.sh が測り、本ファイルは
+# 「コピーを持たないこと」(下の TC-22) と「委譲の結果を数えていること」(下の TC-15) を測る。
 
 # ---- 契約・エラー経路 -------------------------------------------------------
 
@@ -332,6 +356,41 @@ assert_grep "TC-12 {pages_list} 残留 → gate 固有 marker" "$p12_err" 'LINT_
 # TC-13: partial pollution
 printf '%s\n%s\n' "$FIXTURE_REL" ".rite/wiki/raw/reviews/x.md" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) >/dev/null 2>&1
 assert "TC-13 raw/ 行混入 → exit 1" "1" "$?"
+# log.md は index.md と同じく完全一致で受理する (自力 discovery があるので渡す必要はないが、
+# 渡しても gate が弾かない・重複計上しない)。prefix 一致へ緩めると raw 行も通ってしまうため、
+# 受理は完全一致のままであることを raw 側の fail-fast と対にして測る。
+printf '%s\n%s\n' "$FIXTURE_REL" ".rite/wiki/log.md" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) >/dev/null 2>&1
+assert "TC-13 log.md 完全一致は gate を通る" "0" "$?"
+printf '%s\n%s\n' "$FIXTURE_REL" ".rite/wiki/log.md.bak" | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) >/dev/null 2>&1
+assert "TC-13 log.md への prefix 一致は gate に弾かれる (完全一致のまま)" "1" "$?"
+
+# ---- TC-13b (AC-4): log.md を走査対象にする --------------------------------
+# ステップ 2.2 の pages_list は pages/ 配下しか列挙しないため、log.md は helper が自力で
+# discovery しなければ届かない。stdin に渡さない状態で hit することを測る。
+printf '# Directory Update Log\n\n## 2026-01-01\n* **Create**: [t](pages/x/a.md) — PR #686 cycle 1 review\n' > "$SBX/.rite/wiki/log.md"
+log_out="$SBX/log.out"; tmp_files+=("$log_out")
+printf '' | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) > "$log_out" 2>/dev/null
+assert "TC-13b (AC-4) log.md の番号を hits に計上する (stdin に無くても discovery する)" \
+  "1" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$log_out")"
+assert_grep "TC-13b (AC-4) marker block に log.md 行が出る" "$log_out" '^page=\.rite/wiki/log\.md; hits=1$'
+# 番号を落とした log 行は hit しない (「log.md を丸ごと数えている」実装と分ける)
+printf '# Directory Update Log\n\n## 2026-01-01\n* **Create**: [t](pages/x/a.md) — raw/reviews/20260101T000000Z-pr-686.md を新規ページ化\n' > "$SBX/.rite/wiki/log.md"
+assert "TC-13b (AC-4) 番号を落とした log 行は hit しない (raw パスの番号は `#` を持たない)" \
+  "0" "$(printf '' | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')"
+rm -f "$SBX/.rite/wiki/log.md"
+
+# ---- TC-13c (AC-5): raw は走査対象外 ---------------------------------------
+# 二重の保証を両方測る。(1) stdin に raw パスが現れたら gate が exit 1 で弾く (TC-13、
+# 取り違えの検出なので「静かに 0 件」にしない)。(2) 仮に gate を越えても委譲先が同じパスを
+# 除外するため findings は 0 になる。(2) を測らないと、gate を緩めた変異が
+# 「raw の番号を数え始める」方向へ倒れても気付けない。
+raw_probe=$(printf 'PR #1234 の生ログ\n' | bash "$PLUGIN_ROOT/hooks/scripts/number-reference-check.sh" \
+  --stdin --label ".rite/wiki/raw/reviews/x-pr-1234.md" --quiet 2>/dev/null; echo "rc=$?")
+assert "TC-13c (AC-5) 委譲先は raw パスの label を findings 0 で返す" "rc=0" "$raw_probe"
+# 対照: 同じ本文でも pages/ の label なら hit する (label 除外が効いていることの識別力)
+pages_probe=$(printf 'PR #1234 の本文\n' | bash "$PLUGIN_ROOT/hooks/scripts/number-reference-check.sh" \
+  --stdin --label ".rite/wiki/pages/x/a.md" --quiet 2>/dev/null; echo "rc=$?")
+assert "TC-13c (AC-5) 対照: pages/ の label なら同じ本文が hit する" "rc=1" "$(printf '%s' "$pages_probe" | tail -1)"
 
 # TC-14: invocation errors
 printf '' | ( cd "$SBX" && bash "$SCRIPT" --branch-strategy bogus --repo-root "$SBX" ) >/dev/null 2>&1
@@ -422,19 +481,22 @@ assert "TC-19c (#2069 T-06) separate_branch で index.md 不在なら read_error
 assert_not_grep "TC-19c index.md 不在なら marker block に index 行が出ない" "$sb_noidx_out" 'index\.md'
 assert_not_grep "TC-19c index.md 不在を読出失敗として WARNING しない" "$sb_noidx_err" 'index\.md の読出に失敗'
 
-# ---- TC-20: `## ソース` 除外の節スコープ ------------------------------------
-# 見出し以降 EOF まで打ち切ると、wiki-ingest が後ろに追記する `## 補強:` 等の本文が盲点になる。
+# ---- TC-20 (AC-3): `## ソース` 節に除外が残っていないこと --------------------
+# 旧実装は見出しから次の `##` までを節スコープで落としていた。撤廃したので、節の内側も
+# 外側も同じ規則で数える。見出しの表記ゆれ (`## ソース（追記分）` / 半角括弧) ごとに
+# 除外が復活していないかを、同じ 1 ページ内で並べて測る。
 post_src=$(printf '# t\n\n## ソース\n\n- [PR #1400 review results](../../raw/reviews/a.md)\n\n## 補強: 節\n\nPR #1500 はソース節の後の本文\n')
-assert "TC-20 ソース節の後に続く本文は hit する (節スコープ)" "1" "$(single_hits "$post_src")"
-# wiki-ingest は `## ソース（追記分）` / `## ソース（追記分 N）` を生成する (実測 13 箇所)。
-# 見出しを厳密一致にすると、これらが節の開始として認識されないまま「次の見出し」としては
-# 認識され、直前の節の除外を打ち切って provenance ラベルを走査対象に戻す。
+assert "TC-20 (AC-3) ソース節の内側と後続本文をどちらも数える" "2" "$(single_hits "$post_src")"
 appendix_src=$(printf '# t\n\n## ソース\n\n- [PR #1400 review results](../../raw/a.md)\n\n## ソース（追記分）\n\n- [PR #1500 review results](../../raw/b.md)\n\n## ソース(追記分 2)\n\n- [PR #1600 review results](../../raw/c.md)\n')
-assert "TC-20 追記分ソース節の provenance ラベルも hit しない (全角・半角括弧)" "0" "$(single_hits "$appendix_src")"
+assert "TC-20 (AC-3) 追記分ソース節の bullet も全て数える (全角・半角括弧)" "3" "$(single_hits "$appendix_src")"
 appendix_then=$(printf '# t\n\n## ソース（追記分）\n\n- [PR #1500 review results](../../raw/b.md)\n\n## 補強: 節\n\nPR #1700 は追記分ソース節の後の本文\n')
-assert "TC-20 追記分ソース節の後の本文は hit する" "1" "$(single_hits "$appendix_then")"
-assert "TC-20 ソース節内の provenance ラベルは hit しない" "0" \
+assert "TC-20 (AC-3) 追記分ソース節とその後続本文をどちらも数える" "2" "$(single_hits "$appendix_then")"
+assert "TC-20 (AC-3) ソース節内の provenance ラベル単独でも数える" "1" \
   "$(single_hits "$(printf '# t\n\n## ソース\n\n- [PR #1400 review results](../../raw/reviews/a.md)\n')")"
+# リンク先パスは走査対象に残る。raw ファイル名の `-pr-1400` は `#` を持たないため
+# 委譲文法に一致せず、bullet を clean にしてもリンク先を書き換える必要はない (AC-2)。
+assert "TC-20 (AC-2) リンク先パスの番号は hit しない (href を書き換える必要がない)" "0" \
+  "$(single_hits "$(printf '# t\n\n## ソース\n\n- [レビュー結果](../../raw/reviews/20260101T000000Z-pr-1400.md)\n')")"
 
 # ---- TC-21: informational 契約の非回帰 (Issue の T-06 / T-07) ---------------
 # 実測で確認しただけでは非回帰は担保されない。SKILL.md 側を静的に pin する。
@@ -449,8 +511,15 @@ assert_not_grep "TC-21 (T-07) Lint: 行に descriptive フィールドが混入�
 # 本 helper の read_ok enum は「0 件が実体を反映していない」状況を surface するためにある。
 # 検出器そのものが壊れた場合だけがその enum をすり抜けると、完了レポートに「実測済みの 0 件」
 # として載る。検出 regex を不正にした mutant で、0 件ではなく io_error に倒れることを測る。
+# 委譲先を「常に rc=2 (実行エラー) を返す stub」へ差し替える。委譲先の rc 2 は検出できな
+# かった証拠であり、0 件として計上してはならない。
 MUT_BADRE="$SBX/mutant-badre.sh"
-sed "s%^_RITE_DESCRIPTIVE_RE='.*'$%_RITE_DESCRIPTIVE_RE='([unclosed'%" "$SCRIPT" > "$MUT_BADRE"
+BADCHECK="$SBX/bad-numref.sh"
+printf '#!/usr/bin/env bash\necho "ERROR: scanner exploded" >&2\nexit 2\n' > "$BADCHECK"
+awk -v bad="$BADCHECK" '
+  /^_RITE_NUMREF_CHECK=/ { print "_RITE_NUMREF_CHECK=\"" bad "\""; next }
+  { print }
+' "$SCRIPT" > "$MUT_BADRE"
 if assert_mutated "TC-23 MUTATION mutant 生成" "$MUT_BADRE"; then
   mut_out=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$MUT_BADRE" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null)
   mut_hits=$(printf '%s' "$mut_out" | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
@@ -519,8 +588,8 @@ cat > "$IDXSBX/.rite/wiki/index.md" <<'IDXEOF'
 
 | ページ | ドメイン | サマリー | 更新日 | 確信度 |
 |--------|---------|---------|--------|--------|
-| [PR #77 の教訓](pages/patterns/a.md) | patterns | 番号を持たない説明文 | 2026-01-01 | high |
-| [番号なし](pages/patterns/b.md) | patterns | Issue #88 系譜の継続 | 2026-01-01 | high |
+| [PR #770 の教訓](pages/patterns/a.md) | patterns | 番号を持たない説明文 | 2026-01-01 | high |
+| [番号なし](pages/patterns/b.md) | patterns | Issue #880 系譜の継続 | 2026-01-01 | high |
 | [grep -c || echo 0 の罠](pages/patterns/c.md) | patterns | 詳細は #1151 | 2026-01-01 | high |
 | [番号なし](pages/patterns/d.md) | patterns | 詳細は #1152 \| 補足あり | 2026-01-01 | high |
 IDXEOF
@@ -534,7 +603,7 @@ assert "TC-27 (T-01) descriptive_refs_pages は hits を持つ対象ファイル
 assert "TC-28 (T-03) サマリー列の番号を数える (通常 1 + 素パイプ行 1 + エスケープ行 1)" "3" "$(sed -n 's/^page=\.rite\/wiki\/index\.md; hits=//p' "$tbl_out")"
 # マスクが効いていれば列崩れは 0 件。どちらかを外すと該当行が skip されて値が立つ
 assert "TC-28 2 種のマスクが効いて列崩れ 0 件" "0" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$tbl_out")"
-onlylink=$(printf '# Wiki Index\n\n| ページ | ドメイン | サマリー | 更新日 | 確信度 |\n|---|---|---|---|---|\n| [PR #77 の教訓](pages/patterns/a.md) | patterns | 番号を持たない説明文 | 2026-01-01 | high |\n')
+onlylink=$(printf '# Wiki Index\n\n| ページ | ドメイン | サマリー | 更新日 | 確信度 |\n|---|---|---|---|---|\n| [PR #770 の教訓](pages/patterns/a.md) | patterns | 番号を持たない説明文 | 2026-01-01 | high |\n')
 printf '%s' "$onlylink" > "$IDXSBX/.rite/wiki/index.md"
 assert "TC-29 (T-02) リンクテキスト列のみの番号は hits に数えない" "1" "$(idx_hits "$(printf '%s\n' "$IDX_PAGE_REL" | idx_run 2>/dev/null)")"
 
@@ -549,7 +618,7 @@ assert "TC-29 (T-02) リンクテキスト列のみの番号は hits に数え�
 #     「パイプを含む行」= テーブル行と誤判定され、ヘッダー不在で skipped へ倒れる (hits が無言で減る)
 #   4 行目 (リンクテキストにコードスパン): summary 抽出の match をマスク前の行へ向ける変異。
 #     マスクで行長が縮むため RSTART がずれ、substr の切り出し位置が後ろへ飛んで番号を取り落とす
-printf '# Wiki Index\n\n* [Issue #99 を含むタイトル](pages/patterns/a.md) - 番号を持たない説明文\n* [番号なし](pages/patterns/b.md) - 詳細は #1151\n* [番号なし2](pages/patterns/c.md) - 詳細は #1234 | 補足あり\n* [`grep -c` の罠](pages/patterns/d.md) - 詳細は #1789\n' > "$IDXSBX/.rite/wiki/index.md"
+printf '# Wiki Index\n\n* [Issue #990 を含むタイトル](pages/patterns/a.md) - 番号を持たない説明文\n* [番号なし](pages/patterns/b.md) - 詳細は #1151\n* [番号なし2](pages/patterns/c.md) - 詳細は #1234 | 補足あり\n* [`grep -c` の罠](pages/patterns/d.md) - 詳細は #1789\n' > "$IDXSBX/.rite/wiki/index.md"
 bul_out="$IDXSBX/bul.out"; tmp_files+=("$bul_out")
 printf '%s\n' "$IDX_PAGE_REL" | idx_run > "$bul_out" 2>/dev/null
 assert "TC-30 OKF 箇条書き形式でもサマリーだけを検出する" "3" "$(sed -n 's/^page=\.rite\/wiki\/index\.md; hits=//p' "$bul_out")"
@@ -568,7 +637,7 @@ cat > "$IDXSBX/.rite/wiki/index.md" <<'IDXEOF'
 |---|---|---|---|---|
 | [番号なし](pages/patterns/a.md) | patterns | 詳細は #1151 | 2026-01-01 | high |
 
-* [PR #77 のタイトル](pages/patterns/b.md) - Issue #88 系譜の継続
+* [PR #770 のタイトル](pages/patterns/b.md) - Issue #880 系譜の継続
 IDXEOF
 mix_out="$IDXSBX/mix.out"; tmp_files+=("$mix_out")
 printf '%s\n' "$IDX_PAGE_REL" | idx_run > "$mix_out" 2>/dev/null
@@ -714,7 +783,9 @@ badref_out="$IDXSBX/badref.out"; tmp_files+=("$badref_out")
 badref_err="$IDXSBX/badref.err"; tmp_files+=("$badref_err")
 printf '' | ( cd "$IDXSBX" && bash "$SCRIPT" --branch-strategy separate_branch --wiki-branch no-such-branch-xyz --repo-root "$IDXSBX" ) > "$badref_out" 2>"$badref_err"
 assert "TC-41 壊れた wiki ref は io_error に倒れる (静かな 0 件にしない)" "io_error" "$(sed -n 's/^descriptive_refs_read_ok=//p' "$badref_out")"
-assert "TC-41 壊れた wiki ref は read_errors に計上される" "1" "$(sed -n 's/^descriptive_refs_read_errors=//p' "$badref_out")"
+# 自力 discovery の対象は index.md と log.md の 2 件。ref が引けないと存在を判定できないため
+# 両方が読出失敗として計上される (不在なら 0 件に落ちるので、この 2 は「不在に畳んでいない」証拠)。
+assert "TC-41 壊れた wiki ref は自力 discovery の 2 件を read_errors に計上する" "2" "$(sed -n 's/^descriptive_refs_read_errors=//p' "$badref_out")"
 assert_grep "TC-41 ref 解決失敗を WARNING で明示する" "$badref_err" 'wiki ブランチ ref .* を解決できません'
 
 # ---- TC-42: ヘッダー判定がエントリ行を飲み込まない ---------------------------
@@ -753,12 +824,17 @@ printf '' | idx_run > "$e5unit_out" 2>/dev/null
 assert "TC-43 index 側の E5 はサマリー単位で判定する (リンクテキストの TODO で行を落とさない)" "1" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$e5unit_out")"
 assert "TC-43 リンクテキスト TODO の行は抽出失敗でもない (skipped_rows 0)" "0" "$(sed -n 's/^descriptive_refs_skipped_rows=//p' "$e5unit_out")"
 
-# index 側の E4 マスクが「削除ではなく `_` 置換」であることを pin する (ページ側 TC-4 と対称)。
-# 削除するとキーワードと番号が隣接し、R1 が許容する空白 2 個以内に収まって**誤検出を製造する**。
-printf '# Wiki Index\n\n* [t](pages/patterns/a.md) - PR `x` #1234 で導入\n' > "$IDXSBX/.rite/wiki/index.md"
+# index 側の E4 マスクが効いていることを pin する (ページ側 TC-4 と対称)。委譲文法は番号
+# トークン単独を見るため、識別力を持つのはスパン**内側**の番号 — マスクを外すとこれが hit する。
+printf '# Wiki Index\n\n* [t](pages/patterns/a.md) - `詳細は #1234` を参照\n' > "$IDXSBX/.rite/wiki/index.md"
 e4mask_out="$IDXSBX/e4mask.out"; tmp_files+=("$e4mask_out")
 printf '' | idx_run > "$e4mask_out" 2>/dev/null
-assert "TC-43 index 側の span マスクがキーワードと番号を連結しない" "0" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$e4mask_out")"
+assert "TC-43 index 側のコードスパン内の番号は hit しない" "0" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$e4mask_out")"
+# マスクは削除ではなく `_` 置換。削除するとスパンの前後が連結して列構造が崩れる。
+printf '# Wiki Index\n\n* [t](pages/patterns/a.md) - PR `x` #1234 で導入\n' > "$IDXSBX/.rite/wiki/index.md"
+e4keep_out="$IDXSBX/e4keep.out"; tmp_files+=("$e4keep_out")
+printf '' | idx_run > "$e4keep_out" 2>/dev/null
+assert "TC-43 index 側の span の外にある番号はマスク後も残る" "1" "$(sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p' "$e4keep_out")"
 
 # ---- TC-44: 診断に外部入力の制御文字を素通ししない --------------------------
 # ref 解決失敗 WARNING は外部入力 (--wiki-branch) を埋め込む。中和しないと
@@ -815,26 +891,24 @@ else
   pass "TC-35 (T-09) same_branch の pages_list は pages/ 配下のみ (他カテゴリの入力が不変)"
 fi
 
-# ---- TC-22: helper 単独 pin（comment-journal P5 退役後） -------------------
-# R1 を helper の live コードから抽出し、空でないことと `_RITE_DESCRIPTIVE_RE`
-# 代入に含まれることを pin する。comment-journal との一致は要求しない
-# （P5 退役後、comment-journal は R1 を持たない）。
-# コメント行を落としてから抽出する。ヘッダコメントは語彙を `…` で省略した同形を持つため、
-# 素で grep するとコメント側の省略形を live regex と取り違える。
-vocab_of() { grep -v '^[[:space:]]*#' "$1" | grep -oE '\(\^\|\[\^A-Za-z\]\)\([^)]*\) \*#\[0-9\]\+\(\[\^0-9\]\|\$\)' | head -1; }
-helper_vocab=$(vocab_of "$SCRIPT")
-helper_assign=$(grep -v '^[[:space:]]*#' "$SCRIPT" | grep '_RITE_DESCRIPTIVE_RE=' | head -1)
-if [ -z "$helper_vocab" ]; then
-  fail "TC-22 helper から R1 regex を抽出できなかった (実装構造が変わった可能性)"
-elif [ -z "$helper_assign" ]; then
-  fail "TC-22 helper から _RITE_DESCRIPTIVE_RE 代入を抽出できなかった"
-elif printf '%s' "$helper_assign" | grep -F -q -- "$helper_vocab"; then
-  pass "TC-22 helper の R1 regex が _RITE_DESCRIPTIVE_RE 代入に含まれる"
+# ---- TC-22: helper が検出文法のコピーを持たないこと -------------------------
+# 文法の SoT は number-reference-check.sh。helper 側に番号パターンが再出現したら、
+# 二重管理が復活していて片方が黙って古くなる。コメント行を落とした live コードだけを見る
+# (ヘッダは委譲の説明で `#[0-9]` 相当の表記を持ちうる)。
+helper_live=$(grep -v '^[[:space:]]*#' "$SCRIPT")
+if printf '%s' "$helper_live" | grep -q '#\[0-9\]'; then
+  fail "TC-22 helper の live コードに番号パターンが再出現している (検出文法は number-reference-check.sh のみが持つ)
+$(printf '%s' "$helper_live" | grep -n '#\[0-9\]' | head -3)"
 else
-  fail "TC-22 helper の R1 regex が _RITE_DESCRIPTIVE_RE 代入と一致しない
-    R1    : $helper_vocab
-    assign: $helper_assign"
+  pass "TC-22 helper の live コードに番号パターンのコピーが無い"
 fi
+assert_not_grep "TC-22 旧 _RITE_DESCRIPTIVE_RE が残っていない" "$SCRIPT" '^_RITE_DESCRIPTIVE_RE='
+# 委譲先を名指しで呼んでいること。呼び出しが消えれば上の否定 pin だけでは全ページ 0 件の
+# silent-clean を素通しする (否定 pin と肯定 pin を対にする)。
+assert_grep "TC-22 委譲先 number-reference-check.sh を --stdin --label で呼ぶ" \
+  "$SCRIPT" 'bash "\$_RITE_NUMREF_CHECK" --stdin --label "\$page"'
+assert_grep "TC-22 委譲先が不在なら fail-fast する (0 件を clean と読ませない)" \
+  "$SCRIPT" 'ERROR: 検出文法の委譲先'
 
 # ---- TC-52: index.md のリンク regex が orphans.sh と literal 一致すること ----
 # helper のコメントが「`wiki-lint-orphans.sh` と同一定義にする」と宣言している共有 regex を
@@ -1028,14 +1102,15 @@ cp "$PLUGIN_ROOT/hooks/control-char-neutralize.sh" "$IDXSBX/control-char-neutral
   fail "TC-48 control-char-neutralize.sh の複製に失敗 (mutant の source が解決できず assert が無効化される)"
 }
 MUT_ARITY="$IDXSBX/mut/mutant-arity.sh"
-sed 's/print n+0, skipped+0, entries+0, linkrows+0/print n+0, skipped+0, entries+0/' "$SCRIPT" > "$MUT_ARITY"
+sed 's/printf "%d %d %d\\n", skipped+0, entries+0, linkrows+0 > diagfile/printf "%d %d\\n", skipped+0, entries+0 > diagfile/' "$SCRIPT" > "$MUT_ARITY"
+pin_delegate "$MUT_ARITY"
 if assert_mutated "TC-48 MUTATION mutant 生成" "$MUT_ARITY"; then
   printf '# Wiki Index\n\n* [t](pages/patterns/a.md) - 詳細は #1151\n' > "$IDXSBX/.rite/wiki/index.md"
   arity_err="$IDXSBX/arity.err"; tmp_files+=("$arity_err")
   arity_out=$(printf '%s\n' "$IDX_PAGE_REL" \
     | ( cd "$IDXSBX" && bash "$MUT_ARITY" --branch-strategy same_branch --repo-root "$IDXSBX" ) 2>"$arity_err")
-  assert "TC-48 戻り値が 4 値でなければ検出失敗として計上する" "1" "$(printf '%s' "$arity_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
-  assert_grep "TC-48 arity 不一致は WARNING で観測できる" "$arity_err" '検出アクションが 4 値を返しませんでした'
+  assert "TC-48 戻り値が 3 値でなければ検出失敗として計上する" "1" "$(printf '%s' "$arity_out" | sed -n 's/^descriptive_refs_read_errors=//p')"
+  assert_grep "TC-48 arity 不一致は WARNING で観測できる" "$arity_err" '検出アクションが 3 値を返しませんでした'
   assert "TC-48 arity 不一致の index.md 分は hits に混ぜない" "1" "$(idx_hits "$arity_out")"
 fi
 
