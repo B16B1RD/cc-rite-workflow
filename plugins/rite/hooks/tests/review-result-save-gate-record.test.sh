@@ -12,7 +12,7 @@ make_body() {
   jq -n --arg ts "$1" --arg top "$2" --arg gate "$3" --argjson include_gate "$4" '
     {schema_version:"1.1.0", pr_number:2563, timestamp:$ts, commit_sha:$top,
      verdict:"mergeable", reviewers:["code-quality-reviewer"], findings:[], guardrail_audit_log:[]}
-    + (if $include_gate then {measured_gate:{commit_sha:$gate}} else {} end)'
+    + (if $include_gate then {measured_gate:{commit_sha:$gate, applied_at:"2026-01-01T00:00:00Z", blocking:0, demoted:0, anchor_undetermined:0}} else {} end)'
 }
 
 run_case() {
@@ -34,6 +34,8 @@ run_case() {
 run_case missing_gate "$(make_body "$SENTINEL" abc1234 abc1234 false)" 1 gate_not_applied
 run_case mixed_cycle "$(make_body "$SENTINEL" abc1234 def5678 true)" 1 gate_record_mismatch
 run_case bad_timestamp "$(make_body '2026-01-01T00:00:00+09:00' abc1234 abc1234 true)" 1 timestamp_not_injected
+run_case incomplete_gate "$(make_body "$SENTINEL" abc1234 abc1234 true | jq 'del(.measured_gate.applied_at)')" 1 gate_not_applied
+run_case bad_gate_stats "$(make_body "$SENTINEL" abc1234 abc1234 true | jq '.measured_gate.blocking = -1')" 1 gate_not_applied
 run_case valid "$(make_body "$SENTINEL" abc1234 abc1234 true)" 0 ""
 
 print_summary "review-result-save gate record"

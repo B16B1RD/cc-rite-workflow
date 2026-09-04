@@ -259,6 +259,13 @@ if [ -d "$results_dir" ]; then
     if record=$(jq -r '[.commit_sha // "", .measured_gate.commit_sha // ""] | @tsv' "$f" 2>"${jq_err:-/dev/null}"); then
       sha=${record%%$'\t'*}
       gate_sha=${record#*$'\t'}
+      gate_valid=$(jq -r '
+        (.measured_gate | type == "object")
+        and (.measured_gate.applied_at | type == "string")
+        and (.measured_gate.applied_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"))
+        and ([.measured_gate.blocking, .measured_gate.demoted, .measured_gate.anchor_undetermined]
+             | all(type == "number" and . >= 0 and . == floor))
+      ' "$f" 2>/dev/null) || gate_valid=false
       sha=$(_scrub "$sha" | tr '[:upper:]' '[:lower:]')
       gate_sha=$(_scrub "$gate_sha" | tr '[:upper:]' '[:lower:]')
       if [ -z "$sha" ]; then
@@ -286,7 +293,7 @@ if [ -d "$results_dir" ]; then
     seen_count=$((seen_count + 1))
     if [ -n "$sha" ] && _sha_matches "$sha" "$commit_sha"; then
       payload_sha_found=1
-      if [ -n "${gate_sha:-}" ] && _sha_matches "$gate_sha" "$commit_sha"; then
+      if [ "${gate_valid:-false}" = "true" ] && [ -n "${gate_sha:-}" ] && _sha_matches "$gate_sha" "$commit_sha"; then
         found="$bn"
       fi
     fi

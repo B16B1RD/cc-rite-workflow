@@ -88,7 +88,7 @@ mk_json "$f" \
 run_gate "$f"
 if jq -e '.measured_gate
   | .commit_sha == "0123456789abcdef0123456789abcdef01234567"
-    and (.applied_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]+Z$"))
+    and (.applied_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"))
     and .blocking == 2 and .demoted == 1 and .anchor_undetermined == 1' "$f" >/dev/null; then
   pass "gated findings の commit / 適用時刻 / 統計を記録"
 else fail "gated measured_gate が不正: $(jq -c '.measured_gate' "$f")"; fi

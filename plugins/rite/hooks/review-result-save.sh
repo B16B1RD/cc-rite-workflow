@@ -589,9 +589,17 @@ if [ "$timestamp_placeholder_ok" != "true" ]; then
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=timestamp_not_injected" >&2
   exit 1
 fi
-if ! jq -e 'type == "object" and (.measured_gate | type == "object") and (.measured_gate.commit_sha | type == "string") and (.measured_gate.commit_sha | length > 0)' \
+if ! jq -e '
+    type == "object"
+    and (.measured_gate | type == "object")
+    and (.measured_gate.commit_sha | type == "string") and (.measured_gate.commit_sha | length > 0)
+    and (.measured_gate.applied_at | type == "string")
+    and (.measured_gate.applied_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"))
+    and ([.measured_gate.blocking, .measured_gate.demoted, .measured_gate.anchor_undetermined]
+         | all(type == "number" and . >= 0 and . == floor))
+  ' \
     "$json_tmp" >/dev/null 2>&1; then
-  echo "ERROR: review-result-save: measured_gate の適用記録がありません" >&2
+  echo "ERROR: review-result-save: measured_gate の完全な適用記録がありません" >&2
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=gate_not_applied" >&2
   exit 1
 fi

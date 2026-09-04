@@ -69,7 +69,13 @@ make_result() {
       pr_number: $pr,
       timestamp: "2026-01-01T00:00:00+09:00",
       commit_sha: $sha,
-      measured_gate: {commit_sha: $sha},
+      measured_gate: {
+        commit_sha: $sha,
+        applied_at: "2026-01-01T00:00:00Z",
+        blocking: 0,
+        demoted: 0,
+        anchor_undetermined: 0
+      },
       overall_assessment: "mergeable",
       findings: [],
       non_blocking_findings: []
@@ -496,7 +502,7 @@ MUT="$SANDBOX/mutant.sh"
 # 2 つの `_sha_matches` 呼び出しを落として「読めた JSON があれば found」にする変異。
 awk '
   /if \[ -n "\$sha" \] && _sha_matches "\$sha" "\$commit_sha"; then/ { print "    if [ -n \"$sha\" ]; then"; next }
-  /if \[ -n "\${gate_sha:-}" \] && _sha_matches "\$gate_sha" "\$commit_sha"; then/ { print "      if true; then"; next }
+  /if \[ "\${gate_valid:-false}" = "true" \] && \[ -n "\${gate_sha:-}" \] && _sha_matches "\$gate_sha" "\$commit_sha"; then/ { print "      if true; then"; next }
   { print }
 ' "$SCRIPT" > "$MUT"
 if ! cmp -s "$SCRIPT" "$MUT"; then

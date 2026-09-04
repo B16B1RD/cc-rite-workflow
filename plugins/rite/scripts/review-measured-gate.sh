@@ -424,7 +424,13 @@ def with_verification:
   }
 JQEOF
 
-applied_at=$(date -u +"%Y-%m-%dT%H:%M:%S.%NZ")
+# POSIX/BSD date does not support GNU %N. Seconds resolution is sufficient for
+# an execution receipt and remains valid RFC 3339 on every supported runner.
+applied_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ") || _fail timestamp_generation_failed "measured_gate.applied_at を生成できませんでした"
+case "$applied_at" in
+  ????-??-??T??:??:??Z) ;;
+  *) _fail timestamp_generation_failed "measured_gate.applied_at が RFC 3339 UTC 形式ではありません: $applied_at" ;;
+esac
 
 if ! result=$(jq \
   --arg applied_at "$applied_at" \
