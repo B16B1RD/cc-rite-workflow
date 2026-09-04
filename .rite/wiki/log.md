@@ -4,6 +4,7 @@
 * **Skip**: [20260904T035346Z-pr-2545.md](raw/reviews/20260904T035346Z-pr-2545.md) — detector-candidate: 残骸掃除が孤立読点と閉じ括弧を同一トークンとして落とす。追加行の括弧バランスは grep で強制できる
 * **Skip**: [20260904T035634Z-pr-2545.md](raw/fixes/20260904T035634Z-pr-2545.md) — detector-candidate: 閉じ括弧は復元し空振り前置詞は削除する。新しいガードは足さない。残骸トークンは grep で強制できる
 * **Skip**: [20260904T040258Z-pr-2545.md](raw/reviews/20260904T040258Z-pr-2545.md) — incremental re-review confirmation with no new heuristic
+* **lint:clean** — contradictions=0, stale=52, orphans=0, missing_concept=0, unregistered_raw=432, broken_refs=0
 * **Update**: [新規 lint helper は findings→stdout / summary→stderr(log()) の出力チャネル規約を兄弟 helper に揃える](pages/patterns/lint-helper-output-channel-convention.md) — raw/reviews/20260904T004239Z-pr-2544.md, raw/fixes/20260904T005810Z-pr-2544.md を統合
 * **Update**: [実測アンカーの repro に書くパイプは U+00A6 へ置換する](pages/patterns/verification-anchor-pipe-substitution.md) — raw/reviews/20260904T004239Z-pr-2544.md, raw/fixes/20260904T005810Z-pr-2544.md を統合
 * **Update**: [番号・識別子の grep に語境界を付けないと短い番号が長い番号の prefix として衝突する](pages/anti-patterns/identifier-grep-without-word-boundary-prefix-collision.md) — raw/reviews/20260904T004239Z-pr-2544.md, raw/fixes/20260904T005810Z-pr-2544.md を統合
