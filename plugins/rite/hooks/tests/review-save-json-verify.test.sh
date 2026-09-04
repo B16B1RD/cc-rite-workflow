@@ -69,6 +69,13 @@ make_result() {
       pr_number: $pr,
       timestamp: "2026-01-01T00:00:00+09:00",
       commit_sha: $sha,
+      measured_gate: {
+        commit_sha: $sha,
+        applied_at: "2026-01-01T00:00:00Z",
+        blocking: 0,
+        demoted: 0,
+        anchor_undetermined: 0
+      },
       overall_assessment: "mergeable",
       findings: [],
       non_blocking_findings: []
@@ -106,6 +113,17 @@ assert_not_grep "T-01d: 正常系で GATE_FAILED を出さない" "$ERR" 'REVIEW
 # marker 層の 3 arm すべてから呼ばれるため、helper が pass を名乗ると degraded 直後に pass が
 # 重なり caller の「degraded を pass と読み替えてはならない」規則と観測値が食い違う。
 assert_not_grep "T-01e: helper は REVIEW_SAVE_GATE=pass を名乗らない (層の混同防止)" "$ERR" 'REVIEW_SAVE_GATE=pass'
+
+# A mixed-cycle record must not pass merely because its top-level SHA is
+# current.  The gate evidence has to be from the same cycle in the same JSON.
+DIR_MIXED_CYCLE="$SANDBOX/mixed-cycle"; mkdir -p "$DIR_MIXED_CYCLE"
+make_result "$DIR_MIXED_CYCLE" 912 01 "bbbb222"
+jq '.measured_gate.commit_sha = "aaaa111"' "$DIR_MIXED_CYCLE/912-20260101000001.json" \
+  > "$DIR_MIXED_CYCLE/tmp" && mv "$DIR_MIXED_CYCLE/tmp" "$DIR_MIXED_CYCLE/912-20260101000001.json"
+run_verify --pr 912 --commit-sha "bbbb222" --results-dir "$DIR_MIXED_CYCLE" --since ""
+assert "T-01f: mixed-cycle gate record is rejected" "1" "$RC"
+assert_grep "T-01g: mixed-cycle reason is gate_record_mismatch" "$ERR" \
+  'REVIEW_SAVE_GATE_FAILED=1; reason=gate_record_mismatch'
 
 # The caller-provided anchor must also match the helper's own checkout HEAD.
 RC=0
@@ -179,7 +197,7 @@ make_result "$DIR_STALE" 902 02 "01d2222"
 
 run_verify --pr 902 --commit-sha "aaa9999" --results-dir "$DIR_STALE" --since ""
 assert "T-04a: 前 cycle の JSON だけでは rc=1" "1" "$RC"
-assert_grep "T-04b: reason は save_result_json_absent" "$ERR" 'reason=save_result_json_absent'
+assert_grep "T-04b: stale record は save_result_json_absent" "$ERR" 'reason=save_result_json_absent'
 
 # 別 PR の JSON は同一 dir にあっても現 run の候補に入らない (ファイル名 prefix で絞る契約)。
 make_result "$DIR_STALE" 903 03 "aaa9999"   # 期待値と**同一** SHA。異なる値だと PR prefix 絞りを外す変異を T-04c が捕まえない
@@ -238,7 +256,7 @@ echo "--- T-05: fail 時の診断 (AC-5) ---"
 
 run_verify --pr 902 --commit-sha "aaa9999" --results-dir "$DIR_STALE" --since ""
 assert_grep "T-05a: 期待した commit_sha を人間可読に出す" "$ERR" '期待した commit_sha'
-assert_grep "T-05b: 実在ファイルを basename + commit_sha で列挙する" "$ERR" '902-20260101000001\.json \(commit_sha=01d1111\)'
+assert_grep "T-05b: 実在ファイルを両 SHA 付きで列挙する" "$ERR" '902-20260101000001\.json \(commit_sha=01d1111, measured_gate.commit_sha=01d1111\)'
 assert_grep "T-05c: 実在件数を出す" "$ERR" '現 run に実在する JSON \(2 件\)'
 assert_grep "T-05d: 切り分けの指針を出す" "$ERR" '切り分け:'
 
@@ -463,6 +481,7 @@ echo "--- T-13: JSON 側の短すぎる commit_sha を通さない ---"
 DIR_SHORT="$SANDBOX/short"; mkdir -p "$DIR_SHORT"
 jq -n --argjson pr 950 '
   {schema_version:"1.1.0", pr_number:$pr, timestamp:"t", commit_sha:"a",
+   measured_gate:{commit_sha:"a"},
    overall_assessment:"mergeable", findings:[], non_blocking_findings:[]}' \
   > "$DIR_SHORT/950-20260101000001.json"
 
@@ -470,7 +489,7 @@ run_verify --pr 950 --commit-sha "abcdef0123456789abcdef0123456789abcdef01" \
   --results-dir "$DIR_SHORT" --since ""
 assert "T-13a: 1 文字の commit_sha は prefix 一致で通らない (rc=1)" "1" "$RC"
 assert_grep "T-13b: 短すぎる値は専用表示になる" "$ERR" '7 桁未満のため判定に使えません'
-assert_not_grep "T-13c: キー欠落と融合しない" "$ERR" 'commit_sha=<キー欠落または空>'
+assert_not_grep "T-13c: top-level キー欠落と融合しない" "$ERR" '\(commit_sha=<キー欠落または空>,'
 assert_not_grep "T-13d: jq 読取失敗と融合しない" "$ERR" 'commit_sha=<jq 読取失敗'
 
 # ---------------------------------------------------------------------------
@@ -480,9 +499,12 @@ assert_not_grep "T-13d: jq 読取失敗と融合しない" "$ERR" 'commit_sha=<j
 echo "--- T-07: 判定軸を有無へ退行させる変異の検出 (AC-7) ---"
 
 MUT="$SANDBOX/mutant.sh"
-# `_sha_matches` 呼び出しを落として「読めた JSON があれば found」にする変異。
-sed 's/if \[ -n "\$sha" \] && _sha_matches "\$sha" "\$commit_sha"; then/if [ -n "$sha" ]; then/' \
-  "$SCRIPT" > "$MUT"
+# 2 つの `_sha_matches` 呼び出しを落として「読めた JSON があれば found」にする変異。
+awk '
+  /if \[ -n "\$sha" \] && _sha_matches "\$sha" "\$commit_sha"; then/ { print "    if [ -n \"$sha\" ]; then"; next }
+  /if \[ "\${gate_valid:-false}" = "true" \] && \[ -n "\${gate_sha:-}" \] && _sha_matches "\$gate_sha" "\$commit_sha"; then/ { print "      if true; then"; next }
+  { print }
+' "$SCRIPT" > "$MUT"
 if ! cmp -s "$SCRIPT" "$MUT"; then
   pass "T-07a: 変異を適用できる (commit SHA 一致判定が想定の形で存在する)"
   RC=0
