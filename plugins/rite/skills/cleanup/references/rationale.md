@@ -43,7 +43,7 @@ standalone closing Issue が自分自身や無関係 Issue を親と誤検出す
 
 PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし）はファイルとして存在する。
 存在検査だけだと stub を採用してしまい Issue コメント側 fallback が発火しない（存在と成功を同一視
-しないため。
+しないため）。
 
 ## cleanup-source-label
 
