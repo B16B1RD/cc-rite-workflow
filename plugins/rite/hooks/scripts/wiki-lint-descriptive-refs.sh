@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # wiki-lint-descriptive-refs.sh
 #
-# Count descriptive Issue/PR number references left in Wiki page bodies, for
+# Count Issue/PR number references left in the Wiki's persistent artifacts, for
 # wiki-lint ステップ 7.5 (informational). The Wiki is a place for Why prose, not a
 # holder of numbers (Comment Best Practices SoT 適用スコープ includes Wiki pages),
-# so a body carrying 「PR #N は…」「詳細は #N」「(refs #N)」 is surfaced as a finding.
+# so a body carrying a 3-4 digit hash-number token — with a reference keyword or not —
+# is surfaced as a finding.
 #
-# rationale (why a helper, why normalization, why not `\b`, exclusion measurements):
+# rationale (why a helper, why the grammar is delegated, scan scope, exclusion measurements):
 #   skills/wiki-lint/references/descriptive-refs-rationale.md#exclusions
 #
 # Symmetry note: this is the ステップ 7.5 counterpart to ステップ 6.0's
@@ -22,11 +23,10 @@
 #   finding lines. A copy of the regex here would drift from the SoT the moment either
 #   side changed, and this script's whole job is to measure the Wiki against that SoT.
 #
-#   Consequences of delegating, spelled out because they change what gets counted:
-#     - a bare hash-number token is now detected (the previous local grammar required a
-#       reference keyword next to it, so it read past bare tokens)
-#     - 1-2 digit and 5+ digit hash-number tokens are NOT detected; the SoT scopes the
-#       token to 3-4 digits. Wiki prose legitimately carries the short and long forms
+#   Properties of the delegated grammar, spelled out because they define what gets counted:
+#     - a bare hash-number token counts; a reference keyword next to it is not required
+#     - 1-2 digit and 5+ digit hash-number tokens do NOT count; the SoT scopes the token
+#       to 3-4 digits. Wiki prose legitimately carries the short and long forms
 #       (upstream tracker ids, enumerated conditions), and they stay
 #     - `drift-check-ignore` on a line suppresses that line, in Wiki bodies too. Wiki
 #       pages MUST NOT use that marker: it is an escape hatch for the detector's own
@@ -118,7 +118,9 @@
 # Exit codes:
 #   0  正常 (読出失敗・検出失敗は descriptive_refs_read_errors が件数、全件失敗時のみ read_ok=io_error)
 #   1  fail-fast (placeholder residue / unknown branch_strategy)
-#   2  invocation error (引数欠落 / repo-root cd 失敗)
+#   2  invocation error / 実行環境エラー (引数欠落 / repo-root cd 失敗 / 委譲先不在 /
+#      tempfile 確保失敗)。この経路では marker block を 1 行も出さないため、呼出側 (wiki-lint
+#      ステップ 7.5) は marker 未受信として `skipped_helper_missing` に畳む
 #
 # NOTE on shell flags: the per-page read and the per-page detection both capture `$?`
 # explicitly (`page_rc` / `hits_rc`) so either failure is isolated as a skipped page and
@@ -129,8 +131,22 @@
 # indistinguishable from a clean page. `set -u` is not set either; every
 # variable is assigned before first use, so it would add nothing.
 
+# スクリプト自身の位置は `cd "$REPO_ROOT"` より前に一度だけ確定する。cd の後で
+# `$(dirname "${BASH_SOURCE[0]}")` を評価すると、相対パスで起動されたときに解決先が cwd 相対へ
+# ずれる。ずれた先にたまたま同名ファイルがあれば別の文法を無言で使うことになる。
+_RITE_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # shellcheck source=../control-char-neutralize.sh
-source "$(dirname "${BASH_SOURCE[0]}")/../control-char-neutralize.sh"
+source "$_RITE_SCRIPT_DIR/../control-char-neutralize.sh"
+
+# 検出文法の SoT。本ファイルは正規表現のコピーを持たない。委譲先は同ディレクトリに置かれる契約
+# （両者とも hooks/scripts/ 配下）。不在は fail-fast する — 委譲先が引けないまま続けると全ページが
+# 0 件になり、それが「clean」として通ってしまう。
+_RITE_NUMREF_CHECK="$_RITE_SCRIPT_DIR/number-reference-check.sh"
+if [ ! -f "$_RITE_NUMREF_CHECK" ]; then
+  echo "ERROR: 検出文法の委譲先 '$_RITE_NUMREF_CHECK' が見つかりません (本 helper は文法のコピーを持たないため続行できません)" >&2
+  exit 2
+fi
 
 branch_strategy=""
 wiki_branch=""
@@ -161,7 +177,8 @@ Options:
 Exit codes:
   0  Normal (read failures expressed via descriptive_refs_read_ok)
   1  Fail-fast (placeholder residue / unknown branch_strategy)
-  2  Invocation error
+  2  Invocation error / environment failure (missing args, repo-root cd, missing
+     delegate, tempfile allocation)
 EOF
 }
 
@@ -462,7 +479,6 @@ END {
   if (in_comment || infence) {
     printf "WARNING: index.md: %sが閉じられないままファイル終端に達しました (以降の行が全て走査対象から落ちています)。検出失敗として計上します\n", (in_comment ? "HTML コメント" : "コードフェンス") > "/dev/stderr"
     printf "%d %d %d\n", 0, 0, 1 > diagfile
-    close(diagfile)
     exit
   }
   if (skipped > 0) {
@@ -474,18 +490,8 @@ END {
   }
   for (i = 1; i <= nbuf; i++) print buf[i]
   printf "%d %d %d\n", skipped+0, entries+0, linkrows+0 > diagfile
-  close(diagfile)
 }
 '
-
-# 検出文法の SoT は number-reference-check.sh。本ファイルは正規表現のコピーを持たない。
-# helper は同ディレクトリに置かれる契約 (両者とも hooks/scripts/ 配下)。不在は fail-fast する:
-# 委譲先が引けないまま続けると全ページが 0 件になり、それが「clean」として通ってしまう。
-_RITE_NUMREF_CHECK="$(dirname "${BASH_SOURCE[0]}")/number-reference-check.sh"
-if [ ! -f "$_RITE_NUMREF_CHECK" ]; then
-  echo "ERROR: 検出文法の委譲先 '$_RITE_NUMREF_CHECK' が見つかりません (本 helper は文法のコピーを持たないため続行できません)" >&2
-  exit 2
-fi
 
 n_descriptive_refs=0
 n_pages_with_hits=0
@@ -556,7 +562,8 @@ while IFS= read -r page; do
   # 2 段を **別コマンドに分ける**。1 本のパイプにすると、その rc を受け取る唯一の場所が
   # command substitution の外側になり PIPESTATUS が届かない (assignment 自身の rc で上書きされる)。
   # 段ごとに rc を持てば「awk が落ちた」と「委譲先が hit を返した」が別の値として残る。
-  : > "$body_file"
+  # `body_file` は下の `> "$body_file"` がリダイレクト設定時点で truncate するため明示 truncate は不要
+  # (`diag_file` は awk が index.md 以外では書かないので前 cycle の値が残る — そちらは上で truncate する)。
   printf '%s\n' "$page_content" \
     | awk -v diagfile="$diag_file" "${_RITE_BODY_FILTER}${_action}" > "$body_file"; awk_rc=$?
   findings=""
@@ -580,6 +587,15 @@ while IFS= read -r page; do
   fi
   # hits は委譲先が emit した findings の行数。rc は 0/1 の二値で件数ではないため使えない。
   if [ -z "$findings" ]; then hits=0; else hits=$(printf '%s\n' "$findings" | grep -c .); fi
+  # rc と件数は独立に決まるので、両者の矛盾を検出失敗として扱う。委譲先が hit を主張しながら
+  # findings を 1 行も出さない状態 (計数経路の破損 — たとえば findings の出力先が変わる) は、
+  # ここで捕まえないと「実測済みの 0 件」として read_ok=true のまま完了レポートに載る。
+  # 本 helper が塞ぐ対象そのものの silent-0 なので、既存の read_errors 経路へ合流させる。
+  if [ "$hits_rc" -eq 0 ] && [ "${check_rc:-0}" -eq 1 ] && [ "$hits" -eq 0 ]; then
+    page_disp=$(printf '%s' "$page" | neutralize_ctrl)
+    echo "WARNING: ページ ${page_disp} の委譲先が hit (rc=1) を返したのに findings が空です (計数経路の破損)" >&2
+    hits_rc=1
+  fi
   if [ "$page" = "$_RITE_INDEX_PATH" ] && [ "$hits_rc" -eq 0 ]; then
     # index.md の終端アクションは `skipped entries linkrows` の 3 値を diagfile へ書く
     # (skipped = エントリ行と判定したがサマリーを抽出できなかった行数。部分欠損を stdout 契約へ

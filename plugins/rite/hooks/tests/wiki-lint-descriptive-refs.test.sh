@@ -213,8 +213,11 @@ awk '
   infilter { next }
   { print }
 ' "$SCRIPT" > "$MUT_NOFILTER"
-pin_delegate "$MUT_NOFILTER"
+# `pin_delegate` は必ず 1 行を書き換えるため、`assert_mutated` より先に呼ぶと
+# 「変異セレクタが何にも一致しなかった」を検出する vacuity ガードが常に通ってしまう。
+# 変異の有無を先に測ってから委譲先を固定する。
 if assert_mutated "TC-16 MUTATION mutant 生成" "$MUT_NOFILTER"; then
+  pin_delegate "$MUT_NOFILTER"
   mut_hits=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$MUT_NOFILTER" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
   if [ "${mut_hits:-0}" -gt "$hits" ] 2>/dev/null; then
     pass "TC-16 MUTATION 除外フィルタ除去で hits が増える (${hits} → ${mut_hits}; 除外に識別力あり)"
@@ -412,16 +415,78 @@ assert_grep "TC-18 SKILL.md が委譲先を名指ししている" "$LINT_MD" '�
 
 # ---- TC-18b (AC-6): wiki-ingest が commit 前に検査するレールを持つ -----------
 # wiki-lint は informational (n_warnings 不加算) で書き込みを止めない。混入を止めるゲートは
-# 書き込み側にしか置けないため、ingest の commit 前にあることを静的に pin する。
+# 書き込み側にしか置けないため、ingest の commit 前にあることを pin する。
+# 静的 grep だけでは heredoc 終端 / case の esac / fi が壊れる変異を素通しするので、TC-53 と同型に
+# ブロックを抽出して `bash -n` にかけ、placeholder を実値へ置換して実際に走らせる。
 INGEST_MD_RAIL="$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md"
 assert_grep "TC-18b (AC-6) ingest が commit 前検査ステップを持つ" "$INGEST_MD_RAIL" '^### 5\.0\.n commit 前の番号参照検査'
-assert_grep "TC-18b (AC-6) 検査は number-reference-check.sh へ委譲する" "$INGEST_MD_RAIL" 'bash "\$check" --stdin --label'
-assert_grep "TC-18b (AC-6) 検査対象に log.md / index.md の追記行を含む" "$INGEST_MD_RAIL" 'ステップ 7 で `log\.md` へ追記する bullet'
-assert_grep "TC-18b (AC-6) hit は書き直してから commit する (書き直せなければ停止)" "$INGEST_MD_RAIL" '再検査で `clean` にできない対象がある場合は commit せず停止'
-assert_grep "TC-18b (AC-6) helper 実行失敗は非ブロッキングで継続する" "$INGEST_MD_RAIL" 'WIKI_INGEST_NUMREF=error'
-# commit ステップ側が検査を前提として名指ししていること (レールを足しただけで誰も通らない形を弾く)
-assert_grep "TC-18b (AC-6) separate_branch の commit が検査を前提にしている" "$INGEST_MD_RAIL" 'ステップ 5\.0\.n の検査を通した後'
-assert_grep "TC-18b (AC-6) same_branch の commit が検査を前提にしている" "$INGEST_MD_RAIL" 'ステップ 5\.0\.n の検査の後'
+assert_grep "TC-18b (AC-6) 検査は number-reference-check.sh へ委譲する" "$INGEST_MD_RAIL" 'bash "\$check" --repo-root "\$numref_tree" --diff HEAD --quiet'
+assert_grep "TC-18b (AC-6) 検査対象は未 commit の Wiki 差分全体" "$INGEST_MD_RAIL" '検査対象は「未 commit の Wiki 差分」全体'
+assert_grep "TC-18b (AC-6) 対象もラベルも LLM が選ばない" "$INGEST_MD_RAIL" '対象の列挙もラベルも LLM が選ばない'
+assert_grep "TC-18b (AC-6) hit は書き直してから再検査する (直せなければ停止)" "$INGEST_MD_RAIL" '再実行で `clean` にできなければ commit せず停止'
+assert_grep "TC-18b (AC-6) index.md の行は Edit せず helper を呼び直す" "$INGEST_MD_RAIL" '`index\.md` の行は Edit しない'
+assert_grep "TC-18b (AC-6) helper 不在は fail-loud で停止する" "$INGEST_MD_RAIL" 'WIKI_INGEST_NUMREF=error; reason=helper_missing'
+assert_grep "TC-18b (AC-6) placeholder 残留は fail-loud で停止する" "$INGEST_MD_RAIL" 'WIKI_INGEST_NUMREF=error; reason=placeholder_residue'
+# commit ステップ側が marker を機械的に読むゲートを持つこと
+# (散文で名指しするだけでは 5.0.n を飛ばしても commit が成功してしまう)
+assert "TC-18b (AC-6) commit ステップが numref_verdict ゲートを 2 箇所 (5.1 / 5.2) に持つ" "2" \
+  "$(grep -c 'numref_verdict="{numref_verdict}"' "$INGEST_MD_RAIL")"
+assert "TC-18b (AC-6) ゲートは hit を commit させない (5.1 / 5.2 の 2 箇所)" "2" \
+  "$(grep -c '番号参照が残ったままです。commit しません' "$INGEST_MD_RAIL")"
+
+# --- 5.0.n ブロックの実行検証 (TC-53 と同型: 抽出 → bash -n → placeholder 置換して実行) ---
+p18b_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-tc18b-XXXXXX")
+tmp_files+=("$p18b_dir/block.sh" "$p18b_dir/hit.out" "$p18b_dir/clean.out" "$p18b_dir/residue.out")
+# 5.0.n 見出し直後の最初の fenced bash ブロックを取り出す
+awk '
+  /^### 5\.0\.n commit 前の番号参照検査/ { insec=1; next }
+  insec && /^```bash$/ { infence=1; next }
+  infence && /^```$/ { exit }
+  infence { print }
+' "$INGEST_MD_RAIL" > "$p18b_dir/block.sh"
+if [ ! -s "$p18b_dir/block.sh" ]; then
+  fail "TC-18b (AC-6) 5.0.n の bash ブロックを抽出できなかった (見出し / fence の drift)"
+else
+  if bash -n "$p18b_dir/block.sh" 2>/dev/null; then
+    pass "TC-18b (AC-6) 5.0.n の bash ブロックが構文的に妥当"
+  else
+    fail "TC-18b (AC-6) 5.0.n の bash ブロックが bash -n を通らない"
+  fi
+  # placeholder を実値へ置換して 3 経路 (hit / clean / placeholder 残留) を実行する。
+  # 走査対象は使い捨ての git リポジトリで、番号を含む / 含まない未 commit 差分を作って与える。
+  p18b_render() {
+    # $1 = numref_tree の実値 (空文字なら placeholder を残す)
+    if [ -z "$1" ]; then
+      sed "s#{plugin_root}#$PLUGIN_ROOT#g" "$p18b_dir/block.sh"
+    else
+      sed -e "s#{plugin_root}#$PLUGIN_ROOT#g" -e "s#{numref_tree}#$1#g" "$p18b_dir/block.sh"
+    fi
+  }
+  p18b_tree=$(mktemp -d "${TMPDIR:-/tmp}/rite-tc18b-tree-XXXXXX")
+  (
+    cd "$p18b_tree" || exit 1
+    git init -q . >/dev/null 2>&1
+    git config user.email t@e.st; git config user.name t
+    mkdir -p .rite/wiki/pages/x
+    printf '# t\n\n番号なしの本文\n' > .rite/wiki/pages/x/p.md
+    git add -A >/dev/null 2>&1
+    git commit -qm init >/dev/null 2>&1
+  )
+  # (1) clean: 未 commit 差分に番号が無い
+  (cd "$p18b_tree" && printf '# t\n\n番号なしの本文\n追記した番号なし行\n' > .rite/wiki/pages/x/p.md)
+  p18b_render "$p18b_tree" | bash > "$p18b_dir/clean.out" 2>&1
+  assert_grep "TC-18b (AC-6) 番号なしの差分は clean を返す" "$p18b_dir/clean.out" 'WIKI_INGEST_NUMREF=clean'
+  # (2) hit: 未 commit 差分に 3-4 桁の番号がある
+  (cd "$p18b_tree" && printf '# t\n\n番号なしの本文\nPR #1300 を参照\n' > .rite/wiki/pages/x/p.md)
+  p18b_render "$p18b_tree" | bash > "$p18b_dir/hit.out" 2>&1
+  assert_grep "TC-18b (AC-6) 番号を含む差分は hit を返す" "$p18b_dir/hit.out" 'WIKI_INGEST_NUMREF=hit'
+  # (3) placeholder 残留: 未置換のまま走らせても clean にならず fail-loud で止まる
+  p18b_render "" | bash > "$p18b_dir/residue.out" 2>&1
+  assert_not_grep "TC-18b (AC-6) placeholder 未置換は clean を名乗らない" "$p18b_dir/residue.out" 'WIKI_INGEST_NUMREF=clean'
+  assert_grep "TC-18b (AC-6) placeholder 未置換は placeholder_residue で止まる" "$p18b_dir/residue.out" 'reason=placeholder_residue'
+  rm -rf "$p18b_tree"
+fi
+rm -rf "$p18b_dir"
 assert_grep "TC-18 helper 不在 fallback の read_ok" "$LINT_MD" 'descriptive_refs_read_ok=skipped_helper_missing'
 assert_grep "TC-18 helper 不在 fallback が read_errors=0 を出す" "$LINT_MD" 'descriptive_refs_read_errors=0'
 # stdout 契約は本 PR で 5 フィールドになった。fallback が片方だけ追随しないと
@@ -1055,13 +1120,13 @@ unc_a=$(unc_run '# Wiki Index
 assert "TC-51 (a) 未閉鎖 HTML コメントは検出失敗として read_errors に計上する" "1" "$(printf '%s' "$unc_a" | sed -n 's/^descriptive_refs_read_errors=//p')"
 assert_grep "TC-51 (a) 未閉鎖は専用 WARNING で原因を名指しする" "$unc_err" 'HTML コメントが閉じられないままファイル終端'
 assert "TC-51 (a) 落ちた index.md 分は hits に混ぜない (本文側の 1 件のみ)" "1" "$(idx_hits "$unc_a")"
-# END の `exit` を pin する。`exit` を外すと 4 値 print が 2 回走って awk が 8 フィールドを返し、
-# 呼出側は arity 検査に捕まる。stdout も read_errors も同値のままなので上の 3 assert は緑を維持し、
-# 変わるのは診断だけ — 検出失敗ガードの WARNING が消え、作者が破っていない arity 契約を名指しする
-# 2 行に化ける。原因を名指しする WARNING を価値として掲げる本 TC 群としては、その診断連鎖の後半も
-# pin する必要がある。
+# END の `exit` を pin する。`exit` を外すと診断の printf が 2 回走り、2 回目が 1 回目に追記されて
+# 診断ファイルが 6 フィールドになる。呼出側は arity 検査 (3 値ちょうど) に捕まり、検出失敗ガードの
+# WARNING の代わりに arity 契約違反を名指しする診断へ化ける。stdout も read_errors も同値のままなので
+# 上の 3 assert は緑を維持し、変わるのは診断だけ。原因を名指しする WARNING を価値として掲げる本 TC 群
+# としては、その診断連鎖の後半も pin する必要がある。
 assert_grep "TC-51 (a) 検出失敗ガードの WARNING まで到達する (END の exit を pin)" "$unc_err" 'エントリ行を 1 件も認識できませんでした'
-assert_not_grep "TC-51 (a) arity 契約違反として誤診されない" "$unc_err" '4 値を返しませんでした'
+assert_not_grep "TC-51 (a) arity 契約違反として誤診されない" "$unc_err" '3 値を返しませんでした'
 
 # (b) 対照: 閉じていれば通常どおり数える (ラッチ検査が過剰発火していないこと)
 unc_b=$(unc_run '# Wiki Index
@@ -1107,7 +1172,7 @@ unc_e=$(unc_run '# Wiki Index
 assert "TC-51 (e) 未閉鎖コードフェンスも検出失敗として計上する" "1" "$(printf '%s' "$unc_e" | sed -n 's/^descriptive_refs_read_errors=//p')"
 assert_grep "TC-51 (e) フェンス側は原因をフェンスと名指しする" "$unc_err" 'コードフェンスが閉じられないままファイル終端'
 
-# ---- TC-48: index.md 終端アクションの戻り値 arity (4 値) を pin する ---------
+# ---- TC-48: index.md 終端アクションの診断 arity (3 値) を pin する ---------
 # 終端アクションのフィールドを減らす変異は、フィールド数がずれたまま個別値の case サニタイザが
 # 未束縛を 0 / -1 へ正規化するため、TC-47 の検出失敗ガードを無言で殺す。
 # 位置依存パースの規約 (`/rite:wiki-query positional-parse-row-count-guard`) が要求する
@@ -1120,8 +1185,9 @@ cp "$PLUGIN_ROOT/hooks/control-char-neutralize.sh" "$IDXSBX/control-char-neutral
 }
 MUT_ARITY="$IDXSBX/mut/mutant-arity.sh"
 sed 's/printf "%d %d %d\\n", skipped+0, entries+0, linkrows+0 > diagfile/printf "%d %d\\n", skipped+0, entries+0 > diagfile/' "$SCRIPT" > "$MUT_ARITY"
-pin_delegate "$MUT_ARITY"
+# pin_delegate は TC-16 と同じ理由で assert_mutated の後に呼ぶ (vacuity ガードを潰さない)
 if assert_mutated "TC-48 MUTATION mutant 生成" "$MUT_ARITY"; then
+  pin_delegate "$MUT_ARITY"
   printf '# Wiki Index\n\n* [t](pages/patterns/a.md) - 詳細は #1151\n' > "$IDXSBX/.rite/wiki/index.md"
   arity_err="$IDXSBX/arity.err"; tmp_files+=("$arity_err")
   arity_out=$(printf '%s\n' "$IDX_PAGE_REL" \

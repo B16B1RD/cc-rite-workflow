@@ -523,50 +523,78 @@ esac
 
 ### 5.0.n commit 前の番号参照検査 (両戦略共通)
 
-ステップ 5.0 手順 1-7 の Write/Edit を終えたら、**commit の前に**書いた内容を検査する。Raw Source の本文には番号が載っており（raw は出典なので正しい）、そこから読解して書く過程で番号が Wiki 側へ転記される。ここで止めないと、混入は ingest のたびに増える一方で、ステップ 8 の wiki-lint は informational なので事後にも止まらない。
+ステップ 5.0 手順 1-7 の Write/Edit を終えたら、**commit の前に**書いた分を検査する。Raw Source の本文には番号が載っており（raw は出典なので正しい）、そこから読解して書く過程で番号が Wiki 側へ転記される。ここで止めないと混入は ingest のたびに増える。
+rationale: references/rationale.md#numref-precommit
 
-**検査対象は書いた全部**: 新規 / 更新したページ、ステップ 6 で `index.md` へ追記するエントリ行、ステップ 7 で `log.md` へ追記する bullet。ページだけを見ると、`{skip_reason}` や Update の説明文に載る番号が素通りする。
+**検査対象は「未 commit の Wiki 差分」全体**。ページだけでなく `index.md` のエントリ行も `log.md` の bullet も同じ 1 回で通る（`{skip_reason}` や Update の説明文に載る番号を素通りさせないため）。**対象の列挙もラベルも LLM が選ばない** — `git diff HEAD` が未 commit の追加行だけを渡し、パスは git が返す実体をそのまま使う。ステップ 5.0 の時点でコード変更は commit 済みなので、この差分は ingest 自身の書き込みと一致する。
 
-`{plugin_root}` を解決し、書いた対象ごとに検査する（`{target_path}` は検査するファイルの repo 相対パス。追記行は書き込み後のファイル全体ではなく**追記した行だけ**を stdin に流す — 過去の未 retrofit 行で毎回停止しないため）:
+`{numref_tree}` は `separate_branch` では `{wiki_worktree_abs}`（ステップ 1.3 の絶対パス）、`same_branch` では dev ツリーの repo root を literal substitute する。
 
 ```bash
 plugin_root="{plugin_root}"
+numref_tree="{numref_tree}"
+# 残留検査はブレースの**形状**で行う（`"{"*"}"`）。placeholder 名そのものをパターンに書くと、
+# substitute がパターン側まで書き換えて検査が自分を無効化する。sibling の同型 gate と同じ形。
+for _v in "$plugin_root" "$numref_tree"; do
+  case "$_v" in
+    ""|"{"*"}")
+      echo "ERROR: ステップ 5.0.n の placeholder が literal substitute されていません (plugin_root='$plugin_root' numref_tree='$numref_tree')" >&2
+      echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=placeholder_residue" >&2
+      exit 1
+      ;;
+  esac
+done
 check="$plugin_root/hooks/scripts/number-reference-check.sh"
 if [ ! -f "$check" ]; then
-  echo "WARNING: number-reference-check.sh が見つからないため commit 前検査をスキップします (path='$check')" >&2
-  echo "[CONTEXT] WIKI_INGEST_NUMREF=skipped; reason=helper-missing"
-else
-  set +e
-  bash "$check" --stdin --label "{target_path}" --quiet <<'NUMREF_EOF'
-{written_content}
-NUMREF_EOF
-  numref_rc=$?
-  set -e
-  case "$numref_rc" in
-    0) echo "[CONTEXT] WIKI_INGEST_NUMREF=clean; target={target_path}" ;;
-    1) echo "[CONTEXT] WIKI_INGEST_NUMREF=hit; target={target_path}" ;;
-    *) echo "WARNING: number-reference-check.sh の実行に失敗しました (rc=$numref_rc)。検査結果は不明です" >&2
-       echo "[CONTEXT] WIKI_INGEST_NUMREF=error; target={target_path}; rc=$numref_rc" ;;
-  esac
+  echo "ERROR: number-reference-check.sh が見つかりません (path='$check')。検査せずに commit すると番号混入を止められないため中止します" >&2
+  echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=helper_missing" >&2
+  exit 1
 fi
+numref_rc=0
+bash "$check" --repo-root "$numref_tree" --diff HEAD --quiet || numref_rc=$?
+case "$numref_rc" in
+  0) echo "[CONTEXT] WIKI_INGEST_NUMREF=clean" ;;
+  1) echo "[CONTEXT] WIKI_INGEST_NUMREF=hit" ;;
+  *)
+    echo "ERROR: number-reference-check.sh の実行に失敗しました (rc=$numref_rc)。検査結果が不明なまま commit しません" >&2
+    echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=check_failed; rc=$numref_rc" >&2
+    exit 1
+    ;;
+esac
 ```
 
 | `WIKI_INGEST_NUMREF` | アクション |
 |---|---|
-| `clean` | 次の対象へ。全対象が `clean` / `skipped` になったらステップ 5.1 / 5.2 へ進む |
-| `hit` | stdout の `label:line: 内容` が指す行を **Edit で書き直してから**再検査する。書き直しは番号を落として現在形の Why にすること — 番号を消した跡に経緯文を置き換えない。ソース bullet は説明だけを表示テキストにし、説明が無ければ種別語（「レビュー結果」「fix 結果」「close retrospective」）にする（リンク先パスは変えない）。**再検査で `clean` にできない対象がある場合は commit せず停止**し、残った行と `/rite:recover` を案内する |
-| `skipped` / `error` | 検査できていないので `clean` とは扱わない。WARNING を出したまま commit へ進む（helper 不在・実行失敗で ingest 全体を止めない）。ステップ 9 の完了レポートに検査未実施として載せる |
+| `clean` | ステップ 5.1 / 5.2 へ進む |
+| `hit` | stdout の `file:line: 内容` が指す行を書き直してから**本ステップを再実行**する。書き直しは番号を落として現在形の Why にすること — 番号を消した跡に経緯文を置き換えない。ソース bullet は説明だけを表示テキストにし、説明が無ければ種別語（「レビュー結果」「fix 結果」「close retrospective」）にする（リンク先パスは変えない）。**`index.md` の行は Edit しない** — ステップ 6 の `wiki-index-update.sh` を修正した `--description` で呼び直す（index.md への書き換えは helper が atomic に行う契約のため）。再実行で `clean` にできなければ commit せず停止し、残った行と `/rite:recover` を案内する |
+| `error` | bash が `exit 1` で停止済み。commit しない |
 
-> 番号の定義は `number-reference-check.sh` が持つ（3-4 桁の番号トークン）。本ステップは文法を書き下さない。1-2 桁 / 5 桁以上（上流トラッカ id 等）は対象外で、書いてよい。
+> 番号の定義は `number-reference-check.sh` が持つ（3-4 桁の番号トークン）。本ステップは文法を書き下さない。1-2 桁 / 5 桁以上（上流トラッカ id 等）は**本検査の検出対象外**であり、検出されないことは規則上書いてよいことを意味しない（規則の SoT は `SCHEMA.md` の「番号ではなく Why 散文」）。
 
 ### 5.1 separate_branch 戦略 (worktree ベース)
 
-ステップ 5.0 手順 1-7 を Write/Edit し、ステップ 5.0.n の検査を通した後、以下で worktree 内の変更を commit する。**push はここでは行わない**。commit は `wiki-worktree-commit.sh --commit-only` に委譲する:
+ステップ 5.0 手順 1-7 を Write/Edit し、ステップ 5.0.n の検査を通した後、以下で worktree 内の変更を commit する。**下の bash 冒頭のゲートが `{numref_verdict}` を読む** — 値はステップ 5.0.n の `[CONTEXT] WIKI_INGEST_NUMREF=` の最新値（`clean` / `hit`）を literal substitute する。散文で 5.0.n を名指しするだけでは、5.0.n を飛ばしても commit が成功してしまう。**push はここでは行わない**。commit は `wiki-worktree-commit.sh --commit-only` に委譲する:
 rationale: references/rationale.md#push-defer-1941
 
 ```bash
 # ステップ 5.2 と対称に set -euo pipefail を宣言する (strict mode)
 set -euo pipefail
+
+# ステップ 5.0.n の判定を機械的に受ける。`{numref_verdict}` は同ステップの
+# [CONTEXT] WIKI_INGEST_NUMREF= の最新値を literal substitute する。
+# 未置換 / 未知値 / hit のいずれも commit しない（検査を飛ばした実行を素通しさせないため）。
+numref_verdict="{numref_verdict}"
+case "$numref_verdict" in
+  clean) ;;
+  hit)
+    echo "ERROR: 番号参照が残ったままです。commit しません (ステップ 5.0.n の hit 行を書き直してから再実行してください)" >&2
+    exit 1
+    ;;
+  *)
+    echo "ERROR: ステップ 5.0.n の判定を受け取れていません (numref_verdict='$numref_verdict')。commit しません" >&2
+    exit 1
+    ;;
+esac
 
 branch_strategy="{branch_strategy}"
 wiki_branch="{wiki_branch}"
@@ -628,10 +656,27 @@ fi
 
 ### 5.2 same_branch 戦略
 
-`same_branch` では Raw Source / ページ / index.md / log.md はすべて dev ブランチ上。ステップ 5.0 手順 1-7 とステップ 5.0.n の検査の後、以下で一括 commit する（ブランチ切り替え・worktree 不要）:
+`same_branch` では Raw Source / ページ / index.md / log.md はすべて dev ブランチ上。ステップ 5.0 手順 1-7 とステップ 5.0.n の検査の後、以下で一括 commit する（ブランチ切り替え・worktree 不要）。**5.1 と同じ `{numref_verdict}` ゲートを bash 冒頭に置く**:
 
 ```bash
 set -euo pipefail
+
+# ステップ 5.0.n の判定を機械的に受ける（5.1 と同一）。`{numref_verdict}` は同ステップの
+# [CONTEXT] WIKI_INGEST_NUMREF= の最新値を literal substitute する。
+# 未置換 / 未知値 / hit のいずれも commit しない（検査を飛ばした実行を素通しさせないため）。
+numref_verdict="{numref_verdict}"
+case "$numref_verdict" in
+  clean) ;;
+  hit)
+    echo "ERROR: 番号参照が残ったままです。commit しません (ステップ 5.0.n の hit 行を書き直してから再実行してください)" >&2
+    exit 1
+    ;;
+  *)
+    echo "ERROR: ステップ 5.0.n の判定を受け取れていません (numref_verdict='$numref_verdict')。commit しません" >&2
+    exit 1
+    ;;
+esac
+
 branch_strategy="{branch_strategy}"
 
 if [ "$branch_strategy" = "same_branch" ]; then
@@ -715,7 +760,7 @@ fi
 | `{summary}` | ステップ 4.1 のサマリー |
 | `{details}` | ステップ 4.1 の詳細 |
 | `{related_page_title}` / `{related_page_path}` | ステップ 4.3 で決定した値。**該当ページがない場合は `## 関連ページ` セクション全体を `- （関連ページなし）` の平文 1 行に Edit で書き換える** (空 placeholder のままにすると Markdown link `[]()` が破綻) |
-| `{source_description}` | Raw Source の `title` フィールド (空なら `source_ref` を使用)。`## ソース` セクションのリンク表示テキストに使われ、URL には `{source_ref}` が使われることで両者を分離する |
+| `{source_description}` | Raw Source の `title` から**番号・日付を落とした説明文**。説明が取れない場合は種別語（「レビュー結果」「fix 結果」「close retrospective」）。`title` をそのまま転記してはならない（規則の SoT は `SCHEMA.md` の「番号ではなく Why 散文」。日付はリンク先パスにあるので重ねない）。`## ソース` セクションのリンク表示テキストに使われ、URL には `{source_ref}` が使われることで両者を分離する |
 
 **confidence フィールド**: page-template.md の `confidence: medium` はリテラル。Write 後に Edit でステップ 4 の判定値 (`high` / `medium` / `low`) に置換する。
 rationale: references/rationale.md#confidence-literal

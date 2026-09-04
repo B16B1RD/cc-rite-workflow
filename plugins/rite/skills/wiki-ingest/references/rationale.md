@@ -201,3 +201,20 @@ caller skill（cleanup / open 等）の次 step を skip して turn が暗黙�
 した。`returned-to-caller` は「caller に return した = caller の次 step に進む」というネスト
 構造を semantic に内包し、terminal vocabulary を構造的に排除する。bare bracket は同じ heuristic
 誤発火のため禁止で、HTML コメント形式のみ許容する。
+
+<a id="numref-precommit"></a>
+
+## numref-precommit
+
+Raw Source は出典なので番号を持ち、そこから読解して書く過程で番号が Wiki 側へ転記される。
+ステップ 8 の wiki-lint は読み取り専用の informational 指標で書き込みを止めないため、
+混入を止められるのは書き込み側だけである。だから検査は commit の直前に置く。
+
+対象を「未 commit の Wiki 差分」全体にし、列挙もラベルも git に決めさせるのは、
+ゲートの判定基準をゲートされる側が選べる形にしないため。対象・ラベル・本文のどれか一つでも
+実行者が選べると、選び損ねた回だけ検査が素通りし、しかもその回が「検査済み」として commit へ進む。
+差分から取れば書いた分だけが渡り、パスは git が返す実体になる。
+
+ページだけでなく `index.md` のエントリ行と `log.md` の bullet も同じ 1 回で通す。
+`log.md` の番号はほとんどが skip 理由や更新説明の散文由来で、ページだけを見ると素通りする。
+

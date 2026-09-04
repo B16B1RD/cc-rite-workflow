@@ -27,7 +27,7 @@ default）。helper 不在で設定を判定できていないときに無効扱
 ## empty-lists-keep-7-5
 
 両方空でステップ 7.5 まで skip すると、wiki 初期化直後や `git ls-tree` 失敗時に `index.md` の
-指摘が無言で 0 件になる。`index.md` は単独で走査対象になりうる。
+指摘が無言で 0 件になる。`index.md` / `log.md` は単独で走査対象になりうる。
 
 ## skip-sot-raw-frontmatter
 
