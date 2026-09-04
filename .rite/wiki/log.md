@@ -4,6 +4,7 @@
 * **Update**: [番号・識別子の grep に語境界を付けないと短い番号が長い番号の prefix として衝突する](pages/anti-patterns/identifier-grep-without-word-boundary-prefix-collision.md) — raw/reviews/20260904T004239Z-pr-2544.md, raw/fixes/20260904T005810Z-pr-2544.md を統合
 * **Update**: [追加した pin は、その pin が守ると主張する変異を 1 回当てて赤くなるまで完成していない](pages/patterns/mutation-prove-new-pin.md) — raw/reviews/20260904T004239Z-pr-2544.md, raw/fixes/20260904T005810Z-pr-2544.md を統合
 * **Skip**: [20260904T011540Z-pr-2544.md](raw/reviews/20260904T011540Z-pr-2544.md) — 0-finding confirmation; blocking 解消の確認のみで新規経験則なし
+* **lint:clean** — contradictions=0, stale=52, orphans=0, missing_concept=0, unregistered_raw=422, broken_refs=0
 
 ## 2026-09-03
 * **Skip**: [20260903T111103Z-pr-2539.md](raw/reviews/20260903T111103Z-pr-2539.md) — 既存ページ asymmetric-fix-transcription / state-machine-dual-location-sync / mutation-prove-new-pin が同一欠陥クラスをカバー済み。sentinel 契約の同一ファイル内三重指示と MUST 未 pin は同クラスの再演（nb-sweep で plugin へ適用済み）
