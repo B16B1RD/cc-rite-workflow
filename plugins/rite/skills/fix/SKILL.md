@@ -2579,11 +2579,26 @@ git diff
 対応した指摘: {count}件
 ```
 
-**番号参照 self-check**（`FIX_COMMIT_GUARD=proceed` のあと、3.1.1 の前）。`{base_branch}` は rite-config `branch.base`、無ければ PR base（ステップ 1.1 `.baseRefName`）。origin-first は lint Phase 2.2 と同じ。
+**番号参照 self-check**（`FIX_COMMIT_GUARD=proceed` のあと、3.1.1 の前）。`{base_branch}` は rite-config `branch.base`、無ければ PR base（ステップ 1.1 `.baseRefName`）。origin-first は lint Phase 2.2 と同じ。未追跡ファイルは `--diff` 直前に `git add -N` で差分へ載せる（母集合は 3.3 と同じ `{changed_files}`。worktree に残っているパスだけ。空なら skip）。
 
 ```bash
 nref_base="origin/{base_branch}"
 git rev-parse --verify "${nref_base}^{commit}" >/dev/null 2>&1 || nref_base="{base_branch}"
+if [ -n "{changed_files}" ]; then
+  nref_addn=""
+  for f in {changed_files}; do
+    [ -e "$f" ] && nref_addn="$nref_addn $f"
+  done
+  if [ -n "$nref_addn" ]; then
+    nref_stage_rc=0
+    git add -N -- $nref_addn || nref_stage_rc=$?
+    if [ "$nref_stage_rc" -ne 0 ]; then
+      echo "ERROR: intent-to-add に失敗しました (rc=$nref_stage_rc)。新規ファイルが検査されないため commit しません" >&2
+      echo "[fix:error]"
+      exit 1
+    fi
+  fi
+fi
 nref_rc=0
 bash {plugin_root}/hooks/scripts/number-reference-check.sh --diff "$nref_base" || nref_rc=$?
 case "$nref_rc" in
