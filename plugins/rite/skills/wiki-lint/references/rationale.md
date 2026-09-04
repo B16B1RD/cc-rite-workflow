@@ -48,13 +48,14 @@ HEREDOC に `.rite/wiki/raw/...` 行を含めると helper の partial pollution
 ## descriptive-refs-surface
 
 Wiki は番号の受け皿ではなく経験則を Why 散文で残す場であり、Comment Best Practices SoT の適用
-スコープが Wiki ページを含む。括弧やキーワードに包まれない裸の `PR #N` / `Issue #N` も対象で、
-これは SoT §C Detection Heuristics が reviewer 側 regex として既に宣言している範囲に機構を
-追随させたもの。
+スコープが Wiki ページを含む。対象はページ本文だけでなく `## ソース` 節の bullet、`index.md` の
+エントリサマリー、`log.md` に及ぶ — どれも読者が開く永続成果物で、番号がそこにあれば Wiki の中の
+番号である。検出文法は `number-reference-check.sh` に委譲し、本ステップも helper もコピーを
+持たない。番号の定義がリポジトリで 1 箇所なら、Wiki だけが別の基準で clean を名乗ることがない。
 
 ## descriptive-refs-issues-exception
 
-本ステップを `issues[]` に転記すると 233 ページ分の検出詳細行（実測 736 hits）が
+本ステップを `issues[]` に転記すると数百ページ分の検出詳細行が
 `{issues_list_formatted}` を埋め、`n_warnings` に加算されない指標が warning 一覧を占有する。
 もう 1 つの informational 指標 `unregistered_raw` はステップ 6.3 で `issues[]` に記録され
 ステップ 9.1 の `### 未登録 raw（skip 済）` グループとして出力される（対象外にしてはならない）。

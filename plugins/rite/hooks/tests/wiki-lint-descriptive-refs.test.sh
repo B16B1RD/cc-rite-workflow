@@ -405,6 +405,23 @@ assert "TC-14 --branch-strategy 欠落 → exit 2" "2" "$?"
 assert_grep "TC-18 SKILL.md が helper へ委譲している" "$LINT_MD" 'wiki-lint-descriptive-refs\.sh'
 assert_grep "TC-18 helper 不在 fallback が marker block を出す" "$LINT_MD" '"---descriptive_refs_begin---"'
 assert_grep "TC-18 helper 不在 fallback が WIKI_DESCRIPTIVE_REFS=0 を出す" "$LINT_MD" 'WIKI_DESCRIPTIVE_REFS=0'
+# 撤廃した除外が SKILL.md の記述に残っていないこと。helper だけ直して記述が古いままだと、
+# 次の作業者は「ソース節は除外される」を前提に読む。
+assert_not_grep "TC-18 SKILL.md が log.md を走査対象外と書いていない" "$LINT_MD" '走査しないファイル（意図的除外）: `log.md`'
+assert_grep "TC-18 SKILL.md が委譲先を名指ししている" "$LINT_MD" '検出文法は `number-reference-check.sh` に委譲する'
+
+# ---- TC-18b (AC-6): wiki-ingest が commit 前に検査するレールを持つ -----------
+# wiki-lint は informational (n_warnings 不加算) で書き込みを止めない。混入を止めるゲートは
+# 書き込み側にしか置けないため、ingest の commit 前にあることを静的に pin する。
+INGEST_MD_RAIL="$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md"
+assert_grep "TC-18b (AC-6) ingest が commit 前検査ステップを持つ" "$INGEST_MD_RAIL" '^### 5\.0\.n commit 前の番号参照検査'
+assert_grep "TC-18b (AC-6) 検査は number-reference-check.sh へ委譲する" "$INGEST_MD_RAIL" 'bash "\$check" --stdin --label'
+assert_grep "TC-18b (AC-6) 検査対象に log.md / index.md の追記行を含む" "$INGEST_MD_RAIL" 'ステップ 7 で `log\.md` へ追記する bullet'
+assert_grep "TC-18b (AC-6) hit は書き直してから commit する (書き直せなければ停止)" "$INGEST_MD_RAIL" '再検査で `clean` にできない対象がある場合は commit せず停止'
+assert_grep "TC-18b (AC-6) helper 実行失敗は非ブロッキングで継続する" "$INGEST_MD_RAIL" 'WIKI_INGEST_NUMREF=error'
+# commit ステップ側が検査を前提として名指ししていること (レールを足しただけで誰も通らない形を弾く)
+assert_grep "TC-18b (AC-6) separate_branch の commit が検査を前提にしている" "$INGEST_MD_RAIL" 'ステップ 5\.0\.n の検査を通した後'
+assert_grep "TC-18b (AC-6) same_branch の commit が検査を前提にしている" "$INGEST_MD_RAIL" 'ステップ 5\.0\.n の検査の後'
 assert_grep "TC-18 helper 不在 fallback の read_ok" "$LINT_MD" 'descriptive_refs_read_ok=skipped_helper_missing'
 assert_grep "TC-18 helper 不在 fallback が read_errors=0 を出す" "$LINT_MD" 'descriptive_refs_read_errors=0'
 # stdout 契約は本 PR で 5 フィールドになった。fallback が片方だけ追随しないと

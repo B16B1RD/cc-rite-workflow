@@ -521,9 +521,47 @@ esac
 
 ステップ 5.1 / 5.2 では `commit_msg=` 行を上記 canonical と literal 一致させ、placeholder-residue gate のサイト識別子 (`ステップ 5.{X}`) のみを 5.1 / 5.2 で置換する。template を変更する際は本セクション + ステップ 5.1 + ステップ 5.2 の **3 箇所を必ず同時に更新する**。
 
+### 5.0.n commit 前の番号参照検査 (両戦略共通)
+
+ステップ 5.0 手順 1-7 の Write/Edit を終えたら、**commit の前に**書いた内容を検査する。Raw Source の本文には番号が載っており（raw は出典なので正しい）、そこから読解して書く過程で番号が Wiki 側へ転記される。ここで止めないと、混入は ingest のたびに増える一方で、ステップ 8 の wiki-lint は informational なので事後にも止まらない。
+
+**検査対象は書いた全部**: 新規 / 更新したページ、ステップ 6 で `index.md` へ追記するエントリ行、ステップ 7 で `log.md` へ追記する bullet。ページだけを見ると、`{skip_reason}` や Update の説明文に載る番号が素通りする。
+
+`{plugin_root}` を解決し、書いた対象ごとに検査する（`{target_path}` は検査するファイルの repo 相対パス。追記行は書き込み後のファイル全体ではなく**追記した行だけ**を stdin に流す — 過去の未 retrofit 行で毎回停止しないため）:
+
+```bash
+plugin_root="{plugin_root}"
+check="$plugin_root/hooks/scripts/number-reference-check.sh"
+if [ ! -f "$check" ]; then
+  echo "WARNING: number-reference-check.sh が見つからないため commit 前検査をスキップします (path='$check')" >&2
+  echo "[CONTEXT] WIKI_INGEST_NUMREF=skipped; reason=helper-missing"
+else
+  set +e
+  bash "$check" --stdin --label "{target_path}" --quiet <<'NUMREF_EOF'
+{written_content}
+NUMREF_EOF
+  numref_rc=$?
+  set -e
+  case "$numref_rc" in
+    0) echo "[CONTEXT] WIKI_INGEST_NUMREF=clean; target={target_path}" ;;
+    1) echo "[CONTEXT] WIKI_INGEST_NUMREF=hit; target={target_path}" ;;
+    *) echo "WARNING: number-reference-check.sh の実行に失敗しました (rc=$numref_rc)。検査結果は不明です" >&2
+       echo "[CONTEXT] WIKI_INGEST_NUMREF=error; target={target_path}; rc=$numref_rc" ;;
+  esac
+fi
+```
+
+| `WIKI_INGEST_NUMREF` | アクション |
+|---|---|
+| `clean` | 次の対象へ。全対象が `clean` / `skipped` になったらステップ 5.1 / 5.2 へ進む |
+| `hit` | stdout の `label:line: 内容` が指す行を **Edit で書き直してから**再検査する。書き直しは番号を落として現在形の Why にすること — 番号を消した跡に経緯文を置き換えない。ソース bullet は説明だけを表示テキストにし、説明が無ければ種別語（「レビュー結果」「fix 結果」「close retrospective」）にする（リンク先パスは変えない）。**再検査で `clean` にできない対象がある場合は commit せず停止**し、残った行と `/rite:recover` を案内する |
+| `skipped` / `error` | 検査できていないので `clean` とは扱わない。WARNING を出したまま commit へ進む（helper 不在・実行失敗で ingest 全体を止めない）。ステップ 9 の完了レポートに検査未実施として載せる |
+
+> 番号の定義は `number-reference-check.sh` が持つ（3-4 桁の番号トークン）。本ステップは文法を書き下さない。1-2 桁 / 5 桁以上（上流トラッカ id 等）は対象外で、書いてよい。
+
 ### 5.1 separate_branch 戦略 (worktree ベース)
 
-ステップ 5.0 手順 1-7 を Write/Edit した後、以下で worktree 内の変更を commit する。**push はここでは行わない**。commit は `wiki-worktree-commit.sh --commit-only` に委譲する:
+ステップ 5.0 手順 1-7 を Write/Edit し、ステップ 5.0.n の検査を通した後、以下で worktree 内の変更を commit する。**push はここでは行わない**。commit は `wiki-worktree-commit.sh --commit-only` に委譲する:
 rationale: references/rationale.md#push-defer-1941
 
 ```bash
@@ -590,7 +628,7 @@ fi
 
 ### 5.2 same_branch 戦略
 
-`same_branch` では Raw Source / ページ / index.md / log.md はすべて dev ブランチ上。ステップ 5.0 手順 1-7 の後、以下で一括 commit する（ブランチ切り替え・worktree 不要）:
+`same_branch` では Raw Source / ページ / index.md / log.md はすべて dev ブランチ上。ステップ 5.0 手順 1-7 とステップ 5.0.n の検査の後、以下で一括 commit する（ブランチ切り替え・worktree 不要）:
 
 ```bash
 set -euo pipefail
