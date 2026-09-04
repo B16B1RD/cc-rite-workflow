@@ -273,6 +273,118 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# T-04b --path narrows --diff to a pathspec (scan range == commit range)
+# --------------------------------------------------------------------------
+mkdir -p "$sb/.rite/wiki/pages" "$sb/src"
+printf 'clean wiki page\n' > "$sb/.rite/wiki/pages/p.md"
+printf 'clean source\n' > "$sb/src/a.md"
+commit_all "$sb" path-scope-base
+printf 'wiki page with (#1300)\n' > "$sb/.rite/wiki/pages/p.md"
+printf 'source with (#1301)\n' > "$sb/src/a.md"
+
+rc=0; out=$(run_diff "$sb" HEAD --path .rite/wiki --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] \
+   && printf '%s' "$out" | grep -q '.rite/wiki/pages/p.md' \
+   && ! printf '%s' "$out" | grep -q 'src/a.md'; then
+  pass "T-04b --path limits findings to the pathspec"
+else
+  fail "T-04b --path scoping failed rc=$rc: $out"
+fi
+
+# Without --path the same tree reports both (proves the option is load-bearing)
+rc=0; out=$(run_diff "$sb" HEAD --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'src/a.md'; then
+  pass "T-04b without --path the out-of-scope file is reported"
+else
+  fail "T-04b baseline (no --path) failed rc=$rc: $out"
+fi
+
+# A pathspec that only contains clean changes is clean (rc=0), not silently skipped
+printf 'wiki page clean again\n' > "$sb/.rite/wiki/pages/p.md"
+rc=0; out=$(run_diff "$sb" HEAD --path .rite/wiki --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass "T-04b --path with clean changes exits 0"
+else
+  fail "T-04b --path clean case failed rc=$rc: $out"
+fi
+
+# --path is rejected outside --diff (no silent no-op)
+rc=0; out=$(bash "$TARGET" --all --path .rite/wiki --repo-root "$sb" --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q -- '--path is only valid with --diff'; then
+  pass "T-04b --path outside --diff is an invocation error"
+else
+  fail "T-04b --path misuse not rejected rc=$rc: $out"
+fi
+
+# --path as the final argument (真の空値ブランチ) — message まで見ないと、--path アームを
+# 丸ごと削った変異が unknown-argument の同じ rc=2 で通ってしまう
+rc=0; out=$(bash "$TARGET" --repo-root "$sb" --quiet --diff HEAD --path 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q -- '--path requires a directory'; then
+  pass "T-04b --path without a value is an invocation error"
+else
+  fail "T-04b --path empty value not rejected rc=$rc: $out"
+fi
+
+# --path followed by another flag (ダッシュ接頭辞ブランチ) — 次の引数を値として食わない
+rc=0; out=$(bash "$TARGET" --diff HEAD --path --repo-root "$sb" --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q -- '--path requires a directory'; then
+  pass "T-04b --path does not swallow the next flag as its value"
+else
+  fail "T-04b --path dash-prefixed value not rejected rc=$rc: $out"
+fi
+
+# 一致しないパスは「検査済みの clean」ではなく invocation error（走査母数 0 の silent-0 を塞ぐ）
+rc=0; out=$(bash "$TARGET" --diff HEAD --path no/such/dir --repo-root "$sb" --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q -- '--path が repo 内のどのパスにも一致しません'; then
+  pass "T-04b --path with a non-matching pathspec is an invocation error"
+else
+  fail "T-04b --path non-matching pathspec not rejected rc=$rc: $out"
+fi
+
+# 実在するが tracked も staged も 0 件のディレクトリ — 本番呼び出し (--path .rite/wiki) と
+# 同じ shape。ディレクトリの実在を免除条件にすると、この silent-0 の主要形が素通りする
+mkdir -p "$sb/empty_dir"
+rc=0; out=$(run_diff "$sb" HEAD --path empty_dir --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q -- '--path が repo 内のどのパスにも一致しません'; then
+  pass "T-04b --path with an existing but untracked directory is an invocation error"
+else
+  fail "T-04b --path empty-but-existing dir not rejected rc=$rc: $out"
+fi
+# untracked ファイルだけを含むディレクトリも母数 0 なので同じ扱い
+printf 'PR #1305 を参照\n' > "$sb/empty_dir/u.md"
+rc=0; out=$(run_diff "$sb" HEAD --path empty_dir --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q -- '--path が repo 内のどのパスにも一致しません'; then
+  pass "T-04b --path with untracked-only content is an invocation error"
+else
+  fail "T-04b --path untracked-only dir not rejected rc=$rc: $out"
+fi
+rm -rf "$sb/empty_dir"
+
+# staged deletion のみの pathspec — ls-files は空だが git diff HEAD は削除 hunk を返す。
+# 「diff が空のときだけ error にする」変異はこの shape でしか死なない
+# commit_all は add -A なので、それまでの一時的な dirty をまとめて HEAD へ昇格させてしまう。
+# この TC が触るパスだけを commit する
+mkdir -p "$sb/deldir"
+printf 'clean\n' > "$sb/deldir/a.md"
+git -C "$sb" add deldir || fail "T-04b staged-deletion fixture の add に失敗"
+git -C "$sb" commit -qm del-base || fail "T-04b staged-deletion fixture の commit に失敗"
+git -C "$sb" rm -q --cached deldir/a.md
+printf 'number here (#1500)\n' > "$sb/deldir/a.md"
+rc=0; out=$(run_diff "$sb" HEAD --path deldir --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q -- '--path が repo 内のどのパスにも一致しません'; then
+  pass "T-04b --path with only staged deletions is an invocation error"
+else
+  fail "T-04b --path staged-deletion-only not rejected rc=$rc: $out"
+fi
+# index を HEAD へ戻す (checkout -q -- . では index の削除が残り後続へ漏れる)。
+# deldir/a.md は HEAD に残るが内容は 'clean' で、後続の走査に findings を足さない
+git -C "$sb" reset -q || fail "T-04b index 復元 (reset) に失敗（以降のケースが汚染された index で走る）"
+
+# restore the tree for the following cases (失敗を握り潰すと後続 T-05+ が汚染ツリーで走り、
+# 原因が「T-04b の片付け失敗」ではなく無関係な assert の赤として現れる)
+git -C "$sb" checkout -q -- . || fail "T-04b 後片付けの checkout に失敗（以降のケースが汚染されたツリーで走る）"
+
+# --------------------------------------------------------------------------
 # T-05 --all detects newly tracked files without a target list
 # --------------------------------------------------------------------------
 mkdir -p "$sb/docs"

@@ -414,7 +414,7 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 |-----------|-------------|
 | `title` | 経験則を 1 行で表現（30-60 字推奨） |
 | `domain` | `patterns` / `heuristics` / `anti-patterns` |
-| `summary` | 1-2 文の Why 要約（page frontmatter `description` と index.md のサマリー列へ同一文言を掲載する）。Issue / PR 番号は出典の識別子であって概念の理由を説明しないため、`Issue #NNN` / `PR #NNN` / `refs #NNN` 等の説明的番号参照を書かず、番号が担っていた観測事実・条件・因果を自己完結した散文で記述する。provenance は `sources` に分離して保持する |
+| `summary` | 1-2 文の Why 要約（page frontmatter `description` と index.md のサマリー列へ同一文言を掲載する）。Issue / PR 番号は出典の識別子であって概念の理由を説明しないため、`Issue #NNN` / `PR #NNN` / `refs #NNN` 等の番号参照を書かず、番号が担っていた観測事実・条件・因果を自己完結した散文で記述する。provenance は `sources` に分離して保持する |
 | `details` | 背景・具体例・根拠を含む詳細 |
 | `confidence` | `high` / `medium` / `low`（根拠の強さ） |
 | `promote` | ステップ 4 の昇格分類で rite 挙動・スキル記述法かつ環境非依存（または一般化済み）と判定した場合のみ `rite-plugin`。それ以外はフィールド自体を付けない |
@@ -521,14 +521,177 @@ esac
 
 ステップ 5.1 / 5.2 では `commit_msg=` 行を上記 canonical と literal 一致させ、placeholder-residue gate のサイト識別子 (`ステップ 5.{X}`) のみを 5.1 / 5.2 で置換する。template を変更する際は本セクション + ステップ 5.1 + ステップ 5.2 の **3 箇所を必ず同時に更新する**。
 
+### 5.0.n commit 前の番号参照検査 (両戦略共通)
+
+ステップ 5.0 手順 1-7（`index.md` の helper 呼び出しと `log.md` 追記を含む。実行順序の SoT はステップ 5.0 手順 6/7 であって、後方の `## ステップ 6` / `## ステップ 7` 見出しではない）を終えたら、**commit の前に**書いた分を検査する。Raw Source の本文には番号が載っており（raw は出典なので正しい）、そこから読解して書く過程で番号が Wiki 側へ転記される。ここで止めないと混入は ingest のたびに増える。
+rationale: references/rationale.md#numref-precommit
+
+**検査対象は `.rite/wiki` 配下の未 commit 差分**。ページだけでなく `index.md` のエントリ行も `log.md` の bullet も同じ 1 回で通る（`{skip_reason}` や Update の説明文に載る番号を素通りさせないため）。**対象の列挙もラベルも LLM が選ばない** — `git diff` が未 commit の追加行を渡し、パスは git が返す実体をそのまま使う。
+
+走査範囲は commit 範囲（`.rite/wiki`）と一致させ、新規ページは走査直前に `git add -N` で差分へ載せる。この 2 つを外すと新規ページが検査されないまま `clean` になる。`raw/**` は委譲先が除外する（raw は出典なので番号を持つ）。
+
+`{numref_tree}` は `separate_branch` では `{wiki_worktree_abs}`（ステップ 1.3 の絶対パス。空なら 5.1 と同じく `.rite/wiki-worktree` へ縮退する）、`same_branch` では `.`（本ステップは dev ツリー root を cwd とする）を literal substitute する。別の木を掴むと検査は素通りして `clean` を返すので、値は必ずこの 2 つのどちらかにする。
+
+```bash
+plugin_root="{plugin_root}"
+numref_tree="{numref_tree}"
+# 残留検査はブレースの**形状**で行う（`"{"*"}"`）。placeholder 名そのものをパターンに書くと、
+# substitute がパターン側まで書き換えて検査が自分を無効化する。sibling の同型 gate と同じ形。
+for _v in "$plugin_root" "$numref_tree"; do
+  case "$_v" in
+    ""|"{"*"}")
+      echo "ERROR: ステップ 5.0.n の placeholder が literal substitute されていません (plugin_root='$plugin_root' numref_tree='$numref_tree')" >&2
+      echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=placeholder_residue" >&2
+      exit 1
+      ;;
+  esac
+done
+check="$plugin_root/hooks/scripts/number-reference-check.sh"
+if [ ! -f "$check" ]; then
+  echo "ERROR: number-reference-check.sh が見つかりません (path='$check')。検査せずに commit すると番号混入を止められないため中止します" >&2
+  echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=helper_missing" >&2
+  exit 1
+fi
+# 新規ページ (untracked) を差分へ載せる。内容は stage しない intent-to-add で、
+# index にはエントリだけが載り `git diff --cached` は空のまま。commit まで進んだ回は
+# ステップ 5.1 / 5.2 が同じ範囲を stage し直すので後段への影響はない。hit / error で
+# 停止した回はエントリが index に残るが、次回実行の add -N が冪等に上書きする。
+numref_stage_rc=0
+git -C "$numref_tree" add -N -- .rite/wiki || numref_stage_rc=$?
+if [ "$numref_stage_rc" -ne 0 ]; then
+  echo "ERROR: .rite/wiki の intent-to-add に失敗しました (rc=$numref_stage_rc)。新規ページが検査されないため commit しません" >&2
+  echo "  原因候補: same_branch 戦略で .gitignore に '!.rite/wiki/' negation が未設定の可能性" >&2
+  echo "  対処: root .gitignore に '!.rite/wiki/' と '!.rite/wiki/**' を追記する" >&2
+  echo "    (置く位置は '.rite/wiki/' 除外行より後ろ。anchor '# <<< gitignore-wiki-section-end'" >&2
+  echo "     があればその直後、無ければ末尾。前に置くと後勝ちで negation が効かない)" >&2
+  echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=stage_failed; rc=$numref_stage_rc" >&2
+  exit 1
+fi
+# rc だけでは足りない。ディレクトリ自体は非 ignore で**配下ファイルだけ**が ignore された
+# ドリフト (`.rite/.gitignore` が '*' + '!wiki/' を持ち '!wiki/**' を欠く形) では、
+# add -N は rc=0 で何も stage せず、続く git diff が空 = 無言の 0 件 clean になる。
+# rc ではなく実体 (ignore されたまま残っているファイル) を見て fail-loud にする。
+# rc は直前の add -N と同型に捕捉する。この arm は 2 つの呼び出しの間に git が壊れた場合しか
+# 踏まないため専用 fixture を持たない (非 repo / パス不在はどちらも add -N が先に落ちる)。
+numref_ig_rc=0
+# core.quotePath 既定 (true) だと非 ASCII パスが octal escape で表示され、下の残存一覧が
+# 読めなくなる。check-ignore --stdin は入力を自前で unquote するので照合は既定でも成立する
+# — ここで落とすのは表示のため。既存の同型呼び出し (number-reference-check.sh) と揃える。
+numref_ignored=$(git -C "$numref_tree" -c core.quotePath=false ls-files --others --ignored --exclude-standard -- .rite/wiki) || numref_ig_rc=$?
+if [ "$numref_ig_rc" -ne 0 ]; then
+  echo "ERROR: ignore 残存の検査に失敗しました (git ls-files rc=$numref_ig_rc)。検査結果が不明なまま commit しません" >&2
+  echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=ignored_check_failed; rc=$numref_ig_rc" >&2
+  exit 1
+fi
+if [ -n "$numref_ignored" ]; then
+  echo "ERROR: .rite/wiki 配下に gitignore されたままのファイルがあります。検査にも commit にも載らないため中止します" >&2
+  # 表示と照会で同じ集合を使う。上限を 2 箇所に書くと片方だけ動いたときに件数が食い違う。
+  numref_shown=$(printf '%s\n' "$numref_ignored" | head -5)
+  printf '%s\n' "$numref_shown" | sed 's/^/    /' >&2
+  [ "$(printf '%s\n' "$numref_ignored" | grep -c .)" -gt 5 ] && \
+    echo "    (先頭 5 件のみ表示。直して再実行すると残りが出ます)" >&2
+  # ignore 済みが ls-files で確定しているので、check-ignore の negation 非決定性は効かない。
+  # 全件に対して引く。1 件だけだと原因が複数ある回に往復が残る。
+  # rc は兄弟の guard と同型に捕捉し、stderr は混ぜない — 混ぜると git の fatal が
+  # 「効いているパターン」として見出しの下に並ぶ。
+  numref_ci_rc=0
+  numref_causes=$(printf '%s\n' "$numref_shown" \
+    | git -C "$numref_tree" -c core.quotePath=false check-ignore -v --stdin) || numref_ci_rc=$?
+  if [ -n "$numref_causes" ]; then
+    # check-ignore の source は .gitignore とは限らない (.git/info/exclude や
+    # core.excludesFile の絶対パスも同じ欄に出る)。見出しは source を決め打ちしない。
+    echo "  原因: 以下の exclude ルールが効いています (<source>:<行>:<パターン> <TAB> <パス>)" >&2
+    printf '%s\n' "$numref_causes" | sed 's/^/    /' >&2
+  else
+    echo "  原因: check-ignore が一致を返しませんでした (rc=$numref_ci_rc)。ls-files が ignore と" >&2
+    echo "        判定した集合と食い違っています。git が診断を出していれば上の stderr にあります" >&2
+    echo "        手動: git -C $numref_tree check-ignore -v -- <上記のファイル>" >&2
+  fi
+  # rc=0 は「1 件以上が ignore」であって全件一致ではない。名指しできた件数が表示件数に
+  # 満たない回は、上の一覧が完全な原因表であるかのように読めてしまうので明示する。
+  numref_shown_n=$(printf '%s\n' "$numref_shown" | grep -c .)
+  numref_cause_n=0
+  [ -n "$numref_causes" ] && numref_cause_n=$(printf '%s\n' "$numref_causes" | grep -c .)
+  if [ "$numref_ci_rc" -ne 0 ] || [ "$numref_cause_n" -lt "$numref_shown_n" ]; then
+    echo "  注意: 表示 $numref_shown_n 件のうち $numref_cause_n 件しか原因を名指しできていません (check-ignore rc=$numref_ci_rc)" >&2
+  fi
+  echo "  対処: 名指しされた source を直す。nested .rite/.gitignore なら 3 行構成 '*' / '!wiki/' /" >&2
+  echo "        '!wiki/**' へ戻す。root .gitignore なら '.rite/wiki/' 除外行より後ろに negation を" >&2
+  echo "        追記する (root への追記では nested の '*' は解除できない)。source が" >&2
+  echo "        .git/info/exclude や core.excludesFile なら、その該当行を外す" >&2
+  echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=ignored_paths" >&2
+  exit 1
+fi
+numref_rc=0
+bash "$check" --repo-root "$numref_tree" --diff HEAD --path .rite/wiki --quiet || numref_rc=$?
+case "$numref_rc" in
+  0) echo "[CONTEXT] WIKI_INGEST_NUMREF=clean" ;;
+  1) echo "[CONTEXT] WIKI_INGEST_NUMREF=hit" ;;
+  *)
+    echo "ERROR: number-reference-check.sh の実行に失敗しました (rc=$numref_rc)。検査結果が不明なまま commit しません" >&2
+    echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=check_failed; rc=$numref_rc" >&2
+    exit 1
+    ;;
+esac
+```
+
+| `WIKI_INGEST_NUMREF` | アクション |
+|---|---|
+| `clean` | ステップ 5.1 / 5.2 へ進む |
+| `hit` | stdout の `file:line: 内容` が指す行を書き直してから**本ステップを再実行**する。書き直しは番号を落として現在形の Why にすること — 番号を消した跡に経緯文を置き換えない。ソース bullet は説明だけを表示テキストにし、説明が無ければ種別語（「レビュー結果」「fix 結果」「close retrospective」）にする（リンク先パスは変えない）。**`index.md` の行は Edit しない** — ステップ 6 の `wiki-index-update.sh` を修正した `--description` で呼び直す（index.md への書き換えは helper が atomic に行う契約のため）。この禁止は ingest 実行中（helper を呼べる文脈）の話で、lint 指摘の事後手当ては `/rite:wiki-lint` の手順に従う。 `log.md` の bullet は該当行の散文から番号を落とす（出典は同じ行の raw パスが持つ）。`{skip_reason}` は raw frontmatter 側の値を変えず、log bullet の表示分だけを書き直す。再実行で `clean` にできなければ commit せず停止し、残った行と `/rite:recover` を案内する |
+| `error` (`reason=stage_failed`) | bash が `exit 1` で停止済み。`same_branch` では root `.gitignore` に `!.rite/wiki/` と `!.rite/wiki/**` を**`.rite/wiki/` 除外行より後ろ**へ追記してから**本ステップを再実行**する（`# <<< gitignore-wiki-section-end` anchor があればその直後、無ければ末尾。前に置くと後勝ちで効かない）。`separate_branch` では root `.gitignore` を持たないので、`{numref_tree}` が wiki worktree の絶対パスに substitute されているか（ステップ 1.3）を先に疑う |
+| `error` (`reason=ignored_paths`) | bash が `exit 1` で停止済み。stderr が `check-ignore -v` で名指しした `.gitignore` を直してから**本ステップを再実行**する。nested `.rite/.gitignore` なら 3 行構成 '*' / '!wiki/' / '!wiki/**' へ戻す（root への negation では nested の '*' は解除できない）。source は `.gitignore` とは限らない（`.git/info/exclude` / `core.excludesFile` も同じ欄に出る）ので、名指しされた source をそのまま直す。「一致を返しませんでした」が出た場合は stderr の git 診断を確認し、stderr にも何も無ければ `check-ignore` を手動実行して原因を特定してから対処する |
+| `error` (`reason=placeholder_residue`) | bash が `exit 1` で停止済み。`{plugin_root}` / `{numref_tree}` を literal substitute して**本ステップを再実行**する |
+| `error` (`reason=helper_missing` / `check_failed` / `ignored_check_failed`) | bash が `exit 1` で停止済み。commit せず停止し、stderr の原因と `/rite:recover` を案内する |
+
+> 番号の定義は `number-reference-check.sh` が持つ（3-4 桁の番号トークン）。本ステップは文法を書き下さない。1-2 桁 / 5 桁以上（上流トラッカ id 等）は**本検査の検出対象外**であり、検出されないことは規則上書いてよいことを意味しない（規則の SoT は `SCHEMA.md` の「番号ではなく Why 散文」）。
+
+#### canonical numref_verdict gate (唯一の真実源)
+
+ステップ 5.1 / 5.2 の bash 冒頭に置く commit ゲートは以下を **literal 一致**させる。`{numref_verdict}` はステップ 5.0.n の `[CONTEXT] WIKI_INGEST_NUMREF=` の最新値を literal substitute する。片側だけ直すと 2 経路で commit ゲートの強さが割れるため、変更時は本節 + ステップ 5.1 + ステップ 5.2 の **3 箇所を必ず同時に更新する**（ステップ 5.0.c の commit message 契約と同じ規約）。
+
+```bash
+# ステップ 5.0.n の判定を機械的に受ける。`{numref_verdict}` は同ステップの
+# [CONTEXT] WIKI_INGEST_NUMREF= の最新値を literal substitute する。
+# 未置換 / 未知値 / hit のいずれも commit しない（検査を飛ばした実行を素通しさせないため）。
+numref_verdict="{numref_verdict}"
+case "$numref_verdict" in
+  clean) ;;
+  hit)
+    echo "ERROR: 番号参照が残ったままです。commit しません (ステップ 5.0.n の hit 行を書き直してから再実行してください)" >&2
+    exit 1
+    ;;
+  *)
+    echo "ERROR: ステップ 5.0.n の判定を受け取れていません (numref_verdict='$numref_verdict')。commit しません" >&2
+    exit 1
+    ;;
+esac
+```
+
 ### 5.1 separate_branch 戦略 (worktree ベース)
 
-ステップ 5.0 手順 1-7 を Write/Edit した後、以下で worktree 内の変更を commit する。**push はここでは行わない**。commit は `wiki-worktree-commit.sh --commit-only` に委譲する:
+ステップ 5.0 手順 1-7 を Write/Edit し、ステップ 5.0.n の検査を通した後、以下で worktree 内の変更を commit する。**下の bash 冒頭のゲートは canonical numref_verdict gate 節の literal 複製**で、変更時は同節の 3 箇所同時更新規約に従う。値はステップ 5.0.n の `[CONTEXT] WIKI_INGEST_NUMREF=` の最新値（`clean` / `hit`）を literal substitute する。散文で 5.0.n を名指しするだけでは、5.0.n を飛ばしても commit が成功してしまう。**push はここでは行わない**。commit は `wiki-worktree-commit.sh --commit-only` に委譲する:
 rationale: references/rationale.md#push-defer-1941
 
 ```bash
 # ステップ 5.2 と対称に set -euo pipefail を宣言する (strict mode)
 set -euo pipefail
+
+# ステップ 5.0.n の判定を機械的に受ける。`{numref_verdict}` は同ステップの
+# [CONTEXT] WIKI_INGEST_NUMREF= の最新値を literal substitute する。
+# 未置換 / 未知値 / hit のいずれも commit しない（検査を飛ばした実行を素通しさせないため）。
+numref_verdict="{numref_verdict}"
+case "$numref_verdict" in
+  clean) ;;
+  hit)
+    echo "ERROR: 番号参照が残ったままです。commit しません (ステップ 5.0.n の hit 行を書き直してから再実行してください)" >&2
+    exit 1
+    ;;
+  *)
+    echo "ERROR: ステップ 5.0.n の判定を受け取れていません (numref_verdict='$numref_verdict')。commit しません" >&2
+    exit 1
+    ;;
+esac
 
 branch_strategy="{branch_strategy}"
 wiki_branch="{wiki_branch}"
@@ -590,10 +753,27 @@ fi
 
 ### 5.2 same_branch 戦略
 
-`same_branch` では Raw Source / ページ / index.md / log.md はすべて dev ブランチ上。ステップ 5.0 手順 1-7 の後、以下で一括 commit する（ブランチ切り替え・worktree 不要）:
+`same_branch` では Raw Source / ページ / index.md / log.md はすべて dev ブランチ上。ステップ 5.0 手順 1-7 とステップ 5.0.n の検査の後、以下で一括 commit する（ブランチ切り替え・worktree 不要）。**canonical numref_verdict gate 節の literal 複製を bash 冒頭に置く**（変更時は同節の 3 箇所同時更新規約に従う）:
 
 ```bash
 set -euo pipefail
+
+# ステップ 5.0.n の判定を機械的に受ける。`{numref_verdict}` は同ステップの
+# [CONTEXT] WIKI_INGEST_NUMREF= の最新値を literal substitute する。
+# 未置換 / 未知値 / hit のいずれも commit しない（検査を飛ばした実行を素通しさせないため）。
+numref_verdict="{numref_verdict}"
+case "$numref_verdict" in
+  clean) ;;
+  hit)
+    echo "ERROR: 番号参照が残ったままです。commit しません (ステップ 5.0.n の hit 行を書き直してから再実行してください)" >&2
+    exit 1
+    ;;
+  *)
+    echo "ERROR: ステップ 5.0.n の判定を受け取れていません (numref_verdict='$numref_verdict')。commit しません" >&2
+    exit 1
+    ;;
+esac
+
 branch_strategy="{branch_strategy}"
 
 if [ "$branch_strategy" = "same_branch" ]; then
@@ -607,7 +787,7 @@ if [ "$branch_strategy" = "same_branch" ]; then
   trap '_cleanup; exit 129' HUP
 
   # same_branch 戦略では .gitignore に `!.rite/wiki/` negation が必要。
-  # 失敗時は anchor marker (gitignore-wiki-section-start) を案内する。
+  # 失敗時は anchor marker (gitignore-wiki-section-end) を案内する。
   add_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-ingest-add-err-XXXXXX" 2>/dev/null) || add_err=""
   if ! git add .rite/wiki/ 2>"${add_err:-/dev/null}"; then
     echo "ERROR: git add .rite/wiki/ failed" >&2
@@ -617,8 +797,8 @@ if [ "$branch_strategy" = "same_branch" ]; then
     fi
     echo "  原因候補: same_branch 戦略で .gitignore に '!.rite/wiki/' negation が未設定の可能性" >&2
     echo "  対処:" >&2
-    echo "    1. grep -n 'gitignore-wiki-section-start' .gitignore で anchor 位置を特定" >&2
-    echo "    2. 同ブロック内の手順に従い '!.rite/wiki/' negation を追加し、git add --dry-run で verification してから再実行" >&2
+    echo "    1. grep -n 'gitignore-wiki-section-end' .gitignore で anchor 位置を特定し、その直後へ追記する ('.rite/wiki/' 除外行より前に置くと後勝ちで効かない。配布先には anchor が無いことがあり、その場合は除外行より後ろ、無ければ末尾へ)" >&2
+    echo "    2. 上記 1 の位置へ '!.rite/wiki/' negation を追加し、git add --dry-run で verification してから再実行" >&2
     echo "    3. それ以外の原因 (permission / disk full / corrupt index 等) は上記 stderr の詳細を確認" >&2
     [ -n "$add_err" ] && rm -f "$add_err"
     exit 1
@@ -677,7 +857,7 @@ fi
 | `{summary}` | ステップ 4.1 のサマリー |
 | `{details}` | ステップ 4.1 の詳細 |
 | `{related_page_title}` / `{related_page_path}` | ステップ 4.3 で決定した値。**該当ページがない場合は `## 関連ページ` セクション全体を `- （関連ページなし）` の平文 1 行に Edit で書き換える** (空 placeholder のままにすると Markdown link `[]()` が破綻) |
-| `{source_description}` | Raw Source の `title` フィールド (空なら `source_ref` を使用)。`## ソース` セクションのリンク表示テキストに使われ、URL には `{source_ref}` が使われることで両者を分離する |
+| `{source_description}` | Raw Source の `title` から**番号・日付を落とした説明文**。説明が取れない場合は種別語（「レビュー結果」「fix 結果」「close retrospective」）。`title` をそのまま転記してはならない（規則の SoT は `SCHEMA.md` の「番号ではなく Why 散文」。日付はリンク先パスにあるので重ねない）。`## ソース` セクションのリンク表示テキストに使われ、URL には `{source_ref}` が使われることで両者を分離する |
 
 **confidence フィールド**: page-template.md の `confidence: medium` はリテラル。Write 後に Edit でステップ 4 の判定値 (`high` / `medium` / `low`) に置換する。
 rationale: references/rationale.md#confidence-literal
