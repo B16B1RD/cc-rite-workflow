@@ -164,17 +164,22 @@ if [ "$MODE" != "stdin" ]; then
   cd "$REPO_ROOT" || { echo "ERROR: cannot cd to $REPO_ROOT" >&2; exit 2; }
 fi
 
-# Path exclusion. Grammar SoT is this function only.
+# Path exclusion data. Grammar SoT is this list only.
+EXCLUDED_PATHS='.rite/wiki/raw/
+plugins/rite/scripts/tests/fixtures/
+plugins/rite/hooks/tests/number-reference-check.test.sh
+plugins/rite/hooks/tests/comment-journal-check.test.sh
+plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh'
+
 is_excluded_path() {
-  local p="$1"
+  local p="$1" excluded
   p="${p#./}"
-  case "$p" in
-    .rite/wiki/raw|.rite/wiki/raw/*) return 0 ;;
-    plugins/rite/scripts/tests/fixtures|plugins/rite/scripts/tests/fixtures/*) return 0 ;;
-    plugins/rite/hooks/tests/number-reference-check.test.sh) return 0 ;;
-    plugins/rite/hooks/tests/comment-journal-check.test.sh) return 0 ;;
-    plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh) return 0 ;;
-  esac
+  while IFS= read -r excluded; do
+    case "$excluded" in
+      */) [ "$p" = "${excluded%/}" ] || [ "${p#"$excluded"}" != "$p" ] ;;
+      *) [ "$p" = "$excluded" ] ;;
+    esac && return 0
+  done <<< "$EXCLUDED_PATHS"
   return 1
 }
 
@@ -317,13 +322,15 @@ scan_diff() {
     exit 2
   fi
   local hits
-  hits=$(printf '%s\n' "$diff_out" | awk "$AWK_HAS_HIT"'
-    function excluded(p) {
-      if (p == ".rite/wiki/raw" || index(p, ".rite/wiki/raw/") == 1) return 1
-      if (p == "plugins/rite/scripts/tests/fixtures" || index(p, "plugins/rite/scripts/tests/fixtures/") == 1) return 1
-      if (p == "plugins/rite/hooks/tests/number-reference-check.test.sh") return 1
-      if (p == "plugins/rite/hooks/tests/comment-journal-check.test.sh") return 1
-      if (p == "plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh") return 1
+  hits=$(printf '%s\n' "$diff_out" | awk -v excluded_paths="$EXCLUDED_PATHS" "$AWK_HAS_HIT"'
+    function excluded(p,    paths, count, i, candidate) {
+      count = split(excluded_paths, paths, "\n")
+      for (i = 1; i <= count; i++) {
+        candidate = paths[i]
+        if (candidate ~ /\/$/) {
+          if (p == substr(candidate, 1, length(candidate) - 1) || index(p, candidate) == 1) return 1
+        } else if (p == candidate) return 1
+      }
       return 0
     }
     function unquote(p) {
