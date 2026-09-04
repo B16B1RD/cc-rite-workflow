@@ -28,6 +28,9 @@
 #      JSON に触らず CLASS_DEMOTION_GATE=noop を emit して exit 0 (再実行の冪等性はこの分岐が担う —
 #      降格発動後の JSON は blocking 0 のため常にここへ落ちる)
 #   1. 各 blocking finding の effective class を確定する
+#      - category="number_reference" は map の class にかかわらず class A に固定する。
+#        well-formed な class B が指定された場合は WARNING +
+#        CLASS_DEMOTION_CATEGORY_PINNED で矛盾を可視化する
 #      - **実測未判定 (verification.measured が boolean でない = 5.3.0.M が形式崩れアンカーを
 #        blocking のまま残した形) の finding は分類対象外**。map を参照せず class A 側へ固定算入し
 #        WARNING + CLASS_DEMOTION_UNDETERMINED_MEASURED を emit する — 「判定不能を降格に丸めない」
@@ -69,6 +72,7 @@
 #   [CONTEXT] CLASS_DEMOTION_GATE=not-triggered; class_a={n}; class_b={n}; demoted=0; assessment={v}
 #   [CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}
 #   [CONTEXT] CLASS_DEMOTION_UNDETERMINED_MEASURED=1; count={n}
+#   [CONTEXT] CLASS_DEMOTION_CATEGORY_PINNED=1; count={n}
 #   [CONTEXT] CLASS_DEMOTION_GATE_FAILED=1; reason=...
 #
 # 失敗経路では外部コマンド (jq / mktemp / mv) の stderr 先頭 5 行を ERROR 行の直後に転記する
@@ -280,7 +284,7 @@ def parse_exclusion($c):
 
 def effective_class($m):
   ($m[(.id // null | tostring)] // []) as $e
-  | if ($e | length) != 1 then {class: "A", scenario: null, unclassified: true, exclusion: null}
+  | (if ($e | length) != 1 then {class: "A", scenario: null, unclassified: true, exclusion: null}
     else $e[0] as $c
     | if $c.class == "A" then
         {class: "A",
@@ -292,7 +296,10 @@ def effective_class($m):
             {class: "B", scenario: $c.scenario, unclassified: false, exclusion: $ex.value}
           else {class: "A", scenario: null, unclassified: true, exclusion: null} end
       else {class: "A", scenario: null, unclassified: true, exclusion: null} end
-    end;
+    end) as $mapped
+  | if .category == "number_reference" and $mapped.class == "B" then
+      $mapped + {class: "A", pinned: true, exclusion: null}
+    else $mapped + {pinned: false} end;
 
 # 分類の記録: gated finding のみ consequence_class / consequence_scenario を持つ。
 # 既存値は算出結果で無条件に上書きする (map が唯一の入力 — preset は判定を変えられない)。
@@ -354,6 +361,8 @@ def is_demotable_b:
       unclassified: ([$orig[] | select(gated and has_measured_bool) | effective_class($by_id) | select(.unclassified)] | length),
       # 実測未判定のまま class A 固定した gated finding (5.3.0.M の形式崩れアンカー由来)。
       undetermined_measured: ([$orig[] | select(gated and (has_measured_bool | not))] | length),
+      # number_reference に well-formed な class B を指定し、category 固定で A へ戻した件数。
+      category_pinned: ([$orig[] | select(gated and has_measured_bool) | effective_class($by_id) | select(.pinned)] | length),
       excluded: $excluded,
       applied: (if $applied then "true" else "false" end),
       assessment: (if $blocking_after == 0 then "mergeable" else "fix-needed" end)
@@ -370,14 +379,15 @@ fi
 if ! stats_tsv=$(printf '%s\n' "$result" | jq -r '
   [ .stats.blocking, .stats.class_a, .stats.class_b, .stats.demoted,
     .stats.blocking_after, .stats.unclassified, .stats.undetermined_measured,
+    .stats.category_pinned,
     .stats.excluded,
     .stats.applied, .stats.assessment ]
   | map(tostring) | @tsv' 2>"${diag_file:-/dev/null}"); then
   _fail stats_read_failed "ゲート統計の読み出し jq が失敗しました"
 fi
-IFS=$'\t' read -r blocking class_a class_b demoted blocking_after unclassified undetermined_measured excluded applied assessment \
+IFS=$'\t' read -r blocking class_a class_b demoted blocking_after unclassified undetermined_measured category_pinned excluded applied assessment \
   <<< "$stats_tsv"
-for _stat_name in blocking class_a class_b demoted blocking_after unclassified undetermined_measured excluded; do
+for _stat_name in blocking class_a class_b demoted blocking_after unclassified undetermined_measured category_pinned excluded; do
   _stat_val="${!_stat_name-}"
   case "$_stat_val" in
     ''|*[!0-9]*) _fail stats_read_failed "ゲート統計 $_stat_name が数値ではありません: '$_stat_val'" ;;
@@ -402,6 +412,9 @@ if [ "$unclassified" -gt "$class_a" ]; then
 fi
 if [ "$undetermined_measured" -gt "$class_a" ]; then
   _fail stats_read_failed "ゲート統計の実測未判定件数が class A 件数を超えています (undetermined_measured=${undetermined_measured} > class_a=${class_a})"
+fi
+if [ "$category_pinned" -gt "$class_a" ]; then
+  _fail stats_read_failed "カテゴリ固定件数が class A 件数を超えています (category_pinned=${category_pinned} > class_a=${class_a})"
 fi
 if [ "$excluded" -gt "$class_b" ]; then
   _fail stats_read_failed "ゲート統計の除外件数が class B 件数を超えています (excluded=${excluded} > class_b=${class_b})"
@@ -435,6 +448,11 @@ fi
 if [ "$undetermined_measured" -gt 0 ]; then
   echo "WARNING: 実測の有無が未判定 (verification 欠落 = 実測必須ゲートが形式崩れアンカーを blocking のまま残した形) の blocking finding ${undetermined_measured} 件を分類対象外として class A 側に算入しました (map のエントリは参照しません)。判定不能を降格に丸めない 3 値モデルの保証を第 2 軸でも保つためです。アンカー書式を直せば次 cycle で分類対象になります" >&2
   echo "[CONTEXT] CLASS_DEMOTION_UNDETERMINED_MEASURED=1; count=${undetermined_measured}" >&2
+fi
+
+if [ "$category_pinned" -gt 0 ]; then
+  echo "WARNING: category=number_reference の blocking finding ${category_pinned} 件に well-formed な class B が指定されたため、category 固定で class A (blocking 維持) にしました" >&2
+  echo "[CONTEXT] CLASS_DEMOTION_CATEGORY_PINNED=1; count=${category_pinned}" >&2
 fi
 
 if [ "$applied" = "true" ]; then
