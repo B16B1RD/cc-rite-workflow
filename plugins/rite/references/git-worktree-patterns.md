@@ -590,7 +590,7 @@ flock 排他の前提）ため、worktree cwd からの state 書込は構造的
   保証される（開発者個人のグローバル gitignore への依存は他の contributor 環境では効かず、機械固有の
   絶対パスがコミットされる経路が残る）。Phase 4.8 は書込前に対象リポジトリの `.gitignore` へ
   `.claude/settings.local.json` エントリを保証してから追記する（詳細は
-  [Phase 4.8 本体](../skills/setup/SKILL.md#phase-48-sandbox-write-allowlist-自動設定multi_session-有効時1896--1942)）。
+  [Phase 4.8 本体](../skills/setup/SKILL.md#phase-48-sandbox-write-allowlist-自動設定multi_session-有効時)）。
   書き込みが sandbox の write 制限で失敗しても bash 呼び出し自体は正常終了しうる（`else` 節に落ちて
   marker のみ `failed` になる）ため、再試行の要否は「コマンド自体の失敗」ではなく marker の値で判定する
   — `failed` であれば理由を問わず `dangerouslyDisableSandbox: true` で一度だけ再試行し、それでも

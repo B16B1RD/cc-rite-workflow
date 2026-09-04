@@ -345,7 +345,7 @@ Terminate processing.
 
 Terminate processing.
 
-### 1.1.5 セッション worktree 健全性の保証（multi_session 有効時 / AC-1 ）
+### 1.1.5 セッション worktree 健全性の保証（multi_session 有効時 / AC-1）
 
 ステップ 1.2 以降は **作業ツリーから PR の変更ファイルを読む**。その前に対象 PR の作業ブランチに対応する session worktree を保証する。
 rationale: references/design-rationale.md#worktree-ensure-preamble

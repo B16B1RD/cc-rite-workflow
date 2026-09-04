@@ -247,8 +247,9 @@ chmod +x "$RULES_DIR/repo/bin/gh"
 # Emits the watchdog's stdout JSON; leaves the reconcile log at $RULES_DIR/recon.log.
 run_rule_fixture() {
   local is_draft="$1" status="$2" mode="$3"
-  printf '[{"number":1001,"isDraft":%s,"body":"Closes ","headRefName":"fix/issue-998-x"}]\n' \
-    "$is_draft" > "$RULES_DIR/pr-list.json"
+  _closes='Closes #998' # drift-check-ignore
+  printf '[{"number":1001,"isDraft":%s,"body":"%s","headRefName":"fix/issue-998-x"}]\n' \
+    "$is_draft" "$_closes" > "$RULES_DIR/pr-list.json"
   if [ "$status" = "<absent>" ]; then
     echo '{"data":{"repository":{"issue":{"projectItems":{"nodes":[]}}}}}' > "$RULES_DIR/board.json"
   else

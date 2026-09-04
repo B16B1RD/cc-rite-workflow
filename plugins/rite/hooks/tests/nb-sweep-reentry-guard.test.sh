@@ -193,7 +193,7 @@ assert "T-08 nested 3-line git add -A does not stage nb-sweep-done" "0" "$gi_set
 rm -rf -- "$gi_setup"
 
 # --- T-09 / AC-7: 2 行 done-file でも 5.S skip と fix 1.5 は 1 行時と同一 ---
-# 既存 T-06〜T-08 は残す。本 ID は の 2 行化回帰。
+# 既存 T-06〜T-08 は残す。本 ID は 2 行化回帰。
 assert_grep_in_section "T-09 iterate 5.S still uses head -1" "$ITERATE" \
   '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
   'head -1 "\$nb_done_file"'

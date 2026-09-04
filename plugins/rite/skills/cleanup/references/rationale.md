@@ -37,13 +37,13 @@ marker 皆無は「節ごと未実行 or 判定未到達」として fail-loud �
 
 GitHub code search は `[` / `]` を無視しほぼ全 Issue を返す。`--jq '.[0]'` で先頭を盲目採用すると
 standalone closing Issue が自分自身や無関係 Issue を親と誤検出する。複数候補 + 自己除外 + body
-再検証は で close.md / projects-integration.md §2.4.7.1 に入ったループと同じ方針。
+再検証は close.md / projects-integration.md §2.4.7.1 に入ったループと同じ方針。
 
 ## wm-source-content
 
 PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし）はファイルとして存在する。
 存在検査だけだと stub を採用してしまい Issue コメント側 fallback が発火しない（存在と成功を同一視
-しないため）。。
+しないため。
 
 ## cleanup-source-label
 
@@ -52,7 +52,7 @@ PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし
 
 ## exitworktree-delegation
 
-分岐の基準を「worktree 内か」ではなく ExitWorktree 可否にしたのは 。path 入場
+分岐の基準を「worktree 内か」ではなく ExitWorktree 可否にしたのは、path 入場
 （`in_worktree_unrecorded`）では ExitWorktree が no-op になり、main checkout 操作が harness の
 worktree 隔離ガードに拒否される（実測）。ガードが拒否するのは Bash ツール呼び出しのコマンド文字列
 に直接 `cd` / `git -C` を書く形であり、helper 内部の `cd` は拒否されない（ステップ 7 の
@@ -153,7 +153,7 @@ silent skip する事象が確認されている（`skills/ready/SKILL.md` Phase
 ## wiki-push-batch
 
 ingest.md はページ更新のたびに push していた旧挙動を、raw source ごとに commit のみ行い ingest
-フロー末尾で 1 回だけ push する方式に変更した（ / AC-1）。`push=failed` 部分文字列検出は
+フロー末尾で 1 回だけ push する方式に変更した（AC-1）。`push=failed` 部分文字列検出は
 そのまま機能する — 集約 push が失敗した場合も、その 1 回の push 結果として ingest の stdout に
 同じ文字列が現れるため、本ステップの検出ロジック自体の変更は不要（ローカル commit は保持され、
 次回 ingest が自動で flush を試みる — AC-2 / SHOULD）。

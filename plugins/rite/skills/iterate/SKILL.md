@@ -96,7 +96,7 @@ marker_emit ITERATE_ISSUE "$iterate_issue" "ITERATE_BRANCH=$iterate_branch"
 
 LLM は `[CONTEXT] ITERATE_ISSUE` / `ITERATE_BRANCH` から値を読み、後続の flow-state.sh set 呼び出しで `--issue` / `--branch` に literal substitute する。値が空の場合は AskUserQuestion で「Issue 番号 / ブランチ名を入力 / 中止」を提示。
 
-### ステップ 0.5: セッション worktree 健全性の保証（multi_session 有効時 / AC-2 ）
+### ステップ 0.5: セッション worktree 健全性の保証（multi_session 有効時 / AC-2）
 
 ループに入る前に、対象作業ブランチの session worktree を保証する。共通ヘルパー `ensure_session_worktree`（[`lib/worktree-git.sh`](../../hooks/scripts/lib/worktree-git.sh)）で検出・再構築する（`{issue_number}` / `{branch_name}` は ステップ 0 の `ITERATE_ISSUE` / `ITERATE_BRANCH` marker の値）:
 rationale: references/rationale.md#worktree-ensure-preamble

@@ -375,7 +375,7 @@ Terminate processing.
 
 Terminate processing.
 
-### 1.1.5 セッション worktree 健全性の保証（multi_session 有効時 / ）
+### 1.1.5 セッション worktree 健全性の保証（multi_session 有効時）
 
 ステップ 2 の Edit/Write 前に session worktree を保証する。`{head_ref}` は 1.1 の `.headRefName`。helper: `ensure_session_worktree`（[`lib/worktree-git.sh`](../../hooks/scripts/lib/worktree-git.sh)）。
 rationale: references/design-rationale.md#worktree-ensure-preamble

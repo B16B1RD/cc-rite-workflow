@@ -31,7 +31,7 @@
 #
 # Word boundary:
 #   Number matches end with `([^0-9]|$)` so a match can never stop mid-number
-# (`` inside ``). The explicit boundary pins that as a contract so a later
+# (短い番号が長い番号の接頭辞になるケース). The explicit boundary pins that as a contract so a later
 #   narrowing of the number pattern cannot silently reintroduce prefix collision.
 #   MUST keep this a character class rather than `\b`: the regex is handed to awk via
 #   `-v re=`, and gawk reads `\b` as backspace — it never matches and never errors, so

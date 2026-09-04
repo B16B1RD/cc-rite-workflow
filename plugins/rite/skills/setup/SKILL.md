@@ -20,7 +20,7 @@ Initial setup wizard for rite workflow
 |----------|-------------|
 | `--upgrade` | Upgrade existing rite-config.yml to the latest schema version |
 
-When `--upgrade` is specified, skip to [Phase 4.1.3 (Upgrade)](-upgrade-existing-configuration). Otherwise, run the following phases in order.
+When `--upgrade` is specified, skip to [Phase 4.1.3 (Upgrade)](#upgrade-existing-configuration). Otherwise, run the following phases in order.
 
 ## Phase 1: Environment Check
 
@@ -536,7 +536,7 @@ Generate `rite-config.yml` from the template config file.
 > **Note on wiki section**: 新規生成は Advanced 境界より上を抽出するだけ。追加 append は不要。
 rationale: references/rationale.md#wiki-section-new-gen
 
-#### 4.1.3 Upgrade Existing Configuration
+#### Upgrade Existing Configuration
 
 > `--upgrade` 指定時に実行。既存 `rite-config.yml` を最新 schema へ上げ、ユーザーカスタム値は保持する。
 
@@ -702,7 +702,7 @@ Step 7 has two sub-steps:
 
 **Step 7a: Invoke Phase 4.7**
 
-Execute [Phase 4.7: Wiki Initialization](#phase-47-wiki-initialization-491) to bring existing users up to Wiki-initialized state. This is non-blocking; Phase 4.7 failure does not affect `--upgrade` success.
+Execute [Phase 4.7: Wiki Initialization](#phase-47-wiki-initialization) to bring existing users up to Wiki-initialized state. This is non-blocking; Phase 4.7 failure does not affect `--upgrade` success.
 
 Phase 4.7 内部の「次のステップ」は **Step 7b へ戻る**（7a への再入ではない）。
 rationale: references/rationale.md#upgrade-step7
@@ -716,7 +716,7 @@ After Phase 4.7.1/4.7.2/4.7.4 returns control to Step 7, display a Wiki status l
 - Else if `wiki_status == "skipped_disabled"` → `Wiki: スキップ（無効）`
 - Else if `wiki_status == "failed"` → `Wiki: 失敗`
 
-Before exiting, execute [Phase 4.8: Sandbox Write-Allowlist 自動設定](#phase-48-sandbox-write-allowlist-自動設定multi_session-有効時1896--1942) and then [Phase 4.9: SSH Host Alias Remote の Sandbox 事前案内](#phase-49-ssh-host-alias-remote-の-sandbox-事前案内1907) (both non-blocking, each self-gated — invoke unconditionally). Then display the status line and exit.
+Before exiting, execute [Phase 4.8: Sandbox Write-Allowlist 自動設定](#phase-48-sandbox-write-allowlist-自動設定multi_session-有効時) and then [Phase 4.9: SSH Host Alias Remote の Sandbox 事前案内](#phase-49-ssh-host-alias-remote-の-sandbox-事前案内) (both non-blocking, each self-gated — invoke unconditionally). Then display the status line and exit.
 rationale: references/rationale.md#upgrade-step7
 
 If the user cancels: Display "アップグレードをキャンセルしました" and exit.
@@ -1505,7 +1505,7 @@ Then:
 
 ---
 
-## Phase 4.8: Sandbox Write-Allowlist 自動設定（multi_session 有効時、 / ）
+## Phase 4.8: Sandbox Write-Allowlist 自動設定（multi_session 有効時）
 
 `multi_session.enabled: true`（Phase 4.1 で決定済み。新規生成・back-add いずれでも既定 ON）**かつ** Claude 自身の Bash tool 定義（sandbox セクション）が filesystem write 制限付き sandbox で動作している場合のみ実行する。いずれか一方でも該当しない場合は本節を完全に silent skip する（案内・warning 共に一切出さない — AC-3）。
 

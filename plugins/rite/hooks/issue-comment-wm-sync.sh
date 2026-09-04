@@ -328,7 +328,7 @@ _read_cached_comment_id() {
 # 呼び出し側を scan 経路へフォールバックさせる (誤 PATCH より往復増を選ぶ)。
 _body_belongs_to_issue() {
   local body="$1" issue="$2" found
-  # `` が `` に前方一致しないよう、番号の直後を行末か非数字に固定する。
+  # 短い番号が長い番号の接頭辞に前方一致しないよう、番号の直後を行末か非数字に固定する。
   # `head -1` の早期クローズは pipefail 下で sed を SIGPIPE 失敗させうる。判定不能は rc=1 側
   # (= scan フォールバック) が正しい挙動なので、抽出失敗は空文字へ縮退させる。
   found=$(printf '%s\n' "$body" \

@@ -374,7 +374,7 @@ cmd_set() {
   # 引き継がれる。Issue が実際に切り替わる set でだけ両者を落とす。
   #
   # 判定は「書き込む Issue が既存と一致するときだけ保持」。`--issue` 省略時は直前の
-  # `issue=$cur_issue` で一致するため、通常の phase transition は の merge-preserve 契約を
+  # `issue=$cur_issue` で一致するため、通常の phase transition は merge-preserve 契約を
   # そのまま満たす。`skills/cleanup/SKILL.md` の `--issue 0` fallback では落ちる。cleanup も
   # replica を同期する (ステップ 11 が `references/archive-procedures.md` の `append-eof` /
   # `merge-checklist` を実行する) が、その 2 呼び出しは `--issue` を明示するため、キャッシュを

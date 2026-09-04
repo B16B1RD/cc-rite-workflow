@@ -816,7 +816,7 @@ echo "[T-15] Static: terminal Status consumers cite the SoT by section name, nev
 # AC-7. Each consumer must reach the definition through a name that survives edits to the
 # reference file. A line-number anchor (`#L225`, `:225`) is the failure this pins against:
 # it silently rots into pointing at unrelated prose. The pattern is deliberately narrow —
-# a section anchor like `-terminal-status-set` also begins with digits, and it is the
+# a section anchor like `#248-terminal-status-set` also begins with digits, and it is the
 # repo's normal link form, so a looser pattern would reject the very convention AC-7 asks
 # for.
 TERMINAL_SOT="$REPO_ROOT/plugins/rite/references/projects-integration.md"

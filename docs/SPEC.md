@@ -381,7 +381,7 @@ Skill documentation...
 | Reference Contents | Always-available knowledge | `rite-workflow` (workflow rules) |
 | Task Contents | Active execution tasks | `reviewers` (review criteria) |
 
-**`context: fork` について:** rite スキルは `context: fork` を使わない。forked（isolated）実行はスキル自身の出力をユーザーへ inline で返さず harness control wrapper のみが surface するため。read-only スキル (`/rite:issue-list` / `/rite:investigate` / `/rite:workflow` / `/rite:skill-suggest`) も で fork を解除済み。
+**`context: fork` について:** rite スキルは `context: fork` を使わない。forked（isolated）実行はスキル自身の出力をユーザーへ inline で返さず harness control wrapper のみが surface するため。read-only スキル (`/rite:issue-list` / `/rite:investigate` / `/rite:workflow` / `/rite:skill-suggest`) でも fork を解除済み。
 
 ### Agent File Format
 

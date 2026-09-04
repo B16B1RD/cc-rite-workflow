@@ -405,7 +405,7 @@ Issue comment is a backup replica, synced at phase transitions:
 
 The replica's `セッション情報` carries one line the local file does not: `- **Issue**: #{n}`, written by `issue-comment-wm-sync.sh init` (shown in Basic Structure above). It is load-bearing, not decorative — `do_fetch` reads it out of the body it already fetched to confirm a cached `wm_comment_id` really belongs to the Issue being synced (`repos/{owner}/{repo}/issues/comments/{id}` is Issue-independent, so a successful GET proves nothing on its own).
 
-The parser accepts only the exact shape: the line starts at column 0 as `- **Issue**: #{n}`, and **anything appended after the number must contain no digits** (so `- **Issue**: — fix hook` still parses, while `- **Issue**: — fix v2 hook` does not). Removing the line, or reformatting it outside that shape, does not fail loudly — it degrades every cache hit into a full comment scan, with one `[rite] WARNING` per sync.
+The parser accepts only the exact shape: the line starts at column 0 as `- **Issue**: #{n}`, and **anything appended after the number must contain no digits** (so `- **Issue**: #{n} — fix hook` still parses, while `- **Issue**: #{n} — fix v2 hook` does not). Removing the line, or reformatting it outside that shape, does not fail loudly — it degrades every cache hit into a full comment scan, with one `[rite] WARNING` per sync.
 
 ## SoT Access Pattern
 
