@@ -430,6 +430,11 @@ assert_grep "TC-18b (AC-6) index.md の行は Edit せず helper を呼び直す
 assert_grep "TC-18b (AC-6) helper 不在は fail-loud で停止する" "$INGEST_MD_RAIL" 'WIKI_INGEST_NUMREF=error; reason=helper_missing'
 assert_grep "TC-18b (AC-6) placeholder 残留は fail-loud で停止する" "$INGEST_MD_RAIL" 'WIKI_INGEST_NUMREF=error; reason=placeholder_residue'
 assert_grep "TC-18b (AC-6) ignore 残存検査の rc 失敗は fail-loud で停止する" "$INGEST_MD_RAIL" 'WIKI_INGEST_NUMREF=error; reason=ignored_check_failed'
+# causes の取得は stderr を混ぜない (混ぜると git の診断が「効いている exclude ルール」として
+# 見出しの下に並ぶ)。出力側の assert は健全 fixture では恒真なので、source 側で決定的に測る
+assert_not_grep "TC-18b (AC-6) causes 取得は check-ignore の stderr を併合しない" \
+  "$INGEST_MD_RAIL" 'check-ignore -v --stdin 2>&1'
+assert_grep "TC-18b (AC-6) causes 取得は rc を捕捉する" "$INGEST_MD_RAIL" '\|\| numref_ci_rc=\$\?'
 # commit ステップ側が marker を機械的に読むゲートを持つこと
 # (散文で名指しするだけでは 5.0.n を飛ばしても commit が成功してしまう)
 assert "TC-18b (AC-6) ゲートは hit を commit させない (canonical + 5.1 + 5.2 の 3 箇所)" "3" \
@@ -624,11 +629,14 @@ else
         "$p18b_dir/ignored.out" '^    \.rite/wiki/pages/日本語ページ\.md$'
       assert_not_grep "TC-18b (AC-6) 原因の見出しだけが出て中身が空にならない" \
         "$p18b_dir/ignored.out" '原因を特定できませんでした'
-      # 4 スペースの字下げは「原因としてラベルした」印。git の診断がここに並ぶのは
-      # stderr を causes へ混ぜた形の再導入を意味する。健全な fixture では check-ignore の
-      # stderr が空になるため専用の変異 fixture を持てず、構造ガードとして置く
+      # 原因欄に git の診断が並ぶのは stderr を causes へ混ぜた形の再導入を意味する。
+      # 健全な fixture では check-ignore が stderr を出さないのでこの出力側 assert だけでは
+      # 恒真になる — 決定的なキラーは下の source 側 pin と経路 (9) の shim が担う
       assert_not_grep "TC-18b (AC-6) 原因欄に git の警告 / エラーを原因として載せない" \
         "$p18b_dir/ignored.out" '^    (warning|fatal|error):'
+      # 原因行の path 欄も生のまま出ること (check-ignore 側の quotePath=false を測る)
+      assert_grep "TC-18b (AC-6) 原因行の path 欄も非 ASCII を生で出す" \
+        "$p18b_dir/ignored.out" '\.gitignore:[0-9]+:.*[[:space:]]\.rite/wiki/pages/日本語ページ\.md$'
       # 残存が複数ある回に先頭 1 件しか名指ししないと、直して再実行しても同じ reason で止まる。
       # 表示件数 (head -5) と原因行数が一致することで「全件に対して引いた」ことを測る
       # 原因行 (`<source>:<line>:<pattern>\t<path>`) も `    .rite/wiki/...` で始まりうるので、
@@ -640,6 +648,45 @@ else
       assert_not_grep "TC-18b (AC-6) ignored_paths は stage_failed 用の root anchor 案内へ戻っていない" \
         "$p18b_dir/ignored.out" 'gitignore-wiki-section-end'
     fi
+  # (9) check-ignore が失敗した回。git の PATH shim で check-ignore だけを rc=128 + stderr に
+  #     差し替える。健全な fixture では check-ignore が必ず一致を返すため、else arm と
+  #     「stderr を混ぜない」性質はこの経路でしか実行で測れない
+  p18b_shim="$p18b_dir/shim"
+  mkdir -p "$p18b_shim"
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'for a in "$@"; do\n'
+    printf '  if [ "$a" = "check-ignore" ]; then\n'
+    printf '    echo "fatal: shimmed check-ignore failure" >&2\n'
+    printf '    exit 128\n'
+    printf '  fi\n'
+    printf 'done\n'
+    printf 'exec %s "$@"\n' "$(command -v git)"
+  } > "$p18b_shim/git"
+  chmod +x "$p18b_shim/git"
+  if [ ! -x "$p18b_shim/git" ]; then
+    fail "TC-18b (AC-6) git shim を作成できなかった"
+    skip "TC-18b (AC-6) check-ignore 失敗経路の assert を shim 作成失敗により gate"
+  else
+    p18b_render "$p18b_drift" "$PLUGIN_ROOT" > "$p18b_dir/block9.sh"
+    PATH="$p18b_shim:$PATH" bash "$p18b_dir/block9.sh" > "$p18b_dir/shim.out" 2>&1
+    # 失敗しても verdict は変わらない (ignore 残存は ls-files が確定済み)
+    assert_grep "TC-18b (AC-6) check-ignore が落ちても ignored_paths で止まる" \
+      "$p18b_dir/shim.out" 'reason=ignored_paths'
+    # else arm へ入り、rc を添えて「一致を返しませんでした」と報告する
+    assert_grep "TC-18b (AC-6) check-ignore 失敗時は rc を添えて報告する" \
+      "$p18b_dir/shim.out" '一致を返しませんでした \(rc=128\)'
+    assert_grep "TC-18b (AC-6) check-ignore 失敗時は手動再現コマンドを案内する" \
+      "$p18b_dir/shim.out" '手動: git -C .* check-ignore -v'
+    # git の診断は素通しされ、原因としてラベル (4 スペース字下げ) されない
+    assert_grep "TC-18b (AC-6) git の診断自体は surface される" \
+      "$p18b_dir/shim.out" 'fatal: shimmed check-ignore failure'
+    assert_not_grep "TC-18b (AC-6) git の診断を原因欄へ字下げして載せない" \
+      "$p18b_dir/shim.out" '^    fatal: shimmed check-ignore failure'
+    # 名指しできた件数が表示件数に満たないことを明示する
+    assert_grep "TC-18b (AC-6) 名指しできた件数が表示件数に満たないことを明示する" \
+      "$p18b_dir/shim.out" '注意: 表示 [0-9]+ 件のうち 0 件しか原因を名指しできていません'
+  fi
   fi
 fi
 # --- TC-18c (AC-6): commit ステップの numref_verdict ゲートを実行で pin する ---

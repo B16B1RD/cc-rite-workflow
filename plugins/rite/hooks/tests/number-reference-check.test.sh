@@ -362,9 +362,12 @@ rm -rf "$sb/empty_dir"
 
 # staged deletion のみの pathspec — ls-files は空だが git diff HEAD は削除 hunk を返す。
 # 「diff が空のときだけ error にする」変異はこの shape でしか死なない
+# commit_all は add -A なので、それまでの一時的な dirty をまとめて HEAD へ昇格させてしまう。
+# この TC が触るパスだけを commit する
 mkdir -p "$sb/deldir"
 printf 'clean\n' > "$sb/deldir/a.md"
-commit_all "$sb" del-base
+git -C "$sb" add deldir || fail "T-04b staged-deletion fixture の add に失敗"
+git -C "$sb" commit -qm del-base || fail "T-04b staged-deletion fixture の commit に失敗"
 git -C "$sb" rm -q --cached deldir/a.md
 printf 'number here (#1500)\n' > "$sb/deldir/a.md"
 rc=0; out=$(run_diff "$sb" HEAD --path deldir --quiet 2>&1) || rc=$?
@@ -373,9 +376,9 @@ if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q -- '--path が repo 内のど
 else
   fail "T-04b --path staged-deletion-only not rejected rc=$rc: $out"
 fi
-# index を HEAD へ戻す (checkout -q -- . では index の削除が残り後続へ漏れる)
-git -C "$sb" reset -q
-rm -rf "$sb/deldir"
+# index を HEAD へ戻す (checkout -q -- . では index の削除が残り後続へ漏れる)。
+# deldir/a.md は HEAD に残るが内容は 'clean' で、後続の走査に findings を足さない
+git -C "$sb" reset -q || fail "T-04b index 復元 (reset) に失敗（以降のケースが汚染された index で走る）"
 
 # restore the tree for the following cases (失敗を握り潰すと後続 T-05+ が汚染ツリーで走り、
 # 原因が「T-04b の片付け失敗」ではなく無関係な assert の赤として現れる)
