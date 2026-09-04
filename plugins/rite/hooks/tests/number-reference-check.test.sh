@@ -235,7 +235,9 @@ fi
 # T-04 path exclusions — all five contracted paths
 # --------------------------------------------------------------------------
 mkdir -p "$sb/.rite/wiki/raw" \
+  "$sb/.rite/wiki/raw-notes" \
   "$sb/plugins/rite/scripts/tests/fixtures" \
+  "$sb/plugins/rite/scripts/tests/fixtures-other" \
   "$sb/plugins/rite/hooks/tests"
 printf 'raw (#2100)\n' > "$sb/.rite/wiki/raw/note.md"
 printf 'fixture (#2101)\n' > "$sb/plugins/rite/scripts/tests/fixtures/x.md"
@@ -243,12 +245,16 @@ printf 'self (#2102)\n' > "$sb/plugins/rite/hooks/tests/number-reference-check.t
 printf 'cjc (#2103)\n' > "$sb/plugins/rite/hooks/tests/comment-journal-check.test.sh"
 printf 'wiki (#2104)\n' > "$sb/plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh"
 printf 'other (#2105)\n' > "$sb/plugins/rite/hooks/tests/other.test.sh"
+printf 'raw sibling (#2106)\n' > "$sb/.rite/wiki/raw-notes/x.md"
+printf 'fixture sibling (#2107)\n' > "$sb/plugins/rite/scripts/tests/fixtures-other/x.md"
 printf 'clean surface\n' > "$sb/plugins/rite/skills/x/SKILL.md"
 commit_all "$sb" path-excl
 
 rc=0; out=$(run_all "$sb" --quiet 2>&1) || rc=$?
 if [ "$rc" -eq 1 ] \
    && printf '%s' "$out" | grep -q 'hooks/tests/other.test.sh' \
+   && printf '%s' "$out" | grep -q 'wiki/raw-notes/x.md' \
+   && printf '%s' "$out" | grep -q 'scripts/tests/fixtures-other/x.md' \
    && ! printf '%s' "$out" | grep -q 'wiki/raw/' \
    && ! printf '%s' "$out" | grep -q 'scripts/tests/fixtures/' \
    && ! printf '%s' "$out" | grep -q 'number-reference-check.test.sh' \
@@ -262,6 +268,8 @@ fi
 rc=0; out=$(run_diff "$sb" HEAD~1 --quiet 2>&1) || rc=$?
 if [ "$rc" -eq 1 ] \
    && printf '%s' "$out" | grep -q 'hooks/tests/other.test.sh' \
+   && printf '%s' "$out" | grep -q 'wiki/raw-notes/x.md' \
+   && printf '%s' "$out" | grep -q 'scripts/tests/fixtures-other/x.md' \
    && ! printf '%s' "$out" | grep -q 'wiki/raw/' \
    && ! printf '%s' "$out" | grep -q 'scripts/tests/fixtures/' \
    && ! printf '%s' "$out" | grep -q 'number-reference-check.test.sh' \
@@ -297,6 +305,17 @@ else
   fail "T-04 --stdin expected sibling hit, got rc=$rc: $out"
 fi
 
+for sibling_path in .rite/wiki/raw-notes/x.md plugins/rite/scripts/tests/fixtures-other/x.md; do
+  rc=0; out=$(printf 'directory sibling token (#2113)\n' \
+    | bash "$TARGET" --stdin --label "$sibling_path" --quiet 2>&1) || rc=$?
+  if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q "^$sibling_path:1:" \
+     && printf '%s' "$out" | grep -q 'Total number-ref findings: 1'; then
+    pass "T-04 --stdin scans directory sibling $sibling_path"
+  else
+    fail "T-04 --stdin expected directory sibling hit for $sibling_path, got rc=$rc: $out"
+  fi
+done
+
 # Directory prefixes are boundaries: the root and descendants are excluded,
 # while merely similar prefixes remain in scope.
 for excluded_label in .rite/wiki/raw .rite/wiki/raw/child.md; do
@@ -329,15 +348,16 @@ fi
 git -C "$sb" checkout -q -- .
 
 # The five path literals are data in one Bash definition, never copied into awk.
-excluded_definition_count=$(sed -n "/^EXCLUDED_PATHS='/,/^plugins\/rite\/hooks\/tests\/wiki-lint-descriptive-refs.test.sh'$/p" "$TARGET" \
-  | grep -cE '\.rite/wiki/raw/|plugins/rite/scripts/tests/fixtures/|plugins/rite/hooks/tests/(number-reference-check|comment-journal-check|wiki-lint-descriptive-refs)\.test\.sh')
-assert "T-04 exclusion list has exactly five Bash entries" "5" "$excluded_definition_count"
-if ! sed -n '/function excluded(/,/^    }/p' "$TARGET" \
-  | grep -qE '\.rite/wiki/raw|plugins/rite/(scripts/tests/fixtures|hooks/tests/)'; then
-  pass "T-04 awk exclusion logic contains no path literals"
-else
-  fail "T-04 awk exclusion logic copied a path literal"
-fi
+script_without_header=$(sed -n '/^set -uo pipefail/,$p' "$TARGET")
+for exclusion_literal in \
+  .rite/wiki/raw/ \
+  plugins/rite/scripts/tests/fixtures/ \
+  plugins/rite/hooks/tests/number-reference-check.test.sh \
+  plugins/rite/hooks/tests/comment-journal-check.test.sh \
+  plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh; do
+  literal_count=$(printf '%s\n' "$script_without_header" | grep -F -c "$exclusion_literal")
+  assert "T-04 exclusion literal has one non-header definition: $exclusion_literal" "1" "$literal_count"
+done
 
 # --------------------------------------------------------------------------
 # T-04b --path narrows --diff to a pathspec (scan range == commit range)
