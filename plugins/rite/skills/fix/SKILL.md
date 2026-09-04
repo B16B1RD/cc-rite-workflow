@@ -2357,6 +2357,8 @@ When "コードを修正する" is selected:
 
 修正案が文書の主張を書く／広げる／述語化するものなら、適用前に主張が名指しする集合（実装の経路・出力・判定値）を実装で列挙し、主張と一致するか確認する。列挙結果は修正案の提示に併記する。不一致なら修正案を適用せず、主張を限定するか削除する案に差し替える。
 
+**MUST**: 生成するコメント / 散文に Issue/PR 番号・AC 番号を書かない。残す背景は現在形の制約文。ジャーナル/経緯文は禁止。
+
 Present the proposed fix and apply with Edit tool after confirmation:
 
 ```
@@ -2529,7 +2531,7 @@ rationale: references/design-rationale.md#nit-noted-no-reply-notes
 
 ## ステップ 3: 修正のコミット
 
-> **Reference**: Apply [Comment Best Practices](../../skills/rite-workflow/references/comment-best-practices.md) when finalising fix commits — verify that journal comments (`cycle X F-Y`, PR/Issue numbers), file:line references, and unverified jargon are not left in the diff. The goal is WHY-only inline comments; review/fix history belongs in commit messages and PR descriptions.
+> **Reference**: Apply [Comment Best Practices](../../skills/rite-workflow/references/comment-best-practices.md) when finalising fix commits — 生成コメント/散文に Issue/PR 番号・AC 番号を残さない。残す背景は現在形の制約文。ジャーナル/経緯文は禁止。file:line 参照と未検証ジャーゴンも diff に残さない。review/fix 履歴は commit message / PR description へ。
 
 ### 3.1 Verify Changes
 
@@ -2576,6 +2578,33 @@ git diff
 
 対応した指摘: {count}件
 ```
+
+**番号参照 self-check**（`FIX_COMMIT_GUARD=proceed` のあと、3.1.1 の前）。`{base_branch}` は rite-config `branch.base`、無ければ PR base（ステップ 1.1 `.baseRefName`）。origin-first は lint Phase 2.2 と同じ。
+
+```bash
+nref_base="origin/{base_branch}"
+git rev-parse --verify "${nref_base}^{commit}" >/dev/null 2>&1 || nref_base="{base_branch}"
+nref_rc=0
+bash {plugin_root}/hooks/scripts/number-reference-check.sh --diff "$nref_base" || nref_rc=$?
+case "$nref_rc" in
+  0) ;;
+  1)
+    echo "ERROR: 追加行に Issue/PR 番号参照がある。コミットしない。ステップ 2.3 で書き直す。" >&2
+    echo "[CONTEXT] NUMBER_REF_CHECK=hits" >&2
+    ;;
+  *)
+    echo "ERROR: number-reference-check.sh failed (rc=$nref_rc)" >&2
+    echo "[fix:error]"
+    exit 1
+    ;;
+esac
+```
+
+| Exit | Action |
+|------|--------|
+| `0` | 3.1.1 へ |
+| `1` | コミットしない。2.3 に戻り追加行を書き直す。書き直しでもヒットが残るなら `[fix:error]`。番号付き行をコミットする fallback は禁止 |
+| `2` | `[fix:error]`（git / usage 失敗） |
 
 ### 3.1.1 Pre-Commit Schema Version Check
 
@@ -2645,7 +2674,7 @@ Use a free-form commit body. Review-fix commits **MUST** include:
 - Write in free-form — no specific prefix or template required
 - Focus on "why" the change was needed, not "what" was changed (the description line already covers "what")
 - Follow the same language setting as the description line
-- trivial（typo / formatting のみ）は省略可。review-fix の対応方針・根本原因は省略しない
+- Why は必須（省略経路なし）。review-fix の対応方針 / Root cause は省略しない
 
 **Trailer**: Generate in the configured language using the unified `{reviewer_display_N}` placeholder (展開ルールは ステップ 2.1 の `{reviewer_display}` 展開ルール表を参照 — Broad Retrieval 経由で `@{user}`、Fast Path 経由 + `target_author_mention_skip == "true"` で `(不明なレビュアー)` / `(unknown reviewer)` に展開される):
 
@@ -3343,7 +3372,7 @@ If `reason` is non-empty, skip Steps 2 and ステップ 4.6.W.2 and proceed to t
 
 **Step 2**: Generate a fix Raw Source from the fix results:
 
-The fix content includes: PR number, findings addressed, fix strategies used, and patterns of overcorrection or effective approaches.
+The fix content includes: findings addressed, fix strategies used, and patterns of overcorrection or effective approaches. `{title}` はステップ 1.1 の PR title。
 
 ```bash
 # {plugin_root} はリテラル値で埋め込む
@@ -3384,7 +3413,7 @@ else
     --source-ref "pr-{pr_number}" \
     --content-file "$tmpfile" \
     --pr-number {pr_number} \
-    --title "PR #{pr_number} fix results" \
+    --title "{title}（修正結果）" \
     2>"$trigger_stderr"
   trigger_exit=$?
   echo "trigger_exit=$trigger_exit"

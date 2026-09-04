@@ -17,6 +17,7 @@ user-invocable: false
 > **Reference**: Apply the Phase 5.1 checklist from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).
 > In particular, check `simplicity_enforcement`, `scope_discipline`, `dead_code_hygiene`, and `knowledge_routing` — route each finding to its durable medium (How → code, What → tests, Why → commit log, Why not → comments).
 > Also follow [Comment Best Practices](../../skills/rite-workflow/references/comment-best-practices.md) for WHY > WHAT, journal/line-number/cycle-number prohibition, jargon whitelist, and density-by-audience rules.
+> **MUST**: 生成するコメント・ドキュメント・SKILL 散文に Issue/PR 番号・AC番号を書かない。残す背景は現在形の制約文。ジャーナル/経緯文は禁止。
 
 > **Plugin Path**: Resolve `{plugin_root}` per [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) before executing bash hook commands in this file.
 
@@ -540,7 +541,7 @@ rationale: references/rationale.md#push-no-upstream
 
 > **⚠️ CRITICAL**: commit message の `description` は `language` 設定に従う。例の言語をコピーしない。
 
-形式 `{type}({scope}): {description}`。言語は `rite-config.yml` の `language`（`auto` は日本語文字の有無）。type/scope は常に英語。body は why を自由形式。description との間に空行。trivial は省略可。
+形式 `{type}({scope}): {description}`。言語は `rite-config.yml` の `language`（`auto` は日本語文字の有無）。type/scope は常に英語。body は why を自由形式（必須。typo 以外も含め省略しない）。description との間に空行。
 
 ```bash
 git add {changed_files}

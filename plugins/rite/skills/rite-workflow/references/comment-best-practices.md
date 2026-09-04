@@ -16,7 +16,7 @@ rite workflow 独自の主張 (Contract Rigour / Output Contract / Naming is doc
 | ドキュメント散文 | `docs/`（SPEC ほか）・command/skill markdown の手順書本文・各種 reference・成果物テンプレート |
 | Wiki ページ | `.rite/wiki/` の経験則ページ・テンプレート |
 
-「番号を辿っても得るものが少なく、辿る手間に見合わない」ため、永続成果物には番号を残さず、残すべき背景（Why）は**散文として成果物そのものに書く**。番号リンクは commit message / PR description（git/PR メタデータ）にのみ残す。どの参照を削除し、どれを維持するかは次節「廃止判定ルール」で分類する。
+「番号を辿っても得るものが少なく、辿る手間に見合わない」ため、永続成果物には番号を残さず、残すべき背景（Why）は**散文として成果物そのものに書く**。番号リンクは commit message / PR description（git/PR メタデータ）にのみ残す。永続成果物の裸の `#NNN` は一律禁止（次節）。
 
 ## 適用フェーズ
 
@@ -43,16 +43,16 @@ rite workflow 独自の主張 (Contract Rigour / Output Contract / Naming is doc
 
 ## 廃止判定ルール (説明的参照 vs 前方ポインタ)
 
-番号参照は一律に削除するのではなく、次のルールで分類して扱う。各参照について「説明的か（削除）／前方ポインタか（維持）」を**個別判定**する。判定は文脈読解を要するため、機械的な一括 grep 置換にはできない。
+永続成果物の裸の番号トークン（`#NNN`）は一律禁止。検出器は `number-reference-check.sh`。
 
 | 参照の種類 | 判定 | 理由 |
 |-----------|------|------|
 | **説明的参照**（「詳細は #N 参照」「PR #N で対応」「(refs #N)」等、Why の代替として貼られたもの） | **削除** → Why を散文化 | 番号を辿っても背景は得られず、辿る手間に見合わない。背景が必要なら Why を散文で残す |
-| **TODO / FIXME に添えた追跡番号** | **維持** | 未来の取り扱い経路を示す前方ポインタ。これから来る読み手が次の作業を辿るための実用情報であり、過去の説明ではない |
-| **test 契約・semantic アンカーとしてのファイル名参照**（`xxx.test.sh` 等） | **維持** | 番号ではない。drift-check や test 契約のアンカーとして機能し、rename 追従可能 |
+| **TODO / FIXME に添えた追跡番号** | **禁止**（例外ではない） | TODO 行に Issue 番号を維持しない。TODO/FIXME は番号なしで存在してよい |
+| **test 契約・semantic アンカーとしてのファイル名参照**（`xxx.test.sh` 等） | **維持** | `#NNN` トークンではない。drift-check や test 契約のアンカーとして機能し、rename 追従可能 |
 | **commit message / PR description 内の番号** | **対象外**（許可） | git/PR メタデータは番号の正しい受け皿。永続成果物（コード・ドキュメント・Wiki）ではない |
 
-この分類が全 Sub-Issue 共通の契約となる。検出機構（lint / reviewer）は本ルールに**従うべきであり**、「説明的参照=検出対象」「TODO/FIXME 追跡番号・ファイル名アンカー=検出除外」を区別することを目標とする（検出側の regex 同期・誤検出除外の具体実装は検出機械化タスクの責務であり、本 SoT 改訂時点では §C Detection Heuristics の正規表現は未同期）。なお parity test は禁止句リスト（SoT）と §C Detection Heuristics の forward 包含（SoT ⊆ Heuristics）を検証するリスト整合テストであり、コメントの検出対象/除外そのものを区別する機構ではない。
+検出機構は本ルールに従う。TODO/FIXME 追跡番号を検出除外とする番号例外は置かない。ファイル名アンカーは `#NNN` ではないので対象外。parity test は禁止句リスト（SoT）と §C Detection Heuristics の forward 包含（SoT ⊆ Heuristics）を検証するリスト整合テストであり、検出対象/除外そのものを区別する機構ではない。
 
 ## A. 6 原則 (Principle Details)
 
@@ -158,7 +158,7 @@ rite workflow 独自の主張 (Contract Rigour / Output Contract / Naming is doc
 
 1. コードを変更したら、影響範囲のコメントも同 commit 内で更新する (commit に閉じる)
 2. 削除されたコードへのコメント参照を残してはならない
-3. 「TODO」「FIXME」を書くなら必ず関連 Issue / PR 番号を添えて未来の取り扱い経路を明示する。野良 TODO は禁止。この追跡番号は廃止判定ルールの**前方追跡ポインタ（維持）**に該当し、Why の代替として貼る説明的参照（削除対象）とは区別される — 番号廃止方針と矛盾しない（過去の説明ではなく、これから来る読み手が次の作業を辿るための前方ポインタだから維持する）
+3. 「TODO」「FIXME」は追跡番号なしで存在してよい。Issue/PR 番号（`#NNN`）を添えるよう指示しない
 4. レビュー時、コメントが現コードと整合しているかを必ず確認する (severity: CRITICAL)
 
 ---

@@ -24,11 +24,9 @@ comparison anchor, so avoid cross-version "used to / previously" framing that is
 not tied to a named key or feature. Breaking-change notices and migration guides
 that aid upgraders are kept verbatim.
 
-Number-reference policy: Entries MAY include GitHub Issue numbers as
-parenthetical pointers (e.g. `(#NNNN)`). CHANGELOG.md / CHANGELOG.ja.md are
-repository documents, not marketplace-distributed plugin files, so they are
-outside the number-free surface guarded by `number-reference-check.sh`. The
-`/release` skill template writes these pointers; do not strip them.
+Number-reference policy: New entries must not include Issue/PR number
+tokens. Historical entries in past version sections are left as-is
+(non-target). `/release` no longer writes pointers.
 -->
 
 ## [Unreleased]

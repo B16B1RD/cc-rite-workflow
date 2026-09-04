@@ -1,7 +1,7 @@
 # 説明的番号参照の検出 — 設計根拠
 
-`hooks/scripts/wiki-lint-descriptive-refs.sh`（wiki-lint ステップ 7.5）と `hooks/scripts/comment-journal-check.sh` の P5/P6 が共有する検出設計の背景。
-**regex literal と算法の SoT は各スクリプト冒頭**であり、本ファイルは「なぜその形なのか」「なぜ代替案でないのか」を収める。
+`hooks/scripts/wiki-lint-descriptive-refs.sh`（wiki-lint ステップ 7.5）の検出設計の背景。comment-journal の P5/P6 は廃止済み。Wiki ページの番号参照カウンタは本 helper（helper は変更しない）。
+**regex literal と算法の SoT は helper 冒頭**であり、本ファイルは「なぜその形なのか」「なぜ代替案でないのか」を収める。
 
 ## helper へ切り出した理由
 
@@ -133,10 +133,7 @@ ingest がサマリー列へ書き込む引用はラッチ対象外）。コー�
 正常形（末尾がソース節の手書き index）を検出失敗として誤計上する側のリスクだけが増える。
 `index.md` に `sources:` / `## ソース` を書く producer が生まれたときに、この 2 ラッチへ検査を足す。
 
-`comment-journal-check.sh` の `.rite/wiki` scan_root は `wiki.branch_strategy: same_branch` のときだけ実体に届く。
-`separate_branch` では Wiki ページの実体は wiki ブランチにあり、dev checkout の `.rite/wiki/` は gitignore されたローカル置き場になる。
-ただし ingest 待ちの Raw Source は一時的に dev checkout の `.rite/wiki/raw/` に実在するため、その窓では raw 由来の検出が出うる。
-ページ分の走査は本 helper が `git show` で担うため二重化させない（本 helper は `raw/` を意図的に除外するので、両検出器の対象集合は一致しない）。
+Wiki ページの番号参照カウンタは本 helper が `git show` で担う。comment-journal の P5/P6 は廃止済み。`separate_branch` では Wiki ページの実体は wiki ブランチにあり、dev checkout の `.rite/wiki/` は gitignore されたローカル置き場になる。
 
 **E5（TODO / FIXME）の適用単位はページと index で異なる**。ページは行単位で落とす（従来どおり）が、index はサマリーを
 抽出したあと、コードスパンのマスク後に判定する。フィルタ段で落とすとエントリ行が `entries` にも計上されないまま消え、
@@ -163,11 +160,10 @@ E5 は**意図的除外**であって抽出失敗ではないため `descriptive
 | E2 節スコープ（EOF 打ち切りではない理由） | 現行の接尾辞許容見出しで差 7 ページ 28 hits（接尾辞許容前の計測では 13 ページ 81 hits） | 節スコープ（見出し → 次の `##` 見出し）に限定。EOF まで打ち切ると wiki-ingest が後置する `## 補強:` 等が丸ごと盲点になる |
 | E2 見出しの接尾辞許容 | `## ソース（追記分）` 等 13 箇所 | 厳密一致だと節の開始として認識されないまま「次の見出し」としては認識され、直前の節の除外を打ち切って 53 hits の誤検出になる |
 | E3 コードフェンス / E4 スパン | — | 引用されたコマンド・regex の中の番号はリテラルであって主張ではない。E4 は削除ではなく `_` 置換（削除するとキーワードと番号が隣接して**誤検出を製造する**） |
-| E5 TODO / FIXME | — | 追跡番号は前方参照であり SoT の廃止判定ルールが維持を認めている |
+| E5 TODO / FIXME | — | helper の既存除外（helper は変更しない）。SoT は追跡番号を番号例外として維持しない |
 
 いずれの除外もその範囲内では再発が見えなくなる。だから P1-P4 には広げず、説明的参照の検出に限定している。
 
 ## 2 実装を共通化しない理由
 
-helper は wiki ページ（`git show` / `cat`、ページ単位の hits 集計）、`comment-journal-check.sh` は plugin/docs ファイル（awk 単一走査、行単位の finding 報告）を対象とし、
-読出元も計数単位も違う。共通化ではなく、**R1 regex が両者でバイト一致することを assert する drift test**（`wiki-lint-descriptive-refs.test.sh` TC-22）で同期を担保する。
+Wiki ページの番号参照カウンタは本 helper（`git show` / `cat`、ページ単位の hits 集計）。comment-journal の P5/P6 は廃止済み。helper は変更しない。

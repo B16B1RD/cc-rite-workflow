@@ -352,20 +352,22 @@ Phase 4 用: `test_status`（`success` / `error` / `skipped`）、`test_error_co
 
 ### 3.5 Plugin-specific Checks (Generic Loop)
 
-情報系チェックの前に descriptive-number diff gate を実行する。finding または読めない diff は blocking: `lint_output` に記録し `error_count` を増やし Phase 4.2（`[lint:error]`）。`branch.base` は Phase 2.2 と同じ origin-first。走査は `plugins/rite/` の追加行のみ。`tests/` は除外。
+情報系チェックの前に `number-reference-check.sh --diff <base>` を実行する。finding または読めない diff は blocking: `lint_output` に記録し `error_count` を増やし Phase 4.2（`[lint:error]`）。`<base>` は Phase 2.2 と同じ origin-first。`--quiet`。`--target` も `A...HEAD` も渡さない。helper が `git diff <base>` する。
 rationale: references/rationale.md#descriptive-number-blocking
 
 ```bash
-descriptive_number_diff_output=$(bash {plugin_root}/hooks/scripts/descriptive-number-diff-gate.sh 2>&1)
-descriptive_number_diff_rc=$?
-case "$descriptive_number_diff_rc" in
+number_ref_diff_base="origin/{base_branch}"
+git rev-parse --verify "${number_ref_diff_base}^{commit}" >/dev/null 2>&1 || number_ref_diff_base="{base_branch}"
+number_ref_diff_output=$(bash {plugin_root}/hooks/scripts/number-reference-check.sh --diff "$number_ref_diff_base" --quiet 2>&1)
+number_ref_diff_rc=$?
+case "$number_ref_diff_rc" in
   0) ;;
   1|2)
-    lint_output="${lint_output}${lint_output:+\n}${descriptive_number_diff_output}"
+    lint_output="${lint_output}${lint_output:+\n}${number_ref_diff_output}"
     error_count=$((error_count + 1))
     ;;
   *)
-    lint_output="${lint_output}${lint_output:+\n}ERROR: descriptive-number diff gate returned unexpected rc=$descriptive_number_diff_rc"
+    lint_output="${lint_output}${lint_output:+\n}ERROR: number-reference --diff returned unexpected rc=$number_ref_diff_rc"
     error_count=$((error_count + 1))
     ;;
 esac
@@ -422,7 +424,7 @@ fi
 - **Out-of-contract exit codes**（0/1/2/-1 以外）: `error` として warning 記録し続行。
 rationale: references/rationale.md#findings-are-warnings
 
-**Per-check notes**: Number reference — 走査面（本ファイル）へ Issue/PR 番号参照を戻さない。面を広げるなら script の `DEFAULT_TARGETS` へ追加。
+**Per-check notes**: Number reference `--all` は git-tracked 全件 − helper の path 除外（wiki raw、script fixtures、検出器テスト 3 本）。CHANGELOG は対象。履歴ヒットは warning ノイズとして許容。
 
 **Adding a new check**: 表に 1 行（path / label / prefix / count regex）、exit 契約（0/1/2）と count line、根拠を [plugin-checks-rationale.md](references/plugin-checks-rationale.md) へ。新 Phase / appendix / summary 行は不要。
 
