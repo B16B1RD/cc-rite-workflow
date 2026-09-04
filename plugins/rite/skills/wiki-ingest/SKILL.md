@@ -526,7 +526,9 @@ esac
 ステップ 5.0 手順 1-7 の Write/Edit を終えたら、**commit の前に**書いた分を検査する。Raw Source の本文には番号が載っており（raw は出典なので正しい）、そこから読解して書く過程で番号が Wiki 側へ転記される。ここで止めないと混入は ingest のたびに増える。
 rationale: references/rationale.md#numref-precommit
 
-**検査対象は「未 commit の Wiki 差分」全体**。ページだけでなく `index.md` のエントリ行も `log.md` の bullet も同じ 1 回で通る（`{skip_reason}` や Update の説明文に載る番号を素通りさせないため）。**対象の列挙もラベルも LLM が選ばない** — `git diff HEAD` が未 commit の追加行だけを渡し、パスは git が返す実体をそのまま使う。ステップ 5.0 の時点でコード変更は commit 済みなので、この差分は ingest 自身の書き込みと一致する。
+**検査対象は `.rite/wiki` 配下の未 commit 差分**。ページだけでなく `index.md` のエントリ行も `log.md` の bullet も同じ 1 回で通る（`{skip_reason}` や Update の説明文に載る番号を素通りさせないため）。**対象の列挙もラベルも LLM が選ばない** — `git diff` が未 commit の追加行を渡し、パスは git が返す実体をそのまま使う。
+
+走査範囲は commit 範囲と一致させる。`--path .rite/wiki` を付けないと `same_branch` では dev ツリー全体が母数になり、Wiki と無関係な未 commit 変更の番号で `hit` が出て、書き直しようのない停止になる。新規ページは Write した時点では untracked で `git diff` に現れないため、走査の直前に `git add -N`（intent-to-add）で差分へ載せる。**この 2 つを外すと、ingest が新規作成したページ — 番号混入の主経路 — が 1 行も検査されないまま `clean` になる**。
 
 `{numref_tree}` は `separate_branch` では `{wiki_worktree_abs}`（ステップ 1.3 の絶対パス）、`same_branch` では dev ツリーの repo root を literal substitute する。
 
@@ -550,8 +552,19 @@ if [ ! -f "$check" ]; then
   echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=helper_missing" >&2
   exit 1
 fi
+# 新規ページ (untracked) を差分へ載せる。index を汚さない intent-to-add で、
+# ステップ 5.1 / 5.2 がどのみち同じ範囲を stage し直すので後段への影響はない。
+# `.rite/wiki` が gitignore されたままだとここが非 0 で落ちる (ステップ 5.2 の
+# `!.rite/wiki/` negation 案内が対処。無言で 0 件 clean にはしない)。
+numref_stage_rc=0
+git -C "$numref_tree" add -N -- .rite/wiki || numref_stage_rc=$?
+if [ "$numref_stage_rc" -ne 0 ]; then
+  echo "ERROR: .rite/wiki の intent-to-add に失敗しました (rc=$numref_stage_rc)。新規ページが検査されないため commit しません" >&2
+  echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=stage_failed; rc=$numref_stage_rc" >&2
+  exit 1
+fi
 numref_rc=0
-bash "$check" --repo-root "$numref_tree" --diff HEAD --quiet || numref_rc=$?
+bash "$check" --repo-root "$numref_tree" --diff HEAD --path .rite/wiki --quiet || numref_rc=$?
 case "$numref_rc" in
   0) echo "[CONTEXT] WIKI_INGEST_NUMREF=clean" ;;
   1) echo "[CONTEXT] WIKI_INGEST_NUMREF=hit" ;;
@@ -566,10 +579,32 @@ esac
 | `WIKI_INGEST_NUMREF` | アクション |
 |---|---|
 | `clean` | ステップ 5.1 / 5.2 へ進む |
-| `hit` | stdout の `file:line: 内容` が指す行を書き直してから**本ステップを再実行**する。書き直しは番号を落として現在形の Why にすること — 番号を消した跡に経緯文を置き換えない。ソース bullet は説明だけを表示テキストにし、説明が無ければ種別語（「レビュー結果」「fix 結果」「close retrospective」）にする（リンク先パスは変えない）。**`index.md` の行は Edit しない** — ステップ 6 の `wiki-index-update.sh` を修正した `--description` で呼び直す（index.md への書き換えは helper が atomic に行う契約のため）。再実行で `clean` にできなければ commit せず停止し、残った行と `/rite:recover` を案内する |
+| `hit` | stdout の `file:line: 内容` が指す行を書き直してから**本ステップを再実行**する。書き直しは番号を落として現在形の Why にすること — 番号を消した跡に経緯文を置き換えない。ソース bullet は説明だけを表示テキストにし、説明が無ければ種別語（「レビュー結果」「fix 結果」「close retrospective」）にする（リンク先パスは変えない）。**`index.md` の行は Edit しない** — ステップ 6 の `wiki-index-update.sh` を修正した `--description` で呼び直す（index.md への書き換えは helper が atomic に行う契約のため）。この禁止は ingest 実行中（helper を呼べる文脈）の話で、lint 指摘の事後手当ては `/rite:wiki-lint` の手順に従う。再実行で `clean` にできなければ commit せず停止し、残った行と `/rite:recover` を案内する |
 | `error` | bash が `exit 1` で停止済み。commit しない |
 
 > 番号の定義は `number-reference-check.sh` が持つ（3-4 桁の番号トークン）。本ステップは文法を書き下さない。1-2 桁 / 5 桁以上（上流トラッカ id 等）は**本検査の検出対象外**であり、検出されないことは規則上書いてよいことを意味しない（規則の SoT は `SCHEMA.md` の「番号ではなく Why 散文」）。
+
+#### canonical numref_verdict gate (唯一の真実源)
+
+ステップ 5.1 / 5.2 の bash 冒頭に置く commit ゲートは以下を **literal 一致**させる。`{numref_verdict}` はステップ 5.0.n の `[CONTEXT] WIKI_INGEST_NUMREF=` の最新値を literal substitute する。片側だけ直すと 2 経路で commit ゲートの強さが割れるため、変更時は本節 + ステップ 5.1 + ステップ 5.2 の **3 箇所を必ず同時に更新する**（ステップ 5.0.c の commit message 契約と同じ規約）。
+
+```bash
+# ステップ 5.0.n の判定を機械的に受ける。`{numref_verdict}` は同ステップの
+# [CONTEXT] WIKI_INGEST_NUMREF= の最新値を literal substitute する。
+# 未置換 / 未知値 / hit のいずれも commit しない（検査を飛ばした実行を素通しさせないため）。
+numref_verdict="{numref_verdict}"
+case "$numref_verdict" in
+  clean) ;;
+  hit)
+    echo "ERROR: 番号参照が残ったままです。commit しません (ステップ 5.0.n の hit 行を書き直してから再実行してください)" >&2
+    exit 1
+    ;;
+  *)
+    echo "ERROR: ステップ 5.0.n の判定を受け取れていません (numref_verdict='$numref_verdict')。commit しません" >&2
+    exit 1
+    ;;
+esac
+```
 
 ### 5.1 separate_branch 戦略 (worktree ベース)
 

@@ -420,8 +420,10 @@ assert_grep "TC-18 SKILL.md が委譲先を名指ししている" "$LINT_MD" '�
 # ブロックを抽出して `bash -n` にかけ、placeholder を実値へ置換して実際に走らせる。
 INGEST_MD_RAIL="$PLUGIN_ROOT/skills/wiki-ingest/SKILL.md"
 assert_grep "TC-18b (AC-6) ingest が commit 前検査ステップを持つ" "$INGEST_MD_RAIL" '^### 5\.0\.n commit 前の番号参照検査'
-assert_grep "TC-18b (AC-6) 検査は number-reference-check.sh へ委譲する" "$INGEST_MD_RAIL" 'bash "\$check" --repo-root "\$numref_tree" --diff HEAD --quiet'
-assert_grep "TC-18b (AC-6) 検査対象は未 commit の Wiki 差分全体" "$INGEST_MD_RAIL" '検査対象は「未 commit の Wiki 差分」全体'
+assert_grep "TC-18b (AC-6) 検査は number-reference-check.sh へ委譲する" "$INGEST_MD_RAIL" 'bash "\$check" --repo-root "\$numref_tree" --diff HEAD --path \.rite/wiki --quiet'
+assert_grep "TC-18b (AC-6) 新規ページを差分へ載せてから検査する" "$INGEST_MD_RAIL" 'git -C "\$numref_tree" add -N -- \.rite/wiki'
+assert_grep "TC-18b (AC-6) intent-to-add 失敗は fail-loud で止まる" "$INGEST_MD_RAIL" 'WIKI_INGEST_NUMREF=error; reason=stage_failed'
+assert_grep "TC-18b (AC-6) 検査対象は .rite/wiki 配下の未 commit 差分" "$INGEST_MD_RAIL" '検査対象は `\.rite/wiki` 配下の未 commit 差分'
 assert_grep "TC-18b (AC-6) 対象もラベルも LLM が選ばない" "$INGEST_MD_RAIL" '対象の列挙もラベルも LLM が選ばない'
 assert_grep "TC-18b (AC-6) hit は書き直してから再検査する (直せなければ停止)" "$INGEST_MD_RAIL" '再実行で `clean` にできなければ commit せず停止'
 assert_grep "TC-18b (AC-6) index.md の行は Edit せず helper を呼び直す" "$INGEST_MD_RAIL" '`index\.md` の行は Edit しない'
@@ -429,14 +431,14 @@ assert_grep "TC-18b (AC-6) helper 不在は fail-loud で停止する" "$INGEST_
 assert_grep "TC-18b (AC-6) placeholder 残留は fail-loud で停止する" "$INGEST_MD_RAIL" 'WIKI_INGEST_NUMREF=error; reason=placeholder_residue'
 # commit ステップ側が marker を機械的に読むゲートを持つこと
 # (散文で名指しするだけでは 5.0.n を飛ばしても commit が成功してしまう)
-assert "TC-18b (AC-6) commit ステップが numref_verdict ゲートを 2 箇所 (5.1 / 5.2) に持つ" "2" \
-  "$(grep -c 'numref_verdict="{numref_verdict}"' "$INGEST_MD_RAIL")"
-assert "TC-18b (AC-6) ゲートは hit を commit させない (5.1 / 5.2 の 2 箇所)" "2" \
+assert "TC-18b (AC-6) ゲートは hit を commit させない (canonical + 5.1 + 5.2 の 3 箇所)" "3" \
   "$(grep -c '番号参照が残ったままです。commit しません' "$INGEST_MD_RAIL")"
 
 # --- 5.0.n ブロックの実行検証 (TC-53 と同型: 抽出 → bash -n → placeholder 置換して実行) ---
+# 片付けは他 sandbox (SBX / GITSBX / IDXSBX) と同じ cleanup_dirs に寄せる。インライン rm だけだと
+# 途中で fail した回に temp git repo が残る。
 p18b_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-tc18b-XXXXXX")
-tmp_files+=("$p18b_dir/block.sh" "$p18b_dir/hit.out" "$p18b_dir/clean.out" "$p18b_dir/residue.out")
+cleanup_dirs+=("$p18b_dir")
 # 5.0.n 見出し直後の最初の fenced bash ブロックを取り出す
 awk '
   /^### 5\.0\.n commit 前の番号参照検査/ { insec=1; next }
@@ -452,41 +454,111 @@ else
   else
     fail "TC-18b (AC-6) 5.0.n の bash ブロックが bash -n を通らない"
   fi
-  # placeholder を実値へ置換して 3 経路 (hit / clean / placeholder 残留) を実行する。
-  # 走査対象は使い捨ての git リポジトリで、番号を含む / 含まない未 commit 差分を作って与える。
+  # placeholder を実値へ置換して 6 経路を実行する。走査対象は使い捨ての git リポジトリで、
+  # 番号を含む / 含まない未 commit 差分と、まだ追跡されていない新規ページを作って与える。
   p18b_render() {
-    # $1 = numref_tree の実値 (空文字なら placeholder を残す)
-    if [ -z "$1" ]; then
-      sed "s#{plugin_root}#$PLUGIN_ROOT#g" "$p18b_dir/block.sh"
-    else
-      sed -e "s#{plugin_root}#$PLUGIN_ROOT#g" -e "s#{numref_tree}#$1#g" "$p18b_dir/block.sh"
-    fi
+    # $1 = numref_tree の実値、$2 = plugin_root の実値。空文字ならその placeholder を残す
+    # (残留ゲートが両方の変数を守っていることを片方ずつ測るため)。
+    local sed_args=()
+    [ -n "$2" ] && sed_args+=(-e "s#{plugin_root}#$2#g")
+    [ -n "$1" ] && sed_args+=(-e "s#{numref_tree}#$1#g")
+    if [ ${#sed_args[@]} -eq 0 ]; then cat "$p18b_dir/block.sh"; else sed "${sed_args[@]}" "$p18b_dir/block.sh"; fi
   }
   p18b_tree=$(mktemp -d "${TMPDIR:-/tmp}/rite-tc18b-tree-XXXXXX")
+  cleanup_dirs+=("$p18b_tree")
+  p18b_setup_rc=0
   (
     cd "$p18b_tree" || exit 1
-    git init -q . >/dev/null 2>&1
-    git config user.email t@e.st; git config user.name t
-    mkdir -p .rite/wiki/pages/x
-    printf '# t\n\n番号なしの本文\n' > .rite/wiki/pages/x/p.md
-    git add -A >/dev/null 2>&1
-    git commit -qm init >/dev/null 2>&1
-  )
+    git init -q . || exit 1
+    git config user.email t@e.st || exit 1
+    git config user.name t || exit 1
+    mkdir -p .rite/wiki/pages/x || exit 1
+    printf '# t\n\n番号なしの本文\n' > .rite/wiki/pages/x/p.md || exit 1
+    printf '番号なしのコード側ファイル\n' > outside.md || exit 1
+    git add -A || exit 1
+    git commit -qm init || exit 1
+  ) > "$p18b_dir/setup.out" 2>&1 || p18b_setup_rc=$?
+  if [ "$p18b_setup_rc" -ne 0 ]; then
+    # セットアップ失敗を「clean を返さない」等の別 assert 失敗に化けさせない (原因を隠さない)
+    fail "TC-18b (AC-6) 使い捨て git リポジトリのセットアップに失敗 (rc=$p18b_setup_rc)"
+    head -5 "$p18b_dir/setup.out" | sed 's/^/    /' >&2
+  else
   # (1) clean: 未 commit 差分に番号が無い
   (cd "$p18b_tree" && printf '# t\n\n番号なしの本文\n追記した番号なし行\n' > .rite/wiki/pages/x/p.md)
-  p18b_render "$p18b_tree" | bash > "$p18b_dir/clean.out" 2>&1
+  p18b_render "$p18b_tree" "$PLUGIN_ROOT" | bash > "$p18b_dir/clean.out" 2>&1
   assert_grep "TC-18b (AC-6) 番号なしの差分は clean を返す" "$p18b_dir/clean.out" 'WIKI_INGEST_NUMREF=clean'
   # (2) hit: 未 commit 差分に 3-4 桁の番号がある
   (cd "$p18b_tree" && printf '# t\n\n番号なしの本文\nPR #1300 を参照\n' > .rite/wiki/pages/x/p.md)
-  p18b_render "$p18b_tree" | bash > "$p18b_dir/hit.out" 2>&1
+  p18b_render "$p18b_tree" "$PLUGIN_ROOT" | bash > "$p18b_dir/hit.out" 2>&1
   assert_grep "TC-18b (AC-6) 番号を含む差分は hit を返す" "$p18b_dir/hit.out" 'WIKI_INGEST_NUMREF=hit'
-  # (3) placeholder 残留: 未置換のまま走らせても clean にならず fail-loud で止まる
-  p18b_render "" | bash > "$p18b_dir/residue.out" 2>&1
-  assert_not_grep "TC-18b (AC-6) placeholder 未置換は clean を名乗らない" "$p18b_dir/residue.out" 'WIKI_INGEST_NUMREF=clean'
-  assert_grep "TC-18b (AC-6) placeholder 未置換は placeholder_residue で止まる" "$p18b_dir/residue.out" 'reason=placeholder_residue'
-  rm -rf "$p18b_tree"
+  # hit テーブルのアクションは「stdout の file:line が指す行を書き直す」ことに依存する。
+  # verdict だけを測ると、委譲先の findings 出力が失われても緑のままになる。
+  assert_grep "TC-18b (AC-6) hit は書き直し対象を file:line で名指しする" "$p18b_dir/hit.out" \
+    '\.rite/wiki/pages/x/p\.md:[0-9]+:'
+  # (3) 新規ページ (untracked): ingest が Write した直後の状態。git diff は untracked を含まないため、
+  #     intent-to-add を外すとここが clean に落ちる (混入の主経路が素通りする)。
+  (cd "$p18b_tree" && git checkout -q -- .rite/wiki/pages/x/p.md && mkdir -p .rite/wiki/pages/new \
+     && printf '# new\n\nPR #1301 を参照\n' > .rite/wiki/pages/new/n.md)
+  p18b_render "$p18b_tree" "$PLUGIN_ROOT" | bash > "$p18b_dir/untracked.out" 2>&1
+  assert_grep "TC-18b (AC-6) 未追跡の新規ページに番号があれば hit を返す" "$p18b_dir/untracked.out" 'WIKI_INGEST_NUMREF=hit'
+  assert_grep "TC-18b (AC-6) 新規ページの hit も file:line で名指しする" "$p18b_dir/untracked.out" \
+    '\.rite/wiki/pages/new/n\.md:[0-9]+:'
+  # (4) 走査範囲は .rite/wiki 配下に限定される (same_branch で dev ツリー全体を母数にしない)
+  (cd "$p18b_tree" && rm -rf .rite/wiki/pages/new && printf '番号なしのコード側ファイル\nPR #1302 を参照\n' > outside.md)
+  p18b_render "$p18b_tree" "$PLUGIN_ROOT" | bash > "$p18b_dir/outside.out" 2>&1
+  assert_grep "TC-18b (AC-6) .rite/wiki 外の番号は hit にしない (走査範囲 = commit 範囲)" \
+    "$p18b_dir/outside.out" 'WIKI_INGEST_NUMREF=clean'
+  (cd "$p18b_tree" && git checkout -q -- outside.md)
+  # (5) placeholder 残留: 未置換のまま走らせても clean にならず fail-loud で止まる。
+  #     ゲートは 2 変数を守るので、片方ずつ残して両方が測られていることを示す。
+  p18b_render "" "$PLUGIN_ROOT" | bash > "$p18b_dir/residue-tree.out" 2>&1
+  assert_not_grep "TC-18b (AC-6) numref_tree 未置換は clean を名乗らない" "$p18b_dir/residue-tree.out" 'WIKI_INGEST_NUMREF=clean'
+  assert_grep "TC-18b (AC-6) numref_tree 未置換は placeholder_residue で止まる" "$p18b_dir/residue-tree.out" 'reason=placeholder_residue'
+  p18b_render "$p18b_tree" "" | bash > "$p18b_dir/residue-root.out" 2>&1
+  assert_grep "TC-18b (AC-6) plugin_root 未置換も placeholder_residue で止まる (helper_missing に誤診しない)" \
+    "$p18b_dir/residue-root.out" 'reason=placeholder_residue'
+  # (6) check_failed: commit が 1 つも無いツリー (初回 ingest 直後の wiki ブランチ) では
+  #     委譲先が base ref を解決できず rc=2 を返す。`*)` が fail-loud で受けること。
+  p18b_bare=$(mktemp -d "${TMPDIR:-/tmp}/rite-tc18b-bare-XXXXXX")
+  cleanup_dirs+=("$p18b_bare")
+  (cd "$p18b_bare" && git init -q . && mkdir -p .rite/wiki/pages) >/dev/null 2>&1
+  p18b_render "$p18b_bare" "$PLUGIN_ROOT" | bash > "$p18b_dir/failed.out" 2>&1
+  assert_not_grep "TC-18b (AC-6) HEAD 不在で clean を名乗らない" "$p18b_dir/failed.out" 'WIKI_INGEST_NUMREF=clean'
+  assert_grep "TC-18b (AC-6) 委譲先の実行失敗は check_failed で止まる" "$p18b_dir/failed.out" 'reason=check_failed'
+  fi
 fi
-rm -rf "$p18b_dir"
+# --- TC-18c (AC-6): commit ステップの numref_verdict ゲートを実行で pin する ---
+# 出現回数 (grep -c = 2) は順序も意味論も測らない。`clean) exit 1` や、ゲートを commit 呼び出しの
+# 後ろへ移す変異はカウントを変えないため、抽出して実際に走らせる。
+p18c_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-tc18c-XXXXXX")
+cleanup_dirs+=("$p18c_dir")
+# canonical gate 節の fenced bash を取り出す (5.1 / 5.2 は literal 一致が規約)
+awk '
+  /^#### canonical numref_verdict gate/ { insec=1; next }
+  insec && /^```bash$/ { infence=1; next }
+  infence && /^```$/ { exit }
+  infence { print }
+' "$INGEST_MD_RAIL" > "$p18c_dir/gate.sh"
+if [ ! -s "$p18c_dir/gate.sh" ]; then
+  fail "TC-18c (AC-6) canonical numref_verdict gate の bash ブロックを抽出できなかった"
+else
+  p18c_run() { sed "s#{numref_verdict}#$1#g" "$p18c_dir/gate.sh" | bash > "$p18c_dir/out" 2>&1; }
+  p18c_run clean; p18c_rc=$?
+  assert "TC-18c (AC-6) clean は commit へ進む (exit 0)" "0" "$p18c_rc"
+  p18c_run hit; p18c_rc=$?
+  assert "TC-18c (AC-6) hit は commit させない (exit 1)" "1" "$p18c_rc"
+  assert_grep "TC-18c (AC-6) hit は理由を名指しする" "$p18c_dir/out" '番号参照が残ったままです。commit しません'
+  # 未置換 (placeholder のまま) は「判定を受け取れていない」= 検査を飛ばした実行
+  sed -n 'p' "$p18c_dir/gate.sh" | bash > "$p18c_dir/out" 2>&1; p18c_rc=$?
+  assert "TC-18c (AC-6) numref_verdict 未置換は commit させない (exit 1)" "1" "$p18c_rc"
+  assert_grep "TC-18c (AC-6) 未置換は判定不在として止まる" "$p18c_dir/out" '判定を受け取れていません'
+  p18c_run bogus; p18c_rc=$?
+  assert "TC-18c (AC-6) 未知値は commit させない (exit 1)" "1" "$p18c_rc"
+fi
+# 5.1 / 5.2 が canonical と literal 一致していること (片側だけ弱くする変異を弾く)
+assert "TC-18c (AC-6) canonical + 5.1 + 5.2 の 3 箇所に同一ゲートがある" "3" \
+  "$(grep -c 'numref_verdict="{numref_verdict}"' "$INGEST_MD_RAIL")"
+
 assert_grep "TC-18 helper 不在 fallback の read_ok" "$LINT_MD" 'descriptive_refs_read_ok=skipped_helper_missing'
 assert_grep "TC-18 helper 不在 fallback が read_errors=0 を出す" "$LINT_MD" 'descriptive_refs_read_errors=0'
 # stdout 契約は本 PR で 5 フィールドになった。fallback が片方だけ追随しないと
@@ -592,9 +664,9 @@ assert_not_grep "TC-21 (T-07) Lint: 行に descriptive フィールドが混入�
 # ---- TC-23: 検出器の破損が read_errors へ伝播すること -----------------------
 # 本 helper の read_ok enum は「0 件が実体を反映していない」状況を surface するためにある。
 # 検出器そのものが壊れた場合だけがその enum をすり抜けると、完了レポートに「実測済みの 0 件」
-# として載る。検出 regex を不正にした mutant で、0 件ではなく io_error に倒れることを測る。
-# 委譲先を「常に rc=2 (実行エラー) を返す stub」へ差し替える。委譲先の rc 2 は検出できな
-# かった証拠であり、0 件として計上してはならない。
+# として載る。委譲先が実行エラー (rc=2) を返した場合に、0 件ではなく io_error に倒れる
+# ことを測る。委譲先を「常に rc=2 を返す stub」へ差し替える。rc 2 は検出できなかった
+# 証拠であり、0 件として計上してはならない。
 MUT_BADRE="$SBX/mutant-badre.sh"
 BADCHECK="$SBX/bad-numref.sh"
 printf '#!/usr/bin/env bash\necho "ERROR: scanner exploded" >&2\nexit 2\n' > "$BADCHECK"
@@ -610,6 +682,28 @@ if assert_mutated "TC-23 MUTATION mutant 生成" "$MUT_BADRE"; then
   assert "TC-23 検出器破損時は read_ok=io_error (0 件を実測済みと名乗らない)" "io_error" "$mut_ok"
   assert "TC-23 検出器破損時は read_errors が立つ" "1" "$mut_err"
   assert "TC-23 検出器破損時の hits は 0" "0" "$mut_hits"
+fi
+
+# ---- TC-23b: rc と件数の矛盾が検出失敗へ倒れること --------------------------
+# 委譲先の exit code は clean/hit/error の信号であって件数ではない。件数側だけを見ると、
+# hit (rc=1) を主張しながら findings を 1 行も出さない状態 (計数経路の破損 — たとえば
+# findings の出力先が stdout から外れる) が「実測済みの 0 件」として read_ok=true で通る。
+# TC-23 の stub は rc=2 で直上の arm に捕まるため、この象限は rc=1 + 空 stdout でしか踏めない。
+MUT_SILENT="$SBX/mutant-silent0.sh"
+SILENTCHECK="$SBX/silent-numref.sh"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$SILENTCHECK"
+awk -v bad="$SILENTCHECK" '
+  /^_RITE_NUMREF_CHECK=/ { print "_RITE_NUMREF_CHECK=\"" bad "\""; next }
+  { print }
+' "$SCRIPT" > "$MUT_SILENT"
+if assert_mutated "TC-23b MUTATION mutant 生成" "$MUT_SILENT"; then
+  s0_out=$(printf '%s\n' "$FIXTURE_REL" | ( cd "$SBX" && bash "$MUT_SILENT" --branch-strategy same_branch --repo-root "$SBX" ) 2>/dev/null)
+  s0_ok=$(printf '%s' "$s0_out" | sed -n 's/^descriptive_refs_read_ok=//p')
+  s0_err=$(printf '%s' "$s0_out" | sed -n 's/^descriptive_refs_read_errors=//p')
+  s0_hits=$(printf '%s' "$s0_out" | sed -n 's/^\[CONTEXT\] WIKI_DESCRIPTIVE_REFS=//p')
+  assert "TC-23b rc=1 かつ findings 空は read_ok=io_error (0 件を実測済みと名乗らない)" "io_error" "$s0_ok"
+  assert "TC-23b rc=1 かつ findings 空で read_errors が立つ" "1" "$s0_err"
+  assert "TC-23b rc=1 かつ findings 空の hits は 0" "0" "$s0_hits"
 fi
 
 # ---- TC-19b: separate_branch の読出に cat fallback が無いこと ----------------

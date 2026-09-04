@@ -660,7 +660,7 @@ if [ -z "$plugin_root" ] || [ ! -f "$plugin_root/hooks/scripts/wiki-lint-descrip
   # helper 不在 (marketplace install で scripts/ を持たない等): informational 指標のため
   # 0 件で縮退し lint 本体は継続する。ステップ 6.0 / 6.2 の集合構築と違い、本指標は
   # 他の判定の入力にならないため io_error 扱いにする必要がない。
-  echo "WARNING: wiki-lint-descriptive-refs.sh が見つからないため説明的番号参照検出をスキップします (plugin_root='${plugin_root:-<empty>}')" >&2
+  echo "WARNING: wiki-lint-descriptive-refs.sh が見つからないため番号参照検出をスキップします (plugin_root='${plugin_root:-<empty>}')" >&2
   echo "---descriptive_refs_begin---"
   echo "---descriptive_refs_end---"
   echo "descriptive_refs_pages=0"
@@ -676,7 +676,7 @@ PAGES_LIST_EOF
 fi
 ```
 
-**`descriptive_refs_read_ok` enum**: `true`（対象 0 件、または 1 対象ファイル以上の**読出と検出**に成功 — **部分失敗も true のままで、欠損件数は `descriptive_refs_read_errors` が表す**）/ `io_error`（対象が 1 件以上あり全件失敗 — 0 件が実体を反映していない）/ `skipped_helper_missing`（上記 fallback）。marker block 未受信も `skipped_helper_missing` 同等に扱う。**`io_error` の発火条件は兄弟ステップ 7 と異なる**（7 は 1 件でも失敗すれば `io_error`、7.5 は全件失敗時のみ）ため、sibling の enum 説明をそのまま流用しないこと。`descriptive_refs_read_errors` は**読出または検出できなかった**対象ファイル数で、`read_ok=true` でも部分欠損があれば正の値を取る（`index.md` を読み出せてもエントリ形式を認識できない / HTML コメントブロック・コードフェンスが未閉鎖のまま EOF に達した場合は「検出失敗」として本カウンタに載る。frontmatter の `sources:` ブロック、およびページ本文側は検査対象外）。`descriptive_refs_skipped_rows` は `index.md` 内でサマリーを抽出できなかった**行数**（ファイル単位ではない）。ステップ 9 完了レポートの note 展開はこの 3 値で決まる（展開表は `{descriptive_refs_read_ok_note}` 展開ルール）。
+**`descriptive_refs_read_ok` enum**: `true`（対象 0 件、または 1 対象ファイル以上の**読出と検出**に成功 — **部分失敗も true のままで、欠損件数は `descriptive_refs_read_errors` が表す**）/ `io_error`（対象が 1 件以上あり全件失敗 — 0 件が実体を反映していない）/ `skipped_helper_missing`（上記 fallback）。marker block 未受信も `skipped_helper_missing` 同等に扱う。**`io_error` の発火条件は兄弟ステップ 7 と異なる**（7 は 1 件でも失敗すれば `io_error`、7.5 は全件失敗時のみ）ため、sibling の enum 説明をそのまま流用しないこと。`descriptive_refs_read_errors` は**読出または検出できなかった**対象ファイル数で、`read_ok=true` でも部分欠損があれば正の値を取る（`index.md` を読み出せてもエントリ形式を認識できない / HTML コメントブロック・コードフェンスが未閉鎖のまま EOF に達した場合は「検出失敗」として本カウンタに載る。これらの検出失敗条件は `index.md` 固有で、ページ本文には適用しない。走査そのものから外れるのは frontmatter の `sources:` ブロックとコードフェンス内だけ）。`descriptive_refs_skipped_rows` は `index.md` 内でサマリーを抽出できなかった**行数**（ファイル単位ではない）。ステップ 9 完了レポートの note 展開はこの 3 値で決まる（展開表は `{descriptive_refs_read_ok_note}` 展開ルール）。
 
 **検出結果の記録**: 本カテゴリは **informational 指標のため `issues[]` へは転記しない**（ステップ 9 完了レポートの専用行だけで surface する）。ステップ 1.4 カウンタ表の `issues[]` 行が定める generic 契約「helper 委譲カテゴリは marker block の行を転記する」の例外は**本ステップのみ**。`unregistered_raw` はステップ 6.3 で `issues[]` に記録する（対象外にしてはならない）。
 rationale: references/rationale.md#descriptive-refs-issues-exception
@@ -1086,11 +1086,11 @@ rationale: references/rationale.md#fail-loud-contract
 | ページ読出失敗 (broken-refs 走査中) | WARNING + 該当ページ skip + `broken_refs_read_ok=io_error`（false negative note 表示） | ステップ 7 (helper 内) |
 | GNU realpath (-m -s) 不在 | **exit 1 で fail-fast** (全 link silent broken 判定の防止) | ステップ 7 (helper 内) |
 | helper script 不在 | WARNING + 該当カテゴリ skip（`*_check_ok=skipped_helper_missing` を明示 emit、exit 0） | ステップ 4 / 5 / 7 / 7.5 |
-| ページ読出・検出失敗（説明的番号参照の走査中） | WARNING + `descriptive_refs_read_ok=io_error`（全件失敗）または `descriptive_refs_read_errors>0`（部分失敗、`read_ok=true` 維持）、exit 0 | ステップ 7.5 |
-| wiki ブランチ ref 解決失敗（説明的番号参照の走査中） | WARNING + `index.md` / `log.md` を読出失敗として計上（`read_errors` +2）。`separate_branch` ではページ側も同じ ref を読むため実質的に常に `read_ok=io_error`、exit 0 | ステップ 7.5 (helper 内) |
+| ページ読出・検出失敗（番号参照の走査中） | WARNING + `descriptive_refs_read_ok=io_error`（全件失敗）または `descriptive_refs_read_errors>0`（部分失敗、`read_ok=true` 維持）、exit 0 | ステップ 7.5 |
+| wiki ブランチ ref 解決失敗（番号参照の走査中） | WARNING + `index.md` / `log.md` を読出失敗として計上（`read_errors` +2）。`separate_branch` ではページ側も同じ ref を読むため実質的に常に `read_ok=io_error`、exit 0 | ステップ 7.5 (helper 内) |
 | `index.md` のサマリー抽出失敗（列位置不明 / 列数不一致） | WARNING + 該当行 skip + `descriptive_refs_skipped_rows>0`（`read_ok=true` / `read_errors` は不変）、exit 0 | ステップ 7.5 (helper 内) |
 | `index.md` からエントリ行を 1 件も認識できない（リンク形状の行はあるがリンク先が `pages/` と認識できない = 形式 drift） | WARNING + 検出失敗として `read_errors` +1（0 件が「実測済み」として通るのを防ぐ）、exit 0 | ステップ 7.5 (helper 内) |
 | `index.md` の除外ブロック（HTML コメント / コードフェンス）が閉じないまま EOF | WARNING + 検出失敗として `read_errors` +1（以降の全行が走査から落ちるため、0 件を「実測済み」として通さない。**リンク形状の行の有無に依らず発火する**）、exit 0 | ステップ 7.5 (helper 内) |
 | `index.md` にリンク形状の行が 1 行もなく、かつ HTML コメントブロック / コードフェンスがすべて閉じている（まだ登録が無いカタログ） | 静かに 0 件として扱う（drift ではないため `read_errors` に数えない）、exit 0 | ステップ 7.5 (helper 内) |
-| 処理対象 0 件（ページ / raw） | ステップ 3-7 (7.5 を除く) を skip し ステップ 7.5 → ステップ 9 へ進む（**ステップ 7.5 は skip しない** — index.md / log.md が単独で走査対象になりうるため、ページ / raw が 0 件でも説明的番号参照は 0 件とは限らない） | ステップ 2.2 末尾 |
+| 処理対象 0 件（ページ / raw） | ステップ 3-7 (7.5 を除く) を skip し ステップ 7.5 → ステップ 9 へ進む（**ステップ 7.5 は skip しない** — index.md / log.md が単独で走査対象になりうるため、ページ / raw が 0 件でも番号参照は 0 件とは限らない） | ステップ 2.2 末尾 |
 | log.md 追記失敗 | WARNING + exit 0 で継続（検出結果は stdout に表示済み） | ステップ 8 |

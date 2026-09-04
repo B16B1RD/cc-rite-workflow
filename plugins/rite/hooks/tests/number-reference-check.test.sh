@@ -273,6 +273,61 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# T-04b --path narrows --diff to a pathspec (scan range == commit range)
+# --------------------------------------------------------------------------
+mkdir -p "$sb/.rite/wiki/pages" "$sb/src"
+printf 'clean wiki page\n' > "$sb/.rite/wiki/pages/p.md"
+printf 'clean source\n' > "$sb/src/a.md"
+commit_all "$sb" path-scope-base
+printf 'wiki page with (#1300)\n' > "$sb/.rite/wiki/pages/p.md"
+printf 'source with (#1301)\n' > "$sb/src/a.md"
+
+rc=0; out=$(run_diff "$sb" HEAD --path .rite/wiki --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] \
+   && printf '%s' "$out" | grep -q '.rite/wiki/pages/p.md' \
+   && ! printf '%s' "$out" | grep -q 'src/a.md'; then
+  pass "T-04b --path limits findings to the pathspec"
+else
+  fail "T-04b --path scoping failed rc=$rc: $out"
+fi
+
+# Without --path the same tree reports both (proves the option is load-bearing)
+rc=0; out=$(run_diff "$sb" HEAD --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q 'src/a.md'; then
+  pass "T-04b without --path the out-of-scope file is reported"
+else
+  fail "T-04b baseline (no --path) failed rc=$rc: $out"
+fi
+
+# A pathspec that only contains clean changes is clean (rc=0), not silently skipped
+printf 'wiki page clean again\n' > "$sb/.rite/wiki/pages/p.md"
+rc=0; out=$(run_diff "$sb" HEAD --path .rite/wiki --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 0 ]; then
+  pass "T-04b --path with clean changes exits 0"
+else
+  fail "T-04b --path clean case failed rc=$rc: $out"
+fi
+
+# --path is rejected outside --diff (no silent no-op)
+rc=0; out=$(bash "$TARGET" --all --path .rite/wiki --repo-root "$sb" --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q -- '--path is only valid with --diff'; then
+  pass "T-04b --path outside --diff is an invocation error"
+else
+  fail "T-04b --path misuse not rejected rc=$rc: $out"
+fi
+
+# --path without a value is an invocation error (not an empty pathspec = whole tree)
+rc=0; out=$(bash "$TARGET" --diff HEAD --path --repo-root "$sb" --quiet 2>&1) || rc=$?
+if [ "$rc" -eq 2 ]; then
+  pass "T-04b --path without a value is an invocation error"
+else
+  fail "T-04b --path empty value not rejected rc=$rc: $out"
+fi
+
+# restore the tree for the following cases
+git -C "$sb" checkout -q -- . 2>/dev/null || true
+
+# --------------------------------------------------------------------------
 # T-05 --all detects newly tracked files without a target list
 # --------------------------------------------------------------------------
 mkdir -p "$sb/docs"

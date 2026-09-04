@@ -591,7 +591,7 @@ while IFS= read -r page; do
   # findings を 1 行も出さない状態 (計数経路の破損 — たとえば findings の出力先が変わる) は、
   # ここで捕まえないと「実測済みの 0 件」として read_ok=true のまま完了レポートに載る。
   # 本 helper が塞ぐ対象そのものの silent-0 なので、既存の read_errors 経路へ合流させる。
-  if [ "$hits_rc" -eq 0 ] && [ "${check_rc:-0}" -eq 1 ] && [ "$hits" -eq 0 ]; then
+  if [ "$hits_rc" -eq 0 ] && [ "$check_rc" -eq 1 ] && [ "$hits" -eq 0 ]; then
     page_disp=$(printf '%s' "$page" | neutralize_ctrl)
     echo "WARNING: ページ ${page_disp} の委譲先が hit (rc=1) を返したのに findings が空です (計数経路の破損)" >&2
     hits_rc=1
@@ -675,7 +675,7 @@ descriptive_refs_read_ok="true"
 if { [ "$n_pages_total" -gt 0 ] && [ "$n_read_errors" -eq "$n_pages_total" ]; } || { [ "$n_pages_total" -eq 0 ] && [ "$n_read_errors" -gt 0 ]; }; then
   descriptive_refs_read_ok="io_error"
   echo "WARNING: 走査対象の全 ${n_pages_total} ファイルを読み出せない、または検出できませんでした (branch_strategy=$branch_strategy)" >&2
-  echo "  影響: 説明的番号参照 0 件は実体を反映していません (informational 指標のため lint は継続します)" >&2
+  echo "  影響: 番号参照 0 件は実体を反映していません (informational 指標のため lint は継続します)" >&2
   echo "  対処: wiki branch ref / ページパスの整合、および index.md のエントリ記法が想定どおりかを確認してください" >&2
 elif [ "$n_read_errors" -gt 0 ]; then
   echo "WARNING: ${n_read_errors}/${n_pages_total} ファイルを読み出せない、または検出できず集計から除外しました" >&2

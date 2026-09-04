@@ -7,6 +7,7 @@
 # Modes (exactly one):
 #   --all                 git ls-files 全件 − 除外パス
 #   --diff <base_ref>     git diff <base_ref> の追加行（未 commit を含む）
+#                         --path DIR で走査範囲を DIR 配下へ限定できる
 #   --stdin --label NAME  stdin を NAME として走査（除外パスなら走査しない）
 #
 # Detected: a 3-4 digit hash-number token. This subsumes `Issue #NNN` /
@@ -38,12 +39,13 @@ REPO_ROOT=""
 QUIET=0
 MODE=""
 DIFF_BASE=""
+DIFF_PATH=""
 STDIN_LABEL=""
 
 usage() {
   cat <<'EOF'
 Usage: number-reference-check.sh --all [--repo-root DIR] [--quiet]
-       number-reference-check.sh --diff <base_ref> [--repo-root DIR] [--quiet]
+       number-reference-check.sh --diff <base_ref> [--path DIR] [--repo-root DIR] [--quiet]
        number-reference-check.sh --stdin --label <name> [--quiet]
 
 Options:
@@ -51,6 +53,7 @@ Options:
   --diff BASE        Scan added lines of git diff BASE (includes uncommitted)
   --stdin            Scan stdin (requires --label)
   --label NAME       Path label for --stdin findings
+  --path DIR         Limit --diff to this pathspec (repo-root relative)
   --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
   --quiet            Suppress progress lines on stderr (summary still emitted)
   -h, --help         Show this help
@@ -101,6 +104,15 @@ while [ $# -gt 0 ]; do
       fi
       shift 2
       ;;
+    --path)
+      DIFF_PATH="${2:-}"
+      if [ -z "$DIFF_PATH" ] || [ "${DIFF_PATH#-}" != "$DIFF_PATH" ]; then
+        echo "ERROR: --path requires a directory" >&2
+        usage >&2
+        exit 2
+      fi
+      shift 2
+      ;;
     --repo-root)
       REPO_ROOT="${2:-}"
       if [ -z "$REPO_ROOT" ]; then
@@ -128,6 +140,11 @@ if [ "$MODE" = "stdin" ] && [ -z "$STDIN_LABEL" ]; then
 fi
 if [ "$MODE" != "stdin" ] && [ -n "$STDIN_LABEL" ]; then
   echo "ERROR: --label is only valid with --stdin" >&2
+  usage >&2
+  exit 2
+fi
+if [ "$MODE" != "diff" ] && [ -n "$DIFF_PATH" ]; then
+  echo "ERROR: --path is only valid with --diff" >&2
   usage >&2
   exit 2
 fi
@@ -267,8 +284,14 @@ scan_diff() {
     echo "ERROR: diff base could not be resolved: $base" >&2
     exit 2
   fi
-  local diff_out
-  if ! diff_out=$(git -c core.quotePath=false diff -U0 --no-color "$base"); then
+  local diff_out diff_rc=0
+  # pathspec は `--` の後ろへ置く（ref と紛れないため）。DIFF_PATH が空ならツリー全体。
+  if [ -n "$DIFF_PATH" ]; then
+    diff_out=$(git -c core.quotePath=false diff -U0 --no-color "$base" -- "$DIFF_PATH") || diff_rc=$?
+  else
+    diff_out=$(git -c core.quotePath=false diff -U0 --no-color "$base") || diff_rc=$?
+  fi
+  if [ "$diff_rc" -ne 0 ]; then
     echo "ERROR: git diff failed for base: $base" >&2
     exit 2
   fi
