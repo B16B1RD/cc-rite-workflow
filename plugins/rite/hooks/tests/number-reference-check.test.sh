@@ -510,7 +510,7 @@ scan_rc=0
 scan_deletion_residue "$REPO_ROOT/plugins/rite" "$REPO_ROOT/docs" "$REPO_ROOT/.gitignore" || scan_rc=$?
 case "$scan_rc" in
   1) pass "deletion-damage residue is absent" ;;
-  0) fail "deletion-damage residue found under plugins/rite or docs" ;;
+  0) fail "deletion-damage residue found under the scanned roots" ;;
   *) fail "deletion-damage residue scan failed operationally" ;;
 esac
 scan_rc=0
