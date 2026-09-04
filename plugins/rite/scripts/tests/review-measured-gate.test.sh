@@ -993,6 +993,69 @@ if grep -q '\[CONTEXT\] MEASURED_UNDETERMINED_ON_ANCHOR=1; count=1; cause=anchor
   pass "MEASURED_UNDETERMINED_ON_ANCHOR=1; count=1 を emit"
 else fail "MEASURED_UNDETERMINED_ON_ANCHOR 不一致: $GATE_STDERR"; fi
 
+# ---------------------------------------------------------------------------
+# T-leading-anchor: SKILL After テンプレ抽出の先頭アンカーは measured=true
+# description は手書きせず、pr-review SKILL の Number-reference 節テンプレ行を抽出する。
+# ---------------------------------------------------------------------------
+echo "--- T-leading-anchor: SKILL After テンプレ抽出の先頭アンカー ---"
+PR_REVIEW_SKILL="$SCRIPT_DIR/../../skills/pr-review/SKILL.md"
+desc_file="$TEST_DIR/leading_anchor_desc.txt"
+if ! python3 - "$PR_REVIEW_SKILL" "$desc_file" <<'PY'
+import sys
+from pathlib import Path
+skill, out = sys.argv[1], sys.argv[2]
+text = Path(skill).read_text(encoding="utf-8")
+needle = "Verification: repro bash {plugin_root}/hooks/scripts/number-reference-check.sh --diff $number_ref_base => exit 1;"
+i = text.find(needle)
+if i < 0:
+    sys.exit(1)
+start = text.rfind("`", 0, i)
+end = text.find("`", i)
+tpl = text[start + 1:end]
+matched = "echo foo | wc -l".replace("|", "¦")
+desc = (
+    tpl.replace("{plugin_root}", "plugins/rite")
+    .replace("$number_ref_base", "origin/develop")
+    .replace("{file}", "plugins/rite/hooks/flow-state.sh")
+    .replace("{line}", "374")
+    .replace("{matched line}", matched)
+)
+Path(out).write_text(desc, encoding="utf-8")
+PY
+then
+  fail "SKILL After テンプレ行を抽出できない"
+else
+  desc=$(cat "$desc_file")
+  f="$TEST_DIR/tc_leading_anchor.json"
+  finding=$(jq -n --rawfile desc "$desc_file" \
+    '{id:"F-01", reviewer:"pr-review", category:"number_reference",
+      severity:"HIGH", file:"plugins/rite/hooks/flow-state.sh", line:374,
+      description:$desc, suggestion:"s", status:"open", scope:"current-pr"}')
+  mk_json "$f" "$finding"
+  run_gate "$f"
+  if printf '%s' "$desc" | grep -q '^Verification:'; then
+    pass "description が Verification: で始まる"
+  else fail "description が Verification: で始まらない: $desc"; fi
+  arrow_count=$(printf '%s' "$desc" | grep -o '=>' | wc -l | tr -d ' ')
+  if [ "$arrow_count" = "1" ]; then
+    pass "description の => は 1 つ"
+  else fail "=> count=$arrow_count (期待 1)"; fi
+  if [ "$(jq -r '.findings[0].verification.measured' "$f")" = "true" ]; then
+    pass "findings[0].verification.measured == true"
+  else fail "measured=$(jq -c '.findings[0].verification // "ABSENT"' "$f")"; fi
+  repro=$(jq -r '.findings[0].verification.repro // empty' "$f")
+  case "$repro" in
+    *' => '*) pass "verification.repro が LHS/RHS に分解できる" ;;
+    *) fail "repro が LHS/RHS に分解できない: $repro" ;;
+  esac
+  if [ "$(jq -r '.verdict' "$f")" = "fix-needed" ]; then
+    pass "verdict == fix-needed"
+  else fail "verdict=$(jq -r '.verdict' "$f")"; fi
+  if grep -qE '^\[CONTEXT\] MEASURED_UNDETERMINED_ON_ANCHOR' <<<"$GATE_STDERR"; then
+    fail "MEASURED_UNDETERMINED_ON_ANCHOR が出た"
+  else pass "MEASURED_UNDETERMINED_ON_ANCHOR 非出力"; fi
+fi
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [ "$FAIL" -eq 0 ] || exit 1
