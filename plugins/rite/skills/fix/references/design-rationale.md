@@ -233,3 +233,7 @@ H-1: ステップ 1.2 進入時に confidence_override tempfile を無条件 tru
 ## reviewer-display-single-source
 
 `{reviewer_display}` 展開ルールはステップ 2.1 の表が単一源。ステップ 3.2 trailer は同表を参照するだけで literal を複製しない (drift 防止)。
+
+## nb-sweep-routing
+
+sweep でコードを修正すると、mergeable 後にも磨き直しが続く。実測あり MEDIUM は Issue 化し、その他は機械理由付きで台帳へ記録する。helper が route を決めることで LLM の三択と commit/push 経路をなくし、残存指摘の保存で sweep を完了させる。

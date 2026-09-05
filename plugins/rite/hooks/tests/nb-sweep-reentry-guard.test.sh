@@ -87,15 +87,9 @@ assert_grep_in_section "T-03 step-4 defers nb-sweep returns" "$ITERATE" \
   '## ステップ 4: fix sentinel を判定' '## ステップ 5.S: NB digest sweep' \
   '経由の戻りは本表を使わない'
 assert_grep "T-03 overview defers nb-sweep from step-4" "$ITERATE" '経由は 5.S 専用表'
-assert_grep_in_section "T-03 pushed after sweep goes to step 5" "$ITERATE" \
+assert_grep_in_section "T-03 unexpected sweep return stops" "$ITERATE" \
   '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
-  '\[fix:pushed\].*ステップ 5'
-assert_grep_in_section "T-03 pushed-wm-stale after sweep goes to step 5" "$ITERATE" \
-  '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
-  '\[fix:pushed-wm-stale\].*ステップ 5'
-assert_grep_in_section "T-03 replied-only after sweep goes to step 5" "$ITERATE" \
-  '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
-  '\[fix:replied-only\].*ステップ 5'
+  '\[iterate:nb-sweep-error\].*停止'
 assert_grep "T-03 existing sweep-done→step 5 rail" "$ITERATE" '\[fix:sweep-done\].*ステップ 5'
 assert_grep "T-03 existing MUST NOT second 5.S" "$ITERATE" '同一 PR で 5.S を 2 回'
 assert_grep "T-03 existing step-1 ban" "$ITERATE" 'ステップ 1 に戻らない'
@@ -210,136 +204,13 @@ if [ -f "$two_line_file" ]; then two_line_present=1; else two_line_present=0; fi
 assert "T-09 -f of 2-line file is 1" "1" "$two_line_present"
 rm -rf -- "$two_line_sbx"
 
-# --- T-10 / AC-5: 1.3.S ステップ 6 は {nb_sweep_fixed}>=1 の then に限り 2 行 printf ---
-assert_grep_in_section "T-10 nb_sweep_fixed placeholder" "$FIX" \
+# New sweep writers keep a one-line done marker and never grant a new HEAD.
+sweep_section=$(awk '/^### 1.3.S `--nb-sweep` consume/,/^### 1.4 Display Comment List/' "$FIX")
+assert "T-10 no fixed count or git command in sweep" "0" "$(printf '%s\n' "$sweep_section" | grep -cE 'nb_sweep_fixed|git (rev-parse|commit|push|add)' || true)"
+assert_grep_in_section "T-10 digest writes one-line done" "$FIX" \
   '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
-  'nb_sweep_fixed="{nb_sweep_fixed}"'
-assert_grep_in_section "T-10 numeric gate -ge 1" "$FIX" \
-  '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
-  '\[ "\$nb_sweep_fixed" -ge 1 \]'
-ge1_has_two_line=$(awk '
-  /### 1.3.S `--nb-sweep` consume/ {sec=1}
-  sec && /### 1.4 Display Comment List/ {exit}
-  sec && /nb_sweep_fixed="-ge 1"|nb_sweep_fixed" -ge 1/ {thenb=1}
-  thenb && /printf .done\\n%s\\n/ {hit=1}
-  thenb && /git rev-parse HEAD/ {rev=1}
-  thenb && /^[[:space:]]*else$/ {if (!hit) miss=1; thenb=0}
-  END { print (hit+0) "," (rev+0) }
-' "$FIX")
-assert "T-10 -ge 1 then has 2-line printf and rev-parse" "1,1" "$ge1_has_two_line"
-nonnum=$(awk '
-  /### 1.3.S `--nb-sweep` consume/ {sec=1}
-  sec && /### 1.4 Display Comment List/ {exit}
-  sec && /nb_sweep_fixed="/ {w=1}
-  w && /\[!0-9\]/ {p=1}
-  p && /printf .done.n/ && $0 !~ /%s/ {hit=1}
-  p && /^[[:space:]]*;;$/ {exit}
-  END { print hit+0 }
-' "$FIX")
-assert "T-10 non-numeric branch writes 1-line done" "1" "$nonnum"
-nonnum_warn=$(awk '
-  /### 1.3.S `--nb-sweep` consume/ {sec=1}
-  sec && /### 1.4 Display Comment List/ {exit}
-  sec && /nb_sweep_fixed="/ {w=1}
-  w && /\[!0-9\]/ {p=1}
-  p && /WARNING: nb_sweep_fixed/ {hit=1}
-  p && /^[[:space:]]*;;$/ {exit}
-  END { print hit+0 }
-' "$FIX")
-assert "T-12 non-numeric branch emits WARNING" "1" "$nonnum_warn"
-assert_grep_in_section "T-12 non-numeric WARNING names received value" "$FIX" \
-  '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
-  "WARNING: nb_sweep_fixed が数値ではありません \\(received:"
-rev_fail=$(awk '
-  /### 1.3.S `--nb-sweep` consume/ {sec=1}
-  sec && /### 1.4 Display Comment List/ {exit}
-  sec && /git rev-parse HEAD/ {g=1}
-  g && /WARNING: git rev-parse HEAD/ {w=1}
-  g && /printf .done\\n./ && $0 !~ /%s/ {one=1}
-  END { print (w+0) "," (one+0) }
-' "$FIX")
-assert "T-10 rev-parse fail is WARNING + 1-line done" "1,1" "$rev_fail"
-
-# --- T-11 / AC-6: push 無し（empty noop / fixed=0）は 1 行のまま ---
-assert_grep_in_section "T-11 empty collect still writes noop" "$FIX" \
-  '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
-  "printf 'noop"
-# 外側 else（nb_sweep_fixed=0）だけを見る。内側 if/else（rev-parse 成否）は
-# -ge 1 行と同じインデントの else/fi で切り、最初の else に誤ヒットしない。
-# first-else に戻すと内側（既に 1 行）で hit し、外側 2 行化を見逃す。
-t11_outer_else_one_line() {
-  awk '
-    /### 1.3.S `--nb-sweep` consume/ {sec=1}
-    sec && /### 1.4 Display Comment List/ {exit}
-    sec && /nb_sweep_fixed" -ge 1/ {
-      ge=1
-      match($0, /^[[:space:]]*/)
-      indent = substr($0, RSTART, RLENGTH)
-      next
-    }
-    ge && !el && $0 == indent "else" { el=1; next }
-    el && /printf .done\\n./ && $0 !~ /%s/ {hit=1}
-    el && $0 == indent "fi" {exit}
-    END { print hit+0 }
-  ' "$1"
-}
-t11_one_line_done_count() {
-  awk '
-    /### 1.3.S `--nb-sweep` consume/ {sec=1}
-    sec && /### 1.4 Display Comment List/ {exit}
-    sec && /printf .done\\n./ && $0 !~ /%s/ {n++}
-    END { print n+0 }
-  ' "$1"
-}
-zero_one_line=$(t11_outer_else_one_line "$FIX")
-assert "T-11 fixed=0 else writes 1-line done" "1" "$zero_one_line"
-
-t11_src="" t11_mut_outer="" t11_mut_inner=""
-t11_src=$(mktemp) || { echo "ERROR: T-11 mktemp src failed" >&2; exit 1; }
-t11_mut_outer=$(mktemp) || { rm -f "$t11_src"; echo "ERROR: T-11 mktemp outer failed" >&2; exit 1; }
-t11_mut_inner=$(mktemp) || { rm -f "$t11_src" "$t11_mut_outer"; echo "ERROR: T-11 mktemp inner failed" >&2; exit 1; }
-cp "$FIX" "$t11_src"
-cp "$t11_src" "$t11_mut_outer"
-cp "$t11_src" "$t11_mut_inner"
-python3 - "$t11_mut_outer" "$t11_mut_inner" <<'PY'
-import pathlib, sys
-outer_path, inner_path = sys.argv[1], sys.argv[2]
-outer = """      else
-        if printf 'done\\n' > "$sweep_done_file"; then sweep_write_ok=1; fi
-      fi"""
-outer_2 = """      else
-        if printf 'done\\n%s\\n' extra > "$sweep_done_file"; then sweep_write_ok=1; fi
-      fi"""
-inner = """          echo "WARNING: git rev-parse HEAD に失敗したため nb-sweep-done の 2 行目を書きません" >&2
-          if printf 'done\\n' > "$sweep_done_file"; then sweep_write_ok=1; fi"""
-inner_2 = """          echo "WARNING: git rev-parse HEAD に失敗したため nb-sweep-done の 2 行目を書きません" >&2
-          if printf 'done\\n%s\\n' extra > "$sweep_done_file"; then sweep_write_ok=1; fi"""
-p = pathlib.Path(outer_path)
-text = p.read_text()
-if outer not in text:
-    raise SystemExit("T-11 outer else block not found")
-p.write_text(text.replace(outer, outer_2, 1))
-p = pathlib.Path(inner_path)
-text = p.read_text()
-if inner not in text:
-    raise SystemExit("T-11 inner else block not found")
-p.write_text(text.replace(inner, inner_2, 1))
-PY
-t11_py_rc=$?
-if [ "$t11_py_rc" -ne 0 ]; then
-  rm -f -- "$t11_src" "$t11_mut_outer" "$t11_mut_inner"
-  echo "ERROR: T-11 mutation copy failed (rc=$t11_py_rc)" >&2
-  exit 1
-fi
-if cmp -s "$t11_src" "$t11_mut_outer"; then t11_outer_changed=0; else t11_outer_changed=1; fi
-assert "T-11 outer mutation changed the copy" "1" "$t11_outer_changed"
-remain_outer=$(t11_one_line_done_count "$t11_mut_outer")
-assert "T-11 outer mutation leaves inner and non-numeric 1-line printf" "2" "$remain_outer"
-assert "T-11 outer 2-line else is hit=0" "0" "$(t11_outer_else_one_line "$t11_mut_outer")"
-if cmp -s "$t11_src" "$t11_mut_inner"; then t11_inner_changed=0; else t11_inner_changed=1; fi
-assert "T-11 inner mutation changed the copy" "1" "$t11_inner_changed"
-assert "T-11 inner 2-line else is still hit=1" "1" "$(t11_outer_else_one_line "$t11_mut_inner")"
-rm -f -- "$t11_src" "$t11_mut_outer" "$t11_mut_inner"
+  "printf 'done"
+assert "T-10 no SHA printf in sweep" "0" "$(printf '%s\n' "$sweep_section" | grep -c 'done\\n%s' || true)"
 
 if ! print_summary "$(basename "$0")" "nb-sweep re-entry guard drift — iterate 5.S / fix 1.3.S / cleanup / 0.6"; then
   exit 1
