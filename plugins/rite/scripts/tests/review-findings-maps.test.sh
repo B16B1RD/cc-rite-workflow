@@ -515,7 +515,9 @@ run_helper "$repo_jqfail" local_file "$repo_jqfail/review.json"
 leaked_triage_jqfail=$(ls "$repo_jqfail"/review.json.triage.* 2>/dev/null || true)
 tc9_jqfail_ok=1
 [ "$HELPER_RC" = "1" ] || tc9_jqfail_ok=0
-grep -q 'FIX_FALLBACK_FAILED=1; reason=fatal_triage_jq_failed' <<<"$HELPER_STDERR" || tc9_jqfail_ok=0
+# `rc=` は移送 jq の emit site だけが付ける。判別子なしだと前方 3 site (実測判定 / 未判定 /
+# 件数算出) で停止する退行でも緑のまま通り、直後の leak assert が恒真化する
+grep -qE 'FIX_FALLBACK_FAILED=1; reason=fatal_triage_jq_failed; rc=[0-9]' <<<"$HELPER_STDERR" || tc9_jqfail_ok=0
 [ "$(cat "$repo_jqfail/review.json")" = "$jqfail_before" ] || tc9_jqfail_ok=0
 if [ "$tc9_jqfail_ok" = "1" ]; then
   pass "移送 jq 失敗で exit 1 / 入力は無変更 (部分適用なし)"
@@ -706,12 +708,13 @@ printf '#!/bin/bash\nexit 1\n' > "$repo/bin/mv"
 chmod +x "$repo/bin/mv"
 write_fixture "$repo/review.json" mixed_triage
 before=$(jq -S . "$repo/review.json")
-HELPER_STDERR=$(PATH="$repo/bin:$PATH" bash "$TARGET" \
-  --review-source local_file --review-source-path "$repo/review.json" 2>&1 >/dev/null) && HELPER_RC=0 || HELPER_RC=$?
+# 他 leg と同じく `_timeout` を経由する (本スイートは backend 不在で fail closed する契約。
+# 素の起動だと stub 下で helper が hang したときスイートが無限に待つ)
+HELPER_STDERR=$( ( export PATH="$repo/bin:$PATH"; _timeout 10 bash "$TARGET" \
+  --review-source local_file --review-source-path "$repo/review.json" ) 2>&1 >/dev/null ) && HELPER_RC=0 || HELPER_RC=$?
 tc14b_mv_ok=1
 [ "$HELPER_RC" = "1" ] || tc14b_mv_ok=0
-grep -q 'FIX_FALLBACK_FAILED=1; reason=fatal_triage_mv_failed' <<<"$HELPER_STDERR" || tc14b_mv_ok=0
-grep -qE 'reason=fatal_triage_mv_failed; rc=0(;|$)' <<<"$HELPER_STDERR" && tc14b_mv_ok=0
+grep -qE 'FIX_FALLBACK_FAILED=1; reason=fatal_triage_mv_failed; rc=[1-9]' <<<"$HELPER_STDERR" || tc14b_mv_ok=0
 [ "$(jq -S . "$repo/review.json")" = "$before" ] || tc14b_mv_ok=0
 [ -z "$(ls "$repo"/review.json.triage.* 2>/dev/null || true)" ] || tc14b_mv_ok=0
 if [ "$tc14b_mv_ok" = "1" ]; then

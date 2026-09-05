@@ -744,8 +744,8 @@ else
       # なって「helper が空ファイルを残した」という一次原因が診断から消える。
       if [ ! -s "$p3_triage_file" ]; then
         rm -f "$p3_triage_file"
-        echo "ERROR: Priority 3 仕分け結果が空です" >&2
-        echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=p3_triage_readback_failed" >&2
+        echo "ERROR: Priority 3 仕分け結果が空です (helper が 0 バイトを残した)" >&2
+        echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=p3_triage_readback_failed; cause=empty_file" >&2
         echo "[fix:error] reason=p3_triage_readback_failed"
         exit 1
       fi
@@ -784,7 +784,7 @@ else
       if ! raw_json=$(cat "$p3_triage_file" 2>/dev/null); then
         rm -f "$p3_triage_file"
         echo "ERROR: Priority 3 仕分け結果の読み戻しが失敗しました" >&2
-        echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=p3_triage_readback_failed" >&2
+        echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=p3_triage_readback_failed; cause=cat_failed" >&2
         echo "[fix:error] reason=p3_triage_readback_failed"
         exit 1
       fi
@@ -902,7 +902,7 @@ exit 1
 | `p3_triage_write_failed` | Priority 3 で raw_json の tempfile 書き出しが失敗 (`[fix:error]` 昇格) |
 | `p3_triage_moved_probe_failed` | Priority 3 で仕分け後 JSON から移送件数を読み取れない (jq 失敗 / 非数値)。移送の有無を判定できないため記録漏れを見逃さず停止 (`[fix:error]` 昇格) |
 | `p3_triage_not_persistable` | Priority 3 で非致命移送が発生したが、この経路には永続 review-result JSON が無い。移送分が nb-sweep の母集団から脱落するため停止 (`[fix:error]` 昇格) |
-| `p3_triage_readback_failed` | Priority 3 で仕分け後 JSON の読み戻しが失敗 (仕分け前の raw_json へ silent に戻さず停止、`[fix:error]` 昇格) |
+| `p3_triage_readback_failed` | Priority 3 で仕分け後 JSON が空 (helper が 0 バイトを残した。`cause=empty_file`) か、読み戻し (`cat`) が失敗 (`cause=cat_failed`)。いずれも仕分け前の raw_json へ silent に戻さず停止、`[fix:error]` 昇格 |
 | `pr_comment_scope_map_build_failed` | Priority 3 (pr_comment Raw JSON) で scope_map_json 構築用 jq が失敗 (`REVIEW_SOURCE_PARSE_FAILED` flag、非ブロッキング、`scope_map_json="{}"` で legacy blocking 扱いに fallback) |
 | `review_source_resolve_failed` | ステップ 1.2.0 caller が `scripts/review-source-resolve.sh` の非ゼロ exit を検知した際の caller-side retained-flag (helper が具体 reason を `FIX_FALLBACK_FAILED` で stderr emit 済み、本 reason は drift Pattern 1 充足用の generic guard、`[fix:error]` 昇格) |
 | `findings_maps_build_failed` | ステップ 1.2.0 caller が `scripts/review-findings-maps.sh` の非ゼロ exit を検知した際の caller-side retained-flag (helper が具体 reason — 典型は `severity_map_build_failed` — を `FIX_FALLBACK_FAILED` で stderr emit 済み、本 reason は drift Pattern 1 充足用の generic guard、`[fix:error]` 昇格。`review_source_resolve_failed` と同型) |
@@ -927,7 +927,7 @@ exit 1
 - `severity_map_build_failed`: severity_map 構築用 jq が失敗 (0 件で正常終了する silent regression 防止、helper exit 1 → caller が `[fix:error]` に昇格)
 - `scope_map_build_failed`: scope_map_json 構築用 jq が失敗 (`FIX_FALLBACK_FAILED` flag、非ブロッキング、`scope_map_json="{}"` で legacy blocking 扱いに fallback)
 
-**Eval-order enumeration** (Pattern-2 documented-union): emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `p3_triage_mktemp_failed` / `p3_triage_write_failed` / `p3_triage_moved_probe_failed` / `p3_triage_not_persistable` / `p3_triage_readback_failed` / `pr_comment_scope_map_build_failed` / `review_source_resolve_failed` / `findings_maps_build_failed`)
+**Eval-order enumeration** (Pattern-2 documented-union): emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `p3_triage_mktemp_failed` / `p3_triage_write_failed` / `p3_triage_readback_failed` (cause=empty_file) / `p3_triage_moved_probe_failed` / `p3_triage_not_persistable` / `p3_triage_readback_failed` (cause=cat_failed) / `pr_comment_scope_map_build_failed` / `review_source_resolve_failed` / `findings_maps_build_failed`)
 
 #### Legacy Branching (PR Comment Path Only)
 
@@ -1975,7 +1975,7 @@ PR #{number} のレビューコメント
 ## 未対応の指摘 ({count}件)
 
 ### 致命（CRITICAL/HIGH・実測あり）({fatal_count}件)
-<!-- 見出しは経路で切り替える (ステップ 1.2.0 の marker 不在時規則の適用):
+<!-- 見出しは marker の有無で切り替える (`{fatal_count}` の marker 不在時規則は本注記が SoT):
      marker あり (仕分け済み) → 上記のまま。{fatal_count} は marker の fatal= を literal substitute。
      marker 不在 (会話 / legacy Markdown) → 見出しを `### 未対応の指摘（全 severity 帯）` にし、
        件数は実際に列挙した行数を書く。この経路では ステップ 2.1 の分岐 5 により
