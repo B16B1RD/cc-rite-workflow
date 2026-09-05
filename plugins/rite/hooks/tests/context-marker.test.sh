@@ -13,7 +13,7 @@
 #     another branch, so a filter-after-recency implementation returns empty or
 #     the wrong branch's value while still passing AC-3 and AC-4 separately.
 #   - whole-token key: `ITERATE_CB` must not read an `ITERATE_CB_MODE=` line.
-#   - whole-token field: `--field RESET` must not read a `FIRE_RESET=` field.
+#   - whole-token field: `--field RESET` must not read a `OTHER_RESET=` field.
 # Both token pairs are live in skills/iterate/SKILL.md; substring matching would
 # make the marker say the opposite of what was emitted.
 #
@@ -149,10 +149,10 @@ assert "KEY はトークン完全一致 (ITERATE_CB は ITERATE_CB_MODE を読�
   "$(printf '%s\n' '[CONTEXT] ITERATE_CB_MODE=batch; issue=2025' | marker_get ITERATE_CB)"
 assert "KEY 完全一致: ITERATE_CB_MODE 自身は読める" "batch" \
   "$(printf '%s\n' '[CONTEXT] ITERATE_CB_MODE=batch; issue=2025' | marker_get ITERATE_CB_MODE)"
-assert "field はトークン完全一致 (RESET は FIRE_RESET を読まない)" "" \
-  "$(printf '%s\n' '[CONTEXT] ITERATE_CB_MODE=batch; FIRE_RESET=failed' | marker_get ITERATE_CB_MODE --field RESET)"
-assert "field 完全一致: FIRE_RESET 自身は読める" "failed" \
-  "$(printf '%s\n' '[CONTEXT] ITERATE_CB_MODE=batch; FIRE_RESET=failed' | marker_get ITERATE_CB_MODE --field FIRE_RESET)"
+assert "field はトークン完全一致 (RESET は OTHER_RESET を読まない)" "" \
+  "$(printf '%s\n' '[CONTEXT] ITERATE_CB_MODE=batch; OTHER_RESET=failed' | marker_get ITERATE_CB_MODE --field RESET)"
+assert "field 完全一致: OTHER_RESET 自身は読める" "failed" \
+  "$(printf '%s\n' '[CONTEXT] ITERATE_CB_MODE=batch; OTHER_RESET=failed' | marker_get ITERATE_CB_MODE --field OTHER_RESET)"
 
 # --- T-05 (AC-5): backward compatibility with plain `echo` --------------------
 # The migration is staged: iterate/SKILL.md goes through marker_emit, everything

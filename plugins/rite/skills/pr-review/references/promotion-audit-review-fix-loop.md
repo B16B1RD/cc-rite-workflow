@@ -11,7 +11,7 @@ mechanization target.
 | `fix-induced-drift-in-cumulative-defense` | shelve — already mechanized | `review-trend-divergence.sh` and the `iterate` circuit breaker |
 | `reviewer-likelihood-evidence-omission-induces-mechanical-demotion` | follow-up — producer enforcement incomplete | existing measured gate records demotion but does not prevent omitted evidence; tracked as an explicit follow-up |
 | `convention-escalation-has-no-terminus` | shelve — already mechanized | structured review JSON, helper gates, and fail-loud enum validation |
-| `differential-scope-review-blind-outside-diff` | mechanized here | `iterate/SKILL.md` post-breaker full review transition and normal review routing |
+| `differential-scope-review-blind-outside-diff` | mechanized here | `iterate/SKILL.md` step 0.6 fresh-run pin and `review-cycle-scope.sh` full scope on explicit restart; breaker stops without an additional review |
 | `reviewer-scope-split-escalates-to-user` | mechanized here | Scope Split Gate below and `pr-review/SKILL.md` |
 | `scope-creep-rejection-empirical-gate` | mechanized here | Rejection Evidence Gate below and `fix/SKILL.md` |
 | `bugfix-new-error-path-needs-regression-test` | mechanized here | New Error-Path Regression Gate in reviewer prompts |
