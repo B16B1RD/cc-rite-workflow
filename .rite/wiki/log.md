@@ -32,6 +32,8 @@
 
 ## 2026-09-05
 
+* **lint:clean** — orphans=0, missing_concept=0, unregistered_raw=433, broken_refs=0, descriptive_refs=0, stale=55。ページ変更なしのため矛盾確認は今回の取込内容に限定。
+
 * **Skip**: [レビュー結果](raw/reviews/20260905T135424Z-pr-2575-review.md) — 新しいドメイン経験則なし。形式エラーの契約はプラグインとテストに実装済み。
 * **Skip**: [レビュー結果](raw/reviews/20260905T140225Z-pr-2575-final.md) — 新しいドメイン経験則なし。形式エラーの契約はプラグインとテストに実装済み。
 
