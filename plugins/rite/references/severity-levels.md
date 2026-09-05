@@ -205,13 +205,18 @@ blocking = CONFIRMED (全指摘事項に残存)
 
 - **適用範囲 (measured は 3 値)**: 本式が対象とするのは **`全指摘事項` に載る rite reviewer finding のみ**。`measured` は `true` / `false` に加えて **未判定** の 3 値を取る。未判定は「実測の有無を判定する構造そのものが無い」状態で、(a) 外部ツール / 人間レビュー由来の指摘 (`Verification:` アンカーを構造的に持てない)、(b) レビュー結果 JSON の `findings[].verification` が欠落している場合 (**本ゲートを適用する前に書かれた旧形式 JSON**)、(c) **形式崩れアンカー** — marker と同一セグメント内に `=>` があるのに検出 regex に match しない finding (raw pipe / `=>` 右辺空 / 種別ラベル誤記 / 装飾 marker / アンカー直前の境界欠落) の 3 経路がある。(c) では `scripts/review-measured-gate.sh` が **`verification` を設定しない**ことで未判定を表現する — アンカーの書式が読めない状態を `measured=false` と確定させると、実測済みの指摘が書式ミスだけで blocking から消えるため。したがってゲート適用後の JSON でも `verification` は欠落しうる。未判定の扱いは経路で分かれる。**外部ツール / 人間レビュー由来 ((a))** は `Verification:` アンカーを構造的に持てないため従来どおり blocking (SoT は [`fix/SKILL.md`](../skills/fix/SKILL.md) ステップ 1.3 分類表の External review 行)。**rite reviewer finding の未判定 ((b) / (c))** は `/rite:fix` ステップ 1.2.0 の致命性仕分けが **error で停止する** — blocking にも non-blocking にも倒さない (`reason=measured_undetermined`)。未判定を既定値へ畳むと、実測済みの指摘が書式ミスだけで修正対象から消える / 逆に非実測が修正対象に紛れ込むのどちらかが silent に起きるため。
 
-**consumer 式** (fix loop 全体を対象とする定義。producer 側の上式とはスコープが異なる):
+**consumer 式** (`/rite:fix` が修正対象を選ぶ定義。producer 側の上式とはスコープが異なる):
 
 ```
-blocking = verification.measured == true
-         AND severity in {CRITICAL, HIGH}
-         AND scope in {current-pr, follow-up}
+fix_target = verification.measured == true
+           AND severity in {CRITICAL, HIGH}
+           AND scope in {current-pr, follow-up}
 ```
+
+**本式は mergeable 判定には使わない。** 左辺を `blocking` にしないのは、コードブロックだけを読んだ
+読み手が `severity in {CRITICAL, HIGH}` を merge ブロック条件と受け取り「MEDIUM は merge を止めない」
+と誤読するため。mergeable を決めるのは上の producer 式（severity で絞らない）で、本式が決めるのは
+「どの指摘が fix cycle を起動するか」だけである。
 
 上式を満たさない gated finding は `/rite:fix` ステップ 1.2.0 が `non_blocking_findings[]` へ移送して記録する (`demotion_reason: "non_fatal"`)。severity は書き換えない — Impact 軸と致命性軸は直交で、移送は「本 PR の fix cycle を起動するか」の判定でしかない。reviewer 側の severity 判定・探索深さは変えない (指摘を隠すより後出しのほうが悪い、という設計は維持し、釣り合いは fix 側で取る)。
 rationale: [`fix-relaxation-rules.md`](../skills/fix/references/fix-relaxation-rules.md)

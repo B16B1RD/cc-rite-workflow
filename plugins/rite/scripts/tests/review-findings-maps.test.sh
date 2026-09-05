@@ -167,7 +167,9 @@ FIXEOF
 {"schema_version":"1.1.0","pr_number":1,"findings":[
   {"id":"F-01","file":"src/a.ts","line":10,"severity":"HIGH","scope":"current-pr","pre_existing":true,"verification":{"measured":true}},
   {"id":"F-02","file":"src/b.ts","line":20,"severity":"MEDIUM","scope":"current-pr","pre_existing":true,
-   "description":"Verification: repro <br> => marker と => が別セグメントのため gate が verification を設定しない"}
+   "description":"Verification: repro <br> => marker と => が別セグメントのため gate が verification を設定しない"},
+  {"id":"F-03","file":"src/c.ts","line":30,"severity":"HIGH","scope":"follow-up","pre_existing":true,
+   "description":"Verification: repro <br> => follow-up 側も gated なので同じく未判定になる"}
 ]}
 FIXEOF
       ;;
@@ -542,6 +544,9 @@ leaked_triage_jqfail=$(ls "$repo_jqfail"/review.json.triage.* 2>/dev/null || tru
 tc9_jqfail_ok=1
 [ "$HELPER_RC" = "1" ] || tc9_jqfail_ok=0
 grep -q 'FIX_FALLBACK_FAILED=1; reason=non_blocking_not_array; type=string' <<<"$HELPER_STDERR" || tc9_jqfail_ok=0
+# marker は書き戻し成功後にだけ出す。失敗経路で出ると、永続化されていない移送が
+# 「非致命移送: N件」として 4 経路 (1.4 / 4.5.3 / 4.6 / 5.1) へ転記される
+grep -q 'FIX_FATAL_TRIAGE=applied' <<<"$HELPER_STDERR" && tc9_jqfail_ok=0
 grep -q 'reason=fatal_triage_jq_failed' <<<"$HELPER_STDERR" && tc9_jqfail_ok=0
 [ "$(cat "$repo_jqfail/review.json")" = "$jqfail_before" ] || tc9_jqfail_ok=0
 if [ "$tc9_jqfail_ok" = "1" ]; then
@@ -577,15 +582,17 @@ grep -q 'FIX_FATAL_TRIAGE=applied; fatal=1; moved=3' <<<"$HELPER_STDERR" || tc10
 [ "$(jq -c '[.non_blocking_findings[] | {id, d: (.demotion_reason // null), s: .severity}]' "$repo/review.json")" \
   = '[{"id":"F-05","d":null,"s":"MEDIUM"},{"id":"F-02","d":"non_fatal","s":"MEDIUM"},{"id":"F-03","d":"non_fatal","s":"LOW"},{"id":"F-06","d":"non_fatal","s":"HIGH"}]' ] || tc10_ok=0
 # 実測条件の判別: 実測なし HIGH は severity が CRITICAL/HIGH でも致命にならず移送される
-# (この 1 行が無いと `def fatal` から実測条件を落とした mutant がスイート全 green を通過する)
+# (`def fatal` から実測条件を落とす mutant は上の件数 assert と TC-15 でも落ちるが、
+#  この行は「なぜ移送されたか」を id 単位で示すので診断として残す)
 [ "$(jq -r '.non_blocking_findings[] | select(.id == "F-06") | .verification.measured' "$repo/review.json")" = "false" ] || tc10_ok=0
+# 移送要素は demotion_reason だけを付す。demotion オブジェクトを併記すると
+# pr-review 6.1.d の降格理由併記が非致命移送にも誤発火する (出所の判別子が混ざる)
+[ "$(jq -c '[.non_blocking_findings[] | select(.demotion_reason == "non_fatal") | has("demotion")] | unique' "$repo/review.json")" = '[false]' ] || tc10_ok=0
 # 既存の非移送要素 (F-05) は一切書き換わらない
 [ "$(jq -c '.non_blocking_findings[0]' "$repo/review.json")" \
   = '{"id":"F-05","file":"src/e.ts","line":50,"severity":"MEDIUM","scope":"current-pr","pre_existing":true}' ] || tc10_ok=0
-# id は 2 配列の和集合で一意
-[ "$(jq '[.findings[].id, .non_blocking_findings[].id] | (unique | length) == length' "$repo/review.json")" = "true" ] || tc10_ok=0
 if [ "$tc10_ok" = "1" ]; then
-  pass "fatal=1/moved=3、実測なし HIGH の移送、append 保持、demotion_reason=non_fatal、severity 不変、id 和集合一意"
+  pass "fatal=1/moved=3、実測なし HIGH の移送、append 保持、demotion_reason=non_fatal、severity 不変"
 else
   fail "unexpected (rc=$HELPER_RC): err='$HELPER_STDERR' json=$(jq -c . "$repo/review.json")"
 fi
@@ -619,6 +626,8 @@ fi
 
 # --------------------------------------------------------------------------
 # TC-12 (T-05): 未判定は error 停止 (AC-5)
+# gated scope は current-pr / follow-up の 2 つ。片方だけを pin すると、未判定検査の
+# gated 述語から follow-up を落とす退行が緑のまま通り、未判定が silent に移送される
 # --------------------------------------------------------------------------
 echo "TC-12 (T-05): 未判定 error"
 repo=$(make_sandbox tc12a)
@@ -626,10 +635,10 @@ write_fixture "$repo/review.json" undetermined
 before=$(jq -S . "$repo/review.json")
 run_helper "$repo" local_file "$repo/review.json"
 if [ "$HELPER_RC" = "1" ] \
-   && grep -q 'FIX_FALLBACK_FAILED=1; reason=measured_undetermined; findings=F-02' <<<"$HELPER_STDERR" \
+   && grep -q 'FIX_FALLBACK_FAILED=1; reason=measured_undetermined; findings=F-02,F-03' <<<"$HELPER_STDERR" \
    && [ -z "$HELPER_STDOUT" ] \
    && [ "$(jq -S . "$repo/review.json")" = "$before" ]; then
-  pass "verification キー欠落 (gate の形式崩れアンカー実形状) で exit 1 + 入力無変更"
+  pass "verification キー欠落で exit 1 + 入力無変更 (current-pr / follow-up の両 gated scope)"
 else
   fail "unexpected (rc=$HELPER_RC): out='$HELPER_STDOUT' err='$HELPER_STDERR'"
 fi
@@ -747,7 +756,7 @@ fi
 
 # --------------------------------------------------------------------------
 # TC-14b: 書き込み失敗分岐 — mktemp 失敗 / mv 失敗のいずれも実挙動で pin する
-# (Issue §4.5 MUST「書き込み失敗は非ゼロ終了、部分適用を残さない」の直接 pin)
+# (契約「書き込み失敗は非ゼロ終了、部分適用を残さない」の直接 pin)
 # mv は PATH stub で失敗させる (本 repo の hooks/tests で確立した手段)
 # --------------------------------------------------------------------------
 echo "TC-14b: 書き込み失敗分岐"
@@ -783,6 +792,7 @@ HELPER_STDERR=$( ( export PATH="$repo/bin:$PATH"; _timeout 10 bash "$TARGET" \
 tc14b_mv_ok=1
 [ "$HELPER_RC" = "1" ] || tc14b_mv_ok=0
 grep -qE 'FIX_FALLBACK_FAILED=1; reason=fatal_triage_mv_failed; rc=[1-9]' <<<"$HELPER_STDERR" || tc14b_mv_ok=0
+grep -q 'FIX_FATAL_TRIAGE=applied' <<<"$HELPER_STDERR" && tc14b_mv_ok=0
 [ "$(jq -S . "$repo/review.json")" = "$before" ] || tc14b_mv_ok=0
 [ -z "$(ls "$repo"/review.json.triage.* 2>/dev/null || true)" ] || tc14b_mv_ok=0
 if [ "$tc14b_mv_ok" = "1" ]; then
@@ -811,7 +821,7 @@ fi
 
 # --------------------------------------------------------------------------
 # TC-16: explicit_file が local_file と同じ経路を通ることの pin
-# (T-07 / AC-6 は fix/SKILL.md の選択 UI 規定に属し本スイートでは検査しない。
+# (手動起動の選択 UI は fix/SKILL.md の規定に属し本スイートでは検査しない。
 #  当該規定の静的 pin は hooks/tests/fix-fatal-triage-contract.test.sh が持つ)
 # --------------------------------------------------------------------------
 echo "TC-16: explicit_file / local_file の経路一致"

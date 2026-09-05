@@ -49,7 +49,7 @@ rationale: references/design-rationale.md#e2e-output-minimization-scope
 | Phase | Standalone | E2E Flow |
 |-------|-----------|----------|
 | Fix implementation | Full output | Full output (needed for code changes) |
-| ステップ 4 (Completion) | Full report | Result pattern + 1-line summary only |
+| ステップ 4 (Completion) | Full report | 完了報告を最小化する。ただし ステップ 5.1 が定める行 (result pattern / 非致命移送 / non-blocking / nit 認知) は E2E でも省略しない |
 | ステップ 4.5 (Work Memory) | Full update | Full update (no change) |
 
 E2E output format (ステップ 4):
@@ -482,7 +482,7 @@ esac
 
 **On Priority 0 failure**: `review_source="fallback"` → 1.2.0.1。`--review-file` 明示時に P1–P3 へ silent fallthrough しない。
 
-**On Priority 2 success**: Skip "Target Comment Fast Path" and "Broad Comment Retrieval"。**致命性仕分けと** map 構築は `scripts/review-findings-maps.sh` へ委譲 (reason は helper docstring の Reason SoT。file-based 以外は no-op exit 0)。
+**On Priority 0 / 2 success**: Skip "Target Comment Fast Path" and "Broad Comment Retrieval"。**致命性仕分けと** map 構築は `scripts/review-findings-maps.sh` へ委譲 (reason は helper docstring の Reason SoT。file-based 以外は no-op exit 0)。
 rationale: references/design-rationale.md#priority2-helper-delegation
 rationale: references/design-rationale.md#fatal-triage
 
@@ -1729,7 +1729,8 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
 | **致命 (修正対象)** | severity ∈ {CRITICAL, HIGH} AND scope ∈ {current-pr, follow-up} AND measured == true | Must fix in this PR。ステップ 1.2.0 の仕分けを通過して `findings[]` に残った唯一の分類 |
 | **nit (認知のみ)** | scope == "nit-noted" | NOT a fix target。PR reply しない。`acknowledged_nit_count = {nit_noted_count}` |
 | **移送済み (非致命)** | ステップ 1.2.0 で `non_blocking_findings[]` へ移送された gated finding (`demotion_reason: "non_fatal"`)。**file-based source (Priority 0/2、および P3 の Raw JSON) でのみ発生する** | **`findings[]` に存在しないため本分類ロジックには到達しない**。件数 `{moved_count}` のみ ステップ 1.4 / 4.6 / 5.1 に表示する。修正・reply・auto-select の対象外 |
-| **non-blocking (実測なし)** | scope ∈ {current-pr, follow-up} AND measured == false (`measured_map` に明示的に `false` で登録されたもののみ — 経路別判定は下記 measured lookup 参照) | 表示のみ; NOT a fix target (実測必須ゲート — 記録は `/rite:pr-review` ステップ 5.4 の「実測なし指摘」section が担う) |
+| **全 severity 帯 (仕分け未適用)** | `FIX_FATAL_TRIAGE` marker 不在 (会話 / legacy Markdown 経路) の gated finding すべて。severity で絞らない | Must fix in this PR。仕分けが走っていないため移送も記録も起きておらず、絞ると指摘が無記録のまま消える (ステップ 2.1 分岐 5 と同一母集団) |
+| **non-blocking (実測なし)** | scope ∈ {current-pr, follow-up} AND measured == false (`measured_map` に明示的に `false` で登録されたもののみ — 経路別判定は下記 measured lookup 参照)。**file-based source では ステップ 1.2.0 が先に移送するため本分類に到達しない** (到達するのは会話 / legacy Markdown 経路のみ) | 表示のみ; NOT a fix target (実測必須ゲート — 記録は `/rite:pr-review` ステップ 5.4 の「実測なし指摘」section が担う) |
 | **External review** | severity_map に登録されていない未対応コメント (人間レビュアーの指摘等)、**および step 4 の出自確認で rite finding 由来と確認できなかった thread** (severity_map 登録済みでも本分類へ振り替える)。実測必須ゲートの**対象外** — `Verification:` アンカーを構造的に持てないため measured 未判定でも non-blocking に落とさない | Action required |
 | **Resolved** | Resolved threads | - |
 
@@ -1741,7 +1742,7 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
 4. If it exists, look up the corresponding entry in `scope_map`:
    - **`scope == "nit-noted"`** -> **nit (認知のみ)**; skip ステップ 2.1 / 2.4。PR reply しない。`acknowledged_nit_count` に算入（fix commit 対象外）
    - **measured lookup (実測必須ゲート)**: 判定は **`measured_map[file:line]` の参照に統一**する (母集団は severity_map と同一 — **scope による登録除外なし**。nit-noted は本分岐に到達する前に上の nit 分岐 (正規化後 `scope_map` 参照) が先取するため lookup 対象にならない。key 正規化・tie-break・3 値保持を含む構築共通規則はステップ 1.2.1 step 6 が単一定義。**3 値**: `false` = non-blocking / `true` = blocking / **未登録** = 未判定 (実測の有無を判定する構造が無い) → blocking)。`measured_map` の構築は経路別:
-     - **JSON (P0/2/3)**: `verification` が object かつ `verification.measured` が boolean のときだけ登録。**欠落は登録しない (= 未判定 → blocking)**。`(.verification.measured // false)` で畳まない
+     - **JSON (P0/2/3)**: `verification` が object かつ `verification.measured` が boolean のときだけ登録。**欠落は登録しない**。`(.verification.measured // false)` で畳まない（gated finding の欠落は ステップ 1.2.0 が `measured_undetermined` で停止済みなので本 lookup に到達しない。到達しうるのは nit-noted と scope 未登録のみ）
      - **会話 (P1)**: `### 全指摘事項` → `true`、`### 実測なし指摘 (non-blocking)` → `false`。後者も `severity_map` / `scope_map` へ投入 (1.2.1 step 6)
      - **Markdown (Fast Path / P3 legacy)**: 1.2.1 step 6。全指摘事項 = `true`、実測なし = `false`
      - **外部ツール / best-effort**: 登録しない (= 未判定)。External review (blocking)
@@ -2046,7 +2047,7 @@ PR #{number} のレビューコメント
 | **特定の指摘を選択** | Individual selection | When addressing only specific findings |
 | **キャンセル** | - | Abort the process (Fast Path 経由の場合はハンドオフファイルを削除してから exit) |
 
-**仕分けが走った経路 (`FIX_FATAL_TRIAGE` marker あり) では、手動起動時に並ぶのは致命 finding だけ** (AC-6)。移送済みの非致命 finding は選択肢に出さず、上の「移送済み (非致命)」セクションで件数のみ表示する。severity で絞る選択肢 (旧「CRITICAL/HIGH のみ対応」) は撤去した — ステップ 1.2.0 の仕分けを通過した時点で残っているのは CRITICAL/HIGH だけであり、選択肢として意味を持たないため。
+**仕分けが走った経路 (`FIX_FATAL_TRIAGE` marker あり) では、手動起動時に並ぶのは致命 finding だけ**。移送済みの非致命 finding は選択肢に出さず、上の「移送済み (非致命)」セクションで件数のみ表示する。severity で絞る選択肢 (旧「CRITICAL/HIGH のみ対応」) は撤去した — ステップ 1.2.0 の仕分けを通過した時点で残っているのは CRITICAL/HIGH だけであり、選択肢として意味を持たないため。
 
 **marker 不在の経路 (会話 / legacy Markdown) では、非致命 gated finding も選択肢に並べる** — この経路では仕分けが走らず、ステップ 2.1 の分岐 5 が MEDIUM / LOW-MEDIUM / LOW の gated finding を従来どおり修正対象にすると規定している。選択肢から落とすと、修正対象と宣言した指摘が移送も記録もされないまま消える。「移送済み」セクションは marker 不在時は省略されるため、件数表示にも現れない。
 
@@ -2186,6 +2187,7 @@ reviewer の推奨対応（`recommendation` 列）は候補であって設計で
 2. `scope == "nit-noted"` → ステップ 2.1 / 2.4 を skip。ステップ 2.4.N で `acknowledged_nit_count` に算入
 3. **measured lookup (実測必須ゲート)**: ステップ 1.3 で **non-blocking (実測なし)** に分類された finding (`measured_map[file:line] == false`) → ステップ 2.1 (本セクション) を **skip** し、ステップ 2.4 の reply も投稿しない (fix commit 対象外。記録は `/rite:pr-review` ステップ 5.4 の「実測なし指摘」section が担う)
 4. **仕分けが走った経路 (file-based source。`FIX_FATAL_TRIAGE` marker あり)**: `scope ∈ {current-pr, follow-up}` かつ `measured == true` かつ `severity ∈ {CRITICAL, HIGH}` (= 致命) → 本セクション以降を通常通り実行。非致命は helper が `findings[]` から外しているため本分岐に現れない
+   - **scope 未登録 / enum 外**の finding は helper の `gated` 述語（完全一致）に掛からず移送されないため、`findings[]` に残る。この経路では **従来どおり修正対象にする**（どの分類にも入らないまま落とさない）。
 5. **仕分けが走らなかった経路 (会話 / legacy Markdown。marker なし)**: `scope ∈ {current-pr, follow-up}` かつ **measured != false** → severity に依らず本セクション以降を通常通り実行する。consumer 式で絞ると移送も記録もされないまま指摘が消えるため、この経路では従来どおり全 severity 帯を修正対象にする (Confidence override で取り込んだ外部ツール finding も severity_map 登録済みのためここに合流し、silent skip されない)
 6. skip 経路では選択 UI を **出さない**。
 
@@ -3371,7 +3373,7 @@ fi
 - **Confidence override**: {confidence_override_section}
 ```
 
-**`{moved_count}` / `{moved_pointer_suffix}` の展開ルール** (AC-3 — 移送を関連 Issue 上の共有可能な永続チャネルに残す):
+**`{moved_count}` / `{moved_pointer_suffix}` の展開ルール** (移送を関連 Issue 上の共有可能な永続チャネルに残すため):
 
 | 状況 | `{moved_count}` | `{moved_pointer_suffix}` |
 |------|-----------------|--------------------------|
@@ -3424,7 +3426,7 @@ PR #{number} のレビュー指摘対応を完了しました
 - nit 認知 (scope=nit-noted、本 cycle): {acknowledged_nit_count}件
 - non-blocking (実測なし、fix 対象外): {non_blocking_count}件
 - accept 認知 (user decision、Issue 完了まで累計): {accept_count}件{accept_warning_suffix}
-非致命移送 (fix 対象外、記録済み): {moved_count}件
+- 非致命移送 (fix 対象外、記録済み): {moved_count}件
 
 コミット: {commit_sha}
 プッシュ: 完了 / 未実行
@@ -4010,7 +4012,7 @@ PR #{pr_number} のレビュー指摘対応を完了しました
 [fix:pushed]
 ```
 
-**E2E 出力での移送行 (AC-3)**: `非致命移送 (fix 対象外、記録済み): {moved_count}件` の 1 行は E2E 経路でも**省略しない** (ステップ 4.6 の同名フィールドと同一値)。移送分の一覧は畳んで件数のみ出す — 全文は `non_blocking_findings[]` にあり、iterate 5.S の nb-sweep が消化する。marker 不在時の扱いは ステップ 1.2.0 の marker 不在時規則に従う。
+**E2E 出力での移送行**: `非致命移送 (fix 対象外、記録済み): {moved_count}件` の 1 行は E2E 経路でも**省略しない** (ステップ 4.6 の同名フィールドと同一値)。移送分の一覧は畳んで件数のみ出す — 全文は `non_blocking_findings[]` にあり、iterate 5.S の nb-sweep が消化する。marker 不在時の扱いは ステップ 1.2.0 の marker 不在時規則に従う。
 
 ---
 

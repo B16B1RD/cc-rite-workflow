@@ -228,8 +228,9 @@ fire 分岐でも `--handoff` なしの `flow-state.sh set` を呼ぶのは、�
 
 blocking の定義式は本ファイルに複製せず severity-levels.md の実測必須ゲートを SoT とする。
 同節は reviewer finding に閉じた producer 式と fix loop 全体を対象とする consumer 式の差を
-「適用範囲」で意図的なスコープ差として定義している。本スキルはループ側なので後者に従い、
-**致命（実測あり × CRITICAL/HIGH × gated）だけを blocking として数える**。実測を伴わない指摘と
+「適用範囲」で意図的なスコープ差として定義している。本スキルはループ側だが、blocking として数えるのは **producer 式**
+（`measured != false` かつ gated。severity では絞らない）である。consumer 式が決めるのは fix が
+どの指摘を修正対象にするかだけで、mergeable の判定には使わない。実測を伴わない指摘と
 非致命として移送された指摘は `non_blocking_findings[]` に記録されたまま残存するため、
 それらが残った状態でも `[review:mergeable]` に到達する。rite reviewer finding のうち実測の有無を
 判定できないものは blocking へ倒さず fix ステップ 1.2.0 が error で停止する（外部ツール / 人間
