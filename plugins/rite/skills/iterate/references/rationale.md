@@ -250,7 +250,7 @@ cycle counter は専用 state file を持たず、flow-state の merge-preserve 
 handoff とも独立（handoff は one-shot consume される継続マーカー、cycle_count は accumulate
 されるカウンタ、`stop_reason` は次の通常 set まで残る失敗理由）。
 
-別 Issue 化経路は廃止済み — 「別 Issue にスキップして loop 終了」の抜け穴は塞がれている。
+人間が skip → 別 Issue で loop 終了する経路は閉じた。残存 non-blocking の消化は機械 routing（完了通知前の 5.S `/rite:fix --nb-sweep` と、cleanup の follow-up Issue 起票）が担う。
 
 ## nb-remaining-notice
 
