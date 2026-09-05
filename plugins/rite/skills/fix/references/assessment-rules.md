@@ -79,7 +79,7 @@ These categories inherit [Hypothetical Exception Categories](../../../references
 
 5.3.0 の後・5.3.1 の前に適用する **mechanical** な分類ゲート。ゲート定義の SoT は [severity-levels.md §実測必須ゲート](../../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate)。5.3.0 と同じく deterministic rule であり、AI judgment は関与しない (5.3.7 の禁止対象外 — mechanical rule = allowed)。
 
-**実行主体は `scripts/review-measured-gate.sh`**。本節の疑似コード・regex・WARNING 発火条件は helper の実装契約を定義する SoT であり、**LLM が手で適用する手順ではない**。`/rite:pr-review` ステップ 5.3.0.M は helper を 1 回呼び、その `[CONTEXT] MEASURED_GATE=` marker と書き換え後 JSON を 5.3.1 以降の入力にする。helper が非ゼロ終了した場合、caller は LLM 分類へ fallback せず `[review:error]` で停止する — fallback は本ゲートが閉じた不発（実運用で 9 サイクルにわたり分類が一度も実行されなかった事象）の再生産になる。
+**実行主体は `scripts/review-measured-gate.sh`**。本節の疑似コード・regex・WARNING 発火条件は helper の実装契約を定義する SoT であり、**LLM が手で適用する手順ではない**。`/rite:pr-review` ステップ 5.3.0.M は helper を 1 回呼び、その `[CONTEXT] MEASURED_GATE=` marker と書き換え後 JSON を 5.3.1 以降の入力にする。helper が非ゼロ終了した場合は LLM 分類へ fallback しない。`anchor_undetermined` / scope 違反は対象 finding IDs の reviewer 出力を同 cycle 内で再生成し、preset 違反は JSON を再生成する。再試行は合計 1 回、他の失敗と再発は `[review:error]`。routing の SoT は `pr-review/SKILL.md` 5.3.0.M step 3。
 
 **Mechanical detection + demotion**:
 
@@ -98,21 +98,14 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
     keep (measured=true、blocking 候補として 5.3.1 以降へ)
   elif stage 1 marker があり、かつ marker から**同一セグメント内**に `=>` が続く
        (= アンカーを書こうとして形式が崩れている。セグメント終端は改行 / `<br>` / 句点):
-    keep (**verification を削除** = 未判定。blocking のまま 5.3.1 以降へ)
-    (「実測の有無を判定する構造が読めない」状態を measured=false へ潰さない)
+    error (reason=anchor_undetermined。対象 ID を集約し、JSON を変更せず非ゼロ終了)
+    (measured=false へ潰さず、verification 欠落の成功結果も作らない)
   else:
     move to non_blocking_findings
     (severity / scope は維持したまま blocking 集合から除外。破棄しない)
 ```
 
-> **なぜ marker と同一セグメント内の `=>` で分けるか**: アンカーは `<LHS> => <RHS>` を必須形と
-> する (_reviewer-base.md §Verification)。したがって **marker と同一セグメント内に `=>` が続かない**
-> `Verification:` は未判定へ昇格させない。stage 1 は下記のとおり意図的に緩い存在判定なので、この
-> 絞り込みが無いと散文がそのまま恒久 blocking になる — `/rite:fix` はコードを直す機構であり
-> レビュアー出力の書式は直せないため、`max_review_cycles` まで空転する。**判別子は字句的であり、
-> 「書き損じたアンカー」と「アンカーを論じる散文」を意図では区別しない** (残存限界は下記 (i) を参照)。
-> 一方で **WARNING の母集団は絞らない** (下記「WARNING emit」)。同一セグメントに `=>` が続かない形も降格側の帰結として
-> 必ず報告されるため、検出層に穴は空かない。
+> **判別子は字句的**: marker と同一セグメント内に `=>` がある散文も判定不能になりうる。同一セグメントに矢印がない言及は降格側に残す。判別子・regex は変更せず、判定不能の帰結を reviewer 出力の再生成へ戻す。
 
 > 疑似コードのループ条件に `where scope ∈ {current-pr, follow-up}` を明示するのは、本節が
 > `pr-review/SKILL.md` ステップ 5.3 実行順 step 2 から「集合演算の SoT」として参照されるため。
@@ -120,21 +113,15 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 > の `gated` 述語 (`scope_effective` が `current-pr` / `follow-up` のときだけ真) にも現れるが、
 > SoT の疑似コード単独で三者整合が読み取れる状態を保つ。
 
-**WARNING emit (AC-5 主経路)**: **gate 対象 scope (`current-pr` / `follow-up`) の finding のうち、`Verification:` アンカー文字列は存在するのに full regex が no-match だったもの全て**を、正常系 (アンカー文字列そのものが無い = 非実測指摘) とは区別して stderr に WARNING で報告する。発火条件を「`=>` 右辺空」だけに絞ってはならない — **raw `|` を含む repro も、アンカー直前の境界を欠いた repro も no-match になる**ため、絞ると「実測済みの指摘が無音で扱われる」という silent failure が検出層自身に残る (本リポジトリは bash/jq 中心で repro にパイプが入るのが常態)。
+**失敗と WARNING の契約**: gate 対象 scope (`current-pr` / `follow-up`) で、算出時に実測判定不能となる finding が 1 件でもあれば、対象 ID を入力順で集約して失敗する。既存 boolean の有無に依らず検査し、`nit-noted` は対象外とする。
 
-この母集団は上記 3 分岐の帰結に従って **2 つの排他な subset** に分かれ、それぞれ対の WARNING + marker で報告される。**両 marker の count の和は常に母集団の総数に一致する** — これが「検出層に穴が無い」ことの機械的な不変条件であり、片方だけを残す変更をしてはならない:
+```text
+[CONTEXT] MEASURED_GATE_FAILED=1; reason=anchor_undetermined; count=N; findings=F-xx,...
+```
 
-| ケース | 帰結 | subset (marker) |
-|---|---|---|
-| marker と同一セグメントに `=>` あり ∧ 既存 boolean なし | **未判定** = blocking のまま | `MEASURED_UNDETERMINED_ON_ANCHOR` |
-| marker から `=>` までに改行 / `<br>` / 句点が挟まる、または上限超過 ∧ 既存 boolean なし | `measured=false` を算出して降格 | `MEASURED_DEMOTED_ON_ANCHOR` |
-| 既存 `verification.measured` (`true` / `false` 問わず) を保持 | 本ゲートは算出しない (既存値のまま。`false` なら降格、`true` なら blocking 継続) | `MEASURED_DEMOTED_ON_ANCHOR` |
+入力 JSON は byte-identical に保持し、`MEASURED_GATE=applied` や gate record を生成しない。`MEASURED_UNDETERMINED_ON_ANCHOR` は出力しない。caller は対象 finding IDs のみ Reviewer reject + reroll とし、同 cycle 内で再実行する（既存の再試行上限は 1 回）。書式は `Verification: repro <cmd> => <観測>` / `Verification: failing_test <path> => <失敗出力>`、raw pipe は `¦` で代替表記する。
 
-ケースは 3 つだが subset は 2 つ (下 2 ケースは同じ marker に集約される)。
-
-母集団を gate 対象 scope に限るのは、`nit-noted` が `gated` 偽で**降格され得ない**ため。含めると「降格していないものを降格と申告する」ことになり、WARNING の件数が実際の帰結と食い違う。
-
-**集約的な hard fail は持たない**: 「blocking 候補が全件形式崩れなら停止する」形の hard fail は一度導入したが撤去した。判定に使える量 (`anchor_unparseable`) は stage 1 の意図的に緩い存在判定に由来し、上記トレードオフのとおり散文中の `Verification:` を拾う。その件数を停止条件へ昇格させると、(a) 正常な指摘集合で停止する誤発火と、(b) 形式崩れ以外の降格が混ざったときに素通りする見逃しを同時に持ち、条件をどちらへ寄せても片方が残る。**是正は集約判定ではなく per-finding の 3 値化で行った** — 形式崩れアンカーは `measured=false` ではなく未判定 (= blocking のまま) として扱い、集約 hard fail は導入しない方針を維持する。
+成功時、marker はあるが full regex が no-match で、同一セグメント内の矢印を検出しない gated finding は WARNING + `MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable` で報告する。既存 `true` の保持は降格を意味しない。アンカー文字列そのものがない正常な非実測 finding は WARNING を出さない。
 
 判定は 2 段で機械的に書ける:
 
@@ -147,29 +134,11 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 (?:(?!<br)[^\n。]){0,2000}=>
 ```
 
-実際に評価されるのは `$re_stage1 + $re_arrow`。**marker から `=>` までが上限（literal 中の `{0,N}`）を超える場合も述語は偽になる**（= 降格側）。上限は二次コストを避けるためのもので、意味論的な閾値として設けたのではない — 無界にすると marker 出現数 × セグメント長で増大する（実測: 8000 marker で 10.9s、上限付きは 0.4s）。保存済みレビュー結果で観測された marker→`=>` の最大距離は 472 文字で、上限はその 4 倍を確保している。`test("=>")` のような description 全体への単純な存在判定にしては**ならない** — アンカーを論じる散文が恒久 blocking になる。本 literal と helper の `--arg re_arrow` の一致は `scripts/tests/review-measured-gate.test.sh` の TC-09 が機械的に固定する。
+実際に評価されるのは `$re_stage1 + $re_arrow`。**marker から `=>` までが上限（literal 中の `{0,N}`）を超える場合も述語は偽になる**（= 降格側）。上限は二次コストを避けるためのもので、意味論的な閾値として設けたのではない — 無界にすると marker 出現数 × セグメント長で増大する（実測: 8000 marker で 10.9s、上限付きは 0.4s）。保存済みレビュー結果で観測された marker→`=>` の最大距離は 472 文字で、上限はその 4 倍を確保している。`test("=>")` のような description 全体への単純な存在判定にしては**ならない** — アンカーを論じる散文まで判定不能として拒否する範囲が広がる。本 literal と helper の `--arg re_arrow` の一致は `scripts/tests/review-measured-gate.test.sh` の TC-09 が機械的に固定する。
 
-> **stage 1 は「列挙」ではなく「正規化」で書く**: `Verification:[[:space:]]*(repro|failing_test)` のようにラベル値まで一致を要求したり、`\*{0,2}` のように**特定の装飾だけを列挙**すると、列挙から漏れた形 (バッククォート `` `Verification`: ``、全角コロン `Verification：`、三重アスタリスク `***Verification***:`、underscore `_Verification_:`、種別欠落 `Verification: bash x.sh => ERROR`、ラベル取り違え `Verification: runtime_observation ...` — 隣接する `Likelihood-Evidence:` の正規ラベルとの混線で構造的に起きる) が stage 1 と stage 2 の**両方**から外れ、**WARNING ゼロで non-blocking に落ちる**。これは本節が閉じたと宣言している silent failure そのもの。装飾を 1 つ足すたびに regex を直す設計にせず、装飾文字クラスと全角コロンを吸収する形にする。トレードオフは「散文中の `verification :` 等を拾う無害な false-positive WARNING が増える」対「silent false-negative が残る」で、検出層としては前者を選ぶ。対象が 1 件以上なら `review-measured-gate.sh` が以下を emit する (helper の実装契約であり、省略は許されない):
+> **stage 1 は「列挙」ではなく「正規化」で書く**: `Verification:[[:space:]]*(repro|failing_test)` のようにラベル値まで一致を要求したり、`\*{0,2}` のように**特定の装飾だけを列挙**すると、列挙から漏れた形 (バッククォート `` `Verification`: ``、全角コロン `Verification：`、三重アスタリスク `***Verification***:`、underscore `_Verification_:`、種別欠落 `Verification: bash x.sh => ERROR`、ラベル取り違え `Verification: runtime_observation ...` — 隣接する `Likelihood-Evidence:` の正規ラベルとの混線で構造的に起きる) が stage 1 と stage 2 の**両方**から外れ、**WARNING ゼロで non-blocking に落ちる**。これは本節が閉じたと宣言している silent failure そのもの。装飾を 1 つ足すたびに regex を直す設計にせず、装飾文字クラスと全角コロンを吸収する形にする。トレードオフは「散文中の `verification :` 等を拾う無害な false-positive WARNING が増える」対「silent false-negative が残る」で、検出層としては前者を選ぶ。判定不能の対象があれば上記 failure reason で止め、形式崩れを blocking finding として保存しない。
 
-```bash
-# subset A: 形式崩れアンカー (marker と同一セグメント内に => あり) — 未判定として blocking のまま残す
-echo "WARNING: Verification: アンカーはあるが検出 regex に match しない finding {n} 件を **未判定** として blocking のまま残しました (raw pipe / => 右辺空 / 種別ラベル誤記 (repro|failing_test 以外) / 装飾 marker (**Verification:** / 全角コロン) / アンカー直前の境界欠落)。実測の有無を判定できないため non-blocking へ降格させません。アンカーの直前は行頭・改行タグ・空白のいずれかにし、パイプを含むコマンドは ¦ で代替表記してください" >&2
-echo "[CONTEXT] MEASURED_UNDETERMINED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable" >&2
-
-# subset B: 同一セグメントに => が続かない (折り返し / 文境界越しの言及) / 既存 boolean 保持
-echo "WARNING: Verification: marker はあるが正規形アンカーとして検出できず本ゲートが未判定にしなかった finding {n} 件を検出しました (marker の後ろに => が無い / marker と => の間に改行 / <br> / 句点が挟まる / marker から => までが判別子の上限を超える / 既存 verification.measured の保持)。実測を主張する指摘なら <LHS> => <RHS> 形のアンカーを marker と同一セグメント内に置き、パイプを含むコマンドは ¦ で代替表記してください" >&2
-echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable" >&2
-```
-
-アンカー文字列がそもそも存在しない finding (非実測指摘の正常系) は WARNING を出さない — 全 non-blocking 降格で WARNING を出すと形式違反と正常系が区別できなくなるため。`MEASURED_UNDETERMINED_ON_ANCHOR` / `MEASURED_DEMOTED_ON_ANCHOR` はいずれも `pr-review/SKILL.md` ステップ 6 の **Retained flag mapping に登録済み**。同節の reason 表 / Eval-order enumeration は `*_FAILED` reason 専用の列挙であり、observability marker である本 flag は登録対象ではない。
-
-> **regex を緩めない**: no-match を許容して measured=true として keep する / detection regex を greedy に戻す方向の修正は採らない。判定を「実測あり」側へ倒すのは、実測していない指摘に merge を止めさせる誤りであり fail-safe ではない。形式崩れの救済は regex の緩和ではなく **未判定 (blocking のまま) への per-finding 分岐**で行う (上記 3 分岐)。
->
-> **降格を permissive 側に倒すのは「実測が無いと確定できた」finding に限る**: 本ゲートは rite 全体で唯一「判定結果を permissive 側 (non-blocking) に倒す」箇所で、それが許されるのは (a) 降格が必ず WARNING で報告され、(b) 降格した指摘が **永続 JSON (`non_blocking_findings[]`) に必ず残り、ステップ 6.1.d の関連 Issue 記録コメントにポインタが best-effort で残る** (cycle 中の全文は永続 JSON のみ。マージ時の残存分は follow-up Issue へ全文転記される) ため (後者は非ブロッキング契約により gh 失敗 / 本文不備で落ちうる。落ちた場合は WARNING と `outcome=failed` が出る)。5.4 section と E2E output line suffix は補助経路で、実行モード (standalone は ステップ 8 を実行しない) と件数 (0 件なら省略) に依存する。後続の変更で (a) か (b) を緩めるなら、本例外の前提が崩れるので同時に見直すこと。
->
-> **判定不能 (未判定) は permissive 側に倒さない**: 形式崩れアンカーは「実測が無い」ではなく「実測の有無を判定できない」状態であり、`measured=false` へ潰すと**実測済みの指摘が書式ミスだけで blocking から消える**。3 値モデル (severity-levels.md §適用範囲) の「未判定 = ゲート対象外 = 従来どおり blocking」に従って blocking のまま残す。収束性 (AC-2) は次の 2 点で担保される: (i) 未判定に昇格するのは marker から**同一セグメント内** (改行 / `<br>` / 句点まで) に `=>` が続く形だけで、文境界で隔たった `Verification:` 言及は降格側に残る。(ii) blocking として `/rite:fix` に渡った未判定 finding は指摘本体 (コード側) の修正対象になり、次 cycle は reviewer が finding を作り直すため「レビュアー出力の書式が直らないから永久に残る」状態にはならない。
-
-> **(i) は完全な分離ではない (既知の残存限界)**: marker と同一セグメント内に `=>` が現れる散文は、アンカー正規形の引用に限らず**すべて**未判定へ倒れる (状態遷移の矢印として `=>` を使っただけの文も含む)。同じ文でも marker と `=>` の間に句点 / `<br>` / 改行があれば降格側に残るため、**帰結は句読点の位置に依存する** (判別子が字句的で意図を区別しないことの帰結。上記「なぜ marker と同一セグメント内の `=>` で分けるか」を参照)。本リポジトリではアンカー仕様そのものが指摘対象になるため、書き損じたアンカーとそれを論じる散文のテキストはしばしば同一になる。この場合の恒久 blocking 化は iterate のサーキットブレーカー (`safety.max_review_cycles`) が上限で止める。判別子を変更する際は `scripts/tests/review-measured-gate.test.sh` の TC-04b / TC-04b-2 が buy する範囲と残存限界の両方を pin しているので、期待値ごと更新すること。
+> **regex を緩めない**: 実測判定不能の救済は reviewer 出力の再生成で行う。正規形に match しないアンカーを measured=true として通すことも、measured=false に丸めることもしない。成功時の gated finding は `true` / `false` の 2 値であり、判定不能は error として扱う。降格した指摘は severity / scope を維持して `non_blocking_findings[]` に記録し、既存の記録経路へ渡す。
 
 **Anchor detection regex** (5.3.0 の `Likelihood-Evidence:` regex と同じ boundary semantics):
 
@@ -177,7 +146,7 @@ echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseabl
 (?m)(?:^|<br\s*/?>|[\s|>(])[-[:space:]]*Verification:[[:space:]]*(repro|failing_test)[[:space:]]+(?:(?!=>|<br)[^|])+=>[ \t]*(?!<br)[^|[:space:]]
 ```
 
-**match subject は疑似コードと同じく `内容` セルの文字列単体**であり、後続セル・次行を含めない (subject 定義がずれると同じアンカーが配置次第で逆判定になる)。LHS (`=>` 左辺のコマンド) と RHS (右辺の結果) はいずれも**アンカー自身の最初の `=>` に束縛**され、cell separator `|` と `<br>` を跨いでマッチしない — greedy `.*` 形だと markdown テーブル行内 (アンカーの標準配置 = `内容` セル末尾) で `=>` 右辺空アンカーが後続セルの文字に `\S` マッチして false-pass し、右辺空検出 (本 regex 層の単独責務) が dead 化するため。`=>` 直後を `[ \t]*` (水平空白のみ) に狭めているのも同じ理由で、subject を誤って行/レポート単位に取った場合でも RHS 検査が改行を跨がず、`=>` 右辺空アンカーが次行の文字を RHS と誤認して false-pass することを防ぐ (二重の防御)。この束縛の帰結として、アンカーの LHS/RHS には raw `|` を含めない (テーブルセル内ではどのみち表構造を壊す。パイプを含むコマンドは `¦` 等で代替表記する)。**この制約は authoring 側 SoT (`_reviewer-base.md` §Verification の Rules / `reviewer-prompt-generator.md` の記入例) にも明記済み** — detection 側にだけ書くと、reviewer が最も自然に書くパイプ入り repro が no-match で降格する。マッチしない場合の帰結は marker と同一セグメント内の `=>` の有無で分岐する — **あり**は未判定 (blocking のまま)、**なし**は安全側 (non-blocking 降格)。いずれも**無音では倒れない** — アンカー文字列があるのに no-match だったケースは上記 **WARNING emit** 節の 2 段判定で必ず報告される (正常系 = アンカー文字列なし のみが無音)。
+**match subject は疑似コードと同じく `内容` セルの文字列単体**であり、後続セル・次行を含めない (subject 定義がずれると同じアンカーが配置次第で逆判定になる)。LHS (`=>` 左辺のコマンド) と RHS (右辺の結果) はいずれも**アンカー自身の最初の `=>` に束縛**され、cell separator `|` と `<br>` を跨いでマッチしない — greedy `.*` 形だと markdown テーブル行内 (アンカーの標準配置 = `内容` セル末尾) で `=>` 右辺空アンカーが後続セルの文字に `\S` マッチして false-pass し、右辺空検出 (本 regex 層の単独責務) が dead 化するため。`=>` 直後を `[ \t]*` (水平空白のみ) に狭めているのも同じ理由で、subject を誤って行/レポート単位に取った場合でも RHS 検査が改行を跨がず、`=>` 右辺空アンカーが次行の文字を RHS と誤認して false-pass することを防ぐ (二重の防御)。この束縛の帰結として、アンカーの LHS/RHS には raw `|` を含めない (テーブルセル内ではどのみち表構造を壊す。パイプを含むコマンドは `¦` 等で代替表記する)。**この制約は authoring 側 SoT (`_reviewer-base.md` §Verification の Rules / `reviewer-prompt-generator.md` の記入例) にも明記済み** — detection 側にだけ書くと、reviewer が最も自然に書くパイプ入り repro が no-match で判定不能になる。マッチしない場合の帰結は marker と同一セグメント内の `=>` の有無で分岐する — **あり**は `anchor_undetermined` error、**なし**は non-blocking 降格。いずれも**無音では倒れない** — アンカー文字列があるのに no-match だったケースは上記 **失敗と WARNING の契約** の 2 段判定で必ず報告される (正常系 = アンカー文字列なし のみが無音)。
 
 **non_blocking_findings の扱い**:
 
@@ -192,11 +161,11 @@ echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseabl
 
 **scope=nit-noted との関係**: nit-noted は従来どおり §5.3.1 の nit-noted exclusion で扱い、本ゲートの対象にしない (二重計上防止)。本ゲートの対象は `scope ∈ {current-pr, follow-up}` の finding のみ。
 
-**帰結クラス軸 (authoring 層の前段規約)**: 散文 (手順書・仕様書・reference) への指摘については、reviewer が `Verification:` アンカーを添付する時点で **帰結クラス** による適格性判定が先に働く。レビュー対象文書自身のテキスト差分のみを観測する repro (文言非対称 / pin 不在 / 限定句不足 / 二重定義の未同期 = 字面整合クラス) は**アンカー適格でない**ため、reviewer はアンカーを付けずに報告する。その結果として本ゲートの `else` 分岐 (アンカー文字列が存在しない正常系) に落ち、`non_blocking_findings` へ移送される — WARNING は出ない。**この経路は指摘の叙述が verification の語 + コロンを含まないことを要件とする** (検出層の literal は大文字小文字・装飾文字・全角コロンを吸収するため、JSON フィールド名としての言及も上記「既知の残存限界」の母集団に入る)。記述された手順を実行して成果物の破損を観測する repro (挙動的帰結クラス) は従来どおりアンカー適格であり、blocking のまま §5.3.1 へ渡る。
+**帰結クラス軸 (authoring 層の前段規約)**: 散文 (手順書・仕様書・reference) への指摘については、reviewer が `Verification:` アンカーを添付する時点で **帰結クラス** による適格性判定が先に働く。レビュー対象文書自身のテキスト差分のみを観測する repro (文言非対称 / pin 不在 / 限定句不足 / 二重定義の未同期 = 字面整合クラス) は**アンカー適格でない**ため、reviewer はアンカーを付けずに報告する。その結果として本ゲートの `else` 分岐 (アンカー文字列が存在しない正常系) に落ち、`non_blocking_findings` へ移送される — WARNING は出ない。**この経路は指摘の叙述が verification の語 + コロンを含まないことを要件とする** (検出層の literal は大文字小文字・装飾文字・全角コロンを吸収するため、JSON フィールド名としての言及も判定不能の母集団に入りうる)。記述された手順を実行して成果物の破損を観測する repro (挙動的帰結クラス) は従来どおりアンカー適格であり、blocking のまま §5.3.1 へ渡る。
 
 **同軸のテスト網羅性ドメイン**: 「テストが挙動を固定していない」型の指摘 (mutation 生存 / assert の検証力不足 / pin 欠落) にも同じ前段規約が働く。散文と違い mutation は実際に走らせるが、生存する mutant が示すのは HEAD の誤動作ではなく reviewer が持ち込んだ架空の欠陥に対する番人の不在であるため、アンカー適格性は「**その変異が無効化するのは Issue 契約が規定する挙動か**」で決まる。契約 (Issue の `## 4. Implementation Details` §4.4 MUST 箇条書き / `## 5. Acceptance Criteria` 各 AC の `Then` 節) が規定する挙動そのものの未 pin・検証力ゼロは**アンカー適格**で blocking のまま §5.3.1 へ渡る。fix が導入した実装内部に対する細粒度の pin 強化要求は**不適格**で、散文の字面整合クラスと同じく `else` 分岐から `non_blocking_findings` へ移送される。**PR から Issue を解決できない場合は blocking へ倒す** (non-blocking 既定は実指摘の無音の握り潰しになるため)。テストが名乗った挙動に対してどんな実装でも落ちない場合 (トートロジー assert / 空振り fixture / 仕様と逆を固定) は網羅性ではなく**正しさ**の欠陥であり、本軸の対象外として従来どおり blocking。
 
-本規約は **authoring 層に閉じており、本節の helper 実装契約は無変更**である。`scripts/review-measured-gate.sh` の 3 値判定 (`measured=true` / `false` / 未判定)・アンカー検出 regex・WARNING 発火条件・判別子はいずれも帰結クラスを参照しない。帰結クラスが作用するのは「アンカーが description に存在するか」の**上流**であり、形式崩れアンカーを未判定 (= blocking のまま) として扱う挙動は本軸の導入前後で不変。両ドメインとも severity / scope は維持したまま blocking 集合から除外し、`scope=nit-noted` への転用は禁止する (nit-noted は `gated` 偽で `non_blocking_findings[]` に載らず 4 経路記録が失われるため)。判別子と適用例の SoT は [`_reviewer-base.md` §手順書・仕様書ドメイン Finding Gate](../../../agents/_reviewer-base.md#prose-domain-finding-gate) / [§テスト網羅性 Finding Gate](../../../agents/_reviewer-base.md#test-coverage-finding-gate)、語彙定義は [severity-levels.md §帰結クラス軸](../../../references/severity-levels.md#帰結クラス軸-consequence-class)。
+本規約は **authoring 層に閉じており、本節の helper 実装契約は無変更**である。`scripts/review-measured-gate.sh` の 2 値 + error 判定 (`measured=true` / `false` / `anchor_undetermined`)・アンカー検出 regex・WARNING 発火条件・判別子はいずれも帰結クラスを参照しない。帰結クラスが作用するのは「アンカーが description に存在するか」の**上流**であり、形式崩れアンカーの実測判定不能を error として扱う挙動は本軸の導入前後で不変。両ドメインとも severity / scope は維持したまま blocking 集合から除外し、`scope=nit-noted` への転用は禁止する (nit-noted は `gated` 偽で `non_blocking_findings[]` に載らず 4 経路記録が失われるため)。判別子と適用例の SoT は [`_reviewer-base.md` §手順書・仕様書ドメイン Finding Gate](../../../agents/_reviewer-base.md#prose-domain-finding-gate) / [§テスト網羅性 Finding Gate](../../../agents/_reviewer-base.md#test-coverage-finding-gate)、語彙定義は [severity-levels.md §帰結クラス軸](../../../references/severity-levels.md#帰結クラス軸-consequence-class)。
 
 **指摘ゼロの場合**: `全指摘事項` が空なら本ゲートは no-op であり、mergeable 判定は現行と同一 (AC-3 非退行)。
 
@@ -220,8 +189,8 @@ blocking = findings[] of scope ∈ {current-pr, follow-up}   # post-5.3.0.M の 
 if blocking is empty: no-op (JSON 無変更、CLASS_DEMOTION_GATE=noop)
 
 For each finding in blocking:
-  if verification.measured が boolean でない (実測未判定 = 5.3.0.M が形式崩れアンカーを
-     blocking のまま残した形):
+  if verification.measured が boolean でない (旧 JSON 等を直接入力した場合の防御。
+     現行 5.3.0.M の成功出力からは生じない):
     effective class = A 固定 + WARNING (map を参照しない — 判定不能を降格に丸めない
     3 値モデルの保証を第 2 軸でも保つ。CLASS_DEMOTION_UNDETERMINED_MEASURED)
   else:
@@ -253,7 +222,7 @@ else:
 
 **category 固定**: `category == "number_reference"` の blocking finding は classification map の内容にかかわらず class A に固定する。well-formed な class B が指定された場合は WARNING + `[CONTEXT] CLASS_DEMOTION_CATEGORY_PINNED=1; count={n}` を emit し、map と固定の矛盾を silent に上書きしない。map 欠落・不正は従来の `CLASS_DEMOTION_UNCLASSIFIED` 経路だけを通る。
 
-**判定不能の安全側** (AC-6): map エントリの欠落・class 不正・class B の判定文欠落・class B の exclusion 不正・同 id の重複エントリは、いずれも当該 finding を **class A 扱い (blocking 維持)** にして WARNING + `[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}` を emit する。実測未判定 (verification 欠落) の finding は分類の手前で class A 固定 + `[CONTEXT] CLASS_DEMOTION_UNDETERMINED_MEASURED=1; count={n}` となり、map のエントリは参照されない。silent 降格は存在しない — 降格に入る経路は「実測判定済み ∧ well-formed な class B エントリ ∧ exclusion なし」のみ。
+**判定不能の安全側** (AC-6): map エントリの欠落・class 不正・class B の判定文欠落・class B の exclusion 不正・同 id の重複エントリは、いずれも当該 finding を **class A 扱い (blocking 維持)** にして WARNING + `[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}` を emit する。旧 JSON 等の直接入力で実測未判定 (verification 欠落) の finding は分類の手前で class A 固定 + `[CONTEXT] CLASS_DEMOTION_UNDETERMINED_MEASURED=1; count={n}` となり、map のエントリは参照されない。silent 降格は存在しない — 降格に入る経路は「実測判定済み ∧ well-formed な class B エントリ ∧ exclusion なし」のみ。
 
 **non_blocking_findings への移送**: 5.3.0.M と同じ移送メカニズムを流用する — `total_findings` にカウントしない / `id` は振り直さず和集合で一意 / 記録 4 経路 (永続 JSON・6.1.d 関連 Issue 記録コメント・5.4 統合レポート section・E2E suffix) は 5.3.0.M §non_blocking_findings の扱い と同一。降格分は `demotion` オブジェクト (policy + 判定文) で実測ゲート降格分と区別でき、後から監査できる。
 

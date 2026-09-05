@@ -18,34 +18,10 @@
 #
 # 入力 JSON は書き換え対象そのもの (in-place)。書き込みは tempfile + mv の atomic write。
 #
-# Why --reject-preset-verification (caller 契約の機械的強制):
-#   pr-review ステップ 5.3.0.M step 1 の生成規約は「Claude は verification を書かない」を課すが、
-#   それは散文の指示にすぎず、本 Issue が置き換えようとしている強制手段そのものである。実際
-#   archived review fixture の cycle 2-9 では、そう指示されていないにもかかわらず LLM が
-#   `verification.measured: true` を実 repro 付きで JSON へ直接書いていた (fixtures/review-measured-gate-sample/ で確認可能)。
-#   その形が来ると §4.5「既存値を正とする」によりアンカー検出を経ない値がそのまま blocking 判定に
-#   入り、ゲートが無音で迂回される。本フラグは「既存 boolean が本ゲートの算出結果と食い違う」=
-#   迂回の形だけを hard fail させ、caller (pr-review step 2) から常に指定する。
-#
-#   **本フラグは部分的な強制である** — hard fail するのは「既存 boolean が本ゲートの算出結果と
-#   食い違う」場合だけで、算出結果と一致する preset は rc=0 で素通りし、その repro /
-#   failing_test は computed_verification を経ずに caller が書いた文字列のまま残る。
-#   「preset の存在自体を hard fail させる」形には**できない** — ゲート適用後の findings[] は
-#   未判定を除き verification を持つため、同じ JSON への再実行が必ず hard fail し AC-5 (冪等性) が
-#   壊れる (未判定はキー自体を持たないので再実行でも preset とみなされない)。
-#   preset の中身まで強制したい場合は、ゲートが書いた値と caller が書いた値を区別する marker が
-#   別途必要になる (本 script のスコープ外)。
-#
-#   フラグなしの素の呼び出し (再実行 / 旧形式 JSON) は従来どおり WARNING + 保持。
-#   **冪等性 (AC-5) が成立するのは同一引数での再実行に限る** — フラグ指定下で成功した run の出力は
-#   「アンカーあり ∧ measured=true」「gate 対象外 scope ∧ アンカーなし ∧ measured=false」
-#   「形式崩れアンカー ∧ verification 欠落 (未判定)」しか残さないため再実行しても矛盾に該当しない
-#   (未判定は verification を持たないので verification_conflict の母集団に入らず、description が
-#   不変なら再実行でも同じく未判定に落ちる)。一方フラグなしモードは既存 boolean を保持するため
-#   「アンカーなし ∧ measured=true」という第 3 の形を残しうる (fixture がこの形)。
-#   この出力にフラグ付きで再実行すると verification_preset_by_caller で停止する = モード混在では
-#   冪等でない。配線済み call site (pr-review ステップ 5.3.0.M step 2) は常にフラグを指定するため
-#   本番経路でモード混在は発生しない。
+# --reject-preset-verification は算出結果と矛盾する既存 boolean を拒否する。
+# 一致する既存値は再適用の冪等性のため保持する。フラグなしでは矛盾を WARNING + 保持とする。
+# 形式崩れアンカーはフラグ・既存 boolean に依らず error とし、入力を書き換えない。
+# 冪等性は同一引数での再実行に限る。
 #
 # Gate semantics:
 #   1. findings[] の各要素について verification を確定する
@@ -55,10 +31,7 @@
 #        「設定済み」とはみなさない — 本 script が算出する
 #      - `--reject-preset-verification` 指定時は、上記「既存値かつ本ゲートの算出結果と食い違う」を
 #        **caller 契約違反として hard fail** させる (下記 Why 参照)
-#      - 形式崩れアンカー (stage 1 真 ∧ `=>` あり ∧ stage 2 偽) → **verification を設定しない**。
-#        「実測の有無を判定する構造が読めない」状態を measured=false (実測が無いと確定) へ潰さず
-#        **未判定** として表現する。read 側の 3 値モデルが「verification 欠落 = 未判定 = blocking」と
-#        規定済みのため、キーを生やさないことがそのまま blocking 継続になる
+#      - gated な形式崩れアンカー (stage 1 真 ∧ `=>` あり ∧ stage 2 偽) → 書込み前に error。
 #      - それ以外 → description を 2 段判定し measured を決める
 #   2. measured=false かつ gate 対象 scope (current-pr / follow-up) の finding を
 #      non_blocking_findings[] へ **append** で移送する (既存要素は保持)。
@@ -80,7 +53,7 @@
 #   stage 2 = 正規形アンカーの full match 判定。stage 1 が真かつ stage 2 が偽の finding は
 #             「アンカーはあるが形式崩れ」として WARNING を出す。帰結は第 3 の述語 ($re_arrow、
 #             定義の SoT は assessment-rules.md §5.3.0.M) が真かで分かれる:
-#               真 → 未判定 (blocking のまま)  + MEASURED_UNDETERMINED_ON_ANCHOR
+#               真 → error + MEASURED_GATE_FAILED reason=anchor_undetermined
 #               偽 → measured=false で降格      + MEASURED_DEMOTED_ON_ANCHOR
 #             絞らないと stage 1 の意図的に緩い存在判定が拾う散文がそのまま恒久 blocking へ昇格し、
 #             /rite:fix には直す対象が無いまま max_review_cycles まで空転する
@@ -89,12 +62,12 @@
 #
 # stderr contract:
 #   [CONTEXT] MEASURED_GATE=applied; blocking={n}; demoted={n}; non_blocking_total={n}; assessment={v}
-#   [CONTEXT] MEASURED_UNDETERMINED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable
+#   [CONTEXT] MEASURED_GATE_FAILED=1; reason=anchor_undetermined; count={n}; findings={ids}
 #   [CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable
 #   [CONTEXT] MEASURED_RUNTIME_OBS_WITHOUT_ANCHOR=1; count={n}
 #   [CONTEXT] MEASURED_GATE_FAILED=1; reason=...
 #
-# 上記 2 つの ON_ANCHOR marker の count は排他で、和は常に「stage 1 真 ∧ stage 2 偽」の総数に
+# anchor_undetermined と anchor_demoted_marker は排他で、和は「stage 1 真 ∧ stage 2 偽」の総数に
 # 一致する (assessment-rules.md §5.3.0.M の WARNING emit 母集団と同一 = 検出層に穴を作らない)。
 #
 # 失敗経路では外部コマンド (jq / mktemp / mv) の stderr 先頭 5 行を ERROR 行の直後に転記する。
@@ -126,6 +99,7 @@
 #                                 (review-result-schema.md cross-field invariant #2 違反)。
 #                                 ascii_downcase 正規化や current-pr への default 補完は採らない —
 #                                 不正入力を黙って受理する fallback は本 script の設計前提と衝突する
+#   anchor_undetermined         — gated finding の形式崩れアンカー (exit 1、count / findings を併記、入力不変)
 #   verification_preset_by_caller — --reject-preset-verification 指定下で、本ゲートの算出結果と食い違う
 #                                  既存 verification.measured を検出 (exit 1、書き換えはしない)
 #   mktemp_failure              — 出力 tempfile の mktemp 失敗 (exit 1)
@@ -135,7 +109,7 @@
 # Eval-order enumeration (reason 表と併せて参照する emit reasons の documented set):
 # emit reasons sequence = (`jq_missing` / `input_missing` / `input_unreadable` / `json_invalid` /
 #   `findings_not_array` / `non_blocking_not_array` / `jq_transform_failed` / `stats_read_failed` /
-#   `scope_enum_violation` / `verification_preset_by_caller` / `mktemp_failure` / `write_failure` / `mv_failure`)
+#   `scope_enum_violation` / `anchor_undetermined` / `verification_preset_by_caller` / `mktemp_failure` / `write_failure` / `mv_failure`)
 # `signal_aborted` は signal trap 由来で線形の emit 順に載らないため本 enumeration から除外する
 # (hooks/review-nonblocking-record.sh と同じ慣行)。reason 表には下記のとおり載せる。
 #   signal_aborted              — INT / TERM / HUP で中断 (rc= / signal= を併記)。marker ゼロで
@@ -144,7 +118,7 @@
 # Exit codes:
 #   0  ゲート適用成功 (WARNING のみを含む)
 #   1  ゲート適用失敗 (MEASURED_GATE_FAILED emit 済み)。**caller は LLM 分類へ fallback せず
-#      [review:error] で停止する** — fallback は本 Issue が閉じた不発の再生産になる
+#      reviewer reject + reroll または [review:error] へ routing する**
 #   2  invocation error (引数欠落 / 未知フラグ)
 #
 # NOTE on shell flags: jq / mktemp / mv の rc を個別にハンドリングするため global `set -e` は使わない
@@ -164,7 +138,7 @@ Usage: review-measured-gate.sh --input PATH [--reject-preset-verification]
 
 Options:
   --input PATH                    実測必須ゲートを適用する review-result JSON (in-place 書き換え)
-  --reject-preset-verification    本ゲートの算出結果 (実測あり / 実測なし / 未判定) と食い違う既存
+  --reject-preset-verification    本ゲートの算出結果 (実測あり / 実測なし) と食い違う既存
                                   verification.measured を caller 契約違反として hard fail させる
                                   (pr-review step 2 から常時指定)
   -h, --help                      Show this help
@@ -289,27 +263,12 @@ def has_measured_bool:
 def anchored: (desc | test($re_detect));
 def marker_present: (desc | test($re_stage1));
 
-# アンカーは `<LHS> => <RHS>` を必須とする (_reviewer-base.md §Verification)。stage 1 は意図的に
-# 緩い存在判定で散文を拾うため、未判定 (= blocking のまま) へ倒す母集団は本述語で絞る。絞らないと
-# `Verification:` に言及するだけの doc 指摘が恒久 blocking になり、/rite:fix には直す対象が無いまま
-# max_review_cycles まで空転する。**判別子の定義は assessment-rules.md §5.3.0.M の literal が SoT**
-# (`--arg re_arrow` として外出し済み。TC-09 が両者の literal 一致を機械的に固定する)。
-#
-# **残存する限界 (意図的に受容)**: 同一セグメント内に `=>` が現れる散文は分離できず未判定へ倒れる。
-# rationale: skills/fix/references/assessment-rules.md §5.3.0.M「(i) は完全な分離ではない」
-# marker prefix は `$re_stage1` を連結して共有し、suffix は `$re_arrow` として外出しする。
-# どちらも literal 複製しない — prefix を複製すると stage 1 側だけの編集で marker_present が真・
-# has_arrow が偽となり、形式崩れアンカーが未判定ではなく降格へ落ちる (内訳の和は母集団と一致した
-# ままなので下の fail-closed ガードでは検出できない)。suffix を jq 文字列リテラルに埋めると
-# `extract_re_arg` の抽出経路から外れ、SoT との literal 一致を機械的に pin できない。
-# 走査長を有界にするのは、無界の `*` が marker 出現数 × セグメント長で二次的に増大するため
-# (実測値と上限の根拠は SoT 側に置く: skills/fix/references/assessment-rules.md §5.3.0.M)。
+# 散文の marker 言及と実測アンカーの形式崩れを同一セグメント内の arrow で区別する。
+# prefix は stage 1 と共有し、suffix は assessment-rules.md の literal とテストで同期する。
+# 走査長の上限は marker 数 × セグメント長による二次的な増大を避けるため。
 def has_arrow: (desc | test($re_stage1 + $re_arrow));
 
-# 形式崩れアンカー = 「実測の有無を判定する構造が読めない」状態。measured=false (実測が無いと
-# 確定) ではなく **未判定** として扱い、verification キー自体を生やさない。read 側の 3 値モデル
-# (review-result-schema.md §3値モデルへの上書き / fix/SKILL.md ステップ 1.3 measured lookup) が
-# 「verification 欠落 = 未判定 = blocking」と規定済みのため、read 側の変更は要らない。
+# この述語に該当する gated finding は書込み前に拒否する。
 def undetermined_on_anchor: (marker_present and has_arrow and (anchored | not));
 
 def computed_verification:
@@ -324,19 +283,9 @@ def computed_verification:
         else {measured: true, repro: null, failing_test: $t} end
     end;
 
-# 既存 boolean は上書きしない。未設定のものだけ description から算出する。
-# 形式崩れアンカーは verification を **設定しない** ことで未判定を表現する (キーを生やさない)。
-# 未判定化は `gated` に限る — SoT の疑似コードが母集団を scope ∈ {current-pr, follow-up} と
-# 定義しており、nit-noted は降格され得ないので未判定にする意味がない。ここで gated を外すと
-# nit-noted も verification を失う一方、下の anchor_undetermined 統計 (gated 限定) には載らず、
-# 「marker ゼロで表現だけが変わる」観測不能な差分になる。
-# 未判定分岐は `del` で明示的にキーを落とす。裸の `.` で返すと、`measured` が boolean でない
-# 既存 verification (型崩れ preset) が正規化を経ずゲート出力へ残り、read 側の型ガードが当該
-# review-result を reject して永続 artifact を corrupt 扱いで rename する。「未判定 = キー欠落」を
-# 出力形として literal に満たすことで、この経路を塞ぐ (キー不在時は no-op のため冪等)。
+# 形式崩れを含む変換結果は保存しない。正常入力の既存 boolean は保持する。
 def with_verification:
   if has_measured_bool then .
-  elif (gated and undetermined_on_anchor) then del(.verification)
   else .verification = computed_verification end;
 
 # $orig は verification 代入**前**の findings[]。「元から boolean が入っていたか」を問う統計は
@@ -365,7 +314,7 @@ def with_verification:
           blocking: $blocking,
           demoted: ($demoted | length),
           anchor_undetermined: (
-            [$orig[] | select(gated and (has_measured_bool | not) and undetermined_on_anchor)] | length
+            [$orig[] | select(gated and undetermined_on_anchor)] | length
           )
         }
     ),
@@ -388,31 +337,24 @@ def with_verification:
       anchor_unparseable: (
         [$orig[] | select(gated and marker_present and (anchored | not))] | length
       ),
-      # anchor_unparseable の内訳。両者は排他かつ和が anchor_unparseable に一致する
-      # (検出層に穴を空けないための不変条件)。
-      #   undetermined = 未判定として blocking に留めたもの (verification を生やさなかった)
-      #   demoted_marker = marker はあるが未判定にしなかったもの (同一セグメントに `=>` が
-      #                    続かない / 既存 boolean 保持)
+      # 形式崩れ error と marker のみの診断を排他に集計する。
+      anchor_undetermined_ids: ([$orig[] | select(gated and undetermined_on_anchor) | .id]),
       anchor_undetermined: (
-        [$orig[] | select(gated and (has_measured_bool | not) and undetermined_on_anchor)] | length
+        [$orig[] | select(gated and undetermined_on_anchor)] | length
       ),
       anchor_demoted_marker: (
         [$orig[] | select(gated and marker_present and (anchored | not)
-                          and (has_measured_bool or (has_arrow | not)))] | length
+                          and (has_arrow | not))] | length
       ),
       # 実測済みを主張する Likelihood-Evidence があるのに Verification アンカーが無い不整合
       # (§4.4 SHOULD: 両方添付が契約)。母集団を gated に限る理由は anchor_unparseable と同じ。
       runtime_obs_without_anchor: (
         [$orig[] | select(gated and (desc | test($re_runtime_obs)) and (anchored | not))] | length
       ),
-      # 既存 boolean が「本ゲートが算出したはずの値」と食い違う件数。3 値化後は 2 値比較
-      # (`!= anchored`) だけでは足りない — ゲートが**未判定**を算出する形に `measured: false` を
-      # 先書きされると `false == anchored(false)` で矛盾なしと読み、`has_measured_bool` の短絡が
-      # 未判定分岐を飛ばして実測済み CRITICAL を non_blocking へ移送し mergeable を確定させる。
-      # フラグ指定下でのみ hard fail するため §4.5 の「既存値を正とする」は無傷。
+      # boolean の先書きが算出結果と食い違う場合は caller 契約違反。
       verification_conflict: (
         [$orig[] | select(has_measured_bool)
-         | select((.verification.measured != anchored) or (gated and undetermined_on_anchor))] | length
+         | select(.verification.measured != anchored)] | length
       ),
       # enum 外 scope の診断行。値は tojson で 1 行の JSON literal に畳む (raw 改行による
       # [CONTEXT] marker 偽造と ANSI/OSC の素通しを同時に塞ぐ)。
@@ -477,7 +419,7 @@ case "$assessment" in
   *) _fail stats_read_failed "ゲート統計 assessment が enum 外です: '$assessment'" ;;
 esac
 
-# 「stage 1 真 ∧ stage 2 偽」の母集団は未判定 / 降格の 2 subset に排他分割される。分割が母集団を
+# 「stage 1 真 ∧ stage 2 偽」の母集団は形式崩れ error / marker のみの 2 subset に排他分割される。分割が母集団を
 # 覆えていないと、どちらの marker にも載らない finding が無音で降格する = 本 script が閉じたはずの
 # silent failure が検出層の内部で再生産される。2 つの述語は独立に書かれており将来の編集で覆いが
 # 破れうるため、構成上の自明さに頼らず機械的に固定する (書き換え前に評価し fail-closed)。
@@ -502,8 +444,18 @@ if [ "$scope_unknown" -gt 0 ]; then
   _fail scope_enum_violation "scope enum 違反のため、ゲートを適用せず停止しました: $input"
 fi
 
+if [ "$anchor_undetermined" -gt 0 ]; then
+  if ! finding_ids=$(printf '%s\n' "$result" | jq -r '.stats.anchor_undetermined_ids | map(tostring) | join(",")' 2>"${diag_file:-/dev/null}"); then
+    _fail stats_read_failed "形式崩れアンカーの finding ID を読み出せません"
+  fi
+  echo "ERROR: Verification: の形式崩れを検出しました。該当 finding のみ reviewer reject + reroll してください。記法: Verification: repro <cmd> => <観測> / Verification: failing_test <path> => <失敗出力>。アンカー直前は行頭・改行タグ・空白とし、コマンドのパイプは ¦ に置換してください" >&2
+  printf '[CONTEXT] MEASURED_GATE_FAILED=1; reason=anchor_undetermined; count=%s; findings=%s' "$anchor_undetermined" "$finding_ids" | neutralize_ctrl >&2
+  printf '\n' >&2
+  exit 1
+fi
+
 if [ "$reject_preset" -eq 1 ] && [ "$verification_conflict" -gt 0 ]; then
-  echo "ERROR: findings[] に、description から本ゲートが算出する判定 (実測あり / 実測なし / 未判定) と食い違う verification.measured が ${verification_conflict} 件あらかじめ設定されています (アンカー有無の不一致に加え、形式崩れで未判定を算出すべき finding への boolean 先書きを含む)。ゲート適用前の JSON に verification を書いてはいけません (アンカー検出を経ない値が blocking 判定に入り、実測必須ゲートが無音で迂回されます)" >&2
+  echo "ERROR: findings[] に、description から本ゲートが算出する判定 (実測あり / 実測なし) と食い違う verification.measured が ${verification_conflict} 件あらかじめ設定されています。ゲート適用前の JSON に verification を書いてはいけません (アンカー検出を経ない値が blocking 判定に入り、実測必須ゲートが無音で迂回されます)" >&2
   _fail verification_preset_by_caller "レビュー結果 JSON の生成規約違反のため、ゲートを適用せず停止しました: $input"
 fi
 
@@ -524,20 +476,14 @@ out_tmp=""
 
 # アンカー文字列があるのに正規形で書けていない finding は silent に扱わない
 # (アンカー文字列そのものが無い正常系 = 非実測指摘 では WARNING を出さない — 形式違反と
-#  正常系が区別できなくなるため)。母集団 anchor_unparseable は 2 つの排他な帰結に分かれ、
-# それぞれを対の WARNING + marker で報告する (和は常に anchor_unparseable = 検出層に穴なし)。
-if [ "$anchor_undetermined" -gt 0 ]; then
-  echo "WARNING: Verification: アンカーはあるが検出 regex に match しない finding ${anchor_undetermined} 件を **未判定** として blocking のまま残しました (raw pipe / => 右辺空 / 種別ラベル誤記 (repro|failing_test 以外) / 装飾 marker (**Verification:** / 全角コロン) / アンカー直前の境界欠落)。実測の有無を判定できないため non-blocking へ降格させません。アンカーの直前は行頭・改行タグ・空白のいずれかにし、パイプを含むコマンドは ¦ で代替表記してください" >&2
-  echo "[CONTEXT] MEASURED_UNDETERMINED_ON_ANCHOR=1; count=${anchor_undetermined}; cause=anchor_unparseable" >&2
-fi
-
+#  正常系が区別できなくなるため)。形式崩れ error は保存前に処理済み。
 if [ "$anchor_demoted_marker" -gt 0 ]; then
-  echo "WARNING: Verification: marker はあるが正規形アンカーとして検出できず本ゲートが未判定にしなかった finding ${anchor_demoted_marker} 件を検出しました (marker の後ろに => が無い / marker と => の間に改行 / <br> / 句点が挟まる / marker から => までが判別子の上限を超える / 既存 verification.measured の保持)。実測を主張する指摘なら <LHS> => <RHS> 形のアンカーを marker と同一セグメント内に置き、パイプを含むコマンドは ¦ で代替表記してください" >&2
+  echo "WARNING: Verification: marker はあるが正規形アンカーとして検出できず同一セグメント内に => を持たない finding ${anchor_demoted_marker} 件を検出しました (marker の後ろに => が無い / marker と => の間に改行 / <br> / 句点が挟まる / marker から => までが判別子の上限を超える)。実測を主張する指摘なら <LHS> => <RHS> 形のアンカーを marker と同一セグメント内に置き、パイプを含むコマンドは ¦ で代替表記してください" >&2
   echo "[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count=${anchor_demoted_marker}; cause=anchor_unparseable" >&2
 fi
 
 if [ "$runtime_obs_without_anchor" -gt 0 ]; then
-  echo "WARNING: Likelihood-Evidence: runtime_observation を持つのに Verification: の正規形アンカーを欠く finding ${runtime_obs_without_anchor} 件を検出しました (実測済み指摘は両方の添付が契約)。Verification: marker 自体が無い finding は measured=false へ降格します (この場合 ON_ANCHOR marker は出ません)。marker があって形式崩れの finding の帰結は、併記される MEASURED_UNDETERMINED_ON_ANCHOR / MEASURED_DEMOTED_ON_ANCHOR を参照してください" >&2
+  echo "WARNING: Likelihood-Evidence: runtime_observation を持つのに Verification: の正規形アンカーを欠く finding ${runtime_obs_without_anchor} 件を検出しました (実測済み指摘は両方の添付が契約)。Verification: marker 自体が無い finding は measured=false へ降格します (この場合 ON_ANCHOR marker は出ません)。marker のみの診断は MEASURED_DEMOTED_ON_ANCHOR を参照してください" >&2
   echo "[CONTEXT] MEASURED_RUNTIME_OBS_WITHOUT_ANCHOR=1; count=${runtime_obs_without_anchor}" >&2
 fi
 
