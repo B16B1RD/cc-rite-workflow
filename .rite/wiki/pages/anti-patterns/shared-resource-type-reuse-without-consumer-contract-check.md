@@ -7,6 +7,14 @@ description: "新機能実装で既存の共有リソース（reap manifest の 
 created: "2026-07-23T04:14:28Z"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260904T232945Z-pr-2571.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260904T234103Z-pr-2571.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260905T060856Z-pr-2571.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260905T001405Z-pr-2571.md"
+  - type: "reviews"
     resource: "raw/reviews/20260901T053153Z-pr-2498.md"
   - type: "fixes"
     resource: "raw/fixes/20260901T055639Z-pr-2498.md"
@@ -18,7 +26,9 @@ sources:
     resource: "raw/reviews/20260723T020925Z-pr-1974-cycle2.md"
 tags: ["shared-resource-contract", "namespace-reuse", "reap-manifest", "existing-consumer-verification", "mutation-testing", "cross-validation", "marker-prefix-glob-scope"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-01T20:33:00+09:00" }
+verified:
+  - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:10:29.806932+00:00" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:10:29.806932+00:00" }
 ---
 
 # 共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる
@@ -72,6 +82,12 @@ consumer 契約の確認を怠った結果は、生存中リソースの破壊�
 コード内コメントに「この marker は family を分離している」と書いても分離は成立しない。**消費側の scope 規則が glob である以上、分離できるのは prefix そのものを変えることだけ**である（`DRY_RUN_` のように別 prefix にする）。
 
 自問は type 名前空間の場合と同一: 新しい名前を既存機構へ流し込む前に、**consumer が何を条件にそれを拾うか**（glob か完全一致か、どの範囲を family と見なすか）を読む。
+
+### 永続レコードの書き戻しも全消費者の契約を変える
+
+同じ JSON を複数の判定器が読む場合、配列の移送は書き手のローカルな整理に留まらない。収束トレンド・後続 sweep・派生フィールドの読み手を先に列挙し、それぞれが移送後も対象を受理するか確認する。「記録した」の終端は保存先への書込みではなく、後続で消化される場所である。入力経路ごとの一時ファイル削除も含め、永続先が残ることを確認する。
+
+入力取得に成功扱いの fallback を置くと、その下流の fail-loud guard が不発になりうる。再実行しても変わらない分類エラーは、同じ入力の再試行だけで回復しない。入力を作った上流の責務と区別する。
 
 ## 関連ページ
 

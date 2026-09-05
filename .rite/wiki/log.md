@@ -2370,7 +2370,24 @@
 - result: 409 non-empty descriptions; semantic description/index equality 409/409; maximum summary size 617 bytes; row separators normalized to one contiguous five-column GFM table
 - validation: YAML parsing succeeds for 408/409 pages; the one remaining failure is an unchanged pre-existing concatenated entry inside `sources` and is preserved because sources are outside this change scope
 
-## 2026-09-05T02:22:43+09:00 — review ingest (skip pages)
+## 2026-09-05
+
+* **Update**: [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md) — [20260904T232945Z-pr-2571.md](raw/reviews/20260904T232945Z-pr-2571.md) を統合
+* **Update**: [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md) — [20260904T234103Z-pr-2571.md](raw/fixes/20260904T234103Z-pr-2571.md) を統合
+* **Update**: [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md) — [20260905T060856Z-pr-2571.md](raw/fixes/20260905T060856Z-pr-2571.md) を統合
+* **Update**: [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md) — [20260905T001405Z-pr-2571.md](raw/fixes/20260905T001405Z-pr-2571.md) を統合
+* **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — [20260905T101143Z-pr-2571.md](raw/reviews/20260905T101143Z-pr-2571.md) を統合
+* **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — [20260905T004810Z-pr-2571.md](raw/fixes/20260905T004810Z-pr-2571.md) を統合
+* **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — [20260905T065545Z-pr-2571.md](raw/fixes/20260905T065545Z-pr-2571.md) を統合
+* **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — [20260905T102010Z-pr-2571.md](raw/fixes/20260905T102010Z-pr-2571.md) を統合
+* **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — [20260905T032126Z-pr-2571.md](raw/fixes/20260905T032126Z-pr-2571.md) を統合
+* **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — [20260905T015022Z-pr-2571.md](raw/fixes/20260905T015022Z-pr-2571.md) を統合
+* **Update**: [Test pin protection theater: 「N site pin」claim と実 assert の gap が regression 検出を破壊する](pages/anti-patterns/test-pin-protection-theater.md) — [20260905T012623Z-pr-2571.md](raw/fixes/20260905T012623Z-pr-2571.md) を統合
+* **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — [20260905T112609Z-pr-2571.md](raw/reviews/20260905T112609Z-pr-2571.md) を統合
+* **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — [20260905T104753Z-pr-2571.md](raw/reviews/20260905T104753Z-pr-2571.md) を統合
+* **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — [20260905T022017Z-pr-2571.md](raw/fixes/20260905T022017Z-pr-2571.md) を統合
+* **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — [20260905T110939Z-pr-2571.md](raw/fixes/20260905T110939Z-pr-2571.md) を統合
+T02:22:43+09:00 — review ingest (skip pages)
 
 - source: `raw/reviews/20260904T172243Z-pr-2569.md`
 - action: skip (no changed-code defects and no transferable heuristic beyond existing review-gate guidance)

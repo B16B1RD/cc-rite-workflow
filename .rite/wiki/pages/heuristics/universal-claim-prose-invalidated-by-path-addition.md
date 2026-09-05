@@ -6,6 +6,14 @@ description: "「本経路に来るのは別 live セッション在席時のみ
 created: "2026-07-21T18:30:00Z"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260905T112609Z-pr-2571.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260905T104753Z-pr-2571.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260905T022017Z-pr-2571.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260905T110939Z-pr-2571.md"
+  - type: "reviews"
     resource: "raw/reviews/20260721T173620Z-pr-1959.md"
   - type: "fixes"
     resource: "raw/fixes/20260721T173955Z-pr-1959.md"
@@ -27,8 +35,9 @@ sources:
     resource: "raw/reviews/20260831T074623Z-pr-2494.md"
 tags: ["comment-rot", "cause-neutral", "exclusivity-claim", "doc-sync", "not-grep-pin", "quantifier-strengthening", "birth-defect"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-08-31T14:09:34Z" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:10:29.806932+00:00" }
 verified:
+  - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:10:29.806932+00:00" }
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
     at: "2026-08-29T11:40:00+09:00"
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
@@ -93,6 +102,12 @@ SoT の定義から 1 語（`duplicate`）を外したが、同じ SoT の Consu
 ### 管轄が別 Issue の Non-Target ドキュメント
 
 drift 先が Issue の Non-Target（別 Issue の管轄と明記）である場合は、本 PR で触らず**管轄 Issue へコメントで申し送りを配線**する。新規起票は重複になる。握り潰しにならないよう、完了報告にも明示する。
+
+### 母集団を変えたら等価性の宣言も見直す
+
+述語へ条件を追加すると、対になる別の述語との「同一母集団」という説明が偽になることがある。機構を増やして等価性を復元する前に、説明を実際の包含関係へ狭められるかを検討する。同じ定義を本文・索引・参照文書が言い換えている場合は、限定句の変更を全ての読者向け説明へ同期する。
+
+固定の pass 件数や「第何条件と同一」という説明は、同じ変更の中でも古くなる。意味を担う条件や観測した結論で記述し、履歴上の件数は実行ログへ分離する。新しい規律は同一ファイルの隣接箇所にも適用されているか確認する。
 
 ## 関連ページ
 

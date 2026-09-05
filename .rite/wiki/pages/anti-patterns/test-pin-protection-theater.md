@@ -5,6 +5,20 @@ created: "2026-04-24T14:55:00+00:00"
 description: "test ファイルのコメントが「cleanup arm 3 site (L383/L409/L412) の完全一致を pin」のように **複数 site pin** を claim していても、実際の `assert_contains` が 1 site しか pin していない (または canonical phrase が実在 site と factually 一致しない) 場合、regression 検出インフラへの信頼を破壊する false-sense-of-security。"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260905T101143Z-pr-2571.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260905T004810Z-pr-2571.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260905T065545Z-pr-2571.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260905T102010Z-pr-2571.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260905T032126Z-pr-2571.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260905T015022Z-pr-2571.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260905T012623Z-pr-2571.md"
+  - type: "reviews"
     resource: "raw/reviews/20260722T221143Z-pr-1973.md"
   - type: "reviews"
     resource: "raw/reviews/20260722T222828Z-pr-1973.md"
@@ -62,8 +76,9 @@ sources:
     resource: "raw/fixes/20260830T083939Z-pr-2482.md"
 tags: [test-pin, mutation-test, drift-check, protection-theater, canonical-phrase, same-file-3-site-sync, subsidiary-claim-empirical-verification, cross-file-cross-site-coverage, multi-axis-mutation-verification, channel-collision, negative-control, twin-site-satisfaction, anchor-uniqueness, occurrence-count-pin]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T08:52:00Z" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:10:29.806932+00:00" }
 verified:
+  - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:10:29.806932+00:00" }
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T16:50:12Z" }
 ---
 
@@ -386,6 +401,12 @@ pin を「張ったつもり」にする 2 つの具体形。どちらも同 PR 
 ### fixture の置き場所が実装の導出先と食い違うと assertion が恒真になる
 
 実装が `${TMPDIR}` から path を導出するのに、fixture を `mktemp -d` 配下に置くと、実装がどう振る舞っても fixture 側のファイルは残る。結果「削除しない」assertion が**常に pass** する。**fixture は実装が実際に触る場所に置く**（`export TMPDIR="$TMP_ROOT"` のように導出元ごと隔離すると、fixture の式を変えずに塞げて後片付けも既存 trap に載る）。
+
+### 判定器と表示・記録の終端を別々に確かめる
+
+helper の述語が正しくても、その結果を表示・永続記録へ運ぶ呼出元が欠ければ受入条件は満たせない。表示・記録が契約なら、その終端まで実行する検証を設ける。新しい guard を追加した際は fixture が従来の対象分岐へ到達するか見直す。両辺が空、または保存対象フィールドが両辺とも null で一致する検査は、保存性の証拠にならない。
+
+文書の検証は判定値・識別子・処方コマンドと必要な節範囲へ絞り、助詞や物理行間隔を固定しない。共通 prefix だけの一致では別の出現箇所に救われるため、契約が要求する対象そのものを確認する。重複を単一の定義へ畳んだ後は、委譲先と参照の関係が検証の対象になる。
 
 ## 関連ページ
 
