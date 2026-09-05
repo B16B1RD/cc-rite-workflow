@@ -227,10 +227,7 @@ fire 分岐でも `--handoff` なしの `flow-state.sh set` を呼ぶのは、�
 ## design-decisions
 
 blocking の定義式は本ファイルに複製せず severity-levels.md の実測必須ゲートを SoT とする。
-同節は reviewer finding に閉じた canonical 式と fix loop 全体を対象とする consumer 式の差を
-「適用範囲」で意図的なスコープ差として定義している。本スキルはループ側なので後者に従い、
-実測の有無を判定できない指摘は blocking のまま扱う。実測を伴わない指摘は non-blocking として
-記録されたまま残存するため、非実測指摘が残った状態でも `[review:mergeable]` に到達する。
+同節の producer 実測ゲートと fix consumer の fatal 判定は別段階である。修正対象は consumer の fatal 判定に従い、gated finding の実測未判定は fix:error とする。非 fatal 指摘は non-blocking として記録し、severity を維持する。
 残存分の消化は完了通知前の 5.S（`/rite:fix --nb-sweep`）が担い、人間の draft レビューに委ねない。
 細粒度の安全網（同一 finding
 検出 / quality signal escalation）は持たない（CLAUDE.md「シンプルさを死守」）。

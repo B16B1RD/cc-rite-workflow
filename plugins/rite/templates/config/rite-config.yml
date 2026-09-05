@@ -107,13 +107,6 @@ review:
     max_claims: 20                    # External claim のみに適用（Internal Likelihood は枠外）
     use_context7: true                # context7 MCP を利用（失敗時は WebSearch fallback で自動回復）
     verify_internal_likelihood: true  # Sub-Phase B (Internal Likelihood Claim Verification) を有効化 — 詳細: plugins/rite/skills/pr-review/references/fact-check.md
-  scope_assignment:
-    # scope=nit-noted 受け流し経路設定。reviewer が schema 1.1.0 で出力する
-    # findings[].scope に基づく fix loop routing 制御。auto_demote_low は
-    # plugins/rite/scripts/review-findings-maps.sh と plugins/rite/skills/fix/SKILL.md が
-    # rite-config.yml から直接読み取って適用する（配線済み）。
-    auto_demote_low: true    # LOW × current-pr の finding を fix.md ステップ 1.2.0 で自動的に nit-noted へ降格 (default: true)。false で opt-out した場合は LOW × current-pr が通常通り blocking 扱いで fix loop に流れる
-
 # Language setting (auto = auto-detect)
 language: auto  # auto | ja | en
 

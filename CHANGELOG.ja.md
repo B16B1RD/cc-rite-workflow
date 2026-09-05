@@ -353,7 +353,7 @@ blocking gate として実行する。
 
 ### 削除
 
-- **実挙動に一切効果のなかった設定項目2件を削除**: `fix.fail_fast_response`（消費側で一度も参照されず、テンプレート自身が「効かない」と自認していた）、`review.scope_assignment.enabled`（消費側は `auto_demote_low` を直接読み取り `enabled` を一度も参照しておらず、ドキュメント上の opt-out は機能していなかった）。`auto_demote_low` 自体は配線済みのまま影響を受けない。
+- **実挙動に一切効果のなかった設定項目2件を削除**: `fix.fail_fast_response`（消費側で一度も参照されず、テンプレート自身が「効かない」と自認していた）、`review.scope_assignment.enabled`（消費側は `enabled` を一度も参照しておらず、ドキュメント上の opt-out は機能していなかった）。
 
 ## [0.7.2] - 2026-07-01
 

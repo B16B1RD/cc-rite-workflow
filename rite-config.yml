@@ -91,12 +91,6 @@ review:
     enabled: true            # ファクトチェック Phase
     max_claims: 10           # 1 レビューあたり最大検証数
     use_context7: false      # context7 MCP ツールによる検証を使う
-  scope_assignment:
-    # scope=nit-noted 受け流し経路設定。reviewer が schema 1.1.0 で出力する
-    # findings[].scope に基づく fix loop routing 制御。auto_demote_low は
-    # plugins/rite/scripts/review-findings-maps.sh と plugins/rite/skills/fix/SKILL.md が
-    # rite-config.yml から直接読み取って適用する（配線済み）。
-    auto_demote_low: true    # LOW × current-pr の finding を fix.md Phase 1.2.0 で自動的に nit-noted へ降格 (default: true)。false で opt-out した場合は LOW × current-pr が通常通り blocking 扱いで fix loop に流れる
   doc_heavy:
     enabled: true                   # Doc-Heavy PR 検出 / Override
     lines_ratio_threshold: 0.6      # doc_lines / total_diff_lines の閾値
