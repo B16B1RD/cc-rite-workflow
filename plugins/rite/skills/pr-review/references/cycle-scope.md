@@ -97,7 +97,7 @@ cap 後のフィルタにすると、これらのフロアと `mandatory` 保護
 
 昇格は既存の昇格 priority（`detected < recommended < mandatory`）に従い、より高い側へのみ動かす。既に `mandatory` の reviewer に対しては no-op。
 
-前サイクル finder は永続 JSON の **`findings[]` と `non_blocking_findings[]` の和**から、gated scope（`current-pr` / `follow-up`）の finding だけを取る。2 つの配列を跨ぐのは、実測必須ゲートが両方向に要素を動かすためである:
+前サイクル finder は永続 JSON の **`findings[]` と `non_blocking_findings[]` の和**から、gated scope（`current-pr` / `follow-up`）かつ `demotion_reason != "non_fatal"` の finding だけを取る。非 fatal 移送分は記録・sweep 対象として保持し、解消検証による reviewer 再起動には使わない。2 つの配列を跨ぐのは、実測必須ゲートが両方向に要素を動かすためである:
 
 - `findings[]` には `scope == "nit-noted"` がゲート対象外として非実測でも残る → **絞らないと余分が入る**
 - 非実測の gated 指摘は `non_blocking_findings[]` へ**移送**され `findings[]` から消える → **`findings[]` だけ見ると足りない**

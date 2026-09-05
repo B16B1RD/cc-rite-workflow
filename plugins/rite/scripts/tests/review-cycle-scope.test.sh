@@ -242,6 +242,14 @@ run_scope --pr 42 --results-dir "$MOVED"
 assert_marker_eq "TC-14b.1: 移送された gated 指摘の reviewer を拾い、nit のみの reviewer は除く" \
   "$SCOPE_STDERR" "prev_finders" "security"
 
+# Non-fatal transfer must not reintroduce its reviewer through the second array.
+jq '.non_blocking_findings += [{id:"F-03", reviewer:"test-reviewer", severity:"MEDIUM", scope:"follow-up", demotion_reason:"non_fatal"}]' \
+  "$MOVED/42-20260806-000000.json" > "$MOVED/updated.json"
+mv "$MOVED/updated.json" "$MOVED/42-20260806-000000.json"
+run_scope --pr 42 --results-dir "$MOVED"
+assert_marker_eq "non-fatal 移送 reviewer のみを除外し既存の非実測再検証を維持" \
+  "$SCOPE_STDERR" "prev_finders" "security"
+
 echo "=== TC-19: scope / reviewer の欠落は無音で捨てず full へ倒す ==="
 # select は条件に合わない要素を無音で捨てるため、部分欠落だと結果が正常系と見分けがつかない。
 # 最も危険なのは「2 件中 1 件だけ欠落」— 出力が非空なので異常に見えない。

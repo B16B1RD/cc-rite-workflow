@@ -39,7 +39,7 @@
 #   ⚠️ 差分スコープのフォールバック: ...                        ← 同上 (人間向け)
 #
 #   prev_finders は前サイクルの findings[] と non_blocking_findings[] の**和**のうち
-#   **gated scope (current-pr / follow-up)** の finding だけを対象に reviewer を agent 名から
+#   **gated scope (current-pr / follow-up) かつ demotion_reason != non_fatal** の finding を対象に reviewer を agent 名から
 #   reviewer_type へ正規化 (`-reviewer` サフィックス除去) し unique + カンマ区切りにしたもの。
 #   **findings[] 全体は blocking 集合ではない** — review-measured-gate.sh は scope == "nit-noted"
 #   をゲート対象外として非実測でも findings[] に残すため、実体は blocking 集合と全 nit-noted 集合の
@@ -254,7 +254,7 @@ if [ -z "$diff_names" ]; then
 fi
 
 # 前サイクルで gated scope (current-pr / follow-up) の指摘を出した reviewer を、健全性検査と
-# 同一の jq で抽出する。
+# 同一の jq で抽出する。非 fatal 移送分は解消検証の対象から除く。
 #
 # **母集団は `findings[]` と `non_blocking_findings[]` の和**。実測必須ゲートは非実測の gated
 # 指摘を `findings[]` から `non_blocking_findings[]` へ *移送* する (`.findings = $kept`) ため、
@@ -302,6 +302,7 @@ scope_probe=$(jq -r '
     else
       "OK\t" + ([$all[]
                   | select((.scope // "") == "current-pr" or (.scope // "") == "follow-up")
+                  | select(.demotion_reason != "non_fatal")
                   | .reviewer | sub("-reviewer$";"")] | unique | join(","))
     end
 ' "$prev_json" 2>"$probe_err") || {

@@ -64,14 +64,7 @@ caller の `exit 1` 直前に emit が必要になる。
 
 ## schema-normalization-mirror
 
-ステップ 1.2.0 Priority 3 の schema 1.1.0 後方互換 normalization の動作契約。Priority 0/2 (file-based) は
-`scripts/review-findings-maps.sh` へ委譲済みで、本 block はその string-based 鏡像。
-
-- (a) schema_version == "1.0"|"1.0.0" の場合、findings[] に欠落している scope を severity から default mapping (CRITICAL/HIGH/MEDIUM → current-pr、LOW-MEDIUM/LOW → nit-noted) で補完。1 件以上補完したら `[CONTEXT] REVIEW_SOURCE_SCOPE_DEFAULTED=1` を emit。
-- (b) invariant #5: pre_existing == false ∧ scope == "nit-noted" の finding を検出。1 件以上あれば WARNING + `[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1` を emit し、scope を current-pr に自動書き換え。
-- (c) (a) または (b) または (e) で mutation が発生した場合のみ raw_json を mutated 版に差し替える。
-- (d) 後方互換: invariant #5 は pre_existing フィールドが存在する 1.1.0 JSON のみで発火する (1.0/1.0.0 では default mapping は scope を補完するのみで pre_existing は補完しない)。
-- (e) auto_demote_low (default true) で severity == "LOW" ∧ scope == "current-pr" の finding scope を "nit-noted" に降格。`auto_demote_low: false` で opt-out 可。
+全入力経路は共通ステップ 1.2.2 で `scripts/review-findings-maps.sh` の分類結果を使う。helper は scope の 3 値 enum を厳密に検証し、欠落 scope の補完や nit-noted の補正は行わない。nit の全フィールドを保持したまま fatal 判定を行い、非 fatal を記録配列へ移送する。入力アダプターの既存 schema 検証と helper の分類を混同しない。
 
 **commit_sha stale detection で mismatch 時に WARNING のみで continue する理由**: PR コメントは最新の push 後に投稿される可能性が高く、legacy Markdown parser への fallthrough はむしろ情報損失になるため。
 
@@ -207,7 +200,7 @@ fix はステップ 2 以降で作業ツリーを Edit/Write する。session wo
 
 ## priority2-helper-delegation
 
-Priority 2 成功時に Fast Path / Broad Retrieval を skip するのは、file-based source では PR コメント経路が不要だから。map 構築と schema 1.1.0 normalization は `review-findings-maps.sh` に委譲済み (旧 inline の verbatim emit)。helper の reason SoT は docstring。
+Priority 2 成功時に Fast Path / Broad Retrieval を skip するのは、file-based source では PR コメント経路が不要だから。取得後は全入力経路で共通ステップ 1.2.2 に合流し、`review-findings-maps.sh` が元ファイルを atomic rename で更新する。helper は stdout に ID-keyed な `fatal_map` / `severity_map` / `scope_map` の JSON を返し、caller はこの結果を直接読む。
 
 ## confidence-override-h1
 
@@ -219,15 +212,13 @@ H-1: ステップ 1.2 進入時に confidence_override tempfile を無条件 tru
 
 ## measured-map-construction
 
-`measured_map` は正規化前の原ファイルから、`scope_map` は helper 正規化後 tempfile から来る。登録条件に原 scope を使うと auto-demote の二重計上と auto-correct の未登録 (ゲート bypass) が両方向に起きる。現行世代では `false` を持つ finding の scope は nit-noted のままなので破綻シナリオは限定的だが、規則は fail-safe として固定する。
+各入力経路の map は共通ステップ 1.2.2 が helper の stdout JSON から直接取得する。`fatal_map` / `severity_map` / `scope_map` は finding ID をキーとし、同じ file:line の指摘を潰さない。件数は分類後の永続 JSON から読む。fatal は measured=true × CRITICAL/HIGH × current-pr/follow-up。gated な非 fatal 指摘は severity と id を保ったまま `non_blocking_findings[]` に移送し、`demotion_reason: non_fatal` を付ける。元 JSON と分類後の map を混在させると、移送済み指摘が再び修正対象になるため、後続処理も分類結果を読む。
 
-JSON 経路の `non_blocking_count` が 0 になるのは、write 側が gated な非実測 finding を `non_blocking_findings[]` へ移送する契約のため。N 件が入るのは Markdown / 会話経路のみ。全経路一致は未成立。
-
-`(.verification.measured // false)` で畳むと、verification を持たない旧 JSON と形式崩れアンカー (helper が `verification` を書かない = 未判定) の全 finding が non-blocking になり、ループが指摘を解消せず空転する。
+`non_blocking_count` は移送後の `non_blocking_findings[]` の件数を使い、永続 JSON・Issue 記録コメント・統合レポート・E2E suffix を同じ集合に揃える。`(.verification.measured // false)` で未判定を false に畳まない。gated finding の未判定 measured / 未知 severity と書込失敗は `[fix:error]` へ昇格し、元 JSON を保持する。分類失敗を Markdown fallback で再解釈しない。
 
 ## human-thread-provenance
 
-`measured_map` は file:line キーなので、非実測 finding と同座標の人間 thread が巻き込まれ、fix も reply もされずに「対応済み」へ入る。出自確認できない thread は External review (安全側)。振り替えは `non_blocking_count` 減算を伴うため、無痕跡だと finalize 等式が永久不成立になり `max_review_cycles` まで空転する。
+人間・外部 thread と rite finding の対応は ID と出自を確認する。同じ file:line だけを根拠に非 fatal 判定を流用すると、無関係の thread が修正も返信もされずに消化済みになる。出自確認できない thread は External review として既存の個別対応経路に残す。
 
 ## accept-cycle-markers
 
