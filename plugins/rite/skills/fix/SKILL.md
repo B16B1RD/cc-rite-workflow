@@ -1747,7 +1747,7 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
 4. If it exists, look up the corresponding entry in `scope_map`:
    - **`scope == "nit-noted"`** -> **nit (認知のみ)**; skip ステップ 2.1 / 2.4。PR reply しない。`acknowledged_nit_count` に算入（fix commit 対象外）
    - **measured lookup (実測必須ゲート)**: 判定は **`measured_map[file:line]` の参照に統一**する (母集団は severity_map と同一 — **scope による登録除外なし**。nit-noted は本分岐に到達する前に上の nit 分岐 (正規化後 `scope_map` 参照) が先取するため lookup 対象にならない。key 正規化・tie-break・3 値保持を含む構築共通規則はステップ 1.2.1 step 6 が単一定義。**3 値**: `false` = non-blocking / `true` = blocking / **未登録** = 未判定 (実測の有無を判定する構造が無い) → blocking)。`measured_map` の構築は経路別:
-     - **JSON (P0/2/3)**: `verification` が object かつ `verification.measured` が boolean のときだけ登録。**欠落は登録しない**。`(.verification.measured // false)` で畳まない（gated finding の欠落は ステップ 1.2.0 が `measured_undetermined` で停止済みなので本 lookup に到達しない。到達しうるのは nit-noted と scope 未登録のみ）。**`scope` が enum 3 値に解決できない finding は ステップ 2.1 分岐 4 の catch-all に合流させ、従来どおり修正対象にする** (本表に専用行を持たないため、ここで行き先を明示しないと step 5 の External review にも該当せず分類先を失う)
+     - **JSON (P0/2/3)**: `verification` が object かつ `verification.measured` が boolean のときだけ登録。**欠落は登録しない**。`(.verification.measured // false)` で畳まない（gated finding の欠落は ステップ 1.2.0 が `measured_undetermined` で停止済みなので本 lookup に到達しない。到達しうるのは nit-noted と scope 未登録のみ）。**`scope` が enum 3 値に解決できない finding は ステップ 2.1 の catch-all に合流させ、従来どおり修正対象にする** — 合流先は経路で決まり、`FIX_FATAL_TRIAGE` marker がある file-based 経路では分岐 4 の sub-bullet、marker が無い会話 / legacy Markdown 経路では分岐 5 の disjunct が受ける (本表に専用行を持たないため、ここで行き先を明示しないと step 5 の External review にも該当せず分類先を失う)
      - **会話 (P1)**: `### 全指摘事項` → `true`、`### 実測なし指摘 (non-blocking)` → `false`。後者も `severity_map` / `scope_map` へ投入 (1.2.1 step 6)
      - **Markdown (Fast Path / P3 legacy)**: 1.2.1 step 6。全指摘事項 = `true`、実測なし = `false`
      - **外部ツール / best-effort**: 登録しない (= 未判定)。External review (blocking)
@@ -2193,7 +2193,7 @@ reviewer の推奨対応（`recommendation` 列）は候補であって設計で
 3. **measured lookup (実測必須ゲート)**: ステップ 1.3 で **non-blocking (実測なし)** に分類された finding (`measured_map[file:line] == false`) → ステップ 2.1 (本セクション) を **skip** し、ステップ 2.4 の reply も投稿しない (fix commit 対象外。記録は `/rite:pr-review` ステップ 5.4 の「実測なし指摘」section が担う)
 4. **仕分けが走った経路 (file-based source。`FIX_FATAL_TRIAGE` marker あり)**: `scope ∈ {current-pr, follow-up}` かつ `measured == true` かつ `severity ∈ {CRITICAL, HIGH}` (= 致命) → 本セクション以降を通常通り実行。非致命は helper が `findings[]` から外しているため本分岐に現れない
    - **scope 未登録 / enum 外**の finding は helper の `gated` 述語（完全一致）に掛からず移送されないため、`findings[]` に残る。この経路では **従来どおり修正対象にする**（どの分類にも入らないまま落とさない）。
-5. **仕分けが走らなかった経路 (会話 / legacy Markdown。marker なし)**: `scope ∈ {current-pr, follow-up}` かつ **measured != false** → severity に依らず本セクション以降を通常通り実行する。consumer 式で絞ると移送も記録もされないまま指摘が消えるため、この経路では従来どおり全 severity 帯を修正対象にする (Confidence override で取り込んだ外部ツール finding も severity_map 登録済みのためここに合流し、silent skip されない)
+5. **仕分けが走らなかった経路 (会話 / legacy Markdown。marker なし)**: `scope ∈ {current-pr, follow-up}` かつ **measured != false**、**または scope 未登録 / enum 外 (legacy / fallback / 外部ツール由来)** → severity に依らず本セクション以降を通常通り実行する。consumer 式で絞ると移送も記録もされないまま指摘が消えるため、この経路では従来どおり全 severity 帯を修正対象にする (Confidence override で取り込んだ外部ツール finding は scope を持たないため後段の disjunct でここに合流し、silent skip されない)
 6. skip 経路では選択 UI を **出さない**。
 
 

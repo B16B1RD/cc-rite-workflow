@@ -185,12 +185,45 @@ assert_grep "C-04c 移送件数が Issue 記録コメントに出力される" "
   '\*\*非致命移送\*\*: \{moved_count\}件\{moved_pointer_suffix\}'
 assert_grep "C-04c 移送件数が完了報告に出力される" "$FIX" \
   '非致命移送 \(fix 対象外、記録済み\): \{moved_count\}件'
+# 上の 3 パターンは 4.5.3 / 4.6 / 5.1 / 3502 の表に同時マッチするため、E2E fenced ブロックの
+# 出力行を消しても他のどれかが残れば緑のまま通る。E2E 節に範囲を絞って独立に pin する
+_e2e_start=$(grep -n '^## E2E Output Minimization' "$FIX" | head -1 | cut -d: -f1)
+_e2e_end=$(awk -v s="${_e2e_start:-0}" 'NR > s && /^## / { print NR; exit }' "$FIX")
+if [ -z "$_e2e_start" ] || [ -z "$_e2e_end" ]; then
+  fail "C-04c E2E Output Minimization 節を特定できない (見出し文言の drift)"
+elif sed -n "${_e2e_start},${_e2e_end}p" "$FIX" \
+  | grep -qE '非致命移送 \(fix 対象外、記録済み\): \{moved_count\}件'; then
+  pass "C-04c 移送件数が E2E 出力ブロックに出力される"
+else
+  fail "C-04c E2E 出力ブロックに移送行が無い — AC-3 の 4 経路目が空文になる"
+fi
+# ポインタ展開行 (移送分の全文と消化経路の所在)。件数だけ残してポインタが消えると、
+# 記録先を人間が辿れないまま「記録済み」と表示される
+assert_grep "C-04c ポインタ展開行が定義されている" "$FIX" \
+  'non_blocking_findings\[\] に demotion_reason=non_fatal で記録'
+
+# --- C-04d: 1.4 手動起動 UI の移送済みセクション見出し ---
+# AC-6 の Then「移送済み件数が表示される」を担う唯一の表示行。C-04b が pin するのは
+# 1.2.0 側の marker 不在時規則だけで、1.4 の見出しそのものではない。この行が消えると
+# 移送された非致命 finding の存在が手動起動時に人間へ一切見えなくなる
+assert_grep "C-04d 1.4 の移送済みセクション見出しが件数を表示する" "$FIX" \
+  '^### 移送済み \(非致命、記録済み・sweep 対象\) \(\{moved_count\}件\)'
+
+# --- C-02e: P0/2 caller の reason 写し取り ---
+# AC-5 の Then が名指しする出力形を実際に生成するのは P0/2 caller の写し取り。
+# C-01 / C-02 は Priority 3 側の同型ブロックしか pin していない。写し取りが失われると
+# helper が measured_undetermined で止めても caller は generic reason を出し、
+# 「measured_undetermined は対処が異なるため理由の判別が要る」が満たされない
+assert_grep "C-02e P0/2 caller が helper の reason を写し取る" "$FIX" \
+  'maps_reason=\$\(sed -n .s/\.\*FIX_FALLBACK_FAILED=1; reason='
+assert_grep "C-02e P0/2 caller が findings 列を \[fix:error\] へ転記する" "$FIX" \
+  '\[fix:error\] reason=\$maps_reason; findings=\$maps_findings'
 
 # --- C-07: fatal_triage_jq_failed の cause= 判別子が site ごとに異なる ---
-# 判別子は「非隣接の同一 reason は判別子つきで列挙する」規約の実体。5 site のうち
-# transport だけが実挙動で pin できる (他 4 つは jq 自体の失敗を要し全域 stub になる) ため、
+# 判別子は「非隣接の同一 reason は判別子つきで列挙する」規約の実体。6 site のうち
+# transport だけが実挙動で pin できる (他 5 つは jq 自体の失敗を要し全域 stub になる) ため、
 # 値の網羅はここで静的に持つ。全 site を同一値へ潰す退行は maps 側の挙動 pin では捕まらない
-# (どの値でも reason は同じ) — 実測: 4 site の cause= を一括削除しても maps 34/0・契約 34/0
+# (どの値でも reason は同じ) — 実測: 6 site の cause= を一括削除しても maps 37/0・契約 53/0
 for _cause in severity_enum_probe measured_probe counts_probe transport nb_type_probe id_collision_probe; do
   assert_grep "C-07 cause=$_cause が helper から emit される" "$MAPS" \
     "reason=fatal_triage_jq_failed; cause=$_cause"

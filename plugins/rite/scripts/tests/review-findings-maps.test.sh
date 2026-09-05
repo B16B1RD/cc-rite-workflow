@@ -946,9 +946,12 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-17 (T-08): アーカイブ由来テール PR fixture の cycle 別 fatal 件数 (AC-7)
+# TC-17 (T-08): テール PR の cycle 別 fatal 件数 (AC-7)
 # 期待値は「HIGH 以上かつ実測」列 = 致命性仕分けの fatal 定義そのもの。
-# fixture は実アーカイブから生成し、Issue / PR 番号は除去済み。
+# fixture は机上シミュレーションの cycle 別分布を再現する合成 JSON で、helper が読むキー
+# (severity / scope / verification) のみを持つ最小形。実アーカイブ record が持つ
+# measured_gate / verdict / reviewers / reviewer 由来フィールドは含まないため、
+# 実データ分布に対する非回帰ガードではなく述語の挙動 pin として読むこと。
 # --------------------------------------------------------------------------
 echo "TC-17 (T-08): テール PR fixture の cycle 別件数"
 tail_dir="$SCRIPT_DIR/fixtures/fatal-triage-tail"
