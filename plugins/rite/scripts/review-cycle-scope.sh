@@ -39,7 +39,7 @@
 #   ⚠️ 差分スコープのフォールバック: ...                        ← 同上 (人間向け)
 #
 #   prev_finders は前サイクルの findings[] と non_blocking_findings[] の**和**のうち
-#   **gated scope (current-pr / follow-up)** の finding だけを対象に reviewer を agent 名から
+#   **gated scope (current-pr / follow-up) かつ demotion_reason != non_fatal** の finding を対象に reviewer を agent 名から
 #   reviewer_type へ正規化 (`-reviewer` サフィックス除去) し unique + カンマ区切りにしたもの。
 #   **findings[] 全体は blocking 集合ではない** — review-measured-gate.sh は scope == "nit-noted"
 #   をゲート対象外として非実測でも findings[] に残すため、実体は blocking 集合と全 nit-noted 集合の
