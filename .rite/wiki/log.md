@@ -30,6 +30,12 @@
 * **Skip**: [20260904T160105Z-pr-2560.md](raw/reviews/20260904T160105Z-pr-2560.md) — 0-finding confirmation; existence-filter はスキル配線とテストで強制済み
 * **lint:clean** — contradictions=0, stale=54, orphans=0, missing_concept=0, unregistered_raw=435, broken_refs=0
 
+## 2026-09-05
+
+* **Skip**: [レビュー結果](raw/reviews/20260905T135424Z-pr-2575-review.md) — 新しいドメイン経験則なし。形式エラーの契約はプラグインとテストに実装済み。
+* **Skip**: [レビュー結果](raw/reviews/20260905T140225Z-pr-2575-final.md) — 新しいドメイン経験則なし。形式エラーの契約はプラグインとテストに実装済み。
+
+
 ## 2026-09-03
 * **Skip**: [20260903T111103Z-pr-2539.md](raw/reviews/20260903T111103Z-pr-2539.md) — 既存ページ asymmetric-fix-transcription / state-machine-dual-location-sync / mutation-prove-new-pin が同一欠陥クラスをカバー済み。sentinel 契約の同一ファイル内三重指示と MUST 未 pin は同クラスの再演（nb-sweep で plugin へ適用済み）
 * **lint:clean** — contradictions=0, stale=51, orphans=0, missing_concept=0, unregistered_raw=421, broken_refs=0
