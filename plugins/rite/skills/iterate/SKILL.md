@@ -1125,7 +1125,7 @@ handoff 迂回のリスクは (b) には含めない。迂回が成立するの�
 
 - ユーザーが Ctrl+C で中断した場合: flow-state に現 phase (review or fix) が残るので `/rite:recover` で本コマンドが再起動する (詳細な phase → command routing は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.3 を参照)
 - `[fix:error]` 時: [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従い 1 回だけ自動再試行し、再失敗時は停止する
-- reviewer が non-deterministic に振動する場合: 収束トレンドの発散または `safety.max_review_cycles` 到達でステップ 6 に進み、人間に問わず停止する。batch は `[iterate:max-cycles-reached]` で当該 Issue を failed 扱いにして次へ進み、対話は `[iterate:max-cycles-stopped]` で終了する。再開は `/rite:iterate {pr_number}` の明示的な再実行で行う。
+- reviewer が non-deterministic に振動する場合: 収束トレンドの発散または `safety.max_review_cycles`（既定 15）到達でステップ 6 に進み、人間に問わず停止する。batch は `[iterate:max-cycles-reached]` で当該 Issue を failed 扱いにして次へ進み、対話は `[iterate:max-cycles-stopped]` で終了する。再開は `/rite:iterate {pr_number}` の明示的な再実行で行う。
 
 ---
 
