@@ -227,7 +227,7 @@ fire 分岐でも `--handoff` なしの `flow-state.sh set` を呼ぶのは、�
 ## design-decisions
 
 blocking の定義式は本ファイルに複製せず severity-levels.md の実測必須ゲートを SoT とする。
-同節の producer 実測ゲートと fix consumer の fatal 判定は別段階である。修正対象は consumer の fatal 判定に従い、gated finding の実測未判定は fix:error とする。非 fatal 指摘は non-blocking として記録し、severity を維持する。
+同節の producer 実測ゲートと fix consumer の fatal 判定は別段階である。修正対象は consumer の fatal 判定に従い、producer の判定不能は `anchor_undetermined` で同 cycle 内の対象 reviewer 出力再生成へ戻し、再試行は共通で 1 回までとする。旧 JSON 等で gated finding の実測未判定を受け取った場合は fix:error とする。非 fatal 指摘は non-blocking として記録し、severity を維持する。
 残存分の消化は完了通知前の 5.S（`/rite:fix --nb-sweep`）が担い、人間の draft レビューに委ねない。
 細粒度の安全網（同一 finding
 検出 / quality signal escalation）は持たない（CLAUDE.md「シンプルさを死守」）。

@@ -6,7 +6,7 @@ Defines how fix targets are determined in the `/rite:iterate` review-fix loop.
 
 ## Overview
 
-修正対象は **fatal** な rite finding に限定する。fatal は `verification.measured == true` かつ `severity ∈ {CRITICAL, HIGH}` かつ `scope ∈ {current-pr, follow-up}`。gated finding の measured が未判定、または severity が未知の場合は `[fix:error]` で停止し、元 JSON を変更しない。
+修正対象は **fatal** な rite finding に限定する。fatal は `verification.measured == true` かつ `severity ∈ {CRITICAL, HIGH}` かつ `scope ∈ {current-pr, follow-up}`。現行 producer は実測判定不能を `anchor_undetermined` で拒否し、対象 finding IDs の reviewer 出力だけを同 cycle 内で再生成する（共通再試行上限 1 回）。旧 JSON 等で gated finding の measured が未判定、または severity が未知の場合は `[fix:error]` で停止し、元 JSON を変更しない。
 
 ## Fix Target Classification
 
