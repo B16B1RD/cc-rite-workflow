@@ -329,7 +329,8 @@ printf 'called\n' >> "$NB_TEST_ISSUE_LOG"
 exit 1
 SH
 export NB_TEST_ISSUE_LOG="$sandbox/issue.log"
-sed -i "s|{plugin_root}|$stub_plugin|g" "$issue_guard"
+sed "s|{plugin_root}|$stub_plugin|g" "$issue_guard" > "$sandbox/issue-guard-resolved.sh"
+mv "$sandbox/issue-guard-resolved.sh" "$issue_guard"
 # A tail mutation represents subsequent persist: exits must prevent reaching it.
 export NB_TEST_LEDGER="$ledger"
 ledger_before=$(cksum "$ledger")
