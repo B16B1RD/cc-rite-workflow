@@ -108,9 +108,9 @@ fail-loud (`no_unnecessary_fallback`)。**上流の `review-measured-gate.sh` �
 移送分が sweep 母集団から silent に脱落する。`measured_gate` receipt は pr-review がゲートを適用した
 時点の統計なので再計算しない (receipt の意味を後から書き換えない)。
 
-**なぜ移送後 JSON の自己検証を置かないか**: transport は 1 本の jq で「`gated ∧ ¬fatal` の要素を
-`non_blocking_findings` へそのまま append し、`findings` から同じ述語の要素だけを除く」純粋な move を
-行う。したがって「両配列が配列」「移送要素の id が保存されている」「和集合の重複が増えていない」は
+**なぜ移送後 JSON の自己検証を置かないか**: transport は 1 本の jq で「`gated ∧ ¬fatal` の要素に
+`demotion_reason: "non_fatal"` を付して `non_blocking_findings` へ append し、`findings` から同じ述語の
+要素だけを除く」move を行う。オブジェクトマージは `.id` を上書きしないため、要素の同一性は保たれる。したがって「両配列が配列」「移送要素の id が保存されている」「和集合の重複が増えていない」は
 いずれも構成上恒真で、検査を置いても実際に発火しうるのは**入力時点から存在した欠陥**
 (id 欠落 / 非文字列 id / 独立採番による重複) だけになる。それは保存境界
 `hooks/review-result-save.sh` が「advisory な記録の欠陥を理由に blocking findings まで失うのは

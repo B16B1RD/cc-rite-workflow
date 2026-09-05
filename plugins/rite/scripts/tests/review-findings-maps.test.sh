@@ -197,6 +197,25 @@ FIXEOF
 ]}
 FIXEOF
       ;;
+    nonarray_nb)
+      # non_blocking_findings が非配列。移送 jq の `+` が型エラーになり、tempfile を作った後に
+      # 失敗する唯一の plain-fixture 経路 (mv 差し替え無しで到達できる)
+      cat > "$path" <<'FIXEOF'
+{"schema_version":"1.1.0","pr_number":1,"findings":[
+  {"id":"F-01","file":"src/a.ts","line":10,"severity":"MEDIUM","scope":"current-pr","pre_existing":true,"verification":{"measured":true}}
+],"non_blocking_findings":"oops"}
+FIXEOF
+      ;;
+    nonstring_id)
+      # 移送対象 finding の id が非文字列。撤去した自己検証はこの入力でだけ挙動が分かれた
+      # (旧: exit 1 / 新: 移送完走)。入力時点の欠陥で停止しないことを pin する
+      cat > "$path" <<'FIXEOF'
+{"schema_version":"1.1.0","pr_number":1,"findings":[
+  {"id":123,"file":"src/a.ts","line":10,"severity":"MEDIUM","scope":"current-pr","pre_existing":true,"verification":{"measured":true}},
+  {"id":"F-02","file":"src/a.ts","line":20,"severity":"HIGH","scope":"current-pr","pre_existing":true,"verification":{"measured":true}}
+],"non_blocking_findings":[]}
+FIXEOF
+      ;;
     dup_id_union)
       # 移送後に findings[] と non_blocking_findings[] で id が衝突する入力
       cat > "$path" <<'FIXEOF'
@@ -481,21 +500,36 @@ write_fixture "$repo/review.json" v10_missing_scope
 run_helper "$repo" local_file "$repo/review.json"
 # 移送 tempfile は mv が消費する。**mktemp 失敗経路を leg に足さない** — その経路は tempfile を
 # 1 度も作らないので triage.* の不在はどの実装でも成立し、assert が恒真になる。
-# 「tempfile を作ったまま失敗する」経路は移送 jq 失敗と mv 失敗の 2 つだけで、いずれも本スイートの
-# sandbox からは実挙動として起こせない (jq / mv を差し替えない限り)。到達できない leg を置く代わりに
-# rc 捕捉と inline rm の形を TC-14b が静的に pin する。
+# 「tempfile を作ったまま失敗する」経路は移送 jq 失敗と mv 失敗の 2 つ。前者は plain fixture で
+# 到達でき (下の leg)、後者は PATH stub で到達する (TC-14b)。
 repo_moved=$(make_sandbox tc9-moved)
 write_fixture "$repo_moved/review.json" mixed_triage
 run_helper "$repo_moved" local_file "$repo_moved/review.json"
 leaked_triage_moved=$(ls "$repo_moved"/review.json.triage.* 2>/dev/null || true)
+# 移送 jq が失敗する経路 — リダイレクトが jq 起動前に tempfile を作るため、inline rm が
+# 回収しなければここに残る (恒真ではない)
+repo_jqfail=$(make_sandbox tc9-jqfail)
+write_fixture "$repo_jqfail/review.json" nonarray_nb
+jqfail_before=$(cat "$repo_jqfail/review.json")
+run_helper "$repo_jqfail" local_file "$repo_jqfail/review.json"
+leaked_triage_jqfail=$(ls "$repo_jqfail"/review.json.triage.* 2>/dev/null || true)
+tc9_jqfail_ok=1
+[ "$HELPER_RC" = "1" ] || tc9_jqfail_ok=0
+grep -q 'FIX_FALLBACK_FAILED=1; reason=fatal_triage_jq_failed' <<<"$HELPER_STDERR" || tc9_jqfail_ok=0
+[ "$(cat "$repo_jqfail/review.json")" = "$jqfail_before" ] || tc9_jqfail_ok=0
+if [ "$tc9_jqfail_ok" = "1" ]; then
+  pass "移送 jq 失敗で exit 1 / 入力は無変更 (部分適用なし)"
+else
+  fail "jq 失敗分岐が期待どおりでない (rc=$HELPER_RC): $HELPER_STDERR"
+fi
 # normalization tempfile の sweep は **全 leg の run_helper 後**に取る (先に確定させると後続 leg が
 # 作った分が母集団から漏れる)
 after_paths=$(ls "${TMPDIR:-/tmp}"/rite-fix-normalized-* 2>/dev/null | LC_ALL=C sort || true)
 leaked_paths=$(LC_ALL=C comm -13 <(printf '%s\n' "$before_paths") <(printf '%s\n' "$after_paths"))
-if [ -z "$leaked_paths" ] && [ -z "$leaked_triage_moved" ]; then
-  pass "normalization tempfile と移送 tempfile (moved>0 の成功経路) が回収される"
+if [ -z "$leaked_paths" ] && [ -z "$leaked_triage_moved" ] && [ -z "$leaked_triage_jqfail" ]; then
+  pass "normalization tempfile と移送 tempfile (成功経路 / jq 失敗経路) が回収される"
 else
-  fail "tempfile leaked: $(tr '\n' ' ' <<<"$leaked_paths$leaked_triage_moved")"
+  fail "tempfile leaked: $(tr '\n' ' ' <<<"$leaked_paths$leaked_triage_moved$leaked_triage_jqfail")"
 fi
 
 # --------------------------------------------------------------------------
@@ -627,11 +661,24 @@ else
   fail "unexpected (rc=$HELPER_RC): err='$HELPER_STDERR'"
 fi
 
+# 非文字列 id — 撤去した自己検証はこの入力でだけ挙動が分かれた (旧: exit 1 / 新: 移送完走)。
+# 自己検証を復活させる変更をここが落とす
+repo=$(make_sandbox tc14-nonstr)
+write_fixture "$repo/review.json" nonstring_id
+run_helper "$repo" local_file "$repo/review.json"
+if [ "$HELPER_RC" = "0" ] \
+   && grep -q 'FIX_FATAL_TRIAGE=applied; fatal=1; moved=1' <<<"$HELPER_STDERR" \
+   && ! grep -q 'FIX_FALLBACK_FAILED' <<<"$HELPER_STDERR" \
+   && [ "$(jq -c '[.non_blocking_findings[] | .id]' "$repo/review.json")" = "[123]" ]; then
+  pass "非文字列 id でも停止せず移送を完了し id を保存する"
+else
+  fail "unexpected (rc=$HELPER_RC): err='$HELPER_STDERR'"
+fi
+
 # --------------------------------------------------------------------------
-# TC-14b: 書き込み失敗分岐
-#   mktemp 失敗 — 実挙動 pin (非ゼロ rc / 入力無変更)
-#   mv 失敗     — rc 捕捉形式の静的 pin。sandbox から mv を実際に失敗させる手段が無いため
-#                 実挙動は pin できない (Issue §4.5 MUST のうち mktemp 側だけが実挙動 pin)
+# TC-14b: 書き込み失敗分岐 — mktemp 失敗 / mv 失敗のいずれも実挙動で pin する
+# (Issue §4.5 MUST「書き込み失敗は非ゼロ終了、部分適用を残さない」の直接 pin)
+# mv は PATH stub で失敗させる (本 repo の hooks/tests で確立した手段)
 # --------------------------------------------------------------------------
 echo "TC-14b: 書き込み失敗分岐"
 repo=$(make_sandbox tc14b-mktemp)
@@ -650,15 +697,27 @@ else
   fail "mktemp 失敗分岐が期待どおりでない (rc=$HELPER_RC): $HELPER_STDERR"
 fi
 
-# mv 失敗の実挙動は sandbox から起こせない (mv 先をディレクトリにしても mktemp が同ディレクトリに
-# 作られるため rename は成功する)。fixture を組んでも判定に寄与しないので置かず、
-# 「rc 捕捉が else 節形式で、否定パイプラインの rc=0 を拾わない」ことだけを静的に pin する。
-if grep -qE 'if mv "\$triage_tmp" "\$orig_source_path"' "$TARGET" \
-   && grep -qE 'triage_mv_rc=\$\?' "$TARGET" \
-   && ! grep -qE 'if ! mv "\$triage_tmp"' "$TARGET"; then
-  pass "mv 失敗の rc 捕捉が else 節形式 (否定パイプラインの rc=0 を拾わない)"
+# mv 失敗: PATH の先頭に非ゼロ終了する mv を置いて実分岐へ入れる。helper は裸の `mv` を呼ぶため
+# 追加の権限も外部依存も要らない。rc=0 を報告する形 (`if ! mv ...` の否定パイプライン) への
+# 退行は、rc が 0 になることで assert が落ちる。
+repo=$(make_sandbox tc14b-mv)
+mkdir -p "$repo/bin"
+printf '#!/bin/bash\nexit 1\n' > "$repo/bin/mv"
+chmod +x "$repo/bin/mv"
+write_fixture "$repo/review.json" mixed_triage
+before=$(jq -S . "$repo/review.json")
+HELPER_STDERR=$(PATH="$repo/bin:$PATH" bash "$TARGET" \
+  --review-source local_file --review-source-path "$repo/review.json" 2>&1 >/dev/null) && HELPER_RC=0 || HELPER_RC=$?
+tc14b_mv_ok=1
+[ "$HELPER_RC" = "1" ] || tc14b_mv_ok=0
+grep -q 'FIX_FALLBACK_FAILED=1; reason=fatal_triage_mv_failed' <<<"$HELPER_STDERR" || tc14b_mv_ok=0
+grep -qE 'reason=fatal_triage_mv_failed; rc=0(;|$)' <<<"$HELPER_STDERR" && tc14b_mv_ok=0
+[ "$(jq -S . "$repo/review.json")" = "$before" ] || tc14b_mv_ok=0
+[ -z "$(ls "$repo"/review.json.triage.* 2>/dev/null || true)" ] || tc14b_mv_ok=0
+if [ "$tc14b_mv_ok" = "1" ]; then
+  pass "mv 失敗で exit 1 / rc は非ゼロ / 入力は無変更 / tempfile は回収される"
 else
-  fail "mv の rc 捕捉が if-! 形式のままです (失敗時 rc=0 になる)"
+  fail "mv 失敗分岐が期待どおりでない (rc=$HELPER_RC): $HELPER_STDERR"
 fi
 
 # --------------------------------------------------------------------------

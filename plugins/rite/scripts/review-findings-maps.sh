@@ -337,7 +337,8 @@ if [ "${moved_count:-0}" -gt 0 ]; then
   fi
 
   # 移送後 JSON の自己検証は置かない。transport は 1 本の jq で
-  #   (a) non_blocking_findings に `gated ∧ ¬fatal` の要素をそのまま append し
+  #   (a) non_blocking_findings に `gated ∧ ¬fatal` の要素を `demotion_reason` 付きで append し
+  #       (マージは `.id` を上書きしないので要素の同一性は保たれる)
   #   (b) findings から同じ述語の要素だけを除く
   # 純粋な move なので、「両配列が配列」「移送要素の id が保存されている」「和集合の重複が
   # 増えていない」はいずれも構成上恒真になる。恒真な検査を置くと、実際に発火しうるのは
