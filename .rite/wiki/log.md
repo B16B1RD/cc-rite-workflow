@@ -1,5 +1,6 @@
 ## 2026-09-06
 * **Skip**: [20260905T172524Z-pr-2577.md](raw/reviews/20260905T172524Z-pr-2577.md) — 既存の文書整合性規約の適用確認であり、新規のプロジェクトドメイン知見はない
+* **lint:clean** — contradictions=0, stale=55, orphans=0, missing_concept=0, unregistered_raw=440, broken_refs=0
 * **Skip**: [20260905T155313Z-pr-2576.md](raw/reviews/20260905T155313Z-pr-2576.md) — 既存の文書整合性規約の適用確認であり、新規のプロジェクトドメイン知見はない
 * **lint:clean** — contradictions=0, stale=55, orphans=0, missing_concept=0, unregistered_raw=434, broken_refs=0
 
