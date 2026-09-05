@@ -2254,7 +2254,7 @@ exit "$_gate_rc"
 
 成功時に併記されうる観測 marker (いずれも WARNING と対。**分類を変えず、続行を妨げない**。ステップ 6 Retained flag mapping 登録済):
 
-- `[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable` — `Verification:` marker はあるが第 3 の述語が偽の gate 対象 finding (marker から `=>` までの間に改行 / `<br>` / 句点が挟まる / marker から `=>` までが判別子の上限を超える / 既存 `verification.measured` (`true` / `false` 問わず) の保持)。**silent 降格の唯一の検出層**。**helper は本 marker では停止しない**。このうち実際に降格した finding は `non_blocking_findings[]` へ移送され (既存 `measured=true` 保持分は降格せず `findings[]` に残る)、ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section (E2E でも省略禁止) と ステップ 6.1.d の関連 Issue 記録コメントに載るため、人間への到達は既存経路で担保される
+- `[CONTEXT] MEASURED_DEMOTED_ON_ANCHOR=1; count={n}; cause=anchor_unparseable` — `Verification:` marker はあるが第 3 の述語が偽の gate 対象 finding (marker から `=>` までの間に改行 / `<br>` / 句点が挟まる / marker から `=>` までが判別子の上限を超える)。**silent 降格の唯一の検出層**。**helper は本 marker では停止しない**。このうち実際に降格した finding は `non_blocking_findings[]` へ移送され (既存 `measured=true` 保持分は降格せず `findings[]` に残る)、ステップ 5.4 の `### 実測なし指摘 (non-blocking)` section (E2E でも省略禁止) と ステップ 6.1.d の関連 Issue 記録コメントに載るため、人間への到達は既存経路で担保される
 - `[CONTEXT] MEASURED_RUNTIME_OBS_WITHOUT_ANCHOR=1; count={n}` — `runtime_observation` を主張しながら正規形の実測アンカーを欠く reviewer 契約違反。成功時は `measured=false` への降格または既存 boolean の保持となる。判定不能なら観測 marker だけで続行せず `anchor_undetermined` の失敗 routing に従う。
 
 > `MEASURED_UNDETERMINED_ON_ANCHOR` は出力しない。判定不能は失敗 reason、形式崩れでも実測なしと算出できる finding は成功時の `MEASURED_DEMOTED_ON_ANCHOR` で可視化する。
