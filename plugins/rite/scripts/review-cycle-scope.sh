@@ -254,7 +254,7 @@ if [ -z "$diff_names" ]; then
 fi
 
 # 前サイクルで gated scope (current-pr / follow-up) の指摘を出した reviewer を、健全性検査と
-# 同一の jq で抽出する。
+# 同一の jq で抽出する。非 fatal 移送分は解消検証の対象から除く。
 #
 # **母集団は `findings[]` と `non_blocking_findings[]` の和**。実測必須ゲートは非実測の gated
 # 指摘を `findings[]` から `non_blocking_findings[]` へ *移送* する (`.findings = $kept`) ため、
@@ -302,6 +302,7 @@ scope_probe=$(jq -r '
     else
       "OK\t" + ([$all[]
                   | select((.scope // "") == "current-pr" or (.scope // "") == "follow-up")
+                  | select(.demotion_reason != "non_fatal")
                   | .reviewer | sub("-reviewer$";"")] | unique | join(","))
     end
 ' "$prev_json" 2>"$probe_err") || {

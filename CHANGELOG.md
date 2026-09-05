@@ -355,7 +355,7 @@ Past version sections carry none either — they have already been stripped.
 
 ### Removed
 
-- **Two config keys that had zero effect on runtime behavior are removed**: `fix.fail_fast_response` (never read by any consumer; the template itself admitted flipping it did nothing) and `review.scope_assignment.enabled` (consumers read `auto_demote_low` directly and never checked `enabled`, so the documented opt-out never worked). `auto_demote_low` itself remains fully wired and is unaffected.
+- **Two config keys that had zero effect on runtime behavior are removed**: `fix.fail_fast_response` (never read by any consumer; the template itself admitted flipping it did nothing) and `review.scope_assignment.enabled` (consumers never checked `enabled`, so the documented opt-out never worked).
 
 ## [0.7.2] - 2026-07-01
 
