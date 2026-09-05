@@ -106,8 +106,16 @@ fail-loud (`no_unnecessary_fallback`)。**上流の `review-measured-gate.sh` �
 **なぜ永続 JSON へ書き戻すか**: `non_blocking_findings[]` は移送分の全文の唯一の保存先であり、
 `hooks/scripts/nb-sweep-collect.sh` が**永続 JSON から**同配列を読む。working tempfile に留めると
 移送分が sweep 母集団から silent に脱落する。`measured_gate` receipt は pr-review がゲートを適用した
-時点の統計なので再計算しない (receipt の意味を後から書き換えない)。書き戻し経路は
-`hooks/review-result-save.sh` を通らないため、id の書式・和集合の一意性は helper 内で自己検証する。
+時点の統計なので再計算しない (receipt の意味を後から書き換えない)。
+
+**なぜ移送後 JSON の自己検証を置かないか**: transport は 1 本の jq で「`gated ∧ ¬fatal` の要素を
+`non_blocking_findings` へそのまま append し、`findings` から同じ述語の要素だけを除く」純粋な move を
+行う。したがって「両配列が配列」「移送要素の id が保存されている」「和集合の重複が増えていない」は
+いずれも構成上恒真で、検査を置いても実際に発火しうるのは**入力時点から存在した欠陥**
+(id 欠落 / 非文字列 id / 独立採番による重複) だけになる。それは保存境界
+`hooks/review-result-save.sh` が「advisory な記録の欠陥を理由に blocking findings まで失うのは
+fail-unsafe」として意図的に非ブロッキングと決めている領域で、ここで hard fail にすると同一条件の
+enforcement level が経路によって逆転する。jq 自体の失敗は書き出し直後の rc 捕捉が拾う。
 
 **再入冪等性**: 移送済み finding は `findings[]` に残らないため、同一 JSON への再実行は `moved=0` になり
 移送ブロックへ入らない。`/rite:fix --nb-sweep` がステップ 1.2.0 を再通過しても二重移送しない。

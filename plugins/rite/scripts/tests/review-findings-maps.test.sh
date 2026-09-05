@@ -188,7 +188,7 @@ FIXEOF
       ;;
     nb_missing_id)
       # 入力時点で non_blocking_findings[] に id を持たない要素がある (保存境界が非ブロッキングと
-      # 決めている欠陥。本 helper の自己検証もこれを停止理由にしてはならない)
+      # 決めている欠陥。本 helper もこれを停止理由にしてはならない)
       cat > "$path" <<'FIXEOF'
 {"schema_version":"1.1.0","pr_number":1,"findings":[
   {"id":"F-01","file":"src/a.ts","line":10,"severity":"MEDIUM","scope":"current-pr","pre_existing":true,"verification":{"measured":true}}
@@ -479,27 +479,23 @@ before_paths=$(ls "${TMPDIR:-/tmp}"/rite-fix-normalized-* 2>/dev/null | LC_ALL=C
 repo=$(make_sandbox tc9)
 write_fixture "$repo/review.json" v10_missing_scope
 run_helper "$repo" local_file "$repo/review.json"
-after_paths=$(ls "${TMPDIR:-/tmp}"/rite-fix-normalized-* 2>/dev/null | LC_ALL=C sort || true)
-leaked_paths=$(LC_ALL=C comm -13 <(printf '%s\n' "$before_paths") <(printf '%s\n' "$after_paths"))
-# 移送 tempfile の回収は **tempfile を作ったまま失敗して trap / inline rm に委ねる経路** で見る。
-# TC-9 の fixture は moved=0 で移送分岐に入らないため、そこに triage.* の不在を書いても恒真になる。
-# mixed_triage (成功経路、mv で消える) と mktemp 失敗経路の両方を sweep する。
-repo_leak=$(make_sandbox tc9-triage)
-mkdir -p "$repo_leak/ro"
-write_fixture "$repo_leak/ro/review.json" mixed_triage
-chmod 555 "$repo_leak/ro"
-run_helper "$repo_leak" local_file "$repo_leak/ro/review.json"
-chmod 755 "$repo_leak/ro"
-leaked_triage=$(ls "$repo_leak"/ro/review.json.triage.* 2>/dev/null || true)
-# moved>0 の成功経路 (mv で消える) も併せて sweep する
+# 移送 tempfile は mv が消費する。**mktemp 失敗経路を leg に足さない** — その経路は tempfile を
+# 1 度も作らないので triage.* の不在はどの実装でも成立し、assert が恒真になる。
+# 「tempfile を作ったまま失敗する」経路は移送 jq 失敗と mv 失敗の 2 つだけで、いずれも本スイートの
+# sandbox からは実挙動として起こせない (jq / mv を差し替えない限り)。到達できない leg を置く代わりに
+# rc 捕捉と inline rm の形を TC-14b が静的に pin する。
 repo_moved=$(make_sandbox tc9-moved)
 write_fixture "$repo_moved/review.json" mixed_triage
 run_helper "$repo_moved" local_file "$repo_moved/review.json"
 leaked_triage_moved=$(ls "$repo_moved"/review.json.triage.* 2>/dev/null || true)
-if [ -z "$leaked_paths" ] && [ -z "$leaked_triage" ] && [ -z "$leaked_triage_moved" ]; then
-  pass "normalization tempfile と移送 tempfile (失敗経路 / 成功経路の両方) が回収される"
+# normalization tempfile の sweep は **全 leg の run_helper 後**に取る (先に確定させると後続 leg が
+# 作った分が母集団から漏れる)
+after_paths=$(ls "${TMPDIR:-/tmp}"/rite-fix-normalized-* 2>/dev/null | LC_ALL=C sort || true)
+leaked_paths=$(LC_ALL=C comm -13 <(printf '%s\n' "$before_paths") <(printf '%s\n' "$after_paths"))
+if [ -z "$leaked_paths" ] && [ -z "$leaked_triage_moved" ]; then
+  pass "normalization tempfile と移送 tempfile (moved>0 の成功経路) が回収される"
 else
-  fail "tempfile leaked: $(tr '\n' ' ' <<<"$leaked_paths$leaked_triage$leaked_triage_moved")"
+  fail "tempfile leaked: $(tr '\n' ' ' <<<"$leaked_paths$leaked_triage_moved")"
 fi
 
 # --------------------------------------------------------------------------
@@ -599,19 +595,18 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# TC-14: 移送後の自己検証は **本 transport が生成した差分だけ** を見る
-# 入力時点で既に存在した和集合欠陥 (id 欠落 / 独立採番による重複) は検査母集団に入れない。
+# TC-14: 入力時点の id 欠陥 (欠落 / 独立採番による重複) で移送を止めない
 # 保存境界 (hooks/review-result-save.sh) が同じ条件を意図的に非ブロッキングと決めているため、
 # ここで hard fail にすると同一条件の enforcement level が経路によって逆になる。
 # --------------------------------------------------------------------------
-echo "TC-14: 自己検証のスコープ (transport が生成した差分に限定)"
+echo "TC-14: 入力時点の id 欠陥で停止しない"
 repo=$(make_sandbox tc14-dup)
 write_fixture "$repo/review.json" dup_id_union
 run_helper "$repo" local_file "$repo/review.json"
 tc14_ok=1
 [ "$HELPER_RC" = "0" ] || tc14_ok=0
 grep -q 'FIX_FATAL_TRIAGE=applied; fatal=0; moved=1' <<<"$HELPER_STDERR" || tc14_ok=0
-grep -q 'fatal_triage_id_union_violation' <<<"$HELPER_STDERR" && tc14_ok=0
+grep -q 'FIX_FALLBACK_FAILED' <<<"$HELPER_STDERR" && tc14_ok=0
 # 移送要素の id は入力時のまま保存される
 [ "$(jq -r '[.non_blocking_findings[] | select(.demotion_reason == "non_fatal") | .id] | join(",")' "$repo/review.json")" = "F-01" ] || tc14_ok=0
 if [ "$tc14_ok" = "1" ]; then
@@ -626,15 +621,17 @@ write_fixture "$repo/review.json" nb_missing_id
 run_helper "$repo" local_file "$repo/review.json"
 if [ "$HELPER_RC" = "0" ] \
    && grep -q 'FIX_FATAL_TRIAGE=applied; fatal=0; moved=1' <<<"$HELPER_STDERR" \
-   && ! grep -q 'fatal_triage_id_union_violation' <<<"$HELPER_STDERR"; then
+   && ! grep -q 'FIX_FALLBACK_FAILED' <<<"$HELPER_STDERR"; then
   pass "入力時点の nb 側 id 欠落でも移送は完了する"
 else
   fail "unexpected (rc=$HELPER_RC): err='$HELPER_STDERR'"
 fi
 
 # --------------------------------------------------------------------------
-# TC-14b: 書き込み失敗分岐 — mktemp 失敗 / mv 失敗のいずれも非ゼロ rc を報告し入力を変えない
-# (Issue §4.5 MUST「書き込み失敗は非ゼロ終了、部分適用を残さない」の直接 pin)
+# TC-14b: 書き込み失敗分岐
+#   mktemp 失敗 — 実挙動 pin (非ゼロ rc / 入力無変更)
+#   mv 失敗     — rc 捕捉形式の静的 pin。sandbox から mv を実際に失敗させる手段が無いため
+#                 実挙動は pin できない (Issue §4.5 MUST のうち mktemp 側だけが実挙動 pin)
 # --------------------------------------------------------------------------
 echo "TC-14b: 書き込み失敗分岐"
 repo=$(make_sandbox tc14b-mktemp)
@@ -653,15 +650,9 @@ else
   fail "mktemp 失敗分岐が期待どおりでない (rc=$HELPER_RC): $HELPER_STDERR"
 fi
 
-# mv 失敗: 入力ファイルを read-only ディレクトリ配下に置けないため、mv 先を
-# ディレクトリにして rename を失敗させる (mktemp は同ディレクトリなので成功する)
-repo=$(make_sandbox tc14b-mv)
-write_fixture "$repo/src.json" mixed_triage
-mkdir -p "$repo/review.json"
-cp "$repo/src.json" "$repo/review.json/inner.json"
-run_helper "$repo" local_file "$repo/review.json/inner.json"
-# inner.json は通常ファイルなので mv は成功する。mv 失敗の直接再現は環境依存のため、
-# ここでは「mv 失敗 reason が語彙として登録され、rc=0 を報告しない形になっている」ことを pin する
+# mv 失敗の実挙動は sandbox から起こせない (mv 先をディレクトリにしても mktemp が同ディレクトリに
+# 作られるため rename は成功する)。fixture を組んでも判定に寄与しないので置かず、
+# 「rc 捕捉が else 節形式で、否定パイプラインの rc=0 を拾わない」ことだけを静的に pin する。
 if grep -qE 'if mv "\$triage_tmp" "\$orig_source_path"' "$TARGET" \
    && grep -qE 'triage_mv_rc=\$\?' "$TARGET" \
    && ! grep -qE 'if ! mv "\$triage_tmp"' "$TARGET"; then
@@ -690,7 +681,8 @@ fi
 
 # --------------------------------------------------------------------------
 # TC-16: explicit_file が local_file と同じ経路を通ることの pin
-# (T-07 / AC-6 は fix/SKILL.md の選択 UI 規定と E2E が担保する。本スイートの対象外)
+# (T-07 / AC-6 は fix/SKILL.md の選択 UI 規定に属し本スイートでは検査しない。
+#  当該規定の静的 pin は hooks/tests/fix-fatal-triage-contract.test.sh が持つ)
 # --------------------------------------------------------------------------
 echo "TC-16: explicit_file / local_file の経路一致"
 repo=$(make_sandbox tc16)

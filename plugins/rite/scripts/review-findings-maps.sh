@@ -42,7 +42,7 @@
 #   [CONTEXT] FIX_FALLBACK_FAILED=1; reason=measured_undetermined; findings=F-xx,...; ...
 #   [CONTEXT] FIX_FALLBACK_FAILED=1; reason=severity_enum_violation; findings=F-xx,...; ...
 #   [CONTEXT] FIX_FALLBACK_FAILED=1; reason=fatal_triage_jq_failed|fatal_triage_mktemp_failed
-#                                          |fatal_triage_id_union_violation|fatal_triage_mv_failed; ...
+#                                          |fatal_triage_mv_failed; ...
 #
 # Reason SoT (fix.md の reason 表からは bullet 形式で参照される — 委譲済 reason は
 # fix.md 内で `reason=` 構文を使わない規約):
@@ -55,10 +55,6 @@
 #   json_invalid                      — --review-source-path が jq parse 不能 (exit 1)
 #   fatal_triage_jq_failed            — 致命性仕分けの検査 / 移送 jq が失敗 (exit 1、部分適用を残さない)
 #   fatal_triage_mktemp_failed        — 移送出力用 tempfile の mktemp が失敗 (exit 1)
-#   fatal_triage_id_union_violation   — 移送後 JSON の自己検証違反 (配列の型 / 移送要素 id の保存 /
-#                                       本移送が新規に作った和集合重複)。mv せず exit 1 (入力は無変更)。
-#                                       入力時点で既にあった和集合欠陥は検査母集団に入れない
-#                                       (hooks/review-result-save.sh が非ブロッキングと決めた領域)
 #   fatal_triage_mv_failed            — 移送後 JSON の atomic mv が失敗 (exit 1、入力は無変更)
 #   jq_mutation_failed                — normalization jq mutation が失敗、原 JSON のまま続行 (非ブロッキング)
 #   mktemp_failure_norm_tmp           — normalization 用 tempfile の mktemp が失敗、原 JSON のまま続行 (非ブロッキング)
@@ -67,7 +63,7 @@
 #   scope_map_build_failed            — scope_map 構築用 jq が失敗、scope_map_json="{}" で続行 (非ブロッキング)
 #
 # Eval-order enumeration (reason 表と併せて参照する emit reasons の documented set):
-# emit reasons sequence = (`scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `mktemp_failure_norm_tmp` / `json_invalid` / `fatal_triage_jq_failed` / `severity_enum_violation` / `measured_undetermined` / `fatal_triage_mktemp_failed` / `fatal_triage_id_union_violation` / `fatal_triage_mv_failed` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `scope_map_build_failed`)
+# emit reasons sequence = (`scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `mktemp_failure_norm_tmp` / `json_invalid` / `fatal_triage_jq_failed` / `severity_enum_violation` / `measured_undetermined` / `fatal_triage_mktemp_failed` / `fatal_triage_mv_failed` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `scope_map_build_failed`)
 #
 # Exit codes:
 #   0  正常 (no-op source / maps build 成功 / 非ブロッキング WARNING のみ)
@@ -340,51 +336,14 @@ if [ "${moved_count:-0}" -gt 0 ]; then
     exit 1
   fi
 
-  # 書き戻し前の自己検証: 検査対象は **本 transport が生成した差分だけ** に限る。
-  # (1) 両配列が配列であること (2) 移送した要素の id が入力時のまま保存されていること
-  # (3) 本 transport が **新規に** 和集合重複を作っていないこと。
-  # 入力時点で既に存在した和集合欠陥 (id 欠落 / 独立採番による重複) は検査母集団から外す —
-  # 同じ不変条件を保存境界で見る hooks/review-result-save.sh は、そこを落とすと advisory な
-  # 記録の欠陥を理由に blocking findings まで失う fail-unsafe になるとして **意図的に非ブロッキング**
-  # と決めている。ここで hard fail にすると同じ条件の enforcement level が経路によって逆になる。
-  moved_ids=$(jq -r '
-    def gated: (.scope == "current-pr") or (.scope == "follow-up");
-    def fatal: gated and (.verification.measured == true)
-               and ((.severity == "CRITICAL") or (.severity == "HIGH"));
-    [.findings[]? | select(gated and (fatal | not)) | (.id // "")] | join("\n")
-  ' "$review_source_path" 2>/dev/null || echo "__JQ_FAILED__")
-  if [ "$moved_ids" = "__JQ_FAILED__" ]; then
-    rm -f "$triage_tmp"
-    triage_tmp=""
-    echo "ERROR: 移送対象 id の抽出 jq が失敗しました" >&2
-    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=fatal_triage_jq_failed" >&2
-    exit 1
-  fi
-  triage_violation=$(jq -e -n \
-    --slurpfile before "$review_source_path" \
-    --slurpfile after "$triage_tmp" \
-    --arg moved "$moved_ids" '
-    def ids($doc): [$doc.findings[]?, $doc.non_blocking_findings[]? | .id // ""];
-    ($before[0]) as $b | ($after[0]) as $a
-    | ($moved | split("\n") | map(select(length > 0))) as $moved_list
-    # (1) 型
-    | (($a.non_blocking_findings | type) == "array" and ($a.findings | type) == "array")
-    # (2) 移送要素の id が入力時のまま保存されている
-    and ($moved_list | all(. as $id | ($a.non_blocking_findings | any(.id == $id))))
-    # (3) 本 transport が新規に和集合重複を作っていない
-    #     (入力時点で既にあった重複件数を超えていないことを見る)
-    and ((ids($a) | length) - (ids($a) | unique | length)
-         <= (ids($b) | length) - (ids($b) | unique | length))
-  ' >/dev/null 2>&1 && echo ok || echo violation)
-  if [ "$triage_violation" != "ok" ]; then
-    rm -f "$triage_tmp"
-    triage_tmp=""
-    echo "ERROR: 移送後 JSON の自己検証に失敗しました (配列の型、移送要素 id の保存、または本移送が新規に作った和集合重複)" >&2
-    echo "  移送対象 id: $(printf '%s' "$moved_ids" | tr '\n' ',')" >&2
-    echo "  影響: 壊れた JSON を永続化しないため書き戻しを中止します (入力ファイルは無変更)" >&2
-    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=fatal_triage_id_union_violation; findings=$(printf '%s' "$moved_ids" | tr '\n' ',')" >&2
-    exit 1
-  fi
+  # 移送後 JSON の自己検証は置かない。transport は 1 本の jq で
+  #   (a) non_blocking_findings に `gated ∧ ¬fatal` の要素をそのまま append し
+  #   (b) findings から同じ述語の要素だけを除く
+  # 純粋な move なので、「両配列が配列」「移送要素の id が保存されている」「和集合の重複が
+  # 増えていない」はいずれも構成上恒真になる。恒真な検査を置くと、実際に発火しうるのは
+  # 入力時点から存在した欠陥 (id 欠落 / 非文字列 id / 独立採番による重複) だけになり、同じ
+  # 不変条件を意図的に非ブロッキングと決めている保存境界 (hooks/review-result-save.sh) と
+  # enforcement level が経路によって逆転する。jq 自体の失敗は直上の rc 捕捉が拾う。
 
   # mktemp 側と同じ理由で `if cmd; then :; else rc=$?; fi` 形式を使う
   triage_mv_rc=0

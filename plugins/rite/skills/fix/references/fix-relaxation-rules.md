@@ -32,7 +32,8 @@ findings は **致命性**で 1 度だけ振り分けられる。severity × sco
 |------|------|--------|
 | **致命 (修正対象)** | `measured == true` ∧ `severity ∈ {CRITICAL, HIGH}` ∧ `scope ∈ {current-pr, follow-up}` | Must fix in this PR |
 | **移送済み (非致命)** | 上記以外の gated finding（`measured == true` かつ MEDIUM / LOW-MEDIUM / LOW）。**file-based source でのみ発生** | `non_blocking_findings[]` へ移送。修正・reply・auto-select の対象外。件数のみ表示 |
-| **仕分け未適用 (会話 / legacy Markdown)** | 上記と同条件だが helper が no-op だった経路 | 移送も記録も起きていない。**従来どおり修正対象**（「移送済み」として数えない） |
+| **仕分け未適用 (会話 / legacy Markdown)** | 上記と同条件だが helper が no-op だった経路 | 移送も記録も起きていない。**従来どおり修正対象**（「移送済み」として数えない）。ステップ 2.1 の選択肢にも並べる |
+| **移送不能 (Priority 3 Raw JSON)** | 仕分けは走るが書き戻し先が呼び出し側 tempfile で永続 JSON が無い経路 | 移送が 1 件でも起きたら `[fix:error] reason=p3_triage_not_persistable` で**停止**する。移送分の全文がどこにも残らず nb-sweep の母集団から脱落するため、黙って捨てずに `/rite:pr-review` の再実行（Priority 2 の生成）へ倒す |
 | **nit (認知のみ)** | `scope == "nit-noted"` | 仕分け対象外。no PR reply, no fix commit。`acknowledged_nit_count` に算入 |
 | **non-blocking (実測なし)** | `measured == false` | 実測必須ゲートで pr-review 側が既に `non_blocking_findings[]` へ降格済み。fix 対象外 |
 | **External review** | severity_map 未登録の未対応コメント（人間レビュアー等） | 実測必須ゲートの対象外。従来どおり blocking |
