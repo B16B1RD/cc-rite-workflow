@@ -1,5 +1,6 @@
 ## 2026-09-06
 * **Skip**: [20260905T155313Z-pr-2576.md](raw/reviews/20260905T155313Z-pr-2576.md) — 既存の文書整合性規約の適用確認であり、新規のプロジェクトドメイン知見はない
+* **lint:clean** — contradictions=0, stale=55, orphans=0, missing_concept=0, unregistered_raw=434, broken_refs=0
 
 ## 2026-09-04
 * **Skip**: [20260904T031440Z-pr-2545.md](raw/reviews/20260904T031440Z-pr-2545.md) — detector-candidate: 番号トークンの機械削除は見出し slug・文・hex・テスト根拠を巻き込む。残骸パターンと href 同期は grep で強制できる
