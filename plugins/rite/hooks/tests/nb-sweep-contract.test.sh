@@ -180,6 +180,28 @@ assert_not_grep "T-07 no failed on class A JSON" "$sandbox/t07.err" 'NB_SWEEP_CO
 topt_rc=$?
 assert "unknown option rc=2" "2" "$topt_rc"
 
+# All live collect calls use a local gh stub; JSON-only calls remain offline.
+mkdir -p "$sandbox/bin"
+export NB_TEST_COMMENTS="$sandbox/comments.json"
+export NB_TEST_GH_LOG="$sandbox/gh.log"
+printf '[]\n' > "$NB_TEST_COMMENTS"
+cat > "$sandbox/bin/gh" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$NB_TEST_GH_LOG"
+case "$*" in
+  'repo view '*) printf 'test/repo\n' ;;
+  'pr view '*--json\ body*)
+    [ "${NB_TEST_BRANCH_ONLY:-0}" = 1 ] || printf 'Closes #42\n' ;;
+  'pr view '*--json\ headRefName*) printf 'feat/issue-42-test\n' ;;
+  'api --paginate --slurp repos/test/repo/issues/42/comments')
+    [ "${NB_TEST_FAIL:-0}" = 0 ] || exit 1
+    cat "$NB_TEST_COMMENTS" ;;
+  *) exit 97 ;;
+esac
+SH
+chmod +x "$sandbox/bin/gh"
+export PATH="$sandbox/bin:$PATH"
+
 # --- --pr は最新 JSON を採る（AC-1 MUST: 最新 review JSON） ---
 pr_dir="$sandbox/state/.rite/review-results"
 mkdir -p "$pr_dir"
@@ -191,6 +213,72 @@ pr_out=$("$COLLECT" --pr 1 --state-root "$sandbox/state" 2>"$sandbox/tpr.err") |
 pr_rc=${pr_rc:-0}
 assert "T-01 --pr rc=0" "0" "$pr_rc"
 assert "T-01 --pr picks F-NEW" "F-NEW" "$(printf '%s' "$pr_out" | jq -r '.targets[0].id')"
+
+# --- Routing preserves evidence and only issues boolean measured MEDIUM ---
+route_json="$sandbox/routes.json"
+jq -n '{non_blocking_findings: [
+  {id:"M-true",severity:"MEDIUM",verification:{measured:true,detail:"observed"}},
+  {id:"M-false",severity:"MEDIUM",verification:{measured:false}},
+  {id:"M-missing",severity:"MEDIUM"},
+  {id:"M-string",severity:"MEDIUM",verification:{measured:"true"}},
+  {id:"M-number",severity:"MEDIUM",verification:{measured:1}},
+  {id:"M-scalar",severity:"MEDIUM",verification:"none"},
+  {id:"L-true",severity:"LOW",verification:{measured:true}},
+  {id:"H-true",severity:"HIGH",verification:{measured:true}},
+  {id:"N-true",severity:"MEDIUM",scope:"nit-noted",verification:{measured:true}}
+], findings:[{id:"nit",severity:"MEDIUM",scope:"nit-noted",verification:{measured:true}}]}' > "$route_json"
+route_out=$("$COLLECT" --json "$route_json")
+assert "only measured boolean MEDIUM issued" "M-true" "$(printf '%s' "$route_out" | jq -r '[.targets[] | select(.route=="issued") | .id] | join(",")')"
+assert "remaining routes recorded" "9" "$(printf '%s' "$route_out" | jq '[.targets[] | select(.route=="recorded")] | length')"
+assert "verification evidence preserved" "observed" "$(printf '%s' "$route_out" | jq -r '.targets[] | select(.id=="M-true") | .verification.detail')"
+
+# Guardrail-only must not be mistaken for a completed/no-op sweep.
+guard_json="$sandbox/guard.json"
+jq '{guardrail_audit_log}' "$mix_json" > "$guard_json"
+guard_out=$("$COLLECT" --json "$guard_json")
+assert "guardrail-only status ok" "ok" "$(printf '%s' "$guard_out" | jq -r '.status')"
+assert "guardrail-only count 1" "1" "$(printf '%s' "$guard_out" | jq -r '.count')"
+assert "guardrail route recorded" "recorded" "$(printf '%s' "$guard_out" | jq -r '.already_rejected[0].route')"
+assert "guardrail measured false" "false" "$(printf '%s' "$guard_out" | jq -r '.already_rejected[0].verification.measured')"
+assert "guardrail severity original" "MEDIUM" "$(printf '%s' "$guard_out" | jq -r '.already_rejected[0].severity')"
+
+# Read legacy and new dispositions only inside the persisted ledger section.
+ledger_body="$sandbox/live-ledger.md"
+cat > "$ledger_body" <<EOF
+${MARKER}
+
+| collision | src/keep.ts:9 | recorded | outside ledger; must not exclude |
+### 却下台帳
+
+| finding_id | file:line | 判定 | 判定文 |
+| old | src/old.ts:1 | rejected | legacy |
+| rec | src/rec.ts:2 | recorded | measured=false |
+| iss | src/iss.ts:3 | issued | follow-up #99 |
+| code-quality-reviewer | src/g.ts:7 | recorded | guardrail |
+📎 non_blocking_count: 4
+${SENTINEL}
+EOF
+jq -n --rawfile body "$ledger_body" '[[{body:$body}]]' > "$NB_TEST_COMMENTS"
+live_json="$sandbox/live.json"
+jq -n --slurpfile guard "$guard_json" '{non_blocking_findings:[
+{id:"old",file:"src/old.ts",line:1}, {id:"rec",file:"src/rec.ts",line:2},
+{id:"iss",file:"src/iss.ts",line:3}, {id:"old",file:"src/different.ts",line:1},
+{id:"collision",file:"src/keep.ts",line:9}
+],guardrail_audit_log:$guard[0].guardrail_audit_log}' > "$live_json"
+live_out=$("$COLLECT" --json "$live_json" --pr 1)
+assert "all three ledger dispositions excluded, id collision retained" "2" "$(printf '%s' "$live_out" | jq '.count')"
+assert "guardrail ledger excluded" "0" "$(printf '%s' "$live_out" | jq '.already_rejected | length')"
+assert "same id different location retained" "src/different.ts" "$(printf '%s' "$live_out" | jq -r '.targets[] | select(.id=="old") | .file')"
+NB_TEST_BRANCH_ONLY=1 "$COLLECT" --json "$live_json" --pr 1 > "$sandbox/branch.out"
+assert "branch fallback gets same ledger" "$live_out" "$(cat "$sandbox/branch.out")"
+assert_grep "ledger loaded from related Issue" "$NB_TEST_GH_LOG" 'repos/test/repo/issues/42/comments'
+NB_TEST_FAIL=1 "$COLLECT" --json "$live_json" --pr 1 > /dev/null 2> "$sandbox/read-fail.err"
+assert "ledger read failure rc=1" "1" "$?"
+assert_grep "ledger read failure is loud" "$sandbox/read-fail.err" 'reason=comments_unreadable'
+printf '{}\n' > "$NB_TEST_COMMENTS"
+"$COLLECT" --json "$live_json" --pr 1 > /dev/null 2> "$sandbox/invalid-ledger.err"
+assert "invalid comment response rc=1" "1" "$?"
+assert_grep "invalid ledger response is loud" "$sandbox/invalid-ledger.err" 'reason=ledger_invalid'
 
 # --- rails pin (SKILL.md 機械レール) ---
 ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
@@ -208,8 +296,9 @@ assert_grep "T-07 fix --nb-sweep" "$FIX" '\-\-nb-sweep'
 assert_grep "T-07 fix sweep-done sentinel" "$FIX" '\[fix:sweep-done\]'
 assert_grep "T-07 fix persist uses body count" "$FIX" '\-\-count "\$body_count"'
 assert_grep "T-07 fix record failed is error" "$FIX" 'outcome=failed'
-assert_grep "T-07 fix class-B issueize" "$FIX" '新規 class-B'
-assert_grep "T-07 fix 判定文必須" "$FIX" '判定文必須'
+assert_grep "T-07 fix issued route" "$FIX" 'route=issued'
+assert_grep "T-07 fix recorded machine rationale" "$FIX" 'severity=\{sev\}; measured=\{bool\}'
+assert_grep "T-07 sweep forbids commits" "$FIX" 'コードを変更せず、commit / push を行わない'
 assert_grep "T-07 pr-review rejected_ledger" "$REVIEW" '{rejected_ledger}'
 assert_grep "T-07 pr-review merge-into" "$REVIEW" 'nb-sweep-ledger.sh merge-into'
 assert_grep "T-07 pr-review extract" "$REVIEW" 'nb-sweep-ledger.sh extract'
@@ -217,6 +306,54 @@ assert_grep "T-07 pr-review REJECTED_LEDGER=failed" "$REVIEW" 'REJECTED_LEDGER=f
 assert_grep "T-07 pr-review WARNING 却下台帳取得失敗" "$REVIEW" 'WARNING: 却下台帳取得失敗'
 assert_grep "T-07 pr-review failed-path 注記" "$REVIEW" '台帳取得失敗 — 却下済み指摘の再訴訟の可能性'
 assert_grep "T-07 prompt rejected_ledger" "$PROMPT" '{rejected_ledger}'
+
+# Execute the actual skill error guards, with local stubs for mutations.
+extract_fix_block() {
+  awk -v needle="$1" '
+    /^```bash$/ {inside=1; block=""; next}
+    /^```$/ {if (inside && index(block, needle)) {printf "%s", block; exit}; inside=0}
+    inside {block=block $0 "\n"}
+  ' "$FIX"
+}
+route_guard="$sandbox/route-guard.sh"
+issue_guard="$sandbox/issue-guard.sh"
+extract_fix_block 'reason=nb_sweep_route_missing' > "$route_guard"
+extract_fix_block 'reason=nb_sweep_issue_failed' > "$issue_guard"
+assert_grep "route guard extracted" "$route_guard" 'nb_sweep_route_missing'
+assert_grep "issue guard extracted" "$issue_guard" 'nb_sweep_issue_failed'
+stub_plugin="$sandbox/plugin"
+mkdir -p "$stub_plugin/scripts"
+cat > "$stub_plugin/scripts/create-issue-with-projects.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'called\n' >> "$NB_TEST_ISSUE_LOG"
+exit 1
+SH
+export NB_TEST_ISSUE_LOG="$sandbox/issue.log"
+sed -i "s|{plugin_root}|$stub_plugin|g" "$issue_guard"
+# A tail mutation represents subsequent persist: exits must prevent reaching it.
+export NB_TEST_LEDGER="$ledger"
+ledger_before=$(cksum "$ledger")
+head_before=$(git -C "$PLUGIN_ROOT" rev-parse HEAD)
+printf '\nprintf "unexpected persist\\n" >> "$NB_TEST_LEDGER"\n' >> "$route_guard"
+printf '\nprintf "unexpected persist\\n" >> "$NB_TEST_LEDGER"\n' >> "$issue_guard"
+for route_case in missing unknown; do
+  if [ "$route_case" = missing ]; then
+    collect_out='{"targets":[{"id":"x"}]}'
+  else
+    collect_out='{"targets":[{"id":"x","route":"fix"}]}'
+  fi
+  export collect_out
+  bash "$route_guard" > "$sandbox/route-$route_case.out" 2>&1
+  assert "route $route_case fails" "1" "$?"
+  assert_grep "route $route_case fix:error" "$sandbox/route-$route_case.out" '\[fix:error\]'
+done
+assert "invalid route never calls issue helper" "no" "$([ -e "$NB_TEST_ISSUE_LOG" ] && echo yes || echo no)"
+issue_args='{"options":{"source":"pr_review"}}' bash "$issue_guard" > "$sandbox/issue-guard.out" 2>&1
+assert "issue helper failure exits" "1" "$?"
+assert_grep "issue failure fix:error" "$sandbox/issue-guard.out" '\[fix:error\]'
+assert_grep "issue stub was called" "$NB_TEST_ISSUE_LOG" '^called$'
+assert "failure paths leave ledger unchanged" "$ledger_before" "$(cksum "$ledger")"
+assert "failure paths leave HEAD unchanged" "$head_before" "$(git -C "$PLUGIN_ROOT" rev-parse HEAD)"
 
 # --- T-08 (AC-1..AC-3): body_count の抽出式が producer (fix/SKILL.md) と validator (helper) で一致する ---
 # fix/SKILL.md ステップ 1.3.S step 3 は抽出した値を helper へ `--count` として渡し、helper は

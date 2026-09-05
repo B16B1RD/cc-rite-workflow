@@ -282,7 +282,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 <a id="nb-sweep-ledger"></a>
 
-`/rite:iterate` の `[review:mergeable]` 後 sweep が残存 NB を消化した記録。永続チャネルは 6.1.d の関連 Issue コメント（新チャネルを作らない）。**JSON トップレベルへキーを足さない** — 台帳はコメント本文の `### 却下台帳`、消化内訳は iterate 完了通知と `[CONTEXT] ITERATE_NB_SWEEP=` / `NB_SWEEP_RESULT=` marker。再入ガードの権威は `.rite/state/nb-sweep-done-{pr_number}.txt`（1 行目 `noop` または `done`。**存在が skip**。`fixed ≥ 1` で push したときだけ 2 行目に HEAD SHA — ready の reviewed-head ゲートが読む。読取側の skip は 1 行目 / `-f` のみ）。会話 marker は観測用。
+`/rite:iterate` の `[review:mergeable]` 後 sweep が残存 NB を消化した記録。永続チャネルは 6.1.d の関連 Issue コメント（新チャネルを作らない）。**JSON トップレベルへキーを足さない** — 台帳はコメント本文の `### 却下台帳`、消化内訳は iterate 完了通知と `[CONTEXT] ITERATE_NB_SWEEP=` / `NB_SWEEP_RESULT=` marker。再入ガードの権威は `.rite/state/nb-sweep-done-{pr_number}.txt`（1 行目 `noop` または `done`。**存在が skip**。新規書込は 1 行のみ。既存の 2 行形式は読取互換として残す）。会話 marker は観測用。
 
 **台帳エントリ**（コメント本文、`📎 non_blocking_count:` の直前）:
 
@@ -291,20 +291,22 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 | finding_id | file:line | 判定 | 判定文 |
 |------------|-----------|------|--------|
-| F-01 | src/foo.ts:10 | rejected | <必須。空禁止> |
+| F-01 | src/foo.ts:10 | recorded | severity=LOW; measured=false |
 | F-02 | src/bar.ts:4 | issued | <必須。起票先 #N を含む> |
 ```
 
-`判定` の受理値: `rejected` / `issued`。`fixed` はコード側で消化済みのため台帳へは書かない。`guardrail_audit_log[]` 由来は `rejected` として転記し sweep で再判断しない。
+`判定` の書込値: `issued` / `recorded`。既存の `rejected` は `recorded` 相当として読み、再判断しない。`recorded` の機械理由は `severity={sev}; measured={bool}`。`guardrail_audit_log[]` / `already_rejected[]` は `recorded` として転記する。
+
+collect は `targets[]` に `verification` と `route` を返す。実測あり MEDIUM は `issued`、それ以外と nit-noted は `recorded`。`--pr` は関連 Issue コメントの台帳を読み、既存の issued/recorded/rejected を対象から除外する。`--json` 単独はオフライン収集。count は targets と未転記 already_rejected の合計で、guardrail のみでも sweep を実行する。
 
 **sweep 消化結果 marker**（iterate 完了通知の値源。JSON フィールドではない）:
 
 ```
-[CONTEXT] NB_SWEEP_RESULT=done; fixed=N; rejected=M; issued=K
+[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M
 [CONTEXT] ITERATE_NB_SWEEP=done|noop|skipped|failed
 ```
 
-`done` のとき完了通知の残件欄は `未処理 non-blocking: 0 件` を維持し、消化内訳 `sweep: fixed=N / rejected=M / issued=K` を併記する。`noop`（対象 0 件）は従来の 0 件通知のまま追加行を出さない。`skipped` は `nb-sweep-done-{pr_number}.txt` 既存（本 run で 5.S 済み）。書き込み失敗・JSON 取得失敗は `failed` で iterate を停止する（完了通知へ進まない）。意図的な再 sweep は当該ファイルを削除する。
+`done` のとき完了通知の残件欄は `未処理 non-blocking: 0 件` を維持し、消化内訳 `sweep: issued=K / recorded=M` を併記する。`noop`（対象 0 件）は従来の 0 件通知のまま追加行を出さない。`skipped` は `nb-sweep-done-{pr_number}.txt` 既存（本 run で 5.S 済み）。書き込み失敗・JSON 取得失敗は `failed` で iterate を停止する（完了通知へ進まない）。意図的な再 sweep は当該ファイルを削除する。
 
 **`id` は 2 配列の和集合で一意**: 5.3.0.M の降格時に `id` を振り直さず元の `F-NN` を維持する。根拠は **JSON 単体の監査可読性** — 永続 JSON を読む人間が 2 配列を跨いで finding を一意に参照できるようにするため (5.4 統合レポートのテーブルは `id` 列を持たないので、JSON ↔ レポート間の id 相互参照は成立しない。それを目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証で、`findings[]` と `non_blocking_findings[]` の和集合に対して書式 + 一意性を評価する (本配列側に閉じた違反は上記の非ブロッキング marker で報告され、保存は続行する)。
 

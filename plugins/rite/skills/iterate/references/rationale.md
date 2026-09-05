@@ -263,11 +263,9 @@ replied-only / 中断 / サーキットブレーカーのテンプレートは�
 ## nb-sweep-step
 
 `[review:mergeable]` を完了へ直結しないのは、残存 NB を人間消化に残す運用を構造的に閉じるため。
-consume を `/rite:fix --nb-sweep` に閉じるのは、既存 1.0.1 flag parse と修正実装を再利用し、
-iterate 本体に三択を複製しないため。`[fix:sweep-done]` を `[fix:pushed]` と分けるのは、後者が
-ステップ 1 へ戻ってフルレビューを起こす契約だから（MUST NOT）。JSON 取得失敗を完了通知の
-「取得失敗」欄にしないのは、未消化のまま正常出口へ進む経路そのものが本 Issue の対象だから。
-one-shot は sweep 後の新規 class-B を Issue 化に固定して 2 周目を作らない収束保証。
+consume を `/rite:fix --nb-sweep` に閉じ、collect helper の issued/recorded を適用する。
+コードを修正しないため `[fix:sweep-done]` で完了し、フルレビューへ戻らない。
+取得・起票・台帳保存の失敗を停止させ、未消化のまま正常出口へ進む経路を閉じる。
 6.1.d 本文へ `### 却下台帳` を足すのは新チャネル禁止（既存コメントの拡張）。次 cycle の
 `{rejected_ledger}` 注入は 6.1.d rewrite が台帳を消すと無意味になるため、merge-into helper
 が count 行直前へ機械 splice する。
