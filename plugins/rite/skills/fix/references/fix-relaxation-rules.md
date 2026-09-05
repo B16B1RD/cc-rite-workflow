@@ -46,4 +46,4 @@ Automatic fix target selection (Phase 2.1) is applied only when `/rite:fix` is c
 | Conversation history has a record of `rite:fix` itself being called via Skill tool by `/rite:iterate` (= caller chain `iterate → fix`) | Within loop → Apply automatic selection (fatal findings) |
 | Otherwise (user directly entered `/rite:fix` outside of `/rite:iterate`) | Manual execution → Display option selection |
 
-For manual execution, users select targets via interactive options. separate-issue creation の AskUserQuestion 経路は廃止されているため、Phase 2.1 の選択肢は「コードを修正する / accept (認知のみ) / 説明・返信のみ」の 3 択になる (skip → 別 Issue 化の選択肢は提示しない)。
+For manual execution, users select targets via interactive options. skip → 別 Issue で loop 終了する AskUserQuestion 経路は閉じているため、Phase 2.1 の選択肢は「コードを修正する / accept (認知のみ) / 説明・返信のみ」の 3 択になる。残存 non-blocking の別 Issue 化は機械 routing（`/rite:iterate` 5.S `/rite:fix --nb-sweep` と `/rite:cleanup` の follow-up 起票）が担う。
