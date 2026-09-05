@@ -6,6 +6,10 @@ description: "「本経路に来るのは別 live セッション在席時のみ
 created: "2026-07-21T18:30:00Z"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260905T121410Z-pr-2573.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260905T121410Z-pr-2573.md"
+  - type: "reviews"
     resource: "raw/reviews/20260905T112609Z-pr-2571.md"
   - type: "reviews"
     resource: "raw/reviews/20260905T104753Z-pr-2571.md"
@@ -35,7 +39,7 @@ sources:
     resource: "raw/reviews/20260831T074623Z-pr-2494.md"
 tags: ["comment-rot", "cause-neutral", "exclusivity-claim", "doc-sync", "not-grep-pin", "quantifier-strengthening", "birth-defect"]
 confidence: high
-generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:10:29.806932+00:00" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:14:41.011525+00:00" }
 verified:
   - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-05T12:10:29.806932+00:00" }
   - by: "rite-wiki-ingest/claude-opus-5[1m]"
@@ -104,6 +108,8 @@ SoT の定義から 1 語（`duplicate`）を外したが、同じ SoT の Consu
 drift 先が Issue の Non-Target（別 Issue の管轄と明記）である場合は、本 PR で触らず**管轄 Issue へコメントで申し送りを配線**する。新規起票は重複になる。握り潰しにならないよう、完了報告にも明示する。
 
 ### 母集団を変えたら等価性の宣言も見直す
+
+入力を共通処理へ集約した場合、旧経路別の件数や未判定の扱いも同期対象になる。同じレコードでも producer の判定規則と consumer の対象選択は異なるため、消費側の説明を直す際に生成側の規則まで一律置換しない。
 
 述語へ条件を追加すると、対になる別の述語との「同一母集団」という説明が偽になることがある。機構を増やして等価性を復元する前に、説明を実際の包含関係へ狭められるかを検討する。同じ定義を本文・索引・参照文書が言い換えている場合は、限定句の変更を全ての読者向け説明へ同期する。
 

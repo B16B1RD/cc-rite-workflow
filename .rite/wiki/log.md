@@ -2372,6 +2372,10 @@
 
 ## 2026-09-05
 
+* **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — [20260905T121410Z-pr-2573.md](raw/reviews/20260905T121410Z-pr-2573.md) を統合
+* **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — [20260905T121410Z-pr-2573.md](raw/fixes/20260905T121410Z-pr-2573.md) を統合
+
+
 * **Update**: [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md) — [20260904T232945Z-pr-2571.md](raw/reviews/20260904T232945Z-pr-2571.md) を統合
 * **Update**: [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md) — [20260904T234103Z-pr-2571.md](raw/fixes/20260904T234103Z-pr-2571.md) を統合
 * **Update**: [共有リソースの type/名前空間を再利用する新機能は、既存消費者のコード内契約（コメント明示の不変条件）を見落として生存中のリソースを破壊しうる](pages/anti-patterns/shared-resource-type-reuse-without-consumer-contract-check.md) — [20260905T060856Z-pr-2571.md](raw/fixes/20260905T060856Z-pr-2571.md) を統合
