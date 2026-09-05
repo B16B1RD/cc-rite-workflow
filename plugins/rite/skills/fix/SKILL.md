@@ -900,6 +900,7 @@ exit 1
 | `pr_number_placeholder_residue` | ステップ 1.2.0 冒頭の `pr_number="{pr_number}"` literal substitute が忘れられ、数値以外 (空文字 / placeholder 残留) のまま bash block に入った (cleanup.md ステップ 6 / pr-review.md ステップ 6.1.a と対称化、`[fix:error]` 昇格) |
 | `p3_triage_mktemp_failed` | Priority 3 で raw_json を helper へ渡す tempfile の mktemp が失敗 (`[fix:error]` 昇格) |
 | `p3_triage_write_failed` | Priority 3 で raw_json の tempfile 書き出しが失敗 (`[fix:error]` 昇格) |
+| `gate_not_applied` | 選択した review source に実測必須ゲートの適用記録 (`measured_gate`) が無い。ゲート未適用の結果で仕分けると非実測指摘が致命に混ざるため停止 (`[fix:error]` 昇格) |
 | `p3_triage_moved_probe_failed` | Priority 3 で仕分け後 JSON から移送件数を読み取れない (jq 失敗 / 非数値)。移送の有無を判定できないため記録漏れを見逃さず停止 (`[fix:error]` 昇格) |
 | `p3_triage_not_persistable` | Priority 3 で非致命移送が発生したが、この経路には永続 review-result JSON が無い。移送分が nb-sweep の母集団から脱落するため停止 (`[fix:error]` 昇格) |
 | `p3_triage_readback_failed` | Priority 3 で仕分け後 JSON が空 (helper が 0 バイトを残した。`cause=empty_file`) か、読み戻し (`cat`) が失敗 (`cause=cat_failed`)。いずれも仕分け前の raw_json へ silent に戻さず停止、`[fix:error]` 昇格 |
@@ -919,15 +920,16 @@ exit 1
 - `json_invalid`: `--review-source-path` が jq parse 不能 (helper exit 1 → caller が `[fix:error]` に昇格)。仕分けが JSON 全体を読むため、parse 不能を先に切り分けて一次原因を残す
 - `mktemp_failure_norm_tmp`: schema 1.1.0 normalization 用 tempfile (`${TMPDIR:-/tmp}/rite-fix-normalized-XXXXXX`) の mktemp が失敗 (disk full / inode 枯渇 / read-only filesystem / permission denied、`REVIEW_SOURCE_NORMALIZATION_FAILED` flag、非ブロッキング、原 JSON のまま続行)。silent skip 防止のため WARNING + retained flag を必ず emit する
 - `measured_undetermined`: gated finding に `verification.measured` (boolean) が無い (未判定を blocking / non-blocking のどちらにも倒さず helper exit 1 → caller が `[fix:error] reason=measured_undetermined; findings=...` に昇格)
+- `non_blocking_not_array`: `non_blocking_findings` が配列でない (helper exit 1 → `[fix:error]` 昇格。移送 jq の型エラーが総称 reason に潰れる前に一次原因を出す)
 - `severity_enum_violation`: `findings[].severity` が enum 外 (helper exit 1 → `[fix:error]` 昇格。`review-measured-gate.sh` の `scope_enum_violation` と同型の語彙)
-- `fatal_triage_jq_failed`: 致命性仕分けの検査 / 移送 jq が失敗 (部分適用を残さず helper exit 1 → `[fix:error]` 昇格)
+- `fatal_triage_jq_failed`: 致命性仕分けの jq が失敗 (部分適用を残さず helper exit 1 → `[fix:error]` 昇格)。非隣接の 4 site から emit するため `cause=` で判別する (`severity_enum_probe` / `measured_probe` / `counts_probe` / `transport`)
 - `fatal_triage_mktemp_failed`: 移送出力用 tempfile の mktemp が失敗 (helper exit 1 → `[fix:error]` 昇格)
 - `fatal_triage_mv_failed`: 移送後 JSON の atomic mv が失敗 (helper exit 1 → `[fix:error]` 昇格、入力ファイルは無変更)
 - `jq_duplicate_check_failed`: 重複 file:line 検出用 jq が失敗 (silent data loss 検出を skip、非ブロッキング)
 - `severity_map_build_failed`: severity_map 構築用 jq が失敗 (0 件で正常終了する silent regression 防止、helper exit 1 → caller が `[fix:error]` に昇格)
 - `scope_map_build_failed`: scope_map_json 構築用 jq が失敗 (`FIX_FALLBACK_FAILED` flag、非ブロッキング、`scope_map_json="{}"` で legacy blocking 扱いに fallback)
 
-**Eval-order enumeration** (Pattern-2 documented-union): emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `p3_triage_mktemp_failed` / `p3_triage_write_failed` / `p3_triage_readback_failed` (cause=empty_file) / `p3_triage_moved_probe_failed` / `p3_triage_not_persistable` / `p3_triage_readback_failed` (cause=cat_failed) / `pr_comment_scope_map_build_failed` / `review_source_resolve_failed` / `findings_maps_build_failed`) — 同一 reason が非隣接の site から emit される場合は判別子つきで各位置に列挙する (隣接する同一 reason の分岐は 1 回に畳む)
+**Eval-order enumeration** (Pattern-2 documented-union): emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `gate_not_applied` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `p3_triage_mktemp_failed` / `p3_triage_write_failed` / `p3_triage_readback_failed` (cause=empty_file) / `p3_triage_moved_probe_failed` / `p3_triage_not_persistable` / `p3_triage_readback_failed` (cause=cat_failed) / `pr_comment_scope_map_build_failed` / `review_source_resolve_failed` / `findings_maps_build_failed`) — 同一 reason が非隣接の site から emit される場合は判別子つきで各位置に列挙する (隣接する同一 reason の分岐は 1 回に畳む)
 
 #### Legacy Branching (PR Comment Path Only)
 

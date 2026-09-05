@@ -259,11 +259,13 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 `/rite:pr-review` ステップ 5.3.0.M の実測必須ゲートで non-blocking に降格した**非実測指摘**、およびステップ 5.3.0.C の帰結クラス降格政策 ([assessment-rules.md §5.3.0.C](../skills/fix/references/assessment-rules.md#530c-帰結クラス降格政策-consequence-class-demotion-gate)) で降格した **class B 指摘** (5.3.0.C の分類対象は実測判定済み — `verification.measured` が boolean — の blocking に限られ、実測未判定の finding は class A 固定で降格されないため、class B 降格分は常に実測付き) を保持するトップレベル配列。要素のスキーマは `findings[]` と**同一** (上記 [findings[] 要素](#json-schema) の表の全フィールド — `pre_existing` を含む。本節では再掲しない)。
 
-**`demotion_reason` (任意、1.1.0+)**: `/rite:fix` ステップ 1.2.0 の致命性仕分けで移送した要素のみが持つ追加フィールド。**受理値は `"non_fatal"` の 1 値**（gated finding のうち実測ありだが CRITICAL/HIGH でないもの）。**書き手は `scripts/review-findings-maps.sh` のみ**。severity は書き換えない（Impact 軸は不変で、blocking から外れるのは致命性軸の判定による）。
+**`demotion_reason` (任意、1.1.0+)**: `/rite:fix` ステップ 1.2.0 の致命性仕分けで移送した要素のみが持つ追加フィールド。**受理値は `"non_fatal"` の 1 値**（consumer 式を満たさない gated finding = 実測なし、または実測ありだが CRITICAL/HIGH でないもの。helper の移送述語は `gated ∧ ¬fatal` であり実測の有無では絞らない）。**書き手は `scripts/review-findings-maps.sh` のみ**。severity は書き換えない（Impact 軸は不変で、blocking から外れるのは致命性軸の判定による）。
 
 3 つの降格出所はキーの有無だけで判別できる — 実測ゲート降格 (5.3.0.M) は**キーなし**、class B 降格 (5.3.0.C) は `demotion` オブジェクト、fix 側の非致命移送は `demotion_reason`。`demotion` に policy 値を足して 3 出所を 1 キーに畳まないのは、6.1.d の関連 Issue 記録コメントが `demotion` を持つ要素に**降格理由を併記する**ため — 併記の対象が非致命移送にも誤って広がる。
 
 `demotion_reason` を持つ要素は fix 側で追記されるため、`/rite:pr-review` の 5.4 / 6.1.d（同一 cycle の pr-review 実行時点では存在しない）ではなく、`/rite:fix` の完了報告・E2E 出力・関連 Issue の work memory コメントが記録経路になる。全文は本配列に残り、iterate 5.S の nb-sweep が消化対象として読む。
+
+**fix 側の書き戻しは派生フィールドを更新しない（不変条件の明示的な例外）**: 移送は `findings[]` と `non_blocking_findings[]` だけを書き換え、`verdict` / `overall_assessment` / `total_findings` は移送前の値のまま残す。`verdict` と `overall_assessment` を「単一の blocking 件数式から同時に代入する」のは `scripts/review-measured-gate.sh` が唯一の書き手だからで（[§verdict](#verdict)）、fix 側が再計算すると書き手が 2 つになりゲート適用時点の統計という receipt の意味が失われる。したがって**移送後の JSON では `findings[] | length` と `total_findings` が乖離し、`findings[]` が空でも `verdict` は `fix-needed` のまま**でありうる。移送後の JSON から producer 側の blocking 集合を復元する consumer は、`findings[]` に `non_blocking_findings[] | select(.demotion_reason == "non_fatal")` を足して数える（`hooks/scripts/review-trend-divergence.sh` が実装例）。
 
 **`demotion` オブジェクト (任意、1.1.0+)**: 5.3.0.C 由来の降格要素のみが持つ追加フィールド。形は `{policy: "class-b-demotion", reason: <判定文>}` — `policy` は降格の出所の判別子 (現在は 1 値のみ)、`reason` は class B 認定の判定文 (classification map の `scenario`)。書き手は `scripts/review-class-demotion-gate.sh` のみ。**本キーの有無が実測ゲート降格分 (5.3.0.M、キーなし) と class B 降格分 (5.3.0.C、キーあり) を区別する唯一の監査判別子**であり、6.1.d の関連 Issue 記録コメントは本キーを持つ要素に降格理由を併記する。read 側は未知キーを無視するため旧 reader でも壊れない。
 
