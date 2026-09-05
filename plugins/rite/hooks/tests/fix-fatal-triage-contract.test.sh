@@ -89,15 +89,19 @@ assert_grep "C-04 marker 不在では非致命 gated も選択肢に並べる" "
 assert_grep "C-04 分岐 5 が marker 不在時に severity 帯を絞らない" "$FIX" \
   'marker なし.*severity に依らず本セクション以降を通常通り実行する'
 
-# --- C-04d: 分類表の行と分岐 5 が同一母集団を主張することを両側で pin ---
-# 1.3 分類表の「全 severity 帯 (仕分け未適用)」行は自身を「ステップ 2.1 分岐 5 と同一母集団」と
-# 宣言するが、その宣言を裏づけるものが無かった。表だけが広い母集団へ戻ると、同一 finding が
-# 「Must fix」と「表示のみ; NOT a fix target」の両行に該当して逆の Action が付く。
-# 上の C-04 は分岐 5 の**動作句**しか見ておらず、間の条件節は `.*` に飲まれる。両側を同じ粒度で張る
+# --- C-04d: 分類表の行と分岐 5 の包含関係を両側で pin ---
+# 1.3 分類表の「全 severity 帯 (仕分け未適用)」行は自身と分岐 5 の関係を宣言するが、その宣言を
+# 裏づけるものが無かった。表だけが広い母集団へ戻ると、同一 finding が「Must fix」と
+# 「表示のみ; NOT a fix target」の両行に該当して逆の Action が付く。
+# 上の C-04 は分岐 5 の**動作句**しか見ておらず、間の条件節は `.*` に飲まれる。両側を同じ粒度で張る。
+# 分岐 5 側は第 2 disjunct (scope 未登録 / enum 外) まで含めて張る — 共通の prefix だけを見ると
+# 片側だけが disjunct を得ても緑のまま通り、この pin が守ると宣言した包含関係が破れても気づけない
 assert_grep "C-04d 分類表の仕分け未適用行が measured != false で母集団を絞る" "$FIX" \
   '\*\*全 severity 帯 \(仕分け未適用\)\*\*.*gated finding のうち \*\*`measured != false`\*\* のもの'
-assert_grep "C-04d 分岐 5 が measured != false で母集団を絞る" "$FIX" \
-  '仕分けが走らなかった経路.*`scope ∈ \{current-pr, follow-up\}` かつ \*\*measured != false\*\*'
+assert_grep "C-04d 分類表が分岐 5 の第 1 disjunct と同一母集団であると宣言する" "$FIX" \
+  '本行は ステップ 2\.1 分岐 5 の第 1 disjunct と同一母集団。scope 未登録 / enum 外は分岐 5 の第 2 disjunct が受け、本表に行を持たない'
+assert_grep "C-04d 分岐 5 が measured != false と scope 未登録の 2 disjunct で母集団を定める" "$FIX" \
+  '仕分けが走らなかった経路.*`scope ∈ \{current-pr, follow-up\}` かつ \*\*measured != false\*\*、\*\*または scope 未登録 / enum 外'
 
 # --- C-04b: marker 不在時の表示規則 ---
 # 規則は 1.2.0 (moved_count 系) と 1.4 注記 (fatal_count) の 2 箇所だけに置く。
