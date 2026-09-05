@@ -137,8 +137,8 @@ dirty な基点ブランチを黙って上書きしないため。破棄・stash
 ## nb-sweep-done-sweep
 
 `nb-sweep-done-{pr}.txt` は 5.S 再入の権威（会話 marker は観測用）。寿命は本 run — 0.6 の
-`fresh || cur_cc == 0` で消し、cleanup でも回収する。cleanup まで残すと再 iterate と
-post-breaker 5.S が skip され、未消化 0 の再保証が死ぬ。
+`fresh || cur_cc == 0` で消し、cleanup でも回収する。cleanup まで残すと再 iterate の
+5.S が skip され、未消化 0 の再保証が死ぬ。
 
 ## wiki-worktree-persist
 

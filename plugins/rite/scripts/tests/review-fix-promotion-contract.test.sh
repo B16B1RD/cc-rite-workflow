@@ -6,8 +6,6 @@ audit="$ROOT/plugins/rite/skills/pr-review/references/promotion-audit-review-fix
 review="$ROOT/plugins/rite/skills/pr-review/SKILL.md"
 fix="$ROOT/plugins/rite/skills/fix/SKILL.md"
 iterate="$ROOT/plugins/rite/skills/iterate/SKILL.md"
-post_breaker_prepare="$ROOT/plugins/rite/hooks/scripts/post-breaker-full-review-prepare.sh"
-post_breaker_route="$ROOT/plugins/rite/hooks/scripts/post-breaker-review-route.sh"
 test_reviewer="$ROOT/plugins/rite/agents/test-reviewer.md"
 error_reviewer="$ROOT/plugins/rite/agents/error-handling-reviewer.md"
 failures=0
@@ -39,46 +37,99 @@ assert_grep 'aggregate recommendation shelved' "$audit" '| `aggregate-recommenda
 assert_grep 'fix drift shelved' "$audit" '| `fix-induced-drift-in-cumulative-defense` | shelve — already mechanized | `review-trend-divergence.sh` and the `iterate` circuit breaker |'
 assert_grep 'likelihood evidence routed to follow-up' "$audit" '| `reviewer-likelihood-evidence-omission-induces-mechanical-demotion` | follow-up — producer enforcement incomplete |'
 assert_grep 'convention escalation shelved' "$audit" '| `convention-escalation-has-no-terminus` | shelve — already mechanized | structured review JSON, helper gates, and fail-loud enum validation |'
-assert_grep 'differential scope mechanized' "$audit" '| `differential-scope-review-blind-outside-diff` | mechanized here | `iterate/SKILL.md` post-breaker full review transition and normal review routing |'
-assert_grep 'post-breaker full review transition exists' "$iterate" '### ステップ 6.0: post-breaker full review'
-assert_grep 'post-breaker run boundary is pinned' "$iterate" 'review-run-since-{pr_number}.txt'
-assert_grep 'post-breaker full pass is single-shot' "$iterate" '同一発火に対し full review を 2 回以上 invoke する'
-assert_grep 'post-breaker preparation runs in shared block' "$iterate" 'post-breaker-full-review-prepare.sh'
-assert_grep 'post-breaker mergeable uses normal completion' "$iterate" 'ステップ 5.S（NB digest sweep。完了通知の前）'
-assert_grep 'post-breaker findings use normal fix routing' "$iterate" 'ステップ 3 の `/rite:fix` へ'
-assert_grep 'post-breaker failure preserves batch sentinel' "$iterate" '<!-- [iterate:max-cycles-reached] -->'
-assert_grep 'post-breaker failure preserves interactive sentinel' "$iterate" '<!-- [iterate:max-cycles-stopped] -->'
+assert_grep 'differential scope uses explicit restart' "$audit" '| `differential-scope-review-blind-outside-diff` | mechanized here | `iterate/SKILL.md` step 0.6 fresh-run pin and `review-cycle-scope.sh` full scope on explicit restart; breaker stops without an additional review |'
+assert_grep 'breaker stops before another review or fix' "$iterate" '発火後は review / fix を invoke せず、停止 sentinel と通知を出して終了する'
+assert_grep 'breaker mode routes directly to batch stop' "$iterate" '| `batch` | ステップ 6.1（failed sentinel emit）|'
+assert_grep 'breaker mode routes directly to interactive stop' "$iterate" '| `interactive` | ステップ 6.2（機械的停止通知）|'
+assert_grep 'breaker preserves batch sentinel' "$iterate" '<!-- [iterate:max-cycles-reached] -->'
+assert_grep 'breaker preserves interactive sentinel' "$iterate" '<!-- [iterate:max-cycles-stopped] -->'
+assert_grep 'explicit restart starts full scope' "$iterate" 'fresh entry として run 開始点を更新し full scope から始める'
+assert_grep 'reset failure warning controls notice' "$iterate" 'その WARNING（`サーキットブレーカー発火時の cycle counter リセットと stop_reason 永続化に失敗`）を停止通知の注意行判定に使う'
+assert_grep 'handoff risk needs both writes to fail' "$iterate" '**(c) `HANDOFF_CLEAR=failed` かつ 共有前段の atomic set 失敗**'
+assert_grep 'successful second write suppresses handoff warning' "$iterate" '`HANDOFF_CLEAR=failed` のみ（共有前段の atomic set 成功）では**追加しない**'
+assert_grep 'unresolved root notice applies to both modes' "$iterate" 'STATE_ROOT が `unresolved` の場合は両モードの停止通知に'
+assert_grep 'unresolved root must retain stop sentinel' "$iterate" '停止 sentinel は省略しない'
 
-state_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-post-breaker-test-XXXXXX")
+state_dir=$(mktemp -d "${TMPDIR:-/tmp}/rite-breaker-test-XXXXXX")
 trap 'rm -rf "$state_dir"' EXIT
-mkdir -p "$state_dir/.rite/review-results"
-touch "$state_dir/.rite/review-results/2195-20260809-100000.json"
-touch "$state_dir/.rite/review-results/2195-20260809-110000.json"
-if bash "$post_breaker_prepare" --pr 2195 --state-root "$state_dir"; then
-  actual_pin=$(cat "$state_dir/.rite/state/review-run-since-2195.txt")
-  assert_eq 'post-breaker producer pins latest review' '2195-20260809-110000.json' "$actual_pin"
-else
-  fail 'post-breaker producer succeeds with review results'
+# Execute the shared step 6 bash block from the skill, using the real state
+# writer. The wrapper only records atomic writes and injects a write failure.
+awk '/^## ステップ 6:/ {section=1; next} section && /^```bash$/ {code=1; next} code && /^```$/ {exit} code {print}' "$iterate" > "$state_dir/step6.template"
+if [ ! -s "$state_dir/step6.template" ]; then
+  fail 'step 6 shared block is present'
 fi
-printf '%s\n' stale.json > "$state_dir/.rite/state/review-run-since-9999.txt"
-if bash "$post_breaker_prepare" --pr 9999 --state-root "$state_dir"; then
-  if [ ! -e "$state_dir/.rite/state/review-run-since-9999.txt" ]; then
-    pass 'post-breaker producer clears stale pin without review results'
-  else
-    fail 'post-breaker producer clears stale pin without review results'
+cat > "$state_dir/wrapper.sh" <<'WRAPPER'
+bash() {
+  if [[ "$1" == */hooks/state-path-resolve.sh ]] && [ "${BREAKER_EMPTY_ROOT:-0}" = 1 ]; then
+    return 0
   fi
+  if [[ "$1" == */hooks/flow-state.sh ]] && [ "${2:-}" = set ]; then
+    printf '%s\n' "$*" >> "$BREAKER_CALL_LOG"
+    if [ "${BREAKER_FAIL_SET:-0}" = 1 ]; then
+      echo 'injected atomic set failure' >&2
+      return 1
+    fi
+  fi
+  command bash "$@"
+}
+WRAPPER
+source "$ROOT/plugins/rite/hooks/scripts/lib/context-marker.sh"
+for reason in max-cycles divergence; do
+  for mode in batch interactive; do
+    for write_result in success failure; do
+      case_dir="$state_dir/$reason-$mode-$write_result"
+      mkdir -p "$case_dir/.rite/state"
+      sid=breaker-contract
+      flow="$ROOT/plugins/rite/hooks/flow-state.sh"
+      env RITE_STATE_ROOT="$case_dir" CLAUDE_CODE_SESSION_ID="$sid" bash "$flow" set \
+        --phase review --issue 2567 --branch issue-2567 --pr 2600 --next pending \
+        --cycle-count 4 --handoff '/rite:pr-review 2600' >/dev/null
+      if [ "$mode" = batch ]; then active=true; else active=false; fi
+      jq -n --argjson active "$active" '{issues:[2567],cursor:0,active:$active}' \
+        > "$case_dir/.rite/state/run-queue-$sid.json"
+      sed -e "s|{plugin_root}|$ROOT/plugins/rite|g" -e 's/{issue_number}/2567/g' \
+        -e 's/{branch_name}/issue-2567/g' -e 's/{pr_number}/2600/g' \
+        -e "s/{cb_reason}/$reason/g" "$state_dir/step6.template" > "$case_dir/step6.sh"
+      cat "$state_dir/wrapper.sh" "$case_dir/step6.sh" > "$case_dir/run.sh"
+      if [ "$write_result" = failure ]; then fail_set=1; else fail_set=0; fi
+      output=$(cd "$case_dir" && env RITE_STATE_ROOT="$case_dir" CLAUDE_CODE_SESSION_ID="$sid" \
+        BREAKER_CALL_LOG="$case_dir/calls" BREAKER_FAIL_SET="$fail_set" bash "$case_dir/run.sh" 2>&1)
+      label="$reason/$mode/$write_result"
+      assert_eq "$label keeps terminal mode" "$mode" "$(printf '%s\n' "$output" | marker_get ITERATE_CB_MODE)"
+      assert_eq "$label uses one atomic write" 1 "$(wc -l < "$case_dir/calls" | tr -d ' ')"
+      assert_grep "$label reset and reason share the write" "$case_dir/calls" "--cycle-count 0 --stop-reason circuit-breaker:$reason"
+      flow_file="$case_dir/.rite/sessions/$sid.flow-state"
+      if [ "$write_result" = success ]; then
+        assert_eq "$label resets counter" 0 "$(jq -r '.cycle_count // 0' "$flow_file")"
+        assert_eq "$label persists failure reason" "circuit-breaker:$reason" "$(jq -r '.stop_reason' "$flow_file")"
+        assert_eq "$label clears continuation handoff" '' "$(jq -r '.handoff // empty' "$flow_file")"
+        if [[ "$output" == *'永続化に失敗'* ]]; then fail "$label has no failure warning"; else pass "$label has no failure warning"; fi
+      else
+        assert_eq "$label retains counter on failure" 4 "$(jq -r '.cycle_count // 0' "$flow_file")"
+        assert_eq "$label retains handoff on failure" '/rite:pr-review 2600' "$(jq -r '.handoff' "$flow_file")"
+        if [[ "$output" == *'WARNING: サーキットブレーカー発火時の cycle counter リセットと stop_reason 永続化に失敗'* ]] \
+          && [[ "$output" == *'injected atomic set failure'* ]]; then
+          pass "$label reports failure and diagnostic"
+        else
+          fail "$label reports failure and diagnostic"
+        fi
+      fi
+    done
+  done
+done
+# The resolver can return an empty root with rc=0: retain a stop marker and
+# an explicit unresolved value rather than emitting an empty recovery target.
+output=$(cd "$case_dir" && env RITE_STATE_ROOT="$case_dir" CLAUDE_CODE_SESSION_ID="$sid" \
+  BREAKER_CALL_LOG="$case_dir/calls" BREAKER_EMPTY_ROOT=1 bash "$case_dir/run.sh" 2>&1)
+assert_eq 'unresolved root retains terminal interactive route' interactive "$(printf '%s\n' "$output" | marker_get ITERATE_CB_MODE)"
+assert_eq 'unresolved root is explicit in marker' unresolved "$(printf '%s\n' "$output" | marker_get ITERATE_CB_MODE --field STATE_ROOT)"
+if [[ "$output" == *'WARNING: state root を解決できませんでした'* ]]; then
+  pass 'unresolved root emits actionable warning'
 else
-  fail 'post-breaker producer accepts no-results full-review path'
+  fail 'unresolved root emits actionable warning'
 fi
-assert_eq 'mergeable routes to completion' complete "$(bash "$post_breaker_route" '[review:mergeable]' batch)"
-assert_eq 'findings route to fix' fix "$(bash "$post_breaker_route" '[review:fix-needed:2]' batch)"
-assert_eq 'malformed findings sentinel fails closed' stop-batch "$(bash "$post_breaker_route" '[review:fix-needed:2oops]' batch)"
-assert_eq 'zero findings sentinel fails closed' stop-batch "$(bash "$post_breaker_route" '[review:fix-needed:0]' batch)"
-assert_eq 'review error preserves batch stop' stop-batch "$(bash "$post_breaker_route" '[review:error]' batch)"
-assert_eq 'missing sentinel preserves interactive stop' stop-interactive "$(bash "$post_breaker_route" '' interactive)"
-invoke_count=$(awk '/### ステップ 6.0:/{inside=1} /### ステップ 6.1:/{inside=0} inside' "$iterate" | grep -Fc '`/rite:pr-review {pr_number}` を 1 回 invoke' || true)
-assert_eq 'post-breaker review invocation is specified exactly once' 1 "$invoke_count"
-assert_grep 'scope split mechanized' "$audit" '| `reviewer-scope-split-escalates-to-user` | mechanized here | Scope Split Gate below and `pr-review/SKILL.md` |'
+assert_eq 'no intermediate breaker review subsection' 0 "$(grep -c '^### ステップ 6\.0:' "$iterate" || true)"
+assert_grep 'scope split mechanized'  "$audit" '| `reviewer-scope-split-escalates-to-user` | mechanized here | Scope Split Gate below and `pr-review/SKILL.md` |'
 assert_grep 'scope rejection mechanized' "$audit" '| `scope-creep-rejection-empirical-gate` | mechanized here | Rejection Evidence Gate below and `fix/SKILL.md` |'
 assert_grep 'error-path regression mechanized' "$audit" '| `bugfix-new-error-path-needs-regression-test` | mechanized here | New Error-Path Regression Gate in reviewer prompts |'
 
