@@ -41,7 +41,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 ## Contract
 
 **Input**: PR number (required)
-**Output**: 完了通知（`[review:mergeable]` 到達後 5.S sweep 完了 or `[fix:replied-only]` 終了 or `[fix:cancelled-by-user]` 中断 or サーキットブレーカー後の full review 不成立（`[iterate:max-cycles-reached]` バッチ / `[iterate:max-cycles-stopped]` 対話。非収束による失敗で、マージには進まない）or sweep 失敗 `[iterate:nb-sweep-error]` or Ctrl+C 中断）。ブレーカー後の full review が返した mergeable / fix-needed は通常 routing に合流する。
+**Output**: 完了通知（`[review:mergeable]` 到達後 5.S sweep 完了 or `[fix:replied-only]` 終了 or `[fix:cancelled-by-user]` 中断 or サーキットブレーカー発火による停止（`[iterate:max-cycles-reached]` バッチ / `[iterate:max-cycles-stopped]` 対話。非収束による失敗で、マージには進まない）or sweep 失敗 `[iterate:nb-sweep-error]` or Ctrl+C 中断）。発火後に review / fix は invoke せず、再開は明示的な `/rite:iterate` 再実行に委ねる。
 
 ## E2E Output Minimization
 
