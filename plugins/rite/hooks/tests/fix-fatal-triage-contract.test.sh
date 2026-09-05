@@ -100,7 +100,16 @@ assert_grep "T-04b 1.4 の marker 不在時は severity 限定しない見出し
   'marker 不在 \(会話 / legacy Markdown\) → 見出しを `### 全 severity 帯（仕分け未適用）\({listed_count}件\)` にし'
 # 件数の決定規則は上の条件節 pin では守れない (条件節を残したまま削除できる) ので独立に pin する
 assert_grep "T-04b 1.4 の marker 不在時は実列挙件数を書く" "$FIX" \
-  '件数は実際に列挙した行数を書く'
+  '件数は実際に列挙した行数を書く \({listed_count}\)'
+# 件数決定文は marker 不在の見出し規則の直後になければ意味を持たない (無関係な節へ
+# 移設すると {listed_count} が決定規則不在のまま見出しに残る)
+_hd_line=$(grep -n '見出しを `### 全 severity 帯（仕分け未適用）' "$FIX" | head -1 | cut -d: -f1)
+_cnt_line=$(grep -n '件数は実際に列挙した行数を書く' "$FIX" | head -1 | cut -d: -f1)
+if [ -n "$_hd_line" ] && [ -n "$_cnt_line" ] && [ "$((_cnt_line - _hd_line))" -eq 1 ]; then
+  pass "T-04b 件数決定規則が marker 不在の見出し規則の直後にある"
+else
+  fail "T-04b 件数決定規則が見出し規則から離れている (heading=$_hd_line count=$_cnt_line) — {listed_count} の解決規則が別文脈へ移ると見出しに未解決の placeholder が残る"
+fi
 # 規則本文の手書き複製が増えていないこと (1.2.0 の 1 箇所だけ)。
 # `grep -c` は行単位で、本ファイルは 1 段落 1 行のため同一行内の複製を数えない。
 # `grep -o | wc -l` で出現数を直接数える
@@ -125,10 +134,10 @@ fi
 # 参照側 3 箇所 (4.5.3 / 4.6 / 5.1) が委譲文を保持していること。T-04b の複製禁止が
 # 参照側での規則再掲を禁じているため、この 1 文が消えると規則がどこにも残らない
 _nb_ref_count=$(grep -o 'marker 不在時規則に従う' "$FIX" | wc -l | tr -d ' ')
-if [ "$_nb_ref_count" = "3" ]; then
-  pass "T-04b 参照側 3 箇所が marker 不在時規則への委譲を保持している"
+if [ "$_nb_ref_count" = "4" ]; then
+  pass "T-04b 参照側 4 箇所が marker 不在時規則への委譲を保持している"
 else
-  fail "T-04b 委譲文が $_nb_ref_count 箇所 (期待 3 = 4.5.3 / 4.6 / 5.1) — 欠けた箇所に規則が残らない"
+  fail "T-04b 委譲文が $_nb_ref_count 箇所 (期待 4 = 1.4 / 4.5.3 / 4.6 / 5.1) — 欠けた箇所に規則が残らない"
 fi
 
 # --- T-05: 新 reason の documented-union 登録 ---
@@ -170,7 +179,9 @@ else
     | grep -o 'p3_triage_[a-z_]*` \?\((cause=[a-z_]*)\)\?' \
     | sed 's/`//; s/ (cause=/:/; s/)//; s/ $//')
   if [ -z "$_emit_seq" ] || [ -z "$_decl_seq" ]; then
-    fail "T-05b 比較母集団が空 (emit=${#_emit_seq} decl=${#_decl_seq}) — emit 記法 / enumeration 記法の drift で検査が無効化されている"
+    fail "T-05b 比較母集団が空 — emit 記法 / enumeration 記法の drift で検査が無効化されている
+    実 emit 順: $(printf '%s' "$_emit_seq" | tr '\n' ' ')
+    宣言順:     $(printf '%s' "$_decl_seq" | tr '\n' ' ')"
   elif [ "$_emit_seq" = "$_decl_seq" ]; then
     pass "T-05b Eval-order enumeration の P3 区間が実 emit 順と一致する"
   else
@@ -179,6 +190,11 @@ else
     宣言順:     $(printf '%s' "$_decl_seq" | tr '\n' ' ')"
   fi
 fi
+
+# uniq で連続重複を畳む根拠は enumeration 側の規範文にある。これが消えると
+# 上の比較が何を正としているかの人間可読な SoT が失われる
+assert_grep "T-05b enumeration の重複列挙規約が明文化されている" "$FIX" \
+  '同一 reason が非隣接の site から emit される場合は判別子つきで各位置に列挙する'
 
 # --- T-06: 撤去済み reason (fatal_triage_id_union_violation) の双方向 pin ---
 # helper 側の自己検証撤去に SKILL.md が追従しないと、存在しない検査を原因として案内することになる。

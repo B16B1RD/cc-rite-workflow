@@ -518,7 +518,7 @@ fi
 rm -f "$maps_err"
 ```
 
-helper は `[CONTEXT] FIX_FATAL_TRIAGE=applied; fatal={n}; moved={m}` を必ず 1 回 emit する。`{m}` を `{moved_count}` として retain し、ステップ 1.4 の表示・ステップ 4.5.3 の記録・ステップ 4.6 の完了報告・ステップ 5.1 の E2E 出力で使う。`{n}` は `{fatal_count}` として retain し、ステップ 1.4 の `### 致命` セクション見出しの件数に使う。**marker 不在は helper が仕分けまで到達していない**ことを意味するので、どちらも推測で補わない。marker 不在時の扱いは 2 系統に分かれる。**`{moved_count}`**: ステップ 4.5.3 / 4.6 / 5.1 では `{moved_count}件` を `件` ごと `不明 (FIX_FATAL_TRIAGE marker 不在)` に置換し (`{moved_pointer_suffix}` は空文字列にする — 指し先の記録が存在しないため)、ステップ 1.4 の「移送済み」セクションは見出しごと省略する (件数だけの節なので `不明` の見出しは意味を持たないため)。**`{fatal_count}`**: 使用箇所はステップ 1.4 の `### 致命` セクション見出しだけなので、規則はそこの注記を SoT とする。
+helper は `[CONTEXT] FIX_FATAL_TRIAGE=applied; fatal={n}; moved={m}` を必ず 1 回 emit する。`{m}` を `{moved_count}` として retain し、ステップ 1.4 の表示・ステップ 4.5.3 の記録・ステップ 4.6 の完了報告・ステップ 5.1 の E2E 出力で使う。`{n}` は `{fatal_count}` として retain し、ステップ 1.4 の `### 致命` セクション見出しの件数に使う。**marker 不在は helper が仕分けまで到達していない**ことを意味するので、どちらも推測で補わない。marker 不在時の扱いは 2 系統に分かれる。**`{moved_count}`**: ステップ 4.5.3 / 4.6 / 5.1 では `{moved_count}件` を `件` ごと `不明 (FIX_FATAL_TRIAGE marker 不在)` に置換し (`{moved_pointer_suffix}` は空文字列にする — 指し先の記録が存在しないため)、ステップ 1.4 の「移送済み」セクションは見出しごと省略する (件数だけの節なので `不明` の見出しは意味を持たず、移送も記録も起きていないのに「記録済み・sweep 対象」と表示すると事実に反するため)。**`{fatal_count}`**: 使用箇所はステップ 1.4 の `### 致命` セクション見出しだけなので、規則はそこの注記を SoT とする。
 
 **仕分けが走るのは file-based source (Priority 0/2、および Priority 3 が tempfile 経由で通す Raw JSON) だけ**である。helper は `--review-source` が `local_file` / `explicit_file` 以外なら no-op exit 0 になる。Priority 1 (会話) と Priority 3 の legacy Markdown 経路では仕分けが走らないため、**それらの経路では consumer 式を適用してはならない** — 非致命 gated finding も従来どおり修正対象に残す (ステップ 1.3 / 2.1 の該当行を参照)。仕分けを適用したことにして修正対象から外すと、移送も記録もされないまま指摘が消える。
 
@@ -1990,8 +1990,7 @@ PR #{number} のレビューコメント
      一覧は出さず件数のみ表示する (全文は移送先 JSON にあり、iterate 5.S の nb-sweep が消化する)。
      {moved_count} は ステップ 1.2.0 の [CONTEXT] FIX_FATAL_TRIAGE=applied; moved= から literal substitute する。
      0 件でも行は省略しない (移送が起きなかったことも観測できるようにする)。
-     **marker 不在 (仕分けが走らない会話 / legacy Markdown 経路) では見出しごと省略する** —
-     移送も記録も起きていないのに「記録済み・sweep 対象」と表示すると事実に反する。
+     marker 不在時の扱いは ステップ 1.2.0 の marker 不在時規則に従う。
      修正・reply・auto-select の対象外。 -->
 
 ### nit (認知のみ) ({nit_noted_count}件)

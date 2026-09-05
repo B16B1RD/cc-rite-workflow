@@ -515,7 +515,8 @@ run_helper "$repo_jqfail" local_file "$repo_jqfail/review.json"
 leaked_triage_jqfail=$(ls "$repo_jqfail"/review.json.triage.* 2>/dev/null || true)
 tc9_jqfail_ok=1
 [ "$HELPER_RC" = "1" ] || tc9_jqfail_ok=0
-# `rc=` は移送 jq の emit site だけが付ける。判別子なしだと前方 3 site (severity enum 検査 /
+# `rc=` は 4 つの `fatal_triage_jq_failed` emit site のうち移送 jq だけが付ける。
+# 判別子なしだと前方 3 site (severity enum 検査 /
 # 実測判定検査 / 件数算出) で停止する退行でも緑のまま通り、直後の leak assert が恒真化する。
 # `[1-9]` にして rc 非ゼロ性も同時に pin する (mv leg と同型)
 grep -qE 'FIX_FALLBACK_FAILED=1; reason=fatal_triage_jq_failed; rc=[1-9]' <<<"$HELPER_STDERR" || tc9_jqfail_ok=0
