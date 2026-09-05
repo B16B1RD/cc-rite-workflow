@@ -85,11 +85,16 @@ assert_grep "T-04 分岐 5 が marker 不在時に severity 帯を絞らない" 
 
 # --- T-04b: marker 不在時の表示規則 ---
 # 規則は 1.2.0 (moved_count 系) と 1.4 注記 (fatal_count) の 2 箇所だけに置く。
-# 参照側 (4.5.3 / 4.6 / 5.1) が規則本文を再掲すると手書き複製が drift する
+# 1.4 は fatal_count の SoT であると同時に moved_count の参照側でもあるため、
+# 参照側は 1.4 / 4.5.3 / 4.6 / 5.1 の 4 箇所。参照側が規則本文を再掲すると手書き複製が drift する
 assert_grep "T-04b moved_count の marker 不在時規則が 1.2.0 にある" "$FIX" \
   '`{moved_count}件` を `件` ごと `不明 \(FIX_FATAL_TRIAGE marker 不在\)` に置換'
 assert_grep "T-04b moved_pointer_suffix の marker 不在時値が定義されている" "$FIX" \
   '`{moved_pointer_suffix}` は空文字列にする'
+# 1.4 を委譲へ畳んだ結果、この節が 1.4 の挙動を決める唯一の記述になった。
+# 反転すると 4 つの委譲元すべてが黙って別規則を指す
+assert_grep "T-04b 1.4 の移送済みセクションは marker 不在時に省略すると規定されている" "$FIX" \
+  'ステップ 1\.4 の「移送済み」セクションは見出しごと省略する'
 # `.*` は使わない — 規則が住む行は 1 段落 1 行で行前半にも {fatal_count} が出現するため、
 # `\{fatal_count\}.*` 形だと委譲節の帰属先を書き換えても行内マッチで緑のまま通る
 assert_grep "T-04b fatal_count の規則は 1.4 注記が SoT と委譲されている" "$FIX" \
@@ -103,12 +108,16 @@ assert_grep "T-04b 1.4 の marker 不在時は実列挙件数を書く" "$FIX" \
   '件数は実際に列挙した行数を書く \({listed_count}\)'
 # 件数決定文は marker 不在の見出し規則の直後になければ意味を持たない (無関係な節へ
 # 移設すると {listed_count} が決定規則不在のまま見出しに残る)
+# 行差ではなく同一注記ブロック内であることを要求する。防ぎたいのは別文脈への移設で
+# あって行の折り返しや同一行への統合ではない (差を固定すると通常の編集で偽陽性になる)
 _hd_line=$(grep -n '見出しを `### 全 severity 帯（仕分け未適用）' "$FIX" | head -1 | cut -d: -f1)
 _cnt_line=$(grep -n '件数は実際に列挙した行数を書く' "$FIX" | head -1 | cut -d: -f1)
-if [ -n "$_hd_line" ] && [ -n "$_cnt_line" ] && [ "$((_cnt_line - _hd_line))" -eq 1 ]; then
-  pass "T-04b 件数決定規則が marker 不在の見出し規則の直後にある"
+_blk_end=$(awk -v s="${_hd_line:-0}" 'NR >= s && /-->/ { print NR; exit }' "$FIX")
+if [ -n "$_hd_line" ] && [ -n "$_cnt_line" ] && [ -n "$_blk_end" ] \
+   && [ "$_cnt_line" -ge "$_hd_line" ] && [ "$_cnt_line" -lt "$_blk_end" ]; then
+  pass "T-04b 件数決定規則が marker 不在の見出し規則と同じ注記ブロック内にある"
 else
-  fail "T-04b 件数決定規則が見出し規則から離れている (heading=$_hd_line count=$_cnt_line) — {listed_count} の解決規則が別文脈へ移ると見出しに未解決の placeholder が残る"
+  fail "T-04b 件数決定規則が見出し規則の注記ブロック外 (heading=$_hd_line count=$_cnt_line blockend=$_blk_end) — {listed_count} の解決規則が別文脈へ移ると見出しに未解決の placeholder が残る"
 fi
 # 規則本文の手書き複製が増えていないこと (1.2.0 の 1 箇所だけ)。
 # `grep -c` は行単位で、本ファイルは 1 段落 1 行のため同一行内の複製を数えない。
@@ -119,7 +128,7 @@ if [ "$_nb_rule_count" = "1" ]; then
 else
   fail "T-04b marker 不在時の文言が $_nb_rule_count 箇所に複製されている (drift 面)"
 fi
-# 規則の定義位置がステップ 1.2.0 の節内であること。移設されると参照側 3 箇所が空の節を
+# 規則の定義位置がステップ 1.2.0 の節内であること。移設されると参照側 4 箇所が空の節を
 # 指す dangling delegation になるが、出現数カウントだけでは検出できない
 _rule_line=$(grep -n '不明 (FIX_FATAL_TRIAGE marker 不在)' "$FIX" | head -1 | cut -d: -f1)
 _sec_start=$(grep -n '^#### 1\.2\.0 ' "$FIX" | head -1 | cut -d: -f1)
@@ -129,11 +138,13 @@ if [ -z "$_sec_start" ] || [ -z "$_sec_end" ]; then
 elif [ -n "$_rule_line" ] && [ "$_rule_line" -gt "$_sec_start" ] && [ "$_rule_line" -lt "$_sec_end" ]; then
   pass "T-04b marker 不在時規則がステップ 1.2.0 の節内に定義されている"
 else
-  fail "T-04b 規則の定義位置が 1.2.0 の外 (rule=$_rule_line section=$_sec_start..$_sec_end) — 参照側 3 箇所が空の節を指す"
+  fail "T-04b 規則の定義位置が 1.2.0 の外 (rule=$_rule_line section=$_sec_start..$_sec_end) — 参照側 4 箇所が空の節を指す"
 fi
-# 参照側 3 箇所 (4.5.3 / 4.6 / 5.1) が委譲文を保持していること。T-04b の複製禁止が
+# 参照側 4 箇所 (1.4 / 4.5.3 / 4.6 / 5.1) が委譲文を保持していること。T-04b の複製禁止が
 # 参照側での規則再掲を禁じているため、この 1 文が消えると規則がどこにも残らない
-_nb_ref_count=$(grep -o 'marker 不在時規則に従う' "$FIX" | wc -l | tr -d ' ')
+# 委譲先の識別子まで含めて数える。「marker 不在時規則に従う」だけだと委譲先を
+# 別ステップへすり替えても件数が変わらず、2 ホップ化が検出できない
+_nb_ref_count=$(grep -o 'ステップ 1\.2\.0 の marker 不在時規則に従う' "$FIX" | wc -l | tr -d ' ')
 if [ "$_nb_ref_count" = "4" ]; then
   pass "T-04b 参照側 4 箇所が marker 不在時規則への委譲を保持している"
 else
@@ -194,7 +205,7 @@ fi
 # uniq で連続重複を畳む根拠は enumeration 側の規範文にある。これが消えると
 # 上の比較が何を正としているかの人間可読な SoT が失われる
 assert_grep "T-05b enumeration の重複列挙規約が明文化されている" "$FIX" \
-  '同一 reason が非隣接の site から emit される場合は判別子つきで各位置に列挙する'
+  '同一 reason が非隣接の site から emit される場合は判別子つきで各位置に列挙する \(隣接する同一 reason の分岐は 1 回に畳む\)'
 
 # --- T-06: 撤去済み reason (fatal_triage_id_union_violation) の双方向 pin ---
 # helper 側の自己検証撤去に SKILL.md が追従しないと、存在しない検査を原因として案内することになる。
