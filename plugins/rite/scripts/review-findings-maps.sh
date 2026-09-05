@@ -43,6 +43,9 @@
 #   [CONTEXT] FIX_FALLBACK_FAILED=1; reason=severity_enum_violation; findings=F-xx,...; ...
 #   [CONTEXT] FIX_FALLBACK_FAILED=1; reason=fatal_triage_jq_failed; cause=<probe>|fatal_triage_mktemp_failed
 #                                          |fatal_triage_mv_failed; ...
+#   [CONTEXT] FIX_FATAL_TRIAGE_ID_COLLISION=1; findings=F-xx,... (非ブロッキング。移送分の id が
+#                                          移送後 non_blocking_findings[] 内で衝突し nb-sweep の
+#                                          先勝ち dedup から外れる。転記先は fix.md ステップ 1.2.0)
 #
 # Reason SoT (fix.md の reason 表からは bullet 形式で参照される — 委譲済 reason は
 # fix.md 内で `reason=` 構文を使わない規約):
@@ -56,8 +59,9 @@
 #   non_blocking_not_array            — non_blocking_findings が配列でない (exit 1、移送 jq の型エラーが
 #                                       総称 reason に潰れる前に一次原因を出す)
 #   fatal_triage_jq_failed            — 致命性仕分けの jq が失敗 (exit 1、部分適用を残さない)。非隣接の
-#                                       4 site から emit するため cause= で判別する:
-#                                       severity_enum_probe / measured_probe / counts_probe / transport
+#                                       5 site から emit するため cause= で判別する:
+#                                       nb_type_probe / severity_enum_probe / measured_probe /
+#                                       counts_probe / transport
 #   fatal_triage_mktemp_failed        — 移送出力用 tempfile の mktemp が失敗 (exit 1)
 #   fatal_triage_mv_failed            — 移送後 JSON の atomic mv が失敗 (exit 1、入力は無変更)
 #   jq_mutation_failed                — normalization jq mutation が失敗、原 JSON のまま続行 (非ブロッキング)
@@ -67,7 +71,7 @@
 #   scope_map_build_failed            — scope_map 構築用 jq が失敗、scope_map_json="{}" で続行 (非ブロッキング)
 #
 # Eval-order enumeration (reason 表と併せて参照する emit reasons の documented set):
-# emit reasons sequence = (`scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `mktemp_failure_norm_tmp` / `json_invalid` / `non_blocking_not_array` / `fatal_triage_jq_failed` / `severity_enum_violation` / `measured_undetermined` / `fatal_triage_mktemp_failed` / `fatal_triage_mv_failed` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `scope_map_build_failed`)
+# emit reasons sequence = (`scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `mktemp_failure_norm_tmp` / `json_invalid` / `fatal_triage_jq_failed` (cause=nb_type_probe) / `non_blocking_not_array` / `fatal_triage_jq_failed` (cause=severity_enum_probe) / `severity_enum_violation` / `fatal_triage_jq_failed` (cause=measured_probe) / `measured_undetermined` / `fatal_triage_jq_failed` (cause=counts_probe) / `fatal_triage_mktemp_failed` / `fatal_triage_jq_failed` (cause=transport) / `fatal_triage_mv_failed` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `scope_map_build_failed`) — 同一 reason が非隣接の site から emit される場合は判別子つきで各位置に列挙する
 #
 # Exit codes:
 #   0  正常 (no-op source / maps build 成功 / 非ブロッキング WARNING のみ)
@@ -222,6 +226,26 @@ if ! jq empty "$review_source_path" 2>/dev/null; then
   exit 1
 fi
 
+# non_blocking_findings が非配列だと移送 jq が `+` の型エラーで落ち、総称の
+# fatal_triage_jq_failed に潰れて「配列でない」という一次原因が診断から消える
+# (直上の json_invalid guard と同じ論法。sibling の review-measured-gate.sh も
+#  同一欠陥を non_blocking_not_array で先に弾く)。
+# probe 自体の失敗は型名として扱わない — `__JQ_FAILED__` を type= に載せると一過性の jq 失敗が
+# 「スキーマ違反」に誤帰属し、対処 (`/rite:pr-review` 再実行) が正しい JSON を作り直しても
+# 同じ失敗を踏むだけの誤導線になる。他 4 probe と同じ cause= 判別子で分離する
+nb_type=$(jq -r '(.non_blocking_findings // []) | type' "$review_source_path" 2>/dev/null || echo "__JQ_FAILED__")
+if [ "$nb_type" = "__JQ_FAILED__" ]; then
+  echo "ERROR: non_blocking_findings の型検査用 jq が失敗しました" >&2
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=fatal_triage_jq_failed; cause=nb_type_probe" >&2
+  exit 1
+fi
+if [ "$nb_type" != "array" ]; then
+  echo "ERROR: non_blocking_findings が配列ではありません (type=$nb_type): $review_source_path" >&2
+  echo "  対処: /rite:pr-review を再実行してレビュー結果を作り直してください" >&2
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=non_blocking_not_array; type=$nb_type" >&2
+  exit 1
+fi
+
 # gated finding (scope ∈ {current-pr, follow-up}) を 2 つに割る。判定は本 helper の決定論で行い、
 # LLM は下の [CONTEXT] FIX_FATAL_TRIAGE= marker を読むだけにする (fix.md ステップ 1.2.0)。
 #
@@ -247,18 +271,6 @@ fatal_triage_bad_severity=""
 # 素通しすると id に改行 / `;` を仕込まれた JSON で marker 行が分断され、caller の reason 抽出が
 # 攻撃者指定の値を拾う (sibling の review-cycle-scope.sh が同じ id 列 emit で実装済みの hardening)。
 # jq の `$` は改行の直前にもマッチするため `\A` / `\z` を使う。
-# non_blocking_findings が非配列だと移送 jq が `+` の型エラーで落ち、総称の
-# fatal_triage_jq_failed に潰れて「配列でない」という一次原因が診断から消える
-# (直上の json_invalid guard と同じ論法。sibling の review-measured-gate.sh も
-#  同一欠陥を non_blocking_not_array で先に弾く)
-nb_type=$(jq -r '(.non_blocking_findings // []) | type' "$review_source_path" 2>/dev/null || echo "__JQ_FAILED__")
-if [ "$nb_type" != "array" ]; then
-  echo "ERROR: non_blocking_findings が配列ではありません (type=$nb_type): $review_source_path" >&2
-  echo "  対処: /rite:pr-review を再実行してレビュー結果を作り直してください" >&2
-  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=non_blocking_not_array; type=$nb_type" >&2
-  exit 1
-fi
-
 fatal_triage_bad_severity=$(jq -r '
   def safe_id: (.id | if (type == "string" and test("\\AF-[0-9]{2,}\\z")) then . else "(不正 id)" end);
   [.findings[]? | select(
@@ -368,11 +380,15 @@ if [ "${moved_count:-0}" -gt 0 ]; then
   # 二度と処理されない。移送前は findings[] 側にいて衝突しなかった (sweep は findings[] から
   # nit-noted しか拾わない) ため、この損失は移送が新たに作る。保存境界と同じ enforcement
   # level (非ブロッキング) を保ちつつ、黙って消えることだけを防ぐ。
+  #
+  # 母集団は「移送分 vs 既存要素」ではなく**移送後配列の全 id** を取る。同 id の gated 非致命
+  # finding が 2 件あると 2 件とも移送されるが、既存要素だけを相手にすると衝突が見えないまま
+  # nb-sweep が 1 件しか拾わない — 上の害の論理はこのケースにも逐語的に当てはまる。
   triage_id_collision=$(jq -r '
     def safe_id: (.id | if (type == "string" and test("\\AF-[0-9]{2,}\\z")) then . else "(不正 id)" end);
-    ([.non_blocking_findings[]? | select((.demotion_reason == "non_fatal") | not) | .id]) as $existing
+    ([.non_blocking_findings[]? | .id] | group_by(.) | map(select(length > 1) | .[0])) as $dups
     | [.non_blocking_findings[]? | select(.demotion_reason == "non_fatal")
-       | select(.id as $i | $existing | index($i)) | safe_id]
+       | select(.id as $i | $dups | index($i)) | safe_id]
     | unique | join(",")
   ' "$triage_tmp" 2>/dev/null || echo "")
   if [ -n "$triage_id_collision" ]; then

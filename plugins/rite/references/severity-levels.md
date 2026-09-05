@@ -218,7 +218,7 @@ fix_target = verification.measured == true
 と誤読するため。mergeable を決めるのは上の producer 式（severity で絞らない）で、本式が決めるのは
 「どの指摘が fix cycle を起動するか」だけである。
 
-上式を満たさない gated finding は `/rite:fix` ステップ 1.2.0 が `non_blocking_findings[]` へ移送して記録する (`demotion_reason: "non_fatal"`)。severity は書き換えない — Impact 軸と致命性軸は直交で、移送は「本 PR の fix cycle を起動するか」の判定でしかない。reviewer 側の severity 判定・探索深さは変えない (指摘を隠すより後出しのほうが悪い、という設計は維持し、釣り合いは fix 側で取る)。
+**consumer 式 (`fix_target`) を満たさない gated finding**は `/rite:fix` ステップ 1.2.0 が `non_blocking_findings[]` へ移送して記録する (`demotion_reason: "non_fatal"`)。severity は書き換えない — Impact 軸と致命性軸は直交で、移送は「本 PR の fix cycle を起動するか」の判定でしかない。reviewer 側の severity 判定・探索深さは変えない (指摘を隠すより後出しのほうが悪い、という設計は維持し、釣り合いは fix 側で取る)。
 rationale: [`fix-relaxation-rules.md`](../skills/fix/references/fix-relaxation-rules.md)
 - **severity 閾値**: 本 producer 式 (実測必須ゲート) は **全 severity 帯** (CRITICAL〜LOW) を対象とする (nit-noted を除く)。severity による絞り込みは producer 側では行わない — reviewer の指摘を握り潰さないため。severity 閾値が入るのは上記 **consumer 式** (fix の致命性仕分け) だけで、そこで外れた指摘も破棄されず `non_blocking_findings[]` に残る。
 - **実測 (measured=true) の受理形式**: (a) 再現コマンド + 観測される誤動作 (`repro`)、または (b) failing test のパス + 失敗出力 (`failing_test`) のいずれか。形式は [`review-result-schema.md` §verification サブフィールド](./review-result-schema.md#verification-サブフィールド) で固定し、LLM の自由裁量に委ねない。**静的検証（grep / ファイル対照 / 配布物読解 / コマンド実行）で欠陥を確認した指摘に `Verification: repro` を添付すれば measured 判定の対象になる** — runtime に限らない。検証を実施したのに添付しない authoring は禁止する ([_reviewer-base.md §Verification: runtime 実測の添付](../agents/_reviewer-base.md#verification-runtime-measurement))。本ゲートの 3 値判定 (`true` / `false` / 未判定) のロジックは変更しない。

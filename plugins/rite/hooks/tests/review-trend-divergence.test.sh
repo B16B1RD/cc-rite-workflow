@@ -648,12 +648,16 @@ cat > "$xfer_dir/810-20260101000001.json" <<'EOF'
   "non_blocking_findings": [
     {"id":"F-02","severity":"MEDIUM","scope":"current-pr","verification":{"measured":true},"demotion_reason":"non_fatal"},
     {"id":"F-03","severity":"LOW","scope":"follow-up","verification":{"measured":true},"demotion_reason":"non_fatal"},
-    {"id":"F-04","severity":"LOW","scope":"current-pr","verification":{"measured":false}}
+    {"id":"F-04","severity":"LOW","scope":"current-pr","verification":{"measured":false}},
+    {"id":"F-05","severity":"MEDIUM","scope":"current-pr","verification":{"measured":false},"demotion_reason":"non_fatal"}
   ]
 }
 EOF
 bash "$SCRIPT" --pr 810 --cycle-count 1 --results-dir "$xfer_dir" > "$OUT" 2>/dev/null
-assert_grep "移送済み JSON でも producer 件数を復元する (findings 1 + non_fatal 2 = 3)" "$OUT" "trend=3"
+# F-05 は「移送分 x measured=false」。schema はこの組み合わせが起こると明記している
+# (移送は gated かつ非致命であり実測の有無では絞らない) ので、移送分を無条件に blocking へ
+# 足す過剰補正はここで赤化する。件数が 3 のまま増えないことが assert の要点
+assert_grep "移送済み JSON でも producer 件数を復元する (findings 1 + non_fatal かつ measured!=false 2 = 3)" "$OUT" "trend=3"
 
 # ---------------------------------------------------------------------------
 # 呼び出しエラー (exit 2) — データ条件 (exit 0) と混同しないこと

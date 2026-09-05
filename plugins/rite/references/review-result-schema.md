@@ -265,7 +265,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 `demotion_reason` を持つ要素は fix 側で追記されるため、`/rite:pr-review` の 5.4 / 6.1.d（同一 cycle の pr-review 実行時点では存在しない）ではなく、`/rite:fix` の完了報告・E2E 出力・関連 Issue の work memory コメントが記録経路になる。全文は本配列に残り、iterate 5.S の nb-sweep が消化対象として読む。
 
-**fix 側の書き戻しは派生フィールドを更新しない（不変条件の明示的な例外）**: 移送は `findings[]` と `non_blocking_findings[]` だけを書き換え、`verdict` / `overall_assessment` / `total_findings` は移送前の値のまま残す。`verdict` と `overall_assessment` を「単一の blocking 件数式から同時に代入する」のは `scripts/review-measured-gate.sh` が唯一の書き手だからで（[§verdict](#verdict)）、fix 側が再計算すると書き手が 2 つになりゲート適用時点の統計という receipt の意味が失われる。したがって**移送後の JSON では `findings[] | length` と `total_findings` が乖離し、`findings[]` が空でも `verdict` は `fix-needed` のまま**でありうる。移送後の JSON から producer 側の blocking 集合を復元する consumer は、`findings[]` に `non_blocking_findings[] | select(.demotion_reason == "non_fatal")` を足して数える（`hooks/scripts/review-trend-divergence.sh` が実装例）。
+**fix 側の書き戻しは派生フィールドを更新しない（不変条件の明示的な例外）**: 移送は `findings[]` と `non_blocking_findings[]` だけを書き換え、`verdict` / `overall_assessment` は移送前の値のまま残す。両キーは常に**単一の blocking 件数式から同時に代入される**構造だから（書き手は 5.3.0.M / 5.3.0.C の 2 helper — [§verdict と reviewers](#verdict-と-reviewers)）で、fix 側が再計算すると書き手がもう 1 つ増え、しかもその 1 つだけが別ゲートの件数式を使うことになり、ゲート適用時点の統計という receipt の意味が失われる。したがって**移送後の JSON では `findings[] | length` が blocking 件数と一致しなくなり、`findings[]` が空でも `verdict` は `fix-needed` のまま**でありうる。移送後の JSON から producer 側の blocking 集合を復元する consumer は、`findings[]` に `non_blocking_findings[] | select(.demotion_reason == "non_fatal")` を足したうえで `verification.measured != false` を満たすものを数える（移送は実測の有無では絞らないため、この measured フィルタを落とすと producer 集合を超える。`hooks/scripts/review-trend-divergence.sh` が実装例）。
 
 **`demotion` オブジェクト (任意、1.1.0+)**: 5.3.0.C 由来の降格要素のみが持つ追加フィールド。形は `{policy: "class-b-demotion", reason: <判定文>}` — `policy` は降格の出所の判別子 (現在は 1 値のみ)、`reason` は class B 認定の判定文 (classification map の `scenario`)。書き手は `scripts/review-class-demotion-gate.sh` のみ。**本キーの有無が実測ゲート降格分 (5.3.0.M、キーなし) と class B 降格分 (5.3.0.C、キーあり) を区別する唯一の監査判別子**であり、6.1.d の関連 Issue 記録コメントは本キーを持つ要素に降格理由を併記する。read 側は未知キーを無視するため旧 reader でも壊れない。
 
@@ -420,6 +420,8 @@ canonical jq expression (1.0/1.0.0 受信時に適用):
 <a id="3値モデルへの上書き"></a>
 
 > **3 値モデルへの上書き (以降、判定 consumer に限る)**: 上記 default mapping は `measured` が **判定に使われない記録専用フィールド**だった時点の規定であり、`measured` を **blocking 判定の入力として消費する層**には適用しない。実測必須ゲート ([severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)) の consumer は `measured` を **3 値** (`true` / `false` / **未判定**) として扱い、**`verification` 欠落 / `verification.measured` 欠落は「未判定」= ゲート対象外 = 従来どおり blocking** と解釈する — 降格するのは `measured: false` を**明示宣言**した finding のみ。判定経路で `(.verification.measured // false)` を使ってはならない (jq の `//` が欠落と `false` を同一視するため、write 側が `verification` を出力しない世代の JSON で全 finding が non-blocking に畳まれ、レビューループが指摘を解消しないまま空転する)。判定経路の canonical 述語は「`.verification` が object かつ `.verification.measured` が boolean のときのみ登録し、値をそのまま採用する」で、SoT は [`fix/SKILL.md`](../skills/fix/SKILL.md) ステップ 1.2.1 step 6 / ステップ 1.3 measured lookup。
+>
+> ただし **gated finding (`scope ∈ {current-pr, follow-up}`) の未判定は `/rite:fix` ステップ 1.2.0 の致命性仕分けが `measured_undetermined` で停止させる**。「未判定 = 従来どおり blocking」は**判定を降ろさない**という意味であって、致命性軸の仕分けを未判定のまま通してよいという意味ではない (仕分けは 3 値のうち `true` だけを致命の必要条件にするため、未判定を `true` にも `false` にも倒せない)。本節を参照する 4 箇所の注記はいずれもこの例外を指している。
 >
 > 本節の default mapping は依然として**判定以外の読取 (記録・表示・後方互換の非エラー化)** に有効であり、型ガードが `verification: {}` を受理することにも変更はない。
 

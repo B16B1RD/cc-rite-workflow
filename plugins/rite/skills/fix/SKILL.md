@@ -49,14 +49,17 @@ rationale: references/design-rationale.md#e2e-output-minimization-scope
 | Phase | Standalone | E2E Flow |
 |-------|-----------|----------|
 | Fix implementation | Full output | Full output (needed for code changes) |
-| ステップ 4 (Completion) | Full report | 完了報告を最小化する。ただし ステップ 5.1 が定める行 (result pattern / 非致命移送 / non-blocking / nit 認知) は E2E でも省略しない |
+| ステップ 4 (Completion) | Full report | 完了報告を最小化する。ただし ステップ 5.1 が定める 2 行 (result pattern / 非致命移送) は E2E でも省略しない。`non-blocking` / `nit 認知` は ステップ 4.6 の完了報告フィールドであり本行の対象外 |
 | ステップ 4.5 (Work Memory) | Full update | Full update (no change) |
 
 E2E output format (ステップ 4):
 
 ```
 [fix:{result}] — {fixed_count} fixed, {skipped_count} skipped, {files_changed} files changed
+非致命移送 (fix 対象外、記録済み): {moved_count}件
 ```
+
+移送行の規定 (0 件でも常時出す / marker 不在時の置換) はすべて ステップ 5.1 の「E2E 出力での移送行」が SoT。本節は同じ規則を再掲せず、出力形だけを示す。
 
 Detection: ステップ 0.1 end-to-end flow determination を再利用。
 
@@ -472,7 +475,7 @@ case "$review_source" in
       and .measured_gate.commit_sha == .commit_sha
     ' "$review_source_path" >/dev/null 2>&1; then
       echo "ERROR: review-result JSON に実測必須ゲートの適用記録が無いか、commit_sha と一致しません。/rite:pr-review を再実行してください" >&2
-      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=gate_not_applied" >&2
+      echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=gate_not_applied; cause=file_source" >&2
       echo "[fix:error] reason=gate_not_applied"
       exit 1
     fi
@@ -519,6 +522,8 @@ rm -f "$maps_err"
 ```
 
 helper は `[CONTEXT] FIX_FATAL_TRIAGE=applied; fatal={n}; moved={m}` を必ず 1 回 emit する。`{m}` を `{moved_count}` として retain し、ステップ 1.4 の表示・ステップ 4.5.3 の記録・ステップ 4.6 の完了報告・ステップ 5.1 の E2E 出力で使う。`{n}` は `{fatal_count}` として retain し、ステップ 1.4 の `### 致命` セクション見出しの件数に使う。**marker 不在は helper が仕分けまで到達していない**ことを意味するので、どちらも推測で補わない。marker 不在時の扱いは 2 系統に分かれる。**`{moved_count}`**: ステップ 4.5.3 / 4.6 / 5.1 では `{moved_count}件` を `件` ごと `不明 (FIX_FATAL_TRIAGE marker 不在)` に置換し (`{moved_pointer_suffix}` は空文字列にする — 指し先の記録が存在しないため)、ステップ 1.4 の「移送済み」セクションは見出しごと省略する (rationale: references/design-rationale.md#fatal-triage)。**`{fatal_count}`**: 使用箇所はステップ 1.4 の `### 致命` セクション見出しだけなので、規則はそこの注記を SoT とする。
+
+helper は id 衝突を検出したとき `[CONTEXT] FIX_FATAL_TRIAGE_ID_COLLISION=1; findings=F-xx,...` を追加で emit する (非ブロッキング)。この marker があれば `findings=` の id 列を `{collision_ids}` として retain し、**ステップ 4.5.3 の Issue 記録コメントとステップ 4.6 の完了報告に転記する** — 衝突した移送分は nb-sweep の id 先勝ち dedup から外れて恒久的に消化されないのに、移送行は「記録済み」と表示するため、転記先が無いと損失が完了報告に一切現れない。marker 不在は「衝突なし」を意味する (helper は検出時のみ emit する)。
 
 **仕分けが走るのは file-based source (Priority 0/2、および Priority 3 が tempfile 経由で通す Raw JSON) だけ**である。helper は `--review-source` が `local_file` / `explicit_file` 以外なら no-op exit 0 になる。Priority 1 (会話) と Priority 3 の legacy Markdown 経路では仕分けが走らないため、**それらの経路では consumer 式を適用してはならない** — 非致命 gated finding も従来どおり修正対象に残す (ステップ 1.3 / 2.1 の該当行を参照)。仕分けを適用したことにして修正対象から外すと、移送も記録もされないまま指摘が消える。
 
@@ -622,7 +627,7 @@ elif ! printf '%s' "$raw_json" | jq -e '
   and .measured_gate.commit_sha == .commit_sha
 ' >/dev/null 2>&1; then
   echo "ERROR: PR コメント内 Raw JSON に実測必須ゲートの適用記録が無いか、commit_sha と一致しません。/rite:pr-review を再実行してください" >&2
-  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=gate_not_applied" >&2
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=gate_not_applied; cause=pr_comment_raw_json" >&2
   echo "[fix:error] reason=gate_not_applied"
   exit 1
 elif ! printf '%s' "$raw_json" | jq -e '
@@ -900,7 +905,7 @@ exit 1
 | `pr_number_placeholder_residue` | ステップ 1.2.0 冒頭の `pr_number="{pr_number}"` literal substitute が忘れられ、数値以外 (空文字 / placeholder 残留) のまま bash block に入った (cleanup.md ステップ 6 / pr-review.md ステップ 6.1.a と対称化、`[fix:error]` 昇格) |
 | `p3_triage_mktemp_failed` | Priority 3 で raw_json を helper へ渡す tempfile の mktemp が失敗 (`[fix:error]` 昇格) |
 | `p3_triage_write_failed` | Priority 3 で raw_json の tempfile 書き出しが失敗 (`[fix:error]` 昇格) |
-| `gate_not_applied` | 選択した review source に実測必須ゲートの適用記録 (`measured_gate`) が無い。ゲート未適用の結果で仕分けると非実測指摘が致命に混ざるため停止 (`[fix:error]` 昇格) |
+| `gate_not_applied` | 選択した review source に実測必須ゲートの適用記録 (`measured_gate`) が無い。ゲート未適用の結果で仕分けると非実測指摘が致命に混ざるため停止 (`[fix:error]` 昇格)。非隣接の 2 site から emit するため `cause=` で判別する: `file_source` (Priority 0/2 のファイル入力) / `pr_comment_raw_json` (Priority 3 の PR コメント Raw JSON)。復旧手順が経路で異なる |
 | `p3_triage_moved_probe_failed` | Priority 3 で仕分け後 JSON から移送件数を読み取れない (jq 失敗 / 非数値)。移送の有無を判定できないため記録漏れを見逃さず停止 (`[fix:error]` 昇格) |
 | `p3_triage_not_persistable` | Priority 3 で非致命移送が発生したが、この経路には永続 review-result JSON が無い。移送分が nb-sweep の母集団から脱落するため停止 (`[fix:error]` 昇格) |
 | `p3_triage_readback_failed` | Priority 3 で仕分け後 JSON が空 (helper が 0 バイトを残した。`cause=empty_file`) か、読み戻し (`cat`) が失敗 (`cause=cat_failed`)。いずれも仕分け前の raw_json へ silent に戻さず停止、`[fix:error]` 昇格 |
@@ -929,7 +934,7 @@ exit 1
 - `severity_map_build_failed`: severity_map 構築用 jq が失敗 (0 件で正常終了する silent regression 防止、helper exit 1 → caller が `[fix:error]` に昇格)
 - `scope_map_build_failed`: scope_map_json 構築用 jq が失敗 (`FIX_FALLBACK_FAILED` flag、非ブロッキング、`scope_map_json="{}"` で legacy blocking 扱いに fallback)
 
-**Eval-order enumeration** (Pattern-2 documented-union): emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `gate_not_applied` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `p3_triage_mktemp_failed` / `p3_triage_write_failed` / `p3_triage_readback_failed` (cause=empty_file) / `p3_triage_moved_probe_failed` / `p3_triage_not_persistable` / `p3_triage_readback_failed` (cause=cat_failed) / `pr_comment_scope_map_build_failed` / `review_source_resolve_failed` / `findings_maps_build_failed`) — 同一 reason が非隣接の site から emit される場合は判別子つきで各位置に列挙する (隣接する同一 reason の分岐は 1 回に畳む)
+**Eval-order enumeration** (Pattern-2 documented-union): emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `gate_not_applied` (cause=file_source) / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `gate_not_applied` (cause=pr_comment_raw_json) / `p3_triage_mktemp_failed` / `p3_triage_write_failed` / `p3_triage_readback_failed` (cause=empty_file) / `p3_triage_moved_probe_failed` / `p3_triage_not_persistable` / `p3_triage_readback_failed` (cause=cat_failed) / `pr_comment_scope_map_build_failed` / `review_source_resolve_failed` / `findings_maps_build_failed`) — 同一 reason が非隣接の site から emit される場合は判別子つきで各位置に列挙する (隣接する同一 reason の分岐は 1 回に畳む)
 
 #### Legacy Branching (PR Comment Path Only)
 
@@ -1729,7 +1734,7 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
 | **致命 (修正対象)** | severity ∈ {CRITICAL, HIGH} AND scope ∈ {current-pr, follow-up} AND measured == true | Must fix in this PR。ステップ 1.2.0 の仕分けを通過して `findings[]` に残った唯一の分類 |
 | **nit (認知のみ)** | scope == "nit-noted" | NOT a fix target。PR reply しない。`acknowledged_nit_count = {nit_noted_count}` |
 | **移送済み (非致命)** | ステップ 1.2.0 で `non_blocking_findings[]` へ移送された gated finding (`demotion_reason: "non_fatal"`)。**file-based source (Priority 0/2、および P3 の Raw JSON) でのみ発生する** | **`findings[]` に存在しないため本分類ロジックには到達しない**。件数 `{moved_count}` のみ ステップ 1.4 / 4.6 / 5.1 に表示する。修正・reply・auto-select の対象外 |
-| **全 severity 帯 (仕分け未適用)** | `FIX_FATAL_TRIAGE` marker 不在 (会話 / legacy Markdown 経路) の gated finding すべて。severity で絞らない | Must fix in this PR。仕分けが走っていないため移送も記録も起きておらず、絞ると指摘が無記録のまま消える (ステップ 2.1 分岐 5 と同一母集団) |
+| **全 severity 帯 (仕分け未適用)** | `FIX_FATAL_TRIAGE` marker 不在 (会話 / legacy Markdown 経路) の gated finding のうち **`measured != false`** のもの。severity で絞らない (`measured == false` は真下の non-blocking 行が引き取る — 母集団を重ねると同一 finding に逆の Action が付く) | Must fix in this PR。仕分けが走っていないため移送も記録も起きておらず、絞ると指摘が無記録のまま消える (ステップ 2.1 分岐 5 と同一母集団) |
 | **non-blocking (実測なし)** | scope ∈ {current-pr, follow-up} AND measured == false (`measured_map` に明示的に `false` で登録されたもののみ — 経路別判定は下記 measured lookup 参照)。**file-based source では ステップ 1.2.0 が先に移送するため本分類に到達しない** (到達するのは会話 / legacy Markdown 経路のみ) | 表示のみ; NOT a fix target (実測必須ゲート — 記録は `/rite:pr-review` ステップ 5.4 の「実測なし指摘」section が担う) |
 | **External review** | severity_map に登録されていない未対応コメント (人間レビュアーの指摘等)、**および step 4 の出自確認で rite finding 由来と確認できなかった thread** (severity_map 登録済みでも本分類へ振り替える)。実測必須ゲートの**対象外** — `Verification:` アンカーを構造的に持てないため measured 未判定でも non-blocking に落とさない | Action required |
 | **Resolved** | Resolved threads | - |
@@ -1742,7 +1747,7 @@ Perform classification using `severity_map` AND `scope_map`. The scope_map enabl
 4. If it exists, look up the corresponding entry in `scope_map`:
    - **`scope == "nit-noted"`** -> **nit (認知のみ)**; skip ステップ 2.1 / 2.4。PR reply しない。`acknowledged_nit_count` に算入（fix commit 対象外）
    - **measured lookup (実測必須ゲート)**: 判定は **`measured_map[file:line]` の参照に統一**する (母集団は severity_map と同一 — **scope による登録除外なし**。nit-noted は本分岐に到達する前に上の nit 分岐 (正規化後 `scope_map` 参照) が先取するため lookup 対象にならない。key 正規化・tie-break・3 値保持を含む構築共通規則はステップ 1.2.1 step 6 が単一定義。**3 値**: `false` = non-blocking / `true` = blocking / **未登録** = 未判定 (実測の有無を判定する構造が無い) → blocking)。`measured_map` の構築は経路別:
-     - **JSON (P0/2/3)**: `verification` が object かつ `verification.measured` が boolean のときだけ登録。**欠落は登録しない**。`(.verification.measured // false)` で畳まない（gated finding の欠落は ステップ 1.2.0 が `measured_undetermined` で停止済みなので本 lookup に到達しない。到達しうるのは nit-noted と scope 未登録のみ）
+     - **JSON (P0/2/3)**: `verification` が object かつ `verification.measured` が boolean のときだけ登録。**欠落は登録しない**。`(.verification.measured // false)` で畳まない（gated finding の欠落は ステップ 1.2.0 が `measured_undetermined` で停止済みなので本 lookup に到達しない。到達しうるのは nit-noted と scope 未登録のみ）。**`scope` が enum 3 値に解決できない finding は ステップ 2.1 分岐 4 の catch-all に合流させ、従来どおり修正対象にする** (本表に専用行を持たないため、ここで行き先を明示しないと step 5 の External review にも該当せず分類先を失う)
      - **会話 (P1)**: `### 全指摘事項` → `true`、`### 実測なし指摘 (non-blocking)` → `false`。後者も `severity_map` / `scope_map` へ投入 (1.2.1 step 6)
      - **Markdown (Fast Path / P3 legacy)**: 1.2.1 step 6。全指摘事項 = `true`、実測なし = `false`
      - **外部ツール / best-effort**: 登録しない (= 未判定)。External review (blocking)

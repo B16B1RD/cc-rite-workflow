@@ -124,8 +124,10 @@ FIXEOF
       # AC-1 / AC-2: 実測あり HIGH 1 / 実測あり MEDIUM 1 / 実測あり LOW 1 / nit-noted 1 /
       # **実測なし HIGH 1** (致命判定 3 連言のうち実測条件だけを判別する finding)
       # 既に非空の non_blocking_findings[] を置き、移送が append であって置換でないことを pin する
+      # verdict / overall_assessment は fix 側が再計算しない派生フィールド (schema の明示的な例外)。
+      # fixture に無いと TC-10 の保存 assert が「両方 null で一致」の恒真検査に退化する
       cat > "$path" <<'FIXEOF'
-{"schema_version":"1.1.0","pr_number":1,"findings":[
+{"schema_version":"1.1.0","pr_number":1,"verdict":"fix-needed","overall_assessment":"要修正","findings":[
   {"id":"F-01","file":"src/a.ts","line":10,"severity":"HIGH","scope":"current-pr","pre_existing":true,"verification":{"measured":true}},
   {"id":"F-02","file":"src/b.ts","line":20,"severity":"MEDIUM","scope":"current-pr","pre_existing":true,"verification":{"measured":true}},
   {"id":"F-03","file":"src/c.ts","line":30,"severity":"LOW","scope":"current-pr","pre_existing":true,"verification":{"measured":true}},
@@ -220,6 +222,16 @@ FIXEOF
 ],"non_blocking_findings":[
   {"id":"F-01","file":"src/z.ts","line":99,"severity":"LOW","scope":"current-pr","pre_existing":true}
 ]}
+FIXEOF
+      ;;
+    dup_moved_id)
+      # 同 id の gated 非致命 finding が 2 件。どちらも移送されるため衝突は「既存要素 vs 移送分」
+      # ではなく移送分どうしで起きる。nb-sweep は id 先勝ちで dedup するので 1 件が黙って落ちる
+      cat > "$path" <<'FIXEOF'
+{"schema_version":"1.1.0","pr_number":1,"findings":[
+  {"id":"F-01","file":"src/a.ts","line":10,"severity":"MEDIUM","scope":"current-pr","pre_existing":true,"verification":{"measured":true}},
+  {"id":"F-01","file":"src/b.ts","line":20,"severity":"LOW","scope":"current-pr","pre_existing":true,"verification":{"measured":true}}
+],"non_blocking_findings":[]}
 FIXEOF
       ;;
     nonarray_nb)
@@ -532,15 +544,13 @@ repo_moved=$(make_sandbox tc9-moved)
 write_fixture "$repo_moved/review.json" mixed_triage
 run_helper "$repo_moved" local_file "$repo_moved/review.json"
 leaked_triage_moved=$(ls "$repo_moved"/review.json.triage.* 2>/dev/null || true)
-# 移送 jq が失敗する経路 — リダイレクトが jq 起動前に tempfile を作るため、inline rm が
-# 回収しなければここに残る (恒真ではない)
 # non_blocking_findings が非配列の入力は、移送 jq の型エラーへ落ちる前に専用 guard が
-# 一次原因を出して止める (総称 reason に潰さない)。tempfile はまだ作られていない
+# 一次原因を出して止める (総称 reason に潰さない)。**この leg は tempfile を作らない**ので
+# leak の母集団には入れない (入れると恒真 assert になる — transport 到達は下の leg が持つ)
 repo_jqfail=$(make_sandbox tc9-jqfail)
 write_fixture "$repo_jqfail/review.json" nonarray_nb
 jqfail_before=$(cat "$repo_jqfail/review.json")
 run_helper "$repo_jqfail" local_file "$repo_jqfail/review.json"
-leaked_triage_jqfail=$(ls "$repo_jqfail"/review.json.triage.* 2>/dev/null || true)
 tc9_jqfail_ok=1
 [ "$HELPER_RC" = "1" ] || tc9_jqfail_ok=0
 grep -q 'FIX_FALLBACK_FAILED=1; reason=non_blocking_not_array; type=string' <<<"$HELPER_STDERR" || tc9_jqfail_ok=0
@@ -554,14 +564,48 @@ if [ "$tc9_jqfail_ok" = "1" ]; then
 else
   fail "型 guard が期待どおりでない (rc=$HELPER_RC): $HELPER_STDERR"
 fi
+# 移送 jq が失敗する経路 — リダイレクトが jq 起動前に tempfile を作るため、inline rm が
+# 回収しなければここに残る (恒真ではない)。plain fixture では型 guard に先取りされて到達
+# しないので、transport の jq 呼び出しだけを落とす PATH stub で入る (TC-14b の mv stub と同型)。
+# stub は移送式に固有の `demotion_reason` を含む program だけを失敗させ、他の probe は実 jq へ
+# 委譲する — 全域 stub にすると先行 probe で落ちて transport まで届かない
+repo_transport=$(make_sandbox tc9-transport)
+mkdir -p "$repo_transport/bin"
+_real_jq=$(command -v jq)
+cat > "$repo_transport/bin/jq" <<STUBEOF
+#!/bin/bash
+for _a in "\$@"; do
+  case "\$_a" in *demotion_reason*) exit 5 ;; esac
+done
+exec "$_real_jq" "\$@"
+STUBEOF
+chmod +x "$repo_transport/bin/jq"
+write_fixture "$repo_transport/review.json" mixed_triage
+transport_before=$(cat "$repo_transport/review.json")
+HELPER_STDERR=$( ( export PATH="$repo_transport/bin:$PATH"; _timeout 10 bash "$TARGET" \
+  --review-source local_file --review-source-path "$repo_transport/review.json" ) 2>&1 >/dev/null ) && HELPER_RC=0 || HELPER_RC=$?
+leaked_triage_transport=$(ls "$repo_transport"/review.json.triage.* 2>/dev/null || true)
+tc9_transport_ok=1
+[ "$HELPER_RC" = "1" ] || tc9_transport_ok=0
+# 判別子つきの reason であること (4 site を同一値へ潰す退行はここで赤化する)
+grep -qE 'FIX_FALLBACK_FAILED=1; reason=fatal_triage_jq_failed; cause=transport; rc=[1-9]' <<<"$HELPER_STDERR" || tc9_transport_ok=0
+# 失敗経路で marker を出さない (永続化されない移送が記録経路へ転記される)
+grep -q 'FIX_FATAL_TRIAGE=applied' <<<"$HELPER_STDERR" && tc9_transport_ok=0
+[ "$(cat "$repo_transport/review.json")" = "$transport_before" ] || tc9_transport_ok=0
+if [ "$tc9_transport_ok" = "1" ]; then
+  pass "移送 jq 失敗は cause=transport で停止し、入力は無変更 / marker は出ない"
+else
+  fail "transport 失敗分岐が期待どおりでない (rc=$HELPER_RC): $HELPER_STDERR"
+fi
+
 # normalization tempfile の sweep は **全 leg の run_helper 後**に取る (先に確定させると後続 leg が
 # 作った分が母集団から漏れる)
 after_paths=$(ls "${TMPDIR:-/tmp}"/rite-fix-normalized-* 2>/dev/null | LC_ALL=C sort || true)
 leaked_paths=$(LC_ALL=C comm -13 <(printf '%s\n' "$before_paths") <(printf '%s\n' "$after_paths"))
-if [ -z "$leaked_paths" ] && [ -z "$leaked_triage_moved" ] && [ -z "$leaked_triage_jqfail" ]; then
-  pass "normalization tempfile と移送 tempfile (成功経路 / jq 失敗経路) が回収される"
+if [ -z "$leaked_paths" ] && [ -z "$leaked_triage_moved" ] && [ -z "$leaked_triage_transport" ]; then
+  pass "normalization tempfile と移送 tempfile (成功経路 / transport 失敗経路) が回収される"
 else
-  fail "tempfile leaked: $(tr '\n' ' ' <<<"$leaked_paths$leaked_triage_moved$leaked_triage_jqfail")"
+  fail "tempfile leaked: $(tr '\n' ' ' <<<"$leaked_paths$leaked_triage_moved$leaked_triage_transport")"
 fi
 
 # --------------------------------------------------------------------------
@@ -591,8 +635,14 @@ grep -q 'FIX_FATAL_TRIAGE=applied; fatal=1; moved=3' <<<"$HELPER_STDERR" || tc10
 # 既存の非移送要素 (F-05) は一切書き換わらない
 [ "$(jq -c '.non_blocking_findings[0]' "$repo/review.json")" \
   = '{"id":"F-05","file":"src/e.ts","line":50,"severity":"MEDIUM","scope":"current-pr","pre_existing":true}' ] || tc10_ok=0
+# 派生フィールドは移送前の値のまま残す (review-result-schema.md の「不変条件の明示的な例外」)。
+# fix 側が再計算すると書き手が 2 つになり、`verdict` / `overall_assessment` が持つ
+# 「ゲート適用時点の統計」という receipt の意味が失われる。fixture 側に両キーを置いてあるので
+# この 2 行は恒真ではない (両方 null の入力だと検出力ゼロになる)
+[ "$(jq -r '.verdict' "$repo/review.json")" = "fix-needed" ] || tc10_ok=0
+[ "$(jq -r '.overall_assessment' "$repo/review.json")" = "要修正" ] || tc10_ok=0
 if [ "$tc10_ok" = "1" ]; then
-  pass "fatal=1/moved=3、実測なし HIGH の移送、append 保持、demotion_reason=non_fatal、severity 不変"
+  pass "fatal=1/moved=3、実測なし HIGH の移送、append 保持、demotion_reason=non_fatal、severity 不変、派生フィールド保存"
 else
   fail "unexpected (rc=$HELPER_RC): err='$HELPER_STDERR' json=$(jq -c . "$repo/review.json")"
 fi
@@ -727,6 +777,19 @@ if [ "$HELPER_RC" = "0" ] \
 else
   fail "id 衝突の可視化が期待どおりでない (rc=$HELPER_RC): $HELPER_STDERR"
 fi
+# 移送分どうしの衝突。既存要素だけを相手にする形だと marker が出ず、nb-sweep が 1 件しか
+# 拾わないまま「記録済み」と報告される (衝突の害は出所を問わない)
+repo=$(make_sandbox tc14c-dup-moved)
+write_fixture "$repo/review.json" dup_moved_id
+run_helper "$repo" local_file "$repo/review.json"
+if [ "$HELPER_RC" = "0" ] \
+   && grep -q 'FIX_FATAL_TRIAGE_ID_COLLISION=1; findings=F-01' <<<"$HELPER_STDERR" \
+   && grep -q 'FIX_FATAL_TRIAGE=applied; fatal=0; moved=2' <<<"$HELPER_STDERR"; then
+  pass "移送分どうしの id 衝突も可視化する"
+else
+  fail "移送分どうしの衝突が検出されない (rc=$HELPER_RC): $HELPER_STDERR"
+fi
+
 # 衝突が無い入力で誤検出しないこと
 repo=$(make_sandbox tc14c-clean)
 write_fixture "$repo/review.json" mixed_triage

@@ -614,7 +614,8 @@ args: "{pr_number}"
 | `[fix:pushed-wm-stale]` | ステップ 1 に戻る (WM stale 警告は表示するが loop は継続。上限チェックはステップ 1 が実施) |
 | `[fix:replied-only]` | **ステップ 5.S**（NB digest sweep）→ ステップ 5（完了通知）。**ステップ 1 に戻らない**。fatal=0 かつ moved>0 の cycle は修正対象が 0 件になり本 sentinel へ落ちるため、5.S を通さないと移送分が一度も消化されない |
 | `[fix:cancelled-by-user]` | **ループ終了**（ユーザーが fix.md 内 cancel 経路 — ステップ 1.4 Cancel option / Fast Path Cancel handoff 等 — で中止選択。`/rite:recover` で再開可） |
-| `[fix:error]` | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
+| `[fix:error]` (決定論的 reason) | `reason=` が `measured_undetermined` / `severity_enum_violation` / `non_blocking_not_array` / `json_invalid` / `fatal_triage_*` / `p3_triage_*` のいずれかなら **fix を再試行しない**。いずれも **同一入力ファイルの純関数**なので再実行は必ず同じ reason で再失敗し、1 cycle 空転して人間停止に落ちる。代わりに **counter を前進させずに `/rite:pr-review` を再実行**する（ステップ 1 の lost 修復ゲートと同じ「counter 不前進の再レビュー」経路を使う。新しい経路は作らない）。helper 自身が stderr に出している対処 (`/rite:pr-review を再実行してください`) と一致する。再レビュー後も同一 reason なら停止 |
+| `[fix:error]` (上記以外) | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
 | sentinel 不在 | 可逆な再試行を推奨として 1 回だけ自動実行し、期待 sentinel・直近の fix 出力 100 行・flow-state phase を既存 work memory へ記録する。再度不在なら停止 |
 
 > `--nb-sweep` 経由の戻りは本表を使わない。5.S 専用表（ステップ 1 に戻らない）だけを使う。
@@ -737,7 +738,7 @@ MUST NOT: 同一 PR で 5.S を 2 回走らせる。sweep 後の新規 class-B �
 
 ## ステップ 5: 完了通知
 
-> **構造的保証**: 終了 sentinel (`[fix:sweep-done]` / `[review:mergeable]` 経由 5.S 完了 / `[fix:replied-only]` / `[fix:cancelled-by-user]`) 到達時、sub-skill が `FINALIZE:...` handoff をセットしており、`Stop` hook が本ステップの完了通知を出力せず turn を終えようとする停止を **1 回だけ** 差し戻す。`[review:mergeable]` 単体では完了通知へ進まない（5.S が先）。詳細は「ループ継続・終了の構造的保証」節を参照。完了通知は必ず出力すること。
+> **構造的保証**: 終了 sentinel (`[fix:sweep-done]` / `[review:mergeable]` 経由 5.S 完了 / `[fix:replied-only]` / `[fix:cancelled-by-user]`) 到達時、sub-skill が `FINALIZE:...` handoff をセットしており、`Stop` hook が本ステップの完了通知を出力せず turn を終えようとする停止を **1 回だけ** 差し戻す。`[review:mergeable]` / `[fix:replied-only]` は**いずれも単体では完了通知へ進まない**（5.S が先）。ただし Stop hook 側の残件欄検査は `review:mergeable:*` 限定で、`fix:replied-only` には掛からない — replied-only 経路で 5.S を通すことに**機械的な裏付けは無く**、本節の規定だけが担保である。詳細は「ループ継続・終了の構造的保証」節を参照。完了通知は必ず出力すること。
 
 ### ステップ 5.0: 一時残骸の最終回収 (terminal cleanup)
 
@@ -800,7 +801,7 @@ marker_emit ITERATE_RUN_CLOSE "$run_close" "phase=$close_phase"
 | `ok` | counter を 0 にして run を閉じた。次回起動は fresh entry となり pin が更新される |
 | `failed` | リセットに失敗。次回起動は resume 判定となり前 run の pin を引き継ぐ（WARNING 済み）。`/rite:recover` で再開する前に手動で `--cycle-count 0` を打つとよい |
 
-### ステップ 5.0.2: 未処理 non-blocking 件数（`[review:mergeable]` 完了通知用）
+### ステップ 5.0.2: 未処理 non-blocking 件数（`[review:mergeable]` 完了通知用。`[fix:replied-only]` 経路は残件欄を持たないため skip）
 
 5.S overlay。残件欄は **0 件固定**（JSON の `non_blocking_findings[]` は消化前の値のまま残るので数えない）。取得失敗は 5.S で `[iterate:nb-sweep-error]` 停止済みでここへ来ない。
 rationale: references/rationale.md#nb-remaining-notice
@@ -860,13 +861,41 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 
 ### 正常終了 (`[fix:replied-only]`)
 
+本経路も 5.S を経由するため、mergeable 経路と**同じ marker → テンプレ対応表**で分岐する。
+digest 行の書式も mergeable 経路と同一にする（同一節に 2 書式を併存させない）。
+
+| 5.S marker | 完了通知 |
+|---|---|
+| `ITERATE_NB_SWEEP=noop` | digest なしテンプレ |
+| `ITERATE_NB_SWEEP=done`（`NB_SWEEP_RESULT=done`） | digest なしテンプレ + `- sweep: fixed={sweep_fixed} / rejected={sweep_rejected} / issued={sweep_issued}` |
+| `ITERATE_NB_SWEEP=skipped` | ファイル 1 行目が `noop` なら digest なしテンプレ。`done` なら digest 行付き（件数が取れなければ 0） |
+| `ITERATE_NB_SWEEP=failed` | 到達不能（5.S で停止） |
+
+**digest なし** (`ITERATE_NB_SWEEP=noop`):
+
 ```
 ## /rite:iterate 完了
 
 - PR: #{pr_number}
 - 終了理由: fix:replied-only
 - ブランチ: {branch_name}
-- NB sweep: {sweep_fixed} 件修正 / {sweep_rejected} 件却下 / {sweep_issued} 件別 Issue 化（対象 0 件なら「対象なし」）
+
+次のステップ:
+- Ready 化: /rite:ready {pr_number}
+- マージ (Ready 後): /rite:merge {pr_number}
+
+flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に phase=ready に遷移します。
+```
+
+**digest 付き** (`ITERATE_NB_SWEEP=done`):
+
+```
+## /rite:iterate 完了
+
+- PR: #{pr_number}
+- 終了理由: fix:replied-only
+- ブランチ: {branch_name}
+- sweep: fixed={sweep_fixed} / rejected={sweep_rejected} / issued={sweep_issued}
 
 次のステップ:
 - Ready 化: /rite:ready {pr_number}

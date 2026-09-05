@@ -17,6 +17,8 @@
 # C-04c 移送件数の実出力行が記録経路 (4.5.3 / 4.6) に存在する
 # C-05 P3 の新 reason が reason 表と Eval-order enumeration の両方に登録されている
 # C-05b Eval-order enumeration の P3 区間が実 emit 順と一致する
+# C-07 fatal_triage_jq_failed の cause= 判別子が site ごとに異なる
+# C-08 iterate の [fix:error] routing が決定論的 reason を fix 再試行へ回さない
 # C-06 撤去済み reason (fatal_triage_id_union_violation) を helper / SKILL.md が同時に持つか同時に持たない
 set -uo pipefail
 
@@ -84,7 +86,7 @@ assert_grep "C-04 marker 不在では非致命 gated も選択肢に並べる" "
 # 分岐 5 を「致命のみ」へ反転させると、marker 不在経路の非致命 gated finding が
 # 移送も記録もされないまま修正対象から消える
 assert_grep "C-04 分岐 5 が marker 不在時に severity 帯を絞らない" "$FIX" \
-  'marker なし.*severity に依らず'
+  'marker なし.*severity に依らず本セクション以降を通常通り実行する'
 
 # --- C-04b: marker 不在時の表示規則 ---
 # 規則は 1.2.0 (moved_count 系) と 1.4 注記 (fatal_count) の 2 箇所だけに置く。
@@ -101,7 +103,7 @@ assert_grep "C-04b 1.4 の移送済みセクションは marker 不在時に省�
 # `.*` は使わない — 規則が住む行は 1 段落 1 行で行前半にも {fatal_count} が出現するため、
 # `\{fatal_count\}.*` 形だと委譲節の帰属先を書き換えても行内マッチで緑のまま通る
 assert_grep "C-04b fatal_count の規則は 1.4 注記が SoT と委譲されている" "$FIX" \
-  '\*\*`\{fatal_count\}`\*\*:.*ステップ 1\.4 の `### 致命`.*SoT とする'
+  '\*\*`\{fatal_count\}`\*\*: 使用箇所はステップ 1\.4 の `### 致命` セクション見出しだけなので、規則はそこの注記を SoT とする'
 # 見出しリテラル単独ではなく marker 不在という適用条件ごと pin する (単独だと
 # 差し替えの条件を消しても緑のまま通る)
 assert_grep "C-04b 1.4 の marker 不在時は severity 限定しない見出しへ差し替える" "$FIX" \
@@ -162,6 +164,25 @@ assert_grep "C-04c 移送件数が Issue 記録コメントに出力される" "
 assert_grep "C-04c 移送件数が完了報告に出力される" "$FIX" \
   '非致命移送 \(fix 対象外、記録済み\): \{moved_count\}件'
 
+# --- C-07: fatal_triage_jq_failed の cause= 判別子が site ごとに異なる ---
+# 判別子は「非隣接の同一 reason は判別子つきで列挙する」規約の実体。5 site のうち
+# transport だけが実挙動で pin できる (他 4 つは jq 自体の失敗を要し全域 stub になる) ため、
+# 値の網羅はここで静的に持つ。全 site を同一値へ潰す退行は maps 側の挙動 pin では捕まらない
+# (どの値でも reason は同じ) — 実測: 4 site の cause= を一括削除しても maps 34/0・契約 34/0
+for _cause in severity_enum_probe measured_probe counts_probe transport nb_type_probe; do
+  assert_grep "C-07 cause=$_cause が helper から emit される" "$MAPS" \
+    "reason=fatal_triage_jq_failed; cause=$_cause"
+  assert_grep "C-07 cause=$_cause が helper の docstring に登録されている" "$MAPS" \
+    "^#.* $_cause"
+done
+# 判別子の値が互いに異なること (全 site を同一値へ潰す退行は上のループでは捕まらない)
+_cause_count=$(grep -oE 'reason=fatal_triage_jq_failed; cause=[a-z_]+' "$MAPS" | sort -u | wc -l | tr -d ' ')
+if [ "$_cause_count" = "5" ]; then
+  pass "C-07 cause= の相異なる値が 5 つある"
+else
+  fail "C-07 cause= の相異なる値が $_cause_count 種 (期待 5) — 非隣接 site の判別が失われている"
+fi
+
 # --- C-05: 新 reason の documented-union 登録 ---
 # emit 箇所だけ増えて reason 表 / Eval-order enumeration が追従しない drift を塞ぐ。
 _eval_order=$(grep -n 'Eval-order enumeration.*emit reasons sequence' "$FIX" | head -1 | cut -d: -f1)
@@ -217,6 +238,27 @@ fi
 # 上の比較が何を正としているかの人間可読な SoT が失われる
 assert_grep "C-05b enumeration の重複列挙規約が明文化されている" "$FIX" \
   '同一 reason が非隣接の site から emit される場合は判別子つきで各位置に列挙する \(隣接する同一 reason の分岐は 1 回に畳む\)'
+
+# --- C-08: iterate の [fix:error] routing が決定論的 reason を fix 再試行へ回さない ---
+# 本 PR が新設した helper 側 hard fail はいずれも同一入力ファイルの純関数なので、fix を
+# 再実行すれば必ず同じ reason で再失敗する。reason を見ない一律再試行は 1 cycle を空転させた
+# うえで人間停止に落ちる (「人間へのエスカレーションを定常運用の形にしない」に反する)。
+# 散文だけの routing 規則は drift するので、規則の存在と語彙の実在を両方 pin する
+ITER="$PLUGIN_ROOT/skills/iterate/SKILL.md"
+assert_file_exists_or_fail "iterate/SKILL.md exists" "$ITER" || true
+assert_grep "C-08 決定論的 reason は fix を再試行しない" "$ITER" \
+  '\*\*fix を.*再試行しない\*\*'
+assert_grep "C-08 代わりに counter 不前進の再レビューへ回す" "$ITER" \
+  'counter を前進させずに `/rite:pr-review` を再実行'
+# routing 規則が名指しする reason が実在すること。実在しない reason 名を並べると規則は
+# どの実際の失敗にも当たらず、一律再試行のまま静かに元へ戻る
+for _r in measured_undetermined severity_enum_violation non_blocking_not_array json_invalid; do
+  if grep -q "reason=$_r" "$MAPS"; then
+    pass "C-08 routing が名指しする $_r が helper に実在する"
+  else
+    fail "C-08 routing が実在しない reason '$_r' を名指ししている — 規則がどの失敗にも当たらない"
+  fi
+done
 
 # --- C-06: 撤去済み reason (fatal_triage_id_union_violation) の双方向 pin ---
 # helper 側の自己検証撤去に SKILL.md が追従しないと、存在しない検査を原因として案内することになる。

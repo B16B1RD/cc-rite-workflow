@@ -227,7 +227,7 @@ fire 分岐でも `--handoff` なしの `flow-state.sh set` を呼ぶのは、�
 ## design-decisions
 
 blocking の定義式は本ファイルに複製せず severity-levels.md の実測必須ゲートを SoT とする。
-同節は reviewer finding に閉じた producer 式と fix loop 全体を対象とする consumer 式の差を
+同節は reviewer finding に閉じた producer 式と `/rite:fix` が修正対象を選ぶ consumer 式の差を
 「適用範囲」で意図的なスコープ差として定義している。本スキルはループ側だが、blocking として数えるのは **producer 式**
 （`measured != false` かつ gated。severity では絞らない）である。consumer 式が決めるのは fix が
 どの指摘を修正対象にするかだけで、mergeable の判定には使わない。実測を伴わない指摘と
