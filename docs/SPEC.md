@@ -1690,16 +1690,17 @@ When a step of the end-to-end flow (`/rite:open` → `/rite:iterate` → `/rite:
 
 > **History**: An earlier design auto-detected these as "workflow incidents" — each failure path emitted a `[CONTEXT] WORKFLOW_INCIDENT=1; ...` sentinel via a dedicated `workflow-incident-emit.sh` hook, which the (then-current) `/rite:issue-start` orchestrator's ステップ 8.5 grepped from the conversation context to auto-register the blocker as a Todo Issue (`AskUserQuestion` confirmation, per-session dedupe, `workflow_incident.enabled` opt-out). The entire mechanism — the emit hook, the ステップ 8.5 detection logic, the `workflow_incident:` config key, and the sentinel format — was removed in favor of the single-layer plain-stderr design described above. The `/rite:issue-start` orchestrator itself was subsequently decomposed into the four `pr/` commands (see the [Retired section](#riteissuestart-retired) above). Failures are now visible but no longer auto-registered; the user decides whether to file an Issue.
 
-### Reviewer-Triggered Issue Creation (Two Paths)
+### Reviewer-Triggered Issue Creation
 
-There are (were) two paths that converted reviewer "別 Issue として作成" recommendations into tracked GitHub Issues. Their current status differs and must not be conflated:
+Three paths converted (or convert) reviewer "別 Issue として作成" recommendations into tracked GitHub Issues. Their current status differs and must not be conflated:
 
 | Path | Location | Status | Notes |
 |------|----------|--------|-------|
-| Fix-side post-loop | `fix.md` Phase 4.3 ("Automatic Separate Issue Creation") | **Removed** | The full Phase 4.3 section and the `[fix:issues-created:N]` sentinel were deleted. The `review.separate_issue_creation.*` runtime mechanism is removed, but the scaffolding block remains in `templates/config/rite-config.yml` (no runtime effect) and is scheduled for removal in a follow-up PR — see [CONFIGURATION.md](./CONFIGURATION.md) `~~separate_issue_creation.*~~` DEPRECATED note for the template state caveat. Inside the `/rite:fix` review-fix loop, reviewer recommendations are now handled per-finding via the Phase 2.1 menu (fix / accept / reply) — no post-loop auto-creation. |
-| Review-side | `pr/pr-review.md` Phase 7 ("Automatic Issue Creation") | **Live (not removed)** | Calls `plugins/rite/scripts/create-issue-with-projects.sh` with `source: "pr_review"`, gated by `AskUserQuestion` confirmation. This is the canonical path for converting reviewer recommendations into tracked Issues. |
+| Fix-side post-loop (AskUserQuestion / config) | `fix.md` Phase 4.3 ("Automatic Separate Issue Creation") | **Removed** | The full Phase 4.3 section, the `[fix:issues-created:N]` sentinel, and the `review.separate_issue_creation.*` keys were deleted. The distributed template no longer declares those keys. Inside the `/rite:fix` review-fix loop, reviewer recommendations are handled per-finding via the Phase 2.1 menu (fix / accept / reply) — skip → 別 Issue で loop 終了する経路は閉じている。 |
+| Review-side triage | `skills/pr-review/SKILL.md` ステップ 7 | **Live** | Calls `plugins/rite/scripts/create-issue-with-projects.sh` with `source: "pr_review"`, gated by `AskUserQuestion` (or E2E/batch reversible Decision Log). This is the disposition path for **out-of-scope** recommendations, not a loop-exit. |
+| Mechanical routing | `/rite:iterate` 5.S (`/rite:fix --nb-sweep`) and `/rite:cleanup` follow-up Issue | **Live** | Remaining non-blocking findings after `[review:mergeable]` are consumed mechanically. Leftovers at merge become one follow-up Issue. This is not the removed skip-to-end-loop AskUserQuestion path. |
 
-The `scripts/create-issue-with-projects.sh` helper is the canonical Issue-creation path for both the review-side Phase 7 invocation above and for manual `/rite:issue-create` use.
+The `scripts/create-issue-with-projects.sh` helper is the canonical Issue-creation path for the review-side ステップ 7 invocation above and for manual `/rite:issue-create` use. Mechanical routing uses the cleanup follow-up helper, not this script.
 
 ## Experience Wiki
 
