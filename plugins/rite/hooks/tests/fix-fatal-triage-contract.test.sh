@@ -78,8 +78,8 @@ assert_grep "T-04 marker ありでは致命だけを並べる" "$FIX" \
   'marker あり\).*手動起動時に並ぶのは致命 finding だけ'
 assert_grep "T-04 marker 不在では非致命 gated も選択肢に並べる" "$FIX" \
   'marker 不在の経路.*非致命 gated finding も選択肢に並べる'
-# 選択肢の母集団は 2.1 Entry routing の分岐 5 へ委譲したので、その規範文自体を pin する。
-# 分岐 5 を「致命のみ」へ反転させる退行は本 Issue が防ぐ対象そのもの
+# 分岐 5 を「致命のみ」へ反転させると、marker 不在経路の非致命 gated finding が
+# 移送も記録もされないまま修正対象から消える
 assert_grep "T-04 分岐 5 が marker 不在時に severity 帯を絞らない" "$FIX" \
   'marker なし.*severity に依らず本セクション以降を通常通り実行する'
 
@@ -90,12 +90,15 @@ assert_grep "T-04b moved_count の marker 不在時規則が 1.2.0 にある" "$
   '`{moved_count}件` を `件` ごと `不明 \(FIX_FATAL_TRIAGE marker 不在\)` に置換'
 assert_grep "T-04b moved_pointer_suffix の marker 不在時値が定義されている" "$FIX" \
   '`{moved_pointer_suffix}` は空文字列にする'
+# `.*` は使わない — 規則が住む行は 1 段落 1 行で行前半にも {fatal_count} が出現するため、
+# `\{fatal_count\}.*` 形だと委譲節の帰属先を書き換えても行内マッチで緑のまま通る
 assert_grep "T-04b fatal_count の規則は 1.4 注記が SoT と委譲されている" "$FIX" \
-  '\{fatal_count\}.*規則はそこの注記を SoT とする'
-# 見出しリテラル単独ではなく marker 不在という条件節ごと pin する。単独だと条件との
-# 結び付きが緩く、件数決定規則を消しても緑のままになる
+  '\*\*`\{fatal_count\}`\*\*: 使用箇所はステップ 1\.4 の `### 致命` セクション見出しだけなので、規則はそこの注記を SoT とする'
+# 見出しリテラル単独ではなく marker 不在という適用条件ごと pin する (単独だと
+# 差し替えの条件を消しても緑のまま通る)
 assert_grep "T-04b 1.4 の marker 不在時は severity 限定しない見出しへ差し替える" "$FIX" \
-  'marker 不在 \(会話 / legacy Markdown\) → 見出しを `### 未対応の指摘（全 severity 帯）` にし'
+  'marker 不在 \(会話 / legacy Markdown\) → 見出しを `### 全 severity 帯（仕分け未適用）\({listed_count}件\)` にし'
+# 件数の決定規則は上の条件節 pin では守れない (条件節を残したまま削除できる) ので独立に pin する
 assert_grep "T-04b 1.4 の marker 不在時は実列挙件数を書く" "$FIX" \
   '件数は実際に列挙した行数を書く'
 # 規則本文の手書き複製が増えていないこと (1.2.0 の 1 箇所だけ)。
@@ -112,8 +115,9 @@ fi
 _rule_line=$(grep -n '不明 (FIX_FATAL_TRIAGE marker 不在)' "$FIX" | head -1 | cut -d: -f1)
 _sec_start=$(grep -n '^#### 1\.2\.0 ' "$FIX" | head -1 | cut -d: -f1)
 _sec_end=$(awk -v s="${_sec_start:-0}" 'NR > s && /^#### / { print NR; exit }' "$FIX")
-if [ -n "$_rule_line" ] && [ -n "$_sec_start" ] && [ -n "$_sec_end" ] \
-   && [ "$_rule_line" -gt "$_sec_start" ] && [ "$_rule_line" -lt "$_sec_end" ]; then
+if [ -z "$_sec_start" ] || [ -z "$_sec_end" ]; then
+  fail "T-04b 見出し '#### 1.2.0 ' の範囲を特定できない (見出しレベル / 文言の drift。start=$_sec_start end=$_sec_end)"
+elif [ -n "$_rule_line" ] && [ "$_rule_line" -gt "$_sec_start" ] && [ "$_rule_line" -lt "$_sec_end" ]; then
   pass "T-04b marker 不在時規則がステップ 1.2.0 の節内に定義されている"
 else
   fail "T-04b 規則の定義位置が 1.2.0 の外 (rule=$_rule_line section=$_sec_start..$_sec_end) — 参照側 3 箇所が空の節を指す"
@@ -152,21 +156,28 @@ fi
 # --- T-05b: Eval-order enumeration の P3 区間が実 emit 順と一致する ---
 # T-05 は membership しか見ないため、emit site を移動しても enumeration が旧順のまま残る
 # drift を検出できない (本 reason 群は「emit reasons sequence」と順序を明示的に主張する契約)。
-# 比較は [CONTEXT] 行 (機械可読な emit) に限る — [fix:error] 行は判別子を持たない
-_emit_seq=$(grep -o 'FIX_FALLBACK_FAILED=1; reason=p3_triage_[a-z_]*\(; cause=[a-z_]*\)\?' "$FIX" \
-  | sed 's/FIX_FALLBACK_FAILED=1; reason=//; s/; cause=/:/' \
-  | uniq)   # 連続する同一 reason (同じ guard の rc= / value= 2 分岐) は enumeration では 1 度だけ列挙する
-_decl_seq=$(sed -n "${_eval_order:-0}p" "$FIX" \
-  | grep -o 'p3_triage_[a-z_]*` \?\((cause=[a-z_]*)\)\?' \
-  | sed 's/`//; s/ (cause=/:/; s/)//; s/ $//')
+# 比較は [CONTEXT] 行 (機械可読な emit) に限る — [fix:error] 行は判別子を持たない。
+# 抽出 0 件は「検査できなかった」であって「一致した」ではないので fail へ倒す
+# (両辺が同時に空になると比較が成立し、1 件も検証しないまま緑で通るため。
+#  同型の guard: hooks/scripts/fix-reason-coverage-check.sh)
 if [ -z "${_eval_order:-}" ]; then
   : # T-05 側が既に fail 済み
-elif [ "$_emit_seq" = "$_decl_seq" ]; then
-  pass "T-05b Eval-order enumeration の P3 区間が実 emit 順と一致する"
 else
-  fail "T-05b enumeration の P3 区間が実 emit 順と不一致
+  _emit_seq=$(grep -o 'FIX_FALLBACK_FAILED=1; reason=p3_triage_[a-z_]*\(; cause=[a-z_]*\)\?' "$FIX" \
+    | sed 's/FIX_FALLBACK_FAILED=1; reason=//; s/; cause=/:/' \
+    | uniq)   # 連続する同一 reason (同じ guard の rc= / value= 2 分岐) は enumeration では 1 度だけ列挙する
+  _decl_seq=$(sed -n "${_eval_order}p" "$FIX" \
+    | grep -o 'p3_triage_[a-z_]*` \?\((cause=[a-z_]*)\)\?' \
+    | sed 's/`//; s/ (cause=/:/; s/)//; s/ $//')
+  if [ -z "$_emit_seq" ] || [ -z "$_decl_seq" ]; then
+    fail "T-05b 比較母集団が空 (emit=${#_emit_seq} decl=${#_decl_seq}) — emit 記法 / enumeration 記法の drift で検査が無効化されている"
+  elif [ "$_emit_seq" = "$_decl_seq" ]; then
+    pass "T-05b Eval-order enumeration の P3 区間が実 emit 順と一致する"
+  else
+    fail "T-05b enumeration の P3 区間が実 emit 順と不一致
     実 emit 順: $(printf '%s' "$_emit_seq" | tr '\n' ' ')
     宣言順:     $(printf '%s' "$_decl_seq" | tr '\n' ' ')"
+  fi
 fi
 
 # --- T-06: 撤去済み reason (fatal_triage_id_union_violation) の双方向 pin ---

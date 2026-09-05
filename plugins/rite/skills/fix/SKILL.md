@@ -927,7 +927,7 @@ exit 1
 - `severity_map_build_failed`: severity_map 構築用 jq が失敗 (0 件で正常終了する silent regression 防止、helper exit 1 → caller が `[fix:error]` に昇格)
 - `scope_map_build_failed`: scope_map_json 構築用 jq が失敗 (`FIX_FALLBACK_FAILED` flag、非ブロッキング、`scope_map_json="{}"` で legacy blocking 扱いに fallback)
 
-**Eval-order enumeration** (Pattern-2 documented-union): emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `p3_triage_mktemp_failed` / `p3_triage_write_failed` / `p3_triage_readback_failed` (cause=empty_file) / `p3_triage_moved_probe_failed` / `p3_triage_not_persistable` / `p3_triage_readback_failed` (cause=cat_failed) / `pr_comment_scope_map_build_failed` / `review_source_resolve_failed` / `findings_maps_build_failed`)
+**Eval-order enumeration** (Pattern-2 documented-union): emit reasons sequence = (`bash_version_incompatible` / `pr_number_placeholder_residue` / `overall_assessment_unknown_value` / `pr_comment_raw_json_awk_failed` / `pr_comment_raw_json_parse_failure` / `pr_comment_schema_required_fields_missing` / `pr_comment_cross_field_invariant_violated` / `pr_comment_critical_high_scope_nit_noted` / `pr_comment_schema_version_unknown` / `user_cancelled` / `user_file_path_invalid` / `review_file_path_empty_value` / `comment_body_tempfile_empty` / `pr_comment_commit_sha_mismatch` / `jq_error_on_commit_sha` / `pr_comment_severity_map_build_failed` / `pr_comment_tempfile_read_io_error` / `p3_triage_mktemp_failed` / `p3_triage_write_failed` / `p3_triage_readback_failed` (cause=empty_file) / `p3_triage_moved_probe_failed` / `p3_triage_not_persistable` / `p3_triage_readback_failed` (cause=cat_failed) / `pr_comment_scope_map_build_failed` / `review_source_resolve_failed` / `findings_maps_build_failed`) — 同一 reason が非隣接の site から emit される場合は判別子つきで各位置に列挙する (隣接する同一 reason の分岐は 1 回に畳む)
 
 #### Legacy Branching (PR Comment Path Only)
 
@@ -1977,8 +1977,8 @@ PR #{number} のレビューコメント
 ### 致命（CRITICAL/HIGH・実測あり）({fatal_count}件)
 <!-- 見出しは marker の有無で切り替える (`{fatal_count}` の marker 不在時規則は本注記が SoT):
      marker あり (仕分け済み) → 上記のまま。{fatal_count} は marker の fatal= を literal substitute。
-     marker 不在 (会話 / legacy Markdown) → 見出しを `### 未対応の指摘（全 severity 帯）` にし、
-       件数は実際に列挙した行数を書く。この経路では ステップ 2.1 の分岐 5 により
+     marker 不在 (会話 / legacy Markdown) → 見出しを `### 全 severity 帯（仕分け未適用）({listed_count}件)` にし、
+       件数は実際に列挙した行数を書く ({listed_count})。この経路では ステップ 2.1 の分岐 5 により
        MEDIUM / LOW-MEDIUM / LOW の gated finding も修正対象に残るため、
        `CRITICAL/HIGH・実測あり` のラベルは表の内容を誤って説明する。 -->
 | # | 重要度 | ファイル | 行 | 指摘内容 | レビュアー |
