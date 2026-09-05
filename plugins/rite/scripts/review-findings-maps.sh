@@ -59,9 +59,9 @@
 #   non_blocking_not_array            — non_blocking_findings が配列でない (exit 1、移送 jq の型エラーが
 #                                       総称 reason に潰れる前に一次原因を出す)
 #   fatal_triage_jq_failed            — 致命性仕分けの jq が失敗 (exit 1、部分適用を残さない)。非隣接の
-#                                       5 site から emit するため cause= で判別する:
+#                                       6 site から emit するため cause= で判別する:
 #                                       nb_type_probe / severity_enum_probe / measured_probe /
-#                                       counts_probe / transport
+#                                       counts_probe / transport / id_collision_probe
 #   fatal_triage_mktemp_failed        — 移送出力用 tempfile の mktemp が失敗 (exit 1)
 #   fatal_triage_mv_failed            — 移送後 JSON の atomic mv が失敗 (exit 1、入力は無変更)
 #   jq_mutation_failed                — normalization jq mutation が失敗、原 JSON のまま続行 (非ブロッキング)
@@ -71,7 +71,7 @@
 #   scope_map_build_failed            — scope_map 構築用 jq が失敗、scope_map_json="{}" で続行 (非ブロッキング)
 #
 # Eval-order enumeration (reason 表と併せて参照する emit reasons の documented set):
-# emit reasons sequence = (`scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `mktemp_failure_norm_tmp` / `json_invalid` / `fatal_triage_jq_failed` (cause=nb_type_probe) / `non_blocking_not_array` / `fatal_triage_jq_failed` (cause=severity_enum_probe) / `severity_enum_violation` / `fatal_triage_jq_failed` (cause=measured_probe) / `measured_undetermined` / `fatal_triage_jq_failed` (cause=counts_probe) / `fatal_triage_mktemp_failed` / `fatal_triage_jq_failed` (cause=transport) / `fatal_triage_mv_failed` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `scope_map_build_failed`) — 同一 reason が非隣接の site から emit される場合は判別子つきで各位置に列挙する
+# emit reasons sequence = (`scope_omitted_in_v1_0` / `pre_existing_false_scope_nit_noted` / `jq_mutation_failed` / `mktemp_failure_norm_tmp` / `json_invalid` / `fatal_triage_jq_failed` (cause=nb_type_probe) / `non_blocking_not_array` / `fatal_triage_jq_failed` (cause=severity_enum_probe) / `severity_enum_violation` / `fatal_triage_jq_failed` (cause=measured_probe) / `measured_undetermined` / `fatal_triage_jq_failed` (cause=counts_probe) / `fatal_triage_mktemp_failed` / `fatal_triage_jq_failed` (cause=transport) / `fatal_triage_jq_failed` (cause=id_collision_probe) / `fatal_triage_mv_failed` / `jq_duplicate_check_failed` / `severity_map_build_failed` / `scope_map_build_failed`) — 同一 reason が非隣接の site から emit される場合は判別子つきで各位置に列挙する
 #
 # Exit codes:
 #   0  正常 (no-op source / maps build 成功 / 非ブロッキング WARNING のみ)
@@ -390,9 +390,20 @@ if [ "${moved_count:-0}" -gt 0 ]; then
     | [.non_blocking_findings[]? | select(.demotion_reason == "non_fatal")
        | select(.id as $i | $dups | index($i)) | safe_id]
     | unique | join(",")
-  ' "$triage_tmp" 2>/dev/null || echo "")
+  ' "$triage_tmp" 2>/dev/null || echo "__JQ_FAILED__")
+  if [ "$triage_id_collision" = "__JQ_FAILED__" ]; then
+    # 衝突検査は mv の**前**にある。probe 失敗を空文字へ畳むと移送はそのまま完走し、衝突 id が
+    # 永続化され、nb-sweep の先勝ち dedup で恒久的に落ち、完了報告は「記録済み」と表示する。
+    # 他 5 probe と同じ cause= 規律へ揃える (「marker 不在 = 衝突なし」を保証と呼ぶ前提でもある)
+    rm -f "$triage_tmp"
+    triage_tmp=""
+    echo "ERROR: id 衝突検査用 jq が失敗しました" >&2
+    echo "  影響: 衝突の有無を判定できないため、移送を永続化せず停止します (入力ファイルは無変更)" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=fatal_triage_jq_failed; cause=id_collision_probe" >&2
+    exit 1
+  fi
   if [ -n "$triage_id_collision" ]; then
-    echo "WARNING: 移送した finding の id が non_blocking_findings[] の既存要素と衝突します: $triage_id_collision" >&2
+    echo "WARNING: 移送した finding の id が移送後 non_blocking_findings[] 内で衝突します (既存要素との衝突・移送分どうしの衝突の両方を含む): $triage_id_collision" >&2
     echo "  影響: nb-sweep は id 先勝ちで dedup するため、衝突した移送分は sweep 対象から外れます" >&2
     echo "  対処: /rite:pr-review を再実行し、2 配列で id を通し番号にしたレビュー結果を作り直してください" >&2
     echo "[CONTEXT] FIX_FATAL_TRIAGE_ID_COLLISION=1; findings=$triage_id_collision" >&2

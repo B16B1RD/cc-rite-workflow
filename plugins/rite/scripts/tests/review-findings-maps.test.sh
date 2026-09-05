@@ -801,6 +801,44 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# TC-14e: 衝突検査 probe の失敗を「衝突なし」へ畳まない
+# 検査は mv の前にあるため、probe 失敗を空文字へ倒すと移送が完走して衝突 id が永続化され、
+# nb-sweep の先勝ち dedup で恒久的に落ちるのに完了報告は「記録済み」と表示する。
+# fix/SKILL.md の「marker 不在 = 衝突なし」という断定は本 leg が成立させている
+# --------------------------------------------------------------------------
+echo "TC-14e: 衝突検査 probe の fail-loud"
+repo=$(make_sandbox tc14e)
+mkdir -p "$repo/bin"
+_real_jq=$(command -v jq)
+# `dups` は衝突検査 jq に固有のトークン (helper 内の他 jq program には現れない)。
+# `safe_id` を使うと severity_enum_probe / measured_probe が先に落ちて transport 手前で止まる
+cat > "$repo/bin/jq" <<STUBEOF
+#!/bin/bash
+for _a in "\$@"; do
+  case "\$_a" in *dups*) exit 5 ;; esac
+done
+exec "$_real_jq" "\$@"
+STUBEOF
+chmod +x "$repo/bin/jq"
+write_fixture "$repo/review.json" id_collision
+tc14e_before=$(cat "$repo/review.json")
+HELPER_STDERR=$( ( export PATH="$repo/bin:$PATH"; _timeout 10 bash "$TARGET" \
+  --review-source local_file --review-source-path "$repo/review.json" ) 2>&1 >/dev/null ) && HELPER_RC=0 || HELPER_RC=$?
+tc14e_ok=1
+[ "$HELPER_RC" = "1" ] || tc14e_ok=0
+grep -q 'FIX_FALLBACK_FAILED=1; reason=fatal_triage_jq_failed; cause=id_collision_probe' <<<"$HELPER_STDERR" || tc14e_ok=0
+# 失敗経路で marker を出さない (永続化されない移送が記録経路へ転記される)
+grep -q 'FIX_FATAL_TRIAGE=applied' <<<"$HELPER_STDERR" && tc14e_ok=0
+# 入力は無変更、tempfile も残さない
+[ "$(cat "$repo/review.json")" = "$tc14e_before" ] || tc14e_ok=0
+[ -z "$(ls "$repo"/review.json.triage.* 2>/dev/null || true)" ] || tc14e_ok=0
+if [ "$tc14e_ok" = "1" ]; then
+  pass "衝突検査 probe の失敗は cause=id_collision_probe で停止し、移送を永続化しない"
+else
+  fail "衝突 probe の fail-loud が期待どおりでない (rc=$HELPER_RC): $HELPER_STDERR"
+fi
+
+# --------------------------------------------------------------------------
 # TC-14d: 外部入力から marker 行を偽造できない
 # .file / .line は reviewer agent 出力由来で、書き側は id しか機械強制しない。
 # 診断行が生バイトを出すと改行が行境界になり marker を後勝ちで塗り替えられる

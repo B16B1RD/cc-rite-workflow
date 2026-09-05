@@ -49,7 +49,7 @@ rationale: references/design-rationale.md#e2e-output-minimization-scope
 | Phase | Standalone | E2E Flow |
 |-------|-----------|----------|
 | Fix implementation | Full output | Full output (needed for code changes) |
-| ステップ 4 (Completion) | Full report | 完了報告を最小化する。ただし ステップ 5.1 が定める 2 行 (result pattern / 非致命移送) は E2E でも省略しない。`non-blocking` / `nit 認知` は ステップ 4.6 の完了報告フィールドであり本行の対象外 |
+| ステップ 4 (Completion) | Full report | 完了報告を最小化する。ただし下記 fenced ブロックの 2 行 (result pattern / 非致命移送) は E2E でも省略しない。**result pattern の書式は本節が定義し、移送行の規定は ステップ 5.1 が SoT**。`non-blocking` / `nit 認知` は ステップ 4.6 の完了報告フィールドであり本行の対象外 |
 | ステップ 4.5 (Work Memory) | Full update | Full update (no change) |
 
 E2E output format (ステップ 4):
@@ -59,7 +59,7 @@ E2E output format (ステップ 4):
 非致命移送 (fix 対象外、記録済み): {moved_count}件
 ```
 
-移送行の規定 (0 件でも常時出す / marker 不在時の置換) はすべて ステップ 5.1 の「E2E 出力での移送行」が SoT。本節は同じ規則を再掲せず、出力形だけを示す。
+移送行は 0 件でも常時出す (ステップ 5.1「E2E 出力での移送行」が SoT)。`{moved_count}` の marker 不在時の扱いは ステップ 1.2.0 の marker 不在時規則に従う。
 
 Detection: ステップ 0.1 end-to-end flow determination を再利用。
 
@@ -523,7 +523,7 @@ rm -f "$maps_err"
 
 helper は `[CONTEXT] FIX_FATAL_TRIAGE=applied; fatal={n}; moved={m}` を必ず 1 回 emit する。`{m}` を `{moved_count}` として retain し、ステップ 1.4 の表示・ステップ 4.5.3 の記録・ステップ 4.6 の完了報告・ステップ 5.1 の E2E 出力で使う。`{n}` は `{fatal_count}` として retain し、ステップ 1.4 の `### 致命` セクション見出しの件数に使う。**marker 不在は helper が仕分けまで到達していない**ことを意味するので、どちらも推測で補わない。marker 不在時の扱いは 2 系統に分かれる。**`{moved_count}`**: ステップ 4.5.3 / 4.6 / 5.1 では `{moved_count}件` を `件` ごと `不明 (FIX_FATAL_TRIAGE marker 不在)` に置換し (`{moved_pointer_suffix}` は空文字列にする — 指し先の記録が存在しないため)、ステップ 1.4 の「移送済み」セクションは見出しごと省略する (rationale: references/design-rationale.md#fatal-triage)。**`{fatal_count}`**: 使用箇所はステップ 1.4 の `### 致命` セクション見出しだけなので、規則はそこの注記を SoT とする。
 
-helper は id 衝突を検出したとき `[CONTEXT] FIX_FATAL_TRIAGE_ID_COLLISION=1; findings=F-xx,...` を追加で emit する (非ブロッキング)。この marker があれば `findings=` の id 列を `{collision_ids}` として retain し、**ステップ 4.5.3 の Issue 記録コメントとステップ 4.6 の完了報告に転記する** — 衝突した移送分は nb-sweep の id 先勝ち dedup から外れて恒久的に消化されないのに、移送行は「記録済み」と表示するため、転記先が無いと損失が完了報告に一切現れない。marker 不在は「衝突なし」を意味する (helper は検出時のみ emit する)。
+helper は id 衝突を検出したとき `[CONTEXT] FIX_FATAL_TRIAGE_ID_COLLISION=1; findings=F-xx,...` を追加で emit する (非ブロッキング)。この marker があれば `findings=` の id 列を `{collision_ids}` として retain し、**ステップ 4.5.3 の `{collision_line_wm}` とステップ 4.6 の `{collision_line_report}` へ展開する** — 衝突した移送分は nb-sweep の id 先勝ち dedup から外れて恒久的に消化されないのに、移送行は「記録済み」と表示するため、転記先が無いと損失が完了報告に一切現れない。marker 不在は「衝突なし」を意味する (helper は検出時のみ emit する)。
 
 **仕分けが走るのは file-based source (Priority 0/2、および Priority 3 が tempfile 経由で通す Raw JSON) だけ**である。helper は `--review-source` が `local_file` / `explicit_file` 以外なら no-op exit 0 になる。Priority 1 (会話) と Priority 3 の legacy Markdown 経路では仕分けが走らないため、**それらの経路では consumer 式を適用してはならない** — 非致命 gated finding も従来どおり修正対象に残す (ステップ 1.3 / 2.1 の該当行を参照)。仕分けを適用したことにして修正対象から外すと、移送も記録もされないまま指摘が消える。
 
@@ -3367,7 +3367,7 @@ fi
 ```markdown
 #### {timestamp}: /rite:fix 実行
 - **対応した指摘**: {count}件
-- **非致命移送**: {moved_count}件{moved_pointer_suffix}
+- **非致命移送**: {moved_count}件{moved_pointer_suffix}{collision_line_wm}
 - **レビューソース**: {review_source} ({review_source_path_display})
 - **対応内容**:
   | 指摘 | 対応 |
@@ -3431,7 +3431,7 @@ PR #{number} のレビュー指摘対応を完了しました
 - nit 認知 (scope=nit-noted、本 cycle): {acknowledged_nit_count}件
 - non-blocking (実測なし、fix 対象外): {non_blocking_count}件
 - accept 認知 (user decision、Issue 完了まで累計): {accept_count}件{accept_warning_suffix}
-- 非致命移送 (fix 対象外、記録済み): {moved_count}件
+- 非致命移送 (fix 対象外、記録済み): {moved_count}件{collision_line_report}
 
 コミット: {commit_sha}
 プッシュ: 完了 / 未実行
@@ -3443,6 +3443,20 @@ Confidence override (policy bypass): {confidence_override_count}件{confidence_o
 - 追加の指摘があれば再度 `/rite:fix` を実行
 - すべて承認されたら `/rite:ready` でマージ準備
 ```
+
+**`{collision_line_wm}` / `{collision_line_report}` の展開ルール**:
+
+`FIX_FATAL_TRIAGE_ID_COLLISION` marker (ステップ 1.2.0) の有無で決まる。marker が出るのは helper が
+衝突を検出したときだけで、probe 自体が失敗した場合は helper が `cause=id_collision_probe` で停止する
+ため本ステップに到達しない (= marker 不在は「衝突なし」を意味する)。
+
+| 状況 | `{collision_line_wm}` (4.5.3) | `{collision_line_report}` (4.6) |
+|------|------------------------------|--------------------------------|
+| marker なし (衝突なし) | 空文字列 | 空文字列 |
+| marker あり | 改行 + `- **⚠️ id 衝突**: {collision_ids} (nb-sweep の dedup で消化対象から外れる)` | 改行 + `- ⚠️ id 衝突 (sweep 対象外): {collision_ids}` |
+
+衝突した移送分は `non_blocking_findings[]` に残っていても nb-sweep の id 先勝ち dedup で落ち、
+恒久的に消化されない。移送行だけを出すと「記録済み」の表示が損失を隠すため、両経路に必ず添える。
 
 **`{accept_count}` / `{accept_warning_suffix}` の展開ルール**:
 

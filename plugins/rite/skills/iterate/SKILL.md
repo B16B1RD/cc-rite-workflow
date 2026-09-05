@@ -614,8 +614,7 @@ args: "{pr_number}"
 | `[fix:pushed-wm-stale]` | ステップ 1 に戻る (WM stale 警告は表示するが loop は継続。上限チェックはステップ 1 が実施) |
 | `[fix:replied-only]` | **ステップ 5.S**（NB digest sweep）→ ステップ 5（完了通知）。**ステップ 1 に戻らない**。fatal=0 かつ moved>0 の cycle は修正対象が 0 件になり本 sentinel へ落ちるため、5.S を通さないと移送分が一度も消化されない |
 | `[fix:cancelled-by-user]` | **ループ終了**（ユーザーが fix.md 内 cancel 経路 — ステップ 1.4 Cancel option / Fast Path Cancel handoff 等 — で中止選択。`/rite:recover` で再開可） |
-| `[fix:error]` (決定論的 reason) | `reason=` が `measured_undetermined` / `severity_enum_violation` / `non_blocking_not_array` / `json_invalid` / `fatal_triage_*` / `p3_triage_*` のいずれかなら **fix を再試行しない**。いずれも **同一入力ファイルの純関数**なので再実行は必ず同じ reason で再失敗し、1 cycle 空転して人間停止に落ちる。代わりに **counter を前進させずに `/rite:pr-review` を再実行**する（ステップ 1 の lost 修復ゲートと同じ「counter 不前進の再レビュー」経路を使う。新しい経路は作らない）。helper 自身が stderr に出している対処 (`/rite:pr-review を再実行してください`) と一致する。再レビュー後も同一 reason なら停止 |
-| `[fix:error]` (上記以外) | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
+| `[fix:error]` | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
 | sentinel 不在 | 可逆な再試行を推奨として 1 回だけ自動実行し、期待 sentinel・直近の fix 出力 100 行・flow-state phase を既存 work memory へ記録する。再度不在なら停止 |
 
 > `--nb-sweep` 経由の戻りは本表を使わない。5.S 専用表（ステップ 1 に戻らない）だけを使う。
@@ -866,12 +865,12 @@ digest 行の書式も mergeable 経路と同一にする（同一節に 2 書�
 
 | 5.S marker | 完了通知 |
 |---|---|
-| `ITERATE_NB_SWEEP=noop` | digest なしテンプレ |
-| `ITERATE_NB_SWEEP=done`（`NB_SWEEP_RESULT=done`） | digest なしテンプレ + `- sweep: fixed={sweep_fixed} / rejected={sweep_rejected} / issued={sweep_issued}` |
-| `ITERATE_NB_SWEEP=skipped` | ファイル 1 行目が `noop` なら digest なしテンプレ。`done` なら digest 行付き（件数が取れなければ 0） |
+| `ITERATE_NB_SWEEP=noop` | 0 件テンプレ。消化内訳行は出さない |
+| `ITERATE_NB_SWEEP=done`（`NB_SWEEP_RESULT=done`） | 0 件テンプレ + `- sweep: fixed={sweep_fixed} / rejected={sweep_rejected} / issued={sweep_issued}` |
+| `ITERATE_NB_SWEEP=skipped` | ファイル 1 行目が `noop` なら 0 件テンプレ（digest 行なし）。`done` なら 0 件テンプレ + digest 行（件数が取れなければ 0） |
 | `ITERATE_NB_SWEEP=failed` | 到達不能（5.S で停止） |
 
-**digest なし** (`ITERATE_NB_SWEEP=noop`):
+**0 件** (`ITERATE_NB_SWEEP=noop`):
 
 ```
 ## /rite:iterate 完了
@@ -887,7 +886,7 @@ digest 行の書式も mergeable 経路と同一にする（同一節に 2 書�
 flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に phase=ready に遷移します。
 ```
 
-**digest 付き** (`ITERATE_NB_SWEEP=done`):
+**0 件 + digest** (`ITERATE_NB_SWEEP=done`):
 
 ```
 ## /rite:iterate 完了
