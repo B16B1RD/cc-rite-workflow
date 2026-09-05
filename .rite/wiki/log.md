@@ -2372,6 +2372,9 @@
 
 ## 2026-09-05
 
+* **Lint**: contradictions=0（更新した経験則の方針整合を確認）, stale=55, orphans=0, missing_concept=0, unregistered_raw=436, broken_refs=0。
+
+
 * **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — [20260905T121410Z-pr-2573.md](raw/reviews/20260905T121410Z-pr-2573.md) を統合
 * **Update**: [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](pages/heuristics/universal-claim-prose-invalidated-by-path-addition.md) — [20260905T121410Z-pr-2573.md](raw/fixes/20260905T121410Z-pr-2573.md) を統合
 
