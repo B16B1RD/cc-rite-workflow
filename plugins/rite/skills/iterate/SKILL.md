@@ -71,7 +71,7 @@ rationale: references/rationale.md#circuit-breaker-conditions
 | `{nb_count}` | ステップ 5.0.2 の `ITERATE_NB_REMAINING` marker 値（overlay 後は 0。取得失敗は 5.S で停止しここへ来ない） |
 | `{nb_record}` | 同 marker の `record=`（review JSON パス。失敗時は空） |
 | `{nb_by_severity}` | 同 marker の `by_severity=`（`SEVERITY:count` のカンマ区切り。0 件 / 失敗時は空） |
-| `{sweep_fixed}` / `{sweep_rejected}` / `{sweep_issued}` | ステップ 5.S の `NB_SWEEP_RESULT` / `ITERATE_NB_SWEEP=done` の `fixed=` / `rejected=` / `issued=` |
+| `{sweep_issued}` / `{sweep_recorded}` | ステップ 5.S の `NB_SWEEP_RESULT` / `ITERATE_NB_SWEEP=done` の `issued=` / `recorded=` |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 
 ---
@@ -705,12 +705,9 @@ args: "--nb-sweep {pr_number}"
 | Sentinel | アクション |
 |---------|-----------|
 | `[fix:sweep-done]` | ステップ 5（完了通知）。ステップ 1 に戻らない |
-| `[fix:pushed]` | ステップ 5（完了通知）。ステップ 1 に戻らない |
-| `[fix:pushed-wm-stale]` | ステップ 5（完了通知）。ステップ 1 に戻らない |
-| `[fix:replied-only]` | ステップ 5（完了通知）。ステップ 1 に戻らない |
-| `[fix:error]` / sentinel 不在 | ステップ 4 の既存失敗経路 |
+| `[fix:error]` / その他 / sentinel 不在 | `[iterate:nb-sweep-error]` で停止。完了通知へ進まない |
 
-fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; fixed=N; rejected=M; issued=K` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit する。ファイル未作成なら書く:
+fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit する。ファイル未作成なら書く:
 
 ```bash
 nb_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || nb_root=""
@@ -731,7 +728,7 @@ fi
 
 その後ステップ 5 へ。
 
-MUST NOT: 同一 PR で 5.S を 2 回走らせる。sweep 後の新規 class-B を fix ループへ戻す。
+MUST NOT: 同一 PR で 5.S を 2 回走らせる。sweep でコードを修正・commit・push する。
 
 ---
 
@@ -813,7 +810,7 @@ marker_emit ITERATE_NB_REMAINING 0 "status=ok" "record=" "by_severity=" "overlay
 | 5.S marker | 完了通知 |
 |---|---|
 | `ITERATE_NB_SWEEP=noop` | 0 件テンプレ。消化内訳行は出さない（AC-4） |
-| `ITERATE_NB_SWEEP=done`（`NB_SWEEP_RESULT=done`） | 0 件テンプレ + `- sweep: fixed={sweep_fixed} / rejected={sweep_rejected} / issued={sweep_issued}` |
+| `ITERATE_NB_SWEEP=done`（`NB_SWEEP_RESULT=done`） | 0 件テンプレ + `- sweep: issued={sweep_issued} / recorded={sweep_recorded}` |
 | `ITERATE_NB_SWEEP=skipped` | ファイル 1 行目が `noop` なら 0 件テンプレ（digest 行なし）。`done` なら 0 件テンプレ + digest 行（件数が取れなければ 0） |
 | `ITERATE_NB_SWEEP=failed` | 到達不能（5.S で停止） |
 
@@ -849,7 +846,7 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 - 終了理由: review:mergeable
 - ブランチ: {branch_name}
 - 未処理 non-blocking: 0 件
-- sweep: fixed={sweep_fixed} / rejected={sweep_rejected} / issued={sweep_issued}
+- sweep: issued={sweep_issued} / recorded={sweep_recorded}
 
 次のステップ:
 - Ready 化: /rite:ready {pr_number}

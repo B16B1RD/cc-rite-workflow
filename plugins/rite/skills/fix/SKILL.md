@@ -1634,7 +1634,7 @@ rm -f -- "$collect_err"
 sweep_status=$(printf '%s' "$collect_out" | jq -r '.status // empty') || sweep_status=""
 case "$collect_rc:$sweep_status" in
   0:empty)
-    echo "[CONTEXT] NB_SWEEP_RESULT=done; fixed=0; rejected=0; issued=0" >&2
+    echo "[CONTEXT] NB_SWEEP_RESULT=done; issued=0; recorded=0" >&2
     mkdir -p "$sweep_root/.rite/state" || true
     source {plugin_root}/hooks/gitignore-ensure.sh
     if ! _ensure_dir_gitignore "$sweep_root/.rite/state"; then
@@ -1656,34 +1656,49 @@ case "$collect_rc:$sweep_status" in
 esac
 ```
 
-`empty` なら三択・persist・検証を skip して 5.1 へ。
+`empty` なら route 適用・persist を skip して 5.1 へ。
 
-2. **三択**（対象は collect の `targets[]`。`already_rejected[]` は再判断せず `rejected` 転記）:
+2. **route 適用**（helper の判定を変更しない）:
 
-| 判定 | 条件 | 記録 |
-|------|------|------|
-| **fixed**（既定） | 本 PR で直せる | コード修正 + commit/push。台帳へは書かない |
-| **rejected** | 直さない | 判定文必須（空禁止）。台帳へ `rejected` |
-| **issued** | 本 PR の外 | 根拠必須 + 起票先 `#N` を判定文に含める。`create-issue-with-projects.sh`（`options.source=pr_review`）で自動起票。失敗は `[fix:error]` |
+`targets[]` の `route=issued` は `create-issue-with-projects.sh`（`options.source=pr_review`）で起票し、`route=recorded` は機械理由を記録する。`already_rejected[]` は `recorded` として転記する。sweep はコードを変更せず、commit / push を行わない。
+rationale: references/design-rationale.md#nb-sweep-routing
 
-silent skip 禁止。判定文なしの却下 / 根拠なしの Issue 化は禁止。
+最初に全 target の route を検証する。欠落・未知値で停止し、起票も台帳 persist も開始しない:
 
-3. **台帳 persist**（rejected / issued / already_rejected が 1 件以上のときだけ。0 件なら skip）:
+```bash
+if ! printf '%s' "$collect_out" | jq -e 'all(.targets[]; .route == "issued" or .route == "recorded")' >/dev/null; then
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_route_missing" >&2
+  echo "[fix:error] reason=nb_sweep_route_missing"
+  exit 1
+fi
+```
 
-Write tool で entries を `{tmp}/rite-nb-entries-{pr_number}.md` に保存（列 0。行形式 `| {id} | {file}:{line} | rejected|issued | {判定文} |`。already_rejected は `filter_reason` を判定文に使い判定=`rejected`）。
+全 `issued` target について finding の description / suggestion / file:line を本文ファイルに保存し、既存の起票 helper の入力形式に合わせる。`projects` は rite-config.yml の設定を反映する。起票ごとに次のブロックを実行し、成功時の `issue_number` と `issue_url` を当該 finding に対応付ける:
+
+```bash
+# issue_args は jq --arg / --argjson で構築した JSON（body_file と options.source=pr_review を含む）。
+if ! issue_result=$(bash {plugin_root}/scripts/create-issue-with-projects.sh "$issue_args") ||
+   ! printf '%s' "$issue_result" | jq -e '.issue_number > 0 and (.issue_url | type == "string" and length > 0)' >/dev/null; then
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_issue_failed" >&2
+  echo "[fix:error]"
+  exit 1
+fi
+```
+
+起票失敗時は台帳 persist・done ファイル書込・完了通知へ進まない。全件成功後に entries を生成する（前回の一時ファイルを再利用しない）。`recorded` を silent に落とさない。
+
+3. **台帳 persist**（issued / recorded / already_rejected 全件）:
+
+Write tool で entries を `{tmp}/rite-nb-entries-{pr_number}.md` に保存（列 0。行形式 `| {id} | {file}:{line} | issued|recorded | {起票先 or 機械理由} |`）。`issued` は起票先 `#N` と URL、`recorded` は `severity={sev}; measured={bool}`。`already_rejected` は id=`reviewer`、位置=`file_line`、severity=`original_severity`、measured=false とする。セル内のパイプ・改行はエスケープする。
 
 ```bash
 entries_file="${TMPDIR:-/tmp}/rite-nb-entries-{pr_number}.md"
 if [ ! -s "$entries_file" ]; then
-  echo "[CONTEXT] NB_SWEEP_LEDGER=ok; op=persist; action=skip" >&2
+  echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_entries_missing" >&2
+  echo "[fix:error]"; exit 1
 else
   ledger=$(mktemp "${TMPDIR:-/tmp}/rite-nb-ledger-XXXXXX") || { echo "[fix:error]"; exit 1; }
   body=$(mktemp "${TMPDIR:-/tmp}/rite-nb-body-XXXXXX") || { echo "[fix:error]"; exit 1; }
-  bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh append --ledger-file "$ledger" --entries-file "$entries_file" || {
-    echo "ERROR: 却下台帳 append 失敗" >&2
-    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_append_failed" >&2
-    echo "[fix:error]"; exit 1
-  }
   related={issue_number}
   if [ -n "$related" ] && [ "$related" != "0" ]; then
     gh api "repos/{owner_repo}/issues/${related}/comments" --paginate \
@@ -1701,6 +1716,15 @@ else
       '📎 reviewed_commit: unknown' \
       '<!-- rite:nbr:v1 -->' > "$body"
   fi
+  bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh extract --body-file "$body" > "$ledger" || {
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_extract_failed" >&2
+    echo "[fix:error]"; exit 1
+  }
+  bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh append --ledger-file "$ledger" --entries-file "$entries_file" || {
+    echo "ERROR: 却下台帳 append 失敗" >&2
+    echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_append_failed" >&2
+    echo "[fix:error]"; exit 1
+  }
   bash {plugin_root}/hooks/scripts/nb-sweep-ledger.sh merge-into --body-file "$body" --ledger-file "$ledger" || {
     echo "ERROR: 却下台帳 merge-into 失敗" >&2
     echo "[CONTEXT] FIX_FALLBACK_FAILED=1; reason=nb_sweep_ledger_merge_failed" >&2
@@ -1732,22 +1756,16 @@ else
 fi
 ```
 
-4. **scoped 検証**: 直した finding の解消確認のみ。新規指摘を採取しない。
-
-5. **新規 class-B**: Issue 化固定。fix ループへ戻さない（2 周目の sweep 禁止）。
-
-6. **完了**:
+4. **完了**:
 
 ```
-[CONTEXT] NB_SWEEP_RESULT=done; fixed=N; rejected=M; issued=K
+[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M
 ```
 
-`{nb_sweep_fixed}` は上の `fixed=N` をリテラル置換する。`fixed ≥ 1` かつ push 済みのときだけ 2 行目に push 後 HEAD SHA を書く。非数値は WARNING + 1 行 `done`。`0` / push 無しは 1 行 `done`。`git rev-parse HEAD` 失敗は WARNING + 1 行のまま（偽 pass を作らない）。2 行書込失敗は 1 行書込失敗と同じ WARNING + `rm -f`。
-rationale: ../ready/references/rationale.md#reviewed-head-gate
+全件の台帳 persist 成功後に 1 行 `done` を書く。sweep は HEAD を変更しないため SHA を追記しない。
 
 ```bash
 sweep_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || sweep_root=""
-nb_sweep_fixed="{nb_sweep_fixed}"
 if [ -n "$sweep_root" ]; then
   mkdir -p "$sweep_root/.rite/state" || true
   source {plugin_root}/hooks/gitignore-ensure.sh
@@ -1756,33 +1774,14 @@ if [ -n "$sweep_root" ]; then
     [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
   fi
   sweep_done_file="$sweep_root/.rite/state/nb-sweep-done-{pr_number}.txt"
-  sweep_write_ok=0
-  case "$nb_sweep_fixed" in
-    ''|*[!0-9]*)
-      echo "WARNING: nb_sweep_fixed が数値ではありません (received: '$nb_sweep_fixed')。nb-sweep-done の 2 行目を書きません" >&2
-      if printf 'done\n' > "$sweep_done_file"; then sweep_write_ok=1; fi
-      ;;
-    *)
-      if [ "$nb_sweep_fixed" -ge 1 ]; then
-        if sweep_sha=$(git rev-parse HEAD) && [ -n "$sweep_sha" ]; then
-          if printf 'done\n%s\n' "$sweep_sha" > "$sweep_done_file"; then sweep_write_ok=1; fi
-        else
-          echo "WARNING: git rev-parse HEAD に失敗したため nb-sweep-done の 2 行目を書きません" >&2
-          if printf 'done\n' > "$sweep_done_file"; then sweep_write_ok=1; fi
-        fi
-      else
-        if printf 'done\n' > "$sweep_done_file"; then sweep_write_ok=1; fi
-      fi
-      ;;
-  esac
-  if [ "$sweep_write_ok" != 1 ]; then
+  if ! printf 'done\n' > "$sweep_done_file"; then
     echo "WARNING: nb-sweep-done marker を書けませんでした" >&2
     rm -f "$sweep_done_file"
   fi
 fi
 ```
 
-ステップ 5.1 が `[fix:sweep-done]` を emit する。`N+M+K` は collect `count` + already_rejected 転記を含む消化件数。未消化 0 が正常出口。
+ステップ 5.1 が `[fix:sweep-done]` を emit する。`K+M` は collect `count`（already_rejected 転記を含む）と一致する。未消化 0 が正常出口。
 
 ### 1.4 Display Comment List
 
