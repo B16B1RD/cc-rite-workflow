@@ -14,14 +14,14 @@ argument-hint: "<pr_number>"
 >
 > 実行開始時は [Autonomous Execution](../rite-workflow/references/autonomous-execution.md) を適用する。
 
-`/rite:pr-review` ↔ `/rite:fix` を **blocking 指摘ゼロ（mergeable）になるまでループ** する（blocking の定義は [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) が SoT。実測なし（`measured=false`）と判定された指摘は non-blocking として記録されたまま残存し、`[review:mergeable]` に到達しうる。残件は完了通知前の 5.S が消化し、正常出口は未消化 0 件）。ただし **サーキットブレーカー** を備え、reviewer の非決定的な振動や非収束 PR による無限ループを構造的に防ぐ。やることは以下のシーケンシャルなタスク列:
+`/rite:pr-review` ↔ `/rite:fix` を **blocking 指摘ゼロ（mergeable）になるまでループ** する（blocking の定義は [severity-levels.md §実測必須ゲート](../../references/severity-levels.md#実測必須ゲート-measured-confirmed-gate) が SoT。実測なし（`measured=false`）と判定された指摘、および `/rite:fix` ステップ 1.2.0 が非致命として移送した指摘は non-blocking として記録されたまま残存し、`[review:mergeable]` に到達しうる。残件は完了通知前の 5.S が消化し、正常出口は未消化 0 件）。ただし **サーキットブレーカー** を備え、reviewer の非決定的な振動や非収束 PR による無限ループを構造的に防ぐ。やることは以下のシーケンシャルなタスク列:
 
 0. flow-state から issue_number / branch_name を復元
 0.6. cycle counter を初期化（fresh は 0 にリセット / resume は継続）+ `safety.max_review_cycles` を読込・検証
 1. lost 修復ゲート（前 cycle JSON 不在なら即時保存 or counter 不前進の再レビュー）→ 発火条件チェック（収束トレンドの発散 / `max_review_cycles` 到達）→ 不成立なら counter を +1 して `/rite:pr-review` を invoke / 成立なら サーキットブレーカー（ステップ 6）へ
 2. review sentinel を判定（`[review:mergeable]` → ステップ 5.S / `[review:fix-needed:N]` → ステップ 3 / error・不在 → 1 回自動再試行、再失敗時は停止）
 3. `/rite:fix` を invoke
-4. fix sentinel を判定（通常ループ: `[fix:pushed]` → ステップ 1 に戻る / `[fix:sweep-done]` → ステップ 5 / `[fix:replied-only]` `[fix:cancelled-by-user]` → 終了 / error・不在 → 1 回自動再試行、再失敗時は停止。`--nb-sweep` 経由は 5.S 専用表 — ステップ 1 に戻らない）
+4. fix sentinel を判定（通常ループ: `[fix:pushed]` → ステップ 1 に戻る / `[fix:sweep-done]` → ステップ 5 / `[fix:replied-only]` → ステップ 5.S → 終了 / `[fix:cancelled-by-user]` → 終了 / error・不在 → 1 回自動再試行、再失敗時は停止。`--nb-sweep` 経由は 5.S 専用表 — ステップ 1 に戻らない）
 5.S. `[review:mergeable]` 後の NB digest sweep（対象 0 は no-op。同一 PR で 2 回禁止）
 5. 完了通知を出す
 6. （発火時のみ）サーキットブレーカー: run 境界を更新して post-breaker full review を 1 回実行し、結果を通常の review routing へ戻す。full review 自体が完了できない場合のみ、batch は `[iterate:max-cycles-reached]`、対話は `[iterate:max-cycles-stopped]` で従来どおり停止する
@@ -612,7 +612,7 @@ args: "{pr_number}"
 | `[fix:pushed]` | ステップ 1 (cycle 上限チェック → review 再実行) に戻る — **ループ継続**（上限到達ならステップ 6 サーキットブレーカーへ） |
 | `[fix:sweep-done]` | ステップ 5（完了通知）。**ステップ 1 に戻らない**（再フルレビュー禁止） |
 | `[fix:pushed-wm-stale]` | ステップ 1 に戻る (WM stale 警告は表示するが loop は継続。上限チェックはステップ 1 が実施) |
-| `[fix:replied-only]` | **ループ終了**（reply のみで完結） |
+| `[fix:replied-only]` | **ステップ 5.S**（NB digest sweep）→ ステップ 5（完了通知）。**ステップ 1 に戻らない**。fatal=0 かつ moved>0 の cycle は修正対象が 0 件になり本 sentinel へ落ちるため、5.S を通さないと移送分が一度も消化されない |
 | `[fix:cancelled-by-user]` | **ループ終了**（ユーザーが fix.md 内 cancel 経路 — ステップ 1.4 Cancel option / Fast Path Cancel handoff 等 — で中止選択。`/rite:recover` で再開可） |
 | `[fix:error]` | 可逆な再試行を推奨として 1 回だけ自動実行し、work memory の既存決定事項へ理由を記録する。再失敗なら停止 |
 | sentinel 不在 | 可逆な再試行を推奨として 1 回だけ自動実行し、期待 sentinel・直近の fix 出力 100 行・flow-state phase を既存 work memory へ記録する。再度不在なら停止 |
@@ -623,7 +623,7 @@ args: "{pr_number}"
 
 ## ステップ 5.S: NB digest sweep
 
-`[review:mergeable]` 到達後・完了通知前に **1 回**。対象 0 件は no-op（fix を invoke しない）。同一 PR の本 run で 2 回 invoke しない。silent skip 禁止。Stop hook が mergeable FINALIZE で完了通知を求めても、5.S 未実施なら先に本ステップを実行する。
+**終了 sentinel 到達後・完了通知前**に **1 回**（`[review:mergeable]` 経由と `[fix:replied-only]` 経由の両方。前者は致命ゼロで抜けた場合、後者は致命ゼロ・移送ありで fix の修正対象が 0 件になった場合で、どちらも移送分が未消化のまま完了通知へ向かう）。対象 0 件は no-op（fix を invoke しない）。同一 PR の本 run で 2 回 invoke しない。silent skip 禁止。Stop hook が FINALIZE で完了通知を求めても、5.S 未実施なら先に本ステップを実行する。
 rationale: references/rationale.md#nb-sweep-step
 
 会話の `[CONTEXT] ITERATE_NB_SWEEP=done|noop` は観測用。skip 判定はファイル存在のみ（下の bash）。marker 既出でも bash を省略しない。
@@ -707,7 +707,7 @@ args: "--nb-sweep {pr_number}"
 | `[fix:sweep-done]` | ステップ 5（完了通知）。ステップ 1 に戻らない |
 | `[fix:pushed]` | ステップ 5（完了通知）。ステップ 1 に戻らない |
 | `[fix:pushed-wm-stale]` | ステップ 5（完了通知）。ステップ 1 に戻らない |
-| `[fix:replied-only]` | ステップ 5（完了通知）。ステップ 1 に戻らない |
+| `[fix:replied-only]` | ステップ 5（完了通知）。ステップ 1 に戻らない（5.S 経由の戻りなので再度 5.S へは行かない） |
 | `[fix:error]` / sentinel 不在 | ステップ 4 の既存失敗経路 |
 
 fix が emit した `[CONTEXT] NB_SWEEP_RESULT=done; fixed=N; rejected=M; issued=K` を読み、`ITERATE_NB_SWEEP=done` を同カウントで emit する。ファイル未作成なら書く:
@@ -866,6 +866,7 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 - PR: #{pr_number}
 - 終了理由: fix:replied-only
 - ブランチ: {branch_name}
+- NB sweep: {sweep_fixed} 件修正 / {sweep_rejected} 件却下 / {sweep_issued} 件別 Issue 化（対象 0 件なら「対象なし」）
 
 次のステップ:
 - Ready 化: /rite:ready {pr_number}

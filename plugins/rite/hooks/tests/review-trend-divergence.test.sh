@@ -62,7 +62,7 @@ OUT="$SANDBOX/out.txt"
 # Fixture builder
 #
 # blocking 件数 N のレビュー結果 JSON を 1 件生成する。scope=current-pr かつ
-# verification.measured=true の finding を N 件並べる (consumer 式の blocking 定義に合致する
+# verification.measured=true の finding を N 件並べる (producer 式の blocking 定義に合致する
 # 最小形)。timestamp は連番で与え、ファイル名の lexicographic 順 = 時系列順を保つ。
 # ---------------------------------------------------------------------------
 make_result() {
@@ -582,7 +582,7 @@ bash "$SCRIPT" --pr 70 --cycle-count 3 --results-dir "$prefix_dir" > "$OUT" 2>/d
 assert_grep "PR 番号 prefix: 70 の glob が 700 を巻き込まない" "$OUT" "trend=1,1,1"
 
 # ---------------------------------------------------------------------------
-# blocking 件数の定義 (references/severity-levels.md §実測必須ゲート の consumer 式)
+# blocking 件数の定義 (references/severity-levels.md §実測必須ゲート の producer 式)
 # ---------------------------------------------------------------------------
 echo "--- blocking 件数の算出 ---"
 
@@ -632,6 +632,28 @@ cat > "$scope_dir/800-20260101000003.json" <<'EOF'
 EOF
 bash "$SCRIPT" --pr 800 --cycle-count 3 --results-dir "$scope_dir" > "$OUT" 2>/dev/null
 assert_grep "blocking 件数: gate 対象 scope + 未判定を数え nit-noted と measured=false を除く" "$OUT" "trend=2,1,2"
+
+# /rite:fix の致命性仕分けは非致命の gated finding を non_blocking_findings[] へ移送して
+# **この永続 JSON を書き戻す**。移送分を母集団へ戻さないと、fix を通過した cycle だけが
+# consumer 集合 (致命のみ) に縮み、cycle 間の非対称が prefix_min を動かして誤発火する
+xfer_dir="$SANDBOX/xfer"; mkdir -p "$xfer_dir"
+cat > "$xfer_dir/810-20260101000001.json" <<'EOF'
+{
+  "schema_version": "1.1.0", "pr_number": 810,
+  "timestamp": "2026-01-01T00:00:00+09:00", "commit_sha": "abc",
+  "overall_assessment": "fix-needed",
+  "findings": [
+    {"id":"F-01","severity":"HIGH","scope":"current-pr","verification":{"measured":true}}
+  ],
+  "non_blocking_findings": [
+    {"id":"F-02","severity":"MEDIUM","scope":"current-pr","verification":{"measured":true},"demotion_reason":"non_fatal"},
+    {"id":"F-03","severity":"LOW","scope":"follow-up","verification":{"measured":true},"demotion_reason":"non_fatal"},
+    {"id":"F-04","severity":"LOW","scope":"current-pr","verification":{"measured":false}}
+  ]
+}
+EOF
+bash "$SCRIPT" --pr 810 --cycle-count 1 --results-dir "$xfer_dir" > "$OUT" 2>/dev/null
+assert_grep "移送済み JSON でも producer 件数を復元する (findings 1 + non_fatal 2 = 3)" "$OUT" "trend=3"
 
 # ---------------------------------------------------------------------------
 # 呼び出しエラー (exit 2) — データ条件 (exit 0) と混同しないこと

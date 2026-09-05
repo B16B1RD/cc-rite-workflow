@@ -197,6 +197,18 @@ FIXEOF
 ]}
 FIXEOF
       ;;
+    id_collision)
+      # 移送要素の id が既存 non_blocking_findings[] 要素と衝突する。移送前は findings[] 側に
+      # いて衝突しなかったため、この損失 (nb-sweep の id 先勝ち dedup で落ちる) は移送が作る
+      cat > "$path" <<'FIXEOF'
+{"schema_version":"1.1.0","pr_number":1,"findings":[
+  {"id":"F-01","file":"src/a.ts","line":10,"severity":"MEDIUM","scope":"current-pr","pre_existing":true,"verification":{"measured":true}},
+  {"id":"F-02","file":"src/a.ts","line":20,"severity":"HIGH","scope":"current-pr","pre_existing":true,"verification":{"measured":true}}
+],"non_blocking_findings":[
+  {"id":"F-01","file":"src/z.ts","line":99,"severity":"LOW","scope":"current-pr","pre_existing":true}
+]}
+FIXEOF
+      ;;
     nonarray_nb)
       # non_blocking_findings が非配列。移送 jq の `+` が型エラーになり、tempfile を作った後に
       # 失敗する唯一の plain-fixture 経路 (mv 差し替え無しで到達できる)
@@ -677,6 +689,32 @@ if [ "$HELPER_RC" = "0" ] \
   pass "非文字列 id でも停止せず移送を完了し id を保存する"
 else
   fail "unexpected (rc=$HELPER_RC): err='$HELPER_STDERR'"
+fi
+
+# --------------------------------------------------------------------------
+# TC-14c: 移送先での id 衝突を可視化する (非ブロッキング)
+# 保存境界が同条件を意図的に非ブロッキングと決めているので停止はさせないが、
+# nb-sweep の dedup で黙って落ちることだけは防ぐ
+# --------------------------------------------------------------------------
+echo "TC-14c: 移送先 id 衝突の可視化"
+repo=$(make_sandbox tc14c)
+write_fixture "$repo/review.json" id_collision
+run_helper "$repo" local_file "$repo/review.json"
+if [ "$HELPER_RC" = "0" ] \
+   && grep -q 'FIX_FATAL_TRIAGE_ID_COLLISION=1; findings=F-01' <<<"$HELPER_STDERR" \
+   && grep -q 'FIX_FATAL_TRIAGE=applied; fatal=1; moved=1' <<<"$HELPER_STDERR"; then
+  pass "移送先 id 衝突を WARNING + marker で可視化し、移送自体は続行する"
+else
+  fail "id 衝突の可視化が期待どおりでない (rc=$HELPER_RC): $HELPER_STDERR"
+fi
+# 衝突が無い入力で誤検出しないこと
+repo=$(make_sandbox tc14c-clean)
+write_fixture "$repo/review.json" mixed_triage
+run_helper "$repo" local_file "$repo/review.json"
+if ! grep -q 'FIX_FATAL_TRIAGE_ID_COLLISION' <<<"$HELPER_STDERR"; then
+  pass "衝突の無い入力では COLLISION marker を出さない"
+else
+  fail "誤検出: $HELPER_STDERR"
 fi
 
 # --------------------------------------------------------------------------

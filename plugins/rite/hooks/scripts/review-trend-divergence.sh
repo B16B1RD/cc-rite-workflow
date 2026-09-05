@@ -395,8 +395,13 @@ for _f in "${_run_files[@]+"${_run_files[@]}"}"; do
   # file 不足) がすべて理由付きで判定不能を返すのに、ここだけが理由なしの数値を返すのは非対称。
   # 方向としては安全側 (過少 → 不発火 → backstop) だが、silent であること自体を排除する
   # (sibling の scripts/review-measured-gate.sh も同条件を scope_enum_violation で hard fail させる)。
+  # 母集団は findings[] だけでは足りない。/rite:fix の致命性仕分けは非致命の gated finding を
+  # non_blocking_findings[] へ移送して**この永続 JSON を書き戻す**ため、fix を通過した cycle の
+  # findings[] は producer 集合ではなく consumer 集合 (致命のみ) に縮んでいる。移送分を戻さないと
+  # 「fix を通ったか」を測る列になり、cycle 間の非対称が prefix_min を動かして誤発火する。
+  # demotion_reason == "non_fatal" が移送分の判別子 (schema 1.1.0 additive なので旧 JSON は空)。
   _resolved=$(jq -r --arg sv "$_sv" '
-    [ .findings[]?
+    [ (.findings[]?, (.non_blocking_findings[]? | select(.demotion_reason == "non_fatal")))
       | . as $f
       | ( if ($f | has("scope")) then $f.scope
           elif $sv == "1.1.0" then null

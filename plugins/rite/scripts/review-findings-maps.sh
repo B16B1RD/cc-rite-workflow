@@ -345,6 +345,26 @@ if [ "${moved_count:-0}" -gt 0 ]; then
   # 入力時点から存在した欠陥 (id 欠落 / 非文字列 id / 独立採番による重複) だけになり、同じ
   # 不変条件を意図的に非ブロッキングと決めている保存境界 (hooks/review-result-save.sh) と
   # enforcement level が経路によって逆転する。jq 自体の失敗は直上の rc 捕捉が拾う。
+  #
+  # ただし「重複数が増えない」ことと「重複の害が増えない」ことは別である。移送先の
+  # non_blocking_findings[] は nb-sweep-collect.sh が id 先勝ちで dedup する配列なので、
+  # 移送要素の id が既存要素と衝突すると、その指摘は修正対象からも sweep 対象からも外れて
+  # 二度と処理されない。移送前は findings[] 側にいて衝突しなかった (sweep は findings[] から
+  # nit-noted しか拾わない) ため、この損失は移送が新たに作る。保存境界と同じ enforcement
+  # level (非ブロッキング) を保ちつつ、黙って消えることだけを防ぐ。
+  triage_id_collision=$(jq -r '
+    def safe_id: (.id | if (type == "string" and test("\\AF-[0-9]{2,}\\z")) then . else "(不正 id)" end);
+    ([.non_blocking_findings[]? | select((.demotion_reason == "non_fatal") | not) | .id]) as $existing
+    | [.non_blocking_findings[]? | select(.demotion_reason == "non_fatal")
+       | select(.id as $i | $existing | index($i)) | safe_id]
+    | unique | join(",")
+  ' "$triage_tmp" 2>/dev/null || echo "")
+  if [ -n "$triage_id_collision" ]; then
+    echo "WARNING: 移送した finding の id が non_blocking_findings[] の既存要素と衝突します: $triage_id_collision" >&2
+    echo "  影響: nb-sweep は id 先勝ちで dedup するため、衝突した移送分は sweep 対象から外れます" >&2
+    echo "  対処: /rite:pr-review を再実行し、2 配列で id を通し番号にしたレビュー結果を作り直してください" >&2
+    echo "[CONTEXT] FIX_FATAL_TRIAGE_ID_COLLISION=1; findings=$triage_id_collision" >&2
+  fi
 
   # mktemp 側と同じ理由で `if cmd; then :; else rc=$?; fi` 形式を使う
   triage_mv_rc=0
