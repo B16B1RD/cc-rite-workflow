@@ -1,4 +1,5 @@
 ## 2026-09-06
+* **lint:clean** — contradictions=0, stale=58, orphans=0, missing_concept=0, unregistered_raw=436, broken_refs=0
 * **Create**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/reviews/20260906T125803Z-pr-2582.md を新規ページ化
 * **Create**: [行番号の名前空間を 2 つ混ぜた突合は、偽陽性と偽陰性を同時に生む](pages/anti-patterns/mixed-line-number-namespaces-in-diff-matching.md) — raw/reviews/20260906T134450Z-pr-2582.md を新規ページ化
 * **Create**: [HEREDOC は空展開でも改行を書くため、直後の空ファイル検査は常に通過する](pages/anti-patterns/heredoc-empty-expansion-defeats-empty-file-guard.md) — raw/reviews/20260906T141001Z-pr-2582.md を新規ページ化
