@@ -55,6 +55,7 @@ rationale: references/rationale.md#session-scoped-queue
 | `{processed_issues}` | ステップ 7 bash の `processed=`（全完了 Issue 一覧） |
 | `{failed_issues}` | ステップ 7 bash の `failed=`（サーキットブレーカー `[iterate:max-cycles-reached]` で非収束となった Issue 一覧。空 `[]` のとき完了通知の該当行を省略） |
 | `{outstanding_n}` | ステップ 6 で cleanup 完了報告から読む `[cleanup:outstanding:N]` sentinel の `N` に実際に埋め込まれた数値 |
+| `{action_items}` | 本 run の bash 出力に残った、ユーザーの操作が必要な WARNING / ERROR。ステップ 7 完了通知の `要対応:` 欄へ転記する（0 件なら欄ごと省略） |
 | `{outstanding_issues}` | ステップ 7 bash の `outstanding=`（未完了事項が残った Issue 一覧。空 `[]` のとき完了通知の該当行を省略） |
 | `{done_issues}` / `{remaining_issues}` | ステップ 8 bash の `done=` / `remaining=`（停止時の処理済み / 未処理 Issue） |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
@@ -397,6 +398,8 @@ echo "[CONTEXT] RUN_DONE; processed=$processed; failed=$failed; outstanding=$out
 
 `mode=`（`{run_mode}`）に応じて、`processed=` の Issue 一覧を `{processed_issues}`、`failed=` の非収束 Issue 一覧を `{failed_issues}` として完了通知を出し分ける。`failed=` が空配列 `[]` でない場合は、完了通知にサーキットブレーカーで failed 扱いとなった Issue を明示する（`[]` のときは該当行を省略する）。`outstanding=` の Issue 一覧を `{outstanding_issues}` として使う（cleanup 完了報告の「未完了事項」をロールアップする。`mode=merge` のときのみ意味を持つ — デフォルトモードは cleanup を invoke しないため `outstanding` は常に空）。
 
+`{action_items}`（両テンプレ共通）: 本 run の bash 出力に残った WARNING / ERROR のうち、ユーザーが操作しない限り残り続ける行を 1 行ずつ列挙する（同一内容は 1 行にまとめる。成功した迂回・リトライは載せない）。**0 件なら `要対応:` 行ごと省略する**。cleanup 由来の非ブロッキング失敗をロールアップする `未完了事項:` 行とは別欄で、0 件時の扱いも異なる（`未完了事項:` は常に出す）。
+
 **デフォルト（`mode=default`）**: 各 Issue は draft PR で停止しており **merge していない**:
 
 ```
@@ -408,6 +411,9 @@ echo "[CONTEXT] RUN_DONE; processed=$processed; failed=$failed; outstanding=$out
 または最初からまとめて完走させるなら `/rite:batch-run --merge {processed_issues}` を実行してください。
 （未解決指摘ありで通過した draft PR があれば、上記処理中にその旨を明示しています。）
 （`failed=` が非空のときのみ）サーキットブレーカーで非収束（failed）となった Issue: {failed_issues} — draft/open PR をレビュー待ちで残しています。
+
+要対応:
+{action_items}
 
 <!-- [run:all-completed] -->
 ```
@@ -421,6 +427,9 @@ echo "[CONTEXT] RUN_DONE; processed=$processed; failed=$failed; outstanding=$out
 全 Issue を処理しました（open→iterate→ready→merge→cleanup を完走）。
 （`failed=` が非空のときのみ）サーキットブレーカーで非収束（failed）となり merge/cleanup をスキップした Issue: {failed_issues} — draft/open PR をレビュー待ちで残しています。`/rite:iterate <pr>` で再開できます。
 未完了事項: （`outstanding=` が空のとき）なし（全 Issue） / （非空のとき）{outstanding_issues} の cleanup で非ブロッキング失敗が残っています — 各 Issue の cleanup 完了報告（本セッションのログ）を参照するか、`/rite:recover <issue>` で確認してください。
+
+要対応:
+{action_items}
 
 <!-- [run:all-completed] -->
 ```

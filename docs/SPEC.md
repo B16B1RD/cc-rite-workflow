@@ -1688,7 +1688,7 @@ LLM analyzes diff content to determine:
 
 ### Overview
 
-When a step of the end-to-end flow (`/rite:open` → `/rite:iterate` → `/rite:ready` → `/rite:merge`) fails or is skipped (Skill load failure, hook abnormal exit, Wiki ingest skip/failure, `.gitignore` drift, etc.), the relevant script or hook emits a plain `WARNING` / `ERROR` line to **stderr**. The orchestrator LLM surfaces these in the conversation context, and the user resolves them by re-running the affected step via `/rite:recover`.
+When a step of the end-to-end flow (`/rite:open` → `/rite:iterate` → `/rite:ready` → `/rite:merge`) fails or is skipped (Skill load failure, hook abnormal exit, Wiki ingest skip/failure, `.gitignore` drift, etc.), the relevant script or hook emits a plain `WARNING` / `ERROR` line to **stderr**. Stderr is diagnostic output for the LLM and is not guaranteed to reach the user's terminal, so the orchestrator transcribes any line that needs user action into the **`要対応:` section of its completion report** (the transcription rule lives in `plugins/rite/skills/rite-workflow/references/autonomous-execution.md`; the section is omitted entirely when there is nothing to transcribe). The user resolves them by re-running the affected step via `/rite:recover`.
 
 > **History**: An earlier design auto-detected these as "workflow incidents" — each failure path emitted a `[CONTEXT] WORKFLOW_INCIDENT=1; ...` sentinel via a dedicated `workflow-incident-emit.sh` hook, which the (then-current) `/rite:issue-start` orchestrator's ステップ 8.5 grepped from the conversation context to auto-register the blocker as a Todo Issue (`AskUserQuestion` confirmation, per-session dedupe, `workflow_incident.enabled` opt-out). The entire mechanism — the emit hook, the ステップ 8.5 detection logic, the `workflow_incident:` config key, and the sentinel format — was removed in favor of the single-layer plain-stderr design described above. The `/rite:issue-start` orchestrator itself was subsequently decomposed into the four `pr/` commands (see the [Retired section](#riteissuestart-retired) above). Failures are now visible but no longer auto-registered; the user decides whether to file an Issue.
 
@@ -1774,7 +1774,7 @@ The two paths address distinct concerns:
 | Concern | Destination |
 |---------|-------------|
 | **Recurring quality/process heuristics** (e.g., "review-fix loops should not skip LOW findings", "use dotenvx not dotenv") | Wiki pages via `/rite:wiki-ingest` |
-| **One-time platform defects** (e.g., "hook X exited abnormally in iteration Y") | Surfaced as a plain `WARNING` / `ERROR` on stderr; the user files an Issue manually if it warrants follow-up (see [Workflow Failure Surfacing](#workflow-failure-surfacing)) |
+| **One-time platform defects** (e.g., "hook X exited abnormally in iteration Y") | Surfaced as a plain `WARNING` / `ERROR` on stderr and transcribed into the completion report's `要対応:` section; the user files an Issue manually if it warrants follow-up (see [Workflow Failure Surfacing](#workflow-failure-surfacing)) |
 
 They share no code paths.
 

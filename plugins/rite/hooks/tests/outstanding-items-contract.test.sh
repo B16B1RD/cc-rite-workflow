@@ -88,6 +88,30 @@ assert_grep "wiki-worktree path is resolved via state-path-resolve.sh, not a bar
 # origin に対応 ref が無い (一度も push が成功していない最悪ケース) も検出側に倒す (false negative 修正)
 assert_grep "detection distinguishes an unresolved origin ref from zero unpushed commits" "$RECOVER" 'reason=no_remote_ref'
 
-if ! print_summary "$(basename "$0")" "cleanup/batch-run/wiki-ingest/recover の未完了事項集約 contract (T-01/T-02/T-03)"; then
+echo "=== 要対応: stderr の WARNING を完了報告へ転記する contract ==="
+# stderr は LLM 向けの診断で端末に届く保証がない。転記規則の 2 点 (LLM 専用 / 完了報告へ転記) と、
+# 3 orchestrator の `要対応:` 欄・zero-item rule を literal で pin する。0 件で欄が消える挙動は
+# 実行時にしか観測できないため、省略を指示する文言そのものを契約として固定する。
+AUTONOMOUS="$SCRIPT_DIR/../../skills/rite-workflow/references/autonomous-execution.md"
+COMMON_ERR="$SCRIPT_DIR/../../references/common-error-handling.md"
+OPEN="$SCRIPT_DIR/../../skills/open/SKILL.md"
+ITERATE="$SCRIPT_DIR/../../skills/iterate/SKILL.md"
+WORKFLOW="$SCRIPT_DIR/../../skills/rite-workflow/SKILL.md"
+
+assert_grep "autonomous-execution states bash output is for the LLM, not the terminal" "$AUTONOMOUS" 'ユーザーの端末に届く保証はない'
+assert_grep "autonomous-execution mandates transcription into the completion report" "$AUTONOMOUS" '完了報告の `要対応:` 欄へ 1 行ずつ転記する'
+assert_grep "common-error-handling states the duty as stderr + transcription" "$COMMON_ERR" 'stderr 出力 \+ 完了報告への転記義務'
+assert_not_grep "common-error-handling no longer claims a bare stderr display duty" "$COMMON_ERR" 'stderr 表示義務'
+for f in "$OPEN" "$ITERATE" "$BATCH_RUN"; do
+  name=$(basename "$(dirname "$f")")
+  assert_grep "$name has a 要対応 section in its completion report" "$f" '^要対応:$'
+  assert_grep "$name defines the {action_items} placeholder" "$f" '\{action_items\}'
+  assert_grep "$name omits the section when there is nothing to transcribe" "$f" '0 件なら `要対応:` 行ごと省略する'
+done
+# 停止経路こそ WARNING が残る出口。iterate は正常終了 4 テンプレ + ブレーカー停止 2 テンプレの計 6 経路。
+assert "iterate carries the 要対応 section on all 6 completion paths" "6" "$(grep -c '^要対応:$' "$ITERATE")"
+assert_grep "rite-workflow names the completion report as the transcription target" "$WORKFLOW" '完了報告の `要対応:` 欄'
+
+if ! print_summary "$(basename "$0")" "cleanup/batch-run/wiki-ingest/recover の未完了事項集約 + 要対応 転記 contract (T-01/T-02/T-03)"; then
   exit 1
 fi

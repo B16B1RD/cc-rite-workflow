@@ -175,7 +175,7 @@ All `gh` commands that accept `--body` or `--comment` parameters **MUST** use sa
 
 ## Workflow Failure Surfacing
 
-`/rite:open` / `/rite:iterate` / `/rite:ready` / `/rite:merge` の失敗・skip は該当 skill / hook が `WARNING` / `ERROR` を **stderr** に出す。orchestrator が会話へ surface し、ユーザーは `/rite:recover` で再実行する。失敗は可視だが Issue 自動登録はしない。
+`/rite:open` / `/rite:iterate` / `/rite:ready` / `/rite:merge` の失敗・skip は該当 skill / hook が `WARNING` / `ERROR` を **stderr** に出す。stderr は LLM 向けの診断でユーザーの端末に届く保証がないため、orchestrator はユーザーの操作が必要な行を**完了報告の `要対応:` 欄**へ転記する（転記規則は [autonomous-execution.md](references/autonomous-execution.md)）。ユーザーは `/rite:recover` で再実行する。失敗は可視だが Issue 自動登録はしない。
 rationale: references/rationale.md#incident-emit-removed
 
 ## Integration

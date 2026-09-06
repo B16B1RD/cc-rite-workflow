@@ -816,6 +816,8 @@ marker_emit ITERATE_NB_REMAINING 0 "status=ok" "record=" "by_severity=" "overlay
 
 非 0 件テンプレ / 「取得失敗」テンプレは overlay 後到達不能。
 
+`{action_items}`（ステップ 5 の 4 テンプレとステップ 6.1 / 6.2 の停止通知に共通）: 本ループの bash 出力に残った WARNING / ERROR のうち、ユーザーが操作しない限り残り続ける行を 1 行ずつ列挙する（同一内容は 1 行にまとめる。成功した迂回・リトライは載せない）。**0 件なら `要対応:` 行ごと省略する**。
+
 ### 正常終了 (`[review:mergeable]`)
 
 `[review:mergeable]` sentinel 文字列は変えない。
@@ -829,6 +831,9 @@ marker_emit ITERATE_NB_REMAINING 0 "status=ok" "record=" "by_severity=" "overlay
 - 終了理由: review:mergeable
 - ブランチ: {branch_name}
 - 未処理 non-blocking: 0 件
+
+要対応:
+{action_items}
 
 次のステップ:
 - Ready 化: /rite:ready {pr_number}
@@ -848,6 +853,9 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 - 未処理 non-blocking: 0 件
 - sweep: issued={sweep_issued} / recorded={sweep_recorded}
 
+要対応:
+{action_items}
+
 次のステップ:
 - Ready 化: /rite:ready {pr_number}
 - マージ (Ready 後): /rite:merge {pr_number}
@@ -864,6 +872,9 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 - 終了理由: fix:replied-only
 - ブランチ: {branch_name}
 
+要対応:
+{action_items}
+
 次のステップ:
 - Ready 化: /rite:ready {pr_number}
 - マージ (Ready 後): /rite:merge {pr_number}
@@ -879,6 +890,9 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 - PR: #{pr_number}
 - 終了理由: fix:cancelled-by-user (fix.md 内 AskUserQuestion で中止選択)
 - ブランチ: {branch_name}
+
+要対応:
+{action_items}
 
 再開方法:
 - /rite:recover で本コマンドが再起動 (flow-state phase=fix のため fix invoke から再開)
@@ -1005,6 +1019,9 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 - blocking 推移: {trend}
 - 措置: 当該 Issue を failed 扱いとし、draft/open PR をレビュー待ちで残します（`/rite:batch-run` が残りキューを続行、最終 Issue なら完了通知へ）
 
+要対応:
+{action_items}
+
 再開方法: /rite:iterate {pr_number} を明示的に再実行する（fresh entry として run 開始点を更新し full scope から始める）。
 
 <!-- [iterate:max-cycles-reached] -->
@@ -1029,6 +1046,9 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 - 理由: {fire_reason_line}
 - blocking 推移: {trend}
 - 措置: 当該 PR を非収束として失敗記録し、draft/open PR をレビュー待ちで残します（マージには進みません）
+
+要対応:
+{action_items}
 
 再開方法:
 - ループを再開する: /rite:iterate {pr_number} を明示的に再実行する（cycle counter と run 開始点が

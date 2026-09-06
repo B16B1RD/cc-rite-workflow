@@ -9,6 +9,8 @@ reviewer agent は frontmatter の `effort: high` で固定する。orchestrator
 
 報告は outcome と次の一手のみ。欠陥の詳細・自己評価・経緯の釈明は review record と commit が家であり、報告文へ複製しない。
 
+bash の stdout / stderr は LLM 向けの診断であり、ユーザーの端末に届く保証はない。ユーザーが行動しなければ残り続ける WARNING / ERROR は、完了報告の `要対応:` 欄へ 1 行ずつ転記する（同じ警告が複数回出たら 1 行にまとめ、0 件なら欄ごと出さない）。成功した迂回・リトライは転記しない。
+
 ## 正規確認ゲート
 
 rite が意図して止まりユーザーに確認する正規ゲートは下表のみ。表外の一時失敗（pr-create 失敗、lint error、sub-skill sentinel 不在など）は質問せず 1 回自動再試行し、再失敗で停止して `/rite:recover` を案内する。ゲート表は rite-config.yml の設定にしない。
