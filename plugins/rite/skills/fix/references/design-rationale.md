@@ -234,6 +234,10 @@ H-1: ステップ 1.2 進入時に confidence_override tempfile を無条件 tru
 
 `{reviewer_display}` 展開ルールはステップ 2.1 の表が単一源。ステップ 3.2 trailer は同表を参照するだけで literal を複製しない (drift 防止)。
 
+## fix-report-diff-gate
+
+完了報告の「直した」は LLM の自己申告だったので、差分に無い ID が次 cycle で解消済み扱いになる。突合は helper に置き、表の欠落だけを error にする。未対応は次の verification が拾えるので止めない。突合は hunk 単位で、+ 側を持つ hunk は HEAD の行、+ 側が空の純削除 hunk だけを削除前の行で照合する。削除された行には HEAD 上の行が無いため、この 1 種だけ採番が変わる。
+
 ## nb-sweep-routing
 
 sweep でコードを修正すると、mergeable 後にも磨き直しが続く。実測あり MEDIUM は Issue 化し、その他は機械理由付きで台帳へ記録する。helper が route を決めることで LLM の三択と commit/push 経路をなくし、残存指摘の保存で sweep を完了させる。

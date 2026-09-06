@@ -1376,6 +1376,7 @@ Verification テンプレート本文は [references/reviewer-prompt-verificatio
 | Placeholder | Source | Extraction Method |
 |---------------|--------|----------|
 | `{previous_findings_table}` | Previous review finding table obtained in ステップ 1.2.4.1 | Integrate finding tables from each reviewer in the "全指摘事項" section from the previous `📜 rite レビュー結果` comment |
+| `{fix_change_map}` | 直前の fix cycle の `findings_addressed`（fix-cycle-state 最新 cycle） | `state-path-resolve.sh` 基準の `.rite/fix-cycle-state/{pr_number}.json` の最新 cycle を読む。`diff_verified: false` の ID には `❌` を付ける。ファイル不在 / `findings_addressed` 欠落 / cycles 空は **「対応表なし」** の 1 行に置換する（reviewer 起動は従来どおり続行）。**本 placeholder は 4.5.1 専用** — `REVIEW_CYCLE_SCOPE == incremental` は 4.5.1 を注入しないため展開しない |
 | `{incremental_diff}` | `git diff {last_reviewed_commit}..HEAD` obtained in ステップ 1.2.4.1 | Full incremental diff (however, for large scale, only files relevant to the reviewer) |
 | `{change_intelligence_summary}` | Change Intelligence Summary from ステップ 1.2.6 | One-paragraph summary of change type, file classification, and focus area |
 
@@ -1569,7 +1570,7 @@ rationale: references/design-rationale.md#verification-post-condition-notes
 - `prompt` 内容: ステップ 4.5.1 verification テンプレート + ステップ 4.5 full テンプレート（元レビューと同じ 2 テンプレート concat）に、以下の strict 要件を追加:
  - 「`### 修正検証結果` heading と判定テーブル (`| # | 重要度 | ファイル:行 | 内容 | 判定 | 備考 |`) を **必ず**出力すること」
  - 「ステップ 4.5.1 verification テンプレートの Part 1 (前回指摘の修正検証) を skip せずに実行すること」
-- 入力データ (`{previous_findings_table}` / `{incremental_diff}` / `{change_intelligence_summary}`): ステップ 1.2.4.1 で取得済みのものを再供給
+- 入力データ (`{previous_findings_table}` / `{fix_change_map}` / `{incremental_diff}` / `{change_intelligence_summary}`): ステップ 1.2.4.1 / 4.5.1 で取得済みのものを再供給
 - **結果 merge 戦略**: retry 結果は元 reviewer の output を **置き換える** (append ではない)。元 output は破棄し、retry output のみを ステップ 5.1 結果集合に使用する
  - **Note**: retry prompt は full + verification 両 template を concat して再送している (上記 `prompt` 内容参照) ため、retry output は元 output の全指摘 (verification mode 由来 + full mode 由来) を**包含する**。元 output 内の非 verification finding が retry 置き換えで消失することはない。
 - retry 実行後、`verification_post_condition_retry_count[{reviewer_type}]` を +1 し、もう一度判定条件を評価する。retry 後も欠落していれば `error` に昇格する

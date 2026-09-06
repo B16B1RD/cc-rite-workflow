@@ -18,6 +18,9 @@ PR #{number}: {title} の検証レビューを {reviewer_type} として実行�
 
 {previous_findings_table}
 
+対応表:
+{fix_change_map}
+
 各指摘について以下のいずれかで判定:
 - **FIXED**: 推奨対応（または同等の修正）が正しく適用された
 - **NOT_FIXED**: 指摘が対応されていない、または修正が不正確
