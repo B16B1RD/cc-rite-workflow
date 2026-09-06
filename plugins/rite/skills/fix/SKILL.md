@@ -2507,8 +2507,9 @@ else
   existing='{"pr_number":'"$pr_number"',"cycles":[]}'
 fi
 addressed_file=""
+state_tmp=""
 _rite_fix_skip_addressed_cleanup() {
-  rm -f "${addressed_file:-}"
+  rm -f "${addressed_file:-}" "${state_tmp:-}"
 }
 trap 'rc=$?; _rite_fix_skip_addressed_cleanup; exit $rc' EXIT
 trap '_rite_fix_skip_addressed_cleanup; exit 130' INT
@@ -2553,6 +2554,7 @@ new_cycle=$(jq -n \
   exit 1
 }
 # 既存 state を直接開かない。生成に失敗したまま redirect すると履歴ごと truncate される。
+# 既存 state が空だと jq は rc=0 のまま何も出さないため、空出力も -s で設置前に止める。
 state_tmp=$(mktemp "${state_file%/*}/.cycle-XXXXXX") || {
   echo "ERROR: cycle state 用 mktemp に失敗" >&2
   echo "[fix:error]"
@@ -2562,9 +2564,9 @@ if ! printf '%s\n' "$existing" | jq --argjson entry "$new_cycle" '
   (.cycles | length) as $len |
   .cycles += [$entry | .cycle = ($len + 1)] |
   if (.cycles | length) > 20 then .cycles = .cycles[-20:] else . end
-' > "$state_tmp" || ! mv "$state_tmp" "$state_file"; then
+' > "$state_tmp" || [ ! -s "$state_tmp" ] || ! mv "$state_tmp" "$state_file"; then
   rm -f "$state_tmp"
-  echo "ERROR: cycle state の書き込みに失敗" >&2
+  echo "ERROR: cycle state の書き込みに失敗 (jq 失敗 / 出力が空 / mv 失敗)" >&2
   echo "[fix:error]"
   exit 1
 fi
@@ -2844,8 +2846,9 @@ fi
 # JSON は single-quote に直接埋めず、HEREDOC + --rawfile で渡す（ステップ 2.4 の reply と同じ形）。
 # trap + cleanup パターンの canonical 説明は ../../references/bash-trap-patterns.md#signal-specific-trap-template 参照
 addressed_file=""
+state_tmp=""
 _rite_fix_cycle_addressed_cleanup() {
-  rm -f "${addressed_file:-}"
+  rm -f "${addressed_file:-}" "${state_tmp:-}"
 }
 trap 'rc=$?; _rite_fix_cycle_addressed_cleanup; exit $rc' EXIT
 trap '_rite_fix_cycle_addressed_cleanup; exit 130' INT
@@ -2898,6 +2901,7 @@ new_cycle=$(jq -n \
 
 # Append and assign cycle number, enforce ring buffer (max 20 entries)
 # 既存 state を直接開かない。生成に失敗したまま redirect すると履歴ごと truncate される。
+# 既存 state が空だと jq は rc=0 のまま何も出さないため、空出力も -s で設置前に止める。
 state_tmp=$(mktemp "${state_file%/*}/.cycle-XXXXXX") || {
   echo "ERROR: cycle state 用 mktemp に失敗" >&2
   echo "[fix:error]"
@@ -2907,9 +2911,9 @@ if ! printf '%s\n' "$existing" | jq --argjson entry "$new_cycle" '
   (.cycles | length) as $len |
   .cycles += [$entry | .cycle = ($len + 1)] |
   if (.cycles | length) > 20 then .cycles = .cycles[-20:] else . end
-' > "$state_tmp" || ! mv "$state_tmp" "$state_file"; then
+' > "$state_tmp" || [ ! -s "$state_tmp" ] || ! mv "$state_tmp" "$state_file"; then
   rm -f "$state_tmp"
-  echo "ERROR: cycle state の書き込みに失敗" >&2
+  echo "ERROR: cycle state の書き込みに失敗 (jq 失敗 / 出力が空 / mv 失敗)" >&2
   echo "[fix:error]"
   exit 1
 fi
