@@ -1,4 +1,5 @@
 ## 2026-09-06
+* **lint:clean** — contradictions=0, stale=56, orphans=0, missing_concept=0, unregistered_raw=441, broken_refs=0
 * **Create**: [複数の書き込み口がある資源は、最後の共有口に政策検査を置く](pages/heuristics/policy-check-at-last-shared-write-mouth.md) — raw/reviews/20260906T075557Z-pr-2580.md を新規ページ化
 * **Skip**: [20260906T060119Z-pr-2579.md](raw/reviews/20260906T060119Z-pr-2579.md) — 0-finding confirmation; 10進固定はプラグイン本体に実装済み。新規経験則なし
 * **Skip**: [20260905T172524Z-pr-2577.md](raw/reviews/20260905T172524Z-pr-2577.md) — 既存の文書整合性規約の適用確認であり、新規のプロジェクトドメイン知見はない
