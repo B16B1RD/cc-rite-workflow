@@ -469,8 +469,9 @@ okf_version: "0.2"
 | [ゲートに検査を足すより、実行者が選べる自由度を削る](pages/heuristics/reduce-gate-degrees-of-freedom.md) | heuristics | 新設した commit 前ゲートに指摘が集中したとき、ガードを個別に足すと検査面が増えて次サイクルで再生産する。効くのは対象の列挙・ラベル・本文・marker routing を実行者が選べない形へ単純化すること。自由度が消えると複数の指摘が同時に成立しなくなる。 | 2026-09-04T13:54:13Z | high |
 | [ゲートの判定基準を被検査側が選べると検査は自己無効化する](pages/anti-patterns/gate-subject-chooses-anchor-self-invalidates.md) | anti-patterns | 委譲先のラベルがパス除外にも使われるとき、呼び出し側が検査対象のパスをラベルに渡すと、内容に問題があっても無条件 clean が返る。判定基準はゲートされる側が選べない値（未 commit 差分など）から取る。 | 2026-09-04T13:54:13Z | high |
 | [awk の close() は追記のつもりだったリダイレクトを再 truncate する](pages/anti-patterns/awk-close-reopens-and-truncates.md) | anti-patterns | `> file` は初回オープンで truncate、以降は追記だが、close() を挟むと次の `> file` が再オープン＝再 truncate する。END で二重に書いていた検出が、この 1 行で片方消える。 | 2026-09-04T13:54:13Z | high |
+| [複数の書き込み口がある資源は、最後の共有口に政策検査を置く](pages/heuristics/policy-check-at-last-shared-write-mouth.md) | heuristics | 同じ資源へ commit する経路が複数あるとき、政策検査を 1 呼び出し口だけに置くと、別経路が拒否済みの pending を無検査で着地させる。検査本体は最後の共有書き込み口に置き、呼び出し口は薄い呼び出しに縮小する。 | 2026-09-06T08:10:46Z | high |
 ## 統計
 
-- 総ページ数: 459
-- ドメイン別: patterns=109, heuristics=202, anti-patterns=148
-- 最終更新: 2026-09-05T12:14:41.011525+00:00
+- 総ページ数: 460
+- ドメイン別: patterns=109, heuristics=203, anti-patterns=148
+- 最終更新: 2026-09-06T08:10:46Z
