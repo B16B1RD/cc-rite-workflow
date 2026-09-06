@@ -250,7 +250,7 @@ assert "T-08 reason=diff_failed" \
   "[CONTEXT] FIX_REPORT_DIFF_GATE=error; reason=diff_failed" \
   "$(marker_line)"
 
-# --- delete-only: file-level match ---
+# --- delete-only: whole-file deletion matches its old line range ---
 new_repo
 printf 'gone\n' > "$REPO/gone.txt"
 git_c add gone.txt
@@ -262,11 +262,36 @@ after=$(git -C "$REPO" rev-parse HEAD)
 write_state "$REPO/state.json" "$before" "$after" \
   '[{"id":"F-DEL","action":"fix","changes":["gone.txt:1"]}]'
 run_gate "$REPO/state.json"
-assert "delete-only file-level true" "true" \
+assert "whole-file deletion old line true" "true" \
   "$(jq -r '.cycles[-1].findings_addressed[0].diff_verified' "$REPO/state.json")"
-assert "delete-only passed" \
+assert "whole-file deletion passed" \
   "[CONTEXT] FIX_REPORT_DIFF_GATE=passed; verified=1; unverified=0" \
   "$(marker_line)"
+
+# --- delete-only file where old and new numbering diverge ---
+# The 20-21 deletion lives at old lines 20-21; HEAD has no line for it, and HEAD:19
+# ("line 19") is untouched. Only the old range verifies.
+new_repo
+seq 1 30 | sed 's/^/line /' > "$REPO/shrink.txt"
+git_c add shrink.txt
+git_c commit -q -m add-shrink
+before=$(git -C "$REPO" rev-parse HEAD)
+sed -i '20,21d' "$REPO/shrink.txt"
+git_c add shrink.txt
+git_c commit -q -m rm-20-21
+after=$(git -C "$REPO" rev-parse HEAD)
+
+write_state "$REPO/state.json" "$before" "$after" \
+  '[{"id":"F-SHRINK","action":"fix","changes":["shrink.txt:20-21"]}]'
+run_gate "$REPO/state.json"
+assert "delete-only old numbering true" "true" \
+  "$(jq -r '.cycles[-1].findings_addressed[0].diff_verified' "$REPO/state.json")"
+
+write_state "$REPO/state.json" "$before" "$after" \
+  '[{"id":"F-SHRINKB","action":"fix","changes":["shrink.txt:19"]}]'
+run_gate "$REPO/state.json"
+assert "delete-only adjacent HEAD line false" "false" \
+  "$(jq -r '.cycles[-1].findings_addressed[0].diff_verified' "$REPO/state.json")"
 
 # --- delete hunk in a file that also gains + hunks (hunk granularity, not file) ---
 new_repo
@@ -293,6 +318,21 @@ write_state "$REPO/state.json" "$before" "$after" \
   '[{"id":"F-MIXB","action":"fix","changes":["mixed.txt:10"]}]'
 run_gate "$REPO/state.json"
 assert "mixed untouched line false" "false" \
+  "$(jq -r '.cycles[-1].findings_addressed[0].diff_verified' "$REPO/state.json")"
+
+# The rewritten line is cited by its HEAD line (23), never by its old line (25):
+# HEAD:25 is the untouched "line 27", so accepting the old number would verify a
+# citation that names a line this fix never touched.
+write_state "$REPO/state.json" "$before" "$after" \
+  '[{"id":"F-MIXH","action":"fix","changes":["mixed.txt:23"]}]'
+run_gate "$REPO/state.json"
+assert "modified line HEAD numbering true" "true" \
+  "$(jq -r '.cycles[-1].findings_addressed[0].diff_verified' "$REPO/state.json")"
+
+write_state "$REPO/state.json" "$before" "$after" \
+  '[{"id":"F-MIXO","action":"fix","changes":["mixed.txt:25"]}]'
+run_gate "$REPO/state.json"
+assert "modified line old numbering false" "false" \
   "$(jq -r '.cycles[-1].findings_addressed[0].diff_verified' "$REPO/state.json")"
 
 # --- multi-element changes: any match verifies, order-independent ---
@@ -378,19 +418,19 @@ if [ -f "$FIX_SKILL" ]; then
   awk '
     /^### 4\.6 / { insec=1 }
     insec && /^### / && !/^### 4\.6 / { insec=0 }
-    insec && /diff_verified: true/ { found=1 }
+    insec && /fix_count/ && /diff_verified: true/ { found=1 }
     END { exit found ? 0 : 1 }
   ' "$FIX_SKILL"
   _rc=$?
-  assert "4.6 passed marker counts diff_verified: true" "0" "$_rc"
+  assert "4.6 excludes diff_verified:false from fix_count" "0" "$_rc"
+  # Anchor on the row shape, not the section: the summary prose right below the
+  # table carries the same two literals and would satisfy a section-only match.
   awk '
-    /^## ステップ 5/ { insec=1 }
-    insec && /^## / && !/^## ステップ 5/ { insec=0 }
-    insec && /FIX_REPORT_DIFF_GATE=error/ && /\[fix:error\]/ { found=1 }
+    /^\| 2\.5 \|/ && /FIX_REPORT_DIFF_GATE=error/ && /\[fix:error\]/ { found=1 }
     END { exit found ? 0 : 1 }
   ' "$FIX_SKILL"
   _rc=$?
-  assert "5.1 eval-order maps FIX_REPORT_DIFF_GATE=error to [fix:error]" "0" "$_rc"
+  assert "5.1 row 2.5 maps FIX_REPORT_DIFF_GATE=error to [fix:error]" "0" "$_rc"
 fi
 
 assert "usage unknown arg exits 2" "2" "$(bash "$SCRIPT" --bogus >/dev/null 2>&1; echo $?)"

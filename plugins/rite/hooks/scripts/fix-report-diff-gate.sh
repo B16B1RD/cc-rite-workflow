@@ -4,8 +4,8 @@
 # Confirm that each action:fix finding in the latest fix-cycle-state cycle
 # names a path:line (or path:start-end) that actually appears in
 # `git diff -U0 <commit_sha_before>..HEAD`. One overlapping line with a +
-# hunk is enough. Delete-only files (deleted file, or hunks with no + side)
-# match at file level: the path is in the diff.
+# hunk is enough. A pure-delete hunk (no + side) is matched per hunk against
+# the old-file line range, since a deleted line has no HEAD line to cite.
 #
 # reply / accept / nit-noted are out of scope: they are not verified and
 # must not gain a diff_verified key.
@@ -125,7 +125,10 @@ rm -f "$diff_err"
 
 # Parse unified=0:
 #   plus_hunks  = "path:start:end" inclusive new-file ranges (new_count > 0)
-#   minus_hunks = "path:start:end" inclusive old-file ranges (old_count > 0)
+#   minus_hunks = "path:start:end" inclusive old-file ranges of pure-delete
+#                 hunks only (new_count == 0). A hunk that also adds lines is
+#                 matched through plus_hunks, so a modified line's old number
+#                 never verifies a citation.
 plus_hunks=""
 minus_hunks=""
 current_file=""
@@ -164,10 +167,6 @@ while IFS= read -r line || [ -n "$line" ]; do
       fi
       case "$old_start" in ''|*[!0-9]*) old_start="" ;; esac
       case "$old_count" in ''|*[!0-9]*) old_start="" ;; esac
-      if [ -n "$old_start" ] && [ "$old_count" -gt 0 ]; then
-        old_end=$((old_start + old_count - 1))
-        minus_hunks="${minus_hunks}${current_file}:${old_start}:${old_end}"$'\n'
-      fi
       plus=${line#* +}
       plus=${plus%% *}
       new_start=${plus%%,*}
@@ -181,6 +180,9 @@ while IFS= read -r line || [ -n "$line" ]; do
       if [ "$new_count" -gt 0 ]; then
         new_end=$((new_start + new_count - 1))
         plus_hunks="${plus_hunks}${current_file}:${new_start}:${new_end}"$'\n'
+      elif [ -n "$old_start" ] && [ "$old_count" -gt 0 ]; then
+        old_end=$((old_start + old_count - 1))
+        minus_hunks="${minus_hunks}${current_file}:${old_start}:${old_end}"$'\n'
       fi
       ;;
   esac

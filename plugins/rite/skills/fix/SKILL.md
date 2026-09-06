@@ -2292,7 +2292,7 @@ When "コードを修正する" is selected:
 
 **MUST**: 生成するコメント / 散文に Issue/PR 番号・AC 番号を書かない。残す背景は現在形の制約文。ジャーナル/経緯文は禁止。
 
-**MUST**: `action` は `fix` / `reply` / `accept` / `nit-noted` の 4 値に閉じる（他の値は ステップ 4.6 の gate が `map_missing` で停止させる）。`action: fix` の finding は 1 件以上の変更箇所を `path:line` または `path:start-end`（HEAD の行）で記録し、ステップ 3.3.1 の `findings_addressed[]` に `{id, action, changes}` として載せる。reply / accept / nit-noted は `changes: []` とし `diff_verified` を付けない。
+**MUST**: `action` は `fix` / `reply` / `accept` / `nit-noted` の 4 値に閉じる（他の値は ステップ 4.6 の gate が `map_missing` で停止させる）。`action: fix` の finding は 1 件以上の変更箇所を `path:line` または `path:start-end` で記録し、ステップ 3.3.1 の `findings_addressed[]` に `{id, action, changes}` として載せる。行番号は **HEAD の行**。ただし**行を削除しただけの箇所は HEAD に対応行が無い**ため、`commit_sha_before` の行で記録する（gate は純削除 hunk だけを削除前の行番号で突合する。行を書き換えた箇所は HEAD の行でしか通らない）。reply / accept / nit-noted は `changes: []` とし `diff_verified` を付けない。
 
 Present the proposed fix and apply with Edit tool after confirmation:
 
@@ -2493,6 +2493,7 @@ fi
 # FIX_COMMIT_GUARD=skip のときだけ。{findings_addressed_json} は ステップ 2.3 で記録した配列
 # （fix は path:line / path:start-end、reply/accept/nit-noted は changes: []。diff_verified は書かない）。
 # JSON は single-quote に直接埋めず、HEREDOC + --rawfile で渡す（ステップ 2.4 の reply と同じ形）。
+# trap + cleanup パターンの canonical 説明は ../../references/bash-trap-patterns.md#signal-specific-trap-template 参照
 _state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
 [ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
 mkdir -p "$_state_root/.rite/fix-cycle-state"
@@ -2505,13 +2506,30 @@ if [ -f "$state_file" ]; then
 else
   existing='{"pr_number":'"$pr_number"',"cycles":[]}'
 fi
-addressed_file=$(mktemp) || { echo "ERROR: findings_addressed 用 mktemp に失敗" >&2; exit 1; }
-trap 'rm -f "${addressed_file:-}"' EXIT INT TERM HUP
+addressed_file=""
+_rite_fix_skip_addressed_cleanup() {
+  rm -f "${addressed_file:-}"
+}
+trap 'rc=$?; _rite_fix_skip_addressed_cleanup; exit $rc' EXIT
+trap '_rite_fix_skip_addressed_cleanup; exit 130' INT
+trap '_rite_fix_skip_addressed_cleanup; exit 143' TERM
+trap '_rite_fix_skip_addressed_cleanup; exit 129' HUP
+addressed_file=$(mktemp "${TMPDIR:-/tmp}/rite-fix-addressed-XXXXXX") || {
+  echo "ERROR: findings_addressed 用 mktemp に失敗" >&2
+  echo "[fix:error]"
+  exit 1
+}
 if ! cat <<'ADDRESSEDEOF' > "$addressed_file"
 {findings_addressed_json}
 ADDRESSEDEOF
 then
   echo "ERROR: findings_addressed の HEREDOC 書き込みに失敗" >&2
+  echo "[fix:error]"
+  exit 1
+fi
+if [ ! -s "$addressed_file" ]; then
+  echo "ERROR: findings_addressed の tmpfile が空です" >&2
+  echo "[fix:error]"
   exit 1
 fi
 new_cycle=$(jq -n \
@@ -2814,13 +2832,31 @@ fi
 # Append new cycle entry (propagation_applied is set by ステップ 2.3.1 context)
 # {findings_addressed_json} は ステップ 2.3 で記録した配列（diff_verified は書かない。gate が書き戻す）
 # JSON は single-quote に直接埋めず、HEREDOC + --rawfile で渡す（ステップ 2.4 の reply と同じ形）。
-addressed_file=$(mktemp) || { echo "ERROR: findings_addressed 用 mktemp に失敗" >&2; exit 1; }
-trap 'rm -f "${addressed_file:-}"' EXIT INT TERM HUP
+# trap + cleanup パターンの canonical 説明は ../../references/bash-trap-patterns.md#signal-specific-trap-template 参照
+addressed_file=""
+_rite_fix_cycle_addressed_cleanup() {
+  rm -f "${addressed_file:-}"
+}
+trap 'rc=$?; _rite_fix_cycle_addressed_cleanup; exit $rc' EXIT
+trap '_rite_fix_cycle_addressed_cleanup; exit 130' INT
+trap '_rite_fix_cycle_addressed_cleanup; exit 143' TERM
+trap '_rite_fix_cycle_addressed_cleanup; exit 129' HUP
+addressed_file=$(mktemp "${TMPDIR:-/tmp}/rite-fix-addressed-XXXXXX") || {
+  echo "ERROR: findings_addressed 用 mktemp に失敗" >&2
+  echo "[fix:error]"
+  exit 1
+}
 if ! cat <<'ADDRESSEDEOF' > "$addressed_file"
 {findings_addressed_json}
 ADDRESSEDEOF
 then
   echo "ERROR: findings_addressed の HEREDOC 書き込みに失敗" >&2
+  echo "[fix:error]"
+  exit 1
+fi
+if [ ! -s "$addressed_file" ]; then
+  echo "ERROR: findings_addressed の tmpfile が空です" >&2
+  echo "[fix:error]"
   exit 1
 fi
 new_cycle=$(jq -n \
