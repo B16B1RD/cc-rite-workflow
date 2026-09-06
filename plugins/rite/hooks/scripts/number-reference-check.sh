@@ -27,6 +27,8 @@
 #   - plugins/rite/hooks/tests/number-reference-check.test.sh
 #   - plugins/rite/hooks/tests/comment-journal-check.test.sh
 #   - plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh
+#   - plugins/rite/hooks/tests/wiki-numref-precommit.test.sh
+#   - plugins/rite/hooks/tests/wiki-worktree-commit.test.sh
 #
 # Output:
 #   findings → stdout  as  file:line: matched line
@@ -165,7 +167,7 @@ if [ "$MODE" != "stdin" ]; then
 fi
 
 # Path exclusion data. Grammar SoT is this list only.
-EXCLUDED_PATHS='.rite/wiki/raw/ plugins/rite/scripts/tests/fixtures/ plugins/rite/hooks/tests/number-reference-check.test.sh plugins/rite/hooks/tests/comment-journal-check.test.sh plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh'
+EXCLUDED_PATHS='.rite/wiki/raw/ plugins/rite/scripts/tests/fixtures/ plugins/rite/hooks/tests/number-reference-check.test.sh plugins/rite/hooks/tests/comment-journal-check.test.sh plugins/rite/hooks/tests/wiki-lint-descriptive-refs.test.sh plugins/rite/hooks/tests/wiki-numref-precommit.test.sh plugins/rite/hooks/tests/wiki-worktree-commit.test.sh'
 
 is_excluded_path() {
   local p="$1" excluded

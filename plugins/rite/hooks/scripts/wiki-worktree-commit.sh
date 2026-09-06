@@ -24,6 +24,7 @@
 #
 # Pair scripts:
 # - `wiki-worktree-setup.sh` — creates the worktree (idempotent)
+# - `wiki-numref-precommit.sh` — number-reference gate before stage/commit
 # - `wiki-ingest-commit.sh` — legacy shell-only raw-source committer
 # (still used by pr-review.md / fix.md / close.md Phase X.X.W for
 # raw-source staging, unchanged by this Issue)
@@ -55,10 +56,12 @@
 # [wiki-worktree-commit] committed=1; branch=<wiki>; head=<sha>; push=deferred   (--commit-only)
 # [wiki-worktree-commit] branch=<wiki>; head=<sha>; push=<ok|failed|no-op>       (--push-only)
 # [wiki-worktree-commit] committed=0; branch=<wiki>; reason=<no-pending|no-staged-diff|concurrent-invocation>
+# [wiki-worktree-commit] committed=0; branch=<wiki>; reason=<numref-hit|numref-error>
 #
 # Exit codes:
 # 0 success (committed and/or pushed, or nothing pending/to push)
-# 1 environment / argument error (not a git repo, worktree missing, etc.)
+# 1 environment / argument error, or pre-commit policy refusal
+#   (numref-hit / numref-error — wiki-numref-precommit.sh rejected the tree)
 # 2 wiki feature disabled (skip)
 # 3 git operation failure (add / commit — push NOT included)
 # 4 push failed (caller MUST emit wiki_ingest_push_failed sentinel;
@@ -349,6 +352,33 @@ if [[ "$DRY_RUN" == "true" ]]; then
  fi
  exit 0
 fi
+
+# -----------------------------------------------------------------------
+# Number-reference pre-commit gate. The last write mouth must refuse to
+# commit a tree that ingest 5.0.n already rejected (or that ingest never
+# inspected). --push-only / --dry-run / no-pending return before this
+# block, so they never call the helper (dry-run must not intent-to-add).
+# -----------------------------------------------------------------------
+if [ ! -f "$_SCRIPT_DIR/wiki-numref-precommit.sh" ]; then
+  echo "ERROR: wiki-numref-precommit.sh が見つかりません。検査せずに commit しません" >&2
+  echo "[wiki-worktree-commit] committed=0; branch=${wiki_branch}; reason=numref-error"
+  exit 1
+fi
+set +e
+bash "$_SCRIPT_DIR/wiki-numref-precommit.sh" --repo-root "$abs_worktree"
+numref_gate_rc=$?
+set -e
+case "$numref_gate_rc" in
+  0) ;;
+  1)
+    echo "[wiki-worktree-commit] committed=0; branch=${wiki_branch}; reason=numref-hit"
+    exit 1
+    ;;
+  *)
+    echo "[wiki-worktree-commit] committed=0; branch=${wiki_branch}; reason=numref-error"
+    exit 1
+    ;;
+esac
 
 # -----------------------------------------------------------------------
 # Stage all changes under .rite/wiki, commit, and (unless --commit-only)

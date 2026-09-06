@@ -273,4 +273,94 @@ assert "--commit-only and --push-only together exits 1" "1" \
 assert "--push-only with --dry-run exits 1" "1" \
   "$(rc_in "$nopending_repo" --push-only --dry-run)"
 
+# --- numref pre-commit gate -------------------------------------------------
+add_pending_numref() {
+  local repo="$1" name="${2:-numref.md}"
+  mkdir -p "$repo/.rite/wiki-worktree/.rite/wiki/pages"
+  printf 'PR #1300 in wiki page\n' > "$repo/.rite/wiki-worktree/.rite/wiki/pages/$name"
+}
+
+numref_repo="$(new_repo true)"; SANDBOXES+=("$numref_repo")
+setup_wiki_worktree "$numref_repo"
+add_pending_numref "$numref_repo"
+wiki_before_nr="$(git -C "$numref_repo" rev-parse wiki)"
+nr_out="$(run_in "$numref_repo")"
+nr_rc="$(rc_in "$numref_repo")"
+assert "numref pending default invoke exits 1" "1" "$nr_rc"
+if printf '%s' "$nr_out" | grep -qE '\[wiki-worktree-commit\] committed=0; branch=wiki; reason=numref-hit'; then
+  pass "numref pending default invoke reports committed=0 reason=numref-hit on stdout"
+else
+  fail "expected stdout committed=0; reason=numref-hit; got: $nr_out"
+fi
+wiki_after_nr="$(git -C "$numref_repo" rev-parse wiki)"
+assert "numref pending does not advance wiki HEAD" "$wiki_before_nr" "$wiki_after_nr"
+if git -C "$numref_repo" ls-tree -r --name-only wiki | grep -q 'numref.md'; then
+  fail "numref page must not be tracked on wiki after a refused commit"
+else
+  pass "numref page is not tracked on wiki after a refused commit"
+fi
+
+numref_co_repo="$(new_repo true)"; SANDBOXES+=("$numref_co_repo")
+setup_wiki_worktree "$numref_co_repo"
+add_pending_numref "$numref_co_repo" page-co.md
+wiki_before_co_nr="$(git -C "$numref_co_repo" rev-parse wiki)"
+co_nr_out="$(run_in "$numref_co_repo" --commit-only)"
+co_nr_rc="$(rc_in "$numref_co_repo" --commit-only)"
+assert "numref pending --commit-only exits 1" "1" "$co_nr_rc"
+if printf '%s' "$co_nr_out" | grep -qE '\[wiki-worktree-commit\] committed=0; branch=wiki; reason=numref-hit'; then
+  pass "numref --commit-only reports committed=0 reason=numref-hit on stdout"
+else
+  fail "expected --commit-only committed=0; reason=numref-hit; got: $co_nr_out"
+fi
+assert "numref --commit-only does not advance wiki HEAD" \
+  "$wiki_before_co_nr" "$(git -C "$numref_co_repo" rev-parse wiki)"
+if git -C "$numref_co_repo" ls-tree -r --name-only wiki | grep -q 'page-co.md'; then
+  fail "numref --commit-only must not land the page on wiki"
+else
+  pass "numref --commit-only does not land the page on wiki"
+fi
+
+# helper rc=2 (ignored_paths): a tracked wiki edit makes has_changes=true, while
+# a nested .rite/.gitignore (`*` / `!wiki/` without `!wiki/**`) leaves an
+# untracked wiki file ignored. Pending detection still sees the tracked edit;
+# the helper then fail-louds on the ignored residue.
+numref_err_repo="$(new_repo true)"; SANDBOXES+=("$numref_err_repo")
+setup_wiki_worktree "$numref_err_repo"
+add_pending "$numref_err_repo" tracked.md
+run_in "$numref_err_repo" --commit-only >/dev/null
+mkdir -p "$numref_err_repo/.rite/wiki-worktree/.rite"
+printf '*\n!wiki/\n' > "$numref_err_repo/.rite/wiki-worktree/.rite/.gitignore"
+printf 'PR #1300 ignored residue\n' > "$numref_err_repo/.rite/wiki-worktree/.rite/wiki/pages/ignored.md"
+printf 'tracked edit\n' >> "$numref_err_repo/.rite/wiki-worktree/.rite/wiki/pages/tracked.md"
+wiki_before_err="$(git -C "$numref_err_repo" rev-parse wiki)"
+err_out="$(run_in "$numref_err_repo" --commit-only)"
+err_rc="$(rc_in "$numref_err_repo" --commit-only)"
+assert "numref-error --commit-only exits 1" "1" "$err_rc"
+if printf '%s' "$err_out" | grep -qE '\[wiki-worktree-commit\] committed=0; branch=wiki; reason=numref-error'; then
+  pass "helper error reports committed=0 reason=numref-error on stdout"
+else
+  fail "expected reason=numref-error; got: $err_out"
+fi
+assert "numref-error does not advance wiki HEAD" \
+  "$wiki_before_err" "$(git -C "$numref_err_repo" rev-parse wiki)"
+
+# --dry-run with numbered pending must not call the helper (no intent-to-add)
+dry_nr_repo="$(new_repo true)"; SANDBOXES+=("$dry_nr_repo")
+setup_wiki_worktree "$dry_nr_repo"
+add_pending_numref "$dry_nr_repo" dry.md
+wiki_before_dry_nr="$(git -C "$dry_nr_repo" rev-parse wiki)"
+others_before=$(git -C "$dry_nr_repo/.rite/wiki-worktree" ls-files --others --exclude-standard -- .rite/wiki)
+dry_nr_out="$(run_in "$dry_nr_repo" --dry-run)"
+dry_nr_rc="$(rc_in "$dry_nr_repo" --dry-run)"
+assert "dry-run with numref pending exits 0" "0" "$dry_nr_rc"
+assert "dry-run with numref pending does not advance wiki" \
+  "$wiki_before_dry_nr" "$(git -C "$dry_nr_repo" rev-parse wiki)"
+others_after=$(git -C "$dry_nr_repo/.rite/wiki-worktree" ls-files --others --exclude-standard -- .rite/wiki)
+assert "dry-run does not intent-to-add (helper not called)" "$others_before" "$others_after"
+if printf '%s' "$dry_nr_out" | grep -qE 'dry-run; branch=wiki'; then
+  pass "dry-run with numref pending still reports dry-run status"
+else
+  fail "dry-run status missing with numref pending: $dry_nr_out"
+fi
+
 print_summary "wiki-worktree-commit.sh"
