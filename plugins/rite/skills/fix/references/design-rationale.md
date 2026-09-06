@@ -236,7 +236,7 @@ H-1: ステップ 1.2 進入時に confidence_override tempfile を無条件 tru
 
 ## fix-report-diff-gate
 
-完了報告の「直した」は LLM の自己申告だったので、差分に無い ID が次 cycle で解消済み扱いになる。突合は helper に置き、表の欠落だけを error にする。未対応は次の verification が拾えるので止めない。削除のみは + 側が空なのでファイル単位で通す（HEAD 行規約と旧行番号を混ぜない）。
+完了報告の「直した」は LLM の自己申告だったので、差分に無い ID が次 cycle で解消済み扱いになる。突合は helper に置き、表の欠落だけを error にする。未対応は次の verification が拾えるので止めない。突合は hunk 単位で、+ 側を持つ hunk は HEAD の行、+ 側が空の純削除 hunk だけを削除前の行で照合する。削除された行には HEAD 上の行が無いため、この 1 種だけ採番が変わる。
 
 ## nb-sweep-routing
 

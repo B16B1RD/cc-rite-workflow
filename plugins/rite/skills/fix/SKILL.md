@@ -2527,11 +2527,6 @@ then
   echo "[fix:error]"
   exit 1
 fi
-if [ ! -s "$addressed_file" ]; then
-  echo "ERROR: findings_addressed の tmpfile が空です" >&2
-  echo "[fix:error]"
-  exit 1
-fi
 new_cycle=$(jq -n \
   --arg ts "$timestamp" \
   --arg head "$head_sha" \
@@ -2851,11 +2846,6 @@ if ! cat <<'ADDRESSEDEOF' > "$addressed_file"
 ADDRESSEDEOF
 then
   echo "ERROR: findings_addressed の HEREDOC 書き込みに失敗" >&2
-  echo "[fix:error]"
-  exit 1
-fi
-if [ ! -s "$addressed_file" ]; then
-  echo "ERROR: findings_addressed の tmpfile が空です" >&2
   echo "[fix:error]"
   exit 1
 fi
