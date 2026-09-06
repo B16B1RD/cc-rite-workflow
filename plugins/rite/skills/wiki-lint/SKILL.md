@@ -855,7 +855,9 @@ case "$branch_strategy" in
     commit_rc=$?
     set -e
     echo "$commit_out"
-    # lint は非ブロッキング契約のため exit 1 はせず、すべて WARNING のみで継続する
+    # lint は非ブロッキング契約のため exit 1 はせず、すべて WARNING のみで継続する。
+    # 番号参照 hit/error も rc=1 で commit されない（wiki-worktree-commit.sh 内の
+    # wiki-numref-precommit.sh）。安全条件は commit されないことであり、本 case を fail-fast にしない。
     case "$commit_rc" in
       0) : ;;
       2) echo "[CONTEXT] WIKI_LINT_COMMIT=skipped; reason=wiki-disabled-or-no-pending" >&2 ;;
