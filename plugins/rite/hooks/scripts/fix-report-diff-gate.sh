@@ -124,12 +124,10 @@ fi
 rm -f "$diff_err"
 
 # Parse unified=0:
-#   touched_files = dest (or source when dest is /dev/null)
-#   plus_hunks    = "path:start:end" inclusive new-file ranges (new_count > 0)
-#   has_plus      = path received at least one + hunk
-touched_files=""
+#   plus_hunks  = "path:start:end" inclusive new-file ranges (new_count > 0)
+#   minus_hunks = "path:start:end" inclusive old-file ranges (old_count > 0)
 plus_hunks=""
-has_plus=""
+minus_hunks=""
 current_file=""
 current_src=""
 
@@ -150,17 +148,26 @@ while IFS= read -r line || [ -n "$line" ]; do
       dest=${line#+++ b/}
       dest=${dest%%$'\t'*}
       current_file="$dest"
-      touched_files="${touched_files}${dest}"$'\n'
       ;;
     +++\ /dev/null)
-      current_file=""
-      if [ -n "$current_src" ]; then
-        touched_files="${touched_files}${current_src}"$'\n'
-        current_file="$current_src"
-      fi
+      current_file="$current_src"
       ;;
     @@\ *)
       [ -n "$current_file" ] || continue
+      minus=${line#@@ -}
+      minus=${minus%% *}
+      old_start=${minus%%,*}
+      if [ "$minus" = "$old_start" ]; then
+        old_count=1
+      else
+        old_count=${minus#*,}
+      fi
+      case "$old_start" in ''|*[!0-9]*) old_start="" ;; esac
+      case "$old_count" in ''|*[!0-9]*) old_start="" ;; esac
+      if [ -n "$old_start" ] && [ "$old_count" -gt 0 ]; then
+        old_end=$((old_start + old_count - 1))
+        minus_hunks="${minus_hunks}${current_file}:${old_start}:${old_end}"$'\n'
+      fi
       plus=${line#* +}
       plus=${plus%% *}
       new_start=${plus%%,*}
@@ -174,27 +181,13 @@ while IFS= read -r line || [ -n "$line" ]; do
       if [ "$new_count" -gt 0 ]; then
         new_end=$((new_start + new_count - 1))
         plus_hunks="${plus_hunks}${current_file}:${new_start}:${new_end}"$'\n'
-        has_plus="${has_plus}${current_file}"$'\n'
       fi
       ;;
   esac
 done <<< "$diff_out"
 
-file_touched() {
-  printf '%s' "$touched_files" | grep -Fxq "$1"
-}
-
-file_has_plus() {
-  printf '%s' "$has_plus" | grep -Fxq "$1"
-}
-
-# Delete-only: the path is in the diff and no + hunk exists for it.
-file_delete_only() {
-  file_touched "$1" && ! file_has_plus "$1"
-}
-
-range_overlaps_plus() {
-  local f="$1" start="$2" end="$3" rec h_start h_end rest
+range_overlaps() {
+  local hunks="$1" f="$2" start="$3" end="$4" rec h_start h_end rest
   while IFS= read -r rec || [ -n "$rec" ]; do
     [ -n "$rec" ] || continue
     case "$rec" in
@@ -208,7 +201,7 @@ range_overlaps_plus() {
         ;;
     esac
   done <<EOF
-$plus_hunks
+$hunks
 EOF
   return 1
 }
@@ -241,10 +234,13 @@ parse_change() {
 change_matches() {
   local spec="$1"
   parse_change "$spec" || return 1
-  if range_overlaps_plus "$CHANGE_PATH" "$CHANGE_START" "$CHANGE_END"; then
+  if range_overlaps "$plus_hunks" "$CHANGE_PATH" "$CHANGE_START" "$CHANGE_END"; then
     return 0
   fi
-  if file_delete_only "$CHANGE_PATH"; then
+  # Deletion: the cited range is covered by a - hunk (old-file numbering), so no
+  # + hunk can exist for it. Judged per hunk, not per file, so that a file mixing
+  # deletions and additions still verifies its delete-side changes.
+  if range_overlaps "$minus_hunks" "$CHANGE_PATH" "$CHANGE_START" "$CHANGE_END"; then
     return 0
   fi
   return 1
@@ -268,9 +264,8 @@ while [ "$i" -lt "$n" ]; do
       ;;
     fix) ;;
     *)
-      # Unknown action: do not verify, do not add diff_verified.
-      i=$((i + 1))
-      continue
+      # Unknown action: an unrecognized value must not silently bypass the gate.
+      emit_error map_missing
       ;;
   esac
 

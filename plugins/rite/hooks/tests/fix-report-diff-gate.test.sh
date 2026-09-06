@@ -3,8 +3,8 @@
 #
 # Pins the completion-report diff gate: + hunk overlap, -U0 (not unified=3
 # context), map_missing fail-loud, reply/accept/nit-noted out of scope,
-# range overlap, delete-only file-level match, and static SKILL pins for
-# {fix_change_map} / 対応表なし.
+# unknown action fail-loud, range overlap, hunk-level delete match, and
+# section-limited SKILL pins for {fix_change_map} / 対応表なし / 4.6 / 5.1.
 
 set -uo pipefail
 
@@ -193,6 +193,23 @@ assert "T-04 accept has no diff_verified" "true" \
 assert "T-04 nit-noted has no diff_verified" "true" \
   "$(jq -r '.cycles[-1].findings_addressed[2] | has("diff_verified") | not' "$REPO/state.json")"
 
+# --- T-04b: unknown action is fail-loud, not a silent skip ---
+write_state "$REPO/state.json" "$before" "$before" \
+  '[{"id":"F-UNK","action":"Fix","changes":["a:1"]}]'
+run_gate "$REPO/state.json"
+assert "T-04b unknown action rc!=0" "1" "$GATE_RC"
+assert "T-04b unknown action reason=map_missing" \
+  "[CONTEXT] FIX_REPORT_DIFF_GATE=error; reason=map_missing" \
+  "$(marker_line)"
+
+write_state "$REPO/state.json" "$before" "$before" \
+  '[{"id":"F-OK","action":"reply","changes":[]},{"id":"F-UNK2","action":"deferred","changes":[]}]'
+run_gate "$REPO/state.json"
+assert "T-04b unknown action after valid one rc!=0" "1" "$GATE_RC"
+assert "T-04b unknown action after valid one reason=map_missing" \
+  "[CONTEXT] FIX_REPORT_DIFF_GATE=error; reason=map_missing" \
+  "$(marker_line)"
+
 # --- T-07: range 10-14 overlaps hunk 12; 20-24 does not ---
 new_repo
 seq 1 30 | sed 's/^/line /' > "$REPO/target.txt"
@@ -251,6 +268,52 @@ assert "delete-only passed" \
   "[CONTEXT] FIX_REPORT_DIFF_GATE=passed; verified=1; unverified=0" \
   "$(marker_line)"
 
+# --- delete hunk in a file that also gains + hunks (hunk granularity, not file) ---
+new_repo
+seq 1 30 | sed 's/^/line /' > "$REPO/mixed.txt"
+git_c add mixed.txt
+git_c commit -q -m add-mixed
+before=$(git -C "$REPO" rev-parse HEAD)
+sed -i '25s/.*/CHANGED 25/' "$REPO/mixed.txt"
+sed -i '5,6d' "$REPO/mixed.txt"
+git_c add mixed.txt
+git_c commit -q -m mixed-delete-and-add
+after=$(git -C "$REPO" rev-parse HEAD)
+
+write_state "$REPO/state.json" "$before" "$after" \
+  '[{"id":"F-MIX","action":"fix","changes":["mixed.txt:5-6"]}]'
+run_gate "$REPO/state.json"
+assert "mixed delete hunk true" "true" \
+  "$(jq -r '.cycles[-1].findings_addressed[0].diff_verified' "$REPO/state.json")"
+assert "mixed delete hunk passed" \
+  "[CONTEXT] FIX_REPORT_DIFF_GATE=passed; verified=1; unverified=0" \
+  "$(marker_line)"
+
+write_state "$REPO/state.json" "$before" "$after" \
+  '[{"id":"F-MIXB","action":"fix","changes":["mixed.txt:10"]}]'
+run_gate "$REPO/state.json"
+assert "mixed untouched line false" "false" \
+  "$(jq -r '.cycles[-1].findings_addressed[0].diff_verified' "$REPO/state.json")"
+
+# --- multi-element changes: any match verifies, order-independent ---
+write_state "$REPO/state.json" "$before" "$after" \
+  '[{"id":"F-ANY","action":"fix","changes":["mixed.txt:10","mixed.txt:23"]}]'
+run_gate "$REPO/state.json"
+assert "multi changes any-match true" "true" \
+  "$(jq -r '.cycles[-1].findings_addressed[0].diff_verified' "$REPO/state.json")"
+
+write_state "$REPO/state.json" "$before" "$after" \
+  '[{"id":"F-ANYR","action":"fix","changes":["mixed.txt:23","mixed.txt:10"]}]'
+run_gate "$REPO/state.json"
+assert "multi changes reverse order true" "true" \
+  "$(jq -r '.cycles[-1].findings_addressed[0].diff_verified' "$REPO/state.json")"
+
+write_state "$REPO/state.json" "$before" "$after" \
+  '[{"id":"F-NONE","action":"fix","changes":["mixed.txt:10","mixed.txt:12"]}]'
+run_gate "$REPO/state.json"
+assert "multi changes none match false" "false" \
+  "$(jq -r '.cycles[-1].findings_addressed[0].diff_verified' "$REPO/state.json")"
+
 # --- T-05 / T-06 / 4.6 static pins ---
 FIX_SKILL="$PLUGIN_ROOT/skills/fix/SKILL.md"
 PR_SKILL="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
@@ -278,20 +341,56 @@ if [ -f "$PR_SKILL" ]; then
   ' "$PR_SKILL"
   _rc=$?
   assert "T-05 4.5.1 placeholder table has {fix_change_map}" "0" "$_rc"
-  grep -q '対応表なし' "$PR_SKILL"
+  awk '
+    /^### 4\.5\.1 / { insec=1 }
+    insec && /^### / && !/^### 4\.5\.1 / { insec=0 }
+    insec && /対応表なし/ { found=1 }
+    END { exit found ? 0 : 1 }
+  ' "$PR_SKILL"
   _rc=$?
-  assert "T-06 missing-replacement 対応表なし" "0" "$_rc"
+  assert "T-06 missing-replacement 対応表なし in 4.5.1" "0" "$_rc"
+  awk '
+    /^### 4\.5\.1 / { insec=1 }
+    insec && /^### / && !/^### 4\.5\.1 / { insec=0 }
+    insec && /❌/ { found=1 }
+    END { exit found ? 0 : 1 }
+  ' "$PR_SKILL"
+  _rc=$?
+  assert "T-06 4.5.1 marks diff_verified:false with ❌" "0" "$_rc"
 fi
 if [ -f "$FIX_SKILL" ]; then
-  grep -qE '\| 指摘 \| 対応 \| 変更箇所 \| 差分確認 \|' "$FIX_SKILL"
+  awk '
+    /^### 4\.6 / { insec=1 }
+    insec && /^### / && !/^### 4\.6 / { insec=0 }
+    insec && /\| 指摘 \| 対応 \| 変更箇所 \| 差分確認 \|/ { found=1 }
+    END { exit found ? 0 : 1 }
+  ' "$FIX_SKILL"
   _rc=$?
   assert "4.6 table headers 指摘/対応/変更箇所/差分確認" "0" "$_rc"
-  grep -q '未対応:' "$FIX_SKILL"
+  awk '
+    /^### 4\.6 / { insec=1 }
+    insec && /^### / && !/^### 4\.6 / { insec=0 }
+    insec && /未対応:/ { found=1 }
+    END { exit found ? 0 : 1 }
+  ' "$FIX_SKILL"
   _rc=$?
   assert "4.6 未対応: N件 (IDs)" "0" "$_rc"
-  grep -q 'FIX_REPORT_DIFF_GATE=error' "$FIX_SKILL"
+  awk '
+    /^### 4\.6 / { insec=1 }
+    insec && /^### / && !/^### 4\.6 / { insec=0 }
+    insec && /diff_verified: true/ { found=1 }
+    END { exit found ? 0 : 1 }
+  ' "$FIX_SKILL"
   _rc=$?
-  assert "5.1 eval-order pins FIX_REPORT_DIFF_GATE=error" "0" "$_rc"
+  assert "4.6 passed marker counts diff_verified: true" "0" "$_rc"
+  awk '
+    /^## ステップ 5/ { insec=1 }
+    insec && /^## / && !/^## ステップ 5/ { insec=0 }
+    insec && /FIX_REPORT_DIFF_GATE=error/ && /\[fix:error\]/ { found=1 }
+    END { exit found ? 0 : 1 }
+  ' "$FIX_SKILL"
+  _rc=$?
+  assert "5.1 eval-order maps FIX_REPORT_DIFF_GATE=error to [fix:error]" "0" "$_rc"
 fi
 
 assert "usage unknown arg exits 2" "2" "$(bash "$SCRIPT" --bogus >/dev/null 2>&1; echo $?)"

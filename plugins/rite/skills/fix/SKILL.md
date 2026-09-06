@@ -2292,7 +2292,7 @@ When "コードを修正する" is selected:
 
 **MUST**: 生成するコメント / 散文に Issue/PR 番号・AC 番号を書かない。残す背景は現在形の制約文。ジャーナル/経緯文は禁止。
 
-**MUST**: `action: fix` の finding は 1 件以上の変更箇所を `path:line` または `path:start-end`（HEAD の行）で記録し、ステップ 3.3.1 の `findings_addressed[]` に `{id, action, changes}` として載せる。reply / accept / nit-noted は `changes: []` とし `diff_verified` を付けない。
+**MUST**: `action` は `fix` / `reply` / `accept` / `nit-noted` の 4 値に閉じる（他の値は ステップ 4.6 の gate が `map_missing` で停止させる）。`action: fix` の finding は 1 件以上の変更箇所を `path:line` または `path:start-end`（HEAD の行）で記録し、ステップ 3.3.1 の `findings_addressed[]` に `{id, action, changes}` として載せる。reply / accept / nit-noted は `changes: []` とし `diff_verified` を付けない。
 
 Present the proposed fix and apply with Edit tool after confirmation:
 
@@ -2492,6 +2492,7 @@ fi
 ```bash
 # FIX_COMMIT_GUARD=skip のときだけ。{findings_addressed_json} は ステップ 2.3 で記録した配列
 # （fix は path:line / path:start-end、reply/accept/nit-noted は changes: []。diff_verified は書かない）。
+# JSON は single-quote に直接埋めず、HEREDOC + --rawfile で渡す（ステップ 2.4 の reply と同じ形）。
 _state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
 [ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
 mkdir -p "$_state_root/.rite/fix-cycle-state"
@@ -2504,10 +2505,19 @@ if [ -f "$state_file" ]; then
 else
   existing='{"pr_number":'"$pr_number"',"cycles":[]}'
 fi
+addressed_file=$(mktemp) || { echo "ERROR: findings_addressed 用 mktemp に失敗" >&2; exit 1; }
+trap 'rm -f "${addressed_file:-}"' EXIT INT TERM HUP
+if ! cat <<'ADDRESSEDEOF' > "$addressed_file"
+{findings_addressed_json}
+ADDRESSEDEOF
+then
+  echo "ERROR: findings_addressed の HEREDOC 書き込みに失敗" >&2
+  exit 1
+fi
 new_cycle=$(jq -n \
   --arg ts "$timestamp" \
   --arg head "$head_sha" \
-  --argjson addressed '{findings_addressed_json}' \
+  --rawfile addressed_raw "$addressed_file" \
   --argjson moved "{non_fatal_moved_count}" \
   --arg review_json "{triage_review_path}" \
   '{
@@ -2523,7 +2533,7 @@ new_cycle=$(jq -n \
     "lines_added": 0,
     "lines_deleted": 0,
     "propagation_applied": 0,
-    "findings_addressed": $addressed
+    "findings_addressed": ($addressed_raw | fromjson)
   }')
 echo "$existing" | jq --argjson entry "$new_cycle" '
   (.cycles | length) as $len |
@@ -2803,6 +2813,16 @@ fi
 
 # Append new cycle entry (propagation_applied is set by ステップ 2.3.1 context)
 # {findings_addressed_json} は ステップ 2.3 で記録した配列（diff_verified は書かない。gate が書き戻す）
+# JSON は single-quote に直接埋めず、HEREDOC + --rawfile で渡す（ステップ 2.4 の reply と同じ形）。
+addressed_file=$(mktemp) || { echo "ERROR: findings_addressed 用 mktemp に失敗" >&2; exit 1; }
+trap 'rm -f "${addressed_file:-}"' EXIT INT TERM HUP
+if ! cat <<'ADDRESSEDEOF' > "$addressed_file"
+{findings_addressed_json}
+ADDRESSEDEOF
+then
+  echo "ERROR: findings_addressed の HEREDOC 書き込みに失敗" >&2
+  exit 1
+fi
 new_cycle=$(jq -n \
   --arg ts "$timestamp" \
   --arg before "$commit_sha_before" \
@@ -2814,7 +2834,7 @@ new_cycle=$(jq -n \
   --argjson deleted "$lines_deleted" \
   --argjson moved "{non_fatal_moved_count}" \
   --arg review_json "{triage_review_path}" \
-  --argjson addressed '{findings_addressed_json}' \
+  --rawfile addressed_raw "$addressed_file" \
   '{
     "cycle": 0,
     "timestamp": $ts,
@@ -2828,7 +2848,7 @@ new_cycle=$(jq -n \
     "lines_added": $added,
     "lines_deleted": $deleted,
     "propagation_applied": $propagated,
-    "findings_addressed": $addressed
+    "findings_addressed": ($addressed_raw | fromjson)
   }')
 
 # Append and assign cycle number, enforce ring buffer (max 20 entries)
