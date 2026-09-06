@@ -216,7 +216,7 @@ rite-workflow/
 │ ├── review-result-save.sh / review-comment-post.sh / review-skip-notification.sh / review-nonblocking-record.sh # skills/pr-review/SKILL.md 6.1.a/b/c/d 委譲
 │ ├── wiki-ingest-trigger.sh / wiki-query-inject.sh # Wiki auto-integration
 │ ├── scripts/ # Helper scripts invoked by hooks
-│ │ ├── wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh
+│ │ ├── wiki-ingest-commit.sh / wiki-worktree-commit.sh / wiki-worktree-setup.sh / wiki-numref-precommit.sh
 │ │ ├── wiki-branch-init.sh / wiki-lint-skipped-refs.sh # inline bash 委譲
 │ │ ├── wiki-lint-source-refs.sh # skills/wiki-lint/SKILL.md 6.2 委譲
 │ │ ├── wiki-lint-stale.sh / wiki-lint-orphans.sh / wiki-lint-broken-refs.sh # skills/wiki-lint/SKILL.md 4/5/7 委譲
@@ -246,7 +246,7 @@ rite-workflow/
 │ │ ├── gitignore-health-check.sh
 │ │ ├── projects-board-drift-check.sh # lint Phase 3.18 CLOSED かつ board≠終端 Status 検出
 │ │ ├── projects-status-gate.sh # open ステップ 2.6 Projects Status 検証ゲート (read-only・常に exit 0)
-│ │ ├── number-reference-check.sh # --all/--diff/--stdin 裸番号検出。lint blocking --diff / CI blocking --all / pr-review finding / fix 自己検査 / wiki-lint 7.5 委譲 / wiki-ingest 5.0.n commit 前ゲート
+│ │ ├── number-reference-check.sh # --all/--diff/--stdin 裸番号検出。lint blocking --diff / CI blocking --all / pr-review finding / fix 自己検査 / wiki-lint 7.5 委譲 / wiki-numref-precommit.sh 経由の commit 前ゲート
 │ │ ├── sentinel-contract-check.sh # lint Phase 3.5 sentinel SoT / emitter / consumer 同期検証
 │ │ ├── skill-rail-diff-check.sh # SKILL 記述ダイエットの機械レール逐語一致検証 (fenced block + table row を base ref と突合)
 │ │ ├── tmp-hardcode-check.sh # lint Phase 3.5 sandbox 非互換パターン (mktemp+/tmp テンプレート・/tmp 直書き・push の upstream -u) 検出
@@ -1366,7 +1366,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 
 | Script | Purpose | Notes |
 |--------|---------|-------|
-| `wiki-ingest-commit.sh` / `wiki-worktree-commit.sh` / `wiki-worktree-setup.sh` | Stash-based single-process commit + push of raw sources onto the `wiki` branch | — |
+| `wiki-ingest-commit.sh` / `wiki-worktree-commit.sh` / `wiki-worktree-setup.sh` / `wiki-numref-precommit.sh` | Wiki worktree setup + commit/push of `.rite/wiki`. `wiki-worktree-commit.sh` refuses to commit on number-reference hit/error (rc=1, `reason=numref-hit` / `numref-error`). `wiki-numref-precommit.sh` is the check body (`git add -N` + ignore residue + `number-reference-check.sh --diff HEAD --path .rite/wiki`) | — |
 | `wiki-growth-check.sh` | `/rite:lint` Phase 3.8 layer-3 warn when `wiki.growth_check.threshold_prs` PRs accumulate without a wiki commit | — |
 | `backlink-format-check.sh` | Bidirectional backlink format verification for Wiki pages | — |
 | `bang-backtick-check.sh` | Detect bash history-expansion pitfalls in generated content | — |
@@ -1374,7 +1374,7 @@ Non-hook helper scripts invoked either directly from orchestrator skills or by o
 | `gitignore-health-check.sh` | Verify `$state_root/.rite/.gitignore` 3-line composition (`*` / `!wiki/` / `!wiki/**`); lint does not write | — |
 | `projects-board-drift-check.sh` | `/rite:lint` Phase 3.18 — detect CLOSED Issues whose Projects board Status is outside the terminal Status set (`Done` / `Cancelled`), optionally reconcile via `--reconcile` to the terminal Status the closure reason maps to (`NOT_PLANNED` / `DUPLICATE` → `Cancelled`, `COMPLETED` → `Done`, その他は WARNING 付きで `Done`) | — |
 | `projects-status-gate.sh` | `/rite:open` ステップ 2.6 — read an Issue's actual Projects board Status and report whether ステップ 2.4(A) (`Status → In Progress`) landed, as `[CONTEXT] PROJECTS_STATUS_INVARIANT=ok\|missing\|skipped\|unknown`. Read-only; always exits 0 so the non-blocking contract of 2.4(A) is preserved | — |
-| `number-reference-check.sh` | Grammar SoT for bare Issue/PR number tokens. Modes: `--all` (git-tracked minus exclusions), `--diff <base>` (added lines, including uncommitted; `--path DIR` narrows it to a pathspec), `--stdin --label`. `/rite:lint` runs `--diff` as blocking and `--all` as informational (`plugins/rite/skills/lint/SKILL.md`). CI `shellcheck` job runs `--all` as blocking. `/rite:pr-review` calls `--diff` (`plugins/rite/skills/pr-review/SKILL.md`). `/rite:fix` ステップ 3.1 calls `--diff` after `git add -N` of existing paths in `{changed_files}` so same-cycle untracked files are in the diff (`plugins/rite/skills/fix/SKILL.md`). `wiki-lint-descriptive-refs.sh` delegates the grammar via `--stdin --label` after extracting each target's scannable body (`/rite:wiki-lint` ステップ 7.5), and `/rite:wiki-ingest` ステップ 5.0.n runs `--diff HEAD --path .rite/wiki` (after `git add -N` so newly written pages are in the diff) as a commit-time gate | — |
+| `number-reference-check.sh` | Grammar SoT for bare Issue/PR number tokens. Modes: `--all` (git-tracked minus exclusions), `--diff <base>` (added lines, including uncommitted; `--path DIR` narrows it to a pathspec), `--stdin --label`. `/rite:lint` runs `--diff` as blocking and `--all` as informational (`plugins/rite/skills/lint/SKILL.md`). CI `shellcheck` job runs `--all` as blocking. `/rite:pr-review` calls `--diff` (`plugins/rite/skills/pr-review/SKILL.md`). `/rite:fix` ステップ 3.1 calls `--diff` after `git add -N` of existing paths in `{changed_files}` so same-cycle untracked files are in the diff (`plugins/rite/skills/fix/SKILL.md`). `wiki-lint-descriptive-refs.sh` delegates the grammar via `--stdin --label` after extracting each target's scannable body (`/rite:wiki-lint` ステップ 7.5). Commit-time gate is `wiki-numref-precommit.sh` (called from ingest 5.0.n and from `wiki-worktree-commit.sh` before stage/commit), which runs `--diff HEAD --path .rite/wiki` after `git add -N` so newly written pages are in the diff | — |
 | `sentinel-contract-check.sh` | `/rite:lint` Phase 3.5 — verify the sentinel SoT against emitter and consumer skill files, and detect undeclared sentinel-shaped literals | Canonical contract: `references/sentinel-contract.md` |
 | `tmp-hardcode-check.sh` | `/rite:lint` Phase 3.5 — detect sandbox-incompatible patterns (`mktemp` + `/tmp` template, fixed `/tmp` path hardcode, `git push` upstream `-u`) in `plugins/rite/**/*.{md,sh}` + `docs/**/*.md` (test harnesses / error-catalog / self excluded) | — |
 | `dollar-zero-check.sh` | `/rite:lint` Phase 3.5 — detect positional-parameter-zero references inside fenced code blocks in `skills/**/*.md`. The Skill loader expands them to the invocation argument string, silently corrupting the embedded awk/shell program; real `hooks/**/*.sh` are immune and excluded | — |

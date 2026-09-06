@@ -532,6 +532,8 @@ rationale: references/rationale.md#numref-precommit
 
 `{numref_tree}` は `separate_branch` では `{wiki_worktree_abs}`（ステップ 1.3 の絶対パス。空なら 5.1 と同じく `.rite/wiki-worktree` へ縮退する）、`same_branch` では `.`（本ステップは dev ツリー root を cwd とする）を literal substitute する。別の木を掴むと検査は素通りして `clean` を返すので、値は必ずこの 2 つのどちらかにする。
 
+検査本体は `wiki-numref-precommit.sh`（`git add -N`、ignore 残存、`number-reference-check.sh --diff HEAD --path .rite/wiki`）。本ステップは placeholder 残留ゲートと helper 呼び出しだけを持つ。hit は helper が rc=1 で marker を出したあと **本ステップは exit 0** にする（書き換え再実行を tool 失敗へ倒さない）。error だけ exit 1。
+
 ```bash
 plugin_root="{plugin_root}"
 numref_tree="{numref_tree}"
@@ -546,92 +548,20 @@ for _v in "$plugin_root" "$numref_tree"; do
       ;;
   esac
 done
-check="$plugin_root/hooks/scripts/number-reference-check.sh"
-if [ ! -f "$check" ]; then
-  echo "ERROR: number-reference-check.sh が見つかりません (path='$check')。検査せずに commit すると番号混入を止められないため中止します" >&2
+precommit="$plugin_root/hooks/scripts/wiki-numref-precommit.sh"
+if [ ! -f "$precommit" ]; then
+  echo "ERROR: wiki-numref-precommit.sh が見つかりません (path='$precommit')。検査せずに commit すると番号混入を止められないため中止します" >&2
   echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=helper_missing" >&2
   exit 1
 fi
-# 新規ページ (untracked) を差分へ載せる。内容は stage しない intent-to-add で、
-# index にはエントリだけが載り `git diff --cached` は空のまま。commit まで進んだ回は
-# ステップ 5.1 / 5.2 が同じ範囲を stage し直すので後段への影響はない。hit / error で
-# 停止した回はエントリが index に残るが、次回実行の add -N が冪等に上書きする。
-numref_stage_rc=0
-git -C "$numref_tree" add -N -- .rite/wiki || numref_stage_rc=$?
-if [ "$numref_stage_rc" -ne 0 ]; then
-  echo "ERROR: .rite/wiki の intent-to-add に失敗しました (rc=$numref_stage_rc)。新規ページが検査されないため commit しません" >&2
-  echo "  原因候補: same_branch 戦略で .gitignore に '!.rite/wiki/' negation が未設定の可能性" >&2
-  echo "  対処: root .gitignore に '!.rite/wiki/' と '!.rite/wiki/**' を追記する" >&2
-  echo "    (置く位置は '.rite/wiki/' 除外行より後ろ。anchor '# <<< gitignore-wiki-section-end'" >&2
-  echo "     があればその直後、無ければ末尾。前に置くと後勝ちで negation が効かない)" >&2
-  echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=stage_failed; rc=$numref_stage_rc" >&2
-  exit 1
-fi
-# rc だけでは足りない。ディレクトリ自体は非 ignore で**配下ファイルだけ**が ignore された
-# ドリフト (`.rite/.gitignore` が '*' + '!wiki/' を持ち '!wiki/**' を欠く形) では、
-# add -N は rc=0 で何も stage せず、続く git diff が空 = 無言の 0 件 clean になる。
-# rc ではなく実体 (ignore されたまま残っているファイル) を見て fail-loud にする。
-# rc は直前の add -N と同型に捕捉する。この arm は 2 つの呼び出しの間に git が壊れた場合しか
-# 踏まないため専用 fixture を持たない (非 repo / パス不在はどちらも add -N が先に落ちる)。
-numref_ig_rc=0
-# core.quotePath 既定 (true) だと非 ASCII パスが octal escape で表示され、下の残存一覧が
-# 読めなくなる。check-ignore --stdin は入力を自前で unquote するので照合は既定でも成立する
-# — ここで落とすのは表示のため。既存の同型呼び出し (number-reference-check.sh) と揃える。
-numref_ignored=$(git -C "$numref_tree" -c core.quotePath=false ls-files --others --ignored --exclude-standard -- .rite/wiki) || numref_ig_rc=$?
-if [ "$numref_ig_rc" -ne 0 ]; then
-  echo "ERROR: ignore 残存の検査に失敗しました (git ls-files rc=$numref_ig_rc)。検査結果が不明なまま commit しません" >&2
-  echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=ignored_check_failed; rc=$numref_ig_rc" >&2
-  exit 1
-fi
-if [ -n "$numref_ignored" ]; then
-  echo "ERROR: .rite/wiki 配下に gitignore されたままのファイルがあります。検査にも commit にも載らないため中止します" >&2
-  # 表示と照会で同じ集合を使う。上限を 2 箇所に書くと片方だけ動いたときに件数が食い違う。
-  numref_shown=$(printf '%s\n' "$numref_ignored" | head -5)
-  printf '%s\n' "$numref_shown" | sed 's/^/    /' >&2
-  [ "$(printf '%s\n' "$numref_ignored" | grep -c .)" -gt 5 ] && \
-    echo "    (先頭 5 件のみ表示。直して再実行すると残りが出ます)" >&2
-  # ignore 済みが ls-files で確定しているので、check-ignore の negation 非決定性は効かない。
-  # 全件に対して引く。1 件だけだと原因が複数ある回に往復が残る。
-  # rc は兄弟の guard と同型に捕捉し、stderr は混ぜない — 混ぜると git の fatal が
-  # 「効いているパターン」として見出しの下に並ぶ。
-  numref_ci_rc=0
-  numref_causes=$(printf '%s\n' "$numref_shown" \
-    | git -C "$numref_tree" -c core.quotePath=false check-ignore -v --stdin) || numref_ci_rc=$?
-  if [ -n "$numref_causes" ]; then
-    # check-ignore の source は .gitignore とは限らない (.git/info/exclude や
-    # core.excludesFile の絶対パスも同じ欄に出る)。見出しは source を決め打ちしない。
-    echo "  原因: 以下の exclude ルールが効いています (<source>:<行>:<パターン> <TAB> <パス>)" >&2
-    printf '%s\n' "$numref_causes" | sed 's/^/    /' >&2
-  else
-    echo "  原因: check-ignore が一致を返しませんでした (rc=$numref_ci_rc)。ls-files が ignore と" >&2
-    echo "        判定した集合と食い違っています。git が診断を出していれば上の stderr にあります" >&2
-    echo "        手動: git -C $numref_tree check-ignore -v -- <上記のファイル>" >&2
-  fi
-  # rc=0 は「1 件以上が ignore」であって全件一致ではない。名指しできた件数が表示件数に
-  # 満たない回は、上の一覧が完全な原因表であるかのように読めてしまうので明示する。
-  numref_shown_n=$(printf '%s\n' "$numref_shown" | grep -c .)
-  numref_cause_n=0
-  [ -n "$numref_causes" ] && numref_cause_n=$(printf '%s\n' "$numref_causes" | grep -c .)
-  if [ "$numref_ci_rc" -ne 0 ] || [ "$numref_cause_n" -lt "$numref_shown_n" ]; then
-    echo "  注意: 表示 $numref_shown_n 件のうち $numref_cause_n 件しか原因を名指しできていません (check-ignore rc=$numref_ci_rc)" >&2
-  fi
-  echo "  対処: 名指しされた source を直す。nested .rite/.gitignore なら 3 行構成 '*' / '!wiki/' /" >&2
-  echo "        '!wiki/**' へ戻す。root .gitignore なら '.rite/wiki/' 除外行より後ろに negation を" >&2
-  echo "        追記する (root への追記では nested の '*' は解除できない)。source が" >&2
-  echo "        .git/info/exclude や core.excludesFile なら、その該当行を外す" >&2
-  echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=ignored_paths" >&2
-  exit 1
-fi
+# helper の hit (rc=1) は書き換え再実行の対象であり、本ステップを tool 失敗にしてはならない。
+# error (rc=2) だけ exit 1。marker は helper が既に出している。
 numref_rc=0
-bash "$check" --repo-root "$numref_tree" --diff HEAD --path .rite/wiki --quiet || numref_rc=$?
+bash "$precommit" --repo-root "$numref_tree" || numref_rc=$?
 case "$numref_rc" in
-  0) echo "[CONTEXT] WIKI_INGEST_NUMREF=clean" ;;
-  1) echo "[CONTEXT] WIKI_INGEST_NUMREF=hit" ;;
-  *)
-    echo "ERROR: number-reference-check.sh の実行に失敗しました (rc=$numref_rc)。検査結果が不明なまま commit しません" >&2
-    echo "[CONTEXT] WIKI_INGEST_NUMREF=error; reason=check_failed; rc=$numref_rc" >&2
-    exit 1
-    ;;
+  0) ;;
+  1) exit 0 ;;
+  *) exit 1 ;;
 esac
 ```
 
@@ -728,6 +658,11 @@ if [ "$branch_strategy" = "separate_branch" ]; then
 
   case "$commit_rc" in
     0) echo "[CONTEXT] WIKI_INGEST_COMMIT=ok" ;;
+    1)
+      echo "ERROR: wiki-worktree-commit.sh が番号参照の commit 前検査で拒否しました (rc=1, reason=numref-hit または numref-error)" >&2
+      echo "  対処: stdout の reason= と ステップ 5.0.n の hit 行を確認し、書き直してから再実行" >&2
+      exit 1
+      ;;
     2) echo "[CONTEXT] WIKI_INGEST_COMMIT=skipped; reason=wiki-disabled" >&2 ;;
     3)
       echo "ERROR: wiki-worktree-commit.sh 内部で git 操作失敗 (rc=3)" >&2
@@ -1238,6 +1173,7 @@ rationale: references/rationale.md#returned-to-caller
 | `lib/wiki-config.sh` 読込失敗 (helper 不在 / 解決失敗) | exit 1 で fail-fast（`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1`。設定を判定できないまま無効扱いへ倒さない。plugin のインストール状態を確認するか `/rite:setup` を再実行、ステップ 1.1） |
 | Wiki 未初期化 / worktree セットアップ失敗 | `/rite:wiki-init` を案内、または `wiki-worktree-setup.sh` のエラー出力を確認して `git worktree prune` / `git fetch origin wiki:wiki` で復旧 (ステップ 1.3) |
 | 処理対象 0 件 | 静かに終了し情報メッセージのみ表示（ステップ 2.3） |
+| `wiki-worktree-commit.sh --commit-only` exit 1 (`reason=numref-hit` / `numref-error`、ステップ 5.1) | exit 1 で fail-fast。番号参照の commit 前検査が拒否した。5.0.n の hit 行を書き直すか、stderr の error reason を直して再実行 |
 | `wiki-worktree-commit.sh --commit-only` exit 3 (git add/commit 失敗、ステップ 5.1) | exit 1 で fail-fast。`git -C .rite/wiki-worktree status` で worktree の状態を確認 |
 | `wiki-worktree-commit.sh --push-only` exit 4 (push 失敗、ステップ 8.6) | 非 fatal で継続。commit は local wiki branch に保持される。`git -C .rite/wiki-worktree push origin {wiki_branch}` で手動回復、または次回 ingest の ステップ 8.6 が自動で flush を試みる |
 | `wiki-worktree-commit.sh` 未知の exit code | exit 1 で fail-fast |
