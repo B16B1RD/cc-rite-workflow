@@ -3587,7 +3587,8 @@ elif printf '%s' "$body" | grep -q '^## 9\. Decision Log'; then
   # `(^|[^A-Za-z])D-[0-9]+` で先頭境界を要求し、prose 中の `CARD-12` 等の部分文字列誤マッチを防ぐ
   max_d=$(printf '%s' "$body" | grep -oE '(^|[^A-Za-z])D-[0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1)
   [ -n "$max_d" ] || max_d=0
-  next_num=$((max_d + 1))
+  # 10# で 10 進固定。先頭ゼロ付き 08/09 を 8 進と解釈させない
+  next_num=$((10#$max_d + 1))
   next_d=$(printf 'D-%02d' "$next_num")
   new_line="- ${today} ${next_d}: ${line_content}"
 
