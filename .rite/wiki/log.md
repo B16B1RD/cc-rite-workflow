@@ -1,4 +1,25 @@
 ## 2026-09-06
+* **Create**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/reviews/20260906T125803Z-pr-2582.md を新規ページ化
+* **Create**: [行番号の名前空間を 2 つ混ぜた突合は、偽陽性と偽陰性を同時に生む](pages/anti-patterns/mixed-line-number-namespaces-in-diff-matching.md) — raw/reviews/20260906T134450Z-pr-2582.md を新規ページ化
+* **Create**: [HEREDOC は空展開でも改行を書くため、直後の空ファイル検査は常に通過する](pages/anti-patterns/heredoc-empty-expansion-defeats-empty-file-guard.md) — raw/reviews/20260906T141001Z-pr-2582.md を新規ページ化
+* **Create**: [規約の主文は、実行者が観測できる単位で書く](pages/heuristics/rule-stated-in-units-the-executor-observes.md) — raw/reviews/20260906T141001Z-pr-2582.md を新規ページ化
+* **Create**: [リダイレクトはコマンド実行より先に評価されるため、生成失敗が出力先を truncate する](pages/anti-patterns/redirect-truncates-target-before-generator-failure.md) — raw/reviews/20260906T142344Z-pr-2582.md を新規ページ化
+* **Create**: [GNU 形式の `sed -i '<expr>' file` は BSD sed で fixture を書き換えないまま失敗する](pages/anti-patterns/gnu-sed-inplace-silently-noop-on-bsd.md) — raw/reviews/20260906T155431Z-pr-2582.md を新規ページ化
+* **Create**: [review ループは CI の結果を実測入力に持たない](pages/heuristics/review-loop-has-no-ci-result-input.md) — raw/reviews/20260906T155431Z-pr-2582.md を新規ページ化
+* **Create**: [実測の有無と severity は独立した 2 軸で、両方を満たさないと修正対象にならない](pages/heuristics/evidence-and-severity-are-independent-gates.md) — raw/fixes/20260906T144434Z-pr-2582.md を新規ページ化
+* **Update**: [成功述語は exit status と非空性の両方で書く](pages/patterns/cwd-corruption-success-check-exit-code-and-nonempty.md) — raw/reviews/20260906T143918Z-pr-2582.md と raw/reviews/20260906T153509Z-pr-2582.md を統合
+* **Update**: [過剰マッチ防止の精緻化修正は振り子現象を生む](pages/anti-patterns/precision-tightening-pendulum-regression.md) — raw/reviews/20260906T141001Z-pr-2582.md を統合
+* **Update**: [fail-loud ガードは同じ帰結を持つ全出口に張る](pages/heuristics/fail-loud-guard-covers-all-sibling-exits.md) — raw/reviews/20260906T134450Z-pr-2582.md を統合
+* **Update**: [散文修正は概念の逆引き sweep で対象を数える](pages/heuristics/reverse-lookup-concept-sweep-for-prose-fixes.md) — raw/reviews/20260906T141001Z-pr-2582.md と raw/fixes/20260906T141557Z-pr-2582.md を統合
+* **Update**: [新規スクリプトは兄弟の最新防御を継承する](pages/heuristics/new-script-inherits-latest-sibling-defenses.md) — raw/reviews/20260906T134450Z-pr-2582.md を統合
+* **Update**: [pin の literal 一意性は変異で検証する](pages/patterns/pin-literal-uniqueness-verified-by-mutation.md) — raw/reviews/20260906T134450Z-pr-2582.md と raw/fixes/20260906T135449Z-pr-2582.md を統合
+* **Update**: [trap は mktemp より前に設置する](pages/patterns/trap-register-before-mktemp.md) — raw/reviews/20260906T143918Z-pr-2582.md を統合
+* **Update**: [reviewer の 0 件は正当な収束として扱う](pages/heuristics/reviewer-zero-finding-as-legitimate-convergence.md) — raw/reviews/20260906T153509Z-pr-2582.md を統合
+* **Update**: [散文レビューは実装を grep して検証する](pages/heuristics/docs-review-implementation-grep-verification.md) — raw/reviews/20260906T142344Z-pr-2582.md を統合
+* **Update**: [意図的な silent continue の受入条件](pages/heuristics/intentional-silent-continue-acceptance-conditions.md) — raw/reviews/20260906T125803Z-pr-2582.md を統合
+* **Update**: [新設した出力フィールドは producer と consumer の両側で pin する](pages/patterns/new-output-field-pin-producer-and-consumer.md) — raw/reviews/20260906T125803Z-pr-2582.md を統合
+* **Update**: [引用符は展開を止めない](pages/anti-patterns/quotes-do-not-stop-expansion.md) — raw/reviews/20260906T125803Z-pr-2582.md を統合
+* **Update**: [リダイレクトはコマンド実行より先に評価されるため、生成失敗が出力先を truncate する](pages/anti-patterns/redirect-truncates-target-before-generator-failure.md) — raw/fixes/20260906T142858Z-pr-2582.md を統合
 * **lint:clean** — contradictions=0, stale=56, orphans=0, missing_concept=0, unregistered_raw=441, broken_refs=0
 * **Create**: [複数の書き込み口がある資源は、最後の共有口に政策検査を置く](pages/heuristics/policy-check-at-last-shared-write-mouth.md) — raw/reviews/20260906T075557Z-pr-2580.md を新規ページ化
 * **Skip**: [20260906T060119Z-pr-2579.md](raw/reviews/20260906T060119Z-pr-2579.md) — 0-finding confirmation; 10進固定はプラグイン本体に実装済み。新規経験則なし

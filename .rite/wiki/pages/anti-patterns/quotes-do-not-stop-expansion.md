@@ -4,7 +4,7 @@ title: "二重引用符と -- は argv 分割にしか効かず、展開はパ�
 domain: "anti-patterns"
 description: "テンプレートへ値を埋める設計では、二重引用符は単語分割とグロブを止めるだけで、コマンド置換とバッククォートはその内側でも展開される。`--` も argv 分割にしか効かない。git check-ref-format はシェルメタ文字を弾かないため、上流バリデータを防波堤と見なせない。"
 created: "2026-09-02T00:50:00Z"
-generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260901T180132Z-pr-2500.md"
@@ -12,6 +12,8 @@ sources:
     resource: "raw/reviews/20260901T140807Z-pr-2500.md"
   - type: "fixes"
     resource: "raw/fixes/20260901T180942Z-pr-2500.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260906T125803Z-pr-2582.md"
 tags: []
 confidence: high
 ---
@@ -32,6 +34,12 @@ confidence: high
 
 連言で成り立つ CRITICAL（部分一致条件を満たす head 名を第三者が作れる ∧ その値がテンプレート内で展開される）は、両方を独立に実測してから受理する。片方が偽なら全体が偽になる。
 
+### 追記: LLM 生成の値を single-quote 内へ直接埋め込まない
+
+LLM が生成した JSON を `--argjson '...'` の single-quote 内へ literal 置換すると、値に含まれるアポストロフィで引用が閉じ、bash の構文エラーになり、さらに任意コマンド実行にも到達する。
+
+同一ファイル内に `mktemp` + HEREDOC + 引数でのファイル渡しという安全パターンが既に確立されていても、新規追記がそれを継承しない形で入りうる。外部由来・生成由来の値を扱う追記では、周辺の既存サイトがどう渡しているかを先に読む。
+
 ## 関連ページ
 
 - [LLM substitute placeholder は bash residue gate で fail-fast 化する](../patterns/placeholder-residue-gate-bash-fail-fast.md)
@@ -42,3 +50,4 @@ confidence: high
 - [レビュー結果](../../raw/reviews/20260901T180132Z-pr-2500.md)
 - [レビュー結果](../../raw/reviews/20260901T140807Z-pr-2500.md)
 - [fix 結果](../../raw/fixes/20260901T180942Z-pr-2500.md)
+- [レビュー結果](../../raw/reviews/20260906T125803Z-pr-2582.md)

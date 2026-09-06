@@ -16,9 +16,11 @@ sources:
     resource: "raw/fixes/20260807T134638Z-pr-2137.md"
   - type: "fixes"
     resource: "raw/fixes/20260812T133631Z-pr-2278.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260906T134450Z-pr-2582.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-12T18:34:40Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
 ---
 
 # テンプレート流用の新規スクリプトは最新兄弟の防御を継承する
@@ -78,6 +80,12 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-12T18:34:40Z" }
 
 > **規則**: 新しい checker を書く前に、同じ対象を走査する既存 helper を探し、その抽出述語を流用する。流用しないなら、なぜ違う述語が必要かを明示する。同じ対象に対する違う述語は drift の定義そのものであり、どちらが正しいかは走査結果を突き合わせるまで決まらない。
 
+### 追記: canonical が名指しで禁じている形を再導入しない
+
+signal trap を 1 行に統合して個別の `exit` を持たせない形は、canonical テンプレートが明示的に禁じている。signal 受信時に処理が継続し、後続のリダイレクトが state ファイルを空に truncate したうえで rc=0 の成功として返るためである。
+
+「周辺に同じ形の既存サイトがあるから」は、既存サイトを掃除しない理由にはなっても、参照元を明示しているファイルで新規に踏襲する理由にはならない。新規追加行は、既存の劣化サイトではなく参照元の最新形に合わせる。
+
 ## 関連ページ
 
 - [再発防止 guard スクリプトは docstring の宣言意図と実装 regex を実測で校正する](./guard-script-contract-calibration.md)
@@ -92,3 +100,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-12T18:34:40Z" }
 - [レビュー結果](../../raw/reviews/20260805T233057Z-pr-2120.md)
 - [ファイル名列挙型の hardening test が新規 lib を死角に入れる](../../raw/fixes/20260807T134638Z-pr-2137.md)
 - [抽出述語を sibling helper と揃えず新規 checker だけが後退した](../../raw/fixes/20260812T133631Z-pr-2278.md)
+- [レビュー結果](../../raw/reviews/20260906T134450Z-pr-2582.md)

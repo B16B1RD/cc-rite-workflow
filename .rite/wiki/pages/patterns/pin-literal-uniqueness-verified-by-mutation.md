@@ -23,9 +23,13 @@ sources:
     resource: "raw/fixes/20260829T181603Z-pr-2468.md"
   - type: "fixes"
     resource: "raw/fixes/20260829T194742Z-pr-2468.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260906T134450Z-pr-2582.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260906T135449Z-pr-2582.md"
 tags: ["pin", "mutation-testing", "static-assert", "producer-consumer-symmetry", "drift-detection"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-08-30T05:20:00Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5"
     at: "2026-08-30T05:20:00Z"
@@ -175,6 +179,12 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 - 消費側 pin に `|` を書くなら ERE 交替にしないようエスケープする。fire 腕は判定語（例: `lost_gate=fire`）まで固定し、raw lost 入力も対で pin する
 - 確定は必ず変異注入で行う。**対象の腕を 1 つ削除して pin が落ちること**を実測する
 
+### 追記: 節限定は必要条件であって十分条件ではない
+
+同じ literal が同一節内に複数あるとき、節を限定した存在検査は対象行を消しても満たされ続ける。pin したい主張が「A かつ B」の複合であるなら、単一 literal ではなく主張のペア（同一行に A と B が同時に出現する）か、行形状のアンカー（表の行なら行頭のセル形状）で書く。
+
+加えて、区間抽出が「次の見出しで閉じる」ことを前提にしていると、対象節がファイル末尾まで続く構造では窓が意図の何倍にも広がる。pin を直したら、対象行を削除して実際に red になることを確認する。緑のままなら、その pin は名乗った対象を守っていない。テストが緑であること自体は修正完了の根拠にならない。
+
 ## 関連ページ
 
 - [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く](../anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md)
@@ -191,3 +201,5 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 - [pin fix (消費側 pin の | をエスケープし fire 腕と raw lost 入力を固定)](../../raw/fixes/20260813T094616Z-pr-2306.md)
 - [ファイル全体スコープと `grep -c` の 2 つの空振り形、flip-flop end アンカー](../../raw/fixes/20260829T181603Z-pr-2468.md)
 - [NB sweep results（pin を伸ばすときのリテラル吸収、`elif` guard による兄弟 assert の skip）](../../raw/fixes/20260829T194742Z-pr-2468.md)
+- [レビュー結果](../../raw/reviews/20260906T134450Z-pr-2582.md)
+- [fix 結果](../../raw/fixes/20260906T135449Z-pr-2582.md)

@@ -38,9 +38,11 @@ sources:
     resource: "raw/reviews/20260607T013821Z-pr-1296.md"
   - type: "reviews"
     resource: "raw/reviews/20260812T055512Z-pr-2265.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260906T142344Z-pr-2582.md"
 tags: ["docs-drift", "verification-protocol", "implementation-grep", "release-prep", "deprecated-sync", "fact-check"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-12T16:40:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
 ---
 
 # Documentation review は対応する実装側 (commands/scripts/templates) の grep verify を必須 step とする
@@ -126,6 +128,12 @@ cycle 2 / 0 findings 収束の PR で、本 protocol の **in-source 設計コ�
 
 実行可能コードを変更しないリリース準備 PR でも、CHANGELOG の品質ゲートは文体確認ではなく、散文が名指しする helper・既定値・運用原則を実装で 1 件ずつ裏取りする作業になる。加えて、日英版はエントリ数だけでなく各行の PR 番号列の集合と順序を diff し、収録範囲は `git log <prev_tag>..develop` から抽出した PR 番号集合と CHANGELOG 記載集合の双方向差分で確定する。これにより、順序ドリフト、別変更への差し替え、記載漏れと未マージ記載を同時に機械検出できる。また、定型リリーススキルが rite の merge gate 外にある場合は、レビュ済み証明を生成する手順をスキル側に明示しないと、ドキュメントのみの PR でもマージは fail-loud に停止する。
 
+### 追記: 散文だけを直した cycle でも実装の全経路を突き合わせる
+
+書き換えた説明が実装の全経路（新規作成・全削除・mode 変更のみ・hunk を持たない差分）を正しく述べているかを、実装の分岐を列挙して確認する。記述が何も主張していない集合については矛盾が生じないので、境界の扱いは「記述の欠陥」ではなく「記述の射程」の問題として切り分けられる。
+
+また、前 cycle に足したガードを削除した差分は、その周辺の未検査経路をレビュアーの視野に露出させる。到達しないガードを消すこと自体は正しいが、同じブロックの「本当に検査すべき箇所」が同時に見られる。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -148,3 +156,4 @@ cycle 2 / 0 findings 収束の PR で、本 protocol の **in-source 設計コ�
 - [翻訳 PR での実装突合により EN 原本由来の事実誤り 2 件の転写を表面化、両レビュアー独立で follow-up 収束](../../raw/reviews/20260603T174323Z-pr-1263.md)
 - [docstring stdout contract / TC-D 観測性制約 claim の実装整合を 4 reviewer 独立全数検証、0 findings の successful application](../../raw/reviews/20260607T013821Z-pr-1296.md)
 - [design-rationale.md への 1 文追記 PR で、prompt-engineer/code-quality 両レビュアーが追記内容の技術的主張を file-based/string-based 両鏡像実装の jq ロジックと突合し正確性を実地検証、0 findings の successful application](../../raw/reviews/20260707T051719Z-pr-1779.md)
+- [レビュー結果](../../raw/reviews/20260906T142344Z-pr-2582.md)

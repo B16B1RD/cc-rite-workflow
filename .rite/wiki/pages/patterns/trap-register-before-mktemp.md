@@ -20,9 +20,11 @@ sources:
     resource: "raw/reviews/20260713T104006Z-pr-1850.md"
   - type: "fixes"
     resource: "raw/fixes/20260728T122258Z-pr-2038.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260906T143918Z-pr-2582.md"
 tags: ["bash", "tempfile", "trap", "cleanup", "lifecycle", "hand-off", "cleanup-variable-assignment-order"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-28T21:30:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
 ---
 
 # trap 登録 → mktemp の順序で tempfile lifecycle を守る
@@ -161,6 +163,10 @@ trap を先に張っていても、**新しい tempfile をその cleanup 関数
 
 **inline rm は削除する**: tempfile が trap に登録済みなら、`[ -n "$v" ] && rm -f "$v"` のような短絡形式の inline `rm` は不要かつ有害（失敗を silent 化する）。
 
+### 追記: 一時ファイルを足したら cleanup 関数と先行宣言の両方に足す
+
+同じブロックに既存の cleanup 関数と trap があると「trap は既にある」と見えてしまうが、関数の中身は前に足した変数しか知らない。新しい一時ファイル変数は、cleanup 関数の `rm` 対象と trap 設置前の先行宣言（空文字での初期化）の**両方**に足す。canonical テンプレートのチェックリストは「cleanup 対象の全変数を mktemp 前に初期化」を必須項目にしている。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -178,3 +184,4 @@ trap を先に張っていても、**新しい tempfile をその cleanup 関数
 - [jq gate を mktemp より前へ移動する最小 reorder — gate-exit variant](../../raw/fixes/20260713T093252Z-pr-1850.md)
 - [2 reviewer 独立検出 + sibling 間の gate 位置非対称の実測](../../raw/reviews/20260713T104006Z-pr-1850.md)
 - [回収変数への代入が遅れて signal 窓が開く](../../raw/fixes/20260728T122258Z-pr-2038.md)
+- [レビュー結果](../../raw/reviews/20260906T143918Z-pr-2582.md)

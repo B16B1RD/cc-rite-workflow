@@ -8,9 +8,11 @@ created: "2026-07-13T01:00:24+09:00"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260712T155421Z-pr-1837.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260906T125803Z-pr-2582.md"
 tags: ["error-handling", "silent-continue", "idempotent", "comment-why", "one-cycle-convergence"]
 confidence: medium
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-13T01:00:24+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
 ---
 
 # 意図的 silent-continue は「無視する理由」と「真の失敗の顕在化ポイント」のコメント明記で許容される
@@ -37,6 +39,12 @@ error-handling reviewer の許容条件は「explicit comment + 期待エラー�
 - silent-continue の下流にある「真の失敗の surface 機構」自体が本物であること。起点事例では helper が失敗時も stdout JSON (warnings 付き) を出力して exit 1 する契約を全レビュアーが独立に実装確認した。顕在化ポイントが機能しない場合、silent-continue は本当の silent failure になる
 - 観測性の修正を 1 経路に入れると、同型の未修正経路 (本件では decompose の親 Issue 失敗経路の result 破棄) がレビューで surface される。これは scope 境界 (revert test) で調査推奨に分離し、別 Issue 化判断に回すのが正しい処理
 
+### 追記: enum 外の値を無言で continue するとゲート自体が迂回される
+
+値の生成者が LLM で、許容値の列挙が散文 1 箇所にしかなく閉じた集合として宣言されていないとき、`case ... *)` の無言 continue は表記ゆれ 1 つで検証機構全体を素通りさせる。分岐は「未知の値だから飛ばす」つもりでも、帰結は「対象が検証されない」である。
+
+判定の目印は非対称にある。同じ帰結（対象が検証されない）を持つ兄弟出口が fail-loud している一方で、この出口だけが無音なら、それは意図された silent continue ではなく取り残しである。
+
 ## 関連ページ
 
 - [stderr ノイズ削減: truncate ではなく selective surface で解く](./stderr-selective-surface-over-truncate.md)
@@ -45,3 +53,4 @@ error-handling reviewer の許容条件は「explicit comment + 期待エラー�
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260712T155421Z-pr-1837.md)
+- [レビュー結果](../../raw/reviews/20260906T125803Z-pr-2582.md)

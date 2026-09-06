@@ -8,9 +8,13 @@ created: "2026-07-17T09:50:00+00:00"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260717T094246Z-pr-1888.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260906T143918Z-pr-2582.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260906T153509Z-pr-2582.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-17T09:50:00+00:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
 ---
 
 # cwd破損下の成否検証は非空性とexit codeの両方をチェックする（文字列等値比較だけでは偽陽性を防げない）
@@ -43,6 +47,12 @@ fi
 
 **適用範囲**: この落とし穴は `git rev-parse` に限らず、失敗時に空文字列を返しうる任意のコマンド（`cat`、`jq -r` の存在しないキー、環境変数未設定時の展開等）を command substitution で比較する箇所すべてに一般化できる。
 
+### 追記: rc=0 で空を返すコマンドも同じ穴を通る
+
+フィルタ系のコマンド（`jq` など）は入力が空なら成功したまま何も出さない。その出力を成果物として設置する経路では「rc=0 かつ出力ゼロ」が成功と誤認される。前段で塞いだのが「生成が失敗する」経路なら、次に見るのは「生成が成功して空を返す」経路である。述語には exit status と非空性の**両方**を入れる。
+
+空 / 空白のみ / 正常 / 不正 JSON / null の 5 入力で実測すると、空系で fail-loud、正常系で設置、一時ファイルの残留 0 を同時に確認できる。同じ `生成 > tmp || mv` 形の兄弟サイトが他にもあるなら、それらは同クラスの点検候補である。
+
 ## 関連ページ
 
 - [Exit code semantic preservation: caller は case で語彙を保持する](../patterns/exit-code-semantic-preservation.md)
@@ -50,3 +60,5 @@ fi
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260717T094246Z-pr-1888.md)
+- [レビュー結果](../../raw/reviews/20260906T143918Z-pr-2582.md)
+- [レビュー結果](../../raw/reviews/20260906T153509Z-pr-2582.md)

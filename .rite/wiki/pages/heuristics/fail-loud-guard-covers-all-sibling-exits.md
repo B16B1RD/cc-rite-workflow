@@ -11,9 +11,11 @@ sources:
     resource: "raw/fixes/20260804T155921Z-pr-2111-cycle5.md"
   - type: "fixes"
     resource: "raw/fixes/20260805T110153Z-pr-2114.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260906T134450Z-pr-2582.md"
 tags: ["fail-loud", "guard", "exit-exhaustive", "sibling-exit", "trap", "boundary-tc", "static-pin"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T00:40:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
 ---
 
 # fail-loud ガードは同じ帰結を持つ全出口に張る（症状側から出口を網羅する）
@@ -55,6 +57,10 @@ wiki-index-update helper の cycle 4 で「行末区切り欠落 = 捨てフラ�
 
 **helper 本体を厚く pin しても、その呼び出し元は別の面**でもある。同 PR では helper 本体を 60 assert まで固めた一方、唯一の呼び出し元（skill の bash block）を固定する層はゼロで、呼び出しを PR 前の形へ戻しても全 114 test file が green だった。機構を足した commit では「機構本体」だけでなく「機構が呼ばれていること」も pin する（該当区間を grep して呼び出し 1 本 + 旧形 0 本を assert する静的 pin で足りる）。
 
+### 追記: 新設した fail-loud 出口は marker まで揃える
+
+skill 定義の評価順テーブルが marker ベースで fatal を判定する設計のとき、新しく足した失敗経路が素の非ゼロ終了で終わると、どの row にも一致せず失敗の理由が失われる。分類器から不可視な fail-loud は、実質 silent failure と同じである。同一ブロック内の兄弟出口が marker を emit しているかどうかが、非対称の目印になる。
+
 ## 関連ページ
 
 - [trap 登録 → mktemp の順序で tempfile lifecycle を守る](../patterns/trap-register-before-mktemp.md)
@@ -65,3 +71,4 @@ wiki-index-update helper の cycle 4 で「行末区切り欠落 = 捨てフラ�
 - [Review cycle 5: sibling-exit coverage for fail-loud guards and safety-net verification](../../raw/reviews/20260804T155148Z-pr-2111-cycle5.md)
 - [Fix cycle 5: exit-exhaustive fail-loud guards, canonical trap, honest safety-net docs](../../raw/fixes/20260804T155921Z-pr-2111-cycle5.md)
 - [pin が守る対象の兄弟を数える](../../raw/fixes/20260805T110153Z-pr-2114.md)
+- [レビュー結果](../../raw/reviews/20260906T134450Z-pr-2582.md)

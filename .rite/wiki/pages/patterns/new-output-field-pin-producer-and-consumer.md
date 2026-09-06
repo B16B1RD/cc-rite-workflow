@@ -15,9 +15,11 @@ sources:
     resource: "raw/fixes/20260801T224211Z-pr-2070.md"
   - type: "reviews"
     resource: "raw/reviews/20260805T104742Z-pr-2114.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260906T125803Z-pr-2582.md"
 tags: ["producer-consumer", "static-pin", "branch-table", "test-strength", "reason-vocabulary"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T00:40:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
 ---
 
 # 新設した出力フィールドは producer と consumer の両側を pin する — consumer が表なら行単位で pin する
@@ -75,6 +77,12 @@ producer/consumer の pin を対で置く前に、**consumer が新しい値を�
 
 **判定表に「上から評価し最初の一致」と書くなら、各行を presence 検査にする**のも同じサイクルで確定した規律である。row 1 を「この reason **のみ**が出ている」という大域条件で書くと、順序が何も解消せず、複数 reason 共起時に実失敗が完了報告から落ちる読み筋が成立する。大域条件と「最初の一致で短絡」は両立しない — 失敗側を positive presence 検査で先頭に置けば順序が load-bearing になり、大域条件が要らなくなる。
 
+### 追記: 受入基準の帰結が 2 節から成るとき、第 2 節が pin から抜けやすい
+
+helper の marker や JSON（第 1 節）は手厚くテストされる一方、それを消費する側の契約（件数からの除外・記号の付与・sentinel への昇格）が未 pin のまま残る。producer 側の充実は consumer 側の pin の代わりにならない。帰結が「A を出す、かつ B として扱う」の複合であるなら、pin も 2 本要る。
+
+加えて、静的 pin の grep を節限定にしないと、同じ literal が別節に増えた時点で assertion が名乗った対象を検証しなくなる。
+
 ## 関連ページ
 
 - [静的 parity テストには到達性 pin と emit pin を対で足す — 出現数 + 行順だけでは semantics を守れない](./static-parity-pin-needs-reachability-and-emit-pins.md)
@@ -88,3 +96,4 @@ producer/consumer の pin を対で置く前に、**consumer が新しい値を�
 - [レビュー結果](../../raw/reviews/20260801T223635Z-pr-2070.md)
 - [fix 結果](../../raw/fixes/20260801T224211Z-pr-2070.md)
 - [新 reason と consumer 分岐表の同時更新](../../raw/reviews/20260805T104742Z-pr-2114.md)
+- [レビュー結果](../../raw/reviews/20260906T125803Z-pr-2582.md)

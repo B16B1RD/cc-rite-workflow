@@ -11,9 +11,11 @@ sources:
     resource: "raw/reviews/20260526T034356Z-pr-1146.md"
   - type: "reviews"
     resource: "raw/reviews/20260722T080039Z-pr-1969-mergeable.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260906T153509Z-pr-2582.md"
 tags: ["reviewer-discipline", "false-positive-prevention", "fractal-pattern-convergence", "doc-heavy-review", "loop-termination"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-22T08:20:00+00:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
 ---
 
 # 0 件 finding = 正常終了として受容する (false-positive 回避義務)
@@ -72,6 +74,10 @@ cycle 8: 0 findings (完全収束、mergeable)
 
 同型 issue を ad-hoc 修正ではなく systemic 化して一斉対応するアプローチが収束を加速する。
 
+### 追記: 0 件でも出力の形式契約は機械検査される
+
+指摘 0 件を「なし」の散文だけで済ませると、producer 側のゲートが表ヘッダ欠落として止める。0 件のときも canonical な表のヘッダ 2 行を出すのが正しい形で、「なし」の注記はその下に添える。reviewer への prompt にこの規約を明示しないと、複数の reviewer が揃って同じ形で落ちる — 個々の reviewer の不注意ではなく prompt 側の欠落である。
+
 ## 関連ページ
 
 - [累積対策 PR の review-fix loop で fix 自体が drift を導入する](../anti-patterns/fix-induced-drift-in-cumulative-defense.md)
@@ -84,3 +90,4 @@ cycle 8: 0 findings (完全収束、mergeable)
 - [8 cycle 完全収束 / mergeable / false-positive 回避義務](../../raw/reviews/20260526T041118Z-pr-1146.md)
 - [収束相の visibility](../../raw/reviews/20260526T034356Z-pr-1146.md)
 - [/mergeable review (5 reviewer 全員「評価: 可」、指摘 0 件で 5-cycle 収束、cycle 5 finding の正しい解消を確認した上での 0 件到達)](../../raw/reviews/20260722T080039Z-pr-1969-mergeable.md)
+- [レビュー結果](../../raw/reviews/20260906T153509Z-pr-2582.md)

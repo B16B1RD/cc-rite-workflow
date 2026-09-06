@@ -10,9 +10,11 @@ sources:
     resource: "raw/reviews/20260706T214706Z-pr-1773-cycle2.md"
   - type: "fixes"
     resource: "raw/fixes/20260706T214905Z-pr-1773-cycle2.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260906T141001Z-pr-2582.md"
 tags: ["docs-drift", "precision-regression", "review-fix-loop", "regex-verification"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-07T22:03:17+00:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
 ---
 
 # 過剰マッチ防止の精緻化修正は、実装が許容する全形状を再確認しないと過小マッチという別の欠陥を生む (振り子現象)
@@ -48,6 +50,10 @@ reviewer 指摘に応じてマッチング条件・記述範囲を「より厳�
 
 本パターンは [Asymmetric Fix Transcription](./asymmetric-fix-transcription.md) が扱う「同じ修正を対称位置へ伝播し忘れる」失敗モードとは異なり、**単一箇所の修正がその精緻化の副作用として新たな欠陥を生む**という、fix cycle 内で完結する regression である点が特徴。
 
+### 追記: 拘束を狭めるときは元の拘束を落とさない
+
+「節の窓が広すぎて対象行を見ていない」という指摘への修正として、区間抽出を行形状のアンカーへ替えると、今度は節の外にある同形の行にも一致する。指摘は片方の拘束（行の特定）の不足であって、もう片方の拘束（節の限定）が不要という意味ではない。2 つの拘束は連言で書く。振り子は「片方を強めた分だけもう片方を捨てた」ときに起きる。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](./asymmetric-fix-transcription.md)
@@ -57,3 +63,4 @@ reviewer 指摘に応じてマッチング条件・記述範囲を「より厳�
 
 - [修正の副作用として under-match 新規導入を検出、MEDIUM](../../raw/reviews/20260706T214706Z-pr-1773-cycle2.md)
 - [実装の正規表現を再導出しバージョンセグメント許容の記述へ修正](../../raw/fixes/20260706T214905Z-pr-1773-cycle2.md)
+- [レビュー結果](../../raw/reviews/20260906T141001Z-pr-2582.md)
