@@ -8,6 +8,13 @@
 
 set -uo pipefail
 
+# fixture の書き換えは awk read→transform→write→mv で行う。GNU 形式の `sed -i '<expr>'` は
+# BSD sed (macOS) が -i の次引数を backup 拡張子と解釈して fixture が書き換わらず、diff が空になる。
+rewrite_lines() {
+  local file="$1" prog="$2"
+  awk "$prog" "$file" > "$file.new" && mv "$file.new" "$file"
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./_test-helpers.sh
 source "$SCRIPT_DIR/_test-helpers.sh"
@@ -99,7 +106,7 @@ seq 1 20 | sed 's/^/line /' > "$REPO/target.txt"
 git_c add target.txt
 git_c commit -q -m add-target
 before=$(git -C "$REPO" rev-parse HEAD)
-sed -i '12s/.*/CHANGED 12/' "$REPO/target.txt"
+rewrite_lines "$REPO/target.txt" 'NR==12{$0="CHANGED 12"}1'
 git_c add target.txt
 git_c commit -q -m change-12
 after=$(git -C "$REPO" rev-parse HEAD)
@@ -131,7 +138,7 @@ seq 1 40 | sed 's/^/line /' > "$REPO/target.txt"
 git_c add target.txt
 git_c commit -q -m add-target
 before=$(git -C "$REPO" rev-parse HEAD)
-sed -i '20s/.*/CHANGED 20/' "$REPO/target.txt"
+rewrite_lines "$REPO/target.txt" 'NR==20{$0="CHANGED 20"}1'
 git_c add target.txt
 git_c commit -q -m change-20
 after=$(git -C "$REPO" rev-parse HEAD)
@@ -216,7 +223,7 @@ seq 1 30 | sed 's/^/line /' > "$REPO/target.txt"
 git_c add target.txt
 git_c commit -q -m add-target
 before=$(git -C "$REPO" rev-parse HEAD)
-sed -i '12s/.*/CHANGED 12/' "$REPO/target.txt"
+rewrite_lines "$REPO/target.txt" 'NR==12{$0="CHANGED 12"}1'
 git_c add target.txt
 git_c commit -q -m change-12
 after=$(git -C "$REPO" rev-parse HEAD)
@@ -276,7 +283,7 @@ seq 1 30 | sed 's/^/line /' > "$REPO/shrink.txt"
 git_c add shrink.txt
 git_c commit -q -m add-shrink
 before=$(git -C "$REPO" rev-parse HEAD)
-sed -i '20,21d' "$REPO/shrink.txt"
+rewrite_lines "$REPO/shrink.txt" 'NR<20||NR>21'
 git_c add shrink.txt
 git_c commit -q -m rm-20-21
 after=$(git -C "$REPO" rev-parse HEAD)
@@ -299,8 +306,8 @@ seq 1 30 | sed 's/^/line /' > "$REPO/mixed.txt"
 git_c add mixed.txt
 git_c commit -q -m add-mixed
 before=$(git -C "$REPO" rev-parse HEAD)
-sed -i '25s/.*/CHANGED 25/' "$REPO/mixed.txt"
-sed -i '5,6d' "$REPO/mixed.txt"
+rewrite_lines "$REPO/mixed.txt" 'NR==25{$0="CHANGED 25"}1'
+rewrite_lines "$REPO/mixed.txt" 'NR<5||NR>6'
 git_c add mixed.txt
 git_c commit -q -m mixed-delete-and-add
 after=$(git -C "$REPO" rev-parse HEAD)
