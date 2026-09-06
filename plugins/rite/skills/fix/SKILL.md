@@ -2292,6 +2292,8 @@ When "コードを修正する" is selected:
 
 **MUST**: 生成するコメント / 散文に Issue/PR 番号・AC 番号を書かない。残す背景は現在形の制約文。ジャーナル/経緯文は禁止。
 
+**MUST**: `action: fix` の finding は 1 件以上の変更箇所を `path:line` または `path:start-end`（HEAD の行）で記録し、ステップ 3.3.1 の `findings_addressed[]` に `{id, action, changes}` として載せる。reply / accept / nit-noted は `changes: []` とし `diff_verified` を付けない。
+
 Present the proposed fix and apply with Edit tool after confirmation:
 
 ```
@@ -2485,7 +2487,51 @@ else
 fi
 ```
 
-`FIX_COMMIT_GUARD=skip` ならステップ 3 全体を skip して ステップ 4.5 へ、`proceed` なら以下を通常どおり実行する。
+`FIX_COMMIT_GUARD=skip` ならステップ 3 の commit / push を skip して ステップ 4.5 へ進む。**skip でも `findings_addressed` は最新 cycle として永続化する**（4.6 の gate が `map_missing` に倒れるのを防ぐ）。commit が無いので `commit_sha_before` / `commit_sha_after` はともに HEAD、`files_changed_by_fix` は `[]`。既存 cycle の `findings_addressed` は上書きせず、新しい cycle entry を append する。`proceed` なら以下を通常どおり実行する。
+
+```bash
+# FIX_COMMIT_GUARD=skip のときだけ。{findings_addressed_json} は ステップ 2.3 で記録した配列
+# （fix は path:line / path:start-end、reply/accept/nit-noted は changes: []。diff_verified は書かない）。
+_state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+[ -n "$_state_root" ] || { echo "WARNING: state-path-resolve.sh の解決に失敗。cwd をフォールバック使用します" >&2; _state_root="$(pwd)"; }
+mkdir -p "$_state_root/.rite/fix-cycle-state"
+pr_number="{pr_number}"
+state_file="$_state_root/.rite/fix-cycle-state/${pr_number}.json"
+head_sha=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+timestamp=$(date -u +"%Y-%m-%dT%H:%M:%S+00:00" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%S")
+if [ -f "$state_file" ]; then
+  existing=$(cat "$state_file")
+else
+  existing='{"pr_number":'"$pr_number"',"cycles":[]}'
+fi
+new_cycle=$(jq -n \
+  --arg ts "$timestamp" \
+  --arg head "$head_sha" \
+  --argjson addressed '{findings_addressed_json}' \
+  --argjson moved "{non_fatal_moved_count}" \
+  --arg review_json "{triage_review_path}" \
+  '{
+    "cycle": 0,
+    "timestamp": $ts,
+    "commit_sha_before": $head,
+    "commit_sha_after": $head,
+    "findings_fixed": 0,
+    "non_fatal_moved_count": $moved,
+    "review_json_path": $review_json,
+    "findings_new_from_fix": 0,
+    "files_changed_by_fix": [],
+    "lines_added": 0,
+    "lines_deleted": 0,
+    "propagation_applied": 0,
+    "findings_addressed": $addressed
+  }')
+echo "$existing" | jq --argjson entry "$new_cycle" '
+  (.cycles | length) as $len |
+  .cycles += [$entry | .cycle = ($len + 1)] |
+  if (.cycles | length) > 20 then .cycles = .cycles[-20:] else . end
+' > "$state_file"
+printf '[CONTEXT] FIX_CYCLE_STATE_WRITTEN file=%s cycle=%d skip=1\n' "$state_file" "$(jq '.cycles | length' "$state_file")"
+```
 
 `proceed` なら commit 前 HEAD を marker に残し、3.3.1 が `{fix_cycle_base_sha_from_context}` に使う。
 
@@ -2756,6 +2802,7 @@ else
 fi
 
 # Append new cycle entry (propagation_applied is set by ステップ 2.3.1 context)
+# {findings_addressed_json} は ステップ 2.3 で記録した配列（diff_verified は書かない。gate が書き戻す）
 new_cycle=$(jq -n \
   --arg ts "$timestamp" \
   --arg before "$commit_sha_before" \
@@ -2767,6 +2814,7 @@ new_cycle=$(jq -n \
   --argjson deleted "$lines_deleted" \
   --argjson moved "{non_fatal_moved_count}" \
   --arg review_json "{triage_review_path}" \
+  --argjson addressed '{findings_addressed_json}' \
   '{
     "cycle": 0,
     "timestamp": $ts,
@@ -2779,7 +2827,8 @@ new_cycle=$(jq -n \
     "files_changed_by_fix": $files,
     "lines_added": $added,
     "lines_deleted": $deleted,
-    "propagation_applied": $propagated
+    "propagation_applied": $propagated,
+    "findings_addressed": $addressed
   }')
 
 # Append and assign cycle number, enforce ring buffer (max 20 entries)
@@ -3163,6 +3212,7 @@ fi
   | 指摘 | 対応 |
   |-----|------|
   | {comment_preview} | {response_type} |
+  <!-- 変更箇所 / 差分確認は ステップ 4.6 完了報告の対応表に置く。本節の列は変えない -->
 - **コミット**: {commit_sha}
 - **プッシュ**: 完了 / 未実行
 - **Confidence override**: {confidence_override_section}
@@ -3202,6 +3252,21 @@ Claude は ステップ 1.2.0 の bash block stderr から `[CONTEXT] REVIEW_SOU
 
 ### 4.6 Completion Report
 
+完了報告の**直前**に gate を呼ぶ。最新 cycle の `findings_addressed` を `git diff -U0 {commit_sha_before}..HEAD` と突合し、`diff_verified` を書き戻す。
+
+```bash
+bash {plugin_root}/hooks/scripts/fix-report-diff-gate.sh --pr {pr_number}
+```
+
+| Marker | Action |
+|--------|--------|
+| `FIX_REPORT_DIFF_GATE=passed` | 続行。対応表は JSON の `diff_verified: true` |
+| `FIX_REPORT_DIFF_GATE=unverified; ids=` | 停止しない。当該 ID を「未対応」に載せ、`対応した指摘` の件数から除外する |
+| `FIX_REPORT_DIFF_GATE=error; reason=` | `[fix:error]`。`map_missing` / `state_unreadable` / `diff_failed` / `jq_missing` |
+
+`unverified` / `passed` は ステップ 5.1 の fatal ではない。非 push と unverified を組み合わせても row 6 の `[fix:error]` に倒さない。
+rationale: references/design-rationale.md#fix-report-diff-gate
+
 ```
 PR #{number} のレビュー指摘対応を完了しました
 
@@ -3214,6 +3279,10 @@ PR #{number} のレビュー指摘対応を完了しました
 - 今回の非 fatal 移送: {non_fatal_moved_count}件
 - 記録 JSON: {triage_review_path}
 - accept 認知 (user decision、Issue 完了まで累計): {accept_count}件{accept_warning_suffix}
+対応表:
+| 指摘 | 対応 | 変更箇所 | 差分確認 |
+| {id} | {fix\|reply\|accept\|nit-noted} | {path:line または -} | {✅ \| ❌ 未対応（差分に無い） \| 対象外} |
+未対応: {unverified_count}件 ({unverified_ids})
 コミット: {commit_sha}
 プッシュ: 完了 / 未実行
 レビューソース: {review_source} ({review_source_path_display})
@@ -3264,7 +3333,7 @@ BSD wc 空白は剥がす (2.1.A Step 7 と対称)。不在/空は `0`。state �
 | Field | Description | Calculation |
 |-------|-------------|-------------|
 | `全指摘: {total_count}件` | Total findings | reload 済み JSON の findings + non_blocking_findings（ID ごと、nit を含む）と未解決の外部レビューの件数。全経路共通 |
-| `対応した指摘: {count}件` | Number of findings addressed | `fix_count + reply_count + skip_count + acknowledged_nit_count + non_blocking_count` (nit-noted 分類と non-blocking 分類も「対応」に含めることで、nit-only / non-blocking-only PR でも `全指摘 == 対応指摘` 条件を満たし有限 cycle で収束する — `non_blocking_count` を式に含めないと非実測 finding が「未対応」として残り finalize 分岐が発火せず max_review_cycles まで空転する)。**各項は排他**: `skip_count` は ステップ 2.1 でユーザーが「スキップ」を選んだ finding のみを数え、**non-blocking 分類による ステップ 2.1 skip は含めない** (そちらは `non_blocking_count` が受け持つ)。`acknowledged_nit_count` との排他も同様 (nit-noted は scope による分類で、non-blocking は永続 JSON の別集合) |
+| `対応した指摘: {count}件` | Number of findings addressed | `fix_count + reply_count + skip_count + acknowledged_nit_count + non_blocking_count`。**`fix_count` は `diff_verified: true` の action:fix のみ**。`diff_verified: false` は「未対応」に載せ、この件数から除外する (nit-noted 分類と non-blocking 分類も「対応」に含めることで、nit-only / non-blocking-only PR でも `全指摘 == 対応指摘` 条件を満たし有限 cycle で収束する — `non_blocking_count` を式に含めないと非実測 finding が「未対応」として残り finalize 分岐が発火せず max_review_cycles まで空転する)。**各項は排他**: `skip_count` は ステップ 2.1 でユーザーが「スキップ」を選んだ finding のみを数え、**non-blocking 分類による ステップ 2.1 skip は含めない** (そちらは `non_blocking_count` が受け持つ)。`acknowledged_nit_count` との排他も同様 (nit-noted は scope による分類で、non-blocking は永続 JSON の別集合) |
 | `non-blocking (非 fatal・実測なし): {non_blocking_count}件` | Recorded findings | reload 済み non_blocking_findings の nit 以外。0 件でも表示。今回の移送件数は non_fatal_moved_count、永続参照先は triage_review_path |
 | `Confidence override (policy bypass): {N}件` | Number of findings imported via Confidence policy override | ステップ 1.2 best-effort parse で「Confidence 70 のままバイパス」を選択した finding 数 (Confidence 80+ ゲート invariant の policy override 追跡義務)。0 件でも常時表示 |
 | `レビューソース: {review_source} (...)` | Provenance of the review findings consumed by this fix run | ステップ 1.2.0 Priority chain で決定された `review_source` 値 (schema.md Priority 1 emit 義務の provenance 契約を ステップ 4.6 で履行)。展開ルールは ステップ 4.5.3 の `{review_source}` / `{review_source_path_display}` 表を参照 |
@@ -3695,12 +3764,13 @@ Then, based on the ステップ 4.6 completion report content **and the WM_UPDAT
 | 1.5 | `[CONTEXT] NB_SWEEP=1` かつ（`[CONTEXT] NB_SWEEP_RESULT=done` または `[CONTEXT] NB_SWEEP_DONE_FILE=1`） | `[fix:sweep-done]`（ステップ 1 に戻らない） |
 | 1.6 | `[CONTEXT] NB_SWEEP=1` かつ `NB_SWEEP_RESULT=done 以外` かつ `NB_SWEEP_DONE_FILE` 非 1 | `[fix:error]` |
 | 2 | ステップ 2.4 で `[CONTEXT] REPLY_POST_FAILED=1` を context に set した | `[fix:error]` (人間由来 thread への reply post が失敗。push 済みの可能性はあるが、レビュアー通知の責務を果たせていないため caller は次の iteration ではなく手動介入を促す) |
+| 2.5 | ステップ 4.6 直前の gate が `[CONTEXT] FIX_REPORT_DIFF_GATE=error` を context に set した | `[fix:error]`（`map_missing` / `state_unreadable` / `diff_failed` / `jq_missing`。`unverified` / `passed` は本行にマッチしない） |
 | 3 | ステップ 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`reason` の値は下記 reason 表のいずれか — 固定列挙は行わず、reason 表を唯一の真実の源とする) | `[fix:pushed-wm-stale]` (ステップ 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
 | 4 | (Push completed (`プッシュ: 完了`) または 本 cycle 内で accept 決定が発生 [`[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED=1` または `[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1` が 1 回以上 context に出現]) かつ work memory 更新成功 | `[fix:pushed]` |
 | 5 | Push なし かつ 本 cycle 内で accept 決定なし (上記 2 マーカーがいずれも非出現) かつ All findings replied | `[fix:replied-only]` |
 | 6 | Unexpected state / error | `[fix:error]` |
 
-上から最初にマッチした pattern を採用。fatal 旗 (`FIX_FALLBACK_FAILED` / `REPLY_POST_FAILED`) → `[fix:error]`。次に `WM_UPDATE_FAILED` → `[fix:pushed-wm-stale]`。その後に通常終了。
+上から最初にマッチした pattern を採用。fatal 旗 (`FIX_FALLBACK_FAILED` / `REPLY_POST_FAILED` / `FIX_REPORT_DIFF_GATE=error`) → `[fix:error]`。次に `WM_UPDATE_FAILED` → `[fix:pushed-wm-stale]`。その後に通常終了。`FIX_REPORT_DIFF_GATE=unverified` / `passed` は fatal ではない。
 
 **row 4/5 の accept 条件 — 唯一の真実の源**: iterate ステップ 4 が読む sentinel の決定箇所。Handoff 節と 4.6 Note は参照のみ。
 
