@@ -2547,12 +2547,27 @@ new_cycle=$(jq -n \
     "lines_deleted": 0,
     "propagation_applied": 0,
     "findings_addressed": ($addressed_raw | fromjson)
-  }')
-echo "$existing" | jq --argjson entry "$new_cycle" '
+  }') || {
+  echo "ERROR: cycle entry の生成に失敗 (findings_addressed が不正な JSON)" >&2
+  echo "[fix:error]"
+  exit 1
+}
+# 既存 state を直接開かない。生成に失敗したまま redirect すると履歴ごと truncate される。
+state_tmp=$(mktemp "${state_file%/*}/.cycle-XXXXXX") || {
+  echo "ERROR: cycle state 用 mktemp に失敗" >&2
+  echo "[fix:error]"
+  exit 1
+}
+if ! printf '%s\n' "$existing" | jq --argjson entry "$new_cycle" '
   (.cycles | length) as $len |
   .cycles += [$entry | .cycle = ($len + 1)] |
   if (.cycles | length) > 20 then .cycles = .cycles[-20:] else . end
-' > "$state_file"
+' > "$state_tmp" || ! mv "$state_tmp" "$state_file"; then
+  rm -f "$state_tmp"
+  echo "ERROR: cycle state の書き込みに失敗" >&2
+  echo "[fix:error]"
+  exit 1
+fi
 printf '[CONTEXT] FIX_CYCLE_STATE_WRITTEN file=%s cycle=%d skip=1\n' "$state_file" "$(jq '.cycles | length' "$state_file")"
 ```
 
@@ -2875,14 +2890,29 @@ new_cycle=$(jq -n \
     "lines_deleted": $deleted,
     "propagation_applied": $propagated,
     "findings_addressed": ($addressed_raw | fromjson)
-  }')
+  }') || {
+  echo "ERROR: cycle entry の生成に失敗 (findings_addressed が不正な JSON)" >&2
+  echo "[fix:error]"
+  exit 1
+}
 
 # Append and assign cycle number, enforce ring buffer (max 20 entries)
-echo "$existing" | jq --argjson entry "$new_cycle" '
+# 既存 state を直接開かない。生成に失敗したまま redirect すると履歴ごと truncate される。
+state_tmp=$(mktemp "${state_file%/*}/.cycle-XXXXXX") || {
+  echo "ERROR: cycle state 用 mktemp に失敗" >&2
+  echo "[fix:error]"
+  exit 1
+}
+if ! printf '%s\n' "$existing" | jq --argjson entry "$new_cycle" '
   (.cycles | length) as $len |
   .cycles += [$entry | .cycle = ($len + 1)] |
   if (.cycles | length) > 20 then .cycles = .cycles[-20:] else . end
-' > "$state_file"
+' > "$state_tmp" || ! mv "$state_tmp" "$state_file"; then
+  rm -f "$state_tmp"
+  echo "ERROR: cycle state の書き込みに失敗" >&2
+  echo "[fix:error]"
+  exit 1
+fi
 
 printf '[CONTEXT] FIX_CYCLE_STATE_WRITTEN file=%s cycle=%d\n' "$state_file" "$(jq '.cycles | length' "$state_file")"
 ```
