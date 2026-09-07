@@ -145,9 +145,9 @@ bash の `exit 1` は Bash tool の exit code に変換されるだけで Claude
 
 ## work-memory-update-rationale
 
-ステップ 4.5.1 / 4.5.2 の設計理由。
+ステップ 4.5.1 / 4.5.2 は `scripts/fix-work-memory-update.sh` に機械処理を委譲する。進捗ステータスと履歴本文の判断は caller に残す。
 
-- **PR body を single-quoted HEREDOC で書き出す理由**: double-quoted printf 形式は PR body 内の `"` でクォート閉じが起きるとシェル parser が後続テキストをコマンドラインとして解釈する構文エラーになり、さらに `$(...)` 形式の command substitution が literal 展開時に実行される command injection リスクを生む。PR body は外部入力 (PR 投稿者) であるため expansion の完全抑制が必須。
+- **本文ファイルの所有権**: PR 本文と履歴は caller がデータとして保存・回収する。helper は入力を展開せず、自分で確保した一時ファイルだけを回収する。履歴準備失敗は進捗成功後だけ評価し、進捗失敗や `no_comment` の後に別の失敗を追加しない。
 - **grep / git branch を pipeline 化せず独立 if-else で実行する理由**: bash pipefail は rightmost non-zero を返すため、`grep -oE '...' | head -1 | grep -oE '[0-9]+'` の 2 段 pipeline では先頭 grep の rc=2 (IO エラー) を末尾 grep の rc=1 (no match) が隠蔽し、IO error 分岐が到達不能になる (実証: `(exit 2)|(exit 0)|(exit 1)` → rc=1)。独立実行して終了コードを直接 case 分岐し、数字抽出は sed -n に移譲する (sed の失敗は無害な空文字結果)。Source: bash man page / [Baeldung — Exit Status of Piped Processes](https://www.baeldung.com/linux/exit-status-piped-processes)
 - **grep IO エラーで exit 1 しない (soft failure) 理由**: `exit 1` は Claude のフロー制御にならず ([retained-flag-emission](#retained-flag-emission) 参照)、コメント宣言と実動作が矛盾する。retained flag のみ emit して継続することで、(1) retained flag の伝達経路が一貫する (ステップ 4.5 の失敗は全て `[fix:pushed-wm-stale]` 経路)、(2) コミット済み fix の損失を防ぐ、(3) caller は AskUserQuestion で続行/中断を判断できる (H-2 対応)。
 - **wm_emit_done gate の理由**: retained flag の重複 emit はステップ 5.1 の reason 解釈を非決定的にし debug UX を悪化させる (M-4)。また IO error 経路で issue_number を空にするだけだと直後の branch fallback が誤起動して「IO error 経路なのに issue_number が設定される」semantics 破壊を起こす (M-5)。
@@ -173,6 +173,7 @@ silent に行うと `[ -s "$commit_err" ]` guard が no-op 化し、/tmp が壊�
   - **hard fail-fast**: 即座に exit 1 で fix loop を kill する失敗 (引数 parse 失敗 / mktemp 失敗等)。`exit 1` だけでは Claude のフロー制御にならないため retained flag も併用する。
 - **local-wm-update hook の stderr 退避 + lock/non-lock 分岐の理由**: `2>/dev/null || true` は lock contention だけでなく permission denied / script 不在 / bash syntax error / 内部致命的エラーもすべて silent suppress する。lock 判定の exact phrase pattern (`file is locked|lock contention|resource busy`) は、`lock|contention|busy` の緩い pattern が permission denied / device busy 等まで silent suppress する欠陥を避けるため (canonical: common-error-handling.md#hook-lock-contention-classification-canonical)。mktemp 失敗時も silent skip に戻さず、`2>&1` + `head -5` の簡易 fallback で可視化する。
 - **WM_UPDATE_FAILED 網羅性 DoD 検証スクリプトの設計上の要点** (スクリプト本体は `hooks/scripts/fix-reason-coverage-check.sh`、呼び出しは SKILL.md ステップ 5.1):
+  - 本体と `scripts/fix-work-memory-update.sh` の各 emit 元が非空であることを確認し、集合を統合して表と突合する。
   - `grep` 側は `WM_UPDATE_FAILED=1; reason=` で prefix を絞り、`CONFIDENCE_OVERRIDE_READ_FAILED` / `REPLY_POST_FAILED` / `ISSUE_CREATE_FAILED` の別 context flag を前方一致で自動除外する。
   - `awk` 側は `| reason | 発生 Phase | 発生条件 |` の table header 行を起点に `in_table=1` を開始し、非 `|` 行で戻すことで reason 表のみを対象とする。他テーブルや周辺段落を起点/終点トリガーにしないため、blockquote が `**` 強調に格上げされても in_table 範囲を壊さない。
   - `sed 's/\$.*//'` は表側 reason に shell 変数展開 suffix が含まれる場合に備えた defensive 正規化 (現状該当なし、将来の drift 誤検出防止のため残置)。
