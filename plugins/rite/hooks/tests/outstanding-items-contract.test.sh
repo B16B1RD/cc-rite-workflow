@@ -142,9 +142,15 @@ classified_warning_count=$(awk '
 ' "$OPEN")
 assert "open has exactly 3 direct WARNING emit sites" "3" "$direct_warning_emit_count"
 assert "open classifies exactly the same 3 direct WARNING sites" "$direct_warning_emit_count" "$classified_warning_count"
+assert_grep "open emits the exact git-status guard warning" "$OPEN" \
+  'echo "WARNING: git status の実行に失敗したため dirty main checkout ガードを skip します \(従来挙動で続行\)" >&2'
+assert_grep "open emits the exact gitignore warning" "$OPEN" \
+  'echo "WARNING: \$wt_path/\.rite/\.gitignore を作成できませんでした。このディレクトリが git から除外されているか手動で確認してください" >&2'
+assert_grep "open emits the exact settings-copy warning" "$OPEN" \
+  'echo "WARNING: \.claude/settings\.local\.json のコピーに失敗しました — ドッグフーディング上書きが worktree に反映されません" >&2'
 assert_grep_in_section "open classifies the git-status guard warning" "$OPEN" \
   '^### `open` 直接 WARNING の転記判定$' '^---$' \
-  '^\| `WARNING: git status の実行に失敗したため dirty main checkout ガードを skip します`'
+  '^\| `WARNING: git status の実行に失敗したため dirty main checkout ガードを skip します` \| 常に転記 \|$'
 assert_grep_in_section "open classifies the gitignore warning and its diagnostic continuation" "$OPEN" \
   '^### `open` 直接 WARNING の転記判定$' '^---$' \
   '^\| `WARNING: \{wt_path\}/\.rite/\.gitignore を作成できませんでした`.*`_RITE_GITIGNORE_ERROR`'
@@ -173,6 +179,12 @@ assert_grep_in_section "iterate preserves the reset-first restart replacement" "
 assert_grep_in_section "iterate does not place action items beside the breaker reason" "$ITERATE" \
   '^#### `\{action_items\}` 追加項目（ステップ 6\.2 のみ）$' '^---$' \
   '「理由」行の直後には追加しない'
+assert_grep_in_section "iterate replaces raw breaker warnings with detailed recovery items" "$ITERATE" \
+  '^#### `\{action_items\}` 追加項目（ステップ 6\.2 のみ）$' '^---$' \
+  '\(b\) / \(c\) は対応する raw WARNING の項目を詳細な復旧項目で置換し、raw 項目が無い場合だけ末尾へ追加する'
+assert_grep_in_section "iterate forbids raw and detailed breaker items from coexisting" "$ITERATE" \
+  '^#### `\{action_items\}` 追加項目（ステップ 6\.2 のみ）$' '^---$' \
+  'raw WARNING と詳細な復旧項目を両方残してはならない'
 assert_not_grep "iterate removed the duplicate reason-adjacent notice instruction" "$ITERATE" \
   '「理由」行の直後に注意行を追加する'
 

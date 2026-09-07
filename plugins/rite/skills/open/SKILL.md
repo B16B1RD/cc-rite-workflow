@@ -690,7 +690,7 @@ draft PR の作成が完了したら、ユーザーに以下を案内する:
 
 | stderr の先頭 | 判定 |
 |---|---|
-| `WARNING: git status の実行に失敗したため dirty main checkout ガードを skip します` | 後続の `git status` 成功が無ければ転記 |
+| `WARNING: git status の実行に失敗したため dirty main checkout ガードを skip します` | 常に転記 |
 | `WARNING: {wt_path}/.rite/.gitignore を作成できませんでした` | 転記。直後の `_RITE_GITIGNORE_ERROR` は同じ項目の補足 |
 | `WARNING: .claude/settings.local.json のコピーに失敗しました` | 転記 |
 

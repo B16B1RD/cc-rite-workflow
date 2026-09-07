@@ -1112,7 +1112,7 @@ rationale: references/rationale.md#notice-trend-and-notes
 
 以下の (a) / (b) / (c) による `{action_items}` への追加と「再開方法」第 1 bullet の差し替えは **ステップ 6.2（対話）専用**。上記「発火理由の文面」の置換表までが 6.1 / 6.2 共通である。
 
-ステップ 0.6 / ステップ 1 の `[CONTEXT]` marker と **ステップ 6 共有前段**の WARNING を観測している場合、下記の条件で各行を `{action_items}` の末尾へ追加する。「理由」行の直後には追加しない。3 ステップすべてを観測対象に含める — (b) は共有前段の atomic set 失敗 WARNING、(c) の `HANDOFF_CLEAR` はステップ 1。marker 値の読み取りは `marker_get`（[`lib/context-marker.sh`](../../hooks/scripts/lib/context-marker.sh)）の契約に従う。**marker 値の照合**は `;` 区切りの `KEY=VALUE` 単位の**完全一致**（部分一致は禁止）。追加行と差し替え行の `{plugin_root}` / `{pr_number}` / `{max_review_cycles}` / `{session_id}` / `{state_root}` はリテラル置換する（値が得られない側は (b) の pre-fill 表で解決手順へ置き換える）。**置換の対象は (b) が人間へ渡すすべての実行可能テキスト**に及ぶ。人間の端末で live なシェル変数を前提にした記法（`$root` 等）は、同じ案内文の中で代入している箇所以外では使わない。
+ステップ 0.6 / ステップ 1 の `[CONTEXT]` marker と **ステップ 6 共有前段**の WARNING を観測している場合、下記の条件で各行を `{action_items}` へ反映する。(a) は末尾へ追加する。(b) / (c) は対応する raw WARNING の項目を詳細な復旧項目で置換し、raw 項目が無い場合だけ末尾へ追加する。raw WARNING と詳細な復旧項目を両方残してはならない。「理由」行の直後には追加しない。3 ステップすべてを観測対象に含める — (b) は共有前段の atomic set 失敗 WARNING、(c) の `HANDOFF_CLEAR` はステップ 1。marker 値の読み取りは `marker_get`（[`lib/context-marker.sh`](../../hooks/scripts/lib/context-marker.sh)）の契約に従う。**marker 値の照合**は `;` 区切りの `KEY=VALUE` 単位の**完全一致**（部分一致は禁止）。追加行と差し替え行の `{plugin_root}` / `{pr_number}` / `{max_review_cycles}` / `{session_id}` / `{state_root}` はリテラル置換する（値が得られない側は (b) の pre-fill 表で解決手順へ置き換える）。**置換の対象は (b) が人間へ渡すすべての実行可能テキスト**に及ぶ。人間の端末で live なシェル変数を前提にした記法（`$root` 等）は、同じ案内文の中で代入している箇所以外では使わない。
 
 **(a) `REFIRE=1`**（この起動では review を 1 回も回さずに発火した。前回の最終 cycle 途中で中断した場合の正常な発火と、counter リセット失敗による再発火の**両方**を含む — marker だけでは区別できない）:
 
