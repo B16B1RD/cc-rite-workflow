@@ -63,34 +63,9 @@ _rite_fetch_pr_json() {
 # statusCheckRollup を排他的に機械分類する。既知の成功 conclusion 以外を healthy にしない。
 # malformed / 未知値は unknown として fail-closed にする。
 _rite_classify_checks() {
-  printf '%s' "$1" | jq -r '
-  if (.statusCheckRollup | type) != "array" then "unknown"
-  elif (.statusCheckRollup | length) == 0 then "none"
-  # 集約 precedence は unknown > pending > unhealthy > healthy。
-  # mixed pending+unknown を pending に落とすと --force-ci で unknown を迂回できるため unknown を先に判定する。
-  elif any(.statusCheckRollup[];
-      (.__typename == "CheckRun" and
-        ((.status | type) != "string" or
-         (.status as $s | (["QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED", "PENDING", "COMPLETED"] | index($s)) == null) or
-         (.status == "COMPLETED" and (.conclusion | type) != "string"))) or
-      (.__typename == "StatusContext" and
-        ((.state | type) != "string" or
-         (.state as $s | (["PENDING", "EXPECTED", "SUCCESS", "ERROR", "FAILURE"] | index($s)) == null))) or
-      (.__typename != "CheckRun" and .__typename != "StatusContext")) then "unknown"
-  elif any(.statusCheckRollup[];
-      (.__typename == "CheckRun" and .status != "COMPLETED") or
-      (.__typename == "StatusContext" and (.state == "PENDING" or .state == "EXPECTED"))) then "pending"
-  elif any(.statusCheckRollup[];
-      (.__typename == "CheckRun" and
-        (.conclusion as $c | (["SUCCESS", "NEUTRAL", "SKIPPED"] | index($c)) == null)) or
-      (.__typename == "StatusContext" and (.state == "ERROR" or .state == "FAILURE"))) then "unhealthy"
-  elif all(.statusCheckRollup[];
-      (.__typename == "CheckRun" and .status == "COMPLETED" and
-        (.conclusion as $c | (["SUCCESS", "NEUTRAL", "SKIPPED"] | index($c)) != null)) or
-      (.__typename == "StatusContext" and .state == "SUCCESS")) then "healthy"
-  else "unknown"
-  end
-'
+  local classified
+  classified=$(printf '%s' "$1" | bash "{plugin_root}/hooks/scripts/pr-checks-classify.sh") || return 1
+  printf '%s' "$classified" | jq -er '.state'
 }
 
 pr_json=$(_rite_fetch_pr_json) \

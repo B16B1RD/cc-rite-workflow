@@ -13,6 +13,9 @@
 ```markdown
 ## 📜 rite レビュー結果
 
+### CI
+{ci_status_summary}
+
 ### 総合評価
 - **推奨**: {マージ可 / マージ不可（指摘あり） / 修正必要}
 - **レビュアー数**: {count}人
@@ -245,6 +248,9 @@
 | レビュアー | Filter Category | 元重要度 | ファイル:行 | 除外した内容 | 除外理由 | 実測 |
 |-----------|-----------------|----------|------------|--------------|----------|------|
 | {reviewer} | Category #2 | {original_severity} | {file_line} | {description} | {filter_reason} | {verification or なし} |
+
+### CI
+{ci_status_summary}
 
 ### 総合評価
 - **推奨**: {マージ可 / マージ不可（指摘あり） / 修正必要}

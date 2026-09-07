@@ -58,8 +58,10 @@ rationale: references/design-rationale.md#e2e-askuser-split
 
 E2E output format (ステップ 6, replaces full display):
 
+`### CI` は E2E でも常に表示する（ステップ 5.4）。
+
 ```
-[review:{result}:{n}] — {total_findings} findings ({critical} CRITICAL, {high} HIGH, {medium} MEDIUM, {low_medium} LOW-MEDIUM, {low} LOW) | non-blocking: {non_blocking_count} | measurement-blocked: {measurement_blocked_count} | fact-check: {v}✅ {c}❌ {u}⚠️
+[review:{result}:{n}] — {total_findings} findings ({critical} CRITICAL, {high} HIGH, {medium} MEDIUM, {low_medium} LOW-MEDIUM, {low} LOW) | non-blocking: {non_blocking_count} | measurement-blocked: {measurement_blocked_count} | fact-check: {v}✅ {c}❌ {u}⚠️ | ci: {ci_state}
 ```
 
 `| non-blocking: {n}` suffix は `non_blocking_count > 0` のときのみ付与する (実測必須ゲート + 帰結クラス降格の合算。0 件なら suffix ごと省略)。`| measurement-blocked: {n}` suffix は `measurement_blocked_count > 0` のときのみ付与する (`description` に `Measurement-Blocked:` を含む finding の件数。0 件なら suffix ごと省略)。`| fact-check: ...` は external claims > 0 のときのみ。`{total_findings}` は post-fact-check カウント (CONTRADICTED と UNVERIFIED:ソース未確認 除外)。Invocation 判定は次節を再利用する。
@@ -437,6 +439,41 @@ git rev-parse HEAD
 ```
 
 Retain the obtained SHA as `{current_commit_sha}` in the conversation context.
+
+#### 1.2.5.C CI Check Snapshot
+
+対象 commit の CI を取得し、merge と共有する分類 helper に渡す。待機・rerun はしない。
+
+```bash
+ci_state=unknown
+ci_note=""
+ci_result='{"state":"unknown","checks":[],"failed":[]}'
+if ci_pr=$(gh pr view {pr_number} -R {owner_repo} --json headRefOid,statusCheckRollup); then
+  if ci_head=$(printf '%s' "$ci_pr" | jq -er '.headRefOid | select(type == "string" and length > 0)'); then
+    if [ "$ci_head" = "{current_commit_sha}" ]; then
+      if ci_classified=$(printf '%s' "$ci_pr" | bash {plugin_root}/hooks/scripts/pr-checks-classify.sh); then
+        ci_result="$ci_classified"
+        ci_state=$(printf '%s' "$ci_result" | jq -er '.state') || { echo "[review:error]"; exit 1; }
+        [ "$ci_state" != unknown ] || ci_note="check の形式または状態を分類できません"
+      else
+        ci_note="CI 分類に失敗しました（直前の診断を参照）"
+      fi
+    else
+      ci_note="PR HEAD とレビュー対象 SHA が一致しないため CI を採用しません"
+    fi
+  else
+    ci_note="PR HEAD を取得できません"
+  fi
+else
+  ci_note="CI 取得に失敗しました（直前の診断を参照）"
+fi
+[ -z "$ci_note" ] || printf 'WARNING: %s\n' "$ci_note" >&2
+printf '%s' "$ci_result" | jq -c --arg sha "{current_commit_sha}" --arg note "$ci_note" '. + {commit_sha:$sha,note:$note}' || { echo "[review:error]"; exit 1; }
+ci_failed=$(printf '%s' "$ci_result" | jq -r '[.failed[] | (.name // "(unnamed)") | gsub("[\u0000-\u001f\u007f-\u009f]"; " ")] | @csv') || { echo "[review:error]"; exit 1; }
+printf '[CONTEXT] REVIEW_CI_STATE=%s; failed=%s\n' "$ci_state" "$ci_failed"
+```
+
+出力 JSON を `{ci_status}`、marker の state を `{ci_state}` として保持し、ステップ 4.5・4.5.1・5.4・8.1 へ渡す。CI は観測情報であり、unknown / pending / none を mergeable の保証にしない。失敗を blocking にする条件は既存の実測ゲートに従う。
 
 #### 1.2.6 Change Intelligence Summary
 
@@ -1164,6 +1201,7 @@ Determine the error type from the completion notification (failure payload or ab
 | Placeholder | Source | Extraction Method |
 |---------------|--------|----------|
 | `{relevant_files}` | Changed file list from ステップ 1.2 | Extract only files matching the reviewer's Activation pattern。`REVIEW_CYCLE_SCOPE == incremental` のときは ステップ 2.2 と同じく `git diff --name-only {cycle_base_sha}..HEAD` の一覧から抽出する。**例外**: `incremental` かつ当該 reviewer が `{prev_finders}` 由来の `mandatory` 合流で、パターン一致が 0 件のときは `{cycle_base_sha}..HEAD` の**全ファイル**を渡す（空で渡すと `{diff_content}` も空になり、mandate 4 が差分外の読み直しを禁じるため mandate 1 の解消検証すら実行できない prompt になる — 解消検証は自分の指摘箇所と fix の影響範囲の両方が読めて初めて成立する） |
+| `{ci_status}` / `{ci_state}` | ステップ 1.2.5.C | 対象 SHA・分類・check 名/状態/結論/詳細 URL・failed 一覧・取得不能理由を出力 JSON から渡す。CI の分類規則を再実装しない |
 | `{diff_content}` | Diff from ステップ 1.2 | **Varies by scale** (see below)。`REVIEW_CYCLE_SCOPE == incremental` のときは PR 全体の diff ではなく `{cycle_base_sha}..HEAD` の diff を使う（取得コマンドは ステップ 1.2 の incremental 系。`{relevant_files}` が上記例外で全ファイルになった場合は同区間の全 diff を渡す） |
 | `{cycle_scope_mandate}` | [cycle-scope.md](references/cycle-scope.md#reviewer-mandate差分スコープ適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `REVIEW_CYCLE_SCOPE == incremental` のときのみ、同節の fenced block 本文を抽出し `{previous_blocking_findings}` / `{cycle_base_sha}` を埋めて注入する。`full` のときは空文字列（セクションごと省略） |
 | `{complexity_lane_mandate}` | [complexity-lane.md](references/complexity-lane.md#reviewer-mandate軽量レーン適用時に注入する本文) の Reviewer mandate 節 | **Conditional extraction**: `COMPLEXITY_LANE == light`（ステップ 1.3.2）のときのみ、同節の fenced block 本文を抽出し `{complexity}` を埋めて注入する。`full` のときは空文字列（セクションごと省略 — 空見出しが残ると M+ の prompt が変化し AC-4 に違反する）。`{cycle_scope_mandate}` とは直交し、両方が非空になりうる（cycle 2+ の XS Issue）。両者が同時に届いても矛盾しない: 差分スコープは審査**範囲**を、軽量レーンは検証の**実行コスト**を絞るもので、いずれも採否基準を変えない |
@@ -2188,6 +2226,8 @@ fi
 絵文字は `skills/reviewers/SKILL.md` の方針。ヘッダと重要 WARNING のみ。
 テンプレート本文は [references/integrated-report-templates.md](references/integrated-report-templates.md)。
 
+**`### CI` は通常・verification 両モードと E2E で常に表示する**。以下の表示内容を `{ci_status_summary}` に埋める。ステップ 1.2.5.C の `{ci_status}` から対象 SHA・state を表示し、healthy は 1 行要約、pending は「未完了」、none は「check なし」、unknown は原因を併記する。failed があれば集約 state に関係なく job 名・結論・詳細 URL を列挙する。
+
 **Template selection:**
 
 | review_mode | Template Used |
@@ -3116,7 +3156,7 @@ Based on the ステップ 6 review results, output the corresponding machine-rea
 
 > **`total_findings` は blocking 集合の件数**。5.3.0.M で降格した指摘と scope=nit-noted は含まない（[assessment-rules.md §5.3.3](../fix/references/assessment-rules.md)）。非実測が N 件でも `total_findings == 0` なら `[review:mergeable]`（AC-2）。
 
-**E2E suffixes**: `non_blocking_count > 0` なら `| non-blocking: {n}`。`measurement_blocked_count > 0` なら `| measurement-blocked: {n}`。fact-check 実行時は `| fact-check: ...`。`{total_findings}` は post-fact-check。
+**E2E suffixes**: 常に末尾へ `| ci: {ci_state}` を付ける。 `non_blocking_count > 0` なら `| non-blocking: {n}`。`measurement_blocked_count > 0` なら `| measurement-blocked: {n}`。fact-check 実行時は `| fact-check: ...`。`{total_findings}` は post-fact-check。
 **⚠️ aggregate label 禁止**: result / E2E 行に **「推奨 N 件」「follow-up 候補 N 件」を含めてはならない**。
 rationale: references/design-rationale.md#aggregate-label-ban
 
