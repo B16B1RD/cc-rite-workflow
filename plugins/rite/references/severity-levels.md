@@ -101,7 +101,7 @@ The final severity reported in the findings table is determined by combining the
 
 典型的な Hypothetical 降格例:
 
-- 「将来の cycle で orphan になるかもしれない」コメント (e.g., `// 旧実装は ... — cycle 8 で削除予定`) — 削除予定コードが現時点で reachable な call site を持たず、`Grep` でも参照が確認できない場合は Hypothetical → **推奨事項** に降格
+- 「将来 orphan になるかもしれない」というコメントへの懸念 — 削除予定コードが現時点で reachable な call site を持たず、`Grep` でも参照が確認できない場合は Hypothetical → **推奨事項** に降格
 - 「もしリファクタが入ったら drift する可能性がある」cycle 番号参照 — 現時点で参照先 cycle が存在しなくても、コメント単体が誤誘導しているわけではない場合は Hypothetical → **推奨事項** に降格
 
 ### Demonstrable 昇格 signal (本軸での適用例)

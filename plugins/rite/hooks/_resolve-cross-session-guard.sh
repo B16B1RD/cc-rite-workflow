@@ -21,15 +21,6 @@
 #                           Distinct from "corrupt:*" so a consumer can differentiate
 #                           UUID validation failure from jq parse failure.
 #
-# Why this exists (verified-review cycle 34 fix F-02 HIGH):
-#   The same `legacy.session_id` extraction + comparison logic was duplicated
-#   between writer-side `_resolve_session_state_path` and reader-side state-read.sh
-#   per-session resolver. DRY-ifying eliminates the drift risk where a future
-#   tightening of the comparison (e.g., variant-bit equivalence, normalization)
-#   is applied to one side only — the root cause was a writer-side guard
-#   that the reader-side did not yet mirror (cycle 32 added writer, cycle 33
-#   added reader).
-#
 # Caller responsibility (no live caller today — see above):
 #   A consumer of these classifications would route each one and surface the
 #   non-adoptable cases as a plain WARNING on stderr:
@@ -70,8 +61,7 @@ fi
 # Variable name `_jq_err` follows the `_*_err` stderr-capture naming convention
 # shared across the state hooks. cleanup is Form A (single
 # `rm -f`); see bash-trap-patterns.md "cleanup 関数の契約" for why `return 0`
-# is unnecessary. Historical drift fixes are catalogued in
-# references/state-read-evolution.md.
+# is unnecessary.
 _jq_err=""
 _rite_cross_session_cleanup() {
   rm -f "${_jq_err:-}"
@@ -95,14 +85,9 @@ _jq_err=$(bash "$(dirname "${BASH_SOURCE[0]}")/_mktemp-stderr-guard.sh" \
 # in the `else` branch yields the actual jq exit code (4=parse error, 5=I/O,
 # etc.) that downstream consumers embed in the WARNING details.
 #
-# Stderr is intentionally kept clean here. Callers historically combined
-# stdout/stderr with `2>&1` to capture diagnostics, but that merged any `jq:`
-# parse-error text into the `classification` string and broke the
-# `case ... corrupt:*) ...` match, silently routing to the defensive `*)` arm
-# and suppressing the legacy-state-corrupt WARNING. The current contract: callers use
-# `2>/dev/null` and observe the rc via `corrupt:N`; full jq stderr is captured
-# by each caller into its own tempfile (see `_jq_err` capture blocks in the
-# caller hooks). Drift history is in references/state-read-evolution.md.
+# Keep stdout limited to the classification token: merging stderr with `2>&1`
+# would contaminate the value and break `case ... corrupt:*)` matching.
+# Callers can capture stderr separately to retain jq diagnostics.
 if legacy_sid=$(jq -r '.session_id // empty' "$LEGACY_PATH" 2>"${_jq_err:-/dev/null}"); then
   if [ -z "$legacy_sid" ]; then
     printf 'empty'
@@ -132,9 +117,8 @@ if legacy_sid=$(jq -r '.session_id // empty' "$LEGACY_PATH" 2>"${_jq_err:-/dev/n
       printf 'foreign:%s' "$validated_legacy"
     else
       # legacy session_id is not a valid UUID (corrupt / tampered / legacy schema).
-      # verified-review cycle 36 fix (F-16 LOW security): use `invalid_uuid:` prefix
-      # instead of `corrupt:1` to avoid numeric collision with jq exit code 1
-      # ("any other error"). Operators reading the WARNING details can now
+      # The `invalid_uuid:` prefix avoids collision with jq exit code 1
+      # ("any other error"). Operators reading the WARNING details can
       # distinguish "UUID validation failure" (this branch) from "jq general error"
       # (jq_rc=1 in the else branch below). A consumer would handle the
       # `invalid_uuid:*` token distinctly in its classification cases.
@@ -147,10 +131,7 @@ else
   # Surface the first 3 lines of jq stderr so the caller's `_classify_err`
   # tempfile receives the parse-error line/column. Callers redirect stderr
   # into their own tempfile (`2>"$_classify_err"`), so emitting here does not
-  # contaminate stdout (`classification` token). This restores the
-  # observability that was traded away when stdout pollution forced removal
-  # of an earlier `cat "$_jq_err" >&2` block; details in
-  # references/state-read-evolution.md.
+  # contaminate stdout (`classification` token).
   [ -n "$_jq_err" ] && [ -s "$_jq_err" ] && head -3 "$_jq_err" | neutralize_ctrl --keep-newline >&2
   printf 'corrupt:%d' "$jq_rc"
   exit 0

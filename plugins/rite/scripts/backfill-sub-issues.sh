@@ -150,7 +150,7 @@ is_already_subissue() {
 
   printf '%s' "$resp" \
     | jq -r ".data.repository.issue.subIssues.nodes[]?.number" 2>/dev/null \
-    | grep -q "^${child_num}$"
+    | grep "^${child_num}$" >/dev/null
 }
 
 for child in "${TARGET_CHILDREN[@]}"; do

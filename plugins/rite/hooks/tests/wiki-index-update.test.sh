@@ -1466,9 +1466,11 @@ fi
 # frontmatter 由来 6 値はすべて quoted heredoc で受ける (double-quote されたシェル語への
 # 直接置換は値の `"` でクォートが閉じ command injection になる)
 for v in title description domain slug updated confidence; do
-  printf '%s\n' "$step6_block" | grep -qF -- "wiu_${v}=\$(cat <<'WIU_EOF'" \
-    || { tc17b_ok=0; echo "  ($v の quoted heredoc が解除されている)"; }
+  printf '%s\n' "$step6_block" | grep -qF -- "IFS= read -r wiu_${v}" \
+    || { tc17b_ok=0; echo "  ($v の literal read が無い)"; }
 done
+printf '%s\n' "$step6_block" | grep -qF -- "} <<'WIU_EOF'" \
+  || { tc17b_ok=0; echo "  (quoted heredoc が解除されている)"; }
 # heredoc 終端子衝突の実行前ゲート。quoted heredoc に残る唯一の脱出口 (値の行が
 # `WIU_EOF` と一致すると heredoc が早期終了し残りがコマンド実行される) は block 内の
 # シェルでは parse 前に検査できないため、substitute する LLM 側の責務としてゲート文言が
@@ -1482,6 +1484,42 @@ if [ "$tc17b_ok" -eq 1 ]; then
   pass "TC-17b ステップ 6 呼び出し契約 (8 フラグ + placeholder 対応 + 呼び出し行 literal + wiki_root 導出 + 6 値 heredoc + 終端子ゲート) が helper と一致"
 else
   fail "TC-17b"
+fi
+
+if python3 - "$INGEST_MD" <<'PY'
+import pathlib
+import re
+import subprocess
+import sys
+
+text = pathlib.Path(sys.argv[1]).read_text()
+section = text.split('## ステップ 6:', 1)[1].split('## ステップ 7', 1)[0]
+block = re.search(r'```bash\n(.*?)\n```', section, re.S).group(1)
+values = {
+    'title': '  日本語 "quoted" $(printf EXPANDED) `printf EXPANDED` \\ ',
+    'description': '',
+    'domain': 'patterns',
+    'slug': 'literal-input',
+    'updated': '2026-09-08T00:00:00Z',
+    'confidence': 'high',
+}
+for key, value in values.items():
+    block = block.replace('{' + key + '}', value)
+block = block.replace('{branch_strategy}', 'same_branch')
+block = block.replace('{wiki_worktree_abs}', '').replace('{plugin_root}', '/plugin')
+stub = "bash() { printf '%s\\0' \"$@\"; }\n"
+result = subprocess.run(['bash', '-eu', '-c', stub + block], capture_output=True, check=True)
+args = result.stdout.decode().split('\0')[:-1]
+expected = ['/plugin/hooks/scripts/wiki-index-update.sh',
+            '--index', '.rite/wiki/index.md', '--pages-root', '.rite/wiki/pages']
+for key, value in values.items():
+    expected.extend(['--' + key, value])
+assert args == expected, (args, expected)
+PY
+then
+  pass "ステップ 6 は空欄・空白・シェル構文を literal のまま正しい引数へ渡す"
+else
+  fail "ステップ 6 の値転送"
 fi
 
 echo ""
