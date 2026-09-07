@@ -1,6 +1,7 @@
 ## 2026-09-07
 * **Create**: [同型テンプレートが N 本ある欄は「本数の literal pin」と「欄とプレースホルダの隣接 pin」の 2 本立てで守る](pages/patterns/homogeneous-template-pins-count-and-adjacency.md) — raw/fixes/20260907T001315Z-pr-2590.md を新規ページ化
 * **Update**: [規範文を新設したら、その規範文が支配する範囲すべてに適用し直すか、適用範囲を明示的に狭める](pages/heuristics/new-normative-clause-must-be-applied-to-its-own-scope.md) — raw/reviews/20260907T000429Z-pr-2590.md を統合
+* **lint:clean** — contradictions=0, stale=59, orphans=0, missing_concept=0, unregistered_raw=436, broken_refs=0
 
 ## 2026-09-06
 * **lint:clean** — contradictions=0, stale=58, orphans=0, missing_concept=0, unregistered_raw=436, broken_refs=0
