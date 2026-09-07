@@ -525,24 +525,40 @@ fi
 # 非配列は上段の type check で marker 済みなので、ここでは `$nb` に空配列として畳んで
 # 判定から外す (型崩れを id 欠陥として誤診断せず、かつ hard fail に化けさせない)。
 #
-# **hard fail の対象は `findings[]` 側の id 欠陥に限る**。`non_blocking_findings[]` 側に閉じた
-# id 欠陥 (独立採番による和集合重複 / id 欠落) で save 全体を落とすと、上段と同じ fail-unsafe
-# (advisory な記録の欠陥を理由に blocking findings を失う) になるため、marker のみ emit する。
+# **書式違反は和集合で hard fail、一意性違反は `findings[]` 側に限って hard fail**。
+#
+# 書式 (`^F-[0-9]{2,}$`) は id が identity として使えるかどうかそのものであり、`non_blocking_findings[]`
+# 側の書式外 id は advisory な記録の瑕疵では済まない — cleanup ステップ 6.0.V は id を除外指定
+# (`--exclude-ids`) の唯一の受け渡し経路として使うため、書式外 id は再検証層で null へ写され、
+# 全件が undecidable へ倒れて解消済みの指摘まで follow-up に転記される。発生源を止めないと
+# 読み側の回避策が増え続けるので fail-loud にする (書式外 id の永続化を止める)。
+#
+# 一方 `non_blocking_findings[]` 側に閉じた**一意性**違反 (独立採番による和集合重複) は id 自体が
+# 使える形をしており、下段の非ブロッキング marker で報告するに留める。save を落とすと
+# advisory な記録の重複を理由に blocking findings まで JSON 経路から失う fail-unsafe になる。
+#
+# reason 語彙は既存の `finding_id_format_or_uniqueness_violation` を流用し増やさない
+# (`pr-review/SKILL.md` の 6.1.a reason 列挙 15 件 / rc=1 provenance 3 種は closed list で、
+#  当該ファイルは本変更の Non-Target。新 token を足すとその列挙を stale にする)。
+# 既存経路と同じく `exit 0` + `JSON_SAVED=false` で「保存せずに止める」= 本 codebase の hard fail。
 if ! jq -e '
-  (.findings | length == 0)
+  ((if (.non_blocking_findings | type) == "array" then .non_blocking_findings else [] end)) as $nb
+  | (((.findings | length) + ($nb | length)) == 0)
   or (
-    (.findings | all(.id? // "" | test("^F-[0-9]{2,}$")))
-    and (([.findings[].id] | unique | length) == (.findings | length))
+    ([(.findings[]?, $nb[])] | all(.id? // "" | test("^F-[0-9]{2,}$")))
+    and ((.findings | length == 0)
+         or (([.findings[].id] | unique | length) == (.findings | length)))
   )
   ' "$json_tmp" >/dev/null 2>&1; then
-  echo "WARNING: JSON の findings[].id が書式 (F-NN) または一意性の要件を満たしていません" >&2
-  echo "  期待: 全 finding が ^F-[0-9]{2,}\$ に match し、かつ全 id が一意" >&2
-  echo "  対処: review-result-schema.md の findings[] id 仕様を確認してください" >&2
+  echo "WARNING: JSON の finding id が書式 (F-NN) または findings[] 内の一意性の要件を満たしていません" >&2
+  echo "  期待: findings[] と non_blocking_findings[] の全 finding が ^F-[0-9]{2,}\$ に match し、かつ findings[] 内で id が一意" >&2
+  echo "  対処: review-result-schema.md の findings[] / non_blocking_findings[] id 仕様を確認してください" >&2
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=finding_id_format_or_uniqueness_violation" >&2
   exit 0
 fi
 
-# 和集合一意性 (non_blocking_findings[] 側を含む) は非ブロッキング marker で報告する
+# 和集合**一意性** (non_blocking_findings[] 側を含む) は非ブロッキング marker で報告する
+# (書式は上段の hard fail で既に担保済み)
 if ! jq -e '
   ((if (.non_blocking_findings | type) == "array" then .non_blocking_findings else [] end)) as $nb
   | ((.findings | length) + ($nb | length)) as $total

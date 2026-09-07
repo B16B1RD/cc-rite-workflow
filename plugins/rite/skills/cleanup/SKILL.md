@@ -544,7 +544,7 @@ rationale: references/rationale.md#follow-up-before-archive
 
 `non_blocking_findings[]` は**指摘が出た cycle** の観測であり、その後の fix cycle で解消されても JSON は更新されない。無条件に転記すると**マージ時点で既に存在しない drift** の follow-up Issue が起票される。helper（bash）は「この指摘は既に解消済みか」という散文の意味判定を持てないため、再検証は本ステップ（LLM 層）で行う。
 
-対象 JSON は helper と同一の選び方（`{state_root}/.rite/review-results/{pr_number}-*.json*` のうち basename 辞書順最大）で 1 本に確定する:
+対象 JSON は helper と同一の選び方（`{state_root}/.rite/review-results/{pr_number}-*.json*` の**全ファイルの `non_blocking_findings[]` を和集合**し、同一 id は後の JSON の内容で畳む）で確定する。最新 1 本だけを見ると helper が転記する集合と食い違い、先行 cycle にのみ載る指摘が再検証を経ずに転記される:
 
 ```bash
 # reason は helper の語彙（no_json / jq_missing）に揃え、state root 解決失敗は別値にする。
@@ -557,38 +557,61 @@ if [ -z "$_state_root" ]; then
 elif ! command -v jq >/dev/null 2>&1; then
   echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=jq_missing"
 else
-  _rv_src=""; _rv_base=""
+  # helper と同じく basename 昇順で全 JSON を走査し、非空 id は後の cycle で後勝ちに畳む。
+  # bash の glob 展開は昇順で確定するため for がそのまま順序保証になる。
+  _rv_srcs=(); _rv_bad=0
   for f in "$_state_root/.rite/review-results/{pr_number}"-*.json*; do
     { [ -e "$f" ] || [ -L "$f" ]; } || continue
-    b="${f##*/}"
-    if [ -z "$_rv_base" ] || [ "$b" \> "$_rv_base" ]; then _rv_src="$f"; _rv_base="$b"; fi
+    _rv_srcs+=("$f")
   done
-  if [ -z "$_rv_src" ]; then
+  if [ "${#_rv_srcs[@]}" -eq 0 ]; then
     echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=no_json"
   else
     # 1 finding = 1 行の JSON で出す。TSV だと description / suggestion の改行で行が割れ、
     # 後続行が id を失って id と本文の対応が崩れる（誤対応が resolved 側に振れると指摘の無言 drop）。
-    # `.id` は**落とさず null へ写す**。save 側は non_blocking_findings[] 側の id 書式違反を
-    # 非ブロッキングで通すため書式外 id が永続化されうる。その値をそのまま提示すると、下段の
-    # `{resolved_ids_csv}` がリテラル置換される二重引用符内でコマンド置換として展開される。
-    # null 化なら書式外の値が LLM へ届かず、finding 自体は出力に残るので黙って消えない
-    # （落とすと件数を数える第 2 の述語が要り、その述語が本体と乖離する drift 経路になる）。
+    # `.id` は**落とさず null へ写す**。save 側は書式外 id の**新規**保存を hard fail で止めるが、
+    # 既に archive 済みの legacy JSON には書式外 id が残っている（移行しない方針）。その値をその
+    # まま提示すると、下段の `{resolved_ids_csv}` がリテラル置換される二重引用符内でコマンド置換
+    # として展開される。null 化なら書式外の値が LLM へ届かず、finding 自体は出力に残るので黙って
+    # 消えない（落とすと件数を数える第 2 の述語が要り、その述語が本体と乖離する drift 経路になる）。
     _rv_errf=$(mktemp "${TMPDIR:-/tmp}/rite-fu-reverify-err-XXXXXX") || {
       echo "WARNING: 一時ファイルを確保できません。jq の stderr 本文は出力されません" >&2
       _rv_errf=""
     }
-    if _rv_out=$(jq -c '.non_blocking_findings[]?
-      | {id: (if ((.id // "") | test("^F-[0-9]{2,}$")) then .id else null end),
-         file, line, description, suggestion}' "$_rv_src" 2>"${_rv_errf:-/dev/null}"); then
+    # 全 JSON を昇順に流し込み、非空 id は後勝ちで畳む（id 欠落・書式外は畳まず全件残す）。
+    # 一部の JSON が parse 不能でも健全な側で続行し、全滅時だけ parse_failed に倒す
+    # （helper 側の json_undecidable と同じ判定境界）。
+    _rv_union=$(mktemp "${TMPDIR:-/tmp}/rite-fu-reverify-union-XXXXXX") && printf '[]\n' > "$_rv_union" || _rv_union=""
+    _rv_ok=0
+    if [ -n "$_rv_union" ]; then
+      for f in "${_rv_srcs[@]}"; do
+        if _part=$(jq -c 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings else error("not an array") end' "$f" 2>"${_rv_errf:-/dev/null}"); then
+          if _m=$(jq -c --argjson add "$_part" '
+            (. + $add) as $all
+            | ([$all[] | select((.id // "") != "")] | group_by(.id) | map(.[-1]))
+              + [$all[] | select((.id // "") == "")]' "$_rv_union" 2>/dev/null); then
+            printf '%s\n' "$_m" > "$_rv_union"; _rv_ok=$((_rv_ok + 1)); continue
+          fi
+        fi
+        echo "WARNING: 再検証用 JSON を解析できないため和集合から除外します: $f" >&2
+        _rv_bad=$((_rv_bad + 1))
+      done
+    fi
+    if [ -n "$_rv_union" ] && [ "$_rv_ok" -gt 0 ]; then
+      _rv_out=$(jq -c '.[]
+        | {id: (if ((.id // "") | test("^F-[0-9]{2,}$")) then .id else null end),
+           file, line, description, suggestion}' "$_rv_union" 2>/dev/null)
       # 0 件のとき printf は空行を 1 行出す。空行が finding として読まれないよう非空時だけ出力する。
       # 成功時は marker を出さない（判定後の `done` が唯一の成功 marker）
       # rationale: references/rationale.md#reverify-no-extract-marker
       if [ -n "$_rv_out" ]; then printf '%s\n' "$_rv_out"; fi
+      echo "[cleanup 6.0.V] union: json_total=${#_rv_srcs[@]}; json_parsed=${_rv_ok}; json_unparsed=${_rv_bad}" >&2
     else
-      echo "WARNING: 再検証用 JSON を解析できません: $_rv_src" >&2
+      echo "WARNING: 再検証用 JSON を 1 本も解析できません（対象 ${#_rv_srcs[@]} 本）" >&2
       if [ -n "$_rv_errf" ] && [ -s "$_rv_errf" ]; then head -5 "$_rv_errf" | sed 's/^/  /' >&2; fi
       echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=parse_failed"
     fi
+    if [ -n "$_rv_union" ]; then rm -f "$_rv_union"; fi
     # 末尾を `&&` 単独文にすると mktemp 失敗時にブロック全体が rc=1 で終わり、抽出が成功していても
     # 呼び出し側がステップ失敗と読む
     if [ -n "$_rv_errf" ]; then rm -f "$_rv_errf"; fi

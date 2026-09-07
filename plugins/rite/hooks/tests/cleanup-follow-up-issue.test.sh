@@ -8,8 +8,9 @@
 #   T-01/T-02 残存指摘ありで 1 件起票され、body に出典・finding 要点・marker が含まれる
 #             Projects status=Todo / enabled=true を args.json に pin
 #   T-03 起票 API 失敗で WARNING + exit 0 (cleanup を止めない)
-#   T-03g 最新が空なら古い nonempty から起票しない
-#   T-03u 最新 parse 不能は json_undecidable（古い nonempty から起票しない）
+#   T-03g 最新が空でも先行 cycle の指摘が和集合で転記される
+#   T-03u 一部 parse 不能でも健全側の和集合で起票する
+#   T-03x 全 JSON が parse 不能なら json_undecidable
 #   T-04 0 件で起票なし
 #   T-05 既存 marker があれば重複起票しない
 #   T-05c ラベル一覧に既存が居ない場合は起票する
@@ -29,7 +30,15 @@
 #   T-12 全件除外は all_resolved で起票せず、gh issue list も叩かない (AC-2)
 #   T-13 未知 id は WARNING のうえ既知 id の除外だけ適用して起票を続行する (AC-3)
 #   T-14 --exclude-ids 未指定 / 空文字列は既存挙動と完全一致 (AC-4)
-#   T-15 cleanup SKILL.md が再検証手順・3 値語彙・除外引数を持つ (AC-5 / AC-6)
+#   T-15 cleanup SKILL.md が再検証手順・3 値語彙・除外引数・和集合抽出を持つ (AC-5 / AC-6)
+#
+# Coverage (全 cycle 和集合、Issue 2593 の T-01..T-08):
+#   T-17 2 本の JSON の指摘が和集合で body に載る + 本数の stderr 1 行 (AC-1)
+#   T-18 同一 id は 1 件に畳み、内容は辞書順で後の JSON を採る (AC-2)
+#   T-19 --exclude-ids は和集合後に適用される (AC-3)
+#   T-20 和集合の全件除外は all_resolved (AC-4)
+#   T-21 全 JSON が 0 件なら no_findings (AC-7 非回帰)
+#   T-22 id 欠落 / 書式外 id の finding を畳んで落とさない (MUST NOT)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -187,26 +196,38 @@ assert_grep "T-03 failed marker" "$ERR" 'FOLLOW_UP_ISSUE=failed; reason=create_a
 assert_grep "T-03 WARNING" "$ERR" '起票に失敗'
 unset CREATE_RC
 
-echo "--- T-03g: 最新が空なら古い nonempty から起票しない ---"
+echo "--- T-03g: 最新が空でも先行 cycle の指摘は和集合で転記される (AC-1) ---"
 reset_stubs
 r=$(new_root t03g)
 put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
 put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[]}'
 run_target "$r"
 assert "T-03g exit 0" "0" "$RC"
-assert_grep "T-03g skipped no_findings" "$ERR" 'reason=no_findings; pr=9'
-assert "T-03g create 0 回" "0" "$(create_count)"
+assert_grep "T-03g created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert "T-03g create 1 回" "1" "$(create_count)"
+assert_grep "T-03g 先行 cycle の finding が body に載る" "$STUB_DIR/body.md" '実測なしの指摘本文'
 
-echo "--- T-03u: 最新 parse 不能は json_undecidable ---"
+echo "--- T-03u: 一部 parse 不能でも健全側で起票する (AC-5) ---"
 reset_stubs
 r=$(new_root t03u)
 put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
 put_json "$r" "9-20260102120000.json" 'not-json{'
 run_target "$r"
 assert "T-03u exit 0" "0" "$RC"
-assert_grep "T-03u json_undecidable" "$ERR" 'reason=json_undecidable; pr=9'
-assert_grep "T-03u WARNING" "$ERR" '判定できません'
-assert "T-03u create 0 回" "0" "$(create_count)"
+assert_grep "T-03u WARNING (和集合から除外)" "$ERR" '和集合から除外します'
+assert_grep "T-03u created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert "T-03u create 1 回" "1" "$(create_count)"
+assert_grep "T-03u 健全側の finding が body に載る" "$STUB_DIR/body.md" '実測なしの指摘本文'
+
+echo "--- T-03x: 全 JSON が parse 不能なら json_undecidable ---"
+reset_stubs
+r=$(new_root t03x)
+put_json "$r" "9-20260101120000.json" 'not-json{'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":"abc"}'
+run_target "$r"
+assert "T-03x exit 0" "0" "$RC"
+assert_grep "T-03x json_undecidable" "$ERR" 'reason=json_undecidable; pr=9'
+assert "T-03x create 0 回" "0" "$(create_count)"
 
 echo "--- T-04: 0 件で起票なし ---"
 reset_stubs
@@ -517,7 +538,11 @@ else
   # 抽出は id 書式で絞る (書式外 id がリテラル置換先でコマンド置換として展開されるのを防ぐ)
   assert_grep "T-15 抽出 jq が id 書式で絞る" "$CLEANUP_MD" 'test\("\^F-\[0-9\]\{2,\}\$"\)'
   # 1 finding = 1 行の JSON で出す (TSV は description の改行で行が割れ id 対応が崩れる)
-  assert_grep "T-15 抽出は 1 finding = 1 行の JSON" "$CLEANUP_MD" "jq -c '\.non_blocking_findings"
+  assert_grep "T-15 抽出は 1 finding = 1 行の JSON" "$CLEANUP_MD" "jq -c '\.\[\]$"
+  # 再検証も helper と同じ和集合を見る (最新 1 本だと転記集合と食い違う)
+  assert_grep "T-15 再検証は全 JSON の和集合" "$CLEANUP_MD" '全ファイルの `non_blocking_findings\[\]` を和集合'
+  assert_grep "T-15 和集合は非空 id だけ後勝ちで畳む" "$CLEANUP_MD" 'group_by\(\.id\) \| map\(\.\[-1\]\)'
+  assert_not_grep "T-15 最新 1 本を選ぶループを残さない" "$CLEANUP_MD" '_rv_src="\$f"; _rv_base="\$b"'
   # reason 語彙を helper に揃える (合成 reason は誤った原因を完了報告へ転記する)
   assert_grep "T-15 reason=state_root_unresolved" "$CLEANUP_MD" 'reason=state_root_unresolved'
   assert_grep "T-15 reason=jq_missing" "$CLEANUP_MD" 'FOLLOW_UP_REVERIFY=unavailable; reason=jq_missing'
@@ -581,6 +606,77 @@ assert_grep "T-16 起票は継続する" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=
 # 既知 id の除外も効く (無言の全件転記にならない)
 assert_grep "T-16 残存 id を転記" "$STUB_DIR/body.md" 'F-01'
 assert_not_grep "T-16 除外した既知 id は body に無い" "$STUB_DIR/body.md" 'F-05'
+
+echo "--- T-17: 2 本の JSON の指摘が和集合で body に載る (AC-1 / T-01) ---"
+reset_stubs
+r=$(new_root t17)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-05","reviewer":"a","severity":"LOW","file":"a.md","line":1,"description":"先行 cycle の指摘","suggestion":"先行の提案"},{"id":"F-09","reviewer":"a","severity":"LOW","file":"a.md","line":2,"description":"先行 cycle の指摘 2","suggestion":"先行の提案 2"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-11","reviewer":"b","severity":"LOW","file":"b.md","line":3,"description":"後続 cycle の指摘","suggestion":"後続の提案"}]}'
+run_target "$r"
+assert "T-17 exit 0" "0" "$RC"
+assert_grep "T-17 created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert_grep "T-17 F-05 が載る" "$STUB_DIR/body.md" '先行 cycle の指摘'
+assert_grep "T-17 F-09 が載る" "$STUB_DIR/body.md" '先行 cycle の指摘 2'
+assert_grep "T-17 F-11 が載る" "$STUB_DIR/body.md" '後続 cycle の指摘'
+# SHOULD: どの範囲から転記したかを 1 行で出す
+assert_grep "T-17 和集合の本数を stderr へ出す" "$ERR" 'union: pr=9; json_total=2; json_parsed=2; json_unparsed=0'
+
+echo "--- T-18: 同一 id は 1 件に畳み、内容は後の JSON を採る (AC-2) ---"
+reset_stubs
+r=$(new_root t18)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-05","reviewer":"a","severity":"LOW","file":"a.md","line":1,"description":"古い cycle の本文","suggestion":"古い提案"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-05","reviewer":"b","severity":"LOW","file":"b.md","line":7,"description":"新しい cycle の本文","suggestion":"新しい提案"}]}'
+run_target "$r"
+assert "T-18 exit 0" "0" "$RC"
+assert "T-18 F-05 の見出しは 1 回だけ" "1" \
+  "$(grep -c '^### F-05 ' "$STUB_DIR/body.md" | tr -d ' ')"
+assert_grep "T-18 後の JSON の本文を採る" "$STUB_DIR/body.md" '新しい cycle の本文'
+assert_not_grep "T-18 古い JSON の本文は残さない" "$STUB_DIR/body.md" '古い cycle の本文'
+
+echo "--- T-19: --exclude-ids は和集合後に適用される (AC-3) ---"
+reset_stubs
+r=$(new_root t19)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-01","reviewer":"a","severity":"LOW","file":"a.md","line":1,"description":"残す指摘 1","suggestion":"s1"},{"id":"F-02","reviewer":"a","severity":"LOW","file":"a.md","line":2,"description":"消す指摘 2","suggestion":"s2"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-03","reviewer":"b","severity":"LOW","file":"b.md","line":3,"description":"残す指摘 3","suggestion":"s3"},{"id":"F-04","reviewer":"b","severity":"LOW","file":"b.md","line":4,"description":"消す指摘 4","suggestion":"s4"},{"id":"F-05","reviewer":"b","severity":"LOW","file":"b.md","line":5,"description":"残す指摘 5","suggestion":"s5"}]}'
+run_target "$r" --exclude-ids "F-02,F-04"
+assert "T-19 exit 0" "0" "$RC"
+assert_grep "T-19 created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert_grep "T-19 F-01 が残る" "$STUB_DIR/body.md" '残す指摘 1'
+assert_grep "T-19 F-03 が残る" "$STUB_DIR/body.md" '残す指摘 3'
+assert_grep "T-19 F-05 が残る" "$STUB_DIR/body.md" '残す指摘 5'
+assert_not_grep "T-19 F-02 は落ちる" "$STUB_DIR/body.md" '消す指摘 2'
+assert_not_grep "T-19 F-04 は落ちる" "$STUB_DIR/body.md" '消す指摘 4'
+
+echo "--- T-20: 和集合の全件除外は all_resolved (AC-4) ---"
+reset_stubs
+r=$(new_root t20)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-01","reviewer":"a","severity":"LOW","file":"a.md","line":1,"description":"d1","suggestion":"s1"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-02","reviewer":"b","severity":"LOW","file":"b.md","line":2,"description":"d2","suggestion":"s2"},{"id":"F-03","reviewer":"b","severity":"LOW","file":"b.md","line":3,"description":"d3","suggestion":"s3"}]}'
+run_target "$r" --exclude-ids "F-01,F-02,F-03"
+assert "T-20 exit 0" "0" "$RC"
+assert_grep "T-20 all_resolved" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_resolved; pr=9'
+assert "T-20 create 0 回" "0" "$(create_count)"
+
+echo "--- T-21: 全 JSON が 0 件なら no_findings (AC-7 非回帰) ---"
+reset_stubs
+r=$(new_root t21)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[]}'
+run_target "$r"
+assert "T-21 exit 0" "0" "$RC"
+assert_grep "T-21 no_findings" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=no_findings; pr=9'
+assert "T-21 create 0 回" "0" "$(create_count)"
+
+echo "--- T-22: id 欠落 / 書式外 id の finding を畳んで落とさない ---"
+reset_stubs
+r=$(new_root t22)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"reviewer":"a","severity":"LOW","file":"a.md","line":1,"description":"id 無しの指摘 A","suggestion":"sA"},{"reviewer":"a","severity":"LOW","file":"a.md","line":2,"description":"id 無しの指摘 B","suggestion":"sB"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"H-01","reviewer":"b","severity":"LOW","file":"b.md","line":3,"description":"書式外 id の指摘","suggestion":"sC"}]}'
+run_target "$r"
+assert "T-22 exit 0" "0" "$RC"
+assert_grep "T-22 id 無し A が残る" "$STUB_DIR/body.md" 'id 無しの指摘 A'
+assert_grep "T-22 id 無し B が残る" "$STUB_DIR/body.md" 'id 無しの指摘 B'
+assert_grep "T-22 書式外 id が残る" "$STUB_DIR/body.md" '書式外 id の指摘'
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?

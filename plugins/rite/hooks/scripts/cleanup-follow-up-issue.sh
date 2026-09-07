@@ -5,6 +5,10 @@
 # follow-up Issue を 1 件起票する。0 件なら起票しない。同一 PR 由来の既存 follow-up があれば
 # 重複起票しない。cleanup 全体は止めない (引数不正のみ exit 1)。
 #
+# 転記対象は**同一 PR の全 JSON の `non_blocking_findings[]` の和集合**。各 JSON はその cycle の
+# 観測にすぎず、最新 1 本は残存集合ではない (先行 cycle にのみ載る指摘を取りこぼす)。解消済みの
+# 除外は cleanup ステップ 6.0.V の再検証が `--exclude-ids` で担う。
+#
 # 転記元は archive 前の JSON。archive helper は本スクリプトの後に走る (D-04)。
 #
 # Usage:
@@ -150,21 +154,45 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-# 存在確認後の basename 辞書順最大を 1 本だけ判定する (timestamp 名は YYYYMMDDHHMMSS)。
-# nonempty だけから最新を採ると、最終 cycle が 0 件でも古い指摘から起票する。
+# 同一 PR の全 JSON の `non_blocking_findings[]` を和集合して転記対象にする。
+# `non_blocking_findings[]` は**その cycle の観測**であり、最終 cycle の JSON は「その PR の
+# 残存集合」ではない。最新 1 本だけを読むと、先行 cycle にのみ載る指摘が HEAD に残存していても
+# follow-up に載らず機械経路から黙って消える。残存判定 (解消済みの除外) は cleanup ステップ
+# 6.0.V の再検証が `--exclude-ids` で担い、本 helper は「全 cycle で記録された集合」を作る。
+#
+# 走査順は basename 昇順に固定し、同一 id が複数 JSON に現れたら**後の JSON (= 新しい cycle) の
+# 内容で上書き**する。`unique_by` は先頭を採るため、それに任せると古い cycle の本文が残る。
 # glob 未展開の pattern 文字列は実在検査で弾く (archive-or-rm と同型)。
-source_json=""
-source_base=""
 findings_json="[]"
 matched=0
+parsed=0
+unparsed=0
+rite_tempfile_new union_tmp "fu-union" || exit 1
+printf '[]\n' > "$union_tmp"
+# bash の glob 展開は basename 昇順で確定するため、この for がそのまま「後の cycle が後勝ち」になる。
 for f in "$results_dir/${PR_NUMBER}"-*.json*; do
   { [ -e "$f" ] || [ -L "$f" ]; } || continue
-  matched=1
-  base="${f##*/}"
-  if [ -z "$source_base" ] || [ "$base" \> "$source_base" ]; then
-    source_json="$f"
-    source_base="$base"
+  matched=$((matched + 1))
+  if ! part=$(jq -c 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings else error("non_blocking_findings is not an array") end' "$f" 2>/dev/null); then
+    # 部分的な parse 失敗で全滅させない。健全な側の和集合で続行し、全滅時だけ json_undecidable。
+    echo "WARNING: レビュー結果 JSON を読めないため和集合から除外します (PR #${PR_NUMBER}): $f" >&2
+    unparsed=$((unparsed + 1))
+    continue
   fi
+  # 畳むのは**非空 id を持つ finding だけ**。id 欠落 / 空の finding を同じ key で group_by すると
+  # 別々の指摘が 1 件に潰れて黙って消える (MUST NOT: 書式外 id の finding を配列から落とさない)。
+  # 非空 id 側は `.[-1]` で後勝ちにする (4.5: 内容が食い違うときは辞書順で後の JSON を採る)。
+  if ! merged=$(jq -c --argjson add "$part" '
+    (. + $add) as $all
+    | ([$all[] | select((.id // "") != "")] | group_by(.id) | map(.[-1]))
+      + [$all[] | select((.id // "") == "")]
+    ' "$union_tmp" 2>/dev/null); then
+    echo "WARNING: 和集合の統合に失敗したため当該 JSON を除外します (PR #${PR_NUMBER}): $f" >&2
+    unparsed=$((unparsed + 1))
+    continue
+  fi
+  printf '%s\n' "$merged" > "$union_tmp"
+  parsed=$((parsed + 1))
 done
 
 if [ "$matched" -eq 0 ]; then
@@ -173,33 +201,20 @@ if [ "$matched" -eq 0 ]; then
   exit 0
 fi
 
-jq_err=$(jq -e '.non_blocking_findings | type == "array"' "$source_json" 2>&1 >/dev/null)
-jq_rc=$?
-case "$jq_rc" in
-  0)
-    if ! findings_json=$(jq -c '.non_blocking_findings' "$source_json"); then
-      echo "WARNING: 最新レビュー結果 JSON から non_blocking_findings[] を抽出できません (PR #${PR_NUMBER}): $source_json" >&2
-      emit_failed json_undecidable
-      exit 0
-    fi
-    if ! printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; then
-      emit_skip no_findings
-      exit 0
-    fi
-    ;;
-  1)
-    echo "WARNING: 最新レビュー結果 JSON の non_blocking_findings が配列ではありません (PR #${PR_NUMBER}): $source_json" >&2
-    [ -n "$jq_err" ] && printf '%s\n' "$jq_err" | sed 's/^/  /' >&2
-    emit_failed json_undecidable
-    exit 0
-    ;;
-  *)
-    echo "WARNING: 最新レビュー結果 JSON を判定できません (PR #${PR_NUMBER}): $source_json (jq rc=${jq_rc})" >&2
-    [ -n "$jq_err" ] && printf '%s\n' "$jq_err" | sed 's/^/  /' >&2
-    emit_failed json_undecidable
-    exit 0
-    ;;
-esac
+if [ "$parsed" -eq 0 ]; then
+  echo "WARNING: PR #${PR_NUMBER} のレビュー結果 JSON ${matched} 本すべてを判定できません。follow-up 起票を skip します" >&2
+  emit_failed json_undecidable
+  exit 0
+fi
+
+# どの範囲から転記したかを完了報告から追えるようにする (本数 + 除外された本数)
+echo "[cleanup-follow-up-issue] union: pr=${PR_NUMBER}; json_total=${matched}; json_parsed=${parsed}; json_unparsed=${unparsed}" >&2
+
+findings_json=$(cat "$union_tmp")
+if ! printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; then
+  emit_skip no_findings
+  exit 0
+fi
 
 # 再検証による除外は上の JSON 判定層とは独立の層なので `case` の arm 内に入れない
 # (arm 内へ入れると JSON 判定が degraded に降りた経路で一度も走らない)。
