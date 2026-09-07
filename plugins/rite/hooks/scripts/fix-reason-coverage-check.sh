@@ -2,7 +2,8 @@
 # fix-reason-coverage-check.sh
 #
 # Verify that every `WM_UPDATE_FAILED=1; reason=<value>` emitted in
-# skills/fix/SKILL.md also appears as a row in that file's reason table.
+# skills/fix/SKILL.md and scripts/fix-work-memory-update.sh also appears as a
+# row in the skill file's reason table.
 #
 # The table is what a reader consults to interpret a `[fix:pushed-wm-stale]`
 # outcome. A reason emitted by the flow but missing from the table leaves that
@@ -37,6 +38,7 @@ set -uo pipefail
 
 REPO_ROOT=""
 TARGET="plugins/rite/skills/fix/SKILL.md"
+HELPER="plugins/rite/scripts/fix-work-memory-update.sh"
 
 usage() {
   cat <<'EOF'
@@ -44,8 +46,10 @@ Usage: fix-reason-coverage-check.sh [options]
 
 Options:
   --repo-root DIR    Repository root (default: git rev-parse --show-toplevel)
-  --target FILE      File to check, relative to repo root
-                     (default: plugins/rite/skills/fix/SKILL.md)
+  --target FILE      Skill emit source and reason table, relative to repo root
+                     (default: plugins/rite/skills/fix/SKILL.md). The helper
+                     plugins/rite/scripts/fix-work-memory-update.sh under the
+                     same repo root is always checked as an additional source.
   -h, --help         Show this help
 
 Exit codes:
@@ -76,21 +80,26 @@ if [ ! -f "$TARGET" ]; then
   exit 2
 fi
 
-emitted=$(grep -oE 'WM_UPDATE_FAILED=1; reason=[a-z_][a-z_0-9]*' "$TARGET" \
-  | sed 's/.*reason=//' | sort -u)
-
-# An empty left side makes the comm below produce no output, which is
-# indistinguishable from "every emitted reason is documented" — the check would
-# report success without having verified anything. The emit side is matched by a
-# regex against prose markdown, so a change to how fix.md writes the marker
-# silently turns this whole check into a no-op. Fail as an invocation error
-# instead: rc=2 already means "could not run the check" in this contract.
-if [ -z "$emitted" ]; then
-  echo "ERROR: $TARGET から WM_UPDATE_FAILED emit を 1 件も抽出できませんでした" >&2
-  echo "  emit 記法が変わった疑いがあります (grep パターン: 'WM_UPDATE_FAILED=1; reason=[a-z_][a-z_0-9]*')" >&2
-  echo "  --target が正しいか、fix.md 側の emit 記法を確認してください" >&2
-  exit 2
-fi
+# Check each source separately: a surviving caller emit must not conceal a
+# missing helper or a changed marker format in either source.
+emitted=""
+for source in "$TARGET" "$HELPER"; do
+  if [ ! -f "$source" ]; then
+    echo "ERROR: emit source not found: $source (repo root: $REPO_ROOT)" >&2
+    exit 2
+  fi
+  source_emitted=$(grep -oE 'WM_UPDATE_FAILED=1; reason=[a-z_][a-z_0-9]*' "$source" \
+    | sed 's/.*reason=//' | sort -u)
+  source_rc=$?
+  if [ "$source_rc" -ne 0 ] || [ -z "$source_emitted" ]; then
+    echo "ERROR: $source から WM_UPDATE_FAILED emit を 1 件も抽出できませんでした" >&2
+    echo "  emit 記法・ファイルの読取可否・--repo-root/--target を確認してください" >&2
+    exit 2
+  fi
+  emitted="${emitted}${source_emitted}
+"
+done
+emitted=$(printf '%s' "$emitted" | sort -u)
 
 # Table rows start at the `| reason | 発生...` header and end at the first line
 # that does not open with a pipe. The trailing `sed` drops shell-interpolated
