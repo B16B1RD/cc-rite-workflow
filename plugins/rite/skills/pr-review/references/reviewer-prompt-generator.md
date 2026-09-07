@@ -22,6 +22,11 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 ## 差分
 {diff_content}
 
+## CI 状態
+{ci_status}
+
+失敗 job が本 PR の変更ファイルに対応する場合は詳細 URL のログを確認し、変更に起因する failing test を `Verification: failing_test <path> => <失敗出力>` と call site の根拠付きで指摘する。job 名・赤い check だけでは実測アンカーにしない。無関係な flaky や allowed failure を一律 blocking にせず、既存の採否基準に従う。pending は待たず、CI の rerun は実行しない。
+
 ## 関連 Issue の仕様
 {issue_spec}
 
