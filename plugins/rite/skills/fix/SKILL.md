@@ -2133,262 +2133,36 @@ If a related Issue exists, automatically update the work memory.
 
 #### 4.5.1 Identify Related Issue
 
-Identify the related Issue from the PR or branch name.
-
-**Extraction priority:**
-1. Search for `Closes #XX`, `Fixes #XX`, `Resolves #XX` patterns in the **PR body** (priority)
-2. If not found in the PR body, search for the `issue-{number}` pattern in the **branch name**
-
-```bash
-# 1. まず PR 本文から Closes #XX パターンを抽出（優先）
-# ステップ 1.1 で --json に body を含めて取得済みのため、再取得不要
-# trap + cleanup パターンの canonical 説明は ../../references/bash-trap-patterns.md#signal-specific-trap-template 参照
-# rationale: references/design-rationale.md#work-memory-update-rationale
-pr_body_tmp=""
-pr_body_grep_err=""
-branch_grep_err=""
-# wm_emit_done フラグ: retained flag の重複 emit と branch fallback 誤起動を防ぐ gate
-# 0: まだ emit していない / 1: 既に emit 済み → 以降の retained flag emit と issue_number 依存処理を skip
-wm_emit_done=0
-_rite_fix_phase451_cleanup() {
-  rm -f "${pr_body_tmp:-}" "${pr_body_grep_err:-}" "${branch_grep_err:-}"
-}
-trap 'rc=$?; _rite_fix_phase451_cleanup; exit $rc' EXIT
-trap '_rite_fix_phase451_cleanup; exit 130' INT
-trap '_rite_fix_phase451_cleanup; exit 143' TERM
-trap '_rite_fix_phase451_cleanup; exit 129' HUP
-
-pr_body_tmp=$(mktemp) || {
-  echo "ERROR: pr_body_tmp の mktemp に失敗しました" >&2
-  echo "対処: /tmp の inode 枯渇 / read-only filesystem / permission 拒否のいずれかを確認してください" >&2
-  echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_pr_body_tmp" >&2
-  exit 1
-}
-# HEREDOC 経由で pr_body を書き出す。PR body は外部入力のため 'PRBODY_EOF' (single-quote 付き
-# delimiter) で shell expansion を完全抑制することが必須 (command injection 防止)
-cat > "$pr_body_tmp" <<'PRBODY_EOF'
-{pr_body}
-PRBODY_EOF
-if [ ! -s "$pr_body_tmp" ]; then
-  echo "ERROR: pr_body_tmp が空または存在しません: $pr_body_tmp" >&2
-  echo "対処: PR body 自体が空であった可能性があります (gh pr view --json body の出力を確認)" >&2
-  echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=pr_body_tmp_empty_or_missing; issue_number={issue_number}" >&2
-  exit 1
-fi
-
-# grep の exit code を明示的に区別 (exit 0: マッチあり / 1: マッチなし → fallback / 2: IO エラー)。
-# grep は pipeline 化せず独立 if-else で実行し rc を直接 case 分岐すること
-# (pipefail は rightmost non-zero を返すため先頭 grep の rc=2 を捕捉できない)。
-# rationale: references/design-rationale.md#work-memory-update-rationale
-pr_body_grep_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-pr-body-grep-err-XXXXXX") || {
-  echo "ERROR: pr_body_grep_err 一時ファイルの作成に失敗" >&2
-  echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_pr_body_grep_err" >&2
-  exit 1
-}
-issue_number=""
-if closes_raw=$(grep -oE '(Closes|Fixes|Resolves) #[0-9]+' "$pr_body_tmp" 2>"$pr_body_grep_err"); then
-  # マッチあり: 先頭 1 件から数字部分を抽出 (sed -n の失敗は空文字結果として安全)
-  issue_number=$(printf '%s\n' "$closes_raw" | head -1 | sed -n 's/.*#\([0-9][0-9]*\).*/\1/p')
-else
-  pr_body_grep_rc=$?
-  case "$pr_body_grep_rc" in
-    1)
-      # PR 本文に Closes/Fixes/Resolves パターンなし — fallback (ブランチ名抽出) へ
-      # 注: stderr ファイルが空でない場合 (grep が warning を出した等) は念のため WARNING 表示
-      if [ -s "$pr_body_grep_err" ]; then
-        echo "WARNING: pr_body grep が exit 1 (no match) で完了しましたが stderr に出力がありました:" >&2
-        head -3 "$pr_body_grep_err" | sed 's/^/  /' >&2
-      fi
-      :
-      ;;
-    *)
-      # IO/権限/構文エラー: soft failure (exit 1 しない — retained flag のみ emit し、
-      # ステップ 5.1 が [fix:pushed-wm-stale] を出力する)。
-      # rationale: references/design-rationale.md#work-memory-update-rationale
-      echo "ERROR: PR 本文の grep が IO/権限/構文エラーで失敗しました (rc=$pr_body_grep_rc)" >&2
-      echo "詳細 (stderr 先頭 5 行):" >&2
-      head -5 "$pr_body_grep_err" | sed 's/^/  /' >&2
-      echo "  対処: 環境の grep バイナリと権限を確認後、再実行してください" >&2
-      echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
-      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=pr_body_grep_io_error; rc=$pr_body_grep_rc" >&2
-      # wm_emit_done=1: 下流の branch fallback 誤起動と retained flag の 2 回連続 emit を防ぐ
-      wm_emit_done=1
-      issue_number=""  # branch fallback も skip して下流の WM_UPDATE_FAILED 経路に流す (M-5 対応)
-      ;;
-  esac
-fi
-
-# 2. PR 本文で見つからない場合、ブランチ名から抽出。
-# git branch は pipeline 化せず if-else で rc を直接捕捉する (pipefail 罠回避、同上 rationale)。
-# wm_emit_done guard: IO error 経路で emit 済みなら branch fallback を skip する
-if [[ -z "$issue_number" ]] && [ "$wm_emit_done" = "0" ]; then
-  branch_grep_err=$(mktemp "${TMPDIR:-/tmp}/rite-fix-branch-grep-err-XXXXXX") || {
-    echo "ERROR: branch_grep_err 一時ファイルの作成に失敗" >&2
-    echo "  影響: work memory 更新不可 (silent regression 防止のため retained flag を emit)" >&2
-    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=mktemp_failed_branch_grep_err" >&2
-    exit 1
-  }
-  if branch_name=$(git branch --show-current 2>"$branch_grep_err"); then
-    # branch 取得成功: issue-N パターンを抽出 (sed -n の失敗は空文字結果として安全)
-    issue_number=$(printf '%s\n' "$branch_name" | sed -n 's/.*issue-\([0-9][0-9]*\).*/\1/p')
-    # ブランチ名にも issue-N パターンがない場合は issue_number は空のまま (下流で WM_UPDATE_FAILED emit)
-  else
-    branch_show_current_rc=$?
-    # pr_body_grep_io_error と同根の soft failure (retained flag のみ emit しコミット済み fix を保護)
-    echo "ERROR: branch 名取得 (git branch --show-current) が IO/権限エラーで失敗しました (rc=$branch_show_current_rc)" >&2
-    echo "詳細 (stderr 先頭 5 行):" >&2
-    head -5 "$branch_grep_err" | sed 's/^/  /' >&2
-    echo "  対処: 環境の git バイナリと権限、cwd が git repo であることを確認後、再実行してください" >&2
-    echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
-    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=branch_grep_io_error; rc=$branch_show_current_rc" >&2
-    wm_emit_done=1
-    issue_number=""  # 下流 block は wm_emit_done guard で skip されるため stale WM 経路へ流れる
-  fi
-fi
-```
-
-
-`{pr_body}` は事前置換。**`<<'PRBODY_EOF'` 必須** (外部入力の expansion 禁止)。
+`scripts/fix-work-memory-update.sh` が PR 本文の `Closes #XX` / `Fixes #XX` / `Resolves #XX` の先頭候補を優先し、通常の未一致だけでブランチの `issue-{number}` へ fallback する。未特定・I/O 失敗では更新せず `WM_UPDATE_FAILED=1` を emit する。
 rationale: references/design-rationale.md#work-memory-update-rationale
-
-If no Issue number is found, display a warning **and emit a `WM_UPDATE_FAILED=1` retained flag** so the caller (`/rite:iterate` review-fix loop) treats the result as `[fix:pushed-wm-stale]` instead of silently treating it as `[fix:pushed]`:
-
-```bash
-# issue_number 抽出失敗時: WARNING + retained flag emit (ステップ 5.1 が [fix:pushed-wm-stale] を出力)。
-# wm_emit_done guard で重複 emit を防ぐ。
-# rationale: references/design-rationale.md#work-memory-update-rationale
-if [[ -z "$issue_number" ]] && [ "$wm_emit_done" = "0" ]; then
-  echo "⚠️ Issue 番号が特定できないため作業メモリ更新をスキップしました" >&2
-  echo "  PR 本文に Closes/Fixes/Resolves #XX が含まれていないか、ブランチ名に issue-{number} パターンがありません。" >&2
-  echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
-  echo "  対処: ステップ 5.1 で WM_UPDATE_FAILED=1 を context に set し、[fix:pushed-wm-stale] を出力する" >&2
-  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=issue_number_not_found" >&2
-  wm_emit_done=1
-fi
-```
-
 
 #### 4.5.2 Retrieve and Update Work Memory Comment
 
-WM 更新は `issue-comment-wm-sync.sh` の **two transforms** (`update-progress` / `append-section`)。caller は base_branch 解決と `git diff` markdown のみ。`no_comment` 以外の skipped/error を `WM_UPDATE_FAILED` にマップし、5.1 が `[fix:pushed-wm-stale]` にする。
+進捗ステータスはステップ 3 の検証済み変更一覧から判断し、不足時は `git diff --name-status` を取得する。履歴本文は 4.5.3 のテンプレートから生成する。本文をコードへ展開せず、Write ツールで下記の所有ファイルへ保存する（履歴は `### レビュー対応履歴` 見出しなし）。別 Bash のローカル変数は引き継がない。
+
+1. `mktemp` で PR 本文ファイルを確保する。失敗時は `WM_UPDATE_FAILED=1; reason=mktemp_failed_pr_body_tmp` を stderr に出し、更新を実行せず 5.1 へ進む。取得済み PR 本文を保存し、空/書込失敗は空ファイルとして helper に渡す。
+2. `mktemp` で履歴ファイルを確保し本文を保存する。準備失敗時はパスを空文字にする。helper は進捗更新成功後にだけ `wm_sync_history_failed` と判定するため、この時点で失敗フラグを追加しない。
+3. 以下を単一 Bash 呼び出しで実行する。`{pr_body_file}` / `{history_file}` は今回確保したパス（履歴準備失敗は空文字）、`{plugin_root}` は解決済みの絶対パスで置換する。helper が所有する一時ファイルは helper 自身が回収する。
 
 ```bash
-# ⚠️ このブロック全体を単一の Bash ツール呼び出しで実行すること。
-# shim は同一 invocation 内で helper の status= 出力を読み取る。{plugin_root} はリテラル値で埋め込む。
-# trap + cleanup の canonical 説明は ../../references/bash-trap-patterns.md#signal-specific-trap-template 参照
-changed_files_tmp=""
-history_tmp=""
-diff_err=""
-wm_sync_err=""
-_rite_fix_phase452_cleanup() { rm -f "${changed_files_tmp:-}" "${history_tmp:-}" "${diff_err:-}" "${wm_sync_err:-}"; }
-trap 'rc=$?; _rite_fix_phase452_cleanup; exit $rc' EXIT
-trap '_rite_fix_phase452_cleanup; exit 130' INT
-trap '_rite_fix_phase452_cleanup; exit 143' TERM
-trap '_rite_fix_phase452_cleanup; exit 129' HUP
-
-# base_branch 解決 (簡素化): grep+sed で抽出、空なら develop に fallback。
-# 誤解決しても git diff 失敗として表面化する (silent fallback にならない)
-base_branch=$(grep -E '^\s*base:' rite-config.yml 2>/dev/null | head -1 \
-  | sed 's/.*base:[[:space:]]*"\?\([^"]*\)"\?.*/\1/')
-[ -z "$base_branch" ] && base_branch="develop"
-
-# 変更ファイル markdown を changed-files-file に生成する。
-# changed-files-file 作成 or git diff が失敗 → git_diff_failed を emit し helper を呼ばない
-# (comment 不変 = 原実装が git diff 失敗時に PATCH 前で exit した挙動と等価)。
-git_diff_failed=0
-if ! changed_files_tmp=$(mktemp); then
-  echo "ERROR: changed-files-file の mktemp に失敗 (git diff 不能)" >&2
-  echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
-  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=git_diff_failed; issue_number={issue_number}" >&2
-  git_diff_failed=1
-fi
-if [ "$git_diff_failed" -eq 0 ]; then
-  diff_err=$(mktemp 2>/dev/null) || diff_err=""
-  if changed_files_raw=$(git diff --name-status "origin/${base_branch}...HEAD" 2>"${diff_err:-/dev/null}"); then
-    printf '%s\n' "$changed_files_raw" | while IFS=$'\t' read -r status file; do
-      [ -z "$status" ] && continue
-      case "$status" in
-        A) echo "- \`${file}\` - 追加" ;;
-        M) echo "- \`${file}\` - 変更" ;;
-        D) echo "- \`${file}\` - 削除" ;;
-        R*) echo "- \`${file}\` - 名前変更" ;;
-        *) echo "- \`${file}\` - ${status}" ;;
-      esac
-    done > "$changed_files_tmp"
-  else
-    echo "WARNING: git diff --name-status \"origin/${base_branch}...HEAD\" が失敗しました。" >&2
-    [ -n "$diff_err" ] && [ -s "$diff_err" ] && head -3 "$diff_err" | sed 's/^/  /' >&2
-    echo "  考えられる原因: shallow clone (base branch 未 fetch) / 無効な base branch 名 / git リポジトリ外" >&2
-    echo "  対処: git fetch origin ${base_branch} を実行後に再試行、または rite-config.yml の branch.base を確認" >&2
-    echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
-    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=git_diff_failed; issue_number={issue_number}" >&2
-    git_diff_failed=1
-  fi
-  [ -n "$diff_err" ] && rm -f "$diff_err"
-fi
-
-# helper の status= 行から state (success/skipped/error) と reason を抽出するヘルパ。
-# sed を `reason=\(...` 形式で書くことで、drift-check P2/P5 が helper 由来の reason (no_comment 等)
-# を fix.md の emit として誤検出しないようにする (`reason=` の直後が `[a-z_]` でないと両 awk/grep
-# の抽出パターンにマッチしない)。
-wm_state_of() { printf '%s\n' "$1" | sed -n 's/^status=\([a-z]*\).*/\1/p' | head -1; }
-wm_reason_of() { printf '%s\n' "$1" | sed -n 's/.*reason=\([a-z_]*\).*/\1/p' | head -1; }
-
-if [ "$git_diff_failed" -eq 0 ]; then
-  # helper の stderr (root-cause 診断) を退避する (pr-review.md ステップ 6.2 と同じ stderr-capture 規約)。
-  # mktemp 失敗時は /dev/null に fallback する。
-  wm_sync_err=$(mktemp 2>/dev/null) || wm_sync_err=""
-  # --- transform 1: 進捗サマリー + 変更ファイル更新 ---
-  # {impl_status} / {test_status} / {doc_status} は Claude が git diff 結果から判定して substitute する。
-  wm_progress_out=$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
-    --issue {issue_number} \
-    --transform update-progress \
-    --impl-status "{impl_status}" --test-status "{test_status}" --doc-status "{doc_status}" \
-    --changed-files-file "$changed_files_tmp" 2>"${wm_sync_err:-/dev/null}")
-  wm_p_state=$(wm_state_of "$wm_progress_out")
-  wm_p_reason=$(wm_reason_of "$wm_progress_out")
-
-  if [ "$wm_p_state" != "success" ] && [ "$wm_p_reason" != "no_comment" ]; then
-    # update-progress が no_comment 以外の skipped/error (body 取得失敗 / safety check 失敗 /
-    # transform 失敗 / PATCH 失敗を helper が内部処理し status= で通知) → stale guard。
-    echo "ERROR: 進捗サマリー更新 (issue-comment-wm-sync update-progress) が失敗 (helper status: $wm_progress_out)" >&2
-    [ -n "$wm_sync_err" ] && [ -s "$wm_sync_err" ] && { echo "  helper stderr (root-cause、先頭 5 行):" >&2; head -5 "$wm_sync_err" | sed 's/^/    /' >&2; }
-    echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
-    echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=wm_sync_progress_failed; issue_number={issue_number}" >&2
-  elif [ "$wm_p_reason" = "no_comment" ]; then
-    # work memory comment が未投稿 (初回 fix / 削除済み) の legitimate no-op。
-    # PATCH 対象が無いため append-section も skip する (WM_UPDATE_FAILED は立てない)。
-    echo "INFO: work memory comment が未検出のため WM 更新を skip (legitimate no-op)" >&2
-  else
-    # --- transform 2: レビュー対応履歴の追記 ---
-    # content-file には 4.5.3 のエントリ本体のみを書く (先頭の `### レビュー対応履歴` 見出しは
-    # append-section が既存セクションを特定して追記するため含めない)。
-    if history_tmp=$(mktemp); then
-      cat > "$history_tmp" << 'HISTORY_EOF'
-{4.5.3 のエントリを実際の値で置換して記述。先頭に `### レビュー対応履歴` 見出しは付けない}
-HISTORY_EOF
-      wm_history_out=$(bash {plugin_root}/hooks/issue-comment-wm-sync.sh update \
-        --issue {issue_number} \
-        --transform append-section --section "レビュー対応履歴" --content-file "$history_tmp" 2>"${wm_sync_err:-/dev/null}")
-      wm_h_state=$(wm_state_of "$wm_history_out")
-      wm_h_reason=$(wm_reason_of "$wm_history_out")
-      if [ "$wm_h_state" != "success" ] && [ "$wm_h_reason" != "no_comment" ]; then
-        echo "ERROR: レビュー対応履歴の追記 (issue-comment-wm-sync append-section) が失敗 (helper status: $wm_history_out)" >&2
-        [ -n "$wm_sync_err" ] && [ -s "$wm_sync_err" ] && { echo "  helper stderr (root-cause、先頭 5 行):" >&2; head -5 "$wm_sync_err" | sed 's/^/    /' >&2; }
-        echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
-        echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=wm_sync_history_failed; issue_number={issue_number}" >&2
-      fi
-    else
-      echo "ERROR: レビュー対応履歴 content-file の mktemp に失敗。追記できません" >&2
-      echo "  影響: work memory が stale のまま fix loop が継続する silent regression のリスク" >&2
-      echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=wm_sync_history_failed; issue_number={issue_number}" >&2
-    fi
-  fi
+pr_body_file="{pr_body_file}"
+history_file="{history_file}"
+trap 'rc=$?; rm -f "$pr_body_file" "$history_file"; exit "$rc"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+wm_update_rc=0
+wm_update_out=$(bash "{plugin_root}/scripts/fix-work-memory-update.sh" \
+  --pr-body-file "$pr_body_file" --history-file "$history_file" \
+  --impl-status "{impl_status}" --test-status "{test_status}" --doc-status "{doc_status}") || wm_update_rc=$?
+printf '%s\n' "$wm_update_out"
+if ! printf '%s\n' "$wm_update_out" | grep -qE '^\[CONTEXT\] FIX_WM_UPDATE=(success|skipped|failed); issue_number=[0-9]*$'; then
+  echo "ERROR: work memory helper の結果を取得できませんでした (rc=$wm_update_rc)" >&2
+  echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=wm_update_helper_failed" >&2
 fi
 ```
+
+stdout の `FIX_WM_UPDATE` と `issue_number`、stderr の `WM_UPDATE_FAILED` / reason を会話 context に保持し、5.1 の既存優先順位で最終結果を選ぶ。非ゼロ終了も成功扱いにしない。結果 marker 不在は起動・引数エラーを含む未実行として扱う。helper は `update-progress` → `append-section` の順に既存 WM helper を呼び、進捗失敗なら履歴を抑止し、`no_comment` は正常な省略として扱う。
 
 **Placeholder descriptions for Claude**:
 
@@ -2404,7 +2178,7 @@ fi
 - テスト: Test files (`*.test.*`, `*.spec.*`) have changes → update accordingly
 - ドキュメント: Documentation files (`*.md`, `docs/*`) have changes → update accordingly
 
-⚠️ 本ブロックは**1つの Bash 呼び出し**。4.5.3 エントリは見出しなしで置換。
+4.5.3 エントリは見出しなしで履歴ファイルへ保存する。
 
 #### 4.5.3 Update Content
 
@@ -2823,7 +2597,7 @@ bash {plugin_root}/hooks/scripts/fix-reason-coverage-check.sh
 | reason | 発生 Phase | 発生条件 |
 |--------|------------|----------|
 | `mktemp_failed_pr_body_tmp` | ステップ 4.5.1 | PR body 退避用 tempfile の mktemp が失敗 (disk full / permission denied) |
-| `pr_body_tmp_empty_or_missing` | ステップ 4.5.1 | `cat <<PRBODY_EOF > pr_body_tmp` 後の `[ -s pr_body_tmp ]` 検査が失敗 (PR body が空 or write 失敗) |
+| `pr_body_tmp_empty_or_missing` | ステップ 4.5.1 helper | PR 本文ファイルが空または存在しない |
 | `mktemp_failed_pr_body_grep_err` | ステップ 4.5.1 | PR 本文 grep の stderr 退避 tempfile の mktemp が失敗 |
 | `pr_body_grep_io_error` | ステップ 4.5.1 | PR 本文 grep が IO/権限/構文エラー (rc=2) で失敗 |
 | `mktemp_failed_branch_grep_err` | ステップ 4.5.1 | branch 名抽出 grep の stderr 退避 tempfile の mktemp が失敗 |
@@ -2837,6 +2611,7 @@ bash {plugin_root}/hooks/scripts/fix-reason-coverage-check.sh
 | `current_body_empty` | ステップ 1.2 Fast Path | gh api 成功だが `.body` フィールド抽出が空 |
 | `git_diff_failed` | ステップ 4.5.2 | changed-files-file 用 mktemp の失敗、または `git diff --name-status origin/{base_branch}...HEAD` の失敗 (shallow clone / 無効な base / git リポジトリ外)。helper を呼ばず work memory comment を不変に保つ (原実装が git diff 失敗時に PATCH 前で exit したのと等価) |
 | `wm_sync_progress_failed` | ステップ 4.5.2 | `issue-comment-wm-sync.sh ... --transform update-progress` が no_comment 以外の skipped/error status を返した (body 取得失敗 / safety check 失敗 / transform 失敗 / PATCH 失敗を helper が内部処理し status= 行で通知) |
+| `wm_update_helper_failed` | ステップ 4.5.2 caller | helper の結果 marker 不在（欠落・起動不能・引数不正等） |
 | `wm_sync_history_failed` | ステップ 4.5.2 | `issue-comment-wm-sync.sh ... --transform append-section` (レビュー対応履歴) が no_comment 以外の skipped/error status を返した、または履歴 content-file の mktemp が失敗 |
 | `cat_redirection_failed` | ステップ 2.4 / 4.5.x (heredoc redirection を使う任意箇所) | cat heredoc redirection の exit code が非ゼロ (disk full / write permission denied / IO error)。ステップ 4.5.1 / 4.5.2 の WM 更新経路など、heredoc を使う任意箇所で発火する可能性があるため、Phase 列は exhaustive な実 emit 箇所のリストではなく、典型的に発火する代表 phase の例示 |
 | `empty_stdout` | ステップ 1.2 | gh api が exit 0 だが stdout が空または null |
