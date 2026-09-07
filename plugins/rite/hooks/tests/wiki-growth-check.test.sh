@@ -166,9 +166,9 @@ pending_body=$(printf 'ingested: no\n%s\n' "$large_body")
 assert "early no marker in large raw source is pending" "1" "$(_count_pending_from_list 'raw.md')"
 pending_body=$(printf 'ingested: true\n%s\n' "$large_body")
 assert "large raw source without pending marker is not pending" "0" "$(_count_pending_from_list 'raw.md')"
-pending_body=$(printf '%s\n' "$large_body" | sed '20i\ingested: false')
+pending_body=$(printf '%s\n' "$large_body" | awk 'NR == 20 { print "ingested: false" } { print }')
 assert "pending marker on twentieth line is included" "1" "$(_count_pending_from_list 'raw.md')"
-pending_body=$(printf '%s\n' "$large_body" | sed '21i\ingested: false')
+pending_body=$(printf '%s\n' "$large_body" | awk 'NR == 21 { print "ingested: false" } { print }')
 assert "pending marker after twentieth line is excluded" "0" "$(_count_pending_from_list 'raw.md')"
 
 print_summary "wiki-growth-check.sh"
