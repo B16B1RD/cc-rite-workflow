@@ -11,9 +11,13 @@ sources:
     resource: "raw/fixes/20260610T002120Z-pr-1337.md"
   - type: "reviews"
     resource: "raw/reviews/20260610T011729Z-pr-1343.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260907T233525Z-pr-2614.md"
 tags: ["comment-rot", "design-pivot", "cross-reference", "self-inconsistency", "sweep-test", "helper-delegation", "cross-file-impact-check"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-10T01:19:36Z" }
+generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T23:54:45Z" }
+verified:
+  - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T23:54:45Z" }
 ---
 
 # 同一 PR 内の設計 pivot 後に cross-reference コメントが旧設計の説明のまま残る
@@ -58,6 +62,8 @@ bash 実体を helper script へ委譲した後、その実体を説明する離
 
 ### 関連する既知 anti-pattern との区別
 
+単一の quoted heredoc と複数の `read` へ入力転送を簡素化するときも、直接参照する rationale に旧「複数 heredoc」の説明が残りうる。入力拒否ゲートが維持されていても、構造を二重に説明する文書は同期確認が必要になる。実行時不具合の再現と文書の不一致は区別して記録する。
+
 - [fix-comment-self-drift](./fix-comment-self-drift.md): fix で書いたコメント自身が convention を破る話。本ページは**設計 pivot による同一 PR 内の記述自己矛盾**で、コメント自体は convention 準拠でも内容が実装と矛盾する
 - Asymmetric Fix Transcription (対称位置への伝播漏れ): 対称な実装サイトへの fix 伝播漏れ。本ページはその**説明文 (prose) 版**にあたる
 
@@ -67,6 +73,8 @@ bash 実体を helper script へ委譲した後、その実体を説明する離
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
 
 ## ソース
+
+- [入力転送の簡素化に伴う旧構造説明の残存](../../raw/reviews/20260907T233525Z-pr-2614.md)
 
 - [TC-1 コメントと TC-3 実装の矛盾を code-quality reviewer が MEDIUM で検出](../../raw/reviews/20260610T001830Z-pr-1337.md)
 - [コメント 4 行の書き換えで解消、root cause は設計 pivot 後の cross-reference コメント追随漏れ](../../raw/fixes/20260610T002120Z-pr-1337.md)

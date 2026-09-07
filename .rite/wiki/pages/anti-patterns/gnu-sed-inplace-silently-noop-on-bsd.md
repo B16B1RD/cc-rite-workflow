@@ -4,10 +4,14 @@ title: "GNU 形式の `sed -i '<expr>' file` は BSD sed で fixture を書き�
 domain: "anti-patterns"
 description: "BSD sed は `-i` の次の引数を backup 拡張子と解釈するため、式が拡張子・ファイル名が script として扱われ parse error になる。`set -e` の無いテストでは無言で先へ進み、fixture 不変のまま突合系 assertion だけが落ちる。"
 created: "2026-09-06T16:10:23Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
+generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T23:54:45Z" }
+verified:
+  - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T23:54:45Z" }
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260906T155431Z-pr-2582.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260907T233525Z-pr-2614.md"
 tags: ["portability", "sed", "bsd", "macos", "test-fixture", "awk"]
 confidence: high
 ---
@@ -32,11 +36,17 @@ BSD sed（macOS 既定）は `-i` の直後の引数を backup 拡張子とし�
 
 「直った」と言えるのは、gawk / mawk（ローカル）と bwk awk（macOS CI）で同一の結果を得たときである。加えて no-op 変異を入れて、その書き換えが load-bearing であることも確認する。1 実装で緑になっただけでは移植性の主張にならない。
 
+### 挿入命令にも GNU/BSD 差がある
+
+`-i` オプションだけでなく、挿入命令 `i` の同一行形式も GNU/BSD 差を持つ。境界 fixture を作る `sed '20i\ingested: false'` は Linux で成功しても macOS では失敗した。行位置を保つ挿入は `awk 'NR == 20 { print "ingested: false" } { print }'` で表現でき、元本文も最後まで出力する。fixture 生成の終了コードと生成行位置を確認し、Linux の成功だけを移植性の根拠にしない。
+
 ## 関連ページ
 
 - [移植性の指摘は「環境分岐を足す」より先に「その正規表現機能が本当に要るか」を疑う](../heuristics/portability-fix-questions-the-regex-feature-first.md)
 - [review ループは CI の結果を実測入力に持たない](../heuristics/review-loop-has-no-ci-result-input.md)
 
 ## ソース
+
+- [境界 fixture の挿入構文が macOS CI で失敗した事例](../../raw/reviews/20260907T233525Z-pr-2614.md)
 
 - [レビュー結果](../../raw/reviews/20260906T155431Z-pr-2582.md)

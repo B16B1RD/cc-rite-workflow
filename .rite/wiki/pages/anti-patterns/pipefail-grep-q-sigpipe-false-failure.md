@@ -15,9 +15,13 @@ sources:
     resource: "raw/reviews/20260806T053845Z-pr-2124.md"
   - type: "fixes"
     resource: "raw/fixes/20260806T055534Z-pr-2124.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260907T233525Z-pr-2614.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T22:40:00+09:00" }
+generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T23:54:45Z" }
+verified:
+  - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T23:54:45Z" }
 ---
 
 # `set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる
@@ -108,6 +112,10 @@ if [ -n "$hit" ]; then ...
 
 **proxy で判定するなら、proxy が成立する条件を文書に書く。** 書かないと、次の書き手が proxy を真の軸だと信じ、根拠が成立しない入力まで無警告で通す。
 
+### 全量読取と抽出境界を同時に検証する
+
+全量を消費する修正では、一致・非一致だけでなく抽出範囲の境界も固定する。先頭20行だけを判定する処理なら、大容量本文を維持したまま20行目の marker を採用し21行目を除外する正負ケースを検証する。抽出を `sed -n '1,20p'` にすると、表示範囲を保ちつつ残りの入力も消費できる。
+
 ## 関連ページ
 
 - [function 内 `local v=$(...)` と top-level `v=$(...)` の `set -e` 伝播差で writer/reader 非対称が偶然 mask される](./bash-local-vs-toplevel-pipefail-asymmetry.md)
@@ -115,6 +123,8 @@ if [ -n "$hit" ]; then ...
 - [bash の算術比較は非数値入力で rc=2 を返し、fail-closed の意図が else 側へ倒れる](./bash-numeric-test-fail-open-on-nonnumeric.md)
 
 ## ソース
+
+- [全量読取と大容量・範囲境界の回帰検証](../../raw/reviews/20260907T233525Z-pr-2614.md)
 
 - [fix 結果](../../raw/fixes/20260803T052647Z-pr-2094.md)
 - [`sed -n | grep -q` でバッファ境界を超えた地点の挙動反転を検出](../../raw/reviews/20260805T043752Z-pr-2112.md)

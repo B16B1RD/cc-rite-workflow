@@ -1,5 +1,10 @@
 ## 2026-09-07
 
+* **Update**: [設計変更後の参照説明](pages/anti-patterns/design-pivot-stale-cross-reference-comment.md) — [レビュー結果](raw/reviews/20260907T233525Z-pr-2614.md) から入力転送の簡素化で残る説明の同期漏れを補強。
+* **Update**: [早期終了による偽の失敗](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — 大容量の一致・非一致と抽出範囲の境界検証を補強。
+* **Update**: [BSD sed の fixture 生成差](pages/anti-patterns/gnu-sed-inplace-silently-noop-on-bsd.md) — 挿入命令の同一行形式と awk による全量保持を補強。
+* **Skip**: [20260907T234900Z-pr-2614.md](raw/reviews/20260907T234900Z-pr-2614.md) — 再レビューは新規指摘なし。既記録事項の再確認と実行状況のみで、新たな経験則はない。
+
 * **Update**: [自 repo 固有 anchor を Edit old_string に hardcode すると consumer project で hard fail する (dogfooding bias)](pages/anti-patterns/dogfooding-anchor-hardcode.md) — [レビュー結果](raw/reviews/20260907T162004Z-pr-2610.md) を統合
 * **Update**: [自 repo 固有 anchor を Edit old_string に hardcode すると consumer project で hard fail する (dogfooding bias)](pages/anti-patterns/dogfooding-anchor-hardcode.md) — [fix 結果](raw/fixes/20260907T163105Z-pr-2610.md) を統合
 * **Update**: [自 repo 固有 anchor を Edit old_string に hardcode すると consumer project で hard fail する (dogfooding bias)](pages/anti-patterns/dogfooding-anchor-hardcode.md) — [レビュー結果](raw/reviews/20260907T163925Z-pr-2610.md) を統合
