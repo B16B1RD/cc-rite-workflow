@@ -269,14 +269,18 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 **0 件のときも空配列 `[]` を出力する** (キー省略との区別): キー自体が無い JSON は「本ゲート適用前の世代」を意味し、空配列は「本ゲートを適用したが降格ゼロ」を意味する。両者を区別できないと、降格が起きたのに記録されなかった事故を後から検出できない。
 
-**本配列側の欠陥はすべて非ブロッキング**: `hooks/review-result-save.sh` は以下を WARNING + observability marker で報告するが、**いずれも保存を続行する** (`JSON_SAVED=true`)。`LOCAL_SAVE_FAILED` 経路にすると `JSON_SAVED=false` でファイルごと保存されず、advisory な監査記録の欠陥を理由に blocking findings まで永続チャネルから失う fail-unsafe になるため (救おうとした対象より大きなものを落とす)。
+**本配列側の欠陥は id 書式違反を除いて非ブロッキング**: `hooks/review-result-save.sh` は以下を WARNING + observability marker で報告するが、**いずれも保存を続行する** (`JSON_SAVED=true`)。`LOCAL_SAVE_FAILED` 経路にすると `JSON_SAVED=false` でファイルごと保存されず、advisory な監査記録の欠陥を理由に blocking findings まで永続チャネルから失う fail-unsafe になるため (救おうとした対象より大きなものを落とす)。
 
 | 検出内容 | marker |
 |---|---|
 | キー欠落 / 非配列 (string / number / bool / object / null) | `[CONTEXT] NON_BLOCKING_FINDINGS_KEY_MISSING=1; pr={n}` |
-| 和集合での id 重複 / 書式違反 (本配列側に起因) | `[CONTEXT] NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION=1; pr={n}` |
+| 和集合での id 重複 (本配列側に起因) | `[CONTEXT] NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION=1; pr={n}` |
 
-**hard fail は `findings[]` 側の id 欠陥に限る** (`LOCAL_SAVE_FAILED=1; reason=finding_id_format_or_uniqueness_violation`)。また型 check は id 検証より**前**に置く — 後ろに置くと非配列で `length` が非 0 になる値 (`"abc"`→3 / `3`→3 / `{"a":1}`→1) が和集合の件数を水増しし、非ブロッキングと宣言した経路が型によって hard fail に化ける。
+**id 書式違反 (`^F-[0-9]{2,}$` 不適合) だけは本配列側でも hard fail** (`LOCAL_SAVE_FAILED=1; reason=finding_id_format_or_uniqueness_violation`、保存しない)。書式は id が identity として使えるかどうかそのものであり、書式外 id は cleanup ステップ 6.0.V が再検証結果を `--exclude-ids` で helper へ渡す唯一の経路を壊す (書式外 id は再検証層で `null` へ写され、全件が `undecidable` に倒れて解消済みの指摘まで follow-up へ転記される)。発生源を止めないと読み側の回避策が増え続けるため fail-loud にする。**一意性違反は引き続き `findings[]` 側の欠陥に限って hard fail** で、本配列側に閉じた重複は上表の非ブロッキング marker に留める (id 自体は使える形をしており、advisory な重複を理由に blocking findings を失う理由がない)。
+
+また型 check は id 検証より**前**に置く — 後ろに置くと非配列で `length` が非 0 になる値 (`"abc"`→3 / `3`→3 / `{"a":1}`→1) が和集合の件数を水増しし、非ブロッキングと宣言した重複判定が型によって hard fail に化ける。
+
+> 本 hard fail は**本 gate を通る保存を止めるだけ**で、gate を通さずに `.rite/review-results/` 直下へ永続化された書式外 id JSON は移行しない (gate 導入前の JSON、および gate を経由しない `/rite:fix` の write 経路 — P1/P3 の直接 write と P0 ファイルの copy。一度きりの実行のために恒久的な複雑さを残さない)。したがって読み側 (6.0.V の `id` null 写像、および `id: null` を必ず `undecidable` とする規則) はそのまま維持する。
 
 ### 却下台帳と sweep 消化結果（additive、schema_version 非 bump）
 
@@ -308,7 +312,7 @@ collect は `targets[]` に `verification` と `route` を返す。実測あり 
 
 `done` のとき完了通知の残件欄は `未処理 non-blocking: 0 件` を維持し、消化内訳 `sweep: issued=K / recorded=M` を併記する。`noop`（対象 0 件）は従来の 0 件通知のまま追加行を出さない。`skipped` は `nb-sweep-done-{pr_number}.txt` 既存（本 run で 5.S 済み）。書き込み失敗・JSON 取得失敗は `failed` で iterate を停止する（完了通知へ進まない）。意図的な再 sweep は当該ファイルを削除する。
 
-**`id` は 2 配列の和集合で一意**: 5.3.0.M の降格時に `id` を振り直さず元の `F-NN` を維持する。根拠は **JSON 単体の監査可読性** — 永続 JSON を読む人間が 2 配列を跨いで finding を一意に参照できるようにするため (5.4 統合レポートのテーブルは `id` 列を持たないので、JSON ↔ レポート間の id 相互参照は成立しない。それを目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証で、`findings[]` と `non_blocking_findings[]` の和集合に対して書式 + 一意性を評価する (本配列側に閉じた違反は上記の非ブロッキング marker で報告され、保存は続行する)。
+**`id` は 2 配列の和集合で一意**: 5.3.0.M の降格時に `id` を振り直さず元の `F-NN` を維持する。根拠は **JSON 単体の監査可読性** — 永続 JSON を読む人間が 2 配列を跨いで finding を一意に参照できるようにするため (5.4 統合レポートのテーブルは `id` 列を持たないので、JSON ↔ レポート間の id 相互参照は成立しない。それを目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証で、`findings[]` と `non_blocking_findings[]` の和集合に対して書式 + 一意性を評価する。**書式違反は和集合のどちら側でも hard fail** (保存しない)、**一意性違反は `findings[]` 側だけ hard fail** で、本配列側に閉じた重複は上記の非ブロッキング marker で報告され保存は続行する。
 
 **read 側の扱い**: `/rite:iterate` 5.S の `nb-sweep-collect.sh` が本配列（全件）と `findings[]` の `nit-noted` を sweep 対象として読む。`/rite:fix` の通常ループは `findings[]` のみを読む（`--nb-sweep` 時だけ collect 経由で本配列を読む）。本配列は **sweep 消化の入力**であり、消化後も JSON からは消さない（台帳と完了通知が消化結果の SoT）。既定構成 (`pr_review.post_comment: false`) では PR 本体のレビュー結果コメントが投稿されないため、非実測指摘の永続チャネルは `.rite/review-results/*.json` と、`post_comment` と独立に投稿される関連 Issue 記録コメント (`## 📜 rite 非実測指摘の記録`、ステップ 6.1.d) の 2 つになる。前者はローカルの永続チャネル (`state-path-resolve.sh` によりセッション worktree 内からでも main checkout と同一パスに解決される。§保存場所 参照)、後者は関連 Issue 上で共有可能な永続チャネルであり、`.rite/review-results/` は gitignore 対象のためレビュアーと共有できるのは後者のみ — **ただし後者が共有するのは reviewer / severity / `file:line` のポインタと降格理由 (判定文) までで、cycle 中の `description` / `suggestion` の全文は本配列にしか存在せず共有経路を持たない**。マージ後もローカル全文を残すため、`/rite:cleanup` ステップ 6 は本配列が非空の結果 JSON を削除せず `.rite/review-results/archive/` へ退避し、残存分の全文を follow-up Issue 1 件へ転記する。**転記の前にマージ後 HEAD で再検証し、解消済みと判定された指摘は除外する（判定不能は転記側へ倒し、全件解消なら起票しない）** — 本配列は指摘が出た cycle の観測であり、その後の fix cycle の結果を反映しないため（public リポジトリでは公開される。詳細: [`severity-levels.md` §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate))。
 
