@@ -36,6 +36,9 @@
 
 * **Update**: [CI の観測をレビューへ渡し、失敗の帰属と採否を分ける](pages/heuristics/review-loop-has-no-ci-result-input.md) — raw/reviews/20260907T110021Z-pr-2606.md を統合
 
+* **lint:clean** — contradictions=0, stale=62, orphans=0, missing_concept=0, unregistered_raw=447, broken_refs=0
+* **Lint scope** — 全ページと raw の構造検査を再実行。意味的検査は更新ページを CI・実測・レビュー範囲の関連ページと照合し、新しい矛盾は検出しなかった。既存ページ全文の総当たり意味監査は再実施していない。陳腐化・孤児・リンク検査 helper に既存の Broken pipe 診断が出たが、完了 marker は取得できた。
+
 ## 2026-09-06
 * **lint:clean** — contradictions=0, stale=58, orphans=0, missing_concept=0, unregistered_raw=436, broken_refs=0
 * **Create**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/reviews/20260906T125803Z-pr-2582.md を新規ページ化
