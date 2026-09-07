@@ -28,9 +28,13 @@ sources:
     resource: "raw/reviews/20260602T103357Z-pr-1249.md"
   - type: "reviews"
     resource: "raw/reviews/20260606T030501Z-pr-1286.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260907T115248Z-pr-2607.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260907T115932Z-pr-2607.md"
 tags: ["refactor", "verification", "testing", "delegation"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-06T04:16:52Z" }
+generated: { by: "rite-wiki-ingest/unknown", at: "2026-09-07T12:10:28Z" }
 ---
 
 # 委譲リファクタの動作保持は原実装との差分テストで機械的に立証する
@@ -102,6 +106,12 @@ canonical 対策: 委譲リファクタの review checklist に **「新規 help
 
 副次観察: 委譲 refactor で validation gate は片落ちせず純増 (numeric gate / placeholder gate 追加)、silent-failure hole 2 件解消 (projects の `jq -s` 未チェック / create.md の nested jq マスク)。cycle 2 の SoT universal MUST 文 vs 未移行 caller 2 件の矛盾は漸進移行 note (Option B: 責務分離の文書化を SoT 本文に明記) で解消 ([[asymmetric-fix-resolution-via-hub-creation]] の SoT-caller 軸適用例)。nit-noted 受け流し経路 (LOW 級 enumeration stale) は countdown 対象外として loop を阻害せず mergeable 到達 ([[respect-reviewer-no-action-recommendation]])。
 
+### 既存の環境差とcaller境界を含めて比較する
+
+GNU環境で得た設定値を全環境の固定期待値にすると、BSD環境で旧処理と同じ挙動をしていても抽出後のテストだけが失敗する。設定解釈を維持する変更では、旧resolverを独立した比較対象として凍結し、同じ環境・入力に対する旧処理と新helperの外部コマンド引数を比較する。期待値を新helperから抽出すると、新helperの回帰にも期待値が追従するため検出できない。既存の環境差を改善する変更は、抽出の互換性検証から分けて扱う。
+
+比較はhelper単体に加え、実際のcallerを通して行う。helperがsignalの終了コードを保持しても、callerの末尾コマンドが正常終了すると中断が成功に変わる。一時ファイルも、所有者が削除する前にパス変数を空にすると回収できなくなる。終了コード・更新順序・作成側によるファイル回収を、callerを含む観測結果として確認する。
+
 ## 関連ページ
 
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
@@ -122,3 +132,7 @@ canonical 対策: 委譲リファクタの review checklist に **「新規 help
 - [fix 結果](../../raw/fixes/20260602T102600Z-pr-1249.md)
 - [レビュー結果](../../raw/reviews/20260602T103357Z-pr-1249.md)
 - [レビュー結果](../../raw/reviews/20260606T030501Z-pr-1286.md)
+
+- [レビュー結果](../../raw/reviews/20260907T115248Z-pr-2607.md)
+
+- [レビュー結果](../../raw/reviews/20260907T115932Z-pr-2607.md)
