@@ -47,9 +47,8 @@
 #     all_resolved : 除外**後**に 0 件になった (再検証で全件が解消済みと判定された)
 #   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable; pr=<n>
 #   [CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=<r>; count=<n|unknown>; pr=<n>
-#     除外要求どおりに除外できなかったことを示す。**除外が要求より少なく適用された経路は
-#     すべてこの marker を出す** — marker 不在を「除外要求どおり適用された」と読む消費側
-#     (cleanup ステップ 12) が除外結果を報告するための通知。起票結果は FOLLOW_UP_ISSUE で判定する。
+#     除外要求どおりに除外できなかったことを cleanup ステップ 12 へ通知する。
+#     marker 不在から除外適用・起票の成功を推定しない。起票結果は FOLLOW_UP_ISSUE で判定する。
 #       reason=ambiguous    : 和集合内で複数 finding に一致した id だけを除外拒否した。
 #                             count = 拒否した id の異なり数 (他の id の除外は適用済み)
 #       reason=undecidable  : 曖昧判定 / 除外解除の jq が失敗し除外を全破棄した。
