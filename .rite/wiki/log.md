@@ -30,6 +30,9 @@
 
 * **Skip**: [20260907T102643Z-pr-2605.md](raw/reviews/20260907T102643Z-pr-2605.md) — rite workflow の生成規則と添付経路に関する知見は plugin と静的検証に反映済みのため、ドメインページ化しない
 
+* **lint:clean** — contradictions=0, stale=62, orphans=0, missing_concept=0, unregistered_raw=447, broken_refs=0
+* **Lint scope** — 構造検査は全ページと raw を再走査。ページと索引は直前の意味的検査から無変更のため、矛盾判定はその結果を継承。検索時の既存索引警告は別途報告。
+
 
 ## 2026-09-06
 * **lint:clean** — contradictions=0, stale=58, orphans=0, missing_concept=0, unregistered_raw=436, broken_refs=0
