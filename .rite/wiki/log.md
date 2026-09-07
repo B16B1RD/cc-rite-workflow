@@ -28,6 +28,9 @@
 
 * **lint:clean** — contradictions=0, stale=62, orphans=0, missing_concept=0, unregistered_raw=446, broken_refs=0。ページ本文の変更なし。
 
+* **Skip**: [20260907T102643Z-pr-2605.md](raw/reviews/20260907T102643Z-pr-2605.md) — rite workflow の生成規則と添付経路に関する知見は plugin と静的検証に反映済みのため、ドメインページ化しない
+
+
 ## 2026-09-06
 * **lint:clean** — contradictions=0, stale=58, orphans=0, missing_concept=0, unregistered_raw=436, broken_refs=0
 * **Create**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/reviews/20260906T125803Z-pr-2582.md を新規ページ化
