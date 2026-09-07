@@ -1008,6 +1008,14 @@ triage_state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh) || {
 triage_state_dir="$triage_state_root/.rite/fix-cycle-state"
 mkdir -p "$triage_state_dir" || { echo "[fix:error] reason=triage_state_write_failed"; exit 1; }
 triage_state_file="$triage_state_dir/{pr_number}.json"
+triage_state_tmp=""
+_rite_fix_triage_state_cleanup() {
+  rm -f "${triage_state_tmp:-}"
+}
+trap 'rc=$?; _rite_fix_triage_state_cleanup; exit $rc' EXIT
+trap '_rite_fix_triage_state_cleanup; exit 130' INT
+trap '_rite_fix_triage_state_cleanup; exit 143' TERM
+trap '_rite_fix_triage_state_cleanup; exit 129' HUP
 triage_state_tmp=$(mktemp "$triage_state_dir/.triage-XXXXXX") || {
   echo "[fix:error] reason=triage_state_write_failed"
   exit 1
@@ -1015,7 +1023,6 @@ triage_state_tmp=$(mktemp "$triage_state_dir/.triage-XXXXXX") || {
 triage_existing='{"pr_number":{pr_number},"cycles":[]}'
 if [ -f "$triage_state_file" ]; then
   triage_existing=$(cat "$triage_state_file") || {
-    rm -f "$triage_state_tmp"
     echo "[fix:error] reason=triage_state_read_failed"
     exit 1
   }
@@ -1023,8 +1030,8 @@ fi
 if ! printf '%s\n' "$triage_existing" | jq \
   --argjson moved "{non_fatal_moved_count}" --arg pointer "{triage_review_path}" \
   '.non_fatal_moved_count = $moved | .review_json_path = $pointer' > "$triage_state_tmp" \
+  || [ ! -s "$triage_state_tmp" ] \
   || ! mv "$triage_state_tmp" "$triage_state_file"; then
-  rm -f "$triage_state_tmp"
   echo "[fix:error] reason=triage_state_write_failed"
   exit 1
 fi

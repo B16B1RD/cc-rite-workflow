@@ -2156,14 +2156,29 @@ high_count="{high_count}"
 medium_count="{medium_count}"
 low_medium_count="{low_medium_count}"
 low_count="{low_count}"
+attribution_state_tmp=""
+_rite_pr_review_attribution_cleanup() {
+ rm -f "${attribution_state_tmp:-}"
+}
+trap 'rc=$?; _rite_pr_review_attribution_cleanup; exit $rc' EXIT
+trap '_rite_pr_review_attribution_cleanup; exit 130' INT
+trap '_rite_pr_review_attribution_cleanup; exit 143' TERM
+trap '_rite_pr_review_attribution_cleanup; exit 129' HUP
 
 if [ -f "$state_file" ]; then
- jq --argjson total "$total_findings" \
- --argjson fix_introduced "$fix_introduced_count" \
- --argjson severity "{\"CRITICAL\":$critical_count,\"HIGH\":$high_count,\"MEDIUM\":$medium_count,\"LOW-MEDIUM\":$low_medium_count,\"LOW\":$low_count}" \
- '.cycles[-1].findings_total = $total | .cycles[-1].findings_new_from_fix = $fix_introduced | .cycles[-1].findings_by_severity = $severity' \
- "$state_file" > "${state_file}.tmp" && mv "${state_file}.tmp" "$state_file"
- printf '[CONTEXT] ATTRIBUTION_WRITTEN total=%d fix_introduced=%d\n' "$total_findings" "$fix_introduced_count"
+ if ! attribution_state_tmp=$(mktemp "${state_file}.tmp.XXXXXX"); then
+  echo "WARNING: attribution state の一時ファイル作成に失敗しました" >&2
+ elif jq --argjson total "$total_findings" \
+  --argjson fix_introduced "$fix_introduced_count" \
+  --argjson severity "{\"CRITICAL\":$critical_count,\"HIGH\":$high_count,\"MEDIUM\":$medium_count,\"LOW-MEDIUM\":$low_medium_count,\"LOW\":$low_count}" \
+  '.cycles[-1].findings_total = $total | .cycles[-1].findings_new_from_fix = $fix_introduced | .cycles[-1].findings_by_severity = $severity' \
+  "$state_file" > "$attribution_state_tmp" \
+  && [ -s "$attribution_state_tmp" ] \
+  && mv "$attribution_state_tmp" "$state_file"; then
+  printf '[CONTEXT] ATTRIBUTION_WRITTEN total=%d fix_introduced=%d\n' "$total_findings" "$fix_introduced_count"
+ else
+  echo "WARNING: attribution state の書き込みに失敗しました" >&2
+ fi
 fi
 ```
 
