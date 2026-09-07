@@ -682,7 +682,17 @@ draft PR の作成が完了したら、ユーザーに以下を案内する:
 途中で止まったら /rite:recover で復帰します。
 ```
 
-`{action_items}`: 本実行の bash 出力に残った WARNING / ERROR のうち、ユーザーが操作しない限り残り続ける行を 1 行ずつ列挙する（同一内容は 1 行にまとめる。成功した迂回・リトライは載せない）。**0 件なら `要対応:` 行ごと省略する**。
+`{action_items}`: 本実行の bash 出力に残った WARNING / ERROR のうち、ユーザーが操作しない限り残り続ける行を 1 行ずつ列挙する。最終試行と重複の判定は [Autonomous Execution](../rite-workflow/references/autonomous-execution.md) に従う。成功した迂回・リトライは載せない。**0 件なら `要対応:` 行ごと省略する**。
+
+### `open` 直接 WARNING の転記判定
+
+本ファイルが直接 emit する `WARNING:` は次の 3 行だけとし、最終試行で emit された行を `{action_items}` に転記する。補足診断は親行へ続け、独立した項目に数えない。
+
+| stderr の先頭 | 判定 |
+|---|---|
+| `WARNING: git status の実行に失敗したため dirty main checkout ガードを skip します` | 後続の `git status` 成功が無ければ転記 |
+| `WARNING: {wt_path}/.rite/.gitignore を作成できませんでした` | 転記。直後の `_RITE_GITIGNORE_ERROR` は同じ項目の補足 |
+| `WARNING: .claude/settings.local.json のコピーに失敗しました` | 転記 |
 
 ---
 

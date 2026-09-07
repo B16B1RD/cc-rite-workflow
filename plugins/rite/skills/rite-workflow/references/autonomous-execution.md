@@ -9,7 +9,9 @@ reviewer agent は frontmatter の `effort: high` で固定する。orchestrator
 
 報告は outcome と次の一手のみ。欠陥の詳細・自己評価・経緯の釈明は review record と commit が家であり、報告文へ複製しない。
 
-bash の stdout / stderr は LLM 向けの診断であり、ユーザーの端末に届く保証はない。ユーザーが行動しなければ残り続ける WARNING / ERROR は、完了報告の `要対応:` 欄へ 1 行ずつ転記する（同じ警告が複数回出たら 1 行にまとめ、0 件なら欄ごと出さない）。成功した迂回・リトライは転記しない。
+bash の stdout / stderr は LLM 向けの診断であり、ユーザーの端末に届く保証はない。ユーザーが行動しなければ残り続ける WARNING / ERROR は、完了報告の `要対応:` 欄へ 1 行ずつ転記する。各スキルに転記表があればその表を優先する。表が無い場合は、同じ command / phase の最終試行で WARNING / ERROR が残り、かつ後続に同じ操作の成功 marker が無い行を転記する。成功した迂回・リトライは転記しない。
+
+重複キーは severity と本文の組とする。severity は `WARNING` / `ERROR` を保持し、本文は severity prefix を除いて先頭と末尾の空白だけを除去する。この 2 要素が完全一致する行だけを最初の出現 1 行へまとめる。severity・対象・理由・対処のいずれかが異なる行は別項目として出現順を保つ。0 件なら欄ごと出さない。
 
 ## 正規確認ゲート
 
