@@ -287,7 +287,7 @@ okf_version: "0.2"
 | [sandbox 環境では raw な git status --porcelain が恒に非空になり clean 判定ガードが一度も発火しない](pages/anti-patterns/sandbox-bind-mount-makes-raw-git-status-always-dirty.md) | anti-patterns | 過去のレビュー事例の cycle 2 で HIGH（repro 付き）として検出。 | 2026-07-27T17:54:54+09:00 | high |
 | [file:line を key にする map は、同じ位置にある別出自のデータを無音で巻き添えにする](pages/anti-patterns/colocated-key-map-swallows-different-provenance-data.md) | anti-patterns | 過去のレビュー事例の cycle 2 で HIGH として検出。 | 2026-07-27T17:54:54+09:00 | high |
 | [同じ述語を 2 言語で並行実装すると受理集合が環境で割れる — 定義を 1 本に寄せるまで症状は再発し続ける](pages/anti-patterns/dual-language-predicate-divergence.md) | anti-patterns | 「本文の最終非空行が sentinel と一致するか」のような判定条件を、read 側（lookup の jq）と write 側（投稿前検査の shell）で**別々に実装**すると、同じ意図の述語でも受理する入力の集合が一致しない。 | 2026-07-28T21:30:00+09:00 | high |
-| [エラーを 1 つの reason へ畳むときは「原因の類型」が同じかを確かめる — 復旧手順が違うなら分ける](pages/heuristics/error-classification-by-cause-not-detection-site.md) | heuristics | `result=$(cmd 2>/dev/null) \|\| result=\\"\\"` は「失敗したら空にする」定番の書き方だが、**2 つの意味的に違う失敗を同じ値へ畳む**。 | 2026-09-02T00:50:00Z | high |
+| [エラーを 1 つの reason へ畳むときは「原因の類型」が同じかを確かめる — 復旧手順が違うなら分ける](pages/heuristics/error-classification-by-cause-not-detection-site.md) | heuristics | `result=$(cmd 2>/dev/null) \|\| result=""` は「失敗したら空にする」定番の書き方だが、**2 つの意味的に違う失敗を同じ値へ畳む**。 | 2026-09-07T23:46:17+09:00 | high |
 | [pin を足す「前」に mutation を当てると、pin の要否と有効性を分離して判定できる](pages/patterns/mutation-before-pin-separates-necessity-from-efficacy.md) | patterns | 修正を入れたあと回帰 pin を書くとき、**mutation を当てる順序**で得られる情報が変わる。 | 2026-07-28T21:30:00+09:00 | high |
 | [cycle が進んでも findings が減らないときは点修正をやめて構造を疑う](pages/heuristics/non-converging-review-loop-suspect-structure.md) | heuristics | review⇄fix ループの健全な収束は「cycle ごとに指摘が減る」形で現れる。 | 2026-08-03T07:46:56Z | high |
 | [glob で集合を指すと、集合の増減に silent に追随しない — 診断・分岐の述語には明示列挙を使う](pages/anti-patterns/glob-set-membership-silent-drift.md) | anti-patterns | エラー分類の集合（例: 「caller 契約違反である本文検査 4 段」）を、判定述語として `reason=body_*` のような **glob（接頭辞パターン）で指す**と、集合と glob の一致は保証されない。 | 2026-08-13T19:20:00+09:00 | high |
@@ -483,4 +483,4 @@ okf_version: "0.2"
 
 - 総ページ数: 469
 - ドメイン別: patterns=110, heuristics=206, anti-patterns=153
-- 最終更新: 2026-09-07T13:24:28Z
+- 最終更新: 2026-09-07T23:46:17+09:00

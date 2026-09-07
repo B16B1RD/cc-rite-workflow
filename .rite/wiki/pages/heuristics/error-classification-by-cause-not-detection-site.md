@@ -23,11 +23,14 @@ sources:
     resource: "raw/reviews/20260901T225105Z-pr-2503.md"
   - type: "fixes"
     resource: "raw/fixes/20260901T230359Z-pr-2503.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260907T143412Z-pr-2609.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
+generated: { by: "rite-wiki-ingest/gpt-5", at: "2026-09-07T23:46:17+09:00" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-02T00:50:00Z" }
+  - { by: "rite-wiki-ingest/gpt-5", at: "2026-09-07T23:46:17+09:00" }
 ---
 
 # エラーを 1 つの reason へ畳むときは「原因の類型」が同じかを確かめる — 復旧手順が違うなら分ける
@@ -122,6 +125,12 @@ state ファイルの読み取りで jq 失敗とファイル不在を同じ空�
 
 分類を分けると reason 語彙が増え、登録先も増える。起点事例では 6 箇所（helper docstring / reason 表 / Eval-order enumeration / Retained flag mapping / 共通エラー処理文書 / rationale 文書）への同時登録が必要だった。**登録先が多いこと自体は分けない理由にならない** — 畳んだままの非収束ループのほうが高くつく。ただし追加時は grep で全登録先を機械照合する。
 
+### 同じ exit code の内側でも構造化 reason で復旧案内を分ける
+
+呼び出し先が複数の失敗を同じ exit code で返す契約では、caller は exit code だけで案内を決めず、stdout の構造化された `reason` を厳密一致で読み取る。既知の契約違反だけを入力修正へ案内し、それ以外は環境・引数の失敗として fail-fast を維持する。
+
+この分岐は、既知 reason、未知 reason、reason 欠落、複数 marker の各境界を runtime test で通し、repository-wide の consumer が同じ語彙を使うことまで確認する。これにより診断を細分化しても、未知の失敗を既知の復旧手順へ誤誘導する fail-open を防げる。
+
 ## 関連ページ
 
 - [`cmd > file || true` は no-match (rc=1) と書き込み失敗 (rc>=2) を混同する](../anti-patterns/cmd-redirect-or-true-conflates-nomatch-and-write-failure.md)
@@ -139,3 +148,4 @@ state ファイルの読み取りで jq 失敗とファイル不在を同じ空�
 - [で新設した契約ケースが「非ゼロ終了」と「完了診断なし」を同じ else へ畳んだ](../../raw/reviews/20260813T090426Z-pr-2304.md)
 - [レビュー結果](../../raw/reviews/20260901T225105Z-pr-2503.md)
 - [fix 結果](../../raw/fixes/20260901T230359Z-pr-2503.md)
+- [レビュー結果](../../raw/reviews/20260907T143412Z-pr-2609.md)
