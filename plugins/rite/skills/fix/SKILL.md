@@ -970,7 +970,7 @@ rite 結果がない場合も空の `findings` / `non_blocking_findings` を持�
 
 **全通常入力経路の合流点**。P0 明示ファイル、P1 会話、P2 ローカル JSON、P3 Raw JSON / legacy Markdown、Target Comment Fast Path は分類・選択・0 件終了の前に必ず本節を実行する。`--nb-sweep` の専用経路は変更しない。
 
-1. P0/P2 は選択した元のファイルを `{triage_review_path}` とする。P1/P3 は解析結果を JSON オブジェクト（`findings[]` / `non_blocking_findings[]`、PR 番号、commit SHA、元の gate receipt と verification を保持）にし、`state-path-resolve.sh` が返すルートの `.rite/review-results/` に `{pr_number}-{timestamp}.json`（timestamp は `YYYYMMDDHHMMSS`、同名があれば一意になるまで新しい時刻を取得） として atomic write する。Write 失敗は `[fix:error]` で終了する。元ソースの `{review_source}` は provenance として保持する。
+1. P0/P2 は選択した元のファイルを `{triage_review_path}` とし、producer を変更しない。P1/P3 は解析結果を JSON オブジェクト（`findings[]` / `non_blocking_findings[]`、PR 番号、commit SHA、元の gate receipt と verification を保持）にし、`state-path-resolve.sh` が返すルートの `.rite/review-results/` に `{pr_number}-{timestamp}.json`（timestamp は `YYYYMMDDHHMMSS`、同名があれば一意になるまで新しい時刻を取得） として atomic write する。Write 失敗は `[fix:error]` で終了する。新規 JSON のトップレベルに `producer: "fix"` を設定する（元 JSON に producer があっても上書き）。元ソースの `{review_source}` は provenance として保持する。
 2. P0 の helper source は `explicit_file`、それ以外は `local_file`。次を実行する。helper は **元 JSON に persist してから** ID-keyed `fatal_map` / `severity_map` / `scope_map` を返す。`fatal = verification.measured == true AND severity ∈ {CRITICAL, HIGH} AND scope ∈ {current-pr, follow-up}` の判定はこの helper だけが担い、LLM は再分類しない。gated な非 fatal を `demotion_reason: "non_fatal"` 付きで `non_blocking_findings[]` へ移送し、nit は保持する。
 
 ```bash
@@ -996,7 +996,7 @@ echo "[CONTEXT] FIX_TRIAGE_REVIEW_PATH=$triage_review_path" >&2
 
 helper の `[fix:error] reason=measured_undetermined; findings=...` は該当 ID をそのまま報告して停止する。scope / severity / IO の異常も停止する。**triage エラーから legacy parser / Interactive Fallback への遷移は禁止**。missing/null/string の measured を true や false に補完しない。
 
-3. helper の `FIX_FATAL_TRIAGE=applied; fatal=N; moved=M` から `{fatal_count}=N` / `{non_fatal_moved_count}=M` を保持する。reload した `non_blocking_findings[]` の nit 以外の件数を `{non_blocking_count}` とし、全経路で同じ母集団を使う。P0 など元ファイルが `.rite/review-results/` 外の場合は、更新後 JSON を同ディレクトリに atomic copy し、そのパスを `{triage_review_path}` に更新する。後続 review / nb sweep が読める永続ファイルを残す。
+3. helper の `FIX_FATAL_TRIAGE=applied; fatal=N; moved=M` から `{fatal_count}=N` / `{non_fatal_moved_count}=M` を保持する。reload した `non_blocking_findings[]` の nit 以外の件数を `{non_blocking_count}` とし、全経路で同じ母集団を使う。P0 など元ファイルが `.rite/review-results/` 外の場合は、コピー側のトップレベルを `producer: "fix"` にした更新後 JSON を同ディレクトリに atomic copy し、そのパスを `{triage_review_path}` に更新する。後続 review / nb sweep が読める永続ファイルを残す。
 4. [Non-fatal Record](references/non-fatal-record.md) を実行し、既存の関連 Issue コメントを更新する。JSON / Issue 記録 / 表示の non-blocking section / E2E 1 行の **4 経路**に同じ件数・JSON pointer を渡す。Issue 記録失敗時は fatal が 0 件でも `[fix:error]`。記録を終える前に 0 件扱いで return しない。
 5. `.rite/fix-cycle-state/{pr_number}.json` の top-level `non_fatal_moved_count` / `review_json_path` に今回の値を atomic merge する（既存 `cycles` を保持、新規なら `cycles:[]`）。書込失敗は `[fix:error]`。修正コミットが無い cycle でも必須。ステップ 3.3.1 は同じ値を cycle entry にも記録する。
 

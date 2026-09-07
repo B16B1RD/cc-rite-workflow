@@ -108,6 +108,52 @@ run_trend() {
   bash "$SCRIPT" --pr "$pr" --cycle-count "$#" --results-dir "$dir" > "$OUT" 2>/dev/null
 }
 
+# fix の記録が各 review の後ろに並ぶ通常の Priority 1 保存列。
+paired_dir="$SANDBOX/paired"; mkdir -p "$paired_dir"
+i=0
+for n in 5 2 4 2 2; do
+  i=$((i + 1))
+  seq=$(printf '%02d' "$i")
+  make_result "$paired_dir" 950 "$seq" "$n"
+  jq '.producer = "fix"' "$paired_dir/950-202601010000${seq}.json" \
+    > "$paired_dir/950-202601010000${seq}~copy.json"
+  bash "$SCRIPT" --pr 950 --cycle-count "$i" --results-dir "$paired_dir" > "$OUT" 2>/dev/null
+  assert_not_grep "paired cycle $i: fix copy does not invalidate boundary" "$OUT" "run_boundary_unresolved"
+  assert_grep "paired cycle $i: one element per review" "$OUT" "cycles=$i; lost=0"
+done
+assert_grep "paired: review ordering and counts survive" "$OUT" "trend=5,2,4,2,2;"
+assert "paired: all records remain" "10" "$(find "$paired_dir" -name '*.json' | wc -l | tr -d ' ')"
+
+# fix basename を前 run の pin にしても、review の位置で切り出せる。
+bash "$SCRIPT" --pr 950 --cycle-count 3 --since 950-20260101000002~copy.json \
+  --results-dir "$paired_dir" > "$OUT" 2>/dev/null
+assert_grep "paired: fix pin preserves run boundary" "$OUT" "trend=4,2,2; cycles=3; lost=0"
+bash "$SCRIPT" --pr 950 --cycle-count 3 --results-dir "$paired_dir" > "$OUT" 2>/dev/null
+assert_grep "paired: extra reviews without pin still rejected" "$OUT" "reason=run_boundary_unresolved"
+
+# pin 後に fix しかない場合もレビューを作り出さず、構文不正は黙って除外しない。
+for cc in 0 1; do
+  bash "$SCRIPT" --pr 950 --cycle-count "$cc" --since 950-20260101000005.json \
+    --results-dir "$paired_dir" > "$OUT" 2>/dev/null
+  assert_grep "paired: only fix after pin ($cc) has no trend" "$OUT" "trend=; cycles=0; reason=no_file_after_pin"
+done
+printf '{"producer":"fix",' > "$paired_dir/950-20260101000006.json"
+bash "$SCRIPT" --pr 950 --cycle-count 6 --results-dir "$paired_dir" > "$OUT" 2>/dev/null
+assert_grep "paired: broken fix JSON is not silently skipped" "$OUT" "reason=json_parse_failure"
+
+# 除外は文字列 fix との完全一致だけ。旧形式と未知値も従来の検証へ渡す。
+producer_dir="$SANDBOX/producers"; mkdir -p "$producer_dir"
+i=0
+for producer_json in 'null' '"other"' '"fix\\n"' '["fix"]'; do
+  i=$((i + 1)); seq=$(printf '%02d' "$i")
+  make_result "$producer_dir" 951 "$seq" 2
+  jq --argjson producer "$producer_json" '.producer = $producer' \
+    "$producer_dir/951-202601010000${seq}.json" > "$SANDBOX/producer.json"
+  mv "$SANDBOX/producer.json" "$producer_dir/951-202601010000${seq}.json"
+done
+bash "$SCRIPT" --pr 951 --cycle-count 4 --results-dir "$producer_dir" > "$OUT" 2>/dev/null
+assert_grep "producer: other values are not fix copies" "$OUT" "trend=2,2,2,2; cycles=4; lost=0"
+
 # ---------------------------------------------------------------------------
 # T-01: 収束トラジェクトリで不発火 (AC-1)
 # ---------------------------------------------------------------------------
@@ -317,7 +363,7 @@ printf '[1,2]' > "$arr_dir/617-20260101000003.json"
 bash "$SCRIPT" --pr 617 --cycle-count 3 --results-dir "$arr_dir" > "$OUT" 2>"$SANDBOX/arr-err.txt"
 assert_grep "T-06r: フィールド抽出 jq の失敗は json_parse_failure で不発火" "$OUT" "reason=json_parse_failure"
 assert_grep "T-06r: 抽出 jq の診断本文が stderr へ届く (空値からの推測で握り潰さない)" "$SANDBOX/arr-err.txt" "jq: error"
-assert_grep "T-06r: 抽出 gate が帰属を名乗る (T-06f と対)" "$SANDBOX/arr-err.txt" "schema_version を読み出せません"
+assert_grep "T-06r: 抽出 gate が帰属を名乗る (T-06f と対)" "$SANDBOX/arr-err.txt" "producer を読み出せません"
 
 ver_dir="$SANDBOX/ver"; mkdir -p "$ver_dir"
 make_result "$ver_dir" 606 01 2

@@ -173,6 +173,7 @@
 |-----------|-----|------|------|
 | `schema_version` | string | ✅ | スキーマバージョン (semver `MAJOR.MINOR.PATCH`)。詳細は [Schema Version](#schema-version-sot) セクション参照 (受理値と legacy エイリアスの SoT) |
 | `pr_number` | integer | ✅ | PR 番号 (>= 1) |
+| `producer` | string | 任意 (1.1.0 additive) | fix が新規永続化する記録は `"fix"`。既存ファイルの in-place triage は値を維持する。トレンド helper は文字列 `"fix"` と完全一致した記録だけを列と件数ガードから除外し、欠落・null・その他の値は従来のレビュー検証へ渡す。記録の削除・移動はしない。 |
 | `timestamp` | string | ✅ | レビュー実行時刻 (ISO 8601 `YYYY-MM-DDTHH:MM:SS+TZ`) |
 | `commit_sha` | string | ✅ | レビュー対象の commit SHA。用途: (a) verification mode 用の diff 起点、(b) Priority 0/2/3 の stale file detection 用の HEAD 比較キー、(c) `pr-review.md` ステップ 8.0.4 positive 検査の判定軸。write 側の値源はステップ 1.2.5 で記録した commit SHA。`review-result-save.sh` は現在、この値と `measured_gate.commit_sha` の一致を保存直前に強制し、不一致を `gate_record_mismatch` で拒否する。read 側 (`fix.md` ステップ 1.2.0) も各 Priority success 経路で現 HEAD および gate receipt との一致を検査する。 |
 | `measured_gate` | object | 現行 write/read 側 ✅ (1.1.0 additive) | `review-measured-gate.sh` の適用記録。`{commit_sha, applied_at, blocking, demoted, anchor_undetermined}` を持ち、`commit_sha` はトップレベル値と一致する。schema version は据え置くため形式上 additive だが、現行 producer の保存、8.0.4 positive 検査、`/rite:fix` の JSON consumer では必須。欠落する既存アーカイブは遡及修復せず、再利用時は fail-closed で停止して `/rite:pr-review` の再実行を要求する。 |

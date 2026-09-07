@@ -298,13 +298,25 @@ else
   done
 fi
 
+# fix の再永続化は review cycle ではない。pin は全ファイルの basename のまま使う。
+_review_files=()
+for _f in "${_run_files[@]+"${_run_files[@]}"}"; do
+  if ! jq empty "$_f" >/dev/null 2>"${_diag:-/dev/null}"; then
+    _undecidable json_parse_failure "レビュー結果 JSON が parse できません: $(_nz "$_f")"
+  fi
+  if ! _producer=$(jq -r '.producer == "fix"' "$_f" 2>"${_diag:-/dev/null}"); then
+    _undecidable json_parse_failure "producer を読み出せません: $(_nz "$_f")"
+  fi
+  [ "$_producer" = "true" ] || _review_files+=("$_f")
+done
+_run_files=("${_review_files[@]+"${_review_files[@]}"}")
 _run_total=${#_run_files[@]}
 # pin フィルタ後 0 件は「dir に該当 JSON が無い」(上の no_results_file) とは別条件。同じ reason に
 # 畳むと、再実行直後の 1 cycle 目 (pin = 直近ファイル、現 run はまだ 0 件) という**全再実行が必ず
 # 通る正常系**が「結果を読めない = 発散検出の全面不作動」と読まれる。
 if [ "$_run_total" -eq 0 ]; then
   _undecidable no_file_after_pin \
-    "$(_data_missing_warn "run 開始点 pin ($(_nz "$since")) より新しいレビュー結果 JSON が 1 件もありません (dir 内の全 ${_total} 件はすべて前 run 以前)。トレンド判定を行わず max_review_cycles の判定に委ねます")"
+    "$(_data_missing_warn "run 開始点 pin ($(_nz "$since")) と producer で選別したレビュー結果 JSON が 1 件もありません (dir 内 ${_total} 件、fix の記録は除外)。トレンド判定を行わず max_review_cycles の判定に委ねます")"
 fi
 
 # **過剰取り込みの invariant**: 正しい run 境界の下では `_run_total == cycle_count` が構造的に
