@@ -222,12 +222,16 @@ for spec in INT:130 TERM:143 HUP:129; do
 done
 
 echo '--- execute caller extracted from actual SKILL ---'
+check 'failed history preparation retains cleanup before clearing its path' contains "$PLUGIN_ROOT/skills/fix/SKILL.md" '確保済みの履歴ファイルを削除してからパスを空文字にする'
+check 'status fallback includes committed changes' contains "$PLUGIN_ROOT/skills/fix/SKILL.md" 'helper と同じ `git diff --name-status "origin/{base_branch}...HEAD"`'
+check 'failed completion maps to retained failure' contains "$PLUGIN_ROOT/skills/fix/SKILL.md" '`FIX_WM_UPDATE=failed` の場合も `WM_UPDATE_FAILED=1` を保持'
+
 # Extract the first bash fence in 4.5; never reimplement the caller in this test.
 awk '/^### 4\.5 / { section=1 } section && /^```bash$/ { block=1; next } block && /^```$/ { exit } block { print }' \
   "$PLUGIN_ROOT/skills/fix/SKILL.md" > "$TEST_DIR/caller.template"
 check 'SKILL caller extracted' test -s "$TEST_DIR/caller.template"
 cp "$TARGET" "$TEST_DIR/helper.original"
-for failure in normal missing syntax invalid-args zero-marker; do
+for failure in normal missing syntax invalid-args zero-marker INT TERM HUP; do
   reset_case
   cp "$TEST_DIR/helper.original" "$TARGET"
   case "$failure" in
@@ -236,17 +240,31 @@ for failure in normal missing syntax invalid-args zero-marker; do
     invalid-args)
       printf '#!/usr/bin/env bash\nexec bash "%s" --unknown-option\n' "$TEST_DIR/helper.original" > "$TARGET" ;;
     zero-marker) printf '#!/usr/bin/env bash\nexit 0\n' > "$TARGET" ;;
+    INT|TERM|HUP) TEST_SIGNAL=$failure ;;
   esac
   sed -e "s|{plugin_root}|$SANDBOX|g" \
     -e "s|{pr_body_file}|$CASE_DIR/pr body.txt|g" -e "s|{history_file}|$CASE_DIR/history.txt|g" \
     -e 's|{impl_status}|✅ 完了|g' -e 's|{test_status}|🔄 進行中|g' -e 's|{doc_status}|⬜ 未着手|g' \
     "$TEST_DIR/caller.template" > "$CASE_DIR/caller.sh"
+  # Preserve the real helper while recording its PID for signal injection.
+  if [ -n "$TEST_SIGNAL" ]; then
+    mv "$TARGET" "$SANDBOX/scripts/helper-signal.sh"
+    printf 'echo $$ > "$CASE_DIR/helper.pid"\nexec bash "%s" "$@"\n' "$SANDBOX/scripts/helper-signal.sh" > "$TARGET"
+  fi
   RC=0
   (cd "$CASE_DIR" && bash "$CASE_DIR/caller.sh") > "$CASE_DIR/out" 2> "$CASE_DIR/err" || RC=$?
   if [ "$failure" = normal ]; then
     marker 'actual caller normal' success 42
     check 'normal caller has no startup failure' lacks "$CASE_DIR/err" 'reason=wm_update_helper_failed'
-  else reason "caller $failure" wm_update_helper_failed; fi
+  elif [ -n "$TEST_SIGNAL" ]; then
+    case "$failure" in INT) expected_rc=130 ;; TERM) expected_rc=143 ;; HUP) expected_rc=129 ;; esac
+    check "caller $failure propagates signal rc" test "$RC" = "$expected_rc"
+    marker "caller $failure" failed 42
+    check "caller $failure exposes rc" contains "$CASE_DIR/err" "rc=$expected_rc"
+  else
+    reason "caller $failure" wm_update_helper_failed
+    check "caller $failure exits nonzero" test "$RC" -ne 0
+  fi
   check "caller $failure removes PR input" test ! -e "$CASE_DIR/pr body.txt"
   check "caller $failure removes history input" test ! -e "$CASE_DIR/history.txt"
   check "caller $failure preserves other run input" test -f "$CASE_DIR/body.fixture"

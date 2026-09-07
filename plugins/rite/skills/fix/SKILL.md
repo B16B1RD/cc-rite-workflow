@@ -2138,10 +2138,10 @@ rationale: references/design-rationale.md#work-memory-update-rationale
 
 #### 4.5.2 Retrieve and Update Work Memory Comment
 
-進捗ステータスはステップ 3 の検証済み変更一覧から判断し、不足時は `git diff --name-status` を取得する。履歴本文は 4.5.3 のテンプレートから生成する。本文をコードへ展開せず、Write ツールで下記の所有ファイルへ保存する（履歴は `### レビュー対応履歴` 見出しなし）。別 Bash のローカル変数は引き継がない。
+進捗ステータスはステップ 3 の検証済み変更一覧から判断し、不足時は `rite-config.yml` の base（未設定時 `develop`）を解決し、helper と同じ `git diff --name-status "origin/{base_branch}...HEAD"` を取得する。履歴本文は 4.5.3 のテンプレートから生成する。本文をコードへ展開せず、Write ツールで下記の所有ファイルへ保存する（履歴は `### レビュー対応履歴` 見出しなし）。別 Bash のローカル変数は引き継がない。
 
 1. `mktemp` で PR 本文ファイルを確保する。失敗時は `WM_UPDATE_FAILED=1; reason=mktemp_failed_pr_body_tmp` を stderr に出し、更新を実行せず 5.1 へ進む。取得済み PR 本文を保存し、空/書込失敗は空ファイルとして helper に渡す。
-2. `mktemp` で履歴ファイルを確保し本文を保存する。準備失敗時はパスを空文字にする。helper は進捗更新成功後にだけ `wm_sync_history_failed` と判定するため、この時点で失敗フラグを追加しない。
+2. `mktemp` で履歴ファイルを確保し本文を保存する。準備失敗時は確保済みの履歴ファイルを削除してからパスを空文字にする。helper は進捗更新成功後にだけ `wm_sync_history_failed` と判定するため、この時点で失敗フラグを追加しない。
 3. 以下を単一 Bash 呼び出しで実行する。`{pr_body_file}` / `{history_file}` は今回確保したパス（履歴準備失敗は空文字）、`{plugin_root}` は解決済みの絶対パスで置換する。helper が所有する一時ファイルは helper 自身が回収する。
 
 ```bash
@@ -2159,10 +2159,15 @@ printf '%s\n' "$wm_update_out"
 if ! printf '%s\n' "$wm_update_out" | grep -qE '^\[CONTEXT\] FIX_WM_UPDATE=(success|skipped|failed); issue_number=[0-9]*$'; then
   echo "ERROR: work memory helper の結果を取得できませんでした (rc=$wm_update_rc)" >&2
   echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=wm_update_helper_failed" >&2
+  [ "$wm_update_rc" -ne 0 ] || wm_update_rc=1
 fi
+if [ "$wm_update_rc" -ne 0 ]; then
+  echo "ERROR: work memory helper が非ゼロ終了しました (rc=$wm_update_rc)" >&2
+fi
+exit "$wm_update_rc"
 ```
 
-stdout の `FIX_WM_UPDATE` と `issue_number`、stderr の `WM_UPDATE_FAILED` / reason を会話 context に保持し、5.1 の既存優先順位で最終結果を選ぶ。非ゼロ終了も成功扱いにしない。結果 marker 不在は起動・引数エラーを含む未実行として扱う。helper は `update-progress` → `append-section` の順に既存 WM helper を呼び、進捗失敗なら履歴を抑止し、`no_comment` は正常な省略として扱う。
+stdout の `FIX_WM_UPDATE` と `issue_number`、stderr の `WM_UPDATE_FAILED` / reason を会話 context に保持する。`FIX_WM_UPDATE=failed` の場合も `WM_UPDATE_FAILED=1` を保持し、5.1 の既存優先順位で最終結果を選ぶ。非ゼロ終了も成功扱いにしない。結果 marker 不在は起動・引数エラーを含む未実行として扱う。helper は `update-progress` → `append-section` の順に既存 WM helper を呼び、進捗失敗なら履歴を抑止し、`no_comment` は正常な省略として扱う。
 
 **Placeholder descriptions for Claude**:
 
