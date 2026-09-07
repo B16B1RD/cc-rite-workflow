@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 # Smoke + validation tests for hardcoded-line-number-check.sh
 #
-# Validates against synthetic fixtures derived from the cycle 2/3 incident
-#. The literals exercised here are taken from commit 6760cc5 and
-# 03fe71f (cleanup.md:1674, create-interview.md:605) before they were
-# replaced with structural references.
+# Synthetic fixtures cover fixed line references and their structural alternatives.
 
 set -uo pipefail
 
@@ -244,7 +241,7 @@ assert "tilde fence: only 2 findings (outside fence)" "2" "$total_count"
 # With uppercase support (`[A-Za-z][A-Za-z0-9_.-]*\.md:[0-9]+`), filenames like
 # `barFoo.md`, `README.md`, `CHANGELOG.md` are valid full matches.
 # Word-boundary check still suppresses substring extraction when prev char is alnum/underscore
-# (e.g. `12barFoo.md:42` would attempt match at `b` but prev='2' makes is_continuation=true → skip).
+# A digit-prefixed filename must not yield a suffix match starting at its first letter.
 FIX_WB="$TMPDIR_ROOT/word_boundary.md"
 cat > "$FIX_WB" <<'EOF'
 Mixed-case file name barFoo.md:42 here (now matches as full identifier).
@@ -258,10 +255,9 @@ out=$("$SCRIPT" --target "$FIX_WB" --repo-root "$TMPDIR_ROOT" 2>&1)
 rc=$?
 pc_count=$(grep -c '\[P-C\]' <<< "$out")
 assert "word-boundary: exits 1" "1" "$rc"
-# Expected matches: barFoo.md:42, foo.bar.md:42, bug-fix.md:99, README.md:10 = 4
-# bug.md:42-50 must NOT match (range exclusion)
-# prefix12barFoo.md:42 → start at 'p' of "prefix" matches whole "prefix12barFoo.md:42" as one finding,
-#   not as separate barFoo.md:42 substring (word-boundary suppresses substring re-extraction)
+# Mixed-case, dotted, kebab-case and uppercase filenames must match.
+# Ranges must not match; the prefixed filename yields one full match without
+# a second finding for its suffix (word-boundary suppression).
 assert_ge "word-boundary: at least 4 findings (uppercase support enabled)" 4 "$pc_count"
 # Verify range form is suppressed
 range_false_positive=$(grep -c 'cross-file line reference: bug\.md:42$' <<< "$out" || true)

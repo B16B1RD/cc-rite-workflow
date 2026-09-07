@@ -390,7 +390,7 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 
 1. **読解**: Raw Source 本文から抽出可能な経験則を特定
 2. **ドメイン判定**: `patterns` / `heuristics` / `anti-patterns` に分類
-2.5. **昇格分類**: 本経験則が rite workflow 自体の挙動・スキル記述法に関するものなら、環境非依存性も判定する。環境非依存なら frontmatter に `promote: rite-plugin` を付け、環境固有なら一般化してから昇格するか、一般化できない domain 知見として Wiki に残す。**機械検出可能（2.6）と両方に該当する場合は 2.6 が優先**し、ページを作らない（`promote` はページ作成時のみ）
+2.5. **昇格分類**: 本経験則が rite workflow 自体の挙動・スキル記述法に関するものなら、[配布境界](../../references/distribution-boundary.md)に従って環境非依存性も判定する。環境非依存なら frontmatter に `promote: rite-plugin` を付け、環境固有なら一般化してから昇格するか、一般化できない domain 知見として Wiki に残す。**機械検出可能（2.6）と両方に該当する場合は 2.6 が優先**し、ページを作らない（`promote` はページ作成時のみ）
    rationale: references/rationale.md#knowledge-routing
 2.6. **検出器化候補の分類**: grep / lint / lib 関数で機械的に強制できるかフラグ付けするのみ（アクション決定はしない）。できるなら `detector_candidate=true`、できないなら `false`
    rationale: references/rationale.md#detector-candidate
@@ -831,30 +831,21 @@ if [ "$branch_strategy" = "separate_branch" ]; then
 else
   wiki_root=".rite/wiki"
 fi
-wiu_title=$(cat <<'WIU_EOF'
+{
+  IFS= read -r wiu_title
+  IFS= read -r wiu_description
+  IFS= read -r wiu_domain
+  IFS= read -r wiu_slug
+  IFS= read -r wiu_updated
+  IFS= read -r wiu_confidence
+} <<'WIU_EOF'
 {title}
-WIU_EOF
-)
-wiu_description=$(cat <<'WIU_EOF'
 {description}
-WIU_EOF
-)
-wiu_domain=$(cat <<'WIU_EOF'
 {domain}
-WIU_EOF
-)
-wiu_slug=$(cat <<'WIU_EOF'
 {slug}
-WIU_EOF
-)
-wiu_updated=$(cat <<'WIU_EOF'
 {updated}
-WIU_EOF
-)
-wiu_confidence=$(cat <<'WIU_EOF'
 {confidence}
 WIU_EOF
-)
 bash "{plugin_root}/hooks/scripts/wiki-index-update.sh" \
   --index "$wiki_root/index.md" --pages-root "$wiki_root/pages" \
   --title "$wiu_title" --description "$wiu_description" \

@@ -414,7 +414,7 @@ This explains both the non-obvious choice and the historical reason — clearly 
 | 「TODO の期限が切れている気がする」 | 「`src/api/legacy.ts:120` の `// TODO(#{number}): remove before 2025-Q1` だが追跡先は `state: CLOSED` かつ期限後にマージ済。該当コードは依然 active path。orphan TODO」 |
 | 「参照先が存在しないかも」 | 「`src/utils.ts:8` の `// See also: helpers/format.ts::formatCurrency` だが `Grep 'formatCurrency' src/` で hit 0 件。`format/currency.ts::format` にリネーム済 (`git log --diff-filter=R`)。broken reference」 |
 | 「コメントが冗長」 | 「`src/store/user.ts:22` の `// Set the user id` (line 23: `user.id = id;`) は WHAT only の redundant comment。前後の context にも validation / migration / transaction の WHY 情報なし。deletion 推奨」 |
-| 「コメントにメタ情報が多い」 | 「`hooks/state-read.sh:42` の `# verified-review cycle 35 fix (F-04 HIGH): if/else pattern instead of if! pattern` は SoT 原則 2 (no_journal_comment) 違反のジャーナルコメント。review-history メタ情報はコード内コメントではなく commit message / PR 説明 (git/PR メタデータ = 番号の正しい受け皿) に書くべき (`.rite/wiki/` は番号の受け皿ではなく経験則を Why 散文で残す場)。check #6 (a) — Severity HIGH。本 PR diff の追加行で出現するか `Grep '+ .*verified-review cycle'` で確認」 |
+| 「コメントにメタ情報が多い」 | 「diff の追加コメントが現在の制約ではなくレビュー履歴を記録している。SoT 原則 2 (no_journal_comment) 違反。該当ファイルと意味的アンカーを示し、check #6 (a) の正規表現で一致を確認する。履歴は commit message / PR 説明に移し、コメントと Wiki には現在の制約と Why のみ残す。Severity HIGH」 |
 | 「ジャーゴンが分かりにくい」 | 「`commands/foo.md:15` の `// orchestrator の handshake-validator を経由する` で `handshake-validator` がトークン検出される。SoT [Whitelist](../skills/rite-workflow/references/comment-best-practices.md#whitelist-プロジェクト固有ジャーゴン) に未登録、`Grep -r 'handshake-validator' plugins/` で 1 hit (本コメントのみ) → 独立登場 3 回未満。SoT 原則 4 (no_jargon_abuse) 違反。check #6 (c) — Severity LOW。Whitelist 拡張または用語置換を推奨」 |
 
 ## Finding Quality Guidelines

@@ -368,7 +368,7 @@ check_pr_raw_correspondence() {
   while IFS= read -r pr_num; do
     [ -z "$pr_num" ] && continue
     total_checked=$((total_checked + 1))
-    if ! printf '%s\n' "$raw_pr_numbers" | grep -qx "$pr_num"; then
+    if ! printf '%s\n' "$raw_pr_numbers" | grep -x "$pr_num" >/dev/null; then
       missing_count=$((missing_count + 1))
       missing_prs="${missing_prs:+$missing_prs, }#$pr_num"
     fi
@@ -418,8 +418,8 @@ _count_pending_from_list() {
     while IFS= read -r file_path; do
       [ -z "$file_path" ] && continue
       file_content=$(git show "${git_log_target}:${file_path}" 2>/dev/null) || continue
-      # Check YAML frontmatter for ingested: false
-      if printf '%s\n' "$file_content" | head -20 | grep -qE '^ingested:[[:space:]]*(false|no)'; then
+      # Consume the complete source so large bodies cannot SIGPIPE under pipefail.
+      if printf '%s\n' "$file_content" | sed -n '1,20p' | grep -E '^ingested:[[:space:]]*(false|no)' >/dev/null; then
         pending_count=$((pending_count + 1))
       fi
     done <<< "$raw_files"

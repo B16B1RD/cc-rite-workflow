@@ -52,8 +52,8 @@ fi
 **canonical 対策**: pipeline 各段で独立 tempfile に stderr を退避し、失敗時に段ごとの stderr を sentinel emit に併記する:
 
 ```bash
-gh_stderr=$(mktemp /tmp/probe-gh-err-XXXXXX 2>/dev/null) || gh_stderr=""
-jq_stderr=$(mktemp /tmp/probe-jq-err-XXXXXX 2>/dev/null) || jq_stderr=""
+gh_stderr=$(mktemp "${TMPDIR:-/tmp}/probe-gh-err-XXXXXX" 2>/dev/null) || gh_stderr=""
+jq_stderr=$(mktemp "${TMPDIR:-/tmp}/probe-jq-err-XXXXXX" 2>/dev/null) || jq_stderr=""
 trap 'rm -f "$gh_stderr" "$jq_stderr"' EXIT INT TERM HUP
 
 set -o pipefail

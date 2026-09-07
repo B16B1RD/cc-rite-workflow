@@ -417,12 +417,12 @@ assert "ignored run reports zero" "1" "$(printf '%s' "$out" | grep -c 'Total pip
 
 REPO_ROOT="$(_helpers_resolve_repo_root "$SCRIPT_DIR")"
 out=$(bash "$SCRIPT" --all --repo-root "$REPO_ROOT" --quiet 2>&1); rc=$?
-assert "known full-tree findings make the check non-clean" "1" "$rc"
-assert "known full-tree finding total is pinned" "3" "$(printf '%s\n' "$out" | grep -c '^\[pipefail-grep-q\]')"
+assert "full-tree scan is clean" "0" "$rc"
+assert "full-tree scan reports no findings" "0" "$(printf '%s\n' "$out" | grep -c '^\[pipefail-grep-q\]' || true)"
 assert "wiki-lint-orphans disabled sites are not reported" "0" "$(printf '%s\n' "$out" | grep -c '^\[pipefail-grep-q\] plugins/rite/hooks/scripts/wiki-lint-orphans\.sh:' || true)"
-assert "wiki-growth known sites are reported" "2" "$(printf '%s\n' "$out" | grep -c '^\[pipefail-grep-q\] plugins/rite/hooks/scripts/wiki-growth-check\.sh:')"
+assert "wiki-growth consumers are clean" "0" "$(printf '%s\n' "$out" | grep -c '^\[pipefail-grep-q\] plugins/rite/hooks/scripts/wiki-growth-check\.sh:' || true)"
 assert "wiki-lint-broken-refs disabled sites are not reported" "0" "$(printf '%s\n' "$out" | grep -c '^\[pipefail-grep-q\] plugins/rite/hooks/scripts/wiki-lint-broken-refs\.sh:' || true)"
-assert "backfill known site is reported" "1" "$(printf '%s\n' "$out" | grep -c '^\[pipefail-grep-q\] plugins/rite/scripts/backfill-sub-issues\.sh:')"
+assert "backfill consumer is clean" "0" "$(printf '%s\n' "$out" | grep -c '^\[pipefail-grep-q\] plugins/rite/scripts/backfill-sub-issues\.sh:' || true)"
 assert "review-source-resolve remains outside the finding set" "0" "$(printf '%s\n' "$out" | grep -c '^\[pipefail-grep-q\].*review-source-resolve\.sh:' || true)"
 
 missing_root="$SBX/does-not-exist"

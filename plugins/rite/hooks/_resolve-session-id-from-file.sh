@@ -25,43 +25,14 @@
 #       a single command-substitution capture pattern: `sid=$(... )`)
 #   1 — argument error (missing state_root)
 #
-# Why this exists (verified-review cycle 38 F-05 MEDIUM):
-#   The compound sequence
-#     `tr -d '[:space:]' < <state_root>/.rite-session-id` + `_resolve-session-id.sh`
-#     validation + `sid=""` fallback
-#   was duplicated across 3 sites:
-#     - state-read.sh の per-session resolver
-#     - flow-state-update.sh `_resolve_session_id` 関数 (sid_file 経路)
-#     - resume-active-flag-restore.sh の `.rite-session-id` 読込ブロック
-#   UUID validation 自体は cycle 34 F-01 で `_resolve-session-id.sh` に DRY 化済だが、
-#   その上流の compound 動作 (file read + whitespace stripping + validation + fallback)
-#   は残存していた。将来「session_id を hex normalize する」「base64-encoded UUID を許容」等の
-#   追加で同型片肺更新 drift リスクを抱える経路を構造的に防ぐ。
-#
-# Caller migration (cycle 38 F-05):
-#   Before (10 lines): `if [ -f "$root/.rite-session-id" ]; then ... raw=$(tr -d ...);`
-#                      `if validated=$(bash _resolve-session-id.sh "$raw"); then ...; fi; fi`
-#   After  (1 line):   `sid=$(bash _resolve-session-id-from-file.sh "$STATE_ROOT")`
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=control-char-neutralize.sh
 source "$SCRIPT_DIR/control-char-neutralize.sh"
 
-# verified-review MEDIUM (silent-failure-hunter):
-# `_resolve-session-id.sh` の存在 check を upfront で実施する。
-# 本ファイル末尾の `_resolve-session-id.sh` invocation
-# (`if validated=$(bash "$SCRIPT_DIR/_resolve-session-id.sh" "$raw" 2>/dev/null); then ...`) は
-# stderr を suppress するため、upfront check が無いと helper missing (rc=127) / permission denied /
-# bash 起動失敗 と validation 失敗 (rc=1) が区別不能 (両方とも「stdout 空文字 + exit 0」で復帰) になる。
-# state-read.sh / flow-state-update.sh は upfront で `[ ! -x ]` check を実施しているため、
-# それらの caller 経由では deploy regression が早期に検出されるが、本 helper を直接呼ぶ
-# 新規 caller が出現した場合に同種の silent skip 経路を作る。
-# state-read.sh の helper existence check ブロック (`for _helper in state-path-resolve.sh ... ; do
-# [ ! -x ... ] ; done` loop) と同型に統一する。
-# verified-review cycle 40: cycle 39 で「L77」「state-read.sh L49-57」と書いた行番号参照を
-# semantic anchor (本ファイル末尾の invocation / helper existence check ブロック) に置換
-# (cycle 38 F-04 DRIFT-CHECK ANCHOR 原則と整合)。
+# UUID validation は stderr を抑制するため、helper 不在や権限不足を
+# 不正 UUID による空文字復帰と区別できるよう、依存 helper を先に検査する。
 if [ ! -x "$SCRIPT_DIR/_resolve-session-id.sh" ]; then
   echo "ERROR: required helper not found or not executable: $SCRIPT_DIR/_resolve-session-id.sh" >&2
   echo "  本 helper (_resolve-session-id-from-file.sh) は _resolve-session-id.sh に UUID validation を委譲しています。" >&2
@@ -82,8 +53,6 @@ fi
 # `_validate-helpers.sh` 経由で存在確認すると ERROR 文言の SoT が同 helper の
 # ERROR 出力ブロック (`echo "ERROR: $_helper not found or not executable: ..."`) に集約され、
 # 片肺更新型 drift を構造的に防げる。
-# (cycle 48 F-03: hardcoded line ref `_validate-helpers.sh:86-87` を semantic anchor に置換 —
-# drift 防止 doctrine cycle 38 F-04 と整合)
 bash "$SCRIPT_DIR/_validate-helpers.sh" "$SCRIPT_DIR" _validate-state-root.sh || exit $?
 bash "$SCRIPT_DIR/_validate-state-root.sh" "$STATE_ROOT" || exit $?
 
@@ -106,17 +75,8 @@ fi
 # legacy 経路にフォールバック → cross-session guard が空 SID で意図しない経路を通る。
 # そのため stderr を tempfile に退避し、IO error は WARNING を emit してから空文字復帰する (caller の
 # graceful degradation 動作は維持しつつ、observability を確保)。
-# cycle 43 F-08 (MEDIUM) 対応: mktemp 失敗 WARNING 統一 + chmod 600 + canonical 4 行 trap。
-# verified-review F-03 (MEDIUM) 対応:
-# 旧コメントに含まれていた hardcoded 行番号 (state-read.sh:267 / _resolve-cross-session-guard.sh:93 /
-# flow-state-update.sh:282,422 / resume-active-flag-restore.sh:180) は本 PR で導入した「DRIFT-CHECK
-# ANCHOR は semantic name 参照、line 番号禁止」doctrine (cycle 38 F-04 / cycle 40) に違反する。
-# 該当 4 site はすでに drift 済 (実行番号と乖離) のため、semantic anchor に置換した。
-# 他 5 helper の canonical pattern (`_mktemp-stderr-guard.sh` 呼び出しブロック / canonical mktemp
-# pattern / mktemp 失敗 WARNING ブロック) と対称化する。
-# この helper を経由しない素朴な実装では (a) mktemp 失敗時に WARNING emit せず silent fallback、
-# (b) chmod 600 path-disclosure defense なし、(c) trap 不在で SIGINT/SIGTERM/SIGHUP 経路で _tr_err orphan
-# のリスクが生じる。error-handling-reviewer Likelihood-Evidence: existing_call_site で実証済み。
+# `_mktemp-stderr-guard.sh` が作成失敗時の WARNING と chmod 600 を担い、
+# trap が SIGINT/SIGTERM/SIGHUP を含む終了経路で一時ファイルを削除する。
 _tr_err=""
 _rite_resolve_sid_cleanup() {
   rm -f "${_tr_err:-}"
@@ -126,9 +86,6 @@ trap '_rite_resolve_sid_cleanup; exit 130' INT
 trap '_rite_resolve_sid_cleanup; exit 143' TERM
 trap '_rite_resolve_sid_cleanup; exit 129' HUP
 
-# F-02 (MEDIUM) consolidation: 共通 helper `_mktemp-stderr-guard.sh` 経由で
-# Stderr emit + chmod 600 + path return を集約。
-# chmod 600 (cycle 41 F-14 と対称化、multi-user 環境で session_id leak 防止) は helper 内に内蔵済。
 _tr_err=$(bash "$SCRIPT_DIR/_mktemp-stderr-guard.sh" \
   "_resolve-session-id-from-file" "resolve-sid-tr-err" \
   "tr 失敗時の error 詳細が表示されません")

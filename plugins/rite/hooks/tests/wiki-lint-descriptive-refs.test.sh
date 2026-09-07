@@ -623,9 +623,8 @@ assert_not_grep "TC-19c index.md 不在なら marker block に index 行が出�
 assert_not_grep "TC-19c index.md 不在を読出失敗として WARNING しない" "$sb_noidx_err" 'index\.md の読出に失敗'
 
 # ---- TC-20 (AC-3): `## ソース` 節に除外が残っていないこと --------------------
-# 旧実装は見出しから次の `##` までを節スコープで落としていた。撤廃したので、節の内側も
-# 外側も同じ規則で数える。見出しの表記ゆれ (`## ソース（追記分）` / 半角括弧) ごとに
-# 除外が復活していないかを、同じ 1 ページ内で並べて測る。
+# 節の内側も外側も同じ規則で数える。見出しの表記ゆれ
+# (`## ソース（追記分）` / 半角括弧) に依らず数えることを同じページ内で検証する。
 post_src=$(printf '# t\n\n## ソース\n\n- [PR #1400 review results](../../raw/reviews/a.md)\n\n## 補強: 節\n\nPR #1500 はソース節の後の本文\n')
 assert "TC-20 (AC-3) ソース節の内側と後続本文をどちらも数える" "2" "$(single_hits "$post_src")"
 appendix_src=$(printf '# t\n\n## ソース\n\n- [PR #1400 review results](../../raw/a.md)\n\n## ソース（追記分）\n\n- [PR #1500 review results](../../raw/b.md)\n\n## ソース(追記分 2)\n\n- [PR #1600 review results](../../raw/c.md)\n')

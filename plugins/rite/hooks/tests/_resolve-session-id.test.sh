@@ -1,15 +1,10 @@
 #!/bin/bash
-# Tests for _resolve-session-id.sh (cycle 13 F-03 対応)
+# Tests for _resolve-session-id.sh
 #
 # Purpose:
-#   cycle 12 F-03 の指摘により、`_resolve-session-id.sh:38-46` の UUID
-#   validation helper には direct test がない。cycle 44 F-10 で導入された
-#   case-insensitive accept + lowercase normalize 動作 (`tr 'A-F' 'a-f'`) は
-#   caller (state-read.sh) の TC-6.INJECTION (uppercase / mixed_case vectors)
-#   経由で indirect カバーされるが、normalize 部分 (uppercase 入力 → lowercase 出力)
-#   を直接 assert する test がない。`tr 'A-F' 'a-f'` を `cat` に mutate しても
-#   全 caller TC が pass する経路があった (caller が path-not-exist で legacy fallback
-#   するため、normalized path の検証ができない false-negative)。
+#   case-insensitive accept と lowercase normalize の出力を直接検証する。
+#   caller 経由のテストでは、パス不在時の legacy fallback が normalize の失敗を
+#   隠す可能性があるため、helper の stdout と exit code を比較する。
 #
 # Test cases:
 #   TC-1 (valid lowercase): canonical UUID → exit 0 + 同一 lowercase stdout

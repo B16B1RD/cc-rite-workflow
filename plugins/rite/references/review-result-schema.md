@@ -14,7 +14,7 @@
 - `{pr_number}`: PR 番号（整数）
 - `{timestamp}`: `YYYYMMDDHHMMSS` 形式の JST (例: `20260411123456`)
 - 同一 PR の過去レビューは **best-effort で履歴保持** する。1 秒解像度のため、同一 PR に対し同一秒以内に 2 回 `/rite:pr-review` を実行すると file path が衝突する。pr-review.md ステップ 6.1.a は collision 検出時に `~<4桁hex>` suffix (`~$(printf '%04x' "${RANDOM:-0}")` 相当) で衝突回避を試みるが、完全な一意性保証ではない (best-effort tradeoff)。separator には `~` (0x7E) を使用する。ファイル名 `{ts}~{hex}.json` と `{ts}.json` の分岐点で `.` (0x2E) < `~` (0x7E) となるため、collision-resolved 版が lexicographic 大となり `sort -r` で先頭に並ぶ
-- **並列実行は未サポート**: 同一 PR に対する `/rite:pr-review` の同時並列実行 (複数ターミナル / CI 並列 job 等) は未サポート。`mv` の atomicity と `[ -e ]` check の TOCTOU race window により、後勝ちでファイル上書きが発生する可能性がある。POSIX `mv` の標準オプションは `-f`/`-i` のみで、`-n` は POSIX 非標準 (GNU coreutils / BSD 拡張) のため、POSIX 準拠の観点から採用しない ([mv(1p) POSIX](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/mv.html) 参照)。並列実行する場合はユーザー自身が時系列をずらす責務を持つ (verified-review cycle 12 I-2 対応で旧 rationale 「bash 3.2 + POSIX utilities 前提と矛盾」を削除。本 plugin は [bash-compat-guard.md](./bash-compat-guard.md) で `mapfile` builtin 必須 = bash 4.0+ 前提であり、bash 3.2 portable 前提は成立しないため)
+- **並列実行は未サポート**: 同一 PR に対する `/rite:pr-review` の同時並列実行 (複数ターミナル / CI 並列 job 等) は未サポート。`mv` の atomicity と `[ -e ]` check の TOCTOU race window により、後勝ちでファイル上書きが発生する可能性がある。POSIX `mv` の標準オプションは `-f`/`-i` のみで、`-n` は POSIX 非標準 (GNU coreutils / BSD 拡張) のため、POSIX 準拠の観点から採用しない ([mv(1p) POSIX](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/mv.html) 参照)。同一 PR のレビューは実行時刻をずらすこと。
 - `.rite/review-results/` は保存先へ同梱される `*` だけの `.gitignore`（`hooks/review-result-save.sh` が書く）で除外される。root の `.gitignore` エントリには依存しない
 
 ## Schema Version (Single Source of Truth)
@@ -33,7 +33,7 @@
 
 **`verdict` / `reviewers` も 1.1.0 内で additive 追加した** — こちらは write 側必須だが、**version は bump しない**。理由は 2 つある: (a) 唯一の判定 consumer である merge ゲートは `schema_version` の**値**を見ず、`verdict` / `reviewers` の**キー存在**で新旧を判別する。version を上げても判別は 1 mm も変わらない。(b) bump すると読取側 accept list 4 箇所と `hooks/tests/review-schema-write-version-parity.test.sh` の literal を同時更新する義務が発生し、機能上の利得ゼロに対して 5 箇所の同期コストだけが増える。**したがって `schema_version == "1.1.0"` から `verdict` / `reviewers` の存在を推論してはならない** (`verification` と同じ注意。本変更より前に保存された 1.1.0 JSON は両キーを持たない)。存在を要求する側は必ずキーを直接検査すること。
 
-**検証箇所の同期義務** (verified-review cycle 8 L-4 対応で本セクションを SoT 化、cycle 10 I-E 対応で read/write 非対称を明示、1.1.0 を accept list に追加):
+**検証箇所の同期義務**:
 
 **読取側 (3 値受理義務、4 箇所で完全同期)**:
 
