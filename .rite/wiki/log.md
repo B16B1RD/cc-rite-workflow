@@ -24,6 +24,8 @@
 * **lint:clean** — contradictions=0, stale=62, orphans=0, missing_concept=0, unregistered_raw=445, broken_refs=0
 * **Lint scope** — 全 469 ページと 2004 raw の構造検査を再実行。pages と index は直前の記録から無変更のため矛盾判定は継承し、既存全文の意味監査は再実施していない。陳腐化・孤児・リンク検査 helper に既存の Broken pipe 診断が出たが、各完了 marker は取得できた。
 
+* **Skip**: [20260907T094042Z-pr-2604.md](raw/reviews/20260907T094042Z-pr-2604.md) — レビュー指摘なし。プロジェクトドメインの新規経験則なし。
+
 ## 2026-09-06
 * **lint:clean** — contradictions=0, stale=58, orphans=0, missing_concept=0, unregistered_raw=436, broken_refs=0
 * **Create**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/reviews/20260906T125803Z-pr-2582.md を新規ページ化
