@@ -421,16 +421,41 @@ jq -r '.targets[] | "| \(.id) | \(.file):\(.line) | issued | fixture issue for \
 "$LEDGER" append --ledger-file "$sandbox/medium-ledger.md" --entries-file "$medium_entries"
 assert "sweep persists two digest rows" 2 "$(grep -c '^| M-' "$sandbox/medium-ledger.md")"
 
+# Triage counts describe the input classification, including fatal findings answered without a push.
+mixed_json="$sandbox/mixed-replies.json"
+jq '.findings += [{id:"F-03",severity:"HIGH",scope:"current-pr",file:"src/c.ts",line:30,verification:{measured:true}}]' \
+  <(jq '.findings = .non_blocking_findings | .non_blocking_findings = []' "$medium_json") > "$mixed_json"
+bash "$PLUGIN_ROOT/scripts/review-findings-maps.sh" --review-source explicit_file \
+  --review-source-path "$mixed_json" > "$sandbox/mixed.maps" 2> "$sandbox/mixed.triage"
+assert "mixed triage succeeds" 0 "$?"
+assert_grep "mixed triage retains fatal=1 moved=2" "$sandbox/mixed.triage" 'FIX_FATAL_TRIAGE=applied; fatal=1; moved=2'
+assert "fatal finding remains after triage" F-03 "$(jq -r '.findings[0].id' "$mixed_json")"
+assert "sweep consumes transfers without consuming fatal replies" 2 "$("$COLLECT" --json "$mixed_json" | jq '.count')"
+
 # Pin the actual prompt routing, including precedence and the outer batch success gate.
 assert_grep "fix retains fatal and moved counts" "$FIX_SKILL" '\{fatal_count\}=N.*\{non_fatal_moved_count\}=M'
 assert_grep "non-fatal-only requires no push/accept, fatal=0 and moved>0" "$FIX_SKILL" '^\| 4\.5 \| Push なし.*accept 決定なし.*\{fatal_count\}=0.*\{non_fatal_moved_count\}>0.*All findings replied.*\[fix:non-fatal-only\]'
-assert_grep "pure reply-only requires moved=0" "$FIX_SKILL" '^\| 5 \|.*\{non_fatal_moved_count\}=0.*\[fix:replied-only\]'
+assert_grep "reply-only includes mixed transfers but requires no push/accept and all replies" "$FIX_SKILL" '^\| 5 \| Push なし かつ 本 cycle 内で accept 決定なし \(上記 2 マーカーがいずれも非出現\) かつ All findings replied \| `\[fix:replied-only\]`'
+assert_grep "unhandled input still ends in error" "$FIX_SKILL" '^\| 6 \| Unexpected state / error \| `\[fix:error\]`'
+assert_grep "fatal error flags remain distinct from triage count" "$FIX_SKILL" '^\| 1 \(最優先\).*FIX_FALLBACK_FAILED=1.*\[fix:error\]'
+assert_grep "failed replies retain error precedence" "$FIX_SKILL" '^\| 2 \|.*REPLY_POST_FAILED=1.*\[fix:error\]'
 assert "error, WM, push/accept retain precedence" '1 1.5 1.6 2 2.5 3 4 4.5 5 6' \
   "$(awk '/^\| 評価順 \|/{table=1;next} table && /^\| [0-9]/{printf "%s%s", sep, $2; sep=" "} table && !/^\|/{exit}' "$FIX_SKILL")"
 assert_grep "non-fatal-only sets FINALIZE" "$FIX_SKILL" '\-\-handoff "FINALIZE:fix:non-fatal-only:\{pr_number\}"'
 assert_grep "iterate routes non-fatal-only to 5.S, not full review" "$ITERATE" '^\| `\[fix:non-fatal-only\]` \| ステップ 5\.S.*ステップ 1 に戻らない'
 assert_grep "batch success only after successful sweep" "$ITERATE" '\[fix:non-fatal-only\].*5\.S が `done` / `noop` / `skipped` で成功した後だけ.*外向きに `\[review:mergeable\]`'
 assert_grep "failed sweep cannot report success" "$ITERATE" 'sweep 失敗時は `\[iterate:nb-sweep-error\]` のまま停止し、成功 sentinel を返さない'
+
+# Extract the connected entry and exit tables rather than matching unrelated mentions.
+reply_entry=$(sed -n '/^## ステップ 4: fix sentinel を判定/,/^## ステップ 5.S:/p' "$ITERATE")
+sweep_exit=$(sed -n '/^### sweep 後の終了理由/,/^### 正常終了/p' "$ITERATE")
+assert "reply-only enters sweep before completion" 1 "$(printf '%s\n' "$reply_entry" | grep -c '^| `\[fix:replied-only\]` | ステップ 5\.S.*返信のみで完了通知')"
+assert "successful sweep keeps reply-only exit" 1 "$(printf '%s\n' "$sweep_exit" | grep -c '^| `\[fix:replied-only\]` | `\[fix:replied-only\]`.*mergeable へ昇格しない')"
+assert "other successful entries remain mergeable" 1 "$(printf '%s\n' "$sweep_exit" | grep -c '^| `\[review:mergeable\]` / `\[fix:non-fatal-only\]` | `\[review:mergeable\]` |')"
+assert_grep "reentry and nested sweep cannot overwrite entry reason" "$ITERATE" '5\.S 再入時も保持値を使い、内部の `\[fix:sweep-done\]` や handoff で上書きしない'
+assert "unknown entry cannot imply success" 1 "$(printf '%s\n' "$sweep_exit" | grep -c '^| 欠落 / その他 | `\[iterate:nb-sweep-error\]`')"
+assert_grep "all successful sweep outcomes use entry routing" "$ITERATE" '5\.S の `done` / `noop` / `skipped`.*消化の成功だけ'
+assert_grep "merge-mode batch still stops on reply-only" "$PLUGIN_ROOT/skills/batch-run/SKILL.md" '^\| `\[fix:replied-only\]` \+ `merge` \|.*ステップ 8'
 
 if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check SKILL.md 5.S / 6.1.d preserve"; then
   exit 1
