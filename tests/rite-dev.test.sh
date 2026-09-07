@@ -110,6 +110,7 @@ codex_log=$(<"$LOG")
 assert_contains 'Codex host 環境変数を設定' "$codex_log" 'RITE_HOST=codex'
 assert_contains 'Codex plugin root 環境変数を設定' "$codex_log" "RITE_PLUGIN_ROOT=$REPO_PHYS/plugins/rite"
 assert_contains 'Codex は分離 CODEX_HOME を使用' "$codex_log" "CODEX_HOME=$REPO_PHYS/.codex-dev"
+assert_contains 'Codex は auto approval mode を使用' "$codex_log" 'ARG=--approve-for-me'
 assert_contains 'Codex は repository cwd を指定' "$codex_log" $'ARG=--cd\nARG='"$REPO_PHYS"
 assert_contains 'Codex の語境界を保持' "$codex_log" $'ARG=two words\nARG=tail'
 [[ -d "$REPO/.codex-dev/skills" && ! -L "$REPO/.codex-dev/skills" ]] && \
