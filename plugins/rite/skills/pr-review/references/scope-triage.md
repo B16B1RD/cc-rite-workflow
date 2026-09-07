@@ -245,7 +245,7 @@ elif printf '%s' "$body" | grep -q '^## 9\. Decision Log'; then
   # 不変条件（AC-3）を破って複数行に分割されうる。ENVIRON はエスケープ解釈しないため経由する。
   printf '%s\n' "$body" | NEW_LINE="$new_line" awk '
     /^## 9\. Decision Log/ { print; in_section=1; next }
-    in_section && (/^## / || /^---[[:space:]]*$/) { print ENVIRON["NEW_LINE"]; print; in_section=0; next }
+    in_section && (/^## / || /^---[[:space:]]*$/ || /^<\/details>/) { print ENVIRON["NEW_LINE"]; print; in_section=0; next }
     { print }
     END { if (in_section) print ENVIRON["NEW_LINE"] }
   ' > "$tmpfile" || awk_rc=$?

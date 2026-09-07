@@ -110,6 +110,7 @@ issue:
  body_file: string # Path to tmpfile with body markdown (optional)
  labels: [string] # Labels to apply (optional)
  assignees: [string] # Assignees (optional)
+ attachments: [string] # Local file paths, including SVG (optional; gh >= 2.99.0)
 projects:
  enabled: true|false # From rite-config.yml github.projects.enabled
  project_number: number # From rite-config.yml github.projects.project_number
@@ -150,7 +151,11 @@ options:
 | `ok` | All fields set successfully |
 | `partial` | Issue added to Project but some fields failed |
 | `skipped` | Projects disabled or not configured |
-| `failed` | `gh project item-add` failed entirely |
+| `failed` | Input validation, Issue creation/attachment, or `gh project item-add` failed |
+
+`issue.attachments` は各パスを独立した `--attach` 引数として渡す。省略・空配列なら添付しない。呼び出し元は gh 2.99.0 以上でのみ SVG を選び、本文の画像参照（例: `![構成図](./diagram.svg)`）と添付ファイル名を合わせる。存在しないパスは Issue 作成前に `ERROR: attachment not found: {path}` を stderr に出し、失敗 JSON と exit 1 を返す。
+
+添付エラーでは元の gh stderr を出し、exit 1 を返す。Issue 作成後に添付だけ失敗した場合は stdout の URL / 番号を失敗 JSON に保持する。呼び出し元は終了コードを確認して「添付失敗」と報告し、URL があれば既存 Issue への `gh issue edit {issue_url} --attach {path}` を案内する。Issue 作成は再試行しない。
 
 ---
 
