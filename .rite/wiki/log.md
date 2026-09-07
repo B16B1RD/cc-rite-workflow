@@ -26,6 +26,8 @@
 
 * **Skip**: [20260907T094042Z-pr-2604.md](raw/reviews/20260907T094042Z-pr-2604.md) — レビュー指摘なし。プロジェクトドメインの新規経験則なし。
 
+* **lint:clean** — contradictions=0, stale=62, orphans=0, missing_concept=0, unregistered_raw=446, broken_refs=0。ページ本文の変更なし。
+
 ## 2026-09-06
 * **lint:clean** — contradictions=0, stale=58, orphans=0, missing_concept=0, unregistered_raw=436, broken_refs=0
 * **Create**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/reviews/20260906T125803Z-pr-2582.md を新規ページ化
