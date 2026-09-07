@@ -151,7 +151,7 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 **non_blocking_findings の扱い**:
 
 - `total_findings` にカウントしない (mergeable countdown から除外)
-- finding の `id` (`F-NN`) は降格時に**振り直さず元の値を維持する** — `findings[]` と `non_blocking_findings[]` の**和集合で一意**になり、永続 JSON 単体を読む人間が 2 配列を跨いで finding を一意に参照できる (5.4 統合レポートのテーブルは `id` 列を持たないため、JSON ↔ レポート間の相互参照を目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証 (本配列側の違反は非ブロッキング marker `NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION` で報告され、保存は続行する)
+- finding の `id` (`F-NN`) は降格時に**振り直さず元の値を維持する** — `findings[]` と `non_blocking_findings[]` の**和集合で一意**になり、永続 JSON 単体を読む人間が 2 配列を跨いで finding を一意に参照できる (5.4 統合レポートのテーブルは `id` 列を持たないため、JSON ↔ レポート間の相互参照を目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証 (**書式違反は本配列側でも hard fail** で保存しない。和集合に閉じた重複だけが非ブロッキング marker `NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION` で報告され、保存は続行する)
 - 記録先は 4 経路すべてで、破棄経路は存在しない:
   1. **永続 JSON** (`.rite/review-results/*.json` の トップレベル `non_blocking_findings[]`、`pr-review/SKILL.md` ステップ 6.1.a) — 既定構成 (`pr_review.post_comment: false`) におけるローカル側の永続チャネル
   2. **ステップ 6.1.d の関連 Issue 記録コメント** (`## 📜 rite 非実測指摘の記録`、`pr_review.post_comment` に**依存しない**。通常は cycle ごとに同じコメントを update-in-place するが、helper が自分の過去投稿を特定できない場合は縮退する — 本 cycle の指摘が 1 件以上なら新規作成となり 2 件目が並び、0 件なら投稿自体を省くため前 cycle の記録が stale で残る) — `.rite/review-results/` は gitignore 対象のため、cycle 中にレビュアーと共有できる永続チャネルはこちらのみ。関連 Issue を解決できないときは silent skip せず `related_issue_unresolved` で表面化する。記録コメントが担うのは reviewer / severity / `file:line` のポインタと降格理由の判定文までで、cycle 中の `description` / `suggestion` の全文を持つのは永続 JSON のみ。マージ時の残存分は `/rite:cleanup` が follow-up Issue 1 件へ全文転記し、`non_blocking_findings[]` が非空の JSON を archive/ へ退避する

@@ -544,7 +544,7 @@ rationale: references/rationale.md#follow-up-before-archive
 
 `non_blocking_findings[]` は**指摘が出た cycle** の観測であり、その後の fix cycle で解消されても JSON は更新されない。無条件に転記すると**マージ時点で既に存在しない drift** の follow-up Issue が起票される。helper（bash）は「この指摘は既に解消済みか」という散文の意味判定を持てないため、再検証は本ステップ（LLM 層）で行う。
 
-対象 JSON は helper と同一の選び方（`{state_root}/.rite/review-results/{pr_number}-*.json*` のうち basename 辞書順最大）で 1 本に確定する:
+対象 JSON は helper と同一の選び方（`{state_root}/.rite/review-results/{pr_number}-*.json*` の**全ファイルの `non_blocking_findings[]` を和集合**し、basename 昇順（= cycle 昇順）に**そのまま連結する**。`id` は各 JSON 内の連番で cycle 跨ぎの identity を持たないため畳み込み key に使わない）で確定する。最新 1 本だけを見ると helper が転記する集合と食い違い、先行 cycle にのみ載る指摘が再検証を経ずに転記される:
 
 ```bash
 # reason は helper の語彙（no_json / jq_missing）に揃え、state root 解決失敗は別値にする。
@@ -557,38 +557,74 @@ if [ -z "$_state_root" ]; then
 elif ! command -v jq >/dev/null 2>&1; then
   echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=jq_missing"
 else
-  _rv_src=""; _rv_base=""
+  # helper と同じく basename 昇順（= cycle 昇順）で全 JSON を走査し、そのまま連結する。
+  # `id` は各 JSON 内の連番で cycle を跨いだ identity を持たないため、畳み込み key に使わない
+  # （同じ `F-07` が cycle ごとに別の指摘を指す。畳むと別々の指摘が黙って 1 件に潰れる）。
+  # bash の glob 展開は昇順で確定するため for がそのまま順序保証になる。
+  _rv_srcs=(); _rv_bad=0
   for f in "$_state_root/.rite/review-results/{pr_number}"-*.json*; do
     { [ -e "$f" ] || [ -L "$f" ]; } || continue
-    b="${f##*/}"
-    if [ -z "$_rv_base" ] || [ "$b" \> "$_rv_base" ]; then _rv_src="$f"; _rv_base="$b"; fi
+    _rv_srcs+=("$f")
   done
-  if [ -z "$_rv_src" ]; then
+  if [ "${#_rv_srcs[@]}" -eq 0 ]; then
     echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=no_json"
   else
     # 1 finding = 1 行の JSON で出す。TSV だと description / suggestion の改行で行が割れ、
     # 後続行が id を失って id と本文の対応が崩れる（誤対応が resolved 側に振れると指摘の無言 drop）。
-    # `.id` は**落とさず null へ写す**。save 側は non_blocking_findings[] 側の id 書式違反を
-    # 非ブロッキングで通すため書式外 id が永続化されうる。その値をそのまま提示すると、下段の
-    # `{resolved_ids_csv}` がリテラル置換される二重引用符内でコマンド置換として展開される。
-    # null 化なら書式外の値が LLM へ届かず、finding 自体は出力に残るので黙って消えない
-    # （落とすと件数を数える第 2 の述語が要り、その述語が本体と乖離する drift 経路になる）。
+    # `.id` は**落とさず null へ写す**。save 側は書式外 id の保存を hard fail で止めるが、
+    # 本 gate を通さずに `.rite/review-results/` 直下へ保存された JSON には書式外 id が残る
+    # （gate 導入前の JSON、および gate を経由しない `/rite:fix` の write 経路 — P1/P3 の直接 write と
+    #  P0 ファイルの copy。移行しない方針）。その値をその
+    # まま提示すると、下段の `{resolved_ids_csv}` がリテラル置換される二重引用符内でコマンド置換
+    # として展開される。null 化なら書式外の値が LLM へ届かず、finding 自体は出力に残るので黙って
+    # 消えない（落とすと件数を数える第 2 の述語が要り、その述語が本体と乖離する drift 経路になる）。
     _rv_errf=$(mktemp "${TMPDIR:-/tmp}/rite-fu-reverify-err-XXXXXX") || {
       echo "WARNING: 一時ファイルを確保できません。jq の stderr 本文は出力されません" >&2
       _rv_errf=""
     }
-    if _rv_out=$(jq -c '.non_blocking_findings[]?
-      | {id: (if ((.id // "") | test("^F-[0-9]{2,}$")) then .id else null end),
-         file, line, description, suggestion}' "$_rv_src" 2>"${_rv_errf:-/dev/null}"); then
-      # 0 件のとき printf は空行を 1 行出す。空行が finding として読まれないよう非空時だけ出力する。
-      # 成功時は marker を出さない（判定後の `done` が唯一の成功 marker）
-      # rationale: references/rationale.md#reverify-no-extract-marker
-      if [ -n "$_rv_out" ]; then printf '%s\n' "$_rv_out"; fi
+    # 全 JSON を昇順に流し込み、そのまま連結する（畳み込みなし。全件残す）。
+    # 一部の JSON が parse 不能でも健全な側で続行し、全滅時だけ parse_failed に倒す
+    # （helper 側の json_undecidable と同じ判定境界）。
+    _rv_union=$(mktemp "${TMPDIR:-/tmp}/rite-fu-reverify-union-XXXXXX") && printf '[]\n' > "$_rv_union" || _rv_union=""
+    _rv_ok=0
+    if [ -n "$_rv_union" ]; then
+      for f in "${_rv_srcs[@]}"; do
+        # 2>"$_rv_errf" は毎周トランケートするため、除外 WARNING の**直後**に原因行を出す
+        # （ループ後へ回すと最後の失敗の原因しか残らない）。helper 側の union ループと同形。
+        if _part=$(jq -c 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings else error("not an array") end' "$f" 2>"${_rv_errf:-/dev/null}"); then
+          if _m=$(jq -c --argjson add "$_part" '. + $add' "$_rv_union" 2>"${_rv_errf:-/dev/null}"); then
+            printf '%s\n' "$_m" > "$_rv_union"; _rv_ok=$((_rv_ok + 1)); continue
+          fi
+        fi
+        echo "WARNING: 再検証用 JSON を解析できないため和集合から除外します: $f" >&2
+        if [ -n "$_rv_errf" ] && [ -s "$_rv_errf" ]; then head -5 "$_rv_errf" | sed 's/^/  /' >&2; fi
+        _rv_bad=$((_rv_bad + 1))
+      done
+    fi
+    if [ -n "$_rv_union" ] && [ "$_rv_ok" -gt 0 ]; then
+      # 最終射影の rc は必ず見る。落とすと jq 失敗（非文字列 id 等）が空出力と区別できず、
+      # 再検証を経ていない部分集合のまま `done` を出してしまう。
+      if _rv_out=$(jq -c '.[]
+        | {id: (if ((.id // "") | (test("^F-[0-9]{2,}$") and (contains("\n") | not))) then .id else null end),
+           file, line, description, suggestion}' "$_rv_union" 2>"${_rv_errf:-/dev/null}"); then
+        # 0 件のとき printf は空行を 1 行出す。空行が finding として読まれないよう非空時だけ出力する。
+        # 成功時は marker を出さない（判定後の `done` が唯一の成功 marker）
+        # rationale: references/rationale.md#reverify-no-extract-marker
+        if [ -n "$_rv_out" ]; then printf '%s\n' "$_rv_out"; fi
+        echo "[cleanup 6.0.V] union: json_total=${#_rv_srcs[@]}; json_parsed=${_rv_ok}; json_unparsed=${_rv_bad}" >&2
+      else
+        # reason は parse_failed と分ける。全 JSON の parse に成功して射影だけが落ちた事象に
+        # 「解析できなかった」と読める語を流用すると、完了報告へ誤った原因が転記される。
+        echo "WARNING: 再検証用 JSON の射影に失敗しました（和集合 ${_rv_ok} 本）" >&2
+        if [ -n "$_rv_errf" ] && [ -s "$_rv_errf" ]; then head -5 "$_rv_errf" | sed 's/^/  /' >&2; fi
+        echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=projection_failed"
+      fi
     else
-      echo "WARNING: 再検証用 JSON を解析できません: $_rv_src" >&2
+      echo "WARNING: 再検証用 JSON を 1 本も解析できません（対象 ${#_rv_srcs[@]} 本）" >&2
       if [ -n "$_rv_errf" ] && [ -s "$_rv_errf" ]; then head -5 "$_rv_errf" | sed 's/^/  /' >&2; fi
       echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=parse_failed"
     fi
+    if [ -n "$_rv_union" ]; then rm -f "$_rv_union"; fi
     # 末尾を `&&` 単独文にすると mktemp 失敗時にブロック全体が rc=1 で終わり、抽出が成功していても
     # 呼び出し側がステップ失敗と読む
     if [ -n "$_rv_errf" ]; then rm -f "$_rv_errf"; fi
@@ -605,6 +641,8 @@ fi
 | `undecidable` | 断定できない。`file:line` が移動した / 指摘が散文の意図に関わる / 判定材料が足りない / ファイル自体が読めない | **転記する**（`--exclude-ids` へ渡さない）。false negative を避ける安全側 |
 
 `FOLLOW_UP_REVERIFY=unavailable` を観測した場合、および本節を実行できなかった場合は**全件を `undecidable` 扱い**とし、`--exclude-ids` は空文字列のまま helper を呼ぶ（= 除外なし＝従来挙動）。
+
+出力に**同じ id が複数行**現れることがある（`id` は cycle 内の連番で cycle 跨ぎの identity を持たない）。各行は別の finding として独立に判定する。ただし重複 id は `resolved` と判定しても helper 側が除外を拒否して全件転記するため、`{n_resolved}` は実際に除外された件数と一致しないことがある。
 
 `"id": null` の finding（書式外 id / id 欠落）は**必ず `undecidable`** とする。除外指定に載せられる id が無く、`{resolved_ids_csv}` へ入れられる値も無いため、判定の余地なく転記側へ倒れる。出力には現れるので `{n_undecidable}` には通常どおり数え上げられる。
 
@@ -855,7 +893,7 @@ Status: {projects_status_result}
 - [{base_update_check}] base ブランチを更新 (fetch + merge --ff-only)
 - [{session_worktree_check}] セッション worktree 退出・削除 (multi_session)
 - [{local_branch_check}] ローカル/リモートブランチ削除
-- [{review_cleanup_check}] PR-specific state ファイル削除{follow_up_reverify_note}
+- [{review_cleanup_check}] PR-specific state ファイル削除{follow_up_reverify_note}{follow_up_ambiguous_note}
 - [{projects_check}] Projects Status を Done に更新
 - [{wiki_ingest_check}] Wiki ingest (pending raw source のページ統合)
 - [x] flow state リセット
@@ -974,6 +1012,11 @@ rationale: references/rationale.md#review-cleanup-reasons
   - `done` のとき: ` — follow-up 再検証: 解消済み {n_resolved} / 残存 {n_remains} / 判定不能 {n_undecidable}`（`{n_*}` は marker の同名フィールドをリテラル置換）
   - `unavailable` のとき: ` — follow-up 再検証: 未実施（{reason}。全件を転記対象としました）`（`{reason}` は marker の `reason=` 値）
   - marker が無いとき: ` — follow-up 再検証: 実施結果を確認できませんでした（全件を転記対象とした可能性があります）`。本分岐は「節ごと実行されなかった」場合と「抽出は成功したが判定 marker `done` に到達しなかった」場合の 2 つに落ちる（6.0.V は成功時に marker を出さないため後者が marker 皆無になる）。**marker 不在を成功と読んではならない** — 兄弟分岐と同じ規約
+- `{follow_up_ambiguous_note}`: ステップ 6.0 helper の `[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason={r}; count={n}; pr={pr_number}` marker で判定する。**helper は除外が要求より少なく適用された経路をすべてこの marker で出す**ため、marker 不在は「除外要求がそのまま適用された」と読んでよい（兄弟分岐の「marker 不在を成功と読んではならない」は 6.0.V が成功時に marker を出さないことに由来する別事情で、本 marker には当たらない）。`{count}` / `{reason}` は marker の同名フィールドをリテラル置換する。出力するリテラルはいずれも 1 本の code span で、内部に強調記法や他 note の placeholder（例: 再検証 note）を含めない — 兄弟 3 分岐と同じ規約:
+  - `reason=ambiguous` のとき: ` — ⚠️ 曖昧 id {count} 件はその指摘を除外できず転記しました（他の id の除外は適用済み。直前の「follow-up 再検証」の「解消済み」は除外要求件数であり実除外数ではありません）`（`{count}` は**除外を拒否した id の異なり数**であり転記された finding 件数ではない）
+  - それ以外の `reason` のとき: ` — ⚠️ 除外を適用できなかったため（{reason}）、除外要求分もすべて転記しました（直前の「follow-up 再検証」の「解消済み」は実際には 1 件も除外されていません）`（この経路では曖昧 id は特定できておらず、適用された除外も 0 件。`{count}` は除外要求 id の総数で、`unknown` のこともある）
+  - marker が無いとき: 空文字列（除外要求どおり適用された）
+  - 起票自体は成功しているので `{review_cleanup_check}` は `x` 相当のまま変えない。本 note は「成功したが人間の確認が要る」ことだけを伝える
 - `{wiki_ingest_check}`: 以下の sentinel を上から評価し最初の一致を採用 (`WIKI_INGEST_DONE` + `WIKI_INGEST_PUSH_FAILED` が併存しうるため順序重要):
 
   | Sentinel | check | 表示 |
