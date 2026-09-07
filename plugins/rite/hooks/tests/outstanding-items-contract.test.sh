@@ -133,7 +133,7 @@ assert_grep "autonomous-execution preserves warnings with a different target, re
 assert_grep "batch-run delegates final-attempt and duplicate handling to the shared contract" "$BATCH_RUN" \
   '最終試行と重複の判定は \[Autonomous Execution\]'
 
-direct_warning_emit_count=$(grep -c 'echo "WARNING:' "$OPEN")
+direct_warning_emit_count=$(grep -cE '^[[:space:]]*echo "WARNING:' "$OPEN")
 classified_warning_count=$(awk '
   /^### `open` 直接 WARNING の転記判定$/ { inside=1; next }
   inside == 1 && /^---$/ { inside=0 }
@@ -143,11 +143,11 @@ classified_warning_count=$(awk '
 assert "open has exactly 3 direct WARNING emit sites" "3" "$direct_warning_emit_count"
 assert "open classifies exactly the same 3 direct WARNING sites" "$direct_warning_emit_count" "$classified_warning_count"
 assert_grep "open emits the exact git-status guard warning" "$OPEN" \
-  'echo "WARNING: git status の実行に失敗したため dirty main checkout ガードを skip します \(従来挙動で続行\)" >&2'
+  '^[[:space:]]*echo "WARNING: git status の実行に失敗したため dirty main checkout ガードを skip します \(従来挙動で続行\)" >&2$'
 assert_grep "open emits the exact gitignore warning" "$OPEN" \
-  'echo "WARNING: \$wt_path/\.rite/\.gitignore を作成できませんでした。このディレクトリが git から除外されているか手動で確認してください" >&2'
+  '^[[:space:]]*echo "WARNING: \$wt_path/\.rite/\.gitignore を作成できませんでした。このディレクトリが git から除外されているか手動で確認してください" >&2$'
 assert_grep "open emits the exact settings-copy warning" "$OPEN" \
-  'echo "WARNING: \.claude/settings\.local\.json のコピーに失敗しました — ドッグフーディング上書きが worktree に反映されません" >&2'
+  '^[[:space:]]*echo "WARNING: \.claude/settings\.local\.json のコピーに失敗しました — ドッグフーディング上書きが worktree に反映されません" >&2$'
 assert_grep_in_section "open classifies the git-status guard warning" "$OPEN" \
   '^### `open` 直接 WARNING の転記判定$' '^---$' \
   '^\| `WARNING: git status の実行に失敗したため dirty main checkout ガードを skip します` \| 常に転記 \|$'
@@ -185,6 +185,13 @@ assert_grep_in_section "iterate replaces raw breaker warnings with detailed reco
 assert_grep_in_section "iterate forbids raw and detailed breaker items from coexisting" "$ITERATE" \
   '^#### `\{action_items\}` 追加項目（ステップ 6\.2 のみ）$' '^---$' \
   'raw WARNING と詳細な復旧項目を両方残してはならない'
+assert_grep_in_section "iterate applies breaker items without reviving add-all semantics" "$ITERATE" \
+  '^#### `\{action_items\}` 追加項目（ステップ 6\.2 のみ）$' '^---$' \
+  '\(a\) は末尾へ追加し、\(b\) / \(c\) は上記の raw WARNING 置換規則に従う'
+assert_not_grep "iterate removed the conflicting add-all action-items instruction" "$ITERATE" \
+  '\(a\) / \(b\) / \(c\).*順に.*追加する'
+assert_not_grep "iterate removed the conflicting b-addition wording" "$ITERATE" \
+  '\(b\) は `\{action_items\}` への追加だけでは足りない'
 assert_not_grep "iterate removed the duplicate reason-adjacent notice instruction" "$ITERATE" \
   '「理由」行の直後に注意行を追加する'
 
