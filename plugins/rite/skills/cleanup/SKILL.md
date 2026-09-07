@@ -557,7 +557,9 @@ if [ -z "$_state_root" ]; then
 elif ! command -v jq >/dev/null 2>&1; then
   echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=jq_missing"
 else
-  # helper と同じく basename 昇順で全 JSON を走査し、非空 id は後の cycle で後勝ちに畳む。
+  # helper と同じく basename 昇順（= cycle 昇順）で全 JSON を走査し、そのまま連結する。
+  # `id` は各 JSON 内の連番で cycle を跨いだ identity を持たないため、畳み込み key に使わない
+  # （同じ `F-07` が cycle ごとに別の指摘を指す。畳むと別々の指摘が黙って 1 件に潰れる）。
   # bash の glob 展開は昇順で確定するため for がそのまま順序保証になる。
   _rv_srcs=(); _rv_bad=0
   for f in "$_state_root/.rite/review-results/{pr_number}"-*.json*; do
@@ -570,7 +572,8 @@ else
     # 1 finding = 1 行の JSON で出す。TSV だと description / suggestion の改行で行が割れ、
     # 後続行が id を失って id と本文の対応が崩れる（誤対応が resolved 側に振れると指摘の無言 drop）。
     # `.id` は**落とさず null へ写す**。save 側は書式外 id の**新規**保存を hard fail で止めるが、
-    # 既に archive 済みの legacy JSON には書式外 id が残っている（移行しない方針）。その値をその
+    # 本 gate の導入前に `.rite/review-results/` 直下へ保存された JSON には書式外 id が残っている
+    # （移行しない方針）。その値をその
     # まま提示すると、下段の `{resolved_ids_csv}` がリテラル置換される二重引用符内でコマンド置換
     # として展開される。null 化なら書式外の値が LLM へ届かず、finding 自体は出力に残るので黙って
     # 消えない（落とすと件数を数える第 2 の述語が要り、その述語が本体と乖離する drift 経路になる）。
@@ -578,7 +581,7 @@ else
       echo "WARNING: 一時ファイルを確保できません。jq の stderr 本文は出力されません" >&2
       _rv_errf=""
     }
-    # 全 JSON を昇順に流し込み、非空 id は後勝ちで畳む（id 欠落・書式外は畳まず全件残す）。
+    # 全 JSON を昇順に流し込み、そのまま連結する（畳み込みなし。全件残す）。
     # 一部の JSON が parse 不能でも健全な側で続行し、全滅時だけ parse_failed に倒す
     # （helper 側の json_undecidable と同じ判定境界）。
     _rv_union=$(mktemp "${TMPDIR:-/tmp}/rite-fu-reverify-union-XXXXXX") && printf '[]\n' > "$_rv_union" || _rv_union=""
@@ -586,10 +589,7 @@ else
     if [ -n "$_rv_union" ]; then
       for f in "${_rv_srcs[@]}"; do
         if _part=$(jq -c 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings else error("not an array") end' "$f" 2>"${_rv_errf:-/dev/null}"); then
-          if _m=$(jq -c --argjson add "$_part" '
-            (. + $add) as $all
-            | ([$all[] | select((.id // "") != "")] | group_by(.id) | map(.[-1]))
-              + [$all[] | select((.id // "") == "")]' "$_rv_union" 2>/dev/null); then
+          if _m=$(jq -c --argjson add "$_part" '. + $add' "$_rv_union" 2>/dev/null); then
             printf '%s\n' "$_m" > "$_rv_union"; _rv_ok=$((_rv_ok + 1)); continue
           fi
         fi
@@ -598,14 +598,21 @@ else
       done
     fi
     if [ -n "$_rv_union" ] && [ "$_rv_ok" -gt 0 ]; then
-      _rv_out=$(jq -c '.[]
+      # 最終射影の rc は必ず見る。落とすと jq 失敗（非文字列 id 等）が空出力と区別できず、
+      # 再検証を経ていない部分集合のまま `done` を出してしまう。
+      if _rv_out=$(jq -c '.[]
         | {id: (if ((.id // "") | test("^F-[0-9]{2,}$")) then .id else null end),
-           file, line, description, suggestion}' "$_rv_union" 2>/dev/null)
-      # 0 件のとき printf は空行を 1 行出す。空行が finding として読まれないよう非空時だけ出力する。
-      # 成功時は marker を出さない（判定後の `done` が唯一の成功 marker）
-      # rationale: references/rationale.md#reverify-no-extract-marker
-      if [ -n "$_rv_out" ]; then printf '%s\n' "$_rv_out"; fi
-      echo "[cleanup 6.0.V] union: json_total=${#_rv_srcs[@]}; json_parsed=${_rv_ok}; json_unparsed=${_rv_bad}" >&2
+           file, line, description, suggestion}' "$_rv_union" 2>"${_rv_errf:-/dev/null}"); then
+        # 0 件のとき printf は空行を 1 行出す。空行が finding として読まれないよう非空時だけ出力する。
+        # 成功時は marker を出さない（判定後の `done` が唯一の成功 marker）
+        # rationale: references/rationale.md#reverify-no-extract-marker
+        if [ -n "$_rv_out" ]; then printf '%s\n' "$_rv_out"; fi
+        echo "[cleanup 6.0.V] union: json_total=${#_rv_srcs[@]}; json_parsed=${_rv_ok}; json_unparsed=${_rv_bad}" >&2
+      else
+        echo "WARNING: 再検証用 JSON の射影に失敗しました（和集合 ${_rv_ok} 本）" >&2
+        if [ -n "$_rv_errf" ] && [ -s "$_rv_errf" ]; then head -5 "$_rv_errf" | sed 's/^/  /' >&2; fi
+        echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=parse_failed"
+      fi
     else
       echo "WARNING: 再検証用 JSON を 1 本も解析できません（対象 ${#_rv_srcs[@]} 本）" >&2
       if [ -n "$_rv_errf" ] && [ -s "$_rv_errf" ]; then head -5 "$_rv_errf" | sed 's/^/  /' >&2; fi

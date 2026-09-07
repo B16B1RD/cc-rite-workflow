@@ -563,13 +563,10 @@ if ! jq -e '
   ((if (.non_blocking_findings | type) == "array" then .non_blocking_findings else [] end)) as $nb
   | ((.findings | length) + ($nb | length)) as $total
   | ($total == 0)
-  or (
-    ([(.findings[]?, $nb[])] | all(.id? // "" | test("^F-[0-9]{2,}$")))
-    and (([(.findings[]?, $nb[]) | .id] | unique | length) == $total)
-  )
+  or ((([(.findings[]?, $nb[]) | .id] | unique | length) == $total))
   ' "$json_tmp" >/dev/null 2>&1; then
-  echo "WARNING: findings[] と non_blocking_findings[] の id が和集合で一意でないか、書式 (F-NN) 違反があります (保存は続行します)" >&2
-  echo "  期待: 5.3.0.M の降格時に id を振り直さず、2 配列の和集合で ^F-[0-9]{2,}\$ かつ一意" >&2
+  echo "WARNING: findings[] と non_blocking_findings[] の id が和集合で一意ではありません (保存は続行します)" >&2
+  echo "  期待: 5.3.0.M の降格時に id を振り直さず、2 配列の和集合で一意" >&2
   echo "  対処: review-result-schema.md §non_blocking_findings 配列 の id 規則を確認してください" >&2
   echo "[CONTEXT] NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION=1; pr=$PR_NUMBER" >&2
 fi

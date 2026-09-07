@@ -181,31 +181,32 @@ and (.findings | type == "array")
 
 **Finding ID validation (ステップ 6.1.a のみ追加検証)**: 本 canonical snippet に加えて ステップ 6.1.a では finding id の書式 (`^F-[0-9]{2,}$`) と一意性も検証する。これは write 側 (pr-review.md) でのみ enforce される「生成規則」であり、read 側 (fix.md) では既に書き込まれた JSON を信頼するため検証不要。
 
-検証は **2 段**に分かれる。`findings[]` 側の欠陥のみが hard fail (`JSON_SAVED=false`) で、`non_blocking_findings[]` 側に閉じた欠陥は非ブロッキング marker に落とす — advisory な監査記録の欠陥を理由に blocking findings ごと保存を失う fail-unsafe を避けるため (review-result-schema.md §non_blocking_findings 配列)。
+検証は **2 段**に分かれる。**書式は 2 配列の和集合で hard fail** (`JSON_SAVED=false`)、**一意性は `findings[]` 側のみ hard fail** で和集合に閉じた重複は非ブロッキング marker に落とす — 書式外 id は cleanup 6.0.V の `--exclude-ids` 経路そのものを壊すため発生源で止めるが、advisory な重複を理由に blocking findings ごと保存を失う fail-unsafe は避ける (review-result-schema.md §non_blocking_findings 配列)。
 
 ```jq
-# (1) findings[] 側 — hard fail (reason=finding_id_format_or_uniqueness_violation)
+# (1) 書式 (和集合) + 一意性 (findings[] のみ) — hard fail
+#     reason=finding_id_format_or_uniqueness_violation
+# 非配列は空配列に畳む ($nb)。畳まないと length が非 0 になる型 ("abc"→3 / 3→3 / {"a":1}→1) が
+# 件数を水増しし、型によって判定が化ける
 # 左辺は括弧で束縛する。`[.findings[].id] | unique | length == (.findings | length)` と書くと
 # パイプ後の `.` が unique 済み配列になり "Cannot index array with string findings" で rc=5 になる
-(.findings | length == 0)
+((if (.non_blocking_findings | type) == "array" then .non_blocking_findings else [] end)) as $nb
+| (((.findings | length) + ($nb | length)) == 0)
 or (
-  (.findings | all(.id? // "" | test("^F-[0-9]{2,}$")))
-  and (([.findings[].id] | unique | length) == (.findings | length))
+  ([(.findings[]?, $nb[])] | all(.id? // "" | test("^F-[0-9]{2,}$")))
+  and ((.findings | length == 0)
+       or (([.findings[].id] | unique | length) == (.findings | length)))
 )
 ```
 
 ```jq
-# (2) 和集合 (findings[] ∪ non_blocking_findings[]) — 非ブロッキング
+# (2) 和集合の一意性 — 非ブロッキング
 #     marker: NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION
-# 非配列は空配列に畳む ($nb)。畳まないと length が非 0 になる型 ("abc"→3 / 3→3 / {"a":1}→1) が
-# $total を水増しし、非ブロッキングと宣言した経路が型によって hard fail に化ける
+# 書式は (1) で担保済みのため、ここでは一意性だけを見る
 ((if (.non_blocking_findings | type) == "array" then .non_blocking_findings else [] end)) as $nb
 | ((.findings | length) + ($nb | length)) as $total
 | ($total == 0)
-or (
-  ([(.findings[]?, $nb[])] | all(.id? // "" | test("^F-[0-9]{2,}$")))
-  and (([(.findings[]?, $nb[]) | .id] | unique | length) == $total)
-)
+or ((([(.findings[]?, $nb[]) | .id] | unique | length) == $total))
 ```
 
 Failure reason: `finding_id_format_or_uniqueness_violation` ((1) のみ。(2) は reason ではなく observability marker)

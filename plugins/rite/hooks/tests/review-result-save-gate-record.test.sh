@@ -57,6 +57,9 @@ run_id_case() {
   bash "$SAVE" --pr 2563 --content-file "$TMP_ROOT/$name.json" --results-dir "$dir" \
     >/dev/null 2>"$TMP_ROOT/$name.err" || rc=$?
   if [ "$expect_saved" = "no" ]; then
+    # D-05: 書式違反は rc=1 に昇格させず exit 0 + LOCAL_SAVE_FAILED で表現する
+    # (rc=1 は provenance 違反 3 種の予約枠。pr-review/SKILL.md の closed list を stale にしない)
+    assert "$name rc" "0" "$rc"
     assert_grep "$name reason" "$TMP_ROOT/$name.err" 'reason=finding_id_format_or_uniqueness_violation'
     assert_grep "$name JSON_SAVED=false" "$TMP_ROOT/$name.err" 'JSON_SAVED=false'
     assert "$name ファイルを残さない" "0" "$(find "$dir" -type f -name '2563-*.json' 2>/dev/null | wc -l | tr -d ' ')"

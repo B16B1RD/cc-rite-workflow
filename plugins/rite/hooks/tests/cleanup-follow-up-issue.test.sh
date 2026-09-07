@@ -34,11 +34,12 @@
 #
 # Coverage (全 cycle 和集合、Issue 2593 の T-01..T-08):
 #   T-17 2 本の JSON の指摘が和集合で body に載る + 本数の stderr 1 行 (AC-1)
-#   T-18 同一 id は 1 件に畳み、内容は辞書順で後の JSON を採る (AC-2)
+#   T-18 同一 id でも別 cycle の指摘は畳まず全件載る (AC-2)
 #   T-19 --exclude-ids は和集合後に適用される (AC-3)
 #   T-20 和集合の全件除外は all_resolved (AC-4)
 #   T-21 全 JSON が 0 件なら no_findings (AC-7 非回帰)
-#   T-22 id 欠落 / 書式外 id の finding を畳んで落とさない (MUST NOT)
+#   T-22 id 欠落 / 書式外 id の finding を落とさない (MUST NOT)
+#   T-23 一部 JSON の統合失敗は当該 1 本だけ除外し、健全な側の転記を続ける
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -541,7 +542,9 @@ else
   assert_grep "T-15 抽出は 1 finding = 1 行の JSON" "$CLEANUP_MD" "jq -c '\.\[\]$"
   # 再検証も helper と同じ和集合を見る (最新 1 本だと転記集合と食い違う)
   assert_grep "T-15 再検証は全 JSON の和集合" "$CLEANUP_MD" '全ファイルの `non_blocking_findings\[\]` を和集合'
-  assert_grep "T-15 和集合は非空 id だけ後勝ちで畳む" "$CLEANUP_MD" 'group_by\(\.id\) \| map\(\.\[-1\]\)'
+  assert_not_grep "T-15 id による畳み込みを残さない" "$CLEANUP_MD" 'group_by\(\.id\)'
+  assert_grep "T-15 和集合は連結のみ" "$CLEANUP_MD" 'argjson add "\$_part" .\. \+ \$add.'
+  assert_grep "T-15 最終射影の rc を検査する" "$CLEANUP_MD" 'if _rv_out=\$\(jq -c'
   assert_not_grep "T-15 最新 1 本を選ぶループを残さない" "$CLEANUP_MD" '_rv_src="\$f"; _rv_base="\$b"'
   # reason 語彙を helper に揃える (合成 reason は誤った原因を完了報告へ転記する)
   assert_grep "T-15 reason=state_root_unresolved" "$CLEANUP_MD" 'reason=state_root_unresolved'
@@ -621,17 +624,20 @@ assert_grep "T-17 F-11 が載る" "$STUB_DIR/body.md" '後続 cycle の指摘'
 # SHOULD: どの範囲から転記したかを 1 行で出す
 assert_grep "T-17 和集合の本数を stderr へ出す" "$ERR" 'union: pr=9; json_total=2; json_parsed=2; json_unparsed=0'
 
-echo "--- T-18: 同一 id は 1 件に畳み、内容は後の JSON を採る (AC-2) ---"
+echo "--- T-18: 同一 id でも別 cycle の指摘は畳まず全件載る (AC-2) ---"
+# `id` は各 JSON 内の連番であり cycle を跨いだ identity を持たない (cycle 跨ぎの identity は
+# fingerprint = sha1(file:category:message))。同じ `F-05` が cycle ごとに別の指摘を指すため、
+# id で畳むと別々の指摘が黙って消える。よって両方が body に載るのが正しい。
 reset_stubs
 r=$(new_root t18)
 put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-05","reviewer":"a","severity":"LOW","file":"a.md","line":1,"description":"古い cycle の本文","suggestion":"古い提案"}]}'
 put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-05","reviewer":"b","severity":"LOW","file":"b.md","line":7,"description":"新しい cycle の本文","suggestion":"新しい提案"}]}'
 run_target "$r"
 assert "T-18 exit 0" "0" "$RC"
-assert "T-18 F-05 の見出しは 1 回だけ" "1" \
+assert "T-18 F-05 の見出しは 2 回出る (別々の指摘)" "2" \
   "$(grep -c '^### F-05 ' "$STUB_DIR/body.md" | tr -d ' ')"
-assert_grep "T-18 後の JSON の本文を採る" "$STUB_DIR/body.md" '新しい cycle の本文'
-assert_not_grep "T-18 古い JSON の本文は残さない" "$STUB_DIR/body.md" '古い cycle の本文'
+assert_grep "T-18 後の JSON の本文が載る" "$STUB_DIR/body.md" '新しい cycle の本文'
+assert_grep "T-18 先行 JSON の本文も落とさない" "$STUB_DIR/body.md" '古い cycle の本文'
 
 echo "--- T-19: --exclude-ids は和集合後に適用される (AC-3) ---"
 reset_stubs
@@ -667,7 +673,7 @@ assert "T-21 exit 0" "0" "$RC"
 assert_grep "T-21 no_findings" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=no_findings; pr=9'
 assert "T-21 create 0 回" "0" "$(create_count)"
 
-echo "--- T-22: id 欠落 / 書式外 id の finding を畳んで落とさない ---"
+echo "--- T-22: id 欠落 / 書式外 id の finding を落とさない ---"
 reset_stubs
 r=$(new_root t22)
 put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"reviewer":"a","severity":"LOW","file":"a.md","line":1,"description":"id 無しの指摘 A","suggestion":"sA"},{"reviewer":"a","severity":"LOW","file":"a.md","line":2,"description":"id 無しの指摘 B","suggestion":"sB"}]}'
@@ -677,6 +683,20 @@ assert "T-22 exit 0" "0" "$RC"
 assert_grep "T-22 id 無し A が残る" "$STUB_DIR/body.md" 'id 無しの指摘 A'
 assert_grep "T-22 id 無し B が残る" "$STUB_DIR/body.md" 'id 無しの指摘 B'
 assert_grep "T-22 書式外 id が残る" "$STUB_DIR/body.md" '書式外 id の指摘'
+
+echo "--- T-23: 一部 JSON の統合失敗でも健全な側の転記を続ける ---"
+# 統合 jq が失敗する形 (non_blocking_findings が配列だが要素が JSON として結合できない値) は
+# 作れないため、parse 不能な JSON で同じ「1 本だけ除外して続行」経路を突く。
+reset_stubs
+r=$(new_root t23)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-01","reviewer":"a","severity":"LOW","file":"a.md","line":1,"description":"健全な指摘","suggestion":"s1"}]}'
+put_json "$r" "9-20260102120000.json" '{ this is not json'
+run_target "$r"
+assert "T-23 exit 0" "0" "$RC"
+assert_grep "T-23 created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert_grep "T-23 健全な側は載る" "$STUB_DIR/body.md" '健全な指摘'
+assert_grep "T-23 除外を WARNING で surface" "$ERR" '和集合から除外します'
+assert_grep "T-23 除外本数を stderr の内訳に出す" "$ERR" 'union: pr=9; json_total=2; json_parsed=1; json_unparsed=1'
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?

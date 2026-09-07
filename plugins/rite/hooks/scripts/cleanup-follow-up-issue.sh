@@ -160,8 +160,12 @@ fi
 # follow-up に載らず機械経路から黙って消える。残存判定 (解消済みの除外) は cleanup ステップ
 # 6.0.V の再検証が `--exclude-ids` で担い、本 helper は「全 cycle で記録された集合」を作る。
 #
-# 走査順は basename 昇順に固定し、同一 id が複数 JSON に現れたら**後の JSON (= 新しい cycle) の
-# 内容で上書き**する。`unique_by` は先頭を採るため、それに任せると古い cycle の本文が残る。
+# **id では畳まない**。`id` は各 JSON 内で振り直される連番であり cycle を跨いだ identity を持たない
+# (cycle を跨ぐ identity は fingerprint = sha1(file:category:message) が担う)。同じ `F-07` が cycle ごとに
+# 別の指摘を指すため、id を key に畳むと別々の指摘が黙って 1 件に潰れる — 本 helper が防ごうとしている
+# 取りこぼしそのものになる。よって全 cycle 分を**そのまま連結**する。同一 id の見出しが body に複数出るが、
+# それらは実際に別の指摘なので正しい。
+# 走査順は basename 昇順 (= cycle 昇順) に固定する。
 # glob 未展開の pattern 文字列は実在検査で弾く (archive-or-rm と同型)。
 findings_json="[]"
 matched=0
@@ -169,7 +173,7 @@ parsed=0
 unparsed=0
 rite_tempfile_new union_tmp "fu-union" || exit 1
 printf '[]\n' > "$union_tmp"
-# bash の glob 展開は basename 昇順で確定するため、この for がそのまま「後の cycle が後勝ち」になる。
+# bash の glob 展開は basename 昇順で確定するため、この for がそのまま cycle 昇順の連結になる。
 for f in "$results_dir/${PR_NUMBER}"-*.json*; do
   { [ -e "$f" ] || [ -L "$f" ]; } || continue
   matched=$((matched + 1))
@@ -179,14 +183,8 @@ for f in "$results_dir/${PR_NUMBER}"-*.json*; do
     unparsed=$((unparsed + 1))
     continue
   fi
-  # 畳むのは**非空 id を持つ finding だけ**。id 欠落 / 空の finding を同じ key で group_by すると
-  # 別々の指摘が 1 件に潰れて黙って消える (MUST NOT: 書式外 id の finding を配列から落とさない)。
-  # 非空 id 側は `.[-1]` で後勝ちにする (4.5: 内容が食い違うときは辞書順で後の JSON を採る)。
-  if ! merged=$(jq -c --argjson add "$part" '
-    (. + $add) as $all
-    | ([$all[] | select((.id // "") != "")] | group_by(.id) | map(.[-1]))
-      + [$all[] | select((.id // "") == "")]
-    ' "$union_tmp" 2>/dev/null); then
+  # 連結のみ。id / 内容による畳み込みはしない (上のコメント参照)。
+  if ! merged=$(jq -c --argjson add "$part" '. + $add' "$union_tmp" 2>/dev/null); then
     echo "WARNING: 和集合の統合に失敗したため当該 JSON を除外します (PR #${PR_NUMBER}): $f" >&2
     unparsed=$((unparsed + 1))
     continue
