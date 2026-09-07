@@ -585,7 +585,11 @@ else
     # 全 JSON を昇順に流し込み、そのまま連結する（畳み込みなし。全件残す）。
     # 一部の JSON が parse 不能でも健全な側で続行し、全滅時だけ parse_failed に倒す
     # （helper 側の json_undecidable と同じ判定境界）。
-    _rv_union=$(mktemp "${TMPDIR:-/tmp}/rite-fu-reverify-union-XXXXXX") && printf '[]\n' > "$_rv_union" || _rv_union=""
+    _rv_union=$(mktemp "${TMPDIR:-/tmp}/rite-fu-reverify-union-XXXXXX") && printf '[]\n' > "$_rv_union" || {
+      echo "WARNING: 再検証用の一時ファイルを確保・初期化できません" >&2
+      if [ -n "$_rv_union" ]; then rm -f "$_rv_union"; fi
+      _rv_union=""
+    }
     _rv_ok=0
     if [ -n "$_rv_union" ]; then
       for f in "${_rv_srcs[@]}"; do
@@ -620,7 +624,7 @@ else
         echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=projection_failed"
       fi
     else
-      echo "WARNING: 再検証用 JSON を 1 本も解析できません（対象 ${#_rv_srcs[@]} 本）" >&2
+      echo "WARNING: 再検証を実施できません（対象 ${#_rv_srcs[@]} 本）" >&2
       if [ -n "$_rv_errf" ] && [ -s "$_rv_errf" ]; then head -5 "$_rv_errf" | sed 's/^/  /' >&2; fi
       echo "[CONTEXT] FOLLOW_UP_REVERIFY=unavailable; reason=parse_failed"
     fi
@@ -1012,11 +1016,11 @@ rationale: references/rationale.md#review-cleanup-reasons
   - `done` のとき: ` — follow-up 再検証: 解消済み {n_resolved} / 残存 {n_remains} / 判定不能 {n_undecidable}`（`{n_*}` は marker の同名フィールドをリテラル置換）
   - `unavailable` のとき: ` — follow-up 再検証: 未実施（{reason}。全件を転記対象としました）`（`{reason}` は marker の `reason=` 値）
   - marker が無いとき: ` — follow-up 再検証: 実施結果を確認できませんでした（全件を転記対象とした可能性があります）`。本分岐は「節ごと実行されなかった」場合と「抽出は成功したが判定 marker `done` に到達しなかった」場合の 2 つに落ちる（6.0.V は成功時に marker を出さないため後者が marker 皆無になる）。**marker 不在を成功と読んではならない** — 兄弟分岐と同じ規約
-- `{follow_up_ambiguous_note}`: ステップ 6.0 helper の `[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason={r}; count={n}; pr={pr_number}` marker で判定する。**helper は除外が要求より少なく適用された経路をすべてこの marker で出す**ため、marker 不在は「除外要求がそのまま適用された」と読んでよい（兄弟分岐の「marker 不在を成功と読んではならない」は 6.0.V が成功時に marker を出さないことに由来する別事情で、本 marker には当たらない）。`{count}` / `{reason}` は marker の同名フィールドをリテラル置換する。出力するリテラルはいずれも 1 本の code span で、内部に強調記法や他 note の placeholder（例: 再検証 note）を含めない — 兄弟 3 分岐と同じ規約:
-  - `reason=ambiguous` のとき: ` — ⚠️ 曖昧 id {count} 件はその指摘を除外できず転記しました（他の id の除外は適用済み。直前の「follow-up 再検証」の「解消済み」は除外要求件数であり実除外数ではありません）`（`{count}` は**除外を拒否した id の異なり数**であり転記された finding 件数ではない）
-  - それ以外の `reason` のとき: ` — ⚠️ 除外を適用できなかったため（{reason}）、除外要求分もすべて転記しました（直前の「follow-up 再検証」の「解消済み」は実際には 1 件も除外されていません）`（この経路では曖昧 id は特定できておらず、適用された除外も 0 件。`{count}` は除外要求 id の総数で、`unknown` のこともある）
-  - marker が無いとき: 空文字列（除外要求どおり適用された）
-  - 起票自体は成功しているので `{review_cleanup_check}` は `x` 相当のまま変えない。本 note は「成功したが人間の確認が要る」ことだけを伝える
+- `{follow_up_ambiguous_note}`: 先に `{review_cleanup_check}` と同じ規則で最終 `FOLLOW_UP_ISSUE` を選ぶ。次に `[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason={r}; count={n}; pr={pr_number}` のうち、`pr=` の直後が `;` または行末まで一致する最後の出現を採る。`{count}` / `{reason}` はその marker の値を使う。marker が無ければ note は空文字列（除外拒否の通知なし。除外適用・起票の成功は推定しない）。
+  - `reason=ambiguous` のとき: ` — ⚠️ 曖昧 id {count} 件の指摘を除外せず転記対象としました（「follow-up 再検証」の「解消済み」は除外要求件数であり実除外数ではありません）`（`{count}` は除外を拒否した id の異なり数）
+  - それ以外の `reason` のとき: ` — ⚠️ 除外を適用できなかったため（{reason}）、除外要求分もすべて転記対象としました（「follow-up 再検証」の「解消済み」は実際には除外されていません）`
+  - 最終 `FOLLOW_UP_ISSUE=created` の場合だけ、上の note の「転記対象としました」を「転記しました」に置換する。失敗・未確認・`already_exists` を含むその他の結果では置換しない。
+  - 本 note は除外結果の付記であり、起票結果と state 削除結果から決めた `{review_cleanup_check}` を変更しない。
 - `{wiki_ingest_check}`: 以下の sentinel を上から評価し最初の一致を採用 (`WIKI_INGEST_DONE` + `WIKI_INGEST_PUSH_FAILED` が併存しうるため順序重要):
 
   | Sentinel | check | 表示 |

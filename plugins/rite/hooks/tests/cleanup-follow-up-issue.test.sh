@@ -40,11 +40,14 @@
 #   T-21 全 JSON が 0 件なら no_findings (AC-7 非回帰)
 #   T-22 id 欠落 / 書式外 id の finding を落とさない (MUST NOT)
 #   T-23 parse 不能な JSON を 1 本だけ除外し、jq の原因行と union 内訳を surface する
+#   T-23b 空 JSON の統合失敗でも健全側を転記する
 #   T-24 和集合内で衝突する id は --exclude-ids で除外せず WARNING + marker で surface する
 #   T-24b 重複 id でも --exclude-ids が指していなければ曖昧扱いしない
 #   T-24c 曖昧 id の素値は neutralize_ctrl を通してから WARNING に載せる
 #   T-25 曖昧判定の失敗ハンドラは安全側へ倒し marker も出す
-#   T-25b 除外を全破棄する他の経路も marker を出す（除外ゼロなら必ず marker）
+#   T-25b 除外処理の jq 失敗でも件数付き marker を出し全 finding を保持する
+#   T-27 除外拒否後の検索・起票失敗を成功として報告しない
+#   T-28 再検証用一時ファイルの確保失敗を明示する
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -114,6 +117,23 @@ exit 1
 GH
 chmod +x "$GH_BIN"
 
+# 指定した jq フィルタだけを失敗させ、その他は実体へ委譲する。
+export RITE_TEST_REAL_JQ="$(command -v jq)"
+cat > "$TMP_ROOT/bin/jq" <<'JQ'
+#!/bin/bash
+for arg in "$@"; do
+  case "${RITE_TEST_JQ_FAIL:-}:$arg" in
+    parse:*'split("\n") | join(",") | split(",")'*|ambiguity:*'map(select(length > 1)'*|release:'. - $amb'|apply:*'[.[] | select((.id // "")'*)
+      printf '%s\n' "$RITE_TEST_JQ_FAIL" >> "$STUB_DIR/jq-fail.log"
+      cat >/dev/null
+      echo "jq: injected $RITE_TEST_JQ_FAIL failure" >&2
+      exit 5 ;;
+  esac
+done
+exec "$RITE_TEST_REAL_JQ" "$@"
+JQ
+chmod +x "$TMP_ROOT/bin/jq"
+
 # create-issue stub: copies body, emits success JSON unless CREATE_RC set
 cat > "$CREATE_STUB" <<'STUB'
 #!/bin/bash
@@ -143,6 +163,8 @@ reset_stubs() {
   export GH_COMMENT_RC=0
   unset CREATE_RC
   unset CREATE_REG
+  unset RITE_TEST_JQ_FAIL
+  : > "$STUB_DIR/jq-fail.log"
   printf '%s\n' '[]' > "$GH_LIST_JSON"
   : > "$GH_LOG"
   : > "$GH_COMMENT_LOG"
@@ -578,7 +600,15 @@ else
   assert_grep "T-15 曖昧 id marker の消費規則がある" "$CLEANUP_MD" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=\{r\}; count=\{n\}; pr=\{pr_number\}'
   # 除外を全破棄した経路は「曖昧 id」「他の id は適用済み」を主張しない別文面へ分岐させる
   assert_grep "T-15 note は reason で文面を分岐する" "$CLEANUP_MD" 'それ以外の `reason` のとき'
-  assert_grep "T-15 marker 不在の読み方を規定する" "$CLEANUP_MD" 'marker 不在は「除外要求がそのまま適用された」と読んでよい'
+  _note_section="$TMP_ROOT/ambiguous-note.md"
+  awk '/^- `\{follow_up_ambiguous_note\}`:/ {p=1} p && /^- `\{wiki_ingest_check\}`:/ {exit} p' "$CLEANUP_MD" > "$_note_section"
+  assert_grep "T-15 最終起票結果を先に選ぶ" "$_note_section" '先に.*最終 `FOLLOW_UP_ISSUE` を選ぶ'
+  assert_grep "T-15 除外拒否は同一PRの最後の通知を採る" "$_note_section" '行末まで一致する最後の出現を採る'
+  assert_grep "T-15 created の場合だけ転記完了と表現する" "$_note_section" '最終 `FOLLOW_UP_ISSUE=created` の場合だけ.*「転記対象としました」を「転記しました」に置換'
+  assert_grep "T-15 失敗や既存Issueでは転記済みにしない" "$_note_section" '失敗・未確認・`already_exists` を含むその他の結果では置換しない'
+  assert_grep "T-15 未通知から成功を推定しない" "$_note_section" '除外適用・起票の成功は推定しない'
+  assert_grep "T-15 起票と削除の完了判定を維持する" "$_note_section" '起票結果と state 削除結果から決めた `\{review_cleanup_check\}` を変更しない'
+  assert_not_grep "T-15 除外拒否だけで成功を断定しない" "$_note_section" '起票自体は成功|`x` 相当'
   # placeholder の presence だけだと定義側 bullet で充足し、完了報告への配線を消す変異を素通しする
   assert_grep "T-15 完了報告に曖昧 note を差し込む" "$CLEANUP_MD" '\{follow_up_reverify_note\}\{follow_up_ambiguous_note\}'
   # note のリテラルは 1 本の code span に保つ（分断すると出力すべき文字列が不定になる）
@@ -726,7 +756,6 @@ assert_grep "T-22 id 無し B が残る" "$STUB_DIR/body.md" 'id 無しの指摘
 assert_grep "T-22 書式外 id が残る" "$STUB_DIR/body.md" '書式外 id の指摘'
 
 echo "--- T-23: parse 不能な JSON を 1 本だけ除外し、jq の原因行を surface する ---"
-# 統合 jq (`. + $add`) は type gate を通った配列同士の連結なので入力由来では失敗しえない。
 # 本 test が突くのは兄弟の parse 失敗分岐で、T-03u との差分は「jq の原因行 emit」と「union 内訳」。
 reset_stubs
 r=$(new_root t23)
@@ -740,6 +769,20 @@ assert_grep "T-23 除外を WARNING で surface" "$ERR" '和集合から除外�
 # 原因行が無いと「どの JSON がなぜ落ちたか」が消える (WARNING 本文だけでは退行を検出できない)
 assert_grep "T-23 jq の原因行を surface" "$ERR" 'jq: parse error'
 assert_grep "T-23 除外本数を stderr の内訳に出す" "$ERR" 'union: pr=9; json_total=2; json_parsed=1; json_unparsed=1'
+assert_grep "T-23 欠落確認を WARNING で促す" "$ERR" 'WARNING: 和集合から除外された JSON が 1 本あります'
+
+echo "--- T-23b: 空 JSON の統合失敗でも健全側を転記する ---"
+reset_stubs
+r=$(new_root t23b)
+put_json "$r" "9-20260101120000.json" ''
+put_json "$r" "9-20260102120000.json" "$FINDING_JSON"
+run_target "$r"
+assert "T-23b exit 0" "0" "$RC"
+assert_grep "T-23b 統合失敗の WARNING" "$ERR" '和集合の統合に失敗したため当該 JSON を除外します'
+assert_grep "T-23b 統合失敗の原因行" "$ERR" 'invalid JSON text passed to --argjson'
+assert_grep "T-23b 除外本数" "$ERR" 'union: pr=9; json_total=2; json_parsed=1; json_unparsed=1'
+assert_grep "T-23b 健全側で created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert_grep "T-23b 健全 finding が本文に残る" "$STUB_DIR/body.md" '実測なしの指摘本文'
 
 echo "--- T-24: 和集合内で衝突する id は除外しない (曖昧 key の silent drop 防止) ---"
 # `id` は cycle ごとの連番なので、2 本の JSON に同じ `F-05` が別内容で載りうる。6.0.V が
@@ -820,15 +863,68 @@ assert_grep "T-26 本文生成失敗の WARNING" "$ERR" 'follow-up finding 本�
 assert_grep "T-26 失敗 marker" "$ERR" 'FOLLOW_UP_ISSUE=failed; reason=create_api; pr=9'
 assert_not_grep "T-26 起票成功を主張しない" "$ERR" 'FOLLOW_UP_ISSUE=created'
 
-echo "--- T-25b: 除外を全破棄する他の経路も marker を出す ---"
-# 「除外ゼロなら必ず marker」を helper 全体の不変条件にしている（消費側が marker 不在を
-# 「除外要求どおり適用された」と読む規約の前提）。実行到達しない経路はソース pin で固定する。
-assert_grep "T-25b 解析失敗も marker を出す" "$TARGET" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=parse_failed; count=unknown'
-assert_grep "T-25b 適用失敗も marker を出す" "$TARGET" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=apply_failed'
-# emit は 5 経路（ambiguous 1 + 全破棄 4）。docstring の記述は数えない
-assert "T-25b marker emit は 5 経路" "5" \
-  "$(grep -c 'echo "\[CONTEXT\] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=' "$TARGET" | tr -d ' ')"
-assert_not_grep "T-25b 到達不能な count fallback を残さない" "$TARGET" "jq -r 'length' 2>/dev/null) \|\| _amb_req=0"
+echo "--- T-25b: 除外処理の失敗後も全 finding を保持する ---"
+for stage in parse ambiguity release apply; do
+  reset_stubs
+  r=$(new_root "t25b-$stage")
+  put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-05","description":"曖昧な指摘A"},{"id":"F-06","description":"一意な指摘"}]}'
+  put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-05","description":"曖昧な指摘B"}]}'
+  export RITE_TEST_JQ_FAIL="$stage"
+  run_target "$r" --exclude-ids 'F-05,F-06'
+  assert "T-25b $stage 対象 jq が1回失敗" "$stage" "$(cat "$STUB_DIR/jq-fail.log")"
+  assert "T-25b $stage exit 0" "0" "$RC"
+  case "$stage" in
+    parse) reason=parse_failed; count=unknown; warning='--exclude-ids を解析できませんでした' ;;
+    ambiguity) reason=undecidable; count=2; warning='曖昧 id の判定に失敗しました' ;;
+    release) reason=undecidable; count=2; warning='曖昧 id の除外解除に失敗しました' ;;
+    apply) reason=apply_failed; count=1; warning='除外適用に失敗しました' ;;
+  esac
+  assert_grep "T-25b $stage WARNING" "$ERR" "WARNING: $warning"
+  marker="[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=$reason; count=$count; pr=9"
+  actual_markers=$(grep '^\[CONTEXT\] FOLLOW_UP_EXCLUDE_AMBIGUOUS=' "$ERR")
+  expected_markers="$marker"
+  case "$stage" in
+    release|apply) expected_markers=$(printf '%s\n%s' '[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=ambiguous; count=1; pr=9' "$marker") ;;
+  esac
+  assert "T-25b $stage marker の順序・件数" "$expected_markers" "$actual_markers"
+  assert "T-25b $stage 起票1回" "1" "$(create_count)"
+  assert_grep "T-25b $stage created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+  for description in 曖昧な指摘A 曖昧な指摘B 一意な指摘; do
+    assert_grep "T-25b $stage $description を保持" "$STUB_DIR/body.md" "$description"
+  done
+done
+
+echo "--- T-27: 除外拒否後も検索・起票結果で成否を確定する ---"
+for stage in lookup create; do
+  reset_stubs
+  r=$(new_root "t27-$stage")
+  put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-05","description":"指摘A"},{"id":"F-05","description":"指摘B"}]}'
+  if [ "$stage" = lookup ]; then export GH_LIST_RC=1; expected_creates=0; else export CREATE_RC=1; expected_creates=1; fi
+  run_target "$r" --exclude-ids F-05
+  assert "T-27 $stage exit 0" "0" "$RC"
+  assert "T-27 $stage 起票試行数" "$expected_creates" "$(create_count)"
+  assert "T-27 $stage 除外拒否の後に失敗通知" \
+    "$(printf '%s\n%s' '[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=ambiguous; count=1; pr=9' "[CONTEXT] FOLLOW_UP_ISSUE=failed; reason=${stage}_api; pr=9")" \
+    "$(grep '^\[CONTEXT\] FOLLOW_UP_' "$ERR")"
+  assert_not_grep "T-27 $stage 成功通知なし" "$ERR" 'FOLLOW_UP_ISSUE=created'
+done
+
+echo "--- T-28: 再検証用一時ファイルの確保失敗を明示する ---"
+reset_stubs
+r=$(new_root t28)
+put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
+# SKILL の実ブロックを実行する。state root だけ fixture に置換する。
+awk -v root="$r" '
+  /^_state_root=\$\(bash / {print "_state_root=\"" root "\""; p=1; next}
+  p && /^```/ {exit}
+  p {gsub(/\{pr_number\}/, "9"); print}
+' "$CLEANUP_MD" > "$TMP_ROOT/reverify.sh"
+TMPDIR="$TMP_ROOT/absent" bash "$TMP_ROOT/reverify.sh" > "$OUT" 2> "$ERR"; RC=$?
+assert "T-28 exit 0" "0" "$RC"
+assert_grep "T-28 union 一時ファイル失敗の WARNING" "$ERR" '再検証用の一時ファイルを確保・初期化できません'
+assert_grep "T-28 再検証不能を surface" "$ERR" '再検証を実施できません（対象 1 本）'
+assert_grep "T-28 unavailable marker" "$OUT" 'FOLLOW_UP_REVERIFY=unavailable; reason=parse_failed'
+assert_not_grep "T-28 JSON 破損と断定しない" "$ERR" '1 本も解析できません'
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?

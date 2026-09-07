@@ -57,6 +57,7 @@ run_id_case() {
     assert "$name ファイルを残さない" "0" "$(find "$dir" -type f -name '2563-*.json' 2>/dev/null | wc -l | tr -d ' ')"
   else
     assert_grep "$name saved" "$TMP_ROOT/$name.err" 'JSON_SAVED=true'
+    assert "$name ファイルを残す" "1" "$(find "$dir" -type f -name '2563-*.json' | wc -l | tr -d ' ')"
     assert_not_grep "$name id reason なし" "$TMP_ROOT/$name.err" 'reason=finding_id_format_or_uniqueness_violation'
     # ゲート (2) は和集合の**一意性のみ**を非ブロッキング marker で報告する。両方向を pin しないと
     # ゲート丸ごとの削除も常時発火もテストを素通りする (marker が唯一の観測可能出力のため)。
