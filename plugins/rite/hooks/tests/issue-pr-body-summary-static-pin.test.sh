@@ -40,6 +40,7 @@ pin "$pr_template" '内部用語が無ければ用語ブロックを省略'
 pin "$pr_template" '</details>'
 pin "$PLUGIN_ROOT/templates/issue/default.md" '| 上段要約 | M | M | M | M | M |'
 pin "$PLUGIN_ROOT/skills/issue-create/SKILL.md" '「上段要約」「図の選択規則」「契約層の折りたたみ」を適用'
+pin "$PLUGIN_ROOT/skills/issue-create/SKILL.md" '分解経路の親・Sub-Issue の図は Mermaid または図なしとし、SVG を生成しない'
 pin "$pr_create" 'の「上段要約」「図の選択規則」'
 pin "$PLUGIN_ROOT/skills/issue-implement/SKILL.md" '`## Acceptance Criteria` / `## 5. Acceptance Criteria`'
 if awk '/^Closes / { closes=NR } /^<details>/ { details=NR } /^## 変更/ { changes=NR } /^<\/details>/ { end=NR } END { exit !(closes && closes<details && details<changes && changes<end) }' "$pr_template"; then

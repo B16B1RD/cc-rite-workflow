@@ -430,6 +430,8 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 
 **(B) body / spec の生成（Write tool）**
 
+分解経路の親・Sub-Issue の図は Mermaid または図なしとし、SVG を生成しない（`decompose-issues.sh` は添付を渡さない）。Step 4.2 の上段要約・契約層は適用し、図だけ本規則を優先する。
+
 直前の `[CONTEXT] DECOMPOSE_WORKDIR=` から `{DECOMPOSE_WORKDIR}` を読み取り、以下を **Write tool** で書く（heredoc を使わない）:
 
 1. `{DECOMPOSE_WORKDIR}/parent_body.md` ← §5.1 で生成し §5.1.1 の検査結果を反映した設計仕様書（`{spec_document}`）の raw 内容
