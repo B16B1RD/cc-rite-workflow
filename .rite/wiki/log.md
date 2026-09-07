@@ -1,5 +1,8 @@
 ## 2026-09-07
 
+* **Update**: [自 repo 固有 anchor を Edit old_string に hardcode すると consumer project で hard fail する (dogfooding bias)](pages/anti-patterns/dogfooding-anchor-hardcode.md) — [レビュー結果](raw/reviews/20260907T162004Z-pr-2610.md) を統合
+* **Update**: [自 repo 固有 anchor を Edit old_string に hardcode すると consumer project で hard fail する (dogfooding bias)](pages/anti-patterns/dogfooding-anchor-hardcode.md) — [fix 結果](raw/fixes/20260907T163105Z-pr-2610.md) を統合
+* **Update**: [自 repo 固有 anchor を Edit old_string に hardcode すると consumer project で hard fail する (dogfooding bias)](pages/anti-patterns/dogfooding-anchor-hardcode.md) — [レビュー結果](raw/reviews/20260907T163925Z-pr-2610.md) を統合
 * **Update**: [エラーを 1 つの reason へ畳むときは「原因の類型」が同じかを確かめる — 復旧手順が違うなら分ける](pages/heuristics/error-classification-by-cause-not-detection-site.md) — [レビュー結果](raw/reviews/20260907T143412Z-pr-2609.md) を統合
 * **Update**: [委譲リファクタの動作保持は原実装との差分テストで機械的に立証する](pages/heuristics/delegation-refactor-differential-test-equivalence.md) — 環境ごとの旧処理との比較、およびcallerを通した終了コードと一時ファイル所有権の観測を統合。
 * **Create**: [同型テンプレートが N 本ある欄は「本数の literal pin」と「欄とプレースホルダの隣接 pin」の 2 本立てで守る](pages/patterns/homogeneous-template-pins-count-and-adjacency.md) — raw/fixes/20260907T001315Z-pr-2590.md を新規ページ化

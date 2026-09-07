@@ -13,9 +13,15 @@ sources:
     resource: "raw/reviews/20260722T063747Z-pr-1969.md"
   - type: "fixes"
     resource: "raw/fixes/20260722T064426Z-pr-1969.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260907T162004Z-pr-2610.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260907T163105Z-pr-2610.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260907T163925Z-pr-2610.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-22T08:20:00+00:00" }
+generated: { by: "rite-wiki-ingest/gpt-5", at: "2026-09-07T16:49:52+00:00" }
 ---
 
 # 自 repo 固有 anchor を Edit old_string に hardcode すると consumer project で hard fail する (dogfooding bias)
@@ -40,6 +46,17 @@ command 指示書 (`commands/**/*.md`) が Edit ツールの `old_string` に「
 - **発動条件側で anchor 存在 check を必ず追加**: Phase 1.3.1 の発動条件に `grep -qF '# <<< gitignore-wiki-section-end' .gitignore` を加え、anchor 不在時は `state="skip"; reason="anchor_absent"` で early skip + 手動追記案内を表示する
 - **anchor 非依存の fallback 経路を用意**: anchor が無い consumer には末尾追記などの degrade path を提示する (UX-positive)
 
+### 順序依存ルールの復旧案内
+
+ignore 設定のように後勝ちになる規則では、復旧行を置く基準は anchor ではなく、効力を打ち消す除外行そのものにする。たとえば「anchor があればその直後、無ければ末尾」と書くと、「無ければ」の対象が anchor に読めてしまい、anchor より後ろに同等の除外行がある consumer では復旧行を早く置きすぎて再び無効化される。
+
+- 除外行が無ければ末尾へ追記する
+- 除外行があれば、その行より後ろへ追記する
+- anchor は除外行より後ろにある場合だけ補助位置として使い、その直後へ置く。anchor が除外行より前なら使わない
+- 条件文では「無ければ」の主語を省略せず、除外行の有無と anchor の位置関係を別々に記述する
+
+案内文だけの変更でも、少なくとも「除外行なし」「除外行あり・anchor なし」「除外行より後ろに anchor あり」の consumer 配置で実行可能性を確認する。加えて「anchor より後ろに除外行あり」の反例で、復旧行が後勝ち規則に負けないことを確かめる。
+
 ### 教訓 (canonical rule)
 
 - command 指示書が Edit ツールの `old_string` に「自 repo 固有のコメント / anchor」を hardcode する場合、発動条件側で **anchor 存在 check を必須** とする
@@ -62,3 +79,6 @@ command 指示書 (`commands/**/*.md`) が Edit ツールの `old_string` に「
 - [anchor 存在 check 追加](../../raw/fixes/20260419T032801Z-pr-586.md)
 - [プラグイン自身の repo ではコメントの gitignore 保証が成立するが、downstream consuming repo では `/rite:setup` が生成する narrower gitignore しか無く保証が崩れる dogfooding bias の別バリアント](../../raw/reviews/20260722T063747Z-pr-1969.md)
 - [ランタイム作成ディレクトリに専用 `.gitignore` を書き込み、リポジトリの ambient 状態に依存しない self-contained な保証へ是正](../../raw/fixes/20260722T064426Z-pr-1969.md)
+- [復旧案内の条件主語が曖昧だと consumer の配置条件を取り違える](../../raw/reviews/20260907T162004Z-pr-2610.md)
+- [除外行を主条件にして anchor を補助位置へ限定する](../../raw/fixes/20260907T163105Z-pr-2610.md)
+- [複数の consumer 配置で復旧案内の実行可能性を確認する](../../raw/reviews/20260907T163925Z-pr-2610.md)
