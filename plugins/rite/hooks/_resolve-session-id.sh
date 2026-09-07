@@ -20,20 +20,10 @@
 #     # validation failed; treat as missing/invalid
 #   fi
 #
-# Why this exists:
-#   The same UUID regex literal `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`
-#   was duplicated across 5 sites (state-read.sh:85, flow-state-update.sh:70/77/83,
-#   resume-active-flag-restore.sh:87). DRY-ifying eliminates the drift risk where
-#   a future tightening of the pattern (e.g., RFC 4122 variant bit check) is applied
-#   to one site only.
-#
-# Case handling (verified-review cycle 44 F-10 MEDIUM):
+# Case handling:
 #   RFC 4122 §4 mandates that UUID readers MUST be lenient about case ("readers
 #   should be liberal in what they accept"; only generators are required to emit
-#   lowercase). The previous lowercase-only pattern would reject uppercase /
-#   mixed-case session_ids if Claude Code SDK or upstream Anthropic API ever emit
-#   them, breaking AC-4 multi-state API integrity. We now accept [A-Fa-f] in the
-#   regex AND normalize the validated output to lowercase so downstream
+#   lowercase). Accept [A-Fa-f] in the regex and normalize output so downstream
 #   `.rite/sessions/{sid}.flow-state` paths are always lowercase (preventing
 #   case-sensitive filesystem from creating two files for "AAA..." vs "aaa...").
 #

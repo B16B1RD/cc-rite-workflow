@@ -1,11 +1,8 @@
 #!/bin/bash
 # Tests for hooks/_resolve-cross-session-guard.sh — cross-session legacy classification helper.
 #
-# Background (verified-review cycle 41 CG-1): Helper is invoked by both writer
-# (flow-state-update.sh) and reader (state-read.sh) layers, but had no direct test
-# until cycle 41. caller 経由の indirect test では仕様変更時の片肺更新 drift を
-# caller grep に依存して検出するため、本 helper の output schema (5 classification +
-# printf trailing-newline-less semantics + mktemp 失敗 WARNING) を直接 stdout 比較で pin する。
+# Helper の output schema (5 classification + trailing-newline-less stdout +
+# mktemp 失敗 WARNING) を直接検証し、caller の fallback による不正出力の隠蔽を防ぐ。
 #
 # Output classifications under test (semantic anchor for drift detection):
 #   - "empty"             — legacy file missing / size 0 / .session_id null

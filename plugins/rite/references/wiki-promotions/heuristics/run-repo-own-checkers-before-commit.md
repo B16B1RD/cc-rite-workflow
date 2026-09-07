@@ -32,20 +32,6 @@ confidence: high
 
 ## 詳細
 
-### 実例（cycle 5）
-
-指摘 14 件のうち 2 件（HIGH ×2）が repo 自身の checker で検出可能だった。
-
-```
-$ bash hooks/scripts/hardcoded-line-number-check.sh --target <file>
-rc=1  P-C 2 件 (SKILL.md:3546 / SKILL.md:2508 — 参照先はいずれも既にずれていた)
-
-$ bash hooks/scripts/comment-journal-check.sh --target <file>
-rc=1  P2 1 件 (「旧実装は ...」のジャーナルコメント)
-```
-
-しかも、これらを持ち込んだのは **cycle 4 で「構造的に落ちえない tautology な pin」を修正したコミット**だった。再発防止を実装する PR が、別クラスの機械検出可能な違反を新規に混入させていた。
-
 ### 実行の型
 
 ```bash

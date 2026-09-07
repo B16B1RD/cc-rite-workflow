@@ -74,5 +74,5 @@
 - `flow-state.sh` `_validate_session_id` — Layer 1 validator（判定ロジック自体の SoT）
 - `_resolve-session-id.sh` — Layer 2 validator（strict RFC 4122）
 - `_resolve-session-id-from-file.sh` — Layer 2 consumer（file 読込 → strict 検証 → legacy fallback）
-- [state-read.sh Evolution History](./state-read-evolution.md) — helper 集約の経緯（cycle 34 F-01 で UUID validation を DRY 化）
+- [State Read Contracts](./state-read-evolution.md) — 状態解決と依存 helper の契約への参照
 - [multi-session-state.md](../../../docs/designs/multi-session-state.md) — per-session state file 構造

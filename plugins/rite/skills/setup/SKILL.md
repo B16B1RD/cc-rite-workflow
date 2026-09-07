@@ -207,14 +207,14 @@ gh repo create "$owner/$repo_name" --source . "$visibility_flag" --remote origin
 The visibility flag is mandatory; never invoke the interactive form. If the command fails, display gh's stderr and probe both `gh repo view "$owner/$repo_name"` and `git remote get-url origin` before choosing recovery:
 
 - If neither repository nor origin exists, the create step failed before side effects. Use AskUserQuestion to offer retrying the create command or stopping.
-- If the repository and origin exist, treat this as a partial success in the push step. Resolve `current_branch=$(git branch --show-current)` and fail loudly if it is empty. Use AskUserQuestion to offer retrying only `git push -u origin "$current_branch"` or stopping; never rerun `gh repo create` on this path.
+- If the repository and origin exist, treat this as a partial success in the push step. Resolve `current_branch=$(git branch --show-current)` and fail loudly if it is empty. Use AskUserQuestion to offer retrying only `git push origin "$current_branch"` or stopping; never rerun `gh repo create` on this path.
 - If only one of repository/origin exists, show the observed state and stop for manual recovery rather than guessing.
 
 For a name collision, resolve `current_branch=$(git branch --show-current)` and the existing repository URL with `gh repo view "$owner/$repo_name" --json url --jq .url`. Fail loudly if either is empty. Then stop after showing these commands with the resolved values; do not execute them automatically:
 
 ```text
 git remote add origin {resolved-existing-repository-url}
-git push -u origin {resolved-current-branch}
+git push origin {resolved-current-branch}
 ```
 
 After successful creation, always display:
@@ -777,11 +777,12 @@ do
     echo "WARNING: GitHub template source not found: $source_path" >&2
     continue
   fi
-  if ! mkdir -p "$(dirname "$destination_path")"; then
-    echo "WARNING: GitHub template directory could not be created: $(dirname "$destination_path")" >&2
+  destination_dir=$(dirname "$destination_path")
+  if ! mkdir -p "$destination_dir"; then
+    echo "WARNING: GitHub template directory could not be created: $destination_dir" >&2
     continue
   fi
-  destination_parent=$(cd "$(dirname "$destination_path")" 2>/dev/null && pwd -P) || destination_parent=""
+  destination_parent=$(cd "$destination_dir" 2>/dev/null && pwd -P) || destination_parent=""
   case "$destination_parent/" in
     "$project_root/"*) ;;
     *) echo "WARNING: GitHub template destination escapes project root: $destination_path" >&2; continue ;;

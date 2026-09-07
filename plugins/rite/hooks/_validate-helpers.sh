@@ -1,19 +1,8 @@
 #!/bin/bash
 # _validate-helpers.sh — Common helper-existence fail-fast validator
 #
-# verified-review F-06 (MEDIUM): state-read.sh / flow-state-update.sh が同一の
-# helper list (state-path-resolve.sh / _resolve-session-id.sh / 等) を完全に複製
-# していた DRY 違反を解消。本 helper を caller から呼び出すことで、将来 helper を
-# 1 つ追加する際に 1 ファイル更新のみで済む。root cause (caller 6 箇所が
-# `.rite-flow-state` を直接 jq read する片肺更新 drift) と同型の構造的問題を別
-# layer で再発させないための DRY 化。
-#
-# caller の helper-list 自体の duplication を解消する。
-# state-read.sh と flow-state-update.sh が同一 list を byte-for-byte 重複保持していた
-# 問題に対応するため、本 helper 内に **DEFAULT_HELPERS 配列** を追加し、引数 0 個
-# (script_dir のみ) で呼ばれた場合は default list を使う API 拡張を行う。これにより
-# 両 caller の hardcoded list を 1 行の helper 呼び出しに置換できる。
-# 履歴詳細 (entry 数の変遷) は references/state-read-evolution.md を参照。
+# DEFAULT_HELPERS を依存 helper 一覧の SoT とし、caller 間の検査対象のずれを防ぐ。
+# script_dir のみを渡すと default list を使い、追加引数があれば明示 list を使う。
 #
 # Usage:
 #   # 推奨形式 (DEFAULT_HELPERS 使用):
