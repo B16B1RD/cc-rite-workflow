@@ -14,6 +14,8 @@
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=444, broken_refs=0
 * **Lint scope** — 構造検査は全ページと raw を再走査。ページ・インデックスは直前の意味的検査から無変更のため、矛盾判定はその結果を継承した。
 
+* **Update**: [分岐表は判定キーを 1 つの観測量へ統一し、直交軸は表から出して独立段落に書く](pages/patterns/branch-table-single-observation-key-orthogonal-axis-separation.md) — raw/reviews/20260907T082935Z-pr-2601.md を統合
+
 ## 2026-09-06
 * **lint:clean** — contradictions=0, stale=58, orphans=0, missing_concept=0, unregistered_raw=436, broken_refs=0
 * **Create**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/reviews/20260906T125803Z-pr-2582.md を新規ページ化

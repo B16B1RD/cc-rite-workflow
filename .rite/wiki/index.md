@@ -311,7 +311,7 @@ okf_version: "0.2"
 | [陳腐化した相互参照には「ただ古い」ものと「修正した欠陥へ戻す誘導」がある](pages/heuristics/stale-cross-reference-that-guides-back-to-the-defect.md) | heuristics | 相互参照が古くなったとき、実害の大きさは 2 段階に分かれる。 | 2026-07-30T01:30:00+09:00 | high |
 | [検証手順を書くときは処方するコマンドの判別能力そのものを実測する](pages/heuristics/prescribed-command-discriminating-power-measured.md) | heuristics | 検証手順を新設する変更では、**手順が処方するコマンドが、その手順の防ごうとしている失敗モードを検出できない**という自己言及的な欠陥が最上位の指摘になりやすい。 | 2026-07-30T15:40:55Z | high |
 | [番号・識別子の grep に語境界を付けないと短い番号が長い番号の prefix として衝突する](pages/anti-patterns/identifier-grep-without-word-boundary-prefix-collision.md) | anti-patterns | 番号・識別子の検出に語境界が無いと、短い番号が長い番号の prefix として衝突するだけでなく、直後が英字の見出し ID や CSS 色も番号として誤検出する。 | 2026-09-04T01:26:01Z | high |
-| [分岐表は判定キーを 1 つの観測量へ統一し、直交軸は表から出して独立段落に書く](pages/patterns/branch-table-single-observation-key-orthogonal-axis-separation.md) | patterns | 散文手順（LLM が runtime で読むワークフロー定義）の欠陥は、個々の文が誤っているのではなく、**複数の正しい文が同時に成立したときの優先順位が書かれていない**ことに現れる。 | 2026-07-30T15:40:55Z | high |
+| [分岐表は判定キーを 1 つの観測量へ統一し、直交軸は表から出して独立段落に書く](pages/patterns/branch-table-single-observation-key-orthogonal-axis-separation.md) | patterns | 散文手順（LLM が runtime で読むワークフロー定義）の欠陥は、個々の文が誤っているのではなく、**複数の正しい文が同時に成立したときの優先順位が書かれていない**ことに現れる。 | 2026-09-07T08:45:10Z | high |
 | [判定の強さと観測可能性を逆相関させると、確定した矛盾が検証不能と区別できなくなる](pages/anti-patterns/verdict-strength-observability-inverse-correlation.md) | anti-patterns | 判定値を持つ検査を設計するとき、**最も強い判定ほど痕跡を残さない**という逆転が起きやすい。 | 2026-07-30T15:40:55Z | high |
 | [承認ゲートを跨ぐ自動書き換えは、両立しない不変条件を掲げるのではなく差分の再描画で閉じる](pages/patterns/approval-gate-crossing-rewrite-closed-by-rerender.md) | patterns | 「差分表示 → ユーザー承認 → 適用」の順序を持つフローで、**表示後・承認前に本文を自動付記する**と、ユーザーが承認した内容と実際に適用される内容が乖離する。 | 2026-07-30T15:40:55Z | high |
 | [SoT を consumer 依存の条件付きにすると seam が増え、指摘数が反転する](pages/anti-patterns/conditional-sot-delegated-to-consumer-multiplies-seams.md) | anti-patterns | 共有 SoT（reference）と複数 consumer を持つ構成で、個別指摘へ局所修正を重ねると、SoT 側に条件付き分岐が積み上がる。 | 2026-07-30T15:40:55Z | high |
@@ -483,4 +483,4 @@ okf_version: "0.2"
 
 - 総ページ数: 469
 - ドメイン別: patterns=110, heuristics=206, anti-patterns=153
-- 最終更新: 2026-09-07T10:00:00Z
+- 最終更新: 2026-09-07T08:45:10Z

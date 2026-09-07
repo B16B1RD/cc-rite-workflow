@@ -2,6 +2,7 @@
 type: "patterns"
 title: "分岐表は判定キーを 1 つの観測量へ統一し、直交軸は表から出して独立段落に書く"
 domain: "patterns"
+promote: rite-plugin
 description: "散文手順（LLM が runtime で読むワークフロー定義）の欠陥は、個々の文が誤っているのではなく、**複数の正しい文が同時に成立したときの優先順位が書かれていない**ことに現れる。"
 created: "2026-07-30T15:40:55Z"
 sources:
@@ -15,9 +16,13 @@ sources:
     resource: "raw/fixes/20260730T055555Z-pr-2056.md"
   - type: "reviews"
     resource: "raw/reviews/20260730T063315Z-pr-2056.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260907T082935Z-pr-2601.md"
 tags: ["prose-procedure", "branch-table", "llm-instruction", "orthogonality"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
+generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T08:45:10Z" }
+verified:
+  - { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T08:45:10Z" }
 ---
 
 # 分岐表は判定キーを 1 つの観測量へ統一し、直交軸は表から出して独立段落に書く
@@ -58,6 +63,12 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 
 同じクラスに対し「本文を書き換える」「指摘に留める」「3 値の処理へ流す」が優先規則なしで並存すると解が決まらない。検出と処理を 1:1 に畳み、他の記述には合流先を明記する。
 
+### 6. 判定に使う件数の観測時点を揃える
+
+triage 時点の分類件数は、対応後の未処理件数ではない。fatal と non-fatal が混在し、fatal を返信のみで処理した入力では、未処理 fatal がなくても元の fatal 件数は正のまま残る。終了条件を「元の fatal がゼロ」と「元の non-fatal がゼロ」の別々の行だけで覆おうとすると、この入力がどの成功行にも入らない可能性がある。
+
+新しい終了経路を追加するときは、分類の組合せに加え、コード変更・返信のみ・別経路への引継ぎという対応結果を並べて各行への到達先を確認する。分類件数を残すなら、対応完了を別の観測量として明示し、返信だけで未解決 fatal を成功へ昇格させない。この混在ケースはレビューでの静的指摘であり、実ワークフローで障害を再現した結果ではない。
+
 ## 関連ページ
 
 - [同一ファイル内で MUST NOT と MUST が衝突する](../anti-patterns/same-file-must-not-vs-must-conflict.md)
@@ -70,3 +81,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-30T15:40:55Z" }
 - [直交軸の同時成立](../../raw/reviews/20260730T055209Z-pr-2056.md)
 - [独立段落への退避と 1:1 の畳み込み](../../raw/fixes/20260730T055555Z-pr-2056.md)
 - [判定表の key を 1 軸に揃える](../../raw/reviews/20260730T063315Z-pr-2056.md)
+- [終了条件における分類時点と対応後の件数の違い](../../raw/reviews/20260907T082935Z-pr-2601.md)
