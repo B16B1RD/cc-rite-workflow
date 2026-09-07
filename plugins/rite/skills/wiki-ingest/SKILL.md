@@ -659,8 +659,17 @@ if [ "$branch_strategy" = "separate_branch" ]; then
   case "$commit_rc" in
     0) echo "[CONTEXT] WIKI_INGEST_COMMIT=ok" ;;
     1)
-      echo "ERROR: wiki-worktree-commit.sh が番号参照の commit 前検査で拒否しました (rc=1, reason=numref-hit または numref-error)" >&2
-      echo "  対処: stdout の reason= と ステップ 5.0.n の hit 行を確認し、書き直してから再実行" >&2
+      commit_reason=$(printf '%s\n' "$commit_out" | sed -n 's/.*reason=\([^;[:space:]]*\).*/\1/p' | tail -1)
+      case "$commit_reason" in
+        numref-hit|numref-error)
+          echo "ERROR: wiki-worktree-commit.sh が番号参照の commit 前検査で拒否しました (rc=1, reason=$commit_reason)" >&2
+          echo "  対処: stdout の reason= と ステップ 5.0.n の hit 行を確認し、書き直してから再実行" >&2
+          ;;
+        *)
+          echo "ERROR: wiki-worktree-commit.sh が環境または引数エラーで停止しました (rc=1)" >&2
+          echo "  対処: 直前の stderr を確認し、worktree・設定・引数の原因を解消してから再実行" >&2
+          ;;
+      esac
       exit 1
       ;;
     2) echo "[CONTEXT] WIKI_INGEST_COMMIT=skipped; reason=wiki-disabled" >&2 ;;
@@ -1173,7 +1182,8 @@ rationale: references/rationale.md#returned-to-caller
 | `lib/wiki-config.sh` 読込失敗 (helper 不在 / 解決失敗) | exit 1 で fail-fast（`[CONTEXT] WIKI_CONFIG_HELPER_UNAVAILABLE=1`。設定を判定できないまま無効扱いへ倒さない。plugin のインストール状態を確認するか `/rite:setup` を再実行、ステップ 1.1） |
 | Wiki 未初期化 / worktree セットアップ失敗 | `/rite:wiki-init` を案内、または `wiki-worktree-setup.sh` のエラー出力を確認して `git worktree prune` / `git fetch origin wiki:wiki` で復旧 (ステップ 1.3) |
 | 処理対象 0 件 | 静かに終了し情報メッセージのみ表示（ステップ 2.3） |
-| `wiki-worktree-commit.sh --commit-only` exit 1 (`reason=numref-hit` / `numref-error`、ステップ 5.1) | exit 1 で fail-fast。番号参照の commit 前検査が拒否した。5.0.n の hit 行を書き直すか、stderr の error reason を直して再実行 |
+| `wiki-worktree-commit.sh --commit-only` exit 1 + stdout `reason=numref-hit` / `numref-error`（ステップ 5.1） | exit 1 で fail-fast。番号参照の commit 前検査が拒否した。5.0.n の hit 行を書き直すか、stderr の error reason を直して再実行 |
+| `wiki-worktree-commit.sh --commit-only` exit 1 + stdout に `reason=numref-hit` / `numref-error` なし（ステップ 5.1） | exit 1 で fail-fast。環境 / 引数エラーとして、直前の stderr が示す worktree・設定・引数の原因を解消して再実行 |
 | `wiki-worktree-commit.sh --commit-only` exit 3 (git add/commit 失敗、ステップ 5.1) | exit 1 で fail-fast。`git -C .rite/wiki-worktree status` で worktree の状態を確認 |
 | `wiki-worktree-commit.sh --push-only` exit 4 (push 失敗、ステップ 8.6) | 非 fatal で継続。commit は local wiki branch に保持される。`git -C .rite/wiki-worktree push origin {wiki_branch}` で手動回復、または次回 ingest の ステップ 8.6 が自動で flush を試みる |
 | `wiki-worktree-commit.sh` 未知の exit code | exit 1 で fail-fast |
