@@ -254,6 +254,7 @@ _rite_btg_pattern6_command_surface() {
             "'") _state=single ;;
             '"') _state=double ;;
             '\\') _i=$((_i + 1)) ;;
+            '#') break ;;
             '<')
               _next="${_line:$((_i + 1)):1}"
               if [ "$_next" = '<' ]; then
@@ -265,9 +266,11 @@ _rite_btg_pattern6_command_surface() {
                   _i=$((_i + 1)); _start=$_i
                   while [ "$_i" -lt "$_len" ] && [ "${_line:$_i:1}" != "$_quoted" ]; do _i=$((_i + 1)); done
                 else
-                  while [[ "${_line:$_i:1}" =~ [[:alnum:]_] ]]; do _i=$((_i + 1)); done
+                  while [[ -n "${_line:$_i:1}" && ! "${_line:$_i:1}" =~ [[:space:]\|\&\;\(\)\<\>] ]]; do _i=$((_i + 1)); done
                 fi
                 _decl="${_line:$_start:$((_i - _start))}"
+                _decl="${_decl//[\"\']/}"
+                _decl="${_decl//\\/}"
                 break
               fi
               ;;

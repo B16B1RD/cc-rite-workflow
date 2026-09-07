@@ -2199,7 +2199,10 @@ for tc144_cmd in \
   'g""h issue create --title x' \
   $'gh issue \\\ncreate --title x' \
   $'cat <<EOF | gh issue create --title x\nbody\nEOF' \
-  $'echo \'<<EOF\'\ngh issue create --title x\nEOF'; do
+  $'echo \'<<EOF\'\ngh issue create --title x\nEOF' \
+  $'# <<EOF\ngh issue create --title x' \
+  $': <<END-1\nbody\nEND-1\ngh issue create --title x' \
+  $': <<E\\OF\nbody\nEOF\ngh issue create --title x'; do
   rc=0
   output=$(run_guard "Bash" "$tc144_cmd") || rc=$?
   decision=$(extract_hook_field "$output" permissionDecision)
