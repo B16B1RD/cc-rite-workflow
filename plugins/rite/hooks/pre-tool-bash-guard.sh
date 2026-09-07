@@ -25,6 +25,8 @@
 #      and pins the verified head with --match-head-commit. Fail-closed on PR-number
 #      unresolvable / missing / malformed / floor-under JSON. Purpose: block
 #      procedure-omission bypass of /rite:pr-review, not adversarial forgery.
+#   6. Direct `gh issue create` — denied unless Issue creation is delegated to
+#      create-issue-with-projects.sh or decompose-issues.sh.
 #
 # Reviewer working-tree mutations (git checkout / reset / commit / branch / ...)
 # are deliberately NOT machine-gated here. They are visible and
@@ -40,9 +42,9 @@
 # permissionDecision: "deny" — block.
 #
 # Fail direction is pattern-specific: Patterns 1-3 (convenience) fail OPEN so an
-# edge-case parse crash never false-blocks a legitimate command; Pattern 4 (the
-# reviewer .git-write security boundary) fails CLOSED so a parse crash never
-# silently bypasses the guard. See the two ERR traps below.
+# edge-case parse crash never false-blocks a legitimate command; Patterns 4 and
+# 6 enforce workflow boundaries and fail CLOSED so a parse crash never silently
+# bypasses the guard. See the ERR traps below.
 #
 # hooks.json timeout: 10s — a generous ceiling for a bash-builtins gate, aligned
 # with the other lightweight synchronous gates (Stop=10s, bang-backtick hook=10s).
@@ -180,6 +182,29 @@ _rite_btg_pattern4_fail_closed() {
     local _escaped
     _escaped=$(_bash_guard_escape_deny_reason "$_reason" 2>/dev/null) \
       || _escaped="BLOCKED: reviewer command denied (Pattern 4 crash, fail-closed)."
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$_escaped"
+  fi
+  exit 2
+}
+
+# Fail-closed ERR trap for Pattern 6. A malformed evaluation must not silently
+# permit a direct Issue creation, because the runtime guard is the enforcement
+# layer for commands that are assembled after static skill lint has run.
+_rite_btg_pattern6_fail_closed() {
+  local _rc=$?
+  trap - ERR
+  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: WARNING Pattern 6 (direct gh issue create guard) crashed (rc=$_rc) — command DENIED via fail-closed" >&2
+  local _reason="BLOCKED (direct-gh-issue-create): Pattern 6 evaluation crashed; denying fail-closed to prevent a direct Issue creation. Use create-issue-with-projects.sh or /rite:issue-create. See the bash-guard stderr WARNING for the crash context."
+  if ! jq -n --arg reason "$_reason" '{
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: $reason
+      }
+    }' 2>/dev/null; then
+    local _escaped
+    _escaped=$(_bash_guard_escape_deny_reason "$_reason" 2>/dev/null) \
+      || _escaped="BLOCKED: direct Issue creation denied (Pattern 6 crash, fail-closed)."
     printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$_escaped"
   fi
   exit 2
@@ -795,6 +820,22 @@ if [ -z "$BLOCKED_PATTERN" ]; then
       # success: leave BLOCKED_PATTERN empty — no extra output (AC-1)
     fi
   fi
+fi
+
+# Pattern 6: Require the approved helper for Issue creation.
+# The hook receives the outer Bash command, so approved helper invocations do
+# not themselves contain `gh issue create`; only a direct command is matched.
+if [ -z "$BLOCKED_PATTERN" ]; then
+  trap '_rite_btg_pattern6_fail_closed' ERR
+  if [ "${RITE_BTG_TEST_CRASH:-}" = "pattern6" ]; then
+    false
+  fi
+  if [[ "$CMD_CHECK" =~ (^|[^[:alnum:]_])gh[[:space:]]+issue[[:space:]]+create([[:space:]]|$) ]]; then
+    BLOCKED_PATTERN="direct-gh-issue-create"
+    BLOCKED_REASON="Direct gh issue create bypasses the required Issue format and Projects registration."
+    BLOCKED_ALTERNATIVE="Use create-issue-with-projects.sh or /rite:issue-create so the Issue is created through the approved helper."
+  fi
+  trap '_rite_btg_pattern13_fail_open' ERR
 fi
 
 # --- Result ---
