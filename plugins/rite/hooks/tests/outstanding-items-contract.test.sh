@@ -102,32 +102,35 @@ assert_grep "autonomous-execution states bash output is for the LLM, not the ter
 assert_grep "autonomous-execution mandates transcription into the completion report" "$AUTONOMOUS" '完了報告の `要対応:` 欄へ 1 行ずつ転記する'
 assert_grep "common-error-handling states the duty as stderr + transcription" "$COMMON_ERR" 'stderr 出力 \+ 完了報告への転記義務'
 assert_not_grep "common-error-handling no longer claims a bare stderr display duty" "$COMMON_ERR" 'stderr 表示義務'
-for f in "$OPEN" "$ITERATE" "$BATCH_RUN"; do
-  name=$(basename "$(dirname "$f")")
-  assert_grep "$name has a 要対応 section in its completion report" "$f" '^要対応:$'
-  assert_grep "$name defines the {action_items} placeholder" "$f" '\{action_items\}'
-  assert_grep "$name omits the section when there is nothing to transcribe" "$f" '0 件なら `要対応:` 行ごと省略する'
-  # 欄とプレースホルダを対で pin する。presence-only では、{action_items} が placeholder 表と
-  # 規則の散文でも hit するためテンプレ本体から消えても素通りする。
-  paired=$(grep -A1 '^要対応:$' "$f" | grep -c '^{action_items}$')
-  section_count=$(grep -c '^要対応:$' "$f")
-  assert "$name pairs every 要対応 section with {action_items}" "$section_count" "$paired"
-done
-# 報告経路の総数を pin する。presence-only だと N 本のうち 1 本から欄が消えても green のまま通る。
+# 報告経路の本数を skill ごとに literal で pin する。期待値を実測値から作ると 0 本でも 0 == 0 で
+# 通る（真空パス）ため、欄・プレースホルダの対の本数を直接固定する。
 # 停止・失敗経路こそユーザーの操作が必要な WARNING が残る出口なので、正常終了だけを数えない。
-# 経路を増減させたときは本 assert の期待値も更新する（新経路が欄なしで増える方向は総数側では
+# 経路を増減させたときは本 assert の期待値も更新する（新経路が欄なしで増える方向は本数側では
 # 検出できないため、ここは人手ゲートに倒す）。
 # open は完了通知 1 本。iterate は正常終了 4 テンプレ + ブレーカー停止 2 テンプレ。
 # batch-run はステップ 7 完了通知 2 本 + ステップ 8 停止報告 1 本。
-assert "open carries the 要対応 section on its completion report" "1" "$(grep -c '^要対応:$' "$OPEN")"
-assert "iterate carries the 要対応 section on all 6 completion paths" "6" "$(grep -c '^要対応:$' "$ITERATE")"
-assert "batch-run carries the 要対応 section on all 3 report paths" "3" "$(grep -c '^要対応:$' "$BATCH_RUN")"
-assert_grep "rite-workflow names the completion report as the transcription target" "$WORKFLOW" '完了報告へ転記する'
-# 転記主体の列挙は欄を持つ 3 skill に限る。欄を持たない ready / merge を主体として名指ししない。
-assert_grep "rite-workflow scopes the transcription duty to the skills that carry the section" "$WORKFLOW" '欄を持たない `/rite:ready` / `/rite:merge`'
-for s in ready merge; do
-  assert "no 要対応 section in $s (duty is scoped to the caller)" "0" "$(grep -c '^要対応:$' "$SCRIPT_DIR/../../skills/$s/SKILL.md")"
+for entry in "$OPEN:1" "$ITERATE:6" "$BATCH_RUN:3"; do
+  f="${entry%:*}"
+  expected="${entry##*:}"
+  name=$(basename "$(dirname "$f")")
+  assert_grep "$name defines the {action_items} placeholder" "$f" '\{action_items\}'
+  assert_grep "$name omits the section when there is nothing to transcribe" "$f" '0 件なら `要対応:` 行ごと省略する'
+  assert "$name carries the 要対応 section on all $expected report paths" "$expected" "$(grep -c '^要対応:$' "$f")"
+  # 欄とプレースホルダを対で pin する。presence-only では、{action_items} が placeholder 表と
+  # 規則の散文でも hit するためテンプレ本体から消えても素通りする。
+  assert "$name pairs every 要対応 section with {action_items}" "$expected" "$(grep -A1 '^要対応:$' "$f" | grep -c '^{action_items}$')"
 done
+# 転記主体の列挙を positive 側で pin する。負の節（欄を持たない ready / merge）だけを見ていると、
+# 主体の列挙全体を「orchestrator」のような総称へ書き換える変異が素通りする。
+assert_grep "rite-workflow names the section-carrying orchestrators as the transcription subjects" "$WORKFLOW" \
+  '`要対応:` 欄を持つ `/rite:open` / `/rite:iterate` / `/rite:batch-run`\*\* がユーザーの操作が必要な行を完了報告へ転記する'
+# 欄を持たない ready / merge の集約先は無条件ではない。batch-run 配下のみ集約され、standalone /
+# recover 単体では stderr に留まる（既知の非カバー経路）ことまで書かせる。
+# ready / merge 側に欄が無いことは契約ではなく既知の穴なので、ここでは pin しない。
+assert_grep "rite-workflow limits the collection claim to the batch-run path" "$WORKFLOW" \
+  '`/rite:batch-run` 経由で起動されたときだけその欄に集約される'
+assert_grep "rite-workflow names the uncovered standalone / recover path" "$WORKFLOW" \
+  'standalone 起動と `/rite:recover` 単体経路では転記先が無く stderr に留まる'
 
 if ! print_summary "$(basename "$0")" "cleanup/batch-run/wiki-ingest/recover の未完了事項集約 + 要対応 転記 contract (T-01/T-02/T-03)"; then
   exit 1
