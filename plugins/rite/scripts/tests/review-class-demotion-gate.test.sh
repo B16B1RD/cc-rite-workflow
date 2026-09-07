@@ -11,6 +11,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TARGET="$SCRIPT_DIR/../review-class-demotion-gate.sh"
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_DIR="$(mktemp -d)"
 PASS=0
 FAIL=0
@@ -38,8 +39,8 @@ run_gate() {
 
 # finding 1 件を組み立てる: id severity scope description [file] [measured] [category]
 # file: 省略時 plugins/rite/hooks/foo.sh。TC-01 は tests/ 配下パスを渡す (パス分類禁止の回帰ガード)
-# measured: "true" (default) = verification.measured=true 付与 (分類対象) /
-#           "none" = verification キーなし (実測未判定 — 分類対象外で class A 固定)
+# measured: "true" (default) / "false" = verification.measured に boolean を付与 /
+#           "none" = verification キーなし
 mk_finding() {
   local file="${5:-plugins/rite/hooks/foo.sh}"
   local measured="${6:-true}"
@@ -50,11 +51,11 @@ mk_finding() {
         file:$file, line:1, description:$desc, suggestion:"s",
         status:"open", scope:$scope}'
   else
-    jq -n --arg id "$1" --arg sev "$2" --arg scope "$3" --arg desc "$4" --arg file "$file" --arg category "$category" \
+    jq -n --arg id "$1" --arg sev "$2" --arg scope "$3" --arg desc "$4" --arg file "$file" --arg category "$category" --argjson measured "$measured" \
       '{id:$id, reviewer:"code-quality-reviewer", category:$category, severity:$sev,
         file:$file, line:1, description:$desc, suggestion:"s",
         status:"open", scope:$scope,
-        verification:{measured:true, repro:"bash t.sh => observed failure", failing_test:null}}'
+        verification:{measured:$measured, repro:"bash t.sh => observed failure", failing_test:null}}'
   fi
 }
 
@@ -277,38 +278,69 @@ run_gate "$TEST_DIR/tc10.json" "$TEST_DIR/tc10-cls.json"
 [ "$(jq -r '.non_blocking_findings[1] | has("demotion")' "$TEST_DIR/tc10.json")" = "true" ] \
   && pass "class-b entry has demotion key" || fail "demotion missing"
 
-# ---- TC-12: 実測未判定の gated finding は分類対象外で class A 固定 ----
-# 5.3.0.M が形式崩れアンカーを blocking のまま残した形 (verification キーなし)。
-# class B の well-formed map エントリがあっても降格されない — 「判定不能を降格に丸めない」
-# 3 値モデルの保証を第 2 軸でも保つ (本政策の入力は宣言どおり実測付き blocking に限る)。
-# fixture は measured 済み class B と**共存**させる (class_b >= 1 を成立させ、not-triggered の
-# 結論が「未判定が class A に算入されて降格を阻止した」ことのみに依存する形にする —
-# 未判定 1 件のみだと発動条件のもう一方の連言 class_b >= 1 で結論が過剰決定される)
-echo "TC-12: 実測未判定 → 分類対象外で class A 固定 (measured class B と共存し降格を阻止)"
-f1=$(mk_finding "F-01" "HIGH" "current-pr" "書式崩れアンカーで未判定の CRITICAL 級指摘" "plugins/rite/hooks/foo.sh" "none")
+# ---- TC-12: 実測未判定の gated finding は書き換え前に fail-loud ----
+echo "TC-12: 実測未判定 → measured_undetermined で停止し JSON 不変"
+f1=$(mk_finding "F-01" "HIGH" "current-pr" "実測判定を欠く CRITICAL 級指摘" "plugins/rite/hooks/foo.sh" "none")
 f2=$(mk_finding "F-02" "MEDIUM" "current-pr" "実測済みの文言同期指摘")
 mk_json "$TEST_DIR/tc12.json" "$f1" "$f2"
 mk_cls "$TEST_DIR/tc12-cls.json" \
-  "$(mk_entry F-01 B "文書整合に留まる (と主張する誤分類)")" \
+  "$(mk_entry F-01 B "文書整合に留まる")" \
   "$(mk_entry F-02 B "文書整合に留まる")"
+cp "$TEST_DIR/tc12.json" "$TEST_DIR/tc12-before.json"
 run_gate "$TEST_DIR/tc12.json" "$TEST_DIR/tc12-cls.json"
-[ "$GATE_RC" -eq 0 ] && pass "rc=0" || fail "rc=$GATE_RC (expected 0)"
-grep -q "CLASS_DEMOTION_GATE=not-triggered; class_a=1; class_b=1; demoted=0" <<<"$GATE_STDERR" \
-  && pass "undetermined blocks demotion (not-triggered, class_a=1 class_b=1)" || fail "marker mismatch: $GATE_STDERR"
-grep -q "CLASS_DEMOTION_UNDETERMINED_MEASURED=1; count=1" <<<"$GATE_STDERR" \
-  && pass "UNDETERMINED_MEASURED marker" || fail "marker missing: $GATE_STDERR"
-grep -q "判定不能を降格に丸めない 3 値モデルの保証" <<<"$GATE_STDERR" \
-  && pass "undetermined WARNING emitted" || fail "WARNING missing: $GATE_STDERR"
-[ "$(jq -r '.findings | length' "$TEST_DIR/tc12.json")" = "2" ] \
-  && pass "both stay blocking (class B not demoted)" || fail "findings were demoted"
-[ "$(jq -r '.non_blocking_findings | length' "$TEST_DIR/tc12.json")" = "0" ] \
-  && pass "no demotion occurred" || fail "unexpected demotion"
-[ "$(jq -r '.findings[0].consequence_class' "$TEST_DIR/tc12.json")" = "A" ] \
-  && pass "consequence_class=A fixed" || fail "consequence_class not A"
-[ "$(jq -r '.findings[0] | has("consequence_scenario")' "$TEST_DIR/tc12.json")" = "false" ] \
-  && pass "no scenario for undetermined" || fail "unexpected scenario"
-[ "$(jq -r '.overall_assessment' "$TEST_DIR/tc12.json")" = "fix-needed" ] \
-  && pass "assessment stays fix-needed" || fail "assessment changed"
+[ "$GATE_RC" -eq 1 ] && pass "rc=1" || fail "rc=$GATE_RC (expected 1)"
+grep -q "CLASS_DEMOTION_GATE_FAILED=1; reason=measured_undetermined; count=1; findings=F-01" <<<"$GATE_STDERR" \
+  && pass "reason/count/findings marker" || fail "marker mismatch: $GATE_STDERR"
+grep -q "/rite:pr-review を再実行" <<<"$GATE_STDERR" \
+  && pass "recovery hint emitted" || fail "recovery hint missing: $GATE_STDERR"
+cmp -s "$TEST_DIR/tc12.json" "$TEST_DIR/tc12-before.json" \
+  && pass "JSON byte-identical on measured error" || fail "JSON changed on measured error"
+retired_marker="CLASS_DEMOTION_"'UNDETERMINED_MEASURED'
+if grep -q "$retired_marker" <<<"$GATE_STDERR"; then
+  fail "retired marker emitted"
+else
+  pass "retired marker absent"
+fi
+
+# classification map が同時に不在でも、修復不能な measured 契約違反を先に報告する。
+run_gate "$TEST_DIR/tc12.json" "$TEST_DIR/nonexistent-cls.json"
+grep -q "reason=measured_undetermined" <<<"$GATE_STDERR" \
+  && pass "measured error precedes map validation" || fail "measured reason missing: $GATE_STDERR"
+if grep -q "reason=classification_missing" <<<"$GATE_STDERR"; then
+  fail "map retry reason won over measured error"
+else
+  pass "map retry reason not selected"
+fi
+
+echo "TC-12b: verification の空 object / measured=null も同じ reason で停止"
+for shape in empty_object null_measured; do
+  if [ "$shape" = "empty_object" ]; then
+    boundary=$(mk_finding "F-03" "MEDIUM" "current-pr" "verification が空 object" "plugins/rite/hooks/foo.sh" "none" | jq '.verification = {}')
+  else
+    boundary=$(mk_finding "F-04" "MEDIUM" "current-pr" "measured が null" "plugins/rite/hooks/foo.sh" "none" | jq '.verification = {measured:null}')
+  fi
+  mk_json "$TEST_DIR/tc12-$shape.json" "$boundary"
+  mk_cls "$TEST_DIR/tc12-$shape-cls.json" "$(mk_entry "$(jq -r '.id' <<<"$boundary")" B "文書整合に留まる")"
+  cp "$TEST_DIR/tc12-$shape.json" "$TEST_DIR/tc12-$shape-before.json"
+  run_gate "$TEST_DIR/tc12-$shape.json" "$TEST_DIR/tc12-$shape-cls.json"
+  [ "$GATE_RC" -eq 1 ] && pass "$shape rc=1" || fail "$shape rc=$GATE_RC"
+  grep -q "reason=measured_undetermined; count=1; findings=$(jq -r '.id' <<<"$boundary")" <<<"$GATE_STDERR" \
+    && pass "$shape reason/id" || fail "$shape marker mismatch: $GATE_STDERR"
+  cmp -s "$TEST_DIR/tc12-$shape.json" "$TEST_DIR/tc12-$shape-before.json" \
+    && pass "$shape JSON unchanged" || fail "$shape JSON changed"
+done
+
+echo "TC-12c: measured=false は boolean、nit-noted の verification 欠落は対象外"
+f1=$(mk_finding "F-05" "MEDIUM" "current-pr" "boolean false の gated finding" "plugins/rite/hooks/foo.sh" "false")
+f2=$(mk_finding "F-06" "LOW" "nit-noted" "verification を持たない nit" "plugins/rite/hooks/foo.sh" "none")
+mk_json "$TEST_DIR/tc12-bool.json" "$f1" "$f2"
+mk_cls "$TEST_DIR/tc12-bool-cls.json" "$(mk_entry F-05 B "文書整合に留まる")"
+run_gate "$TEST_DIR/tc12-bool.json" "$TEST_DIR/tc12-bool-cls.json"
+[ "$GATE_RC" -eq 0 ] && pass "boolean false and nit-noted accepted" || fail "rc=$GATE_RC: $GATE_STDERR"
+grep -q "CLASS_DEMOTION_GATE=applied; class_a=0; class_b=1; demoted=1" <<<"$GATE_STDERR" \
+  && pass "boolean false follows classification path" || fail "classification marker mismatch: $GATE_STDERR"
+[ "$(jq -r '.findings[0].id' "$TEST_DIR/tc12-bool.json")" = "F-06" ] \
+  && pass "nit-noted remains outside gate" || fail "nit-noted was gated"
 
 # ---- TC-13: classification map の非 object 要素は専用 reason で fail-loud ----
 # generic な jq_transform_failed (誤診断 + retry 対象外) に落とさない
@@ -452,6 +484,33 @@ run_gate "$TEST_DIR/tc20.json" "$TEST_DIR/tc20-cls.json"
 grep -q "CLASS_DEMOTION_UNCLASSIFIED=1; count=1" <<<"$GATE_STDERR" && pass "UNCLASSIFIED marker" || fail "UNCLASSIFIED missing"
 ! grep -q "CLASS_DEMOTION_CATEGORY_PINNED" <<<"$GATE_STDERR" && pass "no PINNED marker" || fail "unexpected PINNED marker"
 [ "$(jq -r '.findings[0].consequence_class' "$TEST_DIR/tc20.json")" = "A" ] && pass "missing map stays A" || fail "missing map class changed"
+
+# ---- Static contract: pr-review routing と廃止語彙の全数除去 ----
+echo "Static contract: measured error は再試行せず停止し、廃止語彙を残さない"
+pr_review_skill="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
+retry_row=$(grep -F 'reason=classification_missing' "$pr_review_skill" | head -1)
+stop_row=$(grep -F '上記 4 種以外' "$pr_review_skill" | head -1)
+if grep -q 'measured_undetermined' <<<"$retry_row"; then
+  fail "measured error entered map retry row"
+else
+  pass "measured error excluded from map retry row"
+fi
+if grep -q 'measured_undetermined' <<<"$stop_row" && grep -q '\[review:error\]' <<<"$stop_row"; then
+  pass "measured error routed to review:error"
+else
+  fail "measured error missing from stop row: $stop_row"
+fi
+
+repo_root=$(cd "$PLUGIN_ROOT/../.." && pwd)
+old_phrase_one="blocking のまま"'残した形'
+old_phrase_two="3 値モデルの保証を"'第 2 軸'
+old_terms=$(grep -R -n -F -e "$old_phrase_one" -e "$old_phrase_two" -e "$retired_marker" \
+  "$PLUGIN_ROOT" "$repo_root/docs" 2>/dev/null || true)
+if [ -z "$old_terms" ]; then
+  pass "retired wording and marker absent"
+else
+  fail "retired wording or marker remains: $old_terms"
+fi
 
 echo ""
 echo "=== Summary: PASS=$PASS FAIL=$FAIL ==="

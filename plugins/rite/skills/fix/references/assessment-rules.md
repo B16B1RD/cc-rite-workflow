@@ -187,22 +187,20 @@ For each finding in 全指摘事項 (post-5.3.0) where scope ∈ {current-pr, fo
 ```
 blocking = findings[] of scope ∈ {current-pr, follow-up}   # post-5.3.0.M の blocking 集合
 if blocking is empty: no-op (JSON 無変更、CLASS_DEMOTION_GATE=noop)
+if blocking に verification.measured が boolean でない finding がある:
+  error 停止 (CLASS_DEMOTION_GATE_FAILED reason=measured_undetermined、件数・ID 一覧を出力)
+  classification map を参照せず、JSON は書き換えない
 
 For each finding in blocking:
-  if verification.measured が boolean でない (旧 JSON 等を直接入力した場合の防御。
-     現行 5.3.0.M の成功出力からは生じない):
-    effective class = A 固定 + WARNING (map を参照しない — 判定不能を降格に丸めない
-    3 値モデルの保証を第 2 軸でも保つ。CLASS_DEMOTION_UNDETERMINED_MEASURED)
+  entry = classification map の同 id エントリ
+  if entry が欠落 / class が A・B 以外 / class B なのに scenario (判定文) が欠落・空 /
+     class B で exclusion キーがあるのに非空文字列でない / 同 id の重複エントリ:
+    effective class = A + WARNING (判定不能を降格に丸めない。CLASS_DEMOTION_UNCLASSIFIED)
   else:
-    entry = classification map の同 id エントリ
-    if entry が欠落 / class が A・B 以外 / class B なのに scenario (判定文) が欠落・空 /
-       class B で exclusion キーがあるのに非空文字列でない / 同 id の重複エントリ:
-      effective class = A + WARNING (判定不能を降格に丸めない。CLASS_DEMOTION_UNCLASSIFIED)
-    else:
-      effective class = entry.class
-      exclusion が非空文字列なら consequence_exclusion に判定文を記録 (降格しない)
-      category == "number_reference" なら effective class = A に固定。entry.class == B との
-      矛盾は WARNING + CLASS_DEMOTION_CATEGORY_PINNED で可視化
+    effective class = entry.class
+    exclusion が非空文字列なら consequence_exclusion に判定文を記録 (降格しない)
+    category == "number_reference" なら effective class = A に固定。entry.class == B との
+    矛盾は WARNING + CLASS_DEMOTION_CATEGORY_PINNED で可視化
   finding に consequence_class / consequence_scenario を記録 (書き手は helper のみ)
 
 if (effective A の件数) == 0 and (exclusion なし class B の件数) >= 1:
@@ -222,7 +220,7 @@ else:
 
 **category 固定**: `category == "number_reference"` の blocking finding は classification map の内容にかかわらず class A に固定する。well-formed な class B が指定された場合は WARNING + `[CONTEXT] CLASS_DEMOTION_CATEGORY_PINNED=1; count={n}` を emit し、map と固定の矛盾を silent に上書きしない。map 欠落・不正は従来の `CLASS_DEMOTION_UNCLASSIFIED` 経路だけを通る。
 
-**判定不能の安全側** (AC-6): map エントリの欠落・class 不正・class B の判定文欠落・class B の exclusion 不正・同 id の重複エントリは、いずれも当該 finding を **class A 扱い (blocking 維持)** にして WARNING + `[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}` を emit する。旧 JSON 等の直接入力で実測未判定 (verification 欠落) の finding は分類の手前で class A 固定 + `[CONTEXT] CLASS_DEMOTION_UNDETERMINED_MEASURED=1; count={n}` となり、map のエントリは参照されない。silent 降格は存在しない — 降格に入る経路は「実測判定済み ∧ well-formed な class B エントリ ∧ exclusion なし」のみ。
+**判定不能の安全側** (AC-6): map エントリの欠落・class 不正・class B の判定文欠落・class B の exclusion 不正・同 id の重複エントリは、いずれも当該 finding を **class A 扱い (blocking 維持)** にして WARNING + `[CONTEXT] CLASS_DEMOTION_UNCLASSIFIED=1; count={n}` を emit する。gated finding の `verification.measured` が boolean でない場合は map 判定と書き換えの前に `[CONTEXT] CLASS_DEMOTION_GATE_FAILED=1; reason=measured_undetermined; count={n}; findings={ids}` で停止し、入力 JSON を byte-identical に保つ。silent 降格は存在しない — 降格に入る経路は「実測判定済み ∧ well-formed な class B エントリ ∧ exclusion なし」のみ。
 
 **non_blocking_findings への移送**: 5.3.0.M と同じ移送メカニズムを流用する — `total_findings` にカウントしない / `id` は振り直さず和集合で一意 / 記録 4 経路 (永続 JSON・6.1.d 関連 Issue 記録コメント・5.4 統合レポート section・E2E suffix) は 5.3.0.M §non_blocking_findings の扱い と同一。降格分は `demotion` オブジェクト (policy + 判定文) で実測ゲート降格分と区別でき、後から監査できる。
 
