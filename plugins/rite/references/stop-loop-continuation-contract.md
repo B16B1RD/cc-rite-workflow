@@ -12,7 +12,7 @@
 - **終了 handoff (FINALIZE, one-shot)**: 終了 sentinel を出す sub-skill が flow-state に `FINALIZE:{result}:{pr}` handoff をセットする。
   - `[review:mergeable]` → pr-review.md Step 8.0 が `--handoff "FINALIZE:review:mergeable:{pr}"`
   - `[fix:non-fatal-only]` → fix.md Step 5.1 が `--handoff "FINALIZE:fix:non-fatal-only:{pr}"`（5.S sweep 成功後に完了通知。再フルレビュー禁止）
-  - `[fix:replied-only]` → fix.md Step 5.1 が `--handoff "FINALIZE:fix:replied-only:{pr}"`
+  - `[fix:replied-only]` → fix.md Step 5.1 が `--handoff "FINALIZE:fix:replied-only:{pr}"`（5.S sweep 成功後も返信のみで完了通知）
   - `[fix:sweep-done]` → fix.md Step 5.1 が `--handoff "FINALIZE:fix:sweep-done:{pr}"`（継続 `/rite:pr-review` ではない）
   - `[fix:cancelled-by-user]` → fix.md Step 1.4 cancel が `--handoff "FINALIZE:fix:cancelled-by-user:{pr}"`
   これらは sub-skill 内の defense-in-depth set で行われるため、**LLM が turn を終える前に確実に実行される**。

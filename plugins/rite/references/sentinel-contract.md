@@ -22,10 +22,10 @@ rite workflow のスキル間連携は、各 sub-skill が bash 出力に埋め�
 | `[review:error]` | pr-review | iterate | review 実行中にエラー発生。iterate 内部で処理され batch-run へは bubble しない |
 | `[fix:error]` | fix | iterate, batch-run | fix 実行中にエラー発生 |
 | `[fix:pushed]` | fix | iterate | fix 完了・push 済み、review へ再突入。iterate のループ内部状態のため batch-run へは bubble しない |
-| `[fix:sweep-done]` | fix | iterate | mergeable 後 NB digest sweep 完了。iterate はステップ 5 完了通知へ（ステップ 1 に戻らない） |
+| `[fix:sweep-done]` | fix | iterate | NB digest sweep 完了。iterate は入口の終了理由を保持してステップ 5 完了通知へ（ステップ 1 に戻らない） |
 | `[fix:pushed-wm-stale]` | fix | iterate | fix push 完了だが work memory 更新が失敗（non-blocking）。iterate 内部で処理され batch-run へは bubble しない |
 | `[fix:non-fatal-only]` | fix | iterate | fatal=0、非 fatal 移送あり、push / 本 cycle accept なし。5.S sweep 成功後だけ外向きに review:mergeable を返す |
-| `[fix:replied-only]` | fix | iterate, batch-run | 対応不要判定のみで push なし、非 fatal 移送 0 件（コメント返信のみ） |
+| `[fix:replied-only]` | fix | iterate, batch-run | push / 本 cycle accept なしで全返信済み（非 fatal 移送との混在を含む）。5.S 成功後も返信のみで終了し、mergeable へ昇格しない |
 | `[fix:cancelled-by-user]` | fix | iterate, batch-run | ユーザーが fix 実行をキャンセル |
 | `[lint:success]` | lint | open, pr-create, ready | lint 全チェック pass |
 | `[lint:error]` | lint | issue-implement, open | lint でエラー検出、修正が必要 |
@@ -44,7 +44,7 @@ rite workflow のスキル間連携は、各 sub-skill が bash 出力に埋め�
 | `[pr:created:N]` | pr-create | open, recover, batch-run | PR #N を作成完了 |
 | `[pr-create-failed]` | pr-create | open, batch-run | PR 作成に失敗 |
 | `[iterate:max-cycles-reached]` | iterate | batch-run | review⇄fix ループのサーキットブレーカーが発火（収束トレンドの発散検出、または `safety.max_review_cycles` 到達 = backstop）。**sentinel は発火理由に依らず同一 literal**（batch は理由を問わず failed 記録するため） |
-| `[iterate:nb-sweep-error]` | iterate | batch-run | mergeable 後 NB digest sweep が collect / persist に失敗。失敗即停止（`[fix:error]` と同帰結） |
+| `[iterate:nb-sweep-error]` | iterate | batch-run | NB digest sweep が collect / persist に失敗、または入口の終了理由が不明。失敗即停止（`[fix:error]` と同帰結） |
 | `[iterate:max-cycles-stopped]` | iterate | (iterate 内部完結) | サーキットブレーカー発火（発散検出 または `safety.max_review_cycles` backstop）でループを停止した最終状態表示。理由は停止通知の「理由」行が担う |
 | `[run:all-completed]` | batch-run | (batch-run 内部完結、最終出力) | バッチ処理対象の全 Issue が完了 |
 | `[run:stopped]` | batch-run | (batch-run 内部完結、最終出力) | サーキットブレーカー等でバッチ処理を中断 |
