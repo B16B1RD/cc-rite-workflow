@@ -941,7 +941,8 @@ assert_hint "lint" lint "" "/rite:open 2502" "ステップ 6"
 assert_hint "ingest-active" ingest "" "$CLEANUP_IN_PROGRESS" "ステップ 6"
 assert_hint "completed-inactive" completed ".active=false" "batch-run ステップ 6（cursor 前進）" "/rite:iterate"
 assert_hint "unknown-phase" unknown_phase "" "batch-run ステップ 1 から再判定" "/rite:iterate"
-assert_hint "cb-fire" review '.stop_reason="circuit-breaker:max-cycles"' "batch-run ステップ 6（failed 記録 + cursor 前進）" "/rite:iterate"
+assert_hint "cb-fire" review '.stop_reason="circuit-breaker:max-cycles"' "batch-run ステップ 8（breaker_failed=true で failed 記録 + 停止、cursor は保持）" "/rite:iterate"
+assert_hint "cb-divergence" review '.stop_reason="circuit-breaker:divergence"' "batch-run ステップ 8（breaker_failed=true で failed 記録 + 停止、cursor は保持）" "cursor 前進"
 
 # flow-state absent → ステップ 1
 d=$(new_sandbox)

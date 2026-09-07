@@ -1002,7 +1002,7 @@ marker_emit ITERATE_CB_MODE "$cb_mode" "issue={issue_number}" "pr={pr_number}" \
 
 **両分岐は挙動として同構造**（failed 記録 + draft 残し + 停止通知 + handoff クリア維持 + 共有前段での cycle counter reset。人間への問い合わせは行わない）。差は次の 2 点だけ:
 
-1. **sentinel の消費者**: `[iterate:max-cycles-reached]` は `/rite:batch-run` が grep して当該 Issue を `failed[]` に記録し次 Issue へ進む。`[iterate:max-cycles-stopped]` は消費者を持たない iterate 内部完結の最終状態表示。
+1. **sentinel の消費者**: `[iterate:max-cycles-reached]` は `/rite:batch-run` が grep して当該 Issue を `failed[]` に記録しバッチを停止する。`[iterate:max-cycles-stopped]` は消費者を持たない iterate 内部完結の最終状態表示。
 2. **`REFIRE=1` / 共有前段の atomic set 失敗 注意行の有無**: ステップ 6.2（対話）のみが持つ。6.1（batch）は対称化しない。
 
 **失敗停止の理由は両モードで永続化する** — 共有前段の reset 成功後は `stop_reason=circuit-breaker:{cb_reason}` を同じ atomic set で残す。`stop_reason` は後続の通常 `flow-state.sh set` が default-clear する。
@@ -1013,7 +1013,7 @@ STATE_ROOT が `unresolved` の場合は両モードの停止通知に「状態�
 
 ### ステップ 6.1: バッチ実行 — failed sentinel
 
-review を回さず、当該 Issue を非収束（failed）として `/rite:batch-run` に返す。`/rite:batch-run` はこの sentinel を受けて当該 Issue を failed 記録し、次の Issue へ進む（ready/merge/cleanup はスキップ、draft/open PR はレビュー待ちで残す）。継続 handoff はステップ 1 fire 分岐の `flow-state.sh set`（`--handoff` なし）で既に default-clear 済みのため、ここでは追加の handoff 操作をしない（`[fix:error]` が set で handoff をクリアして clean terminal になるのと同じ。以降は run の flat 構造 + HTML hint で継続）:
+review を回さず、当該 Issue を非収束（failed）として `/rite:batch-run` に返す。`/rite:batch-run` はこの sentinel を受けて当該 Issue を failed 記録し、cursor を保持してバッチを停止する（ready/merge/cleanup はスキップ、draft/open PR はレビュー待ちで残す）。継続 handoff はステップ 1 fire 分岐の `flow-state.sh set`（`--handoff` なし）で既に default-clear 済みのため、ここでは追加の handoff 操作をしない（`[fix:error]` が set で handoff をクリアして clean terminal になるのと同じ。以降は run のステップ 8 で停止処理）:
 
 ```
 ## /rite:iterate サーキットブレーカー発火（バッチ）
@@ -1021,7 +1021,7 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 - PR: #{pr_number}（Issue #{issue_number}）
 - 理由: {fire_reason_line}
 - blocking 推移: {trend}
-- 措置: 当該 Issue を failed 扱いとし、draft/open PR をレビュー待ちで残します（`/rite:batch-run` が残りキューを続行、最終 Issue なら完了通知へ）
+- 措置: 当該 Issue を failed 扱いとし、draft/open PR をレビュー待ちで残します（`/rite:batch-run` も停止し、後続 Issue は開始しません）
 
 （転記すべき行があるときのみ、以下 2 行）
 要対応:
@@ -1034,9 +1034,9 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 
 `{fire_reason_line}` / `{trend}` はステップ 1 の `ITERATE_CB=fire` marker の `CB_REASON=` / `TREND=` からリテラル置換する（`{max_review_cycles}` はステップ 0.6 の `ITERATE_CYCLE_MAX=`。置換表は 6.2 と共通で、下記「発火理由の文面」を参照）。
 
-**sentinel は発火理由に依らず `[iterate:max-cycles-reached]` のまま**。`/rite:batch-run` はこの literal を grep して当該 Issue を `failed[]` に記録し cursor を前進させるため、理由別に sentinel を分けると batch が停止を検出できなくなる（sentinel 契約は不変に保つ）。理由の区別は上記「理由」行が担う。
+**sentinel は発火理由に依らず `[iterate:max-cycles-reached]` のまま**。`/rite:batch-run` はこの literal を grep して当該 Issue を `failed[]` に記録してバッチを停止するため、理由別に sentinel を分けると batch が停止を検出できなくなる（sentinel 契約は不変に保つ）。理由の区別は上記「理由」行が担う。
 
-制御を `/rite:batch-run` に戻す（run 側で cursor 前進）。
+制御を `/rite:batch-run` に戻す（run 側で cursor を保持して停止）。
 
 ### ステップ 6.2: 対話実行 — 機械的停止
 
@@ -1151,7 +1151,7 @@ handoff 迂回のリスクは (b) には含めない。迂回が成立するの�
 
 - ユーザーが Ctrl+C で中断した場合: flow-state に現 phase (review or fix) が残るので `/rite:recover` で本コマンドが再起動する (詳細な phase → command routing は [skills/recover/SKILL.md](../recover/SKILL.md) Phase 5.3 を参照)
 - `[fix:error]` 時: [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従い 1 回だけ自動再試行し、再失敗時は停止する
-- reviewer が non-deterministic に振動する場合: 収束トレンドの発散または `safety.max_review_cycles`（既定 15）到達でステップ 6 に進み、人間に問わず停止する。batch は `[iterate:max-cycles-reached]` で当該 Issue を failed 扱いにして次へ進み、対話は `[iterate:max-cycles-stopped]` で終了する。再開は `/rite:iterate {pr_number}` の明示的な再実行で行う。
+- reviewer が non-deterministic に振動する場合: 収束トレンドの発散または `safety.max_review_cycles`（既定 15）到達でステップ 6 に進み、人間に問わず停止する。batch は `[iterate:max-cycles-reached]` で当該 Issue を failed 扱いにしてバッチを停止し、対話は `[iterate:max-cycles-stopped]` で終了する。再開は `/rite:iterate {pr_number}` の明示的な再実行で行う。
 
 ---
 
