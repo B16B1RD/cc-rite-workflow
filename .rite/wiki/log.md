@@ -55,6 +55,12 @@
 * **Lint scope** — 全 469 ページと 2011 raw の構造検査を再実行。意味的検査は更新ページを原因別診断・exit code 語彙保持の関連ページと照合し、新しい矛盾は検出しなかった。既存ページ全文の総当たり意味監査は再実施していない。陳腐化・孤児・相互参照 helper の既存 Broken pipe 診断は出たが、各完了 marker と読取成功を確認した。
 * **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=452, broken_refs=0
 
+* **Create**: [警告集約は最終試行・同一目的・正規化先の単一性で判定する](pages/heuristics/warning-aggregation-final-attempt-purpose-normalization.md) — raw/fixes/20260907T190801Z-pr-2612.md を新規ページ化
+* **Update**: [警告集約は最終試行・同一目的・正規化先の単一性で判定する](pages/heuristics/warning-aggregation-final-attempt-purpose-normalization.md) — raw/fixes/20260907T193033Z-pr-2612.md を統合
+* **Update**: [警告集約は最終試行・同一目的・正規化先の単一性で判定する](pages/heuristics/warning-aggregation-final-attempt-purpose-normalization.md) — raw/reviews/20260907T185457Z-pr-2612.md を統合
+* **Update**: [警告集約は最終試行・同一目的・正規化先の単一性で判定する](pages/heuristics/warning-aggregation-final-attempt-purpose-normalization.md) — raw/reviews/20260907T192209Z-pr-2612.md を統合
+* **Update**: [警告集約は最終試行・同一目的・正規化先の単一性で判定する](pages/heuristics/warning-aggregation-final-attempt-purpose-normalization.md) — raw/reviews/20260907T193647Z-pr-2612.md を統合
+
 ## 2026-09-06
 * **lint:clean** — contradictions=0, stale=58, orphans=0, missing_concept=0, unregistered_raw=436, broken_refs=0
 * **Create**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/reviews/20260906T125803Z-pr-2582.md を新規ページ化

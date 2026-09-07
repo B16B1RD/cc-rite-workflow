@@ -479,8 +479,9 @@ okf_version: "0.2"
 | [規約の主文は、実行者が観測できる単位で書く](pages/heuristics/rule-stated-in-units-the-executor-observes.md) | heuristics | 編集の単位で書かれた規約は、機械が hunk 単位でしか観測できない場面で字義どおり適用すると判定と食い違う。正しく直した対応が「未対応」に落ち、ループが空転する。 | 2026-09-06T16:10:23Z | high |
 | [実測の有無と severity は独立した 2 軸で、両方を満たさないと修正対象にならない](pages/heuristics/evidence-and-severity-are-independent-gates.md) | heuristics | 実測必須ゲートは「測っていない指摘を blocking にしない」ためのもので、測ってあっても重要度が閾値に届かなければ fatal にならない。実行時に何かが壊れる帰結クラスでも、severity が中位なら修正ループは動かない。 | 2026-09-06T16:10:23Z | high |
 | [同型テンプレートが N 本ある欄は「本数の literal pin」と「欄とプレースホルダの隣接 pin」の 2 本立てで守る](pages/patterns/homogeneous-template-pins-count-and-adjacency.md) | patterns | 同じ報告欄を複数のテンプレートへ横展開したとき、presence-only の grep pin は 1 本でも残っていれば通るため N-1 本からの欠落を検出できない。本数を literal で固定する pin と、欄行の直下にプレースホルダが並ぶことを数える pin の 2 本立てにする。期待値を実測から作ると 0 == 0 の真空パスで通るので、期待値は必ず literal で書く。 | 2026-09-07T10:00:00Z | high |
+| [警告集約は最終試行・同一目的・正規化先の単一性で判定する](pages/heuristics/warning-aggregation-final-attempt-purpose-normalization.md) | heuristics | 複数段の処理ログから要対応項目を集約するとき、同じ処理の最終試行だけを評価し、別目的の成功を解消証拠に使わず、raw 警告と詳細な復旧項目を一つの表現へ正規化する。件数一致だけでは配線の誤りを検出できないため、実 emit と分類規則の対応を文字列単位で固定する。 | 2026-09-07T19:47:59Z | high |
 ## 統計
 
-- 総ページ数: 469
-- ドメイン別: patterns=110, heuristics=206, anti-patterns=153
-- 最終更新: 2026-09-07T16:49:52+00:00
+- 総ページ数: 470
+- ドメイン別: patterns=110, heuristics=207, anti-patterns=153
+- 最終更新: 2026-09-07T19:47:59Z
