@@ -214,7 +214,7 @@ Failure reason: `finding_id_format_or_uniqueness_violation` ((1) のみ。(2) �
 
 <a id="hook-lock-contention-classification-canonical"></a>
 
-`local-wm-update.sh` / `issue-comment-wm-sync.sh` などの hook が stderr に出力するメッセージから「lock contention (best-effort skip 許容)」と「non-lock failure (WARNING + stderr 表示義務)」を分類する canonical pattern。`pr-review.md` ステップ 6.2 / 6.4 と `fix.md` ステップ 5.1 の 3 箇所から参照される (verified-review cycle 12 H-1 対応で canonicalize)。
+`local-wm-update.sh` / `issue-comment-wm-sync.sh` などの hook が stderr に出力するメッセージから「lock contention (best-effort skip 許容)」と「non-lock failure (WARNING + stderr 出力 + 完了報告への転記義務)」を分類する canonical pattern。`pr-review.md` ステップ 6.2 / 6.4 と `fix.md` ステップ 5.1 の 3 箇所から参照される。
 
 **Canonical pattern** (grep 式):
 
@@ -238,4 +238,4 @@ grep -qiE '(file is locked|lock contention|resource busy)' "$err_file"
 
 これらを防ぐため、exact phrase match の厳格化された regex に統一する (cycle 10 S-1 で `pr-review.md` の Step 2 以外には適用されたが、本 cycle 12 H-1 で 4 箇所全てに波及)。
 
-**Non-lock failure (本 pattern が match しない) 時の責務**: WARNING + hook stderr 先頭 5 行の表示 (`head -5 "$err_file" | sed 's/^/  /' >&2`)、および「対処: hook の存在 / 実行権限 / 内容を確認してください」の案内を追加する。詳細は各 Usage site の実装例を参照。
+**Non-lock failure (本 pattern が match しない) 時の責務**: WARNING + hook stderr 先頭 5 行の表示 (`head -5 "$err_file" | sed 's/^/  /' >&2`)、および「対処: hook の存在 / 実行権限 / 内容を確認してください」の案内を追加する。stderr はユーザーの端末に届く保証がないため、orchestrator は同じ 1 行を完了報告の `要対応:` 欄へ転記する ([autonomous-execution.md](../skills/rite-workflow/references/autonomous-execution.md))。詳細は各 Usage site の実装例を参照。

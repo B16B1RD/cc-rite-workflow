@@ -88,6 +88,52 @@ assert_grep "wiki-worktree path is resolved via state-path-resolve.sh, not a bar
 # origin に対応 ref が無い (一度も push が成功していない最悪ケース) も検出側に倒す (false negative 修正)
 assert_grep "detection distinguishes an unresolved origin ref from zero unpushed commits" "$RECOVER" 'reason=no_remote_ref'
 
-if ! print_summary "$(basename "$0")" "cleanup/batch-run/wiki-ingest/recover の未完了事項集約 contract (T-01/T-02/T-03)"; then
+echo "=== 要対応: stderr の WARNING を完了報告へ転記する contract ==="
+# stderr は LLM 向けの診断で端末に届く保証がない。転記規則の 2 点 (LLM 専用 / 完了報告へ転記) と、
+# 3 orchestrator の `要対応:` 欄・zero-item rule を literal で pin する。0 件で欄が消える挙動は
+# 実行時にしか観測できないため、省略を指示する文言そのものを契約として固定する。
+AUTONOMOUS="$SCRIPT_DIR/../../skills/rite-workflow/references/autonomous-execution.md"
+COMMON_ERR="$SCRIPT_DIR/../../references/common-error-handling.md"
+OPEN="$SCRIPT_DIR/../../skills/open/SKILL.md"
+ITERATE="$SCRIPT_DIR/../../skills/iterate/SKILL.md"
+WORKFLOW="$SCRIPT_DIR/../../skills/rite-workflow/SKILL.md"
+
+assert_grep "autonomous-execution states bash output is for the LLM, not the terminal" "$AUTONOMOUS" 'ユーザーの端末に届く保証はない'
+assert_grep "autonomous-execution mandates transcription into the completion report" "$AUTONOMOUS" '完了報告の `要対応:` 欄へ 1 行ずつ転記する'
+assert_grep "common-error-handling states the duty as stderr + transcription" "$COMMON_ERR" 'stderr 出力 \+ 完了報告への転記義務'
+assert_not_grep "common-error-handling no longer claims a bare stderr display duty" "$COMMON_ERR" 'stderr 表示義務'
+# 報告経路の本数を skill ごとに literal で pin する。期待値を実測値から作ると 0 本でも 0 == 0 で
+# 通る（真空パス）ため、欄・プレースホルダの対の本数を直接固定する。
+# 停止・失敗経路こそユーザーの操作が必要な WARNING が残る出口なので、正常終了だけを数えない。
+# 経路を増減させたときは本 assert の期待値も更新する（新経路が欄なしで増える方向は本数側では
+# 検出できないため、ここは人手ゲートに倒す）。
+# open は完了通知 1 本。iterate は完了 3 テンプレ + 中断 1 テンプレ + ブレーカー停止 2 テンプレ。
+# batch-run はステップ 7 完了通知 2 本 + ステップ 8 停止報告 1 本。
+for entry in "$OPEN:1" "$ITERATE:6" "$BATCH_RUN:3"; do
+  f="${entry%:*}"
+  expected="${entry##*:}"
+  name=$(basename "$(dirname "$f")")
+  assert_grep "$name defines the {action_items} placeholder" "$f" '\{action_items\}'
+  assert_grep "$name omits the section when there is nothing to transcribe" "$f" '0 件なら `要対応:` 行ごと省略する'
+  assert "$name carries the 要対応 section on all $expected report paths" "$expected" "$(grep -c '^要対応:$' "$f")"
+  # 欄とプレースホルダを対で pin する。presence-only では、{action_items} が placeholder 表と
+  # 規則の散文でも hit するためテンプレ本体から消えても素通りする。
+  assert "$name pairs every 要対応 section with {action_items}" "$expected" "$(grep -A1 '^要対応:$' "$f" | grep -c '^{action_items}$')"
+done
+# 転記主体の列挙を positive 側で pin する。負の節（欄を持たない ready / merge）だけを見ていると、
+# 主体の列挙全体を「orchestrator」のような総称へ書き換える変異が素通りする。
+assert_grep "rite-workflow names the section-carrying orchestrators as the transcription subjects" "$WORKFLOW" \
+  '`要対応:` 欄を持つ `/rite:open` / `/rite:iterate` / `/rite:batch-run`\*\* がユーザーの操作が必要な行を完了報告へ転記する'
+# 欄を持たない ready / merge の集約先は無条件ではない。batch-run 配下のみ集約され、standalone /
+# recover 単体では stderr に留まる（既知の非カバー経路）ことまで書かせる。
+# ready / merge 側に欄が無いことは契約ではなく既知の穴なので、ここでは pin しない。
+assert_grep "rite-workflow keeps ready / merge as the skills without a section" "$WORKFLOW" \
+  '欄を持たない `/rite:ready` / `/rite:merge` の WARNING は'
+assert_grep "rite-workflow limits the collection claim to the batch-run report paths" "$WORKFLOW" \
+  '`/rite:batch-run` の報告経路に載るときだけその欄に集約される'
+assert_grep "rite-workflow names the uncovered standalone / non-batch recover path" "$WORKFLOW" \
+  'batch を継続しない `/rite:recover`（`BATCH_CONTINUE=none`）から起動された経路では転記先が無く stderr に留まる'
+
+if ! print_summary "$(basename "$0")" "cleanup/batch-run/wiki-ingest/recover の未完了事項集約 + 要対応 転記 contract (T-01/T-02/T-03)"; then
   exit 1
 fi

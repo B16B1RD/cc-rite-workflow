@@ -37,6 +37,7 @@ Issue を起点に「準備 → ブランチ → 計画 → 実装 → lint → 
 | `{base_branch}` | `branch.base` in `rite-config.yml`（default: `main`） |
 | `{branch_name}` | ステップ 2 で生成 |
 | `{pr_number}` | ステップ 6 の `[pr:created:N]` から抽出 |
+| `{action_items}` | 本実行の bash 出力に残った、ユーザーの操作が必要な WARNING / ERROR。完了通知の `要対応:` 欄へ転記する（0 件なら欄ごと省略） |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
 | `{owner}` / `{repo}` | ステップ 2.4(A) 専用: `{plugin_root}/hooks/scripts/lib/git-remote.sh resolve-owner-repo`（SSH host alias 対応。fallback: `gh repo view --json owner,name`。canonical: [gh-cli-patterns.md](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe)） |
 | `{owner_repo}` | [Owner/Repo Resolution](../../references/gh-cli-patterns.md#ownerrepo-resolution-ssh-host-alias-safe) で解決した owner/repo（slash 形式）を literal substitute |
@@ -668,6 +669,10 @@ draft PR の作成が完了したら、ユーザーに以下を案内する:
 - ブランチ: {branch_name}
 - Draft PR: #{pr_number} - {pr_url}
 
+（転記すべき行があるときのみ、以下 2 行）
+要対応:
+{action_items}
+
 次のステップ:
 - レビュー/修正ループ: /rite:iterate {pr_number}
 - Ready 化: /rite:ready {pr_number}
@@ -676,6 +681,8 @@ draft PR の作成が完了したら、ユーザーに以下を案内する:
 
 途中で止まったら /rite:recover で復帰します。
 ```
+
+`{action_items}`: 本実行の bash 出力に残った WARNING / ERROR のうち、ユーザーが操作しない限り残り続ける行を 1 行ずつ列挙する（同一内容は 1 行にまとめる。成功した迂回・リトライは載せない）。**0 件なら `要対応:` 行ごと省略する**。
 
 ---
 
