@@ -45,6 +45,8 @@
 * **lint:clean** — contradictions=0 stale=61 orphans=0 missing_concept=0 unregistered_raw=447 broken_refs=0
 * **Lint scope** — 全ページとrawの構造検査を実行。意味的検査は更新ページと関連する移植性・環境判定のページを照合し、新しい矛盾を検出しなかった。既存ページ全文の意味監査は再実施していない。陳腐化・孤児・リンク検査helperに既存のBroken pipe診断が出たが、各検査の完了markerと読取成功を確認した。
 * **Update**: [全域で成功する resolver への委譲が既存 fail-fast ガードを silent success 化する](pages/anti-patterns/total-resolver-delegation-defeats-fail-fast-gate.md) — [レビュー結果](raw/reviews/20260907T131420Z-pr-2608.md) を統合
+* **lint:clean** — contradictions=0, stale=61, orphans=0, missing_concept=0, unregistered_raw=452, broken_refs=0
+* **Lint scope** — 全 469 ページと 2010 raw の構造検査を再実行。意味的検査は更新ページを fail-loud・値域拡張・分散契約の関連ページと照合し、新しい矛盾は検出しなかった。既存ページ全文の総当たり意味監査は再実施していない。陳腐化・孤児・相互参照 helper の既存 Broken pipe 診断は出たが、各完了 marker と読取成功を確認した。
 
 ## 2026-09-06
 * **lint:clean** — contradictions=0, stale=58, orphans=0, missing_concept=0, unregistered_raw=436, broken_refs=0
