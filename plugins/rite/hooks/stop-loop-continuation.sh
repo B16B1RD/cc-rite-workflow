@@ -152,7 +152,7 @@ _rite_batch_watchdog() {
   else
     case "$fs_stop" in
       circuit-breaker:*)
-        hint="batch-run ステップ 6（failed 記録 + cursor 前進）"
+        hint="batch-run ステップ 8（breaker_failed=true で failed 記録 + 停止、cursor は保持）"
         ;;
       *)
         case "$fs_phase" in

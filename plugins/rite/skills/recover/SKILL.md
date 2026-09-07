@@ -530,13 +530,13 @@ Phase 5.4 で resume した個別スキルの終端状態を、[`skills/batch-ru
 
 <!-- run orchestration: after invoking per the table above and observing the terminal sentinel, do NOT stop — proceed to the failed-record / stop-policy paragraph below (same routing as batch-run ステップ 3-8). -->
 
-**failed 記録 / 停止方針の委譲**: サーキットブレーカー（`[iterate:max-cycles-reached]`）は batch-run [ステップ 6](../batch-run/SKILL.md) の failed 記録 bash と同じ操作で `run-queue-{session_id}.json` の `failed[]` に記録してからカーソル前進へ進む（即停止しない）。それ以外の失敗 sentinel（`[pr-create-failed]` / `[fix:error]` / `[ready:error]` / `[merge:error]` / `[merge:not-ready]` / sentinel 不在 等）は batch-run [ステップ 8](../batch-run/SKILL.md) と同じ「即停止して報告」方針に従う（AC-5）。停止時は `run-queue-{session_id}.json` の `active` を `false` にする（batch-run ステップ 8 と同一操作。キュー本体は削除しない）。
+**failed 記録 / 停止方針の委譲**: サーキットブレーカー（`[iterate:max-cycles-reached]`）を含む失敗 sentinel は、batch-run [ステップ 8](../batch-run/SKILL.md) の停止処理へ直行する（`{breaker_failed}` は同ステップの規則で置換）。`active=false` にし、ブレーカーなら `failed[]` に記録する。cursor は当該 Issue に保持し、ready/merge/cleanup と後続 Issue を実行しない。それ以外の sentinel の成否も batch-run ステップ 3-6 の表に従う。
 
-<!-- run orchestration: 直前の paragraph の2分岐のうち「即停止して報告」側に分岐した場合は STOP — 以降の「active 維持」「カーソル前進とループ」paragraph には進まない（cursor advance を経由しない）。同 paragraph 内でカーソル前進に進むのはサーキットブレーカー分岐のみ（batch-run ステップ 6/8 と同じ非対称性）。当該 Issue が正常完了した場合は本 STOP の対象外で、下記「カーソル前進とループ」paragraph からカーソル前進に進む（通常経路）。 -->
+<!-- run orchestration: サーキットブレーカーを含む失敗は STOP — batch-run ステップ 8 へ直行し、以降の active 維持 / カーソル前進は実行しない。前進可能な終端 sentinel の場合のみ下記へ進む。 -->
 
 **active 維持**: 継続処理中は `run-queue-{session_id}.json` の `active=true` を維持する（`/rite:iterate` ステップ 6 の既存 batch 判定が `active` を参照するため — 変更禁止の非対象ファイル）。`active=false` にするのは上記の失敗停止時のみ。
 
-**カーソル前進とループ**: サーキットブレーカーで failed 記録した場合、または当該 Issue が正常に完了した場合、batch-run [ステップ 6](../batch-run/SKILL.md) のカーソル前進 bash（`updated_at` も更新）を実行する（即停止経路はこの bash を経由しない）。`cursor < total` なら batch-run [ステップ 1](../batch-run/SKILL.md) と同じ「次の Issue を取り出す」ループに入る（以降は通常の `/rite:batch-run` 実行と同一）。`cursor >= total` なら batch-run [ステップ 7](../batch-run/SKILL.md) の全完了通知を出す。
+**カーソル前進とループ**: 当該 Issue が batch-run ステップ 3-6 の表で前進可能と判定された場合のみ、batch-run [ステップ 6](../batch-run/SKILL.md) のカーソル前進 bash（`updated_at` も更新）を実行する（即停止経路はこの bash を経由しない）。`cursor < total` なら batch-run [ステップ 1](../batch-run/SKILL.md) と同じ「次の Issue を取り出す」ループに入る（以降は通常の `/rite:batch-run` 実行と同一）。`cursor >= total` なら batch-run [ステップ 7](../batch-run/SKILL.md) の全完了通知を出す。
 
 <!-- run orchestration: after this cursor advance, do NOT stop — loop back to batch-run ステップ 1 (次の Issue) or go to batch-run ステップ 7 (全完了通知)。即停止（ステップ8）はこの cursor advance を経由しない — 上の「failed 記録 / 停止方針の委譲」paragraph で即停止と判定した時点で直接ステップ8へ遷移し、本カーソル前進 bash は実行しない。 -->
 
