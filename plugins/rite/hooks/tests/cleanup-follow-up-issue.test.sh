@@ -40,6 +40,7 @@
 #   T-21 全 JSON が 0 件なら no_findings (AC-7 非回帰)
 #   T-22 id 欠落 / 書式外 id の finding を落とさない (MUST NOT)
 #   T-23 一部 JSON の統合失敗は当該 1 本だけ除外し、健全な側の転記を続ける
+#   T-24 和集合内で衝突する id は --exclude-ids で除外せず WARNING で surface する
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -697,6 +698,22 @@ assert_grep "T-23 created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
 assert_grep "T-23 健全な側は載る" "$STUB_DIR/body.md" '健全な指摘'
 assert_grep "T-23 除外を WARNING で surface" "$ERR" '和集合から除外します'
 assert_grep "T-23 除外本数を stderr の内訳に出す" "$ERR" 'union: pr=9; json_total=2; json_parsed=1; json_unparsed=1'
+
+echo "--- T-24: 和集合内で衝突する id は除外しない (曖昧 key の silent drop 防止) ---"
+# `id` は cycle ごとの連番なので、2 本の JSON に同じ `F-05` が別内容で載りうる。6.0.V が
+# 片方だけを resolved と判定して `--exclude-ids "F-05"` を渡すと、id 一致で両方が落ちて
+# 残存している側が黙って消える。曖昧な id は除外せず過剰転記側へ倒す。
+reset_stubs
+r=$(new_root t24)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-05","reviewer":"a","severity":"LOW","file":"a.md","line":1,"description":"cycle1 の F-05","suggestion":"s1"},{"id":"F-06","reviewer":"a","severity":"LOW","file":"a.md","line":2,"description":"消える F-06","suggestion":"s2"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-05","reviewer":"b","severity":"LOW","file":"b.md","line":3,"description":"cycle2 の F-05","suggestion":"s3"}]}'
+run_target "$r" --exclude-ids "F-05,F-06"
+assert "T-24 exit 0" "0" "$RC"
+assert_grep "T-24 created (all_resolved に倒れない)" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
+assert_grep "T-24 cycle1 の F-05 が残る" "$STUB_DIR/body.md" 'cycle1 の F-05'
+assert_grep "T-24 cycle2 の F-05 も残る" "$STUB_DIR/body.md" 'cycle2 の F-05'
+assert_grep "T-24 曖昧 id を WARNING で surface" "$ERR" '和集合内で複数の finding に一致するため除外しません: F-05 \(2 件\)'
+assert_not_grep "T-24 一意な F-06 は従来どおり除外される" "$STUB_DIR/body.md" '消える F-06'
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?

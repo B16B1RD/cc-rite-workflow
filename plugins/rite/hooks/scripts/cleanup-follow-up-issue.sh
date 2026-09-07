@@ -50,6 +50,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=lib/tempfile.sh
 source "$SCRIPT_DIR/lib/tempfile.sh"
+# 診断スニペットの制御文字を潰す canonical helper (SoT: control-char-neutralize.sh header)
+# shellcheck source=../control-char-neutralize.sh
+source "$SCRIPT_DIR/../control-char-neutralize.sh"
 
 MARKER_PREFIX='[rite-follow-up-from-pr:'
 
@@ -173,19 +176,25 @@ parsed=0
 unparsed=0
 rite_tempfile_new union_tmp "fu-union" || exit 1
 printf '[]\n' > "$union_tmp"
+# jq の原因行を捨てない。除外の理由 (どの key が壊れているか) は stderr にしか出ない。
+rite_tempfile_new union_err "fu-union-err" || exit 1
 # bash の glob 展開は basename 昇順で確定するため、この for がそのまま cycle 昇順の連結になる。
 for f in "$results_dir/${PR_NUMBER}"-*.json*; do
   { [ -e "$f" ] || [ -L "$f" ]; } || continue
   matched=$((matched + 1))
-  if ! part=$(jq -c 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings else error("non_blocking_findings is not an array") end' "$f" 2>/dev/null); then
+  : > "$union_err"
+  if ! part=$(jq -c 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings else error("non_blocking_findings is not an array") end' "$f" 2>"$union_err"); then
     # 部分的な parse 失敗で全滅させない。健全な側の和集合で続行し、全滅時だけ json_undecidable。
     echo "WARNING: レビュー結果 JSON を読めないため和集合から除外します (PR #${PR_NUMBER}): $f" >&2
+    [ -s "$union_err" ] && head -3 "$union_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     unparsed=$((unparsed + 1))
     continue
   fi
   # 連結のみ。id / 内容による畳み込みはしない (上のコメント参照)。
-  if ! merged=$(jq -c --argjson add "$part" '. + $add' "$union_tmp" 2>/dev/null); then
+  : > "$union_err"
+  if ! merged=$(jq -c --argjson add "$part" '. + $add' "$union_tmp" 2>"$union_err"); then
     echo "WARNING: 和集合の統合に失敗したため当該 JSON を除外します (PR #${PR_NUMBER}): $f" >&2
+    [ -s "$union_err" ] && head -3 "$union_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     unparsed=$((unparsed + 1))
     continue
   fi
@@ -233,6 +242,22 @@ if [ -n "$EXCLUDE_IDS" ]; then
     if [ -n "$unknown_ids" ]; then
       # fail-loud: 一致しない id を silent に無視しない。転記自体は続行する (非ブロッキング)
       echo "WARNING: --exclude-ids に non_blocking_findings[] と一致しない id が含まれます: ${unknown_ids} (PR #${PR_NUMBER})。一致した id のみ除外して続行します" >&2
+    fi
+    # 和集合内で**同じ id が複数の finding に付いている**場合、その id は除外 key として曖昧になる
+    # (`id` は各 cycle 内の連番であり cycle 跨ぎの identity ではない)。6.0.V が片方だけを resolved と
+    # 判定しても `--exclude-ids` は id 一致で両方を落とすため、残存している側が黙って消える。
+    # よって曖昧な id は**除外せず全件を残し**、WARNING で surface する (過剰転記側へ倒す。
+    # `undecidable` は転記する / `id: null` は必ず `undecidable` と同じ方針)。
+    ambiguous_json=$(printf '%s' "$findings_json" | jq -c --argjson ex "$exclude_json" '
+      [ .[] | .id // empty ] | group_by(.) | map(select(length > 1) | .[0])
+      | map(select(. as $i | $ex | index($i))) | unique') || ambiguous_json="[]"
+    if printf '%s' "$ambiguous_json" | jq -e 'length > 0' >/dev/null 2>&1; then
+      ambiguous_detail=$(printf '%s' "$findings_json" | jq -r --argjson amb "$ambiguous_json" '
+        [ .[] | .id // empty ] | group_by(.)
+        | map(select(.[0] as $i | $amb | index($i)) | "\(.[0]) (\(length) 件)") | join(", ")')
+      echo "WARNING: --exclude-ids の id が和集合内で複数の finding に一致するため除外しません: ${ambiguous_detail} (PR #${PR_NUMBER})。id は cycle ごとの連番で cycle 跨ぎの identity を持たないため、片方だけが解消済みでも両方を落とすと残存指摘が消えます。全件を転記します" >&2
+      exclude_json=$(printf '%s' "$exclude_json" | jq -c --argjson amb "$ambiguous_json" '. - $amb') \
+        || { echo "WARNING: 曖昧 id の除外解除に失敗しました。除外なしで全件を転記します (PR #${PR_NUMBER})" >&2; exclude_json='[]'; }
     fi
     if filtered_json=$(printf '%s' "$findings_json" | jq -c --argjson ex "$exclude_json" '
       [.[] | select((.id // "") as $i | ($ex | index($i)) | not)]'); then
