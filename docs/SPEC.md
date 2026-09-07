@@ -164,8 +164,8 @@ rite-workflow/
 │ # --- PR lifecycle ---
 │ ├── open/ # /rite:open (Issue → branch → 実装 → lint → draft PR; end-to-end; + references/rationale.md)
 │ ├── iterate/ # /rite:iterate (review ⇄ fix loop, mergeable まで; + references/rationale.md)
-│ ├── pr-review/ # /rite:pr-review (multi-reviewer; + references/) — sub-skill
-│ ├── fix/ # /rite:fix (review 指摘対応; + references/) — sub-skill
+│ ├── pr-review/ # /rite:pr-review (multi-reviewer; references/: Doc-Heavy / output diagnostics / scope triage / Wiki recording) — sub-skill
+│ ├── fix/ # /rite:fix (review 指摘対応; references/: target comment / NB sweep / accept / Wiki recording) — sub-skill
 │ ├── ready/ # /rite:ready (Ready for review 化; + references/rationale.md)
 │ ├── merge/ # /rite:merge (squash merge; + references/rationale.md)
 │ ├── cleanup/ # /rite:cleanup (+ references/archive-procedures.md; + references/rationale.md)
@@ -285,6 +285,7 @@ rite-workflow/
 │ ├── review-findings-maps.sh # fix.md severity_map build 委譲
 │ ├── review-measured-gate.sh # pr-review 5.3.0.M 実測必須ゲートの決定論的分類
 │ ├── review-source-resolve.sh # fix.md 1.2.0 review source Priority chain 解決
+│ ├── review-target-comment-fetch.sh # fix target-comment reference: fetch / PR validation / handoff
 │ ├── migrate-review-state-to-1.1.sh # review-result schema 1.1.0 移行
 │ ├── watchdog-status-mismatch.sh # Projects Status 不整合 watchdog
 │ └── tests/ # Script-level test suite
