@@ -32,7 +32,9 @@
 #                        値は WARNING のうえ無視し、残りの除外を適用して続行する。
 #                        和集合内で同一 id が複数 finding に付いている場合、その id は identity として
 #                        曖昧なため除外せずその id の finding を全件転記する (他の id の除外は継続する)。
-#                        WARNING と marker で surface し過剰転記側へ倒す
+#                        WARNING と marker で surface し過剰転記側へ倒す。
+#                        **除外が要求より少なく適用された経路はすべて FOLLOW_UP_EXCLUDE_AMBIGUOUS を
+#                        出す**（reason= で区別する。下記 Emitted markers 参照）
 #
 # Exit codes:
 #   0: 正常終了 (起票 / skip / 非ブロッキング失敗を含む)
@@ -44,12 +46,17 @@
 #     no_findings  : 除外を適用する前から non_blocking_findings[] が 0 件
 #     all_resolved : 除外**後**に 0 件になった (再検証で全件が解消済みと判定された)
 #   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable; pr=<n>
-#   [CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count=<n>; pr=<n>
-#     --exclude-ids の id が和集合内で複数 finding に一致したため**除外を拒否した id の件数**
-#     (id の異なり数であり、転記された finding 件数ではない)。曖昧判定そのものが失敗して
-#     除外要求を全件拒否した場合も、同じ marker を要求件数付きで出す (marker 不在を
-#     「除外要求どおり適用された」と読む消費側の規約を保つため)。起票自体は成功するため、
-#     cleanup ステップ 12 がこの marker を読んで完了報告へ過剰転記を転記する
+#   [CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=<r>; count=<n|unknown>; pr=<n>
+#     除外要求どおりに除外できなかったことを示す。**除外が要求より少なく適用された経路は
+#     すべてこの marker を出す** — marker 不在を「除外要求どおり適用された」と読む消費側
+#     (cleanup ステップ 12) の規約を成立させるための不変条件。起票自体は成功するので、
+#     この marker が無いと過剰転記が完了報告に届かない。
+#       reason=ambiguous    : 和集合内で複数 finding に一致した id だけを除外拒否した。
+#                             count = 拒否した id の異なり数 (他の id の除外は適用済み)
+#       reason=undecidable  : 曖昧判定 / 除外解除の jq が失敗し除外を全破棄した。
+#                             count = 除外要求 id の総数 (適用された除外は 0 件)
+#       reason=parse_failed : --exclude-ids を解析できず除外を全破棄した。count=unknown
+#       reason=apply_failed : 除外適用の jq が失敗し除外を全破棄した。count = 要求 id 総数
 #
 # Emitted summary (stdout, 1 行):
 #   [cleanup-follow-up-issue] result=<created|skipped|failed>; ...
@@ -245,6 +252,9 @@ if [ -n "$EXCLUDE_IDS" ]; then
     split("\n") | join(",") | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0)) | unique') || exclude_json=""
   if [ -z "$exclude_json" ]; then
     echo "WARNING: --exclude-ids を解析できませんでした ('${EXCLUDE_IDS}')。除外を適用せず全件を転記します (PR #${PR_NUMBER})" >&2
+    # 除外を 1 件も適用していないので marker を出す (下記「除外ゼロなら必ず marker」参照)。
+    # 要求件数は数えられない (解析に失敗した入力しか無い) ので count=unknown。
+    echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=parse_failed; count=unknown; pr=${PR_NUMBER}" >&2
   else
     unknown_ids=$(printf '%s' "$findings_json" | jq -r --argjson ex "$exclude_json" '
       ([.[] | .id // empty]) as $known | $ex - $known | join(", ")')
@@ -263,12 +273,15 @@ if [ -n "$EXCLUDE_IDS" ]; then
       [ .[] | .id // empty ] | group_by(.) | map(select(length > 1) | .[0])
       | map(select(. as $i | $ex | index($i))) | unique') \
       || {
-        # 除外要求を全件拒否したので、曖昧 id を検出できた場合と同じ marker を出す。
-        # ここで marker を落とすと「除外が 1 件も効いていないのに完了報告は解消済み N と出す」
-        # 報告乖離になる (marker 不在 = 除外要求どおり適用された、という読み手側の規約が壊れる)。
-        _amb_req=$(printf '%s' "$exclude_json" | jq -r 'length' 2>/dev/null) || _amb_req=0
+        # 除外要求を全件拒否したので marker を出す。ここで落とすと「除外が 1 件も効いていないのに
+        # 完了報告は解消済み N と出す」報告乖離になる。
+        # count は**除外要求 id の総数**で、成功経路の「曖昧 id の異なり数」とは母集団が違う。
+        # reason= で区別し、消費側 (cleanup ステップ 12) が文面を出し分ける。
+        # ここへ到達している時点で上流の jq -Rsc は成功しており exclude_json は妥当な JSON 配列
+        # なので、length が入力理由で落ちることはない (到達不能な fallback を置かない)。
+        _amb_req=$(printf '%s' "$exclude_json" | jq -r 'length')
         echo "WARNING: 曖昧 id の判定に失敗しました。除外なしで全件を転記します (PR #${PR_NUMBER})" >&2
-        echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count=${_amb_req}; pr=${PR_NUMBER}" >&2
+        echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=undecidable; count=${_amb_req}; pr=${PR_NUMBER}" >&2
         ambiguous_json="[]"; exclude_json='[]'
       }
     if printf '%s' "$ambiguous_json" | jq -e 'length > 0' >/dev/null 2>&1; then
@@ -287,15 +300,25 @@ if [ -n "$EXCLUDE_IDS" ]; then
       echo "WARNING: --exclude-ids の id が和集合内で複数の finding に一致するため除外しません: ${ambiguous_detail} (PR #${PR_NUMBER})。id は cycle ごとの連番で cycle 跨ぎの identity を持たないため、片方だけが解消済みでも両方を落とすと残存指摘が消えます。全件を転記します" >&2
       # 起票は成功するため、この過剰転記は marker が無いと完了報告に届かない。
       # count は除外を拒否した id の異なり数 (転記された finding 件数ではない)。
-      echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count=${ambiguous_count}; pr=${PR_NUMBER}" >&2
+      echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=ambiguous; count=${ambiguous_count}; pr=${PR_NUMBER}" >&2
       exclude_json=$(printf '%s' "$exclude_json" | jq -c --argjson amb "$ambiguous_json" '. - $amb') \
-        || { echo "WARNING: 曖昧 id の除外解除に失敗しました。除外なしで全件を転記します (PR #${PR_NUMBER})" >&2; exclude_json='[]'; }
+        || {
+          # 直前に reason=ambiguous の marker を出しているが、そちらは「一部の id を除外できない」
+          # 意味で、こちらは「除外を全破棄した」意味。件数も母集団が違うので改めて出す。
+          _amb_req=$(printf '%s' "$exclude_json" | jq -r 'length')
+          echo "WARNING: 曖昧 id の除外解除に失敗しました。除外なしで全件を転記します (PR #${PR_NUMBER})" >&2
+          echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=undecidable; count=${_amb_req}; pr=${PR_NUMBER}" >&2
+          exclude_json='[]'
+        }
     fi
     if filtered_json=$(printf '%s' "$findings_json" | jq -c --argjson ex "$exclude_json" '
       [.[] | select((.id // "") as $i | ($ex | index($i)) | not)]'); then
       findings_json="$filtered_json"
     else
+      # 除外を 1 件も適用できていないので marker を出す (「除外ゼロなら必ず marker」)。
+      _amb_req=$(printf '%s' "$exclude_json" | jq -r 'length' 2>/dev/null) || _amb_req=unknown
       echo "WARNING: 除外適用に失敗しました。除外なしで全件を転記します (PR #${PR_NUMBER})" >&2
+      echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=apply_failed; count=${_amb_req}; pr=${PR_NUMBER}" >&2
     fi
   fi
   if ! printf '%s' "$findings_json" | jq -e 'length > 0' >/dev/null; then

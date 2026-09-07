@@ -44,6 +44,7 @@
 #   T-24b 重複 id でも --exclude-ids が指していなければ曖昧扱いしない
 #   T-24c 曖昧 id の素値は neutralize_ctrl を通してから WARNING に載せる
 #   T-25 曖昧判定の失敗ハンドラは安全側へ倒し marker も出す
+#   T-25b 除外を全破棄する他の経路も marker を出す（除外ゼロなら必ず marker）
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -566,12 +567,18 @@ else
   # 件数だけでは「ループ外へ移設」を素通しするため、for 〜 done の区間に限って pin する
   assert "T-15 ループ本体で原因行を emit する" "1" \
     "$(awk '/^      for f in "\$\{_rv_srcs\[@\]\}"/,/^      done$/' "$CLEANUP_MD" | grep -c 'head -5 "\$_rv_errf"' | tr -d ' ')"
+  # 区間 pin は「位置」を守るが「本数」は守らない（区間外 2 箇所の削除を素通しする）ので併置する
+  assert "T-15 原因行 emit は全体で 3 箇所" "3" \
+    "$(grep -c 'head -5 "\$_rv_errf"' "$CLEANUP_MD" | tr -d ' ')"
   # 追記オープンにすると過去周の残骸が混ざり、毎周トランケート前提の emit 位置が意味を失う
   assert_not_grep "T-15 errf を追記で開かない" "$CLEANUP_MD" '2>>"\$\{_rv_errf'
   # 無効な明示トランケートを残さない（2> が毎周 O_TRUNC で開くため冗長）
   assert_not_grep "T-15 冗長な明示トランケートを残さない" "$CLEANUP_MD" '\[ -n "\$_rv_errf" \] && : > "\$_rv_errf"'
   # 曖昧 id marker に完了報告側の消費規則がある
-  assert_grep "T-15 曖昧 id marker の消費規則がある" "$CLEANUP_MD" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count=\{n\}; pr=\{pr_number\}'
+  assert_grep "T-15 曖昧 id marker の消費規則がある" "$CLEANUP_MD" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=\{r\}; count=\{n\}; pr=\{pr_number\}'
+  # 除外を全破棄した経路は「曖昧 id」「他の id は適用済み」を主張しない別文面へ分岐させる
+  assert_grep "T-15 note は reason で文面を分岐する" "$CLEANUP_MD" 'それ以外の `reason` のとき'
+  assert_grep "T-15 marker 不在の読み方を規定する" "$CLEANUP_MD" 'marker 不在は「除外要求がそのまま適用された」と読んでよい'
   # placeholder の presence だけだと定義側 bullet で充足し、完了報告への配線を消す変異を素通しする
   assert_grep "T-15 完了報告に曖昧 note を差し込む" "$CLEANUP_MD" '\{follow_up_reverify_note\}\{follow_up_ambiguous_note\}'
   # note のリテラルは 1 本の code span に保つ（分断すると出力すべき文字列が不定になる）
@@ -749,7 +756,7 @@ assert_grep "T-24 cycle1 の F-05 が残る" "$STUB_DIR/body.md" 'cycle1 の F-0
 assert_grep "T-24 cycle2 の F-05 も残る" "$STUB_DIR/body.md" 'cycle2 の F-05'
 assert_grep "T-24 曖昧 id を WARNING で surface" "$ERR" '和集合内で複数の finding に一致するため除外しません: F-05 \(2 件\)'
 assert_not_grep "T-24 一意な F-06 は従来どおり除外される" "$STUB_DIR/body.md" '消える F-06'
-assert_grep "T-24 過剰転記を marker で surface" "$ERR" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count=1; pr=9'
+assert_grep "T-24 過剰転記を marker で surface" "$ERR" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=ambiguous; count=1; pr=9'
 
 echo "--- T-24c: 曖昧 id の素値は neutralize_ctrl を通してから WARNING に載せる ---"
 # id はレビュアーが書く信頼できない入力。生の ESC が stderr へ素通りすると端末表示を欺瞞できる。
@@ -766,7 +773,7 @@ assert "T-24c stderr に生 ESC を残さない" "0" \
   "$(LC_ALL=C grep -c "$_esc" "$ERR" | tr -d ' ')"
 assert_grep "T-24c 曖昧 id の WARNING 自体は出る" "$ERR" '和集合内で複数の finding に一致するため除外しません'
 assert_grep "T-24c 中和後の id と件数を WARNING に載せる" "$ERR" 'F-05\?\[31m \(2 件\)'
-assert_grep "T-24c 過剰転記を marker で surface" "$ERR" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count=1; pr=9'
+assert_grep "T-24c ESC 入り id でも marker の count は中和の影響を受けない" "$ERR" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=ambiguous; count=1; pr=9'
 
 echo "--- T-24b: 重複 id があっても --exclude-ids が指していなければ曖昧扱いしない ---"
 # 曖昧判定の絞り込み (`$ex` に含まれる id だけを曖昧とする) を削る変異を捕まえる。
@@ -783,11 +790,33 @@ assert_grep "T-24b 重複 id は両方残る (cycle1)" "$STUB_DIR/body.md" 'cycl
 assert_grep "T-24b 重複 id は両方残る (cycle2)" "$STUB_DIR/body.md" 'cycle2 の F-05'
 
 echo "--- T-25: 曖昧判定の失敗ハンドラは安全側へ倒し marker も出す ---"
-# jq を失敗させる入力は helper 内部で生成される値のため作れない。倒れる向きと marker の
-# 有無はソース pin で固定する（向きが黙って戻ると未解消の指摘が落ちる側へ回帰する）。
+# 曖昧判定 jq の入力はレビュアーが書く外部 JSON の和集合なので、非 object 要素を 1 つ置けば
+# `.id` 索引が落ちて当該ハンドラへ到達する（save 側の id 書式 gate が正規経路では弾く形）。
+reset_stubs
+r=$(new_root t25)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":["plain-string-finding"]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-01","reviewer":"a","severity":"LOW","file":"a.md","line":1,"description":"残るはずの指摘","suggestion":"s1"}]}'
+run_target "$r" --exclude-ids "F-01"
+assert "T-25 exit 0" "0" "$RC"
+assert_grep "T-25 判定失敗を WARNING で surface" "$ERR" '曖昧 id の判定に失敗しました'
+assert_grep "T-25 判定失敗でも marker を出す" "$ERR" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=undecidable; count=1; pr=9'
+# 非 object 要素は下流の本文生成 jq も落とすため起票までは至らない（fail-loud で終端する）。
+# ここで確かめるのは「除外を適用しないまま先へ進んだ」ことと、それが marker で見えることの 2 点。
+assert_grep "T-25 除外は適用されず fail-loud で終端する" "$ERR" 'FOLLOW_UP_ISSUE=failed'
+assert_not_grep "T-25 除外適用の成功を主張しない" "$ERR" 'FOLLOW_UP_ISSUE=skipped; reason=all_resolved'
+# 向きが戻る変異（exclude_json を捨てない）を捕まえるソース pin も併置する
 assert_grep "T-25 判定失敗は除外なしへ倒す" "$TARGET" "ambiguous_json=\"\[\]\"; exclude_json='\[\]'"
-assert_grep "T-25 判定失敗でも marker を出す" "$TARGET" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count=\$\{_amb_req\}'
 assert_not_grep "T-25 除外をそのまま適用する文言を残さない" "$TARGET" '除外をそのまま適用します'
+
+echo "--- T-25b: 除外を全破棄する他の経路も marker を出す ---"
+# 「除外ゼロなら必ず marker」を helper 全体の不変条件にしている（消費側が marker 不在を
+# 「除外要求どおり適用された」と読む規約の前提）。実行到達しない経路はソース pin で固定する。
+assert_grep "T-25b 解析失敗も marker を出す" "$TARGET" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=parse_failed; count=unknown'
+assert_grep "T-25b 適用失敗も marker を出す" "$TARGET" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=apply_failed'
+# emit は 5 経路（ambiguous 1 + 全破棄 4）。docstring の記述は数えない
+assert "T-25b marker emit は 5 経路" "5" \
+  "$(grep -c 'echo "\[CONTEXT\] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; reason=' "$TARGET" | tr -d ' ')"
+assert_not_grep "T-25b 到達不能な count fallback を残さない" "$TARGET" "jq -r 'length' 2>/dev/null) \|\| _amb_req=0"
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?
