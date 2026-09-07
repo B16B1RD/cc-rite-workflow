@@ -89,7 +89,7 @@ for _f in "$SCHEMA" "$SKILL" "$SAVE" "$MGATE"; do
 done
 # reason カタログ (SKILL) と helper の WARNING で必須条件の記述が乖離しないことを pin する。
 # 前 cycle は「目視で検出する」と宣言しながら同じ commit で drift させた
-assert_grep "TC-1 SKILL の reason カタログが reviewers の一意性を含む" "$SKILL" 'reviewers\[\] が重複の無い非空配列'
+assert_grep "TC-1 診断カタログが reviewers の一意性を含む" "$ROOT/skills/pr-review/references/output-diagnostics.md" 'reviewers\[\] が重複の無い非空配列'
 assert_grep "TC-1 save helper の WARNING が reviewers の一意性を含む" "$SAVE" 'reviewers\[\] は重複の無い非空配列'
 
 # --- 要求側 3/4: save helper (fail-loud 検証) ---

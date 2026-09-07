@@ -18,6 +18,7 @@ source "$SCRIPT_DIR/_test-helpers.sh"
 PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
 ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
 FIX="$PLUGIN_ROOT/skills/fix/SKILL.md"
+FIX_SWEEP="$PLUGIN_ROOT/skills/fix/references/nb-sweep.md"
 SETUP="$PLUGIN_ROOT/skills/setup/SKILL.md"
 CLEANUP_SKILL="$PLUGIN_ROOT/skills/cleanup/SKILL.md"
 # cleanup ステップ 6 の state 削除は helper へ抽出済み。sweep 行の pin はそちらを見る。
@@ -98,13 +99,13 @@ assert_grep "T-03 existing step-1 ban" "$ITERATE" 'ステップ 1 に戻らな�
 assert_grep_in_section "T-04 iterate post-return writes done" "$ITERATE" \
   '## ステップ 5.S: NB digest sweep' '## ステップ 5: 完了通知' \
   "printf 'done"
-assert_grep_in_section "T-04 fix empty writes noop" "$FIX" \
+assert_grep_in_section "T-04 fix empty writes noop" "$FIX_SWEEP" \
   '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
   "printf 'noop"
-assert_grep_in_section "T-04 fix digest writes done" "$FIX" \
+assert_grep_in_section "T-04 fix digest writes done" "$FIX_SWEEP" \
   '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
   "printf 'done"
-assert_grep "T-04 fix 1.3.S done-file path" "$FIX" 'nb-sweep-done-\{pr_number\}\.txt'
+assert_grep "T-04 fix 1.3.S done-file path" "$FIX_SWEEP" 'nb-sweep-done-\{pr_number\}\.txt'
 
 # --- T-05: cleanup と pr-cycle-cleanup の両方 ---
 assert_grep "T-05 cleanup rite_rm" "$STATE_PURGE" 'nb-sweep-done-\$\{pr_number\}\.txt'
@@ -152,10 +153,10 @@ assert "T-08 5.S has two _ensure_dir_gitignore calls" "2" "$iter_ensure"
 iter_src=$(awk '/## ステップ 5.S: NB digest sweep/,/## ステップ 5: 完了通知/' "$ITERATE" \
   | grep -c 'gitignore-ensure.sh' || true)
 assert "T-08 5.S sources gitignore-ensure in each write block" "2" "$iter_src"
-fix_ensure=$(awk '/### 1.3.S `--nb-sweep` consume/,/### 1.4 Display Comment List/' "$FIX" \
+fix_ensure=$(awk '/### 1.3.S `--nb-sweep` consume/,/### 1.4 Display Comment List/' "$FIX_SWEEP" \
   | grep -c '_ensure_dir_gitignore' || true)
 assert "T-08 fix 1.3.S has two _ensure_dir_gitignore calls" "2" "$fix_ensure"
-fix_src=$(awk '/### 1.3.S `--nb-sweep` consume/,/### 1.4 Display Comment List/' "$FIX" \
+fix_src=$(awk '/### 1.3.S `--nb-sweep` consume/,/### 1.4 Display Comment List/' "$FIX_SWEEP" \
   | grep -c 'gitignore-ensure.sh' || true)
 assert "T-08 fix 1.3.S sources gitignore-ensure in each write block" "2" "$fix_src"
 
@@ -205,9 +206,9 @@ assert "T-09 -f of 2-line file is 1" "1" "$two_line_present"
 rm -rf -- "$two_line_sbx"
 
 # New sweep writers keep a one-line done marker and never grant a new HEAD.
-sweep_section=$(awk '/^### 1.3.S `--nb-sweep` consume/,/^### 1.4 Display Comment List/' "$FIX")
+sweep_section=$(awk '/^### 1.3.S `--nb-sweep` consume/,/^### 1.4 Display Comment List/' "$FIX_SWEEP")
 assert "T-10 no fixed count or git command in sweep" "0" "$(printf '%s\n' "$sweep_section" | grep -cE 'nb_sweep_fixed|git (rev-parse|commit|push|add)' || true)"
-assert_grep_in_section "T-10 digest writes one-line done" "$FIX" \
+assert_grep_in_section "T-10 digest writes one-line done" "$FIX_SWEEP" \
   '### 1.3.S `--nb-sweep` consume' '### 1.4 Display Comment List' \
   "printf 'done"
 assert "T-10 no SHA printf in sweep" "0" "$(printf '%s\n' "$sweep_section" | grep -c 'done\\n%s' || true)"

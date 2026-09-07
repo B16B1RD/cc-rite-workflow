@@ -525,6 +525,7 @@ fi
 echo "--- T-02': ステップ 8.0.4 からの呼び出し配線 ---"
 
 REVIEW_MD="$SCRIPT_DIR/../../skills/pr-review/SKILL.md"
+DIAGNOSTICS_MD="$SCRIPT_DIR/../../skills/pr-review/references/output-diagnostics.md"
 if [ -f "$REVIEW_MD" ]; then
   _sec_804=$(awk '/^### 8\.0\.4 /{f=1} f&&/^### 8\.1 /{exit} f{print}' "$REVIEW_MD")
   # 散文の言及 (設計説明) と実際の呼び出しを区別する — `-cF` で数えると散文が増えるたび件数が
@@ -564,7 +565,7 @@ if [ -f "$REVIEW_MD" ]; then
   # 片方だけに載せると、後から enumeration を根拠に「4 件のはず」と読んだ編集が新 reason を消す。
   for _r in save_result_json_absent save_result_json_undecidable; do
     assert "T-02'f: 新 reason $_r が reasons 表に登録されている" "1" \
-      "$(grep -cE "^\| \`$_r\` \|" "$REVIEW_MD" || true)"
+      "$(grep -cE "^\| \`$_r\` \|" "$DIAGNOSTICS_MD" || true)"
     assert "T-02'g: 新 reason $_r が Eval-order enumeration に登録されている" "1" \
       "$(grep -c "ステップ 8.0.4 (機械強制) emit = .*$_r" "$REVIEW_MD" || true)"
   done

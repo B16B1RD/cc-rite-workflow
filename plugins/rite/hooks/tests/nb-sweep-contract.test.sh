@@ -282,7 +282,7 @@ assert_grep "invalid ledger response is loud" "$sandbox/invalid-ledger.err" 'rea
 
 # --- rails pin (SKILL.md 機械レール) ---
 ITERATE="$PLUGIN_ROOT/skills/iterate/SKILL.md"
-FIX="$PLUGIN_ROOT/skills/fix/SKILL.md"
+FIX="$PLUGIN_ROOT/skills/fix/references/nb-sweep.md"
 REVIEW="$PLUGIN_ROOT/skills/pr-review/SKILL.md"
 PROMPT="$PLUGIN_ROOT/skills/pr-review/references/reviewer-prompt-generator.md"
 assert_grep "T-07 iterate mergeable→5.S" "$ITERATE" '\[review:mergeable\].*5\.S'

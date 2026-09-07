@@ -39,8 +39,8 @@ check_caller() {
 }
 
 echo "=== wiki push sandbox retry caller parity ==="
-check_caller review "$PLUGIN_ROOT/skills/pr-review/SKILL.md" '#### 6.5.W.2 Wiki Raw Commit' '`commit_rc=4` を観測した場合'
-check_caller fix "$PLUGIN_ROOT/skills/fix/SKILL.md" '### 4.6.W.2 Wiki Raw Commit' '`wiki_ingest_commit_rc=4` を観測した場合'
+check_caller review "$PLUGIN_ROOT/skills/pr-review/references/wiki-recording.md" '#### 6.5.W.2 Wiki Raw Commit' '`commit_rc=4` を観測した場合'
+check_caller fix "$PLUGIN_ROOT/skills/fix/references/wiki-recording.md" '### 4.6.W.2 Wiki Raw Commit' '`wiki_ingest_commit_rc=4` を観測した場合'
 check_caller issue-close "$PLUGIN_ROOT/skills/issue-close/SKILL.md" '### 4.4.W.2 Wiki Raw Commit' '`commit_rc=4` を観測した場合'
 
 echo ""
