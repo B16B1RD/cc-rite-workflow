@@ -730,8 +730,8 @@ if [ "$branch_strategy" = "same_branch" ]; then
   trap '_cleanup; exit 143' TERM
   trap '_cleanup; exit 129' HUP
 
-  # same_branch 戦略では .gitignore に `!.rite/wiki/` negation が必要。
-  # 失敗時は anchor marker (gitignore-wiki-section-end) を案内する。
+  # same_branch 戦略では .gitignore の `.rite/wiki/` 除外を打ち消す negation が必要。
+  # 除外行より前の negation は後勝ちで無効になる。
   add_err=$(mktemp "${TMPDIR:-/tmp}/rite-wiki-ingest-add-err-XXXXXX" 2>/dev/null) || add_err=""
   if ! git add .rite/wiki/ 2>"${add_err:-/dev/null}"; then
     echo "ERROR: git add .rite/wiki/ failed" >&2
@@ -741,8 +741,8 @@ if [ "$branch_strategy" = "same_branch" ]; then
     fi
     echo "  原因候補: same_branch 戦略で .gitignore に '!.rite/wiki/' negation が未設定の可能性" >&2
     echo "  対処:" >&2
-    echo "    1. grep -n 'gitignore-wiki-section-end' .gitignore で anchor 位置を特定し、その直後へ追記する ('.rite/wiki/' 除外行より前に置くと後勝ちで効かない。配布先には anchor が無いことがあり、その場合は除外行より後ろ、無ければ末尾へ)" >&2
-    echo "    2. 上記 1 の位置へ '!.rite/wiki/' negation を追加し、git add --dry-run で verification してから再実行" >&2
+    echo "    1. '.rite/wiki/' 除外行より後ろへ '!.rite/wiki/' と '!.rite/wiki/**' を追記する (anchor があればその直後、無ければ末尾。前に置くと後勝ちで効かない)" >&2
+    echo "    2. git add --dry-run で verification してから再実行" >&2
     echo "    3. それ以外の原因 (permission / disk full / corrupt index 等) は上記 stderr の詳細を確認" >&2
     [ -n "$add_err" ] && rm -f "$add_err"
     exit 1
