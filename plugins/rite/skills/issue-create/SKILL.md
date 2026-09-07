@@ -225,6 +225,12 @@ Read tool で以下を読み込む:
 
 `template-structure.md` の AC count guideline と Minimum test rows に従い、確定 Complexity に応じた AC・T-xx 行数を満たす。各 AC は最低 1 つの T-xx に対応させ、Output Validation Checklist で検証する。
 
+**Step 4: 上段・タイトル・図**
+
+`template-structure.md` の「上段要約」「図の選択規則」「契約層の折りたたみ」を適用する。タイトルは内部機構名より変更の効果を示す。What / Why・Scope・AC から3ブロックを生成し、用語は必要なときだけ説明する。経緯識別子禁止と Output Validation Checklist を作成前に検査する。
+
+図の選択表と1行 bash で gh 2.99.0 以上か判定し、SVG を選んだ場合のみ Write tool で `.svg` を生成する。**Write tool** で添付パス配列を JSON ファイルへ保存する（添付なしは `[]`）。その絶対パスを `{ATTACHMENTS_JSON_FILE}` として 4.3 へ渡す。添付 SVG は作成コマンドの終了まで保持する。
+
 生成した body はそのまま Step 4.2.1 の検証を経て Step 4.3 で `create-issue-with-projects.sh` に tmpfile 経由で渡す。
 
 ### 4.2.1 本文の断定のファクトチェック
@@ -280,6 +286,7 @@ args_json=$(jq -n \
   --arg title "{title}" \
   --arg body_file "$tmpfile" \
   --argjson labels "$labels_json" \
+  --slurpfile attachments "{ATTACHMENTS_JSON_FILE}" \
   --argjson enabled true \
   --argjson project_number {project_number} \
   --arg owner "{owner}" \
@@ -292,7 +299,7 @@ args_json=$(jq -n \
   --arg iter_mode "none" \
   --arg source "interactive" \
   '{
-    issue: { title: $title, body_file: $body_file, labels: $labels },
+    issue: { title: $title, body_file: $body_file, labels: $labels, attachments: $attachments[0] },
     projects: {
       enabled: $enabled,
       project_number: $project_number,
@@ -330,6 +337,8 @@ if [ "$project_reg" = "failed" ]; then
   # AskUserQuestion で「手動で Projects 登録 / retry / skip して続行」を選択
 fi
 ```
+
+添付ありの作成後は body を取得して添付 URL への置換を確認する。helper が非ゼロでも `issue_url` があれば作成済みなので create を再試行しない。元 stderr を表示し、報告に「添付失敗」と作成済み URL、`gh issue edit --attach` による再添付の案内を含める。
 
 ### 4.4 完了レポート
 
@@ -420,6 +429,8 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 ```
 
 **(B) body / spec の生成（Write tool）**
+
+分解経路の親・Sub-Issue の図は Mermaid または図なしとし、SVG を生成しない（`decompose-issues.sh` は添付を渡さない）。Step 4.2 の上段要約・契約層は適用し、図だけ本規則を優先する。
 
 直前の `[CONTEXT] DECOMPOSE_WORKDIR=` から `{DECOMPOSE_WORKDIR}` を読み取り、以下を **Write tool** で書く（heredoc を使わない）:
 
