@@ -34,6 +34,8 @@
 * **Lint scope** — 構造検査は全ページと raw を再走査。ページと索引は直前の意味的検査から無変更のため、矛盾判定はその結果を継承。検索時の既存索引警告は別途報告。
 
 
+* **Update**: [CI の観測をレビューへ渡し、失敗の帰属と採否を分ける](pages/heuristics/review-loop-has-no-ci-result-input.md) — raw/reviews/20260907T110021Z-pr-2606.md を統合
+
 ## 2026-09-06
 * **lint:clean** — contradictions=0, stale=58, orphans=0, missing_concept=0, unregistered_raw=436, broken_refs=0
 * **Create**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/reviews/20260906T125803Z-pr-2582.md を新規ページ化

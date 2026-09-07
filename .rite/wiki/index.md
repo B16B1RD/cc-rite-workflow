@@ -475,7 +475,7 @@ okf_version: "0.2"
 | [HEREDOC は空展開でも改行を書くため、直後の空ファイル検査は常に通過する](pages/anti-patterns/heredoc-empty-expansion-defeats-empty-file-guard.md) | anti-patterns | `cat > f <<EOF` は展開結果が空でも改行 1 バイトを書き出す。その直後に置いた `[ ! -s "$f" ]` は決して真にならず、fail-loud のつもりのガードが到達しない検査として残る。 | 2026-09-06T16:10:23Z | high |
 | [リダイレクトはコマンド実行より先に評価されるため、生成失敗が出力先を truncate する](pages/anti-patterns/redirect-truncates-target-before-generator-failure.md) | anti-patterns | シェルは `cmd > file` の file を cmd より先に開いて truncate する。生成が失敗しても既存ファイルは既に空になっており、消費側が即死する前にデータが消える。 | 2026-09-06T16:10:23Z | high |
 | [GNU 形式の `sed -i '<expr>' file` は BSD sed で fixture を書き換えないまま失敗する](pages/anti-patterns/gnu-sed-inplace-silently-noop-on-bsd.md) | anti-patterns | BSD sed は `-i` の次の引数を backup 拡張子と解釈するため、式が拡張子・ファイル名が script として扱われ parse error になる。`set -e` の無いテストでは無言で先へ進み、fixture 不変のまま突合系 assertion だけが落ちる。 | 2026-09-06T16:10:23Z | high |
-| [review ループは CI の結果を実測入力に持たない](pages/heuristics/review-loop-has-no-ci-result-input.md) | heuristics | allowed failure の CI ジョブは workflow を success にする一方でマージ可否を UNSTABLE に落とす。差分スコープのレビューは CI の check 結果を読まないため、初回 push から落ちているテストが複数 cycle を素通りする。 | 2026-09-06T16:10:23Z | high |
+| [CI の観測をレビューへ渡し、失敗の帰属と採否を分ける](pages/heuristics/review-loop-has-no-ci-result-input.md) | heuristics | レビュー対象コミットの CI check を入力とレポートに含めることで、ローカルと異なる環境での失敗を早期に確認できる。赤い check だけでは原因を断定せず、変更との対応と失敗出力を確認して既存の実測基準で採否する。 | 2026-09-07T11:07:42Z | high |
 | [規約の主文は、実行者が観測できる単位で書く](pages/heuristics/rule-stated-in-units-the-executor-observes.md) | heuristics | 編集の単位で書かれた規約は、機械が hunk 単位でしか観測できない場面で字義どおり適用すると判定と食い違う。正しく直した対応が「未対応」に落ち、ループが空転する。 | 2026-09-06T16:10:23Z | high |
 | [実測の有無と severity は独立した 2 軸で、両方を満たさないと修正対象にならない](pages/heuristics/evidence-and-severity-are-independent-gates.md) | heuristics | 実測必須ゲートは「測っていない指摘を blocking にしない」ためのもので、測ってあっても重要度が閾値に届かなければ fatal にならない。実行時に何かが壊れる帰結クラスでも、severity が中位なら修正ループは動かない。 | 2026-09-06T16:10:23Z | high |
 | [同型テンプレートが N 本ある欄は「本数の literal pin」と「欄とプレースホルダの隣接 pin」の 2 本立てで守る](pages/patterns/homogeneous-template-pins-count-and-adjacency.md) | patterns | 同じ報告欄を複数のテンプレートへ横展開したとき、presence-only の grep pin は 1 本でも残っていれば通るため N-1 本からの欠落を検出できない。本数を literal で固定する pin と、欄行の直下にプレースホルダが並ぶことを数える pin の 2 本立てにする。期待値を実測から作ると 0 == 0 の真空パスで通るので、期待値は必ず literal で書く。 | 2026-09-07T10:00:00Z | high |
@@ -483,4 +483,4 @@ okf_version: "0.2"
 
 - 総ページ数: 469
 - ドメイン別: patterns=110, heuristics=206, anti-patterns=153
-- 最終更新: 2026-09-07T08:45:10Z
+- 最終更新: 2026-09-07T11:07:42Z

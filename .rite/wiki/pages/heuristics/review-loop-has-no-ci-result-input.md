@@ -1,40 +1,47 @@
 ---
 type: "heuristics"
-title: "review ループは CI の結果を実測入力に持たない"
+title: "CI の観測をレビューへ渡し、失敗の帰属と採否を分ける"
 domain: "heuristics"
-description: "allowed failure の CI ジョブは workflow を success にする一方でマージ可否を UNSTABLE に落とす。差分スコープのレビューは CI の check 結果を読まないため、初回 push から落ちているテストが複数 cycle を素通りする。"
+description: "レビュー対象コミットの CI check を入力とレポートに含めることで、ローカルと異なる環境での失敗を早期に確認できる。赤い check だけでは原因を断定せず、変更との対応と失敗出力を確認して既存の実測基準で採否する。"
 created: "2026-09-06T16:10:23Z"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
+generated: { by: "rite-wiki-ingest/gpt-6-astra", at: "2026-09-07T11:07:42Z" }
+promote: rite-plugin
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260906T155431Z-pr-2582.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260907T110021Z-pr-2606.md"
 tags: ["review-loop", "ci", "blind-spot", "merge-gate"]
 confidence: high
 ---
 
-# review ループは CI の結果を実測入力に持たない
+# CI の観測をレビューへ渡し、失敗の帰属と採否を分ける
 
 ## 概要
 
-`continue-on-error: true` を付けた CI ジョブは workflow 全体を success にするが、マージ可否の判定は UNSTABLE に落ちる。レビュー ⇄ 修正のループは差分とローカル実行だけを入力にしており、CI の check 結果を参照する経路を持たない。結果として、初回 push から落ちているテストが複数 cycle のレビューを一度も指摘されずに通過し、マージ直前のゲートで初めて露出する。
+レビュー対象コミットの CI check を入力とレポートに含めることで、ローカルと異なる環境での失敗を早期に確認できる。赤い check だけでは原因を断定せず、変更との対応と失敗出力を確認して既存の実測基準で採否する。
 
 ## 詳細
 
-### 何が構造的に欠けているか
+### CI の観測をレビューの入力に含める
 
-レビューの実測は「reviewer がその場で走らせたもの」に閉じている。CI は別のホスト・別の実装（macOS の bwk awk など）で走るため、ローカルで緑のものが CI で赤いという状態はレビュー側からは見えない。allowed failure はその赤を workflow の成否から切り離すので、緑の workflow バッジは何も保証しない。
+CI はローカルと異なるホストやツールで動くため、ローカルの成功だけでは CI 上の成功を保証できない。allowed failure があると workflow 全体の成功と個々の job の結論も一致しない。レビューで check の状態・結論・詳細 URL を確認することにより、マージ直前まで失敗の発見が遅れる経路を減らせる。
 
-### 実務上の対処
+`pr-review` はレビュー対象 SHA と PR HEAD の一致を確認し、共有 helper で check を分類する。通常・verification 両モードの reviewer へ snapshot を渡し、統合レポートと E2E の終了行へ状態を表示する。取得不能・SHA 不一致は理由付き unknown、pending は未完了として扱い、レビュー中に待機や rerun を行わない。マージ時の待機・override・分類基準は merge の責務として維持する。
 
-- レビューを回す前に、対象 PR の check 結果（allowed failure のジョブを含む）を 1 度読む
-- allowed failure のジョブを増やすときは、その失敗を誰が読むのかを同時に決める
-- マージゲートだけが最後の防波堤になっている状態は、cycle 数に比例して手戻りを増やす
+### 失敗の表示と blocking 判定を分ける
+
+- 失敗 job を、集約状態が pending の場合もレポートへ表示する。
+- 変更ファイルとの対応と実際の失敗出力を確認してから、既存の failing test アンカーで指摘する。
+- 無関係な flaky や allowed failure を、赤い check だけを根拠に一律 blocking にしない。
+- 状態の snapshot は取得時点の観測であり、CI 完了やその後のマージ可否を保証しない。
 
 ## 関連ページ
 
-- [GNU 形式の `sed -i '<expr>' file` は BSD sed で fixture を書き換えないまま失敗する](../anti-patterns/gnu-sed-inplace-silently-noop-on-bsd.md)
+- [GNU 形式の sed に依存する fixture は BSD 環境で失敗する](../anti-patterns/gnu-sed-inplace-silently-noop-on-bsd.md)
 - [差分スコープのレビューは差分の外を見ない](./differential-scope-review-blind-outside-diff.md)
 
 ## ソース
 
-- [レビュー結果](../../raw/reviews/20260906T155431Z-pr-2582.md)
+- [CI 失敗の発見が遅れるレビューの観測](../../raw/reviews/20260906T155431Z-pr-2582.md)
+- [CI 入力とレポートの接続の検証](../../raw/reviews/20260907T110021Z-pr-2606.md)
