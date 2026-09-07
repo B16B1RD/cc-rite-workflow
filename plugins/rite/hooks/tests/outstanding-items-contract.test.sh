@@ -120,6 +120,90 @@ for entry in "$OPEN:1" "$ITERATE:6" "$BATCH_RUN:3"; do
   # 規則の散文でも hit するためテンプレ本体から消えても素通りする。
   assert "$name pairs every 要対応 section with {action_items}" "$expected" "$(grep -A1 '^要対応:$' "$f" | grep -c '^{action_items}$')"
 done
+
+echo "=== 要対応: 最終試行・重複・skill 固有分類 ==="
+assert_grep "autonomous-execution uses the final attempt for unresolved action items" "$AUTONOMOUS" \
+  '同じ command / phase の最終試行で WARNING / ERROR が残り、かつ後続に同じ操作の成功 marker が無い行を転記する'
+assert_grep "autonomous-execution defines severity plus normalized body as the dedup key" "$AUTONOMOUS" \
+  '重複キーは severity と本文の組とする'
+assert_grep "autonomous-execution only merges exact duplicate keys" "$AUTONOMOUS" \
+  'この 2 要素が完全一致する行だけを最初の出現 1 行へまとめる'
+assert_grep "autonomous-execution preserves warnings with a different target, reason, or remedy" "$AUTONOMOUS" \
+  'severity・対象・理由・対処のいずれかが異なる行は別項目として出現順を保つ'
+assert_grep "batch-run delegates final-attempt and duplicate handling to the shared contract" "$BATCH_RUN" \
+  '最終試行と重複の判定は \[Autonomous Execution\]'
+
+direct_warning_emit_count=$(grep -cE '^[[:space:]]*echo "WARNING:' "$OPEN")
+classified_warning_count=$(awk '
+  /^### `open` 直接 WARNING の転記判定$/ { inside=1; next }
+  inside == 1 && /^---$/ { inside=0 }
+  inside == 1 && /^\| `WARNING:/ { count++ }
+  END { print count+0 }
+' "$OPEN")
+assert "open has exactly 3 direct WARNING emit sites" "3" "$direct_warning_emit_count"
+assert "open classifies exactly the same 3 direct WARNING sites" "$direct_warning_emit_count" "$classified_warning_count"
+assert_grep "open emits the exact git-status guard warning" "$OPEN" \
+  '^[[:space:]]*echo "WARNING: git status の実行に失敗したため dirty main checkout ガードを skip します \(従来挙動で続行\)" >&2$'
+assert_grep "open emits the exact gitignore warning" "$OPEN" \
+  '^[[:space:]]*echo "WARNING: \$wt_path/\.rite/\.gitignore を作成できませんでした。このディレクトリが git から除外されているか手動で確認してください" >&2$'
+assert_grep "open emits the exact settings-copy warning" "$OPEN" \
+  '^[[:space:]]*echo "WARNING: \.claude/settings\.local\.json のコピーに失敗しました — ドッグフーディング上書きが worktree に反映されません" >&2$'
+assert_grep_in_section "open classifies the git-status guard warning" "$OPEN" \
+  '^### `open` 直接 WARNING の転記判定$' '^---$' \
+  '^\| `WARNING: git status の実行に失敗したため dirty main checkout ガードを skip します` \| 常に転記 \|$'
+assert_grep_in_section "open classifies the gitignore warning and its diagnostic continuation" "$OPEN" \
+  '^### `open` 直接 WARNING の転記判定$' '^---$' \
+  '^\| `WARNING: \{wt_path\}/\.rite/\.gitignore を作成できませんでした`.*`_RITE_GITIGNORE_ERROR`'
+assert_grep_in_section "open classifies the settings copy warning" "$OPEN" \
+  '^### `open` 直接 WARNING の転記判定$' '^---$' \
+  '^\| `WARNING: \.claude/settings\.local\.json のコピーに失敗しました`'
+
+echo "=== iterate: action_items legend とブレーカー復旧情報 ==="
+assert_grep_in_section "iterate declares action_items in the Placeholder Legend" "$ITERATE" \
+  '^## Placeholder Legend$' '^---$' '^\| `\{action_items\}` \|'
+assert_grep_in_section "iterate routes REFIRE recovery detail through action_items" "$ITERATE" \
+  '^#### `\{action_items\}` 追加項目（ステップ 6\.2 のみ）$' '^---$' \
+  '起動時点で cycle counter が上限に達していたため、この起動では review を 1 回も回さずに発火しました'
+assert_grep_in_section "iterate routes atomic-set recovery detail through action_items" "$ITERATE" \
+  '^#### `\{action_items\}` 追加項目（ステップ 6\.2 のみ）$' '^---$' \
+  '発火時の cycle counter リセットと `stop_reason` の永続化に失敗しました'
+assert_grep_in_section "iterate routes handoff recovery detail through action_items" "$ITERATE" \
+  '^#### `\{action_items\}` 追加項目（ステップ 6\.2 のみ）$' '^---$' \
+  '継続 handoff のクリアにも失敗しています'
+assert_grep_in_section "iterate preserves the manual cycle-counter reset command" "$ITERATE" \
+  '^#### `\{action_items\}` 追加項目（ステップ 6\.2 のみ）$' '^---$' \
+  'flow-state\.sh set --session \{session_id\} --phase review --next "cycle counter 手動リセット" --cycle-count 0'
+assert_grep_in_section "iterate preserves the reset-first restart replacement" "$ITERATE" \
+  '^#### `\{action_items\}` 追加項目（ステップ 6\.2 のみ）$' '^---$' \
+  'ループを再開する: 上記の手動リセットを実行してから /rite:iterate \{pr_number\} を再実行する'
+assert_grep_in_section "iterate does not place action items beside the breaker reason" "$ITERATE" \
+  '^#### `\{action_items\}` 追加項目（ステップ 6\.2 のみ）$' '^---$' \
+  '「理由」行の直後には追加しない'
+assert_grep_in_section "iterate replaces raw breaker warnings with detailed recovery items" "$ITERATE" \
+  '^#### `\{action_items\}` 追加項目（ステップ 6\.2 のみ）$' '^---$' \
+  '\(b\) / \(c\) は対応する raw WARNING の項目を詳細な復旧項目で置換し、raw 項目が無い場合だけ末尾へ追加する'
+assert_grep_in_section "iterate forbids raw and detailed breaker items from coexisting" "$ITERATE" \
+  '^#### `\{action_items\}` 追加項目（ステップ 6\.2 のみ）$' '^---$' \
+  'raw WARNING と詳細な復旧項目を両方残してはならない'
+assert_grep_in_section "iterate applies breaker items without reviving add-all semantics" "$ITERATE" \
+  '^#### `\{action_items\}` 追加項目（ステップ 6\.2 のみ）$' '^---$' \
+  '\(a\) は末尾へ追加し、\(b\) / \(c\) は上記の raw WARNING 置換規則に従う'
+assert_not_grep "iterate removed the conflicting add-all action-items instruction" "$ITERATE" \
+  '\(a\) / \(b\) / \(c\).*順に.*追加する'
+assert_not_grep "iterate removed the conflicting b-addition wording" "$ITERATE" \
+  '\(b\) は `\{action_items\}` への追加だけでは足りない'
+assert_not_grep "iterate removed the duplicate reason-adjacent notice instruction" "$ITERATE" \
+  '「理由」行の直後に注意行を追加する'
+
+echo "=== common-error-handling: canonical jq contract remains without journal provenance ==="
+assert_not_grep "canonical jq description has no review-cycle journal provenance" "$COMMON_ERR" \
+  'verified-review cycle [0-9]+'
+assert_grep "canonical jq description still names all 3 required fields" "$COMMON_ERR" \
+  'schema_version 非空文字列 / pr_number 数値型 / findings\[\] 配列型'
+assert_grep "canonical jq description still names all 4 consumers" "$COMMON_ERR" \
+  'ステップ 6\.1\.a \(pr-review\.md\) と ステップ 1\.2\.0 Priority 0 / 2 / 3 \(fix\.md\) の 4 箇所から参照される'
+assert_grep "canonical jq snippet still checks findings as an array" "$COMMON_ERR" \
+  'and \(\.findings \| type == "array"\)'
 # 転記主体の列挙を positive 側で pin する。負の節（欄を持たない ready / merge）だけを見ていると、
 # 主体の列挙全体を「orchestrator」のような総称へ書き換える変異が素通りする。
 assert_grep "rite-workflow names the section-carrying orchestrators as the transcription subjects" "$WORKFLOW" \
