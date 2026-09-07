@@ -17,13 +17,15 @@ rite workflow のスキル間連携は、各 sub-skill が bash 出力に埋め�
 | Sentinel | Emitter | Consumer | 意味 |
 |----------|---------|----------|------|
 | `[review:mergeable]` | pr-review | iterate, batch-run | レビュー結果が mergeable（blocking finding 0 件） |
+| `[review:mergeable]` | iterate | batch-run | 非 fatal 移送後の 5.S 成功を外向きに返す（失敗時は返さない） |
 | `[review:fix-needed:N]` | pr-review | iterate | レビューで N 件の blocking finding を検出、fix へ。iterate のループ内部状態のため batch-run へは bubble しない |
 | `[review:error]` | pr-review | iterate | review 実行中にエラー発生。iterate 内部で処理され batch-run へは bubble しない |
 | `[fix:error]` | fix | iterate, batch-run | fix 実行中にエラー発生 |
 | `[fix:pushed]` | fix | iterate | fix 完了・push 済み、review へ再突入。iterate のループ内部状態のため batch-run へは bubble しない |
 | `[fix:sweep-done]` | fix | iterate | mergeable 後 NB digest sweep 完了。iterate はステップ 5 完了通知へ（ステップ 1 に戻らない） |
 | `[fix:pushed-wm-stale]` | fix | iterate | fix push 完了だが work memory 更新が失敗（non-blocking）。iterate 内部で処理され batch-run へは bubble しない |
-| `[fix:replied-only]` | fix | iterate, batch-run | 対応不要判定のみで push なし（コメント返信のみ） |
+| `[fix:non-fatal-only]` | fix | iterate | fatal=0、非 fatal 移送あり、push / 本 cycle accept なし。5.S sweep 成功後だけ外向きに review:mergeable を返す |
+| `[fix:replied-only]` | fix | iterate, batch-run | 対応不要判定のみで push なし、非 fatal 移送 0 件（コメント返信のみ） |
 | `[fix:cancelled-by-user]` | fix | iterate, batch-run | ユーザーが fix 実行をキャンセル |
 | `[lint:success]` | lint | open, pr-create, ready | lint 全チェック pass |
 | `[lint:error]` | lint | issue-implement, open | lint でエラー検出、修正が必要 |

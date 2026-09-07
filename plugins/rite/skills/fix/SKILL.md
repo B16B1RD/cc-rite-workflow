@@ -30,7 +30,7 @@ PR レビューコメントを取得・整理し、指摘への対応を効率�
 ## Contract
 
 **Input**: PR number, review findings from `/rite:pr-review`, flow state with `phase: fix` (iterate fix side) or `phase: phase5_fix` (legacy resume)
-**Output**: `[fix:pushed]` | `[fix:pushed-wm-stale]` | `[fix:replied-only]` | `[fix:cancelled-by-user]` | `[fix:sweep-done]` | `[fix:error]`
+**Output**: `[fix:pushed]` | `[fix:pushed-wm-stale]` | `[fix:non-fatal-only]` | `[fix:replied-only]` | `[fix:cancelled-by-user]` | `[fix:sweep-done]` | `[fix:error]`
 rationale: references/design-rationale.md#contract-legacy-phase
 
 ## Inline Annotation Convention
@@ -996,7 +996,7 @@ echo "[CONTEXT] FIX_TRIAGE_REVIEW_PATH=$triage_review_path" >&2
 
 helper の `[fix:error] reason=measured_undetermined; findings=...` は該当 ID をそのまま報告して停止する。scope / severity / IO の異常も停止する。**triage エラーから legacy parser / Interactive Fallback への遷移は禁止**。missing/null/string の measured を true や false に補完しない。
 
-3. helper の `FIX_FATAL_TRIAGE=applied; fatal=N; moved=M` から `{non_fatal_moved_count}=M` を保持する。reload した `non_blocking_findings[]` の nit 以外の件数を `{non_blocking_count}` とし、全経路で同じ母集団を使う。P0 など元ファイルが `.rite/review-results/` 外の場合は、更新後 JSON を同ディレクトリに atomic copy し、そのパスを `{triage_review_path}` に更新する。後続 review / nb sweep が読める永続ファイルを残す。
+3. helper の `FIX_FATAL_TRIAGE=applied; fatal=N; moved=M` から `{fatal_count}=N` / `{non_fatal_moved_count}=M` を保持する。reload した `non_blocking_findings[]` の nit 以外の件数を `{non_blocking_count}` とし、全経路で同じ母集団を使う。P0 など元ファイルが `.rite/review-results/` 外の場合は、更新後 JSON を同ディレクトリに atomic copy し、そのパスを `{triage_review_path}` に更新する。後続 review / nb sweep が読める永続ファイルを残す。
 4. [Non-fatal Record](references/non-fatal-record.md) を実行し、既存の関連 Issue コメントを更新する。JSON / Issue 記録 / 表示の non-blocking section / E2E 1 行の **4 経路**に同じ件数・JSON pointer を渡す。Issue 記録失敗時は fatal が 0 件でも `[fix:error]`。記録を終える前に 0 件扱いで return しない。
 5. `.rite/fix-cycle-state/{pr_number}.json` の top-level `non_fatal_moved_count` / `review_json_path` に今回の値を atomic merge する（既存 `cycles` を保持、新規なら `cycles:[]`）。書込失敗は `[fix:error]`。修正コミットが無い cycle でも必須。ステップ 3.3.1 は同じ値を cycle entry にも記録する。
 
@@ -2523,7 +2523,7 @@ BSD wc 空白は剥がす (2.1.A Step 7 と対称)。不在/空は `0`。state �
 
 **`{acknowledged_nit_count}` の展開ルール**: `{nit_noted_count}`（ステップ 1.3 / 1.4）をそのまま使う。0 件でも行は省略しない。
 
-0 件でも行は省略しない。5.3 の mergeable 判定には使わない。nit-only の finalize 条件は 5.1 row 4/5。
+0 件でも行は省略しない。5.3 の mergeable 判定には使わない。nit-only の finalize 条件は 5.1 row 4/4.5/5。
 
 **`{confidence_override_count}` / `{confidence_override_files_suffix}` の展開ルール** (Confidence policy override の追跡可視化):
 
@@ -2549,7 +2549,7 @@ iterate は本報告で次を決める:
 - 本 cycle で accept 発生 → re-review
 - `プッシュ: 未実行` かつ accept なし かつ `全指摘 == 対応指摘` → 完了
 
-accept 発生の SoT は 5.1 row 4/5。
+accept 発生の SoT は 5.1 row 4/4.5/5。
 rationale: references/design-rationale.md#accept-cycle-markers
 
 
@@ -2661,13 +2661,14 @@ ACTION: Return to ステップ 4.6.W and execute the Wiki Ingest Trigger before 
 
 The `fix` flow-state write below records the v3 phase so a `/rite:recover` started after a fix iteration classifies the resume point correctly (`skills/recover/SKILL.md` Phase 5.3 の `fix` 行で `/rite:iterate {pr_number}` が invoke される):
 
-**Handoff マーカー**: 結果に応じて 4 種類に分岐する (Stop hook による consume・再注入の機構解説: [stop-loop-continuation-contract.md#mechanism](../../references/stop-loop-continuation-contract.md#mechanism))。
+**Handoff マーカー**: 結果に応じて 5 種類に分岐する (Stop hook による consume・再注入の機構解説: [stop-loop-continuation-contract.md#mechanism](../../references/stop-loop-continuation-contract.md#mechanism))。
 - **継続** (`[fix:pushed]` / `[fix:pushed-wm-stale]`): `--handoff "/rite:pr-review {pr_number}"` で**ループ継続マーカー**をセットする。
 - **正常終了** (`[fix:replied-only]`): `--handoff "FINALIZE:fix:replied-only:{pr_number}"` で**終了通知マーカー (FINALIZE handoff)** をセットする。
+- **非 fatal のみ** (`[fix:non-fatal-only]`): `--handoff "FINALIZE:fix:non-fatal-only:{pr_number}"` をセットする。caller の **5.S sweep を経てから**完了通知へ進む。
 - **sweep 完了** (`[fix:sweep-done]`): `--handoff "FINALIZE:fix:sweep-done:{pr_number}"` で**終了通知マーカー**をセットする。**ステップ 1 に戻らない**（再フルレビュー禁止）。
 - **エラー** (`[fix:error]`): `--handoff` を**付けない** (handoff はデフォルトクリア)。`[fix:error]` は clean terminal ではなく caller (`/rite:iterate` ステップ4) で1回自動再試行し、再失敗時に停止するため、完了通知を強制してはならない。
 
-判定入力は本ステップ時点で確定済み。**(push 完了 or 本 cycle accept) かつ fatal 未 set → 継続 handoff**。push 無しかつ accept なしかつ fatal 未 set → FINALIZE。fatal → `--handoff` なし。`WM_UPDATE_FAILED` は継続を打ち消さない。accept 条件の SoT は row 4/5 注記。
+判定入力は本ステップ時点で確定済み。**(push 完了 or 本 cycle accept) かつ fatal 未 set → 継続 handoff**。push 無しかつ accept なしかつ fatal 未 set → FINALIZE。fatal → `--handoff` なし。`WM_UPDATE_FAILED` は継続を打ち消さない。accept 条件の SoT は row 4/4.5/5 注記。
 
 > `[fix:error]` 早期 exit では pr-review がセットした `/rite:fix` handoff を消さない。default-clear は iterate ステップ 3 の `--handoff` なし set。
 
@@ -2680,7 +2681,15 @@ bash {plugin_root}/hooks/flow-state.sh set \
   --handoff "/rite:pr-review {pr_number}" \
   --if-exists
 
-# 正常終了 ([fix:replied-only]: push 無し & 本 cycle accept 発生なし & fatal フラグ無し) の場合 (FINALIZE 終了通知 handoff):
+# 非 fatal のみ ([fix:non-fatal-only]: row 4.5) の場合 (FINALIZE。5.S が先):
+bash {plugin_root}/hooks/flow-state.sh set \
+  --phase "fix" \
+  --active true \
+  --next "rite:fix completed. [fix:non-fatal-only]->caller の iterate ステップ 5.S NB digest sweep、成功後にステップ 5 完了通知. Do NOT re-enter /rite:pr-review." \
+  --handoff "FINALIZE:fix:non-fatal-only:{pr_number}" \
+  --if-exists
+
+# 正常終了 ([fix:replied-only]: push 無し & 本 cycle accept 発生なし & non_fatal_moved_count=0 & fatal フラグ無し) の場合 (FINALIZE 終了通知 handoff):
 bash {plugin_root}/hooks/flow-state.sh set \
   --phase "fix" \
   --active true \
@@ -2787,12 +2796,13 @@ Then, based on the ステップ 4.6 completion report content **and the WM_UPDAT
 | 2.5 | ステップ 4.6 直前の gate が `[CONTEXT] FIX_REPORT_DIFF_GATE=error` を context に set した | `[fix:error]`（`map_missing` / `state_unreadable` / `diff_failed` / `jq_missing`。`unverified` / `passed` は本行にマッチしない） |
 | 3 | ステップ 4.5 (4.5.1 または 4.5.2) で `[CONTEXT] WM_UPDATE_FAILED=1` を context に set した (`reason` の値は下記 reason 表のいずれか — 固定列挙は行わず、reason 表を唯一の真実の源とする) | `[fix:pushed-wm-stale]` (ステップ 4.5 で work memory 更新が silent skip された旨を caller に明示伝達。caller は work memory が stale であることを認識して fix loop を再実行するか手動介入する) |
 | 4 | (Push completed (`プッシュ: 完了`) または 本 cycle 内で accept 決定が発生 [`[CONTEXT] ACCEPT_FINGERPRINT_PERSISTED=1` または `[CONTEXT] ACCEPT_FINGERPRINT_PERSIST_FAILED=1` が 1 回以上 context に出現]) かつ work memory 更新成功 | `[fix:pushed]` |
-| 5 | Push なし かつ 本 cycle 内で accept 決定なし (上記 2 マーカーがいずれも非出現) かつ All findings replied | `[fix:replied-only]` |
+| 4.5 | Push なし かつ 本 cycle 内で accept 決定なし (上記 2 マーカーがいずれも非出現) かつ `{fatal_count}=0` かつ `{non_fatal_moved_count}>0` かつ All findings replied | `[fix:non-fatal-only]`（5.S sweep へ） |
+| 5 | Push なし かつ 本 cycle 内で accept 決定なし (上記 2 マーカーがいずれも非出現) かつ `{non_fatal_moved_count}=0` かつ All findings replied | `[fix:replied-only]` |
 | 6 | Unexpected state / error | `[fix:error]` |
 
 上から最初にマッチした pattern を採用。fatal 旗 (`FIX_FALLBACK_FAILED` / `REPLY_POST_FAILED` / `FIX_REPORT_DIFF_GATE=error`) → `[fix:error]`。次に `WM_UPDATE_FAILED` → `[fix:pushed-wm-stale]`。その後に通常終了。`FIX_REPORT_DIFF_GATE=unverified` / `passed` は fatal ではない。
 
-**row 4/5 の accept 条件 — 唯一の真実の源**: iterate ステップ 4 が読む sentinel の決定箇所。Handoff 節と 4.6 Note は参照のみ。
+**row 4/4.5/5 の accept 条件 — 唯一の真実の源**: iterate ステップ 4 が読む sentinel の決定箇所。Handoff 節と 4.6 Note は参照のみ。
 
 「本 cycle 内で accept 決定が発生」= `ACCEPT_FINGERPRINT_PERSISTED=1` **または** `ACCEPT_FINGERPRINT_PERSIST_FAILED=1` の本 cycle 出現。`{accept_count}` (累計) は使わない。両マーカー欠落時は accept 無し。
 rationale: references/design-rationale.md#accept-cycle-markers

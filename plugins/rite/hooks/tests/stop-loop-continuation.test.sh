@@ -154,7 +154,7 @@ assert "TC-8: second stop allows (no output)" "" "$out8"
 # --- TC-9: replied-only / cancelled-by-user FINALIZE variants also block with the finalize reason (AC-1) ---
 echo ""
 echo "=== TC-9: [fix:replied-only] / [fix:cancelled-by-user] FINALIZE handoffs block once ==="
-for _ho in "FINALIZE:fix:replied-only:99" "FINALIZE:fix:cancelled-by-user:99"; do
+for _ho in "FINALIZE:fix:replied-only:99" "FINALIZE:fix:cancelled-by-user:99" "FINALIZE:fix:non-fatal-only:99"; do
   d9=$(new_sandbox)
   RITE_STATE_ROOT="$d9" bash "$FS" set --phase fix --issue 1176 --branch b --pr 99 \
     --next n --handoff "$_ho" --session "$SID" >/dev/null
@@ -486,6 +486,32 @@ out18b=$(jq -nc --arg c "$d18" --arg s "$SID" --arg tp "$tp18" \
   '{session_id:$s, cwd:$c, transcript_path:$tp, hook_event_name:"Stop", stop_hook_active:true}' | bash "$HOOK")
 assert "TC-18: second stop allows (one-shot / no infinite block)" "" "$out18b"
 rm -f "$tp18"
+
+# non-fatal-only requires sweep-first + remaining field; both notice outcomes consume once.
+for notice_kind in missing-field complete; do
+  d_nb=$(new_sandbox)
+  RITE_STATE_ROOT="$d_nb" bash "$FS" set --phase fix --issue 2583 --branch b --pr 99 \
+    --next n --handoff "FINALIZE:fix:non-fatal-only:99" --session "$SID" >/dev/null
+  nb_text=$'## /rite:iterate 完了\n- 終了理由: fix:non-fatal-only → 5.S 完了'
+  if [ "$notice_kind" = complete ]; then
+    nb_text+=$'\n- 未処理 non-blocking: 0 件\n- sweep: issued=0 / recorded=2'
+  fi
+  tp_nb="$d_nb/transcript.jsonl"
+  jq -nc --arg text "$nb_text" '{type:"assistant",message:{content:$text}}' > "$tp_nb"
+  out=$(stop_payload "$d_nb" | jq --arg tp "$tp_nb" '. + {transcript_path:$tp}' | bash "$HOOK")
+  if [ "$notice_kind" = missing-field ]; then
+    assert "non-fatal-only missing field bounces" block "$(jq -r '.decision' <<< "$out")"
+    reason_nb=$(jq -r '.reason' <<< "$out")
+    assert "non-fatal-only sweep precedes notice" yes "$([[ "$reason_nb" == *'5.S 未実施なら先に NB digest sweep'* ]] && echo yes || echo no)"
+    assert "non-fatal-only requires remaining field" yes "$([[ "$reason_nb" == *'未処理 non-blocking'* ]] && echo yes || echo no)"
+    assert "non-fatal-only forbids re-review" yes "$([[ "$reason_nb" == *'再フルレビューは禁止'* ]] && echo yes || echo no)"
+  else
+    assert "non-fatal-only complete notice allows stop" "" "$out"
+  fi
+  assert "non-fatal-only $notice_kind consumed" ABSENT "$(jq -r '.handoff // "ABSENT"' "$(state_file_for "$d_nb")")"
+  out=$(stop_payload "$d_nb" "$SID" true | bash "$HOOK")
+  assert "non-fatal-only $notice_kind second stop allows" "" "$out"
+done
 
 # --- TC-19: FINALIZE:review:mergeable + transcript_path 欠落 → 検査不能 fail-safe 差し戻し ---
 echo ""
