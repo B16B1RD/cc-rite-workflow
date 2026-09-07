@@ -444,7 +444,7 @@ okf_version: "0.2"
 | [到達不能に見える分岐の削除は、その分岐が受けていた入力の行き先を確認してから決める](pages/heuristics/branch-deletion-traces-where-the-input-flows.md) | heuristics | 到達不能に見える case arm を消すと、その入力は消えるのではなく catch-all へ流れ込み、失敗ではない値に対して失敗の診断と手動復旧コマンドを出す。デッドコード除去のつもりが診断の劣化になるため、削除前に「その分岐が受けていた入力はどこへ行くか」を確認する。 | 2026-08-30T11:20:00+09:00 | high |
 | [「この経路は X を呼ばない」の根拠は、委譲先ファイルまで含めた grep で取る](pages/heuristics/call-path-survey-must-include-delegated-references.md) | heuristics | 手順を別ファイルへ委譲する構造では、入口ファイルだけを grep して 0 件だったことは「呼ばない」の根拠にならない。委譲先まで含めて数えないと、結論が正しくても根拠が偽になり、次の変更者がその偽の前提の上に判断を積む。 | 2026-08-30T12:50:00+09:00 | high |
 | [実装の分岐を散文へ落とす前に、フラグの状態数と観測ラベルの値域を機械的に数える](pages/heuristics/count-implementation-states-before-writing-prose.md) | heuristics | hook や helper の挙動を仕様書の散文に書き下ろすとき、boolean に見えるフラグが実は 3 状態を取り、観測ラベルが 3 値を出しているのに「主経路 + 例外 1 つ」の二分岐として書いてしまう。この誤りは経路追加による腐りではなく執筆時点で既に偽であり、書く前にフラグの状態数と観測ラベルの値域を grep で数えれば機械的に防げる。 | 2026-08-30T04:57:39Z | high |
-| [規範文を新設したら、その規範文が支配する範囲すべてに適用し直すか、適用範囲を明示的に狭める](pages/heuristics/new-normative-clause-must-be-applied-to-its-own-scope.md) | heuristics | 「この表は SoT と同期すること」「各行は全 script を名指しすること」のような規範文を文書へ新設すると、その文が支配する既存行のうち条件を満たさないものが即座に契約違反になる。新設の直後に、支配範囲の全行へ適用し直すか、規範文自体の適用範囲を狭めるかを選ばないと、契約を導入した変更そのものが次サイクルの指摘源になる。 | 2026-08-30T16:24:00+09:00 | high |
+| [規範文を新設したら、その規範文が支配する範囲すべてに適用し直すか、適用範囲を明示的に狭める](pages/heuristics/new-normative-clause-must-be-applied-to-its-own-scope.md) | heuristics | 「この表は SoT と同期すること」「各行は全 script を名指しすること」のような規範文を文書へ新設すると、その文が支配する既存行のうち条件を満たさないものが即座に契約違反になる。新設の直後に、支配範囲の全行へ適用し直すか、規範文自体の適用範囲を狭めるかを選ばないと、契約を導入した変更そのものが次サイクルの指摘源になる。 | 2026-09-07T10:00:00Z | high |
 | [転記の網羅性は件数一致ではなく集合一致で検証する（件数一致は漏れと余剰が相殺して通る）](pages/heuristics/transcription-completeness-verified-by-set-equality.md) | heuristics | ある一覧から別の一覧へ項目を転記した成果物（CHANGELOG / 対応表 / 移行チェックリスト等）のレビューで「両者の件数が一致するか」だけを検証すると、1 件の転記漏れと 1 件の余剰が同時に起きたときに相殺されて通る。両側から識別子の集合を機械抽出して要素単位で突合すると、漏れ・余剰・取り違えの 3 種を 1 回の照合で検出できる。 | 2026-08-30T10:28:04Z | medium |
 | [集合一致 assert の抽出を固定 whitelist にすると「whitelist ∩ 各サイト」しか測れない](pages/anti-patterns/set-equality-assert-hollowed-by-whitelist-extraction.md) | anti-patterns | 複数箇所が同一の変数集合を指すことを検証する assert で、集合の抽出側を固定 whitelist の alternation で書くと、測っているのは whitelist と各サイトの積集合の一致でしかない。whitelist 外の名前を 1 箇所にだけ足す変異が全 assert を素通りする。 | 2026-08-30T15:15:33Z | high |
 | [レビューループの打ち切りは severity ではなく、指摘が触れている層（挙動 / 検出力 / 文面）で判断する](pages/heuristics/review-loop-termination-by-finding-layer.md) | heuristics | 同一箇所への指摘が数サイクル続いたら、指摘の性質が「欠陥」から「文面の精度」へ移っているかを見る。挙動と検出力が無傷で文面だけを磨く段階に入ったサイクルは正味で負の価値を持つ。 | 2026-08-30T15:15:33Z | medium |
@@ -478,8 +478,9 @@ okf_version: "0.2"
 | [review ループは CI の結果を実測入力に持たない](pages/heuristics/review-loop-has-no-ci-result-input.md) | heuristics | allowed failure の CI ジョブは workflow を success にする一方でマージ可否を UNSTABLE に落とす。差分スコープのレビューは CI の check 結果を読まないため、初回 push から落ちているテストが複数 cycle を素通りする。 | 2026-09-06T16:10:23Z | high |
 | [規約の主文は、実行者が観測できる単位で書く](pages/heuristics/rule-stated-in-units-the-executor-observes.md) | heuristics | 編集の単位で書かれた規約は、機械が hunk 単位でしか観測できない場面で字義どおり適用すると判定と食い違う。正しく直した対応が「未対応」に落ち、ループが空転する。 | 2026-09-06T16:10:23Z | high |
 | [実測の有無と severity は独立した 2 軸で、両方を満たさないと修正対象にならない](pages/heuristics/evidence-and-severity-are-independent-gates.md) | heuristics | 実測必須ゲートは「測っていない指摘を blocking にしない」ためのもので、測ってあっても重要度が閾値に届かなければ fatal にならない。実行時に何かが壊れる帰結クラスでも、severity が中位なら修正ループは動かない。 | 2026-09-06T16:10:23Z | high |
+| [同型テンプレートが N 本ある欄は「本数の literal pin」と「欄とプレースホルダの隣接 pin」の 2 本立てで守る](pages/patterns/homogeneous-template-pins-count-and-adjacency.md) | patterns | 同じ報告欄を複数のテンプレートへ横展開したとき、presence-only の grep pin は 1 本でも残っていれば通るため N-1 本からの欠落を検出できない。本数を literal で固定する pin と、欄行の直下にプレースホルダが並ぶことを数える pin の 2 本立てにする。期待値を実測から作ると 0 == 0 の真空パスで通るので、期待値は必ず literal で書く。 | 2026-09-07T10:00:00Z | high |
 ## 統計
 
-- 総ページ数: 468
-- ドメイン別: patterns=109, heuristics=206, anti-patterns=153
-- 最終更新: 2026-09-06T16:10:23Z
+- 総ページ数: 469
+- ドメイン別: patterns=110, heuristics=206, anti-patterns=153
+- 最終更新: 2026-09-07T10:00:00Z

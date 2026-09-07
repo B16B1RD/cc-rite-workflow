@@ -4,12 +4,17 @@ title: "規範文を新設したら、その規範文が支配する範囲すべ
 domain: "heuristics"
 description: "「この表は SoT と同期すること」「各行は全 script を名指しすること」のような規範文を文書へ新設すると、その文が支配する既存行のうち条件を満たさないものが即座に契約違反になる。新設の直後に、支配範囲の全行へ適用し直すか、規範文自体の適用範囲を狭めるかを選ばないと、契約を導入した変更そのものが次サイクルの指摘源になる。"
 created: "2026-08-30T16:24:00+09:00"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-08-30T16:24:00+09:00" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-07T10:00:00Z" }
+verified:
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-09-07T10:00:00Z"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260830T071247Z-pr-2481.md"
   - type: "reviews"
     resource: "raw/reviews/20260830T072415Z-pr-2481.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260907T000429Z-pr-2590.md"
 tags: []
 confidence: high
 ---
@@ -50,8 +55,21 @@ hook 登録表と `hooks.json` の乖離を直す変更で、表の直前の SoT
 
 新設した文の主語が、その変更で触れた範囲より広いかを読み直す。「各行」「すべての」「この表は」で始まる文を書いたら、その主語が指す集合を実際に数え、そのうち何件を今回更新したかを突き合わせる。全件でないなら 2 を選ぶ。
 
+### 補強観測: 名指しの集合は実装を grep で数えてから書く
+
+報告欄を複数 skill へ横展開する変更で、同じ失敗が「主語が広すぎる」ではなく「名指しした集合が実装とずれる」形で再現した。規範文は転記義務の主体として 4 つの skill を列挙したが、欄を実装したのは別の 3 つだった（過剰 2・欠落 1）。
+
+このとき採った修正も **2（適用範囲を狭める）** だった。欄を持たない 2 つに欄を足すのではなく、名指しを欄を持つ 3 つへ狭め、残りは呼び出し元に集約されると書き分けた。
+
+新たに分かった手順が 1 つある。**名指しの集合は実装側を `grep -c` で全件数えてから書く**。上の例では全 skill について欄の実在をカウントすれば、過剰 2・欠落 1 が書く前に確定した。判定の手がかり節の「主語が指す集合を実際に数え、そのうち何件を今回更新したかを突き合わせる」を、列挙型の規範文へ適用した形にあたる。
+
+もう 1 つ、**狭めた主張自体が実装より狭くなる**方向の失敗もある。集約先を「呼び出し元」と総称で書いたところ、呼び出し元が存在しない起動経路をプラグイン自身が設計していたため無条件の主張が偽になった。これを起動元基準で「特定の caller 経由のときだけ」と限定し直すと、今度はその caller の報告テンプレートを経由する別の起動元（復旧コマンドからのバッチ継続）を字義的に除外してしまった。**限定の基準は「誰が起動したか」ではなく「どの報告経路に載るか」に置く**と、両側の取りこぼしが同時に消える。
+
+英日ペアがある文書では両方を同時に直す。片側だけ直すと乖離が残り、次サイクルの指摘源になる。
+
 ## 関連ページ
 
+- [同型テンプレートが N 本ある欄は「本数の literal pin」と「欄とプレースホルダの隣接 pin」の 2 本立てで守る](../patterns/homogeneous-template-pins-count-and-adjacency.md)
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 - [全称主張の散文（排他性・網羅性）は経路追加で偽化する — 旧文面 grep 全数洗い + 原因中立化 + not_grep pin](./universal-claim-prose-invalidated-by-path-addition.md)
 - [Wording 層の self-referential loop は mechanical test 化で構造解消する](../patterns/mechanical-test-over-declarative-invariant.md)
@@ -60,3 +78,4 @@ hook 登録表と `hooks.json` の乖離を直す変更で、表の直前の SoT
 
 - [レビュー結果](../../raw/reviews/20260830T071247Z-pr-2481.md)
 - [レビュー結果](../../raw/reviews/20260830T072415Z-pr-2481.md)
+- [レビュー結果](../../raw/reviews/20260907T000429Z-pr-2590.md)
