@@ -60,6 +60,7 @@
 * **Update**: [警告集約は最終試行・同一目的・正規化先の単一性で判定する](pages/heuristics/warning-aggregation-final-attempt-purpose-normalization.md) — raw/reviews/20260907T185457Z-pr-2612.md を統合
 * **Update**: [警告集約は最終試行・同一目的・正規化先の単一性で判定する](pages/heuristics/warning-aggregation-final-attempt-purpose-normalization.md) — raw/reviews/20260907T192209Z-pr-2612.md を統合
 * **Update**: [警告集約は最終試行・同一目的・正規化先の単一性で判定する](pages/heuristics/warning-aggregation-final-attempt-purpose-normalization.md) — raw/reviews/20260907T193647Z-pr-2612.md を統合
+* **lint:clean** — contradictions=0, stale=63, orphans=0, missing_concept=0, unregistered_raw=452, broken_refs=0
 
 ## 2026-09-06
 * **lint:clean** — contradictions=0, stale=58, orphans=0, missing_concept=0, unregistered_raw=436, broken_refs=0
