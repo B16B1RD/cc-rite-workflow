@@ -618,7 +618,7 @@ Conventional Commits。言語は `rite-config.yml` の `language`:
 | `ja` | Generate title in Japanese |
 | `en` | Generate title in English |
 
-Issue タイトルが設定言語と違うときは翻訳する。type はブランチ名、scope / description は Issue タイトル。
+Issue タイトルが設定言語と違うときは翻訳する。type はブランチ名。scope / description は Issue と差分から生成し、内部機構名を避け、変更の効果が読める平易なタイトルにする。
 
 > **⚠️ CRITICAL**: PR title の `description` は `language` 設定に従う。例の言語をコピーしない。
 
@@ -643,11 +643,15 @@ Example (Japanese): feat(pr): /rite:pr-create コマンドを実装
 
 Template file: `templates/pr/generic.md`
 
+Read: [`template-structure.md`](../../templates/issue/template-structure.md) の「上段要約」「図の選択規則」。関連 Issue の問題・実際の差分・検証結果から3ブロックと必要な用語を生成する。共通の経緯識別子禁止を検査し、残存時は作成前に生成をやり直す。`Closes #N` は details 外、変更・実装中の判断・検証・未完了項目・チェックリストは details 内に置き、`<summary>` 直後に空行を置く。
+
+図は共通選択表と1行 bash の gh バージョン検出で選ぶ。gh 2.99.0 以上で SVG を選んだ場合は 3.4(B) で Write tool により `.svg` を書く。Mermaid または図なしでは添付配列を空にする。
+
 本文言語は **Phase 3.1 と同じ**。
 
 | Element | Subject to Language Unification |
 |------|---------------|
-| Section headings | `## Summary` / `## 概要`, etc. |
+| Section headings | `## Summary` / `## 要約`, etc. |
 | Boilerplate text | Description for `Closes #XX`, etc. |
 | Checklist items | `- [ ] Tests added` / `- [ ] テスト追加`, etc. |
 
@@ -667,7 +671,7 @@ rationale: references/rationale.md#impl-notes-for-reviewers
 
 **Zero-item rule (MUST)**: 両ソース 0 件なら節ごと省略（見出し含む）。空見出し・空リストは出さない。
 
-見出し: `## Implementation Notes`（en）/ `## 実装中の判断・計画逸脱`（ja）。位置は `## Changes` と `## Checklist` の間（`templates/pr/generic.md`）。
+見出し: `## Implementation Notes`（en）/ `## 実装中の判断・計画逸脱`（ja）。位置は details 内の `## Changes` / `## 変更` と `## Checklist` / `## チェックリスト` の間（`templates/pr/generic.md`）。
 
 E2E 最適化時は上位 3 件（逸脱 → 判断、ソース順）、省略数を注記（`(他 N 件省略)` / `(N more omitted)`）。
 rationale: references/rationale.md#impl-notes-for-reviewers
@@ -699,6 +703,8 @@ echo "[CONTEXT] PR_CREATE_WORKDIR=$pr_workdir"
 
 1. `{PR_CREATE_WORKDIR}/pr_title.txt` ← Phase 3.1 で生成した PR title の raw 内容（1 行）
 2. `{PR_CREATE_WORKDIR}/pr_body.md` ← Phase 3.2 で生成した PR body の raw 内容
+3. SVG 選択時のみ `{PR_CREATE_WORKDIR}/diagram.svg` ← テーマ中立の図。本文の参照と添付は同じ絶対パスを使う
+4. `{PR_CREATE_WORKDIR}/attachments.json` ← 添付ファイルの絶対パス配列（添付なしも必ず `[]` を書く）
 
 **(C) gh pr create（単一 bash block）**
 
@@ -726,8 +732,16 @@ if [ ! -s "$pr_workdir/pr_body.md" ]; then
   exit 1
 fi
 
-gh pr create -R {owner_repo} --draft --base "{base_branch}" --head "{branch_name}" --title "$pr_title" --body-file "$pr_workdir/pr_body.md"
+attach_args=()
+jq -r '.[]' "$pr_workdir/attachments.json" > "$pr_workdir/attachment-paths" || exit 1
+while IFS= read -r attachment; do
+  [ -f "$attachment" ] || { echo "ERROR: attachment not found: $attachment" >&2; exit 1; }
+  attach_args+=(--attach "$attachment")
+done < "$pr_workdir/attachment-paths"
+gh pr create -R {owner_repo} --draft --base "{base_branch}" --head "{branch_name}" --title "$pr_title" --body-file "$pr_workdir/pr_body.md" "${attach_args[@]}"
 ```
+
+添付ありの成功後は `gh pr view --json body` で参照の添付 URL への置換を確認する。gh が非ゼロでも stdout に PR URL が出た場合は作成済みなので create を再試行しない。stderr を保持し、報告に「添付失敗」と PR URL、削除された一時 SVG を再生成して `gh pr edit --attach` で再添付する案内を含める。成功 sentinel は返さず `[pr-create-failed]` を返す。
 
 ### 3.5 Update Work Memory Phase
 

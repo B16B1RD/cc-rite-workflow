@@ -428,7 +428,7 @@ E2E では結果を context に残す（`/rite:lint` Phase 3.4 が再利用で�
 | Pattern | Examples |
 |---------|---------|
 | `## 受入条件` | Exact match (Japanese) |
-| `## Acceptance Criteria` | Exact match (English) |
+| `## Acceptance Criteria` / `## 5. Acceptance Criteria` | Exact match (English, unnumbered or template heading) |
 | `## 受け入れ条件` | Alternative Japanese form |
 
 The section extends from the matched heading to the next `##` heading or end of body.

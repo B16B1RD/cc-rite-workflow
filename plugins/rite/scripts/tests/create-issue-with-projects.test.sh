@@ -13,7 +13,21 @@ FAIL=0
 # Global mock bin directory: created once, reused by all tests
 MOCK_BIN_DIR="$TEST_DIR/mock-bin"
 mkdir -p "$MOCK_BIN_DIR"
-ln -s "$MOCK_DIR/mock-gh.sh" "$MOCK_BIN_DIR/gh"
+ln -s "$MOCK_DIR/mock-gh.sh" "$MOCK_BIN_DIR/gh-original"
+cat > "$MOCK_BIN_DIR/gh" <<'MOCK'
+#!/bin/bash
+if [ -n "${MOCK_GH_LOG:-}" ]; then
+  jq -cn --args '$ARGS.positional' -- "$@" >> "$MOCK_GH_LOG.argv"
+fi
+if [ "${MOCK_GH_SCENARIO:-}" = "attachment_failure" ] && [ "$1 $2" = "issue create" ]; then
+  printf '%s\n' "$*" >> "$MOCK_GH_LOG"
+  echo "https://github.com/test-owner/test-repo/issues/${MOCK_ISSUE_NUMBER}"
+  echo 'upload failed: attachment permission denied' >&2
+  exit 1
+fi
+exec "$(dirname "$0")/gh-original" "$@"
+MOCK
+chmod +x "$MOCK_BIN_DIR/gh"
 
 # Prerequisite check
 if ! command -v jq >/dev/null 2>&1; then
@@ -1026,6 +1040,74 @@ if [ "$LAST_RC" -eq 0 ]; then
   fi
 else
   fail "Expected exit 0, got $LAST_RC"
+fi
+
+# --------------------------------------------------------------------------
+# Attachments: assert actual argument boundaries, including paths with spaces.
+# --------------------------------------------------------------------------
+echo "TC-035: attachment paths become separate --attach arguments"
+attachment_space="$TEST_DIR/diagram with spaces.svg"
+attachment_other="$TEST_DIR/second.svg"
+printf '<svg/>\n' > "$attachment_space"
+printf '<svg/>\n' > "$attachment_other"
+body_file=$(create_body_file '![構成図](./diagram with spaces.svg)')
+run_script "$(jq -n --arg bf "$body_file" --arg a "$attachment_space" --arg b "$attachment_other" '{
+  issue: {title: "Attachments", body_file: $bf, attachments: [$a, $b]},
+  projects: {enabled: false}
+}')"
+if [ "$LAST_RC" -eq 0 ] && jq -se --arg a "$attachment_space" --arg b "$attachment_other" '
+  map(select(.[0:2] == ["issue", "create"])) | length == 1 and
+  (.[0] | [range(length) as $i | select(.[$i] == "--attach") | .[$i + 1]] == [$a, $b])
+' "$LAST_GH_LOG.argv" >/dev/null; then
+  pass "SVG paths preserved as two independent --attach arguments"
+else
+  fail "Expected two --attach arguments with intact paths (rc=$LAST_RC)"
+fi
+
+echo "TC-036: omitted and empty attachments add no --attach"
+for attachments_input in '{}' '{"attachments":[]}'; do
+  run_script "$(jq -n --argjson extra "$attachments_input" '{
+    issue: ({title: "No attachments"} + $extra), projects: {enabled: false}
+  }')"
+  if [ "$LAST_RC" -eq 0 ] && jq -se 'all(.[]; index("--attach") == null)' "$LAST_GH_LOG.argv" >/dev/null; then
+    pass "No --attach for $attachments_input"
+  else
+    fail "Unexpected --attach or failure for $attachments_input (rc=$LAST_RC)"
+  fi
+done
+
+echo "TC-037: missing attachment fails before any gh invocation"
+missing_attachment="$TEST_DIR/missing diagram.svg"
+run_script "$(jq -n --arg a "$attachment_space" --arg missing "$missing_attachment" '{
+  issue: {title: "Missing attachment", attachments: [$a, $missing]}, projects: {enabled: false}
+}')"
+if [ "$LAST_RC" -eq 1 ] && [ ! -s "$LAST_GH_LOG.argv" ] \
+   && [ "$(cat "$LAST_STDERR")" = "ERROR: attachment not found: $missing_attachment" ] \
+   && printf '%s' "$LAST_OUTPUT" | jq -e --arg missing "$missing_attachment" '
+     .issue_url == "" and .issue_number == 0 and .project_registration == "failed" and
+     (.warnings | index("attachment not found: " + $missing) != null)
+   ' >/dev/null; then
+  pass "Missing attachment → exact stderr, failure JSON, exit 1, no gh call"
+else
+  fail "Expected missing attachment error before gh creation (rc=$LAST_RC)"
+fi
+
+echo "TC-038: failed upload preserves created Issue identity and original stderr"
+run_script "$(jq -n --arg a "$attachment_space" '{
+  issue: {title: "Upload fails", attachments: [$a]},
+  projects: {enabled: true, project_number: 2, owner: "test-owner"}
+}')" "attachment_failure"
+if [ "$LAST_RC" -eq 1 ] \
+   && [ "$(cat "$LAST_STDERR")" = 'upload failed: attachment permission denied' ] \
+   && printf '%s' "$LAST_OUTPUT" | jq -e '
+     .issue_url == "https://github.com/test-owner/test-repo/issues/42" and .issue_number == 42 and
+     .project_registration == "failed" and
+     (.warnings | index("gh issue create failed: upload failed: attachment permission denied") != null)
+   ' >/dev/null \
+   && jq -se 'length == 1 and .[0][0:2] == ["issue", "create"]' "$LAST_GH_LOG.argv" >/dev/null; then
+  pass "Partial creation → preserved URL/number/error, one create, no Projects call"
+else
+  fail "Expected original upload error and existing Issue identity without create retry (rc=$LAST_RC)"
 fi
 
 # --------------------------------------------------------------------------
