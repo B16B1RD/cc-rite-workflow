@@ -46,7 +46,9 @@
 #   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable; pr=<n>
 #   [CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count=<n>; pr=<n>
 #     --exclude-ids の id が和集合内で複数 finding に一致したため**除外を拒否した id の件数**
-#     (id の異なり数であり、転記された finding 件数ではない)。起票自体は成功するため、
+#     (id の異なり数であり、転記された finding 件数ではない)。曖昧判定そのものが失敗して
+#     除外要求を全件拒否した場合も、同じ marker を要求件数付きで出す (marker 不在を
+#     「除外要求どおり適用された」と読む消費側の規約を保つため)。起票自体は成功するため、
 #     cleanup ステップ 12 がこの marker を読んで完了報告へ過剰転記を転記する
 #
 # Emitted summary (stdout, 1 行):
@@ -260,7 +262,15 @@ if [ -n "$EXCLUDE_IDS" ]; then
     ambiguous_json=$(printf '%s' "$findings_json" | jq -c --argjson ex "$exclude_json" '
       [ .[] | .id // empty ] | group_by(.) | map(select(length > 1) | .[0])
       | map(select(. as $i | $ex | index($i))) | unique') \
-      || { echo "WARNING: 曖昧 id の判定に失敗しました。除外なしで全件を転記します (PR #${PR_NUMBER})" >&2; ambiguous_json="[]"; exclude_json='[]'; }
+      || {
+        # 除外要求を全件拒否したので、曖昧 id を検出できた場合と同じ marker を出す。
+        # ここで marker を落とすと「除外が 1 件も効いていないのに完了報告は解消済み N と出す」
+        # 報告乖離になる (marker 不在 = 除外要求どおり適用された、という読み手側の規約が壊れる)。
+        _amb_req=$(printf '%s' "$exclude_json" | jq -r 'length' 2>/dev/null) || _amb_req=0
+        echo "WARNING: 曖昧 id の判定に失敗しました。除外なしで全件を転記します (PR #${PR_NUMBER})" >&2
+        echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count=${_amb_req}; pr=${PR_NUMBER}" >&2
+        ambiguous_json="[]"; exclude_json='[]'
+      }
     if printf '%s' "$ambiguous_json" | jq -e 'length > 0' >/dev/null 2>&1; then
       # id は信頼できない入力 (レビュアーが書く JSON) なので、素の値は neutralize_ctrl を通す。
       # 件数サフィックスは bash 側で付ける。default 範囲は C0 + DEL + 0x80-0x9F を**バイト単位**で

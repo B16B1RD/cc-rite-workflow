@@ -1013,8 +1013,8 @@ rationale: references/rationale.md#review-cleanup-reasons
   - `unavailable` のとき: ` — follow-up 再検証: 未実施（{reason}。全件を転記対象としました）`（`{reason}` は marker の `reason=` 値）
   - marker が無いとき: ` — follow-up 再検証: 実施結果を確認できませんでした（全件を転記対象とした可能性があります）`。本分岐は「節ごと実行されなかった」場合と「抽出は成功したが判定 marker `done` に到達しなかった」場合の 2 つに落ちる（6.0.V は成功時に marker を出さないため後者が marker 皆無になる）。**marker 不在を成功と読んではならない** — 兄弟分岐と同じ規約
 - `{follow_up_ambiguous_note}`: ステップ 6.0 helper の `[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count={n}; pr={pr_number}` marker で判定する:
-  - marker があるとき: ` — ⚠️ 曖昧 id {count} 件を除外できず全件転記しました（解消済みの指摘が follow-up に混じります。`{follow_up_reverify_note}` の「解消済み」は**除外要求件数**であり実除外数ではありません）`（`{count}` は marker の同名フィールドをリテラル置換。**id の異なり数**であり転記された finding 件数ではない）
-  - marker が無いとき: 空文字列（曖昧 id なし）
+  - marker があるとき: ` — ⚠️ 曖昧 id {count} 件はその指摘を除外できず転記しました（他の id の除外は適用済み。上の「follow-up 再検証」の「解消済み」は除外要求件数であり実除外数ではありません）`（`{count}` は marker の同名フィールドをリテラル置換。**id の異なり数**であり転記された finding 件数ではない。出力するリテラルは 1 本の code span で、内部に強調記法や別 placeholder 名を含めない — 兄弟 3 分岐と同じ規約）
+  - marker が無いとき: 空文字列（曖昧 id なし）。**helper が曖昧判定 jq の失敗経路へ倒れた場合も同じ marker を出す**ため、marker 不在は「除外要求がそのまま適用された」と読んでよい（兄弟分岐の「marker 不在を成功と読んではならない」は 6.0.V の成功時 marker 非 emit に由来する別事情で、本 marker には当たらない）
   - 起票自体は成功しているので `{review_cleanup_check}` は `x` 相当のまま変えない。本 note は「成功したが人間の確認が要る」ことだけを伝える
 - `{wiki_ingest_check}`: 以下の sentinel を上から評価し最初の一致を採用 (`WIKI_INGEST_DONE` + `WIKI_INGEST_PUSH_FAILED` が併存しうるため順序重要):
 

@@ -43,6 +43,7 @@
 #   T-24 和集合内で衝突する id は --exclude-ids で除外せず WARNING + marker で surface する
 #   T-24b 重複 id でも --exclude-ids が指していなければ曖昧扱いしない
 #   T-24c 曖昧 id の素値は neutralize_ctrl を通してから WARNING に載せる
+#   T-25 曖昧判定の失敗ハンドラは安全側へ倒し marker も出す
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -558,17 +559,23 @@ else
   # パターンは**単引用符**で書く — 二重引用符だと `\$` がシェル段階で `$` へ潰れ、ERE の
   # 中間アンカーになって決して一致しない（= 空振りする negative pin になる）。
   assert_not_grep "T-15 統合 jq の stderr を捨てない" "$CLEANUP_MD" 'argjson add "\$_part" .\. \+ \$add. "\$_rv_union" 2>/dev/null'
-  # F-05: read 側の id 述語も末尾改行を排除する（write 側 gate と同一述語を保つ invariant）
+  # read 側の id 述語も末尾改行を排除する（write 側 gate と同一述語を保つ invariant）
   assert "T-15 射影 id 述語は末尾改行も排除する" "1" \
     "$(grep -c 'test("\^F-\[0-9\]{2,}\$") and (contains("\\n") | not)' "$CLEANUP_MD" | tr -d ' ')"
-  # F-07: ループ内の原因行 emit。既出 2 箇所に一致するため件数で pin する
-  assert "T-15 原因行 emit は 3 箇所" "3" \
-    "$(grep -c 'head -5 "\$_rv_errf"' "$CLEANUP_MD" | tr -d ' ')"
-  # F-10: 無効な明示トランケートを残さない（2> が毎周 O_TRUNC で開くため冗長）
+  # ループ本体での原因行 emit。既出 2 箇所に一致するため区間を限って pin する
+  # 件数だけでは「ループ外へ移設」を素通しするため、for 〜 done の区間に限って pin する
+  assert "T-15 ループ本体で原因行を emit する" "1" \
+    "$(awk '/^      for f in "\$\{_rv_srcs\[@\]\}"/,/^      done$/' "$CLEANUP_MD" | grep -c 'head -5 "\$_rv_errf"' | tr -d ' ')"
+  # 追記オープンにすると過去周の残骸が混ざり、毎周トランケート前提の emit 位置が意味を失う
+  assert_not_grep "T-15 errf を追記で開かない" "$CLEANUP_MD" '2>>"\$\{_rv_errf'
+  # 無効な明示トランケートを残さない（2> が毎周 O_TRUNC で開くため冗長）
   assert_not_grep "T-15 冗長な明示トランケートを残さない" "$CLEANUP_MD" '\[ -n "\$_rv_errf" \] && : > "\$_rv_errf"'
-  # F-03: 曖昧 id marker に完了報告側の消費規則がある
+  # 曖昧 id marker に完了報告側の消費規則がある
   assert_grep "T-15 曖昧 id marker の消費規則がある" "$CLEANUP_MD" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count=\{n\}; pr=\{pr_number\}'
-  assert_grep "T-15 完了報告に曖昧 note を差し込む" "$CLEANUP_MD" '\{follow_up_ambiguous_note\}'
+  # placeholder の presence だけだと定義側 bullet で充足し、完了報告への配線を消す変異を素通しする
+  assert_grep "T-15 完了報告に曖昧 note を差し込む" "$CLEANUP_MD" '\{follow_up_reverify_note\}\{follow_up_ambiguous_note\}'
+  # note のリテラルは 1 本の code span に保つ（分断すると出力すべき文字列が不定になる）
+  assert_not_grep "T-15 note リテラルに別 placeholder 名を埋めない" "$CLEANUP_MD" '曖昧 id \{count\}.*`\{follow_up_reverify_note\}`'
   assert_grep "T-15 和集合は連結のみ" "$CLEANUP_MD" 'argjson add "\$_part" .\. \+ \$add.'
   assert_grep "T-15 最終射影の rc を検査する" "$CLEANUP_MD" 'if _rv_out=\$\(jq -c'
   assert_not_grep "T-15 最新 1 本を選ぶループを残さない" "$CLEANUP_MD" '_rv_src="\$f"; _rv_base="\$b"'
@@ -757,7 +764,9 @@ run_target "$r" --exclude-ids "F-05${_esc}[31m"
 assert "T-24c exit 0" "0" "$RC"
 assert "T-24c stderr に生 ESC を残さない" "0" \
   "$(LC_ALL=C grep -c "$_esc" "$ERR" | tr -d ' ')"
-assert_grep "T-24c 中和後の id で WARNING を出す" "$ERR" '和集合内で複数の finding に一致するため除外しません'
+assert_grep "T-24c 曖昧 id の WARNING 自体は出る" "$ERR" '和集合内で複数の finding に一致するため除外しません'
+assert_grep "T-24c 中和後の id と件数を WARNING に載せる" "$ERR" 'F-05\?\[31m \(2 件\)'
+assert_grep "T-24c 過剰転記を marker で surface" "$ERR" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count=1; pr=9'
 
 echo "--- T-24b: 重複 id があっても --exclude-ids が指していなければ曖昧扱いしない ---"
 # 曖昧判定の絞り込み (`$ex` に含まれる id だけを曖昧とする) を削る変異を捕まえる。
@@ -772,6 +781,13 @@ assert_not_grep "T-24b 曖昧 marker を出さない" "$ERR" 'FOLLOW_UP_EXCLUDE_
 assert_not_grep "T-24b F-01 は除外される" "$STUB_DIR/body.md" '消える F-01'
 assert_grep "T-24b 重複 id は両方残る (cycle1)" "$STUB_DIR/body.md" 'cycle1 の F-05'
 assert_grep "T-24b 重複 id は両方残る (cycle2)" "$STUB_DIR/body.md" 'cycle2 の F-05'
+
+echo "--- T-25: 曖昧判定の失敗ハンドラは安全側へ倒し marker も出す ---"
+# jq を失敗させる入力は helper 内部で生成される値のため作れない。倒れる向きと marker の
+# 有無はソース pin で固定する（向きが黙って戻ると未解消の指摘が落ちる側へ回帰する）。
+assert_grep "T-25 判定失敗は除外なしへ倒す" "$TARGET" "ambiguous_json=\"\[\]\"; exclude_json='\[\]'"
+assert_grep "T-25 判定失敗でも marker を出す" "$TARGET" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count=\$\{_amb_req\}'
+assert_not_grep "T-25 除外をそのまま適用する文言を残さない" "$TARGET" '除外をそのまま適用します'
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?
