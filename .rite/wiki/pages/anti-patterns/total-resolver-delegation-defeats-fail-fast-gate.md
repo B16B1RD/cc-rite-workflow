@@ -8,9 +8,13 @@ sources:
     resource: "raw/reviews/20260712T223319Z-pr-1839.md"
   - type: "fixes"
     resource: "raw/fixes/20260801T112516Z-pr-2081.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260907T131420Z-pr-2608.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T23:12:28+09:00" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-07T13:24:28Z" }
+verified:
+  - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-07T13:24:28Z" }
 ---
 
 # 全域で成功する resolver への委譲が既存 fail-fast ガードを silent success 化する
@@ -38,6 +42,16 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T23:12:28+09:00" }
 
 あわせて、**述語の一部を別の述語から literal 複製すると、片方だけの編集で両者が食い違う**。しかもその食い違いが「集合の和は保たれるが要素の振り分けだけが変わる」形だと、和の一致を検査する不変条件では検出できない。共有できる部分は文字列連結で構造的に共有し、複製を作らない。
 
+### 実測補強: 判定不能は分類前に停止し、入力を変更しない
+
+後続の実測では、上流が渡す実測フラグが真偽値でない場合を、分類処理より前に契約違反として停止させた。停止時に入力 JSON が不変であることをテストし、caller の fatal routing、理由コード、評価順、結果 schema の説明も同じ変更で同期した結果、複数 reviewer の独立確認で指摘なしに収束した。
+
+値域外を fail-loud 化するときは、次の三面を同時に確認する。
+
+- **停止位置**: 分類や永続化より前で止まり、値域外を正規状態へ読み替えない
+- **非破壊性**: エラー終了時に入力や途中成果物を変更しない
+- **分散契約**: 実装の理由コードと caller routing、評価順、schema、テストの語彙を同期する
+
 ## 检出のポイント
 
 - 委譲先 helper の「失敗時挙動」を読む: exit code だけでなく「失敗を成功として degrade する」経路 (fallback 内蔵) の有無
@@ -54,3 +68,4 @@ generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-01T23:12:28+09:00" }
 
 - [レビュー結果](../../raw/reviews/20260712T223319Z-pr-1839.md)
 - [fix 結果](../../raw/fixes/20260801T112516Z-pr-2081.md)
+- [レビュー結果](../../raw/reviews/20260907T131420Z-pr-2608.md)
