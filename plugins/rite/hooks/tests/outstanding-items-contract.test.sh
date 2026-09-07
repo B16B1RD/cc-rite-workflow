@@ -107,10 +107,27 @@ for f in "$OPEN" "$ITERATE" "$BATCH_RUN"; do
   assert_grep "$name has a 要対応 section in its completion report" "$f" '^要対応:$'
   assert_grep "$name defines the {action_items} placeholder" "$f" '\{action_items\}'
   assert_grep "$name omits the section when there is nothing to transcribe" "$f" '0 件なら `要対応:` 行ごと省略する'
+  # 欄とプレースホルダを対で pin する。presence-only では、{action_items} が placeholder 表と
+  # 規則の散文でも hit するためテンプレ本体から消えても素通りする。
+  paired=$(grep -A1 '^要対応:$' "$f" | grep -c '^{action_items}$')
+  section_count=$(grep -c '^要対応:$' "$f")
+  assert "$name pairs every 要対応 section with {action_items}" "$section_count" "$paired"
 done
-# 停止経路こそ WARNING が残る出口。iterate は正常終了 4 テンプレ + ブレーカー停止 2 テンプレの計 6 経路。
+# 報告経路の総数を pin する。presence-only だと N 本のうち 1 本から欄が消えても green のまま通る。
+# 停止・失敗経路こそユーザーの操作が必要な WARNING が残る出口なので、正常終了だけを数えない。
+# 経路を増減させたときは本 assert の期待値も更新する（新経路が欄なしで増える方向は総数側では
+# 検出できないため、ここは人手ゲートに倒す）。
+# open は完了通知 1 本。iterate は正常終了 4 テンプレ + ブレーカー停止 2 テンプレ。
+# batch-run はステップ 7 完了通知 2 本 + ステップ 8 停止報告 1 本。
+assert "open carries the 要対応 section on its completion report" "1" "$(grep -c '^要対応:$' "$OPEN")"
 assert "iterate carries the 要対応 section on all 6 completion paths" "6" "$(grep -c '^要対応:$' "$ITERATE")"
-assert_grep "rite-workflow names the completion report as the transcription target" "$WORKFLOW" '完了報告の `要対応:` 欄'
+assert "batch-run carries the 要対応 section on all 3 report paths" "3" "$(grep -c '^要対応:$' "$BATCH_RUN")"
+assert_grep "rite-workflow names the completion report as the transcription target" "$WORKFLOW" '完了報告へ転記する'
+# 転記主体の列挙は欄を持つ 3 skill に限る。欄を持たない ready / merge を主体として名指ししない。
+assert_grep "rite-workflow scopes the transcription duty to the skills that carry the section" "$WORKFLOW" '欄を持たない `/rite:ready` / `/rite:merge`'
+for s in ready merge; do
+  assert "no 要対応 section in $s (duty is scoped to the caller)" "0" "$(grep -c '^要対応:$' "$SCRIPT_DIR/../../skills/$s/SKILL.md")"
+done
 
 if ! print_summary "$(basename "$0")" "cleanup/batch-run/wiki-ingest/recover の未完了事項集約 + 要対応 転記 contract (T-01/T-02/T-03)"; then
   exit 1

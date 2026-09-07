@@ -669,6 +669,7 @@ draft PR の作成が完了したら、ユーザーに以下を案内する:
 - ブランチ: {branch_name}
 - Draft PR: #{pr_number} - {pr_url}
 
+（転記すべき行があるときのみ、以下 2 行）
 要対応:
 {action_items}
 

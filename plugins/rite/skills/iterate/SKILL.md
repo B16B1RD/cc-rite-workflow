@@ -832,6 +832,7 @@ marker_emit ITERATE_NB_REMAINING 0 "status=ok" "record=" "by_severity=" "overlay
 - ブランチ: {branch_name}
 - 未処理 non-blocking: 0 件
 
+（転記すべき行があるときのみ、以下 2 行）
 要対応:
 {action_items}
 
@@ -853,6 +854,7 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 - 未処理 non-blocking: 0 件
 - sweep: issued={sweep_issued} / recorded={sweep_recorded}
 
+（転記すべき行があるときのみ、以下 2 行）
 要対応:
 {action_items}
 
@@ -872,6 +874,7 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 - 終了理由: fix:replied-only
 - ブランチ: {branch_name}
 
+（転記すべき行があるときのみ、以下 2 行）
 要対応:
 {action_items}
 
@@ -891,6 +894,7 @@ flow-state は phase={review|fix} のままです。`/rite:ready` 実行時に p
 - 終了理由: fix:cancelled-by-user (fix.md 内 AskUserQuestion で中止選択)
 - ブランチ: {branch_name}
 
+（転記すべき行があるときのみ、以下 2 行）
 要対応:
 {action_items}
 
@@ -1019,6 +1023,7 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 - blocking 推移: {trend}
 - 措置: 当該 Issue を failed 扱いとし、draft/open PR をレビュー待ちで残します（`/rite:batch-run` が残りキューを続行、最終 Issue なら完了通知へ）
 
+（転記すべき行があるときのみ、以下 2 行）
 要対応:
 {action_items}
 
@@ -1047,6 +1052,7 @@ review を回さず、当該 Issue を非収束（failed）として `/rite:batc
 - blocking 推移: {trend}
 - 措置: 当該 PR を非収束として失敗記録し、draft/open PR をレビュー待ちで残します（マージには進みません）
 
+（転記すべき行があるときのみ、以下 2 行）
 要対応:
 {action_items}
 
