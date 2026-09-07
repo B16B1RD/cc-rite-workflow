@@ -2187,6 +2187,105 @@ rm -rf "$_audit_tmp"
 echo ""
 
 # --------------------------------------------------------------------------
+# Pattern 6: Direct gh issue create guard
+# --------------------------------------------------------------------------
+
+echo "TC-144 / T-01,T-05: direct gh issue create → deny with approved-path guidance"
+for tc144_cmd in \
+  'gh issue create -R owner/repo --title x --body-file /tmp/body.md' \
+  '/usr/bin/gh issue create --title x' \
+  'printf safe; gh issue create --title x' \
+  "bash -c 'gh issue create --title x'" \
+  'g""h issue create --title x' \
+  $'gh issue \\\ncreate --title x' \
+  $'cat <<EOF | gh issue create --title x\nbody\nEOF' \
+  $'echo \'<<EOF\'\ngh issue create --title x\nEOF' \
+  $'# <<EOF\ngh issue create --title x' \
+  $': <<END-1\nbody\nEND-1\ngh issue create --title x' \
+  $': <<E\\OF\nbody\nEOF\ngh issue create --title x'; do
+  rc=0
+  output=$(run_guard "Bash" "$tc144_cmd") || rc=$?
+  decision=$(extract_hook_field "$output" permissionDecision)
+  reason=$(extract_hook_field "$output" permissionDecisionReason)
+  if [ "$rc" = "0" ] && [ "$decision" = "deny" ] \
+    && [[ "$reason" == *"direct-gh-issue-create"* ]] \
+    && [[ "$reason" == *"create-issue-with-projects.sh"* ]] \
+    && [[ "$reason" == *"/rite:issue-create"* ]]; then
+    pass "TC-144 direct create form denied with helper guidance: $tc144_cmd"
+  else
+    fail "TC-144 expected direct create deny, got rc=$rc decision=$decision reason=$reason cmd=$tc144_cmd"
+  fi
+done
+echo ""
+
+echo "TC-144: gh issue create text inside a heredoc body → allow"
+tc144_heredoc_text=$'printf %s <<\'EOF\'\ngh issue create --title x\nEOF'
+rc=0
+output=$(run_guard "Bash" "$tc144_heredoc_text") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-144 heredoc body text allowed"
+else
+  fail "TC-144 expected heredoc body text allow, got rc=$rc output=$output"
+fi
+echo ""
+
+echo "TC-145 / T-02,T-03: approved Issue helpers → allow"
+for tc145_cmd in \
+  'bash plugins/rite/scripts/create-issue-with-projects.sh "$args_json"' \
+  'bash plugins/rite/scripts/decompose-issues.sh "$args_json"'; do
+  rc=0
+  output=$(run_guard "Bash" "$tc145_cmd") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "TC-145 approved helper allowed: $tc145_cmd"
+  else
+    fail "TC-145 expected helper allow, got rc=$rc output=$output cmd=$tc145_cmd"
+  fi
+done
+echo ""
+
+echo "TC-146 / T-04: non-create gh issue commands → allow"
+for tc146_cmd in \
+  'gh issue list --label follow-up --state all' \
+  'gh issue view 2591 --json body' \
+  'gh issue edit 2591 --title updated' \
+  'gh label create follow-up --color ededed'; do
+  rc=0
+  output=$(run_guard "Bash" "$tc146_cmd") || rc=$?
+  if [ "$rc" = "0" ] && [ -z "$output" ]; then
+    pass "TC-146 non-create command allowed: $tc146_cmd"
+  else
+    fail "TC-146 expected non-create allow, got rc=$rc output=$output cmd=$tc146_cmd"
+  fi
+done
+echo ""
+
+echo "TC-147 / T-06,T-07: Pattern 6 crash → fail-closed without weakening Pattern 1"
+tc147_input=$(jq -n --arg cmd 'gh issue create --title x' \
+  '{tool_name:"Bash",tool_input:{command:$cmd}}')
+rc=0
+output=$(printf '%s' "$tc147_input" | RITE_BTG_TEST_CRASH=pattern6 bash "$HOOK" 2>"$STDERR_FILE") || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+stderr_log=$(cat "$STDERR_FILE")
+if [ "$rc" = "2" ] && [ "$decision" = "deny" ] \
+  && [[ "$reason" == *"direct-gh-issue-create"* ]] \
+  && [[ "$stderr_log" == *"Pattern 6"* ]]; then
+  pass "TC-147 Pattern 6 crash denies and leaves stderr context"
+else
+  fail "TC-147 expected Pattern 6 fail-closed deny, got rc=$rc decision=$decision reason=$reason stderr=$stderr_log"
+fi
+rc=0
+output=$(run_guard "Bash" 'gh pr diff 1 --stat') || rc=$?
+decision=$(extract_hook_field "$output" permissionDecision)
+reason=$(extract_hook_field "$output" permissionDecisionReason)
+if [ "$rc" = "0" ] && [ "$decision" = "deny" ] && [[ "$reason" == *"gh-pr-diff-stat"* ]]; then
+  pass "TC-147 Pattern 1 deny remains intact after Pattern 6"
+else
+  fail "TC-147 expected Pattern 1 non-regression, got rc=$rc decision=$decision reason=$reason"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="
