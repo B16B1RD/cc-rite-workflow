@@ -123,7 +123,23 @@ reset_case; run
 check 'normal rc' test "$RC" = 0
 marker normal success 42
 check 'body first match overrides branch' lacks "$CASE_DIR/git.log" 'branch --show-current'
-check 'base config controls diff' contains "$CASE_DIR/git.log" 'diff --name-status origin/main...HEAD'
+# Frozen pre-extraction resolver: compare platform-local legacy behavior, since
+# its GNU regex extensions do not promise the same value under BSD tools.
+# Keep this oracle independent of the extracted helper; config changes belong
+# to a separate change, not this compatibility-preserving extraction.
+legacy_base=$(
+  set +e
+  cd "$CASE_DIR"
+  base_branch=$(grep -E '^\s*base:' rite-config.yml 2>/dev/null | head -1 \
+    | sed 's/.*base:[[:space:]]*"\?\([^"]*\)"\?.*/\1/')
+  [ -z "$base_branch" ] && base_branch="develop"
+  printf '%s' "$base_branch"
+)
+check 'base config preserves pre-extraction diff range' contains "$CASE_DIR/git.log" "diff --name-status origin/${legacy_base}...HEAD"
+if ! contains "$CASE_DIR/git.log" "diff --name-status origin/${legacy_base}...HEAD"; then
+  printf 'expected base: %s\n' "$legacy_base"
+  cat "$CASE_DIR/git.log"
+fi
 printf 'update-progress\nappend-section\n' > "$CASE_DIR/order.expected"
 check 'progress precedes history' cmp -s "$CASE_DIR/order.expected" "$CASE_DIR/order"
 check 'A/M/D/R payload matches original fixture' cmp -s "$TEST_DIR/changed.expected" "$CASE_DIR/changed.actual"
