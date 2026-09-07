@@ -741,7 +741,7 @@ if [ "$branch_strategy" = "same_branch" ]; then
     fi
     echo "  原因候補: same_branch 戦略で .gitignore に '!.rite/wiki/' negation が未設定の可能性" >&2
     echo "  対処:" >&2
-    echo "    1. '.rite/wiki/' 除外行より後ろへ '!.rite/wiki/' と '!.rite/wiki/**' を追記する (anchor があればその直後、無ければ末尾。前に置くと後勝ちで効かない)" >&2
+    echo "    1. '.rite/wiki/' 除外行より後ろへ '!.rite/wiki/' と '!.rite/wiki/**' を追記する (除外行が無ければ末尾。anchor が除外行の後ろにあればその直後。前に置くと後勝ちで効かない)" >&2
     echo "    2. git add --dry-run で verification してから再実行" >&2
     echo "    3. それ以外の原因 (permission / disk full / corrupt index 等) は上記 stderr の詳細を確認" >&2
     [ -n "$add_err" ] && rm -f "$add_err"
