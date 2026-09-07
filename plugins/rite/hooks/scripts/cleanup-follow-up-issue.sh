@@ -385,14 +385,13 @@ _fu_type="fix"
 _fu_complexity="S"
 _fu_priority="Medium"
 
-findings_md=$(printf '%s' "$findings_json" | jq -r --arg dash "—" --arg empty "" '
+if ! findings_md=$(printf '%s' "$findings_json" | jq -r --arg dash "—" --arg empty "" '
   .[] |
   "### \(.id // $dash) (\(.severity // $dash)) — \(.reviewer // $dash)\n\n" +
   "- 場所: `\(.file // $dash):\((.line | if . == null then $dash else tostring end))`\n" +
   "- 説明: \(.description // $empty)\n" +
   "- 提案: \(.suggestion // $empty)\n"
-')
-if [ -z "$findings_md" ]; then
+') || [ -z "$findings_md" ]; then
   echo "WARNING: follow-up finding 本文の生成に失敗しました。起票しません" >&2
   emit_failed create_api
   exit 0

@@ -38,13 +38,7 @@ run_case incomplete_gate "$(make_body "$SENTINEL" abc1234 abc1234 true | jq 'del
 run_case bad_gate_stats "$(make_body "$SENTINEL" abc1234 abc1234 true | jq '.measured_gate.blocking = -1')" 1 gate_not_applied
 run_case valid "$(make_body "$SENTINEL" abc1234 abc1234 true)" 0 ""
 
-# --- id 書式検査は findings[] と non_blocking_findings[] の和集合で hard fail (Issue 2593 AC-6 / T-06) ---
-#
-# AC-6 の文言は「非ゼロ終了」だが、本 codebase の hard fail は `exit 0` + `LOCAL_SAVE_FAILED` +
-# `JSON_SAVED=false` (= 保存しない) で表現される。rc=1 は provenance 契約違反 3 種に予約されており、
-# 4 つ目を足すと `skills/pr-review/SKILL.md` の reason 列挙 (15 件) / rc=1 列挙 (3 種) が stale に
-# なるが、当該ファイルは本 Issue の Non-Target。したがって assert は rc ではなく
-# 「保存されない」+「reason が出る」に置く (Decision Log D-05)。
+# 書式違反による保存拒否は exit 0 + LOCAL_SAVE_FAILED + JSON_SAVED=false で表す。
 _nb_finding() {
   jq -n --arg id "$1" '{id:$id, reviewer:"code-quality-reviewer", severity:"LOW",
     file:"a.md", line:1, description:"d", suggestion:"s", status:"open", scope:"current-pr"}'
@@ -57,8 +51,6 @@ run_id_case() {
   bash "$SAVE" --pr 2563 --content-file "$TMP_ROOT/$name.json" --results-dir "$dir" \
     >/dev/null 2>"$TMP_ROOT/$name.err" || rc=$?
   if [ "$expect_saved" = "no" ]; then
-    # D-05: 書式違反は rc=1 に昇格させず exit 0 + LOCAL_SAVE_FAILED で表現する
-    # (rc=1 は provenance 違反 3 種の予約枠。pr-review/SKILL.md の closed list を stale にしない)
     assert "$name rc" "0" "$rc"
     assert_grep "$name reason" "$TMP_ROOT/$name.err" 'reason=finding_id_format_or_uniqueness_violation'
     assert_grep "$name JSON_SAVED=false" "$TMP_ROOT/$name.err" 'JSON_SAVED=false'

@@ -32,7 +32,7 @@
 #   T-14 --exclude-ids 未指定 / 空文字列は既存挙動と完全一致 (AC-4)
 #   T-15 cleanup SKILL.md が再検証手順・3 値語彙・除外引数・和集合抽出を持つ (AC-5 / AC-6)
 #
-# Coverage (全 cycle 和集合、Issue 2593 の T-01..T-08):
+# Coverage (全 cycle 和集合):
 #   T-17 2 本の JSON の指摘が和集合で body に載る + 本数の stderr 1 行 (AC-1)
 #   T-18 同一 id でも別 cycle の指摘は畳まず全件載る (AC-2)
 #   T-19 --exclude-ids は和集合後に適用される (AC-3)
@@ -807,6 +807,18 @@ assert_not_grep "T-25 除外適用の成功を主張しない" "$ERR" 'FOLLOW_UP
 # 向きが戻る変異（exclude_json を捨てない）を捕まえるソース pin も併置する
 assert_grep "T-25 判定失敗は除外なしへ倒す" "$TARGET" "ambiguous_json=\"\[\]\"; exclude_json='\[\]'"
 assert_not_grep "T-25 除外をそのまま適用する文言を残さない" "$TARGET" '除外をそのまま適用します'
+
+echo "--- T-26: 本文生成が部分出力後に失敗したら起票しない ---"
+reset_stubs
+r=$(new_root t26)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-01","description":"先行する正常指摘"},"plain-string-finding"]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-02","description":"後続する正常指摘"}]}'
+run_target "$r"
+assert "T-26 exit 0" "0" "$RC"
+assert "T-26 部分本文を起票しない" "0" "$(create_count)"
+assert_grep "T-26 本文生成失敗の WARNING" "$ERR" 'follow-up finding 本文の生成に失敗しました'
+assert_grep "T-26 失敗 marker" "$ERR" 'FOLLOW_UP_ISSUE=failed; reason=create_api; pr=9'
+assert_not_grep "T-26 起票成功を主張しない" "$ERR" 'FOLLOW_UP_ISSUE=created'
 
 echo "--- T-25b: 除外を全破棄する他の経路も marker を出す ---"
 # 「除外ゼロなら必ず marker」を helper 全体の不変条件にしている（消費側が marker 不在を
