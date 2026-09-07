@@ -15,7 +15,7 @@ Examples:
 
 The launcher keeps host-global rite installations out of the dogfooding path:
   claude  loads plugins/rite explicitly with --plugin-dir
-  codex   uses the repository-local .codex-dev profile
+  codex   uses the repository-local .codex-dev profile in auto-approval mode
   grok    uses the repository-local .grok configuration and plugin symlink
 EOF
 }
@@ -83,7 +83,7 @@ case "$host" in
       fi
     done
     export CODEX_HOME="$codex_home"
-    exec codex --cd "$repo_root" "$@"
+    exec codex --approve-for-me --cd "$repo_root" "$@"
     ;;
   grok)
     command -v grok >/dev/null 2>&1 || die "grok executable not found"

@@ -19,6 +19,10 @@ scripts/rite-dev codex
 scripts/rite-dev grok
 ```
 
+The Codex launcher enables `--approve-for-me`, which automatically reviews
+approval requests inside the workspace-write sandbox similarly to Claude
+Code's auto permission mode.
+
 Additional arguments are forwarded to the selected host. The launcher exports
 `RITE_HOST` and `RITE_PLUGIN_ROOT` for host-neutral workflow code. Claude Code
 loads `plugins/rite` explicitly and disables `rite@rite-marketplace` for that
