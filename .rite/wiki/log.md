@@ -16,6 +16,9 @@
 
 * **Update**: [分岐表は判定キーを 1 つの観測量へ統一し、直交軸は表から出して独立段落に書く](pages/patterns/branch-table-single-observation-key-orthogonal-axis-separation.md) — raw/reviews/20260907T082935Z-pr-2601.md を統合
 
+* **lint:clean** — contradictions=0, stale=62, orphans=0, missing_concept=0, unregistered_raw=444, broken_refs=0
+* **Lint scope** — 構造検査は全ページと raw を再走査。意味的検査はカタログと更新ページ・関連する観測値／終端状態／実測基準のページを照合し、新しい矛盾は検出しなかった。既存ページ全文の総当たり意味監査は未実施。孤児・リンク検査 helper は Broken pipe 診断を伴ったが、完了 marker を返した。
+
 ## 2026-09-06
 * **lint:clean** — contradictions=0, stale=58, orphans=0, missing_concept=0, unregistered_raw=436, broken_refs=0
 * **Create**: [git diff の出力形状を前提にしたパーサは、git の設定と変更種別で黙って空振りする](pages/anti-patterns/git-diff-parser-output-shape-assumptions.md) — raw/reviews/20260906T125803Z-pr-2582.md を新規ページ化
