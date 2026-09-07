@@ -190,10 +190,11 @@ and (.findings | type == "array")
 # 件数を水増しし、型によって判定が化ける
 # 左辺は括弧で束縛する。`[.findings[].id] | unique | length == (.findings | length)` と書くと
 # パイプ後の `.` が unique 済み配列になり "Cannot index array with string findings" で rc=5 になる
+# `contains("\n") | not` は必須 — Oniguruma の `$` は末尾改行の直前にも一致し、単体では "F-05\n" を通す
 ((if (.non_blocking_findings | type) == "array" then .non_blocking_findings else [] end)) as $nb
 | (((.findings | length) + ($nb | length)) == 0)
 or (
-  ([(.findings[]?, $nb[])] | all(.id? // "" | test("^F-[0-9]{2,}$")))
+  ([(.findings[]?, $nb[])] | all((.id? // "") | (test("^F-[0-9]{2,}$") and (contains("\n") | not))))
   and ((.findings | length == 0)
        or (([.findings[].id] | unique | length) == (.findings | length)))
 )

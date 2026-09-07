@@ -29,7 +29,10 @@
 #   --exclude-ids        転記から除外する finding id の CSV (例: "F-01,F-05")。cleanup ステップ 6.0 が
 #                        マージ後 HEAD で再検証し `resolved` と判定した id だけを渡す。空文字列 /
 #                        省略は「除外なし」であり引数不正ではない (後方互換)。既知 id と一致しない
-#                        値は WARNING のうえ無視し、残りの除外を適用して続行する
+#                        値は WARNING のうえ無視し、残りの除外を適用して続行する。
+#                        和集合内で同一 id が複数 finding に付いている場合、その id は identity として
+#                        曖昧なため除外せず全件を転記し、WARNING と marker で surface する
+#                        (過剰転記側へ倒す)
 #
 # Exit codes:
 #   0: 正常終了 (起票 / skip / 非ブロッキング失敗を含む)
@@ -41,6 +44,9 @@
 #     no_findings  : 除外を適用する前から non_blocking_findings[] が 0 件
 #     all_resolved : 除外**後**に 0 件になった (再検証で全件が解消済みと判定された)
 #   [CONTEXT] FOLLOW_UP_ISSUE=failed; reason=lookup_api|create_api|create_script_missing|json_undecidable; pr=<n>
+#   [CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count=<n>; pr=<n>
+#     --exclude-ids の id が和集合内で複数 finding に一致したため除外せず転記した件数。
+#     起票自体は成功するため、完了報告がこの過剰転記に気づけるよう marker で出す
 #
 # Emitted summary (stdout, 1 行):
 #   [cleanup-follow-up-issue] result=<created|skipped|failed>; ...
@@ -164,7 +170,7 @@ fi
 # 6.0.V の再検証が `--exclude-ids` で担い、本 helper は「全 cycle で記録された集合」を作る。
 #
 # **id では畳まない**。`id` は各 JSON 内で振り直される連番であり cycle を跨いだ identity を持たない
-# (cycle を跨ぐ identity は fingerprint = sha1(file:category:message) が担う)。同じ `F-07` が cycle ごとに
+# (cycle 間の同一性判断は pr-review の semantic 判断が担い、本配列に機械的 identity キーは無い)。同じ `F-07` が cycle ごとに
 # 別の指摘を指すため、id を key に畳むと別々の指摘が黙って 1 件に潰れる — 本 helper が防ごうとしている
 # 取りこぼしそのものになる。よって全 cycle 分を**そのまま連結**する。同一 id の見出しが body に複数出るが、
 # それらは実際に別の指摘なので正しい。
@@ -248,14 +254,27 @@ if [ -n "$EXCLUDE_IDS" ]; then
     # 判定しても `--exclude-ids` は id 一致で両方を落とすため、残存している側が黙って消える。
     # よって曖昧な id は**除外せず全件を残し**、WARNING で surface する (過剰転記側へ倒す。
     # `undecidable` は転記する / `id: null` は必ず `undecidable` と同じ方針)。
+    # 判定 jq の失敗を無言で「曖昧なし」に畳まない。畳むと除外がそのまま適用され、本ガードが
+    # 防ごうとしている「未解消の側が黙って落ちる」挙動へ戻る (危険側の fail-open)。
     ambiguous_json=$(printf '%s' "$findings_json" | jq -c --argjson ex "$exclude_json" '
       [ .[] | .id // empty ] | group_by(.) | map(select(length > 1) | .[0])
-      | map(select(. as $i | $ex | index($i))) | unique') || ambiguous_json="[]"
+      | map(select(. as $i | $ex | index($i))) | unique') \
+      || { echo "WARNING: 曖昧 id の判定に失敗しました。除外をそのまま適用します (PR #${PR_NUMBER})" >&2; ambiguous_json="[]"; }
     if printf '%s' "$ambiguous_json" | jq -e 'length > 0' >/dev/null 2>&1; then
-      ambiguous_detail=$(printf '%s' "$findings_json" | jq -r --argjson amb "$ambiguous_json" '
+      # id は信頼できない入力 (レビュアーが書く JSON) なので、素の値は neutralize_ctrl を通す。
+      # 件数サフィックスは bash 側で付ける — 文字列全体を通すと `件` が byte 単位置換で潰れる。
+      ambiguous_detail=""
+      while IFS=$'\t' read -r _amb_id _amb_n; do
+        [ -n "$_amb_id" ] || continue
+        _amb_safe=$(printf '%s' "$_amb_id" | neutralize_ctrl)
+        ambiguous_detail="${ambiguous_detail:+${ambiguous_detail}, }${_amb_safe} (${_amb_n} 件)"
+      done < <(printf '%s' "$findings_json" | jq -r --argjson amb "$ambiguous_json" '
         [ .[] | .id // empty ] | group_by(.)
-        | map(select(.[0] as $i | $amb | index($i)) | "\(.[0]) (\(length) 件)") | join(", ")')
+        | .[] | select(.[0] as $i | $amb | index($i)) | [.[0], (length | tostring)] | @tsv')
+      ambiguous_count=$(printf '%s' "$ambiguous_json" | jq -r 'length')
       echo "WARNING: --exclude-ids の id が和集合内で複数の finding に一致するため除外しません: ${ambiguous_detail} (PR #${PR_NUMBER})。id は cycle ごとの連番で cycle 跨ぎの identity を持たないため、片方だけが解消済みでも両方を落とすと残存指摘が消えます。全件を転記します" >&2
+      # 起票は成功するため、この過剰転記は marker が無いと完了報告に届かない。
+      echo "[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count=${ambiguous_count}; pr=${PR_NUMBER}" >&2
       exclude_json=$(printf '%s' "$exclude_json" | jq -c --argjson amb "$ambiguous_json" '. - $amb') \
         || { echo "WARNING: 曖昧 id の除外解除に失敗しました。除外なしで全件を転記します (PR #${PR_NUMBER})" >&2; exclude_json='[]'; }
     fi

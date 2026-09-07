@@ -39,8 +39,9 @@
 #   T-20 和集合の全件除外は all_resolved (AC-4)
 #   T-21 全 JSON が 0 件なら no_findings (AC-7 非回帰)
 #   T-22 id 欠落 / 書式外 id の finding を落とさない (MUST NOT)
-#   T-23 一部 JSON の統合失敗は当該 1 本だけ除外し、健全な側の転記を続ける
-#   T-24 和集合内で衝突する id は --exclude-ids で除外せず WARNING で surface する
+#   T-23 parse 不能な JSON を 1 本だけ除外し、jq の原因行と union 内訳を surface する
+#   T-24 和集合内で衝突する id は --exclude-ids で除外せず WARNING + marker で surface する
+#   T-24b 重複 id でも --exclude-ids が指していなければ曖昧扱いしない
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -544,6 +545,16 @@ else
   # 再検証も helper と同じ和集合を見る (最新 1 本だと転記集合と食い違う)
   assert_grep "T-15 再検証は全 JSON の和集合" "$CLEANUP_MD" '全ファイルの `non_blocking_findings\[\]` を和集合'
   assert_not_grep "T-15 id による畳み込みを残さない" "$CLEANUP_MD" 'group_by\(\.id\)'
+  # jq リテラルの pin だけでは「その挙動を指示する散文」の drift を検出できない
+  assert_not_grep "T-15 畳み込みを指示する散文を残さない" "$CLEANUP_MD" '同一 id は後の JSON'
+  assert_grep "T-15 重複 id は独立に判定する旨を書く" "$CLEANUP_MD" '同じ id が複数行\*\*現れることがある'
+  # 射影失敗と parse 失敗は別 reason (完了報告へ誤った原因を転記しない)
+  assert_grep "T-15 射影失敗を WARNING で surface" "$CLEANUP_MD" '再検証用 JSON の射影に失敗しました'
+  assert_grep "T-15 射影失敗は projection_failed" "$CLEANUP_MD" 'reason=projection_failed'
+  assert "T-15 parse_failed は全滅経路のみ" "1" \
+    "$(grep -c 'FOLLOW_UP_REVERIFY=unavailable; reason=parse_failed' "$CLEANUP_MD" | tr -d ' ')"
+  # F-03: 6.0.V の統合 jq も stderr を捨てない (helper 側と同形)
+  assert_not_grep "T-15 統合 jq の stderr を捨てない" "$CLEANUP_MD" "add\" '\. \+ \$add' \"\$_rv_union\" 2>/dev/null"
   assert_grep "T-15 和集合は連結のみ" "$CLEANUP_MD" 'argjson add "\$_part" .\. \+ \$add.'
   assert_grep "T-15 最終射影の rc を検査する" "$CLEANUP_MD" 'if _rv_out=\$\(jq -c'
   assert_not_grep "T-15 最新 1 本を選ぶループを残さない" "$CLEANUP_MD" '_rv_src="\$f"; _rv_base="\$b"'
@@ -627,7 +638,8 @@ assert_grep "T-17 和集合の本数を stderr へ出す" "$ERR" 'union: pr=9; j
 
 echo "--- T-18: 同一 id でも別 cycle の指摘は畳まず全件載る (AC-2) ---"
 # `id` は各 JSON 内の連番であり cycle を跨いだ identity を持たない (cycle 跨ぎの identity は
-# fingerprint = sha1(file:category:message))。同じ `F-05` が cycle ごとに別の指摘を指すため、
+# cycle 間の同一性判断は semantic 判断が担い、本配列に機械的 identity キーは無い)。
+# 同じ `F-05` が cycle ごとに別の指摘を指すため、
 # id で畳むと別々の指摘が黙って消える。よって両方が body に載るのが正しい。
 reset_stubs
 r=$(new_root t18)
@@ -685,9 +697,9 @@ assert_grep "T-22 id 無し A が残る" "$STUB_DIR/body.md" 'id 無しの指摘
 assert_grep "T-22 id 無し B が残る" "$STUB_DIR/body.md" 'id 無しの指摘 B'
 assert_grep "T-22 書式外 id が残る" "$STUB_DIR/body.md" '書式外 id の指摘'
 
-echo "--- T-23: 一部 JSON の統合失敗でも健全な側の転記を続ける ---"
-# 統合 jq が失敗する形 (non_blocking_findings が配列だが要素が JSON として結合できない値) は
-# 作れないため、parse 不能な JSON で同じ「1 本だけ除外して続行」経路を突く。
+echo "--- T-23: parse 不能な JSON を 1 本だけ除外し、jq の原因行を surface する ---"
+# 統合 jq (`. + $add`) は type gate を通った配列同士の連結なので入力由来では失敗しえない。
+# 本 test が突くのは兄弟の parse 失敗分岐で、T-03u との差分は「jq の原因行 emit」と「union 内訳」。
 reset_stubs
 r=$(new_root t23)
 put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-01","reviewer":"a","severity":"LOW","file":"a.md","line":1,"description":"健全な指摘","suggestion":"s1"}]}'
@@ -697,6 +709,8 @@ assert "T-23 exit 0" "0" "$RC"
 assert_grep "T-23 created" "$ERR" 'FOLLOW_UP_ISSUE=created; issue=99; pr=9'
 assert_grep "T-23 健全な側は載る" "$STUB_DIR/body.md" '健全な指摘'
 assert_grep "T-23 除外を WARNING で surface" "$ERR" '和集合から除外します'
+# 原因行が無いと「どの JSON がなぜ落ちたか」が消える (WARNING 本文だけでは退行を検出できない)
+assert_grep "T-23 jq の原因行を surface" "$ERR" 'jq: parse error'
 assert_grep "T-23 除外本数を stderr の内訳に出す" "$ERR" 'union: pr=9; json_total=2; json_parsed=1; json_unparsed=1'
 
 echo "--- T-24: 和集合内で衝突する id は除外しない (曖昧 key の silent drop 防止) ---"
@@ -714,6 +728,21 @@ assert_grep "T-24 cycle1 の F-05 が残る" "$STUB_DIR/body.md" 'cycle1 の F-0
 assert_grep "T-24 cycle2 の F-05 も残る" "$STUB_DIR/body.md" 'cycle2 の F-05'
 assert_grep "T-24 曖昧 id を WARNING で surface" "$ERR" '和集合内で複数の finding に一致するため除外しません: F-05 \(2 件\)'
 assert_not_grep "T-24 一意な F-06 は従来どおり除外される" "$STUB_DIR/body.md" '消える F-06'
+assert_grep "T-24 過剰転記を marker で surface" "$ERR" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count=1; pr=9'
+
+echo "--- T-24b: 重複 id があっても --exclude-ids が指していなければ曖昧扱いしない ---"
+# 曖昧判定の絞り込み (`$ex` に含まれる id だけを曖昧とする) を削る変異を捕まえる。
+reset_stubs
+r=$(new_root t24b)
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-05","reviewer":"a","severity":"LOW","file":"a.md","line":1,"description":"cycle1 の F-05","suggestion":"s1"},{"id":"F-01","reviewer":"a","severity":"LOW","file":"a.md","line":2,"description":"消える F-01","suggestion":"s2"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-05","reviewer":"b","severity":"LOW","file":"b.md","line":3,"description":"cycle2 の F-05","suggestion":"s3"}]}'
+run_target "$r" --exclude-ids "F-01"
+assert "T-24b exit 0" "0" "$RC"
+assert_not_grep "T-24b 無関係な id で曖昧 WARNING を出さない" "$ERR" '和集合内で複数の finding に一致するため除外しません'
+assert_not_grep "T-24b 曖昧 marker を出さない" "$ERR" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS'
+assert_not_grep "T-24b F-01 は除外される" "$STUB_DIR/body.md" '消える F-01'
+assert_grep "T-24b 重複 id は両方残る (cycle1)" "$STUB_DIR/body.md" 'cycle1 の F-05'
+assert_grep "T-24b 重複 id は両方残る (cycle2)" "$STUB_DIR/body.md" 'cycle2 の F-05'
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?

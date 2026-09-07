@@ -51,7 +51,7 @@ _nb_finding() {
 }
 
 run_id_case() {
-  local name="$1" body="$2" expect_saved="$3" rc=0
+  local name="$1" body="$2" expect_saved="$3" expect_union="${4:-no}" rc=0
   local dir="$TMP_ROOT/$name"
   printf '%s\n' "$body" > "$TMP_ROOT/$name.json"
   bash "$SAVE" --pr 2563 --content-file "$TMP_ROOT/$name.json" --results-dir "$dir" \
@@ -66,6 +66,13 @@ run_id_case() {
   else
     assert_grep "$name saved" "$TMP_ROOT/$name.err" 'JSON_SAVED=true'
     assert_not_grep "$name id reason なし" "$TMP_ROOT/$name.err" 'reason=finding_id_format_or_uniqueness_violation'
+    # ゲート (2) は和集合の**一意性のみ**を非ブロッキング marker で報告する。両方向を pin しないと
+    # ゲート丸ごとの削除も常時発火もテストを素通りする (marker が唯一の観測可能出力のため)。
+    if [ "$expect_union" = "yes" ]; then
+      assert_grep "$name union marker" "$TMP_ROOT/$name.err" 'NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION=1'
+    else
+      assert_not_grep "$name union marker なし" "$TMP_ROOT/$name.err" 'NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION'
+    fi
   fi
 }
 
@@ -80,7 +87,11 @@ run_id_case blocking_id_format \
 # non_blocking_findings[] 側に閉じた**一意性**違反は非ブロッキングのまま (保存は続行)
 run_id_case nb_id_duplicate \
   "$(make_body "$SENTINEL" abc1234 abc1234 true | jq --argjson f "$(_nb_finding F-01)" '.non_blocking_findings = [$f, $f]')" \
-  yes
+  yes yes
+# 末尾改行付き id は書式違反 (jq の `$` は末尾改行の直前にも一致するため明示排除が要る)
+run_id_case nb_id_trailing_newline \
+  "$(make_body "$SENTINEL" abc1234 abc1234 true | jq --argjson f "$(_nb_finding 'F-05')" '.non_blocking_findings = [($f | .id = "F-05\n")]')" \
+  no
 # 書式が正しければ和集合でも保存される
 run_id_case union_id_ok \
   "$(make_body "$SENTINEL" abc1234 abc1234 true | jq --argjson a "$(_nb_finding F-01)" --argjson b "$(_nb_finding F-02)" '.findings = [$a] | .non_blocking_findings = [$b]')" \

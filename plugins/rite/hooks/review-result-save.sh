@@ -541,17 +541,21 @@ fi
 # (`pr-review/SKILL.md` の 6.1.a reason 列挙 15 件 / rc=1 provenance 3 種は closed list で、
 #  当該ファイルは本変更の Non-Target。新 token を足すとその列挙を stale にする)。
 # 既存経路と同じく `exit 0` + `JSON_SAVED=false` で「保存せずに止める」= 本 codebase の hard fail。
+# `contains("\n") | not` は必須。jq (Oniguruma) の `$` は「文字列末尾**または末尾改行の直前**」に
+# 一致するため、`test("^F-[0-9]{2,}$")` 単体では "F-05\n" が書式検査を通り、書式外 id を発生源で
+# 止めるという本 gate の存在理由が成立しない。read 側 (cleanup 6.0.V の射影) と同一述語に保つこと —
+# 片側だけ緩いと write を通った値が read で null へ写り、恒久的に undecidable の過剰転記が生まれる。
 if ! jq -e '
   ((if (.non_blocking_findings | type) == "array" then .non_blocking_findings else [] end)) as $nb
   | (((.findings | length) + ($nb | length)) == 0)
   or (
-    ([(.findings[]?, $nb[])] | all(.id? // "" | test("^F-[0-9]{2,}$")))
+    ([(.findings[]?, $nb[])] | all((.id? // "") | (test("^F-[0-9]{2,}$") and (contains("\n") | not))))
     and ((.findings | length == 0)
          or (([.findings[].id] | unique | length) == (.findings | length)))
   )
   ' "$json_tmp" >/dev/null 2>&1; then
   echo "WARNING: JSON の finding id が書式 (F-NN) または findings[] 内の一意性の要件を満たしていません" >&2
-  echo "  期待: findings[] と non_blocking_findings[] の全 finding が ^F-[0-9]{2,}\$ に match し、かつ findings[] 内で id が一意" >&2
+  echo "  期待: findings[] と non_blocking_findings[] の全 finding が ^F-[0-9]{2,}\$ に match し (末尾改行を含まない)、かつ findings[] 内で id が一意" >&2
   echo "  対処: review-result-schema.md の findings[] / non_blocking_findings[] id 仕様を確認してください" >&2
   echo "[CONTEXT] LOCAL_SAVE_FAILED=1; reason=finding_id_format_or_uniqueness_violation" >&2
   exit 0
