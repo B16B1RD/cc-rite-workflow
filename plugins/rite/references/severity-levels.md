@@ -152,7 +152,7 @@ The final severity reported in the findings table is determined by combining the
 
 <a id="ゲート層の-class-ab-降格政策"></a>
 
-上記 2 ドメイン (散文 / テスト網羅性) が **authoring 層** (アンカー添付可否) で作用するのに対し、本小節は同じ帰結クラス軸を**ゲート層**へ拡張する — 実測必須ゲートを通過した blocking finding を、帰結の到達点でさらに 2 分する第 2 降格軸 (**分類対象は実測判定済みのものに限る** — 旧 JSON 等の直接入力で実測未判定なら class A 側へ固定算入される。詳細は下記「実測必須ゲートとの直列関係」)。churn 尾部 (実体収束後に pin 精度・文言クラスの指摘だけが再生産される状態) の凍結判断を、人間の手動プレイブックから機構へ移す。
+上記 2 ドメイン (散文 / テスト網羅性) が **authoring 層** (アンカー添付可否) で作用するのに対し、本小節は同じ帰結クラス軸を**ゲート層**へ拡張する — 実測必須ゲートを通過した blocking finding を、帰結の到達点でさらに 2 分する第 2 降格軸 (**分類対象は実測判定済みのものに限る** — gated finding の `verification.measured` が boolean でなければ分類前に error で停止する。詳細は下記「実測必須ゲートとの直列関係」)。churn 尾部 (実体収束後に pin 精度・文言クラスの指摘だけが再生産される状態) の凍結判断を、人間の手動プレイブックから機構へ移す。
 
 | class | 定義 | 判別 |
 |---|---|---|
@@ -165,7 +165,7 @@ The final severity reported in the findings table is determined by combining the
 
 **除外判別子 (既存記述の削除/弱体化)**: class B であっても、本 PR の diff が**既存 (base 側) に存在した記述・ガード・禁止文を削除または弱体化した**ことを示す判定文が付く finding は降格しない (class B のまま blocking を維持する)。新規追加文への文言磨き・pin 精度向上はこの判別子に該当しない。判定はファイル種別で行わない。判定文形式と集合演算の SoT は [assessment-rules.md §5.3.0.C](../skills/fix/references/assessment-rules.md#530c-帰結クラス降格政策-consequence-class-demotion-gate)。authoring 層の判別子は [`_reviewer-base.md` §手順書・仕様書ドメイン Finding Gate](../agents/_reviewer-base.md#prose-domain-finding-gate)。
 
-**実測必須ゲートとの直列関係**: 本政策は実測ゲートの後段で実測付き blocking finding を分類する。旧 JSON 等を class helper に直接入力して `verification` が欠落していた場合は、既存の防御として map を参照せず class A に固定算入する。現行実測ゲートは判定不能時に error で止まるため、成功出力に未判定 finding を残さない。
+**実測必須ゲートとの直列関係**: 本政策は実測ゲートの後段で実測付き blocking finding を分類する。gated finding の `verification.measured` が boolean でない入力は契約違反として `measured_undetermined` で停止し、classification map を参照せず入力 JSON を変更しない。現行実測ゲートは判定不能時に error で止まるため、通常経路ではこの停止条件に到達しない。
 
 **分類主体と強制層**: 分類 (A/B) は LLM が finding 発行者と**別コンテキスト**で判定し、適用 (A=0 判定・移送・監査記録) は `scripts/review-class-demotion-gate.sh` が機械強制する。判定不能 (分類出力の欠落・不正) は class A 扱い + WARNING (silent 降格しない)。集合演算・分類入力・実装契約の SoT は [assessment-rules.md §5.3.0.C](../skills/fix/references/assessment-rules.md#530c-帰結クラス降格政策-consequence-class-demotion-gate)、監査フィールドの形は [review-result-schema.md](./review-result-schema.md) を参照。
 
