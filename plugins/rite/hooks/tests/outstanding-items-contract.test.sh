@@ -107,7 +107,7 @@ assert_not_grep "common-error-handling no longer claims a bare stderr display du
 # 停止・失敗経路こそユーザーの操作が必要な WARNING が残る出口なので、正常終了だけを数えない。
 # 経路を増減させたときは本 assert の期待値も更新する（新経路が欄なしで増える方向は本数側では
 # 検出できないため、ここは人手ゲートに倒す）。
-# open は完了通知 1 本。iterate は正常終了 4 テンプレ + ブレーカー停止 2 テンプレ。
+# open は完了通知 1 本。iterate は完了 3 テンプレ + 中断 1 テンプレ + ブレーカー停止 2 テンプレ。
 # batch-run はステップ 7 完了通知 2 本 + ステップ 8 停止報告 1 本。
 for entry in "$OPEN:1" "$ITERATE:6" "$BATCH_RUN:3"; do
   f="${entry%:*}"
@@ -127,10 +127,12 @@ assert_grep "rite-workflow names the section-carrying orchestrators as the trans
 # 欄を持たない ready / merge の集約先は無条件ではない。batch-run 配下のみ集約され、standalone /
 # recover 単体では stderr に留まる（既知の非カバー経路）ことまで書かせる。
 # ready / merge 側に欄が無いことは契約ではなく既知の穴なので、ここでは pin しない。
-assert_grep "rite-workflow limits the collection claim to the batch-run path" "$WORKFLOW" \
-  '`/rite:batch-run` 経由で起動されたときだけその欄に集約される'
-assert_grep "rite-workflow names the uncovered standalone / recover path" "$WORKFLOW" \
-  'standalone 起動と `/rite:recover` 単体経路では転記先が無く stderr に留まる'
+assert_grep "rite-workflow keeps ready / merge as the skills without a section" "$WORKFLOW" \
+  '欄を持たない `/rite:ready` / `/rite:merge` の WARNING は'
+assert_grep "rite-workflow limits the collection claim to the batch-run report paths" "$WORKFLOW" \
+  '`/rite:batch-run` の報告経路に載るときだけその欄に集約される'
+assert_grep "rite-workflow names the uncovered standalone / non-batch recover path" "$WORKFLOW" \
+  'batch を継続しない `/rite:recover`（`BATCH_CONTINUE=none`）から起動された経路では転記先が無く stderr に留まる'
 
 if ! print_summary "$(basename "$0")" "cleanup/batch-run/wiki-ingest/recover の未完了事項集約 + 要対応 転記 contract (T-01/T-02/T-03)"; then
   exit 1
