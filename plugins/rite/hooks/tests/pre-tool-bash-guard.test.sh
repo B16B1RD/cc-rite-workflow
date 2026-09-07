@@ -2195,7 +2195,11 @@ for tc144_cmd in \
   'gh issue create -R owner/repo --title x --body-file /tmp/body.md' \
   '/usr/bin/gh issue create --title x' \
   'printf safe; gh issue create --title x' \
-  "bash -c 'gh issue create --title x'"; do
+  "bash -c 'gh issue create --title x'" \
+  'g""h issue create --title x' \
+  $'gh issue \\\ncreate --title x' \
+  $'cat <<EOF | gh issue create --title x\nbody\nEOF' \
+  $'echo \'<<EOF\'\ngh issue create --title x\nEOF'; do
   rc=0
   output=$(run_guard "Bash" "$tc144_cmd") || rc=$?
   decision=$(extract_hook_field "$output" permissionDecision)
@@ -2209,6 +2213,17 @@ for tc144_cmd in \
     fail "TC-144 expected direct create deny, got rc=$rc decision=$decision reason=$reason cmd=$tc144_cmd"
   fi
 done
+echo ""
+
+echo "TC-144: gh issue create text inside a heredoc body → allow"
+tc144_heredoc_text=$'printf %s <<\'EOF\'\ngh issue create --title x\nEOF'
+rc=0
+output=$(run_guard "Bash" "$tc144_heredoc_text") || rc=$?
+if [ "$rc" = "0" ] && [ -z "$output" ]; then
+  pass "TC-144 heredoc body text allowed"
+else
+  fail "TC-144 expected heredoc body text allow, got rc=$rc output=$output"
+fi
 echo ""
 
 echo "TC-145 / T-02,T-03: approved Issue helpers → allow"

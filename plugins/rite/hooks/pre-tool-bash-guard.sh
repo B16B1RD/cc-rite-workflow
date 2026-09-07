@@ -209,6 +209,77 @@ _rite_btg_pattern6_fail_closed() {
   fi
   exit 2
 }
+
+# Return the executable command surface for Pattern 6. Unlike CMD_CHECK, this
+# preserves pipeline stages after a heredoc declaration while omitting heredoc
+# bodies, so `cat <<EOF | gh issue create` cannot hide a direct invocation.
+# Backslash-newline continuations are removed first, as Bash does before it
+# splits the command into words. This small parser intentionally supports the
+# conventional unquoted, single-quoted, and double-quoted identifier delimiters
+# used by the repository's Bash commands. The declaration scanner ignores `<<`
+# inside shell quotes so a literal string cannot suppress later command lines.
+_rite_btg_pattern6_command_surface() {
+  local _source="$1" _line _delimiter="" _strip_tabs=0 _candidate _decl
+  local _surface="" _i _len _ch _next _state _quoted _start
+  _source="${_source//$'\r'/}"
+  _source="${_source//$'\\\n'/}"
+  while IFS= read -r _line || [ -n "$_line" ]; do
+    if [ -n "$_delimiter" ]; then
+      _candidate="$_line"
+      if [ "$_strip_tabs" = "1" ]; then
+        _candidate="${_candidate//$'\t'/}"
+      fi
+      if [ "$_candidate" = "$_delimiter" ]; then
+        _delimiter=""
+        _strip_tabs=0
+      fi
+      continue
+    fi
+
+    _surface+="$_line"$'\n'
+    _decl=""
+    _state=plain
+    _len=${#_line}
+    _i=0
+    while [ "$_i" -lt "$_len" ]; do
+      _ch="${_line:$_i:1}"
+      case "$_state" in
+        single) [ "$_ch" = "'" ] && _state=plain ;;
+        double)
+          if [ "$_ch" = "\\" ]; then _i=$((_i + 1))
+          elif [ "$_ch" = '"' ]; then _state=plain; fi
+          ;;
+        plain)
+          case "$_ch" in
+            "'") _state=single ;;
+            '"') _state=double ;;
+            '\\') _i=$((_i + 1)) ;;
+            '<')
+              _next="${_line:$((_i + 1)):1}"
+              if [ "$_next" = '<' ]; then
+                _i=$((_i + 2)); _strip_tabs=0
+                [ "${_line:$_i:1}" = '-' ] && { _strip_tabs=1; _i=$((_i + 1)); }
+                while [[ "${_line:$_i:1}" =~ [[:space:]] ]]; do _i=$((_i + 1)); done
+                _quoted="${_line:$_i:1}"; _start=$_i
+                if [ "$_quoted" = "'" ] || [ "$_quoted" = '"' ]; then
+                  _i=$((_i + 1)); _start=$_i
+                  while [ "$_i" -lt "$_len" ] && [ "${_line:$_i:1}" != "$_quoted" ]; do _i=$((_i + 1)); done
+                else
+                  while [[ "${_line:$_i:1}" =~ [[:alnum:]_] ]]; do _i=$((_i + 1)); done
+                fi
+                _decl="${_line:$_start:$((_i - _start))}"
+                break
+              fi
+              ;;
+          esac
+          ;;
+      esac
+      _i=$((_i + 1))
+    done
+    [ -n "$_decl" ] && _delimiter="$_decl"
+  done <<< "$_source"
+  printf '%s' "$_surface"
+}
 trap '_rite_btg_pattern13_fail_open' ERR
 
 # --- Denylist check (Bash built-ins only) ---
@@ -830,7 +901,18 @@ if [ -z "$BLOCKED_PATTERN" ]; then
   if [ "${RITE_BTG_TEST_CRASH:-}" = "pattern6" ]; then
     false
   fi
-  if [[ "$CMD_CHECK" =~ (^|[^[:alnum:]_])gh[[:space:]]+issue[[:space:]]+create([[:space:]]|$) ]]; then
+  # The common no-heredoc path needs no line parser. Keeping it on built-in
+  # substitutions preserves the existing large-command timeout invariant.
+  if [[ "$COMMAND" == *"<<"* ]]; then
+    P6_CHECK=$(_rite_btg_pattern6_command_surface "$COMMAND")
+  else
+    P6_CHECK="$COMMAND"
+  fi
+  P6_CHECK="${P6_CHECK//$'\t'/ }"
+  P6_CHECK="${P6_CHECK//$'\n'/ }"
+  P6_CHECK="${P6_CHECK//[\"\']/}"
+  P6_CHECK="${P6_CHECK//\\/}"
+  if [[ "$P6_CHECK" =~ (^|[^[:alnum:]_])gh[[:space:]]+issue[[:space:]]+create([[:space:]]|$) ]]; then
     BLOCKED_PATTERN="direct-gh-issue-create"
     BLOCKED_REASON="Direct gh issue create bypasses the required Issue format and Projects registration."
     BLOCKED_ALTERNATIVE="Use create-issue-with-projects.sh or /rite:issue-create so the Issue is created through the approved helper."

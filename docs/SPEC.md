@@ -1251,7 +1251,7 @@ Reviewer working-tree git verbs (`checkout` / `reset` / `commit` / `branch` / â€
 
 **Heredoc Safety:**
 
-To prevent false positives from text in heredocs (commit messages, PR descriptions, etc.), only the command portion before `<<` is inspected.
+To prevent false positives from text in heredocs (commit messages, PR descriptions, etc.), Patterns 1â€“5 inspect only the command portion before `<<`. Pattern 6 removes heredoc bodies while retaining executable pipeline stages and later command lines, so `cat <<EOF | gh issue create ...` is denied but text inside the body is ignored.
 
 ### Post-Tool WM Sync (`post-tool-wm-sync.sh`)
 
