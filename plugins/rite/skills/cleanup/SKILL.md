@@ -573,7 +573,8 @@ else
     # 後続行が id を失って id と本文の対応が崩れる（誤対応が resolved 側に振れると指摘の無言 drop）。
     # `.id` は**落とさず null へ写す**。save 側は書式外 id の保存を hard fail で止めるが、
     # 本 gate を通さずに `.rite/review-results/` 直下へ保存された JSON には書式外 id が残る
-    # （gate 導入前の JSON、および `/rite:fix` P1/P3 の直接 write 経路。移行しない方針）。その値をその
+    # （gate 導入前の JSON、および gate を経由しない `/rite:fix` の write 経路 — P1/P3 の直接 write と
+    #  P0 ファイルの copy。移行しない方針）。その値をその
     # まま提示すると、下段の `{resolved_ids_csv}` がリテラル置換される二重引用符内でコマンド置換
     # として展開される。null 化なら書式外の値が LLM へ届かず、finding 自体は出力に残るので黙って
     # 消えない（落とすと件数を数える第 2 の述語が要り、その述語が本体と乖離する drift 経路になる）。
@@ -590,7 +591,6 @@ else
       for f in "${_rv_srcs[@]}"; do
         # 2>"$_rv_errf" は毎周トランケートするため、除外 WARNING の**直後**に原因行を出す
         # （ループ後へ回すと最後の失敗の原因しか残らない）。helper 側の union ループと同形。
-        [ -n "$_rv_errf" ] && : > "$_rv_errf"
         if _part=$(jq -c 'if (.non_blocking_findings | type) == "array" then .non_blocking_findings else error("not an array") end' "$f" 2>"${_rv_errf:-/dev/null}"); then
           if _m=$(jq -c --argjson add "$_part" '. + $add' "$_rv_union" 2>"${_rv_errf:-/dev/null}"); then
             printf '%s\n' "$_m" > "$_rv_union"; _rv_ok=$((_rv_ok + 1)); continue
@@ -893,7 +893,7 @@ Status: {projects_status_result}
 - [{base_update_check}] base ブランチを更新 (fetch + merge --ff-only)
 - [{session_worktree_check}] セッション worktree 退出・削除 (multi_session)
 - [{local_branch_check}] ローカル/リモートブランチ削除
-- [{review_cleanup_check}] PR-specific state ファイル削除{follow_up_reverify_note}
+- [{review_cleanup_check}] PR-specific state ファイル削除{follow_up_reverify_note}{follow_up_ambiguous_note}
 - [{projects_check}] Projects Status を Done に更新
 - [{wiki_ingest_check}] Wiki ingest (pending raw source のページ統合)
 - [x] flow state リセット
@@ -1012,6 +1012,10 @@ rationale: references/rationale.md#review-cleanup-reasons
   - `done` のとき: ` — follow-up 再検証: 解消済み {n_resolved} / 残存 {n_remains} / 判定不能 {n_undecidable}`（`{n_*}` は marker の同名フィールドをリテラル置換）
   - `unavailable` のとき: ` — follow-up 再検証: 未実施（{reason}。全件を転記対象としました）`（`{reason}` は marker の `reason=` 値）
   - marker が無いとき: ` — follow-up 再検証: 実施結果を確認できませんでした（全件を転記対象とした可能性があります）`。本分岐は「節ごと実行されなかった」場合と「抽出は成功したが判定 marker `done` に到達しなかった」場合の 2 つに落ちる（6.0.V は成功時に marker を出さないため後者が marker 皆無になる）。**marker 不在を成功と読んではならない** — 兄弟分岐と同じ規約
+- `{follow_up_ambiguous_note}`: ステップ 6.0 helper の `[CONTEXT] FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count={n}; pr={pr_number}` marker で判定する:
+  - marker があるとき: ` — ⚠️ 曖昧 id {count} 件を除外できず全件転記しました（解消済みの指摘が follow-up に混じります。`{follow_up_reverify_note}` の「解消済み」は**除外要求件数**であり実除外数ではありません）`（`{count}` は marker の同名フィールドをリテラル置換。**id の異なり数**であり転記された finding 件数ではない）
+  - marker が無いとき: 空文字列（曖昧 id なし）
+  - 起票自体は成功しているので `{review_cleanup_check}` は `x` 相当のまま変えない。本 note は「成功したが人間の確認が要る」ことだけを伝える
 - `{wiki_ingest_check}`: 以下の sentinel を上から評価し最初の一致を採用 (`WIKI_INGEST_DONE` + `WIKI_INGEST_PUSH_FAILED` が併存しうるため順序重要):
 
   | Sentinel | check | 表示 |

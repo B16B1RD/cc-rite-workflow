@@ -280,7 +280,7 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 また型 check は id 検証より**前**に置く — 後ろに置くと非配列で `length` が非 0 になる値 (`"abc"`→3 / `3`→3 / `{"a":1}`→1) が和集合の件数を水増しし、非ブロッキングと宣言した重複判定が型によって hard fail に化ける。
 
-> 本 hard fail は**本 gate を通る保存を止めるだけ**で、gate を通さずに `.rite/review-results/` 直下へ永続化された書式外 id JSON は移行しない (gate 導入前の JSON、および `/rite:fix` P1/P3 の直接 write 経路。一度きりの実行のために恒久的な複雑さを残さない)。したがって読み側 (6.0.V の `id` null 写像、および `id: null` を必ず `undecidable` とする規則) はそのまま維持する。
+> 本 hard fail は**本 gate を通る保存を止めるだけ**で、gate を通さずに `.rite/review-results/` 直下へ永続化された書式外 id JSON は移行しない (gate 導入前の JSON、および gate を経由しない `/rite:fix` の write 経路 — P1/P3 の直接 write と P0 ファイルの copy。一度きりの実行のために恒久的な複雑さを残さない)。したがって読み側 (6.0.V の `id` null 写像、および `id: null` を必ず `undecidable` とする規則) はそのまま維持する。
 
 ### 却下台帳と sweep 消化結果（additive、schema_version 非 bump）
 

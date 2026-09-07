@@ -42,6 +42,7 @@
 #   T-23 parse 不能な JSON を 1 本だけ除外し、jq の原因行と union 内訳を surface する
 #   T-24 和集合内で衝突する id は --exclude-ids で除外せず WARNING + marker で surface する
 #   T-24b 重複 id でも --exclude-ids が指していなければ曖昧扱いしない
+#   T-24c 曖昧 id の素値は neutralize_ctrl を通してから WARNING に載せる
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -553,8 +554,21 @@ else
   assert_grep "T-15 射影失敗は projection_failed" "$CLEANUP_MD" 'reason=projection_failed'
   assert "T-15 parse_failed は全滅経路のみ" "1" \
     "$(grep -c 'FOLLOW_UP_REVERIFY=unavailable; reason=parse_failed' "$CLEANUP_MD" | tr -d ' ')"
-  # F-03: 6.0.V の統合 jq も stderr を捨てない (helper 側と同形)
-  assert_not_grep "T-15 統合 jq の stderr を捨てない" "$CLEANUP_MD" "add\" '\. \+ \$add' \"\$_rv_union\" 2>/dev/null"
+  # 6.0.V の統合 jq も stderr を捨てない（helper 側の union ループと同形）。
+  # パターンは**単引用符**で書く — 二重引用符だと `\$` がシェル段階で `$` へ潰れ、ERE の
+  # 中間アンカーになって決して一致しない（= 空振りする negative pin になる）。
+  assert_not_grep "T-15 統合 jq の stderr を捨てない" "$CLEANUP_MD" 'argjson add "\$_part" .\. \+ \$add. "\$_rv_union" 2>/dev/null'
+  # F-05: read 側の id 述語も末尾改行を排除する（write 側 gate と同一述語を保つ invariant）
+  assert "T-15 射影 id 述語は末尾改行も排除する" "1" \
+    "$(grep -c 'test("\^F-\[0-9\]{2,}\$") and (contains("\\n") | not)' "$CLEANUP_MD" | tr -d ' ')"
+  # F-07: ループ内の原因行 emit。既出 2 箇所に一致するため件数で pin する
+  assert "T-15 原因行 emit は 3 箇所" "3" \
+    "$(grep -c 'head -5 "\$_rv_errf"' "$CLEANUP_MD" | tr -d ' ')"
+  # F-10: 無効な明示トランケートを残さない（2> が毎周 O_TRUNC で開くため冗長）
+  assert_not_grep "T-15 冗長な明示トランケートを残さない" "$CLEANUP_MD" '\[ -n "\$_rv_errf" \] && : > "\$_rv_errf"'
+  # F-03: 曖昧 id marker に完了報告側の消費規則がある
+  assert_grep "T-15 曖昧 id marker の消費規則がある" "$CLEANUP_MD" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count=\{n\}; pr=\{pr_number\}'
+  assert_grep "T-15 完了報告に曖昧 note を差し込む" "$CLEANUP_MD" '\{follow_up_ambiguous_note\}'
   assert_grep "T-15 和集合は連結のみ" "$CLEANUP_MD" 'argjson add "\$_part" .\. \+ \$add.'
   assert_grep "T-15 最終射影の rc を検査する" "$CLEANUP_MD" 'if _rv_out=\$\(jq -c'
   assert_not_grep "T-15 最新 1 本を選ぶループを残さない" "$CLEANUP_MD" '_rv_src="\$f"; _rv_base="\$b"'
@@ -729,6 +743,21 @@ assert_grep "T-24 cycle2 の F-05 も残る" "$STUB_DIR/body.md" 'cycle2 の F-0
 assert_grep "T-24 曖昧 id を WARNING で surface" "$ERR" '和集合内で複数の finding に一致するため除外しません: F-05 \(2 件\)'
 assert_not_grep "T-24 一意な F-06 は従来どおり除外される" "$STUB_DIR/body.md" '消える F-06'
 assert_grep "T-24 過剰転記を marker で surface" "$ERR" 'FOLLOW_UP_EXCLUDE_AMBIGUOUS=1; count=1; pr=9'
+
+echo "--- T-24c: 曖昧 id の素値は neutralize_ctrl を通してから WARNING に載せる ---"
+# id はレビュアーが書く信頼できない入力。生の ESC が stderr へ素通りすると端末表示を欺瞞できる。
+reset_stubs
+r=$(new_root t24c)
+# JSON 側は \u001b で書く（生の制御文字は JSON 仕様上 string に置けず parse で落ちる）。
+# --exclude-ids 側は helper が受け取る実バイト = 生 ESC を渡す。
+_esc=$(printf '\033')
+put_json "$r" "9-20260101120000.json" '{"non_blocking_findings":[{"id":"F-05\u001b[31m","reviewer":"a","severity":"LOW","file":"a.md","line":1,"description":"cycle1","suggestion":"s1"}]}'
+put_json "$r" "9-20260102120000.json" '{"non_blocking_findings":[{"id":"F-05\u001b[31m","reviewer":"b","severity":"LOW","file":"b.md","line":2,"description":"cycle2","suggestion":"s2"}]}'
+run_target "$r" --exclude-ids "F-05${_esc}[31m"
+assert "T-24c exit 0" "0" "$RC"
+assert "T-24c stderr に生 ESC を残さない" "0" \
+  "$(LC_ALL=C grep -c "$_esc" "$ERR" | tr -d ' ')"
+assert_grep "T-24c 中和後の id で WARNING を出す" "$ERR" '和集合内で複数の finding に一致するため除外しません'
 
 echo "--- T-24b: 重複 id があっても --exclude-ids が指していなければ曖昧扱いしない ---"
 # 曖昧判定の絞り込み (`$ex` に含まれる id だけを曖昧とする) を削る変異を捕まえる。
