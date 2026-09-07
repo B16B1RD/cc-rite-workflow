@@ -5,10 +5,10 @@
 # Guarantees that /rite:iterate の review↔fix ループが、LLM が継続/終了 sentinel を
 # 出した直後に turn を終了してしまっても、構造的な層で差し戻すことを保証する。
 #   - 継続 sentinel ([review:fix-needed:N] / [fix:pushed] / [fix:pushed-wm-stale]) → 次ループへ自動継続
-#   - 終了 sentinel ([review:mergeable] / [fix:replied-only] / [fix:cancelled-by-user]) → 完了通知を強制
+#   - 終了 sentinel ([review:mergeable] / [fix:non-fatal-only] / [fix:replied-only] / [fix:cancelled-by-user]) → 完了通知を強制
 #     FINALIZE:* では transcript 最終 assistant に完了通知（`## /rite:iterate 完了` /
 #     `## /rite:iterate 中断`）があるか検査し、出力済みなら差し戻さない。検査不能は差し戻す側へ
-#     fail-safe。FINALIZE:review:mergeable では加えて「未処理 non-blocking」欄を検査し、
+#     fail-safe。FINALIZE:review:mergeable / FINALIZE:fix:non-fatal-only では加えて「未処理 non-blocking」欄を検査し、
 #     欠落 / 判定不能は差し戻し reason に欄の再出力を要求する（1 回制限は consume に相乗り）
 # 同じ one-shot handoff 機構で /rite:cleanup の wiki チェーン (cleanup → wiki-ingest →
 # wiki-lint --auto) の未完走も差し戻す:
@@ -273,7 +273,7 @@ case "$HANDOFF" in
       fi
     fi
     case "$_result" in
-      review:mergeable:*)
+      review:mergeable:*|fix:non-fatal-only:*)
         # 残件欄検査。判定不能は差し戻す側へ fail-safe。1 回制限は既存 consume に相乗り。
         # transcript 抽出は上で済んでいるので、空 / grep だけ見る。
         _nb_status=unknown
@@ -291,11 +291,11 @@ case "$HANDOFF" in
         esac
         ;;
     esac
-    # 完了通知出力済みの FINALIZE は差し戻さない。mergeable の残件欄欠落 / 判定不能は
+    # 完了通知出力済みの FINALIZE は差し戻さない。mergeable / non-fatal-only の残件欄欠落 / 判定不能は
     # 通知があっても差し戻す（残件欄契約が優先）。検査不能は差し戻す側へ fail-safe。
     if [ "$_notice_status" = "present" ]; then
       case "$_result" in
-        review:mergeable:*)
+        review:mergeable:*|fix:non-fatal-only:*)
           if [ "$_nb_status" = "present" ]; then
             exit 0
           fi
@@ -305,6 +305,11 @@ case "$HANDOFF" in
           ;;
       esac
     fi
+    case "$_result" in
+      fix:non-fatal-only:*)
+        _nb_note="5.S 未実施なら先に NB digest sweep を実行し、成功後に完了通知へ進んでください。再フルレビューは禁止です。${_nb_note}"
+        ;;
+    esac
     _reason="rite の review↔fix ループ (/rite:iterate) が終了 sentinel (${_result}) に到達しました。停止する前に /rite:iterate ステップ5 の完了通知 (終了理由 + 次ステップ案内) を必ず出力してください。${_nb_note:+
 $_nb_note}
 

@@ -397,6 +397,41 @@ fi
 # 式が完全に一致していても production では count_body_mismatch が出る。
 assert_grep "T-08 fix が数えた本文をそのまま helper へ渡す" "$FIX" '\-\-content-file "\$body"'
 
+# measured MEDIUM is moved by the real triage helper and consumed by the existing sweep.
+FIX_SKILL="$PLUGIN_ROOT/skills/fix/SKILL.md"
+medium_json="$sandbox/non-fatal-only.json"
+write_json "$medium_json" <<'JSON'
+{"pr_number":1,"findings":[
+  {"id":"M-1","severity":"MEDIUM","scope":"current-pr","file":"src/a.ts","line":10,"verification":{"measured":true}},
+  {"id":"M-2","severity":"MEDIUM","scope":"follow-up","file":"src/b.ts","line":20,"verification":{"measured":true}}
+],"non_blocking_findings":[]}
+JSON
+bash "$PLUGIN_ROOT/scripts/review-findings-maps.sh" --review-source explicit_file \
+  --review-source-path "$medium_json" > "$sandbox/medium.maps" 2> "$sandbox/medium.triage"
+assert "non-fatal triage succeeds" 0 "$?"
+assert_grep "measured MEDIUM → fatal=0 moved=2" "$sandbox/medium.triage" 'FIX_FATAL_TRIAGE=applied; fatal=0; moved=2'
+assert "triage removes blocking input" 0 "$(jq '.findings | length' "$medium_json")"
+assert "triage preserves measured evidence" true "$(jq 'all(.non_blocking_findings[]; .verification.measured == true and .demotion_reason == "non_fatal")' "$medium_json")"
+medium_collect=$("$COLLECT" --json "$medium_json")
+assert "sweep sees both moved findings" 2 "$(jq '.count' <<< "$medium_collect")"
+assert "measured MEDIUM keeps existing issued route" true "$(jq 'all(.targets[]; .route == "issued")' <<< "$medium_collect")"
+medium_entries="$sandbox/medium-entries.md"
+jq -r '.targets[] | "| \(.id) | \(.file):\(.line) | issued | fixture issue for \(.id) |"' \
+  <<< "$medium_collect" > "$medium_entries"
+"$LEDGER" append --ledger-file "$sandbox/medium-ledger.md" --entries-file "$medium_entries"
+assert "sweep persists two digest rows" 2 "$(grep -c '^| M-' "$sandbox/medium-ledger.md")"
+
+# Pin the actual prompt routing, including precedence and the outer batch success gate.
+assert_grep "fix retains fatal and moved counts" "$FIX_SKILL" '\{fatal_count\}=N.*\{non_fatal_moved_count\}=M'
+assert_grep "non-fatal-only requires no push/accept, fatal=0 and moved>0" "$FIX_SKILL" '^\| 4\.5 \| Push なし.*accept 決定なし.*\{fatal_count\}=0.*\{non_fatal_moved_count\}>0.*All findings replied.*\[fix:non-fatal-only\]'
+assert_grep "pure reply-only requires moved=0" "$FIX_SKILL" '^\| 5 \|.*\{non_fatal_moved_count\}=0.*\[fix:replied-only\]'
+assert "error, WM, push/accept retain precedence" '1 1.5 1.6 2 2.5 3 4 4.5 5 6' \
+  "$(awk '/^\| 評価順 \|/{table=1;next} table && /^\| [0-9]/{printf "%s%s", sep, $2; sep=" "} table && !/^\|/{exit}' "$FIX_SKILL")"
+assert_grep "non-fatal-only sets FINALIZE" "$FIX_SKILL" '\-\-handoff "FINALIZE:fix:non-fatal-only:\{pr_number\}"'
+assert_grep "iterate routes non-fatal-only to 5.S, not full review" "$ITERATE" '^\| `\[fix:non-fatal-only\]` \| ステップ 5\.S.*ステップ 1 に戻らない'
+assert_grep "batch success only after successful sweep" "$ITERATE" '\[fix:non-fatal-only\].*5\.S が `done` / `noop` / `skipped` で成功した後だけ.*外向きに `\[review:mergeable\]`'
+assert_grep "failed sweep cannot report success" "$ITERATE" 'sweep 失敗時は `\[iterate:nb-sweep-error\]` のまま停止し、成功 sentinel を返さない'
+
 if ! print_summary "$(basename "$0")" "nb-sweep helper contract drift — check SKILL.md 5.S / 6.1.d preserve"; then
   exit 1
 fi

@@ -139,7 +139,7 @@ rationale: references/rationale.md#four-command-split
 | `rite:lint` | `[lint:success]` / `[lint:skipped]` / `[lint:error]` / `[lint:aborted]` | `implement` 内で autonomous invoke、`open` Step 5 が結果を読む |
 | `rite:pr-create` | `[pr:created:N]` / `[pr-create-failed]` | `open` Step 6 |
 | `rite:pr-review` | `[review:mergeable]` / `[review:fix-needed:N]` / `[review:error]` | `iterate` 内ループ |
-| `rite:fix` | `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:replied-only]` / `[fix:cancelled-by-user]` / `[fix:error]` | `iterate` 内ループ |
+| `rite:fix` | `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:non-fatal-only]`（5.S 経由）/ `[fix:sweep-done]` / `[fix:replied-only]` / `[fix:cancelled-by-user]` / `[fix:error]` | `iterate` 内ループ |
 | `rite:ready` | `[ready:returned-to-caller]` / `[ready:error]` | ユーザー直接 / `run` orchestrator |
 | `rite:merge` | `[merge:returned-to-caller]` / `[merge:not-ready]` / `[merge:error]` | ユーザー直接 / `run` orchestrator |
 | `rite:cleanup` | `[cleanup:returned-to-caller]` | ユーザー直接 / `run` orchestrator |
