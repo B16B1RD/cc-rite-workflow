@@ -12,6 +12,8 @@ user-invocable: false
 
 ## 5.1 Implementation Work
 
+> 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
+
 `skills/open/SKILL.md` ステップ 3 で承認した計画に従って実装する。
 
 > **Reference**: Apply the Phase 5.1 checklist from [AI Coding Principles](../../skills/rite-workflow/references/coding-principles.md).

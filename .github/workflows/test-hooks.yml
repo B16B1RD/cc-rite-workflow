@@ -11,10 +11,18 @@ on:
       - develop
     paths:
       - 'plugins/rite/hooks/**'
+      - 'plugins/rite/references/**'
+      - 'plugins/rite/skills/**'
+      - 'README.md'
+      - 'README.ja.md'
       - '.github/workflows/test-hooks.yml'
   pull_request:
     paths:
       - 'plugins/rite/hooks/**'
+      - 'plugins/rite/references/**'
+      - 'plugins/rite/skills/**'
+      - 'README.md'
+      - 'README.ja.md'
       - '.github/workflows/test-hooks.yml'
 
 # F-11: least-privilege permissions — workflow only reads the repo,

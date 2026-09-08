@@ -10,6 +10,8 @@ argument-hint: "<issue_number>"
 
 # /rite:open
 
+> 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
+
 ## Contract
 
 **Input**: Issue number (required)

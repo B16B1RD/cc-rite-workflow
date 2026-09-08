@@ -40,27 +40,10 @@ else
 fi
 LOCKDIR="$STATE_ROOT/.rite/state/wiki-ingest-session.lockdir"
 
-# Priority: override → env CLAUDE_CODE_SESSION_ID → env CLAUDE_SESSION_ID
-# → `.rite-session-id` file (env-absent fallback). env-first keeps this lock helper's
-# session identity coherent with flow-state.sh; a stale shared file must not key the
-# lock to a foreign session. The file remains the env-absent fallback.
-_resolve_sid() {
-  local override="${1:-}" sid=""
-  if [ -n "$override" ]; then
-    bash "$HOOKS_DIR/_resolve-session-id.sh" "$override" 2>/dev/null || true
-    return 0
-  fi
-  local cand
-  for cand in "${CLAUDE_CODE_SESSION_ID:-}" "${CLAUDE_SESSION_ID:-}"; do
-    [ -n "$cand" ] || continue
-    sid=$(bash "$HOOKS_DIR/_resolve-session-id.sh" "$cand" 2>/dev/null) || sid=""
-    [ -n "$sid" ] && break
-  done
-  if [ -z "$sid" ]; then
-    sid=$(bash "$HOOKS_DIR/_resolve-session-id-from-file.sh" "$STATE_ROOT" 2>/dev/null) || sid=""
-  fi
-  printf '%s' "$sid"
-}
+# Runtime selection is shared with flow-state; ownership keeps strict UUID validation.
+# shellcheck source=../session-identity.sh
+source "$HOOKS_DIR/session-identity.sh"
+_resolve_sid() { resolve_strict_session_id "$STATE_ROOT" "${1:-}"; }
 
 # Is the lock holder's session live (active=true ∧ updated_at within 2h)?
 _holder_is_live() {
@@ -81,7 +64,7 @@ _holder_is_live() {
 _record_holder() { printf '%s' "$1" > "$LOCKDIR/session_id"; }
 
 cmd_acquire() {
-  local sid; sid=$(_resolve_sid "${1:-}")
+  local sid; sid=$(_resolve_sid "${1:-}") || return 1
   [ -n "$sid" ] || { echo "ERROR: wiki-ingest-lock acquire: cannot resolve session_id" >&2; return 1; }
   mkdir -p "$STATE_ROOT/.rite/state" 2>/dev/null || { echo "ERROR: cannot create .rite/state" >&2; return 1; }
   if mkdir "$LOCKDIR" 2>/dev/null; then
@@ -112,7 +95,8 @@ cmd_acquire() {
 }
 
 cmd_release() {
-  local sid; sid=$(_resolve_sid "${1:-}")
+  local sid; sid=$(_resolve_sid "${1:-}") || return 1
+  [ -n "$sid" ] || { echo "ERROR: wiki-ingest-lock release: cannot resolve session_id" >&2; return 1; }
   [ -d "$LOCKDIR" ] || { echo "released"; return 0; }
   local holder; holder=$(cat "$LOCKDIR/session_id" 2>/dev/null || printf '')
   # Release only our own lock; never remove another session's (a stale-reclaim
@@ -128,7 +112,7 @@ cmd_release() {
 }
 
 cmd_check() {
-  local sid; sid=$(_resolve_sid "${1:-}")
+  local sid; sid=$(_resolve_sid "${1:-}") || return 1
   [ -d "$LOCKDIR" ] || { echo "free"; return 0; }
   local holder; holder=$(cat "$LOCKDIR/session_id" 2>/dev/null || printf '')
   if [ -n "$holder" ] && [ -n "$sid" ] && [ "$holder" = "$sid" ]; then echo "own"; return 0; fi

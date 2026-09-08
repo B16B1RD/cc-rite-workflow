@@ -2,7 +2,7 @@
 
 共通スキルが要求する操作と、実行ホストが提供する手段を対応付ける契約。スキル名・工程順・成功/失敗 sentinel・state schema は各スキルの定義を維持する。ホスト別に workflow 全体を複製しない。
 
-本書は実行経路の適合条件であり、未実装の adapter や hook 配線を提供するものではない。Claude Code の既存 native 経路を保ち、他ホストでは呼出し可能性と下記の事後条件を確認してから選択する。
+本書は実行経路の適合条件と、同梱 helper の入口を定義する。Claude Code の既存 native 経路を保ち、他ホストでは呼出し可能性と下記の事後条件を確認してから選択する。Skill / task / reviewer / 質問の手順は [Host workflow operations](host-workflow-operations.md)。
 
 ## 共通操作
 
@@ -44,13 +44,49 @@
 
 共有 state root は [state-path-resolve.sh](../hooks/state-path-resolve.sh) で解決し、session ID の検証は [Session ID Validation Contract](session-id-validation-contract.md) に従う。非対応 ID を UUID らしく加工したり、共通の固定値に落としたりしない。helper ごとの受理条件が異なる場合は全 consumer が受理する経路だけを採用する。
 
-現在の [flow-state.sh](../hooks/flow-state.sh) と [issue-claim.sh](../hooks/issue-claim.sh) は `--session` / `CLAUDE_CODE_SESSION_ID` / `CLAUDE_SESSION_ID` を受け付けるが、Codex/Grok の ID を自動的には読み取らない。ホスト ID の明示受渡しを検証せずに、既存 `.rite/session-id` を現在セッションとみなして書き込んではならない。
+[session-identity.sh](../hooks/session-identity.sh) が現在 runtime の ID を選択し、flow-state / claim / work memory / wiki lock に接続する。`RITE_HOST=claude|codex|grok` を指定した場合はそのホストの ID が必須。未指定なら1ホスト分だけ存在する環境変数を採用する。Claude は `CLAUDE_CODE_SESSION_ID` / `CLAUDE_SESSION_ID`、Codex は `CODEX_THREAD_ID`、Grok は `GROK_SESSION_ID`。複数ホストの env があって選択されていない場合、または選択先 ID が欠落・不正なら停止する。共有 marker への降格で復旧しない。
+
+Claude の native SessionStart は payload の ID を当該 hook process へ渡し、ホストが `CLAUDE_ENV_FILE` を提供する場合は後続 Bash へ安全に永続化する。ファイルが無い実行面で未確認の ID を共有 marker から借りない。
+
+明示 `--session` は既存 consumer の契約を維持する。通常のホスト操作では現在の実 ID を使い、他人の ID を明示引数に入れない。`RITE_HOST` はセッション選択だけの入力であり、hook・委譲・承認能力の証拠ではない。Layer 1 の opaque 受理と Layer 2 の UUID 検証は [既存の責務分担](session-id-validation-contract.md) を維持する。
 
 ### hook の適合境界
 
 イベント名だけで互換を判断しない。payload のフィールド名、tool matcher、plugin root 展開、追加コンテキストの注入、deny、Stop の再継続、compact 後の復帰を個別に検証する。Claude Code の [hooks.json](../hooks/hooks.json) と各 helper が既存動作の基準となる。
 
-工程内での work memory 更新など、caller が発火時点と結果を観測できる処理は明示実行を候補にできる。ユーザーによる中断、ホストによる compact / session end、PreToolUse の実行阻止、Stop の差し戻しは「後で同じ shell を叩く」だけでは同値にならない。必須の自動イベントを保証できない実行モードは未検証/未対応として停止し、別途配線・検証する。ホストの fail-open を rite の成功に変換しない。
+工程内で caller が観測できる処理は下記の明示経路で実行できる。ユーザーによる中断、ホストによる compact / session end、Stop の差し戻しは「後で同じ shell を叩く」だけでは同値にならない。これらの自動イベント効果は別途検証し、必須となる操作の前で不足を診断する。明示経路では工程前の guard・工程後の保存・flat な次工程実行で継続し、中断時は最後の checkpoint から recover する。ホストの fail-open を rite の成功に変換しない。
+
+### 入口と工程境界
+
+最外側 skill の最初の state / queue 操作より前に、配布 plugin root と実際の cwd を解決する。native hook の登録・発火・事後条件を確認できるときだけ `auto`、自動発火がない実行面では `explicit` を選ぶ。同じ session / event で両方を実行しない。登録状況が不明なら、まずホストの hook 一覧で確認する。ホストの trust/permission は正式な UI に従い、helper は設定を書き換えない。
+
+```bash
+bash {plugin_root}/hooks/host-runtime.sh init --mode {runtime_mode} --cwd "{execution_cwd}"
+```
+
+`{runtime_mode}` は上記の `auto|explicit`、`{execution_cwd}` は実行・編集に固定した絶対パス。nested skill は caller の選択を引き継ぐ。別 tool call でも同じ実 session env と作業先を渡す。`explicit` の init は同梱 helper で plugin marker と state 用 ignore を準備し、開発 launcher を必要としない。
+
+| 境界 | explicit で実行する操作 | 検証 |
+|---|---|---|
+| Bash の前 | `host-runtime.sh before-bash --mode explicit --cwd "{execution_cwd}" --payload-file "{tool_payload}"` | 既存 bash guard の拒否なら対象コマンドを実行しない |
+| 編集の前 / 後 | `before-edit` / `after-edit` を同じ引数で実行 | 編集 guard と bang-backtick 検査。失敗を成功にしない |
+| phase 更新後、子 skill を返す前 | `host-runtime.sh checkpoint --mode explicit --cwd "{execution_cwd}"` | 現 session の local WM と必要な replica 同期を確認。失敗なら保存済み phase を保持して caller の失敗経路へ |
+| 次工程または recover | `host-runtime.sh next --mode explicit --cwd "{execution_cwd}"` | phase / next / handoff を読み、各 skill の分岐表を実行。読取りだけで工程完了にしない |
+
+表の command はすべて `bash {plugin_root}/hooks/` 配下の helper を呼ぶ。`{tool_payload}` は呼出し直前の tool 入力を保存した絶対 JSON パスで、`tool_name` と `tool_input` を含む。shell は `Bash` / `command`、編集は実操作に対応する `Edit|Write|MultiEdit` / `file_path` 等へ正確に対応付ける。複数ファイル patch は各対象を guard する。Grok の camelCase payload を無変換で通さず、公開 schema から上記入力を構成する。入力が対応付けられない操作は実行前に停止する。
+
+guard 自身・checkpoint の内部 helper を再帰的に guard しない。helper の診断・終了コード・JSON deny を読み、拒否時は保護対象を変更しない。`auto` は native に委ねるだけで、明示 helper の成功証跡ではない。
+
+### hook の棚卸し
+
+| 既存 hook | 明示経路 / 自動イベントとの境界 |
+|---|---|
+| SessionStart | `init` の限定初期化。自動 startup の migration / reap を無条件に再実行しない |
+| PreToolUse Bash / Edit | 操作前の `before-bash` / `before-edit`。拒否を守る caller が必須 |
+| PostToolUse WM / bang | `checkpoint` / `after-edit`。既存同期済み phase と冪等 init を使う |
+| Stop | flat caller が sentinel を判定して継続。`next` は handoff を消費しない。自動差し戻しの実証とは別 |
+| PreCompact / PostCompact | 各工程 checkpoint と recover。予告なし compact への自動復帰能力は未検証のまま |
+| SessionEnd | 最外側 skill の正常/失敗終了処理。強制終了イベントの自動 cleanup を保証しない |
 
 ## 診断・停止・再開
 

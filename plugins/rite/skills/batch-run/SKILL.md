@@ -10,6 +10,8 @@ argument-hint: "[--merge] <issue_number>..."
 
 # /rite:batch-run
 
+> 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
+
 > 実行開始時は [Autonomous Execution](../rite-workflow/references/autonomous-execution.md) を適用する。
 
 **デフォルトでは** `/rite:open` → `/rite:iterate` を **順次・完全自律（無確認）** して draft PR を残す。`--merge` 時のみ `/rite:ready` → `/rite:merge` → `/rite:cleanup` まで完走する。

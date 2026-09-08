@@ -16,7 +16,7 @@ rite workflow 操作のコンテキスト: 状態検出・コマンド案内・�
 - Workflow Awareness / Command Guidance / Best Practices（Conventional Commits・ブランチ命名・PR テンプレート）
 - [coding-principles.md](./references/coding-principles.md) / [common-principles.md](./references/common-principles.md) / [comment-best-practices.md](./references/comment-best-practices.md)
 
-実行ホストの操作対応は [Host Runtime Contract](../../references/host-runtime-contract.md) に従う。ホスト名から能力を推測せず、native / 検証済み代替の適合条件を確認する。既存 Claude Code 経路・工程・sentinel を維持し、必須能力が無ければ停止位置と復旧方法を返す。
+実行ホストの操作対応は [Host Runtime Contract](../../references/host-runtime-contract.md) と [Host workflow operations](../../references/host-workflow-operations.md) に従う。スキル入口で runtime 初期化を行い、native / 明示実行の選択と現在 session を固定する。ホスト名から能力を推測せず、既存 Claude Code 経路・工程・sentinel を維持する。
 
 ## Workflow Identity (品質 > 時間/context)
 
@@ -40,6 +40,8 @@ rite workflow の identity は「定義された step を全て実行し、生�
 詳細と Anti-pattern / Correct Pattern は [references/workflow-identity.md](./references/workflow-identity.md) を参照。各 command (start / review / fix / ready / lint / cleanup / create / recover 等) からも同 reference を引いている。
 
 ## Multi-Step Workflow Task Tracking
+
+以下の `TaskCreate` / `TaskUpdate` / `TaskList` が公開されない実行面では [セッション別台帳](../../references/host-workflow-operations.md#taskcreate--taskupdate--tasklist) で同じ開始・更新・全件確認を実行する。nested 呼出しは native Skill と本文実行の両方を含む。
 
 3 step 以上の sequential workflow では `TaskCreate` / `TaskUpdate` / `TaskList` で進捗を追跡する。「最外側 skill」= `TaskCreate` を発行する skill、「nested sub-skill」= Skill ツール経由で呼ばれた skill。代表例: `cleanup`, `iterate`, `open`, `review`, `fix`, `wiki-ingest`, `wiki-lint`。
 rationale: references/rationale.md#task-tracking-threshold

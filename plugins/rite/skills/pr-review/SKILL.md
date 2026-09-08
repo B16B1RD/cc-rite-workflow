@@ -10,6 +10,8 @@ user-invocable: false
 
 # /rite:pr-review
 
+> 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
+
 > **質問規律**: すべての質問・disposition 判断は [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従う。
 
 PR の変更を解析し、専門 reviewer を動的選定して並列レビューする。手順は下記 0–8。途中停止時は flow-state の `phase=review` から `/rite:recover` で再開する。
@@ -78,7 +80,7 @@ standalone と `/rite:iterate` ステップ 1 からの E2E の 2 経路。
 | End-to-end flow (invoked from `/rite:iterate` ステップ 1) | **Output pattern and return control to caller** |
 | Standalone execution | Confirm the next action with `AskUserQuestion` |
 
-同一セッションで直前に Skill 経由で `rite:pr-review` が invoke されていれば E2E、それ以外は standalone。E2E は `[review:mergeable]` / `[review:fix-needed:{n}]` を emit して caller に返す。
+同一セッションで直前に caller が native Skill または equivalent body execution（本文実行）で `rite:pr-review` を invoke していれば E2E、それ以外は standalone。E2E は `[review:mergeable]` / `[review:fix-needed:{n}]` を emit して caller に返す。
 
 ## Arguments
 
@@ -1111,6 +1113,8 @@ If the following issues occur with the sub-agent approach:
 
 ### 4.3.1 Task Tool Sub-Agent Invocation
 
+ホストに named Agent/Task が無い場合は [Host workflow operations](../../references/host-workflow-operations.md#独立-reviewer) の本文明示による独立子を使う。これは未登録 named agent の無条件 fallback ではない。起動前に選定名簿を固定し、実際の親/子 ID・開始/終了時刻・raw 完了出力を保持する。必要な独立性または並列性を作れなければ `[review:error]`。
+
 **⚠️ IMPORTANT — Named Subagent Invocation**: `rite:{reviewer_type}-reviewer` で **named subagent** として呼ぶ。
 rationale: references/design-rationale.md#named-subagent-and-foreground
 **並列:** 1 メッセージで複数 Task。各 Task:
@@ -1165,7 +1169,7 @@ Retry procedure when a completion notification fails or is missing. 4.4 と 5.1.
 | Network error | Yes (up to 1 time) | Re-execute with the same prompt |
 | Invalid output format | Yes (up to 1 time) | Re-execute with "output in the exact format" appended to the prompt |
 | Skill file load failure | No | Fall back to the built-in pattern table (ステップ 2.2) for reviewer selection |
-| subagent resolution failure | No | Fail immediately. Display the scoped name used (`rite:{reviewer_type}-reviewer`) and the error message. Do NOT silently fall back to `general-purpose` — that would defeat the Phase B quality improvement. Mark the reviewer as "incomplete" and continue with other reviewers. If all reviewers fail this way, prompt the user with `AskUserQuestion` (retry / rollback to `general-purpose` temporarily / abort review) |
+| subagent resolution failure | No | Fail immediately. Display the scoped name used (`rite:{reviewer_type}-reviewer`) and the error message. Mark the reviewer as "incomplete", retain other results, and return `[review:error]`. Do NOT silently fall back to `general-purpose` or reduce the selected roster. |
 
 **Error type determination method:**
 
@@ -1189,10 +1193,10 @@ Determine the error type from the completion notification (failure payload or ab
  - **Do not re-run the 4.3.1 date block** — keep the first `{orchestrator_spawn_at}`
 4. If the retry limit (1 time) is reached:
  - Mark the reviewer as "incomplete"
- - Proceed to ステップ 5 and generate the integrated report with only other reviewers' results
- - Include "{reviewer_type}: レビュー失敗" in the integrated report
+ - Retain successful results and return `[review:error]`; do not enter ステップ 5 or issue a mergeable verdict
+ - Include "{reviewer_type}: レビュー失敗" and the recovery step in the error report
 
-**Note**: Timeout / network / invalid format は質問せず 1 回だけ自動再試行する。再失敗後は incomplete として統合を続け、全 reviewer が resolution failure になる等ユーザー固有判断が必要なときだけ AskUserQuestion を使う。
+**Note**: Timeout / network / invalid format は質問せず 1 回だけ自動再試行する。再失敗後は incomplete として停止する。委譲不能をユーザー承認で mergeable に変換しない。
 
 ### 4.5 Review Instruction Format
 
@@ -1403,6 +1407,18 @@ WARNING は stderr、JSON line は stdout。drift は **non-blocking** で ス�
 ### 5.1 Result Collection
 
 **回収契約**: 全 reviewer の completion notification が揃うまで 5.1 を開始しない。未着の結果を推測・補完しない。
+
+**回収完了ゲート（全ホスト必須）**: [manifest 形式](../../references/host-workflow-operations.md#回収ゲート) に従い、起動前の選定名簿と実際の回収結果を保存する。`{reviewer_completions_file}` は `REVIEW_TMP_DIR/rite-review-{session_id}-{pr_number}-{cycle_count}-{orchestrator_spawn_at}/reviewer-completions.json` の絶対パス。失敗を観測した reviewer を名簿から除去しない。
+
+```bash
+# reviewer-completion-gate
+if ! bash {plugin_root}/hooks/scripts/reviewer-completion-check.sh --input "{reviewer_completions_file}"; then
+  echo "[review:error]" >&2
+  exit 1
+fi
+```
+
+非ゼロなら flow-state / raw 結果を保持して caller の失敗経路へ戻る。ゲート pass 後のみ以下の統合を実行する。
 **⚠️ Scope**: 今回新たに検出した指摘だけを集める。diff 外の修正済みは除外。未対応は再検出。
 **Recommendation classification extraction**:
 「### 推奨事項」の **全** item から `分類: <actionable|design_confirmation|boundary>` を抜き、`recommendation_items` として保持する:
@@ -1499,17 +1515,10 @@ rationale: references/design-rationale.md#verification-post-condition-notes
  - Task tool 経由の retry call は実行される (resolution failure は call 後に検出されるため)。しかし ステップ 4.4 の `Retry: No` 規則に従い、この call は `successful retry` としてカウントしない
  - `verification_post_condition_retry_count[{reviewer_type}]` は increment **しない** (counter は 0 のまま保持される)
  - 「次 cycle で再 retry されないこと」は counter / flag の pre-condition guard ではなく、**Step 3 で `verification_post_condition: error` を set することによって Judgment Matrix 行 3 (`error` 分類) に遷移し、Retry Procedure ではなく Failure Procedure に分岐させる flow 分岐によって保証される**。つまり terminal state は retry counter の数値ではなく、classification 状態 (`error`) によって実現される
-2. **ステップ 4.4 default action への委譲**: 当該 reviewer を ステップ 4.4 retry classification 表の `subagent resolution failure` 行に定義された 2 段階 Action に従って処理する (行番号は drift するため semantic reference を使う):
- - **(a) 個別 reviewer failure (default case)**: ステップ 4.4 retry classification 表の `subagent resolution failure` 行の Action column に記載されている「Mark the reviewer as 'incomplete' and continue with other reviewers」を適用する。当該 reviewer を `incomplete` としてマークし、他 reviewer の verification retry / verification processing を **継続する**
- - **(b) 全 reviewer failure (例外 case)**: 同じ Action column の後半に記載されている「If all reviewers fail this way, prompt the user with `AskUserQuestion`」に従い、**全 reviewer が同一 subagent resolution failure になった場合のみ**、ステップ 4.4 の all-failed 経路に進み `AskUserQuestion` で retry / rollback / abort をユーザーに確認する
-3. **ステップ 5.1.1.1 Failure Procedure との合流**: 上記と並行して、当該 reviewer の verification classification を `error` に昇格する。具体的な state transition (本段落直下の Failure Procedure の 4 step に対応):
- - 元 reviewer の output (resolution failure 時は通常空、retry 試行前の初回 invocation で table 欠落状態の output が残る場合は元 output) を Failure Procedure の入力として使用
- - Failure Procedure step 1 (`verification_post_condition: error` flag set) を実行
- - Failure Procedure step 2 (overall assessment を `修正必要` に昇格) を実行
- - Failure Procedure step 3 (該当 reviewer 由来の指摘を全件 blocking 扱い) は、resolution failure 時に output が空のため「0 件 blocking 扱い」という空集合処理となり実質 no-op になる。これは意図通りの挙動で、**blocking subject が存在しなくても step 1-2 の overall 昇格は発火する** ため silent pass は起きない
- - Failure Procedure step 4 (stderr に ERROR 出力) を実行
+2. **ステップ 4.4 default action への委譲**: reviewer を incomplete として記録し、成功済みの raw 結果と flow-state を保持して `[review:error]` を返す。人数を減らした統合や承認による mergeable 判定には進まない。
 
-**分離の意図**: LLM は上記 Step 1-3 の順序を必ず守り、「ステップ 4.4 Action のみ発火」「Failure Procedure のみ発火」のいずれか一方だけを実行してはならない (両方を並行実行する)。 <!-- rationale: references/design-rationale.md#verification-post-condition-notes -->
+retry の回収結果で manifest を更新し、ステップ 5.1 の回収完了ゲートを再実行する。新しい実子 ID と raw 出力を記録し、初回 spawn 時刻は既存 spread 計測用に保持する。
+
 **Failure Procedure** (`error` 検出時、以下の 4 step を順に実行):
 1. `verification_post_condition: error` フラグを set
 2. overall assessment を `修正必要` に昇格（ステップ 5.3 / ステップ 5.4 の escalation chain と統一された label。`要修正` は reviewer 個別評価用の label で、overall 昇格には使用しない）
@@ -1969,7 +1978,7 @@ fi
 `guardrail_audit_log[]` は canonical write の必須トップレベル field とし、`/rite:fix` は無視する additive audit data とする。cleanup は配列が非空の結果 JSON を archive してマージ後も保持する。
 - `overall_assessment` = 暫定値でよい。**helper が blocking 件数から両方向で確定する**ため Claude の値は判定に影響しない
 - **`verdict` は書かない** — merge ゲートが読む必須キーだが、書き手は step 2 の `review-measured-gate.sh` **のみ**で、`overall_assessment` と同一の blocking 件数式から**無条件に代入される**（step 1 で書いた値は必ず捨てられる）。step 1 時点では移送後の blocking 件数が未確定なので、書けば必ず推測値になる（`overall_assessment` を「暫定値でよい」としているのと同じ理由）。`findings[].verification` とは違い preset を尊重する経路が無いため、`--reject-preset-verification` のような強制フラグも持たない
-- **`reviewers[]` = 本 cycle で ステップ 5.1 が Task 結果を回収できた reviewer の名簿**（非空・重複なし）。値は各 `reviewer_type` に `-reviewer` を付した形で書く（例: `security` → `security-reviewer`。`plugins/rite/agents/*-reviewer.md` の basename と一致させる。`rite:` prefix は付けない、日本語表示名や suffix なし slug も書かない）。**判定基準は「回収できたか」だけ**で、ステップ 3.3 の追加・削除も ステップ 4.4 の `incomplete` マークもこの一本の規則に自動的に従う（回収できなかった reviewer は載らない）。名簿を水増ししてはならない — 回収の結果 1 名になった cycle は save は通り merge ゲートの floor 2 で deny されるが、それが正しい挙動である。**`findings[]` から導出してもならない** — マージ直前の最終 cycle は findings 0 件が正常形で、そこから導出すると名簿が空になり sole-reviewer guard の証拠が構造的に消える。ゲート helper は本キーに触れないため、ここで書かなければ欠落のまま保存へ回り `review-result-save.sh` が `schema_required_fields_missing` で拒否する。契約の SoT は [review-result-schema.md §verdict と reviewers](../../references/review-result-schema.md#verdict-と-reviewers)
+- **`reviewers[]` = 本 cycle で ステップ 5.1 が Task 結果を回収できた reviewer の名簿**（非空・重複なし）。値は各 `reviewer_type` に `-reviewer` を付した形で書く（例: `security` → `security-reviewer`。`plugins/rite/agents/*-reviewer.md` の basename と一致させる。`rite:` prefix は付けない、日本語表示名や suffix なし slug も書かない）。**判定基準は「回収できたか」**で、ステップ 5.1 の回収完了ゲートにより本 cycle の選定名簿と一致する。未回収者がいれば本ステップには到達せず `[review:error]` で停止する。名簿の水増しや失敗者の除去は禁止。**`findings[]` から導出してもならない** — マージ直前の最終 cycle は findings 0 件が正常形で、そこから導出すると名簿が空になり sole-reviewer guard の証拠が構造的に消える。ゲート helper は本キーに触れないため、ここで書かなければ欠落のまま保存へ回り `review-result-save.sh` が `schema_required_fields_missing` で拒否する。契約の SoT は [review-result-schema.md §verdict と reviewers](../../references/review-result-schema.md#verdict-と-reviewers)
 - **`findings[].verification` は書かない** — 本フィールドは helper が `description` のアンカーから算出する唯一の書き手である。Claude が先に書くと helper は既存値を正として尊重し (§4.5)、アンカー検出を経ない値がそのまま blocking 判定に入る (= 本ゲートが閉じたはずの裁量が復活する)。**step 2 の `--reject-preset-verification` による強制は部分的**で、本規約の完全な履行は依然として Claude 側の忠実性に依存する (何が弾かれ何が素通りするかの詳細は helper docstring §Why --reject-preset-verification を SoT として参照)
 - **アンカーの直前の境界を保つ** — `内容` 列を `description` へ転記するとき、`Verification:` / `Likelihood-Evidence:` / `Measurement-Blocked:` 直前の行頭・`<br>`・空白を保つ。`Verification: repro <cmd> => <観測>` または `Verification: failing_test <path> => <失敗出力>` と書き、raw pipe は `¦` で代替表記する。形式崩れで実測判定不能なら `reason=anchor_undetermined` で JSON を変更せず失敗し、step 3 で該当 reviewer 出力を再生成する。
 - `timestamp` は literal sentinel `"__RITE_TS_PLACEHOLDER_7f3a9b2c__"` (実値は ステップ 6.1.a の helper が注入する)
@@ -2821,7 +2830,7 @@ Wiki 記録が有効な場合だけ [Wiki 記録・raw commit 手順](references
 
 | Condition | Determination |
 |------|---------|
-| Conversation history has a record of `rite:pr-review` being invoked via the `Skill` tool | Within loop -> Automatically execute the next step |
+| Conversation history has a record of `rite:pr-review` being invoked via native `Skill` or equivalent body execution by a caller | Within loop -> Automatically execute the next step |
 | Otherwise (user directly entered `/rite:pr-review`) | Standalone execution -> Confirm the next action with `AskUserQuestion` |
 
 判定方法は lint / fix と同じ。
