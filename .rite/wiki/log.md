@@ -14,6 +14,9 @@
 
 * **lint:warning** — contradictions=2, stale=67, orphans=0, missing_concept=0, unregistered_raw=450, broken_refs=0。ページ470件・raw2023件を構造検査。ページ本文・indexは記録済み全体監査のsnapshotから差分なしとgitで確認し、既存の意味的矛盾2件を継承した。新たなページ変更はない。番号参照・読取エラー0。既存helperの早期終了パイプによるBroken pipe診断は残るが、最終読取enumは成功。Wiki検索ではindexのO_CREATとO_EXCLを含むタイトル内の未エスケープ区切りが候補抽出警告になる。
 
+* **Repair**: [stderr分離の例](pages/anti-patterns/stderr-merge-silent-sentinel-suppression.md) — 否定しない条件のelseで失敗コードを捕捉し、EXIT trapで通常終了値、signal別trapで130/143/129を保持する形に修正。成功0・失敗7・INT130・TERM143・HUP129をset -e有無の両方で実行し、一時ファイル削除も確認。mktemp失敗は1。既存監査で記録された終了コード捕捉・signal終了値の矛盾2件を解消。
+* **Repair**: [派生一時パス](pages/anti-patterns/mktemp-derived-path-loses-atomic-creation.md) とstderr分離ページの索引行をcanonical helperで再生成し、タイトル内のパイプをセル区切りとして解釈されない形へ修正。
+
 ## 2026-09-07
 
 * **lint:partial** — 構造検査はページ470件・raw2021件を対象に実行し、stale=65（informational）、orphans=0、missing_concept=0、unregistered_raw=448（skip済）、broken_refs=0、番号参照=0。変更した3ページの本文と関連知見は照合したが、全ページ対の意味的比較は未完了であり、矛盾ゼロとは判定していない。helper は読取成功を返した一方、既存のパイプ処理から Broken pipe 診断が出たため、全体監査は clean 扱いにしない。

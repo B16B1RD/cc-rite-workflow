@@ -13,7 +13,7 @@ sources:
     resource: "raw/reviews/20260427T151741Z-pr-688.md"
 tags: ["bash", "stderr", "sentinel", "silent-failure", "observability", "pipefail"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-07-31T01:26:57+09:00" }
+generated: { by: "Codex/GPT-6", at: "2026-09-08T05:05:06Z" }
 ---
 
 # `2>&1` と `2>&1 | head -N` で sentinel/exit code が silent suppression される (self-defeating observability)
@@ -62,15 +62,22 @@ helper が `stdout: classification token / stderr: 診断ログ` の混合 outpu
 
 ### canonical fix
 
-**(a) exit code masking 対策**: stderr を tempfile に退避してから head する。
+**(a) exit code masking 対策**: stderr を tempfile に退避し、失敗コードは否定しない条件の `else` で捕捉する。EXIT trap は通常の終了コードを保持し、signal trap は signal ごとの終了値を返す。
 
 ```bash
-err=$(mktemp /tmp/foo-err-XXXXXX) || err=""
-trap '[ -n "$err" ] && rm -f "$err"; exit 0' EXIT INT TERM HUP
+err=""
+_cleanup() { rm -f "${err:-}"; }
+trap 'rc=$?; _cleanup; exit "$rc"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+err=$(mktemp /tmp/foo-err-XXXXXX) || exit 1
 
-if ! bash flow-state-update.sh patch ... 2>"${err:-/dev/null}"; then
+if bash flow-state-update.sh patch ... 2>"$err"; then
+  :
+else
   rc=$?
-  [ -n "$err" ] && head -3 "$err" >&2
+  head -3 "$err" >&2 || :
   exit "$rc"
 fi
 ```
