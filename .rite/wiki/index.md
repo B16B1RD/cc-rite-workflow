@@ -419,7 +419,7 @@ okf_version: "0.2"
 | [回復経路が「成立しない」判定は、回復側セッションでその分岐が発火するかから辿り直して下す](pages/heuristics/recovery-path-evaluated-from-recovering-session-branch.md) | heuristics | ある経路を「回復不能」「構造的に成立しない」と判定するとき、判定の根拠を**委譲側（不具合を出す側）の記述**だけに置いてはならない。 | 2026-08-08T17:40:00+09:00 | high |
 | [排他性を pin するテストは件数固定に加えて配置を両方向で固定する（在る側と無い側の 2 assert）](pages/patterns/placement-pin-requires-both-directions.md) | patterns | 「この marker を emit してよいのは 1 箇所だけ」「このガードを持つのは 3 ステップだけ」という**排他性**の主張を pin するとき、`grep -c` による出現数固定だけでは足りない。 | 2026-08-08T17:40:00+09:00 | high |
 | [Reviewer の runtime trust は entrypoint ではなく推移的 execution graph で判定する](pages/heuristics/reviewer-runtime-trust-is-transitive.md) | heuristics | reviewer prompt が「自然な entrypoint を実行して検証する」と要求すると、未信頼 PR が変更したコードを reviewer 権限で実行する誘導経路になる。 | 2026-08-09T08:43:00+09:00 | high |
-| [helper を新しく消費するコードは、診断がどのチャネルに載るかを先に確認して既存消費者と同じ転記をする](pages/heuristics/helper-diagnostic-channel-checked-before-consuming.md) | heuristics | helper が失敗理由を stdout の構造化戻り値にだけ載せ自身の stderr へは何も書かない場合、呼び出し側が成否フィールドだけを読むと失敗理由が全出力から消え、既に書いてある stderr 診断分岐が到達不能な死枝になる。 | 2026-08-10T05:20:00+09:00 | high |
+| [helper を新しく消費するコードは、診断がどのチャネルに載るかを先に確認して既存消費者と同じ転記をする](pages/heuristics/helper-diagnostic-channel-checked-before-consuming.md) | heuristics | helper が失敗理由を stdout の構造化戻り値にだけ載せ自身の stderr へは何も書かない場合、呼び出し側が成否フィールドだけを読むと失敗理由が全出力から消え、既に書いてある stderr 診断分岐が到達不能な死枝になる。 | 2026-09-08T09:57:00Z | high |
 | [新規テストは、それが実際に生成している出力のうち契約が不変と規定するものを行まるごと固定する](pages/heuristics/new-test-pins-the-contract-output-it-already-produces.md) | heuristics | end-to-end で対象を走らせる新規テストは契約出力を既に生成しているので、その場で固定できる。新機能が動いたことだけを assert して不変と規定された既存出力を素通しすると、変異が生存し「テストを足したから網羅した」という誤読が残る。 | 2026-08-26T22:40:00+09:00 | high |
 | [判定手段を差し替えるときは、旧手段が暗黙に提供していた失敗条件を列挙してから移す](pages/heuristics/replacing-a-judgment-mechanism-drops-its-implicit-failure-conditions.md) | heuristics | 判定コマンドを別のコマンドへ一本化すると、明示的に書かれていた条件は移植されるが、旧手段が副作用として持っていた失敗条件は移植対象として意識されないまま落ちる。 | 2026-08-10T11:55:05Z | medium |
 | [証拠フィールドを新設したら、質の担保は消費側ではなく writer 側に置く](pages/heuristics/evidence-field-quality-enforced-at-writer-side.md) | heuristics | ゲートが読む証拠フィールドを新設するとき、消費側が値の長さや非空しか見られない構造なら、値が証拠として成立しているかを検査できるのは書き込む側だけになる。 | 2026-08-10T11:55:05Z | medium |
@@ -484,4 +484,4 @@ okf_version: "0.2"
 
 - 総ページ数: 470
 - ドメイン別: patterns=110, heuristics=207, anti-patterns=153
-- 最終更新: 2026-09-08T09:16:17Z
+- 最終更新: 2026-09-08T09:57:00Z

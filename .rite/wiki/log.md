@@ -1,5 +1,7 @@
 ## 2026-09-08
 
+* **Update**: [helper を新しく消費するコードは、診断がどのチャネルに載るかを先に確認して既存消費者と同じ転記をする](pages/heuristics/helper-diagnostic-channel-checked-before-consuming.md) — [解析失敗の診断と状態保持のレビュー結果](raw/reviews/20260908T095105Z-pr-2632.md) を統合。非ゼロ終了前の診断表示と元の終了値保持、未処理の phase 遷移を用いる状態保持テストを補強。
+
 * **lint:warning** — contradictions=2, stale=65, orphans=0, missing_concept=0, unregistered_raw=448, broken_refs=0
 * **Lint scope** — Wiki snapshot `c5178599eb0aa13ddfc36ed492e63578c6118fac` の全470ページ（anti-patterns 153、heuristics 207、patterns 110）を対象にタイトル・概要を読み、分野内および3種類の分野間で方針と結論を照合し、関連候補の詳細で適用条件を確認した。概要見出しを持たないページは本文を確認した。タイトル衝突・概要の重複情報は検出せず、方針逆転を2組記録した。構造検査は raw 2021件を含めて再実行し、読取・検出エラー0、番号参照0。別実装でも孤児0・欠落概念0・相互参照3404本のリンク切れ0を確認した。前回の部分監査はこの監査で補完済み。陳腐化65件と意図的skip済raw448件はinformationalであり、未実行を表すものではない。
 * **Lint contradiction: 方針逆転（終了コード捕捉）** — [stderr分離の例](pages/anti-patterns/stderr-merge-silent-sentinel-suppression.md) の「canonical fix」は `if ! bash ...; then` の直後に `rc=$?` を置き `exit "$rc"` とする。一方、[否定条件でのrc捕捉](pages/anti-patterns/bash-if-bang-rc-capture.md) の「Canonical Fix」は同じ構造を「NG: 3 値が binary に畳まれ、rc も常に 0」として避ける。両者とも失敗コードを保持する文脈であり、例示用の悪いコードではなく推奨コード同士の不整合。無副作用の再現 `bash -c 'if ! (exit 7); then rc=$?; printf "%s\n" "$rc"; fi'` は `0` を返した。stderr分離例の捕捉を肯定条件のelseまたは明示rc保存へ揃える必要がある。

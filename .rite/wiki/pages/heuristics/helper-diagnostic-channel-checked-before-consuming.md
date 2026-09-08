@@ -10,9 +10,14 @@ sources:
     resource: "raw/reviews/20260810T035844Z-pr-2227.md"
   - type: "fixes"
     resource: "raw/fixes/20260810T040721Z-pr-2227.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260908T095105Z-pr-2632.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-10T05:20:00+09:00" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-08T09:57:00Z" }
+verified:
+  - by: "rite-wiki-ingest/gpt-6"
+    at: "2026-09-08T09:57:00Z"
 ---
 
 # helper を新しく消費するコードは、診断がどのチャネルに載るかを先に確認して既存消費者と同じ転記をする
@@ -52,6 +57,12 @@ helper が失敗理由を stdout の構造化戻り値にだけ載せ自身の s
 
 同じ helper の戻り値を巡っては、`status_json=$(bash script.sh) || status_json=""` の形で **helper が既に stdout へ出した診断 JSON を空文字列で上書きして破棄する**失敗も観測されている。こちらは「読まない」ではなく「読んだものを捨てる」形だが、結果は同じで失敗理由が全出力から消える。戻り値の一部にしか診断が載らない helper は、消費側の小さな書き方の差で診断がゼロになる。
 
+### 非ゼロ終了で捕捉後の診断が表示されない場合
+
+`set -e` 下の単純な `data=$(parser)` は、parser が診断 JSON を stdout に出して非ゼロを返すと、代入後に終了して表示へ到達しない。`if data=$(parser); then ...; else rc=$?; ...; exit "$rc"; fi` とし、else で終了コード・対象パス・捕捉した errors を stderr に表示する。診断処理が失敗しても保存した元の終了コードを返す。
+
+失敗時の状態保持を検証する fixture には、成功なら同期が実行される未処理の phase 遷移を用意する。破損中は state・作業メモリ・replica・通信回数が不変で、修復後の再試行が一度だけ同期することまで確認すると、もともと同期不要だっただけのテストを避けられる。
+
 ## 関連ページ
 
 - [`cmd=$(...) || cmd=""` は非ゼロ終了時に stdout 済みの診断 JSON を空文字列で上書きする](../anti-patterns/command-substitution-fallback-discards-diagnostic-json.md)
@@ -62,3 +73,4 @@ helper が失敗理由を stdout の構造化戻り値にだけ載せ自身の s
 
 - [レビュー結果](../../raw/reviews/20260810T035844Z-pr-2227.md)
 - [fix 結果](../../raw/fixes/20260810T040721Z-pr-2227.md)
+- [解析失敗の診断と状態保持のレビュー結果](../../raw/reviews/20260908T095105Z-pr-2632.md)
