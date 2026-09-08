@@ -285,7 +285,7 @@ run_host_guard() {
   local selected_cwd="$1" expected_branch="${2:-fix/issue-42-foo}"
   host_fixture bash -c '
     cd "$1" || exit 1
-    plugin_root=$2 wt_path=$3 branch_name=$4 issue_number=42
+    plugin_root=$2 wt_path=$3 branch_name=$4 issue_number=42 entry_phase=pr pr_number=0
     source "$5"
     printf changed > "$wt_path/guard-mutation.txt"
   ' _ "$selected_cwd" "$plugin_root" "$wt" "$expected_branch" "$guard"
@@ -310,9 +310,24 @@ assert "isolated edit preserves main untracked content" "keep" "$(cat "$M/user-u
 run_host_guard "$wt" > "$guard.out" 2>&1; rc=$?
 assert "fresh shell resumes saved session state and claim" "0" "$rc"
 assert "entry check does not rewrite saved state" "yes" "$(cmp -s "$saved_state" "$guard.state" && echo yes || echo no)"
-# Initial entry precedes the branch/worktree state update and claim refresh.
-jq '.phase = "init" | .branch = "" | .worktree = ""' "$saved_state" > "$guard.json"
-cp "$guard.json" "$saved_state"
+# Run open's actual initialization against completed state from a previous Issue.
+# flow-state set preserves omitted fields; direct jq edits would hide that bug.
+initial_guard="$guard.init"
+awk -v root="$plugin_root" '
+  /^# open-initial-state$/ { copy=1; next }
+  copy && /^```$/ { exit }
+  copy { gsub(/\{plugin_root\}/, root); gsub(/\{issue_number\}/, "42");
+         gsub(/\{branch_name\}/, "fix/issue-42-foo"); print }
+' "$plugin_root/skills/open/SKILL.md" > "$initial_guard"
+assert "documented initial state block exists" "yes" "$(test -s "$initial_guard" && echo yes || echo no)"
+host_fixture bash "$plugin_root/hooks/flow-state.sh" set --phase completed --issue 41 \
+  --branch fix/issue-41-old --worktree "$M/.rite/worktrees/issue-41" --pr 41 --next done >/dev/null
+assert "completed fixture retains previous branch and worktree" "true" \
+  "$(jq --arg wt "$M/.rite/worktrees/issue-41" '.phase == "completed" and .issue_number == 41 and .branch == "fix/issue-41-old" and .worktree == $wt' "$saved_state")"
+host_fixture bash "$initial_guard" > "$guard.out" 2>&1; rc=$?
+assert "open initializes next Issue using real helper" "0" "$rc"
+assert "new Issue init clears old worktree and sets new branch" "true" \
+  "$(jq '.phase == "init" and .issue_number == 42 and .branch == "fix/issue-42-foo" and (.worktree // "") == ""' "$saved_state")"
 host_fixture bash "$plugin_root/hooks/issue-claim.sh" claim --issue 42 --worktree "" >/dev/null
 run_host_guard "$wt" > "$guard.out" 2>&1; rc=$?
 assert "initial entry permits unrecorded paths for owned init state" "0" "$rc"
@@ -348,6 +363,19 @@ for mismatch in root branch state_branch state_worktree state_issue state_sessio
     assert "other live claim is unchanged" "yes" "$(cmp -s "$claim_file" "$guard.claim" && echo yes || echo no)"
   fi
 done
+# A standalone entry owns its claim before any state exists for its fresh UUID.
+host_fixture env CLAUDE_CODE_SESSION_ID="$other_sid" bash "$plugin_root/hooks/issue-claim.sh" release --issue 42 >/dev/null
+fixture_sid=550e8400-e29b-41d4-a716-446655440044
+fresh_state=$(host_fixture bash "$plugin_root/hooks/flow-state.sh" path)
+host_fixture bash "$plugin_root/hooks/issue-claim.sh" claim --issue 42 --worktree "$wt" >/dev/null
+assert "fresh standalone session has own claim" own "$(host_fixture bash "$plugin_root/hooks/issue-claim.sh" check --issue 42)"
+assert "fresh standalone session has no state" "yes" "$(test ! -e "$fresh_state" && echo yes || echo no)"
+run_host_guard "$M" > "$guard.out" 2>&1; rc=$?
+assert "wrong root cannot initialize fresh state" "yes" "$(test "$rc" -ne 0 && test ! -e "$fresh_state" && echo yes || echo no)"
+run_host_guard "$wt" > "$guard.out" 2>&1; rc=$?
+assert "fresh standalone guard initializes state" "0" "$rc"
+assert "standalone state records current session, worktree, branch and phase" "true" \
+  "$(jq --arg sid "$fixture_sid" --arg wt "$wt" '.session_id == $sid and .issue_number == 42 and .branch == "fix/issue-42-foo" and .worktree == $wt and .phase == "pr" and .pr_number == 0' "$fresh_state")"
 # Only verify instruction wiring here: no mock result is presented as a real
 # EnterWorktree/permission probe. Native-denial handling belongs to the host.
 assert_grep "native absence permits explicit workdir" "$contract" 'native 不在、各 shell の `workdir`'

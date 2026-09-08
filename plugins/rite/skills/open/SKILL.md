@@ -151,10 +151,20 @@ echo "[CONTEXT] MULTI_SESSION_ENABLED=$ms_enabled; WORKTREE_BASE=$ms_base"
 
 ### 1.6 flow-state 初期化 + Issue claim 取得
 
+先に Step 2.1 の副作用のないブランチ名生成を行い `{branch_name}` を確定する。新規 Issue への遷移では自セッションの旧 worktree 記録を外す。`--branch ""` は clear ではなく merge-preserve なので使わない。同一 Issue の再開時は保存 branch / worktree を維持して照合する。
+
 ```bash
-bash {plugin_root}/hooks/flow-state.sh set \
-  --phase init --issue {issue_number} --branch "" --pr 0 \
-  --next "ブランチ作成へ進む"
+# open-initial-state
+previous_issue=$(bash {plugin_root}/hooks/flow-state.sh get --field issue_number --default "0") || exit $?
+if [ "$previous_issue" != "{issue_number}" ]; then
+  bash {plugin_root}/hooks/flow-state.sh clear-worktree || exit $?
+  bash {plugin_root}/hooks/flow-state.sh set \
+    --phase init --issue {issue_number} --branch "{branch_name}" --pr 0 \
+    --next "ブランチ作成へ進む" || exit $?
+else
+  bash {plugin_root}/hooks/flow-state.sh set \
+    --phase init --issue {issue_number} --pr 0 --next "ブランチ作成へ進む" || exit $?
+fi
 ```
 
 続けて Issue claim を取得する（branch / worktree 作成の前の fail-fast。`multi_session.enabled` に依らず常時有効）:

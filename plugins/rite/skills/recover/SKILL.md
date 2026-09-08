@@ -172,7 +172,7 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 | `WT_ENSURE` | アクション |
 |---|---|
 | `disabled` | no-op（従来フロー）。Phase 3.2 へ |
-| `already_in` | 保存 branch・所有権と実体を照合し、変更前検証を通して Phase 3.2 へ |
+| `already_in` | 下記の state 確定・変更前検証を実行して Phase 3.2 へ（入場操作だけ不要） |
 | `reenter` / `reconstructed` | 共通作業先契約の native / 検証済み代替で `{path}` へ入場してから Phase 3.2 へ（`{path}` は marker の `path=` 値。`reconstructed` は helper が `git worktree add` 済み） |
 | `residue` | パスは存在するが worktree 未登録（prune 後も残存）→ AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止） |
 | `branch_other_worktree` | branch が**別の worktree** で checkout 中（並行セッションの可能性）→ **中止**。`other=` のパスを表示する（git が構造的に保証する二重着手ガード） |
@@ -188,7 +188,7 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 - **harness の git 誤判定**（`.git` が存在し `git -C "{path}" rev-parse` は成功するのに、起動コンテキストが `Is a git repository: false` で EnterWorktree が「not in a git repository」エラーを返す）→ **推奨**。診断とともに「**リポジトリ root から Claude Code を再起動**し、`/rite:recover {issue_number}` を再実行すれば、登録済み worktree が `WT_ENSURE=reenter` で再入場される」と案内する。worktree は保持済みのため破壊しない。
 - **worktree path 消失などの別要因** → 再度本ヘルパーを実行すれば `branch_absent` 以外なら再構築される。再起動案内へ誤誘導しない。
 
-再入場後、保存 branch・claim・登録された実体の一致を確認して claim に worktree path を記録し、所有権照合済みの復旧 state を現在セッションへ記録する。失敗なら停止する。共通作業先契約の変更前検証を通してから Phase 3.2 以降を同じ作業先で実行する。
+`already_in` / `reenter` / `reconstructed` はいずれも共通作業先契約の変更前検証を実行する。現在 session の state 不在時は、所有権照合済みの復旧 phase / PR を `entry_phase` / `pr_number` に渡す。phase がまだ不明なら `init` / PR 未判明なら `0` として入場を記録し、Phase 3.3 の既存クロスチェックで復旧 phase を確定する。実体・claim 照合後だけ初回 state を作り、既存 state は上書きしない。成功後に claim の worktree path を記録し、Phase 3.2 以降を同じ作業先で実行する。
 
 ### 3.2 git 状態取得
 

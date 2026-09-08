@@ -345,7 +345,7 @@ reaped lazily by `pr-cycle-cleanup.sh` Step 5.
 | 観測した能力 / 結果 | 実行経路 |
 |---|---|
 | 既存 worktree へ入場する native ツールが利用可能 | `EnterWorktree(path)` 等の公開 schema に従って入場し、下記検証を実行する |
-| native 不在、各 shell の `workdir` 指定が利用可能 | 全呼び出しに専用 worktree の絶対 `workdir` を指定する。読取専用の下記検証が通れば正式な代替経路として続行する |
+| native 不在、各 shell の `workdir` 指定が利用可能 | 全呼び出しに専用 worktree の絶対 `workdir` を指定する。`git rev-parse --show-toplevel` / `git branch --show-current` の読取専用 probe が期待値と一致すれば、下記の所有権・state 確定へ進む |
 | native / `workdir` 不在、各 shell で明示 `cd` が可能 | 毎回 `cd "{wt_path}" && ...` で実行し、同じ検証を通す。前の shell の cwd 永続化は仮定しない |
 | native が権限拒否 / 隔離ガードで失敗 | 代替経路を試さず停止し、ホストの正式な承認手順へ。helper 内の `cd` 等で拒否を迂回しない |
 | その他の native 失敗 / 検証失敗 / 適合経路なし | worktree と state を保持して診断・停止。下記の native 失敗診断または `/rite:recover` を案内する |
@@ -354,7 +354,7 @@ reaped lazily by `pr-cycle-cleanup.sh` Step 5.
 
 **所有者の確定**: ホストが保証する現在の session ID を、[session contract](host-runtime-contract.md#作業先と所有者) の検証済み入力経路で全 helper に渡す。共有 `.rite/session-id` を借用しない。作成・再構築前に `issue-claim.sh claim --issue N` を実行する。`rc=10` は open の他 live セッション確認ゲート、その他の非ゼロは停止。保存 state の Issue / branch / worktree と実体が矛盾したら上書きせず recover へ戻す。新セッションへの移管は recover の所有権照合を完了してから当該セッションの state に記録する。
 
-**変更前検証**: 入場後・再開後・編集バッチ前・commit 前に、実際に使用する shell の作業先で次を実行する。ファイルツールの対象も同じルート配下に固定できなければ編集前に停止する。`wt_path` / `branch_name` / `issue_number` は caller が確定した値、`plugin_root` は解決済み絶対パス。state の branch / worktree が空なのは初回 `phase=init` だけ許容する。
+**変更前検証**: 入場後・再開後・編集バッチ前・commit 前に、実際に使用する shell の作業先で次を実行する。ファイルツールの対象も同じルート配下に固定できなければ編集前に停止する。`wt_path` / `branch_name` / `issue_number` は caller が確定した値、`plugin_root` は解決済み絶対パス。現在 session の state が無い standalone 入口では、実体と claim を照合した後に `entry_phase` / `pr_number` を使って初回 state を記録する（iterate=`pr`、pr-review=`review`、fix=`fix`、recover=所有権照合済みの復旧 phase/PR）。既存 state の矛盾は補正しない。open の新規 Issue 初期化は Step 1.6 が今回 branch を明示し、異なる Issue の古い worktree だけを clear する。
 
 ```bash
 # worktree-execution-check
@@ -371,8 +371,17 @@ if [ "$cur_top" != "$wt_path" ] || [ "$cur_branch" != "$branch_name" ] ||
    ! git worktree list --porcelain | awk -v p="$wt_path" -v b="refs/heads/$branch_name" '
      $1 == "worktree" { path = substr($0, 10) }
      $1 == "branch" && path == p && substr($0, 8) == b { found = 1 }
-     END { exit !found }' ||
-   ! jq -e --arg sid "$(basename "$state_file" .flow-state)" \
+     END { exit !found }'; then
+  echo "[CONTEXT] WORKTREE_INVARIANT=violated; expected=$wt_path; actual=$cur_top; branch=$cur_branch; claim=$claim_state" >&2
+  exit 1
+fi
+# 初回 state 作成は実体・所有権の照合後だけ。既存の破損や不一致を上書きしない。
+if [ ! -e "$state_file" ]; then
+  bash "$plugin_root/hooks/flow-state.sh" set --phase "${entry_phase:?entry_phase is required}" \
+    --issue "$issue_number" --branch "$branch_name" --worktree "$wt_path" \
+    --pr "${pr_number:?pr_number is required}" --next "worktree 入場検証" || exit $?
+fi
+if ! jq -e --arg sid "$(basename "$state_file" .flow-state)" \
      --argjson issue "$issue_number" --arg branch "$branch_name" --arg wt "$wt_path" '
        .session_id == $sid and .issue_number == $issue and
        (.branch == $branch or (.phase == "init" and .branch == "")) and
