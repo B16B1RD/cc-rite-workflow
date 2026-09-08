@@ -38,6 +38,8 @@ https://github.com/user-attachments/assets/8f36c6b4-1595-4b30-8019-0fe6f0be9b52
 
 ## インストール
 
+Claude Code では以下のプラグイン導入を使います。Codex / Grok Build では同じ配布物の `plugins/rite/skills/` をホストの skill/plugin loader に公開し、[runtime の入口と checkpoint](plugins/rite/references/host-runtime-contract.md#入口と工程境界) に従います。同梱 helper が開発 launcher なしで状態を初期化します。全ホストで独立 reviewer 全員の完了が必要で、能力不足時は復旧手順を示して停止します。shell 統合テストと観測した Codex 操作だけで自動 hook や Grok 全体の E2E 対応を保証するものではありません。[検証記録](docs/designs/multi-host-runtime.md) を参照してください。
+
 Rite Workflow は 3 ステップでインストールします。マーケットプレイスを登録し、プラグインをインストールし、最後にプラグインを再読み込みして新しいコマンドを有効化します。
 
 **ステップ 1**: マーケットプレイスを追加

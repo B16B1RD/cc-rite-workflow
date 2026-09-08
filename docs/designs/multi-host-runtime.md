@@ -1,6 +1,6 @@
 # Multi-host runtime
 
-Claude Code・Codex・Grok Build で同じ rite workflow を実行するための能力調査。実行規則の SoT は配布物の [Host Runtime Contract](../../plugins/rite/references/host-runtime-contract.md)。本書は版別の根拠と確認手順を記録する。ホスト別スキル複製、adapter 実装、グローバル設定変更は扱わない。
+Claude Code・Codex・Grok Build で同じ rite workflow を実行するための能力調査。実行規則の SoT は配布物の [Host Runtime Contract](../../plugins/rite/references/host-runtime-contract.md)。本書は版別の根拠と確認手順を記録する。ホスト別スキル複製とグローバル設定変更は行わない。同梱 runtime helper による明示実行の範囲は下記に記録する。
 
 ## 確認範囲
 
@@ -33,7 +33,21 @@ Claude Code・Codex・Grok Build で同じ rite workflow を実行するため�
 - Grok の公式資料は `user-invocable: false` がユーザーとモデルの両方から隠れ、`allowed-tools` が権限を制限せず、skill の `model` / `effort` を適用しないとする。rite の非公開子スキルや reviewer 制約は配布本文の明示読込と実際のツール制約を別々に検証する。[G-skills]
 - Grok hooks は `sessionId` / `hookEventName` / `toolName` を渡し、passive event の stdout を無視する。PreToolUse の異常は fail-open とされる。Claude 向け Stop の差し戻しや追加コンテキストが自動的に働くとはみなせない。[G-hooks]
 - Codex の hook 機能が有効でも、rite skills を発見しただけでは hooks.json の登録証跡にならない。[X-hooks] 現行 launcher は skill の接続を行うため、hook 配線は別に確認する。
-- 現行 rite helper は CODEX_THREAD_ID / GROK_SESSION_ID を直接消費しない。共有 `.rite/session-id` の値を借りると別セッションへ書く恐れがある。共通契約の明示受渡し条件が全 consumer で揃うまでは完全対応としない。
+- `session-identity.sh` は CODEX_THREAD_ID / GROK_SESSION_ID を直接受け取り、flow-state・claim・work memory・wiki lock へ同じ実 ID を渡す。選択先の欠落・不正・未選択複数 host env は拒否し、共有 marker を借りない。下記の配布統合テストと、ホストでの自動発火・再開の実機検証は区別する。
+
+## 実装した明示経路
+
+配布内の `hooks/host-runtime.sh` は `init` / `checkpoint` / `before-bash` / `before-edit` / `after-edit` / `next` を固定 helper に接続する。`auto` は native に委ね、`explicit` は caller が操作前の拒否と工程後の保存を確認する。開発 launcher やグローバル設定の変更は不要。新規の自動 hook 登録や、Grok camelCase payload の透過互換を意味しない。
+
+`references/host-workflow-operations.md` が本文実行による nested Skill の caller 復帰、セッション別 task 台帳、公開 native 子への reviewer 本文の明示、未回答・承認拒否の停止を定義する。`reviewer-completion-check.sh` は選定全員の実 ID・完了出力を照合し、未回収者がいれば統合前に停止する。
+
+| 検証面 | 証跡と範囲 |
+|---|---|
+| 配布 shell | `runtime-session-identity.test.sh` が同時3ホストの state / claim / queue / WM / lock と欠落・不正・競合時の不変性を実行検証する |
+| 明示 lifecycle | `host-runtime.test.sh` が配布コピーでの初期化・checkpoint・guard・二重更新・失敗を検証する。ホスト自動 hook の発火証跡ではない |
+| レビュー回収 | `reviewer-completion-check.test.sh` が実 pr-review ゲートと不完全 manifest の停止を検証する。manifest の実ツール由来は caller が確認する |
+| 自律継続 | `host-workflow-operations.test.sh` が実 batch のキュー初期化・停止・再開・前進・終了と foreign queue 保護を検証する |
+| Codex 実機 | この実行面で独立した計画/実装子の起動・完了回収、明示 workdir、実 thread ID を観測。自動 Stop / compact / SessionEnd と Grok の全工程実機 E2E は未検証 |
 
 ## 再確認手順
 

@@ -831,7 +831,7 @@ src_hook_dir="$(cd "$SCRIPT_DIR/.." && pwd)"
 cp "$src_hook_dir/session-start.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/hook-preamble.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/state-path-resolve.sh" "$sandbox_hook_dir/"
-cp "$src_hook_dir/control-char-neutralize.sh" "$sandbox_hook_dir/"
+cp "$src_hook_dir/control-char-neutralize.sh" "$src_hook_dir/session-identity.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/gitignore-ensure.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/relocated-state-migrate.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/flow-state.sh" "$sandbox_hook_dir/"
@@ -876,7 +876,7 @@ src_hook_dir_b="$(cd "$SCRIPT_DIR/.." && pwd)"
 cp "$src_hook_dir_b/session-start.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/hook-preamble.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/state-path-resolve.sh" "$sandbox_hook_dir_b/"
-cp "$src_hook_dir_b/control-char-neutralize.sh" "$sandbox_hook_dir_b/"
+cp "$src_hook_dir_b/control-char-neutralize.sh" "$src_hook_dir_b/session-identity.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/gitignore-ensure.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/relocated-state-migrate.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/flow-state.sh" "$sandbox_hook_dir_b/"
@@ -1274,7 +1274,7 @@ _mk_wt_sandbox() {
   mkdir -p "$dir/sandbox/hooks"
   sbx="$dir/sandbox/hooks"
   src="$(cd "$SCRIPT_DIR/.." && pwd)"
-  for f in session-start.sh hook-preamble.sh state-path-resolve.sh control-char-neutralize.sh gitignore-ensure.sh relocated-state-migrate.sh flow-state.sh _mktemp-stderr-guard.sh; do
+  for f in session-start.sh session-identity.sh hook-preamble.sh state-path-resolve.sh control-char-neutralize.sh gitignore-ensure.sh relocated-state-migrate.sh flow-state.sh _mktemp-stderr-guard.sh; do
     cp "$src/$f" "$sbx/"
   done
   cat > "$sbx/session-ownership.sh" <<'STUB_EOF'

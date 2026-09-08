@@ -25,7 +25,8 @@ SESSION_DIR="$STATE_ROOT/.rite/sessions"
 # one behind. Two paths can still write it, and neither is read-only:
 #   1. cmd_migrate below, which rewrites the schema to v3.
 #   2. issue-comment-wm-sync.sh / cleanup-work-memory.sh, which fall back to this
-#      path when `flow-state.sh path` cannot resolve a session id.
+#      path only when no runtime is selected and legacy session resolution fails.
+#      Selected runtime failures never authorize legacy writes.
 # Every other reader (e.g. pre/post-compact, post-tool-wm-sync, session-start,
 # session-end) resolves to an empty path on resolver failure rather than falling back
 # here, so it cannot resurrect the file.
@@ -61,39 +62,11 @@ _phase_migrate() {
   esac
 }
 
-# Reject path-traversal characters and control characters (log injection vector).
-# All session_id sources (override, SESSION_ID_FILE content, env vars) MUST pass through
-# this validator before being printed or used in path construction. Control-character
-# rejection prevents attackers from injecting fake "WARNING:" lines into stderr by setting
-# env var to e.g. $'innocent\nWARNING: fake injected'. Path-traversal rejection prevents
-# CLAUDE_CODE_SESSION_ID="../../tmp/owned" from writing state files outside .rite/sessions/.
-#
-# Contract (SoT: references/session-id-validation-contract.md): this is the Layer 1
-# security-boundary validator and is **format-agnostic by design** — it does NOT enforce
-# UUID form. Non-UUID opaque sids (e.g. `session-aaaa-1371`) MUST keep passing. Do NOT
-# route this through `_resolve-session-id.sh` (strict RFC 4122 / Layer 2) or add UUID-shape
-# checks here: hook tests pass non-UUID sids directly to flow-state.sh and would silently
-# go vacuous if this validator were tightened. The acceptance side is pinned by
-# flow-state.test.sh TC-24.
-_validate_session_id() {
-  # `origin` (引数 2) は session_id の出所 (override / SESSION_ID_FILE / env var) を識別する
-  # エラーメッセージ用ラベル。bash builtin `source` の shadow を避けるため `origin` を採用。
-  local sid="$1" origin="$2"
-  case "$sid" in
-    *..*|*/*)
-      echo "ERROR: invalid session_id from $origin: contains path-traversal characters ('..' or '/')" >&2
-      return 1
-      ;;
-  esac
-  # contains_ctrl (control-char-neutralize.sh) は C0 + DEL + C1 8-bit (0x80-0x9f)
-  # をバイト単位で検出する。旧 `=~ [[:cntrl:]]` は glibc が C1 を cntrl と分類しない
-  # ため 0x9b (8-bit CSI) 入り session_id を素通ししていた。
-  if contains_ctrl "$sid"; then
-    echo "ERROR: invalid session_id from $origin: contains control characters (newline / tab / C1 8-bit bytes / etc.)" >&2
-    return 1
-  fi
-  return 0
-}
+# Layer 1 remains format-agnostic; the shared identity helper also protects
+# runtime adapters that select an ID before invoking flow-state.
+# shellcheck source=session-identity.sh
+source "$SCRIPT_DIR/session-identity.sh"
+_validate_session_id() { validate_session_id_path "$@"; }
 
 _resolve_session_id() {
   local override="${1:-}"
@@ -101,32 +74,13 @@ _resolve_session_id() {
     _validate_session_id "$override" "--session override" || return 1
     printf '%s\n' "$override"; return 0
   fi
-  # Priority: override → env CLAUDE_CODE_SESSION_ID → env
-  # CLAUDE_SESSION_ID → `.rite-session-id` file (env-absent fallback).
-  #
-  # The env var is per-session, so it isolates concurrent Claude sessions that
-  # share one state root (the main checkout). The `.rite-session-id` file is a
-  # single shared path that every session-start hook used to overwrite, so
-  # preferring it (the previous order) let the last session's id "leak" into the
-  # others — flow-state was written to a foreign `{sid}.flow-state` and an in-use
-  # worktree could be mis-reaped. Demoting the file to the env-absent fallback
-  # keeps backward compatibility for CI / headless / non-Code runtimes (which set
-  # no env var) while making the env var authoritative whenever it is present.
-  #
-  # Claude Code exposes CLAUDE_CODE_SESSION_ID; older / non-Code clients used
-  # CLAUDE_SESSION_ID — accept both. Every source (override / env / file) passes
-  # through _validate_session_id before reaching _state_path, blocking the
-  # unvalidated path-traversal / log-injection vector (§4.4 MUST NOT).
-  if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
-    _validate_session_id "$CLAUDE_CODE_SESSION_ID" "CLAUDE_CODE_SESSION_ID env" || return 1
-    printf '%s\n' "$CLAUDE_CODE_SESSION_ID"
-    return 0
-  fi
-  if [ -n "${CLAUDE_SESSION_ID:-}" ]; then
-    _validate_session_id "$CLAUDE_SESSION_ID" "CLAUDE_SESSION_ID env" || return 1
-    printf '%s\n' "$CLAUDE_SESSION_ID"
-    return 0
-  fi
+  local runtime_sid runtime_rc=0
+  runtime_sid=$(resolve_runtime_session_id) || runtime_rc=$?
+  case "$runtime_rc" in
+    0) printf '%s\n' "$runtime_sid"; return 0 ;;
+    2) ;; # No runtime context: retain the Claude/legacy file compatibility path.
+    *) return 1 ;;
+  esac
   if [ -f "$SESSION_ID_FILE" ]; then
     local sid; sid=$(tr -d '[:space:]' < "$SESSION_ID_FILE" 2>/dev/null) || sid=""
     if [ -n "$sid" ]; then
@@ -135,7 +89,7 @@ _resolve_session_id() {
       return 0
     fi
   fi
-  echo "ERROR: cannot resolve session_id" >&2; return 1
+  echo "ERROR: cannot resolve session_id" >&2; return 2
 }
 
 _state_path() {
@@ -542,7 +496,12 @@ cmd_get() {
   # Do not silence _resolve_session_id stderr: when neither `.rite-session-id` nor
   # the env vars are usable, the helper's ERROR message must surface so the silent
   # "empty + rc=0" failure path becomes diagnosable.
-  sid=$(_resolve_session_id "$session") || { printf '%s\n' "$default"; return 0; }
+  local resolve_rc=0
+  sid=$(_resolve_session_id "$session") || resolve_rc=$?
+  if [ "$resolve_rc" -ne 0 ]; then
+    [ "$resolve_rc" -eq 2 ] || return 1
+    printf '%s\n' "$default"; return 0
+  fi
   path=$(_state_path "$sid")
   if [ ! -f "$path" ]; then
     # Stale `.rite-session-id` pointing to a nonexistent state file is a drift signal —

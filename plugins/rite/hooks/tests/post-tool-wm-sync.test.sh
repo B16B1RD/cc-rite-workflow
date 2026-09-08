@@ -672,7 +672,7 @@ echo "T-01: 3-transform gated phase → gh log is GET 1 + PATCH 1 exactly"
 dir_n01="$TEST_DIR/n01"
 mkdir -p "$dir_n01/.rite/work-memory"
 setup_git_repo "$dir_n01" develop
-printf 'branch:\n  base: develop\n' > "$dir_n01/rite-config.yml"
+printf 'branch:\n  base: develop  # integration branch\n' > "$dir_n01/rite-config.yml"
 echo "existing wm" > "$dir_n01/.rite/work-memory/issue-42.md"
 create_state_file "$dir_n01" '{"active": true, "issue_number": 42, "phase": "implement", "last_synced_phase": "init", "wm_comment_id": 4242}'
 wm_body_fixture > "$dir_n01/wm-body.md"

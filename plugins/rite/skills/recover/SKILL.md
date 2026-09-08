@@ -9,6 +9,8 @@ argument-hint: ""
 
 # /rite:recover
 
+> 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
+
 中断した rite ワークフローを再開する。flow-state (phase enum v3 SoT) と commit 数 / PR 状態 / work memory を cross-check して再開点を決める。
 
 **Use cases:** クラッシュ / セッション切断 / 手動中断 / **Context 枯渇**（`/clear` 後に本コマンド。これが **唯一の正規経路**。[workflow-identity.md](../../skills/rite-workflow/references/workflow-identity.md)）。
@@ -448,7 +450,7 @@ bash {plugin_root}/hooks/flow-state.sh set \
 
 ### 5.4 invoke
 
-確定した phase に応じて Skill ツール経由で対応コマンドを呼ぶ。引数として `{issue_arg}` (`open`) または `{pr_number}` (`iterate` / `ready` / `cleanup`) を渡す。
+確定した phase に応じて native Skill または共通契約の本文実行で対応コマンドを呼ぶ。引数として `{issue_arg}` (`open`) または `{pr_number}` (`iterate` / `ready` / `cleanup`) を渡す。
 
 `/rite:open` は内部の Resume Dispatch (ステップ 0) で `[CONTEXT] RESUME_DISPATCH=1; phase=$resolved_phase; issue=$issue_arg` を観測し、適切な step にジャンプする。`/rite:iterate` は phase に応じて review / fix のどちら側からループを始めるかを自動判定する。
 

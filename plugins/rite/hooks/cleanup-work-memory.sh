@@ -9,8 +9,9 @@
 # Without --issue: resolves the current session's flow-state file via the
 #   canonical resolver (flow-state.sh path — schema_v2/v3 per-session file
 #   under .rite/sessions/, falling back to the legacy shared .rite-flow-state
-#   only when session resolution itself fails), resets it to active:false,
-#   deletes ALL issue-*.md files and lockdirs (full cleanup).
+#   only when no runtime identity is selected), resets it to active:false,
+#   deletes that runtime session's issue memory and locks. Legacy callers
+#   without runtime context retain full cleanup of issue-*.md files.
 # With --issue <number>: deletes only the specified issue's files (close mode).
 #   Does NOT reset the flow-state file (close.md handles its own state).
 #
@@ -50,6 +51,15 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# A selected runtime with missing/invalid identity must not delete another
+# session's work memory, even in explicit --issue mode.
+_runtime_rc=0
+bash "$SCRIPT_DIR/session-identity.sh" >/dev/null || _runtime_rc=$?
+if [ "$_runtime_rc" -ne 0 ] && [ "$_runtime_rc" -ne 2 ]; then
+  echo "ERROR: cleanup-work-memory: runtime session resolution failed; cleanup stopped" >&2
+  exit 1
+fi
+
 deleted_count=0
 failed_count=0
 
@@ -59,9 +69,9 @@ if [ "$CLOSE_MODE" = false ]; then
   # (flow-state.sh path — schema_v2/v3 per-session file under .rite/sessions/).
   # Resetting the legacy shared file directly (as this script previously did)
   # left the real per-session file behind with stale active:true/phase:cleanup
-  # state after /rite:cleanup completed. Fall back to the legacy shared
-  # file only when session resolution itself fails (no .rite-session-id /
-  # session env var available) — surface that fallback with a WARNING so a
+  # state after /rite:cleanup completed. Legacy fallback requires no selected
+  # runtime; errors in a selected runtime identity stop above. Warn on the
+  # compatibility fallback so a
   # corrupt/invalid session_id doesn't silently reproduce the same stale-state
   # bug via a different trigger (schema_v2 environments have no legacy file,
   # so a silent fallback here would make Step 1 a silent no-op).
@@ -69,6 +79,12 @@ if [ "$CLOSE_MODE" = false ]; then
   if RESOLVED_FLOW_STATE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>"${_fs_err:-/dev/null}"); then
     :
   else
+    if [ "$_runtime_rc" -ne 2 ]; then
+      echo "ERROR: cleanup-work-memory: runtime flow-state resolution failed; cleanup stopped" >&2
+      [ -n "$_fs_err" ] && [ -s "$_fs_err" ] && head -3 "$_fs_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+      [ -n "$_fs_err" ] && rm -f "$_fs_err"
+      exit 1
+    fi
     echo "WARNING: cleanup-work-memory: flow-state.sh path resolution failed — falling back to legacy $(basename "$STATE_ROOT/.rite-flow-state") (session_id may be missing or invalid)" >&2
     [ -n "$_fs_err" ] && [ -s "$_fs_err" ] && head -3 "$_fs_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
     RESOLVED_FLOW_STATE=""
@@ -109,7 +125,8 @@ if [ "$CLOSE_MODE" = false ]; then
     if TMP_STATE=$(mktemp "$FLOW_STATE.tmp.XXXXXX" 2>/dev/null); then
       trap 'rm -f "$TMP_STATE" 2>/dev/null' EXIT TERM INT
       _jq_err=$(mktemp 2>/dev/null) || _jq_err=""
-      if jq -n \
+      # Keep the per-session owner and schema when resetting lifecycle fields.
+      if jq \
         --argjson active false \
         --argjson issue "${ISSUE_NUMBER:-0}" \
         --arg branch "" \
@@ -117,7 +134,8 @@ if [ "$CLOSE_MODE" = false ]; then
         --argjson pr 0 \
         --arg next "none" \
         --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%S+00:00")" \
-        '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, pr_number: $pr, next_action: $next, updated_at: $ts}' \
+        '{active: $active, issue_number: $issue, branch: $branch, phase: $phase, pr_number: $pr, next_action: $next, updated_at: $ts}
+         + (if .session_id then {session_id, schema_version: (.schema_version // 3)} else {} end)' "$FLOW_STATE" \
         > "$TMP_STATE" 2>"${_jq_err:-/dev/null}"; then
         _mv_err=$(mktemp 2>/dev/null) || _mv_err=""
         # if/else over `if !` preserves the real mv rc (EXDEV=18, EACCES=13,
@@ -156,11 +174,17 @@ if [ "$CLOSE_MODE" = false ]; then
     rm -rf "$_cwm_compact.lockdir" 2>/dev/null || echo "[CONTEXT] LOCKDIR_CLEANUP_FAILED=1; from=cleanup_work_memory_per_session" >&2
   fi
 
-  # Step 3: Delete ALL work memory files (new path plus leftover legacy dir)
+  # Step 3: Delete owned issue memory (all issues only for legacy callers).
   for WM_DIR in "$WM_DIR_NEW" "$WM_DIR_OLD"; do
     if [ -d "$WM_DIR" ]; then
       for f in "$WM_DIR"/issue-*.md; do
         [ -f "$f" ] || continue
+        # Runtime sessions share this directory: only the issue recorded in
+        # this session's flow-state belongs to this cleanup. Legacy callers
+        # without runtime identity retain the historical full cleanup mode.
+        if [ "$_runtime_rc" -eq 0 ] && [ "$(basename "$f")" != "issue-${ISSUE_NUMBER}.md" ]; then
+          continue
+        fi
         if rm -f "$f" 2>/dev/null; then
           deleted_count=$((deleted_count + 1))
         else

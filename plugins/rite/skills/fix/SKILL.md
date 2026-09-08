@@ -10,6 +10,8 @@ user-invocable: false
 
 # /rite:fix
 
+> 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
+
 > **質問規律**: すべての質問・fallback 判断は [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従う。
 
 PR レビューコメントを取得・整理し、指摘への対応を効率的に支援する。やることは以下のシーケンシャルなタスク列:
@@ -2408,7 +2410,7 @@ rationale: references/design-rationale.md#output-pattern-notes
 
 | Priority | Condition | Result |
 |----------|-----------|--------|
-| 1 | Conversation history contains a record of `Skill tool` invoking `rite:fix` (recent message) | Within loop → Execute ステップ 5 |
+| 1 | Conversation history contains a record of native `Skill` or equivalent body execution invoking `rite:fix` from a caller (recent message) | Within loop → Execute ステップ 5 |
 | 2 | Work memory contains `コマンド: /rite:open` (or legacy `rite:open` without prefix slash — writer hook が prefix なしで書く時期の互換) AND any `フェーズ:` value (具体値は writer 実装に依存。Priority 1 が catch しない context-compaction 経路の defensive fallback) | Within loop → Execute ステップ 5 |
 | 3 | Otherwise (user directly input `/rite:fix`) | Standalone execution → Skip ステップ 5 |
 

@@ -164,7 +164,9 @@ assert_grep_count 'fix question inventory is unchanged' "$ROOT/plugins/rite/skil
 assert_grep_count 'ready question inventory is unchanged' "$ROOT/plugins/rite/skills/ready/SKILL.md" 'AskUserQuestion' 2
 assert_grep_count 'merge question inventory is unchanged' "$ROOT/plugins/rite/skills/merge/SKILL.md" 'AskUserQuestion' 2
 assert_grep_count 'cleanup question inventory is unchanged' "$ROOT/plugins/rite/skills/cleanup/SKILL.md" 'AskUserQuestion' 4
-assert_grep_count 'pr-review question inventory is unchanged' "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'AskUserQuestion' 35 \
+# Reviewer resolution failures now stop with [review:error]; the three
+# references to bypassing missing reviewers through user confirmation are removed.
+assert_grep_count 'pr-review question inventory is unchanged' "$ROOT/plugins/rite/skills/pr-review/SKILL.md" 'AskUserQuestion' 32 \
   "$ROOT/plugins/rite/skills/pr-review/references/"{doc-heavy-reviewers,doc-heavy-validation,output-diagnostics,scope-triage,wiki-recording}.md
 
 if [ "$failures" -ne 0 ]; then

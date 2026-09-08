@@ -114,12 +114,19 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 # environments, so caching against it always misses and forces a full gh api
 # comments scan on every call (the same root cause the resolver-based path
 # in cleanup-work-memory.sh addresses). Fall back to the legacy shared file only when
-# session resolution itself fails (no .rite-session-id / session env var
-# available) — surface that fallback with a WARNING for diagnosability.
+# no runtime is selected and legacy session resolution fails. Invalid/missing
+# selected runtime IDs stop before any shared legacy state can be written.
 _fs_err=$(mktemp 2>/dev/null) || _fs_err=""
 if RESOLVED_FLOW_STATE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>"${_fs_err:-/dev/null}"); then
   :
 else
+  _identity_rc=0
+  bash "$SCRIPT_DIR/session-identity.sh" >/dev/null || _identity_rc=$?
+  if [ "$_identity_rc" -ne 2 ]; then
+    echo "ERROR: issue-comment-wm-sync: runtime session resolution failed; work memory sync stopped" >&2
+    [ -n "$_fs_err" ] && [ -s "$_fs_err" ] && head -3 "$_fs_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    exit 1
+  fi
   echo "WARNING: issue-comment-wm-sync: flow-state.sh path resolution failed — falling back to legacy $(basename "$STATE_ROOT/.rite-flow-state") (session_id may be missing or invalid)" >&2
   [ -n "$_fs_err" ] && [ -s "$_fs_err" ] && head -3 "$_fs_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   RESOLVED_FLOW_STATE=""
