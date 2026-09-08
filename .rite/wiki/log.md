@@ -8,6 +8,8 @@
 
 * **Skip**: [20260908T042448Z-pr-2618.md](raw/reviews/20260908T042448Z-pr-2618.md) — レビュー指摘なし。判定はプラグインとテストへ実装済みで、新たなドメイン経験則はない。
 
+* **lint:warning** — contradictions=2, stale=67, orphans=0, missing_concept=0, unregistered_raw=449, broken_refs=0。ページ470件・raw2022件の構造検査を実施。ページ本文・indexは直前の全体監査から差分がないため、意味的矛盾2件はその監査結果を継承し、再検出ゼロとは扱わない。今回のrawは指摘なしとしてskip済み。番号参照0。既存helperの早期終了パイプからBroken pipe診断が出たが、最終の読取enumは成功。下記の集合検証でもリンク切れ0を確認した。
+
 ## 2026-09-07
 
 * **lint:partial** — 構造検査はページ470件・raw2021件を対象に実行し、stale=65（informational）、orphans=0、missing_concept=0、unregistered_raw=448（skip済）、broken_refs=0、番号参照=0。変更した3ページの本文と関連知見は照合したが、全ページ対の意味的比較は未完了であり、矛盾ゼロとは判定していない。helper は読取成功を返した一方、既存のパイプ処理から Broken pipe 診断が出たため、全体監査は clean 扱いにしない。
