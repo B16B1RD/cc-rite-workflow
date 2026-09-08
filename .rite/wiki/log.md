@@ -19,6 +19,8 @@
 
 * **Skip**: [20260908T063616Z-pr-2626.md](raw/reviews/20260908T063616Z-pr-2626.md) — レビュー指摘なし。ホスト能力と実行契約は配布文書と設計書に記録済みで、新たな経験則はない。
 
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=451, broken_refs=0。ページ470件・raw2024件の構造検査を実施。意味的比較は記録済み全体監査を継承し、その後の修正で終了値の矛盾2件が解消されたことを本文照合した。以後のページ・index差分なしを確認。番号参照0。既存helperの早期終了パイプ診断は残るが最終読取enumはすべて成功し、別実装でもページ本文リンクを全量照合してリンク切れ0を確認した。
+
 ## 2026-09-07
 
 * **lint:partial** — 構造検査はページ470件・raw2021件を対象に実行し、stale=65（informational）、orphans=0、missing_concept=0、unregistered_raw=448（skip済）、broken_refs=0、番号参照=0。変更した3ページの本文と関連知見は照合したが、全ページ対の意味的比較は未完了であり、矛盾ゼロとは判定していない。helper は読取成功を返した一方、既存のパイプ処理から Broken pipe 診断が出たため、全体監査は clean 扱いにしない。
