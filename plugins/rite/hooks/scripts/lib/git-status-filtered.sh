@@ -33,6 +33,10 @@
 # recreates the exact silent-failure bug this script exists to prevent:
 #   dirty=$(bash lib/git-status-filtered.sh) || dirty="<non-empty fallback, e.g. treat as dirty>"
 #
+# --tracked-only: stdout contains tracked changes only. All untracked paths
+# (including ghost mounts) are reported with their count on stderr as a WARNING.
+# Use for review drift / fix commit guards, not cleanup or recovery.
+#
 # Output contract: on success, stdout is porcelain v1 text ("XY path" /
 # "XY orig -> new" lines, newline-separated, empty when clean) and exit is
 # 0. On failure (not a git repository, or git itself errors), stderr gets
@@ -42,22 +46,37 @@
 
 set -uo pipefail
 
+tracked_only=false
+status_args=(--porcelain -z)
+if [ "$#" -eq 1 ] && [ "$1" = "--tracked-only" ]; then
+  tracked_only=true
+  status_args+=(--untracked-files=all)
+elif [ "$#" -ne 0 ]; then
+  echo "WARNING: git-status-filtered: usage: git-status-filtered.sh [--tracked-only]" >&2
+  exit 2
+fi
+
 tmp_out=$(mktemp) && tmp_err=$(mktemp) || {
   echo "WARNING: git-status-filtered: mktemp failed" >&2
   exit 1
 }
 trap 'rm -f "$tmp_out" "$tmp_err"' EXIT
 
-if ! git status --porcelain -z >"$tmp_out" 2>"$tmp_err"; then
+if ! git status "${status_args[@]}" >"$tmp_out" 2>"$tmp_err"; then
   echo "WARNING: git-status-filtered: 'git status --porcelain -z' failed (not a git repository, or git itself errored): $(cat "$tmp_err" 2>/dev/null)" >&2
   exit 1
 fi
 
 result=""
+untracked_paths=()
 while IFS= read -r -d '' entry; do
   [ -z "$entry" ] && continue
   code="${entry:0:2}"
   path="${entry:3}"
+  if [ "$tracked_only" = true ] && [ "$code" = "??" ]; then
+    untracked_paths+=("$path")
+    continue
+  fi
   case "${code:0:1}" in
     R | C)
       # Rename/copy: -z emits the new path (with status) first, then the
@@ -73,5 +92,11 @@ while IFS= read -r -d '' entry; do
       ;;
   esac
 done <"$tmp_out"
+
+if [ "${#untracked_paths[@]}" -gt 0 ]; then
+  printf 'WARNING: git-status-filtered: %s untracked path(s) excluded from tracked-only status:' "${#untracked_paths[@]}" >&2
+  printf ' %q' "${untracked_paths[@]}" >&2
+  printf '\n' >&2
+fi
 
 printf '%s' "$result"
