@@ -6,6 +6,7 @@ source "$TEST_SCRIPT_DIR/_test-helpers.sh"
 source "$TEST_SCRIPT_DIR/../scripts/lib/tempfile.sh"
 rite_tempfile_init
 rite_tempdir_new TEST_ROOT host-runtime-test
+TEST_ROOT=$(cd "$TEST_ROOT" && pwd -P)
 cp -R "$TEST_SCRIPT_DIR/../.." "$TEST_ROOT/distribution"
 HOOKS="$TEST_ROOT/distribution/hooks"
 REPO="$TEST_ROOT/consumer"
