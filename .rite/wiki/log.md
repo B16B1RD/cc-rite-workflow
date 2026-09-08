@@ -1,5 +1,7 @@
 ## 2026-09-07
 
+* **lint:partial** — 構造検査はページ470件・raw2021件を対象に実行し、stale=65（informational）、orphans=0、missing_concept=0、unregistered_raw=448（skip済）、broken_refs=0、番号参照=0。変更した3ページの本文と関連知見は照合したが、全ページ対の意味的比較は未完了であり、矛盾ゼロとは判定していない。helper は読取成功を返した一方、既存のパイプ処理から Broken pipe 診断が出たため、全体監査は clean 扱いにしない。
+
 * **Update**: [設計変更後の参照説明](pages/anti-patterns/design-pivot-stale-cross-reference-comment.md) — [レビュー結果](raw/reviews/20260907T233525Z-pr-2614.md) から入力転送の簡素化で残る説明の同期漏れを補強。
 * **Update**: [早期終了による偽の失敗](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — 大容量の一致・非一致と抽出範囲の境界検証を補強。
 * **Update**: [BSD sed の fixture 生成差](pages/anti-patterns/gnu-sed-inplace-silently-noop-on-bsd.md) — 挿入命令の同一行形式と awk による全量保持を補強。
