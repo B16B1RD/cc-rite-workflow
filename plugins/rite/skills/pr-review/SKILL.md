@@ -979,7 +979,7 @@ if [ -z "$ORIG_BR" ]; then
  ORIG_BR="DETACHED:$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 fi
 ORIG_SC=$(git stash list 2>/dev/null | wc -l | tr -d ' ')
-_wth_raw=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh)
+_wth_raw=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh --tracked-only)
 _wth_rc=$?
 if command -v md5sum >/dev/null 2>&1; then
  ORIG_BLH=$(git branch --list 2>/dev/null | sort | md5sum | awk '{print $1}')

@@ -1,20 +1,9 @@
 #!/bin/bash
 # Tests for hooks/scripts/post-review-state-verify.sh worktree drift axis
 #
-# post-review-state-verify.sh compares an ORIG_WTH snapshot (taken by
-# pr-review SKILL.md ステップ 4.0.A) against a current worktree hash computed
-# at verify time. Both sides now route through lib/git-status-filtered.sh
-# instead of raw `git status --porcelain` so that sandbox write-block ghost
-# mounts (— untracked character-device entries a bwrap sandbox overlays
-# over paths it blocks writes to) are stripped from the hash on both sides.
-# Without this, a ghost mount present at snapshot time but not at verify
-# time (or vice versa, e.g. a different sandbox context between the two
-# calls) changes the raw porcelain hash even though nothing in the tracked
-# working tree actually changed — a false-positive worktree drift warning.
-#
-# mknod requires root/CAP_MKNOD and is unavailable in this (and most CI)
-# environments, so tests simulate a ghost mount with a symlink to /dev/null
-# (`ln -s /dev/null <path>`) — same technique as git-status-filtered.test.sh.
+# The production snapshot block and verifier compare tracked status hashes.
+# Untracked paths are advisory; tracked edits still cause worktree drift.
+# Character-device mounts are simulated with symlinks to /dev/null.
 
 set -uo pipefail
 
@@ -64,19 +53,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Snapshot helper: mirrors the happy-path hash computation pr-review SKILL.md
-# ステップ 4.0.A uses for ORIG_WTH — capture-first (filter output captured
-# before hashing, same as production) so dirty-tree snapshots hash identically
-# to the real 4.0.A / verify-side computation (a direct pipe would keep the
-# filter's trailing newline that `$(...)` strips, diverging on non-empty
-# output). Unlike 4.0.A / verify, this helper does not reproduce their
-# error-handling (stderr propagation, exit-code guard) — it only needs to
-# produce the same hash for the happy-path fixtures below.
+# Execute the production snapshot block so both sides use the same status mode.
+PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
+snapshot_block=$(awk '/^### 4\.0\.A /{section=1;next} section && /^```bash$/{code=1;next} code && /^```$/{exit} code{print}' "$PR_REVIEW_SKILL")
+snapshot_block=${snapshot_block//\{plugin_root\}/$PLUGIN_ROOT}
+[ -n "$snapshot_block" ] || { echo "ERROR: snapshot block missing" >&2; exit 1; }
 snapshot_hash() {
-  local dir="$1"
-  local raw
-  raw=$(cd "$dir" && bash "$FILTER" 2>/dev/null)
-  printf '%s' "$raw" | md5sum | awk '{print $1}'
+  ( cd "$1" && eval "$snapshot_block" >/dev/null && printf '%s' "$ORIG_WTH" )
 }
 
 # --- Baseline: clean tree, no drift at all -----------------------------------
@@ -174,5 +157,25 @@ wth5=$(snapshot_hash "$sbx5")
 out5=$(cd "$sbx5" && bash "$VERIFY" --original-branch "$branch5" --original-worktree-hash "$wth5" --auto-recover true)
 drift5=$(printf '%s' "$out5" | jq -r '.drift' 2>/dev/null)
 assert "T-04: dirty-at-snapshot tree, unchanged at verify, reports drift=false" "false" "$drift5"
+
+# Ordinary untracked files at snapshot time and newly appearing stubs are advisory.
+sbx_untracked=$(make_sandbox) && cleanup_dirs+=("$sbx_untracked") || exit 1
+branch_untracked=$(cd "$sbx_untracked" && git branch --show-current)
+printf 'reviewer output' > "$sbx_untracked/new.txt"
+wth_untracked=$(snapshot_hash "$sbx_untracked")
+assert "untracked before snapshot leaves tracked hash unchanged" "$wth0" "$wth_untracked"
+rm "$sbx_untracked/new.txt"
+stubs=(.bashrc .zshrc .profile .bash_profile .zprofile .gitconfig .gitmodules .ripgreprc .idea .vscode)
+for name in "${stubs[@]}"; do touch "$sbx_untracked/$name"; done
+stderr_untracked=$(mktemp) && cleanup_dirs+=("$stderr_untracked")
+out=$(cd "$sbx_untracked" && bash "$VERIFY" --original-branch "$branch_untracked" --original-worktree-hash "$wth_untracked" 2>"$stderr_untracked")
+assert "ten untracked stubs do not cause drift" false "$(printf '%s' "$out" | jq -r .drift)"
+assert "untracked warning reports ten paths" 1 "$(grep -c 'WARNING:.*10 untracked path(s)' "$stderr_untracked")"
+for name in "${stubs[@]}"; do
+  assert "untracked warning includes $name" 1 "$(grep -Fc " $name" "$stderr_untracked")"
+done
+printf 'tracked edit' >> "$sbx_untracked/a"
+out=$(cd "$sbx_untracked" && bash "$VERIFY" --original-branch "$branch_untracked" --original-worktree-hash "$wth_untracked" 2>"$stderr_untracked")
+assert "tracked edit with ten untracked files remains drift" worktree "$(printf '%s' "$out" | jq -r '.type')"
 
 print_summary "$(basename "$0")"

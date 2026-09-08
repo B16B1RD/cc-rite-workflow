@@ -1596,12 +1596,12 @@ rationale: references/design-rationale.md#nit-noted-no-reply-notes
 
 ### 3.1 Verify Changes
 
-**前置ガード**: working tree 無変更なら **ステップ 3 全体を skip** して 4.5 へ (全経路)。判定は **`git-status-filtered.sh`** (raw porcelain 禁止)。
+**前置ガード**: 修正で作成した新規ファイルは対象パスを明示して `git add -- <path>` で stage してから判定する。tracked 差分が無ければ **ステップ 3 全体を skip** して 4.5 へ (全経路)。判定は **`git-status-filtered.sh --tracked-only`** (raw porcelain 禁止)。untracked は件数・名前を WARNING に残し、commit 対象の判定から除外する。
 
 ```bash
 # helper の rc 非 0 (mktemp 失敗等) は dirty 側 = ガード非発火 = 従来どおりステップ 3 実行 に倒す
 # (working tree の状態が判定できないまま commit を skip すると、実際にあった変更を取りこぼすため)
-dirty=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh) || dirty="__RITE_STATUS_UNKNOWN__"
+dirty=$(bash {plugin_root}/hooks/scripts/lib/git-status-filtered.sh --tracked-only) || dirty="__RITE_STATUS_UNKNOWN__"
 if [ -z "$dirty" ]; then
   echo "[CONTEXT] FIX_COMMIT_GUARD=skip; reason=worktree_clean" >&2
 elif [ "$dirty" = "__RITE_STATUS_UNKNOWN__" ]; then
