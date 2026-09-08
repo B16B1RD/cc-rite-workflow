@@ -91,6 +91,35 @@ run_boundary next > "$TEST_ROOT/resume.out"
 assert 'resume exposes exact next action' 'Implement approved plan' "$(jq -r .next_action "$TEST_ROOT/resume.out")"
 assert 'resume keeps owner' "$CODEX_THREAD_ID" "$(jq -r .session_id "$state")"
 
+for corruption in missing_header no_frontmatter; do
+  cp "$wm" "$TEST_ROOT/valid-wm.md"
+  if [ "$corruption" = missing_header ]; then retry_phase=branch; else retry_phase=plan; fi
+  run_flow set --phase "$retry_phase" --issue 42 --next "Retry after $corruption" > /dev/null
+  if [ "$corruption" = missing_header ]; then
+    printf 'invalid work memory\n' > "$wm"
+  else
+    printf '## 📜 rite 作業メモリ\n\n---\nphase: plan\n' > "$wm"
+  fi
+  cp "$wm" "$TEST_ROOT/corrupt-wm.md"
+  cp "$state" "$TEST_ROOT/parse-state.json"
+  cp "$TEST_ROOT/replica.md" "$TEST_ROOT/parse-replica.md"
+  patches=$(wc -l < "$TEST_ROOT/effects" | tr -d ' ')
+  rc=0
+  run_boundary checkpoint > "$TEST_ROOT/parse.out" 2> "$TEST_ROOT/parse.err" || rc=$?
+  assert "$corruption preserves parser exit code" 2 "$rc"
+  assert_grep "$corruption reports the exit code" "$TEST_ROOT/parse.err" 'rc=2'
+  assert_grep "$corruption reports the repair target" "$TEST_ROOT/parse.err" "$wm"
+  assert_grep "$corruption reports the parser cause" "$TEST_ROOT/parse.err" "$corruption"
+  assert "$corruption preserves flow state" true "$(cmp -s "$state" "$TEST_ROOT/parse-state.json" && echo true || echo false)"
+  assert "$corruption preserves corrupt local WM" true "$(cmp -s "$wm" "$TEST_ROOT/corrupt-wm.md" && echo true || echo false)"
+  assert "$corruption preserves replica" true "$(cmp -s "$TEST_ROOT/replica.md" "$TEST_ROOT/parse-replica.md" && echo true || echo false)"
+  assert "$corruption prevents replica PATCH" "$patches" "$(wc -l < "$TEST_ROOT/effects" | tr -d ' ')"
+  cp "$TEST_ROOT/valid-wm.md" "$wm"
+  run_boundary checkpoint > "$TEST_ROOT/parse-retry.out"
+  assert "$corruption repair syncs pending next action" "Retry after $corruption" "$(python3 "$HOOKS/work-memory-parse.py" "$wm" | jq -r .data.next_action)"
+  assert "$corruption repair updates replica once" "$((patches + 1))" "$(wc -l < "$TEST_ROOT/effects" | tr -d ' ')"
+done
+
 run_flow set --phase branch --issue 42 --branch feat/issue-42 --next 'Inspect alternatives' > /dev/null
 rc=0
 GH_FAIL_PATCH=1 run_boundary checkpoint > "$TEST_ROOT/failure.out" 2> "$TEST_ROOT/failure.err" || rc=$?
