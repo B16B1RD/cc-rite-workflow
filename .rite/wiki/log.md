@@ -29,6 +29,9 @@
 * **Update**: [set-e の失敗捕捉](pages/anti-patterns/bare-statement-under-set-e-dead-code-rc-branch.md) — stdout JSON の唯一の診断が代入に閉じる経路を追加。
 * **検出器化候補** — quoted な数字だけ・先頭ゼロの識別子を読み戻す型保持と、同一 checkpoint の revision 不変を固定する。パス正規化と診断保持も regression fixture で機械検証できる。
 
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=452, broken_refs=0
+* **Lint scope** — 全470ページとraw2027件の構造検査を再実行し、読取エラーと番号参照は0。意味の照合は記録済みの全件監査 snapshot `c5178599eb0aa13ddfc36ed492e63578c6118fac` を基準に、以後変更された3ページと関連ページを確認した。先行のstderr分離ページ修復で終了コード捕捉・signal値の既知の矛盾2件は解消済み。今回の2ページは既存方針を補強し、タイトル・概要の変更も新規衝突もない。全ページをこの試行で再読したという主張はしない。陳腐化66件と意図的skip済raw452件はinformational。
+
 ## 2026-09-07
 
 * **lint:partial** — 構造検査はページ470件・raw2021件を対象に実行し、stale=65（informational）、orphans=0、missing_concept=0、unregistered_raw=448（skip済）、broken_refs=0、番号参照=0。変更した3ページの本文と関連知見は照合したが、全ページ対の意味的比較は未完了であり、矛盾ゼロとは判定していない。helper は読取成功を返した一方、既存のパイプ処理から Broken pipe 診断が出たため、全体監査は clean 扱いにしない。
