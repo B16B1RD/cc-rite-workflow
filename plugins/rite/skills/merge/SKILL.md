@@ -2,8 +2,8 @@
 name: merge
 description: |
   rite workflow の PR squash merge ステップ。指定 PR を `gh pr merge --squash` でマージする
-  （cleanup は走らせない → 別途 /rite:cleanup）。/rite:iterate・/rite:ready・/rite:batch-run から
-  programmatic に呼ばれる sub-step、または手動 /rite:merge <pr>。汎用の「PR をマージ」
+  （cleanup は走らせない → 別途 /rite:cleanup）。/rite:batch-run から programmatic に呼ばれる
+  sub-step、または手動 /rite:merge <pr>。汎用の「PR をマージ」
   ヘルパーではなく、その語では auto-activate しない。
   起動: /rite:merge <pr_number>
 argument-hint: "[--force-ci] <pr_number>"

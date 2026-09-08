@@ -97,6 +97,7 @@ COMMON_ERR="$SCRIPT_DIR/../../references/common-error-handling.md"
 OPEN="$SCRIPT_DIR/../../skills/open/SKILL.md"
 ITERATE="$SCRIPT_DIR/../../skills/iterate/SKILL.md"
 WORKFLOW="$SCRIPT_DIR/../../skills/rite-workflow/SKILL.md"
+SPEC="$SCRIPT_DIR/../../../../docs/SPEC.md"
 
 assert_grep "autonomous-execution states bash output is for the LLM, not the terminal" "$AUTONOMOUS" 'ユーザーの端末に届く保証はない'
 assert_grep "autonomous-execution mandates transcription into the completion report" "$AUTONOMOUS" '完了報告の `要対応:` 欄へ 1 行ずつ転記する'
@@ -132,6 +133,8 @@ assert_grep "autonomous-execution preserves warnings with a different target, re
   'severity・対象・理由・対処のいずれかが異なる行は別項目として出現順を保つ'
 assert_grep "batch-run delegates final-attempt and duplicate handling to the shared contract" "$BATCH_RUN" \
   '最終試行と重複の判定は \[Autonomous Execution\]'
+assert_grep "docs/SPEC pins the merge command in the decomposed workflow" "$SPEC" \
+  '`/rite:merge <pr>` runs `gh pr merge --squash`'
 
 direct_warning_emit_count=$(grep -cE '^[[:space:]]*echo "WARNING:' "$OPEN")
 classified_warning_count=$(awk '
