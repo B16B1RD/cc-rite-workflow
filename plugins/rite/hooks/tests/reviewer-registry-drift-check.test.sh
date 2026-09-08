@@ -28,12 +28,6 @@
 #     across all 3 sync points, guarding against AGENT_RE reverting to a
 #     digit-unaware pattern
 #
-# Portability note: fixture mutations use `awk` via the
-# read→transform→write→mv pattern instead of `sed -i`. BSD sed (macOS)
-# requires a mandatory backup suffix for `-i`, so GNU-style `sed -i '<expr>'`
-# aborts the suite on macOS under `set -e`. The awk pattern is identical on
-# GNU and BSD.
-
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -57,16 +51,6 @@ trap 'rc=$?; cleanup; exit $rc' EXIT
 trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
 trap 'cleanup; exit 129' HUP
-
-# awk read→transform→write→mv helper (BSD sed -i 非互換を避ける repo 規約)。
-# 引数: <file> <awk-program>
-awk_inplace() {
-  local file="$1"
-  local prog="$2"
-  local tmp="${file}.tmp"
-  awk "$prog" "$file" > "$tmp"
-  mv "$tmp" "$file"
-}
 
 # 13 種のダミー reviewer slug（checker の >= 6 抽出ガードを満たす数）。
 # web3 は数字入り slug: AGENT_RE が `[a-z][a-z-]*-reviewer[.]md` に
