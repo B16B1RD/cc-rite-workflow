@@ -6,6 +6,8 @@
 * **Lint contradiction: 方針逆転（signal終了値）** — [stderr分離の例](pages/anti-patterns/stderr-merge-silent-sentinel-suppression.md) の「canonical fix」は `trap '...; exit 0' EXIT INT TERM HUP` を推奨する。一方、[一時ファイルのtrap管理](pages/patterns/trap-register-before-mktemp.md) の「Signal-specific handler で POSIX exit code を保持」は「signal 経由の中断で `$?` を 0 に畳まないために signal 別 handler を登録する」とし、TERMで143を返す。いずれも一時ファイルの回収と呼出元への終了状態通知を扱う。同じ自己TERM送信に対し `trap "exit 0" TERM` は終了値0、`trap "exit 143" TERM` は143を返すことを実行確認した。stderr分離例は通常終了のrcとsignal固有終了値を保持する形への統合が必要。
 * **Lint disambiguation** — process substitution の採否は正常なno-matchの吸収とIO失敗の観測で分かれ、診断のコマンド置換とstderr分離は成功stdoutの有無で分かれるため矛盾に数えない。移植性のfallbackとPOSIX表現への簡素化も機能差と表記差で両立する。counter活用ページは後半で手動counterの限界・列挙への転換を明記しており、概要だけで逆方針と判定しない。再レビューの範囲・打切りは差分run、全体再検証、構造変更がNon-goalの経路を区別し、異なる適用条件の推奨を単純な方針逆転に数えなかった。既存helperのBroken pipeは全量取得後の早期終了awk/grepに由来し、集合判定時はpipefailが無効なことと独立照合で検査結果を確認した。本lintでは検出結果のみを記録し、ページ本文は変更していない。
 
+* **Skip**: [20260908T042448Z-pr-2618.md](raw/reviews/20260908T042448Z-pr-2618.md) — レビュー指摘なし。判定はプラグインとテストへ実装済みで、新たなドメイン経験則はない。
+
 ## 2026-09-07
 
 * **lint:partial** — 構造検査はページ470件・raw2021件を対象に実行し、stale=65（informational）、orphans=0、missing_concept=0、unregistered_raw=448（skip済）、broken_refs=0、番号参照=0。変更した3ページの本文と関連知見は照合したが、全ページ対の意味的比較は未完了であり、矛盾ゼロとは判定していない。helper は読取成功を返した一方、既存のパイプ処理から Broken pipe 診断が出たため、全体監査は clean 扱いにしない。
