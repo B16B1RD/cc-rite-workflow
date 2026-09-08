@@ -36,6 +36,8 @@
 * **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=452, broken_refs=0
 * **Lint scope** — 全470ページとraw2027件の構造検査を再実行し、読取エラーと番号参照は0。意味の照合は記録済みの全件監査 snapshot `c5178599eb0aa13ddfc36ed492e63578c6118fac` を基準に、以後変更された3ページと関連ページを確認した。先行のstderr分離ページ修復で終了コード捕捉・signal値の既知の矛盾2件は解消済み。今回の2ページは既存方針を補強し、タイトル・概要の変更も新規衝突もない。全ページをこの試行で再読したという主張はしない。陳腐化66件と意図的skip済raw452件はinformational。
 
+* **Skip**: [識別子の型保持と checkpoint 冪等性のレビュー結果](raw/reviews/20260908T102107Z-pr-2633.md) — レビュー指摘なし。型保持と同一 checkpoint の内容・revision 不変は実装と回帰テストで保護済みで、新たな経験則はない。
+
 ## 2026-09-07
 
 * **lint:partial** — 構造検査はページ470件・raw2021件を対象に実行し、stale=65（informational）、orphans=0、missing_concept=0、unregistered_raw=448（skip済）、broken_refs=0、番号参照=0。変更した3ページの本文と関連知見は照合したが、全ページ対の意味的比較は未完了であり、矛盾ゼロとは判定していない。helper は読取成功を返した一方、既存のパイプ処理から Broken pipe 診断が出たため、全体監査は clean 扱いにしない。
