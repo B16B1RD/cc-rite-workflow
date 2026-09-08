@@ -21,6 +21,8 @@
 
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=451, broken_refs=0。ページ470件・raw2024件の構造検査を実施。意味的比較は記録済み全体監査を継承し、その後の修正で終了値の矛盾2件が解消されたことを本文照合した。以後のページ・index差分なしを確認。番号参照0。既存helperの早期終了パイプ診断は残るが最終読取enumはすべて成功し、別実装で3443本を照合し、Wiki内3442本のリンク切れ0を確認した。追加のWiki外参照1本は既存のリンク切れ（unscoped-enumeration-claim-in-new-summary ページから plugins/rite/skills/review/references/internal-consistency.md）であり、pages/raw内参照を対象とするbroken_refsカウンタには含めない。
 
+* **Skip**: [ホスト作業先のレビュー結果](raw/reviews/20260908T072529Z-pr-2627.md) — detector-candidate: worktree 入場前の state 初期化順序と所有者照合は public fence を実行する回帰テストで検出する。検出は実装済み。
+
 ## 2026-09-07
 
 * **lint:partial** — 構造検査はページ470件・raw2021件を対象に実行し、stale=65（informational）、orphans=0、missing_concept=0、unregistered_raw=448（skip済）、broken_refs=0、番号参照=0。変更した3ページの本文と関連知見は照合したが、全ページ対の意味的比較は未完了であり、矛盾ゼロとは判定していない。helper は読取成功を返した一方、既存のパイプ処理から Broken pipe 診断が出たため、全体監査は clean 扱いにしない。
