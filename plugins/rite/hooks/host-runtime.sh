@@ -150,7 +150,16 @@ case "$EVENT" in
     CURRENT_COMMIT=$(git -C "$CWD" rev-parse --short HEAD)
     UPDATE_LOCAL=1
     if [ -f "$LOCAL_WM" ]; then
-      WM_DATA=$(python3 "$SCRIPT_DIR/work-memory-parse.py" "$LOCAL_WM")
+      if WM_DATA=$(python3 "$SCRIPT_DIR/work-memory-parse.py" "$LOCAL_WM"); then
+        :
+      else
+        rc=$?
+        printf 'ERROR: host-runtime: work memory parse failed (rc=%s): %s\n' "$rc" "$LOCAL_WM" |
+          neutralize_ctrl --keep-newline >&2 || true
+        printf '%s' "$WM_DATA" | jq -r '.errors[]?' |
+          neutralize_ctrl --keep-newline >&2 || true
+        exit "$rc"
+      fi
       if printf '%s' "$WM_DATA" | jq -e --slurpfile state "$FLOW_STATE" --arg branch "$CURRENT_BRANCH" --arg commit "$CURRENT_COMMIT" '
         .data as $wm | $state[0] as $s |
         $wm.phase == $s.phase and $wm.next_action == ($s.next_action // "") and
