@@ -16,6 +16,8 @@ rite workflow 操作のコンテキスト: 状態検出・コマンド案内・�
 - Workflow Awareness / Command Guidance / Best Practices（Conventional Commits・ブランチ命名・PR テンプレート）
 - [coding-principles.md](./references/coding-principles.md) / [common-principles.md](./references/common-principles.md) / [comment-best-practices.md](./references/comment-best-practices.md)
 
+実行ホストの操作対応は [Host Runtime Contract](../../references/host-runtime-contract.md) に従う。ホスト名から能力を推測せず、native / 検証済み代替の適合条件を確認する。既存 Claude Code 経路・工程・sentinel を維持し、必須能力が無ければ停止位置と復旧方法を返す。
+
 ## Workflow Identity (品質 > 時間/context)
 
 rite workflow の identity は「定義された step を全て実行し、生成物の品質を担保する」ことである。**時間的制約や context 残量を理由にした step の省略は禁止**。残量の推論も禁止。context 枯渇の正規経路は `/clear` + `/rite:recover`。LLM が自己判断でワークフローを短縮する経路は存在しない。

@@ -37,6 +37,20 @@ The launcher never replaces an unexpected local link or directory. If an older
 development setup already has `.codex-dev/skills` as a symlink, move or remove
 that local profile explicitly before launching Codex again.
 
+### Host runtime compatibility
+
+Launching a host or discovering rite skills does not establish workflow compatibility.
+Use the distributed [Host Runtime Contract](plugins/rite/references/host-runtime-contract.md)
+to select available operations and preserve worktree isolation, approval boundaries,
+and failure/recovery behavior. It keeps the existing Claude Code path and shared skills.
+
+The [multi-host runtime investigation](docs/designs/multi-host-runtime.md) records
+the checked Claude Code, Codex, and Grok Build versions, sources, capability gaps,
+and repeatable probes. Record actual results separately from help output and plugin
+discovery; unverified hooks or subagents must not be reported as working. Run probes
+in a disposable repository, without changing global settings. The runtime contract
+resolves within the distributed plugin and does not require this development launcher.
+
 ## How to Contribute
 
 ### Reporting Issues
