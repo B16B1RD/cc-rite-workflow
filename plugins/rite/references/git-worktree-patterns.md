@@ -334,9 +334,78 @@ These patterns apply to the **session worktree** layer governed by `multi_sessio
 (default `true`; see [docs/designs/multi-session-worktree.md](../../../docs/designs/multi-session-worktree.md)).
 This is a **separate axis** from the `parallel.mode: "worktree"` patterns above:
 `parallel` is per-Issue sub-agent fan-out within one session; `multi_session` is
-session-wide lifecycle isolation. `/rite:open` creates a session worktree and
-`EnterWorktree`-s into it; `/rite:cleanup` exits and removes it; orphans are
+session-wide lifecycle isolation. `/rite:open` creates and enters a session worktree
+through the verified host route below; `/rite:cleanup` exits and removes it; orphans are
 reaped lazily by `pr-cycle-cleanup.sh` Step 5.
+
+### Host worktree execution
+
+[Host Runtime Contract](host-runtime-contract.md) の作業先・所有者・権限契約を適用する。ホスト名で経路を決めない。入場・再入場とも次の順で選び、採用経路と検証結果を work memory に記録する。
+
+| 観測した能力 / 結果 | 実行経路 |
+|---|---|
+| 既存 worktree へ入場する native ツールが利用可能 | `EnterWorktree(path)` 等の公開 schema に従って入場し、下記検証を実行する |
+| native 不在、各 shell の `workdir` 指定が利用可能 | 全呼び出しに専用 worktree の絶対 `workdir` を指定する。`git rev-parse --show-toplevel` / `git branch --show-current` の読取専用 probe が期待値と一致すれば、下記の所有権・state 確定へ進む |
+| native / `workdir` 不在、各 shell で明示 `cd` が可能 | 毎回 `cd "{wt_path}" && ...` で実行し、同じ検証を通す。前の shell の cwd 永続化は仮定しない |
+| native が権限拒否 / 隔離ガードで失敗 | 代替経路を試さず停止し、ホストの正式な承認手順へ。helper 内の `cd` 等で拒否を迂回しない |
+| その他の native 失敗 / 検証失敗 / 適合経路なし | worktree と state を保持して診断・停止。下記の native 失敗診断または `/rite:recover` を案内する |
+
+**作業先固定**: shell の読取・編集・検証・git 操作はすべて選択した経路で実行する。ファイルツールには検証済み worktree 配下の絶対パスを渡す。委譲先にも絶対ルート・branch・この検証手順・main checkout 編集禁止を渡し、子の最初の結果で照合する。共有 state は `state-path-resolve.sh` が返した main root に対し既存 helper で更新する。
+
+**所有者の確定**: ホストが保証する現在の session ID を、[session contract](host-runtime-contract.md#作業先と所有者) の検証済み入力経路で全 helper に渡す。共有 `.rite/session-id` を借用しない。作成・再構築前に `issue-claim.sh claim --issue N` を実行する。`rc=10` は open の他 live セッション確認ゲート、その他の非ゼロは停止。保存 state の Issue / branch / worktree と実体が矛盾したら上書きせず recover へ戻す。新セッションへの移管は recover の所有権照合を完了してから当該セッションの state に記録する。
+
+**変更前検証**: 入場後・再開後・編集バッチ前・commit 前に、実際に使用する shell の作業先で次を実行する。ファイルツールの対象も同じルート配下に固定できなければ編集前に停止する。`wt_path` / `branch_name` / `issue_number` は caller が確定した値、`plugin_root` は解決済み絶対パス。現在 session の state が無い standalone 入口では、実体と claim を照合した後に `entry_phase` / `pr_number` を使って初回 state を記録する（iterate=`pr`、pr-review=`review`、fix=`fix`、recover=所有権照合済みの復旧 phase/PR）。既存 state の矛盾は補正しない。open の新規 Issue 初期化は Step 1.6 が今回 branch を明示し、異なる Issue の古い worktree だけを clear する。
+
+```bash
+# worktree-execution-check
+set -e
+cur_top=$(git rev-parse --show-toplevel)
+cur_branch=$(git branch --show-current)
+state_file=$(bash "$plugin_root/hooks/flow-state.sh" path)
+claim_state=$(bash "$plugin_root/hooks/issue-claim.sh" check --issue "$issue_number")
+state_root=$(bash "$plugin_root/hooks/state-path-resolve.sh")
+if [ "$cur_top" != "$wt_path" ] || [ "$cur_branch" != "$branch_name" ] ||
+   [ "$claim_state" != own ] ||
+   ! jq -e --arg wt "$wt_path" '.worktree == $wt or .worktree == ""' \
+     "$state_root/.rite/state/issue-claims/issue-$issue_number.json" >/dev/null ||
+   ! git worktree list --porcelain | awk -v p="$wt_path" -v b="refs/heads/$branch_name" '
+     $1 == "worktree" { path = substr($0, 10) }
+     $1 == "branch" && path == p && substr($0, 8) == b { found = 1 }
+     END { exit !found }'; then
+  echo "[CONTEXT] WORKTREE_INVARIANT=violated; expected=$wt_path; actual=$cur_top; branch=$cur_branch; claim=$claim_state" >&2
+  exit 1
+fi
+# 初回 state 作成は実体・所有権の照合後だけ。既存の破損や不一致を上書きしない。
+if [ ! -e "$state_file" ]; then
+  bash "$plugin_root/hooks/flow-state.sh" set --phase "${entry_phase:?entry_phase is required}" \
+    --issue "$issue_number" --branch "$branch_name" --worktree "$wt_path" \
+    --pr "${pr_number:?pr_number is required}" --next "worktree 入場検証" || exit $?
+fi
+if ! jq -e --arg sid "$(basename "$state_file" .flow-state)" \
+     --argjson issue "$issue_number" --arg branch "$branch_name" --arg wt "$wt_path" '
+       .session_id == $sid and .issue_number == $issue and
+       (.branch == $branch or (.phase == "init" and .branch == "")) and
+       (.worktree == $wt or (.phase == "init" and (.worktree // "") == ""))
+     ' "$state_file" >/dev/null; then
+  echo "[CONTEXT] WORKTREE_INVARIANT=violated; expected=$wt_path; actual=$cur_top; branch=$cur_branch; claim=$claim_state" >&2
+  exit 1
+fi
+echo "[CONTEXT] WORKTREE_INVARIANT=ok; toplevel=$cur_top"
+```
+
+**退出**: cleanup は削除前に同じ所有者・branch・worktree の照合と既存 dirty ゲートを通す。native 入場経路では `ExitWorktree(action: "keep")` 等で退出し、不在時の検証済み `workdir` / 毎回 `cd` 経路では以後の全操作先を検出済み `main_root` に切り替える。次をその作業先で実行し、成功後だけ既存 teardown helper を呼ぶ。native 退出の拒否・失敗、main へのアクセス不可では削除せず既存 cleanup 委譲経路で未完了を報告する。`in_worktree_unrecorded` は所有する保存 state が未確認なので従来どおり委譲し、ツール不在だけから所有権を補完しない。
+
+```bash
+# worktree-exit-check
+set -e
+cur_top=$(git rev-parse --show-toplevel)
+if [ "$cur_top" != "$main_root" ] || [ "$cur_top" = "$flow_wt" ]; then
+  echo "ERROR: worktree exit failed; expected=$main_root; actual=$cur_top" >&2
+  exit 1
+fi
+```
+
+削除先は保持した `flow_wt` のみ。live-cwd / sandbox mask / merged / dirty の既存保護は省略しない。shell の作業先指定は harness の内部 cwd を移す保証ではないため、終了した shell や子の作業先を再利用しない。退出確認が失敗したまま self-exclusion で削除してはならない。
 
 ### Worktree namespaces (4 kinds — do not cross-contaminate)
 
@@ -381,10 +450,10 @@ command:
   `fix` as `WT_ENSURE=reenter`), so the workflow continues on the existing worktree
   without rebuilding it.
 
-rite **never** silently falls back to `git switch -c` (which would discard worktree
-isolation) or to a Bash-persisted-cwd path (which would leave the harness cwd on the
-main checkout and risk relative-path edits hitting the main tree); the workflow
-surfaces the diagnosis and the restart guidance instead. Failures from other causes
+For this native failure, rite preserves the worktree and surfaces the diagnosis
+and restart guidance; it never switches to the main tree for implementation.
+Native absence uses [Host worktree execution](#host-worktree-execution), including
+explicit workdir and absolute-path editing checks. Failures from other causes
 (e.g. the worktree path vanished) follow the normal `ensure_session_worktree` rebuild
 path (`WT_ENSURE=reconstructed`), not the restart guidance.
 
@@ -409,7 +478,7 @@ context**:
   time, so it can never be absent at routing.
 - **Legacy path is `false`-only** (`open` Step 2.3): the `git switch -c` block runs only
   when the branch-time re-derivation yielded `false`. Reaching it with `true` is prohibited.
-- **Post-entry toplevel check** (`open` Step 2.3-W): after `EnterWorktree`,
+- **Post-entry toplevel check** (`open` Step 2.3-W): after the selected entry route,
   `git rev-parse --show-toplevel` must equal the worktree path; a mismatch
   (`WORKTREE_INVARIANT=violated`) stops the flow instead of silently implementing on the main
   tree. The data layer mirrors this — `flow-state.sh set --require-worktree` emits

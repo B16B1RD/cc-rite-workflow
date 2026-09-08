@@ -212,6 +212,41 @@ assert_eq "remove: --self-root 欠落は usage error" "$rc" "2"
 out=$(bash "$HELPER" bogus 2>&1); rc=$?
 assert_eq "未知の subcommand は usage error" "$rc" "2"
 
+echo "=== host worktree exit: safe cwd and target-only teardown ==="
+# Execute the published shell exit check, without claiming native ExitWorktree
+# or harness-cwd coverage. Fixtures use no inherited session/state identity.
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+other_wt="$r/.rite/worktrees/issue-2"
+git -C "$r" worktree add -q -b feat/other "$other_wt"
+guard="$TMP_ROOT/exit-check.sh"
+awk '/^# worktree-exit-check$/ { copy=1; next } copy && /^```$/ { exit } copy { print }' \
+  "$SCRIPT_DIR/../../references/git-worktree-patterns.md" > "$guard"
+[ -s "$guard" ] && ok "documented exit guard exists" || bad "documented exit guard is missing"
+main_head=$(git -C "$r" rev-parse HEAD)
+run_exit_teardown() (
+  unset RITE_STATE_ROOT CLAUDE_SESSION_ID
+  export CLAUDE_CODE_SESSION_ID=550e8400-e29b-41d4-a716-446655440001
+  bash -c '
+    cd "$1" || exit 1
+    main_root=$2 flow_wt=$3
+    source "$4"
+    bash "$5" remove --worktree "$flow_wt" --pr-merged true --self-root "$6"
+  ' _ "$1" "$r" "$wt" "$guard" "$HELPER" "$$"
+)
+# Still in the target or accidentally in a sibling: neither may invoke remove.
+for unsafe_cwd in "$wt" "$other_wt"; do
+  out=$(run_exit_teardown "$unsafe_cwd" 2>&1); rc=$?
+  [ "$rc" -ne 0 ] && ok "exit check rejects $unsafe_cwd" || bad "unsafe exit check passed"
+  [ -d "$wt" ] && ok "rejected exit preserves target" || bad "rejected exit removed target"
+done
+out=$(run_exit_teardown "$r" 2>&1); rc=$?
+assert_eq "safe main cwd teardown succeeds" "$rc" "0"
+[ ! -d "$wt" ] && ok "safe exit removes target worktree" || bad "target worktree remains"
+[ -d "$other_wt" ] && ok "safe exit preserves sibling worktree" || bad "sibling worktree removed"
+assert_eq "safe exit preserves main HEAD" "$(git -C "$r" rev-parse HEAD)" "$main_head"
+assert_eq "safe exit preserves main branch" "$(git -C "$r" branch --show-current)" develop
+assert_eq "safe exit preserves sibling branch" "$(git -C "$other_wt" branch --show-current)" feat/other
+
 echo "PASS: $pass"
 echo "FAIL: $fail"
 [ "$fail" -eq 0 ]

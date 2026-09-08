@@ -49,11 +49,7 @@ branch 分岐を Bash で hard 化したのと対称の措置で、git-worktree-
   すれば 2.2-W が `WT_CASE=reuse` と判定して継続できる。
 - **(B) worktree path 消失などの別要因** — recover.md Phase 3.1.5 の再構築経路に委譲する。本
   コマンドでは新規 worktree を作らず、再起動案内へ誤誘導もしない。
-- **(C) 従来 `git switch -c` へのフォールバック** — ユーザーが明示選択した場合のみ。worktree 分離を
-  破棄するため、他セッション併走中は作業ツリーを破壊し合う。recommended にはしない。
-
-cwd を main checkout に残したまま絶対パスで操作する「Bash 永続 cwd 駆動」は、main tree を誤更新する
-リスクがあるため導入しない。
+native 不在と native 失敗は別の観測である。不在時は共通作業先契約で検証した `workdir` / 毎回 `cd` と絶対パス編集を使える。前の shell の cwd が永続するという仮定や、権限拒否を別経路で迂回する実行は採らない。
 
 ## projects-status-inline
 
