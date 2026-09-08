@@ -375,16 +375,14 @@ if [ "$_dt_rc" -ne 0 ]; then
 fi
 ```
 
-**分岐の基準は「worktree 内か」ではなく「`ExitWorktree` で main checkout へ退出できるか」**。`in_worktree` は EnterWorktree 管理下で退出でき、`in_worktree_unrecorded` は path 入場で `ExitWorktree` が no-op になる — 後者では main checkout 操作が harness の worktree 隔離ガードに拒否されるため、実行せず委譲する。
-
-> **ガードが拒否する形（実測）**: harness が拒否するのは **Bash ツール呼び出しのコマンド文字列に直接 `cd {main_root}` / `git -C {main_root}` を書く形**（および worktree 外を向くか検証不能な複合ブロック）であり、helper スクリプト内部の `cd` は拒否されない。
+[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) の退出手順を適用する。detect の分類は保存 state と物理 cwd の関係であり、`in_worktree` だけから `ExitWorktree` の利用可能性を推測しない。所有する保存 state が確認できる場合は採用した native / 検証済み作業先指定経路で退出する。権限拒否・隔離ガードは別経路や helper 内の `cd` で迂回しない。
 rationale: references/rationale.md#exitworktree-delegation
 
-- `CLEANUP_WT=in_worktree_unrecorded`（EnterWorktree 非経由の path 入場 = ユーザーがセッションを worktree ディレクトリで開いた場合。`ExitWorktree` が no-op で main checkout へ戻れない）: **下記の手順 1〜4 を実行しない**（`CLEANUP_DELEGATED=1`）。main checkout 操作を要する 4 項目（base 更新 = ステップ 4 / worktree 削除 = 本 4-W / ブランチ削除 = ステップ 5 / wiki ingest = ステップ 9）は**試行せず**、ステップ 12 が未完了として列挙し委譲する。worktree 内で完結する項目（PR-specific state 削除・Projects Status 更新・Issue クローズ・作業メモリ更新・flow state リセット）は通常どおり実行する。ガードを迂回する複合コマンド（main checkout への `cd` / `git -C` リダイレクト）は**試みない** — ガードは正当に機能しており、迂回は設計違反。
+- `CLEANUP_WT=in_worktree_unrecorded`（保存 state 未記録の path 入場。所有権・退出経路が未確認）: **下記の手順 1〜4 を実行しない**（`CLEANUP_DELEGATED=1`）。main checkout 操作を要する 4 項目（base 更新 = ステップ 4 / worktree 削除 = 本 4-W / ブランチ削除 = ステップ 5 / wiki ingest = ステップ 9）は**試行せず**、ステップ 12 が未完了として列挙し委譲する。worktree 内で完結する項目（PR-specific state 削除・Projects Status 更新・Issue クローズ・作業メモリ更新・flow state リセット）は通常どおり実行する。ガードを迂回する複合コマンド（main checkout への `cd` / `git -C` リダイレクト）は**試みない** — ガードは正当に機能しており、迂回は設計違反。
   **委譲先は main checkout での `/rite:cleanup {pr_number}` 再実行**（1 系統）。再実行セッションでは flow-state に worktree 記録が無いため 4-W は `CLEANUP_WT=none` を返し、`CLEANUP_DELEGATED` を emit せずステップ 4 / 5 / 9 が通常実行される。base 更新・wiki ingest・リモートブランチ削除はそこで直接完了し、worktree 削除とローカルブランチ削除は**ステップ 5 が `branch` エントリを reap manifest に記録する**ことで次回セッション開始時の自動回収を arm する（`{pr_merged}=true`、manifest への記録を verify 済み、かつ対象 worktree が reaper と同じ filtered dirty gate を通過したときだけ `recovery=auto` になる。未マージ PR の強制 cleanup・記録漏れ・dirty または判定不能な worktree は `recovery=manual` に倒れ手動回復が必要 — 出し分けはステップ 12 の `{local_branch_check}` 判定に規定済み。既存配線で、本ステップから追加の記録は行わない）。
-- `CLEANUP_WT=in_worktree`（EnterWorktree 管理下 = `/rite:batch-run` 経由の通常経路。`ExitWorktree` で退出できる）:
-  1. `dirty=yes` なら **AskUserQuestion**（「`git stash push` して続行 / 中止」）。説明文は上記 `--- dirty files begin/end ---` デリミタ内に出力された生パス一覧を**引用**する（要約・創作しない）。stash は common git dir に格納されるため worktree 削除後も `git stash pop` 可能（完了報告の stash 案内は従来文面を流用）。
-  2. `ExitWorktree` ツールを `action: "keep"` で呼び出し、main checkout に復帰する（path 入場した worktree は remove でも消えない仕様のため**常に keep**）。
+- `CLEANUP_WT=in_worktree`（保存 state に worktree 記録あり）:
+  1. 共通作業先契約の変更前検証で所有権・branch・worktree を照合する。`dirty=yes` なら **AskUserQuestion**（「`git stash push` して続行 / 中止」）。説明文は上記 `--- dirty files begin/end ---` デリミタ内に出力された生パス一覧を**引用**する（要約・創作しない）。stash は common git dir に格納されるため worktree 削除後も `git stash pop` 可能（完了報告の stash 案内は従来文面を流用）。
+  2. native 入場なら `ExitWorktree` を `action: "keep"` で呼び出す（**常に keep**）。検証済み作業先指定で入場した場合は、以後の全 shell の `workdir` / 毎回 `cd` とファイル操作先を検出済み `{main_root}` に切り替える。共通作業先契約の **worktree-exit-check** を実行し、実際の toplevel が main root と一致した場合だけ手順 3 へ進む。退出失敗・拒否・検証不可なら削除を試さず `CLEANUP_DELEGATED=1` を emit して、上記委譲経路で残作業を報告する。
   3. main から worktree を削除する。**削除は helper に委譲する** — helper が self-exclusion 付き live-cwd guard（**別の**セッションの harness cwd がまだこの worktree に立っている場合、削除するとそのセッションの `/clear` が `Path does not exist` で失敗するため、削除せず遅延回収へ委譲する。cleanup を実行している**自セッション自身**は `--self-root` で除外する）と sandbox マスク検知（マスク下の `git worktree remove` は admin dir を半壊させるため試行しない）を順に通し、通過したときだけ remove → prune を実行する:
      ```bash
      # 判定と削除（self-exclusion 付き live-cwd guard → sandbox マスク検知 → remove →
@@ -402,11 +400,11 @@ rationale: references/rationale.md#exitworktree-delegation
        echo "[CONTEXT] WORKTREE_REMOVE_FAILED=1; path={flow_wt}; rc=${_wt_rc}" >&2
      fi
      ```
-     > 通常の `in_worktree` 経路ではステップ 2 の `ExitWorktree(keep)` で自セッションの harness cwd が main に退避済みのため、`worktree-foreign-cwd.sh` は rc=1（削除）を返す。`ExitWorktree(keep)` が no-op / 失敗でも、残る live cwd は自セッションだけなので self-exclusion により rc=1。rc=0（遅延）は別セッションのハーネスがこの worktree 内に cwd を持つ場合のみ。`/proc` の無い環境では rc=2 となり従来どおり削除を実行する（後方互換）。
+     > 手順 2 の退出検証成功が削除の前提。native 退出が no-op / 失敗のまま self-exclusion を使って削除してはならない。検証済み作業先指定の経路でも他セッションの live cwd と sandbox mask のガードは維持する。`/proc` の無い環境での helper の後方互換挙動は変更しない。
 rationale: references/rationale.md#live-cwd-self-exclusion
   4. 削除失敗（`WORKTREE_REMOVE_FAILED`）、live-cwd skip（`WORKTREE_REMOVE_SKIPPED_LIVE_CWD`）、または sandbox マスク skip（`WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` — remove 試行自体が admin dir を半壊させるため試行せず委譲）は **WARNING を表示して続行**（non-blocking。`pr-cycle-cleanup.sh` の遅延 reap へ委譲。ステップ 12 報告に失敗/skip と手動コマンドを表示）。busy 失敗時は上記の sandbox 干渉 WARNING も追加表示される（AC-5）。`WORKTREE_REMOVE_FAILED` / `WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK` は `{pr_merged}=true` のときのみ reap manifest（`.rite/tmp-artifacts.tsv`）へ `session_worktree` type でパスを記録する（`worktree` type ではない）。corpse 化した場合、パス記録で `pr-cycle-cleanup.sh` Step 5 の corpse age guard（24h 待ち）をバイパスさせ、mount 解放後の次回セッションで即座に回収できるようにする。
 rationale: references/rationale.md#session-worktree-reap
-- `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 上記 1〜2 をスキップ。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の self-exclusion 付き live-cwd guard が特に重要（live-cwd guard による遅延は別セッション在席時。これに加え sandbox マスク検知時（sandbox マスク）も削除を試行せず遅延する）。
+- `CLEANUP_WT=in_main`（resume 等で既に main 復帰済み）: 所有する保存 state / claim / 対象 branch と登録 worktree の照合、対象の dirty ゲート、共通作業先契約の退出検証を通す。矛盾・他 live claim は削除前に停止する。worktree が残っていれば 3 を実行（既削除なら 3 もスキップ = 冪等）。in_main では所有セッションが別セッションの可能性があるため、3 の self-exclusion 付き live-cwd guard が特に重要（live-cwd guard による遅延は別セッション在席時。これに加え sandbox マスク検知時（sandbox マスク）も削除を試行せず遅延する）。
 - `CLEANUP_WT=none`（multi_session 無効、または worktree 関連なし = 物理 cwd も当該 Issue の worktree でない）: 4-W 全体を no-op でスキップ。**注**: flow-state 未記録でも物理 cwd が当該 Issue の worktree なら `in_worktree_unrecorded` に分類されここには落ちない。**ただし関連 Issue が未識別（`{issue_number}` 空）のときは物理 cwd 導出が働かず `none` に落ちる** — 導出が issue 番号でパス末尾を照合するため。この場合の worktree は次回セッション開始時の遅延 reap に委ねられる。
 - `CLEANUP_WT=unknown`（detect helper が起動できず分類を返せなかった）: 分類不能なので**上記の手順 1〜4 を実行しない**。`{main_root}` も `{flow_wt}` も未確定で、worktree 内にいるか判定できない以上 `in_worktree_unrecorded` と同じ扱いにする — main checkout 操作を要する 4 項目（base 更新 = ステップ 4 / worktree 削除 = 本 4-W / ブランチ削除 = ステップ 5 / wiki ingest = ステップ 9）を**試行せず**、ステップ 12 が未確認として列挙する。worktree 内で完結する項目（PR-specific state 削除・Projects Status 更新・Issue クローズ・作業メモリ更新・flow state リセット）は通常どおり実行する。`CLEANUP_DELEGATED=1` は emit しない — 委譲モードの定型案内は「main checkout で再実行すれば冪等に完了する」を前提にするが、helper が起動できない原因（`{plugin_root}` の未解決置換・helper 欠落）は再実行では解消しないため。
 
@@ -423,7 +421,7 @@ rationale: references/rationale.md#session-worktree-reap
 
 main checkout の不可侵規約（[git-worktree-patterns.md](../../references/git-worktree-patterns.md#main-checkout-不可侵-inviolability-convention)）に従い、**main checkout が `{base_branch}` 上にある場合のみ** base を更新する。別 branch 上では切り替えず WARNING + skip する:
 
-main_root への cd は worktree 自己削除後の cwd 破損対策。`{main_root}` は 4-W の `[CONTEXT] ... main_root=` marker の値。cd はこの Bash 呼び出しの永続シェル cwd を変更するため、ステップ 5 以降も同じ main_root 上で実行される（順序契約 4-W→5 自体は変更しない）:
+main_root への cd は worktree 自己削除後の cwd 破損対策。`{main_root}` は 4-W の `[CONTEXT] ... main_root=` marker の値。shell 間で cwd が永続するとは限らないため、ステップ 5 以降も各呼び出しに main_root の作業先を明示する（順序契約 4-W→5 自体は変更しない）:
 rationale: references/rationale.md#main-root-cd
 
 ```bash
