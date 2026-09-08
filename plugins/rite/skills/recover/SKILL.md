@@ -156,21 +156,24 @@ echo "[CONTEXT] STATE_PARENT_DISPLAY=$parent_issue_display"
 worktree 再入場は Phase 3.2 / 3.3 の **前** に行う。**issue 番号 → worktree パス導出が正規の対応**。flow-state `worktree` field は同一セッション内のヒント。
 rationale: references/rationale.md#worktree-before-crosscheck
 
+[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) の現在 session ID と保存 state / claim の所有権を照合し、**helper による再構築の前に** `issue-claim.sh claim --issue {issue_number}` を実行する。`rc=10` は open の他 live セッション確認ゲート、その他の非ゼロは停止。保存 branch / worktree が導出値と矛盾した場合も再構築せず停止する。別セッションの state を現在セッションとして上書きしない。
+
 検出・再構築は `ensure_session_worktree`（[`lib/worktree-git.sh`](../../hooks/scripts/lib/worktree-git.sh)）に委譲する。helper は `multi_session` 読取・パス導出・branch 解決・**再構築**まで完結し、`[CONTEXT] WT_ENSURE=` を emit する:
 
 ```bash
 bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --issue "$issue_arg"
 ```
 
-> **本ブロックは WT_ENSURE 分岐表の SoT**（review / iterate / fix の入場ゲートが参照する）。EnterWorktree は LLM が実行する。下表は **case 値ごとのアクション**のみ。
+> **本ブロックは WT_ENSURE 分岐表の SoT**（review / iterate / fix の入場ゲートが参照する）。入場と変更前検証は共通作業先契約に従い LLM が実行する。下表は **case 値ごとのアクション**のみ。
 > rationale: references/rationale.md#worktree-before-crosscheck
 
 `WT_ENSURE` で分岐する:
 
 | `WT_ENSURE` | アクション |
 |---|---|
-| `disabled` / `already_in` | no-op（従来フロー / 既に worktree 内）。Phase 3.2 へ |
-| `reenter` / `reconstructed` | `EnterWorktree` ツールを `path: {path}` で呼び出してから Phase 3.2 へ（`{path}` は marker の `path=` 値。`reconstructed` は helper が `git worktree add` 済み） |
+| `disabled` | no-op（従来フロー）。Phase 3.2 へ |
+| `already_in` | 保存 branch・所有権と実体を照合し、変更前検証を通して Phase 3.2 へ |
+| `reenter` / `reconstructed` | 共通作業先契約の native / 検証済み代替で `{path}` へ入場してから Phase 3.2 へ（`{path}` は marker の `path=` 値。`reconstructed` は helper が `git worktree add` 済み） |
 | `residue` | パスは存在するが worktree 未登録（prune 後も残存）→ AskUserQuestion（削除 `rm -rf {path}` して再実行 / 中止） |
 | `branch_other_worktree` | branch が**別の worktree** で checkout 中（並行セッションの可能性）→ **中止**。`other=` のパスを表示する（git が構造的に保証する二重着手ガード） |
 | `branch_absent` | branch がローカル・リモートどこにも無い → **矛盾サマリ + AskUserQuestion**（新規セッション扱い / 中止）。helper は再構築しない（silent に新規扱いもしない） |
@@ -185,7 +188,7 @@ bash {plugin_root}/hooks/scripts/lib/worktree-git.sh ensure-session-worktree --i
 - **harness の git 誤判定**（`.git` が存在し `git -C "{path}" rev-parse` は成功するのに、起動コンテキストが `Is a git repository: false` で EnterWorktree が「not in a git repository」エラーを返す）→ **推奨**。診断とともに「**リポジトリ root から Claude Code を再起動**し、`/rite:recover {issue_number}` を再実行すれば、登録済み worktree が `WT_ENSURE=reenter` で再入場される」と案内する。worktree は保持済みのため破壊しない。
 - **worktree path 消失などの別要因** → 再度本ヘルパーを実行すれば `branch_absent` 以外なら再構築される。再起動案内へ誤誘導しない。
 
-再入場後、claim に worktree path を再記録してもよい（`issue-claim.sh claim --issue {issue_number} --worktree "{path}"`、best-effort）。
+再入場後、保存 branch・claim・登録された実体の一致を確認して claim に worktree path を記録し、所有権照合済みの復旧 state を現在セッションへ記録する。失敗なら停止する。共通作業先契約の変更前検証を通してから Phase 3.2 以降を同じ作業先で実行する。
 
 ### 3.2 git 状態取得
 

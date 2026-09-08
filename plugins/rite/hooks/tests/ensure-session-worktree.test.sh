@@ -253,5 +253,105 @@ assert "TC-16 still reconstructed (non-fatal, branch_remote)" "reconstructed" "$
 assert "TC-16 rc=0 (non-fatal, branch_remote)" "0" "$rc"
 rm -f "$out_tmp" "$err_tmp"
 
+# --- Host-independent worktree contract: execute the documented guard itself. ---
+# These are shell/workdir fixtures, not evidence of native host tool availability.
+echo "=== host worktree execution: isolation, saved state, rejection ==="
+plugin_root=$(_helpers_resolve_plugin_root "$SCRIPT_DIR")
+contract="$plugin_root/references/git-worktree-patterns.md"
+setup_repo; M="$REPO_MAIN"
+wt="$M/.rite/worktrees/issue-42"
+guard="$(dirname "$M")/execution-check.sh"
+awk '/^# worktree-execution-check$/ { copy=1; next } copy && /^```$/ { exit } copy { print }' "$contract" > "$guard"
+assert "documented execution guard exists" "yes" "$(test -s "$guard" && echo yes || echo no)"
+git -C "$M" worktree add -q "$wt" fix/issue-42-foo
+printf '.rite/\n' >> "$M/.git/info/exclude"
+# Explicit fixture-only session ownership; never inherit the runner's state root.
+fixture_sid=550e8400-e29b-41d4-a716-446655440042
+other_sid=550e8400-e29b-41d4-a716-446655440043
+host_fixture() (
+  unset RITE_STATE_ROOT CLAUDE_SESSION_ID
+  export CLAUDE_CODE_SESSION_ID="$fixture_sid"
+  cd "$wt" || exit 1
+  "$@"
+)
+host_fixture bash "$plugin_root/hooks/flow-state.sh" set --phase branch --issue 42 \
+  --branch fix/issue-42-foo --worktree "$wt" --pr 0 --next test >/dev/null
+host_fixture bash "$plugin_root/hooks/issue-claim.sh" claim --issue 42 --worktree "$wt" >/dev/null
+saved_state=$(host_fixture bash "$plugin_root/hooks/flow-state.sh" path)
+cp "$saved_state" "$guard.state"
+# Each invocation is a fresh shell and explicitly selects its cwd. A trailing
+# mutation proves a rejected guard cannot fall through to the next operation.
+run_host_guard() {
+  local selected_cwd="$1" expected_branch="${2:-fix/issue-42-foo}"
+  host_fixture bash -c '
+    cd "$1" || exit 1
+    plugin_root=$2 wt_path=$3 branch_name=$4 issue_number=42
+    source "$5"
+    printf changed > "$wt_path/guard-mutation.txt"
+  ' _ "$selected_cwd" "$plugin_root" "$wt" "$expected_branch" "$guard"
+}
+printf '# existing dirty work\n' >> "$M/rite-config.yml"
+printf 'keep\n' > "$M/user-untracked.txt"
+main_head=$(git -C "$M" rev-parse HEAD)
+main_branch=$(git -C "$M" branch --show-current)
+main_status=$(git -C "$M" status --porcelain)
+main_dirty=$(cat "$M/rite-config.yml")
+run_host_guard "$wt" > "$guard.out" 2>&1; rc=$?
+assert "explicit cwd entry succeeds without native tool" "0" "$rc"
+# Commit only inside the isolated fixture worktree.
+(host_fixture git add guard-mutation.txt && host_fixture git commit -qm 'isolated edit') >/dev/null 2>&1; rc=$?
+assert "isolated fixture commit succeeds" "0" "$rc"
+assert "commit advances only worktree branch" "yes" "$(test "$(git -C "$wt" rev-parse HEAD)" != "$main_head" && echo yes || echo no)"
+assert "isolated commit leaves main HEAD" "$main_head" "$(git -C "$M" rev-parse HEAD)"
+assert "isolated commit leaves main branch" "$main_branch" "$(git -C "$M" branch --show-current)"
+assert "isolated edit leaves main dirty status" "$main_status" "$(git -C "$M" status --porcelain)"
+assert "isolated edit preserves main dirty content" "$main_dirty" "$(cat "$M/rite-config.yml")"
+assert "isolated edit preserves main untracked content" "keep" "$(cat "$M/user-untracked.txt")"
+run_host_guard "$wt" > "$guard.out" 2>&1; rc=$?
+assert "fresh shell resumes saved session state and claim" "0" "$rc"
+assert "entry check does not rewrite saved state" "yes" "$(cmp -s "$saved_state" "$guard.state" && echo yes || echo no)"
+# Initial entry precedes the branch/worktree state update and claim refresh.
+jq '.phase = "init" | .branch = "" | .worktree = ""' "$saved_state" > "$guard.json"
+cp "$guard.json" "$saved_state"
+host_fixture bash "$plugin_root/hooks/issue-claim.sh" claim --issue 42 --worktree "" >/dev/null
+run_host_guard "$wt" > "$guard.out" 2>&1; rc=$?
+assert "initial entry permits unrecorded paths for owned init state" "0" "$rc"
+# All mismatch cases must stop before the mutation, including ownership data
+# that is internally consistent but belongs to a different worktree/session.
+for mismatch in root branch state_branch state_worktree state_issue state_session claim_worktree other_claim; do
+  cp "$guard.state" "$saved_state"
+  host_fixture bash "$plugin_root/hooks/issue-claim.sh" claim --issue 42 --worktree "$wt" >/dev/null
+  selected_cwd=$wt; expected_branch=fix/issue-42-foo
+  claim_file="$M/.rite/state/issue-claims/issue-42.json"
+  case "$mismatch" in
+    root) selected_cwd=$M ;;
+    branch) expected_branch=develop ;;
+    state_branch) jq '.branch = "develop"' "$saved_state" > "$guard.json"; cp "$guard.json" "$saved_state" ;;
+    state_worktree) jq --arg p "$M" '.worktree = $p' "$saved_state" > "$guard.json"; cp "$guard.json" "$saved_state" ;;
+    state_issue) jq '.issue_number = 99' "$saved_state" > "$guard.json"; cp "$guard.json" "$saved_state" ;;
+    state_session) jq --arg sid "$other_sid" '.session_id = $sid' "$saved_state" > "$guard.json"; cp "$guard.json" "$saved_state" ;;
+    claim_worktree) host_fixture bash "$plugin_root/hooks/issue-claim.sh" claim --issue 42 --worktree "$M" >/dev/null ;;
+    other_claim)
+      host_fixture bash "$plugin_root/hooks/issue-claim.sh" release --issue 42 >/dev/null
+      host_fixture env CLAUDE_CODE_SESSION_ID="$other_sid" bash "$plugin_root/hooks/flow-state.sh" set \
+        --phase branch --issue 42 --branch fix/issue-42-foo --worktree "$wt" --pr 0 --next test >/dev/null
+      host_fixture env CLAUDE_CODE_SESSION_ID="$other_sid" bash "$plugin_root/hooks/issue-claim.sh" claim --issue 42 --worktree "$wt" >/dev/null
+      cp "$claim_file" "$guard.claim"
+      host_fixture bash "$plugin_root/hooks/issue-claim.sh" claim --issue 42 --worktree "$wt" > "$guard.out" 2>&1; rc=$?
+      assert "other live claim acquisition is refused" "10" "$rc"
+      ;;
+  esac
+  rm -f "$wt/guard-mutation.txt"
+  run_host_guard "$selected_cwd" "$expected_branch" > "$guard.out" 2>&1; rc=$?
+  assert "$mismatch rejects before mutation" "yes" "$(test "$rc" -ne 0 && test ! -e "$wt/guard-mutation.txt" && echo yes || echo no)"
+  if [ "$mismatch" = other_claim ]; then
+    assert "other live claim is unchanged" "yes" "$(cmp -s "$claim_file" "$guard.claim" && echo yes || echo no)"
+  fi
+done
+# Only verify instruction wiring here: no mock result is presented as a real
+# EnterWorktree/permission probe. Native-denial handling belongs to the host.
+assert_grep "native absence permits explicit workdir" "$contract" 'native 不在、各 shell の `workdir`'
+assert_grep "native denial stops without fallback" "$contract" 'native が権限拒否 .*代替経路を試さず停止'
+
 print_summary "ensure-session-worktree.test.sh" \
   "ensure_session_worktree contract changed — sync lib/worktree-git.sh and the recover.md WT_ENSURE table"

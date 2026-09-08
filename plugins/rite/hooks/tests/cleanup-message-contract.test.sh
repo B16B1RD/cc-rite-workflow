@@ -124,7 +124,8 @@ echo "=== ステップ 4-W: in_worktree_unrecorded の委譲 routing (T-01/T-03)
 # ラベルと隣接構造そのものは抽出前のまま保持している（排他性 pin が依存する）。
 assert_grep "4-W splits in_worktree_unrecorded into its own case arm" "$TEARDOWN_HELPER" '^    in_worktree_unrecorded\)$'
 assert_grep "4-W emits the delegation marker" "$TEARDOWN_HELPER" 'CLEANUP_DELEGATED=1; reason=exit_worktree_unavailable'
-assert_grep "4-W states the branch criterion is ExitWorktree availability" "$CLEANUP" 'ExitWorktree` で main checkout へ退出できるか'
+assert_grep_in_section "4-W verifies exit for native and explicit cwd routes" "$CLEANUP" \
+  '^### 4-W ' '^### 4 base' 'worktree-exit-check.*toplevel.*手順 3'
 # ガード迂回の禁止を明記する (MUST NOT — 実測で拒否済みの複合コマンドを再試行させない)。
 assert_grep "4-W forbids bypassing the harness guard" "$CLEANUP" "ガードを迂回する複合コマンド"
 # T-03 (非回帰): in_worktree arm は従来どおり dirty チェックを持ち、ExitWorktree(keep) 手順も残る。
@@ -228,8 +229,8 @@ assert "session_worktree record stays confined to the two branches" "2" \
 echo "=== ガード拒否条件の正確化 ==="
 # 「構造的に拒否」の一般化は誤り — helper スクリプト内部の cd は拒否されない (実測)。
 # 拒否される形を特定して書かないと、自動化可能な項目を恒久的に人手へ委ね続ける根拠になる。
-assert_grep "4-W states which command shape the guard rejects" "$CLEANUP" \
-  'Bash ツール呼び出しのコマンド文字列に直接 `cd \{main_root\}` / `git -C \{main_root\}` を書く形'
+assert_grep_in_section "4-W forbids bypassing denied exit via helpers" "$CLEANUP" \
+  '^### 4-W ' '^### 4 base' '権限拒否・隔離ガードは別経路や helper 内の `cd` で迂回しない'
 assert_not_grep "over-general 'structurally rejected' claim removed" "$CLEANUP" \
   'worktree 隔離ガードに構造的に拒否されるため'
 

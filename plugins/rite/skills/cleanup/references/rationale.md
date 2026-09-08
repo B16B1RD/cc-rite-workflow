@@ -52,13 +52,7 @@ PostToolUse hook が作る空 stub（`phase: init`・進捗セクションなし
 
 ## exitworktree-delegation
 
-分岐の基準を「worktree 内か」ではなく ExitWorktree 可否にしたのは、path 入場
-（`in_worktree_unrecorded`）では ExitWorktree が no-op になり、main checkout 操作が harness の
-worktree 隔離ガードに拒否される（実測）。ガードが拒否するのは Bash ツール呼び出しのコマンド文字列
-に直接 `cd` / `git -C` を書く形であり、helper 内部の `cd` は拒否されない（ステップ 7 の
-`pr-cycle-cleanup.sh` は内部で main checkout へ `cd` できている）。helper へ閉じ込めれば自動化
-できる余地は残るが、それは「worktree 内から全項目を完走させる」という現行設計の Non-goal。
-ガード迂回は設計違反 — ガードは正当に機能している。
+保存 state の無い path 入場では所有する worktree と退出能力を確定できない。Claude の隔離ガードで main checkout 操作が拒否される経路もあるため、`in_worktree_unrecorded` は従来の委譲を保つ。保存 state のある入場は共通作業先契約で native / 検証済み作業先指定を選び、退出結果を確認する。分類 marker はツール能力の証拠にはならない。拒否を helper 内の `cd` に移して回避しない。
 
 ## helper-rc-capture
 
@@ -81,10 +75,7 @@ archive helper に対して既に採っている形を、抽出で新設した�
 
 ## live-cwd-self-exclusion
 
-自セッションを live-cwd から除外しないと、ステップ 2 の `ExitWorktree(keep)` が no-op / 失敗に
-終わった経路で自セッションを「live」と誤検出し、cleanup 自身を理由に削除をブロックする。
-全プロセスを列挙する `worktree-live-cwd.sh` 自体は変えず、self-exclusion は
-`worktree-foreign-cwd.sh` に閉じる。
+削除の前提は main checkout への退出検証成功である。その後の他セッション在席判定だけを `worktree-foreign-cwd.sh` の self-exclusion が担う。退出失敗を無視するためには使わない。
 
 ## session-worktree-reap
 
@@ -102,10 +93,7 @@ guard が 24h 待ちをバイパスできる。記録は `{pr_merged}=true` の�
 
 ## main-root-cd
 
-worktree 自己削除後は harness の cwd 追跡のみが main へ移り、この Bash 永続シェルの cwd は削除
-済み worktree に残る。ステップ 4 の base 更新はこの main_root へ明示的に cd して実行する必要が
-ある。`git worktree list --porcelain` の先頭 worktree entry は常に main checkout（git の仕様上
-保証）なので、削除がまだ起きていない 4-W 時点で取得すれば cwd の状態に関わらず正しい値が取れる。
+削除済み worktree を後続 shell が再使用しないよう、削除前に main root を確定し、退出を検証する。各 shell の作業先を明示しておけば、cwd の永続化や harness の内部追跡に依存せず base 更新以降を実行できる。
 
 ## base-update-classify
 

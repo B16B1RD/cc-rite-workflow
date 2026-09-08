@@ -86,7 +86,7 @@ stderr は `2>/dev/null` で握りつぶさない。rationale: references/ration
 
 ### 0.5 Worktree Re-entry（multi_session 有効時の Resume Dispatch）
 
-`RESUME_DISPATCH=1` かつ flow-state に `worktree` がある場合、復帰先ステップへジャンプする**前に**そのセッション worktree へ再入場する（Bash 呼び出しと EnterWorktree の cwd を一致させる）:
+`RESUME_DISPATCH=1` かつ flow-state に `worktree` がある場合、復帰先ステップへジャンプする**前に**そのセッション worktree へ再入場する（[共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) の所有権照合・作業先固定・変更前検証を適用する）:
 
 ```bash
 resume_wt=$(bash {plugin_root}/hooks/flow-state.sh get --field worktree --default "") || resume_wt=""
@@ -94,8 +94,8 @@ cur_top=$(git rev-parse --show-toplevel 2>/dev/null) || cur_top=""
 echo "[CONTEXT] WORKTREE_REENTRY=$([ -n "$resume_wt" ] && [ "$resume_wt" != "$cur_top" ] && echo needed || echo none); worktree=$resume_wt"
 ```
 
-- `needed` → `EnterWorktree` を `path: {worktree}` で呼び、その後ステップ 0 の routing 表で決まった復帰先へジャンプする。
-- `none` → そのまま復帰先へ。
+- `needed` → 共通作業先契約の native / 検証済み代替で `{worktree}` へ入場し、保存 branch・claim・実体を照合してから復帰先へジャンプする。
+- `none` → worktree 内なら同じ変更前検証を通して復帰先へ。
 - `EnterWorktree` 失敗（worktree 消失等）→ 新規 worktree は作らず `/rite:recover {issue_number}` を案内する（再構築は recover.md Phase 3.1.5 の責務）。
 
 `MULTI_SESSION_ENABLED=false` または `worktree` 不在なら no-op。
@@ -319,25 +319,21 @@ if [ -f "$repo_root/.claude/settings.local.json" ] && ! { mkdir -p "$wt_path/.cl
 fi
 ```
 
-その後 `EnterWorktree` ツールを `path: {wt_path}`（2.2-W の `WT_CASE` marker の `path=` 値）で呼び出す。EnterWorktree のツール側ガード「ユーザー / プロジェクト指示で明示された場合のみ」は、`rite-config.yml` の `multi_session.enabled: true`（コミット済みのプロジェクト指示）+ 本コマンド定義の明示指示で満たす。
+その後 [共通作業先契約](../../references/git-worktree-patterns.md#host-worktree-execution) を読み、`{wt_path}` への native / 検証済み `workdir` / 毎回 `cd` 経路を選ぶ。`EnterWorktree` が利用可能な場合は `path: {wt_path}` で呼ぶ。`multi_session.enabled: true` と本コマンドが入場の明示指示であり、ツール不在だけを理由に追加承認を求めない。権限拒否では代替を試さない。
 
-**EnterWorktree が不在 / 失敗の場合は silent fallback しない**。原因を切り分けて対処する（補助情報として `git -C "{wt_path}" rev-parse --is-inside-work-tree` を提示してよい）:
-
-- **(A) harness の git 誤判定**（`git -C {wt_path} rev-parse` は成功するのに「not in a git repository」）→ **推奨**。worktree は破壊せず、リポジトリ root から Claude Code を再起動して `/rite:open {issue_number}` を再実行すれば 2.2-W が `WT_CASE=reuse` で継続する、と案内する。
-- **(B) worktree path 消失などの別要因** → 新規 worktree を作らず `/rite:recover {issue_number}` へ委譲する（再起動案内へ誤誘導しない）。
-- **(C) 従来 `git switch -c` で続行** → ユーザーが明示選択した場合のみ。recommended にしない。他セッション併走中は作業ツリーを破壊し合う旨を警告してステップ 2.3 へフォールバックする。
+**native 入場失敗の診断**: git probe 成功なのに「not in a git repository」なら worktree を保持し、リポジトリ root から Claude Code を再起動して再実行する。path 消失などは `/rite:recover {issue_number}` の再構築へ委譲する。分離を捨てる `git switch -c` での続行は行わない。
 
 rationale: references/rationale.md#worktree-entry-failure
 
 > 入場以降、sandbox 有効環境では main checkout 配下への state 書込（`flow-state.sh set` / `issue-claim.sh` / `issue-comment-wm-sync.sh` 等）が「読み込み専用ファイルシステムです」で拒否されることがある。拒否された当該コマンドのみ `dangerouslyDisableSandbox: true` で再実行してよい（ユーザー確認は不要。詳細: [git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる)）。
 
-入場後、claim に worktree path を記録する（reap / resume の discovery 用）:
+入場後、共通作業先契約の変更前検証を実際の作業先で実行してから、claim に worktree path を記録する（reap / resume の discovery 用）:
 
 ```bash
-bash {plugin_root}/hooks/issue-claim.sh claim --issue {issue_number} --worktree "{wt_path}" >/dev/null 2>&1 || true
+bash {plugin_root}/hooks/issue-claim.sh claim --issue {issue_number} --worktree "{wt_path}" || exit $?
 ```
 
-続けて、セッション worktree 上にいることを invariant として検証する（EnterWorktree の失敗に気付かず main ツリーで implement/commit する silent fallback を遮断する最終ガード）:
+続けて、セッション worktree 上にいることを invariant として検証する（選択した経路で main ツリーへの誤作業を遮断する最終ガード）:
 
 ```bash
 cur_top=$(git rev-parse --show-toplevel 2>/dev/null) || cur_top=""
@@ -354,11 +350,11 @@ fi
 ```
 
 - `WORKTREE_INVARIANT=ok` → ステップ 2.4 へ進む。
-- `WORKTREE_INVARIANT=violated` → 本ブロックが `exit 1` で停止する。main ツリー上で implement / commit を行わず、上記 (A) / (B) / (C) の切り分けへ戻る。`violated` のままブランチ実装へ進むことは禁止。
+- `WORKTREE_INVARIANT=violated` → 本ブロックが `exit 1` で停止する。main ツリー上で implement / commit を行わず、共通作業先契約の診断・停止へ進む。`violated` のままブランチ実装へ進むことは禁止。
 
 rationale: references/rationale.md#worktree-invariant
 
-ステップ 3〜6 は cwd 相対で完結するため無変更で、`WORKTREE_INVARIANT=ok` を前提条件とする。
+ステップ 3〜6 の全 shell・編集・検証・委譲に共通作業先契約を適用する。編集バッチ前・commit 前にも検証し、`WORKTREE_INVARIANT=ok` を前提条件とする。
 
 ### 2.4 GitHub Projects Status 更新
 
