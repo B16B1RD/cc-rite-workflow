@@ -81,6 +81,34 @@ run_auto_hook > "$TEST_ROOT/auto.out"
 run_boundary checkpoint > "$TEST_ROOT/repeat.out"
 assert 'explicit then automatic/repeated explicit does not duplicate PATCH' 1 "$(wc -l < "$TEST_ROOT/effects" | tr -d ' ')"
 assert 'identical checkpoint keeps local WM revision' "$revision" "$(python3 "$HOOKS/work-memory-parse.py" "$wm" | jq -r .data.sync_revision)"
+
+# Fix only the short hash output; all other git operations use the real repo.
+export TEST_REAL_GIT="$(command -v git)"
+cat > "$TEST_ROOT/bin/git" <<'SHIM'
+#!/bin/bash
+case " $* " in
+  *" rev-parse --short HEAD ") printf '%s\n' "$TEST_COMMIT"; exit 0 ;;
+esac
+exec "$TEST_REAL_GIT" "$@"
+SHIM
+chmod +x "$TEST_ROOT/bin/git"
+for TEST_COMMIT in 1234567 0001234 123abc7; do
+  export TEST_COMMIT
+  revision=$(python3 "$HOOKS/work-memory-parse.py" "$wm" | jq -r .data.sync_revision)
+  run_boundary checkpoint > "$TEST_ROOT/commit-change.out"
+  parsed=$(python3 "$HOOKS/work-memory-parse.py" "$wm")
+  assert "$TEST_COMMIT round-trips as a string and preserves numeric metadata" true "$(printf '%s' "$parsed" | jq -e --arg commit "$TEST_COMMIT" '
+    .data | (.last_commit | type) == "string" and .last_commit == $commit and
+    all(.schema_version, .issue_number, .sync_revision; type == "number")')"
+  assert "$TEST_COMMIT change updates local WM once" "$((revision + 1))" "$(printf '%s' "$parsed" | jq -r .data.sync_revision)"
+  cp "$wm" "$TEST_ROOT/commit-wm.md"
+  run_boundary checkpoint > "$TEST_ROOT/commit-repeat.out"
+  assert "$TEST_COMMIT identical checkpoint preserves local WM bytes" true "$(cmp -s "$wm" "$TEST_ROOT/commit-wm.md" && echo true || echo false)"
+  assert "$TEST_COMMIT identical checkpoint keeps revision" "$((revision + 1))" "$(python3 "$HOOKS/work-memory-parse.py" "$wm" | jq -r .data.sync_revision)"
+done
+rm "$TEST_ROOT/bin/git"
+unset TEST_REAL_GIT TEST_COMMIT
+
 run_flow set --phase plan --issue 42 --pr 43 --branch feat/issue-42 --next 'Implement approved plan' > /dev/null
 run_auto_hook > "$TEST_ROOT/auto-first.out"
 run_boundary checkpoint > "$TEST_ROOT/explicit-second.out"
