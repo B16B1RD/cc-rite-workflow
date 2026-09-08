@@ -142,6 +142,12 @@ Todo → In Progress → In Review → Done
 
 ---
 
+## Host Runtime Validation
+
+Shared workflow operations are defined by the distributed [Host Runtime Contract](../plugins/rite/references/host-runtime-contract.md). The [capability record](designs/multi-host-runtime.md) distinguishes observed operations from unverified host lifecycle effects.
+
+Launcher stubs and shell integration suites validate execution and error contracts in CI. Live validation uses separate Issues for draft completion, merge through cleanup, and recovery within the same session and worktree. Version, execution surface, source commit, stage outcomes, and evidence are recorded per host using the [validation guide](../tests/runtime-e2e/README.md). Reports with missing hosts, unexecuted stages, or mixed source revisions cannot establish three-host completion. Development and direct distribution results are evaluated separately; unavailable credentials leave results unverified.
+
 ## Plugin Structure
 
 > **Architecture**: The `/rite:issue-create` lifecycle is a single-file flat workflow. The previous `/rite:issue-start` flat workflow was decomposed into four single-responsibility commands (`/rite:open` / `/rite:iterate` / `/rite:ready` / `/rite:merge`); the source file `commands/issue/start.md` was deleted. Older sub-skill files (`commands/issue/start-execute`, `start-publish`, `start-finalize`, `create-interview`, `create-register`, `create-decompose`, `parent-routing`, etc.) and implicit-stop guard hooks (`auto-fire-step0.sh`, `verify-terminal-output.sh`, `stop-create-interview-block.sh`) were earlier consolidated into the flat workflow before the start.md decomposition. Sections referencing those retired components remain only as migration anchors.
