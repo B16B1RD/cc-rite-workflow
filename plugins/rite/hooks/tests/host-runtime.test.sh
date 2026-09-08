@@ -46,7 +46,9 @@ esac
 case "$1 $2" in
   "repo view") echo testowner/testrepo ;;
   "api repos/testowner/testrepo/issues/comments/4242") cat "$TEST_ROOT/replica.md" ;;
-  "api repos/testowner/testrepo/issues/42/comments") jq -n --rawfile body "$TEST_ROOT/replica.md" '{id:4242,body:$body}' ;;
+  "api repos/testowner/testrepo/issues/42/comments")
+    [ "${GH_NO_COMMENT:-0}" != 1 ] || exit 0
+    jq -n --rawfile body "$TEST_ROOT/replica.md" '{id:4242,body:$body}' ;;
   *) echo 'unexpected gh fixture call' >&2; exit 17 ;;
 esac
 SHIM
@@ -156,6 +158,29 @@ assert 'failed sync preserves retry phase' plan "$(jq -r .last_synced_phase "$st
 assert 'failed sync leaves remote replica unchanged' plan "$(sed -n 's/^- \*\*フェーズ\*\*: //p' "$TEST_ROOT/replica.md")"
 run_boundary checkpoint > "$TEST_ROOT/retry.out"
 assert 'successful retry advances sync phase' branch "$(jq -r .last_synced_phase "$state")"
+
+# Automatic absence detection must not make the explicit checkpoint look synced.
+cp "$state" "$TEST_ROOT/before-absent-state.json"
+cp "$wm" "$TEST_ROOT/before-absent-wm.md"
+cp "$TEST_ROOT/replica.md" "$TEST_ROOT/before-absent-replica.md"
+patches=$(wc -l < "$TEST_ROOT/effects" | tr -d ' ')
+run_flow set --phase plan --issue 42 --next 'Implement approved plan' > /dev/null
+jq 'del(.wm_comment_id)' "$state" > "$TEST_ROOT/uncached-state.json"
+mv "$TEST_ROOT/uncached-state.json" "$state"
+rc=0
+GH_NO_COMMENT=1 run_auto_hook > "$TEST_ROOT/absent-auto.out" 2> "$TEST_ROOT/absent-auto.err" || rc=$?
+assert 'automatic absent replica detection remains non-blocking' 0 "$rc"
+assert 'automatic detection records absent replica at the current synced phase' '["absent","plan","plan"]' "$(jq -c '[.wm_replica,.phase,.last_synced_phase]' "$state")"
+cp "$state" "$TEST_ROOT/absent-state.json"
+rc=0
+GH_NO_COMMENT=1 run_boundary checkpoint > "$TEST_ROOT/absent-explicit.out" 2> "$TEST_ROOT/absent-explicit.err" || rc=$?
+assert 'explicit checkpoint stops even after automatic sync advanced the phase' 1 "$rc"
+assert_grep 'absent replica failure explains the required recovery' "$TEST_ROOT/absent-explicit.err" 'work memory replica is absent; initialize the replica before retrying'
+assert 'absent explicit checkpoint preserves saved flow state' true "$(cmp -s "$state" "$TEST_ROOT/absent-state.json" && echo true || echo false)"
+assert 'absence detection and explicit stop do not PATCH' "$patches" "$(wc -l < "$TEST_ROOT/effects" | tr -d ' ')"
+assert 'absence detection and explicit stop preserve replica bytes' true "$(cmp -s "$TEST_ROOT/replica.md" "$TEST_ROOT/before-absent-replica.md" && echo true || echo false)"
+cp "$TEST_ROOT/before-absent-state.json" "$state"
+cp "$TEST_ROOT/before-absent-wm.md" "$wm"
 
 jq -n --arg command "touch $TEST_ROOT/never-executed" '{tool_name:"Bash",tool_input:{command:$command}}' > "$TEST_ROOT/tool.json"
 run_boundary before-bash --payload-file "$TEST_ROOT/tool.json" > "$TEST_ROOT/guard.out"
