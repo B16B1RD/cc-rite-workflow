@@ -505,13 +505,11 @@ run_update "$SBX10" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="123" WM_LOOP_COUNT="3" >/dev/null 2>&1 || true
 WM_FILE10="$SBX10/.rite/work-memory/issue-687.md"
-# fixture 改竄は awk read→transform→write→mv 形式で行う (GNU 形式の `sed -i '<expr>'` は
-# BSD sed が -i の引数を必須とするため macOS で失敗し、set -e 下でスイート全体が中断する)
-awk '{
+awk_inplace "$WM_FILE10" '{
   if ($0 == "pr_number: 123") print "pr_number: \"12x3\"";
   else if ($0 == "loop_count: 3") print "loop_count: \"3y\"";
   else print
-}' "$WM_FILE10" > "$WM_FILE10.tmp" && mv "$WM_FILE10.tmp" "$WM_FILE10"
+}'
 
 # stderr のみを捕捉する (run_update は subshell。`2>&1 >/dev/null` の順序が必須 —
 # 逆順だと stdout の複製先が /dev/null になり WARNING を取り逃がす)
@@ -929,12 +927,10 @@ WM_FILE21="$SBX21/.rite/work-memory/issue-687.md"
 seed21=$(cat "$WM_FILE21" 2>/dev/null || echo "")
 # seed 前提確認: これが無いと seed 失敗時に T-17.1 が「既定値 0 のまま」を掴んで空虚に PASS する
 assert_contains "T-17.0: seed で loop_count=7 が書かれる (前提確認)" "loop_count: 7" "$seed21"
-# fixture 改竄は T-06 と同じ awk read→transform→write→mv 形式 (BSD sed -i 非互換の回避)
-US_SEP=$(printf '\037')
-awk -v us="$US_SEP" '{
-  if ($0 == "pr_number: 123") printf "pr_number: \"12%s34\"\n", us;
+awk_inplace "$WM_FILE21" '{
+  if ($0 == "pr_number: 123") printf "pr_number: \"12\03734\"\n";
   else print
-}' "$WM_FILE21" > "$WM_FILE21.tmp" && mv "$WM_FILE21.tmp" "$WM_FILE21"
+}'
 err21=$(run_update "$SBX21" \
   WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
   WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" 2>&1 >/dev/null) || true

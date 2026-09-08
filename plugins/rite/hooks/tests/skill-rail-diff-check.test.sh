@@ -4,6 +4,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=./_test-helpers.sh
+source "$SCRIPT_DIR/_test-helpers.sh"
 TARGET="$SCRIPT_DIR/../scripts/skill-rail-diff-check.sh"
 PLUGIN_ROOT="$SCRIPT_DIR/../.."
 TEST_DIR="$(mktemp -d)"
@@ -11,26 +13,12 @@ TEST_DIR="$(mktemp -d)"
 # `git -C` walks up to the enclosing repo, so a subdirectory would resolve to
 # TEST_DIR's own .git and the non-git case would never be exercised.
 NONGIT_DIR="$(mktemp -d)"
-PASS=0
-FAIL=0
-SKIP=0
 
 cleanup() { rm -rf "$TEST_DIR" "$NONGIT_DIR"; }
 trap 'rc=$?; cleanup; exit $rc' EXIT
 trap 'cleanup; exit 130' INT
 trap 'cleanup; exit 143' TERM
 trap 'cleanup; exit 129' HUP
-
-pass() { PASS=$((PASS + 1)); echo "  ✅ PASS: $1"; }
-fail() { FAIL=$((FAIL + 1)); echo "  ❌ FAIL: $1"; }
-skip() { SKIP=$((SKIP + 1)); echo "  ⏭️  SKIP: $1"; }
-
-# GNU `sed -i` takes the expression where BSD sed expects a backup suffix, so
-# the repo edits fixtures with awk read -> transform -> write -> mv instead.
-awk_edit() {
-  local file="$1" prog="$2"
-  awk "$prog" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
-}
 
 echo "=== skill-rail-diff-check.sh tests ==="
 echo ""
@@ -109,7 +97,7 @@ if [ "$rc" -eq 0 ]; then pass "unchanged → exit 0"; else fail "expected rc=0, 
 # --------------------------------------------------------------------------
 echo "TC-004: Prose-only edit → exit 0"
 write_base
-awk_edit "$F" '!/^More prose explaining/'
+awk_inplace "$F" '!/^More prose explaining/'
 rc=0; output=$(run) || rc=$?
 if [ "$rc" -eq 0 ]; then pass "prose deletion → exit 0"; else fail "expected rc=0, got rc=$rc: $output"; fi
 
@@ -118,7 +106,7 @@ if [ "$rc" -eq 0 ]; then pass "prose deletion → exit 0"; else fail "expected r
 # --------------------------------------------------------------------------
 echo "TC-005: Bash block edit → exit 1"
 write_base
-awk_edit "$F" '{ gsub(/FIXTURE=1/, "FIXTURE=2"); print }'
+awk_inplace "$F" '{ gsub(/FIXTURE=1/, "FIXTURE=2"); print }'
 rc=0; output=$(run) || rc=$?
 if [ "$rc" -eq 1 ]; then pass "bash block edit → exit 1"; else fail "expected rc=1, got rc=$rc: $output"; fi
 
@@ -127,7 +115,7 @@ if [ "$rc" -eq 1 ]; then pass "bash block edit → exit 1"; else fail "expected 
 # --------------------------------------------------------------------------
 echo "TC-006: Table row edit → exit 1"
 write_base
-awk_edit "$F" '{ gsub(/fixture:done/, "fixture:finished"); print }'
+awk_inplace "$F" '{ gsub(/fixture:done/, "fixture:finished"); print }'
 rc=0; output=$(run) || rc=$?
 if [ "$rc" -eq 1 ]; then pass "table row edit → exit 1"; else fail "expected rc=1, got rc=$rc: $output"; fi
 
@@ -136,7 +124,7 @@ if [ "$rc" -eq 1 ]; then pass "table row edit → exit 1"; else fail "expected r
 # --------------------------------------------------------------------------
 echo "TC-007: In-fence comment edit → exit 1"
 write_base
-awk_edit "$F" '{ if ($0 ~ /echo "\[CONTEXT\] FIXTURE=1"/) print "# added comment"; print }'
+awk_inplace "$F" '{ if ($0 ~ /echo "\[CONTEXT\] FIXTURE=1"/) print "# added comment"; print }'
 rc=0; output=$(run) || rc=$?
 if [ "$rc" -eq 1 ]; then pass "in-fence comment edit → exit 1"; else fail "expected rc=1, got rc=$rc: $output"; fi
 
@@ -148,13 +136,13 @@ if [ "$rc" -eq 1 ]; then pass "in-fence comment edit → exit 1"; else fail "exp
 # --------------------------------------------------------------------------
 echo "TC-008: Indented fence edit → exit 1"
 write_base
-awk_edit "$F" '{ gsub(/INDENTED=1/, "INDENTED=2"); print }'
+awk_inplace "$F" '{ gsub(/INDENTED=1/, "INDENTED=2"); print }'
 rc=0; output=$(run) || rc=$?
 if [ "$rc" -eq 1 ]; then pass "indented bash block edit → exit 1"; else fail "expected rc=1, got rc=$rc: $output"; fi
 
 echo "TC-008b: Indented table row edit → exit 1"
 write_base
-awk_edit "$F" '{ gsub(/indented-row/, "renamed-row"); print }'
+awk_inplace "$F" '{ gsub(/indented-row/, "renamed-row"); print }'
 rc=0; output=$(run) || rc=$?
 if [ "$rc" -eq 1 ]; then pass "indented table row edit → exit 1"; else fail "expected rc=1, got rc=$rc: $output"; fi
 
@@ -191,7 +179,7 @@ else fail "unexpected --extract-only output: $output"; fi
 
 echo "TC-010b: fence language tag is part of the rail"
 write_base
-awk_edit "$F" '{ if ($0 == "```bash") print "```sh"; else print }'
+awk_inplace "$F" '{ if ($0 == "```bash") print "```sh"; else print }'
 rc=0; output=$(run) || rc=$?
 if [ "$rc" -eq 1 ]; then pass "fence language tag change → exit 1"; else fail "expected rc=1, got rc=$rc: $output"; fi
 

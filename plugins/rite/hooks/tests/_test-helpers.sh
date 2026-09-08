@@ -107,6 +107,15 @@ FAIL=0
 SKIP=0
 FAILED_NAMES=()
 
+# BSD sed treats the argument after -i as a backup suffix, so fixture edits use
+# awk and replace the original only after the transformed temporary file exists.
+awk_inplace() {
+  local file="$1"
+  local prog="$2"
+  local tmp="${file}.tmp"
+  awk "$prog" "$file" > "$tmp" && mv "$tmp" "$file"
+}
+
 # Pass marker — writes to stdout (see "Output convention" in the file header).
 pass() {
   PASS=$((PASS + 1))
