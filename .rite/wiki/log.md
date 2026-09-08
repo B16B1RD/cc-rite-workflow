@@ -12,6 +12,8 @@
 
 * **Skip**: [20260908T045114Z-pr-2620.md](raw/reviews/20260908T045114Z-pr-2620.md) — レビュー指摘なし。起動・計測の手順はプラグインに反映済みで、新たなドメイン経験則はない。
 
+* **lint:warning** — contradictions=2, stale=67, orphans=0, missing_concept=0, unregistered_raw=450, broken_refs=0。ページ470件・raw2023件を構造検査。ページ本文・indexは記録済み全体監査のsnapshotから差分なしとgitで確認し、既存の意味的矛盾2件を継承した。新たなページ変更はない。番号参照・読取エラー0。既存helperの早期終了パイプによるBroken pipe診断は残るが、最終読取enumは成功。Wiki検索ではindexのO_CREATとO_EXCLを含むタイトル内の未エスケープ区切りが候補抽出警告になる。
+
 ## 2026-09-07
 
 * **lint:partial** — 構造検査はページ470件・raw2021件を対象に実行し、stale=65（informational）、orphans=0、missing_concept=0、unregistered_raw=448（skip済）、broken_refs=0、番号参照=0。変更した3ページの本文と関連知見は照合したが、全ページ対の意味的比較は未完了であり、矛盾ゼロとは判定していない。helper は読取成功を返した一方、既存のパイプ処理から Broken pipe 診断が出たため、全体監査は clean 扱いにしない。
