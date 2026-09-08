@@ -1,5 +1,7 @@
 ## 2026-09-08
 
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=452, broken_refs=0。全470ページとraw2028件の構造検査を実施し、最終の読取enumはすべて成功、番号参照は0。意味的比較は直前の全体監査を継承した snapshot `e06a37bb7` から変更された診断チャネルの1ページを対象とし、関連するstdout破棄と終了コード捕捉のページに整合する補強であることを確認した。全ページの意味をこの試行で再読したという主張はしない。既存helperの早期終了パイプ由来のBroken pipe診断は残る。陳腐化と意図的skip済rawはinformational。
+
 * **Update**: [helper を新しく消費するコードは、診断がどのチャネルに載るかを先に確認して既存消費者と同じ転記をする](pages/heuristics/helper-diagnostic-channel-checked-before-consuming.md) — [解析失敗の診断と状態保持のレビュー結果](raw/reviews/20260908T095105Z-pr-2632.md) を統合。非ゼロ終了前の診断表示と元の終了値保持、未処理の phase 遷移を用いる状態保持テストを補強。
 
 * **lint:warning** — contradictions=2, stale=65, orphans=0, missing_concept=0, unregistered_raw=448, broken_refs=0
