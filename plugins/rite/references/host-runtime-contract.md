@@ -46,7 +46,7 @@
 
 [session-identity.sh](../hooks/session-identity.sh) が現在 runtime の ID を選択し、flow-state / claim / work memory / wiki lock に接続する。`RITE_HOST=claude|codex|grok` を指定した場合はそのホストの ID が必須。未指定なら1ホスト分だけ存在する環境変数を採用する。Claude は `CLAUDE_CODE_SESSION_ID` / `CLAUDE_SESSION_ID`、Codex は `CODEX_THREAD_ID`、Grok は `GROK_SESSION_ID`。複数ホストの env があって選択されていない場合、または選択先 ID が欠落・不正なら停止する。共有 marker への降格で復旧しない。
 
-Claude の native SessionStart は payload の ID を当該 hook process へ渡し、ホストが `CLAUDE_ENV_FILE` を提供する場合は後続 Bash へ安全に永続化する。ファイルが無い実行面で未確認の ID を共有 marker から借りない。
+Claude の native SessionStart の payload ID を当該 hook process の環境変数へ渡すのは、`RITE_HOST=claude`、`CLAUDE_CODE_SESSION_ID` / `CLAUDE_SESSION_ID` が両方空、有効な非空 payload ID がある場合に限る。この条件でホストが `CLAUDE_ENV_FILE` を提供すると、後続 Bash へ安全に永続化する。通常配布の `hooks.json` は `RITE_HOST` を設定しないため、runtime ID 環境変数がない payload-only の native 互換経路では、この永続化を保証しない。後続操作には実 runtime ID の受け渡しを確認し、未確認の ID を共有 marker から借りない。
 
 明示 `--session` は既存 consumer の契約を維持する。通常のホスト操作では現在の実 ID を使い、他人の ID を明示引数に入れない。`RITE_HOST` はセッション選択だけの入力であり、hook・委譲・承認能力の証拠ではない。Layer 1 の opaque 受理と Layer 2 の UUID 検証は [既存の責務分担](session-id-validation-contract.md) を維持する。
 
