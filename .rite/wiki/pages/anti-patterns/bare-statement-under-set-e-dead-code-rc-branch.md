@@ -6,6 +6,8 @@ promote: rite-plugin
 created: "2026-06-02T04:59:29Z"
 sources:
   - type: "reviews"
+    resource: "raw/reviews/20260908T090455Z-pr-2628.md"
+  - type: "reviews"
     resource: "raw/reviews/20260602T045929Z-pr-1242.md"
   - type: "reviews"
     resource: "raw/reviews/20260608T112156Z-pr-1306.md"
@@ -13,7 +15,9 @@ sources:
     resource: "raw/fixes/20260608T112705Z-pr-1306.md"
 tags: ["bash", "rc-capture", "set-e", "silent-failure", "dead-code"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-06-08T13:10:25Z" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-08T09:16:17Z" }
+verified:
+  - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-08T09:16:17Z" }
 ---
 
 # set -euo pipefail 下の外部コマンド単独文は後続 rc 分岐を dead code 化する
@@ -94,6 +98,12 @@ grep -nE '^\s*(python3|jq|grep|awk|sed|[a-zA-Z0-9_./-]+)\s+.*$' --include='*.sh'
 
 後続の subtask では他 hook (post-compact.sh / pre-tool-bash-guard.sh 等) を横断調査し、`session-start.sh:188` が唯一の該当箇所 (他は if/else・set +e 等で安全) と確認した。inline → delegate 委譲リファクタを行う PR では、委譲先コマンドが set -e 免除文脈に置かれているかを必ず verify すること。
 
+### 代入が失敗時の唯一の診断も捕捉する場合
+
+parser が失敗の理由・対象パスを stdout JSON に出し、stderr には何も出さない契約では、`DATA=$(parser "$path")` の非ゼロ終了で caller が止まると診断も変数内に閉じる。後続の rc 分岐が無いコードでも、利用者には失敗理由と修復対象が届かない。
+
+呼出しを `if DATA=$(parser "$path"); then ...; else rc=$?; ...; exit "$rc"; fi` の形で受け、失敗側で捕捉した診断を取り出して表示する。表示は既存の制御文字中和規約に従う。破損した入力の fixture は終了値だけでなく、対象・原因の表示と保存状態の保持も確認する。parser と caller の出力チャネルを対で読むことが、この欠陥を見つける手がかりになる。
+
 ## 関連ページ
 
 - [`if ! cmd; then rc=$?` は常に 0 を捕捉する](./bash-if-bang-rc-capture.md)
@@ -104,3 +114,5 @@ grep -nE '^\s*(python3|jq|grep|awk|sed|[a-zA-Z0-9_./-]+)\s+.*$' --include='*.sh'
 - [レビュー結果](../../raw/reviews/20260602T045929Z-pr-1242.md)
 - [T-6 の `out=$(...); rc=$?` が set-e 下で failure attribution 破壊](../../raw/reviews/20260608T112156Z-pr-1306.md)
 - [`set +e; out=$(...); rc=$?; set -e` 囲み + mutation test 確認](../../raw/fixes/20260608T112705Z-pr-1306.md)
+
+- [追加観測](../../raw/reviews/20260908T090455Z-pr-2628.md)

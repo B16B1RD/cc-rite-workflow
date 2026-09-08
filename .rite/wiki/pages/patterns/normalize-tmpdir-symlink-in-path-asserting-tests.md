@@ -4,12 +4,18 @@ title: "git のパス出力を assert するテストは fixture の mktemp 値�
 domain: "patterns"
 description: "macOS の `$TMPDIR` は `/var/folders/...` という symlink で、git は `rev-parse --show-toplevel` でも `worktree list` でも実体側 `/private/var/folders/...` を返す。mktemp の値をそのまま期待値に使うと Linux では緑・macOS CI だけ赤になる。"
 created: "2026-09-01T20:29:00+09:00"
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-01T20:29:00+09:00" }
+generated: { by: "rite-wiki-ingest/gpt-6", at: "2026-09-08T09:16:17Z" }
 sources:
+  - type: "reviews"
+    resource: "raw/reviews/20260908T090455Z-pr-2628.md"
+  - type: "fixes"
+    resource: "raw/fixes/20260908T090558Z-pr-2628.md"
   - type: "reviews"
     resource: "raw/reviews/20260901T110702Z-pr-2498.md"
 tags: []
 confidence: high
+verified:
+  - { by: "rite-wiki-ingest/gpt-6", at: "2026-09-08T09:16:17Z" }
 ---
 
 # git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する
@@ -42,6 +48,14 @@ TMPDIR=/path/link bash hooks/tests/<suite>.test.sh
 
 **この欠陥が生き延びる理由**: レビュアーは全員ローカル（Linux）でテストを走らせる。観測された事例では 2 cycle × 6 reviewer の全員がスイート緑を報告し、merge 直前の CI gate（`tests (macos-latest)`）が初めて捕まえた。「N 名がテストを実行して緑」は、その N 名が同じ OS なら 1 名分の情報しかない。
 
+### TMPDIR の末尾 slash も先に吸収する
+
+symlink だけでなく、`TMPDIR=/tmp/` のような末尾 slash も fixture と実パスの比較を壊す。生成された root に二重 slash が残り、cwd 側だけが単一 slash へ正規化されると、root の equality と file path の prefix 照合が一致しない。結果として検査対象が外れ、診断や意図したエラー経路まで実行されなくなる。
+
+fixture root を作成した直後、派生するリポジトリ・helper・payload の各パスを作る前に `pwd -P` を適用する。観測した事例では plugin root の比較と after-edit の診断・失敗伝播の3アサーションが失敗し、この順序での正規化により回復した。Linux でも末尾 slash のある TMPDIR で同条件を再現できた。
+
+別の assertion が一度失敗して再実行で成功した場合、元の3失敗が解消した証拠と、全試行成功という主張を分けて記録する。失敗時の commit ID などが残っていなければ、関連する型変換バグとの因果を断定しない。
+
 ## 関連ページ
 
 - [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](../anti-patterns/locale-dependent-error-message-grep-assertion.md)
@@ -50,3 +64,6 @@ TMPDIR=/path/link bash hooks/tests/<suite>.test.sh
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260901T110702Z-pr-2498.md)
+
+- [追加観測](../../raw/reviews/20260908T090455Z-pr-2628.md)
+- [追加観測](../../raw/fixes/20260908T090558Z-pr-2628.md)

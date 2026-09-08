@@ -25,6 +25,10 @@
 
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=452, broken_refs=0。ページ470件・raw2025件の構造検査を実施。ページ本文・indexが直前の全体監査を継承したlint snapshotから差分なしであることをgitで確認し、意味的比較結果を継承した。過去の終了値の矛盾2件は修正済み本文と関連ページを照合した。今回のrawは回帰テストへ実装済みとしてskip。番号参照0、最終読取enumはすべて成功。既存helperの早期終了パイプ由来のBroken pipe診断は残る。Wiki外参照は前回記録の範囲と同じで、新規検証とは扱わない。
 
+* **Update**: [fixture root の物理パス正規化](pages/patterns/normalize-tmpdir-symlink-in-path-asserting-tests.md) — 末尾 slash による prefix 不一致と、派生パス生成前の正規化を追加。
+* **Update**: [set-e の失敗捕捉](pages/anti-patterns/bare-statement-under-set-e-dead-code-rc-branch.md) — stdout JSON の唯一の診断が代入に閉じる経路を追加。
+* **検出器化候補** — quoted な数字だけ・先頭ゼロの識別子を読み戻す型保持と、同一 checkpoint の revision 不変を固定する。パス正規化と診断保持も regression fixture で機械検証できる。
+
 ## 2026-09-07
 
 * **lint:partial** — 構造検査はページ470件・raw2021件を対象に実行し、stale=65（informational）、orphans=0、missing_concept=0、unregistered_raw=448（skip済）、broken_refs=0、番号参照=0。変更した3ページの本文と関連知見は照合したが、全ページ対の意味的比較は未完了であり、矛盾ゼロとは判定していない。helper は読取成功を返した一方、既存のパイプ処理から Broken pipe 診断が出たため、全体監査は clean 扱いにしない。
