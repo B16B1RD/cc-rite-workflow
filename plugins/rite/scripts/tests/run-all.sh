@@ -3,6 +3,11 @@
 # Usage: bash plugins/rite/scripts/tests/run-all.sh
 set -euo pipefail
 
+# Runtime identity and lifecycle inputs belong to each fixture, never the
+# live Claude/Codex/Grok session launching the tests.
+unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID CODEX_THREAD_ID GROK_SESSION_ID RITE_HOST
+unset CLAUDE_ENV_FILE RITE_STATE_ROOT RITE_RUNTIME_EXPLICIT _RITE_HOOK_REDIRECTED
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FAILED_FILES=()
 

@@ -10,6 +10,8 @@ user-invocable: false
 
 # /rite:pr-create
 
+> 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
+
 ## Contract
 **Input**: Branch with commits, Issue number (from branch name or flow state)
 **Output**: `[pr:created:{number}]` | `[pr-create-failed]`
@@ -33,12 +35,12 @@ user-invocable: false
 
 | Caller | Subsequent Action |
 |-----------|---------------|
-| End-to-end flow (via any orchestrator's Skill tool invocation, e.g. `/rite:open` ステップ 6) | **Output pattern and return control to caller** |
+| End-to-end flow (via any orchestrator's native Skill or equivalent body execution, e.g. `/rite:open` ステップ 6) | **Output pattern and return control to caller** |
 | Standalone execution | Display "next steps" guidance |
 
 | Condition | Determination |
 |------|---------|
-| Invoked via `Skill` tool from any orchestrator within the same session (caller-name agnostic — e.g. `/rite:open`) | Within end-to-end flow |
+| Invoked via `Skill` tool or [equivalent body execution](../../references/host-workflow-operations.md#skill-と-caller) from any orchestrator within the same session (caller-name agnostic — e.g. `/rite:open`) | Within end-to-end flow |
 | All other cases (user directly typed `/rite:pr-create`) | Standalone execution |
 
 E2E では `[pr:created:{number}]` / `[pr-create-failed]` を出して **caller に制御を返す**。次アクションは caller が決める。

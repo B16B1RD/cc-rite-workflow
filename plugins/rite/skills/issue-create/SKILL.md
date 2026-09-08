@@ -10,6 +10,8 @@ argument-hint: "<title or description>"
 
 # /rite:issue-create
 
+> 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
+
 新規 Issue を作成し、GitHub Projects に登録する。重複検出・親 Issue 候補検出・XL 自動分解を含む。
 
 **途中で止まったらユーザーは `/rite:recover` で再開する**。

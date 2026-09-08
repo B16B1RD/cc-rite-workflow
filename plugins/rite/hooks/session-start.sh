@@ -38,7 +38,7 @@ INPUT=$(cat) || INPUT=""
 # Only warn when this script is running from a local plugin-dir (not from
 # the marketplace cache). Normal marketplace users should have it enabled.
 # SCRIPT_DIR already set in preamble block above (replaces SCRIPT_PATH)
-if [[ "$SCRIPT_DIR" != *"/.claude/plugins/cache/"* ]] && command -v jq &>/dev/null; then
+if [ "${RITE_RUNTIME_EXPLICIT:-0}" != "1" ] && [[ "$SCRIPT_DIR" != *"/.claude/plugins/cache/"* ]] && command -v jq &>/dev/null; then
   settings_file="$HOME/.claude/settings.json"
   if [ -f "$settings_file" ]; then
     rite_marketplace=$(jq -r '.enabledPlugins["rite@rite-marketplace"] // false' "$settings_file" 2>/dev/null)
@@ -55,6 +55,40 @@ SOURCE=$(echo "$INPUT" | jq -r '.source // "startup"' 2>/dev/null) || SOURCE="st
 # Pass extract_session_id stderr through so corrupt hook payload WARNINGs reach
 # triage; suppressing them would hide cross-session classification failures.
 SESSION_ID=$(extract_session_id "$INPUT") || SESSION_ID=""
+# Runtime identity is authoritative before any migration or shared marker write.
+source "$SCRIPT_DIR/session-identity.sh"
+validate_session_id_path "$SESSION_ID" "SessionStart payload" || exit 1
+if [[ "$SESSION_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+  SESSION_ID=$(printf '%s' "$SESSION_ID" | tr 'A-F' 'a-f')
+fi
+# A Claude SessionStart payload is the native identity channel when the shell
+# has not received its environment yet. Other selected hosts require their own ID.
+if [ "${RITE_HOST:-}" = "claude" ] && [ -z "${CLAUDE_CODE_SESSION_ID:-}${CLAUDE_SESSION_ID:-}" ] && [ -n "$SESSION_ID" ]; then
+  export CLAUDE_CODE_SESSION_ID="$SESSION_ID"
+  if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+    printf -v _session_export 'export CLAUDE_CODE_SESSION_ID=%q' "$SESSION_ID"
+    if ! grep -Fxq -- "$_session_export" "$CLAUDE_ENV_FILE" 2>/dev/null; then
+      printf '%s\n' "$_session_export" >> "$CLAUDE_ENV_FILE" || {
+        echo "ERROR: session-start: cannot persist Claude session identity to CLAUDE_ENV_FILE" >&2
+        exit 1
+      }
+    fi
+  fi
+fi
+_runtime_rc=0
+_runtime_sid=$(resolve_runtime_session_id) || _runtime_rc=$?
+case "$_runtime_rc" in
+  0)
+    if [ -n "$SESSION_ID" ] && [ "$SESSION_ID" != "$_runtime_sid" ]; then
+      echo "ERROR: session-start: payload session_id does not match runtime identity" >&2
+      exit 1
+    fi
+    SESSION_ID="$_runtime_sid"
+    ;;
+  2) ;; # Claude payload-only hosts retain their existing compatibility path.
+  *) exit 1 ;;
+esac
+validate_session_id_path "$SESSION_ID" "SessionStart payload" || exit 1
 if [ -z "$CWD" ]; then
   exit 0
 fi
@@ -94,7 +128,9 @@ else
 fi
 
 # Move root `.rite-*` runtime state under `.rite/` once.
-_rite_run_relocated_state_migrate "$STATE_ROOT"
+if [ "$SOURCE" != "explicit" ]; then
+  _rite_run_relocated_state_migrate "$STATE_ROOT"
+fi
 
 # Write plugin root for command-file consumption (version-independent)
 _plugin_root="$(dirname "$SCRIPT_DIR")"
@@ -110,11 +146,19 @@ fi
 # mis-reap. Skipping the write when env is present stops every session start from
 # overwriting the shared file; env-absent runtimes (CI / headless / non-Code clients)
 # still get the file as their sole resolution channel, preserving backward compat.
-if [ -n "$SESSION_ID" ] && [ -z "${CLAUDE_CODE_SESSION_ID:-}" ] && [ -z "${CLAUDE_SESSION_ID:-}" ]; then
+if [ -n "$SESSION_ID" ] && [ "$_runtime_rc" = "2" ]; then
   (umask 077; printf '%s' "$SESSION_ID" > "$STATE_ROOT/.rite/session-id") 2>/dev/null || {
     [ -n "${RITE_DEBUG:-}" ] && echo "[rite] WARNING: Failed to write .rite/session-id" >&2
     true
   }
+fi
+
+# Explicit initialization owns only plugin discovery and nested state ignores.
+# Automatic migration, worktree reap and interruption recovery remain host events.
+if [ "$SOURCE" = "explicit" ]; then
+  [ -f "$STATE_ROOT/.rite/.gitignore" ] &&
+    [ "$(cat "$STATE_ROOT/.rite/plugin-root")" = "$_plugin_root" ] || exit 1
+  exit 0
 fi
 
 # Helper: remove stale compact-state when no active flow

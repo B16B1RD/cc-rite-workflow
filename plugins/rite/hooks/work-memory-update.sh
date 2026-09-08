@@ -122,6 +122,13 @@ _wm_state_read_field() {
 }
 
 update_local_work_memory() {
+  # Validate a selected host before branch/legacy work-memory paths can write.
+  # No runtime context keeps the existing standalone helper behavior.
+  local _identity_rc=0
+  bash "$(dirname "${BASH_SOURCE[0]}")/session-identity.sh" >/dev/null || _identity_rc=$?
+  if [ "$_identity_rc" -ne 0 ] && [ "$_identity_rc" -ne 2 ]; then
+    return 2
+  fi
   local issue_number current_branch
   current_branch=$(git branch --show-current 2>/dev/null || echo "")
   issue_number="${WM_ISSUE_NUMBER:-}"

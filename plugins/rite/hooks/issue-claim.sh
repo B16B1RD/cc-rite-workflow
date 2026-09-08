@@ -70,35 +70,10 @@ CLAIMS_DIR="$STATE_ROOT/.rite/state/issue-claims"
 CLAIMS_LOCKDIR="$CLAIMS_DIR/.lock.d"
 CLAIMS_LOCK_RETRIES=50
 
-# Resolve the CURRENT session_id. Reuses the canonical helpers:
-#   - `_resolve-session-id.sh` UUID-validates a runtime env candidate
-#   - `_resolve-session-id-from-file.sh` reads + UUID-validates `.rite-session-id`
-# Priority: override → env CLAUDE_CODE_SESSION_ID → env
-# CLAUDE_SESSION_ID → `.rite-session-id` file (env-absent fallback). The per-session
-# env var must outrank the shared file so this helper stays coherent with
-# flow-state.sh (also env-first). Preferring the shared file let a stale value
-# resolve a foreign session — claim ownership / _holder_is_live then keyed off the
-# wrong sid, and the worktree reap that calls `issue-claim.sh check` could
-# mis-protect / mis-reap an in-use tree.
-# Returns empty when no valid session_id can be resolved (caller decides).
-_resolve_current_session_id() {
-  local override="${1:-}" sid=""
-  if [ -n "$override" ]; then
-    sid=$(bash "$SCRIPT_DIR/_resolve-session-id.sh" "$override" 2>/dev/null) || sid=""
-    printf '%s' "$sid"
-    return 0
-  fi
-  local cand
-  for cand in "${CLAUDE_CODE_SESSION_ID:-}" "${CLAUDE_SESSION_ID:-}"; do
-    [ -n "$cand" ] || continue
-    sid=$(bash "$SCRIPT_DIR/_resolve-session-id.sh" "$cand" 2>/dev/null) || sid=""
-    [ -n "$sid" ] && break
-  done
-  if [ -z "$sid" ]; then
-    sid=$(bash "$SCRIPT_DIR/_resolve-session-id-from-file.sh" "$STATE_ROOT" 2>/dev/null) || sid=""
-  fi
-  printf '%s' "$sid"
-}
+# Runtime selection is shared with flow-state; ownership keeps strict UUID validation.
+# shellcheck source=session-identity.sh
+source "$SCRIPT_DIR/session-identity.sh"
+_resolve_current_session_id() { resolve_strict_session_id "$STATE_ROOT" "${1:-}"; }
 
 # Is the holding session live? claim is LIVE when the holder's flow-state has
 # active=true AND updated_at within CLAIM_STALE_SECONDS. Reads the holder's
@@ -273,7 +248,7 @@ cmd_claim() {
     *) echo "ERROR: unknown option: $1" >&2; return 1 ;;
   esac; done
   _validate_issue "$issue" || return 1
-  local sid; sid=$(_resolve_current_session_id "$session")
+  local sid; sid=$(_resolve_current_session_id "$session") || return 1
   [ -n "$sid" ] || { echo "ERROR: issue-claim.sh claim: cannot resolve session_id" >&2; return 1; }
   mkdir -p "$CLAIMS_DIR" 2>/dev/null || { echo "ERROR: cannot create $CLAIMS_DIR" >&2; return 1; }
   local file="$CLAIMS_DIR/issue-${issue}.json" json
@@ -328,7 +303,7 @@ cmd_release() {
     *) echo "ERROR: unknown option: $1" >&2; return 1 ;;
   esac; done
   _validate_issue "$issue" || return 1
-  local sid; sid=$(_resolve_current_session_id "$session")
+  local sid; sid=$(_resolve_current_session_id "$session") || return 1
   [ -n "$sid" ] || { echo "ERROR: issue-claim.sh release: cannot resolve session_id" >&2; return 1; }
   local file="$CLAIMS_DIR/issue-${issue}.json"
   # Idempotent: releasing an absent claim is a success (AC-4).
@@ -358,7 +333,7 @@ cmd_check() {
     *) echo "ERROR: unknown option: $1" >&2; return 1 ;;
   esac; done
   _validate_issue "$issue" || return 1
-  local sid; sid=$(_resolve_current_session_id "$session")
+  local sid; sid=$(_resolve_current_session_id "$session") || return 1
   local file="$CLAIMS_DIR/issue-${issue}.json"
   _classify "$file" "$sid"
   echo ""

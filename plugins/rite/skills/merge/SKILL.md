@@ -11,6 +11,8 @@ argument-hint: "[--force-ci] <pr_number>"
 
 # /rite:merge
 
+> 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
+
 > **質問規律**: すべての質問・再判定判断は [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従う。merge 自体は不可逆操作として既存の承認境界を維持する。
 
 ## Contract

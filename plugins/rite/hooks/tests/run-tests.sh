@@ -5,14 +5,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Run the suite with a clean session-id env. flow-state.sh now
-# resolves session_id env-first (CLAUDE_CODE_SESSION_ID / CLAUDE_SESSION_ID) and
-# only falls back to each sandbox's `.rite-session-id` file when env is absent.
-# Most tests simulate a session by writing that file, so the dogfooding session's
-# own ambient CLAUDE_CODE_SESSION_ID must not leak into the sandboxes (it would
-# point every hook at a foreign per-session state file). Tests that exercise env
-# resolution set the vars explicitly per-command, overriding this unset.
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
+# Runtime identity and state-root inputs must come only from each fixture.
+# This runner also runs from live Claude, Codex, and Grok dogfooding sessions.
+# Ambient host selection must not divert sandbox operations to a foreign owner.
+unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID CODEX_THREAD_ID GROK_SESSION_ID RITE_HOST
+unset CLAUDE_ENV_FILE RITE_STATE_ROOT RITE_RUNTIME_EXPLICIT _RITE_HOOK_REDIRECTED
 
 TOTAL=0
 PASSED=0
