@@ -90,6 +90,8 @@ guard 自身・checkpoint の内部 helper を再帰的に guard しない。hel
 
 ## 診断・停止・再開
 
+`checkpoint` で既存 local WM の解析が失敗した場合は、parser の終了コード・対象パス・解析エラーを stderr に表示し、同じ非ゼロコードで終了する。flow-state・local WM・replica は更新せず保持する。表示された local WM を修復してから同じ checkpoint を再実行する。
+
 不足能力時は次を人間に読める形で返す（新しい成功 sentinel / state phase を追加しない）:
 
 ```text
