@@ -23,6 +23,8 @@
 
 * **Skip**: [ホスト作業先のレビュー結果](raw/reviews/20260908T072529Z-pr-2627.md) — detector-candidate: worktree 入場前の state 初期化順序と所有者照合は public fence を実行する回帰テストで検出する。検出は実装済み。
 
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=452, broken_refs=0。ページ470件・raw2025件の構造検査を実施。ページ本文・indexが直前の全体監査を継承したlint snapshotから差分なしであることをgitで確認し、意味的比較結果を継承した。過去の終了値の矛盾2件は修正済み本文と関連ページを照合した。今回のrawは回帰テストへ実装済みとしてskip。番号参照0、最終読取enumはすべて成功。既存helperの早期終了パイプ由来のBroken pipe診断は残る。Wiki外参照は前回記録の範囲と同じで、新規検証とは扱わない。
+
 ## 2026-09-07
 
 * **lint:partial** — 構造検査はページ470件・raw2021件を対象に実行し、stale=65（informational）、orphans=0、missing_concept=0、unregistered_raw=448（skip済）、broken_refs=0、番号参照=0。変更した3ページの本文と関連知見は照合したが、全ページ対の意味的比較は未完了であり、矛盾ゼロとは判定していない。helper は読取成功を返した一方、既存のパイプ処理から Broken pipe 診断が出たため、全体監査は clean 扱いにしない。
