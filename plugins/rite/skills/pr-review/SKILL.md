@@ -1089,7 +1089,7 @@ rationale: references/design-rationale.md#verification-inline-ban
 3. **Extract `{shared_reviewer_principles}`** (`_reviewer-base.md` の文書先頭〜`## Input` 直前の連続範囲)。個別見出しだけ拾わない。
 rationale: references/design-rationale.md#shared-principles-hybrid
  **Fallback**: 抽出失敗 / 空なら空文字列。
-**並列**: 選択した全 sub-agent の Task を **1 メッセージで複数 invoke**。各 agent に diff / 変更ファイル / `{issue_spec}` / `{shared_reviewer_principles}` を渡す。
+**並列（MUST）**: 選択した全 reviewer の初回 Task を **1 メッセージで全件 invoke** する。reviewer ごとにメッセージを分けない（失敗した Task の retry は 4.4 に従う）。各 agent に diff / 変更ファイル / `{issue_spec}` / `{shared_reviewer_principles}` を渡す。
 
 
 **Error handling:**
@@ -1304,7 +1304,7 @@ Verification テンプレート本文は [references/reviewer-prompt-verificatio
    {"reviewer_timings": [{"reviewer": "security-reviewer", "started_at": "2026-04-11T03:00:00Z"}, {"reviewer": "test-reviewer", "started_at": null}]}
    ```
 
-   `reviewer` の値は `findings[].reviewer` と同じ形 (各 `reviewer_type` に `-reviewer` を付した形、`rite:` prefix なし)。**回収できた reviewer のみ**を並べる (`reviewers[]` と同じ「実回収」基準)。
+   `reviewer` の値は `findings[].reviewer` と同じ形 (各 `reviewer_type` に `-reviewer` を付した形、`rite:` prefix なし)。**回収できた reviewer のみ**を並べる (`reviewers[]` と同じ「実回収」基準)。**MUST**: 回収した全 reviewer の初回 spawn timing を、各 reviewer につき 1 レコードずつ全件保存する。同じ時刻でも 1 レコードにまとめず、helper 実行前に `reviewers[]` と名前・件数が一致することを確認する。
 
    ```bash
    echo "[CONTEXT] REVIEW_TMP_DIR=${TMPDIR:-/tmp}" >&2
@@ -1322,7 +1322,7 @@ bash {plugin_root}/hooks/scripts/review-spawn-spread-check.sh \
 | 出力なし (rc=0) | 並列起動が保たれている。**何もしない** (成功時は無言) |
 | `[CONTEXT] SPAWN_SPREAD=serialized; spread={n}s; threshold={t}s; reviewers={r}; measured={m}` (rc=0) | 直列化を検出。WARNING は helper が emit 済のため**会話で重複させない**。ステップ 5.4 統合レポートの `### 総合評価` に `**起動の直列化**` の 1 行を追加する。`measured < reviewers` なら helper が計測不能 WARNING も併記しているので、その 1 行にも `{measured}/{reviewers} 名のみ計測` を載せる |
 | `[CONTEXT] SPAWN_SPREAD=parallel; ...` (rc=0、一部欠落時のみ emit) | 測れた分は閾値内。計測不能があった事実を ステップ 5.4 の同じ 1 行に載せる |
-| `[CONTEXT] SPAWN_SPREAD=undetermined; reason={r}` (rc=0) | 計測不能。**判定を skip したことにしない** — ステップ 5.4 の同じ 1 行に `計測不能（reason={r}）` として載せる |
+| `[CONTEXT] SPAWN_SPREAD=undetermined; reason={r}` (rc=0) | 計測不能。**判定を skip したことにしない** — ステップ 5.4 の同じ 1 行に `計測不能（reason={r}）` として載せる。`reason=insufficient_parseable_timing` の場合は 4.3 の全 reviewer の 1 メッセージ発行と本節 step 1 の timing 全件記録を確認する（欠落時刻は捏造しない） |
 | rc=2 (引数不正 / jq 不在 / 入力不正 / 書き出し失敗) | caller 契約違反または環境不備。ERROR 行に従って step 1 の JSON を作り直し **1 回だけ**再実行する。再発したら本チェックのみ skip し、`⚠️ spawn spread チェックを skip しました（{原因}）` を 1 行表示してレビュー本体を続行する |
 
 採否・`overall_assessment` / `verdict` / merge は変わらない。ステップ 5.3.0.M step 1 は**本ファイルを Read して**転記する（記憶から再構成しない）。
