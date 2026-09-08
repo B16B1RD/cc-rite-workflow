@@ -19,7 +19,7 @@
 
 * **Skip**: [20260908T063616Z-pr-2626.md](raw/reviews/20260908T063616Z-pr-2626.md) — レビュー指摘なし。ホスト能力と実行契約は配布文書と設計書に記録済みで、新たな経験則はない。
 
-* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=451, broken_refs=0。ページ470件・raw2024件の構造検査を実施。意味的比較は記録済み全体監査を継承し、その後の修正で終了値の矛盾2件が解消されたことを本文照合した。以後のページ・index差分なしを確認。番号参照0。既存helperの早期終了パイプ診断は残るが最終読取enumはすべて成功し、別実装でもページ本文リンクを全量照合してリンク切れ0を確認した。
+* **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=451, broken_refs=0。ページ470件・raw2024件の構造検査を実施。意味的比較は記録済み全体監査を継承し、その後の修正で終了値の矛盾2件が解消されたことを本文照合した。以後のページ・index差分なしを確認。番号参照0。既存helperの早期終了パイプ診断は残るが最終読取enumはすべて成功し、別実装で3443本を照合し、Wiki内3442本のリンク切れ0を確認した。追加のWiki外参照1本は既存のリンク切れ（unscoped-enumeration-claim-in-new-summary ページから plugins/rite/skills/review/references/internal-consistency.md）であり、pages/raw内参照を対象とするbroken_refsカウンタには含めない。
 
 ## 2026-09-07
 
