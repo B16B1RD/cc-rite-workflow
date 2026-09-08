@@ -38,6 +38,8 @@
 
 * **Skip**: [識別子の型保持と checkpoint 冪等性のレビュー結果](raw/reviews/20260908T102107Z-pr-2633.md) — レビュー指摘なし。型保持と同一 checkpoint の内容・revision 不変は実装と回帰テストで保護済みで、新たな経験則はない。
 
+* **lint:clean** — contradictions=0, stale=66, orphans=0, missing_concept=0, unregistered_raw=453, broken_refs=0。全470ページとraw2029件の構造検査を実行し、最終読取enumはすべて成功、番号参照と読取エラーは0。ページ本文・indexは直前の監査 snapshot `56ef2ce10605d330ed340bc7f8b298bcf44beefb` から差分なしとgitで確認し、意味的比較結果を継承した。全ページの意味をこの試行で再読したという主張はしない。既存helperの早期終了パイプ由来のBroken pipe診断は残る。陳腐化と意図的skip済rawはinformational。
+
 ## 2026-09-07
 
 * **lint:partial** — 構造検査はページ470件・raw2021件を対象に実行し、stale=65（informational）、orphans=0、missing_concept=0、unregistered_raw=448（skip済）、broken_refs=0、番号参照=0。変更した3ページの本文と関連知見は照合したが、全ページ対の意味的比較は未完了であり、矛盾ゼロとは判定していない。helper は読取成功を返した一方、既存のパイプ処理から Broken pipe 診断が出たため、全体監査は clean 扱いにしない。
