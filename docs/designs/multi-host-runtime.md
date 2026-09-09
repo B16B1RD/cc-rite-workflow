@@ -49,6 +49,18 @@ Claude Code・Codex・Grok Build で同じ rite workflow を実行するため�
 | 自律継続 | `host-workflow-operations.test.sh` が実 batch のキュー初期化・停止・再開・前進・終了と foreign queue 保護を検証する |
 | Codex 実機 | この実行面で独立した計画/実装子の起動・完了回収、明示 workdir、実 thread ID を観測。自動 Stop / compact / SessionEnd と Grok の全工程実機 E2E は未検証 |
 
+## ワークフロー全工程の実機検証
+
+[3ホスト共通の実行ガイド](../../tests/runtime-e2e/README.md) に、検証用リポジトリの準備、ホスト別の起動、コピーして渡せる指示、結果記録・集計を定義する。既存の shell suite は上表の内部契約を維持し、`tests/rite-dev.test.sh` はホストの非ゼロ終了・stderr伝播・既存設定保持を検査する。`tests/runtime-e2e.test.sh` は準備と記録道具の契約を検査する。これらを実機成功件数へ含めない。
+
+| ホスト | 開発 launcher での全工程 | 配布物直接利用での全工程 | 理由 |
+|---|---|---|---|
+| Claude Code | 未検証 | 未検証 | 専用repoでのdraft・merge・recoverの一連の証跡が未採取 |
+| Codex | 未検証 | 未検証 | 個別操作の観測はあるが、共通シナリオ全体の証跡が未採取 |
+| Grok Build | 未検証 | 未検証 | CLI受付・plugin検出以降の共通シナリオを未実行 |
+
+集計は同一rite commit・導入経路・実行面で3ホストの必須項目を照合する。認証不足、実機不在、未実行は理由付きの未検証とし、失敗や未検証を含む間は統合検証を完了にしない。実測後は証跡を参照して本表を更新する。
+
 ## 再確認手順
 
 使い捨て repository と専用 worktree で実施し、現在のユーザー設定・他セッションのファイルは変更しない。各 probe でホスト版、実行面、モード、入力、stdout/stderr/終了コード、期待値との比較を残す。認証情報・全文の設定ダンプは証跡へ載せない。CLI help / inspect だけなら「受付/検出」のまま、実測して下記期待結果が揃った範囲だけ native 実行確認または検証済み代替へ更新する。意味の不一致は未対応、未実行・観測不能は未検証のままにする。

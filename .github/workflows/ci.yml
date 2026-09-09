@@ -109,6 +109,10 @@ jobs:
         shell: bash
         run: bash tests/rite-dev.test.sh 2>&1 | tee rite-dev-tests.log
 
+      - name: Run runtime contract test suite
+        shell: bash
+        run: bash tests/runtime-e2e.test.sh 2>&1 | tee runtime-e2e-tests.log
+
       # SHOULD (AC-5): surface which tests failed and on which OS in
       # the job summary. Runs only when a preceding step failed.
       - name: Summarize test failures
@@ -117,7 +121,7 @@ jobs:
           set +e
           {
             echo "### ❌ Test failures — ${{ matrix.os }}"
-            for log in hooks-tests.log scripts-tests.log rite-dev-tests.log; do
+            for log in hooks-tests.log scripts-tests.log rite-dev-tests.log runtime-e2e-tests.log; do
               [ -f "$log" ] || continue
               echo "<details><summary>$log</summary>"
               echo ""
@@ -152,16 +156,17 @@ jobs:
       #
       # Note: a failing job only *blocks a merge* once this check is added to the
       # branch's required status checks — a repo-admin setting outside this file.
-      - name: shellcheck plugins/rite/**/*.sh (error = blocking gate)
+      - name: shellcheck plugin and runtime test scripts (error = blocking gate)
         run: |
           set -u
           shellcheck --version
           mapfile -t files < <(find plugins/rite -name '*.sh' -type f | sort)
+          files+=(tests/rite-dev.test.sh tests/runtime-e2e.test.sh tests/runtime-e2e/prepare.sh)
           echo "shellcheck targets: ${#files[@]} files"
           # One scan at the lowest threshold captures every finding for the report.
           report=$(shellcheck --severity=style --format=json "${files[@]}" 2>/dev/null || true)
           {
-            echo "## shellcheck report — plugins/rite/**/*.sh"
+            echo "## shellcheck report — plugin and runtime test scripts"
             echo ""
             echo "Target files: ${#files[@]}"
             echo ""

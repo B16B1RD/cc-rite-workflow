@@ -788,6 +788,12 @@ tdd:
 | `ja` | Japanese |
 | `en` | English |
 
+## Configuration for Host Validation
+
+The [runtime validation fixture](../tests/runtime-e2e/README.md) uses the existing configuration schema: `branch.base: main`, Python standard-library test/lint commands, `multi_session.enabled: true`, and Projects/Wiki disabled. This isolates GitHub changes to a dedicated repository; it does not validate Projects or Wiki integration. No host capability settings are added to `rite-config.yml`.
+
+The development launcher uses a repository-local Codex profile and Grok plugin configuration. Direct distribution setup uses project skill/plugin discovery and the bundled [runtime entry](../plugins/rite/references/host-runtime-contract.md#入口と工程境界). Neither method requires changing global settings. Authentication may still be unavailable in an isolated profile; record this as unverified instead of copying credentials.
+
 ## Minimal Configuration
 
 For most projects, a minimal configuration is sufficient:

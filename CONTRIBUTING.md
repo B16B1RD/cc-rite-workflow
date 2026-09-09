@@ -51,6 +51,10 @@ discovery; unverified hooks or subagents must not be reported as working. Run pr
 in a disposable repository, without changing global settings. The runtime contract
 resolves within the distributed plugin and does not require this development launcher.
 
+### Reproduce host workflow validation
+
+Follow the [three-host validation guide](tests/runtime-e2e/README.md) to prepare an offline fixture, create a dedicated GitHub repository, and run the same draft, merge, and interrupted-recovery scenarios on each host. The guide includes copyable prompts, direct distribution setup, and evidence records. Run `bash tests/runtime-e2e.test.sh` for the preparation/reporting contract; CI runs it separately from the launcher and existing hook suites. A green CI result does not certify live host execution. Record unavailable hosts or authentication as unverified and keep integration completion pending.
+
 ## How to Contribute
 
 ### Reporting Issues
