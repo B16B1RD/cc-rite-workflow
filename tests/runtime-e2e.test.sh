@@ -31,15 +31,18 @@ assert_rc 'prepare a fresh offline fixture' 0 bash "$PREPARE" "$TEST_ROOT/fixtur
 assert_rc 'fixture application tests pass' 0 python3 -m unittest discover -s "$TEST_ROOT/fixture" -v
 assert_rc 'fixture includes isolated local distribution and source manifest' 0 python3 - "$TEST_ROOT/fixture" <<'PY'
 import json
+import os
 import pathlib
 import re
 import sys
 p = pathlib.Path(sys.argv[1])
-assert not (p / '.git').exists()
-assert (p / 'scripts/rite-dev').is_file()
-assert (p / 'plugins/rite/skills/open/SKILL.md').is_file()
-assert (p / '.grok/plugins/rite').resolve() == p / 'plugins/rite'
-assert '[plugins]' in (p / '.grok/config.toml').read_text()
+assert not (p / '.git').exists(), 'fixture must not be a git repository'
+assert (p / 'scripts/rite-dev').is_file(), 'launcher copy missing'
+assert (p / 'plugins/rite/skills/open/SKILL.md').is_file(), 'plugin copy missing'
+# Compare the link text itself: resolving only one side breaks when the temp
+# directory is reached through a symlink (macOS /var -> /private/var).
+assert os.readlink(p / '.grok/plugins/rite') == '../../plugins/rite', 'grok plugin link must be relative to fixture plugins/rite'
+assert '[plugins]' in (p / '.grok/config.toml').read_text(), 'grok config missing [plugins]'
 manifest = json.loads((p / '.runtime-e2e-source.json').read_text())
 assert re.fullmatch('[0-9a-f]{40}', manifest['rite_commit'])
 assert isinstance(manifest['dirty'], bool)
