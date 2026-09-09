@@ -1142,18 +1142,49 @@ if [ -d "$session_wt_root" ]; then
     # Corpse detection: a sandbox-masked `git worktree remove
     # --force` half-destroys the admin dir — HEAD alone unlinked, commondir /
     # gitdir / index left behind — after which every `git -C <wt>` operation
-    # fails ("not a git repository"). Gate 3's conservative skip would protect
-    # such a tree forever (its dirty state is structurally undeterminable), and
-    # manual `git worktree remove --force` is rejected by validation, so
-    # without this branch no recovery path exists. Corpse = admin HEAD missing
-    # AND git does not recognize the tree — both required, so a mere
-    # permission-broken tree (HEAD present, status rc != 0) stays on the
-    # conservative-skip path (AC-5). The admin dir is resolved from the
-    # worktree's own `.git` file (`gitdir: <path>` line): suffixed admin ids
-    # from basename collisions still resolve, unlike a basename guess.
+    # fails ("not a git repository"), or the worktree `.git` gitfile is gone /
+    # not a gitfile so `git worktree remove --force` fails with
+    # "is not a .git file" while `git worktree list` still shows
+    # 0000000 (detached HEAD). Gate 3's conservative skip would protect
+    # such a tree forever, and manual remove is rejected, so without this
+    # branch no recovery path exists.
+    # Corpse =
+    #   (admin HEAD missing AND git does not recognize the tree)
+    #   OR (worktree `.git` is missing or a regular file that does not start
+    #       with `gitdir: `).
+    # `.git` が directory のエントリは gitfile 無効にしない（通常 checkout や
+    # git init 済み tree を rm -rf しない）。HEAD 残存 + status rc≠0 は
+    # gitfile が有効なら従来どおり conservative skip（AC-5）。
+    # Admin dir は gitfile の `gitdir:` を優先し、解けないときは common dir の
+    # `worktrees/*/gitdir` が当該 working tree の `.git` を指すエントリから解決する。
     _corpse=0
+    _git_dot="$wt_path/.git"
+    _gitfile_invalid=0
+    if [ ! -e "$_git_dot" ]; then
+      _gitfile_invalid=1
+    elif [ -f "$_git_dot" ]; then
+      _gf_head=$(head -1 "$_git_dot" 2>/dev/null) || _gf_head=""
+      case "$_gf_head" in
+        gitdir:*) ;;
+        *) _gitfile_invalid=1 ;;
+      esac
+    fi
     _admin_dir=$(sed -n 's/^gitdir: //p' "$wt_path/.git" 2>/dev/null | head -1) || _admin_dir=""
-    if [ -n "$_admin_dir" ] && [ -d "$_admin_dir" ] && [ ! -f "$_admin_dir/HEAD" ] \
+    if [ -z "$_admin_dir" ] || [ ! -d "$_admin_dir" ]; then
+      _common=$(git rev-parse --git-common-dir 2>/dev/null) || _common=""
+      if [ -n "$_common" ] && [ -d "$_common/worktrees" ]; then
+        for _wd in "$_common/worktrees"/*; do
+          [ -f "$_wd/gitdir" ] || continue
+          _gd=$(head -1 "$_wd/gitdir" 2>/dev/null) || _gd=""
+          case "$_gd" in
+            "$wt_path/.git"|"$wt_path/.git/") _admin_dir="$_wd"; break ;;
+          esac
+        done
+      fi
+    fi
+    if [ "$_gitfile_invalid" -eq 1 ]; then
+      _corpse=1
+    elif [ -n "$_admin_dir" ] && [ -d "$_admin_dir" ] && [ ! -f "$_admin_dir/HEAD" ] \
        && ! git -C "$wt_path" rev-parse --git-dir >/dev/null 2>&1; then
       _corpse=1
     fi
@@ -1434,7 +1465,26 @@ if [ -d "$session_wt_root" ]; then
       fi
       errors=$((errors + 1))
     fi
-  done < <(git worktree list --porcelain 2>/dev/null)
+  done < <(
+    git worktree list --porcelain 2>/dev/null || true
+    # gitfile が欠けると list から落ちる。session worktree ディレクトリは残るので
+    # ディスク上の issue-* を union する（list に既にあるパスは二重処理しない）。
+    if [ -d "$session_wt_root" ]; then
+      _listed=$(git worktree list --porcelain 2>/dev/null || true)
+      for _disk_wt in "$session_wt_root"/issue-*; do
+        [ -d "$_disk_wt" ] || continue
+        _disk_base=$(basename "$_disk_wt")
+        [[ "$_disk_base" =~ ^issue-[0-9]+$ ]] || continue
+        # grep -q パイプは pipefail 下で SIGPIPE になる。行単位の完全一致で membership を見る。
+        _already_listed=0
+        while IFS= read -r _listed_line || [ -n "$_listed_line" ]; do
+          [ "$_listed_line" = "worktree $_disk_wt" ] && { _already_listed=1; break; }
+        done <<< "$_listed"
+        [ "$_already_listed" -eq 1 ] && continue
+        printf 'worktree %s\n' "$_disk_wt"
+      done
+    fi
+  )
 
   if [ "$DRY_RUN" = "0" ] && [ "$session_worktrees_reaped" -gt 0 ]; then
     git worktree prune 2>/dev/null || true

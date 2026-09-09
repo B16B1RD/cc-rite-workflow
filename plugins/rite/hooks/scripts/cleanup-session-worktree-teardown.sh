@@ -244,21 +244,23 @@ cmd_remove() {
     _wt_rm_err=$(mktemp 2>/dev/null) || _wt_rm_err=""
     if LC_ALL=C git worktree remove "$flow_wt" 2>"${_wt_rm_err:-/dev/null}" \
        || LC_ALL=C git worktree remove --force "$flow_wt" 2>"${_wt_rm_err:-/dev/null}"; then
-      :
+      # 成功時だけ prune する。失敗後に prune すると、remove が gitfile を壊した残骸の
+      # admin dir を先に消し、遅延 reap が list からも辿れなくなる。
+      git worktree prune 2>/dev/null || true
     else
       echo "[CONTEXT] WORKTREE_REMOVE_FAILED=1; path=$flow_wt" >&2
       if [ -n "$_wt_rm_err" ] && grep -qi "busy" "$_wt_rm_err" 2>/dev/null; then
         echo "WARNING: worktree 削除が「Device or resource busy」で失敗しました。Claude Code の sandbox が worktree の .git/worktrees/*/config.worktree・commondir に read-only bind mount を張っている環境では、sandbox 内からの git worktree remove（--force 含む）は構造的に失敗します。この失敗は意図的に non-blocking として遅延 reap（pr-cycle-cleanup.sh）へ委譲するため、実行エージェントはこの場で sandbox を無効化して同コマンドを再試行しないこと。復旧: ユーザーが sandbox 外のシェルで次を実行してください: git worktree remove --force '$flow_wt' && git worktree prune" >&2
       fi
-      # remove --force 自体がこの busy 失敗の過程で admin dir を部分破壊し corpse 化した場合、
-      # 上記マスク検知分岐と同じ理由でブランチ名 bypass が効かなくなる。パスを reap manifest に
-      # 記録し、pr-cycle-cleanup.sh の corpse age guard バイパスに委ねる（{pr_merged}=true のときのみ）。
+      # 失敗時は admin dir を追加操作しない（prune もしない）。remove --force が途中で
+      # HEAD を消して止まっても、残件は遅延 reap の corpse 判定へ渡す。
+      # ブランチ名 bypass が効かなくなるためパスを reap manifest に記録し、
+      # pr-cycle-cleanup.sh の corpse age guard バイパスに委ねる（{pr_merged}=true のときのみ）。
       if [ "$pr_merged" = "true" ]; then
         bash "$SCRIPT_DIR/rite-tmp-artifact.sh" record --type session_worktree --id "$flow_wt" 2>/dev/null || true
       fi
     fi
     [ -n "$_wt_rm_err" ] && rm -f "$_wt_rm_err"
-    git worktree prune 2>/dev/null || true
   fi
   return 0
 }

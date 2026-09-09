@@ -746,5 +746,80 @@ assert "C-06 co-pending entry preserved (cp survivors branch, not silently dropp
 assert "C-06 co-pending decoy directory untouched" "1" "$( [ -d "$R/.rite/worktrees/issue-150-copending-decoy" ] && echo 1 || echo 0 )"
 case "$out" in *"session_worktrees=1"*) pass "C-06 status reports session_worktrees=1" ;; *) fail "C-06 status: $out" ;; esac
 
+# gitfile 破損 corpse: worktree 側 `.git` が gitfile として無効。
+# `git worktree remove --force` は "is not a .git file" で失敗し、list には残る。
+break_gitfile() { printf 'not a gitfile\n' > "$1/.rite/worktrees/issue-$2/.git"; }
+remove_gitfile() { rm -f "$1/.rite/worktrees/issue-$2/.git"; }
+gitfile_to_dir() { rm -f "$1/.rite/worktrees/issue-$2/.git"; mkdir "$1/.rite/worktrees/issue-$2/.git"; }
+list_has_wt() { git -C "$1" worktree list --porcelain 2>/dev/null | grep -qxF "worktree $1/.rite/worktrees/issue-$2"; }
+
+echo "=== C-07: aged gitfile-garbage corpse + stale claim → reaped and gone from list ==="
+R=$(make_repo 160); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+break_gitfile "$R" 160
+age_dir "$R/.rite/worktrees/issue-160"
+out=$(run_pcc "$R")
+assert "C-07 garbage gitfile working tree reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-160" ] && echo 1 || echo 0 )"
+assert "C-07 garbage gitfile admin dir reaped" "0" "$( [ -d "$R/.git/worktrees/issue-160" ] && echo 1 || echo 0 )"
+assert "C-07 garbage gitfile gone from worktree list" "0" "$( list_has_wt "$R" 160 && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=1"*) pass "C-07 status reports session_worktrees=1" ;; *) fail "C-07 status: $out" ;; esac
+
+echo "=== C-08: aged missing-gitfile corpse + free claim → reaped and gone from list ==="
+R=$(make_repo 161); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-161.json"
+remove_gitfile "$R" 161
+age_dir "$R/.rite/worktrees/issue-161"
+out=$(run_pcc "$R")
+assert "C-08 missing gitfile working tree reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-161" ] && echo 1 || echo 0 )"
+assert "C-08 missing gitfile admin dir reaped" "0" "$( [ -d "$R/.git/worktrees/issue-161" ] && echo 1 || echo 0 )"
+assert "C-08 missing gitfile gone from worktree list" "0" "$( list_has_wt "$R" 161 && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=1"*) pass "C-08 status reports session_worktrees=1" ;; *) fail "C-08 status: $out" ;; esac
+
+echo "=== C-09: .git directory is NOT a gitfile-invalid corpse (not reaped) ==="
+R=$(make_repo 162); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-162.json"
+gitfile_to_dir "$R" 162
+age_dir "$R/.rite/worktrees/issue-162"
+out=$(run_pcc "$R")
+assert "C-09 .git directory working tree survives" "1" "$( [ -d "$R/.rite/worktrees/issue-162" ] && echo 1 || echo 0 )"
+assert "C-09 .git directory admin dir survives" "1" "$( [ -d "$R/.git/worktrees/issue-162" ] && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=0"*) pass "C-09 status reports session_worktrees=0" ;; *) fail "C-09 status: $out" ;; esac
+
+echo "=== C-10: fresh gitfile-garbage corpse → age-guard skip (not reaped) ==="
+R=$(make_repo 163); cleanup_dirs+=("$R")
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-163.json"
+break_gitfile "$R" 163
+out=$(run_pcc "$R")
+assert "C-10 fresh garbage gitfile survives" "1" "$( [ -d "$R/.rite/worktrees/issue-163" ] && echo 1 || echo 0 )"
+assert_grep "C-10 age-guard skip is logged" "$R/pcc.err" "age guard \(24h\) 未達のため回収を見送ります"
+case "$out" in *"session_worktrees=0"*) pass "C-10 status reports session_worktrees=0" ;; *) fail "C-10 status: $out" ;; esac
+
+echo "=== C-11: live claim + gitfile-garbage corpse → NOT reaped ==="
+R=$(make_repo 164); cleanup_dirs+=("$R")
+break_gitfile "$R" 164
+age_dir "$R/.rite/worktrees/issue-164"
+out=$(run_pcc "$R")
+assert "C-11 live-claim garbage gitfile survives" "1" "$( [ -d "$R/.rite/worktrees/issue-164" ] && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=0"*) pass "C-11 status reports session_worktrees=0" ;; *) fail "C-11 status: $out" ;; esac
+
+echo "=== C-12: teardown gitfile-fail leftover is reaped after claim/age (composition) ==="
+R=$(make_repo 165); cleanup_dirs+=("$R")
+TEARDOWN="$SCRIPT_DIR/../scripts/cleanup-session-worktree-teardown.sh"
+break_gitfile "$R" 165
+tout=$(cd "$R" && bash "$TEARDOWN" remove --worktree "$R/.rite/worktrees/issue-165" --pr-merged true --self-root "$$" 2>&1) || true
+case "$tout" in *"WORKTREE_REMOVE_FAILED=1"*) pass "C-12 teardown failed as expected" ;; *) fail "C-12 teardown did not fail: $tout" ;; esac
+assert "C-12 leftover working tree after teardown fail" "1" "$( [ -d "$R/.rite/worktrees/issue-165" ] && echo 1 || echo 0 )"
+RITE_STATE_ROOT="$R" bash "$FS" deactivate --session "$SID_A" --next done >/dev/null 2>&1
+rm -f "$R/.rite/state/issue-claims/issue-165.json"
+age_dir "$R/.rite/worktrees/issue-165"
+out=$(run_pcc "$R")
+assert "C-12 composition working tree reaped" "0" "$( [ -d "$R/.rite/worktrees/issue-165" ] && echo 1 || echo 0 )"
+assert "C-12 composition admin dir reaped" "0" "$( [ -d "$R/.git/worktrees/issue-165" ] && echo 1 || echo 0 )"
+assert "C-12 composition gone from worktree list" "0" "$( list_has_wt "$R" 165 && echo 1 || echo 0 )"
+case "$out" in *"session_worktrees=1"*) pass "C-12 status reports session_worktrees=1" ;; *) fail "C-12 status: $out" ;; esac
+
 print_summary "$(basename "$0")" \
   "Drift hint: pr-cycle-cleanup.sh Step 5 §8 — Gate 0 self-exclusion (cwd/RITE_WORKTREE == self → never reap) + worktree liveness guard (flow-state signal: a session's active flow-state worktree ref → never reap; reap → null owner ref / claim-join signal — issue's claim holder still active=true, even with a stale 2h heartbeat → never reap) + OS-level live-cwd guard (any live process standing in the tree → never reap, via worktree-live-cwd.sh) + 3 gates (strict ^issue-[0-9]+$ / claim not-live / clean); corpse reap: admin-HEAD-missing AND git-unrecognized trees bypass Gate 3 and reap (rm -rf tree + admin dir) behind claim + 24h age guards — HEAD-present rc≠0 trees stay on the conservative skip; branch recovery: after reap, SAFE-delete the branch (merged → recovered) and FORCE-delete only manifest-recorded (merge-confirmed) branches, preserving unmerged work; free-arm manifest bypass: a claim-free worktree whose checked-out branch is manifest-recorded (merge-confirmed) bypasses the 24h age guard (harness mtime churn would otherwise leak it forever) and its manifest entry is consumed immediately after any successful branch recovery (-d and -D alike, best-effort with WARNING on failure); corpse-path manifest bypass: a corpse cannot resolve its branch (git doesn't recognize the tree) so the branch-name bypass never fires for one — cleanup.md Step 4-W now records the worktree's own PATH (not branch) into the manifest when removal fails/is skipped for busy/sandbox-mask reasons (merge-confirmed only), and the corpse age guard checks that PATH before falling back to the 24h wait, consuming the entry on successful reap (surgical: a mismatched path entry does not bypass); wiki-worktree excluded; session-start best-effort wiring."
