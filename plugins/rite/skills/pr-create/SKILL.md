@@ -73,7 +73,7 @@ E2E では `[pr:created:{number}]` / `[pr-create-failed]` を出して **caller 
 issue_number=$(git branch --show-current | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
 ```
 
-Read `.rite/work-memory/issue-{issue_number}.md`（SoT）。不在なら `.rite-work-memory/issue-{issue_number}.md`。欠落 / 破損時は Issue comment API:
+`{state_root}` は `hooks/state-path-resolve.sh`。Read `{state_root}/.rite/work-memory/issue-{issue_number}.md`（SoT）。不在なら `{state_root}/.rite-work-memory/issue-{issue_number}.md`。cwd 相対の session worktree 複製は読まない。欠落 / 破損時は Issue comment API:
 
 ```bash
 # SSH host alias 対応: git-remote.sh 優先 + gh repo view fallback

@@ -1,6 +1,9 @@
 #!/bin/bash
 # rite workflow - Work Memory Update (shared helper)
-# Provides a function to update local work memory files (.rite/work-memory/issue-{n}.md).
+# Provides a function to update local work memory files
+# ({state_root}/.rite/work-memory/issue-{n}.md). state_root is RITE_STATE_ROOT
+# when that is a directory, otherwise hooks/state-path-resolve.sh (linked
+# worktree cwd resolves to the main checkout). Cwd-relative writes are not used.
 # Handles: lock acquisition, YAML frontmatter parsing, atomic file write, lock release.
 #
 # Usage (source from another script or inline):
@@ -153,8 +156,27 @@ update_local_work_memory() {
     fi
   fi
 
-  local wm_dir=".rite/work-memory"
-  local wm_legacy=".rite-work-memory"
+  # Pin writes to the shared state root. Session worktree cwd must not create
+  # a per-worktree copy; that copy is not SoT.
+  local state_root=""
+  if [ -n "${RITE_STATE_ROOT:-}" ] && [ -d "${RITE_STATE_ROOT}" ]; then
+    state_root="$RITE_STATE_ROOT"
+  else
+    local _sr_rc=0
+    if [ -z "${WM_PLUGIN_ROOT:-}" ] || [ ! -x "${WM_PLUGIN_ROOT}/hooks/state-path-resolve.sh" ]; then
+      echo "rite: ${WM_SOURCE:-work-memory-update}: state-path-resolve.sh not found" >&2
+      return 2
+    fi
+    # subprocess: state-path-resolve.sh enables set -euo and must not leak into this sourced helper
+    state_root=$(bash "${WM_PLUGIN_ROOT}/hooks/state-path-resolve.sh") || _sr_rc=$?
+    if [ "$_sr_rc" -ne 0 ] || [ -z "$state_root" ]; then
+      echo "rite: ${WM_SOURCE:-work-memory-update}: state root resolution failed (rc=$_sr_rc)" >&2
+      return 2
+    fi
+  fi
+
+  local wm_dir="${state_root}/.rite/work-memory"
+  local wm_legacy="${state_root}/.rite-work-memory"
   local local_wm="${wm_dir}/issue-${issue_number}.md"
   local lockdir="${local_wm}.lockdir"
   local wm_read="$local_wm"
@@ -165,9 +187,9 @@ update_local_work_memory() {
   # Defensive: ensure parent directory exists before lock acquisition
   mkdir -p "$wm_dir" 2>/dev/null || { echo "rite: ${WM_SOURCE}: failed to create .rite/work-memory directory" >&2; return 2; }
   chmod 700 "$wm_dir" 2>/dev/null || true
-  # Nested self-gitignore on `.rite/` (same extra-args as session-start / flow-state).
+  # Nested self-gitignore on state-root `.rite/` (same extra-args as session-start / flow-state).
   # mkdir is the caller's job; the helper will not create the directory.
-  if ! _ensure_rite_nested_gitignore ".rite"; then
+  if ! _ensure_rite_nested_gitignore "${state_root}/.rite"; then
     echo "WARNING: work-memory-update.sh: cannot create .rite/.gitignore; verify by hand that this directory is excluded from git" >&2
     [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
   fi
