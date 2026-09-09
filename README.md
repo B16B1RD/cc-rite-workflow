@@ -40,6 +40,8 @@ The name comes from the English word **rite**, meaning "ritual" or "ceremony." I
 
 Claude Code uses the plugin installation below. For Codex and Grok Build, expose the same distributed `plugins/rite/skills/` through the host's skill/plugin loader, then follow the [runtime entry and checkpoints](plugins/rite/references/host-runtime-contract.md#入口と工程境界). The bundled helpers initialize state without the development launcher. Independent reviewer completion is required on every host; missing capabilities stop the workflow with recovery instructions. Shell integration tests and observed Codex operations do not establish automatic hook or full Grok E2E support; see the [verification record](docs/designs/multi-host-runtime.md).
 
+For reproducible checks, use the [three-host validation guide](tests/runtime-e2e/README.md): disposable repository preparation, host-specific launch commands, shared workflow prompts, and evidence records. Full workflow execution remains unverified until each host and installation path has actual results.
+
 Rite Workflow uses a three-step installation: register the marketplace, install the plugin, then reload plugins to activate the new commands.
 
 **Step 1**: Add the marketplace
