@@ -101,13 +101,13 @@ If the Issue is not found:
 
 ### 1.1 Load Local Work Memory (SoT)
 
-Read the local work memory file with the Read tool (new path first, then legacy):
+Read the local work memory file with the Read tool (new path first, then legacy). `{state_root}` は `hooks/state-path-resolve.sh`（session worktree cwd では main checkout）:
 
 ```
-Read: .rite/work-memory/issue-{issue_number}.md
+Read: {state_root}/.rite/work-memory/issue-{issue_number}.md
 ```
 
-不在なら `.rite-work-memory/issue-{issue_number}.md`。新パスが存在すればそれを選ぶ（corrupt でも旧ローカルへは行かない。corrupt の処理は 1.2）。新不在のときだけ旧を読む。Retain the content in context.
+不在なら `{state_root}/.rite-work-memory/issue-{issue_number}.md`。cwd 相対の複製は読まない。新パスが存在すればそれを選ぶ（corrupt でも旧ローカルへは行かない。corrupt の処理は 1.2）。新不在のときだけ旧を読む。Retain the content in context.
 
 ### 1.2 Fallback: Issue Comment (Backup)
 
@@ -216,10 +216,10 @@ If a memo is provided as an argument, add it to the "決定事項・メモ" sect
 rationale: references/rationale.md#reread-before-write
 
 ```
-Read: .rite/work-memory/issue-{issue_number}.md
+Read: {state_root}/.rite/work-memory/issue-{issue_number}.md
 ```
 
-不在なら `.rite-work-memory/issue-{issue_number}.md`。
+不在なら `{state_root}/.rite-work-memory/issue-{issue_number}.md`。
 
 **Fallback**: If neither local file is available, re-fetch the Issue comment body:
 
