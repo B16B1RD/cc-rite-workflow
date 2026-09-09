@@ -1475,7 +1475,12 @@ if [ -d "$session_wt_root" ]; then
         [ -d "$_disk_wt" ] || continue
         _disk_base=$(basename "$_disk_wt")
         [[ "$_disk_base" =~ ^issue-[0-9]+$ ]] || continue
-        printf '%s\n' "$_listed" | grep -qxF "worktree $_disk_wt" && continue
+        # grep -q パイプは pipefail 下で SIGPIPE になる。行単位の完全一致で membership を見る。
+        _already_listed=0
+        while IFS= read -r _listed_line || [ -n "$_listed_line" ]; do
+          [ "$_listed_line" = "worktree $_disk_wt" ] && { _already_listed=1; break; }
+        done <<< "$_listed"
+        [ "$_already_listed" -eq 1 ] && continue
         printf 'worktree %s\n' "$_disk_wt"
       done
     fi
