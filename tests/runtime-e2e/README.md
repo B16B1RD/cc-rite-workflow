@@ -210,6 +210,7 @@ RITE_HOST=grok grok --cwd "$PWD"
 
 起動したホストに次の文をそのまま貼る。`<...>` は準備した絶対パスに置き換える。
 ホストが slash command を受け付けない場合は、配布内の対応する `SKILL.md` を読んで同じ手順を実行するのが共通契約上の代替になる。
+Codex は slash command ではなく `$` で skill を mention する。launcher と手順 2 の symlink は `rite:` 接頭辞なしの名前で登録するため、`/rite:issue-create` は Codex では `$issue-create` と読み替える。
 
 ```text
 この検証用リポジトリで rite workflow の実機検証を行います。
