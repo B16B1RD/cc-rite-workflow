@@ -1532,7 +1532,7 @@ In addition to Issue comment backups, work memory is maintained on the local fil
 
 | Component | Role | Location |
 |-----------|------|----------|
-| Local work memory (SoT) | Source of truth | `.rite/work-memory/issue-{n}.md` |
+| Local work memory (SoT) | Source of truth | `{state_root}/.rite/work-memory/issue-{n}.md` (`state-path-resolve.sh`; not cwd-relative under a session worktree) |
 | Issue comment (backup) | Cross-session backup | GitHub Issue comment |
 | Flow state | Workflow control | `.rite/sessions/{session_id}.flow-state` (per-session; see [Multi-Session State Management](#multi-session-state-management)) |
 | Compact state | Post-compact state management | `.rite/sessions/{session_id}.compact-state` (per-session; legacy shared `.rite-compact-state` retained for migration) |
