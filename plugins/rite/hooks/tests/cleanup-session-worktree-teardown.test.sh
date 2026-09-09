@@ -247,6 +247,45 @@ assert_eq "safe exit preserves main HEAD" "$(git -C "$r" rev-parse HEAD)" "$main
 assert_eq "safe exit preserves main branch" "$(git -C "$r" branch --show-current)" develop
 assert_eq "safe exit preserves sibling branch" "$(git -C "$other_wt" branch --show-current)" feat/other
 
+echo "=== cleanup-session-worktree-teardown: remove fail does not prune ==="
+
+# gitfile を壊すと `git worktree remove` は「is not a .git file」で失敗する。
+# この形で prune を走らせると admin dir が回収され、遅延 reap が list から辿れなくなる。
+# 失敗経路は admin を触らず FAILED + manifest だけ残す。
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+admin=$(sed -n 's/^gitdir: //p' "$wt/.git" | head -1)
+[ -n "$admin" ] && [ -f "$admin/HEAD" ] || bad "fixture: admin HEAD が無い"
+printf 'not a gitfile\n' > "$wt/.git"
+out=$(cd "$r" && bash "$HELPER" remove --worktree "$wt" --pr-merged true --self-root "$$" 2>&1); rc=$?
+assert_eq "remove: gitfile 破損でも exit 0" "$rc" "0"
+assert_contains "remove: gitfile 破損は FAILED marker" "$out" \
+  "[CONTEXT] WORKTREE_REMOVE_FAILED=1; path=$wt"
+[ -d "$admin" ] && ok "remove: 失敗後も admin dir が残る（prune していない）" || bad "remove: 失敗後に admin dir が消えた"
+[ -f "$admin/HEAD" ] && ok "remove: 失敗後も admin HEAD が残る" || bad "remove: 失敗後に admin HEAD が消えた"
+[ -d "$wt" ] && ok "remove: 失敗後も working tree が残る" || bad "remove: 失敗後に working tree が消えた"
+if grep -qxF "session_worktree	$wt" "$r/.rite/tmp-artifacts.tsv" 2>/dev/null; then
+  ok "remove: gitfile 破損失敗でも reap manifest へ記録する"
+else
+  bad "remove: gitfile 破損失敗で reap manifest が無い"
+fi
+
+# 成功経路では prune が走り、削除した worktree の admin は残らない。
+r=$(make_repo); wt="$r/.rite/worktrees/issue-1"
+admin=$(sed -n 's/^gitdir: //p' "$wt/.git" | head -1)
+out=$(cd "$r" && bash "$HELPER" remove --worktree "$wt" --pr-merged true --self-root "$$" 2>&1); rc=$?
+assert_eq "remove success: exit 0" "$rc" "0"
+assert_not_contains "remove success: FAILED marker を出さない" "$out" "WORKTREE_REMOVE_"
+[ ! -d "$wt" ] && ok "remove success: working tree を削除する" || bad "remove success: working tree が残った"
+[ ! -d "$admin" ] && ok "remove success: prune で admin dir を回収する" || bad "remove success: admin dir が残った"
+
+prune_ln=$(grep -n 'git worktree prune' "$HELPER" | head -1 | cut -d: -f1)
+fail_ln=$(grep -n 'echo "\[CONTEXT\] WORKTREE_REMOVE_FAILED=1' "$HELPER" | tail -1 | cut -d: -f1)
+if [ -n "$prune_ln" ] && [ -n "$fail_ln" ] && [ "$prune_ln" -lt "$fail_ln" ]; then
+  ok "remove: prune は FAILED marker より前（成功分岐）"
+else
+  bad "remove: prune が成功分岐にない (prune=$prune_ln fail=$fail_ln)"
+fi
+
 echo "PASS: $pass"
 echo "FAIL: $fail"
 [ "$fail" -eq 0 ]
