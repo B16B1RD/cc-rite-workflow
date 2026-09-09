@@ -3,6 +3,7 @@
 * **Update**: [git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する](pages/patterns/normalize-tmpdir-symlink-in-path-asserting-tests.md) — [レビュー結果](raw/reviews/20260909T152156Z-pr-2635.md) を統合。git を介さない Python の `Path.resolve()` でも片辺だけ正規化すると同じ罠になり、契約が相対 link なら `os.readlink` で link 文字列を比較する補強。
 * **Update**: [git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する](pages/patterns/normalize-tmpdir-symlink-in-path-asserting-tests.md) — [fix 結果](raw/fixes/20260909T152539Z-pr-2635.md) を統合。実体解決を両辺に足すより link 文字列を直接 pin する方が最小差分で環境非依存という修正方針を補強。
 * **Update**: [git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する](pages/patterns/normalize-tmpdir-symlink-in-path-asserting-tests.md) — [差分レビュー結果](raw/reviews/20260909T153857Z-pr-2635.md) を統合。symlink 化した TMPDIR での再現が修正後に通ることを 3 名の reviewer が独立確認した観測を補強。
+* **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=454, broken_refs=0。全470ページとraw2033件の構造検査を実施し、番号参照は0。意味的比較は本サイクルで更新した temp ディレクトリ正規化のページ1件を対象とし、隣接する mktemp 二段正規化・locale 依存 assert のページと方針が両立する補強であることを確認した。全ページの意味をこの試行で再読したという主張はしない。陳腐化と意図的skip済rawはinformational。
 
 ## 2026-09-08
 
