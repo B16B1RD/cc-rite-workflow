@@ -5,6 +5,7 @@
 * **Update**: [git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する](pages/patterns/normalize-tmpdir-symlink-in-path-asserting-tests.md) — [差分レビュー結果](raw/reviews/20260909T153857Z-pr-2635.md) を統合。symlink 化した TMPDIR での再現が修正後に通ることを 3 名の reviewer が独立確認した観測を補強。
 * **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=454, broken_refs=0。全470ページとraw2033件の構造検査を実施し、番号参照は0。意味的比較は本サイクルで更新した temp ディレクトリ正規化のページ1件を対象とし、隣接する mktemp 二段正規化・locale 依存 assert のページと方針が両立する補強であることを確認した。全ページの意味をこの試行で再読したという主張はしない。陳腐化と意図的skip済rawはinformational。
 * **Update**: [保存パス基準の変更は観測面と全 caller 引数の同時スイープが必要](pages/heuristics/path-basis-change-observation-surface-sweep.md) — [レビュー結果](raw/reviews/20260909T172822Z-pr-2642.md) を統合。writer を共有 root に直してもスキル本文の相対パスが残ると、作業コピー上ではファイル不在と誤判定する。
+* **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=454, broken_refs=0。ページ470件・raw2034件の構造検査を実施し、番号参照は0。意味的比較は本サイクルで更新した保存パス基準のページ1件を対象とし、伝播漏れ・対称箇所照合・全域 resolver 委譲のページと方針が両立する補強であることを確認した。全ページの意味をこの試行で再読したという主張はしない。陳腐化と意図的skip済rawはinformational。
 
 ## 2026-09-08
 
