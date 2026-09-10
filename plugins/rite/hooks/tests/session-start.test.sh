@@ -36,7 +36,7 @@ fi
 # per-session state file). It also keeps the env-absent branch of the conditional
 # `.rite-session-id` write under test below as the default. Tests that need env
 # present set it explicitly. (run-tests.sh unsets the same vars for suite runs.)
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
+unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID CLAUDE_PLUGIN_ROOT
 
 cleanup() {
   rm -rf "$TEST_DIR"
@@ -1815,6 +1815,69 @@ if echo "$output" | grep -q "前回のセッション状態が残っていたた
   pass "T-10c: startup reset wording unchanged with active queue"
 else
   fail "T-10c: $output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# Plugin-root collision guard (actual loaded root vs .rite/plugin-root)
+# --------------------------------------------------------------------------
+ACTUAL_PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+COLLISION_MSG="読み込まれた plugin が .rite/plugin-root と一致しません"
+
+echo "TC-plugin-root-match: expected == actual → no collision warning"
+dir_pr_match="$TEST_DIR/tc-plugin-root-match"
+mkdir -p "$dir_pr_match/.rite"
+printf '%s' "$ACTUAL_PLUGIN_ROOT" > "$dir_pr_match/.rite/plugin-root"
+fake_home_match="$TEST_DIR/fake-home-match"
+mkdir -p "$fake_home_match/.claude"
+printf '%s\n' '{"enabledPlugins":{"rite@rite-marketplace":true}}' > "$fake_home_match/.claude/settings.json"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+HOME="$fake_home_match" output=$(echo "{\"cwd\": \"$dir_pr_match\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if ! grep -q "$COLLISION_MSG" "$LAST_STDERR_FILE" \
+  && ! grep -q "rite@rite-marketplace が有効" "$LAST_STDERR_FILE"; then
+  pass "match: no collision warning even if marketplace is enabled in settings"
+else
+  fail "match: unexpected warning stderr=$(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+echo "TC-plugin-root-mismatch: expected != actual → collision warning"
+dir_pr_mis="$TEST_DIR/tc-plugin-root-mismatch"
+mkdir -p "$dir_pr_mis/.rite"
+printf '%s' "/tmp/rite-other-plugin-root" > "$dir_pr_mis/.rite/plugin-root"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(echo "{\"cwd\": \"$dir_pr_mis\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if grep -q "$COLLISION_MSG" "$LAST_STDERR_FILE" \
+  && grep -q "expected:" "$LAST_STDERR_FILE" \
+  && grep -q "actual:" "$LAST_STDERR_FILE"; then
+  pass "mismatch: warns with expected/actual paths"
+else
+  fail "mismatch: expected collision warning, stderr=$(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+echo "TC-plugin-root-absent: no expected path → no collision warning"
+dir_pr_abs="$TEST_DIR/tc-plugin-root-absent"
+mkdir -p "$dir_pr_abs"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(echo "{\"cwd\": \"$dir_pr_abs\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if ! grep -q "$COLLISION_MSG" "$LAST_STDERR_FILE"; then
+  pass "absent: no collision warning when .rite/plugin-root is missing"
+else
+  fail "absent: unexpected warning stderr=$(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+echo "TC-plugin-root-explicit: RITE_RUNTIME_EXPLICIT=1 skips collision warning"
+dir_pr_exp="$TEST_DIR/tc-plugin-root-explicit"
+mkdir -p "$dir_pr_exp/.rite"
+printf '%s' "/tmp/rite-other-plugin-root" > "$dir_pr_exp/.rite/plugin-root"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(echo "{\"cwd\": \"$dir_pr_exp\"}" | RITE_RUNTIME_EXPLICIT=1 bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if ! grep -q "$COLLISION_MSG" "$LAST_STDERR_FILE"; then
+  pass "explicit runtime: mismatch does not warn"
+else
+  fail "explicit runtime: unexpected warning stderr=$(cat "$LAST_STDERR_FILE")"
 fi
 echo ""
 
