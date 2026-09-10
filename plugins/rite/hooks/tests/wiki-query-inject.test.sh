@@ -675,15 +675,15 @@ confidence: high
 run_query "$repo" --keywords "ほげほげ" --format compact
 _samples19=$(printf '%s\n' "$QERR" | grep '^    |' || true)
 if [ "$QRC" -eq 0 ] \
-   && printf '%s' "$QOUT" | grep -q '正常なカタログ行' \
-   && printf '%s' "$QERR" | grep -q '候補になりませんでした' \
-   && ! printf '%s' "$QERR" | grep -q '1 件も抽出できませんでした' \
-   && printf '%s' "$_samples19" | grep -q '壊れたカタログ行' \
-   && printf '%s' "$_samples19" | grep -q '壊れたカタログ行?日本語' \
-   && ! printf '%s' "$_samples19" | grep -q "$(printf '壊れたカタログ行\x1b')"; then
+   && printf '%s' "$QOUT" | grep -qF '正常なカタログ行' \
+   && printf '%s' "$QERR" | grep -qF '候補になりませんでした' \
+   && ! printf '%s' "$QERR" | grep -qF '1 件も抽出できませんでした' \
+   && printf '%s' "$_samples19" | grep -qF '壊れたカタログ行' \
+   && printf '%s' "$_samples19" | grep -qF '壊れたカタログ行?日本語' \
+   && ! printf '%s' "$_samples19" | grep -qF "$(printf '壊れたカタログ行\x1b')"; then
   pass "TC-19 部分脱落 sample 行に日本語が残り ESC は ? 化される"
 else
-  fail "TC-19 (rc=$QRC out=$QOUT err=$QERR samples=$_samples19)"
+  fail "TC-19 (rc=$QRC)"
 fi
 
 echo ""

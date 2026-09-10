@@ -54,7 +54,7 @@ fi
 source "$HELPER"
 
 # stdout を hex 列へ (バイト単位比較用 — od のスペース/改行を除去)
-to_hex() { od -An -tx1 | tr -d ' \n'; }
+to_hex() { od -An -tx1 | LC_ALL=C tr -d ' \n'; }
 
 echo "=== TC-1: C0 制御文字 (0x01 / TAB / ESC) → ? ==="
 assert "TC-1: C0 bytes neutralized" "A?B?C?D" "$(printf 'A\x01B\tC\x1bD' | neutralize_ctrl)"
@@ -187,8 +187,10 @@ echo "=== TC-21: --c0-only --keep-newline — 日本語+改行保持 / ESC は ?
 _tc21_hex=$(printf 'あ\nB\x1bC\x9bD' | neutralize_ctrl --c0-only --keep-newline | to_hex)
 assert "TC-21: combined flags keep UTF-8+newline, strip ESC, pass C1" "e381820a423f439b44" "$_tc21_hex"
 # 未知第2引数は default 範囲（C1 込み・改行も ?）へ倒す。日本語継続バイトが壊れる。
-_tc21_typo=$(printf '停止せず継続' | neutralize_ctrl --c0-only --keep-newlin)
-if [ "$_tc21_typo" != "停止せず継続" ]; then
+# 破壊後の本文は不正 UTF-8 になるので比較は hex のみ（bash [ ] や echo に載せない）。
+_tc21_intact_hex=$(printf '停止せず継続' | to_hex)
+_tc21_typo_hex=$(printf '停止せず継続' | neutralize_ctrl --c0-only --keep-newlin | to_hex)
+if [ "$_tc21_typo_hex" != "$_tc21_intact_hex" ]; then
   assert "TC-21: unknown 2nd arg falls back to default range" "destroyed" "destroyed"
 else
   assert "TC-21: unknown 2nd arg falls back to default range" "destroyed" "intact"
