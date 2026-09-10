@@ -647,7 +647,7 @@ Template file: `templates/pr/generic.md`
 
 Read: [`template-structure.md`](../../templates/issue/template-structure.md) の「上段要約」「図の選択規則」。関連 Issue の問題・実際の差分・検証結果から3ブロックと必要な用語を生成する。共通の経緯識別子禁止を検査し、残存時は作成前に生成をやり直す。`Closes #N` は details 外、変更・実装中の判断・検証・未完了項目・チェックリストは details 内に置き、`<summary>` 直後に空行を置く。
 
-関連 Issue の図は次の排他表で決める。上から最初に一致した行だけを適用する。子判定は Issue 本文の `**Parent Issue**` 行の有無。Issue なしで PR を作る場合は図なし行へ（理由は「関連 Issue なし」）。ラベルの文言変更だけでは描き直さない。成功後の `gh pr view` URL 置換確認は新規 `--attach` 時のみ。
+関連 Issue の図は次の排他表で決める。上から最初に一致した行だけを適用する。子判定は Issue 本文の `**Parent Issue**` 行の有無。関連 Issue 不在は「図が無く」に当たり、4・5 行目の図種判定で決める。ラベルの文言変更だけでは描き直さない。成功後の `gh pr view` URL 置換確認は新規 `--attach` 時のみ。
 
 | 条件 | 図 |
 |---|---|
