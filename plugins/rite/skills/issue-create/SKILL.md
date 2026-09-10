@@ -436,13 +436,14 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 
 直前の `[CONTEXT] DECOMPOSE_WORKDIR=` から `{DECOMPOSE_WORKDIR}` を読み取り、以下を **Write tool** で書く（heredoc を使わない）:
 
-1. `{DECOMPOSE_WORKDIR}/parent_body.md` ← §5.1 で生成し §5.1.1 の検査結果を反映した設計仕様書（`{spec_document}`）の raw 内容
+1. `{DECOMPOSE_WORKDIR}/parent_body.md` ← Step 4.2 Step 4 の上段（要約 3 ブロックと図スロット。SVG なら `![説明](./diagram.svg)` 参照、Mermaid なら fence、図なしなら `<!-- 図なし: {理由} -->`）を前置し、続けて §5.1 で生成し §5.1.1 の検査結果を反映した設計仕様書（`{spec_document}`）の raw 内容
 2. 各 Sub-Issue について `{DECOMPOSE_WORKDIR}/sub_{i}_body.md`（i = 1..{sub_count}）← 各 Sub-Issue body の raw 内容（Step 4.2 の Implementation Contract フォーマットで生成する。各 Sub-Issue の確定 Complexity に応じて Complexity Gate を適用）
-3. `{DECOMPOSE_WORKDIR}/spec.json` ← 下記スキーマ。`body_file` は上記で書いた絶対パスを指す:
+3. `{DECOMPOSE_WORKDIR}/diagram.svg`（SVG 時のみ）← テーマ中立の図。parent_body の参照と spec の `attachments` は同じ絶対パスを使う。Mermaid・図なしでは書かない
+4. `{DECOMPOSE_WORKDIR}/spec.json` ← 下記スキーマ。`body_file` は上記で書いた絶対パスを指す:
 
 ```json
 {
-  "parent": { "title": "{parent_title}", "body_file": "{DECOMPOSE_WORKDIR}/parent_body.md", "attachments": [] },
+  "parent": { "title": "{parent_title}", "body_file": "{DECOMPOSE_WORKDIR}/parent_body.md", "attachments": ["{DECOMPOSE_WORKDIR}/diagram.svg"] },
   "sub_issues": [
     { "title": "{sub_1_title}", "body_file": "{DECOMPOSE_WORKDIR}/sub_1_body.md", "complexity": "{sub_1_complexity}" }
   ],
@@ -459,7 +460,7 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 }
 ```
 
-> `sub_issues` 配列は Sub-Issue 件数 `{sub_count}` だけ要素を持たせる（各反復で `{sub_N_title}` / `{sub_N_complexity}` と body ファイルパスを実値置換）。親 labels には helper が `epic` を自動付与する（spec へ付与不要）。親 complexity は helper 内で `XL` 固定。`parent.attachments` は任意（省略時 `[]`）。Sub-Issue には載せない。
+> `sub_issues` 配列は Sub-Issue 件数 `{sub_count}` だけ要素を持たせる（各反復で `{sub_N_title}` / `{sub_N_complexity}` と body ファイルパスを実値置換）。親 labels には helper が `epic` を自動付与する（spec へ付与不要）。親 complexity は helper 内で `XL` 固定。`parent.attachments` は例の SVG パスを実値置換し、親に SVG を付けないとき（Mermaid・図なし）は `[]` にする（省略時も `[]`）。Sub-Issue には載せない。
 
 **(C) helper 呼び出し（単一 bash block）**
 
@@ -476,7 +477,7 @@ bash {plugin_root}/scripts/decompose-issues.sh --spec "{DECOMPOSE_WORKDIR}/spec.
 
 LLM は以下を実行する:
 1. CONTEXT marker (`PARENT_ISSUE_NUMBER`, `SUB_ISSUE_NUMBERS`) を直前の bash 出力から読み取る
-2. `tmpfile_read` の内容を Read tool で取得し、Sub-Issues セクション追記版を `tmpfile_write` へ Write tool で書く
+2. `tmpfile_read` の内容を Read tool で取得し、Sub-Issues セクション追記版を `tmpfile_write` へ Write tool で書く。`parent.attachments` が非空のときは `tmpfile_read` の本文で `![` 参照が添付 URL に置換済みかを確認し、未置換なら 4.3 と同じ「添付失敗」報告（作成済み URL と `gh issue edit --attach` による再添付の案内）を出す
 
 ### 5.5 Step 3: apply（別 bash block）
 
