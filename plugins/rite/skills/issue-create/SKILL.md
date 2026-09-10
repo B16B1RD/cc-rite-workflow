@@ -436,7 +436,7 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 
 直前の `[CONTEXT] DECOMPOSE_WORKDIR=` から `{DECOMPOSE_WORKDIR}` を読み取り、以下を **Write tool** で書く（heredoc を使わない）:
 
-1. `{DECOMPOSE_WORKDIR}/parent_body.md` ← Step 4.2 Step 4 の上段（要約 3 ブロックと図スロット。SVG なら `![説明](./diagram.svg)` 参照、Mermaid なら fence、図なしなら `<!-- 図なし: {理由} -->`）を前置し、続けて §5.1 で生成し §5.1.1 の検査結果を反映した設計仕様書（`{spec_document}`）の raw 内容
+1. `{DECOMPOSE_WORKDIR}/parent_body.md` ← Step 4.2 Step 4 の上段（要約 3 ブロックと図スロット。SVG なら `![説明]({DECOMPOSE_WORKDIR}/diagram.svg)` 参照、Mermaid なら fence、図なしなら `<!-- 図なし: {理由} -->`）を前置し、続けて §5.1 で生成し §5.1.1 の検査結果を反映した設計仕様書（`{spec_document}`）の raw 内容
 2. 各 Sub-Issue について `{DECOMPOSE_WORKDIR}/sub_{i}_body.md`（i = 1..{sub_count}）← 各 Sub-Issue body の raw 内容（Step 4.2 の Implementation Contract フォーマットで生成する。各 Sub-Issue の確定 Complexity に応じて Complexity Gate を適用）
 3. `{DECOMPOSE_WORKDIR}/diagram.svg`（SVG 時のみ）← テーマ中立の図。parent_body の参照と spec の `attachments` は同じ絶対パスを使う。Mermaid・図なしでは書かない
 4. `{DECOMPOSE_WORKDIR}/spec.json` ← 下記スキーマ。`body_file` は上記で書いた絶対パスを指す:
@@ -477,7 +477,7 @@ bash {plugin_root}/scripts/decompose-issues.sh --spec "{DECOMPOSE_WORKDIR}/spec.
 
 LLM は以下を実行する:
 1. CONTEXT marker (`PARENT_ISSUE_NUMBER`, `SUB_ISSUE_NUMBERS`) を直前の bash 出力から読み取る
-2. `tmpfile_read` の内容を Read tool で取得し、Sub-Issues セクション追記版を `tmpfile_write` へ Write tool で書く。`parent.attachments` が非空のときは `tmpfile_read` の本文で `![` 参照が添付 URL に置換済みかを確認し、未置換なら 4.3 と同じ「添付失敗」報告（作成済み URL と `gh issue edit --attach` による再添付の案内）を出す
+2. `tmpfile_read` の内容を Read tool で取得し、Sub-Issues セクション追記版を `tmpfile_write` へ Write tool で書く。`parent.attachments` が非空のときは `tmpfile_read` の本文で `![` 参照が添付 URL に置換済みかを確認し、未置換なら 4.3 と同じ「添付失敗」報告（作成済み URL と、削除された一時 SVG を再生成して `gh issue edit --attach` で再添付する案内）を出す
 
 ### 5.5 Step 3: apply（別 bash block）
 
