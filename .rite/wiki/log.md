@@ -19,6 +19,7 @@
 * **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=461, broken_refs=0。ページ470件・raw2037件の構造検査を実施。意味的比較は本サイクルで更新した配布境界ページ1件を対象とし、隣接する dogfooding 固有 anchor と pin 一意性のページと方針が両立する補強であることを確認した。全ページの意味をこの試行で再読したという主張はしない。番号参照0。陳腐化と意図的skip済rawはinformational。
 * **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=461, broken_refs=0。ページ470件・raw2039件の構造検査を実施。意味的比較は本サイクルで更新した 0 件 finding 受容ページ1件を対象とし、隣接する Observed Likelihood Gate と reviewer 範囲のページと方針が両立する補強であることを確認した。全ページの意味をこの試行で再読したという主張はしない。番号参照0。陳腐化と意図的skip済rawはinformational。
 * **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=462, broken_refs=0。ページ470件・raw2040件の構造検査を実施。本サイクルはページ新規/更新なし（検出器化候補として skip）。番号参照0。陳腐化と意図的skip済rawはinformational。
+* **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=465, broken_refs=0。ページ470件の構造検査を実施。本サイクルはページ新規/更新なし（検出器化候補として skip）。番号参照0。陳腐化と意図的skip済rawはinformational。
 
 ## 2026-09-08
 
