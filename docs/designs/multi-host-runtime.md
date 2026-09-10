@@ -39,7 +39,7 @@ Claude Code・Codex・Grok Build で同じ rite workflow を実行するため�
 
 配布内の `hooks/host-runtime.sh` は `init` / `checkpoint` / `before-bash` / `before-edit` / `after-edit` / `next` を固定 helper に接続する。`auto` は native に委ね、`explicit` は caller が操作前の拒否と工程後の保存を確認する。開発 launcher やグローバル設定の変更は不要。新規の自動 hook 登録や、Grok camelCase payload の透過互換を意味しない。
 
-`references/host-workflow-operations.md` が本文実行による nested Skill の caller 復帰、セッション別 task 台帳、公開 native 子への reviewer 本文の明示、未回答・承認拒否の停止を定義する。`reviewer-completion-check.sh` は選定全員の実 ID・完了出力を照合し、未回収者がいれば統合前に停止する。
+`references/host-workflow-operations.md` が本文実行による nested Skill の caller 復帰、セッション別 task 台帳、公開 native 子への reviewer 本文の絶対パスと読取義務の明示、未回答・承認拒否の停止を定義する。`reviewer-completion-check.sh` は選定全員の実 ID・完了出力を照合し、未回収者がいれば統合前に停止する。
 
 | 検証面 | 証跡と範囲 |
 |---|---|
@@ -70,7 +70,7 @@ Claude Code・Codex・Grok Build で同じ rite workflow を実行するため�
 | P1 | 公開 schema を記録し、一時ファイルの読取→1箇所編集→検索→差分確認を行う。コマンドの exit 7 と stderr も回収し、非ゼロを成功にしない |
 | P2 | 別々の worktree A/B へ明示指定してマーカーを読取・編集する。続く別の tool call と子でも toplevel/branch が指定先と一致し、main/B のファイル不変を確認。再開でも同じ検査を実施 |
 | P3 | 配布 plugin だけを使い、読取専用の親/子スキルと相対 reference を読ませる。user-invocable:false の子も解決し、実際の完了出力を親が回収。子の欠落/失敗では親が次工程へ進まない |
-| P4 | 配布 reviewer 本文を指定し、独立した子2件を起動、識別子・開始/完了時刻・結果を全件回収。読取専用・指定cwdを確認。1件失敗/不正形式では統合を成功としない |
+| P4 | 配布 reviewer 本文の絶対パスを指定し読取完了申告を回収、独立した子2件を起動、識別子・開始/完了時刻・結果を全件回収。読取専用・指定cwdを確認。1件失敗/不正形式では統合を成功としない |
 | P5 | 要件確認を1問出し、未回答では依存処理停止、回答時のみ再開を確認。Default/Plan/headless と UI 有無を別記。batch 自動承認と権限承認を混同しない |
 | P6 | 無害な記録用 handler で SessionStart、PreToolUse、PostToolUse、Stop、PreCompact/PostCompact、SessionEnd を発火。payload、plugin root、matcher、追加context、阻止/差し戻しを比較。起動検出、実行、効果を分け、意図的な exit 2 / 不正JSONも試す |
 | P7 | 2セッションのIDを採取し、flow-state / claim / queue / work memory の所有者を比較。停止→同一セッション再開で一貫、別セッションは分離することを確認。欠落/不正IDで共有 marker を流用しない。IDの有無以外の環境値は記録しない |

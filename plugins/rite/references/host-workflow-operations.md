@@ -26,16 +26,28 @@ native task 機能があれば既存手順で使う。無い実行面では、�
 | 経路 | 実行 |
 |---|---|
 | native named Agent/Task | 選定済み `rite:{type}-reviewer` を指定し、実 ID と completion notification を回収する |
-| named agent が公開されず独立子は利用可能 | 配布内 `agents/{type}-reviewer.md` と `agents/_reviewer-base.md`、必要な参照を読み、本文・制約・差分・仕様・絶対 workdir を native 子の prompt へ明示する |
+| named agent が公開されず独立子は利用可能 | 配布内 `agents/{type}-reviewer.md` と `agents/_reviewer-base.md`、必要な参照の絶対パスと着手前の全文読取義務、制約・差分・仕様・絶対 workdir を native 子の prompt へ明示する。子は raw 出力の先頭行で読取完了を申告する（[本文の引き渡し](#本文の引き渡し)） |
 | 独立子・必要な並列性・読取専用制約を維持できない | 起動前に不足能力を診断し `[review:error]`。自己レビューや人数削減で代替しない |
 
 Codex の `spawn_agent` では named reviewer の frontmatter `model: inherit` と `effort: high` を尊重する。公開 schema が effort を設定できる場合は設定する。Grok でも同じ本文を渡すが、frontmatter が実際に適用されるとは仮定しない。ホストで強制できない制約は子の指示へ明示し、結果と変更前後の state snapshot で確認する。権限拒否された起動を別経路へ置換しない。
 
 起動時に選定名簿と親/子の実 ID・時刻を保持し、全 completion を待つ。子が失敗したら既存の1回再試行を適用し、再失敗は incomplete として停止する。残りの成功結果は保持する。
 
+### 本文の引き渡し
+
+named agent が公開されないホストでは、reviewer 本文を prompt へ全文 inline せず、絶対パス方式だけを契約とする。`_reviewer-base.md` だけで約 90KB あり、選定人数分を inline すると prompt が起動できる上限を超えて reviewer を回収できない。絶対パス方式は複数ホストで選定全員の回収を完走している。
+
+親が子の prompt へ明示する項目:
+
+- 解決済み plugin root 配下の `agents/{type}-reviewer.md` と `agents/_reviewer-base.md` の絶対パス。profile 内の相対参照に頼らず個別に列挙する。他に読ませる参照も同様に絶対パスで列挙する
+- 列挙した全ファイルを着手前に全文読み取り、raw 出力の先頭行に `読取完了: {絶対パス}; {絶対パス}` の形式で列挙した全パスを申告する義務
+- 制約（読取専用・時刻記録・結果形式）、差分、仕様、絶対 workdir
+
+親は回収ゲートで申告行を読み、渡したパス集合と一致することを確認する。申告行が無い、または 1 件でも欠ける raw 出力は未読とみなし、当該 reviewer を失敗として既存の 1 回再試行を適用する。再失敗は incomplete として停止する。申告は helper ではなく親が確認する。named agent 経路の子は本文を system prompt で受け取りファイルを読まないため、申告の対象外とする。
+
 ### 回収ゲート
 
-選定名簿は起動前の値を固定し、回収不能な reviewer を削除しない。raw 出力は編集せず絶対パスのファイルへ保存する。ホストの実出力から次の manifest を `REVIEW_TMP_DIR/rite-review-{session_id}-{pr_number}-{cycle_count}-{orchestrator_spawn_at}/reviewer-completions.json` に保存する（各値は pr-review で取得した現在 session・PR・cycle・初回 spawn 時刻）。同じディレクトリに reviewer ごとの raw 出力を置き、別 session / cycle の manifest を流用しない。
+選定名簿は起動前の値を固定し、回収不能な reviewer を削除しない。raw 出力は編集せず絶対パスのファイルへ保存する。ホストの実出力から次の manifest を `REVIEW_TMP_DIR/rite-review-{session_id}-{pr_number}-{cycle_count}-{orchestrator_spawn_at}/reviewer-completions.json` に保存する（各値は pr-review で取得した現在 session・PR・cycle・初回 spawn 時刻）。同じディレクトリに reviewer ごとの raw 出力を置き、別 session / cycle の manifest を流用しない。本文の引き渡し経路では、helper を実行する前に各 raw 出力の先頭行の読取完了申告が渡した全パスと一致することを確認する。
 
 ```json
 {

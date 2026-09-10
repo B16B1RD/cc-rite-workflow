@@ -32,7 +32,7 @@
 | コマンド・ファイル操作 | Claude: Bash / Read / Edit / Write / Grep。Codex: 公開された exec_command / apply_patch。Grok: 公開された実ツール | shell で読取/検索、ホストの patch 機能で編集。対象・終了コード・変更を検証。拒否された操作を別ツールに置換しない |
 | 作業先指定 | Claude: EnterWorktree(path)。ホストが既存 worktree へ入場する機能 | 各実行の workdir を固定 → 各実行で明示的に cd。編集は絶対パス、子にも作業先を渡す。下記 invariant を満たせない実行面では停止 |
 | スキル読込・継続 | Claude: Skill。他ホスト: 公開された skill loader | 解決済み配布パスの SKILL.md を読み、引数を渡して同じ手順を親が実行。子スキルの完了条件を検証して caller の次工程へ進む |
-| 委譲 | Claude: Agent（旧呼称 Task）。Codex: spawn_agent と結果回収。Grok: 公開された subagent 機能 | 配布された reviewer 本文を子の指示へ明示して native 子に渡す。独立子・必要な並列性を作れなければ停止。親の自己レビューで人数を水増ししない |
+| 委譲 | Claude: Agent（旧呼称 Task）。Codex: spawn_agent と結果回収。Grok: 公開された subagent 機能 | 配布された reviewer 本文の絶対パスと読取義務を子の指示へ明示して native 子に渡す（[Host workflow operations](host-workflow-operations.md#本文の引き渡し)）。独立子・必要な並列性を作れなければ停止。親の自己レビューで人数を水増ししない |
 | 質問 | Claude: AskUserQuestion。Codex: 当該モードで公開された質問ツール。Grok: 検証済み質問 UI | 通常の会話で質問し、回答到着まで依存工程を停止。権限昇格はこの代替で済ませず、ホストの承認機構を使う |
 | hook | ホストに登録され、対象イベントで意味が一致する handler | 明示的な工程境界で同じ helper を一度実行し、結果を検証できる場合のみ。後述の自動イベントは別途検証が必要 |
 | セッション識別 | ホストが渡す session/thread ID | 現在ホストIDを既存 helper の明示引数/プロセス限定入力に渡す。全 consumer の一貫性を検証できなければ停止。共有 marker の他人の値を借りない |
