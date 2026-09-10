@@ -1,5 +1,6 @@
 ## 2026-09-10
 
+* **Update**: [保存パス基準の変更は観測面と全 caller 引数の同時スイープが必要](pages/heuristics/path-basis-change-observation-surface-sweep.md) — [レビュー結果](raw/reviews/20260910T100545Z-pr-2658.md) を統合。resolver 失敗を cwd に倒さないことと、抽出 awk の非一意行頭が誤ブロックを実行することを補強。
 * **Skip**: [20260910T071315Z-pr-2652.md](raw/reviews/20260910T071315Z-pr-2652.md) — detector-candidate: 排他表 first-match と前置 override の衝突、および Write 句の静的ピン欠落は static-pin で機械検出できる
 * **Skip**: [20260910T074111Z-pr-2652.md](raw/reviews/20260910T074111Z-pr-2652.md) — detector-candidate: 排他表 first-match と前置 override の衝突、および Write 句の静的ピン欠落は static-pin で機械検出できる
 * **Skip**: [20260910T071816Z-pr-2652.md](raw/fixes/20260910T071816Z-pr-2652.md) — detector-candidate: 排他表 first-match と前置 override の衝突、および Write 句の静的ピン欠落は static-pin で機械検出できる
