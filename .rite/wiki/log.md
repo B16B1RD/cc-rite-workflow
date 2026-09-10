@@ -10,6 +10,7 @@
 * **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=454, broken_refs=0。ページ470件・raw2034件の構造検査を実施し、番号参照は0。意味的比較は本サイクルで更新した保存パス基準のページ1件を対象とし、伝播漏れ・対称箇所照合・全域 resolver 委譲のページと方針が両立する補強であることを確認した。全ページの意味をこの試行で再読したという主張はしない。陳腐化と意図的skip済rawはinformational。
 * **Skip**: [20260909T182728Z-pr-2644.md](raw/reviews/20260909T182728Z-pr-2644.md) — レビュー指摘なし。失敗時の prune 回避と gitfile 破損残骸の回収はプラグインとテストへ実装済み。診断 WARNING の主語分離は既存ページに既出。
 * **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=460, broken_refs=0。ページ470件・raw2035件の構造検査を実施。ページ本文・indexは直前の全体監査から差分なし。今回のrawは指摘なしとしてskip済み。番号参照0。陳腐化と意図的skip済rawはinformational。
+* **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=461, broken_refs=0。ページ470件・raw2037件の構造検査を実施。意味的比較は本サイクルで更新した配布境界ページ1件を対象とし、隣接する dogfooding 固有 anchor と pin 一意性のページと方針が両立する補強であることを確認した。全ページの意味をこの試行で再読したという主張はしない。番号参照0。陳腐化と意図的skip済rawはinformational。
 
 ## 2026-09-08
 
