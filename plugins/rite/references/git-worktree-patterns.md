@@ -331,7 +331,7 @@ parallel:
 ## Multi-Session Patterns
 
 These patterns apply to the **session worktree** layer governed by `multi_session.enabled`
-(default `true`; see [docs/designs/multi-session-worktree.md](../../../docs/designs/multi-session-worktree.md)).
+(default `true`).
 This is a **separate axis** from the `parallel.mode: "worktree"` patterns above:
 `parallel` is per-Issue sub-agent fan-out within one session; `multi_session` is
 session-wide lifecycle isolation. `/rite:open` creates and enters a session worktree
@@ -720,8 +720,7 @@ sandbox 設定が変わっても追随できる。
 **関連 Issue**: （`git-status-filtered.sh` 導入元）/ （drift-hash 経路の sandbox 内外
 コンテキスト混在による誤警報の残件、本節の対象外）
 
-> **Canonical spec**: This file documents the operational *patterns*; the canonical
-> runtime specification for the session-worktree layer (lifecycle, claim, reap,
-> shared-state-root resolution, crash recovery) lives in
-> [`docs/SPEC.md` → Multi-Session State Management → Worktree Mode](../../../docs/SPEC.md#worktree-mode-session-worktree-isolation),
-> with the full Decision Log in [`docs/designs/multi-session-worktree.md`](../../../docs/designs/multi-session-worktree.md).
+> **Canonical spec (distributed)**: This file is the operational SoT for the
+> session-worktree layer (lifecycle, claim, reap, shared-state-root resolution,
+> crash recovery) inside the plugin. Design history is not shipped with the
+> marketplace package.

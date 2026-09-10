@@ -38,6 +38,8 @@ Past version sections carry none either — they have already been stripped.
 
 ### Fixed
 
+- **Marketplace plugin markdown no longer links into development-repo `docs/`** — six relative links from `plugins/rite` to `docs/` 404 at install destinations that do not ship that tree. The links now stay inside the plugin (or drop to a one-line pointer), and `/rite:lint` Phase 3.5 runs `distribution-docs-link-check.sh` so the hop cannot return.
+
 - **`/rite:pr-review` recovers reviewer Task results from completion notifications instead of requiring `run_in_background: false`** — fork mode is the harness default, so spawned subagents run in the background and the Agent tool has no `run_in_background` argument. The orchestrator waits until every reviewer's notification has arrived before starting result collection, does not invent missing results, and while waiting may only emit `REVIEW_TMP_DIR` and assemble the spawn-timings path. `/rite:open` step 3.3.1 uses the same recovery contract.
 
 ## [0.14.0] - 2026-08-30
