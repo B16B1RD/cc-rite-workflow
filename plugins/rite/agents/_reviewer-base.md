@@ -753,6 +753,16 @@ Output using this format with evaluation (可/条件付き/要修正), findings 
 | Category #2 | {SEVERITY} | {file:line or -} | {filtered suggestion} | {failed condition} | {Verification anchor or なし} |
 ```
 
+指摘が 0 件でも 5 列ヘッダ行と区切り行を必ず出力し、本文行は空にする。見出しのあとに「なし」と書いてヘッダを省いてはならない。監査ログの該当なし表記（表の代わりに `なし`）を指摘事項へ流用しない。
+
+0 件の出力例:
+
+```
+### 指摘事項
+| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|--------|----------|------------|------|----------|
+```
+
 `監査ログ` は常に出力する。該当なしの場合は表の代わりに `なし` と書く。Category #2 の行は省略禁止で、内容中の `Verification:` anchor は改変しない。
 
 ### Column Structure Rules
