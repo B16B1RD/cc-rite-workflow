@@ -10,7 +10,7 @@ argument-hint: "<keywords>"
 
 # /rite:wiki-query
 
-`.rite/wiki/index.md` からキーワード一致で関連ページを検索し、Markdown コンテキストブロックとして出力する。共通パターンは [Wiki Patterns](../../references/wiki-patterns.md)、設計は [F3 Query サイクル](../../../../docs/designs/experience-heuristics-persistence-layer.md)。
+`.rite/wiki/index.md` からキーワード一致で関連ページを検索し、Markdown コンテキストブロックとして出力する。共通パターンと Query サイクルは [Wiki Patterns](../../references/wiki-patterns.md)。
 
 **Arguments** (オプショナル):
 

@@ -138,3 +138,7 @@ The checker lexes shell quotes and comments before splitting raw pipe operators,
 The exclusions are deliberately bounded proxies, not proofs of payload size: a literal-pipe printf fixture, direct `printf '%s'` status probes, `echo`, brace groups, `docker ps`, and `enable -p`. Repository-derived `printf '%s\n'` lists and intermediate `jq` or `head` stages remain findings. Do not extend these command-name proxies casually: an apparently small producer can become unbounded as its input changes. For a reviewed intentional case, use `drift-check-ignore` on the logical line or the line immediately above.
 
 Scan scope is the full non-test shell surface under `plugins/rite/hooks/` and `plugins/rite/scripts/`. The known-site regression test pins both the total and the owning files without pinning volatile line numbers, so a parser or scope change cannot silently produce a clean bill.
+
+## Distribution docs-link check (distribution-docs-link-check.sh)
+
+Detects markdown links under `plugins/rite/**/*.md` whose destination resolves outside the plugin root. The marketplace package is `plugins/rite` only; a relative hop into development-repo `docs/` (or any other sibling) 404s at the install destination. Inline `[text](url)` / `![alt](url)` only. http(s) / mailto / fragment-only destinations and `{placeholder}` template hrefs are skipped. Fenced code is skipped so examples do not become findings. `tests/` trees are out of scope (fixtures). Unscannable files (unreadable or unbalanced fences) exit 2 rather than a clean bill.

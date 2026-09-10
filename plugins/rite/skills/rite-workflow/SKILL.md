@@ -154,7 +154,7 @@ orchestrator (`open` / `iterate`) が sub-skill 出力の sentinel を grep で 
 
 仮定を表面化し、押し返し、シンプルさ・スコープ規律を死守する。user-visible な挙動が変わったら README / docs / CLAUDE.md / plugin .md を同じ PR で更新する（`documentation_consistency`）。知識の経路（`knowledge_routing`）: How → code, What → tests, Why → commit log, Why not → code comments。全文: [coding-principles.md](./references/coding-principles.md)。
 
-**Canon TDD**: `tdd.enabled: true`（default, opt-out）のとき `rite:issue-implement` が Canon TDD を回す（[`issue-implement/SKILL.md`](../issue-implement/SKILL.md) § 5.0.T）。`commands.test` 未設定なら test-list discipline のみ、`tdd.enabled: false` なら skip。スキーマ: [CONFIGURATION.md](../../../../docs/CONFIGURATION.md) `### tdd`。
+**Canon TDD**: `tdd.enabled: true`（default, opt-out）のとき `rite:issue-implement` が Canon TDD を回す（[`issue-implement/SKILL.md`](../issue-implement/SKILL.md) § 5.0.T）。`commands.test` 未設定なら test-list discipline のみ、`tdd.enabled: false` なら skip。スキーマ: 同梱 [rite-config.yml template](../../templates/config/rite-config.yml) の `tdd:` 節。
 
 ## Simplification Charter (rite plugin maintenance)
 

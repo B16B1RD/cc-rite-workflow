@@ -36,6 +36,8 @@ blocking gate として実行する。
 
 ### 修正
 
+- **マーケットプレイス配布の plugin markdown が開発リポジトリの `docs/` を相対リンクしなくなった** — `plugins/rite` から `docs/` への相対リンク 6 件は、そのツリーを同梱しない配布先で 404 になる。リンクは plugin 内に収めるか 1 行ポインタへ置換し、`/rite:lint` Phase 3.5 が `distribution-docs-link-check.sh` で再発を止める。
+
 - **`/rite:pr-review` が reviewer Task の結果を `run_in_background: false` 必須ではなく completion notification で回収する** — fork mode 既定では spawn した subagent は background で走り、Agent tool に `run_in_background` 引数が無い。orchestrator は全 reviewer の通知が揃うまで結果収集を開始せず、未着結果を推測せず、待ち中に進めてよいのは `REVIEW_TMP_DIR` emit と spawn-timings パス組み立てだけ。`/rite:open` ステップ 3.3.1 も同じ回収契約。
 
 ## [0.14.0] - 2026-08-30

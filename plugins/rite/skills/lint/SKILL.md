@@ -398,6 +398,7 @@ esac
 | 17 | Dollar-zero check | `hooks/scripts/dollar-zero-check.sh --all --skip-if-no-target` | `dollar_zero` | `Total dollar-zero findings: (\d+)` |
 | 18 | Tempfile lifecycle check | `hooks/scripts/tempfile-lifecycle-check.sh --all --skip-if-no-target` | `tempfile_lifecycle` | `Total tempfile-lifecycle findings: (\d+)` |
 | 19 | Pipefail grep-q check | `hooks/scripts/pipefail-grep-q-check.sh --all --skip-if-no-target` | `pipefail_grep_q` | `Total pipefail-grep-q findings: (\d+)` |
+| 20 | Distribution docs-link check | `hooks/scripts/distribution-docs-link-check.sh --all --skip-if-no-target` | `distribution_docs_link` | `Total distribution-docs-link findings: (\d+)` |
 
 **Execution loop** — for each table row, run (`{script}` = Invocation column path, `{args}` = Invocation column args, `{prefix}` = Vars prefix column):
 
