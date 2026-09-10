@@ -13,9 +13,13 @@ sources:
     resource: "raw/reviews/20260722T080039Z-pr-1969-mergeable.md"
   - type: "reviews"
     resource: "raw/reviews/20260906T153509Z-pr-2582.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260910T043508Z-pr-2648.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260910T052008Z-pr-2648.md"
 tags: ["reviewer-discipline", "false-positive-prevention", "fractal-pattern-convergence", "doc-heavy-review", "loop-termination"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-10T05:28:56Z" }
 ---
 
 # 0 件 finding = 正常終了として受容する (false-positive 回避義務)
@@ -76,7 +80,7 @@ cycle 8: 0 findings (完全収束、mergeable)
 
 ### 追記: 0 件でも出力の形式契約は機械検査される
 
-指摘 0 件を「なし」の散文だけで済ませると、producer 側のゲートが表ヘッダ欠落として止める。0 件のときも canonical な表のヘッダ 2 行を出すのが正しい形で、「なし」の注記はその下に添える。reviewer への prompt にこの規約を明示しないと、複数の reviewer が揃って同じ形で落ちる — 個々の reviewer の不注意ではなく prompt 側の欠落である。
+指摘 0 件を「なし」の散文だけで済ませると、producer 側のゲートが表ヘッダ欠落として止める。0 件のときも 5 列のヘッダ行と区切り行を必ず出し、本文行は空にする。見出しのあとに「なし」と書いてヘッダを省いてはならない。ゲートを緩めて「なし」を許容するのではなく、authoring SoT（reviewer 共通原則と実行時 prompt）へ空表の出力例を含めて一意に書く。prompt にこの規約が無いと、複数の reviewer が揃って同じ形で落ちる — 個々の reviewer の不注意ではなく prompt 側の欠落である。
 
 ## 関連ページ
 
@@ -91,3 +95,5 @@ cycle 8: 0 findings (完全収束、mergeable)
 - [収束相の visibility](../../raw/reviews/20260526T034356Z-pr-1146.md)
 - [/mergeable review (5 reviewer 全員「評価: 可」、指摘 0 件で 5-cycle 収束、cycle 5 finding の正しい解消を確認した上での 0 件到達)](../../raw/reviews/20260722T080039Z-pr-1969-mergeable.md)
 - [レビュー結果](../../raw/reviews/20260906T153509Z-pr-2582.md)
+- [空表でもヘッダを出す形式契約の確認](../../raw/reviews/20260910T043508Z-pr-2648.md)
+- [形式契約の再確認](../../raw/reviews/20260910T052008Z-pr-2648.md)
