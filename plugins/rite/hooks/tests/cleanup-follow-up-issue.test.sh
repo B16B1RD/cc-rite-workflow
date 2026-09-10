@@ -913,18 +913,26 @@ echo "--- T-28: 再検証用一時ファイルの確保失敗を明示する ---
 reset_stubs
 r=$(new_root t28)
 put_json "$r" "9-20260101120000.json" "$FINDING_JSON"
-# SKILL の実ブロックを実行する。state root だけ fixture に置換する。
+# SKILL の 6.0.V 実ブロックを実行する。state root だけ fixture に置換する。
+# ステップ 3 と 6.0 helper 呼び出しも `_state_root=$(bash` で始まるため先頭一致では
+# 6.0.V を取れない。SKILL.md の T-28 アンカーコメントを起点にする。
 awk -v root="$r" '
-  /^_state_root=\$\(bash / {print "_state_root=\"" root "\""; p=1; next}
+  /cleanup-follow-up-issue.test.sh T-28/ {p=1}
+  p && /^_state_root=\$\(bash / {print "_state_root=\"" root "\""; next}
   p && /^```/ {exit}
   p {gsub(/\{pr_number\}/, "9"); print}
 ' "$CLEANUP_MD" > "$TMP_ROOT/reverify.sh"
-TMPDIR="$TMP_ROOT/absent" bash "$TMP_ROOT/reverify.sh" > "$OUT" 2> "$ERR"; RC=$?
-assert "T-28 exit 0" "0" "$RC"
-assert_grep "T-28 union 一時ファイル失敗の WARNING" "$ERR" '再検証用の一時ファイルを確保・初期化できません'
-assert_grep "T-28 再検証不能を surface" "$ERR" '再検証を実施できません（対象 1 本）'
-assert_grep "T-28 unavailable marker" "$OUT" 'FOLLOW_UP_REVERIFY=unavailable; reason=parse_failed'
-assert_not_grep "T-28 JSON 破損と断定しない" "$ERR" '1 本も解析できません'
+if ! grep -q 'rite-fu-reverify-union' "$TMP_ROOT/reverify.sh"; then
+  fail "T-28 6.0.V 再検証ブロックを抽出できない"
+else
+  assert_not_grep "T-28 ステップ3ブロックを抽出しない" "$TMP_ROOT/reverify.sh" 'WM_SOURCE='
+  TMPDIR="$TMP_ROOT/absent" bash "$TMP_ROOT/reverify.sh" > "$OUT" 2> "$ERR"; RC=$?
+  assert "T-28 exit 0" "0" "$RC"
+  assert_grep "T-28 union 一時ファイル失敗の WARNING" "$ERR" '再検証用の一時ファイルを確保・初期化できません'
+  assert_grep "T-28 再検証不能を surface" "$ERR" '再検証を実施できません（対象 1 本）'
+  assert_grep "T-28 unavailable marker" "$OUT" 'FOLLOW_UP_REVERIFY=unavailable; reason=parse_failed'
+  assert_not_grep "T-28 JSON 破損と断定しない" "$ERR" '1 本も解析できません'
+fi
 
 echo "--- T-arg: 引数 gate ---"
 bash "$TARGET" --pr abc --state-root "$TMP_ROOT" --owner a --repo b >"$OUT" 2>"$ERR"; RC=$?

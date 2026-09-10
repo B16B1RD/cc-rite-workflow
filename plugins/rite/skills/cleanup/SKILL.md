@@ -557,6 +557,7 @@ rationale: references/rationale.md#follow-up-before-archive
 対象 JSON は helper と同一の選び方（`{state_root}/.rite/review-results/{pr_number}-*.json*` の**全ファイルの `non_blocking_findings[]` を和集合**し、basename 昇順（= cycle 昇順）に**そのまま連結する**。`id` は各 JSON 内の連番で cycle 跨ぎの identity を持たないため畳み込み key に使わない）で確定する。最新 1 本だけを見ると helper が転記する集合と食い違い、先行 cycle にのみ載る指摘が再検証を経ずに転記される:
 
 ```bash
+# ⚠ 下行はテスト hooks/tests/cleanup-follow-up-issue.test.sh T-28 が awk 抽出アンカーとして参照する。変更時はテスト側の awk パターンも同時更新すること
 # reason は helper の語彙（no_json / jq_missing）に揃え、state root 解決失敗は別値にする。
 # 合成すると「JSON も jq も実在するのに no_json_or_jq」という誤った原因が完了報告へ転記される。
 _state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
