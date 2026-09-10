@@ -16,9 +16,15 @@ sources:
     resource: "raw/fixes/20260729T062345Z-pr-2044.md"
   - type: "fixes"
     resource: "raw/fixes/20260805T234810Z-pr-2120.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260910T135544Z-pr-2659.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260910T140012Z-pr-2659-fix.md"
 tags: ["bash", "test-quality", "locale", "dead-assertion", "identification-power", "degrade-path", "LC_ALL"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-06T02:49:27Z" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-10T14:23:18Z" }
+verified:
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-10T14:23:18Z" }
 ---
 
 # エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する
@@ -66,6 +72,8 @@ flock 不在環境の degrade 分岐（`command -v flock` ガード）を検証�
 
 実測での確認が有効: 書き込み不能な state root で helper を叩き、`mktemp: ... 許可がありません` が `LC_ALL=C` で `Permission denied` に変わることを見る。
 
+読み手が端末ではなく、後から開く日本語の記録（leftover 行や review JSON の detail）であるときは逆になる。`--keep-newline` は C1 (0x80-0x9f) もバイト単位で `?` に潰すため、UTF-8 日本語の後続バイトが壊れ、fail-loud の本文が読めなくなる。実測では leftover を `--keep-newline` した経路で日本語 detail が破壊され、行単位の `--c0-only` では残った。**出力の読み手が端末なら `--keep-newline`、ファイルや JSON の日本語本文なら `--c0-only` を使い、日本語が残ることを pin する。** 同じ helper の既定モードを流用してはならない。
+
 > **判定の分かれ目**: 「スクリプト自身の echo」（locale 非依存、`LC_ALL=C` では変わらない）と「外部コマンドの診断」（locale 依存）を区別する。後者だけが唯一の原因行になる経路（helper が rc しか返さない write 失敗）が修正の要否を決める。tempfile 捕捉済みで元々端末に出ていなかったサイト（`hooks/` 配下の同 idiom 約 20 箇所）は差し引きプラスであり、同一視して retrofit してはならない。
 
 関連して、**`2>&1` capture を「rc≠0 のときだけ表示」と組むと成功時の診断を握り潰す**。helper が rc=0 のまま WARNING を出す経路があると、リダイレクトが無かった頃には届いていた診断が消える。**capture の導入は観測性の向上とは限らない** — 表示条件を rc に紐付けた瞬間、rc=0 の診断は捨てられる。診断の emit は if/else の外に置き、rc とは独立に surface する（成功時の capture は通常空なので `-n` guard でノイズは出ない）。
@@ -100,3 +108,5 @@ assert は**自分が中和した行に限定**する必要がある（メッセ
 - [フィルタ経路の locale 依存](../../raw/reviews/20260729T061547Z-pr-2044.md)
 - [LC_ALL=C による stream 固定](../../raw/fixes/20260729T062345Z-pr-2044.md)
 - [中和済み出力への assert が不正 UTF-8 で vacuous pass](../../raw/fixes/20260805T234810Z-pr-2120.md)
+- [レビュー結果](../../raw/reviews/20260910T135544Z-pr-2659.md)
+- [fix 結果](../../raw/reviews/20260910T140012Z-pr-2659-fix.md)

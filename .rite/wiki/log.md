@@ -1,5 +1,8 @@
 ## 2026-09-10
 
+* **Update**: [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](pages/anti-patterns/locale-dependent-error-message-grep-assertion.md) — [レビュー結果](raw/reviews/20260910T135544Z-pr-2659.md) を統合。記録面の日本語本文では keep-newline ではなく c0-only を使い、日本語が残ることを pin する。
+* **Update**: [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](pages/anti-patterns/locale-dependent-error-message-grep-assertion.md) — [fix 結果](raw/reviews/20260910T140012Z-pr-2659-fix.md) を統合。leftover を行単位 c0-only に変え、日本語 detail を pin した観測。
+* **Skip**: [20260910T141055Z-pr-2659-c2.md](raw/reviews/20260910T141055Z-pr-2659-c2.md) — 指摘ゼロの mergeable 観測のみ。新しい経験則は抽出できない
 * **Update**: [保存パス基準の変更は観測面と全 caller 引数の同時スイープが必要](pages/heuristics/path-basis-change-observation-surface-sweep.md) — [レビュー結果](raw/reviews/20260910T100545Z-pr-2658.md) を統合。resolver 失敗を cwd に倒さないことと、抽出 awk の非一意行頭が誤ブロックを実行することを補強。
 * **Skip**: [20260910T071315Z-pr-2652.md](raw/reviews/20260910T071315Z-pr-2652.md) — detector-candidate: 排他表 first-match と前置 override の衝突、および Write 句の静的ピン欠落は static-pin で機械検出できる
 * **Skip**: [20260910T074111Z-pr-2652.md](raw/reviews/20260910T074111Z-pr-2652.md) — detector-candidate: 排他表 first-match と前置 override の衝突、および Write 句の静的ピン欠落は static-pin で機械検出できる
