@@ -210,6 +210,15 @@ class WorkflowContracts(unittest.TestCase):
             self.assertIn(clause, approval)
         self.assertIn("代替なし。拒否・承認不可なら診断を返す", runtime)
         self.assertIn("ホストの fail-open を rite の成功に変換しない", runtime)
+        # Body handoff to an independent child is absolute-path only. Full inline of
+        # the reviewer base is too large to launch and must not be read back in.
+        reviewer_part = operations.split("## 独立 reviewer\n", 1)[1].split("\n## ", 1)[0]
+        for clause in ["絶対パス", "着手前", "読取完了:", "1 回再試行", "全文 inline せず",
+                       "渡したパス集合と一致"]:
+            self.assertIn(clause, reviewer_part)
+        self.assertNotIn("本文・制約・差分・仕様・絶対 workdir を native 子の prompt へ明示", reviewer_part)
+        self.assertIn("読取完了申告が渡した全パスと一致", reviewer_part.split("### 回収ゲート\n", 1)[1])
+        self.assertIn("reviewer 本文の絶対パスと読取義務を子の指示へ明示", runtime)
         for skill_name in ["rite-workflow", "batch-run", "open", "issue-implement", "pr-create", "iterate",
                            "pr-review", "fix", "ready", "recover", "issue-create"]:
             body = (plugin / "skills" / skill_name / "SKILL.md").read_text(encoding="utf-8")
