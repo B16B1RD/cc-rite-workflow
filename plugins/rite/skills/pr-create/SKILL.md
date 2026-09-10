@@ -647,7 +647,15 @@ Template file: `templates/pr/generic.md`
 
 Read: [`template-structure.md`](../../templates/issue/template-structure.md) の「上段要約」「図の選択規則」。関連 Issue の問題・実際の差分・検証結果から3ブロックと必要な用語を生成する。共通の経緯識別子禁止を検査し、残存時は作成前に生成をやり直す。`Closes #N` は details 外、変更・実装中の判断・検証・未完了項目・チェックリストは details 内に置き、`<summary>` 直後に空行を置く。
 
-関連 Issue 本文から図を取り、上段に再掲する。対象は添付 URL（`![...](https://github.com/user-attachments/...)`）と Mermaid fence。ノードの追加・削除・関係（矢印・包含）の変化があれば描き直す。ラベルの文言変更だけでは描き直さない。再掲時は 3.4(B) で `diagram.svg` を書かず `attachments.json` を `[]` にする。描き直し時だけ `diagram.svg` を書いて attachments.json に載せ、上段に「Issue の図から変わった点」を 1〜3 行書く。子 Issue は親の図を再掲せず「親 Issue の図の {部分} を担当」と一文で指す。図なしは上段に `<!-- 図なし: {理由} -->` を残す。成功後の `gh pr view` URL 置換確認は新規 `--attach` 時のみ。
+関連 Issue の図は次の排他表で決める。上から最初に一致した行だけを適用する。子判定は Issue 本文の `**Parent Issue**` 行の有無。Issue なしで PR を作る場合は図なし行へ（理由は「関連 Issue なし」）。ラベルの文言変更だけでは描き直さない。成功後の `gh pr view` URL 置換確認は新規 `--attach` 時のみ。
+
+| 条件 | 図 |
+|---|---|
+| 子 Issue（本文に `**Parent Issue**` がある） | 親の図を再掲せず「親 Issue の図の {部分} を担当」と一文 |
+| 関連 Issue に図があり、ノードの追加・削除・関係（矢印・包含）の変化がある | 描き直し。選択表に従う。`svg_allowed=true` なら SVG、`svg_allowed=false` なら Mermaid。上段に「Issue の図から変わった点」を 1〜3 行書く |
+| 関連 Issue に図があり、構造は変わらない | 上段に再掲する。対象は添付 URL と Mermaid fence。3.4(B) で `diagram.svg` を書かず `attachments.json` を `[]` にする |
+| 関連 Issue に図が無く、選択表の図種に該当する | 新規生成。選択表に従う。`svg_allowed=true` なら SVG、`svg_allowed=false` なら Mermaid |
+| 図種に該当しない | 上段に `<!-- 図なし: {理由} -->` |
 
 本文言語は **Phase 3.1 と同じ**。
 
@@ -705,8 +713,8 @@ echo "[CONTEXT] PR_CREATE_WORKDIR=$pr_workdir"
 
 1. `{PR_CREATE_WORKDIR}/pr_title.txt` ← Phase 3.1 で生成した PR title の raw 内容（1 行）
 2. `{PR_CREATE_WORKDIR}/pr_body.md` ← Phase 3.2 で生成した PR body の raw 内容
-3. 描き直し時のみ `{PR_CREATE_WORKDIR}/diagram.svg` ← テーマ中立の図。本文の参照と添付は同じ絶対パスを使う。再掲時は書かない
-4. `{PR_CREATE_WORKDIR}/attachments.json` ← 描き直し時は SVG の絶対パス配列。再掲・図なし・Mermaid は必ず `[]` を書く
+3. 新規生成または描き直しで SVG を選んだときだけ `{PR_CREATE_WORKDIR}/diagram.svg` ← テーマ中立の図。本文の参照と添付は同じ絶対パスを使う。再掲時は書かない
+4. `{PR_CREATE_WORKDIR}/attachments.json` ← その SVG の絶対パス配列。再掲・図なし・Mermaid は必ず `[]` を書く
 
 **(C) gh pr create（単一 bash block）**
 
