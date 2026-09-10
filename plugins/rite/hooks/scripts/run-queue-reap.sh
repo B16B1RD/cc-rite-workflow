@@ -53,6 +53,18 @@ fi
 queue_dir="$STATE_ROOT/.rite/state"
 [ -d "$queue_dir" ] || exit 0
 
+# Leftover records may contain UTF-8 (Japanese detail). C1 neutralize would
+# smash continuation bytes. Strip C0 per line and emit our own newline so
+# "one item per line" stays intact.
+_emit_leftover_items() {
+  local expr="$1"
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -z "$line" ] && continue
+    printf '%s' "$line" | neutralize_ctrl --c0-only >&2
+    printf '\n' >&2
+  done < <(jq -r "$expr" "$q")
+}
+
 now_epoch=$(date +%s)
 shopt -s nullglob
 for q in "$queue_dir"/run-queue-*.json; do
@@ -84,8 +96,8 @@ for q in "$queue_dir"/run-queue-*.json; do
   outstanding_n=$(jq '(.outstanding // []) | length' "$q")
   if [ "$failed_n" -gt 0 ] || [ "$outstanding_n" -gt 0 ]; then
     echo "WARNING: run-queue-reap: leftover failed/outstanding before delete: $q_disp" >&2
-    jq -r '(.failed // [])[] | "run-queue-reap: failed=\(.)"' "$q" | neutralize_ctrl --keep-newline >&2
-    jq -r '(.outstanding // [])[] | "run-queue-reap: outstanding=\(.)"' "$q" | neutralize_ctrl --keep-newline >&2
+    _emit_leftover_items '(.failed // [])[] | "run-queue-reap: failed=\(.)"'
+    _emit_leftover_items '(.outstanding // [])[] | "run-queue-reap: outstanding=\(.)"'
   fi
 
   watchdog="$queue_dir/run-queue-${sid}.watchdog"

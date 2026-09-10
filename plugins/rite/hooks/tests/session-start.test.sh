@@ -1972,6 +1972,22 @@ else
 fi
 echo ""
 
+echo "RQ-10: Japanese leftover detail remains readable after C0 neutralize"
+dir_rq10="$TEST_DIR/rq-10"
+mkdir -p "$dir_rq10"
+write_queue_file "$dir_rq10" "other-sid" "$(jq -n --arg ts "$stale_ts" --arg d 'サーキットブレーカーで非収束' '{issues:[10],cursor:0,mode:"merge",failed:[{issue:2089,detail:$d}],outstanding:[],active:false,updated_at:$ts}')"
+RITE_STATE_ROOT="$dir_rq10" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq10-out" 2>"$TEST_DIR/rq10-err" || true
+if [ ! -f "$dir_rq10/.rite/state/run-queue-other-sid.json" ] \
+  && grep -q 'サーキットブレーカーで非収束' "$TEST_DIR/rq10-err" \
+  && grep -q 'run-queue-reap: failed=' "$TEST_DIR/rq10-err" \
+  && ! grep -q $'\xef\xbf\xbd' "$TEST_DIR/rq10-err" \
+  && [ ! -s "$TEST_DIR/rq10-out" ]; then
+  pass "RQ-10: Japanese leftover detail printed intact then queue deleted"
+else
+  fail "RQ-10: err=$(cat "$TEST_DIR/rq10-err") exists=$( [ -f "$dir_rq10/.rite/state/run-queue-other-sid.json" ] && echo y || echo n )"
+fi
+echo ""
+
 echo "RQ-05: unreadable other queue is WARNING+skip (json and watchdog kept)"
 dir_rq05="$TEST_DIR/rq-05"
 mkdir -p "$dir_rq05/.rite/state"
