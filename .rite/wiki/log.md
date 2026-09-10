@@ -23,6 +23,7 @@
 * **Create**: [手順書を別経路へ転記するとき画像参照例と添付パスの解決基準を揃える — gh の添付置換は絶対パス同値でのみ成立する](pages/heuristics/image-ref-and-attach-path-same-absolute-basis.md) — [レビュー結果](raw/reviews/20260910T084716Z-pr-2656.md) を新規ページ化。参照例と添付側の解決基準を揃えないと gh の置換が成立しない観測。
 * **Update**: [手順書を別経路へ転記するとき画像参照例と添付パスの解決基準を揃える — gh の添付置換は絶対パス同値でのみ成立する](pages/heuristics/image-ref-and-attach-path-same-absolute-basis.md) — [fix 結果](raw/fixes/20260910T085128Z-pr-2656.md) を統合。単発経路の書式を片側だけ写した根本原因と、最小差分の揃え方。
 * **Update**: [手順書を別経路へ転記するとき画像参照例と添付パスの解決基準を揃える — gh の添付置換は絶対パス同値でのみ成立する](pages/heuristics/image-ref-and-attach-path-same-absolute-basis.md) — [差分レビュー結果](raw/reviews/20260910T090228Z-pr-2656.md) を統合。再添付案内は本文に残った参照と同じ絶対パスへの再生成に限定する補強。
+* **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=460, broken_refs=0
 
 ## 2026-09-08
 
