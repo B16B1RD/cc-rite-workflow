@@ -10,9 +10,13 @@ sources:
     resource: "raw/reviews/20260802T102657Z-pr-2052.md"
   - type: "fixes"
     resource: "raw/fixes/20260802T103655Z-pr-2052.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260910T024945Z-pr-2645.md"
 tags: ["distribution-boundary", "template", "propagation-scan", "implicit-invariant", "lint-blind-spot"]
 confidence: high
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-02T22:05:00+09:00" }
+generated: { by: "rite-wiki-ingest/grok", at: "2026-09-10T03:26:20Z" }
+verified:
+  - { by: "rite-wiki-ingest/grok", at: "2026-09-10T03:26:20Z" }
 ---
 
 # 配布テンプレートへの内部参照流入は 1 箇所直しても閉じない — 同一配布単位の sibling を base 件数と比較する
@@ -51,6 +55,14 @@ develop 時点で全 4 テンプレートが **0 件** だったことを確認�
 
 暗黙の不変条件は、明文化されていなくても **base branch の実測値として存在する**。それを復元すれば、推測に頼らず伝播範囲を決められる。
 
+### プラグイン本体 markdown からの開発ツリー hops
+
+流入先は `templates/` に限らない。`plugins/rite` 配下の markdown が開発リポジトリの `docs/` へ相対リンクで hop すると、マーケットプレイス配布先ではそのツリーが無くリンクが解決しない。クラスは同じで、配布単位が展開テンプレートからプラグイン本体へ広がった形である。
+
+再発の inline リンクは lint の配布外リンク検出が担う。検出契約は `[text](url)` / `![alt](url)` に限定し、fence 内の例と plugin 内相対リンクは対象外。契約外の表現（散文の裸パス、見出しのポインタ文言）まで検出を広げるのは hardening であり、到達可能なポインタは配布内参照へ置き換えれば足りる。
+
+検出器本体を無効化しても成果物が落とさない状態を防ぐには、兄弟と同じ helper-level test（accept / reject / skip-if-no-target / 不均衡 fence / 実リポジトリ corpus / Count 行一致）を hook suite の自動発見対象へ載せる。
+
 ### 同根の指摘が blocking / non-blocking に割れる
 
 起点事例では、同じ根因の 2 件が blocking と non-blocking に分かれた。差は「既存 lint helper で再現できたかどうか」であって、**指摘の重要度の差ではない**。
@@ -78,3 +90,4 @@ develop 時点で全 4 テンプレートが **0 件** だったことを確認�
 
 - [レビュー結果](../../raw/reviews/20260802T102657Z-pr-2052.md)
 - [fix 結果](../../raw/fixes/20260802T103655Z-pr-2052.md)
+- [レビュー結果](../../raw/reviews/20260910T024945Z-pr-2645.md)

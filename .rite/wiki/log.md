@@ -1,5 +1,7 @@
 ## 2026-09-10
 
+* **Update**: [配布テンプレートへの内部参照流入は 1 箇所直しても閉じない — 同一配布単位の sibling を base 件数と比較する](pages/anti-patterns/internal-reference-leaks-into-distributed-template.md) — [レビュー結果](raw/reviews/20260910T024945Z-pr-2645.md) を統合。プラグイン本体 markdown から開発ツリー docs への相対 hop も同じクラスで、inline リンクは lint の配布外リンク検出が担う。
+* **Skip**: [20260910T030252Z-pr-2645.md](raw/fixes/20260910T030252Z-pr-2645.md) — nb-sweep の振り分け記録のみ。helper-level test 欠落は既存の兄弟防御継承ページに包含済みで、本 raw から新しい経験則は抽出できない
 * **Update**: [git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する](pages/patterns/normalize-tmpdir-symlink-in-path-asserting-tests.md) — [レビュー結果](raw/reviews/20260909T152156Z-pr-2635.md) を統合。git を介さない Python の `Path.resolve()` でも片辺だけ正規化すると同じ罠になり、契約が相対 link なら `os.readlink` で link 文字列を比較する補強。
 * **Update**: [git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する](pages/patterns/normalize-tmpdir-symlink-in-path-asserting-tests.md) — [fix 結果](raw/fixes/20260909T152539Z-pr-2635.md) を統合。実体解決を両辺に足すより link 文字列を直接 pin する方が最小差分で環境非依存という修正方針を補強。
 * **Update**: [git のパス出力を assert するテストは fixture の mktemp 値を `pwd -P` で実体パスへ正規化する](pages/patterns/normalize-tmpdir-symlink-in-path-asserting-tests.md) — [差分レビュー結果](raw/reviews/20260909T153857Z-pr-2635.md) を統合。symlink 化した TMPDIR での再現が修正後に通ることを 3 名の reviewer が独立確認した観測を補強。
