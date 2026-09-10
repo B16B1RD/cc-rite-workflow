@@ -33,6 +33,7 @@
 * **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=460, broken_refs=0
 * **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=460, broken_refs=0
 * **Create**: [契約を一意化する変更は、参照文書だけでなく実行手順書の placeholder と同節の旧語彙まで同時に揃える](pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md) — [レビュー結果](raw/reviews/20260910T170301Z-pr-2662.md) を新規ページ化
+* **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=467, broken_refs=0
 
 ## 2026-09-08
 
