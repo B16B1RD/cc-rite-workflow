@@ -1,5 +1,8 @@
 ## 2026-09-10
 
+* **Skip**: [20260910T071315Z-pr-2652.md](raw/reviews/20260910T071315Z-pr-2652.md) — detector-candidate: 排他表 first-match と前置 override の衝突、および Write 句の静的ピン欠落は static-pin で機械検出できる
+* **Skip**: [20260910T074111Z-pr-2652.md](raw/reviews/20260910T074111Z-pr-2652.md) — detector-candidate: 排他表 first-match と前置 override の衝突、および Write 句の静的ピン欠落は static-pin で機械検出できる
+* **Skip**: [20260910T071816Z-pr-2652.md](raw/fixes/20260910T071816Z-pr-2652.md) — detector-candidate: 排他表 first-match と前置 override の衝突、および Write 句の静的ピン欠落は static-pin で機械検出できる
 * **Skip**: [20260910T055856Z-pr-2650.md](raw/reviews/20260910T055856Z-pr-2650.md) — detector-candidate: session-start の marketplace 警告は設定フラグではなく期待 plugin-root と実際の plugin root の比較で判定する
 * **Update**: [0 件 finding = 正常終了として受容する (false-positive 回避義務)](pages/heuristics/reviewer-zero-finding-as-legitimate-convergence.md) — [レビュー結果](raw/reviews/20260910T043508Z-pr-2648.md) を統合。0 件でも 5 列ヘッダを出し、ゲートは緩めず authoring SoT へ空表の出力例を書く。
 * **Update**: [0 件 finding = 正常終了として受容する (false-positive 回避義務)](pages/heuristics/reviewer-zero-finding-as-legitimate-convergence.md) — [レビュー結果](raw/reviews/20260910T052008Z-pr-2648.md) を統合。authoring SoT 同期とゲート未変更を再確認した観測。
