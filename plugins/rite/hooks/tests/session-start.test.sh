@@ -1899,6 +1899,181 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
+# Stale other-session run-queue reap (run-queue-reap.sh via SessionStart)
+# --------------------------------------------------------------------------
+REAP="$SCRIPT_DIR/../scripts/run-queue-reap.sh"
+
+write_queue_file() {
+  local dir="$1" sid="$2" json="$3"
+  mkdir -p "$dir/.rite/state"
+  printf '%s\n' "$json" > "$dir/.rite/state/run-queue-${sid}.json"
+}
+
+echo "RQ-01: own stale queue and watchdog remain; other stale json+watchdog are removed (same fixture)"
+dir_rq01="$TEST_DIR/rq-01"
+mkdir -p "$dir_rq01"
+stale_ts=$(iso8601_now -8000)
+write_queue_file "$dir_rq01" "own-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[1],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_queue_file "$dir_rq01" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[2],cursor:0,mode:"default",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+: > "$dir_rq01/.rite/state/run-queue-own-sid.watchdog"
+: > "$dir_rq01/.rite/state/run-queue-other-sid.watchdog"
+RITE_STATE_ROOT="$dir_rq01" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq01-out" 2>"$TEST_DIR/rq01-err" || true
+if [ -f "$dir_rq01/.rite/state/run-queue-own-sid.json" ] \
+  && [ -f "$dir_rq01/.rite/state/run-queue-own-sid.watchdog" ] \
+  && [ ! -f "$dir_rq01/.rite/state/run-queue-other-sid.json" ] \
+  && [ ! -f "$dir_rq01/.rite/state/run-queue-other-sid.watchdog" ] \
+  && [ ! -s "$TEST_DIR/rq01-out" ]; then
+  pass "RQ-01: own stale remains, other stale (active=true) json+watchdog removed, stdout silent"
+else
+  fail "RQ-01: own=$(ls "$dir_rq01/.rite/state/run-queue-own-sid.json" 2>/dev/null && echo y || echo n) other=$(ls "$dir_rq01/.rite/state/run-queue-other-sid.json" 2>/dev/null && echo y || echo n) stdout=$(cat "$TEST_DIR/rq01-out")"
+fi
+echo ""
+
+echo "RQ-02: other fresh queue remains even when active=true"
+dir_rq02="$TEST_DIR/rq-02"
+mkdir -p "$dir_rq02"
+fresh_ts=$(iso8601_now -60)
+write_queue_file "$dir_rq02" "other-sid" "$(jq -n --arg ts "$fresh_ts" '{issues:[3],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+RITE_STATE_ROOT="$dir_rq02" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq02-out" 2>"$TEST_DIR/rq02-err" || true
+if [ -f "$dir_rq02/.rite/state/run-queue-other-sid.json" ] && [ ! -s "$TEST_DIR/rq02-out" ]; then
+  pass "RQ-02: other fresh active=true remains"
+else
+  fail "RQ-02: file missing or stdout not silent"
+fi
+echo ""
+
+echo "RQ-03: other stale with failed[] prints each item then deletes"
+dir_rq03="$TEST_DIR/rq-03"
+mkdir -p "$dir_rq03"
+write_queue_file "$dir_rq03" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[4],cursor:0,mode:"merge",failed:[11,12],outstanding:[],active:false,updated_at:$ts}')"
+RITE_STATE_ROOT="$dir_rq03" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq03-out" 2>"$TEST_DIR/rq03-err" || true
+if [ ! -f "$dir_rq03/.rite/state/run-queue-other-sid.json" ] \
+  && grep -q 'run-queue-reap: failed=11' "$TEST_DIR/rq03-err" \
+  && grep -q 'run-queue-reap: failed=12' "$TEST_DIR/rq03-err" \
+  && grep -q 'leftover failed/outstanding' "$TEST_DIR/rq03-err" \
+  && [ ! -s "$TEST_DIR/rq03-out" ]; then
+  pass "RQ-03: failed items printed then queue deleted"
+else
+  fail "RQ-03: err=$(cat "$TEST_DIR/rq03-err") exists=$( [ -f "$dir_rq03/.rite/state/run-queue-other-sid.json" ] && echo y || echo n )"
+fi
+echo ""
+
+echo "RQ-04: other stale with outstanding[] only prints each item then deletes"
+dir_rq04="$TEST_DIR/rq-04"
+mkdir -p "$dir_rq04"
+write_queue_file "$dir_rq04" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[5],cursor:0,mode:"default",failed:[],outstanding:[21],active:true,updated_at:$ts}')"
+RITE_STATE_ROOT="$dir_rq04" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq04-out" 2>"$TEST_DIR/rq04-err" || true
+if [ ! -f "$dir_rq04/.rite/state/run-queue-other-sid.json" ] \
+  && grep -q 'run-queue-reap: outstanding=21' "$TEST_DIR/rq04-err" \
+  && ! grep -q 'run-queue-reap: failed=' "$TEST_DIR/rq04-err"; then
+  pass "RQ-04: outstanding-only printed then deleted"
+else
+  fail "RQ-04: err=$(cat "$TEST_DIR/rq04-err")"
+fi
+echo ""
+
+echo "RQ-10: Japanese leftover detail remains readable after C0 neutralize"
+dir_rq10="$TEST_DIR/rq-10"
+mkdir -p "$dir_rq10"
+write_queue_file "$dir_rq10" "other-sid" "$(jq -n --arg ts "$stale_ts" --arg d 'サーキットブレーカーで非収束' '{issues:[10],cursor:0,mode:"merge",failed:[{issue:2089,detail:$d}],outstanding:[],active:false,updated_at:$ts}')"
+RITE_STATE_ROOT="$dir_rq10" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq10-out" 2>"$TEST_DIR/rq10-err" || true
+if [ ! -f "$dir_rq10/.rite/state/run-queue-other-sid.json" ] \
+  && grep -q 'サーキットブレーカーで非収束' "$TEST_DIR/rq10-err" \
+  && grep -q 'run-queue-reap: failed=' "$TEST_DIR/rq10-err" \
+  && ! grep -q $'\xef\xbf\xbd' "$TEST_DIR/rq10-err" \
+  && [ ! -s "$TEST_DIR/rq10-out" ]; then
+  pass "RQ-10: Japanese leftover detail printed intact then queue deleted"
+else
+  fail "RQ-10: err=$(cat "$TEST_DIR/rq10-err") exists=$( [ -f "$dir_rq10/.rite/state/run-queue-other-sid.json" ] && echo y || echo n )"
+fi
+echo ""
+
+echo "RQ-05: unreadable other queue is WARNING+skip (json and watchdog kept)"
+dir_rq05="$TEST_DIR/rq-05"
+mkdir -p "$dir_rq05/.rite/state"
+printf 'not-json{{' > "$dir_rq05/.rite/state/run-queue-other-sid.json"
+: > "$dir_rq05/.rite/state/run-queue-other-sid.watchdog"
+RITE_STATE_ROOT="$dir_rq05" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq05-out" 2>"$TEST_DIR/rq05-err" || true
+if [ -f "$dir_rq05/.rite/state/run-queue-other-sid.json" ] \
+  && [ -f "$dir_rq05/.rite/state/run-queue-other-sid.watchdog" ] \
+  && grep -q 'unreadable queue, skip' "$TEST_DIR/rq05-err"; then
+  pass "RQ-05: corrupt other queue kept with WARNING"
+else
+  fail "RQ-05: err=$(cat "$TEST_DIR/rq05-err")"
+fi
+echo ""
+
+echo "RQ-06: missing updated_at and epoch=0 parse failure are stale and deleted"
+dir_rq06="$TEST_DIR/rq-06"
+mkdir -p "$dir_rq06"
+write_queue_file "$dir_rq06" "missing-ts" '{"issues":[6],"cursor":0,"mode":"default","failed":[],"outstanding":[],"active":true}'
+write_queue_file "$dir_rq06" "bad-ts" '{"issues":[7],"cursor":0,"mode":"default","failed":[],"outstanding":[],"active":true,"updated_at":"not-iso"}'
+RITE_STATE_ROOT="$dir_rq06" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq06-out" 2>"$TEST_DIR/rq06-err" || true
+if [ ! -f "$dir_rq06/.rite/state/run-queue-missing-ts.json" ] \
+  && [ ! -f "$dir_rq06/.rite/state/run-queue-bad-ts.json" ]; then
+  pass "RQ-06: missing updated_at and epoch=0 treated as stale"
+else
+  fail "RQ-06: missing=$( [ -f "$dir_rq06/.rite/state/run-queue-missing-ts.json" ] && echo y || echo n ) bad=$( [ -f "$dir_rq06/.rite/state/run-queue-bad-ts.json" ] && echo y || echo n )"
+fi
+echo ""
+
+echo "RQ-07: SessionStart from non-root CWD still reaps; leftover stderr is not in pr-cycle-cleanup.log"
+dir_rq07="$TEST_DIR/rq-07"
+mkdir -p "$dir_rq07/sub"
+git -C "$dir_rq07" init -q
+create_state_file "$dir_rq07" '{"active":true,"issue_number":1,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":9,"branch":"feat/x","schema_version":3}' "own-sid"
+write_queue_file "$dir_rq07" "own-sid" "$(jq -n --arg ts "$fresh_ts" '{issues:[1],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_queue_file "$dir_rq07" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[8],cursor:0,mode:"merge",failed:[99],outstanding:[],active:true,updated_at:$ts}')"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(jq -n --arg cwd "$dir_rq07/sub" --arg src "startup" --arg sid "own-sid" \
+  '{cwd:$cwd, source:$src, session_id:$sid}' \
+  | env CLAUDE_CODE_SESSION_ID=own-sid RITE_HOST=claude bash "$HOOK" \
+  2>"$LAST_STDERR_FILE") || rc_rq07=$?
+rc_rq07=${rc_rq07:-0}
+log_rq07="$dir_rq07/.rite/logs/pr-cycle-cleanup.log"
+if [ "$rc_rq07" -eq 0 ] \
+  && [ -f "$dir_rq07/.rite/state/run-queue-own-sid.json" ] \
+  && [ ! -f "$dir_rq07/.rite/state/run-queue-other-sid.json" ] \
+  && grep -q 'run-queue-reap: failed=99' "$LAST_STDERR_FILE" \
+  && { [ ! -f "$log_rq07" ] || ! grep -q 'run-queue-reap: failed=99' "$log_rq07"; }; then
+  pass "RQ-07: non-root CWD reaps; failed line on hook stderr not in pr-cycle-cleanup.log; rc=0"
+else
+  fail "RQ-07: rc=$rc_rq07 own=$( [ -f "$dir_rq07/.rite/state/run-queue-own-sid.json" ] && echo y || echo n ) other=$( [ -f "$dir_rq07/.rite/state/run-queue-other-sid.json" ] && echo y || echo n ) stderr=$(cat "$LAST_STDERR_FILE") log=$( [ -f "$log_rq07" ] && cat "$log_rq07" || echo none )"
+fi
+echo ""
+
+echo "RQ-08: compact Batch frame still emitted after reap (own queue skipped)"
+dir_rq08="$TEST_DIR/rq-08"
+mkdir -p "$dir_rq08"
+create_state_file "$dir_rq08" '{"active":true,"issue_number":2502,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":99,"branch":"fix/issue-2502-x","schema_version":3}' "own-sid"
+write_batch_queue "$dir_rq08" "own-sid" true 0
+write_queue_file "$dir_rq08" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[9],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+output=$(run_hook_with_session "$dir_rq08" "compact" "own-sid")
+if echo "$output" | grep -q "Batch: run-queue active" \
+  && [ -f "$dir_rq08/.rite/state/run-queue-own-sid.json" ] \
+  && [ ! -f "$dir_rq08/.rite/state/run-queue-other-sid.json" ]; then
+  pass "RQ-08: compact Batch frame remains; own queue kept; other stale removed"
+else
+  fail "RQ-08: output=$output"
+fi
+echo ""
+
+echo "RQ-09: session-start calls run-queue-reap outside CWD==STATE_ROOT gate and does not redirect it"
+if grep -q 'run-queue-reap.sh" --session' "$HOOK" \
+  && awk '
+    /if \[ "\$CWD" = "\$STATE_ROOT" \]; then/ { gated=1 }
+    /run-queue-reap\.sh/ { if (gated && !ungated) { found_inside=1 } else { found_outside=1 } }
+    /^fi$/ && gated { ungated=1; gated=0 }
+    END { exit (found_outside && !found_inside) ? 0 : 1 }
+  ' "$HOOK" \
+  && grep -n 'run-queue-reap.sh' "$HOOK" | grep -q '|| true'; then
+  pass "RQ-09: reap call is non-blocking and outside the worktree CWD gate"
+else
+  fail "RQ-09: call site missing or still inside CWD==STATE_ROOT gate"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
 # Summary
 # --------------------------------------------------------------------------
 echo "=== Results: $PASS passed, $FAIL failed ==="

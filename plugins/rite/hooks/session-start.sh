@@ -490,6 +490,13 @@ if [ "$CWD" = "$STATE_ROOT" ]; then
   fi
 fi
 
+# Other-session run-queue files live on the shared state root and cannot be
+# resumed (same-session only). Unlike worktree reap, this must run from a
+# worktree-rooted CWD as well — standing in a worktree does not make the
+# queue files unsafe to delete. stdout/stderr stay on the hook (not the
+# pr-cycle-cleanup log) so leftover failed/outstanding lines remain visible.
+STATE_ROOT="$STATE_ROOT" bash "$SCRIPT_DIR/scripts/run-queue-reap.sh" --session "$SESSION_ID" || true
+
 # Resolve active flow-state file path.
 # `flow-state.sh path` always returns the per-session file
 # (`.rite/sessions/<sid>.flow-state`) — the legacy single-file `.rite-flow-state`
