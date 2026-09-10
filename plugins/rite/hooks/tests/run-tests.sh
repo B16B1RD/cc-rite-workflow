@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Runtime identity and state-root inputs must come only from each fixture.
 # This runner also runs from live Claude, Codex, and Grok dogfooding sessions.
 # Ambient host selection must not divert sandbox operations to a foreign owner.
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID CODEX_THREAD_ID GROK_SESSION_ID RITE_HOST
+unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID CODEX_THREAD_ID GROK_SESSION_ID RITE_HOST CLAUDE_PLUGIN_ROOT
 unset CLAUDE_ENV_FILE RITE_STATE_ROOT RITE_RUNTIME_EXPLICIT _RITE_HOOK_REDIRECTED
 
 TOTAL=0

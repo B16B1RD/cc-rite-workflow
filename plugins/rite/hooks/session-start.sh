@@ -34,21 +34,6 @@ source "$SCRIPT_DIR/relocated-state-migrate.sh"
 # cat failure does not abort under set -e; || guard is defensive
 INPUT=$(cat) || INPUT=""
 
-# Plugin dual-load collision guard
-# Only warn when this script is running from a local plugin-dir (not from
-# the marketplace cache). Normal marketplace users should have it enabled.
-# SCRIPT_DIR already set in preamble block above (replaces SCRIPT_PATH)
-if [ "${RITE_RUNTIME_EXPLICIT:-0}" != "1" ] && [[ "$SCRIPT_DIR" != *"/.claude/plugins/cache/"* ]] && command -v jq &>/dev/null; then
-  settings_file="$HOME/.claude/settings.json"
-  if [ -f "$settings_file" ]; then
-    rite_marketplace=$(jq -r '.enabledPlugins["rite@rite-marketplace"] // false' "$settings_file" 2>/dev/null)
-    if [ "$rite_marketplace" = "true" ]; then
-      echo "[rite] WARNING: rite@rite-marketplace が有効です。ローカル開発版が無視されます。" >&2
-      echo "[rite] ~/.claude/settings.json で rite@rite-marketplace を false に設定してください。" >&2
-    fi
-  fi
-fi
-
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null) || CWD=""
 SOURCE=$(echo "$INPUT" | jq -r '.source // "startup"' 2>/dev/null) || SOURCE="startup"
 
@@ -130,6 +115,39 @@ fi
 # Move root `.rite-*` runtime state under `.rite/` once.
 if [ "$SOURCE" != "explicit" ]; then
   _rite_run_relocated_state_migrate "$STATE_ROOT"
+fi
+
+# Plugin dual-load collision guard: warn only when the hook that fired disagrees
+# with the project's expected plugin root. Settings-based guesses
+# (enabledPlugins["rite@rite-marketplace"]) fire false positives under
+# `claude --plugin-dir`. Missing expected path: stay silent — contradiction is
+# fail-loud, estimation is not. Compare before overwriting plugin-root below.
+if [ "${RITE_RUNTIME_EXPLICIT:-0}" != "1" ]; then
+  _expected=""
+  if [ -f "$STATE_ROOT/.rite/plugin-root" ]; then
+    _expected=$(cat "$STATE_ROOT/.rite/plugin-root" 2>/dev/null) || _expected=""
+  elif [ -f "$STATE_ROOT/.rite-plugin-root" ]; then
+    _expected=$(cat "$STATE_ROOT/.rite-plugin-root" 2>/dev/null) || _expected=""
+  fi
+  _actual="${CLAUDE_PLUGIN_ROOT:-}"
+  if [ -z "$_actual" ]; then
+    _actual="$(dirname "$SCRIPT_DIR")"
+  fi
+  if [ -n "$_expected" ] && [ -n "$_actual" ] && [ "$_expected" != "$_actual" ]; then
+    _expected_c="$_expected"
+    _actual_c="$_actual"
+    if [ -d "$_expected" ]; then
+      _expected_c=$(cd "$_expected" && pwd -P 2>/dev/null) || _expected_c="$_expected"
+    fi
+    if [ -d "$_actual" ]; then
+      _actual_c=$(cd "$_actual" && pwd -P 2>/dev/null) || _actual_c="$_actual"
+    fi
+    if [ "$_expected_c" != "$_actual_c" ]; then
+      echo "[rite] WARNING: 読み込まれた plugin が .rite/plugin-root と一致しません。" >&2
+      echo "[rite] expected: $(printf '%s' "$_expected_c" | neutralize_ctrl)" >&2
+      echo "[rite] actual: $(printf '%s' "$_actual_c" | neutralize_ctrl)" >&2
+    fi
+  fi
 fi
 
 # Write plugin root for command-file consumption (version-independent)
