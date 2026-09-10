@@ -471,13 +471,14 @@ candidates=$(printf '%s\n' "$index_content" | awk -v dropmeta="$_drop_meta" '
 ')
 
 # Render the partial-drop report: fixed Japanese text straight to stderr, raw
-# index samples only after neutralize_ctrl (same idiom as the other diagnostics
-# in this file). Samples degrade to `?` for multibyte content — the documented
-# trade-off in control-char-neutralize.sh.
+# index samples after the fourth neutralize_ctrl mode (C0+DEL only, newline
+# kept) so UTF-8 catalog text stays readable while ESC is still stripped.
+# Other neutralize_ctrl sites in this file stay on --keep-newline (C1 included)
+# because they emit git/tool stderr, not catalog text.
 if [[ -n "$_drop_meta" && -s "$_drop_meta" ]]; then
   _drop_n=$(head -1 "$_drop_meta")
   echo "WARNING: index.md の ${_drop_n} 行が登録リンク (](pages/...)) を持ちながら候補になりませんでした" >&2
-  tail -n +2 "$_drop_meta" | neutralize_ctrl --keep-newline | sed 's/^/    /' >&2
+  tail -n +2 "$_drop_meta" | neutralize_ctrl --c0-only --keep-newline | sed 's/^/    /' >&2
   echo "  カタログ行の形状が Pass 1 の想定 (5 列テーブル / OKF 箇条書き) と異なる可能性があります" >&2
 fi
 

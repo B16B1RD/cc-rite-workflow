@@ -35,6 +35,8 @@
 #   TC-20: contains_ctrl --c0-only: C0+DEL のみ検出・C1/日本語は clean
 #          (neutralize_ctrl --c0-only と同一範囲を共有する検出側モード。UTF-8 本文を
 #           検査する call site 用。未知の第 2 引数は default 範囲へ倒す fail-closed も pin)
+#   TC-21: neutralize_ctrl --c0-only --keep-newline: 同一入力で日本語+改行保持・ESC は ?
+#          ・生 C1 は素通し。未知第2引数は default 範囲へ倒す fail-closed
 #
 # Usage: bash plugins/rite/hooks/tests/control-char-neutralize.test.sh
 set -euo pipefail
@@ -177,6 +179,20 @@ assert "TC-20: printable ASCII clean in --c0-only" "clean" "$(ctrl_verdict_c0 'a
 assert "TC-20: empty string clean in --c0-only" "clean" "$(ctrl_verdict_c0 '')"
 # 未知の第 2 引数は default 範囲へ倒す (typo を silent に緩い判定へ落とさない fail-closed 側)
 assert "TC-20: unknown 2nd arg falls back to default range" "detected" "$(ctrl_verdict_c0_typo() { if contains_ctrl "$1" --c0only; then echo detected; else echo clean; fi; }; ctrl_verdict_c0_typo 'あ')"
+
+echo ""
+echo "=== TC-21: --c0-only --keep-newline — 日本語+改行保持 / ESC は ? / C1 素通し ==="
+# S2 と同じ引数順。日本語・改行・ESC・生 C1(0x9b) を同一入力に載せ、合成を pin する。
+# あ = e3 81 82 / \\n = 0a / B / ESC 1b → 3f / C / 0x9b 素通し / D
+_tc21_hex=$(printf 'あ\nB\x1bC\x9bD' | neutralize_ctrl --c0-only --keep-newline | to_hex)
+assert "TC-21: combined flags keep UTF-8+newline, strip ESC, pass C1" "e381820a423f439b44" "$_tc21_hex"
+# 未知第2引数は default 範囲（C1 込み・改行も ?）へ倒す。日本語継続バイトが壊れる。
+_tc21_typo=$(printf '停止せず継続' | neutralize_ctrl --c0-only --keep-newlin)
+if [ "$_tc21_typo" != "停止せず継続" ]; then
+  assert "TC-21: unknown 2nd arg falls back to default range" "destroyed" "destroyed"
+else
+  assert "TC-21: unknown 2nd arg falls back to default range" "destroyed" "intact"
+fi
 
 if ! print_summary "$(basename "$0")" "control-char-neutralize.sh — C0+DEL+C1 byte-wise neutralization + detection shared helper"; then
   exit 1

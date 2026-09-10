@@ -610,6 +610,82 @@ else
   fail "TC-17 rendered=$rendered17 (rc=$QRC out=$QOUT err=$QERR)"
 fi
 
+# --- TC-18: live catalog shape — escaped pipe outside code in title, inside code in summary ---
+# TC-8 puts `\|` inside backticks in BOTH cells. The live catalog row that
+# triggered the original drop report has the opposite adjacency: title cell
+# `O_CREAT\|O_EXCL` is plain text, summary cell wraps the same sequence in
+# backticks. Count parity on TC-8 would stay green if this synthesis broke.
+echo "=== TC-18: タイトルはコード外 \\|、サマリーはコード内 \\| の同一行が候補になる ==="
+INDEX_18='# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [gizmo が作った名前から派生させたパスは O_CREAT\|O_EXCL 保証を失う](pages/anti-patterns/gizmo-pipe.md) | anti-patterns | `gizmo` の安全性は「ランダムな名前を `O_CREAT\|O_EXCL` で atomic に作る」ことに由来する。 | 2026-07-30T01:20:00+09:00 | high |
+'
+if printf '%s\n' "$INDEX_18" | grep -q '\[gizmo が作った名前から派生させたパスは O_CREAT\\|O_EXCL 保証を失う\]' \
+   && printf '%s\n' "$INDEX_18" | grep -q '`O_CREAT\\|O_EXCL`' \
+   && ! printf '%s\n' "$INDEX_18" | grep -q '\[`'; then
+  :
+else
+  fail "TC-18 fixture 形状 (title コード外 \\| × summary コード内 \\|) が崩れている"
+fi
+repo=$(make_query_sandbox tc18 "$INDEX_18")
+write_page "$repo" pages/anti-patterns/gizmo-pipe.md '---
+title: "gizmo が作った名前から派生させたパスは O_CREAT|O_EXCL 保証を失う"
+domain: anti-patterns
+description: "`gizmo` の安全性は「ランダムな名前を `O_CREAT|O_EXCL` で atomic に作る」ことに由来する。"
+generated: { by: "rite-wiki-ingest/test", at: "2026-07-30" }
+confidence: high
+---'
+run_query "$repo" --keywords "gizmo" --format compact
+if [ "$QRC" -eq 0 ] \
+   && printf '%s' "$QOUT" | grep -qF '#### gizmo が作った名前から派生させたパスは O_CREAT|O_EXCL 保証を失う' \
+   && printf '%s' "$QOUT" | grep -qF '**サマリー**:' \
+   && printf '%s' "$QOUT" | grep -qF '`O_CREAT|O_EXCL`' \
+   && ! printf '%s' "$QERR" | grep -q '候補になりませんでした'; then
+  pass "TC-18 コード外\\|×コード内\\| の同一行が候補になり title/summary とも生 | に復元される"
+else
+  fail "TC-18 (rc=$QRC out=$QOUT err=$QERR)"
+fi
+
+# --- TC-19: Japanese drop-sample remains readable (partial-drop path, not zero-candidate) ---
+# The WARNING heading is Japanese and is NOT passed through neutralize_ctrl.
+# Grep on the whole stderr for Japanese would pass even if samples were "?".
+# Keep a good row so this stays on the partial-drop path (sample lines exist).
+echo "=== TC-19: 部分脱落 sample 行の日本語が残り、同一行の ESC は ? 化される ==="
+INDEX_19="# Wiki Index
+
+## ページ一覧
+
+| ページ | ドメイン | サマリー | 更新日 | 確信度 |
+|--------|---------|---------|--------|--------|
+| [正常なカタログ行](pages/patterns/good19.md) | patterns | ほげほげの正常行 | 2026-06-15T10:00:00+09:00 | high |
+| [壊れたカタログ行$(printf '\x1b')日本語と生パイプ | 残り](pages/patterns/bad19.md) | patterns | ほげほげの壊れた行 | 2026-06-15T10:00:00+09:00 | high |
+"
+repo=$(make_query_sandbox tc19 "$INDEX_19")
+write_page "$repo" pages/patterns/good19.md '---
+title: "正常なカタログ行"
+domain: patterns
+description: "ほげほげの正常行"
+generated: { by: "rite-wiki-ingest/test", at: "2026-06-15" }
+confidence: high
+---'
+run_query "$repo" --keywords "ほげほげ" --format compact
+_samples19=$(printf '%s\n' "$QERR" | grep '^    |' || true)
+if [ "$QRC" -eq 0 ] \
+   && printf '%s' "$QOUT" | grep -q '正常なカタログ行' \
+   && printf '%s' "$QERR" | grep -q '候補になりませんでした' \
+   && ! printf '%s' "$QERR" | grep -q '1 件も抽出できませんでした' \
+   && printf '%s' "$_samples19" | grep -q '壊れたカタログ行' \
+   && printf '%s' "$_samples19" | grep -q '壊れたカタログ行?日本語' \
+   && ! printf '%s' "$_samples19" | grep -q "$(printf '壊れたカタログ行\x1b')"; then
+  pass "TC-19 部分脱落 sample 行に日本語が残り ESC は ? 化される"
+else
+  fail "TC-19 (rc=$QRC out=$QOUT err=$QERR samples=$_samples19)"
+fi
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] || exit 1
