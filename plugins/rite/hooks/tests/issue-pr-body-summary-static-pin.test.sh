@@ -26,9 +26,15 @@ for file in "$structure" "$pr_template"; do
     pass "summary is followed by blank line: ${file##*/}"
   else fail "missing blank line after summary: ${file##*/}"; fi
 done
-for literal in '内部用語が無ければ' '省略する' '| Mermaid（本文内 fence） |' '| SVG（添付） | gh 2.99.0 以上' '| 図なし |' '2.99.0 未満は SVG 行を選ばず' '解析不能時は WARNING を stderr' '配色はテーマ中立' 'Section 1〜9 の見出し文字列・チェックボックス行パターン' 'タイトルは内部機構名を避け'; do
+for literal in '内部用語が無ければ' '省略する' '| SVG（添付） |' '| Mermaid（本文内 fence） |' '| 図なし |' '<!-- 図なし:' '2.99.0 未満は SVG 行を選ばず' '解析不能時は WARNING を stderr' '配色はテーマ中立' 'Section 1〜9 の見出し文字列・チェックボックス行パターン' 'タイトルは内部機構名を避け'; do
   pin "$structure" "$literal"
 done
+if awk '/\| SVG（添付） \|/ { svg=NR } /\| Mermaid（本文内 fence） \|/ { mer=NR } END { exit !(svg && mer && svg < mer) }' "$structure"; then
+  pass 'SVG row appears before Mermaid row'
+else fail 'SVG row appears before Mermaid row'; fi
+if awk '/<!-- 図なし:/ { c=NR } /^<details>/ { d=NR } END { exit !(c && d && c < d) }' "$structure"; then
+  pass '図なし comment appears before details'
+else fail '図なし comment appears before details'; fi
 for literal in 'F-[0-9]+' 'cycle [0-9]+' '[0-9a-fA-F]{7,}' 'PR #[0-9]+' '#[0-9]+' 'Closes #N'; do
   pin "$structure" "$literal"
   pin "$PLUGIN_ROOT/templates/issue/default.md" "$literal"
@@ -40,8 +46,24 @@ pin "$pr_template" '内部用語が無ければ用語ブロックを省略'
 pin "$pr_template" '</details>'
 pin "$PLUGIN_ROOT/templates/issue/default.md" '| 上段要約 | M | M | M | M | M |'
 pin "$PLUGIN_ROOT/skills/issue-create/SKILL.md" '「上段要約」「図の選択規則」「契約層の折りたたみ」を適用'
-pin "$PLUGIN_ROOT/skills/issue-create/SKILL.md" '分解経路の親・Sub-Issue の図は Mermaid または図なしとし、SVG を生成しない'
+pin "$PLUGIN_ROOT/skills/issue-create/SKILL.md" '分解経路の親も共通選択表に従う'
+pin "$PLUGIN_ROOT/skills/issue-create/SKILL.md" 'parent.attachments'
 pin "$pr_create" 'の「上段要約」「図の選択規則」'
+pin "$pr_create" '上段に再掲する'
+pin "$pr_create" 'diagram.svg` を書かず'
+pin "$pr_create" '再掲・図なし・Mermaid は必ず'
+pin "$pr_create" 'Mermaid fence'
+pin "$pr_create" 'ノードの追加・削除'
+pin "$pr_create" 'ラベルの文言変更だけでは描き直さない'
+pin "$pr_create" 'Issue の図から変わった点'
+pin "$pr_create" '親 Issue の図の {部分} を担当'
+pin "$pr_create" '<!-- 図なし: {理由} -->'
+pin "$pr_create" '関連 Issue に図が無く、選択表の図種に該当する'
+pin "$pr_template" '関連 Issue の図'
+pin "$structure" '`svg_allowed=true` なら第一候補'
+pin "$structure" '`svg_allowed=false` のときのみ'
+pin "$structure" 'Mermaid に落とさない'
+pin "$PLUGIN_ROOT/skills/issue-create/SKILL.md" 'svg_allowed=true` なら SVG を第一候補'
 pin "$PLUGIN_ROOT/skills/issue-implement/SKILL.md" '`## Acceptance Criteria` / `## 5. Acceptance Criteria`'
 if awk '/^Closes / { closes=NR } /^<details>/ { details=NR } /^## 変更/ { changes=NR } /^<\/details>/ { end=NR } END { exit !(closes && closes<details && details<changes && changes<end) }' "$pr_template"; then
   pass 'PR closes outside details; changes inside'
