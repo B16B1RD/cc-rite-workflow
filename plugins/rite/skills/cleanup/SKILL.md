@@ -171,11 +171,20 @@ rationale: references/rationale.md#wm-source-content
 # WM 採用元の選定（候補の存在ではなく内容を検査する）
 # 進捗セクション: 現行 `### 進捗サマリー` と v1 `### 進捗` の両方を認める
 # （incomplete 抽出が両見出しを拾う契約との整合）
-_wm_local=".rite/work-memory/issue-{issue_number}.md"
-[ -f "$_wm_local" ] || [ ! -f ".rite-work-memory/issue-{issue_number}.md" ] || _wm_local=".rite-work-memory/issue-{issue_number}.md"
+# resolver 失敗は cwd に倒さない。resolver_unresolved は中間 marker で採用元を置換しない。
+# 後段は fallback 合流後の最終 WM_SOURCE（local / comment / none）で判定する。
+_state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh 2>/dev/null) || _state_root=""
+if [ -z "$_state_root" ]; then
+  echo "WARNING: state-path-resolve.sh の解決に失敗（空/非ゼロ）。cwd には倒さず Issue コメント側へ fallback します" >&2
+  echo "[CONTEXT] WM_SOURCE=resolver_unresolved"
+  _wm_local=""
+else
+  _wm_local="$_state_root/.rite/work-memory/issue-{issue_number}.md"
+  [ -f "$_wm_local" ] || [ ! -f "$_state_root/.rite-work-memory/issue-{issue_number}.md" ] || _wm_local="$_state_root/.rite-work-memory/issue-{issue_number}.md"
+fi
 _wm_source=""
 _wm_body=""
-if [ -f "$_wm_local" ]; then
+if [ -n "$_wm_local" ] && [ -f "$_wm_local" ]; then
   _wm_body=$(cat "$_wm_local" 2>/dev/null) || _wm_body=""
   # 行頭の AT1-3 + 進捗 / 進捗サマリー。stub は frontmatter や phase 行だけでこの見出しを持たない
   if printf '%s\n' "$_wm_body" | grep -qE '^#{1,3}[[:space:]]*進捗(サマリー)?([[:space:]]|$)'; then
@@ -214,9 +223,10 @@ echo "incomplete_count=$(printf '%s\n' "$incomplete" | grep -c . 2>/dev/null || 
 
 | `WM_SOURCE` | 意味 |
 |---|---|
-| `local` | 進捗セクションを持つ実 WM を採用（AC-2） |
+| `local` | 進捗セクションを持つ実 WM を採用（AC-2）。path は state_root 絶対パス |
 | `stub_fallback` → 後続で `comment` / `none` | stub を不採用しコメントへ fallback。切替理由は WARNING 済み（AC-1） |
-| `comment` | ローカル WM 不在 or stub 後のコメントを採用 |
+| `resolver_unresolved` | resolver 失敗の中間 marker。採用元ではない。後段の最終 `comment` / `none` で判定する |
+| `comment` | ローカル WM 不在 or stub / resolver 失敗後のコメントを採用 |
 | `none` | ローカルもコメントも無い。既存の「WM なし」経路（AC-3） |
 
 未完了タスクがあれば `AskUserQuestion` で「未完了タスクを Issue 化 (推奨) / 無視して続行 / キャンセル」を確認。Issue 化選択時は各タスクを `残作業` label 付きで作成する。
