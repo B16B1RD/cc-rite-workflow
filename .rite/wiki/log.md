@@ -1,6 +1,7 @@
 ## 2026-09-10
 
 * **Skip**: [20260910T151618Z-pr-2661.md](raw/reviews/20260910T151618Z-pr-2661.md) — 指摘ゼロのテスト専用差分。新しい経験則は抽出できない
+* **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=467, broken_refs=0
 * **Update**: [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](pages/anti-patterns/locale-dependent-error-message-grep-assertion.md) — [レビュー結果](raw/reviews/20260910T135544Z-pr-2659.md) を統合。記録面の日本語本文では keep-newline ではなく c0-only を使い、日本語が残ることを pin する。
 * **Update**: [エラーメッセージ文字列の grep assert は locale 依存で dead assertion 化する](pages/anti-patterns/locale-dependent-error-message-grep-assertion.md) — [fix 結果](raw/reviews/20260910T140012Z-pr-2659-fix.md) を統合。leftover を行単位 c0-only に変え、日本語 detail を pin した観測。
 * **Skip**: [20260910T141055Z-pr-2659-c2.md](raw/reviews/20260910T141055Z-pr-2659-c2.md) — 指摘ゼロの mergeable 観測のみ。新しい経験則は抽出できない
