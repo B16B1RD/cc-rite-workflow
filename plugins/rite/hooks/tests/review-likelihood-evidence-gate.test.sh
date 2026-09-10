@@ -42,5 +42,14 @@ for reason in anchor_missing findings_heading_missing table_header_missing table
   check grep -q "$reason" "$SKILL"
 done
 
+BASE_FILE="$ROOT/agents/_reviewer-base.md"
+PROMPT_GEN="$ROOT/skills/pr-review/references/reviewer-prompt-generator.md"
+EMPTY_HEADER_RULE='指摘が 0 件でも 5 列ヘッダ行と区切り行を必ず出力し、本文行は空にする'
+EMPTY_HEADER_BAN='見出しのあとに「なし」と書いてヘッダを省いてはならない'
+check grep -q "$EMPTY_HEADER_RULE" "$BASE_FILE"
+check grep -q "$EMPTY_HEADER_BAN" "$BASE_FILE"
+check grep -q "$EMPTY_HEADER_RULE" "$PROMPT_GEN"
+check grep -q "$EMPTY_HEADER_BAN" "$PROMPT_GEN"
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
