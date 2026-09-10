@@ -231,7 +231,7 @@ Read tool で以下を読み込む:
 
 `template-structure.md` の「上段要約」「図の選択規則」「契約層の折りたたみ」を適用する。タイトルは内部機構名より変更の効果を示す。What / Why・Scope・AC から3ブロックを生成し、用語は必要なときだけ説明する。経緯識別子禁止と Output Validation Checklist を作成前に検査する。
 
-図の選択表と1行 bash で gh 2.99.0 以上か判定し、SVG を選んだ場合のみ Write tool で `.svg` を生成する。**Write tool** で添付パス配列を JSON ファイルへ保存する（添付なしは `[]`）。その絶対パスを `{ATTACHMENTS_JSON_FILE}` として 4.3 へ渡す。添付 SVG は作成コマンドの終了まで保持する。
+図の選択表に従い、`svg_allowed=true` なら SVG を第一候補として Write tool で `.svg` を生成する。図なしは上段に `<!-- 図なし: {理由} -->` を残す。**Write tool** で添付パス配列を JSON ファイルへ保存する（添付なしは `[]`）。その絶対パスを `{ATTACHMENTS_JSON_FILE}` として 4.3 へ渡す。添付 SVG は作成コマンドの終了まで保持する。
 
 生成した body はそのまま Step 4.2.1 の検証を経て Step 4.3 で `create-issue-with-projects.sh` に tmpfile 経由で渡す。
 
@@ -432,7 +432,7 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 
 **(B) body / spec の生成（Write tool）**
 
-分解経路の親・Sub-Issue の図は Mermaid または図なしとし、SVG を生成しない（`decompose-issues.sh` は添付を渡さない）。Step 4.2 の上段要約・契約層は適用し、図だけ本規則を優先する。
+分解経路の親も共通選択表に従う。親に SVG を付けるときは spec.json の `parent.attachments` に絶対パスを書く（省略時は `[]`）。Sub-Issue は親の図を再掲せず「親 Issue の図の {部分} を担当」と一文で指す。Step 4.2 の上段要約・契約層は適用する。
 
 直前の `[CONTEXT] DECOMPOSE_WORKDIR=` から `{DECOMPOSE_WORKDIR}` を読み取り、以下を **Write tool** で書く（heredoc を使わない）:
 
@@ -442,7 +442,7 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 
 ```json
 {
-  "parent": { "title": "{parent_title}", "body_file": "{DECOMPOSE_WORKDIR}/parent_body.md" },
+  "parent": { "title": "{parent_title}", "body_file": "{DECOMPOSE_WORKDIR}/parent_body.md", "attachments": [] },
   "sub_issues": [
     { "title": "{sub_1_title}", "body_file": "{DECOMPOSE_WORKDIR}/sub_1_body.md", "complexity": "{sub_1_complexity}" }
   ],
@@ -459,7 +459,7 @@ echo "[CONTEXT] DECOMPOSE_WORKDIR=$workdir"
 }
 ```
 
-> `sub_issues` 配列は Sub-Issue 件数 `{sub_count}` だけ要素を持たせる（各反復で `{sub_N_title}` / `{sub_N_complexity}` と body ファイルパスを実値置換）。親 labels には helper が `epic` を自動付与する（spec へ付与不要）。親 complexity は helper 内で `XL` 固定。
+> `sub_issues` 配列は Sub-Issue 件数 `{sub_count}` だけ要素を持たせる（各反復で `{sub_N_title}` / `{sub_N_complexity}` と body ファイルパスを実値置換）。親 labels には helper が `epic` を自動付与する（spec へ付与不要）。親 complexity は helper 内で `XL` 固定。`parent.attachments` は任意（省略時 `[]`）。Sub-Issue には載せない。
 
 **(C) helper 呼び出し（単一 bash block）**
 

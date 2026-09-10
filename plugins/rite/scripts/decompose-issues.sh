@@ -17,7 +17,10 @@
 #
 # Input JSON schema (--spec):
 #   {
-#     "parent":     { "title": "string", "body_file": "path to raw body md" },
+#     "parent":     { "title": "string", "body_file": "path to raw body md",
+#                     "attachments": ["abs path"] },  # optional, default []
+#                                              # passed as issue.attachments on the
+#                                              # parent payload only; never on Sub-Issues
 #     "sub_issues": [ { "title": "string", "body_file": "path", "complexity": "XS|S|M|L|XL" } ],
 #     "labels_csv": "comma,separated",      # shared; parent prepends "epic"
 #     "projects": {
@@ -125,9 +128,10 @@ priority=$(spec_get '.projects.priority // "Medium"')
 repo=$(spec_get '.repo // empty')
 labels_csv=$(spec_get '.labels_csv // ""')
 
-# build_payload <title> <body_file> <labels_json> <complexity>
+# build_payload <title> <body_file> <labels_json> <complexity> [attachments_json]
 # Constructs the create-issue-with-projects.sh JSON. Identical shape to the
-# original inline `jq -n` calls (issue / projects / options).
+# original inline `jq -n` calls (issue / projects / options). Fifth arg is
+# parent-only; Sub-Issue callers omit it so attachments default to [].
 build_payload() {
   jq -n \
     --arg title "$1" \
@@ -139,10 +143,11 @@ build_payload() {
     --arg status "$status" \
     --arg priority "$priority" \
     --arg complexity "$4" \
+    --argjson attachments "${5:-[]}" \
     --arg iter_mode "none" \
     --arg source "xl_decomposition" \
     '{
-      issue: { title: $title, body_file: $body_file, labels: $labels },
+      issue: { title: $title, body_file: $body_file, labels: $labels, attachments: $attachments },
       projects: {
         enabled: $enabled,
         project_number: $project_number,
@@ -177,7 +182,8 @@ while IFS= read -r label; do
   gh label create "$label" --description "auto-created by rite issue-create" --color "ededed" 2>/dev/null || true
 done < <(printf '%s\n' "$labels_json" | jq -r '.[]')
 
-parent_result=$(bash "$CREATE_SCRIPT" "$(build_payload "$parent_title" "$parent_body_file" "$labels_json" "XL")") || {
+parent_attachments=$(printf '%s' "$SPEC_JSON" | jq -c '.parent.attachments // []')
+parent_result=$(bash "$CREATE_SCRIPT" "$(build_payload "$parent_title" "$parent_body_file" "$labels_json" "XL" "$parent_attachments")") || {
   echo "ERROR: 親 Issue 作成失敗" >&2
   exit 1
 }
