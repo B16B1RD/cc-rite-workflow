@@ -275,9 +275,9 @@ rite-workflow/
 │ # was deleted together with the project.type preset feature retirement.
 │ ├── issue/
 │ │ ├── default.md / decomposition-spec.md
-│ │ ├── interview-perspectives.md / template-structure.md
+│ │ ├── interview-perspectives.md / template-structure.md  # 上段要約・図の選択規則（SVG 第一、図なしは理由コメント）
 │ ├── pr/
-│ │ └── generic.md # Generic PR template (used for all project types)
+│ │ └── generic.md # Generic PR template（Issue の図を再掲、構造変化時は描き直し）
 │ ├── review/
 │ │ └── reply.md # Why-only PR review reply SoT
 │ └── wiki/
@@ -286,7 +286,7 @@ rite-workflow/
 ├── scripts/ # Projects integration / Sub-Issue / review metrics
 │ ├── create-issue-with-projects.sh
 │ ├── check-no-direct-gh-issue-create.sh # 直接 `gh issue create` 禁止の static guard
-│ ├── decompose-issues.sh # 親 + Sub-Issues 一括作成
+│ ├── decompose-issues.sh # 親 + Sub-Issues 一括作成（parent.attachments を親 payload へ）
 │ ├── backfill-sub-issues.sh / link-sub-issue.sh
 │ ├── projects-status-update.sh / projects-items-fetch.sh
 │ ├── issue-complexity-lane.sh # pr-review 1.3.2 / issue-implement 5.0.C XS/S 軽量レーンの決定

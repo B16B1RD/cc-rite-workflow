@@ -30,7 +30,7 @@ Issue は Meta の直後、PR は本文先頭に置く。以下は日本語例�
 
 **見てほしい点**: {確認・レビューで注目する点を1〜2行}
 
-{条件に合う図。該当しなければ省略}
+{条件に合う図。図なしのときは `<!-- 図なし: {理由} -->`}
 
 **用語**:
 - {この本文で使う内部用語}: {初出の一言説明}
@@ -45,17 +45,17 @@ Issue は Meta の直後、PR は本文先頭に置く。以下は日本語例�
 
 | 選ぶ | 条件 |
 |---|---|
-| Mermaid（本文内 fence） | フロー・状態遷移・シーケンス・小規模 ER（`erDiagram`）。本文編集で修正でき、GitHub のテーマに追従する |
-| SVG（添付） | gh 2.99.0 以上で、配置精度が要る構成図・グルーピング・注釈付き図・属性の多い ER 図・Mermaid に無い図種 |
-| 図なし | ループ・状態遷移・前後比較・データ構造・構成図のいずれも無いとき |
+| SVG（添付） | `svg_allowed=true` なら第一候補。構成図・グルーピング・注釈付き図・フロー・状態遷移・前後比較・データ構造に該当するとき |
+| Mermaid（本文内 fence） | `svg_allowed=false` のときのみ。フロー・状態遷移・シーケンス・小規模 ER（`erDiagram`） |
+| 図なし | ループ・状態遷移・前後比較・データ構造・構成図のいずれも無いとき。上段（`<details>` より前）に `<!-- 図なし: {理由} -->` を残す。理由を書けないときは図を描く |
 
-生成前に次の1行 bash で `svg_allowed` を取得する。2.99.0 未満は SVG 行を選ばず、Mermaid で表現できなければ図なしにする（警告不要）。解析不能時は WARNING を stderr に出して SVG を選ばない。
+生成前に次の1行 bash で `svg_allowed` を取得する。`true` なら SVG を選び Mermaid に落とさない。2.99.0 未満は SVG 行を選ばず、Mermaid に落とす（警告不要）。解析不能時は WARNING を stderr に出して SVG を選ばない。
 
 ```bash
 svg_allowed=$(gh --version | awk 'NR==1 { if ($3 !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) { print "WARNING: gh version を解析できないため SVG を選択しません" > "/dev/stderr"; print "false"; exit } split($3,v,"."); print (v[1]>2 || (v[1]==2 && v[2]>=99)) ? "true" : "false" } END { if (NR==0) { print "WARNING: gh version を解析できないため SVG を選択しません" > "/dev/stderr"; print "false" } }')
 ```
 
-Mermaid は上段に `mermaid` fence を置き、添付配列は空にする。SVG は **Write tool** で `.svg` を書く（新 helper / hook / config キーは追加しない）。配色はテーマ中立にし、白背景を前提とせず線は中間色にする。本文の `![説明](./diagram.svg)` と添付パスを同じファイルに対応させ、作成時の cwd から解決できるパスを使う。Issue は `issue.attachments`、PR は `--attach` に渡す。作成後に body を取得し、図の参照が添付 URL に置き換わったことを確認する。
+Mermaid は上段に `mermaid` fence を置き、添付配列は空にする。SVG は **Write tool** で `.svg` を書く（新 helper / hook / config キーは追加しない）。配色はテーマ中立にし、白背景を前提とせず線は中間色にする。本文の `![説明](./diagram.svg)` と添付パスを同じファイルに対応させ、作成時の cwd から解決できるパスを使う。Issue は `issue.attachments`、PR は `--attach` に渡す。作成後に body を取得し、図の参照が添付 URL に置き換わったことを確認する。図なしの HTML コメントは `<details>` より前の上段に置く。
 
 ### 契約層の折りたたみ
 
