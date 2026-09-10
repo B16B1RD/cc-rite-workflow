@@ -32,6 +32,7 @@
 * **Update**: [手順書を別経路へ転記するとき画像参照例と添付パスの解決基準を揃える — gh の添付置換は絶対パス同値でのみ成立する](pages/heuristics/image-ref-and-attach-path-same-absolute-basis.md) — [差分レビュー結果](raw/reviews/20260910T090228Z-pr-2656.md) を統合。再添付案内は本文に残った参照と同じ絶対パスへの再生成に限定する補強。
 * **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=460, broken_refs=0
 * **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=460, broken_refs=0
+* **Create**: [契約を一意化する変更は、参照文書だけでなく実行手順書の placeholder と同節の旧語彙まで同時に揃える](pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md) — [レビュー結果](raw/reviews/20260910T170301Z-pr-2662.md) を新規ページ化
 
 ## 2026-09-08
 
