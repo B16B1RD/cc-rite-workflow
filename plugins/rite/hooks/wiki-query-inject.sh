@@ -250,7 +250,7 @@ else
 fi
 
 wiki_enabled_raw=$(_extract_yaml_value "enabled")
-wiki_enabled=$(printf '%s' "$wiki_enabled_raw" | tr '[:upper:]' '[:lower:]')
+wiki_enabled=$(printf '%s' "$wiki_enabled_raw" | LC_ALL=C tr '[:upper:]' '[:lower:]')
 
 # If the enabled line exists but we could not extract a canonical value,
 # that is a real parse failure — warn the user before falling back.
@@ -471,13 +471,14 @@ candidates=$(printf '%s\n' "$index_content" | awk -v dropmeta="$_drop_meta" '
 ')
 
 # Render the partial-drop report: fixed Japanese text straight to stderr, raw
-# index samples only after neutralize_ctrl (same idiom as the other diagnostics
-# in this file). Samples degrade to `?` for multibyte content — the documented
-# trade-off in control-char-neutralize.sh.
+# index samples after the fourth neutralize_ctrl mode (C0+DEL only, newline
+# kept) so UTF-8 catalog text stays readable while ESC is still stripped.
+# Other neutralize_ctrl sites in this file stay on --keep-newline (C1 included)
+# because they emit git/tool stderr, not catalog text.
 if [[ -n "$_drop_meta" && -s "$_drop_meta" ]]; then
   _drop_n=$(head -1 "$_drop_meta")
   echo "WARNING: index.md の ${_drop_n} 行が登録リンク (](pages/...)) を持ちながら候補になりませんでした" >&2
-  tail -n +2 "$_drop_meta" | neutralize_ctrl --keep-newline | sed 's/^/    /' >&2
+  tail -n +2 "$_drop_meta" | neutralize_ctrl --c0-only --keep-newline | LC_ALL=C sed 's/^/    /' >&2
   echo "  カタログ行の形状が Pass 1 の想定 (5 列テーブル / OKF 箇条書き) と異なる可能性があります" >&2
 fi
 
@@ -570,7 +571,7 @@ IFS=',' read -r -a kw_array <<< "$KEYWORDS"
 # from 0.04 s to 13.2 s.
 kw_norm=()
 for kw in "${kw_array[@]}"; do
-  kw_trim=$(printf '%s' "$kw" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')
+  kw_trim=$(printf '%s' "$kw" | LC_ALL=C sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | LC_ALL=C tr '[:upper:]' '[:lower:]')
   [[ -n "$kw_trim" ]] && kw_norm+=("$kw_trim")
 done
 
@@ -593,7 +594,7 @@ while IFS=$'\x1f' read -r title path description; do
   fi
   IFS=$'\x1f' read -r domain confidence updated <<< "$meta"
   [[ -z "$confidence" ]] && confidence="medium"  # default mirrors page-template.md
-  haystack=$(printf '%s %s %s' "$title" "$domain" "$description" | tr '[:upper:]' '[:lower:]')
+  haystack=$(printf '%s %s %s' "$title" "$domain" "$description" | LC_ALL=C tr '[:upper:]' '[:lower:]')
   raw_score=0
   for kw_trim in "${kw_norm[@]}"; do
     # Counted in-shell rather than by spawning awk per keyword per candidate:
