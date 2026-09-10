@@ -106,7 +106,7 @@ fi
 
 ### 5.0.T Canon TDD Cycle (Conditional)
 
-> **Reference**: Canon TDD (Kent Beck) — test list → pick one behavior → Red (write a failing test) → Green (minimal implementation) → Refactor → repeat until the list is empty. The `tdd:` config key is documented in [CONFIGURATION.md](../../../../docs/CONFIGURATION.md) (`### tdd`).
+> **Reference**: Canon TDD (Kent Beck) — test list → pick one behavior → Red (write a failing test) → Green (minimal implementation) → Refactor → repeat until the list is empty. The `tdd:` config key is documented in the bundled [rite-config.yml template](../../templates/config/rite-config.yml) (`tdd:` section).
 
 `tdd.enabled: true`（既定、opt-out）なら 5.1 の各挙動を Canon TDD で進める。
 
