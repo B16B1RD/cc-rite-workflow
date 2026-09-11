@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)
-audit="$ROOT/plugins/rite/skills/pr-review/references/promotion-audit-2167.md"
+audit="$ROOT/plugins/rite/skills/pr-review/references/promotion-audit-contract-provenance-fidelity.md"
 reviewer="$ROOT/plugins/rite/agents/_reviewer-base.md"
 failures=0
 

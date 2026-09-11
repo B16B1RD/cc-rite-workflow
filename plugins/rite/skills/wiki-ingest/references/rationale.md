@@ -39,7 +39,8 @@ opt-out default で「Wiki 無効」と報告するのは、この Issue が潰�
 ## informational-counters
 
 `n_unregistered_raw` は意図的に経験則化しなかった件数、`n_dedup_removed` は index 自己修復で
-回収した重複行の件数であり、いずれも警告ではない。`auto_lint=false` で 8.2-8.5 が skip されても
+回収した重複行の件数、`n_stale` は経過時間の計上（詳細は [#n-unregistered-not-warning](#n-unregistered-not-warning)）
+であり、いずれも警告ではない。`auto_lint=false` で 8.2-8.5 が skip されても
 ステップ 2.1 で 0 初期化済みなら、ステップ 9 の placeholder 残留は起きない。
 
 ## dev-tree-drift
@@ -119,12 +120,16 @@ page-template.md の `confidence: medium` はリテラル値。placeholder 走�
 
 frontmatter は LLM 生成テキストで引用符・バックスラッシュ・`$(...)` を含みうる。double-quote
 されたシェル語へ直接置換すると値の `"` でクォートが閉じ、後続がコマンドとして実行される
-（fix スキルと同旨）。quoted heredoc は終端子行と一致しない限りシェル解釈を抑制するが、値が
-複数行、またはある行が終端子 `WIU_EOF` と完全一致すると heredoc が早期終了する。6 つの
-heredoc が同じ終端子を共有するため後続の `wiu_*=$(cat <<'WIU_EOF'` が再度開き、helper 呼び出し
-行も正常に走って rc=0 + 3 marker 揃いの成功に見える。block 内のシェルは parse 済みで手遅れ
-なので、ゲートは substitute 時点の LLM 責務。helper 側 C0 検査は「この bash を実行できた場合」
-にしか効かない。
+（fix スキルと同旨）。quoted heredoc は終端子行と一致しない限りシェル解釈を抑制する。
+
+6 値は単一の `<<'WIU_EOF'` を 6 個の `IFS= read -r` で title、description、domain、slug、
+updated、confidence の順に受ける。read は改行でフィールドを区切るため、いずれかが複数行だと
+後続フィールドがずれ、helper は誤対応のまま rc=0 で成功し得る。単一行制約はこの 6 read の
+フィールド対応を維持するためであり、値の整形ではない。
+
+いずれかの行が終端子 `WIU_EOF` と完全一致すると heredoc が早期終了し、残りがコマンドとして
+実行されるか、後続 read が空になる。block 内のシェルは parse 済みで手遅れなので、ゲートは
+substitute 時点の LLM 責務。helper 側 C0 検査は「この bash を実行できた場合」にしか効かない。
 
 ## index-axes-independent
 
@@ -173,7 +178,14 @@ Skill ツール呼び出しはシェル exit code を返さない。以降の「
 ## n-unregistered-not-warning
 
 skip 済み raw を警告に数えると、skip 運用が膨らむほど `n_warnings` が無意味に肥大する。
-informational 指標として完了レポートの内訳にのみ表示する。
+
+陳腐化（`n_stale`）も同じ理由で加算しない。ただし肥大の源は運用量ではなく述語の性質にある —
+陳腐化は経過時間の計上であってページの正しさとは独立で、内容が正しく直す必要のなかったページ
+ほど古くなる。`generated.at` は最終内容変更時刻なので、内容を変えずに日付だけ進めて解消する
+のは provenance の捏造にあたり、正規の解消手段が存在しない。
+
+どちらも `{wiki_warnings_line}` の内訳には現れない。表示先は完了レポート内で、`n_stale` は
+`Lint 結果:` 行（ステップ 8.4 で定義）、`n_unregistered_raw` は同行と未登録 raw 専用行。
 
 ## lock-release-failsafe
 
@@ -193,3 +205,43 @@ caller skill（cleanup / open 等）の次 step を skip して turn が暗黙�
 した。`returned-to-caller` は「caller に return した = caller の次 step に進む」というネスト
 構造を semantic に内包し、terminal vocabulary を構造的に排除する。bare bracket は同じ heuristic
 誤発火のため禁止で、HTML コメント形式のみ許容する。
+
+<a id="numref-precommit"></a>
+
+## numref-precommit
+
+Raw Source は出典なので番号を持ち、そこから読解して書く過程で番号が Wiki 側へ転記される。
+ステップ 8 の wiki-lint は読み取り専用の informational 指標で書き込みを止めないため、
+混入を止められるのは書き込み側だけである。だから検査は commit の直前に置く。
+
+対象を `.rite/wiki` 配下の未 commit 差分にし、列挙もラベルも git に決めさせるのは、
+ゲートの判定基準をゲートされる側が選べる形にしないため。対象・ラベル・本文のどれか一つでも
+実行者が選べると、選び損ねた回だけ検査が素通りし、しかもその回が「検査済み」として commit へ進む。
+差分から取れば渡る対象は git が返す実体になる。
+
+ただし `git diff` は追跡済みパスしか比較しない。新規ページは Write した時点では untracked で
+差分に現れず、`git add` は commit ステップまで走らない。そのままだと **新規ページ — Raw Source
+から読解して書く量が最も多く、番号混入の主経路 — が 1 行も検査されないまま `clean` になる**。
+だから走査の直前に intent-to-add (`git add -N`) を挟む。index にはエントリだけが載り
+`git diff --cached` は空のままで、commit まで進んだ回は commit ステップが同じ範囲を stage し
+直すため後段への影響もない。hit / error で停止した回はエントリが残るが、次回実行の
+`add -N` が冪等に上書きする。
+
+残存の**列挙**に `ls-files --others --ignored` を使うのは、これが「実際に走査へ載らなかった
+ファイル」を直接返すのに対し、`check-ignore` はパターンの照合結果しか返さず、negation の
+重ね合わせでは「ignore されているか」の判定が一意にならないため。
+
+一方、列挙で ignore 済みが確定した後の**原因の名指し**には `check-ignore -v` を使う。この
+時点では判定は済んでおり、必要なのは「どの .gitignore のどの行が効いたか」だけなので、
+上記の非決定性の caveat は効かない。`gitignore-health-check.sh` へ委譲しないのは、同 helper が
+`rite-config.yml` と state_root を前提に別ツリーを見るため、`separate_branch` では走査対象の
+worktree を一度も見ずに終わる（返るのは別ツリーの findings）。止めた人に Hint が渡らない。
+
+走査範囲を `--path .rite/wiki` で絞るのは、走査範囲と commit 範囲を一致させるため。
+`same_branch` では走査ツリーが dev repo root になるので、絞らないと Wiki と無関係な未 commit
+変更の番号で `hit` が出る。その `hit` は Wiki の書き直しでは消せないため、手当ての手順を持たない
+停止になる。
+
+ページだけでなく `index.md` のエントリ行と `log.md` の bullet も同じ 1 回で通す。
+`log.md` の番号はほとんどが skip 理由や更新説明の散文由来で、ページだけを見ると素通りする。
+

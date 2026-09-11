@@ -1,6 +1,6 @@
 name: sentinel contract check
 
-# Run sentinel-contract-check.sh (Issue #1709) on every push and pull request
+# Run sentinel-contract-check.sh on every push and pull request
 # that touches a skill file or the sentinel SoT itself, so a sentinel string
 # renamed in one skill without its emitter/consumer counterpart fails CI
 # instead of surfacing only at runtime (silent orchestration breakage).

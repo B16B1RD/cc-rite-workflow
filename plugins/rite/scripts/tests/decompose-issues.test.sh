@@ -45,7 +45,8 @@ payload="${1:-}"
 [ -z "$payload" ] && payload="$(cat)"
 title=$(printf '%s' "$payload" | jq -r '.issue.title')
 labels=$(printf '%s' "$payload" | jq -rc '.issue.labels')
-[ -n "${STUB_CREATE_LOG:-}" ] && printf 'title=%s labels=%s\n' "$title" "$labels" >> "$STUB_CREATE_LOG"
+attachments=$(printf '%s' "$payload" | jq -c '.issue.attachments // []')
+[ -n "${STUB_CREATE_LOG:-}" ] && printf 'title=%s labels=%s attachments=%s\n' "$title" "$labels" "$attachments" >> "$STUB_CREATE_LOG"
 if [ -n "${STUB_CREATE_FAIL_TITLE:-}" ] && [ "$title" = "$STUB_CREATE_FAIL_TITLE" ]; then
   echo "stub: forced create failure for $title" >&2
   exit 1
@@ -183,7 +184,7 @@ run_decompose "$spec3"
 assert_rc 0 "exit 0 on non-blocking link failure"
 assert_out_contains "[CONTEXT] SUB_ISSUE_RESULT created=1 failed=0 link_failures=1" "link_failures=1, created unaffected"
 assert_out_contains "[CONTEXT] SUB_ISSUE_NUMBERS=301" "sub still created despite link failure"
-assert_err_contains "linkage failed for #301" "link failure WARNING on stderr"
+assert_err_contains "linkage failed for #301" "link failure WARNING on stderr" # drift-check-ignore
 assert_err_contains "mock link warning" "link warnings surfaced on stderr"
 unset STUB_LINK_FAIL_CHILD
 
@@ -263,6 +264,84 @@ else
   fail "empty labels_csv: parent labels are [epic]"; cat "$STUB_CREATE_LOG"
 fi
 unset STUB_CREATE_LOG
+
+# -----------------------------------------------------------------
+echo "--- Test 9: parent.attachments propagate to parent payload only (T-03) ---"
+wd9="$TEST_DIR/wd9"; mkdir -p "$wd9"
+printf '%s' "Parent" > "$wd9/parent.md"; printf '%s' "Sub 1" > "$wd9/s1.md"
+svg9="$wd9/diagram.svg"; printf '<svg/>\n' > "$svg9"
+spec9=$(build_spec "$wd9" "Epic9" "$wd9/parent.md" "refactor" "Sub One" "$wd9/s1.md" "M")
+jq --arg a "$svg9" '.parent.attachments = [$a]' "$spec9" > "$spec9.tmp" && mv "$spec9.tmp" "$spec9"
+STUB_NUM_FILE="$TEST_DIR/num9"; echo 900 > "$STUB_NUM_FILE"
+STUB_CREATE_LOG="$TEST_DIR/clog9"; : > "$STUB_CREATE_LOG"
+export STUB_NUM_FILE STUB_CREATE_LOG
+unset STUB_CREATE_FAIL_TITLE STUB_LINK_FAIL_CHILD STUB_CREATE_PARTIAL_TITLE 2>/dev/null || true
+run_decompose "$spec9"
+assert_rc 0 "exit 0 with parent.attachments"
+parent_att=$(grep '^title=Epic9 ' "$STUB_CREATE_LOG" | sed -n 's/.*attachments=//p')
+sub_att=$(grep '^title=Sub One ' "$STUB_CREATE_LOG" | sed -n 's/.*attachments=//p')
+expected9=$(jq -cn --arg a "$svg9" '[$a]')
+if [ "$parent_att" = "$expected9" ]; then
+  pass "T-03: parent issue.attachments is the spec path array"
+else
+  fail "T-03: parent issue.attachments is the spec path array (got: $parent_att)"; cat "$STUB_CREATE_LOG"
+fi
+if [ "$sub_att" = '[]' ]; then
+  pass "T-03: Sub issue.attachments is []"
+else
+  fail "T-03: Sub issue.attachments is [] (got: $sub_att)"; cat "$STUB_CREATE_LOG"
+fi
+unset STUB_CREATE_LOG
+
+# -----------------------------------------------------------------
+echo "--- Test 10: omitted parent.attachments -> [] on parent and sub (T-04) ---"
+wd10="$TEST_DIR/wd10"; mkdir -p "$wd10"
+printf '%s' "Parent" > "$wd10/parent.md"; printf '%s' "Sub 1" > "$wd10/s1.md"
+spec10=$(build_spec "$wd10" "Epic10" "$wd10/parent.md" "refactor" "Sub One" "$wd10/s1.md" "M")
+STUB_NUM_FILE="$TEST_DIR/num10"; echo 1000 > "$STUB_NUM_FILE"
+STUB_CREATE_LOG="$TEST_DIR/clog10"; : > "$STUB_CREATE_LOG"
+export STUB_NUM_FILE STUB_CREATE_LOG
+unset STUB_CREATE_FAIL_TITLE STUB_LINK_FAIL_CHILD STUB_CREATE_PARTIAL_TITLE 2>/dev/null || true
+run_decompose "$spec10"
+assert_rc 0 "exit 0 with omitted parent.attachments"
+parent_att=$(grep '^title=Epic10 ' "$STUB_CREATE_LOG" | sed -n 's/.*attachments=//p')
+sub_att=$(grep '^title=Sub One ' "$STUB_CREATE_LOG" | sed -n 's/.*attachments=//p')
+if [ "$parent_att" = '[]' ]; then
+  pass "T-04: omitted attachments -> parent []"
+else
+  fail "T-04: omitted attachments -> parent [] (got: $parent_att)"; cat "$STUB_CREATE_LOG"
+fi
+if [ "$sub_att" = '[]' ]; then
+  pass "T-04: omitted attachments -> sub []"
+else
+  fail "T-04: omitted attachments -> sub [] (got: $sub_att)"; cat "$STUB_CREATE_LOG"
+fi
+unset STUB_CREATE_LOG
+
+# -----------------------------------------------------------------
+echo "--- Test 11: missing attachment path fails before parent create (T-05) ---"
+wd11="$TEST_DIR/wd11"; mkdir -p "$wd11"
+printf '%s' "Parent" > "$wd11/parent.md"; printf '%s' "Sub 1" > "$wd11/s1.md"
+spec11=$(build_spec "$wd11" "Epic11" "$wd11/parent.md" "refactor" "Sub One" "$wd11/s1.md" "M")
+missing11="$wd11/no-such-diagram.svg"
+jq --arg a "$missing11" '.parent.attachments = [$a]' "$spec11" > "$spec11.tmp" && mv "$spec11.tmp" "$spec11"
+REAL_CREATE="$(cd "$SCRIPT_DIR/.." && pwd)/create-issue-with-projects.sh"
+cp "$SANDBOX/scripts/create-issue-with-projects.sh" "$TEST_DIR/stub_create.bak"
+cat > "$SANDBOX/scripts/create-issue-with-projects.sh" <<WRAP
+#!/bin/bash
+exec bash "$REAL_CREATE" "\$@"
+WRAP
+chmod +x "$SANDBOX/scripts/create-issue-with-projects.sh"
+STUB_NUM_FILE="$TEST_DIR/num11"; echo 1100 > "$STUB_NUM_FILE"
+export STUB_NUM_FILE
+unset STUB_CREATE_LOG STUB_CREATE_FAIL_TITLE STUB_LINK_FAIL_CHILD STUB_CREATE_PARTIAL_TITLE 2>/dev/null || true
+run_decompose "$spec11"
+assert_rc 1 "T-05: missing attachment exits 1"
+assert_err_contains "ERROR: attachment not found:" "T-05: real helper stderr"
+assert_out_missing "PARENT_ISSUE_NUMBER" "T-05: no PARENT_ISSUE_NUMBER before failure"
+assert_out_missing '"issue_number"' "T-05: no parent success JSON"
+mv "$TEST_DIR/stub_create.bak" "$SANDBOX/scripts/create-issue-with-projects.sh"
+chmod +x "$SANDBOX/scripts/create-issue-with-projects.sh"
 
 # -----------------------------------------------------------------
 echo "--- Test 6: usage / spec validation errors ---"

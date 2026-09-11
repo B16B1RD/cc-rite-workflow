@@ -56,7 +56,8 @@ merge-preserve され次 Issue に漏れるのを防ぐため。発火時はス�
 ## reset-refire-run-since
 
 `RESET` は reset を試行した場合の診断値であり、停止通知の注意行の条件には使わない。条件は
-`REFIRE` と `FIRE_RESET`。`failed-stale` に注意行を付けると、真の非収束停止に「review は 1 cycle
+`REFIRE` とステップ 6 共有前段の atomic set 失敗 WARNING。`failed-stale` に注意行を付けると、
+真の非収束停止に「review は 1 cycle
 も回っていません」という偽の説明が付く。
 
 `REFIRE` を reset 試行前の値で立て、成功時に落とすのは、`ITERATE_CYCLE=0; REFIRE=1` という
@@ -137,26 +138,26 @@ emit するため。ここより手前で turn が終わった場合は counter 
 再発火する。発火済みを `cycle_count` の相対値（例: max + 1）で符号化しない — 
 `max_review_cycles` が invocation 間で変わると両方向に破綻するため、上限から独立した文字列の
 `stop_reason` を同じ set で記録する。`--stop-reason` をステップ 1 fire 分岐に書くと本 set
-（`--stop-reason` なし）が default-clear で消す。post-breaker full review が成功してループが
-継続した場合は、後続の set が default-clear するため stale な失敗記録は残らない。上限値その
-ものは埋め込まない。
+（`--stop-reason` なし）が default-clear で消す。明示的な再実行後の通常 set が
+default-clear するため stale な失敗記録は残らない。上限値そのものは埋め込まない。
 
 `session_id` / `state_root` を marker に載せるのは、注意行 (b) の手動リセットが `--session`
 なし・repo 外 cwd で rc=0 のまま別ファイルを作り、当の counter が手つかずで残るため。2 軸の
 片方だけを塞いでも空振りは塞げない。空の state_root を sentinel にするのは、resolver が cwd
 削除時にも rc=0 で空文字を返し、`RITE_STATE_ROOT=` が未設定と同義へ縮退するため。
 
-## post-breaker-invariant
+## circuit-breaker-stop-invariant
 
-ブレーカー発火だけで成功・完了と判定してはならない。差分スコープ外の盲点を検査する full
-review を 1 回実行し、その finding の有無を既存の review routing が判定する。発火そのものから
-Ready / merge へ直行する分岐は存在しない。停止通知に記す `/rite:ready` は人間が明示的に叩く
-経路外のアクションであり、本ステップの自動フローが辿る分岐ではない。
+ブレーカー発火は非収束による失敗停止である。発火後は追加の review / fix を invoke せず、
+batch / 対話それぞれの停止 sentinel を返す。Ready / merge へ進む分岐は存在しない。
+停止通知に記す `/rite:ready` は人間が明示的に叩く経路外のアクションであり、本ステップの
+自動フローが辿る分岐ではない。
 
-`FIRE_RESET=ok` のとき共有前段と同じ Bash block 内で pin を更新するのは、
-`review-cycle-scope.sh` が pin より新しい JSON が 0 件のとき `REVIEW_CYCLE_SCOPE=full;
-reason=no_prev_json` を返すため。次の `/rite:pr-review` が差分スコープへ戻る経路を機械的に
-閉じる。
+発火時には counter reset と失敗理由の記録だけを同じ atomic set で行い、run 開始点 pin は
+更新しない。明示的な `/rite:iterate` 再実行時に、既存のステップ 0.6 が counter 0 を検出して
+pin を更新する。`review-cycle-scope.sh` は pin より新しい JSON が 0 件のとき
+`REVIEW_CYCLE_SCOPE=full; reason=no_prev_json` を返すため、新しい run の最初の review は
+full scope になる。reset が失敗した場合は、停止通知の手動リセット手順を先に実行する。
 
 両分岐は挙動として同構造で、差は sentinel の消費者と対話側だけが持つ注意行の 2 点。共有前段
 の counter reset は batch 経路にも適用されるが、ステップ 6.1 のブロック自体は無変更であり
@@ -227,10 +228,7 @@ fire 分岐でも `--handoff` なしの `flow-state.sh set` を呼ぶのは、�
 ## design-decisions
 
 blocking の定義式は本ファイルに複製せず severity-levels.md の実測必須ゲートを SoT とする。
-同節は reviewer finding に閉じた canonical 式と fix loop 全体を対象とする consumer 式の差を
-「適用範囲」で意図的なスコープ差として定義している。本スキルはループ側なので後者に従い、
-実測の有無を判定できない指摘は blocking のまま扱う。実測を伴わない指摘は non-blocking として
-記録されたまま残存するため、非実測指摘が残った状態でも `[review:mergeable]` に到達する。
+同節の producer 実測ゲートと fix consumer の fatal 判定は別段階である。修正対象は consumer の fatal 判定に従い、producer の判定不能は `anchor_undetermined` で同 cycle 内の対象 reviewer 出力再生成へ戻し、再試行は共通で 1 回までとする。旧 JSON 等で gated finding の実測未判定を受け取った場合は fix:error とする。非 fatal 指摘は non-blocking として記録し、severity を維持する。
 残存分の消化は完了通知前の 5.S（`/rite:fix --nb-sweep`）が担い、人間の draft レビューに委ねない。
 細粒度の安全網（同一 finding
 検出 / quality signal escalation）は持たない（CLAUDE.md「シンプルさを死守」）。
@@ -240,9 +238,9 @@ blocking の定義式は本ファイルに複製せず severity-levels.md の実
 トラジェクトリで backtest して確定した定数であり、窓幅や閾値を config キーにしない — 調整の
 実需が観測されてから Issue を切って設定化する（`no_speculative_structure`）。較正根拠と意図
 した境界（最良水準での平坦は発火させない = false positive 回避）は helper の header が SoT。
-既定 15 の根拠は #2129 D-02。
+既定 15 の根拠は D-02。
 
-発火理由は post-breaker routing を変えない。sentinel は理由に依らず不変で、`/rite:batch-run`
+発火理由は停止 routing を変えない。sentinel は理由に依らず不変で、`/rite:batch-run`
 の failed 記録契約を保つ。
 
 cycle counter は専用 state file を持たず、flow-state の merge-preserve フィールドとして
@@ -252,7 +250,7 @@ cycle counter は専用 state file を持たず、flow-state の merge-preserve 
 handoff とも独立（handoff は one-shot consume される継続マーカー、cycle_count は accumulate
 されるカウンタ、`stop_reason` は次の通常 set まで残る失敗理由）。
 
-別 Issue 化経路は廃止済み — 「別 Issue にスキップして loop 終了」の抜け穴は塞がれている。
+人間が skip → 別 Issue で loop 終了する経路は閉じた。残存 non-blocking の消化は機械 routing（完了通知前の 5.S `/rite:fix --nb-sweep` と、cleanup の follow-up Issue 起票）が担う。
 
 ## nb-remaining-notice
 
@@ -266,11 +264,9 @@ replied-only / 中断 / サーキットブレーカーのテンプレートは�
 ## nb-sweep-step
 
 `[review:mergeable]` を完了へ直結しないのは、残存 NB を人間消化に残す運用を構造的に閉じるため。
-consume を `/rite:fix --nb-sweep` に閉じるのは、既存 1.0.1 flag parse と修正実装を再利用し、
-iterate 本体に三択を複製しないため。`[fix:sweep-done]` を `[fix:pushed]` と分けるのは、後者が
-ステップ 1 へ戻ってフルレビューを起こす契約だから（MUST NOT）。JSON 取得失敗を完了通知の
-「取得失敗」欄にしないのは、未消化のまま正常出口へ進む経路そのものが本 Issue の対象だから。
-one-shot は sweep 後の新規 class-B を Issue 化に固定して 2 周目を作らない収束保証。
+consume を `/rite:fix --nb-sweep` に閉じ、collect helper の issued/recorded を適用する。
+コードを修正しないため `[fix:sweep-done]` で完了し、フルレビューへ戻らない。
+取得・起票・台帳保存の失敗を停止させ、未消化のまま正常出口へ進む経路を閉じる。
 6.1.d 本文へ `### 却下台帳` を足すのは新チャネル禁止（既存コメントの拡張）。次 cycle の
 `{rejected_ledger}` 注入は 6.1.d rewrite が台帳を消すと無意味になるため、merge-into helper
 が count 行直前へ機械 splice する。
@@ -283,6 +279,6 @@ skip（中身 1 行は完了通知の noop/done 出し分け）。書込直前�
 ファイルを stage する穴を、setup 再実行に依存せず塞ぐため。新 helper は増やさない。失敗は
 WARNING で続行し、偽 skip はしない。寿命は本 run — 0.6 の
 `fresh || cur_cc == 0`（pin 書換と同条件）で消し、cleanup でも回収する。cleanup まで残すと
-再 iterate と post-breaker 5.S が skip され未消化 0 の再保証が死ぬ。write 失敗時は `rm -f`
+再 iterate の 5.S が skip され未消化 0 の再保証が死ぬ。write 失敗時は `rm -f`
 してファイル非存在として本体へ（偽 skip 禁止）。`--nb-sweep` 戻りはステップ 4 汎用表を使わず、
 `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:replied-only]` でもステップ 1 に戻らない。

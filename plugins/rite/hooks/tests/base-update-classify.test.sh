@@ -19,11 +19,11 @@
 # - TC-6: 非 -z の --name-only は quotePath がファイル名を C-quote し、pathspec 不一致の
 #   git diff --quiet が exit 0 を返して相違変更が discardable に誤流出、破棄承認で
 #   データ喪失した。非 ASCII 名の相違が divergent に落ちることを pin
-# - TC-9 (#1936, T-05): sandbox の書き込みブロック用 character device マウントが
+# - TC-9 ( T-05): sandbox の書き込みブロック用 character device マウントが
 #   untracked (`??`) として誤検出され ff_failed_divergent に誤流出しないことを pin。
 #   dirty 判定が lib/git-status-filtered.sh 経由になったことで、ゴーストマウントのみ・
 #   HEAD が origin と同一の状態では ok に分類される
-# - TC-10 (#1937 cross-validation): lib/git-status-filtered.sh 自体が失敗した場合
+# - TC-10 (cross-validation): lib/git-status-filtered.sh 自体が失敗した場合
 #   （mktemp 枯渇等、旧来の `git status --porcelain` には無かった新規失敗モード）、
 #   `_bu_dirty` の空文字列フォールバックにより ff_failed_clean へ silent に倒れず
 #   ff_failed_divergent（安全側）に分類されることを pin。stub plugin_root で
@@ -35,7 +35,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILL_MD="$SCRIPT_DIR/../../skills/cleanup/SKILL.md"
 # tests/ -> hooks/ -> rite (2 up), same resolution as _test-helpers.sh's
 # _helpers_resolve_plugin_root. Needed because the extracted classify block
-# now calls lib/git-status-filtered.sh via the {plugin_root} placeholder (#1936).
+# now calls lib/git-status-filtered.sh via the {plugin_root} placeholder.
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_DIR="$(mktemp -d)"
 PASS=0
@@ -157,14 +157,14 @@ r=$(cd sub && bash "$CLASSIFY_SNIPPET" 2>/dev/null | sed -n 's/^\[CONTEXT\] BASE
 [ "$r" = "ff_failed_divergent" ] && pass "TC-8 ($r)" || fail "TC-8: expected ff_failed_divergent, got '$r'"
 git checkout -- :/
 
-# ─── TC-9: sandbox ゴーストマウント (character device) のみ + HEAD == origin → ok (T-05, #1936) ───
+# ─── TC-9: sandbox ゴーストマウント (character device) のみ + HEAD == origin → ok (T-05) ───
 # mknod は root/CAP_MKNOD 必須で本環境では使えないため、/dev/null への symlink で
 # character device を模す (test -c は symlink を辿るため実マウントと等価)。
 echo "TC-9: sandbox ghost-mount only (up-to-date) -> ok"
 git fetch -q origin main && git merge -q --ff-only origin/main
 ln -s /dev/null ghost_devnull
 r=$(classify)
-[ "$r" = "ok" ] && pass "TC-9 ($r)" || fail "TC-9: expected ok, got '$r' (#1936 sandbox ghost mount regression)"
+[ "$r" = "ok" ] && pass "TC-9 ($r)" || fail "TC-9: expected ok, got '$r' (sandbox ghost mount regression)"
 rm -f ghost_devnull && git checkout -- :/
 
 # ─── TC-10: lib/git-status-filtered.sh 自体の失敗時 → divergent (fail-safe,  cross-validation) ───

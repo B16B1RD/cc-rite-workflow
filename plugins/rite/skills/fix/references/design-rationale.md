@@ -64,14 +64,7 @@ caller の `exit 1` 直前に emit が必要になる。
 
 ## schema-normalization-mirror
 
-ステップ 1.2.0 Priority 3 の schema 1.1.0 後方互換 normalization の動作契約。Priority 0/2 (file-based) は
-`scripts/review-findings-maps.sh` へ委譲済みで、本 block はその string-based 鏡像。
-
-- (a) schema_version == "1.0"|"1.0.0" の場合、findings[] に欠落している scope を severity から default mapping (CRITICAL/HIGH/MEDIUM → current-pr、LOW-MEDIUM/LOW → nit-noted) で補完。1 件以上補完したら `[CONTEXT] REVIEW_SOURCE_SCOPE_DEFAULTED=1` を emit。
-- (b) invariant #5: pre_existing == false ∧ scope == "nit-noted" の finding を検出。1 件以上あれば WARNING + `[CONTEXT] REVIEW_SOURCE_AUTO_CORRECTED=1` を emit し、scope を current-pr に自動書き換え。
-- (c) (a) または (b) または (e) で mutation が発生した場合のみ raw_json を mutated 版に差し替える。
-- (d) 後方互換: invariant #5 は pre_existing フィールドが存在する 1.1.0 JSON のみで発火する (1.0/1.0.0 では default mapping は scope を補完するのみで pre_existing は補完しない)。
-- (e) auto_demote_low (default true) で severity == "LOW" ∧ scope == "current-pr" の finding scope を "nit-noted" に降格。`auto_demote_low: false` で opt-out 可。
+全入力経路は共通ステップ 1.2.2 で `scripts/review-findings-maps.sh` の分類結果を使う。helper は scope の 3 値 enum を厳密に検証し、欠落 scope の補完や nit-noted の補正は行わない。nit の全フィールドを保持したまま fatal 判定を行い、非 fatal を記録配列へ移送する。入力アダプターの既存 schema 検証と helper の分類を混同しない。
 
 **commit_sha stale detection で mismatch 時に WARNING のみで continue する理由**: PR コメントは最新の push 後に投稿される可能性が高く、legacy Markdown parser への fallthrough はむしろ情報損失になるため。
 
@@ -122,7 +115,11 @@ caller の `exit 1` 直前に emit が必要になる。
 
 新しいモデル世代（Opus 4.5 以降）には頼まれていない抽象・柔軟性を足す overengineering 傾向が公式に文書化されており（[Claude prompting best practices §Overeagerness](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-4-best-practices)）、追加型 fix はこの傾向と毎 cycle の全力 re-review の相互作用で発散する。
 
-Escalation trigger が「前 cycle fix への指摘」を名指しする理由: 同分析で cycle 3 以降の指摘はほぼ全てこの型であり、パッチ重ね掛けスパイラルの最も確度の高い観測シグナルであるため。Root Cause Gate（ステップ 3.2.1）とは直交する — あちらは commit body に根本原因の**記名**を求め、本原則は修正の**形**（追加 vs 削除・単純化）を問う。
+Escalation trigger が「前 cycle fix への指摘」を名指しする理由: 同分析で cycle 3 以降の指摘はほぼ全てこの型であり、パッチ重ね掛けスパイラルの最も確度の高い観測シグナルであるため。Root Cause Gate（ステップ 3.2.1）は根本原因の**記名**に加え、Escalation trigger 成立時は本原則の判断記録（`simplification-first:` 段落）も検査する。問う対象は別で、あちらは記名、本原則は修正の**形**（追加 vs 削除・単純化）を問う。
+
+「規則の一般化」を機械が評価する規則に限る理由: 分岐・ガード・述語の一般化は評価器がその述語を保証するため、統合すれば検証面が減る。文書の主張（契約文・確認手順など人が読む記述）を一般化すると、真である範囲の証明責任が広がる方向に働く。「限定した一文」を「経路を限定しない一般契約」に書き換えると、次 cycle の reviewer はその一般契約を全経路に対して検証し、取りこぼした経路を新規 blocking として出す。列挙を述語に置き換える推奨も同型で、述語が名指しする集合と実装出力の集合を誰も検査しないまま採用すると、次 cycle で同じ reviewer が述語の取りこぼしを指摘する。文書の主張では削除・限定が最小差分であり、広げる場合だけ列挙による一致確認を前提条件にするのはこのため。reviewer の推奨対応に検証契約が無いこと（実測が求められるのは finding 本体のみ）も、fix 側で突き合わせを要求する理由になる。
+
+判断の記録を Root Cause Gate に畳んだ理由: chat への 1 行明示は事後検証できない（PR コメント・phase ログ・commit body のいずれにも残らない）。新 marker や helper を足さず、既存ゲートが検査する段落を 1 つ増やすだけで、trigger 成立時の削除／追加判断が commit body に残り、欠落は既存の `missing` 経路で止まる。
 
 ## impact-scan-rationale
 
@@ -148,9 +145,9 @@ bash の `exit 1` は Bash tool の exit code に変換されるだけで Claude
 
 ## work-memory-update-rationale
 
-ステップ 4.5.1 / 4.5.2 の設計理由。
+ステップ 4.5.1 / 4.5.2 は `scripts/fix-work-memory-update.sh` に機械処理を委譲する。進捗ステータスと履歴本文の判断は caller に残す。
 
-- **PR body を single-quoted HEREDOC で書き出す理由**: double-quoted printf 形式は PR body 内の `"` でクォート閉じが起きるとシェル parser が後続テキストをコマンドラインとして解釈する構文エラーになり、さらに `$(...)` 形式の command substitution が literal 展開時に実行される command injection リスクを生む。PR body は外部入力 (PR 投稿者) であるため expansion の完全抑制が必須。
+- **本文ファイルの所有権**: PR 本文と履歴は caller がデータとして保存・回収する。helper は入力を展開せず、自分で確保した一時ファイルだけを回収する。履歴準備失敗は進捗成功後だけ評価し、進捗失敗や `no_comment` の後に別の失敗を追加しない。
 - **grep / git branch を pipeline 化せず独立 if-else で実行する理由**: bash pipefail は rightmost non-zero を返すため、`grep -oE '...' | head -1 | grep -oE '[0-9]+'` の 2 段 pipeline では先頭 grep の rc=2 (IO エラー) を末尾 grep の rc=1 (no match) が隠蔽し、IO error 分岐が到達不能になる (実証: `(exit 2)|(exit 0)|(exit 1)` → rc=1)。独立実行して終了コードを直接 case 分岐し、数字抽出は sed -n に移譲する (sed の失敗は無害な空文字結果)。Source: bash man page / [Baeldung — Exit Status of Piped Processes](https://www.baeldung.com/linux/exit-status-piped-processes)
 - **grep IO エラーで exit 1 しない (soft failure) 理由**: `exit 1` は Claude のフロー制御にならず ([retained-flag-emission](#retained-flag-emission) 参照)、コメント宣言と実動作が矛盾する。retained flag のみ emit して継続することで、(1) retained flag の伝達経路が一貫する (ステップ 4.5 の失敗は全て `[fix:pushed-wm-stale]` 経路)、(2) コミット済み fix の損失を防ぐ、(3) caller は AskUserQuestion で続行/中断を判断できる (H-2 対応)。
 - **wm_emit_done gate の理由**: retained flag の重複 emit はステップ 5.1 の reason 解釈を非決定的にし debug UX を悪化させる (M-4)。また IO error 経路で issue_number を空にするだけだと直後の branch fallback が誤起動して「IO error 経路なのに issue_number が設定される」semantics 破壊を起こす (M-5)。
@@ -176,6 +173,7 @@ silent に行うと `[ -s "$commit_err" ]` guard が no-op 化し、/tmp が壊�
   - **hard fail-fast**: 即座に exit 1 で fix loop を kill する失敗 (引数 parse 失敗 / mktemp 失敗等)。`exit 1` だけでは Claude のフロー制御にならないため retained flag も併用する。
 - **local-wm-update hook の stderr 退避 + lock/non-lock 分岐の理由**: `2>/dev/null || true` は lock contention だけでなく permission denied / script 不在 / bash syntax error / 内部致命的エラーもすべて silent suppress する。lock 判定の exact phrase pattern (`file is locked|lock contention|resource busy`) は、`lock|contention|busy` の緩い pattern が permission denied / device busy 等まで silent suppress する欠陥を避けるため (canonical: common-error-handling.md#hook-lock-contention-classification-canonical)。mktemp 失敗時も silent skip に戻さず、`2>&1` + `head -5` の簡易 fallback で可視化する。
 - **WM_UPDATE_FAILED 網羅性 DoD 検証スクリプトの設計上の要点** (スクリプト本体は `hooks/scripts/fix-reason-coverage-check.sh`、呼び出しは SKILL.md ステップ 5.1):
+  - 本体と `scripts/fix-work-memory-update.sh` の各 emit 元が非空であることを確認し、集合を統合して表と突合する。
   - `grep` 側は `WM_UPDATE_FAILED=1; reason=` で prefix を絞り、`CONFIDENCE_OVERRIDE_READ_FAILED` / `REPLY_POST_FAILED` / `ISSUE_CREATE_FAILED` の別 context flag を前方一致で自動除外する。
   - `awk` 側は `| reason | 発生 Phase | 発生条件 |` の table header 行を起点に `in_table=1` を開始し、非 `|` 行で戻すことで reason 表のみを対象とする。他テーブルや周辺段落を起点/終点トリガーにしないため、blockquote が `**` 強調に格上げされても in_table 範囲を壊さない。
   - `sed 's/\$.*//'` は表側 reason に shell 変数展開 suffix が含まれる場合に備えた defensive 正規化 (現状該当なし、将来の drift 誤検出防止のため残置)。
@@ -203,7 +201,7 @@ fix はステップ 2 以降で作業ツリーを Edit/Write する。session wo
 
 ## priority2-helper-delegation
 
-Priority 2 成功時に Fast Path / Broad Retrieval を skip するのは、file-based source では PR コメント経路が不要だから。map 構築と schema 1.1.0 normalization は `review-findings-maps.sh` に委譲済み (旧 inline の verbatim emit)。helper の reason SoT は docstring。
+Priority 2 成功時に Fast Path / Broad Retrieval を skip するのは、file-based source では PR コメント経路が不要だから。取得後は全入力経路で共通ステップ 1.2.2 に合流し、`review-findings-maps.sh` が元ファイルを atomic rename で更新する。helper は stdout に ID-keyed な `fatal_map` / `severity_map` / `scope_map` の JSON を返し、caller はこの結果を直接読む。
 
 ## confidence-override-h1
 
@@ -215,15 +213,13 @@ H-1: ステップ 1.2 進入時に confidence_override tempfile を無条件 tru
 
 ## measured-map-construction
 
-`measured_map` は正規化前の原ファイルから、`scope_map` は helper 正規化後 tempfile から来る。登録条件に原 scope を使うと auto-demote の二重計上と auto-correct の未登録 (ゲート bypass) が両方向に起きる。現行世代では `false` を持つ finding の scope は nit-noted のままなので破綻シナリオは限定的だが、規則は fail-safe として固定する。
+各入力経路の map は共通ステップ 1.2.2 が helper の stdout JSON から直接取得する。`fatal_map` / `severity_map` / `scope_map` は finding ID をキーとし、同じ file:line の指摘を潰さない。件数は分類後の永続 JSON から読む。fatal は measured=true × CRITICAL/HIGH × current-pr/follow-up。gated な非 fatal 指摘は severity と id を保ったまま `non_blocking_findings[]` に移送し、`demotion_reason: non_fatal` を付ける。元 JSON と分類後の map を混在させると、移送済み指摘が再び修正対象になるため、後続処理も分類結果を読む。
 
-JSON 経路の `non_blocking_count` が 0 になるのは、write 側が gated な非実測 finding を `non_blocking_findings[]` へ移送する契約のため。N 件が入るのは Markdown / 会話経路のみ。全経路一致は未成立。
-
-`(.verification.measured // false)` で畳むと、verification を持たない旧 JSON と形式崩れアンカー (helper が `verification` を書かない = 未判定) の全 finding が non-blocking になり、ループが指摘を解消せず空転する。
+`non_blocking_count` は移送後の `non_blocking_findings[]` の件数を使い、永続 JSON・Issue 記録コメント・統合レポート・E2E suffix を同じ集合に揃える。`(.verification.measured // false)` で未判定を false に畳まない。gated finding の未判定 measured / 未知 severity と書込失敗は `[fix:error]` へ昇格し、元 JSON を保持する。分類失敗を Markdown fallback で再解釈しない。
 
 ## human-thread-provenance
 
-`measured_map` は file:line キーなので、非実測 finding と同座標の人間 thread が巻き込まれ、fix も reply もされずに「対応済み」へ入る。出自確認できない thread は External review (安全側)。振り替えは `non_blocking_count` 減算を伴うため、無痕跡だと finalize 等式が永久不成立になり `max_review_cycles` まで空転する。
+人間・外部 thread と rite finding の対応は ID と出自を確認する。同じ file:line だけを根拠に非 fatal 判定を流用すると、無関係の thread が修正も返信もされずに消化済みになる。出自確認できない thread は External review として既存の個別対応経路に残す。
 
 ## accept-cycle-markers
 
@@ -238,3 +234,11 @@ JSON 経路の `non_blocking_count` が 0 になるのは、write 側が gated �
 ## reviewer-display-single-source
 
 `{reviewer_display}` 展開ルールはステップ 2.1 の表が単一源。ステップ 3.2 trailer は同表を参照するだけで literal を複製しない (drift 防止)。
+
+## fix-report-diff-gate
+
+完了報告の「直した」は LLM の自己申告だったので、差分に無い ID が次 cycle で解消済み扱いになる。突合は helper に置き、表の欠落だけを error にする。未対応は次の verification が拾えるので止めない。突合は hunk 単位で、+ 側を持つ hunk は HEAD の行、+ 側が空の純削除 hunk だけを削除前の行で照合する。削除された行には HEAD 上の行が無いため、この 1 種だけ採番が変わる。
+
+## nb-sweep-routing
+
+sweep でコードを修正すると、mergeable 後にも磨き直しが続く。実測あり MEDIUM は Issue 化し、その他は機械理由付きで台帳へ記録する。helper が route を決めることで LLM の三択と commit/push 経路をなくし、残存指摘の保存で sweep を完了させる。

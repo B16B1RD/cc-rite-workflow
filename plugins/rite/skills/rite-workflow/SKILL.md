@@ -16,6 +16,8 @@ rite workflow 操作のコンテキスト: 状態検出・コマンド案内・�
 - Workflow Awareness / Command Guidance / Best Practices（Conventional Commits・ブランチ命名・PR テンプレート）
 - [coding-principles.md](./references/coding-principles.md) / [common-principles.md](./references/common-principles.md) / [comment-best-practices.md](./references/comment-best-practices.md)
 
+実行ホストの操作対応は [Host Runtime Contract](../../references/host-runtime-contract.md) と [Host workflow operations](../../references/host-workflow-operations.md) に従う。スキル入口で runtime 初期化を行い、native / 明示実行の選択と現在 session を固定する。ホスト名から能力を推測せず、既存 Claude Code 経路・工程・sentinel を維持する。
+
 ## Workflow Identity (品質 > 時間/context)
 
 rite workflow の identity は「定義された step を全て実行し、生成物の品質を担保する」ことである。**時間的制約や context 残量を理由にした step の省略は禁止**。残量の推論も禁止。context 枯渇の正規経路は `/clear` + `/rite:recover`。LLM が自己判断でワークフローを短縮する経路は存在しない。
@@ -38,6 +40,8 @@ rite workflow の identity は「定義された step を全て実行し、生�
 詳細と Anti-pattern / Correct Pattern は [references/workflow-identity.md](./references/workflow-identity.md) を参照。各 command (start / review / fix / ready / lint / cleanup / create / recover 等) からも同 reference を引いている。
 
 ## Multi-Step Workflow Task Tracking
+
+以下の `TaskCreate` / `TaskUpdate` / `TaskList` が公開されない実行面では [セッション別台帳](../../references/host-workflow-operations.md#taskcreate--taskupdate--tasklist) で同じ開始・更新・全件確認を実行する。nested 呼出しは native Skill と本文実行の両方を含む。
 
 3 step 以上の sequential workflow では `TaskCreate` / `TaskUpdate` / `TaskList` で進捗を追跡する。「最外側 skill」= `TaskCreate` を発行する skill、「nested sub-skill」= Skill ツール経由で呼ばれた skill。代表例: `cleanup`, `iterate`, `open`, `review`, `fix`, `wiki-ingest`, `wiki-lint`。
 rationale: references/rationale.md#task-tracking-threshold
@@ -139,7 +143,7 @@ rationale: references/rationale.md#four-command-split
 | `rite:lint` | `[lint:success]` / `[lint:skipped]` / `[lint:error]` / `[lint:aborted]` | `implement` 内で autonomous invoke、`open` Step 5 が結果を読む |
 | `rite:pr-create` | `[pr:created:N]` / `[pr-create-failed]` | `open` Step 6 |
 | `rite:pr-review` | `[review:mergeable]` / `[review:fix-needed:N]` / `[review:error]` | `iterate` 内ループ |
-| `rite:fix` | `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:replied-only]` / `[fix:cancelled-by-user]` / `[fix:error]` | `iterate` 内ループ |
+| `rite:fix` | `[fix:pushed]` / `[fix:pushed-wm-stale]` / `[fix:non-fatal-only]`（5.S 経由）/ `[fix:sweep-done]` / `[fix:replied-only]` / `[fix:cancelled-by-user]` / `[fix:error]` | `iterate` 内ループ |
 | `rite:ready` | `[ready:returned-to-caller]` / `[ready:error]` | ユーザー直接 / `run` orchestrator |
 | `rite:merge` | `[merge:returned-to-caller]` / `[merge:not-ready]` / `[merge:error]` | ユーザー直接 / `run` orchestrator |
 | `rite:cleanup` | `[cleanup:returned-to-caller]` | ユーザー直接 / `run` orchestrator |
@@ -150,7 +154,7 @@ orchestrator (`open` / `iterate`) が sub-skill 出力の sentinel を grep で 
 
 仮定を表面化し、押し返し、シンプルさ・スコープ規律を死守する。user-visible な挙動が変わったら README / docs / CLAUDE.md / plugin .md を同じ PR で更新する（`documentation_consistency`）。知識の経路（`knowledge_routing`）: How → code, What → tests, Why → commit log, Why not → code comments。全文: [coding-principles.md](./references/coding-principles.md)。
 
-**Canon TDD**: `tdd.enabled: true`（default, opt-out）のとき `rite:issue-implement` が Canon TDD を回す（[`issue-implement/SKILL.md`](../issue-implement/SKILL.md) § 5.0.T）。`commands.test` 未設定なら test-list discipline のみ、`tdd.enabled: false` なら skip。スキーマ: [CONFIGURATION.md](../../../../docs/CONFIGURATION.md) `### tdd`。
+**Canon TDD**: `tdd.enabled: true`（default, opt-out）のとき `rite:issue-implement` が Canon TDD を回す（[`issue-implement/SKILL.md`](../issue-implement/SKILL.md) § 5.0.T）。`commands.test` 未設定なら test-list discipline のみ、`tdd.enabled: false` なら skip。スキーマ: 同梱 [rite-config.yml template](../../templates/config/rite-config.yml) の `tdd:` 節。
 
 ## Simplification Charter (rite plugin maintenance)
 
@@ -175,7 +179,7 @@ All `gh` commands that accept `--body` or `--comment` parameters **MUST** use sa
 
 ## Workflow Failure Surfacing
 
-`/rite:open` / `/rite:iterate` / `/rite:ready` / `/rite:merge` の失敗・skip は該当 skill / hook が `WARNING` / `ERROR` を **stderr** に出す。orchestrator が会話へ surface し、ユーザーは `/rite:recover` で再実行する。失敗は可視だが Issue 自動登録はしない。
+`/rite:open` / `/rite:iterate` / `/rite:ready` / `/rite:merge` の失敗・skip は該当 skill / hook が `WARNING` / `ERROR` を **stderr** に出す。stderr は LLM 向けの診断でユーザーの端末に届く保証がないため、**`要対応:` 欄を持つ `/rite:open` / `/rite:iterate` / `/rite:batch-run`** がユーザーの操作が必要な行を完了報告へ転記する（転記規則は [autonomous-execution.md](references/autonomous-execution.md)）。欄を持たない `/rite:ready` / `/rite:merge` の WARNING は、`/rite:batch-run` の報告経路に載るときだけその欄に集約される（batch を継続する `/rite:recover` を含む）。standalone 起動と、batch を継続しない `/rite:recover`（`BATCH_CONTINUE=none`）から起動された経路では転記先が無く stderr に留まる（既知の非カバー経路）。転記された項目についてはユーザーが `/rite:recover` で再実行する。失敗は可視だが Issue 自動登録はしない。
 rationale: references/rationale.md#incident-emit-removed
 
 ## Integration

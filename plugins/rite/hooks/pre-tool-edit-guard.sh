@@ -5,7 +5,7 @@
 #
 # Why this exists:
 #   The sibling `pre-tool-bash-guard.sh` guards only the Bash tool (since Issue
-#   #1879 its machine gate is the .git-write path) — it does nothing about a
+# its machine gate is the.git-write path) — it does nothing about a
 #   reviewer subagent that opens `Edit`/`Write` on a source file in the parent
 #   working tree (observed in production: a reviewer edited an implementation
 #   file in-place to run a mutation test, then hand-restored it). The prose ban
@@ -321,7 +321,7 @@ trap '_rite_teg_fail_closed' ERR
 
 # Log block event (stderr, for effect measurement) — mirror bash-guard's format.
 # ABS_PATH can carry a raw LF regardless of how the final element is resolved, so neutralize
-# independently of the resolution strategy: the pre-#2014 `realpath` capture already preserved
+# independently of the resolution strategy: the pre- `realpath` capture already preserved
 # a MID-string LF (command substitution strips only TRAILING newlines — verified: on
 # origin/develop this stderr record splits in two), and the deref loop additionally admits link
 # targets that legitimately END in one. A raw LF here would split this single-line record and

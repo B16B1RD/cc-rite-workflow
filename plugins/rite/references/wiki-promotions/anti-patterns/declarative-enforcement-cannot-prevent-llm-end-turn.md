@@ -21,7 +21,7 @@ confidence: high
 
 ## 概要
 
-`/rite:issue:create` の sub-skill return 後の implicit stop を防ぐ目的で、`Anti-pattern` / `Correct-pattern` / `same response turn` / `DO NOT stop` / `IMMEDIATELY` / Step 0 Immediate Bash literal / HTML コメント sentinel / plain-text marker などの **declarative enforcement** を 9 件の Issue (#3 → #651) で累積導入してきたが、本番セッション (`f0d8791d` 2026-04-24 / `f7afee09` 2026-04-21) の `.jsonl` 一次情報で LLM が **これらすべてを emit した上で `stop_reason: end_turn` を選択している** 事実が確認された。declarative enforcement は LLM が「正しい挙動を選ぶ確率を上げる」ものであって「強制する」ものではないため、`end_turn` を抑制したい場合は別の手段 (proactive な構造改訂 / hook 層からの context injection / sub-skill inline 化) が必要。
+`/rite:issue:create` の sub-skill return 後の implicit stop を防ぐ目的で、`Anti-pattern` / `Correct-pattern` / `same response turn` / `DO NOT stop` / `IMMEDIATELY` / Step 0 Immediate Bash literal / HTML コメント sentinel / plain-text marker などの **declarative enforcement** を 9 件の Issue (#3 →) で累積導入してきたが、本番セッション (`f0d8791d` 2026-04-24 / `f7afee09` 2026-04-21) の `.jsonl` 一次情報で LLM が **これらすべてを emit した上で `stop_reason: end_turn` を選択している** 事実が確認された。declarative enforcement は LLM が「正しい挙動を選ぶ確率を上げる」ものであって「強制する」ものではないため、`end_turn` を抑制したい場合は別の手段 (proactive な構造改訂 / hook 層からの context injection / sub-skill inline 化) が必要。
 
 ## 詳細
 
@@ -41,20 +41,20 @@ confidence: high
 
 LLM はこのテキストを **emit した上で** turn を閉じている。content には `IMMEDIATELY`, `DO NOT stop`, `SAME response turn`, `Step 0 Immediate Bash Action` という最強の declarative enforcement 句が **すべて含まれている** にもかかわらず `stop_reason: end_turn` が選択された。
 
-`f7afee09` セッション（8 回目対策のマージ前 10 時間）でも同様の構造で 7 分間隔で 2 回連続 end_turn が観測されており、最新の対策 (4-site 対称化 #654) を全部入れても LLM の選択は変わらない。
+`f7afee09` セッション（8 回目対策のマージ前 10 時間）でも同様の構造で 7 分間隔で 2 回連続 end_turn が観測されており、最新の対策 (4-site 対称化) を全部入れても LLM の選択は変わらない。
 
 ### 過去 9 件の対策の効果検証
 
 | Issue | 対策 | declarative の強化方向 | LLM の `end_turn` 選択を変えたか |
 |---|---|---|---|
-| #525 | 3 層自動継続契約 | 文章規約の階層化 | ❌ |
-| #444 | Terminal Completion pattern | sub-skill 自己完結契約 | ❌ |
-| #475 | Mode A/B hook 強制 | hook 層追加 | ❌ |
-| #552 | Pre-check list + Anti/Correct-pattern | dispatcher と禁止/推奨明文化 | ❌ |
-| #561 | HTML コメント sentinel | turn-boundary heuristic 回避試行 | ❌ |
-| #622 | whitelist + Pre-flight | phase 遷移 + 前倒し | ❌ |
-| #634 | Step 0 + INTERVIEW_DONE marker | concrete bash literal | ❌ |
-| #651 | 4-site 対称化 | 同 marker を 4 site で対称配置 | ❌ |
+| | 3 層自動継続契約 | 文章規約の階層化 | ❌ |
+| | Terminal Completion pattern | sub-skill 自己完結契約 | ❌ |
+| | Mode A/B hook 強制 | hook 層追加 | ❌ |
+| | Pre-check list + Anti/Correct-pattern | dispatcher と禁止/推奨明文化 | ❌ |
+| | HTML コメント sentinel | turn-boundary heuristic 回避試行 | ❌ |
+| | whitelist + Pre-flight | phase 遷移 + 前倒し | ❌ |
+| | Step 0 + INTERVIEW_DONE marker | concrete bash literal | ❌ |
+| | 4-site 対称化 | 同 marker を 4 site で対称配置 | ❌ |
 
 各対策は単体テストで完璧に PASS したが、本番では `stop_reason: end_turn` が選ばれ続けた。
 
@@ -84,7 +84,7 @@ A/B はそれぞれトレードオフ (modular 性 / hook 仕様の調査コス�
 
 ### 解決アプローチの実証: terminal vocabulary 撤廃
 
-本 anti-pattern の延長として、cleanup → wiki:ingest → wiki:lint の 3 段ネストで lint の sentinel が LLM 発話の最終行になると、literal `completed` が turn-boundary heuristic を発火させ caller の残 step が skip される事象が #604 / #618 / #923 / #1144 / #1163 と繰り返し再発した。これらはすべて passive な multi-layer defense (HTML コメント化 / disambiguation marker 追加 / 「TaskCreate + return 時 TaskList 確認」SKILL.md ルール) であり `completed` semantic 自体は保持していた。
+本 anti-pattern の延長として、cleanup → wiki:ingest → wiki:lint の 3 段ネストで lint の sentinel が LLM 発話の最終行になると、literal `completed` が turn-boundary heuristic を発火させ caller の残 step が skip される事象が / / / / と繰り返し再発した。これらはすべて passive な multi-layer defense (HTML コメント化 / disambiguation marker 追加 / 「TaskCreate + return 時 TaskList 確認」SKILL.md ルール) であり `completed` semantic 自体は保持していた。
 
 sentinel rename 事例は上表 **案 E** を採り、sentinel 命名規約から `completed` literal を **vocabulary レベルで撤廃** した (`[lint:completed:auto]` → `[lint:returned-to-caller:auto]` 等 24 site rename)。さらに各 emit site で sentinel 直前に `<!-- skill return signal: caller must continue next step -->` を併記し active disambiguation marker とした。`returned-to-caller` は「caller skill に return した = caller の次 step に進む」ネスト構造を semantic に内包するため、turn-end heuristic を誘発する terminal vocabulary が構造的に存在しなくなる。
 

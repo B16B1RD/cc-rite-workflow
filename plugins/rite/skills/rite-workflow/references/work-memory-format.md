@@ -1,6 +1,6 @@
 # Work Memory Format Reference
 
-Format definition for work memory. Local file (`.rite/work-memory/issue-{n}.md`) is the Source of Truth (SoT). Issue comment is a backup replica.
+Format definition for work memory. Local file (`{state_root}/.rite/work-memory/issue-{n}.md`) is the Source of Truth (SoT). `{state_root}` is `hooks/state-path-resolve.sh`（linked worktree cwd では main checkout）。Issue comment is a backup replica.
 
 ## Basic Structure
 
@@ -104,7 +104,7 @@ Fields: `コマンド` (next command), `状態` (待機中/実行中/完了), `�
 |-----------|--------------|------|
 | `/rite:lint` (ok) | `/rite:pr-create` | `lint 完了、PR 作成準備完了` |
 | `/rite:lint` (error) | `/rite:lint` | `lint エラー修正後、再度 lint を実行` |
-| `/rite:pr-create` | `/rite:pr-review #123` | `PR 作成完了、レビュー準備完了` |
+| `/rite:pr-create` | `/rite:pr-review ` | `PR 作成完了、レビュー準備完了` |
 | `/rite:pr-review` (ok) | `/rite:ready` | `指摘なし、Ready for review に変更可能` |
 | `/rite:pr-review` (issues) | `/rite:fix` | `要修正の指摘あり、修正が必要` |
 
@@ -225,7 +225,7 @@ Fields: `総合評価` (overall result), `レビュアー` (agent name), `評価
 
 Added to `セッション情報` when `/rite:pr-create` succeeds:
 ```markdown
-- **PR 番号**: #538
+- **PR 番号**:
 ```
 
 Timing: Immediately after PR creation, during Phase 4 update. If creation fails, field is omitted and error details go in `備考`.
@@ -238,7 +238,7 @@ Timing: Immediately after PR creation, during Phase 4 update. If creation fails,
 
 ## Local Work Memory File (Schema v1)
 
-Local file at `.rite/work-memory/issue-{n}.md` is the SoT for all work memory operations.
+Local file at `{state_root}/.rite/work-memory/issue-{n}.md` is the SoT for all work memory operations. Do not read or write a cwd-relative copy under a session worktree.
 
 ### File Structure
 
@@ -310,15 +310,16 @@ A local work memory file is corrupt if any of:
 Use `{plugin_root}/hooks/work-memory-parse.py` for parsing. Do NOT use shell `grep`/`sed` for YAML interpretation. Resolve `{plugin_root}` per [Plugin Path Resolution](../../../references/plugin-path-resolution.md#resolution-script-full-version).
 
 ```bash
-python3 {plugin_root}/hooks/work-memory-parse.py .rite/work-memory/issue-721.md
+python3 {plugin_root}/hooks/work-memory-parse.py "{state_root}/.rite/work-memory/issue-721.md"
 # Output: JSON with status, data, errors fields
 ```
 
 ### Directory Setup
 
 ```bash
-mkdir -p .rite/work-memory
-chmod 700 .rite/work-memory 2>/dev/null || true
+state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
+mkdir -p "$state_root/.rite/work-memory"
+chmod 700 "$state_root/.rite/work-memory" 2>/dev/null || true
 ```
 
 Files are written atomically: `tmp` → `mv`.
@@ -339,7 +340,7 @@ Issue-level locking prevents concurrent access to local work memory files from i
 
 **Lock paths**:
 - Compact state lock: `.rite/sessions/{session_id}.compact-state.lockdir` (per-session, used by pre-compact.sh; legacy shared `.rite-compact-state.lockdir` only when the session id is unresolvable)
-- Issue work memory lock: `.rite/work-memory/issue-{n}.md.lockdir` (used by commands)
+- Issue work memory lock: `{state_root}/.rite/work-memory/issue-{n}.md.lockdir` (used by commands)
 
 **Stale lock detection**: Controlled by `WM_LOCK_STALE_THRESHOLD` (default: 120s for compact, 300s for issue). When lock age exceeds the threshold, force-remove and retry once.
 
@@ -363,7 +364,7 @@ The wrapper auto-resolves the plugin root via `BASH_SOURCE`, then sources `work-
 ```bash
 source {plugin_root}/hooks/work-memory-lock.sh
 WM_LOCK_STALE_THRESHOLD=300  # 5 minutes for issue lock
-LOCKDIR=".rite/work-memory/issue-{n}.md.lockdir"
+LOCKDIR="{state_root}/.rite/work-memory/issue-{n}.md.lockdir"
 if acquire_wm_lock "$LOCKDIR"; then
   # ... atomic write (tmp + mv) ...
   release_wm_lock "$LOCKDIR"
@@ -405,14 +406,14 @@ Issue comment is a backup replica, synced at phase transitions:
 
 The replica's `セッション情報` carries one line the local file does not: `- **Issue**: #{n}`, written by `issue-comment-wm-sync.sh init` (shown in Basic Structure above). It is load-bearing, not decorative — `do_fetch` reads it out of the body it already fetched to confirm a cached `wm_comment_id` really belongs to the Issue being synced (`repos/{owner}/{repo}/issues/comments/{id}` is Issue-independent, so a successful GET proves nothing on its own).
 
-The parser accepts only the exact shape: the line starts at column 0 as `- **Issue**: #{n}`, and **anything appended after the number must contain no digits** (so `- **Issue**: #2463 — fix hook` still parses, while `- **Issue**: #2463 — fix v2 hook` does not). Removing the line, or reformatting it outside that shape, does not fail loudly — it degrades every cache hit into a full comment scan, with one `[rite] WARNING` per sync.
+The parser accepts only the exact shape: the line starts at column 0 as `- **Issue**: #{n}`, and **anything appended after the number must contain no digits** (so `- **Issue**: #{n} — fix hook` still parses, while `- **Issue**: #{n} — fix v2 hook` does not). Removing the line, or reformatting it outside that shape, does not fail loudly — it degrades every cache hit into a full comment scan, with one `[rite] WARNING` per sync.
 
 ## SoT Access Pattern
 
 All commands that read work memory follow this priority:
 
-1. **Local file** (`.rite/work-memory/issue-{n}.md`) — SoT
-2. **Legacy local file** (`.rite-work-memory/issue-{n}.md`) — when the new path is absent
+1. **Local file** (`{state_root}/.rite/work-memory/issue-{n}.md`) — SoT
+2. **Legacy local file** (`{state_root}/.rite-work-memory/issue-{n}.md`) — when the new path is absent
 3. **Issue comment API** — fallback when neither local file exists, or the file selected above is corrupt. Do not use the legacy path when the new path exists but is invalid.
 4. **Context** — information already loaded in conversation
 

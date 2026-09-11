@@ -1,7 +1,7 @@
-# Wiki Promotion Audit #2165 — Defense Mechanism Integrity
+# Wiki Promotion Audit — Defense Mechanism Integrity
 
  audited five `promote: rite-plugin` pages from promotion audit
-#2091. The shared enforcement point is the Defense Mechanism Integrity Gate in
+. The shared enforcement point is the Defense Mechanism Integrity Gate in
 the reviewer base, inherited by every specialist reviewer. The contract test
 keeps each distinct check present so later prompt refactors cannot silently
 drop one link.

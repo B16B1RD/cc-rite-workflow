@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for Issue #2430: relocate root `.rite-*` runtime state under `.rite/`.
+# Tests for: relocate root `.rite-*` runtime state under `.rite/`.
 # Failures are exit-nonzero so run-tests.sh counts FAILED and CI jobs fail.
 set -uo pipefail
 
@@ -26,7 +26,7 @@ run_session_start() {
     | env -u CLAUDE_CODE_SESSION_ID -u CLAUDE_SESSION_ID bash "$HOOK" >/dev/null 2>/dev/null || true
 }
 
-echo "=== relocated runtime state (Issue #2430) ==="
+echo "=== relocated runtime state ==="
 
 # T-01 / T-04: session-start writes the 4 file states to new paths, not root.
 echo "T-01: session-start writers land on new paths"
@@ -275,6 +275,6 @@ run_session_start "$dperm" "$sid01"
 perm=$(stat -c '%a' "$dperm/.rite/session-id" 2>/dev/null || stat -f '%OLp' "$dperm/.rite/session-id")
 assert "session-id mode 600" "600" "$perm"
 
-if ! print_summary "$(basename "$0")" "Issue #2430 relocated runtime state"; then
+if ! print_summary "$(basename "$0")" " relocated runtime state"; then
   exit 1
 fi

@@ -11,7 +11,7 @@ plugins/rite/
 ├── skills/           # Claude Code が自動検出するスキル定義（SKILL.md）。/rite:<name> で起動
 │   │                 #   各スキル = 薄い SKILL.md + 同梱 references/（行数原則は下記）
 │   ├── PR lifecycle  #   open, iterate, pr-review, fix, ready, merge, cleanup, run, pr-create
-│   ├── issue 管理     #   issue-create, issue-list, issue-update, issue-close, issue-edit, issue-implement
+│   ├── issue 管理     #   issue-create, issue-list, issue-update, issue-close, issue-cancel, issue-edit, issue-implement
 │   ├── wiki          #   wiki-init, wiki-query, wiki-ingest, wiki-lint
 │   ├── meta/top      #   setup, getting-started, workflow, investigate, learn, lint, recover, skill-suggest, template-reset
 │   ├── rite-workflow/  # orchestration context（状態検出・phase routing）+ references/（コーディング原則 等）
@@ -62,7 +62,7 @@ rite-config.yml        # プロジェクト固有設定（ブランチ戦略、P
 
 過去のセッションで繰り返し確認された設計原則。セッションを跨いで忘れられる傾向があるためここに明文化する。探索・設計・実装・レビューのすべてで適用する。
 
-- **ユーザー環境第一**: マーケットプレイス配布物は配布先だけで意味が完結するよう書き、開発リポジトリでしか解決できない番号・経緯を前提にしない
+- **ユーザー環境第一**: マーケットプレイス配布物は配布先だけで意味が完結するよう書き、開発リポジトリでしか解決できない番号・経緯を前提にしない。Issue / PR 番号を永続成果物に書かない（例外なし）
 - **人間の役割は 2 点のみ**: 「要件・仕様を伝える」と「完成品を動かして動作チェックする」。工程の途中に人間の品質判断を常駐させる設計をしない。人間へのエスカレーションは例外処理であり、定常運用の形にしない
 - **品質を予算で縛らない・無駄は排除する**: cycle 数やトークン予算を理由に品質を妥協する設計（「予算到達したから飲む」）は採らない。切るべきは発散・空転（無駄）であって、収束に向かう実サイクルではない
 - **将来拡張に備えない（no speculative structure）**: 将来の拡張に備えた構造・予約フィールド・拡張点・設定キーは、実需の Issue が存在しない限り追加しない。その未来は滅多に来ないし、来たらその時に時間をかけて対応すれば済む
@@ -103,5 +103,5 @@ rite workflow はワークフロー定義そのものを LLM エージェント�
 - **CLAUDE.md の変更は即座に影響する**: 編集内容は現在の Claude Code セッションで即座に参照される
 - **skills/ の変更は次回呼び出しから反映**: Skill ツール経由で呼び出されるたびに最新のファイル内容が読み込まれる
 - **自己参照ループに注意**: ワークフロー仕様の変更中にそのワークフローを使って作業するため、変更前後で動作が変わる可能性がある
-- **worktree セッションでも上書きは維持される（Issue #1943）**: `.claude/` は gitignore 対象のため `git worktree add` では複製されないが、`/rite:open` / `/rite:batch-run` が作成するセッション worktree（`.rite/worktrees/issue-N`）には worktree 作成時に `.claude/settings.local.json` が存在すればスナップショットとして複製される。作成後に main checkout 側の設定を更新しても既存 worktree には反映されない（再作成または手動 `cp` が必要）
-- **auto-mode 分類器が定義ファイル編集をブロックすることがある（Issue #1947）**: CLAUDE.md や `plugins/rite/references/*.md` 等「assistant 自身の振る舞いを規定するファイル」への Edit は、Claude Code の auto-mode 分類器に「high-risk」と判定されブロックされる場合がある。rite はワークフロー定義そのものを LLM エージェントで編集するため、この制約とドッグフーディング作業が正面衝突しうる。分類器の挙動は Claude Code 本体の管轄で rite 側では修正不能なため、発生時は permission mode を切り替える（例: 確認モードへ一時変更）か、該当箇所を手動編集する。sandbox 制約（`dangerouslyDisableSandbox` 等）とは別レイヤーの制約であり、sandbox 設定を変更しても解消しない
+- **worktree セッションでも上書きは維持される**: `.claude/` は gitignore 対象のため `git worktree add` では複製されないが、`/rite:open` / `/rite:batch-run` が作成するセッション worktree（`.rite/worktrees/issue-N`）には worktree 作成時に `.claude/settings.local.json` が存在すればスナップショットとして複製される。作成後に main checkout 側の設定を更新しても既存 worktree には反映されない（再作成または手動 `cp` が必要）
+- **auto-mode 分類器が定義ファイル編集をブロックすることがある**: CLAUDE.md や `plugins/rite/references/*.md` 等「assistant 自身の振る舞いを規定するファイル」への Edit は、Claude Code の auto-mode 分類器に「high-risk」と判定されブロックされる場合がある。rite はワークフロー定義そのものを LLM エージェントで編集するため、この制約とドッグフーディング作業が正面衝突しうる。分類器の挙動は Claude Code 本体の管轄で rite 側では修正不能なため、発生時は permission mode を切り替える（例: 確認モードへ一時変更）か、該当箇所を手動編集する。sandbox 制約（`dangerouslyDisableSandbox` 等）とは別レイヤーの制約であり、sandbox 設定を変更しても解消しない

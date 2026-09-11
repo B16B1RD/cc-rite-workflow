@@ -2,7 +2,7 @@
 
 > Claude Code のための汎用 Issue ドリブン開発ワークフロー
 
-[![Version](https://img.shields.io/badge/version-0.14.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.14.0)
+[![Version](https://img.shields.io/badge/version-0.15.0-blue.svg)](https://github.com/B16B1RD/cc-rite-workflow/releases/tag/v0.15.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [English](README.md) | **日本語**
@@ -37,6 +37,10 @@ https://github.com/user-attachments/assets/8f36c6b4-1595-4b30-8019-0fe6f0be9b52
 - **sandbox 対応 (Sandbox-aware)**: `/rite:setup` が既知の sandbox 環境制約を失敗が発生する前に事前検出し、対応する回避策を提示します
 
 ## インストール
+
+Claude Code では以下のプラグイン導入を使います。Codex / Grok Build では同じ配布物の `plugins/rite/skills/` をホストの skill/plugin loader に公開し、[runtime の入口と checkpoint](plugins/rite/references/host-runtime-contract.md#入口と工程境界) に従います。同梱 helper が開発 launcher なしで状態を初期化します。全ホストで独立 reviewer 全員の完了が必要で、能力不足時は復旧手順を示して停止します。shell 統合テストと観測した Codex 操作だけで自動 hook や Grok 全体の E2E 対応を保証するものではありません。[検証記録](docs/designs/multi-host-runtime.md) を参照してください。
+
+[3ホスト検証ガイド](tests/runtime-e2e/README.md) に、検証用リポジトリの準備、ホスト別起動コマンド、共通の実行指示、証跡の記録手順をまとめています。各ホスト・導入経路の実測結果が揃うまで、全工程の実行は未検証として扱います。
 
 Rite Workflow は 3 ステップでインストールします。マーケットプレイスを登録し、プラグインをインストールし、最後にプラグインを再読み込みして新しいコマンドを有効化します。
 
@@ -108,6 +112,7 @@ Rite Workflow は 3 ステップでインストールします。マーケット
 | `/rite:issue-create` | 新規 Issue を作成 |
 | `/rite:issue-update` | 作業メモリを更新 |
 | `/rite:issue-close` | Issue の完了状態を確認 |
+| `/rite:issue-cancel` | Issue を中止（not planned でクローズ・board Status → Cancelled・PR / ブランチ / worktree を後片付け） |
 | `/rite:issue-edit` | 既存 Issue を対話的に編集 |
 | `/rite:open` | 作業を一気通貫で開始（ブランチ → 計画 → 実装 → lint → draft PR） |
 | `/rite:iterate` | mergeable になるまで review ⇄ fix をループ |

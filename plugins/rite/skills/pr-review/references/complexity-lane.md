@@ -20,7 +20,7 @@
 
 レーン自体は `{XS, S}` と `{M, L, XL}` の二値で、cycle 数のような段階判定を持たない（[cycle-scope.md](./cycle-scope.md#cycle-count-degradation-禁止規範との関係) の二値性と同じ理由 — 段階を作ると [finding-cycling.md](./finding-cycling.md) が禁じる progressive degradation と区別がつかなくなる）。
 
-**説明的派生散文の禁止だけが XS 限定**なのは、本機能を要求した仕様がそう規定しているためである（適用範囲の記述が「XS では」で始まり、対応する受入基準の Given も XS になっている）。S へ広げると要求されていない制約になる。逆に新規テストファイル抑制が XS/S 両方に効くのは、同じ仕様が「新規テストファイルは M+ の装備」と書いており、その補集合が `{XS, S}` だからである。**細分化はデータが要求してから行う** — 現時点で XS と S に別々の reviewer 上限や別々の mandate を与える実測上の根拠は無い。
+**説明的派生散文の禁止だけが XS 限定**なのは、本機能を要求した仕様がそう規定しているためである（適用範囲の記述が「XS では」で始まり、対応する受入基準の Given も XS になっている）。S へ広げると要求されていない制約になる。逆に新規テストファイル抑制が XS/S 両方に効くのは、同じ仕様が「新規テストファイルは M+ の装備」と書いており、その補集合が `{XS, S}` だからである。全 Complexity 共通のテスト規模規律（1 挙動 1 テスト・隣接と同規模・scratch を残さない・既存 suite 追記優先）はレーンの生産量制約ではなく、M+ の新規ファイル許可を取り消さない。**細分化はデータが要求してから行う** — 現時点で XS と S に別々の reviewer 上限や別々の mandate を与える実測上の根拠は無い。
 
 ## reviewer 上限を Phase 5 に置く理由
 
@@ -92,7 +92,7 @@ flow-state は complexity フィールドを持たず、Projects の Complexity 
 
 **表行を最後に読む理由**: helper は code fence を剥がさないため、表記法そのものを**説明している** Issue が本文中の例から値を解決してしまう。記法 1 の Meta 行と記法 2 の `## 複雑度` 節はいずれも「そこが宣言である」ことを形で示すが、表行は body のどこにでも現れうる。実測では、記法 2 で `M` を宣言し別節に表の例を置いた body が表行を先に読むと `XS` へ落ち（**M+ が silent に light へ落ちる = AC-4 違反**）、記法 2 宣言 + 文書用の表ヘッダ（`| **Complexity** | Projects Complexity field |`、issue-edit/SKILL.md に実在）では `complexity_invalid` へ落ちた。同じ理由で記法 3 の抽出は `head -1` で先頭の表行に固定する。
 
-記法 3 を受理するのは speculative な一般化ではなく実測に基づく — 表形式 Meta の Issue が本リポジトリに定常的に存在し（#2429 / #2430 / #2431 / #2433 / #2434）、#2432 では `/rite:batch-run` が open 段（[open ステップ 3.3.1](../../open/SKILL.md) の fail-loud）で停止した。**表形式を生成する code path は無い**（テンプレートは記法 1 が canonical）ため起票経路の是正では直せず、reader 側の受理でしか解けない。マーケットプレイス配布先の Issue は rite のテンプレートに従わないため、reader の堅牢化が配布物として正しい側でもある。記法 1 を最優先するのは、helper が code fence を剥がさないため、表記法そのものを**説明している** Issue が本文中の例から値を解決するのを防ぐため。
+記法 3 を受理するのは speculative な一般化ではなく実測に基づく — 表形式 Meta の Issue が本リポジトリに定常的に存在し、`/rite:batch-run` が open 段（[open ステップ 3.3.1](../../open/SKILL.md) の fail-loud）で停止した実測がある。**表形式を生成する code path は無い**（テンプレートは記法 1 が canonical）ため起票経路の是正では直せず、reader 側の受理でしか解けない。マーケットプレイス配布先の Issue は rite のテンプレートに従わないため、reader の堅牢化が配布物として正しい側でもある。記法 1 を最優先するのは、helper が code fence を剥がさないため、表記法そのものを**説明している** Issue が本文中の例から値を解決するのを防ぐため。
 
 **Complexity の自動判定はしない**。宣言値をそのまま使い、誤宣言の是正は既存の issue-create 見積もり手順と、上記 Cross-File Impact Check の安全網に委ねる。判定器の新設は speculative である。
 

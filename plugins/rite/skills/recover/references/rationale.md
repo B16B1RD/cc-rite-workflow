@@ -16,8 +16,8 @@
 
 git/PR 状態クロスチェックはカレントブランチ依存のため、worktree 再入場はその前に行う。session ⇄
 worktree は 1:1 でない（クラッシュで session_id が変わる）ため、issue 番号 → worktree パス導出が
-正規の対応関係。flow-state `worktree` field は同一セッション内のヒントに留まる。EnterWorktree は
-LLM ツールのため helper からは呼べない。
+正規の対応関係。flow-state `worktree` field は同一セッション内のヒントに留まる。native 入場または検証済み作業先指定は
+LLM が共通作業先契約に従って実行し、helper は検出・再構築だけを担う。
 
 marker の読み取り規約（行頭アンカー・stderr 混入・`branch=` スコープ・同一 KEY は最新勝ち）は
 `marker_get`（`lib/context-marker.sh`）が SoT。本ファイルは case 値ごとのアクションだけを規定する。

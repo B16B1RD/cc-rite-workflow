@@ -1,6 +1,9 @@
 #!/bin/bash
 # rite workflow - Work Memory Update (shared helper)
-# Provides a function to update local work memory files (.rite/work-memory/issue-{n}.md).
+# Provides a function to update local work memory files
+# ({state_root}/.rite/work-memory/issue-{n}.md). state_root is RITE_STATE_ROOT
+# when that is a directory, otherwise hooks/state-path-resolve.sh (linked
+# worktree cwd resolves to the main checkout). Cwd-relative writes are not used.
 # Handles: lock acquisition, YAML frontmatter parsing, atomic file write, lock release.
 #
 # Usage (source from another script or inline):
@@ -122,6 +125,13 @@ _wm_state_read_field() {
 }
 
 update_local_work_memory() {
+  # Validate a selected host before branch/legacy work-memory paths can write.
+  # No runtime context keeps the existing standalone helper behavior.
+  local _identity_rc=0
+  bash "$(dirname "${BASH_SOURCE[0]}")/session-identity.sh" >/dev/null || _identity_rc=$?
+  if [ "$_identity_rc" -ne 0 ] && [ "$_identity_rc" -ne 2 ]; then
+    return 2
+  fi
   local issue_number current_branch
   current_branch=$(git branch --show-current 2>/dev/null || echo "")
   issue_number="${WM_ISSUE_NUMBER:-}"
@@ -136,23 +146,8 @@ update_local_work_memory() {
     return 1
   fi
 
-  # legacy `.rite-flow-state` 直接 `[ ! -f ]` check を flow-state.sh 経由に変更
-  # (caller migration of legacy flow-state reads)。
-  # cycle 10 で WM_READ_FROM_FLOW_STATE 分岐の同種 read を移行済みだが、本箇所
-  # (WM_REQUIRE_FLOW_STATE check) は cycle 11 review で取り残しが指摘された。
-  # (verified-review cycle 29 F-04 MEDIUM: cycle 28 で確立した semantic anchor 規範を本箇所
-  # にも適用。旧 "line 130 / line 72" は code shift で drift 済み)
-  # schema_version=2 環境で per-session file (`.rite/sessions/{sid}.flow-state`)
-  # のみ存在し legacy file 不在のとき、旧 check は false negative で skip し work memory が更新されない
-  # (例: lint pattern で session 起点の caller が WM_REQUIRE_FLOW_STATE=true を渡しても skip される)。
-  # flow-state.sh は per-session/legacy 両方を transparent に解決し、両方不在時のみ default ("") を
-  # 返すため、空文字判定で「flow-state が解決できない」状態を正確に検出できる。
-  #
-  # verified-review cycle 33 fix (F-01 HIGH): flow-state.sh 起動失敗 (ENOENT / WM_PLUGIN_ROOT 不正 /
-  # permission denied 等) が「両 file 不在 → DEFAULT 返却」と区別不能で silent skip される regression
-  # を解消する。helper が **存在しない** ケースは return 2 で fail-fast、**存在するが exit != 0** の
-  # ケース (jq エラー / 内部失敗) も独立 exit code 捕捉で fail-fast。**存在し exit == 0 だが空文字**
-  # のみが legitimate な「両 file 不在」として return 1 で skip される (Fail-Fast First 原則)。
+  # flow-state.sh に per-session/legacy の解決を委譲する。
+  # helper 失敗は伝播し、正常終了で phase が空の場合のみ未初期化として skip する。
   if [ "${WM_REQUIRE_FLOW_STATE:-false}" = "true" ]; then
     local _phase=""
     _wm_state_read_field _phase phase "" || return $?
@@ -161,8 +156,27 @@ update_local_work_memory() {
     fi
   fi
 
-  local wm_dir=".rite/work-memory"
-  local wm_legacy=".rite-work-memory"
+  # Pin writes to the shared state root. Session worktree cwd must not create
+  # a per-worktree copy; that copy is not SoT.
+  local state_root=""
+  if [ -n "${RITE_STATE_ROOT:-}" ] && [ -d "${RITE_STATE_ROOT}" ]; then
+    state_root="$RITE_STATE_ROOT"
+  else
+    local _sr_rc=0
+    if [ -z "${WM_PLUGIN_ROOT:-}" ] || [ ! -x "${WM_PLUGIN_ROOT}/hooks/state-path-resolve.sh" ]; then
+      echo "rite: ${WM_SOURCE:-work-memory-update}: state-path-resolve.sh not found" >&2
+      return 2
+    fi
+    # subprocess: state-path-resolve.sh enables set -euo and must not leak into this sourced helper
+    state_root=$(bash "${WM_PLUGIN_ROOT}/hooks/state-path-resolve.sh") || _sr_rc=$?
+    if [ "$_sr_rc" -ne 0 ] || [ -z "$state_root" ]; then
+      echo "rite: ${WM_SOURCE:-work-memory-update}: state root resolution failed (rc=$_sr_rc)" >&2
+      return 2
+    fi
+  fi
+
+  local wm_dir="${state_root}/.rite/work-memory"
+  local wm_legacy="${state_root}/.rite-work-memory"
   local local_wm="${wm_dir}/issue-${issue_number}.md"
   local lockdir="${local_wm}.lockdir"
   local wm_read="$local_wm"
@@ -173,9 +187,9 @@ update_local_work_memory() {
   # Defensive: ensure parent directory exists before lock acquisition
   mkdir -p "$wm_dir" 2>/dev/null || { echo "rite: ${WM_SOURCE}: failed to create .rite/work-memory directory" >&2; return 2; }
   chmod 700 "$wm_dir" 2>/dev/null || true
-  # Nested self-gitignore on `.rite/` (same extra-args as session-start / flow-state).
+  # Nested self-gitignore on state-root `.rite/` (same extra-args as session-start / flow-state).
   # mkdir is the caller's job; the helper will not create the directory.
-  if ! _ensure_rite_nested_gitignore ".rite"; then
+  if ! _ensure_rite_nested_gitignore "${state_root}/.rite"; then
     echo "WARNING: work-memory-update.sh: cannot create .rite/.gitignore; verify by hand that this directory is excluded from git" >&2
     [ -n "${_RITE_GITIGNORE_ERROR:-}" ] && printf '%s\n' "$_RITE_GITIGNORE_ERROR" | sed 's/^/  /' >&2
   fi
@@ -273,15 +287,7 @@ update_local_work_memory() {
   fi
 
   # Read flow-state fields if requested (lint pattern).
-  # legacy `.rite-flow-state` 直接読みを
-  # flow-state.sh 経由に変更。schema_version=2 環境では flow-state.sh が per-session file を解決
-  # するため、別 session の stale residue を読まなくなる。flow-state.sh は per-session/legacy
-  # 両方を transparent に解決し、両方不在時は default を返すので、外側の `[ -f ]` check は不要。
-  #
-  # verified-review cycle 33 fix (F-01 HIGH): WM_REQUIRE_FLOW_STATE 経路と対称化。helper 存在性 +
-  # exit code を独立 capture して silent skip を防ぐ (Fail-Fast First 原則)。`|| pr_num="null"` と
-  # `|| loop_cnt="0"` の旧 fallback パターンは「両 file 不在 → DEFAULT 返却」と「helper 起動失敗」を
-  # 区別不能で silent fallback していたため fail-fast に変更。
+  # helper の失敗を default 値で隠さず伝播する。
   if [ "${WM_READ_FROM_FLOW_STATE:-false}" = "true" ]; then
     _wm_state_read_field pr_num pr_number "null" || return $?
     _wm_state_read_field loop_cnt loop_count 0 || return $?
@@ -307,10 +313,9 @@ update_local_work_memory() {
   # frontmatter 破損 / 子 key injection を防ぐ (caller 責務に加えた二段目の防御層)。
   # WM_BODY_TEXT は frontmatter 外なので除外 (markdown body は改行を保持する必要がある)。
   #
-  # verified-review cycle 44 F-12 MEDIUM (security Hypothetical exception):
-  # backslash escape を追加。値が `\` で終わる場合、YAML double-quoted string では
+  # 値が `\` で終わる場合、YAML double-quoted string では
   # closing `"` が `\"` の escape sequence と解釈されて閉じクォート消失 → 後続の
-  # `phase_detail: "..."` 行を value continuation として誤 parse する経路があった。
+  # `phase_detail: "..."` 行を value continuation として誤 parse する。
   # 例: WM_PHASE='foo\' → `phase: "foo\"` → escaped quote → continuation。
   # まず backslash を `\\` に escape してから `"` → `\"` の順で sed を実行する
   # (順序逆転すると新たに作った escape sequence の `\` が更に escape されてしまう)。

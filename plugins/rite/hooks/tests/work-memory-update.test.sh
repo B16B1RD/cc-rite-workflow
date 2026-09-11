@@ -35,7 +35,7 @@ set -euo pipefail
 # the read resolve a nonexistent (or wrong) flow-state file. Unsetting both
 # here forces every invocation to resolve session_id from the fixture's
 # `.rite-session-id` file, matching the intended test isolation.
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
+unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID GROK_SESSION_ID CODEX_THREAD_ID RITE_HOST
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -129,7 +129,7 @@ run_update() {
   local d="$1"
   shift
   # 残りの引数 (KEY=VALUE 形式) を env に渡し、その後 bash -c で関数を呼ぶ
-  (cd "$d" && env WM_PLUGIN_ROOT="$PLUGIN_ROOT" "$@" bash -c \
+  (cd "$d" && env -u RITE_STATE_ROOT WM_PLUGIN_ROOT="$PLUGIN_ROOT" "$@" bash -c \
     'source "$WM_PLUGIN_ROOT/hooks/work-memory-update.sh" && update_local_work_memory')
 }
 
@@ -505,13 +505,11 @@ run_update "$SBX10" \
   WM_NEXT_ACTION="next" WM_BODY_TEXT="Seed body." WM_ISSUE_NUMBER="687" \
   WM_PR_NUMBER="123" WM_LOOP_COUNT="3" >/dev/null 2>&1 || true
 WM_FILE10="$SBX10/.rite/work-memory/issue-687.md"
-# fixture 改竄は awk read→transform→write→mv 形式で行う (GNU 形式の `sed -i '<expr>'` は
-# BSD sed が -i の引数を必須とするため macOS で失敗し、set -e 下でスイート全体が中断する)
-awk '{
+awk_inplace "$WM_FILE10" '{
   if ($0 == "pr_number: 123") print "pr_number: \"12x3\"";
   else if ($0 == "loop_count: 3") print "loop_count: \"3y\"";
   else print
-}' "$WM_FILE10" > "$WM_FILE10.tmp" && mv "$WM_FILE10.tmp" "$WM_FILE10"
+}'
 
 # stderr のみを捕捉する (run_update は subshell。`2>&1 >/dev/null` の順序が必須 —
 # 逆順だと stdout の複製先が /dev/null になり WARNING を取り逃がす)
@@ -537,7 +535,7 @@ mkdir -p "$SBX11/.rite/work-memory"
 printf '## Summary\n---\nschema_version: 1\nissue_number: 687\nsync_revision: 1\npr_number: 123\n---\nbody\n' \
   > "$SBX11/.rite/work-memory/issue-687.md"
 
-if (cd "$SBX11" && env WM_PLUGIN_ROOT="$PLUGIN_ROOT" \
+if (cd "$SBX11" && env -u RITE_STATE_ROOT WM_PLUGIN_ROOT="$PLUGIN_ROOT" \
   WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
   WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" \
   bash -c 'set -euo pipefail; source "$WM_PLUGIN_ROOT/hooks/work-memory-update.sh"; update_local_work_memory') >/dev/null 2>&1; then
@@ -696,7 +694,7 @@ BIG19=$(python3 -c "print('a'*70000)")
 printf '# 📜 rite 作業メモリ\n\n## Summary\n---\nschema_version: 1\nissue_number: %s\nsync_revision: 5\npr_number: 123\nloop_count: 4\n---\n\nbody\n' "$BIG19" \
   > "$SBX19/.rite/work-memory/issue-687.md"
 # bare 呼び出し + set -o pipefail で本番 caller (pre-compact.sh / post-tool-wm-sync.sh) と同条件にする
-err19=$( (cd "$SBX19" && env WM_PLUGIN_ROOT="$PLUGIN_ROOT" \
+err19=$( (cd "$SBX19" && env -u RITE_STATE_ROOT WM_PLUGIN_ROOT="$PLUGIN_ROOT" \
   WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
   WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" \
   bash -c 'set -euo pipefail; source "$WM_PLUGIN_ROOT/hooks/work-memory-update.sh"; update_local_work_memory') 2>&1 >/dev/null ) || true
@@ -839,7 +837,7 @@ exec "$REAL_JQ" "\$@"
 SHIM_EOF
 chmod +x "$SBX15/bin/jq"
 
-if (cd "$SBX15" && env WM_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$SBX15/bin:$PATH" \
+if (cd "$SBX15" && env -u RITE_STATE_ROOT WM_PLUGIN_ROOT="$PLUGIN_ROOT" PATH="$SBX15/bin:$PATH" \
   WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
   WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-jq-failure." WM_ISSUE_NUMBER="687" \
   bash -c 'set -euo pipefail; source "$WM_PLUGIN_ROOT/hooks/work-memory-update.sh"; update_local_work_memory' \
@@ -929,12 +927,10 @@ WM_FILE21="$SBX21/.rite/work-memory/issue-687.md"
 seed21=$(cat "$WM_FILE21" 2>/dev/null || echo "")
 # seed 前提確認: これが無いと seed 失敗時に T-17.1 が「既定値 0 のまま」を掴んで空虚に PASS する
 assert_contains "T-17.0: seed で loop_count=7 が書かれる (前提確認)" "loop_count: 7" "$seed21"
-# fixture 改竄は T-06 と同じ awk read→transform→write→mv 形式 (BSD sed -i 非互換の回避)
-US_SEP=$(printf '\037')
-awk -v us="$US_SEP" '{
-  if ($0 == "pr_number: 123") printf "pr_number: \"12%s34\"\n", us;
+awk_inplace "$WM_FILE21" '{
+  if ($0 == "pr_number: 123") printf "pr_number: \"12\03734\"\n";
   else print
-}' "$WM_FILE21" > "$WM_FILE21.tmp" && mv "$WM_FILE21.tmp" "$WM_FILE21"
+}'
 err21=$(run_update "$SBX21" \
   WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="品質チェック準備" \
   WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Post-implementation." WM_ISSUE_NUMBER="687" 2>&1 >/dev/null) || true
@@ -975,6 +971,173 @@ assert_contains "T-18.1: 制御文字混入値は null へ降格する (1234 の
 assert_contains "T-18.2: 降格が WARNING で可視化される (silent に通さない)" "non-numeric character" "$err24"
 # 降格が他 field へ波及していないことの非回帰 (NUL 単体では列はずれない)
 assert_contains "T-18.3: loop_count は非回帰 (降格が他 field へ波及しない)" "loop_count: 7" "$body24"
+
+# ─── T-24: linked worktree cwd writes only to main checkout ─────────
+# cwd 相対のままだと session worktree に複製が作られ、state root 側が stale になる。
+echo "T-24: worktree cwd からの更新は MAIN の state root にだけ着く"
+SBX19W=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX19W")
+write_config "$SBX19W"
+WT19="${SBX19W}-wt"
+if ! git -C "$SBX19W" worktree add -q -b feat/issue-687-wt19 "$WT19" >/dev/null 2>&1; then
+  echo "  ❌ T-24 setup: git worktree add failed"
+  FAIL=$((FAIL+1))
+  FAILED_NAMES+=("T-24 setup")
+else
+  cleanup_dirs+=("$WT19")
+  if run_update "$WT19" \
+    WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="quality check" \
+    WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="From-worktree." WM_ISSUE_NUMBER="687"; then
+    rc19w=0
+  else
+    rc19w=$?
+  fi
+  assert_eq "T-24.1: return 0" "0" "$rc19w"
+  assert_eq "T-24.2: MAIN に WM がある" "yes" \
+    "$([ -f "$SBX19W/.rite/work-memory/issue-687.md" ] && echo yes || echo no)"
+  assert_contains "T-24.3: MAIN 本文が worktree cwd からの本文" "From-worktree." \
+    "$(cat "$SBX19W/.rite/work-memory/issue-687.md" 2>/dev/null || echo "")"
+  assert_eq "T-24.4: worktree 側に .rite/work-memory を作らない" "no" \
+    "$([ -e "$WT19/.rite/work-memory" ] && echo yes || echo no)"
+  assert_eq "T-24.5: worktree 側に本呼び出し由来の .rite/.gitignore を作らない" "no" \
+    "$([ -e "$WT19/.rite/.gitignore" ] && echo yes || echo no)"
+  assert_eq "T-24.6: gitignore 対象は MAIN の .rite" "yes" \
+    "$([ -s "$SBX19W/.rite/.gitignore" ] && echo yes || echo no)"
+  git -C "$SBX19W" worktree remove --force "$WT19" >/dev/null 2>&1 || true
+fi
+
+# ─── T-25: worktree 先行コピーは MAIN に内容があるとき読まない ─────
+echo "T-25: MAIN に WM があるとき worktree 複製は読まない"
+SBX20W=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX20W")
+write_config "$SBX20W"
+run_update "$SBX20W" \
+  WM_SOURCE="create" WM_PHASE="pr" WM_PHASE_DETAIL="seed" \
+  WM_NEXT_ACTION="next" WM_BODY_TEXT="MAIN-SEED." WM_ISSUE_NUMBER="687" \
+  WM_PR_NUMBER="4242" >/dev/null 2>&1 || true
+WT20="${SBX20W}-wt"
+if ! git -C "$SBX20W" worktree add -q -b feat/issue-687-wt20 "$WT20" >/dev/null 2>&1; then
+  echo "  ❌ T-25 setup: git worktree add failed"
+  FAIL=$((FAIL+1))
+  FAILED_NAMES+=("T-25 setup")
+else
+  cleanup_dirs+=("$WT20")
+  mkdir -p "$WT20/.rite/work-memory"
+  printf 'WORKTREE-COPY-NOT-SOT\n' > "$WT20/.rite/work-memory/issue-687.md"
+  if run_update "$WT20" \
+    WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="quality check" \
+    WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="After-main-seed." WM_ISSUE_NUMBER="687"; then
+    rc20w=0
+  else
+    rc20w=$?
+  fi
+  body20w=$(cat "$SBX20W/.rite/work-memory/issue-687.md" 2>/dev/null || echo "")
+  copy20w=$(cat "$WT20/.rite/work-memory/issue-687.md" 2>/dev/null || echo "")
+  assert_eq "T-25.1: return 0" "0" "$rc20w"
+  assert_contains "T-25.2: MAIN を更新する" "After-main-seed." "$body20w"
+  assert_contains "T-25.3: MAIN の seed を carry-forward する (pr_number=4242)" "pr_number: 4242" "$body20w"
+  case "$body20w" in
+    *WORKTREE-COPY-NOT-SOT*) got20=yes ;;
+    *) got20=no ;;
+  esac
+  assert_eq "T-25.4: MAIN 本文に worktree 複製の文字列を入れない" "no" "$got20"
+  assert_contains "T-25.5: worktree 複製は触らない" "WORKTREE-COPY-NOT-SOT" "$copy20w"
+  git -C "$SBX20W" worktree remove --force "$WT20" >/dev/null 2>&1 || true
+fi
+
+# ─── T-26: MAIN 不在 + worktree 先行コピーは移さない ──────────────
+echo "T-26: MAIN 不在なら worktree 複製を読まず MAIN へ新規作成する"
+SBX21W=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX21W")
+write_config "$SBX21W"
+WT21="${SBX21W}-wt"
+if ! git -C "$SBX21W" worktree add -q -b feat/issue-687-wt21 "$WT21" >/dev/null 2>&1; then
+  echo "  ❌ T-26 setup: git worktree add failed"
+  FAIL=$((FAIL+1))
+  FAILED_NAMES+=("T-26 setup")
+else
+  cleanup_dirs+=("$WT21")
+  mkdir -p "$WT21/.rite/work-memory"
+  printf 'WORKTREE-ONLY-SEED\n' > "$WT21/.rite/work-memory/issue-687.md"
+  if run_update "$WT21" \
+    WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="quality check" \
+    WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Fresh-on-main." WM_ISSUE_NUMBER="687"; then
+    rc21w=0
+  else
+    rc21w=$?
+  fi
+  body21w=$(cat "$SBX21W/.rite/work-memory/issue-687.md" 2>/dev/null || echo "")
+  copy21w=$(cat "$WT21/.rite/work-memory/issue-687.md" 2>/dev/null || echo "")
+  assert_eq "T-26.1: return 0" "0" "$rc21w"
+  assert_contains "T-26.2: MAIN へ新規作成する" "Fresh-on-main." "$body21w"
+  case "$body21w" in
+    *WORKTREE-ONLY-SEED*) got21=yes ;;
+    *) got21=no ;;
+  esac
+  assert_eq "T-26.3: MAIN 本文は worktree seed を含まない" "no" "$got21"
+  assert_contains "T-26.4: worktree 複製は残る" "WORKTREE-ONLY-SEED" "$copy21w"
+  git -C "$SBX21W" worktree remove --force "$WT21" >/dev/null 2>&1 || true
+fi
+
+# ─── T-27: RITE_STATE_ROOT override は cwd より優先 ───────────────
+echo "T-27: RITE_STATE_ROOT=MAIN なら cwd が worktree でも MAIN に書く"
+SBX22W=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX22W")
+write_config "$SBX22W"
+WT22="${SBX22W}-wt"
+if ! git -C "$SBX22W" worktree add -q -b feat/issue-687-wt22 "$WT22" >/dev/null 2>&1; then
+  echo "  ❌ T-27 setup: git worktree add failed"
+  FAIL=$((FAIL+1))
+  FAILED_NAMES+=("T-27 setup")
+else
+  cleanup_dirs+=("$WT22")
+  if run_update "$WT22" \
+    RITE_STATE_ROOT="$SBX22W" \
+    WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="quality check" \
+    WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Override-root." WM_ISSUE_NUMBER="687"; then
+    rc22w=0
+  else
+    rc22w=$?
+  fi
+  assert_eq "T-27.1: return 0" "0" "$rc22w"
+  assert_contains "T-27.2: override 先 MAIN に本文がある" "Override-root." \
+    "$(cat "$SBX22W/.rite/work-memory/issue-687.md" 2>/dev/null || echo "")"
+  assert_eq "T-27.3: worktree 側に .rite/work-memory を作らない" "no" \
+    "$([ -e "$WT22/.rite/work-memory" ] && echo yes || echo no)"
+  git -C "$SBX22W" worktree remove --force "$WT22" >/dev/null 2>&1 || true
+fi
+
+# ─── T-28: resolver 失敗は return 2、cwd に書かない ───────────────
+echo "T-28: state-path-resolve.sh 非ゼロなら rc=2 で cwd に WM を作らない"
+STUB23=$(mktemp -d); cleanup_dirs+=("$STUB23")
+mkdir -p "$STUB23/hooks"
+cp -a "$PLUGIN_ROOT/hooks/." "$STUB23/hooks/"
+printf '%s\n' '#!/bin/bash' 'exit 1' > "$STUB23/hooks/state-path-resolve.sh"
+chmod +x "$STUB23/hooks/state-path-resolve.sh"
+SBX23W=$(make_sandbox --branch fix/issue-687-test); cleanup_dirs+=("$SBX23W")
+write_config "$SBX23W"
+if (cd "$SBX23W" && env -u RITE_STATE_ROOT WM_PLUGIN_ROOT="$STUB23" \
+  WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="quality check" \
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Must-not-write." WM_ISSUE_NUMBER="687" \
+  bash -c 'source "$WM_PLUGIN_ROOT/hooks/work-memory-update.sh" && update_local_work_memory') >/dev/null 2>&1; then
+  rc23w=0
+else
+  rc23w=$?
+fi
+assert_eq "T-28.1: return 2" "2" "$rc23w"
+assert_eq "T-28.2: cwd に .rite/work-memory を作らない" "no" \
+  "$([ -e "$SBX23W/.rite/work-memory" ] && echo yes || echo no)"
+
+echo "T-28b: state-path-resolve.sh 空出力でも rc=2"
+printf '%s\n' '#!/bin/bash' 'exit 0' > "$STUB23/hooks/state-path-resolve.sh"
+chmod +x "$STUB23/hooks/state-path-resolve.sh"
+if (cd "$SBX23W" && env -u RITE_STATE_ROOT WM_PLUGIN_ROOT="$STUB23" \
+  WM_SOURCE="implement" WM_PHASE="lint" WM_PHASE_DETAIL="quality check" \
+  WM_NEXT_ACTION="rite:lint" WM_BODY_TEXT="Must-not-write." WM_ISSUE_NUMBER="687" \
+  bash -c 'source "$WM_PLUGIN_ROOT/hooks/work-memory-update.sh" && update_local_work_memory') >/dev/null 2>&1; then
+  rc23b=0
+else
+  rc23b=$?
+fi
+assert_eq "T-28.3: 空出力も return 2" "2" "$rc23b"
+assert_eq "T-28.4: 空出力でも cwd に WM を作らない" "no" \
+  "$([ -e "$SBX23W/.rite/work-memory" ] && echo yes || echo no)"
 
 echo
 echo "─── work-memory-update.test.sh summary ──────────────────────────"

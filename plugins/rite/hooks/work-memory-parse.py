@@ -71,7 +71,7 @@ def parse_frontmatter(content: str) -> dict | None:
             result[key] = True
         elif value == "false":
             result[key] = False
-        elif re.match(r'^-?\d+$', value):
+        elif key != "last_commit" and re.match(r'^-?\d+$', value):
             result[key] = int(value)
         else:
             result[key] = value

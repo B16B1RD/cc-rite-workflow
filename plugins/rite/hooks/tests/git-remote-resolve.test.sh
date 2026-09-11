@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for resolve_owner_repo() in hooks/scripts/lib/git-remote.sh (#1899)
+# Tests for resolve_owner_repo() in hooks/scripts/lib/git-remote.sh
 #
 # `gh repo view` (used without --repo by issue-comment-wm-sync.sh,
 # projects-board-drift-check.sh, watchdog-status-mismatch.sh, post-compact.sh)
@@ -53,7 +53,7 @@ resolve_in() {
 #     protocol-style branch stripping `:port` instead of the host) would
 #     still produce 2 non-empty fields and slip past a structural-only check.
 declare -A urls=(
-  ["scp-like SSH Host alias (the #1899 repro case)"]="git@github.com-work:B16B1RD/cc-rite-workflow.git"
+  ["scp-like SSH Host alias (the repro case)"]="git@github.com-work:B16B1RD/cc-rite-workflow.git"
   ["scp-like SSH canonical host"]="git@github.com:B16B1RD/cc-rite-workflow.git"
   ["https with .git suffix"]="https://github.com/B16B1RD/cc-rite-workflow.git"
   ["https without .git suffix"]="https://github.com/B16B1RD/cc-rite-workflow"
@@ -62,7 +62,7 @@ declare -A urls=(
   ["https on a GitHub Enterprise host"]="https://github.mycompany.com/org/repo.git"
 )
 declare -A expected=(
-  ["scp-like SSH Host alias (the #1899 repro case)"]="B16B1RD/cc-rite-workflow"
+  ["scp-like SSH Host alias (the repro case)"]="B16B1RD/cc-rite-workflow"
   ["scp-like SSH canonical host"]="B16B1RD/cc-rite-workflow"
   ["https with .git suffix"]="B16B1RD/cc-rite-workflow"
   ["https without .git suffix"]="B16B1RD/cc-rite-workflow"

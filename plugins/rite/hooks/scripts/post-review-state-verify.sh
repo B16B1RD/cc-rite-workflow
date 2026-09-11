@@ -27,9 +27,8 @@
 #   --original-branch <name>           Review 開始時の current branch 名 (required)
 #   --original-stash-count <N>         Review 開始時の `git stash list` 行数 (optional)
 #   --original-branch-list-hash <hash> Review 開始時の `git branch --list | sort | md5sum` (optional)
-#   --original-worktree-hash <hash>    Review 開始時の `lib/git-status-filtered.sh | md5sum` (optional).
-#                                      #1944 で raw `git status --porcelain` から sandbox ghost-mount
-#                                      フィルタ経由に変更 — snapshot 側もこのコマンドで計算すること)
+#   --original-worktree-hash <hash>    Review 開始時の `lib/git-status-filtered.sh --tracked-only | md5sum` (optional).
+#                                      snapshot 側も同じオプションで計算すること。
 #   --auto-recover                     drift 検出時に automatic recovery を行う (default: true)
 #
 # State vector axes (drift 検出の優先順): branch → stash → branch_list → worktree。
@@ -136,25 +135,11 @@ if [ -n "$_hash_cmd" ]; then
 else
   current_branch_list_hash=""
 fi
-# Worktree axis: `git status --porcelain` hash captures working-tree
-# + index drift (modified / staged / untracked) that the branch / stash /
-# branch_list axes cannot see — e.g. a reviewer editing a source file in place via
-# Edit/Write and hand-restoring it, or leaving a `.bak` untracked. Advisory only.
-# Routed through git-status-filtered.sh rather than raw `git status --porcelain`:
-# the snapshot side (pr-review SKILL.md ステップ 4.0.A) and this verify side can run in
-# different sandbox contexts, and a bwrap sandbox overlays ghost-mount `??` entries
-# (#1936) that vary by context — comparing raw porcelain hashes false-positives on
-# those ghost entries alone. The filter drops them on both sides so the hash reflects
-# only real working-tree changes.
-# Unlike raw `git status --porcelain`, the filter depends on `mktemp` (sandbox TMPDIR
-# restrictions can make this fail even though plain `git status` would succeed), so its
-# exit code is checked explicitly. The filter's own output is captured first (not piped
-# directly into the hash command) so the check does not depend on `pipefail` — this
-# mirrors the capture-first pattern used on the snapshot side (pr-review SKILL.md
-# ステップ 4.0.A), which cannot rely on pipefail because each Bash tool invocation starts
-# a fresh shell with pipefail off and no state carried over from prior blocks.
+# Snapshot and verification both hash tracked status only. Untracked paths can
+# vary across sandbox contexts; the helper reports them separately as WARNINGs.
+# Capture before hashing so helper failures cannot become a clean-tree hash.
 if [ -n "$_hash_cmd" ]; then
-  _wth_raw=$(bash "$SCRIPT_DIR/lib/git-status-filtered.sh")
+  _wth_raw=$(bash "$SCRIPT_DIR/lib/git-status-filtered.sh" --tracked-only)
   if [ $? -ne 0 ]; then
     echo "WARNING: git-status-filtered.sh failed — worktree drift axis skipped for this check" >&2
     current_worktree_hash=""

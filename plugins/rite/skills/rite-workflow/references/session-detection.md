@@ -59,7 +59,7 @@ Display when ALL of the following conditions are met:
 ```
 前回の作業状態が検出されました
 
-Issue: #288 - checkpoint.json を廃止し Issue 作業メモリに統合
+Issue: - checkpoint.json を廃止し Issue 作業メモリに統合
 ブランチ: refactor/issue-288-checkpoint-removal
 コマンド: /rite:open
 フェーズ: implement

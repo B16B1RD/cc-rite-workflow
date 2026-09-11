@@ -505,7 +505,7 @@ assert_deny_gitdir "LF-terminated link target resolved & blocked" "$out"
 # readlink appends a newline that a "strip one trailing LF" step happens to undo. macOS
 # readlink appends nothing, so the same step eats a GENUINE trailing LF and the deref lands on
 # a nonexistent path → allow. That divergence reached CI as a macOS-only failure of this very
-# TC while Linux stayed green, i.e. exactly the platform-gap shape #2014 exists to close.
+# TC while Linux stayed green, i.e. exactly the platform-gap shape exists to close.
 # Shim readlink to the macOS-observed behaviour (no trailing delimiter) so the blocking gate
 # sees it too. perl reads the link raw and prints it without a delimiter; `$(…)` cannot be used
 # inside the shim because it would strip the very byte under test.

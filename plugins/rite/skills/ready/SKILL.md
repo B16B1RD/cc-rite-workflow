@@ -10,6 +10,8 @@ argument-hint: "[pr_number]"
 
 # /rite:ready
 
+> 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
+
 > **質問規律**: すべての質問・強制続行判断は [question_resolution](../rite-workflow/references/coding-principles.md#question_resolution-resolve-recommended-reversible-decisions-autonomously) に従う。Ready 化は外部公開状態を変えるため、standalone 確認は維持する。
 
 ## Contract
@@ -67,7 +69,7 @@ If determined to be within the end-to-end flow, extract the Issue number from th
 issue_number=$(git branch --show-current | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
 ```
 
-**Local work memory (SoT)**: Read `.rite/work-memory/issue-{issue_number}.md` with the Read tool. If absent, Read `.rite-work-memory/issue-{issue_number}.md`.
+**Local work memory (SoT)**: `{state_root}` は `hooks/state-path-resolve.sh`。Read `{state_root}/.rite/work-memory/issue-{issue_number}.md` with the Read tool. If absent, Read `{state_root}/.rite-work-memory/issue-{issue_number}.md`. Do not Read a cwd-relative copy under a session worktree.
 
 **Fallback (local file missing/corrupt)**:
 
@@ -502,7 +504,7 @@ Determine the caller from the conversation context:
 
 | Condition | Result | Action |
 |------|---------|---------------------|
-| Called via Skill tool from an orchestrator (caller-name agnostic) | Within end-to-end flow | **Skip completion report** — return control to caller (orchestrator handles the report) |
+| Called via native Skill or equivalent body execution from an orchestrator (caller-name agnostic) | Within end-to-end flow | **Skip completion report** — return control to caller (orchestrator handles the report) |
 | `/rite:ready` executed standalone | Standalone complete | Output Phase 5.1.2 format |
 
 > **Note**: 標準経路は user 直接 invoke。表の e2e 行は caller-name agnostic な return-to-caller 契約。
@@ -511,8 +513,8 @@ Determine the caller from the conversation context:
 
 Check the conversation history and determine "within end-to-end flow" if any of the following apply:
 
-1. `rite:ready` was invoked via the Skill tool (not as a standalone user command)
-2. A caller orchestrator の Skill invocation marker が会話履歴に存在
+1. `rite:ready` was invoked via native Skill or equivalent body execution by a caller (not as a standalone user command)
+2. A caller orchestrator の native Skill invocation marker または本文実行の caller/callee 記録が会話履歴に存在
 
 ### 5.1 Output the Completion Report
 

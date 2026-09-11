@@ -530,7 +530,7 @@ if [ -f "$manifest_path" ]; then
           elif _m_bd_err=$(LC_ALL=C git branch -D -- "$_m_val" 2>&1); then
             manifest_reaped=$((manifest_reaped + 1))
           else
-            # #1670: cleanup.md records a deferred SESSION-worktree branch here while
+            #: cleanup.md records a deferred SESSION-worktree branch here while
             # it is still checked out in its (not-yet-reaped) worktree. At this point
             # (Step 4.5 < Step 5) `git branch -D` legitimately fails with "used by
             # worktree" / "checked out" — Step 5 reaps that worktree and recovers the
@@ -627,7 +627,7 @@ if [ -f "$manifest_path" ]; then
       # All entries reaped/dropped → remove the now-empty manifest. The unlink
       # can fail like Step 5's consumption arm (EACCES/EROFS on the .rite/
       # parent — sandbox masks have blocked repo writes before),
-      # and with the #1966 bypass keyed on lingering entries a silent failure
+      # and with the bypass keyed on lingering entries a silent failure
       # here is no longer inert — surface it (WARNING only, no errors++: the
       # entries were all processed, next run's verify-drop self-heals).
       elif ! rm -f "$manifest_path" 2>/dev/null; then
@@ -789,7 +789,7 @@ fi
 #      とは交差しない)
 #   2. claim liveness (S3) が live でない (issue-claim.sh check が stale、または
 #      claim 不在 free のとき mtime > 24h の age guard を再利用)。例外 (Issue
-#      #1966): checkout 中 branch が reap manifest に記録済み (= cleanup.md が
+#): checkout 中 branch が reap manifest に記録済み (= cleanup.md が
 #      PR merged を確認して記録した deferred worktree) なら age guard をバイパス
 #      して即 reap する — ハーネスの .claude/.cc-writes churn が root mtime を
 #      セッション毎に更新するため、age guard 単独では永久リークする
@@ -808,7 +808,7 @@ fi
 # だった。回収は `git branch -d` (safe — 未マージは拒否 → クラッシュセッションの作業を保全, AC-4)
 # を第一手とし、`-d` が squash-merge 残渣で拒否しても **reap manifest に記録された** ブランチ
 # (cleanup.md が PR merged を確認して記録) のみ `git branch -D` で強制削除する。manifest 未記録の
-# 未マージブランチは保持する。これにより #1524 の「branch は保全」方針は「**merge 確認済み**
+# 未マージブランチは保持する。これにより の「branch は保全」方針は「**merge 確認済み**
 # ブランチのみ回収・未マージ作業は破壊しない」へと精緻化される。
 # -----------------------------------------------------------------------
 session_wt_base=""
@@ -933,7 +933,7 @@ _rite_epoch_of_ts() {
 #   0 = protect: within TTL: OR updated_at missing/malformed (AC-4 fail-safe,
 #       silent) OR this host's `date` cannot parse a well-formed timestamp
 #       (4.5 fail-safe, WARNING emitted once per run — TTL enforcement
-#       degrades to the pre-#1923 always-protect behavior on that host)
+# degrades to the pre- always-protect behavior on that host)
 #   1 = TTL exceeded -> not protected by this signal (still subject to the
 #       other liveness signal / Gates 1-3)
 # AC-6: the boundary (age == TTL exactly) counts as "within" -> protect.
@@ -1099,8 +1099,8 @@ if [ -d "$session_wt_root" ]; then
 
     # Gate (worktree liveness + claim-join): never reap a worktree that a
     # session may still resume into — either a session records it as its active
-    # `worktree` (#1524), OR the issue's claim holder is still active=true even
-    # though its claim heartbeat aged past the 2h staleness window (#1552: an
+    # `worktree`, OR the issue's claim holder is still active=true even
+    # though its claim heartbeat aged past the 2h staleness window (an
     # active-but-idle session whose `stale` claim Gate 2 would otherwise reap).
     # Evaluated before Gate 3/Gate 2, like Gate 0, so a clean+stale+aged worktree
     # still owned by an active session is preserved. Enumeration/parse failure of
@@ -1119,7 +1119,7 @@ if [ -d "$session_wt_root" ]; then
 
     # Gate (OS-level live cwd): never reap a worktree that ANY live
     # process is standing in (cwd at or under it). This is the flow-state-
-    # independent backstop for #1524's recurrence: the cross-session liveness
+    # independent backstop for 's recurrence: the cross-session liveness
     # guard above only protects worktrees a session records as its `active`
     # `worktree`, so it misses the dangling cases where the owning session's
     # harness cwd is still in the tree but its flow-state has drifted (active=false,
@@ -1128,7 +1128,7 @@ if [ -d "$session_wt_root" ]; then
     # `Path does not exist`. Delegated to worktree-live-cwd.sh (SoT, shared with
     # cleanup.md Step 4-W). rc 0 = live cwd present → skip; rc 2 = undeterminable
     # (no /proc & no lsof, e.g. older macOS) → fall through to the existing
-    # claim/dirty gates (no behavior change vs pre-#1544). `|| _cwd_rc=$?` keeps a
+    # claim/dirty gates (no behavior change vs pre-). `|| _cwd_rc=$?` keeps a
     # non-zero rc from aborting the loop under `set -e`. Evaluated before Gate 3/2,
     # like the other liveness guards, so a clean+stale worktree someone stands in
     # is still preserved.
@@ -1142,25 +1142,56 @@ if [ -d "$session_wt_root" ]; then
     # Corpse detection: a sandbox-masked `git worktree remove
     # --force` half-destroys the admin dir — HEAD alone unlinked, commondir /
     # gitdir / index left behind — after which every `git -C <wt>` operation
-    # fails ("not a git repository"). Gate 3's conservative skip would protect
-    # such a tree forever (its dirty state is structurally undeterminable), and
-    # manual `git worktree remove --force` is rejected by validation, so
-    # without this branch no recovery path exists. Corpse = admin HEAD missing
-    # AND git does not recognize the tree — both required, so a mere
-    # permission-broken tree (HEAD present, status rc != 0) stays on the
-    # conservative-skip path (AC-5). The admin dir is resolved from the
-    # worktree's own `.git` file (`gitdir: <path>` line): suffixed admin ids
-    # from basename collisions still resolve, unlike a basename guess.
+    # fails ("not a git repository"), or the worktree `.git` gitfile is gone /
+    # not a gitfile so `git worktree remove --force` fails with
+    # "is not a .git file" while `git worktree list` still shows
+    # 0000000 (detached HEAD). Gate 3's conservative skip would protect
+    # such a tree forever, and manual remove is rejected, so without this
+    # branch no recovery path exists.
+    # Corpse =
+    #   (admin HEAD missing AND git does not recognize the tree)
+    #   OR (worktree `.git` is missing or a regular file that does not start
+    #       with `gitdir: `).
+    # `.git` が directory のエントリは gitfile 無効にしない（通常 checkout や
+    # git init 済み tree を rm -rf しない）。HEAD 残存 + status rc≠0 は
+    # gitfile が有効なら従来どおり conservative skip（AC-5）。
+    # Admin dir は gitfile の `gitdir:` を優先し、解けないときは common dir の
+    # `worktrees/*/gitdir` が当該 working tree の `.git` を指すエントリから解決する。
     _corpse=0
+    _git_dot="$wt_path/.git"
+    _gitfile_invalid=0
+    if [ ! -e "$_git_dot" ]; then
+      _gitfile_invalid=1
+    elif [ -f "$_git_dot" ]; then
+      _gf_head=$(head -1 "$_git_dot" 2>/dev/null) || _gf_head=""
+      case "$_gf_head" in
+        gitdir:*) ;;
+        *) _gitfile_invalid=1 ;;
+      esac
+    fi
     _admin_dir=$(sed -n 's/^gitdir: //p' "$wt_path/.git" 2>/dev/null | head -1) || _admin_dir=""
-    if [ -n "$_admin_dir" ] && [ -d "$_admin_dir" ] && [ ! -f "$_admin_dir/HEAD" ] \
+    if [ -z "$_admin_dir" ] || [ ! -d "$_admin_dir" ]; then
+      _common=$(git rev-parse --git-common-dir 2>/dev/null) || _common=""
+      if [ -n "$_common" ] && [ -d "$_common/worktrees" ]; then
+        for _wd in "$_common/worktrees"/*; do
+          [ -f "$_wd/gitdir" ] || continue
+          _gd=$(head -1 "$_wd/gitdir" 2>/dev/null) || _gd=""
+          case "$_gd" in
+            "$wt_path/.git"|"$wt_path/.git/") _admin_dir="$_wd"; break ;;
+          esac
+        done
+      fi
+    fi
+    if [ "$_gitfile_invalid" -eq 1 ]; then
+      _corpse=1
+    elif [ -n "$_admin_dir" ] && [ -d "$_admin_dir" ] && [ ! -f "$_admin_dir/HEAD" ] \
        && ! git -C "$wt_path" rev-parse --git-dir >/dev/null 2>&1; then
       _corpse=1
     fi
 
     # Gate 3: dirty worktree is NEVER auto-reaped. Use the same filtered status
     # boundary as cleanup Step 4-W so sandbox ghost mounts and ignored ambient
-    # session files cannot make the producer and consumer disagree (#2048).
+    # session files cannot make the producer and consumer disagree.
     # An indeterminate status
     # (rc != 0) is treated conservatively as "do not reap" to avoid data loss.
     # A corpse bypasses this gate (D-01): "indeterminable =
@@ -1190,7 +1221,7 @@ if [ -d "$session_wt_root" ]; then
       other|own)
         # A live session holds the claim — leave the worktree intact. A corpse
         # behind a live claim is still an anomaly the user should see (Issue
-        # #1957 MUST: no silent skip); the skip itself is the correct protection.
+        # MUST: no silent skip); the skip itself is the correct protection.
         # The claim-join liveness guard misses this shape when the claim has no
         # worktree recorded yet (open claims first, records the path later).
         if [ "$_corpse" -eq 1 ]; then
@@ -1291,7 +1322,7 @@ if [ -d "$session_wt_root" ]; then
     fi
 
     # Capture the checked-out branch BEFORE removal (the worktree is gone after) so
-    # the post-reap branch recovery (#1670) can target it. Detached HEAD yields
+    # the post-reap branch recovery can target it. Detached HEAD yields
     # "HEAD" → no branch to recover. (A corpse yields "" — git cannot read its
     # HEAD — so branch recovery is structurally skipped for corpses.)
     _reaped_branch=$(git -C "$wt_path" rev-parse --abbrev-ref HEAD 2>/dev/null) || _reaped_branch=""
@@ -1320,7 +1351,7 @@ if [ -d "$session_wt_root" ]; then
       _rite_null_worktree_refs "$wt_path" "$_wt_canon"
 
       # Manifest entry consumption (symmetric with the branch
-      # consumption below — #1966): a lingering `session_worktree\t<path>`
+      # consumption below): a lingering `session_worktree\t<path>`
       # entry is not inert — the corpse age-guard bypass above is keyed on it,
       # so a DIFFERENT worktree later created at this same path (e.g. the
       # issue reopened) would inherit the bypass and skip the 24h protection
@@ -1349,7 +1380,7 @@ if [ -d "$session_wt_root" ]; then
         fi
       fi
 
-      # Branch recovery (#1670): the worktree is gone, so its branch is no longer
+      # Branch recovery: the worktree is gone, so its branch is no longer
       # checked out and can be deleted. SAFE-delete first — `git branch -d` refuses
       # an unmerged branch, preserving a crashed session's in-progress work (AC-4).
       # If `-d` refuses BUT the branch is in the reap manifest, cleanup.md confirmed
@@ -1434,7 +1465,26 @@ if [ -d "$session_wt_root" ]; then
       fi
       errors=$((errors + 1))
     fi
-  done < <(git worktree list --porcelain 2>/dev/null)
+  done < <(
+    git worktree list --porcelain 2>/dev/null || true
+    # gitfile が欠けると list から落ちる。session worktree ディレクトリは残るので
+    # ディスク上の issue-* を union する（list に既にあるパスは二重処理しない）。
+    if [ -d "$session_wt_root" ]; then
+      _listed=$(git worktree list --porcelain 2>/dev/null || true)
+      for _disk_wt in "$session_wt_root"/issue-*; do
+        [ -d "$_disk_wt" ] || continue
+        _disk_base=$(basename "$_disk_wt")
+        [[ "$_disk_base" =~ ^issue-[0-9]+$ ]] || continue
+        # grep -q パイプは pipefail 下で SIGPIPE になる。行単位の完全一致で membership を見る。
+        _already_listed=0
+        while IFS= read -r _listed_line || [ -n "$_listed_line" ]; do
+          [ "$_listed_line" = "worktree $_disk_wt" ] && { _already_listed=1; break; }
+        done <<< "$_listed"
+        [ "$_already_listed" -eq 1 ] && continue
+        printf 'worktree %s\n' "$_disk_wt"
+      done
+    fi
+  )
 
   if [ "$DRY_RUN" = "0" ] && [ "$session_worktrees_reaped" -gt 0 ]; then
     git worktree prune 2>/dev/null || true

@@ -25,6 +25,11 @@
 #      and pins the verified head with --match-head-commit. Fail-closed on PR-number
 #      unresolvable / missing / malformed / floor-under JSON. Purpose: block
 #      procedure-omission bypass of /rite:pr-review, not adversarial forgery.
+#   6. Direct `gh issue create` — denied unless Issue creation is delegated to
+#      create-issue-with-projects.sh or decompose-issues.sh.
+#   7. `git commit --allow-empty` — denied. `--allow-empty-message` and ordinary
+#      commits are not this pattern. Alternative: leave file changes, or revisit
+#      the Issue. Do not create an empty commit.
 #
 # Reviewer working-tree mutations (git checkout / reset / commit / branch / ...)
 # are deliberately NOT machine-gated here. They are visible and
@@ -40,9 +45,9 @@
 # permissionDecision: "deny" — block.
 #
 # Fail direction is pattern-specific: Patterns 1-3 (convenience) fail OPEN so an
-# edge-case parse crash never false-blocks a legitimate command; Pattern 4 (the
-# reviewer .git-write security boundary) fails CLOSED so a parse crash never
-# silently bypasses the guard. See the two ERR traps below.
+# edge-case parse crash never false-blocks a legitimate command; Patterns 4 and
+# 6 enforce workflow boundaries and fail CLOSED so a parse crash never silently
+# bypasses the guard. See the ERR traps below.
 #
 # hooks.json timeout: 10s — a generous ceiling for a bash-builtins gate, aligned
 # with the other lightweight synchronous gates (Stop=10s, bang-backtick hook=10s).
@@ -183,6 +188,103 @@ _rite_btg_pattern4_fail_closed() {
     printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$_escaped"
   fi
   exit 2
+}
+
+# Fail-closed ERR trap for Pattern 6. A malformed evaluation must not silently
+# permit a direct Issue creation, because the runtime guard is the enforcement
+# layer for commands that are assembled after static skill lint has run.
+_rite_btg_pattern6_fail_closed() {
+  local _rc=$?
+  trap - ERR
+  echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] pre-tool-bash-guard: WARNING Pattern 6 (direct gh issue create guard) crashed (rc=$_rc) — command DENIED via fail-closed" >&2
+  local _reason="BLOCKED (direct-gh-issue-create): Pattern 6 evaluation crashed; denying fail-closed to prevent a direct Issue creation. Use create-issue-with-projects.sh or /rite:issue-create. See the bash-guard stderr WARNING for the crash context."
+  if ! jq -n --arg reason "$_reason" '{
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: $reason
+      }
+    }' 2>/dev/null; then
+    local _escaped
+    _escaped=$(_bash_guard_escape_deny_reason "$_reason" 2>/dev/null) \
+      || _escaped="BLOCKED: direct Issue creation denied (Pattern 6 crash, fail-closed)."
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$_escaped"
+  fi
+  exit 2
+}
+
+# Return the executable command surface for Pattern 6. Unlike CMD_CHECK, this
+# preserves pipeline stages after a heredoc declaration while omitting heredoc
+# bodies, so `cat <<EOF | gh issue create` cannot hide a direct invocation.
+# Backslash-newline continuations are removed first, as Bash does before it
+# splits the command into words. This small parser intentionally supports the
+# conventional unquoted, single-quoted, and double-quoted identifier delimiters
+# used by the repository's Bash commands. The declaration scanner ignores `<<`
+# inside shell quotes so a literal string cannot suppress later command lines.
+_rite_btg_pattern6_command_surface() {
+  local _source="$1" _line _delimiter="" _strip_tabs=0 _candidate _decl
+  local _surface="" _i _len _ch _next _state _quoted _start
+  _source="${_source//$'\r'/}"
+  _source="${_source//$'\\\n'/}"
+  while IFS= read -r _line || [ -n "$_line" ]; do
+    if [ -n "$_delimiter" ]; then
+      _candidate="$_line"
+      if [ "$_strip_tabs" = "1" ]; then
+        _candidate="${_candidate//$'\t'/}"
+      fi
+      if [ "$_candidate" = "$_delimiter" ]; then
+        _delimiter=""
+        _strip_tabs=0
+      fi
+      continue
+    fi
+
+    _surface+="$_line"$'\n'
+    _decl=""
+    _state=plain
+    _len=${#_line}
+    _i=0
+    while [ "$_i" -lt "$_len" ]; do
+      _ch="${_line:$_i:1}"
+      case "$_state" in
+        single) [ "$_ch" = "'" ] && _state=plain ;;
+        double)
+          if [ "$_ch" = "\\" ]; then _i=$((_i + 1))
+          elif [ "$_ch" = '"' ]; then _state=plain; fi
+          ;;
+        plain)
+          case "$_ch" in
+            "'") _state=single ;;
+            '"') _state=double ;;
+            '\\') _i=$((_i + 1)) ;;
+            '#') break ;;
+            '<')
+              _next="${_line:$((_i + 1)):1}"
+              if [ "$_next" = '<' ]; then
+                _i=$((_i + 2)); _strip_tabs=0
+                [ "${_line:$_i:1}" = '-' ] && { _strip_tabs=1; _i=$((_i + 1)); }
+                while [[ "${_line:$_i:1}" =~ [[:space:]] ]]; do _i=$((_i + 1)); done
+                _quoted="${_line:$_i:1}"; _start=$_i
+                if [ "$_quoted" = "'" ] || [ "$_quoted" = '"' ]; then
+                  _i=$((_i + 1)); _start=$_i
+                  while [ "$_i" -lt "$_len" ] && [ "${_line:$_i:1}" != "$_quoted" ]; do _i=$((_i + 1)); done
+                else
+                  while [[ -n "${_line:$_i:1}" && ! "${_line:$_i:1}" =~ [[:space:]\|\&\;\(\)\<\>] ]]; do _i=$((_i + 1)); done
+                fi
+                _decl="${_line:$_start:$((_i - _start))}"
+                _decl="${_decl//[\"\']/}"
+                _decl="${_decl//\\/}"
+                break
+              fi
+              ;;
+          esac
+          ;;
+      esac
+      _i=$((_i + 1))
+    done
+    [ -n "$_decl" ] && _delimiter="$_decl"
+  done <<< "$_source"
+  printf '%s' "$_surface"
 }
 trap '_rite_btg_pattern13_fail_open' ERR
 
@@ -398,7 +500,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
       # search over git's own source (`grep -rn 'git config' plugins/`) tokenizes
       # to a bare ` git config `, so it over-DENYs (fail-closed, rare, recoverable
       # — break the adjacency: `grep -rn git plugins/ | grep config`). Precise
-      # narrowing would need the separator tracking #1879 deliberately removed.
+      # narrowing would need the separator tracking deliberately removed.
       _gn_t="${_gn_tok//[\"\']/}"; _gn_t="${_gn_t//\\/}"
       if [ "$_gn_skip_arg" = "1" ]; then _gn_skip_arg=0; continue; fi
       case "$_gn_state" in
@@ -555,7 +657,7 @@ if [ -z "$BLOCKED_PATTERN" ] && [ "$IS_SUBAGENT" = "1" ]; then
       # Resolve the verb to its bare form the SAME way the shell does: strip
       # quotes/backslashes, then basename — otherwise an obfuscated verb
       # (`'tee'`, `t\ee`) evades the latch while the shell still runs it (Issue
-      # #1864 cycle-5 fix). The basename catches `/usr/bin/tee`; `command cp` /
+      # cycle-5 fix). The basename catches `/usr/bin/tee`; `command cp` /
       # `exec cp` already reach here as a bare `cp` token.
       _gd_verb="${_gd_tok//[\"\']/}"; _gd_verb="${_gd_verb//\\/}"; _gd_verb="${_gd_verb##*/}"
       case "$_gd_verb" in
@@ -658,7 +760,7 @@ if [ -z "$BLOCKED_PATTERN" ]; then
     fi
     # 3) flow-state pr_number — only when the merge argv has no unresolved
     # non-flag token. Number-less `gh pr merge --squash` (merge skill on the PR
-    # branch) still falls back; `"$PR"` / `$PR` must deny fail-loud (#2173).
+    # branch) still falls back; `"$PR"` / `$PR` must deny fail-loud.
     if [ -z "$_mrg_pr" ] && [ "$_mrg_nonflag_unresolved" != "1" ]; then
       _mrg_pr=$(bash "$SCRIPT_DIR/flow-state.sh" get --field pr_number --default "" 2>/dev/null) || _mrg_pr=""
       # treat unset / 0 / non-numeric as unresolved
@@ -794,6 +896,44 @@ if [ -z "$BLOCKED_PATTERN" ]; then
       fi
       # success: leave BLOCKED_PATTERN empty — no extra output (AC-1)
     fi
+  fi
+fi
+
+# Pattern 6: Require the approved helper for Issue creation.
+# The hook receives the outer Bash command, so approved helper invocations do
+# not themselves contain `gh issue create`; only a direct command is matched.
+if [ -z "$BLOCKED_PATTERN" ]; then
+  trap '_rite_btg_pattern6_fail_closed' ERR
+  if [ "${RITE_BTG_TEST_CRASH:-}" = "pattern6" ]; then
+    false
+  fi
+  # The common no-heredoc path needs no line parser. Keeping it on built-in
+  # substitutions preserves the existing large-command timeout invariant.
+  if [[ "$COMMAND" == *"<<"* ]]; then
+    P6_CHECK=$(_rite_btg_pattern6_command_surface "$COMMAND")
+  else
+    P6_CHECK="$COMMAND"
+  fi
+  P6_CHECK="${P6_CHECK//$'\t'/ }"
+  P6_CHECK="${P6_CHECK//$'\n'/ }"
+  P6_CHECK="${P6_CHECK//[\"\']/}"
+  P6_CHECK="${P6_CHECK//\\/}"
+  if [[ "$P6_CHECK" =~ (^|[^[:alnum:]_])gh[[:space:]]+issue[[:space:]]+create([[:space:]]|$) ]]; then
+    BLOCKED_PATTERN="direct-gh-issue-create"
+    BLOCKED_REASON="Direct gh issue create bypasses the required Issue format and Projects registration."
+    BLOCKED_ALTERNATIVE="Use create-issue-with-projects.sh or /rite:issue-create so the Issue is created through the approved helper."
+  fi
+  trap '_rite_btg_pattern13_fail_open' ERR
+fi
+
+# Pattern 7: git commit --allow-empty. Token match so --allow-empty-message
+# is not denied. Detection is CMD_CHECK (heredoc-stripped).
+if [ -z "$BLOCKED_PATTERN" ]; then
+  if [[ "$CMD_CHECK" =~ (^|[^[:alnum:]_])git[[:space:]]+commit([^[:alnum:]_-]|$) ]] \
+     && [[ "$CMD_CHECK" =~ (^|[[:space:]])--allow-empty([^[:alnum:]_-]|$) ]]; then
+    BLOCKED_PATTERN="git-commit-allow-empty"
+    BLOCKED_REASON="git commit --allow-empty creates a commit with no file changes."
+    BLOCKED_ALTERNATIVE="Leave the changes as files, or revisit the Issue. Do not create an empty commit."
   fi
 fi
 

@@ -118,7 +118,13 @@ esac
 # Verify the underlying check script is present. Marketplace installs may
 # strip hooks/scripts/; in that case we silently skip rather than emit a
 # noisy WARNING for every edit.
-[ -f "$CHECK_SCRIPT" ] || exit 0
+if [ ! -f "$CHECK_SCRIPT" ]; then
+  if [ "${RITE_RUNTIME_EXPLICIT:-0}" = "1" ]; then
+    echo "ERROR: bang-backtick check helper is missing" >&2
+    exit 2
+  fi
+  exit 0
+fi
 
 # Verify the target file still exists (could have been deleted via Edit
 # `new_string=""` followed by another tool) — bang-backtick-check.sh
@@ -162,4 +168,7 @@ case "$hook_rc" in
     ;;
 esac
 
+if [ "${RITE_RUNTIME_EXPLICIT:-0}" = "1" ] && [ "$hook_rc" -gt 1 ]; then
+  exit "$hook_rc"
+fi
 exit 0

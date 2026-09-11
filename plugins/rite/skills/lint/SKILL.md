@@ -352,20 +352,22 @@ Phase 4 用: `test_status`（`success` / `error` / `skipped`）、`test_error_co
 
 ### 3.5 Plugin-specific Checks (Generic Loop)
 
-情報系チェックの前に descriptive-number diff gate を実行する。finding または読めない diff は blocking: `lint_output` に記録し `error_count` を増やし Phase 4.2（`[lint:error]`）。`branch.base` は Phase 2.2 と同じ origin-first。走査は `plugins/rite/` の追加行のみ。`tests/` は除外。
+情報系チェックの前に `number-reference-check.sh --diff <base>` を実行する。finding または読めない diff は blocking: `lint_output` に記録し `error_count` を増やし Phase 4.2（`[lint:error]`）。`<base>` は Phase 2.2 と同じ origin-first。`--quiet`。`--target` も `A...HEAD` も渡さない。helper が `git diff <base>` する。
 rationale: references/rationale.md#descriptive-number-blocking
 
 ```bash
-descriptive_number_diff_output=$(bash {plugin_root}/hooks/scripts/descriptive-number-diff-gate.sh 2>&1)
-descriptive_number_diff_rc=$?
-case "$descriptive_number_diff_rc" in
+number_ref_diff_base="origin/{base_branch}"
+git rev-parse --verify "${number_ref_diff_base}^{commit}" >/dev/null 2>&1 || number_ref_diff_base="{base_branch}"
+number_ref_diff_output=$(bash {plugin_root}/hooks/scripts/number-reference-check.sh --diff "$number_ref_diff_base" --quiet 2>&1)
+number_ref_diff_rc=$?
+case "$number_ref_diff_rc" in
   0) ;;
   1|2)
-    lint_output="${lint_output}${lint_output:+\n}${descriptive_number_diff_output}"
+    lint_output="${lint_output}${lint_output:+\n}${number_ref_diff_output}"
     error_count=$((error_count + 1))
     ;;
   *)
-    lint_output="${lint_output}${lint_output:+\n}ERROR: descriptive-number diff gate returned unexpected rc=$descriptive_number_diff_rc"
+    lint_output="${lint_output}${lint_output:+\n}ERROR: number-reference --diff returned unexpected rc=$number_ref_diff_rc"
     error_count=$((error_count + 1))
     ;;
 esac
@@ -396,6 +398,7 @@ esac
 | 17 | Dollar-zero check | `hooks/scripts/dollar-zero-check.sh --all --skip-if-no-target` | `dollar_zero` | `Total dollar-zero findings: (\d+)` |
 | 18 | Tempfile lifecycle check | `hooks/scripts/tempfile-lifecycle-check.sh --all --skip-if-no-target` | `tempfile_lifecycle` | `Total tempfile-lifecycle findings: (\d+)` |
 | 19 | Pipefail grep-q check | `hooks/scripts/pipefail-grep-q-check.sh --all --skip-if-no-target` | `pipefail_grep_q` | `Total pipefail-grep-q findings: (\d+)` |
+| 20 | Distribution docs-link check | `hooks/scripts/distribution-docs-link-check.sh --all --skip-if-no-target` | `distribution_docs_link` | `Total distribution-docs-link findings: (\d+)` |
 
 **Execution loop** — for each table row, run (`{script}` = Invocation column path, `{args}` = Invocation column args, `{prefix}` = Vars prefix column):
 
@@ -422,7 +425,7 @@ fi
 - **Out-of-contract exit codes**（0/1/2/-1 以外）: `error` として warning 記録し続行。
 rationale: references/rationale.md#findings-are-warnings
 
-**Per-check notes**: Number reference — 走査面（本ファイル）へ Issue/PR 番号参照を戻さない。面を広げるなら script の `DEFAULT_TARGETS` へ追加。
+**Per-check notes**: Number reference `--all` は git-tracked 全件 − helper の path 除外（wiki raw、script fixtures、検出器テスト 3 本）。CHANGELOG は対象。`/rite:lint` では warning。CI の `shellcheck` job は同じ `--all` を blocking にする。
 
 **Adding a new check**: 表に 1 行（path / label / prefix / count regex）、exit 契約（0/1/2）と count line、根拠を [plugin-checks-rationale.md](references/plugin-checks-rationale.md) へ。新 Phase / appendix / summary 行は不要。
 
@@ -442,7 +445,7 @@ orphan は inbound（`plugins/rite/` / `docs/` / `.github/`、自己参照除く
 
 ### 3.18 Projects Board Drift Check supplement (detect-and-enumerate only)
 
-lint は auto-reconcile しない。`Done` 遷移は `/rite:cleanup` / `/rite:issue-close`。on-demand は `--reconcile`。no-op（projects 無効 / config 不在 → exit 0）は 3.8 / 3.9 と同じ。
+lint は auto-reconcile しない。`Done` 遷移は `/rite:cleanup` / `/rite:issue-close`、`Cancelled` 遷移は `/rite:issue-cancel`。on-demand は `--reconcile`。no-op（projects 無効 / config 不在 → exit 0）は 3.8 / 3.9 と同じ。
 
 ---
 
@@ -456,7 +459,7 @@ rationale: references/rationale.md#defense-in-depth-state
 | Result | Phase | Phase Detail | Next Action |
 |--------|-------|-------------|-------------|
 | `[lint:success]` / `[lint:skipped]` | `lint` | `品質チェック完了` | `rite:lint completed successfully. Proceed to /rite:open ステップ 6 (PR 作成). Do NOT stop.` |
-| `[lint:error]` | `lint` | `lint エラー検出` | `rite:lint found errors. Fix the errors and re-invoke rite:lint, or AskUserQuestion で 修正再実行 / 強制続行 / 中止 を選択. Do NOT stop.` |
+| `[lint:error]` | `lint` | `lint エラー検出` | `rite:lint found errors. Caller retries rite:lint once; on second failure stop and /rite:recover. Do NOT stop on first error.` |
 | `[lint:aborted]` | `lint` | `品質チェック中断` | `rite:lint was aborted by user. Proceed to caller 完了レポート (orchestrator 経由なら caller へ復帰 / standalone なら開発者復帰 — abort 時は PR 作成スキップ). Do NOT stop.` |
 
 ```bash
@@ -766,7 +769,7 @@ go vet {files}
 |-------------|---------------------------|
 | `[lint:success]` | `/rite:lint` execution completes, and the caller `/rite:open` consumes the sentinel at ステップ 5.1 then proceeds to ステップ 6 (PR creation) |
 | `[lint:skipped]` | `/rite:lint` execution completes, and the caller `/rite:open` consumes the sentinel at ステップ 5.1 then proceeds to ステップ 6 (PR creation) |
-| `[lint:error]` | After fixing errors, run lint again (return to Phase 3) |
+| `[lint:error]` | Emit sentinel and return to caller. Caller retries rite:lint once; on second failure stop and /rite:recover. Do not return to Phase 3. |
 | `[lint:aborted]` | Flow ends (execution of `/rite:open` also ends) |
 
 standalone では ステップ 5.1 の sentinel 消費も ステップ 6 の PR 作成も **実行しない**。

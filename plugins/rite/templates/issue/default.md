@@ -42,6 +42,7 @@ Legend: `M` = MUST (required), `S` = SHOULD (recommended), `O` = OMIT (skip)
 | Section | XS | S | M | L | XL |
 |---------|-----|-----|-----|-----|-----|
 | 0. Meta | M | M | M | M | M |
+| 上段要約 | M | M | M | M | M |
 | 1. Goal | M | M | M | M | M |
 | 2. Scope (In/Out) | M | M | M | M | M |
 | 3. Type Core Section | S | M | M | M | M |
@@ -58,7 +59,7 @@ Legend: `M` = MUST (required), `S` = SHOULD (recommended), `O` = OMIT (skip)
 | 9. Decision Log | O | O | S | M | M |
 
 **Gate rules**:
-- `M`: Always include. Use placeholder comment if information unavailable.
+- `M`: Always include. Use placeholder comment if information unavailable. Exception: Section 4.1 File column must contain at least one real path; placeholder or non-path text is not a pass.
 - `S`: Include if information gathered during interview. Omit silently if not discussed.
 - `O`: Do not include unless user explicitly requests.
 
@@ -80,7 +81,8 @@ Legend: `M` = MUST (required), `S` = SHOULD (recommended), `O` = OMIT (skip)
 
 | Section | Content | Complexity Gate Reference |
 |---------|---------|--------------------------|
-| 0. Meta | Type, Complexity, Parent Issue | Always MUST |
+| 0. Meta | Type, Complexity | Always MUST |
+| 上段要約 | 問題・変更・見てほしい点、条件付き用語と図 | Always MUST |
 | 1. Goal | What to achieve + Non-goal | Always MUST |
 | 2. Scope | In Scope / Out of Scope | Always MUST |
 | 3. Type Core | Type-specific section (Feature/BugFix/Refactor/Chore/Docs) | XS: SHOULD, S+: MUST |
@@ -107,9 +109,13 @@ After generating the Issue body, verify all items:
 - [ ] All MUST sections for the complexity level are present
 - [ ] AC count matches complexity guideline
 - [ ] Each AC has a corresponding Test Case ID (T-xx)
-- [ ] Target Files list exists with file paths
+- [ ] Target Files の File 列に実パスが 1 行以上ある（「（コード変更なし）」「なし」「N/A」等の非パスのみは不可）
 - [ ] All MUST requirements are testable (no vague verbs)
 - [ ] No empty headings (remove section if no content)
+- [ ] 上段に「何が起きているか / 何をするか / 見てほしい点」があり、用語は内部用語があるときだけ含む（本文言語に合わせて翻訳）
+- [ ] details 外に `F-[0-9]+` / `cycle [0-9]+` / `[0-9a-fA-F]{7,}` / `PR #[0-9]+` / `Issue #[0-9]+` / `#[0-9]+` が無い（PR の `Closes #N` 行のみ例外）。残存時は作成せず生成をやり直す
+- [ ] `<summary>` 直後に空行があり、採用した Section 1〜9 が `</details>` の内側にある。見出し・チェックボックス・`D-xx` 形式は不変
+- [ ] 図は選択規則に従い、SVG は gh 2.99.0 以上のときだけ添付する
 
 ---
 

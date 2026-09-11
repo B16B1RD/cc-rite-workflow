@@ -22,6 +22,11 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 ## 差分
 {diff_content}
 
+## CI 状態
+{ci_status}
+
+失敗 job が本 PR の変更ファイルに対応する場合は詳細 URL のログを確認し、変更に起因する failing test を `Verification: failing_test <path> => <失敗出力>` と call site の根拠付きで指摘する。job 名・赤い check だけでは実測アンカーにしない。無関係な flaky や allowed failure を一律 blocking にせず、既存の採否基準に従う。pending は待たず、CI の rerun は実行しない。
+
 ## 関連 Issue の仕様
 {issue_spec}
 
@@ -67,6 +72,8 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 
 ### 指摘事項
 
+指摘が 0 件でも 5 列ヘッダ行と区切り行を必ず出力し、本文行は空にする。見出しのあとに「なし」と書いてヘッダを省いてはならない。監査ログの該当なし表記を指摘事項へ流用しない。
+
 **重要**: 指摘事項テーブルに記載する項目は全て**必須修正**として扱われます。「任意」「推奨」「必須ではないが」といった修正は指摘事項に含めず、下の「推奨事項」セクションに記載してください。
 
 指摘を挙げる前に、以下の **4 必須自問** に全て Yes で答えられるかを確認してください。いずれかが No の場合、推奨事項 欄に落とすか、報告しないでください:
@@ -78,7 +85,7 @@ PR #{number}: {title} のレビューを {reviewer_type} として実行して�
 
 さらに、掲載可否とは独立に次を自問してください（**No でも報告可**。掲載可否は上の 4 自問だけが決めます）:
 
-5. **実測基準**: 検証コマンド（grep / ファイル対照 / テスト実行 / 再現コマンド）を実行して欠陥を確認したか？（確認した → `Verification:` アンカーを `内容` 列に**必須添付**する。検証できたのに添付しない選択肢はない。環境制約でコマンドがブロックされた → フラット化を 1 回試行し、回避不能なら `Measurement-Blocked: <cmd> => <reason>` を添付する。`Verification:` とは別 marker。原理的に検証不能（認証付き実環境が必要等）→ どちらの marker も付けずに報告する。記録経路の現況は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照） **アンカー無しの指摘は merge を止めない** (実測必須ゲートで non-blocking に分類され fix サイクルを起動しない)。READ-ONLY を理由に、READ-ONLY 範囲内で実施済みの検証結果を添付しないことは禁止。**アンカーに装飾を付けないこと** (`**Verification:**` / `` `Verification:` `` / 全角コロン等は後段の形式検証を通らず、**未判定 (blocking のまま) として扱われる** — 実測済みでも non-blocking にはならないが、判定不能な指摘として merge を止め続ける)。**marker と `=>` の間に `<br>` を入れないこと** (`<br>` は正規形の検出自体を破るため単独で `measured=false` へ降格し、実測済みの指摘が merge を止めなくなる)。句点・改行は正規形アンカーなら無害だが、装飾等の書式崩れと重なると未判定ではなく降格へ落ちるので、LHS に入れないのが安全。
+5. **実測基準**: 検証コマンド（grep / ファイル対照 / テスト実行 / 再現コマンド）を実行して欠陥を確認したか？（確認した → `Verification:` アンカーを `内容` 列に**必須添付**する。検証できたのに添付しない選択肢はない。環境制約でコマンドがブロックされた → フラット化を 1 回試行し、回避不能なら `Measurement-Blocked: <cmd> => <reason>` を添付する。`Verification:` とは別 marker。原理的に検証不能（認証付き実環境が必要等）→ どちらの marker も付けずに報告する。記録経路の現況は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照） **アンカー無しの指摘は merge を止めない** (実測必須ゲートで non-blocking に分類され fix サイクルを起動しない)。READ-ONLY を理由に、READ-ONLY 範囲内で実施済みの検証結果を添付しないことは禁止。**アンカーに装飾を付けないこと** (`**Verification:**` / `` `Verification:` `` / 全角コロン等は後段の形式検証を通らず、**error として拒否される** — 対象 finding のみ再生成し、同 cycle 内で実測ゲートを再実行する)。**marker と `=>` の間に `<br>` を入れないこと** (`<br>` は正規形の検出自体を破るため単独で `measured=false` へ降格し、実測済みの指摘が merge を止めなくなる)。句点・改行は正規形アンカーなら無害だが、装飾等の書式崩れと重なると形式エラーではなく降格へ落ちるので、LHS に入れないのが安全。
 
 ### 監査ログ
 
@@ -96,9 +103,17 @@ Finding Quality Guardrail Category #2 で除外した候補を次の表へ必ず
 |--------|----------|------------|------|----------|
 | {CRITICAL/HIGH/MEDIUM/LOW-MEDIUM/LOW} | {current-pr/follow-up/nit-noted} | {file:line} | {WHAT: 何が問題か} + {WHY: なぜ問題か（影響・リスク・既存パターンとの比較）} | {FIX: 修正方法} + {EXAMPLE: コード例（該当時）} |
 
+0 件の出力例（ヘッダと区切りのみ。本文行なし）:
+
+```
+### 指摘事項
+| 重要度 | スコープ | ファイル:行 | 内容 | 推奨対応 |
+|--------|----------|------------|------|----------|
+```
+
 **`内容` 列のアンカー記入例**（`Likelihood-Evidence:` は掲載可否、`Verification:` は実測の記録を担う直交アンカー。実測できた指摘は両方を末尾に付けること）:
 
-> ⚠️ **`内容` 列の中では raw `|` (パイプ) を使わないこと**（`Likelihood-Evidence:` / `Verification:` / `Measurement-Blocked:` / 叙述部のいずれも対象）。テーブルのセル境界と衝突して 5 列構造を壊します。セルを跨がずに `description` へ届いた場合、アンカーは検出 regex に match せず原則として**未判定 (blocking のまま)** になり、判定不能な指摘が merge を止め続けます。ただし marker から `=>` までの間に改行 / `<br>` / 句点があるとその手前で判定が切れ `measured=false` へ降格します (実測済みでも merge を止めません)。パイプは `¦` (U+00A6) で代替表記してください（下記 2 番目の例）。詳細は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照。
+> ⚠️ **`内容` 列の中では raw `|` (パイプ) を使わないこと**（`Likelihood-Evidence:` / `Verification:` / `Measurement-Blocked:` / 叙述部のいずれも対象）。テーブルのセル境界と衝突して 5 列構造を壊します。セルを跨がずに `description` へ届いた場合、アンカーは検出 regex に match せず原則として **error + 対象 finding の再生成** になります。ただし marker から `=>` までの間に改行 / `<br>` / 句点があるとその手前で判定が切れ `measured=false` へ降格します (実測済みでも merge を止めません)。パイプは `¦` (U+00A6) で代替表記してください（下記 2 番目の例）。詳細は `_reviewer-base.md` §Verification: runtime 実測の添付 の Rules を参照。
 
 ```
 {WHAT + WHY の叙述}<br>Likelihood-Evidence: existing_call_site src/api.ts:45<br>Verification: repro node dist/cli.js --input empty.json => TypeError: Cannot read properties of undefined

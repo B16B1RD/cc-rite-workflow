@@ -8,6 +8,8 @@
 #         also skip its own post-condition)
 #   T-03: the gate never blocks open — statically (the SKILL routing keeps going) and
 #         behaviorally (a failing gh still exits 0 and reports `unknown`, never `ok`)
+#   T-02b also covers the terminal Status `Cancelled`: the verdict stays `missing`, and the
+#         diagnostic names the abandonment instead of a dropped Status transition
 #
 # Usage: bash plugins/rite/hooks/tests/open-projects-status-gate-contract.test.sh
 set -euo pipefail
@@ -206,6 +208,11 @@ run_gate_fixture "In Review" ok "board past the expected status yields ok (recov
 run_gate_fixture "<no-status-field>" missing "item present with no Status value yields missing"
 run_gate_fixture "<absent-item>" missing "item absent from the board yields missing (2.4(A) auto_add did not land)"
 run_gate_fixture "<absent-issue>" unknown "an unresolvable Issue yields unknown, not a board verdict"
+# Cancelled is terminal (references/projects-integration.md, "Terminal Status Set"), so the
+# expected status will never arrive — `missing` is right. Pinning it here is what stops the
+# diagnostic added for it from being implemented as an `ok`, which would wave a cancelled
+# Issue through the gate.
+run_gate_fixture "Cancelled" missing "a cancelled board yields missing, not ok"
 
 # The fixtures above all pass --quiet, so the diagnostics never run. The real caller does
 # not pass it, and for `missing` / `unknown` the WARNING is the only place the reason
@@ -229,6 +236,21 @@ assert_gate_warning "<absent-item>" "not on project" \
   "the not-on-board verdict explains itself on stderr"
 assert_gate_warning "<absent-issue>" "did not resolve" \
   "the unresolvable-Issue verdict explains itself on stderr"
+assert_gate_warning "Cancelled" "abandoned" \
+  "a cancelled board is diagnosed as an abandoned Issue"
+# Both halves matter: the reader must be told the Issue was cancelled AND must not also be
+# told the transition was dropped, or they go hunting for a failed update that never
+# happened. The generic rank-comparison wording is what the diagnostic replaces.
+write_board_fixture "Cancelled"
+set +e
+( cd "$T03_DIR/repo" && PATH="$T03_DIR/repo/bin:$PATH" RITE_TEST_BOARD="$T03_DIR/board.json" \
+  bash "$GATE_SH" --issue 42 --expect "In Progress" >/dev/null 2>"$T03_DIR/gate-stderr.txt" )
+set -e
+if grep -q "the Status transition did not land" "$T03_DIR/gate-stderr.txt"; then
+  fail "a cancelled board is still described as a dropped Status transition: $(head -c 200 "$T03_DIR/gate-stderr.txt")"
+else
+  pass "a cancelled board is not described as a dropped Status transition"
+fi
 
 echo ""
 echo "[T-02c] Behavioral: the argument-error arms"

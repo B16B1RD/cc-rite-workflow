@@ -150,7 +150,9 @@ assert "passing an argument exits 2 (stdin-only contract)" "2" \
 # ---------------------------------------------------------------------------
 
 REASON_TARGET="plugins/rite/skills/fix/SKILL.md"
-mkdir -p "$SANDBOX/plugins/rite/skills/fix"
+REASON_HELPER="plugins/rite/scripts/fix-work-memory-update.sh"
+mkdir -p "$SANDBOX/plugins/rite/skills/fix" "$SANDBOX/plugins/rite/scripts"
+printf 'echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=helper_failed"\n' > "$SANDBOX/$REASON_HELPER"
 
 # Every emitted reason present in the table.
 {
@@ -158,6 +160,7 @@ mkdir -p "$SANDBOX/plugins/rite/skills/fix"
   printf 'echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=beta_failed"\n\n'
   printf '| reason | 発生 Phase | 発生条件 |\n|---|---|---|\n'
   printf '| `alpha_failed` | p1 | cond |\n'
+  printf '| `helper_failed` | helper | cond |\n'
   printf '| `beta_failed` | p2 | cond |\n'
 } > "$SANDBOX/$REASON_TARGET"
 assert "full coverage exits 0" "0" \
@@ -171,6 +174,7 @@ assert "full coverage prints nothing" "" \
   printf 'echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=ghost_failed"\n\n'
   printf '| reason | 発生 Phase | 発生条件 |\n|---|---|---|\n'
   printf '| `alpha_failed` | p1 | cond |\n'
+  printf '| `helper_failed` | helper | cond |\n'
 } > "$SANDBOX/$REASON_TARGET"
 assert "undocumented reason exits 1" "1" \
   "$(bash "$REASON_COVERAGE" --repo-root "$SANDBOX" >/dev/null 2>&1; echo $?)"
@@ -183,10 +187,41 @@ assert "undocumented reason is named on stdout" "ghost_failed" \
   printf 'echo "[CONTEXT] WM_UPDATE_FAILED=1; reason=alpha_failed"\n\n'
   printf '| reason | 発生 Phase | 発生条件 |\n|---|---|---|\n'
   printf '| `alpha_failed` | p1 | cond |\n'
+  printf '| `helper_failed` | helper | cond |\n'
   printf '| `documented_only` | p2 | cond |\n'
 } > "$SANDBOX/$REASON_TARGET"
 assert "extra table row alone is not a finding (exit 0)" "0" \
   "$(bash "$REASON_COVERAGE" --repo-root "$SANDBOX" >/dev/null 2>&1; echo $?)"
+
+# Removing a helper-only reason from the shared table must be detected even
+# while all caller reasons remain documented.
+cp "$SANDBOX/$REASON_TARGET" "$SANDBOX/covered.md"
+sed '/^| `helper_failed` |/d' "$SANDBOX/covered.md" > "$SANDBOX/$REASON_TARGET"
+assert "undocumented helper reason exits 1" "1" \
+  "$(bash "$REASON_COVERAGE" --repo-root "$SANDBOX" >/dev/null 2>&1; echo $?)"
+assert "undocumented helper reason is named on stdout" "helper_failed" \
+  "$(bash "$REASON_COVERAGE" --repo-root "$SANDBOX" 2>/dev/null)"
+assert "--target retains table override and checks helper emits" "0" \
+  "$(bash "$REASON_COVERAGE" --repo-root "$SANDBOX" --target covered.md >/dev/null 2>&1; echo $?)"
+cp "$SANDBOX/$REASON_TARGET" "$SANDBOX/uncovered.md"
+assert "--target cannot bypass helper reason coverage" "1" \
+  "$(bash "$REASON_COVERAGE" --repo-root "$SANDBOX" --target uncovered.md >/dev/null 2>&1; echo $?)"
+cp "$SANDBOX/covered.md" "$SANDBOX/$REASON_TARGET"
+
+# Valid caller emits cannot hide a missing/empty/unrecognized helper source.
+cp "$SANDBOX/$REASON_HELPER" "$SANDBOX/helper.sh"
+rm "$SANDBOX/$REASON_HELPER"
+assert "missing helper exits 2" "2" \
+  "$(bash "$REASON_COVERAGE" --repo-root "$SANDBOX" >/dev/null 2>&1; echo $?)"
+: > "$SANDBOX/$REASON_HELPER"
+assert "empty helper exits 2" "2" \
+  "$(bash "$REASON_COVERAGE" --repo-root "$SANDBOX" >/dev/null 2>&1; echo $?)"
+printf '# no recognized emit markers\n' > "$SANDBOX/$REASON_HELPER"
+assert "helper marker drift exits 2" "2" \
+  "$(bash "$REASON_COVERAGE" --repo-root "$SANDBOX" >/dev/null 2>&1; echo $?)"
+assert "uncheckable helper prints no coverage result on stdout" "" \
+  "$(bash "$REASON_COVERAGE" --repo-root "$SANDBOX" 2>/dev/null)"
+cp "$SANDBOX/helper.sh" "$SANDBOX/$REASON_HELPER"
 
 # No emit at all: rc=2, not 0. An empty left side makes the set difference empty,
 # which would otherwise read as "everything is documented" — the check reporting

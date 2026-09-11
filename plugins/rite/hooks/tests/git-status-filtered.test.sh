@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for lib/git-status-filtered.sh (#1936)
+# Tests for lib/git-status-filtered.sh
 #
 # The Bash tool sandbox blocks writes to certain paths (.bashrc,
 # .claude/agents, .gitconfig, etc.) by bind-mounting /dev/null over them.
@@ -134,5 +134,41 @@ case "$err" in
   *"WARNING: git-status-filtered"*) pass "not-a-repo: WARNING emitted on stderr" ;;
   *) fail "not-a-repo: WARNING emitted on stderr (got: $err)" ;;
 esac
+
+# Tracked-only output excludes arbitrary untracked paths, with escaped names.
+mode_repo=$(make_sandbox) && cleanup_dirs+=("$mode_repo") || exit 1
+mode_err=$(mktemp) && cleanup_dirs+=("$mode_err") || exit 1
+mkdir "$mode_repo/subdir"
+printf content > "$mode_repo/subdir/plain.txt"
+touch "$mode_repo/.empty" "$mode_repo/"$'line\nbreak'
+out=$(cd "$mode_repo" && bash "$LIB" --tracked-only 2>"$mode_err"); rc=$?
+assert "tracked-only untracked tree succeeds" 0 "$rc"
+assert "tracked-only untracked tree has empty stdout" "" "$out"
+assert "warning counts individual paths" 1 "$(grep -c 'WARNING:.*3 untracked path(s)' "$mode_err")"
+assert "warning keeps names on one escaped line" 1 "$(wc -l < "$mode_err" | tr -d ' ')"
+for name in .empty subdir/plain.txt $'line\nbreak'; do
+  printf -v quoted '%q' "$name"
+  assert "warning includes escaped name $quoted" 1 "$(grep -Fc " $quoted" "$mode_err")"
+done
+for repo in "$sbx3" "$sbx3u" "$sbx_ren"; do
+  expected=$(run_in "$repo")
+  out=$(cd "$repo" && bash "$LIB" --tracked-only)
+  assert "tracked-only preserves staged / unstaged / conflict / rename status" "$expected" "$out"
+done
+out=$(cd "$plain" && bash "$LIB" --tracked-only 2>"$mode_err"); rc=$?
+assert "tracked-only failure remains nonzero" 1 "$rc"
+
+# Exercise the actual fix commit guard, including its failure fallback.
+PLUGIN_ROOT="$(_helpers_resolve_plugin_root "$SCRIPT_DIR")"
+guard=$(awk '/^### 3\.1 Verify Changes/{section=1;next} section && /^```bash$/{code=1;next} code && /^```$/{exit} code{print}' "$PLUGIN_ROOT/skills/fix/SKILL.md")
+[ -n "$guard" ] || { echo "ERROR: fix guard block missing" >&2; exit 1; }
+guard=${guard//\{plugin_root\}/$PLUGIN_ROOT}
+out=$(cd "$mode_repo" && eval "$guard" 2>&1)
+assert "fix guard skips untracked-only changes" 1 "$(printf '%s' "$out" | grep -c 'FIX_COMMIT_GUARD=skip; reason=worktree_clean')"
+(cd "$mode_repo" && git add -- subdir/plain.txt)
+out=$(cd "$mode_repo" && eval "$guard" 2>&1)
+assert "fix guard proceeds for staged new file alongside untracked" 1 "$(printf '%s' "$out" | grep -c 'FIX_COMMIT_GUARD=proceed; reason=worktree_dirty')"
+out=$(cd "$plain" && eval "$guard" 2>&1)
+assert "fix guard reports status_unknown on helper failure" 1 "$(printf '%s' "$out" | grep -c 'FIX_COMMIT_GUARD=proceed; reason=status_unknown')"
 
 print_summary "$(basename "$0")"

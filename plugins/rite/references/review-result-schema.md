@@ -14,7 +14,7 @@
 - `{pr_number}`: PR 番号（整数）
 - `{timestamp}`: `YYYYMMDDHHMMSS` 形式の JST (例: `20260411123456`)
 - 同一 PR の過去レビューは **best-effort で履歴保持** する。1 秒解像度のため、同一 PR に対し同一秒以内に 2 回 `/rite:pr-review` を実行すると file path が衝突する。pr-review.md ステップ 6.1.a は collision 検出時に `~<4桁hex>` suffix (`~$(printf '%04x' "${RANDOM:-0}")` 相当) で衝突回避を試みるが、完全な一意性保証ではない (best-effort tradeoff)。separator には `~` (0x7E) を使用する。ファイル名 `{ts}~{hex}.json` と `{ts}.json` の分岐点で `.` (0x2E) < `~` (0x7E) となるため、collision-resolved 版が lexicographic 大となり `sort -r` で先頭に並ぶ
-- **並列実行は未サポート**: 同一 PR に対する `/rite:pr-review` の同時並列実行 (複数ターミナル / CI 並列 job 等) は未サポート。`mv` の atomicity と `[ -e ]` check の TOCTOU race window により、後勝ちでファイル上書きが発生する可能性がある。POSIX `mv` の標準オプションは `-f`/`-i` のみで、`-n` は POSIX 非標準 (GNU coreutils / BSD 拡張) のため、POSIX 準拠の観点から採用しない ([mv(1p) POSIX](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/mv.html) 参照)。並列実行する場合はユーザー自身が時系列をずらす責務を持つ (verified-review cycle 12 I-2 対応で旧 rationale 「bash 3.2 + POSIX utilities 前提と矛盾」を削除。本 plugin は [bash-compat-guard.md](./bash-compat-guard.md) で `mapfile` builtin 必須 = bash 4.0+ 前提であり、bash 3.2 portable 前提は成立しないため)
+- **並列実行は未サポート**: 同一 PR に対する `/rite:pr-review` の同時並列実行 (複数ターミナル / CI 並列 job 等) は未サポート。`mv` の atomicity と `[ -e ]` check の TOCTOU race window により、後勝ちでファイル上書きが発生する可能性がある。POSIX `mv` の標準オプションは `-f`/`-i` のみで、`-n` は POSIX 非標準 (GNU coreutils / BSD 拡張) のため、POSIX 準拠の観点から採用しない ([mv(1p) POSIX](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/mv.html) 参照)。同一 PR のレビューは実行時刻をずらすこと。
 - `.rite/review-results/` は保存先へ同梱される `*` だけの `.gitignore`（`hooks/review-result-save.sh` が書く）で除外される。root の `.gitignore` エントリには依存しない
 
 ## Schema Version (Single Source of Truth)
@@ -25,7 +25,7 @@
 
 **受理される値** (読取側): `"1.0.0"` (canonical 1.0) / legacy エイリアス `"1.0"` (semver `MAJOR.MINOR` のみ、1.0.0 と semantic 等価、v2.0 まで受理) / `"1.1.0"` (canonical 1.1) の **3 値**。`"1.0.0"` / `"1.0"` で受信した JSON は `findings[].scope` / `findings[].pre_existing` フィールドが欠落している。read 側が severity ベースの default mapping を適用するのは **`scope` のみ**で、`pre_existing` は欠落のまま保持し Cross-field invariant #5 を発火させない (詳細は [後方互換性 (schema 1.0 ↔ 1.1.0)](#後方互換性-schema-10--110) 参照)。詳細経緯は CHANGELOG を参照。
 
-**`verification` は 1.1.0 内で additive 追加された optional field** — したがって **`"1.1.0"` で受信した JSON でも `findings[].verification` は欠落しうる**。読取側 accept list 4 箇所の同期変更を避けるため schema_version は bump しない。「`schema_version == "1.1.0"` ならば `verification` が存在する」と読んではならない。欠落時は `measured=false` の default mapping を適用する (同じく [後方互換性](#後方互換性-schema-10--110) 参照)。ただし **blocking 判定 consumer は欠落を「未判定」= blocking と解釈する** — 同節の「3 値モデルへの上書き」を参照。
+**`verification` は 1.1.0 内で additive 追加された optional field** — したがって **`"1.1.0"` で受信した JSON でも `findings[].verification` は欠落しうる**。読取側 accept list 4 箇所の同期変更を避けるため schema_version は bump しない。「`schema_version == "1.1.0"` ならば `verification` が存在する」と読んではならない。欠落時は `measured=false` の default mapping を適用する (同じく [後方互換性](#後方互換性-schema-10--110) 参照)。ただし **fix consumer は gated finding の欠落を `[fix:error]` とする** — 同節の「判定 consumer の 2 値 + error」を参照。
 
 **`pre_existing` も 1.1.0 内で欠落を許容する additive optional field** — canonical write 側は reviewer の revert test 結果を収集しないため、`"1.1.0"` を出力しても `findings[].pre_existing` を書かない。read 側は schema_version に依らず default mapping を適用せず、欠落時は Cross-field invariant #5 を発火させない。`scope` は同じ 1.1.0 の field でも canonical write 側で必須であり、この optional 契約を適用してはならない。
 
@@ -33,7 +33,7 @@
 
 **`verdict` / `reviewers` も 1.1.0 内で additive 追加した** — こちらは write 側必須だが、**version は bump しない**。理由は 2 つある: (a) 唯一の判定 consumer である merge ゲートは `schema_version` の**値**を見ず、`verdict` / `reviewers` の**キー存在**で新旧を判別する。version を上げても判別は 1 mm も変わらない。(b) bump すると読取側 accept list 4 箇所と `hooks/tests/review-schema-write-version-parity.test.sh` の literal を同時更新する義務が発生し、機能上の利得ゼロに対して 5 箇所の同期コストだけが増える。**したがって `schema_version == "1.1.0"` から `verdict` / `reviewers` の存在を推論してはならない** (`verification` と同じ注意。本変更より前に保存された 1.1.0 JSON は両キーを持たない)。存在を要求する側は必ずキーを直接検査すること。
 
-**検証箇所の同期義務** (verified-review cycle 8 L-4 対応で本セクションを SoT 化、cycle 10 I-E 対応で read/write 非対称を明示、1.1.0 を accept list に追加):
+**検証箇所の同期義務**:
 
 **読取側 (3 値受理義務、4 箇所で完全同期)**:
 
@@ -173,16 +173,18 @@
 |-----------|-----|------|------|
 | `schema_version` | string | ✅ | スキーマバージョン (semver `MAJOR.MINOR.PATCH`)。詳細は [Schema Version](#schema-version-sot) セクション参照 (受理値と legacy エイリアスの SoT) |
 | `pr_number` | integer | ✅ | PR 番号 (>= 1) |
+| `producer` | string | 任意 (1.1.0 additive) | fix が新規永続化する記録は `"fix"`。既存ファイルの in-place triage は値を維持する。トレンド helper は文字列 `"fix"` と完全一致した記録だけを列と件数ガードから除外し、欠落・null・その他の値は従来のレビュー検証へ渡す。記録の削除・移動はしない。 |
 | `timestamp` | string | ✅ | レビュー実行時刻 (ISO 8601 `YYYY-MM-DDTHH:MM:SS+TZ`) |
-| `commit_sha` | string | ✅ | レビュー対象の commit SHA。用途: (a) verification mode 用の diff 起点、(b) Priority 0/2/3 の stale file detection 用の HEAD 比較キー (後述の「読取優先順位 (fix)」表 failure mode 列 `*_commit_sha_mismatch` を参照)、(c) `pr-review.md` ステップ 8.0.4 positive 検査の**判定軸** — 「本 cycle の JSON か」を prefix 一致で判定する (両オペランドとも 16 進 7 桁以上が下限。7 桁未満の帰結はオペランドで異なる: JSON 側は一致候補から外れ `save_result_json_absent` で fail (exit 1)、`--commit-sha` 側は入力検査で `save_result_json_undecidable` = degraded (exit 0) へ降りる)。write 側の値源は ステップ 1.2.5 で記録した commit SHA で、書き手 `hooks/review-result-save.sh` は本フィールドを検査しないため形状の担保は write 側の規約のみ。read 側 (`fix.md` ステップ 1.2.0) は各 Priority success 経路で `json_commit_sha` vs 現 HEAD を比較し、mismatch 時は WARNING + `[CONTEXT] REVIEW_SOURCE_STALE=1; reason=*_commit_sha_mismatch` emit + 次 Priority への routing を実行する (stale file protection) |
+| `commit_sha` | string | ✅ | レビュー対象の commit SHA。用途: (a) verification mode 用の diff 起点、(b) Priority 0/2/3 の stale file detection 用の HEAD 比較キー、(c) `pr-review.md` ステップ 8.0.4 positive 検査の判定軸。write 側の値源はステップ 1.2.5 で記録した commit SHA。`review-result-save.sh` は現在、この値と `measured_gate.commit_sha` の一致を保存直前に強制し、不一致を `gate_record_mismatch` で拒否する。read 側 (`fix.md` ステップ 1.2.0) も各 Priority success 経路で現 HEAD および gate receipt との一致を検査する。 |
+| `measured_gate` | object | 現行 write/read 側 ✅ (1.1.0 additive) | `review-measured-gate.sh` の適用記録。`{commit_sha, applied_at, blocking, demoted, anchor_undetermined}` を持ち、`commit_sha` はトップレベル値と一致する。schema version は据え置くため形式上 additive だが、現行 producer の保存、8.0.4 positive 検査、`/rite:fix` の JSON consumer では必須。欠落する既存アーカイブは遡及修復せず、再利用時は fail-closed で停止して `/rite:pr-review` の再実行を要求する。 |
 | `overall_assessment` | **enum** (string) | ✅ | 総合評価。**受理値**: `"mergeable"` / `"fix-needed"` の 2 値のみ。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=overall_assessment_unknown_value` を stderr に出力し、Priority に応じた fallback/routing を実行する (P0: fallback、P2: Priority 3 routing、P3: legacy parser fallthrough。詳細は fix.md failure reasons table `overall_assessment_unknown_value` 参照) |
 | `verdict` | **enum** (string) | ✅ | 本 cycle の最終判定。**受理値**: `"mergeable"` / `"fix-needed"` の 2 値のみ (`overall_assessment` と同一語彙で、`pr-review.md` ステップ 8.1 の terminal sentinel `[review:mergeable]` / `[review:fix-needed:{n}]` と対応する)。**merge ゲート (`hooks/pre-tool-bash-guard.sh`) が読む必須キー**。`overall_assessment` と**同値であることが不変条件**で、両者は `scripts/review-measured-gate.sh` の単一の blocking 件数式から同時に代入される。下記 [verdict と reviewers](#verdict-と-reviewers) 参照 |
 | `reviewers` | array (string) | ✅ (非空) | 本 cycle で **ステップ 5.1 が Task 結果を回収できた** reviewer agent の名簿。`findings` とは独立で、findings 0 件の mergeable cycle でも非空になる。値は `plugins/rite/agents/*-reviewer.md` の basename (拡張子を除く、接尾辞 `-reviewer` を含む) と一致する — `findings[].reviewer` と同じ参照整合性規則。下記 [verdict と reviewers](#verdict-と-reviewers) 参照 |
-| `findings` | array | ✅ | `/rite:pr-review` ステップ 5.3.0.M 通過後の `全指摘事項` (0 件でも空配列として存在)。**blocking 指摘 + `scope == "nit-noted"` 指摘**を含む — nit-noted は本ゲートの対象外 (`assessment-rules.md` §5.3.0.M) のため非実測でも本配列に残る。ゲートで降格した非実測指摘 (scope ∈ {current-pr, follow-up}) のみが下記 `non_blocking_findings` に分離される |
-| `non_blocking_findings` | array | **write 側 ✅ (0 件でも `[]`)** / read 側は欠落許容 | 実測必須ゲート ([severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)) で non-blocking に降格した非実測指摘、および帰結クラス降格政策 (§5.3.0.C) で降格した class B 指摘の配列 (要素の形は `findings[]` と同一。class B 降格分のみ `demotion` オブジェクトを持つ)。下記 [non_blocking_findings 配列](#non_blocking_findings-配列) 参照 |
+| `findings` | array | ✅ | producer 保存時は `/rite:pr-review` のゲート通過後の `全指摘事項`（blocking + nit-noted、0 件でも `[]`）。fix consumer の共通ステップ 1.2.2 適用後は fatal + nit-noted を保持し、実測あり MEDIUM/LOW-MEDIUM/LOW を含む非 fatal は `non_blocking_findings[]` へ移送済みとなる。`measured_gate` / `overall_assessment` / `verdict` は producer の観測を維持し、consumer は `fatal_map` と分類後の配列を使う |
+| `non_blocking_findings` | array | **write 側 ✅ (0 件でも `[]`)** / read 側は欠落許容 | 実測必須ゲート ([severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)) で non-blocking に降格した非実測指摘、および帰結クラス降格政策 (§5.3.0.C) で降格した class B 指摘の配列 (要素の形は `findings[]` と同一。class B 降格分のみ `demotion` オブジェクトを持つ)。fix consumer による非 fatal 移送分も保持し、`demotion_reason: non_fatal` で識別する。下記 [non_blocking_findings 配列](#non_blocking_findings-配列) 参照 |
 | `guardrail_audit_log` | array | **write 側 ✅ (0 件でも `[]`)** / read 側は欠落許容 | Finding Quality Guardrail Category #2 で `指摘事項` から除外した候補の監査記録。audit-only で判定 consumer は無視する。各要素は `reviewer`, `filter_category` (`Category #2`), `original_severity`, `file_line`, `description`, `filter_reason`, `verification` を持つ（reviewer 表: 除外した内容→`description`、除外理由→`filter_reason`。write 側のキー集合検証は `hooks/review-result-save.sh`） |
 | `reviewer_timings` | array | (任意、1.1.0+) | 本 cycle で回収できた各 reviewer の起動時刻。要素は `{reviewer, started_at}` で、`reviewer` は `findings[].reviewer` と同じ参照整合性規則 (`agents/*-reviewer.md` の basename)、`started_at` は ISO 8601 UTC の正規形 (`YYYY-MM-DDThh:mm:ssZ`) または `null` (取得不能)。値源は `pr-review.md` ステップ 4.3.1（orchestrator が Task spawn 直前に記録した時刻）。ステップ 4.6 が timings JSON に書く。audit-only で、判定 consumer (`/rite:fix` / merge ゲート / 収束トレンド判定) は無視する。下記 [reviewer_timings と直列化フラグ](#reviewer_timings-と直列化フラグ) 参照 |
-| `reviewer_spawn_serialized` | bool | (任意、1.1.0+) | 起動時刻の拡がり (spawn spread) が閾値を超えたか。書き手は `hooks/scripts/review-spawn-spread-check.sh` のみ。**計測不能のときはキーごと欠落する** — `true` / `false` / 欠落 (= 未判定) の 3 値モデルで、`verification.measured` と同じ (下記参照) |
+| `reviewer_spawn_serialized` | bool | (任意、1.1.0+) | 起動時刻の拡がり (spawn spread) が閾値を超えたか。書き手は `hooks/scripts/review-spawn-spread-check.sh` のみ。**計測不能のときはキーごと欠落する** — `true` / `false` / 欠落 (= 未判定) の 3 値モデルである |
 | `reviewer_spawn_spread_seconds` | integer | (任意、1.1.0+) | 実測した spawn spread (秒、`max(started_at) - min(started_at)`)。`reviewer_spawn_serialized` と同時に書かれ、同時に欠落する |
 | `class_demotion` | object | (任意、1.1.0+) | 帰結クラス降格政策 ([assessment-rules.md §5.3.0.C](../skills/fix/references/assessment-rules.md#530c-帰結クラス降格政策-consequence-class-demotion-gate)) の監査フラグ。書き手は `scripts/review-class-demotion-gate.sh` のみ。形は `{applied: bool, class_a: int, class_b: int, demoted: int}` — `applied` は降格が発動したか (class A=0 ∧ 除外なし class B≥1)。部分降格では `demoted` が `class_b` より小さい。除外付き B のみなら not-triggered（`applied=false`）。`class_a` / `class_b` は effective 分類の件数 (判定不能は class A に計上)、`demoted` は本 cycle で移送した件数。**キー欠落 = 本ゲート未適用の cycle** (blocking 0 件の no-op を含む)。audit-only で判定 consumer は無視する — assessment / verdict への反映は helper が代入済みのため、read 側が本キーから判定を再導出してはならない |
 
@@ -191,22 +193,22 @@
 | フィールド | 型 | 必須 | 説明 |
 |-----------|-----|------|------|
 | `id` | string | ✅ | 指摘 ID (`F-NN` 形式、最小 2 桁ゼロパディング可変長連番、正規表現 `^F-[0-9]{2,}$`)。例: `F-01`, `F-42`, `F-99`, `F-100`, `F-999`。レビュー内ユニーク。99 件以下は 2 桁、100 件以上は 3 桁以上に自然成長する。write 側 (`pr-review.md` ステップ 6.1.a) の machine-enforced jq validation と read 側 (`fix.md`) の正規表現は同一パターンで検証される |
-| `reviewer` | string | ✅ | レビュアー種別 (例: `code-quality-reviewer`, `security-reviewer`, `tech-writer-reviewer`)。**参照整合性**: 値は `plugins/rite/agents/*-reviewer.md` の basename (拡張子を除く、接尾辞 `-reviewer` を含む) と一致する。新 reviewer を追加する際は agents/ 側のファイル追加と合わせて本ドキュメントにも追記すること (drift-check による自動検証はないため手動同期)。 |
+| `reviewer` | string | ✅ | レビュアー種別 (例: `code-quality-reviewer`, `security-reviewer`, `tech-writer-reviewer`)。**参照整合性**: 値は `plugins/rite/agents/*-reviewer.md` の basename (拡張子を除く、接尾辞 `-reviewer` を含む) と一致する。新 reviewer を追加する際は agents/ 側のファイル追加と合わせて本ドキュメントにも追記すること (drift-check による自動検証はないため手動同期)。例外: `pr-review` は pr-review 自身が産出する number-reference 指摘の orchestrator reviewer id として有効（agents/ ファイルは追加しない）。 |
 | `category` | string | ✅ | カテゴリ (例: `code_quality`, `security`, `performance`, `error_handling`) |
-| `severity` | **enum** (string) | ✅ | 重要度。**受理値**: `"CRITICAL"` / `"HIGH"` / `"MEDIUM"` / `"LOW-MEDIUM"` / `"LOW"` の 5 値のみ (LOW-MEDIUM は `severity-levels.md` Severity Levels 表で正式定義された first-class severity で、`COMMENT_QUALITY` 軸の独自ジャーゴン濫用 等の bounded blast radius 違反に使う)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=severity_unknown_value; value=<val>` を stderr 出力し、該当 finding を `MEDIUM` にフォールバック (silent skip は禁止)。外部ツール出力の別名は下記「severity 別名マッピング表」に従って read 側で正規化してから本 enum に落とす |
+| `severity` | **enum** (string) | ✅ | 重要度。**受理値**: `"CRITICAL"` / `"HIGH"` / `"MEDIUM"` / `"LOW-MEDIUM"` / `"LOW"` の 5 値のみ (LOW-MEDIUM は `severity-levels.md` Severity Levels 表で正式定義された first-class severity で、`COMMENT_QUALITY` 軸の独自ジャーゴン濫用 等の bounded blast radius 違反に使う)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=severity_unknown_value; value=<val>` を stderr 出力し、fix consumer の分類では `[fix:error]` で停止し、元 JSON を変更しない (silent skip・MEDIUM への丸めは禁止)。外部ツール出力の別名は下記「severity 別名マッピング表」に従って read 側で正規化してから本 enum に落とす |
 | `scope` | **enum** (string) | ✅ (1.1.0+) | 指摘の scope 分類 (1.1.0 から追加)。**受理値**: `"current-pr"` (本 PR で修正必須) / `"follow-up"` (本 PR では対応せず別 Issue として deferred) / `"nit-noted"` (情報共有のみ、修正不要 — `acknowledged` で受け流し) の 3 値。1.0 / 1.0.0 JSON では本フィールドは欠落しているため、read 側で severity ベースの default mapping を適用する (詳細は [後方互換性](#後方互換性-schema-10--110))。Cross-field invariant #4 (CRITICAL/HIGH × nit-noted FAIL) / #5 (pre_existing=false × nit-noted auto-correct) を参照 |
 | `pre_existing` | bool | (任意、1.1.0+) | 当該 finding の triggering condition が本 PR の diff 適用前から存在していたか (1.1.0 から追加)。`true` = pre-existing (本 PR で混入していない) / `false` = 本 PR で新規導入。判定は revert test (reviewer が当該 diff を mentally revert して finding が依然成立するかを確認) ベース。canonical 1.1.0 write 側を含め本フィールドは欠落しうる。欠落時は default mapping を適用せず、Cross-field invariant #5 は発火しない (詳細は [後方互換性](#後方互換性-schema-10--110)) |
 | `original_severity` | string | (任意、1.1.0+) | severity 自己降格 (reviewer が CRITICAL 判定後 PR scope 不適合と判断し scope=follow-up や nit-noted へ送る際に severity を MEDIUM 等へ降格) 時の元値を保持。**自己降格 trace 用途のみ**で、cross-field invariant 評価には使わない。omit 可 (1.0 / 1.0.0 互換、降格していない finding には不要)。値の domain は `severity` enum 5 値と同じ |
 | `nit_reason` | string | (条件付き必須、1.1.0+) | `severity == "MEDIUM"` ∧ `scope == "nit-noted"` の組み合わせ時は **必須**。それ以外は omit 可。MEDIUM 級の指摘を「nit として受け流す」判断には bounded blast radius (localized で単発修正で完了する) の根拠が必要なため、reviewer に明示的に reason を記載させて auditability を担保する |
-| `verification` | object | (任意、1.1.0+) | **`"1.1.0"` JSON でも欠落しうる** (schema_version を bump しない additive 追加のため — [Schema Version](#schema-version-sot) 参照)。runtime 実測の記録 `{measured, repro, failing_test}` (下記 [verification サブフィールド](#verification-サブフィールド) 参照)。**欠落時は記録・表示経路では `measured=false` 扱い** ([後方互換性](#後方互換性-schema-10--110) の verification default mapping)。**値は blocking / mergeable 判定の入力として消費される** （実測必須ゲートの定義: [severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate))。判定 consumer は `measured` を **3 値** (`true` / `false` / 欠落 = **未判定**) として扱い、未判定はゲート対象外 = 従来どおり blocking とする ([3 値モデルへの上書き](#3値モデルへの上書き) 参照)。**型は判定に使われる**: read 側の型ガードが object/boolean 制約を検証し、違反時は当該 review-result file 全体の routing を変える ([verification 型ガード (read 側)](#verification-型ガード-read-側)) |
+| `verification` | object | (任意、1.1.0+) | **`"1.1.0"` JSON でも欠落しうる** (schema_version を bump しない additive 追加のため — [Schema Version](#schema-version-sot) 参照)。runtime 実測の記録 `{measured, repro, failing_test}` (下記 [verification サブフィールド](#verification-サブフィールド) 参照)。**欠落時は記録・表示経路では `measured=false` 扱い** ([後方互換性](#後方互換性-schema-10--110) の verification default mapping)。**値は blocking / mergeable 判定の入力として消費される** （実測必須ゲートの定義: [severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate))。判定 consumer は `measured` を **2 値 + error** として扱う。producer は算出時の判定不能を `anchor_undetermined` で拒否し、fix consumer も gated finding の欠落を `[fix:error]` とする ([判定 consumer の 2 値 + error](#3値モデルへの上書き) 参照)。**型は判定に使われる**: read 側の型ガードが object/boolean 制約を検証し、違反時は当該 review-result file 全体の routing を変える ([verification 型ガード (read 側)](#verification-型ガード-read-側)) |
 | `file` | string | ✅ | 対象ファイルのリポジトリルート相対パス (絶対パス禁止、`..` による親ディレクトリ参照禁止) |
 | `line` | integer \| null | ✅ | 対象行番号 (正の整数 >= 1)、または `null` (行非依存指摘の sentinel)。負数は無効 (read 側での挙動は未定義)。cycle 10 S-4 対応で旧「`0` を行非依存 sentinel として扱う」設計から `null` 許容に変更。severity_map 構築時は `line == null` を `"anchor"` key に正規化して同一ファイル複数指摘の key 衝突を防ぐ (fix.md ステップ 1.2.0 severity_map 構築参照)。**後方互換**: 読取側は `line: 0` を引き続き legacy sentinel として受理し、`null` と同じ扱いにする |
 | `description` | string | ✅ | 指摘内容 |
 | `suggestion` | string | ✅ | 推奨対応 |
 | `status` | **enum** (string) | ✅ | 対応状態。**受理値**: `"open"` / `"fixed"` / `"replied"` / `"deferred"` / `"acknowledged"` の **5 値**。現行実装では `/rite:pr-review` ステップ 6.1.a は常に `"open"` を出力する (将来の state machine 拡張で `/rite:fix` 完了時に `"fixed"` / `"acknowledged"` 等を書き戻す slot を予約)。未知値は read 側で WARNING emit + `[CONTEXT] REVIEW_SOURCE_ENUM_UNKNOWN=1; reason=status_unknown_value; value=<val>` を stderr 出力する |
-| `consequence_class` | **enum** (string) | (任意、1.1.0+) | 帰結クラス降格政策 (§5.3.0.C) の分類結果。**受理値**: `"A"` / `"B"` の 2 値。**書き手は `scripts/review-class-demotion-gate.sh` のみ** — classification map から算出して無条件に上書きするため、ステップ 5.3.0.M step 1 の Claude が書いても helper の算出結果で必ず置き換わる (分類入力にはならない — 迂回防止)。実測未判定 (verification 欠落) の gated finding は分類対象外だが `"A"` が固定で付く (map 非参照)。**キー欠落** = (a) `scope == "nit-noted"` の finding (本ゲート対象外のため降格発動 cycle でも付かない — nit が 1 件でもある cycle で常態)、(b) blocking 0 件で no-op になった cycle、(c) ゲート導入前の JSON、(d) 5.3.0.M の実測必須ゲートで `non_blocking_findings[]` へ降格した要素 (本ゲートは `findings[]` のみを走査するため)。audit-only で判定 consumer は無視する |
+| `consequence_class` | **enum** (string) | (任意、1.1.0+) | 帰結クラス降格政策 (§5.3.0.C) の分類結果。**受理値**: `"A"` / `"B"` の 2 値。**書き手は `scripts/review-class-demotion-gate.sh` のみ** — classification map から算出して無条件に上書きするため、ステップ 5.3.0.M step 1 の Claude が書いても helper の算出結果で必ず置き換わる (分類入力にはならない — 迂回防止)。gated finding の `verification.measured` が boolean でない場合は `measured_undetermined` で書き換え前に停止し、本キーを付与しない。**キー欠落** = (a) `scope == "nit-noted"` の finding (本ゲート対象外のため降格発動 cycle でも付かない — nit が 1 件でもある cycle で常態)、(b) blocking 0 件で no-op になった cycle、(c) ゲート導入前の JSON、(d) 5.3.0.M の実測必須ゲートで `non_blocking_findings[]` へ降格した要素 (本ゲートは `findings[]` のみを走査するため)、(e) `measured_undetermined` で入力 JSON が byte-identical に保たれた失敗。audit-only で判定 consumer は無視する |
 | `consequence_scenario` | string | (任意、1.1.0+) | 分類の判定文。class A は「放置時にどの操作で何が壊れるか」の実行時シナリオ 1 行、class B は「実行時シナリオを書けない」ことの認定文。`consequence_class` と同時に helper が書く (判定不能で class A に倒した finding は `consequence_class: "A"` のみで本キーは欠落する) |
-| `consequence_exclusion` | string | (任意、1.1.0+) | 帰結クラス降格の除外判定文。**書き手は `scripts/review-class-demotion-gate.sh` のみ**。classification map の `exclusion` (非空文字列) を写す。本キーがある class B は A=0 でも `non_blocking_findings[]` へ移送されない。判定不能 / 実測未判定 / class A / 除外なし class B ではキーごと欠落する |
+| `consequence_exclusion` | string | (任意、1.1.0+) | 帰結クラス降格の除外判定文。**書き手は `scripts/review-class-demotion-gate.sh` のみ**。classification map の `exclusion` (非空文字列) を写す。本キーがある class B は A=0 でも `non_blocking_findings[]` へ移送されない。判定不能 / class A / 除外なし class B ではキーごと欠落する。`measured_undetermined` は書き換え前に停止するため既存キーも含め入力を変更しない |
 
 ### `verdict` と `reviewers`
 
@@ -226,12 +228,13 @@ merge ゲート (`hooks/pre-tool-bash-guard.sh` の `merge-review-*` 検査) が
 
 **本 cycle で `pr-review.md` ステップ 5.1 が Task 結果を回収できた reviewer** を、ステップ 5.3.0.M step 1 の Claude が書く。値は各 `reviewer_type` に `-reviewer` を付した形（`security` → `security-reviewer`。`rite:` prefix は付けない）で、`plugins/rite/agents/*-reviewer.md` の basename と一致する。ゲート helper は本キーに触れない (変換 jq は `.findings` / `.non_blocking_findings` / `.overall_assessment` / `.verdict` 以外のトップレベルキーをそのまま保持する)。
 
-**「実回収」を唯一の基準にする理由**: 選定時点のスナップショットを基準にすると、その後に集合が変わる経路（ステップ 3.3 standalone 確認での追加・削除、ステップ 4.4 の `incomplete` マーク）ごとに除外規則を書き足すことになり、書き漏らした経路が名簿の過大・過少計上として残る。回収できたかどうかは全経路の帰結を 1 つの述語で表すため、規則が 1 本で済む。
+**実回収と選定名簿**: 選定は spawn 前に確定し、ステップ 5.1 の reviewer-completion gate が全件の実 ID と完了出力を検査する。未回収者がいれば `[review:error]` で停止し、本 schema の verdict 保存には進まない。ゲート通過後は選定名簿と実回収名簿が一致する。
 
 - **`findings[].reviewer` から導出してはならない**: マージ直前の最終 cycle は findings 0 件が正常形であり、そこから名簿を導出すると「誰もレビューしていない」形になって sole-reviewer guard が成立しなくなる
-- **名簿を水増ししてはならない**: 回収できなかった reviewer を載せると、実際には走っていないレビューで sole-reviewer guard の floor 2 を満たせてしまう。回収の結果 1 名になった cycle は保存は通りマージは deny される — それが正しい挙動である
+- **名簿を水増ししてはならない**: 回収できなかった reviewer を載せると、実際には走っていないレビューで sole-reviewer guard の floor 2 を満たせてしまう。選定自体が1名だった正常 cycle は保存できるが、merge ゲートの floor 2 で deny される。2名以上を選定して未回収者が出た場合は回収ゲートで停止する
 - **下限がゲートと save helper で非対称**: save helper は**非空**のみを要求し、merge ゲートは**長さ 2 以上** (sole-reviewer guard floor) を要求する。`review.min_reviewers: 1` の下で、どの reviewer パターンにもマッチせず code-quality が単独 fallback になった cycle は 1 名になりうる（`skills/pr-review/SKILL.md` ステップ 2.3 の sole-reviewer guard は「code-quality が既に単独のときは追加しない」という明示的例外を持つ）。その結果は**保存はできるがマージはできない**。save helper 側を 2 に揃えると、その 1 名レビューの結果が永続チャネルから丸ごと消える。**なお XS/S 軽量レーンはこの経路ではない** — 軽量レーンが渡すのは上限 (`complexity_max = 3`) だけで、`skills/reviewers/SKILL.md` Phase 5 の effective floor `max(min_reviewers, sole_reviewer_guard_floor)` が最終 clamp で常に勝つ
-- **1 名 cycle の解消手段は 2 種で、原因によって効くものが違う**: (a) パターン無マッチで code-quality が単独 fallback になった cycle は、同じ diff で再レビューしても選定が同一なので **`review.security_reviewer.mandatory: true` を設定する**（ゲートの deny メッセージが案内する「再レビュー」だけでは floor 2 に到達しない）。**`review.min_reviewers` を上げても効かない** — `skills/reviewers/SKILL.md` Phase 4 は本キーを「どの reviewer にもマッチしなかったときに code-quality を選ぶ」fallback のラベルとしてのみ使い（`- min_reviewers: Minimum reviewers to select` の宣言行と見出し `Apply Minimum Limit` は下限の表明に留まり、選定数をその値まで**増やす手続き規則を持たない**）、Phase 5 は `effective_max`（上限）の floor と narrowing 時の保持フロアとして使う。どちらも「選定数が足りないから reviewer を足す」向きには働かず、ステップ 2.3 の sole-reviewer guard は code-quality が既に単独のとき明示的に追加しない。(b) 2 名選定のうち片方が spawn に失敗して回収できなかった cycle は、失敗が一過性なら**再レビューで解消する**。**どちらの場合も名簿の水増しで通してはならない**（`reviewers` の一意性は save helper が検査するが、実在名での水増しは機械的に塞げない — 散文規約が唯一の担保である）
+- **1 名 cycle の解消手段は 2 種で、原因によって効くものが違う**: (a) パターン無マッチで code-quality が単独 fallback になった cycle は、同じ diff で再レビューしても選定が同一なので **`review.security_reviewer.mandatory: true` を設定する**（ゲートの deny メッセージが案内する「再レビュー」だけでは floor 2 に到達しない）。**`review.min_reviewers` を上げても効かない** — `skills/reviewers/SKILL.md` Phase 4 は本キーを「どの reviewer にもマッチしなかったときに code-quality を選ぶ」fallback のラベルとしてのみ使い（`- min_reviewers: Minimum reviewers to select` の宣言行と見出し `Apply Minimum Limit` は下限の表明に留まり、選定数をその値まで**増やす手続き規則を持たない**）、Phase 5 は `effective_max`（上限）の floor と narrowing 時の保持フロアとして使う。どちらも「選定数が足りないから reviewer を足す」向きには働かず、ステップ 2.3 の sole-reviewer guard は code-quality が既に単独のとき明示的に追加しない。(b) 2 名選定のうち片方が spawn に失敗した場合は `[review:error]` で停止する。失敗が一過性なら**再レビューで解消する**。**どちらの場合も名簿の水増しで通してはならない**（`reviewers` の一意性は save helper が検査するが、実在名での水増しは機械的に塞げない — 散文規約が唯一の担保である）
+- **空 diff 由来の 1 名 cycle は上流で止める**: 変更ファイル 0 件の PR がパターン無マッチで code-quality 単独になる経路は、実装のコミット手順と bash-guard が commit 前に停止するため、本節の解消手段の対象にしない
 - **一意性は save helper が検査する**: ゲートは長さしか見ないため、`["security-reviewer", "security-reviewer"]` のような重複ロスターは floor 2 を機械的に満たしてしまう。これを塞ぐのは writer 側の責務で、`hooks/review-result-save.sh` が重複を fail-loud で拒否する（floor 2 自体は save 側へ持ち込まない — 一意性と下限は独立した検査であり、1 名 cycle の保存性は変わらない）
 
 #### 旧形式 JSON の非救済
@@ -256,7 +259,9 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 <a id="non_blocking_findings-配列"></a>
 
-`/rite:pr-review` ステップ 5.3.0.M の実測必須ゲートで non-blocking に降格した**非実測指摘**、およびステップ 5.3.0.C の帰結クラス降格政策 ([assessment-rules.md §5.3.0.C](../skills/fix/references/assessment-rules.md#530c-帰結クラス降格政策-consequence-class-demotion-gate)) で降格した **class B 指摘** (5.3.0.C の分類対象は実測判定済み — `verification.measured` が boolean — の blocking に限られ、実測未判定の finding は class A 固定で降格されないため、class B 降格分は常に実測付き) を保持するトップレベル配列。要素のスキーマは `findings[]` と**同一** (上記 [findings[] 要素](#json-schema) の表の全フィールド — `pre_existing` を含む。本節では再掲しない)。
+`/rite:pr-review` ステップ 5.3.0.M の実測必須ゲートで non-blocking に降格した**非実測指摘**、およびステップ 5.3.0.C の帰結クラス降格政策 ([assessment-rules.md §5.3.0.C](../skills/fix/references/assessment-rules.md#530c-帰結クラス降格政策-consequence-class-demotion-gate)) で降格した **class B 指摘** (5.3.0.C の分類対象は実測判定済み — `verification.measured` が boolean — の blocking に限られ、非 boolean は `measured_undetermined` で書き換え前に停止するため、class B 降格分は常に実測付き) 、および fix consumer が移送した非 fatal 指摘を保持するトップレベル配列。要素のスキーマは `findings[]` と**同一** (上記 [findings[] 要素](#json-schema) の表の全フィールド — `pre_existing` を含む。本節では再掲しない)。
+
+**`demotion_reason` フィールド (任意、1.1.0+)**: enum (string)、受理値は `"non_fatal"`。`scripts/review-findings-maps.sh` が fix consumer の非 fatal 移送時に書く。移送では severity / scope / id / description / suggestion を保持し、既存の `demotion` オブジェクトも維持する。既存要素に本キーは不要で、reviewer・実測ゲートの producer に出力を要求しない。
 
 **`demotion` オブジェクト (任意、1.1.0+)**: 5.3.0.C 由来の降格要素のみが持つ追加フィールド。形は `{policy: "class-b-demotion", reason: <判定文>}` — `policy` は降格の出所の判別子 (現在は 1 値のみ)、`reason` は class B 認定の判定文 (classification map の `scenario`)。書き手は `scripts/review-class-demotion-gate.sh` のみ。**本キーの有無が実測ゲート降格分 (5.3.0.M、キーなし) と class B 降格分 (5.3.0.C、キーあり) を区別する唯一の監査判別子**であり、6.1.d の関連 Issue 記録コメントは本キーを持つ要素に降格理由を併記する。read 側は未知キーを無視するため旧 reader でも壊れない。
 
@@ -266,20 +271,24 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 **0 件のときも空配列 `[]` を出力する** (キー省略との区別): キー自体が無い JSON は「本ゲート適用前の世代」を意味し、空配列は「本ゲートを適用したが降格ゼロ」を意味する。両者を区別できないと、降格が起きたのに記録されなかった事故を後から検出できない。
 
-**本配列側の欠陥はすべて非ブロッキング**: `hooks/review-result-save.sh` は以下を WARNING + observability marker で報告するが、**いずれも保存を続行する** (`JSON_SAVED=true`)。`LOCAL_SAVE_FAILED` 経路にすると `JSON_SAVED=false` でファイルごと保存されず、advisory な監査記録の欠陥を理由に blocking findings まで永続チャネルから失う fail-unsafe になるため (救おうとした対象より大きなものを落とす)。
+**本配列側の欠陥は id 書式違反を除いて非ブロッキング**: `hooks/review-result-save.sh` は以下を WARNING + observability marker で報告するが、**いずれも保存を続行する** (`JSON_SAVED=true`)。`LOCAL_SAVE_FAILED` 経路にすると `JSON_SAVED=false` でファイルごと保存されず、advisory な監査記録の欠陥を理由に blocking findings まで永続チャネルから失う fail-unsafe になるため (救おうとした対象より大きなものを落とす)。
 
 | 検出内容 | marker |
 |---|---|
 | キー欠落 / 非配列 (string / number / bool / object / null) | `[CONTEXT] NON_BLOCKING_FINDINGS_KEY_MISSING=1; pr={n}` |
-| 和集合での id 重複 / 書式違反 (本配列側に起因) | `[CONTEXT] NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION=1; pr={n}` |
+| 和集合での id 重複 (本配列側に起因) | `[CONTEXT] NON_BLOCKING_FINDINGS_ID_UNION_VIOLATION=1; pr={n}` |
 
-**hard fail は `findings[]` 側の id 欠陥に限る** (`LOCAL_SAVE_FAILED=1; reason=finding_id_format_or_uniqueness_violation`)。また型 check は id 検証より**前**に置く — 後ろに置くと非配列で `length` が非 0 になる値 (`"abc"`→3 / `3`→3 / `{"a":1}`→1) が和集合の件数を水増しし、非ブロッキングと宣言した経路が型によって hard fail に化ける。
+**id 書式違反 (`^F-[0-9]{2,}$` 不適合) だけは本配列側でも hard fail** (`LOCAL_SAVE_FAILED=1; reason=finding_id_format_or_uniqueness_violation`、保存しない)。書式は id が identity として使えるかどうかそのものであり、書式外 id は cleanup ステップ 6.0.V が再検証結果を `--exclude-ids` で helper へ渡す唯一の経路を壊す (書式外 id は再検証層で `null` へ写され、全件が `undecidable` に倒れて解消済みの指摘まで follow-up へ転記される)。発生源を止めないと読み側の回避策が増え続けるため fail-loud にする。**一意性違反は引き続き `findings[]` 側の欠陥に限って hard fail** で、本配列側に閉じた重複は上表の非ブロッキング marker に留める (id 自体は使える形をしており、advisory な重複を理由に blocking findings を失う理由がない)。
+
+また型 check は id 検証より**前**に置く — 後ろに置くと非配列で `length` が非 0 になる値 (`"abc"`→3 / `3`→3 / `{"a":1}`→1) が和集合の件数を水増しし、非ブロッキングと宣言した重複判定が型によって hard fail に化ける。
+
+> 本 hard fail は**本 gate を通る保存を止めるだけ**で、gate を通さずに `.rite/review-results/` 直下へ永続化された書式外 id JSON は移行しない (gate 導入前の JSON、および gate を経由しない `/rite:fix` の write 経路 — P1/P3 の直接 write と P0 ファイルの copy。一度きりの実行のために恒久的な複雑さを残さない)。したがって読み側 (6.0.V の `id` null 写像、および `id: null` を必ず `undecidable` とする規則) はそのまま維持する。
 
 ### 却下台帳と sweep 消化結果（additive、schema_version 非 bump）
 
 <a id="nb-sweep-ledger"></a>
 
-`/rite:iterate` の `[review:mergeable]` 後 sweep が残存 NB を消化した記録。永続チャネルは 6.1.d の関連 Issue コメント（新チャネルを作らない）。**JSON トップレベルへキーを足さない** — 台帳はコメント本文の `### 却下台帳`、消化内訳は iterate 完了通知と `[CONTEXT] ITERATE_NB_SWEEP=` / `NB_SWEEP_RESULT=` marker。再入ガードの権威は `.rite/state/nb-sweep-done-{pr_number}.txt`（1 行目 `noop` または `done`。**存在が skip**。`fixed ≥ 1` で push したときだけ 2 行目に HEAD SHA — ready の reviewed-head ゲートが読む。読取側の skip は 1 行目 / `-f` のみ）。会話 marker は観測用。
+`/rite:iterate` の `[review:mergeable]` 後 sweep が残存 NB を消化した記録。永続チャネルは 6.1.d の関連 Issue コメント（新チャネルを作らない）。**JSON トップレベルへキーを足さない** — 台帳はコメント本文の `### 却下台帳`、消化内訳は iterate 完了通知と `[CONTEXT] ITERATE_NB_SWEEP=` / `NB_SWEEP_RESULT=` marker。再入ガードの権威は `.rite/state/nb-sweep-done-{pr_number}.txt`（1 行目 `noop` または `done`。**存在が skip**。新規書込は 1 行のみ。既存の 2 行形式は読取互換として残す）。会話 marker は観測用。
 
 **台帳エントリ**（コメント本文、`📎 non_blocking_count:` の直前）:
 
@@ -288,22 +297,24 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 | finding_id | file:line | 判定 | 判定文 |
 |------------|-----------|------|--------|
-| F-01 | src/foo.ts:10 | rejected | <必須。空禁止> |
+| F-01 | src/foo.ts:10 | recorded | severity=LOW; measured=false |
 | F-02 | src/bar.ts:4 | issued | <必須。起票先 #N を含む> |
 ```
 
-`判定` の受理値: `rejected` / `issued`。`fixed` はコード側で消化済みのため台帳へは書かない。`guardrail_audit_log[]` 由来は `rejected` として転記し sweep で再判断しない。
+`判定` の書込値: `issued` / `recorded`。既存の `rejected` は `recorded` 相当として読み、再判断しない。`recorded` の機械理由は `severity={sev}; measured={bool}`。`guardrail_audit_log[]` / `already_rejected[]` は `recorded` として転記する。
+
+collect は `targets[]` に `verification` と `route` を返す。実測あり MEDIUM は `issued`、それ以外と nit-noted は `recorded`。`--pr` は関連 Issue コメントの台帳を読み、既存の issued/recorded/rejected を対象から除外する。`--json` 単独はオフライン収集。count は targets と未転記 already_rejected の合計で、guardrail のみでも sweep を実行する。
 
 **sweep 消化結果 marker**（iterate 完了通知の値源。JSON フィールドではない）:
 
 ```
-[CONTEXT] NB_SWEEP_RESULT=done; fixed=N; rejected=M; issued=K
+[CONTEXT] NB_SWEEP_RESULT=done; issued=K; recorded=M
 [CONTEXT] ITERATE_NB_SWEEP=done|noop|skipped|failed
 ```
 
-`done` のとき完了通知の残件欄は `未処理 non-blocking: 0 件` を維持し、消化内訳 `sweep: fixed=N / rejected=M / issued=K` を併記する。`noop`（対象 0 件）は従来の 0 件通知のまま追加行を出さない。`skipped` は `nb-sweep-done-{pr_number}.txt` 既存（本 run で 5.S 済み）。書き込み失敗・JSON 取得失敗は `failed` で iterate を停止する（完了通知へ進まない）。意図的な再 sweep は当該ファイルを削除する。
+`done` のとき完了通知の残件欄は `未処理 non-blocking: 0 件` を維持し、消化内訳 `sweep: issued=K / recorded=M` を併記する。`noop`（対象 0 件）は従来の 0 件通知のまま追加行を出さない。`skipped` は `nb-sweep-done-{pr_number}.txt` 既存（本 run で 5.S 済み）。書き込み失敗・JSON 取得失敗は `failed` で iterate を停止する（完了通知へ進まない）。意図的な再 sweep は当該ファイルを削除する。
 
-**`id` は 2 配列の和集合で一意**: 5.3.0.M の降格時に `id` を振り直さず元の `F-NN` を維持する。根拠は **JSON 単体の監査可読性** — 永続 JSON を読む人間が 2 配列を跨いで finding を一意に参照できるようにするため (5.4 統合レポートのテーブルは `id` 列を持たないので、JSON ↔ レポート間の id 相互参照は成立しない。それを目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証で、`findings[]` と `non_blocking_findings[]` の和集合に対して書式 + 一意性を評価する (本配列側に閉じた違反は上記の非ブロッキング marker で報告され、保存は続行する)。
+**`id` は 2 配列の和集合で一意**: 5.3.0.M の降格時に `id` を振り直さず元の `F-NN` を維持する。根拠は **JSON 単体の監査可読性** — 永続 JSON を読む人間が 2 配列を跨いで finding を一意に参照できるようにするため (5.4 統合レポートのテーブルは `id` 列を持たないので、JSON ↔ レポート間の id 相互参照は成立しない。それを目的とした規則ではない)。強制層は `hooks/review-result-save.sh` の id 検証で、`findings[]` と `non_blocking_findings[]` の和集合に対して書式 + 一意性を評価する。**書式違反は和集合のどちら側でも hard fail** (保存しない)、**一意性違反は `findings[]` 側だけ hard fail** で、本配列側に閉じた重複は上記の非ブロッキング marker で報告され保存は続行する。
 
 **read 側の扱い**: `/rite:iterate` 5.S の `nb-sweep-collect.sh` が本配列（全件）と `findings[]` の `nit-noted` を sweep 対象として読む。`/rite:fix` の通常ループは `findings[]` のみを読む（`--nb-sweep` 時だけ collect 経由で本配列を読む）。本配列は **sweep 消化の入力**であり、消化後も JSON からは消さない（台帳と完了通知が消化結果の SoT）。既定構成 (`pr_review.post_comment: false`) では PR 本体のレビュー結果コメントが投稿されないため、非実測指摘の永続チャネルは `.rite/review-results/*.json` と、`post_comment` と独立に投稿される関連 Issue 記録コメント (`## 📜 rite 非実測指摘の記録`、ステップ 6.1.d) の 2 つになる。前者はローカルの永続チャネル (`state-path-resolve.sh` によりセッション worktree 内からでも main checkout と同一パスに解決される。§保存場所 参照)、後者は関連 Issue 上で共有可能な永続チャネルであり、`.rite/review-results/` は gitignore 対象のためレビュアーと共有できるのは後者のみ — **ただし後者が共有するのは reviewer / severity / `file:line` のポインタと降格理由 (判定文) までで、cycle 中の `description` / `suggestion` の全文は本配列にしか存在せず共有経路を持たない**。マージ後もローカル全文を残すため、`/rite:cleanup` ステップ 6 は本配列が非空の結果 JSON を削除せず `.rite/review-results/archive/` へ退避し、残存分の全文を follow-up Issue 1 件へ転記する。**転記の前にマージ後 HEAD で再検証し、解消済みと判定された指摘は除外する（判定不能は転記側へ倒し、全件解消なら起票しない）** — 本配列は指摘が出た cycle の観測であり、その後の fix cycle の結果を反映しないため（public リポジトリでは公開される。詳細: [`severity-levels.md` §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate))。
 
@@ -313,15 +324,15 @@ reviewer の並列起動が実際に並列だったかを事後に観測する�
 
 `findings[].verification` オブジェクトのサブフィールド定義。「実測」の記録形式を LLM の自由裁量に委ねると後段で機械処理できないため、**write 側が `verification` を出力する際に守るべき形式を本表で固定する**。
 
-**write 側の配線**: `pr-review.md` ステップ 5.3.0.M の [`scripts/review-measured-gate.sh`](../scripts/review-measured-gate.sh) が、`findings[].description` の `Verification:` アンカーから本表の形式で `verification` を設定する**唯一の書き手**である。**ただし全 finding に設定するとは限らない** — gate 対象 scope (`current-pr` / `follow-up`) の finding のうち、アンカー文字列と `=>` が**同一セグメント内**にあるのに検出 regex に match しない形式崩れのものには、`measured=false` と確定させずに **`verification` を設定しない**ことで「未判定」を表現する。したがってゲート適用後の JSON でも `verification` は欠落しうる ([3 値モデルへの上書き](#3値モデルへの上書き) の判定 consumer 側規定がそのまま効く)。同ステップの生成規約は Claude が `verification` を書くことを禁じており (先に書かれた boolean を helper が既存値として尊重してしまい、アンカー検出を経ない値が blocking 判定へ入るため)、本表は helper が満たす形式契約として読む。read 側の受理範囲は本表より広い — [verification 型ガード (read 側)](#verification-型ガード-read-側) を参照 (`verification: {}` や `measured` 欠落も受理する。記録・表示経路では default mapping で `measured=false` に畳み、**判定 consumer では「未判定」= blocking として扱う** — [3 値モデルへの上書き](#3値モデルへの上書き)):
+**write 側の配線**: `pr-review.md` ステップ 5.3.0.M の [`scripts/review-measured-gate.sh`](../scripts/review-measured-gate.sh) がアンカーから `verification` を設定する唯一の書き手であり、caller は先に書かない。成功時の gated finding は boolean を持つ。算出時に実測判定不能なら `anchor_undetermined` で元 JSON を変更せず非ゼロ終了する。`nit-noted` は対象外。read 側の型ガードは旧 JSON 等の `{}` / measured 欠落も受理するが、fix consumer は gated finding の未判定を `[fix:error]` とする（[判定 consumer の 2 値 + error](#3値モデルへの上書き)）。
 
 | フィールド | 型 | 必須 (write 側が出力する場合) | read 側の受理 | 説明 |
 |-----------|-----|------|------|------|
-| `measured` | bool | ✅ (出力するなら 3 キーをすべて埋める) | 欠落 / null 許容 (記録・表示経路では `measured=false` 扱い、**判定 consumer では「未判定」= blocking** — [3 値モデルへの上書き](#3値モデルへの上書き))。**型は boolean/null のみ** (型ガード) | runtime 実測の有無。`true` には `repro` / `failing_test` の**少なくとも一方が非 null かつ非空文字列**であることが必須 (Cross-field invariant #6) |
+| `measured` | bool | ✅ (出力するなら 3 キーをすべて埋める) | 欠落 / null 許容 (記録・表示経路では `measured=false` 扱い、**fix consumer は gated finding の未判定を `[fix:error]` とする** — [判定 consumer の 2 値 + error](#3値モデルへの上書き))。**型は boolean/null のみ** (型ガード) | runtime 実測の有無。`true` には `repro` / `failing_test` の**少なくとも一方が非 null かつ非空文字列**であることが必須 (Cross-field invariant #6) |
 | `repro` | string \| null | ✅ (null 可) | 欠落 / null 許容 (read 側は値を jq 評価しないため型制約なし) | 再現手順。**形式固定**: `<再現コマンド> => <観測される誤動作>` (`=>` 区切り)。例: `bash hooks/foo.sh --bad-arg => ERROR: unbound variable`。`内容` 列に raw `|` (パイプ) を含めない制約は本フィールドにも及ぶ (理由と代替表記は `agents/_reviewer-base.md` の §Verification: runtime 実測の添付 の Rules) |
 | `failing_test` | string \| null | ✅ (null 可) | 同上 | failing test。**形式固定**: `<テストパス> => <失敗出力>` (`=>` 区切り)。例: `hooks/tests/test-foo.sh => TC-03 FAILED: expected 0 got 1`。raw パイプ制約は `repro` と同じ |
 
-**`Measurement-Blocked:` は `verification` を生成しない description 内 marker である。** `findings[].description` の `Measurement-Blocked: <cmd> => <reason>` は [`review-measured-gate.sh`](../scripts/review-measured-gate.sh) が実測アンカーとして読まないため、本表の `verification` オブジェクトを設定せず、実測必須ゲートの 3 値判定 (`true` / `false` / 未判定) に介入しない。表示は統合レポートの `### 実測阻害` section が担う（[severity-levels.md §実測阻害](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)）。
+**`Measurement-Blocked:` は実測アンカーとして読まない description 内 marker である。** `Measurement-Blocked: <cmd> => <reason>` だけでは実測ありにならず、通常のアンカー判定に従って `measured=false` となる。表示は統合レポートの `### 実測阻害` section が担う（[severity-levels.md §実測阻害](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)）。
 
 ### severity 別名マッピング表
 
@@ -396,12 +407,12 @@ canonical jq expression (1.0/1.0.0 受信時に適用):
 
 ### verification の default mapping (記録・表示経路のみ、measured=false 扱い)
 
-**適用範囲**: 本節の default mapping が有効なのは **記録・表示・後方互換の非エラー化** を目的とする読取経路に限る。`measured` を **blocking 判定の入力として消費する層** には適用しない (下記「3 値モデルへの上書き」参照)。
+**適用範囲**: 本節の default mapping が有効なのは **記録・表示・後方互換の非エラー化** を目的とする読取経路に限る。`measured` を **blocking 判定の入力として消費する層** には適用しない (下記「判定 consumer の 2 値 + error」参照)。
 
-`findings[].verification` が欠落している場合 (schema 1.0 / 1.0.0 の旧形式、verification 導入前に生成された 1.1.0 JSON、および実測必須ゲートが形式崩れアンカーを未判定として残した現行世代 JSON)、記録・表示経路は当該 finding を **`measured=false` (実測なし)** として扱う。フィールドの物理的な補完は不要で、値を参照する側が `(.verification.measured // false)` で評価すればよい (jq の `//` が欠落・null を false に畳む)。エラーにはしない:
+`findings[].verification` が欠落している場合 (schema 1.0 / 1.0.0 の旧形式、verification 導入前に生成された 1.1.0 JSON、および判定不能を残す旧 producer の JSON)、記録・表示経路は当該 finding を **`measured=false` (実測なし)** として扱う。フィールドの物理的な補完は不要で、値を参照する側が `(.verification.measured // false)` で評価すればよい (jq の `//` が欠落・null を false に畳む)。エラーにはしない:
 
 ```
-(.verification.measured // false) == true   # 記録・表示経路の評価式 (欠落 = false)。判定経路では使用禁止 — 下記「3 値モデルへの上書き」参照
+(.verification.measured // false) == true   # 記録・表示経路の評価式 (欠落 = false)。判定経路では使用禁止 — 下記「判定 consumer の 2 値 + error」参照
 ```
 
 - 旧形式 JSON を read してもエラーなく処理が続行される (既存の抽出ロジックは `verification` を参照しないため無影響)
@@ -410,15 +421,15 @@ canonical jq expression (1.0/1.0.0 受信時に適用):
 
 <a id="3値モデルへの上書き"></a>
 
-> **3 値モデルへの上書き (以降、判定 consumer に限る)**: 上記 default mapping は `measured` が **判定に使われない記録専用フィールド**だった時点の規定であり、`measured` を **blocking 判定の入力として消費する層**には適用しない。実測必須ゲート ([severity-levels.md §実測必須ゲート](./severity-levels.md#実測必須ゲート-measured-confirmed-gate)) の consumer は `measured` を **3 値** (`true` / `false` / **未判定**) として扱い、**`verification` 欠落 / `verification.measured` 欠落は「未判定」= ゲート対象外 = 従来どおり blocking** と解釈する — 降格するのは `measured: false` を**明示宣言**した finding のみ。判定経路で `(.verification.measured // false)` を使ってはならない (jq の `//` が欠落と `false` を同一視するため、write 側が `verification` を出力しない世代の JSON で全 finding が non-blocking に畳まれ、レビューループが指摘を解消しないまま空転する)。判定経路の canonical 述語は「`.verification` が object かつ `.verification.measured` が boolean のときのみ登録し、値をそのまま採用する」で、SoT は [`fix/SKILL.md`](../skills/fix/SKILL.md) ステップ 1.2.1 step 6 / ステップ 1.3 measured lookup。
+> **判定 consumer の 2 値 + error**: default mapping は記録・表示専用であり、blocking 判定には適用しない。現行 producer の gated finding は成功時に `measured=true` / `false` のいずれかとなり、算出時に判定不能なら `anchor_undetermined` で入力 JSON を変更せず失敗する。caller は対象 finding IDs の reviewer 出力だけを同 cycle 内で再生成する（再試行は既存の共通上限 1 回）。旧 JSON の `verification` / `verification.measured` 欠落も正常な blocking 値ではなく、fix consumer は gated finding の未判定を `[fix:error]` とする。fix consumer の fatal は measured=true × CRITICAL/HIGH × current-pr/follow-up。非 fatal は severity を維持して移送する。判定経路で `(.verification.measured // false)` を使わず、object 内の boolean のみ登録して値をそのまま採用する。SoT は [`fix/SKILL.md`](../skills/fix/SKILL.md) ステップ 1.2.1 step 6 / ステップ 1.3 measured lookup。
 >
 > 本節の default mapping は依然として**判定以外の読取 (記録・表示・後方互換の非エラー化)** に有効であり、型ガードが `verification: {}` を受理することにも変更はない。
 
 <a id="verification-型ガード-read-側"></a>
 
-**verification 型ガード (read 側)**: `findings[].verification` は **object または欠落 (null)** のみ、`findings[].verification.measured` は **boolean または欠落 (null)** のみ受理する。read 側 (`scripts/review-source-resolve.sh` の Priority 0 / Priority 2) は invariant 評価の**前段**で両方の型を検証し、違反時は専用 reason `{explicit_file|local_file}_verification_type_invalid` で WARNING + routing する (P0 → fallback、P2 → Priority 3 + `.corrupt-{epoch}` rename)。`measured` の**存在**は要求しない (`verification: {}` は型ガードを通過する。判定 consumer からは `measured` 未登録 = **未判定** として扱われる — [3 値モデルへの上書き](#3値モデルへの上書き) 参照)。silent 受理 (`.measured?` での握り潰し) は型崩れという schema 違反シグナルを消すため採用しない。canonical jq: `all(.findings[]?; (.verification == null) or (((.verification | type) == "object") and ((.verification.measured == null) or ((.verification.measured | type) == "boolean"))))`
+**verification 型ガード (read 側)**: `findings[].verification` は **object または欠落 (null)** のみ、`findings[].verification.measured` は **boolean または欠落 (null)** のみ受理する。read 側 (`scripts/review-source-resolve.sh` の Priority 0 / Priority 2) は invariant 評価の**前段**で両方の型を検証し、違反時は専用 reason `{explicit_file|local_file}_verification_type_invalid` で WARNING + routing する (P0 → fallback、P2 → Priority 3 + `.corrupt-{epoch}` rename)。`measured` の**存在**は要求しない (`verification: {}` は型ガードを通過する。判定 consumer からは `measured` 未登録 = **未判定** として扱われる — [判定 consumer の 2 値 + error](#3値モデルへの上書き) 参照)。silent 受理 (`.measured?` での握り潰し) は型崩れという schema 違反シグナルを消すため採用しない。canonical jq: `all(.findings[]?; (.verification == null) or (((.verification | type) == "object") and ((.verification.measured == null) or ((.verification.measured | type) == "boolean"))))`
 
-**ガードを invariant の前段に置く理由（prospective）**: 現時点の read 経路に `.verification.measured` を評価する式は本ガード自身以外に存在せず、後段の invariant #2 / #4 / enum チェックはいずれも `.verification` を参照しない。したがって「非 object の verification が後段を rc=5 にして誤合流する」ことは**現在は起きない**。前段配置が守るのは、`.verification` が object かつ `.verification.measured` が boolean のときのみ値を採用する **3 値判定 consumer** (`fix/SKILL.md` ステップ 1.2.1 step 6 / ステップ 1.3 measured lookup) であり、型崩れを弾いておく予防的配置である。判定 consumer は default mapping 節の `(.verification.measured // false)` 形を**使わない** (同節「3 値モデルへの上書き」参照) (invariant #6 の自己点検式は write 側の責務なので、read 経路に置いた本ガードの保護対象には含まれない)。P0/P2 で先に弾くのは、これらが永続ファイル (次回以降も再読込されうる入力) を入力に取るため — うち `.corrupt-{epoch}` rename を伴うのは P2 のみで、P0 は fallback に倒すだけである (上記 routing 参照)。順序が現時点で生む観測可能な差は reason ラベルと P2 の rename 有無で、`scripts/tests/review-source-resolve.test.sh` の順序 pin fixture (`overall_assessment: "mergeable"` + 型崩れ) がこれを機械的に固定している。
+**ガードを invariant の前段に置く理由（prospective）**: 現時点の read 経路に `.verification.measured` を評価する式は本ガード自身以外に存在せず、後段の invariant #2 / #4 / enum チェックはいずれも `.verification` を参照しない。したがって「非 object の verification が後段を rc=5 にして誤合流する」ことは**現在は起きない**。前段配置が守るのは、`.verification` が object かつ `.verification.measured` が boolean のときのみ値を採用する **2 値 + error の判定 consumer** (`fix/SKILL.md` ステップ 1.2.1 step 6 / ステップ 1.3 measured lookup) であり、型崩れを弾いておく予防的配置である。判定 consumer は default mapping 節の `(.verification.measured // false)` 形を**使わない** (同節「判定 consumer の 2 値 + error」参照) (invariant #6 の自己点検式は write 側の責務なので、read 経路に置いた本ガードの保護対象には含まれない)。P0/P2 で先に弾くのは、これらが永続ファイル (次回以降も再読込されうる入力) を入力に取るため — うち `.corrupt-{epoch}` rename を伴うのは P2 のみで、P0 は fallback に倒すだけである (上記 routing 参照)。順序が現時点で生む観測可能な差は reason ラベルと P2 の rename 有無で、`scripts/tests/review-source-resolve.test.sh` の順序 pin fixture (`overall_assessment: "mergeable"` + 型崩れ) がこれを機械的に固定している。
 
 **jq 実行失敗と型崩れの分離**: ガードの jq が rc>=2 (findings 要素が非 object で nested access がランタイムエラー / jq バイナリ異常 / IO エラー) で終了した場合、型崩れ (rc=1) と同じ reason に融合してはならない。`verification` を一切持たない JSON にも `verification_type_invalid` が付いて診断が事実とずれるため、read 側は専用 reason `{explicit_file|local_file}_verification_guard_jq_failed` で routing し、**P2 では rename しない** (破損が未証明のまま破壊的操作を conflated signal で駆動しないため)。
 
@@ -559,12 +570,12 @@ retained flag: `[CONTEXT] REVIEW_SOURCE_STALE=1; reason={explicit_file|local_fil
 
 ## クリーンアップ
 
-`/rite:cleanup` は PR マージ後のブランチ削除時に、該当 PR 番号のローカル artifact を **削除または退避** する。レビュー結果ファイルだけが条件付き退避で、それ以外は無条件削除。reason 語彙の単一の真実の源は artifact ごとに異なる — レビュー結果ファイルは helper (`hooks/scripts/review-results-archive-or-rm.sh`) の docstring、それ以外は `cleanup.md` ステップ 6 (双方向リンク。旧 Phase 2.5 から ステップ 6 へ flat 化済):
+`/rite:cleanup` は PR マージ後のブランチ削除時に、該当 PR 番号のローカル artifact を **削除または退避** する。レビュー結果ファイルだけが条件付き退避で、それ以外は無条件削除。reason 語彙の単一の真実の源は artifact ごとに異なる — レビュー結果ファイルは helper (`hooks/scripts/review-results-archive-or-rm.sh`) の docstring、それ以外は helper (`hooks/scripts/cleanup-pr-state-purge.sh`) の docstring (`cleanup.md` ステップ 6 が呼び出す。ステップ 6 自体が持つのは helper 起動失敗時の `state_purge_helper_failed` のみ):
 
 1. **レビュー結果ファイル**: `.rite/review-results/{pr_number}-*.json*` — **`non_blocking_findings[]` が非空なら削除せず `.rite/review-results/archive/` へ退避する**。記録コメント (`pr-review.md` ステップ 6.1.d) がポインタと降格理由 (class B 降格分は `demotion.reason` の判定文、それ以外は「実測なし」) しか載せないため、無条件削除すると非実測指摘の全文が merge 直後にどこにも残らない。中身を判定できない場合 (jq 不在 / parse 失敗 / query error / 空ファイル) もすべて退避側 (安全側) へ倒し、判定不能が起きた事実を `{label}_undecidable` marker で残す。**glob が `.json` ではなく `.json*` なのは `.json.corrupt-*` を同じ経路に載せるため** — corrupt は「中身を判定できない」状態そのものなので、別経路で無条件削除すると同一ステップ内に「判定不能は保全」と「判定不能は削除」の 2 ポリシーが並ぶ (`scripts/review-source-resolve.sh` の corrupt rename 3 経路のうち 2 つは構造的に valid な JSON で、`non_blocking_findings[]` の全文を保持しうる)
 2. **fix retry state file（legacy）**: `.rite/state/fix-fallback-retry-{pr_number}.count` — 旧 retry-counter 機構が生成した orphan の回収。retry-counter 機構の廃止により `fix.md` は現在このファイルを生成しないが、旧版が残した file を掃除するため削除対象に残す
 
-上記のほか、`fix-cycle-state/{pr_number}.json` / legacy `fix-cycle-state.json` / `accepted-fingerprints-{pr_number}.txt` / `review-run-since-{pr_number}.txt` / `nb-sweep-done-{pr_number}.txt` も同ステップで無条件削除される (完全な列挙は `cleanup.md` ステップ 6 の bash block が単一源)。
+上記のほか、`fix-cycle-state/{pr_number}.json` / legacy `fix-cycle-state.json` / `accepted-fingerprints-{pr_number}.txt` / `review-run-since-{pr_number}.txt` / `nb-sweep-done-{pr_number}.txt` も同ステップで無条件削除される (完全な列挙は `hooks/scripts/cleanup-pr-state-purge.sh` の `rite_rm` 呼び出し列が単一源)。
 
 **`archive/` 配下は自動削除されない** — 退避したファイルは PR ごとに蓄積する。掃除機構は実需が出るまで設けない (`no_speculative_structure`)。不要になったら手動削除する。走査系 helper (`review-schema-version-check.sh` / `review-trend-divergence.sh`) はいずれも `-maxdepth 1` のため退避先を拾わない。
 
@@ -574,6 +585,6 @@ wildcard は PR 番号 prefix 固定とし、他 PR のファイルを誤って�
 
 - `plugins/rite/skills/pr-review/SKILL.md` ステップ 6.1: JSON 生成と保存ロジック (AC-1 default stop / AC-2 opt-in posting / D-04 non-blocking contract)
 - `plugins/rite/skills/fix/SKILL.md` ステップ 1.2.0: ハイブリッド読取ロジック (AC-3/4 会話/ファイル優先 / AC-5 後方互換 / AC-6 対話式 fallback)
-- `plugins/rite/skills/cleanup/SKILL.md` ステップ 6: 自動削除/退避ロジック (レビュー結果ファイルは `non_blocking_findings[]` 非空 / 判定不能なら `archive/` へ退避、それ以外の state file は無条件削除)。レビュー結果ファイルの reason 語彙は `hooks/scripts/review-results-archive-or-rm.sh` の docstring、それ以外の failure reason と eval-order enumeration は cleanup.md 側を単一源とする。
+- `plugins/rite/skills/cleanup/SKILL.md` ステップ 6: 自動削除/退避ロジック (レビュー結果ファイルは `non_blocking_findings[]` 非空 / 判定不能なら `archive/` へ退避、それ以外の state file は無条件削除)。レビュー結果ファイルの reason 語彙は `hooks/scripts/review-results-archive-or-rm.sh` の docstring、それ以外の failure reason と eval-order enumeration は `hooks/scripts/cleanup-pr-state-purge.sh` 側を単一源とする (ステップ 6 が持つのは helper 起動失敗時の `state_purge_helper_failed` のみ)。
 - `rite-config.yml` `pr_review.post_comment`: グローバル設定
 - `plugins/rite/hooks/review-result-save.sh`: 保存先へ同梱する `*` だけの `.gitignore`（除外機構の実体）

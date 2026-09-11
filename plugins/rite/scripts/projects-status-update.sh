@@ -25,13 +25,23 @@
 #
 # Output JSON (stdout):
 #   {
-#     "result": "updated|skipped_not_in_project|failed",
+#     "result": "updated|skipped_not_in_project|skipped_terminal_conflict|failed",
 #     "item_id": "PVTI_...",
 #     "project_id": "PVT_...",
 #     "status_field_id": "PVTSSF_...",
 #     "option_id": "...",
 #     "warnings": []
 #   }
+#
+# result values:
+#   updated                     — Status written, or same-terminal no-op (Done→Done / Cancelled→Cancelled)
+#   skipped_not_in_project      — Issue is not on the Project and auto_add is false
+#   skipped_terminal_conflict   — current Status is Cancelled and the request was Done
+#                                 (one-way guard; SoT: references/projects-integration.md §2.4.8)
+#   failed                      — API / parse / GraphQL errors[] / unreadable current Status
+#                                 (does not write). Unreadable includes fieldValues key missing,
+#                                 fieldValues == null, or nodes not an array. Empty nodes / no
+#                                 Status entry remain unset and may write.
 #
 # Exit codes:
 #   0 = success OR non-blocking failure (caller must inspect .result)
@@ -169,6 +179,18 @@ query($owner: String!, $repo: String!, $number: Int!) {
             id
             number
           }
+          fieldValues(first: 20) {
+            nodes {
+              ... on ProjectV2ItemFieldSingleSelectValue {
+                name
+                field {
+                  ... on ProjectV2SingleSelectField {
+                    name
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -176,10 +198,25 @@ query($owner: String!, $repo: String!, $number: Int!) {
 }' -f owner="$OWNER" -f repo="$REPO" -F number="$ISSUE_NUMBER" 2>"$GH_ERR_FILE"
 }
 
+# GraphQL may return HTTP 200 with .data and .errors[] together. gh exits 0
+# in that case; sibling projects-items-fetch.sh / link-sub-issue.sh fail-loud.
+reject_gql_errors() {
+  local gqe
+  if ! gqe=$(printf '%s\n' "$GQL_RESULT" | jq -r '.errors // [] | map(.message) | join("; ")'); then
+    add_warning "Could not parse GraphQL errors array from projectItems response"
+    fail_nb "failed"
+  fi
+  if [ -n "$gqe" ]; then
+    add_warning "GraphQL projectItems query returned errors: $gqe"
+    fail_nb "failed"
+  fi
+}
+
 GQL_RESULT=$(query_project_items) || {
   add_warning "GraphQL projectItems query failed: $(gh_err_msg)"
   fail_nb "failed"
 }
+reject_gql_errors
 
 # Check that the issue node exists (null means issue not found in repo).
 ISSUE_EXISTS=$(printf '%s\n' "$GQL_RESULT" | jq -r '.data.repository.issue // empty')
@@ -223,6 +260,7 @@ if [ -z "$NODE_LINE" ]; then
     add_warning "GraphQL re-query after auto-add failed: $(gh_err_msg)"
     fail_nb "failed"
   }
+  reject_gql_errors
   NODE_LINE=$(find_matching_node)
   if [ -z "$NODE_LINE" ]; then
     add_warning "Auto-add succeeded but project item not found in re-query"
@@ -236,6 +274,29 @@ if [ -z "$ITEM_ID" ] || [ -z "$PROJECT_ID" ]; then
   add_warning "Failed to parse item_id / project_id from GraphQL result"
   fail_nb "failed"
 fi
+
+# Current Status. Terminal names (Done / Cancelled) are copied from
+# references/projects-integration.md §2.4.8 — do not add a third here.
+# Unreadable (fail, do not write): fieldValues key missing, fieldValues == null,
+# nodes not an array, or jq failure. has("fieldValues") is true for null, so
+# null must be typed as unreadable rather than treated as unset.
+# Unset (write allowed): empty nodes / no Status entry.
+CURRENT_EXTRACT=$(printf '%s\n' "$GQL_RESULT" | jq -c --argjson pn "$PROJECT_NUMBER" '
+  [.data.repository.issue.projectItems.nodes[] | select(.project.number == $pn)][0] as $n
+  | if $n == null then {ok:false, reason:"no_item"}
+    elif ($n | has("fieldValues") | not) then {ok:false, reason:"fieldValues_missing"}
+    elif ($n.fieldValues | type) != "object" then {ok:false, reason:"fieldValues_unreadable"}
+    elif ($n.fieldValues | has("nodes") | not) then {ok:false, reason:"fieldValues_unreadable"}
+    elif ($n.fieldValues.nodes | type) != "array" then {ok:false, reason:"fieldValues_unreadable"}
+    else {ok:true, status: ([ $n.fieldValues.nodes[] | select(.field.name == "Status") | .name ][0] // "")}
+    end
+') || CURRENT_EXTRACT=""
+if [ -z "$CURRENT_EXTRACT" ] || [ "$(printf '%s' "$CURRENT_EXTRACT" | jq -r '.ok // false')" != "true" ]; then
+  extract_reason=$(printf '%s' "$CURRENT_EXTRACT" | jq -r '.reason // "jq_failed"' 2>/dev/null || echo "jq_failed")
+  add_warning "Could not read current Status from project item fieldValues ($extract_reason)"
+  fail_nb "failed" "$ITEM_ID" "$PROJECT_ID"
+fi
+CURRENT_STATUS=$(printf '%s' "$CURRENT_EXTRACT" | jq -r '.status')
 
 # --- Step C: Retrieve Status field + option id ---
 # If status_field_id_hint is provided, we still need to fetch options (field_ids
@@ -266,6 +327,18 @@ OPTION_ID=$(printf '%s\n' "$STATUS_NODE" | jq -r --arg sn "$STATUS_NAME" '[.opti
 if [ -z "$OPTION_ID" ]; then
   add_warning "Status option '$STATUS_NAME' not found in Status field"
   fail_nb "failed" "$ITEM_ID" "$PROJECT_ID" "$STATUS_FIELD_ID"
+fi
+
+# One-way terminal guard (SoT: §2.4.8). Cancelled must not be overwritten with
+# Done. Done → Cancelled stays writable so /rite:issue-cancel can resync.
+# Same-terminal (Done→Done / Cancelled→Cancelled) is an idempotent no-op.
+if [ "$CURRENT_STATUS" = "Cancelled" ] && [ "$STATUS_NAME" = "Done" ]; then
+  add_warning "Issue #$ISSUE_NUMBER is already on terminal Status 'Cancelled'; refusing overwrite to 'Done'"
+  fail_nb "skipped_terminal_conflict" "$ITEM_ID" "$PROJECT_ID" "$STATUS_FIELD_ID" "$OPTION_ID"
+fi
+if [ "$CURRENT_STATUS" = "$STATUS_NAME" ] && { [ "$CURRENT_STATUS" = "Done" ] || [ "$CURRENT_STATUS" = "Cancelled" ]; }; then
+  output_result "updated" "$ITEM_ID" "$PROJECT_ID" "$STATUS_FIELD_ID" "$OPTION_ID"
+  exit 0
 fi
 
 # --- Step D: Update Status ---

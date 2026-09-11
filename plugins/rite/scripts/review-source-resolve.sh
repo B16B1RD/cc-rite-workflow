@@ -341,7 +341,7 @@ if [ -n "$review_file_path" ] && [ "$review_file_path" != "__RITE_UNSET__" ]; th
         if [ -n "$json_commit_sha" ] && [ -n "$head_sha" ] && [ "$json_commit_sha" != "$head_sha" ]; then
           # stale file 検出時は fallback 経路に route する。`RITE_FIX_ACKNOWLEDGE_STALE=1` 環境変数による
           # opt-in 続行経路は設けない。Claude Code Bash tool は呼び出し境界で env var を継承しないため
-          # (anthropics/claude-code#2508)、ユーザーが env var を set する手段がなく dead code になる。
+          # (anthropics/claude-code)、ユーザーが env var を set する手段がなく dead code になる。
           # stale を承知で続行したいユーザーは Priority 4 Interactive fallback の「レビュー実行」or「別ファイル指定」
           # を選択する。stale な検出結果を無視したい特殊ケースは Priority 4 で「別ファイル指定」に同じ path を
           # 再入力することで実質的に対応可能 (ただし再度 stale warning が出る — 設計意図通り)。

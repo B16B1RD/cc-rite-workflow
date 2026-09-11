@@ -4,7 +4,7 @@
 # Pin static invariants of `scripts/link-sub-issue.sh`: placeholder rejection
 # (an unsubstituted `{owner}` / `{repo}` must fail-fast rather than silently
 # call the gh API with a literal placeholder), arg-count validation, and the
-# JSON output skeleton shape. Runtime gh calls are not mocked here.
+# JSON output skeleton shape, plus the backfill caller's membership probe.
 #
 # Caller side: also verify the Variant B JSON fallback keeps a JSON-valid escape
 # so the caller can parse the fallback result. The parent+Sub-Issue create/link
@@ -89,5 +89,24 @@ assert_grep "link-sub-issue.sh emits JSON with status field" "$TARGET" '"status"
 assert_grep "link-sub-issue.sh handles 'ok' status (successful link)" "$TARGET" '"ok"'
 assert_grep "link-sub-issue.sh handles 'already-linked' status (idempotency)" "$TARGET" '"already-linked"'
 assert_grep "link-sub-issue.sh handles 'failed' status (gh fatal)" "$TARGET" '"failed"'
+
+source <(sed -n '/^is_already_subissue() {$/,/^}$/p' "$PLUGIN_ROOT/scripts/backfill-sub-issues.sh")
+assert "backfill membership function is loaded" "0" "$(declare -F is_already_subissue >/dev/null; echo $?)"
+OWNER=owner
+REPO=repo
+# Oversized stub data exercises consumption beyond the API's normal page limit.
+subissues_json=$(jq -nc '{data:{repository:{issue:{subIssues:{nodes:[range(1;50001) | {number:.}],pageInfo:{hasNextPage:false}}}}}}')
+gh() { printf '%s\n' "$subissues_json"; }
+rc=0
+out=$(is_already_subissue 100 1) || rc=$?
+assert "early linked child matches across large producer output" "0" "$rc"
+assert "matched membership probe stays silent" "" "$out"
+rc=0
+out=$(is_already_subissue 100 50000) || rc=$?
+assert "last linked child matches across large producer output" "0" "$rc"
+rc=0
+out=$(is_already_subissue 100 999999) || rc=$?
+assert "absent child stays unlinked across large producer output" "1" "$rc"
+assert "unmatched membership probe stays silent" "" "$out"
 
 print_summary "$(basename "$0")" "If you change the link-sub-issue.sh argument contract (4 positional args), JSON output schema, or remove the placeholder rejection, update this test, the consuming scripts/decompose-issues.sh + scripts/backfill-sub-issues.sh + sub-issue-link-handler.md, the manual recovery command in skills/issue-create/SKILL.md (link_failures 復旧手順の 4 positional args literal), the usage example in references/graphql-helpers.md, hooks/tests/create-md-invocation-symmetry.test.sh (TC-5b が 4-positional-arg 隣接形を pin), and scripts/tests/decompose-issues.test.sh (stub が 4-arg contract + JSON schema を複製). 列挙は 4-arg contract / JSON schema の literal を持つ consumer の全数 (literal を持たない設計ドキュメントは除く — grep link-sub-issue で棚卸し済)."

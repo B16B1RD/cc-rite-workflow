@@ -95,6 +95,12 @@ marker を作れない環境（read-only な `${TMPDIR}` 等）では `NONBLOCKI
 <a id="save-pending-marker"></a>
 ## save-pending marker（8.0.4）の設計理由 — anchor 配置 / id 受け渡し / marker の意味 / 差し戻し先 / positive 検査（2 層）
 
+`[CONTEXT] MEASURED_GATE=applied` は同一 invocation の会話にしか残らず、JSON を直接生成・保存する
+経路を後段プロセスから識別できない。このため gate helper は JSON 本体へ `measured_gate` receipt を
+書き、保存 helper・8.0.4・fix が同じ receipt と commit SHA の一致を検査する。schema 1.1.0 の
+additive field だが現行 producer/consumer では必須であり、導入前アーカイブを修復して通す例外は
+設けない。欠落時はレビューを再実行して正典 writer から再生成する。
+
 本 gate が塞ぐのは「ステップ 6 全体の skip」で、上記「限界」がそのまま顕在化した形になる。この状態では中間サイクルの永続 JSON が残らず、6.1.d の記録コメントも PATCH されないまま、どの gate も発火しない。
 
 **なぜ 6.1.a が落ちやすいか**: 6.1.a は JSON 本文の生成を 5.3.0.M step 1 に譲っており、現在は「bash を 1 行打つだけ」の低顕著性ステップである。E2E 出力最小化下の中間 cycle では、この種のステップが最も落ちやすい。

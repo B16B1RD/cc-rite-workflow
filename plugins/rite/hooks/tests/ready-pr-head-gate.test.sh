@@ -207,7 +207,7 @@ esac
 EOF
 chmod +x "$SB/bin/git"
 
-# ----- sweep SHA exception (#2439) ----------------------------------------
+# ----- sweep SHA exception ----------------------------------------
 ST="$SB/state"
 mkdir -p "$ST/.rite/state"
 write_done_lines() {

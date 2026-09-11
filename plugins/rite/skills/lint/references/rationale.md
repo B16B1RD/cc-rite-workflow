@@ -30,10 +30,10 @@ open → implement の Test Verification Gate が既に通っているのに lin
 
 ## descriptive-number-blocking
 
-generic loop の findings は warning のまま `[lint:success]` を保つ（progressive cleanup）。
-説明的番号の **新規追加** だけは blocking — 番号を本文に戻す退行を「後で直す」と残すと、
-number-free 面がすぐに崩れる。diff が読めない（rc=2）も「見ていないのに success」になるため
-同じ error 経路へ倒す。
+generic loop の `--all` findings は warning のまま `[lint:success]` を保つ（progressive cleanup）。
+追加行の裸 number-ref だけは blocking — `number-reference-check.sh --diff`（Phase 3.5 preamble）。
+番号を本文に戻す退行を「後で直す」と残すと number-free 面がすぐに崩れる。
+diff が読めない（rc=2）も「見ていないのに success」になるため同じ error 経路へ倒す。
 
 ## findings-are-warnings
 

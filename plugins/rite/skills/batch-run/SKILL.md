@@ -10,16 +10,18 @@ argument-hint: "[--merge] <issue_number>..."
 
 # /rite:batch-run
 
+> 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
+
 > 実行開始時は [Autonomous Execution](../rite-workflow/references/autonomous-execution.md) を適用する。
 
 **デフォルトでは** `/rite:open` → `/rite:iterate` を **順次・完全自律（無確認）** して draft PR を残す。`--merge` 時のみ `/rite:ready` → `/rite:merge` → `/rite:cleanup` まで完走する。
 
-成功する限り無確認。失敗は即停止。ただし `[iterate:max-cycles-reached]` は**即停止せず** failed 記録して次へ進む。handoff は **一切 set しない**。継続は flat step 構造。
+成功する限り無確認。失敗は即停止。`[iterate:max-cycles-reached]` も failed 記録して即停止する。handoff は **一切 set しない**。継続は flat step 構造。
 rationale: references/rationale.md#default-draft
-rationale: references/rationale.md#breaker-not-stop
+rationale: references/rationale.md#breaker-stop
 rationale: references/rationale.md#no-handoff
 
-途中停止: 処理中 Issue は `/rite:recover {issue}`、残りキューは引数省略 `/rite:batch-run` で再開（モードも永続化）。中断が直近（`updated_at` から 2 時間以内）かつ cursor 一致なら recover 単体でも残りキューへ自動継続（[recover Phase 5.5](../recover/SKILL.md)）。再開は**同一セッション内**前提。
+途中停止: 処理中 Issue は `/rite:recover {issue}`、残りキューは引数省略 `/rite:batch-run` で再開（モードも永続化）。キューが `active=true` で中断が直近（`updated_at` から 2 時間以内）かつ cursor 一致なら recover 単体でも残りキューへ自動継続（[recover Phase 5.5](../recover/SKILL.md)）。再開は**同一セッション内**前提。
 rationale: references/rationale.md#session-scoped-queue
 
 `{plugin_root}` は [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version)。run-queue は **`run-queue-{session_id}.json`**（`flow-state.sh path` の basename、`state-path-resolve.sh` の state root）。sandbox で worktree cwd からの書込が拒否された当該 bash のみ `dangerouslyDisableSandbox: true` で再実行してよい（確認不要。[git-worktree-patterns.md](../../references/git-worktree-patterns.md#worktree-cwd-から-main-checkout-配下への書き込みが-sandbox-の-write-許可リストでブロックされる)）。
@@ -53,8 +55,10 @@ rationale: references/rationale.md#session-scoped-queue
 | `{pr_number}` | ステップ 2 の open 完了通知（`[pr:created:N]`）から抽出 |
 | `{branch_name}` | ステップ 2 の open 完了通知「ブランチ: ...」行から抽出（ステップ 6 の cleanup に渡す） |
 | `{processed_issues}` | ステップ 7 bash の `processed=`（全完了 Issue 一覧） |
+| `{breaker_failed}` | ステップ 8: `[iterate:max-cycles-reached]` 受領なら `true`、それ以外は `false` |
 | `{failed_issues}` | ステップ 7 bash の `failed=`（サーキットブレーカー `[iterate:max-cycles-reached]` で非収束となった Issue 一覧。空 `[]` のとき完了通知の該当行を省略） |
 | `{outstanding_n}` | ステップ 6 で cleanup 完了報告から読む `[cleanup:outstanding:N]` sentinel の `N` に実際に埋め込まれた数値 |
+| `{action_items}` | 本 run の bash 出力に残った、ユーザーの操作が必要な WARNING / ERROR。ステップ 7 完了通知 / ステップ 8 停止報告の `要対応:` 欄へ転記する（0 件なら欄ごと省略） |
 | `{outstanding_issues}` | ステップ 7 bash の `outstanding=`（未完了事項が残った Issue 一覧。空 `[]` のとき完了通知の該当行を省略） |
 | `{done_issues}` / `{remaining_issues}` | ステップ 8 bash の `done=` / `remaining=`（停止時の処理済み / 未処理 Issue） |
 | `{plugin_root}` | [Plugin Path Resolution](../../references/plugin-path-resolution.md#resolution-script-full-version) |
@@ -64,7 +68,7 @@ rationale: references/rationale.md#session-scoped-queue
 
 ## ステップ 0: キュー初期化 / 再開判定
 
-`.rite/state/run-queue-{session_id}.json`（`{issues, cursor, mode, failed, outstanding, active, updated_at}`。session_id は `flow-state.sh path` の basename。解決できなければ fail-loud — global 名へフォールバックしない）を SoT とする。突き合わせ対象は自セッションのキューのみ。`mode` 欠落は `default`、`failed` / `outstanding` 欠落は `[]`、`active` 欠落は `false`、`updated_at` 欠落は stale。`failed` は `[iterate:max-cycles-reached]` の記録。`outstanding` は `[cleanup:outstanding:N]` で `n > 0` だった Issue。`active` はステップ 0 で `true`、ステップ 8 で `false`。`updated_at` は cursor 前進 / active 設定のたびに更新（ステップ 1 の skip-closed は対象外。[recover Phase 5.5](../recover/SKILL.md)）。
+`.rite/state/run-queue-{session_id}.json`（`{issues, cursor, mode, failed, outstanding, active, updated_at}`。session_id は `flow-state.sh path` の basename。解決できなければ fail-loud — global 名へフォールバックしない）を SoT とする。突き合わせ対象は自セッションのキューのみ。`mode` 欠落は `default`、`failed` / `outstanding` 欠落は `[]`、`active` 欠落は `false`、`updated_at` 欠落は stale。`failed` は `[iterate:max-cycles-reached]` の未解消記録（再開後のステップ 6 前進時に当該 Issue を除去）。`outstanding` は `[cleanup:outstanding:N]` で `n > 0` だった Issue。`active` はステップ 0 で `true`、ステップ 8 で `false`。`updated_at` は cursor 前進 / active 設定のたびに更新（ステップ 1 の skip-closed は対象外。[recover Phase 5.5](../recover/SKILL.md)）。
 rationale: references/rationale.md#session-scoped-queue
 
 ```bash
@@ -75,7 +79,7 @@ session_id=$(basename "$fs_path" .flow-state)
 queue_file="$state_root/.rite/state/run-queue-$session_id.json"
 mkdir -p "$(dirname "$queue_file")"
 
-# 引数パース（"#1527, 1528" のような記号混在も許容して数値のみ抽出。--merge は位置非依存で検出）
+# 引数パース（"#12, 34" のような記号混在も許容して数値のみ抽出。--merge は位置非依存で検出）
 arg_str="{issue_numbers}"
 case "$arg_str" in *--merge*) arg_mode=merge ;; *) arg_mode=default ;; esac
 arg_issues_json=$(printf '%s' "$arg_str" | grep -oE '[0-9]+' | jq -R 'tonumber' | jq -s '.' 2>/dev/null || echo '[]')
@@ -251,11 +255,11 @@ iterate の終了 sentinel を `{run_mode}`（ステップ 1 の `mode=` marker�
 | `[review:mergeable]` + `default` | iterate 収束。**ready/merge/cleanup はスキップ**し、draft PR を残したまま **ステップ 6 の cursor 前進 bash へ直行**（cleanup invoke はしない） |
 | `[fix:replied-only]` + `merge` | **非収束として失敗扱い** → ステップ 8（段階=iterate）。reply のみで mergeable 未到達のまま merge すると未解決指摘を握り潰すため。停止報告に続行コマンド `/rite:ready {pr_number} && /rite:merge {pr_number}` を案内 |
 | `[fix:replied-only]` + `default` | merge しないため即停止は不要。**「Issue #{current_issue} の draft PR #{pr_number} は未解決指摘あり」を会話に明示** したうえで draft PR を残し、**ステップ 6 の cursor 前進 bash へ直行**してキューを次へ進める |
-| `[iterate:max-cycles-reached]`（両モード） | **サーキットブレーカー発火 = 当該 Issue 非収束**。即停止（ステップ 8）はせず、ステップ 6 の failed 記録 bash で当該 Issue を `failed[]` に追加 → **ready/merge/cleanup をスキップ**して **ステップ 6 の cursor 前進 bash へ直行**（draft/open PR はレビュー待ちで残す。バッチ全体をストールさせず次 Issue へ進める）。停止しない理由: 非収束 1 件でバッチ全体を止めない設計（AC-2） |
+| `[iterate:max-cycles-reached]`（両モード） | **非収束として失敗** → ステップ 8（段階=iterate）。`failed[]` 記録と `active=false` 更新を行い、cursor は当該 Issue に保持する。ready/merge/cleanup と後続 Issue は実行しない。 |
 | `[fix:cancelled-by-user]`（両モード） | ユーザー中断 → ステップ 8（段階=iterate） |
 | `[iterate:nb-sweep-error]` / `[fix:error]` / sentinel 不在（両モード） | **失敗** → ステップ 8（段階=iterate） |
 
-<!-- run orchestration: after iterate returns a terminal sentinel, do NOT stop. merge mode + [review:mergeable] -> ステップ 4. default mode + [review:mergeable] or [fix:replied-only] -> ステップ 6 cursor advance (skip ready/merge/cleanup). [iterate:max-cycles-reached] (both modes) -> ステップ 6 failed-record bash + cursor advance (skip ready/merge/cleanup, do NOT stop). -->
+<!-- run orchestration: after iterate returns a terminal sentinel, do NOT stop. merge mode + [review:mergeable] -> ステップ 4. default mode + [review:mergeable] or [fix:replied-only] -> ステップ 6 cursor advance (skip ready/merge/cleanup). [iterate:max-cycles-reached] (both modes) -> ステップ 8 (record failure and stop; do NOT advance cursor). -->
 
 ---
 
@@ -299,7 +303,7 @@ args: "{pr_number}"
 
 ## ステップ 6: cleanup（`--merge` 時のみ）→ cursor を進める
 
-**`{run_mode}=merge` のときのみ**、下記で `/rite:cleanup` を invoke する。**デフォルト（draft 止まり）モードはステップ 3 から直接このステップに遷移し、cleanup invoke をスキップして下段の cursor 前進 bash のみ実行する**（draft PR はレビュー待ちのため close せず残す）。**`[iterate:max-cycles-reached]`（サーキットブレーカー）経由の場合は両モードとも cleanup を invoke せず、下段の failed 記録 bash → cursor 前進 bash のみ実行する**（非収束 PR は close/merge せずレビュー待ちで残す）。
+**`{run_mode}=merge` のときのみ**、下記で `/rite:cleanup` を invoke する。**デフォルト（draft 止まり）モードはステップ 3 から直接このステップに遷移し、cleanup invoke をスキップして下段の cursor 前進 bash のみ実行する**（draft PR はレビュー待ちのため close せず残す）。
 
 ```text
 skill: rite:cleanup
@@ -332,25 +336,7 @@ if [ "$outstanding_n" -gt 0 ] 2>/dev/null; then
 fi
 ```
 
-**（`[iterate:max-cycles-reached]` 経由の場合のみ）** cursor を進める前に当該 Issue を `failed[]` に記録する（ステップ 7 完了通知で報告するため。両モードで実行。`{current_issue}` はステップ 1 の marker 値をリテラル置換）:
-
-```bash
-state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
-fs_path=$(bash {plugin_root}/hooks/flow-state.sh path)
-session_id=$(basename "$fs_path" .flow-state)
-[ -n "$session_id" ] || { echo "ERROR: batch-run: session_id を解決できません（run-queue はセッションスコープのため必須）" >&2; exit 1; }
-queue_file="$state_root/.rite/state/run-queue-$session_id.json"
-# marker は jq/mv 成功に従属させる（失敗時に「記録済み」と誤主張して完了通知の failed 一覧から
-# silent に脱落するのを防ぐ）
-if jq --argjson n {current_issue} '.failed = ((.failed // []) + [$n] | unique)' "$queue_file" > "$queue_file.tmp" && mv "$queue_file.tmp" "$queue_file"; then
-  echo "[CONTEXT] RUN_FAILED_RECORDED; issue={current_issue}"
-else
-  rm -f "$queue_file.tmp"
-  echo "WARNING: failed 記録の書込に失敗（完了通知の failed 一覧から漏れる恐れ）" >&2
-fi
-```
-
-cursor を進める（**両モード共有**。`--merge` 時は cleanup から制御が戻った後、デフォルト時はステップ 3 から直接ここへ、サーキットブレーカー時は上記 failed 記録の後にここへ到達する）:
+cursor を進める（**両モード共有**。`--merge` 時は cleanup から制御が戻った後、デフォルト時はステップ 3 から直接ここへ。サーキットブレーカー時はここへ到達しない）:
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
@@ -359,7 +345,7 @@ session_id=$(basename "$fs_path" .flow-state)
 [ -n "$session_id" ] || { echo "ERROR: batch-run: session_id を解決できません（run-queue はセッションスコープのため必須）" >&2; exit 1; }
 queue_file="$state_root/.rite/state/run-queue-$session_id.json"
 now_ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-jq --arg now "$now_ts" '.cursor += 1 | .updated_at = $now' "$queue_file" > "$queue_file.tmp" && mv "$queue_file.tmp" "$queue_file"
+jq --arg now "$now_ts" '.issues[.cursor] as $issue | .failed = ((.failed // []) - [$issue]) | .cursor += 1 | .updated_at = $now' "$queue_file" > "$queue_file.tmp" && mv "$queue_file.tmp" "$queue_file"
 new_cursor=$(jq -r '.cursor' "$queue_file"); total=$(jq -r '.issues | length' "$queue_file")
 echo "[CONTEXT] RUN_ADVANCE; cursor=$new_cursor; total=$total"
 ```
@@ -397,6 +383,8 @@ echo "[CONTEXT] RUN_DONE; processed=$processed; failed=$failed; outstanding=$out
 
 `mode=`（`{run_mode}`）に応じて、`processed=` の Issue 一覧を `{processed_issues}`、`failed=` の非収束 Issue 一覧を `{failed_issues}` として完了通知を出し分ける。`failed=` が空配列 `[]` でない場合は、完了通知にサーキットブレーカーで failed 扱いとなった Issue を明示する（`[]` のときは該当行を省略する）。`outstanding=` の Issue 一覧を `{outstanding_issues}` として使う（cleanup 完了報告の「未完了事項」をロールアップする。`mode=merge` のときのみ意味を持つ — デフォルトモードは cleanup を invoke しないため `outstanding` は常に空）。
 
+`{action_items}`（ステップ 7 の 2 テンプレとステップ 8 停止報告に共通）: 本 run の bash 出力に残った WARNING / ERROR のうち、ユーザーが操作しない限り残り続ける行を 1 行ずつ列挙する。最終試行と重複の判定は [Autonomous Execution](../rite-workflow/references/autonomous-execution.md) に従う。成功した迂回・リトライは載せない。**0 件なら `要対応:` 行ごと省略する**。cleanup 由来の非ブロッキング失敗をロールアップする `未完了事項:` 行とは別欄で、0 件時の扱いも異なる（`未完了事項:` は常に出す）。
+
 **デフォルト（`mode=default`）**: 各 Issue は draft PR で停止しており **merge していない**:
 
 ```
@@ -407,20 +395,28 @@ echo "[CONTEXT] RUN_DONE; processed=$processed; failed=$failed; outstanding=$out
 レビュー後に進めるには各 PR で `/rite:ready <pr>` → `/rite:merge <pr>`、
 または最初からまとめて完走させるなら `/rite:batch-run --merge {processed_issues}` を実行してください。
 （未解決指摘ありで通過した draft PR があれば、上記処理中にその旨を明示しています。）
-（`failed=` が非空のときのみ）サーキットブレーカーで非収束（failed）となった Issue: {failed_issues} — draft/open PR をレビュー待ちで残しています。
+（旧キューの `failed=` が非空のときのみ）サーキットブレーカーで非収束（failed）となった Issue: {failed_issues} — draft/open PR をレビュー待ちで残しています。
+
+（転記すべき行があるときのみ、以下 2 行）
+要対応:
+{action_items}
 
 <!-- [run:all-completed] -->
 ```
 
-**`--merge`（`mode=merge`）**: 全 5 段を完走（ただし failed 扱いの Issue は merge/cleanup をスキップ済）:
+**`--merge`（`mode=merge`）**: 全 5 段を完走（旧キューに残る failed は下記で別途報告）:
 
 ```
 ## /rite:batch-run 完了
 
 処理した Issue: {processed_issues}
 全 Issue を処理しました（open→iterate→ready→merge→cleanup を完走）。
-（`failed=` が非空のときのみ）サーキットブレーカーで非収束（failed）となり merge/cleanup をスキップした Issue: {failed_issues} — draft/open PR をレビュー待ちで残しています。`/rite:iterate <pr>` で再開できます。
+（旧キューの `failed=` が非空のときのみ）サーキットブレーカーで非収束（failed）となり merge/cleanup をスキップした Issue: {failed_issues} — draft/open PR をレビュー待ちで残しています。`/rite:iterate <pr>` で再開できます。
 未完了事項: （`outstanding=` が空のとき）なし（全 Issue） / （非空のとき）{outstanding_issues} の cleanup で非ブロッキング失敗が残っています — 各 Issue の cleanup 完了報告（本セッションのログ）を参照するか、`/rite:recover <issue>` で確認してください。
+
+（転記すべき行があるときのみ、以下 2 行）
+要対応:
+{action_items}
 
 <!-- [run:all-completed] -->
 ```
@@ -429,7 +425,7 @@ echo "[CONTEXT] RUN_DONE; processed=$processed; failed=$failed; outstanding=$out
 
 ## ステップ 8: 失敗時の停止報告（即停止）
 
-いずれかのステップで失敗 sentinel を受領したら、run-queue-{session_id}.json を **残したまま**（cursor は失敗 Issue を指したまま）即停止して報告する。
+いずれかのステップで失敗 sentinel を受領したら、run-queue-{session_id}.json を **残したまま**（cursor は失敗 Issue を指したまま）即停止して報告する。`{breaker_failed}` は `[iterate:max-cycles-reached]` なら `true`、それ以外（sentinel 不在を含む）は `false` にリテラル置換する。ブレーカー時も後続 Issue は開始せず、PR / branch / worktree を保持する。
 
 ```bash
 state_root=$(bash {plugin_root}/hooks/state-path-resolve.sh)
@@ -442,10 +438,12 @@ queue_file="$state_root/.rite/state/run-queue-$session_id.json"
 bash {plugin_root}/hooks/flow-state.sh consume-handoff >/dev/null 2>&1 || true
 # 停止時は active=false にする（run はもう iterate を駆動しない）。これにより停止後に同じ Issue を
 # 手動 /rite:iterate した際、iterate ステップ 6 が dormant キューを active batch と誤判定せず
-# 対話 AskUserQuestion を出せる（キューは cursor 保持のまま残し、引数省略 /rite:batch-run で再開可能）
+# 対話用の停止通知を出せる（キューは cursor 保持のまま残し、引数省略 /rite:batch-run で再開可能）
 now_ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-jq --arg now "$now_ts" '.active = false | .updated_at = $now' "$queue_file" > "$queue_file.tmp" 2>/dev/null && mv "$queue_file.tmp" "$queue_file" \
-  || { rm -f "$queue_file.tmp"; echo "WARNING: run-queue の active=false 書込に失敗（停止後の手動 iterate が batch と誤判定される恐れ）" >&2; }
+jq --arg now "$now_ts" --argjson breaker {breaker_failed} '
+  .active = false | .updated_at = $now |
+  if $breaker then .issues[.cursor] as $issue | .failed = ((.failed // []) + [$issue] | unique) else . end' "$queue_file" > "$queue_file.tmp" 2>/dev/null && mv "$queue_file.tmp" "$queue_file" \
+  || { rm -f "$queue_file.tmp"; echo "WARNING: run-queue の停止状態の書込に失敗（active=false / failed 記録を確認できず、停止後に batch が再駆動される恐れ）" >&2; }
 cursor=$(jq -r '.cursor // 0' "$queue_file" 2>/dev/null || echo 0)
 mode=$(jq -r '.mode // "default"' "$queue_file" 2>/dev/null || echo "default")
 done_issues=$(jq -rc ".issues[:$cursor]" "$queue_file" 2>/dev/null || echo "[]")
@@ -465,6 +463,10 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 処理済み Issue: {done_issues}
 未処理 Issue: {remaining_issues}
 
+（転記すべき行があるときのみ、以下 2 行）
+要対応:
+{action_items}
+
 復旧:
 - この Issue を続きから: /rite:recover {current_issue}
 - 残りをまとめて再開: /rite:batch-run（引数省略で自セッションの run-queue の cursor とモードから再開。明示再開する場合の `--merge` 併記は下記の補足を参照）
@@ -480,14 +482,14 @@ echo "[CONTEXT] RUN_STOP; cursor=$cursor; done=$done_issues; remaining=$remainin
 ## エラー時の方針
 
 - **失敗は即停止**。失敗 Issue は `/rite:recover {issue}` で個別復帰
-- **例外: サーキットブレーカーは即停止しない**。`[iterate:max-cycles-reached]` は `failed[]` に記録して cursor 前進し次へ進む。ステップ 7 で報告（AC-2）
+- **サーキットブレーカーも即停止**。`[iterate:max-cycles-reached]` はステップ 8 で `failed[]` に記録し、cursor を保持する。再開後に当該 Issue がステップ 6 まで到達したら、その failed 記録を除去して前進する
 - **session_id 解決不可は fail-loud**: `run-queue-{session_id}.json` を組む前に解決。不可なら global 名へフォールバックせず `exit 1`
 - run-queue は停止時に残す。引数省略 `/rite:batch-run` で cursor から再開（同一セッション）
 - handoff は使わない。continuation hint と flat step 構造で継続する
 - 実装計画承認は batch 中 run-queue 判定で自動承認。closed / 親 Issue / 品質 C-D の入力品質ゲートは batch でも止まる
-- recover の active batch 継続でも本方針（失敗は即停止、ブレーカーのみ例外）を適用する
+- recover の active batch 継続でも本方針（ブレーカーを含め失敗は即停止）を適用する
 
-rationale: references/rationale.md#breaker-not-stop
+rationale: references/rationale.md#breaker-stop
 rationale: references/rationale.md#no-handoff
 rationale: references/rationale.md#session-scoped-queue
 rationale: references/rationale.md#recover-batch-continue

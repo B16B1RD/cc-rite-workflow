@@ -3,7 +3,7 @@
 # Reviewed commit := .commit_sha of the newest .rite/review-results/{pr}-*.json
 # (schema field; PR-comment marker name is reviewed_commit). Archive is not
 # a current result, so this helper never reads it.
-# Sweep exception (#2439): after JSON mismatch, line 2 of
+# Sweep exception: after JSON mismatch, line 2 of
 # nb-sweep-done-{pr}.txt may name the one known sweep commit.
 set -u
 pr_number=""; plugin_root=""; results_dir=""; state_root=""

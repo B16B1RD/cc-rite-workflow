@@ -28,7 +28,7 @@
 #
 # Exact-token matching (key and field name) is not a fifth rule so much as the
 # reason the first four are implementable at all: `RESET` is a substring of
-# `FIRE_RESET`, `ITERATE_CB` of `ITERATE_CB_MODE`. Matching is therefore by
+# `OTHER_RESET`, `ITERATE_CB` of `ITERATE_CB_MODE`. Matching is therefore by
 # whole token, never by substring — `case "$line" in "[CONTEXT] $key="*)` gets
 # the anchor and the token boundary in one comparison.
 #

@@ -53,7 +53,7 @@
 #   status=skipped; reason=body_fetch_failed gh api での body 取得失敗 (auth/rate/network/404)
 #   status=skipped; reason=safety_check_failed body 空 / header 欠落 / <50% で PATCH 拒否
 #   status=skipped; reason=section_absent   merge-checklist: 対象 ### section 不在で新規 items を置けず
-#                                           (Python exit 10。items は破棄せず PATCH もしない —)
+#                                           (Python exit 10。items は破棄せず PATCH もしない)
 #   status=error; reason=transform_failed   Python transform が非ゼロ exit (exit 10 以外)
 #   status=error; reason=patch_failed       jq | gh api PATCH が失敗
 #   skills/fix/SKILL.md ステップ 4.5.2 はこの行を read し、no_comment 以外の skipped/error を
@@ -112,14 +112,21 @@ STATE_ROOT=$("$SCRIPT_DIR/state-path-resolve.sh" "$CWD" 2>/dev/null) || STATE_RO
 # (flow-state.sh path — schema_v2/v3 per-session file under .rite/sessions/).
 # The legacy shared file (.rite-flow-state) does not exist in schema_v2/v3-only
 # environments, so caching against it always misses and forces a full gh api
-# comments scan on every call (#1807, same root cause as #695's
-# cleanup-work-memory.sh). Fall back to the legacy shared file only when
-# session resolution itself fails (no .rite-session-id / session env var
-# available) — surface that fallback with a WARNING for diagnosability.
+# comments scan on every call (the same root cause the resolver-based path
+# in cleanup-work-memory.sh addresses). Fall back to the legacy shared file only when
+# no runtime is selected and legacy session resolution fails. Invalid/missing
+# selected runtime IDs stop before any shared legacy state can be written.
 _fs_err=$(mktemp 2>/dev/null) || _fs_err=""
 if RESOLVED_FLOW_STATE=$(RITE_STATE_ROOT="$STATE_ROOT" "$SCRIPT_DIR/flow-state.sh" path 2>"${_fs_err:-/dev/null}"); then
   :
 else
+  _identity_rc=0
+  bash "$SCRIPT_DIR/session-identity.sh" >/dev/null || _identity_rc=$?
+  if [ "$_identity_rc" -ne 2 ]; then
+    echo "ERROR: issue-comment-wm-sync: runtime session resolution failed; work memory sync stopped" >&2
+    [ -n "$_fs_err" ] && [ -s "$_fs_err" ] && head -3 "$_fs_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
+    exit 1
+  fi
   echo "WARNING: issue-comment-wm-sync: flow-state.sh path resolution failed — falling back to legacy $(basename "$STATE_ROOT/.rite-flow-state") (session_id may be missing or invalid)" >&2
   [ -n "$_fs_err" ] && [ -s "$_fs_err" ] && head -3 "$_fs_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
   RESOLVED_FLOW_STATE=""
@@ -136,7 +143,7 @@ FLOW_STATE="${RESOLVED_FLOW_STATE:-$STATE_ROOT/.rite-flow-state}"
 get_owner_repo() {
   local _err _rc=0 _out _git_err _git_or_line _git_owner _git_repo
   # git-remote parse first: works even when `origin` is an SSH Host alias
-  # unrecognized by gh's host allowlist (#1899). Falls through to
+  # unrecognized by gh's host allowlist. Falls through to
   # `gh repo view` below whenever the parse fails (no origin remote,
   # unparseable URL, charset-rejected).
   # Anchored to `cd "$STATE_ROOT"` (same as post-compact.sh) so this resolves
@@ -328,7 +335,7 @@ _read_cached_comment_id() {
 # 呼び出し側を scan 経路へフォールバックさせる (誤 PATCH より往復増を選ぶ)。
 _body_belongs_to_issue() {
   local body="$1" issue="$2" found
-  # `#246` が `#2463` に前方一致しないよう、番号の直後を行末か非数字に固定する。
+  # 短い番号が長い番号の接頭辞に前方一致しないよう、番号の直後を行末か非数字に固定する。
   # `head -1` の早期クローズは pipefail 下で sed を SIGPIPE 失敗させうる。判定不能は rc=1 側
   # (= scan フォールバック) が正しい挙動なので、抽出失敗は空文字へ縮退させる。
   found=$(printf '%s\n' "$body" \
@@ -353,7 +360,7 @@ do_fetch() {
       # cache された id は別 Issue の replica (batch 実行で前 Issue の値が残った等) か、
       # Issue 行を持たない別物。この id では PATCH せず、キャッシュを捨てて scan 経路へ落ちる。
       # `repos/{owner}/{repo}/issues/comments/{id}` は Issue 非依存のため、GET が成功したこと
-      # 自体は所属の証明にならない (#2463)。
+      # 自体は所属の証明にならない。
       [ -n "$_err" ] && rm -f "$_err"
       # 「不一致」と「判定不能 (Issue 行が無い / 読めない)」は同じ rc=1 に畳まれるため、文言も
       # 非所属を断定しない。断定すると判定不能ケースで operator の triage が「Issue 跨ぎ汚染」へ
@@ -675,7 +682,7 @@ INIT_EOF
   _init_rc=0
   # --repo を明示: shorthand の `gh issue comment` は内部で `gh repo view` と同じ
   # host-allowlist 解決を行うため、明示しないと origin が SSH Host alias のとき
-  # OWNER_REPO が解決済みでもここで再び失敗する (#1899)。
+  # OWNER_REPO が解決済みでもここで再び失敗する。
   result=$(gh issue comment "$ISSUE" --repo "$OWNER_REPO" --body-file "$tmpfile" 2>"${_init_err:-/dev/null}") || _init_rc=$?
   if [ "$_init_rc" -ne 0 ]; then
     echo "[rite] WARNING: issue-comment-wm-sync: gh issue comment 作成失敗 (rc=$_init_rc)" >&2

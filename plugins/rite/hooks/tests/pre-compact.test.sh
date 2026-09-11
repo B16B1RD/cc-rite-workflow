@@ -288,10 +288,10 @@ create_state_file "$git_repo" '{"active": true}'
 
 LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
 output=$(echo "{\"cwd\": \"$git_repo\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE")
-if echo "$output" | grep -q "$(issue_text 42)"; then
-  pass "Branch detection found the expected issue in output"
+if [ -z "$output" ] && grep -q "$(issue_text 42)" "$LAST_STDERR_FILE"; then
+  pass "Branch detection found the expected issue in stderr; stdout empty"
 else
-  fail "Expected '$(issue_text 42)' in output, got: $output"
+  fail "Expected empty stdout + '$(issue_text 42)' in stderr, got stdout: $output stderr: $(cat "$LAST_STDERR_FILE")"
 fi
 echo ""
 
@@ -635,7 +635,8 @@ per_session_file="$dir680a/.rite/sessions/${sid680a}.flow-state"
 echo '{"active": true, "phase": "phase5_review", "issue_number": 680, "branch": "refactor/issue-680-test", "updated_at": "2020-01-01T00:00:00+00:00"}' \
   > "$per_session_file"
 old_ts=$(jq -r '.updated_at' "$per_session_file" 2>/dev/null)
-output=$(run_hook "$dir680a") && rc=0 || rc=$?
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(echo "{\"cwd\": \"$dir680a\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") && rc=0 || rc=$?
 if [ $rc -eq 0 ] && [ -f "$per_session_file" ]; then
   new_ts=$(jq -r '.updated_at' "$per_session_file" 2>/dev/null)
   if [ "$new_ts" != "$old_ts" ] && [ -n "$new_ts" ]; then
@@ -646,11 +647,13 @@ if [ $rc -eq 0 ] && [ -f "$per_session_file" ]; then
 else
   fail "TC-per-session-detect-A: hook exited non-zero or per-session file missing (rc=$rc)"
 fi
-# Counter-assertion: workflow-active stdout fired (.active=true precondition)
-if echo "$output" | grep -q "STOP. Compact detected. $(issue_text 680)"; then
-  pass "TC-per-session-detect-A: workflow-active stdout fired on per-session path (.active=true preserved)"
+# Counter-assertion: workflow-active path still fires (stderr compact detected; stdout empty)
+if [ -z "$output" ] \
+  && grep -q "compact detected" "$LAST_STDERR_FILE" \
+  && grep -q "$(issue_text 680)" "$LAST_STDERR_FILE"; then
+  pass "TC-per-session-detect-A: workflow-active stderr fired, stdout empty (.active=true preserved)"
 else
-  fail "TC-per-session-detect-A: workflow-active stdout missing — .active=true precondition broke on per-session path"
+  fail "TC-per-session-detect-A: expected empty stdout + stderr compact detected; stdout='$output' stderr=$(cat "$LAST_STDERR_FILE")"
 fi
 echo ""
 
@@ -864,6 +867,33 @@ elif ! grep -q 'flow-state.sh path resolution failed' "$lf_stderr"; then
   fail "expected resolver-failure WARNING on stderr"
 else
   pass "sid unresolvable → legacy .rite-compact-state written with compact_state=recovering + resolver WARNING"
+fi
+echo ""
+
+echo "T-04: active workflow → empty stdout, stderr compact detected, recovering+trigger written"
+dir_t04="$TEST_DIR/tc-t04"
+mkdir -p "$dir_t04/.rite/sessions"
+sid_t04="test-sid-$(basename "$dir_t04")"
+echo "$sid_t04" > "$dir_t04/.rite-session-id"
+printf '# rite test sandbox config\n' > "$dir_t04/rite-config.yml"
+echo '{"active": true, "phase": "implement", "issue_number": 2512, "branch": "fix/issue-2512-x", "updated_at": "2020-01-01T00:00:00+00:00"}' \
+  > "$dir_t04/.rite/sessions/${sid_t04}.flow-state"
+t04_err="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+t04_out=$(echo "{\"cwd\": \"$dir_t04\", \"trigger\": \"manual\"}" | bash "$HOOK" 2>"$t04_err") || t04_rc=$?
+t04_rc=${t04_rc:-0}
+LAST_STDERR_FILE="$t04_err"
+cs_t04="$(compact_state_path "$dir_t04" "$sid_t04")"
+cs_state=$(jq -r '.compact_state' "$cs_t04" 2>/dev/null)
+cs_trig=$(jq -r '.trigger' "$cs_t04" 2>/dev/null)
+if [ "$t04_rc" -eq 0 ] \
+  && [ -z "$t04_out" ] \
+  && grep -q "compact detected" "$t04_err" \
+  && [ "$cs_state" = "recovering" ] \
+  && [ "$cs_trig" = "manual" ] \
+  && [ -f "$dir_t04/.rite/work-memory/issue-2512.md" ]; then
+  pass "T-04: stdout empty, stderr compact detected, compact-state recovering+trigger=manual, snapshot kept"
+else
+  fail "T-04: rc=$t04_rc stdout='$t04_out' state=$cs_state trigger=$cs_trig snapshot=$([ -f "$dir_t04/.rite/work-memory/issue-2512.md" ] && echo yes || echo no) stderr=$(cat "$t04_err")"
 fi
 echo ""
 

@@ -41,7 +41,7 @@
 # lenient YAML approach as wiki-ingest-trigger.sh / ingest.md ステップ 1.1
 # (awk section extraction + inline-comment strip + quote strip).
 #
-# Security note (verified-review cycle 4 LOW): key value extraction uses
+# Security note: key value extraction uses
 # `awk -v k=...` rather than `sed` with an interpolated `$key`. Current
 # callers pass hardcoded literal keys only, so there is no injection path
 # today, but `sed "s/.*${key}:[[:space:]]*//"` would treat sed metachars

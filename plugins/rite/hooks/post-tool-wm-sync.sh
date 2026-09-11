@@ -81,6 +81,7 @@ else
   # surface the failure under RITE_DEBUG so deploy regressions are observable.
   [ -n "${RITE_DEBUG:-}" ] && mkdir -p "$STATE_ROOT/.rite/logs" 2>/dev/null && echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] post-tool-wm-sync: flow-state.sh path resolution failed, skipping wm sync" \
     >> "$STATE_ROOT/.rite/logs/flow-debug.log" 2>/dev/null || true
+  [ "${RITE_RUNTIME_EXPLICIT:-0}" != "1" ] || exit 1
   FLOW_STATE=""
 fi
 [ -f "$FLOW_STATE" ] || exit 0
@@ -90,7 +91,7 @@ fi
 # would left-shift every field so _phase and _last_synced_phase swap,
 # making the diff guard fire erroneously and sending the wrong value
 # through issue-comment-wm-sync.sh --transform update-phase.
-_flow_data=$(jq -r '[(.active // false | tostring), (.issue_number // "" | tostring), (.phase // "" | tostring), (.last_synced_phase // "" | tostring), (.wm_replica // "" | tostring)] | join("\u001f")' "$FLOW_STATE" 2>/dev/null) || exit 0
+_flow_data=$(jq -r '[(.active // false | tostring), (.issue_number // "" | tostring), (.phase // "" | tostring), (.last_synced_phase // "" | tostring), (.wm_replica // "" | tostring)] | join("\u001f")' "$FLOW_STATE" 2>/dev/null) || { [ "${RITE_RUNTIME_EXPLICIT:-0}" != "1" ] || exit 1; exit 0; }
 IFS=$'\x1f' read -r _active issue_number _phase _last_synced_phase _wm_replica <<< "$_flow_data"
 [ "$_active" = "true" ] || exit 0
 [ -n "$issue_number" ] || exit 0
@@ -135,6 +136,7 @@ if [ ! -f "$LOCAL_WM" ]; then
   # unconditional に WARNING を出して観測性を確保する。
   source "$SCRIPT_DIR/work-memory-update.sh" || {
     echo "[rite] WARNING: post-tool-wm-sync: failed to source work-memory-update.sh — local WM 自動作成を skip" >&2
+    [ "${RITE_RUNTIME_EXPLICIT:-0}" != "1" ] || exit 1
     exit 0
   }
   export WM_PLUGIN_ROOT="${WM_PLUGIN_ROOT:-$(dirname "$SCRIPT_DIR")}"
@@ -159,6 +161,7 @@ if [ ! -f "$LOCAL_WM" ]; then
     log_debug "local WM created successfully"
   else
     _wm_rc=$?
+    [ "${RITE_RUNTIME_EXPLICIT:-0}" != "1" ] || exit "$_wm_rc"
     case "$_wm_rc" in
       1)
         log_debug "update_local_work_memory skipped (rc=1)"
@@ -171,7 +174,14 @@ if [ ! -f "$LOCAL_WM" ]; then
         ;;
     esac
   fi
-  exit 0
+  [ "${RITE_RUNTIME_EXPLICIT:-0}" = "1" ] || exit 0
+fi
+
+# Automatic no-comment detection may already have advanced last_synced_phase.
+# An explicit boundary must still report that the replica is unavailable.
+if [ "${RITE_RUNTIME_EXPLICIT:-0}" = "1" ] && [ "$_wm_replica" = "absent" ] && [ "$_phase" != "init" ]; then
+  echo "ERROR: explicit checkpoint: work memory replica is absent; initialize the replica before retrying" >&2
+  exit 1
 fi
 
 # === Phase diff detection & Issue comment auto-sync ===
@@ -248,7 +258,7 @@ if [ "$_wm_replica" = "absent" ]; then
   # 負キャッシュ済みなら gh を呼ばず last_synced_phase だけ進める (round_trips=0)。
   # ただし黙って進めない: `absent` の解除経路は replica の作成成功だけなので、init が
   # unverified / gh 失敗で終わるとこの分岐に永久に留まり、replica 同期が一度も行われないまま
-  # debug ログ以外に何も出ない状態が続く (#2463)。劣化していることが phase 変化のたびに
+  # debug ログ以外に何も出ない状態が続く。劣化していることが phase 変化のたびに
   # ユーザーへ届くよう systemMessage を出す (gh 往復は増やさない)。
   log_debug "wm_replica=absent; skip gh; round_trips=0"
   _set_sysmsg "作業メモリの Issue コメント replica が無いため同期をスキップしています（Issue #${issue_number}）。/rite:open の replica 作成が失敗した可能性があります。同期を再開するには /rite:open を実行してください。"
@@ -336,7 +346,7 @@ else
           cd "$STATE_ROOT" || { log_debug "cd STATE_ROOT failed"; _flush_sysmsg; exit 0; }
 
           _base_rc=0
-          _base_branch=$(awk '/^[[:space:]]+base:/ { sub(/^[[:space:]]+base:[[:space:]]*/, ""); gsub(/["'"'"'\r]/, ""); sub(/[[:space:]]+$/, ""); print; exit }' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || _base_rc=$?
+          _base_branch=$(awk '/^[[:space:]]+base:/ { sub(/^[[:space:]]+base:[[:space:]]*/, ""); sub(/[[:space:]]+#.*/, ""); gsub(/["'"'"'\r]/, ""); sub(/[[:space:]]+$/, ""); print; exit }' "$STATE_ROOT/rite-config.yml" 2>/dev/null) || _base_rc=$?
           if [ -z "$_base_branch" ] || [ "$_base_rc" -ne 0 ]; then
             _sym=""
             _sym=$(git -C "$CWD" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null) || _sym=""
@@ -456,6 +466,12 @@ else
   fi
 fi
 
+# An explicit caller can retry a missing replica after its initialization step;
+# do not mark a non-success diagnostic as a completed synchronization boundary.
+if [ "${RITE_RUNTIME_EXPLICIT:-0}" = "1" ] && [ -n "$_sysmsg" ]; then
+  _phase_sync_ok=0
+fi
+
 # --- Update last_synced_phase only when ALL sync calls succeeded ---
 # Advancing on partial failure would silently lose retry opportunity for the
 # subset that failed; gating on _phase_sync_ok ensures the next hook invocation
@@ -475,6 +491,7 @@ if [ "$_phase_sync_ok" = "1" ]; then
       :
     else
       _mv_rc=$?
+      _phase_sync_ok=0
       rm -f "$_tmp_fs"
       echo "rite: post-tool-wm-sync: mv last_synced_phase failed (rc=$_mv_rc)" >&2
       [ -n "$_lp_mv_err" ] && [ -s "$_lp_mv_err" ] && head -3 "$_lp_mv_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
@@ -482,6 +499,7 @@ if [ "$_phase_sync_ok" = "1" ]; then
     [ -n "$_lp_mv_err" ] && rm -f "$_lp_mv_err"
   else
     _last_phase_jq_rc=$?
+    _phase_sync_ok=0
     rm -f "$_tmp_fs"
     echo "rite: post-tool-wm-sync: WARNING: jq write of last_synced_phase failed (rc=$_last_phase_jq_rc) — next hook invocation will re-run all transformers" >&2
     [ -n "$_last_phase_jq_err" ] && [ -s "$_last_phase_jq_err" ] && head -3 "$_last_phase_jq_err" | neutralize_ctrl --keep-newline | sed 's/^/  /' >&2
@@ -495,4 +513,8 @@ if [ -z "${_sysmsg:-}" ] && [ -n "${_obs_line:-}" ]; then
   printf '%s\n' "$_obs_line"
 fi
 log_debug "phase sync completed ($_last_synced_phase -> $_phase)"
+if [ "${RITE_RUNTIME_EXPLICIT:-0}" = "1" ] && [ "$_phase_sync_ok" != "1" ]; then
+  echo "ERROR: explicit checkpoint: work memory replica sync failed; retry this boundary" >&2
+  exit 1
+fi
 exit 0

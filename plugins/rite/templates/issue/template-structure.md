@@ -15,8 +15,61 @@ For the Complexity Gate, Type Definitions (incl. the Commit Type ↔ Contract Ty
 ```markdown
 **Type**: {type}
 **Complexity**: {complexity}
-**Parent Issue**: #{parent_number} <!-- omit if no parent -->
 ```
+
+### 上段要約（Issue / PR 共通）
+
+Issue は Meta の直後、PR は本文先頭に置く。以下は日本語例。上段の見出し・ラベルも `language` に合わせて翻訳する。
+
+```markdown
+## 要約
+
+**何が起きているか**: {前提知識なしで理解できる問題・背景を2〜3文}
+
+**何をするか**: {変更の要点を2〜3文}
+
+**見てほしい点**: {確認・レビューで注目する点を1〜2行}
+
+{条件に合う図。図なしのときは `<!-- 図なし: {理由} -->`}
+
+**用語**:
+- {この本文で使う内部用語}: {初出の一言説明}
+```
+
+- 3 ブロックは必須。内部用語が無ければ `**用語**:` とそのリストを省略する。各ブロックは3文以内を目安とする。
+- 内容源: Issue は What / Why と Goal → 問題・背景、Scope → 変更、AC / 制約 → 見てほしい点。PR は関連 Issue の問題と実際の差分・検証結果を使う。他リポジトリ名や内部機構名は説明なしに並べない。
+- タイトルは内部機構名を避け、変更の効果が読める文にする。Conventional Commits の type / scope は維持する。
+- 上段（Meta を含む details 外）に経緯識別子 `F-[0-9]+` / `cycle [0-9]+` / `[0-9a-fA-F]{7,}` / `PR #[0-9]+` / `Issue #[0-9]+` / `#[0-9]+` を書かない。PR の `Closes #N` 行のみ例外。残ったら生成をやり直し、作成前に再検査する。
+
+### 図の選択規則（Issue / PR 共通）
+
+| 選ぶ | 条件 |
+|---|---|
+| SVG（添付） | `svg_allowed=true` なら第一候補。構成図・グルーピング・注釈付き図・フロー・状態遷移・前後比較・データ構造に該当するとき |
+| Mermaid（本文内 fence） | `svg_allowed=false` のときのみ。フロー・状態遷移・シーケンス・小規模 ER（`erDiagram`） |
+| 図なし | ループ・状態遷移・前後比較・データ構造・構成図のいずれも無いとき。上段（`<details>` より前）に `<!-- 図なし: {理由} -->` を残す。理由を書けないときは図を描く |
+
+生成前に次の1行 bash で `svg_allowed` を取得する。`true` なら SVG を選び Mermaid に落とさない。2.99.0 未満は SVG 行を選ばず、Mermaid に落とす（警告不要）。解析不能時は WARNING を stderr に出して SVG を選ばない。
+
+```bash
+svg_allowed=$(gh --version | awk 'NR==1 { if ($3 !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) { print "WARNING: gh version を解析できないため SVG を選択しません" > "/dev/stderr"; print "false"; exit } split($3,v,"."); print (v[1]>2 || (v[1]==2 && v[2]>=99)) ? "true" : "false" } END { if (NR==0) { print "WARNING: gh version を解析できないため SVG を選択しません" > "/dev/stderr"; print "false" } }')
+```
+
+Mermaid は上段に `mermaid` fence を置き、添付配列は空にする。SVG は **Write tool** で `.svg` を書く（新 helper / hook / config キーは追加しない）。配色はテーマ中立にし、白背景を前提とせず線は中間色にする。本文の `![説明](./diagram.svg)` と添付パスを同じファイルに対応させ、作成時の cwd から解決できるパスを使う。Issue は `issue.attachments`、PR は `--attach` に渡す。作成後に body を取得し、図の参照が添付 URL に置き換わったことを確認する。図なしの HTML コメントは `<details>` より前の上段に置く。
+
+### 契約層の折りたたみ
+
+Section 1 の直前に以下を置く。`<summary>` の直後は空行にする。親がある場合の `**Parent Issue**` はこの空行の後、Section 1 の前に置く（親が無ければ行ごと省略）。
+
+```markdown
+<details>
+<summary>Implementation Contract（実装・レビューが機械的に読む契約）</summary>
+
+**Parent Issue**: #{parent_number}
+
+```
+
+Section 1〜9 のうち Complexity Gate で採用した最後のセクションの後に、空行を挟んで `</details>` を置く。Section 1〜9 の見出し文字列・チェックボックス行パターン・Decision Log の `D-xx` 形式は変更しない。
 
 ### 1. Goal
 

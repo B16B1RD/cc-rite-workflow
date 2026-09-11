@@ -131,7 +131,7 @@ write_gh_pr_mock() {
   mkdir -p "$1/bin"
   # Production Step 6/7 resolve origin and call `gh pr view -R owner/repo`.
   # Without this remote the helper stays on the no -R branch and AC-1/AC-2
-  # of the production path stay unpinned (Issue #2427 review F-01).
+  # of the production path stay unpinned (review F-01).
   git -C "$1" remote add origin git@github.com:example/repo.git
   cat > "$dest" <<'EOF'
 #!/bin/bash
@@ -1232,7 +1232,7 @@ fi
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-38..42: orphan review JSON / run-start pin machine cleanup (#2175)
+# T-38..42: orphan review JSON / run-start pin machine cleanup
 # -----------------------------------------------------------------------
 echo "T-38..42: orphan review JSON / pin cleanup"
 TEST_REPO=$(make_temp_repo)
@@ -1325,7 +1325,7 @@ fi
 cleanup_temp_repo "$TEST_REPO"
 
 # -----------------------------------------------------------------------
-# T-49..: consumed release-promotion attestation sweep (#2427)
+# T-49..: consumed release-promotion attestation sweep
 # Mixed fixture in one invocation: MERGED/CLOSED delete, OPEN/unknown keep,
 # .gitignore stays, non-{N}.json leftovers stay, counters + status.
 # -----------------------------------------------------------------------

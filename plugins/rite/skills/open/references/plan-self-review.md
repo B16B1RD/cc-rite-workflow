@@ -1,6 +1,6 @@
 # 計画セルフレビュー — agent prompt と判定出力形式
 
-open ステップ 3.3.1 が Task（`subagent_type: general-purpose`、`run_in_background: false`）で spawn する単一 agent の prompt SoT。
+open ステップ 3.3.1 が Task（`subagent_type: general-purpose`）で spawn する単一 agent の prompt SoT。結果は completion notification で回収する。未着出力は推測補完しない。
 pr-review の reviewer 選定・named agent とは混ぜない。named reviewer をネスト spawn しない。
 計画もリポジトリも編集しない（Edit / Write / NotebookEdit 禁止）。指摘の計画反映は orchestrator（3.3.1）の責務。
 

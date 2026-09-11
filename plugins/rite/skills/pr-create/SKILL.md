@@ -10,6 +10,8 @@ user-invocable: false
 
 # /rite:pr-create
 
+> 実行入口と工程境界は [Host Runtime Contract](../../references/host-runtime-contract.md#入口と工程境界)、native Skill / Task がない場合の実行は [Host workflow operations](../../references/host-workflow-operations.md) に従う。nested 呼出しは caller の runtime 選択を引き継ぐ。
+
 ## Contract
 **Input**: Branch with commits, Issue number (from branch name or flow state)
 **Output**: `[pr:created:{number}]` | `[pr-create-failed]`
@@ -33,12 +35,12 @@ user-invocable: false
 
 | Caller | Subsequent Action |
 |-----------|---------------|
-| End-to-end flow (via any orchestrator's Skill tool invocation, e.g. `/rite:open` ステップ 6) | **Output pattern and return control to caller** |
+| End-to-end flow (via any orchestrator's native Skill or equivalent body execution, e.g. `/rite:open` ステップ 6) | **Output pattern and return control to caller** |
 | Standalone execution | Display "next steps" guidance |
 
 | Condition | Determination |
 |------|---------|
-| Invoked via `Skill` tool from any orchestrator within the same session (caller-name agnostic — e.g. `/rite:open`) | Within end-to-end flow |
+| Invoked via `Skill` tool or [equivalent body execution](../../references/host-workflow-operations.md#skill-と-caller) from any orchestrator within the same session (caller-name agnostic — e.g. `/rite:open`) | Within end-to-end flow |
 | All other cases (user directly typed `/rite:pr-create`) | Standalone execution |
 
 E2E では `[pr:created:{number}]` / `[pr-create-failed]` を出して **caller に制御を返す**。次アクションは caller が決める。
@@ -71,7 +73,7 @@ E2E では `[pr:created:{number}]` / `[pr-create-failed]` を出して **caller 
 issue_number=$(git branch --show-current | grep -oE 'issue-[0-9]+' | grep -oE '[0-9]+')
 ```
 
-Read `.rite/work-memory/issue-{issue_number}.md`（SoT）。不在なら `.rite-work-memory/issue-{issue_number}.md`。欠落 / 破損時は Issue comment API:
+`{state_root}` は `hooks/state-path-resolve.sh`。Read `{state_root}/.rite/work-memory/issue-{issue_number}.md`（SoT）。不在なら `{state_root}/.rite-work-memory/issue-{issue_number}.md`。cwd 相対の session worktree 複製は読まない。欠落 / 破損時は Issue comment API:
 
 ```bash
 # SSH host alias 対応: git-remote.sh 優先 + gh repo view fallback
@@ -148,7 +150,7 @@ case "$bang_rc" in
 esac
 ```
 
-> exit 1 のとき結果パターンは出ない。orchestrator は missing-result-pattern として扱う（**NOT** `[pr-create-failed]`）。default は stderr `WARNING` + AskUserQuestion「手動作成 / 再試行 / 中止」。`BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` は script 不在 / rc=2 のみ（rc=1 の検出はフラグなし）。
+> exit 1 のとき結果パターンは出ない。orchestrator は missing-result-pattern として扱う（**NOT** `[pr-create-failed]`）。default は stderr `WARNING` + **1 回だけ再実行**。再失敗なら停止し `/rite:recover` を案内する。AskUserQuestion は出さない。`BANG_BACKTICK_CHECK_INVOCATION_FAILED=1` は script 不在 / rc=2 のみ（rc=1 の検出はフラグなし）。
 > rationale: references/rationale.md#bang-backtick-gate
 
 ### 1.1 Retrieve Base Branch
@@ -618,7 +620,7 @@ Conventional Commits。言語は `rite-config.yml` の `language`:
 | `ja` | Generate title in Japanese |
 | `en` | Generate title in English |
 
-Issue タイトルが設定言語と違うときは翻訳する。type はブランチ名、scope / description は Issue タイトル。
+Issue タイトルが設定言語と違うときは翻訳する。type はブランチ名。scope / description は Issue と差分から生成し、内部機構名を避け、変更の効果が読める平易なタイトルにする。
 
 > **⚠️ CRITICAL**: PR title の `description` は `language` 設定に従う。例の言語をコピーしない。
 
@@ -643,11 +645,23 @@ Example (Japanese): feat(pr): /rite:pr-create コマンドを実装
 
 Template file: `templates/pr/generic.md`
 
+Read: [`template-structure.md`](../../templates/issue/template-structure.md) の「上段要約」「図の選択規則」。関連 Issue の問題・実際の差分・検証結果から3ブロックと必要な用語を生成する。共通の経緯識別子禁止を検査し、残存時は作成前に生成をやり直す。`Closes #N` は details 外、変更・実装中の判断・検証・未完了項目・チェックリストは details 内に置き、`<summary>` 直後に空行を置く。
+
+関連 Issue の図は次の排他表で決める。上から最初に一致した行だけを適用する。子判定は Issue 本文の `**Parent Issue**` 行の有無。関連 Issue 不在は「図が無く」に当たり、4・5 行目の図種判定で決める。ラベルの文言変更だけでは描き直さない。成功後の `gh pr view` URL 置換確認は新規 `--attach` 時のみ。
+
+| 条件 | 図 |
+|---|---|
+| 子 Issue（本文に `**Parent Issue**` がある） | 親の図を再掲せず「親 Issue の図の {部分} を担当」と一文 |
+| 関連 Issue に図があり、ノードの追加・削除・関係（矢印・包含）の変化がある | 描き直し。選択表に従う。`svg_allowed=true` なら SVG、`svg_allowed=false` なら Mermaid。上段に「Issue の図から変わった点」を 1〜3 行書く |
+| 関連 Issue に図があり、構造は変わらない | 上段に再掲する。対象は添付 URL と Mermaid fence。3.4(B) で `diagram.svg` を書かず `attachments.json` を `[]` にする |
+| 関連 Issue に図が無く、選択表の図種に該当する | 新規生成。選択表に従う。`svg_allowed=true` なら SVG、`svg_allowed=false` なら Mermaid |
+| 図種に該当しない | 上段に `<!-- 図なし: {理由} -->` |
+
 本文言語は **Phase 3.1 と同じ**。
 
 | Element | Subject to Language Unification |
 |------|---------------|
-| Section headings | `## Summary` / `## 概要`, etc. |
+| Section headings | `## Summary` / `## 要約`, etc. |
 | Boilerplate text | Description for `Closes #XX`, etc. |
 | Checklist items | `- [ ] Tests added` / `- [ ] テスト追加`, etc. |
 
@@ -667,7 +681,7 @@ rationale: references/rationale.md#impl-notes-for-reviewers
 
 **Zero-item rule (MUST)**: 両ソース 0 件なら節ごと省略（見出し含む）。空見出し・空リストは出さない。
 
-見出し: `## Implementation Notes`（en）/ `## 実装中の判断・計画逸脱`（ja）。位置は `## Changes` と `## Checklist` の間（`templates/pr/generic.md`）。
+見出し: `## Implementation Notes`（en）/ `## 実装中の判断・計画逸脱`（ja）。位置は details 内の `## Changes` / `## 変更` と `## Checklist` / `## チェックリスト` の間（`templates/pr/generic.md`）。
 
 E2E 最適化時は上位 3 件（逸脱 → 判断、ソース順）、省略数を注記（`(他 N 件省略)` / `(N more omitted)`）。
 rationale: references/rationale.md#impl-notes-for-reviewers
@@ -699,6 +713,8 @@ echo "[CONTEXT] PR_CREATE_WORKDIR=$pr_workdir"
 
 1. `{PR_CREATE_WORKDIR}/pr_title.txt` ← Phase 3.1 で生成した PR title の raw 内容（1 行）
 2. `{PR_CREATE_WORKDIR}/pr_body.md` ← Phase 3.2 で生成した PR body の raw 内容
+3. 新規生成または描き直しで SVG を選んだときだけ `{PR_CREATE_WORKDIR}/diagram.svg` ← テーマ中立の図。本文の参照と添付は同じ絶対パスを使う。再掲時は書かない
+4. `{PR_CREATE_WORKDIR}/attachments.json` ← その SVG の絶対パス配列。再掲・図なし・Mermaid は必ず `[]` を書く
 
 **(C) gh pr create（単一 bash block）**
 
@@ -726,8 +742,16 @@ if [ ! -s "$pr_workdir/pr_body.md" ]; then
   exit 1
 fi
 
-gh pr create -R {owner_repo} --draft --base "{base_branch}" --head "{branch_name}" --title "$pr_title" --body-file "$pr_workdir/pr_body.md"
+attach_args=()
+jq -r '.[]' "$pr_workdir/attachments.json" > "$pr_workdir/attachment-paths" || exit 1
+while IFS= read -r attachment; do
+  [ -f "$attachment" ] || { echo "ERROR: attachment not found: $attachment" >&2; exit 1; }
+  attach_args+=(--attach "$attachment")
+done < "$pr_workdir/attachment-paths"
+gh pr create -R {owner_repo} --draft --base "{base_branch}" --head "{branch_name}" --title "$pr_title" --body-file "$pr_workdir/pr_body.md" "${attach_args[@]}"
 ```
+
+添付ありの成功後は `gh pr view --json body` で参照の添付 URL への置換を確認する。gh が非ゼロでも stdout に PR URL が出た場合は作成済みなので create を再試行しない。stderr を保持し、報告に「添付失敗」と PR URL、本文に残った参照と同じ絶対パスに一時 SVG を再生成し（`mkdir -p` で作業ディレクトリを再作成）、そのパスを `gh pr edit --attach` に渡して再添付する案内を含める。成功 sentinel は返さず `[pr-create-failed]` を返す。
 
 ### 3.5 Update Work Memory Phase
 
@@ -882,8 +906,8 @@ URL: {pr_url}
 
 | Error | Resolution |
 |--------|------|
-| Push failure | Check network -> `gh auth status` -> `git pull --rebase origin {branch_name}` -> retry |
-| PR creation failure | Check existing PRs with `gh pr list -R {owner_repo}` -> verify permissions -> retry |
+| Push failure | Check network -> `gh auth status` -> `git pull --rebase origin {branch_name}` -> retry once; on second failure stop and `/rite:recover` |
+| PR creation failure | Check existing PRs with `gh pr list -R {owner_repo}` -> verify permissions -> retry once; on second failure stop and `/rite:recover` |
 | Issue not found | Choose: create without Issue / specify different Issue / cancel |
 ## Language Support
 

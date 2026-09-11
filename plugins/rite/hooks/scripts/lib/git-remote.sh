@@ -7,7 +7,7 @@
 # to a known GitHub host" when `origin` uses an SSH Host alias set up in
 # ~/.ssh/config (e.g. `git@github.com-work:owner/repo.git`) — even though
 # the alias resolves fine for plain git operations and `gh` is otherwise
-# authenticated (#1899). Parsing the remote URL directly sidesteps gh's
+# authenticated. Parsing the remote URL directly sidesteps gh's
 # host allowlist entirely: the host segment is discarded regardless of
 # what it says, so an unrecognized alias can never break this path.
 #

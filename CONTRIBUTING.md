@@ -19,6 +19,10 @@ scripts/rite-dev codex
 scripts/rite-dev grok
 ```
 
+The Codex launcher enables `--approve-for-me`, which automatically reviews
+approval requests inside the workspace-write sandbox similarly to Claude
+Code's auto permission mode.
+
 Additional arguments are forwarded to the selected host. The launcher exports
 `RITE_HOST` and `RITE_PLUGIN_ROOT` for host-neutral workflow code. Claude Code
 loads `plugins/rite` explicitly and disables `rite@rite-marketplace` for that
@@ -32,6 +36,24 @@ login on first use.
 The launcher never replaces an unexpected local link or directory. If an older
 development setup already has `.codex-dev/skills` as a symlink, move or remove
 that local profile explicitly before launching Codex again.
+
+### Host runtime compatibility
+
+Launching a host or discovering rite skills does not establish workflow compatibility.
+Use the distributed [Host Runtime Contract](plugins/rite/references/host-runtime-contract.md)
+to select available operations and preserve worktree isolation, approval boundaries,
+and failure/recovery behavior. It keeps the existing Claude Code path and shared skills.
+
+The [multi-host runtime investigation](docs/designs/multi-host-runtime.md) records
+the checked Claude Code, Codex, and Grok Build versions, sources, capability gaps,
+and repeatable probes. Record actual results separately from help output and plugin
+discovery; unverified hooks or subagents must not be reported as working. Run probes
+in a disposable repository, without changing global settings. The runtime contract
+resolves within the distributed plugin and does not require this development launcher.
+
+### Reproduce host workflow validation
+
+Follow the [three-host validation guide](tests/runtime-e2e/README.md) to prepare an offline fixture, create a dedicated GitHub repository, and run the same draft, merge, and interrupted-recovery scenarios on each host. The guide includes copyable prompts, direct distribution setup, and evidence records. Run `bash tests/runtime-e2e.test.sh` for the preparation/reporting contract; CI runs it separately from the launcher and existing hook suites. A green CI result does not certify live host execution. Record unavailable hosts or authentication as unverified and keep integration completion pending.
 
 ## How to Contribute
 
@@ -173,10 +195,10 @@ Available hook events:
 
 | Event | Trigger | Input |
 |-------|---------|-------|
-| `SessionStart` | Session begins or resumes | JSON via stdin (`cwd`, `source`) |
+| `SessionStart` | Session begins, resumes, or follows compact (`source=compact` re-injects recovery text) | JSON via stdin (`cwd`, `source`) |
 | `SessionEnd` | Session ends | JSON via stdin |
-| `PreCompact` | Before context compaction | JSON via stdin |
-| `PostCompact` | After context compaction | JSON via stdin |
+| `PreCompact` | Before context compaction | JSON via stdin (`cwd`, `trigger`) |
+| `PostCompact` | After context compaction (side effects only; recovery text is SessionStart) | JSON via stdin |
 | `PreToolUse` | Before a tool is executed | JSON via stdin (tool name via `matcher`) |
 | `PostToolUse` | After a tool is executed | JSON via stdin |
 | `Stop` | The agent finishes responding (turn end) | JSON via stdin (`stop_hook_active`) |

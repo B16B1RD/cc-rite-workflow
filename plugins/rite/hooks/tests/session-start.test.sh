@@ -36,7 +36,7 @@ fi
 # per-session state file). It also keeps the env-absent branch of the conditional
 # `.rite-session-id` write under test below as the default. Tests that need env
 # present set it explicitly. (run-tests.sh unsets the same vars for suite runs.)
-unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID
+unset CLAUDE_CODE_SESSION_ID CLAUDE_SESSION_ID CLAUDE_PLUGIN_ROOT
 
 cleanup() {
   rm -rf "$TEST_DIR"
@@ -180,7 +180,7 @@ echo ""
 # --------------------------------------------------------------------------
 # TC-006b: circuit-breaker stop reason is distinct from an ordinary interruption
 # --------------------------------------------------------------------------
-echo "TC-006b: stop_reason changes compact interruption notice to failure stop"
+echo "TC-006b: compact + stop_reason still emits recovery (not recover notice)"
 dir006b="$TEST_DIR/tc006b"
 mkdir -p "$dir006b"
 create_state_file "$dir006b" '{
@@ -190,12 +190,14 @@ create_state_file "$dir006b" '{
   "stop_reason": "circuit-breaker:max-cycles"
 }'
 output=$(run_hook_with_source "$dir006b" "compact")
-if echo "$output" | grep -q "失敗停止した rite workflow" && \
-   echo "$output" | grep -q "cycle が上限に到達" && \
-   ! echo "$output" | grep -q "中断した rite workflow"; then
-  pass "stop_reason produces a failure-specific compact notice"
+if echo "$output" | grep -q "Auto-compact recovery" && \
+   echo "$output" | grep -q "$(issue_text 2045)" && \
+   ! echo "$output" | grep -q "失敗停止した rite workflow" && \
+   ! echo "$output" | grep -q "中断した rite workflow" && \
+   ! echo "$output" | grep -q "/rite:recover"; then
+  pass "compact + stop_reason emits recovery, not recover/failure notice"
 else
-  fail "Expected failure-specific stop notice, got: $output"
+  fail "Expected compact recovery without recover notice, got: $output"
 fi
 echo ""
 
@@ -285,7 +287,7 @@ echo ""
 # --------------------------------------------------------------------------
 # TC-006: State file with active=true + source=compact → re-inject message
 # --------------------------------------------------------------------------
-echo "TC-006: State file with active=true + source=compact → re-inject message"
+echo "TC-006: State file with active=true + source=compact → recovery text"
 dir006="$TEST_DIR/tc006"
 mkdir -p "$dir006"
 create_state_file "$dir006" '{
@@ -297,13 +299,14 @@ create_state_file "$dir006" '{
 }'
 
 output=$(run_hook_with_source "$dir006" "compact")
-if echo "$output" | grep -q "中断した rite workflow を検出" && \
+if echo "$output" | grep -q "Auto-compact recovery" && \
    echo "$output" | grep -q "$(issue_text 42)" && \
-   echo "$output" | grep -q "phase: implementing" && \
-   echo "$output" | grep -q "/rite:recover"; then
-  pass "Interruption notice contains issue + phase + resume hint"
+   echo "$output" | grep -q "Phase: implementing" && \
+   echo "$output" | grep -q "then continue" && \
+   ! echo "$output" | grep -q "/rite:recover"; then
+  pass "compact recovery contains issue + phase + continue, no recover notice"
 else
-  fail "Interruption notice missing expected fields, got: $output"
+  fail "compact recovery missing expected fields, got: $output"
 fi
 echo ""
 
@@ -339,7 +342,7 @@ create_state_file "$dir008" '{"active": true, "issue_number": 99}'
 
 output=$(run_hook_with_source "$dir008" "compact")
 if echo "$output" | grep -q "$(issue_text 99)" && \
-   echo "$output" | grep -q "phase: unknown"; then
+   echo "$output" | grep -q "Phase: unknown"; then
   pass "Missing optional fields → phase defaults to unknown"
 else
   fail "Expected phase default (unknown), got: $output"
@@ -421,7 +424,7 @@ create_state_file "$dir011" '{
 
 output=$(run_hook_with_source "$dir011" "compact")
 if echo "$output" | grep -q "$(issue_text 77)" && \
-   echo "$output" | grep -q "phase: Phase with spaces"; then
+   echo "$output" | grep -q "Phase: Phase with spaces"; then
   pass "Unit-separator-delimited field extraction handles spaces in phase"
 else
   fail "Field extraction failed with spaces, got: $output"
@@ -429,56 +432,59 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-012: source=compact + compact_state=recovering → interruption notice
-# PostCompact hook now handles recovery; SessionStart(compact) falls through to the notice.
+# TC-012: source=compact + compact_state=recovering → recovery text
 # --------------------------------------------------------------------------
-echo "TC-012: source=compact + compact_state=recovering → interruption notice"
+echo "TC-012: source=compact + compact_state=recovering → recovery text"
 dir012="$TEST_DIR/tc012"
 mkdir -p "$dir012"
 create_state_file "$dir012" '{"active": true, "issue_number": 55, "phase": "implementing"}'
 echo '{"compact_state": "recovering", "active_issue": 55}' > "$dir012/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir012" "compact")
-if echo "$output" | grep -q "中断した rite workflow を検出" && \
-   echo "$output" | grep -q "$(issue_text 55)"; then
-  pass "source=compact + recovering → interruption notice (PostCompact handles recovery)"
+if echo "$output" | grep -q "Auto-compact recovery" && \
+   echo "$output" | grep -q "$(issue_text 55)" && \
+   ! echo "$output" | grep -q "/rite:recover"; then
+  pass "source=compact + recovering → recovery text"
 else
-  fail "Expected interruption notice with issue 55, got: $output"
+  fail "Expected recovery text with issue 55, got: $output"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-013: source=compact + compact_state=normal → fall through to interruption notice
+# TC-013: source=compact + compact_state=normal → recovery text (active flow)
 # --------------------------------------------------------------------------
-echo "TC-013: source=compact + compact_state=normal → fall through to interruption notice"
+echo "TC-013: source=compact + compact_state=normal → recovery text"
 dir013="$TEST_DIR/tc013"
 mkdir -p "$dir013"
 create_state_file "$dir013" '{"active": true, "issue_number": 56, "phase": "reviewing"}'
 echo '{"compact_state": "normal"}' > "$dir013/.rite-compact-state"
 
 output=$(run_hook_with_source "$dir013" "compact")
-if echo "$output" | grep -q "中断した rite workflow を検出" && \
-   echo "$output" | grep -q "$(issue_text 56)"; then
-  pass "source=compact + normal → interruption notice"
+if echo "$output" | grep -q "Auto-compact recovery" && \
+   echo "$output" | grep -q "$(issue_text 56)" && \
+   ! echo "$output" | grep -q "/rite:recover"; then
+  pass "source=compact + normal → recovery text"
 else
-  fail "Expected interruption notice, got: $output"
+  fail "Expected recovery text, got: $output"
 fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-014: source=compact + no .rite-compact-state → fall through to interruption notice
+# TC-014: source=compact + no compact-state → recovery text (trigger default auto)
 # --------------------------------------------------------------------------
-echo "TC-014: source=compact + no .rite-compact-state → fall through to interruption notice"
+echo "TC-014: source=compact + no compact-state → recovery text (auto default)"
 dir014="$TEST_DIR/tc014"
 mkdir -p "$dir014"
 create_state_file "$dir014" '{"active": true, "issue_number": 57, "phase": "testing"}'
 
 output=$(run_hook_with_source "$dir014" "compact")
-if echo "$output" | grep -q "中断した rite workflow を検出" && \
-   echo "$output" | grep -q "$(issue_text 57)"; then
-  pass "source=compact + no compact state file → interruption notice"
+if echo "$output" | grep -q "Auto-compact recovery" && \
+   echo "$output" | grep -q "$(issue_text 57)" && \
+   echo "$output" | grep -q "then continue" && \
+   ! echo "$output" | grep -q "/rite:recover"; then
+  pass "source=compact + no compact state file → auto recovery (missing trigger)"
 else
-  fail "Expected interruption notice, got: $output"
+  fail "Expected auto recovery text, got: $output"
 fi
 echo ""
 
@@ -825,12 +831,14 @@ src_hook_dir="$(cd "$SCRIPT_DIR/.." && pwd)"
 cp "$src_hook_dir/session-start.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/hook-preamble.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/state-path-resolve.sh" "$sandbox_hook_dir/"
-cp "$src_hook_dir/control-char-neutralize.sh" "$sandbox_hook_dir/"
+cp "$src_hook_dir/control-char-neutralize.sh" "$src_hook_dir/session-identity.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/gitignore-ensure.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/relocated-state-migrate.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/flow-state.sh" "$sandbox_hook_dir/"
 # Sandbox に canonical mktemp helper を含める (silent suppress 禁止 — sibling cp と同じ fail-fast)
 cp "$src_hook_dir/_mktemp-stderr-guard.sh" "$sandbox_hook_dir/"
+mkdir -p "$sandbox_hook_dir/scripts"
+cp "$src_hook_dir/scripts/run-queue-reap.sh" "$sandbox_hook_dir/scripts/"
 # Stub session-ownership.sh: define helpers that don't break source, but omit check_session_ownership
 cat > "$sandbox_hook_dir/session-ownership.sh" <<'STUB_EOF'
 #!/bin/bash
@@ -870,12 +878,14 @@ src_hook_dir_b="$(cd "$SCRIPT_DIR/.." && pwd)"
 cp "$src_hook_dir_b/session-start.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/hook-preamble.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/state-path-resolve.sh" "$sandbox_hook_dir_b/"
-cp "$src_hook_dir_b/control-char-neutralize.sh" "$sandbox_hook_dir_b/"
+cp "$src_hook_dir_b/control-char-neutralize.sh" "$src_hook_dir_b/session-identity.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/gitignore-ensure.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/relocated-state-migrate.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/flow-state.sh" "$sandbox_hook_dir_b/"
 # canonical mktemp helper を sandbox に同期コピーする (silent suppress 禁止 — sibling cp と同じ fail-fast)
 cp "$src_hook_dir_b/_mktemp-stderr-guard.sh" "$sandbox_hook_dir_b/"
+mkdir -p "$sandbox_hook_dir_b/scripts"
+cp "$src_hook_dir_b/scripts/run-queue-reap.sh" "$sandbox_hook_dir_b/scripts/"
 cat > "$sandbox_hook_dir_b/session-ownership.sh" <<'STUB_EOF'
 #!/bin/bash
 extract_session_id() { echo ""; }
@@ -1268,9 +1278,11 @@ _mk_wt_sandbox() {
   mkdir -p "$dir/sandbox/hooks"
   sbx="$dir/sandbox/hooks"
   src="$(cd "$SCRIPT_DIR/.." && pwd)"
-  for f in session-start.sh hook-preamble.sh state-path-resolve.sh control-char-neutralize.sh gitignore-ensure.sh relocated-state-migrate.sh flow-state.sh _mktemp-stderr-guard.sh; do
+  for f in session-start.sh session-identity.sh hook-preamble.sh state-path-resolve.sh control-char-neutralize.sh gitignore-ensure.sh relocated-state-migrate.sh flow-state.sh _mktemp-stderr-guard.sh; do
     cp "$src/$f" "$sbx/"
   done
+  mkdir -p "$sbx/scripts"
+  cp "$src/scripts/run-queue-reap.sh" "$sbx/scripts/"
   cat > "$sbx/session-ownership.sh" <<'STUB_EOF'
 #!/bin/bash
 extract_session_id() { echo ""; }
@@ -1434,7 +1446,7 @@ fi
 echo ""
 
 # --------------------------------------------------------------------------
-# TC-1968: lazy reap output redirected to log file instead of discarded (#1968)
+# TC-1968: lazy reap output redirected to log file instead of discarded
 # --------------------------------------------------------------------------
 echo "TC-1968-01 (AC-1): reap output is captured to .rite/logs/pr-cycle-cleanup.log"
 dir_reap_ac1="$TEST_DIR/reap-ac1"
@@ -1615,6 +1627,455 @@ if [ "$rc_rite_file" -eq 0 ] \
   pass "nested .rite mkdir failure: WARNING emitted and hook exits 0"
 else
   fail "nested .rite mkdir failure: expected rc=0 + 'nested gitignore not written' with .rite still a file; got rc=$rc_rite_file, .rite is $([ -d "$dir_rite_file/.rite" ] && echo dir || echo file-or-missing), stderr: $(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+write_batch_queue() {
+  local dir="$1"
+  local sid="${2:-test-sid-$(basename "$dir")}"
+  local active="${3:-true}"
+  local cursor="${4:-0}"
+  mkdir -p "$dir/.rite/state"
+  jq -n --argjson active "$active" --argjson cursor "$cursor" \
+    '{issues:[2502], cursor:$cursor, mode:"merge", failed:[], outstanding:[], active:$active, updated_at:"2026-09-02T00:00:00Z"}' \
+    > "$dir/.rite/state/run-queue-${sid}.json"
+}
+
+echo "T-09: compact + active queue appends Batch frame (T-03)"
+dir_t09="$TEST_DIR/tc-batch-09"
+mkdir -p "$dir_t09"
+create_state_file "$dir_t09" '{
+  "active": true,
+  "issue_number": 2502,
+  "phase": "review",
+  "next_action": "iterate",
+  "loop_count": 1,
+  "pr_number": 99,
+  "branch": "fix/issue-2502-x"
+}'
+write_batch_queue "$dir_t09"
+output=$(run_hook_with_source "$dir_t09" "compact")
+_ci_needle="current_issue=#2502" # drift-check-ignore
+if echo "$output" | grep -q "Auto-compact recovery" \
+  && echo "$output" | grep -q "Batch: run-queue active" \
+  && echo "$output" | grep -q "mode=merge" \
+  && echo "$output" | grep -q "cursor=0/1" \
+  && echo "$output" | grep -q "$_ci_needle" \
+  && echo "$output" | grep -q "pr=#99" \
+  && echo "$output" | grep -q "queue_file=" \
+  && echo "$output" | grep -q "Continue /rite:batch-run" \
+  && ! echo "$output" | grep -q "/rite:recover"; then
+  pass "T-09: compact Batch frame fields present, no /rite:recover"
+else
+  fail "T-09: unexpected output: $output"
+fi
+echo ""
+
+echo "T-09b: compact + stop_reason + active queue still avoids recover resume phrase"
+dir_t09b="$TEST_DIR/tc-batch-09b"
+mkdir -p "$dir_t09b"
+create_state_file "$dir_t09b" '{
+  "active": true,
+  "issue_number": 2502,
+  "phase": "review",
+  "stop_reason": "circuit-breaker:max-cycles",
+  "next_action": "stopped"
+}'
+write_batch_queue "$dir_t09b"
+output=$(run_hook_with_source "$dir_t09b" "compact")
+if echo "$output" | grep -q "/rite:batch-run" \
+  && ! echo "$output" | grep -q "再開するには /rite:recover" \
+  && ! echo "$output" | grep -q "失敗停止した rite workflow"; then
+  pass "T-09b: failure-stop compact notice replaced by batch continuation"
+else
+  fail "T-09b: unexpected output: $output"
+fi
+echo ""
+
+echo "T-10 / T-01: compact without active queue is byte-identical auto recovery"
+T10_EXPECTED=$'[rite] Auto-compact recovery: Issue #42, Phase: implement, Branch: feat/issue-42-test\nNext action: Continue coding\nLoop: 1 | PR: #10\nUse `bash {plugin_root}/hooks/flow-state.sh get --field <field>` for full state details. Also consult .rite/work-memory/issue-42.md, then continue.'
+T10_STATE='{"active": true, "issue_number": 42, "phase": "implement", "next_action": "Continue coding", "loop_count": 1, "pr_number": 10, "branch": "feat/issue-42-test"}'
+dir_t10="$TEST_DIR/tc-batch-10"
+mkdir -p "$dir_t10"
+create_state_file "$dir_t10" "$T10_STATE"
+output=$(run_hook_with_source "$dir_t10" "compact")
+if [ "$output" = "$T10_EXPECTED" ]; then
+  pass "T-10 absent queue: stdout byte-identical to compact recovery fixture"
+else
+  fail "T-10 absent queue: $output"
+fi
+echo ""
+
+echo "T-10b: active:false / cursor>=total / other sid keep recovery fixture (no Batch)"
+for variant in false done othersid; do
+  dir_v="$TEST_DIR/tc-batch-10-$variant"
+  mkdir -p "$dir_v"
+  create_state_file "$dir_v" "$T10_STATE"
+  case "$variant" in
+    false) write_batch_queue "$dir_v" "test-sid-$(basename "$dir_v")" false 0 ;;
+    done) write_batch_queue "$dir_v" "test-sid-$(basename "$dir_v")" true 1 ;;
+    othersid) write_batch_queue "$dir_v" "other-session" true 0 ;;
+  esac
+  output=$(run_hook_with_source "$dir_v" "compact")
+  if [ "$output" = "$T10_EXPECTED" ]; then
+    pass "T-10 $variant: stdout byte-identical to compact recovery fixture"
+  else
+    fail "T-10 $variant: $output"
+  fi
+done
+echo ""
+
+echo "T-02: compact-state.trigger=manual is byte-identical state-only recovery"
+T02_EXPECTED=$'[rite] Compact recovery: Issue #42, Phase: implement, Branch: feat/issue-42-test\nNext action: Continue coding\nLoop: 1 | PR: #10'
+dir_t02="$TEST_DIR/tc-t02-manual"
+mkdir -p "$dir_t02"
+create_state_file "$dir_t02" "$T10_STATE"
+jq -n '{compact_state: "normal", trigger: "manual"}' > "$(compact_state_path "$dir_t02")"
+output=$(run_hook_with_source "$dir_t02" "compact")
+if [ "$output" = "$T02_EXPECTED" ]; then
+  pass "T-02: manual compact recovery byte-identical to state-only fixture"
+else
+  fail "T-02: unexpected output: $output"
+fi
+echo ""
+
+echo "T-12: corrupt compact-state still emits auto recovery and warns"
+dir_t12="$TEST_DIR/tc-t12-corrupt-cs"
+mkdir -p "$dir_t12"
+create_state_file "$dir_t12" "$T10_STATE"
+printf 'not-json{{' > "$(compact_state_path "$dir_t12")"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(echo "{\"cwd\": \"$dir_t12\", \"source\": \"compact\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if echo "$output" | grep -q "Auto-compact recovery" \
+  && echo "$output" | grep -q "then continue" \
+  && ! echo "$output" | grep -q "/rite:recover" \
+  && grep -q "jq parse of compact-state.trigger failed" "$LAST_STDERR_FILE"; then
+  pass "T-12: corrupt compact-state warns and still emits auto recovery"
+else
+  fail "T-12: stdout=$output stderr=$(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+echo "T-13: next_action newline does not drop Loop/PR/Branch"
+dir_t13="$TEST_DIR/tc-t13-nl"
+mkdir -p "$dir_t13"
+T13_STATE=$(jq -nc --arg na $'line1\nline2' '{
+  active: true,
+  issue_number: 42,
+  phase: "implement",
+  next_action: $na,
+  loop_count: 7,
+  pr_number: 99,
+  branch: "feat/issue-42-test"
+}')
+create_state_file "$dir_t13" "$T13_STATE"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(echo "{\"cwd\": \"$dir_t13\", \"source\": \"compact\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if echo "$output" | grep -q "Next action: line1 line2" \
+  && echo "$output" | grep -q "Loop: 7 | PR: #99" \
+  && echo "$output" | grep -q "Branch: feat/issue-42-test" \
+  && grep -q "next_action contained a newline" "$LAST_STDERR_FILE"; then
+  pass "T-13: newline in next_action collapsed; Loop/PR/Branch kept"
+else
+  fail "T-13: stdout=$output stderr=$(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+echo "T-11: compact + corrupt queue emits unreadable Batch line"
+dir_t11="$TEST_DIR/tc-batch-11-corrupt"
+mkdir -p "$dir_t11"
+create_state_file "$dir_t11" "$T10_STATE"
+sid_t11="test-sid-$(basename "$dir_t11")"
+mkdir -p "$dir_t11/.rite/state"
+printf 'not-json{{' > "$dir_t11/.rite/state/run-queue-${sid_t11}.json"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(echo "{\"cwd\": \"$dir_t11\", \"source\": \"compact\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if echo "$output" | grep -q "Auto-compact recovery" \
+  && echo "$output" | grep -q "Batch: run-queue unreadable" \
+  && echo "$output" | grep -q "queue_file=" \
+  && ! echo "$output" | grep -q "Batch: run-queue active" \
+  && ! echo "$output" | grep -q "mode=" \
+  && ! echo "$output" | grep -q "/rite:recover" \
+  && grep -q "WARNING: run-queue が破損しています" "$LAST_STDERR_FILE"; then
+  pass "T-11 corrupt: unreadable Batch line + WARNING, no invented fields"
+else
+  fail "T-11 corrupt: stdout=$output stderr=$(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+echo "T-10c: startup + active queue still defensive-resets (does not switch to batch notice)"
+dir_t10c="$TEST_DIR/tc-batch-10-startup"
+mkdir -p "$dir_t10c"
+create_state_file "$dir_t10c" '{
+  "active": true,
+  "issue_number": 42,
+  "phase": "implementing",
+  "branch": "feat/issue-42",
+  "next_action": "continue work"
+}'
+write_batch_queue "$dir_t10c"
+output=$(run_hook_with_source "$dir_t10c" "startup")
+if echo "$output" | grep -q "前回のセッション状態が残っていたためリセットしました" \
+  && echo "$output" | grep -q "/rite:recover" \
+  && ! echo "$output" | grep -q "/rite:batch-run"; then
+  pass "T-10c: startup reset wording unchanged with active queue"
+else
+  fail "T-10c: $output"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# Plugin-root collision guard (actual loaded root vs .rite/plugin-root)
+# --------------------------------------------------------------------------
+ACTUAL_PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+COLLISION_MSG="読み込まれた plugin が .rite/plugin-root と一致しません"
+
+echo "TC-plugin-root-match: expected == actual → no collision warning"
+dir_pr_match="$TEST_DIR/tc-plugin-root-match"
+mkdir -p "$dir_pr_match/.rite"
+printf '%s' "$ACTUAL_PLUGIN_ROOT" > "$dir_pr_match/.rite/plugin-root"
+fake_home_match="$TEST_DIR/fake-home-match"
+mkdir -p "$fake_home_match/.claude"
+printf '%s\n' '{"enabledPlugins":{"rite@rite-marketplace":true}}' > "$fake_home_match/.claude/settings.json"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+HOME="$fake_home_match" output=$(echo "{\"cwd\": \"$dir_pr_match\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if ! grep -q "$COLLISION_MSG" "$LAST_STDERR_FILE" \
+  && ! grep -q "rite@rite-marketplace が有効" "$LAST_STDERR_FILE"; then
+  pass "match: no collision warning even if marketplace is enabled in settings"
+else
+  fail "match: unexpected warning stderr=$(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+echo "TC-plugin-root-mismatch: expected != actual → collision warning"
+dir_pr_mis="$TEST_DIR/tc-plugin-root-mismatch"
+mkdir -p "$dir_pr_mis/.rite"
+printf '%s' "/tmp/rite-other-plugin-root" > "$dir_pr_mis/.rite/plugin-root"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(echo "{\"cwd\": \"$dir_pr_mis\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if grep -q "$COLLISION_MSG" "$LAST_STDERR_FILE" \
+  && grep -q "expected:" "$LAST_STDERR_FILE" \
+  && grep -q "actual:" "$LAST_STDERR_FILE"; then
+  pass "mismatch: warns with expected/actual paths"
+else
+  fail "mismatch: expected collision warning, stderr=$(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+echo "TC-plugin-root-absent: no expected path → no collision warning"
+dir_pr_abs="$TEST_DIR/tc-plugin-root-absent"
+mkdir -p "$dir_pr_abs"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(echo "{\"cwd\": \"$dir_pr_abs\"}" | bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if ! grep -q "$COLLISION_MSG" "$LAST_STDERR_FILE"; then
+  pass "absent: no collision warning when .rite/plugin-root is missing"
+else
+  fail "absent: unexpected warning stderr=$(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+echo "TC-plugin-root-explicit: RITE_RUNTIME_EXPLICIT=1 skips collision warning"
+dir_pr_exp="$TEST_DIR/tc-plugin-root-explicit"
+mkdir -p "$dir_pr_exp/.rite"
+printf '%s' "/tmp/rite-other-plugin-root" > "$dir_pr_exp/.rite/plugin-root"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(echo "{\"cwd\": \"$dir_pr_exp\"}" | RITE_RUNTIME_EXPLICIT=1 bash "$HOOK" 2>"$LAST_STDERR_FILE") || true
+if ! grep -q "$COLLISION_MSG" "$LAST_STDERR_FILE"; then
+  pass "explicit runtime: mismatch does not warn"
+else
+  fail "explicit runtime: unexpected warning stderr=$(cat "$LAST_STDERR_FILE")"
+fi
+echo ""
+
+echo "T-06: docs describe SessionStart compact injection, not PostCompact stdout injection"
+SPEC_MD="$SCRIPT_DIR/../../../../docs/SPEC.md"
+AUTO_MD="$SCRIPT_DIR/../../skills/rite-workflow/references/autonomous-execution.md"
+# SCRIPT_DIR is plugins/rite/hooks/tests → repo root is 4 levels up from tests? 
+# tests -> hooks -> rite -> plugins -> repo. That's 4. ../../../../docs/SPEC.md is correct.
+if [ -f "$SPEC_MD" ] && [ -f "$AUTO_MD" ] \
+  && grep -q "SessionStart" "$SPEC_MD" \
+  && grep -qi "source=compact\|source: compact\|SessionStart(compact)" "$SPEC_MD" \
+  && ! grep -qi "stdout, which Claude Code injects" "$SPEC_MD" \
+  && grep -q "SessionStart" "$AUTO_MD" \
+  && ! grep -q "compact hook が保証" "$AUTO_MD"; then
+  pass "T-06: SPEC.md and autonomous-execution.md pin SessionStart path, no PostCompact stdout injection"
+else
+  fail "T-06: docs still describe PostCompact stdout injection or lack SessionStart compact path (spec=$( [ -f "$SPEC_MD" ] && echo yes || echo missing ), auto=$( [ -f "$AUTO_MD" ] && echo yes || echo missing ))"
+fi
+echo ""
+
+# --------------------------------------------------------------------------
+# Stale other-session run-queue reap (run-queue-reap.sh via SessionStart)
+# --------------------------------------------------------------------------
+REAP="$SCRIPT_DIR/../scripts/run-queue-reap.sh"
+
+write_queue_file() {
+  local dir="$1" sid="$2" json="$3"
+  mkdir -p "$dir/.rite/state"
+  printf '%s\n' "$json" > "$dir/.rite/state/run-queue-${sid}.json"
+}
+
+echo "RQ-01: own stale queue and watchdog remain; other stale json+watchdog are removed (same fixture)"
+dir_rq01="$TEST_DIR/rq-01"
+mkdir -p "$dir_rq01"
+stale_ts=$(iso8601_now -8000)
+write_queue_file "$dir_rq01" "own-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[1],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_queue_file "$dir_rq01" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[2],cursor:0,mode:"default",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+: > "$dir_rq01/.rite/state/run-queue-own-sid.watchdog"
+: > "$dir_rq01/.rite/state/run-queue-other-sid.watchdog"
+RITE_STATE_ROOT="$dir_rq01" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq01-out" 2>"$TEST_DIR/rq01-err" || true
+if [ -f "$dir_rq01/.rite/state/run-queue-own-sid.json" ] \
+  && [ -f "$dir_rq01/.rite/state/run-queue-own-sid.watchdog" ] \
+  && [ ! -f "$dir_rq01/.rite/state/run-queue-other-sid.json" ] \
+  && [ ! -f "$dir_rq01/.rite/state/run-queue-other-sid.watchdog" ] \
+  && [ ! -s "$TEST_DIR/rq01-out" ]; then
+  pass "RQ-01: own stale remains, other stale (active=true) json+watchdog removed, stdout silent"
+else
+  fail "RQ-01: own=$(ls "$dir_rq01/.rite/state/run-queue-own-sid.json" 2>/dev/null && echo y || echo n) other=$(ls "$dir_rq01/.rite/state/run-queue-other-sid.json" 2>/dev/null && echo y || echo n) stdout=$(cat "$TEST_DIR/rq01-out")"
+fi
+echo ""
+
+echo "RQ-02: other fresh queue remains even when active=true"
+dir_rq02="$TEST_DIR/rq-02"
+mkdir -p "$dir_rq02"
+fresh_ts=$(iso8601_now -60)
+write_queue_file "$dir_rq02" "other-sid" "$(jq -n --arg ts "$fresh_ts" '{issues:[3],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+RITE_STATE_ROOT="$dir_rq02" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq02-out" 2>"$TEST_DIR/rq02-err" || true
+if [ -f "$dir_rq02/.rite/state/run-queue-other-sid.json" ] && [ ! -s "$TEST_DIR/rq02-out" ]; then
+  pass "RQ-02: other fresh active=true remains"
+else
+  fail "RQ-02: file missing or stdout not silent"
+fi
+echo ""
+
+echo "RQ-03: other stale with failed[] prints each item then deletes"
+dir_rq03="$TEST_DIR/rq-03"
+mkdir -p "$dir_rq03"
+write_queue_file "$dir_rq03" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[4],cursor:0,mode:"merge",failed:[11,12],outstanding:[],active:false,updated_at:$ts}')"
+RITE_STATE_ROOT="$dir_rq03" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq03-out" 2>"$TEST_DIR/rq03-err" || true
+if [ ! -f "$dir_rq03/.rite/state/run-queue-other-sid.json" ] \
+  && grep -q 'run-queue-reap: failed=11' "$TEST_DIR/rq03-err" \
+  && grep -q 'run-queue-reap: failed=12' "$TEST_DIR/rq03-err" \
+  && grep -q 'leftover failed/outstanding' "$TEST_DIR/rq03-err" \
+  && [ ! -s "$TEST_DIR/rq03-out" ]; then
+  pass "RQ-03: failed items printed then queue deleted"
+else
+  fail "RQ-03: err=$(cat "$TEST_DIR/rq03-err") exists=$( [ -f "$dir_rq03/.rite/state/run-queue-other-sid.json" ] && echo y || echo n )"
+fi
+echo ""
+
+echo "RQ-04: other stale with outstanding[] only prints each item then deletes"
+dir_rq04="$TEST_DIR/rq-04"
+mkdir -p "$dir_rq04"
+write_queue_file "$dir_rq04" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[5],cursor:0,mode:"default",failed:[],outstanding:[21],active:true,updated_at:$ts}')"
+RITE_STATE_ROOT="$dir_rq04" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq04-out" 2>"$TEST_DIR/rq04-err" || true
+if [ ! -f "$dir_rq04/.rite/state/run-queue-other-sid.json" ] \
+  && grep -q 'run-queue-reap: outstanding=21' "$TEST_DIR/rq04-err" \
+  && ! grep -q 'run-queue-reap: failed=' "$TEST_DIR/rq04-err"; then
+  pass "RQ-04: outstanding-only printed then deleted"
+else
+  fail "RQ-04: err=$(cat "$TEST_DIR/rq04-err")"
+fi
+echo ""
+
+echo "RQ-10: Japanese leftover detail remains readable after C0 neutralize"
+dir_rq10="$TEST_DIR/rq-10"
+mkdir -p "$dir_rq10"
+write_queue_file "$dir_rq10" "other-sid" "$(jq -n --arg ts "$stale_ts" --arg d 'サーキットブレーカーで非収束' '{issues:[10],cursor:0,mode:"merge",failed:[{issue:2089,detail:$d}],outstanding:[],active:false,updated_at:$ts}')"
+RITE_STATE_ROOT="$dir_rq10" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq10-out" 2>"$TEST_DIR/rq10-err" || true
+if [ ! -f "$dir_rq10/.rite/state/run-queue-other-sid.json" ] \
+  && grep -q 'サーキットブレーカーで非収束' "$TEST_DIR/rq10-err" \
+  && grep -q 'run-queue-reap: failed=' "$TEST_DIR/rq10-err" \
+  && ! grep -q $'\xef\xbf\xbd' "$TEST_DIR/rq10-err" \
+  && [ ! -s "$TEST_DIR/rq10-out" ]; then
+  pass "RQ-10: Japanese leftover detail printed intact then queue deleted"
+else
+  fail "RQ-10: err=$(cat "$TEST_DIR/rq10-err") exists=$( [ -f "$dir_rq10/.rite/state/run-queue-other-sid.json" ] && echo y || echo n )"
+fi
+echo ""
+
+echo "RQ-05: unreadable other queue is WARNING+skip (json and watchdog kept)"
+dir_rq05="$TEST_DIR/rq-05"
+mkdir -p "$dir_rq05/.rite/state"
+printf 'not-json{{' > "$dir_rq05/.rite/state/run-queue-other-sid.json"
+: > "$dir_rq05/.rite/state/run-queue-other-sid.watchdog"
+RITE_STATE_ROOT="$dir_rq05" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq05-out" 2>"$TEST_DIR/rq05-err" || true
+if [ -f "$dir_rq05/.rite/state/run-queue-other-sid.json" ] \
+  && [ -f "$dir_rq05/.rite/state/run-queue-other-sid.watchdog" ] \
+  && grep -q 'unreadable queue, skip' "$TEST_DIR/rq05-err"; then
+  pass "RQ-05: corrupt other queue kept with WARNING"
+else
+  fail "RQ-05: err=$(cat "$TEST_DIR/rq05-err")"
+fi
+echo ""
+
+echo "RQ-06: missing updated_at and epoch=0 parse failure are stale and deleted"
+dir_rq06="$TEST_DIR/rq-06"
+mkdir -p "$dir_rq06"
+write_queue_file "$dir_rq06" "missing-ts" '{"issues":[6],"cursor":0,"mode":"default","failed":[],"outstanding":[],"active":true}'
+write_queue_file "$dir_rq06" "bad-ts" '{"issues":[7],"cursor":0,"mode":"default","failed":[],"outstanding":[],"active":true,"updated_at":"not-iso"}'
+RITE_STATE_ROOT="$dir_rq06" bash "$REAP" --session "own-sid" >"$TEST_DIR/rq06-out" 2>"$TEST_DIR/rq06-err" || true
+if [ ! -f "$dir_rq06/.rite/state/run-queue-missing-ts.json" ] \
+  && [ ! -f "$dir_rq06/.rite/state/run-queue-bad-ts.json" ]; then
+  pass "RQ-06: missing updated_at and epoch=0 treated as stale"
+else
+  fail "RQ-06: missing=$( [ -f "$dir_rq06/.rite/state/run-queue-missing-ts.json" ] && echo y || echo n ) bad=$( [ -f "$dir_rq06/.rite/state/run-queue-bad-ts.json" ] && echo y || echo n )"
+fi
+echo ""
+
+echo "RQ-07: SessionStart from non-root CWD still reaps; leftover stderr is not in pr-cycle-cleanup.log"
+dir_rq07="$TEST_DIR/rq-07"
+mkdir -p "$dir_rq07/sub"
+git -C "$dir_rq07" init -q
+create_state_file "$dir_rq07" '{"active":true,"issue_number":1,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":9,"branch":"feat/x","schema_version":3}' "own-sid"
+write_queue_file "$dir_rq07" "own-sid" "$(jq -n --arg ts "$fresh_ts" '{issues:[1],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+write_queue_file "$dir_rq07" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[8],cursor:0,mode:"merge",failed:[99],outstanding:[],active:true,updated_at:$ts}')"
+LAST_STDERR_FILE="$(mktemp "$TEST_DIR/stderr.XXXXXX")"
+output=$(jq -n --arg cwd "$dir_rq07/sub" --arg src "startup" --arg sid "own-sid" \
+  '{cwd:$cwd, source:$src, session_id:$sid}' \
+  | env CLAUDE_CODE_SESSION_ID=own-sid RITE_HOST=claude bash "$HOOK" \
+  2>"$LAST_STDERR_FILE") || rc_rq07=$?
+rc_rq07=${rc_rq07:-0}
+log_rq07="$dir_rq07/.rite/logs/pr-cycle-cleanup.log"
+if [ "$rc_rq07" -eq 0 ] \
+  && [ -f "$dir_rq07/.rite/state/run-queue-own-sid.json" ] \
+  && [ ! -f "$dir_rq07/.rite/state/run-queue-other-sid.json" ] \
+  && grep -q 'run-queue-reap: failed=99' "$LAST_STDERR_FILE" \
+  && { [ ! -f "$log_rq07" ] || ! grep -q 'run-queue-reap: failed=99' "$log_rq07"; }; then
+  pass "RQ-07: non-root CWD reaps; failed line on hook stderr not in pr-cycle-cleanup.log; rc=0"
+else
+  fail "RQ-07: rc=$rc_rq07 own=$( [ -f "$dir_rq07/.rite/state/run-queue-own-sid.json" ] && echo y || echo n ) other=$( [ -f "$dir_rq07/.rite/state/run-queue-other-sid.json" ] && echo y || echo n ) stderr=$(cat "$LAST_STDERR_FILE") log=$( [ -f "$log_rq07" ] && cat "$log_rq07" || echo none )"
+fi
+echo ""
+
+echo "RQ-08: compact Batch frame still emitted after reap (own queue skipped)"
+dir_rq08="$TEST_DIR/rq-08"
+mkdir -p "$dir_rq08"
+create_state_file "$dir_rq08" '{"active":true,"issue_number":2502,"phase":"review","next_action":"iterate","loop_count":1,"pr_number":99,"branch":"fix/issue-2502-x","schema_version":3}' "own-sid"
+write_batch_queue "$dir_rq08" "own-sid" true 0
+write_queue_file "$dir_rq08" "other-sid" "$(jq -n --arg ts "$stale_ts" '{issues:[9],cursor:0,mode:"merge",failed:[],outstanding:[],active:true,updated_at:$ts}')"
+output=$(run_hook_with_session "$dir_rq08" "compact" "own-sid")
+if echo "$output" | grep -q "Batch: run-queue active" \
+  && [ -f "$dir_rq08/.rite/state/run-queue-own-sid.json" ] \
+  && [ ! -f "$dir_rq08/.rite/state/run-queue-other-sid.json" ]; then
+  pass "RQ-08: compact Batch frame remains; own queue kept; other stale removed"
+else
+  fail "RQ-08: output=$output"
+fi
+echo ""
+
+echo "RQ-09: session-start calls run-queue-reap outside CWD==STATE_ROOT gate and does not redirect it"
+if grep -q 'run-queue-reap.sh" --session' "$HOOK" \
+  && awk '
+    /if \[ "\$CWD" = "\$STATE_ROOT" \]; then/ { gated=1 }
+    /run-queue-reap\.sh/ { if (gated && !ungated) { found_inside=1 } else { found_outside=1 } }
+    /^fi$/ && gated { ungated=1; gated=0 }
+    END { exit (found_outside && !found_inside) ? 0 : 1 }
+  ' "$HOOK" \
+  && grep -n 'run-queue-reap.sh' "$HOOK" | grep -q '|| true'; then
+  pass "RQ-09: reap call is non-blocking and outside the worktree CWD gate"
+else
+  fail "RQ-09: call site missing or still inside CWD==STATE_ROOT gate"
 fi
 echo ""
 

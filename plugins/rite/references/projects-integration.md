@@ -297,6 +297,37 @@ Parent Issue Status update failure does **not** block the start of work. Each st
 | 2.4.7.4 | field-list fails | Display `警告: Status フィールド情報の取得に失敗しました` and skip |
 | 2.4.7.4 | item-edit fails | Display `警告: 親 Issue #{parent_issue_number} の Status 更新に失敗しました` and continue |
 
+### 2.4.8 Terminal Status Set
+
+**Single source of truth** for which board Status values mean "this Issue is finished and no reconciler may move it again". The consumers listed below copy these two names from here and cite this section when they do; none of them define their own set.
+
+| Status | Meaning | Closure reason it maps from (`stateReason`) |
+|--------|---------|----------------------------------------------|
+| `Done` | Work completed | `COMPLETED` |
+| `Cancelled` | Work abandoned — closed as not planned (wontfix, superseded) or as duplicate | `NOT_PLANNED`, `DUPLICATE` |
+
+Two rules follow from this set, and both are load-bearing:
+
+1. **A row already on a terminal Status is never drift.** The consumers below skip it entirely. An Issue deliberately parked at `Cancelled` must not be dragged to `Done`, and vice versa — the operator's choice between the two carries information that the automation cannot reconstruct.
+2. **A CLOSED Issue on a non-terminal Status is drift, and its destination comes from `stateReason`.** `NOT_PLANNED` and `DUPLICATE` land on `Cancelled`, `COMPLETED` on `Done`. Every other value lands on `Done` **with a WARNING** — that includes both a reason the API leaves unset and any future enum GitHub may add. Leaving such a row alone is not an option: a CLOSED Issue stranded in `Todo` or `In Review` is exactly the stall this reconciliation exists to clear.
+
+`Cancelled` is an English literal. `projects-status-update.sh` matches the board's Status option names literally (it has no alias table of its own — the field-name aliases live in `scripts/create-issue-with-projects.sh`), so a board whose Status field lacks a `Cancelled` option fails the option-ID lookup and surfaces through that helper's normal failure path. `/rite:setup` provisions the five-option union `Todo` / `In Progress` / `In Review` / `Done` / `Cancelled` (existing operator-defined options are kept). The `fields.status.options` key in `rite-config.yml` remains descriptive — no consumer reads it. On a board that has not been re-run through setup since that provisioning existed, a `NOT_PLANNED` row therefore stays non-terminal, and the next drift check reports it again.
+
+**Consumers** (each references this section by name, never by line number):
+
+| Consumer | How it uses the set |
+|----------|---------------------|
+| `hooks/scripts/projects-board-drift-check.sh` | Excludes terminal rows from drift detection; picks the reconcile destination from `stateReason` |
+| `hooks/post-compact.sh` | Excludes terminal rows from the PR Status reconciliation mismatch check |
+| `hooks/scripts/projects-status-gate.sh` | Reports a terminal `Cancelled` as an abandoned Issue rather than a dropped transition |
+| `skills/lint/references/plugin-checks-rationale.md` | Documents why the drift check consults the closure reason |
+| `skills/issue-cancel/SKILL.md` | Writes `Cancelled` as the destination for the `NOT_PLANNED` closure it performs — the deliberate-cancellation counterpart to the drift check's `--reconcile` |
+| `scripts/projects-status-update.sh` | Read-before-write: refuses `Cancelled`→`Done` (`skipped_terminal_conflict`); same-terminal is a no-op `updated`. Binds every `Done` caller (issue-close / cleanup) to rule 1 |
+
+**Helper write guard.** `projects-status-update.sh` reads the current Status via `fieldValues` before `item-edit`. A `Cancelled` row refused a `Done` write (`result=skipped_terminal_conflict`) so `/rite:issue-close` (Shared / Phase 1.3.2 / 4.2 / 4.6.3 / `skip_already_closed`) and `/rite:cleanup` (ステップ 8 / archive-procedures §3.2 / §3.7.2.1) sit under rule 1. Same-terminal writes (`Done`→`Done`, `Cancelled`→`Cancelled`) are an idempotent no-op (`updated`, no `item-edit`). `Done`→`Cancelled` still writes so `/rite:issue-cancel` can resync a `NOT_PLANNED` row. Progress-axis writes (`Todo` / `In Progress` / `In Review`) are unchanged.
+
+Progress ordering (`Todo` → `In Progress` → `In Review` → `Done`) is a separate concept. `Cancelled` has no position in it and must not be given one — an Issue that was abandoned has not "reached" any progress stage, and ranking it would let a stage check read a cancelled Issue as having advanced.
+
 ## 2.5 Iteration Assignment (Optional)
 
 Execute only when `iteration.enabled` is `true` and `iteration.auto_assign` is `true` in `rite-config.yml`:

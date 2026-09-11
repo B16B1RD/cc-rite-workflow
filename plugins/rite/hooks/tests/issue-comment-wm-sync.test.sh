@@ -93,8 +93,8 @@ else
 fi
 echo ""
 
-# ─── TC-003: FLOW_STATE resolver → resolves to per-session file (#1807) ──
-# Regression guard for the fix to #1807: FLOW_STATE used to be hardcoded to
+# ─── TC-003: FLOW_STATE resolver → resolves to per-session file ──
+# Regression guard for the fix to: FLOW_STATE used to be hardcoded to
 # the legacy shared path ($STATE_ROOT/.rite-flow-state), which does not exist
 # in schema_v2/v3-only environments — every cache lookup missed and forced a
 # full gh api comments scan. When a session_id is resolvable, FLOW_STATE must
@@ -176,7 +176,7 @@ mkdir -p "$dir006/bin"
 echo '{"active":true,"issue_number":42}' > "$dir006/.rite-flow-state"
 GH_SHIM_MARKER6="$dir006/posted.marker"
 # pre-check は空を返し、投稿後の validation は id を返す (marker 存在で切替)。
-# "issue comment" は --repo の厳密一致を要求する (#1899 の実修正そのもの):
+# "issue comment" は --repo の厳密一致を要求する (実修正そのもの):
 # --repo が退行して shorthand に戻ると SSH Host alias origin で再び失敗するが、
 # サブコマンド名だけ見る shim ではその退行を検知できない (mutation で実証済み)。
 cat > "$dir006/bin/gh" <<'GH_SHIM'
@@ -215,7 +215,7 @@ mkdir -p "$dir007/bin"
 echo '{"active":true,"issue_number":42}' > "$dir007/.rite-flow-state"
 GH_SHIM_MARKER7="$dir007/posted.marker"
 # pre-check (marker 不在) は gh api 失敗 (exit 1 + stderr)、投稿後の validation (marker 存在) は id を返す。
-# "issue comment" の --repo 厳密一致は TC-006 shim と同じ理由 (#1899 退行検知)。
+# "issue comment" の --repo 厳密一致は TC-006 shim と同じ理由 (退行検知)。
 cat > "$dir007/bin/gh" <<'GH_SHIM'
 #!/bin/bash
 case "$1 $2" in
@@ -254,7 +254,7 @@ else
 fi
 echo ""
 
-# ─── TC-008/009/010: get_owner_repo() (#1899) ────────────────────────────
+# ─── TC-008/009/010: get_owner_repo() ────────────────────────────
 # get_owner_repo() had zero caller-level or function-level coverage before
 # this PR despite being the exact function cycle 2's review independently
 # found a CRITICAL cwd-anchoring bug in. These 3 cases exercise the fast
@@ -758,7 +758,7 @@ else
 fi
 echo ""
 
-# ─── #2463: wm_comment_id の Issue 所属検証 (T-20 〜 T-23) ────────────────
+# ───: wm_comment_id の Issue 所属検証 (T-20 〜 T-23) ────────────────
 # `repos/{owner}/{repo}/issues/comments/{id}` は Issue 非依存のエンドポイントなので、
 # cache された id で GET が成功しても、それが対象 Issue の replica である保証はない。
 # batch 実行で前 Issue の id が flow-state に残ると、次 Issue の phase が前 Issue の
@@ -863,8 +863,8 @@ else
 fi
 echo ""
 
-# ─── T-22: 前方一致の誤判定を許さない (#246 が #2463 に一致しない) ───
-echo "T-22: cached body for Issue #246 must not satisfy the check for Issue #2463 (AC-1 boundary)"
+# ─── T-22: 前方一致の誤判定を許さない (が に一致しない) ───
+echo "T-22: cached body for must not satisfy the check for (AC-1 boundary)"
 dir_t22="$TEST_DIR/t22"
 mkdir -p "$dir_t22"
 echo '{"active":true,"issue_number":2463,"wm_comment_id":4242}' > "$dir_t22/.rite-flow-state"
@@ -874,13 +874,13 @@ out_t22=$(cd "$dir_t22" && PATH="$dir_t22/bin:$PATH" \
     --phase "implement" --phase-detail "実装中" 2>/dev/null) || true
 seq22=$(tr '\n' ' ' < "$dir_t22/gh.seq" | sed 's/ *$//')
 if [ "$seq22" = "GET_CACHED GET_LIST PATCH_SCANNED" ]; then
-  pass "T-22a: AC-1 — #246 does not prefix-match #2463; cache discarded"
+  pass "T-22a: AC-1 — does not prefix-match; cache discarded"
 else
   fail "T-22a: expected 'GET_CACHED GET_LIST PATCH_SCANNED', got '$seq22' out=$out_t22"
 fi
-# 逆方向 (target=246 / cached body=#2463)。T-22a は文字列等価な現行実装では自明に通るため、
+# 逆方向 (target=246 / cached body=)。T-22a は文字列等価な現行実装では自明に通るため、
 # 部分一致実装への退行を捕まえるのはこちら — grep や前方一致で照合すると cached body の
-# #2463 が target 246 を「含む」と誤判定し、他 Issue の replica を PATCH する。
+# が target 246 を「含む」と誤判定し、他 Issue の replica を PATCH する。
 dir_t22b="$TEST_DIR/t22b"
 mkdir -p "$dir_t22b"
 echo '{"active":true,"issue_number":246,"wm_comment_id":4242}' > "$dir_t22b/.rite-flow-state"
@@ -890,7 +890,7 @@ out_t22b=$(cd "$dir_t22b" && PATH="$dir_t22b/bin:$PATH" \
     --phase "implement" --phase-detail "実装中" 2>/dev/null) || true
 seq22b=$(tr '\n' ' ' < "$dir_t22b/gh.seq" | sed 's/ *$//')
 if [ "$seq22b" = "GET_CACHED GET_LIST PATCH_SCANNED" ]; then
-  pass "T-22b: AC-1 — cached #2463 does not substring-match target #246; cache discarded"
+  pass "T-22b: AC-1 — cached does not substring-match target; cache discarded"
 else
   fail "T-22b: expected 'GET_CACHED GET_LIST PATCH_SCANNED', got '$seq22b' out=$out_t22b"
 fi

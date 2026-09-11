@@ -1,7 +1,8 @@
 ---
 name: dependencies-reviewer
 description: Reviews package dependencies, versions, and supply chain security
-model: opus
+model: inherit
+effort: high
 ---
 
 # Dependencies Reviewer

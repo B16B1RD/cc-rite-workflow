@@ -161,7 +161,7 @@ assert_contains "TC-2.10: 行末の付随テキストは無視される" "$LANE_
 
 echo "=== 記法 3: 表形式 Meta — 実運用 Issue の失敗形状 ==="
 
-# #2432 で /rite:batch-run が open 段の fail-loud で停止した実 body の形をそのまま fixture にする
+# で /rite:batch-run が open 段の fail-loud で停止した実 body の形をそのまま fixture にする
 # (合成 body だけだと、行ラベル型の表・ヘッダ行・**Type** 行が混ざる実入力の形状取り違えを
 #  検出できない)。この TC が修正前 red → 修正後 green に転じることが本 Issue の報告そのもの。
 run_lane_with_body '## 0. Meta
@@ -274,7 +274,7 @@ assert_contains "TC-3.3: 記法 1 が記法 2 より優先される" "$LANE_STDE
 
 # 記法 1 は記法 3 にも優先する。helper は code fence を剥がさないため、優先順が崩れると
 # **表記法そのものを説明している Issue** (本文中に表形式の例を載せる) が例から値を解決する。
-# 本 Issue (#2459) の body がまさにこの形なので、崩れは実運用で即座に誤判定になる。
+# 本 Issue の body がまさにこの形なので、崩れは実運用で即座に誤判定になる。
 run_lane_with_body '**Complexity**: M
 
 例として次の形が実在する:
@@ -308,7 +308,7 @@ M
 | **Complexity** | Projects Complexity field |'
 assert_contains "TC-3.3f: 記法 2 宣言は文書用の表ヘッダに優先する" "$LANE_STDERR" "complexity=M; source=body_section"
 
-# 記法 3 の `head -1` を pin する。宣言の表行の後ろに例の表行が続く形 (#2432 系 Issue が
+# 記法 3 の `head -1` を pin する。宣言の表行の後ろに例の表行が続く形 (系 Issue が
 # 表記法を併記する形) で、落とすと _raw が改行込み 2 値になり complexity_invalid へ倒れる。
 run_lane_with_body '## 0. Meta
 

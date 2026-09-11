@@ -11,7 +11,7 @@
 #   worktree is removed (cross-session lazy reap in pr-cycle-cleanup.sh Step 5, or
 #   a cleanup from a different cwd in cleanup.md Step 4-W) while the owning
 #   session's harness cwd still points there, `/clear` fails with
-#   `Error: Path "..." does not exist`. #1524's guards key off flow-state
+# `Error: Path "..." does not exist`. 's guards key off flow-state
 #   (`active` flag + `worktree` field); those can DRIFT from where harness cwds
 #   actually are (active=false but still standing in it, empty/nulled `worktree`
 #   field, stale session-id). This probe does not depend on that bookkeeping — it

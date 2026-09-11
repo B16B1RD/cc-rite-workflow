@@ -53,8 +53,9 @@
 #   壊れ (routine、人手の対応は不要) で、`cause=jq_missing` は jq 不在 (要対処の環境不備 —
 #   全ファイルが無判定で退避され続ける)。consumer 側の判定表はこの `cause=` で列を分ける。
 #   本 helper を起動できなかったとき (rc=127 等) の `review_results_helper_failed` は caller
-#   (cleanup/SKILL.md ステップ 6) が emit する。helper 自身は emit しないが、marker family が
-#   同一なので reason を追う人がここで行き止まらないよう併記しておく。
+#   (`hooks/scripts/cleanup-pr-state-purge.sh`。cleanup/SKILL.md ステップ 6 がこれを呼ぶ) が
+#   emit する。helper 自身は emit しないが、marker family が同一なので reason を追う人が
+#   ここで行き止まらないよう併記しておく。
 #   `_undecidable` 以外の失敗では **ファイルは削除しない** (退避できないなら元の場所に残す)。
 #   `_undecidable` は退避自体は成功しうるので `failed` には数えない (観測用の marker)。
 #   consumer 側 (cleanup ステップ 12 の判定表) も `_undecidable` だけは残作業に数えない。

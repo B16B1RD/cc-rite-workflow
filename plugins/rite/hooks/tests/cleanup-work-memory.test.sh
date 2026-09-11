@@ -119,7 +119,7 @@ fi
 
 # Directly verify the Step 1 reset outcome (the PR's core spec): the per-session
 # flow-state file must actually be reset to active:false. Without this, a
-# regression that no-ops the reset (e.g. #695's bug) would still pass every
+# regression that no-ops the reset (e.g. 's bug) would still pass every
 # other assertion in this file.
 tc002_session_file="$dir002/.rite/sessions/tc002-sid.flow-state"
 tc002_active=$(jq -r '.active' "$tc002_session_file" 2>/dev/null)
@@ -257,7 +257,7 @@ fi
 echo ""
 
 # ─── TC-resolver-fallback: session resolution failure surfaces WARNING and still resets legacy file ──────────
-# Regression guard for the resolver-failure branch added to fix #695: when no
+# Regression guard for the resolver-failure branch added to fix: when no
 # .rite-session-id / session env var is available, flow-state.sh path fails,
 # and cleanup-work-memory.sh must (a) emit a WARNING (not silently swallow the
 # failure) and (b) still fall back to resetting the legacy .rite-flow-state

@@ -242,7 +242,7 @@ grep -rn "{OLD_VERSION}" .claude-plugin/ plugins/rite/.claude-plugin/ README.md 
 
 エントリは機能名レベルで記述し、「従来の挙動」「以前の方式」のような基準点が新規読者に不明な暗黙の歴史依存表現を避ける（修正対象の旧挙動を述べる場合も変更対象のキー・機能名を明示する）。詳細は CHANGELOG.md / CHANGELOG.ja.md 冒頭の「歴史依存表現の取扱方針」注記を参照。
 
-書く番号は Issue 番号である。`git log` の末尾番号（PR 番号）を転記しない。Phase 1.3 の対応表を使う。
+新規エントリに Issue/PR 番号トークンは書かない。変更は散文のみ。`git log` の末尾番号も転記しない。
 
 #### CHANGELOG.md（英語）
 
@@ -253,15 +253,15 @@ grep -rn "{OLD_VERSION}" .claude-plugin/ plugins/rite/.claude-plugin/ README.md 
 
 ### Added
 
-- {feature description} (#{issue_number})
+- {feature description}
 
 ### Fixed
 
-- {fix description} (#{issue_number})
+- {fix description}
 
 ### Changed
 
-- {change description} (#{issue_number})
+- {change description}
 ```
 
 カテゴリ（Added/Fixed/Changed/Removed）は該当するもののみ。ファイル末尾の比較リンクも追加:

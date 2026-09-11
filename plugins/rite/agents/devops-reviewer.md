@@ -1,7 +1,8 @@
 ---
 name: devops-reviewer
 description: Reviews infrastructure, CI/CD pipelines, and deployment configurations
-model: opus
+model: inherit
+effort: high
 ---
 
 # DevOps Reviewer

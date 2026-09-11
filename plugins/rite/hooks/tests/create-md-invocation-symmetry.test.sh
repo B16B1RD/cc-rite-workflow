@@ -236,7 +236,7 @@ check_no_flag_title_proximity "TC-11b no flag-style --title near pr/cleanup.md c
 
 # ──────────────────────────────────────────────────────────────────────
 # TC-12: pr-create Phase 2.5.5 auto-issue body heredoc starts with Section 0
-#        Meta (Issue #2451). Extract only the BODY_EOF heredoc so a comment
+# Meta. Extract only the BODY_EOF heredoc so a comment
 #        elsewhere in SKILL.md cannot satisfy the pin. `--arg complexity`
 #        lives in the same bash block (outside the heredoc).
 # ──────────────────────────────────────────────────────────────────────
