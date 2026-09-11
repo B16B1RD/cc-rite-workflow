@@ -19,6 +19,8 @@
 * **Update**: [契約を一意化する変更は、参照文書だけでなく実行手順書の placeholder と同節の旧語彙まで同時に揃える](pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md) — [レビュー結果](raw/reviews/20260911T101122Z-pr-2678.md) を統合。差し替え規則はテンプレート単位ではなく placeholder 単位で書き、証跡限定では主語と観測対象を分け、区間 pin は上限も切る
 * **Create**: [同一指摘が複数 Issue に分かれたら対応 PR は該当する全 Issue を Closes で列挙する](pages/heuristics/duplicate-issues-for-one-finding-close-all-in-pr-body.md) — [close retrospective](raw/retrospectives/20260911T093543Z-issue-2646.md) を新規ページ化
 * **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=469, broken_refs=0
+* **Skip**: [レビュー結果](raw/reviews/20260911T102416Z-pr-2681.md) — 指摘なしの仕様整合レビュー。拒否経路・質問順序・File列例外は既存の契約一意化ページに記録済み。
+* **Skip**: [レビュー結果](raw/reviews/20260911T102152Z-pr-2679.md) — 指摘なしのテスト依存helper追加レビュー。既存箇所の調査推奨は未検証で、新しい経験則の根拠にはしない。
 
 ## 2026-09-10
 
