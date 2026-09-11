@@ -1,5 +1,6 @@
 ## 2026-09-12
 
+* **Update**: [Issue body 内 `Scope 外指摘ハンドリングポリシー` 宣言で reviewer advisory finding を Issue 化なし recommendation に降格する](pages/heuristics/issue-body-scope-out-policy-demotes-advisory-finding.md) — [レビュー結果](raw/reviews/20260911T171840Z-pr-2699.md) を統合。follow-up Issue では Issue 本文の範囲外注記 + 別 Issue 起票済みの明示で reviewer が隣接点を再指摘しない（S/XS でも有効な例外として追記）
 * **Skip**: [レビュー結果](raw/reviews/20260911T164045Z-pr-2696.md) — 設計文書 1 項目の追従で新規経験則なし。実装側 grep 照合の要点は既存ページ（docs-review-implementation-grep-verification）に記録済み
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=474, broken_refs=0
 * **Update**: [sandbox の書込防止マスクは char device 形と ro bind mount 形の 2 形状があり、bind mount 形は mountinfo の mount point 完全一致で検知する](pages/patterns/sandbox-mask-two-shapes-mountinfo-detection.md) — [レビュー結果](raw/reviews/20260911T161919Z-pr-2695.md) を統合。判定不能 WARNING は Linux 限定（Darwin は判定手段不在が常態、uname 失敗は WARNING 側へ倒す）。probe は live-cwd skip では走らせず dry-run では維持する

@@ -8,9 +8,13 @@ created: "2026-05-07T19:32:00+09:00"
 sources:
   - type: "reviews"
     resource: "raw/reviews/20260507T103117Z-pr-885.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260911T171840Z-pr-2699.md"
 tags: ["umbrella-issue", "scope-out-policy", "reviewer-finding-demotion", "advisory-finding", "issue-spec-authoring"]
 confidence: medium
-generated: { by: "rite-wiki-ingest/unknown", at: "2026-08-08T13:37:28Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-11T17:24:24Z" }
+verified:
+  - { by: "rite-wiki-ingest/claude-opus-5", at: "2026-09-11T17:24:24Z" }
 ---
 
 # Issue body 内 `Scope 外指摘ハンドリングポリシー` 宣言で reviewer advisory finding を Issue 化なし recommendation に降格する
@@ -60,6 +64,7 @@ advisory finding が umbrella Issue spec **自身の語法問題**に由来す�
 - **必須**: umbrella Issue (Phase 分割で複数 PR を順次マージする運用、本 Issue は OPEN 継続して各 Phase PR は `Closes` ではなく `Refs` で参照する)
 - **推奨**: M/L/XL Issue で reviewer の cross-domain advisory が発生しやすい case
 - **不要**: 単一 PR で完結する S/XS Issue (scope drift リスクが本質的に低い)
+- **例外（S/XS でも有効）**: レビュー指摘から切り出された follow-up Issue で、実装計画時に元指摘の**隣接する未対応点**（同じ文の別分岐・第 3 の結果など）が判明した場合。Issue 本文に「〇〇は本 Issue の範囲外（別 Issue として起票済み）」と 1 行注記し、その別 Issue を PR 作成前に起票しておくと、reviewer は隣接点を再指摘せず、Docs-only 1 行修正でも cycle 1 で 0 findings に収束する（設計文書の判定手段追従 PR で実測。両 reviewer とも所見で「別 Issue で扱うため本 PR では指摘しない」と明記した）。umbrella のポリシー節ほど重い宣言は不要で、Issue 本文の注記 + 起票済み Issue の存在だけで足りる
 
 ### いつ宣言すべきでないか
 
@@ -74,3 +79,4 @@ advisory finding が umbrella Issue spec **自身の語法問題**に由来す�
 ## ソース
 
 - [レビュー結果](../../raw/reviews/20260507T103117Z-pr-885.md)
+- [レビュー結果（follow-up Issue の範囲外注記による再指摘抑止）](../../raw/reviews/20260911T171840Z-pr-2699.md)
