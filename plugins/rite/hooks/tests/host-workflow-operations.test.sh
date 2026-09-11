@@ -220,20 +220,27 @@ class WorkflowContracts(unittest.TestCase):
         self.assertIn("読取完了申告が渡した全パスと一致", reviewer_part.split("### 回収ゲート\n", 1)[1])
         # The recovery claim is limited to what the design record attests; the
         # generic "同じ本文を渡す" wording must not resurface next to the path contract.
-        for stale in ["同じ本文を渡す", "複数ホストで選定全員の回収を完走"]:
+        for stale in ["同じ本文を渡す", "複数ホストで選定全員の回収を完走",
+                      "計画/実装子の起動と完了回収を完走"]:
             self.assertNotIn(stale, reviewer_part)
-        for clause in ["同じ絶対パス集合と読取義務を渡す", "計画/実装子の起動と完了回収を完走",
+        for clause in ["同じ絶対パス集合と読取義務を渡す", "計画/実装子の起動と完了回収を観測",
                        "選定 reviewer 全員の回収は未検証"]:
             self.assertIn(clause, reviewer_part)
         # The placeholder substitution rule lives in the handoff subsection and at the
         # independent-child entry of pr-review, so both call sites agree on it.
-        handoff_part = reviewer_part.split("### 本文の引き渡し\n", 1)[1]
+        handoff_part = reviewer_part.split("### 本文の引き渡し\n", 1)[1].split("\n### ", 1)[0]
+        self.assertNotIn("読取完了申告が渡した全パスと一致", handoff_part)
         pr_review = (plugin / "skills/pr-review/SKILL.md").read_text(encoding="utf-8")
         entry_part = pr_review.split("### 4.3.1 Task Tool Sub-Agent Invocation\n", 1)[1].split("\n### 4.4 ", 1)[0]
-        for clause in ["`{shared_reviewer_principles}` は inline せず", "絶対パス行（読取義務付き）に置き換える",
-                       "その他の placeholder", "4.5 のまま"]:
+        for clause in ["4.5 の placeholder 表が定義する `{shared_reviewer_principles}`",
+                       "4.5 テンプレートと 4.5.1 検証テンプレートの双方の出現箇所",
+                       "絶対パス行（読取義務付き）に置き換える",
+                       "その他の placeholder（差分・仕様・CI 状態・Wiki 等）は 4.5 のまま渡す"]:
             self.assertIn(clause, handoff_part)
             self.assertIn(clause, entry_part)
+        # workdir is not a 4.5 placeholder; the handoff names it as a separately supplied item.
+        self.assertNotIn("制約 / workdir）は 4.5 のまま", handoff_part)
+        self.assertIn("制約・絶対 workdir は上記の項目として別途明示する", handoff_part)
         self.assertIn("reviewer 本文の絶対パスと読取義務を子の指示へ明示", runtime)
         for skill_name in ["rite-workflow", "batch-run", "open", "issue-implement", "pr-create", "iterate",
                            "pr-review", "fix", "ready", "recover", "issue-create"]:
