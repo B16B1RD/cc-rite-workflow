@@ -2237,6 +2237,8 @@ fi
 
 ### 5.4 Integrated Report Generation
 
+構造と難所は reasoning で決め、本文は output で 1 回だけ書く。
+下書きを reasoning で全文作ってから再出力しない。
 絵文字は `skills/reviewers/SKILL.md` の方針。ヘッダと重要 WARNING のみ。
 テンプレート本文は [references/integrated-report-templates.md](references/integrated-report-templates.md)。
 
