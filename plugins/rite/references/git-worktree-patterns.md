@@ -698,6 +698,13 @@ dotfile、`.claude/settings.json`、`.mcp.json` 等）へ `/dev/null` のキャ�
 ノードであり、作業ツリーの実体は変化していない（sandbox 外で同じ `git status` を実行すると clean に
 なる）。
 
+マスクの形状は 2 種ある。上記の `/dev/null` character device 形に加え、既存の実ファイル（`.git/worktrees/<name>/`
+の `config.worktree` / `commondir` 等）には実ファイル自体を read-only で bind mount する形が張られる。
+後者は `ls -la` でも通常ファイル（`-`）に見えるため `test -c` では検知できず、mount 表（`/proc/self/mountinfo`
+または `mountpoint`）との照合が要る。幽霊 `??` エントリを生むのは前者のみで、`git-status-filtered.sh` の
+`test -c` 判定は変わらない。worktree 削除前の管理ディレクトリ側の検知（両形状）は
+`hooks/scripts/cleanup-session-worktree-teardown.sh` が担う。
+
 **列挙は例示であり網羅ではない**: 上記のパスは観測された一例に過ぎず、どのパスが保護対象になるかは
 sandbox 設定に依存して変わる。ファイル名の allowlist で判定してはならない。判定は常に下記の機構ベース
 （`test -c`）で行う。
