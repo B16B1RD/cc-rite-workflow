@@ -181,10 +181,12 @@ rationale: references/rationale.md#ask-only-user-unique
 
 5. **質問の発行**: (b) のみを AskUserQuestion で確認し、各問に推奨案を付ける（第 1 選択肢を推奨とする）。
 
-**制約**:
+**制約**（成果物パスの条件を、仮定 0 件・全仮定解決による省略より先に評価する。確認は手順 5 の質問に含め、質問上限の枠を増やさない）:
 
 | 条件 | 挙動 |
 |------|------|
+| Where が空 かつ What が計測・判断・調査の記録 かつ 探索サマリに実パスなし | 対象ファイルのパスを (b) とし、`docs/designs/{slug}.md` を推奨案として確認する。承諾または別パス → Section 4.1 File 列。中止 → workflow 終了 |
+| 探索サマリの「成果物」または「確定したこと」に実パスあり | そのパスを Section 4.1 に載せ、再質問しない |
 | 仮定 0 件 | 質問せず 4.1 へ進む（空の AskUserQuestion を出さない） |
 | (b) が 4 件以上（従来仮定 + 盲点由来の合計） | 影響の大きい順に 3 問へ絞り、溢れた分は (c) として body に明文化する |
 | 見込み XS / S | 質問は最大 1 問に抑制する。盲点列挙（手順 2）はスキップする |
@@ -192,14 +194,6 @@ rationale: references/rationale.md#ask-only-user-unique
 | Wiki 無効 / 未初期化 | wiki クロスチェックを silent skip する |
 | ユーザーが質問で「中止」を選択 | workflow を終了する（既存ポリシー） |
 | 全仮定が (a) で解決 | 表面化ステップの出力を 1 行サマリに省略してよい（MAY） |
-
-**Where 空の成果物パス**（手順 1「対象ファイルの具体パス」の (b) 具体化。質問上限表の枠は増やさない）:
-
-| 条件 | アクション |
-|------|-----------|
-| Where が空 かつ What が計測・判断・調査の記録 かつ 探索サマリに実パスなし | `docs/designs/{slug}.md` を推奨案として確認。承諾または別パス → Section 4.1 File 列。中止 → workflow 終了 |
-| 探索サマリの「成果物」または「確定したこと」に実パスあり | そのパスを Section 4.1 に載せ、提案しない |
-| 上記以外 | 発火しない |
 
 ### 4.1 Issue 情報の最終確認
 
@@ -229,7 +223,7 @@ Read tool で以下を読み込む:
 1. **Complexity Gate 適用**: 確定 Complexity の列で `M`(MUST) を必ず含め、`S`(SHOULD) は Step 1.3 で情報が得られた場合のみ含め、`O`(OMIT) は省略
 2. **Type Core Section (Section 3) 選択**: Step 4.1 で確定した値は **Commit Type**（feat/fix/...）。[`default.md` Type Definitions](../../templates/issue/default.md#type-definitions) の crosswalk で **Contract Type**（Feature/BugFix/...）へ対応付け、その Contract Type に対応する Section 3 を [Step 2 mapping](./references/contract-section-mapping.md#step-2-type--type-core-section-section-3-mapping) で 1 つ選択する。Section 0 Meta の `**Type**` には Step 4.1 で確定した Commit Type をそのまま記載し、Step 4.4 完了レポートの Type と一致させる（crosswalk は Section 3 選択のためにのみ用い、Meta 値は変換しない）
 3. **入力のマッピング**: Step 1.3 で抽出した What/Why/Where/Scope/Constraints を [Step 3 mapping](./references/contract-section-mapping.md#step-3-perspective--target-sections-mapping) と [Section Inclusion Rules](./references/contract-section-mapping.md#section-inclusion-rules) に従って各 Section へ反映（What → Section 1 Goal / Why → Section 1-2 / Where → Section 4.1 Target Files / Scope → Section 2 Scope(In/Out) / Constraints → Section 4.5 / Section 7）。あわせて Step 4.0 で **defer** された仮定があれば Section 1 の `Assumptions / Open Questions` サブセクションへ記載する（仮定が無ければ当該サブセクションは省略）。ステップ 1.3.1 で探索サマリを検出した場合は [Step 3.1 mapping](./references/contract-section-mapping.md#step-31-探索サマリ-section--contract-section-mapping-riteunknowns-連携時) を併用し、「却下した代替案」を Section 9 Decision Log の素材として反映する
-4. **MUST だが情報未収集の Section**: 空見出しを残さず `<!-- 情報未収集 -->` プレースホルダーを挿入
+4. **MUST だが情報未収集の Section**: 空見出しを残さず `<!-- 情報未収集 -->` プレースホルダーを挿入。ただし Section 4.1 File 列は例外とし、プレースホルダーを置かず後段の実パス検査の「実パス 0 行」として扱う
 
 **Step 3: AC / Test 数の整合**
 
@@ -246,7 +240,7 @@ File 列のセルが実パス ⇔ (`/` を含む、または `.` + 英数字の�
 | 判定 | アクション |
 |------|-----------|
 | 実パス 1 行以上 | 非パス行が混在しても通過。経緯識別子禁止と Checklist 他行を続けて実施する |
-| 実パス 0 行 | 作成しない（`create-issue-with-projects.sh` を呼ばない）。成果物をファイルにする案内を 1〜2 行出して 4.2 本文生成へ戻る。中止以外は workflow 終了しない |
+| 実パス 0 行 | 当該 body を Write せず、Issue 作成 helper を呼ばない（単一: 4.3 の `create-issue-with-projects.sh`、分解: 5.3 (C) の `decompose-issues.sh`）。成果物をファイルにする案内を 1〜2 行出し、単一は 4.2、分解は 5.3 (B) の当該 Sub-Issue body 生成へ戻って再検査する。中止以外は workflow 終了しない |
 
 図の選択表に従い、`svg_allowed=true` なら SVG を第一候補として Write tool で `.svg` を生成する。図なしは上段に `<!-- 図なし: {理由} -->` を残す。**Write tool** で添付パス配列を JSON ファイルへ保存する（添付なしは `[]`）。その絶対パスを `{ATTACHMENTS_JSON_FILE}` として 4.3 へ渡す。添付 SVG は作成コマンドの終了まで保持する。
 
