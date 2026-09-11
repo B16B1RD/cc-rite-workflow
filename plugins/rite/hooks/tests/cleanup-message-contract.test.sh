@@ -90,7 +90,11 @@ echo "=== ステップ 4-W: sandbox マスク検知による remove 抑止 (AC-1
 # remove (--force 含む) を一切実行せず遅延 reap (pr-cycle-cleanup.sh Step 5 corpse 回収) へ
 # 委譲する。behavioral 検証 (corpse 回収側) は pr-cycle-cleanup-session-reap.test.sh C-01..C-04。
 assert_grep "4-W resolves the admin dir from the worktree's .git file" "$TEARDOWN_HELPER" '_wt_admin=\$\(sed -n .s/.gitdir: //p. "\$flow_wt/\.git"'
-assert_grep "4-W detects the mask as a character device on config.worktree" "$TEARDOWN_HELPER" '\-c "\$_wt_admin/config\.worktree"'
+# マスクは character device 形と read-only bind mount 形の 2 形状。検知は関数に集約し、cmd_remove は
+# その結果だけで分岐する（char device 判定が関数から消えると前者の形を見失う）。
+assert_grep "4-W delegates mask detection to _sandbox_mask_present on the admin dir" "$TEARDOWN_HELPER" '_masked_file=\$\(_sandbox_mask_present "\$_wt_admin"\)'
+assert_grep "4-W mask detection keeps the character device check" "$TEARDOWN_HELPER" '\[ -c "\$_admin/\$_f" \]'
+assert_grep "4-W mask detection matches the mountinfo mount point exactly" "$TEARDOWN_HELPER" '\$5 == ENVIRON\["RITE_MOUNT_PROBE"\]'
 assert_grep "4-W emits the sandbox-mask skip marker" "$TEARDOWN_HELPER" "WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1"
 assert_grep "4-W mask WARNING states removal is not attempted at all" "$TEARDOWN_HELPER" "削除自体を試行しません"
 assert_grep "4-W mask WARNING forbids in-place sandbox-disable retry" "$TEARDOWN_HELPER" "実行エージェントはこの場で sandbox を無効化して remove を再試行しないこと"
