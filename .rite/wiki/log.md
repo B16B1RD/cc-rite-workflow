@@ -5,6 +5,7 @@
 * **Skip**: [20260911T000022Z-pr-2665.md](raw/reviews/20260911T000022Z-pr-2665.md) — 指摘ゼロのレビュー記録。empty commit 観測のみで新しい経験則は抽出できない
 * **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=470, broken_refs=0
 * **Skip**: [20260911T032611Z-pr-2671.md](raw/reviews/20260911T032611Z-pr-2671.md) — cycle artifact: 0 findings; rationale と実装の同期は asymmetric-fix-transcription / stale-historical-comment で、rationale をテスト pin しない判断は comment-rationale-widens-review-surface で既存カバー
+* **lint:clean** — contradictions=0, stale=68, orphans=0, missing_concept=0, unregistered_raw=466, broken_refs=0
 
 ## 2026-09-10
 
