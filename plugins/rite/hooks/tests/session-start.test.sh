@@ -837,6 +837,8 @@ cp "$src_hook_dir/relocated-state-migrate.sh" "$sandbox_hook_dir/"
 cp "$src_hook_dir/flow-state.sh" "$sandbox_hook_dir/"
 # Sandbox に canonical mktemp helper を含める (silent suppress 禁止 — sibling cp と同じ fail-fast)
 cp "$src_hook_dir/_mktemp-stderr-guard.sh" "$sandbox_hook_dir/"
+mkdir -p "$sandbox_hook_dir/scripts"
+cp "$src_hook_dir/scripts/run-queue-reap.sh" "$sandbox_hook_dir/scripts/"
 # Stub session-ownership.sh: define helpers that don't break source, but omit check_session_ownership
 cat > "$sandbox_hook_dir/session-ownership.sh" <<'STUB_EOF'
 #!/bin/bash
@@ -882,6 +884,8 @@ cp "$src_hook_dir_b/relocated-state-migrate.sh" "$sandbox_hook_dir_b/"
 cp "$src_hook_dir_b/flow-state.sh" "$sandbox_hook_dir_b/"
 # canonical mktemp helper を sandbox に同期コピーする (silent suppress 禁止 — sibling cp と同じ fail-fast)
 cp "$src_hook_dir_b/_mktemp-stderr-guard.sh" "$sandbox_hook_dir_b/"
+mkdir -p "$sandbox_hook_dir_b/scripts"
+cp "$src_hook_dir_b/scripts/run-queue-reap.sh" "$sandbox_hook_dir_b/scripts/"
 cat > "$sandbox_hook_dir_b/session-ownership.sh" <<'STUB_EOF'
 #!/bin/bash
 extract_session_id() { echo ""; }
@@ -1277,6 +1281,8 @@ _mk_wt_sandbox() {
   for f in session-start.sh session-identity.sh hook-preamble.sh state-path-resolve.sh control-char-neutralize.sh gitignore-ensure.sh relocated-state-migrate.sh flow-state.sh _mktemp-stderr-guard.sh; do
     cp "$src/$f" "$sbx/"
   done
+  mkdir -p "$sbx/scripts"
+  cp "$src/scripts/run-queue-reap.sh" "$sbx/scripts/"
   cat > "$sbx/session-ownership.sh" <<'STUB_EOF'
 #!/bin/bash
 extract_session_id() { echo ""; }
