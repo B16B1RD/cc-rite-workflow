@@ -415,9 +415,15 @@ LLM は Read ツールで `$wiki_index_path` を直接開き、既存ページ�
 | `title` | 経験則を 1 行で表現（30-60 字推奨） |
 | `domain` | `patterns` / `heuristics` / `anti-patterns` |
 | `summary` | 1-2 文の Why 要約（page frontmatter `description` と index.md のサマリー列へ同一文言を掲載する）。Issue / PR 番号は出典の識別子であって概念の理由を説明しないため、`Issue #NNN` / `PR #NNN` / `refs #NNN` 等の番号参照を書かず、番号が担っていた観測事実・条件・因果を自己完結した散文で記述する。provenance は `sources` に分離して保持する |
-| `details` | 背景・具体例・根拠を含む詳細 |
+| `details` | 背景・具体例・根拠を含む詳細。経験則は自分の言葉で言い換え、Raw Source の文を逐語で使うときは引用符で示す |
 | `confidence` | `high` / `medium` / `low`（根拠の強さ） |
 | `promote` | ステップ 4 の昇格分類で rite 挙動・スキル記述法かつ環境非依存（または一般化済み）と判定した場合のみ `rite-plugin`。それ以外はフィールド自体を付けない |
+
+正しい応答の例:
+
+- **要求**: Raw Source に「timeout は fail-open である」とある。経験則の details を書け。
+- **応答**: 制限時間に達すると検査は通過扱いになる。出典は「timeout は fail-open である」と述べている。
+- **正しい理由**: 因果は自分の言葉に直し、出典の断定だけを引用符で残す。全文を出典どおりに写さない。
 
 ファイル名は `pages/{domain}/{slug}.md`、`slug` は `title` を kebab-case 化（最大 60 文字）。
 
