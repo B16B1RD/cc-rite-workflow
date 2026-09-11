@@ -1,5 +1,6 @@
 ## 2026-09-11
 
+* **Update**: [契約を一意化する変更は、参照文書だけでなく実行手順書の placeholder と同節の旧語彙まで同時に揃える](pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md) — [レビュー結果](raw/reviews/20260911T023121Z-pr-2669.md) を統合。参照側の例外を足しても手順書の複製が未更新だと挿入と拒否が併存し、拒否アクションの helper 名固定と独立表の配置も同じクラス。
 * **Skip**: [20260911T011012Z-pr-2668.md](raw/reviews/20260911T011012Z-pr-2668.md) — 指摘ゼロの mergeable 観測のみ。空コミット停止はプラグインへ実装済みで、新しい経験則は抽出できない
 * **Skip**: [20260911T000022Z-pr-2665.md](raw/reviews/20260911T000022Z-pr-2665.md) — 指摘ゼロのレビュー記録。empty commit 観測のみで新しい経験則は抽出できない
 
