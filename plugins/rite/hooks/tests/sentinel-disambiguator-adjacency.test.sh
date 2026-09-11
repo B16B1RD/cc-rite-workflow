@@ -135,10 +135,10 @@ for entry in "${PRODUCERS[@]}"; do
     # create-md-invocation-symmetry.test.sh の pipefail-safe パターンと同形)。
     sentinel_sites=$(grep -nE "$sentinel_pattern" "$abs_path" 2>/dev/null || true)
     disambig_sites=$(grep -nE "$disambig_pattern" "$abs_path" 2>/dev/null || true)
-    echo "  sentinel emit sites:" >&2
-    printf '%s\n' "$sentinel_sites" | sed 's/^/    /' >&2
-    echo "  disambiguator emit sites:" >&2
-    printf '%s\n' "$disambig_sites" | sed 's/^/    /' >&2
+    echo "  sentinel emit sites:"
+    printf '%s\n' "$sentinel_sites" | sed 's/^/    /'
+    echo "  disambiguator emit sites:"
+    printf '%s\n' "$disambig_sites" | sed 's/^/    /'
     fail "TC-${name}: ${rel_path} disambiguator (${disambig_count}) < sentinel (${sentinel_count}) — silent marker strip suspected (rename 漏れで marker のみ落ちた状態の可能性)"
   fi
 done
@@ -206,9 +206,9 @@ for entry in "${PRODUCERS[@]}"; do
   if [ "$swap_count" -eq 0 ]; then
     pass "TC-${name}-order: ${rel_path} marker pair の順序 swap なし (disambiguator -> sentinel)"
   else
-    # 診断行 (`  SWAP...`) を stderr に出力。grep no-match (rc=1) は `|| true` で吸収して
+    # 診断行 (`  SWAP...`) を stdout に出力。grep no-match (rc=1) は `|| true` で吸収して
     # set -euo pipefail 下で fail() 到達前に中断しないようにする (count parity loop と同形)。
-    printf '%s\n' "$order_swap_out" | grep -E '^  SWAP' >&2 || true
+    printf '%s\n' "$order_swap_out" | grep -E '^  SWAP' || true
     fail "TC-${name}-order: ${rel_path} で marker pair の順序逆転 ${swap_count} 件検出 — sentinel が disambiguator より前に emit されています (正しい順序: disambiguator -> sentinel)"
   fi
 done
