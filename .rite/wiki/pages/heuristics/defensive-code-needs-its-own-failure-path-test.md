@@ -22,11 +22,14 @@ sources:
     resource: "raw/fixes/20260722T113522Z-pr-1970-cycle2.md"
   - type: "reviews"
     resource: "raw/reviews/20260722T122232Z-pr-1970-cycle3.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260911T061535Z-pr-2673.md"
 tags: []
 confidence: high
-generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T14:36:47Z" }
+generated: { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-11T06:35:19Z" }
 verified:
   - { by: "rite-wiki-ingest/grok-4.6", at: "2026-08-25T14:36:47Z" }
+  - { by: "rite-wiki-ingest/grok-4.6", at: "2026-09-11T06:35:19Z" }
 ---
 
 # 無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する
@@ -66,6 +69,17 @@ verified:
 
 **可視化を足しただけでは、パス欠落や `|| empty` への再退行は成功パスでは検出できない。** WARNING の本文に対象パスが含まれることと、corrupt 入力でその WARNING が出ることを別 fixture で pin する。
 
+### fail 直後の詳細ダンプは成功パスでは到達しない（出力チャネル契約）
+
+`_test-helpers.sh` を source するテストでは、`fail` の直後に出す失敗詳細は stdout、ハード前提の `ERROR:` / `WARNING:` は stderr、という出力チャネル契約がある。成功パスは `fail` に到達しないため、ダンプだけを stderr へ戻してもスイートは green のまま通る。
+
+契約を守る pin は 2 系統:
+
+- 静的 grep: `fail` 近傍のダンプ行に `>&2` が無いこと、ハード前提行の `>&2` は残ること
+- 失敗経路: git shim 等で対象ケースを意図的に失敗させ、dump が stdout に隣接することを確認する
+
+成功パスの 0 FAIL だけでは出力チャネル契約は検証できない。チャネルを機械的に揃える grep は可能だが、ハード前提の stderr 残置を誤って消さないよう対象行を限定する。
+
 ### 副次的な教訓: worktree 環境でのデバッグ時は plugin_root の参照先を要確認
 
 テスト失敗の原因調査中、手動デバッグで `plugin_root` をセッション worktree 内の修正済みコピーではなく main checkout の古いコピー（`/path/to/repo/plugins/rite/...`、md5sum が異なる）に向けてしまい、「fix したはずのコードが動いていない」ように見える偽の失敗を一時的に作り出した。worktree ベースの開発では、デバッグ用の一時スクリプトが参照する `plugin_root` 等のパスが、作業中のブランチが実際にチェックアウトされているディレクトリ（多くの場合セッション worktree）を指しているか、意識的に確認する必要がある。`md5sum` 等でファイル実体を比較するのが最も確実な切り分け方法。
@@ -75,6 +89,7 @@ verified:
 - [mkdir 成功のみの判定漏れと brace group 未使用によるリダイレクト診断メッセージ漏洩](../anti-patterns/mkdir-success-only-check-and-redirect-diagnostic-leak.md)
 - [Asymmetric Fix Transcription (対称位置への伝播漏れ)](../anti-patterns/asymmetric-fix-transcription.md)
 - [Mutation testing で test の真正性 (dead code 検出 + identification power) を empirical 検証する](../patterns/mutation-testing-test-fidelity.md)
+- [新規 lint helper は findings→stdout / summary→stderr(log()) の出力チャネル規約を兄弟 helper に揃える](../patterns/lint-helper-output-channel-convention.md)
 
 ## ソース
 
@@ -86,3 +101,4 @@ verified:
 - [security 起因の防御に pin が抜けた実例](../../raw/fixes/20260806T013904Z-pr-2120.md)
 - [WARNING パス未 pin](../../raw/reviews/20260825T141342Z-pr-2360.md)
 - [T-01 パス pin / T-04 corrupt JSON pin](../../raw/fixes/20260825T141757Z-pr-2360.md)
+- [レビュー結果](../../raw/reviews/20260911T061535Z-pr-2673.md)
