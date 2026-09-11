@@ -27,12 +27,16 @@ sources:
     resource: "raw/reviews/20260906T134450Z-pr-2582.md"
   - type: "fixes"
     resource: "raw/fixes/20260906T135449Z-pr-2582.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260911T120212Z-pr-2684.md"
 tags: ["pin", "mutation-testing", "static-assert", "producer-consumer-symmetry", "drift-detection"]
 confidence: high
-generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-06T16:10:23Z" }
+generated: { by: "rite-wiki-ingest/claude-opus-5[1m]", at: "2026-09-11T12:08:00Z" }
 verified:
   - by: "rite-wiki-ingest/claude-opus-5"
     at: "2026-08-30T05:20:00Z"
+  - by: "rite-wiki-ingest/claude-opus-5[1m]"
+    at: "2026-09-11T12:08:00Z"
 ---
 
 # pin literal は「その行に固有」を grep -c で確かめ、変異注入で kill を実測してから確定する
@@ -185,6 +189,14 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 
 加えて、区間抽出が「次の見出しで閉じる」ことを前提にしていると、対象節がファイル末尾まで続く構造では窓が意図の何倍にも広がる。pin を直したら、対象行を削除して実際に red になることを確認する。緑のままなら、その pin は名乗った対象を守っていない。テストが緑であること自体は修正完了の根拠にならない。
 
+### 部分文字列 pin は限定句の削除を検出しない — 全文で pin し、旧文言は stale 側へ
+
+散文の `assertIn` は部分文字列一致なので、pin literal が文の**核だけ**（例: 「選定 reviewer 全員の回収は未検証」）だと、その前に付く限定句（「絶対パス方式による」）を削っても、別の限定句（「他ホストでの」）に差し戻しても緑のまま通る。限定句こそが主張の範囲を決めているのに、pin はそれを守っていない。
+
+- 限定句を含む**文全体**を pin literal にする。旧文言は `assertNotIn` の stale リストへ足し、復帰も検出する
+- 既存の短い pin が新しい全文 pin の**真部分文字列**なら、残さず置換してよい。全文が存在すれば部分文字列も存在するので `assertIn` は包含され、検証力は落ちない（残すのは重複であって安全側ではない）
+- 効果の確認は本ページの手順どおり: pin を足す**前**に各変異（限定句削除 / 旧文言復帰 / 後続文削除）で suite が green のまま通ることを実測し、足した**後**にそれぞれが対応する assert で red になることを実測する。生存し続ける細粒度変異（末尾への後置弱化、節間移動）は契約に現れない限り non-blocking として記録し、追いかけて pin を増築しない
+
 ## 関連ページ
 
 - [assert_not_grep は「対象が fixture に存在する」ことを前提にしないと恒真になる — positive control を対で置く](../anti-patterns/assert-not-grep-vacuous-without-fixture-scope.md)
@@ -203,3 +215,4 @@ negative assert は静かに通る。`[[:space:]]` を使う。
 - [NB sweep results（pin を伸ばすときのリテラル吸収、`elif` guard による兄弟 assert の skip）](../../raw/fixes/20260829T194742Z-pr-2468.md)
 - [レビュー結果](../../raw/reviews/20260906T134450Z-pr-2582.md)
 - [fix 結果](../../raw/fixes/20260906T135449Z-pr-2582.md)
+- [レビュー結果（部分文字列 pin と限定句の削除、真部分文字列の置換）](../../raw/reviews/20260911T120212Z-pr-2684.md)
