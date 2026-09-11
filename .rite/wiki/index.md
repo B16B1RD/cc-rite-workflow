@@ -481,9 +481,10 @@ okf_version: "0.2"
 | [同型テンプレートが N 本ある欄は「本数の literal pin」と「欄とプレースホルダの隣接 pin」の 2 本立てで守る](pages/patterns/homogeneous-template-pins-count-and-adjacency.md) | patterns | 同じ報告欄を複数のテンプレートへ横展開したとき、presence-only の grep pin は 1 本でも残っていれば通るため N-1 本からの欠落を検出できない。本数を literal で固定する pin と、欄行の直下にプレースホルダが並ぶことを数える pin の 2 本立てにする。期待値を実測から作ると 0 == 0 の真空パスで通るので、期待値は必ず literal で書く。 | 2026-09-07T10:00:00Z | high |
 | [警告集約は最終試行・同一目的・正規化先の単一性で判定する](pages/heuristics/warning-aggregation-final-attempt-purpose-normalization.md) | heuristics | 複数段の処理ログから要対応項目を集約するとき、同じ処理の最終試行だけを評価し、別目的の成功を解消証拠に使わず、raw 警告と詳細な復旧項目を一つの表現へ正規化する。件数一致だけでは配線の誤りを検出できないため、実 emit と分類規則の対応を文字列単位で固定する。 | 2026-09-07T19:47:59Z | high |
 | [手順書を別経路へ転記するとき画像参照例と添付パスの解決基準を揃える — gh の添付置換は絶対パス同値でのみ成立する](pages/heuristics/image-ref-and-attach-path-same-absolute-basis.md) | heuristics | gh の添付置換は本文の画像参照先と --attach パスを双方絶対パスへ解決して一致したものだけ書き換える。手順書で参照例を相対形、添付を絶対パスと別基準で書くと参照が残り画像が末尾へ追記される。単発経路の手順を分解経路へ転記するときは参照例と添付側を同じ絶対パス形で写し、再添付の案内も本文に残った参照と同じ絶対パスへの再生成に限定する。 | 2026-09-10T09:11:04Z | high |
-| [契約を一意化する変更は、参照文書だけでなく実行手順書の placeholder と同節の旧語彙まで同時に揃える](pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md) | heuristics | 二義的だった契約文を一意に定める変更は、契約を書いた参照文書を直すだけでは足りない。実行者が実際に読む手順書側の placeholder 表やテンプレートが旧方式を無条件に命じたまま残ると曖昧さの発生源が解消せず、同一節に残った旧語彙は除去したはずの二義性を再生産する。主張は証跡が裏付ける範囲に限定する。 | 2026-09-11T02:42:44Z | high |
+| [契約を一意化する変更は、参照文書だけでなく実行手順書の placeholder と同節の旧語彙まで同時に揃える](pages/heuristics/contract-unification-sweeps-execution-docs-and-same-section-vocabulary.md) | heuristics | 二義的だった契約文を一意に定める変更は、契約を書いた参照文書を直すだけでは足りない。実行者が実際に読む手順書側の placeholder 表やテンプレートが旧方式を無条件に命じたまま残ると曖昧さの発生源が解消せず、同一節に残った旧語彙は除去したはずの二義性を再生産する。主張は証跡が裏付ける範囲に限定する。 | 2026-09-11T10:18:45Z | high |
+| [同一指摘が複数 Issue に分かれたら対応 PR は該当する全 Issue を Closes で列挙する](pages/heuristics/duplicate-issues-for-one-finding-close-all-in-pr-body.md) | heuristics | レビュー由来の指摘は単独 Issue と follow-up Issue（同じ PR の残存指摘の集約）の 2 経路で起票されうる。対応 PR が片方だけを Closes すると、もう片方は実装済みのまま open で残り孤児化する。timeline に cross-reference が無い Issue は close スキルも関連 PR を検出できないため、PR 本文で該当する全 Issue を Closes で列挙する。 | 2026-09-11T10:18:45Z | medium |
 ## 統計
 
-- 総ページ数: 472
-- ドメイン別: patterns=110, heuristics=209, anti-patterns=153
-- 最終更新: 2026-09-11T06:35:19Z
+- 総ページ数: 473
+- ドメイン別: patterns=110, heuristics=210, anti-patterns=153
+- 最終更新: 2026-09-11T10:18:45Z
