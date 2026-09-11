@@ -1,5 +1,7 @@
 ## 2026-09-11
 
+* **Skip**: [レビュー結果](raw/reviews/20260911T095826Z-pr-2677.md) — 指摘0件。再添付の絶対パス同値とディレクトリ再作成は既存ページに記録済み。
+
 * **Skip**: [20260911T073050Z-pr-2674.md](raw/reviews/20260911T073050Z-pr-2674.md) — 指摘 0 の 1 行文体規則追加。原則表同期と生成面到達は MUST 外の推奨で、新規経験則は抽出できない
 * **Update**: [無音失敗を可視化する防御コードには、その防御コード自体を守る失敗パステストを追加する](pages/heuristics/defensive-code-needs-its-own-failure-path-test.md) — [レビュー結果](raw/reviews/20260911T061535Z-pr-2673.md) を統合。fail 直後の詳細ダンプは成功パスでは到達しないため、出力チャネル契約は静的 grep と失敗経路で pin する
 * **Skip**: [20260911T043932Z-pr-2672.md](raw/reviews/20260911T043932Z-pr-2672.md) — レビュー指摘なし。括弧内スラッシュ残骸形は scanner の arm とテストへ実装済み。awk リテラル非一致は既存 negative assertion で pin 済み
