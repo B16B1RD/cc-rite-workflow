@@ -1,5 +1,6 @@
 ## 2026-09-12
 
+* **Update**: [sandbox の書込防止マスクは char device 形と ro bind mount 形の 2 形状があり、bind mount 形は mountinfo の mount point 完全一致で検知する](pages/patterns/sandbox-mask-two-shapes-mountinfo-detection.md) — [レビュー結果](raw/reviews/20260911T161919Z-pr-2695.md) を統合。判定不能 WARNING は Linux 限定（Darwin は判定手段不在が常態、uname 失敗は WARNING 側へ倒す）。probe は live-cwd skip では走らせず dry-run では維持する
 * **Update**: [`set -o pipefail` 下の `... ¦ grep -q` は早期終了の SIGPIPE で偽の失敗になる](pages/anti-patterns/pipefail-grep-q-sigpipe-false-failure.md) — [レビュー結果](raw/reviews/20260911T154811Z-pr-2694.md) を統合。`grep -c . >/dev/null` は述語を変えず SIGPIPE 経路だけを消す。発火確率は上流の出力行数に比例し、同型箇所は同じ形に揃える
 * **lint:clean** — contradictions=0, stale=67, orphans=0, missing_concept=0, unregistered_raw=473, broken_refs=0
 

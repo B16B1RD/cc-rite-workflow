@@ -10,6 +10,9 @@ sources:
     resource: "raw/reviews/20260911T135916Z-pr-2690.md"
   - type: "fixes"
     resource: "raw/fixes/20260911T140326Z-pr-2690.md"
+  - type: "reviews"
+    resource: "raw/reviews/20260911T161919Z-pr-2695.md"
+updated: "2026-09-11T16:25:48Z"
 tags: ["sandbox", "bind-mount", "mountinfo", "worktree", "test-fixture"]
 confidence: high
 ---
@@ -34,7 +37,8 @@ Claude Code の sandbox が保護対象パスへ張る書込防止マスクに�
 - 一次判定は `/proc/self/mountinfo` の field 5 とパスの完全一致。空白は mountinfo 側が `\040` にエスケープするため照合側も同じ表記へ寄せる。照合値を awk に渡すときは `-v` ではなく `ENVIRON` を使う（`-v` は `\040` を空白へ戻す）
 - `mountpoint -q` は mountinfo が読めないときの代替に限る。util-linux 2.39 では「非 mountpoint の通常ファイル」で rc=32、「不在」で rc=1 を返し、版により 1 と 32 が揺れるため rc=0 のみを masked と読む。さらに util-linux の `mountpoint` は mountinfo が読めない環境では st_dev 比較へ内部 fallback し bind mount を検知できない
 - `stat` の st_dev 比較は使えない。bind mount は親ディレクトリと同じデバイス番号を持つ
-- 判定手段が両方ない環境は silent に「マスク無し」と扱わず WARNING を出す
+- 判定手段が両方ない環境は silent に「マスク無し」と扱わず WARNING を出す。ただし「判定手段が無いのが常態」の OS と「判定手段が壊れた」Linux は区別する: macOS は `/proc` も util-linux の `mountpoint` も持たず、bind mount 形のマスクも張られないため、`uname -s` が `Darwin` のときだけ判定不能を無言で char device 判定に落とす。`uname` の失敗・未知 OS は WARNING を出す側（Linux 扱い）へ倒し、無言側へは倒さない。抑止されるのは診断文だけで、char device 検知と remove 失敗時の WARNING / 遅延 reap 記録の経路は残す
+- probe は結果に効く経路でだけ走らせる。別セッションが worktree を使用中で削除を見送る経路（live-cwd skip）ではマスク判定が結果に無関係なので probe を評価せず、判定不能 WARNING が見送り経路にまで出るのを防ぐ。dry-run の `action=` 判定には probe が要るのでそこは維持する。「probe を後ろへ遅延させても dry-run で維持されている」ことは dry-run × マスク有り fixture で `action=record_session_worktree` を直接観測して pin する
 
 **テスト fixture**:
 
@@ -50,3 +54,4 @@ Claude Code の sandbox が保護対象パスへ張る書込防止マスクに�
 
 - [レビュー結果](../../raw/reviews/20260911T135916Z-pr-2690.md)
 - [fix 結果](../../raw/fixes/20260911T140326Z-pr-2690.md)
+- [レビュー結果](../../raw/reviews/20260911T161919Z-pr-2695.md)
