@@ -7,6 +7,7 @@
 #   1. ステップ 4-W が self-exclusion 付き worktree-foreign-cwd.sh に --self-root を渡している
 #   2. ステップ 5 が squash-merge 確認済みブランチを強制削除し、遅延ブランチを manifest 記録する
 #   3. ユーザー向け遅延メッセージが平易・正確（内部実装語が無く、branch の自動回収を明記）
+#   4. 設計文書 (docs/designs/multi-session-worktree.md) の Step 4-W 記述が helper の分岐と同じ広さ
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,6 +20,7 @@ DEFERRED_HELPER="$SCRIPT_DIR/../scripts/cleanup-deferred-branch-recovery.sh"
 # する pin は SKILL.md を見る。
 TEARDOWN_HELPER="$SCRIPT_DIR/../scripts/cleanup-session-worktree-teardown.sh"
 BRANCH_DELETE_HELPER="$SCRIPT_DIR/../scripts/cleanup-branch-delete.sh"
+DESIGN_DOC="$SCRIPT_DIR/../../../../docs/designs/multi-session-worktree.md"
 
 echo "=== ステップ 4-W: self-exclusion 付き live-cwd guard の配線 ==="
 assert_grep "4-W uses worktree-foreign-cwd.sh (not the bare live-cwd probe)" "$TEARDOWN_HELPER" "worktree-foreign-cwd\.sh"
@@ -101,6 +103,13 @@ assert_grep "4-W mask WARNING forbids in-place sandbox-disable retry" "$TEARDOWN
 # AC-2 (非回帰): マスク非検知時の従来 remove 経路 (LC_ALL=C 固定の remove → --force fallback)
 # が残存している — 検知ガードが常時抑止に化けたらこの pin ごと落ちる。
 assert_grep "4-W keeps the conventional remove path for unmasked worktrees" "$TEARDOWN_HELPER" 'LC_ALL=C git worktree remove "\$flow_wt"'
+# 設計文書側の Step 4-W 記述は、判定手段が両方無い場合の WARNING 条件を helper の
+# `[ "$_os" != "Darwin" ]` と同じ広さで書く。WARNING 側を「Linux は」と肯定的な具体名で書くと
+# `uname` の失敗・未知 OS が記述から落ち、文書が実装より狭くなる。
+assert_grep "design doc scopes the no-probe WARNING as Darwin-only silence" "$DESIGN_DOC" \
+  "Darwin 以外は .sandbox マスクの mountpoint 判定ができません. の WARNING 付き"
+assert_not_grep "design doc does not narrow the WARNING side to Linux" "$DESIGN_DOC" \
+  "Linux は .sandbox マスクの mountpoint 判定ができません. の WARNING 付き"
 # ステップ 12 報告: SANDBOX_MASK skip の分岐が存在し、sandbox 外での手動回収コマンドを示す。
 assert_grep "Step 12 has a SANDBOX_MASK branch in {session_worktree_check}" "$CLEANUP" 'WORKTREE_REMOVE_SKIPPED_SANDBOX_MASK=1. のとき'
 assert_grep "Step 12 mask message points to a sandbox-outside manual removal" "$CLEANUP" "sandbox 外のシェルで git worktree remove --force"
